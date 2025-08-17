@@ -29,17 +29,16 @@ import util.utils;
 
 import com.sun.star.accessibility.AccessibleRole;
 import com.sun.star.accessibility.XAccessible;
+import com.sun.star.accessibility.XAccessibleContext;
 import com.sun.star.awt.XWindow;
 import com.sun.star.beans.XPropertySet;
-import com.sun.star.frame.XController;
 import com.sun.star.frame.XModel;
 import com.sun.star.text.XText;
 import com.sun.star.text.XTextContent;
 import com.sun.star.text.XTextCursor;
 import com.sun.star.text.XTextDocument;
+import com.sun.star.uno.AnyConverter;
 import com.sun.star.uno.UnoRuntime;
-import com.sun.star.uno.XInterface;
-import com.sun.star.view.XViewSettingsSupplier;
 
 /**
 * Test of accessible object for the graphic object of a text document.<p>
@@ -69,8 +68,6 @@ public class SwAccessibleTextGraphicObject extends TestCase {
     protected TestEnvironment createTestEnvironment(
         TestParameters Param, PrintWriter log) {
 
-        XInterface oObj = null;
-
         SOfficeFactory SOF = SOfficeFactory.getFactory(Param.getMSF());
         Object oGraphObj = SOF.createInstance(
             xTextDoc, "com.sun.star.text.GraphicObject");
@@ -87,27 +84,24 @@ public class SwAccessibleTextGraphicObject extends TestCase {
         XWindow xWindow = AccessibilityTools.getCurrentWindow(aModel);
         XAccessible xRoot = AccessibilityTools.getAccessibleObject(xWindow);
 
-        oObj = AccessibilityTools.getAccessibleObjectForRole(xRoot, AccessibleRole.GRAPHIC);
+        XAccessibleContext xGraphicAcc = AccessibilityTools.getAccessibleObjectForRole(xRoot, AccessibleRole.GRAPHIC);
 
-        log.println("ImplementationName " + utils.getImplName(oObj));
+        log.println("ImplementationName " + utils.getImplName(xGraphicAcc));
         AccessibilityTools.printAccessibleTree(log, xRoot, Param.getBool(util.PropertyName.DEBUG_IS_ACTIVE));
 
-        TestEnvironment tEnv = new TestEnvironment(oObj);
+        TestEnvironment tEnv = new TestEnvironment(xGraphicAcc);
 
-        XController xController = xTextDoc.getCurrentController();
-        XViewSettingsSupplier xViewSetSup = UnoRuntime.queryInterface(XViewSettingsSupplier.class,
-        xController);
-
-        final XPropertySet PropSet = xViewSetSup.getViewSettings();
+        final XPropertySet propSet = UnoRuntime.queryInterface(XPropertySet.class, oGraphObj);
 
         tEnv.addObjRelation("EventProducer",
             new ifc.accessibility._XAccessibleEventBroadcaster.EventProducer() {
                 public void fireEvent() {
                     try {
-                        //change zoom value to 20%
-                        PropSet.setPropertyValue("ZoomValue", Short.valueOf("20"));
-                        //and back to 100%
-                        PropSet.setPropertyValue("ZoomValue", Short.valueOf("100"));
+                        // temporarily set a different object name/title
+                        String title = AnyConverter.toString(propSet.getPropertyValue("Title"));
+                        propSet.setPropertyValue("Title", "New Title");
+                        // set back original value
+                        propSet.setPropertyValue("Title", title);
                     } catch ( com.sun.star.lang.WrappedTargetException e ) {
 
                     }  catch ( com.sun.star.lang.IllegalArgumentException e ) {

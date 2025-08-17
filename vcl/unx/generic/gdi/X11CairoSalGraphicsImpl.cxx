@@ -32,7 +32,7 @@ X11CairoSalGraphicsImpl::X11CairoSalGraphicsImpl(X11SalGraphics& rParent, CairoC
 tools::Long X11CairoSalGraphicsImpl::GetGraphicsWidth() const
 {
     if (mrParent.m_pFrame)
-        return mrParent.m_pFrame->maGeometry.width();
+        return mrParent.m_pFrame->GetWidth();
     return mrCairoCommon.m_pSurface ? mrCairoCommon.m_aFrameSize.getX() : 0;
 }
 
@@ -128,11 +128,6 @@ void X11CairoSalGraphicsImpl::invert(sal_uInt32 nPoints, const Point* pPtAry, Sa
     mrCairoCommon.invert(nPoints, pPtAry, nFlags, getAntiAlias());
 }
 
-bool X11CairoSalGraphicsImpl::hasFastDrawTransformedBitmap() const
-{
-    return CairoCommon::hasFastDrawTransformedBitmap();
-}
-
 bool X11CairoSalGraphicsImpl::supportsOperation(OutDevSupportType eType) const
 {
     return CairoCommon::supportsOperation(eType);
@@ -191,14 +186,11 @@ void X11CairoSalGraphicsImpl::drawMask(const SalTwoRect& rTR, const SalBitmap& r
 
 std::shared_ptr<SalBitmap> X11CairoSalGraphicsImpl::getBitmap(tools::Long nX, tools::Long nY,
                                                               tools::Long nWidth,
-                                                              tools::Long nHeight)
+                                                              tools::Long nHeight,
+                                                              bool bWithoutAlpha)
 {
-    return mrCairoCommon.getBitmap(nX, nY, nWidth, nHeight);
+    return mrCairoCommon.getBitmap(nX, nY, nWidth, nHeight, bWithoutAlpha);
 }
-
-void X11CairoSalGraphicsImpl::Init() {}
-
-void X11CairoSalGraphicsImpl::freeResources() {}
 
 bool X11CairoSalGraphicsImpl::drawPolyLineBezier(sal_uInt32, const Point*, const PolyFlags*)
 {
@@ -212,20 +204,6 @@ bool X11CairoSalGraphicsImpl::drawPolygonBezier(sal_uInt32, const Point*, const 
 
 bool X11CairoSalGraphicsImpl::drawPolyPolygonBezier(sal_uInt32, const sal_uInt32*,
                                                     const Point* const*, const PolyFlags* const*)
-{
-    return false;
-}
-
-bool X11CairoSalGraphicsImpl::drawEPS(tools::Long, tools::Long, tools::Long, tools::Long, void*,
-                                      sal_uInt32)
-{
-    return false;
-}
-
-bool X11CairoSalGraphicsImpl::blendBitmap(const SalTwoRect&, const SalBitmap&) { return false; }
-
-bool X11CairoSalGraphicsImpl::blendAlphaBitmap(const SalTwoRect&, const SalBitmap&,
-                                               const SalBitmap&, const SalBitmap&)
 {
     return false;
 }

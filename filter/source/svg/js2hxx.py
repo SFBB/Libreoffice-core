@@ -18,7 +18,8 @@
 #
 # For minor contributions see the git repository.
 
-import os, sys
+import os
+import sys
 
 MAX_LINES = 150
 VARIABLE_NAME = 'aSVGScript'
@@ -127,7 +128,7 @@ for line in valid_lines:
 out_lines.append( ']]>";' )
 out_lines.append( '' )
 
-out_lines.append('static const char * g_SVGScripts[N_SVGSCRIPT_FRAGMENTS] = {')
+out_lines.append('static const char * const g_SVGScripts[N_SVGSCRIPT_FRAGMENTS] = {')
 for j in range(0, fragment+1):
     out_lines.append("    %s%d," % (VARIABLE_NAME, j))
 out_lines.append('};')

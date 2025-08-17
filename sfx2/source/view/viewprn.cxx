@@ -68,6 +68,7 @@ class SfxPrinterController : public vcl::PrinterController, public SfxListener
     mutable Reference<awt::XDevice>         mxDevice;
     SfxViewShell*                           mpViewShell;
     SfxObjectShell*                         mpObjectShell;
+    bool        m_bJobStarted;
     bool        m_bOrigStatus;
     bool        m_bNeedsChange;
     bool        m_bApi;
@@ -114,6 +115,7 @@ SfxPrinterController::SfxPrinterController( const VclPtr<Printer>& i_rPrinter,
     , mpLastPrinter( nullptr )
     , mpViewShell( pView )
     , mpObjectShell(nullptr)
+    , m_bJobStarted( false )
     , m_bOrigStatus( false )
     , m_bNeedsChange( false )
     , m_bApi(i_bApi)
@@ -133,9 +135,9 @@ SfxPrinterController::SfxPrinterController( const VclPtr<Printer>& i_rPrinter,
             setValue( rProp.Name, rProp.Value );
 
         Sequence< beans::PropertyValue > aRenderOptions{
-            comphelper::makePropertyValue("ExtraPrintUIOptions", Any{}),
-            comphelper::makePropertyValue("View", i_rViewProp),
-            comphelper::makePropertyValue("IsPrinter", true)
+            comphelper::makePropertyValue(u"ExtraPrintUIOptions"_ustr, Any{}),
+            comphelper::makePropertyValue(u"View"_ustr, i_rViewProp),
+            comphelper::makePropertyValue(u"IsPrinter"_ustr, true)
         };
         try
         {
@@ -162,10 +164,10 @@ SfxPrinterController::SfxPrinterController( const VclPtr<Printer>& i_rPrinter,
     }
 
     // set some job parameters
-    setValue( "IsApi", Any( i_bApi ) );
-    setValue( "IsDirect", Any( i_bDirect ) );
-    setValue( "IsPrinter", Any( true ) );
-    setValue( "View", i_rViewProp );
+    setValue( u"IsApi"_ustr, Any( i_bApi ) );
+    setValue( u"IsDirect"_ustr, Any( i_bDirect ) );
+    setValue( u"IsPrinter"_ustr, Any( true ) );
+    setValue( u"View"_ustr, i_rViewProp );
 }
 
 void SfxPrinterController::Notify( SfxBroadcaster& , const SfxHint& rHint )
@@ -182,7 +184,7 @@ void SfxPrinterController::Notify( SfxBroadcaster& , const SfxHint& rHint )
 
 const Any& SfxPrinterController::getSelectionObject() const
 {
-    const beans::PropertyValue* pVal = getValue( OUString( "PrintSelectionOnly"  ) );
+    const beans::PropertyValue* pVal = getValue( u"PrintSelectionOnly"_ustr );
     if( pVal )
     {
         bool bSel = false;
@@ -191,7 +193,7 @@ const Any& SfxPrinterController::getSelectionObject() const
     }
 
     sal_Int32 nChoice = 0;
-    pVal = getValue( OUString( "PrintContent" ) );
+    pVal = getValue( u"PrintContent"_ustr );
     if( pVal )
         pVal->Value >>= nChoice;
 
@@ -210,7 +212,7 @@ Sequence< beans::PropertyValue > SfxPrinterController::getMergedOptions() const
     }
 
     Sequence< beans::PropertyValue > aRenderOptions{ comphelper::makePropertyValue(
-        "RenderDevice", mxDevice) };
+        u"RenderDevice"_ustr, mxDevice) };
 
     aRenderOptions = getJobProperties( aRenderOptions );
     return aRenderOptions;
@@ -291,6 +293,8 @@ void SfxPrinterController::jobStarted()
     if ( !mpObjectShell )
         return;
 
+    m_bJobStarted = true;
+
     m_bOrigStatus = mpObjectShell->IsEnableSetModified();
 
     // check configuration: shall update of printing information in DocInfo set the document to "modified"?
@@ -337,7 +341,7 @@ void SfxPrinterController::jobFinished( css::view::PrintableState nState )
         {
             // "real" problem (not simply printing cancelled by user)
             OUString aMsg( SfxResId(STR_NOSTARTPRINTER) );
-            if ( !m_bApi )
+            if ( !m_bApi && mpViewShell )
             {
                 std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(mpViewShell->GetFrameWeld(),
                                                                          VclMessageType::Warning, VclButtonsType::Ok,
@@ -348,21 +352,27 @@ void SfxPrinterController::jobFinished( css::view::PrintableState nState )
         }
         case view::PrintableState_JOB_ABORTED :
         {
-            // printing not successful, reset DocInfo
-            uno::Reference<document::XDocumentProperties> xDocProps(mpObjectShell->getDocProperties());
-            xDocProps->setPrintedBy(m_aLastPrintedBy);
-            xDocProps->setPrintDate(m_aLastPrinted);
+            // printing not successful, reset DocInfo if the job started and so DocInfo was modified
+            if (m_bJobStarted)
+            {
+                uno::Reference<document::XDocumentProperties> xDocProps(mpObjectShell->getDocProperties());
+                xDocProps->setPrintedBy(m_aLastPrintedBy);
+                xDocProps->setPrintDate(m_aLastPrinted);
+            }
             break;
         }
 
         case view::PrintableState_JOB_SPOOLED :
         case view::PrintableState_JOB_COMPLETED :
         {
-            SfxBindings& rBind = mpViewShell->GetViewFrame().GetBindings();
-            rBind.Invalidate( SID_PRINTDOC );
-            rBind.Invalidate( SID_PRINTDOCDIRECT );
-            rBind.Invalidate( SID_SETUPPRINTER );
-            bCopyJobSetup = ! m_bTempPrinter;
+            if (mpViewShell)
+            {
+                SfxBindings& rBind = mpViewShell->GetViewFrame().GetBindings();
+                rBind.Invalidate( SID_PRINTDOC );
+                rBind.Invalidate( SID_PRINTDOCDIRECT );
+                rBind.Invalidate( SID_SETUPPRINTER );
+                bCopyJobSetup = ! m_bTempPrinter;
+            }
             break;
         }
 
@@ -606,12 +616,12 @@ void SfxViewShell::StartPrint( const uno::Sequence < beans::PropertyValue >& rPr
 
     // When no JobName was specified via com::sun::star::view::PrintOptions::JobName ,
     // use the document title as default job name
-    css::beans::PropertyValue* pJobNameVal = xNewController->getValue("JobName");
+    css::beans::PropertyValue* pJobNameVal = xNewController->getValue(u"JobName"_ustr);
     if (!pJobNameVal)
     {
         if (SfxObjectShell* pDoc = GetObjectShell())
         {
-            xNewController->setValue("JobName", Any(pDoc->GetTitle(1)));
+            xNewController->setValue(u"JobName"_ustr, Any(pDoc->GetTitle(1)));
             xNewController->setPrinterModified(mbPrinterSettingsModified);
         }
     }

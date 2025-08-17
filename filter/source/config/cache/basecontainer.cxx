@@ -45,13 +45,9 @@ void BaseContainer::init(const OUString&                                        
                          const css::uno::Sequence< OUString >&                  lServiceNames      ,
                                FilterCache::EItemType                                  eType              )
 {
-    // SAFE ->
-    std::unique_lock aLock(m_aMutex);
-
     m_sImplementationName = sImplementationName;
     m_lServiceNames       = lServiceNames      ;
     m_eType               = eType              ;
-    // <- SAFE
 }
 
 
@@ -90,7 +86,7 @@ void BaseContainer::impl_initFlushMode(std::unique_lock<std::mutex>& /*rGuard*/)
     if (!m_pFlushCache)
         m_pFlushCache = GetTheFilterCache().clone();
     if (!m_pFlushCache)
-        throw css::uno::RuntimeException( "Can not create write copy of internal used cache on demand.",
+        throw css::uno::RuntimeException( u"Can not create write copy of internal used cache on demand."_ustr,
                 getXWeak());
 }
 
@@ -125,7 +121,7 @@ void SAL_CALL BaseContainer::insertByName(const OUString& sItem ,
                                           const css::uno::Any&   aValue)
 {
     if (sItem.isEmpty())
-        throw css::lang::IllegalArgumentException("empty value not allowed as item name.",
+        throw css::lang::IllegalArgumentException(u"empty value not allowed as item name."_ustr,
             static_cast< css::container::XNameContainer* >(this),
             1);
 
@@ -175,7 +171,7 @@ void SAL_CALL BaseContainer::replaceByName(const OUString& sItem ,
                                            const css::uno::Any&   aValue)
 {
     if (sItem.isEmpty())
-        throw css::lang::IllegalArgumentException("empty value not allowed as item name.",
+        throw css::lang::IllegalArgumentException(u"empty value not allowed as item name."_ustr,
             static_cast< css::container::XNameContainer* >(this),
             1);
 
@@ -208,7 +204,7 @@ void SAL_CALL BaseContainer::replaceByName(const OUString& sItem ,
 css::uno::Any SAL_CALL BaseContainer::getByName(const OUString& sItem)
 {
     if (sItem.isEmpty())
-        throw css::container::NoSuchElementException( "An empty item can't be part of this cache!",
+        throw css::container::NoSuchElementException( u"An empty item can't be part of this cache!"_ustr,
                 static_cast< css::container::XNameAccess* >(this));
 
     css::uno::Any aValue;
@@ -379,7 +375,7 @@ void SAL_CALL BaseContainer::flush()
 
     if (!m_pFlushCache)
         throw css::lang::WrappedTargetRuntimeException(
-                "Can not guarantee cache consistency. Special flush container does not exists!",
+                u"Can not guarantee cache consistency. Special flush container does not exists!"_ustr,
                 getXWeak(),
                 css::uno::Any());
 
@@ -401,7 +397,7 @@ void SAL_CALL BaseContainer::flush()
         // user wish to repair it now and calls flush()
         // later again ...
 
-        throw css::lang::WrappedTargetRuntimeException( "Flush rejected by internal container.",
+        throw css::lang::WrappedTargetRuntimeException( u"Flush rejected by internal container."_ustr,
                 getXWeak(),
                 css::uno::Any(ex));
     }

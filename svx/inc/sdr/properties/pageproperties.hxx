@@ -54,7 +54,7 @@ namespace sdr::properties
 
             // set the installed StyleSheet
             virtual void SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast) override;
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight = true) override;
 
             // clear single item
             virtual void ClearObjectItem(const sal_uInt16 nWhich = 0) override;
@@ -70,7 +70,7 @@ namespace sdr::properties
             virtual void ClearObjectItemDirect(const sal_uInt16 nWhich) override;
 
             // set complete item set
-            virtual void SetObjectItemSet(const SfxItemSet& rSet) override;
+            virtual void SetObjectItemSet(const SfxItemSet& rSet, bool bAdjustTextFrameWidthAndHeight = true) override;
         };
 } // end of namespace sdr::properties
 

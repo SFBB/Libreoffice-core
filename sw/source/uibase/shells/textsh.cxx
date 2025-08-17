@@ -20,11 +20,13 @@
 #include <config_features.h>
 
 #include <hintids.hxx>
+#include <comphelper/lok.hxx>
 #include <comphelper/string.hxx>
 #include <svl/globalnameitem.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/frmdescr.hxx>
 #include <sfx2/objface.hxx>
+#include <sfx2/sidebar/Sidebar.hxx>
 #include <sfx2/viewfrm.hxx>
 
 #include <i18nutil/transliteration.hxx>
@@ -39,7 +41,7 @@
 #include <editeng/boxitem.hxx>
 #include <editeng/sizeitem.hxx>
 #include <editeng/svxacorr.hxx>
-#include <editeng/scripttypeitem.hxx>
+#include <editeng/scriptsetitem.hxx>
 #include <sfx2/htmlmode.hxx>
 #include <svtools/htmlcfg.hxx>
 #include <com/sun/star/embed/Aspects.hpp>
@@ -90,6 +92,8 @@
 #include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
 #include <IDocumentUndoRedo.hxx>
 #include <formatcontentcontrol.hxx>
+#include <com/sun/star/i18n/WordType.hpp>
+
 
 using namespace ::com::sun::star;
 
@@ -117,7 +121,7 @@ IMPL_STATIC_LINK( SwTextShell, DialogClosedHdl, css::ui::dialogs::DialogClosedEv
 
 void SwTextShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("text");
+    GetStaticInterface()->RegisterPopupMenu(u"text"_ustr);
 
     GetStaticInterface()->RegisterObjectBar(SFX_OBJECTBAR_OBJECT, SfxVisibilityFlags::Invisible, ToolbarId::Text_Toolbox_Sw);
 
@@ -134,7 +138,7 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
 {
     SwWrtShell &rSh = GetShell();
 
-    OSL_ENSURE( !rSh.IsObjSelected() && !rSh.IsFrameSelected(),
+    OSL_ENSURE( !rSh.GetSelectedObjCount() && !rSh.IsFrameSelected(),
             "wrong shell on dispatcher" );
 
     const SfxItemSet *pArgs = rReq.GetArgs();
@@ -331,27 +335,27 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
                     if ( pMarginItem )
                         aMargin = pMarginItem->GetSize();
 
-                    xSet->setPropertyValue("FrameURL", uno::Any( pURLItem->GetValue() ) );
+                    xSet->setPropertyValue(u"FrameURL"_ustr, uno::Any( pURLItem->GetValue() ) );
                     if ( pNameItem )
-                        xSet->setPropertyValue("FrameName", uno::Any( pNameItem->GetValue() ) );
+                        xSet->setPropertyValue(u"FrameName"_ustr, uno::Any( pNameItem->GetValue() ) );
 
                     if ( eScroll == ScrollingMode::Auto )
-                        xSet->setPropertyValue("FrameIsAutoScroll",
+                        xSet->setPropertyValue(u"FrameIsAutoScroll"_ustr,
                             uno::Any( true ) );
                     else
-                        xSet->setPropertyValue("FrameIsScrollingMode",
+                        xSet->setPropertyValue(u"FrameIsScrollingMode"_ustr,
                             uno::Any( eScroll == ScrollingMode::Yes ) );
 
                     if ( pBorderItem )
-                        xSet->setPropertyValue("FrameIsBorder",
+                        xSet->setPropertyValue(u"FrameIsBorder"_ustr,
                             uno::Any( pBorderItem->GetValue() ) );
 
                     if ( pMarginItem )
                     {
-                        xSet->setPropertyValue("FrameMarginWidth",
+                        xSet->setPropertyValue(u"FrameMarginWidth"_ustr,
                             uno::Any( sal_Int32( aMargin.Width() ) ) );
 
-                        xSet->setPropertyValue("FrameMarginHeight",
+                        xSet->setPropertyValue(u"FrameMarginHeight"_ustr,
                             uno::Any( sal_Int32( aMargin.Height() ) ) );
                     }
                 }
@@ -371,8 +375,7 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
     break;
     case SID_INSERT_DIAGRAM:
         {
-            SvtModuleOptions aMOpt;
-            if ( !aMOpt.IsChart() )
+            if (!SvtModuleOptions().IsChartInstalled())
                 break;
             if(!rReq.IsAPI())
             {
@@ -386,7 +389,7 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
                 if (!GetShell().IsTableComplexForChart())
                 {
                     SwFrameFormat* pTableFormat = GetShell().GetTableFormat();
-                    aRangeString = pTableFormat->GetName() + "."
+                    aRangeString = pTableFormat->GetName().toString() + "."
                         + GetShell().GetBoxNms();
 
                     // get table data provider
@@ -418,6 +421,10 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
 
     case FN_INSERT_SMA:
         {
+            // if sidebar is closed - open to show elements deck
+            if (comphelper::LibreOfficeKit::isActive())
+                sfx2::sidebar::Sidebar::Setup(u"");
+
             // #i34343# Inserting a math object into an autocompletion crashes
             // the suggestion has to be removed before
             GetView().GetEditWin().StopQuickHelp();
@@ -522,16 +529,16 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
         }
         else
         {
-            SfxItemSet aSet = CreateInsertFrameItemSet(aMgr);
+            auto xSet = CreateInsertFrameItemSet(aMgr);
 
             FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebDocShell*>( GetView().GetDocShell()) != nullptr );
-            SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)));
+            SwModule::get()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)));
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            VclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateFrameTabDialog("FrameDialog",
+            VclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateFrameTabDialog(u"FrameDialog"_ustr,
                                                   GetView().GetViewFrame(),
                                                   GetView().GetFrameWeld(),
-                                                  aSet));
-            pDlg->StartExecuteAsync([aSet, pDlg, nSlot, this](sal_Int32 nResult) {
+                                                  *xSet));
+            pDlg->StartExecuteAsync([xSet=std::move(xSet), pDlg, nSlot, this](sal_Int32 nResult) {
                 if (nResult == RET_OK && pDlg->GetOutputItemSet())
                 {
                     SwFlyFrameAttrMgr aAttrMgr( true, GetShellPtr(), Frmmgr_Type::TEXT, nullptr );
@@ -542,7 +549,7 @@ void SwTextShell::ExecInsert(SfxRequest &rReq)
                     rShell.StartUndo(SwUndoId::INSERT);
 
                     SfxItemSet aOutSet(*pDlg->GetOutputItemSet());
-                    const SvxBoxItem* pBox = aSet.GetItem(RES_BOX);
+                    const SvxBoxItem* pBox = xSet->GetItem(RES_BOX);
                     if (pBox && !aOutSet.HasItem(RES_BOX))
                     {
                         // The input set had border info but the output set not, then copy it over
@@ -619,7 +626,6 @@ void SwTextShell::StateInsert( SfxItemSet &rSet )
     SfxWhichIter aIter( rSet );
     SwWrtShell &rSh = GetShell();
     sal_uInt16 nWhich = aIter.FirstWhich();
-    SvtModuleOptions aMOpt;
     SfxObjectCreateMode eCreateMode =
                         GetView().GetDocShell()->GetCreateMode();
     const bool bCursorInHidden = rSh.IsInHiddenRange(/*bSelect=*/false);
@@ -639,7 +645,7 @@ void SwTextShell::StateInsert( SfxItemSet &rSet )
             break;
 
         case SID_INSERT_DIAGRAM:
-            if( !aMOpt.IsChart()
+            if (!SvtModuleOptions().IsChartInstalled()
                 || GetShell().CursorInsideInputField()
                 || eCreateMode == SfxObjectCreateMode::EMBEDDED
                 || bCursorInHidden )
@@ -649,7 +655,7 @@ void SwTextShell::StateInsert( SfxItemSet &rSet )
             break;
 
             case FN_INSERT_SMA:
-                if( !aMOpt.IsMath()
+                if (!SvtModuleOptions().IsMathInstalled()
                     || eCreateMode == SfxObjectCreateMode::EMBEDDED
                     || bCursorInHidden
                     || rSh.CursorInsideInputField() )
@@ -692,7 +698,7 @@ void SwTextShell::StateInsert( SfxItemSet &rSet )
 
             case SID_HYPERLINK_GETLINK:
                 {
-                    SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT> aSet(GetPool());
+                    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT>(GetPool()));
                     rSh.GetCurAttr( aSet );
 
                     SvxHyperlinkItem aHLinkItem;
@@ -829,7 +835,7 @@ void  SwTextShell::ExecDelete(SfxRequest &rReq)
     rReq.Done();
 }
 
-void SwTextShell::ExecTransliteration( SfxRequest const & rReq )
+void SwTextShell::ExecTransliteration( SfxRequest& rReq )
 {
     using namespace ::com::sun::star::i18n;
     TransliterationFlags nMode = TransliterationFlags::NONE;
@@ -871,19 +877,47 @@ void SwTextShell::ExecTransliteration( SfxRequest const & rReq )
     }
 
     if( nMode != TransliterationFlags::NONE )
+    {
         GetShell().TransliterateText( nMode );
+        rReq.Done();
+    }
 }
 
-void SwTextShell::ExecRotateTransliteration( SfxRequest const & rReq )
+void SwTextShell::ExecRotateTransliteration( SfxRequest& rReq )
 {
     if( rReq.GetSlot() == SID_TRANSLITERATE_ROTATE_CASE )
-        GetShell().TransliterateText( m_aRotateCase.getNextMode() );
+    {
+        TransliterationFlags transFlags = m_aRotateCase.getNextMode();
+        bool bSentenceCase = TransliterationFlags::SENTENCE_CASE == transFlags;
+        SwWrtShell& rSh = GetShell();
+        if (rSh.HasSelection())
+        {
+            if (bSentenceCase)
+            {
+                OUString aSelection = rSh.GetSelText().trim();
+                if (aSelection.getLength() <= 2 || (aSelection.indexOf(' ') < 0 && aSelection.indexOf('\t') < 0))
+                    transFlags = m_aRotateCase.getNextMode();
+            }
+            rSh.TransliterateText(transFlags);
+            rReq.Done();
+        }
+        else
+        {
+            if (bSentenceCase)
+                transFlags = m_aRotateCase.getNextMode();
+            if ((rSh.IsEndWrd() || rSh.IsStartWord() || rSh.IsInWord()) && rSh.SelWrd(nullptr, i18n::WordType::WORD_COUNT))
+            {
+                rSh.TransliterateText(transFlags);
+                rReq.Done();
+            }
+        }
+    }
 }
 
 SwTextShell::SwTextShell(SwView &_rView) :
     SwBaseShell(_rView)
 {
-    SetName("Text");
+    SetName(u"Text"_ustr);
     SfxShell::SetContextName(vcl::EnumContext::GetContextName(vcl::EnumContext::Context::Text));
 }
 
@@ -891,9 +925,9 @@ SwTextShell::~SwTextShell()
 {
 }
 
-SfxItemSet SwTextShell::CreateInsertFrameItemSet(SwFlyFrameAttrMgr& rMgr)
+std::shared_ptr<SfxItemSet> SwTextShell::CreateInsertFrameItemSet(SwFlyFrameAttrMgr& rMgr)
 {
-    SfxItemSet aSet(GetPool(), svl::Items<
+    auto xSet = std::make_shared<SfxItemSet>(GetPool(), svl::Items<
         RES_FRMATR_BEGIN,       RES_FRMATR_END-1,
         XATTR_FILL_FIRST,       XATTR_FILL_LAST, // tdf#95003
         SID_ATTR_BORDER_INNER,  SID_ATTR_BORDER_INNER,
@@ -902,38 +936,38 @@ SfxItemSet SwTextShell::CreateInsertFrameItemSet(SwFlyFrameAttrMgr& rMgr)
         SID_HTML_MODE,          SID_HTML_MODE,
         FN_GET_PRINT_AREA,      FN_GET_PRINT_AREA,
         FN_SET_FRM_NAME,        FN_SET_FRM_NAME>);
-    aSet.Put(SfxUInt16Item(SID_HTML_MODE, ::GetHtmlMode(GetView().GetDocShell())));
+    xSet->Put(SfxUInt16Item(SID_HTML_MODE, ::GetHtmlMode(GetView().GetDocShell())));
 
     // For the Area tab page.
-    GetShell().GetDoc()->getIDocumentDrawModelAccess().GetDrawModel()->PutAreaListItems(aSet);
+    GetShell().GetDoc()->getIDocumentDrawModelAccess().GetDrawModel()->PutAreaListItems(*xSet);
 
     const SwRect &rPg = GetShell().GetAnyCurRect(CurRectType::Page);
     SwFormatFrameSize aFrameSize(SwFrameSize::Variable, rPg.Width(), rPg.Height());
-    aFrameSize.SetWhich(GetPool().GetWhich(SID_ATTR_PAGE_SIZE));
-    aSet.Put(aFrameSize);
+    aFrameSize.SetWhich(GetPool().GetWhichIDFromSlotID(SID_ATTR_PAGE_SIZE));
+    xSet->Put(aFrameSize);
 
     const SwRect &rPr = GetShell().GetAnyCurRect(CurRectType::PagePrt);
     SwFormatFrameSize aPrtSize(SwFrameSize::Variable, rPr.Width(), rPr.Height());
-    aPrtSize.SetWhich(GetPool().GetWhich(FN_GET_PRINT_AREA));
-    aSet.Put(aPrtSize);
+    aPrtSize.SetWhich(GetPool().GetWhichIDFromSlotID(FN_GET_PRINT_AREA));
+    xSet->Put(aPrtSize);
 
-    aSet.Put(rMgr.GetAttrSet());
-    aSet.SetParent( rMgr.GetAttrSet().GetParent() );
+    xSet->Put(rMgr.GetAttrSet());
+    xSet->SetParent( rMgr.GetAttrSet().GetParent() );
 
     // Delete minimum size in columns.
-    SvxBoxInfoItem aBoxInfo(aSet.Get(SID_ATTR_BORDER_INNER));
-    const SvxBoxItem& rBox = aSet.Get(RES_BOX);
+    SvxBoxInfoItem aBoxInfo(xSet->Get(SID_ATTR_BORDER_INNER));
+    const SvxBoxItem& rBox = xSet->Get(RES_BOX);
     aBoxInfo.SetMinDist(false);
     aBoxInfo.SetDefDist(rBox.GetDistance(SvxBoxItemLine::LEFT));
-    aSet.Put(aBoxInfo);
+    xSet->Put(aBoxInfo);
 
     if (!SwFlyFrameAttrMgr::SingleTableSelected(GetShell()))
     {
         SwFormatAnchor aAnchor(RndStdIds::FLY_AT_CHAR);
-        aSet.Put(aAnchor);
+        xSet->Put(aAnchor);
     }
 
-    return aSet;
+    return xSet;
 }
 
 void SwTextShell::InsertSymbol( SfxRequest& rReq )
@@ -953,9 +987,10 @@ void SwTextShell::InsertSymbol( SfxRequest& rReq )
     }
 
     SwWrtShell &rSh = GetShell();
-    SfxItemSetFixed<RES_CHRATR_FONT, RES_CHRATR_FONT,
-                    RES_CHRATR_CJK_FONT, RES_CHRATR_CJK_FONT,
-                    RES_CHRATR_CTL_FONT, RES_CHRATR_CTL_FONT>  aSet( GetPool() );
+    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<
+        RES_CHRATR_FONT, RES_CHRATR_FONT,
+        RES_CHRATR_CJK_FONT, RES_CHRATR_CJK_FONT,
+        RES_CHRATR_CTL_FONT, RES_CHRATR_CTL_FONT>(GetPool()));
     rSh.GetCurAttr( aSet );
     SvtScriptType nScript = rSh.GetScriptType();
 
@@ -997,8 +1032,13 @@ void SwTextShell::InsertSymbol( SfxRequest& rReq )
 
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
         auto xFrame = GetView().GetViewFrame().GetFrame().GetFrameInterface();
-        ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateCharMapDialog(GetView().GetFrameWeld(), aAllSet, xFrame));
-        pDlg->Execute();
+        VclPtr<SfxAbstractDialog> pDlg(pFact->CreateCharMapDialog(GetView().GetFrameWeld(), aAllSet, xFrame));
+        pDlg->StartExecuteAsync(
+            [pDlg] (sal_Int32 /*nResult*/)->void
+            {
+                pDlg->disposeOnce();
+            }
+        );
         return;
     }
 
@@ -1043,13 +1083,14 @@ void SwTextShell::InsertSymbol( SfxRequest& rReq )
     {
         std::unique_ptr<SvxFontItem> aNewFontItem(aFont->Clone());
         aNewFontItem->SetFamilyName( aNewFont.GetFamilyName() );
-        aNewFontItem->SetFamily(  aNewFont.GetFamilyType());
-        aNewFontItem->SetPitch(   aNewFont.GetPitch());
+        aNewFontItem->SetFamily(  aNewFont.GetFamilyTypeMaybeAskConfig());
+        aNewFontItem->SetPitch(   aNewFont.GetPitchMaybeAskConfig());
         aNewFontItem->SetCharSet( aNewFont.GetCharSet() );
 
-        SfxItemSetFixed<RES_CHRATR_FONT, RES_CHRATR_FONT,
-                       RES_CHRATR_CJK_FONT, RES_CHRATR_CJK_FONT,
-                       RES_CHRATR_CTL_FONT, RES_CHRATR_CTL_FONT>  aRestoreSet( GetPool() );
+        SfxItemSet aRestoreSet(SfxItemSet::makeFixedSfxItemSet<
+            RES_CHRATR_FONT, RES_CHRATR_FONT,
+            RES_CHRATR_CJK_FONT, RES_CHRATR_CJK_FONT,
+            RES_CHRATR_CTL_FONT, RES_CHRATR_CTL_FONT>(GetPool()));
 
         nScript = g_pBreakIt->GetAllScriptsOfText( aChars );
         if( SvtScriptType::LATIN & nScript )

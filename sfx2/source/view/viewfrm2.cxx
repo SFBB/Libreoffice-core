@@ -48,8 +48,6 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::beans;
 
 
 void SfxFrameViewWindow_Impl::StateChanged( StateChangedType nStateChange )
@@ -205,7 +203,7 @@ void SfxViewFrame::Exec_Impl(SfxRequest &rReq )
             const OUString aFact("private:factory/" + aFactName);
             aReq.AppendItem( SfxStringItem( SID_FILE_NAME, aFact ) );
             aReq.AppendItem( SfxFrameItem( SID_DOCFRAME, &GetFrame() ) );
-            aReq.AppendItem( SfxStringItem( SID_TARGETNAME, "_blank" ) );
+            aReq.AppendItem( SfxStringItem( SID_TARGETNAME, u"_blank"_ustr ) );
             SfxGetpApp()->ExecuteSlot( aReq );
 
             const SfxViewFrameItem* pItem(dynamic_cast<const SfxViewFrameItem*>(aReq.GetReturnValue().getItem()));

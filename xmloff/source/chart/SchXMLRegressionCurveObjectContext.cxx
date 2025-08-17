@@ -25,7 +25,6 @@
 #include <sal/log.hxx>
 
 #include <utility>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/prstylei.hxx>
@@ -36,7 +35,6 @@
 #include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/chart2/RegressionEquation.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 
 using namespace com::sun::star;
 using namespace xmloff::token;
@@ -166,15 +164,15 @@ void SchXMLEquationContext::startFastElement (sal_Int32 /*nElement*/,
                 pPropStyleContext->FillPropertySet( xEquationProperties );
         }
     }
-    xEquationProperties->setPropertyValue( "ShowEquation", uno::Any( bShowEquation ));
-    xEquationProperties->setPropertyValue( "ShowCorrelationCoefficient", uno::Any( bShowRSquare ));
+    xEquationProperties->setPropertyValue( u"ShowEquation"_ustr, uno::Any( bShowEquation ));
+    xEquationProperties->setPropertyValue( u"ShowCorrelationCoefficient"_ustr, uno::Any( bShowRSquare ));
 
     if( bHasXPos && bHasYPos )
     {
         chart2::RelativePosition aRelPos;
         aRelPos.Primary = static_cast< double >( aPosition.X ) / static_cast< double >( maChartSize.Width );
         aRelPos.Secondary = static_cast< double >( aPosition.Y ) / static_cast< double >( maChartSize.Height );
-        xEquationProperties->setPropertyValue( "RelativePosition", uno::Any( aRelPos ));
+        xEquationProperties->setPropertyValue( u"RelativePosition"_ustr, uno::Any( aRelPos ));
     }
     mrRegressionStyle.m_xEquationProperties.set( xEquationProperties );
 }

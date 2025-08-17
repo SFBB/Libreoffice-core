@@ -108,16 +108,18 @@ IMPL_STATIC_LINK( MainThreadFrameCloserRequest, worker, void*, p, void )
         try
         {
             uno::Reference< awt::XWindow > xWindow = pMTRequest->m_xFrame->getContainerWindow();
-            uno::Reference< awt::XVclWindowPeer > xWinPeer( xWindow, uno::UNO_QUERY_THROW );
+            uno::Reference< awt::XVclWindowPeer > xWinPeer( xWindow, uno::UNO_QUERY );
+            if (xWinPeer)
+            {
+                xWindow->setVisible( false );
 
-            xWindow->setVisible( false );
+                // reparent the window
+                xWinPeer->setProperty( u"PluginParent"_ustr, uno::Any( sal_Int64(0) ) );
 
-            // reparent the window
-            xWinPeer->setProperty( "PluginParent", uno::Any( sal_Int64(0) ) );
-
-            VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
-            if (pWindow)
-                vcl::EndAllDialogs(pWindow);
+                VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( xWindow );
+                if (pWindow)
+                    vcl::EndAllDialogs(pWindow);
+            }
         }
         catch( uno::Exception& )
         {
@@ -126,8 +128,9 @@ IMPL_STATIC_LINK( MainThreadFrameCloserRequest, worker, void*, p, void )
 
         try
         {
-            uno::Reference< util::XCloseable > xCloseable( pMTRequest->m_xFrame, uno::UNO_QUERY_THROW );
-            xCloseable->close( true );
+            uno::Reference< util::XCloseable > xCloseable( pMTRequest->m_xFrame, uno::UNO_QUERY );
+            if (xCloseable)
+                xCloseable->close( true );
         }
         catch( uno::Exception& )
         {
@@ -148,13 +151,13 @@ ODocumentCloser::ODocumentCloser(const css::uno::Sequence< css::uno::Any >& aArg
     sal_Int32 nLen = aArguments.getLength();
     if ( nLen != 1 )
         throw lang::IllegalArgumentException(
-                        "Wrong count of parameters!",
+                        u"Wrong count of parameters!"_ustr,
                         uno::Reference< uno::XInterface >(),
                         0 );
 
     if ( !( aArguments[0] >>= m_xFrame ) || !m_xFrame.is() )
         throw lang::IllegalArgumentException(
-                "Nonempty reference is expected as the first argument!",
+                u"Nonempty reference is expected as the first argument!"_ustr,
                 uno::Reference< uno::XInterface >(),
                 0 );
 }
@@ -203,7 +206,7 @@ void SAL_CALL ODocumentCloser::removeEventListener( const uno::Reference< lang::
 // XServiceInfo
 OUString SAL_CALL ODocumentCloser::getImplementationName(  )
 {
-    return "com.sun.star.comp.embed.DocumentCloser";
+    return u"com.sun.star.comp.embed.DocumentCloser"_ustr;
 }
 
 sal_Bool SAL_CALL ODocumentCloser::supportsService( const OUString& ServiceName )
@@ -213,7 +216,7 @@ sal_Bool SAL_CALL ODocumentCloser::supportsService( const OUString& ServiceName 
 
 uno::Sequence< OUString > SAL_CALL ODocumentCloser::getSupportedServiceNames()
 {
-    return { "com.sun.star.embed.DocumentCloser" };
+    return { u"com.sun.star.embed.DocumentCloser"_ustr };
 }
 
 }

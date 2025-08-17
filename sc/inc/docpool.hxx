@@ -23,14 +23,8 @@
 #include <svl/itempool.hxx>
 #include "scdllapi.h"
 
-class ScStyleSheet;
-class ScDocument;
-
 class SC_DLLPUBLIC ScDocumentPool final : public SfxItemPool
 {
-    std::vector<SfxPoolItem*> mvPoolDefaults;
-    sal_uInt64 mnCurrentMaxKey;
-
 public:
             ScDocumentPool();
 private:
@@ -40,15 +34,10 @@ public:
     virtual rtl::Reference<SfxItemPool> Clone() const override;
     virtual MapUnit             GetMetric( sal_uInt16 nWhich ) const override;
 
-    void StyleDeleted( const ScStyleSheet* pStyle );      // delete templates(?) in organizer
-    void CellStyleCreated( std::u16string_view rName, const ScDocument& rDoc );
     virtual bool GetPresentation( const SfxPoolItem&  rItem,
                                   MapUnit          ePresentationMetric,
                                   OUString&           rText,
                                   const IntlWrapper& rIntl ) const override;
-private:
-    virtual void newItem_Callback(const SfxPoolItem& rItem) const override;
-    virtual bool newItem_UseDirect(const SfxPoolItem& rItem) const override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -20,6 +20,7 @@
 #include <com/sun/star/style/TabStop.hpp>
 #include <com/sun/star/style/LineSpacing.hpp>
 #include <com/sun/star/style/LineSpacingMode.hpp>
+#include <com/sun/star/text/ParagraphHyphenationKeepType.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <libxml/xmlwriter.h>
 #include <comphelper/extract.hxx>
@@ -49,6 +50,7 @@
 #include <editeng/memberids.h>
 #include <editeng/itemtype.hxx>
 #include <editeng/eerdll.hxx>
+#include <o3tl/hash_combine.hxx>
 
 using namespace ::com::sun::star;
 
@@ -77,7 +79,7 @@ enum class SvxSpecialLineSpace
 }
 
 SvxLineSpacingItem::SvxLineSpacingItem( sal_uInt16 nHeight, const sal_uInt16 nId )
-    : SfxEnumItemInterface( nId )
+    : SfxPoolItem(nId)
 {
     nPropLineSpace = 100;
     nInterLineSpace = 0;
@@ -106,6 +108,17 @@ bool SvxLineSpacingItem::operator==( const SfxPoolItem& rAttr ) const
                 && nPropLineSpace == rLineSpace.nPropLineSpace)
             || (eInterLineSpaceRule == SvxInterLineSpaceRule::Fix
                 && (nInterLineSpace == rLineSpace.nInterLineSpace)));
+}
+
+size_t SvxLineSpacingItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, eLineSpaceRule);
+    o3tl::hash_combine(seed, nLineHeight);
+    o3tl::hash_combine(seed, eInterLineSpaceRule);
+    o3tl::hash_combine(seed, nPropLineSpace);
+    o3tl::hash_combine(seed, nInterLineSpace);
+    return seed;
 }
 
 /* Who does still know why the LineSpacingItem is so complicated?
@@ -160,6 +173,7 @@ bool SvxLineSpacingItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 
 bool SvxLineSpacingItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     bool bConvert = 0!=(nMemberId&CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
 
@@ -305,46 +319,25 @@ bool SvxLineSpacingItem::GetPresentation
     return true;
 }
 
-sal_uInt16 SvxLineSpacingItem::GetValueCount() const
-{
-    return sal_uInt16(SvxSpecialLineSpace::End);   // SvxSpecialLineSpace::TwoLines + 1
-}
-
-
-sal_uInt16 SvxLineSpacingItem::GetEnumValue() const
-{
-    SvxSpecialLineSpace nVal;
-    switch ( nPropLineSpace )
-    {
-        case 100:   nVal = SvxSpecialLineSpace::OneLine;            break;
-        case 150:   nVal = SvxSpecialLineSpace::OnePointFiveLines;  break;
-        case 200:   nVal = SvxSpecialLineSpace::TwoLines;           break;
-        default:    nVal = SvxSpecialLineSpace::User;               break;
-    }
-    return static_cast<sal_uInt16>(nVal);
-}
-
-
-void SvxLineSpacingItem::SetEnumValue( sal_uInt16 nVal )
-{
-    switch ( static_cast<SvxSpecialLineSpace>(nVal) )
-    {
-        case SvxSpecialLineSpace::OneLine:           nPropLineSpace = 100; break;
-        case SvxSpecialLineSpace::OnePointFiveLines: nPropLineSpace = 150; break;
-        case SvxSpecialLineSpace::TwoLines:          nPropLineSpace = 200; break;
-        default: break;
-    }
-}
-
 // class SvxAdjustItem ---------------------------------------------------
 
+ItemInstanceManager* SvxAdjustItem::getItemInstanceManager() const
+{
+    static DefaultItemInstanceManager aInstanceManager(ItemType());
+    return &aInstanceManager;
+}
+
 SvxAdjustItem::SvxAdjustItem(const SvxAdjust eAdjst, const sal_uInt16 nId )
-    : SfxEnumItemInterface( nId ),
-    bOneBlock( false ), bLastCenter( false ), bLastBlock( false )
+    : SfxPoolItem( nId ),
+    bOneBlock( false ), bLastCenter( false ), bLastBlock( false ),
+    nPropWordSpacing(100),
+    nPropWordSpacingMinimum(100),
+    nPropWordSpacingMaximum(100),
+    nPropLetterSpacingMinimum(0),
+    nPropLetterSpacingMaximum(0)
 {
     SetAdjust( eAdjst );
 }
-
 
 bool SvxAdjustItem::operator==( const SfxPoolItem& rAttr ) const
 {
@@ -354,7 +347,27 @@ bool SvxAdjustItem::operator==( const SfxPoolItem& rAttr ) const
     return GetAdjust() == rItem.GetAdjust() &&
            bOneBlock == rItem.bOneBlock &&
            bLastCenter == rItem.bLastCenter &&
-           bLastBlock == rItem.bLastBlock;
+           bLastBlock == rItem.bLastBlock &&
+           nPropWordSpacingMinimum == rItem.nPropWordSpacingMinimum &&
+           nPropWordSpacingMaximum == rItem.nPropWordSpacingMaximum &&
+           nPropWordSpacing == rItem.nPropWordSpacing &&
+           nPropLetterSpacingMinimum == rItem.nPropLetterSpacingMinimum &&
+           nPropLetterSpacingMaximum == rItem.nPropLetterSpacingMaximum;
+}
+
+size_t SvxAdjustItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, GetAdjust());
+    o3tl::hash_combine(seed, bOneBlock);
+    o3tl::hash_combine(seed, bLastCenter);
+    o3tl::hash_combine(seed, bLastBlock);
+    o3tl::hash_combine(seed, nPropWordSpacing);
+    o3tl::hash_combine(seed, nPropWordSpacingMinimum);
+    o3tl::hash_combine(seed, nPropWordSpacingMaximum);
+    o3tl::hash_combine(seed, nPropLetterSpacingMinimum);
+    o3tl::hash_combine(seed, nPropLetterSpacingMaximum);
+    return seed;
 }
 
 bool SvxAdjustItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
@@ -364,6 +377,11 @@ bool SvxAdjustItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
     {
         case MID_PARA_ADJUST      : rVal <<= static_cast<sal_Int16>(GetAdjust()); break;
         case MID_LAST_LINE_ADJUST : rVal <<= static_cast<sal_Int16>(GetLastBlock()); break;
+        case MID_WORD_SPACING     : rVal <<= static_cast<sal_Int16>(GetPropWordSpacing()); break;
+        case MID_WORD_SPACING_MIN : rVal <<= static_cast<sal_Int16>(GetPropWordSpacingMinimum()); break;
+        case MID_WORD_SPACING_MAX : rVal <<= static_cast<sal_Int16>(GetPropWordSpacingMaximum()); break;
+        case MID_LETTER_SPACING_MIN : rVal <<= GetPropLetterSpacingMinimum(); break;
+        case MID_LETTER_SPACING_MAX : rVal <<= GetPropLetterSpacingMaximum(); break;
         case MID_EXPAND_SINGLE    :
         {
             rVal <<= bOneBlock;
@@ -376,6 +394,7 @@ bool SvxAdjustItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 
 bool SvxAdjustItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     nMemberId &= ~CONVERT_TWIPS;
     switch( nMemberId )
     {
@@ -396,7 +415,43 @@ bool SvxAdjustItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             }
         }
         break;
+        case MID_WORD_SPACING :
+        {
+            sal_Int16 nVal = -1;
+            rVal >>= nVal;
+            SetPropWordSpacing(nVal);
+        }
+        break;
+        case MID_WORD_SPACING_MIN :
+        {
+            sal_Int16 nVal = -1;
+            rVal >>= nVal;
+            SetPropWordSpacingMinimum(nVal);
+        }
+        break;
+        case MID_WORD_SPACING_MAX :
+        {
+            sal_Int16 nVal = -1;
+            rVal >>= nVal;
+            SetPropWordSpacingMaximum(nVal);
+        }
+        break;
+        case MID_LETTER_SPACING_MIN :
+        {
+            sal_Int16 nVal = -1;
+            rVal >>= nVal;
+            SetPropLetterSpacingMinimum(nVal);
+        }
+        break;
+        case MID_LETTER_SPACING_MAX :
+        {
+            sal_Int16 nVal = -1;
+            rVal >>= nVal;
+            SetPropLetterSpacingMaximum(nVal);
+        }
+        break;
         case MID_EXPAND_SINGLE :
+            ASSERT_CHANGE_REFCOUNTED_ITEM;
             bOneBlock = Any2Bool(rVal);
             break;
     }
@@ -420,6 +475,7 @@ bool SvxAdjustItem::GetPresentation
     {
         case SfxItemPresentation::Nameless:
         case SfxItemPresentation::Complete:
+            // TODO Word spacing
             rText = GetValueTextByPos( static_cast<sal_uInt16>(GetAdjust()) );
             return true;
         default: ;//prevent warning
@@ -428,14 +484,9 @@ bool SvxAdjustItem::GetPresentation
 }
 
 
-sal_uInt16 SvxAdjustItem::GetValueCount() const
-{
-    return sal_uInt16(SvxAdjust::End);  // SvxAdjust::BlockLine + 1
-}
-
 OUString SvxAdjustItem::GetValueTextByPos( sal_uInt16 nPos )
 {
-    static TranslateId RID_SVXITEMS_ADJUST[] =
+    static const TranslateId RID_SVXITEMS_ADJUST[] =
     {
         RID_SVXITEMS_ADJUST_LEFT,
         RID_SVXITEMS_ADJUST_RIGHT,
@@ -443,20 +494,9 @@ OUString SvxAdjustItem::GetValueTextByPos( sal_uInt16 nPos )
         RID_SVXITEMS_ADJUST_CENTER,
         RID_SVXITEMS_ADJUST_BLOCKLINE
     };
-    static_assert(SAL_N_ELEMENTS(RID_SVXITEMS_ADJUST) - 1 == size_t(SvxAdjust::BlockLine), "unexpected size");
+    static_assert(std::size(RID_SVXITEMS_ADJUST) - 1 == static_cast<size_t>(SvxAdjust::BlockLine), "unexpected size");
     assert(nPos <= sal_uInt16(SvxAdjust::BlockLine) && "enum overflow!");
     return EditResId(RID_SVXITEMS_ADJUST[nPos]);
-}
-
-sal_uInt16 SvxAdjustItem::GetEnumValue() const
-{
-    return static_cast<sal_uInt16>(GetAdjust());
-}
-
-
-void SvxAdjustItem::SetEnumValue( sal_uInt16 nVal )
-{
-    SetAdjust( static_cast<SvxAdjust>(nVal) );
 }
 
 
@@ -553,14 +593,21 @@ bool SvxOrphansItem::GetPresentation
 SvxHyphenZoneItem::SvxHyphenZoneItem( const bool bHyph, const sal_uInt16 nId ) :
     SfxPoolItem( nId ),
     bHyphen(bHyph),
-    bPageEnd(true),
+    bKeep(false),
     bNoCapsHyphenation(false),
     bNoLastWordHyphenation(false),
     nMinLead(0),
     nMinTrail(0),
     nMaxHyphens(255),
     nMinWordLength(0),
-    nTextHyphenZone(0)
+    nTextHyphenZone(0),
+    nTextHyphenZoneAlways(0),
+    nTextHyphenZoneColumn(0),
+    nTextHyphenZonePage(0),
+    nTextHyphenZoneSpread(0),
+    nKeepType(css::text::ParagraphHyphenationKeepType::COLUMN),
+    bKeepLine(false),
+    nCompoundMinLead(0)
 {
 }
 
@@ -572,6 +619,9 @@ bool    SvxHyphenZoneItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) con
     {
         case  MID_IS_HYPHEN:
             rVal <<= bHyphen;
+        break;
+        case MID_HYPHEN_KEEP:
+            rVal <<= bKeep;
         break;
         case MID_HYPHEN_MIN_LEAD:
             rVal <<= static_cast<sal_Int16>(nMinLead);
@@ -594,6 +644,27 @@ bool    SvxHyphenZoneItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) con
         case MID_HYPHEN_ZONE:
             rVal <<= static_cast<sal_Int16>(nTextHyphenZone);
         break;
+        case MID_HYPHEN_ZONE_ALWAYS:
+            rVal <<= static_cast<sal_Int16>(nTextHyphenZoneAlways);
+        break;
+        case MID_HYPHEN_ZONE_COLUMN:
+            rVal <<= static_cast<sal_Int16>(nTextHyphenZoneColumn);
+        break;
+        case MID_HYPHEN_ZONE_PAGE:
+            rVal <<= static_cast<sal_Int16>(nTextHyphenZonePage);
+        break;
+        case MID_HYPHEN_ZONE_SPREAD:
+            rVal <<= static_cast<sal_Int16>(nTextHyphenZoneSpread);
+        break;
+        case MID_HYPHEN_KEEP_TYPE:
+            rVal <<= static_cast<sal_Int16>(nKeepType);
+        break;
+        case MID_HYPHEN_KEEP_LINE:
+            rVal <<= bKeepLine;
+        break;
+        case MID_HYPHEN_COMPOUND_MIN_LEAD:
+            rVal <<= static_cast<sal_Int16>(nCompoundMinLead);
+        break;
     }
     return true;
 }
@@ -601,10 +672,11 @@ bool    SvxHyphenZoneItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) con
 bool SvxHyphenZoneItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
     nMemberId &= ~CONVERT_TWIPS;
-    sal_Int16 nNewVal = 0;
+    sal_Int32 nNewVal = 0; // sal_Int32 needs for MID_HYPHEN_KEEP_TYPE
 
     if( nMemberId != MID_IS_HYPHEN && nMemberId != MID_HYPHEN_NO_CAPS &&
-                nMemberId != MID_HYPHEN_NO_LAST_WORD )
+                nMemberId != MID_HYPHEN_NO_LAST_WORD && nMemberId != MID_HYPHEN_KEEP &&
+                nMemberId != MID_HYPHEN_KEEP_LINE )
     {
         if(!(rVal >>= nNewVal))
             return false;
@@ -614,6 +686,9 @@ bool SvxHyphenZoneItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
     {
         case  MID_IS_HYPHEN:
             bHyphen = Any2Bool(rVal);
+        break;
+        case  MID_HYPHEN_KEEP:
+            bKeep = Any2Bool(rVal);
         break;
         case MID_HYPHEN_MIN_LEAD:
             nMinLead = static_cast<sal_uInt8>(nNewVal);
@@ -636,6 +711,27 @@ bool SvxHyphenZoneItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         case MID_HYPHEN_ZONE:
             nTextHyphenZone = nNewVal;
         break;
+        case MID_HYPHEN_ZONE_ALWAYS:
+            nTextHyphenZoneAlways = nNewVal;
+        break;
+        case MID_HYPHEN_ZONE_COLUMN:
+            nTextHyphenZoneColumn = nNewVal;
+        break;
+        case MID_HYPHEN_ZONE_PAGE:
+            nTextHyphenZonePage = nNewVal;
+        break;
+        case MID_HYPHEN_ZONE_SPREAD:
+            nTextHyphenZoneSpread = nNewVal;
+        break;
+        case MID_HYPHEN_KEEP_TYPE:
+            nKeepType = static_cast<sal_uInt8>(nNewVal);
+        break;
+        case  MID_HYPHEN_KEEP_LINE:
+            bKeepLine = Any2Bool(rVal);
+        break;
+        case MID_HYPHEN_COMPOUND_MIN_LEAD:
+            nCompoundMinLead = static_cast<sal_uInt8>(nNewVal);
+        break;
     }
     return true;
 }
@@ -649,12 +745,19 @@ bool SvxHyphenZoneItem::operator==( const SfxPoolItem& rAttr ) const
     return ( rItem.bHyphen == bHyphen
             && rItem.bNoCapsHyphenation == bNoCapsHyphenation
             && rItem.bNoLastWordHyphenation == bNoLastWordHyphenation
-            && rItem.bPageEnd == bPageEnd
+            && rItem.bKeep == bKeep
             && rItem.nMinLead == nMinLead
             && rItem.nMinTrail == nMinTrail
+            && rItem.nCompoundMinLead == nCompoundMinLead
             && rItem.nMaxHyphens == nMaxHyphens
             && rItem.nMinWordLength == nMinWordLength
-            && rItem.nTextHyphenZone == nTextHyphenZone );
+            && rItem.nTextHyphenZone == nTextHyphenZone
+            && rItem.nTextHyphenZoneAlways == nTextHyphenZoneAlways
+            && rItem.nTextHyphenZoneColumn == nTextHyphenZoneColumn
+            && rItem.nTextHyphenZonePage == nTextHyphenZonePage
+            && rItem.nTextHyphenZoneSpread == nTextHyphenZoneSpread
+            && rItem.bKeepLine == bKeepLine
+            && rItem.nKeepType == nKeepType );
 }
 
 SvxHyphenZoneItem* SvxHyphenZoneItem::Clone( SfxItemPool * ) const
@@ -676,20 +779,23 @@ bool SvxHyphenZoneItem::GetPresentation
         case SfxItemPresentation::Nameless:
         {
             TranslateId pId = RID_SVXITEMS_HYPHEN_FALSE;
-
             if ( bHyphen )
                 pId = RID_SVXITEMS_HYPHEN_TRUE;
-            rText = EditResId(pId) + cpDelimTmp;
-            pId = RID_SVXITEMS_PAGE_END_FALSE;
-
-            if ( bPageEnd )
-                pId = RID_SVXITEMS_PAGE_END_TRUE;
             rText += EditResId(pId) + cpDelimTmp +
                     OUString::number( nMinLead ) + cpDelimTmp +
                     OUString::number( nMinTrail ) + cpDelimTmp +
+                    OUString::number( nCompoundMinLead ) + cpDelimTmp +
                     OUString::number( nMaxHyphens ) + cpDelimTmp +
                     OUString::number( nMinWordLength ) + cpDelimTmp +
                     GetMetricText( nTextHyphenZone, eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit)) +
+                    GetMetricText( nTextHyphenZoneAlways, eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit)) +
+                    GetMetricText( nTextHyphenZoneColumn, eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit)) +
+                    GetMetricText( nTextHyphenZonePage, eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit)) +
+                    GetMetricText( nTextHyphenZoneSpread, eCoreUnit, ePresUnit, &rIntl ) +
                         " " + EditResId(GetMetricId(ePresUnit));
 
             if ( bNoCapsHyphenation )
@@ -697,6 +803,19 @@ bool SvxHyphenZoneItem::GetPresentation
 
             if ( bNoLastWordHyphenation )
                 rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_LAST_WORD_TRUE);
+
+            if ( bKeep )
+            {
+                rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_TRUE) +
+                                 cpDelimTmp + OUString::number( nKeepType );
+                if ( bKeepLine )
+                    rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_LINE_TRUE);
+                else
+                    rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_LINE_FALSE);
+            }
+            else
+                rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_FALSE);
+
 
             return true;
         }
@@ -706,25 +825,36 @@ bool SvxHyphenZoneItem::GetPresentation
 
             if ( bHyphen )
                 pId = RID_SVXITEMS_HYPHEN_TRUE;
-            rText = EditResId(pId) + cpDelimTmp;
-            pId = RID_SVXITEMS_PAGE_END_FALSE;
-
-            if ( bPageEnd )
-                pId = RID_SVXITEMS_PAGE_END_TRUE;
             rText += EditResId(pId) +
                     cpDelimTmp +
                     EditResId(RID_SVXITEMS_HYPHEN_MINLEAD).replaceAll("%1", OUString::number(nMinLead)) +
                     cpDelimTmp +
                     EditResId(RID_SVXITEMS_HYPHEN_MINTRAIL).replaceAll("%1", OUString::number(nMinTrail)) +
                     cpDelimTmp +
+                    EditResId(RID_SVXITEMS_HYPHEN_COMPOUND_MINLEAD).replaceAll("%1", OUString::number(nCompoundMinLead)) +
+                    cpDelimTmp +
                     EditResId(RID_SVXITEMS_HYPHEN_MAX).replaceAll("%1", OUString::number(nMaxHyphens)) +
                     cpDelimTmp +
                     EditResId(RID_SVXITEMS_HYPHEN_MINWORDLEN).replaceAll("%1", OUString::number(nMinWordLength));
 
-            if ( nTextHyphenZone > 0 )
+            if ( nTextHyphenZone > 0 || nTextHyphenZoneAlways > 0 ||
+                 nTextHyphenZoneColumn > 0 || nTextHyphenZonePage > 0 ||
+                 nTextHyphenZoneSpread > 0 )
             {
                 rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_ZONE) +
                         GetMetricText( nTextHyphenZone, eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
+                rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_ZONE_ALWAYS) +
+                        GetMetricText( nTextHyphenZoneAlways, eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
+                rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_ZONE_COLUMN) +
+                        GetMetricText( nTextHyphenZoneColumn, eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
+                rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_ZONE_PAGE) +
+                        GetMetricText( nTextHyphenZonePage, eCoreUnit, ePresUnit, &rIntl ) +
+                        " " + EditResId(GetMetricId(ePresUnit));
+                rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_ZONE_SPREAD) +
+                        GetMetricText( nTextHyphenZoneSpread, eCoreUnit, ePresUnit, &rIntl ) +
                         " " + EditResId(GetMetricId(ePresUnit));
             }
 
@@ -733,6 +863,37 @@ bool SvxHyphenZoneItem::GetPresentation
 
             if ( bNoLastWordHyphenation )
                 rText += cpDelimTmp + EditResId(RID_SVXITEMS_HYPHEN_LAST_WORD_TRUE);
+
+            if ( bKeep )
+            {
+                rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_TRUE) + cpDelimTmp;
+
+                switch ( nKeepType )
+                {
+                    case 0:
+                        rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_AUTO);
+                        break;
+                    case 1:
+                        rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_SPREAD);
+                        break;
+                    case 2:
+                        rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_PAGE);
+                        break;
+                    case 3:
+                        rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_COLUMN);
+                        break;
+                    case 4:
+                        rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_ALWAYS);
+                        break;
+                }
+
+                if ( bKeepLine )
+                    rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_LINE_TRUE);
+                else
+                    rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_LINE_FALSE);
+            }
+            else
+                rText += EditResId(RID_SVXITEMS_HYPHEN_KEEP_FALSE);
 
             return true;
         }
@@ -750,6 +911,7 @@ SvxTabStop::SvxTabStop()
     eAdjustment = SvxTabAdjust::Left;
     m_cDecimal = cDfltDecimalChar;
     cFill = cDfltFillChar;
+    fillDecimal();
 }
 
 
@@ -760,9 +922,10 @@ SvxTabStop::SvxTabStop( const sal_Int32 nPos, const SvxTabAdjust eAdjst,
     eAdjustment = eAdjst;
     m_cDecimal = cDec;
     cFill = cFil;
+    fillDecimal();
 }
 
-void SvxTabStop::fillDecimal() const
+void SvxTabStop::fillDecimal()
 {
     if ( cDfltDecimalChar == m_cDecimal )
         m_cDecimal = SvtSysLocale().GetLocaleData().getNumDecimalSep()[0];
@@ -823,6 +986,7 @@ sal_uInt16 SvxTabStopItem::GetPos( const sal_Int32 nPos ) const
 
 void SvxTabStopItem::SetDefaultDistance(sal_Int32 nDefaultDistance)
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     mnDefaultDistance = nDefaultDistance;
 }
 
@@ -879,6 +1043,7 @@ bool SvxTabStopItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 
 bool SvxTabStopItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     bool bConvert = 0!=(nMemberId&CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
     switch ( nMemberId )
@@ -1005,6 +1170,18 @@ bool SvxTabStopItem::operator==( const SfxPoolItem& rAttr ) const
     return true;
 }
 
+size_t SvxTabStopItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, mnDefaultDistance);
+    for (const SvxTabStop & rStop : maTabStops)
+    {
+        o3tl::hash_combine(seed, rStop.GetTabPos());
+        o3tl::hash_combine(seed, rStop. GetAdjustment());
+    }
+    return seed;
+}
+
 SvxTabStopItem* SvxTabStopItem::Clone( SfxItemPool * ) const
 {
     return new SvxTabStopItem( *this );
@@ -1044,6 +1221,7 @@ bool SvxTabStopItem::GetPresentation
 
 bool SvxTabStopItem::Insert( const SvxTabStop& rTab )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     sal_uInt16 nTabPos = GetPos(rTab);
     if(SVX_TAB_NOTFOUND != nTabPos )
         Remove(nTabPos);
@@ -1052,6 +1230,7 @@ bool SvxTabStopItem::Insert( const SvxTabStop& rTab )
 
 void SvxTabStopItem::Insert( const SvxTabStopItem* pTabs )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     for( sal_uInt16 i = 0; i < pTabs->Count(); i++ )
     {
         const SvxTabStop& rTab = (*pTabs)[i];

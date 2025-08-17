@@ -23,11 +23,8 @@
 #include <UserDefinedProperties.hxx>
 #include <PropertyHelper.hxx>
 #include <ModifyListenerHelper.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
 
 #include <algorithm>
-
-namespace com::sun::star::beans { class XPropertySetInfo; }
 
 using namespace ::com::sun::star;
 

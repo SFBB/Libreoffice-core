@@ -97,12 +97,12 @@ namespace DOM
 
     Sequence< OUString > SAL_CALL CDocumentBuilder::getSupportedServiceNames()
     {
-        return { "com.sun.star.xml.dom.DocumentBuilder" };
+        return { u"com.sun.star.xml.dom.DocumentBuilder"_ustr };
     }
 
     OUString SAL_CALL CDocumentBuilder::getImplementationName()
     {
-        return "com.sun.star.comp.xml.dom.DocumentBuilder";
+        return u"com.sun.star.comp.xml.dom.DocumentBuilder"_ustr;
     }
 
     sal_Bool SAL_CALL CDocumentBuilder::supportsService(const OUString& aServiceName)
@@ -137,11 +137,12 @@ namespace DOM
 
     static OUString make_error_message(xmlParserCtxtPtr ctxt)
     {
-        return OUString(ctxt->lastError.message, strlen(ctxt->lastError.message), RTL_TEXTENCODING_ASCII_US) +
+        const xmlError* lastError = xmlCtxtGetLastError(ctxt);
+        return OUString(lastError->message, strlen(lastError->message), RTL_TEXTENCODING_ASCII_US) +
                "Line: " +
-               OUString::number(static_cast<sal_Int32>(ctxt->lastError.line)) +
+               OUString::number(static_cast<sal_Int32>(lastError->line)) +
                "\nColumn: " +
-               OUString::number(static_cast<sal_Int32>(ctxt->lastError.int2));
+               OUString::number(static_cast<sal_Int32>(lastError->int2));
     }
 
     // -- callbacks and context struct for parsing from stream
@@ -254,14 +255,16 @@ namespace DOM
 
             CDocumentBuilder * const pDocBuilder = static_cast<CDocumentBuilder*>(pctx->_private);
 
-            if (pDocBuilder->getErrorHandler().is())   // if custom error handler is set (using setErrorHandler ())
+            Reference<XErrorHandler> xErrorHandler = pDocBuilder->getErrorHandler();
+            if (xErrorHandler.is())   // if custom error handler is set (using setErrorHandler ())
             {
                 // Prepare SAXParseException to be passed to custom XErrorHandler::warning function
+                const xmlError* lastError = xmlCtxtGetLastError(pctx);
                 css::xml::sax::SAXParseException saxex(make_error_message(pctx), {}, {}, {}, {},
-                                                       pctx->lastError.line, pctx->lastError.int2);
+                                                       lastError->line, lastError->int2);
 
                 // Call custom warning function
-                pDocBuilder->getErrorHandler()->warning(::css::uno::Any(saxex));
+                xErrorHandler->warning(::css::uno::Any(saxex));
             }
         }
         catch (const css::uno::Exception &)
@@ -284,14 +287,16 @@ namespace DOM
 
             CDocumentBuilder * const pDocBuilder = static_cast<CDocumentBuilder*>(pctx->_private);
 
-            if (pDocBuilder->getErrorHandler().is())   // if custom error handler is set (using setErrorHandler ())
+            Reference<XErrorHandler> xErrorHandler = pDocBuilder->getErrorHandler();
+            if (xErrorHandler.is())   // if custom error handler is set (using setErrorHandler ())
             {
                 // Prepare SAXParseException to be passed to custom XErrorHandler::error function
+                const xmlError* lastError = xmlCtxtGetLastError(pctx);
                 css::xml::sax::SAXParseException saxex(make_error_message(pctx), {}, {}, {}, {},
-                                                       pctx->lastError.line, pctx->lastError.int2);
+                                                       lastError->line, lastError->int2);
 
                 // Call custom warning function
-                pDocBuilder->getErrorHandler()->error(::css::uno::Any(saxex));
+                xErrorHandler->error(::css::uno::Any(saxex));
             }
         }
         catch (const css::uno::Exception &)
@@ -304,8 +309,9 @@ namespace DOM
 
     static void throwEx(xmlParserCtxtPtr ctxt)
     {
+        const xmlError* lastError = xmlCtxtGetLastError(ctxt);
         css::xml::sax::SAXParseException saxex(make_error_message(ctxt), {}, {}, {}, {},
-                                               ctxt->lastError.line, ctxt->lastError.int2);
+                                               lastError->line, lastError->int2);
         throw saxex;
     }
 
@@ -369,7 +375,7 @@ namespace DOM
 
         Reference< XDocument > xRet;
 
-        // if we failed to parse the URI as a simple file, lets try via a ucb stream.
+        // if we failed to parse the URI as a simple file, let's try via a ucb stream.
         // For Android file:///assets/ URLs which must go via the osl/ file API.
         if (pDoc == nullptr) {
             Reference < XSimpleFileAccess3 > xStreamAccess(
@@ -411,6 +417,13 @@ namespace DOM
         std::scoped_lock const g(m_Mutex);
 
         m_xErrorHandler = xEH;
+    }
+
+    Reference< XErrorHandler > CDocumentBuilder::getErrorHandler()
+    {
+        std::scoped_lock const g(m_Mutex);
+
+        return m_xErrorHandler;
     }
 }
 

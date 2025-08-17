@@ -23,11 +23,10 @@
 #include "hintids.hxx"
 #include "format.hxx"
 
-class IntlWrapper;
-
 class SW_DLLPUBLIC SwHeaderAndFooterEatSpacingItem final : public SfxBoolItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwHeaderAndFooterEatSpacingItem)
     SwHeaderAndFooterEatSpacingItem( sal_uInt16 nId = RES_HEADER_FOOTER_EAT_SPACING,
                                      bool bPrt = false ) : SfxBoolItem( nId, bPrt ) {}
 

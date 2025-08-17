@@ -29,8 +29,6 @@
 
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::beans;
-using namespace com::sun::star::linguistic2;
 
 TextConvWrapper::TextConvWrapper( weld::Widget* pWindow,
         const Reference< XComponentContext >& rxContext,
@@ -122,17 +120,16 @@ bool TextConvWrapper::ConvMore_impl()
     // modified version of SvxSpellWrapper::SpellMore
 
     bool bMore = false;
-    EditEngine* pEE = m_pEditView->GetEditEngine();
-    ImpEditEngine* pImpEE = m_pEditView->GetImpEditEngine();
-    ConvInfo* pConvInfo = pImpEE->GetConvInfo();
+    EditEngine& rEditEngine = m_pEditView->getEditEngine();
+    ConvInfo* pConvInfo = rEditEngine.getImpl().GetConvInfo();
     if ( pConvInfo->bMultipleDoc )
     {
-        bMore = pEE->ConvertNextDocument();
+        bMore = rEditEngine.ConvertNextDocument();
         if ( bMore )
         {
             // The text has been entered in this engine ...
-            m_pEditView->GetImpEditView()->SetEditSelection(
-                        pEE->GetEditDoc().GetStartPaM() );
+            m_pEditView->getImpl().SetEditSelection(
+                        rEditEngine.GetEditDoc().GetStartPaM() );
         }
     }
     return bMore;
@@ -143,9 +140,9 @@ void TextConvWrapper::ConvStart_impl( SvxSpellArea eArea )
 {
     // modified version of EditSpellWrapper::SpellStart
 
-    EditEngine* pEE = m_pEditView->GetEditEngine();
-    ImpEditEngine* pImpEE = m_pEditView->GetImpEditEngine();
-    ConvInfo* pConvInfo = pImpEE->GetConvInfo();
+    EditEngine& rEditEngine = m_pEditView->getEditEngine();
+    ImpEditEngine& rImpEditEngine = m_pEditView->getImpEditEngine();
+    ConvInfo* pConvInfo = rImpEditEngine.GetConvInfo();
 
     if ( eArea == SvxSpellArea::BodyStart )
     {
@@ -155,14 +152,13 @@ void TextConvWrapper::ConvStart_impl( SvxSpellArea eArea )
             pConvInfo->bConvToEnd = false;
             pConvInfo->aConvTo = pConvInfo->aConvStart;
             pConvInfo->aConvContinue = EPaM( 0, 0 );
-            m_pEditView->GetImpEditView()->SetEditSelection(
-                    pEE->GetEditDoc().GetStartPaM() );
+            m_pEditView->getImpl().SetEditSelection(
+                    rEditEngine.GetEditDoc().GetStartPaM() );
         }
         else
         {
             pConvInfo->bConvToEnd = true;
-            pConvInfo->aConvTo = pImpEE->CreateEPaM(
-                    pEE->GetEditDoc().GetStartPaM() );
+            pConvInfo->aConvTo = rImpEditEngine.CreateEPaM(rEditEngine.GetEditDoc().GetStartPaM() );
         }
     }
     else if ( eArea == SvxSpellArea::BodyEnd )
@@ -172,23 +168,20 @@ void TextConvWrapper::ConvStart_impl( SvxSpellArea eArea )
         if (m_aConvSel.HasRange())
         {
             // user selection: convert to end of selection
-            pConvInfo->aConvTo.nPara    = m_aConvSel.nEndPara;
-            pConvInfo->aConvTo.nIndex   = m_aConvSel.nEndPos;
+            pConvInfo->aConvTo = m_aConvSel.end;
             pConvInfo->bConvToEnd       = false;
         }
         else
         {
             // nothing selected: convert to end of document
-            pConvInfo->aConvTo = pImpEE->CreateEPaM(
-                pEE->GetEditDoc().GetEndPaM() );
+            pConvInfo->aConvTo = rImpEditEngine.CreateEPaM(rEditEngine.GetEditDoc().GetEndPaM() );
         }
     }
     else if ( eArea == SvxSpellArea::Body )
     {
         // called by ConvNext_impl...
         pConvInfo->aConvContinue = pConvInfo->aConvStart;
-        pConvInfo->aConvTo = pImpEE->CreateEPaM(
-            pEE->GetEditDoc().GetEndPaM() );
+        pConvInfo->aConvTo = rImpEditEngine.CreateEPaM(rEditEngine.GetEditDoc().GetEndPaM() );
     }
     else
     {
@@ -204,7 +197,7 @@ bool TextConvWrapper::ConvContinue_impl()
     // get next convertible text portion and its language
     m_aConvText.clear();
     m_nConvTextLang = LANGUAGE_NONE;
-    m_pEditView->GetImpEditEngine()->ImpConvert( m_aConvText, m_nConvTextLang,
+    m_pEditView->getImpEditEngine().ImpConvert( m_aConvText, m_nConvTextLang,
             m_pEditView, GetSourceLanguage(), m_aConvSel,
             m_bAllowChange, GetTargetLanguage(), GetTargetFont() );
     return !m_aConvText.isEmpty();
@@ -253,10 +246,10 @@ void TextConvWrapper::SelectNewUnit_impl(
         return;
 
     ESelection  aSelection = m_pEditView->GetSelection();
-    DBG_ASSERT( aSelection.nStartPara == aSelection.nEndPara,
+    DBG_ASSERT( aSelection.start.nPara == aSelection.end.nPara,
         "paragraph mismatch in selection" );
-    aSelection.nStartPos = (m_nLastPos + m_nUnitOffset + nUnitStart);
-    aSelection.nEndPos   = (m_nLastPos + m_nUnitOffset + nUnitEnd);
+    aSelection.start.nIndex = (m_nLastPos + m_nUnitOffset + nUnitStart);
+    aSelection.end.nIndex   = (m_nLastPos + m_nUnitOffset + nUnitEnd);
     m_pEditView->SetSelection( aSelection );
 }
 
@@ -274,11 +267,11 @@ void TextConvWrapper::GetNextPortion(
     m_nUnitOffset = 0;
 
     ESelection  aSelection = m_pEditView->GetSelection();
-    DBG_ASSERT( aSelection.nStartPara == aSelection.nEndPara,
+    DBG_ASSERT( aSelection.start.nPara == aSelection.end.nPara,
             "paragraph mismatch in selection" );
-    DBG_ASSERT( aSelection.nStartPos  <= aSelection.nEndPos,
+    DBG_ASSERT( aSelection.start.nIndex  <= aSelection.end.nIndex,
             "start pos > end pos" );
-    m_nLastPos =  aSelection.nStartPos;
+    m_nLastPos =  aSelection.start.nIndex;
 }
 
 
@@ -341,15 +334,15 @@ void TextConvWrapper::ReplaceUnit(
     m_nUnitOffset = m_nUnitOffset + nUnitStart + aNewTxt.getLength();
 
     // remember current original language for later use
-    ImpEditEngine *pImpEditEng = m_pEditView->GetImpEditEngine();
+    EditEngine& rEditEngine = m_pEditView->getEditEngine();
     ESelection aOldSel     = m_pEditView->GetSelection();
-    //EditSelection aOldEditSel = pEditView->GetImpEditView()->GetEditSelection();
+    //EditSelection aOldEditSel = pEditView->getImpl().GetEditSelection();
 
 #ifdef DBG_UTIL
-    LanguageType nOldLang   = pImpEditEng->GetLanguage( pImpEditEng->CreateSel( aOldSel ).Min() ).nLang;
+    LanguageType nOldLang   = rEditEngine.GetLanguage(rEditEngine.CreateSelection( aOldSel ).Min() ).nLang;
 #endif
 
-    pImpEditEng->UndoActionStart( EDITUNDO_INSERT );
+    rEditEngine.UndoActionStart( EDITUNDO_INSERT );
 
     // according to FT we should currently not bother about keeping
     // attributes in Hangul/Hanja conversion and leave that untouched.
@@ -367,7 +360,7 @@ void TextConvWrapper::ReplaceUnit(
                 "TextConvWrapper::ReplaceUnit : unexpected target language" );
 
         ESelection aNewSel( aOldSel );
-        aNewSel.nStartPos = aNewSel.nStartPos - aNewTxt.getLength();
+        aNewSel.start.nIndex -= aNewTxt.getLength();
 
         if (pNewUnitLanguage)
         {
@@ -380,11 +373,10 @@ void TextConvWrapper::ReplaceUnit(
         }
     }
 
-    pImpEditEng->UndoActionEnd();
+    rEditEngine.UndoActionEnd();
 
     // adjust ConvContinue / ConvTo if necessary
-    ImpEditEngine* pImpEE = m_pEditView->GetImpEditEngine();
-    ConvInfo* pConvInfo = pImpEE->GetConvInfo();
+    ConvInfo* pConvInfo = rEditEngine.getImpl().GetConvInfo();
     sal_Int32 nDelta = aNewTxt.getLength() - aOrigTxt.getLength();
     if (nDelta != 0)
     {
@@ -416,7 +408,7 @@ void TextConvWrapper::ChangeText( const OUString &rNewText,
         pESelection->Adjust();
 
         // remember cursor start position for later setting of the cursor
-        const sal_Int32 nStartIndex = pESelection->nStartPos;
+        const sal_Int32 nStartIndex = pESelection->start.nIndex;
 
         const sal_Int32  nIndices = pOffsets->getLength();
         const sal_Int32 *pIndices = pOffsets->getConstArray();
@@ -459,8 +451,8 @@ void TextConvWrapper::ChangeText( const OUString &rNewText,
                     // set selection to sub string to be replaced in original text
                     ESelection aSel( *pESelection );
                     sal_Int32 nChgInNodeStartIndex = nStartIndex + nCorrectionOffset + nChgPos;
-                    aSel.nStartPos = nChgInNodeStartIndex;
-                    aSel.nEndPos   = nChgInNodeStartIndex + nChgLen;
+                    aSel.start.nIndex = nChgInNodeStartIndex;
+                    aSel.end.nIndex   = nChgInNodeStartIndex + nChgLen;
                     m_pEditView->SetSelection( aSel );
 
                     // replace selected sub string with the corresponding
@@ -491,7 +483,7 @@ void TextConvWrapper::ChangeText( const OUString &rNewText,
         // set cursor to the end of the inserted text
         // (as it would happen after ChangeText_impl (Delete and Insert)
         // of the whole text in the 'else' branch below)
-        pESelection->nStartPos = pESelection->nEndPos = nStartIndex + nConvTextLen;
+        pESelection->start.nIndex = pESelection->end.nIndex = nStartIndex + nConvTextLen;
     }
     else
     {

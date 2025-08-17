@@ -27,6 +27,7 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/ucb/XFileIdentifierConverter.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <rtl/ref.hxx>
 #include <memory>
 #include <mutex>
 
@@ -37,8 +38,8 @@ namespace fileaccess {
 
     // Forward declaration
 
-    class BaseContent;
     class TaskManager;
+    class XPropertySetInfoImpl2;
 
     class FileProvider: public cppu::WeakImplHelper <
         css::lang::XServiceInfo,
@@ -141,13 +142,13 @@ namespace fileaccess {
         // Members
         css::uno::Reference< css::uno::XComponentContext >      m_xContext;
 
-        void initProperties();
+        void initProperties(std::unique_lock<std::mutex>& rGuard);
         std::mutex   m_aMutex;
         OUString m_HostName;
         OUString m_HomeDirectory;
         sal_Int32     m_FileSystemNotation;
 
-        css::uno::Reference< css::beans::XPropertySetInfo >     m_xPropertySetInfo;
+        rtl::Reference< XPropertySetInfoImpl2 >                 m_xPropertySetInfo;
 
         std::unique_ptr<TaskManager>                            m_pMyShell;
     };

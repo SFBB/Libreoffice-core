@@ -36,6 +36,9 @@
 #include <vcl/stdtext.hxx>
 #include <vcl/uitest/uiobject.hxx>
 
+#include <accessibility/vclxaccessiblebutton.hxx>
+#include <accessibility/vclxaccessiblecheckbox.hxx>
+#include <accessibility/vclxaccessibleradiobutton.hxx>
 #include <bitmaps.hlst>
 #include <svdata.hxx>
 #include <window.h>
@@ -98,8 +101,8 @@ mbSmallSymbol(false), mbGeneratedTooltip(false),  meImageAlign(ImageAlign::Top),
 {
 }
 
-Button::Button( WindowType nType ) :
-    Control( nType ),
+Button::Button( WindowType eType ) :
+    Control( eType ),
     mpButtonData( std::make_unique<ImplCommonButtonData>() )
 {
 }
@@ -241,7 +244,7 @@ void Button::ImplDrawAlignedImage(OutputDevice* pDev, Point& rPos,
             tools::Rectangle(Point(), Size(0x7fffffff, 0x7fffffff)), aText, nTextStyle);
         // If the button text doesn't fit into it, put it into a tooltip (might happen in sidebar)
         if (GetQuickHelpText()!= aText && mpButtonData->mbGeneratedTooltip)
-            SetQuickHelpText("");
+            SetQuickHelpText(u""_ustr);
         if (GetQuickHelpText().isEmpty() && textRect.getOpenWidth() > rSize.getWidth())
         {
             SetQuickHelpText(aText);
@@ -625,7 +628,7 @@ void Button::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
     if (HasImage())
     {
         SvMemoryStream aOStm(6535, 6535);
-        if(GraphicConverter::Export(aOStm, GetModeImage().GetBitmapEx(), ConvertDataFormat::PNG) == ERRCODE_NONE)
+        if(GraphicConverter::Export(aOStm, GetModeImage().GetBitmap(), ConvertDataFormat::PNG) == ERRCODE_NONE)
         {
             css::uno::Sequence<sal_Int8> aSeq( static_cast<sal_Int8 const *>(aOStm.GetData()), aOStm.Tell());
             OStringBuffer aBuffer("data:image/png;base64,");
@@ -847,7 +850,7 @@ void PushButton::ImplDrawPushButtonContent(OutputDevice *pDev, SystemTextColorFl
     if (aInRect.Right() < aInRect.Left() || aInRect.Bottom() < aInRect.Top())
         return;
 
-    pDev->Push(vcl::PushFlags::CLIPREGION);
+    auto popIt = pDev->ScopedPush(vcl::PushFlags::CLIPREGION);
     pDev->IntersectClipRegion(aInRect);
 
     if (nSystemTextColorFlags & SystemTextColorFlags::Mono)
@@ -977,8 +980,6 @@ void PushButton::ImplDrawPushButtonContent(OutputDevice *pDev, SystemTextColorFl
             aDecoView.DrawSymbol( aSymbolRect, meSymbol, aColor, nStyle );
         }
     }
-
-    pDev->Pop();  // restore clipregion
 }
 
 void PushButton::ImplDrawPushButton(vcl::RenderContext& rRenderContext)
@@ -1266,6 +1267,11 @@ PushButton::PushButton( vcl::Window* pParent, WinBits nStyle ) :
     ImplInit( pParent, nStyle );
 }
 
+rtl::Reference<comphelper::OAccessible> PushButton::CreateAccessible()
+{
+    return new VCLXAccessibleButton(this);
+}
+
 void PushButton::MouseButtonDown( const MouseEvent& rMEvt )
 {
     if ( !(rMEvt.IsLeft() &&
@@ -1431,7 +1437,7 @@ void PushButton::Draw( OutputDevice* pDev, const Point& rPos,
     tools::Rectangle   aRect( aPos, aSize );
     vcl::Font   aFont = GetDrawPixelFont( pDev );
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
     pDev->SetFont( aFont );
 
@@ -1475,8 +1481,6 @@ void PushButton::Draw( OutputDevice* pDev, const Point& rPos,
         aSettings.SetStyleSettings(*oOrigDevStyleSettings);
         pDev->OutputDevice::SetSettings( aSettings );
     }
-
-    pDev->Pop();
 }
 
 void PushButton::Resize()
@@ -1786,7 +1790,7 @@ void PushButton::ShowFocus(const tools::Rectangle& rRect)
 
 void OKButton::ImplInit( vcl::Window* pParent, WinBits nStyle )
 {
-    set_id("ok");
+    set_id(u"ok"_ustr);
     PushButton::ImplInit( pParent, nStyle );
 
     SetText( GetStandardText( StandardButtonType::OK ) );
@@ -1833,7 +1837,7 @@ void OKButton::Click()
 
 void CancelButton::ImplInit( vcl::Window* pParent, WinBits nStyle )
 {
-    set_id("cancel");
+    set_id(u"cancel"_ustr);
     PushButton::ImplInit( pParent, nStyle );
 
     SetText( GetStandardText( StandardButtonType::Cancel ) );
@@ -1855,13 +1859,14 @@ void CancelButton::Click()
         {
             if ( pParent->IsDialog() )
             {
-                if ( static_cast<Dialog*>(pParent)->IsInExecute() )
-                    static_cast<Dialog*>(pParent)->EndDialog();
+                Dialog* pDialog = static_cast<Dialog*>(pParent);
+                if (pDialog->IsInExecute())
+                    pDialog->EndDialog();
                 // prevent recursive calls
-                else if ( !static_cast<Dialog*>(pParent)->IsInClose() )
+                else if (!pDialog->IsInClose())
                 {
                     if ( pParent->GetStyle() & WB_CLOSEABLE )
-                        static_cast<Dialog*>(pParent)->Close();
+                        pDialog->Close();
                 }
             }
             else
@@ -1885,7 +1890,7 @@ CloseButton::CloseButton( vcl::Window* pParent )
 
 void HelpButton::ImplInit( vcl::Window* pParent, WinBits nStyle )
 {
-    set_id("help");
+    set_id(u"help"_ustr);
     PushButton::ImplInit( pParent, nStyle | WB_NOPOINTERFOCUS );
 
     SetText( GetStandardText( StandardButtonType::Help ) );
@@ -2175,7 +2180,7 @@ void RadioButton::ImplDraw( OutputDevice* pDev, SystemTextColorFlags nSystemText
     WinBits                 nWinStyle = GetStyle();
     OUString                aText( GetText() );
 
-    pDev->Push( vcl::PushFlags::CLIPREGION );
+    auto popIt = pDev->ScopedPush(vcl::PushFlags::CLIPREGION);
     pDev->IntersectClipRegion( tools::Rectangle( rPos, rSize ) );
 
     // no image radio button
@@ -2244,8 +2249,6 @@ void RadioButton::ImplDraw( OutputDevice* pDev, SystemTextColorFlags nSystemText
         rMouseRect = aImageRect;
         rStateRect = aImageRect;
     }
-
-    pDev->Pop();
 }
 
 void RadioButton::ImplDrawRadioButton(vcl::RenderContext& rRenderContext)
@@ -2425,6 +2428,11 @@ void RadioButton::dispose()
     Button::dispose();
 }
 
+rtl::Reference<comphelper::OAccessible> RadioButton::CreateAccessible()
+{
+    return new VCLXAccessibleRadioButton(this);
+}
+
 void RadioButton::MouseButtonDown( const MouseEvent& rMEvt )
 {
     if ( rMEvt.IsLeft() && maMouseRect.Contains( rMEvt.GetPosPixel() ) )
@@ -2530,6 +2538,7 @@ void RadioButton::Draw( OutputDevice* pDev, const Point& rPos,
     if ( !maImage )
     {
         MapMode     aResMapMode( MapUnit::Map100thMM );
+        Point       aPos  = pDev->LogicToPixel( rPos );
         Size        aSize = GetSizePixel();
         Size        aImageSize = pDev->LogicToPixel( Size( 300, 300 ), aResMapMode );
         Size        aBrd1Size = pDev->LogicToPixel( Size( 20, 20 ), aResMapMode );
@@ -2554,7 +2563,7 @@ void RadioButton::Draw( OutputDevice* pDev, const Point& rPos,
         if ( !aBrd2Size.Height() )
             aBrd2Size.setHeight( 1 );
 
-        pDev->Push();
+        auto popIt = pDev->ScopedPush();
         pDev->SetMapMode();
         pDev->SetFont( aFont );
         if ( nFlags & SystemTextColorFlags::Mono )
@@ -2563,7 +2572,7 @@ void RadioButton::Draw( OutputDevice* pDev, const Point& rPos,
             pDev->SetTextColor( GetTextColor() );
         pDev->SetTextFillColor();
 
-        ImplDraw( pDev, nFlags, rPos, aSize,
+        ImplDraw( pDev, nFlags, aPos, aSize,
                   aImageSize, aStateRect, aMouseRect );
 
         Point   aCenterPos = aStateRect.Center();
@@ -2588,8 +2597,6 @@ void RadioButton::Draw( OutputDevice* pDev, const Point& rPos,
             pDev->SetFillColor( COL_BLACK );
             pDev->DrawPolygon( tools::Polygon( aCenterPos, nRadX, nRadY ) );
         }
-
-        pDev->Pop();
     }
     else
     {
@@ -2852,9 +2859,9 @@ static void LoadThemedImageList(const StyleSettings &rStyleSettings,
 
     for (const auto &a : rResources)
     {
-        BitmapEx aBmpEx(a);
-        aBmpEx.Replace(aColorAry1, aColorAry2, SAL_N_ELEMENTS(aColorAry1));
-        rList.emplace_back(aBmpEx);
+        Bitmap aBmp(a);
+        aBmp.Replace(aColorAry1, aColorAry2, SAL_N_ELEMENTS(aColorAry1), nullptr);
+        rList.emplace_back(aBmp);
     }
 }
 
@@ -2929,7 +2936,7 @@ Image RadioButton::GetRadioImage( const AllSettings& rSettings, DrawButtonFlags 
 
 void RadioButton::ImplAdjustNWFSizes()
 {
-    GetOutDev()->Push( vcl::PushFlags::MAPMODE );
+    auto popIt = GetOutDev()->ScopedPush(vcl::PushFlags::MAPMODE);
     SetMapMode(MapMode(MapUnit::MapPixel));
 
     ImplControlValue aControlValue;
@@ -2950,8 +2957,6 @@ void RadioButton::ImplAdjustNWFSizes()
             SetSizePixel( aCurSize );
         }
     }
-
-    GetOutDev()->Pop();
 }
 
 Size RadioButton::CalcMinimumSize(tools::Long nMaxWidth) const
@@ -3038,7 +3043,7 @@ void RadioButton::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
     if (!!maImage)
     {
         SvMemoryStream aOStm(6535, 6535);
-        if(GraphicConverter::Export(aOStm, maImage.GetBitmapEx(), ConvertDataFormat::PNG) == ERRCODE_NONE)
+        if(GraphicConverter::Export(aOStm, maImage.GetBitmap(), ConvertDataFormat::PNG) == ERRCODE_NONE)
         {
             css::uno::Sequence<sal_Int8> aSeq( static_cast<sal_Int8 const *>(aOStm.GetData()), aOStm.Tell());
             OStringBuffer aBuffer("data:image/png;base64,");
@@ -3173,7 +3178,7 @@ void CheckBox::ImplDraw( OutputDevice* pDev, SystemTextColorFlags nSystemTextCol
     WinBits                 nWinStyle = GetStyle();
     OUString                aText( GetText() );
 
-    pDev->Push( vcl::PushFlags::CLIPREGION | vcl::PushFlags::LINECOLOR );
+    auto popIt = pDev->ScopedPush(vcl::PushFlags::CLIPREGION | vcl::PushFlags::LINECOLOR);
     pDev->IntersectClipRegion( tools::Rectangle( rPos, rSize ) );
 
     if (!aText.isEmpty() || HasImage())
@@ -3202,8 +3207,6 @@ void CheckBox::ImplDraw( OutputDevice* pDev, SystemTextColorFlags nSystemTextCol
 
         ImplSetFocusRect( rStateRect );
     }
-
-    pDev->Pop();
 }
 
 void CheckBox::ImplDrawCheckBox(vcl::RenderContext& rRenderContext)
@@ -3248,6 +3251,11 @@ CheckBox::CheckBox( vcl::Window* pParent, WinBits nStyle ) :
 {
     ImplInitCheckBoxData();
     ImplInit( pParent, nStyle );
+}
+
+rtl::Reference<comphelper::OAccessible> CheckBox::CreateAccessible()
+{
+    return new VCLXAccessibleCheckBox(this);
 }
 
 void CheckBox::MouseButtonDown( const MouseEvent& rMEvt )
@@ -3353,6 +3361,7 @@ void CheckBox::Draw( OutputDevice* pDev, const Point& rPos,
                      SystemTextColorFlags nFlags )
 {
     MapMode     aResMapMode( MapUnit::Map100thMM );
+    Point       aPos  = pDev->LogicToPixel( rPos );
     Size        aSize = GetSizePixel();
     Size        aImageSize = pDev->LogicToPixel( Size( 300, 300 ), aResMapMode );
     Size        aBrd1Size = pDev->LogicToPixel( Size( 20, 20 ), aResMapMode );
@@ -3380,7 +3389,7 @@ void CheckBox::Draw( OutputDevice* pDev, const Point& rPos,
     if ( !nCheckWidth )
         nCheckWidth = 1;
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
     pDev->SetFont( aFont );
     if ( nFlags & SystemTextColorFlags::Mono )
@@ -3389,7 +3398,7 @@ void CheckBox::Draw( OutputDevice* pDev, const Point& rPos,
         pDev->SetTextColor( GetTextColor() );
     pDev->SetTextFillColor();
 
-    ImplDraw( pDev, nFlags, rPos, aSize,
+    ImplDraw( pDev, nFlags, aPos, aSize,
               aImageSize, aStateRect, aMouseRect );
 
     pDev->SetLineColor();
@@ -3442,8 +3451,6 @@ void CheckBox::Draw( OutputDevice* pDev, const Point& rPos,
             pDev->DrawLine( aTempPos21, aTempPos22 );
         }
     }
-
-    pDev->Pop();
 }
 
 void CheckBox::Resize()
@@ -3730,7 +3737,7 @@ Image CheckBox::GetCheckImage( const AllSettings& rSettings, DrawButtonFlags nFl
 
 void CheckBox::ImplAdjustNWFSizes()
 {
-    GetOutDev()->Push( vcl::PushFlags::MAPMODE );
+    auto popIt = GetOutDev()->ScopedPush(vcl::PushFlags::MAPMODE);
     SetMapMode(MapMode(MapUnit::MapPixel));
 
     ImplControlValue aControlValue;
@@ -3751,8 +3758,6 @@ void CheckBox::ImplAdjustNWFSizes()
             SetSizePixel( aCurSize );
         }
     }
-
-    GetOutDev()->Pop();
 }
 
 Size CheckBox::CalcMinimumSize( tools::Long nMaxWidth ) const

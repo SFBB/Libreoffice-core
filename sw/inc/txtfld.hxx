@@ -28,6 +28,8 @@
 class SwPaM;
 class SwTextNode;
 
+/// SwTextAttr subclass for fields, i.e. this is a 'hint' on a dummy character that will be expanded
+/// to a string by the layout. GetFormatField() gives access to the underlying SwFormatField.
 class SAL_DLLPUBLIC_RTTI SwTextField : public virtual SwTextAttr
 {
     mutable OUString m_aExpand; // only used to determine, if field content is changing in <ExpandTextField()>
@@ -35,7 +37,7 @@ class SAL_DLLPUBLIC_RTTI SwTextField : public virtual SwTextAttr
 
 public:
     SwTextField(
-        SwFormatField & rAttr,
+        const SfxPoolItemHolder& rAttr,
         sal_Int32 const nStart,
         bool const bInClipboard );
 
@@ -80,7 +82,7 @@ class SwTextInputField final
 {
 public:
     SwTextInputField(
-        SwFormatField & rAttr,
+        const SfxPoolItemHolder& rAttr,
         sal_Int32 const nStart,
         sal_Int32 const nEnd,
         bool const bInClipboard );

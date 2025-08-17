@@ -20,6 +20,7 @@
 #ifndef INCLUDED_SDEXT_SOURCE_PDFIMPORT_INC_CONTENTSINK_HXX
 #define INCLUDED_SDEXT_SOURCE_PDFIMPORT_INC_CONTENTSINK_HXX
 
+#include <basegfx/vector/b2enums.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/rendering/ARGBColor.hpp>
@@ -35,7 +36,6 @@ namespace com::sun::star {
         struct Matrix2D;
         struct AffineMatrix2D;
         struct RealRectangle2D;
-        struct RealPoint2D;
         struct RealSize2D;
     }
     namespace beans
@@ -117,7 +117,7 @@ namespace pdfi
         virtual void setTransformation( const css::geometry::AffineMatrix2D& rMatrix ) = 0;
         virtual void setLineDash( const css::uno::Sequence<double>& dashes,
                                   double                                         start ) = 0;
-        virtual void setLineJoin( sal_Int8 lineJoin ) = 0;
+        virtual void setLineJoin( basegfx::B2DLineJoin lineJoin ) = 0;
         virtual void setLineCap( sal_Int8 lineCap ) = 0;
         virtual void setMiterLimit(double) = 0;
         virtual void setLineWidth(double) = 0;
@@ -136,6 +136,8 @@ namespace pdfi
 
         virtual void intersectClip(const css::uno::Reference<
                                          css::rendering::XPolyPolygon2D >& rPath) = 0;
+        virtual void intersectClipToStroke(const css::uno::Reference<
+                                                 css::rendering::XPolyPolygon2D >& rPath) = 0;
         virtual void intersectEoClip(const css::uno::Reference<
                                            css::rendering::XPolyPolygon2D >& rPath) = 0;
 
@@ -171,6 +173,13 @@ namespace pdfi
                                                 css::beans::PropertyValue>& xImage,
                                           const css::uno::Sequence<
                                                 css::beans::PropertyValue>& xMask) = 0;
+        virtual void tilingPatternFill(int nX0, int nY0, int nX1, int nY1,
+                                       double nxStep, double nyStep,
+                                       int nPaintType,
+                                       css::geometry::AffineMatrix2D& rMat,
+                                       const css::uno::Sequence<css::beans::PropertyValue>& xTile) = 0;
+        virtual void beginTransparencyGroup(bool bForSoftMask) = 0;
+        virtual void endTransparencyGroup(void) = 0;
     };
 
     typedef std::shared_ptr<ContentSink> ContentSinkSharedPtr;

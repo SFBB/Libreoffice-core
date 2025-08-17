@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <systools/win32/extended_max_path.hxx>
 #include <systools/win32/uwinapi.h>
 
 #include <osl/file.h>
@@ -85,6 +88,20 @@ static oslFileError osl_setup_createTempFile_impl_(
     return osl_error;
 }
 
+static LPCWSTR getEyeCatcher()
+{
+    static const OUString sEyeCatcher = []
+    {
+        OUString eyeCatcher = u"\0"_ustr;
+#ifdef DBG_UTIL
+        if (const wchar_t* eye = _wgetenv(L"LO_TESTNAME"))
+            eyeCatcher = OUString(o3tl::toU(eye), wcslen(eye) + 1); // including terminating nul
+#endif
+        return eyeCatcher;
+    }();
+    return o3tl::toW(sEyeCatcher.getStr());
+}
+
 static oslFileError osl_win32_GetTempFileName_impl_(
     rtl_uString* base_directory, LPWSTR temp_file_name)
 {
@@ -92,7 +109,7 @@ static oslFileError osl_win32_GetTempFileName_impl_(
 
     if (GetTempFileNameW(
             o3tl::toW(rtl_uString_getStr(base_directory)),
-            L"",
+            getEyeCatcher(),
             0,
             temp_file_name) == 0)
     {
@@ -206,7 +223,7 @@ oslFileError SAL_CALL osl_createTempFile(
 
 oslFileError SAL_CALL osl_getTempDirURL(rtl_uString** pustrTempDir)
 {
-    ::osl::LongPathBuffer< sal_Unicode > aBuffer( MAX_LONG_PATH );
+    osl::LongPathBuffer<sal_Unicode> aBuffer(EXTENDED_MAX_PATH);
     LPWSTR  lpBuffer = o3tl::toW(aBuffer);
     DWORD   nBufferLength = aBuffer.getBufSizeInSymbols() - 1;
 

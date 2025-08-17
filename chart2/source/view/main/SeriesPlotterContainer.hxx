@@ -63,7 +63,7 @@ public:
      *  object and initialize its `aAutoScaling` member to the `ScaleData`
      *  object of the current axis.
      */
-    void initAxisUsageList(const Date& rNullDate);
+    void initAxisUsageList(const Date& rNullDate, ChartModel& rChartModel);
 
     /**
      * Perform automatic axis scaling and determine the amount and spacing of
@@ -151,7 +151,7 @@ private:
     sal_Int32 m_nMaxAxisIndex;
 
     bool m_bChartTypeUsesShiftedCategoryPositionPerDefault;
-    bool m_bForceShiftPosition = false;
+    bool m_bTableShiftPosition = false;
     sal_Int32 m_nDefaultDateNumberFormat;
 };
 

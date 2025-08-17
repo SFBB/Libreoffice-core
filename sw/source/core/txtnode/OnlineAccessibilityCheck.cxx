@@ -73,7 +73,7 @@ OnlineAccessibilityCheck::OnlineAccessibilityCheck(SwDoc& rDocument)
     , m_nAccessibilityIssues(0)
     , m_bInitialCheck(false)
     , m_bOnlineCheckStatus(
-          !utl::ConfigManager::IsFuzzing()
+          !comphelper::IsFuzzing()
               ? officecfg::Office::Common::Accessibility::OnlineAccessibilityCheck::get()
               : false)
 {
@@ -120,11 +120,16 @@ void OnlineAccessibilityCheck::updateNodeStatus(SwNode* pNode, bool bIssueObject
 
 void OnlineAccessibilityCheck::updateStatusbar()
 {
-    SfxBindings* pBindings = m_rDocument.GetDocShell() && m_rDocument.GetDocShell()->GetDispatcher()
-                                 ? m_rDocument.GetDocShell()->GetDispatcher()->GetBindings()
-                                 : nullptr;
-    if (pBindings)
-        pBindings->Invalidate(FN_STAT_ACCESSIBILITY_CHECK);
+    if (SwDocShell* pShell = m_rDocument.GetDocShell())
+    {
+        if (SfxDispatcher* pDispatcher = pShell->GetDispatcher())
+        {
+            if (SfxBindings* pBindings = pDispatcher->GetBindings())
+            {
+                pBindings->Invalidate(FN_STAT_ACCESSIBILITY_CHECK);
+            }
+        }
+    }
 }
 
 void OnlineAccessibilityCheck::runAccessibilityCheck(SwNode* pNode)
@@ -135,9 +140,7 @@ void OnlineAccessibilityCheck::runAccessibilityCheck(SwNode* pNode)
 
     for (SwFrameFormat* const& pFrameFormat : pNode->GetAnchoredFlys())
     {
-        SdrObject* pObject = pFrameFormat->FindSdrObject();
-        if (pObject)
-            m_aAccessibilityCheck.checkObject(pNode, pObject);
+        m_aAccessibilityCheck.checkObject(pNode, *pFrameFormat);
     }
 
     auto aCollection = m_aAccessibilityCheck.getIssueCollection();
@@ -181,7 +184,7 @@ void OnlineAccessibilityCheck::initialCheck()
 void OnlineAccessibilityCheck::updateCheckerActivity()
 {
     bool bOnlineCheckStatus
-        = !utl::ConfigManager::IsFuzzing()
+        = !comphelper::IsFuzzing()
           && officecfg::Office::Common::Accessibility::OnlineAccessibilityCheck::get();
 
     if (bOnlineCheckStatus != m_bOnlineCheckStatus)
@@ -296,7 +299,7 @@ void OnlineAccessibilityCheck::clearAccessibilityIssuesFromAllNodes()
 
 void OnlineAccessibilityCheck::resetAndQueue(SwNode* pNode, bool bIssueObjectNameChanged)
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
 
     bool bOnlineCheckStatus
@@ -316,7 +319,7 @@ void OnlineAccessibilityCheck::resetAndQueue(SwNode* pNode, bool bIssueObjectNam
 
 void OnlineAccessibilityCheck::resetAndQueueDocumentLevel()
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
 
     bool bOnlineCheckStatus

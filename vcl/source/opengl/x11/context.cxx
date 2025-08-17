@@ -8,7 +8,7 @@
  */
 
 #include <memory>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <vcl/syschild.hxx>
 
 #include <svdata.hxx>
@@ -128,7 +128,7 @@ private:
         int screen = XScreenNumberOfScreen( xattr.screen );
 
         // TODO: moggi: Select colour channel depth based on visual attributes, not hardcoded */
-        static int visual_attribs[] =
+        static const int visual_attribs[] =
         {
             GLX_DOUBLEBUFFER,       True,
             GLX_X_RENDERABLE,       True,

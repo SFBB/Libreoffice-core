@@ -18,7 +18,9 @@
  */
 #pragma once
 
-#include "CommandDispatch.hxx"
+#include <sal/config.h>
+
+#include <CommandDispatch.hxx>
 
 #include <com/sun/star/frame/DispatchInformation.hpp>
 
@@ -66,6 +68,12 @@ namespace chart
 struct ControllerFeature: public css::frame::DispatchInformation
 {
     ChartCommandID nFeatureId;
+    ControllerFeature() = default;
+    ControllerFeature(const OUString& command, sal_Int16 groupId, ChartCommandID featureId)
+        : css::frame::DispatchInformation(command, groupId)
+        , nFeatureId(featureId)
+    {
+    }
 };
 
 typedef std::map< OUString,
@@ -113,7 +121,7 @@ protected:
 
         Must not be called outside <member>describeSupportedFeatures</member>.
 
-        @param pAsciiCommandURL
+        @param sCommandURL
             the URL of the feature command
         @param nId
             the id of the feature. Later references to this feature usually happen by id, not by
@@ -122,7 +130,7 @@ protected:
             the command group of the feature. This is important for configuring the controller UI
             by the user, see also <type scope="css::frame">CommandGroup</type>.
     */
-    void implDescribeSupportedFeature( const char* pAsciiCommandURL, ChartCommandID nId,
+    void implDescribeSupportedFeature( const OUString& sCommandURL, ChartCommandID nId,
         sal_Int16 nGroup );
 
     mutable SupportedFeatures m_aSupportedFeatures;

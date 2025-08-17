@@ -22,6 +22,7 @@
 #include <sal/log.hxx>
 #include <comphelper/processfactory.hxx>
 #include <i18nutil/transliteration.hxx>
+#include <span>
 
 using namespace ::com::sun::star::uno;
 
@@ -77,47 +78,35 @@ namespace svxform
 
     struct Ascii2Int16
     {
-        const char* pAscii;
+        OUString    aAscii;
         sal_Int16   nValue;
     };
 
     }
 
-    static const Ascii2Int16* lcl_getSearchForTypeValueMap()
+    constexpr Ascii2Int16 s_aSearchForTypeMap[]
     {
-        static const Ascii2Int16 s_aSearchForTypeMap[] =
-        {
-            { "text",       0 },
-            { "null",       1 },
-            { "non-null",   2 },
-            { nullptr,         -1 }
-        };
-        return s_aSearchForTypeMap;
-    }
+        { u"text"_ustr,       0 },
+        { u"null"_ustr,       1 },
+        { u"non-null"_ustr,   2 },
+    };
 
-    static const Ascii2Int16* lcl_getSearchPositionValueMap()
+    constexpr Ascii2Int16 s_aSearchPositionMap[]
     {
-        static const Ascii2Int16 s_aSearchPositionMap[] =
-        {
-            { "anywhere-in-field",      MATCHING_ANYWHERE },
-            { "beginning-of-field",     MATCHING_BEGINNING },
-            { "end-of-field",           MATCHING_END },
-            { "complete-field",         MATCHING_WHOLETEXT },
-            { nullptr,                     -1 }
-        };
-        return s_aSearchPositionMap;
-    }
+        { u"anywhere-in-field"_ustr,      MATCHING_ANYWHERE },
+        { u"beginning-of-field"_ustr,     MATCHING_BEGINNING },
+        { u"end-of-field"_ustr,           MATCHING_END },
+        { u"complete-field"_ustr,         MATCHING_WHOLETEXT },
+    };
 
-    static sal_Int16 lcl_implMapAsciiValue( const OUString& _rAsciiValue, const Ascii2Int16* _pMap )
+    static sal_Int16 lcl_implMapAsciiValue( const OUString& _rAsciiValue, std::span<const Ascii2Int16> _rMap )
     {
         // search the map for the given ascii value
-        const Ascii2Int16* pSearch = _pMap;
-        while ( pSearch && pSearch->pAscii )
+        for (const auto & rSearch : _rMap)
         {
-            if ( _rAsciiValue.equalsAscii( pSearch->pAscii ) )
+            if ( _rAsciiValue == rSearch.aAscii )
                 // found
-                return pSearch->nValue;
-            ++pSearch;
+                return rSearch.nValue;
         }
 
         SAL_WARN(
@@ -125,21 +114,19 @@ namespace svxform
         return -1;
     }
 
-    static const char* lcl_implMapIntValue( const sal_Int16 _nValue, const Ascii2Int16* _pMap )
+    static const OUString& lcl_implMapIntValue( const sal_Int16 _nValue, std::span<const Ascii2Int16> _rMap )
     {
         // search the map for the given integer value
-        const Ascii2Int16* pSearch = _pMap;
-        while ( pSearch && pSearch->pAscii )
+        for (const Ascii2Int16& rSearch : _rMap)
         {
-            if ( _nValue == pSearch->nValue )
+            if ( _nValue == rSearch.nValue )
                 // found
-                return pSearch->pAscii;
-            ++pSearch;
+                return rSearch.aAscii;
         }
 
         SAL_WARN( "svx", "lcl_implMapIntValue: could not convert the integer value "
                     << _nValue <<  " !");
-        static const char* const s_pDummy = "";
+        static constexpr OUString s_pDummy = u""_ustr;
             // just as a fallback...
         return s_pDummy;
     }
@@ -149,46 +136,46 @@ namespace svxform
 #define TA( c )     &c, cppu::UnoType<decltype(c)>::get()
 
     FmSearchConfigItem::FmSearchConfigItem()
-        :OConfigurationValueContainer( ::comphelper::getProcessComponentContext(), m_aMutex, "/org.openoffice.Office.DataAccess/FormSearchOptions", 2 )
+        :OConfigurationValueContainer( ::comphelper::getProcessComponentContext(), m_aMutex, u"/org.openoffice.Office.DataAccess/FormSearchOptions"_ustr, 2 )
     {
         // register our members so the data exchange with the node values is done automatically
 
-        registerExchangeLocation( "SearchHistory",                      TA( aHistory ) );
-        registerExchangeLocation( "LevenshteinOther",                   TA( nLevOther ) );
-        registerExchangeLocation( "LevenshteinShorter",                 TA( nLevShorter ) );
-        registerExchangeLocation( "LevenshteinLonger",                  TA( nLevLonger ) );
-        registerExchangeLocation( "IsLevenshteinRelaxed",               TA( bLevRelaxed ) );
-        registerExchangeLocation( "IsSearchAllFields",                  TA( bAllFields ) );
-        registerExchangeLocation( "IsUseFormatter",                     TA( bUseFormatter ) );
-        registerExchangeLocation( "IsBackwards",                        TA( bBackwards ) );
-        registerExchangeLocation( "IsWildcardSearch",                   TA( bWildcard ) );
-        registerExchangeLocation( "IsUseRegularExpression",             TA( bRegular ) );
-        registerExchangeLocation( "IsSimilaritySearch",                 TA( bApproxSearch ) );
-        registerExchangeLocation( "IsUseAsianOptions",                  TA( bSoundsLikeCJK ) );
+        registerExchangeLocation( u"SearchHistory"_ustr,                      TA( aHistory ) );
+        registerExchangeLocation( u"LevenshteinOther"_ustr,                   TA( nLevOther ) );
+        registerExchangeLocation( u"LevenshteinShorter"_ustr,                 TA( nLevShorter ) );
+        registerExchangeLocation( u"LevenshteinLonger"_ustr,                  TA( nLevLonger ) );
+        registerExchangeLocation( u"IsLevenshteinRelaxed"_ustr,               TA( bLevRelaxed ) );
+        registerExchangeLocation( u"IsSearchAllFields"_ustr,                  TA( bAllFields ) );
+        registerExchangeLocation( u"IsUseFormatter"_ustr,                     TA( bUseFormatter ) );
+        registerExchangeLocation( u"IsBackwards"_ustr,                        TA( bBackwards ) );
+        registerExchangeLocation( u"IsWildcardSearch"_ustr,                   TA( bWildcard ) );
+        registerExchangeLocation( u"IsUseRegularExpression"_ustr,             TA( bRegular ) );
+        registerExchangeLocation( u"IsSimilaritySearch"_ustr,                 TA( bApproxSearch ) );
+        registerExchangeLocation( u"IsUseAsianOptions"_ustr,                  TA( bSoundsLikeCJK ) );
 
         // the properties which need to be translated
-        registerExchangeLocation( "SearchType",                         TA( m_sSearchForType ) );
-        registerExchangeLocation( "SearchPosition",                     TA( m_sSearchPosition ) );
+        registerExchangeLocation( u"SearchType"_ustr,                         TA( m_sSearchForType ) );
+        registerExchangeLocation( u"SearchPosition"_ustr,                     TA( m_sSearchPosition ) );
 
-        registerExchangeLocation( "IsMatchCase",                        TA( m_bIsMatchCase ) );
-        registerExchangeLocation( "Japanese/IsMatchFullHalfWidthForms", TA( m_bIsMatchFullHalfWidthForms ) );
-        registerExchangeLocation( "Japanese/IsMatchHiraganaKatakana",   TA( m_bIsMatchHiraganaKatakana ) );
-        registerExchangeLocation( "Japanese/IsMatchContractions",       TA( m_bIsMatchContractions ) );
-        registerExchangeLocation( "Japanese/IsMatchMinusDashCho-on",    TA( m_bIsMatchMinusDashCho_on ) );
-        registerExchangeLocation( "Japanese/IsMatchRepeatCharMarks",    TA( m_bIsMatchRepeatCharMarks ) );
-        registerExchangeLocation( "Japanese/IsMatchVariantFormKanji",   TA( m_bIsMatchVariantFormKanji ) );
-        registerExchangeLocation( "Japanese/IsMatchOldKanaForms",       TA( m_bIsMatchOldKanaForms ) );
-        registerExchangeLocation( "Japanese/IsMatch_DiZi_DuZu",         TA( m_bIsMatch_DiZi_DuZu ) );
-        registerExchangeLocation( "Japanese/IsMatch_BaVa_HaFa",         TA( m_bIsMatch_BaVa_HaFa ) );
-        registerExchangeLocation( "Japanese/IsMatch_TsiThiChi_DhiZi",   TA( m_bIsMatch_TsiThiChi_DhiZi ) );
-        registerExchangeLocation( "Japanese/IsMatch_HyuIyu_ByuVyu",     TA( m_bIsMatch_HyuIyu_ByuVyu ) );
-        registerExchangeLocation( "Japanese/IsMatch_SeShe_ZeJe",        TA( m_bIsMatch_SeShe_ZeJe ) );
-        registerExchangeLocation( "Japanese/IsMatch_IaIya",             TA( m_bIsMatch_IaIya ) );
-        registerExchangeLocation( "Japanese/IsMatch_KiKu",              TA( m_bIsMatch_KiKu ) );
-        registerExchangeLocation( "Japanese/IsIgnorePunctuation",       TA( m_bIsIgnorePunctuation ) );
-        registerExchangeLocation( "Japanese/IsIgnoreWhitespace",        TA( m_bIsIgnoreWhitespace ) );
-        registerExchangeLocation( "Japanese/IsIgnoreProlongedSoundMark",TA( m_bIsIgnoreProlongedSoundMark ) );
-        registerExchangeLocation( "Japanese/IsIgnoreMiddleDot",         TA( m_bIsIgnoreMiddleDot ) );
+        registerExchangeLocation( u"IsMatchCase"_ustr,                        TA( m_bIsMatchCase ) );
+        registerExchangeLocation( u"Japanese/IsMatchFullHalfWidthForms"_ustr, TA( m_bIsMatchFullHalfWidthForms ) );
+        registerExchangeLocation( u"Japanese/IsMatchHiraganaKatakana"_ustr,   TA( m_bIsMatchHiraganaKatakana ) );
+        registerExchangeLocation( u"Japanese/IsMatchContractions"_ustr,       TA( m_bIsMatchContractions ) );
+        registerExchangeLocation( u"Japanese/IsMatchMinusDashCho-on"_ustr,    TA( m_bIsMatchMinusDashCho_on ) );
+        registerExchangeLocation( u"Japanese/IsMatchRepeatCharMarks"_ustr,    TA( m_bIsMatchRepeatCharMarks ) );
+        registerExchangeLocation( u"Japanese/IsMatchVariantFormKanji"_ustr,   TA( m_bIsMatchVariantFormKanji ) );
+        registerExchangeLocation( u"Japanese/IsMatchOldKanaForms"_ustr,       TA( m_bIsMatchOldKanaForms ) );
+        registerExchangeLocation( u"Japanese/IsMatch_DiZi_DuZu"_ustr,         TA( m_bIsMatch_DiZi_DuZu ) );
+        registerExchangeLocation( u"Japanese/IsMatch_BaVa_HaFa"_ustr,         TA( m_bIsMatch_BaVa_HaFa ) );
+        registerExchangeLocation( u"Japanese/IsMatch_TsiThiChi_DhiZi"_ustr,   TA( m_bIsMatch_TsiThiChi_DhiZi ) );
+        registerExchangeLocation( u"Japanese/IsMatch_HyuIyu_ByuVyu"_ustr,     TA( m_bIsMatch_HyuIyu_ByuVyu ) );
+        registerExchangeLocation( u"Japanese/IsMatch_SeShe_ZeJe"_ustr,        TA( m_bIsMatch_SeShe_ZeJe ) );
+        registerExchangeLocation( u"Japanese/IsMatch_IaIya"_ustr,             TA( m_bIsMatch_IaIya ) );
+        registerExchangeLocation( u"Japanese/IsMatch_KiKu"_ustr,              TA( m_bIsMatch_KiKu ) );
+        registerExchangeLocation( u"Japanese/IsIgnorePunctuation"_ustr,       TA( m_bIsIgnorePunctuation ) );
+        registerExchangeLocation( u"Japanese/IsIgnoreWhitespace"_ustr,        TA( m_bIsIgnoreWhitespace ) );
+        registerExchangeLocation( u"Japanese/IsIgnoreProlongedSoundMark"_ustr,TA( m_bIsIgnoreProlongedSoundMark ) );
+        registerExchangeLocation( u"Japanese/IsIgnoreMiddleDot"_ustr,         TA( m_bIsIgnoreMiddleDot ) );
 
         read( );
     }
@@ -201,10 +188,10 @@ namespace svxform
     void FmSearchConfigItem::implTranslateFromConfig( )
     {
         // the search-for string
-        nSearchForType = lcl_implMapAsciiValue( m_sSearchForType, lcl_getSearchForTypeValueMap() );
+        nSearchForType = lcl_implMapAsciiValue( m_sSearchForType, s_aSearchForTypeMap );
 
         // the search position
-        nPosition = lcl_implMapAsciiValue( m_sSearchPosition, lcl_getSearchPositionValueMap() );
+        nPosition = lcl_implMapAsciiValue( m_sSearchPosition, s_aSearchPositionMap );
 
         // the transliteration flags
         nTransliterationFlags = TransliterationFlags::NONE;
@@ -234,10 +221,10 @@ namespace svxform
     void FmSearchConfigItem::implTranslateToConfig( )
     {
         // the search-for string
-        m_sSearchForType = OUString::createFromAscii( lcl_implMapIntValue( nSearchForType, lcl_getSearchForTypeValueMap() ) );
+        m_sSearchForType = lcl_implMapIntValue( nSearchForType, s_aSearchForTypeMap );
 
         // the search position
-        m_sSearchPosition = OUString::createFromAscii( lcl_implMapIntValue( nPosition, lcl_getSearchPositionValueMap() ) );
+        m_sSearchPosition = lcl_implMapIntValue( nPosition, s_aSearchPositionMap );
 
         // the transliteration flags
 

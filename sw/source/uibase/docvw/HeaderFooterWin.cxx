@@ -142,8 +142,7 @@ void SwFrameButtonPainter::PaintButton(drawinglayer::primitive2d::Primitive2DCon
         aFillColor = rSettings.GetDialogColor().getBColor();
         aLineColor = rSettings.GetDialogTextColor().getBColor();
 
-        rSeq.push_back(drawinglayer::primitive2d::Primitive2DReference(
-                            new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(B2DPolyPolygon(aPolygon), aFillColor)));
+        rSeq.push_back(new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(B2DPolyPolygon(aPolygon), aFillColor));
     }
     else
     {
@@ -154,13 +153,11 @@ void SwFrameButtonPainter::PaintButton(drawinglayer::primitive2d::Primitive2DCon
 
         FillGradientAttribute aFillAttrs(css::awt::GradientStyle_LINEAR, 0.0, 0.0, 0.0, nAngle,
             basegfx::BColorStops(aLighterColor, aFillColor));
-        rSeq.push_back(drawinglayer::primitive2d::Primitive2DReference(
-                            new drawinglayer::primitive2d::FillGradientPrimitive2D(aGradientRect, std::move(aFillAttrs))));
+        rSeq.push_back(new drawinglayer::primitive2d::FillGradientPrimitive2D(aGradientRect, std::move(aFillAttrs)));
     }
 
     // Create the border lines primitive
-    rSeq.push_back(drawinglayer::primitive2d::Primitive2DReference(
-                new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(std::move(aPolygon), aLineColor)));
+    rSeq.push_back(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(std::move(aPolygon), aLineColor));
 }
 
 SwHeaderFooterDashedLine::SwHeaderFooterDashedLine(SwEditWin* pEditWin, const SwFrame *pFrame, bool bHeader)
@@ -230,9 +227,9 @@ void SwHeaderFooterDashedLine::SetOffset(Point aOffset, tools::Long nXLineStart,
 }
 
 SwHeaderFooterWin::SwHeaderFooterWin(SwEditWin* pEditWin, const SwFrame *pFrame, bool bHeader ) :
-    InterimItemWindow(pEditWin, "modules/swriter/ui/hfmenubutton.ui", "HFMenuButton"),
-    m_xMenuButton(m_xBuilder->weld_menu_button("menubutton")),
-    m_xPushButton(m_xBuilder->weld_button("button")),
+    InterimItemWindow(pEditWin, u"modules/swriter/ui/hfmenubutton.ui"_ustr, u"HFMenuButton"_ustr),
+    m_xMenuButton(m_xBuilder->weld_menu_button(u"menubutton"_ustr)),
+    m_xPushButton(m_xBuilder->weld_button(u"button"_ustr)),
     m_pEditWin(pEditWin),
     m_pFrame(pFrame),
     m_bIsHeader( bHeader ),
@@ -250,13 +247,13 @@ SwHeaderFooterWin::SwHeaderFooterWin(SwEditWin* pEditWin, const SwFrame *pFrame,
     // Rewrite the menu entries' text
     if (m_bIsHeader)
     {
-        m_xMenuButton->set_item_label("edit", SwResId(STR_FORMAT_HEADER));
-        m_xMenuButton->set_item_label("delete", SwResId(STR_DELETE_HEADER));
+        m_xMenuButton->set_item_label(u"edit"_ustr, SwResId(STR_FORMAT_HEADER));
+        m_xMenuButton->set_item_label(u"delete"_ustr, SwResId(STR_DELETE_HEADER));
     }
     else
     {
-        m_xMenuButton->set_item_label("edit", SwResId(STR_FORMAT_FOOTER));
-        m_xMenuButton->set_item_label("delete", SwResId(STR_DELETE_FOOTER));
+        m_xMenuButton->set_item_label(u"edit"_ustr, SwResId(STR_FORMAT_FOOTER));
+        m_xMenuButton->set_item_label(u"delete"_ustr, SwResId(STR_DELETE_FOOTER));
     }
 
     m_aFadeTimer.SetTimeout(50);
@@ -272,7 +269,7 @@ void SwHeaderFooterWin::dispose()
 {
     m_xPushButton.reset();
     m_xMenuButton.reset();
-    m_pEditWin.clear();
+    m_pEditWin.reset();
     m_xVirDev.disposeAndClear();
     InterimItemWindow::dispose();
 }
@@ -298,7 +295,7 @@ void SwHeaderFooterWin::SetOffset(Point aOffset)
             : SwResId(STR_HEADER_TITLE);
 
     sal_Int32 nPos = m_sLabel.lastIndexOf("%1");
-    m_sLabel = m_sLabel.replaceAt(nPos, 2, pDesc->GetName());
+    m_sLabel = m_sLabel.replaceAt(nPos, 2, pDesc->GetName().toString());
     m_xMenuButton->set_accessible_name(m_sLabel);
 
     // Compute the text size and get the box position & size from it
@@ -372,10 +369,9 @@ void SwHeaderFooterWin::PaintButton()
                                             aFontSize.getX(), aFontSize.getY(),
                                             double(aTextPos.X()), double(aTextPos.Y())));
 
-    aSeq.push_back(drawinglayer::primitive2d::Primitive2DReference(
-                    new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
+    aSeq.push_back(new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
                         aTextMatrix, m_sLabel, 0, m_sLabel.getLength(),
-                        std::vector<double>(), {}, std::move(aFontAttr), css::lang::Locale(), aLineColor)));
+                        std::vector<double>(), {}, std::move(aFontAttr), css::lang::Locale(), aLineColor));
 
     // Create the 'plus' or 'arrow' primitive
     B2DRectangle aSignArea(B2DPoint(aRect.Right() - BUTTON_WIDTH, 0.0),
@@ -423,9 +419,8 @@ void SwHeaderFooterWin::PaintButton()
     if (Application::GetSettings().GetStyleSettings().GetHighContrastMode())
         aSignColor = COL_WHITE.getBColor();
 
-    aSeq.push_back( drawinglayer::primitive2d::Primitive2DReference(
-                                    new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
-                                        B2DPolyPolygon(aSign), aSignColor)) );
+    aSeq.push_back(new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
+                                        B2DPolyPolygon(aSign), aSignColor) );
 
     // Create the processor and process the primitives
     const drawinglayer::geometry::ViewInformation2D aNewViewInfos;
@@ -433,15 +428,14 @@ void SwHeaderFooterWin::PaintButton()
         drawinglayer::processor2d::createProcessor2DFromOutputDevice(*m_xVirDev, aNewViewInfos));
 
     // TODO Ghost it all if needed
-    drawinglayer::primitive2d::Primitive2DContainer aGhostedSeq(1);
+    drawinglayer::primitive2d::Primitive2DContainer aGhostedSeq;
     double nFadeRate = double(m_nFadeRate) / 100.0;
 
-    const basegfx::BColorModifierSharedPtr aBColorModifier =
+    basegfx::BColorModifierSharedPtr aBColorModifier =
         std::make_shared<basegfx::BColorModifier_interpolate>(COL_WHITE.getBColor(),
                                                 1.0 - nFadeRate);
 
-    aGhostedSeq[0] = drawinglayer::primitive2d::Primitive2DReference(
-                        new drawinglayer::primitive2d::ModifiedColorPrimitive2D(std::move(aSeq), aBColorModifier));
+    aGhostedSeq.push_back(new drawinglayer::primitive2d::ModifiedColorPrimitive2D(std::move(aSeq), std::move(aBColorModifier)));
 
     pProcessor->process(aGhostedSeq);
 
@@ -486,10 +480,10 @@ void SwHeaderFooterWin::ExecuteCommand(std::u16string_view rIdent)
     SwWrtShell& rSh = rView.GetWrtShell();
 
     const SwPageFrame* pPageFrame = SwFrameMenuButtonBase::GetPageFrame(m_pFrame);
-    const OUString& rStyleName = pPageFrame->GetPageDesc()->GetName();
+    const UIName& rStyleName = pPageFrame->GetPageDesc()->GetName();
     if (rIdent == u"edit")
     {
-        OUString sPageId = m_bIsHeader ? OUString("header") : OUString("footer");
+        OUString sPageId = m_bIsHeader ? u"header"_ustr : u"footer"_ustr;
         rView.GetDocShell()->FormatPage(rView.GetFrameWeld(), rStyleName, sPageId, rSh);
     }
     else if (rIdent == u"borderback")
@@ -543,6 +537,11 @@ void SwHeaderFooterWin::ExecuteCommand(std::u16string_view rIdent)
         SfxViewFrame& rVFrame = rSh.GetView().GetViewFrame();
         rVFrame.GetBindings().Execute(FN_INSERT_FLD_PGCOUNT);
     }
+    else if (rIdent == u"insert_pagecount_in_range")
+    {
+        SfxViewFrame& rVFrame = rSh.GetView().GetViewFrame();
+        rVFrame.GetBindings().Execute(FN_INSERT_FLD_RANGE_PGCOUNT);
+    }
 }
 
 IMPL_LINK_NOARG(SwHeaderFooterWin, ClickHdl, weld::Button&, void)
@@ -551,7 +550,7 @@ IMPL_LINK_NOARG(SwHeaderFooterWin, ClickHdl, weld::Button&, void)
     SwWrtShell& rSh = rView.GetWrtShell();
 
     const SwPageFrame* pPageFrame = SwFrameMenuButtonBase::GetPageFrame(m_pFrame);
-    const OUString& rStyleName = pPageFrame->GetPageDesc()->GetName();
+    const UIName& rStyleName = pPageFrame->GetPageDesc()->GetName();
     {
         VclPtr<SwHeaderFooterWin> xThis(this);
         rSh.ChangeHeaderOrFooter( rStyleName, m_bIsHeader, true, false );

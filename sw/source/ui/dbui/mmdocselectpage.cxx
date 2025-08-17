@@ -35,21 +35,20 @@
 using namespace ::com::sun::star::ui::dialogs;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace svt;
 
 SwMailMergeDocSelectPage::SwMailMergeDocSelectPage(weld::Container* pPage, SwMailMergeWizard* pWizard)
-    : vcl::OWizardPage(pPage, pWizard, "modules/swriter/ui/mmselectpage.ui", "MMSelectPage")
+    : vcl::OWizardPage(pPage, pWizard, u"modules/swriter/ui/mmselectpage.ui"_ustr, u"MMSelectPage"_ustr)
     , m_pWizard(pWizard)
-    , m_xCurrentDocRB(m_xBuilder->weld_radio_button("currentdoc"))
-    , m_xNewDocRB(m_xBuilder->weld_radio_button("newdoc"))
-    , m_xLoadDocRB(m_xBuilder->weld_radio_button("loaddoc"))
-    , m_xLoadTemplateRB(m_xBuilder->weld_radio_button("template"))
-    , m_xRecentDocRB(m_xBuilder->weld_radio_button("recentdoc"))
-    , m_xBrowseDocPB(m_xBuilder->weld_button("browsedoc"))
-    , m_xBrowseTemplatePB(m_xBuilder->weld_button("browsetemplate"))
-    , m_xRecentDocLB(m_xBuilder->weld_combo_box("recentdoclb"))
-    , m_xDataSourceWarningFT(m_xBuilder->weld_label("datasourcewarning"))
-    , m_xExchangeDatabasePB(m_xBuilder->weld_button("exchangedatabase"))
+    , m_xCurrentDocRB(m_xBuilder->weld_radio_button(u"currentdoc"_ustr))
+    , m_xNewDocRB(m_xBuilder->weld_radio_button(u"newdoc"_ustr))
+    , m_xLoadDocRB(m_xBuilder->weld_radio_button(u"loaddoc"_ustr))
+    , m_xLoadTemplateRB(m_xBuilder->weld_radio_button(u"template"_ustr))
+    , m_xRecentDocRB(m_xBuilder->weld_radio_button(u"recentdoc"_ustr))
+    , m_xBrowseDocPB(m_xBuilder->weld_button(u"browsedoc"_ustr))
+    , m_xBrowseTemplatePB(m_xBuilder->weld_button(u"browsetemplate"_ustr))
+    , m_xRecentDocLB(m_xBuilder->weld_combo_box(u"recentdoclb"_ustr))
+    , m_xDataSourceWarningFT(m_xBuilder->weld_label(u"datasourcewarning"_ustr))
+    , m_xExchangeDatabasePB(m_xBuilder->weld_button(u"exchangedatabase"_ustr))
 {
     m_xDataSourceWarningFT->set_label_type(weld::LabelType::Warning);
     m_xCurrentDocRB->set_active(true);
@@ -90,7 +89,7 @@ IMPL_LINK_NOARG(SwMailMergeDocSelectPage, DocSelectHdl, weld::Toggleable&, void)
 {
     m_xRecentDocLB->set_sensitive(m_xRecentDocRB->get_active());
     m_pWizard->UpdateRoadmap();
-    OUString sDataSourceName = m_pWizard->GetSwView()->GetDataSourceName();
+    OUString sDataSourceName = m_pWizard->GetSwView().GetDataSourceName();
 
     if(m_xCurrentDocRB->get_active() &&
        !sDataSourceName.isEmpty() &&
@@ -135,13 +134,13 @@ IMPL_LINK(SwMailMergeDocSelectPage, FileSelectHdl, weld::Button&, rButton, void)
         aDlgHelper.SetContext(sfx2::FileDialogHelper::WriterMailMerge);
         Reference < XFilePicker3 > xFP = aDlgHelper.GetFilePicker();
 
-        SfxObjectFactory &rFact = m_pWizard->GetSwView()->GetDocShell()->GetFactory();
+        SfxObjectFactory &rFact = m_pWizard->GetSwView().GetDocShell()->GetFactory();
         SfxFilterMatcher aMatcher( rFact.GetFactoryName() );
         SfxFilterMatcherIter aIter( aMatcher );
         std::shared_ptr<const SfxFilter> pFlt = aIter.First();
         while( pFlt )
         {
-            if( pFlt && pFlt->IsAllowedAsTemplate() )
+            if( pFlt->IsAllowedAsTemplate() )
             {
                 const OUString sWild = pFlt->GetWildcard().getGlob();
                 xFP->appendFilter( pFlt->GetUIName(), sWild );
@@ -167,18 +166,26 @@ IMPL_LINK_NOARG(SwMailMergeDocSelectPage, ExchangeDatabaseHdl, weld::Button&, vo
 {
 
     SwAbstractDialogFactory& rFact = ::swui::GetFactory();
-    ScopedVclPtr<VclAbstractDialog> pDlg(rFact.CreateSwChangeDBDlg(*m_pWizard->GetSwView()));
-    pDlg->Execute();
+    VclPtr<AbstractChangeDbDialog> pDlg(rFact.CreateSwChangeDBDlg(m_pWizard->GetSwView()));
+    pDlg->StartExecuteAsync(
+        [this, pDlg] (sal_Int32 nResult)->void
+        {
+            if (nResult == RET_OK)
+                pDlg->UpdateFields();
+            pDlg->disposeOnce();
 
-    OUString sDataSourceName = m_pWizard->GetSwView()->GetDataSourceName();
+            OUString sDataSourceName = m_pWizard->GetSwView().GetDataSourceName();
 
-    if(m_xCurrentDocRB->get_active() &&
-       !sDataSourceName.isEmpty() &&
-       SwView::IsDataSourceAvailable(sDataSourceName))
-    {
-        m_xDataSourceWarningFT->hide();
-        m_pWizard->enableButtons(WizardButtonFlags::NEXT, true);
-    }
+            if(m_xCurrentDocRB->get_active() &&
+               !sDataSourceName.isEmpty() &&
+               SwView::IsDataSourceAvailable(sDataSourceName))
+            {
+                m_xDataSourceWarningFT->hide();
+                m_pWizard->enableButtons(WizardButtonFlags::NEXT, true);
+            }
+        }
+    );
+
 }
 
 bool SwMailMergeDocSelectPage::commitPage( ::vcl::WizardTypes::CommitPageReason _eReason )

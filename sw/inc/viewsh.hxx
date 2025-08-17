@@ -27,10 +27,10 @@
 #include <stack>
 #include <vcl/mapmod.hxx>
 #include <vcl/vclptr.hxx>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <vcl/window.hxx>
 
-namespace com::sun::star::accessibility { class XAccessible; }
+namespace comphelper { class OAccessible; }
 class SwDoc;
 class IDocumentSettingAccess;
 class IDocumentDeviceAccess;
@@ -55,7 +55,6 @@ class SwViewShellImp;
 class SwPrintData;
 struct ShellResource;
 class SwRegionRects;
-class SvtAccessibilityOptions;
 class SwPagePreviewLayout;
 class SwTextFrame;
 
@@ -85,6 +84,13 @@ enum class LockPaintReason
     ExampleFrame
 };
 
+enum class ScrollSizeMode
+{
+    ScrollSizeDefault, //usually 30% of the visible area
+    ScrollSizeMouseSelection, //make target rectangle visible
+    ScrollSizeTimer, // increase of timer based scrolling
+    ScrollSizeTimer2 // more increase of timer based scrolling
+};
 namespace vcl
 {
     typedef OutputDevice RenderContext;
@@ -106,7 +112,9 @@ struct SwVisiblePageNumbers
     OUString sFirstCustomVirt, sLastCustomVirt;
 };
 
-class SW_DLLPUBLIC SwViewShell : public sw::Ring<SwViewShell>
+class SwView;
+
+class SAL_DLLPUBLIC_RTTI SwViewShell : public sw::Ring<SwViewShell>
 {
     friend void SetOutDev( SwViewShell *pSh, OutputDevice *pOut );
     friend void SetOutDevAndWin( SwViewShell *pSh, OutputDevice *pOut,
@@ -121,8 +129,8 @@ class SW_DLLPUBLIC SwViewShell : public sw::Ring<SwViewShell>
     // Set SwVisArea in order to enable clean formatting before printing.
     friend void SetSwVisArea( SwViewShell *pSh, const SwRect & );
 
-    std::unique_ptr<BitmapEx> m_xReplaceBmp; ///< replaced display of still loaded images
-    std::unique_ptr<BitmapEx> m_xErrorBmp;   ///< error display of missed images
+    Bitmap        maReplaceBmp; ///< replaced display of still loaded images
+    Bitmap        maErrorBmp;   ///< error display of missed images
 
     static bool sbLstAct;            // true if EndAction of last Shell
                                      // i.e. if the EndActions of the other
@@ -168,31 +176,32 @@ class SW_DLLPUBLIC SwViewShell : public sw::Ring<SwViewShell>
     SwRootFramePtr            mpLayout;
 
     // Initialization; called by the diverse constructors.
-    SAL_DLLPRIVATE void Init( const SwViewOption *pNewOpt );
+    void Init( const SwViewOption *pNewOpt, tools::Long nFlags);
 
     inline void ResetInvalidRect();
 
 
 
-    SAL_DLLPRIVATE void PaintDesktop(const vcl::RenderContext& rRenderContext, const SwRect&);  // Collect values for painting of desktop
+    void PaintDesktop(const vcl::RenderContext& rRenderContext, const SwRect&);  // Collect values for painting of desktop
                                                         // and calling.
     // PaintDesktop split. This pars is also used by PreviewPage.
-    SAL_DLLPRIVATE void PaintDesktop_(const SwRegionRects &rRegion);
+    void PaintDesktop_(const SwRegionRects &rRegion);
 
-    SAL_DLLPRIVATE bool CheckInvalidForPaint( const SwRect & );  // Direct Paint or rather
+    static bool DrawAppBackgroundBitmap(vcl::RenderContext* rRenderContext, const SwRect& rRect);
+
+    bool CheckInvalidForPaint( const SwRect & );  // Direct Paint or rather
                                                                     // trigger an action.
 
-    SAL_DLLPRIVATE void PrepareForPrint( const SwPrintData &rOptions, bool bIsPDFExport = false );
+    void PrepareForPrint( const SwPrintData &rOptions, bool bIsPDFExport = false );
 
-    SAL_DLLPRIVATE void ImplApplyViewOptions( const SwViewOption &rOpt );
+    void ImplApplyViewOptions( const SwViewOption &rOpt );
 
-    SAL_DLLPRIVATE void InvalidateAll(std::vector<LockPaintReason>& rReasons);
+    void InvalidateAll(std::vector<LockPaintReason>& rReasons);
 
-    SAL_DLLPRIVATE void InvalidatePageAndHFSubsidiaryLines();
+    void InvalidatePageAndHFSubsidiaryLines();
 
 protected:
     static ShellResource*      spShellRes;      ///< Resources for the Shell.
-    static vcl::DeleteOnDeinit< std::shared_ptr<weld::Window> > spCareDialog;    ///< Avoid this window.
 
     SwRect                  maVisArea;       ///< The modern version of VisArea.
     tools::Rectangle        maLOKVisibleArea;///< The visible area in the LibreOfficeKit client.
@@ -217,13 +226,17 @@ public:
     void            InitPrt( OutputDevice *pOutDev );
 
     // Bracketing of actions belonging together.
-    inline void StartAction();
-           void ImplStartAction();
-    inline void EndAction( const bool bIdleEnd = false );
-           void ImplEndAction( const bool bIdleEnd );
+    virtual void StartAction();
+    SW_DLLPUBLIC void ImplStartAction();
+    virtual void EndAction(const bool bIdleEnd = false);
+    SW_DLLPUBLIC void ImplEndAction( const bool bIdleEnd );
     sal_uInt16 ActionCount() const { return mnStartAction; }
     bool ActionPend() const { return mnStartAction != 0; }
     bool IsInEndAction() const { return mbInEndAction; }
+
+    /// For all views of this document.
+    SW_DLLPUBLIC void StartAllAction();
+    SW_DLLPUBLIC void EndAllAction();
 
     // The ActionCount for all Shells is temporarily set to zero and then
     // restored at the RootFrame via UNO.
@@ -240,7 +253,7 @@ public:
     void FlushPendingLOKInvalidateTiles();
 
     /// Invalidates complete Layout (ApplyViewOption).
-    void Reformat();
+    SW_DLLPUBLIC void Reformat();
 
     // #i72754# set of Pre/PostPaints with lock counter and initial target OutDev
 protected:
@@ -280,7 +293,7 @@ public:
     void setLOKVisibleArea(const tools::Rectangle& rArea) { maLOKVisibleArea = rArea; }
 
     // If necessary scroll until passed Rect is situated in visible sector.
-    void MakeVisible( const SwRect & );
+    void MakeVisible( const SwRect &, ScrollSizeMode eScrollSizeMode = ScrollSizeMode::ScrollSizeDefault );
 
     // At nearest occasion pass new document size to UI.
     void SizeChgNotify();
@@ -294,33 +307,33 @@ public:
     // Invalidate first visible page for all Shells in ring.
     void SetFirstVisPageInvalid();
 
-    SwRootFrame   *GetLayout() const;
+    SW_DLLPUBLIC SwRootFrame* GetLayout() const;
     bool         IsNewLayout() const; // Has Layout been loaded or created?
 
      Size GetDocSize() const;   // Get document size.
 
     virtual void CalcLayout();  // Force complete formatting of layout.
 
-    sal_uInt16 GetPageCount() const;
+    SW_DLLPUBLIC sal_uInt16 GetPageCount() const;
 
-    Size GetPageSize( sal_uInt16 nPageNum, bool bSkipEmptyPages ) const;
+    SW_DLLPUBLIC Size GetPageSize( sal_uInt16 nPageNum, bool bSkipEmptyPages ) const;
 
     SwDoc *GetDoc()  const { return mxDoc.get(); }  //Never 0.
 
     /** Provides access to the document setting interface
      */
     const IDocumentSettingAccess& getIDocumentSettingAccess() const;
-          IDocumentSettingAccess& getIDocumentSettingAccess();
+    SW_DLLPUBLIC IDocumentSettingAccess& getIDocumentSettingAccess();
 
     /** Provides access to the document device interface
      */
     const IDocumentDeviceAccess& getIDocumentDeviceAccess() const;
-          IDocumentDeviceAccess& getIDocumentDeviceAccess();
+    SW_DLLPUBLIC IDocumentDeviceAccess& getIDocumentDeviceAccess();
 
     /** Provides access to the document bookmark interface
      */
     const IDocumentMarkAccess* getIDocumentMarkAccess() const;
-          IDocumentMarkAccess* getIDocumentMarkAccess();
+    SW_DLLPUBLIC IDocumentMarkAccess* getIDocumentMarkAccess();
 
     /** Provides access to the document draw model interface
      */
@@ -335,7 +348,7 @@ public:
     /** Provides access to the document layout interface
      */
     const IDocumentLayoutAccess& getIDocumentLayoutAccess() const;
-          IDocumentLayoutAccess& getIDocumentLayoutAccess();
+    SW_DLLPUBLIC IDocumentLayoutAccess& getIDocumentLayoutAccess();
 
     /** Provides access to the content operations interface
      */
@@ -343,7 +356,7 @@ public:
 
     /** Provides access to the document style pool interface
      */
-    IDocumentStylePoolAccess& getIDocumentStylePoolAccess();
+    SW_DLLPUBLIC IDocumentStylePoolAccess& getIDocumentStylePoolAccess();
 
     /** Provides access to the document statistics interface
      */
@@ -354,8 +367,8 @@ public:
     IDocumentUndoRedo const& GetIDocumentUndoRedo() const;
     IDocumentUndoRedo      & GetIDocumentUndoRedo();
 
-    const IDocumentListItems* getIDocumentListItemsAccess() const;
-    const IDocumentOutlineNodes* getIDocumentOutlineNodesAccess() const;
+    SW_DLLPUBLIC const IDocumentListItems* getIDocumentListItemsAccess() const;
+    SW_DLLPUBLIC const IDocumentOutlineNodes* getIDocumentOutlineNodesAccess() const;
 
     // 1. GetRefDev:   Either the printer or the virtual device from the doc
     // 2. GetWin:      Available if we not printing
@@ -395,11 +408,11 @@ public:
     void CalcPagesForPrint( sal_uInt16 nMax );
 
     // All about fields.
-    void UpdateFields(bool bCloseDB = false);
+    SW_DLLPUBLIC void UpdateFields(bool bCloseDB = false, bool bSetModified = true);
     bool IsAnyFieldInDoc() const;
 
     /// Update the previews of all OLE objects.
-    void UpdateOleObjectPreviews();
+    SW_DLLPUBLIC void UpdateOleObjectPreviews();
 
     // Update all charts, for that exists any table.
     void UpdateAllCharts();
@@ -408,46 +421,66 @@ public:
     // DOCUMENT COMPATIBILITY FLAGS START
 
     // Add or maximize paragraph spacing?
-    void SetParaSpaceMax( bool bNew );
+    SW_DLLPUBLIC void SetParaSpaceMax( bool bNew );
 
     // Add or maximize paragraph spacing?
-    void SetParaSpaceMaxAtPages( bool bNew );
+    SW_DLLPUBLIC void SetParaSpaceMaxAtPages( bool bNew );
 
     // Compatible behaviour of tabs.
-    void SetTabCompat( bool bNew );
+    SW_DLLPUBLIC void SetTabCompat( bool bNew );
 
     // Font metric attribute "External Leading" should be considered.
-    void SetAddExtLeading( bool bNew );
+    SW_DLLPUBLIC void SetAddExtLeading( bool bNew );
 
     // Adding paragraph and table spacing at bottom
     // of table cells.
-    void SetAddParaSpacingToTableCells( bool _bAddParaSpacingToTableCells );
+    SW_DLLPUBLIC void SetAddParaSpacingToTableCells( bool _bAddParaSpacingToTableCells );
 
     // Former formatting of text lines with
     // proportional line spacing or not.
-    void SetUseFormerLineSpacing( bool _bUseFormerLineSpacing );
+    SW_DLLPUBLIC void SetUseFormerLineSpacing( bool _bUseFormerLineSpacing );
 
     // Former object positioning.
-    void SetUseFormerObjectPositioning( bool _bUseFormerObjPos );
+    SW_DLLPUBLIC void SetUseFormerObjectPositioning( bool _bUseFormerObjPos );
 
-    void SetConsiderWrapOnObjPos( bool _bConsiderWrapOnObjPos );
+    SW_DLLPUBLIC void SetConsiderWrapOnObjPos( bool _bConsiderWrapOnObjPos );
 
-    void SetUseFormerTextWrapping( bool _bUseFormerTextWrapping );
+    SW_DLLPUBLIC void SetUseFormerTextWrapping( bool _bUseFormerTextWrapping );
 
-    void SetDoNotJustifyLinesWithManualBreak( bool _bDoNotJustifyLinesWithManualBreak );
+    SW_DLLPUBLIC void SetDoNotJustifyLinesWithManualBreak( bool _bDoNotJustifyLinesWithManualBreak );
 
-    void SetProtectForm( bool _bProtectForm );
+    SW_DLLPUBLIC void SetProtectForm( bool _bProtectForm );
 
-    void SetMsWordCompTrailingBlanks( bool _bMsWordCompTrailingBlanks );
+    SW_DLLPUBLIC void SetMsWordCompTrailingBlanks( bool _bMsWordCompTrailingBlanks );
 
-    void SetSubtractFlysAnchoredAtFlys(bool bSubtractFlysAnchoredAtFlys);
+    SW_DLLPUBLIC void SetSubtractFlysAnchoredAtFlys(bool bSubtractFlysAnchoredAtFlys);
 
-    void SetEmptyDbFieldHidesPara(bool bEmptyDbFieldHidesPara);
+    SW_DLLPUBLIC void SetEmptyDbFieldHidesPara(bool bEmptyDbFieldHidesPara);
+
+    SW_DLLPUBLIC void SetNoGapAfterNoteNumber(bool bNew);
+
+    SW_DLLPUBLIC void SetTabsRelativeToIndent(bool bNew);
+
+    SW_DLLPUBLIC void SetTabOverMargin(bool bNew);
+
+    SW_DLLPUBLIC void SetDoNotMirrorRtlDrawObjs(bool bDoNotMirrorRtlDrawObjs);
+
+    SW_DLLPUBLIC void SetContinuousEndnotes(bool bContinuousEndnotes);
+
+    SW_DLLPUBLIC void SetMsWordCompGridMetrics(bool bMsWordCompGridMetrics);
+
+    SW_DLLPUBLIC void SetIgnoreTabsAndBlanksForLineCalculation(bool bIgnoreTabsAndBlanksForLineCalculation);
+
+    SW_DLLPUBLIC void SetMsWordUlTrailSpace(bool val);
+
+    SW_DLLPUBLIC void SetBalanceSpacesAndIdeographicSpaces(bool bValue);
+
+    SW_DLLPUBLIC void SetAdjustTableLineHeightsToGridHeight(bool bValue);
 
     // DOCUMENT COMPATIBILITY FLAGS END
 
     // Calls Idle-formatter of Layout.
-    void LayoutIdle();
+    SW_DLLPUBLIC void LayoutIdle();
 
     const SwViewOption *GetViewOptions() const { return mpOpt.get(); }
     virtual void  ApplyViewOptions( const SwViewOption &rOpt );
@@ -460,14 +493,13 @@ public:
     const SwAccessibilityOptions* GetAccessibilityOptions() const { return mpAccOptions.get();}
 
     static void           SetShellRes( ShellResource* pRes ) { spShellRes = pRes; }
-    static ShellResource* GetShellRes();
+    SW_DLLPUBLIC static ShellResource* GetShellRes();
 
     static weld::Window*   CareChildWin(SwViewShell const & rVSh);
-    static void           SetCareDialog(const std::shared_ptr<weld::Window>& rNew);
-    static weld::Window*  GetCareDialog(SwViewShell const & rVSh)
-                          { return (*spCareDialog.get()) ? spCareDialog.get()->get() : CareChildWin(rVSh); }
+    SW_DLLPUBLIC static void SetCareDialog(const std::shared_ptr<weld::Window>& rNew);
+    static weld::Window*  GetCareDialog(SwViewShell const & rVSh);
 
-    SfxViewShell   *GetSfxViewShell() const { return mpSfxViewShell; }
+    SAL_RET_MAYBENULL SfxViewShell   *GetSfxViewShell() const { return mpSfxViewShell; }
     void           SetSfxViewShell(SfxViewShell *pNew) { mpSfxViewShell = pNew; }
 
     // Selection of  Draw Engine has been changed.
@@ -504,7 +536,7 @@ public:
     bool HasDrawViewDrag() const;
 
     // DrawView may be used at UI.
-          SdrView *GetDrawView();
+    SW_DLLPUBLIC SdrView *GetDrawView();
     const SdrView *GetDrawView() const { return const_cast<SwViewShell*>(this)->GetDrawView(); }
 
     // Take care that MarkList is up-to-date in any case (Bug 57153).
@@ -512,7 +544,7 @@ public:
 
     // Query attribute pool.
     inline const SfxItemPool& GetAttrPool() const;
-                 SfxItemPool& GetAttrPool();
+    SW_DLLPUBLIC SfxItemPool& GetAttrPool();
 
     bool IsPreview() const { return mbPreview; }
 
@@ -525,9 +557,9 @@ public:
     sal_Int32 GetBrowseWidth() const;
     void SetBrowseBorder( const Size& rNew );
 
-    css::uno::Reference< css::accessibility::XAccessible > CreateAccessible();
+    rtl::Reference<comphelper::OAccessible> CreateAccessible();
 
-    css::uno::Reference< css::accessibility::XAccessible >  CreateAccessiblePreview();
+    rtl::Reference<comphelper::OAccessible> CreateAccessiblePreview();
 
     void ShowPreviewSelection( sal_uInt16 nSelPage );
     void InvalidateAccessibleFocus();
@@ -577,11 +609,12 @@ public:
 
     bool IsInConstructor() const { return mbInConstructor; }
 
-    const BitmapEx& GetReplacementBitmap(bool bIsErrorState);
+    const Bitmap& GetErrorBitmap();
+    const Bitmap& GetReplacementBitmap();
     void DeleteReplacementBitmaps();
 
     const SwPostItMgr* GetPostItMgr() const { return const_cast<SwViewShell*>(this)->GetPostItMgr(); }
-    SwPostItMgr* GetPostItMgr();
+    SW_DLLPUBLIC virtual SwPostItMgr* GetPostItMgr();
 
     /// Acts both for headers / footers, depending on the bShow(Header|Footer)Separator flags
     void ToggleHeaderFooterEdit();
@@ -595,9 +628,16 @@ public:
     bool isOutputToWindow() const;
     void OnGraphicArrived(const SwRect&);
 
-    void GetFirstLastVisPageNumbers(SwVisiblePageNumbers& rVisiblePageNumbers);
+    void GetFirstLastVisPageNumbers(SwVisiblePageNumbers& rVisiblePageNumbers, const SwView& rView);
 
     virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
+
+    // SwTextFrame::AutoSpell_ calls this, to notify the shell, that a word has a spelling error,
+    // but that couldn't be drawn, because the cursor was in that word (so that the user is not
+    // annoyed while typing). The shell's task is to re-run the spell check (i.e., call LayoutIdle,
+    // which internally does the spell check), when the cursor leaves that word (implemented in
+    // SwCursorShell).
+    virtual void OnSpellWrongStatePending() {}
 };
 
 // manages global ShellPointer
@@ -614,19 +654,6 @@ public:
 inline void SwViewShell::ResetInvalidRect()
 {
     maInvalidRect.Clear();
-}
-
-inline void SwViewShell::StartAction()
-{
-    if ( !mnStartAction++ )
-        ImplStartAction();
-}
-
-inline void SwViewShell::EndAction( const bool bIdleEnd )
-{
-    if( 0 == (mnStartAction - 1) )
-        ImplEndAction( bIdleEnd );
-    --mnStartAction;
 }
 
 inline void SwViewShell::LockPaint(LockPaintReason eReason)

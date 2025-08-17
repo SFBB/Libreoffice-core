@@ -56,8 +56,7 @@ static const css::uno::Type & getVetoableTypeIdentifier()
 
 extern "C" {
 
-static int compare_OUString_Property_Impl( const void *arg1, const void *arg2 )
-    SAL_THROW_EXTERN_C()
+static int compare_OUString_Property_Impl( const void *arg1, const void *arg2 ) noexcept
 {
    return static_cast<OUString const *>(arg1)->compareTo( static_cast<Property const *>(arg2)->Name );
 }
@@ -273,6 +272,8 @@ Any OPropertySetHelper::getPropertyValue(
     IPropertyArrayHelper & rPH = getInfoHelper();
     // map the name to the handle
     sal_Int32 nHandle = rPH.getHandleByName( rPropertyName );
+    if (nHandle == -1)
+        throw UnknownPropertyException(rPropertyName);
     // call the method of the XFastPropertySet interface
     return getFastPropertyValue( nHandle );
 }
@@ -545,8 +546,8 @@ void OPropertySetHelper::setFastPropertyValue( sal_Int32 nHandle, const Any& rVa
 
 // XFastPropertySet
 Any OPropertySetHelper::getFastPropertyValue( sal_Int32 nHandle )
-
 {
+    assert(nHandle != -1 && "passing -1 here indicates that the caller knows this is not a valid handle");
     IPropertyArrayHelper & rInfo = getInfoHelper();
     if( !rInfo.fillPropertyMembersByHandle( nullptr, nullptr, nHandle ) )
         // unknown property
@@ -869,7 +870,7 @@ void OPropertySetHelper::setPropertyValues(
 {
         sal_Int32   nSeqLen = rPropertyNames.getLength();
         if (nSeqLen != rValues.getLength())
-            throw IllegalArgumentException("lengths do not match", static_cast<XPropertySet*>(this),
+            throw IllegalArgumentException(u"lengths do not match"_ustr, static_cast<XPropertySet*>(this),
                                            -1);
         std::unique_ptr<sal_Int32[]> pHandles(new sal_Int32[ nSeqLen ]);
         // get the map table
@@ -926,7 +927,6 @@ void OPropertySetHelper::firePropertiesChangeEvent(
     std::unique_ptr<sal_Int32[]> pHandles(new sal_Int32[nLen]);
     IPropertyArrayHelper & rPH = getInfoHelper();
     rPH.fillHandles( pHandles.get(), rPropertyNames );
-    const OUString* pNames = rPropertyNames.getConstArray();
 
     // get the count of matching properties
     sal_Int32 nFireLen = 0;
@@ -948,7 +948,7 @@ void OPropertySetHelper::firePropertiesChangeEvent(
         if( pHandles[i] != -1 )
         {
             pChanges[nFirePos].Source = xSource;
-            pChanges[nFirePos].PropertyName = pNames[i];
+            pChanges[nFirePos].PropertyName = rPropertyNames[i];
             pChanges[nFirePos].PropertyHandle = pHandles[i];
             getFastPropertyValue( pChanges[nFirePos].OldValue, pHandles[i] );
             pChanges[nFirePos].NewValue = pChanges[nFirePos].OldValue;
@@ -968,8 +968,7 @@ void OPropertySetHelper2::enableChangeListenerNotification( sal_Bool bEnable )
 
 extern "C" {
 
-static int compare_Property_Impl( const void *arg1, const void *arg2 )
-    SAL_THROW_EXTERN_C()
+static int compare_Property_Impl( const void *arg1, const void *arg2 ) noexcept
 {
    return static_cast<Property const *>(arg1)->Name.compareTo( static_cast<Property const *>(arg2)->Name );
 }
@@ -979,11 +978,10 @@ static int compare_Property_Impl( const void *arg1, const void *arg2 )
 void OPropertyArrayHelper::init( sal_Bool bSorted )
 {
     sal_Int32 i, nElements = aInfos.getLength();
-    const Property* pProperties = aInfos.getConstArray();
 
     for( i = 1; i < nElements; i++ )
     {
-        if(  pProperties[i-1].Name > pProperties[i].Name )
+        if (aInfos[i - 1].Name > aInfos[i].Name)
         {
             if (bSorted) {
                 OSL_FAIL( "Property array is not sorted" );
@@ -991,12 +989,11 @@ void OPropertyArrayHelper::init( sal_Bool bSorted )
             // not sorted
             qsort( aInfos.getArray(), nElements, sizeof( Property ),
                     compare_Property_Impl );
-            pProperties = aInfos.getConstArray();
             break;
         }
     }
     for( i = 0; i < nElements; i++ )
-        if( pProperties[i].Handle != i )
+        if (aInfos[i].Handle != i)
             return;
     // The handle is the index
     bRightOrdered = true;
@@ -1037,7 +1034,6 @@ sal_Bool OPropertyArrayHelper::fillPropertyMembersByHandle
     sal_Int32 nHandle
 )
 {
-    const Property* pProperties = aInfos.getConstArray();
     sal_Int32 nElements = aInfos.getLength();
 
     if( bRightOrdered )
@@ -1045,20 +1041,20 @@ sal_Bool OPropertyArrayHelper::fillPropertyMembersByHandle
         if( nHandle < 0 || nHandle >= nElements )
             return false;
         if( pPropName )
-            *pPropName = pProperties[ nHandle ].Name;
+            *pPropName = aInfos[nHandle].Name;
         if( pAttributes )
-            *pAttributes = pProperties[ nHandle ].Attributes;
+            *pAttributes = aInfos[nHandle].Attributes;
         return true;
     }
     // normally the array is sorted
     for( sal_Int32 i = 0; i < nElements; i++ )
     {
-        if( pProperties[i].Handle == nHandle )
+        if (aInfos[i].Handle == nHandle)
         {
             if( pPropName )
-                *pPropName = pProperties[ i ].Name;
+                *pPropName = aInfos[i].Name;
             if( pAttributes )
-                *pAttributes = pProperties[ i ].Attributes;
+                *pAttributes = aInfos[i].Attributes;
             return true;
         }
     }
@@ -1108,10 +1104,9 @@ sal_Int32 OPropertyArrayHelper::getHandleByName( const OUString & rPropName )
 sal_Int32 OPropertyArrayHelper::fillHandles( sal_Int32 * pHandles, const Sequence< OUString > & rPropNames )
 {
     sal_Int32 nHitCount = 0;
-    const OUString * pReqProps = rPropNames.getConstArray();
     sal_Int32 nReqLen = rPropNames.getLength();
-    const Property * pCur = aInfos.getConstArray();
-    const Property * pEnd = pCur + aInfos.getLength();
+    const Property * pCur = aInfos.begin();
+    const Property * pEnd = aInfos.end();
 
     for( sal_Int32 i = 0; i < nReqLen; i++ )
     {
@@ -1129,11 +1124,11 @@ sal_Int32 OPropertyArrayHelper::fillHandles( sal_Int32 * pHandles, const Sequenc
         if( (nReqLen - i) * nLog >= pEnd - pCur )
         {
             // linear search is better
-            while( pCur < pEnd && pReqProps[i] > pCur->Name )
+            while (pCur < pEnd && rPropNames[i] > pCur->Name)
             {
                 pCur++;
             }
-            if( pCur < pEnd && pReqProps[i] == pCur->Name )
+            if (pCur < pEnd && rPropNames[i] == pCur->Name)
             {
                 pHandles[i] = pCur->Handle;
                 nHitCount++;
@@ -1152,7 +1147,7 @@ sal_Int32 OPropertyArrayHelper::fillHandles( sal_Int32 * pHandles, const Sequenc
             {
                 pMid = (pEnd - pCur) / 2 + pCur;
 
-                nCompVal = pReqProps[i].compareTo( pMid->Name );
+                nCompVal = rPropNames[i].compareTo(pMid->Name);
 
                 if( nCompVal > 0 )
                     pCur = pMid + 1;

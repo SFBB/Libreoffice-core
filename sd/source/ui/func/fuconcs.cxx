@@ -46,19 +46,19 @@ namespace sd {
 
 
 FuConstructCustomShape::FuConstructCustomShape (
-        ViewShell*          pViewSh,
+        ViewShell&          rViewSh,
         ::sd::Window*       pWin,
         ::sd::View*         pView,
-        SdDrawDocument*     pDoc,
+        SdDrawDocument&     rDoc,
         SfxRequest&         rReq ) :
-    FuConstruct(pViewSh, pWin, pView, pDoc, rReq)
+    FuConstruct(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuConstructCustomShape::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq, bool bPermanent )
+rtl::Reference<FuPoor> FuConstructCustomShape::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq, bool bPermanent )
 {
     FuConstructCustomShape* pFunc;
-    rtl::Reference<FuPoor> xFunc( pFunc = new FuConstructCustomShape( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( pFunc = new FuConstructCustomShape( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     pFunc->SetPermanent( bPermanent );
     return xFunc;
@@ -75,7 +75,7 @@ void FuConstructCustomShape::DoExecute( SfxRequest& rReq )
         aCustomShape = rItm.GetValue();
     }
 
-    mpViewShell->GetViewShellBase().GetToolBarManager()->SetToolBar(
+    mrViewShell.GetViewShellBase().GetToolBarManager()->SetToolBar(
         ToolBarManager::ToolBarGroup::Function,
         ToolBarManager::msDrawingObjectToolBar);
 }
@@ -104,7 +104,7 @@ bool FuConstructCustomShape::MouseButtonDown(const MouseEvent& rMEvt)
                 bForceFillStyle = false;
                 bForceNoFillStyle = true;
             }
-            SfxItemSet aAttr(mpDoc->GetPool());
+            SfxItemSet aAttr(mrDoc.GetPool());
             SetStyleSheet( aAttr, pObj, bForceFillStyle, bForceNoFillStyle );
             pObj->SetMergedItemSet(aAttr);
         }
@@ -143,13 +143,13 @@ bool FuConstructCustomShape::MouseButtonUp(const MouseEvent& rMEvt)
             ::tools::Rectangle aNewObjectRectangle(aClickPos, Size(nDefaultObjectSize, nDefaultObjectSize));
             rtl::Reference<SdrObject> pObjDefault = CreateDefaultObject(nSlotId, aNewObjectRectangle);
 
-            bReturn = mpView->InsertObjectAtView(pObjDefault.get(), *pPV);
+            bReturn = mpView->InsertObjectAtView(pObjDefault.get(), *pPV, SdrInsertFlags::SETDEFLAYER | SdrInsertFlags::SETDEFATTR);
         }
     }
     bReturn = FuConstruct::MouseButtonUp (rMEvt) || bReturn;
 
     if (!bPermanent)
-        mpViewShell->GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
+        mrViewShell.GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
 
     return bReturn;
 }
@@ -177,8 +177,6 @@ void FuConstructCustomShape::SetAttributes( SdrObject* pObj )
                 if ( aObjList[ i ].equalsIgnoreAsciiCase( aCustomShape ) )
                 {
                     FmFormModel aFormModel;
-                    SfxItemPool& rPool(aFormModel.GetItemPool());
-                    rPool.FreezeIdRanges();
 
                     if ( GalleryExplorer::GetSdrObj( GALLERY_THEME_POWERPOINT, i, &aFormModel ) )
                     {
@@ -189,18 +187,14 @@ void FuConstructCustomShape::SetAttributes( SdrObject* pObj )
                             if( pSourceObj )
                             {
                                 const SfxItemSet& rSource = pSourceObj->GetMergedItemSet();
-                                SfxItemSetFixed<
-                                        // Ranges from SdrAttrObj:
-                                        SDRATTR_START, SDRATTR_SHADOW_LAST,
-                                        SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST,
-                                        SDRATTR_TEXTDIRECTION,
-                                            SDRATTR_TEXTDIRECTION,
-                                        // Graphic attributes, 3D properties,
-                                        // CustomShape properties:
-                                        SDRATTR_GRAF_FIRST,
-                                            SDRATTR_CUSTOMSHAPE_LAST,
-                                        // Range from SdrTextObj:
-                                        EE_ITEMS_START, EE_ITEMS_END> aDest(pObj->getSdrModelFromSdrObject().GetItemPool());
+                                SfxItemSet aDest(SfxItemSet::makeFixedSfxItemSet<
+                                    // Ranges from SdrAttrObj:
+                                    SDRATTR_START, SDRATTR_SHADOW_LAST, SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST, SDRATTR_TEXTDIRECTION, SDRATTR_TEXTDIRECTION,
+                                    // Graphic attributes, 3D properties,
+                                    // CustomShape properties:
+                                    SDRATTR_GRAF_FIRST, SDRATTR_CUSTOMSHAPE_LAST,
+                                    // Range from SdrTextObj:
+                                    EE_ITEMS_START, EE_ITEMS_END>(pObj->getSdrModelFromSdrObject().GetItemPool()));
                                 aDest.Set( rSource );
                                 pObj->SetMergedItemSet( aDest );
                                 // Enables Word-wrap by default (tdf#134369)
@@ -246,7 +240,7 @@ rtl::Reference<SdrObject> FuConstructCustomShape::CreateDefaultObject(const sal_
             ImpForceQuadratic( aRect );
         pObj->SetLogicRect( aRect );
         SetAttributes( pObj.get() );
-        SfxItemSet aAttr(mpDoc->GetPool());
+        SfxItemSet aAttr(mrDoc.GetPool());
         SetStyleSheet(aAttr, pObj.get());
         pObj->SetMergedItemSet(aAttr);
     }

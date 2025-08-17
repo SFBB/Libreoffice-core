@@ -48,7 +48,7 @@ static WebPPreset presetToValue(std::u16string_view preset)
     return WEBP_PRESET_DEFAULT;
 }
 
-static bool writeWebp(SvStream& rStream, const BitmapEx& bitmapEx, bool lossless,
+static bool writeWebp(SvStream& rStream, const Bitmap& bitmap, bool lossless,
                       std::u16string_view preset, int quality)
 {
     WebPConfig config;
@@ -76,8 +76,8 @@ static bool writeWebp(SvStream& rStream, const BitmapEx& bitmapEx, bool lossless
     // Here various parts of 'config' can be altered if wanted.
     assert(WebPValidateConfig(&config));
 
-    const int width = bitmapEx.GetSizePixel().Width();
-    const int height = bitmapEx.GetSizePixel().Height();
+    const int width = bitmap.GetSizePixel().Width();
+    const int height = bitmap.GetSizePixel().Height();
 
     WebPPicture picture;
     if (!WebPPictureInit(&picture))
@@ -92,14 +92,9 @@ static bool writeWebp(SvStream& rStream, const BitmapEx& bitmapEx, bool lossless
 
     // Apparently libwebp needs the entire image data at once in WebPPicture,
     // so allocate it and copy there.
-    Bitmap bitmap(bitmapEx.GetBitmap());
-    AlphaMask bitmapAlpha;
-    if (bitmapEx.IsAlpha())
-        bitmapAlpha = bitmapEx.GetAlphaMask();
     BitmapScopedReadAccess access(bitmap);
-    BitmapScopedReadAccess accessAlpha(bitmapAlpha);
     bool dataDone = false;
-    if (!access->IsBottomUp() && bitmapAlpha.IsEmpty())
+    if (!access->IsBottomUp() && !bitmap.HasAlpha())
     {
         // Try to directly copy the bitmap data.
         switch (access->GetScanlineFormat())
@@ -138,41 +133,18 @@ static bool writeWebp(SvStream& rStream, const BitmapEx& bitmapEx, bool lossless
         std::vector<uint8_t> data;
         const int bpp = 4;
         data.resize(width * height * bpp);
-        if (!bitmapAlpha.IsEmpty())
+        for (tools::Long y = 0, nHeight = access->Height(); y < nHeight; ++y)
         {
-            for (tools::Long y = 0; y < access->Height(); ++y)
+            unsigned char* dst = data.data() + width * bpp * y;
+            const sal_uInt8* src = access->GetScanline(y);
+            for (tools::Long x = 0, nWidth = access->Width(); x < nWidth; ++x)
             {
-                unsigned char* dst = data.data() + width * bpp * y;
-                const sal_uInt8* srcB = access->GetScanline(y);
-                const sal_uInt8* srcA = accessAlpha->GetScanline(y);
-                for (tools::Long x = 0; x < access->Width(); ++x)
-                {
-                    BitmapColor color = access->GetPixelFromData(srcB, x);
-                    BitmapColor transparency = accessAlpha->GetPixelFromData(srcA, x);
-                    color.SetAlpha(255 - transparency.GetIndex());
-                    dst[0] = color.GetRed();
-                    dst[1] = color.GetGreen();
-                    dst[2] = color.GetBlue();
-                    dst[3] = color.GetAlpha();
-                    dst += bpp;
-                }
-            }
-        }
-        else
-        {
-            for (tools::Long y = 0; y < access->Height(); ++y)
-            {
-                unsigned char* dst = data.data() + width * bpp * y;
-                const sal_uInt8* src = access->GetScanline(y);
-                for (tools::Long x = 0; x < access->Width(); ++x)
-                {
-                    Color color = access->GetPixelFromData(src, x);
-                    dst[0] = color.GetRed();
-                    dst[1] = color.GetGreen();
-                    dst[2] = color.GetBlue();
-                    dst[3] = color.GetAlpha();
-                    dst += bpp;
-                }
+                BitmapColor color = access->GetPixelFromData(src, x);
+                dst[0] = color.GetRed();
+                dst[1] = color.GetGreen();
+                dst[2] = color.GetBlue();
+                dst[3] = color.GetAlpha();
+                dst += bpp;
             }
         }
         // And now import from the temporary data. Use the import function rather
@@ -193,12 +165,12 @@ static bool writeWebp(SvStream& rStream, const BitmapEx& bitmapEx, bool lossless
 bool ExportWebpGraphic(SvStream& rStream, const Graphic& rGraphic,
                        FilterConfigItem* pFilterConfigItem)
 {
-    BitmapEx bitmap = rGraphic.GetBitmapEx();
+    Bitmap bitmap(rGraphic.GetBitmapEx());
     // If lossless, neither presets nor quality matter.
-    bool lossless = pFilterConfigItem->ReadBool("Lossless", true);
+    bool lossless = pFilterConfigItem->ReadBool(u"Lossless"_ustr, true);
     // Preset is WebPPreset values.
-    const OUString preset = pFilterConfigItem->ReadString("Preset", "");
-    int quality = pFilterConfigItem->ReadInt32("Quality", 75);
+    const OUString preset = pFilterConfigItem->ReadString(u"Preset"_ustr, u""_ustr);
+    int quality = pFilterConfigItem->ReadInt32(u"Quality"_ustr, 75);
     return writeWebp(rStream, bitmap, lossless, preset, quality);
 }
 

@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -43,15 +43,17 @@ class QtWidget : public QWidget
     int m_nDeltaX;
     int m_nDeltaY;
 
-    static void commitText(QtFrame&, const QString& aText);
-    static void deleteReplacementText(QtFrame& rFrame, int nReplacementStart,
-                                      int nReplacementLength);
-    static bool handleGestureEvent(QtFrame& rFrame, QGestureEvent* pGestureEvent);
-    static bool handleKeyEvent(QtFrame&, const QWidget&, QKeyEvent*);
-    static void handleMouseEnterLeaveEvents(const QtFrame&, QEvent*);
-    static void fillSalAbstractMouseEvent(const QtFrame& rFrame, const QInputEvent* pQEvent,
-                                          const QPoint& rPos, Qt::MouseButtons eButtons, int nWidth,
-                                          SalAbstractMouseEvent& aSalEvent);
+    void commitText(const QString& aText) const;
+    void deleteReplacementText(int nReplacementStart, int nReplacementLength) const;
+    bool handleEvent(QEvent* pEvent);
+    // mouse events are always accepted
+    void handleMouseButtonEvent(const QMouseEvent*) const;
+    bool handleGestureEvent(QGestureEvent* pGestureEvent) const;
+    bool handleKeyEvent(QKeyEvent*) const;
+    void handleMouseEnterLeaveEvent(QEvent*) const;
+    void fillSalAbstractMouseEvent(const QInputEvent* pQEvent, const QPoint& rPos,
+                                   Qt::MouseButtons eButtons,
+                                   SalAbstractMouseEvent& aSalEvent) const;
 
     virtual bool event(QEvent*) override;
 
@@ -91,17 +93,6 @@ public:
     QtFrame& frame() const { return m_rFrame; }
     void endExtTextInput();
     void fakeResize();
-
-    static bool handleEvent(QtFrame&, QWidget&, QEvent*);
-    // key events might be propagated further down => call base on false
-    static inline bool handleKeyReleaseEvent(QtFrame&, const QWidget&, QKeyEvent*);
-    // mouse events are always accepted
-    static void handleMouseButtonEvent(const QtFrame&, const QMouseEvent*);
 };
 
-bool QtWidget::handleKeyReleaseEvent(QtFrame& rFrame, const QWidget& rWidget, QKeyEvent* pEvent)
-{
-    return handleKeyEvent(rFrame, rWidget, pEvent);
-}
-
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

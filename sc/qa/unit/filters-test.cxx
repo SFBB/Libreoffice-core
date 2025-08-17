@@ -23,7 +23,6 @@
 #include <unotools/tempfile.hxx>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
 
 /* Implementation of Filters test */
 
@@ -52,20 +51,13 @@ public:
     CPPUNIT_TEST_SUITE_END();
 
 private:
-    void createFileURL(std::u16string_view aFileBase, std::u16string_view aFileExtension, OUString& rFilePath);
+    OUString createFileURL(std::u16string_view aFileName);
 };
 
-void ScFiltersTest::createFileURL(
-    std::u16string_view aFileBase, std::u16string_view aFileExtension, OUString& rFilePath)
+OUString ScFiltersTest::createFileURL(std::u16string_view aFileName)
 {
-    // aFileBase may contain multiple segments, so use
-    // GetNewAbsURL instead of insertName for them:
-    INetURLObject url(m_directories.getSrcRootURL());
-    url.setFinalSlash();
-    url.GetNewAbsURL("sc/qa/unit/data", &url);
-    url.insertName(aFileExtension, true);
-    url.GetNewAbsURL(OUString::Concat(aFileBase) + aFileExtension, &url);
-    rFilePath = url.GetMainURL(INetURLObject::DecodeMechanism::NONE);
+    std::u16string_view aFileExtension = aFileName.substr(aFileName.find_last_of('.') + 1);
+    return m_directories.getURLFromSrc(u"sc/qa/unit/data", aFileExtension, aFileName);
 }
 
 
@@ -85,28 +77,31 @@ bool ScFiltersTest::load(const OUString &rFilter, const OUString &rURL,
 void ScFiltersTest::testCVEs()
 {
 #ifndef DISABLE_CVE_TESTS
-    testDir("Quattro Pro 6.0",
+    testDir(u"Quattro Pro 6.0"_ustr,
         m_directories.getURLFromSrc(u"/sc/qa/unit/data/qpro/"));
 
     //warning, the current "sylk filter" in sc (docsh.cxx) automatically
     //chains on failure on trying as csv, rtf, etc. so "success" may
     //not indicate that it imported as .slk.
-    testDir("SYLK",
+    testDir(u"SYLK"_ustr,
         m_directories.getURLFromSrc(u"/sc/qa/unit/data/slk/"));
-
-    testDir("MS Excel 97",
+#if defined _WIN32 && defined _ARM64_
+    // skip for windows arm64 build
+#else
+    testDir(u"MS Excel 97"_ustr,
         m_directories.getURLFromSrc(u"/sc/qa/unit/data/xls/"));
+#endif
 
-    testDir("Calc Office Open XML",
+    testDir(u"Calc Office Open XML"_ustr,
         m_directories.getURLFromSrc(u"/sc/qa/unit/data/xlsx/"), OUString(), XLSX_FORMAT_TYPE);
 
-    testDir("Calc Office Open XML",
+    testDir(u"Calc Office Open XML"_ustr,
         m_directories.getURLFromSrc(u"/sc/qa/unit/data/xlsm/"), OUString(), XLSX_FORMAT_TYPE);
 
-    testDir("dBase",
+    testDir(u"dBase"_ustr,
         m_directories.getURLFromSrc(u"/sc/qa/unit/data/dbf/"));
 
-    testDir("Lotus",
+    testDir(u"Lotus"_ustr,
         m_directories.getURLFromSrc(u"/sc/qa/unit/data/wks/"));
 
 #endif
@@ -114,8 +109,7 @@ void ScFiltersTest::testCVEs()
 
 void ScFiltersTest::testContentofz9704()
 {
-    OUString aFileName;
-    createFileURL(u"ofz9704.", u"123", aFileName);
+    OUString aFileName = createFileURL(u"ofz9704.123");
     SvFileStream aFileStream(aFileName, StreamMode::READ);
     TestImportWKS(aFileStream);
 }
@@ -127,8 +121,7 @@ void ScFiltersTest::testTdf90299()
     const OUString aSavedFileURL = utl::CreateTempURL(&aTmpDirectory1URL);
 
     OUString aReferencedFileURL;
-    OUString aReferencingFileURL;
-    createFileURL(u"tdf90299.", u"xls", aReferencingFileURL);
+    OUString aReferencingFileURL = createFileURL(u"tdf90299.xls");
 
     auto eError = osl::File::copy(aReferencingFileURL, aTmpDirectory1URL + "/tdf90299.xls");
     CPPUNIT_ASSERT_EQUAL(osl::File::E_None, eError);
@@ -136,7 +129,7 @@ void ScFiltersTest::testTdf90299()
     aReferencingFileURL = aTmpDirectory1URL + "/tdf90299.xls";
     aReferencedFileURL = aTmpDirectory1URL + "/dummy.xls";
 
-    ScDocShellRef xShell = loadDoc(aReferencingFileURL, "MS Excel 97", OUString(), OUString(),
+    ScDocShellRef xShell = loadDoc(aReferencingFileURL, u"MS Excel 97"_ustr, OUString(), OUString(),
             XLS_FORMAT_TYPE, SotClipboardFormatId::STARCALC_8);
 
     ScDocument& rDoc = xShell->GetDocument();
@@ -162,7 +155,7 @@ void ScFiltersTest::testTdf90299()
     aReferencingFileURL = aTmpDirectory2URL + "/tdf90299.xls";
     aReferencedFileURL = aTmpDirectory2URL + "/dummy.xls";
 
-    xShell = loadDoc(aReferencingFileURL, "MS Excel 97", OUString(), OUString(),
+    xShell = loadDoc(aReferencingFileURL, u"MS Excel 97"_ustr, OUString(), OUString(),
             XLS_FORMAT_TYPE, SotClipboardFormatId::STARCALC_8);
     ScDocument& rDoc2 = xShell->GetDocument();
     CPPUNIT_ASSERT_EQUAL(OUString("='" + aReferencedFileURL + "'#$Sheet1.A1"), rDoc2.GetFormula(0, 0, 0));

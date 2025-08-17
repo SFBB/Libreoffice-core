@@ -198,7 +198,7 @@ namespace {
         if (std::any_of(i_rPaths.begin(), i_rPaths.end(),
                 [nFirstPageId](const Sequence< sal_Int16 >& rPath) { return rPath[0] != nFirstPageId; }))
             throw IllegalArgumentException(
-                "All paths must start with the same page id.",
+                u"All paths must start with the same page id."_ustr,
                 i_rContext, 2 );
     }
 
@@ -228,7 +228,7 @@ namespace {
         }
         lcl_checkPaths( aMultiplePaths, *this );
         // if we survived this, the paths are valid, and we're done here ...
-        m_aWizardSteps = aMultiplePaths;
+        m_aWizardSteps = std::move(aMultiplePaths);
 
         m_bInitialized = true;
     }
@@ -252,12 +252,12 @@ namespace {
 
     OUString SAL_CALL Wizard::getImplementationName()
     {
-        return "com.sun.star.comp.svtools.uno.Wizard";
+        return u"com.sun.star.comp.svtools.uno.Wizard"_ustr;
     }
 
     Sequence< OUString > SAL_CALL Wizard::getSupportedServiceNames()
     {
-        return { "com.sun.star.ui.dialogs.Wizard" };
+        return { u"com.sun.star.ui.dialogs.Wizard"_ustr };
     }
 
     Reference< XPropertySetInfo > SAL_CALL Wizard::getPropertySetInfo()

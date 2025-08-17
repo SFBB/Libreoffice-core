@@ -45,6 +45,7 @@
 #include <editeng/charhiddenitem.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/shaditem.hxx>
+#include <vcl/metric.hxx>
 #include <IDocumentSettingAccess.hxx>
 #include <charatr.hxx>
 #include <viewsh.hxx>
@@ -52,6 +53,7 @@
 #include <fntcache.hxx>
 #include <txtfrm.hxx>
 #include <scriptinfo.hxx>
+#include <swmodule.hxx>
 
 #ifdef DBG_UTIL
 // global Variable
@@ -337,6 +339,17 @@ sal_uInt16 SwFont::CalcShadowSpace(const SvxShadowItemSide nShadow, const bool b
     }
 
     return nSpace;
+}
+
+SvxFontUnitMetrics SwFont::GetFontUnitMetrics() const
+{
+    // tdf#36709: Metrics conversion should use em and ic values from the bound fonts.
+    // Unfortunately, this currently poses a problem due to font substitution: tests
+    // abort when a missing font is set on a device.
+    // In the interim, use height for all metrics. This is technically not correct, but
+    // should be close enough for common fonts.
+    return { /*em*/ static_cast<double>(GetHeight(GetActual())),
+             /*ic*/ static_cast<double>(GetHeight(SwFontScript::CJK)) };
 }
 
 void SwFont::dumpAsXml(xmlTextWriterPtr writer) const
@@ -684,6 +697,7 @@ SwFont::SwFont( const SwFont &rFont )
     m_bOrgChg = rFont.m_bOrgChg;
     m_bPaintBlank = rFont.m_bPaintBlank;
     m_bGreyWave = rFont.m_bGreyWave;
+    m_bURL = rFont.m_bURL;
 }
 
 SwFont::SwFont( const SwAttrSet* pAttrSet,
@@ -873,6 +887,7 @@ SwFont& SwFont::operator=( const SwFont &rFont )
         m_bOrgChg = rFont.m_bOrgChg;
         m_bPaintBlank = rFont.m_bPaintBlank;
         m_bGreyWave = rFont.m_bGreyWave;
+        m_bURL = rFont.m_bURL;
     }
     return *this;
 }
@@ -995,7 +1010,8 @@ Size SwSubFont::GetTextSize_( SwDrawTextInfo& rInf )
          !IsSameInstance( rInf.GetpOut()->GetFont() ) )
         ChgFnt( rInf.GetShell(), rInf.GetOut() );
 
-    SwDigitModeModifier aDigitModeModifier( rInf.GetOut(), rInf.GetFont()->GetLanguage() );
+    SwDigitModeModifier aDigitModeModifier(rInf.GetOut(), rInf.GetFont()->GetLanguage(),
+                                           SwModule::get()->GetCTLTextNumerals());
 
     Size aTextSize;
     TextFrameIndex const nLn = rInf.GetLen() == TextFrameIndex(COMPLETE_STRING)
@@ -1124,7 +1140,8 @@ void SwSubFont::DrawText_( SwDrawTextInfo &rInf, const bool bGrey )
     if( !pLastFont || pLastFont->GetOwner() != m_nFontCacheId )
         ChgFnt( rInf.GetShell(), rInf.GetOut() );
 
-    SwDigitModeModifier aDigitModeModifier( rInf.GetOut(), rInf.GetFont()->GetLanguage() );
+    SwDigitModeModifier aDigitModeModifier(rInf.GetOut(), rInf.GetFont()->GetLanguage(),
+                                           SwModule::get()->GetCTLTextNumerals());
 
     const Point aOldPos(rInf.GetPos());
     Point aPos( rInf.GetPos() );
@@ -1133,7 +1150,11 @@ void SwSubFont::DrawText_( SwDrawTextInfo &rInf, const bool bGrey )
         CalcEsc( rInf, aPos );
 
     rInf.SetPos( aPos );
-    rInf.SetKern( CheckKerning() + rInf.GetCharacterSpacing() / SPACING_PRECISION_FACTOR );
+    rInf.SetKern( CheckKerning() + rInf.GetCharacterSpacing() / SPACING_PRECISION_FACTOR +
+                    // modify letter spacing for the actual line
+                    // according to the available extra word spacing
+                    // to get the desired word spacing
+                    rInf.GetLetterSpacing() );
 
     if( IsCapital() )
         DrawCapital( rInf );
@@ -1215,7 +1236,7 @@ void SwSubFont::DrawText_( SwDrawTextInfo &rInf, const bool bGrey )
         }
 
         rInf.SetWidth( sal_uInt16(aFontSize.Width() + nSpace) );
-        rInf.SetTextIdxLen( "  ", TextFrameIndex(0), TextFrameIndex(2) );
+        rInf.SetTextIdxLen( u"  "_ustr, TextFrameIndex(0), TextFrameIndex(2) );
         SetUnderline( nOldUnder );
         rInf.SetUnderFnt( nullptr );
 
@@ -1249,7 +1270,8 @@ void SwSubFont::DrawStretchText_( SwDrawTextInfo &rInf )
     if ( !pLastFont || pLastFont->GetOwner() != m_nFontCacheId )
         ChgFnt( rInf.GetShell(), rInf.GetOut() );
 
-    SwDigitModeModifier aDigitModeModifier( rInf.GetOut(), rInf.GetFont()->GetLanguage() );
+    SwDigitModeModifier aDigitModeModifier(rInf.GetOut(), rInf.GetFont()->GetLanguage(),
+                                           SwModule::get()->GetCTLTextNumerals());
 
     rInf.ApplyAutoColor();
 
@@ -1293,7 +1315,7 @@ void SwSubFont::DrawStretchText_( SwDrawTextInfo &rInf )
         const OUString oldStr = rInf.GetText();
         TextFrameIndex const nOldIdx = rInf.GetIdx();
         TextFrameIndex const nOldLen = rInf.GetLen();
-        rInf.SetTextIdxLen( "  ", TextFrameIndex(0), TextFrameIndex(2) );
+        rInf.SetTextIdxLen( u"  "_ustr, TextFrameIndex(0), TextFrameIndex(2) );
         SetUnderline( nOldUnder );
         rInf.SetUnderFnt( nullptr );
 
@@ -1314,7 +1336,8 @@ TextFrameIndex SwSubFont::GetModelPositionForViewPoint_( SwDrawTextInfo& rInf )
     if ( !pLastFont || pLastFont->GetOwner() != m_nFontCacheId )
         ChgFnt( rInf.GetShell(), rInf.GetOut() );
 
-    SwDigitModeModifier aDigitModeModifier( rInf.GetOut(), rInf.GetFont()->GetLanguage() );
+    SwDigitModeModifier aDigitModeModifier(rInf.GetOut(), rInf.GetFont()->GetLanguage(),
+                                           SwModule::get()->GetCTLTextNumerals());
 
     TextFrameIndex const nLn = rInf.GetLen() == TextFrameIndex(COMPLETE_STRING)
             ? TextFrameIndex(rInf.GetText().getLength())

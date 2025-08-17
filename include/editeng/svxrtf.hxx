@@ -33,9 +33,8 @@
 #include <map>
 #include <memory>
 
-struct SvxRTFStyleType;
 class SvxRTFItemStackType;
-class SvxRTFItemStackList : public std::vector<std::unique_ptr<SvxRTFItemStackType>> {};
+using SvxRTFItemStackList = std::vector<std::unique_ptr<SvxRTFItemStackType>>;
 
 // Mapper-Classes for the various requirements on Document positions
 //        Swg - NodePosition is a SwContentIndex, which is used internally

@@ -51,6 +51,10 @@
 
 #include <comphelper/lok.hxx>
 
+#include <swcont.hxx>
+#include <content.hxx>
+#include <vcl/jsdialog/executor.hxx>
+
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::frame;
 
@@ -73,9 +77,13 @@ OUString SwNavigationPI::CleanEntry(const OUString& rEntry)
 void SwNavigationPI::MoveOutline(SwOutlineNodes::size_type nSource, SwOutlineNodes::size_type nTarget)
 {
     SwView *pView = GetCreateView();
+    if (!pView)
+        return;
     SwWrtShell &rSh = pView->GetWrtShell();
-    if(nTarget < nSource || nTarget == SwOutlineNodes::npos)
-        nTarget ++;
+    if (nTarget == SwOutlineNodes::npos)
+        nTarget = 0;
+    else if (nTarget < nSource)
+        nTarget++;
     if ( !rSh.IsOutlineMovable( nSource ))
         return;
 
@@ -148,6 +156,15 @@ IMPL_LINK(SwNavigationPI, NavigateByComboBoxSelectHdl, weld::ComboBox&, rComboBo
     UpdateNavigateBy();
 }
 
+void SwNavigationPI::SetContent3And4ToolBoxVisibility()
+{
+    if (IsGlobalMode())
+        return;
+    bool bIsMoveTypePage = SwView::GetMoveType() == NID_PGE;
+    m_xContent3ToolBox->set_visible(!bIsMoveTypePage);
+    m_xContent4ToolBox->set_visible(bIsMoveTypePage);
+}
+
 // Filling of the list box for outline view or documents
 // The PI will be set to full size
 void SwNavigationPI::FillBox()
@@ -177,23 +194,6 @@ void SwNavigationPI::FillBox()
     }
 }
 
-void SwNavigationPI::UsePage()
-{
-    SwView *pView = GetCreateView();
-    SwWrtShell *pSh = pView ? &pView->GetWrtShell() : nullptr;
-    m_xEdit->set_value(1);
-    if (pSh)
-    {
-        const sal_uInt16 nPageCnt = pSh->GetPageCnt();
-        sal_uInt16 nPhyPage, nVirPage;
-        pSh->GetPageNum(nPhyPage, nVirPage);
-
-        m_xEdit->set_max(nPageCnt);
-        m_xEdit->set_width_chars(3);
-        m_xEdit->set_value(nPhyPage);
-    }
-}
-
 // Select handler of the toolboxes
 IMPL_LINK(SwNavigationPI, ToolBoxSelectHdl, const OUString&, rCommand, void)
 {
@@ -205,14 +205,7 @@ IMPL_LINK(SwNavigationPI, ToolBoxSelectHdl, const OUString&, rCommand, void)
 
     int nFuncId = 0;
     bool bFocusToDoc = false;
-    if (rCommand == ".uno:ScrollToPrevious" || rCommand == ".uno:ScrollToNext")
-    {
-        bool *pbNext = new bool(true);
-        if (rCommand == ".uno:ScrollToPrevious")
-            *pbNext = false;
-        pView->MoveNavigationHdl(pbNext);
-    }
-    else if (rCommand == "root")
+    if (rCommand == "root")
     {
         m_xContentTree->ToggleToRoot();
     }
@@ -286,31 +279,19 @@ IMPL_LINK(SwNavigationPI, ToolBoxSelectHdl, const OUString&, rCommand, void)
     {
         rSh.GetView().GetViewFrame().GetDispatcher()->Execute(FN_SET_REMINDER, SfxCallMode::ASYNCHRON);
     }
-    else if (rCommand == "chapterdown" ||
-             rCommand == "movedown" ||
-             rCommand == "chapterup" ||
+    else if (rCommand == "movedown" ||
              rCommand == "moveup" ||
-             rCommand == "promote" ||
-             rCommand == "demote" ||
              rCommand == "edit")
     {
         if (IsGlobalMode())
             m_xGlobalTree->ExecCommand(rCommand);
-        else
-        {
-            // Standard: sublevels are taken
-            // do not take sublevels with Ctrl
-            bool bOutlineWithChildren = (KEY_MOD1 != m_xContent6ToolBox->get_modifier_state());
-            m_xContentTree->ExecCommand(rCommand, bOutlineWithChildren);
-        }
     }
     else if (rCommand == "contenttoggle" || rCommand == "globaltoggle")
     {
         ToggleTree();
         bool bGlobalMode = IsGlobalMode();
         m_pConfig->SetGlobalActive(bGlobalMode);
-        m_xGlobalToolBox->set_item_active("globaltoggle", bGlobalMode);
-        m_xContent1ToolBox->set_item_active("contenttoggle", bGlobalMode);
+        m_xGlobalToolBox->set_item_active(u"globaltoggle"_ustr, bGlobalMode);
     }
     else if (rCommand == "save")
     {
@@ -318,14 +299,12 @@ IMPL_LINK(SwNavigationPI, ToolBoxSelectHdl, const OUString&, rCommand, void)
         rSh.SetGlblDocSaveLinks( !bSave );
         m_xGlobalToolBox->set_item_active(rCommand, !bSave);
     }
-    else if (rCommand == "dragmode")
-        m_xContent6ToolBox->set_menu_item_active("dragmode", !m_xContent6ToolBox->get_menu_item_active("dragmode"));
     else if (rCommand == "headings")
-        m_xContent5ToolBox->set_menu_item_active("headings", !m_xContent5ToolBox->get_menu_item_active("headings"));
+        m_xContent5ToolBox->set_menu_item_active(u"headings"_ustr, !m_xContent5ToolBox->get_menu_item_active(u"headings"_ustr));
     else if (rCommand == "update")
-        m_xGlobalToolBox->set_menu_item_active("update", !m_xGlobalToolBox->get_menu_item_active("update"));
+        m_xGlobalToolBox->set_menu_item_active(u"update"_ustr, !m_xGlobalToolBox->get_menu_item_active(u"update"_ustr));
     else if (rCommand == "insert")
-        m_xGlobalToolBox->set_menu_item_active("insert", !m_xGlobalToolBox->get_menu_item_active("insert"));
+        m_xGlobalToolBox->set_menu_item_active(u"insert"_ustr, !m_xGlobalToolBox->get_menu_item_active(u"insert"_ustr));
 
     if (nFuncId)
         lcl_UnSelectFrame(&rSh);
@@ -345,38 +324,6 @@ IMPL_LINK(SwNavigationPI, ToolBoxClickHdl, const OUString&, rCommand, void)
         m_xGlobalTree->TbxMenuHdl(rCommand, *m_xInsertMenu);
 }
 
-IMPL_LINK(SwNavigationPI, ToolBox6DropdownClickHdl, const OUString&, rCommand, void)
-{
-    if (!m_xContent6ToolBox->get_menu_item_active(rCommand))
-        return;
-
-    if (rCommand != "dragmode")
-        return;
-
-    switch (m_nRegionMode)
-    {
-        case RegionMode::NONE:
-            m_xDragModeMenu->set_active("hyperlink", true);
-            break;
-        case RegionMode::LINK:
-            m_xDragModeMenu->set_active("link", true);
-            break;
-        case RegionMode::EMBEDDED:
-            m_xDragModeMenu->set_active("copy", true);
-            break;
-    }
-}
-
-IMPL_LINK(SwNavigationPI, DropModeMenuSelectHdl, const OUString&, rIdent, void)
-{
-    if (rIdent == "hyperlink")
-        SetRegionDropMode(RegionMode::NONE);
-    else if (rIdent == "link")
-        SetRegionDropMode(RegionMode::LINK);
-    else if (rIdent == "copy")
-        SetRegionDropMode(RegionMode::EMBEDDED);
-}
-
 IMPL_LINK(SwNavigationPI, GlobalMenuSelectHdl, const OUString&, rIdent, void)
 {
     m_xGlobalTree->ExecuteContextMenuAction(rIdent);
@@ -389,39 +336,6 @@ IMPL_LINK(SwNavigationPI, ToolBox5DropdownClickHdl, const OUString&, rCommand, v
 
     if (rCommand == "headings")
         m_xHeadingsMenu->set_active(OUString::number(m_xContentTree->GetOutlineLevel()), true);
-}
-
-// Action-Handler Edit:
-// Switches to the page if the structure view is not turned on.
-bool SwNavigationPI::EditAction()
-{
-    SwView *pView = GetCreateView();
-    if (!pView)
-        return false;
-
-    if (m_aPageChgIdle.IsActive())
-        m_aPageChgIdle.Stop();
-
-    // if the user has clicked into the document, forget about changing the page
-    if (pView->GetEditWin().HasFocus())
-        return false;
-
-    if (m_xEdit->get_text().isEmpty())
-        return false;
-    sal_Int64 nNewPage = m_xEdit->get_text().toInt32();
-    SwWrtShell& rSh = m_pCreateView->GetWrtShell();
-    sal_Int64 max = rSh.GetPageCnt();
-    if (nNewPage <= 0)
-        nNewPage = 1;
-    else if (nNewPage > max)
-        nNewPage = max;
-    m_xEdit->set_value(nNewPage);
-    m_xEdit->set_position(-1);
-
-    rSh.GotoPage(nNewPage, true);
-    m_pCreateView->GetViewFrame().GetBindings().Invalidate(FN_STAT_PAGE);
-
-    return true;
 }
 
 void SwNavigationPI::ZoomOut()
@@ -452,9 +366,9 @@ void SwNavigationPI::ZoomOut()
     pNav->SetMinOutputSizePixel(aOptimalSize);
     pNav->SetOutputSizePixel(aNewSize);
 
-    m_xContentTree->Select(); // Enable toolbox
+    m_xContentTree->UpdateContentFunctionsToolbar(); // Enable toolbox
     m_pConfig->SetSmall(false);
-    m_xContent6ToolBox->set_item_active("listbox", true);
+    m_xContent6ToolBox->set_item_active(u"listbox"_ustr, true);
 }
 
 void SwNavigationPI::ZoomIn()
@@ -481,21 +395,10 @@ void SwNavigationPI::ZoomIn()
     pNav->SetMinOutputSizePixel(aOptimalSize);
     pNav->SetOutputSizePixel(aNewSize);
 
-    m_xContentTree->Select(); // Enable toolbox
+    m_xContentTree->UpdateContentFunctionsToolbar(); // Enable toolbox
 
     m_pConfig->SetSmall(true);
-    m_xContent6ToolBox->set_item_active("listbox", false);
-}
-
-namespace {
-
-enum StatusIndex
-{
-    IDX_STR_HIDDEN = 0,
-    IDX_STR_ACTIVE = 1,
-    IDX_STR_INACTIVE = 2
-};
-
+    m_xContent6ToolBox->set_item_active(u"listbox"_ustr, false);
 }
 
 std::unique_ptr<PanelLayout> SwNavigationPI::Create(weld::Widget* pParent,
@@ -503,74 +406,61 @@ std::unique_ptr<PanelLayout> SwNavigationPI::Create(weld::Widget* pParent,
     SfxBindings* pBindings)
 {
     if( pParent == nullptr )
-        throw css::lang::IllegalArgumentException("no parent window given to SwNavigationPI::Create", nullptr, 0);
+        throw css::lang::IllegalArgumentException(u"no parent window given to SwNavigationPI::Create"_ustr, nullptr, 0);
     if( !rxFrame.is() )
-        throw css::lang::IllegalArgumentException("no XFrame given to SwNavigationPI::Create", nullptr, 0);
+        throw css::lang::IllegalArgumentException(u"no XFrame given to SwNavigationPI::Create"_ustr, nullptr, 0);
     if( pBindings == nullptr )
-        throw css::lang::IllegalArgumentException("no SfxBindings given to SwNavigationPI::Create", nullptr, 0);
+        throw css::lang::IllegalArgumentException(u"no SfxBindings given to SwNavigationPI::Create"_ustr, nullptr, 0);
     return std::make_unique<SwNavigationPI>(pParent, rxFrame, pBindings, nullptr);
-}
-
-IMPL_LINK_NOARG(SwNavigationPI, PageModifiedHdl, weld::Entry&, void)
-{
-    SwView* pView = GetCreateView();
-    if (!pView)
-        return;
-    if (m_xEdit->get_text().isEmpty())
-        return;
-    sal_Int64 page_value = m_xEdit->get_text().toInt32();
-    SwWrtShell& rSh = m_pCreateView->GetWrtShell();
-    sal_Int64 max = rSh.GetPageCnt();
-    if (page_value <= 0)
-        m_xEdit->set_value(1);
-    else if (page_value > max)
-        m_xEdit->set_value(max);
-    else
-        m_xEdit->set_value(page_value);
-    m_xEdit->set_position(-1);
 }
 
 SwNavigationPI::SwNavigationPI(weld::Widget* pParent,
     const css::uno::Reference<css::frame::XFrame>& rxFrame,
     SfxBindings* _pBindings, SfxNavigator* pNavigatorDlg)
-    : PanelLayout(pParent, "NavigatorPanel", "modules/swriter/ui/navigatorpanel.ui")
+    : PanelLayout(pParent, u"NavigatorPanel"_ustr, u"modules/swriter/ui/navigatorpanel.ui"_ustr)
     , m_aDocFullName(SID_DOCFULLNAME, *_pBindings, *this)
     , m_aPageStats(FN_STAT_PAGE, *_pBindings, *this)
-    , m_xContent1ToolBox(m_xBuilder->weld_toolbar("content1"))
-    , m_xContent2ToolBox(m_xBuilder->weld_toolbar("content2"))
-    , m_xContent3ToolBox(m_xBuilder->weld_toolbar("content3"))
-    , m_xContent4ToolBox(m_xBuilder->weld_toolbar("content4"))
-    , m_xContent5ToolBox(m_xBuilder->weld_toolbar("content5"))
-    , m_xContent6ToolBox(m_xBuilder->weld_toolbar("content6"))
+    , m_aNavElement(FN_NAV_ELEMENT, *_pBindings, *this)
+    , m_xFrame(rxFrame)
+    , m_xContent1ToolBox(m_xBuilder->weld_toolbar(u"content1"_ustr))
+    , m_xContent2ToolBox(m_xBuilder->weld_toolbar(u"content2"_ustr))
+    , m_xContent3ToolBox(m_xBuilder->weld_toolbar(u"content3"_ustr))
+    , m_xContent4ToolBox(m_xBuilder->weld_toolbar(u"content4"_ustr))
+    , m_xContent5ToolBox(m_xBuilder->weld_toolbar(u"content5"_ustr))
+    , m_xContent6ToolBox(m_xBuilder->weld_toolbar(u"content6"_ustr))
     , m_xContent2Dispatch(new ToolbarUnoDispatcher(*m_xContent2ToolBox, *m_xBuilder, rxFrame))
     , m_xContent3Dispatch(new ToolbarUnoDispatcher(*m_xContent3ToolBox, *m_xBuilder, rxFrame))
-    , m_xHeadingsMenu(m_xBuilder->weld_menu("headingsmenu"))
-    , m_xDragModeMenu(m_xBuilder->weld_menu("dragmodemenu"))
-    , m_xUpdateMenu(m_xBuilder->weld_menu("updatemenu"))
-    , m_xInsertMenu(m_xBuilder->weld_menu("insertmenu"))
-    , m_xGlobalToolBox(m_xBuilder->weld_toolbar("global"))
-    , m_xEdit(m_xBuilder->weld_spin_button("spinbutton"))
-    , m_xContentBox(m_xBuilder->weld_widget("contentbox"))
-    , m_xContentTree(new SwContentTree(m_xBuilder->weld_tree_view("contenttree"), this))
-    , m_xGlobalBox(m_xBuilder->weld_widget("globalbox"))
-    , m_xGlobalTree(new SwGlobalTree(m_xBuilder->weld_tree_view("globaltree"), this))
-    , m_xDocListBox(m_xBuilder->weld_combo_box("documents"))
-    , m_aPageChgIdle("SwNavigationPI m_aPageChgIdle")
+    , m_xHeadingsMenu(m_xBuilder->weld_menu(u"headingsmenu"_ustr))
+    , m_xUpdateMenu(m_xBuilder->weld_menu(u"updatemenu"_ustr))
+    , m_xInsertMenu(m_xBuilder->weld_menu(u"insertmenu"_ustr))
+    , m_xGlobalToolBox(m_xBuilder->weld_toolbar(u"global"_ustr))
+    , m_xGotoPageSpinButton(m_xBuilder->weld_spin_button(u"gotopage"_ustr))
+    , m_xContentBox(m_xBuilder->weld_widget(u"contentbox"_ustr))
+    , m_xContentTree(new SwContentTree(m_xBuilder->weld_tree_view(u"contenttree"_ustr), this))
+    , m_xGlobalBox(m_xBuilder->weld_widget(u"globalbox"_ustr))
+    , m_xGlobalTree(new SwGlobalTree(m_xBuilder->weld_tree_view(u"globaltree"_ustr), this))
+    , m_xDocListBox(m_xBuilder->weld_combo_box(u"documents"_ustr))
     , m_xNavigatorDlg(pNavigatorDlg)
     , m_pContentView(nullptr)
     , m_pContentWrtShell(nullptr)
     , m_pActContView(nullptr)
     , m_pCreateView(nullptr)
-    , m_pConfig(SW_MOD()->GetNavigationConfig())
+    , m_pConfig(SwModule::get()->GetNavigationConfig())
     , m_rBindings(*_pBindings)
-    , m_nRegionMode(RegionMode::NONE)
     , m_bIsZoomedIn(false)
     , m_bGlobalMode(false)
 {
+    InitContentFunctionsToolbar();
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        sal_uInt64 nShellId = reinterpret_cast<sal_uInt64>(SfxViewShell::Current());
+        jsdialog::SendNavigatorForView(nShellId);
+    }
+
     m_xContainer->connect_container_focus_changed(LINK(this, SwNavigationPI, SetFocusChildHdl));
 
     Reference<XToolbarController> xController =
-            m_xContent2Dispatch->GetControllerForCommand(".uno:NavElement");
+            m_xContent2Dispatch->GetControllerForCommand(u".uno:NavElement"_ustr);
     NavElementToolBoxControl* pToolBoxControl =
             dynamic_cast<NavElementToolBoxControl*>(xController.get());
 
@@ -583,6 +473,7 @@ SwNavigationPI::SwNavigationPI(weld::Widget* pParent,
     {
         assert(pToolBoxControl);
         m_pNavigateByComboBox = pToolBoxControl->GetComboBox();
+        SetContent3And4ToolBoxVisibility();
     }
 
     // Restore content tree settings before calling UpdateInitShow. UpdateInitShow calls Fillbox,
@@ -601,7 +492,7 @@ SwNavigationPI::SwNavigationPI(weld::Widget* pParent,
             nRootType != ContentTypeId::UNKNOWN)
     {
         m_xContentTree->SetRootType(nRootType);
-        m_xContent5ToolBox->set_item_active("root", true);
+        m_xContent5ToolBox->set_item_active(u"root"_ustr, true);
         if (nRootType == ContentTypeId::OUTLINE || nRootType == ContentTypeId::DRAWOBJECT)
             m_xContentTree->set_selection_mode(SelectionMode::Multiple);
         else
@@ -624,50 +515,11 @@ SwNavigationPI::SwNavigationPI(weld::Widget* pParent,
     m_xDocListBox->set_help_id(HID_NAVIGATOR_LISTBOX);
     m_xDocListBox->set_size_request(42, -1); // set a nominal width so it takes width of surroundings
 
-    // Insert the numeric field in the toolbox.
-    m_xEdit->set_accessible_name(m_xEdit->get_tooltip_text());
-    m_xEdit->set_width_chars(3);
-    m_xEdit->connect_activate(LINK(this, SwNavigationPI, EditActionHdl));
-    m_xEdit->connect_value_changed(LINK(this, SwNavigationPI, PageEditModifyHdl));
-    m_xEdit->connect_changed(LINK(this, SwNavigationPI, PageModifiedHdl));
-    m_xEdit->set_help_id("modules/swriter/ui/navigatorpanel/numericfield");
-
-    if (!IsGlobalDoc())
-    {
-        m_xContent1ToolBox->set_item_visible("contenttoggle", false);
-    }
-
-    const TranslateId REGIONNAME_ARY[] =
-    {
-        STR_HYPERLINK,
-        STR_LINK_REGION,
-        STR_COPY_REGION
-    };
-
-    const TranslateId REGIONMODE_ARY[] =
-    {
-        STR_HIDDEN,
-        STR_ACTIVE,
-        STR_INACTIVE
-    };
-
-    static_assert(SAL_N_ELEMENTS(REGIONNAME_ARY) == SAL_N_ELEMENTS(REGIONMODE_ARY), "### unexpected size!");
-    static_assert(SAL_N_ELEMENTS(REGIONNAME_ARY) == static_cast<sal_uInt16>(RegionMode::EMBEDDED) + 1, "### unexpected size!");
-
-    for (sal_uInt16 i = 0; i <= static_cast<sal_uInt16>(RegionMode::EMBEDDED); ++i)
-    {
-        m_aStatusArr[i] = SwResId(REGIONMODE_ARY[i]);
-    }
-
-    m_aStatusArr[3] = SwResId(STR_ACTIVE_VIEW);
-
     bool bFloatingNavigator = ParentIsFloatingWindow(m_xNavigatorDlg);
 
-    SetRegionDropMode(m_pConfig->GetRegionMode());
-
     m_xContentTree->ShowTree();
-    m_xContent6ToolBox->set_item_active("listbox", true);
-    m_xContent6ToolBox->set_item_sensitive("listbox", bFloatingNavigator);
+    m_xContent6ToolBox->set_item_active(u"listbox"_ustr, true);
+    m_xContent6ToolBox->set_item_sensitive(u"listbox"_ustr, bFloatingNavigator);
 
 //  TreeListBox for global document
     m_xGlobalTree->set_selection_mode(SelectionMode::Multiple);
@@ -675,32 +527,24 @@ SwNavigationPI::SwNavigationPI(weld::Widget* pParent,
 //  Handler
     Link<const OUString&, void> aLk = LINK(this, SwNavigationPI, ToolBoxSelectHdl);
     m_xContent1ToolBox->connect_clicked(aLk);
-    m_xContent3ToolBox->connect_clicked(aLk);
     m_xContent5ToolBox->connect_clicked(aLk);
     m_xContent6ToolBox->connect_clicked(aLk);
     m_xGlobalToolBox->connect_clicked(aLk);
     m_xDocListBox->connect_changed(LINK(this, SwNavigationPI, DocListBoxSelectHdl));
-    m_xContent5ToolBox->set_item_menu("headings", m_xHeadingsMenu.get());
+    m_xContent5ToolBox->set_item_menu(u"headings"_ustr, m_xHeadingsMenu.get());
     m_xHeadingsMenu->connect_activate(LINK(this, SwNavigationPI, HeadingsMenuSelectHdl));
     m_xContent5ToolBox->connect_menu_toggled(LINK(this, SwNavigationPI, ToolBox5DropdownClickHdl));
-    m_xContent6ToolBox->set_item_menu("dragmode", m_xDragModeMenu.get());
-    m_xDragModeMenu->connect_activate(LINK(this, SwNavigationPI, DropModeMenuSelectHdl));
-    m_xContent6ToolBox->connect_menu_toggled(LINK(this, SwNavigationPI, ToolBox6DropdownClickHdl));
-    m_xGlobalToolBox->set_item_menu("update", m_xUpdateMenu.get());
+    m_xGlobalToolBox->set_item_menu(u"update"_ustr, m_xUpdateMenu.get());
     m_xUpdateMenu->connect_activate(LINK(this, SwNavigationPI, GlobalMenuSelectHdl));
-    m_xGlobalToolBox->set_item_menu("insert", m_xInsertMenu.get());
+    m_xGlobalToolBox->set_item_menu(u"insert"_ustr, m_xInsertMenu.get());
     m_xInsertMenu->connect_activate(LINK(this, SwNavigationPI, GlobalMenuSelectHdl));
     m_xGlobalToolBox->connect_menu_toggled(LINK(this, SwNavigationPI, ToolBoxClickHdl));
-    m_xGlobalToolBox->set_item_active("globaltoggle", true);
+    m_xGlobalToolBox->set_item_active(u"globaltoggle"_ustr, true);
     if (m_pNavigateByComboBox)
         m_pNavigateByComboBox->connect_changed(
             LINK(this, SwNavigationPI, NavigateByComboBoxSelectHdl));
-
-//  set toolbar of both modes to widest of each
-    m_xGlobalToolBox->set_size_request(m_xContent1ToolBox->get_preferred_size().Width() +
-                                       m_xContent2ToolBox->get_preferred_size().Width() +
-                                       m_xContent3ToolBox->get_preferred_size().Width() +
-                                       m_xContent4ToolBox->get_preferred_size().Width(), -1);
+    m_xGotoPageSpinButton->connect_value_changed(
+        LINK(this, SwNavigationPI, GotoPageSpinButtonValueChangedHdl));
 
     StartListening(*SfxGetpApp());
 
@@ -708,28 +552,27 @@ SwNavigationPI::SwNavigationPI(weld::Widget* pParent,
     {
         SwView *pActView = GetCreateView();
         if (pActView && pActView->GetWrtShellPtr())
-            m_xGlobalToolBox->set_item_active("save",
+            m_xGlobalToolBox->set_item_active(u"save"_ustr,
                         pActView->GetWrtShellPtr()->IsGlblDocSaveLinks());
         if (m_pConfig->IsGlobalActive())
             ToggleTree();
+        else
+            m_xContent1ToolBox->set_visible(true);
         if (bFloatingNavigator)
             m_xGlobalTree->grab_focus();
     }
     else if (bFloatingNavigator)
         m_xContentTree->grab_focus();
-    UsePage();
-    m_aPageChgIdle.SetInvokeHandler(LINK(this, SwNavigationPI, ChangePageHdl));
-    m_aPageChgIdle.SetPriority(TaskPriority::LOWEST);
 
     m_xContentTree->set_accessible_name(SwResId(STR_ACCESS_TL_CONTENT));
     m_xGlobalTree->set_accessible_name(SwResId(STR_ACCESS_TL_GLOBAL));
-    m_xDocListBox->set_accessible_name(m_aStatusArr[3]);
+    m_xDocListBox->set_accessible_name(SwResId(STR_ACTIVE_VIEW));
 
     m_aExpandedSize = m_xContainer->get_preferred_size();
 
     if(comphelper::LibreOfficeKit::isActive())
     {
-        m_xBuilder->weld_container("gridcontent16")->hide();
+        m_xBuilder->weld_container(u"gridcontent16"_ustr)->hide();
         m_xDocListBox->hide();
         m_xGlobalBox->hide();
         m_xGlobalToolBox->hide();
@@ -737,10 +580,233 @@ SwNavigationPI::SwNavigationPI(weld::Widget* pParent,
 
         //Open Headings by default
         SwView *pView = GetCreateView();
-        if (pView->m_nNaviExpandedStatus < 0)
+        if (pView && pView->m_nNaviExpandedStatus < 0)
         {
             pView->m_nNaviExpandedStatus = 1;
             m_xContentTree->ExpandAllHeadings();
+        }
+    }
+}
+
+void SwNavigationPI::InitContentFunctionsToolbar()
+{
+    m_xHeadingsContentFunctionsToolbar
+        = m_xBuilder->weld_toolbar("HeadingsContentFunctionButtonsToolbar");
+    m_xDeleteFunctionToolbar = m_xBuilder->weld_toolbar("DeleteFunctionButtonToolbar");
+
+    const OUString sContentTypes[]
+        = { "Headings",  "Tables",         "Frames",     "Images",     "OLEobjects",
+            "Bookmarks", "Sections",       "Hyperlinks", "References", "Indexes",
+            "Comments",  "Drawingobjects", "Fields",     "Footnotes",  "Endnotes" };
+
+    for (ContentTypeId eContentTypeId : o3tl::enumrange<ContentTypeId>())
+    {
+        if (eContentTypeId == ContentTypeId::OUTLINE)
+            continue;
+        m_aContentTypeUnoToolbarMap[eContentTypeId] = m_xBuilder->weld_toolbar(
+            sContentTypes[static_cast<int>(eContentTypeId)] + "ContentTypeUnoToolbar");
+        m_aContentTypeToolbarUnoDispatcherMap[eContentTypeId]
+            = std::make_unique<ToolbarUnoDispatcher>(*m_aContentTypeUnoToolbarMap[eContentTypeId],
+                                                     *m_xBuilder, m_xFrame);
+        m_aContentUnoToolbarMap[eContentTypeId] = m_xBuilder->weld_toolbar(
+            sContentTypes[static_cast<int>(eContentTypeId)] + "ContentUnoToolbar");
+        m_aContentToolbarUnoDispatcherMap[eContentTypeId] = std::make_unique<ToolbarUnoDispatcher>(
+            *m_aContentUnoToolbarMap[eContentTypeId], *m_xBuilder, m_xFrame);
+    }
+
+    Link<const OUString&, void> aLink
+        = LINK(this,SwNavigationPI, ContentFunctionsToolbarSelectHdl);
+    m_xHeadingsContentFunctionsToolbar->connect_clicked(aLink);
+    m_xDeleteFunctionToolbar->connect_clicked(aLink);
+}
+
+namespace
+{
+bool lcl_ToolbarHasItemWithIdent(const weld::Toolbar& rToolbar, std::u16string_view rIdent)
+{
+    for (auto i = 0; i < rToolbar.get_n_items(); i++)
+    {
+        if (rToolbar.get_item_ident(i) == rIdent)
+            return true;
+    }
+    return false;
+}
+}
+
+void SwNavigationPI::UpdateContentFunctionsToolbar()
+{
+    m_xHeadingsContentFunctionsToolbar->hide();
+    for (ContentTypeId eContentTypeId : o3tl::enumrange<ContentTypeId>())
+    {
+        if (eContentTypeId == ContentTypeId::OUTLINE)
+            continue;
+        m_aContentTypeUnoToolbarMap[eContentTypeId]->hide();
+        m_aContentUnoToolbarMap[eContentTypeId]->hide();
+    }
+    m_xDeleteFunctionToolbar->hide();
+
+    weld::TreeView& rTreeView = m_xContentTree->get_widget();
+
+    if (IsZoomedIn() || !rTreeView.is_visible())
+        return;
+
+    std::unique_ptr<weld::TreeIter> xEntry(rTreeView.make_iterator());
+    if (!rTreeView.get_selected(xEntry.get()))
+        return;
+
+    bool bUseDeleteFunctionsToolbar = true;
+    ContentTypeId eContentTypeId = ContentTypeId::UNKNOWN;
+
+    const bool bContentType
+        = weld::fromId<const SwTypeNumber*>(rTreeView.get_id(*xEntry))->GetTypeId() == 1;
+
+    if (bContentType)
+    {
+        const SwContentType* pContentType = weld::fromId<SwContentType*>(rTreeView.get_id(*xEntry));
+        eContentTypeId = pContentType->GetType();
+        if (eContentTypeId == ContentTypeId::OUTLINE)
+            return;
+        weld::Toolbar& rContentTypeToolbar = *m_aContentTypeUnoToolbarMap[eContentTypeId];
+        if (rContentTypeToolbar.get_n_items())
+        {
+            if (eContentTypeId == ContentTypeId::POSTIT)
+            {
+                // prefer .uno:DeleteAllNotes over delete functions toolbar
+                bUseDeleteFunctionsToolbar
+                    = !lcl_ToolbarHasItemWithIdent(rContentTypeToolbar, u".uno:DeleteAllNotes");
+            }
+            rContentTypeToolbar.show();
+        }
+    }
+    else
+    {
+        const SwContentType* pContentType
+            = weld::fromId<SwContent*>(rTreeView.get_id(*xEntry))->GetParent();
+        eContentTypeId = pContentType->GetType();
+        if (eContentTypeId == ContentTypeId::OUTLINE)
+        {
+            // todo: make buttons sensitive to movability (think position and protection)
+            m_xHeadingsContentFunctionsToolbar->show();
+        }
+        else if (m_xContentTree->IsSelectedEntryCurrentDocCursorPosition(*xEntry))
+        {
+            weld::Toolbar& rContentTypeToolbar = *m_aContentUnoToolbarMap[eContentTypeId];
+            if (rContentTypeToolbar.get_n_items())
+            {
+                if (eContentTypeId == ContentTypeId::TABLE)
+                {
+                    // prefer .uno:DeleteTable over delete functions toolbar
+                    bUseDeleteFunctionsToolbar
+                        = !lcl_ToolbarHasItemWithIdent(rContentTypeToolbar, u".uno:DeleteTable");
+                }
+                else if (eContentTypeId == ContentTypeId::INDEX)
+                {
+                    // prefer .uno:RemoveTableOf over delete functions toolbar
+                    bUseDeleteFunctionsToolbar
+                        = !lcl_ToolbarHasItemWithIdent(rContentTypeToolbar, u".uno:RemoveTableOf");
+                }
+                rContentTypeToolbar.show();
+            }
+        }
+    }
+
+    if (bUseDeleteFunctionsToolbar && m_xContentTree->IsDeletable(*xEntry))
+    {
+        OUString sToolTip;
+        switch (eContentTypeId)
+        {
+            case ContentTypeId::OUTLINE:
+                sToolTip = SwResId(STR_DELETE_OUTLINE);
+                break;
+            case ContentTypeId::TABLE:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_TABLES : STR_DELETE_TABLE);
+                break;
+            case ContentTypeId::FRAME:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_FRAMES : STR_DELETE_FRAME);
+                break;
+            case ContentTypeId::GRAPHIC:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_GRAPHIC : STR_DELETE_GRAPHIC);
+                break;
+            case ContentTypeId::OLE:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_OLE_OBJECTS : STR_DELETE_OLE_OBJECT);
+                break;
+            case ContentTypeId::BOOKMARK:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_BOOKMARKS : STR_DELETE_BOOKMARK);
+                break;
+            case ContentTypeId::REGION:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_REGIONS : STR_DELETE_REGION);
+                break;
+            case ContentTypeId::URLFIELD:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_URLFIELDS : STR_DELETE_URLFIELD);
+                break;
+            case ContentTypeId::REFERENCE:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_REFERENCES : STR_DELETE_REFERENCE);
+                break;
+            case ContentTypeId::INDEX:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_INDEXES : STR_DELETE_INDEX);
+                break;
+            case ContentTypeId::POSTIT:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_POSTITS : STR_DELETE_POSTIT);
+                break;
+            case ContentTypeId::DRAWOBJECT:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_DRAWOBJECTS : STR_DELETE_DRAWOBJECT);
+                break;
+            case ContentTypeId::TEXTFIELD:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_TEXTFIELDS : STR_DELETE_TEXTFIELD);
+                break;
+            case ContentTypeId::FOOTNOTE:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_FOOTNOTES : STR_DELETE_FOOTNOTE);
+                break;
+            case ContentTypeId::ENDNOTE:
+                sToolTip = SwResId(bContentType ? STR_DELETE_ALL_ENDNOTES : STR_DELETE_ENDNOTE);
+                break;
+            default:
+                break;
+        }
+        if (!sToolTip.isEmpty())
+        {
+            m_xDeleteFunctionToolbar->set_item_tooltip_text("delete", sToolTip);
+            m_xDeleteFunctionToolbar->show();
+        }
+    }
+}
+
+IMPL_LINK(SwNavigationPI, ContentFunctionsToolbarSelectHdl, const OUString&, rCommand, void)
+{
+    weld::TreeView& rTreeView = m_xContentTree->get_widget();
+
+    std::unique_ptr<weld::TreeIter> xEntry(rTreeView.make_iterator());
+    if (!rTreeView.get_selected(xEntry.get()))
+        return;
+
+    const bool bContentEntry
+        = weld::fromId<const SwTypeNumber*>(rTreeView.get_id(*xEntry))->GetTypeId() == 0;
+
+    if (bContentEntry)
+    {
+        SwContent* pContent = weld::fromId<SwContent*>(rTreeView.get_id(*xEntry));
+        if (pContent)
+            m_xContentTree->GotoContent(pContent);
+    }
+
+    if (rCommand == "chapterdown" || rCommand == "chapterup" || rCommand == "promote"
+        || rCommand == "demote")
+    {
+        // Get MouseModifier for Outline-Move
+        // Standard: sublevels are taken
+        // do not take sublevels with Ctrl
+        bool bOutlineWithChildren = (KEY_MOD1 != m_xContent6ToolBox->get_modifier_state());
+        m_xContentTree->ExecCommand(rCommand, bOutlineWithChildren);
+    }
+    else if (rCommand == "delete")
+    {
+        if (!bContentEntry)
+        {
+            m_xContentTree->DeleteAllContentOfEntryContentType(*xEntry);
+        }
+        else
+        {
+            m_xContentTree->EditEntry(*xEntry, EditEntryMode::DELETE);
         }
     }
 }
@@ -750,6 +816,25 @@ weld::Window* SwNavigationPI::GetFrameWeld() const
     if (m_xNavigatorDlg)
         return m_xNavigatorDlg->GetFrameWeld();
     return PanelLayout::GetFrameWeld();
+}
+
+IMPL_LINK_NOARG(SwNavigationPI, GotoPageSpinButtonValueChangedHdl, weld::SpinButton&, void)
+{
+    auto nPage = m_xGotoPageSpinButton->get_value();
+    SwView *pView = GetCreateView();
+    SwWrtShell &rSh = pView->GetWrtShell();
+    auto nPageCount = rSh.GetPageCount();
+    if (nPage > nPageCount)
+    {
+        nPage = nPageCount;
+        m_xGotoPageSpinButton->set_text(OUString::number(nPage));
+    }
+    rSh.LockView(true);
+    rSh.GotoPage(nPage, false);
+    // adjust the visible area so that the top of the page is at the top of the view
+    const Point aPt(pView->GetVisArea().Left(), rSh.GetPagePos(nPage).Y());
+    pView->SetVisArea(aPt);
+    rSh.LockView(false);
 }
 
 SwNavigationPI::~SwNavigationPI()
@@ -777,9 +862,8 @@ SwNavigationPI::~SwNavigationPI()
     m_xContentTree.reset();
     m_xContentBox.reset();
     m_xGlobalToolBox.reset();
-    m_xEdit.reset();
+    m_xGotoPageSpinButton.reset();
     m_xHeadingsMenu.reset();
-    m_xDragModeMenu.reset();
     m_xUpdateMenu.reset();
     m_xInsertMenu.reset();
     m_xContent2Dispatch.reset();
@@ -791,49 +875,53 @@ SwNavigationPI::~SwNavigationPI()
     m_xContent5ToolBox.reset();
     m_xContent6ToolBox.reset();
 
-    m_aPageChgIdle.Stop();
-
     m_aDocFullName.dispose();
     m_aPageStats.dispose();
+    m_aNavElement.dispose();
 }
 
 void SwNavigationPI::NotifyItemUpdate(sal_uInt16 nSID, SfxItemState /*eState*/,
                                       const SfxPoolItem* /*pState*/)
 {
-    if (nSID == SID_DOCFULLNAME)
+    switch (nSID)
     {
-        SwView *pActView = GetCreateView();
-        if(pActView)
-        {
-            SwWrtShell* pWrtShell = pActView->GetWrtShellPtr();
-            m_xContentTree->SetActiveShell(pWrtShell);
-            bool bGlobal = IsGlobalDoc();
-            m_xContent1ToolBox->set_item_visible("contenttoggle", bGlobal);
-            if ((!bGlobal && IsGlobalMode()) || (!IsGlobalMode() && m_pConfig->IsGlobalActive()))
-            {
-                ToggleTree();
-            }
-            if (bGlobal)
-            {
-                m_xGlobalToolBox->set_item_active("save", pWrtShell->IsGlblDocSaveLinks());
-            }
-        }
-        else
-        {
-            m_xContentTree->SetActiveShell(nullptr);
-        }
-        UpdateListBox();
-    }
-    else if (nSID == FN_STAT_PAGE)
-    {
-        if(!comphelper::LibreOfficeKit::isActive())
+        case SID_DOCFULLNAME:
         {
             SwView *pActView = GetCreateView();
             if(pActView)
             {
-                SwWrtShell &rSh = pActView->GetWrtShell();
-                m_xEdit->set_max(rSh.GetPageCnt());
-                m_xEdit->set_width_chars(3);
+                SwWrtShell* pWrtShell = pActView->GetWrtShellPtr();
+                m_xContentTree->SetActiveShell(pWrtShell);
+                if (IsGlobalDoc())
+                {
+                    m_xGlobalToolBox->set_item_active(u"save"_ustr, pWrtShell->IsGlblDocSaveLinks());
+                }
+            }
+            else
+            {
+                m_xContentTree->SetActiveShell(nullptr);
+            }
+            UpdateListBox();
+        }
+        break;
+        case FN_NAV_ELEMENT:
+            SetContent3And4ToolBoxVisibility();
+            [[fallthrough]];
+        case FN_STAT_PAGE:
+        {
+            if (SwView::GetMoveType() == NID_PGE)
+            {
+                SwView *pView = GetCreateView();
+                if (pView)
+                {
+                    SwWrtShell& rSh = pView->GetWrtShell();
+                    if (rSh.GetViewOptions()->IsMultipageView())
+                        // maybe set the spin button text to the page that has the cursor?
+                        break;
+                    SwVisiblePageNumbers aVisiblePageNumbers;
+                    rSh.GetFirstLastVisPageNumbers(aVisiblePageNumbers, *pView);
+                    m_xGotoPageSpinButton->set_text(OUString::number(aVisiblePageNumbers.nFirstPhy));
+                }
             }
         }
     }
@@ -846,7 +934,7 @@ void SwNavigationPI::UpdateInitShow()
     // its size, the sidebar can not, and the navigator would just waste
     // space. Therefore disable this button.
     bool bParentIsFloatingWindow(ParentIsFloatingWindow(m_xNavigatorDlg));
-    m_xContent6ToolBox->set_item_sensitive("listbox", bParentIsFloatingWindow);
+    m_xContent6ToolBox->set_item_sensitive(u"listbox"_ustr, bParentIsFloatingWindow);
     // show content if docked
     if (!bParentIsFloatingWindow && IsZoomedIn())
         ZoomOut();
@@ -930,10 +1018,10 @@ void SwNavigationPI::UpdateListBox()
             if (pView == pActView)
             {
                 nAct = nCount;
-                sEntry += m_aStatusArr[IDX_STR_ACTIVE];
+                sEntry += SwResId(STR_ACTIVE);
             }
             else
-                sEntry += m_aStatusArr[IDX_STR_INACTIVE];
+                sEntry += SwResId(STR_INACTIVE);
             sEntry += ")";
             m_xDocListBox->append_text(sEntry);
 
@@ -944,16 +1032,13 @@ void SwNavigationPI::UpdateListBox()
         }
         pView = SwModule::GetNextView(pView);
     }
-    m_xDocListBox->append_text(m_aStatusArr[3]); // "Active Window"
+    m_xDocListBox->append_text(SwResId(STR_ACTIVE_VIEW)); // "Active Window"
     nCount++;
 
-    if(m_xContentTree->GetHiddenWrtShell())
+    if (SwWrtShell* pHiddenWrtShell = m_xContentTree->GetHiddenWrtShell())
     {
-        OUString sEntry = m_xContentTree->GetHiddenWrtShell()->GetView().
-                                        GetDocShell()->GetTitle() +
-            " (" +
-            m_aStatusArr[IDX_STR_HIDDEN] +
-            ")";
+        OUString sEntry = pHiddenWrtShell->GetView().GetDocShell()->GetTitle() +
+                " (" + SwResId(STR_HIDDEN) + ")";
         m_xDocListBox->append_text(sEntry);
         bDisable = false;
     }
@@ -1075,7 +1160,7 @@ sal_Int8 SwNavigationPI::ExecuteDrop( const ExecuteDropEvent& rEvt )
             m_oObjectShell.reset();
         }
         SfxStringItem aFileItem(SID_FILE_NAME, sFileName );
-        SfxStringItem aOptionsItem( SID_OPTIONS, "HRC" );
+        SfxStringItem aOptionsItem( SID_OPTIONS, u"HRC"_ustr );
         SfxLinkItem aLink( SID_DONELINK,
                             LINK( this, SwNavigationPI, DoneLink ) );
         if (SwView* pView = GetActiveView())
@@ -1086,27 +1171,7 @@ sal_Int8 SwNavigationPI::ExecuteDrop( const ExecuteDropEvent& rEvt )
     return nRet;
 }
 
-void SwNavigationPI::SetRegionDropMode(RegionMode nNewMode)
-{
-    m_nRegionMode = nNewMode;
-    m_pConfig->SetRegionMode( m_nRegionMode );
-
-    OUString sImageId;
-    switch (nNewMode)
-    {
-        case RegionMode::NONE:
-            sImageId = RID_BMP_DROP_REGION;
-            break;
-        case RegionMode::LINK:
-            sImageId = RID_BMP_DROP_LINK;
-            break;
-        case RegionMode::EMBEDDED:
-            sImageId = RID_BMP_DROP_COPY;
-            break;
-    }
-    m_xContent6ToolBox->set_item_icon_name("dragmode", sImageId);
-}
-
+// toggle between showing the global tree or the content tree
 void SwNavigationPI::ToggleTree()
 {
     if (comphelper::LibreOfficeKit::isActive())
@@ -1118,6 +1183,7 @@ void SwNavigationPI::ToggleTree()
     bool bGlobalDoc = IsGlobalDoc();
     if (!IsGlobalMode() && bGlobalDoc)
     {
+        // toggle to global mode
         if (IsZoomedIn())
             ZoomOut();
         m_xGlobalBox->show();
@@ -1139,19 +1205,18 @@ void SwNavigationPI::ToggleTree()
         m_xGlobalBox->hide();
         m_xGlobalTree->HideTree();
         m_xGlobalToolBox->hide();
+        SetGlobalMode(false);
         if (!IsZoomedIn())
         {
             m_xContentBox->show();
             m_xContentTree->ShowTree();
             m_xContent1ToolBox->show();
             m_xContent2ToolBox->show();
-            m_xContent3ToolBox->show();
-            m_xContent4ToolBox->show();
+            SetContent3And4ToolBoxVisibility();
             m_xContent5ToolBox->show();
             m_xContent6ToolBox->show();
             m_xDocListBox->show();
         }
-        SetGlobalMode(false);
     }
 }
 
@@ -1167,17 +1232,6 @@ bool SwNavigationPI::IsGlobalDoc() const
     return bRet;
 }
 
-IMPL_LINK_NOARG(SwNavigationPI, ChangePageHdl, Timer *, void)
-{
-    if (!m_xDocListBox) // disposed
-        return;
-    // tdf#134959 if the SpinButton changed value this Timer was launched, now
-    // change to the desired page, but we leave focus where it currently is,
-    // i.e. typically remaining in the spinbutton, or whatever other widget the
-    // user moved to in the meantime
-    EditAction();
-}
-
 void SwNavigationPI::SelectNavigateByContentType(const OUString& rContentTypeName)
 {
     if (!m_pNavigateByComboBox)
@@ -1187,22 +1241,6 @@ void SwNavigationPI::SelectNavigateByContentType(const OUString& rContentTypeNam
         m_pNavigateByComboBox->set_active(nPos);
         UpdateNavigateBy();
     }
-}
-
-IMPL_LINK_NOARG(SwNavigationPI, EditActionHdl, weld::Entry&, bool)
-{
-    // tdf#134959 if the user presses enter to activate the Entry
-    // go to the page, and on success we move focus to the document
-    if (EditAction())
-        m_pCreateView->GetEditWin().GrabFocus();
-    return true;
-}
-
-IMPL_LINK_NOARG(SwNavigationPI, PageEditModifyHdl, weld::SpinButton&, void)
-{
-    if (m_aPageChgIdle.IsActive())
-        m_aPageChgIdle.Stop();
-    m_aPageChgIdle.Start();
 }
 
 SwView*  SwNavigationPI::GetCreateView() const
@@ -1224,25 +1262,6 @@ SwView*  SwNavigationPI::GetCreateView() const
     return m_pCreateView;
 }
 
-class SwNavigatorWin : public SfxNavigator
-{
-private:
-    std::unique_ptr<SwNavigationPI> m_xNavi;
-public:
-    SwNavigatorWin(SfxBindings* _pBindings, SfxChildWindow* _pMgr,
-                   vcl::Window* pParent, SfxChildWinInfo* pInfo);
-    virtual void StateChanged(StateChangedType nStateChange) override;
-    virtual void dispose() override
-    {
-        m_xNavi.reset();
-        SfxNavigator::dispose();
-    }
-    virtual ~SwNavigatorWin() override
-    {
-        disposeOnce();
-    }
-};
-
 SwNavigatorWin::SwNavigatorWin(SfxBindings* _pBindings, SfxChildWindow* _pMgr,
                                vcl::Window* pParent, SfxChildWinInfo* pInfo)
     : SfxNavigator(_pBindings, _pMgr, pParent, pInfo)
@@ -1250,7 +1269,7 @@ SwNavigatorWin::SwNavigatorWin(SfxBindings* _pBindings, SfxChildWindow* _pMgr,
 {
     _pBindings->Invalidate(SID_NAVIGATOR);
 
-    SwNavigationConfig* pNaviConfig = SW_MOD()->GetNavigationConfig();
+    SwNavigationConfig* pNaviConfig = SwModule::get()->GetNavigationConfig();
 
     SetMinOutputSizePixel(GetOptimalSize());
     if (pNaviConfig->IsSmall())
@@ -1264,7 +1283,7 @@ void SwNavigatorWin::StateChanged(StateChangedType nStateChange)
         m_xNavi->UpdateInitShow();
 }
 
-SFX_IMPL_DOCKINGWINDOW(SwNavigatorWrapper, SID_NAVIGATOR);
+SFX_IMPL_DOCKINGWINDOW_WITHID(SwNavigatorWrapper, SID_NAVIGATOR);
 
 SwNavigatorWrapper::SwNavigatorWrapper(vcl::Window *_pParent, sal_uInt16 nId,
                                        SfxBindings* pBindings, SfxChildWinInfo* pInfo)

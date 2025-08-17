@@ -19,8 +19,8 @@ class SwPositionPrinter(object):
         self.value = value
 
     def to_string(self):
-        node = self.value['nNode']['m_pNode'].dereference();
-        block = node['m_pBlock'].dereference();
+        node = self.value['nNode']['m_pNode'].dereference()
+        block = node['m_pBlock'].dereference()
         nodeindex = block['nStart'] + node['m_nOffset']
         offset = self.value['nContent']['m_nIndex']
         return "%s (node %d, offset %d)" % (self.typename, nodeindex, offset)
@@ -33,8 +33,8 @@ class SwNodeIndexPrinter(object):
         self.value = value
 
     def to_string(self):
-        node = self.value['m_pNode'].dereference();
-        block = node['m_pBlock'].dereference();
+        node = self.value['m_pNode'].dereference()
+        block = node['m_pBlock'].dereference()
         nodeindex = block['nStart'] + node['m_nOffset']
         return "%s (node %d)" % (self.typename, nodeindex)
 
@@ -50,7 +50,7 @@ class SwContentIndexPrinter(object):
         nodeindex = 'none'
         if pNode:
             node = pNode.dereference()
-            block = node['m_pBlock'].dereference();
+            block = node['m_pBlock'].dereference()
             nodeindex = str(block['nStart'] + node['m_nOffset'])
         offset = self.value['m_nIndex']
         return "%s (node %s offset %s)" % (self.typename, nodeindex, offset)
@@ -284,7 +284,7 @@ class BigPtrArrayPrinter(object):
             assert self.pos <= self.count
             assert self.block_pos <= self.block_count
             if self.pos == 0 and self.pos < self.count:
-                assert self.block != None
+                assert self.block is not None
 
 printer = None
 

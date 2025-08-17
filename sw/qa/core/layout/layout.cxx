@@ -44,7 +44,7 @@ class SwCoreLayoutTest : public SwModelTestBase
 {
 public:
     SwCoreLayoutTest()
-        : SwModelTestBase("/sw/qa/core/layout/data/")
+        : SwModelTestBase(u"/sw/qa/core/layout/data/"_ustr)
     {
     }
 };
@@ -54,13 +54,13 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTableFlyOverlap)
     // Load a document that has an image anchored in the header.
     // It also has a table which has the wrap around the image.
     createSwDoc("table-fly-overlap.docx");
-    SwTwips nFlyTop
-        = parseDump("//header/txt/anchored/fly/infos/bounds"_ostr, "top"_ostr).toInt32();
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    SwTwips nFlyTop = getXPath(pXmlDoc, "//header/txt/anchored/fly/infos/bounds", "top").toInt32();
     SwTwips nFlyHeight
-        = parseDump("//header/txt/anchored/fly/infos/bounds"_ostr, "height"_ostr).toInt32();
+        = getXPath(pXmlDoc, "//header/txt/anchored/fly/infos/bounds", "height").toInt32();
     SwTwips nFlyBottom = nFlyTop + nFlyHeight;
-    SwTwips nTableFrameTop = parseDump("//tab/infos/bounds"_ostr, "top"_ostr).toInt32();
-    SwTwips nTablePrintTop = parseDump("//tab/infos/prtBounds"_ostr, "top"_ostr).toInt32();
+    SwTwips nTableFrameTop = getXPath(pXmlDoc, "//tab/infos/bounds", "top").toInt32();
+    SwTwips nTablePrintTop = getXPath(pXmlDoc, "//tab/infos/prtBounds", "top").toInt32();
     SwTwips nTableTop = nTableFrameTop + nTablePrintTop;
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected greater or equal than: 3579
@@ -75,8 +75,9 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTdf128195)
     // Load a document that has two paragraphs in the header.
     // The second paragraph should have its bottom spacing applied.
     createSwDoc("tdf128195.docx");
-    sal_Int32 nTxtHeight = parseDump("//header/txt[2]/infos/bounds"_ostr, "height"_ostr).toInt32();
-    sal_Int32 nTxtBottom = parseDump("//header/txt[2]/infos/bounds"_ostr, "bottom"_ostr).toInt32();
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    sal_Int32 nTxtHeight = getXPath(pXmlDoc, "//header/txt[2]/infos/bounds", "height").toInt32();
+    sal_Int32 nTxtBottom = getXPath(pXmlDoc, "//header/txt[2]/infos/bounds", "bottom").toInt32();
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(2269), nTxtHeight);
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(3529), nTxtBottom);
 }
@@ -92,8 +93,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testBorderCollapseCompat)
     // Load a document with a border conflict: top cell has a dotted bottom border, bottom cell has
     // a solid upper border.
     createSwDoc("border-collapse-compat.docx");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pShell = pTextDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
     MetafileXmlDump aDumper;
     xmlDocUniquePtr pXmlDoc = dumpAndParse(aDumper, *xMetaFile);
@@ -104,7 +104,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testBorderCollapseCompat)
     // - Actual  : 48
     // i.e. there was no single cell border with width=20, rather there were 48 border parts
     // (forming a dotted border), all with width=40.
-    assertXPath(pXmlDoc, "//polyline[@style='solid']"_ostr, "width"_ostr, "20");
+    assertXPath(pXmlDoc, "//polyline[@style='solid']", "width", u"20");
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testBtlrTableRowSpan)
@@ -112,8 +112,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testBtlrTableRowSpan)
     // Load a document which has a table. The A1 cell has btlr text direction, and the A1..A3 cells
     // are merged.
     createSwDoc("btlr-table-row-span.odt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pShell = pTextDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
     MetafileXmlDump aDumper;
     xmlDocUniquePtr pXmlDoc = dumpAndParse(aDumper, *xMetaFile);
@@ -122,19 +121,20 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testBtlrTableRowSpan)
     // - Expected: USA
     // - Actual  : West
     // i.e. the "USA" text completely disappeared.
-    assertXPathContent(pXmlDoc, "//textarray[1]/text"_ostr, "USA");
+    assertXPathContent(pXmlDoc, "//textarray[1]/text", u"USA");
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTableFlyOverlapSpacing)
 {
     // Load a document that has an image on the right of a table.  The table wraps around the image.
     createSwDoc("table-fly-overlap-spacing.docx");
-    SwTwips nFlyTop = parseDump("//body/txt/anchored/fly/infos/bounds"_ostr, "top"_ostr).toInt32();
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    SwTwips nFlyTop = getXPath(pXmlDoc, "//body/txt/anchored/fly/infos/bounds", "top").toInt32();
     SwTwips nFlyHeight
-        = parseDump("//body/txt/anchored/fly/infos/bounds"_ostr, "height"_ostr).toInt32();
+        = getXPath(pXmlDoc, "//body/txt/anchored/fly/infos/bounds", "height").toInt32();
     SwTwips nFlyBottom = nFlyTop + nFlyHeight;
-    SwTwips nTableFrameTop = parseDump("//tab/infos/bounds"_ostr, "top"_ostr).toInt32();
-    SwTwips nTablePrintTop = parseDump("//tab/infos/prtBounds"_ostr, "top"_ostr).toInt32();
+    SwTwips nTableFrameTop = getXPath(pXmlDoc, "//tab/infos/bounds", "top").toInt32();
+    SwTwips nTablePrintTop = getXPath(pXmlDoc, "//tab/infos/prtBounds", "top").toInt32();
     SwTwips nTableTop = nTableFrameTop + nTablePrintTop;
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected greater or equal than: 3993
@@ -147,8 +147,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTablesMoveBackwards)
 {
     // Load a document with 1 pages: empty content on first page, then 21 tables on the second page.
     createSwDoc("tables-move-backwards.odt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pDocShell = pTextDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
 
     // Delete the content on the first page.
@@ -157,14 +156,14 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTablesMoveBackwards)
     pWrtShell->DelLeft();
 
     // Calc the layout and check the number of pages.
-    pWrtShell->CalcLayout();
+    calcLayout();
     xmlDocUniquePtr pLayout = parseLayoutDump();
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 1
     // - Actual  : 2
     // i.e. there was an unexpected 2nd page, as only 20 out of 21 tables were moved to the first
     // page.
-    assertXPath(pLayout, "//page"_ostr, 1);
+    assertXPath(pLayout, "//page", 1);
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testContinuousEndnotesMoveBackwards)
@@ -173,15 +172,15 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testContinuousEndnotesMoveBackwards)
     createSwDoc("continuous-endnotes-move-backwards.doc");
     xmlDocUniquePtr pLayout = parseLayoutDump();
     // We have 2 pages.
-    assertXPath(pLayout, "/root/page"_ostr, 2);
+    assertXPath(pLayout, "/root/page", 2);
     // No endnote container on page 1.
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 0
     // - Actual  : 1
     // i.e. there were unexpected endnotes on page 1.
-    assertXPath(pLayout, "/root/page[1]/ftncont"_ostr, 0);
+    assertXPath(pLayout, "/root/page[1]//ftncont", 0);
     // All endnotes are in a container on page 2.
-    assertXPath(pLayout, "/root/page[2]/ftncont"_ostr, 1);
+    assertXPath(pLayout, "/root/page[2]//ftncont", 1);
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testAnchorPositionBasedOnParagraph)
@@ -191,12 +190,12 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testAnchorPositionBasedOnParagraph)
     createSwDoc("tdf134783_testAnchorPositionBasedOnParagraph.fodt");
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
     CPPUNIT_ASSERT(pXmlDoc);
-    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[1]/bounds"_ostr, "top"_ostr, "1671");
-    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[1]/bounds"_ostr, "bottom"_ostr, "1732");
-    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[2]/bounds"_ostr, "top"_ostr, "1947");
-    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[2]/bounds"_ostr, "bottom"_ostr, "2008");
-    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[3]/bounds"_ostr, "top"_ostr, "3783");
-    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[3]/bounds"_ostr, "bottom"_ostr, "3844");
+    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[1]/bounds", "top", u"1671");
+    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[1]/bounds", "bottom", u"1732");
+    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[2]/bounds", "top", u"1947");
+    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[2]/bounds", "bottom", u"2008");
+    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[3]/bounds", "top", u"3783");
+    assertXPath(pXmlDoc, "(//anchored/SwAnchoredDrawObject)[3]/bounds", "bottom", u"3844");
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTextBoxStaysInsideShape)
@@ -209,8 +208,8 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTextBoxStaysInsideShape)
     // Without the fix in place, this test would have failed with
     // - Expected: 1932
     // - Actual  : 7476
-    assertXPath(pXmlDoc, "//anchored/fly/infos/bounds"_ostr, "top"_ostr, "1932");
-    assertXPath(pXmlDoc, "//anchored/fly/infos/bounds"_ostr, "bottom"_ostr, "7184");
+    assertXPath(pXmlDoc, "//anchored/fly/infos/bounds", "top", u"1932");
+    assertXPath(pXmlDoc, "//anchored/fly/infos/bounds", "bottom", u"7184");
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTextBoxNotModifiedOnOpen)
@@ -218,8 +217,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTextBoxNotModifiedOnOpen)
     // tdf#138050: a freshly opened document containing a shape with a text box
     // should not appear to be modified
     createSwDoc("textbox-phantom-change.docx");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
+    SwDoc* pDoc = getSwDoc();
 
     // Without the fix in place this test would have shown that the document
     // was modified due to a fix to tdf#135198
@@ -229,22 +227,17 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTextBoxNotModifiedOnOpen)
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTextBoxAutoGrowVertical)
 {
     createSwDoc("textbox-autogrow-vertical.docx");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
+    SwDoc* pDoc = getSwDoc();
     SdrPage* pPage = pDoc->getIDocumentDrawModelAccess().GetDrawModel()->GetPage(0);
     SdrObject* pShape = pPage->GetObj(0);
     tools::Rectangle aShapeRect = pShape->GetCurrentBoundRect();
 
-    discardDumpedLayout();
     xmlDocUniquePtr pLayout = parseLayoutDump();
     CPPUNIT_ASSERT(pLayout);
-    sal_Int32 nFlyLeft
-        = getXPath(pLayout, "//anchored/fly/infos/bounds"_ostr, "left"_ostr).toInt32();
-    sal_Int32 nFlyTop = getXPath(pLayout, "//anchored/fly/infos/bounds"_ostr, "top"_ostr).toInt32();
-    sal_Int32 nFlyRight
-        = getXPath(pLayout, "//anchored/fly/infos/bounds"_ostr, "right"_ostr).toInt32();
-    sal_Int32 nFlyBottom
-        = getXPath(pLayout, "//anchored/fly/infos/bounds"_ostr, "bottom"_ostr).toInt32();
+    sal_Int32 nFlyLeft = getXPath(pLayout, "//anchored/fly/infos/bounds", "left").toInt32();
+    sal_Int32 nFlyTop = getXPath(pLayout, "//anchored/fly/infos/bounds", "top").toInt32();
+    sal_Int32 nFlyRight = getXPath(pLayout, "//anchored/fly/infos/bounds", "right").toInt32();
+    sal_Int32 nFlyBottom = getXPath(pLayout, "//anchored/fly/infos/bounds", "bottom").toInt32();
     tools::Rectangle aFlyRect(nFlyLeft, nFlyTop, nFlyRight, nFlyBottom);
     // Without the accompanying fix in place, this test would have failed, as aFlyRect was too wide,
     // so it was not inside aShapeRect anymore.
@@ -255,8 +248,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTextboxModification)
 {
     // Load a document with a textbox in it: the layout will have to position the shape part.
     createSwDoc("textbox-modification.docx");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pDocShell = pTextDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
 
     // Without the accompanying fix in place, this test would have failed, as the document was
     // marked as modified right after the import.
@@ -275,16 +267,14 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testTextBoxInHeaderIsPositioned)
     // - Actual  : 1418
     // Comparison with 7000 chosen due to variability between devices
     CPPUNIT_ASSERT_GREATEREQUAL(
-        double(7000),
-        getXPath(pXmlDoc, "//anchored/fly/infos/bounds"_ostr, "left"_ostr).toDouble());
+        double(7000), getXPath(pXmlDoc, "//anchored/fly/infos/bounds", "left").toDouble());
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testBtlrNestedCell)
 {
     // Load a document with a nested table, the inner A1 cell has a btlr text direction.
     createSwDoc("btlr-nested-cell.odt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
+    SwDoc* pDoc = getSwDoc();
     SwRootFrame* pLayout = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
     SwFrame* pPage = pLayout->GetLower();
     SwFrame* pBody = pPage->GetLower();
@@ -314,11 +304,11 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testKeepwithnextFullheight)
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
     CPPUNIT_ASSERT(pXmlDoc);
     // Make sure the document has 2 pages.
-    assertXPath(pXmlDoc, "//page"_ostr, 2);
+    assertXPath(pXmlDoc, "//page", 2);
     // Heading stays on page 1 to avoid a layout loop.
-    assertXPathContent(pXmlDoc, "//page[1]/body/txt[2]"_ostr, "Heading");
+    assertXPathContent(pXmlDoc, "//page[1]/body/txt[2]", u"Heading");
     // Image stays on page 2.
-    assertXPath(pXmlDoc, "//page[2]/body/txt/anchored/fly"_ostr, 1);
+    assertXPath(pXmlDoc, "//page[2]/body/txt/anchored/fly", 1);
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testGutterMargin)
@@ -327,15 +317,15 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testGutterMargin)
     // inside margins).
     createSwDoc();
     SwDoc* pDoc = getSwDoc();
-    uno::Reference<beans::XPropertySet> xStandard(getStyles("PageStyles")->getByName("Standard"),
-                                                  uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xStandard(
+        getStyles(u"PageStyles"_ustr)->getByName(u"Standard"_ustr), uno::UNO_QUERY);
     SwRootFrame* pLayout = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
     SwFrame* pPage = pLayout->GetLower();
     tools::Long nOldLeft = pPage->getFramePrintArea().Left();
 
     // Set the gutter margin to 2cm.
     sal_Int32 nGutterMm100 = 2000;
-    xStandard->setPropertyValue("GutterMargin", uno::Any(nGutterMm100));
+    xStandard->setPropertyValue(u"GutterMargin"_ustr, uno::Any(nGutterMm100));
 
     // Verify that the new left edge is larger.
     tools::Long nNewLeft = pPage->getFramePrintArea().Left();
@@ -355,17 +345,17 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testGutterTopMargin)
     SwDoc* pDoc = getSwDoc();
     uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xSettings(
-        xFactory->createInstance("com.sun.star.document.Settings"), uno::UNO_QUERY);
-    xSettings->setPropertyValue("GutterAtTop", uno::Any(true));
-    uno::Reference<beans::XPropertySet> xStandard(getStyles("PageStyles")->getByName("Standard"),
-                                                  uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.document.Settings"_ustr), uno::UNO_QUERY);
+    xSettings->setPropertyValue(u"GutterAtTop"_ustr, uno::Any(true));
+    uno::Reference<beans::XPropertySet> xStandard(
+        getStyles(u"PageStyles"_ustr)->getByName(u"Standard"_ustr), uno::UNO_QUERY);
     SwRootFrame* pLayout = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
     SwFrame* pPage = pLayout->GetLower();
     tools::Long nOldTop = pPage->getFramePrintArea().Top();
 
     // Set the gutter margin to 2cm.
     sal_Int32 nGutterMm100 = 2000;
-    xStandard->setPropertyValue("GutterMargin", uno::Any(nGutterMm100));
+    xStandard->setPropertyValue(u"GutterMargin"_ustr, uno::Any(nGutterMm100));
 
     // Verify that the new top edge is larger.
     tools::Long nNewTop = pPage->getFramePrintArea().Top();
@@ -381,7 +371,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testGutterMirrorMargin)
 {
     createSwDoc();
     SwDoc* pDoc = getSwDoc();
-    SwDocShell* pDocShell = pDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
     pWrtShell->InsertPageBreak();
     SwRootFrame* pLayout = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
@@ -390,11 +380,11 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testGutterMirrorMargin)
     SwFrame* pPage2 = pPage->GetNext();
     tools::Long nOldRight = pPage2->getFramePrintArea().Right();
 
-    uno::Reference<beans::XPropertySet> xStandard(getStyles("PageStyles")->getByName("Standard"),
-                                                  uno::UNO_QUERY);
-    xStandard->setPropertyValue("PageStyleLayout", uno::Any(style::PageStyleLayout_MIRRORED));
+    uno::Reference<beans::XPropertySet> xStandard(
+        getStyles(u"PageStyles"_ustr)->getByName(u"Standard"_ustr), uno::UNO_QUERY);
+    xStandard->setPropertyValue(u"PageStyleLayout"_ustr, uno::Any(style::PageStyleLayout_MIRRORED));
     sal_Int32 nGutterMm100 = 2000;
-    xStandard->setPropertyValue("GutterMargin", uno::Any(nGutterMm100));
+    xStandard->setPropertyValue(u"GutterMargin"_ustr, uno::Any(nGutterMm100));
 
     tools::Long nNewLeft = pPage->getFramePrintArea().Left();
     tools::Long nGutterTwips = o3tl::toTwips(nGutterMm100, o3tl::Length::mm100);
@@ -412,16 +402,16 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testRtlGutterMargin)
     // Given a document with a right margin:
     createSwDoc();
     SwDoc* pDoc = getSwDoc();
-    uno::Reference<beans::XPropertySet> xStandard(getStyles("PageStyles")->getByName("Standard"),
-                                                  uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xStandard(
+        getStyles(u"PageStyles"_ustr)->getByName(u"Standard"_ustr), uno::UNO_QUERY);
     SwRootFrame* pLayout = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
     SwFrame* pPage = pLayout->GetLower();
     tools::Long nOldRight = pPage->getFramePrintArea().Right();
 
     // When setting enable RTL gutter mode and setting a gutter margin:
-    xStandard->setPropertyValue("RtlGutter", uno::Any(true));
+    xStandard->setPropertyValue(u"RtlGutter"_ustr, uno::Any(true));
     sal_Int32 nGutterMm100 = 2000;
-    xStandard->setPropertyValue("GutterMargin", uno::Any(nGutterMm100));
+    xStandard->setPropertyValue(u"GutterMargin"_ustr, uno::Any(nGutterMm100));
 
     // Then make sure the new right edge of the print area is decreased:
     tools::Long nNewRight = pPage->getFramePrintArea().Right();
@@ -441,20 +431,19 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testGutterMarginPageBorder)
 #if !defined(MACOSX) && !defined(_WIN32)
     // Given a document with a non-0 gutter margin.
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    uno::Reference<beans::XPropertySet> xStandard(getStyles("PageStyles")->getByName("Standard"),
-                                                  uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xStandard(
+        getStyles(u"PageStyles"_ustr)->getByName(u"Standard"_ustr), uno::UNO_QUERY);
     sal_Int32 nGutterMm100 = 2000;
-    xStandard->setPropertyValue("GutterMargin", uno::Any(nGutterMm100));
+    xStandard->setPropertyValue(u"GutterMargin"_ustr, uno::Any(nGutterMm100));
 
     // When setting a left border.
     table::BorderLine2 aBorder;
     aBorder.LineWidth = 2;
     aBorder.OuterLineWidth = 2;
-    xStandard->setPropertyValue("LeftBorder", uno::Any(aBorder));
+    xStandard->setPropertyValue(u"LeftBorder"_ustr, uno::Any(aBorder));
 
     // Then make sure border is at the left edge of the text area.
-    SwDocShell* pShell = pDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
     MetafileXmlDump dumper;
     xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, *xMetaFile);
@@ -462,7 +451,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testGutterMarginPageBorder)
     // - Expected: 2565
     // - Actual  : 1425
     // Where 2565 is close to the left edge of the text area (2553).
-    assertXPath(pXmlDoc, "//polyline[@style='solid']/point[1]"_ostr, "x"_ostr, "2565");
+    assertXPath(pXmlDoc, "//polyline[@style='solid']/point[1]", "x", u"2565");
 #endif
 }
 
@@ -476,8 +465,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testVerticallyMergedCellBorder)
 {
     // Given a document with a table: 2 columns, 5 rows. B2 -> B5 is merged:
     createSwDoc("vmerge-cell-border.docx");
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pShell = pDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
 
     // When rendering the table:
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
@@ -486,7 +474,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testVerticallyMergedCellBorder)
     MetafileXmlDump dumper;
     xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, *xMetaFile);
     // Collect vertical positions of all border points.
-    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point"_ostr);
+    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point");
     xmlNodeSetPtr pXmlNodes = pXmlObj->nodesetval;
     std::vector<sal_Int32> aBorderPositions;
     for (int i = 0; i < xmlXPathNodeSetGetLength(pXmlNodes); ++i)
@@ -499,7 +487,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testVerticallyMergedCellBorder)
     xmlXPathFreeObject(pXmlObj);
     // Collect top and bottom of the B1->B3 rows.
     xmlDocUniquePtr pLayout = parseLayoutDump();
-    pXmlObj = getXPathNode(pLayout, "//tab/row/infos/bounds"_ostr);
+    pXmlObj = getXPathNode(pLayout, "//tab/row/infos/bounds");
     pXmlNodes = pXmlObj->nodesetval;
     std::vector<sal_Int32> aLayoutPositions;
     for (int i = 0; i < 3; ++i)
@@ -556,8 +544,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testLinkedBullet)
 {
     // Given a document with a graphic bullet, where the image is a linked one:
     createSwDoc("linked-bullet.odt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pShell = pTextDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
 
     // When rendering that document:
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
@@ -569,15 +556,14 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testLinkedBullet)
     // - Expected: 1
     // - Actual  : 0
     // i.e. the bullet's bitmap was lost.
-    assertXPath(pXmlDoc, "//bmpexscale"_ostr, 1);
+    assertXPath(pXmlDoc, "//bmpexscale", 1);
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testInnerCellBorderIntersect)
 {
     // Given a table with both outer and inner borders:
     createSwDoc("inner-border.docx");
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pShell = pDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
 
     // When rendering table borders:
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
@@ -587,7 +573,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testInnerCellBorderIntersect)
     MetafileXmlDump dumper;
     xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, *xMetaFile);
     // Collect start/end (vertical) positions of horizontal borders.
-    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point"_ostr);
+    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point");
     xmlNodeSetPtr pXmlNodes = pXmlObj->nodesetval;
     std::vector<std::pair<sal_Int32, sal_Int32>> aBorderStartEnds;
     for (int i = 0; i < xmlXPathNodeSetGetLength(pXmlNodes); i += 2)
@@ -649,7 +635,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testInnerCellBorderNocompatIntersect)
     MetafileXmlDump dumper;
     xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, *xMetaFile);
     // Collect start/end (vertical) positions of horizontal borders.
-    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point"_ostr);
+    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point");
     xmlNodeSetPtr pXmlNodes = pXmlObj->nodesetval;
     std::vector<std::pair<sal_Int32, sal_Int32>> aBorderStartEnds;
     for (int i = 0; i < xmlXPathNodeSetGetLength(pXmlNodes); i += 2)
@@ -692,8 +678,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testDoubleBorderVertical)
 {
     // Given a table with a left and right double border, outer is thick, inner is thin:
     createSwDoc("double-border-vertical.docx");
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pShell = pDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
 
     // When rendering that document:
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
@@ -703,7 +688,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testDoubleBorderVertical)
     MetafileXmlDump dumper;
     xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, *xMetaFile);
     // Collect widths of vertical lines.
-    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point"_ostr);
+    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point");
     xmlNodeSetPtr pXmlNodes = pXmlObj->nodesetval;
     // Horizontal position -> width.
     std::map<sal_Int32, sal_Int32> aBorderWidths;
@@ -741,8 +726,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testDoubleBorderHorizontal)
 {
     // Given a table with a top and bottom double border, outer is thin, inner is thick:
     createSwDoc("double-border-horizontal.docx");
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pShell = pDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
 
     // When rendering table borders:
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
@@ -752,7 +736,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testDoubleBorderHorizontal)
     MetafileXmlDump dumper;
     xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, *xMetaFile);
     // Collect widths of horizontal lines.
-    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point"_ostr);
+    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point");
     xmlNodeSetPtr pXmlNodes = pXmlObj->nodesetval;
     // Vertical position -> width.
     std::map<sal_Int32, sal_Int32> aBorderWidths;
@@ -790,8 +774,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testParaBorderInCellClip)
 {
     // Given a document which has outside-cell borders defined, which should not be visible:
     createSwDoc("para-border-in-cell-clip.docx");
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pShell = pDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
 
     // When rendering those borders:
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
@@ -804,15 +787,14 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testParaBorderInCellClip)
     // - Actual  : 0
     // - XPath '//clipregion/polygon' number of nodes is incorrect
     // i.e. there was no clipping applied, leading to unexpected left/right borders.
-    assertXPath(pXmlDoc, "//clipregion/polygon"_ostr, 2);
+    assertXPath(pXmlDoc, "//clipregion/polygon", 2);
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testDoublePageBorder)
 {
     // Given a page with a top and bottom double border, outer is thick, inner is thin:
     createSwDoc("double-page-border.docx");
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pShell = pDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
 
     // When rendering that document:
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
@@ -822,7 +804,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testDoublePageBorder)
     MetafileXmlDump dumper;
     xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, *xMetaFile);
     // Collect widths of horizontal lines.
-    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point"_ostr);
+    xmlXPathObjectPtr pXmlObj = getXPathNode(pXmlDoc, "//polyline[@style='solid']/point");
     xmlNodeSetPtr pXmlNodes = pXmlObj->nodesetval;
     // Vertical position -> width.
     std::map<sal_Int32, sal_Int32> aBorderWidths;
@@ -865,21 +847,21 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testNegativePageBorder)
 
     // Given a document with a top margin and a negative border distance:
     createSwDoc();
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pDocShell = pTextDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
-    pWrtShell->Insert("test");
-    uno::Reference<beans::XPropertySet> xPageStyle(getStyles("PageStyles")->getByName("Standard"),
-                                                   uno::UNO_QUERY);
-    xPageStyle->setPropertyValue("TopMargin", uno::Any(static_cast<sal_Int32>(501))); // 284 twips
+    pWrtShell->Insert(u"test"_ustr);
+    uno::Reference<beans::XPropertySet> xPageStyle(
+        getStyles(u"PageStyles"_ustr)->getByName(u"Standard"_ustr), uno::UNO_QUERY);
+    xPageStyle->setPropertyValue(u"TopMargin"_ustr,
+                                 uno::Any(static_cast<sal_Int32>(501))); // 284 twips
     table::BorderLine2 aBorder;
     aBorder.LineWidth = 159; // 90 twips
     aBorder.OuterLineWidth = 159;
-    xPageStyle->setPropertyValue("TopBorder", uno::Any(aBorder));
+    xPageStyle->setPropertyValue(u"TopBorder"_ustr, uno::Any(aBorder));
     sal_Int32 nTopBorderDistance = -646; // -366 twips
-    xPageStyle->setPropertyValue("TopBorderDistance", uno::Any(nTopBorderDistance));
+    xPageStyle->setPropertyValue(u"TopBorderDistance"_ustr, uno::Any(nTopBorderDistance));
     nTopBorderDistance = 0;
-    xPageStyle->getPropertyValue("TopBorderDistance") >>= nTopBorderDistance;
+    xPageStyle->getPropertyValue(u"TopBorderDistance"_ustr) >>= nTopBorderDistance;
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(-646), nTopBorderDistance);
 
     // When rendering that border:
@@ -894,8 +876,8 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testNegativePageBorder)
     // i.e. the negative border distance was rounded up to 0 in lcl_CalcBorderRect().
     // Ideally this would be 284 (top of first page) + 284 (top margin) + 366 (border distance) =
     // 934.
-    assertXPath(pXmlDoc, "//polyline[@style='solid']/point[1]"_ostr, "y"_ostr, "899");
-    assertXPath(pXmlDoc, "//polyline[@style='solid']/point[2]"_ostr, "y"_ostr, "899");
+    assertXPath(pXmlDoc, "//polyline[@style='solid']/point[1]", "y", u"899");
+    assertXPath(pXmlDoc, "//polyline[@style='solid']/point[2]", "y", u"899");
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testNegativePageBorderNoMargin)
@@ -907,19 +889,18 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testNegativePageBorderNoMargin)
 
     // Given a document with no top margin and a negative border distance:
     createSwDoc();
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pDocShell = pTextDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
-    pWrtShell->Insert("test");
-    uno::Reference<beans::XPropertySet> xPageStyle(getStyles("PageStyles")->getByName("Standard"),
-                                                   uno::UNO_QUERY);
-    xPageStyle->setPropertyValue("TopMargin", uno::Any(static_cast<sal_Int32>(0))); // 0 twips
+    pWrtShell->Insert(u"test"_ustr);
+    uno::Reference<beans::XPropertySet> xPageStyle(
+        getStyles(u"PageStyles"_ustr)->getByName(u"Standard"_ustr), uno::UNO_QUERY);
+    xPageStyle->setPropertyValue(u"TopMargin"_ustr, uno::Any(static_cast<sal_Int32>(0))); // 0 twips
     table::BorderLine2 aBorder;
     aBorder.LineWidth = 159; // 90 twips
     aBorder.OuterLineWidth = 159;
-    xPageStyle->setPropertyValue("TopBorder", uno::Any(aBorder));
+    xPageStyle->setPropertyValue(u"TopBorder"_ustr, uno::Any(aBorder));
     sal_Int32 nTopBorderDistance = -1147; // -650 twips
-    xPageStyle->setPropertyValue("TopBorderDistance", uno::Any(nTopBorderDistance));
+    xPageStyle->setPropertyValue(u"TopBorderDistance"_ustr, uno::Any(nTopBorderDistance));
 
     // When rendering that border:
     std::shared_ptr<GDIMetaFile> xMetaFile = pDocShell->GetPreviewMetaFile();
@@ -933,8 +914,8 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testNegativePageBorderNoMargin)
     // i.e. this failed differently: the lack of top margin caused a second problem.
     // Ideally this would be 284 (top of first page) + 650 (border distance) =
     // 934.
-    assertXPath(pXmlDoc, "//polyline[@style='solid']/point[1]"_ostr, "y"_ostr, "899");
-    assertXPath(pXmlDoc, "//polyline[@style='solid']/point[2]"_ostr, "y"_ostr, "899");
+    assertXPath(pXmlDoc, "//polyline[@style='solid']/point[1]", "y", u"899");
+    assertXPath(pXmlDoc, "//polyline[@style='solid']/point[2]", "y", u"899");
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testFollowTextFlowWrapInBackground)
@@ -944,7 +925,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testFollowTextFlowWrapInBackground)
     createSwDoc();
     SwDoc* pDoc = getSwDoc();
     pDoc->getIDocumentSettingAccess().set(DocumentSettingId::USE_FORMER_TEXT_WRAPPING, true);
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     SwInsertTableOptions aTableOptions(SwInsertTableFlags::DefaultBorder, 0);
     pWrtShell->InsertTable(aTableOptions, 1, 1);
     pWrtShell->MoveTable(GotoPrevTable, fnTableStart);
@@ -965,8 +946,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testFollowTextFlowWrapInBackground)
     // Then make sure that the cell height grows to have space for the graphic, given that
     // background=true is not specified.
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
-    sal_Int32 nCellHeight
-        = getXPath(pXmlDoc, "//cell[1]/infos/bounds"_ostr, "height"_ostr).toInt32();
+    sal_Int32 nCellHeight = getXPath(pXmlDoc, "//cell[1]/infos/bounds", "height").toInt32();
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected greater than: 1000
     // - Actual  : 396
@@ -978,17 +958,16 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testPageRemoveFlyTable)
 {
     // Given a document with a ToC and several tables, one table marked with a bookmark:
     createSwDoc("page-remove-fly-table.odt");
-    SwDoc* pDoc = getSwDoc();
 
     // When updating the ToC and incrementally formatting the document:
-    SwView* pView = pDoc->GetDocShell()->GetView();
+    SwView* pView = getSwDocShell()->GetView();
     SfxDispatcher& rDispatcher = *pView->GetViewFrame().GetDispatcher();
     rDispatcher.Execute(FN_UPDATE_TOX);
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->Reformat();
 
     // Then make sure that the 2nd table below the bookmark has no unwanted top margin:
-    pWrtShell->GotoMark("test");
+    pWrtShell->GotoMark(SwMarkName(u"test"_ustr));
     pWrtShell->Down(/*bSelect=*/false, /*nCount=*/1, /*bBasicCall=*/false);
     pWrtShell->Down(/*bSelect=*/false, /*nCount=*/1, /*bBasicCall=*/false);
     SwCursor* pCursor = pWrtShell->GetCursor();
@@ -1017,7 +996,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testNewFollowTextFlowWrapInBackground)
     // through and follow-text-flow set to true, legacy USE_FORMER_TEXT_WRAPPING is not set:
     createSwDoc();
     SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     SwInsertTableOptions aTableOptions(SwInsertTableFlags::DefaultBorder, 0);
     pWrtShell->InsertTable(aTableOptions, 1, 1);
     pWrtShell->MoveTable(GotoPrevTable, fnTableStart);
@@ -1038,8 +1017,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreLayoutTest, testNewFollowTextFlowWrapInBackground)
     // Then make sure that the cell height grows to have space for the graphic, given that
     // background=true is not specified.
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
-    sal_Int32 nCellHeight
-        = getXPath(pXmlDoc, "//cell[1]/infos/bounds"_ostr, "height"_ostr).toInt32();
+    sal_Int32 nCellHeight = getXPath(pXmlDoc, "//cell[1]/infos/bounds", "height").toInt32();
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected less than: 1000
     // - Actual  : 1120

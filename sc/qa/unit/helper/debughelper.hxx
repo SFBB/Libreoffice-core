@@ -19,14 +19,8 @@
 #undef RGB
 #endif
 
-#include <iostream>
-#include <vector>
-
 #define CALC_DEBUG_OUTPUT 0
-#define CALC_TEST_PERF 0
 
 #include <sal/types.h>
-
-using namespace ::com::sun::star;
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,17 +19,16 @@
 #pragma once
 
 #include "JoinTableView.hxx"
-#include <toolkit/awt/vclxaccessiblecomponent.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <vcl/accessibility/vclxaccessiblecomponent.hxx>
 #include <vcl/vclptr.hxx>
 
 namespace dbaui
 {
-    class OJoinTableView;
     /** the class OJoinDesignViewAccess represents the accessible object for join views
         like the QueryDesign and the RelationDesign
     */
-    class OJoinDesignViewAccess     :   public cppu::ImplInheritanceHelper<VCLXAccessibleComponent, css::accessibility::XAccessible>
+    class OJoinDesignViewAccess : public VCLXAccessibleComponent
     {
         VclPtr<OJoinTableView> m_pTableView; // the window which I should give accessibility to
 
@@ -39,9 +38,6 @@ namespace dbaui
         OJoinDesignViewAccess(  OJoinTableView* _pTableView);
 
         virtual OUString SAL_CALL getImplementationName() override;
-
-        // XAccessible
-        virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override;
 
         // XAccessibleContext
         virtual sal_Int64 SAL_CALL getAccessibleChildCount(  ) override;

@@ -710,6 +710,8 @@ void ScXMLAutoStylePoolP::exportStyleContent(
     if (nFamily != XmlStyleFamily::TABLE_CELL)
         return;
 
+    ScDocument* pDoc = rScXMLExport.GetDocument();
+
     for(const auto& rProperty : rProperties)
     {
         if (rProperty.mnIndex != -1)
@@ -743,7 +745,6 @@ void ScXMLAutoStylePoolP::exportStyleContent(
                                             rScXMLExport.AddAttribute(XML_NAMESPACE_STYLE, XML_CONDITION, sCondition);
                                             rScXMLExport.AddAttribute(XML_NAMESPACE_STYLE, XML_APPLY_STYLE_NAME, rScXMLExport.EncodeStyleName( sStyleName ));
                                             OUString sOUBaseAddress;
-                                            ScDocument* pDoc = rScXMLExport.GetDocument();
                                             ScRangeStringConverter::GetStringFromAddress( sOUBaseAddress,
                                                 xSheetCondition->getSourcePosition(), pDoc, FormulaGrammar::CONV_OOO );
                                             rScXMLExport.AddAttribute(XML_NAMESPACE_STYLE, XML_BASE_CELL_ADDRESS, sOUBaseAddress);
@@ -798,7 +799,7 @@ void ScXMLAutoStylePoolP::exportStyleContent(
                                             rScXMLExport.AddAttribute(XML_NAMESPACE_STYLE, XML_APPLY_STYLE_NAME, rScXMLExport.EncodeStyleName( sStyleName ));
                                             OUString sOUBaseAddress;
                                             ScRangeStringConverter::GetStringFromAddress( sOUBaseAddress,
-                                                xSheetCondition->getSourcePosition(), rScXMLExport.GetDocument(), FormulaGrammar::CONV_OOO );
+                                                xSheetCondition->getSourcePosition(), pDoc, FormulaGrammar::CONV_OOO );
                                             rScXMLExport.AddAttribute(XML_NAMESPACE_STYLE, XML_BASE_CELL_ADDRESS, sOUBaseAddress);
                                             SvXMLElementExport aMElem(rScXMLExport, XML_NAMESPACE_STYLE, XML_MAP, true, true);
                                         }
@@ -1512,10 +1513,10 @@ bool XmlScPropHdl_RotateAngle::importXML(
 {
     bool bRetval(false);
 
-    sal_Int32 nValue;
-    if (::sax::Converter::convertNumber(nValue, rStrImpValue) && !o3tl::checked_multiply<sal_Int32>(nValue, 100, nValue))
+    double fValue;
+    if (::sax::Converter::convertAngle(fValue, rStrImpValue))
     {
-        rValue <<= nValue;
+        rValue <<= static_cast<sal_Int32>(basegfx::fround(fValue * 100)); // It is already 0<=fValue<=36000.
         bRetval = true;
     }
 

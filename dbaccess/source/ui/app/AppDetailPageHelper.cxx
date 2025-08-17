@@ -21,7 +21,6 @@
 #include <comphelper/diagnose_ex.hxx>
 #include <tabletree.hxx>
 #include <dbtreelistbox.hxx>
-#include <com/sun/star/awt/PopupMenu.hpp>
 #include <com/sun/star/awt/XTabController.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/container/XContainer.hpp>
@@ -53,6 +52,7 @@
 #include <vcl/commandinfoprovider.hxx>
 #include <vcl/cvtgrf.hxx>
 #include <tools/stream.hxx>
+#include <toolkit/awt/vclxmenu.hxx>
 #include "AppController.hxx"
 
 #include <com/sun/star/document/XDocumentProperties.hpp>
@@ -120,22 +120,22 @@ namespace
 }
 
 OAppDetailPageHelper::OAppDetailPageHelper(weld::Container* pParent, OAppBorderWindow& rBorderWin, PreviewMode ePreviewMode)
-    : OChildWindow(pParent, "dbaccess/ui/detailwindow.ui", "DetailWindow")
+    : OChildWindow(pParent, u"dbaccess/ui/detailwindow.ui"_ustr, u"DetailWindow"_ustr)
     , m_rBorderWin(rBorderWin)
-    , m_xBox(m_xBuilder->weld_container("box"))
-    , m_xFL(m_xBuilder->weld_widget("separator"))
-    , m_xMBPreview(m_xBuilder->weld_menu_button("disablepreview"))
+    , m_xBox(m_xBuilder->weld_container(u"box"_ustr))
+    , m_xFL(m_xBuilder->weld_widget(u"separator"_ustr))
+    , m_xMBPreview(m_xBuilder->weld_menu_button(u"disablepreview"_ustr))
     , m_xPreview(new OPreviewWindow)
-    , m_xPreviewWin(new weld::CustomWeld(*m_xBuilder, "preview", *m_xPreview))
+    , m_xPreviewWin(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, *m_xPreview))
     , m_xDocumentInfo(new ODocumentInfoPreview)
-    , m_xDocumentInfoWin(new weld::CustomWeld(*m_xBuilder, "infopreview", *m_xDocumentInfo))
-    , m_xTablePreview(m_xBuilder->weld_container("tablepreview"))
+    , m_xDocumentInfoWin(new weld::CustomWeld(*m_xBuilder, u"infopreview"_ustr, *m_xDocumentInfo))
+    , m_xTablePreview(m_xBuilder->weld_container(u"tablepreview"_ustr))
     , m_ePreviewMode(ePreviewMode)
 {
     m_xContainer->set_stack_background();
 
-    auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(".uno:DBDisablePreview",
-        "com.sun.star.sdb.OfficeDatabaseDocument");
+    auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(u".uno:DBDisablePreview"_ustr,
+        u"com.sun.star.sdb.OfficeDatabaseDocument"_ustr);
     m_xMBPreview->set_label(vcl::CommandInfoProvider::GetLabelForCommand(aProperties));
     m_xMBPreview->set_help_id(HID_APP_VIEW_PREVIEW_CB);
 
@@ -383,11 +383,9 @@ void OAppDetailPageHelper::selectElements(const Sequence< OUString>& _aNames)
     DBTreeViewBase& rTree = *m_aLists[nPos];
     weld::TreeView& rTreeView = rTree.GetWidget();
     rTreeView.unselect_all();
-    const OUString* pIter = _aNames.getConstArray();
-    const OUString* pEnd  = pIter + _aNames.getLength();
-    for(;pIter != pEnd;++pIter)
+    for (auto& name : _aNames)
     {
-        auto xEntry = rTree.getListBox().GetEntryPosByName(*pIter);
+        auto xEntry = rTree.getListBox().GetEntryPosByName(name);
         if (!xEntry)
             continue;
         rTreeView.select(*xEntry);
@@ -644,18 +642,15 @@ void OAppDetailPageHelper::fillNames( const Reference< XNameAccess >& _xContaine
     std::unique_ptr<weld::TreeIter> xRet = rTreeView.make_iterator();
     const sal_Int32 nFolderIndicator = lcl_getFolderIndicatorForType( _eType );
 
-    Sequence< OUString> aSeq = _xContainer->getElementNames();
-    const OUString* pIter = aSeq.getConstArray();
-    const OUString* pEnd  = pIter + aSeq.getLength();
-    for(;pIter != pEnd;++pIter)
+    for (auto& name : _xContainer->getElementNames())
     {
-        Reference<XNameAccess> xSubElements(_xContainer->getByName(*pIter),UNO_QUERY);
+        Reference<XNameAccess> xSubElements(_xContainer->getByName(name), UNO_QUERY);
         if ( xSubElements.is() )
         {
             OUString sId(OUString::number(nFolderIndicator));
 
             rTreeView.insert(_pParent, -1, nullptr, &sId, nullptr, nullptr, false, xRet.get());
-            rTreeView.set_text(*xRet, *pIter, 0);
+            rTreeView.set_text(*xRet, name, 0);
             rTreeView.set_text_emphasis(*xRet, false, 0);
             getBorderWin().getView()->getAppController().containerFound( Reference< XContainer >( xSubElements, UNO_QUERY ) );
             fillNames( xSubElements, _eType, rImageId, xRet.get());
@@ -663,7 +658,7 @@ void OAppDetailPageHelper::fillNames( const Reference< XNameAccess >& _xContaine
         else
         {
             rTreeView.insert(_pParent, -1, nullptr, nullptr, nullptr, nullptr, false, xRet.get());
-            rTreeView.set_text(*xRet, *pIter, 0);
+            rTreeView.set_text(*xRet, name, 0);
             rTreeView.set_text_emphasis(*xRet, false, 0);
             rTreeView.set_image(*xRet, rImageId);
         }
@@ -915,7 +910,7 @@ void OAppDetailPageHelper::switchPreview(PreviewMode _eMode,bool _bForce)
             break;
     }
 
-    auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(aCommand, "com.sun.star.sdb.OfficeDatabaseDocument");
+    auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(aCommand, u"com.sun.star.sdb.OfficeDatabaseDocument"_ustr);
     OUString aCommandLabel = vcl::CommandInfoProvider::GetLabelForCommand(aProperties);
     m_xMBPreview->set_label(stripTrailingDots(aCommandLabel));
 
@@ -1040,9 +1035,9 @@ void OAppDetailPageHelper::showPreview( const OUString& _sDataSourceName,
     pDispatcher->setTargetFrame( Reference<XFrame>(m_xFrame,UNO_QUERY_THROW) );
 
     ::comphelper::NamedValueCollection aArgs;
-    aArgs.put( "Preview", true );
-    aArgs.put( "ReadOnly", true );
-    aArgs.put( "AsTemplate", false );
+    aArgs.put( u"Preview"_ustr, true );
+    aArgs.put( u"ReadOnly"_ustr, true );
+    aArgs.put( u"AsTemplate"_ustr, false );
     aArgs.put( PROPERTY_SHOWMENU, false );
 
     Reference< XController > xPreview( pDispatcher->openExisting( Any( _sDataSourceName ), _sName, aArgs ), UNO_QUERY );
@@ -1105,17 +1100,17 @@ IMPL_LINK_NOARG(OAppDetailPageHelper, OnDropdownClickHdl, weld::Toggleable&, voi
     auto xFrame = getBorderWin().getView()->getAppController().getFrame();
 
     css::uno::Sequence<css::uno::Any> aArgs {
-        css::uno::Any(comphelper::makePropertyValue("InToolbar", true)),
-        css::uno::Any(comphelper::makePropertyValue("ModuleIdentifier", OUString("com.sun.star.sdb.OfficeDatabaseDocument"))),
-        css::uno::Any(comphelper::makePropertyValue("Frame", xFrame)) };
+        css::uno::Any(comphelper::makePropertyValue(u"InToolbar"_ustr, true)),
+        css::uno::Any(comphelper::makePropertyValue(u"ModuleIdentifier"_ustr, u"com.sun.star.sdb.OfficeDatabaseDocument"_ustr)),
+        css::uno::Any(comphelper::makePropertyValue(u"Frame"_ustr, xFrame)) };
 
     css::uno::Reference<css::frame::XPopupMenuController> xPopupController
-            (xPopupMenuFactory->createInstanceWithArgumentsAndContext(".uno:DBPreview", aArgs, xContext), css::uno::UNO_QUERY);
+            (xPopupMenuFactory->createInstanceWithArgumentsAndContext(u".uno:DBPreview"_ustr, aArgs, xContext), css::uno::UNO_QUERY);
 
     if (!xPopupController.is())
         return;
 
-    css::uno::Reference<css::awt::XPopupMenu> xPopupMenu(css::awt::PopupMenu::create(xContext));
+    rtl::Reference<VCLXPopupMenu> xPopupMenu(new VCLXPopupMenu());
     xPopupController->setPopupMenu(xPopupMenu);
 
     css::util::URL aTargetURL;
@@ -1134,11 +1129,11 @@ IMPL_LINK_NOARG(OAppDetailPageHelper, OnDropdownClickHdl, weld::Toggleable&, voi
         aTargetURL.Complete = xPopupMenu->getCommand(nItemId);
 
         auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(aTargetURL.Complete,
-            "com.sun.star.sdb.OfficeDatabaseDocument");
+            u"com.sun.star.sdb.OfficeDatabaseDocument"_ustr);
         m_xMBPreview->append_item(aTargetURL.Complete, vcl::CommandInfoProvider::GetLabelForCommand(aProperties));
 
         // Add/remove status listener to get a status update once so we can remove any disabled items from the menu
-        auto xDispatch = xDispatchProvider->queryDispatch(aTargetURL, "_self",
+        auto xDispatch = xDispatchProvider->queryDispatch(aTargetURL, u"_self"_ustr,
                     css::frame::FrameSearchFlag::SELF);
         if (xDispatch.is())
         {
@@ -1161,7 +1156,7 @@ IMPL_LINK(OAppDetailPageHelper, MenuSelectHdl, const OUString&, rIdent, void)
     aURL.Complete = rIdent;
 
     Reference<XDispatchProvider> xProvider(getBorderWin().getView()->getAppController().getFrame(), UNO_QUERY);
-    Reference<XDispatch> xDisp = xProvider->queryDispatch(aURL, "_self", 0);
+    Reference<XDispatch> xDisp = xProvider->queryDispatch(aURL, u"_self"_ustr, 0);
     xDisp->dispatch(aURL, css::uno::Sequence<css::beans::PropertyValue>());
 
     m_xMBPreview->set_label(stripTrailingDots(m_xMBPreview->get_item_label(rIdent)));

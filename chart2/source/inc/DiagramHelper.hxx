@@ -19,39 +19,21 @@
 #pragma once
 
 #include "StackMode.hxx"
-#include "charttoolsdllapi.hxx"
 #include "ChartTypeTemplate.hxx"
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <rtl/ref.hxx>
 
-#include <vector>
-
 namespace chart { class ChartModel; }
-namespace com::sun::star::chart2 { class XAxis; }
-namespace com::sun::star::chart2 { class XChartDocument; }
-namespace com::sun::star::chart2 { class XChartType; }
-namespace com::sun::star::chart2 { class XCoordinateSystem; }
-namespace com::sun::star::chart2 { class XDiagram; }
-namespace com::sun::star::chart2 { class XDataSeries; }
-namespace com::sun::star::chart2::data { class XLabeledDataSequence; }
-namespace com::sun::star::frame { class XModel; }
-namespace com::sun::star::lang { class XMultiServiceFactory; }
-namespace com::sun::star::uno { class XComponentContext; }
 namespace com::sun::star::util { class XNumberFormats; }
 namespace com::sun::star::util { class XNumberFormatsSupplier; }
 
 namespace chart
 {
-class Axis;
 class BaseCoordinateSystem;
 class ChartType;
-class ChartTypeManager;
-class ChartTypeTemplate;
 class DataSeries;
-class Diagram;
-class LabeledDataSequence;
 
-class OOO_DLLPUBLIC_CHARTTOOLS DiagramHelper
+class DiagramHelper
 {
 public:
 
@@ -70,13 +52,10 @@ public:
         const rtl::Reference< ::chart::BaseCoordinateSystem > & xCorrespondingCoordinateSystem
         );
 
-    static bool isSeriesAttachedToMainAxis(
-        const rtl::Reference< ::chart::DataSeries >& xDataSeries );
-
     static css::uno::Sequence< OUString >
         getExplicitSimpleCategories( ChartModel& rModel );
 
-    SAL_DLLPRIVATE static css::uno::Sequence< OUString >
+    static css::uno::Sequence< OUString >
         generateAutomaticCategoriesFromCooSys(
             const rtl::Reference< ::chart::BaseCoordinateSystem > & xCooSys );
 
@@ -93,7 +72,7 @@ public:
     static sal_Int32 getPercentNumberFormat( const css::uno::Reference<
                 css::util::XNumberFormatsSupplier >& xNumberFormatsSupplier );
 
-    SAL_DLLPRIVATE static bool areChartTypesCompatible(
+    static bool areChartTypesCompatible(
                 const rtl::Reference< ::chart::ChartType >& xFirstType,
                 const rtl::Reference< ::chart::ChartType >& xSecondType );
 

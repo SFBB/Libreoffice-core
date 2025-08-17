@@ -81,7 +81,7 @@ void SAL_CALL MovingAverageRegressionCurveCalculator::recalculateRegression(
 }
 
 void MovingAverageRegressionCurveCalculator::calculateValuesCentral(
-    RegressionCalculationHelper::tDoubleVectorPair aValues)
+    const RegressionCalculationHelper::tDoubleVectorPair& aValues)
 {
     const size_t aSize = aValues.first.size();
     if (aSize == 0)
@@ -106,7 +106,7 @@ void MovingAverageRegressionCurveCalculator::calculateValuesCentral(
 }
 
 void MovingAverageRegressionCurveCalculator::calculateValues(
-    RegressionCalculationHelper::tDoubleVectorPair aValues, bool bUseXAvg)
+    const RegressionCalculationHelper::tDoubleVectorPair& aValues, bool bUseXAvg)
 {
     const size_t aSize = aValues.first.size();
     for (size_t i = mPeriod - 1; i < aSize; ++i)
@@ -159,7 +159,7 @@ OUString MovingAverageRegressionCurveCalculator::ImplGetRepresentation(
 {
     OUString aRet = SchResId( STR_OBJECT_MOVING_AVERAGE_WITH_PARAMETERS );
     // change text for Moving Average
-    OUString aWildcard( "%PERIOD" );
+    OUString aWildcard( u"%PERIOD"_ustr );
     sal_Int32 nIndex = aRet.indexOf( aWildcard );
     if( nIndex != -1 )
     {  // replace period

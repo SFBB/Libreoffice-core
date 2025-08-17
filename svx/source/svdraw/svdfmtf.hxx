@@ -34,11 +34,8 @@
 // Forward Declarations
 
 
-class SfxItemSet;
 class SdrObjList;
 class SdrModel;
-class SdrPage;
-class SdrObject;
 class SvdProgressInfo;
 
 
@@ -47,8 +44,8 @@ class ImpSdrGDIMetaFileImport final
 {
     ::std::vector< rtl::Reference<SdrObject> > maTmpList;
     ScopedVclPtr<VirtualDevice> mpVD;
-    tools::Rectangle                   maScaleRect;
-    size_t                      mnMapScalingOfs; // from here on, not edited with MapScaling
+    MapMode maPrefMapMode;
+    tools::Rectangle            maScaleRect;
     std::unique_ptr<SfxItemSet> mpLineAttr;
     std::unique_ptr<SfxItemSet> mpFillAttr;
     std::unique_ptr<SfxItemSet> mpTextAttr;
@@ -121,7 +118,7 @@ class ImpSdrGDIMetaFileImport final
 
     // #i125211# The MetaCommentAction needs to advance (if used), thus
     // give current metafile and index which may be changed
-    void DoAction(MetaCommentAction const & rAct, GDIMetaFile const & rMtf, sal_uLong& a);
+    void DoAction(MetaCommentAction const & rAct, GDIMetaFile const & rMtf, size_t& a);
 
     // missing actions added
     void DoAction(MetaTextRectAction const & rAct);
@@ -143,13 +140,17 @@ class ImpSdrGDIMetaFileImport final
     void ImportText(const Point& rPos, const OUString& rStr, const MetaAction& rAct);
     void SetAttributes(SdrObject* pObj, bool bForceTextAttr = false);
     void InsertObj(SdrObject* pObj, bool bScale = true);
-    void MapScaling();
 
     // #i73407# reformulation to use new B2DPolygon classes
     bool CheckLastLineMerge(const basegfx::B2DPolygon& rSrcPoly);
     bool CheckLastPolyLineAndFillMerge(const basegfx::B2DPolyPolygon& rPolyPolygon);
 
     void DoLoopActions(GDIMetaFile const & rMtf, SvdProgressInfo* pProgrInfo, sal_uInt32* pActionsToReport);
+
+    // map from current virtual device mapmode to original mapmode
+    Size implMap(const Size& rSz) const;
+    Point implMap(const Point& rPt) const;
+    basegfx::B2DHomMatrix implMapMatrix() const;
 
     // Copy assignment is forbidden and not implemented.
     ImpSdrGDIMetaFileImport (const ImpSdrGDIMetaFileImport &) = delete;

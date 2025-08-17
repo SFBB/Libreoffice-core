@@ -32,22 +32,22 @@ using namespace com::sun::star;
 
 namespace drawinglayer::primitive2d
 {
-        void PagePreviewPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const
+        Primitive2DReference PagePreviewPrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const
         {
             Primitive2DContainer aContent(getPageContent());
 
             if(!(!aContent.empty()
-                && basegfx::fTools::more(getContentWidth(), 0.0)
-                && basegfx::fTools::more(getContentHeight(), 0.0)))
-                return;
+                && getContentWidth() > 0.0)
+                && getContentHeight() > 0.0)
+                return nullptr;
 
             // the decomposed matrix will be needed
             basegfx::B2DVector aScale, aTranslate;
             double fRotate, fShearX;
             getTransform().decompose(aScale, aTranslate, fRotate, fShearX);
 
-            if(!(basegfx::fTools::more(aScale.getX(), 0.0) && basegfx::fTools::more(aScale.getY(), 0.0)))
-                return;
+            if(!(aScale.getX() > 0.0 && aScale.getY() > 0.0))
+                return nullptr;
 
             // check if content overlaps with target size and needs to be embedded with a
             // clipping primitive
@@ -98,7 +98,7 @@ namespace drawinglayer::primitive2d
             aPageTrans = aCombined * aPageTrans;
 
             // embed in necessary transformation to map from SdrPage to SdrPageObject
-            rContainer.push_back(new TransformPrimitive2D(aPageTrans, std::move(aContent)));
+            return new TransformPrimitive2D(aPageTrans, std::move(aContent));
         }
 
         PagePreviewPrimitive2D::PagePreviewPrimitive2D(

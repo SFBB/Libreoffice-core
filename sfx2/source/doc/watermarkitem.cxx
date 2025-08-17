@@ -13,8 +13,8 @@
 
 SfxWatermarkItem::SfxWatermarkItem()
 : SfxPoolItem( SID_WATERMARK )
-, m_aText( "" )
-, m_aFont( "Liberation Sans" )
+, m_aText( u""_ustr )
+, m_aFont( u"Liberation Sans"_ustr )
 , m_nAngle( 45 )
 , m_nTransparency( 50 )
 , m_nColor( 0xc0c0c0 )
@@ -60,7 +60,7 @@ bool SfxWatermarkItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /*nMemberI
 
     if ( rVal >>= aSequence )
     {
-        for(const auto& aEntry : std::as_const(aSequence))
+        for (const auto& aEntry : aSequence)
         {
             if(aEntry.Name == "Text")
                 aEntry.Value >>= m_aText;

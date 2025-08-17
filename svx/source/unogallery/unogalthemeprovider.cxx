@@ -85,7 +85,7 @@ GalleryThemeProvider::GalleryThemeProvider() :
 
 OUString SAL_CALL GalleryThemeProvider::getImplementationName()
 {
-    return "com.sun.star.comp.gallery.GalleryThemeProvider";
+    return u"com.sun.star.comp.gallery.GalleryThemeProvider"_ustr;
 }
 
 sal_Bool SAL_CALL GalleryThemeProvider::supportsService( const OUString& ServiceName )
@@ -95,7 +95,7 @@ sal_Bool SAL_CALL GalleryThemeProvider::supportsService( const OUString& Service
 
 uno::Sequence< OUString > SAL_CALL GalleryThemeProvider::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> aSeq { "com.sun.star.gallery.GalleryThemeProvider" };
+    uno::Sequence<OUString> aSeq { u"com.sun.star.gallery.GalleryThemeProvider"_ustr };
     return aSeq;
 }
 
@@ -127,7 +127,7 @@ void SAL_CALL GalleryThemeProvider::initialize( const uno::Sequence< uno::Any >&
             break;
     }
 
-    for( const beans::PropertyValue& rProp : std::as_const(aParams) )
+    for (const beans::PropertyValue& rProp : aParams)
     {
         if ( rProp.Name == "ProvideHiddenThemes" )
             rProp.Value >>= mbHiddenThemes;
@@ -202,21 +202,14 @@ sal_Bool SAL_CALL GalleryThemeProvider::hasByName( const OUString& rName )
 uno::Reference< gallery::XGalleryTheme > SAL_CALL GalleryThemeProvider::insertNewByName( const OUString& rThemeName )
 {
     const SolarMutexGuard aGuard;
-    uno::Reference< gallery::XGalleryTheme >    xRet;
 
-    if( mpGallery )
-    {
-        if( mpGallery->HasTheme( rThemeName ) )
-        {
-            throw container::ElementExistException();
-        }
-        else if( mpGallery->CreateTheme( rThemeName ) )
-        {
-            xRet = new ::unogallery::GalleryTheme( rThemeName );
-        }
-    }
-
-    return xRet;
+    if( !mpGallery )
+        return nullptr;
+    if( mpGallery->HasTheme( rThemeName ) )
+        throw container::ElementExistException();
+    if( !mpGallery->CreateTheme( rThemeName ) )
+        return nullptr;
+    return new ::unogallery::GalleryTheme( rThemeName );
 }
 
 

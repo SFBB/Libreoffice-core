@@ -45,6 +45,7 @@
 #include <unoidx.hxx>
 #include <unofield.hxx>
 #include <unotbl.hxx>
+#include <unosection.hxx>
 #include <unosett.hxx>
 #include <unoframe.hxx>
 #include <unocrsr.hxx>
@@ -92,6 +93,8 @@
 #include <poolfmt.hxx>
 #include <paratr.hxx>
 #include <sal/log.hxx>
+#include <names.hxx>
+#include <istyleaccess.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -104,18 +107,17 @@ using namespace ::com::sun::star::lang;
 namespace SwUnoCursorHelper
 {
 
-static SwPaM* lcl_createPamCopy(const SwPaM& rPam)
+static void lcl_createPamCopy(std::optional<SwPaM>& o_rpPam, const SwPaM& rPam)
 {
-    SwPaM *const pRet = new SwPaM(*rPam.GetPoint());
-    ::sw::DeepCopyPaM(rPam, *pRet);
-    return pRet;
+    o_rpPam.emplace(*rPam.GetPoint());
+    ::sw::DeepCopyPaM(rPam, *o_rpPam);
 }
 
 void GetSelectableFromAny(uno::Reference<uno::XInterface> const& xIfc,
         SwDoc & rTargetDoc,
-        SwPaM *& o_rpPaM, std::pair<OUString, FlyCntType> & o_rFrame,
-        OUString & o_rTableName, SwUnoTableCursor const*& o_rpTableCursor,
-        ::sw::mark::IMark const*& o_rpMark,
+        std::optional<SwPaM>& o_rpPaM, std::pair<UIName, FlyCntType> & o_rFrame,
+        UIName & o_rTableName, SwUnoTableCursor const*& o_rpTableCursor,
+        ::sw::mark::MarkBase const*& o_rpMark,
         std::vector<SdrObject *> & o_rSdrObjects)
 {
     uno::Reference<drawing::XShapes> const xShapes(xIfc, UNO_QUERY);
@@ -165,7 +167,7 @@ void GetSelectableFromAny(uno::Reference<uno::XInterface> const& xIfc,
     {
         if (pCursor->GetDoc() == &rTargetDoc)
         {
-            o_rpPaM = lcl_createPamCopy(*pCursor->GetPaM());
+            lcl_createPamCopy(o_rpPaM, *pCursor->GetPaM());
         }
         return;
     }
@@ -176,7 +178,7 @@ void GetSelectableFromAny(uno::Reference<uno::XInterface> const& xIfc,
         SwUnoCursor const* pUnoCursor = pRanges->GetCursor();
         if (pUnoCursor && &pUnoCursor->GetDoc() == &rTargetDoc)
         {
-            o_rpPaM = lcl_createPamCopy(*pUnoCursor);
+            lcl_createPamCopy(o_rpPaM, *pUnoCursor);
         }
         return;
     }
@@ -187,7 +189,7 @@ void GetSelectableFromAny(uno::Reference<uno::XInterface> const& xIfc,
     if (pFrame)
     {
         const SwFrameFormat *const pFrameFormat(pFrame->GetFrameFormat());
-        if (pFrameFormat && pFrameFormat->GetDoc() == &rTargetDoc)
+        if (pFrameFormat && &pFrameFormat->GetDoc() == &rTargetDoc)
         {
             o_rFrame = std::make_pair(pFrameFormat->GetName(), pFrame->GetFlyCntType());
         }
@@ -198,7 +200,7 @@ void GetSelectableFromAny(uno::Reference<uno::XInterface> const& xIfc,
     if (pTextTable)
     {
         SwFrameFormat *const pFrameFormat(pTextTable->GetFrameFormat());
-        if (pFrameFormat && pFrameFormat->GetDoc() == &rTargetDoc)
+        if (pFrameFormat && &pFrameFormat->GetDoc() == &rTargetDoc)
         {
             o_rTableName = pFrameFormat->GetName();
         }
@@ -209,7 +211,7 @@ void GetSelectableFromAny(uno::Reference<uno::XInterface> const& xIfc,
     if (pCell)
     {
         SwFrameFormat *const pFrameFormat(pCell->GetFrameFormat());
-        if (pFrameFormat && pFrameFormat->GetDoc() == &rTargetDoc)
+        if (pFrameFormat && &pFrameFormat->GetDoc() == &rTargetDoc)
         {
             SwTableBox * pBox = pCell->GetTableBox();
             SwTable *const pTable = SwTable::FindTable(pFrameFormat);
@@ -219,19 +221,19 @@ void GetSelectableFromAny(uno::Reference<uno::XInterface> const& xIfc,
             {
                 SwPaM aPam(*pBox->GetSttNd());
                 aPam.Move(fnMoveForward, GoInNode);
-                o_rpPaM = lcl_createPamCopy(aPam);
+                lcl_createPamCopy(o_rpPaM, aPam);
             }
         }
         return;
     }
 
-    uno::Reference<text::XTextRange> const xTextRange(xTunnel, UNO_QUERY);
+    uno::Reference<text::XTextRange> const xTextRange(xIfc, UNO_QUERY);
     if (xTextRange.is())
     {
         SwUnoInternalPaM aPam(rTargetDoc);
         if (::sw::XTextRangeToSwPaM(aPam, xTextRange))
         {
-            o_rpPaM = lcl_createPamCopy(aPam);
+            lcl_createPamCopy(o_rpPaM, aPam);
         }
         return;
     }
@@ -249,7 +251,7 @@ void GetSelectableFromAny(uno::Reference<uno::XInterface> const& xIfc,
         return;
     }
 
-    ::sw::mark::IMark const*const pMark =
+    ::sw::mark::MarkBase const*const pMark =
             SwXBookmark::GetBookmarkInDoc(& rTargetDoc, xIfc);
     if (pMark)
     {
@@ -305,10 +307,10 @@ static uno::Any GetParaListAutoFormat(SwTextNode const& rNode)
     // have to iterate the map, not the item set?
     for (auto const pEntry : rMap.getPropertyEntries())
     {
-        if (rPropSet.getPropertyState(*pEntry, *pSet) == PropertyState_DIRECT_VALUE)
+        if (SfxItemPropertySet::getPropertyState(*pEntry, *pSet) == PropertyState_DIRECT_VALUE)
         {
             Any value;
-            rPropSet.getPropertyValue(*pEntry, *pSet, value);
+            SfxItemPropertySet::getPropertyValue(*pEntry, *pSet, value);
             props.emplace_back(pEntry->aName, value);
         }
     }
@@ -394,9 +396,9 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
             {
                 if( pAny )
                 {
-                    OUString sVal;
+                    ProgName sVal;
                     SwStyleNameMapper::FillProgName(pFormat->GetName(), sVal, SwGetPoolIdFromName::TxtColl );
-                    *pAny <<= sVal;
+                    *pAny <<= sVal.toString();
                 }
             }
             else
@@ -405,10 +407,10 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
         break;
         case FN_UNO_PAGE_STYLE :
         {
-            OUString sVal;
+            ProgName sVal;
             GetCurPageStyle(rPam, sVal);
             if( pAny )
-                *pAny <<= sVal;
+                *pAny <<= sVal.toString();
             if(sVal.isEmpty())
                 eNewState = PropertyState_AMBIGUOUS_VALUE;
         }
@@ -529,10 +531,10 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
                 {   // hmm... can only return 1 here
                     SwTOXMark & rMark =
                         static_cast<SwTOXMark &>((*marks.begin())->GetAttr());
-                    const uno::Reference< text::XDocumentIndexMark > xRef =
+                    const rtl::Reference< SwXDocumentIndexMark > xRef =
                         SwXDocumentIndexMark::CreateXDocumentIndexMark(
                             rPam.GetDoc(), &rMark);
-                    (*pAny) <<= xRef;
+                    (*pAny) <<= uno::Reference< text::XDocumentIndexMark >(xRef);
                 }
             }
             else
@@ -548,10 +550,10 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
             {
                 if( pAny )
                 {
-                    const uno::Reference< text::XDocumentIndex > xRef =
+                    const rtl::Reference< SwXDocumentIndex > xRef =
                         SwXDocumentIndex::CreateXDocumentIndex(rPam.GetDoc(),
                             static_cast<SwTOXBaseSection *>(pBase));
-                    (*pAny) <<= xRef;
+                    (*pAny) <<= uno::Reference< text::XDocumentIndex >(xRef);
                 }
             }
             else
@@ -570,10 +572,10 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
             {
                 if( pAny )
                 {
-                    uno::Reference<text::XTextField> const xField(
+                    rtl::Reference<SwXTextField> const xField(
                         SwXTextField::CreateXTextField(&rPam.GetDoc(),
                            &pTextAttr->GetFormatField()));
-                    *pAny <<= xField;
+                    *pAny <<= uno::Reference<text::XTextField>(xField);
                 }
             }
             else
@@ -594,14 +596,14 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
                     //SwTable& rTable = static_cast<SwTableNode*>(pSttNode)->GetTable();
                     if(FN_UNO_TEXT_TABLE == rEntry.nWID)
                     {
-                        uno::Reference< XTextTable >  xTable = SwXTextTables::GetObject(*pTableFormat);
-                        *pAny <<= xTable;
+                        rtl::Reference< SwXTextTable >  xTable = SwXTextTable::CreateXTextTable(pTableFormat);
+                        *pAny <<= uno::Reference< XTextTable >(xTable);
                     }
                     else
                     {
                         SwTableBox* pBox = pSttNode->GetTableBox();
-                        uno::Reference< XCell >  xCell = SwXCell::CreateXCell(pTableFormat, pBox);
-                        *pAny <<= xCell;
+                        rtl::Reference< SwXCell >  xCell = SwXCell::CreateXCell(pTableFormat, pBox);
+                        *pAny <<= uno::Reference< XCell >(xCell);
                     }
                 }
             }
@@ -620,9 +622,9 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
                 // Create a wrapper only for text frames, not for graphic or OLE nodes.
                 if (pAny && !rPam.GetPointNode().IsNoTextNode())
                 {
-                    uno::Reference<XTextFrame> const xFrame(
-                        SwXTextFrame::CreateXTextFrame(*pFormat->GetDoc(), pFormat));
-                    (*pAny) <<= xFrame;
+                    rtl::Reference<SwXTextFrame> const xFrame(
+                        SwXTextFrame::CreateXTextFrame(pFormat->GetDoc(), pFormat));
+                    (*pAny) <<= uno::Reference<XTextFrame>(xFrame);
                 }
             }
             else
@@ -636,8 +638,8 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
             {
                 if( pAny )
                 {
-                    uno::Reference< XTextSection >  xSect = SwXTextSections::GetObject( *pSect->GetFormat() );
-                    *pAny <<= xSect;
+                    rtl::Reference<SwXTextSection> xSect = SwXTextSection::CreateXTextSection(pSect->GetFormat());
+                    *pAny <<= uno::Reference< XTextSection >(xSect);
                 }
             }
             else
@@ -651,8 +653,8 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
             {
                 if (pAny)
                 {
-                    uno::Reference<text::XTextContent> xParagraph = SwXParagraph::CreateXParagraph(pTextNode->GetDoc(), pTextNode, nullptr);
-                    *pAny <<= xParagraph;
+                    rtl::Reference<SwXParagraph> xParagraph = SwXParagraph::CreateXParagraph(pTextNode->GetDoc(), pTextNode, nullptr);
+                    *pAny <<= uno::Reference<text::XTextContent>(xParagraph);
                 }
             }
             else
@@ -684,10 +686,10 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
                 {
                     if( pAny )
                     {
-                        const uno::Reference< text::XFootnote > xFootnote =
+                        const rtl::Reference< SwXFootnote > xFootnote =
                             SwXFootnote::CreateXFootnote(rPam.GetDoc(),
                                     &const_cast<SwFormatFootnote&>(rFootnote));
-                        *pAny <<= xFootnote;
+                        *pAny <<= uno::Reference< text::XFootnote >(xFootnote);
                     }
                 }
                 else
@@ -710,10 +712,10 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
                 if( pAny )
                 {   // hmm... can only return 1 here
                     const SwFormatRefMark& rRef = (*marks.begin())->GetRefMark();
-                    uno::Reference<XTextContent> const xRef =
+                    rtl::Reference<SwXReferenceMark> const xRef =
                         SwXReferenceMark::CreateXReferenceMark(rPam.GetDoc(),
                                 const_cast<SwFormatRefMark*>(&rRef));
-                    *pAny <<= xRef;
+                    *pAny <<= uno::Reference<XTextContent>(xRef);
                 }
             }
             else
@@ -779,7 +781,7 @@ bool getCursorPropertyValue(const SfxItemPropertyMapEntry& rEntry
                             OSL_ENSURE(pAttr->GetCharFormat().GetCharFormat(), "no character format set");
                             aCharStyles.getArray()[aCharStyles.getLength() - 1] =
                                         SwStyleNameMapper::GetProgName(
-                                            pAttr->GetCharFormat().GetCharFormat()->GetName(), SwGetPoolIdFromName::ChrFmt);
+                                            pAttr->GetCharFormat().GetCharFormat()->GetName(), SwGetPoolIdFromName::ChrFmt).toString();
                         }
                     }
 
@@ -831,8 +833,8 @@ void setNumberingProperty(const Any& rValue, SwPaM& rPam)
             if(pSwNum->GetNumRule())
             {
                 SwNumRule aRule(*pSwNum->GetNumRule());
-                const OUString* pNewCharStyles =  pSwNum->GetNewCharStyleNames();
-                const OUString* pBulletFontNames = pSwNum->GetBulletFontNames();
+                const UIName* pNewCharStyles =  pSwNum->GetNewCharStyleNames();
+                const UIName* pBulletFontNames = pSwNum->GetBulletFontNames();
                 for(sal_uInt16 i = 0; i < MAXLEVEL; i++)
                 {
                     SwNumFormat aFormat(aRule.Get( i ));
@@ -865,13 +867,16 @@ void setNumberingProperty(const Any& rValue, SwPaM& rPam)
 
                             if(!pCharFormat)
                             {
-                                SfxStyleSheetBasePool* pPool = rDoc.GetDocShell()->GetStyleSheetPool();
-                                SfxStyleSheetBase* pBase;
-                                pBase = pPool->Find(pNewCharStyles[i], SfxStyleFamily::Char);
-                            // shall it really be created?
-                                if(!pBase)
-                                    pBase = &pPool->Make(pNewCharStyles[i], SfxStyleFamily::Page);
-                                pCharFormat = static_cast<SwDocStyleSheet*>(pBase)->GetCharFormat();
+                                if (SwDocShell* pShell = rDoc.GetDocShell())
+                                {
+                                    SfxStyleSheetBasePool* pPool = pShell->GetStyleSheetPool();
+                                    SfxStyleSheetBase* pBase;
+                                    pBase = pPool->Find(pNewCharStyles[i].toString(), SfxStyleFamily::Char);
+                                    // shall it really be created?
+                                    if(!pBase)
+                                        pBase = &pPool->Make(pNewCharStyles[i].toString(), SfxStyleFamily::Page);
+                                    pCharFormat = static_cast<SwDocStyleSheet*>(pBase)->GetCharFormat();
+                                }
                             }
                             if(pCharFormat)
                                 aFormat.SetCharFormat(pCharFormat);
@@ -884,14 +889,17 @@ void setNumberingProperty(const Any& rValue, SwPaM& rPam)
                        (!aFormat.GetBulletFont() || aFormat.GetBulletFont()->GetFamilyName() != pBulletFontNames[i])
                       )
                     {
-                        const SvxFontListItem* pFontListItem =
-                                static_cast<const SvxFontListItem* >(rDoc.GetDocShell()
-                                                    ->GetItem( SID_ATTR_CHAR_FONTLIST ));
-                        const FontList* pList = pFontListItem->GetFontList();
+                        if (SwDocShell* pShell = rDoc.GetDocShell())
+                        {
+                            const SvxFontListItem* pFontListItem =
+                                    static_cast<const SvxFontListItem* >(
+                                                        pShell->GetItem( SID_ATTR_CHAR_FONTLIST ));
+                            const FontList* pList = pFontListItem->GetFontList();
 
-                        vcl::Font aFont(pList->Get(
-                            pBulletFontNames[i],WEIGHT_NORMAL, ITALIC_NONE));
-                        aFormat.SetBulletFont(&aFont);
+                            vcl::Font aFont(pList->Get(
+                                pBulletFontNames[i].toString(), WEIGHT_NORMAL, ITALIC_NONE));
+                            aFormat.SetBulletFont(&aFont);
+                        }
                     }
                     aRule.Set( i, aFormat );
                 }
@@ -905,14 +913,14 @@ void setNumberingProperty(const Any& rValue, SwPaM& rPam)
                     for ( size_t n = 0; n < aRangeArr.Count(); ++n )
                     {
                         // no start of a new list
-                        rDoc.SetNumRule( aRangeArr.SetPam( n, aPam ), aRule, false );
+                        rDoc.SetNumRule(aRangeArr.SetPam( n, aPam ), aRule, SwDoc::SetNumRuleMode::Default);
                     }
                     rDoc.GetIDocumentUndoRedo().EndUndo( SwUndoId::END, nullptr );
                 }
                 else
                 {
                     // no start of a new list
-                    rDoc.SetNumRule( rPam, aRule, false );
+                    rDoc.SetNumRule(rPam, aRule, SwDoc::SetNumRuleMode::Default);
                 }
 
             }
@@ -923,7 +931,7 @@ void setNumberingProperty(const Any& rValue, SwPaM& rPam)
                 if ( !pRule )
                     throw RuntimeException();
                 // no start of a new list
-                rDoc.SetNumRule( rPam, *pRule, false );
+                rDoc.SetNumRule(rPam, *pRule, SwDoc::SetNumRuleMode::Default);
             }
             else
             {
@@ -933,7 +941,7 @@ void setNumberingProperty(const Any& rValue, SwPaM& rPam)
                 SwNumRule* pRule = rDoc.GetOutlineNumRule();
                 if(!pRule)
                     throw RuntimeException();
-                rDoc.SetNumRule( rPam, *pRule, false );
+                rDoc.SetNumRule(rPam, *pRule, SwDoc::SetNumRuleMode::Default);
             }
         }
     }
@@ -957,7 +965,7 @@ void  getNumberingProperty(SwPaM& rPam, PropertyState& eState, Any * pAny )
         eState = PropertyState_DEFAULT_VALUE;
 }
 
-void GetCurPageStyle(SwPaM const & rPaM, OUString &rString)
+void GetCurPageStyle(SwPaM const & rPaM, ProgName &rString)
 {
     if (!rPaM.GetPointContentNode())
         return; // TODO: is there an easy way to get it for tables/sections?
@@ -1025,19 +1033,18 @@ void InsertFile(SwUnoCursor* pUnoCursor, const OUString& rURL,
         if (pTextNode->GetTextAttrAt(pUnoCursor->GetPoint()->GetContentIndex(),
                 RES_TXTATR_INPUTFIELD, ::sw::GetTextAttrMode::Parent))
         {
-            throw uno::RuntimeException("cannot insert file inside input field");
+            throw uno::RuntimeException(u"cannot insert file inside input field"_ustr);
         }
 
         if (pTextNode->GetTextAttrAt(pUnoCursor->GetPoint()->GetContentIndex(),
                 RES_TXTATR_CONTENTCONTROL, ::sw::GetTextAttrMode::Parent))
         {
-            throw uno::RuntimeException("cannot insert file inside content controls");
+            throw uno::RuntimeException(u"cannot insert file inside content controls"_ustr);
         }
     }
 
     std::unique_ptr<SfxMedium> pMed;
     SwDoc& rDoc = pUnoCursor->GetDoc();
-    SwDocShell* pDocSh = rDoc.GetDocShell();
     utl::MediaDescriptor aMediaDescriptor( rOptions );
     OUString sFileName = rURL;
     OUString sFilterName, sFilterOptions, sPassword, sBaseURL;
@@ -1050,7 +1057,6 @@ void InsertFile(SwUnoCursor* pUnoCursor, const OUString& rURL,
         aMediaDescriptor[utl::MediaDescriptor::PROP_FILENAME] >>= sFileName;
     aMediaDescriptor[utl::MediaDescriptor::PROP_INPUTSTREAM] >>= xInputStream;
     aMediaDescriptor[utl::MediaDescriptor::PROP_STREAM] >>= xStream;
-    aMediaDescriptor[utl::MediaDescriptor::PROP_INPUTSTREAM] >>= xInputStream;
     aMediaDescriptor[utl::MediaDescriptor::PROP_FILTERNAME] >>= sFilterName;
     aMediaDescriptor[utl::MediaDescriptor::PROP_FILTEROPTIONS] >>= sFilterOptions;
     aMediaDescriptor[utl::MediaDescriptor::PROP_PASSWORD] >>= sPassword;
@@ -1058,6 +1064,7 @@ void InsertFile(SwUnoCursor* pUnoCursor, const OUString& rURL,
     if ( !xInputStream.is() && xStream.is() )
         xInputStream = xStream->getInputStream();
 
+    SwDocShell* pDocSh = rDoc.GetDocShell();
     if(!pDocSh || (sFileName.isEmpty() && !xInputStream.is()))
         return;
 
@@ -1111,7 +1118,7 @@ void InsertFile(SwUnoCursor* pUnoCursor, const OUString& rURL,
                 pMed->SetFilter( pFilter );
             }
             else
-                pMed.reset(new SfxMedium(sFileName, StreamMode::READ, pFilter, nullptr));
+                pMed.reset(new SfxMedium(sFileName, StreamMode::READ, std::move(pFilter), nullptr));
         }
         if(!sFilterOptions.isEmpty())
             pMed->GetItemSet().Put( SfxStringItem( SID_FILE_FILTEROPTIONS, sFilterOptions ) );
@@ -1299,7 +1306,7 @@ void makeRedline( SwPaM const & rPaM,
             if (!aRevertProperties.hasElements())
             {
                 // to reject the paragraph style change, use standard style
-                xRedlineExtraData.reset(new SwRedlineExtraData_FormatColl( "",  RES_POOLCOLL_STANDARD, nullptr ));
+                xRedlineExtraData.reset(new SwRedlineExtraData_FormatColl( UIName(u""_ustr),  RES_POOLCOLL_STANDARD, nullptr ));
             }
         }
         else
@@ -1318,7 +1325,7 @@ void makeRedline( SwPaM const & rPaM,
             aEntries.reserve(aRevertProperties.getLength());
             sal_uInt16 nStyleId = USHRT_MAX;
             sal_uInt16 nNumId = USHRT_MAX;
-            for (const auto& rRevertProperty : std::as_const(aRevertProperties))
+            for (const auto& rRevertProperty : aRevertProperties)
             {
                 const OUString &rPropertyName = rRevertProperty.Name;
                 SfxItemPropertyMapEntry const* pEntry = rPropSet.getPropertyMap().getByName(rPropertyName);
@@ -1350,7 +1357,8 @@ void makeRedline( SwPaM const & rPaM,
             if (!aWhichPairs.empty())
             {
                 sal_uInt16 nStylePoolId = USHRT_MAX;
-                OUString sParaStyleName, sUIStyle;
+                OUString sParaStyleName;
+                UIName sUIStyle;
                 SfxItemSet aItemSet(rDoc.GetAttrPool(), std::move(aWhichPairs));
 
                 for (size_t i = 0; i < aEntries.size(); ++i)
@@ -1362,10 +1370,10 @@ void makeRedline( SwPaM const & rPaM,
                         rValue >>= xNumberingRules;
                         if (xNumberingRules.is())
                         {
-                            aItemSet.Put( SwNumRuleItem( xNumberingRules->getName() ));
+                            aItemSet.Put( SwNumRuleItem( UIName(xNumberingRules->getName()) ));
                             // keep it during export
                             SwNumRule* pRule = rDoc.FindNumRulePtr(
-                                        xNumberingRules->getName());
+                                        UIName(xNumberingRules->getName()));
                             if (pRule)
                                 pRule->SetUsedByRedline(true);
                         }
@@ -1373,7 +1381,7 @@ void makeRedline( SwPaM const & rPaM,
                     else
                     {
                         SfxItemPropertyMapEntry const*const pEntry = aEntries[i];
-                        rPropSet.setPropertyValue(*pEntry, rValue, aItemSet);
+                        SfxItemPropertySet::setPropertyValue(*pEntry, rValue, aItemSet);
                         if (i == nStyleId)
                             rValue >>= sParaStyleName;
                     }
@@ -1383,13 +1391,15 @@ void makeRedline( SwPaM const & rPaM,
                     nStylePoolId = RES_POOLCOLL_STANDARD;
 
                 // tdf#149747 Get UI style name from programmatic style name
-                SwStyleNameMapper::FillUIName(sParaStyleName, sUIStyle,
+                SwStyleNameMapper::FillUIName(ProgName(sParaStyleName), sUIStyle,
                                               SwGetPoolIdFromName::TxtColl);
+                IStyleAccess& rStyleAccess = rDoc.GetIStyleAccess();
+                std::shared_ptr<SfxItemSet> pAutoStyle = rStyleAccess.getAutomaticStyle(aItemSet, IStyleAccess::AUTO_STYLE_CHAR);
                 xRedlineExtraData.reset(new SwRedlineExtraData_FormatColl(
-                    sUIStyle.isEmpty() ? sParaStyleName : sUIStyle, nStylePoolId, &aItemSet));
+                    sUIStyle.isEmpty() ? UIName(sParaStyleName) : std::move(sUIStyle), nStylePoolId, pAutoStyle));
             }
             else if (eType == RedlineType::ParagraphFormat)
-                xRedlineExtraData.reset(new SwRedlineExtraData_FormatColl( "", RES_POOLCOLL_STANDARD, nullptr ));
+                xRedlineExtraData.reset(new SwRedlineExtraData_FormatColl( UIName(u""_ustr), RES_POOLCOLL_STANDARD, nullptr ));
         }
     }
 
@@ -1417,8 +1427,8 @@ void makeTableRowRedline( SwTableLine& rTableLine,
     std::u16string_view rRedlineType,
     const uno::Sequence< beans::PropertyValue >& rRedlineProperties )
 {
-    SwDoc* pDoc = rTableLine.GetFrameFormat()->GetDoc();
-    IDocumentRedlineAccess* pRedlineAccess = &pDoc->getIDocumentRedlineAccess();
+    SwDoc& rDoc = rTableLine.GetFrameFormat()->GetDoc();
+    IDocumentRedlineAccess* pRedlineAccess = &rDoc.getIDocumentRedlineAccess();
 
     RedlineType eType;
     if ( rRedlineType == u"TableRowInsert" )
@@ -1447,7 +1457,7 @@ void makeTableRowRedline( SwTableLine& rTableLine,
         if ( rTableLine.IsEmpty() )
         {
             SwPaM aPaM(aInsPos);
-            pDoc->getIDocumentContentOperations().InsertString( aPaM,
+            rDoc.getIDocumentContentOperations().InsertString( aPaM,
                     OUStringChar(CH_TXT_TRACKED_DUMMY_CHAR) );
             aPaM.SetMark();
             aPaM.GetMark()->SetContent(0);
@@ -1456,22 +1466,22 @@ void makeTableRowRedline( SwTableLine& rTableLine,
                     : u"Delete", rRedlineProperties);
         }
         SwCursor aCursor( SwPosition(aInsPos), nullptr );
-        pDoc->SetRowNotTracked( aCursor, aSetTracking );
+        rDoc.SetRowNotTracked( aCursor, aSetTracking );
     }
 
     comphelper::SequenceAsHashMap aPropMap( rRedlineProperties );
     std::size_t nAuthor = 0;
     OUString sAuthor;
-    if( aPropMap.getValue("RedlineAuthor") >>= sAuthor )
+    if( aPropMap.getValue(u"RedlineAuthor"_ustr) >>= sAuthor )
         nAuthor = pRedlineAccess->InsertRedlineAuthor(sAuthor);
 
     OUString sComment;
     SwRedlineData aRedlineData( eType, nAuthor );
-    if( aPropMap.getValue("RedlineComment") >>= sComment )
+    if( aPropMap.getValue(u"RedlineComment"_ustr) >>= sComment )
         aRedlineData.SetComment( sComment );
 
     ::util::DateTime aStamp;
-    if( aPropMap.getValue("RedlineDateTime") >>= aStamp )
+    if( aPropMap.getValue(u"RedlineDateTime"_ustr) >>= aStamp )
     {
        aRedlineData.SetTimeStamp(
         DateTime( Date( aStamp.Day, aStamp.Month, aStamp.Year ), tools::Time( aStamp.Hours, aStamp.Minutes, aStamp.Seconds ) ) );
@@ -1492,8 +1502,8 @@ void makeTableCellRedline( SwTableBox& rTableBox,
     std::u16string_view rRedlineType,
     const uno::Sequence< beans::PropertyValue >& rRedlineProperties )
 {
-    SwDoc* pDoc = rTableBox.GetFrameFormat()->GetDoc();
-    IDocumentRedlineAccess* pRedlineAccess = &pDoc->getIDocumentRedlineAccess();
+    SwDoc& rDoc = rTableBox.GetFrameFormat()->GetDoc();
+    IDocumentRedlineAccess* pRedlineAccess = &rDoc.getIDocumentRedlineAccess();
 
     RedlineType eType;
     if ( rRedlineType == u"TableCellInsert" )
@@ -1522,7 +1532,7 @@ void makeTableCellRedline( SwTableBox& rTableBox,
         if ( rTableBox.IsEmpty() )
         {
             SwPaM aPaM(aInsPos);
-            pDoc->getIDocumentContentOperations().InsertString( aPaM,
+            rDoc.getIDocumentContentOperations().InsertString( aPaM,
                     OUStringChar(CH_TXT_TRACKED_DUMMY_CHAR) );
             aPaM.SetMark();
             aPaM.GetMark()->SetContent(0);
@@ -1531,22 +1541,22 @@ void makeTableCellRedline( SwTableBox& rTableBox,
                     : u"Delete", rRedlineProperties);
         }
         SwCursor aCursor( SwPosition(aInsPos), nullptr );
-        pDoc->SetBoxAttr( aCursor, aSetTracking );
+        rDoc.SetBoxAttr( aCursor, aSetTracking );
     }
 
     comphelper::SequenceAsHashMap aPropMap( rRedlineProperties );
     std::size_t nAuthor = 0;
     OUString sAuthor;
-    if( aPropMap.getValue("RedlineAuthor") >>= sAuthor )
+    if( aPropMap.getValue(u"RedlineAuthor"_ustr) >>= sAuthor )
         nAuthor = pRedlineAccess->InsertRedlineAuthor(sAuthor);
 
     OUString sComment;
     SwRedlineData aRedlineData( eType, nAuthor );
-    if( aPropMap.getValue("RedlineComment") >>= sComment )
+    if( aPropMap.getValue(u"RedlineComment"_ustr) >>= sComment )
         aRedlineData.SetComment( sComment );
 
     ::util::DateTime aStamp;
-    if( aPropMap.getValue("RedlineDateTime") >>= aStamp )
+    if( aPropMap.getValue(u"RedlineDateTime"_ustr) >>= aStamp )
     {
        aRedlineData.SetTimeStamp(
         DateTime( Date( aStamp.Day, aStamp.Month, aStamp.Year ), tools::Time( aStamp.Hours, aStamp.Minutes, aStamp.Seconds ) ) );

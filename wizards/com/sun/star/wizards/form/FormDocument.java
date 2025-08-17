@@ -98,7 +98,7 @@ public class FormDocument extends TextDocument
 
     private String getDataSourceName()
     {
-        return this.oMainFormDBMetaData.DataSourceName;
+        return this.oMainFormDBMetaData.getDataSourceName();
     }
 
     private void adjustPageStyle()
@@ -368,7 +368,7 @@ public class FormDocument extends TextDocument
             curArrangement = _curArrangement;
             if (oGridControl != null)
             {
-                oFormHandler.xDrawPage.remove(oGridControl.xShape);
+                oFormHandler.xDrawPage.remove(oGridControl.getShape());
                 oGridControl.xComponent.dispose();
                 oGridControl = null;
             }
@@ -446,7 +446,7 @@ public class FormDocument extends TextDocument
         {
             if (curArrangement == FormWizard.AS_GRID)
             {
-                return oGridControl.xShape.getSize().Height;
+                return oGridControl.getSize().Height;
             }
             else
             {
@@ -458,7 +458,7 @@ public class FormDocument extends TextDocument
         {
             if (curArrangement == FormWizard.AS_GRID)
             {
-                return oGridControl.xShape.getPosition().Y;
+                return oGridControl.getPosition().Y;
             }
             else
             {
@@ -513,11 +513,15 @@ public class FormDocument extends TextDocument
                 curArrangement = FormWizard.AS_GRID;
                 if (Name.equals(SOMAINFORM))
                 {
-                    oGridControl = new GridControl(xMSF, Name + "_Grid", oFormHandler, xFormContainer, oDBMetaData.FieldColumns, aStartPoint, getMainFormSize(FormWizard.AS_GRID));
+                    oGridControl = new GridControl(xMSF, Name + "_Grid", oFormHandler, xFormContainer,
+                                                   oDBMetaData.getFieldColumns(), aStartPoint,
+                                                   getMainFormSize(FormWizard.AS_GRID));
                 }
                 else
                 {
-                    oGridControl = new GridControl(xMSF, Name + "_Grid", oFormHandler, xFormContainer, oDBMetaData.FieldColumns, aStartPoint, getSubFormSize());
+                    oGridControl = new GridControl(xMSF, Name + "_Grid", oFormHandler, xFormContainer,
+                                                   oDBMetaData.getFieldColumns(), aStartPoint,
+                                                   getSubFormSize());
                 }
                 oGridControl.xPropertySet.setPropertyValue(PropertyNames.PROPERTY_BORDER, _NBorderType);
             }
@@ -539,13 +543,13 @@ public class FormDocument extends TextDocument
                     {
                         if ((oLabelControls[i] != null) && (oDBControls[i] != null))
                         {
-                            oFormHandler.removeShape(oLabelControls[i].xShape);
-                            oFormHandler.removeShape(oDBControls[i].xShape);
+                            oFormHandler.removeShape(oLabelControls[i].getShape());
+                            oFormHandler.removeShape(oDBControls[i].getShape());
                         }
                     }
                     else
                     {
-                        oFormHandler.groupShapesTogether(xMSF, oLabelControls[i].xShape, oDBControls[i].xShape);
+                        oFormHandler.groupShapesTogether(xMSF, oLabelControls[i].getShape(), oDBControls[i].getShape());
                     }
                 }
             }

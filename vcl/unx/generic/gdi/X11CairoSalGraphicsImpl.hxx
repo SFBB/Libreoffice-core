@@ -33,9 +33,7 @@ private:
 public:
     X11CairoSalGraphicsImpl(X11SalGraphics& rParent, CairoCommon& rCairoCommon);
 
-    void Init() override;
-
-    OUString getRenderBackendName() const override { return "gen"; }
+    OUString getRenderBackendName() const override { return u"gen"_ustr; }
 
     // get the depth of the device
     sal_uInt16 GetBitCount() const override { return mrParent.GetVisual().GetDepth(); }
@@ -151,7 +149,7 @@ public:
                   Color nMaskColor) override;
 
     std::shared_ptr<SalBitmap> getBitmap(tools::Long nX, tools::Long nY, tools::Long nWidth,
-                                         tools::Long nHeight) override;
+                                         tools::Long nHeight, bool bWithoutAlpha) override;
 
     bool drawPolyLineBezier(sal_uInt32 nPoints, const Point* pPtAry,
                             const PolyFlags* pFlgAry) override;
@@ -163,26 +161,12 @@ public:
                                const Point* const* pPtAry,
                                const PolyFlags* const* pFlgAry) override;
 
-    bool drawEPS(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
-                 void* pPtr, sal_uInt32 nSize) override;
-
-    bool hasFastDrawTransformedBitmap() const override;
-
     /** draw transformed bitmap (maybe with alpha) where Null, X, Y define the coordinate system */
     bool drawTransformedBitmap(const basegfx::B2DPoint& rNull, const basegfx::B2DPoint& rX,
                                const basegfx::B2DPoint& rY, const SalBitmap& rSourceBitmap,
                                const SalBitmap* pAlphaBitmap, double fAlpha) override;
 
-    /** Blend bitmap with color channels */
-    bool blendBitmap(const SalTwoRect&, const SalBitmap& rBitmap) override;
-
-    /** Render bitmap by blending using the mask and alpha channel */
-    bool blendAlphaBitmap(const SalTwoRect&, const SalBitmap& rSrcBitmap,
-                          const SalBitmap& rMaskBitmap, const SalBitmap& rAlphaBitmap) override;
-
     bool supportsOperation(OutDevSupportType eType) const override;
-
-    void freeResources() override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

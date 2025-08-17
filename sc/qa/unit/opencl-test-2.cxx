@@ -2,18 +2,12 @@
 
 #include <sal/config.h>
 
-#include <string_view>
-
 #include "helper/qahelper.hxx"
 
 #include <docsh.hxx>
 #include <document.hxx>
 
-#include <comphelper/sequence.hxx>
-#include <comphelper/servicehelper.hxx>
-
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
 
 class ScOpenCLTest2
     : public ScModelTestBase
@@ -1844,8 +1838,35 @@ CPPUNIT_TEST_FIXTURE(ScOpenCLTest2, testStatisticalFormulaStDevPA1)
     }
 }
 
+CPPUNIT_TEST_FIXTURE(ScOpenCLTest2, testTdf149940_VLookup)
+{
+    initTestEnv(u"ods/tdf149940.ods");
+    ScDocument* pDoc = getScDoc2();
+    ScDocument* pDocRes = getScDoc();
+    pDoc->CalcAll();
+
+    for (SCROW i = 4; i <= 12; ++i)
+    {
+        double fLibre = pDoc->GetValue(ScAddress(1,i,1));
+        double fExcel = pDocRes->GetValue(ScAddress(1,i,1));
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(fExcel, fLibre, fabs(0.00001));
+    }
+    for (SCROW i = 4; i <= 12; ++i)
+    {
+        double fLibre = pDoc->GetValue(ScAddress(2,i,1));
+        double fExcel = pDocRes->GetValue(ScAddress(2,i,1));
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(fExcel, fLibre, fabs(0.00001));
+    }
+    for (SCROW i = 4; i <= 12; ++i)
+    {
+        double fLibre = pDoc->GetValue(ScAddress(3,i,1));
+        double fExcel = pDocRes->GetValue(ScAddress(3,i,1));
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(fExcel, fLibre, fabs(0.00001));
+    }
+}
+
 ScOpenCLTest2::ScOpenCLTest2()
-      : ScModelTestBase( "sc/qa/unit/data" )
+      : ScModelTestBase( u"sc/qa/unit/data"_ustr )
 {
 }
 

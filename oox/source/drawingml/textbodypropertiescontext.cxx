@@ -43,7 +43,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::xml::sax;
 
 namespace oox::drawingml {
 
@@ -107,7 +106,7 @@ TextBodyPropertiesContext::TextBodyPropertiesContext( ContextHandler2Helper cons
         // ST_PositiveCoordinate32
         const sal_Int32 nSpacing = o3tl::convert(rAttribs.getInteger(XML_spcCol, 0),
                                                  o3tl::Length::emu, o3tl::Length::mm100);
-        xProps->setPropertyValue("AutomaticDistance", css::uno::Any(nSpacing));
+        xProps->setPropertyValue(u"AutomaticDistance"_ustr, css::uno::Any(nSpacing));
         mrTextBodyProp.maPropertyMap.setAnyProperty(PROP_TextColumns, css::uno::Any(xCols));
     }
 
@@ -146,7 +145,12 @@ TextBodyPropertiesContext::TextBodyPropertiesContext( ContextHandler2Helper cons
         {
             mrTextBodyProp.maPropertyMap.setProperty(PROP_WritingMode, text::WritingMode2::BT_LR);
         }
-        else {
+        else if (tVert == XML_wordArtVert) // what about XML_wordArtVertRtl ?
+        {
+            mrTextBodyProp.maPropertyMap.setProperty(PROP_WritingMode, text::WritingMode2::STACKED);
+        }
+        else
+        {
             bool bRtl = rAttribs.getBool( XML_rtl, false );
             mrTextBodyProp.maPropertyMap.setProperty( PROP_TextWritingMode,
                 ( bRtl ? WritingMode_RL_TB : WritingMode_LR_TB ));
@@ -232,8 +236,11 @@ ContextHandlerRef TextBodyPropertiesContext::onCreateContext( sal_Int32 aElement
             case A_TOKEN( normAutofit ):    // CT_TextNormalAutofit
             {
                 mrTextBodyProp.maPropertyMap.setProperty( PROP_TextFitToSize, TextFitToSizeType_AUTOFIT);
-                mrTextBodyProp.maPropertyMap.setProperty( PROP_TextAutoGrowHeight, false);
+                mrTextBodyProp.maPropertyMap.setProperty(PROP_TextAutoGrowHeight, false);
                 mrTextBodyProp.mnFontScale = rAttribs.getInteger(XML_fontScale, 100000);
+                mrTextBodyProp.mnSpacingScale = rAttribs.getInteger(XML_lnSpcReduction, 100000);
+                mrTextBodyProp.maPropertyMap.setProperty(PROP_TextFitToSizeFontScale, mrTextBodyProp.mnFontScale / 100000.0);
+                mrTextBodyProp.maPropertyMap.setProperty(PROP_TextFitToSizeSpacingScale, 1.0 - mrTextBodyProp.mnSpacingScale / 100000.0);
                 break;
             }
             case A_TOKEN( spAutoFit ):

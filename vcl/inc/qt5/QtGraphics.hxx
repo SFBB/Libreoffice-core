@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -59,15 +59,11 @@ public:
     QtGraphicsBackend(QtFrame* pFrame, QImage* pQImage);
     ~QtGraphicsBackend() override;
 
-    void Init() override {}
-
     QImage* getQImage() { return m_pQImage; }
 
     void setQImage(QImage* pQImage) { m_pQImage = pQImage; }
 
-    void freeResources() override {}
-
-    OUString getRenderBackendName() const override { return "qt5"; }
+    OUString getRenderBackendName() const override { return u"qt"_ustr; }
 
     void setClipRegion(vcl::Region const& rRegion) override;
     void ResetClipRegion() override;
@@ -126,7 +122,7 @@ public:
                   Color nMaskColor) override;
 
     std::shared_ptr<SalBitmap> getBitmap(tools::Long nX, tools::Long nY, tools::Long nWidth,
-                                         tools::Long nHeight) override;
+                                         tools::Long nHeight, bool bWithoutAlpha) override;
 
     Color getPixel(tools::Long nX, tools::Long nY) override;
 
@@ -135,22 +131,12 @@ public:
 
     void invert(sal_uInt32 nPoints, const Point* pPtAry, SalInvert nFlags) override;
 
-    bool drawEPS(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
-                 void* pPtr, sal_uInt32 nSize) override;
-
-    bool blendBitmap(const SalTwoRect&, const SalBitmap& rBitmap) override;
-
-    bool blendAlphaBitmap(const SalTwoRect&, const SalBitmap& rSrcBitmap,
-                          const SalBitmap& rMaskBitmap, const SalBitmap& rAlphaBitmap) override;
-
     bool drawAlphaBitmap(const SalTwoRect&, const SalBitmap& rSourceBitmap,
                          const SalBitmap& rAlphaBitmap) override;
 
     bool drawTransformedBitmap(const basegfx::B2DPoint& rNull, const basegfx::B2DPoint& rX,
                                const basegfx::B2DPoint& rY, const SalBitmap& rSourceBitmap,
                                const SalBitmap* pAlphaBitmap, double fAlpha) override;
-
-    bool hasFastDrawTransformedBitmap() const override;
 
     bool drawAlphaRect(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
                        sal_uInt8 nTransparency) override;
@@ -232,9 +218,10 @@ public:
     virtual void ClearDevFontCache() override;
     virtual bool AddTempDevFont(vcl::font::PhysicalFontCollection*, const OUString& rFileURL,
                                 const OUString& rFontName) override;
+    virtual bool RemoveTempDevFont(const OUString& rFileURL, const OUString& rFontName) override;
 
     virtual std::unique_ptr<GenericSalLayout> GetTextLayout(int nFallbackLevel) override;
     virtual void DrawTextLayout(const GenericSalLayout&) override;
 };
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -857,9 +857,9 @@ BitmapScaleSuperFilter::BitmapScaleSuperFilter(const double& rScaleX, const doub
 BitmapScaleSuperFilter::~BitmapScaleSuperFilter()
 {}
 
-BitmapEx BitmapScaleSuperFilter::execute(BitmapEx const& rBitmap) const
+Bitmap BitmapScaleSuperFilter::execute(Bitmap const& rBitmap) const
 {
-    Bitmap aBitmap(rBitmap.GetBitmap());
+    Bitmap aBitmap(rBitmap);
     bool bRet = false;
 
     const Size aSizePix(rBitmap.GetSizePixel());
@@ -870,13 +870,13 @@ BitmapEx BitmapScaleSuperFilter::execute(BitmapEx const& rBitmap) const
     double fScaleX = std::fabs(mrScaleX);
     double fScaleY = std::fabs(mrScaleY);
 
-    const sal_Int32 nDstW = FRound(aSizePix.Width()  * fScaleX);
-    const sal_Int32 nDstH = FRound(aSizePix.Height() * fScaleY);
+    const sal_Int32 nDstW = basegfx::fround(aSizePix.Width() * fScaleX);
+    const sal_Int32 nDstH = basegfx::fround(aSizePix.Height() * fScaleY);
 
     constexpr double fScaleThresh = 0.6;
 
     if (nDstW <= 1 || nDstH <= 1)
-        return BitmapEx();
+        return Bitmap();
 
     // check cache for a previously scaled version of this
     ScaleCacheKey aKey(aBitmap.ImplGetSalBitmap().get(),
@@ -909,7 +909,7 @@ BitmapEx BitmapScaleSuperFilter::execute(BitmapEx const& rBitmap) const
         if (!aOutSize.Width() || !aOutSize.Height())
         {
             SAL_WARN("vcl.gdi", "bmp creation failed");
-            return BitmapEx();
+            return Bitmap();
         }
 
         BitmapScopedWriteAccess pWriteAccess(aOutBmp);
@@ -968,6 +968,10 @@ BitmapEx BitmapScaleSuperFilter::execute(BitmapEx const& rBitmap) const
                 case ScanlineFormat::N32BitTcBgra:
                 case ScanlineFormat::N32BitTcArgb:
                 case ScanlineFormat::N32BitTcAbgr:
+                case ScanlineFormat::N32BitTcRgbx:
+                case ScanlineFormat::N32BitTcBgrx:
+                case ScanlineFormat::N32BitTcXrgb:
+                case ScanlineFormat::N32BitTcXbgr:
                     pScaleRangeFn = bScaleUp ? scaleUp<32> : scaleDown<32>;
                     break;
                 default:
@@ -1026,7 +1030,7 @@ BitmapEx BitmapScaleSuperFilter::execute(BitmapEx const& rBitmap) const
             pWriteAccess.reset();
             bRet = true;
             aBitmap.AdaptBitCount(aOutBmp);
-            aBitmap = aOutBmp;
+            aBitmap = std::move(aOutBmp);
         }
     }
 
@@ -1034,12 +1038,11 @@ BitmapEx BitmapScaleSuperFilter::execute(BitmapEx const& rBitmap) const
     {
         tools::Rectangle aRect(Point(0, 0), Point(nDstW, nDstH));
         aBitmap.Crop(aRect);
-        BitmapEx aRet(aBitmap);
-        rCache.insert(std::make_pair(aKey, aRet));
-        return aRet;
+        rCache.insert(std::make_pair(aKey, aBitmap));
+        return aBitmap;
     }
 
-    return BitmapEx();
+    return Bitmap();
 
 }
 

@@ -28,7 +28,7 @@
 
 class GalleryDragDrop;
 class GalleryTheme;
-class GalleryBrowser2;
+class GalleryBrowser;
 class INetURLObject;
 
 class GalleryPreview final : public weld::CustomWidgetController
@@ -37,9 +37,9 @@ private:
 
     std::unique_ptr<GalleryDragDrop> mxDragDropTargetHelper;
     std::unique_ptr<weld::ScrolledWindow> mxScrolledWindow;
-    GraphicObject aGraphicObj;
-    tools::Rectangle aPreviewRect;
-    GalleryBrowser2* mpParent;
+    GraphicObject m_aGraphicObj;
+    tools::Rectangle m_aPreviewRect;
+    GalleryBrowser* mpParent;
     GalleryTheme* mpTheme;
 
     bool             ImplGetGraphicCenterRect( const Graphic& rGraphic, tools::Rectangle& rResultRect ) const;
@@ -53,7 +53,7 @@ private:
 
 public:
 
-    GalleryPreview(GalleryBrowser2* pParent, std::unique_ptr<weld::ScrolledWindow> xScrolledWindow);
+    GalleryPreview(GalleryBrowser* pParent, std::unique_ptr<weld::ScrolledWindow> xScrolledWindow);
     void SetTheme(GalleryTheme* pTheme) { mpTheme = pTheme; }
     virtual ~GalleryPreview() override;
 
@@ -62,15 +62,15 @@ public:
     virtual void Show() override;
     virtual void Hide() override;
 
-    void                SetGraphic( const Graphic& rGraphic ) { aGraphicObj.SetGraphic( rGraphic ); }
+    void                SetGraphic( const Graphic& rGraphic ) { m_aGraphicObj.SetGraphic( rGraphic ); }
     static void         PreviewMedia( const INetURLObject& rURL );
 };
 
 class SVXCORE_DLLPUBLIC DialogGalleryPreview final : public weld::CustomWidgetController
 {
 private:
-    GraphicObject aGraphicObj;
-    tools::Rectangle aPreviewRect;
+    GraphicObject maGraphicObj;
+    tools::Rectangle maPreviewRect;
 
     SVX_DLLPRIVATE bool             ImplGetGraphicCenterRect( const Graphic& rGraphic, tools::Rectangle& rResultRect ) const;
 
@@ -81,7 +81,7 @@ public:
     DialogGalleryPreview();
 
     virtual void        SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
-    void                SetGraphic( const Graphic& rGraphic ) { aGraphicObj.SetGraphic( rGraphic ); }
+    void                SetGraphic( const Graphic& rGraphic ) { maGraphicObj.SetGraphic( rGraphic ); }
     bool                SetGraphic( const INetURLObject& );
 };
 
@@ -90,7 +90,7 @@ class GalleryIconView final : public ValueSet
 private:
     std::unique_ptr<GalleryDragDrop> mxDragDropTargetHelper;
 
-    GalleryBrowser2*    mpParent;
+    GalleryBrowser*     mpParent;
     GalleryTheme*       mpTheme;
 
     // ValueSet
@@ -105,7 +105,7 @@ private:
 
 public:
 
-    GalleryIconView(GalleryBrowser2* pParent, std::unique_ptr<weld::ScrolledWindow> xScrolledWindow);
+    GalleryIconView(GalleryBrowser* pParent, std::unique_ptr<weld::ScrolledWindow> xScrolledWindow);
     void SetTheme(GalleryTheme* pTheme) { mpTheme = pTheme; }
     virtual ~GalleryIconView() override;
 

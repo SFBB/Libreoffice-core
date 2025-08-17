@@ -44,7 +44,7 @@ public:
     ColumnBlockPositionSet* getBlockPositionSet() { return mpSet.get(); }
 };
 
-class SC_DLLPUBLIC CopyFromClipContext final : public ClipContextBase
+class SAL_DLLPUBLIC_RTTI CopyFromClipContext final : public ClipContextBase
 {
     /** Tracks modified formula group spans. */
     sc::ColumnSpanSet maListeningFormulaSpans;
@@ -83,18 +83,18 @@ public:
     };
 
     CopyFromClipContext() = delete;
-    CopyFromClipContext(ScDocument& rDoc,
+    SC_DLLPUBLIC CopyFromClipContext(ScDocument& rDoc,
         ScDocument* pRefUndoDoc, ScDocument* pClipDoc, InsertDeleteFlags nInsertFlag,
         bool bAsLink, bool bSkipAttrForEmptyCells);
 
-    virtual ~CopyFromClipContext() override;
+    SC_DLLPUBLIC virtual ~CopyFromClipContext() override;
 
-    void setTabRange(SCTAB nStart, SCTAB nEnd);
+    SC_DLLPUBLIC void setTabRange(SCTAB nStart, SCTAB nEnd);
 
     SCTAB getTabStart() const;
     SCTAB getTabEnd() const;
 
-    void setDestRange( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 );
+    SC_DLLPUBLIC void setDestRange( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 );
     Range getDestRange() const;
 
     ScDocument* getUndoDoc();
@@ -161,12 +161,15 @@ public:
 class CopyToClipContext final : public ClipContextBase
 {
     bool mbKeepScenarioFlags:1;
+    bool mbCopyChartRanges : 1 = false; // Copying ranges not included in selection:
+                                        // only copy data, not cell attributes
 
 public:
-    CopyToClipContext(ScDocument& rDoc, bool bKeepScenarioFlags);
+    CopyToClipContext(ScDocument& rDoc, bool bKeepScenarioFlags, bool bCopyChartRanges = false);
     virtual ~CopyToClipContext() override;
 
     bool isKeepScenarioFlags() const;
+    bool isCopyChartRanges() const { return mbCopyChartRanges; }
 };
 
 class CopyToDocContext final : public ClipContextBase

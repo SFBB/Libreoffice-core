@@ -46,7 +46,6 @@ $(eval $(call gb_Library_add_defs,vcl,\
     -DVCL_DLLIMPLEMENTATION \
     -DDLLIMPLEMENTATION_UITEST \
     -DCUI_DLL_NAME=\"$(call gb_Library_get_runtime_filename,$(call gb_Library__get_name,cui))\" \
-    -DDESKTOP_DETECTOR_DLL_NAME=\"$(call gb_Library_get_runtime_filename,$(call gb_Library__get_name,desktop_detector))\" \
     -DTK_DLL_NAME=\"$(call gb_Library_get_runtime_filename,$(call gb_Library__get_name,tk))\" \
     $(if $(SYSTEM_LIBFIXMATH),-DSYSTEM_LIBFIXMATH) \
 ))
@@ -98,7 +97,60 @@ $(eval $(call gb_Library_use_externals,vcl,\
 $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/rendercontext/drawmode \
     vcl/skia/SkiaHelper \
+    vcl/source/accessibility/AccessibleBrowseBox \
+    vcl/source/accessibility/AccessibleBrowseBoxBase \
+    vcl/source/accessibility/AccessibleBrowseBoxCheckBoxCell \
+    vcl/source/accessibility/AccessibleBrowseBoxHeaderBar \
+    vcl/source/accessibility/AccessibleBrowseBoxHeaderCell \
+    vcl/source/accessibility/AccessibleBrowseBoxTable \
+    vcl/source/accessibility/AccessibleBrowseBoxTableBase \
+    vcl/source/accessibility/AccessibleBrowseBoxTableCell \
     vcl/source/accessibility/AccessibleTextAttributeHelper \
+    vcl/source/accessibility/accessiblebrowseboxcell \
+    vcl/source/accessibility/accessibleiconchoicectrl \
+    vcl/source/accessibility/accessibleiconchoicectrlentry \
+    vcl/source/accessibility/accessiblelistbox \
+    vcl/source/accessibility/accessiblelistboxentry \
+    vcl/source/accessibility/accessiblemenubasecomponent \
+    vcl/source/accessibility/accessiblemenucomponent \
+    vcl/source/accessibility/accessiblemenuitemcomponent \
+    vcl/source/accessibility/accessibletablistbox \
+    vcl/source/accessibility/accessibletablistboxtable \
+    vcl/source/accessibility/characterattributeshelper \
+    vcl/source/accessibility/floatingwindowaccessible \
+    vcl/source/accessibility/IComboListBoxHelper \
+    vcl/source/accessibility/svtaccessiblenumericfield \
+    vcl/source/accessibility/vclxaccessiblebox \
+    vcl/source/accessibility/vclxaccessiblebutton \
+    vcl/source/accessibility/vclxaccessiblecheckbox \
+    vcl/source/accessibility/vclxaccessiblecombobox \
+    vcl/source/accessibility/vclxaccessiblecomponent \
+    vcl/source/accessibility/vclxaccessibledropdowncombobox \
+    vcl/source/accessibility/vclxaccessibledropdownlistbox \
+    vcl/source/accessibility/vclxaccessibleedit \
+    vcl/source/accessibility/vclxaccessiblefixedhyperlink \
+    vcl/source/accessibility/vclxaccessiblefixedtext \
+    vcl/source/accessibility/vclxaccessibleheaderbar \
+    vcl/source/accessibility/vclxaccessibleheaderbaritem \
+    vcl/source/accessibility/vclxaccessiblelist \
+    vcl/source/accessibility/vclxaccessiblelistbox \
+    vcl/source/accessibility/vclxaccessiblelistitem \
+    vcl/source/accessibility/vclxaccessiblemenu \
+    vcl/source/accessibility/vclxaccessiblemenubar \
+    vcl/source/accessibility/vclxaccessiblemenuitem \
+    vcl/source/accessibility/vclxaccessiblemenuseparator \
+    vcl/source/accessibility/vclxaccessiblepopupmenu \
+    vcl/source/accessibility/vclxaccessibleradiobutton \
+    vcl/source/accessibility/vclxaccessiblescrollbar \
+    vcl/source/accessibility/vclxaccessiblestatusbar \
+    vcl/source/accessibility/vclxaccessiblestatusbaritem \
+    vcl/source/accessibility/vclxaccessibletabcontrol \
+    vcl/source/accessibility/vclxaccessibletabpage \
+    vcl/source/accessibility/vclxaccessibletabpagewindow \
+    vcl/source/accessibility/vclxaccessibletextcomponent \
+    vcl/source/accessibility/vclxaccessibletextfield \
+    vcl/source/accessibility/vclxaccessibletoolbox \
+    vcl/source/accessibility/vclxaccessibletoolboxitem \
     vcl/source/animate/Animation \
     vcl/source/animate/AnimationFrame \
     vcl/source/animate/AnimationRenderer \
@@ -181,6 +233,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/control/fixedhyper \
     vcl/source/control/hyperlabel \
     vcl/source/control/fmtfield \
+    vcl/source/control/FormattedField \
     vcl/source/control/InterimItemWindow \
     vcl/source/control/imgctrl \
     vcl/source/control/imivctl1 \
@@ -190,7 +243,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/control/imp_listbox \
     vcl/source/control/listbox \
     vcl/source/control/managedmenubutton \
-    vcl/source/control/menubtn \
+    vcl/source/control/MenuButton \
     vcl/source/control/NotebookbarPopup \
     vcl/source/control/PriorityHBox \
     vcl/source/control/PriorityMergedHBox \
@@ -200,6 +253,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/control/prgsbar \
     vcl/source/control/roadmap \
     vcl/source/control/roadmapwizard \
+    vcl/source/control/roadmapwizardmachine \
     vcl/source/control/scrbar \
     vcl/source/control/slider \
     vcl/source/control/spinbtn \
@@ -207,6 +261,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/control/tabctrl \
     vcl/source/control/throbber \
     vcl/source/control/wizardmachine \
+    vcl/source/edit/IdleFormatter \
     vcl/source/edit/vclmedit \
     vcl/source/edit/textdata \
     vcl/source/edit/textdoc \
@@ -220,6 +275,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/outdev/background \
     vcl/source/outdev/eps \
     vcl/source/outdev/outdev \
+    vcl/source/outdev/EmphasisMarks \
     vcl/source/outdev/stack \
     vcl/source/outdev/clipping \
     vcl/source/outdev/fill \
@@ -243,6 +299,8 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/outdev/nativecontrols \
     vcl/source/outdev/map \
     vcl/source/text/ImplLayoutArgs \
+    vcl/source/text/ImplLayoutRuns \
+    vcl/source/text/mnemonic \
     vcl/source/text/TextLayoutCache \
     vcl/source/text/textlayout \
     vcl/source/treelist/headbar \
@@ -262,12 +320,9 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/treelist/svimpbox \
     vcl/source/treelist/svlbitm \
     vcl/source/treelist/uiobject \
-    vcl/source/text/ImplLayoutRuns \
-    vcl/source/text/mnemonic \
     vcl/source/gdi/formpdfexport \
-    vcl/source/gdi/configsettings \
     vcl/source/gdi/cvtgrf \
-    vcl/source/gdi/embeddedfontshelper \
+    vcl/source/gdi/embeddedfontsmanager \
     vcl/source/gdi/FileDefinitionWidgetDraw \
     vcl/source/gdi/WidgetDefinitionReader \
     vcl/source/gdi/WidgetDefinition \
@@ -309,18 +364,12 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/gdi/scrptrun \
     vcl/source/gdi/CommonSalLayout \
     vcl/source/gdi/TypeSerializer \
-    vcl/source/pdf/PdfConfig \
-    vcl/source/pdf/ResourceDict \
-    vcl/source/pdf/Matrix3 \
-    vcl/source/pdf/XmpMetadata \
-    vcl/source/pdf/ExternalPDFStreams \
     vcl/source/graphic/BinaryDataContainer \
     vcl/source/graphic/BinaryDataContainerTools \
     vcl/source/graphic/GraphicID \
     vcl/source/graphic/GraphicLoader \
     vcl/source/graphic/GraphicObject \
     vcl/source/graphic/GraphicObject2 \
-    vcl/source/graphic/GraphicReader \
     vcl/source/graphic/Manager \
     vcl/source/graphic/UnoBinaryDataContainer \
     vcl/source/graphic/UnoGraphic \
@@ -330,7 +379,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/graphic/UnoGraphicProvider \
     vcl/source/graphic/VectorGraphicSearch \
     vcl/source/graphic/VectorGraphicLoader \
-    vcl/source/bitmap/impvect \
+    vcl/source/bitmap/Vectorizer \
     vcl/source/bitmap/bitmap \
     vcl/source/bitmap/bitmappalette \
     vcl/source/bitmap/BitmapEx \
@@ -342,11 +391,17 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/bitmap/bmpfast \
     vcl/source/bitmap/bitmapfilter \
     vcl/source/bitmap/bitmappaint \
+    vcl/source/bitmap/BitmapArithmeticBlendFilter \
     vcl/source/bitmap/BitmapShadowFilter \
     vcl/source/bitmap/BitmapAlphaClampFilter \
     vcl/source/bitmap/BitmapBasicMorphologyFilter \
+    vcl/source/bitmap/BitmapDarkenBlendFilter \
+    vcl/source/bitmap/BitmapLightenBlendFilter \
     vcl/source/bitmap/BitmapMaskToAlphaFilter \
     vcl/source/bitmap/BitmapMonochromeFilter \
+    vcl/source/bitmap/BitmapMultiplyBlendFilter \
+    vcl/source/bitmap/BitmapNormalBlendFilter \
+    vcl/source/bitmap/BitmapScreenBlendFilter \
     vcl/source/bitmap/BitmapSmoothenFilter \
     vcl/source/bitmap/BitmapLightenFilter \
     vcl/source/bitmap/BitmapDisabledImageFilter \
@@ -370,6 +425,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/bitmap/BitmapColorQuantizationFilter \
     vcl/source/bitmap/BitmapSimpleColorQuantizationFilter \
     vcl/source/bitmap/BitmapTools \
+    vcl/source/bitmap/BlendFrameCache \
     vcl/source/bitmap/Octree \
     vcl/source/bitmap/salbmp \
     vcl/source/image/Image \
@@ -385,14 +441,14 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/helper/driverblocklist \
     vcl/source/helper/evntpost \
     vcl/source/helper/idletask \
-    vcl/source/helper/lazydelete \
     vcl/source/helper/strhelper \
-    vcl/source/helper/svtaccessiblefactory \
     vcl/source/helper/threadex \
     vcl/source/app/brand \
+    vcl/source/app/ColorDialog \
     vcl/source/app/customweld \
     vcl/source/app/dbggui \
     vcl/source/app/dndhelp \
+    vcl/source/app/DropTarget \
     vcl/source/app/help \
     vcl/source/app/i18nhelp \
     vcl/source/app/idle \
@@ -402,6 +458,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/app/scheduler \
     vcl/source/app/session \
     vcl/source/app/settings \
+    vcl/source/app/themecolors \
     vcl/source/app/IconThemeInfo \
     vcl/source/app/IconThemeScanner \
     vcl/source/app/IconThemeSelector \
@@ -409,18 +466,19 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/app/sound \
     vcl/source/app/stdtext \
     vcl/source/app/svapp \
+    vcl/source/app/svcache \
     vcl/source/app/svdata \
     vcl/source/app/svmain \
     vcl/source/app/timer \
     vcl/source/app/unohelp2 \
     vcl/source/app/htmltransferable \
+    vcl/source/app/UserResourceScanner \
     vcl/source/app/unohelp \
     vcl/source/app/vclevent \
     vcl/source/app/watchdog \
     vcl/source/app/weldutils \
     vcl/source/app/winscheduler \
     vcl/source/components/dtranscomp \
-    vcl/source/components/factory \
     vcl/source/components/fontident \
     vcl/source/filter/bmp/BmpReader \
     vcl/source/filter/bmp/BmpWriter \
@@ -494,13 +552,26 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/font/fontcharmap \
     vcl/source/font/fontmetric \
     vcl/source/font/font \
+    vcl/source/font/EOTConverter \
     vcl/source/fontsubset/cff \
     vcl/source/fontsubset/fontsubset \
     vcl/source/fontsubset/sft \
     vcl/source/fontsubset/ttcr \
-    vcl/source/fontsubset/xlat \
+    vcl/source/pdf/COSWriter \
+    vcl/source/pdf/EncryptionHashTransporter \
+    vcl/source/pdf/ExternalPDFStreams \
     vcl/source/pdf/PDFiumTools \
+    vcl/source/pdf/PDFEncryptionInitialization \
+    vcl/source/pdf/PDFEncryptor \
+    vcl/source/pdf/PDFEncryptorR6 \
+    vcl/source/pdf/PdfConfig \
+    vcl/source/pdf/pwdinteract \
+    vcl/source/pdf/ResourceDict \
+    vcl/source/pdf/Matrix3 \
+    vcl/source/pdf/XmpMetadata \
     vcl/source/uitest/logger \
+    vcl/source/uitest/toolboxitemuiobject \
+    vcl/source/uitest/toolboxuiobject \
     vcl/source/uitest/uiobject \
     vcl/source/uitest/uitest \
     vcl/source/uitest/uno/uiobject_uno \
@@ -522,6 +593,8 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/backendtest/GraphicsRenderTests \
     vcl/jsdialog/enabled \
     vcl/jsdialog/jsdialogbuilder \
+    vcl/jsdialog/jsdialogregister \
+    vcl/jsdialog/jsdialogsender \
     vcl/jsdialog/executor \
 ))
 
@@ -565,14 +638,16 @@ vcl_headless_freetype_code=\
 
 ifeq ($(SYSTEM_LIBFIXMATH),TRUE)
 $(eval $(call gb_Library_add_libs,vcl,\
-        -llibfixmath \
+        $(LIBFIXMATH_LIBS) \
 ))
 endif
 
 ifeq ($(USING_X11),TRUE)
 $(eval $(call gb_Library_add_exception_objects,vcl,\
-    vcl/unx/generic/window/sessioninhibitor \
-    vcl/unx/generic/printer/cpdmgr \
+    vcl/unx/generic/desktopdetect/desktopdetector \
+    $(if $(ENABLE_CPDB), \
+        vcl/unx/generic/printer/cpdmgr \
+    ) \
 ))
 
 $(eval $(call gb_Library_use_externals,vcl,\
@@ -586,6 +661,11 @@ $(eval $(call gb_Library_add_libs,vcl,\
 ))
 endif # USING_X11
 
+ifeq ($(OS), $(filter LINUX %BSD SOLARIS, $(OS)))
+$(eval $(call gb_Library_add_libs,vcl,\
+	-lm $(UNIX_DLAPI_LIBS) \
+))
+endif
 
 ifeq ($(DISABLE_GUI),TRUE)
 $(eval $(call gb_Library_add_exception_objects,vcl,\
@@ -601,6 +681,9 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
         vcl/skia/salbmp \
         vcl/skia/zone \
         vcl/skia/gdiimpl \
+    ) \
+    $(if $(filter LINUX SOLARIS %BSD,$(OS)), \
+	vcl/unx/generic/window/sessioninhibitor \
     ) \
 ))
 
@@ -619,6 +702,8 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     $(if $(USE_HEADLESS_CODE), \
         $(if $(ENABLE_CUPS), \
             vcl/unx/generic/printer/cupsmgr \
+	) \
+	$(if $(filter TRUE,$(ENABLE_CPDB) $(ENABLE_CUPS)),\
             vcl/unx/generic/printer/printerinfomanager \
         , \
             vcl/null/printerinfomanager \
@@ -633,6 +718,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
 $(eval $(call gb_Library_use_externals,vcl,\
     $(if $(USE_HEADLESS_CODE), \
         cairo \
+        $(if $(ENABLE_CPDB),cpdb) \
         $(if $(ENABLE_CUPS),cups) \
         fontconfig \
         freetype \
@@ -681,7 +767,6 @@ $(eval $(call gb_Library_add_objcxxobjects,vcl,\
 $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/ios/iosinst \
     vcl/ios/dummies \
-    vcl/ios/clipboard \
     vcl/ios/salios \
     vcl/ios/iOSTransferable \
     vcl/ios/DataFlavorMapping \

@@ -39,6 +39,10 @@
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/scopeguard.hxx>
 #include <comphelper/lok.hxx>
+#include <comphelper/sequence.hxx>
+#include <comphelper/sequenceashashmap.hxx>
+#include <comphelper/dispatchcommand.hxx>
+#include <comphelper/propertyvalue.hxx>
 
 #include <editeng/contouritem.hxx>
 #include <editeng/editdata.hxx>
@@ -59,6 +63,8 @@
 #include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/zoomitem.hxx>
+#include <sfx2/lokhelper.hxx>
+#include <sfx2/lokunocmdlist.hxx>
 
 #include <svx/compressgraphicdialog.hxx>
 #include <svx/ClassificationDialog.hxx>
@@ -73,6 +79,7 @@
 #include <svx/hlnkitem.hxx>
 #include <svx/imapdlg.hxx>
 #include <svx/sdtagitm.hxx>
+#include <svx/svdetc.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/svdpagv.hxx>
@@ -87,6 +94,7 @@
 #include <svx/chrtitem.hxx>
 #include <svx/xlnclit.hxx>
 #include <svx/xflgrit.hxx>
+#include <svx/xfillit0.hxx>
 
 #include <comphelper/diagnose_ex.hxx>
 #include <tools/UnitConversion.hxx>
@@ -184,16 +192,25 @@
 #include <SlideSorterViewShell.hxx>
 #include <controller/SlideSorterController.hxx>
 #include <controller/SlsPageSelector.hxx>
+#include <controller/SlsClipboard.hxx>
 #include <tools/GraphicSizeCheck.hxx>
 
 #include <theme/ThemeColorChanger.hxx>
 #include <svx/dialog/ThemeDialog.hxx>
-#include <svx/theme/ThemeColorPaletteManager.hxx>
-#include <sfx2/lokhelper.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
 #include <ViewShellBase.hxx>
 #include <memory>
+
+#include <sfx2/newstyle.hxx>
+#include <SelectLayerDlg.hxx>
+#include <unomodel.hxx>
+
+#include <iostream>
+#include <boost/property_tree/json_parser.hpp>
+#include <rtl/uri.hxx>
+#include <editeng/editeng.hxx>
+
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -231,7 +248,7 @@ bool hasCustomPropertyField(std::vector<editeng::Section> const & aSections, std
 
 OUString getWeightString(SfxItemSet const & rItemSet)
 {
-    OUString sWeightString = "NORMAL";
+    OUString sWeightString = u"NORMAL"_ustr;
 
     if (const SfxPoolItem* pItem = rItemSet.GetItem(EE_CHAR_WEIGHT, false))
     {
@@ -240,6 +257,60 @@ OUString getWeightString(SfxItemSet const & rItemSet)
             sWeightString = "BOLD";
     }
     return sWeightString;
+}
+
+void lcl_LogWarning(const std::string& rWarning)
+{
+    LOK_WARN("sd.transform", rWarning);
+}
+
+void lcl_UnoCommand(const std::string& rText)
+{
+    if (rText.size() > 0)
+    {
+        OUString aCmd;
+        std::vector<beans::PropertyValue> aArg;
+        std::size_t nSpace = rText.find(' ');
+        if (nSpace != std::string::npos)
+        {
+            aCmd = OStringToOUString(rText.substr(0, nSpace), RTL_TEXTENCODING_UTF8);
+            std::string aArgText = rText.substr(nSpace + 1);
+
+            aArg = comphelper::JsonToPropertyValues(aArgText);
+        }
+        else
+        {
+            aCmd = OStringToOUString(rText, RTL_TEXTENCODING_UTF8);
+        }
+
+        OUString aCmdSub;
+        if (aCmd.startsWith(".uno:"))
+        {
+            aCmdSub = aCmd.subView(5);
+        }
+        else
+        {
+            lcl_LogWarning("FillApi SlideCmd: uno command not recognized'" + rText + "'");
+            return;
+        }
+
+        // Check if the uno command is allowed
+        const std::map<std::u16string_view, KitUnoCommand>& rUnoCommandList
+            = GetKitUnoCommandList();
+        auto aCmdData = rUnoCommandList.find(aCmdSub);
+        if (aCmdData != rUnoCommandList.end())
+        {
+            // Make the uno command synchron
+            aArg.push_back(comphelper::makePropertyValue("SynchronMode", true));
+
+            // Todo: check why it does not work on my windows system
+            comphelper::dispatchCommand(aCmd, comphelper::containerToSequence(aArg));
+        }
+        else
+        {
+            lcl_LogWarning("FillApi SlideCmd: uno command not recognized'" + rText + "'");
+        }
+    }
 }
 
 class ClassificationCommon
@@ -277,7 +348,7 @@ private:
                 // Get Weight of current paragraph
                 OUString sWeightProperty = getWeightString(rEditText.GetParaAttribs(nCurrentParagraph));
                 // Insert new paragraph into collection
-                m_aResults.push_back({ svx::ClassificationType::PARAGRAPH, sWeightProperty, sBlank, sBlank });
+                m_aResults.emplace_back(svx::ClassificationType::PARAGRAPH, sWeightProperty, sBlank, sBlank);
             }
 
             const SvxFieldItem* pFieldItem = findField(rSection);
@@ -289,27 +360,27 @@ private:
                 const OUString& aKey = pCustomPropertyField->GetName();
                 if (m_aKeyCreator.isMarkingTextKey(aKey))
                 {
-                    m_aResults.push_back({ svx::ClassificationType::TEXT,
+                    m_aResults.emplace_back(svx::ClassificationType::TEXT,
                                            svx::classification::getProperty(m_xPropertyContainer, aKey),
-                                           sBlank, sBlank });
+                                           sBlank, sBlank);
                 }
                 else if (m_aKeyCreator.isCategoryNameKey(aKey) || m_aKeyCreator.isCategoryIdentifierKey(aKey))
                 {
-                    m_aResults.push_back({ svx::ClassificationType::CATEGORY,
+                    m_aResults.emplace_back(svx::ClassificationType::CATEGORY,
                                            svx::classification::getProperty(m_xPropertyContainer, aKey),
-                                           sBlank, sBlank });
+                                           sBlank, sBlank);
                 }
                 else if (m_aKeyCreator.isMarkingKey(aKey))
                 {
-                    m_aResults.push_back({ svx::ClassificationType::MARKING,
+                    m_aResults.emplace_back(svx::ClassificationType::MARKING,
                                            svx::classification::getProperty(m_xPropertyContainer, aKey),
-                                           sBlank, sBlank });
+                                           sBlank, sBlank);
                 }
                 else if (m_aKeyCreator.isIntellectualPropertyPartKey(aKey))
                 {
-                    m_aResults.push_back({ svx::ClassificationType::INTELLECTUAL_PROPERTY_PART,
+                    m_aResults.emplace_back(svx::ClassificationType::INTELLECTUAL_PROPERTY_PART,
                                            svx::classification::getProperty(m_xPropertyContainer, aKey),
-                                           sBlank, sBlank });
+                                           sBlank, sBlank);
                 }
             }
         }
@@ -408,7 +479,7 @@ private:
         for (svx::ClassificationResult const & rResult : rResults)
         {
 
-            ESelection aPosition(nParagraph, EE_TEXTPOS_MAX_COUNT, nParagraph, EE_TEXTPOS_MAX_COUNT);
+            ESelection aPosition(nParagraph, EE_TEXTPOS_MAX);
 
             switch (rResult.meType)
             {
@@ -446,7 +517,7 @@ private:
                 case svx::ClassificationType::PARAGRAPH:
                 {
                     nParagraph++;
-                    pOutliner->Insert("");
+                    pOutliner->Insert(u""_ustr);
 
                     SfxItemSetFixed<EE_ITEMS_START, EE_ITEMS_END> aItemSet(m_rDrawViewShell.GetDoc()->GetPool());
 
@@ -534,7 +605,7 @@ public:
 
             rtl::Reference<SdrRectObj> pObject = new SdrRectObj(
                 *m_rDrawViewShell.GetDoc(), // TTTT should be reference
-                SdrObjKind::Text);
+                ::tools::Rectangle(), SdrObjKind::Text);
             pObject->SetMergedItem(makeSdrTextAutoGrowWidthItem(true));
             pObject->SetOutlinerParaObject(pOutliner->CreateParaObject());
             pMasterPage->InsertObject(pObject.get());
@@ -551,10 +622,29 @@ public:
     }
 };
 
-    void lcl_convertStringArguments(const std::unique_ptr<SfxItemSet>& pArgs)
+    void lcl_convertStringArguments(sal_uInt16 nSId, const std::unique_ptr<SfxItemSet>& pArgs)
     {
         const SfxPoolItem* pItem = nullptr;
 
+        if (nSId == SID_ATTR_FILL_COLOR)
+        {
+            pItem = pArgs->GetItem(SID_ATTR_FILL_COLOR);
+            Color aColor = pItem ? static_cast<const XFillColorItem*>(pItem)->GetColorValue() : COL_AUTO;
+            if (aColor.IsFullyTransparent())
+            {
+                const XFillStyleItem aXFillStyleItem(drawing::FillStyle_NONE);
+                pArgs->Put(aXFillStyleItem);
+            }
+            else
+            {
+                SfxItemState eState = pArgs->GetItemState(SID_ATTR_FILL_STYLE, false, &pItem);
+                if (eState != SfxItemState::SET || static_cast<const XFillStyleItem*>(pItem)->GetValue() == drawing::FillStyle_NONE)
+                {
+                    const XFillStyleItem aXFillStyleItem(drawing::FillStyle_SOLID);
+                    pArgs->Put(aXFillStyleItem);
+                }
+            }
+        }
         if (SfxItemState::SET == pArgs->GetItemState(SID_ATTR_LINE_WIDTH_ARG, false, &pItem))
         {
             double fValue = static_cast<const SvxDoubleItem*>(pItem)->GetValue();
@@ -585,7 +675,9 @@ public:
 void DrawViewShell::FuTemporary(SfxRequest& rReq)
 {
     // during a native slide show nothing gets executed!
-    if(SlideShow::IsRunning( GetViewShellBase() ) && (rReq.GetSlot() != SID_NAVIGATOR))
+    if(SlideShow::IsRunning( GetViewShellBase() )
+        && !SlideShow::IsInteractiveSlideshow( &GetViewShellBase() ) // IASS
+        && (rReq.GetSlot() != SID_NAVIGATOR))
         return;
 
     DBG_ASSERT( mpDrawView, "sd::DrawViewShell::FuTemporary(), no draw view!" );
@@ -597,16 +689,16 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
     DeactivateCurrentFunction();
 
     sal_uInt16 nSId = rReq.GetSlot();
+    const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
 
     switch ( nSId )
     {
         case SID_OUTLINE_TEXT_AUTOFIT:
         {
             SfxUndoManager* pUndoManager = GetDocSh()->GetUndoManager();
-            const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
             if( rMarkList.GetMarkCount() == 1 )
             {
-                pUndoManager->EnterListAction("", "", 0, GetViewShellBase().GetViewShellId());
+                pUndoManager->EnterListAction(u""_ustr, u""_ustr, 0, GetViewShellBase().GetViewShellId());
                 mpDrawView->BegUndo();
 
                 SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
@@ -666,7 +758,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             if( rReq.GetArgs() )
             {
                 std::unique_ptr<SfxItemSet> pNewArgs = rReq.GetArgs()->Clone();
-                lcl_convertStringArguments(pNewArgs);
+                lcl_convertStringArguments(nSId, pNewArgs);
                 mpDrawView->SetAttributes(*pNewArgs);
                 rReq.Done();
             }
@@ -731,6 +823,561 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         }
         break;
 
+        case FN_TRANSFORM_DOCUMENT_STRUCTURE:
+        {
+            // get the parameter, what to transform
+            OUString aDataJson;
+            const SfxStringItem* pDataJson = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
+            if (pDataJson)
+            {
+                aDataJson = pDataJson->GetValue();
+                aDataJson = rtl::Uri::decode(aDataJson, rtl_UriDecodeStrict, RTL_TEXTENCODING_UTF8);
+            }
+
+            // parse the JSON transform parameter
+            boost::property_tree::ptree aTree;
+            std::stringstream aStream(
+                (std::string(OUStringToOString(aDataJson, RTL_TEXTENCODING_UTF8))));
+            try
+            {
+                boost::property_tree::read_json(aStream, aTree);
+            }
+            catch (...)
+            {
+                lcl_LogWarning("FillApi Transform parameter, Wrong JSON format. ");
+                throw;
+            }
+
+            // Iterate through the JSON data loaded into a tree structure
+            for (const auto& aItem : aTree)
+            {
+                if (aItem.first == "Transforms")
+                {
+                    // Handle all transformations
+                    for (const auto& aItem2Obj : aItem.second)
+                    {
+                        // handle `"Transforms": { `  and `"Transforms": [` cases as well
+                        // if an element is an object `{...}`, then get the first element of the object
+                        const auto& aItem2
+                            = aItem2Obj.first == "" ? *aItem2Obj.second.ordered_begin() : aItem2Obj;
+
+                        //jump to slide
+                        if (aItem2.first == "SlideCommands")
+                        {
+                            int nActPageId = -1;
+                            int nNextPageId = 0;
+                            for (const auto& aItem3Obj : aItem2.second)
+                            {
+                                // It accept direct property, or object as well
+                                const auto& aItem3 = aItem3Obj.first == ""
+                                                         ? *aItem3Obj.second.ordered_begin()
+                                                         : aItem3Obj;
+
+                                sal_uInt16 nPageCount
+                                    = GetDoc()->GetSdPageCount(PageKind::Standard);
+                                sal_uInt16 nMasterPageCount
+                                    = GetDoc()->GetMasterSdPageCount(PageKind::Standard);
+
+                                if (nActPageId != nNextPageId)
+                                {
+                                    // Make it sure it always point to a real page
+                                    if (nNextPageId < 0)
+                                        nNextPageId = 0;
+                                    if (nNextPageId >= nPageCount)
+                                        nNextPageId = nPageCount - 1;
+
+                                    nActPageId = nNextPageId;
+                                    // Make sure nActPageId is the current Page
+                                    maTabControl->SetCurPageId(nActPageId);
+                                    SdPage* pPageStandard
+                                        = GetDoc()->GetSdPage(nActPageId, PageKind::Standard);
+                                    mpDrawView->ShowSdrPage(pPageStandard);
+                                }
+
+                                if (aItem3.first == "JumpToSlide")
+                                {
+                                    std::string aIndex = aItem3.second.get_value<std::string>();
+                                    if (aIndex == "last")
+                                    {
+                                        nNextPageId = nPageCount - 1;
+                                    }
+                                    else
+                                    {
+                                        nNextPageId = aItem3.second.get_value<int>();
+                                        if (nNextPageId >= nPageCount)
+                                        {
+                                            lcl_LogWarning(
+                                                "FillApi SlideCmd: Slide idx >= Slide count. '"
+                                                + aItem3.first + ": " + aIndex
+                                                + "' (Slide count = " + std::to_string(nPageCount));
+                                            nNextPageId = nPageCount - 1;
+                                        }
+                                        else if (nNextPageId < 0)
+                                        {
+                                            lcl_LogWarning("FillApi SlideCmd: Slide idx < 0. '"
+                                                           + aItem3.first + ": " + aIndex + "'");
+                                            nNextPageId = 0;
+                                        }
+                                    }
+                                }
+                                if (aItem3.first == "JumpToSlideByName")
+                                {
+                                    std::string aPageName = aItem3.second.get_value<std::string>();
+                                    int nId = 0;
+                                    while (
+                                        nId < nPageCount
+                                        && GetDoc()->GetSdPage(nId, PageKind::Standard)->GetName()
+                                               != OStringToOUString(aPageName,
+                                                                    RTL_TEXTENCODING_UTF8))
+                                    {
+                                        nId++;
+                                    }
+                                    if (nId < nPageCount)
+                                    {
+                                        nNextPageId = nId;
+                                    }
+                                    else
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd: Slide name not found at: '"
+                                            + aItem3.first + ": " + aPageName + "'");
+                                    }
+                                }
+                                else if (aItem3.first == "InsertMasterSlide"
+                                         || aItem3.first == "InsertMasterSlideByName")
+                                {
+                                    int nMasterPageId = 0;
+                                    if (aItem3.first == "InsertMasterSlideByName")
+                                    {
+                                        int nMId = 0;
+                                        std::string aMPageName
+                                            = aItem3.second.get_value<std::string>();
+                                        while (
+                                            nMId < nMasterPageCount
+                                            && GetDoc()->GetMasterSdPage(nMId, PageKind::Standard)
+                                                       ->GetName()
+                                                   != OStringToOUString(aMPageName,
+                                                       RTL_TEXTENCODING_UTF8))
+                                        {
+                                            nMId++;
+                                        }
+                                        if (nMId < nMasterPageCount)
+                                        {
+                                            nMasterPageId = nMId;
+                                        }
+                                        else
+                                        {
+                                            lcl_LogWarning(
+                                                "FillApi SlideCmd: MasterSlide name not found at: '"
+                                                + aItem3.first + ": " + aMPageName + "'");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        nMasterPageId = aItem3.second.get_value<int>();
+                                    }
+
+                                    if (nMasterPageId >= nMasterPageCount)
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd: Slide idx >= MasterSlide count. '"
+                                            + aItem3.first + ": " + std::to_string(nMasterPageId)
+                                            + "' (Slide count = " + std::to_string(nMasterPageCount));
+                                        nMasterPageId = nMasterPageCount - 1;
+                                    }
+                                    else if (nMasterPageId < 0)
+                                    {
+                                        lcl_LogWarning("FillApi SlideCmd: Slide idx < 0. '"
+                                                       + aItem3.first + ": "
+                                                       + std::to_string(nMasterPageId) + "'");
+                                        nMasterPageId = 0;
+                                    }
+
+                                    SdPage* pMPage = GetDoc()->GetMasterSdPage(nMasterPageId,
+                                                                               PageKind::Standard);
+                                    SdPage* pPage
+                                        = GetDoc()->GetSdPage(nActPageId, PageKind::Standard);
+
+                                    // It will move to the next slide.
+                                    nNextPageId = GetDoc()->CreatePage(
+                                        pPage, PageKind::Standard, OUString(), OUString(),
+                                        AUTOLAYOUT_TITLE_CONTENT, AUTOLAYOUT_NOTES, true, true,
+                                        pPage->GetPageNum() + 2);
+
+                                    SdPage* pPageStandard
+                                        = GetDoc()->GetSdPage(nNextPageId, PageKind::Standard);
+                                    SdPage* pPageNote
+                                        = GetDoc()->GetSdPage(nNextPageId, PageKind::Notes);
+
+                                    // Change master value
+                                    pPageStandard->TRG_SetMasterPage(*pMPage);
+                                    pPageNote->TRG_SetMasterPage(*pMPage);
+                                }
+                                else if (aItem3.first == "DeleteSlide")
+                                {
+                                    int nPageIdToDel = nActPageId;
+                                    if (aItem3.second.get_value<std::string>() != "")
+                                    {
+                                        nPageIdToDel = aItem3.second.get_value<int>();
+                                    }
+
+                                    if (nPageCount > 1)
+                                    {
+                                        if (nPageIdToDel >= nPageCount)
+                                        {
+                                            lcl_LogWarning(
+                                                "FillApi SlideCmd: Slide idx >= Slide count. '"
+                                                + aItem3.first + ": " + std::to_string(nPageIdToDel)
+                                                + "' (Slide count = " + std::to_string(nPageCount));
+                                            nPageIdToDel = nPageCount - 1;
+                                        }
+                                        else if (nPageIdToDel < 0)
+                                        {
+                                            lcl_LogWarning("FillApi SlideCmd: Slide idx < 0. '"
+                                                           + aItem3.first + ": "
+                                                           + std::to_string(nPageIdToDel) + "'");
+                                            nPageIdToDel = 0;
+                                        }
+                                        GetDoc()->RemovePage(nPageIdToDel * 2 + 1);
+                                        GetDoc()->RemovePage(nPageIdToDel * 2 + 1);
+
+                                        if (nPageIdToDel <= nActPageId)
+                                        {
+                                            nNextPageId--;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd: Not enough Slide to delete 1. '"
+                                            + aItem3.first + ": " + std::to_string(nPageIdToDel));
+                                    }
+                                }
+                                else if (aItem3.first.starts_with("MoveSlide"))
+                                {
+                                    int nMoveFrom = nActPageId;
+                                    if (aItem3.first.starts_with("MoveSlide."))
+                                    {
+                                        nMoveFrom = stoi(aItem3.first.substr(10));
+                                    }
+                                    int nMoveTo = aItem3.second.get_value<int>();
+
+                                    if (nMoveFrom == nMoveTo)
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd: Move slide to the same position. '"
+                                            + aItem3.first + ": " + std::to_string(nMoveTo));
+                                    }
+                                    else if (nMoveFrom >= nPageCount || nMoveTo > nPageCount)
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd: Slide idx >= Slide count. '"
+                                            + aItem3.first + ": " + std::to_string(nMoveTo));
+                                    }
+                                    else if (nMoveFrom < 0 || nMoveTo < 0)
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd: Slide idx < 0. '"
+                                            + aItem3.first + ": " + std::to_string(nMoveTo));
+                                    }
+                                    else
+                                    {
+                                        // Move both the standard and the Note Page.
+                                        // First move the page that will not change
+                                        // the order of the other page.
+                                        int nFirst = 1;
+                                        if (nMoveFrom < nMoveTo)
+                                        {
+                                            nFirst = 2;
+                                        }
+                                        int nSecond = 3 - nFirst;
+
+                                        GetDoc()->MovePage(nMoveFrom * 2 + nFirst,
+                                                           nMoveTo * 2 + nFirst);
+                                        GetDoc()->MovePage(nMoveFrom * 2 + nSecond,
+                                                           nMoveTo * 2 + nSecond);
+
+                                        // If the act page is moved, then follow it.
+                                        if (nActPageId == nMoveFrom)
+                                        {
+                                            nNextPageId = nMoveTo;
+                                        }
+                                        else if (nMoveFrom < nActPageId && nMoveTo >= nActPageId)
+                                        {
+                                            nNextPageId = nActPageId - 1;
+                                        }
+                                        else if (nMoveFrom > nActPageId && nMoveTo <= nActPageId)
+                                        {
+                                            nNextPageId = nActPageId + 1;
+                                        }
+                                    }
+                                }
+                                else if (aItem3.first == "DuplicateSlide")
+                                {
+                                    int nDupSlideId = nActPageId;
+                                    if (aItem3.second.get_value<std::string>() != "")
+                                    {
+                                        nDupSlideId = aItem3.second.get_value<int>();
+                                    }
+
+                                    if (nDupSlideId >= nPageCount)
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd: Slide idx >= Slide count. '"
+                                            + aItem3.first + ": " + std::to_string(nDupSlideId)
+                                            + "' (Slide count = " + std::to_string(nPageCount));
+                                        nDupSlideId = nPageCount - 1;
+                                    }
+                                    else if (nDupSlideId < 0)
+                                    {
+                                        lcl_LogWarning("FillApi SlideCmd: Slide idx < 0. '"
+                                                       + aItem3.first + ": "
+                                                       + std::to_string(nDupSlideId) + "'");
+                                        nDupSlideId = 0;
+                                    }
+                                    GetDoc()->DuplicatePage(nDupSlideId);
+                                    // Jump to the created page.
+                                    nNextPageId = nDupSlideId + 1;
+                                    // Make sure the current page will be set also.
+                                    nActPageId = nDupSlideId;
+                                }
+                                else if (aItem3.first == "ChangeLayout"
+                                         || aItem3.first == "ChangeLayoutByName")
+                                {
+                                    AutoLayout nLayoutId;
+                                    if (aItem3.first == "ChangeLayoutByName")
+                                    {
+                                        std::string aLayoutName
+                                            = aItem3.second.get_value<std::string>();
+
+                                        nLayoutId = SdPage::stringToAutoLayout(
+                                            OStringToOUString(aLayoutName, RTL_TEXTENCODING_UTF8));
+                                        if (nLayoutId == AUTOLAYOUT_END)
+                                        {
+                                            lcl_LogWarning(
+                                                "FillApi SlideCmd: Layout name not found at: '"
+                                                + aItem3.first + ": " + aLayoutName + "'");
+                                            nLayoutId = AUTOLAYOUT_TITLE_CONTENT;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        nLayoutId = static_cast<AutoLayout>(
+                                            aItem3.second.get_value<int>());
+                                        if (nLayoutId < AUTOLAYOUT_START
+                                            || nLayoutId >= AUTOLAYOUT_END)
+                                        {
+                                            lcl_LogWarning(
+                                                "FillApi SlideCmd: Wrong Layout index at: '"
+                                                + aItem3.first + ": " + std::to_string(nLayoutId)
+                                                + "'");
+                                            nLayoutId = AUTOLAYOUT_TITLE_CONTENT;
+                                        }
+                                    }
+
+                                    // Todo warning:  ... if (nLayoutId >= ???)
+                                    GetDoc()
+                                        ->GetSdPage(nActPageId, PageKind::Standard)
+                                        ->SetAutoLayout(nLayoutId, true);
+                                }
+                                else if (aItem3.first == "RenameSlide")
+                                {
+                                    SdPage* pPageStandard
+                                        = GetDoc()->GetSdPage(nActPageId, PageKind::Standard);
+                                    pPageStandard->SetName(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first.starts_with("SetText."))
+                                {
+                                    int nObjId = stoi(aItem3.first.substr(8));
+
+                                    SdPage* pPageStandard
+                                        = GetDoc()->GetSdPage(nActPageId, PageKind::Standard);
+                                    int nObjCount = pPageStandard->GetObjCount();
+                                    if (nObjId < 0)
+                                    {
+                                        lcl_LogWarning("FillApi SlideCmd SetText: Object idx < 0. '"
+                                                       + aItem3.first + "'");
+                                    }
+                                    else if (nObjId < nObjCount)
+                                    {
+                                        SdrObject* pSdrObj = pPageStandard->GetObj(nObjId);
+                                        if (pSdrObj->IsSdrTextObj())
+                                        {
+                                            SdrTextObj* pSdrTxt = static_cast<SdrTextObj*>(pSdrObj);
+                                            pSdrTxt->SetText(OStringToOUString(
+                                                aItem3.second.get_value<std::string>(),
+                                                RTL_TEXTENCODING_UTF8));
+
+                                            // Todo: maybe with empty string it should work elseway?
+                                            pSdrObj->SetEmptyPresObj(false);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd SetText: Object idx >= Object Count. '"
+                                            + aItem3.first
+                                            + "' (Object Count = " + std::to_string(nPageCount));
+                                    }
+                                }
+                                else if (aItem3.first == "MarkObject"
+                                         || aItem3.first == "UnMarkObject")
+                                {
+                                    bool bUnMark = aItem3.first == "UnMarkObject";
+                                    int nObjId = aItem3.second.get_value<int>();
+
+                                    SdPage* pPageStandard
+                                        = GetDoc()->GetSdPage(nActPageId, PageKind::Standard);
+                                    int nObjCount = pPageStandard->GetObjCount();
+
+                                    // Todo: check id vs count
+                                    if (nObjId < 0)
+                                    {
+                                        lcl_LogWarning("FillApi SlideCmd: Object idx < 0 at: '"
+                                                       + aItem3.first + std::to_string(nObjId)
+                                                       + "'");
+                                    }
+                                    if (nObjId < nObjCount)
+                                    {
+                                        SdrObject* pSdrObj = pPageStandard->GetObj(nObjId);
+                                        mpDrawView->MarkObj(pSdrObj, mpDrawView->GetSdrPageView(),
+                                                            bUnMark);
+                                    }
+                                    else
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd: Object idx > Object Count. '"
+                                            + aItem3.first + std::to_string(nObjId)
+                                            + "' (Object Count = " + std::to_string(nObjId));
+                                    }
+                                }
+
+                                else if (aItem3.first.starts_with("EditTextObject."))
+                                {
+                                    int nObjId = stoi(aItem3.first.substr(15));
+                                    SdPage* pPageStandard
+                                        = GetDoc()->GetSdPage(nActPageId, PageKind::Standard);
+                                    int nObjCount = pPageStandard->GetObjCount();
+                                    if (nObjId < 0)
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd EditTextObject: Object idx < 0. '"
+                                            + aItem3.first + "'");
+                                    }
+                                    else if (nObjId >= nObjCount)
+                                    {
+                                        lcl_LogWarning(
+                                            "FillApi SlideCmd EditTextObject: Object idx >= "
+                                            "Object Count. '"
+                                            + aItem3.first
+                                            + "' (Object Count = " + std::to_string(nPageCount));
+                                    }
+                                    else
+                                    {
+                                        SdrObject* pSdrObj = pPageStandard->GetObj(nObjId);
+                                        if (!pSdrObj->IsSdrTextObj())
+                                        {
+                                            lcl_LogWarning(
+                                                "FillApi SlideCmd EditTextObject: Object is "
+                                                "not a TextObject. '"
+                                                + aItem3.first + "'");
+                                        }
+                                        else
+                                        {
+                                            SdrTextObj* pSdrTxt = static_cast<SdrTextObj*>(pSdrObj);
+                                            SdrView* pView1 = GetView();
+                                            pView1->MarkObj(pSdrTxt, pView1->GetSdrPageView());
+                                            pView1->SdrBeginTextEdit(pSdrTxt);
+                                            EditView& rEditView
+                                                = pView1->GetTextEditOutlinerView()->GetEditView();
+                                            for (const auto& aItem4Obj : aItem3.second)
+                                            {
+                                                const auto& aItem4
+                                                    = aItem4Obj.first == ""
+                                                          ? *aItem4Obj.second.ordered_begin()
+                                                          : aItem4Obj;
+
+                                                if (aItem4.first == "SelectText")
+                                                {
+                                                    std::vector<int> aValues;
+                                                    for (const auto& aItem5 : aItem4.second)
+                                                    {
+                                                        //if == last?
+                                                        aValues.push_back(aItem5.second.get_value<int>());
+                                                    }
+                                                    if (aValues.size() == 0)
+                                                    {
+                                                        //select the whole text
+                                                        aValues.push_back(0);
+                                                        aValues.push_back(0);
+                                                        aValues.push_back(EE_PARA_MAX);
+                                                        aValues.push_back(EE_TEXTPOS_MAX);
+                                                    }
+                                                    else if (aValues.size() == 1)
+                                                    {
+                                                        //select the paragraph
+                                                        aValues.push_back(0);
+                                                        aValues.push_back(aValues[0]);
+                                                        aValues.push_back(EE_TEXTPOS_MAX);
+                                                    }
+                                                    else if (aValues.size() == 2)
+                                                    {
+                                                        // set the cursor without selecting anything
+                                                        aValues.push_back(aValues[0]);
+                                                        aValues.push_back(aValues[1]);
+                                                    }
+                                                    else if (aValues.size() == 3)
+                                                    {
+                                                        aValues.push_back(EE_TEXTPOS_MAX);
+                                                    }
+
+                                                    const ESelection rNewSel(aValues[0], aValues[1],
+                                                                             aValues[2], aValues[3]);
+                                                    rEditView.SetSelection(rNewSel);
+                                                }
+                                                else if (aItem4.first == "SelectParagraph")
+                                                {
+                                                    int nParaId = aItem4.second.get_value<int>();
+
+                                                    const ESelection rNewSel(nParaId, 0, nParaId,
+                                                                             EE_TEXTPOS_MAX);
+                                                    rEditView.SetSelection(rNewSel);
+                                                }
+                                                else if (aItem4.first == "InsertText")
+                                                {
+                                                    OUString aText = OStringToOUString(
+                                                        aItem4.second.get_value<std::string>(),
+                                                        RTL_TEXTENCODING_UTF8);
+                                                    // It select the inserted text also
+                                                    rEditView.InsertText(aText, true);
+                                                }
+                                                else if (aItem4.first == "UnoCommand")
+                                                {
+                                                    std::string aText
+                                                        = aItem4.second.get_value<std::string>();
+                                                    lcl_UnoCommand(aText);
+                                                }
+                                            }
+                                            pView1->SdrEndTextEdit();
+                                        }
+                                    }
+                                }
+                                else if (aItem3.first == "UnoCommand")
+                                {
+                                    std::string aText = aItem3.second.get_value<std::string>();
+                                    lcl_UnoCommand(aText);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            rReq.Done();
+        }
+        break;
+
         case SID_INSERTPAGE:
         case SID_INSERTPAGE_QUICK:
         {
@@ -764,8 +1411,8 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_INSERT_MASTER_PAGE:
         {
             // Use the API to create a new page.
-            Reference<drawing::XMasterPagesSupplier> xMasterPagesSupplier (
-                GetDoc()->getUnoModel(), UNO_QUERY);
+            rtl::Reference<SdXImpressDocument> xMasterPagesSupplier (
+                GetDoc()->getUnoModel());
             if (xMasterPagesSupplier.is())
             {
                 Reference<drawing::XDrawPages> xMasterPages (
@@ -862,8 +1509,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
                     if( aNameDlg->Execute() == RET_OK )
                     {
-                        OUString aNewName;
-                        aNameDlg->GetName( aNewName );
+                        OUString aNewName = aNameDlg->GetName();
                         if (aNewName != aPageName)
                         {
                             bool bResult = RenameSlide( maTabControl->GetPageId(nPage), aNewName );
@@ -1004,7 +1650,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             else
             {
                 // open zoom dialog
-                SetCurrentFunction( FuScale::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+                SetCurrentFunction( FuScale::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             }
             Cancel();
         }
@@ -1036,7 +1682,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 {
                     if( mpDrawView->IsVectorizeAllowed() )
                     {
-                        SetCurrentFunction( FuVectorize::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+                        SetCurrentFunction( FuVectorize::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
                     }
                     else
                     {
@@ -1126,30 +1772,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
                         // switch on undo for the next operations
                         mpDrawView->BegUndo(SdResId(STR_UNDO_CONVERT_TO_BITMAP));
-                        bool bDone(false);
-
-                        // I have to get the image here directly since GetMarkedObjBitmapEx works
-                        // based on Bitmaps, but not on BitmapEx, thus throwing away the alpha
-                        // channel. Argh! GetMarkedObjBitmapEx itself is too widely used to safely
-                        // change that, e.g. in the exchange formats. For now I can only add this
-                        // exception to get good results for Svgs. This is how the code gets more
-                        // and more crowded, at last I made a remark for myself to change this
-                        // as one of the next tasks.
-                        if(1 == mpDrawView->GetMarkedObjectCount())
-                        {
-                            const SdrGrafObj* pSdrGrafObj = dynamic_cast< const SdrGrafObj* >(mpDrawView->GetMarkedObjectByIndex(0));
-
-                            if(pSdrGrafObj && pSdrGrafObj->isEmbeddedVectorGraphicData())
-                            {
-                                aGraphic = Graphic(pSdrGrafObj->GetGraphic().getVectorGraphicData()->getReplacement());
-                                bDone = true;
-                            }
-                        }
-
-                        if(!bDone)
-                        {
-                            aGraphic = Graphic(mpDrawView->GetMarkedObjBitmapEx());
-                        }
+                        aGraphic = Graphic(mpDrawView->GetMarkedObjBitmap());
                         // Restore online spelling
                         GetDoc()->SetOnlineSpell(bOnlineSpell);
                     }
@@ -1162,7 +1785,6 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                     aGraphic);
 
                 // get some necessary info and ensure it
-                const SdrMarkList& rMarkList(mpDrawView->GetMarkedObjectList());
                 const size_t nMarkCount(rMarkList.GetMarkCount());
                 SdrPageView* pPageView = mpDrawView->GetSdrPageView();
                 OSL_ENSURE(nMarkCount, "DrawViewShell::FuTemporary: SID_CONVERT_TO_BITMAP with empty selection (!)");
@@ -1228,7 +1850,6 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             }
             else
             {
-                const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
                 const size_t nCount = rMarkList.GetMarkCount();
 
                 // For every presentation object a SfxItemSet of hard attributes
@@ -1358,37 +1979,36 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_SAVE_GRAPHIC:
         {
-            const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
             if( rMarkList.GetMarkCount() == 1 )
             {
-                const SdrGrafObj* pObj = dynamic_cast<const SdrGrafObj*>(rMarkList.GetMark(0)->GetMarkedSdrObj());
-                if (pObj && pObj->GetGraphicType() == GraphicType::Bitmap)
-                {
-                    weld::Window* pFrame = GetFrameWeld();
-                    GraphicAttr aGraphicAttr = pObj->GetGraphicAttr();
-                    short nState = RET_CANCEL;
-                    if (aGraphicAttr != GraphicAttr()) // the image has been modified
+                if (const SdrGrafObj* pObj = dynamic_cast<const SdrGrafObj*>(rMarkList.GetMark(0)->GetMarkedSdrObj()))
+                    if (pObj->GetGraphicType() == GraphicType::Bitmap || pObj->GetGraphicType() == GraphicType::GdiMetafile)
                     {
-                        if (pFrame)
+                        weld::Window* pFrame = GetFrameWeld();
+                        GraphicAttr aGraphicAttr = pObj->GetGraphicAttr();
+                        short nState = RET_CANCEL;
+                        if (aGraphicAttr != GraphicAttr()) // the image has been modified
                         {
-                            nState = GraphicHelper::HasToSaveTransformedImage(pFrame);
+                            if (pFrame)
+                            {
+                                nState = GraphicHelper::HasToSaveTransformedImage(pFrame);
+                            }
+                        }
+                        else
+                        {
+                            nState = RET_NO;
+                        }
+
+                        if (nState == RET_YES)
+                        {
+                            GraphicHelper::ExportGraphic(pFrame, pObj->GetTransformedGraphic(), u""_ustr);
+                        }
+                        else if (nState == RET_NO)
+                        {
+                            const GraphicObject& aGraphicObject(pObj->GetGraphicObject());
+                            GraphicHelper::ExportGraphic(pFrame, aGraphicObject.GetGraphic(), u""_ustr);
                         }
                     }
-                    else
-                    {
-                        nState = RET_NO;
-                    }
-
-                    if (nState == RET_YES)
-                    {
-                        GraphicHelper::ExportGraphic(pFrame, pObj->GetTransformedGraphic(), "");
-                    }
-                    else if (nState == RET_NO)
-                    {
-                        const GraphicObject& aGraphicObject(pObj->GetGraphicObject());
-                        GraphicHelper::ExportGraphic(pFrame, aGraphicObject.GetGraphic(), "");
-                    }
-                }
             }
             Cancel();
             rReq.Ignore();
@@ -1397,7 +2017,6 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_EXTERNAL_EDIT:
         {
-            const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
             if( rMarkList.GetMarkCount() == 1 )
             {
                 SdrObject* pObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
@@ -1418,7 +2037,6 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_COMPRESS_GRAPHIC:
         {
-            const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
             if( rMarkList.GetMarkCount() == 1 )
             {
                 SdrObject* pObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
@@ -1431,7 +2049,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                         {
                             rtl::Reference<SdrGrafObj> pNewObject = dialog.GetCompressedSdrGrafObj();
                             SdrPageView* pPageView = mpDrawView->GetSdrPageView();
-                            OUString aUndoString = mpDrawView->GetDescriptionOfMarkedObjects() + " Compress";
+                            OUString aUndoString = rMarkList.GetMarkDescription() + " Compress";
                             mpDrawView->BegUndo( aUndoString );
                             mpDrawView->ReplaceObjectAtView( pObj, *pPageView, pNewObject.get() );
                             mpDrawView->EndUndo();
@@ -1456,7 +2074,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_ATTRIBUTES_LINE:  // BASIC
         {
-            SetCurrentFunction( FuLine::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuLine::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             if (rReq.GetArgs())
                 Cancel();
         }
@@ -1464,7 +2082,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_ATTRIBUTES_AREA:  // BASIC
         {
-            SetCurrentFunction( FuArea::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuArea::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             if (rReq.GetArgs())
                 Cancel();
         }
@@ -1472,10 +2090,10 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_ATTR_TRANSFORM:
         {
-            SetCurrentFunction( FuTransform::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuTransform::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             // tdf#138963 conditions tested for here must be the same as those
             // of the early returns from FuTransform::DoExecute
-            if (rReq.GetArgs() || !mpDrawView->AreObjectsMarked())
+            if (rReq.GetArgs() || rMarkList.GetMarkCount() == 0)
             {
                 Invalidate(SID_RULER_OBJECT);
                 Cancel();
@@ -1492,9 +2110,9 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 const SfxUInt32Item* newPosYTwips = rReq.GetArg<SfxUInt32Item>(FN_PARAM_3);
                 const SfxInt32Item* OrdNum = rReq.GetArg<SfxInt32Item>(FN_PARAM_4);
 
-                const sal_uLong handleNum = handleNumItem->GetValue();
-                const sal_uLong newPosX = convertTwipToMm100(newPosXTwips->GetValue());
-                const sal_uLong newPosY = convertTwipToMm100(newPosYTwips->GetValue());
+                const sal_uInt32 handleNum = handleNumItem->GetValue();
+                const ::tools::Long newPosX = convertTwipToMm100(newPosXTwips->GetValue());
+                const ::tools::Long newPosY = convertTwipToMm100(newPosYTwips->GetValue());
 
                 mpDrawView->MoveShapeHandle(handleNum, Point(newPosX, newPosY), OrdNum ? OrdNum->GetValue() : -1);
                 Cancel();
@@ -1504,14 +2122,14 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_CHAR_DLG_EFFECT:
         case SID_CHAR_DLG:  // BASIC
         {
-            SetCurrentFunction( FuChar::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuChar::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
 
         case SID_PARA_DLG:
         {
-            SetCurrentFunction( FuParagraph::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuParagraph::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
@@ -1538,8 +2156,11 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case FN_SVX_SET_BULLET:
         case FN_SVX_SET_NUMBER:
         {
-            SetCurrentFunction( FuBulletAndPosition::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuBulletAndPosition::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
+            SfxBindings& rBindings = GetViewFrame()->GetBindings();
+            rBindings.Invalidate( FN_NUM_BULLET_ON );
+            rBindings.Invalidate( FN_NUM_NUMBERING_ON );
         }
         break;
 
@@ -1553,21 +2174,21 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_INSERT_ZWSP:
         case SID_CHARMAP:
         {
-            SetCurrentFunction( FuBullet::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuBullet::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
 
         case SID_PRESENTATION_LAYOUT:
         {
-            SetCurrentFunction( FuPresentationLayout::Create(this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
+            SetCurrentFunction( FuPresentationLayout::Create(*this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
             Cancel();
         }
         break;
 
         case SID_PASTE_SPECIAL:
         {
-            SetCurrentFunction( FuInsertClipboard::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuInsertClipboard::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
             rReq.Ignore ();
         }
@@ -1576,7 +2197,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_CHANGE_PICTURE:
         case SID_INSERT_GRAPHIC:
         {
-            SetCurrentFunction( FuInsertGraphic::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq,
+            SetCurrentFunction( FuInsertGraphic::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq,
                                                          nSId == SID_CHANGE_PICTURE ) );
             Cancel();
             rReq.Ignore ();
@@ -1585,7 +2206,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_INSERT_AVMEDIA:
         {
-            SetCurrentFunction( FuInsertAVMedia::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuInsertAVMedia::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
 
             Cancel();
             rReq.Ignore ();
@@ -1598,12 +2219,12 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_INSERT_DIAGRAM:
         case SID_ATTR_TABLE:
         {
-            SetCurrentFunction( FuInsertOLE::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuInsertOLE::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             // Set the selection tool as the old one. This in particular important for the
             // zoom function, in which clicking without dragging zooms as well, and that
             // makes exiting the object editing mode impossible.
             if (dynamic_cast<FuSelection*>( GetOldFunction().get() ) == nullptr)
-                SetOldFunction( FuSelection::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+                SetOldFunction( FuSelection::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
             rReq.Ignore ();
         }
@@ -1678,7 +2299,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                     mpDrawView->SdrEndTextEdit();
                 }
 
-                SetCurrentFunction( FuCopy::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+                SetCurrentFunction( FuCopy::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             }
             Cancel();
             rReq.Ignore ();
@@ -1688,7 +2309,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_INSERTFILE:  // BASIC
         {
             Broadcast (ViewShellHint(ViewShellHint::HINT_COMPLEX_MODEL_CHANGE_START));
-            SetCurrentFunction( FuInsertFile::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuInsertFile::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Broadcast (ViewShellHint(ViewShellHint::HINT_COMPLEX_MODEL_CHANGE_END));
             Cancel();
             rReq.Done ();
@@ -1701,7 +2322,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_ATTR_PAGE:
         case SID_PAGESETUP:  // BASIC ??
         {
-            SetCurrentFunction( FuPage::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuPage::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
             rReq.Ignore (); // we generate independent macros !!
         }
@@ -1710,7 +2331,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_BEFORE_OBJ:
         case SID_BEHIND_OBJ:
         {
-            SetCurrentFunction( FuDisplayOrder::Create(this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
+            SetCurrentFunction( FuDisplayOrder::Create(*this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
             rReq.Done();
             // finishes itself, no Cancel() needed!
         }
@@ -1726,22 +2347,22 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_ANIMATION_EFFECTS:
         {
-            SetCurrentFunction( FuObjectAnimationParameters::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
+            SetCurrentFunction( FuObjectAnimationParameters::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
             Cancel();
         }
         break;
 
         case SID_EXECUTE_ANIMATION_EFFECT:
         {
-            SetCurrentFunction(FuExecuteInteraction::Create(this, GetActiveWindow(),
-                                                            mpDrawView.get(), GetDoc(), rReq));
+            SetCurrentFunction(FuExecuteInteraction::Create(*this, GetActiveWindow(),
+                                                            mpDrawView.get(), *GetDoc(), rReq));
             Cancel();
         }
         break;
 
         case SID_LINEEND_POLYGON:
         {
-            SetCurrentFunction( FuLineEnd::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuLineEnd::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
@@ -1752,14 +2373,14 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             [[fallthrough]];
         case SID_SET_SNAPITEM:
         {
-            SetCurrentFunction( FuSnapLine::Create(this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
+            SetCurrentFunction( FuSnapLine::Create(*this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
             Cancel();
         }
         break;
 
         case SID_MANAGE_LINKS:
         {
-            SetCurrentFunction( FuLink::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuLink::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
             rReq.Ignore ();
         }
@@ -1767,7 +2388,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_THESAURUS:
         {
-            SetCurrentFunction( FuThesaurus::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuThesaurus::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
             rReq.Ignore ();
         }
@@ -1777,7 +2398,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         {
             if (mpDrawView->IsTextEdit())
                 mpDrawView->SdrEndTextEdit();
-            SetCurrentFunction( FuTextAttrDlg::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuTextAttrDlg::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
             rReq.Ignore ();
         }
@@ -1785,7 +2406,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_MEASURE_DLG:
         {
-            SetCurrentFunction( FuMeasureDlg::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuMeasureDlg::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
             rReq.Ignore ();
         }
@@ -1793,7 +2414,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_CONNECTION_DLG:
         {
-            SetCurrentFunction( FuConnectionDlg::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuConnectionDlg::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
             rReq.Done();
         }
@@ -1895,7 +2516,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_POLYGON_MORPHING:
         {
-            SetCurrentFunction( FuMorph::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuMorph::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
@@ -1933,7 +2554,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
                 vcl::Window* pWin = GetActiveWindow();
                 ScopedVclPtr<AbstractSdInsertLayerDlg> pDlg( pFact->CreateSdInsertLayerDlg(pWin ? pWin->GetFrameWeld() : nullptr, aNewAttr, true, SdResId(STR_INSERTLAYER)) );
-                pDlg->SetHelpId( SD_MOD()->GetSlotPool()->GetSlot( SID_INSERTLAYER )->GetCommand() );
+                pDlg->SetHelpId( SdModule::get()->GetSlotPool()->GetSlot( SID_INSERTLAYER )->GetCommand() );
 
                 // test for already existing names
                 bool bLoop = true;
@@ -2086,7 +2707,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
                 vcl::Window* pWin = GetActiveWindow();
                 ScopedVclPtr<AbstractSdInsertLayerDlg> pDlg( pFact->CreateSdInsertLayerDlg(pWin ? pWin->GetFrameWeld() : nullptr, aNewAttr, bDelete, SdResId(STR_MODIFYLAYER)) );
-                pDlg->SetHelpId( SD_MOD()->GetSlotPool()->GetSlot( SID_MODIFYLAYER )->GetCommand() );
+                pDlg->SetHelpId( SdModule::get()->GetSlotPool()->GetSlot( SID_MODIFYLAYER )->GetCommand() );
 
                 // test for already existing names
                 bool    bLoop = true;
@@ -2158,7 +2779,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
             SfxUndoManager* pManager = GetDoc()->GetDocSh()->GetUndoManager();
             std::unique_ptr<SdLayerModifyUndoAction> pAction( new SdLayerModifyUndoAction(
-                GetDoc(),
+                *GetDoc(),
                 pLayer,
                 // old values
                 aOldLayerName,
@@ -2231,6 +2852,15 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             if (pOutView)
                 pOutView->SelectFieldAtCursor();
 
+            GetViewFrame()->GetDispatcher()->Execute( SID_HYPERLINK_DIALOG );
+
+            Cancel();
+            rReq.Done ();
+        }
+        break;
+
+        case SID_INSERT_HYPERLINK :
+        {
             GetViewFrame()->GetDispatcher()->Execute( SID_HYPERLINK_DIALOG );
 
             Cancel();
@@ -2311,7 +2941,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 if (pHLItem->GetInsertMode() == HLINK_FIELD)
                 {
                     InsertURLField(pHLItem->GetURL(), pHLItem->GetName(),
-                                   pHLItem->GetTargetFrame());
+                                   pHLItem->GetTargetFrame(), pHLItem->GetIntName());
                 }
                 else if (pHLItem->GetInsertMode() == HLINK_BUTTON)
                 {
@@ -2325,7 +2955,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                     if (pOlView || comphelper::LibreOfficeKit::isActive())
                     {
                         InsertURLField(pHLItem->GetURL(), pHLItem->GetName(),
-                                       pHLItem->GetTargetFrame());
+                                       pHLItem->GetTargetFrame(), pHLItem->GetIntName());
                     }
                     else
                     {
@@ -2349,13 +2979,13 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             {
                 //we are on the last paragraph
                 aSel.Adjust();
-                if (aSel.nEndPara == pOL->GetParagraphCount() - 1)
+                if (aSel.end.nPara == pOL->GetParagraphCount() - 1)
                 {
-                    sal_uInt16 nDepth = pOL->GetDepth(aSel.nEndPara);
+                    sal_uInt16 nDepth = pOL->GetDepth(aSel.end.nPara);
                     //there exists a previous numbering level
                     if (nDepth != sal_uInt16(-1) && nDepth > 0)
                     {
-                        Paragraph* pPara = pOL->GetParagraph(aSel.nEndPara);
+                        Paragraph* pPara = pOL->GetParagraph(aSel.end.nPara);
                         pOL->Remove(pPara, 1);
                     }
                 }
@@ -2388,14 +3018,14 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             {
                 //we are on the last paragraph
                 aSel.Adjust();
-                if (aSel.nEndPara == pOL->GetParagraphCount() - 1)
+                if (aSel.end.nPara == pOL->GetParagraphCount() - 1)
                 {
-                    sal_uInt16 nDepth = pOL->GetDepth(aSel.nEndPara);
+                    sal_uInt16 nDepth = pOL->GetDepth(aSel.end.nPara);
                     //there exists a previous numbering level
                     if (nDepth < 8)
                     {
                         sal_uInt16 nNewDepth = nDepth+1;
-                        pOL->Insert(SdResId(STR_PRESOBJ_MPOUTLINE_ARY[nNewDepth]), EE_PARA_APPEND, nNewDepth);
+                        pOL->Insert(SdResId(STR_PRESOBJ_MPOUTLINE_ARY[nNewDepth]), EE_PARA_MAX, nNewDepth);
                     }
                 }
             }
@@ -2493,8 +3123,8 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 {
                     // select field, then it will be deleted when inserting
                     ESelection aSel = pOLV->GetSelection();
-                    if( aSel.nStartPos == aSel.nEndPos )
-                        aSel.nEndPos++;
+                    if (aSel.start.nIndex == aSel.end.nIndex)
+                        aSel.end.nIndex++;
                     pOLV->SetSelection( aSel );
                 }
 
@@ -2511,8 +3141,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 std::optional<OutlinerParaObject> pOutlParaObject = pOutl->CreateParaObject();
 
                 rtl::Reference<SdrRectObj> pRectObj = new SdrRectObj(
-                    *GetDoc(),
-                    SdrObjKind::Text);
+                    *GetDoc(), ::tools::Rectangle(), SdrObjKind::Text);
                 pRectObj->SetMergedItem(makeSdrTextAutoGrowWidthItem(true));
 
                 pOutl->UpdateFields();
@@ -2571,10 +3200,10 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                         {
                             SvxFieldItem aFieldItem( *pField, EE_FEATURE_FIELD );
 
-                            if( aSel.nStartPos == aSel.nEndPos )
+                            if (aSel.start.nIndex == aSel.end.nIndex)
                             {
                                 bSelectionWasModified = true;
-                                aSel.nEndPos++;
+                                aSel.end.nIndex++;
                                 pOLV->SetSelection( aSel );
                             }
 
@@ -2590,9 +3219,8 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                         {
                             pOLV->SetAttribs( aSet );
 
-                            ::Outliner* pOutliner = pOLV->GetOutliner();
-                            if( pOutliner )
-                                pOutliner->UpdateFields();
+                            ::Outliner& rOutliner = pOLV->GetOutliner();
+                            rOutliner.UpdateFields();
                         }
 
                         if(pField)
@@ -2600,7 +3228,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                             // restore selection to original
                             if(bSelectionWasModified)
                             {
-                                aSel.nEndPos--;
+                                aSel.end.nIndex--;
                                 pOLV->SetSelection( aSel );
                             }
                         }
@@ -2660,32 +3288,36 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         {
             // only allow for single object selection since the name of an object needs
             // to be unique
-            if(1 == mpDrawView->GetMarkedObjectCount())
+            if(1 == rMarkList.GetMarkCount())
             {
                 // #i68101#
-                SdrObject* pSelected = mpDrawView->GetMarkedObjectByIndex(0);
+                rtl::Reference<SdrObject> pSelected = rMarkList.GetMark(0)->GetMarkedSdrObj();
                 OSL_ENSURE(pSelected, "DrawViewShell::FuTemp03: nMarkCount, but no object (!)");
                 OUString aName(pSelected->GetName());
 
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                ScopedVclPtr<AbstractSvxObjectNameDialog> pDlg(pFact->CreateSvxObjectNameDialog(GetFrameWeld(), aName));
+                VclPtr<AbstractSvxObjectNameDialog> pDlg(pFact->CreateSvxObjectNameDialog(GetFrameWeld(), aName));
 
                 pDlg->SetCheckNameHdl(LINK(this, DrawViewShell, NameObjectHdl));
 
-                if(RET_OK == pDlg->Execute())
-                {
-                    pDlg->GetName(aName);
-                    pSelected->SetName(aName);
+                pDlg->StartExecuteAsync(
+                    [this, pDlg, pSelected] (sal_Int32 nResult)->void
+                    {
+                        if (nResult == RET_OK)
+                        {
+                            pSelected->SetName(pDlg->GetName());
 
-                    SdPage* pPage = GetActualPage();
-                    if (pPage)
-                        pPage->notifyObjectRenamed(pSelected);
-                }
+                            SdPage* pPage = GetActualPage();
+                            if (pPage)
+                                pPage->notifyObjectRenamed(pSelected.get());
+                        }
+                        pDlg->disposeOnce();
+                        SfxBindings& rBindings = GetViewFrame()->GetBindings();
+                        rBindings.Invalidate( SID_NAVIGATOR_STATE, true );
+                        rBindings.Invalidate( SID_CONTEXT );
+                    }
+                );
             }
-
-            SfxBindings& rBindings = GetViewFrame()->GetBindings();
-            rBindings.Invalidate( SID_NAVIGATOR_STATE, true );
-            rBindings.Invalidate( SID_CONTEXT );
 
             Cancel();
             rReq.Ignore();
@@ -2695,33 +3327,66 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         // #i68101#
         case SID_OBJECT_TITLE_DESCRIPTION:
         {
-            if(1 == mpDrawView->GetMarkedObjectCount())
+            if(1 == rMarkList.GetMarkCount())
             {
-                SdrObject* pSelected = mpDrawView->GetMarkedObjectByIndex(0);
+                rtl::Reference<SdrObject> pSelected = rMarkList.GetMark(0)->GetMarkedSdrObj();
                 OSL_ENSURE(pSelected, "DrawViewShell::FuTemp03: nMarkCount, but no object (!)");
                 OUString aTitle(pSelected->GetTitle());
                 OUString aDescription(pSelected->GetDescription());
                 bool isDecorative(pSelected->IsDecorative());
 
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                ScopedVclPtr<AbstractSvxObjectTitleDescDialog> pDlg(pFact->CreateSvxObjectTitleDescDialog(
+                VclPtr<AbstractSvxObjectTitleDescDialog> pDlg(pFact->CreateSvxObjectTitleDescDialog(
                             GetFrameWeld(), aTitle, aDescription, isDecorative));
 
-                if(RET_OK == pDlg->Execute())
-                {
-                    pDlg->GetTitle(aTitle);
-                    pDlg->GetDescription(aDescription);
-                    pDlg->IsDecorative(isDecorative);
-                    pSelected->SetTitle(aTitle);
-                    pSelected->SetDescription(aDescription);
-                    pSelected->SetDecorative(isDecorative);
-                }
+                pDlg->StartExecuteAsync(
+                    [this, pDlg, pSelected] (sal_Int32 nResult)->void
+                    {
+                        if (nResult == RET_OK)
+                        {
+                            pSelected->SetTitle(pDlg->GetTitle());
+                            pSelected->SetDescription(pDlg->GetDescription());
+                            pSelected->SetDecorative(pDlg->IsDecorative());
+                        }
+                        pDlg->disposeOnce();
+                        SfxBindings& rBindings = GetViewFrame()->GetBindings();
+                        rBindings.Invalidate( SID_NAVIGATOR_STATE, true );
+                        rBindings.Invalidate( SID_CONTEXT );
+                    }
+                );
             }
 
-            SfxBindings& rBindings = GetViewFrame()->GetBindings();
-            rBindings.Invalidate( SID_NAVIGATOR_STATE, true );
-            rBindings.Invalidate( SID_CONTEXT );
+            Cancel();
+            rReq.Ignore();
+            break;
+        }
 
+        case SID_SETLAYER:
+        {
+            const size_t nMarkCount = rMarkList.GetMarkCount();
+            if (nMarkCount >= 1 && mpLayerTabBar)
+            {
+                SdSelectLayerDlg aDlg(GetFrameWeld());
+
+                weld::TreeView& rTreeView = aDlg.GetTreeView();
+                auto nPageCount = mpLayerTabBar->GetPageCount();
+                for (auto i = 0; i < nPageCount; i++)
+                    rTreeView.append_text(LayerTabBar::convertToLocalizedName(
+                                        mpLayerTabBar->GetLayerName(mpLayerTabBar->GetPageId(i))));
+                rTreeView.select(0);
+
+                if (aDlg.run() == RET_OK && rTreeView.get_selected_index() != -1)
+                {
+                    SdrLayerAdmin& rLayerAdmin = GetDoc()->GetLayerAdmin();
+                    SdrLayerID aSdrLayerId = rLayerAdmin.GetLayerID(mpLayerTabBar->GetLayerName(
+                                        mpLayerTabBar->GetPageId(rTreeView.get_selected_index())));
+                    for (size_t i = 0; i < nMarkCount; ++i)
+                    {
+                        SdrObject* pObj = rMarkList.GetMark(i)->GetMarkedSdrObj();
+                        pObj->SetLayer(aSdrLayerId);
+                    }
+                }
+            }
             Cancel();
             rReq.Ignore();
             break;
@@ -2954,7 +3619,6 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             else if ( mpDrawView->IsImportMtfPossible() )
             {
                 weld::WaitObject aWait(GetFrameWeld());
-                const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
                 const size_t nCnt=rMarkList.GetMarkCount();
 
                 // determine the sum of meta objects of all selected meta files
@@ -2978,10 +3642,9 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                         }
                     }
 
-                    if(pOle2 && pOle2->GetGraphic())
-                    {
-                         nCount += pOle2->GetGraphic()->GetGDIMetaFile().GetActionSize();
-                    }
+                    if (pOle2)
+                        if (const Graphic* pGraphic = pOle2->GetGraphic())
+                            nCount += pGraphic->GetGDIMetaFile().GetActionSize();
                 }
 
                 // decide with the sum of all meta objects if we should show a dialog
@@ -3123,6 +3786,14 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         }
         break;
 
+        case SID_ALIGN_PAGE:
+        {
+            mpDrawView->AlignMarkedObjects(SdrHorAlign::Center, SdrVertAlign::Center);
+            Cancel();
+            rReq.Done ();
+        }
+        break;
+
         case SID_OBJECT_ALIGN_DOWN:  // BASIC
         {
             mpDrawView->AlignMarkedObjects(SdrHorAlign::NONE, SdrVertAlign::Bottom);
@@ -3160,7 +3831,9 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_STYLE_UPDATE_BY_EXAMPLE:
         case SID_STYLE_NEW_BY_EXAMPLE:
         {
-            if( rReq.GetSlot() == SID_STYLE_EDIT && !rReq.GetArgs() )
+            if (!rReq.GetArgs()
+                && (nSId == SID_STYLE_EDIT || nSId == SID_STYLE_UPDATE_BY_EXAMPLE
+                     || nSId == SID_STYLE_NEW_BY_EXAMPLE))
             {
                 SfxStyleSheet* pStyleSheet = mpDrawView->GetStyleSheet();
                 if( pStyleSheet && pStyleSheet->GetFamily() == SfxStyleFamily::Page)
@@ -3183,18 +3856,35 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
                 SfxAllItemSet aSet(GetDoc()->GetPool());
 
-                SfxStringItem aStyleNameItem( SID_STYLE_EDIT, pStyleSheet->GetName() );
-                aSet.Put(aStyleNameItem);
+                aSet.Put(SfxUInt16Item(SID_STYLE_FAMILY,
+                                       static_cast<sal_uInt16>(pStyleSheet->GetFamily())));
 
-                SfxUInt16Item aStyleFamilyItem( SID_STYLE_FAMILY, static_cast<sal_uInt16>(pStyleSheet->GetFamily()) );
-                aSet.Put(aStyleFamilyItem);
+                if (nSId == SID_STYLE_NEW_BY_EXAMPLE)
+                {
+                    weld::Window* pWindow = GetViewFrame()->GetFrameWeld();
+                    SfxNewStyleDlg aDlg(pWindow, *pStyleSheet->GetPool(), pStyleSheet->GetFamily());
+                    auto nResult = aDlg.run();
+                    if (nResult == RET_OK)
+                    {
+                        aSet.Put(SfxStringItem(SID_STYLE_NEW_BY_EXAMPLE, aDlg.GetName()));
+                        aSet.Put(SfxStringItem(SID_STYLE_REFERENCE, pStyleSheet->GetName()));
+                    }
+                    else
+                    {
+                        Cancel();
+                        rReq.Ignore();
+                        break;
+                    }
+                }
+                else
+                    aSet.Put(SfxStringItem(nSId, pStyleSheet->GetName()));
 
                 rReq.SetArgs(aSet);
             }
 
             if( rReq.GetArgs() )
             {
-                SetCurrentFunction( FuTemplate::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+                SetCurrentFunction( FuTemplate::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
                 if( rReq.GetSlot() == SID_STYLE_APPLY )
                     GetViewFrame()->GetBindings().Invalidate( SID_STYLE_APPLY );
                 Cancel();
@@ -3215,8 +3905,6 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             if ( GetViewFrame()->HasChildWindow( nId )
                 && ( ( ViewShell::Implementation::GetImageMapDialog() ) != nullptr ) )
             {
-                const SdrMarkList&  rMarkList = mpDrawView->GetMarkedObjectList();
-
                 if ( rMarkList.GetMarkCount() == 1 )
                     UpdateIMapDlg( rMarkList.GetMark( 0 )->GetMarkedSdrObj() );
             }
@@ -3324,27 +4012,16 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_NAVIGATOR:
         {
-            if (comphelper::LibreOfficeKit::isActive())
-            {
-                GetViewFrame()->ShowChildWindow(SID_SIDEBAR);
-                OUString panelId = "SdNavigatorPanel";
-                ::sfx2::sidebar::Sidebar::TogglePanel(
-                    panelId, GetViewFrame()->GetFrame().GetFrameInterface());
+            if ( rReq.GetArgs() )
+                GetViewFrame()->SetChildWindow(SID_NAVIGATOR,
+                                        static_cast<const SfxBoolItem&>(rReq.GetArgs()->
+                                        Get(SID_NAVIGATOR)).GetValue());
+            else
+                GetViewFrame()->ToggleChildWindow( SID_NAVIGATOR );
 
-                Cancel();
-                rReq.Done();
-            } else {
-                if ( rReq.GetArgs() )
-                    GetViewFrame()->SetChildWindow(SID_NAVIGATOR,
-                                            static_cast<const SfxBoolItem&>(rReq.GetArgs()->
-                                            Get(SID_NAVIGATOR)).GetValue());
-                else
-                    GetViewFrame()->ToggleChildWindow( SID_NAVIGATOR );
-
-                GetViewFrame()->GetBindings().Invalidate(SID_NAVIGATOR);
-                Cancel();
-                rReq.Ignore ();
-            }
+            GetViewFrame()->GetBindings().Invalidate(SID_NAVIGATOR);
+            Cancel();
+            rReq.Ignore ();
         }
         break;
 
@@ -3427,7 +4104,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_PRESENTATION_DLG:
         {
-            SetCurrentFunction( FuSlideShowDlg::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuSlideShowDlg::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
@@ -3444,14 +4121,14 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_CUSTOMSHOW_DLG:
         {
-            SetCurrentFunction( FuCustomShowDlg::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuCustomShowDlg::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
 
         case SID_EXPAND_PAGE:
         {
-            SetCurrentFunction( FuExpandPage::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuExpandPage::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
@@ -3459,7 +4136,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         case SID_SUMMARY_PAGE:
         {
             mpDrawView->SdrEndTextEdit();
-            SetCurrentFunction( FuSummaryPage::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuSummaryPage::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
@@ -3477,7 +4154,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
 
         case SID_PRESENTATION_MINIMIZER:
         {
-            Reference<XComponentContext> xContext(::comphelper::getProcessComponentContext());
+            const Reference<XComponentContext>& xContext(::comphelper::getProcessComponentContext());
             Reference<util::XURLTransformer> xParser(util::URLTransformer::create(xContext));
             Reference<frame::XDispatchProvider> xProvider(GetViewShellBase().GetController()->getFrame(), UNO_QUERY);
             if (xProvider.is())
@@ -3529,7 +4206,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             vcl::Window* pWin = GetActiveWindow();
             ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSdPhotoAlbumDialog(
                 pWin ? pWin->GetFrameWeld() : nullptr,
-                GetDoc()));
+                *GetDoc()));
 
             pDlg->Execute();
             Cancel();
@@ -3566,12 +4243,6 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 {
                     sd::ThemeColorChanger aChanger(pMasterPage, pDocShell);
                     aChanger.apply(pColorSet);
-
-                    if (comphelper::LibreOfficeKit::isActive())
-                    {
-                        svx::ThemeColorPaletteManager aManager(pColorSet);
-                        SfxLokHelper::notifyAllViews(LOK_CALLBACK_COLOR_PALETTES, aManager.generateJSON());
-                    }
                 }
             });
 
@@ -3580,26 +4251,12 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         }
         break;
 
-        case SID_ADDITIONS_DIALOG:
-        {
-            OUString sAdditionsTag = "";
-
-            const SfxStringItem* pStringArg = rReq.GetArg<SfxStringItem>(FN_PARAM_ADDITIONS_TAG);
-            if (pStringArg)
-                sAdditionsTag = pStringArg->GetValue();
-
-            VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
-            ScopedVclPtr<AbstractAdditionsDialog> pDlg(
-                pFact->CreateAdditionsDialog(GetFrameWeld(), sAdditionsTag));
-            pDlg->Execute();
-            Cancel();
-            rReq.Ignore ();
-        }
-        break;
-
         case SID_ATTR_GLOW_COLOR:
         case SID_ATTR_GLOW_RADIUS:
         case SID_ATTR_GLOW_TRANSPARENCY:
+        case SID_ATTR_GLOW_TEXT_COLOR:
+        case SID_ATTR_GLOW_TEXT_RADIUS:
+        case SID_ATTR_GLOW_TEXT_TRANSPARENCY:
         case SID_ATTR_SOFTEDGE_RADIUS:
         case SID_ATTR_TEXTCOLUMNS_NUMBER:
         case SID_ATTR_TEXTCOLUMNS_SPACING:
@@ -3609,6 +4266,17 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             Cancel();
             break;
 
+        case SID_PASTE_SLIDE:
+        case SID_COPY_SLIDE:
+        {
+            sd::slidesorter::SlideSorterViewShell::GetSlideSorter(GetViewShellBase())
+                ->GetSlideSorter()
+                .GetController()
+                .FuSupport(rReq);
+            Cancel();
+            rReq.Done();
+        }
+        break;
         default:
         {
             SAL_WARN( "sd.ui", "Slot without function" );
@@ -3809,10 +4477,21 @@ void DrawViewShell::ExecChar( SfxRequest &rReq )
             }
         }
         break;
+    case SID_SET_SMALL_CAPS:
+        {
+            SvxCaseMap eCaseMap = aEditAttr.Get(EE_CHAR_CASEMAP).GetCaseMap();
+            if (eCaseMap == SvxCaseMap::SmallCaps)
+                eCaseMap = SvxCaseMap::NotMapped;
+            else
+                eCaseMap = SvxCaseMap::SmallCaps;
+            SvxCaseMapItem aItem(eCaseMap, EE_CHAR_CASEMAP);
+            aNewAttr.Put(aItem);
+        }
+        break;
     case SID_SET_SUB_SCRIPT:
         {
             SvxEscapementItem aItem( EE_CHAR_ESCAPEMENT );
-            SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+            SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
             if( eEsc == SvxEscapement::Subscript )
                 aItem.SetEscapement( SvxEscapement::Off );
             else
@@ -3823,7 +4502,7 @@ void DrawViewShell::ExecChar( SfxRequest &rReq )
     case SID_SET_SUPER_SCRIPT:
         {
             SvxEscapementItem aItem( EE_CHAR_ESCAPEMENT );
-            SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+            SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
             if( eEsc == SvxEscapement::Superscript )
                 aItem.SetEscapement( SvxEscapement::Off );
             else
@@ -3918,7 +4597,7 @@ void DrawViewShell::DuplicateSelectedSlides (SfxRequest& rRequest)
         ++iPage, nInsertPosition+=2)
     {
         aPagesToSelect.push_back(
-            mrSlideSorter.GetViewShell()->CreateOrDuplicatePage(
+            mrSlideSorter.GetViewShell().CreateOrDuplicatePage(
                 rRequest, PageKind::Standard, *iPage, nInsertPosition));
     }
     aPagesToDuplicate.clear();
@@ -3937,7 +4616,8 @@ void DrawViewShell::DuplicateSelectedSlides (SfxRequest& rRequest)
 
 void DrawViewShell::ExecutePropPanelAttr (SfxRequest const & rReq)
 {
-    if(SlideShow::IsRunning( GetViewShellBase() ))
+    if(SlideShow::IsRunning( GetViewShellBase() )
+        && !SlideShow::IsInteractiveSlideshow( &GetViewShellBase() )) // IASS
         return;
 
     SdDrawDocument* pDoc = GetDoc();
@@ -3989,7 +4669,7 @@ void DrawViewShell::GetStatePropPanelAttr(SfxItemSet& rSet)
             case SID_TABLE_VERT_BOTTOM:
                 bool bContour = false;
                 SfxItemState eConState = aAttrs.GetItemState( SDRATTR_TEXT_CONTOURFRAME );
-                if( eConState != SfxItemState::DONTCARE )
+                if( eConState != SfxItemState::INVALID )
                 {
                     bContour = aAttrs.Get( SDRATTR_TEXT_CONTOURFRAME ).GetValue();
                 }
@@ -3998,8 +4678,8 @@ void DrawViewShell::GetStatePropPanelAttr(SfxItemSet& rSet)
                 SfxItemState eVState = aAttrs.GetItemState( SDRATTR_TEXT_VERTADJUST );
                 //SfxItemState eHState = aAttrs.GetItemState( SDRATTR_TEXT_HORZADJUST );
 
-                //if(SfxItemState::DONTCARE != eVState && SfxItemState::DONTCARE != eHState)
-                if(SfxItemState::DONTCARE != eVState)
+                //if(SfxItemState::INVALID != eVState && SfxItemState::INVALID != eHState)
+                if(SfxItemState::INVALID != eVState)
                 {
                     SdrTextVertAdjust eTVA = aAttrs.Get(SDRATTR_TEXT_VERTADJUST).GetValue();
                     bool bSet = (nSlotId == SID_TABLE_VERT_NONE && eTVA == SDRTEXTVERTADJUST_TOP) ||

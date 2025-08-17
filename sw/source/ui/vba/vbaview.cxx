@@ -38,14 +38,19 @@
 #include "wordvbahelper.hxx"
 #include "vbaheaderfooterhelper.hxx"
 #include <view.hxx>
+#include <unotxdoc.hxx>
+#include <unocoll.hxx>
+#include <unotextbodyhf.hxx>
+#include <unobasestyle.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
 const sal_Int32 DEFAULT_BODY_DISTANCE = 500;
 
-SwVbaView::SwVbaView( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext,
-    uno::Reference< frame::XModel > xModel ) :
+SwVbaView::SwVbaView( const uno::Reference< ooo::vba::XHelperInterface >& rParent,
+                      const uno::Reference< uno::XComponentContext >& rContext,
+                      rtl::Reference< SwXTextDocument > xModel ) :
     SwVbaView_BASE( rParent, rContext ), mxModel(std::move( xModel ))
 {
     uno::Reference< frame::XController > xController = mxModel->getCurrentController();
@@ -64,13 +69,13 @@ SwVbaView::~SwVbaView()
 sal_Bool SwVbaView::getShowAll()
 {
     bool bShowFormattingMarks = false;
-    mxViewSettings->getPropertyValue("ShowNonprintingCharacters") >>= bShowFormattingMarks;
+    mxViewSettings->getPropertyValue(u"ShowNonprintingCharacters"_ustr) >>= bShowFormattingMarks;
     return bShowFormattingMarks;
 }
 
 void SwVbaView::setShowAll(sal_Bool bSet)
 {
-    mxViewSettings->setPropertyValue("ShowNonprintingCharacters", uno::Any(bSet));
+    mxViewSettings->setPropertyValue(u"ShowNonprintingCharacters"_ustr, uno::Any(bSet));
 }
 
 ::sal_Int32 SAL_CALL
@@ -81,7 +86,7 @@ SwVbaView::getSeekView()
     uno::Reference< text::XText > xCurrentText = mxViewCursor->getText();
     uno::Reference< beans::XPropertySet > xCursorProps( mxViewCursor, uno::UNO_QUERY_THROW );
     uno::Reference< text::XTextContent > xTextContent;
-    while( xCursorProps->getPropertyValue("TextTable") >>= xTextContent )
+    while( xCursorProps->getPropertyValue(u"TextTable"_ustr) >>= xTextContent )
     {
         xCurrentText = xTextContent->getAnchor()->getText();
         xCursorProps.set( xCurrentText->createTextCursor(), uno::UNO_QUERY_THROW );
@@ -115,7 +120,7 @@ SwVbaView::getSeekView()
     }
     else if ( aImplName == "SwXFootnote" )
     {
-        if( xServiceInfo->supportsService("com.sun.star.text.Endnote") )
+        if( xServiceInfo->supportsService(u"com.sun.star.text.Endnote"_ustr) )
             return word::WdSeekView::wdSeekEndnotes;
         else
             return word::WdSeekView::wdSeekFootnotes;
@@ -149,8 +154,7 @@ SwVbaView::setSeekView( ::sal_Int32 _seekview )
         }
         case word::WdSeekView::wdSeekFootnotes:
         {
-            uno::Reference< text::XFootnotesSupplier > xFootnotesSupp( mxModel, uno::UNO_QUERY_THROW );
-            uno::Reference< container::XIndexAccess > xFootnotes( xFootnotesSupp->getFootnotes(), uno::UNO_SET_THROW );
+            rtl::Reference< SwXFootnotes > xFootnotes( mxModel->getSwXFootnotes() );
             if( xFootnotes->getCount() > 0 )
             {
                 uno::Reference< text::XText > xText( xFootnotes->getByIndex(0), uno::UNO_QUERY_THROW );
@@ -164,8 +168,7 @@ SwVbaView::setSeekView( ::sal_Int32 _seekview )
         }
         case word::WdSeekView::wdSeekEndnotes:
         {
-            uno::Reference< text::XEndnotesSupplier > xEndnotesSupp( mxModel, uno::UNO_QUERY_THROW );
-            uno::Reference< container::XIndexAccess > xEndnotes( xEndnotesSupp->getEndnotes(), uno::UNO_SET_THROW );
+            rtl::Reference< SwXFootnotes > xEndnotes( mxModel->getSwXEndnotes() );
             if( xEndnotes->getCount() > 0 )
             {
                 uno::Reference< text::XText > xText( xEndnotes->getByIndex(0), uno::UNO_QUERY_THROW );
@@ -179,8 +182,7 @@ SwVbaView::setSeekView( ::sal_Int32 _seekview )
         }
         case word::WdSeekView::wdSeekMainDocument:
         {
-            uno::Reference< text::XTextDocument > xTextDocument( mxModel, uno::UNO_QUERY_THROW );
-            uno::Reference< text::XText > xText = xTextDocument->getText();
+            rtl::Reference< SwXBodyText > xText = mxModel->getBodyText();
             mxViewCursor->gotoRange( word::getFirstObjectPosition( xText ), false );
             break;
         }
@@ -203,14 +205,14 @@ sal_Bool SAL_CALL
 SwVbaView::getTableGridLines()
 {
     bool bShowTableGridLine = false;
-    mxViewSettings->getPropertyValue("ShowTableBoundaries") >>= bShowTableGridLine;
+    mxViewSettings->getPropertyValue(u"ShowTableBoundaries"_ustr) >>= bShowTableGridLine;
     return bShowTableGridLine;
 }
 
 void SAL_CALL
 SwVbaView::setTableGridLines( sal_Bool _tablegridlines )
 {
-    mxViewSettings->setPropertyValue("ShowTableBoundaries", uno::Any( _tablegridlines ) );
+    mxViewSettings->setPropertyValue(u"ShowTableBoundaries"_ustr, uno::Any( _tablegridlines ) );
 }
 
 ::sal_Int32 SAL_CALL
@@ -218,7 +220,7 @@ SwVbaView::getType()
 {
     // FIXME: handle wdPrintPreview type
     bool bOnlineLayout = false;
-    mxViewSettings->getPropertyValue("ShowOnlineLayout") >>= bOnlineLayout;
+    mxViewSettings->getPropertyValue(u"ShowOnlineLayout"_ustr) >>= bOnlineLayout;
     return bOnlineLayout ? word::WdViewType::wdWebView : word::WdViewType::wdPrintView;
 }
 
@@ -231,12 +233,12 @@ SwVbaView::setType( ::sal_Int32 _type )
         case word::WdViewType::wdPrintView:
         case word::WdViewType::wdNormalView:
         {
-            mxViewSettings->setPropertyValue("ShowOnlineLayout", uno::Any( false ) );
+            mxViewSettings->setPropertyValue(u"ShowOnlineLayout"_ustr, uno::Any( false ) );
             break;
         }
         case word::WdViewType::wdWebView:
         {
-            mxViewSettings->setPropertyValue("ShowOnlineLayout", uno::Any( true ) );
+            mxViewSettings->setPropertyValue(u"ShowOnlineLayout"_ustr, uno::Any( true ) );
             break;
         }
         case word::WdViewType::wdPrintPreview:
@@ -293,7 +295,7 @@ uno::Reference< text::XTextRange > SwVbaView::getHFTextRange( sal_Int32 nType )
         xPageCursor->jumpToFirstPage();
     }
 
-    uno::Reference< style::XStyle > xStyle;
+    rtl::Reference< SwXBaseStyle > xStyle;
     uno::Reference< text::XText > xText;
     switch( nType )
     {
@@ -313,7 +315,7 @@ uno::Reference< text::XTextRange > SwVbaView::getHFTextRange( sal_Int32 nType )
             // an even page number
             uno::Reference< beans::XPropertySet > xCursorProps( mxViewCursor, uno::UNO_QUERY_THROW );
             OUString aPageStyleName;
-            xCursorProps->getPropertyValue("PageStyleName") >>= aPageStyleName;
+            xCursorProps->getPropertyValue(u"PageStyleName"_ustr) >>= aPageStyleName;
             if ( aPageStyleName == "First Page" )
             {
                 // go to the beginning of where the next style is used
@@ -337,15 +339,14 @@ uno::Reference< text::XTextRange > SwVbaView::getHFTextRange( sal_Int32 nType )
     }
 
     xStyle = word::getCurrentPageStyle( mxModel );
-    uno::Reference< beans::XPropertySet > xPageProps( xStyle, uno::UNO_QUERY_THROW );
     bool isOn = false;
-    xPageProps->getPropertyValue( aPropIsOn ) >>= isOn;
+    xStyle->getPropertyValue( aPropIsOn ) >>= isOn;
     bool isShared =  false;
-    xPageProps->getPropertyValue( aPropIsShared ) >>= isShared;
+    xStyle->getPropertyValue( aPropIsShared ) >>= isShared;
     if( !isOn )
     {
-        xPageProps->setPropertyValue( aPropIsOn, uno::Any( true ) );
-        xPageProps->setPropertyValue( aPropBodyDistance, uno::Any( DEFAULT_BODY_DISTANCE ) );
+        xStyle->setPropertyValue( aPropIsOn, uno::Any( true ) );
+        xStyle->setPropertyValue( aPropBodyDistance, uno::Any( DEFAULT_BODY_DISTANCE ) );
     }
     if( !isShared )
     {
@@ -359,7 +360,7 @@ uno::Reference< text::XTextRange > SwVbaView::getHFTextRange( sal_Int32 nType )
         {
             aTempPropText += "Right";
         }
-        xText.set( xPageProps->getPropertyValue( aTempPropText), uno::UNO_QUERY_THROW );
+        xText.set( xStyle->getPropertyValue( aTempPropText), uno::UNO_QUERY_THROW );
     }
     else
     {
@@ -368,7 +369,7 @@ uno::Reference< text::XTextRange > SwVbaView::getHFTextRange( sal_Int32 nType )
         {
             DebugHelper::basicexception( ERRCODE_BASIC_BAD_ACTION, {} );
         }
-        xText.set( xPageProps->getPropertyValue( aPropText ), uno::UNO_QUERY_THROW );
+        xText.set( xStyle->getPropertyValue( aPropText ), uno::UNO_QUERY_THROW );
     }
 
     mxModel->unlockControllers();
@@ -383,7 +384,7 @@ uno::Reference< text::XTextRange > SwVbaView::getHFTextRange( sal_Int32 nType )
 OUString
 SwVbaView::getServiceImplName()
 {
-    return "SwVbaView";
+    return u"SwVbaView"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -391,7 +392,7 @@ SwVbaView::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.word.View"
+        u"ooo.vba.word.View"_ustr
     };
     return aServiceNames;
 }

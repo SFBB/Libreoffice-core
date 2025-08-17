@@ -39,6 +39,7 @@
 #include <svx/sdr/contact/viewcontact.hxx>
 #include <svx/sdr/overlay/overlayprimitive2dsequenceobject.hxx>
 #include <vcl/ptrstyle.hxx>
+#include <officecfg/Office/Common.hxx>
 
 using namespace com::sun::star;
 
@@ -85,10 +86,10 @@ ImplConnectMarkerOverlay::ImplConnectMarkerOverlay(const SdrCreateView& rView, S
             for(sal_uInt16 i(0); i < 4; i++)
             {
                 SdrGluePoint aGluePoint(rObject.GetVertexGluePoint(i));
-                const Point& rPosition = aGluePoint.GetAbsolutePos(rObject);
+                const Point aPosition = aGluePoint.GetAbsolutePos(rObject);
 
-                basegfx::B2DPoint aTopLeft(rPosition.X() - aHalfLogicSize.Width(), rPosition.Y() - aHalfLogicSize.Height());
-                basegfx::B2DPoint aBottomRight(rPosition.X() + aHalfLogicSize.Width(), rPosition.Y() + aHalfLogicSize.Height());
+                basegfx::B2DPoint aTopLeft(aPosition.X() - aHalfLogicSize.Width(), aPosition.Y() - aHalfLogicSize.Height());
+                basegfx::B2DPoint aBottomRight(aPosition.X() + aHalfLogicSize.Width(), aPosition.Y() + aHalfLogicSize.Height());
 
                 basegfx::B2DPolygon aTempPoly;
                 aTempPoly.append(aTopLeft);
@@ -184,7 +185,7 @@ SdrCreateView::SdrCreateView(SdrModel& rSdrModel, OutputDevice* pOut)
     , mpCreateViewExtraData(new ImpSdrCreateViewExtraData())
     , maCurrentCreatePointer(PointerStyle::Cross)
     , mnAutoCloseDistPix(5)
-    , mnFreeHandMinDistPix(10)
+    , mnFreeHandMinDistPix(officecfg::Office::Common::Misc::FreehandThresholdPixels::get())
     , mnCurrentInvent(SdrInventor::Default)
     , mnCurrentIdent(SdrObjKind::NONE)
     , mb1stPointAsCenter(false)
@@ -650,8 +651,8 @@ bool SdrCreateView::EndCreateObj(SdrCreateCmd eCmd)
                     if(getPossibleGridOffsetForSdrObject(aGridOffset, pObj.get(), mpCreatePV))
                     {
                         const Size aOffset(
-                            basegfx::fround(-aGridOffset.getX()),
-                            basegfx::fround(-aGridOffset.getY()));
+                            basegfx::fround<tools::Long>(-aGridOffset.getX()),
+                            basegfx::fround<tools::Long>(-aGridOffset.getY()));
 
                         pObj->NbcMove(aOffset);
                     }
@@ -819,18 +820,6 @@ void SdrCreateView::ShowCreateObj(/*OutputDevice* pOut, sal_Bool bFull*/)
             const ::basegfx::B2DPolyPolygon aPoly(mpCurrentCreate->TakeCreatePoly(maDragStat));
 
             mpCreateViewExtraData->CreateAndShowOverlay(*this, nullptr, aPoly);
-        }
-
-        // #i101679# Force changed overlay to be shown
-        for(sal_uInt32 a(0); a < PaintWindowCount(); a++)
-        {
-            SdrPaintWindow* pCandidate = GetPaintWindow(a);
-            const rtl::Reference<sdr::overlay::OverlayManager>& xOverlayManager = pCandidate->GetOverlayManager();
-
-            if (xOverlayManager.is())
-            {
-                xOverlayManager->flush();
-            }
         }
     }
 

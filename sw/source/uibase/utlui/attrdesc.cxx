@@ -190,7 +190,7 @@ bool SwNumRuleItem::GetPresentation
 )   const
 {
     if( !GetValue().isEmpty() )
-        rText = SwResId( STR_NUMRULE_ON ).replaceFirst("%LISTSTYLENAME", GetValue());
+        rText = SwResId( STR_NUMRULE_ON ).replaceFirst("%LISTSTYLENAME", GetValue().toString());
     else
         rText = SwResId( STR_NUMRULE_OFF );
     return true;
@@ -463,7 +463,7 @@ bool SwFormatPageDesc::GetPresentation
 {
     const SwPageDesc *pPageDesc = GetPageDesc();
     if ( pPageDesc )
-        rText = pPageDesc->GetName();
+        rText = pPageDesc->GetName().toString();
     else
         rText = SwResId( STR_NO_PAGEDESC );
     return true;
@@ -601,12 +601,12 @@ bool SwFormatChain::GetPresentation
         rText = SwResId(STR_CONNECT1);
         if ( GetPrev() )
         {
-            rText += GetPrev()->GetName();
+            rText += GetPrev()->GetName().toString();
             if ( GetNext() )
                 rText += SwResId(STR_CONNECT2);
         }
         if ( GetNext() )
-            rText += GetNext()->GetName();
+            rText += GetNext()->GetName().toString();
     }
     return true;
 }
@@ -645,13 +645,13 @@ bool SwTextGridItem::GetPresentation
 
     switch ( GetGridType() )
     {
-    case GRID_NONE :
+    case SwTextGrid::NONE :
         pId = STR_GRID_NONE;
         break;
-    case GRID_LINES_ONLY :
+    case SwTextGrid::LinesOnly :
         pId = STR_GRID_LINES_ONLY;
         break;
-    case GRID_LINES_CHARS :
+    case SwTextGrid::LinesAndChars :
         pId = STR_GRID_LINES_CHARS;
         break;
     }

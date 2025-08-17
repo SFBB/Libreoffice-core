@@ -17,12 +17,12 @@
 #include <comphelper/propertyvalue.hxx>
 #include <unotools/tempfile.hxx>
 #include <sfx2/sfxbasemodel.hxx>
-#include <svx/svdview.hxx>
 #include <sfx2/viewsh.hxx>
 #include <svx/signaturelinehelper.hxx>
 #include <sfx2/objsh.hxx>
 #include <vcl/filter/PDFiumLibrary.hxx>
 #include <vcl/filter/pdfdocument.hxx>
+#include <svl/cryptosign.hxx>
 
 using namespace ::com::sun::star;
 
@@ -35,12 +35,11 @@ private:
 
 public:
     VclFilterIpdfTest()
-        : UnoApiTest("/vcl/qa/cppunit/filter/ipdf/data/")
+        : UnoApiTest(u"/vcl/qa/cppunit/filter/ipdf/data/"_ustr)
     {
     }
 
     void setUp() override;
-    void tearDown() override;
     uno::Reference<xml::crypto::XXMLSecurityContext>& getSecurityContext()
     {
         return mxSecurityContext;
@@ -50,17 +49,10 @@ public:
 void VclFilterIpdfTest::setUp()
 {
     UnoApiTest::setUp();
-    MacrosTest::setUpNssGpg(m_directories, "vcl_filter_ipdf");
+    MacrosTest::setUpX509(m_directories, u"vcl_filter_ipdf"_ustr);
 
-    mxSEInitializer = xml::crypto::SEInitializer::create(mxComponentContext);
+    mxSEInitializer = xml::crypto::SEInitializer::create(m_xContext);
     mxSecurityContext = mxSEInitializer->createSecurityContext(OUString());
-}
-
-void VclFilterIpdfTest::tearDown()
-{
-    MacrosTest::tearDownNssGpg();
-
-    UnoApiTest::tearDown();
 }
 
 CPPUNIT_TEST_FIXTURE(VclFilterIpdfTest, testPDFAddVisibleSignatureLastPage)
@@ -73,9 +65,9 @@ CPPUNIT_TEST_FIXTURE(VclFilterIpdfTest, testPDFAddVisibleSignatureLastPage)
     createTempCopy(u"add-visible-signature-last-page.pdf");
 
     // Open it.
-    uno::Sequence<beans::PropertyValue> aArgs = { comphelper::makePropertyValue("ReadOnly", true) };
-    mxComponent
-        = loadFromDesktop(maTempFile.GetURL(), "com.sun.star.drawing.DrawingDocument", aArgs);
+    uno::Sequence<beans::PropertyValue> aArgs
+        = { comphelper::makePropertyValue(u"ReadOnly"_ustr, true) };
+    loadWithParams(maTempFile.GetURL(), aArgs);
     SfxBaseModel* pBaseModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
     CPPUNIT_ASSERT(pBaseModel);
     SfxObjectShell* pObjectShell = pBaseModel->GetObjectShell();
@@ -84,7 +76,7 @@ CPPUNIT_TEST_FIXTURE(VclFilterIpdfTest, testPDFAddVisibleSignatureLastPage)
     // Add a signature line to the 2nd page.
     uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XShape> xShape(
-        xFactory->createInstance("com.sun.star.drawing.GraphicObjectShape"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.drawing.GraphicObjectShape"_ustr), uno::UNO_QUERY);
     xShape->setPosition(awt::Point(1000, 15000));
     xShape->setSize(awt::Size(10000, 10000));
     uno::Reference<drawing::XDrawPagesSupplier> xSupplier(mxComponent, uno::UNO_QUERY);
@@ -107,15 +99,20 @@ CPPUNIT_TEST_FIXTURE(VclFilterIpdfTest, testPDFAddVisibleSignatureLastPage)
     {
         return;
     }
-    SdrView* pView = SfxViewShell::Current()->GetDrawView();
-    svx::SignatureLineHelper::setShapeCertificate(pView, xCert);
+    SfxViewShell* pCurrent = SfxViewShell::Current();
+    CPPUNIT_ASSERT(pCurrent);
+    svl::crypto::CertificateOrName aCertificateOrName;
+    aCertificateOrName.m_xCertificate = xCert;
+    svx::SignatureLineHelper::setShapeCertificate(pCurrent, aCertificateOrName);
 
     // the document is modified now, but Sign function can't show SaveAs dialog
     // in unit test, so just clear the modified
     pObjectShell->SetModified(false);
 
     // When: do the actual signing.
-    pObjectShell->SignDocumentContentUsingCertificate(xCert);
+    svl::crypto::SigningContext aSigningContext;
+    aSigningContext.m_xCertificate = xCert;
+    pObjectShell->SignDocumentContentUsingCertificate(aSigningContext);
 
     // Then: count the # of shapes on the signature widget/annotation.
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();

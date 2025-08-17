@@ -8,25 +8,24 @@
  *
  */
 
-#include <vcl/bitmapex.hxx>
-#include <vcl/BitmapGaussianSeparableBlurFilter.hxx>
-#include <vcl/BitmapSeparableUnsharpenFilter.hxx>
-#include <vcl/BitmapSmoothenFilter.hxx>
+#include <vcl/bitmap/BitmapGaussianSeparableBlurFilter.hxx>
+#include <vcl/bitmap/BitmapSeparableUnsharpenFilter.hxx>
+#include <vcl/bitmap/BitmapSmoothenFilter.hxx>
 
-BitmapEx BitmapSmoothenFilter::execute(BitmapEx const& rBitmapEx) const
+Bitmap BitmapSmoothenFilter::execute(Bitmap const& rBitmap) const
 {
-    BitmapEx aBitmapEx(rBitmapEx);
+    Bitmap aBitmap(rBitmap);
     bool bRet = false;
 
     if (mfRadius > 0.0) // Blur for positive values of mnRadius
-        bRet = BitmapFilter::Filter(aBitmapEx, BitmapGaussianSeparableBlurFilter(mfRadius));
+        bRet = BitmapFilter::Filter(aBitmap, BitmapGaussianSeparableBlurFilter(mfRadius));
     else if (mfRadius < 0.0) // Unsharpen mask for negative values of mnRadius
-        bRet = BitmapFilter::Filter(aBitmapEx, BitmapSeparableUnsharpenFilter(mfRadius));
+        bRet = BitmapFilter::Filter(aBitmap, BitmapSeparableUnsharpenFilter(mfRadius));
 
     if (bRet)
-        return aBitmapEx;
+        return aBitmap;
 
-    return BitmapEx();
+    return Bitmap();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

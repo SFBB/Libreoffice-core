@@ -17,6 +17,7 @@
 #include "vbaformfield.hxx"
 #include "vbaformfields.hxx"
 #include "wordvbahelper.hxx"
+#include <unotxdoc.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
@@ -25,12 +26,12 @@ using namespace ::com::sun::star;
 // @param rIndex serves multiple purposes
 //        [in] -1 to indicate searching using the provided name, SAL_MAX_INT32 for totals
 //        [out] rIndex indicates the found index, or the total number of fieldmarks
-static sw::mark::IFieldmark* lcl_getFieldmark(std::string_view rName, sal_Int32& rIndex,
-                                              const uno::Reference<frame::XModel>& xModel,
-                                              uno::Sequence<OUString>* pElementNames = nullptr)
+static sw::mark::Fieldmark* lcl_getFieldmark(std::string_view rName, sal_Int32& rIndex,
+                                             const rtl::Reference<SwXTextDocument>& xModel,
+                                             uno::Sequence<OUString>* pElementNames = nullptr)
 
 {
-    SwDoc* pDoc = word::getDocShell(xModel)->GetDoc();
+    SwDoc* pDoc = xModel->GetDocShell()->GetDoc();
     if (!pDoc)
         return nullptr;
 
@@ -40,7 +41,7 @@ static sw::mark::IFieldmark* lcl_getFieldmark(std::string_view rName, sal_Int32&
 
     sal_Int32 nCounter = 0;
     std::vector<OUString> vElementNames;
-    IDocumentMarkAccess::iterator aIter = pMarkAccess->getFieldmarksBegin();
+    auto aIter = pMarkAccess->getFieldmarksBegin();
     while (aIter != pMarkAccess->getFieldmarksEnd())
     {
         switch (IDocumentMarkAccess::GetType(**aIter))
@@ -50,17 +51,18 @@ static sw::mark::IFieldmark* lcl_getFieldmark(std::string_view rName, sal_Int32&
             case IDocumentMarkAccess::MarkType::TEXT_FIELDMARK:
             {
                 if (rIndex < 0
-                    && (*aIter)->GetName().equalsIgnoreAsciiCase(OUString::fromUtf8(rName)))
+                    && (*aIter)->GetName().toString().equalsIgnoreAsciiCase(
+                           OUString::fromUtf8(rName)))
                 {
                     rIndex = nCounter;
-                    return dynamic_cast<sw::mark::IFieldmark*>(*aIter);
+                    return *aIter;
                 }
                 else if (rIndex == nCounter)
-                    return dynamic_cast<sw::mark::IFieldmark*>(*aIter);
+                    return *aIter;
 
                 ++nCounter;
                 if (pElementNames)
-                    vElementNames.push_back((*aIter)->GetName());
+                    vElementNames.push_back((*aIter)->GetName().toString());
                 break;
             }
             default:;
@@ -105,14 +107,14 @@ class FormFieldCollectionHelper
 private:
     uno::Reference<XHelperInterface> mxParent;
     uno::Reference<uno::XComponentContext> mxContext;
-    uno::Reference<text::XTextDocument> mxTextDocument;
-    sw::mark::IFieldmark* m_pCache;
+    rtl::Reference<SwXTextDocument> mxTextDocument;
+    sw::mark::Fieldmark* m_pCache;
 
 public:
     /// @throws css::uno::RuntimeException
     FormFieldCollectionHelper(uno::Reference<ov::XHelperInterface> xParent,
                               uno::Reference<uno::XComponentContext> xContext,
-                              uno::Reference<text::XTextDocument> xTextDocument)
+                              rtl::Reference<SwXTextDocument> xTextDocument)
         : mxParent(std::move(xParent))
         , mxContext(std::move(xContext))
         , mxTextDocument(std::move(xTextDocument))
@@ -178,7 +180,7 @@ public:
 
 SwVbaFormFields::SwVbaFormFields(const uno::Reference<XHelperInterface>& xParent,
                                  const uno::Reference<uno::XComponentContext>& xContext,
-                                 const uno::Reference<text::XTextDocument>& xTextDocument)
+                                 const rtl::Reference<SwXTextDocument>& xTextDocument)
     : SwVbaFormFields_BASE(xParent, xContext,
                            uno::Reference<container::XIndexAccess>(
                                new FormFieldCollectionHelper(xParent, xContext, xTextDocument)))
@@ -199,7 +201,7 @@ void SwVbaFormFields::setShaded(sal_Bool /*bSet*/)
 // uno::Reference<ooo::vba::word::XFormField> SwVbaFormFields::Add(const uno::Any& Range,
 //                                                                 sal_Int32 Type)
 // {
-//     sw::mark::IFieldmark* pFieldmark = nullptr;
+//     sw::mark::Fieldmark* pFieldmark = nullptr;
 //     switch (Type)
 //     {
 //         case ooo::vba::word::WdFieldType::wdFieldFormCheckBox:
@@ -224,11 +226,11 @@ uno::Reference<container::XEnumeration> SwVbaFormFields::createEnumeration()
 
 uno::Any SwVbaFormFields::createCollectionObject(const uno::Any& aSource) { return aSource; }
 
-OUString SwVbaFormFields::getServiceImplName() { return "SwVbaFormFields"; }
+OUString SwVbaFormFields::getServiceImplName() { return u"SwVbaFormFields"_ustr; }
 
 uno::Sequence<OUString> SwVbaFormFields::getServiceNames()
 {
-    static uno::Sequence<OUString> const sNames{ "ooo.vba.word.FormFields" };
+    static uno::Sequence<OUString> const sNames{ u"ooo.vba.word.FormFields"_ustr };
     return sNames;
 }
 

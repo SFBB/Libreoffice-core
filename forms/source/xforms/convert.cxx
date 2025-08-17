@@ -53,7 +53,7 @@ namespace
     { return Any(rStr); }
 
     OUString lcl_toXSD_bool( const Any& rAny )
-    { bool b = false; rAny >>= b; return b ? OUString("true") : OUString("false"); }
+    { bool b = false; rAny >>= b; return b ? u"true"_ustr : u"false"_ustr; }
 
     Any lcl_toAny_bool( const OUString& rStr )
     {
@@ -134,7 +134,7 @@ namespace
 
         // all okay?
         if ( !bWellformed )
-            throw com::sun::star::lang::IllegalArgumentException();
+            throw css::lang::IllegalArgumentException();
 
         return aDate;
     }
@@ -204,7 +204,7 @@ namespace
 
         // all okay?
         if ( !bWellformed )
-            throw com::sun::star::lang::IllegalArgumentException();
+            throw css::lang::IllegalArgumentException();
 
         return aTime;
     }
@@ -280,7 +280,7 @@ Convert& Convert::get()
 
 bool Convert::hasType( const css::uno::Type& rType )
 {
-    return maMap.find( rType ) != maMap.end();
+    return maMap.contains( rType );
 }
 
 css::uno::Sequence<css::uno::Type> Convert::getTypes() const
@@ -328,7 +328,7 @@ OUString Convert::collapseWhitespace( const OUString& _rString )
             aBuffer.append( c );
         }
     }
-    if( aBuffer[ aBuffer.getLength() - 1 ] == u' ' )
+    if( !aBuffer.isEmpty() && aBuffer[ aBuffer.getLength() - 1 ] == u' ' )
         aBuffer.setLength( aBuffer.getLength() - 1 );
     return aBuffer.makeStringAndClear();
 }

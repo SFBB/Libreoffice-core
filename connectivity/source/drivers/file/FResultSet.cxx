@@ -66,7 +66,7 @@ namespace
     }
 }
 
-IMPLEMENT_SERVICE_INFO(OResultSet,"com.sun.star.sdbcx.drivers.file.ResultSet","com.sun.star.sdbc.ResultSet");
+IMPLEMENT_SERVICE_INFO(OResultSet,u"com.sun.star.sdbcx.drivers.file.ResultSet"_ustr,u"com.sun.star.sdbc.ResultSet"_ustr);
 
 OResultSet::OResultSet(OStatement_Base* pStmt,OSQLParseTreeIterator&    _aSQLIterator) :    OResultSet_BASE(m_aMutex)
                         ,::comphelper::OPropertyContainer(OResultSet_BASE::rBHelper)
@@ -182,8 +182,6 @@ sal_Int32 SAL_CALL OResultSet::findColumn( const OUString& columnName )
     }
 
     ::dbtools::throwInvalidColumnException( columnName, *this );
-    assert(false);
-    return 0; // Never reached
 }
 
 const ORowSetValue& OResultSet::getValue(sal_Int32 columnIndex)
@@ -653,7 +651,7 @@ void SAL_CALL OResultSet::updateInt( sal_Int32 columnIndex, sal_Int32 x )
 
 void SAL_CALL OResultSet::updateLong( sal_Int32 /*columnIndex*/, sal_Int64 /*x*/ )
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XRowUpdate::updateLong", *this );
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XRowUpdate::updateLong"_ustr, *this );
 }
 
 void SAL_CALL OResultSet::updateFloat( sal_Int32 columnIndex, float x )
@@ -995,8 +993,6 @@ bool OResultSet::Move(IResultSetHelper::Movement eCursorPosition, sal_Int32 nOff
                 --m_nRowPos;
                 break;
             case IResultSetHelper::FIRST:
-                m_nRowPos = 0;
-                break;
             case IResultSetHelper::LAST:
                 m_nRowPos = 0;
                 break;
@@ -1330,8 +1326,7 @@ void OResultSet::OpenImpl()
     #endif
                         }
 
-                        m_pFileSet->erase(std::remove(m_pFileSet->begin(),m_pFileSet->end(),0)
-                                          ,m_pFileSet->end());
+                        std::erase(*m_pFileSet, 0);
                     }
                 }
             }
@@ -1568,8 +1563,7 @@ bool OResultSet::isRowDeleted() const
 
 void SAL_CALL OResultSet::disposing( const EventObject& Source )
 {
-    Reference<XPropertySet> xProp = m_pTable;
-    if(m_pTable.is() && Source.Source == xProp)
+    if(m_pTable.is() && Source.Source == Reference<XPropertySet>(m_pTable))
     {
         m_pTable.clear();
     }

@@ -48,6 +48,8 @@ public:
 
     Color GetBackgroundColor() const override;
 
+    bool CanAnimate() const override { return true; }
+
     using ::OutputDevice::SetSettings;
     virtual void SetSettings(const AllSettings& rSettings) override;
     void SetSettings(const AllSettings& rSettings, bool bChild);
@@ -59,6 +61,8 @@ public:
 
     virtual css::uno::Reference<css::rendering::XCanvas>
     ImplGetCanvas(bool bSpriteCanvas) const override;
+
+    virtual bool HasAlpha() const override { return true; }
 
 private:
     virtual void InitClipRegion() override;

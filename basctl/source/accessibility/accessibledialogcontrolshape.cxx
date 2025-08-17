@@ -22,20 +22,18 @@
 #include <dlgeddef.hxx>
 #include <dlgedview.hxx>
 #include <dlgedobj.hxx>
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
-#include <toolkit/awt/vclxfont.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <comphelper/accessiblecontexthelper.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/unohelp.hxx>
 #include <i18nlangtag/languagetag.hxx>
 
 namespace basctl
@@ -147,7 +145,7 @@ awt::Rectangle AccessibleDialogControlShape::GetBounds() const
             // clip the shape's bounding box with the bounding box of its parent
             tools::Rectangle aParentRect( Point( 0, 0 ), m_pDialogWindow->GetSizePixel() );
             aRect = aRect.GetIntersection( aParentRect );
-            aBounds = AWTRectangle( aRect );
+            aBounds = vcl::unohelper::ConvertToAWTRect(aRect);
         }
     }
 
@@ -222,7 +220,6 @@ void AccessibleDialogControlShape::FillAccessibleStateSet( sal_Int64& rStateSet 
     rStateSet |= AccessibleStateType::RESIZABLE;
 }
 
-// OCommonAccessibleComponent
 awt::Rectangle AccessibleDialogControlShape::implGetBounds()
 {
     return GetBounds();
@@ -231,7 +228,7 @@ awt::Rectangle AccessibleDialogControlShape::implGetBounds()
 // XComponent
 void AccessibleDialogControlShape::disposing()
 {
-    OAccessibleExtendedComponentHelper::disposing();
+    OAccessible::disposing();
 
     m_pDialogWindow = nullptr;
     m_pDlgEdObj = nullptr;
@@ -280,7 +277,7 @@ void AccessibleDialogControlShape::propertyChange( const beans::PropertyChangeEv
 // XServiceInfo
 OUString AccessibleDialogControlShape::getImplementationName()
 {
-    return "com.sun.star.comp.basctl.AccessibleShape";
+    return u"com.sun.star.comp.basctl.AccessibleShape"_ustr;
 }
 
 sal_Bool AccessibleDialogControlShape::supportsService( const OUString& rServiceName )
@@ -290,13 +287,7 @@ sal_Bool AccessibleDialogControlShape::supportsService( const OUString& rService
 
 Sequence< OUString > AccessibleDialogControlShape::getSupportedServiceNames()
 {
-    return { "com.sun.star.drawing.AccessibleShape" };
-}
-
-// XAccessible
-Reference< XAccessibleContext > AccessibleDialogControlShape::getAccessibleContext(  )
-{
-    return this;
+    return { u"com.sun.star.drawing.AccessibleShape"_ustr };
 }
 
 // XAccessibleContext
@@ -328,38 +319,6 @@ Reference< XAccessible > AccessibleDialogControlShape::getAccessibleParent(  )
     return xParent;
 }
 
-
-sal_Int64 AccessibleDialogControlShape::getAccessibleIndexInParent(  )
-{
-    OExternalLockGuard aGuard( this );
-
-    sal_Int64 nIndexInParent = -1;
-    Reference< XAccessible > xParent( getAccessibleParent() );
-    if ( xParent.is() )
-    {
-        Reference< XAccessibleContext > xParentContext( xParent->getAccessibleContext() );
-        if ( xParentContext.is() )
-        {
-            for ( sal_Int64 i = 0, nCount = xParentContext->getAccessibleChildCount(); i < nCount; ++i )
-            {
-                Reference< XAccessible > xChild( xParentContext->getAccessibleChild( i ) );
-                if ( xChild.is() )
-                {
-                    Reference< XAccessibleContext > xChildContext = xChild->getAccessibleContext();
-                    if ( xChildContext == static_cast<XAccessibleContext*>(this) )
-                    {
-                        nIndexInParent = i;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    return nIndexInParent;
-}
-
-
 sal_Int16 AccessibleDialogControlShape::getAccessibleRole(  )
 {
     OExternalLockGuard aGuard( this );
@@ -372,7 +331,7 @@ OUString AccessibleDialogControlShape::getAccessibleDescription(  )
 {
     OExternalLockGuard aGuard( this );
 
-    return GetModelStringProperty( "HelpText" );
+    return GetModelStringProperty( u"HelpText"_ustr );
 }
 
 
@@ -380,7 +339,7 @@ OUString AccessibleDialogControlShape::getAccessibleName(  )
 {
     OExternalLockGuard aGuard( this );
 
-    return GetModelStringProperty( "Name" );
+    return GetModelStringProperty( u"Name"_ustr );
 }
 
 
@@ -398,7 +357,7 @@ sal_Int64 AccessibleDialogControlShape::getAccessibleStateSet(  )
 
     sal_Int64 nStateSet = 0;
 
-    if ( !rBHelper.bDisposed && !rBHelper.bInDispose )
+    if (isAlive())
     {
         FillAccessibleStateSet( nStateSet );
     }
@@ -480,41 +439,6 @@ sal_Int32 AccessibleDialogControlShape::getBackground(  )
 
 
 // XAccessibleExtendedComponent
-
-
-Reference< awt::XFont > AccessibleDialogControlShape::getFont(  )
-{
-    OExternalLockGuard aGuard( this );
-
-    Reference< awt::XFont > xFont;
-    vcl::Window* pWindow = GetWindow();
-    if ( pWindow )
-    {
-        Reference< awt::XDevice > xDev( pWindow->GetComponentInterface(), UNO_QUERY );
-        if ( xDev.is() )
-        {
-            vcl::Font aFont;
-            if ( pWindow->IsControlFont() )
-                aFont = pWindow->GetControlFont();
-            else
-                aFont = pWindow->GetFont();
-            rtl::Reference<VCLXFont> pVCLXFont = new VCLXFont;
-            pVCLXFont->Init( *xDev, aFont );
-            xFont = pVCLXFont;
-        }
-    }
-
-    return xFont;
-}
-
-
-OUString AccessibleDialogControlShape::getTitledBorderText(  )
-{
-    OExternalLockGuard aGuard( this );
-
-    return OUString();
-}
-
 
 OUString AccessibleDialogControlShape::getToolTipText(  )
 {

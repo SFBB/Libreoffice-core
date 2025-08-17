@@ -9,17 +9,20 @@
 
 #include "SvXMLAutoCorrectTokenHandler.hxx"
 #include <xmloff/xmltoken.hxx>
+#if defined __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #if defined __clang__
 #if __has_warning("-Wdeprecated-register")
-#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-register"
 #endif
 #endif
-#include <tokens.cxx>
-#if defined __clang__
-#if __has_warning("-Wdeprecated-register")
-#pragma GCC diagnostic pop
 #endif
+
+#include <tokens.cxx>
+
+#if defined __GNUC__
+#pragma GCC diagnostic pop
 #endif
 
 using namespace css::uno;
@@ -35,7 +38,7 @@ SvXMLAutoCorrectTokenHandler::~SvXMLAutoCorrectTokenHandler()
 
 sal_Int32 SAL_CALL SvXMLAutoCorrectTokenHandler::getTokenFromUTF8( const Sequence< sal_Int8 >& Identifier )
 {
-    return getTokenDirect( reinterpret_cast< const char* >( Identifier.getConstArray() ), Identifier.getLength() );
+    return getTokenDirect( std::string_view(reinterpret_cast< const char* >( Identifier.getConstArray() ), Identifier.getLength()) );
 }
 
 Sequence< sal_Int8 > SAL_CALL SvXMLAutoCorrectTokenHandler::getUTF8Identifier( sal_Int32 )
@@ -43,11 +46,9 @@ Sequence< sal_Int8 > SAL_CALL SvXMLAutoCorrectTokenHandler::getUTF8Identifier( s
     return Sequence< sal_Int8 >();
 }
 
-sal_Int32 SvXMLAutoCorrectTokenHandler::getTokenDirect( const char *pTag, sal_Int32 nLength ) const
+sal_Int32 SvXMLAutoCorrectTokenHandler::getTokenDirect(std::string_view token) const
 {
-    if( !nLength )
-        nLength = strlen( pTag );
-    const struct xmltoken* pToken = Perfect_Hash::in_word_set( pTag, nLength );
+    const struct xmltoken* pToken = Perfect_Hash::in_word_set(token.data(), token.size());
     return pToken ? pToken->nToken : XML_TOKEN_INVALID;
 }
 

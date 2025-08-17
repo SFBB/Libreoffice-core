@@ -29,7 +29,6 @@
 class SwFormatAnchor;
 class SwPageFrame;
 class SwFormatFrameSize;
-struct SwCursorMoveState;
 class SwBorderAttrs;
 class SwVirtFlyDrawObj;
 class SwAttrSetChg;
@@ -76,18 +75,19 @@ namespace o3tl {
 
     #i26791# - inherit also from <SwAnchoredFlyFrame>
 */
-class SW_DLLPUBLIC SwFlyFrame : public SwLayoutFrame, public SwAnchoredObject
+class SAL_DLLPUBLIC_RTTI SwFlyFrame : public SwLayoutFrame, public SwAnchoredObject
 {
     // is allowed to lock, implemented in frmtool.cxx
     friend void AppendObj(SwFrame *const pFrame, SwPageFrame *const pPage, SwFrameFormat *const pFormat, const SwFormatAnchor & rAnch);
     friend void Notify( SwFlyFrame *, SwPageFrame *pOld, const SwRect &rOld,
                         const SwRect* pOldPrt );
 
-    void InitDrawObj(SwFrame const&); // these to methods are called in the
+    void InitDrawObj(SwFrame&); // these to methods are called in the
     void FinitDrawObj();    // constructors
 
     void UpdateAttr_( const SfxPoolItem*, const SfxPoolItem*, SwFlyFrameInvFlags &,
                       SwAttrSetChg *pa = nullptr, SwAttrSetChg *pb = nullptr );
+    void UpdateAttrForFormatChange( SwFormat* pOldFormat, SwFormat* pNewFormat, SwFlyFrameInvFlags & );
 
     using SwLayoutFrame::CalcRel;
 
@@ -95,6 +95,7 @@ protected:
     // Predecessor/Successor for chaining with text flow
     SwFlyFrame *m_pPrevLink, *m_pNextLink;
    static const SwFormatAnchor* GetAnchorFromPoolItem(const SfxPoolItem& rItem);
+   static const SwFormatAnchor* GetAnchorFromPoolItem(const SwAttrSetChg& rItem);
 
 private:
     // It must be possible to block Content-bound flys so that they will be not
@@ -170,7 +171,7 @@ protected:
 
 public:
     // #i26791#
-    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const& ) const override;
+    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const&, PaintFrameMode mode = PAINT_ALL ) const override;
     virtual Size ChgSize( const Size& aNewSize ) override;
     virtual bool GetModelPositionForViewPoint( SwPosition *, Point&,
                               SwCursorMoveState* = nullptr, bool bTestBackground = false ) const override;
@@ -181,8 +182,9 @@ public:
     virtual void Paste( SwFrame* pParent, SwFrame* pSibling = nullptr ) override;
 #endif
 
+    bool    IsResizeValid(const SwBorderAttrs *pAttrs, Size aTargetSize);
     SwTwips Shrink_( SwTwips, bool bTst );
-    SwTwips Grow_  ( SwTwips, bool bTst );
+    SwTwips Grow_(SwTwips, SwResizeLimitReason&, bool bTst);
     void    Invalidate_( SwPageFrame const *pPage = nullptr );
 
     bool FrameSizeChg( const SwFormatFrameSize & );
@@ -190,8 +192,8 @@ public:
     SwFlyFrame *GetPrevLink() const { return m_pPrevLink; }
     SwFlyFrame *GetNextLink() const { return m_pNextLink; }
 
-    static void ChainFrames( SwFlyFrame *pMaster, SwFlyFrame *pFollow );
-    static void UnchainFrames( SwFlyFrame *pMaster, SwFlyFrame *pFollow );
+    static void ChainFrames( SwFlyFrame &rMaster, SwFlyFrame &rFollow );
+    static void UnchainFrames( SwFlyFrame &rMaster, SwFlyFrame &rFollow );
 
     SwFlyFrame *FindChainNeighbour( SwFrameFormat const &rFormat, SwFrame *pAnch = nullptr );
 
@@ -241,7 +243,7 @@ public:
                      const bool _bForPaint = false ) const;
 
     // Paint on this shell (consider Preview, print flag, etc. recursively)?
-    static bool IsPaint( SdrObject *pObj, const SwViewShell *pSh );
+    static bool IsPaint(SdrObject *pObj, const SwViewShell& rSh);
 
     /** SwFlyFrame::IsBackgroundTransparent
 
@@ -265,8 +267,8 @@ public:
     virtual void InvalidateObjPos() override;
     virtual void RegisterAtPage(SwPageFrame&) override;
 
-    virtual SwFrameFormat& GetFrameFormat() override;
-    virtual const SwFrameFormat& GetFrameFormat() const override;
+    virtual SwFrameFormat* GetFrameFormat() override;
+    virtual const SwFrameFormat* GetFrameFormat() const override;
 
     virtual SwRect GetObjRect() const override;
 
@@ -284,7 +286,7 @@ public:
     // (This is in order to skip on the otherwise necessary casting of the result to
     // 'SwFlyFrameFormat *' after calls to this function. The casting is now done in this function.)
     virtual const SwFlyFrameFormat *GetFormat() const override;
-    virtual       SwFlyFrameFormat *GetFormat() override;
+    SW_DLLPUBLIC virtual SwFlyFrameFormat *GetFormat() override;
 
     virtual void dumpAsXml(xmlTextWriterPtr writer = nullptr) const override;
 
@@ -296,20 +298,21 @@ public:
     void InvalidateContentPos();
 
     void SelectionHasChanged(SwFEShell* pShell);
-    bool IsShowUnfloatButton(SwWrtShell* pWrtSh) const;
+    SW_DLLPUBLIC bool IsShowUnfloatButton(SwWrtShell* pWrtSh) const;
 
     // For testing only (see uiwriter)
-    void ActiveUnfloatButton(SwWrtShell* pWrtSh);
+    SW_DLLPUBLIC void ActiveUnfloatButton(SwWrtShell* pWrtSh);
 
     virtual const SwFlyFrame* DynCastFlyFrame() const override;
     virtual SwFlyFrame* DynCastFlyFrame() override;
 
-    SwFlyAtContentFrame* DynCastFlyAtContentFrame();
+    SW_DLLPUBLIC SwFlyAtContentFrame* DynCastFlyAtContentFrame();
 
 private:
     void UpdateUnfloatButton(SwWrtShell* pWrtSh, bool bShow) const;
     void PaintDecorators() const;
 };
+
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

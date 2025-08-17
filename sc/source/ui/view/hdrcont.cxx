@@ -35,6 +35,7 @@
 #include <tabview.hxx>
 #include <viewdata.hxx>
 #include <columnspanset.hxx>
+#include <officecfg/Office/Common.hxx>
 
 #define SC_DRAG_MIN     2
 
@@ -85,14 +86,14 @@ ScHeaderControl::ScHeaderControl( vcl::Window* pParent, SelectionEngine* pSelect
     bAutoFilterSet = false;
 
     Size aSize = LogicToPixel( Size(
-        GetTextWidth("8888"),
+        GetTextWidth(u"8888"_ustr),
         GetTextHeight() ) );
     aSize.AdjustWidth(4 );    // place for highlight border
     aSize.AdjustHeight(3 );
     SetSizePixel( aSize );
 
     nWidth = nSmallWidth = aSize.Width();
-    nBigWidth = LogicToPixel( Size( GetTextWidth("8888888"), 0 ) ).Width() + 5;
+    nBigWidth = LogicToPixel( Size( GetTextWidth(u"8888888"_ustr), 0 ) ).Width() + 5;
 
     aShowHelpTimer.SetInvokeHandler(LINK(this, ScHeaderControl, ShowDragHelpHdl));
     aShowHelpTimer.SetTimeout(GetSettings().GetMouseSettings().GetDoubleClickTime());
@@ -145,7 +146,7 @@ void ScHeaderControl::DoPaint( SCCOLROW nStart, SCCOLROW nEnd )
 
 void ScHeaderControl::SetMark( bool bNewSet, SCCOLROW nNewStart, SCCOLROW nNewEnd )
 {
-    bool bEnabled = SC_MOD()->GetInputOptions().GetMarkHeader();    //! cache?
+    bool bEnabled = ScModule::get()->GetInputOptions().GetMarkHeader(); //! cache?
     if (!bEnabled)
         bNewSet = false;
 
@@ -242,7 +243,8 @@ void ScHeaderControl::Paint( vcl::RenderContext& /*rRenderContext*/, const tools
     else
         SetTextColor((bBoldSet && !bHighContrast) ? aSelTextColor : aTextColor);
 
-    Color aSelLineColor = rStyleSettings.GetHighlightColor();
+    ScModule* mod = ScModule::get();
+    Color aSelLineColor = mod->GetColorConfig().GetColorValue(svtools::CALCCELLFOCUS).nColor;
     aSelLineColor.Merge( COL_BLACK, 0xe0 );        // darken just a little bit
 
     bool bLayoutRTL = IsLayoutRTL();
@@ -320,7 +322,12 @@ void ScHeaderControl::Paint( vcl::RenderContext& /*rRenderContext*/, const tools
 
     if ( nLineEnd * nLayoutSign >= nInitScrPos * nLayoutSign )
     {
-        GetOutDev()->SetFillColor( rStyleSettings.GetFaceColor() );
+        Color aFaceColor(rStyleSettings.GetFaceColor());
+        if (bDark)
+            aFaceColor.IncreaseLuminance(20);
+        else
+            aFaceColor.DecreaseLuminance(20);
+        GetOutDev()->SetFillColor( aFaceColor );
         if ( bVertical )
             aFillRect = tools::Rectangle( 0, nInitScrPos, nBarSize-1, nLineEnd );
         else
@@ -330,7 +337,7 @@ void ScHeaderControl::Paint( vcl::RenderContext& /*rRenderContext*/, const tools
 
     if ( nLineEnd * nLayoutSign < nPEnd * nLayoutSign )
     {
-        GetOutDev()->SetFillColor( SC_MOD()->GetColorConfig().GetColorValue(svtools::APPBACKGROUND).nColor );
+        GetOutDev()->SetFillColor( mod->GetColorConfig().GetColorValue(svtools::APPBACKGROUND).nColor );
         if ( bVertical )
             aFillRect = tools::Rectangle( 0, nLineEnd+nLayoutSign, nBarSize-1, nPEnd );
         else
@@ -361,7 +368,7 @@ void ScHeaderControl::Paint( vcl::RenderContext& /*rRenderContext*/, const tools
             {
                 // background for selection
                 GetOutDev()->SetLineColor();
-                Color aColor( rStyleSettings.GetAccentColor() );
+                Color aColor = mod->GetColorConfig().GetColorValue(svtools::CALCCELLFOCUS).nColor;
 // merging the highlightcolor (which is used if accent does not exist) with the background
 // fails in many cases such as Breeze Dark (highlight is too close to background) and
 // Breeze Light (font color is white and not readable anymore)
@@ -373,26 +380,16 @@ void ScHeaderControl::Paint( vcl::RenderContext& /*rRenderContext*/, const tools
             }
         }
 
-        GetOutDev()->SetLineColor( rStyleSettings.GetDarkShadowColor() );
+        GetOutDev()->SetLineColor( rStyleSettings.GetShadowColor() );
         if (bVertical)
         {
-            tools::Long nDarkPos = bMirrored ? 0 : nBarSize-1;
-            GetOutDev()->DrawLine( Point( nDarkPos, nPStart ), Point( nDarkPos, nLineEnd ) );
+            GetOutDev()->DrawLine( Point( 0, nPStart ), Point( 0, nLineEnd ) ); //left
+            GetOutDev()->DrawLine( Point( nBarSize-1, nPStart ), Point( nBarSize-1, nLineEnd ) ); //right
         }
         else
-            GetOutDev()->DrawLine( Point( nPStart, nBarSize-1 ), Point( nLineEnd, nBarSize-1 ) );
-
-        // line in different color for selection
-        if ( nTransEnd * nLayoutSign >= nTransStart * nLayoutSign && !bHighContrast )
         {
-            GetOutDev()->SetLineColor( aSelLineColor );
-            if (bVertical)
-            {
-                tools::Long nDarkPos = bMirrored ? 0 : nBarSize-1;
-                GetOutDev()->DrawLine( Point( nDarkPos, nTransStart ), Point( nDarkPos, nTransEnd ) );
-            }
-            else
-                GetOutDev()->DrawLine( Point( nTransStart, nBarSize-1 ), Point( nTransEnd, nBarSize-1 ) );
+            GetOutDev()->DrawLine( Point( nPStart, nBarSize-1 ), Point( nLineEnd, nBarSize-1 ) ); //bottom
+            GetOutDev()->DrawLine( Point( nPStart, 0 ), Point( nLineEnd, 0 ) ); //top
         }
     }
 
@@ -463,10 +460,10 @@ void ScHeaderControl::Paint( vcl::RenderContext& /*rRenderContext*/, const tools
         {
             case SC_HDRPAINT_SEL_BOTTOM:
                 // same as non-selected for high contrast
-                GetOutDev()->SetLineColor( bHighContrast ? rStyleSettings.GetDarkShadowColor() : aSelLineColor );
+                GetOutDev()->SetLineColor( bHighContrast ? rStyleSettings.GetShadowColor() : aSelLineColor );
                 break;
             case SC_HDRPAINT_BOTTOM:
-                GetOutDev()->SetLineColor( rStyleSettings.GetDarkShadowColor() );
+                GetOutDev()->SetLineColor( rStyleSettings.GetShadowColor() );
                 break;
             case SC_HDRPAINT_TEXT:
                 // DrawSelectionBackground is used only for high contrast on light background
@@ -650,7 +647,7 @@ SCCOLROW ScHeaderControl::GetMousePos(const Point& rPos, bool& rBorder) const
             nScrPos += GetEntrySize( nEntryNo - 1 ) * nLayoutSign;      //! GetHiddenCount() ??
 
         nDif = nMousePos - nScrPos;
-        if (nDif >= -2 && nDif <= 2)
+        if (nDif >= -5 && nDif <= 5)
         {
             bFound = true;
             nHitNo=nEntryNo-1;
@@ -718,7 +715,7 @@ void ScHeaderControl::MouseButtonDown( const MouseEvent& rMEvt )
         return;
     if ( ! rMEvt.IsLeft() )
         return;
-    if ( SC_MOD()->IsFormulaMode() )
+    if (ScModule::get()->IsFormulaMode())
     {
         if( !pTabView )
             return;
@@ -806,9 +803,9 @@ void ScHeaderControl::MouseButtonUp( const MouseEvent& rMEvt )
     if ( IsDisabled() )
         return;
 
-    if ( SC_MOD()->IsFormulaMode() )
+    if (ScModule* mod = ScModule::get(); mod->IsFormulaMode())
     {
-        SC_MOD()->EndReference();
+        mod->EndReference();
         bInRefMode = false;
         return;
     }
@@ -867,7 +864,7 @@ void ScHeaderControl::MouseMove( const MouseEvent& rMEvt )
         return;
     }
 
-    if ( bInRefMode && rMEvt.IsLeft() && SC_MOD()->IsFormulaMode() )
+    if (bInRefMode && rMEvt.IsLeft() && ScModule::get()->IsFormulaMode())
     {
         if( !pTabView )
             return;
@@ -944,7 +941,7 @@ void ScHeaderControl::Command( const CommandEvent& rCEvt )
 
                 SelectWindow();     // also deselects drawing objects, stops draw text edit
                 if ( rViewData.HasEditView( rViewData.GetActivePart() ) )
-                    SC_MOD()->InputEnterHandler();  // always end edit mode
+                    ScModule::get()->InputEnterHandler(); // always end edit mode
 
                 bool bBorder;
                 SCCOLROW nPos = GetMousePos(rCEvt.GetMousePosPixel(), bBorder );
@@ -972,7 +969,7 @@ void ScHeaderControl::Command( const CommandEvent& rCEvt )
                     pViewSh->MarkRange( aNewRange );
             }
 
-            pViewSh->GetDispatcher()->ExecutePopup( bVertical ? OUString( "rowheader" ) : OUString( "colheader" ) );
+            pViewSh->GetDispatcher()->ExecutePopup( bVertical ? u"rowheader"_ustr : u"colheader"_ustr );
         }
     }
     else if ( nCmd == CommandEventId::StartDrag )

@@ -20,8 +20,6 @@
 
 #include <sfx2/ctrlitem.hxx>
 
-namespace com::sun::star::lang { class XComponent; }
-
 
 namespace sfx2::sidebar {
 
@@ -70,6 +68,7 @@ private:
 
     virtual void StateChangedAtToolBoxControl (sal_uInt16 nSId, SfxItemState eState, const SfxPoolItem* pState) override;
     virtual void GetControlState (sal_uInt16 nSId, boost::property_tree::ptree& rState) override;
+    void ReceiverNotifyItemUpdate(sal_uInt16 nSID, SfxItemState eState, const SfxPoolItem* pState);
 
     ItemUpdateReceiverInterface& mrItemUpdateReceiver;
 };

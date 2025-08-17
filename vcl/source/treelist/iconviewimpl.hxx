@@ -19,15 +19,15 @@
 
 #pragma once
 
+#include <iconview.hxx>
 #include <svimpbox.hxx>
 
 class SvTreeListBox;
-class Point;
 
 class IconViewImpl : public SvImpLBox
 {
 public:
-    IconViewImpl(SvTreeListBox* pTreeListBox, SvTreeList* pTreeList, WinBits nWinStyle);
+    IconViewImpl(IconView* pIconView, SvTreeList* pTreeList, WinBits nWinStyle);
 
     void KeyDown(bool bPageDown) override;
 
@@ -69,13 +69,15 @@ private:
     };
     struct EntryAreaInfo
     {
-        SvTreeListEntry* entry;
+        SvTreeListEntry& entry;
         short column;
         tools::Rectangle area; // The area for the entry
     };
     using IterateEntriesFunc = std::function<CallbackResult(const EntryAreaInfo&)>;
 
     void IterateVisibleEntryAreas(const IterateEntriesFunc& f, bool fromStartEntry = false) const;
+
+    IconView& GetIconView() const;
 
     Size GetEntrySize(const SvTreeListEntry& entry) const;
     // Get first entry at most n rows above; nullptr if no rows above
@@ -85,7 +87,7 @@ private:
 
     tools::Long GetEntryRow(const SvTreeListEntry* entry) const;
     void SetStartEntry(SvTreeListEntry* entry);
-    void ScrollTo(SvTreeListEntry* entry);
+    void ScrollTo(SvTreeListEntry& rEntry);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

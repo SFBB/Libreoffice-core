@@ -9,8 +9,6 @@
 
 #include "helper/qahelper.hxx"
 #include <docsh.hxx>
-#include <tabvwsh.hxx>
-#include <cliputil.hxx>
 #include <docfunc.hxx>
 #include <undomanager.hxx>
 
@@ -20,7 +18,6 @@
 #include <SparklineAttributes.hxx>
 #include <ThemeColorChanger.hxx>
 #include <docmodel/theme/Theme.hxx>
-#include <svx/svdpage.hxx>
 
 using namespace css;
 
@@ -62,7 +59,7 @@ sc::Sparkline* createTestSparkline(ScDocument& rDoc)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testAddSparkline)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto pSparkline = createTestSparkline(*m_pDoc);
     CPPUNIT_ASSERT(pSparkline);
@@ -77,7 +74,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testAddSparkline)
 
     CPPUNIT_ASSERT_EQUAL(size_t(1), pList->getSparklineGroups().size());
 
-    auto const& aSparklineVector = pList->getSparklinesFor(pGetSparkline->getSparklineGroup());
+    auto const aSparklineVector = pList->getSparklinesFor(pGetSparkline->getSparklineGroup());
     CPPUNIT_ASSERT_EQUAL(size_t(1), aSparklineVector.size());
     CPPUNIT_ASSERT_EQUAL(aSparklineVector[0].get(), pSparkline);
 
@@ -86,7 +83,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testAddSparkline)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testClearContentSprkline)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto pSparkline = createTestSparkline(*m_pDoc);
     CPPUNIT_ASSERT(pSparkline);
@@ -101,7 +98,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testClearContentSprkline)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testCopyPasteSparkline)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto* pCreatedSparkline = createTestSparkline(*m_pDoc);
     CPPUNIT_ASSERT(pCreatedSparkline);
@@ -168,7 +165,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testCopyPasteSparkline)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testCutPasteSparkline)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto* pCreatedSparkline = createTestSparkline(*m_pDoc);
     CPPUNIT_ASSERT(pCreatedSparkline);
@@ -200,7 +197,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testCutPasteSparkline)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoInsertSparkline)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto& rDocFunc = m_xDocShell->GetDocFunc();
 
@@ -244,7 +241,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoInsertSparkline)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoDeleteSparkline)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto& rDocFunc = m_xDocShell->GetDocFunc();
 
@@ -300,7 +297,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoDeleteSparkline)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoDeleteSparklineGroup)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto& rDocFunc = m_xDocShell->GetDocFunc();
 
@@ -339,7 +336,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoDeleteSparklineGroup)
     CPPUNIT_ASSERT_EQUAL(true, m_pDoc->HasSparkline(ScAddress(3, 6, 0))); // D7
 
     // Check if the sparkline has the input range set
-    auto const& pSparkline = m_pDoc->GetSparkline(ScAddress(3, 6, 0));
+    auto const pSparkline = m_pDoc->GetSparkline(ScAddress(3, 6, 0));
     ScRangeList rRangeList = pSparkline->getInputRange();
     CPPUNIT_ASSERT_EQUAL(size_t(1), rRangeList.size());
     CPPUNIT_ASSERT_EQUAL(ScRange(3, 0, 0, 3, 5, 0), rRangeList[0]);
@@ -358,7 +355,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoDeleteSparklineGroup)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoClearContentForSparkline)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto& rDocFunc = m_xDocShell->GetDocFunc();
 
@@ -408,7 +405,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoClearContentForSparkline)
     // Clear content of cell D7 - including sparkline
     {
         ScMarkData aMark(m_pDoc->GetSheetLimits());
-        aMark.SetMarkArea(ScAddress(3, 6, 0));
+        aMark.SetMarkArea(ScRange(ScAddress(3, 6, 0)));
         rDocFunc.DeleteContents(aMark, InsertDeleteFlags::CONTENTS, true, true);
     }
 
@@ -477,7 +474,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoClearContentForSparkline)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoEditSparklineGroup)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto& rDocFunc = m_xDocShell->GetDocFunc();
 
@@ -545,7 +542,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoEditSparklineGroup)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoUngroupSparklines)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto& rDocFunc = m_xDocShell->GetDocFunc();
 
@@ -643,7 +640,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoUngroupSparklines)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoGroupSparklines)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto& rDocFunc = m_xDocShell->GetDocFunc();
 
@@ -768,7 +765,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoGroupSparklines)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoEditSparkline)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto& rDocFunc = m_xDocShell->GetDocFunc();
 
@@ -825,7 +822,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testUndoRedoEditSparkline)
 
 CPPUNIT_TEST_FIXTURE(SparklineTest, testSparklineList)
 {
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     auto pSparklineGroup = std::make_shared<sc::SparklineGroup>();
 
@@ -880,7 +877,7 @@ CPPUNIT_TEST_FIXTURE(SparklineTest, testSparklineList)
 CPPUNIT_TEST_FIXTURE(SparklineTest, testSparklineThemeColorChange)
 {
     m_pDoc->InitDrawLayer();
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     // insert test data - A1:A6
     insertTestData(*m_pDoc);

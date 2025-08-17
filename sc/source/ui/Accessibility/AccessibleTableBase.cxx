@@ -34,16 +34,11 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-//=====  internal  ============================================================
-
-ScAccessibleTableBase::ScAccessibleTableBase(
-        const uno::Reference<XAccessible>& rxParent,
-        ScDocument* pDoc,
-        const ScRange& rRange)
-    :
-    ScAccessibleContextBase (rxParent, AccessibleRole::TABLE),
-    maRange(rRange),
-    mpDoc(pDoc)
+ScAccessibleTableBase::ScAccessibleTableBase(const uno::Reference<XAccessible>& rxParent,
+                                             ScDocument* pDoc, const ScRange& rRange)
+    : ImplInheritanceHelper(rxParent, AccessibleRole::TABLE)
+    , maRange(rRange)
+    , mpDoc(pDoc)
 {
 }
 
@@ -59,46 +54,19 @@ void SAL_CALL ScAccessibleTableBase::disposing()
     ScAccessibleContextBase::disposing();
 }
 
-    //=====  XInterface  =====================================================
-
-uno::Any SAL_CALL ScAccessibleTableBase::queryInterface( uno::Type const & rType )
-{
-    if ( rType == cppu::UnoType<XAccessibleTableSelection>::get())
-    {
-        return uno::Any(uno::Reference<XAccessibleTableSelection>(this));
-    }
-    else
-    {
-        uno::Any aAny (ScAccessibleTableBaseImpl::queryInterface(rType));
-        return aAny.hasValue() ? aAny : ScAccessibleContextBase::queryInterface(rType);
-    }
-}
-
-void SAL_CALL ScAccessibleTableBase::acquire()
-    noexcept
-{
-    ScAccessibleContextBase::acquire();
-}
-
-void SAL_CALL ScAccessibleTableBase::release()
-    noexcept
-{
-    ScAccessibleContextBase::release();
-}
-
     //=====  XAccessibleTable  ================================================
 
 sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleRowCount(  )
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     return maRange.aEnd.Row() - maRange.aStart.Row() + 1;
 }
 
 sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleColumnCount(  )
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     return maRange.aEnd.Col() - maRange.aStart.Col() + 1;
 }
 
@@ -127,7 +95,7 @@ OUString SAL_CALL ScAccessibleTableBase::getAccessibleColumnDescription( sal_Int
 sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleRowExtentAt( sal_Int32 nRow, sal_Int32 nColumn )
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
 
     if ((nColumn > (maRange.aEnd.Col() - maRange.aStart.Col())) || (nColumn < 0) ||
         (nRow > (maRange.aEnd.Row() - maRange.aStart.Row())) || (nRow < 0))
@@ -160,7 +128,7 @@ sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleRowExtentAt( sal_Int32 nR
 sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleColumnExtentAt( sal_Int32 nRow, sal_Int32 nColumn )
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
 
     if ((nColumn > (maRange.aEnd.Col() - maRange.aStart.Col())) || (nColumn < 0) ||
         (nRow > (maRange.aEnd.Row() - maRange.aStart.Row())) || (nRow < 0))
@@ -266,7 +234,7 @@ sal_Bool SAL_CALL ScAccessibleTableBase::isAccessibleSelected( sal_Int32 /* nRow
 sal_Int64 SAL_CALL ScAccessibleTableBase::getAccessibleIndex( sal_Int32 nRow, sal_Int32 nColumn )
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
 
     if (nRow > (maRange.aEnd.Row() - maRange.aStart.Row()) ||
         nRow < 0 ||
@@ -282,7 +250,7 @@ sal_Int64 SAL_CALL ScAccessibleTableBase::getAccessibleIndex( sal_Int32 nRow, sa
 sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleRow( sal_Int64 nChildIndex )
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
 
     if (nChildIndex >= getAccessibleChildCount() || nChildIndex < 0)
         throw lang::IndexOutOfBoundsException();
@@ -293,7 +261,7 @@ sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleRow( sal_Int64 nChildInde
 sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleColumn( sal_Int64 nChildIndex )
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
 
     if (nChildIndex >= getAccessibleChildCount() || nChildIndex < 0)
         throw lang::IndexOutOfBoundsException();
@@ -306,7 +274,7 @@ sal_Int32 SAL_CALL ScAccessibleTableBase::getAccessibleColumn( sal_Int64 nChildI
 sal_Int64 SAL_CALL ScAccessibleTableBase::getAccessibleChildCount()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
 
     // FIXME: representing rows & columns this way is a plain and simple madness.
     // this needs a radical re-think.
@@ -321,7 +289,7 @@ uno::Reference< XAccessible > SAL_CALL
     ScAccessibleTableBase::getAccessibleChild(sal_Int64 nIndex)
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
 
     if (nIndex >= getAccessibleChildCount() || nIndex < 0)
         throw lang::IndexOutOfBoundsException();
@@ -355,13 +323,13 @@ OUString ScAccessibleTableBase::createAccessibleName()
 uno::Reference<XAccessibleRelationSet> SAL_CALL
     ScAccessibleTableBase::getAccessibleRelationSet()
 {
-    OSL_FAIL("should be implemented in the abrevated class");
+    OSL_FAIL("should be implemented in the abbreviated class");
     return uno::Reference<XAccessibleRelationSet>();
 }
 
 sal_Int64 SAL_CALL ScAccessibleTableBase::getAccessibleStateSet()
 {
-    OSL_FAIL("should be implemented in the abrevated class");
+    OSL_FAIL("should be implemented in the abbreviated class");
     return 0;
 }
 
@@ -406,26 +374,6 @@ void SAL_CALL ScAccessibleTableBase::deselectAccessibleChild( sal_Int64 /* nSele
 {
 }
 
-    //=====  XServiceInfo  ====================================================
-
-OUString SAL_CALL ScAccessibleTableBase::getImplementationName()
-{
-    return "ScAccessibleTableBase";
-}
-
-    //=====  XTypeProvider  ===================================================
-
-uno::Sequence< uno::Type > SAL_CALL ScAccessibleTableBase::getTypes()
-{
-    return comphelper::concatSequences(ScAccessibleTableBaseImpl::getTypes(), ScAccessibleContextBase::getTypes());
-}
-
-uno::Sequence<sal_Int8> SAL_CALL
-    ScAccessibleTableBase::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
-}
-
 void ScAccessibleTableBase::CommitTableModelChange(sal_Int32 nStartRow, sal_Int32 nStartCol, sal_Int32 nEndRow, sal_Int32 nEndCol, sal_uInt16 nId)
 {
     AccessibleTableModelChange aModelChange;
@@ -435,12 +383,7 @@ void ScAccessibleTableBase::CommitTableModelChange(sal_Int32 nStartRow, sal_Int3
     aModelChange.LastColumn = nEndCol;
     aModelChange.Type = nId;
 
-    AccessibleEventObject aEvent;
-    aEvent.EventId = AccessibleEventId::TABLE_MODEL_CHANGED;
-    aEvent.Source = uno::Reference< XAccessibleContext >(this);
-    aEvent.NewValue <<= aModelChange;
-
-    CommitChange(aEvent);
+    CommitChange(AccessibleEventId::TABLE_MODEL_CHANGED, uno::Any(), uno::Any(aModelChange));
 }
 
 sal_Bool SAL_CALL ScAccessibleTableBase::selectRow( sal_Int32 )

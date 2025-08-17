@@ -21,9 +21,9 @@
 #include "PresenterCanvasHelper.hxx"
 #include "PresenterGeometryHelper.hxx"
 #include "PresenterTheme.hxx"
+#include <PresenterHelper.hxx>
 #include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 #include <com/sun/star/rendering/FillRule.hpp>
 #include <com/sun/star/rendering/TextDirection.hpp>
@@ -58,10 +58,10 @@ namespace {
 
         awt::Rectangle AddBorder (
             const awt::Rectangle& rBox,
-            drawing::framework::BorderType eBorderType) const;
+            BorderType eBorderType) const;
         awt::Rectangle RemoveBorder (
             const awt::Rectangle& rBox,
-            drawing::framework::BorderType eBorderType) const;
+            BorderType eBorderType) const;
         Reference<rendering::XCanvasFont> GetFont (
             const Reference<rendering::XCanvas>& rxCanvas) const;
 
@@ -73,7 +73,6 @@ namespace {
         SharedBitmapDescriptor mpBottomLeft;
         SharedBitmapDescriptor mpBottom;
         SharedBitmapDescriptor mpBottomRight;
-        SharedBitmapDescriptor mpBottomCallout;
         SharedBitmapDescriptor mpEmpty;
         PresenterTheme::SharedFontDescriptor mpFont;
         sal_Int32 mnFontXOffset;
@@ -95,9 +94,7 @@ namespace {
 class  PresenterPaneBorderPainter::Renderer
 {
 public:
-    Renderer (
-        const Reference<XComponentContext>& rxContext,
-        std::shared_ptr<PresenterTheme> xTheme);
+    Renderer(std::shared_ptr<PresenterTheme> xTheme);
 
     void SetCanvas (const Reference<rendering::XCanvas>& rxCanvas);
     void PaintBorder (
@@ -116,19 +113,14 @@ public:
         const awt::Rectangle& rOuterBox,
         const OUString& rsPaneStyleName);
     std::shared_ptr<RendererPaneStyle> GetRendererPaneStyle (const OUString& rsResourceURL);
-    void SetCalloutAnchor (
-        const awt::Point& rCalloutAnchor);
 
 private:
     std::shared_ptr<PresenterTheme> mpTheme;
     typedef ::std::map<OUString, std::shared_ptr<RendererPaneStyle> > RendererPaneStyleContainer;
     RendererPaneStyleContainer maRendererPaneStyles;
     Reference<rendering::XCanvas> mxCanvas;
-    Reference<drawing::XPresenterHelper> mxPresenterHelper;
     css::rendering::ViewState maViewState;
     Reference<rendering::XPolyPolygon2D> mxViewStateClip;
-    bool mbHasCallout;
-    awt::Point maCalloutAnchor;
 
     void PaintBitmap(
         const awt::Rectangle& rBox,
@@ -154,12 +146,10 @@ PresenterPaneBorderPainter::~PresenterPaneBorderPainter()
 {
 }
 
-//----- XPaneBorderPainter ----------------------------------------------------
-
-awt::Rectangle SAL_CALL PresenterPaneBorderPainter::addBorder (
+awt::Rectangle PresenterPaneBorderPainter::addBorder (
     const OUString& rsPaneBorderStyleName,
     const css::awt::Rectangle& rRectangle,
-    drawing::framework::BorderType eBorderType)
+    BorderType eBorderType)
 {
     ThrowIfDisposed();
 
@@ -168,10 +158,10 @@ awt::Rectangle SAL_CALL PresenterPaneBorderPainter::addBorder (
     return AddBorder(rsPaneBorderStyleName, rRectangle, eBorderType);
 }
 
-awt::Rectangle SAL_CALL PresenterPaneBorderPainter::removeBorder (
+awt::Rectangle PresenterPaneBorderPainter::removeBorder (
     const OUString& rsPaneBorderStyleName,
     const css::awt::Rectangle& rRectangle,
-    drawing::framework::BorderType eBorderType)
+    BorderType eBorderType)
 {
     ThrowIfDisposed();
 
@@ -180,7 +170,7 @@ awt::Rectangle SAL_CALL PresenterPaneBorderPainter::removeBorder (
     return RemoveBorder(rsPaneBorderStyleName, rRectangle, eBorderType);
 }
 
-void SAL_CALL PresenterPaneBorderPainter::paintBorder (
+void PresenterPaneBorderPainter::paintBorder (
     const OUString& rsPaneBorderStyleName,
     const css::uno::Reference<css::rendering::XCanvas>& rxCanvas,
     const css::awt::Rectangle& rOuterBorderRectangle,
@@ -214,64 +204,6 @@ void SAL_CALL PresenterPaneBorderPainter::paintBorder (
         rsPaneBorderStyleName);
 }
 
-void SAL_CALL PresenterPaneBorderPainter::paintBorderWithCallout (
-    const OUString& rsPaneBorderStyleName,
-    const css::uno::Reference<css::rendering::XCanvas>& rxCanvas,
-    const css::awt::Rectangle& rOuterBorderRectangle,
-    const css::awt::Rectangle& rRepaintArea,
-    const OUString& rsTitle,
-    const css::awt::Point& rCalloutAnchor)
-{
-    ThrowIfDisposed();
-
-    // Early reject paints completely outside the repaint area.
-    if (rRepaintArea.X >= rOuterBorderRectangle.X+rOuterBorderRectangle.Width
-        || rRepaintArea.Y >= rOuterBorderRectangle.Y+rOuterBorderRectangle.Height
-        || rRepaintArea.X+rRepaintArea.Width <= rOuterBorderRectangle.X
-        || rRepaintArea.Y+rRepaintArea.Height <= rOuterBorderRectangle.Y)
-    {
-        return;
-    }
-    ProvideTheme(rxCanvas);
-
-    if (mpRenderer == nullptr)
-        return;
-
-    mpRenderer->SetCanvas(rxCanvas);
-    mpRenderer->SetupClipping(
-        rRepaintArea,
-        rOuterBorderRectangle,
-        rsPaneBorderStyleName);
-    mpRenderer->SetCalloutAnchor(rCalloutAnchor);
-    mpRenderer->PaintBorder(
-        rsTitle,
-        rOuterBorderRectangle,
-        rRepaintArea,
-        rsPaneBorderStyleName);
-}
-
-awt::Point SAL_CALL PresenterPaneBorderPainter::getCalloutOffset (
-    const OUString& rsPaneBorderStyleName)
-{
-    ThrowIfDisposed();
-    ProvideTheme();
-    if (mpRenderer != nullptr)
-    {
-        const std::shared_ptr<RendererPaneStyle> pRendererPaneStyle(
-            mpRenderer->GetRendererPaneStyle(rsPaneBorderStyleName));
-        if (pRendererPaneStyle != nullptr && pRendererPaneStyle->mpBottomCallout)
-        {
-            return awt::Point (
-                0,
-                pRendererPaneStyle->mpBottomCallout->mnHeight
-                    - pRendererPaneStyle->mpBottomCallout->mnYHotSpot);
-        }
-    }
-
-    return awt::Point(0,0);
-}
-
-
 bool PresenterPaneBorderPainter::ProvideTheme (const Reference<rendering::XCanvas>& rxCanvas)
 {
     bool bModified (false);
@@ -297,7 +229,7 @@ bool PresenterPaneBorderPainter::ProvideTheme (const Reference<rendering::XCanva
     if (bModified)
     {
         if (mpRenderer == nullptr)
-            mpRenderer.reset(new Renderer(mxContext, mpTheme));
+            mpRenderer.reset(new Renderer(mpTheme));
         else
             mpRenderer->SetCanvas(rxCanvas);
     }
@@ -320,13 +252,13 @@ void PresenterPaneBorderPainter::SetTheme (const std::shared_ptr<PresenterTheme>
 {
     mpTheme = rpTheme;
     if (mpRenderer == nullptr)
-        mpRenderer.reset(new Renderer(mxContext, mpTheme));
+        mpRenderer.reset(new Renderer(mpTheme));
 }
 
 awt::Rectangle PresenterPaneBorderPainter::AddBorder (
     const OUString& rsPaneURL,
     const awt::Rectangle& rInnerBox,
-    const css::drawing::framework::BorderType eBorderType) const
+    const BorderType eBorderType) const
 {
     if (mpRenderer != nullptr)
     {
@@ -340,7 +272,7 @@ awt::Rectangle PresenterPaneBorderPainter::AddBorder (
 awt::Rectangle PresenterPaneBorderPainter::RemoveBorder (
     const OUString& rsPaneURL,
     const css::awt::Rectangle& rOuterBox,
-    const css::drawing::framework::BorderType eBorderType) const
+    const BorderType eBorderType) const
 {
     if (mpRenderer != nullptr)
     {
@@ -356,29 +288,17 @@ void PresenterPaneBorderPainter::ThrowIfDisposed() const
     if (rBHelper.bDisposed || rBHelper.bInDispose)
     {
         throw lang::DisposedException (
-            "PresenterPaneBorderPainter object has already been disposed",
+            u"PresenterPaneBorderPainter object has already been disposed"_ustr,
             const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
     }
 }
 
 //===== PresenterPaneBorderPainter::Renderer =====================================
 
-PresenterPaneBorderPainter::Renderer::Renderer (
-    const Reference<XComponentContext>& rxContext,
-    std::shared_ptr<PresenterTheme> xTheme)
+PresenterPaneBorderPainter::Renderer::Renderer(std::shared_ptr<PresenterTheme> xTheme)
     : mpTheme(std::move(xTheme)),
-      maViewState(geometry::AffineMatrix2D(1,0,0, 0,1,0), nullptr),
-      mbHasCallout(false)
+      maViewState(geometry::AffineMatrix2D(1,0,0, 0,1,0), nullptr)
 {
-    Reference<lang::XMultiComponentFactory> xFactory (rxContext->getServiceManager());
-    if (xFactory.is())
-    {
-        mxPresenterHelper.set(
-            xFactory->createInstanceWithContext(
-                "com.sun.star.comp.Draw.PresenterHelper",
-                rxContext),
-            UNO_QUERY_THROW);
-    }
 }
 
 void PresenterPaneBorderPainter::Renderer::SetCanvas (const Reference<rendering::XCanvas>& rxCanvas)
@@ -405,9 +325,9 @@ void PresenterPaneBorderPainter::Renderer::PaintBorder (
 
     awt::Rectangle aOuterBox (rBBox);
     awt::Rectangle aCenterBox (
-        pStyle->RemoveBorder(aOuterBox, drawing::framework::BorderType_OUTER_BORDER));
+        pStyle->RemoveBorder(aOuterBox, BorderType::OUTER));
     awt::Rectangle aInnerBox (
-        pStyle->RemoveBorder(aOuterBox, drawing::framework::BorderType_TOTAL_BORDER));
+        pStyle->RemoveBorder(aOuterBox, BorderType::TOTAL));
 
     // Prepare references for all used bitmaps.
     SharedBitmapDescriptor pTop (pStyle->mpTop);
@@ -426,29 +346,9 @@ void PresenterPaneBorderPainter::Renderer::PaintBorder (
         pTopLeft->mnYOffset, pBottomLeft->mnYOffset, true, pLeft);
     PaintBitmap(aCenterBox, rUpdateBox, +1,0,
         pTopRight->mnYOffset, pBottomRight->mnYOffset, true, pRight);
-    if (mbHasCallout && pStyle->mpBottomCallout->GetNormalBitmap().is())
-    {
-        const sal_Int32 nCalloutWidth (pStyle->mpBottomCallout->mnWidth);
-        sal_Int32 nCalloutX (maCalloutAnchor.X - pStyle->mpBottomCallout->mnXHotSpot
-            - (aCenterBox.X - aOuterBox.X));
-        if (nCalloutX < pBottomLeft->mnXOffset + aCenterBox.X)
-            nCalloutX = pBottomLeft->mnXOffset + aCenterBox.X;
-        if (nCalloutX > pBottomRight->mnXOffset + aCenterBox.X + aCenterBox.Width)
-            nCalloutX = pBottomRight->mnXOffset + aCenterBox.X + aCenterBox.Width;
-        // Paint bottom callout.
-        PaintBitmap(aCenterBox, rUpdateBox, 0,+1, nCalloutX,0, false, pStyle->mpBottomCallout);
-        // Paint regular bottom bitmap left and right.
-        PaintBitmap(aCenterBox, rUpdateBox, 0,+1,
-            pBottomLeft->mnXOffset, nCalloutX-aCenterBox.Width, true, pBottom);
-        PaintBitmap(aCenterBox, rUpdateBox, 0,+1,
-            nCalloutX+nCalloutWidth, pBottomRight->mnXOffset, true, pBottom);
-    }
-    else
-    {
-        // Stretch the bottom bitmap over the full width.
-        PaintBitmap(aCenterBox, rUpdateBox, 0,+1,
-            pBottomLeft->mnXOffset, pBottomRight->mnXOffset, true, pBottom);
-    }
+    // Stretch the bottom bitmap over the full width.
+    PaintBitmap(aCenterBox, rUpdateBox, 0,+1,
+        pBottomLeft->mnXOffset, pBottomRight->mnXOffset, true, pBottom);
 
     // Paint the corners.
     PaintBitmap(aCenterBox, rUpdateBox, -1,-1, 0,0, false, pTopLeft);
@@ -549,7 +449,7 @@ std::shared_ptr<RendererPaneStyle>
     RendererPaneStyleContainer::const_iterator iStyle (maRendererPaneStyles.find(rsResourceURL));
     if (iStyle == maRendererPaneStyles.end())
     {
-        OUString sPaneStyleName ("DefaultRendererPaneStyle");
+        OUString sPaneStyleName (u"DefaultRendererPaneStyle"_ustr);
 
         // Get pane layout name for resource URL.
         const OUString sStyleName (mpTheme->GetStyleName(rsResourceURL));
@@ -564,13 +464,6 @@ std::shared_ptr<RendererPaneStyle>
         return iStyle->second;
     else
         return std::shared_ptr<RendererPaneStyle>();
-}
-
-void PresenterPaneBorderPainter::Renderer::SetCalloutAnchor (
-    const awt::Point& rCalloutAnchor)
-{
-    mbHasCallout = true;
-    maCalloutAnchor = rCalloutAnchor;
 }
 
 void PresenterPaneBorderPainter::Renderer::PaintBitmap(
@@ -638,32 +531,6 @@ void PresenterPaneBorderPainter::Renderer::PaintBitmap(
         return;
     }
 
-    /*
-    Reference<rendering::XBitmap> xMaskedBitmap (
-        PresenterBitmapHelper::FillMaskedWithColor (
-            mxCanvas,
-            Reference<rendering::XIntegerBitmap>(xBitmap, UNO_QUERY),
-            rBitmap.mxMaskBitmap,
-            0x00ff0000,
-            rBackgroundBitmap.maReplacementColor));
-    if (xMaskedBitmap.is())
-        xBitmap = xMaskedBitmap;
-    else if (rBitmap.mxMaskBitmap.is() && mxPresenterHelper.is())
-    {
-        const static sal_Int32 nOutsideMaskColor (0x00ff0000);
-        Reference<rendering::XIntegerBitmap> xMask (
-            mxPresenterHelper->createMask(
-                mxCanvas,
-                rBitmap.mxMaskBitmap,
-                nOutsideMaskColor,
-                false));
-        xBitmap = mxPresenterHelper->applyBitmapMaskWithColor(
-            mxCanvas,
-            Reference<rendering::XIntegerBitmap>(xBitmap, UNO_QUERY),
-            xMask,
-            rBackgroundBitmap.maReplacementColor);
-    }
-    */
     rendering::RenderState aRenderState (
         geometry::AffineMatrix2D(
             double(nW)/rpBitmap->mnWidth, 0, nX,
@@ -700,7 +567,7 @@ void PresenterPaneBorderPainter::Renderer::SetupClipping (
     else
     {
         awt::Rectangle aInnerBox (
-            pStyle->RemoveBorder(rOuterBox, drawing::framework::BorderType_TOTAL_BORDER));
+            pStyle->RemoveBorder(rOuterBox, BorderType::TOTAL));
         ::std::vector<awt::Rectangle> aRectangles
         {
             PresenterGeometryHelper::Intersection(rUpdateBox, rOuterBox),
@@ -740,20 +607,19 @@ RendererPaneStyle::RendererPaneStyle (
     if (rpTheme == nullptr)
         return;
 
-    mpTopLeft = GetBitmap(rpTheme, rsStyleName, "TopLeft");
-    mpTop = GetBitmap(rpTheme, rsStyleName, "Top");
-    mpTopRight = GetBitmap(rpTheme, rsStyleName, "TopRight");
-    mpLeft = GetBitmap(rpTheme, rsStyleName,"Left");
-    mpRight = GetBitmap(rpTheme, rsStyleName, "Right");
-    mpBottomLeft = GetBitmap(rpTheme, rsStyleName, "BottomLeft");
-    mpBottom = GetBitmap(rpTheme, rsStyleName, "Bottom");
-    mpBottomRight = GetBitmap(rpTheme, rsStyleName, "BottomRight");
-    mpBottomCallout = GetBitmap(rpTheme, rsStyleName, "BottomCallout");
+    mpTopLeft = GetBitmap(rpTheme, rsStyleName, u"TopLeft"_ustr);
+    mpTop = GetBitmap(rpTheme, rsStyleName, u"Top"_ustr);
+    mpTopRight = GetBitmap(rpTheme, rsStyleName, u"TopRight"_ustr);
+    mpLeft = GetBitmap(rpTheme, rsStyleName,u"Left"_ustr);
+    mpRight = GetBitmap(rpTheme, rsStyleName, u"Right"_ustr);
+    mpBottomLeft = GetBitmap(rpTheme, rsStyleName, u"BottomLeft"_ustr);
+    mpBottom = GetBitmap(rpTheme, rsStyleName, u"Bottom"_ustr);
+    mpBottomRight = GetBitmap(rpTheme, rsStyleName, u"BottomRight"_ustr);
 
     // Get font description.
     mpFont = rpTheme->GetFont(rsStyleName);
 
-    OUString sAnchor ("Left");
+    OUString sAnchor (u"Left"_ustr);
     if (mpFont)
     {
         sAnchor = mpFont->msAnchor;
@@ -795,18 +661,18 @@ RendererPaneStyle::RendererPaneStyle (
 
 awt::Rectangle RendererPaneStyle::AddBorder (
     const awt::Rectangle& rBox,
-    const drawing::framework::BorderType eBorderType) const
+    const BorderType eBorderType) const
 {
     const BorderSize* pBorderSize = nullptr;
     switch (eBorderType)
     {
-        case drawing::framework::BorderType_INNER_BORDER:
+        case BorderType::INNER:
             pBorderSize = &maInnerBorderSize;
             break;
-        case drawing::framework::BorderType_OUTER_BORDER:
+        case BorderType::OUTER:
             pBorderSize = &maOuterBorderSize;
             break;
-        case drawing::framework::BorderType_TOTAL_BORDER:
+        case BorderType::TOTAL:
             pBorderSize = &maTotalBorderSize;
             break;
         default:
@@ -821,18 +687,18 @@ awt::Rectangle RendererPaneStyle::AddBorder (
 
 awt::Rectangle RendererPaneStyle::RemoveBorder (
     const awt::Rectangle& rBox,
-    const css::drawing::framework::BorderType eBorderType) const
+    const BorderType eBorderType) const
 {
     const BorderSize* pBorderSize = nullptr;
     switch (eBorderType)
     {
-        case drawing::framework::BorderType_INNER_BORDER:
+        case BorderType::INNER:
             pBorderSize = &maInnerBorderSize;
             break;
-        case drawing::framework::BorderType_OUTER_BORDER:
+        case BorderType::OUTER:
             pBorderSize = &maOuterBorderSize;
             break;
-        case drawing::framework::BorderType_TOTAL_BORDER:
+        case BorderType::TOTAL:
             pBorderSize = &maTotalBorderSize;
             break;
         default:

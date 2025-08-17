@@ -22,7 +22,7 @@
 
 #include <svl/svldllapi.h>
 #include <svl/cenumitm.hxx>
-
+#include <cassert>
 
 template<typename EnumT>
 class SAL_DLLPUBLIC_RTTI SfxEnumItem : public SfxEnumItemInterface
@@ -37,13 +37,15 @@ protected:
 
     SfxEnumItem(const SfxEnumItem &) = default;
 
+    virtual SfxItemType ItemType() const override = 0;
+
 public:
 
     EnumT GetValue() const { return m_nValue; }
 
     void SetValue(EnumT nTheValue)
     {
-        assert(GetRefCount() == 0 && "SfxEnumItem::SetValue(): Pooled item");
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         m_nValue = nTheValue;
     }
 
@@ -62,6 +64,16 @@ public:
         return SfxEnumItemInterface::operator==(other) &&
                m_nValue == static_cast<const SfxEnumItem<EnumT> &>(other).m_nValue;
     }
+
+    virtual bool supportsHashCode() const override final
+    {
+        return true;
+    }
+
+    virtual size_t hashCode() const override final
+    {
+        return Which() ^ GetEnumValue();
+    }
 };
 
 class SVL_DLLPUBLIC SfxBoolItem
@@ -69,20 +81,22 @@ class SVL_DLLPUBLIC SfxBoolItem
 {
     bool m_bValue;
 
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override final;
+
 public:
     static SfxPoolItem* CreateDefault();
-
+    DECLARE_ITEM_TYPE_FUNCTION(SfxBoolItem)
     explicit SfxBoolItem(sal_uInt16 const nWhich = 0, bool const bValue = false)
         : SfxPoolItem(nWhich)
         , m_bValue(bValue)
     { }
 
     bool GetValue() const { return m_bValue; }
-
-    void SetValue(bool const bTheValue) { m_bValue = bTheValue; }
+    void SetValue(bool const bTheValue);
 
     // SfxPoolItem
-    virtual bool operator ==(const SfxPoolItem & rItem) const override;
+    virtual bool operator ==(const SfxPoolItem & rItem) const override final;
 
     virtual bool GetPresentation(SfxItemPresentation,
                                  MapUnit, MapUnit,

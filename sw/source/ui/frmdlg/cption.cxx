@@ -40,6 +40,8 @@
 #include <vcl/weld.hxx>
 #include <strings.hrc>
 #include <SwStyleNameMapper.hxx>
+#include <unotxdoc.hxx>
+#include <names.hxx>
 
 using namespace ::com::sun::star;
 
@@ -76,7 +78,7 @@ public:
 
 }
 
-OUString SwCaptionDialog::s_aSepTextSave(": "); // Caption separator text
+OUString SwCaptionDialog::s_aSepTextSave(u": "_ustr); // Caption separator text
 
 //Resolves: tdf#47427 disallow typing *or* pasting invalid content into the category box
 OUString TextFilterAutoConvert::filter(const OUString &rText)
@@ -88,38 +90,37 @@ OUString TextFilterAutoConvert::filter(const OUString &rText)
 }
 
 SwCaptionDialog::SwCaptionDialog(weld::Window *pParent, SwView &rV)
-    : SfxDialogController(pParent, "modules/swriter/ui/insertcaption.ui", "InsertCaptionDialog")
+    : SfxDialogController(pParent, u"modules/swriter/ui/insertcaption.ui"_ustr, u"InsertCaptionDialog"_ustr)
     , m_sNone(SwResId(SW_STR_NONE))
     , m_aTextFilter(m_sNone)
     , m_rView(rV)
     , m_pMgr(new SwFieldMgr(m_rView.GetWrtShellPtr()))
     , m_bCopyAttributes(false)
-    , m_bOrderNumberingFirst(SW_MOD()->GetModuleConfig()->IsCaptionOrderNumberingFirst())
-    , m_xTextEdit(m_xBuilder->weld_entry("caption_edit"))
-    , m_xCategoryBox(m_xBuilder->weld_combo_box("category"))
-    , m_xFormatText(m_xBuilder->weld_label("numbering_label"))
-    , m_xFormatBox(m_xBuilder->weld_combo_box("numbering"))
-    , m_xNumberingSeparatorFT(m_xBuilder->weld_label("num_separator"))
-    , m_xNumberingSeparatorED(m_xBuilder->weld_entry("num_separator_edit"))
-    , m_xSepText(m_xBuilder->weld_label("separator_label"))
-    , m_xSepEdit(m_xBuilder->weld_entry("separator_edit"))
-    , m_xPosBox(m_xBuilder->weld_combo_box("position"))
-    , m_xOKButton(m_xBuilder->weld_button("ok"))
-    , m_xAutoCaptionButton(m_xBuilder->weld_button("auto"))
-    , m_xOptionButton(m_xBuilder->weld_button("options"))
-    , m_xPreview(new weld::CustomWeld(*m_xBuilder, "preview", m_aPreview))
+    , m_bOrderNumberingFirst(SwModule::get()->GetModuleConfig()->IsCaptionOrderNumberingFirst())
+    , m_xTextEdit(m_xBuilder->weld_entry(u"caption_edit"_ustr))
+    , m_xCategoryBox(m_xBuilder->weld_combo_box(u"category"_ustr))
+    , m_xFormatText(m_xBuilder->weld_label(u"numbering_label"_ustr))
+    , m_xFormatBox(m_xBuilder->weld_combo_box(u"numbering"_ustr))
+    , m_xNumberingSeparatorFT(m_xBuilder->weld_label(u"num_separator"_ustr))
+    , m_xNumberingSeparatorED(m_xBuilder->weld_entry(u"num_separator_edit"_ustr))
+    , m_xSepText(m_xBuilder->weld_label(u"separator_label"_ustr))
+    , m_xSepEdit(m_xBuilder->weld_entry(u"separator_edit"_ustr))
+    , m_xPosBox(m_xBuilder->weld_combo_box(u"position"_ustr))
+    , m_xOKButton(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xAutoCaptionButton(m_xBuilder->weld_button(u"auto"_ustr))
+    , m_xOptionButton(m_xBuilder->weld_button(u"options"_ustr))
+    , m_xPreview(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, m_aPreview))
 {
     //#i61007# order of captions
     ApplyCaptionOrder();
     SwWrtShell &rSh = m_rView.GetWrtShell();
-    uno::Reference< frame::XModel >  xModel = m_rView.GetDocShell()->GetBaseModel();
+    rtl::Reference< SwXTextDocument >  xModel = m_rView.GetDocShell()->GetBaseModel();
 
     SelectionType eType = rSh.GetSelectionType();
     if ( eType & SelectionType::Ole )
     {
         eType = SelectionType::Graphic;
-        uno::Reference< text::XTextEmbeddedObjectsSupplier >  xObjs(xModel, uno::UNO_QUERY);
-        m_xNameAccess = xObjs->getEmbeddedObjects();
+        m_xNameAccess = xModel->getEmbeddedObjects();
     }
 
     m_xCategoryBox->connect_changed(LINK(this, SwCaptionDialog, ModifyComboHdl));
@@ -140,8 +141,8 @@ SwCaptionDialog::SwCaptionDialog(weld::Window *pParent, SwView &rV)
     {
         SwFieldType *pType = m_pMgr->GetFieldType( SwFieldIds::Unknown, i );
         if( pType->Which() == SwFieldIds::SetExp &&
-            static_cast<SwSetExpFieldType *>( pType)->GetType() & nsSwGetSetExpType::GSE_SEQ )
-            m_xCategoryBox->append_text(pType->GetName());
+            static_cast<SwSetExpFieldType *>( pType)->GetType() & SwGetSetExpType::Sequence )
+            m_xCategoryBox->append_text(pType->GetName().toString());
     }
 
     OUString sString;
@@ -162,8 +163,7 @@ SwCaptionDialog::SwCaptionDialog(weld::Window *pParent, SwView &rV)
         //if not OLE
         if(!m_xNameAccess.is())
         {
-            uno::Reference< text::XTextGraphicObjectsSupplier >  xGraphics(xModel, uno::UNO_QUERY);
-            m_xNameAccess = xGraphics->getGraphicObjects();
+            m_xNameAccess = xModel->getGraphicObjects();
         }
 
     }
@@ -171,15 +171,13 @@ SwCaptionDialog::SwCaptionDialog(weld::Window *pParent, SwView &rV)
     {
         nPoolId = RES_POOLCOLL_LABEL_TABLE;
         sString = m_rView.GetOldTabCat();
-        uno::Reference< text::XTextTablesSupplier >  xTables(xModel, uno::UNO_QUERY);
-        m_xNameAccess = xTables->getTextTables();
+        m_xNameAccess = xModel->getTextTables();
     }
     else if( eType & SelectionType::Frame )
     {
         nPoolId = RES_POOLCOLL_LABEL_FRAME;
         sString = m_rView.GetOldFrameCat();
-        uno::Reference< text::XTextFramesSupplier >  xFrames(xModel, uno::UNO_QUERY);
-        m_xNameAccess = xFrames->getTextFrames();
+        m_xNameAccess = xModel->getTextFrames();
     }
     else if( eType == SelectionType::Text )
     {
@@ -194,7 +192,7 @@ SwCaptionDialog::SwCaptionDialog(weld::Window *pParent, SwView &rV)
     if( nPoolId )
     {
         if (sString.isEmpty())
-            sString = SwStyleNameMapper::GetUIName(nPoolId, OUString());
+            sString = SwStyleNameMapper::GetUIName(nPoolId, ProgName()).toString();
         auto nIndex = m_xCategoryBox->find_text(sString);
         if (nIndex != -1)
             m_xCategoryBox->set_active(nIndex);
@@ -286,7 +284,7 @@ void SwCaptionDialog::Apply()
     aOpt.SetPos(m_xPosBox->get_active());
     aOpt.IgnoreSeqOpts() = true;
     aOpt.CopyAttributes() = m_bCopyAttributes;
-    aOpt.SetCharacterStyle( m_sCharacterStyle );
+    aOpt.SetCharacterStyle( UIName(m_sCharacterStyle) );
     m_rView.InsertCaption( &aOpt );
     s_aSepTextSave = m_xSepEdit->get_text();
 }
@@ -318,7 +316,7 @@ IMPL_LINK_NOARG(SwCaptionDialog, OptionHdl, weld::Button&, void)
             if( m_bOrderNumberingFirst != pDlg->IsOrderNumberingFirst() )
             {
                 m_bOrderNumberingFirst = pDlg->IsOrderNumberingFirst();
-                SW_MOD()->GetModuleConfig()->SetCaptionOrderNumberingFirst(m_bOrderNumberingFirst);
+                SwModule::get()->GetModuleConfig()->SetCaptionOrderNumberingFirst(m_bOrderNumberingFirst);
                 ApplyCaptionOrder();
             }
             DrawSample();
@@ -342,7 +340,7 @@ void SwCaptionDialog::ModifyHdl()
                     : nullptr;
     m_xOKButton->set_sensitive( bCorrectFieldName &&
                         (!pType ||
-                            static_cast<SwSetExpFieldType*>(pType)->GetType() == nsSwGetSetExpType::GSE_SEQ) );
+                            static_cast<SwSetExpFieldType*>(pType)->GetType() == SwGetSetExpType::Sequence) );
     m_xOptionButton->set_sensitive(m_xOKButton->get_sensitive() && !bNone);
     m_xNumberingSeparatorFT->set_sensitive(m_bOrderNumberingFirst && !bNone);
     m_xNumberingSeparatorED->set_sensitive(m_bOrderNumberingFirst && !bNone);
@@ -445,14 +443,14 @@ SwCaptionDialog::~SwCaptionDialog()
 }
 
 SwSequenceOptionDialog::SwSequenceOptionDialog(weld::Window *pParent, SwView &rV, OUString aSeqFieldType )
-    : GenericDialogController(pParent, "modules/swriter/ui/captionoptions.ui", "CaptionOptionsDialog")
+    : GenericDialogController(pParent, u"modules/swriter/ui/captionoptions.ui"_ustr, u"CaptionOptionsDialog"_ustr)
     , m_rView(rV)
     , m_aFieldTypeName(std::move(aSeqFieldType))
-    , m_xLbLevel(m_xBuilder->weld_combo_box("level"))
-    , m_xEdDelim(m_xBuilder->weld_entry("separator"))
-    , m_xLbCharStyle(m_xBuilder->weld_combo_box("style"))
-    , m_xApplyBorderAndShadowCB(m_xBuilder->weld_check_button("border_and_shadow"))
-    , m_xLbCaptionOrder(m_xBuilder->weld_combo_box("caption_order"))
+    , m_xLbLevel(m_xBuilder->weld_combo_box(u"level"_ustr))
+    , m_xEdDelim(m_xBuilder->weld_entry(u"separator"_ustr))
+    , m_xLbCharStyle(m_xBuilder->weld_combo_box(u"style"_ustr))
+    , m_xApplyBorderAndShadowCB(m_xBuilder->weld_check_button(u"border_and_shadow"_ustr))
+    , m_xLbCaptionOrder(m_xBuilder->weld_combo_box(u"caption_order"_ustr))
 {
     SwWrtShell &rSh = m_rView.GetWrtShell();
 
@@ -466,7 +464,7 @@ SwSequenceOptionDialog::SwSequenceOptionDialog(weld::Window *pParent, SwView &rV
                                         SwFieldIds::SetExp, m_aFieldTypeName ));
 
     sal_Unicode nLvl = MAXLEVEL;
-    OUString sDelim(": ");
+    OUString sDelim(u": "_ustr);
     if( pFieldType )
     {
         sDelim = pFieldType->GetDelimiter();
@@ -499,7 +497,7 @@ void SwSequenceOptionDialog::Apply()
     else if( !m_aFieldTypeName.isEmpty() && nLvl < MAXLEVEL )
     {
         // then we have to insert that
-        SwSetExpFieldType aFieldType( rSh.GetDoc(), m_aFieldTypeName, nsSwGetSetExpType::GSE_SEQ );
+        SwSetExpFieldType aFieldType( rSh.GetDoc(), UIName(m_aFieldTypeName), SwGetSetExpType::Sequence );
         aFieldType.SetDelimiter( OUString(cDelim) );
         aFieldType.SetOutlineLvl( nLvl );
         rSh.InsertFieldType( aFieldType );

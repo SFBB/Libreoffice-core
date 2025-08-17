@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/BitmapShadowFilter.hxx>
+#include <vcl/bitmap/BitmapShadowFilter.hxx>
 #include <svx/svdoashp.hxx>
 #include <svx/unoapi.hxx>
 #include <com/sun/star/loader/CannotActivateFactoryException.hpp>
@@ -177,7 +177,7 @@ static MSO_SPT ImpGetCustomShapeType( const SdrObjCustomShape& rCustoShape )
     {
         OUString sShapeType;
         const SdrCustomShapeGeometryItem& rGeometryItem( rCustoShape.GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ) );
-        const uno::Any* pAny = rGeometryItem.GetPropertyValueByName( "Type" );
+        const uno::Any* pAny = rGeometryItem.GetPropertyValueByName( u"Type"_ustr );
         if ( pAny && ( *pAny >>= sShapeType ) )
             eRetValue = EnhancedCustomShapeTypeNames::Get( sShapeType );
     }
@@ -355,7 +355,7 @@ static rtl::Reference<SdrObject> ImpCreateShadowObjectClone(const SdrObject& rOr
                 pVirDev->SetOutputSizePixel(aBitmapEx.GetSizePixel());
                 BitmapFilter::Filter(aBitmapEx, BitmapShadowFilter(aShadowColor));
                 pVirDev->DrawBitmapEx(Point(), aBitmapEx);
-                aGraphicObject.SetGraphic(Graphic(pVirDev->GetBitmapEx(Point(0,0), aBitmapEx.GetSizePixel())));
+                aGraphicObject.SetGraphic(Graphic(pVirDev->GetBitmap(Point(0,0), aBitmapEx.GetSizePixel())));
             }
 
             aTempSet.Put(XFillBitmapItem(aGraphicObject));
@@ -378,7 +378,7 @@ uno::Reference<drawing::XCustomShapeEngine> const & SdrObjCustomShape::GetCustom
     if ( !aXShape )
         return mxCustomShapeEngine;
 
-    uno::Reference<uno::XComponentContext> xContext( ::comphelper::getProcessComponentContext() );
+    const uno::Reference<uno::XComponentContext>& xContext( ::comphelper::getProcessComponentContext() );
 
     OUString aEngine(GetMergedItem( SDRATTR_CUSTOMSHAPE_ENGINE ).GetValue());
     static constexpr OUStringLiteral sEnhancedCustomShapeEngine = u"com.sun.star.drawing.EnhancedCustomShapeEngine";
@@ -471,7 +471,7 @@ bool SdrObjCustomShape::IsMirroredX() const
 {
     bool bMirroredX = false;
     const SdrCustomShapeGeometryItem & rGeometryItem( GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ) );
-    const uno::Any* pAny = rGeometryItem.GetPropertyValueByName( "MirroredX" );
+    const uno::Any* pAny = rGeometryItem.GetPropertyValueByName( u"MirroredX"_ustr );
     if ( pAny )
         *pAny >>= bMirroredX;
     return bMirroredX;
@@ -480,7 +480,7 @@ bool SdrObjCustomShape::IsMirroredY() const
 {
     bool bMirroredY = false;
     const SdrCustomShapeGeometryItem & rGeometryItem( GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ) );
-    const uno::Any* pAny = rGeometryItem.GetPropertyValueByName( "MirroredY" );
+    const uno::Any* pAny = rGeometryItem.GetPropertyValueByName( u"MirroredY"_ustr );
     if ( pAny )
         *pAny >>= bMirroredY;
     return bMirroredY;
@@ -1121,7 +1121,7 @@ bool SdrObjCustomShape::IsDefaultGeometry( const DefaultType eDefaultType ) cons
     OUString sShapeType;
     const SdrCustomShapeGeometryItem & rGeometryItem( GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ) );
 
-    const uno::Any *pAny = rGeometryItem.GetPropertyValueByName( "Type" );
+    const uno::Any *pAny = rGeometryItem.GetPropertyValueByName( u"Type"_ustr );
     if ( pAny )
         *pAny >>= sShapeType;
 
@@ -1133,7 +1133,7 @@ bool SdrObjCustomShape::IsDefaultGeometry( const DefaultType eDefaultType ) cons
     {
         case DefaultType::Viewbox :
         {
-            const uno::Any* pViewBox = rGeometryItem.GetPropertyValueByName( "ViewBox" );
+            const uno::Any* pViewBox = rGeometryItem.GetPropertyValueByName( u"ViewBox"_ustr );
             awt::Rectangle aViewBox;
             if (pViewBox && (*pViewBox >>= aViewBox) && pDefCustomShape)
             {
@@ -1146,7 +1146,7 @@ bool SdrObjCustomShape::IsDefaultGeometry( const DefaultType eDefaultType ) cons
 
         case DefaultType::Path :
         {
-            pAny = rGeometryItem.GetPropertyValueByName( sPath, "Coordinates" );
+            pAny = rGeometryItem.GetPropertyValueByName( sPath, u"Coordinates"_ustr );
             if (pAny && pDefCustomShape && !pDefCustomShape->pVertices.empty())
             {
                 uno::Sequence<drawing::EnhancedCustomShapeParameterPair> seqCoordinates1;
@@ -1171,7 +1171,7 @@ bool SdrObjCustomShape::IsDefaultGeometry( const DefaultType eDefaultType ) cons
 
         case DefaultType::Gluepoints :
         {
-            pAny = rGeometryItem.GetPropertyValueByName( sPath, "GluePoints" );
+            pAny = rGeometryItem.GetPropertyValueByName( sPath, u"GluePoints"_ustr );
             if (pAny && pDefCustomShape && !pDefCustomShape->pGluePoints.empty())
             {
                 uno::Sequence<drawing::EnhancedCustomShapeParameterPair> seqGluePoints1;
@@ -1197,7 +1197,7 @@ bool SdrObjCustomShape::IsDefaultGeometry( const DefaultType eDefaultType ) cons
         case DefaultType::Segments :
         {
             // Path/Segments
-            pAny = rGeometryItem.GetPropertyValueByName( sPath, "Segments" );
+            pAny = rGeometryItem.GetPropertyValueByName( sPath, u"Segments"_ustr );
             if ( pAny )
             {
                 uno::Sequence<drawing::EnhancedCustomShapeSegment> seqSegments1;
@@ -1241,7 +1241,7 @@ bool SdrObjCustomShape::IsDefaultGeometry( const DefaultType eDefaultType ) cons
 
         case DefaultType::StretchX :
         {
-            pAny = rGeometryItem.GetPropertyValueByName( sPath, "StretchX" );
+            pAny = rGeometryItem.GetPropertyValueByName( sPath, u"StretchX"_ustr );
             if ( pAny && pDefCustomShape )
             {
                 sal_Int32 nStretchX = 0;
@@ -1258,7 +1258,7 @@ bool SdrObjCustomShape::IsDefaultGeometry( const DefaultType eDefaultType ) cons
 
         case DefaultType::StretchY :
         {
-            pAny = rGeometryItem.GetPropertyValueByName( sPath, "StretchY" );
+            pAny = rGeometryItem.GetPropertyValueByName( sPath, u"StretchY"_ustr );
             if ( pAny && pDefCustomShape )
             {
                 sal_Int32 nStretchY = 0;
@@ -1275,7 +1275,7 @@ bool SdrObjCustomShape::IsDefaultGeometry( const DefaultType eDefaultType ) cons
 
         case DefaultType::Equations :
         {
-            pAny = rGeometryItem.GetPropertyValueByName( "Equations" );
+            pAny = rGeometryItem.GetPropertyValueByName( u"Equations"_ustr );
             if (pAny && pDefCustomShape && !pDefCustomShape->pCalculation.empty())
             {
                 uno::Sequence<OUString> seqEquations1;
@@ -1302,7 +1302,7 @@ bool SdrObjCustomShape::IsDefaultGeometry( const DefaultType eDefaultType ) cons
 
         case DefaultType::TextFrames :
         {
-            pAny = rGeometryItem.GetPropertyValueByName( sPath, "TextFrames" );
+            pAny = rGeometryItem.GetPropertyValueByName( sPath, u"TextFrames"_ustr );
             if (pAny && pDefCustomShape && !pDefCustomShape->pTextRect.empty())
             {
                 uno::Sequence<drawing::EnhancedCustomShapeTextFrame> seqTextFrames1;
@@ -1462,14 +1462,15 @@ void SdrObjCustomShape::SetSnapRect( const tools::Rectangle& rRect )
     SendUserCall(SdrUserCallType::Resize,aBoundRect0);
 }
 
-void SdrObjCustomShape::NbcSetLogicRect(const tools::Rectangle& rRectangle)
+void SdrObjCustomShape::NbcSetLogicRect(const tools::Rectangle& rRectangle, bool bAdaptTextMinSize)
 {
     tools::Rectangle aRectangle(rRectangle);
     ImpJustifyRect(aRectangle);
     setRectangle(aRectangle);
     InvalidateRenderGeometry();
 
-    AdaptTextMinSize();
+    if (bAdaptTextMinSize)
+        AdaptTextMinSize();
 
     SetBoundAndSnapRectsDirty();
     SetChanged();
@@ -2344,14 +2345,15 @@ bool SdrObjCustomShape::AdjustTextFrameWidthAndHeight(tools::Rectangle& rR, bool
                 {
                     Outliner& rOutliner=ImpGetDrawOutliner();
                     rOutliner.SetPaperSize(aSiz);
-                    rOutliner.SetUpdateLayout(true);
                     // TODO: add the optimization with bPortionInfoChecked again.
                     OutlinerParaObject* pOutlinerParaObject = GetOutlinerParaObject();
                     if( pOutlinerParaObject != nullptr )
                     {
+                        rOutliner.SetFixedCellHeight(
+                            GetMergedItem(SDRATTR_TEXT_USEFIXEDCELLHEIGHT).GetValue());
                         rOutliner.SetText(*pOutlinerParaObject);
-                        rOutliner.SetFixedCellHeight(GetMergedItem(SDRATTR_TEXT_USEFIXEDCELLHEIGHT).GetValue());
                     }
+                    rOutliner.SetUpdateLayout(true);
                     if ( bWdtGrow )
                     {
                         Size aSiz2(rOutliner.CalcTextSize());
@@ -2372,7 +2374,9 @@ bool SdrObjCustomShape::AdjustTextFrameWidthAndHeight(tools::Rectangle& rR, bool
                             nHgt = rR.getOpenHeight();
                         }
                     }
+                    // cleanup outliner
                     rOutliner.Clear();
+                    rOutliner.SetFixedCellHeight(false);
                 }
             }
             else
@@ -2649,7 +2653,8 @@ void SdrObjCustomShape::TakeTextAnchorRect( tools::Rectangle& rAnchorRect ) cons
     if ( GetTextBounds( rAnchorRect ) )
     {
         Point aRotateRef( maSnapRect.Center() );
-        AdjustRectToTextDistance(rAnchorRect);
+        const double fExtraTextRotation(GetExtraTextRotation());
+        AdjustRectToTextDistance(rAnchorRect, fExtraTextRotation);
 
         if ( rAnchorRect.GetWidth() < 2 )
             rAnchorRect.SetRight( rAnchorRect.Left() + 1 );   // minimal width is 2
@@ -2799,9 +2804,9 @@ void SdrObjCustomShape::TakeTextRect( SdrOutliner& rOutliner, tools::Rectangle& 
     rTextRect=tools::Rectangle(aTextPos,aTextSiz);
 }
 
-void SdrObjCustomShape::NbcSetOutlinerParaObject(std::optional<OutlinerParaObject> pTextObject)
+void SdrObjCustomShape::NbcSetOutlinerParaObject(std::optional<OutlinerParaObject> pTextObject, bool bAdjustTextFrameWidthAndHeight)
 {
-    SdrTextObj::NbcSetOutlinerParaObject( std::move(pTextObject) );
+    SdrTextObj::NbcSetOutlinerParaObject( std::move(pTextObject), bAdjustTextFrameWidthAndHeight );
     SetBoundRectDirty();
     SetBoundAndSnapRectsDirty(true);
     InvalidateRenderGeometry();
@@ -2882,11 +2887,11 @@ rtl::Reference<SdrObject> SdrObjCustomShape::DoConvertToPolyObj(bool bBezier, bo
     return pRetval;
 }
 
-void SdrObjCustomShape::InternalSetStyleSheet( SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr, bool bBroadcast )
+void SdrObjCustomShape::InternalSetStyleSheet( SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr, bool bBroadcast, bool bAdjustTextFrameWidthAndHeight )
 {
     // #i40944#
     InvalidateRenderGeometry();
-    SdrObject::InternalSetStyleSheet( pNewStyleSheet, bDontRemoveHardAttr, bBroadcast );
+    SdrObject::InternalSetStyleSheet( pNewStyleSheet, bDontRemoveHardAttr, bBroadcast, bAdjustTextFrameWidthAndHeight );
 }
 
 void SdrObjCustomShape::handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage)
@@ -2917,7 +2922,7 @@ void SdrObjCustomShape::SaveGeoData(SdrObjGeoData& rGeo) const
     rAGeo.bMirroredX = IsMirroredX();
     rAGeo.bMirroredY = IsMirroredY();
 
-    const uno::Any* pAny = GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ).GetPropertyValueByName( "AdjustmentValues" );
+    const uno::Any* pAny = GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ).GetPropertyValueByName( u"AdjustmentValues"_ustr );
     if ( pAny )
         *pAny >>= rAGeo.aAdjustmentSeq;
 }
@@ -2962,8 +2967,8 @@ void SdrObjCustomShape::AdjustToMaxRect(const tools::Rectangle& rMaxRect, bool b
     basegfx::B2DHomMatrix aMathMatrix;
     aMathMatrix = basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
             aScale,
-            basegfx::fTools::equalZero(fShearX) ? 0.0 : -fShearX,
-            basegfx::fTools::equalZero(fRotate) ? 0.0 : fRotate,
+            -fShearX,
+            fRotate,
             aTranslate);
 
     // Calculate scaling factors from size of the transformed unit polygon as ersatz for the not
@@ -2993,8 +2998,8 @@ void SdrObjCustomShape::AdjustToMaxRect(const tools::Rectangle& rMaxRect, bool b
     aMathMatrix.decompose(aScale, aTranslate, fRotate, fShearX);
     aMatrix = basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
             aScale,
-            basegfx::fTools::equalZero(fShearX) ? 0.0 : -fShearX,
-            basegfx::fTools::equalZero(fRotate) ? 0.0 : fRotate,
+            -fShearX,
+            fRotate,
             aTranslate);
 
     // Now use TRSetBaseGeometry to actually perform scale, shear, rotate and translate
@@ -3045,7 +3050,8 @@ void SdrObjCustomShape::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, 
     }
 
     // scale
-    Size aSize(FRound(fabs(aScale.getX())), FRound(fabs(aScale.getY())));
+    Size aSize(basegfx::fround<tools::Long>(fabs(aScale.getX())),
+               basegfx::fround<tools::Long>(fabs(aScale.getY())));
     // fdo#47434 We need a valid rectangle here
     if( !aSize.Height() ) aSize.setHeight( 1 );
     if( !aSize.Width() ) aSize.setWidth( 1 );
@@ -3053,9 +3059,9 @@ void SdrObjCustomShape::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, 
     SetLogicRect(aBaseRect);
 
     // Apply flipping from Matrix, which is a transformation relative to origin
-    if (basegfx::fTools::less(aScale.getX(), 0.0))
+    if (aScale.getX() < 0.0)
         Mirror(Point(0, 0), Point(0, 1000)); // mirror on the y-axis
-    if (basegfx::fTools::less(aScale.getY(), 0.0))
+    if (aScale.getY() < 0.0)
         Mirror(Point(0, 0), Point(1000, 0)); // mirror on the x-axis
 
     // shear?
@@ -3065,7 +3071,7 @@ void SdrObjCustomShape::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, 
         // #i123181# The fix for #121932# here was wrong, the trunk version does not correct the
         // mirrored shear values, neither at the object level, nor on the API or XML level. Taking
         // back the mirroring of the shear angle
-        aGeoStat.m_nShearAngle = Degree100(FRound(basegfx::rad2deg<100>(atan(fShearX))));
+        aGeoStat.m_nShearAngle = Degree100(basegfx::fround(basegfx::rad2deg<100>(atan(fShearX))));
         aGeoStat.RecalcTan();
         Shear(Point(), aGeoStat.m_nShearAngle, aGeoStat.mfTanShearAngle, false);
     }
@@ -3078,7 +3084,7 @@ void SdrObjCustomShape::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, 
         // #i78696#
         // fRotate is mathematically correct, but aGeoStat.nRotationAngle is
         // mirrored -> mirror value here
-        aGeoStat.m_nRotationAngle = NormAngle36000(Degree100(FRound(-basegfx::rad2deg<100>(fRotate))));
+        aGeoStat.m_nRotationAngle = NormAngle36000(Degree100(basegfx::fround(-basegfx::rad2deg<100>(fRotate))));
         aGeoStat.RecalcSinCos();
         Rotate(Point(), aGeoStat.m_nRotationAngle, aGeoStat.mfSinRotationAngle, aGeoStat.mfCosRotationAngle);
     }
@@ -3086,7 +3092,8 @@ void SdrObjCustomShape::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, 
     // translate?
     if(!aTranslate.equalZero())
     {
-        Move(Size(FRound(aTranslate.getX()), FRound(aTranslate.getY())));
+        Move(Size(basegfx::fround<tools::Long>(aTranslate.getX()),
+                  basegfx::fround<tools::Long>(aTranslate.getY())));
     }
 
     // Apply flipping from enhanced geometry at center of the shape.
@@ -3099,7 +3106,7 @@ void SdrObjCustomShape::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, 
     if (aScale.getX() > 2.0 && aScale.getY() > 2.0)
         aScale -= basegfx::B2DTuple(1.0, 1.0);
     basegfx::B2DHomMatrix aMathMat = basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
-                    aScale, -fShearX, basegfx::fTools::equalZero(fRotate) ? 0.0 : fRotate,
+                    aScale, -fShearX, fRotate,
                     aTranslate);
     // Use matrix to get current center
     basegfx::B2DPoint aCenter(0.5,0.5);
@@ -3107,11 +3114,11 @@ void SdrObjCustomShape::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, 
     double fCenterX = aCenter.getX();
     double fCenterY = aCenter.getY();
     if (bIsMirroredX) // vertical axis
-        Mirror(Point(FRound(fCenterX),FRound(fCenterY)),
-            Point(FRound(fCenterX), FRound(fCenterY + 1000.0)));
+        Mirror(Point(basegfx::fround<tools::Long>(fCenterX), basegfx::fround<tools::Long>(fCenterY)),
+            Point(basegfx::fround<tools::Long>(fCenterX), basegfx::fround<tools::Long>(fCenterY + 1000.0)));
     if (bIsMirroredY) // horizontal axis
-        Mirror(Point(FRound(fCenterX),FRound(fCenterY)),
-            Point(FRound(fCenterX + 1000.0), FRound(fCenterY)));
+        Mirror(Point(basegfx::fround<tools::Long>(fCenterX), basegfx::fround<tools::Long>(fCenterY)),
+            Point(basegfx::fround<tools::Long>(fCenterX + 1000.0), basegfx::fround<tools::Long>(fCenterY)));
 }
 
 // taking fObjectRotation instead of aGeo.nAngle
@@ -3196,7 +3203,7 @@ bool SdrObjCustomShape::TRGetBaseGeometry(basegfx::B2DHomMatrix& rMatrix, basegf
     rMatrix = basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
         aScale,
         basegfx::fTools::equalZero(fShearX) ? 0.0 : tan(fShearX),
-        basegfx::fTools::equalZero(fRotate) ? 0.0 : -fRotate,
+        -fRotate,
         aTranslate);
 
     return false;
@@ -3261,7 +3268,7 @@ OUString SdrObjCustomShape::GetCustomShapeName() const
     {
         OUString sShapeType;
         const SdrCustomShapeGeometryItem& rGeometryItem( GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ) );
-        const uno::Any* pAny = rGeometryItem.GetPropertyValueByName( "Type" );
+        const uno::Any* pAny = rGeometryItem.GetPropertyValueByName( u"Type"_ustr );
         if ( pAny && ( *pAny >>= sShapeType ) )
             sShapeName = EnhancedCustomShapeTypeNames::GetAccName( sShapeType );
     }

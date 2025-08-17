@@ -35,6 +35,7 @@ class SVXCORE_DLLPUBLIC SdrTextFitToSizeTypeItem final
 {
 public:
     static SfxPoolItem* CreateDefault();
+    DECLARE_ITEM_TYPE_FUNCTION(SdrTextFitToSizeTypeItem)
     SdrTextFitToSizeTypeItem(css::drawing::TextFitToSizeType const eFit = css::drawing::TextFitToSizeType_NONE)
         : SfxEnumItem(SDRATTR_TEXT_FITTOSIZE, eFit)
     {
@@ -42,13 +43,13 @@ public:
 
     SdrTextFitToSizeTypeItem(const SdrTextFitToSizeTypeItem& rItem)
         : SfxEnumItem(rItem)
-        , m_nMaxScale(rItem.GetMaxScale())
+        , mfFontScale(rItem.getFontScale())
+        , mfSpacingScale(rItem.getSpacingScale())
     {
     }
 
     virtual SdrTextFitToSizeTypeItem* Clone(SfxItemPool* pPool=nullptr) const override;
     bool operator==(const SfxPoolItem& rItem) const override;
-    virtual sal_uInt16       GetValueCount() const override;
 
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -59,10 +60,14 @@ public:
     virtual bool             GetBoolValue() const override;
     virtual void             SetBoolValue(bool bVal) override;
 
-    void SetMaxScale(double nMaxScale) { m_nMaxScale = nMaxScale; }
-    double GetMaxScale() const { return m_nMaxScale; }
+    void setFontScale(double fScale) { mfFontScale = fScale; }
+    double getFontScale() const { return mfFontScale; }
+
+    void setSpacingScale(double fScale) { mfSpacingScale = fScale; }
+    double getSpacingScale() const { return mfSpacingScale; }
 private:
-    double m_nMaxScale = 0.0;
+    double mfFontScale = 0.0;
+    double mfSpacingScale = 0.0;
 };
 
 #endif

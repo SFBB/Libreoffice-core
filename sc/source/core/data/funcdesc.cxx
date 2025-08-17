@@ -197,12 +197,12 @@ OUString ScFuncDesc::GetParamList() const
             aSig.append(maDefArgNames[nVarArgsStart]
                 + "1" + sep
                 + maDefArgNames[nVarArgsStart+1]
-                + "1" + sep
+                + (mxFuncName != "LET" ? "1" : "2") + sep
                 + " "
                 + maDefArgNames[nVarArgsStart]
                 + "2" + sep
                 + maDefArgNames[nVarArgsStart+1]
-                + "2" + sep + " ... " );
+                + (mxFuncName != "LET" ? "2" : "3") + sep + " ... " );
         }
     }
 
@@ -394,6 +394,7 @@ ScFunctionList::ScFunctionList( bool bEnglishFunctionNames )
         { SC_OPCODE_IF_ERROR, ENTRY(SC_OPCODE_IF_ERROR_ARY), 0, ID_FUNCTION_GRP_LOGIC, HID_FUNC_IFERROR, 2, { 0, 0 }, 0 },
         { SC_OPCODE_IF_NA, ENTRY(SC_OPCODE_IF_NA_ARY), 0, ID_FUNCTION_GRP_LOGIC, HID_FUNC_IFNA, 2, { 0, 0 }, 0 },
         { SC_OPCODE_CHOOSE, ENTRY(SC_OPCODE_CHOOSE_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_WAHL, VAR_ARGS+1, { 0, 0 }, 31 },
+        { SC_OPCODE_LET, ENTRY(SC_OPCODE_LET_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_LET_MS, PAIRED_VAR_ARGS + 1, { 0, 0, 0 }, 0 },
         { SC_OPCODE_AND, ENTRY(SC_OPCODE_AND_ARY), 0, ID_FUNCTION_GRP_LOGIC, HID_FUNC_UND, VAR_ARGS, { 0 }, 0 },
         { SC_OPCODE_OR, ENTRY(SC_OPCODE_OR_ARY), 0, ID_FUNCTION_GRP_LOGIC, HID_FUNC_ODER, VAR_ARGS, { 0 }, 0 },
         { SC_OPCODE_PI, ENTRY(SC_OPCODE_PI_ARY), 0, ID_FUNCTION_GRP_MATH, HID_FUNC_PI, 0, { }, 0 },
@@ -465,7 +466,7 @@ ScFunctionList::ScFunctionList( bool bEnglishFunctionNames )
         { SC_OPCODE_LOWER, ENTRY(SC_OPCODE_LOWER_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_KLEIN, 1, { 0 }, 0 },
         { SC_OPCODE_LEN, ENTRY(SC_OPCODE_LEN_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_LAENGE, 1, { 0 }, 0 },
         { SC_OPCODE_T, ENTRY(SC_OPCODE_T_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_T, 1, { 0 }, 0 },
-        { SC_OPCODE_VALUE, ENTRY(SC_OPCODE_VALUE_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_WERT, 1, { 0 }, 0 },
+        { SC_OPCODE_VALUE, ENTRY(SC_OPCODE_VALUE_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_VALUE, 1, { 0 }, 0 },
         { SC_OPCODE_CLEAN, ENTRY(SC_OPCODE_CLEAN_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_SAEUBERN, 1, { 0 }, 0 },
         { SC_OPCODE_CHAR, ENTRY(SC_OPCODE_CHAR_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_ZEICHEN, 1, { 0 }, 0 },
         { SC_OPCODE_LOG10, ENTRY(SC_OPCODE_LOG10_ARY), 0, ID_FUNCTION_GRP_MATH, HID_FUNC_LOG10, 1, { 0 }, 0 },
@@ -675,6 +676,8 @@ ScFunctionList::ScFunctionList( bool bEnglishFunctionNames )
         { SC_OPCODE_CELL, ENTRY(SC_OPCODE_CELL_ARY), 0, ID_FUNCTION_GRP_INFO, HID_FUNC_ZELLE, 2, { 0, 1 }, 0 },
         { SC_OPCODE_ISPMT, ENTRY(SC_OPCODE_ISPMT_ARY), 0, ID_FUNCTION_GRP_FINANCIAL, HID_FUNC_ISPMT, 4, { 0, 0, 0, 0 }, 0 },
         { SC_OPCODE_HYPERLINK, ENTRY(SC_OPCODE_HYPERLINK_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_HYPERLINK, 2, { 0, 1 }, 0 },
+        { SC_OPCODE_X_LOOKUP, ENTRY(SC_OPCODE_X_LOOKUP_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_XLOOKUP_MS, 6, { 0, 0, 0, 1, 1, 1 }, 0 },
+        { SC_OPCODE_X_MATCH, ENTRY(SC_OPCODE_X_MATCH_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_XMATCH_MS, 4, { 0, 0, 1, 1 }, 0 },
         { SC_OPCODE_GET_PIVOT_DATA, ENTRY(SC_OPCODE_GET_PIVOT_DATA_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_GETPIVOTDATA, VAR_ARGS+2, { 0, 0, 1 }, 0 },
         { SC_OPCODE_EUROCONVERT, ENTRY(SC_OPCODE_EUROCONVERT_ARY), 0, ID_FUNCTION_GRP_MATH, HID_FUNC_EUROCONVERT, 5, { 0, 0, 0, 1, 1 }, 0 },
         { SC_OPCODE_NUMBERVALUE, ENTRY(SC_OPCODE_NUMBERVALUE_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_NUMBERVALUE, 3, { 0, 1, 1 }, 0 },
@@ -784,7 +787,27 @@ ScFunctionList::ScFunctionList( bool bEnglishFunctionNames )
         { SC_OPCODE_SEARCHB, ENTRY(SC_OPCODE_SEARCHB_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_SEARCHB, 3, { 0, 0, 1 }, 0 },
         { SC_OPCODE_REGEX, ENTRY(SC_OPCODE_REGEX_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_REGEX, 4, { 0, 0, 1, 1 }, 0 },
         { SC_OPCODE_FOURIER, ENTRY(SC_OPCODE_FOURIER_ARY), 0, ID_FUNCTION_GRP_MATRIX, HID_FUNC_FOURIER, 5, { 0, 0, 1, 1, 1 }, 0 },
-        { SC_OPCODE_RANDBETWEEN_NV, ENTRY(SC_OPCODE_RANDBETWEEN_NV_ARY), 0, ID_FUNCTION_GRP_MATH, HID_FUNC_RANDBETWEEN_NV, 2, { 0, 0 }, 0 }
+        { SC_OPCODE_RANDBETWEEN_NV, ENTRY(SC_OPCODE_RANDBETWEEN_NV_ARY), 0, ID_FUNCTION_GRP_MATH, HID_FUNC_RANDBETWEEN_NV, 2, { 0, 0 }, 0 },
+        { SC_OPCODE_FILTER, ENTRY(SC_OPCODE_FILTER_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_FILTER_MS, 3, { 0, 0, 1 }, 0 },
+        { SC_OPCODE_SORT, ENTRY(SC_OPCODE_SORT_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_SORT_MS, 4, { 0, 1, 1, 1 }, 0 },
+        { SC_OPCODE_SORTBY, ENTRY(SC_OPCODE_SORTBY_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_SORTBY_MS, PAIRED_VAR_ARGS + 1, { 0, 0, 1 }, 0 },
+        { SC_OPCODE_MAT_SEQUENCE, ENTRY(SC_OPCODE_MAT_SEQUENCE_ARY), 0, ID_FUNCTION_GRP_MATRIX, HID_FUNC_MSEQUENCE_MS, 4, { 0, 1, 1, 1 }, 0 },
+        { SC_OPCODE_RANDARRAY, ENTRY(SC_OPCODE_RANDARRAY_ARY), 0, ID_FUNCTION_GRP_MATH, HID_FUNC_RANDARRAY_MS, 5, { 1, 1, 1, 1, 1 }, 0 },
+        { SC_OPCODE_CHOOSECOLS, ENTRY(SC_OPCODE_CHOOSECOLS_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_CHOOSECOLS_MS, VAR_ARGS + 1, { 0, 0 }, 0 },
+        { SC_OPCODE_CHOOSEROWS, ENTRY(SC_OPCODE_CHOOSEROWS_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_CHOOSEROWS_MS, VAR_ARGS + 1, { 0, 0 }, 0 },
+        { SC_OPCODE_DROP, ENTRY(SC_OPCODE_DROP_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_DROP_MS, 3, { 0, 0, 1 }, 0 },
+        { SC_OPCODE_EXPAND, ENTRY(SC_OPCODE_EXPAND_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_EXPAND_MS, 4, { 0, 0, 1, 1 }, 0 },
+        { SC_OPCODE_HSTACK, ENTRY(SC_OPCODE_HSTACK_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_HSTACK_MS, VAR_ARGS + 1, { 0, 0 }, 0 },
+        { SC_OPCODE_VSTACK, ENTRY(SC_OPCODE_VSTACK_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_VSTACK_MS, VAR_ARGS + 1, { 0, 0 }, 0 },
+        { SC_OPCODE_TAKE, ENTRY(SC_OPCODE_TAKE_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_TAKE_MS, 3, { 0, 1, 1 }, 0 },
+        { SC_OPCODE_TEXTAFTER, ENTRY(SC_OPCODE_TEXTAFTER_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_TEXTAFTER_MS, 6, { 0, 1, 1, 1, 1, 1 }, 0 },
+        { SC_OPCODE_TEXTBEFORE, ENTRY(SC_OPCODE_TEXTBEFORE_ARY), 0, ID_FUNCTION_GRP_TEXT, HID_FUNC_TEXTBEFORE_MS, 6, { 0, 1, 1, 1, 1, 1 }, 0 },
+        { SC_OPCODE_TEXTSPLIT, ENTRY(SC_OPCODE_TEXTSPLIT_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_TEXTSPLIT_MS, 6, { 0, 1, 1, 1, 1, 1 }, 0 },
+        { SC_OPCODE_TOCOL, ENTRY(SC_OPCODE_TOCOL_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_TOCOL_MS, 3, { 0, 1, 1 }, 0 },
+        { SC_OPCODE_TOROW, ENTRY(SC_OPCODE_TOROW_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_TOROW_MS, 3, { 0, 1, 1 }, 0 },
+        { SC_OPCODE_UNIQUE, ENTRY(SC_OPCODE_UNIQUE_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_UNIQUE_MS, 3, { 0, 1, 1 }, 0 },
+        { SC_OPCODE_WRAPCOLS, ENTRY(SC_OPCODE_WRAPCOLS_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_WRAPCOLS_MS, 3, { 0, 1, 1 }, 0 },
+        { SC_OPCODE_WRAPROWS, ENTRY(SC_OPCODE_WRAPROWS_ARY), 0, ID_FUNCTION_GRP_TABLE, HID_FUNC_WRAPROWS_MS, 3, { 0, 1, 1 }, 0 },
     };
 
     ScFuncDesc* pDesc = nullptr;
@@ -834,18 +857,18 @@ ScFunctionList::ScFunctionList( bool bEnglishFunctionNames )
     sal_uInt16 nNextId = SC_OPCODE_LAST_OPCODE_ID + 1; // FuncID for AddIn functions
 
     // Interpretation of AddIn list
-    OUString aDefArgNameValue   = "value";
-    OUString aDefArgNameString  = "string";
-    OUString aDefArgNameValues  = "values";
-    OUString aDefArgNameStrings = "strings";
-    OUString aDefArgNameCells   = "cells";
-    OUString aDefArgNameNone    = "none";
-    OUString aDefArgDescValue   = "a value";
-    OUString aDefArgDescString  = "a string";
-    OUString aDefArgDescValues  = "array of values";
-    OUString aDefArgDescStrings = "array of strings";
-    OUString aDefArgDescCells   = "range of cells";
-    OUString aDefArgDescNone    = "none";
+    OUString aDefArgNameValue   = u"value"_ustr;
+    OUString aDefArgNameString  = u"string"_ustr;
+    OUString aDefArgNameValues  = u"values"_ustr;
+    OUString aDefArgNameStrings = u"strings"_ustr;
+    OUString aDefArgNameCells   = u"cells"_ustr;
+    OUString aDefArgNameNone    = u"none"_ustr;
+    OUString aDefArgDescValue   = u"a value"_ustr;
+    OUString aDefArgDescString  = u"a string"_ustr;
+    OUString aDefArgDescValues  = u"array of values"_ustr;
+    OUString aDefArgDescStrings = u"array of strings"_ustr;
+    OUString aDefArgDescCells   = u"range of cells"_ustr;
+    OUString aDefArgDescNone    = u"none"_ustr;
 
     OUString aArgName, aArgDesc;
     const LegacyFuncCollection& rLegacyFuncColl = *ScGlobal::GetLegacyFuncCollection();
@@ -1031,7 +1054,7 @@ ScFunctionMgr::ScFunctionMgr()
     ScFunctionList* pFuncList /**< list of all calc functions */
         = ScGlobal::GetStarCalcFunctionList();
 
-    OSL_ENSURE( pFuncList, "Functionlist not found." );
+    assert(pFuncList && "Functionlist not found.");
     sal_uInt32 catCount[MAX_FUNCCAT] = {0};
 
     aCatLists[0].reserve(pFuncList->GetCount());
@@ -1072,7 +1095,7 @@ ScFunctionMgr::~ScFunctionMgr()
 }
 
 
-const ScFuncDesc* ScFunctionMgr::Get( sal_uInt16 nFIndex ) const
+const formula::IFunctionDescription* ScFunctionMgr::Get( sal_uInt16 nFIndex ) const
 {
     const ScFuncDesc* pDesc;
     for (pDesc = First(); pDesc; pDesc = Next())
@@ -1128,9 +1151,15 @@ const formula::IFunctionCategory* ScFunctionMgr::getCategory(sal_uInt32 nCategor
     return nullptr;
 }
 
+sal_uInt16 ScFunctionMgr::getFunctionIndex(const formula::IFunctionDescription* _pDesc) const
+{
+    const ScFuncDesc* pDesc = dynamic_cast<const ScFuncDesc*>(_pDesc);
+    return pDesc ? pDesc->nFIndex : 0;
+}
+
 void ScFunctionMgr::fillLastRecentlyUsedFunctions(::std::vector< const formula::IFunctionDescription*>& _rLastRUFunctions) const
 {
-    const ScAppOptions& rAppOpt = SC_MOD()->GetAppOptions();
+    const ScAppOptions& rAppOpt = ScModule::get()->GetAppOptions();
     sal_uInt16 nLRUFuncCount = std::min( rAppOpt.GetLRUFuncListCount(), sal_uInt16(LRU_MAX) );
     sal_uInt16* pLRUListIds = rAppOpt.GetLRUFuncList();
     _rLastRUFunctions.clear();
@@ -1142,6 +1171,13 @@ void ScFunctionMgr::fillLastRecentlyUsedFunctions(::std::vector< const formula::
             _rLastRUFunctions.push_back( Get( pLRUListIds[i] ) );
         }
     }
+}
+
+void ScFunctionMgr::fillFavouriteFunctions(std::unordered_set<sal_uInt16>& rFavouriteFunctions) const
+{
+    const ScAppOptions& rAppOpt = ScModule::get()->GetAppOptions();
+    rFavouriteFunctions.clear();
+    rFavouriteFunctions = rAppOpt.GetFavouritesList();
 }
 
 OUString ScFunctionMgr::GetCategoryName(sal_uInt32 _nCategoryNumber )
@@ -1169,6 +1205,10 @@ sal_Unicode ScFunctionMgr::getSingleToken(const formula::IFunctionManager::EToke
             return ScCompiler::GetNativeSymbolChar(ocArrayOpen);
         case eArrayClose:
             return ScCompiler::GetNativeSymbolChar(ocArrayClose);
+        case eTableRefOpen:
+            return ScCompiler::GetNativeSymbolChar(ocTableRefOpen);
+        case eTableRefClose:
+            return ScCompiler::GetNativeSymbolChar(ocTableRefClose);
     }
     return 0;
 }

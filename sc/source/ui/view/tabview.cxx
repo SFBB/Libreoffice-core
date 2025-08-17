@@ -23,6 +23,7 @@
 #include <vcl/commandevent.hxx>
 #include <vcl/help.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/cursor.hxx>
 #include <sal/log.hxx>
 #include <tools/svborder.hxx>
 #include <tools/json_writer.hxx>
@@ -40,6 +41,7 @@
 #include <tabcont.hxx>
 #include <scmod.hxx>
 #include <sc.hrc>
+#include <strings.hrc>
 #include <globstr.hrc>
 #include <scresid.hxx>
 #include <drawview.hxx>
@@ -74,11 +76,12 @@ using namespace ::com::sun::star;
 
 //  Corner-Button
 
-ScCornerButton::ScCornerButton( vcl::Window* pParent, ScViewData* pData ) :
+ScCornerButton::ScCornerButton( vcl::Window* pParent, ScViewData& rData ) :
     Window( pParent, WinBits( 0 ) ),
-    pViewData( pData )
+    rViewData( rData )
 {
-    EnableRTL( false );
+    ScCornerButton::EnableRTL( false );
+    SetQuickHelpText(ScResId(SCSTR_QHELP_SELECT_ALL_CELLS));
 }
 
 ScCornerButton::~ScCornerButton()
@@ -96,11 +99,11 @@ void ScCornerButton::Paint(vcl::RenderContext& rRenderContext, const tools::Rect
 
     Window::Paint(rRenderContext, rRect);
 
-    bool bLayoutRTL = pViewData->GetDocument().IsLayoutRTL( pViewData->GetTabNo() );
+    bool bLayoutRTL = rViewData.GetDocument().IsLayoutRTL( rViewData.GetTabNo() );
     tools::Long nDarkX = bLayoutRTL ? 0 : nPosX;
 
     //  both buttons have the same look now - only dark right/bottom lines
-    rRenderContext.SetLineColor(rStyleSettings.GetDarkShadowColor());
+    rRenderContext.SetLineColor(rStyleSettings.GetShadowColor());
     rRenderContext.DrawLine(Point(0, nPosY), Point(nPosX, nPosY));
     rRenderContext.DrawLine(Point(nDarkX, 0), Point(nDarkX, nPosY));
 }
@@ -130,11 +133,11 @@ void ScCornerButton::Resize()
 
 void ScCornerButton::MouseButtonDown( const MouseEvent& rMEvt )
 {
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     bool bDisable = pScMod->IsFormulaMode() || pScMod->IsModalMode();
     if (!bDisable)
     {
-        ScTabViewShell* pViewSh = pViewData->GetViewShell();
+        ScTabViewShell* pViewSh = rViewData.GetViewShell();
         pViewSh->SetActive();                                   // Appear and SetViewFrame
         pViewSh->ActiveGrabFocus();
 
@@ -174,14 +177,14 @@ bool lcl_HasRowOutline( const ScViewData& rViewData )
 ScTabView::ScTabView( vcl::Window* pParent, ScDocShell& rDocSh, ScTabViewShell* pViewShell ) :
     pFrameWin( pParent ),
     aViewData( rDocSh, pViewShell ),
-    aFunctionSet( &aViewData ),
-    aHdrFunc( &aViewData ),
+    aFunctionSet( aViewData ),
+    aHdrFunc( aViewData ),
     aVScrollTop( VclPtr<ScrollAdaptor>::Create( pFrameWin, false ) ),
     aVScrollBottom( VclPtr<ScrollAdaptor>::Create( pFrameWin, false ) ),
     aHScrollLeft( VclPtr<ScrollAdaptor>::Create( pFrameWin, true ) ),
     aHScrollRight( VclPtr<ScrollAdaptor>::Create( pFrameWin, true ) ),
-    aCornerButton( VclPtr<ScCornerButton>::Create( pFrameWin, &aViewData ) ),
-    aTopButton( VclPtr<ScCornerButton>::Create( pFrameWin, &aViewData ) ),
+    aCornerButton( VclPtr<ScCornerButton>::Create( pFrameWin, aViewData ) ),
+    aTopButton( VclPtr<ScCornerButton>::Create( pFrameWin, aViewData ) ),
     aScrollTimer("ScTabView aScrollTimer"),
     pTimerWindow( nullptr ),
     aExtraEditViewManager( pViewShell, pGridWin ),
@@ -218,6 +221,12 @@ ScTabView::ScTabView( vcl::Window* pParent, ScDocShell& rDocSh, ScTabViewShell* 
     bBlockRows( false ),
     mbInlineWithScrollbar( false )
 {
+    // copy settings of existing shell for this document
+    if (ScTabViewShell* pExistingViewShell = rDocSh.GetBestViewShell())
+    {
+        aViewRenderingData = pExistingViewShell->GetViewRenderingData();
+        EnableAutoSpell(pExistingViewShell->IsAutoSpell());
+    }
     Init();
 }
 
@@ -308,7 +317,7 @@ void ScTabView::DoResize( const Point& rOffset, const Size& rSize, bool bInner )
     bool bHOutline   = bOutlMode && lcl_HasColOutline(aViewData);
     bool bVOutline   = bOutlMode && lcl_HasRowOutline(aViewData);
 
-    if ( aViewData.GetDocShell()->IsPreview() )
+    if ( aViewData.GetDocShell().IsPreview() )
         bHScroll = bVScroll = bTabControl = bHeaders = bHOutline = bVOutline = false;
 
     tools::Long nBarX = 0;
@@ -386,10 +395,7 @@ void ScTabView::DoResize( const Point& rOffset, const Size& rSize, bool bInner )
                 nBarY += nScrollBarSize;
 
             nSizeY -= nBarY;
-        }
 
-        if (bHScroll) // Scrollbars horizontal
-        {
             tools::Long nSizeLt = 0;       // left scroll bar
             tools::Long nSizeRt = 0;       // right scroll bar
             tools::Long nSizeSp = 0;       // splitter
@@ -955,7 +961,7 @@ void ScTabView::SetZoomPercentFromCommand(sal_uInt16 nZoomPercent)
 {
     // scroll wheel doesn't set the AppOptions default
 
-    bool bSyncZoom = SC_MOD()->GetAppOptions().GetSynchronizeZoom();
+    bool bSyncZoom = ScModule::get()->GetAppOptions().GetSynchronizeZoom();
     SetZoomType(SvxZoomType::PERCENT, bSyncZoom);
     Fraction aFract(nZoomPercent, 100);
     SetZoom(aFract, aFract, bSyncZoom);
@@ -970,7 +976,7 @@ void ScTabView::SetZoomPercentFromCommand(sal_uInt16 nZoomPercent)
 
 bool ScTabView::ScrollCommand( const CommandEvent& rCEvt, ScSplitPos ePos )
 {
-    HideNoteMarker();
+    HideNoteOverlay();
 
     bool bDone = false;
     const CommandWheelData* pData = rCEvt.GetWheelData();
@@ -1008,9 +1014,32 @@ bool ScTabView::ScrollCommand( const CommandEvent& rCEvt, ScSplitPos ePos )
     return bDone;
 }
 
+bool ScTabView::GesturePanCommand(const CommandEvent& rCEvt)
+{
+    HideNoteOverlay();
+
+    bool bDone = false;
+    const CommandGesturePanData* pData = rCEvt.GetGesturePanData();
+    if (!pData)
+        return false;
+
+    if (aViewData.GetViewShell()->GetViewFrame().GetFrame().IsInPlace())
+        return false;
+
+    ScSplitPos ePos = aViewData.GetActivePart();
+    ScHSplitPos eHPos = WhichH(ePos);
+    ScVSplitPos eVPos = WhichV(ePos);
+    ScrollAdaptor* pHScroll = (eHPos == SC_SPLIT_LEFT) ? aHScrollLeft.get() : aHScrollRight.get();
+    ScrollAdaptor* pVScroll = (eVPos == SC_SPLIT_TOP) ? aVScrollTop.get() : aVScrollBottom.get();
+    if (pGridWin[ePos])
+        bDone = pGridWin[ePos]->HandleScrollCommand(rCEvt, pHScroll, pVScroll);
+
+    return bDone;
+}
+
 bool ScTabView::GestureZoomCommand(const CommandEvent& rCEvt)
 {
-    HideNoteMarker();
+    HideNoteOverlay();
 
     const CommandGestureZoomData* pData = rCEvt.GetGestureZoomData();
     if (!pData)
@@ -1082,6 +1111,8 @@ IMPL_LINK_NOARG(ScTabView, EndScrollHdl, const MouseEvent&, bool)
 
 void ScTabView::ScrollHdl(ScrollAdaptor* pScroll)
 {
+    bool bUpdateHorizontalScrollbars = false;
+
     bool bHoriz = ( pScroll == aHScrollLeft.get() || pScroll == aHScrollRight.get() );
     tools::Long nViewPos;
     if ( bHoriz )
@@ -1091,7 +1122,7 @@ void ScTabView::ScrollHdl(ScrollAdaptor* pScroll)
         nViewPos = aViewData.GetPosY( (pScroll == aVScrollTop.get()) ?
                                         SC_SPLIT_TOP : SC_SPLIT_BOTTOM );
 
-    bool bLayoutRTL = aViewData.GetDocument().IsLayoutRTL( aViewData.GetTabNo() );
+    bool bLayoutRTL = bHoriz && aViewData.GetDocument().IsLayoutRTL( aViewData.GetTabNo() );
 
     ScrollType eType = pScroll->GetScrollType();
     if ( eType == ScrollType::Drag )
@@ -1129,7 +1160,7 @@ void ScTabView::ScrollHdl(ScrollAdaptor* pScroll)
                 nScrollMin = aViewData.GetFixPosX();
             if ( aViewData.GetVSplitMode()==SC_SPLIT_FIX && pScroll == aVScrollBottom.get() )
                 nScrollMin = aViewData.GetFixPosY();
-            tools::Long nScrollPos = GetScrollBarPos( *pScroll ) + nScrollMin;
+            tools::Long nScrollPos = GetScrollBarPos( *pScroll, bLayoutRTL ) + nScrollMin;
 
             OUString aHelpStr;
             tools::Rectangle aRect;
@@ -1148,10 +1179,12 @@ void ScTabView::ScrollHdl(ScrollAdaptor* pScroll)
                 aHelpStr = ScResId(STR_ROW) +
                            " " + OUString::number(nScrollPos + 1);
 
+                // note that bLayoutRTL is always false here, because bLayoutRTL depends on bHoriz
+
                 // show quicktext always inside sheet area
-                aRect.SetLeft( bLayoutRTL ? (aPos.X() + aSize.Width() + 8) : (aPos.X() - 8) );
+                aRect.SetLeft(aPos.X() - 8);
                 aRect.SetTop( aMousePos.Y() );
-                nAlign       = (bLayoutRTL ? QuickHelpFlags::Left : QuickHelpFlags::Right) | QuickHelpFlags::VCenter;
+                nAlign = QuickHelpFlags::Right | QuickHelpFlags::VCenter;
             }
             aRect.SetRight( aRect.Left() );
             aRect.SetBottom( aRect.Top() );
@@ -1161,6 +1194,22 @@ void ScTabView::ScrollHdl(ScrollAdaptor* pScroll)
     }
     else
         bDragging = false;
+
+    if ( bHoriz && bLayoutRTL )
+    {
+        // change scroll type so visible/previous cells calculation below remains the same
+        switch ( eType )
+        {
+            case ScrollType::LineUp:   eType = ScrollType::LineDown; break;
+            case ScrollType::LineDown: eType = ScrollType::LineUp;   break;
+            case ScrollType::PageUp:   eType = ScrollType::PageDown; break;
+            case ScrollType::PageDown: eType = ScrollType::PageUp;   break;
+            default:
+            {
+                // added to avoid warnings
+            }
+        }
+    }
 
     tools::Long nDelta(0);
     switch ( eType )
@@ -1194,7 +1243,7 @@ void ScTabView::ScrollHdl(ScrollAdaptor* pScroll)
                 if ( aViewData.GetVSplitMode()==SC_SPLIT_FIX && pScroll == aVScrollBottom.get() )
                     nScrollMin = aViewData.GetFixPosY();
 
-                tools::Long nScrollPos = GetScrollBarPos( *pScroll ) + nScrollMin;
+                tools::Long nScrollPos = GetScrollBarPos( *pScroll, bLayoutRTL ) + nScrollMin;
                 nDelta = nScrollPos - nViewPos;
 
                 // tdf#152406 Disable anti-jitter code for scroll wheel events
@@ -1217,6 +1266,73 @@ void ScTabView::ScrollHdl(ScrollAdaptor* pScroll)
                     else
                         nDelta = 0;
                 }
+                else if ( bHoriz )
+                {
+                    // tdf#135478 Reduce sensitivity of horizontal scrollwheel
+                    // Problem: at least on macOS, swipe events are very
+                    // precise. So, when swiping at a slight angle off of
+                    // vertical, swipe events will include a small amount
+                    // of horizontal movement. Since horizontal swipe units
+                    // are measured in cell widths, these small amounts of
+                    // horizontal movement results in shifting many columns
+                    // to the right or left while swiping almost vertically.
+                    // So my hacky fix is to reduce the amount of horizontal
+                    // swipe events to roughly match the "visual distance"
+                    // of vertical swipe events.
+                    // The reduction factor is arbitrary but is set to
+                    // roughly the ratio of default cell width divided by
+                    // default cell height. This hacky fix isn't a perfect
+                    // fix, but hopefully it reduces the amount of
+                    // unexpected horizontal shifting while swiping
+                    // vertically to a tolerable amount for most users.
+                    // Note: the potential downside of doing this is that
+                    // some users might find horizontal swiping to be
+                    // slower than they are used to. If that becomes an
+                    // issue for enough users, the reduction factor may
+                    // need to be lowered to find a good balance point.
+#ifdef _WIN32
+                    static const tools::Long nHScrollReductionFactor = 3;
+#else
+                    static const tools::Long nHScrollReductionFactor = 8;
+#endif
+
+                    // tdf#161945 increase sensitivity for negative horizontal deltas
+                    // A side effect of the anti-jitter code is that it tends
+                    // to reduce the sensitivity of horizontal scroll events
+                    // towards the first column. It is particularly noticeable
+                    // with horizontal scroll events from a scrollwheel when
+                    // the view position is in column B or C. This results in
+                    // a very small delta from the anti-jitter code.
+                    // So, to balance things out, apply a constant adjustment
+                    // factor to increase the sensitivity more for small deltas
+                    // than for large deltas.
+                    static const tools::Long nHScrollNegativeDeltaAdjustmentFactor = -1;
+                    if ( nDelta < 0 )
+                        nDelta += nHScrollNegativeDeltaAdjustmentFactor;
+
+                    if ( pScroll == aHScrollLeft.get() )
+                    {
+                        mnPendingaHScrollLeftDelta += nDelta;
+                        nDelta = 0;
+                        if ( abs(mnPendingaHScrollLeftDelta) > nHScrollReductionFactor )
+                        {
+                            nDelta = mnPendingaHScrollLeftDelta / nHScrollReductionFactor;
+                            mnPendingaHScrollLeftDelta = mnPendingaHScrollLeftDelta % nHScrollReductionFactor;
+                        }
+                    }
+                    else
+                    {
+                        mnPendingaHScrollRightDelta += nDelta;
+                        nDelta = 0;
+                        if ( abs(mnPendingaHScrollRightDelta) > nHScrollReductionFactor )
+                        {
+                            nDelta = mnPendingaHScrollRightDelta / nHScrollReductionFactor;
+                            mnPendingaHScrollRightDelta = mnPendingaHScrollRightDelta % nHScrollReductionFactor;
+                        }
+                    }
+
+                    bUpdateHorizontalScrollbars = true;
+                }
 
                 nPrevDragPos = nScrollPos;
             }
@@ -1231,6 +1347,15 @@ void ScTabView::ScrollHdl(ScrollAdaptor* pScroll)
         else
             ScrollY( nDelta, (pScroll == aVScrollTop.get()) ? SC_SPLIT_TOP : SC_SPLIT_BOTTOM, bUpdate );
     }
+
+    // tdf#161945 update horizontal scrollbar position to match tab view
+    // While the fix for tdf#135478 reduces the horizontal scroll delta
+    // applied to the tab view, the horizontal scrollbar is set before
+    // that with the original delta. As a result, the horizontal scrollbar
+    // is now mispositioned so update the horizontal scrollbar position
+    // to match the position of the tab view's visible columns.
+    if ( bUpdateHorizontalScrollbars )
+        UpdateScrollBars( COLUMN_HEADER );
 }
 
 void ScTabView::ScrollX( tools::Long nDeltaX, ScHSplitPos eWhich, bool bUpdBars )
@@ -1510,7 +1635,7 @@ void ScTabView::UpdateShow()
     bool bShowH = ( aViewData.GetHSplitMode() != SC_SPLIT_NONE );
     bool bShowV = ( aViewData.GetVSplitMode() != SC_SPLIT_NONE );
 
-    if ( aViewData.GetDocShell()->IsPreview() )
+    if ( aViewData.GetDocShell().IsPreview() )
         bHScrollMode = bVScrollMode = bTabMode = bHeader = bHOutline = bVOutline = false;
 
         // create Windows
@@ -1532,14 +1657,14 @@ void ScTabView::UpdateShow()
     }
 
     if (bHOutline && !pColOutline[SC_SPLIT_LEFT])
-        pColOutline[SC_SPLIT_LEFT] = VclPtr<ScOutlineWindow>::Create( pFrameWin, SC_OUTLINE_HOR, &aViewData, SC_SPLIT_BOTTOMLEFT );
+        pColOutline[SC_SPLIT_LEFT] = VclPtr<ScOutlineWindow>::Create( pFrameWin, SC_OUTLINE_HOR, aViewData, SC_SPLIT_BOTTOMLEFT );
     if (bShowH && bHOutline && !pColOutline[SC_SPLIT_RIGHT])
-        pColOutline[SC_SPLIT_RIGHT] = VclPtr<ScOutlineWindow>::Create( pFrameWin, SC_OUTLINE_HOR, &aViewData, SC_SPLIT_BOTTOMRIGHT );
+        pColOutline[SC_SPLIT_RIGHT] = VclPtr<ScOutlineWindow>::Create( pFrameWin, SC_OUTLINE_HOR, aViewData, SC_SPLIT_BOTTOMRIGHT );
 
     if (bVOutline && !pRowOutline[SC_SPLIT_BOTTOM])
-        pRowOutline[SC_SPLIT_BOTTOM] = VclPtr<ScOutlineWindow>::Create( pFrameWin, SC_OUTLINE_VER, &aViewData, SC_SPLIT_BOTTOMLEFT );
+        pRowOutline[SC_SPLIT_BOTTOM] = VclPtr<ScOutlineWindow>::Create( pFrameWin, SC_OUTLINE_VER, aViewData, SC_SPLIT_BOTTOMLEFT );
     if (bShowV && bVOutline && !pRowOutline[SC_SPLIT_TOP])
-        pRowOutline[SC_SPLIT_TOP] = VclPtr<ScOutlineWindow>::Create( pFrameWin, SC_OUTLINE_VER, &aViewData, SC_SPLIT_TOPLEFT );
+        pRowOutline[SC_SPLIT_TOP] = VclPtr<ScOutlineWindow>::Create( pFrameWin, SC_OUTLINE_VER, aViewData, SC_SPLIT_TOPLEFT );
 
     if (bShowH && bHeader && !pColBar[SC_SPLIT_RIGHT])
         pColBar[SC_SPLIT_RIGHT] = VclPtr<ScColBar>::Create( pFrameWin, SC_SPLIT_RIGHT,
@@ -1647,11 +1772,12 @@ void ScTabView::DoHSplit(tools::Long nSplitPos)
     }
     else
     {
+        // coverity[ tainted_data_return : FALSE ] version 2023.12.2
         SCCOL nOldDelta = aViewData.GetPosX( SC_SPLIT_LEFT );
         tools::Long nLeftWidth = nSplitPos - pRowBar[SC_SPLIT_BOTTOM]->GetSizePixel().Width();
         if ( nLeftWidth < 0 ) nLeftWidth = 0;
-        SCCOL nNewDelta = nOldDelta + aViewData.CellsAtX( nOldDelta, 1, SC_SPLIT_LEFT,
-                        static_cast<sal_uInt16>(nLeftWidth) );
+        SCCOL nNewDelta = nOldDelta + aViewData.CellsAtX( nOldDelta, 1, SC_SPLIT_LEFT, nLeftWidth );
+
         ScDocument& rDoc = aViewData.GetDocument();
         if ( nNewDelta > rDoc.MaxCol() )
             nNewDelta = rDoc.MaxCol();
@@ -1666,9 +1792,7 @@ void ScTabView::DoHSplit(tools::Long nSplitPos)
 
     // Form Layer needs to know the visible part of all windows
     // that is why MapMode must already be correct here
-    for (VclPtr<ScGridWindow> & pWin : pGridWin)
-        if (pWin)
-            pWin->SetMapMode( pWin->GetDrawMapMode() );
+    SyncGridWindowMapModeFromDrawMapMode();
     SetNewVisArea();
 
     PaintGrid();
@@ -1715,15 +1839,18 @@ void ScTabView::DoVSplit(tools::Long nSplitPos)
     else
     {
         if ( aOldMode == SC_SPLIT_NONE )
+        {
+            // coverity[ tainted_data_return : FALSE ] version 2023.12.2
             nOldDelta = aViewData.GetPosY( SC_SPLIT_BOTTOM );
+        }
         else
             nOldDelta = aViewData.GetPosY( SC_SPLIT_TOP );
 
         aViewData.SetPosY( SC_SPLIT_TOP, nOldDelta );
         tools::Long nTopHeight = nSplitPos - pColBar[SC_SPLIT_LEFT]->GetSizePixel().Height();
         if ( nTopHeight < 0 ) nTopHeight = 0;
-        SCROW nNewDelta = nOldDelta + aViewData.CellsAtY( nOldDelta, 1, SC_SPLIT_TOP,
-                        static_cast<sal_uInt16>(nTopHeight) );
+        SCROW nNewDelta = nOldDelta + aViewData.CellsAtY( nOldDelta, 1, SC_SPLIT_TOP, nTopHeight );
+
         ScDocument& rDoc = aViewData.GetDocument();
         if ( nNewDelta > rDoc.MaxRow() )
             nNewDelta = rDoc.MaxRow();
@@ -1738,9 +1865,7 @@ void ScTabView::DoVSplit(tools::Long nSplitPos)
 
     // Form Layer needs to know the visible part of all windows
     // that is why MapMode must already be correct here
-    for (VclPtr<ScGridWindow> & pWin : pGridWin)
-        if (pWin)
-            pWin->SetMapMode( pWin->GetDrawMapMode() );
+    SyncGridWindowMapModeFromDrawMapMode();
     SetNewVisArea();
 
     PaintGrid();
@@ -2021,7 +2146,7 @@ void ScTabView::FreezeSplitters( bool bFreeze, SplitMethod eSplitMethod, SCCOLRO
     if ( bFreeze )
     {
         Point aWinStart = pWin->GetPosPixel();
-        aViewData.GetDocShell()->SetDocumentModified();
+        aViewData.GetDocShell().SetDocumentModified();
 
         Point aSplit;
         SCCOL nPosX = 1;
@@ -2087,8 +2212,7 @@ void ScTabView::FreezeSplitters( bool bFreeze, SplitMethod eSplitMethod, SCCOLRO
             if (eOldV != SC_SPLIT_NONE)
             {
                 nTopPos = aViewData.GetPosY(SC_SPLIT_TOP);
-                if (aViewData.GetPosY(SC_SPLIT_BOTTOM) > nBottomPos)
-                    nBottomPos = aViewData.GetPosY(SC_SPLIT_BOTTOM);
+                nBottomPos = std::max(aViewData.GetPosY(SC_SPLIT_BOTTOM), nBottomPos);
             }
             aSplit = aViewData.GetScrPos(nPosX, nPosY, ePos, true);
             if (aSplit.Y() > 0)
@@ -2158,9 +2282,7 @@ void ScTabView::FreezeSplitters( bool bFreeze, SplitMethod eSplitMethod, SCCOLRO
 
     // Form Layer needs to know the visible part of all windows
     // that is why MapMode must already be correct here
-    for (VclPtr<ScGridWindow> & p : pGridWin)
-        if (p)
-            p->SetMapMode( p->GetDrawMapMode() );
+    SyncGridWindowMapModeFromDrawMapMode();
     SetNewVisArea();
 
     RepeatResize(bUpdateFix);
@@ -2180,7 +2302,7 @@ void ScTabView::FreezeSplitters( bool bFreeze, SplitMethod eSplitMethod, SCCOLRO
 void ScTabView::RemoveSplit()
 {
     if (aViewData.GetHSplitMode() == SC_SPLIT_FIX || aViewData.GetVSplitMode() == SC_SPLIT_FIX)
-        aViewData.GetDocShell()->SetDocumentModified();
+        aViewData.GetDocShell().SetDocumentModified();
     DoHSplit( 0 );
     DoVSplit( 0 );
     RepeatResize();
@@ -2262,7 +2384,6 @@ void ScTabView::SetNewVisArea()
     for (i=0; i<4; i++)
         if (pGridWin[i] && aDrawMode[i] != aOldMode[i])
         {
-            pGridWin[i]->flushOverlayManager();     // #i79909# flush overlays before switching to edit MapMode
             pGridWin[i]->SetMapMode(aOldMode[i]);
         }
 
@@ -2275,6 +2396,22 @@ void ScTabView::SetNewVisArea()
         if (pImp)
             pImp->VisAreaChanged();
     }
+
+    if (GetViewData().HasEditView(GetViewData().GetActivePart()))
+    {
+        EditView *pEditView = GetViewData().GetEditView(GetViewData().GetActivePart());
+        vcl::Cursor *pInPlaceCrsr = pEditView->GetCursor();
+        bool bInPlaceVisCursor = pInPlaceCrsr && pInPlaceCrsr->IsVisible();
+
+        if (bInPlaceVisCursor)
+            pInPlaceCrsr->Hide();
+
+        RefeshTextEditOverlay();
+
+        if (bInPlaceVisCursor)
+            pInPlaceCrsr->Show();
+    }
+
     if (aViewData.GetViewShell()->HasAccessibilityObjects())
         aViewData.GetViewShell()->BroadcastAccessibility(SfxHint(SfxHintId::ScAccVisAreaChanged));
 }
@@ -2351,9 +2488,10 @@ void ScTabView::EnableRefInput(bool bFlag)
 
 void ScTabView::EnableAutoSpell( bool bEnable )
 {
+    const bool bWasEnabled = IsAutoSpell();
     if (bEnable)
         mpSpellCheckCxt =
-            std::make_shared<sc::SpellCheckContext>(&aViewData.GetDocument(),
+            std::make_shared<sc::SpellCheckContext>(aViewData.GetDocument(),
                                       aViewData.GetTabNo());
     else
         mpSpellCheckCxt.reset();
@@ -2365,6 +2503,20 @@ void ScTabView::EnableAutoSpell( bool bEnable )
 
         pWin->SetAutoSpellContext(mpSpellCheckCxt);
     }
+
+    if (bWasEnabled != bEnable && comphelper::LibreOfficeKit::isActive())
+    {
+        if (ScTabViewShell* pViewSh = aViewData.GetViewShell())
+        {
+            ScModelObj* pModel = comphelper::getFromUnoTunnel<ScModelObj>(pViewSh->GetCurrentDocument());
+            SfxLokHelper::notifyViewRenderState(pViewSh, pModel);
+        }
+    }
+}
+
+bool ScTabView::IsAutoSpell() const
+{
+    return static_cast<bool>(mpSpellCheckCxt);
 }
 
 void ScTabView::ResetAutoSpell()
@@ -2389,14 +2541,14 @@ void ScTabView::ResetAutoSpellForContentChange()
     }
 }
 
-void ScTabView::SetAutoSpellData( SCCOL nPosX, SCROW nPosY, const std::vector<editeng::MisspellRanges>* pRanges )
+void ScTabView::SetAutoSpellData( SCCOL nPosX, SCROW nPosY, const sc::MisspellRangeResult& rRangeResult )
 {
     for (VclPtr<ScGridWindow> & pWin: pGridWin)
     {
         if (!pWin)
             continue;
 
-        pWin->SetAutoSpellData(nPosX, nPosY, pRanges);
+        pWin->SetAutoSpellData(nPosX, nPosY, rRangeResult);
     }
 }
 
@@ -2664,8 +2816,8 @@ void lcl_ExtendTiledDimension(bool bColumn, const SCCOLROW nEnd, const SCCOLROW 
     if (nEnd <= nMaxTiledIndex - nExtra) // No need to extend.
         return;
 
-    ScDocShell* pDocSh = rViewData.GetDocShell();
-    ScModelObj* pModelObj = pDocSh ? pDocSh->GetModel() : nullptr;
+    ScDocShell& rDocSh = rViewData.GetDocShell();
+    ScModelObj* pModelObj = rDocSh.GetModel();
     Size aOldSize(0, 0);
     if (pModelObj)
         aOldSize = pModelObj->getDocumentSize();
@@ -2681,17 +2833,27 @@ void lcl_ExtendTiledDimension(bool bColumn, const SCCOLROW nEnd, const SCCOLROW 
     if (pModelObj)
         aNewSize = pModelObj->getDocumentSize();
 
+    if (pModelObj)
+    {
+        ScGridWindow* pGridWindow = rViewData.GetActiveWin();
+        if (pGridWindow)
+        {
+            Size aNewSizePx(aNewSize.Width() * rViewData.GetPPTX(), aNewSize.Height() * rViewData.GetPPTY());
+            if (aNewSizePx != pGridWindow->GetOutputSizePixel())
+                pGridWindow->SetOutputSizePixel(aNewSizePx);
+        }
+    }
+
     if (aOldSize == aNewSize)
         return;
 
-    if (!pDocSh)
-        return;
-
     // New area extended to the right/bottom of the sheet after last col/row
+    tools::Rectangle aNewArea(Point(0, 0), aNewSize);
     // excluding overlapping area with aNewArea
-    tools::Rectangle aNewArea = bColumn ?
-        tools::Rectangle(aOldSize.getWidth(), 0, aNewSize.getWidth(), aNewSize.getHeight()):
-        tools::Rectangle(0, aOldSize.getHeight(), aNewSize.getWidth(), aNewSize.getHeight());
+    if (bColumn)
+        aNewArea.SetLeft(aOldSize.getWidth());
+    else
+        aNewArea.SetTop(aOldSize.getHeight());
 
     // Only invalidate if spreadsheet has extended to the right or bottom
     if ((bColumn && aNewArea.getOpenWidth()) || (!bColumn && aNewArea.getOpenHeight()))
@@ -2890,7 +3052,7 @@ void ScTabView::getRowColumnHeaders(const tools::Rectangle& rRectangle, tools::J
         if (nStartCol != nEndCol)
         {
             auto node = rJsonWriter.startStruct();
-            rJsonWriter.put("text", static_cast<sal_Int64>(nStartCol + 1));
+            rJsonWriter.put("text", static_cast<sal_Int64>(nStartCol) + 1);
             rJsonWriter.put("size", nTotalPixels);
             rJsonWriter.put("groupLevels", static_cast<sal_Int64>(nColGroupDepth));
         }

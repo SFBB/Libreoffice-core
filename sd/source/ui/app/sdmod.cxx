@@ -42,6 +42,10 @@
 #include <DrawDocShell.hxx>
 #include <drawdoc.hxx>
 #include <errhdl.hrc>
+#include <unotools/syslocale.hxx>
+
+#include <officecfg/Office/Draw.hxx>
+#include <officecfg/Office/Impress.hxx>
 
 #define ShellClass_SdModule
 #include <sdslots.hxx>
@@ -65,7 +69,7 @@ SdModule::SdModule(SfxObjectFactory* pFact1, SfxObjectFactory* pFact2 )
     mbEventListenerAdded(false),
     mpColorConfig(new svtools::ColorConfig)
 {
-    SetName( "StarDraw" );  // Do not translate!
+    SetName( u"StarDraw"_ustr );  // Do not translate!
     pSearchItem.reset( new SvxSearchItem(SID_SEARCH_ITEM) );
     pSearchItem->SetAppFlag(SvxSearchApp::DRAW);
     StartListening( *SfxGetpApp() );
@@ -82,12 +86,12 @@ SdModule::SdModule(SfxObjectFactory* pFact1, SfxObjectFactory* pFact2 )
 
 OUString SdResId(TranslateId aId)
 {
-    return Translate::get(aId, SD_MOD()->GetResLocale());
+    return Translate::get(aId, SdModule::get()->GetResLocale());
 }
 
 OUString SdResId(TranslateNId aContextSingularPlural, int nCardinality)
 {
-    return Translate::nget(aContextSingularPlural, nCardinality, SD_MOD()->GetResLocale());
+    return Translate::nget(aContextSingularPlural, nCardinality, SdModule::get()->GetResLocale());
 }
 
 // Dtor
@@ -143,61 +147,20 @@ SdOptions* SdModule::GetSdOptions(DocumentType eDocType)
     }
     if( pOptions )
     {
-        sal_uInt16 nMetric = pOptions->GetMetric();
-
-        ::sd::DrawDocShell* pDocSh = dynamic_cast< ::sd::DrawDocShell *>( SfxObjectShell::Current() );
-        SdDrawDocument* pDoc = nullptr;
-        if (pDocSh)
-            pDoc = pDocSh->GetDoc();
-
-        if( nMetric != 0xffff && pDoc && eDocType == pDoc->GetDocumentType() )
-            PutItem( SfxUInt16Item( SID_ATTR_METRIC, nMetric ) );
+        SvtSysLocale aSysLocale;
+        if (eDocType == DocumentType::Impress)
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                PutItem( SfxUInt16Item( SID_ATTR_METRIC, officecfg::Office::Impress::Layout::Other::MeasureUnit::Metric::get() ) );
+            else
+                PutItem( SfxUInt16Item( SID_ATTR_METRIC, officecfg::Office::Impress::Layout::Other::MeasureUnit::NonMetric::get() ) );
+        else
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                PutItem( SfxUInt16Item( SID_ATTR_METRIC, officecfg::Office::Draw::Layout::Other::MeasureUnit::Metric::get() ) );
+            else
+                PutItem( SfxUInt16Item( SID_ATTR_METRIC, officecfg::Office::Draw::Layout::Other::MeasureUnit::NonMetric::get() ) );
     }
 
     return pOptions;
-}
-
-/**
- * Open and return option stream for internal options;
- * if the stream is opened for reading but does not exist, an 'empty'
- * RefObject is returned
- */
-tools::SvRef<SotStorageStream> SdModule::GetOptionStream( std::u16string_view rOptionName,
-                                              SdOptionStreamMode eMode )
-{
-    ::sd::DrawDocShell*     pDocSh = dynamic_cast< ::sd::DrawDocShell *>( SfxObjectShell::Current() );
-    tools::SvRef<SotStorageStream>  xStm;
-
-    if( pDocSh )
-    {
-        DocumentType    eType = pDocSh->GetDoc()->GetDocumentType();
-
-        if( !xOptionStorage.is() )
-        {
-            INetURLObject aURL( SvtPathOptions().GetUserConfigPath() );
-
-            aURL.Append( u"drawing.cfg" );
-
-            std::unique_ptr<SvStream> pStm = ::utl::UcbStreamHelper::CreateStream( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), StreamMode::READWRITE );
-
-            if( pStm )
-                xOptionStorage = new SotStorage( pStm.release(), true );
-        }
-
-        OUString        aStmName;
-
-        if( DocumentType::Draw == eType )
-            aStmName = "Draw_";
-        else
-            aStmName = "Impress_";
-
-        aStmName += rOptionName;
-
-        if( SdOptionStreamMode::Store == eMode || xOptionStorage->IsContained( aStmName ) )
-            xStm = xOptionStorage->OpenSotStream( aStmName );
-    }
-
-    return xStm;
 }
 
 SvNumberFormatter* SdModule::GetNumberFormatter()

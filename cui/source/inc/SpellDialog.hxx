@@ -71,6 +71,7 @@ private:
 
 protected:
     virtual bool    KeyInput( const KeyEvent& rKEvt ) override;
+    virtual void    StyleUpdated() override;
 
 public:
     SentenceEditWindow_Impl(std::unique_ptr<weld::ScrolledWindow> xScrolledWindow);
@@ -120,9 +121,10 @@ public:
     void            MoveErrorEnd(tools::Long nOffset);
 
     void            ResetIgnoreErrorsAt()   { m_aIgnoreErrorsAt.clear(); }
+
+    void            SetDocumentColor(weld::DrawingArea* pDrawingArea);
 };
 
-// class SvxSpellDialog ---------------------------------------------
 class SpellDialogChildWindow;
 
 class SpellDialog : public SfxModelessDialogController
@@ -137,7 +139,6 @@ private:
     OUString        m_sTitleSpellingGrammar;
 
     Link<SpellUndoAction_Impl&,void> aDialogUndoLink;
-    ImplSVEvent *   m_pInitHdlEvent;
     bool            bFocusLocked;
 
     svx::SpellDialogChildWindow& rParent;
@@ -146,6 +147,8 @@ private:
     std::unique_ptr<SpellDialog_Impl> pImpl;
     css::uno::Reference<
         css::linguistic2::XSpellChecker1 >     xSpell;
+
+    std::unordered_map<OUString, OUString> m_aDictIdToName;
 
     std::unique_ptr<weld::Label> m_xAltTitle;
     std::unique_ptr<weld::Label> m_xResumeFT;
@@ -189,13 +192,10 @@ private:
     DECL_LINK(LanguageSelectHdl, weld::ComboBox&, void);
     DECL_LINK(DialogUndoHdl, SpellUndoAction_Impl&, void);
 
-    DECL_LINK(InitHdl, void*, void);
-
     void            AddToDictionaryExecute(const OUString& rItemId);
     void            StartSpellOptDlg_Impl();
     int             InitUserDicts();
     void            UpdateBoxes_Impl(bool bCallFromSelectHdl = false);
-    void            Init_Impl();
     void            SpellContinue_Impl(std::unique_ptr<UndoChangeGroupGuard>* pGuard = nullptr, bool UseSavedSentence = false, bool bIgnoreCurrentError = false );
     void            LockFocusChanges( bool bLock ) {bFocusLocked = bLock;}
     void            ToplevelFocusChanged();
@@ -221,6 +221,10 @@ public:
         weld::Window * pParent,
         SfxBindings* pBindings);
     virtual ~SpellDialog() override;
+
+    /* Initialize, to be called after the constructor to prevent virtual calls
+       from a constructor. */
+    void Initialize();
 
     virtual void    Activate() override;
     virtual void    Deactivate() override;

@@ -22,19 +22,19 @@
 
 #include "txtfld.hxx"
 
-namespace sw::mark { class IMark; }
+namespace sw::mark { class AnnotationMark; }
 
 class SwTextAnnotationField final : public SwTextField
 {
 public:
     SwTextAnnotationField(
-        SwFormatField & rAttr,
+        const SfxPoolItemHolder& rAttr,
         sal_Int32 const nStart,
         bool const bInClipboard );
 
     virtual ~SwTextAnnotationField() override;
 
-    ::sw::mark::IMark* GetAnnotationMark() const;
+    ::sw::mark::AnnotationMark* GetAnnotationMark() const;
 };
 
 #endif

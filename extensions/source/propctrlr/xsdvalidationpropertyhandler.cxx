@@ -56,9 +56,7 @@ namespace pcr
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::xforms;
     using namespace ::com::sun::star::xsd;
-    using namespace ::com::sun::star::script;
     using namespace ::com::sun::star::inspection;
 
     using ::com::sun::star::beans::PropertyAttribute::MAYBEVOID;
@@ -79,13 +77,13 @@ namespace pcr
 
     OUString XSDValidationPropertyHandler::getImplementationName(  )
     {
-        return "com.sun.star.comp.extensions.XSDValidationPropertyHandler";
+        return u"com.sun.star.comp.extensions.XSDValidationPropertyHandler"_ustr;
     }
 
 
     Sequence< OUString > XSDValidationPropertyHandler::getSupportedServiceNames(  )
     {
-        return{ "com.sun.star.form.inspection.XSDValidationPropertyHandler" };
+        return{ u"com.sun.star.form.inspection.XSDValidationPropertyHandler"_ustr };
     }
 
 
@@ -600,15 +598,10 @@ namespace pcr
                 PROPERTY_XSD_MIN_EXCLUSIVE_DATE_TIME
             };
 
-            size_t i=0;
-            const OUString* pLoop = nullptr;
-            for ( i = 0, pLoop = aFacets;
-                  i < SAL_N_ELEMENTS( aFacets );
-                  ++i, ++pLoop
-                )
+            for ( const auto& rFacet : aFacets)
             {
-                showPropertyUI( _rxInspectorUI, *pLoop, xDataType.is() && xDataType->hasFacet( *pLoop ) );
-                _rxInspectorUI->enablePropertyUI( *pLoop, !bIsBasicType );
+                showPropertyUI( _rxInspectorUI, rFacet, xDataType.is() && xDataType->hasFacet( rFacet ) );
+                _rxInspectorUI->enablePropertyUI( rFacet, !bIsBasicType );
             }
         }
         break;

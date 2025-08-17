@@ -59,7 +59,7 @@ static tools::Long SwIncrement( tools::Long nA, tools::Long nAdd )
 static tools::Long SwDecrement( tools::Long nA, tools::Long nSub )
     { return nA - nSub; }
 
-static SwRectFnCollection aHorizontal = {
+const SwRectFnCollection aHorizontal = {
     /*.fnGetTop =*/&SwRect::Top_,
     /*.fnGetBottom =*/&SwRect::Bottom_,
     /*.fnGetLeft =*/&SwRect::Left_,
@@ -114,7 +114,7 @@ static SwRectFnCollection aHorizontal = {
     /*.fnSetTopAndHeight =*/&SwRect::SetTopAndHeight
 };
 
-static SwRectFnCollection aVertical = {
+const SwRectFnCollection aVertical = {
     /*.fnGetTop =*/&SwRect::Right_,
     /*.fnGetBottom =*/&SwRect::Left_,
     /*.fnGetLeft =*/&SwRect::Top_,
@@ -169,7 +169,7 @@ static SwRectFnCollection aVertical = {
     /*.fnSetTopAndHeight =*/&SwRect::SetRightAndWidth
 };
 
-static SwRectFnCollection aVerticalLeftToRight = {
+const SwRectFnCollection aVerticalLeftToRight = {
     /*.fnGetTop =*/&SwRect::Left_,
     /*.fnGetBottom =*/&SwRect::Right_,
     /*.fnGetLeft =*/&SwRect::Top_,
@@ -229,7 +229,7 @@ static SwRectFnCollection aVerticalLeftToRight = {
  * This means logical top is physical left, bottom is right, left is bottom,
  * finally right is top. Values map from logical to physical.
  */
-static SwRectFnCollection aVerticalLeftToRightBottomToTop = {
+const SwRectFnCollection aVerticalLeftToRightBottomToTop = {
     /*.fnGetTop =*/&SwRect::Left_,
     /*.fnGetBottom =*/&SwRect::Right_,
     /*.fnGetLeft =*/&SwRect::Bottom_,
@@ -284,10 +284,10 @@ static SwRectFnCollection aVerticalLeftToRightBottomToTop = {
     /*.fnSetTopAndHeight =*/&SwRect::SetLeftAndWidth
 };
 
-SwRectFn fnRectHori = &aHorizontal;
-SwRectFn fnRectVert = &aVertical;
-SwRectFn fnRectVertL2R = &aVerticalLeftToRight;
-SwRectFn fnRectVertL2RB2T = &aVerticalLeftToRightBottomToTop;
+const SwRectFn fnRectHori = &aHorizontal;
+const SwRectFn fnRectVert = &aVertical;
+const SwRectFn fnRectVertL2R = &aVerticalLeftToRight;
+const SwRectFn fnRectVertL2RB2T = &aVerticalLeftToRightBottomToTop;
 
 // #i65250#
 sal_uInt32 SwFrameAreaDefinition::snLastFrameId=0;
@@ -323,7 +323,7 @@ void FrameFinit()
 
 CurrShell::CurrShell( SwViewShell *pNew )
 {
-    OSL_ENSURE( pNew, "insert 0-Shell?" );
+    assert(pNew && "insert 0-Shell?");
     pRoot = pNew->GetLayout();
     if ( pRoot )
     {
@@ -398,8 +398,8 @@ void InitCurrShells( SwRootFrame *pRoot )
 |*      the passed FrameFormat.
 |*/
 SwRootFrame::SwRootFrame( SwFrameFormat *pFormat, SwViewShell * pSh ) :
-    SwLayoutFrame( pFormat->GetDoc()->MakeFrameFormat(
-        "Root", pFormat ), nullptr ),
+    SwLayoutFrame( pFormat->GetDoc().MakeFrameFormat(
+        UIName(u"Root"_ustr), pFormat ), nullptr ),
     mnViewWidth( -1 ),
     mnColumns( 0 ),
     mbBookMode( false ),
@@ -415,11 +415,11 @@ SwRootFrame::SwRootFrame( SwFrameFormat *pFormat, SwViewShell * pSh ) :
     mbIsNewLayout( true ),
     mbCallbackActionEnabled ( false ),
     mbLayoutFreezed ( false ),
-    mbHideRedlines(pFormat->GetDoc()->GetDocumentRedlineManager().IsHideRedlines()),
+    mbHideRedlines(pFormat->GetDoc().GetDocumentRedlineManager().IsHideRedlines()),
     m_FieldmarkMode(pSh->GetViewOptions()->IsFieldName()
             ? sw::FieldmarkMode::ShowCommand
             : sw::FieldmarkMode::ShowResult),
-    m_ParagraphBreakMode(pSh->GetViewOptions()->IsParagraph()
+    m_ParagraphBreakMode(sw::IsShowHiddenChars(pSh)
             ? sw::ParagraphBreakMode::Shown
             : sw::ParagraphBreakMode::Hidden),
     mnBrowseWidth(MIN_BROWSE_WIDTH),
@@ -463,9 +463,9 @@ void SwRootFrame::Init( SwFrameFormat* pFormat )
     // First, initialize some stuff, then get hold of the first
     // node (which will be needed for the PageDesc).
 
-    SwDoc* pDoc = pFormat->GetDoc();
-    SwNodeIndex aIndex( *pDoc->GetNodes().GetEndOfContent().StartOfSectionNode() );
-    SwContentNode *pNode = pDoc->GetNodes().GoNextSection( &aIndex, true, false );
+    SwDoc& rDoc = pFormat->GetDoc();
+    SwNodeIndex aIndex( *rDoc.GetNodes().GetEndOfContent().StartOfSectionNode() );
+    SwContentNode* pNode = SwNodes::GoNextSection(&aIndex, true, false);
     // #123067# pNode = 0 can really happen
     SwTableNode *pTableNd= pNode ? pNode->FindTableNode() : nullptr;
 
@@ -494,7 +494,7 @@ void SwRootFrame::Init( SwFrameFormat* pFormat )
     else
         mbIsVirtPageNum = false;
     if ( !pDesc )
-        pDesc = &pDoc->GetPageDesc( 0 );
+        pDesc = &rDoc.GetPageDesc( 0 );
 
     // Create a page and put it in the layout
     // The first page is always a right-page and always a first-page
@@ -507,8 +507,8 @@ void SwRootFrame::Init( SwFrameFormat* pFormat )
     while( pLay->Lower() )
         pLay = static_cast<SwLayoutFrame*>(pLay->Lower());
 
-    SwNodeIndex aTmp( *pDoc->GetNodes().GetEndOfContent().StartOfSectionNode(), 1 );
-    ::InsertCnt_( pLay, pDoc, aTmp.GetIndex(), true );
+    SwNodeIndex aTmp( *rDoc.GetNodes().GetEndOfContent().StartOfSectionNode(), 1 );
+    ::InsertCnt_( pLay, rDoc, aTmp.GetIndex(), true );
 
     // tdf#156077 create all pages for at-page anchored flys now because all
     // these flys must be attached to some page when Init() is finished
@@ -538,11 +538,11 @@ void SwRootFrame::DestroyImpl()
     SwFrameFormat *pRegisteredInNonConst = static_cast<SwFrameFormat*>(GetDep());
     if ( pRegisteredInNonConst )
     {
-        SwDoc *pDoc = pRegisteredInNonConst->GetDoc();
-        pDoc->DelFrameFormat( pRegisteredInNonConst );
+        SwDoc& rDoc = pRegisteredInNonConst->GetDoc();
+        rDoc.DelFrameFormat( pRegisteredInNonConst );
         // do this before calling RemoveFootnotes() because footnotes
         // can contain anchored objects
-        pDoc->GetDocumentLayoutManager().ClearSwLayouterEntries();
+        rDoc.GetDocumentLayoutManager().ClearSwLayouterEntries();
     }
 
     mpDestroy.reset();

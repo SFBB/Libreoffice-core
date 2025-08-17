@@ -26,7 +26,6 @@
 #include <unotools/resmgr.hxx>
 #include <sal/log.hxx>
 
-#include <configsettings.hxx>
 #include <vcl/QueueInfo.hxx>
 #include <vcl/cvtgrf.hxx>
 #include <vcl/dockwin.hxx>
@@ -38,27 +37,26 @@
 #include <vcl/virdev.hxx>
 #include <vcl/wrkwin.hxx>
 #include <vcl/uitest/logger.hxx>
+
+#include <bitmap/BlendFrameCache.hxx>
 #include <salframe.hxx>
 #include <scrwnd.hxx>
 #include <helpwin.hxx>
 #include <vcl/toolkit/dialog.hxx>
 #include <salinst.hxx>
 #include <salgdi.hxx>
+#include <svcache.hxx>
 #include <svdata.hxx>
 #include <salsys.hxx>
 #include <windowdev.hxx>
 #include <units.hrc>
 #include <print.h>
 
-#include <com/sun/star/accessibility/MSAAService.hpp>
-
 #include <config_features.h>
 #include <basegfx/utils/systemdependentdata.hxx>
 #include <mutex>
 
 using namespace com::sun::star::uno;
-using namespace com::sun::star::lang;
-using namespace com::sun::star::awt;
 
 namespace
 {
@@ -91,8 +89,6 @@ void ImplDeInitSVData()
     ImplSVData* pSVData = ImplGetSVData();
 
     // delete global instance data
-    pSVData->mpSettingsConfigItem.reset();
-
     pSVData->mpDockingManager.reset();
 
     pSVData->maCtrlData.maFieldUnitStrings.clear();
@@ -102,7 +98,7 @@ void ImplDeInitSVData()
 
 namespace
 {
-    typedef ::std::map< basegfx::SystemDependentData_SharedPtr, sal_uInt32 > EntryMap;
+    typedef ::std::unordered_map< basegfx::SystemDependentData_SharedPtr, sal_uInt32 > EntryMap;
 
     class SystemDependentDataBuffer final : public basegfx::SystemDependentDataManager
     {
@@ -144,13 +140,26 @@ namespace
 
         void endUsage(basegfx::SystemDependentData_SharedPtr& rData) override
         {
-            std::unique_lock aGuard(m_aMutex);
-            EntryMap::iterator aFound(maEntries.find(rData));
+            // tdf#163428 prepare space for entry to hold to avoid early deletion
+            basegfx::SystemDependentData_SharedPtr aToBeDeletedEntry;
 
-            if(aFound != maEntries.end())
             {
-                maEntries.erase(aFound);
+                // lock m_aMutex in own scope
+                std::unique_lock aGuard(m_aMutex);
+                EntryMap::iterator aFound(maEntries.find(rData));
+
+                if(aFound != maEntries.end())
+                {
+                    // tdf#163428 ensure to hold/not delete entry while m_aMutex is locked
+                    aToBeDeletedEntry = aFound->first;
+
+                    // remove from list
+                    maEntries.erase(aFound);
+                }
             }
+
+            // tdf#163428  aToBeDeletedEntry will be destructed, thus the
+            // entry referenced by SharedPtr may be deleted now
         }
 
         void touchUsage(basegfx::SystemDependentData_SharedPtr& rData) override
@@ -166,38 +175,75 @@ namespace
 
         void flushAll() override
         {
-            std::unique_lock aGuard(m_aMutex);
-
-            if(maTimer)
+            EntryMap aTmpEntries;
             {
-                maTimer->Stop();
-                maTimer.reset();
-            }
+                std::unique_lock aGuard(m_aMutex);
 
-            maEntries.clear();
+                if(maTimer)
+                {
+                    maTimer->Stop();
+                    maTimer.reset();
+                }
+
+                aTmpEntries = std::move(maEntries);
+            }
+            // we need to destruct the entries outside the lock, because
+            // we might call back into endUsage() and that will take the lock again and deadlock.
+            aTmpEntries.clear();
         }
     };
 
     IMPL_LINK_NOARG(SystemDependentDataBuffer, implTimeoutHdl, Timer *, void)
     {
-        std::unique_lock aGuard(m_aMutex);
-        EntryMap::iterator aIter(maEntries.begin());
+        // tdf#163428 prepare a temporary list for SystemDependentData_SharedPtr
+        // entries that need to be removed from the unordered_map, but do not need
+        // locking m_aMutex
+        ::std::vector<basegfx::SystemDependentData_SharedPtr> aToBeDeletedEntries;
 
-        while(aIter != maEntries.end())
         {
-            if(aIter->second)
+            // lock m_aMutex in own scope
+            std::unique_lock aGuard(m_aMutex);
+            EntryMap::iterator aIter(maEntries.begin());
+
+            while(aIter != maEntries.end())
             {
-                aIter->second--;
-                ++aIter;
+                if(aIter->second)
+                {
+                    aIter->second--;
+                    ++aIter;
+                }
+                else
+                {
+                    // tdf#163428 Do not potentially directly delete SystemDependentData_SharedPtr
+                    // entries in the unordered_map (maEntries). That can/would happen when the shared_ptr
+                    // has only one reference left. This can cause problems, e.g. we have
+                    // BufferedData_ModifiedBitmapEx which can contain a Bitmap with added
+                    // DataBuffers itself, thus deleting this here *directly* would trigger e.g.
+                    // endUsage above. That would then block when we would still hold m_aMutex.
+                    // This can potentially be the case with other derivations of
+                    // basegfx::SystemDependentData, too.
+                    // To avoid this, protect the part that needs protection by the m_aMutex, that
+                    // is the modification of the unordered_map itself. Cleaning up the list entries can be
+                    // done after this, without holding the lock.
+                    // Thus, remember the SystemDependentData_SharedPtr in a temporary list by adding
+                    // a reference/shared_ptr to it to guarantee it gets not deleted when it gets removed
+                    // from the unordered_map.
+                    // Anyways, only locking while manipulating the list is better, destruction of
+                    // objects may be expensive and hold m_aMutex longer than necessary.
+                    aToBeDeletedEntries.push_back(aIter->first);
+
+                    // remove from list. This decrements the shared_ptr, but delete is avoided
+                    aIter = maEntries.erase(aIter);
+                }
             }
-            else
-            {
-                aIter = maEntries.erase(aIter);
-            }
+
+            if (maEntries.empty())
+                maTimer->Stop();
         }
 
-        if (maEntries.empty())
-            maTimer->Stop();
+        // tdf#163428 here aToBeDeletedEntries will be destroyed, the entries will be
+        // decremented and potentially deleted. These are of type SystemDependentData_SharedPtr,
+        // so we do not need to do anything explicitly here
     }
 }
 
@@ -235,7 +281,7 @@ vcl::Window *ImplGetDefaultContextWindow()
                 SAL_INFO( "vcl", "ImplGetDefaultWindow(): No AppWindow" );
 
                 pSVData->mpDefaultWin = VclPtr<WorkWindow>::Create(nullptr, WB_DEFAULTWIN);
-                pSVData->mpDefaultWin->SetText( "VCL ImplGetDefaultWindow" );
+                pSVData->mpDefaultWin->SetText( u"VCL ImplGetDefaultWindow"_ustr );
             }
             catch (const css::uno::Exception&)
             {
@@ -322,48 +368,6 @@ DockingManager* ImplGetDockingManager()
     return pSVData->mpDockingManager.get();
 }
 
-BlendFrameCache* ImplGetBlendFrameCache()
-{
-    ImplSVData* pSVData = ImplGetSVData();
-    if ( !pSVData->mpBlendFrameCache)
-        pSVData->mpBlendFrameCache.reset( new BlendFrameCache() );
-
-    return pSVData->mpBlendFrameCache.get();
-}
-
-#ifdef _WIN32
-bool ImplInitAccessBridge()
-{
-    ImplSVData* pSVData = ImplGetSVData();
-    if( ! pSVData->mxAccessBridge.is() )
-    {
-        css::uno::Reference< XComponentContext > xContext(comphelper::getProcessComponentContext());
-
-        if (!HasAtHook() && !getenv("SAL_FORCE_IACCESSIBLE2"))
-        {
-            SAL_INFO("vcl", "Apparently no running AT -> "
-                     "not enabling IAccessible2 integration");
-        }
-        else
-        {
-            try {
-                 pSVData->mxAccessBridge
-                     = css::accessibility::MSAAService::create(xContext);
-                 SAL_INFO("vcl", "got IAccessible2 bridge");
-                 return true;
-             } catch (css::uno::DeploymentException &) {
-                 TOOLS_WARN_EXCEPTION(
-                    "vcl",
-                    "got no IAccessible2 bridge");
-                 return false;
-             }
-        }
-    }
-
-    return true;
-}
-#endif
-
 void LocaleConfigurationListener::ConfigurationChanged( utl::ConfigurationBroadcaster*, ConfigurationHints nHint )
 {
     AllSettings::LocaleSettingsChanged( nHint );
@@ -418,6 +422,16 @@ ImplSVData::ImplSVData()
     mpWinData = &private_aImplSVWinData::get();
 }
 
+void ImplSVData::registerCacheOwner(CacheOwner& rCacheOwner)
+{
+    maCacheOwners.insert(&rCacheOwner);
+}
+
+void ImplSVData::deregisterCacheOwner(CacheOwner& rCacheOwner)
+{
+    maCacheOwners.erase(&rCacheOwner);
+}
+
 void ImplSVData::dropCaches()
 {
     // we are iterating over a map and doing erase while inside a loop which is doing erase
@@ -427,6 +441,22 @@ void ImplSVData::dropCaches()
 
     maGDIData.maThemeDrawCommandsCache.clear();
     maGDIData.maThemeImageCache.clear();
+    mpBlendFrameCache.reset();
+
+    // copy, some caches self-delete on emptying, e.g. SwOLELRUCache
+    auto aCacheOwners = maCacheOwners;
+    bool bAllCachesDropped = true;
+    for (CacheOwner* pCacheOwner : aCacheOwners)
+    {
+        bool bCacheDropped = pCacheOwner->dropCaches();
+        SAL_WARN_IF(!bCacheDropped, "vcl", "Cache " << pCacheOwner->getCacheName() << " drop failed");
+        bAllCachesDropped &= bCacheDropped;
+    }
+
+#if defined __cpp_lib_memory_resource
+    assert(!bAllCachesDropped || CacheMemory::GetMemoryResource().GetAllocatedPages() == 0);
+#endif
+    (void)bAllCachesDropped;
 }
 
 void ImplSVData::dumpState(rtl::OStringBuffer &rState)
@@ -436,13 +466,25 @@ void ImplSVData::dumpState(rtl::OStringBuffer &rState)
     rState.append("\t items:");
 
     for (auto it = maGDIData.maScaleCache.begin();
-         it != maGDIData.maScaleCache.begin(); ++it)
+         it != maGDIData.maScaleCache.end(); ++it)
     {
         rState.append("\n\t");
         rState.append(static_cast<sal_Int32>(it->first.maDestSize.Width()));
         rState.append("x");
         rState.append(static_cast<sal_Int32>(it->first.maDestSize.Height()));
     }
+
+    if (mpBlendFrameCache)
+    {
+        rState.append("\nBlendFrameCache:");
+        rState.append("\n\t");
+        rState.append(static_cast<sal_Int32>(mpBlendFrameCache->m_aLastSize.Width()));
+        rState.append("x");
+        rState.append(static_cast<sal_Int32>(mpBlendFrameCache->m_aLastSize.Height()));
+    }
+
+    for (CacheOwner* pCacheOwner : maCacheOwners)
+        pCacheOwner->dumpState(rState);
 }
 
 ImplSVHelpData* CreateSVHelpData()

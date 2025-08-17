@@ -26,7 +26,6 @@
 #include <com/sun/star/drawing/Direction3D.hpp>
 #include <o3tl/safeint.hxx>
 #include <svx/xtable.hxx>
-#include <svl/itempool.hxx>
 #include <svtools/ctrltool.hxx>
 #include <vcl/svapp.hxx>
 #include <svx/svdobj.hxx>
@@ -147,7 +146,6 @@ Graphic ViewElementListProvider::GetSymbolGraphic( sal_Int32 nStandardSymbol, co
     std::unique_ptr<SdrModel> pModel(
         new SdrModel());
 
-    pModel->GetItemPool().FreezeIdRanges();
     rtl::Reference<SdrPage> pPage = new SdrPage( *pModel, false );
     pPage->SetSize(Size(1000,1000));
     pModel->InsertPage( pPage.get(), 0 );

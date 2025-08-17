@@ -82,6 +82,10 @@ $(eval $(call gb_Library_use_externals,oox,\
 endif
 endif
 
+$(eval $(call gb_Library_use_custom_headers,oox,\
+    officecfg/registry \
+))
+
 $(eval $(call gb_Library_set_componentfile,oox,oox/util/oox,services))
 
 # WASM_CHART change
@@ -135,7 +139,6 @@ $(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/core/relationshandler \
     oox/source/core/xmlfilterbase \
     oox/source/crypto/AgileEngine \
-    oox/source/crypto/CryptTools \
     oox/source/crypto/DocumentEncryption \
     oox/source/crypto/DocumentDecryption \
     oox/source/crypto/Standard2007Engine \
@@ -177,6 +180,7 @@ $(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/drawingml/objectdefaultcontext \
     oox/source/drawingml/presetgeometrynames \
     oox/source/drawingml/scene3dcontext \
+    oox/source/drawingml/scene3dhelper \
     oox/source/drawingml/shapecontext \
     oox/source/drawingml/shape \
     oox/source/drawingml/shape3dproperties \
@@ -276,6 +280,7 @@ $(eval $(call gb_Library_add_exception_objects,oox,\
     oox/source/ppt/commontimenodecontext \
     oox/source/ppt/conditioncontext \
     oox/source/ppt/customshowlistcontext \
+    oox/source/ppt/EmbeddedFontListContext \
     oox/source/ppt/headerfootercontext \
     oox/source/ppt/layoutfragmenthandler \
     oox/source/ppt/pptfilterhelpers \

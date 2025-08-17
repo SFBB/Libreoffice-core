@@ -30,7 +30,6 @@
 #include <vcl/toolkit/edit.hxx>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::ui;
 
 
@@ -160,7 +159,7 @@ void FileControl::Resize()
     }
     else
     {
-        OUString aSmallText( "..." );
+        OUString aSmallText( u"..."_ustr );
         maButton->SetText( aSmallText );
         nButtonTextWidth = maButton->GetTextWidth( aSmallText );
     }
@@ -204,7 +203,7 @@ IMPL_LINK_NOARG(FileControl, ButtonHdl, Button*, void)
 {
     try
     {
-        Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+        const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
         Reference < dialogs::XFilePicker3 > xFilePicker = dialogs::FilePicker::createWithMode( xContext, dialogs::TemplateDescription::FILEOPEN_SIMPLE );
         // transform the system notation text into a file URL
         OUString sSystemNotation = GetText(), sFileURL;

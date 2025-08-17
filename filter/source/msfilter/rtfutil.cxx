@@ -15,6 +15,7 @@
 #include <rtl/character.hxx>
 #include <tools/stream.hxx>
 #include <sot/storage.hxx>
+#include <o3tl/numeric.hxx>
 
 namespace
 {
@@ -26,7 +27,7 @@ namespace
 void WrapOle1InOle2(SvStream& rOle1, sal_uInt32 nOle1Size, SvStream& rOle2,
                     const OString& rClassName)
 {
-    tools::SvRef<SotStorage> pStorage = new SotStorage(rOle2);
+    rtl::Reference<SotStorage> pStorage = new SotStorage(rOle2);
     OString aAnsiUserType;
     SvGlobalName aName;
     if (rClassName == "PBrush")
@@ -43,10 +44,10 @@ void WrapOle1InOle2(SvStream& rOle1, sal_uInt32 nOle1Size, SvStream& rOle2,
         aAnsiUserType = "OLE Package"_ostr;
         aName = SvGlobalName(0x0003000C, 0, 0, 0xc0, 0, 0, 0, 0, 0, 0, 0x46);
     }
-    pStorage->SetClass(aName, SotClipboardFormatId::NONE, "");
+    pStorage->SetClass(aName, SotClipboardFormatId::NONE, u""_ustr);
 
     // [MS-OLEDS] 2.3.7 CompObjHeader
-    tools::SvRef<SotStorageStream> pCompObj = pStorage->OpenSotStream("\1CompObj");
+    rtl::Reference<SotStorageStream> pCompObj = pStorage->OpenSotStream(u"\1CompObj"_ustr);
     // Reserved1
     pCompObj->WriteUInt32(0xfffe0001);
     // Version
@@ -80,7 +81,7 @@ void WrapOle1InOle2(SvStream& rOle1, sal_uInt32 nOle1Size, SvStream& rOle2,
     pCompObj.clear();
 
     // [MS-OLEDS] 2.3.6 OLENativeStream
-    tools::SvRef<SotStorageStream> pOleNative = pStorage->OpenSotStream("\1Ole10Native");
+    rtl::Reference<SotStorageStream> pOleNative = pStorage->OpenSotStream(u"\1Ole10Native"_ustr);
     // NativeDataSize
     pOleNative->WriteUInt32(nOle1Size);
     pOleNative->WriteStream(rOle1, nOle1Size);
@@ -185,7 +186,8 @@ OString OutChar(sal_Unicode c, int* pUCMode, rtl_TextEncoding eDestEnc, bool* pS
                         aBuf.append(' ');
                         *pUCMode = nLen;
                     }
-                    aBuf.append("\\u" + OString::number(static_cast<sal_Int32>(c)));
+                    // Rich Text Format (RTF) Specification, Version 1.9.1, "Unicode RTF"
+                    aBuf.append("\\u" + OString::number(static_cast<sal_Int16>(c))); // signed!
                 }
 
                 for (sal_Int32 nI = 0; nI < nLen; ++nI)
@@ -250,24 +252,6 @@ OString OutStringUpr(std::string_view pToken, std::u16string_view rStr, rtl_Text
            + OutString(rStr, eDestEnc) + "}}}";
 }
 
-int AsHex(char ch)
-{
-    int ret = 0;
-    if (rtl::isAsciiDigit(static_cast<unsigned char>(ch)))
-        ret = ch - '0';
-    else
-    {
-        if (ch >= 'a' && ch <= 'f')
-            ret = ch - 'a';
-        else if (ch >= 'A' && ch <= 'F')
-            ret = ch - 'A';
-        else
-            return -1;
-        ret += 10;
-    }
-    return ret;
-}
-
 OString WriteHex(const sal_uInt8* pData, sal_uInt32 nSize, SvStream* pStream, sal_uInt32 nLimit)
 {
     OStringBuffer aRet;
@@ -313,7 +297,7 @@ bool ExtractOLE2FromObjdata(const OString& rObjdata, SvStream& rOle2)
         if (ch != 0x0d && ch != 0x0a)
         {
             b = b << 4;
-            sal_Int8 parsed = msfilter::rtfutil::AsHex(ch);
+            sal_Int8 parsed = o3tl::convertToHex<sal_Int8>(ch);
             if (parsed == -1)
                 return false;
             b += parsed;
@@ -355,12 +339,12 @@ bool ExtractOLE2FromObjdata(const OString& rObjdata, SvStream& rOle2)
 
     sal_uInt64 nPos = aStream.Tell();
     sal_uInt8 aSignature[8];
-    aStream.ReadBytes(aSignature, SAL_N_ELEMENTS(aSignature));
+    aStream.ReadBytes(aSignature, std::size(aSignature));
     aStream.Seek(nPos);
     const sal_uInt8 aOle2Signature[8] = { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 };
     // Don't use Storage::IsStorageFile() here, that would seek to the start of the stream,
     // where the magic will always mismatch.
-    if (std::memcmp(aSignature, aOle2Signature, SAL_N_ELEMENTS(aSignature)) == 0)
+    if (std::memcmp(aSignature, aOle2Signature, sizeof(aSignature)) == 0)
     {
         // NativeData
         rOle2.WriteStream(aStream, nData);

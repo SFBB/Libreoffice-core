@@ -461,7 +461,7 @@ sub create_msi_database
 
     $msifilename = installer::converter::make_path_conform($msifilename);
 
-    if ( $^O =~ /cygwin/i ) {
+    if ( $^O =~ /cygwin/i || $^O =~ /MSWin/i ) {
         # msidb.exe really wants backslashes. (And double escaping because system() expands the string.)
         $idtdirbase =~ s/\//\\\\/g;
         $msifilename =~ s/\//\\\\/g;
@@ -472,14 +472,15 @@ sub create_msi_database
     }
     my $systemcall = $msidb . " -f " . $idtdirbase . " -d " . $msifilename . " -c " . "-i " . $extraslash . "*";
 
-    my $returnvalue = system($systemcall);
+    my $systemcall_output = `$systemcall`;
+    my $returnvalue = $? >> 8;
 
     my $infoline = "Systemcall: $systemcall\n";
     push( @installer::globals::logfileinfo, $infoline);
 
     if ($returnvalue)
     {
-        $infoline = "ERROR: Could not execute $msidb!\n";
+        $infoline = "ERROR: Could not execute $msidb! - returncode: $returnvalue - output:\n$systemcall_output\n";
         push( @installer::globals::logfileinfo, $infoline);
     }
     else
@@ -487,26 +488,6 @@ sub create_msi_database
         $infoline = "Success: Executed $msidb successfully!\n";
         push( @installer::globals::logfileinfo, $infoline);
     }
-}
-
-#################################################################
-# Returning the msi version for the Summary Information Stream
-#################################################################
-
-sub get_msiversion_for_sis
-{
-    my $msiversion = "200";
-    return $msiversion;
-}
-
-#################################################################
-# Returning the word count for the Summary Information Stream
-#################################################################
-
-sub get_wordcount_for_sis
-{
-    my $wordcount = "0";
-    return $wordcount;
 }
 
 #################################################################
@@ -522,6 +503,8 @@ sub get_template_for_sis
     my $architecture = "Intel";
 
     if (( $allvariables->{'64BITPRODUCT'} ) && ( $allvariables->{'64BITPRODUCT'} == 1 )) { $architecture = "x64"; }
+
+    $architecture = "Arm64" if($ENV{'RTL_ARCH'} eq "AARCH64");
 
     my $value = "\"" . $architecture . ";" . $windowslanguage;  # adding the Windows language
 
@@ -551,44 +534,6 @@ sub get_packagecode_for_sis
 }
 
 #################################################################
-# Returning the author for the Summary Information Stream
-#################################################################
-
-sub get_author_for_sis
-{
-    my $author = $installer::globals::longmanufacturer;
-
-    $author = "\"" . $author . "\"";
-
-    return $author;
-}
-
-#################################################################
-# Returning the subject for the Summary Information Stream
-#################################################################
-
-sub get_subject_for_sis
-{
-    my ( $allvariableshashref ) = @_;
-
-    my $subject = $allvariableshashref->{'PRODUCTNAME'} . " " . $allvariableshashref->{'PRODUCTVERSION'};
-
-    $subject = "\"" . $subject . "\"";
-
-    return $subject;
-}
-
-######################################################################
-# Returning the security for the Summary Information Stream
-######################################################################
-
-sub get_security_for_sis
-{
-    my $security = "0";
-    return $security;
-}
-
-#################################################################
 # Writing the Summary information stream into the msi database
 # This works only on Windows
 #################################################################
@@ -605,18 +550,18 @@ sub write_summary_into_msi_database
 
     my $msiinfo = "msiinfo.exe";    # Has to be in the path
 
-    my $msiversion = get_msiversion_for_sis();
+    my $msiversion = 200;
     my $codepage = 0; # PID_CODEPAGE summary property in a signed short, therefore it is impossible to set 65001 here.
     my $template = get_template_for_sis($language, $allvariableshashref);
     my $guid = get_packagecode_for_sis();
     my $title = "\"Installation database\"";
-    my $author = get_author_for_sis();
-    my $subject = get_subject_for_sis($allvariableshashref);
+    my $author = "\"" . $installer::globals::longmanufacturer . "\"";
+    my $subject = "\"" . $allvariableshashref->{'PRODUCTNAME'} . " " . $allvariableshashref->{'PRODUCTVERSION'} . "\"";
     my $comment = "\"" . $allvariableshashref->{'PRODUCTNAME'} ."\"";
     my $keywords = "\"Install,MSI\"";
     my $appname = "\"Windows Installer\"";
-    my $security = get_security_for_sis();
-    my $wordcount = get_wordcount_for_sis();
+    my $security = 0;
+    my $wordcount = 0;
 
     $msifilename = installer::converter::make_path_conform($msifilename);
 
@@ -625,14 +570,15 @@ sub write_summary_into_msi_database
                     . " -j " . $subject . " -o " . $comment . " -k " . $keywords . " -n " . $appname
                     . " -u " . $security . " -w " . $wordcount;
 
-    my $returnvalue = system($systemcall);
+    my $systemcall_output = `$systemcall`;
+    my $returnvalue = $? >> 8;
 
     my $infoline = "Systemcall: $systemcall\n";
     push( @installer::globals::logfileinfo, $infoline);
 
     if ($returnvalue)
     {
-        $infoline = "ERROR: Could not execute $systemcall (return $returnvalue)\n";
+        $infoline = "ERROR: Could not execute $systemcall (return $returnvalue) - output:\n$systemcall_output\n";
         push( @installer::globals::logfileinfo, $infoline);
     }
     else
@@ -808,16 +754,17 @@ sub create_transforms
         }
     }
 
-    my $systemcall = "TEMP=$ENV{'TMPDIR'} $cscript \"$wilangid\" $basedbname Package $templatevalue";
-
-    my $returnvalue = system($systemcall);
+    $ENV{TEMP} = $ENV{TMPDIR};
+    my $systemcall = "$cscript \"$wilangid\" $basedbname Package $templatevalue";
+    my $systemcall_output = `$systemcall`;
+    my $returnvalue = $? >> 8;
 
     my $infoline = "Systemcall: $systemcall\n";
     push( @installer::globals::logfileinfo, $infoline);
 
     if ($returnvalue)
     {
-        $infoline = "ERROR: $returnvalue from $systemcall\n";
+        $infoline = "ERROR: $returnvalue from $systemcall - output:\n$systemcall_output\n";
         push( @installer::globals::logfileinfo, $infoline);
     }
     else
@@ -1414,34 +1361,6 @@ sub set_msiproductversion
     {
         my $major = $1;
         $installer::globals::msimajorproductversion = $major . "\.0\.0";
-    }
-}
-
-#################################################################################
-# Including the msi product version into the bootstrap.ini, Windows only
-#################################################################################
-
-sub put_msiproductversion_into_bootstrapfile
-{
-    my ($filesref) = @_;
-
-    for ( my $i = 0; $i <= $#{$filesref}; $i++ )
-    {
-        my $onefile = ${$filesref}[$i];
-
-        if ( $onefile->{'gid'} eq "gid_Brand_Profile_Version_Ini" )
-        {
-            my $file = installer::files::read_file($onefile->{'sourcepath'});
-
-            for ( my $j = 0; $j <= $#{$file}; $j++ )
-            {
-                ${$file}[$j] =~ s/\<msiproductversion\>/$installer::globals::msiproductversion/;
-            }
-
-            installer::files::save_file($onefile->{'sourcepath'}, $file);
-
-            last;
-        }
     }
 }
 

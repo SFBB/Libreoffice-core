@@ -83,10 +83,6 @@ SfxEventNamesItem SwMacroAssignDlg::AddEvents( DlgEventType eType )
             if( !bHtmlMode )
                 aItem.AddEvent( SwResId(STR_EVENT_OBJECT_SELECT), OUString(),
                                 SvMacroItemId::SwObjectSelect );
-        }
-        [[fallthrough]];
-    case MACASSGN_INETFMT:          // INetFormat-Attributes
-        {
             aItem.AddEvent( SwResId(STR_EVENT_MOUSEOVER_OBJECT), OUString(),
                                 SvMacroItemId::OnMouseOver );
             aItem.AddEvent( SwResId(STR_EVENT_MOUSECLICK_OBJECT), OUString(),
@@ -98,35 +94,6 @@ SfxEventNamesItem SwMacroAssignDlg::AddEvents( DlgEventType eType )
     }
 
     return aItem;
-}
-
-bool SwMacroAssignDlg::INetFormatDlg(weld::Window* pParent, SwWrtShell& rSh,
-                                     std::optional<SvxMacroTableDtor>& rpINetItem )
-{
-    bool bRet = false;
-    SfxItemSetFixed<RES_FRMMACRO, RES_FRMMACRO, SID_EVENTCONFIG, SID_EVENTCONFIG> aSet( rSh.GetAttrPool() );
-    SvxMacroItem aItem( RES_FRMMACRO );
-    if( !rpINetItem )
-        rpINetItem.emplace();
-    else
-        aItem.SetMacroTable( *rpINetItem );
-
-    aSet.Put( aItem );
-    aSet.Put( AddEvents( MACASSGN_INETFMT ) );
-
-    SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-    ScopedVclPtr<SfxAbstractDialog> pMacroDlg( pFact->CreateEventConfigDialog(pParent, aSet,
-        rSh.GetView().GetViewFrame().GetFrame().GetFrameInterface() ) );
-    if ( pMacroDlg && pMacroDlg->Execute() == RET_OK )
-    {
-        const SfxItemSet* pOutSet = pMacroDlg->GetOutputItemSet();
-        if( const SvxMacroItem* pItem = pOutSet->GetItemIfSet( RES_FRMMACRO, false ))
-        {
-            rpINetItem.emplace(pItem->GetMacroTable());
-            bRet = true;
-        }
-    }
-    return bRet;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

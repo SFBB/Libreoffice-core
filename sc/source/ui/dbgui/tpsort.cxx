@@ -69,7 +69,7 @@ using namespace com::sun::star;
 // Sort Criteria Tab page
 
 ScTabPageSortFields::ScTabPageSortFields(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rArgSet)
-    : SfxTabPage(pPage, pController, "modules/scalc/ui/sortcriteriapage.ui", "SortCriteriaPage", &rArgSet)
+    : SfxTabPage(pPage, pController, u"modules/scalc/ui/sortcriteriapage.ui"_ustr, u"SortCriteriaPage"_ustr, &rArgSet)
     ,
 
         m_aIdle("ScTabPageSortFields Scroll To End Idle"),
@@ -79,19 +79,19 @@ ScTabPageSortFields::ScTabPageSortFields(weld::Container* pPage, weld::DialogCon
         aStrRowLabel    ( ScResId( SCSTR_ROW_LABEL ) ),
         aStrColLabel    ( ScResId( SCSTR_COL_LABEL ) ),
 
-        nWhichSort      ( rArgSet.GetPool()->GetWhich( SID_SORT ) ),
+        nWhichSort      ( rArgSet.GetPool()->GetWhichIDFromSlotID( SID_SORT ) ),
         pViewData       ( nullptr ),
         aSortData       ( rArgSet.Get( nWhichSort ).GetSortData() ),
         nFieldCount     ( 0 ),
         // show actual size of the sorting keys without limiting them to the default size
         nSortKeyCount(std::max(aSortData.GetSortKeyCount(), static_cast<sal_uInt16>(DEFSORT)))
 
-    , m_xTop(m_xBuilder->weld_container("TopWindow"))
-    , m_xBtnHeader(m_xBuilder->weld_check_button("cbHeader"))
-    , m_xBtnTopDown(m_xBuilder->weld_radio_button("rbTopDown"))
-    , m_xBtnLeftRight(m_xBuilder->weld_radio_button("rbLeftRight"))
-    , m_xScrolledWindow(m_xBuilder->weld_scrolled_window("SortCriteriaPage"))
-    , m_xBox(m_xBuilder->weld_container("SortKeyWindow"))
+    , m_xTop(m_xBuilder->weld_container(u"TopWindow"_ustr))
+    , m_xBtnHeader(m_xBuilder->weld_check_button(u"cbHeader"_ustr))
+    , m_xBtnTopDown(m_xBuilder->weld_radio_button(u"rbTopDown"_ustr))
+    , m_xBtnLeftRight(m_xBuilder->weld_radio_button(u"rbLeftRight"_ustr))
+    , m_xScrolledWindow(m_xBuilder->weld_scrolled_window(u"SortCriteriaPage"_ustr))
+    , m_xBox(m_xBuilder->weld_box(u"SortKeyWindow"_ustr))
     , m_aSortWin(m_xBox.get())
 {
     // tdf#147722 set some nominal small default height so the height adapts
@@ -490,29 +490,29 @@ void ScTabPageSortFields::AddSortKey( sal_uInt16 nItem )
 // Sort option Tab Page:
 
 ScTabPageSortOptions::ScTabPageSortOptions(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rArgSet)
-    : SfxTabPage(pPage, pController, "modules/scalc/ui/sortoptionspage.ui", "SortOptionsPage", &rArgSet)
+    : SfxTabPage(pPage, pController, u"modules/scalc/ui/sortoptionspage.ui"_ustr, u"SortOptionsPage"_ustr, &rArgSet)
     , aStrUndefined(ScResId(SCSTR_UNDEFINED))
     , aStrCommentsRowLabel(ScResId(SCSTR_NOTES_ROW_LABEL))
     , aStrCommentsColLabel(ScResId(SCSTR_NOTES_COL_LABEL))
     , aStrImgRowLabel(ScResId(SCSTR_IMAGES_ROW_LABEL))
     , aStrImgColLabel(ScResId(SCSTR_IMAGES_COL_LABEL))
-    , nWhichSort(rArgSet.GetPool()->GetWhich(SID_SORT))
+    , nWhichSort(rArgSet.GetPool()->GetWhichIDFromSlotID(SID_SORT))
     , aSortData(rArgSet.Get(nWhichSort).GetSortData())
     , pViewData(nullptr)
     , pDoc(nullptr)
-    , m_xBtnCase(m_xBuilder->weld_check_button("case"))
-    , m_xBtnFormats(m_xBuilder->weld_check_button("formats"))
-    , m_xBtnNaturalSort(m_xBuilder->weld_check_button("naturalsort"))
-    , m_xBtnCopyResult(m_xBuilder->weld_check_button("copyresult"))
-    , m_xLbOutPos(m_xBuilder->weld_combo_box("outarealb"))
-    , m_xEdOutPos(m_xBuilder->weld_entry("outareaed"))
-    , m_xBtnSortUser(m_xBuilder->weld_check_button("sortuser"))
-    , m_xLbSortUser(m_xBuilder->weld_combo_box("sortuserlb"))
-    , m_xLbLanguage(new SvxLanguageBox(m_xBuilder->weld_combo_box("language")))
-    , m_xFtAlgorithm(m_xBuilder->weld_label("algorithmft"))
-    , m_xLbAlgorithm(m_xBuilder->weld_combo_box("algorithmlb"))
-    , m_xBtnIncComments(m_xBuilder->weld_check_button("includenotes"))
-    , m_xBtnIncImages(m_xBuilder->weld_check_button("includeimages"))
+    , m_xBtnCase(m_xBuilder->weld_check_button(u"case"_ustr))
+    , m_xBtnFormats(m_xBuilder->weld_check_button(u"formats"_ustr))
+    , m_xBtnNaturalSort(m_xBuilder->weld_check_button(u"naturalsort"_ustr))
+    , m_xBtnCopyResult(m_xBuilder->weld_check_button(u"copyresult"_ustr))
+    , m_xLbOutPos(m_xBuilder->weld_combo_box(u"outarealb"_ustr))
+    , m_xEdOutPos(m_xBuilder->weld_entry(u"outareaed"_ustr))
+    , m_xBtnSortUser(m_xBuilder->weld_check_button(u"sortuser"_ustr))
+    , m_xLbSortUser(m_xBuilder->weld_combo_box(u"sortuserlb"_ustr))
+    , m_xLbLanguage(new SvxLanguageBox(m_xBuilder->weld_combo_box(u"language"_ustr)))
+    , m_xFtAlgorithm(m_xBuilder->weld_label(u"algorithmft"_ustr))
+    , m_xLbAlgorithm(m_xBuilder->weld_combo_box(u"algorithmlb"_ustr))
+    , m_xBtnIncComments(m_xBuilder->weld_check_button(u"includenotes"_ustr))
+    , m_xBtnIncImages(m_xBuilder->weld_check_button(u"includeimages"_ustr))
 {
     m_xLbSortUser->set_size_request(m_xLbSortUser->get_approximate_digit_width() * 50, -1);
     m_xLbSortUser->set_accessible_description(ScResId(STR_A11Y_DESC_SORTUSER));
@@ -675,7 +675,7 @@ bool ScTabPageSortOptions::FillItemSet( SfxItemSet* rArgSet )
     }
     aNewSortData.aCollatorAlgorithm = sAlg;
 
-    rArgSet->Put( ScSortItem( SCITEM_SORTDATA, &aNewSortData ) );
+    rArgSet->Put( ScSortItem( SCITEM_SORTDATA, pViewData, &aNewSortData ) );
 
     return true;
 }
@@ -750,15 +750,12 @@ DeactivateRC ScTabPageSortOptions::DeactivatePage( SfxItemSet* pSetP )
 
 void ScTabPageSortOptions::FillUserSortListBox()
 {
-    ScUserList* pUserLists = ScGlobal::GetUserList();
+    ScUserList& rUserLists = ScGlobal::GetUserList();
 
     m_xLbSortUser->clear();
-    if ( pUserLists )
-    {
-        size_t nCount = pUserLists->size();
-        for (size_t i=0; i<nCount; ++i)
-            m_xLbSortUser->append_text((*pUserLists)[i].GetString());
-    }
+    size_t nCount = rUserLists.size();
+    for (size_t i=0; i<nCount; ++i)
+        m_xLbSortUser->append_text(rUserLists[i].GetString());
 }
 
 // Handler:

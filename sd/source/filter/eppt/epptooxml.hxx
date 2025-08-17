@@ -22,6 +22,7 @@
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/vml/vmldrawing.hxx>
 #include <oox/export/shapes.hxx>
+#include <unotools/securityoptions.hxx>
 #include "epptbase.hxx"
 
 using ::sax_fastparser::FSHelperPtr;
@@ -76,7 +77,6 @@ public:
     static const char* GetSideDirection( sal_uInt8 nDirection );
     static const char* GetCornerDirection( sal_uInt8 nDirection );
     static const char* Get8Direction( sal_uInt8 nDirection );
-    static       int   GetPPTXLayoutId( int nOffset );
 
     sal_Int32 GetShapeID(const css::uno::Reference<css::drawing::XShape>& rXShape);
     sal_Int32 GetNextAnimationNodeID();
@@ -90,8 +90,11 @@ private:
     virtual void ImplWriteNotes( sal_uInt32 nPageNum ) override;
     virtual void ImplWriteSlideMaster( sal_uInt32 nPageNum, css::uno::Reference< css::beans::XPropertySet > const & aXBackgroundPropSet ) override;
     void ImplWritePPTXLayout( sal_Int32 nOffset, sal_uInt32 nMasterNum, const OUString& aSlideName );
+    void ImplWritePPTXLayoutWithContent(
+        sal_Int32 nOffset, sal_uInt32 nMasterNum, const OUString& aSlideName,
+        css::uno::Reference<css::beans::XPropertySet> const& aXBackgroundPropSet);
     static void WriteDefaultColorSchemes(const FSHelperPtr& pFS);
-    void WriteTheme( sal_Int32 nThemeNum, model::Theme* pTheme );
+    void WriteTheme( sal_Int32 nThemeNum, const model::Theme* pTheme );
 
     virtual bool ImplCreateDocument() override;
     virtual bool ImplCreateMainNotes() override;
@@ -109,7 +112,7 @@ private:
 
     sal_uInt32 GetNewSlideId() { return mnSlideIdMax ++; }
     sal_uInt32 GetNewSlideMasterId() { return mnSlideMasterIdMax ++; }
-    sal_Int32 GetAuthorIdAndLastIndex( const OUString& sAuthor, sal_Int32& nLastIndex );
+    sal_Int32 GetAuthorIdAndLastIndex( const OUString& sAuthor, const OUString& sInitials, sal_Int32& nLastIndex );
 
     // Write docProps/core.xml and docprops/custom.xml and docprops/app.xml
     void writeDocumentProperties();
@@ -131,6 +134,9 @@ private:
     css::uno::Reference<css::drawing::XShape> GetReferencedPlaceholderXShape(const PlaceholderType eType, PageType ePageType) const;
     void WritePlaceholderReferenceShapes(PowerPointShapeExport& rDML, PageType ePageType);
 
+    void FindEquivalentMasterPages();
+    sal_uInt32 GetEquivalentMasterPage(sal_uInt32 nMasterPage);
+
     /// Should we export as .pptm, ie. do we contain macros?
     bool mbPptm;
 
@@ -140,12 +146,18 @@ private:
     ::sax_fastparser::FSHelperPtr mPresentationFS;
 
     LayoutInfo mLayoutInfo[OOXML_LAYOUT_SIZE];
+    // Pairs of masters and layouts as used by Impress
+    std::vector<std::pair<SdrPage*, sal_Int32>> maMastersLayouts;
+    // For each Impress master, which master will represent it on the exported file (SAL_MAX_UINT32 if not in an equivalency group)
+    std::vector<sal_uInt32> maEquivalentMasters;
+    std::unique_ptr<SvtSecurityMapPersonalInfo> mpAuthorIDs; // map authors to remove personal info
     std::vector< ::sax_fastparser::FSHelperPtr > mpSlidesFSArray;
     sal_Int32 mnLayoutFileIdMax;
 
     sal_uInt32 mnSlideIdMax;
     sal_uInt32 mnSlideMasterIdMax;
     sal_uInt32 mnAnimationNodeIdMax;
+    sal_uInt32 mnThemeIdMax;
 
     sal_uInt32 mnDiagramId;
 
@@ -159,9 +171,24 @@ private:
     /// Map of placeholder indexes for Master placeholders
     std::unordered_map< css::uno::Reference<css::drawing::XShape>, sal_Int32 > maPlaceholderShapeToIndexMap;
 
+    // Get author id to remove personal info
+    size_t GetInfoID( const OUString& sPersonalInfo ) const { return mpAuthorIDs->GetInfoID(sPersonalInfo); }
     struct AuthorComments {
         sal_Int32 nId;
         sal_Int32 nLastIndex;
+        OUString sInitials;
+
+        AuthorComments()
+            : nId(0)
+            , nLastIndex(0)
+        {
+        }
+        AuthorComments(sal_Int32 nId_, sal_Int32 nLastIndex_, OUString sInitials_)
+            : nId(nId_)
+            , nLastIndex(nLastIndex_)
+            , sInitials(std::move(sInitials_))
+        {
+        }
     };
     typedef std::unordered_map< OUString, struct AuthorComments > AuthorsMap;
     AuthorsMap maAuthors;
@@ -174,6 +201,19 @@ private:
     void WriteVBA();
 
     void WriteModifyVerifier();
+
+    /// Embedded font related members
+    bool mbEmbedFonts = false;
+    bool mbEmbedUsedOnly = false;
+    bool mbEmbedLatinScript = true;
+    bool mbEmbedAsianScript = true;
+    bool mbEmbedComplexScript = true;
+
+    /// Write the embedded font list element
+    void WriteEmbeddedFontList();
+
+    /// Get the font names that are used in the document (and styles)
+    std::unordered_set<OUString> getUsedFontList();
 };
 
 }

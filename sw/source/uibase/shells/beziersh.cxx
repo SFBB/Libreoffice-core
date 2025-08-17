@@ -41,7 +41,7 @@ SFX_IMPL_INTERFACE(SwBezierShell, SwBaseShell)
 
 void SwBezierShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("draw");
+    GetStaticInterface()->RegisterPopupMenu(u"draw"_ustr);
 
     GetStaticInterface()->RegisterObjectBar(SFX_OBJECTBAR_OBJECT, SfxVisibilityFlags::Invisible, ToolbarId::Bezier_Toolbox_Sw);
 }
@@ -50,7 +50,7 @@ void SwBezierShell::InitInterface_Impl()
 SwBezierShell::SwBezierShell(SwView &_rView):
     SwBaseShell( _rView )
 {
-    SetName("Bezier");
+    SetName(u"Bezier"_ustr);
 
     SwWrtShell *pSh = &GetShell();
     SdrView*    pSdrView = pSh->GetDrawView();
@@ -75,7 +75,7 @@ void SwBezierShell::Execute(SfxRequest const &rReq)
     {
         case SID_DELETE:
         case FN_BACKSPACE:
-            if (pSh->IsObjSelected())
+            if (pSh->GetSelectedObjCount())
             {
                 if (pSdrView->HasMarkedPoints())
                     pSh->GetView().GetViewFrame().GetDispatcher()->Execute(SID_BEZIER_DELETE);
@@ -115,7 +115,7 @@ void SwBezierShell::Execute(SfxRequest const &rReq)
         case SID_BEZIER_INSERT:
             {
                 GetView().GetEditWin().SetBezierMode(nSlotId);
-                static sal_uInt16 aInva[] =
+                static const sal_uInt16 aInva[] =
                                 {
                                     SID_BEZIER_INSERT,
                                     SID_BEZIER_MOVE,
@@ -175,7 +175,7 @@ void SwBezierShell::Execute(SfxRequest const &rReq)
                         {
                             pSdrView->SetMarkedPointsSmooth(eKind);
 
-                            static sal_uInt16 aInva[] =
+                            static const sal_uInt16 aInva[] =
                                             {
                                                 SID_BEZIER_SMOOTH,
                                                 SID_BEZIER_EDGE,

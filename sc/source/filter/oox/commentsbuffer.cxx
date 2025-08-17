@@ -44,8 +44,6 @@
 namespace oox::xls {
 
 using namespace ::com::sun::star::drawing;
-using namespace ::com::sun::star::sheet;
-using namespace ::com::sun::star::table;
 using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::uno;
 
@@ -118,7 +116,9 @@ void Comment::importComment( const AttributeList& rAttribs )
 {
     maModel.mnAuthorId = rAttribs.getInteger( XML_authorId, -1 );
     // cell range will be checked while inserting the comment into the document
-    AddressConverter::convertToCellRangeUnchecked( maModel.maRange, rAttribs.getString( XML_ref, OUString() ), getSheetIndex() );
+    AddressConverter::convertToCellRangeUnchecked(maModel.maRange,
+                                                  rAttribs.getString(XML_ref, OUString()),
+                                                  getSheetIndex(), getScDocument());
 }
 
 void Comment::importCommentPr( const AttributeList& rAttribs )
@@ -154,9 +154,11 @@ namespace
         css::uno::Sequence<OUString> maPropertyNames;  /// import filter Caption object formatting property names
         css::uno::Sequence<css::uno::Any> maPropertyValues; /// import filter Caption object formatting property values
         std::shared_ptr<RichString> mxText;
+        OUString msAuthorName;
 
-        OOXGenerateNoteCaption(std::shared_ptr<RichString>& rText)
+        OOXGenerateNoteCaption(const std::shared_ptr<RichString>& rText, const OUString& rAuthorName = "")
             : mxText(rText)
+            , msAuthorName(rAuthorName)
         {
         }
 
@@ -172,9 +174,8 @@ namespace
             }
 
             // insert text and convert text formatting
-            Reference< XText > xAnnoText( xAnnoShape );
             xAnnoShape->addActionLock();
-            mxText->convert( xAnnoText );
+            mxText->convert( Reference< XText >( xAnnoShape ) );
             xAnnoShape->removeActionLock();
         }
 
@@ -182,10 +183,12 @@ namespace
         {
             return mxText->getStringContent();
         }
+
+        virtual OUString GetAuthorName() const override { return msAuthorName; }
     };
 }
 
-void Comment::finalizeImport()
+void Comment::finalizeImport(const VmlDrawing::NoteShapesMap& rNoteShapesMap)
 {
     // BIFF12 stores cell range instead of cell address, use first cell of this range
     OSL_ENSURE( maModel.maRange.aStart == maModel.maRange.aEnd,
@@ -199,12 +202,12 @@ void Comment::finalizeImport()
         rtl::Reference<ScAnnotationsObj> xAnnos = static_cast<ScAnnotationsObj*>(pAnnosSupp->getAnnotations().get());
         ScDocShell* pDocShell = xAnnos->GetDocShell();
 
-        auto xGenerator = std::make_unique<OOXGenerateNoteCaption>(maModel.mxText);
+        auto xGenerator = std::make_unique<OOXGenerateNoteCaption>(maModel.mxText, getAuthorName());
 
         // Add shape formatting properties (autoFill, colHidden and rowHidden are dropped)
         // vvv TODO vvv TextFitToSize should be a drawing::TextFitToSizeType not bool
         xGenerator->maPropertyNames =
-            css::uno::Sequence<OUString>{ "TextFitToSize", "MoveProtect", "TextHorizontalAdjust", "TextVerticalAdjust" };
+            css::uno::Sequence<OUString>{ u"TextFitToSize"_ustr, u"MoveProtect"_ustr, u"TextHorizontalAdjust"_ustr, u"TextVerticalAdjust"_ustr };
         xGenerator->maPropertyValues =
             css::uno::Sequence<css::uno::Any>{ Any(maModel.mbAutoScale), Any(maModel.mbLocked),
                                                Any(lcl_ToHorizAlign( maModel.mnTHA )), Any(lcl_ToVertAlign( maModel.mnTVA )) };
@@ -218,8 +221,10 @@ void Comment::finalizeImport()
 
         // convert shape formatting and visibility
         bool bVisible = true;
-        if( const ::oox::vml::ShapeBase* pVmlNoteShape = getVmlDrawing().getNoteShape( maModel.maRange.aStart ) )
+        auto it = rNoteShapesMap.find(std::make_pair(maModel.maRange.aStart.Col(), maModel.maRange.aStart.Row()));
+        if( it != rNoteShapesMap.end() )
         {
+            const ::oox::vml::ShapeBase* pVmlNoteShape = it->second;
             // position and formatting
             css::awt::Rectangle aShapeRect = pVmlNoteShape->getShapeRectangle();
             if (aShapeRect.Width > 0 || aShapeRect.Height > 0)
@@ -276,6 +281,13 @@ void Comment::finalizeImport()
     }
 }
 
+OUString Comment::getAuthorName()
+{
+    if (o3tl::make_unsigned(this->maModel.mnAuthorId) < getComments().getAuthors().size())
+        return getComments().getAuthors()[this->maModel.mnAuthorId];
+    return "";
+}
+
 // private --------------------------------------------------------------------
 
 CommentsBuffer::CommentsBuffer( const WorksheetHelper& rHelper ) :
@@ -287,6 +299,8 @@ void CommentsBuffer::appendAuthor( const OUString& rAuthor )
 {
     maAuthors.push_back( rAuthor );
 }
+
+const std::vector<OUString> & CommentsBuffer::getAuthors() const { return maAuthors; }
 
 CommentRef CommentsBuffer::createComment()
 {
@@ -301,7 +315,10 @@ void CommentsBuffer::finalizeImport()
     auto pModel = getScDocument().GetDrawLayer();
     bool bWasLocked = pModel->isLocked();
     pModel->setLock(true);
-    maComments.forEachMem( &Comment::finalizeImport );
+    // build an index once, instead of scanning a potentially large list for every note.
+    VmlDrawing::NoteShapesMap aNoteShapesIndex = getVmlDrawing().buildNoteShapesMap();
+    for (const std::shared_ptr<Comment> & rxComment : maComments)
+        rxComment->finalizeImport(aNoteShapesIndex);
     pModel->setLock(bWasLocked);
 }
 

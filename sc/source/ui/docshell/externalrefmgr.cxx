@@ -38,6 +38,7 @@
 #include <scmod.hxx>
 
 #include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/docfile.hxx>
@@ -50,9 +51,10 @@
 #include <svl/urihelper.hxx>
 #include <svl/sharedstringpool.hxx>
 #include <sfx2/linkmgr.hxx>
+#include <tools/hostfilter.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/charclass.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/ucbhelper.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
@@ -750,7 +752,7 @@ ScExternalRefCache::TokenArrayRef ScExternalRefCache::getRangeNameTokens(sal_uIn
     return itr->second;
 }
 
-void ScExternalRefCache::setRangeNameTokens(sal_uInt16 nFileId, const OUString& rName, TokenArrayRef pArray)
+void ScExternalRefCache::setRangeNameTokens(sal_uInt16 nFileId, const OUString& rName, const TokenArrayRef& pArray)
 {
     std::unique_lock aGuard(maMtxDocs);
 
@@ -933,7 +935,7 @@ namespace {
 OUString getFirstSheetName()
 {
     // Get Custom prefix.
-    const ScDefaultsOptions& rOpt = SC_MOD()->GetDefaultsOptions();
+    const ScDefaultsOptions& rOpt = ScModule::get()->GetDefaultsOptions();
     // Form sheet name identical to the first generated sheet name when
     // creating an internal document, e.g. 'Sheet1'.
     return rOpt.GetInitTabPrefix() + "1";
@@ -1491,8 +1493,8 @@ void ScExternalRefLink::Closed()
         if (!pViewData)
             return ERROR_GENERAL;
 
-        ScDocShell* pDocShell = pViewData->GetDocShell();
-        ScDocShellModificator aMod(*pDocShell);
+        ScDocShell& rDocShell = pViewData->GetDocShell();
+        ScDocShellModificator aMod(rDocShell);
         pMgr->switchSrcFile(mnFileId, aFile, aFilter);
         aMod.SetDocumentModified();
     }
@@ -1523,7 +1525,7 @@ static FormulaToken* convertToToken( ScDocument& rHostDoc, const ScDocument& rSr
         case CELLTYPE_EDIT:
         case CELLTYPE_STRING:
         {
-            OUString aStr = rCell.getString(&rSrcDoc);
+            OUString aStr = rCell.getString(rSrcDoc);
             svl::SharedString aSS = rHostDoc.GetSharedStringPool().intern(aStr);
             return new formula::FormulaStringToken(std::move(aSS));
         }
@@ -1632,7 +1634,7 @@ static std::unique_ptr<ScTokenArray> convertToTokenArray(
         ScMatrixToken aToken(xMat);
         pArray->AddToken(aToken);
 
-        itrCache->mpRangeData = xMat;
+        itrCache->mpRangeData = std::move(xMat);
 
         bFirstTab = false;
     }
@@ -2542,7 +2544,9 @@ SfxObjectShellRef ScExternalRefManager::loadSrcDocument(sal_uInt16 nFileId, OUSt
     if (!isFileLoadable(aFile))
         return nullptr;
 
-    if (comphelper::LibreOfficeKit::isActive())
+    INetURLObject aURLObject(aFile);
+    const OUString sHost = aURLObject.GetHost();
+    if (HostFilter::isForbidden(sHost))
     {
         SAL_WARN( "sc.ui", "ScExternalRefManager::loadSrcDocument: blocked access to external file: \"" << aFile << "\"");
         return nullptr;
@@ -2596,15 +2600,15 @@ SfxObjectShellRef ScExternalRefManager::loadSrcDocument(sal_uInt16 nFileId, OUSt
         pSet->Put( SfxUInt16Item( SID_UPDATEDOCMODE, css::document::UpdateDocMode::FULL_UPDATE));
     }
 
-    unique_ptr<SfxMedium> pMedium(new SfxMedium(aFile, StreamMode::STD_READ, pFilter, std::move(pSet)));
+    unique_ptr<SfxMedium> pMedium(new SfxMedium(aFile, StreamMode::STD_READ,
+                                                std::move(pFilter), std::move(pSet)));
     if (pMedium->GetErrorIgnoreWarning() != ERRCODE_NONE)
         return nullptr;
 
     // To load encrypted documents with password, user interaction needs to be enabled.
     pMedium->UseInteractionHandler(mbUserInteractionEnabled);
 
-    ScDocShell* pNewShell = new ScDocShell(SfxModelFlags::EXTERNAL_LINK);
-    SfxObjectShellRef aRef = pNewShell;
+    rtl::Reference<ScDocShell> pNewShell = new ScDocShell(SfxModelFlags::EXTERNAL_LINK);
 
     // increment the recursive link count of the source document.
     ScExtDocOptions* pExtOpt = mrDoc.GetExtDocOptions();
@@ -2625,9 +2629,9 @@ SfxObjectShellRef ScExternalRefManager::loadSrcDocument(sal_uInt16 nFileId, OUSt
 
     if (!pNewShell->DoLoad(pMedium.release()))
     {
-        aRef->DoClose();
-        aRef.clear();
-        return aRef;
+        pNewShell->DoClose();
+        pNewShell.clear();
+        return pNewShell;
     }
 
     // with UseInteractionHandler, options may be set by dialog during DoLoad
@@ -2636,7 +2640,7 @@ SfxObjectShellRef ScExternalRefManager::loadSrcDocument(sal_uInt16 nFileId, OUSt
         aOptions = aNew;
     setFilterData(nFileId, rFilter, aOptions);    // update the filter data, including the new options
 
-    return aRef;
+    return pNewShell;
 }
 
 ScDocument& ScExternalRefManager::cacheNewDocShell( sal_uInt16 nFileId, SrcShell& rSrcShell )
@@ -2761,8 +2765,8 @@ void ScExternalRefManager::maybeCreateRealFileName(sal_uInt16 nFileId)
 
 OUString ScExternalRefManager::getOwnDocumentName() const
 {
-    if (utl::ConfigManager::IsFuzzing())
-        return "file:///tmp/document";
+    if (comphelper::IsFuzzing())
+        return u"file:///tmp/document"_ustr;
 
     ScDocShell* pShell = mrDoc.GetDocumentShell();
     if (!pShell)
@@ -2954,7 +2958,7 @@ public:
                 case CELLTYPE_STRING:
                 case CELLTYPE_EDIT:
                 {
-                    OUString aStr = aCell.getString(&mpCurCol->GetDoc());
+                    OUString aStr = aCell.getString(mpCurCol->GetDoc());
                     svl::SharedString aSS = mrStrPool.intern(aStr);
                     pTok.reset(new formula::FormulaStringToken(std::move(aSS)));
                 }
@@ -3030,13 +3034,13 @@ bool ScExternalRefManager::refreshSrcDocument(sal_uInt16 nFileId)
     if (it != maDocShells.end())
     {
         it->second.maShell->DoClose();
-        it->second.maShell = xDocShell;
+        it->second.maShell = std::move(xDocShell);
         it->second.maLastAccess = tools::Time(tools::Time::SYSTEM);
     }
     else
     {
         SrcShell aSrcDoc;
-        aSrcDoc.maShell = xDocShell;
+        aSrcDoc.maShell = std::move(xDocShell);
         aSrcDoc.maLastAccess = tools::Time(tools::Time::SYSTEM);
         cacheNewDocShell(nFileId, aSrcDoc);
     }
@@ -3311,8 +3315,8 @@ void ScExternalRefManager::Notify( SfxBroadcaster&, const SfxHint& rHint )
         case SfxEventHintId::SaveDocDone:
         case SfxEventHintId::SaveAsDocDone:
             {
-                SfxObjectShell* pObjShell = static_cast<const SfxEventHint&>( rHint ).GetObjShell();
-                transformUnsavedRefToSavedRef(pObjShell);
+                rtl::Reference<SfxObjectShell> pObjShell = static_cast<const SfxEventHint&>( rHint ).GetObjShell();
+                transformUnsavedRefToSavedRef(pObjShell.get());
             }
             break;
         default:

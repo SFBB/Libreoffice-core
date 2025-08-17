@@ -42,10 +42,7 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/chart/XChartDocument.hpp>
 #include <com/sun/star/chart/XDiagram.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
-#include <com/sun/star/drawing/XDrawPage.hpp>
-#include <com/sun/star/chart/ChartDataRowSource.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/embed/XVisualObject.hpp>
 
@@ -80,7 +77,7 @@ void lcl_setRoleAtLabeledSequence(
     {
         uno::Reference< beans::XPropertySet > xProp( xValues, uno::UNO_QUERY );
         if( xProp.is())
-            xProp->setPropertyValue("Role", uno::Any( rRole ));
+            xProp->setPropertyValue(u"Role"_ustr, uno::Any( rRole ));
     }
 }
 
@@ -234,7 +231,9 @@ SchXMLChartContext::SchXMLChartContext( SchXMLImportHelper& rImpHelper,
         mbColHasLabels( false ),
         mbRowHasLabels( false ),
         meDataRowSource( chart::ChartDataRowSource_COLUMNS ),
-        mbIsStockChart( false )
+        mbIsStockChart( false ),
+        mPieSubType(css::chart2::PieChartSubType_NONE),
+        mfPieSplitPos(2.0)
 {
 }
 
@@ -267,7 +266,7 @@ void setDataProvider(uno::Reference<chart2::XChartDocument> const & xChartDoc, O
                 if (!xChartDoc->getDataProvider().is())
                 {
                     bool bHasDataPilotSource = !sDataPilotSource.isEmpty();
-                    OUString aDataProviderServiceName("com.sun.star.chart2.data.DataProvider");
+                    OUString aDataProviderServiceName(u"com.sun.star.chart2.data.DataProvider"_ustr);
                     if (bHasDataPilotSource)
                         aDataProviderServiceName = "com.sun.star.chart2.data.PivotTableDataProvider";
 
@@ -320,6 +319,7 @@ void SchXMLChartContext::startFastElement( sal_Int32 /*nElement*/,
     OUString sAutoStyleName;
     OUString aOldChartTypeName;
     bool bHasAddin = false;
+    mPieSubType = css::chart2::PieChartSubType_NONE;
 
     for( auto& aIter : sax_fastparser::castToFastAttributeList(xAttrList) )
     {
@@ -328,6 +328,9 @@ void SchXMLChartContext::startFastElement( sal_Int32 /*nElement*/,
             case XML_ELEMENT(LO_EXT, XML_DATA_PILOT_SOURCE):
                 msDataPilotSource = aIter.toString();
                 break;
+            case XML_ELEMENT( XLINK, XML_TYPE ):
+                // Ignored for now.
+            break;
             case XML_ELEMENT(XLINK, XML_HREF):
                 m_aXLinkHRefAttributeToIndicateDataProvider = aIter.toString();
                 break;
@@ -388,6 +391,19 @@ void SchXMLChartContext::startFastElement( sal_Int32 /*nElement*/,
             case XML_ELEMENT(CHART,  XML_ROW_MAPPING):
                 msRowTrans = aIter.toString();
                 break;
+            case XML_ELEMENT(LO_EXT, XML_SUB_BAR):
+                if (aIter.toString().toBoolean()) {
+                    mPieSubType = css::chart2::PieChartSubType_BAR;
+                }
+                break;
+            case XML_ELEMENT(LO_EXT, XML_SUB_PIE):
+                if (aIter.toString().toBoolean()) {
+                    mPieSubType = css::chart2::PieChartSubType_PIE;
+                }
+                break;
+            case XML_ELEMENT(LO_EXT, XML_SPLIT_POSITION):
+                mfPieSplitPos = aIter.toDouble();
+                break;
             default:
                 XMLOFF_WARN_UNKNOWN("xmloff", aIter);
         }
@@ -422,9 +438,9 @@ void SchXMLChartContext::startFastElement( sal_Int32 /*nElement*/,
         {
             try
             {
-                xDocProp->getPropertyValue("BaseDiagram") >>= aOldChartTypeName;
+                xDocProp->getPropertyValue(u"BaseDiagram"_ustr) >>= aOldChartTypeName;
                 maChartTypeServiceName =  SchXMLTools::GetNewChartTypeName( aOldChartTypeName );
-                xDocProp->setPropertyValue("RefreshAddInAllowed", uno::Any( false) );
+                xDocProp->setPropertyValue(u"RefreshAddInAllowed"_ustr, uno::Any( false) );
             }
             catch(const uno::Exception&)
             {
@@ -476,9 +492,8 @@ struct NewDonutSeries
     {
         ::std::vector< DataRowPointStyle > aRet;
 
-        DataRowPointStyle aSeriesStyle( DataRowPointStyle::DATA_SERIES
-            , m_xSeries, -1, 1, msStyleName, mnAttachedAxis );
-        aRet.push_back( aSeriesStyle );
+        aRet.emplace_back(DataRowPointStyle::DATA_SERIES
+            , m_xSeries, -1, 1, msStyleName, mnAttachedAxis);
 
         sal_Int32 nPointIndex=0;
         for (auto const& pointStyle : m_aPointStyles)
@@ -491,7 +506,7 @@ struct NewDonutSeries
             }
             if( !aPointStyle.msSeriesStyleNameForDonuts.isEmpty()
                 || !aPointStyle.msStyleName.isEmpty() )
-                aRet.push_back( aPointStyle );
+                aRet.push_back(std::move(aPointStyle));
             ++nPointIndex;
         }
 
@@ -647,15 +662,15 @@ static void lcl_ApplyDataFromRectangularRangeToDiagram(
 
     uno::Sequence< beans::PropertyValue > aArgs{
         beans::PropertyValue(
-           "CellRangeRepresentation",
+           u"CellRangeRepresentation"_ustr,
            -1, uno::Any( rRectangularRange ),
            beans::PropertyState_DIRECT_VALUE ),
         beans::PropertyValue(
-           "DataRowSource",
+           u"DataRowSource"_ustr,
            -1, uno::Any( eDataRowSource ),
            beans::PropertyState_DIRECT_VALUE ),
         beans::PropertyValue(
-           "FirstCellAsLabel",
+           u"FirstCellAsLabel"_ustr,
            -1, uno::Any( bFirstCellAsLabel ),
            beans::PropertyState_DIRECT_VALUE )
     };
@@ -664,7 +679,7 @@ static void lcl_ApplyDataFromRectangularRangeToDiagram(
     {
         aArgs.realloc( aArgs.getLength() + 1 );
         aArgs.getArray()[ sal::static_int_cast<sal_uInt32>(aArgs.getLength()) - 1 ] = beans::PropertyValue(
-            "SequenceMapping",
+            u"SequenceMapping"_ustr,
             -1, uno::Any( !sColTrans.empty()
                 ? lcl_getNumberSequenceFromString( sColTrans, bHasCateories && !xNewDoc->hasInternalDataProvider() )
                 : lcl_getNumberSequenceFromString( sRowTrans, bHasCateories && !xNewDoc->hasInternalDataProvider() ) ),
@@ -679,7 +694,7 @@ static void lcl_ApplyDataFromRectangularRangeToDiagram(
             utl::MediaDescriptor aMediaDescriptor( xNewDoc->getArgs() );
 
             utl::MediaDescriptor::const_iterator aIt(
-                aMediaDescriptor.find( OUString(  "HierarchicalDocumentName" )));
+                aMediaDescriptor.find( u"HierarchicalDocumentName"_ustr));
             if( aIt != aMediaDescriptor.end() )
             {
                 aChartOleObjectName = (*aIt).second.get< OUString >();
@@ -689,7 +704,7 @@ static void lcl_ApplyDataFromRectangularRangeToDiagram(
         {
             aArgs.realloc( aArgs.getLength() + 1 );
             aArgs.getArray()[ sal::static_int_cast<sal_uInt32>(aArgs.getLength()) - 1 ] = beans::PropertyValue(
-                "ChartOleObjectName",
+                u"ChartOleObjectName"_ustr,
                 -1, uno::Any( aChartOleObjectName ),
                 beans::PropertyState_DIRECT_VALUE );
         }
@@ -701,11 +716,11 @@ static void lcl_ApplyDataFromRectangularRangeToDiagram(
     aArgs.realloc( aArgs.getLength() + 2 );
     auto pArgs = aArgs.getArray();
     pArgs[ sal::static_int_cast<sal_uInt32>(aArgs.getLength()) - 2 ] = beans::PropertyValue(
-        "HasCategories",
+        u"HasCategories"_ustr,
         -1, uno::Any( bHasCateories ),
         beans::PropertyState_DIRECT_VALUE );
     pArgs[ sal::static_int_cast<sal_uInt32>(aArgs.getLength()) - 1 ] = beans::PropertyValue(
-        "UseCategoriesAsX",
+        u"UseCategoriesAsX"_ustr,
         -1, uno::Any( false ),//categories in ODF files are not to be used as x values (independent from what is offered in our ui)
         beans::PropertyState_DIRECT_VALUE );
 
@@ -720,40 +735,31 @@ void SchXMLChartContext::endFastElement(sal_Int32 )
 
     if( xProp.is())
     {
-        if( !maMainTitle.isEmpty())
+        if( !maMainTitle.empty())
         {
-            uno::Reference< beans::XPropertySet > xTitleProp( xDoc->getTitle(), uno::UNO_QUERY );
-            if( xTitleProp.is())
-            {
-                try
-                {
-                    xTitleProp->setPropertyValue("String", uno::Any(maMainTitle) );
-                }
-                catch(const beans::UnknownPropertyException&)
-                {
-                    SAL_WARN("xmloff.chart", "Property String for Title not available" );
-                }
-            }
+            uno::Reference< beans::XPropertySet > xTitleProp(xDoc->getTitle(), uno::UNO_QUERY);
+            SchXMLTools::importFormattedText(GetImport(), maMainTitle, xTitleProp);
         }
-        if( !maSubTitle.isEmpty())
+
+        if( !maSubTitle.empty())
         {
-            uno::Reference< beans::XPropertySet > xTitleProp( xDoc->getSubTitle(), uno::UNO_QUERY );
-            if( xTitleProp.is())
-            {
-                try
-                {
-                    xTitleProp->setPropertyValue("String", uno::Any(maSubTitle) );
-                }
-                catch(const beans::UnknownPropertyException&)
-                {
-                    SAL_WARN("xmloff.chart", "Property String for Title not available" );
-                }
-            }
+            uno::Reference< beans::XPropertySet > xTitleProp(xDoc->getSubTitle(), uno::UNO_QUERY);
+            SchXMLTools::importFormattedText(GetImport(), maSubTitle, xTitleProp);
         }
     }
 
     // cleanup: remove empty chart type groups
     lcl_removeEmptyChartTypeGroups( xNewDoc );
+
+    // Handle of-pie parameters. Is this the right place to do this?
+    if (maChartTypeServiceName == "com.sun.star.chart2.PieChartType") {
+        Reference< chart2::XDiagram> xDia(xNewDoc->getFirstDiagram());
+        uno::Reference< beans::XPropertySet > xDiaProp( xDia, uno::UNO_QUERY );
+        if( xDiaProp.is()) {
+            xDiaProp->setPropertyValue(u"SubPieType"_ustr, uno::Any(mPieSubType));
+            xDiaProp->setPropertyValue(u"SplitPos"_ustr, uno::Any(mfPieSplitPos));
+        }
+    }
 
     // set stack mode before a potential chart type detection (in case we have a rectangular range)
     uno::Reference< chart::XDiagram > xDiagram( xDoc->getDiagram() );
@@ -761,13 +767,13 @@ void SchXMLChartContext::endFastElement(sal_Int32 )
     if( xDiaProp.is())
     {
         if( maSeriesDefaultsAndStyles.maStackedDefault.hasValue())
-            xDiaProp->setPropertyValue("Stacked",maSeriesDefaultsAndStyles.maStackedDefault);
+            xDiaProp->setPropertyValue(u"Stacked"_ustr,maSeriesDefaultsAndStyles.maStackedDefault);
         if( maSeriesDefaultsAndStyles.maPercentDefault.hasValue())
-            xDiaProp->setPropertyValue("Percent",maSeriesDefaultsAndStyles.maPercentDefault);
+            xDiaProp->setPropertyValue(u"Percent"_ustr,maSeriesDefaultsAndStyles.maPercentDefault);
         if( maSeriesDefaultsAndStyles.maDeepDefault.hasValue())
-            xDiaProp->setPropertyValue("Deep",maSeriesDefaultsAndStyles.maDeepDefault);
+            xDiaProp->setPropertyValue(u"Deep"_ustr,maSeriesDefaultsAndStyles.maDeepDefault);
         if( maSeriesDefaultsAndStyles.maStackedBarsConnectedDefault.hasValue())
-            xDiaProp->setPropertyValue("StackedBarsConnected",maSeriesDefaultsAndStyles.maStackedBarsConnectedDefault);
+            xDiaProp->setPropertyValue(u"StackedBarsConnected"_ustr,maSeriesDefaultsAndStyles.maStackedBarsConnectedDefault);
     }
 
     //the OOo 2.0 implementation and older has a bug with donuts
@@ -807,13 +813,12 @@ void SchXMLChartContext::endFastElement(sal_Int32 )
         msChartAddress = "all";
 
     bool bSwitchRangesFromOuterToInternalIfNecessary = false;
-    if( !bHasOwnData && mbAllRangeAddressesAvailable )
+    if(!bHasOwnData && mbIsStockChart)
     {
         // special handling for stock chart (merge series together)
-        if( mbIsStockChart )
-            MergeSeriesForStockChart();
+        MergeSeriesForStockChart();
     }
-    else if( !msChartAddress.isEmpty() )
+    else if((bHasOwnData || !mbAllRangeAddressesAvailable) && !msChartAddress.isEmpty())
     {
         //own data or only rectangular range available
 
@@ -838,7 +843,7 @@ void SchXMLChartContext::endFastElement(sal_Int32 )
             try
             {
                 if( bOlderThan2_3 && xDiaProp.is() )//for older charts the hidden cells were removed by calc on the fly
-                    xDiaProp->setPropertyValue("IncludeHiddenCells",uno::Any(false));
+                    xDiaProp->setPropertyValue(u"IncludeHiddenCells"_ustr,uno::Any(false));
 
                 // note: mbRowHasLabels means the first row contains labels, that means we have "column-descriptions",
                 // (analogously mbColHasLabels means we have "row-descriptions")
@@ -943,7 +948,7 @@ void SchXMLChartContext::endFastElement(sal_Int32 )
     }
 
     if( xProp.is())
-        xProp->setPropertyValue("RefreshAddInAllowed", uno::Any( true) );
+        xProp->setPropertyValue(u"RefreshAddInAllowed"_ustr, uno::Any( true) );
 }
 
 void SchXMLChartContext::MergeSeriesForStockChart()
@@ -971,7 +976,7 @@ void SchXMLChartContext::MergeSeriesForStockChart()
             {
                 xDSContainer.set( *pChartType, uno::UNO_QUERY_THROW );
                 uno::Reference< beans::XPropertySet > xCTProp( *pChartType, uno::UNO_QUERY_THROW );
-                xCTProp->getPropertyValue("Japanese") >>= bHasJapaneseCandlestick;
+                xCTProp->getPropertyValue(u"Japanese"_ustr) >>= bHasJapaneseCandlestick;
             }
         }
 
@@ -992,27 +997,27 @@ void SchXMLChartContext::MergeSeriesForStockChart()
                 if( bHasJapaneseCandlestick )
                 {
                     // open values
-                    lcl_setRoleAtFirstSequence( aSeriesSeq[ nSeriesIndex ], "values-first");
+                    lcl_setRoleAtFirstSequence( aSeriesSeq[ nSeriesIndex ], u"values-first"_ustr);
                     aNewSeriesRange[i] = aSeriesSeq[ nSeriesIndex ];
                     // low values
                     lcl_MoveDataToCandleStickSeries(
                         uno::Reference< chart2::data::XDataSource >( aSeriesSeq[ ++nSeriesIndex ], uno::UNO_QUERY_THROW ),
-                        aNewSeries[i], "values-min");
+                        aNewSeries[i], u"values-min"_ustr);
                 }
                 else
                 {
                     // low values
-                    lcl_setRoleAtFirstSequence( aSeriesSeq[ nSeriesIndex ], "values-min");
+                    lcl_setRoleAtFirstSequence( aSeriesSeq[ nSeriesIndex ], u"values-min"_ustr);
                     aNewSeriesRange[i] = aSeriesSeq[ nSeriesIndex ];
                 }
                 // high values
                 lcl_MoveDataToCandleStickSeries(
                     uno::Reference< chart2::data::XDataSource >( aSeriesSeq[ ++nSeriesIndex ], uno::UNO_QUERY_THROW ),
-                    aNewSeries[i], "values-max");
+                    aNewSeries[i], u"values-max"_ustr);
                 // close values
                 lcl_MoveDataToCandleStickSeries(
                     uno::Reference< chart2::data::XDataSource >( aSeriesSeq[ ++nSeriesIndex ], uno::UNO_QUERY_THROW ),
-                    aNewSeries[i], "values-last");
+                    aNewSeries[i], u"values-last"_ustr);
             }
             xDSContainer->setDataSeries( aNewSeries );
         }
@@ -1049,11 +1054,10 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > SchXMLChartContext::cr
             {
                 if( xProp.is())
                 {
-                    xProp->setPropertyValue("HasMainTitle", uno::Any(true) );
+                    xProp->setPropertyValue(u"HasMainTitle"_ustr, uno::Any(true) );
                 }
-                uno::Reference< drawing::XShape > xTitleShape = xDoc->getTitle();
                 pContext = new SchXMLTitleContext( mrImportHelper, GetImport(),
-                                                   maMainTitle, xTitleShape );
+                                                   maMainTitle, xDoc->getTitle() );
             }
             break;
         case XML_ELEMENT(CHART, XML_SUBTITLE):
@@ -1061,7 +1065,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > SchXMLChartContext::cr
             {
                 if( xProp.is())
                 {
-                    xProp->setPropertyValue("HasSubTitle", uno::Any(true) );
+                    xProp->setPropertyValue(u"HasSubTitle"_ustr, uno::Any(true) );
                 }
                 pContext = new SchXMLTitleContext( mrImportHelper, GetImport(),
                                                    maSubTitle, xDoc->getSubTitle() );
@@ -1162,7 +1166,7 @@ void SchXMLChartContext::InitChart(
 }
 
 SchXMLTitleContext::SchXMLTitleContext( SchXMLImportHelper& rImpHelper, SvXMLImport& rImport,
-                                        OUString& rTitle,
+                                        std::vector<std::pair<OUString, OUString>>& rTitle,
                                         uno::Reference< drawing::XShape > xTitleShape ) :
         SvXMLImportContext( rImport ),
         mrImportHelper( rImpHelper ),
@@ -1228,7 +1232,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > SchXMLTitleContext::cr
     if( nElement == XML_ELEMENT(TEXT, XML_P) ||
         nElement == XML_ELEMENT(LO_EXT, XML_P) )
     {
-        pContext = new SchXMLParagraphContext( GetImport(), mrTitle );
+        pContext = new SchXMLTitleParaContext(GetImport(), mrTitle);
     }
     else
         XMLOFF_WARN_UNKNOWN_ELEMENT("xmloff", nElement);

@@ -49,7 +49,6 @@ namespace frm
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::awt;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::frame;
 
     ORichTextControl::ORichTextControl()
@@ -216,13 +215,13 @@ namespace frm
 
     OUString SAL_CALL ORichTextControl::getImplementationName()
     {
-        return "com.sun.star.comp.form.ORichTextControl";
+        return u"com.sun.star.comp.form.ORichTextControl"_ustr;
     }
 
     Sequence< OUString > SAL_CALL ORichTextControl::getSupportedServiceNames()
     {
-        return { "com.sun.star.awt.UnoControl",
-                 "com.sun.star.awt.UnoControlEdit",
+        return { u"com.sun.star.awt.UnoControl"_ustr,
+                 u"com.sun.star.awt.UnoControlEdit"_ustr,
                  FRM_SUN_CONTROL_RICHTEXTCONTROL };
     }
 
@@ -477,7 +476,7 @@ namespace frm
         default:
         {
             const SfxItemPool& rPool = *pRichTextControl->getView().GetEmptyItemSet().GetPool();
-            bool bSupportedSlot = rPool.IsInRange( rPool.GetWhich( _nSlotId ) );
+            bool bSupportedSlot = rPool.IsInRange( rPool.GetWhichIDFromSlotID( _nSlotId ) );
 
             if ( !bSupportedSlot )
                 bSupportedSlot = RichTextControl::isMappableSlot( _nSlotId );

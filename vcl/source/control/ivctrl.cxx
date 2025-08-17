@@ -21,7 +21,6 @@
 #include <utility>
 #include <vcl/toolkit/ivctrl.hxx>
 #include "imivctl.hxx"
-#include <vcl/accessiblefactory.hxx>
 #include <vcl/bitmapex.hxx>
 #include <vcl/commandevent.hxx>
 #include <vcl/mnemonic.hxx>
@@ -31,6 +30,7 @@
 #include <vcl/uitest/uiobject.hxx>
 #include <vcl/uitest/logger.hxx>
 #include <vcl/uitest/eventdescription.hxx>
+#include <accessibility/accessibleiconchoicectrl.hxx>
 #include <verticaltabctrl.hxx>
 
 using namespace ::com::sun::star::accessibility;
@@ -48,20 +48,10 @@ void collectUIInformation( const OUString& aID, const OUString& aPos)
 }
 }
 
-/*****************************************************************************
-|
-| class : SvxIconChoiceCtrlEntry
-|
-\*****************************************************************************/
-
 SvxIconChoiceCtrlEntry::SvxIconChoiceCtrlEntry( OUString _aText,
                                                 Image _aImage )
     : aImage(std::move(_aImage))
     , aText(std::move(_aText))
-    , nPos(0)
-    , pblink(nullptr)
-    , pflink(nullptr)
-    , eTextMode(SvxIconChoiceCtrlTextMode::Short)
     , nX(0)
     , nY(0)
     , nFlags(SvxIconViewFlags::NONE)
@@ -73,33 +63,16 @@ OUString SvxIconChoiceCtrlEntry::GetDisplayText() const
     return MnemonicGenerator::EraseAllMnemonicChars( aText );
 }
 
-
-SvxIconChoiceCtrlColumnInfo::SvxIconChoiceCtrlColumnInfo( const SvxIconChoiceCtrlColumnInfo& rInfo )
-{
-    nWidth = rInfo.nWidth;
-}
-
-/*****************************************************************************
-|
-| class : SvtIconChoiceCtrl
-|
-\*****************************************************************************/
-
 SvtIconChoiceCtrl::SvtIconChoiceCtrl( vcl::Window* pParent, WinBits nWinStyle ) :
 
      // WB_CLIPCHILDREN on, as ScrollBars lie on the window!
     Control( pParent, nWinStyle | WB_CLIPCHILDREN ),
 
-    _pImpl           ( new SvxIconChoiceCtrl_Impl( this, nWinStyle ) )
+    _pImpl           ( new SvxIconChoiceCtrl_Impl( this, nWinStyle ) ),
+    m_nWidth(-1)
 {
     GetOutDev()->SetLineColor();
     _pImpl->InitSettings();
-    _pImpl->SetPositionMode( SvxIconChoiceCtrlPositionMode::AutoArrange );
-}
-
-void SvtIconChoiceCtrl::SetSelectionMode(SelectionMode eMode)
-{
-    _pImpl->SetSelectionMode(eMode);
 }
 
 SvtIconChoiceCtrl::~SvtIconChoiceCtrl()
@@ -131,16 +104,6 @@ void SvtIconChoiceCtrl::RemoveEntry(sal_Int32 nIndex)
     _pImpl->RemoveEntry(nIndex);
 }
 
-void SvtIconChoiceCtrl::DrawEntryImage( SvxIconChoiceCtrlEntry const * pEntry, const Point& rPos, OutputDevice& rDev )
-{
-    rDev.DrawImage( rPos, pEntry->GetImage() );
-}
-
-OUString SvtIconChoiceCtrl::GetEntryText( SvxIconChoiceCtrlEntry const * pEntry )
-{
-    return pEntry->GetText();
-}
-
 void SvtIconChoiceCtrl::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect)
 {
     _pImpl->Paint(rRenderContext, rRect);
@@ -152,12 +115,6 @@ void SvtIconChoiceCtrl::MouseButtonDown( const MouseEvent& rMEvt )
         Control::MouseButtonDown( rMEvt );
 }
 
-void SvtIconChoiceCtrl::MouseButtonUp( const MouseEvent& rMEvt )
-{
-    if( !_pImpl->MouseButtonUp( rMEvt ) )
-        Control::MouseButtonUp( rMEvt );
-}
-
 void SvtIconChoiceCtrl::MouseMove( const MouseEvent& rMEvt )
 {
     if( !_pImpl->MouseMove( rMEvt ) )
@@ -165,42 +122,35 @@ void SvtIconChoiceCtrl::MouseMove( const MouseEvent& rMEvt )
 }
 void SvtIconChoiceCtrl::ArrangeIcons()
 {
-    if ( GetStyle() & WB_ALIGN_TOP )
+    Size aFullSize;
+    tools::Rectangle aEntryRect;
+
+    for ( sal_Int32 i = 0; i < GetEntryCount(); i++ )
     {
-        Size aFullSize;
-        tools::Rectangle aEntryRect;
+        SvxIconChoiceCtrlEntry* pEntry = GetEntry ( i );
+        aEntryRect = _pImpl->GetEntryBoundRect ( pEntry );
 
-        for ( sal_Int32 i = 0; i < GetEntryCount(); i++ )
-        {
-            SvxIconChoiceCtrlEntry* pEntry = GetEntry ( i );
-            aEntryRect = _pImpl->GetEntryBoundRect ( pEntry );
-
-            aFullSize.setWidth ( aFullSize.getWidth()+aEntryRect.GetWidth() );
-        }
-
-        _pImpl->Arrange ( false, aFullSize.getWidth(), 0 );
+        aFullSize.setHeight ( aFullSize.getHeight()+aEntryRect.GetHeight() );
     }
-    else if ( GetStyle() & WB_ALIGN_LEFT )
-    {
-        Size aFullSize;
-        tools::Rectangle aEntryRect;
 
-        for ( sal_Int32 i = 0; i < GetEntryCount(); i++ )
-        {
-            SvxIconChoiceCtrlEntry* pEntry = GetEntry ( i );
-            aEntryRect = _pImpl->GetEntryBoundRect ( pEntry );
+    _pImpl->Arrange(aFullSize.getHeight());
 
-            aFullSize.setHeight ( aFullSize.getHeight()+aEntryRect.GetHeight() );
-        }
-
-        _pImpl->Arrange ( false, 0, aFullSize.getHeight() );
-    }
-    else
-    {
-        _pImpl->Arrange(false, 0, 0);
-    }
-    _pImpl->Arrange( false, 0, 1000 );
+    _pImpl->Arrange(1000);
 }
+
+long SvtIconChoiceCtrl::AdjustWidth(const long nWidth)
+{
+    const long cMargin = 9;
+
+    if (nWidth + cMargin > m_nWidth)
+    {
+        m_nWidth = nWidth + cMargin;
+        this->set_width_request(m_nWidth);
+        _pImpl->SetGrid(Size(m_nWidth, 32));
+    }
+    return m_nWidth - cMargin;
+}
+
 void SvtIconChoiceCtrl::Resize()
 {
     _pImpl->Resize();
@@ -211,9 +161,6 @@ void SvtIconChoiceCtrl::GetFocus()
 {
     _pImpl->GetFocus();
     Control::GetFocus();
-    SvxIconChoiceCtrlEntry* pSelectedEntry = GetSelectedEntry();
-    if ( pSelectedEntry )
-        _pImpl->CallEventListeners( VclEventId::ListboxSelect, pSelectedEntry );
 }
 
 void SvtIconChoiceCtrl::LoseFocus()
@@ -241,11 +188,6 @@ void SvtIconChoiceCtrl::SetPointFont(const vcl::Font& rFont)
     }
 }
 
-WinBits SvtIconChoiceCtrl::GetStyle() const
-{
-    return _pImpl->GetStyle();
-}
-
 void SvtIconChoiceCtrl::Command(const CommandEvent& rCEvt)
 {
     _pImpl->Command( rCEvt );
@@ -253,13 +195,6 @@ void SvtIconChoiceCtrl::Command(const CommandEvent& rCEvt)
     if (rCEvt.GetCommand() == CommandEventId::ModKeyChange)
         Control::Command(rCEvt);
 }
-
-#ifdef DBG_UTIL
-void SvtIconChoiceCtrl::SetEntryTextMode( SvxIconChoiceCtrlTextMode eMode, SvxIconChoiceCtrlEntry* pEntry )
-{
-    _pImpl->SetEntryTextMode( eMode, pEntry );
-}
-#endif
 
 sal_Int32 SvtIconChoiceCtrl::GetEntryCount() const
 {
@@ -343,7 +278,7 @@ void SvtIconChoiceCtrl::SetBackground( const Wallpaper& rPaper )
         Color aBack( aBackground.GetColor());
         if( aBack == COL_TRANSPARENT &&
             (!aBackground.IsBitmap() ||
-             aBackground.GetBitmap().IsAlpha() ||
+             aBackground.GetBitmap().HasAlpha() ||
              (eStyle != WallpaperStyle::Tile && eStyle != WallpaperStyle::Scale)) )
         {
             aBackground.SetColor( rStyleSettings.GetFieldColor() );
@@ -401,31 +336,14 @@ tools::Rectangle SvtIconChoiceCtrl::GetEntryCharacterBounds( const sal_Int32 _nE
     return aRect;
 }
 
-void SvtIconChoiceCtrl::SetNoSelection()
-{
-    _pImpl->SetNoSelection();
-}
-
 void SvtIconChoiceCtrl::CallImplEventListeners(VclEventId nEvent, void* pData)
 {
     CallEventListeners(nEvent, pData);
 }
-css::uno::Reference< XAccessible > SvtIconChoiceCtrl::CreateAccessible()
-{
-    vcl::Window* pParent = GetAccessibleParentWindow();
-    DBG_ASSERT( pParent, "SvTreeListBox::CreateAccessible - accessible parent not found" );
 
-    css::uno::Reference< XAccessible > xAccessible;
-    if ( pParent )
-    {
-        css::uno::Reference< XAccessible > xAccParent = pParent->GetAccessible();
-        if ( xAccParent.is() )
-        {
-            css::uno::Reference< css::awt::XVclWindowPeer > xHoldAlive(GetComponentInterface());
-            xAccessible = _pImpl->GetAccessibleFactory().createAccessibleIconChoiceCtrl( *this, xAccParent );
-        }
-    }
-    return xAccessible;
+rtl::Reference<comphelper::OAccessible> SvtIconChoiceCtrl::CreateAccessible()
+{
+    return new AccessibleIconChoiceCtrl(*this);
 }
 
 struct VerticalTabPageData
@@ -435,21 +353,25 @@ struct VerticalTabPageData
     VclPtr<vcl::Window> xPage;      ///< the TabPage itself
 };
 
-VerticalTabControl::VerticalTabControl(vcl::Window* pParent)
+VerticalTabControl::VerticalTabControl(vcl::Window* pParent, bool bWithIcons)
     : VclHBox(pParent)
-    , m_xChooser(VclPtr<SvtIconChoiceCtrl>::Create(this, WB_3DLOOK | WB_ICON | WB_BORDER |
-                                                         WB_NOCOLUMNHEADER | WB_HIGHLIGHTFRAME |
+    , m_xChooser(VclPtr<SvtIconChoiceCtrl>::Create(this, WB_3DLOOK | (bWithIcons ?  WB_ICON : WB_SMALLICON) |
+#ifdef MACOSX
+                                                         WB_NOBORDER |
+#else
+                                                         WB_BORDER |
+#endif
+                                                         WB_NOCOLUMNHEADER |
                                                          WB_NODRAGSELECTION | WB_TABSTOP | WB_CLIPCHILDREN |
-                                                         WB_ALIGN_LEFT | WB_NOHSCROLL))
+                                                         WB_NOHSCROLL))
     , m_xBox(VclPtr<VclVBox>::Create(this))
 {
     SetStyle(GetStyle() | WB_DIALOGCONTROL);
     SetType(WindowType::VERTICALTABCONTROL);
-    m_xChooser->SetSelectionMode(SelectionMode::Single);
     m_xChooser->SetClickHdl(LINK(this, VerticalTabControl, ChosePageHdl_Impl));
-    m_xChooser->set_width_request(110);
+    m_xChooser->set_width_request(150);
     m_xChooser->set_height_request(400);
-    m_xChooser->SetSizePixel(Size(110, 400));
+    m_xChooser->SetSizePixel(Size(150, 400));
     m_xBox->set_vexpand(true);
     m_xBox->set_hexpand(true);
     m_xBox->set_expand(true);
@@ -479,6 +401,20 @@ IMPL_LINK_NOARG(VerticalTabControl, ChosePageHdl_Impl, SvtIconChoiceCtrl*, void)
 
     if (pData->sId != m_sCurrentPageId)
         SetCurPageId(pData->sId);
+}
+
+bool VerticalTabControl::EventNotify(NotifyEvent& rNEvt)
+{
+    if (rNEvt.GetType() == NotifyEventType::KEYINPUT)
+    {
+        sal_uInt16 nCode = rNEvt.GetKeyEvent()->GetKeyCode().GetCode();
+        if (nCode == KEY_PAGEUP || nCode == KEY_PAGEDOWN)
+        {
+            m_xChooser->DoKeyInput(*(rNEvt.GetKeyEvent()));
+            return true;
+        }
+    }
+    return VclHBox::EventNotify(rNEvt);
 }
 
 void VerticalTabControl::ActivatePage()
@@ -587,6 +523,7 @@ void VerticalTabControl::RemovePage(std::u16string_view rPageId)
         if (pData->sId == rPageId)
         {
             sal_Int32 nEntryListPos = m_xChooser->GetEntryListPos(pData->pEntry);
+            assert(nEntryListPos >= 0);
             m_xChooser->RemoveEntry(nEntryListPos);
             m_xChooser->ArrangeIcons();
             maPageList.erase(it);
@@ -625,6 +562,26 @@ void VerticalTabControl::SetPageText(std::u16string_view rPageId, const OUString
     if (!pData)
         return;
     pData->pEntry->SetText(rText);
+}
+
+Size VerticalTabControl::GetOptimalSize() const
+{
+    // re-calculate size - we might have replaced dummy tab pages with
+    // actual content
+    Size aOptimalPageSize(m_xBox->get_preferred_size());
+
+    for (auto const& item : maPageList)
+    {
+        Size aPagePrefSize(item->xPage->get_preferred_size());
+        if (aPagePrefSize.Width() > aOptimalPageSize.Width())
+            aOptimalPageSize.setWidth( aPagePrefSize.Width() );
+        if (aPagePrefSize.Height() > aOptimalPageSize.Height())
+            aOptimalPageSize.setHeight( aPagePrefSize.Height() );
+    }
+
+    Size aChooserSize(m_xChooser->get_preferred_size());
+    return Size(aChooserSize.Width() + aOptimalPageSize.Width(),
+                std::max(aChooserSize.Height(), aOptimalPageSize.Height()));
 }
 
 void VerticalTabControl::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)

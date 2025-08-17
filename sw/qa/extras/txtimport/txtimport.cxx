@@ -23,7 +23,7 @@ class TxtImportTest : public SwModelTestBase
 {
 public:
     TxtImportTest()
-        : SwModelTestBase("/sw/qa/extras/txtimport/data/", "Text")
+        : SwModelTestBase(u"/sw/qa/extras/txtimport/data/"_ustr, u"Text"_ustr)
     {
     }
 
@@ -53,10 +53,7 @@ public:
 CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf112191)
 {
     createSwDoc("bullets.odt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pTextDoc);
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
-    CPPUNIT_ASSERT(pDoc);
+    SwDoc* pDoc = getSwDoc();
 
     // just the 5th paragraph - no bullet
     uno::Reference<text::XTextRange> xPara(getParagraph(5));
@@ -83,10 +80,6 @@ CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf112191)
 CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf8withoutbom)
 {
     createSwDoc("UTF8WITHOUTBOM.txt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pTextDoc);
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     uno::Reference<text::XTextRange> xPara(getParagraph(1));
 
@@ -96,10 +89,6 @@ CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf8withoutbom)
 CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf8withbom)
 {
     createSwDoc("UTF8WITHBOM.txt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pTextDoc);
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     uno::Reference<text::XTextRange> xPara(getParagraph(1));
 
@@ -109,10 +98,6 @@ CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf8withbom)
 CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf16lewithoutbom)
 {
     createSwDoc("UTF16LEWITHOUTBOM.txt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pTextDoc);
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     uno::Reference<text::XTextRange> xPara(getParagraph(1));
 
@@ -122,10 +107,6 @@ CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf16lewithoutbom)
 CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf16lewithbom)
 {
     createSwDoc("UTF16LEWITHBOM.txt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pTextDoc);
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     uno::Reference<text::XTextRange> xPara(getParagraph(1));
 
@@ -135,10 +116,6 @@ CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf16lewithbom)
 CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf92161_gb18030)
 {
     createSwDoc("GB18030.txt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pTextDoc);
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     uno::Reference<text::XTextRange> xPara(getParagraph(1));
 
@@ -148,10 +125,6 @@ CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf92161_gb18030)
 CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf16bewithoutbom)
 {
     createSwDoc("UTF16BEWITHOUTBOM.txt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pTextDoc);
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     uno::Reference<text::XTextRange> xPara(getParagraph(1));
 
@@ -161,10 +134,6 @@ CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf16bewithoutbom)
 CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf16bewithbom)
 {
     createSwDoc("UTF16BEWITHBOM.txt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pTextDoc);
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     uno::Reference<text::XTextRange> xPara(getParagraph(1));
 
@@ -174,32 +143,29 @@ CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf60145_utf16bewithbom)
 CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf115088)
 {
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
-    pWrtShell->Insert("1");
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    pWrtShell->Insert(u"1"_ustr);
     pWrtShell->SplitNode();
-    pWrtShell->Insert("1");
+    pWrtShell->Insert(u"1"_ustr);
 
     pWrtShell->SelAll();
-    dispatchCommand(mxComponent, ".uno:Cut", {});
-    pWrtShell->Insert("test");
+    dispatchCommand(mxComponent, u".uno:Cut"_ustr, {});
+    pWrtShell->Insert(u"test"_ustr);
     pWrtShell->Left(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
-    dispatchCommand(mxComponent, ".uno:PasteUnformatted", {});
+    dispatchCommand(mxComponent, u".uno:PasteUnformatted"_ustr, {});
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
     OUString aActual = xTextDocument->getText()->getString().copy(0, 2);
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 1\n
     // - Actual  : 1t
-    CPPUNIT_ASSERT_EQUAL(OUString("1\n"), aActual.replaceAll("\r", "\n"));
+    CPPUNIT_ASSERT_EQUAL(u"1\n"_ustr, aActual.replaceAll("\r", "\n"));
 }
 
 CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf70423)
 {
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    CPPUNIT_ASSERT(pDoc);
 
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
 
     constexpr sal_Int32 size = 30000; // It should be multiple of 10
     constexpr sal_Int32 parts = size / 10;
@@ -214,7 +180,7 @@ CPPUNIT_TEST_FIXTURE(TxtImportTest, testTdf70423)
     OUString aResStr = s.makeStringAndClear();
     pWrtShell->Insert(aResStr);
 
-    saveAndReload("Text"); //Reloading the file again
+    saveAndReload(u"Text"_ustr); //Reloading the file again
 
     // Without the fix, this test would have failed with:
     // - Expected: 1

@@ -104,6 +104,8 @@ void Acceptor::run()
             SAL_INFO( "desktop.offacc",
                 "Acceptor::run now enabled and continuing");
 
+            std::unique_lock g(m_aMutex);
+
             // accept connection
             Reference< XConnection > rConnection = m_rAcceptor->accept( m_aConnectString );
             // if we return without a valid connection we must assume that the acceptor
@@ -117,10 +119,8 @@ void Acceptor::run()
             // create the bridge. The remote end will have a reference to this bridge
             // thus preventing the bridge from being disposed. When the remote end releases
             // the bridge, it will be destructed.
-            Reference< XBridge > rBridge = m_rBridgeFactory->createBridge(
-                "", m_aProtocol, rConnection, rInstanceProvider);
-            std::unique_lock g(m_aMutex);
-            m_bridges.add(rBridge);
+            m_bridges.add(m_rBridgeFactory->createBridge(
+                u""_ustr, m_aProtocol, rConnection, rInstanceProvider));
         } catch (const Exception&) {
             TOOLS_WARN_EXCEPTION("desktop.offacc", "");
             // connection failed...
@@ -152,7 +152,7 @@ void Acceptor::initialize( const Sequence<Any>& aArguments )
         sal_Int32 nIndex1 = m_aAcceptString.indexOf( ';' );
         if (nIndex1 < 0)
             throw IllegalArgumentException(
-                    "Invalid accept-string format", m_rContext, 1);
+                    u"Invalid accept-string format"_ustr, m_rContext, 1);
         m_aConnectString = o3tl::trim(m_aAcceptString.subView( 0 , nIndex1 ));
         nIndex1++;
         sal_Int32 nIndex2 = m_aAcceptString.indexOf( ';' , nIndex1 );
@@ -177,18 +177,18 @@ void Acceptor::initialize( const Sequence<Any>& aArguments )
 
     if (!bOk)
     {
-        throw IllegalArgumentException( "invalid initialization", m_rContext, 1);
+        throw IllegalArgumentException( u"invalid initialization"_ustr, m_rContext, 1);
     }
 }
 
 // XServiceInfo
 OUString Acceptor::getImplementationName()
 {
-    return "com.sun.star.office.comp.Acceptor";
+    return u"com.sun.star.office.comp.Acceptor"_ustr;
 }
 Sequence<OUString> Acceptor::getSupportedServiceNames()
 {
-    return { "com.sun.star.office.Acceptor" };
+    return { u"com.sun.star.office.Acceptor"_ustr };
 }
 
 sal_Bool Acceptor::supportsService(OUString const & ServiceName)
@@ -223,12 +223,12 @@ Reference<XInterface> AccInstanceProvider::getInstance (const OUString& aName )
     else if ( aName == "StarOffice.NamingService" )
     {
         Reference< XNamingService > rNamingService(
-            m_rContext->getServiceManager()->createInstanceWithContext("com.sun.star.uno.NamingService", m_rContext),
+            m_rContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.uno.NamingService"_ustr, m_rContext),
             UNO_QUERY );
         if ( rNamingService.is() )
         {
-            rNamingService->registerObject( "StarOffice.ServiceManager", m_rContext->getServiceManager() );
-            rNamingService->registerObject( "StarOffice.ComponentContext", m_rContext );
+            rNamingService->registerObject( u"StarOffice.ServiceManager"_ustr, m_rContext->getServiceManager() );
+            rNamingService->registerObject( u"StarOffice.ComponentContext"_ustr, m_rContext );
             rInstance = rNamingService;
         }
     }

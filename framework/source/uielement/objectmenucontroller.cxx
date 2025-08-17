@@ -32,9 +32,6 @@
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::frame;
-using namespace com::sun::star::beans;
-using namespace com::sun::star::util;
-using namespace framework;
 
 namespace {
 
@@ -48,7 +45,7 @@ public:
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.ObjectMenuController";
+        return u"com.sun.star.comp.framework.ObjectMenuController"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -58,7 +55,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.frame.PopupMenuController"};
+        return {u"com.sun.star.frame.PopupMenuController"_ustr};
     }
 
     // XStatusListener

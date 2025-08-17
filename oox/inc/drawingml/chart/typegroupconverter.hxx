@@ -21,6 +21,9 @@
 #define INCLUDED_OOX_DRAWINGML_CHART_TYPEGROUPCONVERTER_HXX
 
 #include <drawingml/chart/converterbase.hxx>
+#include <oox/drawingml/chart/datasourcemodel.hxx>
+#include <drawingml/chart/seriesmodel.hxx>
+#include <com/sun/star/chart2/PieChartSubType.hpp>
 
 namespace com::sun::star {
     namespace chart2 { class XChartType; }
@@ -48,7 +51,9 @@ enum TypeId
     TYPEID_SCATTER,                 /// Scatter (XY) chart.
     TYPEID_BUBBLE,                  /// Bubble chart.
     TYPEID_SURFACE,                 /// Surface chart.
-    TYPEID_UNKNOWN                  /// Default for unknown chart types.
+    TYPEID_FUNNEL,                  /// Funnel chart.
+    TYPEID_HISTO,                   /// Histogram chart.
+    TYPEID_UNKNOWN,                 /// Default for unknown chart types.
 };
 
 /** Enumerates different categories of similar chart types. */
@@ -59,7 +64,9 @@ enum TypeCategory
     TYPECATEGORY_RADAR,             /// Radar charts (linear or filled).
     TYPECATEGORY_PIE,               /// Pie and donut charts.
     TYPECATEGORY_SCATTER,           /// Scatter and bubble charts.
-    TYPECATEGORY_SURFACE            /// Surface charts.
+    TYPECATEGORY_SURFACE,           /// Surface charts.
+    TYPECATEGORY_FUNNEL,            /// Funnel charts. TODO: can this be BAR?
+    TYPECATEGORY_HISTO,             /// Histogram charts.
 };
 
 /** Enumerates modes for varying point colors in a series. */
@@ -103,7 +110,6 @@ public:
 };
 
 struct TypeGroupModel;
-struct View3DModel;
 
 class TypeGroupConverter final : public ConverterBase< TypeGroupModel >
 {
@@ -133,6 +139,9 @@ public:
     /** Returns series title, if the chart type group contains only one single series. */
     OUString            getSingleSeriesTitle() const;
 
+    /** Returns true, if the chart contains only one series and have title textbox (even empty). */
+    bool                isSingleSeriesTitle() const;
+
     /** Creates a coordinate system according to the contained chart type. */
     css::uno::Reference< css::chart2::XCoordinateSystem >
                         createCoordinateSystem();
@@ -157,6 +166,14 @@ public:
     void                convertPieRotation( PropertySet& rPropSet, sal_Int32 nOoxAngle ) const;
     /** Sets the passed OOXML pie explosion at the passed property set. */
     void                convertPieExplosion( PropertySet& rPropSet, sal_Int32 nOoxExplosion ) const;
+    /** Converts of-pie types */
+    css::chart2::PieChartSubType convertOfPieType(sal_Int32 nOoxOfPieType ) const;
+    /** Move any internal data to the appropriate series.  In chartex the data
+       (if any is internal) is given outside the series, in a child element of
+       <cx:chartSpace>. Pre-2016 charts have the data inside the series, and
+       SeriesModel and subsequent handling reflects this. So this function gets
+       the data to the right place for processing. */
+    void                moveDataToSeries(DataSourceCxModel::DataMap& raDataMap);
 
 private:
     /** Inserts the passed series into the chart type. Adds additional properties to the series. */

@@ -661,41 +661,41 @@ signalKey (GtkWidget* pWidget, GdkEventKey* pEvent)
     switch (pEvent->keyval)
     {
     case GDK_KEY_BackSpace:
-        nKeyCode = com::sun::star::awt::Key::BACKSPACE;
+        nKeyCode = css::awt::Key::BACKSPACE;
         break;
     case GDK_KEY_Delete:
-        nKeyCode = com::sun::star::awt::Key::DELETE;
+        nKeyCode = css::awt::Key::DELETE;
         break;
     case GDK_KEY_Return:
     case GDK_KEY_KP_Enter:
-        nKeyCode = com::sun::star::awt::Key::RETURN;
+        nKeyCode = css::awt::Key::RETURN;
         break;
     case GDK_KEY_Escape:
-        nKeyCode = com::sun::star::awt::Key::ESCAPE;
+        nKeyCode = css::awt::Key::ESCAPE;
         break;
     case GDK_KEY_Tab:
-        nKeyCode = com::sun::star::awt::Key::TAB;
+        nKeyCode = css::awt::Key::TAB;
         break;
     case GDK_KEY_Down:
-        nKeyCode = com::sun::star::awt::Key::DOWN;
+        nKeyCode = css::awt::Key::DOWN;
         break;
     case GDK_KEY_Up:
-        nKeyCode = com::sun::star::awt::Key::UP;
+        nKeyCode = css::awt::Key::UP;
         break;
     case GDK_KEY_Left:
-        nKeyCode = com::sun::star::awt::Key::LEFT;
+        nKeyCode = css::awt::Key::LEFT;
         break;
     case GDK_KEY_Right:
-        nKeyCode = com::sun::star::awt::Key::RIGHT;
+        nKeyCode = css::awt::Key::RIGHT;
         break;
     case GDK_KEY_Page_Down:
-        nKeyCode = com::sun::star::awt::Key::PAGEDOWN;
+        nKeyCode = css::awt::Key::PAGEDOWN;
         break;
     case GDK_KEY_Page_Up:
-        nKeyCode = com::sun::star::awt::Key::PAGEUP;
+        nKeyCode = css::awt::Key::PAGEUP;
         break;
     case GDK_KEY_Insert:
-        nKeyCode = com::sun::star::awt::Key::INSERT;
+        nKeyCode = css::awt::Key::INSERT;
         break;
     case GDK_KEY_Shift_L:
     case GDK_KEY_Shift_R:
@@ -716,7 +716,7 @@ signalKey (GtkWidget* pWidget, GdkEventKey* pEvent)
         break;
     default:
         if (pEvent->keyval >= GDK_KEY_F1 && pEvent->keyval <= GDK_KEY_F26)
-            nKeyCode = com::sun::star::awt::Key::F1 + (pEvent->keyval - GDK_KEY_F1);
+            nKeyCode = css::awt::Key::F1 + (pEvent->keyval - GDK_KEY_F1);
         else
             nCharCode = gdk_keyval_to_unicode(pEvent->keyval);
     }
@@ -730,7 +730,7 @@ signalKey (GtkWidget* pWidget, GdkEventKey* pEvent)
     if (pEvent->state & GDK_CONTROL_MASK)
         nKeyCode |= KEY_MOD1;
 
-    if (priv->m_nKeyModifier & KEY_MOD2)
+    if (pEvent->state & GDK_MOD1_MASK)
         nKeyCode |= KEY_MOD2;
 
     if (nKeyCode & (KEY_SHIFT | KEY_MOD1 | KEY_MOD2)) {
@@ -900,9 +900,7 @@ static gboolean postDocumentLoad(gpointer pData)
 
     std::unique_lock<std::mutex> aGuard(g_aLOKMutex);
     priv->m_pDocument->pClass->initializeForRendering(priv->m_pDocument, priv->m_aRenderingArguments.c_str());
-    // This returns the view id of the "current" view, but sadly if you load multiple documents that
-    // is apparently not a view showing the most recently loaded document. Not much we can do here,
-    // though. If that is fixed, this comment becomes incorrect.
+    // This returns the view id of the most recently used view of the document
     priv->m_nViewId = priv->m_pDocument->pClass->getView(priv->m_pDocument);
     g_aAuthorViews[getAuthorRenderingArgument(priv)] = priv->m_nViewId;
     priv->m_pDocument->pClass->registerCallback(priv->m_pDocument, callbackWorker, pLOKDocView);
@@ -1130,7 +1128,7 @@ callback (gpointer pData)
         std::stringstream aStream(pCallback->m_aPayload);
         boost::property_tree::ptree aTree;
         boost::property_tree::read_json(aStream, aTree);
-        const std::string& rRectangle = aTree.get<std::string>("rectangle");
+        const std::string rRectangle = aTree.get<std::string>("rectangle");
         int nViewId = aTree.get<int>("viewId");
 
         priv->m_aVisibleCursor = payloadToRectangle(pDocView, rRectangle.c_str());
@@ -1211,7 +1209,7 @@ callback (gpointer pData)
         boost::property_tree::read_json(aStream, aTree);
         int nViewId = aTree.get<int>("viewId");
         int nPart = aTree.get<int>("part");
-        const std::string& rRectangle = aTree.get<std::string>("selection");
+        const std::string rRectangle = aTree.get<std::string>("selection");
         if (rRectangle != "EMPTY")
             priv->m_aGraphicViewSelections[nViewId] = ViewRectangle(nPart, payloadToRectangle(pDocView, rRectangle.c_str()));
         else
@@ -1295,7 +1293,7 @@ callback (gpointer pData)
         boost::property_tree::read_json(aStream, aTree);
         int nViewId = aTree.get<int>("viewId");
         int nPart = aTree.get<int>("part");
-        const std::string& rRectangle = aTree.get<std::string>("rectangle");
+        const std::string rRectangle = aTree.get<std::string>("rectangle");
         priv->m_aViewCursors[nViewId] = ViewRectangle(nPart, payloadToRectangle(pDocView, rRectangle.c_str()));
         gtk_widget_queue_draw(GTK_WIDGET(pDocView));
         break;
@@ -1307,7 +1305,7 @@ callback (gpointer pData)
         boost::property_tree::read_json(aStream, aTree);
         int nViewId = aTree.get<int>("viewId");
         int nPart = aTree.get<int>("part");
-        const std::string& rSelection = aTree.get<std::string>("selection");
+        const std::string rSelection = aTree.get<std::string>("selection");
         priv->m_aTextViewSelectionRectangles[nViewId] = ViewRectangles(nPart, payloadToRectangles(pDocView, rSelection.c_str()));
         gtk_widget_queue_draw(GTK_WIDGET(pDocView));
         break;
@@ -1318,7 +1316,7 @@ callback (gpointer pData)
         boost::property_tree::ptree aTree;
         boost::property_tree::read_json(aStream, aTree);
         int nViewId = aTree.get<int>("viewId");
-        const std::string& rVisible = aTree.get<std::string>("visible");
+        const std::string rVisible = aTree.get<std::string>("visible");
         priv->m_aViewCursorVisibilities[nViewId] = rVisible == "true";
         gtk_widget_queue_draw(GTK_WIDGET(pDocView));
         break;
@@ -1331,7 +1329,7 @@ callback (gpointer pData)
         boost::property_tree::read_json(aStream, aTree);
         int nViewId = aTree.get<int>("viewId");
         int nPart = aTree.get<int>("part");
-        const std::string& rRectangle = aTree.get<std::string>("rectangle");
+        const std::string rRectangle = aTree.get<std::string>("rectangle");
         if (rRectangle != "EMPTY")
             priv->m_aCellViewCursors[nViewId] = ViewRectangle(nPart, payloadToRectangle(pDocView, rRectangle.c_str()));
         else
@@ -1350,7 +1348,7 @@ callback (gpointer pData)
         boost::property_tree::read_json(aStream, aTree);
         int nViewId = aTree.get<int>("viewId");
         int nPart = aTree.get<int>("part");
-        const std::string& rRectangle = aTree.get<std::string>("rectangle");
+        const std::string rRectangle = aTree.get<std::string>("rectangle");
         if (rRectangle != "EMPTY")
             priv->m_aViewLockRectangles[nViewId] = ViewRectangle(nPart, payloadToRectangle(pDocView, rRectangle.c_str()));
         else
@@ -1374,6 +1372,9 @@ callback (gpointer pData)
         g_signal_emit(pCallback->m_pDocView, doc_view_signals[COMMENT], 0, pCallback->m_aPayload.c_str());
         break;
     case LOK_CALLBACK_RULER_UPDATE:
+        g_signal_emit(pCallback->m_pDocView, doc_view_signals[RULER], 0, pCallback->m_aPayload.c_str());
+        break;
+    case LOK_CALLBACK_VERTICAL_RULER_UPDATE:
         g_signal_emit(pCallback->m_pDocView, doc_view_signals[RULER], 0, pCallback->m_aPayload.c_str());
         break;
     case LOK_CALLBACK_WINDOW:
@@ -1497,6 +1498,8 @@ callback (gpointer pData)
     case LOK_CALLBACK_A11Y_EDITING_IN_SELECTION_STATE:
     case LOK_CALLBACK_A11Y_SELECTION_CHANGED:
     case LOK_CALLBACK_CORE_LOG:
+    case LOK_CALLBACK_TOOLTIP:
+    case LOK_CALLBACK_SHAPE_INNER_TEXT:
     {
         // TODO: Implement me
         break;
@@ -1757,7 +1760,7 @@ static const GdkRGBA& getDarkColor(int nViewId, LOKDocViewPrivate& priv)
         boost::property_tree::read_json(aStream, aTree);
         for (const auto& rValue : aTree.get_child("authors"))
         {
-            const std::string& rName = rValue.second.get<std::string>("name");
+            const std::string rName = rValue.second.get<std::string>("name");
             guint32 nColor = rValue.second.get<guint32>("color");
             GdkRGBA aColor{static_cast<double>(static_cast<guint8>(nColor>>16))/255, static_cast<double>(static_cast<guint8>(static_cast<guint16>(nColor) >> 8))/255, static_cast<double>(static_cast<guint8>(nColor))/255, 0};
             auto itAuthorViews = g_aAuthorViews.find(rName);
@@ -1784,7 +1787,7 @@ static const GdkRGBA& getDarkColor(int nViewId, LOKDocViewPrivate& priv)
         GdkRGBA aColor = aColors[nColorCounter++ % aColors.size()];
         aColorMap[nViewId] = aColor;
     }
-    assert(aColorMap.find(nViewId) != aColorMap.end());
+    assert(aColorMap.contains(nViewId));
     return aColorMap[nViewId];
 }
 
@@ -2452,6 +2455,25 @@ postCommandInThread (gpointer data)
 }
 
 static void
+paintTile(LOKDocViewPrivate& priv,
+    unsigned char* pBuffer,
+    const GdkRectangle& rTileRectangle,
+    gint nTileSizePixelsScaled,
+    LOEvent* pLOEvent,
+    gint nScaleFactor)
+{
+    std::unique_lock<std::mutex> aGuard(g_aLOKMutex);
+    setDocumentView(priv->m_pDocument, priv->m_nViewId);
+
+    priv->m_pDocument->pClass->paintTile(priv->m_pDocument,
+                                         pBuffer,
+                                         nTileSizePixelsScaled, nTileSizePixelsScaled,
+                                         rTileRectangle.x, rTileRectangle.y,
+                                         pixelToTwip(nTileSizePixelsScaled, pLOEvent->m_fPaintTileZoom * nScaleFactor),
+                                         pixelToTwip(nTileSizePixelsScaled, pLOEvent->m_fPaintTileZoom * nScaleFactor));
+}
+
+static void
 paintTileInThread (gpointer data)
 {
     GTask* task = G_TASK(data);
@@ -2491,8 +2513,6 @@ paintTileInThread (gpointer data)
     aTileRectangle.x = pixelToTwip(nTileSizePixelsScaled, pLOEvent->m_fPaintTileZoom * nScaleFactor) * pLOEvent->m_nPaintTileY;
     aTileRectangle.y = pixelToTwip(nTileSizePixelsScaled, pLOEvent->m_fPaintTileZoom * nScaleFactor) * pLOEvent->m_nPaintTileX;
 
-    std::unique_lock<std::mutex> aGuard(g_aLOKMutex);
-    setDocumentView(priv->m_pDocument, priv->m_nViewId);
     std::stringstream ss;
     GTimer* aTimer = g_timer_new();
     gulong nElapsedMs;
@@ -2502,13 +2522,7 @@ paintTileInThread (gpointer data)
         << pixelToTwip(nTileSizePixelsScaled, pLOEvent->m_fPaintTileZoom * nScaleFactor) << ", "
         << pixelToTwip(nTileSizePixelsScaled, pLOEvent->m_fPaintTileZoom * nScaleFactor) << ")";
 
-    priv->m_pDocument->pClass->paintTile(priv->m_pDocument,
-                                         pBuffer,
-                                         nTileSizePixelsScaled, nTileSizePixelsScaled,
-                                         aTileRectangle.x, aTileRectangle.y,
-                                         pixelToTwip(nTileSizePixelsScaled, pLOEvent->m_fPaintTileZoom * nScaleFactor),
-                                         pixelToTwip(nTileSizePixelsScaled, pLOEvent->m_fPaintTileZoom * nScaleFactor));
-    aGuard.unlock();
+    paintTile(priv, pBuffer, aTileRectangle, nTileSizePixelsScaled, pLOEvent, nScaleFactor);
 
     g_timer_elapsed(aTimer, &nElapsedMs);
     ss << " rendered in " << (nElapsedMs / 1000.) << " milliseconds";
@@ -2790,7 +2804,7 @@ static void lok_doc_view_destroy (GtkWidget* widget)
             // Last view(s) gone
             priv->m_pDocument->pClass->destroy (priv->m_pDocument);
             priv->m_pDocument = nullptr;
-            if (priv->m_pOffice)
+            if (priv->m_pOffice && priv->m_pOffice->pClass->getDocsCount(priv->m_pOffice) == 0)
             {
                 priv->m_pOffice->pClass->destroy (priv->m_pOffice);
                 priv->m_pOffice = nullptr;

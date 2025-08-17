@@ -149,6 +149,25 @@ SwFrameFormat* SwDoc::GetFlyNum( size_t nIdx, FlyCntType eType, bool bIgnoreText
     return pRetFormat;
 }
 
+SwFrameFormat* SwDoc::GetFlyFrameFormatByName( const UIName& rFrameFormatName )
+{
+    auto pFrameFormats = GetSpzFrameFormats();
+    auto it = pFrameFormats->findByTypeAndName( RES_FLYFRMFMT, rFrameFormatName );
+    auto endIt = pFrameFormats->typeAndNameEnd();
+    for ( ; it != endIt; ++it)
+    {
+        sw::SpzFrameFormat* pFlyFormat = *it;
+        const SwNodeIndex* pIdx = pFlyFormat->GetContent().GetContentIdx();
+        if( !pIdx || !pIdx->GetNodes().IsDocNodes() )
+            continue;
+
+        const SwNode* pNd = GetNodes()[ pIdx->GetIndex() + 1 ];
+        if( !pNd->IsNoTextNode())
+            return pFlyFormat;
+    }
+    return nullptr;
+}
+
 std::vector<SwFrameFormat const*> SwDoc::GetFlyFrameFormats(
     FlyCntType const eType, bool const bIgnoreTextBoxes)
 {
@@ -435,12 +454,13 @@ lcl_SetFlyFrameAttr(SwDoc & rDoc,
              ?  (rDoc.*pSetFlyFrameAnchor)( rFlyFormat, rSet, false )
              :  DONTMAKEFRMS;
 
-    const SfxPoolItem* pItem;
-    SfxItemIter aIter( rSet );
-    SfxItemSet aTmpSet( rDoc.GetAttrPool(), aFrameFormatSetRange );
-    const SfxPoolItem* pItemIter = aIter.GetCurItem();
-    do {
-        switch(pItemIter->Which())
+    // ITEM: SfxItemIter and removing SfxPoolItems:
+    std::vector<sal_uInt16> aDeleteWhichIDs;
+    SfxItemSet aTmpSet(rDoc.GetAttrPool(), aFrameFormatSetRange);
+
+    for (SfxItemIter aIter(rSet); !aIter.IsAtEnd() && 0 != aIter.GetCurWhich(); aIter.NextItem())
+    {
+        switch(aIter.GetCurWhich())
         {
         case RES_FILL_ORDER:
         case RES_BREAK:
@@ -450,23 +470,26 @@ lcl_SetFlyFrameAttr(SwDoc & rDoc,
             OSL_FAIL( "Unknown Fly attribute." );
             [[fallthrough]];
         case RES_CHAIN:
-            rSet.ClearItem(pItemIter->Which());
+            aDeleteWhichIDs.push_back(aIter.GetCurWhich());
             break;
         case RES_ANCHOR:
             if( DONTMAKEFRMS != nMakeFrames )
                 break;
             [[fallthrough]];
         default:
-            if( !IsInvalidItem(pItemIter) && ( SfxItemState::SET !=
-                rFlyFormat.GetAttrSet().GetItemState(pItemIter->Which(), true, &pItem ) ||
-                *pItem != *pItemIter))
-                aTmpSet.Put(*pItemIter);
-            break;
+            {
+                const SfxPoolItem* pGet(nullptr);
+                if (!IsInvalidItem(aIter.GetCurItem()) && (SfxItemState::SET !=
+                    rFlyFormat.GetAttrSet().GetItemState(aIter.GetCurWhich(), true, &pGet ) ||
+                    *pGet != *aIter.GetCurItem()))
+                    aTmpSet.Put(*aIter.GetCurItem());
+                break;
+            }
         }
+    }
 
-        pItemIter = aIter.NextItem();
-
-    } while (pItemIter && (0 != pItemIter->Which()));
+    for (auto nDelWhich : aDeleteWhichIDs)
+        rSet.ClearItem(nDelWhich);
 
     if( aTmpSet.Count() )
         rFlyFormat.SetFormatAttr( aTmpSet );
@@ -479,7 +502,7 @@ lcl_SetFlyFrameAttr(SwDoc & rDoc,
 
 void SwDoc::CheckForUniqueItemForLineFillNameOrIndex(SfxItemSet& rSet)
 {
-    SwDrawModel* pDrawModel = getIDocumentDrawModelAccess().GetOrCreateDrawModel();
+    SwDrawModel& rDrawModel = getIDocumentDrawModelAccess().GetOrCreateDrawModel();
     SfxItemIter aIter(rSet);
 
     for (const SfxPoolItem* pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem())
@@ -492,37 +515,37 @@ void SwDoc::CheckForUniqueItemForLineFillNameOrIndex(SfxItemSet& rSet)
         {
             case XATTR_FILLBITMAP:
             {
-                pResult = pItem->StaticWhichCast(XATTR_FILLBITMAP).checkForUniqueItem(pDrawModel);
+                pResult = pItem->StaticWhichCast(XATTR_FILLBITMAP).checkForUniqueItem(rDrawModel);
                 break;
             }
             case XATTR_LINEDASH:
             {
-                pResult = pItem->StaticWhichCast(XATTR_LINEDASH).checkForUniqueItem(pDrawModel);
+                pResult = pItem->StaticWhichCast(XATTR_LINEDASH).checkForUniqueItem(rDrawModel);
                 break;
             }
             case XATTR_LINESTART:
             {
-                pResult = pItem->StaticWhichCast(XATTR_LINESTART).checkForUniqueItem(pDrawModel);
+                pResult = pItem->StaticWhichCast(XATTR_LINESTART).checkForUniqueItem(rDrawModel);
                 break;
             }
             case XATTR_LINEEND:
             {
-                pResult = pItem->StaticWhichCast(XATTR_LINEEND).checkForUniqueItem(pDrawModel);
+                pResult = pItem->StaticWhichCast(XATTR_LINEEND).checkForUniqueItem(rDrawModel);
                 break;
             }
             case XATTR_FILLGRADIENT:
             {
-                pResult = pItem->StaticWhichCast(XATTR_FILLGRADIENT).checkForUniqueItem(pDrawModel);
+                pResult = pItem->StaticWhichCast(XATTR_FILLGRADIENT).checkForUniqueItem(rDrawModel);
                 break;
             }
             case XATTR_FILLFLOATTRANSPARENCE:
             {
-                pResult = pItem->StaticWhichCast(XATTR_FILLFLOATTRANSPARENCE).checkForUniqueItem(pDrawModel);
+                pResult = pItem->StaticWhichCast(XATTR_FILLFLOATTRANSPARENCE).checkForUniqueItem(rDrawModel);
                 break;
             }
             case XATTR_FILLHATCH:
             {
-                pResult = pItem->StaticWhichCast(XATTR_FILLHATCH).checkForUniqueItem(pDrawModel);
+                pResult = pItem->StaticWhichCast(XATTR_FILLHATCH).checkForUniqueItem(rDrawModel);
                 break;
             }
         }

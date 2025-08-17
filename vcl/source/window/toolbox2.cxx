@@ -38,7 +38,9 @@
 #include <vcl/IconThemeInfo.hxx>
 #include <vcl/commandinfoprovider.hxx>
 
+#include <accessibility/vclxaccessibletoolbox.hxx>
 #include <svdata.hxx>
+#include <uitest/toolboxuiobject.hxx>
 #include <brdwin.hxx>
 #include <toolbox.h>
 
@@ -328,6 +330,11 @@ void ToolBox::ImplUpdateItem( ImplToolItems::size_type nIndex )
     }
 }
 
+rtl::Reference<comphelper::OAccessible> ToolBox::CreateAccessible()
+{
+    return new VCLXAccessibleToolBox(this);
+}
+
 void ToolBox::Click()
 {
     CallEventListeners( VclEventId::ToolboxClick );
@@ -490,7 +497,7 @@ void ToolBox::InsertSpace()
     ImplToolItem aItem;
     aItem.meType     = ToolBoxItemType::SPACE;
     aItem.mbEnabled  = false;
-    mpData->m_aItems.push_back( aItem );
+    mpData->m_aItems.push_back(std::move(aItem));
     mpData->ImplClearLayoutData();
 
     ImplInvalidate();
@@ -580,7 +587,7 @@ void ToolBox::CopyItem( const ToolBox& rToolBox, ToolBoxItemId nItemId )
     aNewItem.mpWindow      = nullptr;
     aNewItem.mbShowWindow = false;
 
-    mpData->m_aItems.push_back( aNewItem );
+    mpData->m_aItems.push_back(std::move(aNewItem));
     mpData->ImplClearLayoutData();
     // redraw ToolBox
     ImplInvalidate();
@@ -947,20 +954,20 @@ void* ToolBox::GetItemData( ToolBoxItemId nItemId ) const
 
 static Image ImplMirrorImage( const Image& rImage )
 {
-    BitmapEx    aMirrBitmapEx( rImage.GetBitmapEx() );
+    Bitmap aMirrBitmap( rImage.GetBitmap() );
 
-    aMirrBitmapEx.Mirror( BmpMirrorFlags::Horizontal );
+    aMirrBitmap.Mirror( BmpMirrorFlags::Horizontal );
 
-    return Image( aMirrBitmapEx );
+    return Image( aMirrBitmap );
 }
 
 static Image ImplRotImage( const Image& rImage, Degree10 nAngle10 )
 {
-    BitmapEx    aRotBitmapEx( rImage.GetBitmapEx() );
+    Bitmap aRotBitmap( rImage.GetBitmap() );
 
-    aRotBitmapEx.Rotate( nAngle10, COL_WHITE );
+    aRotBitmap.Rotate( nAngle10, COL_WHITE );
 
-    return Image( aRotBitmapEx );
+    return Image( aRotBitmap );
 }
 
 void ToolBox::SetItemImage( ToolBoxItemId nItemId, const Image& rImage )
@@ -1037,9 +1044,6 @@ void ToolBox::SetItemText( ToolBoxItemId nItemId, const OUString& rText )
     }
     else
         pItem->maText = MnemonicGenerator::EraseAllMnemonicChars(rText);
-
-    // Notify button changed event to prepare accessibility bridge
-    CallEventListeners( VclEventId::ToolboxButtonStateChanged, reinterpret_cast< void* >( nPos ) );
 
     // Notify
     CallEventListeners( VclEventId::ToolboxItemTextChanged, reinterpret_cast< void* >( nPos ) );
@@ -1193,9 +1197,6 @@ void ToolBox::SetItemState( ToolBoxItemId nItemId, TriState eState )
     pItem->meState = eState;
     ImplUpdateItem( nPos );
 
-    // Notify button changed event to prepare accessibility bridge
-    CallEventListeners( VclEventId::ToolboxButtonStateChanged, reinterpret_cast< void* >( nPos ) );
-
     // Call accessible listener to notify state_changed event
     CallEventListeners( VclEventId::ToolboxItemUpdated, reinterpret_cast< void* >(nPos) );
 }
@@ -1231,9 +1232,6 @@ void ToolBox::EnableItem( ToolBoxItemId nItemId, bool bEnable )
     ImplUpdateItem( nPos );
 
     ImplUpdateInputEnable();
-
-    // Notify button changed event to prepare accessibility bridge
-    CallEventListeners( VclEventId::ToolboxButtonStateChanged, reinterpret_cast< void* >( nPos ) );
 
     CallEventListeners( bEnable ? VclEventId::ToolboxItemEnabled : VclEventId::ToolboxItemDisabled, reinterpret_cast< void* >( nPos ) );
 }
@@ -1347,6 +1345,23 @@ void ToolBox::SetHelpText( ToolBoxItemId nItemId, const OUString& rText )
 const OUString& ToolBox::GetHelpText( ToolBoxItemId nItemId ) const
 {
     return ImplGetHelpText( nItemId );
+}
+
+void ToolBox::SetAccessibleName(ToolBoxItemId nItemId, const OUString& rText)
+{
+    ImplToolItem* pItem = ImplGetItem(nItemId);
+
+    if (pItem)
+        pItem->maAccessibleName = rText;
+}
+
+OUString ToolBox::GetAccessibleName(ToolBoxItemId nItemId) const
+{
+    ImplToolItem* pItem = ImplGetItem(nItemId);
+    if (pItem)
+        return pItem->maAccessibleName;
+
+    return OUString();
 }
 
 void ToolBox::SetHelpId( ToolBoxItemId nItemId, const OUString& rHelpId )
@@ -1474,7 +1489,7 @@ bool ToolBox::IsMenuEnabled() const
 
 PopupMenu* ToolBox::GetMenu() const
 {
-    return mpData == nullptr ? nullptr : mpData->mpMenu;
+    return mpData ? mpData->mpMenu : nullptr;
 }
 
 void ToolBox::SetMenuExecuteHdl( const Link<ToolBox *, void>& rLink )
@@ -1504,10 +1519,9 @@ namespace
     }
 }
 
-void ToolBox::UpdateCustomMenu()
+void ToolBox::UpdateCustomMenu(PopupMenu* pMenu)
 {
     // fill clipped items into menu
-    PopupMenu *pMenu = GetMenu();
     pMenu->Clear();
 
     // add menu items: first the overflow items, then hidden items, both in the
@@ -1552,9 +1566,10 @@ void ToolBox::UpdateCustomMenu()
 
 IMPL_LINK( ToolBox, ImplCustomMenuListener, VclMenuEvent&, rEvent, void )
 {
-    if( rEvent.GetMenu() == GetMenu() && rEvent.GetId() == VclEventId::MenuSelect )
+    PopupMenu *pMenu = GetMenu();
+    if( pMenu && rEvent.GetMenu() == pMenu && rEvent.GetId() == VclEventId::MenuSelect )
     {
-        sal_uInt16 id = GetMenu()->GetItemId( rEvent.GetItemPos() );
+        sal_uInt16 id = pMenu->GetItemId( rEvent.GetItemPos() );
         if( id >= TOOLBOX_MENUITEM_START )
             TriggerItem( ToolBoxItemId(id - TOOLBOX_MENUITEM_START) );
     }
@@ -1565,17 +1580,20 @@ void ToolBox::ExecuteCustomMenu( const tools::Rectangle& rRect )
     if ( !IsMenuEnabled() || ImplIsInPopupMode() )
         return;
 
-    UpdateCustomMenu();
+    PopupMenu *pMenu = GetMenu();
+    if (!pMenu)
+        return;
+    UpdateCustomMenu(pMenu);
 
     if( GetMenuType() & ToolBoxMenuType::Customize )
         // call button handler to allow for menu customization
         mpData->maMenuButtonHdl.Call( this );
 
-    GetMenu()->AddEventListener( LINK( this, ToolBox, ImplCustomMenuListener ) );
+    pMenu->AddEventListener( LINK( this, ToolBox, ImplCustomMenuListener ) );
 
     // make sure all disabled entries will be shown
-    GetMenu()->SetMenuFlags(
-        GetMenu()->GetMenuFlags() | MenuFlags::AlwaysShowDisabledEntries );
+    pMenu->SetMenuFlags(
+        pMenu->GetMenuFlags() | MenuFlags::AlwaysShowDisabledEntries );
 
     // toolbox might be destroyed during execute
     bool bBorderDel = false;
@@ -1595,14 +1613,13 @@ void ToolBox::ExecuteCustomMenu( const tools::Rectangle& rRect )
         }
     }
 
-    sal_uInt16 uId = GetMenu()->Execute( pWin, tools::Rectangle( ImplGetPopupPosition( aMenuRect ), Size() ),
+    sal_uInt16 uId = pMenu->Execute( pWin, tools::Rectangle( ImplGetPopupPosition( aMenuRect ), Size() ),
                             PopupMenuFlags::ExecuteDown | PopupMenuFlags::NoMouseUpClose );
 
     if ( pWin->isDisposed() )
         return;
 
-    if( GetMenu() )
-        GetMenu()->RemoveEventListener( LINK( this, ToolBox, ImplCustomMenuListener ) );
+    pMenu->RemoveEventListener( LINK( this, ToolBox, ImplCustomMenuListener ) );
     if( bBorderDel )
     {
         if( pBorderWin->isDisposed() )
@@ -1671,12 +1688,12 @@ bool ToolBox::AlwaysLocked()
 
         utl::OConfigurationNode aNode = utl::OConfigurationTreeRoot::tryCreateWithComponentContext(
             comphelper::getProcessComponentContext(),
-            "/org.openoffice.Office.UI.GlobalSettings/Toolbars" );    // note: case sensitive !
+            u"/org.openoffice.Office.UI.GlobalSettings/Toolbars"_ustr );    // note: case sensitive !
         if ( aNode.isValid() )
         {
             // feature enabled ?
             bool bStatesEnabled = bool();
-            css::uno::Any aValue = aNode.getNodeValue( "StatesEnabled" );
+            css::uno::Any aValue = aNode.getNodeValue( u"StatesEnabled"_ustr );
             if( aValue >>= bStatesEnabled )
             {
                 if( bStatesEnabled )
@@ -1684,10 +1701,10 @@ bool ToolBox::AlwaysLocked()
                     // now read the locking state
                     utl::OConfigurationNode aNode2 = utl::OConfigurationTreeRoot::tryCreateWithComponentContext(
                         comphelper::getProcessComponentContext(),
-                        "/org.openoffice.Office.UI.GlobalSettings/Toolbars/States" );    // note: case sensitive !
+                        u"/org.openoffice.Office.UI.GlobalSettings/Toolbars/States"_ustr );    // note: case sensitive !
 
                     bool bLocked = bool();
-                    css::uno::Any aValue2 = aNode2.getNodeValue( "Locked" );
+                    css::uno::Any aValue2 = aNode2.getNodeValue( u"Locked"_ustr );
                     if( aValue2 >>= bLocked )
                         nAlwaysLocked = bLocked ? 1 : 0;
                 }
@@ -1729,6 +1746,8 @@ void ToolBox::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
             rJsonWriter.put("type", "toolitem");
             rJsonWriter.put("text", GetItemText(nId));
             rJsonWriter.put("command", sCommand);
+            if (const OUString tooltip = GetQuickHelpText(nId); !tooltip.isEmpty())
+                rJsonWriter.put("tooltip", tooltip);
             if (IsItemChecked(nId))
                 rJsonWriter.put("selected", true);
             if (!IsItemVisible(nId))
@@ -1738,16 +1757,34 @@ void ToolBox::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
             if (!IsItemEnabled(nId))
                 rJsonWriter.put("enabled", false);
 
-            Image aImage = GetItemImage(nId);
-            if (!sCommand.startsWith(".uno:") && !!aImage)
+            OUString sAccName = GetAccessibleName(nId);
+            OUString sAccDesc = GetAccessibleDescription();
+
+            if (!sAccName.isEmpty() || !sAccDesc.isEmpty())
             {
-                SvMemoryStream aOStm(6535, 6535);
-                if(GraphicConverter::Export(aOStm, aImage.GetBitmapEx(), ConvertDataFormat::PNG) == ERRCODE_NONE)
+                auto aAria = rJsonWriter.startNode("aria");
+                if (!sAccName.isEmpty())
+                    rJsonWriter.put("label", sAccName);
+                if (!sAccDesc.isEmpty())
+                    rJsonWriter.put("description", sAccDesc);
+            }
+
+            if (!sCommand.startsWith(".uno:") || sCommand == u".uno:ChartColorPalette"_ustr)
+            {
+                Image aImage = GetItemImage(nId);
+                if (!!aImage)
                 {
-                    css::uno::Sequence<sal_Int8> aSeq( static_cast<sal_Int8 const *>(aOStm.GetData()), aOStm.Tell());
-                    OStringBuffer aBuffer("data:image/png;base64,");
-                    ::comphelper::Base64::encode(aBuffer, aSeq);
-                    rJsonWriter.put("image", aBuffer);
+                    SvMemoryStream aOStm(6535, 6535);
+                    if (GraphicConverter::Export(aOStm, aImage.GetBitmap(),
+                                                 ConvertDataFormat::PNG)
+                        == ERRCODE_NONE)
+                    {
+                        css::uno::Sequence<sal_Int8> aSeq(
+                            static_cast<sal_Int8 const*>(aOStm.GetData()), aOStm.Tell());
+                        OStringBuffer aBuffer("data:image/png;base64,");
+                        ::comphelper::Base64::encode(aBuffer, aSeq);
+                        rJsonWriter.put("image", aBuffer);
+                    }
                 }
             }
         }

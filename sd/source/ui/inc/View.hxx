@@ -32,7 +32,6 @@
 
 class SdDrawDocument;
 class SdPage;
-class SdrOle2Obj;
 class SdrGrafObj;
 class SdrMediaObj;
 class OutputDevice;
@@ -109,8 +108,8 @@ public:
     virtual void            MarkListHasChanged() override;
     void                    SelectAll();
     void                    DoCut();
-    void                    DoCopy();
-    void                    DoPaste(::sd::Window* pWindow=nullptr);
+    void                    DoCopy(bool bMergeMasterPagesOnly = false );
+    void                    DoPaste(::sd::Window* pWindow=nullptr, bool bMergeMasterPagesOnly = false);
     virtual void            DoConnect(SdrOle2Obj* pOleObj) override;
     virtual bool            SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr = false);
     void                    StartDrag( const Point& rStartPos, vcl::Window* pWindow );
@@ -175,7 +174,8 @@ public:
     SdrMediaObj*            InsertMediaObj(const OUString& rURL, sal_Int8& rAction,
                                             const Point& rPos, const Size& rSize );
 
-    bool PasteRTFTable( const ::tools::SvRef<SotTempStream>& xStm, SdrPage* pPage, SdrInsertFlags nPasteOptions );
+    bool PasteRTFTable( SvStream& rOStm, SdrPage* pPage, SdrInsertFlags nPasteOptions );
+    bool PasteHTMLTable( SvStream& rOStm, SdrPage* pPage, SdrInsertFlags nPasteOptions );
 
     bool                    IsPresObjSelected(bool bOnPage = true, bool bOnMasterPage = true, bool bCheckPresObjListOnly = false, bool bCheckLayoutOnly = false) const;
 
@@ -196,8 +196,6 @@ public:
     bool GetExchangeList( std::vector<OUString> &rExchangeList,
                           std::vector<OUString> &rBookmarkList,
                           const sal_uInt16 nType );
-
-    virtual void onAccessibilityOptionsChanged() override;
 
     /** returns true if we have an undo manager and there is an open list undo action */
     bool isRecordingUndo() const;

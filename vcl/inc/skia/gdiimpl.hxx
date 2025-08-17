@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_SKIA_GDIIMPL_HXX
-#define INCLUDED_VCL_SKIA_GDIIMPL_HXX
+#pragma once
 
 #include <vcl/dllapi.h>
 
@@ -42,11 +41,9 @@ public:
     SkiaSalGraphicsImpl(SalGraphics& pParent, SalGeometryProvider* pProvider);
     virtual ~SkiaSalGraphicsImpl() override;
 
-    virtual void Init() override;
-
     virtual void DeInit() override;
 
-    virtual OUString getRenderBackendName() const override { return "skia"; }
+    virtual OUString getRenderBackendName() const override { return u"skia"_ustr; }
 
     const vcl::Region& getClipRegion() const;
     virtual void setClipRegion(const vcl::Region&) override;
@@ -127,12 +124,6 @@ public:
 
     virtual void copyBits(const SalTwoRect& rPosAry, SalGraphics* pSrcGraphics) override;
 
-    virtual bool blendBitmap(const SalTwoRect&, const SalBitmap& rBitmap) override;
-
-    virtual bool blendAlphaBitmap(const SalTwoRect&, const SalBitmap& rSrcBitmap,
-                                  const SalBitmap& rMaskBitmap,
-                                  const SalBitmap& rAlphaBitmap) override;
-
     virtual void drawBitmap(const SalTwoRect& rPosAry, const SalBitmap& rSalBitmap) override;
 
     virtual void drawBitmap(const SalTwoRect& rPosAry, const SalBitmap& rSalBitmap,
@@ -142,7 +133,7 @@ public:
                           Color nMaskColor) override;
 
     virtual std::shared_ptr<SalBitmap> getBitmap(tools::Long nX, tools::Long nY, tools::Long nWidth,
-                                                 tools::Long nHeight) override;
+                                                 tools::Long nHeight, bool bWithoutAlpha) override;
 
     virtual Color getPixel(tools::Long nX, tools::Long nY) override;
 
@@ -151,9 +142,6 @@ public:
                         SalInvert nFlags) override;
 
     virtual void invert(sal_uInt32 nPoints, const Point* pPtAry, SalInvert nFlags) override;
-
-    virtual bool drawEPS(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
-                         void* pPtr, sal_uInt32 nSize) override;
 
     /** Render bitmap with alpha channel
 
@@ -242,7 +230,7 @@ protected:
 
     void privateDrawAlphaRect(tools::Long nX, tools::Long nY, tools::Long nWidth,
                               tools::Long nHeight, double nTransparency, bool blockAA = false);
-    void privateCopyBits(const SalTwoRect& rPosAry, SkiaSalGraphicsImpl* src);
+    void privateCopyBits(const SalTwoRect& rPosAry, const SkiaSalGraphicsImpl* src);
 
     void setProvider(SalGeometryProvider* provider) { mProvider = provider; }
 
@@ -298,7 +286,10 @@ protected:
     void performDrawPolyPolygon(const basegfx::B2DPolyPolygon& polygon, double transparency,
                                 bool useAA);
 
-    BmpScaleFlag goodScalingQuality() const { return SkiaHelper::goodScalingQuality(isGPU()); }
+    BmpScaleFlag goodScalingQuality(bool isUpscale = false) const
+    {
+        return SkiaHelper::goodScalingQuality(isGPU(), isUpscale);
+    }
     SkSamplingOptions makeSamplingOptions(const SalTwoRect& rPosAry, int scalingFactor,
                                           int srcScalingFactor = 1)
     {
@@ -306,17 +297,19 @@ protected:
     }
     SkSamplingOptions makeSamplingOptions(const SkMatrix& matrix, int scalingFactor)
     {
-        return SkiaHelper::makeSamplingOptions(goodScalingQuality(), matrix, scalingFactor);
+        bool isUpscale = (matrix.getScaleX() > 1.0 || matrix.getScaleY() > 1.0);
+        return SkiaHelper::makeSamplingOptions(goodScalingQuality(isUpscale), matrix,
+                                               scalingFactor);
     }
 
     // Create SkPaint to use when drawing to the surface. It is not to be used
     // when doing internal drawing such as when merging two bitmaps together.
     // This may apply some default settings to the paint as necessary.
-    SkPaint makePaintInternal() const;
+    SkPaint makePaintInternal(bool bSrcATop = false) const;
     // Create SkPaint set up for drawing lines (using mLineColor etc.).
     SkPaint makeLinePaint(double transparency = 0) const;
     // Create SkPaint set up for filling (using mFillColor etc.).
-    SkPaint makeFillPaint(double transparency = 0) const;
+    SkPaint makeFillPaint(double transparency = 0, bool bSrcATop = false) const;
     // Create SkPaint set up for bitmap drawing.
     SkPaint makeBitmapPaint() const;
     // Create SkPaint set up for gradient drawing.
@@ -349,7 +342,7 @@ protected:
     // The Skia surface that is target of all the rendering.
     sk_sp<SkSurface> mSurface;
     // Note that mSurface may be a proxy surface and not the one from the window context.
-    std::unique_ptr<sk_app::WindowContext> mWindowContext;
+    std::unique_ptr<skwindow::WindowContext> mWindowContext;
     bool mIsGPU; // whether the surface is GPU-backed
     // Note that we generally use VCL coordinates, which is not mSurface coordinates if mScaling!=1.
     SkIRect mDirtyRect; // The area that has been changed since the last performFlush().
@@ -377,7 +370,7 @@ protected:
     bool mInWindowBackingPropertiesChanged;
 };
 
-inline SkPaint SkiaSalGraphicsImpl::makePaintInternal() const
+inline SkPaint SkiaSalGraphicsImpl::makePaintInternal(bool bSrcATop) const
 {
     SkPaint paint;
     // Invert could be done using a blend mode like invert() does, but
@@ -388,6 +381,10 @@ inline SkPaint SkiaSalGraphicsImpl::makePaintInternal() const
         SkiaHelper::setBlenderInvert(&paint);
     else if (mXorMode == XorMode::Xor)
         SkiaHelper::setBlenderXor(&paint);
+    else if (bSrcATop)
+        paint.setBlendMode(SkBlendMode::kSrcATop);
+    else
+        paint.setBlendMode(SkBlendMode::kSrc); // set as is, including alpha
     return paint;
 }
 
@@ -402,10 +399,10 @@ inline SkPaint SkiaSalGraphicsImpl::makeLinePaint(double transparency) const
     return paint;
 }
 
-inline SkPaint SkiaSalGraphicsImpl::makeFillPaint(double transparency) const
+inline SkPaint SkiaSalGraphicsImpl::makeFillPaint(double transparency, bool bSrcATop) const
 {
     assert(moFillColor.has_value());
-    SkPaint paint = makePaintInternal();
+    SkPaint paint = makePaintInternal(bSrcATop);
     paint.setColor(transparency == 0
                        ? SkiaHelper::toSkColor(*moFillColor)
                        : SkiaHelper::toSkColorWithTransparency(*moFillColor, transparency));
@@ -416,7 +413,19 @@ inline SkPaint SkiaSalGraphicsImpl::makeFillPaint(double transparency) const
     return paint;
 }
 
-inline SkPaint SkiaSalGraphicsImpl::makeBitmapPaint() const { return makePaintInternal(); }
+inline SkPaint SkiaSalGraphicsImpl::makeBitmapPaint() const
+{
+    SkPaint paint;
+    // Invert could be done using a blend mode like invert() does, but
+    // intentionally use SkBlender to make sure it's not overwritten
+    // by a blend mode set later (which would be probably a mistake),
+    // and so that the drawing color does not actually matter.
+    if (mXorMode == XorMode::Invert)
+        SkiaHelper::setBlenderInvert(&paint);
+    else if (mXorMode == XorMode::Xor)
+        SkiaHelper::setBlenderXor(&paint);
+    return paint;
+}
 
 inline SkPaint SkiaSalGraphicsImpl::makeGradientPaint() const { return makePaintInternal(); }
 
@@ -435,7 +444,5 @@ inline SkPaint SkiaSalGraphicsImpl::makePixelPaint(std::optional<Color> color) c
     paint.setColor(SkiaHelper::toSkColor(*color));
     return paint;
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

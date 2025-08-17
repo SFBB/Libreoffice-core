@@ -237,7 +237,7 @@ OUString SwSortBoxElement::GetKey(sal_uInt16 nKey) const
     if( pFndBox )
     {   // Get StartNode and skip it
         const SwTableBox* pMyBox = pFndBox->GetBox();
-        OSL_ENSURE(pMyBox, "No atomic Box");
+        assert(pMyBox && "No atomic Box");
 
         if( pMyBox->GetSttNd() )
         {
@@ -312,14 +312,14 @@ bool SwDoc::SortText(const SwPaM& rPaM, const SwSortOptions& rOpt)
         GetIDocumentUndoRedo().StartUndo( SwUndoId::START, nullptr );
     }
 
-    SwPaM* pRedlPam = nullptr;
-    SwUndoRedlineSort* pRedlUndo = nullptr;
+    std::optional<SwPaM> pRedlPam;
+    std::unique_ptr<SwUndoRedlineSort> xRedlUndo;
     SwUndoSort* pUndoSort = nullptr;
 
     // To-Do - add 'SwExtraRedlineTable' also ?
     if( getIDocumentRedlineAccess().IsRedlineOn() || (!getIDocumentRedlineAccess().IsIgnoreRedline() && !getIDocumentRedlineAccess().GetRedlineTable().empty() ))
     {
-        pRedlPam = new SwPaM( pStart->GetNode(), pEnd->GetNode(), SwNodeOffset(-1), SwNodeOffset(1) );
+        pRedlPam.emplace( pStart->GetNode(), pEnd->GetNode(), SwNodeOffset(-1), SwNodeOffset(1) );
         SwContentNode* pCNd = pRedlPam->GetMarkContentNode();
         if( pCNd )
             pRedlPam->GetMark()->SetContent( pCNd->Len() );
@@ -328,7 +328,7 @@ bool SwDoc::SortText(const SwPaM& rPaM, const SwSortOptions& rOpt)
         {
             if( bUndo )
             {
-                pRedlUndo = new SwUndoRedlineSort( *pRedlPam,rOpt );
+                xRedlUndo.reset(new SwUndoRedlineSort(*pRedlPam, rOpt));
                 GetIDocumentUndoRedo().DoUndo(false);
             }
             // First copy the range
@@ -356,14 +356,13 @@ bool SwDoc::SortText(const SwPaM& rPaM, const SwSortOptions& rOpt)
             if (pCNd)
                 pRedlPam->GetPoint()->SetContent( nCLen );
 
-            if( pRedlUndo )
-                pRedlUndo->SetValues( rPaM );
+            if (xRedlUndo)
+                xRedlUndo->SetValues(rPaM);
         }
         else
         {
             getIDocumentRedlineAccess().DeleteRedline( *pRedlPam, true, RedlineType::Any );
-            delete pRedlPam;
-            pRedlPam = nullptr;
+            pRedlPam.reset();
         }
     }
 
@@ -381,7 +380,7 @@ bool SwDoc::SortText(const SwPaM& rPaM, const SwSortOptions& rOpt)
     SwNodeOffset nBeg = pStart->GetNodeIndex();
     SwNodeRange aRg( aStart, aStart );
 
-    if( bUndo && !pRedlUndo )
+    if (bUndo && !xRedlUndo)
     {
         pUndoSort = new SwUndoSort(rPaM, rOpt);
         GetIDocumentUndoRedo().AppendUndo(std::unique_ptr<SwUndo>(pUndoSort));
@@ -413,12 +412,13 @@ bool SwDoc::SortText(const SwPaM& rPaM, const SwSortOptions& rOpt)
 
     if( pRedlPam )
     {
-        if( pRedlUndo )
+        SwUndoRedlineSort* pRedlUndo = xRedlUndo.get();
+        if (pRedlUndo)
         {
-            pRedlUndo->SetSaveRange( *pRedlPam );
+            xRedlUndo->SetSaveRange(*pRedlPam);
             // UGLY: temp. enable Undo
             GetIDocumentUndoRedo().DoUndo(true);
-            GetIDocumentUndoRedo().AppendUndo( std::unique_ptr<SwUndo>(pRedlUndo) );
+            GetIDocumentUndoRedo().AppendUndo(std::move(xRedlUndo));
             GetIDocumentUndoRedo().DoUndo(false);
         }
 
@@ -438,17 +438,16 @@ bool SwDoc::SortText(const SwPaM& rPaM, const SwSortOptions& rOpt)
         // the sorted range is inserted
         getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( RedlineType::Insert, *pRedlPam ), true);
 
-        if( pRedlUndo )
+        if (pRedlUndo)
         {
             SwNodeIndex aInsEndIdx( pRedlPam->GetMark()->GetNode(), -1 );
             SwContentNode *const pContentNode = aInsEndIdx.GetNode().GetContentNode();
             pRedlPam->GetMark()->Assign( *pContentNode, pContentNode->Len() );
 
-            pRedlUndo->SetValues( *pRedlPam );
+            pRedlUndo->SetValues(*pRedlPam);
         }
 
-        delete pRedlPam;
-        pRedlPam = nullptr;
+        pRedlPam.reset();
     }
     GetIDocumentUndoRedo().DoUndo( bUndo );
     if( bUndo )
@@ -674,7 +673,7 @@ void MoveCol(SwDoc* pDoc, const FlatFndBox& rBox, sal_uInt16 nS, sal_uInt16 nT,
 void MoveCell(SwDoc* pDoc, const SwTableBox* pSource, const SwTableBox* pTar,
               bool bMovedBefore, SwUndoSort* pUD)
 {
-    OSL_ENSURE(pSource && pTar,"Source or target missing");
+    assert(pSource && pTar && "Source or target missing");
 
     if(pSource == pTar)
         return;
@@ -684,7 +683,7 @@ void MoveCell(SwDoc* pDoc, const SwTableBox* pSource, const SwTableBox* pTar,
 
     // Set Pam source to the first ContentNode
     SwNodeRange aRg( *pSource->GetSttNd(), SwNodeOffset(0), *pSource->GetSttNd() );
-    SwNode* pNd = pDoc->GetNodes().GoNext( &aRg.aStart );
+    SwNode* pNd = SwNodes::GoNext(&aRg.aStart);
 
     // If the Cell (Source) wasn't moved
     // -> insert an empty Node and move the rest or the Mark
@@ -697,7 +696,7 @@ void MoveCell(SwDoc* pDoc, const SwTableBox* pSource, const SwTableBox* pTar,
     // If the Target is empty (there is one empty Node)
     // -> move and delete it
     SwNodeIndex aTar( *pTar->GetSttNd() );
-    pNd = pDoc->GetNodes().GoNext( &aTar );     // next ContentNode
+    pNd = SwNodes::GoNext(&aTar); // next ContentNode
     SwNodeOffset nCount = pNd->EndOfSectionIndex() - pNd->StartOfSectionIndex();
 
     bool bDelFirst = false;
@@ -873,10 +872,9 @@ void FlatFndBox::FillFlat(const FndBox_& rBox, bool bLastBox)
                     SfxItemState::SET == pFormat->GetItemState( RES_BOXATR_FORMULA ) ||
                     SfxItemState::SET == pFormat->GetItemState( RES_BOXATR_VALUE ) )
                 {
-                    SfxItemSetFixed<
-                            RES_VERT_ORIENT, RES_VERT_ORIENT,
-                            RES_BOXATR_FORMAT, RES_BOXATR_VALUE>
-                        aSet(m_pDoc->GetAttrPool());
+                    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<
+                        RES_VERT_ORIENT, RES_VERT_ORIENT,
+                        RES_BOXATR_FORMAT, RES_BOXATR_VALUE>(m_pDoc->GetAttrPool()));
                     aSet.Put( pFormat->GetAttrSet() );
                     if( m_vItemSets.empty() )
                     {

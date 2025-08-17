@@ -29,7 +29,7 @@
 #include <editeng/udlnitem.hxx>
 #include <editeng/wghtitem.hxx>
 #include <editeng/justifyitem.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <formulacell.hxx>
 #include <document.hxx>
@@ -179,17 +179,17 @@ void OP_ColumnWidth(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
 
     nCol = rContext.rDoc.SanitizeCol(nCol);
 
-    sal_uInt16 nBreite;
+    sal_uInt16 nWidth;
     if( nWidthSpaces )
         // assuming 10cpi character set
-        nBreite = static_cast<sal_uInt16>( TWIPS_PER_CHAR * nWidthSpaces );
+        nWidth = static_cast<sal_uInt16>( TWIPS_PER_CHAR * nWidthSpaces );
     else
     {
         rContext.rDoc.SetColHidden(nCol, nCol, 0, true);
-        nBreite = nDefWidth;
+        nWidth = nDefWidth;
     }
 
-    rContext.rDoc.SetColWidth(nCol, 0, nBreite);
+    rContext.rDoc.SetColWidth(nCol, 0, nWidth);
 }
 
 void OP_NamedRange(LotusContext& rContext, SvStream& r, sal_uInt16 /*n*/)
@@ -327,7 +327,7 @@ void OP_Window1(LotusContext& rContext, SvStream& r, sal_uInt16 n)
 
     nDefWidth = static_cast<sal_uInt16>( TWIPS_PER_CHAR * nDefWidth );
 
-    const bool bFuzzing = utl::ConfigManager::IsFuzzing();
+    const bool bFuzzing = comphelper::IsFuzzing();
 
     // instead of default, set all Cols in SC by hand
     for (SCCOL nCol = 0 ; nCol <= rContext.rDoc.MaxCol() ; nCol++)
@@ -471,7 +471,7 @@ void OP_Note123(LotusContext& rContext, SvStream& r, sal_uInt16 n)
 
 void OP_HorAlign123(LotusContext& /*rContext*/, sal_uInt8 nAlignPattern, SfxItemSet& rPatternItemSet)
 {
-//      pre:  Pattern is stored in the last 3 bites of the 21st byte
+//      pre:  Pattern is stored in the last 3 bits of the 21st byte
 //      post: Appropriate Horizontal Alignment is set in rPattern according to the bit pattern.
 //
 //      LEFT:001, RIGHT:010, CENTER:011, JUSTIFY:110,
@@ -504,7 +504,7 @@ void OP_HorAlign123(LotusContext& /*rContext*/, sal_uInt8 nAlignPattern, SfxItem
 
 void OP_VerAlign123(LotusContext& /*rContext*/, sal_uInt8 nAlignPattern, SfxItemSet& rPatternItemSet)
 {
-//      pre:  Pattern is stored in the last 3 bites of the 22nd byte
+//      pre:  Pattern is stored in the last 3 bits of the 22nd byte
 //      post: Appropriate Vertical Alignment is set in rPattern according to the bit pattern.
 //
 //      TOP:001, MIDDLE:010, DOWN:100, DEFAULT:000
@@ -535,8 +535,8 @@ void OP_CreatePattern123(LotusContext& rContext, SvStream& r, sal_uInt16 n)
 {
     sal_uInt16 nCode;
 
-    ScPatternAttr aPattern(rContext.rDoc.GetPool());
-    SfxItemSet& rItemSet = aPattern.GetItemSet();
+    ScPatternAttr aPattern(rContext.rDoc.getCellAttributeHelper());
+    SfxItemSet& rItemSet = aPattern.GetItemSetWritable();
 
     r.ReadUInt16( nCode );
     n -= std::min<sal_uInt16>(n, 2);
@@ -611,7 +611,8 @@ void OP_SheetName123(LotusContext& rContext, SvStream& rStream, sal_uInt16 nLeng
 void OP_ApplyPatternArea123(LotusContext& rContext, SvStream& rStream)
 {
     sal_uInt16 nOpcode, nLength;
-    sal_uInt16 nCol = 0, nColCount = 0, nRow = 0, nRowCount = 0, nTab = 0, nData, nTabCount = 0, nLevel = 0;
+    sal_uInt16 nCol = 0, nColCount = 0, nRow = 0, nRowCount = 0, nTab = 0, nData, nTabCount = 0;
+    int nLevel = 0;
 
     do
     {
@@ -676,7 +677,7 @@ void OP_ApplyPatternArea123(LotusContext& rContext, SvStream& rStream)
                 break;
         }
     }
-    while( nLevel && rStream.good() );
+    while (nLevel > 0 && rStream.good());
 
     rContext.aLotusPatternPool.clear();
 }

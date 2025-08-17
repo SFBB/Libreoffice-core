@@ -89,11 +89,8 @@ void ContentEventNotifier::notifyRemoved( const OUString& aChildName ) const
 {
     rtl::Reference<FileContentIdentifier> xChildId = new FileContentIdentifier( aChildName );
 
-    rtl::Reference<BaseContent> pp = new BaseContent( m_pMyShell,xChildId,aChildName );
-    {
-        std::unique_lock aGuard( pp->m_aMutex );
-        pp->m_nState |= BaseContent::Deleted;
-    }
+    rtl::Reference<BaseContent> pp = new BaseContent(m_pMyShell, xChildId, aChildName,
+                                                     BaseContent::FullFeatured | BaseContent::Deleted);
 
     ContentEvent aEvt( m_xCreatorContent,
                        ContentAction::REMOVED,
@@ -192,7 +189,7 @@ void PropertyChangeNotifier::notifyPropertyChanged(
             rListener->propertiesChange( Changes );
     }
 
-    for( const auto& rChange : std::as_const(Changes) )
+    for (const auto& rChange : Changes)
     {
         uno::Sequence< beans::PropertyChangeEvent > seq{ rChange };
         it = m_aListeners.find( rChange.PropertyName );

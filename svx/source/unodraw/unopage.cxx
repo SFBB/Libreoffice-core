@@ -23,7 +23,6 @@
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/form/XForms.hpp>
 #include <o3tl/safeint.hxx>
 #include <osl/mutex.hxx>
 #include <comphelper/classids.hxx>
@@ -67,8 +66,7 @@ using namespace ::com::sun::star::drawing;
 UNO3_GETIMPLEMENTATION_IMPL( SvxDrawPage );
 
 SvxDrawPage::SvxDrawPage(SdrPage* pInPage) // TTTT should be reference
-:   mrBHelper(m_aMutex)
-    ,mpPage(pInPage)
+:    mpPage(pInPage)
     ,mpModel(&pInPage->getSdrModelFromSdrPage())  // register at broadcaster
     ,mpView(new SdrView(pInPage->getSdrModelFromSdrPage())) // create (hidden) view
 {
@@ -77,7 +75,7 @@ SvxDrawPage::SvxDrawPage(SdrPage* pInPage) // TTTT should be reference
 
 SvxDrawPage::~SvxDrawPage() noexcept
 {
-    if( !mrBHelper.bDisposed )
+    if( !m_bDisposed )
     {
         assert(!"SvxDrawPage must be disposed!");
         acquire();
@@ -109,67 +107,44 @@ void SvxDrawPage::dispose()
 
     // Guard dispose against multiple threading
     // Remark: It is an error to call dispose more than once
-    bool bDoDispose = false;
     {
-        osl::MutexGuard aGuard( mrBHelper.rMutex );
-        if( !mrBHelper.bDisposed && !mrBHelper.bInDispose )
-        {
-            // only one call go into this section
-            mrBHelper.bInDispose = true;
-            bDoDispose = true;
-        }
+        std::unique_lock aGuard( m_aMutex );
+        if( m_bDisposed )
+            return;
+        m_bDisposed = true;
     }
-
-    // Do not hold the mutex because we are broadcasting
-    if( !bDoDispose )
-        return;
 
     // Create an event with this as sender
-    try
+    css::document::EventObject aEvt;
+    aEvt.Source.set(uno::Reference<uno::XInterface>::query( static_cast<lang::XComponent *>(this) ));
+    // inform all listeners to release this object
+    // The listener container are automatically cleared
     {
-        css::document::EventObject aEvt;
-        aEvt.Source.set(uno::Reference<uno::XInterface>::query( static_cast<lang::XComponent *>(this) ));
-        // inform all listeners to release this object
-        // The listener container are automatically cleared
-        mrBHelper.aLC.disposeAndClear( aEvt );
-        // notify subclasses to do their dispose
-        disposing();
+        std::unique_lock aGuard( m_aMutex );
+        maEventListeners.disposeAndClear( aGuard, aEvt );
     }
-    catch(const css::uno::Exception&)
-    {
-        // catch exception and throw again but signal that
-        // the object was disposed. Dispose should be called
-        // only once.
-        osl::MutexGuard aGuard( mrBHelper.rMutex );
-        mrBHelper.bDisposed = true;
-        mrBHelper.bInDispose = false;
-        throw;
-    }
-
-    osl::MutexGuard aGuard( mrBHelper.rMutex );
-    mrBHelper.bDisposed = true;
-    mrBHelper.bInDispose = false;
-
+    // notify subclasses to do their dispose
+    disposing();
 }
 
 void SAL_CALL SvxDrawPage::addEventListener( const css::uno::Reference< css::lang::XEventListener >& aListener )
 {
-    SolarMutexGuard aGuard;
+    std::unique_lock aGuard( m_aMutex );
 
     if( mpModel == nullptr )
         throw lang::DisposedException();
 
-    mrBHelper.addListener( cppu::UnoType<decltype(aListener)>::get() , aListener );
+    maEventListeners.addInterface( aGuard, aListener );
 }
 
 void SAL_CALL SvxDrawPage::removeEventListener( const css::uno::Reference< css::lang::XEventListener >& aListener )
 {
-    SolarMutexGuard aGuard;
+    std::unique_lock aGuard( m_aMutex );
 
     if( mpModel == nullptr )
         throw lang::DisposedException();
 
-    mrBHelper.removeListener( cppu::UnoType<decltype(aListener)>::get() , aListener );
+    maEventListeners.removeInterface( aGuard, aListener );
 }
 
 void SAL_CALL SvxDrawPage::add( const uno::Reference< drawing::XShape >& xShape )
@@ -202,7 +177,7 @@ void SAL_CALL SvxDrawPage::add( const uno::Reference< drawing::XShape >& xShape 
         pClonedSdrShape->setUnoShape(pShape);
         // pShape->InvalidateSdrObject();
         // pShape->Create(pClonedSdrShape, this);
-        pObj = pClonedSdrShape;
+        pObj = std::move(pClonedSdrShape);
         bNeededToClone = true;
     }
 
@@ -349,7 +324,7 @@ uno::Any SAL_CALL SvxDrawPage::getByIndex( sal_Int32 Index )
     SolarMutexGuard aGuard;
 
     if( (mpModel == nullptr) || (mpPage == nullptr) )
-        throw lang::DisposedException("Model or Page was already disposed!");
+        throw lang::DisposedException(u"Model or Page was already disposed!"_ustr);
 
     if ( Index < 0 || o3tl::make_unsigned(Index) >= mpPage->GetObjCount() )
         throw lang::IndexOutOfBoundsException("Index (" + OUString::number(Index)
@@ -378,7 +353,7 @@ sal_Bool SAL_CALL SvxDrawPage::hasElements()
     if( (mpModel == nullptr) || (mpPage == nullptr) )
         throw lang::DisposedException();
 
-    return mpPage && mpPage->GetObjCount()>0;
+    return mpPage->GetObjCount()>0;
 }
 
 namespace
@@ -665,6 +640,7 @@ rtl::Reference<SvxShape> SvxDrawPage::CreateShapeByTypeAndInventor( SdrObjKind n
                     pRet = new SvxShapePolyPolygon( pObj );
                     break;
                 case SdrObjKind::Rectangle:
+                case SdrObjKind::Annotation:
                     pRet = new SvxShapeRect( pObj );
                     break;
                 case SdrObjKind::CircleOrEllipse:
@@ -832,7 +808,7 @@ rtl::Reference<SvxShape> SvxDrawPage::CreateShapeByTypeAndInventor( SdrObjKind n
 
 Reference< drawing::XShape >  SvxDrawPage::CreateShape( SdrObject *pObj ) const
 {
-    Reference< drawing::XShape > xShape( CreateShapeByTypeAndInventor(pObj->GetObjIdentifier(),
+    rtl::Reference< SvxShape > xShape( CreateShapeByTypeAndInventor(pObj->GetObjIdentifier(),
                                               pObj->GetObjInventor(),
                                               pObj,
                                               const_cast<SvxDrawPage*>(this)));
@@ -859,7 +835,7 @@ rtl::Reference<SdrObject> SvxDrawPage::CreateSdrObject( const Reference< drawing
 // css::lang::XServiceInfo
 OUString SAL_CALL SvxDrawPage::getImplementationName()
 {
-    return "SvxDrawPage";
+    return u"SvxDrawPage"_ustr;
 }
 
 sal_Bool SAL_CALL SvxDrawPage::supportsService( const OUString& ServiceName )
@@ -869,7 +845,7 @@ sal_Bool SAL_CALL SvxDrawPage::supportsService( const OUString& ServiceName )
 
 uno::Sequence< OUString > SAL_CALL SvxDrawPage::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> aSeq { "com.sun.star.drawing.ShapeCollection" };
+    uno::Sequence<OUString> aSeq { u"com.sun.star.drawing.ShapeCollection"_ustr };
     return aSeq;
 }
 
@@ -906,6 +882,42 @@ SdrPage* GetSdrPageFromXDrawPage( const uno::Reference< drawing::XDrawPage >& xD
     }
 
     return nullptr;
+}
+
+// helper that returns true if the given XShape is member of the given
+// XDrawPage or it's MasterPage (aka associated)
+bool IsXShapeAssociatedWithXDrawPage(
+    const css::uno::Reference<css::drawing::XShape>& rxShape,
+    const css::uno::Reference< css::drawing::XDrawPage >& rxDrawPage) noexcept
+{
+    if (!rxShape)
+        return false;
+
+    if (!rxDrawPage)
+        return false;
+
+    const SdrObject* pSdrObject(SdrObject::getSdrObjectFromXShape(rxShape));
+    if (nullptr == pSdrObject)
+        return false;
+
+    SdrPage* pSdrPage(GetSdrPageFromXDrawPage(rxDrawPage));
+    if (nullptr == pSdrPage)
+        return false;
+
+    const SdrPage* pPageFromObj(pSdrObject->getSdrPageFromSdrObject());
+    if (nullptr == pPageFromObj)
+        return false;
+
+    if (pSdrPage == pPageFromObj)
+        // given XShape is member of given XDrawPage
+        return true;
+
+    if (pSdrPage->TRG_HasMasterPage())
+        if (&pSdrPage->TRG_GetMasterPage() == pPageFromObj)
+            // given XShape is member of MasterPage of given XDrawPage
+            return true;
+
+    return false;
 }
 
 // XFormsSupplier

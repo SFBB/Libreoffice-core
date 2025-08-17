@@ -21,9 +21,9 @@ ScExponentialSmoothingDialog::ScExponentialSmoothingDialog(
                     weld::Window* pParent, ScViewData& rViewData )
     : ScStatisticsInputOutputDialog(
             pSfxBindings, pChildWindow, pParent, rViewData,
-            "modules/scalc/ui/exponentialsmoothingdialog.ui",
-            "ExponentialSmoothingDialog")
-    , mxSmoothingFactor(m_xBuilder->weld_spin_button("smoothing-factor-spin"))
+            u"modules/scalc/ui/exponentialsmoothingdialog.ui"_ustr,
+            u"ExponentialSmoothingDialog"_ustr)
+    , mxSmoothingFactor(m_xBuilder->weld_spin_button(u"smoothing-factor-spin"_ustr))
 {
 }
 
@@ -41,9 +41,9 @@ TranslateId ScExponentialSmoothingDialog::GetUndoNameId()
     return STR_EXPONENTIAL_SMOOTHING_UNDO_NAME;
 }
 
-ScRange ScExponentialSmoothingDialog::ApplyOutput(ScDocShell* pDocShell)
+ScRange ScExponentialSmoothingDialog::ApplyOutput(ScDocShell& rDocShell)
 {
-    AddressWalkerWriter output(mOutputAddress, pDocShell, mDocument,
+    AddressWalkerWriter output(mOutputAddress, rDocShell, mDocument,
             formula::FormulaGrammar::mergeToGrammar( formula::FormulaGrammar::GRAM_ENGLISH, mAddressDetails.eConv));
     FormulaTemplate aTemplate(&mDocument);
 

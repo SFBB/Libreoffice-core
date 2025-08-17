@@ -10,14 +10,12 @@
 
 #include <tools/helpers.hxx>
 
-#include <vcl/bitmap.hxx>
-#include <vcl/bitmapex.hxx>
-#include <vcl/BitmapGaussianSeparableBlurFilter.hxx>
+#include <vcl/bitmap/BitmapGaussianSeparableBlurFilter.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
 
-BitmapEx BitmapGaussianSeparableBlurFilter::execute(BitmapEx const& rBitmapEx) const
+Bitmap BitmapGaussianSeparableBlurFilter::execute(Bitmap const& rBitmap) const
 {
-    Bitmap aBitmap(rBitmapEx.GetBitmap());
+    Bitmap aBitmap(rBitmap);
 
     const sal_Int32 nWidth = aBitmap.GetSizePixel().Width();
     const sal_Int32 nHeight = aBitmap.GetSizePixel().Height();
@@ -75,9 +73,9 @@ BitmapEx BitmapGaussianSeparableBlurFilter::execute(BitmapEx const& rBitmapEx) c
     }
 
     if (bResult)
-        return BitmapEx(aBitmap);
+        return aBitmap;
 
-    return BitmapEx();
+    return Bitmap();
 }
 
 bool BitmapGaussianSeparableBlurFilter::convolutionPass(const Bitmap& rBitmap, Bitmap& aNewBitmap,

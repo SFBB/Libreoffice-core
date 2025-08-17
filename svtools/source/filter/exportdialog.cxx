@@ -112,25 +112,24 @@ static MapUnit GetMapUnit( sal_Int32 nUnit )
 
 sal_Int32 ExportDialog::GetDefaultUnit() const
 {
-    sal_Int32 nDefaultUnit = UNIT_CM;
+    sal_Int32 nDefaultUnit;
     switch( mrFltCallPara.eFieldUnit )
     {
 //      case FieldUnit::NONE :
 //      case FieldUnit::PERCENT :
 //      case FieldUnit::CUSTOM :
+        case FieldUnit::KM :         // PASSTHROUGH INTENDED
+        case FieldUnit::M :
+        case FieldUnit::MM_100TH :
+        case FieldUnit::CM :
         default:                nDefaultUnit = UNIT_CM; break;
 
         case FieldUnit::MILE :       // PASSTHROUGH INTENDED
         case FieldUnit::FOOT :
         case FieldUnit::TWIP :
-        case FieldUnit::PICA :       nDefaultUnit = UNIT_INCH; break;
-
-        case FieldUnit::KM :         // PASSTHROUGH INTENDED
-        case FieldUnit::M :
-        case FieldUnit::MM_100TH :   nDefaultUnit = UNIT_CM; break;
-
+        case FieldUnit::PICA :
         case FieldUnit::INCH :       nDefaultUnit = UNIT_INCH; break;
-        case FieldUnit::CM :         nDefaultUnit = UNIT_CM; break;
+
         case FieldUnit::MM :         nDefaultUnit = UNIT_MM; break;
         case FieldUnit::POINT :      nDefaultUnit = UNIT_POINT; break;
     }
@@ -175,16 +174,16 @@ uno::Sequence< beans::PropertyValue > ExportDialog::GetFilterData( bool bUpdateC
             if ( nResolution < 1 )
                 nResolution = 96;
 
-            mpOptionsItem->WriteInt32("PixelExportUnit", nUnit);
-            mpOptionsItem->WriteInt32("PixelExportResolution", nResolution);
-            mpOptionsItem->WriteInt32("PixelExportResolutionUnit", mxLbResolution->get_active());
+            mpOptionsItem->WriteInt32(u"PixelExportUnit"_ustr, nUnit);
+            mpOptionsItem->WriteInt32(u"PixelExportResolution"_ustr, nResolution);
+            mpOptionsItem->WriteInt32(u"PixelExportResolutionUnit"_ustr, mxLbResolution->get_active());
         }
         else
         {
             if ( nUnit >= UNIT_PIXEL )
                 nUnit = UNIT_CM;
 
-            mpOptionsItem->WriteInt32("VectorExportUnit", nUnit);
+            mpOptionsItem->WriteInt32(u"VectorExportUnit"_ustr, nUnit);
         }
     }
 
@@ -201,8 +200,8 @@ uno::Sequence< beans::PropertyValue > ExportDialog::GetFilterData( bool bUpdateC
     static constexpr OUString sLogicalHeight(u"LogicalHeight"_ustr);
     if ( mbIsPixelFormat )
     {
-        pFilterOptions->WriteInt32("PixelWidth", maSize.Width );
-        pFilterOptions->WriteInt32("PixelHeight", maSize.Height );
+        pFilterOptions->WriteInt32(u"PixelWidth"_ustr, maSize.Width );
+        pFilterOptions->WriteInt32(u"PixelHeight"_ustr, maSize.Height );
         if ( maResolution.Width && maResolution.Height )
         {
             const double f100thmmPerPixelX = 100000.0 / maResolution.Width;
@@ -230,31 +229,31 @@ uno::Sequence< beans::PropertyValue > ExportDialog::GetFilterData( bool bUpdateC
                 nColor = 0;
             else
                 nColor = 1;
-            pFilterOptions->WriteInt32("ColorMode", nColor);
+            pFilterOptions->WriteInt32(u"ColorMode"_ustr, nColor);
             assert(mpSbCompression);
-            pFilterOptions->WriteInt32("Quality", static_cast<sal_Int32>(mpSbCompression->get_value()));
+            pFilterOptions->WriteInt32(u"Quality"_ustr, static_cast<sal_Int32>(mpSbCompression->get_value()));
         }
         break;
 
         case FORMAT_PNG :
         {
             assert(mpSbCompression);
-            pFilterOptions->WriteInt32("Compression", static_cast<sal_Int32>(mpSbCompression->get_value()));
+            pFilterOptions->WriteInt32(u"Compression"_ustr, static_cast<sal_Int32>(mpSbCompression->get_value()));
             sal_Int32 nInterlace = 0;
             if ( mxCbInterlaced->get_active() )
                 nInterlace++;
-            pFilterOptions->WriteInt32("Interlaced", nInterlace);
+            pFilterOptions->WriteInt32(u"Interlaced"_ustr, nInterlace);
             sal_Int32 nValue = 0;
             if ( mxCbSaveTransparency->get_active() )
                 nValue++;
-            pFilterOptions->WriteInt32("Translucent", nValue);
+            pFilterOptions->WriteInt32(u"Translucent"_ustr, nValue);
         }
         break;
 
         case FORMAT_BMP :
         {
-            pFilterOptions->WriteInt32("Color", mxLbColorDepth->get_active() + 1);
-            pFilterOptions->WriteBool("RLE_Coding", mxCbRLEEncoding->get_active());
+            pFilterOptions->WriteInt32(u"Color"_ustr, mxLbColorDepth->get_active() + 1);
+            pFilterOptions->WriteBool(u"RLE_Coding"_ustr, mxCbRLEEncoding->get_active());
         }
         break;
 
@@ -263,12 +262,12 @@ uno::Sequence< beans::PropertyValue > ExportDialog::GetFilterData( bool bUpdateC
             sal_Int32 nValue = 0;
             if ( mxCbInterlaced->get_active() )
                 nValue++;
-            pFilterOptions->WriteInt32("Interlaced", nValue);
+            pFilterOptions->WriteInt32(u"Interlaced"_ustr, nValue);
 
             nValue = 0;
             if (mxCbSaveTransparency->get_active())
                 nValue++;
-            pFilterOptions->WriteInt32("Translucent", nValue);
+            pFilterOptions->WriteInt32(u"Translucent"_ustr, nValue);
         }
         break;
 
@@ -279,30 +278,30 @@ uno::Sequence< beans::PropertyValue > ExportDialog::GetFilterData( bool bUpdateC
                 nCheck++;
             if ( mxCbEPSPreviewEPSI->get_active() )
                 nCheck += 2;
-            pFilterOptions->WriteInt32("Preview", nCheck);
+            pFilterOptions->WriteInt32(u"Preview"_ustr, nCheck);
 
             nCheck = 1;
             if ( mxRbEPSLevel2->get_active() )
                 nCheck++;
-            pFilterOptions->WriteInt32("Version", nCheck);
+            pFilterOptions->WriteInt32(u"Version"_ustr, nCheck);
 
             nCheck = 1;
             if ( mxRbEPSColorFormat2->get_active() )
                 nCheck++;
-            pFilterOptions->WriteInt32("ColorFormat", nCheck);
+            pFilterOptions->WriteInt32(u"ColorFormat"_ustr, nCheck);
 
             nCheck = 1;
             if ( mxRbEPSCompressionNone->get_active() )
                 nCheck++;
-            pFilterOptions->WriteInt32("CompressionMode", nCheck);
+            pFilterOptions->WriteInt32(u"CompressionMode"_ustr, nCheck);
         }
         break;
 
         case FORMAT_WEBP :
         {
             assert(mpSbCompression);
-            pFilterOptions->WriteInt32("Quality", static_cast<sal_Int32>(mpSbCompression->get_value()));
-            pFilterOptions->WriteBool("Lossless", mxCbLossless->get_active());
+            pFilterOptions->WriteInt32(u"Quality"_ustr, static_cast<sal_Int32>(mpSbCompression->get_value()));
+            pFilterOptions->WriteBool(u"Lossless"_ustr, mxCbLossless->get_active());
         }
         break;
 
@@ -327,9 +326,9 @@ awt::Size ExportDialog::GetOriginalSize()
             sal_Int32 nWidth = 0;
             sal_Int32 nHeight= 0;
             css::uno::Any aAny;
-            aAny = xPagePropSet->getPropertyValue("Width");
+            aAny = xPagePropSet->getPropertyValue(u"Width"_ustr);
             aAny >>= nWidth;
-            aAny = xPagePropSet->getPropertyValue("Height");
+            aAny = xPagePropSet->getPropertyValue(u"Height"_ustr);
             aAny >>= nHeight;
             aShapesRange = basegfx::B2DRange( 0, 0, nWidth, nHeight );
         }
@@ -348,7 +347,7 @@ awt::Size ExportDialog::GetOriginalSize()
         aTransformation.m12 = aViewTransformation.get(1,2);
 
         uno::Sequence< beans::PropertyValue > aViewInformation{ comphelper::makePropertyValue(
-            "ViewTransformation", aTransformation) };
+            u"ViewTransformation"_ustr, aTransformation) };
 
         if ( mxShape.is() )
             aShapesRange = GetShapeRangeForXShape( mxShape, xPrimitiveFactory, aViewInformation );
@@ -402,7 +401,7 @@ void ExportDialog::GetGraphicSource()
             uno::Reference< drawing::XDrawPage > xCurrentPage( xDrawView->getCurrentPage() );
             if ( xCurrentPage.is() )
             {
-                mxPage = xCurrentPage;      // exporting whole page
+                mxPage = std::move(xCurrentPage);      // exporting whole page
             }
         }
     }
@@ -494,9 +493,9 @@ void ExportDialog::GetGraphicStream()
 
                     OUString sFormat( maExt );
                     uno::Sequence< beans::PropertyValue > aDescriptor{
-                        comphelper::makePropertyValue("OutputStream", xOutputStream),
-                        comphelper::makePropertyValue("FilterName", sFormat),
-                        comphelper::makePropertyValue("FilterData", aNewFilterData)
+                        comphelper::makePropertyValue(u"OutputStream"_ustr, xOutputStream),
+                        comphelper::makePropertyValue(u"FilterName"_ustr, sFormat),
+                        comphelper::makePropertyValue(u"FilterData"_ustr, aNewFilterData)
                     };
 
                     uno::Reference< drawing::XGraphicExportFilter > xGraphicExporter =
@@ -556,7 +555,7 @@ ExportDialog::ExportDialog(FltCallDialogParameter& rPara,
     const css::uno::Reference< css::lang::XComponent >& rxSourceDocument,
     bool bExportSelection, bool bIsPixelFormat, bool bGraphicsSource,
     const css::uno::Reference< css::graphic::XGraphic >& rxGraphic)
-    : GenericDialogController(rPara.pWindow, "svt/ui/graphicexport.ui", "GraphicExportDialog")
+    : GenericDialogController(rPara.pWindow, u"svt/ui/graphicexport.ui"_ustr, u"GraphicExportDialog"_ustr)
     , mrFltCallPara(rPara)
     , mxContext(std::move(xContext))
     , mxSourceDocument(rxSourceDocument)
@@ -578,61 +577,61 @@ ExportDialog::ExportDialog(FltCallDialogParameter& rPara,
     , mbGraphicsSource(bGraphicsSource)
     , mpSbCompression(nullptr)
     , mpNfCompression(nullptr)
-    , mxMfSizeX(m_xBuilder->weld_spin_button("widthmf"))
-    , mxLbSizeX(m_xBuilder->weld_combo_box("widthlb"))
-    , mxMfSizeY(m_xBuilder->weld_spin_button( "heightmf"))
-    , mxFtResolution(m_xBuilder->weld_label("resolutionft"))
-    , mxNfResolution(m_xBuilder->weld_spin_button("resolutionmf"))
-    , mxLbResolution(m_xBuilder->weld_combo_box("resolutionlb"))
-    , mxColorDepth(m_xBuilder->weld_widget("colordepth"))
-    , mxLbColorDepth(m_xBuilder->weld_combo_box("colordepthlb"))
-    , mxJPGWEBPQuality(m_xBuilder->weld_widget("jpgwebpquality"))
-    , mxPNGCompression(m_xBuilder->weld_widget("pngcompression"))
-    , mxSbPngCompression(m_xBuilder->weld_scale("compressionpngsb"))
-    , mxNfPngCompression(m_xBuilder->weld_spin_button("compressionpngnf"))
-    , mxSbJpgWebpCompression(m_xBuilder->weld_scale("compressionjpgwebpsb"))
-    , mxNfJpgWebpCompression(m_xBuilder->weld_spin_button("compressionjpgwebpnf"))
-    , mxCbLossless(m_xBuilder->weld_check_button("losslesscb"))
-    , mxMode(m_xBuilder->weld_widget("mode"))
-    , mxCbInterlaced(m_xBuilder->weld_check_button("interlacedcb"))
-    , mxBMPCompression(m_xBuilder->weld_widget("bmpcompression"))
-    , mxCbRLEEncoding(m_xBuilder->weld_check_button("rlecb"))
-    , mxDrawingObjects(m_xBuilder->weld_widget("drawingobjects"))
-    , mxCbSaveTransparency(m_xBuilder->weld_check_button("savetransparencycb"))
-    , mxEncoding(m_xBuilder->weld_widget("encoding"))
-    , mxRbBinary(m_xBuilder->weld_radio_button("binarycb"))
-    , mxRbText(m_xBuilder->weld_radio_button("textcb"))
-    , mxEPSGrid(m_xBuilder->weld_widget("epsgrid"))
-    , mxModifyDimension(m_xBuilder->weld_radio_button("modifydimensionscb"))
-    , mxModifyResolution(m_xBuilder->weld_radio_button("modifyresolutioncb"))
-    , mxCbEPSPreviewTIFF(m_xBuilder->weld_check_button("tiffpreviewcb"))
-    , mxCbEPSPreviewEPSI(m_xBuilder->weld_check_button("epsipreviewcb"))
-    , mxRbEPSLevel1(m_xBuilder->weld_radio_button("level1rb"))
-    , mxRbEPSLevel2(m_xBuilder->weld_radio_button("level2rb"))
-    , mxRbEPSColorFormat1(m_xBuilder->weld_radio_button("color1rb"))
-    , mxRbEPSColorFormat2(m_xBuilder->weld_radio_button("color2rb"))
-    , mxRbEPSCompressionLZW(m_xBuilder->weld_radio_button("compresslzw"))
-    , mxRbEPSCompressionNone(m_xBuilder->weld_radio_button("compressnone"))
-    , mxInfo(m_xBuilder->weld_widget("information"))
-    , mxFtEstimatedSize(m_xBuilder->weld_label("estsizeft"))
-    , mxBtnOK(m_xBuilder->weld_button("ok"))
+    , mxMfSizeX(m_xBuilder->weld_spin_button(u"widthmf"_ustr))
+    , mxLbSizeX(m_xBuilder->weld_combo_box(u"widthlb"_ustr))
+    , mxMfSizeY(m_xBuilder->weld_spin_button( u"heightmf"_ustr))
+    , mxFtResolution(m_xBuilder->weld_label(u"resolutionft"_ustr))
+    , mxNfResolution(m_xBuilder->weld_spin_button(u"resolutionmf"_ustr))
+    , mxLbResolution(m_xBuilder->weld_combo_box(u"resolutionlb"_ustr))
+    , mxColorDepth(m_xBuilder->weld_widget(u"colordepth"_ustr))
+    , mxLbColorDepth(m_xBuilder->weld_combo_box(u"colordepthlb"_ustr))
+    , mxJPGWEBPQuality(m_xBuilder->weld_widget(u"jpgwebpquality"_ustr))
+    , mxPNGCompression(m_xBuilder->weld_widget(u"pngcompression"_ustr))
+    , mxSbPngCompression(m_xBuilder->weld_scale(u"compressionpngsb"_ustr))
+    , mxNfPngCompression(m_xBuilder->weld_spin_button(u"compressionpngnf"_ustr))
+    , mxSbJpgWebpCompression(m_xBuilder->weld_scale(u"compressionjpgwebpsb"_ustr))
+    , mxNfJpgWebpCompression(m_xBuilder->weld_spin_button(u"compressionjpgwebpnf"_ustr))
+    , mxCbLossless(m_xBuilder->weld_check_button(u"losslesscb"_ustr))
+    , mxMode(m_xBuilder->weld_widget(u"mode"_ustr))
+    , mxCbInterlaced(m_xBuilder->weld_check_button(u"interlacedcb"_ustr))
+    , mxBMPCompression(m_xBuilder->weld_widget(u"bmpcompression"_ustr))
+    , mxCbRLEEncoding(m_xBuilder->weld_check_button(u"rlecb"_ustr))
+    , mxDrawingObjects(m_xBuilder->weld_widget(u"drawingobjects"_ustr))
+    , mxCbSaveTransparency(m_xBuilder->weld_check_button(u"savetransparencycb"_ustr))
+    , mxEncoding(m_xBuilder->weld_widget(u"encoding"_ustr))
+    , mxRbBinary(m_xBuilder->weld_radio_button(u"binarycb"_ustr))
+    , mxRbText(m_xBuilder->weld_radio_button(u"textcb"_ustr))
+    , mxEPSGrid(m_xBuilder->weld_widget(u"epsgrid"_ustr))
+    , mxModifyDimension(m_xBuilder->weld_radio_button(u"modifydimensionscb"_ustr))
+    , mxModifyResolution(m_xBuilder->weld_radio_button(u"modifyresolutioncb"_ustr))
+    , mxCbEPSPreviewTIFF(m_xBuilder->weld_check_button(u"tiffpreviewcb"_ustr))
+    , mxCbEPSPreviewEPSI(m_xBuilder->weld_check_button(u"epsipreviewcb"_ustr))
+    , mxRbEPSLevel1(m_xBuilder->weld_radio_button(u"level1rb"_ustr))
+    , mxRbEPSLevel2(m_xBuilder->weld_radio_button(u"level2rb"_ustr))
+    , mxRbEPSColorFormat1(m_xBuilder->weld_radio_button(u"color1rb"_ustr))
+    , mxRbEPSColorFormat2(m_xBuilder->weld_radio_button(u"color2rb"_ustr))
+    , mxRbEPSCompressionLZW(m_xBuilder->weld_radio_button(u"compresslzw"_ustr))
+    , mxRbEPSCompressionNone(m_xBuilder->weld_radio_button(u"compressnone"_ustr))
+    , mxInfo(m_xBuilder->weld_widget(u"information"_ustr))
+    , mxFtEstimatedSize(m_xBuilder->weld_label(u"estsizeft"_ustr))
+    , mxBtnOK(m_xBuilder->weld_button(u"ok"_ustr))
 {
     GetGraphicSource();
 
     maExt = maExt.toAsciiUpperCase();
 
-    OUString  aFilterConfigPath( "Office.Common/Filter/Graphic/Export/" );
+    OUString  aFilterConfigPath( u"Office.Common/Filter/Graphic/Export/"_ustr );
     mpOptionsItem.reset(new FilterConfigItem( aFilterConfigPath, &rPara.aFilterData ));
     aFilterConfigPath += maExt;
     mpFilterOptionsItem.reset(new FilterConfigItem( aFilterConfigPath, &rPara.aFilterData ));
 
     mnInitialResolutionUnit = mbIsPixelFormat
-        ? mpOptionsItem->ReadInt32("PixelExportUnit", UNIT_DEFAULT)
-        : mpOptionsItem->ReadInt32("VectorExportUnit", UNIT_DEFAULT);
+        ? mpOptionsItem->ReadInt32(u"PixelExportUnit"_ustr, UNIT_DEFAULT)
+        : mpOptionsItem->ReadInt32(u"VectorExportUnit"_ustr, UNIT_DEFAULT);
 
     mnMaxFilesizeForRealtimePreview = std::max(
-        mpOptionsItem->ReadInt32("MaxFilesizeForRealtimePreview", 0), sal_Int32(0));
-    mxFtEstimatedSize->set_label(" \n ");
+        mpOptionsItem->ReadInt32(u"MaxFilesizeForRealtimePreview"_ustr, 0), sal_Int32(0));
+    mxFtEstimatedSize->set_label(u" \n "_ustr);
 
     m_xDialog->set_title(m_xDialog->get_title().replaceFirst("%1", maExt)); //Set dialog title
 
@@ -740,12 +739,12 @@ void ExportDialog::setupSizeControls()
 
 // sense eg for bitmap fillings in metafiles, to preserve high dpi output
                             // (atm without special vector support the bitmaps are rendered with 96dpi)
-    sal_Int32 nResolution = mpOptionsItem->ReadInt32("PixelExportResolution", 96);
+    sal_Int32 nResolution = mpOptionsItem->ReadInt32(u"PixelExportResolution"_ustr, 96);
     if ( nResolution < 1 )
         nResolution = 96;
     mxNfResolution->set_value( nResolution );
 
-    sal_Int32 nResolutionUnit = mpOptionsItem->ReadInt32("PixelExportResolutionUnit", 1);
+    sal_Int32 nResolutionUnit = mpOptionsItem->ReadInt32(u"PixelExportResolutionUnit"_ustr, 1);
     if ( ( nResolutionUnit < 0 ) || ( nResolutionUnit > 2 ) )
         nResolutionUnit = 1;
     mxLbResolution->set_active( static_cast< sal_uInt16 >( nResolutionUnit ) );
@@ -757,7 +756,7 @@ void ExportDialog::createFilterOptions()
     {
         case FORMAT_JPG :
         {
-            sal_Int32 nColor = mpFilterOptionsItem->ReadInt32("ColorMode", 0);
+            sal_Int32 nColor = mpFilterOptionsItem->ReadInt32(u"ColorMode"_ustr, 0);
             if ( nColor == 1 )
                 nColor = 0;
             else
@@ -769,7 +768,7 @@ void ExportDialog::createFilterOptions()
 
             // Quality
             mxJPGWEBPQuality->show();
-            sal_Int32 nQuality = mpFilterOptionsItem->ReadInt32("Quality", 75);
+            sal_Int32 nQuality = mpFilterOptionsItem->ReadInt32(u"Quality"_ustr, 75);
             if ((nQuality < 1 ) || (nQuality > 100))
                 nQuality = 75;
             mpSbCompression = mxSbJpgWebpCompression.get();
@@ -784,7 +783,7 @@ void ExportDialog::createFilterOptions()
         {
             // Compression 1..9
             mxPNGCompression->show();
-            sal_Int32 nCompression = mpFilterOptionsItem->ReadInt32("Compression", 6);
+            sal_Int32 nCompression = mpFilterOptionsItem->ReadInt32(u"Compression"_ustr, 6);
             if ( ( nCompression < 1 ) || ( nCompression > 9 ) )
                 nCompression = 6;
 
@@ -796,16 +795,16 @@ void ExportDialog::createFilterOptions()
 
             // Interlaced
             mxMode->show();
-            mxCbInterlaced->set_active(mpFilterOptionsItem->ReadInt32("Interlaced", 0) != 0);
+            mxCbInterlaced->set_active(mpFilterOptionsItem->ReadInt32(u"Interlaced"_ustr, 0) != 0);
 
             // Transparency
             mxDrawingObjects->show();
-            mxCbSaveTransparency->set_active(mpFilterOptionsItem->ReadInt32("Translucent", 1) != 0);
+            mxCbSaveTransparency->set_active(mpFilterOptionsItem->ReadInt32(u"Translucent"_ustr, 1) != 0);
         }
         break;
         case FORMAT_BMP :
         {
-            sal_Int32 nColor = mpFilterOptionsItem->ReadInt32("Color", 0);
+            sal_Int32 nColor = mpFilterOptionsItem->ReadInt32(u"Color"_ustr, 0);
             if ( nColor == 0 )
                 nColor = 6;
             else
@@ -819,30 +818,30 @@ void ExportDialog::createFilterOptions()
 
             // RLE coding
             mxBMPCompression->show();
-            mxCbRLEEncoding->set_active(mpFilterOptionsItem->ReadBool("RLE_Coding", true));
+            mxCbRLEEncoding->set_active(mpFilterOptionsItem->ReadBool(u"RLE_Coding"_ustr, true));
         }
         break;
         case FORMAT_GIF :
         {
             // Interlaced
             mxMode->show();
-            mxCbInterlaced->set_active(mpFilterOptionsItem->ReadInt32("Interlaced", 1) != 0);
+            mxCbInterlaced->set_active(mpFilterOptionsItem->ReadInt32(u"Interlaced"_ustr, 1) != 0);
 
             // Transparency
             mxDrawingObjects->show();
-            mxCbSaveTransparency->set_active(mpFilterOptionsItem->ReadInt32("Translucent", 1) != 0);
+            mxCbSaveTransparency->set_active(mpFilterOptionsItem->ReadInt32(u"Translucent"_ustr, 1) != 0);
         }
         break;
         case FORMAT_EPS :
         {
             mxEPSGrid->show();
 
-            sal_Int32 nPreview = mpFilterOptionsItem->ReadInt32("Preview", 0);
-            sal_Int32 nVersion = mpFilterOptionsItem->ReadInt32("Version", 2);
-            sal_Int32 nColor = mpFilterOptionsItem->ReadInt32("ColorFormat", 0);
-            sal_Int32 nCompr = mpFilterOptionsItem->ReadInt32("CompressionMode", 2);
+            sal_Int32 nPreview = mpFilterOptionsItem->ReadInt32(u"Preview"_ustr, 0);
+            sal_Int32 nVersion = mpFilterOptionsItem->ReadInt32(u"Version"_ustr, 2);
+            sal_Int32 nColor = mpFilterOptionsItem->ReadInt32(u"ColorFormat"_ustr, 0);
+            sal_Int32 nCompr = mpFilterOptionsItem->ReadInt32(u"CompressionMode"_ustr, 2);
 
-            mpFilterOptionsItem->ReadInt32("TextMode", 0);
+            mpFilterOptionsItem->ReadInt32(u"TextMode"_ustr, 0);
 
             mxCbEPSPreviewTIFF->set_active( ( nPreview & 1 ) != 0 );
             mxCbEPSPreviewEPSI->set_active( ( nPreview & 2 ) != 0 );
@@ -861,7 +860,7 @@ void ExportDialog::createFilterOptions()
         {
             // Quality
             mxJPGWEBPQuality->show();
-            sal_Int32 nQuality = mpFilterOptionsItem->ReadInt32("Quality", 75);
+            sal_Int32 nQuality = mpFilterOptionsItem->ReadInt32(u"Quality"_ustr, 75);
             if ((nQuality < 1 ) || (nQuality > 100))
                 nQuality = 75;
             mpSbCompression = mxSbJpgWebpCompression.get();
@@ -871,7 +870,7 @@ void ExportDialog::createFilterOptions()
             mpNfCompression->set_value(nQuality);
 
             // Lossless
-            mxCbLossless->set_active(mpFilterOptionsItem->ReadBool("Lossless", true));
+            mxCbLossless->set_active(mpFilterOptionsItem->ReadBool(u"Lossless"_ustr, true));
             UpdateHdlLossless(*mxCbLossless);
         }
         break;
@@ -923,29 +922,21 @@ void ExportDialog::updateControls()
         }
         else
         {
+            double x = double(maSize.Width) / maResolution.Width; // pixels -> meters
+            x = o3tl::convert(x, o3tl::Length::m, MapToO3tlLength(aMapUnit));
             mxMfSizeX->set_digits( 2 );
+            mxMfSizeX->set_value(x * weld::SpinButton::Power10(mxMfSizeX->get_digits()) + 0.5);
+            double y = double(maSize.Height) / maResolution.Height; // pixels -> meters
+            y = o3tl::convert(y, o3tl::Length::m, MapToO3tlLength(aMapUnit));
             mxMfSizeY->set_digits( 2 );
-            double fRatio;
-            switch( GetMapUnit( mxLbSizeX->get_active() ) )
-            {
-                case MapUnit::MapInch : fRatio = static_cast< double >( maResolution.Width ) * 0.0254; break;
-                case MapUnit::MapMM :   fRatio = static_cast< double >( maResolution.Width ) * 0.001; break;
-                case MapUnit::MapPoint :fRatio = ( static_cast< double >( maResolution.Width ) * 0.0254 ) / 72.0; break;
-                default:
-                case MapUnit::MapCM :   fRatio = static_cast< double >( maResolution.Width ) * 0.01; break;
-            }
-            mxMfSizeX->set_value( static_cast< sal_Int32 >( ( static_cast< double >( maSize.Width * 100 ) / fRatio ) + 0.5 ) );
-            mxMfSizeY->set_value( static_cast< sal_Int32 >( ( static_cast< double >( maSize.Height * 100 ) / fRatio ) + 0.5 ) );
+            mxMfSizeY->set_value(y * weld::SpinButton::Power10(mxMfSizeY->get_digits()) + 0.5);
         }
     }
-    sal_Int32 nResolution = 0;
-    switch( mxLbResolution->get_active() )
-    {
-        case 0 : nResolution = maResolution.Width / 100; break;     // pixels / cm
-        case 2 : nResolution = maResolution.Width; break;           // pixels / meter
-        default:
-        case 1 : nResolution = static_cast< sal_Int32 >(maResolution.Width * 0.0254); break;    // pixels / inch
-    }
+    sal_Int32 nResolution = maResolution.Width;
+    if (mxLbResolution->get_active() == 0) // pixels / cm
+        nResolution = o3tl::convert(nResolution, o3tl::Length::cm, o3tl::Length::m); // reverse
+    else if (mxLbResolution->get_active() == 1) // pixels / inch
+        nResolution = o3tl::convert(nResolution, o3tl::Length::in, o3tl::Length::m); // reverse
     mxNfResolution->set_value( nResolution );
 
     if (mpSbCompression && mpSbCompression->get_visible() && mpNfCompression)
@@ -1049,14 +1040,18 @@ IMPL_LINK_NOARG(ExportDialog, UpdateHdlMtfSizeX, weld::SpinButton&, void)
 
     if ( mbIsPixelFormat )
     {
-        switch( GetMapUnit( mxLbSizeX->get_active() ) )
+        const MapUnit unit = GetMapUnit(mxLbSizeX->get_active());
+        if (unit == MapUnit::MapPixel)
         {
-            case MapUnit::MapInch :     maSize.Width = static_cast< sal_Int32 >( static_cast< double >( maResolution.Width ) * 0.0254 * mxMfSizeX->get_value() / 100.0 + 0.5 ); break;
-            case MapUnit::MapCM :       maSize.Width = static_cast< sal_Int32 >( static_cast< double >( maResolution.Width ) * 0.01 * mxMfSizeX->get_value() / 100.0 + 0.5 ); break;
-            case MapUnit::MapMM :       maSize.Width = static_cast< sal_Int32 >( static_cast< double >( maResolution.Width ) * 0.001 * mxMfSizeX->get_value() / 100.0 + 0.5 ); break;
-            case MapUnit::MapPoint :    maSize.Width = static_cast< sal_Int32 >( static_cast< double >( maResolution.Width ) * 0.0254 * mxMfSizeX->get_value() / 100.0 * 72 + 0.5 ); break;
-            default:
-            case MapUnit::MapPixel :    maSize.Width = mxMfSizeX->get_value(); break;
+            maSize.Width = mxMfSizeX->get_value();
+        }
+        else
+        {
+            double val = mxMfSizeX->get_value()
+                         / static_cast<double>(weld::SpinButton::Power10(mxMfSizeX->get_digits()));
+            // Convert to meters, since resolution is in pixels per meter
+            val = o3tl::convert(val, MapToO3tlLength(unit), o3tl::Length::m);
+            maSize.Width = static_cast<sal_Int32>(maResolution.Width * val + 0.5);
         }
         maSize.Height = static_cast< sal_Int32 >( fRatio * maSize.Width + 0.5 );
     }
@@ -1081,14 +1076,18 @@ IMPL_LINK_NOARG(ExportDialog, UpdateHdlMtfSizeY, weld::SpinButton&, void)
 
     if ( mbIsPixelFormat )
     {
-        switch( GetMapUnit( mxLbSizeX->get_active() ) )
+        const MapUnit unit = GetMapUnit(mxLbSizeX->get_active());
+        if (unit == MapUnit::MapPixel)
         {
-            case MapUnit::MapInch :     maSize.Height = static_cast< sal_Int32 >( static_cast< double >( maResolution.Height ) * 0.0254 * mxMfSizeY->get_value() / 100.0 + 0.5 ); break;
-            case MapUnit::MapCM :       maSize.Height = static_cast< sal_Int32 >( static_cast< double >( maResolution.Height ) * 0.01 * mxMfSizeY->get_value() / 100.0 + 0.5 ); break;
-            case MapUnit::MapMM :       maSize.Height = static_cast< sal_Int32 >( static_cast< double >( maResolution.Height ) * 0.001 * mxMfSizeY->get_value() / 100.0 + 0.5 ); break;
-            case MapUnit::MapPoint :    maSize.Height = static_cast< sal_Int32 >( static_cast< double >( maResolution.Height ) * 0.0254 * mxMfSizeY->get_value() / 100.0 * 72 + 0.5 ); break;
-            default:
-            case MapUnit::MapPixel :    maSize.Height = mxMfSizeY->get_value(); break;
+            maSize.Height = mxMfSizeY->get_value();
+        }
+        else
+        {
+            double val = mxMfSizeY->get_value()
+                         / static_cast<double>(weld::SpinButton::Power10(mxMfSizeY->get_digits()));
+            // Convert to meters, since resolution is in pixels per meter
+            val = o3tl::convert(val, MapToO3tlLength(unit), o3tl::Length::m);
+            maSize.Height = static_cast<sal_Int32>(maResolution.Height * val + 0.5);
         }
         maSize.Width = static_cast< sal_Int32 >( fRatio * maSize.Height + 0.5 );
     }
@@ -1111,9 +1110,9 @@ IMPL_LINK_NOARG(ExportDialog, UpdateHdlNfResolution, weld::SpinButton&, void)
 {
     auto nResolution = mxNfResolution->get_value();
     if ( mxLbResolution->get_active() == 0 )      // pixels / cm
-        nResolution *= 100;
+        nResolution = o3tl::convert(nResolution, o3tl::Length::m, o3tl::Length::cm); // reverse
     else if ( mxLbResolution->get_active() == 1 ) // pixels / inch
-        nResolution = static_cast< sal_Int32 >( ( ( static_cast< double >( nResolution ) + 0.5 ) / 0.0254 ) );
+        nResolution = o3tl::convert(nResolution, o3tl::Length::m, o3tl::Length::in); // reverse
     maResolution.Width = nResolution;
     maResolution.Height= nResolution;
 

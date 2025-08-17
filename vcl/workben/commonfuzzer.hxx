@@ -11,16 +11,17 @@
 #include <tools/extendapplicationenvironment.hxx>
 
 #include <cppuhelper/bootstrap.hxx>
+#include <comphelper/configuration.hxx>
 #include <comphelper/processfactory.hxx>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <unotools/configmgr.hxx>
 #include <rtl/bootstrap.hxx>
 #include <rtl/strbuf.hxx>
 #include <osl/file.hxx>
 #include <osl/process.h>
 #include <vcl/graph.hxx>
+#include <vcl/filter/ImportOutput.hxx>
 #include <vcl/print.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wmf.hxx>
@@ -79,6 +80,8 @@ namespace
     }
 }
 
+extern "C" bool GetSpecialCharsForEdit() { return false; }
+
 extern "C"
 {
     __attribute__((weak)) void __lsan_disable();
@@ -120,7 +123,7 @@ void CommonInitialize(int *argc, char ***argv)
     if( !xServiceManager.is() )
         Application::Abort( "Failed to bootstrap" );
     comphelper::setProcessServiceFactory( xServiceManager );
-    utl::ConfigManager::EnableFuzzing();
+    comphelper::EnableFuzzing();
     Application::EnableHeadlessMode(false);
     InitVCL();
 

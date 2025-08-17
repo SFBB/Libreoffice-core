@@ -28,14 +28,14 @@
 
 #include <ucbhelper/content.hxx>
 
-namespace beans = com::sun::star::beans;
-namespace container = com::sun::star::container;
-namespace document = com::sun::star::document;
-namespace frame = com::sun::star::frame;
-namespace lang = com::sun::star::lang;
-namespace ucb = com::sun::star::ucb;
-namespace uno = com::sun::star::uno;
-namespace util = com::sun::star::util;
+namespace beans = css::beans;
+namespace container = css::container;
+namespace document = css::document;
+namespace frame = css::frame;
+namespace lang = css::lang;
+namespace ucb = css::ucb;
+namespace uno = css::uno;
+namespace util = css::util;
 
 namespace writerperfect::test
 {
@@ -87,7 +87,7 @@ const css::uno::Reference<css::lang::XComponent>& WpftLoader::getDocument() cons
 bool WpftLoader::impl_load()
 {
     // create an empty frame
-    m_xDoc.set(m_xDesktop->loadComponentFromURL(m_aFactoryURL, "_blank", 0,
+    m_xDoc.set(m_xDesktop->loadComponentFromURL(m_aFactoryURL, u"_blank"_ustr, 0,
                                                 uno::Sequence<beans::PropertyValue>()),
                uno::UNO_SET_THROW);
 
@@ -142,7 +142,9 @@ bool WpftLoader::impl_load()
         }
 
         const uno::Reference<document::XExtendedFilterDetection> xDetector(m_xFilter,
-                                                                           uno::UNO_QUERY_THROW);
+                                                                           uno::UNO_QUERY);
+        if (!xDetector)
+            return false;
 
         const OUString aTypeName(xDetector->detect(aDescriptor));
         if (aTypeName.isEmpty())
@@ -188,7 +190,7 @@ void WpftLoader::impl_detectFilterName(uno::Sequence<beans::PropertyValue>& rDes
     uno::Sequence<beans::PropertyValue> aTypes;
     if (m_xTypeMap->getByName(rTypeName) >>= aTypes)
     {
-        for (const auto& rType : std::as_const(aTypes))
+        for (const auto& rType : aTypes)
         {
             OUString aFilterName;
             if (("PreferredFilter" == rType.Name) && (rType.Value >>= aFilterName))

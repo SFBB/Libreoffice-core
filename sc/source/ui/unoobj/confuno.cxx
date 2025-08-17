@@ -53,6 +53,7 @@ static std::span<const SfxItemPropertyMapEntry> lcl_GetConfigPropertyMap()
     {
         { SC_UNO_SHOWZERO,     0,  cppu::UnoType<bool>::get(),              0, 0},
         { SC_UNO_SHOWNOTES,    0,  cppu::UnoType<bool>::get(),              0, 0},
+        { SC_UNO_SHOWNOTEAUTHOR,    0,  cppu::UnoType<bool>::get(),              0, 0},
         { SC_UNO_SHOWFORMULASMARKS,    0,  cppu::UnoType<bool>::get(),              0, 0},
         { SC_UNO_SHOWGRID,     0,  cppu::UnoType<bool>::get(),              0, 0},
         { SC_UNO_GRIDCOLOR,    0,  cppu::UnoType<sal_Int32>::get(),        0, 0},
@@ -150,13 +151,15 @@ void SAL_CALL ScDocumentConfiguration::setPropertyValue(
     /*Stampit enable/disable print cancel */
 
     else if ( aPropertyName == SC_UNO_SHOWZERO )
-        aViewOpt.SetOption(VOPT_NULLVALS, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+        aViewOpt.SetOption(sc::ViewOption::NULLVALS, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
     else if ( aPropertyName == SC_UNO_SHOWNOTES )
-        aViewOpt.SetOption(VOPT_NOTES, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+        aViewOpt.SetOption(sc::ViewOption::NOTES, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+    else if ( aPropertyName == SC_UNO_SHOWNOTEAUTHOR )
+        aViewOpt.SetOption(sc::ViewOption::NOTEAUTHOR, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
     else if ( aPropertyName == SC_UNO_SHOWFORMULASMARKS )
-        aViewOpt.SetOption(VOPT_FORMULAS_MARKS, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+        aViewOpt.SetOption(sc::ViewOption::FORMULAS_MARKS, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
     else if ( aPropertyName == SC_UNO_SHOWGRID )
-        aViewOpt.SetOption(VOPT_GRID, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+        aViewOpt.SetOption(sc::ViewOption::GRID, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
     else if ( aPropertyName == SC_UNO_GRIDCOLOR )
     {
         Color aColor;
@@ -164,7 +167,7 @@ void SAL_CALL ScDocumentConfiguration::setPropertyValue(
             aViewOpt.SetGridColor(aColor, OUString());
     }
     else if ( aPropertyName == SC_UNO_SHOWPAGEBR )
-        aViewOpt.SetOption(VOPT_PAGEBREAKS, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+        aViewOpt.SetOption(sc::ViewOption::PAGEBREAKS, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
     else if ( aPropertyName == SC_UNONAME_LINKUPD )
     {
         // XXX NOTE: this is the css::document::Settings property
@@ -175,8 +178,8 @@ void SAL_CALL ScDocumentConfiguration::setPropertyValue(
                 n > css::document::LinkUpdateModes::GLOBAL_SETTING)
         {
             throw css::lang::IllegalArgumentException(
-                ("LinkUpdateMode property value must be a SHORT with a value in"
-                 " the range of the css::document::LinkUpdateModes constants"),
+                (u"LinkUpdateMode property value must be a SHORT with a value in"
+                 " the range of the css::document::LinkUpdateModes constants"_ustr),
                 css::uno::Reference<css::uno::XInterface>(), -1);
         }
         ScLkUpdMode eMode;
@@ -193,17 +196,17 @@ void SAL_CALL ScDocumentConfiguration::setPropertyValue(
             break;
             case css::document::LinkUpdateModes::GLOBAL_SETTING:
             default:
-                eMode = SC_MOD()->GetAppOptions().GetLinkMode();
+                eMode = ScModule::get()->GetAppOptions().GetLinkMode();
             break;
         }
         rDoc.SetLinkMode( eMode );
     }
     else if ( aPropertyName == SC_UNO_COLROWHDR )
-        aViewOpt.SetOption(VOPT_HEADER, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+        aViewOpt.SetOption(sc::ViewOption::HEADER, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
     else if ( aPropertyName == SC_UNO_SHEETTABS )
-        aViewOpt.SetOption(VOPT_TABCONTROLS, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+        aViewOpt.SetOption(sc::ViewOption::TABCONTROLS, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
     else if ( aPropertyName == SC_UNO_OUTLSYMB )
-        aViewOpt.SetOption(VOPT_OUTLINER, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
+        aViewOpt.SetOption(sc::ViewOption::OUTLINER, ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
     else if ( aPropertyName == SC_UNO_AUTOCALC )
         rDoc.SetAutoCalc( ScUnoHelpFunctions::GetBoolFromAny( aValue ) );
     else if ( aPropertyName == SC_UNO_PRINTERNAME )
@@ -333,23 +336,23 @@ void SAL_CALL ScDocumentConfiguration::setPropertyValue(
         uno::Sequence< beans::PropertyValue > aInfo;
         if ( !( aValue >>= aInfo ) )
             throw lang::IllegalArgumentException(
-                "Value of type Sequence<PropertyValue> expected!",
+                u"Value of type Sequence<PropertyValue> expected!"_ustr,
                 uno::Reference< uno::XInterface >(),
                 2 );
 
         if ( !pDocShell->SetModifyPasswordInfo( aInfo ) )
             throw beans::PropertyVetoException(
-                "The hash is not allowed to be changed now!" );
+                u"The hash is not allowed to be changed now!"_ustr );
     }
     else if (aPropertyName == SC_UNO_MODIFYPASSWORDHASH)
     {
         sal_Int32 nHash;
         if (!(aValue >>= nHash))
-            throw lang::IllegalArgumentException("Value of type sal_Int32 expected!",
+            throw lang::IllegalArgumentException(u"Value of type sal_Int32 expected!"_ustr,
                                                  uno::Reference<uno::XInterface>(), 2);
 
         if (!pDocShell->SetModifyPasswordHash(nHash))
-            throw beans::PropertyVetoException("The hash is not allowed to be changed now!");
+            throw beans::PropertyVetoException(u"The hash is not allowed to be changed now!"_ustr);
     }
     else if (aPropertyName == SC_UNO_EMBED_FONTS)
     {
@@ -458,13 +461,15 @@ uno::Any SAL_CALL ScDocumentConfiguration::getPropertyValue( const OUString& aPr
     /*Stampit enable/disable print cancel */
 
     else if ( aPropertyName == SC_UNO_SHOWZERO )
-        aRet <<= aViewOpt.GetOption( VOPT_NULLVALS );
+        aRet <<= aViewOpt.GetOption(sc::ViewOption::NULLVALS);
     else if ( aPropertyName == SC_UNO_SHOWNOTES )
-        aRet <<= aViewOpt.GetOption( VOPT_NOTES );
+        aRet <<= aViewOpt.GetOption(sc::ViewOption::NOTES);
+    else if ( aPropertyName == SC_UNO_SHOWNOTEAUTHOR )
+        aRet <<= aViewOpt.GetOption(sc::ViewOption::NOTEAUTHOR);
     else if ( aPropertyName == SC_UNO_SHOWFORMULASMARKS )
-        aRet <<= aViewOpt.GetOption( VOPT_FORMULAS_MARKS );
+        aRet <<= aViewOpt.GetOption(sc::ViewOption::FORMULAS_MARKS);
     else if ( aPropertyName == SC_UNO_SHOWGRID )
-        aRet <<= aViewOpt.GetOption( VOPT_GRID );
+        aRet <<= aViewOpt.GetOption(sc::ViewOption::GRID);
     else if ( aPropertyName == SC_UNO_GRIDCOLOR )
     {
         OUString aColorName;
@@ -472,7 +477,7 @@ uno::Any SAL_CALL ScDocumentConfiguration::getPropertyValue( const OUString& aPr
         aRet <<= aColor;
     }
     else if ( aPropertyName == SC_UNO_SHOWPAGEBR )
-        aRet <<= aViewOpt.GetOption( VOPT_PAGEBREAKS );
+        aRet <<= aViewOpt.GetOption(sc::ViewOption::PAGEBREAKS);
     else if ( aPropertyName == SC_UNONAME_LINKUPD )
     {
         sal_Int16 nLUM;
@@ -495,11 +500,11 @@ uno::Any SAL_CALL ScDocumentConfiguration::getPropertyValue( const OUString& aPr
         aRet <<= nLUM;
     }
     else if ( aPropertyName == SC_UNO_COLROWHDR )
-        aRet <<= aViewOpt.GetOption( VOPT_HEADER );
+        aRet <<= aViewOpt.GetOption(sc::ViewOption::HEADER);
     else if ( aPropertyName == SC_UNO_SHEETTABS )
-        aRet <<= aViewOpt.GetOption( VOPT_TABCONTROLS );
+        aRet <<= aViewOpt.GetOption(sc::ViewOption::TABCONTROLS);
     else if ( aPropertyName == SC_UNO_OUTLSYMB )
-        aRet <<= aViewOpt.GetOption( VOPT_OUTLINER );
+        aRet <<= aViewOpt.GetOption(sc::ViewOption::OUTLINER);
     else if ( aPropertyName == SC_UNO_AUTOCALC )
         aRet <<= rDoc.GetAutoCalc();
     else if ( aPropertyName == SC_UNO_PRINTERNAME )
@@ -644,7 +649,7 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScDocumentConfiguration )
 // XServiceInfo
 OUString SAL_CALL ScDocumentConfiguration::getImplementationName()
 {
-    return "ScDocumentConfiguration";
+    return u"ScDocumentConfiguration"_ustr;
 }
 
 sal_Bool SAL_CALL ScDocumentConfiguration::supportsService( const OUString& rServiceName )
@@ -654,8 +659,8 @@ sal_Bool SAL_CALL ScDocumentConfiguration::supportsService( const OUString& rSer
 
 uno::Sequence<OUString> SAL_CALL ScDocumentConfiguration::getSupportedServiceNames()
 {
-    return {"com.sun.star.comp.SpreadsheetSettings",
-            "com.sun.star.document.Settings"};
+    return {u"com.sun.star.comp.SpreadsheetSettings"_ustr,
+            u"com.sun.star.document.Settings"_ustr};
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

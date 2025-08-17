@@ -22,7 +22,6 @@
 #include <sal/types.h>
 #include <vcl/event.hxx>
 #include <vcl/toolbox.hxx>
-#include <sfx2/bindings.hxx>
 #include <svtools/toolbarmenu.hxx>
 #include <svx/dialmgr.hxx>
 #include <lboxctrl.hxx>
@@ -70,9 +69,9 @@ public:
 
 SvxPopupWindowListBox::SvxPopupWindowListBox(SvxUndoRedoControl* pControl, weld::Widget* pParent,
                                              const std::vector<OUString>& rUndoRedoList)
-    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "svx/ui/floatingundoredo.ui", "FloatingUndoRedo")
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/floatingundoredo.ui"_ustr, u"FloatingUndoRedo"_ustr)
     , m_xControl(pControl)
-    , m_xListBox(m_xBuilder->weld_tree_view("treeview"))
+    , m_xListBox(m_xBuilder->weld_tree_view(u"treeview"_ustr))
     , m_xScratchIter(m_xListBox->make_iterator())
     , m_nVisRows(10)
 {
@@ -242,12 +241,13 @@ void SvxUndoRedoControl::initialize( const css::uno::Sequence< css::uno::Any >& 
 
     if (getModuleName() != "com.sun.star.script.BasicIDE")
     {
-        if (pToolBox)
-            pToolBox->SetItemBits(nId, ToolBoxItemBits::DROPDOWN | pToolBox->GetItemBits(nId));
         if (m_pToolbar)
             aDefaultTooltip = m_pToolbar->get_item_tooltip_text(m_aCommandURL);
         else
+        {
+            pToolBox->SetItemBits(nId, ToolBoxItemBits::DROPDOWN | pToolBox->GetItemBits(nId));
             aDefaultTooltip = pToolBox->GetQuickHelpText(nId);
+        }
     }
 }
 
@@ -300,9 +300,9 @@ void SAL_CALL SvxUndoRedoControl::statusChanged(const css::frame::FeatureStateEv
 std::unique_ptr<WeldToolbarPopup> SvxUndoRedoControl::weldPopupWindow()
 {
     if ( m_aCommandURL == ".uno:Undo" )
-        updateStatus( ".uno:GetUndoStrings");
+        updateStatus( u".uno:GetUndoStrings"_ustr);
     else
-        updateStatus( ".uno:GetRedoStrings");
+        updateStatus( u".uno:GetRedoStrings"_ustr);
 
     return std::make_unique<SvxPopupWindowListBox>(this, m_pToolbar, aUndoRedoList);
 }
@@ -310,9 +310,9 @@ std::unique_ptr<WeldToolbarPopup> SvxUndoRedoControl::weldPopupWindow()
 VclPtr<vcl::Window> SvxUndoRedoControl::createVclPopupWindow( vcl::Window* pParent )
 {
     if ( m_aCommandURL == ".uno:Undo" )
-        updateStatus( ".uno:GetUndoStrings");
+        updateStatus( u".uno:GetUndoStrings"_ustr);
     else
-        updateStatus( ".uno:GetRedoStrings");
+        updateStatus( u".uno:GetRedoStrings"_ustr);
 
     auto xPopupWin = std::make_unique<SvxPopupWindowListBox>(this, pParent->GetFrameWeld(), aUndoRedoList);
 
@@ -328,12 +328,12 @@ VclPtr<vcl::Window> SvxUndoRedoControl::createVclPopupWindow( vcl::Window* pPare
 
 OUString SvxUndoRedoControl::getImplementationName()
 {
-    return "com.sun.star.comp.svx.UndoRedoToolBoxControl";
+    return u"com.sun.star.comp.svx.UndoRedoToolBoxControl"_ustr;
 }
 
 css::uno::Sequence<OUString> SvxUndoRedoControl::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.ToolbarController" };
+    return { u"com.sun.star.frame.ToolbarController"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *

@@ -23,14 +23,12 @@
 #include <memory>
 #include "wrtww8.hxx"
 
+#include <unotools/securityoptions.hxx>
+
 class RtfAttributeOutput;
 class RtfExportFilter;
 class RtfSdrExport;
 using RtfColorTable = std::map<sal_uInt16, Color>;
-class SwNode;
-class SwTextNode;
-class SwGrfNode;
-class SwOLENode;
 
 /// The class that does all the actual RTF export-related work.
 class RtfExport : public MSWordExportBase
@@ -105,8 +103,8 @@ public:
                      FieldFlags nMode = FieldFlags::All) override;
 
     /// Write the data of the form field
-    void WriteFormData(const ::sw::mark::IFieldmark& rFieldmark) override;
-    void WriteHyperlinkData(const ::sw::mark::IFieldmark& rFieldmark) override;
+    void WriteFormData(const ::sw::mark::Fieldmark& rFieldmark) override;
+    void WriteHyperlinkData(const ::sw::mark::Fieldmark& rFieldmark) override;
 
     void DoComboBox(const OUString& rName, const OUString& rHelp, const OUString& ToolTip,
                     const OUString& rSelected,
@@ -188,9 +186,9 @@ public:
     void resetStream();
     void OutUnicode(std::string_view pToken, std::u16string_view rContent, bool bUpr = false);
     void OutDateTime(std::string_view pStr, const css::util::DateTime& rDT);
-    void OutPageDescription(const SwPageDesc& rPgDsc, bool bCheckForFirstPage);
+    void OutPageDescription(const SwPageDesc& rPgDsc);
 
-    sal_uInt16 GetColor(const Color& rColor) const;
+    sal_Int32 GetColor(const Color& rColor) const;
     void InsColor(const Color& rCol);
     void InsColorLine(const SvxBoxItem& rBox);
     void OutColorTable();
@@ -201,6 +199,12 @@ public:
     OString* GetStyle(sal_uInt16 nId);
 
     const SfxItemSet* GetFirstPageItemSet() const { return m_pFirstPageItemSet; }
+
+    // Get author id to remove personal info
+    size_t GetInfoID(const OUString& sPersonalInfo) const
+    {
+        return mpAuthorIDs->GetInfoID(sPersonalInfo);
+    }
 
 private:
     void WriteFonts();
@@ -218,7 +222,8 @@ private:
     void WriteDocVars();
     /// This is necessary to have the numbering table ready before the main text is being processed.
     void BuildNumbering();
-    void WriteHeaderFooter(const SfxPoolItem& rItem, bool bHeader);
+    void WriteHeaderFooter(const SfxPoolItem& rItem, bool bHeader, bool bAsTitlePg,
+                           bool bWriteFirst);
     void WriteHeaderFooter(const SwFrameFormat& rFormat, bool bHeader, const char* pStr,
                            bool bTitlepg = false);
 
@@ -229,6 +234,8 @@ private:
     std::unique_ptr<SvMemoryStream> m_pStream;
     /// Item set of the first page during export of a follow page format.
     const SfxItemSet* m_pFirstPageItemSet = nullptr;
+    /// map authors to remove personal info
+    std::unique_ptr<SvtSecurityMapPersonalInfo> mpAuthorIDs;
 };
 
 #endif // INCLUDED_SW_SOURCE_FILTER_WW8_RTFEXPORT_HXX

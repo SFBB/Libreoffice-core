@@ -25,8 +25,6 @@
 #include <unx/gendata.hxx>
 
 class SalXLib;
-class SalDisplay;
-class SalPrinter;
 
 class X11SalData final : public GenericUnixSalData
 {
@@ -45,7 +43,7 @@ public:
     X11SalData();
     virtual ~X11SalData() override;
 
-    virtual void            Init();
+    void            Init();
     virtual void            Dispose() override;
 
     void                    DeleteDisplay(); // for shutdown

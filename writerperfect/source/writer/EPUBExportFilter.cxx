@@ -70,7 +70,7 @@ sal_Bool EPUBExportFilter::filter(const uno::Sequence<beans::PropertyValue>& rDe
     if (aFilterOptions == "layout=fixed")
         nLayoutMethod = libepubgen::EPUB_LAYOUT_METHOD_FIXED;
 
-    for (const auto& rProp : std::as_const(aFilterData))
+    for (const auto& rProp : aFilterData)
     {
         if (rProp.Name == "EPUBVersion")
             rProp.Value >>= nVersion;
@@ -101,16 +101,16 @@ sal_Bool EPUBExportFilter::filter(const uno::Sequence<beans::PropertyValue>& rDe
 
     uno::Reference<lang::XInitialization> xInitialization(
         mxContext->getServiceManager()->createInstanceWithContext(
-            "com.sun.star.comp.Writer.XMLOasisExporter", mxContext),
+            u"com.sun.star.comp.Writer.XMLOasisExporter"_ustr, mxContext),
         uno::UNO_QUERY);
 
     // A subset of parameters are passed in as a property set.
     static comphelper::PropertyMapEntry const aInfoMap[]
-        = { { OUString("BaseURI"), 0, cppu::UnoType<OUString>::get(),
+        = { { u"BaseURI"_ustr, 0, cppu::UnoType<OUString>::get(),
               beans::PropertyAttribute::MAYBEVOID, 0 } };
     uno::Reference<beans::XPropertySet> xInfoSet(
         comphelper::GenericPropertySet_CreateInstance(new comphelper::PropertySetInfo(aInfoMap)));
-    xInfoSet->setPropertyValue("BaseURI", uno::Any(aSourceURL));
+    xInfoSet->setPropertyValue(u"BaseURI"_ustr, uno::Any(aSourceURL));
 
     xInitialization->initialize({ uno::Any(xExportHandler), uno::Any(xInfoSet) });
     uno::Reference<document::XExporter> xExporter(xInitialization, uno::UNO_QUERY);
@@ -165,7 +165,7 @@ void EPUBExportFilter::CreateMetafiles(std::vector<exp::FixedLayoutPage>& rPageM
             static_cast<const sal_Int8*>(aMemoryStream.GetData()), aMemoryStream.Tell());
         aPage.aCssPixels = aCss;
         aPage.aChapterNames = aRenderer.getChapterNames();
-        rPageMetafiles.push_back(aPage);
+        rPageMetafiles.push_back(std::move(aPage));
     }
 }
 
@@ -178,7 +178,7 @@ void EPUBExportFilter::setSourceDocument(const uno::Reference<lang::XComponent>&
 
 OUString EPUBExportFilter::getImplementationName()
 {
-    return "com.sun.star.comp.Writer.EPUBExportFilter";
+    return u"com.sun.star.comp.Writer.EPUBExportFilter"_ustr;
 }
 
 sal_Bool EPUBExportFilter::supportsService(const OUString& rServiceName)
@@ -188,7 +188,7 @@ sal_Bool EPUBExportFilter::supportsService(const OUString& rServiceName)
 
 uno::Sequence<OUString> EPUBExportFilter::getSupportedServiceNames()
 {
-    uno::Sequence<OUString> aRet = { OUString("com.sun.star.document.ExportFilter") };
+    uno::Sequence<OUString> aRet = { u"com.sun.star.document.ExportFilter"_ustr };
     return aRet;
 }
 

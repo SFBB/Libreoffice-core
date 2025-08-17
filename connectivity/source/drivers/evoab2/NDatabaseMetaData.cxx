@@ -34,10 +34,7 @@
 using namespace connectivity::evoab;
 using namespace connectivity;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::lang;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::sdbc;
-using namespace com::sun::star::sdbcx;
 
 namespace
 {
@@ -193,9 +190,9 @@ namespace connectivity::evoab
         switch( getFieldType( nCol ) )
         {
             case DataType::BIT:
-                return "BIT";
+                return u"BIT"_ustr;
             case DataType::VARCHAR:
-                return "VARCHAR";
+                return u"VARCHAR"_ustr;
             default:
                 break;
         }
@@ -293,10 +290,10 @@ Reference< XResultSet > SAL_CALL OEvoabDatabaseMetaData::getColumns(
     // CHAR_OCTET_LENGTH, refer to [5]
     aRow[16] = new ORowSetValueDecorator(s_nCHAR_OCTET_LENGTH);
     // IS_NULLABLE
-    aRow[18] = new ORowSetValueDecorator(OUString("YES"));
+    aRow[18] = new ORowSetValueDecorator(u"YES"_ustr);
 
 
-    aRow[3] = new ORowSetValueDecorator(OUString("TABLE"));
+    aRow[3] = new ORowSetValueDecorator(u"TABLE"_ustr);
     ::osl::MutexGuard aGuard( m_aMutex );
 
     initFields();
@@ -450,7 +447,7 @@ OUString SAL_CALL OEvoabDatabaseMetaData::getCatalogTerm(  )
 OUString OEvoabDatabaseMetaData::impl_getIdentifierQuoteString_throw(  )
 {
     // normally this is "
-    return "\"";
+    return u"\""_ustr;
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getExtraNameCharacters(  )
@@ -806,12 +803,12 @@ OUString SAL_CALL OEvoabDatabaseMetaData::getDriverName(  )
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getDriverVersion()
 {
-    return "1";
+    return u"1"_ustr;
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getDatabaseProductVersion(  )
 {
-    return "0";
+    return u"0"_ustr;
 }
 
 OUString SAL_CALL OEvoabDatabaseMetaData::getDatabaseProductName(  )
@@ -1022,7 +1019,7 @@ Reference< XResultSet > OEvoabDatabaseMetaData::impl_getTypeInfo_throw(  )
         ODatabaseMetaDataResultSet::ORow aRow
         {
              ODatabaseMetaDataResultSet::getEmptyValue() ,
-             new ORowSetValueDecorator(OUString("VARCHAR")) ,
+             new ORowSetValueDecorator(u"VARCHAR"_ustr) ,
              new ORowSetValueDecorator(DataType::VARCHAR) ,
              new ORowSetValueDecorator(sal_Int32(s_nCHAR_OCTET_LENGTH)) ,
              ODatabaseMetaDataResultSet::getQuoteValue() ,
@@ -1044,10 +1041,10 @@ Reference< XResultSet > OEvoabDatabaseMetaData::impl_getTypeInfo_throw(  )
 
         tmp.push_back(aRow);
 
-        aRow[1] = new ORowSetValueDecorator(OUString("VARCHAR"));
+        aRow[1] = new ORowSetValueDecorator(u"VARCHAR"_ustr);
         aRow[2] = new ORowSetValueDecorator(DataType::VARCHAR);
         aRow[3] = new ORowSetValueDecorator(sal_Int32(65535));
-        tmp.push_back(aRow);
+        tmp.push_back(std::move(aRow));
         return tmp;
     }();
     pResultSet->setRows(std::move(aRows));
@@ -1126,20 +1123,19 @@ Reference< XResultSet > SAL_CALL OEvoabDatabaseMetaData::getTables(
                                                       RTL_TEXTENCODING_UTF8 );
         OUString aUID = OStringToOUString( e_source_get_uid( pSource ),
                                                       RTL_TEXTENCODING_UTF8 );
-        ODatabaseMetaDataResultSet::ORow aRow{
+        aRows.push_back(ODatabaseMetaDataResultSet::ORow{
             ORowSetValueDecoratorRef(),
             ORowSetValueDecoratorRef(),
             ORowSetValueDecoratorRef(),
             new ORowSetValueDecorator(aHumanName), //tablename
             new ORowSetValueDecorator(ORowSetValue(aTable)),
-            new ORowSetValueDecorator(aUID)}; //comment
+            new ORowSetValueDecorator(aUID)}); //comment
         //I'd prefer to swap the comment and the human name and
         //just use e_source_registry_ref_source(get_e_source_registry(), aUID);
         //in open book rather than search for the name again
-        aRows.push_back(aRow);
     }
 
-    g_list_foreach (pSources, reinterpret_cast<GFunc>(g_object_unref), nullptr);
+    g_list_foreach (pSources, object_unref, nullptr);
     g_list_free (pSources);
 
     pResult->setRows(std::move(aRows));
@@ -1149,7 +1145,7 @@ Reference< XResultSet > SAL_CALL OEvoabDatabaseMetaData::getTables(
 
 Reference< XResultSet > SAL_CALL OEvoabDatabaseMetaData::getUDTs( const Any& /*catalog*/, const OUString& /*schemaPattern*/, const OUString& /*typeNamePattern*/, const Sequence< sal_Int32 >& /*types*/ )
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XDatabaseMetaDaza::getUDTs", *this );
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XDatabaseMetaDaza::getUDTs"_ustr, *this );
     return nullptr;
 }
 

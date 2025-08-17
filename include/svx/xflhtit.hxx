@@ -31,10 +31,11 @@ class SdrModel;
 
 class SVXCORE_DLLPUBLIC XFillHatchItem final : public NameOrIndex
 {
-    XHatch  aHatch;
+    XHatch  m_aHatch;
 
 public:
                             static SfxPoolItem* CreateDefault();
+                            DECLARE_ITEM_TYPE_FUNCTION(XFillHatchItem)
                             XFillHatchItem() : NameOrIndex(XATTR_FILLHATCH, -1) {}
                             XFillHatchItem(const OUString& rName, const XHatch& rTheHatch);
                             XFillHatchItem(const XHatch& rTheHatch);
@@ -52,10 +53,10 @@ public:
     virtual bool            HasMetrics() const override;
     virtual void            ScaleMetrics(tools::Long nMul, tools::Long nDiv) override;
 
-    const XHatch&           GetHatchValue() const { return aHatch;} // GetValue -> GetHatchValue
+    const XHatch&           GetHatchValue() const { return m_aHatch;} // GetValue -> GetHatchValue
 
     static bool CompareValueFunc( const NameOrIndex* p1, const NameOrIndex* p2 );
-    std::unique_ptr<XFillHatchItem> checkForUniqueItem( SdrModel* pModel ) const;
+    std::unique_ptr<XFillHatchItem> checkForUniqueItem( SdrModel& rModel ) const;
 };
 
 #endif

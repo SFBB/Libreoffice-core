@@ -20,8 +20,7 @@
 #include <FrameView.hxx>
 
 #include <svx/svxids.hrc>
-#include <com/sun/star/drawing/framework/ResourceId.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
+#include <framework/AbstractView.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <unokywds.hxx>
 #include <vcl/settings.hxx>
@@ -37,10 +36,13 @@
 #include <ViewShellBase.hxx>
 #include <sdmod.hxx>
 #include <pres.hxx>
+#include <ResourceId.hxx>
 #include <framework/FrameworkHelper.hxx>
 #include <comphelper/processfactory.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <officecfg/Office/Draw.hxx>
+#include <officecfg/Office/Impress.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -87,10 +89,9 @@ FrameView::FrameView(SdDrawDocument* pDrawDoc, FrameView* pFrameView /* = NULL *
                     nSdViewShellCount++;
 
                     OUString sViewURL;
-                    Reference<drawing::framework::XView> xView (
+                    rtl::Reference<sd::framework::AbstractView> xView (
                         framework::FrameworkHelper::Instance(*pBase)->GetView(
-                            drawing::framework::ResourceId::create(
-                                ::comphelper::getProcessComponentContext(),
+                            new sd::framework::ResourceId(
                                 framework::FrameworkHelper::msCenterPaneURL)));
                     if (xView.is())
                         sViewURL = xView->getResourceId()->getResourceURL();
@@ -222,7 +223,7 @@ FrameView::FrameView(SdDrawDocument* pDrawDoc, FrameView* pFrameView /* = NULL *
         SetEliminatePolyPoints(false);
         mbDoubleClickTextEdit = false;
         mbClickChangeRotation = false;
-        mnSlidesPerRow = 4;
+        mnSlidesPerRow = officecfg::Office::Impress::Misc::SorterSlidesPerRow::get();
 
         {
             bool bUseContrast = Application::GetSettings().GetStyleSettings().GetHighContrastMode();
@@ -244,7 +245,7 @@ FrameView::FrameView(SdDrawDocument* pDrawDoc, FrameView* pFrameView /* = NULL *
             bInitDesignMode = false;
         SetDesignMode( bInitDesignMode );
 
-        Update( SD_MOD()->GetSdOptions(pDrawDoc->GetDocumentType()) );
+        Update(SdModule::get()->GetSdOptions(pDrawDoc->GetDocumentType()));
     }
 
 }
@@ -279,27 +280,52 @@ void FrameView::Update(SdOptions const * pOptions)
     if (!pOptions)
         return;
 
-    mbRuler = pOptions->IsRulerVisible();
+    SdDrawDocument* pDrawDocument = dynamic_cast<SdDrawDocument*>(&GetModel());
+    const bool bImpress = pDrawDocument && pDrawDocument->GetDocumentType() == DocumentType::Impress;
+
+    if (bImpress)
+    {
+        mbRuler = officecfg::Office::Impress::Layout::Display::Ruler::get();
+        SetAngleSnapEnabled( officecfg::Office::Impress::Snap::Position::Rotating::get() );
+        SetBigOrtho( officecfg::Office::Impress::Snap::Position::ExtendEdges::get() );
+        SetBordSnap( officecfg::Office::Impress::Snap::Object::PageMargin::get() );
+        SetDragStripes( officecfg::Office::Impress::Layout::Display::Guide::get() );
+        SetHlplSnap( officecfg::Office::Impress::Snap::Object::SnapLine::get() );
+        SetHlplVisible( officecfg::Office::Impress::Layout::Display::Helpline::get() );
+        SetEliminatePolyPointLimitAngle( Degree100(officecfg::Office::Impress::Snap::Position::PointReduction::get()) );
+        SetNoDragXorPolys ( !officecfg::Office::Impress::Layout::Display::Contour::get() );
+        SetOFrmSnap( officecfg::Office::Impress::Snap::Object::ObjectFrame::get() );
+        SetOPntSnap( officecfg::Office::Impress::Snap::Object::ObjectPoint::get() );
+        SetOrtho( officecfg::Office::Impress::Snap::Position::CreatingMoving::get() );
+        SetPlusHandlesAlwaysVisible( officecfg::Office::Impress::Layout::Display::Bezier::get() );
+        SetSnapAngle( Degree100(officecfg::Office::Impress::Snap::Position::RotatingValue::get()) );
+        SetSnapMagneticPixel( officecfg::Office::Impress::Snap::Object::Range::get() );
+    }
+    else
+    {
+        mbRuler = officecfg::Office::Draw::Layout::Display::Ruler::get();
+        SetAngleSnapEnabled( officecfg::Office::Draw::Snap::Position::Rotating::get() );
+        SetBigOrtho( officecfg::Office::Draw::Snap::Position::ExtendEdges::get() );
+        SetBordSnap( officecfg::Office::Draw::Snap::Object::PageMargin::get() );
+        SetDragStripes( officecfg::Office::Draw::Layout::Display::Guide::get() );
+        SetHlplSnap( officecfg::Office::Draw::Snap::Object::SnapLine::get() );
+        SetHlplVisible( officecfg::Office::Draw::Layout::Display::Helpline::get() );
+        SetEliminatePolyPointLimitAngle( Degree100(officecfg::Office::Draw::Snap::Position::PointReduction::get()) );
+        SetNoDragXorPolys ( !officecfg::Office::Draw::Layout::Display::Contour::get() );
+        SetOFrmSnap( officecfg::Office::Draw::Snap::Object::ObjectFrame::get() );
+        SetOPntSnap( officecfg::Office::Draw::Snap::Object::ObjectPoint::get() );
+        SetOrtho( officecfg::Office::Draw::Snap::Position::CreatingMoving::get() );
+        SetPlusHandlesAlwaysVisible( officecfg::Office::Draw::Layout::Display::Bezier::get() );
+        SetSnapAngle( Degree100(officecfg::Office::Draw::Snap::Position::RotatingValue::get()) );
+        SetSnapMagneticPixel( officecfg::Office::Draw::Snap::Object::Range::get() );
+    }
+
     SetGridVisible( pOptions->IsGridVisible() );
-    SetSnapAngle( pOptions->GetAngle() );
     SetGridSnap( pOptions->IsUseGridSnap() );
-    SetBordSnap( pOptions->IsSnapBorder()  );
-    SetHlplSnap( pOptions->IsSnapHelplines() );
-    SetOFrmSnap( pOptions->IsSnapFrame() );
-    SetOPntSnap( pOptions->IsSnapPoints() );
-    SetHlplVisible( pOptions->IsHelplines() );
-    SetDragStripes( pOptions->IsDragStripes() );
-    SetPlusHandlesAlwaysVisible( pOptions->IsHandlesBezier() );
-    SetSnapMagneticPixel( pOptions->GetSnapArea() );
     SetMarkedHitMovesAlways( pOptions->IsMarkedHitMovesAlways() );
     SetMoveOnlyDragging( pOptions->IsMoveOnlyDragging() );
     SetSlantButShear( pOptions->IsMoveOnlyDragging() );
-    SetNoDragXorPolys ( !pOptions->IsMoveOutline() );
     SetCrookNoContortion( pOptions->IsCrookNoContortion() );
-    SetAngleSnapEnabled( pOptions->IsRotate() );
-    SetBigOrtho( pOptions->IsBigOrtho() );
-    SetOrtho( pOptions->IsOrtho() );
-    SetEliminatePolyPointLimitAngle( pOptions->GetEliminatePolyPointLimitAngle() );
     GetModel().SetPickThroughTransparentTextFrames( pOptions->IsPickThrough() );
 
     SetSolidDragging( pOptions->IsSolidDragging() );

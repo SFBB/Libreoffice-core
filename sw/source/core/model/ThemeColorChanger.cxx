@@ -34,7 +34,7 @@
 #include <sal/config.h>
 #include <svx/svdpage.hxx>
 #include <svx/svditer.hxx>
-#include <svx/theme/ThemeColorChangerCommon.hxx>
+#include <svx/theme/IThemeColorChanger.hxx>
 #include <docmodel/uno/UnoComplexColor.hxx>
 #include <docmodel/theme/Theme.hxx>
 #include <editeng/unoprnms.hxx>
@@ -322,7 +322,7 @@ ThemeColorChanger::ThemeColorChanger(SwDocShell* pDocSh)
 
 ThemeColorChanger::~ThemeColorChanger() = default;
 
-void ThemeColorChanger::apply(std::shared_ptr<model::ColorSet> const& pColorSet)
+void ThemeColorChanger::doApply(std::shared_ptr<model::ColorSet> const& pColorSet)
 {
     SwDoc* pDocument = mpDocSh->GetDoc();
     if (!pDocument)
@@ -440,6 +440,8 @@ void ThemeColorChanger::apply(std::shared_ptr<model::ColorSet> const& pColorSet)
     sw::ModelTraverser aModelTraverser(pDocument);
     aModelTraverser.addNodeHandler(pHandler);
     aModelTraverser.traverse();
+
+    mpDocSh->Broadcast(SfxHint(SfxHintId::ThemeColorsChanged));
 
     pDocument->GetIDocumentUndoRedo().EndUndo(SwUndoId::EMPTY, nullptr);
 }

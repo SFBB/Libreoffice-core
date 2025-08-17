@@ -65,9 +65,7 @@ void HelpInterceptor_Impl::addURL( const OUString& rURL )
     if ( m_xListener.is() )
     {
         css::frame::FeatureStateEvent aEvent;
-        URL aURL;
-        aURL.Complete = rURL;
-        aEvent.FeatureURL = aURL;
+        aEvent.FeatureURL.Complete = rURL;
         aEvent.Source = static_cast<css::frame::XDispatch*>(this);
         m_xListener->statusChanged( aEvent );
     }
@@ -167,7 +165,7 @@ void SAL_CALL HelpInterceptor_Impl::setMasterDispatchProvider( const Reference< 
 Sequence< OUString > SAL_CALL HelpInterceptor_Impl::getInterceptedURLs()
 
 {
-    Sequence<OUString> aURLList { "vnd.sun.star.help://*" };
+    Sequence<OUString> aURLList { u"vnd.sun.star.help://*"_ustr };
     return aURLList;
 }
 

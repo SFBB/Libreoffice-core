@@ -33,6 +33,7 @@
 #include <drawinglayer/primitive2d/textlayoutdevice.hxx>
 #include <drawinglayer/primitive2d/textprimitive2d.hxx>
 #include <basegfx/color/bcolor.hxx>
+#include <editeng/StripPortionsHelper.hxx>
 
 // primitive decomposition helpers
 #include <drawinglayer/attribute/strokeattribute.hxx>
@@ -81,7 +82,7 @@ namespace
 
                 for(sal_Int32 a=0; a < mnTextLength; a++)
                 {
-                    maDblDXArray.push_back(static_cast<double>(rInfo.mpDXArray[a]));
+                    maDblDXArray.push_back(rInfo.mpDXArray[a]);
                 }
             }
         }
@@ -148,25 +149,29 @@ namespace
 
 namespace
 {
-    class impTextBreakupHandler
+    class TextHierarchyBreakupPathTextPortions : public StripPortionsHelper
     {
-        SdrOutliner&                                mrOutliner;
         ::std::vector< impPathTextPortion >         maPathTextPortions;
 
-        DECL_LINK(decompositionPathTextPrimitive, DrawPortionInfo*, void );
-
     public:
-        explicit impTextBreakupHandler(SdrOutliner& rOutliner)
-        :   mrOutliner(rOutliner)
+        virtual void processDrawPortionInfo(const DrawPortionInfo& rDrawPortionInfo) override
         {
+            // extract and add data for TextOnPath further processing
+            maPathTextPortions.emplace_back(rDrawPortionInfo);
         }
 
-        const ::std::vector< impPathTextPortion >& decompositionPathTextPrimitive()
+        virtual void processDrawBulletInfo(const DrawBulletInfo&) override
         {
-            // strip portions to maPathTextPortions
-            mrOutliner.SetDrawPortionHdl(LINK(this, impTextBreakupHandler, decompositionPathTextPrimitive));
-            mrOutliner.StripPortions();
+            // nothing to do here, bullets are for now ignored for TextOnLine
+        }
 
+        virtual void directlyAddB2DPrimitive(const drawinglayer::primitive2d::Primitive2DReference&) override
+        {
+            // nothing to do here, no support for directly adding Primitives
+        }
+
+        const ::std::vector< impPathTextPortion >& sortAndGetPathTextPortions()
+        {
             if(!maPathTextPortions.empty())
             {
                 // sort portions by paragraph, x and y
@@ -176,11 +181,6 @@ namespace
             return maPathTextPortions;
         }
     };
-
-    IMPL_LINK(impTextBreakupHandler, decompositionPathTextPrimitive, DrawPortionInfo*, pInfo, void)
-    {
-        maPathTextPortions.emplace_back(*pInfo);
-    }
 } // end of anonymous namespace
 
 
@@ -236,7 +236,7 @@ namespace
             mrShadowDecomposition(rShadowDecomposition)
         {
             // prepare BreakIterator
-            uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+            const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
             mxBreak = i18n::BreakIterator::create(xContext);
         }
 
@@ -593,9 +593,8 @@ namespace
                         rOutlineAttribute.getLineAttribute(),
                         rOutlineAttribute.getStrokeAttribute(),
                         aStrokePrimitives);
-                    const sal_uInt32 nStrokeCount(aStrokePrimitives.size());
 
-                    if(nStrokeCount)
+                    if(!aStrokePrimitives.empty())
                     {
                         if(rOutlineAttribute.getTransparence())
                         {
@@ -641,8 +640,9 @@ void SdrTextObj::impDecomposePathTextPrimitive(
     rOutliner.setVisualizedPage(GetSdrPageFromXDrawPage(aViewInformation.getVisualizedPage()));
 
     // now break up to text portions
-    impTextBreakupHandler aConverter(rOutliner);
-    const ::std::vector< impPathTextPortion > rPathTextPortions = aConverter.decompositionPathTextPrimitive();
+    TextHierarchyBreakupPathTextPortions aBreakup;
+    rOutliner.StripPortions(aBreakup);
+    const ::std::vector< impPathTextPortion > rPathTextPortions(aBreakup.sortAndGetPathTextPortions());
 
     if(!rPathTextPortions.empty())
     {
@@ -735,7 +735,6 @@ void SdrTextObj::impDecomposePathTextPrimitive(
     }
 
     // clean up outliner
-    rOutliner.SetDrawPortionHdl(Link<DrawPortionInfo*,void>());
     rOutliner.Clear();
     rOutliner.setVisualizedPage(nullptr);
 

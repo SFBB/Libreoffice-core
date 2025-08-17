@@ -22,12 +22,10 @@
 #include <tools/color.hxx>
 #include <vcl/image.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <comphelper/OAccessible.hxx>
 #include <comphelper/compbase.hxx>
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/accessibility/XAccessibleContext.hpp>
-#include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 
 #include <mutex>
 #include <vector>
@@ -61,27 +59,20 @@ struct ValueSetItem
     explicit ValueSetItem( ValueSet& rParent );
     ~ValueSetItem();
 
-    css::uno::Reference< css::accessibility::XAccessible >
-                        GetAccessible( bool bIsTransientChildrenDisabled );
+    const rtl::Reference<ValueItemAcc>& GetAccessible(bool bCreate = true);
 };
 
-typedef comphelper::WeakComponentImplHelper<
-    css::accessibility::XAccessible,
-    css::accessibility::XAccessibleEventBroadcaster,
-    css::accessibility::XAccessibleContext,
-    css::accessibility::XAccessibleComponent,
-    css::accessibility::XAccessibleSelection >
-    ValueSetAccComponentBase;
-
-class ValueSetAcc final : public ValueSetAccComponentBase
+class ValueSetAcc final
+    : public cppu::ImplInheritanceHelper<comphelper::OAccessible,
+                                         css::accessibility::XAccessibleSelection>
 {
 public:
 
-    explicit ValueSetAcc(ValueSet* pParent);
+    explicit ValueSetAcc(ValueSet* pValueSet);
     virtual ~ValueSetAcc() override;
 
     void                FireAccessibleEvent( short nEventId, const css::uno::Any& rOldValue, const css::uno::Any& rNewValue );
-    bool                HasAccessibleListeners() const { return( mxEventListeners.size() > 0 ); }
+    bool                HasAccessibleListeners() const;
 
 public:
 
@@ -98,13 +89,6 @@ public:
     /** Called by the corresponding ValueSet when it gets destroyed. */
     void Invalidate();
 
-    // XAccessible
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override;
-
-    // XAccessibleEventBroadcaster
-    virtual void SAL_CALL addAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-    virtual void SAL_CALL removeAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-
     // XAccessibleContext
     virtual sal_Int64 SAL_CALL getAccessibleChildCount(  ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleChild( sal_Int64 i ) override;
@@ -117,13 +101,11 @@ public:
     virtual sal_Int64 SAL_CALL getAccessibleStateSet(  ) override;
     virtual css::lang::Locale SAL_CALL getLocale(  ) override;
 
+    // OAccessible
+    virtual css::awt::Rectangle implGetBounds() override;
+
     // XAccessibleComponent
-    virtual sal_Bool SAL_CALL containsPoint( const css::awt::Point& aPoint ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint( const css::awt::Point& aPoint ) override;
-    virtual css::awt::Rectangle SAL_CALL getBounds(  ) override;
-    virtual css::awt::Point SAL_CALL getLocation(  ) override;
-    virtual css::awt::Point SAL_CALL getLocationOnScreen(  ) override;
-    virtual css::awt::Size SAL_CALL getSize(  ) override;
     virtual void SAL_CALL grabFocus(  ) override;
     virtual sal_Int32 SAL_CALL getForeground(  ) override;
     virtual sal_Int32 SAL_CALL getBackground(  ) override;
@@ -138,16 +120,9 @@ public:
     virtual void SAL_CALL deselectAccessibleChild( sal_Int64 nSelectedChildIndex ) override;
 
 private:
-    ::std::vector< css::uno::Reference<
-        css::accessibility::XAccessibleEventListener > >                mxEventListeners;
-    ValueSet*                                                    mpParent;
+    ValueSet* mpValueSet;
     /// The current FOCUSED state.
     bool mbIsFocused;
-
-    /** Tell all listeners that the object is dying.  This callback is
-        usually called from the WeakComponentImplHelper class.
-    */
-    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     /** Return the number of items.  This takes the None-Item into account.
     */
@@ -168,12 +143,9 @@ private:
         state of being disposed).  If that is the case then
         DisposedException is thrown to inform the (indirect) caller of the
         foul deed.
-        @param bCheckValueSet
-            Whether to also check that the ValueSet (parent)
-            is non-null.
         @throws css::lang::DisposedException
     */
-    void ThrowIfDisposed(bool bCheckParent = true);
+    void ThrowIfDisposed();
 
     /** Check whether the value set has a 'none' field, i.e. a field (button)
         that deselects any items (selects none of them).
@@ -184,38 +156,19 @@ private:
     bool HasNoneField() const;
 };
 
-class ValueItemAcc : public ::cppu::WeakImplHelper< css::accessibility::XAccessible,
-                                                     css::accessibility::XAccessibleEventBroadcaster,
-                                                     css::accessibility::XAccessibleContext,
-                                                     css::accessibility::XAccessibleComponent >
+class ValueItemAcc : public comphelper::OAccessible
 {
 private:
-
-    ::std::vector< css::uno::Reference<
-        css::accessibility::XAccessibleEventListener > >                mxEventListeners;
-    std::mutex                                                          maMutex;
-    ValueSetItem*                                                    mpParent;
-    bool                                                                mbIsTransientChildrenDisabled;
+    ValueSetItem*                                                       mpValueSetItem;
 
 public:
 
-    ValueItemAcc(ValueSetItem* pParent, bool bIsTransientChildrenDisabled);
+    ValueItemAcc(ValueSetItem* pValueSetItem);
     virtual ~ValueItemAcc() override;
 
-    void    ParentDestroyed();
+    void    ValueSetItemDestroyed();
 
     void    FireAccessibleEvent( short nEventId, const css::uno::Any& rOldValue, const css::uno::Any& rNewValue );
-
-    static ValueItemAcc* getImplementation( const css::uno::Reference< css::uno::XInterface >& rxData ) noexcept;
-
-public:
-
-    // XAccessible
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override;
-
-    // XAccessibleEventBroadcaster
-    virtual void SAL_CALL addAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-    virtual void SAL_CALL removeAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
 
     // XAccessibleContext
     virtual sal_Int64 SAL_CALL getAccessibleChildCount(  ) override;
@@ -229,13 +182,11 @@ public:
     virtual sal_Int64 SAL_CALL getAccessibleStateSet(  ) override;
     virtual css::lang::Locale SAL_CALL getLocale(  ) override;
 
+    // OAccessible
+    virtual css::awt::Rectangle implGetBounds() override;
+
     // XAccessibleComponent
-    virtual sal_Bool SAL_CALL containsPoint( const css::awt::Point& aPoint ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint( const css::awt::Point& aPoint ) override;
-    virtual css::awt::Rectangle SAL_CALL getBounds(  ) override;
-    virtual css::awt::Point SAL_CALL getLocation(  ) override;
-    virtual css::awt::Point SAL_CALL getLocationOnScreen(  ) override;
-    virtual css::awt::Size SAL_CALL getSize(  ) override;
     virtual void SAL_CALL grabFocus(  ) override;
     virtual sal_Int32 SAL_CALL getForeground(  ) override;
     virtual sal_Int32 SAL_CALL getBackground(  ) override;

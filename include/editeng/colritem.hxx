@@ -37,6 +37,7 @@ private:
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxColorItem)
     explicit SvxColorItem(const sal_uInt16 nId);
     SvxColorItem(const Color& aColor, const sal_uInt16 nId);
     SvxColorItem(const Color& aColor, model::ComplexColor const& rComplexColor, const sal_uInt16 nId);
@@ -44,6 +45,8 @@ public:
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool operator==(const SfxPoolItem& rPoolItem) const override;
+    virtual bool supportsHashCode() const override { return true; }
+    virtual size_t hashCode() const override;
     virtual bool QueryValue(css::uno::Any& rVal, sal_uInt8 nMemberId = 0) const override;
     virtual bool PutValue(const css::uno::Any& rVal, sal_uInt8 nMemberId) override;
 
@@ -60,6 +63,7 @@ public:
     }
     void SetValue(const Color& rNewColor)
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         mColor = rNewColor;
     }
 
@@ -69,11 +73,12 @@ public:
     }
     void setColor(const Color& rNewColor)
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         mColor = rNewColor;
     }
 
     model::ComplexColor const& getComplexColor() const { return maComplexColor; }
-    void setComplexColor(model::ComplexColor const& rComplexColor) { maComplexColor = rComplexColor; }
+    void setComplexColor(model::ComplexColor const& rComplexColor) { ASSERT_CHANGE_REFCOUNTED_ITEM; maComplexColor = rComplexColor; }
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };

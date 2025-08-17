@@ -24,44 +24,33 @@
 #include <Axis.hxx>
 #include <AxisHelper.hxx>
 #include <ChartType.hxx>
-#include <ChartTypeHelper.hxx>
-#include <ChartTypeManager.hxx>
-#include <ChartTypeTemplate.hxx>
 #include <ChartModel.hxx>
-#include <ChartModelHelper.hxx>
 #include <ExplicitCategoriesProvider.hxx>
-#include <servicenames_charttypes.hxx>
 #include <RelativePositionHelper.hxx>
 #include <ControllerLockGuard.hxx>
 #include <NumberFormatterWrapper.hxx>
 #include <unonames.hxx>
 #include <BaseCoordinateSystem.hxx>
 
-#include <com/sun/star/chart/MissingValueTreatment.hpp>
 #include <com/sun/star/chart/XDiagramPositioning.hpp>
 #include <com/sun/star/chart2/XAnyDescriptionAccess.hpp>
 #include <com/sun/star/chart2/AxisType.hpp>
-#include <com/sun/star/chart2/DataPointGeometry3D.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
 #include <com/sun/star/chart2/RelativeSize.hpp>
 #include <com/sun/star/chart2/StackingDirection.hpp>
 
-#include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/util/NumberFormat.hpp>
-#include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 
-#include <o3tl/safeint.hxx>
 #include <unotools/saveopt.hxx>
-#include <rtl/math.hxx>
 #include <svl/numformat.hxx>
 #include <svl/zforlist.hxx>
+#include <svl/zformat.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <sal/log.hxx>
 
-#include <cstddef>
 #include <limits>
 
 using namespace ::com::sun::star;
@@ -100,7 +89,7 @@ StackMode DiagramHelper::getStackModeFromChartType(
             rbFound = true;
             chart2::StackingDirection eCurrentDirection = eCommonDirection;
             // property is not MAYBEVOID
-            bool bSuccess = ( aSeries[i]->getPropertyValue( "StackingDirection" ) >>= eCurrentDirection );
+            bool bSuccess = ( aSeries[i]->getPropertyValue( u"StackingDirection"_ustr ) >>= eCurrentDirection );
             OSL_ASSERT( bSuccess );
             if( ! bDirectionInitialized )
             {
@@ -132,7 +121,7 @@ StackMode DiagramHelper::getStackModeFromChartType(
                     {
                         sal_Int32 nAxisIndex = 0;
                         if( nSeriesCount )
-                            nAxisIndex = DataSeriesHelper::getAttachedAxisIndex(aSeries[0]);
+                            nAxisIndex = aSeries[0]->getAttachedAxisIndex();
 
                         rtl::Reference< Axis > xAxis =
                             xCorrespondingCoordinateSystem->getAxisByDimension2( 1,nAxisIndex );
@@ -153,13 +142,6 @@ StackMode DiagramHelper::getStackModeFromChartType(
     }
 
     return eStackMode;
-}
-
-bool DiagramHelper::isSeriesAttachedToMainAxis(
-                          const rtl::Reference< ::chart::DataSeries >& xDataSeries )
-{
-    sal_Int32 nAxisIndex = DataSeriesHelper::getAttachedAxisIndex(xDataSeries);
-    return (nAxisIndex==0);
 }
 
 static void lcl_generateAutomaticCategoriesFromChartType(
@@ -206,7 +188,7 @@ Sequence< OUString > DiagramHelper::generateAutomaticCategoriesFromCooSys( const
 Sequence< OUString > DiagramHelper::getExplicitSimpleCategories(
             ChartModel& rModel )
 {
-    rtl::Reference< BaseCoordinateSystem > xCooSys( ChartModelHelper::getFirstCoordinateSystem( &rModel ) );
+    rtl::Reference< BaseCoordinateSystem > xCooSys( rModel.getFirstCoordinateSystem() );
     ExplicitCategoriesProvider aExplicitCategoriesProvider( xCooSys, rModel );
     return aExplicitCategoriesProvider.getSimpleCategories();
 }
@@ -268,7 +250,7 @@ void lcl_switchToDateCategories( const rtl::Reference< ChartModel >& xChartDoc, 
                 }
                 sal_Int32 nType = util::NumberFormat::UNDEFINED;
                 if( xKeyProps.is() )
-                    xKeyProps->getPropertyValue( "Type" ) >>= nType;
+                    xKeyProps->getPropertyValue( u"Type"_ustr ) >>= nType;
                 if( !( nType & util::NumberFormat::DATE ) )
                 {
                     //set a date format to the axis
@@ -311,7 +293,7 @@ void DiagramHelper::switchToDateCategories( const rtl::Reference<::chart::ChartM
     {
         ControllerLockGuardUNO aCtrlLockGuard( xChartDoc );
 
-        rtl::Reference< BaseCoordinateSystem > xCooSys = ChartModelHelper::getFirstCoordinateSystem( xChartDoc );
+        rtl::Reference< BaseCoordinateSystem > xCooSys = xChartDoc->getFirstCoordinateSystem();
         if( xCooSys.is() )
         {
             rtl::Reference< Axis > xAxis = xCooSys->getAxisByDimension2(0,0);
@@ -326,7 +308,7 @@ void DiagramHelper::switchToTextCategories( const rtl::Reference<::chart::ChartM
     {
         ControllerLockGuardUNO aCtrlLockGuard( xChartDoc );
 
-        rtl::Reference< BaseCoordinateSystem > xCooSys = ChartModelHelper::getFirstCoordinateSystem( xChartDoc );
+        rtl::Reference< BaseCoordinateSystem > xCooSys = xChartDoc->getFirstCoordinateSystem();
         if( xCooSys.is() )
         {
             rtl::Reference< Axis > xAxis = xCooSys->getAxisByDimension2(0,0);
@@ -335,7 +317,7 @@ void DiagramHelper::switchToTextCategories( const rtl::Reference<::chart::ChartM
     }
 }
 
-bool DiagramHelper::isDateNumberFormat( sal_Int32 nNumberFormat, const Reference< util::XNumberFormats >& xNumberFormats )
+bool DiagramHelper::isDateNumberFormat( sal_Int32 nNumberFormat, const css::uno::Reference< css::util::XNumberFormats >& xNumberFormats )
 {
     bool bIsDate = false;
     if( !xNumberFormats.is() )
@@ -345,7 +327,7 @@ bool DiagramHelper::isDateNumberFormat( sal_Int32 nNumberFormat, const Reference
     if( xKeyProps.is() )
     {
         sal_Int32 nType = util::NumberFormat::UNDEFINED;
-        xKeyProps->getPropertyValue( "Type" ) >>= nType;
+        xKeyProps->getPropertyValue( u"Type"_ustr ) >>= nType;
         bIsDate = nType & util::NumberFormat::DATE;
     }
     return bIsDate;
@@ -456,15 +438,15 @@ bool DiagramHelper::setDiagramPositioning( const rtl::Reference<::chart::ChartMo
     ControllerLockGuardUNO aCtrlLockGuard( xChartModel );
 
     bool bChanged = false;
-    awt::Size aPageSize( ChartModelHelper::getPageSize(xChartModel) );
+    awt::Size aPageSize( xChartModel->getPageSize() );
     rtl::Reference< Diagram > xDiagram = xChartModel->getFirstChartDiagram();
     if( !xDiagram.is() )
         return bChanged;
 
     RelativePosition aOldPos;
     RelativeSize aOldSize;
-    xDiagram->getPropertyValue("RelativePosition" ) >>= aOldPos;
-    xDiagram->getPropertyValue("RelativeSize" ) >>= aOldSize;
+    xDiagram->getPropertyValue(u"RelativePosition"_ustr ) >>= aOldPos;
+    xDiagram->getPropertyValue(u"RelativeSize"_ustr ) >>= aOldSize;
 
     RelativePosition aNewPos;
     aNewPos.Anchor = drawing::Alignment_TOP_LEFT;
@@ -484,8 +466,8 @@ bool DiagramHelper::setDiagramPositioning( const rtl::Reference<::chart::ChartMo
     if( (aNewPos.Secondary + aNewSize.Secondary) > 1.0 )
         aNewPos.Secondary = 1.0 - aNewSize.Secondary;
 
-    xDiagram->setPropertyValue( "RelativePosition", uno::Any(aNewPos) );
-    xDiagram->setPropertyValue( "RelativeSize", uno::Any(aNewSize) );
+    xDiagram->setPropertyValue( u"RelativePosition"_ustr, uno::Any(aNewPos) );
+    xDiagram->setPropertyValue( u"RelativeSize"_ustr, uno::Any(aNewSize) );
 
     bChanged = (aOldPos.Anchor!=aNewPos.Anchor) ||
         (aOldPos.Primary!=aNewPos.Primary) ||
@@ -503,12 +485,12 @@ awt::Rectangle DiagramHelper::getDiagramRectangleFromModel( const rtl::Reference
     if( !xDiagram.is() )
         return aRet;
 
-    awt::Size aPageSize( ChartModelHelper::getPageSize(xChartModel) );
+    awt::Size aPageSize( xChartModel->getPageSize() );
 
     RelativePosition aRelPos;
     RelativeSize aRelSize;
-    xDiagram->getPropertyValue("RelativePosition" ) >>= aRelPos;
-    xDiagram->getPropertyValue("RelativeSize" ) >>= aRelSize;
+    xDiagram->getPropertyValue(u"RelativePosition"_ustr ) >>= aRelPos;
+    xDiagram->getPropertyValue(u"RelativeSize"_ustr ) >>= aRelSize;
 
     awt::Size aAbsSize(
         static_cast< sal_Int32 >( aRelSize.Primary * aPageSize.Width ),

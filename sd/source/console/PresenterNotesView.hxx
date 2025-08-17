@@ -28,8 +28,8 @@
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
+#include <framework/AbstractView.hxx>
+#include <ResourceId.hxx>
 #include <com/sun/star/frame/XController.hpp>
 #include <rtl/ref.hxx>
 #include <memory>
@@ -42,10 +42,10 @@ class PresenterButton;
 class PresenterScrollBar;
 class PresenterTextView;
 
-typedef cppu::WeakComponentImplHelper<
+typedef cppu::ImplInheritanceHelper<
+    sd::framework::AbstractView,
     css::awt::XWindowListener,
     css::awt::XPaintListener,
-    css::drawing::framework::XView,
     css::drawing::XDrawView,
     css::awt::XKeyListener
     > PresenterNotesViewInterfaceBase;
@@ -55,19 +55,18 @@ typedef cppu::WeakComponentImplHelper<
     notes text.
 */
 class PresenterNotesView
-    : private ::cppu::BaseMutex,
-      public PresenterNotesViewInterfaceBase,
+    : public PresenterNotesViewInterfaceBase,
       public CachablePresenterView
 {
 public:
     explicit PresenterNotesView (
         const css::uno::Reference<css::uno::XComponentContext>& rxContext,
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
         const ::rtl::Reference<::sd::DrawController>& rxController,
         const ::rtl::Reference<PresenterController>& rpPresenterController);
     virtual ~PresenterNotesView() override;
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     /** Typically called from setCurrentSlide() with the notes page that is
         associated with the slide given to setCurrentSlide().
@@ -84,6 +83,7 @@ public:
 
     // lang::XEventListener
 
+    using WeakComponentImplHelperBase::disposing;
     virtual void SAL_CALL
         disposing (const css::lang::EventObject& rEventObject) override;
 
@@ -101,11 +101,11 @@ public:
 
     virtual void SAL_CALL windowPaint (const css::awt::PaintEvent& rEvent) override;
 
-    // XResourceId
+    // AbstractResource
 
-    virtual css::uno::Reference<css::drawing::framework::XResourceId> SAL_CALL getResourceId() override;
+    virtual rtl::Reference<sd::framework::ResourceId> getResourceId() override;
 
-    virtual sal_Bool SAL_CALL isAnchorOnly() override;
+    virtual bool isAnchorOnly() override;
 
     // XDrawView
 
@@ -120,7 +120,7 @@ public:
     virtual void SAL_CALL keyReleased (const css::awt::KeyEvent& rEvent) override;
 
 private:
-    css::uno::Reference<css::drawing::framework::XResourceId> mxViewId;
+    rtl::Reference<sd::framework::ResourceId> mxViewId;
     ::rtl::Reference<PresenterController> mpPresenterController;
     css::uno::Reference<css::awt::XWindow> mxParentWindow;
     css::uno::Reference<css::rendering::XCanvas> mxCanvas;

@@ -23,7 +23,7 @@
 #include <core_resource.hxx>
 #include <strings.hrc>
 #include <strings.hxx>
-#include "connection.hxx"
+#include <connection.hxx>
 #include "SharedConnection.hxx"
 #include "databasedocument.hxx"
 #include <OAuthenticationContinuation.hxx>
@@ -57,6 +57,7 @@
 #include <cppuhelper/typeprovider.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <comphelper/diagnose_ex.hxx>
+#include <o3tl/environment.hxx>
 #include <osl/diagnose.h>
 #include <osl/process.h>
 #include <sal/log.hxx>
@@ -313,10 +314,10 @@ Reference<XConnection> OSharedConnectionManager::getConnection( const OUString& 
         aIter = m_aConnections.emplace(nId,aHolder).first;
     }
 
-    Reference<XConnection> xRet;
+    rtl::Reference<OSharedConnection> xRet;
     if ( aIter->second.xMasterConnection.is() )
     {
-        Reference< XAggregation > xConProxy = m_xProxyFactory->createProxy(aIter->second.xMasterConnection);
+        Reference< XAggregation > xConProxy = m_xProxyFactory->createProxy(cppu::getXWeak(aIter->second.xMasterConnection.get()));
         xRet = new OSharedConnection(xConProxy);
         m_aSharedConnection.emplace(xRet,aIter);
         addEventListener(xRet,aIter);
@@ -336,43 +337,29 @@ void OSharedConnectionManager::addEventListener(const Reference<XConnection>& _r
 namespace
 {
     Sequence< PropertyValue > lcl_filterDriverProperties( const Reference< XDriver >& _xDriver, const OUString& _sUrl,
-        const Sequence< PropertyValue >& _rDataSourceSettings, const AsciiPropertyValue* _pKnownSettings )
+        const Sequence< PropertyValue >& _rDataSourceSettings )
     {
         if ( _xDriver.is() )
         {
             Sequence< DriverPropertyInfo > aDriverInfo(_xDriver->getPropertyInfo(_sUrl,_rDataSourceSettings));
 
-            const PropertyValue* pDataSourceSetting = _rDataSourceSettings.getConstArray();
-            const PropertyValue* pEnd = pDataSourceSetting + _rDataSourceSettings.getLength();
-
             std::vector< PropertyValue > aRet;
 
-            for ( ; pDataSourceSetting != pEnd ; ++pDataSourceSetting )
+            for (auto& dataSourceSetting : _rDataSourceSettings)
             {
-                bool bAllowSetting = false;
-                const AsciiPropertyValue* pSetting = _pKnownSettings;
-                for ( ; pSetting->AsciiName; ++pSetting )
-                {
-                    if ( pDataSourceSetting->Name.equalsAscii( pSetting->AsciiName ) )
-                    {   // the particular data source setting is known
-
-                        const DriverPropertyInfo* pAllowedDriverSetting = aDriverInfo.getConstArray();
-                        const DriverPropertyInfo* pDriverSettingsEnd = pAllowedDriverSetting + aDriverInfo.getLength();
-                        for ( ; pAllowedDriverSetting != pDriverSettingsEnd; ++pAllowedDriverSetting )
-                        {
-                            if ( pAllowedDriverSetting->Name.equalsAscii( pSetting->AsciiName ) )
-                            {   // the driver also allows this setting
-                                bAllowSetting = true;
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                }
-                if ( bAllowSetting || !pSetting->AsciiName )
+                auto knownSettings = dbaccess::ODatabaseModelImpl::getDefaultDataSourceSettings();
+                bool isSettingKnown = std::any_of(knownSettings.begin(), knownSettings.end(),
+                                                  [name = dataSourceSetting.Name](auto& setting)
+                                                  { return name == setting.Name; });
+                // Allow if the particular data source setting is unknown or allowed by the driver
+                bool bAllowSetting = !isSettingKnown
+                                     || std::any_of(aDriverInfo.begin(), aDriverInfo.end(),
+                                                    [name = dataSourceSetting.Name](auto& setting)
+                                                    { return name == setting.Name; });
+                if (bAllowSetting)
                 {   // if the driver allows this particular setting, or if the setting is completely unknown,
                     // we pass it to the driver
-                    aRet.push_back( *pDataSourceSetting );
+                    aRet.push_back(dataSourceSetting);
                 }
             }
             if ( !aRet.empty() )
@@ -485,12 +472,12 @@ void SAL_CALL ODatabaseSource::disposing( const css::lang::EventObject& Source )
 // XServiceInfo
 OUString ODatabaseSource::getImplementationName(  )
 {
-    return "com.sun.star.comp.dba.ODatabaseSource";
+    return u"com.sun.star.comp.dba.ODatabaseSource"_ustr;
 }
 
 Sequence< OUString > ODatabaseSource::getSupportedServiceNames(  )
 {
-    return { SERVICE_SDB_DATASOURCE, "com.sun.star.sdb.DocumentDataSource" };
+    return { SERVICE_SDB_DATASOURCE, u"com.sun.star.sdb.DocumentDataSource"_ustr };
 }
 
 sal_Bool ODatabaseSource::supportsService( const OUString& _rServiceName )
@@ -518,7 +505,7 @@ weld::Window* ODatabaseModelImpl::GetFrameWeld()
     if (m_xDialogParent.is())
         return Application::GetFrameWeld(m_xDialogParent);
 
-    Reference<XModel> xModel = getModel_noCreate();
+    rtl::Reference<ODatabaseDocument> xModel = getModel_noCreate();
     if (!xModel.is())
         return nullptr;
     Reference<XController> xController(xModel->getCurrentController());
@@ -540,7 +527,7 @@ Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString
 #if ENABLE_FIREBIRD_SDBC
     bool bIgnoreMigration = false;
     bool bNeedMigration = false;
-    Reference< XModel > xModel = m_pImpl->getModel_noCreate();
+    rtl::Reference< ODatabaseDocument > xModel = m_pImpl->getModel_noCreate();
     if ( xModel)
     {
         //See ODbTypeWizDialogSetup::SaveDatabaseDocument
@@ -558,16 +545,13 @@ Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString
     if(!bIgnoreMigration && m_pImpl->m_sConnectURL == "sdbc:embedded:hsqldb")
     {
         Reference<XStorage> const xRootStorage = m_pImpl->getOrCreateRootStorage();
-        OUString sMigrEnvVal;
-        osl_getEnvironment(OUString("DBACCESS_HSQL_MIGRATION").pData,
-            &sMigrEnvVal.pData);
-        if(!sMigrEnvVal.isEmpty())
+        if (!o3tl::getEnvironment(u"DBACCESS_HSQL_MIGRATION"_ustr).isEmpty())
             bNeedMigration = true;
         else
         {
             Reference<XPropertySet> const xPropSet(xRootStorage, UNO_QUERY_THROW);
             sal_Int32 nOpenMode(0);
-            if ((xPropSet->getPropertyValue("OpenMode") >>= nOpenMode)
+            if ((xPropSet->getPropertyValue(u"OpenMode"_ustr) >>= nOpenMode)
                 && (nOpenMode & css::embed::ElementModes::WRITE)
                 && (!Application::IsHeadlessModeEnabled()))
             {
@@ -588,7 +572,7 @@ Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString
             {
                 SAL_INFO("dbaccess", "No file content_before_migration.xml found" );
             }
-            xRootStorage->copyElementTo("content.xml", xRootStorage,
+            xRootStorage->copyElementTo(u"content.xml"_ustr, xRootStorage,
                 BACKUP_XML_NAME);
 
             m_pImpl->m_sConnectURL = "sdbc:embedded:firebird";
@@ -659,8 +643,7 @@ Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString
             Sequence< PropertyValue > aDriverInfo = lcl_filterDriverProperties(
                 xDriver,
                 m_pImpl->m_sConnectURL,
-                m_pImpl->m_xSettings->getPropertyValues(),
-                dbaccess::ODatabaseModelImpl::getDefaultDataSourceSettings()
+                m_pImpl->m_xSettings->getPropertyValues()
             );
 
             if ( m_pImpl->isEmbeddedDatabase() )
@@ -674,7 +657,7 @@ Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString
 
                 pDriverInfo[nCount].Name = "Storage";
                 Reference< css::document::XDocumentSubStorageSupplier> xDocSup( m_pImpl->getDocumentSubStorageSupplier() );
-                pDriverInfo[nCount++].Value <<= xDocSup->getDocumentSubStorage("database",ElementModes::READWRITE);
+                pDriverInfo[nCount++].Value <<= xDocSup->getDocumentSubStorage(u"database"_ustr,ElementModes::READWRITE);
 
                 pDriverInfo[nCount].Name = "Document";
                 pDriverInfo[nCount++].Value <<= getDatabaseDocument();
@@ -715,7 +698,7 @@ Reference< XConnection > ODatabaseSource::buildLowLevelConnection(const OUString
         Reference< css::document::XDocumentSubStorageSupplier> xDocSup(
                 m_pImpl->getDocumentSubStorageSupplier() );
         dbahsql::HsqlImporter importer(xReturn,
-                xDocSup->getDocumentSubStorage("database",ElementModes::READWRITE) );
+                xDocSup->getDocumentSubStorage(u"database"_ustr,ElementModes::READWRITE) );
         importer.importHsqlDatabase(m_pImpl->GetFrameWeld());
     }
 #endif
@@ -762,73 +745,59 @@ Reference< XPropertySetInfo >  ODatabaseSource::getPropertySetInfo()
 
 sal_Bool ODatabaseSource::convertFastPropertyValue(Any & rConvertedValue, Any & rOldValue, sal_Int32 nHandle, const Any& rValue )
 {
-    bool bModified(false);
     if ( m_pImpl.is() )
     {
         switch (nHandle)
         {
             case PROPERTY_ID_TABLEFILTER:
-                bModified = ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_aTableFilter);
-                break;
+                return ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_aTableFilter);
             case PROPERTY_ID_TABLETYPEFILTER:
-                bModified = ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_aTableTypeFilter);
-                break;
+                return ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_aTableTypeFilter);
             case PROPERTY_ID_USER:
-                bModified = ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_sUser);
-                break;
+                return ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_sUser);
             case PROPERTY_ID_PASSWORD:
-                bModified = ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_aPassword);
-                break;
+                return ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_aPassword);
             case PROPERTY_ID_ISPASSWORDREQUIRED:
-                bModified = ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_bPasswordRequired);
-                break;
+                return ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_bPasswordRequired);
             case PROPERTY_ID_SUPPRESSVERSIONCL:
-                bModified = ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_bSuppressVersionColumns);
-                break;
+                return ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_bSuppressVersionColumns);
             case PROPERTY_ID_LAYOUTINFORMATION:
-                bModified = ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_aLayoutInformation);
-                break;
+                return ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_aLayoutInformation);
             case PROPERTY_ID_URL:
-            {
-                bModified = ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_sConnectURL);
-            }   break;
+                return ::comphelper::tryPropertyValue(rConvertedValue, rOldValue, rValue, m_pImpl->m_sConnectURL);
             case PROPERTY_ID_INFO:
             {
                 Sequence<PropertyValue> aValues;
                 if (!(rValue >>= aValues))
                     throw IllegalArgumentException();
 
-                for ( auto const & checkName : std::as_const(aValues) )
+                for (auto const& checkName : aValues)
                 {
                     if ( checkName.Name.isEmpty() )
                         throw IllegalArgumentException();
                 }
 
                 Sequence< PropertyValue > aSettings = m_pImpl->m_xSettings->getPropertyValues();
-                bModified = aSettings.getLength() != aValues.getLength();
-                if ( !bModified )
-                {
-                    const PropertyValue* pInfoIter = aSettings.getConstArray();
-                    const PropertyValue* checkValue = aValues.getConstArray();
-                    for ( ;!bModified && checkValue != std::cend(aValues) ; ++checkValue,++pInfoIter)
-                    {
-                        bModified = checkValue->Name != pInfoIter->Name;
-                        if ( !bModified )
-                        {
-                            bModified = checkValue->Value != pInfoIter->Value;
-                        }
-                    }
-                }
 
                 rConvertedValue = rValue;
                 rOldValue <<= aSettings;
+
+                if (aSettings.getLength() != aValues.getLength())
+                    return true;
+
+                for (sal_Int32 i = 0; i < aSettings.getLength(); ++i)
+                {
+                    if (aValues[i].Name != aSettings[i].Name
+                        || aValues[i].Value != aSettings[i].Value)
+                        return true;
+                }
             }
             break;
             default:
                 SAL_WARN("dbaccess", "ODatabaseSource::convertFastPropertyValue: unknown or readonly Property!" );
         }
     }
-    return bModified;
+    return false;
 }
 
 namespace
@@ -1144,18 +1113,16 @@ Reference< XConnection > ODatabaseSource::connectWithCompletion( const Reference
     }
 }
 
-Reference< XConnection > ODatabaseSource::buildIsolatedConnection(const OUString& user, const OUString& password)
+rtl::Reference< OConnection > ODatabaseSource::buildIsolatedConnection(const OUString& user, const OUString& password)
 {
-    Reference< XConnection > xConn;
     Reference< XConnection > xSdbcConn = buildLowLevelConnection(user, password);
     OSL_ENSURE( xSdbcConn.is(), "ODatabaseSource::buildIsolatedConnection: invalid return value of buildLowLevelConnection!" );
     // buildLowLevelConnection is expected to always succeed
-    if ( xSdbcConn.is() )
-    {
-        // build a connection server and return it (no stubs)
-        xConn = new OConnection(*this, xSdbcConn, m_pImpl->m_aContext);
-    }
-    return xConn;
+    if ( !xSdbcConn.is() )
+        return nullptr;
+
+    // build a connection server and return it (no stubs)
+    return new OConnection(*this, xSdbcConn, m_pImpl->m_aContext);
 }
 
 Reference< XConnection > ODatabaseSource::getConnection(const OUString& user, const OUString& password,bool _bIsolated)
@@ -1204,13 +1171,13 @@ Reference< XNameAccess > SAL_CALL ODatabaseSource::getQueryDefinitions( )
     {
         Any aValue;
         css::uno::Reference< css::uno::XInterface > xMy(*this);
-        if ( dbtools::getDataSourceSetting(xMy,"CommandDefinitions",aValue) )
+        if (dbtools::getDataSourceSetting(xMy, u"CommandDefinitions"_ustr, aValue))
         {
             OUString sSupportService;
             aValue >>= sSupportService;
             if ( !sSupportService.isEmpty() )
             {
-                Sequence<Any> aArgs{ Any(NamedValue("DataSource",Any(xMy))) };
+                Sequence<Any> aArgs{ Any(NamedValue(u"DataSource"_ustr,Any(xMy))) };
                 xContainer.set( m_pImpl->m_aContext->getServiceManager()->createInstanceWithArgumentsAndContext(sSupportService, aArgs, m_pImpl->m_aContext), UNO_QUERY);
             }
         }
@@ -1229,12 +1196,12 @@ Reference< XNameAccess >  ODatabaseSource::getTables()
 {
     ModelMethodGuard aGuard( *this );
 
-    Reference< XNameAccess > xContainer = m_pImpl->m_xTableDefinitions;
+    rtl::Reference< OCommandContainer > xContainer = m_pImpl->m_xTableDefinitions;
     if ( !xContainer.is() )
     {
         TContentPtr& rContainerData( m_pImpl->getObjectContainer( ODatabaseModelImpl::ObjectType::Table ) );
         xContainer = new OCommandContainer( m_pImpl->m_aContext, *this, rContainerData, true );
-        m_pImpl->m_xTableDefinitions = xContainer;
+        m_pImpl->m_xTableDefinitions = xContainer.get();
     }
     return xContainer;
 }
@@ -1335,18 +1302,18 @@ Reference< XOfficeDatabaseDocument > SAL_CALL ODatabaseSource::getDatabaseDocume
 {
     ModelMethodGuard aGuard( *this );
 
-    Reference< XModel > xModel( m_pImpl->getModel_noCreate() );
+    rtl::Reference< ODatabaseDocument > xModel( m_pImpl->getModel_noCreate() );
     if ( !xModel.is() )
         xModel = m_pImpl->createNewModel_deliverOwnership();
 
-    return Reference< XOfficeDatabaseDocument >( xModel, UNO_QUERY_THROW );
+    return Reference< XOfficeDatabaseDocument >( static_cast<cppu::OWeakObject*>(xModel.get()), UNO_QUERY_THROW );
 }
 
 void SAL_CALL ODatabaseSource::initialize( css::uno::Sequence< css::uno::Any > const & rArguments)
 {
     ::comphelper::NamedValueCollection aProperties( rArguments );
-    if (aProperties.has("ParentWindow"))
-        aProperties.get("ParentWindow") >>= m_pImpl->m_xDialogParent;
+    if (aProperties.has(u"ParentWindow"_ustr))
+        aProperties.get(u"ParentWindow"_ustr) >>= m_pImpl->m_xDialogParent;
 }
 
 Reference< XInterface > ODatabaseSource::getThis() const

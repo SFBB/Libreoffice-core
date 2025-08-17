@@ -27,6 +27,7 @@
 #include <svl/whiter.hxx>
 #include <sal/log.hxx>
 #include <tools/debug.hxx>
+#include <officecfg/Office/Draw.hxx>
 
 #include <svx/svdundo.hxx>
 #include <svx/strings.hrc>
@@ -62,7 +63,6 @@ DrawView::DrawView(
     OutputDevice* pOutDev,
     DrawViewShell* pShell)
 :   ::sd::View(*pDocSh->GetDoc(), pOutDev, pShell)
-    ,mpDocShell(pDocSh)
     ,mpDrawViewShell(pShell)
     ,mnPOCHSmph(0)
 {
@@ -161,7 +161,7 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
 
                     // Undo-Action
                     mpDocSh->GetUndoManager()->AddUndoAction(
-                        std::make_unique<StyleSheetUndoAction>(&mrDoc, pSheet, &aTempSet));
+                        std::make_unique<StyleSheetUndoAction>(mrDoc, *pSheet, &aTempSet));
 
                     pSheet->GetItemSet().Put(aTempSet);
                     pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
@@ -171,9 +171,9 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
                 {
                     // Presentation object outline
                     OutlinerView* pOV   = GetTextEditOutlinerView();
-                    ::Outliner* pOutliner = pOV->GetOutliner();
+                    ::Outliner& rOutliner = pOV->GetOutliner();
 
-                    pOutliner->SetUpdateLayout(false);
+                    rOutliner.SetUpdateLayout(false);
                     mpDocSh->SetWaitCursor( true );
 
                     // replace placeholder by template name
@@ -189,8 +189,8 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
 
                     while (pPara)
                     {
-                        sal_Int32 nParaPos = pOutliner->GetAbsPos( pPara );
-                        sal_Int16 nDepth = pOutliner->GetDepth( nParaPos );
+                        sal_Int32 nParaPos = rOutliner.GetAbsPos( pPara );
+                        sal_Int16 nDepth = rOutliner.GetDepth( nParaPos );
                         OUString aName = rPage.GetLayoutName() + " " +
                             OUString::number((nDepth <= 0) ? 1 : nDepth + 1);
                         SfxStyleSheet* pSheet = static_cast<SfxStyleSheet*>(pStShPool->Find(aName, SfxStyleFamily::Page));
@@ -212,7 +212,7 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
 
                             // Undo-Action
                             mpDocSh->GetUndoManager()->AddUndoAction(
-                                std::make_unique<StyleSheetUndoAction>(&mrDoc, pSheet, &aTempSet));
+                                std::make_unique<StyleSheetUndoAction>(mrDoc, *pSheet, &aTempSet));
 
                             pSheet->GetItemSet().Put(aTempSet);
                             pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
@@ -242,13 +242,13 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
                             iter = aSelList.rend();
                             --iter;
 
-                            if (pOutliner->GetDepth(pOutliner->GetAbsPos(*iter)) > 0)
-                                pPara = pOutliner->GetParagraph( 0 );  // Put NumBulletItem in outline level 1
+                            if (rOutliner.GetDepth(rOutliner.GetAbsPos(*iter)) > 0)
+                                pPara = rOutliner.GetParagraph( 0 );  // Put NumBulletItem in outline level 1
                         }
                     }
 
                     mpDocSh->SetWaitCursor( false );
-                    pOV->GetOutliner()->SetUpdateLayout(true);
+                    pOV->GetOutliner().SetUpdateLayout(true);
 
                     mpDocSh->GetUndoManager()->LeaveListAction();
 
@@ -283,7 +283,7 @@ bool DrawView::SetAttributes(const SfxItemSet& rSet,
     return bOk;
 }
 
-void DrawView::SetMasterAttributes( SdrObject* pObject, const SdPage& rPage, SfxItemSet rSet, SfxStyleSheetBasePool* pStShPool, bool& bOk, bool bMaster, bool bSlide )
+void DrawView::SetMasterAttributes( SdrObject* pObject, const SdPage& rPage, const SfxItemSet& rSet, SfxStyleSheetBasePool* pStShPool, bool& bOk, bool bMaster, bool bSlide )
 {
     SdrInventor nInv    = pObject->GetObjInventor();
 
@@ -296,7 +296,7 @@ void DrawView::SetMasterAttributes( SdrObject* pObject, const SdPage& rPage, Sfx
     {
         // Presentation object (except outline)
         SfxStyleSheet* pSheet = rPage.GetTextStyleSheetForObject(pObject);
-        DBG_ASSERT(pSheet, "StyleSheet not found");
+        assert(pSheet && "StyleSheet not found");
 
         SfxItemSet aTempSet( pSheet->GetItemSet() );
         aTempSet.Put( rSet );
@@ -304,7 +304,7 @@ void DrawView::SetMasterAttributes( SdrObject* pObject, const SdPage& rPage, Sfx
 
         // Undo-Action
         mpDocSh->GetUndoManager()->AddUndoAction(
-            std::make_unique<StyleSheetUndoAction>(&mrDoc, pSheet, &aTempSet));
+            std::make_unique<StyleSheetUndoAction>(mrDoc, *pSheet, &aTempSet));
 
         pSheet->GetItemSet().Put(aTempSet,false);
         pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
@@ -317,7 +317,7 @@ void DrawView::SetMasterAttributes( SdrObject* pObject, const SdPage& rPage, Sfx
     {
         // Presentation object (except outline)
         SfxStyleSheet* pSheet = rPage.GetStyleSheetForPresObj( ePresObjKind );
-        DBG_ASSERT(pSheet, "StyleSheet not found");
+        assert(pSheet && "StyleSheet not found");
 
         SfxItemSet aTempSet( pSheet->GetItemSet() );
         aTempSet.Put( rSet );
@@ -325,7 +325,7 @@ void DrawView::SetMasterAttributes( SdrObject* pObject, const SdPage& rPage, Sfx
 
         // Undo-Action
         mpDocSh->GetUndoManager()->AddUndoAction(
-            std::make_unique<StyleSheetUndoAction>(&mrDoc, pSheet, &aTempSet));
+            std::make_unique<StyleSheetUndoAction>(mrDoc, *pSheet, &aTempSet));
 
         pSheet->GetItemSet().Put(aTempSet,false);
         pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
@@ -343,7 +343,7 @@ void DrawView::SetMasterAttributes( SdrObject* pObject, const SdPage& rPage, Sfx
                     OUString::number(nLevel);
                 SfxStyleSheet* pSheet = static_cast<SfxStyleSheet*>(pStShPool->
                                     Find(aName, SfxStyleFamily::Page));
-                DBG_ASSERT(pSheet, "StyleSheet not found");
+                assert(pSheet && "StyleSheet not found");
 
                 SfxItemSet aTempSet( pSheet->GetItemSet() );
 
@@ -371,7 +371,7 @@ void DrawView::SetMasterAttributes( SdrObject* pObject, const SdPage& rPage, Sfx
 
                 // Undo-Action
                 mpDocSh->GetUndoManager()->AddUndoAction(
-                    std::make_unique<StyleSheetUndoAction>(&mrDoc, pSheet, &aTempSet));
+                    std::make_unique<StyleSheetUndoAction>(mrDoc, *pSheet, &aTempSet));
 
                 pSheet->GetItemSet().Set(aTempSet,false);
                 pSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
@@ -407,6 +407,7 @@ void DrawView::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
         if ( mnPOCHSmph == 0 && eHintKind == SdrHintKind::PageOrderChange )
         {
             mpDrawViewShell->ResetActualPage();
+            mpDrawViewShell->UpdateScrollBars();
         }
         else if ( eHintKind == SdrHintKind::LayerChange || eHintKind == SdrHintKind::LayerOrderChange )
         {
@@ -490,7 +491,7 @@ bool DrawView::SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAtt
 
 void DrawView::CompleteRedraw(OutputDevice* pOutDev, const vcl::Region& rReg, sdr::contact::ViewObjectContactRedirector* pRedirector /*=0*/)
 {
-    SdDrawDocument* pDoc = mpDocShell->GetDoc();
+    SdDrawDocument* pDoc = GetDocSh()->GetDoc();
     if( pDoc && pDoc->GetDocumentType() == DocumentType::Impress)
     {
         rtl::Reference< sd::SlideShow > xSlideshow( SlideShow::GetSlideShow( pDoc ) );
@@ -501,9 +502,16 @@ void DrawView::CompleteRedraw(OutputDevice* pOutDev, const vcl::Region& rReg, sd
             {
                 if( pShowWindow == pOutDev && mpViewSh )
                     xSlideshow->paint();
-                return;
+                if (!xSlideshow->IsInteractiveSlideshow()) // IASS
+                    return;
             }
         }
+    }
+    else if( pDoc && pDoc->GetDocumentType() == DocumentType::Draw)
+    {
+        // tdf#164605 & tdf#89420
+        bool bShowMargin(officecfg::Office::Draw::Misc::TextObject::ShowBoundary::get());
+        pDoc->SetShowMargin(bShowMargin);
     }
 
     ::sd::View::CompleteRedraw(pOutDev, rReg, pRedirector);
@@ -540,10 +548,11 @@ void DrawView::DeleteMarked()
     sd::UndoManager* pUndoManager = mrDoc.GetUndoManager();
     DBG_ASSERT( pUndoManager, "sd::DrawView::DeleteMarked(), ui action without undo manager!?" );
 
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
     if( pUndoManager )
     {
         OUString aUndo(SvxResId(STR_EditDelete));
-        aUndo = aUndo.replaceFirst("%1", GetDescriptionOfMarkedObjects());
+        aUndo = aUndo.replaceFirst("%1", rMarkList.GetMarkDescription());
         ViewShellId nViewShellId = mpDrawViewShell ? mpDrawViewShell->GetViewShellBase().GetViewShellId() : ViewShellId(-1);
         pUndoManager->EnterListAction(aUndo, aUndo, 0, nViewShellId);
     }
@@ -551,7 +560,7 @@ void DrawView::DeleteMarked()
     SdPage* pPage = nullptr;
     bool bResetLayout = false;
 
-    const size_t nMarkCount = GetMarkedObjectList().GetMarkCount();
+    const size_t nMarkCount = rMarkList.GetMarkCount();
     if( nMarkCount )
     {
         SdrMarkList aList( GetMarkedObjectList() );
@@ -583,7 +592,7 @@ void DrawView::DeleteMarked()
                     SdrTextObj* pTextObj = DynCastSdrTextObj( pObj );
                     bool bVertical = pTextObj && pTextObj->IsVerticalWriting();
                     ::tools::Rectangle aRect( pObj->GetLogicRect() );
-                    SdrObject* pNewObj = pPage->InsertAutoLayoutShape( nullptr, ePresObjKind, bVertical, aRect, true );
+                    SdrObject* pNewObj = pPage->InsertAutoLayoutShape(nullptr, ePresObjKind, bVertical, aRect, OUString(), true);
 
                     // pUndoManager should not be NULL (see assert above)
                     // but since we have defensive code

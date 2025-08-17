@@ -56,7 +56,7 @@ public:
 
     /** QueryProtocol.
     */
-    bool QueryProtocol (INetProtocol eProto) const
+    static bool QueryProtocol (INetProtocol eProto)
     {
         return ((eProto == INetProtocol::File ) ||
                 (eProto == INetProtocol::Ftp  ) ||
@@ -90,7 +90,7 @@ class SVL_DLLPUBLIC INetURLHistoryHint final : public SfxHint
 {
     const INetURLObject* pObj;
 public:
-    explicit INetURLHistoryHint( const INetURLObject* Object ) : pObj(Object) {}
+    explicit INetURLHistoryHint( const INetURLObject* Object ) : SfxHint(SfxHintId::INetURLHistory), pObj(Object) {}
     const INetURLObject* GetObject() const { return pObj; }
 };
 

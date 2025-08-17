@@ -92,12 +92,12 @@ namespace toolkit
                 if ( i_isHighContrast )
                 {
                     // try (to find) the high-contrast version of the graphic first
-                    aMediaProperties.put( "URL", lcl_getHighContrastURL( i_cachedImage.sImageURL ) );
+                    aMediaProperties.put( u"URL"_ustr, lcl_getHighContrastURL( i_cachedImage.sImageURL ) );
                     i_cachedImage.xGraphic = i_graphicProvider->queryGraphic( aMediaProperties.getPropertyValues() );
                 }
                 if ( !i_cachedImage.xGraphic.is() )
                 {
-                    aMediaProperties.put( "URL", i_cachedImage.sImageURL );
+                    aMediaProperties.put( u"URL"_ustr, i_cachedImage.sImageURL );
                     i_cachedImage.xGraphic = i_graphicProvider->queryGraphic( aMediaProperties.getPropertyValues() );
                 }
             }
@@ -113,7 +113,7 @@ namespace toolkit
                 if ( i_graphic.is() )
                 {
                     const Reference< XPropertySet > xGraphicProps( i_graphic, UNO_QUERY_THROW );
-                    OSL_VERIFY( xGraphicProps->getPropertyValue("SizePixel") >>= aSizePixel );
+                    OSL_VERIFY( xGraphicProps->getPropertyValue(u"SizePixel"_ustr) >>= aSizePixel );
                 }
             }
             catch( const Exception& )
@@ -338,14 +338,13 @@ namespace toolkit
         OSL_VERIFY( i_event.Element >>= aImageURLs );
         ::std::vector< CachedImage > aImages;
         lcl_init( aImageURLs, aImages );
-        maCachedImageSets[ position ] = aImages;
+        maCachedImageSets[ position ] = std::move(aImages);
         updateImageList_nothrow();
     }
 
 
-    void SAL_CALL AnimatedImagesPeer::disposing( const EventObject& i_event )
+    void SAL_CALL AnimatedImagesPeer::disposing(const EventObject&)
     {
-        VCLXWindow::disposing( i_event );
     }
 
 
@@ -371,7 +370,7 @@ namespace toolkit
             try
             {
                 // collect the image sizes of the different image sets
-                const Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+                const Reference< XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
                 const Reference< XGraphicProvider > xGraphicProvider( css::graphic::GraphicProvider::create(xContext) );
 
                 const bool isHighContrast = pThrobber->GetSettings().GetStyleSettings().GetHighContrastMode();
@@ -459,7 +458,7 @@ namespace toolkit
                     const Sequence< OUString > aImageURLs( i_images->getImageSet( set ) );
                     ::std::vector< CachedImage > aImages;
                     lcl_init( aImageURLs, aImages );
-                    maCachedImageSets.push_back( aImages );
+                    maCachedImageSets.push_back(std::move(aImages));
                 }
 
                 updateImageList_nothrow();

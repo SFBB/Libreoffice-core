@@ -132,13 +132,9 @@ Any SAL_CALL OResultSet::queryInterface( const Type & rType )
 
 css::uno::Sequence< css::uno::Type > SAL_CALL OResultSet::getTypes(  )
 {
-    ::cppu::OTypeCollection aTypes( cppu::UnoType<css::beans::XMultiPropertySet>::get(),
-                                    cppu::UnoType<css::beans::XFastPropertySet>::get(),
-                                    cppu::UnoType<css::beans::XPropertySet>::get());
-
-    return ::comphelper::concatSequences(aTypes.getTypes(),OResultSet_BASE::getTypes());
+    return comphelper::concatSequences(cppu::OPropertySetHelper::getTypes(),
+                                       OResultSet_BASE::getTypes());
 }
-
 
 sal_Int32 SAL_CALL OResultSet::findColumn( const OUString& columnName )
 {
@@ -157,9 +153,8 @@ sal_Int32 SAL_CALL OResultSet::findColumn( const OUString& columnName )
     }
 
     ::dbtools::throwInvalidColumnException( columnName, *this );
-    assert(false);
-    return 0; // Never reached
 }
+
 #define BLOCK_SIZE 256
 
 Reference< css::io::XInputStream > SAL_CALL OResultSet::getBinaryStream( sal_Int32 columnIndex )
@@ -205,7 +200,6 @@ Reference< css::io::XInputStream > SAL_CALL OResultSet::getBinaryStream( sal_Int
 Reference< css::io::XInputStream > SAL_CALL OResultSet::getCharacterStream( sal_Int32 /*columnIndex*/ )
 {
     ::dbtools::throwFeatureNotImplementedSQLException( "XRow::getCharacterStream", *this );
-    return nullptr;
 }
 
 OLEVariant OResultSet::getValue(sal_Int32 columnIndex )
@@ -266,7 +260,7 @@ sal_Int32 SAL_CALL OResultSet::getRow(  )
     checkDisposed(OResultSet_BASE::rBHelper.bDisposed);
 
 
-    PositionEnum_Param aPos;
+    PositionEnum aPos;
     m_pRecordSet->get_AbsolutePosition(&aPos);
     return  (aPos > 0) ? static_cast<sal_Int32>(aPos) : m_nRowPos;
     // return the rowcount from driver if the driver doesn't support this return our count
@@ -276,7 +270,6 @@ sal_Int32 SAL_CALL OResultSet::getRow(  )
 sal_Int64 SAL_CALL OResultSet::getLong( sal_Int32 /*columnIndex*/ )
 {
     ::dbtools::throwFeatureNotImplementedSQLException( "XRow::getLong", *this );
-    return sal_Int64(0);
 }
 
 
@@ -294,29 +287,22 @@ Reference< XResultSetMetaData > SAL_CALL OResultSet::getMetaData(  )
 Reference< XArray > SAL_CALL OResultSet::getArray( sal_Int32 /*columnIndex*/ )
 {
     ::dbtools::throwFeatureNotImplementedSQLException( "XRow::getArray", *this );
-    return nullptr;
 }
-
 
 Reference< XClob > SAL_CALL OResultSet::getClob( sal_Int32 /*columnIndex*/ )
 {
     ::dbtools::throwFeatureNotImplementedSQLException( "XRow::getClob", *this );
-    return nullptr;
 }
 
 Reference< XBlob > SAL_CALL OResultSet::getBlob( sal_Int32 /*columnIndex*/ )
 {
     ::dbtools::throwFeatureNotImplementedSQLException( "XRow::getBlob", *this );
-    return nullptr;
 }
-
 
 Reference< XRef > SAL_CALL OResultSet::getRef( sal_Int32 /*columnIndex*/ )
 {
     ::dbtools::throwFeatureNotImplementedSQLException( "XRow::getRef", *this );
-    return nullptr;
 }
-
 
 Any SAL_CALL OResultSet::getObject( sal_Int32 columnIndex, const Reference< css::container::XNameAccess >& /*typeMap*/ )
 {
@@ -927,11 +913,9 @@ Sequence< sal_Int32 > SAL_CALL OResultSet::deleteRows( const Sequence< Any >& ro
     rgsabound[0].cElements = rows.getLength();
     SAFEARRAY *psa         = SafeArrayCreate( VT_VARIANT, 1, rgsabound );
 
-    const Any* pBegin = rows.getConstArray();
-    const Any* pEnd = pBegin + rows.getLength();
-    for(sal_Int32 i=0;pBegin != pEnd ;++pBegin,++i)
+    for (sal_Int32 i = 0; i < rows.getLength(); ++i)
     {
-        *pBegin >>= nPos;
+        rows[i] >>= nPos;
         SafeArrayPutElement(psa,&i,&m_aBookmarks[nPos]);
     }
 

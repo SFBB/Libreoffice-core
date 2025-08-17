@@ -100,7 +100,7 @@ namespace {
 
 class SocketPermission : public Permission
 {
-    static char const * s_actions [];
+    static char const * const s_actions [];
     sal_Int32 m_actions;
 
     OUString m_host;
@@ -123,7 +123,7 @@ public:
 
 }
 
-char const * SocketPermission::s_actions [] = { "accept", "connect", "listen", "resolve", nullptr };
+char const * const SocketPermission::s_actions [] = { "accept", "connect", "listen", "resolve", nullptr };
 
 SocketPermission::SocketPermission(
     connection::SocketPermission const & perm,
@@ -268,7 +268,7 @@ namespace {
 
 class FilePermission : public Permission
 {
-    static char const * s_actions [];
+    static char const * const s_actions [];
     sal_Int32 m_actions;
 
     OUString m_url;
@@ -284,7 +284,7 @@ public:
 
 }
 
-char const * FilePermission::s_actions [] = { "read", "write", "execute", "delete", nullptr };
+char const * const FilePermission::s_actions [] = { "read", "write", "execute", "delete", nullptr };
 
 static OUString const & getWorkingDir()
 {
@@ -327,9 +327,8 @@ FilePermission::FilePermission(
     // correct win drive letters
     if (9 < m_url.getLength() && '|' == m_url[ 9 ]) // file:///X|
     {
-        constexpr OUStringLiteral s_colon = u":";
         // common case in API is a ':' (sal), so convert '|' to ':'
-        m_url = m_url.replaceAt( 9, 1, s_colon );
+        m_url = m_url.replaceAt(9, 1, u":");
     }
 #endif
 }
@@ -444,7 +443,7 @@ bool AllPermission::implies( Permission const & ) const
 
 OUString AllPermission::toString() const
 {
-    return "com.sun.star.security.AllPermission";
+    return u"com.sun.star.security.AllPermission"_ustr;
 }
 
 
@@ -452,10 +451,9 @@ PermissionCollection::PermissionCollection(
     Sequence< Any > const & permissions, PermissionCollection const & addition )
     : m_head( addition.m_head )
 {
-    Any const * perms = permissions.getConstArray();
     for ( sal_Int32 nPos = permissions.getLength(); nPos--; )
     {
-        Any const & perm = perms[ nPos ];
+        Any const& perm = permissions[nPos];
         Type const & perm_type = perm.getValueType();
 
         // supported permission types

@@ -20,7 +20,6 @@
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <sal/log.hxx>
-#include <comphelper/attributelist.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/PositionLayoutDir.hpp>
@@ -31,7 +30,6 @@
 
 #include <xmloff/shapeimport.hxx>
 #include <xmloff/xmlstyle.hxx>
-#include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/table/XMLTableImport.hxx>
@@ -45,7 +43,6 @@
 #include "ximplink.hxx"
 
 #include <unordered_map>
-#include <string_view>
 #include <vector>
 
 namespace {
@@ -101,15 +98,10 @@ struct XMLShapeImportHelperImpl
     bool                        mbIsPresentationShapesSupported;
 };
 
-constexpr OUStringLiteral gsStartShape(u"StartShape");
-constexpr OUStringLiteral gsEndShape(u"EndShape");
-constexpr OUStringLiteral gsStartGluePointIndex(u"StartGluePointIndex");
-constexpr OUStringLiteral gsEndGluePointIndex(u"EndGluePointIndex");
-
 XMLShapeImportHelper::XMLShapeImportHelper(
         SvXMLImport& rImporter,
         const uno::Reference< frame::XModel>& rModel,
-        SvXMLImportPropertyMapper *pExtMapper )
+        std::unique_ptr<SvXMLImportPropertyMapper> pExtMapper )
 :   mpImpl( new XMLShapeImportHelperImpl ),
     mrImporter( rImporter )
 {
@@ -122,12 +114,11 @@ XMLShapeImportHelper::XMLShapeImportHelper(
 
     // construct PropertySetMapper
     rtl::Reference < XMLPropertySetMapper > xMapper = new XMLShapePropertySetMapper(mpSdPropHdlFactory, false);
-    mpPropertySetMapper = new SvXMLImportPropertyMapper( xMapper, rImporter );
+    mpPropertySetMapper = std::make_unique<SvXMLImportPropertyMapper>( xMapper, rImporter );
 
     if( pExtMapper )
     {
-        rtl::Reference < SvXMLImportPropertyMapper > xExtMapper( pExtMapper );
-        mpPropertySetMapper->ChainImportMapper( xExtMapper );
+        mpPropertySetMapper->ChainImportMapper( std::move(pExtMapper) );
     }
 
     // chain text attributes
@@ -136,10 +127,10 @@ XMLShapeImportHelper::XMLShapeImportHelper(
 
     // construct PresPagePropsMapper
     xMapper = new XMLPropertySetMapper(aXMLSDPresPageProps, mpSdPropHdlFactory, false);
-    mpPresPagePropsMapper = new SvXMLImportPropertyMapper( xMapper, rImporter );
+    mpPresPagePropsMapper = std::make_unique<SvXMLImportPropertyMapper>( xMapper, rImporter );
 
     uno::Reference< lang::XServiceInfo > xInfo( rImporter.GetModel(), uno::UNO_QUERY );
-    mpImpl->mbIsPresentationShapesSupported = xInfo.is() && xInfo->supportsService( "com.sun.star.presentation.PresentationDocument" );
+    mpImpl->mbIsPresentationShapesSupported = xInfo.is() && xInfo->supportsService( u"com.sun.star.presentation.PresentationDocument"_ustr );
 }
 
 XMLShapeImportHelper::~XMLShapeImportHelper()
@@ -149,11 +140,11 @@ XMLShapeImportHelper::~XMLShapeImportHelper()
     // cleanup factory, decrease refcount. Should lead to destruction.
     mpSdPropHdlFactory.clear();
 
-    // cleanup mapper, decrease refcount. Should lead to destruction.
-    mpPropertySetMapper.clear();
+    // cleanup mapper
+    mpPropertySetMapper.reset();
 
-    // cleanup presPage mapper, decrease refcount. Should lead to destruction.
-    mpPresPagePropsMapper.clear();
+    // cleanup presPage mapper
+    mpPresPagePropsMapper.reset();
 
     // Styles or AutoStyles context?
     if(mxStylesContext.is())
@@ -464,8 +455,7 @@ void XMLShapeImportHelper::addShape( uno::Reference< drawing::XShape >& rShape,
         uno::Reference<beans::XPropertySet> xPropertySet(rShape, uno::UNO_QUERY);
         if (xPropertySet.is())
         {
-            static constexpr OUStringLiteral sHandlePathObjScale = u"HandlePathObjScale";
-            xPropertySet->setPropertyValue(sHandlePathObjScale, uno::Any(true));
+            xPropertySet->setPropertyValue(u"HandlePathObjScale"_ustr, uno::Any(true));
         }
     }
 }
@@ -497,11 +487,11 @@ void XMLShapeImportHelper::finishShape(
     {
         if ( mrImporter.IsShapePositionInHoriL2R() &&
              xPropSet->getPropertySetInfo()->hasPropertyByName(
-                "PositionLayoutDir") )
+                u"PositionLayoutDir"_ustr) )
         {
             uno::Any aPosLayoutDir;
             aPosLayoutDir <<= text::PositionLayoutDir::PositionInHoriL2R;
-            xPropSet->setPropertyValue( "PositionLayoutDir", aPosLayoutDir );
+            xPropSet->setPropertyValue( u"PositionLayoutDir"_ustr, aPosLayoutDir );
         }
     }
 }
@@ -553,10 +543,10 @@ void ShapeGroupContext::moveShape( sal_Int32 nSourcePos, sal_Int32 nDestPos )
     uno::Reference< beans::XPropertySet > xPropSet;
     aAny >>= xPropSet;
 
-    if( !(xPropSet.is() && xPropSet->getPropertySetInfo()->hasPropertyByName( "ZOrder" )) )
+    if( !(xPropSet.is() && xPropSet->getPropertySetInfo()->hasPropertyByName( u"ZOrder"_ustr )) )
         return;
 
-    xPropSet->setPropertyValue( "ZOrder", uno::Any(nDestPos) );
+    xPropSet->setPropertyValue( u"ZOrder"_ustr, uno::Any(nDestPos) );
 
     for( ZOrderHint& rHint : maZOrderList )
     {
@@ -803,9 +793,9 @@ void XMLShapeImportHelper::restoreConnections()
             uno::Any aLine1Delta;
             uno::Any aLine2Delta;
             uno::Any aLine3Delta;
-            OUString aStr1("EdgeLine1Delta");
-            OUString aStr2("EdgeLine2Delta");
-            OUString aStr3("EdgeLine3Delta");
+            OUString aStr1(u"EdgeLine1Delta"_ustr);
+            OUString aStr2(u"EdgeLine2Delta"_ustr);
+            OUString aStr3(u"EdgeLine3Delta"_ustr);
             aLine1Delta = xConnector->getPropertyValue(aStr1);
             aLine2Delta = xConnector->getPropertyValue(aStr2);
             aLine3Delta = xConnector->getPropertyValue(aStr3);
@@ -818,15 +808,15 @@ void XMLShapeImportHelper::restoreConnections()
             if( xShape.is() )
             {
                 if (rHint.bStart)
-                    xConnector->setPropertyValue( gsStartShape, uno::Any(xShape) );
+                    xConnector->setPropertyValue( u"StartShape"_ustr, uno::Any(xShape) );
                 else
-                    xConnector->setPropertyValue( gsEndShape, uno::Any(xShape) );
+                    xConnector->setPropertyValue( u"EndShape"_ustr, uno::Any(xShape) );
 
                 sal_Int32 nGlueId = rHint.nDestGlueId < 4 ? rHint.nDestGlueId : getGluePointId( xShape, rHint.nDestGlueId );
                 if(rHint.bStart)
-                    xConnector->setPropertyValue( gsStartGluePointIndex, uno::Any(nGlueId) );
+                    xConnector->setPropertyValue( u"StartGluePointIndex"_ustr, uno::Any(nGlueId) );
                 else
-                    xConnector->setPropertyValue( gsEndGluePointIndex, uno::Any(nGlueId) );
+                    xConnector->setPropertyValue( u"EndGluePointIndex"_ustr, uno::Any(nGlueId) );
             }
 
             // #86637# restore line deltas
@@ -838,11 +828,11 @@ void XMLShapeImportHelper::restoreConnections()
     mpImpl->maConnections.clear();
 }
 
-SvXMLImportPropertyMapper* XMLShapeImportHelper::CreateShapePropMapper( const uno::Reference< frame::XModel>& rModel, SvXMLImport& rImport )
+std::unique_ptr<SvXMLImportPropertyMapper> XMLShapeImportHelper::CreateShapePropMapper( const uno::Reference< frame::XModel>& rModel, SvXMLImport& rImport )
 {
     rtl::Reference< XMLPropertyHandlerFactory > xFactory = new XMLSdPropHdlFactory( rModel, rImport );
     rtl::Reference < XMLPropertySetMapper > xMapper = new XMLShapePropertySetMapper( xFactory, false );
-    SvXMLImportPropertyMapper* pResult = new SvXMLImportPropertyMapper( xMapper, rImport );
+    std::unique_ptr<SvXMLImportPropertyMapper> pResult = std::make_unique<SvXMLImportPropertyMapper>( xMapper, rImport );
 
     // chain text attributes
     pResult->ChainImportMapper( XMLTextImportHelper::CreateParaExtPropMapper( rImport ) );
@@ -896,9 +886,9 @@ sal_Int32 XMLShapeImportHelper::getGluePointId( const css::uno::Reference< css::
 /** this method must be calling before the first shape is imported for the given page */
 void XMLShapeImportHelper::startPage( css::uno::Reference< css::drawing::XShapes > const & rShapes )
 {
-    const std::shared_ptr<XMLShapeImportPageContextImpl> pOldContext = mpPageContext;
+    std::shared_ptr<XMLShapeImportPageContextImpl> pOldContext = mpPageContext;
     mpPageContext = std::make_shared<XMLShapeImportPageContextImpl>();
-    mpPageContext->mpNext = pOldContext;
+    mpPageContext->mpNext = std::move(pOldContext);
     mpPageContext->mxShapes = rShapes;
 }
 

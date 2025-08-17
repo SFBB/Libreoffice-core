@@ -26,7 +26,6 @@ using namespace ::comphelper;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
 
 PropertySetInfo::PropertySetInfo() noexcept
 {
@@ -38,7 +37,7 @@ PropertySetInfo::PropertySetInfo( std::span<const PropertyMapEntry> pMap ) noexc
     for (const auto & rEntry : pMap)
     {
         // check for duplicates
-        assert(maPropertyMap.find(rEntry.maName) == maPropertyMap.end());
+        assert(!maPropertyMap.contains(rEntry.maName));
         // Make sure there are no accidental empty entries left at the end of the array from
         // when this method used to take a empty-terminated array.
         assert(!rEntry.maName.isEmpty());
@@ -57,7 +56,7 @@ void PropertySetInfo::add( std::span<PropertyMapEntry const> pMap ) noexcept
     for (const auto & rEntry : pMap)
     {
         // check for duplicates
-        assert(maPropertyMap.find(rEntry.maName) == maPropertyMap.end());
+        assert(!maPropertyMap.contains(rEntry.maName));
         // Make sure there are no accidental empty entries left at the end of the array from
         // when this method used to take a empty-terminated array.
         assert(!rEntry.maName.isEmpty());
@@ -114,7 +113,7 @@ Property SAL_CALL PropertySetInfo::getPropertyByName( const OUString& aName )
 
 sal_Bool SAL_CALL PropertySetInfo::hasPropertyByName( const OUString& aName )
 {
-    return maPropertyMap.find( aName ) != maPropertyMap.end();
+    return maPropertyMap.contains( aName );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

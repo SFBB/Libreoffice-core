@@ -20,7 +20,6 @@
 #include "LineChartTypeTemplate.hxx"
 #include "LineChartType.hxx"
 #include <Diagram.hxx>
-#include <DiagramHelper.hxx>
 #include <DataSeries.hxx>
 #include <DataSeriesHelper.hxx>
 #include <PropertyHelper.hxx>
@@ -190,7 +189,7 @@ bool LineChartTypeTemplate::matchesTemplate2(
                 chart2::Symbol aSymbProp;
                 drawing::LineStyle eLineStyle;
 
-                bool bCurrentHasSymbol = (series->getPropertyValue( "Symbol") >>= aSymbProp) &&
+                bool bCurrentHasSymbol = (series->getPropertyValue( u"Symbol"_ustr) >>= aSymbProp) &&
                     (aSymbProp.Style != chart2::SymbolStyle_NONE);
 
                 if( bCurrentHasSymbol )
@@ -202,7 +201,7 @@ bool LineChartTypeTemplate::matchesTemplate2(
                     break;
                 }
 
-                bool bCurrentHasLine = (series->getPropertyValue( "LineStyle") >>= eLineStyle) &&
+                bool bCurrentHasLine = (series->getPropertyValue( u"LineStyle"_ustr) >>= eLineStyle) &&
                     ( eLineStyle != drawing::LineStyle_NONE );
 
                 if( bCurrentHasLine )
@@ -309,9 +308,9 @@ void LineChartTypeTemplate::applyStyle2(
 
     try
     {
-        DataSeriesHelper::switchSymbolsOnOrOff( xSeries, m_bHasSymbols, nSeriesIndex );
-        DataSeriesHelper::switchLinesOnOrOff( xSeries, m_bHasLines );
-        DataSeriesHelper::makeLinesThickOrThin( xSeries, m_nDim==2 );
+        xSeries->switchSymbolsOnOrOff( m_bHasSymbols, nSeriesIndex );
+        xSeries->switchLinesOnOrOff( m_bHasLines );
+        xSeries->makeLinesThickOrThin( m_nDim==2 );
     }
     catch( const uno::Exception & )
     {

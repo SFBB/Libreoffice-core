@@ -22,8 +22,10 @@
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
 #include <sfx2/dialoghelper.hxx>
+#include <sfx2/objsh.hxx>
 
 #include <strings.hrc>
+#include <svx/drawitem.hxx>
 #include <svx/xfillit0.hxx>
 #include <svx/xflgrit.hxx>
 #include <svx/colorbox.hxx>
@@ -34,40 +36,41 @@
 #include <dialmgr.hxx>
 #include <svx/dialmgr.hxx>
 #include <svx/strings.hrc>
+#include <svx/svxids.hrc>
 #include <basegfx/utils/gradienttools.hxx>
 #include <sal/log.hxx>
 
 using namespace com::sun::star;
 
 SvxGradientTabPage::SvxGradientTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SfxTabPage(pPage, pController, "cui/ui/gradientpage.ui", "GradientPage", &rInAttrs)
+    : SfxTabPage(pPage, pController, u"cui/ui/gradientpage.ui"_ustr, u"GradientPage"_ustr, &rInAttrs)
     , m_rOutAttrs(rInAttrs)
-    , m_pnGradientListState(nullptr)
+    , m_nGradientListState(ChangeType::NONE)
     , m_pnColorListState(nullptr)
     , m_aXFillAttr(rInAttrs.GetPool())
     , m_rXFSet(m_aXFillAttr.GetItemSet())
-    , m_xLbGradientType(m_xBuilder->weld_combo_box("gradienttypelb"))
-    , m_xFtCenter(m_xBuilder->weld_label("centerft"))
-    , m_xMtrCenterX(m_xBuilder->weld_metric_spin_button("centerxmtr", FieldUnit::PERCENT))
-    , m_xMtrCenterY(m_xBuilder->weld_metric_spin_button("centerymtr", FieldUnit::PERCENT))
-    , m_xFtAngle(m_xBuilder->weld_label("angleft"))
-    , m_xMtrAngle(m_xBuilder->weld_metric_spin_button("anglemtr", FieldUnit::DEGREE))
-    , m_xSliderAngle(m_xBuilder->weld_scale("angleslider"))
-    , m_xMtrBorder(m_xBuilder->weld_metric_spin_button("bordermtr", FieldUnit::PERCENT))
-    , m_xSliderBorder(m_xBuilder->weld_scale("borderslider"))
-    , m_xLbColorFrom(new ColorListBox(m_xBuilder->weld_menu_button("colorfromlb"),
+    , m_xLbGradientType(m_xBuilder->weld_combo_box(u"gradienttypelb"_ustr))
+    , m_xFtCenter(m_xBuilder->weld_label(u"centerft"_ustr))
+    , m_xMtrCenterX(m_xBuilder->weld_metric_spin_button(u"centerxmtr"_ustr, FieldUnit::PERCENT))
+    , m_xMtrCenterY(m_xBuilder->weld_metric_spin_button(u"centerymtr"_ustr, FieldUnit::PERCENT))
+    , m_xFtAngle(m_xBuilder->weld_label(u"angleft"_ustr))
+    , m_xMtrAngle(m_xBuilder->weld_metric_spin_button(u"anglemtr"_ustr, FieldUnit::DEGREE))
+    , m_xSliderAngle(m_xBuilder->weld_scale(u"angleslider"_ustr))
+    , m_xMtrBorder(m_xBuilder->weld_metric_spin_button(u"bordermtr"_ustr, FieldUnit::PERCENT))
+    , m_xSliderBorder(m_xBuilder->weld_scale(u"borderslider"_ustr))
+    , m_xLbColorFrom(new ColorListBox(m_xBuilder->weld_menu_button(u"colorfromlb"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xMtrColorFrom(m_xBuilder->weld_metric_spin_button("colorfrommtr", FieldUnit::PERCENT))
-    , m_xLbColorTo(new ColorListBox(m_xBuilder->weld_menu_button("colortolb"),
+    , m_xMtrColorFrom(m_xBuilder->weld_metric_spin_button(u"colorfrommtr"_ustr, FieldUnit::PERCENT))
+    , m_xLbColorTo(new ColorListBox(m_xBuilder->weld_menu_button(u"colortolb"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xMtrColorTo(m_xBuilder->weld_metric_spin_button("colortomtr", FieldUnit::PERCENT))
-    , m_xGradientLB(new SvxPresetListBox(m_xBuilder->weld_scrolled_window("gradientpresetlistwin", true)))
-    , m_xMtrIncrement(m_xBuilder->weld_spin_button("incrementmtr"))
-    , m_xCbIncrement(m_xBuilder->weld_check_button("autoincrement"))
-    , m_xBtnAdd(m_xBuilder->weld_button("add"))
-    , m_xBtnModify(m_xBuilder->weld_button("modify"))
-    , m_xCtlPreview(new weld::CustomWeld(*m_xBuilder, "previewctl", m_aCtlPreview))
-    , m_xGradientLBWin(new weld::CustomWeld(*m_xBuilder, "gradientpresetlist", *m_xGradientLB))
+    , m_xMtrColorTo(m_xBuilder->weld_metric_spin_button(u"colortomtr"_ustr, FieldUnit::PERCENT))
+    , m_xGradientLB(new SvxPresetListBox(m_xBuilder->weld_scrolled_window(u"gradientpresetlistwin"_ustr, true)))
+    , m_xMtrIncrement(m_xBuilder->weld_spin_button(u"incrementmtr"_ustr))
+    , m_xCbIncrement(m_xBuilder->weld_check_button(u"autoincrement"_ustr))
+    , m_xBtnAdd(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xBtnModify(m_xBuilder->weld_button(u"modify"_ustr))
+    , m_xCtlPreview(new weld::CustomWeld(*m_xBuilder, u"previewctl"_ustr, m_aCtlPreview))
+    , m_xGradientLBWin(new weld::CustomWeld(*m_xBuilder, u"gradientpresetlist"_ustr, *m_xGradientLB))
 {
     Size aSize = getDrawPreviewOptimalSize(m_aCtlPreview.GetDrawingArea()->get_ref_device());
     m_xGradientLB->set_size_request(aSize.Width(), aSize.Height());
@@ -122,6 +125,17 @@ SvxGradientTabPage::~SvxGradientTabPage()
     m_xGradientLB.reset();
     m_xLbColorTo.reset();
     m_xLbColorFrom.reset();
+
+    if (m_nGradientListState & ChangeType::MODIFIED)
+    {
+        m_pGradientList->SetPath(AreaTabHelper::GetPalettePath());
+        m_pGradientList->Save();
+
+        // ToolBoxControls are informed:
+        SfxObjectShell* pShell = SfxObjectShell::Current();
+        if (pShell)
+            pShell->PutItem(SvxGradientListItem(m_pGradientList, SID_GRADIENT_LIST));
+    }
 }
 
 void SvxGradientTabPage::Construct()
@@ -342,7 +356,7 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickAddHdl_Impl, weld::Button&, void)
 
     while (pDlg->Execute() == RET_OK)
     {
-        pDlg->GetName( aName );
+        aName = pDlg->GetName();
 
         bValidGradientName = (SearchGradientList(aName) == -1);
 
@@ -352,8 +366,8 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickAddHdl_Impl, weld::Button&, void)
             break;
         }
 
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "cui/ui/queryduplicatedialog.ui"));
-        std::unique_ptr<weld::MessageDialog> xWarnBox(xBuilder->weld_message_dialog("DuplicateNameDialog"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), u"cui/ui/queryduplicatedialog.ui"_ustr));
+        std::unique_ptr<weld::MessageDialog> xWarnBox(xBuilder->weld_message_dialog(u"DuplicateNameDialog"_ustr));
         if (xWarnBox->run() != RET_OK)
             break;
     }
@@ -378,12 +392,12 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickAddHdl_Impl, weld::Button&, void)
         m_pGradientList->Insert(std::make_unique<XGradientEntry>(aBGradient, aName), nCount);
 
         sal_Int32 nId = m_xGradientLB->GetItemId(nCount - 1); //calculate the last ID
-        BitmapEx aBitmap = m_pGradientList->GetBitmapForPreview( nCount, m_xGradientLB->GetIconSize() );
+        Bitmap aBitmap = m_pGradientList->GetBitmapForPreview( nCount, m_xGradientLB->GetIconSize() );
         m_xGradientLB->InsertItem( nId + 1, Image(aBitmap), aName );
         m_xGradientLB->SelectItem( nId + 1 );
         m_xGradientLB->Resize();
 
-        *m_pnGradientListState |= ChangeType::MODIFIED;
+        m_nGradientListState |= ChangeType::MODIFIED;
 
         ChangeGradientHdl_Impl();
     }
@@ -421,36 +435,38 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickModifyHdl_Impl, weld::Button&, void)
 
     m_pGradientList->Replace(std::make_unique<XGradientEntry>(aBGradient, aName), nPos);
 
-    BitmapEx aBitmap = m_pGradientList->GetBitmapForPreview( static_cast<sal_uInt16>(nPos), m_xGradientLB->GetIconSize() );
+    Bitmap aBitmap = m_pGradientList->GetBitmapForPreview( static_cast<sal_uInt16>(nPos), m_xGradientLB->GetIconSize() );
     m_xGradientLB->RemoveItem( nId );
     m_xGradientLB->InsertItem( nId, Image(aBitmap), aName, static_cast<sal_uInt16>(nPos) );
     m_xGradientLB->SelectItem( nId );
 
-    *m_pnGradientListState |= ChangeType::MODIFIED;
+    m_nGradientListState |= ChangeType::MODIFIED;
 }
 
 IMPL_LINK_NOARG(SvxGradientTabPage, ClickDeleteHdl_Impl, SvxPresetListBox*, void)
 {
-    sal_uInt16 nId = m_xGradientLB->GetSelectedItemId();
-    size_t nPos = m_xGradientLB->GetSelectItemPos();
+    const sal_uInt16 nId = m_xGradientLB->GetContextMenuItemId();
+    const size_t nPos = m_xGradientLB->GetItemPos(nId);
 
     if( nPos != VALUESET_ITEM_NOTFOUND )
     {
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "cui/ui/querydeletegradientdialog.ui"));
-        std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog("AskDelGradientDialog"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), u"cui/ui/querydeletegradientdialog.ui"_ustr));
+        std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog(u"AskDelGradientDialog"_ustr));
         if (xQueryBox->run() == RET_YES)
         {
+            const bool bDeletingSelectedItem(nId == m_xGradientLB->GetSelectedItemId());
             m_pGradientList->Remove(nPos);
             m_xGradientLB->RemoveItem( nId );
-            nId = m_xGradientLB->GetItemId( 0 );
-            m_xGradientLB->SelectItem( nId );
+            if (bDeletingSelectedItem)
+            {
+                m_xGradientLB->SelectItem(m_xGradientLB->GetItemId(/*Position=*/0));
+                m_aCtlPreview.Invalidate();
+            }
             m_xGradientLB->Resize();
-
-            m_aCtlPreview.Invalidate();
 
             ChangeGradientHdl_Impl();
 
-            *m_pnGradientListState |= ChangeType::MODIFIED;
+            m_nGradientListState |= ChangeType::MODIFIED;
         }
     }
     // determine button state
@@ -460,8 +476,8 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickDeleteHdl_Impl, SvxPresetListBox*, void
 
 IMPL_LINK_NOARG(SvxGradientTabPage, ClickRenameHdl_Impl, SvxPresetListBox*, void)
 {
-    sal_uInt16 nId = m_xGradientLB->GetSelectedItemId();
-    size_t nPos = m_xGradientLB->GetSelectItemPos();
+    const sal_uInt16 nId = m_xGradientLB->GetContextMenuItemId();
+    const size_t nPos = m_xGradientLB->GetItemPos(nId);
 
     if ( nPos == VALUESET_ITEM_NOTFOUND )
         return;
@@ -475,7 +491,7 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickRenameHdl_Impl, SvxPresetListBox*, void
     bool bLoop = true;
     while( bLoop && pDlg->Execute() == RET_OK )
     {
-        pDlg->GetName( aName );
+        aName = pDlg->GetName();
         sal_Int32 nGradientPos = SearchGradientList(aName);
         bool bValidGradientName = (nGradientPos == static_cast<sal_Int32>(nPos) ) || (nGradientPos == -1);
 
@@ -485,14 +501,13 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickRenameHdl_Impl, SvxPresetListBox*, void
             m_pGradientList->GetGradient(nPos)->SetName(aName);
 
             m_xGradientLB->SetItemText( nId, aName );
-            m_xGradientLB->SelectItem( nId );
 
-            *m_pnGradientListState |= ChangeType::MODIFIED;
+            m_nGradientListState |= ChangeType::MODIFIED;
         }
         else
         {
-            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "cui/ui/queryduplicatedialog.ui"));
-            std::unique_ptr<weld::MessageDialog> xBox(xBuilder->weld_message_dialog("DuplicateNameDialog"));
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), u"cui/ui/queryduplicatedialog.ui"_ustr));
+            std::unique_ptr<weld::MessageDialog> xBox(xBuilder->weld_message_dialog(u"DuplicateNameDialog"_ustr));
             xBox->run();
         }
     }
@@ -611,14 +626,6 @@ void SvxGradientTabPage::SetControlState_Impl( css::awt::GradientStyle eXGS )
             break;
 
         case css::awt::GradientStyle_ELLIPTICAL:
-            m_xFtCenter->set_sensitive(true);
-            m_xMtrCenterX->set_sensitive(true);
-            m_xMtrCenterY->set_sensitive(true);
-            m_xFtAngle->set_sensitive(true);
-            m_xMtrAngle->set_sensitive(true);
-            m_xSliderAngle->set_sensitive(true);
-            break;
-
         case css::awt::GradientStyle_SQUARE:
         case css::awt::GradientStyle_RECT:
             m_xFtCenter->set_sensitive(true);
@@ -628,6 +635,7 @@ void SvxGradientTabPage::SetControlState_Impl( css::awt::GradientStyle eXGS )
             m_xMtrAngle->set_sensitive(true);
             m_xSliderAngle->set_sensitive(true);
             break;
+
         default:
             break;
     }

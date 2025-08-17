@@ -120,7 +120,7 @@ class VCSFileInfo:
     def GetCleanRoot(self):
         """ This method should return the repository root for the file or 'None'
             on failure. """
-        raise NotImplementedErrors
+        raise NotImplementedError
 
     def GetRevision(self):
         """ This method should return the revision number for the file or 'None'
@@ -158,7 +158,7 @@ class CVSFileInfo(VCSFileInfo):
         if len(parts) > 1:
             # we don't want the extra colon
             return parts[1].replace(":","")
-        print("Failed to get CVS Root for %s" % filename, file=sys.stderr)
+        print("Failed to get CVS Root for %s" % self.root, file=sys.stderr)
         return None
 
     def GetRevision(self):
@@ -290,7 +290,7 @@ def GetVCSFilename(file, srcdir):
                root = fileInfo.root
         elif os.path.isdir(os.path.join(path, ".svn")) or \
              os.path.isdir(os.path.join(path, "_svn")):
-            fileInfo = SVNFileInfo(file);
+            fileInfo = SVNFileInfo(file)
         vcsFileInfoCache[file] = fileInfo
 
     if fileInfo:
@@ -365,7 +365,7 @@ class Dumper:
             # we use -L to read the targets of symlinks,
             # and -b to print just the content, not the filename
             return os.popen("file -Lb " + file).read()
-        except:
+        except Exception:
             return ""
 
     # This is a no-op except on Win32
@@ -475,7 +475,7 @@ class Dumper:
             except StopIteration:
                 print("WARN: dump_syms - no debug info extracted for {}".format(file), file=sys.stderr)
                 pass
-            except:
+            except Exception:
                 print("Unexpected error: ", sys.exc_info()[0], file=sys.stderr)
                 raise
         return result
@@ -599,8 +599,8 @@ class Dumper_Solaris(Dumper):
         """Utility function, returns the output of file(1)"""
         try:
             output = os.popen("file " + file).read()
-            return output.split('\t')[1];
-        except:
+            return output.split('\t')[1]
+        except Exception:
             return ""
 
     def ShouldProcess(self, file):

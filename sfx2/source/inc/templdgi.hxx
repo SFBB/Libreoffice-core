@@ -35,15 +35,9 @@
 
 #include "StyleList.hxx"
 
-class SfxTemplateControllerItem;
 class SfxStyleFamilyItem;
 class SfxTemplateItem;
 class SfxBindings;
-class SfxStyleSheetBase;
-class SfxStyleSheetBasePool;
-class StyleTreeListBox_Impl;
-class SfxTemplateDialog_Impl;
-class SfxCommonTemplateDialog_Impl;
 namespace com::sun::star::frame {
     class XModuleManager2;
 }
@@ -69,7 +63,7 @@ protected:
 
     StyleList m_aStyleList;
     std::unique_ptr<weld::CheckButton> mxPreviewCheckbox;
-    std::unique_ptr<weld::CheckButton> mxHighlightCheckbox;
+    std::unique_ptr<weld::CheckButton> mxSpotlightCheckbox;
     std::unique_ptr<weld::ComboBox> mxFilterLb;
 
     sal_uInt16 nActFamily; // Id in the ToolBox = Position - 1
@@ -89,7 +83,6 @@ protected:
     Link<void*, void> m_aStyleListNewMenu;
     Link<void*, bool> m_aStyleListWaterCan;
     Link<void*, bool> m_aStyleListHasSelectedStyle;
-    Link<void*, void> m_aStyleListUpdateFamily;
     Link<void*, void> m_aStyleListUpdateStyleDependents;
     Link<bool, void> m_aStyleListEnableTreeDrag;
     Link<void*, void> m_aStyleListEnableDelete;
@@ -98,7 +91,7 @@ protected:
 
     DECL_LINK(FilterSelectHdl, weld::ComboBox&, void );
     DECL_LINK(PreviewHdl, weld::Toggleable&, void);
-    DECL_LINK(HighlightHdl, weld::Toggleable&, void);
+    DECL_LINK(SpotlightHdl, weld::Toggleable&, void);
 
     virtual void InsertFamilyItem(sal_uInt16 nId, const SfxStyleFamilyItem& rItem) = 0;
     virtual void EnableFamilyItem(sal_uInt16 nId, bool bEnabled) = 0;

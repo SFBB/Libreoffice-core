@@ -16,9 +16,9 @@ bridges_SELECTED_BRIDGE := gcc3_linux_arm
 bridge_noopt_objects := cpp2uno except uno2cpp
 # HACK
 $(call gb_Library_get_linktarget_target,gcc3_uno) : \
-	$(call gb_CustomTarget_get_workdir,bridges/source/cpp_uno/gcc3_linux_arm)/armhelper.objectlist
+	$(gb_CustomTarget_workdir)/bridges/source/cpp_uno/gcc3_linux_arm/armhelper.objectlist
 $(call gb_Library_get_linktarget_target,gcc3_uno) : \
-	EXTRAOBJECTLISTS += $(call gb_CustomTarget_get_workdir,bridges/source/cpp_uno/gcc3_linux_arm)/armhelper.objectlist
+	EXTRAOBJECTLISTS += $(gb_CustomTarget_workdir)/bridges/source/cpp_uno/gcc3_linux_arm/armhelper.objectlist
 endif
 
 else ifeq ($(CPUNAME),AARCH64)
@@ -83,7 +83,16 @@ bridge_exception_objects := cpp2uno uno2cpp
 bridge_noopt_objects := except
 else ifeq ($(OS),EMSCRIPTEN)
 bridges_SELECTED_BRIDGE := gcc3_wasm
-bridge_noopt_objects := cpp2uno except uno2cpp
+bridge_exception_objects := abi cpp2uno uno2cpp
+$(eval $(call gb_Library_add_generated_asmobjects,$(CPPU_ENV)_uno, \
+    CustomTarget/bridges/gcc3_wasm/generated-asm \
+))
+$(eval $(call gb_Library_add_generated_exception_objects,$(CPPU_ENV)_uno, \
+    CustomTarget/bridges/gcc3_wasm/generated-cxx \
+))
+$(eval $(call gb_Library_use_static_libraries,$(CPPU_ENV)_uno, \
+    emscriptencxxabi \
+))
 endif
 
 else ifeq ($(CPUNAME),M68K)

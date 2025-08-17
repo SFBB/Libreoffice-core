@@ -20,9 +20,10 @@
 #ifndef INCLUDED_COMPHELPER_ACCESSIBLETEXTHELPER_HXX
 #define INCLUDED_COMPHELPER_ACCESSIBLETEXTHELPER_HXX
 
+#include <config_options.h>
 #include <com/sun/star/accessibility/XAccessibleText.hpp>
 #include <com/sun/star/accessibility/TextSegment.hpp>
-#include <comphelper/accessiblecomponenthelper.hxx>
+#include <comphelper/OAccessible.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/comphelperdllapi.h>
 
@@ -114,10 +115,9 @@ namespace comphelper
     /** a helper class for implementing an AccessibleExtendedComponent which at the same time
         supports an XAccessibleText interface
     */
-    class COMPHELPER_DLLPUBLIC OAccessibleTextHelper : public cppu::ImplInheritanceHelper<
-                                                           OAccessibleExtendedComponentHelper,
-                                                           css::accessibility::XAccessibleText>,
-                                  public OCommonAccessibleText
+    class UNLESS_MERGELIBS_MORE(COMPHELPER_DLLPUBLIC) OAccessibleTextHelper
+        : public cppu::ImplInheritanceHelper<OAccessible, css::accessibility::XAccessibleText>,
+          public OCommonAccessibleText
     {
     private:
         OAccessibleTextHelper(OAccessibleTextHelper const &) = delete;
@@ -130,12 +130,12 @@ namespace comphelper
 
     public:
         // XAccessibleText
-        virtual OUString SAL_CALL getSelectedText() override;
-        virtual sal_Int32 SAL_CALL getSelectionStart() override;
-        virtual sal_Int32 SAL_CALL getSelectionEnd() override;
-        virtual css::accessibility::TextSegment SAL_CALL getTextAtIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
-        virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
-        virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override;
+        virtual OUString SAL_CALL getSelectedText() override final;
+        virtual sal_Int32 SAL_CALL getSelectionStart() override final;
+        virtual sal_Int32 SAL_CALL getSelectionEnd() override final;
+        virtual css::accessibility::TextSegment SAL_CALL getTextAtIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override final;
+        virtual css::accessibility::TextSegment SAL_CALL getTextBeforeIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override final;
+        virtual css::accessibility::TextSegment SAL_CALL getTextBehindIndex( sal_Int32 nIndex, sal_Int16 aTextType ) override final;
     };
 
 

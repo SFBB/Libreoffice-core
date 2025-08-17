@@ -220,7 +220,7 @@ typedef void *                   sal_Handle;
 #       define SAL_DLLPUBLIC_IMPORT  __attribute__ ((visibility("hidden")))
 #       define SAL_DLLPRIVATE        __attribute__ ((visibility("hidden")))
 #       define SAL_DLLPUBLIC_TEMPLATE __attribute__ ((visibility("hidden")))
-#       define SAL_DLLPUBLIC_RTTI
+#       define SAL_DLLPUBLIC_RTTI     __attribute__ ((visibility("default")))
 #     else
 #       define SAL_DLLPUBLIC_EXPORT  __attribute__ ((visibility("default")))
 #       define SAL_JNI_EXPORT        __attribute__ ((visibility("default")))
@@ -234,7 +234,11 @@ typedef void *                   sal_Handle;
 #           define SAL_DLLPUBLIC_RTTI  __attribute__ ((visibility("default")))
 #         endif
 #       else
-#         define SAL_DLLPUBLIC_RTTI
+// GCC does not have currently have equivalent functionality to clang's type_visibility
+// but I have a feature request for that at https://gcc.gnu.org/bugzilla/show_bug.cgi?id=113958
+// Until that is implemented, just make the whole class visible, which is what I would need to
+// do anyhow if something wants to import the typeinfo symbol.
+#         define SAL_DLLPUBLIC_RTTI  __attribute__ ((visibility("default")))
 #       endif
 #     endif
 #   else
@@ -269,10 +273,10 @@ typedef void *                   sal_Handle;
 #endif
 
 /** Use this as markup for functions and methods whose return value must be
-    checked.
+    used.
 
     Compilers that support a construct of this nature will emit a compile
-    time warning on unchecked return value.
+    time warning on unused return value.
 */
 #if defined LIBO_INTERNAL_ONLY && defined __cplusplus
 #define SAL_WARN_UNUSED_RESULT [[nodiscard]]
@@ -282,6 +286,20 @@ typedef void *                   sal_Handle;
 #   define SAL_WARN_UNUSED_RESULT __attribute__((warn_unused_result))
 #else
 #   define SAL_WARN_UNUSED_RESULT
+#endif
+
+#if defined LIBO_INTERNAL_ONLY
+/** Use this as markup for functions and methods whose return value may be
+    null and should not be dereferenced unconditionally.
+
+    Compilers that support a construct of this nature will emit a compile
+    time warning on unconditional dereference of returned pointer.
+*/
+#ifdef _MSC_VER
+#   define SAL_RET_MAYBENULL _Ret_maybenull_
+#else
+#   define SAL_RET_MAYBENULL /*coverity[+returnsnull]*/
+#endif
 #endif
 
 /** Use this for pure virtual classes, e.g. class SAL_NO_VTABLE Foo { ...
@@ -343,7 +361,7 @@ typedef struct _sal_Sequence
     which won't throw in practice, or where std::terminate is
     an acceptable response if they do
 */
-#if defined(LIBO_INTERNAL_ONLY) && defined(__COVERITY__)
+#if defined(LIBO_INTERNAL_ONLY) && defined(__COVERITY__) && __COVERITY_MAJOR__ <= 2024
 #   define COVERITY_NOEXCEPT_FALSE noexcept(false)
 #else
 #   define COVERITY_NOEXCEPT_FALSE
@@ -504,6 +522,12 @@ template< typename T1, typename T2 > inline T1 static_int_cast(T2 n) {
     _Pragma(SAL_STRINGIFY_ARG(GCC diagnostic ignored "-Wdeprecated-declarations"))
 #define SAL_WNODEPRECATED_DECLARATIONS_POP \
     _Pragma(SAL_STRINGIFY_ARG(GCC diagnostic pop))
+#elif defined LIBO_INTERNAL_ONLY && defined _MSC_VER
+#define SAL_WNODEPRECATED_DECLARATIONS_PUSH \
+    _Pragma(SAL_STRINGIFY_ARG(warning(push))) \
+    _Pragma(SAL_STRINGIFY_ARG(warning(disable : 4996)))
+#define SAL_WNODEPRECATED_DECLARATIONS_POP \
+    _Pragma(SAL_STRINGIFY_ARG(warning(pop)))
 #else
 #   define SAL_WNODEPRECATED_DECLARATIONS_PUSH
 #   define SAL_WNODEPRECATED_DECLARATIONS_POP

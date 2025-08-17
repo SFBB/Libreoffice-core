@@ -22,14 +22,19 @@
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <basegfx/range/b2drange.hxx>
+#include <drawinglayer/primitive2d/textenumsprimitive2d.hxx>
 #include <vector>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <vcl/kernarray.hxx>
 #include <vcl/svapp.hxx>
+#include <tools/fontenum.hxx>
+#include <span>
 
 // predefines
 class VirtualDevice;
 class GDIMetaFile;
 enum class DrawTextFlags;
+class SalLayout;
 namespace vcl
 {
 class Font;
@@ -45,6 +50,14 @@ class FontAttribute;
 namespace com::sun::star::lang
 {
 struct Locale;
+}
+namespace vcl::text
+{
+enum class ComplexTextLayoutFlags : sal_uInt8;
+}
+namespace basegfx
+{
+class BColor;
 }
 
 // access to one global impTimedRefDev incarnation in namespace drawinglayer::primitive
@@ -63,6 +76,8 @@ class DRAWINGLAYER_DLLPUBLIC TextLayouterDevice
     /// internally used VirtualDevice
     SolarMutexGuard maSolarGuard;
     VirtualDevice& mrDevice;
+    double mnFontScalingFixX = 1.0;
+    double mnFontScalingFixY = 1.0;
 
 public:
     /// constructor/destructor
@@ -73,6 +88,9 @@ public:
     void setFont(const vcl::Font& rFont);
     void setFontAttribute(const attribute::FontAttribute& rFontAttribute, double fFontScaleX,
                           double fFontScaleY, const css::lang::Locale& rLocale);
+    void setLayoutMode(vcl::text::ComplexTextLayoutFlags nTextLayoutMode);
+    vcl::text::ComplexTextLayoutFlags getLayoutMode() const;
+    void setTextColor(const basegfx::BColor& rColor);
 
     double getTextHeight() const;
     double getOverlineHeight() const;
@@ -98,6 +116,16 @@ public:
 
     ::std::vector<double> getTextArray(const OUString& rText, sal_uInt32 nIndex, sal_uInt32 nLength,
                                        bool bCaret = false) const;
+    std::unique_ptr<SalLayout> getSalLayout(const OUString& rText, sal_uInt32 nIndex,
+                                            sal_uInt32 nLength,
+                                            const basegfx::B2DPoint& rStartPoint,
+                                            const KernArray& rDXArray,
+                                            std::span<const sal_Bool> pKashidaAry) const;
+    void createEmphasisMarks(
+        const SalLayout& rSalLayout, TextEmphasisMark aTextEmphasisMark, bool bAbove,
+        const std::function<void(const basegfx::B2DPoint&, const basegfx::B2DPolyPolygon&, bool,
+                                 const tools::Rectangle&, const tools::Rectangle&)>& rCallback)
+        const;
 };
 
 // helper methods for vcl font handling

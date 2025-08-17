@@ -57,19 +57,6 @@ OString SvToken::GetTokenAsString() const
     return aStr;
 }
 
-SvToken & SvToken::operator = ( const SvToken & rObj )
-{
-    if( this != &rObj )
-    {
-        nLine = rObj.nLine;
-        nColumn = rObj.nColumn;
-        nType = rObj.nType;
-        aString = rObj.aString;
-        nLong = rObj.nLong;
-    }
-    return *this;
-}
-
 void SvTokenStream::InitCtor()
 {
     aStrTrue = "TRUE"_ostr;
@@ -102,7 +89,14 @@ void SvTokenStream::FillTokenList()
         {
             if (!aTokList.empty())
             {
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 12 && __GNUC__ <= 16
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
                 *pToken = SvToken();
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 12 && __GNUC__ <= 16
+#pragma GCC diagnostic pop
+#endif
                 std::vector<std::unique_ptr<SvToken> >::const_iterator it = aTokList.begin();
 
                 pToken->SetLine((*it)->GetLine());
@@ -111,7 +105,16 @@ void SvTokenStream::FillTokenList()
             break;
         }
         else if( pToken->IsComment() )
+        {
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 12 && __GNUC__ <= 16
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
             *pToken = SvToken();
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 12 && __GNUC__ <= 16
+#pragma GCC diagnostic pop
+#endif
+        }
         else if( pToken->IsEof() )
             break;
         else
@@ -126,7 +129,6 @@ void SvTokenStream::FillTokenList()
 
 char SvTokenStream::GetNextChar()
 {
-    char nChar;
     while (aBufStr.getLength() <= nBufPos)
     {
         if (pInStream->ReadLine(aBufStr))
@@ -137,13 +139,13 @@ char SvTokenStream::GetNextChar()
         }
         else
         {
-            aBufStr.clear();
+            aBufStr.setLength(0);
             nColumn = 0;
             nBufPos = 0;
             return '\0';
         }
     }
-    nChar = aBufStr[nBufPos++];
+    char nChar = aBufStr[nBufPos++];
     nColumn += nChar == '\t' ? nTabSize : 1;
     return nChar;
 }

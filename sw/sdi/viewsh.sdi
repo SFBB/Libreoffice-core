@@ -65,12 +65,6 @@ interface TextEditView : BaseTextEditView
         StateMethod = GetState ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
-    SID_ADDITIONS_DIALOG // status()
-    [
-        ExecMethod = ExecDlgExt ;
-        StateMethod = GetState ;
-        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
-    ]
     FN_EDIT_FOOTNOTE // status(final|play)
     [
         ExecMethod = ExecDlgExt ;
@@ -301,6 +295,21 @@ interface TextPrintPreview
         StateMethod = GetState;
     ]
     FN_PRINT_LAYOUT
+    [
+        ExecMethod = Execute;
+        StateMethod = GetState;
+    ]
+    FN_SINGLE_PAGE_PER_ROW
+    [
+        ExecMethod = Execute;
+        StateMethod = GetState;
+    ]
+    FN_MULTIPLE_PAGES_PER_ROW
+    [
+        ExecMethod = Execute;
+        StateMethod = GetState;
+    ]
+    FN_BOOKVIEW
     [
         ExecMethod = Execute;
         StateMethod = GetState;

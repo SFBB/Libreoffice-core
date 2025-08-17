@@ -155,7 +155,7 @@ Reference< XCloneable > SAL_CALL SvxUnoNumberingRules::createClone(  )
 
 OUString SAL_CALL SvxUnoNumberingRules::getImplementationName(  )
 {
-    return "SvxUnoNumberingRules";
+    return u"SvxUnoNumberingRules"_ustr;
 }
 
 sal_Bool SAL_CALL SvxUnoNumberingRules::supportsService( const OUString& ServiceName )
@@ -165,7 +165,7 @@ sal_Bool SAL_CALL SvxUnoNumberingRules::supportsService( const OUString& Service
 
 Sequence< OUString > SAL_CALL SvxUnoNumberingRules::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.text.NumberingRules" };
+    return { u"com.sun.star.text.NumberingRules"_ustr };
 }
 
 Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal_Int32 nIndex) const
@@ -180,26 +180,23 @@ Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal
     Any aVal;
     {
         aVal <<= static_cast<sal_uInt16>(rFmt.GetNumberingType());
-        beans::PropertyValue aAlignProp( UNO_NAME_NRULE_NUMBERINGTYPE, -1, aVal, beans::PropertyState_DIRECT_VALUE);
-        pArray[nIdx++] = aAlignProp;
+        pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_NUMBERINGTYPE, -1, aVal, beans::PropertyState_DIRECT_VALUE);
     }
 
     {
         SvxAdjust eAdj = rFmt.GetNumAdjust();
         aVal <<= ConvertUnoAdjust(eAdj);
-        pArray[nIdx++] = beans::PropertyValue( UNO_NAME_NRULE_ADJUST, -1, aVal, beans::PropertyState_DIRECT_VALUE);
+        pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_ADJUST, -1, aVal, beans::PropertyState_DIRECT_VALUE);
     }
 
     {
         aVal <<= rFmt.GetPrefix();
-        beans::PropertyValue aPrefixProp( UNO_NAME_NRULE_PREFIX, -1, aVal, beans::PropertyState_DIRECT_VALUE);
-        pArray[nIdx++] = aPrefixProp;
+        pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_PREFIX, -1, aVal, beans::PropertyState_DIRECT_VALUE);
     }
 
     {
         aVal <<= rFmt.GetSuffix();
-        beans::PropertyValue aSuffixProp( UNO_NAME_NRULE_SUFFIX, -1, aVal, beans::PropertyState_DIRECT_VALUE);
-        pArray[nIdx++] = aSuffixProp;
+        pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_SUFFIX, -1, aVal, beans::PropertyState_DIRECT_VALUE);
     }
 
     if(SVX_NUM_CHAR_SPECIAL == rFmt.GetNumberingType())
@@ -207,7 +204,7 @@ Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal
         sal_UCS4 nCode = rFmt.GetBulletChar();
         OUString aStr( &nCode, 1 );
         aVal <<= aStr;
-        pArray[nIdx++] = beans::PropertyValue("BulletChar", -1, aVal, beans::PropertyState_DIRECT_VALUE);
+        pArray[nIdx++] = beans::PropertyValue(u"BulletChar"_ustr, -1, aVal, beans::PropertyState_DIRECT_VALUE);
     }
 
     if( rFmt.GetBulletFont() )
@@ -215,7 +212,7 @@ Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal
         awt::FontDescriptor aDesc;
         SvxUnoFontDescriptor::ConvertFromFont( *rFmt.GetBulletFont(), aDesc );
         aVal <<= aDesc;
-        pArray[nIdx++] = beans::PropertyValue( UNO_NAME_NRULE_BULLET_FONT, -1, aVal, beans::PropertyState_DIRECT_VALUE);
+        pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_BULLET_FONT, -1, aVal, beans::PropertyState_DIRECT_VALUE);
     }
 
     {
@@ -228,8 +225,7 @@ Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal
             uno::Reference<awt::XBitmap> xBitmap(pGraphic->GetXGraphic(), uno::UNO_QUERY);
             aVal <<= xBitmap;
 
-            const beans::PropertyValue aGraphicProp("GraphicBitmap", -1, aVal, beans::PropertyState_DIRECT_VALUE);
-            pArray[nIdx++] = aGraphicProp;
+            pArray[nIdx++] = beans::PropertyValue(u"GraphicBitmap"_ustr, -1, aVal, beans::PropertyState_DIRECT_VALUE);
         }
     }
 
@@ -237,8 +233,7 @@ Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal
         const Size aSize( rFmt.GetGraphicSize() );
         const awt::Size aUnoSize( aSize.Width(), aSize.Height() );
         aVal <<= aUnoSize;
-        const beans::PropertyValue aGraphicSizeProp("GraphicSize", -1, aVal, beans::PropertyState_DIRECT_VALUE );
-        pArray[nIdx++] = aGraphicSizeProp;
+        pArray[nIdx++] = beans::PropertyValue(u"GraphicSize"_ustr, -1, aVal, beans::PropertyState_DIRECT_VALUE);
     }
 
     aVal <<= static_cast<sal_Int16>(rFmt.GetStart());
@@ -250,7 +245,7 @@ Sequence<beans::PropertyValue> SvxUnoNumberingRules::getNumberingRuleByIndex(sal
     aVal <<= rFmt.GetFirstLineOffset();
     pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_FIRST_LINE_OFFSET, -1, aVal, beans::PropertyState_DIRECT_VALUE);
 
-    pArray[nIdx++] = beans::PropertyValue("SymbolTextDistance", -1, aVal, beans::PropertyState_DIRECT_VALUE);
+    pArray[nIdx++] = beans::PropertyValue(u"SymbolTextDistance"_ustr, -1, aVal, beans::PropertyState_DIRECT_VALUE);
 
     aVal <<= rFmt.GetBulletColor();
     pArray[nIdx++] = beans::PropertyValue(UNO_NAME_NRULE_BULLET_COLOR, -1, aVal, beans::PropertyState_DIRECT_VALUE);

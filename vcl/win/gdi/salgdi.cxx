@@ -38,69 +38,8 @@
 
 #include <config_features.h>
 #include <vcl/skia/SkiaHelper.hxx>
-#if HAVE_FEATURE_SKIA
 #include <skia/win/gdiimpl.hxx>
-#endif
 
-
-#define DITHER_PAL_DELTA                51
-#define DITHER_PAL_STEPS                6
-#define DITHER_PAL_COUNT                (DITHER_PAL_STEPS*DITHER_PAL_STEPS*DITHER_PAL_STEPS)
-#define DITHER_MAX_SYSCOLOR             16
-#define DITHER_EXTRA_COLORS             1
-
-namespace
-{
-
-struct SysColorEntry
-{
-    DWORD           nRGB;
-    SysColorEntry*  pNext;
-};
-
-SysColorEntry* pFirstSysColor = nullptr;
-SysColorEntry* pActSysColor = nullptr;
-
-void DeleteSysColorList()
-{
-    SysColorEntry* pEntry = pFirstSysColor;
-    pActSysColor = pFirstSysColor = nullptr;
-
-    while( pEntry )
-    {
-        SysColorEntry* pTmp = pEntry->pNext;
-        delete pEntry;
-        pEntry = pTmp;
-    }
-}
-
-} // namespace
-
-// Blue7
-static PALETTEENTRY aImplExtraColor1 =
-{
-    0, 184, 255, 0
-};
-
-static PALETTEENTRY aImplSalSysPalEntryAry[ DITHER_MAX_SYSCOLOR ] =
-{
-{    0,    0,    0, 0 },
-{    0,    0, 0x80, 0 },
-{    0, 0x80,    0, 0 },
-{    0, 0x80, 0x80, 0 },
-{ 0x80,    0,    0, 0 },
-{ 0x80,    0, 0x80, 0 },
-{ 0x80, 0x80,    0, 0 },
-{ 0x80, 0x80, 0x80, 0 },
-{ 0xC0, 0xC0, 0xC0, 0 },
-{    0,    0, 0xFF, 0 },
-{    0, 0xFF,    0, 0 },
-{    0, 0xFF, 0xFF, 0 },
-{ 0xFF,    0,    0, 0 },
-{ 0xFF,    0, 0xFF, 0 },
-{ 0xFF, 0xFF,    0, 0 },
-{ 0xFF, 0xFF, 0xFF, 0 }
-};
 
 // we must create pens with 1-pixel width; otherwise the S3-graphics card
 // map has many paint problems when drawing polygons/polyLines and a
@@ -133,156 +72,6 @@ void ImplInitSalGDI()
     pSalData->mhStockBrushAry[2]        = CreateSolidBrush( pSalData->maStockBrushColorAry[2] );
     pSalData->mhStockBrushAry[3]        = CreateSolidBrush( pSalData->maStockBrushColorAry[3] );
     pSalData->mnStockBrushCount = 4;
-
-    // initialize temporary font lists
-    pSalData->mpSharedTempFontItem = nullptr;
-    pSalData->mpOtherTempFontItem = nullptr;
-
-    // support palettes for 256 color displays
-    HDC hDC = GetDC( nullptr );
-    int nBitsPixel = GetDeviceCaps( hDC, BITSPIXEL );
-    int nPlanes = GetDeviceCaps( hDC, PLANES );
-    int nRasterCaps = GetDeviceCaps( hDC, RASTERCAPS );
-    int nBitCount = nBitsPixel * nPlanes;
-
-    if ( (nBitCount > 8) && (nBitCount < 24) )
-    {
-        // test if we have to dither
-        HDC         hMemDC = ::CreateCompatibleDC( hDC );
-        HBITMAP     hMemBmp = ::CreateCompatibleBitmap( hDC, 8, 8 );
-        HBITMAP     hBmpOld = static_cast<HBITMAP>(::SelectObject( hMemDC, hMemBmp ));
-        HBRUSH      hMemBrush = ::CreateSolidBrush( PALETTERGB( 175, 171, 169 ) );
-        HBRUSH      hBrushOld = static_cast<HBRUSH>(::SelectObject( hMemDC, hMemBrush ));
-        bool        bDither16 = true;
-
-        ::PatBlt( hMemDC, 0, 0, 8, 8, PATCOPY );
-        const COLORREF aCol( ::GetPixel( hMemDC, 0, 0 ) );
-
-        for( int nY = 0; ( nY < 8 ) && bDither16; nY++ )
-            for( int nX = 0; ( nX < 8 ) && bDither16; nX++ )
-                if( ::GetPixel( hMemDC, nX, nY ) != aCol )
-                    bDither16 = false;
-
-        ::SelectObject( hMemDC, hBrushOld );
-        ::DeleteObject( hMemBrush );
-        ::SelectObject( hMemDC, hBmpOld );
-        ::DeleteObject( hMemBmp );
-        ::DeleteDC( hMemDC );
-
-        if( bDither16 )
-        {
-            // create DIBPattern for 16Bit dithering
-            tools::Long n;
-
-            pSalData->mhDitherDIB = GlobalAlloc( GMEM_FIXED, sizeof( BITMAPINFOHEADER ) + 192 );
-            pSalData->mpDitherDIB = static_cast<BYTE*>(GlobalLock( pSalData->mhDitherDIB ));
-            pSalData->mpDitherDiff.reset(new tools::Long[ 256 ]);
-            pSalData->mpDitherLow.reset(new BYTE[ 256 ]);
-            pSalData->mpDitherHigh.reset(new BYTE[ 256 ]);
-            pSalData->mpDitherDIBData = pSalData->mpDitherDIB + sizeof( BITMAPINFOHEADER );
-            memset( pSalData->mpDitherDIB, 0, sizeof( BITMAPINFOHEADER ) );
-
-            BITMAPINFOHEADER* pBIH = reinterpret_cast<BITMAPINFOHEADER*>(pSalData->mpDitherDIB);
-
-            pBIH->biSize = sizeof( BITMAPINFOHEADER );
-            pBIH->biWidth = 8;
-            pBIH->biHeight = 8;
-            pBIH->biPlanes = 1;
-            pBIH->biBitCount = 24;
-
-            for( n = 0; n < 256; n++ )
-                pSalData->mpDitherDiff[ n ] = n - ( n & 248L );
-
-            for( n = 0; n < 256; n++ )
-                pSalData->mpDitherLow[ n ] = static_cast<BYTE>( n & 248 );
-
-            for( n = 0; n < 256; n++ )
-                pSalData->mpDitherHigh[ n ] = static_cast<BYTE>(std::min( pSalData->mpDitherLow[ n ] + 8, 255 ));
-        }
-    }
-    else if ( (nRasterCaps & RC_PALETTE) && (nBitCount == 8) )
-    {
-        BYTE            nRed, nGreen, nBlue;
-        BYTE            nR, nG, nB;
-        PALETTEENTRY*   pPalEntry;
-        LOGPALETTE*     pLogPal;
-        const sal_uInt16    nDitherPalCount = DITHER_PAL_COUNT;
-        sal_uLong           nTotalCount = DITHER_MAX_SYSCOLOR + nDitherPalCount + DITHER_EXTRA_COLORS;
-
-        // create logical palette
-        pLogPal = reinterpret_cast<LOGPALETTE*>(new char[ sizeof( LOGPALETTE ) + ( nTotalCount * sizeof( PALETTEENTRY ) ) ]);
-        pLogPal->palVersion = 0x0300;
-        pLogPal->palNumEntries = static_cast<sal_uInt16>(nTotalCount);
-        pPalEntry = pLogPal->palPalEntry;
-
-        // Standard colors
-        memcpy( pPalEntry, aImplSalSysPalEntryAry, DITHER_MAX_SYSCOLOR * sizeof( PALETTEENTRY ) );
-        pPalEntry += DITHER_MAX_SYSCOLOR;
-
-        // own palette (6/6/6)
-        for( nB=0, nBlue=0; nB < DITHER_PAL_STEPS; nB++, nBlue += DITHER_PAL_DELTA )
-        {
-            for( nG=0, nGreen=0; nG < DITHER_PAL_STEPS; nG++, nGreen += DITHER_PAL_DELTA )
-            {
-                for( nR=0, nRed=0; nR < DITHER_PAL_STEPS; nR++, nRed += DITHER_PAL_DELTA )
-                {
-                    pPalEntry->peRed   = nRed;
-                    pPalEntry->peGreen = nGreen;
-                    pPalEntry->peBlue  = nBlue;
-                    pPalEntry->peFlags = 0;
-                    pPalEntry++;
-                }
-            }
-        }
-
-        // insert special 'Blue' as standard drawing color
-        *pPalEntry++ = aImplExtraColor1;
-
-        // create palette
-        pSalData->mhDitherPal = CreatePalette( pLogPal );
-        delete[] reinterpret_cast<char*>(pLogPal);
-
-        if( pSalData->mhDitherPal )
-        {
-            // create DIBPattern for 8Bit dithering
-            tools::Long const nSize = sizeof( BITMAPINFOHEADER ) + ( 256 * sizeof( short ) ) + 64;
-            tools::Long n;
-
-            pSalData->mhDitherDIB = GlobalAlloc( GMEM_FIXED, nSize );
-            pSalData->mpDitherDIB = static_cast<BYTE*>(GlobalLock( pSalData->mhDitherDIB ));
-            pSalData->mpDitherDiff.reset(new tools::Long[ 256 ]);
-            pSalData->mpDitherLow.reset(new BYTE[ 256 ]);
-            pSalData->mpDitherHigh.reset(new BYTE[ 256 ]);
-            pSalData->mpDitherDIBData = pSalData->mpDitherDIB + sizeof( BITMAPINFOHEADER ) + ( 256 * sizeof( short ) );
-            memset( pSalData->mpDitherDIB, 0, sizeof( BITMAPINFOHEADER ) );
-
-            BITMAPINFOHEADER*   pBIH = reinterpret_cast<BITMAPINFOHEADER*>(pSalData->mpDitherDIB);
-            short*              pColors = reinterpret_cast<short*>( pSalData->mpDitherDIB + sizeof( BITMAPINFOHEADER ) );
-
-            pBIH->biSize = sizeof( BITMAPINFOHEADER );
-            pBIH->biWidth = 8;
-            pBIH->biHeight = 8;
-            pBIH->biPlanes = 1;
-            pBIH->biBitCount = 8;
-
-            for( n = 0; n < nDitherPalCount; n++ )
-                pColors[ n ] = static_cast<short>( n + DITHER_MAX_SYSCOLOR );
-
-            for( n = 0; n < 256; n++ )
-                pSalData->mpDitherDiff[ n ] = n % 51;
-
-            for( n = 0; n < 256; n++ )
-                pSalData->mpDitherLow[ n ] = static_cast<BYTE>( n / 51 );
-
-            for( n = 0; n < 256; n++ )
-                pSalData->mpDitherHigh[ n ] = static_cast<BYTE>(std::min( pSalData->mpDitherLow[ n ] + 1, 5 ));
-        }
-
-        // get system color entries
-        ImplUpdateSysColorEntries();
-    }
-
-    ReleaseDC( nullptr, hDC );
 }
 
 void ImplFreeSalGDI()
@@ -315,26 +104,6 @@ void ImplFreeSalGDI()
 
     ImplClearHDCCache( pSalData );
 
-    // delete Ditherpalette, if existing
-    if ( pSalData->mhDitherPal )
-    {
-        DeleteObject( pSalData->mhDitherPal );
-        pSalData->mhDitherPal = nullptr;
-    }
-
-    // delete buffers for dithering DIB patterns, if necessary
-    if ( pSalData->mhDitherDIB )
-    {
-        GlobalUnlock( pSalData->mhDitherDIB );
-        GlobalFree( pSalData->mhDitherDIB );
-        pSalData->mhDitherDIB = nullptr;
-        pSalData->mpDitherDiff.reset();
-        pSalData->mpDitherLow.reset();
-        pSalData->mpDitherHigh.reset();
-    }
-
-    DeleteSysColorList();
-
     // delete icon cache
     SalIcon* pIcon = pSalData->mpFirstIcon;
     pSalData->mpFirstIcon = nullptr;
@@ -348,103 +117,11 @@ void ImplFreeSalGDI()
     }
 
     // delete temporary font list
-    ImplReleaseTempFonts(*pSalData, true);
+    ImplReleaseTempFonts(*pSalData);
 
     pSalData->mbResourcesAlreadyFreed = true;
 }
 
-int ImplIsSysColorEntry( Color nColor )
-{
-    SysColorEntry*  pEntry = pFirstSysColor;
-    const DWORD     nTestRGB = static_cast<DWORD>(RGB( nColor.GetRed(),
-                                           nColor.GetGreen(),
-                                           nColor.GetBlue() ));
-
-    while ( pEntry )
-    {
-        if ( pEntry->nRGB == nTestRGB )
-            return TRUE;
-        pEntry = pEntry->pNext;
-    }
-
-    return FALSE;
-}
-
-static int ImplIsPaletteEntry( BYTE nRed, BYTE nGreen, BYTE nBlue )
-{
-    // dither color?
-    if ( !(nRed % DITHER_PAL_DELTA) && !(nGreen % DITHER_PAL_DELTA) && !(nBlue % DITHER_PAL_DELTA) )
-        return TRUE;
-
-    PALETTEENTRY* pPalEntry = aImplSalSysPalEntryAry;
-
-    // standard palette color?
-    for ( sal_uInt16 i = 0; i < DITHER_MAX_SYSCOLOR; i++, pPalEntry++ )
-    {
-        if( pPalEntry->peRed == nRed && pPalEntry->peGreen == nGreen && pPalEntry->peBlue == nBlue )
-            return TRUE;
-    }
-
-    // extra color?
-    if ( aImplExtraColor1.peRed == nRed &&
-         aImplExtraColor1.peGreen == nGreen &&
-         aImplExtraColor1.peBlue == nBlue )
-    {
-        return TRUE;
-    }
-
-    return FALSE;
-}
-
-static void ImplInsertSysColorEntry( int nSysIndex )
-{
-    const DWORD nRGB = GetSysColor( nSysIndex );
-
-    if ( !ImplIsPaletteEntry( GetRValue( nRGB ), GetGValue( nRGB ), GetBValue( nRGB ) ) )
-    {
-        if ( !pFirstSysColor )
-        {
-            pActSysColor = pFirstSysColor = new SysColorEntry;
-            pFirstSysColor->nRGB = nRGB;
-            pFirstSysColor->pNext = nullptr;
-        }
-        else
-        {
-            pActSysColor = pActSysColor->pNext = new SysColorEntry;
-            pActSysColor->nRGB = nRGB;
-            pActSysColor->pNext = nullptr;
-        }
-    }
-}
-
-void ImplUpdateSysColorEntries()
-{
-    DeleteSysColorList();
-
-    // create new sys color list
-    ImplInsertSysColorEntry( COLOR_ACTIVEBORDER );
-    ImplInsertSysColorEntry( COLOR_INACTIVEBORDER );
-    ImplInsertSysColorEntry( COLOR_GRADIENTACTIVECAPTION );
-    ImplInsertSysColorEntry( COLOR_GRADIENTINACTIVECAPTION );
-    ImplInsertSysColorEntry( COLOR_3DFACE );
-    ImplInsertSysColorEntry( COLOR_3DHILIGHT );
-    ImplInsertSysColorEntry( COLOR_3DLIGHT );
-    ImplInsertSysColorEntry( COLOR_3DSHADOW );
-    ImplInsertSysColorEntry( COLOR_3DDKSHADOW );
-    ImplInsertSysColorEntry( COLOR_INFOBK );
-    ImplInsertSysColorEntry( COLOR_INFOTEXT );
-    ImplInsertSysColorEntry( COLOR_BTNTEXT );
-    ImplInsertSysColorEntry( COLOR_WINDOW );
-    ImplInsertSysColorEntry( COLOR_WINDOWTEXT );
-    ImplInsertSysColorEntry( COLOR_HIGHLIGHT );
-    ImplInsertSysColorEntry( COLOR_HIGHLIGHTTEXT );
-    ImplInsertSysColorEntry( COLOR_MENU );
-    ImplInsertSysColorEntry( COLOR_MENUTEXT );
-    ImplInsertSysColorEntry( COLOR_ACTIVECAPTION );
-    ImplInsertSysColorEntry( COLOR_CAPTIONTEXT );
-    ImplInsertSysColorEntry( COLOR_INACTIVECAPTION );
-    ImplInsertSysColorEntry( COLOR_INACTIVECAPTIONTEXT );
-}
 
 void WinSalGraphics::InitGraphics()
 {
@@ -464,8 +141,6 @@ void WinSalGraphics::InitGraphics()
     ::SetTextAlign( getHDC(), TA_BASELINE | TA_LEFT | TA_NOUPDATECP );
     ::SetBkMode( getHDC(), TRANSPARENT );
     ::SetROP2( getHDC(), R2_COPYPEN );
-
-    mpImpl->Init();
 }
 
 void WinSalGraphics::DeInitGraphics()
@@ -491,7 +166,11 @@ void WinSalGraphics::DeInitGraphics()
         SelectFont( getHDC(), mhDefFont );
         mhDefFont = nullptr;
     }
-    setPalette(nullptr);
+    if (mhDefPal)
+    {
+        SelectPalette(getHDC(), mhDefPal, /*bForceBkgd*/TRUE);
+        mhDefPal = nullptr;
+    }
 
     mpImpl->DeInit();
 }
@@ -514,12 +193,6 @@ HDC ImplGetCachedDC( sal_uLong nID, HBITMAP hBmp )
 
         // create new DC with DefaultBitmap
         pC->mhDC = CreateCompatibleDC( hDC );
-
-        if( pSalData->mhDitherPal )
-        {
-            pC->mhDefPal = SelectPalette( pC->mhDC, pSalData->mhDitherPal, TRUE );
-            RealizePalette( pC->mhDC );
-        }
 
         pC->mhSelBmp = CreateCompatibleBitmap( hDC, CACHED_HDC_DEFEXT, CACHED_HDC_DEFEXT );
         pC->mhDefBmp = static_cast<HBITMAP>(SelectObject( pC->mhDC, pC->mhSelBmp ));
@@ -563,62 +236,6 @@ void ImplClearHDCCache( SalData* pData )
     }
 }
 
-std::unique_ptr< CompatibleDC > CompatibleDC::create(SalGraphics &rGraphics, int x, int y, int width, int height)
-{
-#if HAVE_FEATURE_SKIA
-    if (SkiaHelper::isVCLSkiaEnabled())
-        return std::make_unique< SkiaCompatibleDC >( rGraphics, x, y, width, height );
-#endif
-    return std::unique_ptr< CompatibleDC >( new CompatibleDC( rGraphics, x, y, width, height ));
-}
-
-CompatibleDC::CompatibleDC(SalGraphics &rGraphics, int x, int y, int width, int height, bool disable)
-    : mhBitmap(nullptr)
-    , mpData(nullptr)
-    , maRects(0, 0, width, height, x, y, width, height)
-    , mpImpl(nullptr)
-{
-    WinSalGraphics& rWinGraphics = static_cast<WinSalGraphics&>(rGraphics);
-
-    if( disable )
-    {
-        // we avoid the OpenGL drawing, instead we draw directly to the DC
-        mhCompatibleDC = rWinGraphics.getHDC();
-        return;
-    }
-
-    mpImpl = rWinGraphics.getWinSalGraphicsImplBase();
-    mhCompatibleDC = CreateCompatibleDC(rWinGraphics.getHDC());
-
-    // move the origin so that we always paint at 0,0 - to keep the bitmap
-    // small
-    OffsetViewportOrgEx(mhCompatibleDC, -x, -y, nullptr);
-
-    mhBitmap = WinSalVirtualDevice::ImplCreateVirDevBitmap(mhCompatibleDC, width, height, 32, reinterpret_cast<void **>(&mpData));
-
-    mhOrigBitmap = static_cast<HBITMAP>(SelectObject(mhCompatibleDC, mhBitmap));
-}
-
-CompatibleDC::~CompatibleDC()
-{
-    if (mpImpl)
-    {
-        SelectObject(mhCompatibleDC, mhOrigBitmap);
-        DeleteObject(mhBitmap);
-        DeleteDC(mhCompatibleDC);
-    }
-}
-
-void CompatibleDC::fill(sal_uInt32 color)
-{
-    if (!mpData)
-        return;
-
-    sal_uInt32 *p = mpData;
-    for (int i = maRects.mnSrcWidth * maRects.mnSrcHeight; i > 0; --i)
-        *p++ = color;
-}
-
 WinSalGraphics::WinSalGraphics(WinSalGraphics::Type eType, bool bScreen, HWND hWnd, [[maybe_unused]] SalGeometryProvider *pProvider):
     mhLocalDC(nullptr),
     mbPrinter(eType == WinSalGraphics::PRINTER),
@@ -634,15 +251,14 @@ WinSalGraphics::WinSalGraphics(WinSalGraphics::Type eType, bool bScreen, HWND hW
     mpStdClipRgnData(nullptr),
     mnPenWidth(GSL_PEN_WIDTH)
 {
-#if HAVE_FEATURE_SKIA
-    if (SkiaHelper::isVCLSkiaEnabled() && !mbPrinter)
+    assert(SkiaHelper::isVCLSkiaEnabled() && "Windows requires skia");
+    if (!mbPrinter)
     {
         auto const impl = new WinSkiaSalGraphicsImpl(*this, pProvider);
         mpImpl.reset(impl);
         mWinSalGraphicsImplBase = impl;
     }
     else
-#endif
     {
         auto const impl = new WinSalGraphicsImpl(*this);
         mpImpl.reset(impl);
@@ -708,39 +324,6 @@ HPALETTE WinSalGraphics::getDefPal() const
     return mhDefPal;
 }
 
-UINT WinSalGraphics::setPalette(HPALETTE hNewPal, BOOL bForceBkgd)
-{
-    UINT res = GDI_ERROR;
-
-    if (!getHDC())
-    {
-        assert(!mhDefPal);
-        return res;
-    }
-
-    if (hNewPal)
-    {
-        HPALETTE hOldPal = SelectPalette(getHDC(), hNewPal, bForceBkgd);
-        if (hOldPal)
-        {
-            if (!mhDefPal)
-                mhDefPal = hOldPal;
-            res = RealizePalette(getHDC());
-        }
-    }
-    else
-    {
-        res = 0;
-        if (mhDefPal)
-        {
-            SelectPalette(getHDC(), mhDefPal, bForceBkgd);
-            mhDefPal = nullptr;
-        }
-    }
-
-    return res;
-}
-
 HRGN WinSalGraphics::getRegion() const
 {
     return mhRegion;
@@ -758,35 +341,43 @@ void WinSalGraphics::GetResolution( sal_Int32& rDPIX, sal_Int32& rDPIY )
         rDPIX = rDPIY = 600;
 }
 
-void WinSalGraphics::getDWriteFactory(IDWriteFactory** pFactory, IDWriteGdiInterop** pInterop)
+// static
+IDWriteFactory* WinSalGraphics::getDWriteFactory()
 {
-    if (!bDWriteDone)
-    {
-        HRESULT hr = S_OK;
-        hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
-                                 reinterpret_cast<IUnknown**>(&mxDWriteFactory));
-        if (FAILED(hr))
+    static sal::systools::COMReference<IDWriteFactory> pDWriteFactory(
+        []()
         {
-            SAL_WARN("vcl.fonts", "HRESULT 0x" << OUString::number(hr, 16) << ": "
-                                               << WindowsErrorStringFromHRESULT(hr));
-            abort();
-        }
+            sal::systools::COMReference<IDWriteFactory> pResult;
+            HRESULT hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+                                             reinterpret_cast<IUnknown**>(&pResult));
+            if (FAILED(hr))
+            {
+                SAL_WARN("vcl.fonts", "HRESULT 0x" << OUString::number(hr, 16) << ": "
+                                                   << comphelper::WindowsErrorStringFromHRESULT(hr));
+                abort();
+            }
+            return pResult;
+        }());
+    return pDWriteFactory.get();
+}
 
-        hr = mxDWriteFactory->GetGdiInterop(&mxDWriteGdiInterop);
-        if (FAILED(hr))
+// static
+IDWriteGdiInterop* WinSalGraphics::getDWriteGdiInterop()
+{
+    static sal::systools::COMReference<IDWriteGdiInterop> pDWriteGdiInterop(
+        []()
         {
-            SAL_WARN("vcl.fonts", "HRESULT 0x" << OUString::number(hr, 16) << ": "
-                                               << WindowsErrorStringFromHRESULT(hr));
-            abort();
-        }
-
-        bDWriteDone = true;
-    }
-
-    if (pFactory)
-        *pFactory = mxDWriteFactory.get();
-    if (pInterop)
-        *pInterop = mxDWriteGdiInterop.get();
+            sal::systools::COMReference<IDWriteGdiInterop> pResult;
+            HRESULT hr = getDWriteFactory()->GetGdiInterop(&pResult);
+            if (FAILED(hr))
+            {
+                SAL_WARN("vcl.fonts", "HRESULT 0x" << OUString::number(hr, 16) << ": "
+                                                   << comphelper::WindowsErrorStringFromHRESULT(hr));
+                abort();
+            }
+            return pResult;
+        }());
+    return pDWriteGdiInterop.get();
 }
 
 sal_uInt16 WinSalGraphics::GetBitCount() const
@@ -930,63 +521,64 @@ static BYTE* ImplSearchEntry( BYTE* pSource, BYTE const * pDest, sal_uLong nComp
 
 static bool ImplGetBoundingBox( double* nNumb, BYTE* pSource, sal_uLong nSize )
 {
-    bool    bRetValue = false;
     BYTE* pDest = ImplSearchEntry( pSource, reinterpret_cast<BYTE const *>("%%BoundingBox:"), nSize, 14 );
-    if ( pDest )
+    if ( !pDest )
+        return false;
+
+    bool    bRetValue = false;
+
+    nNumb[0] = nNumb[1] = nNumb[2] = nNumb[3] = 0;
+    pDest += 14;
+
+    int nSizeLeft = nSize - ( pDest - pSource );
+    if ( nSizeLeft > 100 )
+        nSizeLeft = 100;    // only 100 bytes following the bounding box will be checked
+
+    int i;
+    for ( i = 0; ( i < 4 ) && nSizeLeft; i++ )
     {
-        nNumb[0] = nNumb[1] = nNumb[2] = nNumb[3] = 0;
-        pDest += 14;
+        int     nDivision = 1;
+        bool    bDivision = false;
+        bool    bNegative = false;
+        bool    bValid = true;
 
-        int nSizeLeft = nSize - ( pDest - pSource );
-        if ( nSizeLeft > 100 )
-            nSizeLeft = 100;    // only 100 bytes following the bounding box will be checked
-
-        int i;
-        for ( i = 0; ( i < 4 ) && nSizeLeft; i++ )
+        while ( ( --nSizeLeft ) && ( ( *pDest == ' ' ) || ( *pDest == 0x9 ) ) ) pDest++;
+        BYTE nByte = *pDest;
+        while ( nSizeLeft && ( nByte != ' ' ) && ( nByte != 0x9 ) && ( nByte != 0xd ) && ( nByte != 0xa ) )
         {
-            int     nDivision = 1;
-            bool    bDivision = false;
-            bool    bNegative = false;
-            bool    bValid = true;
-
-            while ( ( --nSizeLeft ) && ( ( *pDest == ' ' ) || ( *pDest == 0x9 ) ) ) pDest++;
-            BYTE nByte = *pDest;
-            while ( nSizeLeft && ( nByte != ' ' ) && ( nByte != 0x9 ) && ( nByte != 0xd ) && ( nByte != 0xa ) )
+            switch ( nByte )
             {
-                switch ( nByte )
-                {
-                    case '.' :
+                case '.' :
+                    if ( bDivision )
+                        bValid = false;
+                    else
+                        bDivision = true;
+                    break;
+                case '-' :
+                    bNegative = true;
+                    break;
+                default :
+                    if ( ( nByte < '0' ) || ( nByte > '9' ) )
+                        nSizeLeft = 1;  // error parsing the bounding box values
+                    else if ( bValid )
+                    {
                         if ( bDivision )
-                            bValid = false;
-                        else
-                            bDivision = true;
-                        break;
-                    case '-' :
-                        bNegative = true;
-                        break;
-                    default :
-                        if ( ( nByte < '0' ) || ( nByte > '9' ) )
-                            nSizeLeft = 1;  // error parsing the bounding box values
-                        else if ( bValid )
-                        {
-                            if ( bDivision )
-                                nDivision*=10;
-                            nNumb[i] *= 10;
-                            nNumb[i] += nByte - '0';
-                        }
-                        break;
-                }
-                nSizeLeft--;
-                nByte = *(++pDest);
+                            nDivision*=10;
+                        nNumb[i] *= 10;
+                        nNumb[i] += nByte - '0';
+                    }
+                    break;
             }
-            if ( bNegative )
-                nNumb[i] = -nNumb[i];
-            if ( bDivision && ( nDivision != 1 ) )
-                nNumb[i] /= nDivision;
+            nSizeLeft--;
+            nByte = *(++pDest);
         }
-        if ( i == 4 )
-            bRetValue = true;
+        if ( bNegative )
+            nNumb[i] = -nNumb[i];
+        if ( bDivision && ( nDivision != 1 ) )
+            nNumb[i] /= nDivision;
     }
+    if ( i == 4 )
+        bRetValue = true;
     return bRetValue;
 }
 
@@ -994,138 +586,134 @@ static bool ImplGetBoundingBox( double* nNumb, BYTE* pSource, sal_uLong nSize )
 
 bool WinSalGraphics::drawEPS( tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight, void* pPtr, sal_uInt32 nSize )
 {
-    bool bRetValue = false;
 
-    if ( mbPrinter )
+    if ( !mbPrinter )
+        return false;
+
+    int nEscape = POSTSCRIPT_PASSTHROUGH;
+    if ( !Escape( getHDC(), QUERYESCSUPPORT, sizeof( int ), reinterpret_cast<LPSTR>(&nEscape), nullptr ) )
+        return false;
+
+    double  nBoundingBox[4];
+    if ( !ImplGetBoundingBox( nBoundingBox, static_cast<BYTE*>(pPtr), nSize ) )
+        return false;
+
+    OStringBuffer aBuf( POSTSCRIPT_BUFSIZE );
+
+    // reserve place for a sal_uInt16
+    aBuf.append( "aa" );
+
+    // #107797# Write out EPS encapsulation header
+
+    // directly taken from the PLRM 3.0, p. 726. Note:
+    // this will definitely cause problems when
+    // recursively creating and embedding PostScript files
+    // in OOo, since we use statically-named variables
+    // here (namely, b4_Inc_state_salWin, dict_count_salWin and
+    // op_count_salWin). Currently, I have no idea on how to
+    // work around that, except from scanning and
+    // interpreting the EPS for unused identifiers.
+
+    // append the real text
+    aBuf.append( "\n\n/b4_Inc_state_salWin save def\n"
+                 "/dict_count_salWin countdictstack def\n"
+                 "/op_count_salWin count 1 sub def\n"
+                 "userdict begin\n"
+                 "/showpage {} def\n"
+                 "0 setgray 0 setlinecap\n"
+                 "1 setlinewidth 0 setlinejoin\n"
+                 "10 setmiterlimit [] 0 setdash newpath\n"
+                 "/languagelevel where\n"
+                 "{\n"
+                 "  pop languagelevel\n"
+                 "  1 ne\n"
+                 "  {\n"
+                 "    false setstrokeadjust false setoverprint\n"
+                 "  } if\n"
+                 "} if\n\n" );
+
+    // #i10737# Apply clipping manually
+
+    // Windows seems to ignore any clipping at the HDC,
+    // when followed by a POSTSCRIPT_PASSTHROUGH
+
+    // Check whether we've got a clipping, consisting of
+    // exactly one rect (other cases should be, but aren't
+    // handled currently)
+
+    // TODO: Handle more than one rectangle here (take
+    // care, the buffer can handle only POSTSCRIPT_BUFSIZE
+    // characters!)
+    if ( mhRegion != nullptr &&
+         mpStdClipRgnData != nullptr &&
+         mpClipRgnData == mpStdClipRgnData &&
+         mpClipRgnData->rdh.nCount == 1 )
     {
-        int nEscape = POSTSCRIPT_PASSTHROUGH;
+        RECT* pRect = &(mpClipRgnData->rdh.rcBound);
 
-        if ( Escape( getHDC(), QUERYESCSUPPORT, sizeof( int ), reinterpret_cast<LPSTR>(&nEscape), nullptr ) )
-        {
-            double  nBoundingBox[4];
-
-            if ( ImplGetBoundingBox( nBoundingBox, static_cast<BYTE*>(pPtr), nSize ) )
-            {
-                OStringBuffer aBuf( POSTSCRIPT_BUFSIZE );
-
-                // reserve place for a sal_uInt16
-                aBuf.append( "aa" );
-
-                // #107797# Write out EPS encapsulation header
-
-                // directly taken from the PLRM 3.0, p. 726. Note:
-                // this will definitely cause problems when
-                // recursively creating and embedding PostScript files
-                // in OOo, since we use statically-named variables
-                // here (namely, b4_Inc_state_salWin, dict_count_salWin and
-                // op_count_salWin). Currently, I have no idea on how to
-                // work around that, except from scanning and
-                // interpreting the EPS for unused identifiers.
-
-                // append the real text
-                aBuf.append( "\n\n/b4_Inc_state_salWin save def\n"
-                             "/dict_count_salWin countdictstack def\n"
-                             "/op_count_salWin count 1 sub def\n"
-                             "userdict begin\n"
-                             "/showpage {} def\n"
-                             "0 setgray 0 setlinecap\n"
-                             "1 setlinewidth 0 setlinejoin\n"
-                             "10 setmiterlimit [] 0 setdash newpath\n"
-                             "/languagelevel where\n"
-                             "{\n"
-                             "  pop languagelevel\n"
-                             "  1 ne\n"
-                             "  {\n"
-                             "    false setstrokeadjust false setoverprint\n"
-                             "  } if\n"
-                             "} if\n\n" );
-
-                // #i10737# Apply clipping manually
-
-                // Windows seems to ignore any clipping at the HDC,
-                // when followed by a POSTSCRIPT_PASSTHROUGH
-
-                // Check whether we've got a clipping, consisting of
-                // exactly one rect (other cases should be, but aren't
-                // handled currently)
-
-                // TODO: Handle more than one rectangle here (take
-                // care, the buffer can handle only POSTSCRIPT_BUFSIZE
-                // characters!)
-                if ( mhRegion != nullptr &&
-                     mpStdClipRgnData != nullptr &&
-                     mpClipRgnData == mpStdClipRgnData &&
-                     mpClipRgnData->rdh.nCount == 1 )
-                {
-                    RECT* pRect = &(mpClipRgnData->rdh.rcBound);
-
-                    aBuf.append( "\nnewpath\n"
-                                 + OString::number(pRect->left) + " " + OString::number(pRect->top)
-                                 + " moveto\n"
-                                 + OString::number(pRect->right) + " " + OString::number(pRect->top)
-                                 + " lineto\n"
-                                 + OString::number(pRect->right) + " "
-                                 + OString::number(pRect->bottom) + " lineto\n"
-                                 + OString::number(pRect->left) + " "
-                                 + OString::number(pRect->bottom) + " lineto\n"
-                                 "closepath\n"
-                                 "clip\n"
-                                 "newpath\n" );
-                }
-
-                // #107797# Write out buffer
-
-                *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>( aBuf.getLength() - 2 );
-                Escape ( getHDC(), nEscape, aBuf.getLength(), aBuf.getStr(), nullptr );
-
-                // #107797# Write out EPS transformation code
-
-                double  dM11 = nWidth / ( nBoundingBox[2] - nBoundingBox[0] );
-                double  dM22 = nHeight / (nBoundingBox[1] - nBoundingBox[3] );
-                // reserve a sal_uInt16 again
-                aBuf.setLength( 2 );
-                aBuf.append( "\n\n[" + OString::number(dM11) + " 0 0 " + OString::number(dM22) + " "
-                             + OString::number(nX - ( dM11 * nBoundingBox[0] )) + " "
-                             + OString::number(nY - ( dM22 * nBoundingBox[3] )) + "] concat\n"
-                             "%%BeginDocument:\n" );
-                *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>( aBuf.getLength() - 2 );
-                Escape ( getHDC(), nEscape, aBuf.getLength(), aBuf.getStr(), nullptr );
-
-                // #107797# Write out actual EPS content
-
-                sal_uLong   nToDo = nSize;
-                sal_uLong   nDoNow;
-                while ( nToDo )
-                {
-                    nDoNow = nToDo;
-                    if ( nToDo > POSTSCRIPT_BUFSIZE - 2 )
-                        nDoNow = POSTSCRIPT_BUFSIZE - 2;
-                    // the following is based on the string buffer allocation
-                    // of size POSTSCRIPT_BUFSIZE at construction time of aBuf
-                    *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>(nDoNow);
-                    memcpy( const_cast<char *>(aBuf.getStr() + 2), static_cast<BYTE*>(pPtr) + nSize - nToDo, nDoNow );
-                    sal_uLong nResult = Escape ( getHDC(), nEscape, nDoNow + 2, aBuf.getStr(), nullptr );
-                    if (!nResult )
-                        break;
-                    nToDo -= nResult;
-                }
-
-                // #107797# Write out EPS encapsulation footer
-
-                // reserve a sal_uInt16 again
-                aBuf.setLength( 2 );
-                aBuf.append( "%%EndDocument\n"
-                             "count op_count_salWin sub {pop} repeat\n"
-                             "countdictstack dict_count_salWin sub {end} repeat\n"
-                             "b4_Inc_state_salWin restore\n\n" );
-                *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>( aBuf.getLength() - 2 );
-                Escape ( getHDC(), nEscape, aBuf.getLength(), aBuf.getStr(), nullptr );
-                bRetValue = true;
-            }
-        }
+        aBuf.append( "\nnewpath\n"
+                     + OString::number(pRect->left) + " " + OString::number(pRect->top)
+                     + " moveto\n"
+                     + OString::number(pRect->right) + " " + OString::number(pRect->top)
+                     + " lineto\n"
+                     + OString::number(pRect->right) + " "
+                     + OString::number(pRect->bottom) + " lineto\n"
+                     + OString::number(pRect->left) + " "
+                     + OString::number(pRect->bottom) + " lineto\n"
+                     "closepath\n"
+                     "clip\n"
+                     "newpath\n" );
     }
 
-    return bRetValue;
+    // #107797# Write out buffer
+
+    *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>( aBuf.getLength() - 2 );
+    Escape ( getHDC(), nEscape, aBuf.getLength(), aBuf.getStr(), nullptr );
+
+    // #107797# Write out EPS transformation code
+
+    double  dM11 = nWidth / ( nBoundingBox[2] - nBoundingBox[0] );
+    double  dM22 = nHeight / (nBoundingBox[1] - nBoundingBox[3] );
+    // reserve a sal_uInt16 again
+    aBuf.setLength( 2 );
+    aBuf.append( "\n\n[" + OString::number(dM11) + " 0 0 " + OString::number(dM22) + " "
+                 + OString::number(nX - ( dM11 * nBoundingBox[0] )) + " "
+                 + OString::number(nY - ( dM22 * nBoundingBox[3] )) + "] concat\n"
+                 "%%BeginDocument:\n" );
+    *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>( aBuf.getLength() - 2 );
+    Escape ( getHDC(), nEscape, aBuf.getLength(), aBuf.getStr(), nullptr );
+
+    // #107797# Write out actual EPS content
+
+    sal_uLong   nToDo = nSize;
+    sal_uLong   nDoNow;
+    while ( nToDo )
+    {
+        nDoNow = nToDo;
+        if ( nToDo > POSTSCRIPT_BUFSIZE - 2 )
+            nDoNow = POSTSCRIPT_BUFSIZE - 2;
+        // the following is based on the string buffer allocation
+        // of size POSTSCRIPT_BUFSIZE at construction time of aBuf
+        *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>(nDoNow);
+        memcpy( const_cast<char *>(aBuf.getStr() + 2), static_cast<BYTE*>(pPtr) + nSize - nToDo, nDoNow );
+        sal_uLong nResult = Escape ( getHDC(), nEscape, nDoNow + 2, aBuf.getStr(), nullptr );
+        if (!nResult )
+            break;
+        nToDo -= nResult;
+    }
+
+    // #107797# Write out EPS encapsulation footer
+
+    // reserve a sal_uInt16 again
+    aBuf.setLength( 2 );
+    aBuf.append( "%%EndDocument\n"
+                 "count op_count_salWin sub {pop} repeat\n"
+                 "countdictstack dict_count_salWin sub {end} repeat\n"
+                 "b4_Inc_state_salWin restore\n\n" );
+    *reinterpret_cast<sal_uInt16*>(const_cast<char *>(aBuf.getStr())) = static_cast<sal_uInt16>( aBuf.getLength() - 2 );
+    Escape ( getHDC(), nEscape, aBuf.getLength(), aBuf.getStr(), nullptr );
+
+    return true;
 }
 
 SystemGraphicsData WinSalGraphics::GetGraphicsData() const

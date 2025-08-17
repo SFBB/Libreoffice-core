@@ -19,28 +19,26 @@
 
 #pragma once
 
-#include "Resource.h"       // main symbols
+#include "Resource.h" // main symbols
 
 #include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/accessibility/XAccessibleRelationSet.hpp>
 #include "UNOXWrapper.h"
+
+using css::accessibility::AccessibleRelationType;
 
 /**
  * CAccRelation implements IAccessibleRelation interface.
  */
-class ATL_NO_VTABLE CAccRelation :
-            public CComObjectRoot,
-            public CComCoClass<CAccRelation, &CLSID_AccRelation>,
-            public IAccessibleRelation,
-            public CUNOXWrapper
+class ATL_NO_VTABLE CAccRelation : public CComObjectRoot,
+                                   public CComCoClass<CAccRelation, &CLSID_AccRelation>,
+                                   public IAccessibleRelation,
+                                   public CUNOXWrapper
 {
 public:
-    CAccRelation()
-    {
-            }
-    virtual ~CAccRelation()
-    {
-            }
+    CAccRelation() {}
+    virtual ~CAccRelation() {}
 
     DECLARE_NO_REGISTRY()
 
@@ -58,33 +56,31 @@ public:
 #pragma clang diagnostic pop
 #endif
 
-    // IAccessibleRelation
 public:
     // IAccessibleRelation
 
     // Gets what the type of relation is.
-    STDMETHOD(get_relationType)(BSTR * relationType) override;
+    STDMETHOD(get_relationType)(BSTR* relationType) override;
 
     // Gets what the type of localized relation is.
-    STDMETHOD(get_localizedRelationType)(BSTR * relationType) override;
+    STDMETHOD(get_localizedRelationType)(BSTR* relationType) override;
 
     // Gets how many targets this relation have.
-    STDMETHOD(get_nTargets)(long * nTargets) override;
+    STDMETHOD(get_nTargets)(long* nTargets) override;
 
     // Gets one accessible relation target.
-    STDMETHOD(get_target)(long targetIndex, IUnknown * * target) override;
+    STDMETHOD(get_target)(long targetIndex, IUnknown** target) override;
 
     // Gets multiple accessible relation targets.
-    STDMETHOD(get_targets)(long maxTargets, IUnknown * * target, long * nTargets) override;
+    STDMETHOD(get_targets)(long maxTargets, IUnknown** target, long* nTargets) override;
 
     // Override of IUNOXWrapper.
     STDMETHOD(put_XSubInterface)(hyper pXSubInterface) override;
 
-    //static OLECHAR* getRelationTypeOLECHAR(int type);
-    static BSTR getRelationTypeBSTR(int type);
+    static const wchar_t* mapToIA2RelationType(AccessibleRelationType eUnoRelationType);
+    static AccessibleRelationType mapToUnoRelationType(const BSTR aIA2RelationType);
 
 private:
-
     css::accessibility::AccessibleRelation relation;
 };
 

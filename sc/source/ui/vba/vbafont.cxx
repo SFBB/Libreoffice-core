@@ -56,7 +56,7 @@ uno::Any SAL_CALL
 ScVbaFont::getSize()
 {
     if ( GetDataSet() )
-        if (  GetDataSet()->GetItemState( ATTR_FONT_HEIGHT) == SfxItemState::DONTCARE )
+        if (  GetDataSet()->GetItemState( ATTR_FONT_HEIGHT) == SfxItemState::INVALID )
             return aNULL();
     return ScVbaFont_BASE::getSize();
 }
@@ -87,7 +87,7 @@ ScVbaFont::getColorIndex()
     if(mbFormControl)
         return uno::Any( sal_Int32(0) );
     if ( GetDataSet() )
-        if (  GetDataSet()->GetItemState( ATTR_FONT_COLOR) == SfxItemState::DONTCARE )
+        if (  GetDataSet()->GetItemState( ATTR_FONT_COLOR) == SfxItemState::INVALID )
             return aNULL();
     return ScVbaFont_BASE::getColorIndex();
 }
@@ -98,14 +98,14 @@ ScVbaFont::setStandardFontSize( const uno::Any& /*aValue*/ )
 //XXX #TODO# #FIXME#
     //mxFont->setPropertyValue("CharSize", ( uno::Any )fValue );
     throw uno::RuntimeException(
-        "setStandardFontSize not supported" );
+        u"setStandardFontSize not supported"_ustr );
 }
 
 uno::Any SAL_CALL
 ScVbaFont::getStandardFontSize()
 {
 //XXX #TODO# #FIXME#
-    throw uno::RuntimeException( "getStandardFontSize not supported" );
+    throw uno::RuntimeException( u"getStandardFontSize not supported"_ustr );
     // return uno::Any();
 }
 
@@ -113,14 +113,14 @@ void  SAL_CALL
 ScVbaFont::setStandardFont( const uno::Any& /*aValue*/ )
 {
 //XXX #TODO# #FIXME#
-    throw uno::RuntimeException("setStandardFont not supported" );
+    throw uno::RuntimeException(u"setStandardFont not supported"_ustr );
 }
 
 uno::Any SAL_CALL
 ScVbaFont::getStandardFont()
 {
 //XXX #TODO# #FIXME#
-    throw uno::RuntimeException("getStandardFont not supported");
+    throw uno::RuntimeException(u"getStandardFont not supported"_ustr);
     // return uno::Any();
 }
 
@@ -177,7 +177,7 @@ uno::Any SAL_CALL
 ScVbaFont::getBold()
 {
     if ( GetDataSet() )
-        if (  GetDataSet()->GetItemState( ATTR_FONT_WEIGHT) == SfxItemState::DONTCARE )
+        if (  GetDataSet()->GetItemState( ATTR_FONT_WEIGHT) == SfxItemState::INVALID )
             return aNULL();
     return ScVbaFont_BASE::getBold();
 }
@@ -212,10 +212,10 @@ ScVbaFont::setUnderline( const uno::Any& aValue )
             nValue = awt::FontUnderline::DOUBLE;
             break;
         default:
-            throw uno::RuntimeException("Unknown value for Underline" );
+            throw uno::RuntimeException(u"Unknown value for Underline"_ustr );
     }
 
-    mxFont->setPropertyValue("CharUnderline", uno::Any(nValue) );
+    mxFont->setPropertyValue(u"CharUnderline"_ustr, uno::Any(nValue) );
 
 }
 
@@ -223,7 +223,7 @@ uno::Any SAL_CALL
 ScVbaFont::getUnderline()
 {
     if ( GetDataSet() )
-        if (  GetDataSet()->GetItemState( ATTR_FONT_UNDERLINE) == SfxItemState::DONTCARE )
+        if (  GetDataSet()->GetItemState( ATTR_FONT_UNDERLINE) == SfxItemState::INVALID )
             return aNULL();
 
     sal_Int32 nValue = awt::FontUnderline::NONE;
@@ -231,7 +231,7 @@ ScVbaFont::getUnderline()
     if(mbFormControl)
         return uno::Any( nValue );
 
-    mxFont->getPropertyValue("CharUnderline") >>= nValue;
+    mxFont->getPropertyValue(u"CharUnderline"_ustr) >>= nValue;
     switch ( nValue )
     {
         case  awt::FontUnderline::DOUBLE:
@@ -244,7 +244,7 @@ ScVbaFont::getUnderline()
             nValue = excel::XlUnderlineStyle::xlUnderlineStyleNone;
             break;
         default:
-            throw uno::RuntimeException("Unknown value retrieved for Underline" );
+            throw uno::RuntimeException(u"Unknown value retrieved for Underline"_ustr );
 
     }
     return uno::Any( nValue );
@@ -254,7 +254,7 @@ uno::Any SAL_CALL
 ScVbaFont::getStrikethrough()
 {
     if ( GetDataSet() )
-        if (  GetDataSet()->GetItemState( ATTR_FONT_CROSSEDOUT) == SfxItemState::DONTCARE )
+        if (  GetDataSet()->GetItemState( ATTR_FONT_CROSSEDOUT) == SfxItemState::INVALID )
             return aNULL();
     return ScVbaFont_BASE::getStrikethrough();
 }
@@ -263,7 +263,7 @@ uno::Any SAL_CALL
 ScVbaFont::getShadow()
 {
     if ( GetDataSet() )
-        if (  GetDataSet()->GetItemState( ATTR_FONT_SHADOWED) == SfxItemState::DONTCARE )
+        if (  GetDataSet()->GetItemState( ATTR_FONT_SHADOWED) == SfxItemState::INVALID )
             return aNULL();
     return ScVbaFont_BASE::getShadow();
 }
@@ -272,7 +272,7 @@ uno::Any SAL_CALL
 ScVbaFont::getItalic()
 {
     if ( GetDataSet() )
-        if (  GetDataSet()->GetItemState( ATTR_FONT_POSTURE) == SfxItemState::DONTCARE )
+        if (  GetDataSet()->GetItemState( ATTR_FONT_POSTURE) == SfxItemState::INVALID )
             return aNULL();
 
     return ScVbaFont_BASE::getItalic();
@@ -282,7 +282,7 @@ uno::Any SAL_CALL
 ScVbaFont::getName()
 {
     if ( GetDataSet() )
-        if (  GetDataSet()->GetItemState( ATTR_FONT) == SfxItemState::DONTCARE )
+        if (  GetDataSet()->GetItemState( ATTR_FONT) == SfxItemState::INVALID )
             return aNULL();
     return ScVbaFont_BASE::getName();
 }
@@ -290,7 +290,7 @@ uno::Any
 ScVbaFont::getColor()
 {
     // #TODO #FIXME - behave like getXXX above ( wrt. GetDataSet )
-    uno::Any aAny = OORGBToXLRGB( mxFont->getPropertyValue("CharColor") );
+    uno::Any aAny = OORGBToXLRGB( mxFont->getPropertyValue(u"CharColor"_ustr) );
     return aAny;
 }
 
@@ -298,22 +298,22 @@ void  SAL_CALL
 ScVbaFont::setOutlineFont( const uno::Any& aValue )
 {
     if(!mbFormControl)
-        mxFont->setPropertyValue("CharContoured", aValue );
+        mxFont->setPropertyValue(u"CharContoured"_ustr, aValue );
 }
 
 uno::Any SAL_CALL
 ScVbaFont::getOutlineFont()
 {
     if ( GetDataSet() )
-        if (  GetDataSet()->GetItemState( ATTR_FONT_CONTOUR) == SfxItemState::DONTCARE )
+        if (  GetDataSet()->GetItemState( ATTR_FONT_CONTOUR) == SfxItemState::INVALID )
             return aNULL();
-    return mbFormControl ? uno::Any( false ) : mxFont->getPropertyValue("CharContoured");
+    return mbFormControl ? uno::Any( false ) : mxFont->getPropertyValue(u"CharContoured"_ustr);
 }
 
 OUString
 ScVbaFont::getServiceImplName()
 {
-    return "ScVbaFont";
+    return u"ScVbaFont"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -321,7 +321,7 @@ ScVbaFont::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.excel.Font"
+        u"ooo.vba.excel.Font"_ustr
     };
     return aServiceNames;
 }

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_SALOBJ_HXX
-#define INCLUDED_VCL_INC_SALOBJ_HXX
+#pragma once
 
 #include <vcl/dllapi.h>
 #include <vcl/syschild.hxx>
@@ -54,7 +53,7 @@ public:
 
     virtual void                    SetLeaveEnterBackgrounds(const css::uno::Sequence<css::uno::Any>& /*rLeaveArgs*/, const css::uno::Sequence<css::uno::Any>& /*rEnterArgs*/) {}
 
-    virtual const SystemEnvData*    GetSystemData() const = 0;
+    virtual const SystemEnvData&    GetSystemData() const = 0;
 
     virtual Size GetOptimalSize() const { return Size(); }
 
@@ -73,7 +72,5 @@ public:
     bool                            IsEraseBackgroundEnabled() const
                                         { return m_bEraseBackground; }
 };
-
-#endif // INCLUDED_VCL_INC_SALOBJ_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

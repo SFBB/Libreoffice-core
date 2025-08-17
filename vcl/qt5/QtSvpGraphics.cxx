@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -8,8 +8,6 @@
  */
 
 #include <sal/config.h>
-#include <sal/log.hxx>
-#include <salbmp.hxx>
 
 #include <config_cairo_canvas.h>
 
@@ -20,8 +18,6 @@
 #include <QtSvpSurface.hxx>
 #include <QtTools.hxx>
 
-#include <QtGui/QScreen>
-#include <QtGui/QWindow>
 #include <QtWidgets/QWidget>
 
 QtSvpGraphics::QtSvpGraphics(QtFrame* pFrame)
@@ -39,9 +35,8 @@ void QtSvpGraphics::updateQWidget() const
 {
     if (!m_pFrame)
         return;
-    QWidget* pQWidget = m_pFrame->GetQWidget();
-    if (pQWidget)
-        pQWidget->update(pQWidget->rect());
+    QWidget& rQWidget = m_pFrame->GetQWidget();
+    rQWidget.update(rQWidget.rect());
 }
 
 #if ENABLE_CAIRO_CANVAS
@@ -95,20 +90,7 @@ void QtSvpGraphics::handleDamage(const tools::Rectangle& rDamagedRegion)
 
 void QtSvpGraphics::GetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY)
 {
-    char* pForceDpi;
-    if ((pForceDpi = getenv("SAL_FORCEDPI")))
-    {
-        OString sForceDPI(pForceDpi);
-        rDPIX = rDPIY = sForceDPI.toInt32();
-        return;
-    }
-
-    if (!m_pFrame)
-        return;
-
-    QScreen* pScreen = m_pFrame->GetQWidget()->screen();
-    rDPIX = pScreen->logicalDotsPerInchX() * pScreen->devicePixelRatio() + 0.5;
-    rDPIY = pScreen->logicalDotsPerInchY() * pScreen->devicePixelRatio() + 0.5;
+    QtGraphicsBase::ImplGetResolution(m_pFrame, rDPIX, rDPIY);
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -61,11 +61,8 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::frame::status;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::ui;
 
 
 SFX_IMPL_TOOLBOX_CONTROL_ARG(SfxToolBoxControl, SfxStringItem, true);
@@ -219,7 +216,7 @@ SfxItemState SfxToolBoxControl::GetItemState(
                         All other displayed values should be reset to the default
                         if possible.
 
-                        SfxItemState::DONTCARE
+                        SfxItemState::INVALID
                         Enabled but there were only ambiguous values available
                         (i.e. none that could be queried).
 
@@ -233,8 +230,8 @@ SfxItemState SfxToolBoxControl::GetItemState(
     return !pState
                 ? SfxItemState::DISABLED
                 : IsInvalidItem(pState)
-                    ? SfxItemState::DONTCARE
-                    : pState->isVoidItem() && !pState->Which()
+                    ? SfxItemState::INVALID
+                    : IsDisabledItem(pState)
                         ? SfxItemState::UNKNOWN
                         : SfxItemState::DEFAULT;
 }
@@ -357,9 +354,9 @@ void SAL_CALL SfxToolBoxControl::statusChanged( const FeatureStateEvent& rEvent 
                 SfxItemState tmpState = static_cast<SfxItemState>(aItemStatus.State);
                 // make sure no-one tries to send us a combination of states
                 if (tmpState != SfxItemState::UNKNOWN && tmpState != SfxItemState::DISABLED &&
-                    tmpState != SfxItemState::DONTCARE &&
+                    tmpState != SfxItemState::INVALID &&
                     tmpState != SfxItemState::DEFAULT && tmpState != SfxItemState::SET)
-                    throw css::uno::RuntimeException("unknown status");
+                    throw css::uno::RuntimeException(u"unknown status"_ustr);
                 eState = tmpState;
                 pItem.reset(new SfxVoidItem( nSlotId ));
             }
@@ -464,7 +461,7 @@ void SfxToolBoxControl::StateChangedAtToolBoxControl
         }
         break;
 
-        case SfxItemState::DONTCARE:
+        case SfxItemState::INVALID:
         {
             eTri = TRISTATE_INDET;
             nItemBits |= ToolBoxItemBits::CHECKABLE;

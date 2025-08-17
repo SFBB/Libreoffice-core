@@ -36,9 +36,6 @@ namespace com::sun::star {
     namespace embed {
         class XStorage;
     }
-    namespace xml::sax {
-        class XFastParser;
-    }
     namespace document {
         class XGraphicStorageHandler;
     }
@@ -138,13 +135,13 @@ protected:
     virtual OUString SAL_CALL
         getImplementationName() override
     {
-        return "com.sun.star.comp.chart2.report.XMLFilter";
+        return u"com.sun.star.comp.chart2.report.XMLFilter"_ustr;
     }
     // ____ XImporter ____
     virtual void SAL_CALL setTargetDocument(
         const css::uno::Reference< css::lang::XComponent >& Document ) override
     {
-        setDocumentHandler( "com.sun.star.comp.report.ImportDocumentHandler" );
+        setDocumentHandler( u"com.sun.star.comp.report.ImportDocumentHandler"_ustr );
         XMLFilter::setTargetDocument(Document);
     }
 
@@ -152,7 +149,7 @@ protected:
     virtual void SAL_CALL setSourceDocument(
         const css::uno::Reference< css::lang::XComponent >& Document ) override
     {
-        setDocumentHandler( "com.sun.star.comp.report.ExportDocumentHandler" );
+        setDocumentHandler( u"com.sun.star.comp.report.ExportDocumentHandler"_ustr );
         XMLFilter::setSourceDocument(Document);
     }
 

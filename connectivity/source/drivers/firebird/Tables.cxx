@@ -30,7 +30,6 @@ using namespace ::osl;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::uno;
@@ -42,7 +41,7 @@ void Tables::impl_refresh()
     static_cast<Catalog&>(m_rParent).refreshTables();
 }
 
-ObjectType Tables::createObject(const OUString& rName)
+css::uno::Reference< css::beans::XPropertySet > Tables::createObject(const OUString& rName)
 {
     // Only retrieving a single table, so table type is irrelevant (param 4)
     uno::Reference< XResultSet > xTables = m_xMetaData->getTables(Any(),
@@ -51,14 +50,14 @@ ObjectType Tables::createObject(const OUString& rName)
                                                                   uno::Sequence< OUString >());
 
     if (!xTables.is())
-        throw RuntimeException("Could not acquire table.");
+        throw RuntimeException(u"Could not acquire table."_ustr);
 
     uno::Reference< XRow > xRow(xTables,UNO_QUERY_THROW);
 
     if (!xTables->next())
         throw RuntimeException();
 
-    ObjectType xRet(new Table(this,
+    css::uno::Reference< css::beans::XPropertySet > xRet(new Table(this,
                               m_rMutex,
                               m_xMetaData->getConnection(),
                               xRow->getString(3), // Name
@@ -66,7 +65,7 @@ ObjectType Tables::createObject(const OUString& rName)
                               xRow->getString(5))); // Description / Remarks / Comments
 
     if (xTables->next())
-        throw RuntimeException("Found more tables than expected.");
+        throw RuntimeException(u"Found more tables than expected."_ustr);
 
     return xRet;
 }
@@ -127,14 +126,14 @@ uno::Reference< XPropertySet > Tables::createDescriptor()
 }
 
 //----- XAppend ---------------------------------------------------------------
-ObjectType Tables::appendObject(const OUString& rName,
+css::uno::Reference< css::beans::XPropertySet > Tables::appendObject(const OUString& rName,
                                 const uno::Reference< XPropertySet >& rDescriptor)
 {
    /* OUString sSql(::dbtools::createSqlCreateTableStatement(rDescriptor,
                                                             m_xMetaData->getConnection())); */
     OUStringBuffer aSqlBuffer("CREATE TABLE ");
     OUString sCatalog, sSchema, sComposedName, sTable;
-    const Reference< XConnection>& xConnection = m_xMetaData->getConnection();
+    const Reference< XConnection> xConnection = m_xMetaData->getConnection();
 
     ::dbtools::OPropertyMap& rPropMap = OMetaConnection::getPropMap();
 
@@ -150,7 +149,7 @@ ObjectType Tables::appendObject(const OUString& rName,
         + " (");
 
     // columns
-    Reference<XColumnsSupplier> xColumnSup(rDescriptor,UNO_QUERY);
+    Reference<XColumnsSupplier> xColumnSup(rDescriptor, UNO_QUERY_THROW);
     Reference<XIndexAccess> xColumns(xColumnSup->getColumns(),UNO_QUERY);
     // check if there are columns
     if(!xColumns.is() || !xColumns->getCount())
@@ -167,20 +166,19 @@ ObjectType Tables::appendObject(const OUString& rName,
                 + ",");
         }
     }
-    OUString sSql = aSqlBuffer.makeStringAndClear();
 
     const OUString sKeyStmt = ::dbtools::createStandardKeyStatement(rDescriptor,xConnection);
     if ( !sKeyStmt.isEmpty() )
-        sSql += sKeyStmt;
+        aSqlBuffer.append(sKeyStmt);
     else
     {
-        if ( sSql.endsWith(",") )
-            sSql = sSql.replaceAt(sSql.getLength()-1, 1, u")");
+        if (aSqlBuffer[aSqlBuffer.getLength() - 1] == ',')
+            aSqlBuffer[aSqlBuffer.getLength() - 1] = ')';
         else
-            sSql += ")";
+            aSqlBuffer.append(")");
     }
 
-    m_xMetaData->getConnection()->createStatement()->execute(sSql);
+    m_xMetaData->getConnection()->createStatement()->execute(OUString::unacquired(aSqlBuffer));
 
     return createObject(rName);
 }
@@ -194,7 +192,7 @@ void Tables::dropObject(sal_Int32 nPosition, const OUString& sName)
         return;
 
     OUString sType;
-    xTable->getPropertyValue("Type") >>= sType;
+    xTable->getPropertyValue(u"Type"_ustr) >>= sType;
 
     const OUString sQuoteString = m_xMetaData->getIdentifierQuoteString();
 

@@ -30,6 +30,7 @@ class SVXCORE_DLLPUBLIC XLineStyleItem final : public SfxEnumItem<css::drawing::
 {
 public:
                             static SfxPoolItem* CreateDefault();
+                            DECLARE_ITEM_TYPE_FUNCTION(XLineStyleItem)
                             XLineStyleItem(css::drawing::LineStyle = css::drawing::LineStyle_SOLID);
     virtual XLineStyleItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
@@ -40,7 +41,6 @@ public:
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText, const IntlWrapper& ) const override;
-    virtual sal_uInt16          GetValueCount() const override;
 };
 
 #endif

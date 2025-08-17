@@ -34,9 +34,10 @@
 #include <editeng/escapementitem.hxx>
 #include <editeng/pmdlitem.hxx>
 #include <sfx2/htmlmode.hxx>
-#include <editeng/scripttypeitem.hxx>
+#include <editeng/scriptsetitem.hxx>
 #include <editeng/frmdiritem.hxx>
 #include <editeng/cmapitem.hxx>
+#include <editeng/nhypitem.hxx>
 #include <osl/diagnose.h>
 #include <paratr.hxx>
 
@@ -73,7 +74,7 @@ void SwTextShell::ExecCharAttr(SfxRequest &rReq)
                                 Get( nWhich )).GetValue() ? STATE_ON : STATE_OFF;
     }
 
-    SfxItemSetFixed<RES_CHRATR_BEGIN, RES_CHRATR_END-1> aSet( GetPool() );
+    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_CHRATR_BEGIN, RES_CHRATR_END-1>(GetPool()));
     if (STATE_TOGGLE == eState)
         rSh.GetCurAttr( aSet );
 
@@ -191,6 +192,13 @@ void SwTextShell::ExecCharAttr(SfxRequest &rReq)
             if( !rSh.HasReadonlySel() && rSh.IsEndPara())
                 rSh.DontExpandFormat();
         break;
+        case FN_NO_BREAK:
+        {
+            bool bNoHyphen = aSet.Get(RES_CHRATR_NOHYPHEN).GetValue();
+            SvxNoHyphenItem aNoHyphen( !bNoHyphen, RES_CHRATR_NOHYPHEN );
+            rSh.SetAttrItem( aNoHyphen );
+        }
+        break;
         default:
             OSL_FAIL("wrong  dispatcher");
             return;
@@ -213,7 +221,7 @@ void SwTextShell::ExecCharAttrArgs(SfxRequest &rReq)
             pColl = nullptr;
     }
     SfxItemPool& rPool = GetPool();
-    sal_uInt16 nWhich = rPool.GetWhich( nSlot );
+    sal_uInt16 nWhich = rPool.GetWhichIDFromSlotID( nSlot );
     switch (nSlot)
     {
         case FN_TXTATR_INET:
@@ -316,10 +324,9 @@ void SwTextShell::ExecParaAttr(SfxRequest &rReq)
     const SfxItemSet* pArgs = rReq.GetArgs();
 
     // Get both attributes immediately isn't more expensive!!
-    SfxItemSetFixed
-        <RES_PARATR_LINESPACING, RES_PARATR_ADJUST,
-        RES_FRAMEDIR, RES_FRAMEDIR>  aSet( GetPool() );
-
+    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_PARATR_LINESPACING, RES_PARATR_ADJUST,
+                                                    RES_PARATR_HYPHENZONE, RES_PARATR_HYPHENZONE,
+                                                    RES_FRAMEDIR, RES_FRAMEDIR>(GetPool()));
     sal_uInt16 nSlot = rReq.GetSlot();
     switch (nSlot)
     {
@@ -346,15 +353,15 @@ void SwTextShell::ExecParaAttr(SfxRequest &rReq)
 SET_ADJUST:
         {
             aSet.Put(SvxAdjustItem(eAdjst,RES_PARATR_ADJUST));
-            rReq.AppendItem( SfxBoolItem( GetPool().GetWhich(nSlot), true ) );
+            rReq.AppendItem( SfxBoolItem( GetPool().GetWhichIDFromSlotID(nSlot), true ) );
         }
         break;
 
         case SID_ATTR_PARA_LINESPACE:
-            if(pArgs && SfxItemState::SET == pArgs->GetItemState( GetPool().GetWhich(nSlot) ))
+            if(pArgs && SfxItemState::SET == pArgs->GetItemState( GetPool().GetWhichIDFromSlotID(nSlot) ))
             {
                 SvxLineSpacingItem aLineSpace = static_cast<const SvxLineSpacingItem&>( pArgs->Get(
-                                                            GetPool().GetWhich(nSlot)));
+                                                            GetPool().GetWhichIDFromSlotID(nSlot)));
                 aSet.Put( aLineSpace );
             }
         break;
@@ -379,7 +386,7 @@ SET_LINESPACE:
         case SID_ATTR_PARA_LEFT_TO_RIGHT :
         case SID_ATTR_PARA_RIGHT_TO_LEFT :
         {
-            SfxItemSetFixed<RES_PARATR_ADJUST, RES_PARATR_ADJUST>  aAdjustSet( GetPool() );
+            SfxItemSet aAdjustSet(SfxItemSet::makeFixedSfxItemSet<RES_PARATR_ADJUST, RES_PARATR_ADJUST>(GetPool()));
             GetShell().GetCurAttr(aAdjustSet);
             bool bChgAdjust = false;
             SfxItemState eAdjustState = aAdjustSet.GetItemState(RES_PARATR_ADJUST, false);
@@ -433,6 +440,18 @@ SET_LINESPACE:
             }
         }
         break;
+        case SID_ATTR_PARA_HYPHENZONE:
+        {
+            SfxItemSet aHyphSet(SfxItemSet::makeFixedSfxItemSet<RES_PARATR_HYPHENZONE, RES_PARATR_HYPHENZONE>(GetPool()));
+            GetShell().GetCurAttr(aHyphSet);
+            SfxItemState eState = aHyphSet.GetItemState(RES_PARATR_HYPHENZONE, false);
+            if ( eState >= SfxItemState::DEFAULT )
+            {
+                SvxHyphenZoneItem aHyphen( pArgs->Get( RES_PARATR_HYPHENZONE ) );
+                aSet.Put( aHyphen );
+            }
+        }
+        break;
 
         default:
             OSL_FAIL("wrong  dispatcher");
@@ -457,19 +476,19 @@ void SwTextShell::ExecParaAttrArgs(SfxRequest &rReq)
 
     sal_uInt16 nSlot = rReq.GetSlot();
     if(pArgs)
-        pArgs->GetItemState(GetPool().GetWhich(nSlot), false, &pItem);
+        pArgs->GetItemState(GetPool().GetWhichIDFromSlotID(nSlot), false, &pItem);
     switch ( nSlot )
     {
         case FN_DROP_CHAR_STYLE_NAME:
             if( pItem )
             {
                 OUString sCharStyleName = static_cast<const SfxStringItem*>(pItem)->GetValue();
-                SfxItemSetFixed<RES_PARATR_DROP, RES_PARATR_DROP> aSet(GetPool());
+                SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_PARATR_DROP, RES_PARATR_DROP>(GetPool()));
                 rSh.GetCurAttr(aSet);
                 SwFormatDrop aDropItem(aSet.Get(RES_PARATR_DROP));
                 SwCharFormat* pFormat = nullptr;
                 if(!sCharStyleName.isEmpty())
-                    pFormat = rSh.FindCharFormatByName( sCharStyleName );
+                    pFormat = rSh.FindCharFormatByName( UIName(sCharStyleName) );
                 aDropItem.SetCharFormat( pFormat );
                 aSet.Put(aDropItem);
                 rSh.SetAttrSet(aSet);
@@ -484,8 +503,8 @@ void SwTextShell::ExecParaAttrArgs(SfxRequest &rReq)
             }
             else
             {
-                SfxItemSetFixed<RES_PARATR_DROP, RES_PARATR_DROP,
-                               HINT_END, HINT_END>  aSet(GetPool());
+                SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_PARATR_DROP, RES_PARATR_DROP,
+                                                                HINT_END, HINT_END>(GetPool()));
                 rSh.GetCurAttr(aSet);
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
                 ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateSwDropCapsDialog(GetView().GetFrameWeld(), aSet));
@@ -517,8 +536,8 @@ void SwTextShell::ExecParaAttrArgs(SfxRequest &rReq)
         {
             if(pItem)
             {
-                SfxItemSetFixed<RES_PAGEDESC,   RES_PAGEDESC,
-                    SID_ATTR_PARA_MODEL, SID_ATTR_PARA_MODEL>  aCoreSet( GetPool() );
+                SfxItemSet aCoreSet(SfxItemSet::makeFixedSfxItemSet<RES_PAGEDESC, RES_PAGEDESC,
+                                                                    SID_ATTR_PARA_MODEL, SID_ATTR_PARA_MODEL>(GetPool()));
                 aCoreSet.Put(*pItem);
                 SfxToSwPageDescAttr( rSh, aCoreSet);
                 rSh.SetAttrSet(aCoreSet);
@@ -552,7 +571,7 @@ void SwTextShell::GetAttrState(SfxItemSet &rSet)
     SfxItemState eState = aCoreSet.GetItemState(RES_PARATR_ADJUST, false, &pItem);
 
     if( SfxItemState::DEFAULT == eState )
-        pItem = &rPool.GetDefaultItem(RES_PARATR_ADJUST);
+        pItem = &rPool.GetUserOrPoolDefaultItem(RES_PARATR_ADJUST);
     if( SfxItemState::DEFAULT <= eState )
     {
         eAdjust = static_cast<const SvxAdjustItem* >( pItem)->GetAdjust();
@@ -562,14 +581,14 @@ void SwTextShell::GetAttrState(SfxItemSet &rSet)
     short nEsc = 0;
     eState =  aCoreSet.GetItemState(RES_CHRATR_ESCAPEMENT, false, &pItem);
     if( SfxItemState::DEFAULT == eState )
-        pItem = &rPool.GetDefaultItem(RES_CHRATR_ESCAPEMENT);
+        pItem = &rPool.GetUserOrPoolDefaultItem(RES_CHRATR_ESCAPEMENT);
     if( eState >= SfxItemState::DEFAULT )
         nEsc = static_cast<const SvxEscapementItem* >(pItem)->GetEsc();
 
     sal_uInt16 nLineSpace = 0;
     eState =  aCoreSet.GetItemState(RES_PARATR_LINESPACING, false, &pItem);
     if( SfxItemState::DEFAULT == eState )
-        pItem = &rPool.GetDefaultItem(RES_PARATR_LINESPACING);
+        pItem = &rPool.GetUserOrPoolDefaultItem(RES_PARATR_LINESPACING);
     if( SfxItemState::DEFAULT <= eState &&
             static_cast<const SvxLineSpacingItem* >(pItem)->GetLineSpaceRule() == SvxLineSpaceRule::Auto )
     {
@@ -583,7 +602,7 @@ void SwTextShell::GetAttrState(SfxItemSet &rSet)
     SvxCaseMap eCaseMap = SvxCaseMap::NotMapped;
     eState = aCoreSet.GetItemState(RES_CHRATR_CASEMAP, false, &pItem);
     if (eState == SfxItemState::DEFAULT)
-        pItem = &rPool.GetDefaultItem(RES_CHRATR_CASEMAP);
+        pItem = &rPool.GetUserOrPoolDefaultItem(RES_CHRATR_CASEMAP);
     if (eState >= SfxItemState::DEFAULT)
         eCaseMap = static_cast<const SvxCaseMapItem*>(pItem)->GetCaseMap();
 
@@ -750,7 +769,9 @@ void SwTextShell::GetAttrState(SfxItemSet &rSet)
                     SvxFirstLineIndentItem const& rFirstLine(aCoreSet.Get(RES_MARGIN_FIRSTLINE));
                     SvxTextLeftMarginItem const& rLeftMargin(aCoreSet.Get(RES_MARGIN_TEXTLEFT));
                     SvxRightMarginItem const& rRightMargin(aCoreSet.Get(RES_MARGIN_RIGHT));
-                    aLR.SetTextFirstLineOffset(rFirstLine.GetTextFirstLineOffset(), rFirstLine.GetPropTextFirstLineOffset());
+
+                    aLR.SetTextFirstLineOffset(rFirstLine.GetTextFirstLineOffset(),
+                                               rFirstLine.GetPropTextFirstLineOffset());
                     aLR.SetAutoFirst(rFirstLine.IsAutoFirst());
                     aLR.SetTextLeft(rLeftMargin.GetTextLeft(), rLeftMargin.GetPropLeft());
                     aLR.SetRight(rRightMargin.GetRight(), rRightMargin.GetPropRight());
@@ -803,15 +824,14 @@ void SwTextShell::GetAttrState(SfxItemSet &rSet)
             case SID_ATTR_CHAR_KERNING:
             case RES_PARATR_DROP:
             {
-                rSet.Put(aCoreSet.Get( GetPool().GetWhich(nSlot)));
+                rSet.Put(aCoreSet.Get( GetPool().GetWhichIDFromSlotID(nSlot)));
                 nSlot = 0;
             }
             break;
             case SID_ATTR_PARA_MODEL:
             {
-                SfxItemSetFixed
-                        <RES_PAGEDESC,RES_PAGEDESC,
-                        SID_ATTR_PARA_MODEL,SID_ATTR_PARA_MODEL>  aTemp(GetPool());
+                SfxItemSet aTemp(SfxItemSet::makeFixedSfxItemSet<RES_PAGEDESC, RES_PAGEDESC,
+                                                                 SID_ATTR_PARA_MODEL, SID_ATTR_PARA_MODEL>(GetPool()));
                 aTemp.Put(aCoreSet);
                 ::SwToSfxPageDescAttr(aTemp);
                 rSet.Put(aTemp.Get(SID_ATTR_PARA_MODEL));
@@ -820,14 +840,32 @@ void SwTextShell::GetAttrState(SfxItemSet &rSet)
             break;
             case RES_TXTATR_INETFMT:
             {
-                SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT> aSet(GetPool());
+                SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT>(GetPool()));
                 rSh.GetCurAttr(aSet);
                 const SfxPoolItem& rItem = aSet.Get(RES_TXTATR_INETFMT);
                 rSet.Put(rItem);
                 nSlot = 0;
             }
             break;
+            case FN_NO_BREAK:
+            {
+                SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_CHRATR_NOHYPHEN, RES_CHRATR_NOHYPHEN>(GetPool()));
+                rSh.GetCurAttr(aSet);
+                const SfxPoolItem& rItem = aSet.Get(RES_CHRATR_NOHYPHEN);
 
+                SwWrtShell& rWrtSh = GetShell();
+                // add "No Break" menu item to the context menu, if the word
+                // has "no break" setting, or it is hyphenated
+                if ( static_cast<const SvxNoHyphenItem&>(rItem).GetValue() || ( rWrtSh.GetCursor()
+                        && rWrtSh.GetCursor()->IsInHyphenatedWord(*rWrtSh.GetLayout()) ) )
+                {
+                    rSet.Put(rItem);
+                }
+                else
+                    rSet.DisableItem(nSlot);
+                nSlot = 0;
+            }
+            break;
             default:
             // Do nothing
             nSlot = 0;

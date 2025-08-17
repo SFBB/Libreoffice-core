@@ -21,16 +21,15 @@
 #include "PresenterConfigurationAccess.hxx"
 #include "PresenterController.hxx"
 #include "PresenterFrameworkObserver.hxx"
-#include "PresenterHelper.hxx"
 #include "PresenterPaneContainer.hxx"
 #include "PresenterPaneFactory.hxx"
 #include "PresenterViewFactory.hxx"
 #include "PresenterWindowManager.hxx"
 #include <DrawController.hxx>
+#include <ResourceId.hxx>
+#include <framework/ConfigurationController.hxx>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/drawing/framework/ResourceId.hpp>
-#include <com/sun/star/drawing/framework/ResourceActivationMode.hpp>
 #include <com/sun/star/presentation/XPresentation2.hpp>
 #include <com/sun/star/presentation/XPresentationSupplier.hpp>
 #include <com/sun/star/document/XEventBroadcaster.hpp>
@@ -46,6 +45,8 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::presentation;
 using namespace ::com::sun::star::drawing::framework;
+
+constexpr OUString FULL_SCREEN_PANE_URL = u"private:resource/pane/FullScreenPane"_ustr;
 
 namespace sdext::presenter {
 
@@ -96,7 +97,7 @@ Sequence< OUString > SAL_CALL PresenterScreenJob::getSupportedServiceNames()
 
 OUString SAL_CALL PresenterScreenJob::getImplementationName()
 {
-    return "org.libreoffice.comp.PresenterScreenJob";
+    return u"org.libreoffice.comp.PresenterScreenJob"_ustr;
 }
 
 sal_Bool SAL_CALL PresenterScreenJob::supportsService(const OUString& aServiceName)
@@ -148,7 +149,7 @@ Any SAL_CALL PresenterScreenJob::execute(
         pProp->Value >>= xModel;
 
     Reference< XServiceInfo > xInfo( xModel, UNO_QUERY );
-    if( xInfo.is() && xInfo->supportsService("com.sun.star.presentation.PresentationDocument") )
+    if( xInfo.is() && xInfo->supportsService(u"com.sun.star.presentation.PresentationDocument"_ustr) )
     {
         // Create a new listener that waits for the full screen presentation
         // to start and to end.  It takes care of its own lifetime.
@@ -202,7 +203,7 @@ void SAL_CALL PresenterScreenListener::notifyEvent( const css::document::EventOb
     if (rBHelper.bDisposed || rBHelper.bInDispose)
     {
         throw lang::DisposedException (
-            "PresenterScreenListener object has already been disposed",
+            u"PresenterScreenListener object has already been disposed"_ustr,
             static_cast<uno::XWeak*>(this));
     }
 
@@ -218,6 +219,20 @@ void SAL_CALL PresenterScreenListener::notifyEvent( const css::document::EventOb
         {
             mpPresenterScreen->RequestShutdownPresenterScreen();
             mpPresenterScreen = nullptr;
+        }
+    }
+    else if ( Event.EventName == "ShapeModified" )
+    {
+        if (mpPresenterScreen.is())
+        {
+            Reference<drawing::XShape> xShape(Event.Source, UNO_QUERY);
+
+            if (xShape.is())
+            {
+                // when presenter is used and shape changes, check
+                // and evtl. trigger update of 'NextSlide' view
+                mpPresenterScreen->CheckNextSlideUpdate(xShape);
+            }
         }
     }
 }
@@ -240,9 +255,16 @@ void SAL_CALL PresenterScreenListener::disposing (const css::lang::EventObject&)
 PresenterScreen::PresenterScreen (
     const Reference<XComponentContext>& rxContext,
     css::uno::Reference<css::frame::XModel2> xModel)
-    : PresenterScreenInterfaceBase(m_aMutex),
-      mxModel(std::move(xModel)),
-      mxContextWeak(rxContext)
+: PresenterScreenInterfaceBase(m_aMutex)
+, mxModel(std::move(xModel))
+, mxController()
+, mxContextWeak(rxContext)
+, mpPresenterController()
+, mxSavedConfiguration()
+, mpPaneContainer()
+, mxPaneFactory()
+, mxViewFactory()
+, mbIsInitialized(false)
 {
 }
 
@@ -255,9 +277,9 @@ bool PresenterScreen::isPresenterScreenEnabled(const css::uno::Reference<css::un
         bool dEnablePresenterScreen=true;
         PresenterConfigurationAccess aConfiguration (
             rxContext,
-            "/org.openoffice.Office.Impress/",
+            u"/org.openoffice.Office.Impress/"_ustr,
             PresenterConfigurationAccess::READ_ONLY);
-        aConfiguration.GetConfigurationNode("Misc/Start/EnablePresenterScreen")
+        aConfiguration.GetConfigurationNode(u"Misc/Start/EnablePresenterScreen"_ustr)
             >>= dEnablePresenterScreen;
         return dEnablePresenterScreen;
 }
@@ -267,28 +289,26 @@ bool PresenterScreen::isPresenterScreenFullScreen(const css::uno::Reference<css:
     bool dPresenterScreenFullScreen = true;
     PresenterConfigurationAccess aConfiguration (
         rxContext,
-        "/org.openoffice.Office.Impress/",
+        u"/org.openoffice.Office.Impress/"_ustr,
         PresenterConfigurationAccess::READ_ONLY);
-    aConfiguration.GetConfigurationNode("Misc/Start/PresenterScreenFullScreen")
+    aConfiguration.GetConfigurationNode(u"Misc/Start/PresenterScreenFullScreen"_ustr)
         >>= dPresenterScreenFullScreen;
     return dPresenterScreenFullScreen;
 }
 
 void SAL_CALL PresenterScreen::disposing()
 {
-    Reference<XConfigurationController> xCC (mxConfigurationControllerWeak);
+    rtl::Reference<::sd::framework::ConfigurationController> xCC (mxConfigurationControllerWeak);
     if (xCC.is() && mxSavedConfiguration.is())
     {
         xCC->restoreConfiguration(mxSavedConfiguration);
     }
-    mxConfigurationControllerWeak = Reference<XConfigurationController>(nullptr);
+    mxConfigurationControllerWeak.clear();
 
-    Reference<lang::XComponent> xViewFactoryComponent (mxViewFactory, UNO_QUERY);
-    if (xViewFactoryComponent.is())
-       xViewFactoryComponent->dispose();
-    Reference<lang::XComponent> xPaneFactoryComponent (mxPaneFactory, UNO_QUERY);
-    if (xPaneFactoryComponent.is())
-        xPaneFactoryComponent->dispose();
+    if (mxViewFactory.is())
+       mxViewFactory->dispose();
+    if (mxPaneFactory.is())
+        mxPaneFactory->dispose();
 
     mxModel = nullptr;
 }
@@ -303,10 +323,13 @@ void SAL_CALL PresenterScreen::disposing (const lang::EventObject& /*rEvent*/)
 
 void PresenterScreen::InitializePresenterScreen()
 {
+    // IASS: already initialized (may even assert here?)
+    if (mbIsInitialized)
+        return;
+
     try
     {
-        Reference<XComponentContext> xContext (mxContextWeak);
-        mpPaneContainer = new PresenterPaneContainer(xContext);
+        mpPaneContainer = new PresenterPaneContainer();
 
         Reference<XPresentationSupplier> xPS ( mxModel, UNO_QUERY_THROW);
         Reference<XPresentation2> xPresentation(xPS->getPresentation(), UNO_QUERY_THROW);
@@ -333,10 +356,11 @@ void PresenterScreen::InitializePresenterScreen()
         }
         // Get the XController from the first argument.
 
-        Reference<XConfigurationController> xCC( mxController->getConfigurationController());
-        mxConfigurationControllerWeak = xCC;
+        rtl::Reference<::sd::framework::ConfigurationController> xCC( mxController->getConfigurationController());
+        mxConfigurationControllerWeak = xCC.get();
 
-        Reference<drawing::framework::XResourceId> xMainPaneId(
+        Reference<XComponentContext> xContext(mxContextWeak);
+        rtl::Reference<sd::framework::ResourceId> xMainPaneId(
             GetMainPaneId(xPresentation, xContext));
         // An empty reference means that the presenter screen can
         // not or must not be displayed.
@@ -360,7 +384,7 @@ void PresenterScreen::InitializePresenterScreen()
                 // panes and does not replace them.
                 xCC->requestResourceActivation(
                     xMainPaneId,
-                    ResourceActivationMode_ADD);
+                    sd::framework::ResourceActivationMode::ADD);
                 SetupConfiguration(xContext, xMainPaneId);
 
                 mpPresenterController = new PresenterController(
@@ -388,6 +412,9 @@ void PresenterScreen::InitializePresenterScreen()
     catch (const Exception&)
     {
     }
+
+    // IASS: Remember we are initialized
+    mbIsInitialized = true;
 }
 
 void PresenterScreen::SwitchMonitors()
@@ -412,9 +439,18 @@ void PresenterScreen::SwitchMonitors()
 
         // Set the new presentation display
         Reference<beans::XPropertySet> xProperties (xPresentation, UNO_QUERY_THROW);
-        xProperties->setPropertyValue("Display", Any(nNewScreen));
+        xProperties->setPropertyValue(u"Display"_ustr, Any(nNewScreen));
     } catch (const uno::Exception &) {
     }
+}
+
+void PresenterScreen::CheckNextSlideUpdate(const Reference<drawing::XShape>& rxShape)
+{
+    if (nullptr == mpPresenterController)
+        return;
+
+    // forward to PresenterController if used
+    mpPresenterController->CheckNextSlideUpdate(rxShape);
 }
 
 /**
@@ -433,7 +469,7 @@ sal_Int32 PresenterScreen::GetPresenterScreenNumber (
         // Determine the screen on which the full screen presentation is being
         // displayed.
         sal_Int32 nDisplayNumber (-1);
-        if ( ! (rxPresentation->getPropertyValue("Display") >>= nDisplayNumber))
+        if ( ! (rxPresentation->getPropertyValue(u"Display"_ustr) >>= nDisplayNumber))
             return -1;
         if (nDisplayNumber == -1)
         {
@@ -470,12 +506,12 @@ sal_Int32 PresenterScreen::GetPresenterScreenNumber (
             Reference<XComponentContext> xContext (mxContextWeak);
             PresenterConfigurationAccess aConfiguration (
                 xContext,
-                "/org.openoffice.Office.PresenterScreen/",
+                u"/org.openoffice.Office.PresenterScreen/"_ustr,
                 PresenterConfigurationAccess::READ_ONLY);
             bool bStartAlways (false);
             bool bPresenterScreenFullScreen = isPresenterScreenFullScreen(xContext);
             if (aConfiguration.GetConfigurationNode(
-                "Presenter/StartAlways") >>= bStartAlways)
+                u"Presenter/StartAlways"_ustr) >>= bStartAlways)
             {
                 if (bStartAlways || !bPresenterScreenFullScreen)
                     return GetPresenterScreenFromScreen(nScreenNumber);
@@ -520,7 +556,7 @@ sal_Int32 PresenterScreen::GetPresenterScreenFromScreen( sal_Int32 nPresentation
     return nPresenterScreenNumber;
 }
 
-Reference<drawing::framework::XResourceId> PresenterScreen::GetMainPaneId (
+rtl::Reference<sd::framework::ResourceId> PresenterScreen::GetMainPaneId (
     const Reference<presentation::XPresentation2>& rxPresentation,
     const Reference<XComponentContext>& xContext) const
 {
@@ -531,12 +567,11 @@ Reference<drawing::framework::XResourceId> PresenterScreen::GetMainPaneId (
         return nullptr;
 
     auto fullScreenStr = isPresenterScreenFullScreen(xContext)
-        ? OUString("true")
-        : OUString("false");
+        ? u"true"_ustr
+        : u"false"_ustr;
 
-    return ResourceId::create(
-        Reference<XComponentContext>(mxContextWeak),
-        PresenterHelper::msFullScreenPaneURL
+    return new sd::framework::ResourceId(
+        FULL_SCREEN_PANE_URL
                 + "?FullScreen="
                 + fullScreenStr
                 + "&ScreenNumber="
@@ -545,10 +580,14 @@ Reference<drawing::framework::XResourceId> PresenterScreen::GetMainPaneId (
 
 void PresenterScreen::RequestShutdownPresenterScreen()
 {
+    // IASS: only cleanup when we are initialized
+    if (!mbIsInitialized)
+        return;
+
     // Restore the configuration that was active before the presenter screen
     // has been activated.  Now, that the presenter screen is displayed in
     // its own top level window this probably not necessary, but one never knows.
-    Reference<XConfigurationController> xCC (mxConfigurationControllerWeak);
+    rtl::Reference<::sd::framework::ConfigurationController> xCC (mxConfigurationControllerWeak);
     if (xCC.is() && mxSavedConfiguration.is())
     {
         xCC->restoreConfiguration(mxSavedConfiguration);
@@ -567,18 +606,19 @@ void PresenterScreen::RequestShutdownPresenterScreen()
             [xSelf=std::move(xSelf)](bool){ return xSelf->ShutdownPresenterScreen(); });
         xCC->update();
     }
+
+    // IASS: reset to non-initialized
+    mbIsInitialized = false;
 }
 
 void PresenterScreen::ShutdownPresenterScreen()
 {
-    Reference<lang::XComponent> xViewFactoryComponent (mxViewFactory, UNO_QUERY);
-    if (xViewFactoryComponent.is())
-        xViewFactoryComponent->dispose();
+    if (mxViewFactory.is())
+        mxViewFactory->dispose();
     mxViewFactory = nullptr;
 
-    Reference<lang::XComponent> xPaneFactoryComponent (mxPaneFactory, UNO_QUERY);
-    if (xPaneFactoryComponent.is())
-        xPaneFactoryComponent->dispose();
+    if (mxPaneFactory.is())
+        mxPaneFactory->dispose();
     mxPaneFactory = nullptr;
 
     if (mpPresenterController)
@@ -586,7 +626,7 @@ void PresenterScreen::ShutdownPresenterScreen()
         mpPresenterController->dispose();
         mpPresenterController.clear();
     }
-    mpPaneContainer = new PresenterPaneContainer(Reference<XComponentContext>(mxContextWeak));
+    mpPaneContainer = new PresenterPaneContainer();
 }
 
 void PresenterScreen::SetupPaneFactory (const Reference<XComponentContext>& rxContext)
@@ -623,19 +663,19 @@ void PresenterScreen::SetupViewFactory (const Reference<XComponentContext>& rxCo
 
 void PresenterScreen::SetupConfiguration (
     const Reference<XComponentContext>& rxContext,
-    const Reference<XResourceId>& rxAnchorId)
+    const rtl::Reference<sd::framework::ResourceId>& rxAnchorId)
 {
     try
     {
         PresenterConfigurationAccess aConfiguration (
             rxContext,
-            "org.openoffice.Office.PresenterScreen",
+            u"org.openoffice.Office.PresenterScreen"_ustr,
             PresenterConfigurationAccess::READ_ONLY);
         maViewDescriptors.clear();
         ProcessViewDescriptions(aConfiguration);
-        OUString sLayoutName ("DefaultLayout");
+        OUString sLayoutName (u"DefaultLayout"_ustr);
         aConfiguration.GetConfigurationNode(
-            "Presenter/CurrentLayout") >>= sLayoutName;
+            u"Presenter/CurrentLayout"_ustr) >>= sLayoutName;
         ProcessLayout(aConfiguration, sLayoutName, rxContext, rxAnchorId);
     }
     catch (const RuntimeException&)
@@ -647,7 +687,7 @@ void PresenterScreen::ProcessLayout (
     PresenterConfigurationAccess& rConfiguration,
     std::u16string_view rsLayoutName,
     const Reference<XComponentContext>& rxContext,
-    const Reference<XResourceId>& rxAnchorId)
+    const rtl::Reference<sd::framework::ResourceId>& rxAnchorId)
 {
     try
     {
@@ -660,7 +700,7 @@ void PresenterScreen::ProcessLayout (
         OUString sParentLayout;
         PresenterConfigurationAccess::GetConfigurationNode(
             xLayoutNode,
-            "ParentLayout") >>= sParentLayout;
+            u"ParentLayout"_ustr) >>= sParentLayout;
         if (!sParentLayout.isEmpty())
         {
             // Prevent infinite recursion.
@@ -672,24 +712,24 @@ void PresenterScreen::ProcessLayout (
         Reference<container::XNameAccess> xList (
             PresenterConfigurationAccess::GetConfigurationNode(
                 xLayoutNode,
-                "Layout"),
+                u"Layout"_ustr),
             UNO_QUERY_THROW);
 
         ::std::vector<OUString> aProperties
         {
-            "PaneURL",
-            "ViewURL",
-            "RelativeX",
-            "RelativeY",
-            "RelativeWidth",
-            "RelativeHeight"
+            u"PaneURL"_ustr,
+            u"ViewURL"_ustr,
+            u"RelativeX"_ustr,
+            u"RelativeY"_ustr,
+            u"RelativeWidth"_ustr,
+            u"RelativeHeight"_ustr
         };
         PresenterConfigurationAccess::ForAll(
             xList,
             aProperties,
-            [this, rxContext, rxAnchorId](std::vector<uno::Any> const& rArgs)
+            [this, rxAnchorId](std::vector<uno::Any> const& rArgs)
             {
-                this->ProcessComponent(rArgs, rxContext, rxAnchorId);
+                this->ProcessComponent(rArgs, rxAnchorId);
             });
     }
     catch (const RuntimeException&)
@@ -703,15 +743,15 @@ void PresenterScreen::ProcessViewDescriptions (
     try
     {
         Reference<container::XNameAccess> xViewDescriptionsNode (
-            rConfiguration.GetConfigurationNode("Presenter/Views"),
+            rConfiguration.GetConfigurationNode(u"Presenter/Views"_ustr),
             UNO_QUERY_THROW);
 
         ::std::vector<OUString> aProperties
         {
-            "ViewURL",
-            "Title",
-            "AccessibleTitle",
-            "IsOpaque"
+            u"ViewURL"_ustr,
+            u"Title"_ustr,
+            u"AccessibleTitle"_ustr,
+            u"IsOpaque"_ustr
         };
         PresenterConfigurationAccess::ForAll(
             xViewDescriptionsNode,
@@ -729,8 +769,7 @@ void PresenterScreen::ProcessViewDescriptions (
 
 void PresenterScreen::ProcessComponent (
     const ::std::vector<Any>& rValues,
-    const Reference<XComponentContext>& rxContext,
-    const Reference<XResourceId>& rxAnchorId)
+    const rtl::Reference<sd::framework::ResourceId>& rxAnchorId)
 {
     if (rValues.size() != 6)
         return;
@@ -753,7 +792,6 @@ void PresenterScreen::ProcessComponent (
         if (nX>=0 && nY>=0 && nWidth>0 && nHeight>0)
         {
             SetupView(
-                rxContext,
                 rxAnchorId,
                 sPaneURL,
                 sViewURL,
@@ -782,7 +820,7 @@ void PresenterScreen::ProcessViewDescription (
         rValues[3] >>= aViewDescriptor.mbIsOpaque;
         if (aViewDescriptor.msAccessibleTitle.isEmpty())
             aViewDescriptor.msAccessibleTitle = aViewDescriptor.msTitle;
-        maViewDescriptors[sViewURL] = aViewDescriptor;
+        maViewDescriptors[sViewURL] = std::move(aViewDescriptor);
     }
     catch (const Exception&)
     {
@@ -791,17 +829,16 @@ void PresenterScreen::ProcessViewDescription (
 }
 
 void PresenterScreen::SetupView(
-    const Reference<XComponentContext>& rxContext,
-    const Reference<XResourceId>& rxAnchorId,
+    const rtl::Reference<sd::framework::ResourceId>& rxAnchorId,
     const OUString& rsPaneURL,
     const OUString& rsViewURL,
     const PresenterPaneContainer::ViewInitializationFunction& rViewInitialization)
 {
-    Reference<XConfigurationController> xCC (mxConfigurationControllerWeak);
+    rtl::Reference<::sd::framework::ConfigurationController> xCC (mxConfigurationControllerWeak);
     if (!xCC.is())
         return;
 
-    Reference<XResourceId> xPaneId (ResourceId::createWithAnchor(rxContext,rsPaneURL,rxAnchorId));
+    rtl::Reference<sd::framework::ResourceId> xPaneId (new sd::framework::ResourceId(rsPaneURL,rxAnchorId));
     // Look up the view descriptor.
     ViewDescriptor aViewDescriptor;
     ViewDescriptorContainer::const_iterator iDescriptor (maViewDescriptors.find(rsViewURL));
@@ -809,7 +846,7 @@ void PresenterScreen::SetupView(
         aViewDescriptor = iDescriptor->second;
 
     // Prepare the pane.
-    OSL_ASSERT(mpPaneContainer);
+    assert(mpPaneContainer);
     mpPaneContainer->PreparePane(
         xPaneId,
         rsViewURL,

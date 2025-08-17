@@ -69,7 +69,7 @@ GtkSalDisplay::~GtkSalDisplay()
 
     for(GdkCursor* & rpCsr : m_aCursors)
         if( rpCsr )
-            gdk_cursor_unref( rpCsr );
+            g_object_unref(rpCsr);
 #endif
 }
 
@@ -302,10 +302,8 @@ GdkCursor *GtkSalDisplay::getCursor( PointerStyle ePointerStyle )
     return m_aCursors[ ePointerStyle ];
 }
 
-int GtkSalDisplay::CaptureMouse( SalFrame* pSFrame )
+int GtkSalDisplay::CaptureMouse(GtkSalFrame* pFrame)
 {
-    GtkSalFrame* pFrame = static_cast<GtkSalFrame*>(pSFrame);
-
     if( !pFrame )
     {
         if( m_pCapture )
@@ -459,6 +457,9 @@ static GtkStyleProvider* CreateStyleProvider()
       "spinbutton.small-button, spinbutton.small-button entry, spinbutton.small-button button { "
       "padding: 0; margin-left: 0; margin-right: 0; margin-top: 0; margin-bottom: 0;"
       "border-width: 0; min-height: 0; min-width: 0; }"
+      // tdf#161662 the bullet list is too tall with the Arabic text in it, remove its vert padding
+      "combobox.novertpad *.combo, box#combobox.novertpad *.combo { "
+      "padding-top: 0; padding-bottom: 0; }"
 #if GTK_CHECK_VERSION(4, 0, 0)
       // we basically assumed during dialog design that the frame's were invisible, because
       // they used to be in the default theme during gtk3
@@ -867,9 +868,9 @@ GtkWidget* GtkSalDisplay::findGtkWidgetForNativeHandle(sal_uIntPtr hWindow) cons
 {
     for (auto pSalFrame : m_aFrames )
     {
-        const SystemEnvData* pEnvData = pSalFrame->GetSystemData();
-        if (pEnvData->GetWindowHandle(pSalFrame) == hWindow)
-            return GTK_WIDGET(pEnvData->pWidget);
+        const SystemEnvData& rEnvData = pSalFrame->GetSystemData();
+        if (rEnvData.GetWindowHandle(pSalFrame) == hWindow)
+            return GTK_WIDGET(rEnvData.pWidget);
     }
     return nullptr;
 }

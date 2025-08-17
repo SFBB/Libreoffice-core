@@ -24,6 +24,7 @@
 #include <drawingml/chart/chartspacemodel.hxx>
 #include <drawingml/chart/plotareacontext.hxx>
 #include <drawingml/chart/titlecontext.hxx>
+#include <drawingml/chart/datasourcecontext.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
@@ -51,18 +52,24 @@ ContextHandlerRef ChartSpaceFragment::onCreateContext( sal_Int32 nElement, const
             {
                 case C_TOKEN( chartSpace ):
                     return this;
+                case CX_TOKEN(chartSpace) :
+                    return this;
             }
         break;
 
         case C_TOKEN( chartSpace ):
             switch( nElement )
             {
+                case C_TOKEN ( date1904 ):
+                    mrModel.mbDate1904 = rAttribs.getBool( XML_val, false );
+                    return nullptr;
                 case C_TOKEN( chart ):
                     return this;
                 case C_TOKEN( spPr ):
                     return new ShapePropertiesContext( *this, mrModel.mxShapeProp.create() );
                 case C_TOKEN( style ):
                     mrModel.mnStyle = rAttribs.getInteger( XML_val, 2 );
+                    mrModel.mbExplicitStyle = true;
                     return nullptr;
                 case C_TOKEN( txPr ):
                     return new TextBodyContext( *this, mrModel.mxTextProp.create() );
@@ -134,6 +141,58 @@ ContextHandlerRef ChartSpaceFragment::onCreateContext( sal_Int32 nElement, const
                     return new View3DContext( *this, mrModel.mxView3D.create(bMSO2007Document) );
             }
         break;
+
+        // chartex handling
+        case CX_TOKEN(chartSpace) :
+            switch (nElement) {
+                case CX_TOKEN(chartData):
+                    return new DataSourceCxContext(*this, mrModel.maCxData.create());
+                case CX_TOKEN(chart):
+                    return this;
+                case CX_TOKEN(spPr):
+                    return new ShapePropertiesContext( *this, mrModel.mxShapeProp.create() );
+                case CX_TOKEN(txPr):
+                    return new TextBodyContext( *this, mrModel.mxTextProp.create() );
+                case CX_TOKEN(clrMapOvr):
+                    // TODO
+                    return nullptr;
+                case CX_TOKEN(fmtOvrs):
+                    // TODO
+                    return nullptr;
+                case CX_TOKEN(printSettings):
+                    // TODO
+                    return nullptr;
+                case CX_TOKEN(extLst):
+                    // TODO
+                    return nullptr;
+                default:
+                    // shouldn't happen
+                    assert(false);
+
+            }
+            break;
+        case CX_TOKEN(chart) :
+            switch (nElement) {
+                case CX_TOKEN(title):
+                    return new TitleContext( *this, mrModel.mxTitle.create() );
+                case CX_TOKEN(plotArea):
+                    return new PlotAreaContext( *this, mrModel.mxPlotArea.create() );
+                case CX_TOKEN(legend):
+                {
+                    const bool bOverlay = rAttribs.getBool(XML_overlay, false);
+                    const sal_Int32 nPos = rAttribs.getToken(XML_pos, XML_t);
+
+                    return new LegendContext( *this, mrModel.mxLegend.create(),
+                            bOverlay, nPos);
+                }
+                case CX_TOKEN(extLst):
+                    // TODO
+                    return nullptr;
+                default:
+                    // shouldn't happen
+                    assert(false);
+            }
+            break;
     }
     return nullptr;
 }

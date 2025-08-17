@@ -74,7 +74,7 @@ void SAL_CALL OReportEngineJFree::dispose()
 
 OUString OReportEngineJFree::getImplementationName_Static(  )
 {
-    return "com.sun.star.comp.report.OReportEngineJFree";
+    return u"com.sun.star.comp.report.OReportEngineJFree"_ustr;
 }
 
 
@@ -85,7 +85,7 @@ OUString SAL_CALL OReportEngineJFree::getImplementationName(  )
 
 uno::Sequence< OUString > OReportEngineJFree::getSupportedServiceNames_Static(  )
 {
-    uno::Sequence< OUString > aServices { "com.sun.star.report.ReportEngine" };
+    uno::Sequence< OUString > aServices { u"com.sun.star.report.ReportEngine"_ustr };
 
     return aServices;
 }
@@ -111,20 +111,27 @@ sal_Bool SAL_CALL OReportEngineJFree::supportsService(const OUString& ServiceNam
 uno::Reference< report::XReportDefinition > SAL_CALL OReportEngineJFree::getReportDefinition()
 {
     ::osl::MutexGuard aGuard(m_aMutex);
-    return m_xReport;
+    return m_pReport;
 }
 
 void SAL_CALL OReportEngineJFree::setReportDefinition( const uno::Reference< report::XReportDefinition >& _report )
 {
     if ( !_report.is() )
         throw lang::IllegalArgumentException();
+
+    rtl::Reference<reportdesign::OReportDefinition> pReport
+        = dynamic_cast<reportdesign::OReportDefinition*>(_report.get());
+    assert(pReport.is() && "Report is not an OReportDefinition instance");
+
     BoundListeners l;
     {
         ::osl::MutexGuard aGuard(m_aMutex);
-        if ( m_xReport != _report )
+        if (m_pReport != pReport)
         {
-            prepareSet(PROPERTY_REPORTDEFINITION, uno::Any(m_xReport), uno::Any(_report), &l);
-            m_xReport = _report;
+            prepareSet(PROPERTY_REPORTDEFINITION,
+                       uno::Any(uno::Reference<report::XReportDefinition>(m_pReport)),
+                       uno::Any(_report), &l);
+            m_pReport = pReport;
         }
     }
     l.notify();
@@ -145,15 +152,15 @@ OUString OReportEngineJFree::getNewOutputName()
 {
     ::osl::MutexGuard aGuard(m_aMutex);
     ::connectivity::checkDisposed(ReportEngineBase::rBHelper.bDisposed);
-    if ( !m_xReport.is() || !m_xActiveConnection.is() )
+    if (!m_pReport.is() || !m_xActiveConnection.is())
         throw lang::IllegalArgumentException();
 
     static constexpr OUString s_sMediaType = u"MediaType"_ustr;
 
     MimeConfigurationHelper aConfighelper(m_xContext);
-    const OUString sMimeType = m_xReport->getMimeType();
+    const OUString sMimeType = m_pReport->getMimeType();
     std::shared_ptr<const SfxFilter> pFilter = SfxFilter::GetDefaultFilter( aConfighelper.GetDocServiceNameFromMediaType(sMimeType) );
-    OUString sExt(".rpt");
+    OUString sExt(u".rpt"_ustr);
     if ( pFilter )
         sExt = ::comphelper::string::stripStart(pFilter->GetDefaultExtension(), '*');
 
@@ -165,13 +172,12 @@ OUString OReportEngineJFree::getNewOutputName()
     {
         xStorageProp->setPropertyValue( s_sMediaType, uno::Any(sMimeType));
     }
-    m_xReport->storeToStorage(xTemp,aEmpty); // store to temp file because it may contain information which isn't in the database yet.
+    m_pReport->storeToStorage(xTemp, aEmpty); // store to temp file because it may contain information which isn't in the database yet.
 
-    OUString sFileURL;
-    OUString sName = m_xReport->getCaption();
+    OUString sName = m_pReport->getCaption();
     if ( sName.isEmpty() )
-        sName = m_xReport->getName();
-    sFileURL = ::utl::CreateTempURL(sName, false, sExt);
+        sName = m_pReport->getName();
+    OUString sFileURL = ::utl::CreateTempURL(sName, false, sExt);
     if ( sFileURL.isEmpty() )
     {
         ::utl::TempFileNamed aTestFile(sName, false, sExt);
@@ -200,13 +206,13 @@ OUString OReportEngineJFree::getNewOutputName()
         aUserOpts.GetLastName();
 
     uno::Sequence< beans::NamedValue > aConvertedProperties{
-        {"InputStorage", uno::Any(xTemp) },
-        {"OutputStorage", uno::Any(xOut) },
-        {PROPERTY_REPORTDEFINITION, uno::Any(m_xReport) },
+        {u"InputStorage"_ustr, uno::Any(xTemp) },
+        {u"OutputStorage"_ustr, uno::Any(xOut) },
+        {PROPERTY_REPORTDEFINITION, uno::Any(uno::Reference<report::XReportDefinition>(m_pReport)) },
         {PROPERTY_ACTIVECONNECTION, uno::Any(m_xActiveConnection) },
         {PROPERTY_MAXROWS, uno::Any(m_nMaxRows) },
-        {"Author", uno::Any(sAuthor) },
-        {"Title", uno::Any(m_xReport->getCaption()) }
+        {u"Author"_ustr, uno::Any(sAuthor) },
+        {u"Title"_ustr, uno::Any(m_pReport->getCaption()) }
     };
 
     OUString sOutputName;
@@ -214,7 +220,7 @@ OUString OReportEngineJFree::getNewOutputName()
     // create job factory and initialize
     const OUString sReportEngineServiceName = ::dbtools::getDefaultReportEngineServiceName(m_xContext);
     uno::Reference<task::XJob> xJob(m_xContext->getServiceManager()->createInstanceWithContext(sReportEngineServiceName,m_xContext),uno::UNO_QUERY_THROW);
-    if ( !m_xReport->getCommand().isEmpty() )
+    if (!m_pReport->getCommand().isEmpty())
     {
         xJob->execute(aConvertedProperties);
         if ( xStorageProp.is() )
@@ -246,47 +252,45 @@ uno::Reference< frame::XModel > SAL_CALL OReportEngineJFree::createDocumentAlive
 
 uno::Reference< frame::XModel > OReportEngineJFree::createDocumentAlive( const uno::Reference< frame::XFrame >& _frame,bool _bHidden )
 {
-    uno::Reference< frame::XModel > xModel;
     OUString sOutputName = getNewOutputName(); // starts implicitly the report generator
-    if ( !sOutputName.isEmpty() )
+    if (sOutputName.isEmpty())
+        return nullptr;
+
+    ::osl::MutexGuard aGuard(m_aMutex);
+    ::connectivity::checkDisposed(ReportEngineBase::rBHelper.bDisposed);
+    uno::Reference<frame::XComponentLoader> xFrameLoad(_frame,uno::UNO_QUERY);
+    if ( !xFrameLoad.is() )
     {
-        ::osl::MutexGuard aGuard(m_aMutex);
-        ::connectivity::checkDisposed(ReportEngineBase::rBHelper.bDisposed);
-        uno::Reference<frame::XComponentLoader> xFrameLoad(_frame,uno::UNO_QUERY);
-        if ( !xFrameLoad.is() )
-        {
-            // if there is no frame given, find the right
-            xFrameLoad = frame::Desktop::create(m_xContext);
-            sal_Int32 const nFrameSearchFlag = frame::FrameSearchFlag::TASKS | frame::FrameSearchFlag::CREATE;
-            uno::Reference< frame::XFrame> xFrame = uno::Reference< frame::XFrame>(xFrameLoad,uno::UNO_QUERY_THROW)->findFrame("_blank",nFrameSearchFlag);
-            xFrameLoad.set( xFrame,uno::UNO_QUERY);
-        }
-
-        if ( xFrameLoad.is() )
-        {
-            uno::Sequence < beans::PropertyValue > aArgs( _bHidden ? 3 : 2 );
-            auto pArgs = aArgs.getArray();
-            sal_Int32 nLen = 0;
-            pArgs[nLen].Name = "AsTemplate";
-            pArgs[nLen++].Value <<= false;
-
-            pArgs[nLen].Name = "ReadOnly";
-            pArgs[nLen++].Value <<= true;
-
-            if ( _bHidden )
-            {
-                pArgs[nLen].Name = "Hidden";
-                pArgs[nLen++].Value <<= true;
-            }
-
-            xModel.set( xFrameLoad->loadComponentFromURL(
-                sOutputName,
-                OUString(), // empty frame name
-                0,
-                aArgs
-                ),uno::UNO_QUERY);
-        }
+        // if there is no frame given, find the right
+        xFrameLoad = frame::Desktop::create(m_xContext);
+        sal_Int32 const nFrameSearchFlag = frame::FrameSearchFlag::TASKS | frame::FrameSearchFlag::CREATE;
+        uno::Reference< frame::XFrame> xFrame = uno::Reference< frame::XFrame>(xFrameLoad,uno::UNO_QUERY_THROW)->findFrame(u"_blank"_ustr,nFrameSearchFlag);
+        xFrameLoad.set( xFrame,uno::UNO_QUERY);
     }
+
+    if (!xFrameLoad.is())
+        return nullptr;
+
+    uno::Sequence < beans::PropertyValue > aArgs( _bHidden ? 3 : 2 );
+    auto pArgs = aArgs.getArray();
+    sal_Int32 nLen = 0;
+    pArgs[nLen].Name = "AsTemplate";
+    pArgs[nLen++].Value <<= false;
+
+    pArgs[nLen].Name = "ReadOnly";
+    pArgs[nLen++].Value <<= true;
+
+    if ( _bHidden )
+    {
+        pArgs[nLen].Name = "Hidden";
+        pArgs[nLen++].Value <<= true;
+    }
+
+    uno::Reference<frame::XModel> xModel(
+        xFrameLoad->loadComponentFromURL(sOutputName,
+                                         OUString(), // empty frame name
+                                         0, aArgs),
+        uno::UNO_QUERY);
     return xModel;
 }
 

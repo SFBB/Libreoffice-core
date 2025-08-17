@@ -27,6 +27,9 @@
 #include <cassert>
 #include <vector>
 
+// Note: The loops in this file cannot be range-based
+// because vectors can change size during the loops.
+
 // broadcast immediately
 
 void SfxBroadcaster::Broadcast(const SfxHint& rHint)
@@ -131,7 +134,7 @@ void SfxBroadcaster::RemoveListener(SfxListener& rListener)
     m_RemovedPositions.push_back(positionOfRemovedElement);
 }
 
-void SfxBroadcaster::ForAllListeners(std::function<bool(SfxListener*)> f) const
+void SfxBroadcaster::ForAllListeners(const std::function<bool(SfxListener*)>& f) const
 {
     for (size_t i = 0; i < m_Listeners.size(); ++i)
     {
@@ -149,4 +152,5 @@ size_t SfxBroadcaster::GetListenerCount() const
     return m_Listeners.size() - m_RemovedPositions.size();
 }
 
+bool SfxBroadcaster::IsSfxStyleSheet() const { return false; }
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

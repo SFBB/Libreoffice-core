@@ -35,10 +35,10 @@ public:
 
     OUString createFileURL(std::u16string_view aFileBase);
     OUString createFilePath(std::u16string_view aFileBase);
-    void load(const OUString& rURL, const char* pPassword = nullptr);
+    void loadFromURL(const OUString& rURL, const char* pPassword = nullptr);
     void loadWithParams(const OUString& rURL,
                         const css::uno::Sequence<css::beans::PropertyValue>& rParams);
-    OUString loadFromURL(std::u16string_view aFileBase, const char* pPassword = nullptr);
+    OUString loadFromFile(std::u16string_view aFileBase, const char* pPassword = nullptr);
 
     css::uno::Any executeMacro(const OUString& rScriptURL,
                                const css::uno::Sequence<css::uno::Any>& rParams = {});
@@ -75,9 +75,8 @@ protected:
     rtl::Reference<TestInteractionHandler> xInteractionHandler;
 
 private:
-    void
-    setTestInteractionHandler(const char* pPassword,
-                              std::vector<com::sun::star::beans::PropertyValue>& rFilterOptions);
+    void setTestInteractionHandler(const char* pPassword,
+                                   std::vector<css::beans::PropertyValue>& rFilterOptions);
 
     bool mbSkipValidation;
     OUString m_aBaseString;
@@ -102,6 +101,18 @@ inline void assertRectangleEqual(const tools::Rectangle& rExpected, const tools:
 
 #define CPPUNIT_ASSERT_RECTANGLE_EQUAL_WITH_TOLERANCE(aExpected, aActual, aTolerance)              \
     assertRectangleEqual(aExpected, aActual, aTolerance, CPPUNIT_SOURCELINE())
+
+inline void assertPointEqual(const Point& rExpected, const Point& rActual,
+                             const sal_Int32 nTolerance, const CppUnit::SourceLine& rSourceLine)
+{
+    CPPUNIT_NS::assertDoubleEquals(rExpected.X(), rActual.X(), nTolerance, rSourceLine,
+                                   "different X");
+    CPPUNIT_NS::assertDoubleEquals(rExpected.Y(), rActual.Y(), nTolerance, rSourceLine,
+                                   "different Y");
+}
+
+#define CPPUNIT_ASSERT_POINT_EQUAL_WITH_TOLERANCE(aExpected, aActual, aTolerance)                  \
+    assertPointEqual(aExpected, aActual, aTolerance, CPPUNIT_SOURCELINE())
 
 #endif // INCLUDED_TEST_UNOAPI_TEST_HXX
 

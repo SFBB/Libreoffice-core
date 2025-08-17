@@ -46,7 +46,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::linguistic2;
 
 
@@ -395,7 +394,7 @@ Reference< XDictionary >  SvxSpellWrapper::GetAllRightDic()
                     Reference< frame::XStorable >  xStor( xTmp, UNO_QUERY );
                     if (xStor.is() && xStor->hasLocation() && !xStor->isReadonly())
                     {
-                        xDic = xTmp;
+                        xDic = std::move(xTmp);
                     }
                 }
             }

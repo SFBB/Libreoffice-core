@@ -47,11 +47,7 @@ SfxListener::SfxListener( const SfxListener &rOther )
 SfxListener::~SfxListener() COVERITY_NOEXCEPT_FALSE
 {
     // unregister at all remaining broadcasters
-    for ( size_t nPos = 0; nPos < maBCs.size(); ++nPos )
-    {
-        SfxBroadcaster *pBC = maBCs[nPos];
-        pBC->RemoveListener(*this);
-    }
+    EndListeningAll();
 }
 
 
@@ -59,13 +55,10 @@ SfxListener::~SfxListener() COVERITY_NOEXCEPT_FALSE
 
 void SfxListener::RemoveBroadcaster_Impl( SfxBroadcaster& rBroadcaster )
 {
-    auto it = std::find( maBCs.begin(), maBCs.end(), &rBroadcaster );
-    if (it != maBCs.end()) {
-        maBCs.erase( it );
+    std::erase(maBCs, &rBroadcaster);
 #ifdef DBG_UTIL
-        maCallStacks.erase( &rBroadcaster );
+    maCallStacks.erase( &rBroadcaster );
 #endif
-    }
 }
 
 
@@ -78,7 +71,7 @@ void SfxListener::RemoveBroadcaster_Impl( SfxBroadcaster& rBroadcaster )
 */
 void SfxListener::StartListening(SfxBroadcaster& rBroadcaster, DuplicateHandling eDuplicateHanding)
 {
-    bool bListeningAlready = IsListening( rBroadcaster );
+    bool bListeningAlready = eDuplicateHanding != DuplicateHandling::Allow && IsListening( rBroadcaster );
 
 #ifdef DBG_UTIL
     if (bListeningAlready && eDuplicateHanding == DuplicateHandling::Unexpected)
@@ -104,21 +97,17 @@ void SfxListener::StartListening(SfxBroadcaster& rBroadcaster, DuplicateHandling
 
 void SfxListener::EndListening( SfxBroadcaster& rBroadcaster, bool bRemoveAllDuplicates )
 {
-    auto beginIt = maBCs.begin();
-    do
+    for (auto it = std::find(maBCs.begin(), maBCs.end(), &rBroadcaster); it != maBCs.end();
+         it = std::find(it, maBCs.end(), &rBroadcaster))
     {
-        auto it = std::find( beginIt, maBCs.end(), &rBroadcaster );
-        if ( it == maBCs.end() )
-        {
-            break;
-        }
         rBroadcaster.RemoveListener(*this);
-        beginIt = maBCs.erase( it );
-#ifdef DBG_UTIL
-        maCallStacks.erase( &rBroadcaster );
-#endif
+        it = maBCs.erase(it);
+        if (!bRemoveAllDuplicates)
+            break;
     }
-    while ( bRemoveAllDuplicates );
+#ifdef DBG_UTIL
+    maCallStacks.erase(&rBroadcaster);
+#endif
 }
 
 
@@ -126,9 +115,7 @@ void SfxListener::EndListening( SfxBroadcaster& rBroadcaster, bool bRemoveAllDup
 
 void SfxListener::EndListeningAll()
 {
-    std::vector<SfxBroadcaster*> aBroadcasters;
-    std::swap(maBCs, aBroadcasters);
-    for (SfxBroadcaster *pBC : aBroadcasters)
+    for (SfxBroadcaster *pBC : std::vector(std::move(maBCs)))
         pBC->RemoveListener(*this);
 #ifdef DBG_UTIL
     maCallStacks.clear();

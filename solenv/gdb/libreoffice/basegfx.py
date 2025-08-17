@@ -60,8 +60,11 @@ class B2DPolygonPrinter(object):
     def _count(self):
         # It's a call into the inferior (being debugged) process.
         # Will not work with core dumps and can cause a deadlock.
-        return int(gdb.parse_and_eval(
-                "(('basegfx::B2DPolygon' *) {})->count()".format(self.value.address)))
+        if self.value.__str__() == "<unavailable>":
+            return 0
+        else:
+            return int(gdb.parse_and_eval(
+                    "(('basegfx::B2DPolygon' *) {})->count()".format(self.value.address)))
 
     def _isEmpty(self):
         return self._count() == 0
@@ -69,8 +72,11 @@ class B2DPolygonPrinter(object):
     def _hasCurves(self):
         # It's a call into the inferior (being debugged) process.
         # Will not work with core dumps and can cause a deadlock.
-        return int(gdb.parse_and_eval(
-                "(('basegfx::B2DPolygon' *) {})->areControlPointsUsed()".format(self.value.address))) != 0
+        if self.value.__str__() == "<unavailable>":
+            return False
+        else:
+            return int(gdb.parse_and_eval(
+                    "(('basegfx::B2DPolygon' *) {})->areControlPointsUsed()".format(self.value.address))) != 0
 
     def _children(self):
         if self._hasCurves():
@@ -98,7 +104,7 @@ class B2DPolygonPrinter(object):
             #          self.value.address, self.index))
             self.index += 1
             return ('point %d' % (self.index-1),
-                    '(%15f, %15f)' % (currPoint['mfX'], currPoint['mfY']))
+                    '(%15f, %15f)' % (currPoint['mnX'], currPoint['mnY']))
 
     class _bezierIterator(six.Iterator):
         def __init__(self, count, value):
@@ -110,6 +116,8 @@ class B2DPolygonPrinter(object):
             return self
 
         def __next__(self):
+            if self.value.__str__() == "<unavailable>":
+                raise StopIteration()
             if self.index >= self.count:
                 raise StopIteration()
             points = self.value['mpPolygon']['m_pimpl'].dereference()['m_value']['maPoints']['maVector']
@@ -129,9 +137,9 @@ class B2DPolygonPrinter(object):
             self.index += 1
             return ('point %d' % (self.index-1),
                     'p: (%15f, %15f) c-1: (%15f, %15f) c1: (%15f, %15f)' %
-                    (currPoint['mfX'],   currPoint['mfY'],
-                     prevControl['mfX'], prevControl['mfY'],
-                     nextControl['mfX'], nextControl['mfY']))
+                    (currPoint['mnX'],   currPoint['mnY'],
+                     prevControl['mnX'], prevControl['mnY'],
+                     nextControl['mnX'], nextControl['mnY']))
 
 class B2DPolyPolygonPrinter(object):
     '''Prints a B2DPolyPolygon object.'''
@@ -151,14 +159,20 @@ class B2DPolyPolygonPrinter(object):
     def _count(self):
         # It's a call into the inferior (being debugged) process.
         # Will not work with core dumps and can cause a deadlock.
-        return int(gdb.parse_and_eval(
-                "(('basegfx::B2DPolyPolygon' *) {})->count()".format(self.value.address)))
+        if self.value.__str__() == "<unavailable>":
+            return 0
+        else:
+            return int(gdb.parse_and_eval(
+                    "(('basegfx::B2DPolyPolygon' *) {})->count()".format(self.value.address)))
 
     def _isClosed(self):
         # It's a call into the inferior (being debugged) process.
         # Will not work with core dumps and can cause a deadlock.
-        return int(gdb.parse_and_eval(
-                "(('basegfx::B2DPolyPolygon' *) {})->isClosed()".format(self.value.address))) != 0
+        if self.value.__str__() == "<unavailable>":
+            return True
+        else:
+            return int(gdb.parse_and_eval(
+                    "(('basegfx::B2DPolyPolygon' *) {})->isClosed()".format(self.value.address))) != 0
 
     def _isEmpty(self):
         return self._count() == 0

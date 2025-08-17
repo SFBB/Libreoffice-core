@@ -54,7 +54,8 @@ typedef cppu::ImplInheritanceHelper< SfxUnoStyleSheet,
 class SdStyleSheet final : public SdStyleSheetBase
 {
 public:
-    SdStyleSheet( const OUString& rDisplayName, SfxStyleSheetBasePool& rPool, SfxStyleFamily eFamily, SfxStyleSearchBits nMask );
+    SdStyleSheet( const OUString& rDisplayName, SfxStyleSheetBasePool& rPool, SfxStyleFamily eFamily,
+            SfxStyleSearchBits nMask, const OUString& rParentStyleSheetName = u""_ustr );
 
     virtual bool        SetParent (const OUString& rParentName) override;
     virtual SfxItemSet& GetItemSet() override;
@@ -62,7 +63,7 @@ public:
     virtual bool        HasFollowSupport() const override;
     virtual bool        HasParentSupport() const override;
     virtual bool        HasClearParentSupport() const override;
-    virtual void        SetHelpId( const OUString& r, sal_uLong nId ) override;
+    virtual void        SetHelpId( const OUString& r, sal_uInt32 nId ) override;
 
     bool IsEditable();
 
@@ -86,9 +87,6 @@ public:
 
     // SfxStyleSheetBase
     virtual bool SetName(const OUString& rNewName, bool bReindexNow = true) override;
-
-    // XInterface
-    virtual void SAL_CALL release(  ) noexcept override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;

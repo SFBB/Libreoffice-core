@@ -18,7 +18,6 @@
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XDataPilotDescriptor.hpp>
 #include <com/sun/star/sheet/XDataPilotTables.hpp>
 #include <com/sun/star/sheet/XDataPilotTablesSupplier.hpp>
@@ -72,11 +71,11 @@ public:
 };
 
 ScDataPilotFieldsObj::ScDataPilotFieldsObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
     , XElementAccess(cppu::UnoType<beans::XPropertySet>::get())
     , XIndexAccess(6)
-    , XNameAccess("")
-    , XServiceInfo("ScDataPilotFieldsObj", "com.sun.star.sheet.DataPilotFields")
+    , XNameAccess(u""_ustr)
+    , XServiceInfo(u"ScDataPilotFieldsObj"_ustr, u"com.sun.star.sheet.DataPilotFields"_ustr)
 {
 }
 
@@ -108,7 +107,7 @@ uno::Reference<uno::XInterface> ScDataPilotFieldsObj::init()
                                                      uno::UNO_SET_THROW);
 
     xDPD->setSourceRange(table::CellRangeAddress(0, 0, 0, 4, 4));
-    xDPT->insertNewByName("DataPilotTable", table::CellAddress(0, 5, 5), xDPD);
+    xDPT->insertNewByName(u"DataPilotTable"_ustr, table::CellAddress(0, 5, 5), xDPD);
 
     return xDPD->getDataPilotFields();
 }
@@ -117,7 +116,7 @@ void ScDataPilotFieldsObj::setUp()
 {
     UnoApiTest::setUp();
     // create a calc document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScDataPilotFieldsObj);

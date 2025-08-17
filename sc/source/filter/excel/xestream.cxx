@@ -563,9 +563,10 @@ void XclExpBiff8Encrypter::Init( const Sequence< NamedValue >& rEncryptionData )
     maCodec.GetDocId( mpnDocId );
 
     // generate the salt here
-    rtlRandomPool aRandomPool = rtl_random_createPool ();
-    rtl_random_getBytes( aRandomPool, mpnSalt, 16 );
-    rtl_random_destroyPool( aRandomPool );
+    if (rtl_random_getBytes(nullptr, mpnSalt, 16) != rtl_Random_E_None)
+    {
+        throw uno::RuntimeException(u"rtl_random_getBytes failed"_ustr);
+    }
 
     memset( mpnSaltDigest, 0, sizeof( mpnSaltDigest ) );
 
@@ -954,19 +955,22 @@ sax_fastparser::FSHelperPtr XclExpXmlStream::CreateOutputStream (
     std::u16string_view sRelativeStream,
     const uno::Reference< XOutputStream >& xParentRelation,
     const char* sContentType,
-    std::u16string_view sRelationshipType,
-    OUString* pRelationshipId )
+    const OUString& sRelationshipType,
+    OUString* pRelationshipId,
+    // if bNoHeader is true, don't create a header (<?xml... ) line
+    bool bNoHeader /* = false */ )
 {
     OUString sRelationshipId;
     if (xParentRelation.is())
-        sRelationshipId = addRelation( xParentRelation, OUString(sRelationshipType), sRelativeStream );
+        sRelationshipId = addRelation( xParentRelation, sRelationshipType, sRelativeStream );
     else
-        sRelationshipId = addRelation( OUString(sRelationshipType), sRelativeStream );
+        sRelationshipId = addRelation( sRelationshipType, sRelativeStream );
 
     if( pRelationshipId )
         *pRelationshipId = sRelationshipId;
 
-    sax_fastparser::FSHelperPtr p = openFragmentStreamWithSerializer( sFullStream, OUString::createFromAscii( sContentType ) );
+    sax_fastparser::FSHelperPtr p = openFragmentStreamWithSerializer(
+            sFullStream, OUString::createFromAscii( sContentType ), bNoHeader );
 
     maOpenedStreamMap[ sFullStream ] = std::make_pair( sRelationshipId, p );
 
@@ -1032,7 +1036,7 @@ bool XclExpXmlStream::exportDocument()
     // NOTE: Don't use SotStorage or SvStream any more, and never call
     // SfxMedium::GetOutStream() anywhere in the xlsx export filter code!
     // Instead, write via XOutputStream instance.
-    tools::SvRef<SotStorage> rStorage = static_cast<SotStorage*>(nullptr);
+    rtl::Reference<SotStorage> rStorage;
     drawingml::DrawingML::ResetMlCounters();
 
     auto& rGraphicExportCache = drawingml::GraphicExportCache::get();
@@ -1110,13 +1114,13 @@ bool XclExpXmlStream::exportDocument()
         if (aExport.containsVBAProject())
         {
             SvMemoryStream aVbaStream(4096, 4096);
-            tools::SvRef<SotStorage> pVBAStorage(new SotStorage(aVbaStream));
+            rtl::Reference<SotStorage> pVBAStorage(new SotStorage(aVbaStream));
             aExport.exportVBA( pVBAStorage.get() );
             aVbaStream.Seek(0);
             css::uno::Reference<css::io::XInputStream> xVBAStream(
                     new utl::OInputStreamWrapper(aVbaStream));
             css::uno::Reference<css::io::XOutputStream> xVBAOutput =
-                openFragmentStream("xl/vbaProject.bin", "application/vnd.ms-office.vbaProject");
+                openFragmentStream(u"xl/vbaProject.bin"_ustr, u"application/vnd.ms-office.vbaProject"_ustr);
             comphelper::OStorageHelper::CopyInputToOutput(xVBAStream, xVBAOutput);
 
             addRelation(GetCurrentStream()->getOutputStream(), oox::getRelationship(Relationship::VBAPROJECT), u"vbaProject.bin");
@@ -1168,7 +1172,7 @@ bool XclExpXmlStream::exportDocument()
 
 OUString XclExpXmlStream::getImplementationName()
 {
-    return "TODO";
+    return u"TODO"_ustr;
 }
 
 void XclExpXmlStream::validateTabNames(std::vector<OUString>& aOriginalTabNames)
@@ -1266,7 +1270,7 @@ void XclExpXmlStream::restoreTabNames(const std::vector<OUString>& aOriginalTabN
     }
 }
 
-void XclExpXmlStream::renameTab(SCTAB aTab, OUString aNewName)
+void XclExpXmlStream::renameTab(SCTAB aTab, const OUString& aNewName)
 {
     ScDocShell* pShell = getDocShell();
     ScDocument& rDoc = pShell->GetDocument();

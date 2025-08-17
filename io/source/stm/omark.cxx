@@ -42,7 +42,6 @@
 #include <mutex>
 
 using namespace ::cppu;
-using namespace ::osl;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
@@ -135,6 +134,8 @@ OMarkableOutputStream::OMarkableOutputStream( )
 // XOutputStream
 void OMarkableOutputStream::writeBytes(const Sequence< sal_Int8 >& aData)
 {
+    std::unique_lock guard( m_mutex );
+
     if( !m_bValidStream ) {
         throw NotConnectedException();
     }
@@ -143,7 +144,6 @@ void OMarkableOutputStream::writeBytes(const Sequence< sal_Int8 >& aData)
         m_output->writeBytes( aData );
     }
     else {
-        std::unique_lock guard( m_mutex );
         // new data must be buffered
         m_aRingBuffer.writeAt( m_nCurrentPos , aData );
         m_nCurrentPos += aData.getLength();
@@ -343,7 +343,7 @@ void OMarkableOutputStream::checkMarksAndFlush()
 // XServiceInfo
 OUString OMarkableOutputStream::getImplementationName()
 {
-    return "com.sun.star.comp.io.stm.MarkableOutputStream";
+    return u"com.sun.star.comp.io.stm.MarkableOutputStream"_ustr;
 }
 
 // XServiceInfo
@@ -355,7 +355,7 @@ sal_Bool OMarkableOutputStream::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > OMarkableOutputStream::getSupportedServiceNames()
 {
-    return { "com.sun.star.io.MarkableOutputStream" };
+    return { u"com.sun.star.io.MarkableOutputStream"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
@@ -446,14 +446,15 @@ OMarkableInputStream::OMarkableInputStream()
 
 sal_Int32 OMarkableInputStream::readBytes(Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead)
 {
-    sal_Int32 nBytesRead;
+    std::unique_lock guard( m_mutex );
 
     if( !m_bValidStream ) {
         throw NotConnectedException(
-            "MarkableInputStream::readBytes NotConnectedException",
+            u"MarkableInputStream::readBytes NotConnectedException"_ustr,
             *this );
     }
-    std::unique_lock guard( m_mutex );
+
+    sal_Int32 nBytesRead;
     if( m_mapMarks.empty() && ! m_oBuffer->getSize() ) {
         // normal read !
         nBytesRead = m_input->readBytes( aData, nBytesToRead );
@@ -490,15 +491,15 @@ sal_Int32 OMarkableInputStream::readBytes(Sequence< sal_Int8 >& aData, sal_Int32
 
 sal_Int32 OMarkableInputStream::readSomeBytes(Sequence< sal_Int8 >& aData, sal_Int32 nMaxBytesToRead)
 {
+    std::unique_lock guard( m_mutex );
 
-    sal_Int32 nBytesRead;
     if( !m_bValidStream )    {
         throw NotConnectedException(
-            "MarkableInputStream::readSomeBytes NotConnectedException",
+            u"MarkableInputStream::readSomeBytes NotConnectedException"_ustr,
             *this );
     }
 
-    std::unique_lock guard( m_mutex );
+    sal_Int32 nBytesRead;
     if( m_mapMarks.empty() && ! m_oBuffer->getSize() ) {
         // normal read !
         nBytesRead = m_input->readSomeBytes( aData, nMaxBytesToRead );
@@ -541,7 +542,7 @@ void OMarkableInputStream::skipBytes(sal_Int32 nBytesToSkip)
 {
     if ( nBytesToSkip < 0 )
         throw BufferSizeExceededException(
-            "precondition not met: XInputStream::skipBytes: non-negative integer required!",
+            u"precondition not met: XInputStream::skipBytes: non-negative integer required!"_ustr,
             *this
         );
 
@@ -552,13 +553,14 @@ void OMarkableInputStream::skipBytes(sal_Int32 nBytesToSkip)
 
 sal_Int32 OMarkableInputStream::available()
 {
+    std::unique_lock guard( m_mutex );
+
     if( !m_bValidStream )    {
         throw NotConnectedException(
-            "MarkableInputStream::available NotConnectedException",
+            u"MarkableInputStream::available NotConnectedException"_ustr,
             *this );
     }
 
-    std::unique_lock guard( m_mutex );
     sal_Int32 nAvail = m_input->available() + ( m_oBuffer->getSize() - m_nCurrentPos );
     return nAvail;
 }
@@ -566,19 +568,22 @@ sal_Int32 OMarkableInputStream::available()
 
 void OMarkableInputStream::closeInput()
 {
+    std::unique_lock guard( m_mutex );
+
     if( !m_bValidStream ) {
         throw NotConnectedException(
-            "MarkableInputStream::closeInput NotConnectedException",
+            u"MarkableInputStream::closeInput NotConnectedException"_ustr,
             *this );
     }
-    std::unique_lock guard( m_mutex );
 
     m_input->closeInput();
 
-    setInputStream( Reference< XInputStream > () );
-    setPredecessor( Reference< XConnectable > () );
-    setSuccessor( Reference< XConnectable >() );
-
+    m_input.clear();
+    if( m_pred )
+        m_pred.clear();
+    if( m_succ )
+        m_succ.clear();
+    m_bValidStream = false;
     m_oBuffer.reset();
     m_nCurrentPos = 0;
     m_nCurrentMark = 0;
@@ -650,20 +655,22 @@ sal_Int32 OMarkableInputStream::offsetToMark(sal_Int32 nMark)
 // XActiveDataSource
 void OMarkableInputStream::setInputStream(const Reference< XInputStream > & aStream)
 {
+    Reference < XConnectable > pred;
+    {
+        std::unique_lock guard( m_mutex );
+        if( m_input == aStream )
+            return;
 
-    if( m_input != aStream ) {
         m_input = aStream;
-
-        Reference < XConnectable >  pred( m_input , UNO_QUERY );
-        setPredecessor( pred );
+        m_bValidStream = m_input.is();
+        pred.set( m_input , UNO_QUERY );
     }
-
-    m_bValidStream = m_input.is();
-
+    setPredecessor( pred );
 }
 
 Reference< XInputStream > OMarkableInputStream::getInputStream()
 {
+    std::unique_lock guard( m_mutex );
     return m_input;
 }
 
@@ -671,21 +678,24 @@ Reference< XInputStream > OMarkableInputStream::getInputStream()
 // XDataSink
 void OMarkableInputStream::setSuccessor( const Reference< XConnectable > &r )
 {
-     /// if the references match, nothing needs to be done
-     if( m_succ != r ) {
-         /// store the reference for later use
-         m_succ = r;
+    {
+        std::unique_lock guard( m_mutex );
+        /// if the references match, nothing needs to be done
+        if( m_succ == r )
+            return;
 
-         if( m_succ.is() ) {
-              /// set this instance as the sink !
-              m_succ->setPredecessor( Reference< XConnectable > (
-                  static_cast< XConnectable * >(this) ) );
-         }
-     }
+        /// store the reference for later use
+        m_succ = r;
+    }
+    if( r ) {
+        /// set this instance as the sink !
+        r->setPredecessor( Reference< XConnectable > ( static_cast< XConnectable * >(this) ) );
+    }
 }
 
 Reference < XConnectable >  OMarkableInputStream::getSuccessor()
 {
+    std::unique_lock guard( m_mutex );
     return m_succ;
 }
 
@@ -693,16 +703,21 @@ Reference < XConnectable >  OMarkableInputStream::getSuccessor()
 // XDataSource
 void OMarkableInputStream::setPredecessor( const Reference < XConnectable >  &r )
 {
-    if( r != m_pred ) {
+    {
+        std::unique_lock guard( m_mutex );
+        if( r == m_pred )
+            return;
         m_pred = r;
-        if( m_pred.is() ) {
-            m_pred->setSuccessor( Reference< XConnectable > (
-                static_cast< XConnectable * >(this) ) );
-        }
+    }
+    if( r ) {
+        r->setSuccessor( Reference< XConnectable > (
+            static_cast< XConnectable * >(this) ) );
     }
 }
+
 Reference< XConnectable >  OMarkableInputStream::getPredecessor()
 {
+    std::unique_lock guard( m_mutex );
     return m_pred;
 }
 
@@ -738,7 +753,7 @@ void OMarkableInputStream::checkMarksAndFlush()
 // XServiceInfo
 OUString OMarkableInputStream::getImplementationName()
 {
-    return "com.sun.star.comp.io.stm.MarkableInputStream";
+    return u"com.sun.star.comp.io.stm.MarkableInputStream"_ustr;
 }
 
 // XServiceInfo
@@ -750,7 +765,7 @@ sal_Bool OMarkableInputStream::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > OMarkableInputStream::getSupportedServiceNames()
 {
-    return { "com.sun.star.io.MarkableInputStream" };
+    return { u"com.sun.star.io.MarkableInputStream"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

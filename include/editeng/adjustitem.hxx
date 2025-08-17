@@ -32,7 +32,7 @@ This item describes the row orientation.
 */
 constexpr sal_uInt16 ADJUST_LASTBLOCK_VERSION = 0x0001;
 
-class EDITENG_DLLPUBLIC SvxAdjustItem final : public SfxEnumItemInterface
+class EDITENG_DLLPUBLIC SvxAdjustItem final : public SfxPoolItem
 {
     bool    bLeft      : 1;
     bool    bRight     : 1;
@@ -44,14 +44,31 @@ class EDITENG_DLLPUBLIC SvxAdjustItem final : public SfxEnumItemInterface
     bool    bLastCenter : 1;
     bool    bLastBlock : 1;
 
+    // desired, minimum and maximum word spacing values in percent of
+    // the width of space character in justified text
+    sal_uInt16 nPropWordSpacing;
+    sal_uInt16 nPropWordSpacingMinimum;
+    sal_uInt16 nPropWordSpacingMaximum;
+
+    // minimum and maximum letter spacing values in percent of
+    // the width of space character in justified text
+    sal_Int16 nPropLetterSpacingMinimum;
+    sal_Int16 nPropLetterSpacingMaximum;
+
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
+
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxAdjustItem)
     SvxAdjustItem( const SvxAdjust eAdjst /*= SvxAdjust::Left*/,
                    const sal_uInt16 nId );
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
+    virtual bool            supportsHashCode() const override { return true; }
+    virtual size_t          hashCode() const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -60,25 +77,25 @@ public:
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
                                   OUString &rText, const IntlWrapper& ) const override;
-    virtual sal_uInt16       GetValueCount() const override;
     static OUString          GetValueTextByPos( sal_uInt16 nPos );
-    virtual sal_uInt16       GetEnumValue() const override;
-    virtual void             SetEnumValue( sal_uInt16 nNewVal ) override;
     virtual SvxAdjustItem*   Clone( SfxItemPool *pPool = nullptr ) const override;
 
     void SetOneWord( const SvxAdjust eType )
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         bOneBlock  = eType == SvxAdjust::Block;
     }
 
     void SetLastBlock( const SvxAdjust eType )
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         bLastBlock = eType == SvxAdjust::Block;
         bLastCenter = eType == SvxAdjust::Center;
     }
 
     void SetAdjust( const SvxAdjust eType )
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         bLeft = eType == SvxAdjust::Left;
         bRight = eType == SvxAdjust::Right;
         bCenter = eType == SvxAdjust::Center;
@@ -132,9 +149,63 @@ public:
 
     void SetAsFlags(sal_Int8 nFlags)
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         bOneBlock = 0 != (nFlags & 0x0001);
         bLastCenter = 0 != (nFlags & 0x0002);
         bLastBlock = 0 != (nFlags & 0x0004);
+    }
+
+    sal_uInt16 GetPropWordSpacing() const
+    {
+        return nPropWordSpacing;
+    }
+
+    void SetPropWordSpacing( sal_uInt16 nVal )
+    {
+        nPropWordSpacing = nVal;
+    }
+
+
+    sal_uInt16 GetPropWordSpacingMinimum() const
+    {
+        return nPropWordSpacingMinimum;
+    }
+
+    void SetPropWordSpacingMinimum( sal_uInt16 nVal )
+    {
+        nPropWordSpacingMinimum = nVal;
+    }
+
+
+    sal_uInt16 GetPropWordSpacingMaximum() const
+    {
+        return nPropWordSpacingMaximum;
+    }
+
+    void SetPropWordSpacingMaximum( sal_uInt16 nVal )
+    {
+        nPropWordSpacingMaximum = nVal;
+    }
+
+    sal_Int16 GetPropLetterSpacingMinimum() const
+    {
+        return nPropLetterSpacingMinimum;
+    }
+
+    void SetPropLetterSpacingMinimum( sal_Int16 nVal )
+    {
+        nPropLetterSpacingMinimum = nVal;
+    }
+
+
+    sal_Int16 GetPropLetterSpacingMaximum() const
+    {
+        return nPropLetterSpacingMaximum;
+    }
+
+    void SetPropLetterSpacingMaximum( sal_Int16 nVal )
+    {
+        nPropLetterSpacingMaximum = nVal;
     }
 };
 

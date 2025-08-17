@@ -31,12 +31,6 @@ class ScMarkData;
 enum class ScDragSrc;
 class ScCellRangesBase;
 
-namespace com::sun::star {
-    namespace sheet {
-        class XSheetCellRanges;
-    }
-}
-
 class SAL_DLLPUBLIC_RTTI ScTransferObj : public TransferDataContainer
 {
 private:
@@ -44,7 +38,7 @@ private:
     ScRange                         m_aBlock;
     SCROW                           m_nNonFiltered;       // non-filtered rows
     TransferableObjectDescriptor    m_aObjDesc;
-    SfxObjectShellRef               m_aDocShellRef;
+    rtl::Reference<ScDocShell>      m_aDocShellRef;
     SfxObjectShellRef               m_aDrawPersistRef;
     rtl::Reference<ScCellRangesBase> m_xDragSourceRanges;
     SCCOL                           m_nDragHandleX;
@@ -64,7 +58,7 @@ private:
     static void StripRefs( ScDocument& rDoc, SCCOL nStartX, SCROW nStartY,
                             SCCOL nEndX, SCROW nEndY,
                             ScDocument& rDestDoc );
-    static void PaintToDev( OutputDevice* pDev, ScDocument& rDoc, double nPrintFactor,
+    static void PaintToDev( OutputDevice* pDev, ScDocShell& rDocSh, double nPrintFactor,
                             const ScRange& rBlock );
     static void GetAreaSize( const ScDocument& rDoc, SCTAB nTab1, SCTAB nTab2, SCROW& nRow, SCCOL& nCol );
 
@@ -74,7 +68,7 @@ public:
 
     virtual void        AddSupportedFormats() override;
     virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
-    virtual bool        WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId,
+    virtual bool        WriteObject( SvStream& rOStm, void* pUserObject, sal_uInt32 nUserObjectId,
                                         const css::datatransfer::DataFlavor& rFlavor ) override;
     virtual void        DragFinished( sal_Int8 nDropAction ) override;
     virtual sal_Bool SAL_CALL isComplex() override;

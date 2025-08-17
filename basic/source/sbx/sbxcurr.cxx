@@ -22,352 +22,202 @@
 #include <basic/sberrors.hxx>
 #include <basic/sbxvar.hxx>
 #include <o3tl/string_view.hxx>
+#include <svl/numformat.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/settings.hxx>
+#include <sbintern.hxx>
+#include <runtime.hxx>
 #include "sbxconv.hxx"
 
 
 static OUString ImpCurrencyToString( sal_Int64 rVal )
 {
-    bool isNeg = ( rVal < 0 );
-    sal_Int64 absVal = isNeg ? -rVal : rVal;
+    sal_Unicode cDecimalSep, cThousandSepDummy, cDecimalSepAltDummy;
+    ImpGetIntntlSep(cDecimalSep, cThousandSepDummy, cDecimalSepAltDummy);
 
-    sal_Unicode const cDecimalSep = '.';
-
-    OUString aAbsStr = OUString::number( absVal );
-
-    sal_Int32 initialLen = aAbsStr.getLength();
-
-    bool bLessThanOne = false;
-    if ( initialLen  <= 4 )  // if less the 1
-        bLessThanOne = true;
-
-    sal_Int32 nCapacity = 6; // minimum e.g. 0.0000
-
-    if ( !bLessThanOne )
+    auto strNum = OUString::number(rVal);
+    std::u16string_view aAbsStr(strNum);
+    OUStringBuffer aBuf(22);
+    if (rVal < 0)
     {
-        nCapacity = initialLen + 1;
+        aBuf.append('-');
+        assert(aAbsStr[0] == '-');
+        aAbsStr = aAbsStr.substr(1); // skip the minus
     }
+    size_t hasFractDigits = std::min(aAbsStr.length(), size_t(4));
+    size_t hasWholeDigits = aAbsStr.length() - hasFractDigits;
 
-    if ( isNeg )
-        ++nCapacity;
+    if (hasWholeDigits > 0)
+        aBuf.append(aAbsStr.substr(0, hasWholeDigits));
+    else
+        aBuf.append('0');
+    aBuf.append(cDecimalSep);
+    // Handle leading 0's to right of decimal separator
+    // Note: in VBA the stringification is a little more complex
+    // but more natural as only the necessary digits
+    // to the right of the decimal places are displayed
+    // It would be great to conditionally be able to display like that too
 
-    OUStringBuffer aBuf( nCapacity );
-    aBuf.setLength( nCapacity );
+    // Val   OOo (Cur)  VBA (Cur)
+    // ---   ---------  ---------
+    // 0     0.0000     0
+    // 0.1   0.1000     0.1
+    for (size_t i = 4; i > hasFractDigits; --i)
+        aBuf.append('0');
+    aBuf.append(aAbsStr.substr(aAbsStr.length() - hasFractDigits, hasFractDigits));
 
-
-    sal_Int32 nDigitCount = 0;
-    sal_Int32 nInsertIndex = nCapacity - 1;
-    sal_Int32 nEndIndex = isNeg ? 1 : 0;
-
-    for ( sal_Int32 charCpyIndex = aAbsStr.getLength() - 1; nInsertIndex >= nEndIndex;  ++nDigitCount )
-    {
-        if ( nDigitCount == 4 )
-            aBuf[nInsertIndex--] = cDecimalSep;
-        if ( nDigitCount < initialLen )
-            aBuf[nInsertIndex--] = aAbsStr[ charCpyIndex-- ];
-        else
-        // Handle leading 0's to right of decimal point
-        // Note: in VBA the stringification is a little more complex
-        // but more natural as only the necessary digits
-        // to the right of the decimal places are displayed
-        // It would be great to conditionally be able to display like that too
-
-        // Val   OOo (Cur)  VBA (Cur)
-        // ---   ---------  ---------
-        // 0     0.0000     0
-        // 0.1   0.1000     0.1
-
-            aBuf[nInsertIndex--] = '0';
-    }
-    if ( isNeg )
-            aBuf[nInsertIndex] = '-';
-
-    aAbsStr = aBuf.makeStringAndClear();
-    return aAbsStr;
+    return aBuf.makeStringAndClear();
 }
 
-
-static sal_Int64 ImpStringToCurrency( std::u16string_view rStr )
+static sal_Int64 ImpStringToCurrency(const rtl::OUString& rStr)
 {
-
-    sal_Int32   nFractDigit = 4;
-
-    sal_Unicode const cDeciPnt = '.';
-    sal_Unicode const c1000Sep = ',';
-
-    // lets use the existing string number conversions
-    // there is a performance impact here ( multiple string copies )
-    // but better I think than a home brewed string parser, if we need a parser
-    // we should share some existing ( possibly from calc is there a currency
-    // conversion there ? #TODO check )
-
-    std::u16string_view sTmp = o3tl::trim( rStr );
-    auto p = sTmp.begin();
-    auto pEnd = sTmp.end();
-
-    // normalise string number by removing thousand & decimal point separators
-    OUStringBuffer sNormalisedNumString( static_cast<sal_Int32>(sTmp.size()) + nFractDigit );
-
-    if ( p != pEnd && (*p == '-'  || *p == '+' ) )
-        sNormalisedNumString.append( *p++ );
-
-    while ( p != pEnd && *p >= '0' && *p <= '9' )
+    LanguageType eLangType = Application::GetSettings().GetLanguageTag().getLanguageType();
+    std::shared_ptr<SvNumberFormatter> pFormatter;
+    if (GetSbData()->pInst)
     {
-        sNormalisedNumString.append( *p++ );
-        // #TODO in vba mode set runtime error when a space ( or other )
-        // illegal character is found
-        if( p != pEnd && *p == c1000Sep )
-            p++;
+        pFormatter = GetSbData()->pInst->GetNumberFormatter();
+    }
+    else
+    {
+        sal_uInt32 n; // Dummy
+        pFormatter = SbiInstance::PrepareNumberFormatter(/*date index*/ n, /*time index*/ n,
+                                                         /*date time index*/ n);
     }
 
-    bool bRoundUp = false;
+    // Passing a locale index switches IsNumberFormat() to use that locale,
+    // in case the formatter wasn't default-created with it.
+    sal_uInt32 nIndex = pFormatter->GetStandardIndex(eLangType);
 
-    if( p != pEnd && *p == cDeciPnt )
+    double fResult = 0.0;
+    bool bSuccess = pFormatter->IsNumberFormat(rStr, nIndex, fResult);
+    if (bSuccess)
     {
-        p++;
-        while( nFractDigit && p != pEnd && *p >= '0' && *p <= '9' )
+        SvNumFormatType nType = pFormatter->GetType(nIndex);
+        if (!(nType & (SvNumFormatType::CURRENCY | SvNumFormatType::NUMBER)))
         {
-            sNormalisedNumString.append( *p++ );
-            nFractDigit--;
+            bSuccess = false;
         }
-        // Consume trailing content
-        // Round up if necessary
-        if( p != pEnd && *p >= '5' && *p <= '9' )
-            bRoundUp = true;
-        while( p != pEnd && *p >= '0' && *p <= '9' )
-            p++;
     }
-    // can we raise error here ? ( previous behaviour was more forgiving )
-    // so... not sure that could break existing code, let's see if anyone
-    // complains.
 
-    if ( p != pEnd )
-        SbxBase::SetError( ERRCODE_BASIC_CONVERSION );
-    while( nFractDigit )
+    if (!bSuccess)
     {
-        sNormalisedNumString.append( '0' );
-        nFractDigit--;
+        SbxBase::SetError(ERRCODE_BASIC_CONVERSION);
     }
 
-    sal_Int64 result = o3tl::toInt64(sNormalisedNumString);
-
-    if ( bRoundUp )
-        ++result;
-    return result;
+    return CurFrom(fResult);
 }
-
 
 sal_Int64 ImpGetCurrency( const SbxValues* p )
 {
-    SbxValues   aTmp;
-    sal_Int64  nRes;
-start:
     switch( +p->eType )
     {
         case SbxERROR:
         case SbxNULL:
             SbxBase::SetError( ERRCODE_BASIC_CONVERSION );
-            nRes = 0; break;
+            return 0;
         case SbxEMPTY:
-            nRes = 0; break;
+            return 0;
         case SbxCURRENCY:
-            nRes = p->nInt64; break;
+            return p->nInt64;
         case SbxBYTE:
-            nRes = sal_Int64(CURRENCY_FACTOR) * static_cast<sal_Int64>(p->nByte);
-            break;
+            return CurFrom(p->nByte);
         case SbxCHAR:
-            nRes = sal_Int64(CURRENCY_FACTOR) * reinterpret_cast<sal_Int64>(p->pChar);
-            break;
+            return CurFrom(p->nChar);
         case SbxBOOL:
         case SbxINTEGER:
-            nRes = sal_Int64(CURRENCY_FACTOR) * static_cast<sal_Int64>(p->nInteger);
-            break;
+            return CurFrom(p->nInteger);
         case SbxUSHORT:
-            nRes = sal_Int64(CURRENCY_FACTOR) * static_cast<sal_Int64>(p->nUShort);
-            break;
+            return CurFrom(p->nUShort);
         case SbxLONG:
-            nRes = sal_Int64(CURRENCY_FACTOR) * static_cast<sal_Int64>(p->nLong);
-            break;
+            return CurFrom(p->nLong);
         case SbxULONG:
-            nRes = sal_Int64(CURRENCY_FACTOR) * static_cast<sal_Int64>(p->nULong);
-            break;
-
+            return CurFrom(p->nULong);
         case SbxSALINT64:
-        {
-            nRes = p->nInt64 * CURRENCY_FACTOR; break;
-#if 0
-            // Huh, is the 'break' above intentional? That means this
-            // is unreachable, obviously. Avoid warning by ifdeffing
-            // this out for now. Do not delete this #if 0 block unless
-            // you know for sure the 'break' above is intentional.
-            if ( nRes > SAL_MAX_INT64 )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); nRes = SAL_MAX_INT64;
-            }
-#endif
-        }
+            return CurFrom(p->nInt64);
         case SbxSALUINT64:
-            nRes = p->nInt64 * CURRENCY_FACTOR; break;
-#if 0
-            // As above
-            if ( nRes > SAL_MAX_INT64 )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); nRes = SAL_MAX_INT64;
-            }
-            else if ( nRes < SAL_MIN_INT64 )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); nRes = SAL_MIN_INT64;
-            }
-            break;
-#endif
-//TODO: bring back SbxINT64 types here for limits -1 with flag value at SAL_MAX/MIN
+            return CurFrom(p->uInt64);
         case SbxSINGLE:
-            if( p->nSingle * CURRENCY_FACTOR + 0.5 > float(SAL_MAX_INT64)
-             || p->nSingle * CURRENCY_FACTOR - 0.5 < float(SAL_MIN_INT64) )
-            {
-                nRes = SAL_MAX_INT64;
-                if( p->nSingle * CURRENCY_FACTOR - 0.5 < float(SAL_MIN_INT64) )
-                    nRes = SAL_MIN_INT64;
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW );
-                break;
-            }
-            nRes = ImpDoubleToCurrency( static_cast<double>(p->nSingle) );
-            break;
+            return CurFrom(p->nSingle);
 
         case SbxDATE:
         case SbxDOUBLE:
-            if( p->nDouble * CURRENCY_FACTOR + 0.5 > double(SAL_MAX_INT64)
-             || p->nDouble * CURRENCY_FACTOR - 0.5 < double(SAL_MIN_INT64) )
-            {
-                nRes = SAL_MAX_INT64;
-                if( p->nDouble * CURRENCY_FACTOR - 0.5 < double(SAL_MIN_INT64) )
-                    nRes = SAL_MIN_INT64;
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW );
-                break;
-            }
-            nRes = ImpDoubleToCurrency( p->nDouble );
-            break;
+            return CurFrom(p->nDouble);
 
         case SbxDECIMAL:
         case SbxBYREF | SbxDECIMAL:
-            {
-            double d = 0.0;
             if( p->pDecimal )
+            {
+                double d = 0.0;
                 p->pDecimal->getDouble( d );
-            nRes = ImpDoubleToCurrency( d );
-            break;
+                return CurFrom(d);
             }
-
+            return 0;
 
         case SbxBYREF | SbxSTRING:
         case SbxSTRING:
         case SbxLPSTR:
-            if( !p->pOUString )
-                nRes=0;
-            else
-                nRes = ImpStringToCurrency( *p->pOUString );
-            break;
+            if (p->pOUString)
+                return ImpStringToCurrency( *p->pOUString );
+            return 0;
         case SbxOBJECT:
-        {
-            SbxValue* pVal = dynamic_cast<SbxValue*>( p->pObj );
-            if( pVal )
-                nRes = pVal->GetCurrency();
-            else
-            {
-                SbxBase::SetError( ERRCODE_BASIC_NO_OBJECT );
-                nRes=0;
-            }
-            break;
-        }
+            if (SbxValue* pVal = dynamic_cast<SbxValue*>(p->pObj))
+                return pVal->GetCurrency();
+            SbxBase::SetError( ERRCODE_BASIC_NO_OBJECT );
+            return 0;
 
         case SbxBYREF | SbxCHAR:
-            nRes = sal_Int64(CURRENCY_FACTOR) * static_cast<sal_Int64>(*p->pChar);
-            break;
+            return CurFrom(*p->pChar);
         case SbxBYREF | SbxBYTE:
-            nRes = sal_Int64(CURRENCY_FACTOR) * static_cast<sal_Int64>(*p->pByte);
-            break;
+            return CurFrom(*p->pByte);
         case SbxBYREF | SbxBOOL:
         case SbxBYREF | SbxINTEGER:
-            nRes = sal_Int64(CURRENCY_FACTOR) * static_cast<sal_Int64>(*p->pInteger);
-            break;
+            return CurFrom(*p->pInteger);
         case SbxBYREF | SbxERROR:
         case SbxBYREF | SbxUSHORT:
-            nRes = sal_Int64(CURRENCY_FACTOR) * static_cast<sal_Int64>(*p->pUShort);
-            break;
+            return CurFrom(*p->pUShort);
 
-        // from here on had to be tested
         case SbxBYREF | SbxLONG:
-            aTmp.nLong = *p->pLong; goto ref;
+            return CurFrom(*p->pLong);
         case SbxBYREF | SbxULONG:
-            aTmp.nULong = *p->pULong; goto ref;
+            return CurFrom(*p->pULong);
         case SbxBYREF | SbxSINGLE:
-            aTmp.nSingle = *p->pSingle; goto ref;
+            return CurFrom(*p->pSingle);
         case SbxBYREF | SbxDATE:
         case SbxBYREF | SbxDOUBLE:
-            aTmp.nDouble = *p->pDouble; goto ref;
+            return CurFrom(*p->pDouble);
         case SbxBYREF | SbxCURRENCY:
+            return *p->pnInt64;
         case SbxBYREF | SbxSALINT64:
-            aTmp.nInt64 = *p->pnInt64; goto ref;
+            return CurFrom(*p->pnInt64);
         case SbxBYREF | SbxSALUINT64:
-            aTmp.uInt64 = *p->puInt64; goto ref;
-        ref:
-            aTmp.eType = SbxDataType( p->eType & ~SbxBYREF );
-            p = &aTmp; goto start;
+            return CurFrom(*p->puInt64);
 
         default:
             SbxBase::SetError( ERRCODE_BASIC_CONVERSION );
-            nRes=0;
+            return 0;
     }
-    return nRes;
 }
-
 
 void ImpPutCurrency( SbxValues* p, const sal_Int64 r )
 {
-    SbxValues aTmp;
-start:
     switch( +p->eType )
     {
-        // Here are tests necessary
-        case SbxCHAR:
-            aTmp.pChar = &p->nChar; goto direct;
-        case SbxBYTE:
-            aTmp.pByte = &p->nByte; goto direct;
-        case SbxINTEGER:
-        case SbxBOOL:
-            aTmp.pInteger = &p->nInteger; goto direct;
-        case SbxLONG:
-            aTmp.pLong = &p->nLong; goto direct;
-        case SbxULONG:
-            aTmp.pULong = &p->nULong; goto direct;
-        case SbxERROR:
-        case SbxUSHORT:
-            aTmp.pUShort = &p->nUShort; goto direct;
-        direct:
-            aTmp.eType = SbxDataType( p->eType | SbxBYREF );
-            p = &aTmp; goto start;
-
-        // from here no longer
-        case SbxSINGLE:
-            p->nSingle = static_cast<float>( r / CURRENCY_FACTOR ); break;
         case SbxDATE:
         case SbxDOUBLE:
-            p->nDouble =  ImpCurrencyToDouble( r ); break;
+            p->nDouble =  CurTo<double>( r ); break;
         case SbxSALUINT64:
-            p->uInt64 = r / CURRENCY_FACTOR; break;
+            p->uInt64 = CurTo<sal_uInt64>(r); break;
         case SbxSALINT64:
-            p->nInt64 = r / CURRENCY_FACTOR; break;
+            p->nInt64 = CurTo<sal_Int64>(r); break;
 
         case SbxCURRENCY:
             p->nInt64 = r; break;
 
         case SbxDECIMAL:
         case SbxBYREF | SbxDECIMAL:
-            {
-            SbxDecimal* pDec = ImpCreateDecimal( p );
-            if( !pDec->setDouble( ImpCurrencyToDouble( r ) / CURRENCY_FACTOR ) )
+            if (!ImpCreateDecimal(p)->setDouble(CurTo<double>(r)))
                 SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW );
             break;
-            }
         case SbxBYREF | SbxSTRING:
         case SbxSTRING:
         case SbxLPSTR:
@@ -377,105 +227,52 @@ start:
             *p->pOUString = ImpCurrencyToString( r );
             break;
         case SbxOBJECT:
-        {
-            SbxValue* pVal = dynamic_cast<SbxValue*>( p->pObj );
-            if( pVal )
+            if (SbxValue* pVal = dynamic_cast<SbxValue*>(p->pObj))
                 pVal->PutCurrency( r );
             else
                 SbxBase::SetError( ERRCODE_BASIC_NO_OBJECT );
             break;
-        }
+        case SbxCHAR:
+            p->nChar = CurTo<sal_Unicode>(r); break;
         case SbxBYREF | SbxCHAR:
-        {
-            sal_Int64 val = r / CURRENCY_FACTOR;
-            if( val > SbxMAXCHAR )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = SbxMAXCHAR;
-            }
-            else if( val < SbxMINCHAR )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = SbxMINCHAR;
-            }
-            *p->pChar = static_cast<sal_Unicode>(val); break;
-        }
+            *p->pChar = CurTo<sal_Unicode>(r); break;
+        case SbxBYTE:
+            p->nByte = CurTo<sal_uInt8>(r); break;
         case SbxBYREF | SbxBYTE:
-        {
-            sal_Int64 val = r / CURRENCY_FACTOR;
-            if( val > SbxMAXBYTE )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = SbxMAXBYTE;
-            }
-            else if( val < 0 )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = 0;
-            }
-            *p->pByte = static_cast<sal_uInt8>(val); break;
-        }
+            *p->pByte = CurTo<sal_uInt8>(r); break;
+        case SbxINTEGER:
+        case SbxBOOL:
+            p->nInteger = CurTo<sal_Int16>(r); break;
         case SbxBYREF | SbxINTEGER:
         case SbxBYREF | SbxBOOL:
-        {
-            sal_Int64 val = r / CURRENCY_FACTOR;
-            if( r > SbxMAXINT )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = SbxMAXINT;
-            }
-            else if( r < SbxMININT )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = SbxMININT;
-            }
-            *p->pInteger = static_cast<sal_uInt16>(val); break;
-        }
+            *p->pInteger = CurTo<sal_Int16>(r); break;
+        case SbxERROR:
+        case SbxUSHORT:
+            p->nUShort = CurTo<sal_uInt16>(r); break;
         case SbxBYREF | SbxERROR:
         case SbxBYREF | SbxUSHORT:
-        {
-            sal_Int64 val = r / CURRENCY_FACTOR;
-            if( val > SbxMAXUINT )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = SbxMAXUINT;
-            }
-            else if( val < 0 )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = 0;
-            }
-            *p->pUShort = static_cast<sal_uInt16>(val); break;
-        }
+            *p->pUShort = CurTo<sal_uInt16>(r); break;
+        case SbxLONG:
+            p->nLong = CurTo<sal_Int32>(r); break;
         case SbxBYREF | SbxLONG:
-        {
-            sal_Int64 val = r / CURRENCY_FACTOR;
-            if( val > SbxMAXLNG )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = SbxMAXLNG;
-            }
-            else if( val < SbxMINLNG )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = SbxMINLNG;
-            }
-            *p->pLong = static_cast<sal_Int32>(val); break;
-        }
+            *p->pLong = CurTo<sal_Int32>(r); break;
+        case SbxULONG:
+            p->nULong = CurTo<sal_uInt32>(r); break;
         case SbxBYREF | SbxULONG:
-        {
-            sal_Int64 val = r / CURRENCY_FACTOR;
-            if( val > SbxMAXULNG )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = SbxMAXULNG;
-            }
-            else if( val < 0 )
-            {
-                SbxBase::SetError( ERRCODE_BASIC_MATH_OVERFLOW ); val = 0;
-            }
-            *p->pULong = static_cast<sal_uInt32>(val); break;
-        }
+            *p->pULong = CurTo<sal_uInt32>(r); break;
         case SbxBYREF | SbxCURRENCY:
             *p->pnInt64 = r; break;
         case SbxBYREF | SbxSALINT64:
-            *p->pnInt64 = r / CURRENCY_FACTOR; break;
+            *p->pnInt64 = CurTo<sal_Int64>(r); break;
         case SbxBYREF | SbxSALUINT64:
-            *p->puInt64 = static_cast<sal_uInt64>(r) / CURRENCY_FACTOR; break;
+            *p->puInt64 = CurTo<sal_uInt64>(r); break;
+        case SbxSINGLE:
+            p->nSingle = CurTo<float>( r ); break;
         case SbxBYREF | SbxSINGLE:
-            p->nSingle = static_cast<float>( r / CURRENCY_FACTOR ); break;
+            *p->pSingle = CurTo<float>( r ); break;
         case SbxBYREF | SbxDATE:
         case SbxBYREF | SbxDOUBLE:
-            *p->pDouble = ImpCurrencyToDouble( r ); break;
+            *p->pDouble = CurTo<double>( r ); break;
         default:
             SbxBase::SetError( ERRCODE_BASIC_CONVERSION );
     }

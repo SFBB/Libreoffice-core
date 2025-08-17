@@ -43,6 +43,7 @@ $(eval $(call gb_Module_add_check_targets,sc,\
 	Library_scqahelper \
 	$(if $(and $(filter $(COM),MSC),$(MERGELIBS)),, \
 		CppunitTest_sc_ucalc) \
+	CppunitTest_sc_ucalc_nanpayload \
 	CppunitTest_sc_ucalc_condformat \
 	CppunitTest_sc_ucalc_copypaste \
 	CppunitTest_sc_ucalc_datatransformation \
@@ -62,6 +63,7 @@ $(eval $(call gb_Module_add_check_targets,sc,\
 	CppunitTest_sc_core \
 	CppunitTest_sc_dataprovider \
 	CppunitTest_sc_cache_test \
+	CppunitTest_sc_parallelism \
     CppunitTest_sc_shapetest \
 ))
 endif
@@ -70,24 +72,30 @@ ifneq ($(DISABLE_GUI),TRUE)
 ifeq ($(OS),LINUX)
 $(eval $(call gb_Module_add_check_targets,sc,\
 	CppunitTest_sc_tiledrendering \
+	CppunitTest_sc_tiledrendering2 \
 ))
 endif
 endif
 
 $(eval $(call gb_Module_add_slowcheck_targets,sc, \
 	CppunitTest_sc_anchor_test \
+	CppunitTest_sc_cond_format \
 	CppunitTest_sc_cond_format_merge \
 	CppunitTest_sc_copypaste \
 	CppunitTest_sc_html_export_test \
+	CppunitTest_sc_goal_seek_test \
 	CppunitTest_sc_macros_test \
 	CppunitTest_sc_new_cond_format_api \
 	CppunitTest_sc_pdf_export \
 	CppunitTest_sc_pivottable_filters_test \
+	CppunitTest_sc_pivottable_formats_import_export_test \
+	CppunitTest_sc_scriptforge_test \
 	CppunitTest_sc_sparkline_test \
 	CppunitTest_sc_subsequent_filters_test \
 	CppunitTest_sc_subsequent_filters_test2 \
 	CppunitTest_sc_subsequent_filters_test3 \
 	CppunitTest_sc_subsequent_filters_test4 \
+    CppunitTest_sc_subsequent_filters_test5 \
 	CppunitTest_sc_subsequent_export_test \
 	CppunitTest_sc_subsequent_export_test2 \
 	CppunitTest_sc_subsequent_export_test3 \
@@ -96,6 +104,7 @@ $(eval $(call gb_Module_add_slowcheck_targets,sc, \
 	CppunitTest_sc_uicalc2 \
 	CppunitTest_sc_vba_macro_test \
 	CppunitTest_sc_a11y \
+	CppunitTest_sc_filter_html \
 ))
 
 ifneq ($(ENABLE_JUMBO_SHEETS),)
@@ -122,17 +131,6 @@ $(eval $(call gb_Module_add_slowcheck_targets,sc, \
 	CppunitTest_sc_spreadsheet_functions_test \
 	CppunitTest_sc_statistical_functions_test \
 	CppunitTest_sc_text_functions_test \
-))
-endif
-
-$(eval $(call gb_Module_add_subsequentcheck_targets,sc,\
-	JunitTest_sc_complex \
-	JunitTest_sc_unoapi_1 \
-	JunitTest_sc_unoapi_2 \
-	JunitTest_sc_unoapi_3 \
-	JunitTest_sc_unoapi_4 \
-	JunitTest_sc_unoapi_6 \
-	JunitTest_sc_unoapi_7 \
 	CppunitTest_sc_annotationobj \
 	CppunitTest_sc_annotationshapeobj \
 	CppunitTest_sc_annotationsobj \
@@ -209,8 +207,6 @@ $(eval $(call gb_Module_add_subsequentcheck_targets,sc,\
 	CppunitTest_sc_modelobj \
 	CppunitTest_sc_namedrangeobj \
 	CppunitTest_sc_namedrangesobj \
-	CppunitTest_sc_opencl-1 \
-	CppunitTest_sc_opencl-2 \
 	CppunitTest_sc_outlineobj \
 	CppunitTest_sc_recentfunctionsobj \
 	CppunitTest_sc_recordchanges \
@@ -218,6 +214,7 @@ $(eval $(call gb_Module_add_subsequentcheck_targets,sc,\
 	CppunitTest_sc_shapeobj \
 	CppunitTest_sc_sheetlinkobj \
 	CppunitTest_sc_sheetlinksobj \
+	CppunitTest_sc_solverobj \
 	CppunitTest_sc_sortdescriptorbaseobj \
 	CppunitTest_sc_spreadsheetsettings \
 	CppunitTest_sc_spreadsheetsettingsobj \
@@ -240,6 +237,19 @@ $(eval $(call gb_Module_add_subsequentcheck_targets,sc,\
 	CppunitTest_sc_uniquecellformatsenumeration \
 	CppunitTest_sc_uniquecellformatsobj \
 	CppunitTest_sc_viewpaneobj \
+))
+endif
+
+$(eval $(call gb_Module_add_subsequentcheck_targets,sc,\
+	JunitTest_sc_complex \
+	JunitTest_sc_unoapi_1 \
+	JunitTest_sc_unoapi_2 \
+	JunitTest_sc_unoapi_3 \
+	JunitTest_sc_unoapi_4 \
+	JunitTest_sc_unoapi_6 \
+	JunitTest_sc_unoapi_7 \
+	CppunitTest_sc_opencl-1 \
+	CppunitTest_sc_opencl-2 \
 ))
 
 $(eval $(call gb_Module_add_perfcheck_targets,sc,\
@@ -270,7 +280,6 @@ $(eval $(call gb_Module_add_uicheck_targets,sc,\
 	UITest_csv_dialog \
 	UITest_external_links \
 	UITest_statistics \
-	UITest_solver \
 	UITest_goalSeek \
 	UITest_protect \
 	UITest_sc_options \
@@ -292,6 +301,12 @@ $(eval $(call gb_Module_add_uicheck_targets,sc,\
 	UITest_function_wizard \
 	UITest_manual_tests \
 ))
+
+ifneq ($(or $(ENABLE_LPSOLVE),$(ENABLE_COINMP)),)
+$(eval $(call gb_Module_add_uicheck_targets,sc,\
+	UITest_solver \
+))
+endif
 endif
 
 # vim: set noet sw=4 ts=4:

@@ -25,6 +25,8 @@
 
 #include <xmloff/xmlstyle.hxx>
 
+struct ContextID_Index_Pair;
+
 namespace com::sun::star {
     namespace style { class XStyle; }
 }
@@ -59,7 +61,7 @@ public:
 
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
         sal_Int32 nElement,
-        const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override final;
 
     virtual SvXMLImportContext *CreateHeaderFooterContext(
             sal_Int32 nElement,
@@ -70,8 +72,6 @@ public:
 
     virtual void Finish( bool bOverwrite ) override;
 };
-
-struct ContextID_Index_Pair;
 
 XMLOFF_DLLPUBLIC extern ContextID_Index_Pair const g_MasterPageContextIDs[];
 XMLOFF_DLLPUBLIC extern XmlStyleFamily const g_MasterPageFamilies[];

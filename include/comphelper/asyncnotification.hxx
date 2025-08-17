@@ -21,7 +21,9 @@
 #define INCLUDED_COMPHELPER_ASYNCNOTIFICATION_HXX
 
 #include <sal/config.h>
+#include <config_options.h>
 
+#include <com/sun/star/document/DocumentEvent.hpp>
 #include <comphelper/comphelperdllapi.h>
 #include <rtl/ref.hxx>
 #include <sal/types.h>
@@ -165,7 +167,7 @@ namespace comphelper
     /** This is a hack (when proper joining is not possible), use of which
         should be avoided by good design.
      */
-    class COMPHELPER_DLLPUBLIC AsyncEventNotifierAutoJoin final
+    class UNLESS_MERGELIBS_MORE(COMPHELPER_DLLPUBLIC) AsyncEventNotifierAutoJoin final
         : public AsyncEventNotifierBase
         , private osl::Thread
     {
@@ -198,7 +200,7 @@ namespace comphelper
     /** AnyEvent derivee holding a foreign event instance
     */
     template < typename EVENT_OBJECT >
-    class SAL_DLLPUBLIC_RTTI EventHolder final : public AnyEvent
+    class SAL_DLLPUBLIC_TEMPLATE EventHolder final : public AnyEvent
     {
     public:
         typedef EVENT_OBJECT    EventObjectType;
@@ -214,6 +216,9 @@ namespace comphelper
 
         const EventObjectType& getEventObject() const { return m_aEvent; }
     };
+
+    extern template class EventHolder<css::document::DocumentEvent>;
+    using DocumentEventHolder = EventHolder<css::document::DocumentEvent>;
 
     COMPHELPER_DLLPUBLIC void JoinAsyncEventNotifiers();
 

@@ -19,11 +19,11 @@
 
 #include "PresenterController.hxx"
 #include "PresenterSpritePane.hxx"
+#include <PresenterHelper.hxx>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 namespace sdext::presenter {
 
@@ -34,37 +34,36 @@ PresenterSpritePane::PresenterSpritePane (const Reference<XComponentContext>& rx
     : PresenterPaneBase(rxContext, rpPresenterController),
       mpSprite(std::make_shared<PresenterSprite>())
 {
-    Reference<lang::XMultiComponentFactory> xFactory (
-        mxComponentContext->getServiceManager(), UNO_SET_THROW);
-    mxPresenterHelper.set(
-        xFactory->createInstanceWithContext(
-            "com.sun.star.comp.Draw.PresenterHelper",
-            mxComponentContext),
-        UNO_QUERY_THROW);
 }
 
 PresenterSpritePane::~PresenterSpritePane()
 {
 }
 
-void PresenterSpritePane::disposing()
+void PresenterSpritePane::disposing(std::unique_lock<std::mutex>& l)
 {
     mpSprite->SetFactory(nullptr);
     mxParentCanvas = nullptr;
-    PresenterPaneBase::disposing();
+    PresenterPaneBase::disposing(l);
 }
 
-//----- XPane -----------------------------------------------------------------
+//----- AbstractPane -----------------------------------------------------------------
 
-Reference<awt::XWindow> SAL_CALL PresenterSpritePane::getWindow()
+Reference<awt::XWindow> PresenterSpritePane::getWindow()
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     return mxContentWindow;
 }
 
-Reference<rendering::XCanvas> SAL_CALL PresenterSpritePane::getCanvas()
+Reference<rendering::XCanvas> PresenterSpritePane::getCanvas()
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
 
     if ( ! mxContentCanvas.is())
         UpdateCanvases();
@@ -88,7 +87,7 @@ void SAL_CALL PresenterSpritePane::windowMoved (const awt::WindowEvent& rEvent)
     PresenterPaneBase::windowMoved(rEvent);
 
     awt::Rectangle aBox (
-        mxPresenterHelper->getWindowExtentsRelative(mxBorderWindow, mxParentWindow));
+        sd::presenter::PresenterHelper::getWindowExtentsRelative(mxBorderWindow, mxParentWindow));
     mpSprite->MoveTo(geometry::RealPoint2D(aBox.X, aBox.Y));
     mpSprite->Update();
 }
@@ -120,7 +119,8 @@ void SAL_CALL PresenterSpritePane::windowHidden (const lang::EventObject& rEvent
 
 void SAL_CALL PresenterSpritePane::windowPaint (const awt::PaintEvent&)
 {
-    ThrowIfDisposed();
+    std::unique_lock l(m_aMutex);
+    throwIfDisposed(l);
 
     /*
     Reference<rendering::XSpriteCanvas> xSpriteCanvas (mxParentCanvas, UNO_QUERY);
@@ -141,7 +141,7 @@ void PresenterSpritePane::UpdateCanvases()
 
     // The content canvas is a wrapper of the border canvas.
     if (mxBorderCanvas.is())
-        mxContentCanvas = mxPresenterHelper->createSharedCanvas(
+        mxContentCanvas = sd::presenter::PresenterHelper::createSharedCanvas(
             mxParentCanvas,
             mxParentWindow,
             mxBorderCanvas,

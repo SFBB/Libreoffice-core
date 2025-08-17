@@ -41,10 +41,7 @@
 
 #include <cmdid.h>
 
-using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
-using namespace ::sfx2;
 
 SwReadOnlyPopup::~SwReadOnlyPopup()
 {
@@ -60,7 +57,7 @@ void SwReadOnlyPopup::Check( sal_uInt16 nMID, sal_uInt16 nSID, SfxDispatcher con
         m_xMenu->EnableItem(nMID);
         if (_pItem)
         {
-            m_xMenu->CheckItem(nMID, !_pItem->isVoidItem() &&
+            m_xMenu->CheckItem(nMID, !IsDisabledItem(_pItem.get()) &&
                             dynamic_cast< const SfxBoolItem *>( _pItem.get() ) !=  nullptr &&
                             static_cast<SfxBoolItem*>(_pItem.get())->GetValue());
             //remove full screen entry when not in full screen mode
@@ -76,7 +73,7 @@ void SwReadOnlyPopup::Check( sal_uInt16 nMID, sal_uInt16 nSID, SfxDispatcher con
 #define MN_READONLY_BACKGROUNDTOGALLERY 2000
 
 SwReadOnlyPopup::SwReadOnlyPopup(const Point &rDPos, SwView &rV)
-    : m_aBuilder(nullptr, AllSettings::GetUIRootDir(), "modules/swriter/ui/readonlymenu.ui", "")
+    : m_aBuilder(nullptr, AllSettings::GetUIRootDir(), u"modules/swriter/ui/readonlymenu.ui"_ustr, u""_ustr)
     , m_xMenu(m_aBuilder.get_menu(u"menu"))
     , m_nReadonlyOpenurl(m_xMenu->GetItemId(u"openurl"))
     , m_nReadonlyOpendoc(m_xMenu->GetItemId(u"opendoc"))
@@ -99,11 +96,12 @@ SwReadOnlyPopup::SwReadOnlyPopup(const Point &rDPos, SwView &rV)
     , m_nReadonlyLoadGraphic(m_xMenu->GetItemId(u"loadgraphic"))
     , m_nReadonlyGraphicoff(m_xMenu->GetItemId(u"imagesoff"))
     , m_nReadonlyFullscreen(m_xMenu->GetItemId(u"fullscreen"))
+    , m_nReadonlyCopyField(m_xMenu->GetItemId(u"copyfield"))
     , m_nReadonlyCopy(m_xMenu->GetItemId(u"copy"))
     , m_rView(rV)
     , m_xBrushItem(std::make_unique<SvxBrushItem>(RES_BACKGROUND))
 {
-    m_bGrfToGalleryAsLnk = SW_MOD()->GetModuleConfig()->IsGrfToGalleryAsLnk();
+    m_bGrfToGalleryAsLnk = SwModule::get()->GetModuleConfig()->IsGrfToGalleryAsLnk();
     SwWrtShell &rSh = m_rView.GetWrtShell();
     OUString sDescription;
     rSh.IsURLGrfAtPos( rDPos, &m_sURL, &m_sTargetFrameName, &sDescription );
@@ -216,7 +214,8 @@ SwReadOnlyPopup::SwReadOnlyPopup(const Point &rDPos, SwView &rV)
         m_xMenu->EnableItem(m_nReadonlyCopylink, false);
     }
     Check(m_nReadonlyFullscreen, SID_WIN_FULLSCREEN, rDis);
-
+    eState = rVFrame.GetBindings().QueryState(FN_COPY_FIELD, pState);
+    m_xMenu->EnableItem(m_nReadonlyCopyField, eState > SfxItemState::DISABLED);
     m_xMenu->RemoveDisabledEntries( true );
 }
 
@@ -287,6 +286,8 @@ void SwReadOnlyPopup::Execute( vcl::Window* pWin, sal_uInt16 nId )
         nExecId = SID_BROWSE_FORWARD;
     else if (nId == m_nReadonlySourceview)
         nExecId = SID_SOURCEVIEW;
+    else if (nId == m_nReadonlyCopyField)
+        nExecId = FN_COPY_FIELD;
     else if (nId == m_nReadonlySaveGraphic || nId == m_nReadonlySaveBackground)
         SaveGraphic(nId);
     else if (nId == m_nReadonlyCopylink)
@@ -306,9 +307,9 @@ void SwReadOnlyPopup::Execute( vcl::Window* pWin, sal_uInt16 nId )
     else if (nId == m_nReadonlyGraphicoff)
         nExecId = FN_VIEW_GRAPHIC;
     else if (nId == m_nReadonlyTogallerylink || nId == m_nReadonlyBackgroundTogallerylink)
-        SW_MOD()->GetModuleConfig()->SetGrfToGalleryAsLnk(true);
+        SwModule::get()->GetModuleConfig()->SetGrfToGalleryAsLnk(true);
     else if (nId == m_nReadonlyTogallerycopy || nId == m_nReadonlyBackgroundTogallerycopy)
-        SW_MOD()->GetModuleConfig()->SetGrfToGalleryAsLnk(false);
+        SwModule::get()->GetModuleConfig()->SetGrfToGalleryAsLnk(false);
 
     if( USHRT_MAX != nExecId )
         rDis.GetBindings()->Execute( nExecId );

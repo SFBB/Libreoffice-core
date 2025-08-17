@@ -30,6 +30,7 @@
  */
 class SVXCORE_DLLPUBLIC SdrCaptionLineLenItem final : public SdrMetricItem {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SdrCaptionLineLenItem)
     SdrCaptionLineLenItem(tools::Long nLineLen=0): SdrMetricItem(SDRATTR_CAPTIONLINELEN,nLineLen) {}
     virtual ~SdrCaptionLineLenItem() override;
     virtual SdrCaptionLineLenItem* Clone(SfxItemPool* pPool=nullptr) const override;
@@ -46,6 +47,7 @@ public:
  */
 class SVXCORE_DLLPUBLIC SdrCaptionFitLineLenItem final : public SdrYesNoItem {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SdrCaptionFitLineLenItem)
     SdrCaptionFitLineLenItem(bool bBestFit=true): SdrYesNoItem(SDRATTR_CAPTIONFITLINELEN,bBestFit) {}
     virtual ~SdrCaptionFitLineLenItem() override;
     virtual SdrCaptionFitLineLenItem* Clone(SfxItemPool* pPool=nullptr) const override;

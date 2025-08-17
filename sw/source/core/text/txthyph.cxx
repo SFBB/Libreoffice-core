@@ -32,7 +32,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::linguistic2;
 using namespace ::com::sun::star::i18n;
 
@@ -289,7 +288,7 @@ bool SwTextPortion::CreateHyphen( SwTextFormatInfo &rInf, SwTextGuess const &rGu
 
         // length of pHyphPor is adjusted
         pHyphPor->SetLen( TextFrameIndex(aAltText.getLength() + 1) );
-        static_cast<SwPosSize&>(*pHyphPor) = pHyphPor->GetTextSize( rInf );
+        static_cast<SwPositiveSize&>(*pHyphPor) = pHyphPor->GetTextSize( rInf );
         pHyphPor->SetLen( TextFrameIndex(aAltSpell.nChangedLength + nTmpLen) );
     }
     else
@@ -299,13 +298,13 @@ bool SwTextPortion::CreateHyphen( SwTextFormatInfo &rInf, SwTextGuess const &rGu
         pHyphPor->SetLen(TextFrameIndex(1));
 
         static const void* nLastFontCacheId = nullptr;
-        static sal_uInt16 aMiniCacheH = 0, aMiniCacheW = 0;
+        static SwTwips aMiniCacheH = 0, aMiniCacheW = 0;
         const void* nTmpFontCacheId;
         sal_uInt16 nFntIdx;
         rInf.GetFont()->GetFontCacheId( nTmpFontCacheId, nFntIdx, rInf.GetFont()->GetActual() );
         if( !nLastFontCacheId || nLastFontCacheId != nTmpFontCacheId ) {
             nLastFontCacheId = nTmpFontCacheId;
-            static_cast<SwPosSize&>(*pHyphPor) = pHyphPor->GetTextSize( rInf );
+            static_cast<SwPositiveSize&>(*pHyphPor) = pHyphPor->GetTextSize( rInf );
             aMiniCacheH = pHyphPor->Height();
             aMiniCacheW = pHyphPor->Width();
         } else {
@@ -325,8 +324,15 @@ bool SwTextPortion::CreateHyphen( SwTextFormatInfo &rInf, SwTextGuess const &rGu
          ( nPorEnd == rInf.GetIdx() && rInf.GetLineStart() != rInf.GetIdx() ) )
     {
         aInf.SetLen( nPorEnd - rInf.GetIdx() );
+        if (auto stClampedContext = aInf.GetLayoutContext(); stClampedContext.has_value())
+        {
+            stClampedContext->m_nEnd = nPorEnd.get();
+            aInf.SetLayoutContext(stClampedContext);
+        }
+
         pHyphPor->SetAscent( GetAscent() );
         SetLen( aInf.GetLen() );
+        SetLayoutContext(aInf.GetLayoutContext());
         CalcTextSize( aInf );
 
         Insert( pHyphPor.release() );
@@ -405,7 +411,7 @@ SwSoftHyphPortion::SwSoftHyphPortion() :
     SetWhichPor( PortionType::SoftHyphen );
 }
 
-sal_uInt16 SwSoftHyphPortion::GetViewWidth( const SwTextSizeInfo &rInf ) const
+SwTwips SwSoftHyphPortion::GetViewWidth(const SwTextSizeInfo& rInf) const
 {
     // Although we're in the const, nViewWidth should be calculated at
     // the last possible moment
@@ -432,10 +438,27 @@ sal_uInt16 SwSoftHyphPortion::GetViewWidth( const SwTextSizeInfo &rInf ) const
  */
 void SwSoftHyphPortion::Paint( const SwTextPaintInfo &rInf ) const
 {
-    if( Width() )
+    if ( Width() )
     {
         rInf.DrawViewOpt( *this, PortionType::SoftHyphen );
         SwExpandPortion::Paint( rInf );
+
+        if (rInf.GetOpt().IsViewMetaChars() && !rInf.GetOpt().IsPrinting()
+            && !rInf.GetOpt().IsPDFExport())
+        {
+            OUString aMarker = u"-"_ustr;
+            SwTextPaintInfo aInf(rInf, &aMarker);
+            SwTextPortion aMarkerPor;
+            SwPositiveSize aMarkerSize(rInf.GetTextSize(aMarker));
+            aMarkerPor.Width(aMarkerSize.Width());
+            aMarkerPor.Height(aMarkerSize.Height());
+            aMarkerPor.SetAscent(GetAscent());
+
+            Color colorBackup = aInf.GetFont()->GetColor();
+            aInf.GetFont()->SetColor(SwViewOption::GetCurrentViewOptions().GetNonPrintingCharacterColor());
+            aInf.DrawText(aMarkerPor, TextFrameIndex(aMarker.getLength()), true);
+            aInf.GetFont()->SetColor(colorBackup);
+        }
     }
 }
 

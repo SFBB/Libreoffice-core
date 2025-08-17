@@ -27,8 +27,6 @@
 #include <sal/types.h>
 
 namespace oox {
-    class AttributeList;
-    namespace core { class ContextHandler2Helper; }
     namespace drawingml { class Color; }
 }
 

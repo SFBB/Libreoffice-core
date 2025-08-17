@@ -35,6 +35,9 @@
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
 
+#include "TextLine.hxx"
+#include "IdleFormatter.hxx"
+
 #include <com/sun/star/i18n/XBreakIterator.hpp>
 
 #include <com/sun/star/i18n/CharacterIteratorMode.hpp>
@@ -189,9 +192,9 @@ void TextEngine::SetFont( const vcl::Font& rFont )
 
     maFont.SetAlignment( ALIGN_TOP );
     mpRefDev->SetFont( maFont );
-    mnDefTab = mpRefDev->GetTextWidth("    ");
+    mnDefTab = mpRefDev->GetTextWidth(u"    "_ustr);
     if ( !mnDefTab )
-        mnDefTab = mpRefDev->GetTextWidth("XXXX");
+        mnDefTab = mpRefDev->GetTextWidth(u"XXXX"_ustr);
     if ( !mnDefTab )
         mnDefTab = 1;
     mnCharHeight = mpRefDev->GetTextHeight();
@@ -1325,7 +1328,7 @@ TextPaM TextEngine::SplitContent( sal_uInt32 nNode, sal_Int32 nSepPos )
 {
 #ifdef DBG_UTIL
     TextNode* pNode = mpDoc->GetNodes()[ nNode ].get();
-    SAL_WARN_IF( !pNode, "vcl", "SplitContent: Invalid Node!" );
+    assert(pNode && "SplitContent: Invalid Node!");
     SAL_WARN_IF( !IsInUndo(), "vcl", "SplitContent: only in Undo()!" );
     SAL_WARN_IF( nSepPos > pNode->GetText().getLength(), "vcl", "SplitContent: Bad index" );
 #endif
@@ -2007,11 +2010,10 @@ void TextEngine::ImpPaint( OutputDevice* pOutDev, const Point& rStartPos, tools:
                                         const TextPaM aTextEnd(nPara, nIndex + 1);
                                         if ((aTextStart < *pSelEnd) && (aTextEnd > *pSelStart))
                                         {
-                                            const Color aOldColor = pOutDev->GetFillColor();
+                                            auto popIt = pOutDev->ScopedPush(vcl::PushFlags::FILLCOLOR);
                                             pOutDev->SetFillColor(
                                                 rStyleSettings.GetHighlightColor());
                                             pOutDev->DrawRect(aTabArea);
-                                            pOutDev->SetFillColor(aOldColor);
                                         }
                                         else
                                         {
@@ -2357,7 +2359,7 @@ OUString TextEngine::GetWord( const TextPaM& rCursorPos, TextPaM* pStartOfWord, 
         TextNode* pNode = mpDoc->GetNodes()[ rCursorPos.GetPara() ].get();
         uno::Reference < i18n::XBreakIterator > xBI = GetBreakIterator();
         i18n::Boundary aBoundary = xBI->getWordBoundary( pNode->GetText(), rCursorPos.GetIndex(), GetLocale(), i18n::WordType::ANYWORD_IGNOREWHITESPACES, true );
-        // tdf#57879 - expand selection to the left to include connector punctuations and search for additional word boundaries
+        // tdf#57879 - expand selection to the left to include connector punctuation and search for additional word boundaries
         if (aBoundary.startPos > 0 && aBoundary.startPos < pNode->GetText().getLength() && u_charType(pNode->GetText()[aBoundary.startPos]) == U_CONNECTOR_PUNCTUATION)
         {
             aBoundary.startPos = xBI->getWordBoundary(pNode->GetText(), aBoundary.startPos - 1,
@@ -2369,7 +2371,7 @@ OUString TextEngine::GetWord( const TextPaM& rCursorPos, TextPaM* pStartOfWord, 
                 xBI->getWordBoundary( pNode->GetText(), aBoundary.startPos - 2,
                     GetLocale(), css::i18n::WordType::ANYWORD_IGNOREWHITESPACES, true).startPos);
         }
-        // tdf#57879 - expand selection to the right to include connector punctuations and search for additional word boundaries
+        // tdf#57879 - expand selection to the right to include connector punctuation and search for additional word boundaries
         if (aBoundary.endPos > 0 && aBoundary.endPos < pNode->GetText().getLength() && u_charType(pNode->GetText()[aBoundary.endPos - 1]) == U_CONNECTOR_PUNCTUATION)
         {
             aBoundary.endPos = xBI->getWordBoundary(pNode->GetText(), aBoundary.endPos,

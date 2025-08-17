@@ -24,30 +24,16 @@
 #include <vcl/gdimtf.hxx>
 #include <vcl/graph.hxx>
 #include "graphic/Manager.hxx"
+#include "graphic/MemoryManaged.hxx"
 #include "graphic/GraphicID.hxx"
+#include "graphic/BitmapContainer.hxx"
+#include "graphic/AnimationContainer.hxx"
+#include "graphic/SwapInfo.hxx"
 #include <optional>
-
-struct ImpSwapInfo
-{
-    MapMode     maPrefMapMode;
-    Size        maPrefSize;
-    Size        maSizePixel;
-
-    bool mbIsAnimated;
-    bool mbIsEPS;
-    bool mbIsTransparent;
-    bool mbIsAlpha;
-
-    sal_uInt32 mnAnimationLoopCount;
-    sal_Int32 mnPageIndex;
-};
 
 class OutputDevice;
 class GfxLink;
 class ImpSwapFile;
-class GraphicConversionParameters;
-class ImpGraphic;
-namespace rtl { class OStringBuffer; }
 
 enum class GraphicContentType : sal_Int32
 {
@@ -56,44 +42,45 @@ enum class GraphicContentType : sal_Int32
     Vector
 };
 
-class VCL_DLLPUBLIC ImpGraphic final
+class SAL_DLLPUBLIC_RTTI ImpGraphic final : public vcl::graphic::MemoryManaged
 {
     friend class Graphic;
     friend class GraphicID;
-    friend class vcl::graphic::Manager;
 
 private:
+    Bitmap maCachedBitmap;
+    GDIMetaFile maMetaFile;
+    std::shared_ptr<BitmapContainer> mpBitmapContainer;
 
-    GDIMetaFile                  maMetaFile;
-    BitmapEx                     maBitmapEx;
     /// If maBitmapEx is empty, this preferred size will be set on it when it gets initialized.
     Size                         maExPrefSize;
-    ImpSwapInfo                  maSwapInfo;
-    std::unique_ptr<Animation>   mpAnimation;
-    std::shared_ptr<GraphicReader> mpContext;
+    SwapInfo maSwapInfo;
+    std::shared_ptr<AnimationContainer> mpAnimationContainer;
     std::shared_ptr<ImpSwapFile> mpSwapFile;
     std::shared_ptr<GfxLink>     mpGfxLink;
-    GraphicType                  meType;
-    mutable sal_uLong            mnSizeBytes;
-    bool                         mbSwapOut;
-    bool                         mbDummyContext;
     std::shared_ptr<VectorGraphicData> maVectorGraphicData;
+
+    GraphicType                  meType = GraphicType::NONE;
+    mutable sal_Int64 mnSizeBytes = 0;
+    bool                         mbSwapOut = false;
+    bool                         mbDummyContext = false;
     // cache checksum computation
     mutable BitmapChecksum       mnChecksum = 0;
 
     std::optional<GraphicID>     mxGraphicID;
     GraphicExternalLink          maGraphicExternalLink;
 
-    std::chrono::high_resolution_clock::time_point maLastUsed;
-    bool mbPrepared;
+    // atomic because it is touched in parallel from the drawinglayer parallel rendering stuff in ScenePrimitive2D::create2DDecomposition
+    mutable std::atomic<std::chrono::high_resolution_clock::time_point> maLastUsed = std::chrono::high_resolution_clock::now();
+    bool mbPrepared = false;
 
 public:
-    ImpGraphic();
+    ImpGraphic(bool bDefault = false);
     ImpGraphic( const ImpGraphic& rImpGraphic );
     ImpGraphic( ImpGraphic&& rImpGraphic ) noexcept;
     ImpGraphic( GraphicExternalLink aExternalLink);
     ImpGraphic(std::shared_ptr<GfxLink> xGfxLink, sal_Int32 nPageIndex = 0);
-    ImpGraphic( const BitmapEx& rBmpEx );
+    ImpGraphic( const Bitmap& rBmp );
     ImpGraphic(const std::shared_ptr<VectorGraphicData>& rVectorGraphicDataPtr);
     ImpGraphic( const Animation& rAnimation );
     ImpGraphic( const GDIMetaFile& rMtf );
@@ -132,7 +119,6 @@ private:
     void                clear();
 
     GraphicType         getType() const { return meType;}
-    void                setDefaultType();
     bool                isSupportedGraphic() const;
 
     bool                isTransparent() const;
@@ -143,10 +129,9 @@ private:
     bool isAvailable() const;
     bool makeAvailable();
 
-    Bitmap              getBitmap(const GraphicConversionParameters& rParameters) const;
     BitmapEx            getBitmapEx(const GraphicConversionParameters& rParameters) const;
     /// Gives direct access to the contained BitmapEx.
-    const BitmapEx&     getBitmapExRef() const;
+    const Bitmap&       getBitmapRef() const;
     Animation           getAnimation() const;
     const GDIMetaFile&  getGDIMetaFile() const;
 
@@ -158,9 +143,10 @@ private:
     MapMode             getPrefMapMode() const;
     void                setPrefMapMode( const MapMode& rPrefMapMode );
 
-    sal_uLong           getSizeBytes() const;
+    sal_Int64 getSizeBytes() const;
 
-    void                draw(OutputDevice& rOutDev, const Point& rDestPt) const;
+    void ensureCurrentSizeInBytes();
+
     void                draw(OutputDevice& rOutDev, const Point& rDestPt,
                              const Size& rDestSize) const;
 
@@ -187,8 +173,8 @@ private:
     bool swapOutGraphic(SvStream& rStream);
     // end swapping
 
-    std::shared_ptr<GraphicReader>& getContext() { return mpContext;}
-    void                setContext( const std::shared_ptr<GraphicReader>& pReader );
+    Bitmap getBitmap(const GraphicConversionParameters& rParameters) const;
+
     void                setDummyContext( bool value ) { mbDummyContext = value; }
     bool                isDummyContext() const { return mbDummyContext; }
     void                setGfxLink( const std::shared_ptr<GfxLink>& );
@@ -201,7 +187,8 @@ private:
     const std::shared_ptr<VectorGraphicData>& getVectorGraphicData() const;
 
     /// Gets the bitmap replacement for a vector graphic.
-    BitmapEx getVectorGraphicReplacement() const;
+    // Hide volatile state of maBitmapEx when using maVectorGraphicData into this method
+    void updateBitmapFromVectorGraphic(const Size& pixelSize = {}) const;
 
     bool ensureAvailable () const;
 
@@ -212,15 +199,20 @@ private:
     // Set the pref map mode, but don't force swap-in
     void setValuesForPrefMapMod(const MapMode& rPrefMapMode);
 
+    bool canReduceMemory() const override;
+    bool reduceMemory() override;
+    std::chrono::high_resolution_clock::time_point getLastUsed() const override;
+    void resetLastUsed() const;
+
 public:
     void resetChecksum() { mnChecksum = 0; }
     bool swapIn();
-    bool swapOut();
+    VCL_DLLPUBLIC bool swapOut();
     bool isSwappedOut() const { return mbSwapOut; }
-    SvStream* getSwapFileStream() const;
+    VCL_DLLPUBLIC SvStream* getSwapFileStream() const;
     // public only because of use in GraphicFilter
     void updateFromLoadedGraphic(const ImpGraphic* graphic);
-    void dumpState(rtl::OStringBuffer &rState);
+    void dumpState(rtl::OStringBuffer &rState) override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

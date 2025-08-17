@@ -19,30 +19,31 @@ extras_AUTOTEXTUSER_XMLFILES_RELATIVE = $(subst $(1)/,,$(filter $(1)/%,$(extras_
 .SECONDEXPANSION:
 # secondexpansion since the patterns not just cover a filename portion, but also include a
 # directory portion withdifferent number of elements
-$(call gb_CustomTarget_get_workdir,extras/source/autotext/user)/%/mimetype : \
-        | $$(dir $(call gb_CustomTarget_get_workdir,extras/source/autotext/user)/$$*/mimetype).dir
+$(gb_CustomTarget_workdir)/extras/source/autotext/user/%/mimetype : \
+        | $$(dir $(gb_CustomTarget_workdir)/extras/source/autotext/user/$$*/mimetype).dir
 	$(call gb_Output_announce,autotext/user/$*/mimetype,$(true),TCH,1)
 	$(call gb_Trace_StartRange,autotext/user/$*/mimetype,TCH)
 	touch $@
 	$(call gb_Trace_EndRange,autotext/user/$*/mimetype,TCH)
 
-$(call gb_CustomTarget_get_workdir,extras/source/autotext/user)/%.xml : $(SRCDIR)/extras/source/autotext/%.xml \
+$(gb_CustomTarget_workdir)/extras/source/autotext/user/%.xml : $(SRCDIR)/extras/source/autotext/%.xml \
         | $(call gb_ExternalExecutable_get_dependencies,xsltproc) \
-          $$(dir $(call gb_CustomTarget_get_workdir,extras/source/autotext/user)/$$*.xml).dir
+          $$(dir $(gb_CustomTarget_workdir)/extras/source/autotext/user/$$*.xml).dir
 	$(call gb_Output_announce,autotext/user/$*.xml,$(true),XSL,1)
 	$(call gb_Trace_StartRange,autotext/user/$*.xml,XSL)
 	$(call gb_ExternalExecutable_get_command,xsltproc) --nonet -o $@ $(SRCDIR)/extras/util/compact.xsl $<
 	$(call gb_Trace_EndRange,autotext/user/$*.xml,XSL)
 
-$(call gb_CustomTarget_get_workdir,extras/source/autotext/user)/%.bau : \
-        $$(addprefix $(call gb_CustomTarget_get_workdir,extras/source/autotext/user)/$$*/,\
+$(gb_CustomTarget_workdir)/extras/source/autotext/user/%.bau : \
+        $$(addprefix $(gb_CustomTarget_workdir)/extras/source/autotext/user/$$*/,\
             mimetype $$(call extras_AUTOTEXTUSER_XMLFILES_RELATIVE,$$*))
 	$(call gb_Output_announce,autotext/user/$*.bau,$(true),ZIP,2)
 	$(call gb_Trace_StartRange,autotext/user/$*.bau,ZIP)
 	$(call gb_Helper_abbreviate_dirs,\
-		cd $(dir $<) && \
-		zip -q0X --filesync --must-match $@ mimetype && \
-		zip -qrX --must-match $@ $(call extras_AUTOTEXTUSER_XMLFILES_RELATIVE,$*) \
+	cd $(dir $<) && \
+	$(call gb_Helper_wsl_path,\
+		$(WSL) zip -q0X --filesync --must-match $@ mimetype && \
+		$(WSL) zip -qrX --must-match $@ $(call extras_AUTOTEXTUSER_XMLFILES_RELATIVE,$*)) \
 	)
 	$(call gb_Trace_EndRange,autotext/user/$*.bau,ZIP)
 

@@ -11,6 +11,7 @@ $(eval $(call gb_Module_Module,bridges))
 
 $(eval $(call gb_Module_add_targets,bridges,\
 	Library_cpp_uno \
+	$(if $(ENABLE_DOTNET),Library_net_uno) \
 	$(if $(ENABLE_JAVA),\
 		Jar_java_uno \
 		Library_java_uno \
@@ -19,6 +20,10 @@ $(eval $(call gb_Module_add_targets,bridges,\
 	$(if $(filter ARM,$(CPUNAME)),\
 		$(if $(filter ANDROID LINUX,$(OS)),\
 			CustomTarget_gcc3_linux_arm) \
+	) \
+	$(if $(filter EMSCRIPTEN,$(OS)), \
+	    CustomTarget_gcc3_wasm \
+	    StaticLibrary_emscriptencxxabi \
 	) \
 ))
 

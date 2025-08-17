@@ -94,12 +94,14 @@
 #include <comphelper/processfactory.hxx>
 #include <config_features.h>
 
-namespace uno = com::sun::star::uno;
-namespace frame = com::sun::star::frame;
-namespace lang = com::sun::star::lang;
-namespace container = com::sun::star::container;
-namespace beans = com::sun::star::beans;
-namespace graphic = com::sun::star::graphic;
+#include <vcl/tabs.hrc>
+
+namespace uno = css::uno;
+namespace frame = css::frame;
+namespace lang = css::lang;
+namespace container = css::container;
+namespace beans = css::beans;
+namespace graphic = css::graphic;
 
 #if OSL_DEBUG_LEVEL > 1
 
@@ -206,24 +208,30 @@ static std::unique_ptr<SfxTabPage> CreateSvxEventConfigPage( weld::Container* pP
  *
  *****************************************************************************/
 SvxConfigDialog::SvxConfigDialog(weld::Window * pParent, const SfxItemSet* pInSet)
-    : SfxTabDialogController(pParent, "cui/ui/customizedialog.ui", "CustomizeDialog", pInSet)
+    : SfxTabDialogController(pParent, u"cui/ui/customizedialog.ui"_ustr, u"CustomizeDialog"_ustr, pInSet)
 {
     SvxConfigPageHelper::InitImageType();
 
-    AddTabPage("menus", CreateSvxMenuConfigPage, nullptr);
-    AddTabPage("toolbars", CreateSvxToolbarConfigPage, nullptr);
-    AddTabPage("notebookbar", CreateSvxNotebookbarConfigPage, nullptr);
-    AddTabPage("contextmenus", CreateSvxContextMenuConfigPage, nullptr);
-    AddTabPage("keyboard", CreateKeyboardConfigPage, nullptr);
-    AddTabPage("events", CreateSvxEventConfigPage, nullptr);
+    AddTabPage(u"menus"_ustr, TabResId(RID_TAB_MENUS.aLabel), CreateSvxMenuConfigPage,
+               RID_L + RID_TAB_MENUS.sIconName);
+    AddTabPage(u"toolbars"_ustr, TabResId(RID_TAB_TOOLBARS.aLabel), CreateSvxToolbarConfigPage,
+               RID_L + RID_TAB_TOOLBARS.sIconName);
+    AddTabPage(u"notebookbar"_ustr, TabResId(RID_TAB_NOTEBOOKBARS.aLabel),
+               CreateSvxNotebookbarConfigPage, RID_L + RID_TAB_NOTEBOOKBARS.sIconName);
+    AddTabPage(u"contextmenus"_ustr, TabResId(RID_TAB_CONTEXTMENUS.aLabel),
+               CreateSvxContextMenuConfigPage, RID_L + RID_TAB_CONTEXTMENUS.sIconName);
+    AddTabPage(u"keyboard"_ustr, TabResId(RID_TAB_KEYBOARD.aLabel), CreateKeyboardConfigPage,
+               RID_L + RID_TAB_KEYBOARD.sIconName);
+    AddTabPage(u"events"_ustr, TabResId(RID_TAB_EVENTS.aLabel), CreateSvxEventConfigPage,
+               RID_L + RID_TAB_EVENTS.sIconName);
 
     if (const SfxPoolItem* pItem = pInSet->GetItem(SID_CONFIG))
     {
         OUString text = static_cast<const SfxStringItem*>(pItem)->GetValue();
         if (text.startsWith( ITEM_TOOLBAR_URL ) )
-            SetCurPageId("toolbars");
+            SetCurPageId(u"toolbars"_ustr);
         else if (text.startsWith( ITEM_EVENT_URL) )
-            SetCurPageId("events");
+            SetCurPageId(u"events"_ustr);
     }
 #if HAVE_FEATURE_SCRIPTING
     else if (pInSet->GetItemIfSet(SID_MACROINFO))
@@ -231,7 +239,7 @@ SvxConfigDialog::SvxConfigDialog(weld::Window * pParent, const SfxItemSet* pInSe
         // for the "assign" button in the Basic Macros chooser automatically switch
         // to the keyboard tab in which this macro will be pre-selected for assigning
         // to a keystroke
-        SetCurPageId("keyboard");
+        SetCurPageId(u"keyboard"_ustr);
     }
 #endif
 }
@@ -251,10 +259,10 @@ void SvxConfigDialog::SetFrame(const css::uno::Reference<css::frame::XFrame>& xF
         aModuleId != "com.sun.star.sheet.SpreadsheetDocument" &&
         aModuleId != "com.sun.star.presentation.PresentationDocument" &&
         aModuleId != "com.sun.star.drawing.DrawingDocument")
-        RemoveTabPage("notebookbar");
+        RemoveTabPage(u"notebookbar"_ustr);
 
     if (aModuleId == "com.sun.star.frame.StartModule")
-        RemoveTabPage("keyboard");
+        RemoveTabPage(u"keyboard"_ustr);
 }
 
 void SvxConfigDialog::PageCreated(const OUString &rId, SfxTabPage& rPage)
@@ -302,7 +310,7 @@ SaveInData::SaveInData(
         bReadOnly = xDocPersistence->isReadOnly();
     }
 
-    uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
 
     uno::Reference< container::XNameAccess > xNameAccess(
         css::frame::theUICommandDescription::get(xContext) );
@@ -422,7 +430,7 @@ MenuSaveInData::GetEntries()
 {
     if ( pRootEntry == nullptr )
     {
-        pRootEntry.reset( new SvxConfigEntry( "MainMenus", OUString(), true, /*bParentData*/false) );
+        pRootEntry.reset( new SvxConfigEntry( u"MainMenus"_ustr, OUString(), true, /*bParentData*/false) );
 
         if ( m_xMenuSettings.is() )
         {
@@ -492,7 +500,7 @@ void SaveInData::LoadSubMenus( const uno::Reference< container::XIndexAccess >& 
                     if ( a >>= aPropSeq )
                     {
                         OUString aMenuLabel;
-                        for ( const beans::PropertyValue& prop : std::as_const(aPropSeq) )
+                        for (const beans::PropertyValue& prop : aPropSeq)
                         {
                             if ( bContextMenu )
                             {
@@ -603,7 +611,7 @@ void MenuSaveInData::Apply(
     uno::Reference< container::XIndexContainer > const & rMenuBar,
     uno::Reference< lang::XSingleComponentFactory >& rFactory )
 {
-    uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
 
     for (auto const& entryData : *GetEntries())
     {
@@ -630,7 +638,7 @@ void SaveInData::ApplyMenu(
     uno::Reference< lang::XSingleComponentFactory >& rFactory,
     SvxConfigEntry* pMenuData )
 {
-    uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
 
     for (auto const& entry : *pMenuData->GetEntries())
     {
@@ -702,7 +710,7 @@ ContextMenuSaveInData::ContextMenuSaveInData(
     const OUString& aModuleId, bool bIsDocConfig )
     : SaveInData( xCfgMgr, xParentCfgMgr, aModuleId, bIsDocConfig )
 {
-    css::uno::Reference< css::uno::XComponentContext > xContext( comphelper::getProcessComponentContext() );
+    const css::uno::Reference< css::uno::XComponentContext >& xContext( comphelper::getProcessComponentContext() );
     css::uno::Reference< css::container::XNameAccess > xConfig( css::ui::theWindowStateConfiguration::get( xContext ) );
     xConfig->getByName( aModuleId ) >>= m_xPersistentWindowState;
 }
@@ -723,7 +731,7 @@ OUString ContextMenuSaveInData::GetUIName( const OUString& rResourceURL )
         catch ( const css::uno::Exception& )
         {}
 
-        for ( const auto& aProp : std::as_const(aProps) )
+        for (const auto& aProp : aProps)
         {
             if ( aProp.Name == ITEM_DESCRIPTOR_UINAME )
             {
@@ -742,7 +750,7 @@ SvxEntries* ContextMenuSaveInData::GetEntries()
     {
         std::unordered_map< OUString, bool > aMenuInfo;
 
-        m_pRootEntry.reset( new SvxConfigEntry( "ContextMenus", OUString(), true, /*bParentData*/false ) );
+        m_pRootEntry.reset( new SvxConfigEntry( u"ContextMenus"_ustr, OUString(), true, /*bParentData*/false ) );
         css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > > aElementsInfo;
         try
         {
@@ -751,7 +759,7 @@ SvxEntries* ContextMenuSaveInData::GetEntries()
         catch ( const css::lang::IllegalArgumentException& )
         {}
 
-        for ( const auto& aElement : std::as_const(aElementsInfo) )
+        for (const auto& aElement : aElementsInfo)
         {
             OUString aUrl;
             for ( const auto& aElementProp : aElement )
@@ -799,7 +807,7 @@ SvxEntries* ContextMenuSaveInData::GetEntries()
         catch ( const css::lang::IllegalArgumentException& )
         {}
 
-        for ( const auto& aElement : std::as_const(aParentElementsInfo) )
+        for (const auto& aElement : aParentElementsInfo)
         {
             OUString aUrl;
             for ( const auto& aElementProp : aElement )
@@ -1000,30 +1008,30 @@ IMPL_LINK(SvxMenuEntriesListBox, QueryTooltip, const weld::TreeIter&, rIter, OUS
  *
  *****************************************************************************/
 SvxConfigPage::SvxConfigPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/menuassignpage.ui", "MenuAssignPage", &rSet)
+    : SfxTabPage(pPage, pController, u"cui/ui/menuassignpage.ui"_ustr, u"MenuAssignPage"_ustr, &rSet)
     , m_aUpdateDataTimer( "SvxConfigPage UpdateDataTimer" )
     , bInitialised(false)
     , pCurrentSaveInData(nullptr)
-    , m_xCommandCategoryListBox(new CommandCategoryListBox(m_xBuilder->weld_combo_box("commandcategorylist")))
-    , m_xFunctions(new CuiConfigFunctionListBox(m_xBuilder->weld_tree_view("functions")))
-    , m_xCategoryLabel(m_xBuilder->weld_label("categorylabel"))
-    , m_xDescriptionFieldLb(m_xBuilder->weld_label("descriptionlabel"))
-    , m_xDescriptionField(m_xBuilder->weld_text_view("desc"))
-    , m_xLeftFunctionLabel(m_xBuilder->weld_label("leftfunctionlabel"))
-    , m_xSearchEdit(m_xBuilder->weld_entry("searchEntry"))
-    , m_xSearchLabel(m_xBuilder->weld_label("searchlabel"))
-    , m_xCustomizeLabel(m_xBuilder->weld_label("customizelabel"))
-    , m_xTopLevelListBox(m_xBuilder->weld_combo_box("toplevellist"))
-    , m_xMoveUpButton(m_xBuilder->weld_button("up"))
-    , m_xMoveDownButton(m_xBuilder->weld_button("down"))
-    , m_xSaveInListBox(m_xBuilder->weld_combo_box("savein"))
-    , m_xCustomizeBox(m_xBuilder->weld_widget("customizebox"))
-    , m_xInsertBtn(m_xBuilder->weld_menu_button("insert"))
-    , m_xModifyBtn(m_xBuilder->weld_menu_button("modify"))
-    , m_xResetBtn(m_xBuilder->weld_button("defaultsbtn"))
-    , m_xCommandButtons(m_xBuilder->weld_widget("arrowgrid"))
-    , m_xAddCommandButton(m_xBuilder->weld_button("add"))
-    , m_xRemoveCommandButton(m_xBuilder->weld_button("remove"))
+    , m_xCommandCategoryListBox(new CommandCategoryListBox(m_xBuilder->weld_combo_box(u"commandcategorylist"_ustr)))
+    , m_xFunctions(new CuiConfigFunctionListBox(m_xBuilder->weld_tree_view(u"functions"_ustr)))
+    , m_xCategoryLabel(m_xBuilder->weld_label(u"categorylabel"_ustr))
+    , m_xDescriptionFieldLb(m_xBuilder->weld_label(u"descriptionlabel"_ustr))
+    , m_xDescriptionField(m_xBuilder->weld_text_view(u"desc"_ustr))
+    , m_xLeftFunctionLabel(m_xBuilder->weld_label(u"leftfunctionlabel"_ustr))
+    , m_xSearchEdit(m_xBuilder->weld_entry(u"searchEntry"_ustr))
+    , m_xSearchLabel(m_xBuilder->weld_label(u"searchlabel"_ustr))
+    , m_xCustomizeLabel(m_xBuilder->weld_label(u"customizelabel"_ustr))
+    , m_xTopLevelListBox(m_xBuilder->weld_combo_box(u"toplevellist"_ustr))
+    , m_xMoveUpButton(m_xBuilder->weld_button(u"up"_ustr))
+    , m_xMoveDownButton(m_xBuilder->weld_button(u"down"_ustr))
+    , m_xSaveInListBox(m_xBuilder->weld_combo_box(u"savein"_ustr))
+    , m_xCustomizeBox(m_xBuilder->weld_widget(u"customizebox"_ustr))
+    , m_xInsertBtn(m_xBuilder->weld_menu_button(u"insert"_ustr))
+    , m_xModifyBtn(m_xBuilder->weld_menu_button(u"modify"_ustr))
+    , m_xResetBtn(m_xBuilder->weld_button(u"defaultsbtn"_ustr))
+    , m_xCommandButtons(m_xBuilder->weld_widget(u"arrowgrid"_ustr))
+    , m_xAddCommandButton(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xRemoveCommandButton(m_xBuilder->weld_button(u"remove"_ustr))
 {
     CustomNotebookbarGenerator::getFileNameAndAppName(m_sAppName, m_sFileName);
 
@@ -1041,7 +1049,7 @@ SvxConfigPage::SvxConfigPage(weld::Container* pPage, weld::DialogController* pCo
     m_xSearchEdit->connect_focus_out(LINK(this, SvxConfigPage, FocusOut_Impl));
 
     rTreeView.connect_row_activated(LINK(this, SvxConfigPage, FunctionDoubleClickHdl));
-    rTreeView.connect_changed(LINK(this, SvxConfigPage, SelectFunctionHdl));
+    rTreeView.connect_selection_changed(LINK(this, SvxConfigPage, SelectFunctionHdl));
 }
 
 IMPL_LINK_NOARG(SvxConfigPage, SelectElementHdl, weld::ComboBox&, void)
@@ -1139,6 +1147,7 @@ void SvxConfigPage::Reset( const SfxItemSet* )
             {
                 OUString sId(weld::toId(pDocData));
                 m_xSaveInListBox->append(sId, aTitle);
+                nPos = m_xSaveInListBox->get_count() - 1;
             }
         }
 
@@ -1203,7 +1212,7 @@ void SvxConfigPage::Reset( const SfxItemSet* )
                 DBG_UNHANDLED_EXCEPTION("cui.customize");
             }
 
-            for ( uno::Reference < frame::XFrame > const & xf : std::as_const(aFrameList) )
+            for (uno::Reference<frame::XFrame> const& xf : aFrameList)
             {
                 if ( xf.is() && xf != m_xFrame )
                 {
@@ -1279,7 +1288,7 @@ OUString SvxConfigPage::GetFrameWithDefaultAndIdentify( uno::Reference< frame::X
     OUString sModuleID;
     try
     {
-        uno::Reference< uno::XComponentContext > xContext(
+        const uno::Reference< uno::XComponentContext >& xContext(
             ::comphelper::getProcessComponentContext() );
 
         uno::Reference< frame::XDesktop2 > xDesktop = frame::Desktop::create(
@@ -1649,7 +1658,7 @@ IMPL_LINK_NOARG(SvxConfigPage, SelectFunctionHdl, weld::TreeView&, void)
 
         if (SfxHelp::IsHelpInstalled())
         {
-            m_xDescriptionField->set_text(m_xFunctions->GetHelpText(false));
+            m_xDescriptionField->set_text(m_xFunctions->GetCommandHelpText());
         }
         else
         {
@@ -1676,7 +1685,7 @@ IMPL_LINK_NOARG(SvxConfigPage, SelectFunctionHdl, weld::TreeView&, void)
         m_xAddCommandButton->set_sensitive(false);
         m_xRemoveCommandButton->set_sensitive(false);
 
-        m_xDescriptionField->set_text("");
+        m_xDescriptionField->set_text(u""_ustr);
     }
 
     UpdateButtonStates();
@@ -1780,12 +1789,12 @@ bool SvxConfigPage::MoveEntryData(int nSourceEntry, int nTargetEntry)
 SvxMainMenuOrganizerDialog::SvxMainMenuOrganizerDialog(
     weld::Window* pParent, SvxEntries* entries,
     SvxConfigEntry const * selection, bool bCreateMenu )
-    : GenericDialogController(pParent, "cui/ui/movemenu.ui", "MoveMenuDialog")
-    , m_xMenuBox(m_xBuilder->weld_widget("namebox"))
-    , m_xMenuNameEdit(m_xBuilder->weld_entry("menuname"))
-    , m_xMenuListBox(m_xBuilder->weld_tree_view("menulist"))
-    , m_xMoveUpButton(m_xBuilder->weld_button("up"))
-    , m_xMoveDownButton(m_xBuilder->weld_button("down"))
+    : GenericDialogController(pParent, u"cui/ui/movemenu.ui"_ustr, u"MoveMenuDialog"_ustr)
+    , m_xMenuBox(m_xBuilder->weld_widget(u"namebox"_ustr))
+    , m_xMenuNameEdit(m_xBuilder->weld_entry(u"menuname"_ustr))
+    , m_xMenuListBox(m_xBuilder->weld_tree_view(u"menulist"_ustr))
+    , m_xMoveUpButton(m_xBuilder->weld_button(u"up"_ustr))
+    , m_xMoveDownButton(m_xBuilder->weld_button(u"down"_ustr))
 {
     m_xMenuListBox->set_size_request(-1, m_xMenuListBox->get_height_rows(12));
 
@@ -1838,7 +1847,7 @@ SvxMainMenuOrganizerDialog::SvxMainMenuOrganizerDialog(
         m_xDialog->set_title(CuiResId(RID_CUISTR_MOVE_MENU));
     }
 
-    m_xMenuListBox->connect_changed(LINK(this, SvxMainMenuOrganizerDialog, SelectHdl));
+    m_xMenuListBox->connect_selection_changed(LINK(this, SvxMainMenuOrganizerDialog, SelectHdl));
 
     m_xMoveUpButton->connect_clicked(LINK( this, SvxMainMenuOrganizerDialog, MoveHdl));
     m_xMoveDownButton->connect_clicked(LINK( this, SvxMainMenuOrganizerDialog, MoveHdl));
@@ -1974,7 +1983,7 @@ ToolbarSaveInData::ToolbarSaveInData(
     m_aDescriptorContainer  ( ITEM_DESCRIPTOR_CONTAINER  )
 
 {
-    uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
     // Initialize the m_xPersistentWindowState variable which is used
     // to get the default properties of system toolbars such as name
     uno::Reference< container::XNameAccess > xPWSS = css::ui::theWindowStateConfiguration::get( xContext );
@@ -2001,7 +2010,7 @@ sal_Int32 ToolbarSaveInData::GetSystemStyle( const OUString& rResourceURL )
 
             if ( a >>= aProps )
             {
-                for ( beans::PropertyValue const & prop : std::as_const(aProps) )
+                for (beans::PropertyValue const& prop : aProps)
                 {
                     if ( prop.Name == ITEM_DESCRIPTOR_STYLE )
                     {
@@ -2036,7 +2045,7 @@ void ToolbarSaveInData::SetSystemStyle(
     uno::Reference< beans::XPropertySet > xPropSet( xFrame, uno::UNO_QUERY );
     if ( xPropSet.is() )
     {
-        uno::Any a = xPropSet->getPropertyValue( "LayoutManager" );
+        uno::Any a = xPropSet->getPropertyValue( u"LayoutManager"_ustr );
         a >>= xLayoutManager;
     }
 
@@ -2128,7 +2137,7 @@ OUString ToolbarSaveInData::GetSystemUIName( const OUString& rResourceURL )
 
             if ( a >>= aProps )
             {
-                for ( beans::PropertyValue const & prop : std::as_const(aProps) )
+                for (beans::PropertyValue const& prop : aProps)
                 {
                     if ( prop.Name == ITEM_DESCRIPTOR_UINAME )
                     {
@@ -2155,7 +2164,7 @@ OUString ToolbarSaveInData::GetSystemUIName( const OUString& rResourceURL )
             uno::Sequence< beans::PropertyValue > aPropSeq;
             if ( a >>= aPropSeq )
             {
-                for ( beans::PropertyValue const & prop : std::as_const(aPropSeq) )
+                for (beans::PropertyValue const& prop : aPropSeq)
                 {
                     if ( prop.Name == ITEM_DESCRIPTOR_LABEL )
                     {
@@ -2182,7 +2191,7 @@ SvxEntries* ToolbarSaveInData::GetEntries()
     if ( pRootEntry == nullptr )
     {
 
-        pRootEntry.reset( new SvxConfigEntry( "MainToolbars", OUString(), true, /*bParentData*/false) );
+        pRootEntry.reset( new SvxConfigEntry( u"MainToolbars"_ustr, OUString(), true, /*bParentData*/false) );
 
         const uno::Sequence< uno::Sequence < beans::PropertyValue > > info =
             GetConfigManager()->getUIElementsInfo(
@@ -2413,7 +2422,7 @@ void ToolbarSaveInData::ApplyToolbar(
     uno::Reference< lang::XSingleComponentFactory >& rFactory,
     SvxConfigEntry const * pToolbarData )
 {
-    uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
 
     for (auto const& entry : *pToolbarData->GetEntries())
     {
@@ -2657,7 +2666,7 @@ void ToolbarSaveInData::LoadToolbar(
                     uno::Sequence< beans::PropertyValue > aPropSeq;
                     if ( a >>= aPropSeq )
                     {
-                        for ( beans::PropertyValue const & prop : std::as_const(aPropSeq) )
+                        for (beans::PropertyValue const& prop : aPropSeq)
                         {
                             if ( prop.Name == "Name" )
                             {
@@ -2691,9 +2700,9 @@ void ToolbarSaveInData::LoadToolbar(
 }
 
 SvxNewToolbarDialog::SvxNewToolbarDialog(weld::Window* pWindow, const OUString& rName)
-    : GenericDialogController(pWindow, "cui/ui/newtoolbardialog.ui", "NewToolbarDialog")
-    , m_xEdtName(m_xBuilder->weld_entry("edit"))
-    , m_xSaveInListBox(m_xBuilder->weld_combo_box("savein"))
+    : GenericDialogController(pWindow, u"cui/ui/newtoolbardialog.ui"_ustr, u"NewToolbarDialog"_ustr)
+    , m_xEdtName(m_xBuilder->weld_entry(u"edit"_ustr))
+    , m_xSaveInListBox(m_xBuilder->weld_combo_box(u"savein"_ustr))
 {
     m_xEdtName->set_text(rName);
     m_xEdtName->select_region(0, -1);
@@ -2711,14 +2720,14 @@ SvxNewToolbarDialog::~SvxNewToolbarDialog()
 SvxIconSelectorDialog::SvxIconSelectorDialog(weld::Window *pWindow,
     uno::Reference< css::ui::XImageManager > xImageManager,
     uno::Reference< css::ui::XImageManager > xParentImageManager)
-    : GenericDialogController(pWindow, "cui/ui/iconselectordialog.ui", "IconSelector")
+    : GenericDialogController(pWindow, u"cui/ui/iconselectordialog.ui"_ustr, u"IconSelector"_ustr)
     , m_xImageManager(std::move(xImageManager))
     , m_xParentImageManager(std::move(xParentImageManager))
-    , m_xTbSymbol(new ValueSet(m_xBuilder->weld_scrolled_window("symbolswin", true)))
-    , m_xTbSymbolWin(new weld::CustomWeld(*m_xBuilder, "symbolsToolbar", *m_xTbSymbol))
-    , m_xFtNote(m_xBuilder->weld_label("noteLabel"))
-    , m_xBtnImport(m_xBuilder->weld_button("importButton"))
-    , m_xBtnDelete(m_xBuilder->weld_button("deleteButton"))
+    , m_xTbSymbol(new ValueSet(m_xBuilder->weld_scrolled_window(u"symbolswin"_ustr, true)))
+    , m_xTbSymbolWin(new weld::CustomWeld(*m_xBuilder, u"symbolsToolbar"_ustr, *m_xTbSymbol))
+    , m_xFtNote(m_xBuilder->weld_label(u"noteLabel"_ustr))
+    , m_xBtnImport(m_xBuilder->weld_button(u"importButton"_ustr))
+    , m_xBtnDelete(m_xBuilder->weld_button(u"deleteButton"_ustr))
 {
     typedef std::unordered_map< OUString, bool > ImageInfo;
 
@@ -2739,10 +2748,11 @@ SvxIconSelectorDialog::SvxIconSelectorDialog(weld::Window *pWindow,
     m_xTbSymbol->SetItemWidth(m_nExpectedSize);
     m_xTbSymbol->SetItemHeight(m_nExpectedSize);
     m_xTbSymbol->SetExtraSpacing(6);
+    m_xTbSymbol->SetMargin(4);
     Size aSize(m_xTbSymbol->CalcWindowSizePixel(Size(m_nExpectedSize, m_nExpectedSize), 11, 5));
     m_xTbSymbol->set_size_request(aSize.Width(), aSize.Height());
 
-    uno::Reference< uno::XComponentContext > xComponentContext =
+    const uno::Reference< uno::XComponentContext >& xComponentContext =
         ::comphelper::getProcessComponentContext();
 
     m_xGraphProvider.set( graphic::GraphicProvider::create( xComponentContext ) );
@@ -2850,7 +2860,7 @@ SvxIconSelectorDialog::SvxIconSelectorDialog(weld::Window *pWindow,
         if ( graphics.hasElements() )
         {
             Image img(graphics[0]);
-            if (!img.GetBitmapEx().IsEmpty())
+            if (!img.GetBitmap().IsEmpty())
             {
                 m_aGraphics.push_back(graphics[0]);
                 m_xTbSymbol->InsertItem(m_aGraphics.size(), img, elem.first);
@@ -2926,7 +2936,7 @@ IMPL_LINK_NOARG(SvxIconSelectorDialog, ImportHdl, weld::Button&, void)
 
     if ( ERRCODE_NONE == aImportDialog.Execute() )
     {
-        uno::Sequence< OUString > paths = aImportDialog.GetMPath();
+        uno::Sequence< OUString > paths = aImportDialog.GetSelectedFiles();
         ImportGraphics ( paths );
     }
 }
@@ -2956,7 +2966,7 @@ bool SvxIconSelectorDialog::ReplaceGraphicItem(
     const OUString& aURL )
 {
     uno::Reference< graphic::XGraphic > xGraphic;
-    uno::Sequence< beans::PropertyValue > aMediaProps{ comphelper::makePropertyValue("URL", aURL) };
+    uno::Sequence< beans::PropertyValue > aMediaProps{ comphelper::makePropertyValue(u"URL"_ustr, aURL) };
 
     css::awt::Size aSize;
     bool bOK = false;
@@ -2966,7 +2976,7 @@ bool SvxIconSelectorDialog::ReplaceGraphicItem(
 
         uno::Reference< beans::XPropertySet > props =
             m_xGraphProvider->queryGraphicDescriptor( aMediaProps );
-        uno::Any a = props->getPropertyValue( "SizePixel" );
+        uno::Any a = props->getPropertyValue( u"SizePixel"_ustr );
         a >>= aSize;
         if (0 == aSize.Width || 0 == aSize.Height)
             return false;
@@ -2983,6 +2993,7 @@ bool SvxIconSelectorDialog::ReplaceGraphicItem(
     for (size_t n = 0; n < nCount; ++n)
     {
         sal_uInt16 nId = m_xTbSymbol->GetItemId( n );
+        assert(nId > 0 && "otherwise totally broken");
 
         if ( m_xTbSymbol->GetItemText( nId ) == aURL )
         {
@@ -2996,13 +3007,13 @@ bool SvxIconSelectorDialog::ReplaceGraphicItem(
                 Image aImage( xGraphic );
                 if ( bOK && ((aSize.Width != m_nExpectedSize) || (aSize.Height != m_nExpectedSize)) )
                 {
-                    BitmapEx aBitmap = aImage.GetBitmapEx();
+                    BitmapEx aBitmap(aImage.GetBitmap());
                     BitmapEx aBitmapex = BitmapEx::AutoScaleBitmap(aBitmap, m_nExpectedSize);
                     aImage = Image( aBitmapex);
                 }
                 m_xTbSymbol->InsertItem(nId, aImage, aURL, nPos); //modify
 
-                m_aGraphics[nPos] = Graphic(aImage.GetBitmapEx()).GetXGraphic();
+                m_aGraphics[nPos] = Graphic(aImage.GetBitmap()).GetXGraphic();
 
                 m_xImportedImageManager->replaceImages( SvxConfigPageHelper::GetImageType(), { aURL }, { xGraphic } );
                 m_xImportedImageManager->store();
@@ -3026,7 +3037,7 @@ namespace
     {
         OUString name;
         OUString message = CuiResId( RID_CUISTR_REPLACE_ICON_WARNING );
-        OUString placeholder("%ICONNAME" );
+        OUString placeholder(u"%ICONNAME"_ustr );
         sal_Int32 pos = message.indexOf( placeholder );
         if ( pos != -1 )
         {
@@ -3059,96 +3070,53 @@ namespace
 void SvxIconSelectorDialog::ImportGraphics(
     const uno::Sequence< OUString >& rPaths )
 {
-    std::vector< OUString > rejected( rPaths.getLength() );
-    sal_Int32 rejectedCount = 0;
+    std::vector<OUString> rejected;
 
-    sal_uInt16 ret = 0;
-    sal_Int32 aIndex;
-    OUString aIconName;
-
-    if ( rPaths.getLength() == 1 )
+    bool replaceAll = false;
+    for (const auto& aPath : rPaths)
     {
-        if ( m_xImportedImageManager->hasImage( SvxConfigPageHelper::GetImageType(), rPaths[0] ) )
+        bool result = true;
+        if ( m_xImportedImageManager->hasImage( SvxConfigPageHelper::GetImageType(), aPath ) )
         {
-            aIndex = rPaths[0].lastIndexOf( '/' );
-            aIconName = rPaths[0].copy( aIndex+1 );
-            SvxIconReplacementDialog aDlg(m_xDialog.get(), aIconName, false);
-            ret = aDlg.run();
-            if ( ret == 2 )
+            bool replace = replaceAll;
+            if (!replace)
             {
-                ReplaceGraphicItem( rPaths[0] );
+                sal_Int32 aIndex = aPath.lastIndexOf('/');
+                OUString aIconName = aPath.copy(aIndex + 1);
+                SvxIconReplacementDialog aDlg(m_xDialog.get(), aIconName, rPaths.getLength() > 1);
+                sal_uInt16 ret = aDlg.run();
+                if (ret == 2)
+                {
+                    replace = true;
+                }
+                else if (ret == 5)
+                {
+                    replace = true;
+                    replaceAll = true;
+                }
+            }
+            if (replace)
+            {
+                ReplaceGraphicItem(aPath);
             }
         }
         else
         {
-            if ( !ImportGraphic( rPaths[0] ) )
-            {
-                rejected[0] = rPaths[0];
-                rejectedCount = 1;
-            }
+            result = ImportGraphic(aPath);
         }
-    }
-    else
-    {
-        OUString aSourcePath( rPaths[0] );
-        if ( rPaths[0].lastIndexOf( '/' ) != rPaths[0].getLength() -1 )
-            aSourcePath = rPaths[0] + "/";
-
-        for ( sal_Int32 i = 1; i < rPaths.getLength(); ++i )
+        if (!result)
         {
-            OUString aPath = aSourcePath + rPaths[i];
-            if ( m_xImportedImageManager->hasImage( SvxConfigPageHelper::GetImageType(), aPath ) )
-            {
-                aIndex = rPaths[i].lastIndexOf( '/' );
-                aIconName = rPaths[i].copy( aIndex+1 );
-                SvxIconReplacementDialog aDlg(m_xDialog.get(), aIconName, true);
-                ret = aDlg.run();
-                if ( ret == 2 )
-                {
-                    ReplaceGraphicItem( aPath );
-                }
-                else if ( ret == 5 )
-                {
-                    for ( sal_Int32 k = i; k < rPaths.getLength(); ++k )
-                    {
-                        aPath = aSourcePath + rPaths[k];
-                        bool bHasReplaced = ReplaceGraphicItem( aPath );
-
-                        if ( !bHasReplaced )
-                        {
-                            bool result = ImportGraphic( aPath );
-                            if ( !result )
-                            {
-                                rejected[ rejectedCount ] = rPaths[i];
-                                ++rejectedCount;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-            else
-            {
-                bool result = ImportGraphic( aSourcePath + rPaths[i] );
-                if ( !result )
-                {
-                    rejected[ rejectedCount ] = rPaths[i];
-                    ++rejectedCount;
-                }
-            }
+            rejected.push_back(aPath);
         }
     }
 
-    if ( rejectedCount == 0 )
+    if (rejected.empty())
         return;
 
     OUStringBuffer message;
-    OUString fPath;
-    if (rejectedCount > 1)
-          fPath = OUString::Concat(rPaths[0].subView(8)) + "/";
-    for ( sal_Int32 i = 0; i < rejectedCount; ++i )
+    for (const auto& rejected_item : rejected)
     {
-        message.append(fPath + rejected[i] + "\n");
+        message.append(rejected_item + "\n");
     }
 
     SvxIconChangeDialog aDialog(m_xDialog.get(), message.makeStringAndClear());
@@ -3159,14 +3127,14 @@ bool SvxIconSelectorDialog::ImportGraphic( const OUString& aURL )
 {
     bool result = false;
 
-    uno::Sequence< beans::PropertyValue > aMediaProps{ comphelper::makePropertyValue("URL", aURL) };
+    uno::Sequence< beans::PropertyValue > aMediaProps{ comphelper::makePropertyValue(u"URL"_ustr, aURL) };
 
     try
     {
         uno::Reference< beans::XPropertySet > props =
             m_xGraphProvider->queryGraphicDescriptor( aMediaProps );
 
-        uno::Any a = props->getPropertyValue("SizePixel");
+        uno::Any a = props->getPropertyValue(u"SizePixel"_ustr);
 
         uno::Reference< graphic::XGraphic > xGraphic = m_xGraphProvider->queryGraphic( aMediaProps );
         if ( xGraphic.is() )
@@ -3182,13 +3150,13 @@ bool SvxIconSelectorDialog::ImportGraphic( const OUString& aURL )
 
             if ( bOK && ((aSize.Width != m_nExpectedSize) || (aSize.Height != m_nExpectedSize)) )
             {
-                BitmapEx aBitmap = aImage.GetBitmapEx();
+                BitmapEx aBitmap(aImage.GetBitmap());
                 BitmapEx aBitmapex = BitmapEx::AutoScaleBitmap(aBitmap, m_nExpectedSize);
                 aImage = Image( aBitmapex);
             }
             if ( bOK && !!aImage )
             {
-                m_aGraphics.push_back(Graphic(aImage.GetBitmapEx()).GetXGraphic());
+                m_aGraphics.push_back(Graphic(aImage.GetBitmap()).GetXGraphic());
                 m_xTbSymbol->InsertItem(m_aGraphics.size(), aImage, aURL);
 
                 uno::Sequence<OUString> aImportURL { aURL };
@@ -3224,8 +3192,8 @@ bool SvxIconSelectorDialog::ImportGraphic( const OUString& aURL )
 *
 *******************************************************************************/
 SvxIconChangeDialog::SvxIconChangeDialog(weld::Window *pWindow, const OUString& rMessage)
-    : MessageDialogController(pWindow, "cui/ui/iconchangedialog.ui", "IconChange", "grid")
-    , m_xLineEditDescription(m_xBuilder->weld_text_view("addrTextview"))
+    : MessageDialogController(pWindow, u"cui/ui/iconchangedialog.ui"_ustr, u"IconChange"_ustr, u"grid"_ustr)
+    , m_xLineEditDescription(m_xBuilder->weld_text_view(u"addrTextview"_ustr))
 {
     m_xLineEditDescription->set_size_request(m_xLineEditDescription->get_approximate_digit_width() * 48,
                                              m_xLineEditDescription->get_text_height() * 8);

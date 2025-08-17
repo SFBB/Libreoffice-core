@@ -23,7 +23,6 @@
 #include <ChartTypeTemplateProvider.hxx>
 #include <ChartTypeTemplate.hxx>
 #include <Diagram.hxx>
-#include <DiagramHelper.hxx>
 #include "DialogModel.hxx"
 #include <ChartModel.hxx>
 
@@ -31,7 +30,6 @@
 #include "tp_DataSource.hxx"
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 using namespace ::chart;
 
 namespace chart
@@ -78,24 +76,25 @@ sal_uInt16 DataSourceDialog::m_nLastPageId = 0;
 
 DataSourceDialog::DataSourceDialog(weld::Window * pParent,
     const rtl::Reference<::chart::ChartModel> & xChartDocument)
-    : GenericDialogController(pParent, "modules/schart/ui/datarangedialog.ui",
-                              "DataRangeDialog")
+    : GenericDialogController(pParent, u"modules/schart/ui/datarangedialog.ui"_ustr,
+                              u"DataRangeDialog"_ustr)
     , m_apDocTemplateProvider(new DocumentChartTypeTemplateProvider(xChartDocument))
     , m_apDialogModel(new DialogModel(xChartDocument))
     , m_bRangeChooserTabIsValid(true)
     , m_bDataSourceTabIsValid(true)
     , m_bTogglingEnabled(true)
-    , m_xTabControl(m_xBuilder->weld_notebook("tabcontrol"))
-    , m_xBtnOK(m_xBuilder->weld_button("ok"))
+    , m_xTabControl(m_xBuilder->weld_notebook(u"tabcontrol"_ustr))
+    , m_xBtnOK(m_xBuilder->weld_button(u"ok"_ustr))
 {
-    m_xRangeChooserTabPage = std::make_unique<RangeChooserTabPage>(m_xTabControl->get_page("range"), this,
+    m_xRangeChooserTabPage = std::make_unique<RangeChooserTabPage>(m_xTabControl->get_page(u"range"_ustr), this,
                                      *m_apDialogModel,
                                      m_apDocTemplateProvider.get(), true /* bHideDescription */ );
-    m_xDataSourceTabPage = std::make_unique<DataSourceTabPage>(m_xTabControl->get_page("series"), this,
+    m_xDataSourceTabPage = std::make_unique<DataSourceTabPage>(m_xTabControl->get_page(u"series"_ustr), this,
                                     *m_apDialogModel,
                                     m_apDocTemplateProvider.get(), true /* bHideDescription */ );
     m_xTabControl->connect_enter_page(LINK(this, DataSourceDialog, ActivatePageHdl));
     m_xTabControl->connect_leave_page(LINK(this, DataSourceDialog, DeactivatePageHdl));
+    m_xBtnOK->connect_clicked(LINK(this, DataSourceDialog, OkHdl));
     ActivatePageHdl(m_xTabControl->get_current_page_ident());
     if (m_nLastPageId != 0)
     {
@@ -111,17 +110,18 @@ DataSourceDialog::~DataSourceDialog()
     m_nLastPageId = m_xTabControl->get_current_page();
 }
 
-short DataSourceDialog::run()
+void DataSourceDialog::commitPages()
 {
-    short nResult = GenericDialogController::run();
-    if( nResult == RET_OK )
-    {
-        if( m_xRangeChooserTabPage )
-            m_xRangeChooserTabPage->commitPage();
-        if( m_xDataSourceTabPage )
-            m_xDataSourceTabPage->commitPage();
-    }
-    return nResult;
+   if (m_xRangeChooserTabPage)
+       m_xRangeChooserTabPage->commitPage();
+   if (m_xDataSourceTabPage)
+       m_xDataSourceTabPage->commitPage();
+}
+
+IMPL_LINK_NOARG(DataSourceDialog, OkHdl, weld::Button&, void)
+{
+    commitPages();
+    m_xDialog->response(RET_OK);
 }
 
 IMPL_LINK(DataSourceDialog, ActivatePageHdl, const OUString&, rPage, void)

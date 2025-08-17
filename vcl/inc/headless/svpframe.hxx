@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_HEADLESS_SVPFRAME_HXX
-#define INCLUDED_VCL_INC_HEADLESS_SVPFRAME_HXX
+#pragma once
 
 #include <vcl/sysdata.hxx>
 
@@ -108,7 +107,7 @@ public:
     virtual LanguageType        GetInputLanguage() override;
     virtual void                UpdateSettings( AllSettings& rSettings ) override;
     virtual void                Beep() override;
-    virtual const SystemEnvData* GetSystemData() const override;
+    virtual const SystemEnvData& GetSystemData() const override;
     virtual SalPointerState     GetPointerState() override;
     virtual KeyIndicatorState   GetIndicatorState() override;
     virtual void                SimulateKeyPress( sal_uInt16 nKeyCode ) override;
@@ -139,7 +138,5 @@ inline std::basic_ostream<charT, traits>& operator<<(std::basic_ostream<charT, t
     stream << ")";
     return stream;
 }
-
-#endif // INCLUDED_VCL_INC_HEADLESS_SVPFRAME_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

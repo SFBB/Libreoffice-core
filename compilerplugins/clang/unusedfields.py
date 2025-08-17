@@ -63,7 +63,7 @@ untouchedSetD = set()
 for d in definitionSet:
     if d in touchedFromOutsideSet or d in touchedFromInsideSet:
         continue
-    srcLoc = definitionToSourceLocationMap[d];
+    srcLoc = definitionToSourceLocationMap[d]
     # this is all representations of on-disk data structures
     if (srcLoc.startswith("sc/source/filter/inc/scflt.hxx")
         or srcLoc.startswith("sw/source/filter/ww8/")
@@ -105,7 +105,7 @@ onlyUsedInConstructorSet = set()
 for d in definitionSet:
     if d in touchedFromOutsideSet or d in touchedFromOutsideConstructorSet:
         continue
-    srcLoc = definitionToSourceLocationMap[d];
+    srcLoc = definitionToSourceLocationMap[d]
     # this is all representations of on-disk data structures
     if (srcLoc.startswith("sc/source/filter/inc/scflt.hxx")
         or srcLoc.startswith("sw/source/filter/ww8/")
@@ -132,16 +132,18 @@ for d in definitionSet:
         continue
     if "::sfx2::sidebar::ControllerItem" in fieldType:
         continue
+    if "SvxRatioConnector" in fieldType:
+        continue
     if "(lambda at " in d[0]:
         continue
     onlyUsedInConstructorSet.add((d[0] + " " + d[1] + " " + fieldType, srcLoc))
 
 writeonlySet = set()
 for d in definitionSet:
-    parentClazz = d[0];
+    parentClazz = d[0]
     if d in readFromSet or d in untouchedSetD:
         continue
-    srcLoc = definitionToSourceLocationMap[d];
+    srcLoc = definitionToSourceLocationMap[d]
     # this is all representations of on-disk data structures
     if (srcLoc.startswith("sc/source/filter/inc/scflt.hxx")
         or srcLoc.startswith("sw/source/filter/ww8/")
@@ -172,13 +174,8 @@ for d in definitionSet:
     if "Guard" in fieldType:
         continue
     # these are just all model classes
-    if (srcLoc.startswith("oox/")
-        or srcLoc.startswith("lotuswordpro/")
-        or srcLoc.startswith("include/oox/")
-        or srcLoc.startswith("include/filter/")
-        or srcLoc.startswith("hwpfilter/")
-        or srcLoc.startswith("filter/")
-        or srcLoc.startswith("vcl/source/filter/")):
+    if (srcLoc.startswith("lotuswordpro/")
+        or srcLoc.startswith("hwpfilter/")):
         continue
     if "(lambda at " in d[0]:
         continue
@@ -193,11 +190,11 @@ for d in definitionSet:
 
 readonlySet = set()
 for d in definitionSet:
-    parentClazz = d[0];
+    parentClazz = d[0]
     if d in writeToSet or d in untouchedSetD:
         continue
     fieldType = definitionToTypeMap[d]
-    srcLoc = definitionToSourceLocationMap[d];
+    srcLoc = definitionToSourceLocationMap[d]
     if "ModuleClient" in fieldType:
         continue
     # this is all representations of on-disk data structures
@@ -226,7 +223,7 @@ for d in protectedAndPublicDefinitionSet:
     clazz = d[0] + " " + d[1]
     if d in touchedFromOutsideSet:
         continue
-    srcLoc = definitionToSourceLocationMap[d];
+    srcLoc = definitionToSourceLocationMap[d]
 
     canBePrivateSet.add((clazz + " " + definitionToTypeMap[d], srcLoc))
 
@@ -250,7 +247,7 @@ allFieldsCanBePrivateSet = set()
 for d in (potentialClasses - excludedClasses):
     sourceLoc = potentialClassesSourceLocationMap[d]
     # when the class is inside a compile unit, assume that the compiler can figure this out for itself, much less interesting to me
-    if not ".cxx" in sourceLoc:
+    if ".cxx" not in sourceLoc:
         allFieldsCanBePrivateSet.add((d, sourceLoc))
 
 # sort the results using a "natural order" so sequences like [item1,item2,item10] sort nicely

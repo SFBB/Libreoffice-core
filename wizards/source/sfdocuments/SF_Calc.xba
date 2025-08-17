@@ -30,6 +30,7 @@ Option Explicit
 &apos;&apos;&apos;			- management (copy, insert, move, ...) of sheets within a Calc document
 &apos;&apos;&apos;			- exchange of data between Basic data structures and Calc ranges of values
 &apos;&apos;&apos;			- copying and importing massive amounts of data
+&apos;&apos;&apos;			- simple and selective formatting options
 &apos;&apos;&apos;
 &apos;&apos;&apos;		The current module is closely related to the &quot;UI&quot; service of the ScriptForge library
 &apos;&apos;&apos;
@@ -70,15 +71,14 @@ Option Explicit
 &apos;&apos;&apos;					SheetX.*						All cells up to the last active cell
 &apos;&apos;&apos;					myRange							A range name at spreadsheet level
 &apos;&apos;&apos;					~.yourRange, SheetX.someRange	A range name at sheet level
-&apos;&apos;&apos;					myDoc.Range(&quot;SheetX.D2:F6&quot;)
-&apos;&apos;&apos;											A range within the sheet SheetX in file associated with the myDoc Calc instance
+&apos;&apos;&apos;					myDoc.Range(&quot;SheetX.D2:F6&quot;)		A range within the sheet SheetX in file associated with the myDoc Calc instance
 &apos;&apos;&apos;
 &apos;&apos;&apos;			Several methods may receive a &quot;FilterFormula&quot; as argument.
-&apos;&apos;&apos;			A FilterFormula may be associated with a FilterScope: &quot;row&quot;, &quot;column&quot; or &quot;cell&quot;.
+&apos;&apos;&apos;			A FilterFormula may be associated with a FilterScope: &quot;ROW&quot;, &quot;COLUMN&quot; or &quot;CELL&quot;.
 &apos;&apos;&apos;			These arguments determine on which rows/columns/cells of a range the method should be applied
 &apos;&apos;&apos;			Examples:
 &apos;&apos;&apos;				oDoc.ClearAll(&quot;A1:J10&quot;, FilterFormula := &quot;=(A1&lt;=0)&quot;, FilterScope := &quot;CELL&quot;)	&apos;	Clear all negative values
-&apos;&apos;&apos;				oDoc.ClearAll(&quot;SheetX.A1:J10&quot;, &quot;=SUM(SheetX.A1:A10)&gt;100&quot;, &quot;COLUMN&quot;)			&apos;	Clear all columns whose sum is greater than 500
+&apos;&apos;&apos;				oDoc.ClearAll(&quot;SheetX.A1:J10&quot;, &quot;=SUM(SheetX.A1:A10)&gt;100&quot;, &quot;COLUMN&quot;)			&apos;	Clear all columns whose sum is greater than 100
 &apos;&apos;&apos;
 &apos;&apos;&apos;				FilterFormula:	a Calc formula that returns TRUE or FALSE
 &apos;&apos;&apos;								the formula is expressed in terms of
@@ -226,6 +226,12 @@ Catch:
 End Property	&apos;	SFDocuments.SF_Calc.CurrentSelection (let)
 
 REM -----------------------------------------------------------------------------
+Property Get DefinedNames() As Variant
+&apos;&apos;&apos;	Returns the full sorted list of all named ranges in the document
+	DefinedNames = _PropertyGet(&quot;DefinedNames&quot;)
+End Property	&apos;	SFDocuments.SF_Calc.DefinedNames
+
+REM -----------------------------------------------------------------------------
 Property Get FirstCell(Optional ByVal RangeName As Variant) As String
 &apos;&apos;&apos;	Returns the First used cell in a given range or sheet
 &apos;&apos;&apos;	When the argument is a sheet it will always return the &quot;sheet.$A$1&quot; cell
@@ -314,6 +320,14 @@ Property Get XCellRange(Optional ByVal RangeName As Variant) As Variant
 End Property	&apos;	SFDocuments.SF_Calc.XCellRange
 
 REM -----------------------------------------------------------------------------
+Property Get XRectangle(Optional ByVal RangeName As Variant) As Variant
+&apos;&apos;&apos;	Returns a UNO structure of type com.sun.star.awt.Rectangle
+&apos;&apos;&apos;	describing the area in pixels on the screen where the range is located.
+&apos;&apos;&apos;	Useful in the context of running mouse events and widgets like popup menus
+	XRectangle = _PropertyGet(&quot;XRectangle&quot;, RangeName)
+End Property	&apos;	SFDocuments.SF_Calc.XRectangle
+
+REM -----------------------------------------------------------------------------
 Property Get XSheetCellCursor(Optional ByVal RangeName As Variant) As Variant
 &apos;&apos;&apos;	Returns a UNO object of type com.sun.star.sheet.XSheetCellCursor
 &apos;&apos;	After having moved the cursor (gotoNext(), ...) the resulting range can be got
@@ -364,7 +378,7 @@ Const cstSubArgs = &quot;Row1, Column1, [Row2], [Column2], [SheetName]=&quot;&qu
 Check:
 	If IsMissing(Row2) Or IsEmpty(Row2) Then Row2 = 0
 	If IsMissing(Column2) Or IsEmpty(Column2) Then Column2 = 0
-	If IsMissing(SheetName) Or IsEmpty(SheetName) Then SheetName = &quot;~&quot;
+	If IsMissing(SheetName) Or IsEmpty(SheetName) Then SheetName = &quot;&quot;
 	vSheetName = SheetName
 
 	If ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
@@ -380,6 +394,11 @@ Check:
 	If Row2 &gt; MAXROWS Then Row2 = MAXROWS
 	If Column1 &gt; MAXCOLS Then Column1 = MAXCOLS
 	If Column2 &gt; MAXCOLS Then Column2 = MAXCOLS
+	If Row1 &lt;= 0 Or Column1 &lt;= 0 Then GoTo Catch
+	If Row2 = Row1 And Column2 = Column1 Then		&apos;	Single cell
+		Row2 = 0
+		Column2 = 0
+	End If
 
 	If Row2 &gt; 0 And Row2 &lt; Row1 Then
 		lTemp = Row2	:	Row2 = Row1	:	Row1 = lTemp
@@ -390,9 +409,9 @@ Check:
 
 Try:
 	&apos;	Surround the sheet name with single quotes when required by the presence of special characters
-	vSheetName = _QuoteSheetName(vSheetName)
+	If Len(vSheetName) &gt; 0 Then vSheetName = &quot;$&quot; &amp; _QuoteSheetName(vSheetName) &amp; &quot;.&quot;
 	&apos;	Define the new range string
-	sA1Style = &quot;$&quot; &amp; vSheetName &amp; &quot;.&quot; _
+	sA1Style = vSheetName _
 					&amp; &quot;$&quot; &amp; _GetColumnName(Column1) &amp; &quot;$&quot; &amp; CLng(Row1) _
 					&amp; Iif(Row2 &gt; 0 And Column2 &gt; 0, &quot;:$&quot; &amp; _GetColumnName(Column2) &amp; &quot;$&quot; &amp; CLng(Row2), &quot;&quot;)
 
@@ -447,6 +466,165 @@ Finally:
 Catch:
 	GoTo Finally
 End Function    &apos;   SFDocuments.SF_Calc.Activate
+
+REM -----------------------------------------------------------------------------
+Public Function AlignRange(Optional ByVal TargetRange As Variant _
+							, Optional ByVal Alignment As Variant _
+							, Optional ByVal FilterFormula As Variant _
+							, Optional ByVal FilterScope As Variant _
+							) As String
+&apos;&apos;&apos;	Align horizontally or vertically a range of cells.
+&apos;&apos;&apos;	The impacted cells may be determined with a filter formula and its scope.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		TargetRange : the cell or the range as a string in which cells should be re-aligned.
+&apos;&apos;&apos;		Alignment: a string combining 1 or 2 of next characters (other characters are ignored):
+&apos;&apos;&apos;			L	align Left
+&apos;&apos;&apos;			R	align Right
+&apos;&apos;&apos;			C	Center gorizontally
+&apos;&apos;&apos;			B	align Bottom
+&apos;&apos;&apos;			M	center vertically (Middle)
+&apos;&apos;&apos;			T	align Top
+&apos;&apos;&apos;		FilterFormula: a Calc formula to select among the given TargetRange
+&apos;&apos;&apos;			When left empty, the alignments are applied on the full range
+&apos;&apos;&apos;		FilterScope: &quot;CELL&quot;, &quot;ROW&quot; or &quot;COLUMN&quot;
+&apos;&apos;&apos;			When FilterFormula is present, FilterScope is mandatory
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		A string representing the updated range
+&apos;&apos;&apos;	Examples:
+&apos;&apos;&apos;		oDoc.AlignRange(&quot;SheetX.A1:J30&quot;, &quot;Middle,Center&quot;, FilterFormula := &quot;IsNumeric(A1), FilterScope := &quot;CELL&quot;)
+&apos;&apos;&apos;			&apos;	Align to the middle of the cells, horizontally and vertically
+
+Dim sAlign As String			&apos;	Return value
+Dim oRange As Object			&apos;	Alias of TargetRange
+Dim vRanges() As Variant		&apos;	Array of subranges resulting from the application of the filter
+Dim oARange As Object			&apos;	A single element of vRanges
+
+Const cstThisSub = &quot;SFDocuments.Calc.AlignRange&quot;
+Const cstSubArgs = &quot;TargetRange, Alignment, [FilterFormula=&quot;&quot;&quot;&quot;], [FilterScope=&quot;&quot;&quot;&quot;]&quot;
+
+	If ScriptForge.SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	sAlign = &quot;&quot;
+
+Check:
+	If IsMissing(FilterFormula) Or IsEmpty(FilterFormula) Then FilterFormula = &quot;&quot;
+	If IsMissing(FilterScope) Or IsEmpty(FilterScope) Then FilterScope = &quot;&quot;
+	If ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not _IsStillAlive() Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(TargetRange, &quot;TargetRange&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Alignment, &quot;Alignment&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(FilterFormula, &quot;FilterFormula&quot;, V_STRING) Then GoTo Finally
+		If Len(FilterFormula) &gt; 0 Then
+			If Not ScriptForge.SF_Utils._Validate(FilterScope, &quot;FilterScope&quot;, V_STRING, Array(&quot;CELL&quot;, &quot;ROW&quot;, &quot;COLUMN&quot;)) Then GoTo Finally
+		Else
+			If Not ScriptForge.SF_Utils._Validate(FilterScope, &quot;FilterScope&quot;, V_STRING) Then GoTo Finally
+		End If
+	End If
+
+Try:
+	If VarType(TargetRange) = V_STRING Then Set oRange = _ParseAddress(TargetRange) Else Set oRange = TargetRange
+
+	&apos;	Without filter, the whole range is re-aligned
+	&apos;	Otherwise the filter cuts the range in subranges and formats them one by one
+	If Len(FilterFormula) = 0 Then vRanges = Array(oRange) Else vRanges() = _ComputeFilter(oRange, FilterFormula, UCase(FilterScope))
+	For Each oARange In vRanges
+		With oARange.XCellRange
+			If InStr(1, Alignment, &quot;L&quot;, 0) &gt; 0 Then .ParaAdjust = com.sun.star.style.ParagraphAdjust.LEFT
+			If InStr(1, Alignment, &quot;C&quot;, 0) &gt; 0 Then .ParaAdjust = com.sun.star.style.ParagraphAdjust.CENTER
+			If InStr(1, Alignment, &quot;R&quot;, 0) &gt; 0 Then .ParaAdjust = com.sun.star.style.ParagraphAdjust.RIGHT
+			If InStr(1, Alignment, &quot;B&quot;, 0) &gt; 0 Then .VertJustify = com.sun.star.table.CellVertJustify.BOTTOM
+			If InStr(1, Alignment, &quot;M&quot;, 0) &gt; 0 Then .VertJustify = com.sun.star.table.CellVertJustify.CENTER
+			If InStr(1, Alignment, &quot;T&quot;, 0) &gt; 0 Then .VertJustify = com.sun.star.table.CellVertJustify.TOP
+		End With
+	Next oARange
+
+	sAlign = oRange.RangeName
+
+Finally:
+	AlignRange = sAlign
+	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+End Function	&apos;	SFDocuments.SF_Calc.AlignRange
+
+REM -----------------------------------------------------------------------------
+Public Function BorderRange(Optional ByVal TargetRange As Variant _
+							, Optional ByVal Borders As Variant _
+							, Optional ByVal FilterFormula As Variant _
+							, Optional ByVal FilterScope As Variant _
+							) As String
+&apos;&apos;&apos;	Apply within and around a range of cells a set of line borders.
+&apos;&apos;&apos;	The impacted cells may be determined with a filter formula and its scope.
+&apos;&apos;&apos;	All the borders have the same standard width, style and color.
+&apos;&apos;&apos;	Pre-existing border lines in the impacted cells, rows or columns
+&apos;&apos;&apos;	are first cleared. Other cells in the range are left untouched.
+&apos;&apos;&apos;	To clear the full range use Border = &quot;&quot; without the FilterFormula argument.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		TargetRange : the cell or the range as a string on which borders should be applied
+&apos;&apos;&apos;		Borders: a string combining next characters (other characters are ignored):
+&apos;&apos;&apos;			B	Bottom outer line
+&apos;&apos;&apos;			L	Left outer line
+&apos;&apos;&apos;			T	Top outer line
+&apos;&apos;&apos;			R	Right outer line
+&apos;&apos;&apos;			H	Horizontal inner line
+&apos;&apos;&apos;			V	Vertical inner line
+&apos;&apos;&apos;			U	diagonal bottom-Up line
+&apos;&apos;&apos;			D	diagonal top-Down line
+&apos;&apos;&apos;		FilterFormula: a Calc formula to select among the given TargetRange
+&apos;&apos;&apos;			When left empty, the given borders are applied on the full range
+&apos;&apos;&apos;		FilterScope: &quot;CELL&quot;, &quot;ROW&quot; or &quot;COLUMN&quot;
+&apos;&apos;&apos;			When FilterFormula is present, FilterScope is mandatory
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		A string representing the updated range
+&apos;&apos;&apos;	Examples:
+&apos;&apos;&apos;		oDoc.BorderRange(&quot;SheetX.A1:J30&quot;, &quot;HB&quot;, FilterFormula := &quot;IsNumeric(A1), FilterScope := &quot;CELL&quot;)
+&apos;&apos;&apos;			&apos;	Border with a bottom line, including the horizontal inner lines
+
+Dim sBorder As String			&apos;	Return value
+Dim oRange As Object			&apos;	Alias of TargetRange
+Dim vRanges() As Variant		&apos;	Array of subranges resulting from the application of the filter
+Dim oBRange As Object			&apos;	A single element of vRanges
+
+Const cstThisSub = &quot;SFDocuments.Calc.BorderRange&quot;
+Const cstSubArgs = &quot;TargetRange, Borders, [FilterFormula=&quot;&quot;&quot;&quot;], [FilterScope=&quot;&quot;&quot;&quot;]&quot;
+
+	If ScriptForge.SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	sBorder = &quot;&quot;
+
+Check:
+	If IsMissing(FilterFormula) Or IsEmpty(FilterFormula) Then FilterFormula = &quot;&quot;
+	If IsMissing(FilterScope) Or IsEmpty(FilterScope) Then FilterScope = &quot;&quot;
+	If ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not _IsStillAlive() Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(TargetRange, &quot;TargetRange&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Borders, &quot;Borders&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(FilterFormula, &quot;FilterFormula&quot;, V_STRING) Then GoTo Finally
+		If Len(FilterFormula) &gt; 0 Then
+			If Not ScriptForge.SF_Utils._Validate(FilterScope, &quot;FilterScope&quot;, V_STRING, Array(&quot;CELL&quot;, &quot;ROW&quot;, &quot;COLUMN&quot;)) Then GoTo Finally
+		Else
+			If Not ScriptForge.SF_Utils._Validate(FilterScope, &quot;FilterScope&quot;, V_STRING) Then GoTo Finally
+		End If
+	End If
+
+Try:
+	If VarType(TargetRange) = V_STRING Then Set oRange = _ParseAddress(TargetRange) Else Set oRange = TargetRange
+
+	&apos;	Without filter, the whole range gets new borders
+	&apos;	Otherwise the filter cuts the range in subranges and formats them one by one
+	If Len(FilterFormula) = 0 Then vRanges = Array(oRange) Else vRanges() = _ComputeFilter(oRange, FilterFormula, UCase(FilterScope))
+	For Each oBRange In vRanges
+		_BorderRange(oBRange, Borders)
+	Next oBRange
+
+	sBorder = oRange.RangeName
+
+Finally:
+	BorderRange = sBorder
+	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+End Function	&apos;	SFDocuments.SF_Calc.BorderRange
 
 REM -----------------------------------------------------------------------------
 Public Function Charts(Optional ByVal SheetName As Variant _
@@ -532,7 +710,7 @@ Try:
 
 	&apos;	Raise error when chart not found
 	If Len(ChartName) &gt; 0 And IsNull(oChart) Then
-		If Not ScriptForge.SF_Utils._Validate(ChartName, &quot;ChartName&quot;, V_STRING, vCharts) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(ChartName, &quot;ChartName&quot;, V_STRING, vCharts, True) Then GoTo Finally
 	End If
 
 Finally:
@@ -602,6 +780,81 @@ Public Sub ClearValues(Optional ByVal Range As Variant _
 	_ClearRange(&quot;Values&quot;, Range, FilterFormula, FilterScope)
 
 End Sub	&apos;	SFDocuments.SF_Calc.ClearValues
+
+REM -----------------------------------------------------------------------------
+Public Function ColorizeRange(Optional ByVal TargetRange As Variant _
+							, Optional ByVal Foreground As Variant _
+							, Optional ByVal Background As Variant _
+							, Optional ByVal FilterFormula As Variant _
+							, Optional ByVal FilterScope As Variant _
+							) As String
+&apos;&apos;&apos;	Define fore- and background colors of a range of cells.
+&apos;&apos;&apos;	The impacted cells may be determined with a filter formula and its scope.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		TargetRange : the cell or the range as a string in which cells should be re-colorizeed.
+&apos;&apos;&apos;		Foreground: the foreground color as the output of the RGB() function
+&apos;&apos;&apos;		Background: the foreground color as the output of the RGB() function
+&apos;&apos;&apos;		FilterFormula: a Calc formula to select among the given TargetRange
+&apos;&apos;&apos;			When left empty, the Colorizements are applied on the full range
+&apos;&apos;&apos;		FilterScope: &quot;CELL&quot;, &quot;ROW&quot; or &quot;COLUMN&quot;
+&apos;&apos;&apos;			When FilterFormula is present, FilterScope is mandatory
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		A string representing the updated range
+&apos;&apos;&apos;	Examples:
+&apos;&apos;&apos;		oDoc.ColorizeRange(&quot;SheetX.A1:J30&quot;, Background := RGB(255, 0, 0), FilterFormula := &quot;IsNumeric(A1), FilterScope := &quot;CELL&quot;)
+&apos;&apos;&apos;			&apos;	Paint the cell(s) in red.
+
+Dim sColorize As String			&apos;	Return value
+Dim oRange As Object			&apos;	Alias of TargetRange
+Dim vRanges() As Variant		&apos;	Array of subranges resulting from the application of the filter
+Dim oCRange As Object			&apos;	A single element of vRanges
+
+Const cstThisSub = &quot;SFDocuments.Calc.ColorizeRange&quot;
+Const cstSubArgs = &quot;TargetRange, [Foreground=-1], [Background=-1] [FilterFormula=&quot;&quot;&quot;&quot;], [FilterScope=&quot;&quot;&quot;&quot;]&quot;
+
+	If ScriptForge.SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	sColorize = &quot;&quot;
+
+Check:
+	If IsMissing(Foreground) Or IsEmpty(Foreground) Then Foreground = -1
+	If IsMissing(Background) Or IsEmpty(Background) Then Background = -1
+	If IsMissing(FilterFormula) Or IsEmpty(FilterFormula) Then FilterFormula = &quot;&quot;
+	If IsMissing(FilterScope) Or IsEmpty(FilterScope) Then FilterScope = &quot;&quot;
+	If ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not _IsStillAlive() Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(TargetRange, &quot;TargetRange&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Foreground, &quot;Foreground&quot;, ScriptForge.V_NUMERIC) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Background, &quot;Background&quot;, ScriptForge.V_NUMERIC) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(FilterFormula, &quot;FilterFormula&quot;, V_STRING) Then GoTo Finally
+		If Len(FilterFormula) &gt; 0 Then
+			If Not ScriptForge.SF_Utils._Validate(FilterScope, &quot;FilterScope&quot;, V_STRING, Array(&quot;CELL&quot;, &quot;ROW&quot;, &quot;COLUMN&quot;)) Then GoTo Finally
+		Else
+			If Not ScriptForge.SF_Utils._Validate(FilterScope, &quot;FilterScope&quot;, V_STRING) Then GoTo Finally
+		End If
+	End If
+
+Try:
+	If VarType(TargetRange) = V_STRING Then Set oRange = _ParseAddress(TargetRange) Else Set oRange = TargetRange
+
+	&apos;	Without filter, the whole range is re-Colorizeed
+	&apos;	Otherwise the filter cuts the range in subranges and formats them one by one
+	If Len(FilterFormula) = 0 Then vRanges = Array(oRange) Else vRanges() = _ComputeFilter(oRange, FilterFormula, UCase(FilterScope))
+	For Each oCRange In vRanges
+		With oCRange.XCellRange
+			If Foreground &gt;= 0 Then .CharColor = CLng(Foreground)
+			If Background &gt;= 0 Then .CellBackColor = CLng(Background)
+		End With
+	Next oCRange
+
+	sColorize = oRange.RangeName
+
+Finally:
+	ColorizeRange = sColorize
+	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+End Function	&apos;	SFDocuments.SF_Calc.ColorizeRange
 
 REM -----------------------------------------------------------------------------
 Public Function CompactLeft(Optional ByVal Range As Variant _
@@ -1332,7 +1585,7 @@ Try:
 	For i = 0 To UBound(vRows)
 		sField = vRows(i)
 		If Len(sField) &gt; 0 Then
-			If Not ScriptForge.SF_Utils._Validate(sField, &quot;RowFields&quot;, V_STRING, vHeaders) Then GoTo Finally
+			If Not ScriptForge.SF_Utils._Validate(sField, &quot;RowFields&quot;, V_STRING, vHeaders, True) Then GoTo Finally
 			Set oField = oFields.getByName(sField)
 			oField.Orientation = com.sun.star.sheet.DataPilotFieldOrientation.ROW
 		End If
@@ -1342,7 +1595,7 @@ Try:
 	For i = 0 To UBound(vColumns)
 		sField = vColumns(i)
 		If Len(sField) &gt; 0 Then
-			If Not ScriptForge.SF_Utils._Validate(sField, &quot;ColumnFields&quot;, V_STRING, vHeaders) Then GoTo Finally
+			If Not ScriptForge.SF_Utils._Validate(sField, &quot;ColumnFields&quot;, V_STRING, vHeaders, True) Then GoTo Finally
 			Set oField = oFields.getByName(sField)
 			oField.Orientation = com.sun.star.sheet.DataPilotFieldOrientation.COLUMN
 		End If
@@ -1358,7 +1611,7 @@ Try:
 		If UBound(vDataField) &gt; 0 Then sFunction = vDataField(1) Else sFunction = &quot;&quot;
 		&apos;	Define field properties
 		If Len(sField) &gt; 0 Then
-			If Not ScriptForge.SF_Utils._Validate(sField, &quot;DataFields&quot;, V_STRING, vHeaders) Then GoTo Finally
+			If Not ScriptForge.SF_Utils._Validate(sField, &quot;DataFields&quot;, V_STRING, vHeaders, True) Then GoTo Finally
 			Set oField = oFields.getByName(sField)
 			oField.Orientation = com.sun.star.sheet.DataPilotFieldOrientation.DATA
 			&apos;	Associate the correct function
@@ -1497,6 +1750,187 @@ Finally:
 End Function	&apos;	SFDocuments.SF_Calc.DSum
 
 REM -----------------------------------------------------------------------------
+Public Function DecorateFont(Optional ByVal TargetRange As Variant _
+							, Optional ByVal FontName As Variant _
+							, Optional ByVal FontSize As Variant _
+							, Optional ByVal Decoration As Variant _
+							, Optional ByVal FilterFormula As Variant _
+							, Optional ByVal FilterScope As Variant _
+							) As String
+&apos;&apos;&apos;	Specify simple and easy properties of the font to be used in a range of cells.
+&apos;&apos;&apos;	The impacted cells may be determined with a filter formula and its scope.
+&apos;&apos;&apos;	To apply more complex font decorations, apply the usual and numerous UNO properties
+&apos;&apos;&apos;	available in the XCell or XCellRange interfaces.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		TargetRange : the cell or the range as a string in which cell fonts should be re-decorated.
+&apos;&apos;&apos;		FontName: the name of the font to be used. The name is not checked. Default = no change.
+&apos;&apos;&apos;		FontSize: the size of the font in pixels. Default = no change.
+&apos;&apos;&apos;		Decoration: a string combining 1 or more of next characters (other characters are ignored). Default = no change:
+&apos;&apos;&apos;			B	Bold
+&apos;&apos;&apos;			U	Underline
+&apos;&apos;&apos;			I	Italic
+&apos;&apos;&apos;			S	Strikethrough
+&apos;&apos;&apos;		FilterFormula: a Calc formula to select among the given TargetRange
+&apos;&apos;&apos;			When left empty, the font properties are applied on the full range
+&apos;&apos;&apos;		FilterScope: &quot;CELL&quot;, &quot;ROW&quot; or &quot;COLUMN&quot;
+&apos;&apos;&apos;			When FilterFormula is present, FilterScope is mandatory
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		A string representing the updated range
+&apos;&apos;&apos;	Examples:
+&apos;&apos;&apos;		oDoc.DecorateFont(&quot;SheetX.A1:J30&quot;, FontSize := 15, Decoration := &quot;BU&quot;, FilterFormula := &quot;IsNumeric(A1), FilterScope := &quot;CELL&quot;)
+&apos;&apos;&apos;			&apos;	Modify the font size and apply bold and underline properties to the numeric cells
+
+Dim sDecorate As String			&apos;	Return value
+Dim oRange As Object			&apos;	Alias of TargetRange
+Dim vRanges() As Variant		&apos;	Array of subranges resulting from the application of the filter
+Dim oDRange As Object			&apos;	A single element of vRanges
+
+Const cstThisSub = &quot;SFDocuments.Calc.DecorateFont&quot;
+Const cstSubArgs = &quot;TargetRange, [FontName=&quot;&quot;&quot;&quot;], [FontSize=0], [Decoration=&quot;&quot;&quot;&quot;],&quot; _
+					&amp; &quot; [FilterFormula=&quot;&quot;&quot;&quot;], [FilterScope=&quot;&quot;&quot;&quot;]&quot;
+
+	If ScriptForge.SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	sDecorate = &quot;&quot;
+
+Check:
+	If IsMissing(FontName) Or IsEmpty(FontName) Then FontName = &quot;&quot;
+	If IsMissing(FontSize) Or IsEmpty(FontSize) Then FontSize = 0
+	If IsMissing(Decoration) Or IsEmpty(Decoration) Then Decoration = &quot;&quot;
+	If IsMissing(FilterFormula) Or IsEmpty(FilterFormula) Then FilterFormula = &quot;&quot;
+	If IsMissing(FilterScope) Or IsEmpty(FilterScope) Then FilterScope = &quot;&quot;
+	If ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not _IsStillAlive() Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(TargetRange, &quot;TargetRange&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(FontName, &quot;FontName&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(FontSize, &quot;FontSize&quot;, ScriptForge.V_NUMERIC) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Decoration, &quot;Decoration&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(FilterFormula, &quot;FilterFormula&quot;, V_STRING) Then GoTo Finally
+		If Len(FilterFormula) &gt; 0 Then
+			If Not ScriptForge.SF_Utils._Validate(FilterScope, &quot;FilterScope&quot;, V_STRING, Array(&quot;CELL&quot;, &quot;ROW&quot;, &quot;COLUMN&quot;)) Then GoTo Finally
+		Else
+			If Not ScriptForge.SF_Utils._Validate(FilterScope, &quot;FilterScope&quot;, V_STRING) Then GoTo Finally
+		End If
+	End If
+
+Try:
+	If VarType(TargetRange) = V_STRING Then Set oRange = _ParseAddress(TargetRange) Else Set oRange = TargetRange
+
+	&apos;	Without filter, the whole range is re-decorated
+	&apos;	Otherwise the filter cuts the range in subranges and formats them one by one
+	If Len(FilterFormula) = 0 Then vRanges = Array(oRange) Else vRanges() = _ComputeFilter(oRange, FilterFormula, UCase(FilterScope))
+	For Each ODRange In vRanges
+		With ODRange.XCellRange
+			If Len(FontName) &gt; 0 Then .CharFontName = FontName
+			If FontSize &gt; 0 Then .CharHeight = FontSize
+			If Len(Decoration) &gt; 0 Then
+				If InStr(1, Decoration, &quot;B&quot;, 0) &gt; 0 Then .CharWeight = com.sun.star.awt.FontWeight.BOLD
+				If InStr(1, Decoration, &quot;U&quot;, 0) &gt; 0 Then .CharUnderline = com.sun.star.awt.FontUnderline.SINGLE
+				If InStr(1, Decoration, &quot;I&quot;, 0) &gt; 0 Then .CharPosture = com.sun.star.awt.FontSlant.ITALIC
+				If InStr(1, Decoration, &quot;S&quot;, 0) &gt; 0 Then .CharStrikeout = com.sun.star.awt.FontStrikeout.SINGLE
+			End If
+		End With
+	Next ODRange
+
+	sDecorate = oRange.RangeName
+
+Finally:
+	DecorateFont = sDecorate
+	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+End Function	&apos;	SFDocuments.SF_Calc.DecorateFont
+
+REM -----------------------------------------------------------------------------
+Public Function DefineName(Optional ByVal DefinedName As Variant _
+							, Optional ByVal Value As Variant _
+							, Optional ByVal SheetName As Variant _
+							) As Boolean
+&apos;&apos;&apos;	Define a new name in the worksheet, at global or sheet level.
+&apos;&apos;&apos;	The Value of the new name may be a range, a scalar value or a formula.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		DefinedName: The name as a string. If it already exists, it is overwritten without warning.
+&apos;&apos;&apos;			Note that homonyms might exist, but not in the same sheet and not at global level.
+&apos;&apos;&apos;		Value: Either
+&apos;&apos;&apos;			a range reference as a string, often a single cell
+&apos;&apos;&apos;			a scalar value as a number or a string
+&apos;&apos;&apos;			a formula starting with the &quot;=&quot; sign
+&apos;&apos;&apos;		SheetName: when present, the sheet where the name is applicable to. The &quot;~&quot; shortcut is accepted.
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		True when successful.
+&apos;&apos;&apos;	Examples:
+&apos;&apos;&apos;		oDoc.DefineName(&quot;NewName&quot;, Sheet := &quot;Sheet3&quot;, Value := &quot;H2&quot;)
+
+Dim bDefine As Boolean			&apos;	Return value
+Dim oContainer As Object		&apos;	com.sun.star.lang.XComponent or com.sun.star.sheet.XSpreadsheet
+Dim oRange As Object			&apos;	Range after parsing
+Dim oCell As Object				&apos;	com.sun.star.table.CellAddress
+Dim sContent As String			&apos;	The content to store in the name
+
+Const cstThisSub = &quot;SFDocuments.Calc.DefineName&quot;
+Const cstSubArgs = &quot;DefinedName, Value, [SheetName=&quot;&quot;&quot;&quot;]&quot;
+
+	If ScriptForge.SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	bDefine = False
+
+Check:
+	If IsMissing(SheetName) Or IsEmpty(SheetName) Then SheetName = &quot;&quot;
+	If ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not _IsStillAlive() Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(DefinedName, &quot;DefinedName&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Value, &quot;Value&quot;, Array(V_STRING, ScriptForge.V_NUMERIC)) Then GoTo Finally
+		If Not _ValidateSheet(SheetName, &quot;SheetName&quot;, False, True, True) Then GoTo Finally
+	End If
+
+Try:
+	&apos;	Set the default reference cell
+	Set oCell = New com.sun.star.table.CellAddress
+	With oCell
+		.Sheet = 0
+		.Column = 0
+		.Row = 0
+	End With
+
+	&apos;	Determine the content as a string, and the reference cell when Value is a range
+	Select Case VarType(Value)
+		Case V_STRING
+			&apos;	Is Value a range ?
+			Set oRange = _ParseAddress(Value, pbError := False)
+			If IsNull(oRange) Then
+				sContent = Value
+			Else
+				With oRange
+					sContent = .RangeName
+					oCell.Sheet = .SheetIndex
+					oCell.Column = .XCellRange.RangeAddress.StartColumn
+					oCell.Row = .XCellRange.RangeAddress.StartRow
+				End With
+			End If
+		Case Else
+			&apos;	Use a locale-independent conversion function
+			sContent = Str(Value)
+	End Select
+
+	&apos;	Determine the named ranges container, either at document or at sheet level
+	If Len(SheetName) = 0 Then Set oContainer = _Component Else Set oContainer = _Component.Sheets.getByName(SheetName)
+
+	&apos;	Set the new name or replace it if it exists
+	With oContainer.NamedRanges
+		If .hasByName(DefinedName) Then .removeByName(DefinedName)
+		.addNewByName(DefinedName, sContent, oCell, 0)
+	End With
+
+	bDefine = True
+
+Finally:
+	DefineName = bDefine
+	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+End Function	&apos;	SFDocuments.SF_Calc.DefineName
+
+REM -----------------------------------------------------------------------------
 Public Function ExportRangeToFile(Optional ByVal Range As Variant _
 									, Optional ByVal FileName As Variant _
 									, Optional ByVal ImageType As Variant _
@@ -1604,6 +2038,103 @@ CatchError:
 End Function   &apos;   SFDocuments.SF_Chart.ExportRangeToFile
 
 REM -----------------------------------------------------------------------------
+Public Function FormatRange(Optional ByVal TargetRange As Variant _
+							, Optional ByVal NumberFormat As Variant _
+							, Optional ByVal Locale As Variant _
+							, Optional FilterFormula As Variant _
+							, Optional FilterScope As Variant _
+							) As String
+&apos;&apos;&apos;	Apply a given number format to a cell or a range of cells.
+&apos;&apos;&apos;	The cells range may be filtered with a filter formula and its scope.
+&apos;&apos;&apos;	If the given format does not exist, it is created and suppressed immediately.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		TargetRange : the cell or the range as a string that should receive the format
+&apos;&apos;&apos;		NumberFormat: the format to apply, as a string
+&apos;&apos;&apos;		Locale: a la-CO combination to indicate the used locale.
+&apos;&apos;&apos;			The default locale is the output of the platform.FormatLocale property
+&apos;&apos;&apos;		FilterFormula: a Calc formula to select among the given TargetRange
+&apos;&apos;&apos;			When left empty, the format is applied on all the cells
+&apos;&apos;&apos;		FilterScope: &quot;CELL&quot;, &quot;ROW&quot; or &quot;COLUMN&quot;
+&apos;&apos;&apos;			When FilterFormula is present, FilterScope is mandatory
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		A string representing the updated range
+&apos;&apos;&apos;	Examples:
+&apos;&apos;&apos;		oDoc.FormatRange(&quot;SheetX.A1:J30&quot;, &quot;0,00E+00&quot;, FilterFormula := &quot;IsNumeric(A1), FilterScope := &quot;CELL&quot;)
+&apos;&apos;&apos;			&apos;	Format only the cells containing a numeric value
+
+Dim sFormat As String			&apos;	Return value
+Dim lClear As Long				&apos;	A combination of com.sun.star.sheet.CellFlags
+Dim oRange As Object			&apos;	Alias of TargetRange
+Dim vRanges() As Variant		&apos;	Array of subranges resulting from the application of the filter
+Dim oFRange As Object			&apos;	A single element of vRanges
+Dim oNumberFormats As Object	&apos;	com.sun.star.util.XNumberFormats
+Dim oLocale As Object			&apos;	com.sun.star.lang.Locale
+Dim bNew As Boolean				&apos;	When True, the requested format doesn&apos;t exist yet
+Dim lFormatID As Long			&apos;	The format key in the list of number formats
+
+Const cstThisSub = &quot;SFDocuments.Calc.FormatRange&quot;
+Const cstSubArgs = &quot;TargetRange, NumberFormat, [Locale=formatlocale], [FilterFormula=&quot;&quot;&quot;&quot;], [FilterScope=&quot;&quot;&quot;&quot;]&quot;
+
+	If ScriptForge.SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	sFormat = &quot;&quot;
+
+Check:
+	If IsMissing(Locale) Or IsEmpty(Locale) Then Locale = &quot;&quot;
+	If IsMissing(FilterFormula) Or IsEmpty(FilterFormula) Then FilterFormula = &quot;&quot;
+	If IsMissing(FilterScope) Or IsEmpty(FilterScope) Then FilterScope = &quot;&quot;
+	If ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not _IsStillAlive() Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(TargetRange, &quot;TargetRange&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(NumberFormat, &quot;NumberFormat&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Locale, &quot;Locale&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(FilterFormula, &quot;FilterFormula&quot;, V_STRING) Then GoTo Finally
+		If Len(FilterFormula) &gt; 0 Then
+			If Not ScriptForge.SF_Utils._Validate(FilterScope, &quot;FilterScope&quot;, V_STRING, Array(&quot;CELL&quot;, &quot;ROW&quot;, &quot;COLUMN&quot;)) Then GoTo Finally
+		Else
+			If Not ScriptForge.SF_Utils._Validate(FilterScope, &quot;FilterScope&quot;, V_STRING) Then GoTo Finally
+		End If
+	End If
+
+Try:
+	If VarType(TargetRange) = V_STRING Then Set oRange = _ParseAddress(TargetRange) Else Set oRange = TargetRange
+
+
+	&apos;	Set the locale
+	If Len(Locale) = 0 Then Locale = ScriptForge.SF_Platform.FormatLocale
+	Set oLocale = CreateUnoStruct(&quot;com.sun.star.lang.Locale&quot;)
+	oLocale.Language = Split(Locale, &quot;-&quot;)(0)	&apos;	Language is most often 2 chars long, but not always
+	oLocale.Country = Right(Locale, 2)
+
+	&apos;	If the targeted format doesn&apos;t exist in the document, create it, otherwise determine its index
+	Set oNumberFormats = _Component.NumberFormats
+
+	With oNumberFormats
+		lFormatID = .queryKey(NumberFormat, oLocale, False)
+		bNew = ( lFormatID &lt; 0 )
+		If bNew Then lFormatID = .addNew(NumberFormat, oLocale)
+
+		&apos;	Without filter, the whole range is formatted
+		&apos;	Otherwise the filter cuts the range in subranges and formats them one by one
+		If Len(FilterFormula) = 0 Then vRanges = Array(oRange) Else vRanges() = _ComputeFilter(oRange, FilterFormula, UCase(FilterScope))
+		For Each oFRange In vRanges
+			oFRange.XCellRange.NumberFormat = lFormatID
+		Next oFRange
+
+		&apos;	Delete the new format
+		If bNew Then .removeByKey(lFormatID)
+	End With
+
+	sFormat = oRange.RangeName
+
+Finally:
+	FormatRange = sFormat
+	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+End Function	&apos;	SFDocuments.SF_Calc.FormatRange
+
+REM -----------------------------------------------------------------------------
 Public Function Forms(Optional ByVal SheetName As Variant _
 							, Optional ByVal Form As Variant _
 							) As Variant
@@ -1654,7 +2185,7 @@ Try:
 		Forms = vFormNames
 	Else
 		If VarType(Form) = V_STRING Then	&apos;	Find the form by name
-		If Not ScriptForge.SF_Utils._Validate(Form, &quot;Form&quot;, V_STRING, vFormNames) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Form, &quot;Form&quot;, V_STRING, vFormNames, True) Then GoTo Finally
 			Set oXForm = oForms.getByName(Form)
 		Else								&apos;	Find the form by index
 			If Form &lt; 0 Or Form &gt;= oForms.Count Then GoTo CatchNotFound
@@ -1683,11 +2214,11 @@ End Function	&apos;	SFDocuments.SF_Calc.Forms
 
 REM -----------------------------------------------------------------------------
 Function GetColumnName(Optional ByVal ColumnNumber As Variant) As String
-&apos;&apos;&apos;	Convert a column number (range 1, 2,..1024) into its letter counterpart (range &apos;A&apos;, &apos;B&apos;,..&apos;AMJ&apos;).
+&apos;&apos;&apos;	Convert a column number (range 1, 2,..16384) into its letter counterpart (range &apos;A&apos;, &apos;B&apos;,..&apos;XFD&apos;).
 &apos;&apos;&apos;	Args:
-&apos;&apos;&apos;		ColumnNumber: the column number, must be in the interval 1 ... 1024
+&apos;&apos;&apos;		ColumnNumber: the column number, must be in the interval 1 ... 16384
 &apos;&apos;&apos;	Returns:
-&apos;&apos;&apos;		a string representation of the column name, in range &apos;A&apos;..&apos;AMJ&apos;
+&apos;&apos;&apos;		a string representation of the column name, in range &apos;A&apos;..&apos;XFD&apos;
 &apos;&apos;&apos;		If ColumnNumber is not in the allowed range, returns a zero-length string
 &apos;&apos;&apos;	Example:
 &apos;&apos;&apos;		MsgBox oDoc.GetColumnName(1022)	&apos;	&quot;AMH&quot;
@@ -1748,7 +2279,7 @@ Try:
 	vDataArray = oAddress.XCellRange.getFormulaArray()
 
 	&apos;	Convert the data array to scalar, vector or array
-	vGet = _ConvertFromDataArray(vDataArray)
+	vGet = ScriptForge.SF_Array.ConvertFromDataArray(vDataArray)
 
 Finally:
 	GetFormula = vGet
@@ -1833,7 +2364,7 @@ Try:
 	vDataArray = oAddress.XCellRange.getDataArray()
 
 	&apos;	Convert the data array to scalar, vector or array
-	vGet = _ConvertFromDataArray(vDataArray)
+	vGet = ScriptForge.SF_Array.ConvertFromDataArray(vDataArray)
 
 Finally:
 	GetValue = vGet
@@ -2080,15 +2611,83 @@ Catch:
 End Function    &apos;   SFDocuments.SF_Calc.InsertSheet
 
 REM -----------------------------------------------------------------------------
+Public Function Intersect(Optional ByVal Range1 As Variant _
+							, Optional ByVal Range2 As Variant _
+							) As String
+&apos;&apos;&apos;	Returns the cell range as a string that is common to the input ranges
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		Range1: a first range as a string
+&apos;&apos;&apos;		Range2: a second range as a string
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		The intersection, as a string, representing the range common to both input ranges,
+&apos;&apos;&apos;		or a zero-length string when the intersection is empty.
+&apos;&apos;&apos;	Example:
+&apos;&apos;&apos;		calc.Intersect(&quot;J7:M11&quot;, &quot;$Sheet2.$L$10:$N$17&quot;)
+&apos;&apos;&apos;			&apos;	$Sheet2.$L$10:$M$11 when Sheet2 is the current sheet, otherwise the empty string
+
+Dim sIntersect As String			&apos;	Return value
+Dim oRangeAddress1 As Object		&apos;	SF_UI._Address type
+Dim oRangeAddress2 As Object		&apos;	SF_UI._Address type
+Dim oRange1 As Object				&apos;	com.sun.star.table.CellRangeAddress
+Dim oRange2 As Object				&apos;	com.sun.star.table.CellRangeAddress
+Dim lStartRow As Long				&apos;	Intersection starting row
+Dim lEndRow As Long					&apos;	Intersection ending row
+Dim lStartColumn As Long			&apos;	Intersection starting column
+Dim lEndColumn As Long				&apos;	Intersection ending column
+
+Const cstThisSub = &quot;SFDocuments.Calc.Intersect&quot;
+Const cstSubArgs = &quot;Range1, Range2&quot;
+
+	If ScriptForge.SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	sIntersect = &quot;&quot;
+
+Check:
+	If ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not _IsStillAlive(True) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Range1, &quot;Range1&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Range2, &quot;Range2&quot;, V_STRING) Then GoTo Finally
+	End If
+
+	Set oRangeAddress1 = _ParseAddress(Range1)
+	Set oRange1 = oRangeAddress1.XCellRange.RangeAddress
+	Set oRangeAddress2 = _ParseAddress(Range2)
+	Set oRange2 = oRangeAddress2.XCellRange.RangeAddress
+
+	If oRangeAddress1.SheetName &lt;&gt; oRangeAddress2.SheetName Then GoTo Finally
+
+Try:
+	&apos;	Find the top-left and bottom-right coordinates of the intersection
+	lStartRow = Iif(oRange1.StartRow &gt; oRange2.StartRow, oRange1.StartRow, oRange2.StartRow) + 1
+	lStartColumn = Iif(oRange1.StartColumn &gt; oRange2.StartColumn, oRange1.StartColumn, oRange2.StartColumn) + 1
+	lEndRow = Iif(oRange1.EndRow &lt; oRange2.EndRow, oRange1.EndRow, oRange2.EndRow) + 1
+	lEndColumn = Iif(oRange1.EndColumn &lt; oRange2.EndColumn, oRange1.EndColumn, oRange2.EndColumn) + 1
+
+	&apos;	Check that the 2 ranges overlap each other
+	If lStartRow &lt;= lEndRow And lStartColumn &lt;= lEndColumn Then
+		sIntersect = A1Style(lStartRow, lStartColumn, lEndRow, lEndColumn, oRangeAddress1.SheetName)
+	End If
+
+Finally:
+	Intersect = sIntersect
+	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+End Function    &apos;   SFDocuments.SF_Calc.Intersect
+
+REM -----------------------------------------------------------------------------
 Public Function Methods() As Variant
 &apos;&apos;&apos;	Return the list of public methods of the Calc service as an array
 
 	Methods = Array( _
 					&quot;A1Style&quot; _
+					, &quot;AlignRange&quot; _
+					, &quot;BorderRange&quot; _
 					, &quot;Charts&quot; _
 					, &quot;ClearAll&quot; _
 					, &quot;ClearFormats&quot; _
 					, &quot;ClearValues&quot; _
+					, &quot;ColorizeRange&quot; _
 					, &quot;CopySheet&quot; _
 					, &quot;CopySheetFromFile&quot; _
 					, &quot;CopyToCell&quot; _
@@ -2096,16 +2695,20 @@ Public Function Methods() As Variant
 					, &quot;CreateChart&quot; _
 					, &quot;DAvg&quot; _
 					, &quot;DCount&quot; _
+					, &quot;DecorateFont&quot; _
+					, &quot;DefineName&quot; _
 					, &quot;DMax&quot; _
 					, &quot;DMin&quot; _
 					, &quot;DSum&quot; _
 					, &quot;ExportRangeToFile&quot; _
+					, &quot;FormatRange&quot; _
 					, &quot;GetColumnName&quot; _
 					, &quot;GetFormula&quot; _
 					, &quot;GetValue&quot; _
 					, &quot;ImportFromCSVFile&quot; _
 					, &quot;ImportFromDatabase&quot; _
 					, &quot;InsertSheet&quot; _
+					, &quot;Intersect&quot; _
 					, &quot;MoveRange&quot; _
 					, &quot;MoveSheet&quot; _
 					, &quot;Offset&quot; _
@@ -2547,6 +3150,7 @@ Public Function Properties() As Variant
 	Properties = Array( _
 					&quot;CurrentSelection&quot; _
 					, &quot;CustomProperties&quot; _
+					, &quot;DefinedNames&quot; _
 					, &quot;Description&quot; _
 					, &quot;DocumentProperties&quot; _
 					, &quot;DocumentType&quot; _
@@ -2557,6 +3161,7 @@ Public Function Properties() As Variant
 					, &quot;FirstRow&quot; _
 					, &quot;Height&quot; _
 					, &quot;ImportFilters&quot; _
+					, &quot;IsAlive&quot; _
 					, &quot;IsBase&quot; _
 					, &quot;IsCalc&quot; _
 					, &quot;IsDraw&quot; _
@@ -2568,6 +3173,7 @@ Public Function Properties() As Variant
 					, &quot;LastCell&quot; _
 					, &quot;LastColumn&quot; _
 					, &quot;LastRow&quot; _
+					, &quot;MenuHeaders&quot; _
 					, &quot;Range&quot; _
 					, &quot;Readonly&quot; _
 					, &quot;Region&quot; _
@@ -2581,6 +3187,7 @@ Public Function Properties() As Variant
 					, &quot;XCellRange&quot; _
 					, &quot;XComponent&quot; _
 					, &quot;XDocumentSettings&quot; _
+					, &quot;XRectangle&quot; _
 					, &quot;XSheetCellCursor&quot; _
 					, &quot;XSpreadsheet&quot; _
 					)
@@ -2829,7 +3436,7 @@ Check:
 
 Try:
 	&apos;	Convert argument to data array and derive new range from its size
-	vDataArray = _ConvertToDataArray(Value)
+	vDataArray = ScriptForge.SF_Array.ConvertToDataArray(Value, IsRange := True)
 	If UBound(vDataArray) &lt; LBound(vDataArray) Then GoTo Finally
 	Set oSet = _Offset(TargetCell, 0, 0, plHeight := UBound(vDataArray) + 1, plWidth := UBound(vDataArray(0)) + 1)	&apos;	+1 : vDataArray is zero-based
 	With oSet
@@ -2869,7 +3476,7 @@ Public Function SetCellStyle(Optional ByVal TargetRange As Variant _
 &apos;&apos;&apos;		oDoc.SetCellStype(&quot;A1:J20&quot;, &quot;Wrong&quot;, &quot;=(A1&lt;0)&quot;, &quot;CELL&quot;)
 
 Dim sSet As String					&apos;	Return value
-Dim oAddress As _Address				&apos;	Alias of TargetRange
+Dim oAddress As _Address			&apos;	Alias of TargetRange
 Dim oStyleFamilies As Object		&apos;	com.sun.star.container.XNameAccess
 Dim vStyles As Variant				&apos;	Array of existing cell styles
 Dim vRanges() As Variant			&apos;	Array of filtered ranges
@@ -2891,7 +3498,7 @@ Check:
 		&apos;	Check that the given style really exists
 		Set oStyleFamilies = _Component.StyleFamilies
 		If oStyleFamilies.hasByName(cstStyle) Then vStyles = oStyleFamilies.getByName(cstStyle).getElementNames() Else vStyles = Array()
-		If Not ScriptForge.SF_Utils._Validate(Style, &quot;Style&quot;, V_STRING, vStyles) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Style, &quot;Style&quot;, V_STRING, vStyles, True) Then GoTo Finally
 		&apos;	Filter formula
 		If Not ScriptForge.SF_Utils._Validate(FilterFormula, &quot;FilterFormula&quot;, V_STRING) Then GoTo Finally
 		If Len(FilterFormula) &gt; 0 Then
@@ -2970,7 +3577,7 @@ Try:
 	With oAddress
 		If IsArray(Formula) Then
 			&apos;	Convert to data array and limit its size to the size of the initial range
-			vDataArray = _ConvertToDataArray(Formula, .Height - 1, .Width - 1)
+			vDataArray = ScriptForge.SF_Array.ConvertToDataArray(Formula, Rows := .Height, Columns := .Width)
 			If UBound(vDataArray) &lt; LBound(vDataArray) Then GoTo Finally
 			.XCellRange.setFormulaArray(vDataArray)
 		Else
@@ -3053,7 +3660,7 @@ Public Function SetValue(Optional ByVal TargetRange As Variant _
 &apos;&apos;&apos;	Vectors are always expanded vertically, except if the range has a height of exactly 1 row
 &apos;&apos;&apos;	Args:
 &apos;&apos;&apos;		TargetRange : the range as a string that should receive a new value
-&apos;&apos;&apos;		Value: a scalar, a vector or an array with the new values for each cell o.XSpreadsheet.Name)f the range.
+&apos;&apos;&apos;		Value: a scalar, a vector or an array with the new values for each cell of the range.
 &apos;&apos;&apos;			The new values should be strings, numeric values or dates. Other types empty the corresponding cell
 &apos;&apos;&apos;	Returns:
 &apos;&apos;&apos;		A string representing the updated range
@@ -3086,7 +3693,7 @@ Try:
 	Set oAddress = _ParseAddress(TargetRange)
 	With oAddress
 		&apos;	Convert to data array and limit its size to the size of the initial range
-		vDataArray = _ConvertToDataArray(Value, .Height - 1, .Width - 1)
+		vDataArray = ScriptForge.SF_Array.ConvertToDataArray(Value, IsRange := True, Rows := .Height, Columns := .Width)
 		If UBound(vDataArray) &lt; LBound(vDataArray) Then GoTo Finally
 		.XCellRange.setDataArray(vDataArray)
 		sSet = .RangeName
@@ -3632,6 +4239,11 @@ Property Get ImportFilters() As Variant
 End Property	&apos;	SFDocuments.SF_Calc.ImportFilters
 
 REM -----------------------------------------------------------------------------
+Property Get IsAlive() As Boolean
+	IsAlive = [_Super].GetProperty(&quot;IsAlive&quot;)
+End Property	&apos;	SFDocuments.SF_Calc.IsAlive
+
+REM -----------------------------------------------------------------------------
 Property Get IsBase() As Boolean
 	IsBase = [_Super].GetProperty(&quot;IsBase&quot;)
 End Property	&apos;	SFDocuments.SF_Calc.IsBase
@@ -3675,6 +4287,11 @@ REM ----------------------------------------------------------------------------
 Property Let Keywords(Optional ByVal pvKeywords As Variant)
 	[_Super].Keywords = pvKeywords
 End Property	&apos;	SFDocuments.SF_Calc.Keywords
+
+REM -----------------------------------------------------------------------------
+Property Get MenuHeaders() As Variant
+	MenuHeaders = [_Super].GetProperty(&quot;MenuHeaders&quot;)
+End Property	&apos;	SFDocuments.SF_Calc.MenuHeaders
 
 REM -----------------------------------------------------------------------------
 Property Get Readonly() As Variant
@@ -3727,6 +4344,13 @@ REM ----------------------------------------------------------------------------
 Public Function CloseDocument(Optional ByVal SaveAsk As Variant) As Boolean
 	CloseDocument = [_Super].CloseDocument(SaveAsk)
 End Function   &apos;   SFDocuments.SF_Calc.CloseDocument
+
+REM -----------------------------------------------------------------------------
+Public Function ContextMenus(Optional ByVal ContextMenuName As Variant _
+								, Optional ByVal SubmenuChar As Variant _
+								) As Variant
+	ContextMenus = [_Super].ContextMenus(ContextMenuName, SubmenuChar)
+End Function	&apos;	SFDocuments.SF_Calc.ContextMenus
 
 REM -----------------------------------------------------------------------------
 Public Function CreateMenu(Optional ByVal MenuHeader As Variant _
@@ -3837,6 +4461,133 @@ Public Function XStyle(Optional ByVal Family As Variant _
 End Function	&apos;	SFDocuments.SF_Calc.XStyle
 
 REM =========================================================== PRIVATE FUNCTIONS
+
+REM -----------------------------------------------------------------------------
+Private Sub _BorderRange(ByRef poRange As Object _
+							, ByVal pvBorders As Variant _
+							)
+&apos;&apos;&apos;	Set the border lines of a range. Pre-existing borders may be cleared or not before
+&apos;&apos;&apos;	the application of the new definition.
+&apos;&apos;&apos;	Complex borders are not supported. Only thin solid lines.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		poRange: the targeted range as an _Address object
+&apos;&apos;&apos;		pvBorders:
+&apos;&apos;&apos;			when a string, a combination of the letters T, B, L, R, V, H
+&apos;&apos;&apos;			when an object: a com.sun.star.table.TableBorder2 UNO object
+
+Dim oTableBorder As Object			&apos;	com.sun.star.table.TableBorder2
+Dim oBorderLine As Object			&apos;	com.sun.star.table.BorderLine2
+Dim oCellRange As Object			&apos;	com.sun.star.table.XCellRange
+Dim iDefaultStyle As Integer		&apos;	com.sun.star.table.BorderLineStyle.SOLID
+Const cstLineWidth = 26
+
+Try:
+	Set oCellRange = poRange.XCellRange
+
+	With oCellRange
+
+		&apos;	Clear any existing border in the range
+		Set oBorderLine = New com.sun.star.table.BorderLine2
+		Set .BottomBorder2 = oBorderLine
+		Set .LeftBorder2 = oBorderLine
+		Set .TopBorder2 = oBorderLine
+		Set .RightBorder2 = oBorderLine
+		Set .DiagonalBLTR2 = oBorderLine
+		Set .DiagonalTLBR2 = oBorderLine
+		Set .TableBorder2 = New com.sun.star.table.TableBorder2
+
+		&apos;	Set the new borders
+		&apos;	Usually a string, but sometimes an object
+		If VarType(pvBorders) = V_STRING Then
+			Set oTableBorder = New com.sun.star.table.TableBorder2
+			iDefaultStyle = com.sun.star.table.BorderLineStyle.SOLID
+
+			&apos;	Bottom borders
+			If InStr(1, pvBorders, &quot;B&quot;, 0) &gt; 0 Then
+				With oTableBorder
+					.BottomLine.LineStyle = iDefaultStyle
+					.BottomLine.LineWidth = cstLineWidth
+					.IsBottomLineValid = True
+				End With
+			End If
+
+			&apos;	Left borders
+			If InStr(1, pvBorders, &quot;L&quot;, 0) &gt; 0 Then
+				With oTableBorder
+					.LeftLine.LineStyle = iDefaultStyle
+					.LeftLine.LineWidth = cstLineWidth
+					.IsLeftLineValid = True
+				End With
+			End If
+
+			&apos;	Top borders
+			If InStr(1, pvBorders, &quot;T&quot;, 0) &gt; 0 Then
+				With oTableBorder
+					.TopLine.LineStyle = iDefaultStyle
+					.TopLine.LineWidth = cstLineWidth
+					.IsTopLineValid = True
+				End With
+			End If
+
+			&apos;	Right borders
+			If InStr(1, pvBorders, &quot;R&quot;, 0) &gt; 0 Then
+				With oTableBorder
+					.RightLine.LineStyle = iDefaultStyle
+					.RightLine.LineWidth = cstLineWidth
+					.IsRightLineValid = True
+				End With
+			End If
+
+			&apos;	Horizontal inner borders
+			If InStr(1, pvBorders, &quot;H&quot;, 0) &gt; 0 Then
+				With oTableBorder
+					.HorizontalLine.LineStyle = iDefaultStyle
+					.HorizontalLine.LineWidth = cstLineWidth
+					.IsHorizontalLineValid = True
+				End With
+			End If
+
+			&apos;	Vertical inner borders
+			If InStr(1, pvBorders, &quot;V&quot;, 0) &gt; 0 Then
+				With oTableBorder
+					.VerticalLine.LineStyle = iDefaultStyle
+					.VerticalLine.LineWidth = cstLineWidth
+					.IsVerticalLineValid = True
+				End With
+			End If
+
+			&apos;	Bottom-up diagonal
+			If InStr(1, pvBorders, &quot;U&quot;, 0) &gt; 0 Then
+				Set oBorderLine = New com.sun.star.table.BorderLine2
+				With oBorderLine
+					.LineStyle = iDefaultStyle
+					.LineWidth = cstLineWidth
+				End With
+				Set .DiagonalBLTR2 = oBorderLine
+			End If
+
+			&apos;	Top-down diagonal
+			If InStr(1, pvBorders, &quot;D&quot;, 0) &gt; 0 Then
+				Set oBorderLine = New com.sun.star.table.BorderLine2
+				With oBorderLine
+					.LineStyle = iDefaultStyle
+					.LineWidth = cstLineWidth
+				End With
+				Set .DiagonalTLBR2 = oBorderLine
+			End If
+
+		Else
+			Set oTableBorder = pvBorders
+		End If
+
+		&apos;	Apply the new border definitions
+		Set .TableBorder2 = oTableBorder
+
+	End With
+
+Finally:
+	Exit Sub
+End Sub
 
 REM -----------------------------------------------------------------------------
 Private Sub _ClearRange(ByVal psTarget As String _
@@ -3973,7 +4724,7 @@ Try:
 		&apos;	Apply the formula and get the result as an array of Boolean values. Clean up
 		SetFormula(oFormulaRange, psFilterFormula)
 		vDataArray = oFormulaRange.XCellRange.getDataArray()
-		vFilter = _ConvertFromDataArray(vDataArray)
+		vFilter = ScriptForge.SF_Array.ConvertFromDataArray(vDataArray)
 		iDims = ScriptForge.SF_Array.CountDims(vFilter)
 		ClearAll(oFormulaRange)
 
@@ -4026,202 +4777,6 @@ Finally:
 	_ComputeFilter = vRanges()
 	Exit Function
 End Function    &apos;   SFDocuments.SF_Calc._ComputeFilter
-
-REM -----------------------------------------------------------------------------
-Public Function _ConvertFromDataArray(ByRef pvDataArray As Variant) As Variant
-&apos;&apos;&apos;	Convert a data array to a scalar, a vector or a 2D array
-&apos;&apos;&apos;	Args:
-&apos;&apos;&apos;		pvDataArray: an array as returned by the XCellRange.getDataArray or .getFormulaArray methods
-&apos;&apos;&apos;	Returns:
-&apos;&apos;&apos;		A scalar, a zero-based 1D array or a zero-based 2D array of strings and/or doubles
-&apos;&apos;&apos;		To convert doubles to dates, use the CDate builtin function
-
-Dim vArray As Variant				&apos;	Return value
-Dim lMax1 As Long					&apos;	UBound of pvDataArray
-Dim lMax2 As Long					&apos;	UBound of pvDataArray items
-Dim i As Long
-Dim j As Long
-
-	vArray = Empty
-
-Try:
-	&apos;	Convert the data array to scalar, vector or array
-	lMax1 = UBound(pvDataArray)
-	If lMax1 &gt;= 0 Then
-		lMax2 = UBound(pvDataArray(0))
-		If lMax2 &gt;= 0 Then
-			If lMax1 + lMax2 &gt; 0 Then vArray = Array()
-			Select Case True
-				Case lMax1 = 0 And lMax2 = 0			&apos;	Scalar
-					vArray = pvDataArray(0)(0)
-				Case lMax1 &gt; 0 And lMax2 = 0			&apos;	Vertical vector
-					ReDim vArray(0 To lMax1)
-					For i = 0 To lMax1
-						vArray(i) = pvDataArray(i)(0)
-					Next i
-				Case lMax1 = 0 And lMax2 &gt; 0			&apos;	Horizontal vector
-					ReDim vArray(0 To lMax2)
-					For j = 0 To lMax2
-						vArray(j) = pvDataArray(0)(j)
-					Next j
-				Case Else								&apos;	Array
-					ReDim vArray(0 To lMax1, 0 To lMax2)
-					For i = 0 To lMax1
-						For j = 0 To lMax2
-							vArray(i, j) = pvDataArray(i)(j)
-						Next j
-					Next i
-			End Select
-		End If
-	End If
-
-Finally:
-	_ConvertFromDataArray = vArray
-End Function	&apos;	SFDocuments.SF_Calc._ConvertFromDataArray
-
-REM -----------------------------------------------------------------------------
-Private Function _ConvertToCellValue(ByVal pvItem As Variant) As Variant
-&apos;&apos;&apos;	Convert the argument to a valid Calc cell content
-
-Dim vCell As Variant		&apos;	Return value
-
-Try:
-	Select Case ScriptForge.SF_Utils._VarTypeExt(pvItem)
-		Case V_STRING					:		vCell = pvItem
-		Case V_DATE						:		vCell = CDbl(pvItem)
-		Case ScriptForge.V_NUMERIC		:		vCell = CDbl(pvItem)
-		Case ScriptForge.V_BOOLEAN		:		vCell = CDbl(Iif(pvItem, 1, 0))
-		Case Else						:		vCell = &quot;&quot;
-	End Select
-
-Finally:
-	_ConvertToCellValue = vCell
-	Exit Function
-End Function	&apos;	SFDocuments.SF_Calc._ConvertToCellValue
-
-REM -----------------------------------------------------------------------------
-Private Function _ConvertToDataArray(ByRef pvArray As Variant _
-								, Optional ByVal plRows As Long _
-								, Optional ByVal plColumns As Long _
-								) As Variant
-&apos;&apos;&apos;	Create a 2-dimensions nested array (compatible with the ranges .DataArray property)
-&apos;&apos;&apos;	from a scalar, a 1D array or a 2D array
-&apos;&apos;&apos;	Input may be a 1D array of arrays, typically when call issued by a Python script
-&apos;&apos;&apos;	Array items are converted to (possibly empty) strings or doubles
-&apos;&apos;&apos;	Args:
-&apos;&apos;&apos;		pvArray: the input scalar or array. If array, must be 1 or 2D otherwise it is ignored.
-&apos;&apos;&apos;		plRows, plColumns: the upper bounds of the data array
-&apos;&apos;&apos;			If bigger than input array, fill with zero-length strings
-&apos;&apos;&apos;			If smaller than input array, truncate
-&apos;&apos;&apos;			If plRows = 0 and the input array is a vector, the data array is aligned horizontally
-&apos;&apos;&apos;			They are either both present or both absent
-&apos;&apos;&apos;				When absent
-&apos;&apos;&apos;					The size of the output is fully determined by the input array
-&apos;&apos;&apos;					Vectors are aligned vertically
-&apos;&apos;&apos;	Returns:
-&apos;&apos;&apos;		A data array compatible with ranges .DataArray property
-&apos;&apos;&apos;		The output is always an array of nested arrays
-
-Dim vDataArray() As Variant			&apos;	Return value
-Dim vVector() As Variant			&apos;	A temporary 1D array
-Dim vItem As Variant				&apos;	A single input item
-Dim iDims As Integer				&apos;	Number of dimensions of the input argument
-Dim lMin1 As Long					&apos;	Lower bound (1) of input array
-Dim lMax1 As Long					&apos;	Upper bound (1)
-Dim lMin2 As Long					&apos;	Lower bound (2)
-Dim lMax2 As Long					&apos;	Upper bound (2)
-Dim lRows As Long					&apos;	Upper bound of vDataArray
-Dim lCols As Long					&apos;	Upper bound of vVector
-Dim bHorizontal As Boolean			&apos;	Horizontal vector
-Dim bDataArray As Boolean			&apos;	Input array is already an array of arrays
-Dim i As Long
-Dim j As Long
-
-Const cstEmpty = &quot;&quot;		&apos;	Empty cell
-
-	If IsMissing(plRows) Or IsEmpty(plRows) Then plRows = -1
-	If IsMissing(plColumns) Or IsEmpty(plColumns) Then plColumns = -1
-
-	vDataArray = Array()
-
-Try:
-	&apos;	Check the input argument and know its boundaries
-	iDims = ScriptForge.SF_Array.CountDims(pvArray)
-	If iDims = 0 Or iDims &gt; 2 Then Exit Function
-	lMin1 = 0		:	lMax1 = 0	&apos;	Default values
-	lMin2 = 0		:	lMax2 = 0
-	Select Case iDims
-		Case -1													&apos;	Scalar value
-		Case 1
-			bHorizontal = ( plRows = 0 And plColumns &gt; 0 )
-			bDataArray = IsArray(pvArray(0))
-			If Not bDataArray Then
-				If Not bHorizontal Then
-					lMin1 = LBound(pvArray)	:	lMax1 = UBound(pvArray)
-				Else
-					lMin2 = LBound(pvArray)	:	lMax2 = UBound(pvArray)
-				End If
-			Else
-				iDims = 2
-				lMin1 = LBound(pvArray)	:	lMax1 = UBound(pvArray)
-				lMin2 = LBound(pvArray(0))	:	lMax2 = UBound(pvArray(0))
-			End If
-		Case 2
-			lMin1 = LBound(pvArray, 1)	:	lMax1 = UBound(pvArray, 1)
-			lMin2 = LBound(pvArray, 2)	:	lMax2 = UBound(pvArray, 2)
-	End Select
-
-	&apos;	Set the output dimensions accordingly
-	If plRows &gt;= 0 Then		&apos;	Dimensions of output are imposed
-		lRows = plRows
-		lCols = plColumns
-	Else					&apos;	Dimensions of output determined by input argument
-		lRows = 0		:	lCols = 0	&apos;	Default values
-		Select Case iDims
-			Case -1													&apos;	Scalar value
-			Case 1													&apos;	Vectors are aligned vertically
-				lRows = lMax1 - lMin1
-			Case 2
-				lRows = lMax1 - lMin1
-				lCols = lMax2 - lMin2
-		End Select
-	End If
-	ReDim vDataArray(0 To lRows)
-
-	&apos;	Feed the output array row by row, each row being a vector
-	For i = 0 To lRows
-		ReDim vVector(0 To lCols)
-		For j = 0 To lCols
-			If i &gt; lMax1 - lMin1 Then
-				vVector(j) = cstEmpty
-			ElseIf j &gt; lMax2 - lMin2 Then
-				vVector(j) = cstEmpty
-			Else
-				Select Case iDims
-					Case -1		:	vItem = _ConvertToCellValue(pvArray)
-					Case 1
-						If bHorizontal Then
-							vItem = _ConvertToCellValue(pvArray(j + lMin2))
-						Else
-							vItem = _ConvertToCellValue(pvArray(i + lMin1))
-						End If
-					Case 2
-						If bDataArray Then
-							vItem = _ConvertToCellValue(pvArray(i + lMin1)(j + lMin2))
-						Else
-							vItem = _ConvertToCellValue(pvArray(i + lMin1, j + lMin2))
-						End If
-				End Select
-				vVector(j) = vItem
-			End If
-			vDataArray(i) = vVector
-		Next j
-	Next i
-
-Finally:
-	_ConvertToDataArray = vDataArray
-	Exit Function
-End Function	&apos;	SFDocuments.SF_Calc._ConvertToDataArray
 
 REM -----------------------------------------------------------------------------
 Private Function _DFunction(ByVal psFunction As String _
@@ -4349,6 +4904,54 @@ Finally:
 End Function	&apos;	SFDocuments.SF_Calc._LastCell
 
 REM -----------------------------------------------------------------------------
+Private Function _NamedRangesList(Optional ByVal pbAll As Boolean) As Variant
+&apos;&apos;&apos;	Return the list, as an array of all the named ranges of the document.
+&apos;&apos;&apos;	The list may, optionally, include the named ranges owned by sheets. Such names are qualified with the sheet name.
+&apos;&apos;&apos;	Note that synonyms across sheet named ranges may exist.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		pbAll: When true (default), returns the full list of names
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		The resulting list is sorted.
+
+Dim vNamedRanges As Variant			&apos;	Return value
+Dim lTop As Long					&apos;	Upper bound of vNamedRanges
+Dim oSheets As Object				&apos;	com.sun.star.sheet.XSpreadsheets
+Dim vSheetNames As Variant			&apos;	Array of sheet names
+Dim sSheetName As String			&apos;	A single sheet name
+Dim vSheetNamedRanges As Variant	&apos;	Array of named ranges found in a sheet
+Dim sSheetNamedRange As String		&apos;	A single named range
+Dim arr As Object					:	Set arr = CreateScriptService(&quot;Array&quot;)
+
+	If IsMissing(pbAll) Then pbAll = True
+	vNamedRanges = Array()
+
+Try:
+	vNamedRanges = _Component.NamedRanges.getElementNames()
+	If pbAll Then
+		Set oSheets = _Component.Sheets
+		With oSheets
+			vSheetNames = .getElementNames()
+			&apos;	Explore sheet by sheet
+			For Each sSheetName In vSheetNames
+				vSheetNamedRanges = .GetByName(sSheetName).NamedRanges.getElementNames()
+				For Each sSheetNamedRange In vSheetNamedRanges
+					lTop = UBound(vNamedRanges) + 1
+					ReDim Preserve vNamedRanges(0 To lTop)
+					&apos;	The named range is coded &apos;sheet&apos;.range
+					vNamedRanges(lTop) = &quot;$&apos;&quot; &amp; sSheetName &amp; &quot;&apos;.&quot; &amp; sSheetNamedRange
+				Next sSheetNamedRange
+			Next sSheetName
+		End With
+	End If
+
+	vNamedRanges = arr.Sort(vNamedRanges, SortOrder := &quot;ASC&quot;, CaseSensitive := True)
+
+Finally:
+	_NamedRangesList = vNamedRanges
+	Exit Function
+End Function	&apos;	SFDocuments.SF_Calc._NamedRangesList
+
+REM -----------------------------------------------------------------------------
 Public Function _Offset(ByRef pvRange As Variant _
 								, ByVal plRows As Long _
 								, ByVal plColumns As Long _
@@ -4432,14 +5035,15 @@ CatchAddress:
 End Function	&apos;	SFDocuments.SF_Calc._Offset
 
 REM -----------------------------------------------------------------------------
-Private Function _ParseAddress(ByVal psAddress As String) As Object
+Private Function _ParseAddress(ByVal psAddress As String, Optional ByVal pbError As Boolean) As Object
 &apos;&apos;&apos;	Parse and validate a sheet or range reference
 &apos;&apos;&apos;	Syntax to parse:
 &apos;&apos;&apos;		[Sheet].[Range]
 &apos;&apos;&apos;			Sheet 	=&gt; [$][&apos;]sheet[&apos;] or document named range or ~
 &apos;&apos;&apos;			Range	=&gt; A1:D10, A1, A:D, 10:10 ($ ignored), or sheet named range or ~ or *
 &apos;&apos;&apos;	Returns:
-&apos;&apos;&apos;		An object of type _Address
+&apos;&apos;&apos;		An object of type _Address.
+&apos;&apos;&apos;		When parsing failed, an error is generated, except if pbError = False =&gt; Nothing is returned.
 &apos;&apos;&apos;	Exceptions:
 &apos;&apos;&apos;		CALCADDRESSERROR		&apos;	Address could not be parsed to a valid address
 
@@ -4454,6 +5058,8 @@ Dim oNamedRanges As Object			&apos;	com.sun.star.sheet.XNamedRanges
 Dim oRangeAddress As Object			&apos;	Alias for rangeaddress
 Dim vLastCell As Variant			&apos;	Result of _LastCell() method
 Dim oSelect As Object				&apos;	Current selection
+
+	If IsMissing(pbError) Then pbError = True
 
 	&apos;	If psAddress has already been parsed, get the result back
 	If Not IsNull(_LastParsedAddress) Then
@@ -4562,8 +5168,12 @@ Finally:
 CatchError:
 	ScriptForge.SF_Exception.Clear()
 CatchAddress:
-	ScriptForge.SF_Exception.RaiseFatal(CALCADDRESSERROR, &quot;Range&quot;, psAddress _
+	If pbError Then
+		ScriptForge.SF_Exception.RaiseFatal(CALCADDRESSERROR, &quot;Range&quot;, psAddress _
 				, &quot;Document&quot;, [_Super]._FileIdent())
+	Else
+		Set oAddress = Nothing
+	End If
 	GoTo Finally
 End Function	&apos;	SFDocuments.SF_Calc._ParseAddress
 
@@ -4605,13 +5215,8 @@ Const cstSubArgs = &quot;&quot;
 			Else
 				_PropertyGet = oSelect.AbsoluteName
 			End If
-		Case UCase(&quot;Height&quot;)
-			If IsMissing(pvArg) Or IsEmpty(pvArg) Then
-				_PropertyGet = 0
-			Else
-				If Not ScriptForge.SF_Utils._Validate(pvArg, &quot;Range&quot;, V_STRING) Then GoTo Finally
-				_PropertyGet = _ParseAddress(pvArg).Height
-			End If
+		Case UCase(&quot;DefinedNames&quot;)
+			_PropertyGet = _NamedRangesList(True)
 		Case UCase(&quot;FirstCell&quot;), UCase(&quot;FirstRow&quot;), UCase(&quot;FirstColumn&quot;) _
 				, UCase(&quot;LastCell&quot;), UCase(&quot;LastColumn&quot;), UCase(&quot;LastRow&quot;) _
 				, UCase(&quot;SheetName&quot;)
@@ -4633,6 +5238,13 @@ Const cstSubArgs = &quot;&quot;
 						Case UCase(&quot;SheetName&quot;)		:	_PropertyGet = oAddress.XSpreadsheet.Name
 					End Select
 				End With
+			End If
+		Case UCase(&quot;Height&quot;)
+			If IsMissing(pvArg) Or IsEmpty(pvArg) Then
+				_PropertyGet = 0
+			Else
+				If Not ScriptForge.SF_Utils._Validate(pvArg, &quot;Range&quot;, V_STRING) Then GoTo Finally
+				_PropertyGet = _ParseAddress(pvArg).Height
 			End If
 		Case UCase(&quot;Range&quot;)
 			If IsMissing(pvArg) Or IsEmpty(pvArg) Then
@@ -4675,6 +5287,13 @@ Const cstSubArgs = &quot;&quot;
 			Else
 				If Not ScriptForge.SF_Utils._Validate(pvArg, &quot;Range&quot;, V_STRING) Then GoTo Finally
 				Set _PropertyGet = _ParseAddress(pvArg).XCellRange
+			End If
+		Case UCase(&quot;XRectangle&quot;)
+			If IsMissing(pvArg) Or IsEmpty(pvArg) Then
+				Set _PropertyGet = Nothing
+			Else
+				If Not ScriptForge.SF_Utils._Validate(pvArg, &quot;Range&quot;, V_STRING) Then GoTo Finally
+				Set _PropertyGet = _RangePosition(pvArg)
 			End If
 		Case UCase(&quot;XSheetCellCursor&quot;)
 			If IsMissing(pvArg) Or IsEmpty(pvArg) Then
@@ -4732,6 +5351,54 @@ Finally:
 	_QuoteSheetName = sSheetName
 	Exit Function
 End Function	&apos;	SFDocuments.SF_Calc._QuoteSheetName
+
+REM -----------------------------------------------------------------------------
+Private Function _RangePosition(ByVal psRange As String) As Object
+&apos;&apos;&apos;	Determine a best guess of the coordinates (in pixels) of the given range
+&apos;&apos;&apos;	Inspired (and enhanced) from https://forum.openoffice.org/en/forum/viewtopic.php?p=308693#p308693
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		psRange: the range as a string
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		a com.sun.star.awt.Rectangle UNO structure
+
+Dim oRectOnScreen As New com.sun.star.awt.Rectangle	&apos;	Range position versus top-left screen corner (return value)
+Dim oRect As New com.sun.star.awt.Rectangle			&apos;	Range position versus the A1 cell
+Dim oLocation As Object								&apos;	com.sun.star.awt.Rectangle
+Dim oController As Object							&apos;	Current controller
+Dim oXRange As Object								&apos;	com.sun.star.Table.CellRange
+
+Check:
+	On Local Error GoTo Finally
+
+Try:
+	Set oController = _Component.CurrentController
+	Set oXRange = _ParseAddress(psRange).XCellRange
+	&apos;	Grab the window location on the screen
+	Set oLocation = oController.ComponentWindow.AccessibleContext.LocationOnScreen
+
+	With oRect
+		.X = oXRange.Position.X
+		.Y = oXRange.Position.Y
+		.Width = oXRange.Size.Width
+		.Height = oXRange.Size.Height
+	End With
+
+	&apos;Compute the rectangle in pixels (empirical computation)
+	With oController
+		oRectOnScreen.X = .VisibleAreaOnScreen.X _
+				+ .VisibleAreaOnScreen.Width * (oRect.X - .VisibleArea.X) / .VisibleArea.Width _
+				- oLocation.X
+		oRectOnScreen.Y = .VisibleAreaOnScreen.Y _
+				+ .VisibleAreaOnScreen.Height * (oRect.Y - .VisibleArea.Y) / .VisibleArea.Height _
+				- oLocation.Y
+		oRectOnScreen.Width = oRect.Width * .VisibleAreaOnScreen.Width / .VisibleArea.Width
+		oRectOnScreen.Height = oRect.Height * .VisibleAreaOnScreen.Height / .VisibleArea.Height
+	End With
+
+Finally:
+	Set _RangePosition = oRectOnScreen
+	Exit Function
+End Function	&apos;	SFDocuments.SF_Calc._RangePosition
 
 REM -----------------------------------------------------------------------------
 Private Function _Repr() As String

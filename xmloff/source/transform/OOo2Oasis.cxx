@@ -20,11 +20,10 @@
 #include <config_wasm_strip.h>
 
 #include <osl/diagnose.h>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <sal/log.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <comphelper/base64.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <utility>
 #include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
@@ -45,7 +44,6 @@
 #include "OOo2Oasis.hxx"
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/typeprovider.hxx>
-#include <comphelper/diagnose_ex.hxx>
 
 using namespace ::xmloff::token;
 using namespace ::com::sun::star::uno;
@@ -927,20 +925,20 @@ void XMLDocumentTransformerContext_Impl::StartElement(
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
     {
-        const OUString& rAttrName = xAttrList->getNameByIndex( i );
+        const OUString aAttrName = xAttrList->getNameByIndex( i );
         OUString aLocalName;
         sal_uInt16 nPrefix =
-            GetTransformer().GetNamespaceMap().GetKeyByAttrName( rAttrName,
+            GetTransformer().GetNamespaceMap().GetKeyByAttrName( aAttrName,
                                                                  &aLocalName );
         if( XML_NAMESPACE_OFFICE == nPrefix &&
             IsXMLToken( aLocalName, XML_CLASS ) )
         {
-            const OUString& rValue = xAttrList->getValueByIndex( i );
-            GetTransformer().SetClass( rValue );
+            const OUString aValue = xAttrList->getValueByIndex( i );
+            GetTransformer().SetClass( aValue );
 
             pMutableAttrList = new XMLMutableAttributeList( xAttrList );
             xAttrList = pMutableAttrList;
-            OUString sMime = "application/vnd.oasis.opendocument." + rValue;
+            OUString sMime = "application/vnd.oasis.opendocument." + aValue;
             pMutableAttrList->SetValueByIndex( i, sMime );
             OUString aNewAttrQName( GetTransformer().GetNamespaceMap().GetQNameByKey( XML_NAMESPACE_OFFICE, ::xmloff::token::GetXMLToken( XML_MIMETYPE ) ) );
             pMutableAttrList->RenameAttributeByIndex(i, aNewAttrQName );
@@ -948,18 +946,18 @@ void XMLDocumentTransformerContext_Impl::StartElement(
         }
         else if( XML_NAMESPACE_XMLNS == nPrefix )
         {
-            const OUString& rAttrValue = xAttrList->getValueByIndex( i );
-            if( IsXMLToken( rAttrValue, XML_N_OOO ) )
+            const OUString aAttrValue = xAttrList->getValueByIndex( i );
+            if( IsXMLToken( aAttrValue, XML_N_OOO ) )
                 bOOo = true;
-            else if( IsXMLToken( rAttrValue, XML_N_OOOW ) )
+            else if( IsXMLToken( aAttrValue, XML_N_OOOW ) )
                 bOOoW = true;
-            else if( IsXMLToken( rAttrValue, XML_N_OOOC ) )
+            else if( IsXMLToken( aAttrValue, XML_N_OOOC ) )
                 bOOoC = true;
-            else if( IsXMLToken( rAttrValue, XML_N_DOM ) )
+            else if( IsXMLToken( aAttrValue, XML_N_DOM ) )
                 bDOM = true;
-            else if( IsXMLToken( rAttrValue, XML_N_DC ) )
+            else if( IsXMLToken( aAttrValue, XML_N_DC ) )
                 bDC = true;
-            else if( IsXMLToken( rAttrValue, XML_N_SVG ) )
+            else if( IsXMLToken( aAttrValue, XML_N_SVG ) )
                 bSVG = true;
         }
     }
@@ -1048,7 +1046,6 @@ void XMLBodyTransformerContext_Impl::StartElement(
 
     rtl::Reference<XMLMutableAttributeList> pMutableAttrList =
         new XMLMutableAttributeList( rAttrList );
-    Reference< XAttributeList > xAttrList = pMutableAttrList;
     OUString aClass( GetTransformer().GetClass() );
     if( aClass.isEmpty() )
     {
@@ -1067,7 +1064,7 @@ void XMLBodyTransformerContext_Impl::StartElement(
     m_aClassQName = GetTransformer().GetNamespaceMap().GetQNameByKey(
                         XML_NAMESPACE_OFFICE, aClass );
     GetTransformer().GetDocHandler()->startElement( m_aClassQName,
-                                                    xAttrList );
+                                                    pMutableAttrList );
 }
 
 void XMLBodyTransformerContext_Impl::EndElement()
@@ -1108,10 +1105,10 @@ void XMLTabStopOOoTContext_Impl::StartElement(
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
     {
-        const OUString& rAttrName = xAttrList->getNameByIndex( i );
+        const OUString aAttrName = xAttrList->getNameByIndex( i );
         OUString aLocalName;
         sal_uInt16 nPrefix =
-            GetTransformer().GetNamespaceMap().GetKeyByAttrName( rAttrName,
+            GetTransformer().GetNamespaceMap().GetKeyByAttrName( aAttrName,
                                                                  &aLocalName );
         XMLTransformerActions::key_type aKey( nPrefix, aLocalName );
         XMLTransformerActions::const_iterator aIter =
@@ -1124,7 +1121,7 @@ void XMLTabStopOOoTContext_Impl::StartElement(
                     new XMLMutableAttributeList( xAttrList );
                 xAttrList = pMutableAttrList;
             }
-            const OUString& rAttrValue = xAttrList->getValueByIndex( i );
+            const OUString aAttrValue = xAttrList->getValueByIndex( i );
             switch( (*aIter).second.m_nActionType )
             {
             case XML_ATACTION_RENAME:
@@ -1138,8 +1135,8 @@ void XMLTabStopOOoTContext_Impl::StartElement(
                                                               aNewAttrQName );
                 }
                 if( IsXMLToken( aLocalName, XML_LEADER_CHAR ) &&
-                     !rAttrValue.isEmpty() &&
-                    rAttrValue[0] != ' ' )
+                     !aAttrValue.isEmpty() &&
+                    aAttrValue[0] != ' ' )
                 {
                     OUString aNewAttrQName(
                         GetTransformer().GetNamespaceMap().GetQNameByKey(
@@ -1151,10 +1148,10 @@ void XMLTabStopOOoTContext_Impl::StartElement(
                 break;
             case XML_ATACTION_INCH2IN:
                 {
-                    OUString aAttrValue( rAttrValue );
+                    OUString aAttrValue2( aAttrValue );
                     if( XMLTransformerBase::ReplaceSingleInchWithIn(
-                                aAttrValue ) )
-                        pMutableAttrList->SetValueByIndex( i, aAttrValue );
+                                aAttrValue2 ) )
+                        pMutableAttrList->SetValueByIndex( i, aAttrValue2 );
                 }
                 break;
             default:
@@ -1202,10 +1199,10 @@ void XMLTrackedChangesOOoTContext_Impl::StartElement(
     sal_Int16 nAttrCount = rAttrList.is() ? rAttrList->getLength() : 0;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
     {
-        const OUString& rAttrName = rAttrList->getNameByIndex( i );
+        const OUString aAttrName = rAttrList->getNameByIndex( i );
         OUString aLocalName;
         sal_uInt16 nPrefix =
-            GetTransformer().GetNamespaceMap().GetKeyByAttrName( rAttrName,
+            GetTransformer().GetNamespaceMap().GetKeyByAttrName( aAttrName,
                                                                  &aLocalName );
         if( m_nPrefix == nPrefix && IsXMLToken( aLocalName, m_eToken ) )
         {
@@ -1214,7 +1211,7 @@ void XMLTrackedChangesOOoTContext_Impl::StartElement(
             OSL_ENSURE( rPropSet.is(), "no info property set" );
             if( rPropSet.is() )
             {
-                OUString aPropName("RedlineProtectionKey");
+                OUString aPropName(u"RedlineProtectionKey"_ustr);
                 Reference< XPropertySetInfo > xPropSetInfo(
                             rPropSet->getPropertySetInfo() );
                 if( xPropSetInfo.is() &&
@@ -1274,10 +1271,10 @@ void XMLTableOOoTransformerContext_Impl::StartElement(
         sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
         for( sal_Int16 i=0; i < nAttrCount; i++ )
         {
-            const OUString& rAttrName = xAttrList->getNameByIndex( i );
+            const OUString aAttrName = xAttrList->getNameByIndex( i );
             OUString aLocalName;
             sal_uInt16 nPrefix =
-                GetTransformer().GetNamespaceMap().GetKeyByAttrName( rAttrName,
+                GetTransformer().GetNamespaceMap().GetKeyByAttrName( aAttrName,
                                                                     &aLocalName );
             if( XML_NAMESPACE_TABLE == nPrefix &&
                 IsXMLToken( aLocalName, XML_PRINT_RANGES ) )
@@ -1556,7 +1553,7 @@ OUString OOo2OasisTransformer::GetEventName( const OUString& rName, bool )
 OOo2OasisTransformer::OOo2OasisTransformer( OUString aImplName,
                                             OUString aSubServiceName )
         noexcept :
-    XMLTransformerBase( aActionTable, aTokenMap ),
+    OOo2OasisTransformer_BASE( aActionTable, aTokenMap ),
     m_aImplName(std::move(aImplName)),
     m_aSubServiceName(std::move(aSubServiceName)),
     m_pEventMap( nullptr )
@@ -1615,27 +1612,6 @@ OOo2OasisTransformer::~OOo2OasisTransformer() noexcept
     for(auto & rp : m_aActions)
         rp.reset();
     XMLEventOOoTransformerContext::FlushEventMap( m_pEventMap );
-}
-
-Any OOo2OasisTransformer::queryInterface( const Type& rType )
-{
-    Any aRet;
-    if ( rType == cppu::UnoType<XImporter>::get())
-    {
-        Reference<XImporter> xThis( this );
-        aRet <<= xThis;
-    }
-    else if ( rType == cppu::UnoType<XFilter>::get())
-    {
-        Reference<XFilter> xThis( this );
-        aRet <<= xThis;
-    }
-    else
-    {
-        aRet = XMLTransformerBase::queryInterface(rType);
-    }
-
-    return aRet;
 }
 
 // XImporter
@@ -1706,7 +1682,7 @@ void OOo2OasisTransformer::Initialize(
     Reference< XInterface > xFilter;
     if( !m_aSubServiceName.isEmpty() )
     {
-        Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+        const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
         // get filter component
         xFilter =
             xContext->getServiceManager()->createInstanceWithArgumentsAndContext(m_aSubServiceName, rArguments, xContext);
@@ -1748,23 +1724,13 @@ Sequence< OUString > SAL_CALL OOo2OasisTransformer::getSupportedServiceNames(  )
     return { };
 }
 
-// XTypeProvider
-Sequence< css::uno::Type > SAL_CALL OOo2OasisTransformer::getTypes()
-{
-    return cppu::OTypeCollection(
-            cppu::UnoType<XImporter>::get(),
-            cppu::UnoType<XFilter>::get(),
-            XMLTransformerBase::getTypes()
-        ).getTypes();
-}
-
 // Service registration
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 xmloff_OOo2OasisTransformer_get_implementation(
     css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    return cppu::acquire(new OOo2OasisTransformer("com.sun.star.comp.OOo2OasisTransformer", OUString()));
+    return cppu::acquire(new OOo2OasisTransformer(u"com.sun.star.comp.OOo2OasisTransformer"_ustr, OUString()));
 }
 
 #define OOO_IMPORTER( xml_className_get_impl, implName, subServiceName )             \
@@ -1778,92 +1744,92 @@ xml_className_get_impl( \
 }
 
 OOO_IMPORTER( xmloff_XMLWriterImportOOO_get_implementation,
-              "com.sun.star.comp.Writer.XMLImporter",
-              "com.sun.star.comp.Writer.XMLOasisImporter" )
+              u"com.sun.star.comp.Writer.XMLImporter"_ustr,
+              u"com.sun.star.comp.Writer.XMLOasisImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLWriterStylesImportOOO_get_implementation,
-              "com.sun.star.comp.Writer.XMLStylesImporter",
-              "com.sun.star.comp.Writer.XMLOasisStylesImporter" )
+              u"com.sun.star.comp.Writer.XMLStylesImporter"_ustr,
+              u"com.sun.star.comp.Writer.XMLOasisStylesImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLWriterContentImportOOO_get_implementation,
-              "com.sun.star.comp.Writer.XMLContentImporter",
-              "com.sun.star.comp.Writer.XMLOasisContentImporter" )
+              u"com.sun.star.comp.Writer.XMLContentImporter"_ustr,
+              u"com.sun.star.comp.Writer.XMLOasisContentImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLWriterMetaImportOOO_get_implementation,
-              "com.sun.star.comp.Writer.XMLMetaImporter",
-              "com.sun.star.comp.Writer.XMLOasisMetaImporter" )
+              u"com.sun.star.comp.Writer.XMLMetaImporter"_ustr,
+              u"com.sun.star.comp.Writer.XMLOasisMetaImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLWriterSettingsImportOOO_get_implementation,
-              "com.sun.star.comp.Writer.XMLSettingsImporter",
-              "com.sun.star.comp.Writer.XMLOasisSettingsImporter" )
+              u"com.sun.star.comp.Writer.XMLSettingsImporter"_ustr,
+              u"com.sun.star.comp.Writer.XMLOasisSettingsImporter"_ustr )
 
 OOO_IMPORTER( xmloff_XMLImpressImportOOO_get_implementation,
-              "com.sun.star.comp.Impress.XMLImporter",
-              "com.sun.star.comp.Impress.XMLOasisImporter" )
+              u"com.sun.star.comp.Impress.XMLImporter"_ustr,
+              u"com.sun.star.comp.Impress.XMLOasisImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLImpressStylesImportOOO_get_implementation,
-              "com.sun.star.comp.Impress.XMLStylesImporter",
-              "com.sun.star.comp.Impress.XMLOasisStylesImporter" )
+              u"com.sun.star.comp.Impress.XMLStylesImporter"_ustr,
+              u"com.sun.star.comp.Impress.XMLOasisStylesImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLImpressContentImportOOO_get_implementation,
-              "com.sun.star.comp.Impress.XMLContentImporter",
-              "com.sun.star.comp.Impress.XMLOasisContentImporter" )
+              u"com.sun.star.comp.Impress.XMLContentImporter"_ustr,
+              u"com.sun.star.comp.Impress.XMLOasisContentImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLImpressMetaImportOOO_get_implementation,
-              "com.sun.star.comp.Impress.XMLMetaImporter",
-              "com.sun.star.comp.Impress.XMLOasisMetaImporter" )
+              u"com.sun.star.comp.Impress.XMLMetaImporter"_ustr,
+              u"com.sun.star.comp.Impress.XMLOasisMetaImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLImpressSettingsImportOOO_get_implementation,
-              "com.sun.star.comp.Impress.XMLSettingsImporter",
-              "com.sun.star.comp.Impress.XMLOasisSettingsImporter" )
+              u"com.sun.star.comp.Impress.XMLSettingsImporter"_ustr,
+              u"com.sun.star.comp.Impress.XMLOasisSettingsImporter"_ustr )
 
 OOO_IMPORTER( xmloff_XMLDrawImportOOO_get_implementation,
-              "com.sun.star.comp.Draw.XMLImporter",
-              "com.sun.star.comp.Draw.XMLOasisImporter" )
+              u"com.sun.star.comp.Draw.XMLImporter"_ustr,
+              u"com.sun.star.comp.Draw.XMLOasisImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLDrawStylesImportOOO_get_implementation,
-              "com.sun.star.comp.Draw.XMLStylesImporter",
-              "com.sun.star.comp.Draw.XMLOasisStylesImporter" )
+              u"com.sun.star.comp.Draw.XMLStylesImporter"_ustr,
+              u"com.sun.star.comp.Draw.XMLOasisStylesImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLDrawContentImportOOO_get_implementation,
-              "com.sun.star.comp.Draw.XMLContentImporter",
-              "com.sun.star.comp.Draw.XMLOasisContentImporter" )
+              u"com.sun.star.comp.Draw.XMLContentImporter"_ustr,
+              u"com.sun.star.comp.Draw.XMLOasisContentImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLDrawMetaImportOOO_get_implementation,
-              "com.sun.star.comp.Draw.XMLMetaImporter",
-              "com.sun.star.comp.Draw.XMLOasisMetaImporter" )
+              u"com.sun.star.comp.Draw.XMLMetaImporter"_ustr,
+              u"com.sun.star.comp.Draw.XMLOasisMetaImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLDrawSettingsImportOOO_get_implementation,
-              "com.sun.star.comp.Draw.XMLSettingsImporter",
-              "com.sun.star.comp.Draw.XMLOasisSettingsImporter" )
+              u"com.sun.star.comp.Draw.XMLSettingsImporter"_ustr,
+              u"com.sun.star.comp.Draw.XMLOasisSettingsImporter"_ustr )
 
 OOO_IMPORTER( xmloff_XMLCalcImportOOO_get_implementation,
-              "com.sun.star.comp.Calc.XMLImporter",
-              "com.sun.star.comp.Calc.XMLOasisImporter" )
+              u"com.sun.star.comp.Calc.XMLImporter"_ustr,
+              u"com.sun.star.comp.Calc.XMLOasisImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLCalcStylesImportOOO_get_implementation,
-              "com.sun.star.comp.Calc.XMLStylesImporter",
-              "com.sun.star.comp.Calc.XMLOasisStylesImporter" )
+              u"com.sun.star.comp.Calc.XMLStylesImporter"_ustr,
+              u"com.sun.star.comp.Calc.XMLOasisStylesImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLCalcContentImportOOO_get_implementation,
-              "com.sun.star.comp.Calc.XMLContentImporter",
-              "com.sun.star.comp.Calc.XMLOasisContentImporter" )
+              u"com.sun.star.comp.Calc.XMLContentImporter"_ustr,
+              u"com.sun.star.comp.Calc.XMLOasisContentImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLCalcMetaImportOOO_get_implementation,
-              "com.sun.star.comp.Calc.XMLMetaImporter",
-              "com.sun.star.comp.Calc.XMLOasisMetaImporter" )
+              u"com.sun.star.comp.Calc.XMLMetaImporter"_ustr,
+              u"com.sun.star.comp.Calc.XMLOasisMetaImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLCalcSettingsImportOOO_get_implementation,
-              "com.sun.star.comp.Calc.XMLSettingsImporter",
-              "com.sun.star.comp.Calc.XMLOasisSettingsImporter" )
+              u"com.sun.star.comp.Calc.XMLSettingsImporter"_ustr,
+              u"com.sun.star.comp.Calc.XMLOasisSettingsImporter"_ustr )
 
 OOO_IMPORTER( xmloff_XMLChartImportOOO_get_implementation,
-              "com.sun.star.comp.Chart.XMLImporter",
-              "com.sun.star.comp.Chart.XMLOasisImporter" )
+              u"com.sun.star.comp.Chart.XMLImporter"_ustr,
+              u"com.sun.star.comp.Chart.XMLOasisImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLChartStylesImportOOO_get_implementation,
-              "com.sun.star.comp.Chart.XMLStylesImporter",
-              "com.sun.star.comp.Chart.XMLOasisStylesImporter" )
+              u"com.sun.star.comp.Chart.XMLStylesImporter"_ustr,
+              u"com.sun.star.comp.Chart.XMLOasisStylesImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLChartContentImportOOO_get_implementation,
-              "com.sun.star.comp.Chart.XMLContentImporter",
-              "com.sun.star.comp.Chart.XMLOasisContentImporter" )
+              u"com.sun.star.comp.Chart.XMLContentImporter"_ustr,
+              u"com.sun.star.comp.Chart.XMLOasisContentImporter"_ustr )
 
 OOO_IMPORTER( xmloff_XMLMathMetaImportOOO_get_implementation,
-              "com.sun.star.comp.Math.XMLMetaImporter",
-              "com.sun.star.comp.Math.XMLOasisMetaImporter" )
+              u"com.sun.star.comp.Math.XMLMetaImporter"_ustr,
+              u"com.sun.star.comp.Math.XMLOasisMetaImporter"_ustr )
 OOO_IMPORTER( xmloff_XMLMathSettingsImportOOO_get_implementation,
-              "com.sun.star.comp.Math.XMLSettingsImporter",
-              "com.sun.star.comp.Math.XMLOasisSettingsImporter" )
+              u"com.sun.star.comp.Math.XMLSettingsImporter"_ustr,
+              u"com.sun.star.comp.Math.XMLOasisSettingsImporter"_ustr )
 
 OOO_IMPORTER( xmloff_XMLMetaImportOOO_get_implementation,
-              "com.sun.star.document.XMLMetaImporter",
-              "com.sun.star.document.XMLOasisMetaImporter" )
+              u"com.sun.star.document.XMLMetaImporter"_ustr,
+              u"com.sun.star.document.XMLOasisMetaImporter"_ustr )
 
 OOO_IMPORTER( xmloff_XMLAutoTextEventImportOOO_get_implementation,
-              "com.sun.star.comp.Writer.XMLAutotextEventsImporter",
-              "com.sun.star.comp.Writer.XMLOasisAutotextEventsImporter" )
+              u"com.sun.star.comp.Writer.XMLAutotextEventsImporter"_ustr,
+              u"com.sun.star.comp.Writer.XMLOasisAutotextEventsImporter"_ustr )
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

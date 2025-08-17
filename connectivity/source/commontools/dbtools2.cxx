@@ -408,100 +408,100 @@ namespace
                                           bool _bIsCurrency,
                                           sal_Int32 _nDataType)
     {
-        Reference<XPropertySet> xProp;
         Reference<XDatabaseMetaData> xMetaData = _xConnection->getMetaData();
         Reference< XResultSet > xResult = xMetaData->getColumns(_aCatalog, _aSchema, _aTable, _rQueryName);
         OUString sCatalog;
         _aCatalog >>= sCatalog;
 
-        if ( xResult.is() )
+        if ( !xResult.is() )
+            return nullptr;
+
+        rtl::Reference<connectivity::sdbcx::OColumn> xProp;
+        UStringMixEqual aMixCompare(_bCase);
+        Reference< XRow > xRow(xResult,UNO_QUERY);
+        while( xResult->next() )
         {
-            UStringMixEqual aMixCompare(_bCase);
-            Reference< XRow > xRow(xResult,UNO_QUERY);
-            while( xResult->next() )
+            if ( aMixCompare(xRow->getString(4),_rName) )
             {
-                if ( aMixCompare(xRow->getString(4),_rName) )
+                sal_Int32       nField5 = xRow->getInt(5);
+                OUString aField6 = xRow->getString(6);
+                sal_Int32       nField7 = xRow->getInt(7)
+                            ,   nField9 = xRow->getInt(9)
+                            ,   nField11= xRow->getInt(11);
+                OUString sField12 = xRow->getString(12),
+                                sField13 = xRow->getString(13);
+                ::comphelper::disposeComponent(xRow);
+
+                bool bAutoIncrement = _bIsAutoIncrement
+                        ,bIsCurrency    = _bIsCurrency;
+                if ( _bQueryForInfo )
                 {
-                    sal_Int32       nField5 = xRow->getInt(5);
-                    OUString aField6 = xRow->getString(6);
-                    sal_Int32       nField7 = xRow->getInt(7)
-                                ,   nField9 = xRow->getInt(9)
-                                ,   nField11= xRow->getInt(11);
-                    OUString sField12 = xRow->getString(12),
-                                    sField13 = xRow->getString(13);
-                    ::comphelper::disposeComponent(xRow);
+                    const OUString sQuote = xMetaData->getIdentifierQuoteString();
+                    OUString sQuotedName  = ::dbtools::quoteName(sQuote,_rName);
+                    OUString sComposedName = composeTableNameForSelect(_xConnection, getString( _aCatalog ), _aSchema, _aTable );
 
-                    bool bAutoIncrement = _bIsAutoIncrement
-                            ,bIsCurrency    = _bIsCurrency;
-                    if ( _bQueryForInfo )
+                    ColumnInformationMap aInfo((UStringMixLess(_bCase)));
+                    collectColumnInformation(_xConnection,sComposedName,sQuotedName,aInfo);
+                    ColumnInformationMap::const_iterator aIter = aInfo.begin();
+                    if ( aIter != aInfo.end() )
                     {
-                        const OUString sQuote = xMetaData->getIdentifierQuoteString();
-                        OUString sQuotedName  = ::dbtools::quoteName(sQuote,_rName);
-                        OUString sComposedName = composeTableNameForSelect(_xConnection, getString( _aCatalog ), _aSchema, _aTable );
-
-                        ColumnInformationMap aInfo(_bCase);
-                        collectColumnInformation(_xConnection,sComposedName,sQuotedName,aInfo);
-                        ColumnInformationMap::const_iterator aIter = aInfo.begin();
-                        if ( aIter != aInfo.end() )
-                        {
-                            bAutoIncrement  = aIter->second.first.first;
-                            bIsCurrency     = aIter->second.first.second;
-                            if ( DataType::OTHER == nField5 )
-                                nField5     = aIter->second.second;
-                        }
+                        bAutoIncrement  = aIter->second.first.first;
+                        bIsCurrency     = aIter->second.first.second;
+                        if ( DataType::OTHER == nField5 )
+                            nField5     = aIter->second.second;
                     }
-                    else if ( DataType::OTHER == nField5 )
-                        nField5 = _nDataType;
+                }
+                else if ( DataType::OTHER == nField5 )
+                    nField5 = _nDataType;
 
-                    if ( nField11 != ColumnValue::NO_NULLS )
+                if ( nField11 != ColumnValue::NO_NULLS )
+                {
+                    try
                     {
-                        try
+                        if ( _xPrimaryKeyColumns.is() )
                         {
-                            if ( _xPrimaryKeyColumns.is() )
-                            {
-                                if ( _xPrimaryKeyColumns->hasByName(_rName) )
-                                    nField11 = ColumnValue::NO_NULLS;
+                            if ( _xPrimaryKeyColumns->hasByName(_rName) )
+                                nField11 = ColumnValue::NO_NULLS;
 
-                            }
-                            else
+                        }
+                        else
+                        {
+                            Reference< XResultSet > xPKeys = xMetaData->getPrimaryKeys( _aCatalog, _aSchema, _aTable );
+                            Reference< XRow > xPKeyRow( xPKeys, UNO_QUERY_THROW );
+                            while( xPKeys->next() ) // there can be only one primary key
                             {
-                                Reference< XResultSet > xPKeys = xMetaData->getPrimaryKeys( _aCatalog, _aSchema, _aTable );
-                                Reference< XRow > xPKeyRow( xPKeys, UNO_QUERY_THROW );
-                                while( xPKeys->next() ) // there can be only one primary key
+                                OUString sKeyColumn = xPKeyRow->getString(4);
+                                if ( aMixCompare(_rName,sKeyColumn) )
                                 {
-                                    OUString sKeyColumn = xPKeyRow->getString(4);
-                                    if ( aMixCompare(_rName,sKeyColumn) )
-                                    {
-                                        nField11 = ColumnValue::NO_NULLS;
-                                        break;
-                                    }
+                                    nField11 = ColumnValue::NO_NULLS;
+                                    break;
                                 }
                             }
                         }
-                        catch(SQLException&)
-                        {
-                            TOOLS_WARN_EXCEPTION( "connectivity.commontools", "lcl_createSDBCXColumn" );
-                        }
                     }
-
-                    xProp = new connectivity::sdbcx::OColumn(_rName,
-                                                aField6,
-                                                sField13,
-                                                sField12,
-                                                nField11,
-                                                nField7,
-                                                nField9,
-                                                nField5,
-                                                bAutoIncrement,
-                                                false,
-                                                bIsCurrency,
-                                                _bCase,
-                                                sCatalog,
-                                                _aSchema,
-                                                _aTable);
-
-                    break;
+                    catch(SQLException&)
+                    {
+                        TOOLS_WARN_EXCEPTION( "connectivity.commontools", "lcl_createSDBCXColumn" );
+                    }
                 }
+
+                xProp = new connectivity::sdbcx::OColumn(_rName,
+                                            aField6,
+                                            sField13,
+                                            sField12,
+                                            nField11,
+                                            nField7,
+                                            nField9,
+                                            nField5,
+                                            bAutoIncrement,
+                                            false,
+                                            bIsCurrency,
+                                            _bCase,
+                                            sCatalog,
+                                            _aSchema,
+                                            _aTable);
+
+                break;
             }
         }
 
@@ -550,7 +550,7 @@ Reference<XPropertySet> createSDBCXColumn(const Reference<XPropertySet>& _xTable
     xProp = lcl_createSDBCXColumn(xPrimaryKeyColumns,_xConnection,aCatalog, aSchema, aTable, _rName,_rName,_bCase,_bQueryForInfo,_bIsAutoIncrement,_bIsCurrency,_nDataType);
     if ( !xProp.is() )
     {
-        xProp = lcl_createSDBCXColumn(xPrimaryKeyColumns,_xConnection,aCatalog, aSchema, aTable, "%",_rName,_bCase,_bQueryForInfo,_bIsAutoIncrement,_bIsCurrency,_nDataType);
+        xProp = lcl_createSDBCXColumn(xPrimaryKeyColumns,_xConnection,aCatalog, aSchema, aTable, u"%"_ustr,_rName,_bCase,_bQueryForInfo,_bIsAutoIncrement,_bIsCurrency,_nDataType);
         if ( !xProp.is() )
             xProp = new connectivity::sdbcx::OColumn(_rName,
                                                 OUString(),OUString(),OUString(),
@@ -587,7 +587,7 @@ bool getBooleanDataSourceSetting( const Reference< XConnection >& _rxConnection,
         if ( xDataSourceProperties.is() )
         {
             Reference< XPropertySet > xSettings(
-                xDataSourceProperties->getPropertyValue("Settings"),
+                xDataSourceProperties->getPropertyValue(u"Settings"_ustr),
                 UNO_QUERY_THROW
             );
             OSL_VERIFY( xSettings->getPropertyValue( rSettingName ) >>= bValue );
@@ -611,7 +611,7 @@ bool getDataSourceSetting( const Reference< XInterface >& _xChild, const OUStrin
             return false;
 
         const Reference< XPropertySet > xSettings(
-                xDataSourceProperties->getPropertyValue("Settings"),
+                xDataSourceProperties->getPropertyValue(u"Settings"_ustr),
                 UNO_QUERY_THROW
             );
 
@@ -625,13 +625,6 @@ bool getDataSourceSetting( const Reference< XInterface >& _xChild, const OUStrin
     return bIsPresent;
 }
 
-bool getDataSourceSetting( const Reference< XInterface >& _rxDataSource, const char* _pAsciiSettingsName,
-    Any& /* [out] */ _rSettingsValue )
-{
-    OUString sAsciiSettingsName = OUString::createFromAscii(_pAsciiSettingsName);
-    return getDataSourceSetting( _rxDataSource, sAsciiSettingsName,_rSettingsValue );
-}
-
 bool isDataSourcePropertyEnabled(const Reference<XInterface>& _xProp, const OUString& _sProperty, bool _bDefault)
 {
     bool bEnabled = _bDefault;
@@ -641,7 +634,7 @@ bool isDataSourcePropertyEnabled(const Reference<XInterface>& _xProp, const OUSt
         if ( xProp.is() )
         {
             Sequence< PropertyValue > aInfo;
-            xProp->getPropertyValue("Info") >>= aInfo;
+            xProp->getPropertyValue(u"Info"_ustr) >>= aInfo;
             const PropertyValue* pValue =std::find_if(std::cbegin(aInfo),
                                                 std::cend(aInfo),
                                                 [&_sProperty](const PropertyValue& lhs)
@@ -745,7 +738,7 @@ sal_Int32 getTablePrivileges(const Reference< XDatabaseMetaData>& _xMetaData,
         // Some drivers put a table privilege as soon as any column has the privilege,
         // some drivers only if all columns have the privilege.
         // To unify the situation, collect column privileges here, too.
-        Reference< XResultSet > xColumnPrivileges = _xMetaData->getColumnPrivileges(aVal, _sSchema, _sTable, "%");
+        Reference< XResultSet > xColumnPrivileges = _xMetaData->getColumnPrivileges(aVal, _sSchema, _sTable, u"%"_ustr);
         Reference< XRow > xColumnCurrentRow(xColumnPrivileges, UNO_QUERY);
         if ( xColumnCurrentRow.is() )
         {
@@ -843,22 +836,15 @@ bool isEmbeddedInDatabase( const Reference< XInterface >& _rxComponent, Referenc
 
         if ( xModel.is() )
         {
-            Sequence< PropertyValue > aArgs = xModel->getArgs();
-            const PropertyValue* pIter = aArgs.getConstArray();
-            const PropertyValue* pEnd  = pIter + aArgs.getLength();
-            for(;pIter != pEnd;++pIter)
+            for (auto& arg : xModel->getArgs())
             {
-                if ( pIter->Name == "ComponentData" )
+                if (arg.Name == "ComponentData")
                 {
                     Sequence<PropertyValue> aDocumentContext;
-                    pIter->Value >>= aDocumentContext;
-                    const PropertyValue* pContextIter = aDocumentContext.getConstArray();
-                    const PropertyValue* pContextEnd  = pContextIter + aDocumentContext.getLength();
-                    for(;pContextIter != pContextEnd;++pContextIter)
+                    arg.Value >>= aDocumentContext;
+                    for (auto& item : aDocumentContext)
                     {
-                        if (   pContextIter->Name == "ActiveConnection"
-                            && ( pContextIter->Value >>= _rxActualConnection )
-                           )
+                        if (item.Name == "ActiveConnection" && (item.Value >>= _rxActualConnection))
                         {
                             bIsEmbedded = true;
                             break;
@@ -911,7 +897,7 @@ sal_Int32 DBTypeConversion::convertUnicodeString( const OUString& _rSource, OStr
         throw SQLException(
             sMessage,
             nullptr,
-            "22018",
+            u"22018"_ustr,
             22018,
             Any()
         );
@@ -937,7 +923,7 @@ sal_Int32 DBTypeConversion::convertUnicodeStringToLength( const OUString& _rSour
         throw SQLException(
             sMessage,
             nullptr,
-            "22001",
+            u"22001"_ustr,
             22001,
             Any()
         );
@@ -949,38 +935,38 @@ sal_Int32 DBTypeConversion::convertUnicodeStringToLength( const OUString& _rSour
 OUString getDefaultReportEngineServiceName(const Reference< XComponentContext >& _rxORB)
 {
     ::utl::OConfigurationTreeRoot aReportEngines = ::utl::OConfigurationTreeRoot::createWithComponentContext(
-        _rxORB, "org.openoffice.Office.DataAccess/ReportEngines", -1, ::utl::OConfigurationTreeRoot::CM_READONLY);
+        _rxORB, u"org.openoffice.Office.DataAccess/ReportEngines"_ustr, -1, ::utl::OConfigurationTreeRoot::CM_READONLY);
 
     if ( aReportEngines.isValid() )
     {
         OUString sDefaultReportEngineName;
-        aReportEngines.getNodeValue("DefaultReportEngine") >>= sDefaultReportEngineName;
+        aReportEngines.getNodeValue(u"DefaultReportEngine"_ustr) >>= sDefaultReportEngineName;
         if ( !sDefaultReportEngineName.isEmpty() )
         {
-            ::utl::OConfigurationNode aReportEngineNames = aReportEngines.openNode("ReportEngineNames");
+            ::utl::OConfigurationNode aReportEngineNames = aReportEngines.openNode(u"ReportEngineNames"_ustr);
             if ( aReportEngineNames.isValid() )
             {
                 ::utl::OConfigurationNode aReportEngine = aReportEngineNames.openNode(sDefaultReportEngineName);
                 if ( aReportEngine.isValid() )
                 {
                     OUString sRet;
-                    aReportEngine.getNodeValue("ServiceName") >>= sRet;
+                    aReportEngine.getNodeValue(u"ServiceName"_ustr) >>= sRet;
                     return sRet;
                 }
             }
         }
         else
-            return "org.libreoffice.report.pentaho.SOReportJobFactory";
+            return u"org.libreoffice.report.pentaho.SOReportJobFactory"_ustr;
     }
     else
-        return "org.libreoffice.report.pentaho.SOReportJobFactory";
+        return u"org.libreoffice.report.pentaho.SOReportJobFactory"_ustr;
     return OUString();
 }
 
 bool isAggregateColumn(const Reference< XSingleSelectQueryComposer > &_xParser, const Reference< XPropertySet > &_xField)
 {
     OUString sName;
-    _xField->getPropertyValue("Name") >>= sName;
+    _xField->getPropertyValue(u"Name"_ustr) >>= sName;
     Reference< XColumnsSupplier > xColumnsSupplier(_xParser, UNO_QUERY);
     Reference< css::container::XNameAccess >  xCols;
     if (xColumnsSupplier.is())

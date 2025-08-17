@@ -7,7 +7,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <config_features.h>
 #include <config_fonts.h>
 
 #include <ostream>
@@ -18,20 +17,26 @@
 #if HAVE_MORE_FONTS
 // must be declared before inclusion of test/bootstrapfixture.hxx
 static std::ostream& operator<<(std::ostream& rStream, const std::vector<sal_Int32>& rVec);
+static std::ostream& operator<<(std::ostream& rStream, const std::vector<double>& rVec);
 #endif
 #include <test/bootstrapfixture.hxx>
 
-#include <vcl/wrkwin.hxx>
 #include <vcl/virdev.hxx>
 // workaround MSVC2015 issue with std::unique_ptr
 #include <sallayout.hxx>
-#include <salgdi.hxx>
 
-
-#include <ImplLayoutArgs.hxx>
 
 #if HAVE_MORE_FONTS
 static std::ostream& operator<<(std::ostream& rStream, const std::vector<sal_Int32>& rVec)
+{
+    rStream << "{ ";
+    for (size_t i = 0; i < rVec.size() - 1; i++)
+        rStream << rVec[i] << ", ";
+    rStream << rVec.back();
+    rStream << " }";
+    return rStream;
+}
+static std::ostream& operator<<(std::ostream& rStream, const std::vector<double>& rVec)
 {
     rStream << "{ ";
     for (size_t i = 0; i < rVec.size() - 1; i++)
@@ -75,23 +80,24 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testArabic)
 #if HAVE_MORE_FONTS
     OUString aOneTwoThree(u"واحِدْ إثٍنين ثلاثةٌ"_ustr);
 
-    vcl::Font aFont("DejaVu Sans", "Book", Size(0, 2048));
+    vcl::Font aFont(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 2048));
 
     ScopedVclPtrInstance<VirtualDevice> pOutDev;
     pOutDev->SetFont( aFont );
 
     // absolute character widths AKA text array.
     tools::Long nRefTextWidth = 12595;
-    std::vector<sal_Int32> aRefCharWidths = { 989, 1558, 2824, 2824, 3899,
+    KernArray aRefCharWidths = { 989, 1558, 2824, 2824, 3899,
         3899, 4550, 5119, 5689, 5689, 6307, 6925, 8484, 9135, 9705, 10927,
         10927, 11497, 12595, 12595 };
     KernArray aCharWidths;
-    tools::Long nTextWidth = pOutDev->GetTextArray(aOneTwoThree, &aCharWidths);
+    tools::Long nTextWidth
+        = basegfx::fround<tools::Long>(pOutDev->GetTextArray(aOneTwoThree, &aCharWidths));
 
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     // this sporadically returns 75 or 74 on some of the windows tinderboxes eg. tb73
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // text advance width and line height
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, pOutDev->GetTextWidth(aOneTwoThree));
@@ -188,11 +194,11 @@ static void testCachedGlyphs( const OUString& aText, const OUString& aFontName )
 CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testCaching)
 {
     // Just something basic, no font fallback.
-    testCachedGlyphs( "test", "Dejavu Sans" );
+    testCachedGlyphs( u"test"_ustr, u"Dejavu Sans"_ustr );
     // This font does not have latin characters, will need fallback.
-    testCachedGlyphs( "test", "Noto Kufi Arabic" );
+    testCachedGlyphs( u"test"_ustr, u"Noto Kufi Arabic"_ustr );
     // see tdf#103492
-    testCachedGlyphs( u"يوسف My name is"_ustr, "Liberation Sans");
+    testCachedGlyphs( u"يوسف My name is"_ustr, u"Liberation Sans"_ustr);
 }
 
 static void testCachedGlyphsSubstring( const OUString& aText, const OUString& aFontName, bool rtl )
@@ -234,14 +240,14 @@ static void testCachedGlyphsSubstring( const OUString& aText, const OUString& aF
 CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testCachingSubstring)
 {
     // Just something basic.
-    testCachedGlyphsSubstring( "test", "Dejavu Sans", false );
+    testCachedGlyphsSubstring( u"test"_ustr, u"Dejavu Sans"_ustr, false );
     // And complex arabic text, taken from tdf104649.docx .
     OUString text(u"فصل (پاره 2): درخواست حاجت از ديگران و برآوردن حاجت ديگران 90"_ustr);
-    testCachedGlyphsSubstring( text, "Dejavu Sans", true );
+    testCachedGlyphsSubstring( text, u"Dejavu Sans"_ustr, true );
     // The text is RTL, but Writer will sometimes try to lay it out as LTR, for whatever reason
     // (tdf#149264)./ So make sure that gets handled properly too (SalLayoutGlyphsCache should
     // not use glyph subsets in that case).
-    testCachedGlyphsSubstring( text, "Dejavu Sans", false );
+    testCachedGlyphsSubstring( text, u"Dejavu Sans"_ustr, false );
 }
 
 CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testCaret)
@@ -250,14 +256,14 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testCaret)
     // Test caret placement in fonts *without* ligature carets in GDEF table.
 
     // Set font size to its UPEM to decrease rounding issues
-    vcl::Font aFont("DejaVu Sans", "Book", Size(0, 2048));
+    vcl::Font aFont(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 2048));
 
     ScopedVclPtrInstance<VirtualDevice> pOutDev;
     pOutDev->SetFont( aFont );
 
     OUString aText;
     KernArray aCharWidths;
-    std::vector<sal_Int32> aRefCharWidths;
+    KernArray aRefCharWidths;
     tools::Long nTextWidth, nTextWidth2, nRefTextWidth;
 
     // A. RTL text
@@ -267,32 +273,35 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testCaret)
     // and the next ones are all zero width.
     nRefTextWidth = 3611;
     aRefCharWidths = { 1168, 1168, 1819, 2389, 3611, 3611 };
-    nTextWidth = pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/false);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    nTextWidth = basegfx::fround<tools::Long>(
+        pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/ false));
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // 2) Caret placement DX array, ligature width is distributed over its
     // components.
     aRefCharWidths = { 584, 1168, 1819, 2389, 3000, 3611 };
-    nTextWidth = pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/true);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    nTextWidth = basegfx::fround<tools::Long>(
+        pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/ true));
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // 3) caret placement with combining marks, they should not add to ligature
     // component count.
     aText = u"لَاَ بلَاَ"_ustr;
     aRefCharWidths = { 584, 584, 1168, 1168, 1819, 2389, 3000, 3000, 3611, 3611 };
-    nTextWidth2 = pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/true);
+    nTextWidth2 = basegfx::fround<tools::Long>(
+        pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/ true));
     CPPUNIT_ASSERT_EQUAL(aCharWidths[0], aCharWidths[1]);
     CPPUNIT_ASSERT_EQUAL(aCharWidths[2], aCharWidths[3]);
     CPPUNIT_ASSERT_EQUAL(aCharWidths[6], aCharWidths[7]);
     CPPUNIT_ASSERT_EQUAL(aCharWidths[8], aCharWidths[9]);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth2);
     CPPUNIT_ASSERT_EQUAL(nTextWidth, nTextWidth2);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // B. LTR text
     aText = u"fi fl ffi ffl"_ustr;
@@ -301,18 +310,20 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testCaret)
     // and the next ones are all zero width.
     nRefTextWidth = 8493;
     aRefCharWidths = { 1290, 1290, 1941, 3231, 3231, 3882, 5862, 5862, 5862, 6513, 8493, 8493, 8493 };
-    nTextWidth = pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/false);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    nTextWidth = basegfx::fround<tools::Long>(
+        pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/ false));
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // 2) Caret placement DX array, ligature width is distributed over its
     // components.
     aRefCharWidths = { 645, 1290, 1941, 2586, 3231, 3882, 4542, 5202, 5862, 6513, 7173, 7833, 8493 };
-    nTextWidth = pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/true);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    nTextWidth = basegfx::fround<tools::Long>(
+        pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/ true));
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 #endif
 }
 
@@ -326,12 +337,12 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testGdefCaret)
     vcl::Font aFont;
     OUString aText;
     KernArray aCharWidths;
-    std::vector<sal_Int32> aRefCharWidths;
+    KernArray aRefCharWidths;
     tools::Long nTextWidth, nTextWidth2, nRefTextWidth;
 
     // A. RTL text
     // Set font size to its UPEM to decrease rounding issues
-    aFont = vcl::Font("Noto Sans Arabic", "Regular", Size(0, 1000));
+    aFont = vcl::Font(u"Noto Sans Arabic"_ustr, u"Regular"_ustr, Size(0, 1000));
     pOutDev->SetFont(aFont);
 
     aText = u"لا بلا"_ustr;
@@ -340,36 +351,39 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testGdefCaret)
     // and the next ones are all zero width.
     nRefTextWidth = 1710;
     aRefCharWidths= { 582, 582, 842, 1111, 1710, 1710 };
-    nTextWidth = pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/false);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    nTextWidth = basegfx::fround<tools::Long>(
+        pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/ false));
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // 2) Caret placement DX array, ligature width is distributed over its
     // components.
     aRefCharWidths = { 291, 582, 842, 1111, 1410, 1710 };
-    nTextWidth = pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/true);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    nTextWidth = basegfx::fround<tools::Long>(
+        pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/ true));
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // 3) caret placement with combining marks, they should not add to ligature
     // component count.
     aText = u"لَاَ بلَاَ"_ustr;
     aRefCharWidths = { 291, 291, 582, 582, 842, 1111, 1410, 1410, 1710, 1710 };
-    nTextWidth2 = pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/true);
+    nTextWidth2 = basegfx::fround<tools::Long>(
+        pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/ true));
     CPPUNIT_ASSERT_EQUAL(aCharWidths[0], aCharWidths[1]);
     CPPUNIT_ASSERT_EQUAL(aCharWidths[2], aCharWidths[3]);
     CPPUNIT_ASSERT_EQUAL(aCharWidths[6], aCharWidths[7]);
     CPPUNIT_ASSERT_EQUAL(aCharWidths[8], aCharWidths[9]);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth2);
     CPPUNIT_ASSERT_EQUAL(nTextWidth, nTextWidth2);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // B. LTR text
     // Set font size to its UPEM to decrease rounding issues
-    aFont = vcl::Font("Amiri", "Regular", Size(0, 1000));
+    aFont = vcl::Font(u"Amiri"_ustr, u"Regular"_ustr, Size(0, 1000));
     pOutDev->SetFont(aFont);
 
     aText = u"fi ffi fl ffl fb ffb"_ustr;
@@ -379,19 +393,21 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testGdefCaret)
     nRefTextWidth = 5996;
     aRefCharWidths = { 519, 519, 811, 1606, 1606, 1606, 1898, 2439, 2439, 2731,
                        3544, 3544, 3544, 3836, 4634, 4634, 4926, 5996, 5996, 5996 };
-    nTextWidth = pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/false);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    nTextWidth = basegfx::fround<tools::Long>(
+        pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/ false));
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // 2) Caret placement DX array, ligature width is distributed over its
     // components.
     aRefCharWidths = { 269, 519, 811, 1080, 1348, 1606, 1898, 2171, 2439, 2731,
                        3004, 3278, 3544, 3836, 4138, 4634, 4926, 5199, 5494, 5996 };
-    nTextWidth = pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/true);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    nTextWidth = basegfx::fround<tools::Long>(
+        pOutDev->GetTextArray(aText, &aCharWidths, 0, -1, /*bCaret*/ true));
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 #endif
 }
 
@@ -406,24 +422,25 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf152048)
     pOutDev->SetFont(aFont);
 
     // get an compare the default text array
-    std::vector<sal_Int32> aRefCharWidths{ 934, 2341, 2341, 3689, 4647, 5495 };
+    KernArray aRefCharWidths{ 934, 2341, 2341, 3689, 4647, 5495 };
     tools::Long nRefTextWidth(5495);
 
     KernArray aCharWidths;
-    tools::Long nTextWidth = pOutDev->GetTextArray(aText, &aCharWidths);
+    tools::Long nTextWidth
+        = basegfx::fround<tools::Long>(pOutDev->GetTextArray(aText, &aCharWidths));
 
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // Simulate Kashida insertion using Kashida array and extending text array
     // to have room for Kashida.
     std::vector<sal_Bool> aKashidaArray{ false, false, false, true, false, false };
     auto nKashida = 4000;
 
-    aCharWidths.set(3, aCharWidths[3] + nKashida);
-    aCharWidths.set(4, aCharWidths[4] + nKashida);
-    aCharWidths.set(5, aCharWidths[5] + nKashida);
+    aCharWidths[3] += nKashida;
+    aCharWidths[4] += nKashida;
+    aCharWidths[5] += nKashida;
     auto pLayout = pOutDev->ImplLayout(aText, 0, -1, Point(0, 0), 0, aCharWidths, aKashidaArray);
 
     // Without the fix this fails with:
@@ -443,14 +460,15 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf152048_2)
 
     // get an compare the default text array
     KernArray aCharWidths;
-    auto nTextWidth = pOutDev->GetTextArray(u"ع a ع"_ustr, &aCharWidths);
+    auto nTextWidth
+        = basegfx::fround<tools::Long>(pOutDev->GetTextArray(u"ع a ع"_ustr, &aCharWidths));
 
     // Text width should always be equal to the width of the last glyph in the
     // kern array.
     // Without the fix this fails with:
     // - Expected: 158
     // - Actual  : 118
-    CPPUNIT_ASSERT_EQUAL(aCharWidths.back(), sal_Int32(nTextWidth));
+    CPPUNIT_ASSERT_EQUAL(tools::Long(aCharWidths.back()), nTextWidth);
 #endif
 }
 
@@ -507,18 +525,19 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testMixedCJKLatinScript_glyph_advanceme
     vcl::Font aFont(u"Source Han Sans"_ustr, u"Regular"_ustr, Size(0, 72));
     pOutDev->SetFont( aFont );
 
-    vcl::Font aFallbackFont("DejaVu Sans", "Book", Size(0, 72));
+    vcl::Font aFallbackFont(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 72));
     pOutDev->ForceFallbackFont(aFallbackFont);
 
     // absolute character widths AKA text array.
     tools::Long nRefTextWidth = 704;
-    std::vector<sal_Int32> aRefCharWidths = { 72, 144, 190, 236, 259, 305, 333, 379, 425, 474, 523, 551, 567, 612, 658, 704 };
+    KernArray aRefCharWidths = { 72, 144, 190, 236, 259, 305, 333, 379, 425, 474, 523, 551, 567, 612, 658, 704 };
     KernArray aCharWidths;
-    tools::Long nTextWidth = pOutDev->GetTextArray(aTestScript, &aCharWidths);
+    tools::Long nTextWidth
+        = basegfx::fround<tools::Long>(pOutDev->GetTextArray(aTestScript, &aCharWidths));
 
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths.get_subunit_array());
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths, aCharWidths);
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // text advance width and line height
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, pOutDev->GetTextWidth(aTestScript));
@@ -609,6 +628,248 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf107612)
     std::vector<sal_Int32> aExpctedFallbacks = { 1, 2 };
     CPPUNIT_ASSERT_EQUAL(aExpctedFallbacks, aExpctedFallbacks);
 #endif
+}
+
+CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testPartialKoreanJamoComposition)
+{
+    OUString aStr = u"은"_ustr;
+    vcl::Font aFont(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 2048));
+
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+    pOutDev->SetFont(aFont);
+
+    // Absolute character widths for the complete array.
+    KernArray aCompleteWidths;
+    auto nCompleteWidth = pOutDev->GetTextArray(aStr, &aCompleteWidths);
+
+    CPPUNIT_ASSERT_EQUAL(size_t{ 3 }, aCompleteWidths.size());
+
+    // Accumulate partial widths
+    double nPartialWidth = 0.0;
+
+    sal_Int32 nPrevWidth = 0;
+    for (sal_Int32 i = 0; i < 3; ++i)
+    {
+        KernArray aFragmentWidths;
+        auto nFragmentWidth
+            = pOutDev
+                  ->GetPartialTextArray(aStr, &aFragmentWidths, /*nIndex*/ 0, /*nLen*/ 3,
+                                        /*nPartIndex*/ i, /*nPartLen*/ 1);
+        nPartialWidth += nFragmentWidth;
+
+        CPPUNIT_ASSERT_EQUAL(size_t{ 1 }, aFragmentWidths.size());
+        CPPUNIT_ASSERT_EQUAL(aCompleteWidths[i] - nPrevWidth, aFragmentWidths[0]);
+        nPrevWidth = aCompleteWidths[i];
+    }
+
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(nCompleteWidth, nPartialWidth, /*delta*/ 0.01);
+}
+
+CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testPartialArabicComposition)
+{
+    OUString aStr = u"سُكُونْ"_ustr;
+    vcl::Font aFont(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 2048));
+
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+    pOutDev->SetFont(aFont);
+
+    // Absolute character widths for the complete array.
+    KernArray aCompleteWidths;
+    auto nCompleteWidth = pOutDev->GetTextArray(aStr, &aCompleteWidths);
+
+    CPPUNIT_ASSERT_EQUAL(size_t{ 7 }, aCompleteWidths.size());
+
+    // Accumulate partial widths
+    double nPartialWidth = 0.0;
+
+    sal_Int32 nPrevWidth = 0;
+    for (sal_Int32 i = 0; i < 7; ++i)
+    {
+        KernArray aFragmentWidths;
+        auto nFragmentWidth
+            = pOutDev
+                  ->GetPartialTextArray(aStr, &aFragmentWidths, /*nIndex*/ 0, /*nLen*/ 7,
+                                        /*nPartIndex*/ i, /*nPartLen*/ 1);
+        nPartialWidth += nFragmentWidth;
+
+        CPPUNIT_ASSERT_EQUAL(size_t{ 1 }, aFragmentWidths.size());
+        CPPUNIT_ASSERT_EQUAL(aCompleteWidths[i] - nPrevWidth, aFragmentWidths[0]);
+        nPrevWidth = aCompleteWidths[i];
+    }
+
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(nCompleteWidth, nPartialWidth, /*delta*/ 0.01);
+}
+
+CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf163215)
+{
+    OUString aStr = u"ببببب"_ustr;
+    vcl::Font aFont(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 2048));
+
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+    pOutDev->SetFont(aFont);
+
+    // Characteristic case with kashida position validation
+    auto pLayout1 = pOutDev->ImplLayout(aStr, 0, aStr.getLength(), Point(), 0, {}, {},
+                                        SalLayoutFlags::GlyphItemsOnly);
+    CPPUNIT_ASSERT(pLayout1->HasFontKashidaPositions());
+
+    SalLayoutGlyphs aGlyphs1 = pLayout1->GetGlyphs();
+
+    std::vector<bool> aFoundPositions1;
+    for (const auto& stGlyph : *aGlyphs1.Impl(0))
+    {
+        aFoundPositions1.push_back(stGlyph.IsSafeToInsertKashida());
+    }
+
+    CPPUNIT_ASSERT_EQUAL(size_t(5), aFoundPositions1.size());
+    CPPUNIT_ASSERT(aFoundPositions1.at(0));
+    CPPUNIT_ASSERT(aFoundPositions1.at(1));
+    CPPUNIT_ASSERT(aFoundPositions1.at(2));
+    CPPUNIT_ASSERT(aFoundPositions1.at(3));
+    CPPUNIT_ASSERT(!aFoundPositions1.at(4));
+
+    // Case with kashida position validation disabled
+    auto pLayout2 = pOutDev->ImplLayout(aStr, 0, aStr.getLength(), Point(), 0, {}, {},
+                                        SalLayoutFlags::GlyphItemsOnly
+                                            | SalLayoutFlags::DisableKashidaValidation);
+    CPPUNIT_ASSERT(!pLayout2->HasFontKashidaPositions());
+
+    SalLayoutGlyphs aGlyphs2 = pLayout2->GetGlyphs();
+
+    std::vector<bool> aFoundPositions2;
+    for (const auto& stGlyph : *aGlyphs2.Impl(0))
+    {
+        aFoundPositions2.push_back(stGlyph.IsSafeToInsertKashida());
+    }
+
+    // With position validation disabled, all positions must be marked as valid
+    CPPUNIT_ASSERT_EQUAL(size_t(5), aFoundPositions2.size());
+    CPPUNIT_ASSERT(aFoundPositions2.at(0));
+    CPPUNIT_ASSERT(aFoundPositions2.at(1));
+    CPPUNIT_ASSERT(aFoundPositions2.at(2));
+    CPPUNIT_ASSERT(aFoundPositions2.at(3));
+    CPPUNIT_ASSERT(aFoundPositions2.at(4));
+}
+
+CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf165510)
+{
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+
+    vcl::Font aBaseFont{ u"Liberation Sans"_ustr, u"Regular"_ustr, Size{ 0, 72 } };
+    pOutDev->SetFont(aBaseFont);
+
+    vcl::Font aFallbackFont{ u"Noto Sans"_ustr, u"Regular"_ustr, Size{ 0, 72 } };
+    pOutDev->ForceFallbackFont(aFallbackFont);
+
+    auto aText = u"ab(ح)cd(د)ef"_ustr;
+    auto pLayout = pOutDev->ImplLayout(aText, /*nIndex*/ 0, /*nLen*/ aText.getLength());
+
+    // Fallback must have happened for this test to be meaningful
+    auto pMultiLayout = dynamic_cast<MultiSalLayout*>(pLayout.get());
+    CPPUNIT_ASSERT(pMultiLayout);
+
+    std::vector<int> aCharIndices;
+
+    const GlyphItem* pGlyph = nullptr;
+    basegfx::B2DPoint stPos;
+    int nCurrPos = 0;
+    while (pLayout->GetNextGlyph(&pGlyph, stPos, nCurrPos))
+    {
+        aCharIndices.push_back(pGlyph->charPos());
+    }
+
+    // tdf#165510 caused failure to remove dropped glyphs from the base layout.
+    // Without the fix, the base layout will contain an errant copy of char 8.
+    //                              { 0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 3, 8 };
+    std::vector<int> aRefCharIndices{ 0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 3, 8 };
+
+    CPPUNIT_ASSERT_EQUAL(aRefCharIndices.size(), aCharIndices.size());
+    for (size_t i = 0; i < aRefCharIndices.size(); ++i)
+    {
+        CPPUNIT_ASSERT_EQUAL(aRefCharIndices.at(i), aCharIndices.at(i));
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf154104)
+{
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+
+    vcl::Font aBaseFont{ u"David Libre"_ustr, u"Regular"_ustr, Size{ 0, 72 } };
+    pOutDev->SetFont(aBaseFont);
+
+    vcl::Font aFallbackFont{ u"Noto Sans Arabic"_ustr, u"Regular"_ustr, Size{ 0, 72 } };
+    pOutDev->ForceFallbackFont(aFallbackFont);
+
+    pOutDev->SetLayoutMode(vcl::text::ComplexTextLayoutFlags::BiDiRtl
+                           | vcl::text::ComplexTextLayoutFlags::BiDiStrong);
+
+    auto aText = u"\u05D0\u05D0\u05D0\u0644\u0627"_ustr;
+    KernArray aKernArray = { 100, 200, 300, 350, 400 };
+    auto pLayout = pOutDev->ImplLayout(aText, /*nIndex*/ 0, /*nLen*/ aText.getLength(),
+                                       /*rLogicPos*/ Point(0, 0), /*nLogicWidth*/ 0, aKernArray);
+
+    // Fallback must have happened for this test to be meaningful
+    auto pMultiLayout = dynamic_cast<MultiSalLayout*>(pLayout.get());
+    CPPUNIT_ASSERT(pMultiLayout);
+
+    std::vector<double> aCharX;
+
+    const GlyphItem* pGlyph = nullptr;
+    basegfx::B2DPoint stPos;
+    int nCurrPos = 0;
+    while (pLayout->GetNextGlyph(&pGlyph, stPos, nCurrPos))
+    {
+        aCharX.push_back(stPos.getX());
+    }
+
+    // tdf#154104 caused overlapping glyphs in fallback runs:
+    //                           { -295.0, -195.0, -95.0, -341.0 }
+    std::vector<double> aRefCharX{ -245.0, -145.0, -45.0, -341.0 };
+
+    CPPUNIT_ASSERT_EQUAL(aRefCharX.size(), aCharX.size());
+    for (size_t i = 0; i < aRefCharX.size(); ++i)
+    {
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(aRefCharX.at(i), aCharX.at(i), /*delta*/ 0.2);
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf163761)
+{
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+
+    vcl::Font aBaseFont{ u"Noto Sans"_ustr, u"Regular"_ustr, Size{ 0, 72 } };
+    pOutDev->SetFont(aBaseFont);
+
+    vcl::Font aFallbackFont{ u"David Libre"_ustr, u"Regular"_ustr, Size{ 0, 72 } };
+    pOutDev->ForceFallbackFont(aFallbackFont);
+
+    auto aText = u"\u05DC\u0020\u05E0\u05EA\u05D9\u05D1\u05D9\u05BE\u200F\u05E4"_ustr;
+    auto pLayout = pOutDev->ImplLayout(aText, /*nIndex*/ 0, /*nLen*/ aText.getLength());
+
+    // Fallback must have happened for this test to be meaningful
+    auto pMultiLayout = dynamic_cast<MultiSalLayout*>(pLayout.get());
+    CPPUNIT_ASSERT(pMultiLayout);
+
+    std::vector<int> aCharIndices;
+
+    const GlyphItem* pGlyph = nullptr;
+    basegfx::B2DPoint stPos;
+    int nCurrPos = 0;
+    while (pLayout->GetNextGlyph(&pGlyph, stPos, nCurrPos))
+    {
+        aCharIndices.push_back(pGlyph->charPos());
+    }
+
+    // tdf#163761 caused failure to remove dropped glyphs from the base layout.
+    // Without the fix, the base layout will contain an errant copy of char 0.
+    //                              { 1, 0, 9, 7, 6, 5, 4, 3, 2, 0 }
+    std::vector<int> aRefCharIndices{ 1, 9, 7, 6, 5, 4, 3, 2, 0 };
+
+    CPPUNIT_ASSERT_EQUAL(aRefCharIndices.size(), aCharIndices.size());
+    for (size_t i = 0; i < aRefCharIndices.size(); ++i)
+    {
+        CPPUNIT_ASSERT_EQUAL(aRefCharIndices.at(i), aCharIndices.at(i));
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

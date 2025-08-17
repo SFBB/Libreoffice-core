@@ -17,24 +17,25 @@
 
 namespace sc
 {
-DataStreamDlg::DataStreamDlg(ScDocShell* pDocShell, weld::Window* pParent)
-    : GenericDialogController(pParent, "modules/scalc/ui/datastreams.ui", "DataStreamDialog")
-    , m_pDocShell(pDocShell)
-    , m_xCbUrl(new SvtURLBox(m_xBuilder->weld_combo_box("url")))
-    , m_xBtnBrowse(m_xBuilder->weld_button("browse"))
-    , m_xRBValuesInLine(m_xBuilder->weld_radio_button("valuesinline"))
-    , m_xRBAddressValue(m_xBuilder->weld_radio_button("addressvalue"))
-    , m_xCBRefreshOnEmpty(m_xBuilder->weld_check_button("refresh_ui"))
-    , m_xRBDataDown(m_xBuilder->weld_radio_button("datadown"))
-    , m_xRBRangeDown(m_xBuilder->weld_radio_button("rangedown"))
-    , m_xRBNoMove(m_xBuilder->weld_radio_button("nomove"))
-    , m_xRBMaxLimit(m_xBuilder->weld_radio_button("maxlimit"))
-    , m_xRBUnlimited(m_xBuilder->weld_radio_button("unlimited"))
-    , m_xEdRange(m_xBuilder->weld_entry("range"))
-    , m_xEdLimit(m_xBuilder->weld_entry("limit"))
-    , m_xBtnOk(m_xBuilder->weld_button("ok"))
-    , m_xVclFrameLimit(m_xBuilder->weld_frame("framelimit"))
-    , m_xVclFrameMove(m_xBuilder->weld_frame("framemove"))
+DataStreamDlg::DataStreamDlg(ScDocShell& rDocShell, weld::Window* pParent)
+    : GenericDialogController(pParent, u"modules/scalc/ui/datastreams.ui"_ustr,
+                              u"DataStreamDialog"_ustr)
+    , m_rDocShell(rDocShell)
+    , m_xCbUrl(new SvtURLBox(m_xBuilder->weld_combo_box(u"url"_ustr)))
+    , m_xBtnBrowse(m_xBuilder->weld_button(u"browse"_ustr))
+    , m_xRBValuesInLine(m_xBuilder->weld_radio_button(u"valuesinline"_ustr))
+    , m_xRBAddressValue(m_xBuilder->weld_radio_button(u"addressvalue"_ustr))
+    , m_xCBRefreshOnEmpty(m_xBuilder->weld_check_button(u"refresh_ui"_ustr))
+    , m_xRBDataDown(m_xBuilder->weld_radio_button(u"datadown"_ustr))
+    , m_xRBRangeDown(m_xBuilder->weld_radio_button(u"rangedown"_ustr))
+    , m_xRBNoMove(m_xBuilder->weld_radio_button(u"nomove"_ustr))
+    , m_xRBMaxLimit(m_xBuilder->weld_radio_button(u"maxlimit"_ustr))
+    , m_xRBUnlimited(m_xBuilder->weld_radio_button(u"unlimited"_ustr))
+    , m_xEdRange(m_xBuilder->weld_entry(u"range"_ustr))
+    , m_xEdLimit(m_xBuilder->weld_entry(u"limit"_ustr))
+    , m_xBtnOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xVclFrameLimit(m_xBuilder->weld_frame(u"framelimit"_ustr))
+    , m_xVclFrameMove(m_xBuilder->weld_frame(u"framemove"_ustr))
 {
     m_xCbUrl->connect_changed(LINK(this, DataStreamDlg, UpdateComboBoxHdl));
     m_xRBAddressValue->connect_toggled(LINK(this, DataStreamDlg, UpdateClickHdl));
@@ -94,7 +95,7 @@ void DataStreamDlg::UpdateEnable()
 ScRange DataStreamDlg::GetStartRange()
 {
     OUString aStr = m_xEdRange->get_text();
-    ScDocument& rDoc = m_pDocShell->GetDocument();
+    ScDocument& rDoc = m_rDocShell.GetDocument();
     ScRange aRange;
     ScRefFlags nRes = aRange.Parse(aStr, rDoc, rDoc.GetAddressConvention());
     if (((nRes & ScRefFlags::VALID) == ScRefFlags::ZERO) || !aRange.IsValid())
@@ -114,7 +115,7 @@ ScRange DataStreamDlg::GetStartRange()
 void DataStreamDlg::Init(const DataStream& rStrm)
 {
     m_xCbUrl->set_entry_text(rStrm.GetURL());
-    ScDocument& rDoc = m_pDocShell->GetDocument();
+    ScDocument& rDoc = m_rDocShell.GetDocument();
 
     ScRange aRange = rStrm.GetRange();
     ScRange aTopRange = aRange;
@@ -165,7 +166,7 @@ void DataStreamDlg::StartStream()
     DataStream::MoveType eMove
         = m_xRBRangeDown->get_active() ? DataStream::RANGE_DOWN : DataStream::MOVE_DOWN;
 
-    DataStream* pStream = DataStream::Set(m_pDocShell, rURL, aStartRange, nLimit, eMove);
+    DataStream* pStream = DataStream::Set(&m_rDocShell, rURL, aStartRange, nLimit, eMove);
     pStream->SetRefreshOnEmptyLine(m_xCBRefreshOnEmpty->get_active());
     DataStream::MakeToolbarVisible();
     pStream->StartImport();

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef VCL_INC_NEWPRINTDLG_HXX
-#define VCL_INC_NEWPRINTDLG_HXX
+#pragma once
 
 #include <vcl/bitmapex.hxx>
 #include <vcl/gdimtf.hxx>
@@ -27,10 +26,6 @@
 #include <vcl/customweld.hxx>
 #include <vcl/weld.hxx>
 #include <map>
-
-namespace vcl {
-    class PrintDialog;
-}
 
 namespace vcl
 {
@@ -47,7 +42,7 @@ namespace vcl
             Size                maPreviewSize;
             sal_Int32           mnDPIX;
             sal_Int32           mnDPIY;
-            BitmapEx            maPreviewBitmap;
+            Bitmap              maPreviewBitmap;
             OUString            maReplacementString;
             bool                mbGreyscale;
 
@@ -183,8 +178,6 @@ namespace vcl
         sal_Int32                               mnCurPage;
         sal_Int32                               mnCachedPages;
 
-        bool                                    mbCollateAlwaysOff;
-
         std::vector<std::unique_ptr<weld::Widget>>
                                                 maExtraControls;
 
@@ -231,6 +224,8 @@ namespace vcl
         void readFromSettings();
         void setPaperOrientation( Orientation eOrientation, bool fromUser );
         void updateOrientationBox( bool bAutomatic = true );
+        void updatePageSize( int nOrientation );
+        void updatePageRange( const sal_Int32 nPages );
         bool hasOrientationChanged() const;
         void setPreviewText();
         void updatePrinterText();
@@ -269,7 +264,5 @@ namespace vcl
         void tick();
     };
 }
-
-#endif // VCL_INC_NEWPRINTDLG_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

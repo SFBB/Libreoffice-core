@@ -51,14 +51,14 @@ namespace pcr
 
     namespace PropertyLineElement = ::com::sun::star::inspection::PropertyLineElement;
 
-    OBrowserLine::OBrowserLine(OUString aEntryName, weld::Container* pParent, weld::SizeGroup* pLabelGroup,
+    OBrowserLine::OBrowserLine(OUString aEntryName, weld::Box* pParent, weld::SizeGroup* pLabelGroup,
                                weld::Container* pInitialControlParent)
         : m_sEntryName(std::move(aEntryName))
-        , m_xBuilder(Application::CreateBuilder(pParent, "modules/spropctrlr/ui/browserline.ui"))
-        , m_xContainer(m_xBuilder->weld_container("BrowserLine"))
-        , m_xFtTitle(m_xBuilder->weld_label("label"))
-        , m_xBrowseButton(m_xBuilder->weld_button("browse"))
-        , m_xAdditionalBrowseButton(m_xBuilder->weld_button("morebrowse"))
+        , m_xBuilder(Application::CreateBuilder(pParent, u"modules/spropctrlr/ui/browserline.ui"_ustr))
+        , m_xGrid(m_xBuilder->weld_grid(u"BrowserLine"_ustr))
+        , m_xFtTitle(m_xBuilder->weld_label(u"label"_ustr))
+        , m_xBrowseButton(m_xBuilder->weld_button(u"browse"_ustr))
+        , m_xAdditionalBrowseButton(m_xBuilder->weld_button(u"morebrowse"_ustr))
         , m_pInitialControlParent(pInitialControlParent) // controls start with this as their parent and need to be moved into m_xContainer
         , m_pParent(pParent)
         , m_pControlWindow( nullptr )
@@ -77,7 +77,7 @@ namespace pcr
     {
         implHideBrowseButton(true);
         implHideBrowseButton(false);
-        m_pParent->move(m_xContainer.get(), nullptr);
+        m_pParent->move(m_xGrid.get(), nullptr);
     }
 
     void OBrowserLine::IndentTitle( bool _bIndent )
@@ -116,8 +116,8 @@ namespace pcr
 
         if ( m_pControlWindow )
         {
-            m_pInitialControlParent->move(m_pControlWindow, m_xContainer.get());
-            m_pControlWindow->set_grid_left_attach(1);
+            m_pInitialControlParent->move(m_pControlWindow, m_xGrid.get());
+            m_xGrid->set_child_left_attach(*m_pControlWindow, 1);
             m_xFtTitle->set_mnemonic_widget(m_pControlWindow);
             m_pControlWindow->show();
         }
@@ -177,7 +177,7 @@ namespace pcr
     {
         OUStringBuffer aText(m_xFtTitle->get_label());
 
-        int n10DotsWidth = m_xFtTitle->get_pixel_size("..........").Width();
+        int n10DotsWidth = m_xFtTitle->get_pixel_size(u".........."_ustr).Width();
         int nTextWidth = m_xFtTitle->get_pixel_size(OUString::unacquired(aText)).Width();
         int nDiff = m_nNameWidth - nTextWidth;
         int nExtraChars = (nDiff * 10) / n10DotsWidth;
@@ -311,10 +311,10 @@ namespace pcr
         Reference<XGraphic> xGraphic;
         try
         {
-            Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+            const Reference< XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
             Reference< XGraphicProvider > xGraphicProvider( GraphicProvider::create(xContext) );
 
-            Sequence aMediaProperties{ comphelper::makePropertyValue("URL", rImageURL) };
+            Sequence aMediaProperties{ comphelper::makePropertyValue(u"URL"_ustr, rImageURL) };
 
             xGraphic = Reference<XGraphic>(xGraphicProvider->queryGraphic(aMediaProperties), css::uno::UNO_SET_THROW);
         }
@@ -366,7 +366,7 @@ namespace pcr
 
     void OBrowserLine::SetTitleWidth(sal_uInt16 nWidth)
     {
-        int nMinDotsWidth = m_xFtTitle->get_pixel_size("...").Width();
+        int nMinDotsWidth = m_xFtTitle->get_pixel_size(u"..."_ustr).Width();
         if (m_nNameWidth != nWidth + nMinDotsWidth)
             m_nNameWidth = nWidth + nMinDotsWidth;
         FullFillTitleString();

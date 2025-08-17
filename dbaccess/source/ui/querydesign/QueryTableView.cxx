@@ -428,10 +428,9 @@ void OQueryTableView::AddTabWin(const OUString& _rComposedName, const OUString& 
     {
         modified();
         if ( m_pAccessible )
-            m_pAccessible->notifyAccessibleEvent(   AccessibleEventId::CHILD,
-                                                    Any(),
-                                                    Any(pNewTabWin->GetAccessible())
-                                                    );
+            m_pAccessible->notifyAccessibleEvent(
+                AccessibleEventId::CHILD, Any(),
+                Any(css::uno::Reference<XAccessible>(pNewTabWin->GetAccessible())));
 
         do {
 
@@ -493,10 +492,10 @@ void OQueryTableView::AddTabWin(const OUString& _rComposedName, const OUString& 
                         if ( pTabWinTmp == pNewTabWin )
                             continue;
 
+                        assert(pTabWinTmp && "TableWindow is null!");
                         if ( pTabWinTmp->GetData()->isQuery() )
                             continue;
 
-                        OSL_ENSURE(pTabWinTmp,"TableWindow is null!");
                         Reference< XPropertySet > xFKKey = getKeyReferencedTo( pTabWinTmp->GetData()->getKeys(), pNewTabWin->GetComposedName() );
                         if ( !xFKKey.is() )
                             continue;
@@ -688,10 +687,9 @@ void OQueryTableView::RemoveTabWin(OTableWindow* pTabWin)
 
     modified();
     if ( m_pAccessible )
-        m_pAccessible->notifyAccessibleEvent(   AccessibleEventId::CHILD,
-                                                Any(pTabWin->GetAccessible()),
-                                                Any()
-                                                );
+        m_pAccessible->notifyAccessibleEvent(
+            AccessibleEventId::CHILD,
+            Any(css::uno::Reference<XAccessible>(pTabWin->GetAccessible())), Any());
 }
 
 void OQueryTableView::EnsureVisible(const OTableWindow* pWin)
@@ -751,7 +749,7 @@ void OQueryTableView::HideTabWin( OQueryTableWindow* pTabWin, OQueryTabWinUndoAc
     {
         VclPtr<OTableConnection> xTmpEntry = *aIter2;
         OQueryTableConnection* pTmpEntry = static_cast<OQueryTableConnection*>(xTmpEntry.get());
-        OSL_ENSURE(pTmpEntry,"OQueryTableConnection is null!");
+        assert(pTmpEntry && "OQueryTableConnection is null!");
         if( pTmpEntry->GetAliasName(JTCS_FROM) == pTabWin->GetAliasName() ||
             pTmpEntry->GetAliasName(JTCS_TO) == pTabWin->GetAliasName() )
         {

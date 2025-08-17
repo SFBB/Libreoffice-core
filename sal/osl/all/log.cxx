@@ -15,9 +15,12 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <filesystem>
 #include <fstream>
+#include <system_error>
 
 #include <config_global.h>
+#include <o3tl/temporary.hxx>
 #include <osl/thread.hxx>
 #include <rtl/string.h>
 #include <sal/detail/log.h>
@@ -31,6 +34,7 @@
 #elif defined _WIN32
 #include <process.h>
 #include <windows.h>
+#include <systools/win32/extended_max_path.hxx>
 #define OSL_DETAIL_GETPID _getpid()
 #else
 #include <unistd.h>
@@ -51,16 +55,14 @@ bool const sal_use_syslog = false;
 
 namespace {
 
-struct TimeContainer
+TimeValue GetTime()
 {
     TimeValue aTime;
-    TimeContainer()
-    {
-        osl_getSystemTime(&aTime);
-    }
-};
+    osl_getSystemTime(&aTime);
+    return aTime;
+}
 
-TimeContainer aStartTime;
+const TimeValue aStartTime = GetTime();
 
 bool equalStrings(
     char const * string1, std::size_t length1, char const * string2,
@@ -90,29 +92,64 @@ char const * toString(sal_detail_LogLevel level) {
 char const* setEnvFromLoggingIniFile(const char* env, const char* key)
 {
     char const* sResult = nullptr;
-    wchar_t buffer[MAX_PATH];
-    GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-    std::wstring sProgramDirectory(buffer);
-    std::wstring::size_type pos = sProgramDirectory.find_last_of(L"\\/");
-    sProgramDirectory = sProgramDirectory.substr(0, pos+1);
-    sProgramDirectory += L"logging.ini";
+    wchar_t buffer[EXTENDED_MAX_PATH];
+    DWORD nLen = GetModuleFileNameW(nullptr, buffer, std::size(buffer));
+    if (nLen == 0 || nLen >= std::size(buffer))
+        return sResult;
+    std::filesystem::path sProgramDirectory(std::wstring(buffer, nLen));
+    sProgramDirectory.replace_filename(L"logging.ini");
 
     std::ifstream logFileStream(sProgramDirectory);
     if (!logFileStream.good())
         return sResult;
 
     std::size_t n;
-    std::string aKey;
-    std::string sWantedKey(key);
+    std::string_view sWantedKey(key);
     std::string sLine;
     while (std::getline(logFileStream, sLine)) {
         if (sLine.find('#') == 0)
             continue;
         if ( ( n = sLine.find('=') ) != std::string::npos) {
-            aKey = sLine.substr(0, n);
+            std::string_view aKey(sLine.data(), n);
             if (aKey != sWantedKey)
                 continue;
-            _putenv_s(env, sLine.substr(n+1, sLine.length()).c_str());
+            std::string value(sLine, n+1, sLine.length());
+            for (std::size_t i = 0;;) {
+                i = value.find_first_of("\\$", i);
+                if (i == std::string::npos) {
+                    break;
+                }
+                if (value[i] == '\\') {
+                    if (i == value.size() - 1 || (value[i + 1] != '\\' && value[i + 1] != '$')) {
+                        ++i;
+                        continue;
+                    }
+                    value.erase(i, 1);
+                    ++i;
+                } else {
+                    if (i == value.size() - 1 || value[i + 1] != '{') {
+                        ++i;
+                        continue;
+                    }
+                    std::size_t i2 = value.find('}', i + 2);
+                    if (i2 == std::string::npos) {
+                        break;
+                    }
+                    std::string name(value, i + 2, i2 - (i + 2));
+                    if (name.find('\0') != std::string::npos) {
+                        i = i2 + 1;
+                        continue;
+                    }
+                    char const * p = std::getenv(name.c_str());
+                    if (p == nullptr) {
+                        value.erase(i, i2 + 1 - i);
+                    } else {
+                        value.replace(i, i2 + 1 - i, p);
+                        i += std::strlen(p);
+                    }
+                }
+            }
+            _putenv_s(env, value.c_str());
             sResult = std::getenv(env);
             break;
         }
@@ -163,8 +200,16 @@ std::ofstream * getLogFile() {
 
         if (logFile)
         {
+            std::ostringstream pathname;
+            pathname << logFile;
+            if (pathname.str().ends_with('-')) {
+                pathname << OSL_DETAIL_GETPID;
+            }
+            std::filesystem::create_directories(
+                std::filesystem::path(logFile).remove_filename(),
+                o3tl::temporary(std::error_code()));
             // stays until process exits
-            static std::ofstream file(logFile, std::ios::app | std::ios::out);
+            static std::ofstream file(pathname.str().c_str(), std::ios::app | std::ios::out);
             pResult = &file;
         }
 
@@ -203,7 +248,7 @@ std::pair<bool, bool> getTimestampFlags(char const *selector)
 
 void maybeOutputTimestamp(std::ostringstream &s) {
     static const std::pair<bool, bool> aEnvFlags = getTimestampFlags(getLogLevelEnvVar());
-    const auto& [outputTimestamp, outputRelativeTimer] = (pLogSelector == nullptr ? aEnvFlags : getTimestampFlags(pLogSelector));
+    const auto [outputTimestamp, outputRelativeTimer] = (pLogSelector == nullptr ? aEnvFlags : getTimestampFlags(pLogSelector));
 
     if (!(outputTimestamp || outputRelativeTimer)) {
         return;
@@ -236,15 +281,15 @@ void maybeOutputTimestamp(std::ostringstream &s) {
 
     if (outputRelativeTimer)
     {
-        int seconds = now.Seconds - aStartTime.aTime.Seconds;
+        int seconds = now.Seconds - aStartTime.Seconds;
         int milliSeconds;
-        if (now.Nanosec < aStartTime.aTime.Nanosec)
+        if (now.Nanosec < aStartTime.Nanosec)
         {
             seconds--;
-            milliSeconds = 1000 - (aStartTime.aTime.Nanosec - now.Nanosec) / 1000000;
+            milliSeconds = 1000 - (aStartTime.Nanosec - now.Nanosec) / 1000000;
         }
         else
-            milliSeconds = (now.Nanosec - aStartTime.aTime.Nanosec) / 1000000;
+            milliSeconds = (now.Nanosec - aStartTime.Nanosec) / 1000000;
         char relativeTimestamp[100];
         snprintf(relativeTimestamp, sizeof(relativeTimestamp), "%d.%03d", seconds, milliSeconds);
         s << relativeTimestamp << ':';
@@ -326,13 +371,13 @@ void sal_detail_log(
         syslog(prio, "%s", s.str().c_str());
 #endif
     } else {
+        s << '\n';
         // avoid calling getLogFile() more than once
         static std::ofstream * logFile = getLogFile();
         if (logFile) {
-            *logFile << s.str() << std::endl;
+            *logFile << s.str();
         }
         else {
-            s << '\n';
 #ifdef _WIN32
             // write to Windows debugger console, too
             OutputDebugStringA(s.str().c_str());

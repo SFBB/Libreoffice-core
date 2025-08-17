@@ -17,12 +17,12 @@
 using namespace ::com::sun::star;
 
 TSAURLsDialog::TSAURLsDialog(weld::Window* pParent)
-    : GenericDialogController(pParent, "cui/ui/tsaurldialog.ui", "TSAURLDialog")
-    , m_xAddBtn(m_xBuilder->weld_button("add"))
-    , m_xDeleteBtn(m_xBuilder->weld_button("delete"))
-    , m_xOKBtn(m_xBuilder->weld_button("ok"))
-    , m_xURLListBox(m_xBuilder->weld_tree_view("urls"))
-    , m_xEnterAUrl(m_xBuilder->weld_label("enteraurl"))
+    : GenericDialogController(pParent, u"cui/ui/tsaurldialog.ui"_ustr, u"TSAURLDialog"_ustr)
+    , m_xAddBtn(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xDeleteBtn(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xOKBtn(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xURLListBox(m_xBuilder->weld_tree_view(u"urls"_ustr))
+    , m_xEnterAUrl(m_xBuilder->weld_label(u"enteraurl"_ustr))
 {
     m_xURLListBox->set_size_request(m_xURLListBox->get_approximate_digit_width() * 28,
                                     m_xURLListBox->get_height_rows(8));
@@ -31,7 +31,7 @@ TSAURLsDialog::TSAURLsDialog(weld::Window* pParent)
     m_xAddBtn->connect_clicked(LINK(this, TSAURLsDialog, AddHdl_Impl));
     m_xDeleteBtn->connect_clicked(LINK(this, TSAURLsDialog, DeleteHdl_Impl));
     m_xOKBtn->connect_clicked(LINK(this, TSAURLsDialog, OKHdl_Impl));
-    m_xURLListBox->connect_changed(LINK(this, TSAURLsDialog, SelectHdl));
+    m_xURLListBox->connect_selection_changed(LINK(this, TSAURLsDialog, SelectHdl));
 
     try
     {
@@ -88,17 +88,15 @@ void TSAURLsDialog::AddTSAURL(const OUString& rURL)
 
 IMPL_LINK_NOARG(TSAURLsDialog, AddHdl_Impl, weld::Button&, void)
 {
-    OUString aURL;
     OUString aDesc(m_xEnterAUrl->get_label());
 
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
     ScopedVclPtr<AbstractSvxNameDialog> pDlg(
-        pFact->CreateSvxNameDialog(m_xDialog.get(), aURL, aDesc));
+        pFact->CreateSvxNameDialog(m_xDialog.get(), OUString(), aDesc));
 
     if (pDlg->Execute() == RET_OK)
     {
-        pDlg->GetName(aURL);
-        AddTSAURL(aURL);
+        AddTSAURL(pDlg->GetName());
         m_xOKBtn->set_sensitive(true);
     }
     m_xURLListBox->unselect_all();

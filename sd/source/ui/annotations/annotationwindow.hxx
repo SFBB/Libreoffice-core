@@ -22,20 +22,20 @@
 #include <vcl/weld.hxx>
 #include <tools/long.hxx>
 #include <svx/weldeditview.hxx>
+#include <svx/annotation/Annotation.hxx>
 
-namespace com::sun::star::office { class XAnnotation; }
 
 class OutlinerView;
 class Outliner;
 class SvxLanguageItem;
 class SdDrawDocument;
 
-namespace sd {
+namespace sdr::annotation { class TextApiObject; }
 
-class AnnotationManagerImpl;
+namespace sd
+{
+
 class DrawDocShell;
-class TextApiObject;
-
 class AnnotationWindow;
 
 class AnnotationTextWindow : public WeldEditView
@@ -72,7 +72,7 @@ private:
     bool mbReadonly;
     bool mbProtected;
 
-    css::uno::Reference< css::office::XAnnotation > mxAnnotation;
+    rtl::Reference<sdr::annotation::Annotation> mxAnnotation;
 
 public:
     Color maColor;
@@ -98,12 +98,13 @@ private:
     void InitControls();
 
     void SetMapMode(const MapMode& rNewMapMode);
-    void setAnnotation(const css::uno::Reference<css::office::XAnnotation>& xAnnotation);
+    void setAnnotation(rtl::Reference<sdr::annotation::Annotation> const& xAnnotation);
 
     static sal_Int32 GetPrefScrollbarWidth() { return 16; }
 public:
     AnnotationWindow(weld::Window* pParent, const ::tools::Rectangle& rRect, DrawDocShell* pDocShell,
-                     const css::uno::Reference<css::office::XAnnotation>& xAnnotation);
+                     const rtl::Reference<sdr::annotation::Annotation>& xAnnotation);
+    ~AnnotationWindow();
 
     void connect_closed(const Link<weld::Popover&, void>& rLink) { mxPopover->connect_closed(rLink); }
 
@@ -112,7 +113,7 @@ public:
     void SetScrollbar();
     void StartEdit();
 
-    const css::uno::Reference<css::office::XAnnotation>& getAnnotation() const { return mxAnnotation; }
+    const rtl::Reference<sdr::annotation::Annotation>& getAnnotation() const { return mxAnnotation; }
 
     void SaveToDocument();
 
@@ -130,12 +131,11 @@ public:
 
     OutlinerView* GetOutlinerView() { return mpOutlinerView.get();}
     ::Outliner* GetOutliner() { return mpOutliner.get();}
-    ~AnnotationWindow();
 
     void SetColor();
 };
 
-TextApiObject* getTextApiObject( const css::uno::Reference< css::office::XAnnotation >& xAnnotation );
+sdr::annotation::TextApiObject* getTextApiObject( const css::uno::Reference< css::office::XAnnotation >& xAnnotation );
 
 
 } // namespace sd

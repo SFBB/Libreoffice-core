@@ -51,6 +51,10 @@
 #include <editeng/keepitem.hxx>
 #include <editeng/formatbreakitem.hxx>
 #include <editeng/pbinitem.hxx>
+#include <editeng/udlnitem.hxx>
+#include <editeng/colritem.hxx>
+#include <editeng/xmlcnitm.hxx>
+#include <editeng/fontitem.hxx>
 #include <unotools/localedatawrapper.hxx>
 
 #include <officecfg/Office/Writer.hxx>
@@ -91,6 +95,7 @@
 #include <shellres.hxx>
 #include <txtfrm.hxx>
 #include <attrhint.hxx>
+#include <deletelistener.hxx>
 
 #include <vector>
 #include <map>
@@ -112,6 +117,9 @@
 #include <unotextrange.hxx>
 #include <unoprnms.hxx>
 #include <unomap.hxx>
+#include <fmturl.hxx>
+#include <tblafmt.hxx>
+#include <istyleaccess.hxx>
 
 using namespace ::com::sun::star;
 
@@ -992,15 +1000,7 @@ void SwDoc::CalculatePagePairsForProspectPrinting(
     // just one page is special ...
     if ( 1 == aVec.size() )
     {
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 12 && __cplusplus == 202002L
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Warray-bounds"
-#pragma GCC diagnostic ignored "-Wstringop-overflow"
-#endif
-        aVec.insert( aVec.begin() + 1, nullptr ); // insert a second empty page
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 12 && __cplusplus == 202002L
-#pragma GCC diagnostic pop
-#endif
+        aVec.push_back( nullptr ); // insert a second empty page
     }
     else
     {
@@ -1014,6 +1014,7 @@ void SwDoc::CalculatePagePairsForProspectPrinting(
     // make sure that all pages are in correct order
     std::vector< const SwPageFrame * >::size_type nSPg = 0;
     std::vector< const SwPageFrame * >::size_type nEPg = aVec.size();
+    assert(nEPg >= 2);
     sal_Int32 nStep = 1;
     if ( 0 == (nEPg & 1 ))      // there are no uneven ones!
         --nEPg;
@@ -1069,20 +1070,21 @@ void SwDoc::CalculatePagePairsForProspectPrinting(
 }
 
 /// @return the reference in the doc for the name
-const SwFormatRefMark* SwDoc::GetRefMark( std::u16string_view rName ) const
+const SwFormatRefMark* SwDoc::GetRefMark( const SwMarkName& rName ) const
 {
-    for (const SfxPoolItem* pItem : GetAttrPool().GetItemSurrogates(RES_TXTATR_REFMARK))
-    {
-        auto pFormatRef = dynamic_cast<const SwFormatRefMark*>(pItem);
-        if(!pFormatRef)
-            continue;
-
-        const SwTextRefMark* pTextRef = pFormatRef->GetTextRefMark();
-        if( pTextRef && &pTextRef->GetTextNode().GetNodes() == &GetNodes() &&
-            rName == pFormatRef->GetRefName() )
-            return pFormatRef;
-    }
-    return nullptr;
+    const SwFormatRefMark* pRet = nullptr;
+    ForEachRefMark(
+        [&pRet, &rName] (const SwFormatRefMark& rRefMark) -> bool
+        {
+            const SwTextRefMark* pTextRef = rRefMark.GetTextRefMark();
+            if( pTextRef && rName == rRefMark.GetRefName() )
+            {
+                pRet = &rRefMark;
+                return false;
+            }
+            return true;
+        });
+    return pRet;
 }
 
 /// @return the RefMark per index - for Uno
@@ -1091,22 +1093,17 @@ const SwFormatRefMark* SwDoc::GetRefMark( sal_uInt16 nIndex ) const
     const SwFormatRefMark* pRet = nullptr;
 
     sal_uInt32 nCount = 0;
-    for (const SfxPoolItem* pItem : GetAttrPool().GetItemSurrogates(RES_TXTATR_REFMARK))
-    {
-        auto pRefMark = dynamic_cast<const SwFormatRefMark*>(pItem);
-        if( !pRefMark )
-            continue;
-        const SwTextRefMark* pTextRef = pRefMark->GetTextRefMark();
-        if( pTextRef && &pTextRef->GetTextNode().GetNodes() == &GetNodes() )
+    ForEachRefMark(
+        [&nCount, &pRet, &nIndex] (const SwFormatRefMark& rRefMark) -> bool
         {
             if(nCount == nIndex)
             {
-                pRet = pRefMark;
-                break;
+                pRet = &rRefMark;
+                return false;
             }
             nCount++;
-        }
-    }
+            return true;
+        });
     return pRet;
 }
 
@@ -1116,24 +1113,54 @@ const SwFormatRefMark* SwDoc::GetRefMark( sal_uInt16 nIndex ) const
 sal_uInt16 SwDoc::GetRefMarks( std::vector<OUString>* pNames ) const
 {
     sal_uInt16 nCount = 0;
-    for (const SfxPoolItem* pItem : GetAttrPool().GetItemSurrogates(RES_TXTATR_REFMARK))
-    {
-        auto pRefMark = dynamic_cast<const SwFormatRefMark*>(pItem);
-        if( !pRefMark )
-            continue;
-        const SwTextRefMark* pTextRef = pRefMark->GetTextRefMark();
-        if( pTextRef && &pTextRef->GetTextNode().GetNodes() == &GetNodes() )
+    ForEachRefMark(
+        [&pNames, &nCount] (const SwFormatRefMark& rRefMark) -> bool
         {
             if( pNames )
             {
-                OUString aTmp(pRefMark->GetRefName());
-                pNames->insert(pNames->begin() + nCount, aTmp);
+                SwMarkName aTmp(rRefMark.GetRefName());
+                pNames->insert(pNames->begin() + nCount, aTmp.toString());
             }
             ++nCount;
-        }
-    }
+            return true;
+        });
 
     return nCount;
+}
+
+void SwDoc::GetRefMarks( std::vector<const SwFormatRefMark*>& rMarks ) const
+{
+    ForEachRefMark(
+        [&rMarks] (const SwFormatRefMark& rRefMark) -> bool
+        {
+            rMarks.push_back(&rRefMark);
+            return true;
+        });
+}
+
+/// Iterate over all SwFormatRefMark, if the function returns false, iteration is stopped
+void SwDoc::ForEachRefMark( const std::function<bool(const SwFormatRefMark&)>& rFunc ) const
+{
+    SwNodeOffset nCount = GetNodes().Count();
+    for (SwNodeOffset i(0); i < nCount; ++i)
+    {
+        SwNode* pNode = GetNodes()[i];
+        if (!pNode->IsTextNode())
+            continue;
+        SwTextNode* pTextNode = pNode->GetTextNode();
+        if (!pTextNode->HasHints())
+            continue;
+        SwpHints& rHints = pTextNode->GetSwpHints();
+        for (size_t j = 0; j < rHints.Count(); ++j)
+        {
+            const SwTextAttr* pTextAttr = rHints.Get(j);
+            if (pTextAttr->Which() != RES_TXTATR_REFMARK)
+                continue;
+            const SwFormatRefMark& rRefMark = pTextAttr->GetRefMark();
+            if (!rFunc(rRefMark))
+                return;
+        }
+    }
 }
 
 void SwDoc::DeleteFormatRefMark(const SwFormatRefMark* pFormatRefMark)
@@ -1197,6 +1224,85 @@ static bool lcl_CheckSmartTagsAgain( SwNode* pNd, void*  )
     return true;
 }
 
+/// Iterate over all SvxOverlineItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachOverlineItem( const std::function<bool(const SvxOverlineItem&)>& rFunc ) const
+{
+    SwNodeOffset nCount = GetNodes().Count();
+    for (SwNodeOffset i(0); i < nCount; ++i)
+    {
+        SwNode* pNode = GetNodes()[i];
+        if (!pNode->IsTextNode())
+            continue;
+        SwTextNode* pTextNode = pNode->GetTextNode();
+        const SwAttrSet& rAttrSet = pTextNode->GetSwAttrSet();
+        if (const SvxOverlineItem* pItem = rAttrSet.GetItemIfSet(RES_CHRATR_OVERLINE, false))
+            if (!rFunc(*pItem))
+                return;
+        if (pTextNode->HasHints())
+        {
+            SwpHints& rHints = pTextNode->GetSwpHints();
+            for (size_t j = 0; j < rHints.Count(); ++j)
+            {
+                const SwTextAttr* pTextAttr = rHints.Get(j);
+                if (pTextAttr->Which() != RES_TXTATR_AUTOFMT)
+                    continue;
+                const SwFormatAutoFormat& rAutoFormat = pTextAttr->GetAutoFormat();
+                const std::shared_ptr<SfxItemSet> & rxItemSet = rAutoFormat.GetStyleHandle();
+                if (const SvxOverlineItem* pItem = rxItemSet->GetItemIfSet(RES_CHRATR_OVERLINE, false))
+                    if (!rFunc(*pItem))
+                        return;
+            }
+        }
+    }
+    const auto& aTableTemplateMap = SwTableAutoFormat::GetTableTemplateMap();
+    const SwTableAutoFormatTable& rTableStyles = GetTableStyles();
+    for (size_t i=0; i < rTableStyles.size(); ++i)
+    {
+        const SwTableAutoFormat& rTableStyle = rTableStyles[i];
+        for (const sal_uInt32 nBoxIndex : aTableTemplateMap)
+        {
+            const SwAutoFormatProps& rBoxProps = rTableStyle.GetBoxFormat(nBoxIndex).GetProps();
+            const SvxOverlineItem rOverlineItem = rBoxProps.GetOverline();
+            if (!rFunc(rOverlineItem))
+                return;
+        }
+    }
+    const SwCellStyleTable& rCellStyleTable = GetCellStyles();
+    for (size_t i=0; i < rCellStyleTable.size(); ++i)
+    {
+        const SwCellStyleDescriptor aCellStyle = rCellStyleTable[i];
+        const SwAutoFormatProps& rBoxProps = aCellStyle.GetAutoFormat().GetProps();
+        const SvxOverlineItem rOverlineItem = rBoxProps.GetOverline();
+        if (!rFunc(rOverlineItem))
+            return;
+    }
+}
+
+/// Iterate over all SwFormatField, if the function returns false, iteration is stopped
+void SwDoc::ForEachFormatField( TypedWhichId<SwFormatField> nWhich, const std::function<bool(const SwFormatField&)>& rFunc ) const
+{
+    SwNodeOffset nCount = GetNodes().Count();
+    for (SwNodeOffset i(0); i < nCount; ++i)
+    {
+        SwNode* pNode = GetNodes()[i];
+        if (!pNode->IsTextNode())
+            continue;
+        SwTextNode* pTextNode = pNode->GetTextNode();
+        if (!pTextNode->HasHints())
+            continue;
+        SwpHints& rHints = pTextNode->GetSwpHints();
+        for (size_t j = 0; j < rHints.Count(); ++j)
+        {
+            const SwTextAttr* pTextAttr = rHints.Get(j);
+            if (pTextAttr->Which() != nWhich)
+                continue;
+            const SwFormatField& rFormatField = pTextAttr->GetFormatField();
+            if (!rFunc(rFormatField))
+                return;
+        }
+    }
+}
+
 /**
  * Re-trigger spelling in the idle handler.
  *
@@ -1247,21 +1353,288 @@ void SwDoc::InvalidateAutoCompleteFlag()
 
 const SwFormatINetFormat* SwDoc::FindINetAttr( std::u16string_view rName ) const
 {
-    for (const SfxPoolItem* pItem : GetAttrPool().GetItemSurrogates(RES_TXTATR_INETFMT))
-    {
-        auto pFormatItem = dynamic_cast<const SwFormatINetFormat*>(pItem);
-        if( !pFormatItem || pFormatItem->GetName() != rName )
-            continue;
-        const SwTextINetFormat* pTextAttr = pFormatItem->GetTextINetFormat();
-        if( !pTextAttr )
-            continue;
-        const SwTextNode* pTextNd = pTextAttr->GetpTextNode();
-        if( pTextNd && &pTextNd->GetNodes() == &GetNodes() )
+    const SwFormatINetFormat* pRet = nullptr;
+    ForEachINetFormat(
+        [&pRet, &rName] (const SwFormatINetFormat& rFormatItem) -> bool
         {
-            return pFormatItem;
+            if( rFormatItem.GetName() == rName )
+            {
+                pRet = &rFormatItem;
+                return false;
+            };
+            return true;
+        });
+    return pRet;
+}
+
+/// Iterate over all SwFormatINetFormat, if the function returns false, iteration is stopped
+void SwDoc::ForEachINetFormat( const std::function<bool(const SwFormatINetFormat&)>& rFunc ) const
+{
+    SwNodeOffset nCount = GetNodes().Count();
+    for (SwNodeOffset i(0); i < nCount; ++i)
+    {
+        SwNode* pNode = GetNodes()[i];
+        if (!pNode->IsTextNode())
+            continue;
+        SwTextNode* pTextNode = pNode->GetTextNode();
+        if (!pTextNode->HasHints())
+            continue;
+        SwpHints& rHints = pTextNode->GetSwpHints();
+        for (size_t j = 0; j < rHints.Count(); ++j)
+        {
+            const SwTextAttr* pTextAttr = rHints.Get(j);
+            if (pTextAttr->Which() != RES_TXTATR_INETFMT)
+                continue;
+            const SwFormatINetFormat& rFormat = pTextAttr->GetINetFormat();
+            if (!rFunc(rFormat))
+                return;
         }
     }
-    return nullptr;
+}
+
+/// Iterate over all SwFormatURL, if the function returns false, iteration is stopped
+void SwDoc::ForEachFormatURL( const std::function<bool(const SwFormatURL&)>& rFunc ) const
+{
+    for(sw::SpzFrameFormat* pSpz : *GetSpzFrameFormats())
+    {
+        if (pSpz->Which() != RES_FLYFRMFMT)
+            continue;
+        auto pFormat = static_cast<SwFlyFrameFormat*>(pSpz);
+        const SwFormatURL& rURLItem = pFormat->GetURL();
+        if (!rFunc(rURLItem))
+            return;
+    }
+}
+
+namespace
+{
+/// Iterate over all pool item of type T, if the function returns false, iteration is stopped
+template<typename T>
+void ForEachCharacterItem(const SwDoc* pDoc, TypedWhichId<T> nWhich, const std::function<bool(const T&)>& rFunc )
+{
+    for(SwCharFormat* pFormat : *pDoc->GetCharFormats())
+    {
+        const SwAttrSet& rAttrSet = pFormat->GetAttrSet();
+        if (const T* pColorItem = rAttrSet.GetItemIfSet(nWhich))
+            if (!rFunc(*pColorItem))
+                return;
+    }
+    std::vector<std::shared_ptr<SfxItemSet>> aStyles;
+    for (auto eFamily : { IStyleAccess::AUTO_STYLE_CHAR, IStyleAccess::AUTO_STYLE_RUBY, IStyleAccess::AUTO_STYLE_PARA, IStyleAccess::AUTO_STYLE_NOTXT })
+    {
+        const_cast<SwDoc*>(pDoc)->GetIStyleAccess().getAllStyles(aStyles, eFamily);
+        for (const auto & rxItemSet : aStyles)
+            if (const T* pColorItem = rxItemSet->GetItemIfSet(nWhich))
+                if (!rFunc(*pColorItem))
+                    return;
+    }
+}
+}
+
+/// Iterate over all SwFormatURL, if the function returns false, iteration is stopped
+void SwDoc::ForEachCharacterBoxItem( const std::function<bool(const SvxBoxItem&)>& rFunc ) const
+{
+    ForEachCharacterItem(this, RES_CHRATR_BOX, rFunc);
+}
+
+/// Iterate over all SvxColorItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachCharacterColorItem( const std::function<bool(const SvxColorItem&)>& rFunc ) const
+{
+    ForEachCharacterItem(this, RES_CHRATR_COLOR, rFunc);
+}
+
+/// Iterate over all SvxUnderlineItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachCharacterUnderlineItem( const std::function<bool(const SvxUnderlineItem&)>& rFunc ) const
+{
+    ForEachCharacterItem(this, RES_CHRATR_UNDERLINE, rFunc);
+}
+
+/// Iterate over all SvxBrushItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachCharacterBrushItem( const std::function<bool(const SvxBrushItem&)>& rFunc ) const
+{
+    ForEachCharacterItem(this, RES_CHRATR_BACKGROUND, rFunc);
+}
+
+/// Iterate over all RES_TXTATR_UNKNOWN_CONTAINER SvXMLAttrContainerItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachTxtAtrContainerItem(const std::function<bool(const SvXMLAttrContainerItem&)>& rFunc ) const
+{
+    SwNodeOffset nCount = GetNodes().Count();
+    for (SwNodeOffset i(0); i < nCount; ++i)
+    {
+        SwNode* pNode = GetNodes()[i];
+        if (!pNode->IsTextNode())
+            continue;
+        SwTextNode* pTextNode = pNode->GetTextNode();
+        if (!pTextNode->HasHints())
+            continue;
+        SwpHints& rHints = pTextNode->GetSwpHints();
+        for (size_t j = 0; j < rHints.Count(); ++j)
+        {
+            const SwTextAttr* pTextAttr = rHints.Get(j);
+            if (pTextAttr->Which() != RES_TXTATR_AUTOFMT)
+                continue;
+            const SwFormatAutoFormat& rFmt = pTextAttr->GetAutoFormat();
+            if (const SvXMLAttrContainerItem* pItem = rFmt.GetStyleHandle()->GetItemIfSet(RES_TXTATR_UNKNOWN_CONTAINER))
+                if (!rFunc(*pItem))
+                    return;
+        }
+    }
+}
+
+/// Iterate over all RES_CHRATR_FONT/RES_CHRATR_CJK_FONT/RES_CHRATR_CTL_FONT SvxFontItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachCharacterFontItem(TypedWhichId<SvxFontItem> nWhich, bool bIgnoreAutoStyles, const std::function<bool(const SvxFontItem&)>& rFunc )
+{
+    assert(nWhich == RES_CHRATR_FONT || nWhich == RES_CHRATR_CJK_FONT || nWhich == RES_CHRATR_CTL_FONT);
+    for(const SwCharFormat* pFormat : *GetCharFormats())
+    {
+        const SwAttrSet& rAttrSet = pFormat->GetAttrSet();
+        if (const SvxFontItem* pItem = rAttrSet.GetItemIfSet(nWhich))
+            if (!rFunc(*pItem))
+                return;
+    }
+    for(const SwTextFormatColl* pFormat : *GetTextFormatColls())
+    {
+        const SwAttrSet& rAttrSet = pFormat->GetAttrSet();
+        if (const SvxFontItem* pItem = rAttrSet.GetItemIfSet(nWhich))
+            if (!rFunc(*pItem))
+                return;
+    }
+    SwNodeOffset nCount = GetNodes().Count();
+    for (SwNodeOffset i(0); i < nCount; ++i)
+    {
+        const SwNode* pNode = GetNodes()[i];
+        if (pNode->IsContentNode())
+        {
+            const SwContentNode* pTextNode = pNode->GetContentNode();
+            if (pTextNode->HasSwAttrSet())
+                if (const SvxFontItem* pItem = pTextNode->GetSwAttrSet().GetItemIfSet(nWhich))
+                    if (!rFunc(*pItem))
+                        return;
+        }
+    }
+    // ignore auto styles when called from the code that is constructing the auto style pool
+    if (!bIgnoreAutoStyles)
+    {
+        // auto styles
+        std::vector<std::shared_ptr<SfxItemSet>> aStyles;
+        GetIStyleAccess().getAllStyles(aStyles, IStyleAccess::AUTO_STYLE_CHAR);
+        for (const auto & rxItemSet : aStyles)
+            if (const SvxFontItem* pItem = rxItemSet->GetItemIfSet(nWhich))
+                if (!rFunc(*pItem))
+                    return;
+    }
+}
+
+/// Iterate over all RES_PARATR_TABSTOP SvxTabStopItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachParaAtrTabStopItem(const std::function<bool(const SvxTabStopItem&)>& rFunc )
+{
+    SwNodeOffset nCount = GetNodes().Count();
+    for (SwNodeOffset i(0); i < nCount; ++i)
+    {
+        const SwNode* pNode = GetNodes()[i];
+        if (pNode->IsContentNode())
+        {
+            const SwContentNode* pTextNode = pNode->GetContentNode();
+            if (pTextNode->HasSwAttrSet())
+                if (const SvxTabStopItem* pItem = pTextNode->GetSwAttrSet().GetItemIfSet(RES_PARATR_TABSTOP))
+                    if (!rFunc(*pItem))
+                        return;
+        }
+    }
+    for(const SwTextFormatColl* pFormat : *GetTextFormatColls())
+    {
+        const SwAttrSet& rAttrSet = pFormat->GetAttrSet();
+        if (const SvxTabStopItem* pItem = rAttrSet.GetItemIfSet(RES_PARATR_TABSTOP))
+            if (!rFunc(*pItem))
+                return;
+    }
+}
+
+/// Iterate over all RES_UNKNOWNATR_CONTAINER SvXMLAttrContainerItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachUnknownAtrContainerItem(const std::function<bool(const SvXMLAttrContainerItem&)>& rFunc ) const
+{
+    for(SwFrameFormat* pFormat : *GetFrameFormats())
+    {
+        const SwAttrSet& rAttrSet = pFormat->GetAttrSet();
+        if (const SvXMLAttrContainerItem* pItem = rAttrSet.GetItemIfSet(RES_UNKNOWNATR_CONTAINER))
+            if (!rFunc(*pItem))
+                return;
+    }
+}
+
+/// Iterate over all RES_BOX SvxBoxItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachBoxItem(const std::function<bool(const SvxBoxItem&)>& rFunc ) const
+{
+    SwNodeOffset nCount = GetNodes().Count();
+    for (SwNodeOffset i(0); i < nCount; ++i)
+    {
+        const SwNode* pNode = GetNodes()[i];
+        if (pNode->IsContentNode())
+        {
+            const SwContentNode* pTextNode = pNode->GetContentNode();
+            if (pTextNode->HasSwAttrSet())
+                if (const SvxBoxItem* pItem = pTextNode->GetSwAttrSet().GetItemIfSet(RES_BOX))
+                    if (!rFunc(*pItem))
+                        return;
+        }
+    }
+}
+
+/// Iterate over all RES_SHADOW SvxBoxItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachShadowItem(const std::function<bool(const SvxShadowItem&)>& rFunc ) const
+{
+    SwNodeOffset nCount = GetNodes().Count();
+    for (SwNodeOffset i(0); i < nCount; ++i)
+    {
+        const SwNode* pNode = GetNodes()[i];
+        if (pNode->IsContentNode())
+        {
+            const SwContentNode* pTextNode = pNode->GetContentNode();
+            if (pTextNode->HasSwAttrSet())
+                if (const SvxShadowItem* pItem = pTextNode->GetSwAttrSet().GetItemIfSet(RES_SHADOW))
+                    if (!rFunc(*pItem))
+                        return;
+        }
+    }
+}
+
+/// Iterate over all RES_BACKGROUND SvxBrushItem, if the function returns false, iteration is stopped
+void SwDoc::ForEachBackgroundBrushItem(const std::function<bool(const SvxBrushItem&)>& rFunc ) const
+{
+    SwNodeOffset nCount = GetNodes().Count();
+    for (SwNodeOffset i(0); i < nCount; ++i)
+    {
+        const SwNode* pNode = GetNodes()[i];
+        if (!pNode->IsTableNode())
+            continue;
+        const SwTableNode* pTableNode = pNode->GetTableNode();
+        const SwTable& rTable = pTableNode->GetTable();
+        if (const SwTableFormat* pFormat = rTable.GetFrameFormat())
+        {
+            const SwAttrSet& rAttrSet = pFormat->GetAttrSet();
+            if (const SvxBrushItem* pItem = rAttrSet.GetItemIfSet(RES_BACKGROUND))
+                if (!rFunc(*pItem))
+                    return;
+        }
+        for (const SwTableLine* pTableLine : rTable.GetTabLines())
+        {
+            if (const SwTableLineFormat* pFormat = pTableLine->GetFrameFormat())
+            {
+                const SwAttrSet& rAttrSet = pFormat->GetAttrSet();
+                if (const SvxBrushItem* pItem = rAttrSet.GetItemIfSet(RES_BACKGROUND))
+                    if (!rFunc(*pItem))
+                        return;
+            }
+            for (const SwTableBox* pTableBox : pTableLine->GetTabBoxes())
+                if (SwTableBoxFormat* pFormat = pTableBox->GetFrameFormat())
+                {
+                    const SwAttrSet& rAttrSet = pFormat->GetAttrSet();
+                    if (const SvxBrushItem* pItem = rAttrSet.GetItemIfSet(RES_BACKGROUND))
+                        if (!rFunc(*pItem))
+                            return;
+                }
+        }
+    }
 }
 
 void SwDoc::Summary(SwDoc& rExtDoc, sal_uInt8 nLevel, sal_uInt8 nPara, bool bImpress)
@@ -1401,7 +1774,7 @@ bool SwDoc::FieldHidesPara(const SwField& rField) const
         case SwFieldIds::HiddenPara:
             return static_cast<const SwHiddenParaField&>(rField).IsHidden();
         case SwFieldIds::Database:
-            return FieldCanHideParaWeight(SwFieldIds::Database)
+            return IsInMailMerge() && FieldCanHideParaWeight(SwFieldIds::Database)
                    && rField.ExpandField(true, nullptr).isEmpty();
         default:
             return false;
@@ -1416,33 +1789,21 @@ bool SwDoc::RemoveInvisibleContent()
     GetIDocumentUndoRedo().StartUndo( SwUndoId::UI_DELETE_INVISIBLECNTNT, nullptr );
 
     {
-        class FieldTypeGuard : public SwClient
-        {
-        public:
-            explicit FieldTypeGuard(SwFieldType* pType)
-                : SwClient(pType)
-            {
-            }
-            const SwFieldType* get() const
-            {
-                return static_cast<const SwFieldType*>(GetRegisteredIn());
-            }
-        };
         // Removing some nodes for one SwFieldIds::Database type might remove the type from
         // document's field types, invalidating iterators. So, we need to create own list of
         // matching types prior to processing them.
-        std::vector<std::unique_ptr<FieldTypeGuard>> aHidingFieldTypes;
+        std::vector<sw::WeakBroadcastingPtr<SwFieldType>> aHidingFieldTypes;
         for (std::unique_ptr<SwFieldType> const & pType : *getIDocumentFieldsAccess().GetFieldTypes())
         {
             if (FieldCanHideParaWeight(pType->Which()))
-                aHidingFieldTypes.push_back(std::make_unique<FieldTypeGuard>(pType.get()));
+                aHidingFieldTypes.push_back(pType.get());
         }
-        for (const auto& pTypeGuard : aHidingFieldTypes)
+        for (const auto& pWeakType : aHidingFieldTypes)
         {
-            if (const SwFieldType* pType = pTypeGuard->get())
+            if (pWeakType)
             {
                 std::vector<SwFormatField*> vFields;
-                pType->GatherFields(vFields);
+                pWeakType->GatherFields(vFields);
                 for(auto pFormatField: vFields)
                     bRet |= HandleHidingField(*pFormatField, GetNodes(), getIDocumentContentOperations());
             }
@@ -1551,7 +1912,7 @@ bool SwDoc::RemoveInvisibleContent()
                         pSectNd->EndOfSectionIndex() + 1 )
                     {
                         // only delete the content
-                        SwContentNode* pCNd = GetNodes().GoNext( aPam.GetPoint() );
+                        SwContentNode* pCNd = SwNodes::GoNext(aPam.GetPoint());
                         aPam.SetMark();
                         aPam.GetPoint()->Assign( *pSectNd->EndOfSectionNode() );
                         pCNd = SwNodes::GoPrevious( aPam.GetPoint() );
@@ -1637,11 +1998,87 @@ static bool IsMailMergeField(SwFieldIds fieldId)
     }
 }
 
+bool SwDoc::ConvertFieldToText(const SwField& rField, SwRootFrame const& rLayout)
+{
+    bool bRet = false;
+    getIDocumentFieldsAccess().LockExpFields();
+    GetIDocumentUndoRedo().StartUndo( SwUndoId::CONVERT_FIELD_TO_TEXT, nullptr );
+
+    SwFieldType* pFieldType = rField.GetTyp();
+    SwFormatField* pFormatField = pFieldType->FindFormatForField(&rField);
+    const SwTextField *pTextField = pFormatField ? pFormatField->GetTextField() : nullptr;
+    if (pTextField)
+    {
+        bool bInHeaderFooter = IsInHeaderFooter(*pTextField->GetpTextNode());
+        const SwFormatField& rFormatField = pTextField->GetFormatField();
+        const SwField*  pField = rFormatField.GetField();
+
+        //#i55595# some fields have to be excluded in headers/footers
+        SwFieldIds nWhich = pField->GetTyp()->Which();
+        if(!bInHeaderFooter ||
+                (nWhich != SwFieldIds::PageNumber &&
+                nWhich != SwFieldIds::Chapter &&
+                nWhich != SwFieldIds::GetExp&&
+                nWhich != SwFieldIds::SetExp&&
+                nWhich != SwFieldIds::Input&&
+                nWhich != SwFieldIds::RefPageGet&&
+                nWhich != SwFieldIds::RefPageSet))
+        {
+            OUString sText = pField->ExpandField(true, &rLayout);
+
+            // database fields should not convert their command into text
+            if( SwFieldIds::Database == pFieldType->Which() && !static_cast<const SwDBField*>(pField)->IsInitialized())
+                sText.clear();
+
+            SwPaM aInsertPam(*pTextField->GetpTextNode(), pTextField->GetStart());
+            aInsertPam.SetMark();
+
+            // go to the end of the field
+            const SwTextField *pFieldAtEnd = sw::DocumentFieldsManager::GetTextFieldAtPos(*aInsertPam.End());
+            if (pFieldAtEnd && pFieldAtEnd->Which() == RES_TXTATR_INPUTFIELD)
+            {
+                SwPosition &rEndPos = *aInsertPam.GetPoint();
+                rEndPos.SetContent( SwCursorShell::EndOfInputFieldAtPos( *aInsertPam.End() ) );
+            }
+            else
+            {
+                aInsertPam.Move();
+            }
+
+            // first insert the text after field to keep the field's attributes,
+            // then delete the field
+            if (!sText.isEmpty())
+            {
+                // to keep the position after insert
+                SwPaM aDelPam( *aInsertPam.GetMark(), *aInsertPam.GetPoint() );
+                aDelPam.Move( fnMoveBackward );
+                aInsertPam.DeleteMark();
+
+                getIDocumentContentOperations().InsertString( aInsertPam, sText );
+
+                aDelPam.Move();
+                // finally remove the field
+                getIDocumentContentOperations().DeleteAndJoin( aDelPam );
+            }
+            else
+            {
+                getIDocumentContentOperations().DeleteAndJoin( aInsertPam );
+            }
+
+            bRet = true;
+        }
+    }
+    if( bRet )
+        getIDocumentState().SetModified();
+    GetIDocumentUndoRedo().EndUndo( SwUndoId::CONVERT_FIELD_TO_TEXT, nullptr );
+    getIDocumentFieldsAccess().UnlockExpFields();
+    return bRet;
+}
 bool SwDoc::ConvertFieldsToText(SwRootFrame const& rLayout)
 {
     bool bRet = false;
     getIDocumentFieldsAccess().LockExpFields();
-    GetIDocumentUndoRedo().StartUndo( SwUndoId::UI_REPLACE, nullptr );
+    GetIDocumentUndoRedo().StartUndo( SwUndoId::CONVERT_FIELD_TO_TEXT, nullptr );
 
     const bool bOnlyConvertDBFields
         = officecfg::Office::Writer::FormLetter::ConvertToTextOnlyMMFields::get();
@@ -1735,7 +2172,7 @@ bool SwDoc::ConvertFieldsToText(SwRootFrame const& rLayout)
 
     if( bRet )
         getIDocumentState().SetModified();
-    GetIDocumentUndoRedo().EndUndo( SwUndoId::UI_REPLACE, nullptr );
+    GetIDocumentUndoRedo().EndUndo( SwUndoId::CONVERT_FIELD_TO_TEXT, nullptr );
     getIDocumentFieldsAccess().UnlockExpFields();
     return bRet;
 
@@ -1743,27 +2180,27 @@ bool SwDoc::ConvertFieldsToText(SwRootFrame const& rLayout)
 
 bool SwDoc::IsInsTableFormatNum() const
 {
-    return SW_MOD()->IsInsTableFormatNum(GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE));
+    return SwModule::get()->IsInsTableFormatNum(GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE));
 }
 
 bool SwDoc::IsInsTableChangeNumFormat() const
 {
-    return SW_MOD()->IsInsTableChangeNumFormat(GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE));
+    return SwModule::get()->IsInsTableChangeNumFormat(GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE));
 }
 
 bool SwDoc::IsInsTableAlignNum() const
 {
-    return SW_MOD()->IsInsTableAlignNum(GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE));
+    return SwModule::get()->IsInsTableAlignNum(GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE));
 }
 
 bool SwDoc::IsSplitVerticalByDefault() const
 {
-    return SW_MOD()->IsSplitVerticalByDefault(GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE));
+    return SwModule::get()->IsSplitVerticalByDefault(GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE));
 }
 
 void SwDoc::SetSplitVerticalByDefault(bool value)
 {
-    SW_MOD()->SetSplitVerticalByDefault(GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE), value);
+    SwModule::get()->SetSplitVerticalByDefault(GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE), value);
 }
 
 /// Set up the InsertDB as Undo table
@@ -1826,7 +2263,7 @@ OUString SwDoc::GetPaMDescr(const SwPaM & rPam)
         return SwResId(STR_PARAGRAPHS);
     }
 
-    return "??";
+    return u"??"_ustr;
 }
 
 bool SwDoc::ContainsHiddenChars() const
@@ -1897,7 +2334,7 @@ void SwDoc::SetMissingDictionaries( bool bIsMissing )
 
 void SwDoc::SetLanguage(const LanguageType eLang, const sal_uInt16 nId)
 {
-    mpAttrPool->SetPoolDefaultItem(SvxLanguageItem(eLang, nId));
+    mpAttrPool->SetUserDefaultItem(SvxLanguageItem(eLang, nId));
 }
 
 bool SwDoc::HasParagraphDirectFormatting(const SwPosition& rPos)

@@ -71,7 +71,7 @@ namespace sdr::properties
                     // Graphic attributes, 3D properties, CustomShape
                     // properties:
                     SDRATTR_GRAF_FIRST, SDRATTR_CUSTOMSHAPE_LAST,
-                    SDRATTR_GLOW_FIRST, SDRATTR_SOFTEDGE_LAST,
+                    SDRATTR_GLOW_FIRST, SDRATTR_GLOW_TEXT_LAST,
                     SDRATTR_TEXTCOLUMNS_FIRST, SDRATTR_TEXTCOLUMNS_LAST,
                     SDRATTR_WRITINGMODE2, SDRATTR_WRITINGMODE2,
                     // Range from SdrTextObj:
@@ -124,10 +124,10 @@ namespace sdr::properties
                 TextProperties::ClearObjectItemDirect( nWhich );
         }
 
-        void CustomShapeProperties::ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich)
+        void CustomShapeProperties::ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich, bool bAdjustTextFrameWidthAndHeight)
         {
             // call parent
-            TextProperties::ItemSetChanged(aChangedItems, nDeletedWhich);
+            TextProperties::ItemSetChanged(aChangedItems, nDeletedWhich, bAdjustTextFrameWidthAndHeight);
 
             // update bTextFrame and RenderGeometry
             UpdateTextFrameStatus(true);
@@ -163,10 +163,10 @@ namespace sdr::properties
         }
 
         void CustomShapeProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast)
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight)
         {
             // call parent (always first thing to do, may create the SfxItemSet)
-            TextProperties::SetStyleSheet( pNewStyleSheet, bDontRemoveHardAttr, bBroadcast );
+            TextProperties::SetStyleSheet( pNewStyleSheet, bDontRemoveHardAttr, bBroadcast, bAdjustTextFrameWidthAndHeight );
 
             // update bTextFrame and RenderGeometry
             UpdateTextFrameStatus(true);
@@ -205,18 +205,14 @@ namespace sdr::properties
             TextProperties::Notify( rBC, rHint );
 
             bool bRemoveRenderGeometry = false;
-            const SfxStyleSheetHint* pStyleHint = dynamic_cast<const SfxStyleSheetHint*>(&rHint);
 
-            if ( pStyleHint && pStyleHint->GetStyleSheet() == GetStyleSheet() )
+            if (rHint.GetId() == SfxHintId::StyleSheetModified ||
+                rHint.GetId() == SfxHintId::StyleSheetModifiedExtended ||
+                rHint.GetId() == SfxHintId::StyleSheetChanged)
             {
-                switch( pStyleHint->GetId() )
-                {
-                    case SfxHintId::StyleSheetModified :
-                    case SfxHintId::StyleSheetChanged  :
-                        bRemoveRenderGeometry = true;
-                    break;
-                    default: break;
-                }
+                const SfxStyleSheetHint* pStyleHint = static_cast<const SfxStyleSheetHint*>(&rHint);
+                if ( pStyleHint->GetStyleSheet() == GetStyleSheet() )
+                    bRemoveRenderGeometry = true;
             }
             else if ( rHint.GetId() == SfxHintId::DataChanged )
             {

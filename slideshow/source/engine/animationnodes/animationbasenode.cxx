@@ -131,7 +131,7 @@ AnimationBaseNode::AnimationBaseNode(
                 mpShape->getTreeNodeSupplier().getNumberOfTreeNodes(
                     DocTreeNode::NodeType::LogicalParagraph) > aTarget.Paragraph )
             {
-                const DocTreeNode& rTreeNode(
+                const DocTreeNode aTreeNode(
                     mpShape->getTreeNodeSupplier().getTreeNode(
                         aTarget.Paragraph,
                         DocTreeNode::NodeType::LogicalParagraph ) );
@@ -143,7 +143,7 @@ AnimationBaseNode::AnimationBaseNode(
                 // the Slide class must be changed).
                 mpShapeSubset =
                     std::make_shared<ShapeSubset>( mpShape,
-                                     rTreeNode,
+                                     aTreeNode,
                                      mpSubsetManager );
 
                 // Override NodeContext, and flag this node as
@@ -443,8 +443,8 @@ AnimationBaseNode::fillCommonParameters() const
     // calc accel/decel:
     double nAcceleration = 0.0;
     double nDeceleration = 0.0;
-    BaseNodeSharedPtr const pSelf( getSelf() );
-    for ( std::shared_ptr<BaseNode> pNode( pSelf );
+    BaseNodeSharedPtr xSelf( getSelf() );
+    for ( std::shared_ptr<BaseNode> pNode( xSelf );
           pNode; pNode = pNode->getParentNode() )
     {
         uno::Reference<animations::XAnimationNode> const xAnimationNode(
@@ -456,9 +456,9 @@ AnimationBaseNode::fillCommonParameters() const
     }
 
     EventSharedPtr pEndEvent;
-    if (pSelf) {
-        pEndEvent = makeEvent( [pSelf] () {pSelf->deactivate(); },
-            "AnimationBaseNode::deactivate");
+    if (xSelf) {
+        pEndEvent = makeEvent( [xSelf=std::move(xSelf)] () {xSelf->deactivate(); },
+            u"AnimationBaseNode::deactivate"_ustr);
     }
 
     // Calculate the minimum frame count that depends on the duration and
@@ -467,7 +467,7 @@ AnimationBaseNode::fillCommonParameters() const
         basegfx::fround(nDuration * FrameRate::MinimumFramesPerSecond), 1, 10));
 
     return ActivitiesFactory::CommonParameters(
-        pEndEvent,
+        std::move(pEndEvent),
         getContext().mrEventQueue,
         getContext().mrActivitiesQueue,
         nDuration,

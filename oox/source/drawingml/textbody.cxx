@@ -19,6 +19,7 @@
 
 #include <drawingml/textbody.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <com/sun/star/style/XStyle.hpp>
 #include <drawingml/textparagraph.hxx>
 #include <oox/helper/propertyset.hxx>
 #include <oox/token/properties.hxx>
@@ -57,14 +58,12 @@ void TextBody::insertAt(
         const TextCharacterProperties& rTextStyleProperties,
         const TextListStylePtr& pMasterTextListStylePtr ) const
 {
-    TextListStyle aMasterTextStyle(*pMasterTextListStylePtr);
-
     Reference<css::beans::XPropertySet> xPropertySet(xAt, UNO_QUERY);
-    float nCharHeight = xPropertySet->getPropertyValue("CharHeight").get<float>();
+    float nCharHeight = xPropertySet->getPropertyValue(u"CharHeight"_ustr).get<float>();
     size_t nIndex = 0;
     for (auto const& paragraph : maParagraphs)
     {
-        paragraph->insertAt(rFilterBase, xText, xAt, rTextStyleProperties, aMasterTextStyle,
+        paragraph->insertAt(rFilterBase, xText, xAt, rTextStyleProperties, *pMasterTextListStylePtr,
                             maTextListStyle, (nIndex == 0), nCharHeight);
         ++nIndex;
     }
@@ -95,6 +94,21 @@ OUString TextBody::toString() const
             return rRuns.front()->getText();
     }
     return OUString();
+}
+
+OUString TextBody::firstParatoString() const
+{
+    OUStringBuffer aRet;
+    if (!isEmpty())
+    {
+        const TextRunVector& rRuns = maParagraphs.front()->getRuns();
+        for (TextRunVector::const_iterator aRIt = rRuns.begin(), aREnd = rRuns.end(); aRIt != aREnd; ++aRIt)
+        {
+            const TextRun& rTextRun = **aRIt;
+            aRet.append(rTextRun.getText());
+        }
+    }
+    return aRet.makeStringAndClear();
 }
 
 bool TextBody::hasVisualRunProperties() const
@@ -145,11 +159,47 @@ void TextBody::ApplyStyleEmpty(
         Reference< XPropertySet > xProps(xText, UNO_QUERY);
         PropertyMap aioBulletList;
         aioBulletList.setProperty< sal_Int32 >(PROP_LeftMargin, 0); // Init bullets left margin to 0 (no bullets).
-        float nCharHeight = xProps->getPropertyValue("CharHeight").get<float>();
+        float nCharHeight = xProps->getPropertyValue(u"CharHeight"_ustr).get<float>();
         TextParagraphProperties aParaProp;
         aParaProp.apply(*pTextParagraphStyle);
         aParaProp.pushToPropSet(&rFilterBase, xProps, aioBulletList, &pTextParagraphStyle->getBulletList(),
                                 true, nCharHeight, true);
+    }
+}
+
+void TextBody::ApplyMasterTextStyle(
+    const ::oox::core::XmlFilterBase& rFilterBase,
+    const css::uno::Reference< css::style::XStyle >& aXStyle,
+    const TextCharacterProperties& rTextStyleProperties,
+    const TextListStylePtr& pMasterTextListStylePtr) const
+{
+    assert(!isEmpty());
+
+    if (maParagraphs.empty())
+        return;
+
+    // Apply character properties
+    PropertySet aPropSet(aXStyle);
+    TextCharacterProperties aTextCharacterProps(maParagraphs[0]->getCharacterStyle(
+        rTextStyleProperties, *pMasterTextListStylePtr, maTextListStyle));
+    aTextCharacterProps.pushToPropSet(aPropSet, rFilterBase);
+
+    // Apply paragraph properties
+    TextListStyle aCombinedTextStyle;
+    aCombinedTextStyle.apply(*pMasterTextListStylePtr);
+    aCombinedTextStyle.apply(maTextListStyle);
+
+    TextParagraphProperties* pTextParagraphStyle = maParagraphs[0]->getParagraphStyle(aCombinedTextStyle);
+    if (pTextParagraphStyle)
+    {
+        Reference< XPropertySet > xProps(aXStyle, UNO_QUERY_THROW);
+        PropertyMap aioBulletList;
+        aioBulletList.setProperty< sal_Int32 >(PROP_LeftMargin, 0); // Init bullets left margin to 0 (no bullets).
+        float nCharHeight = xProps->getPropertyValue(u"CharHeight"_ustr).get<float>();
+        TextParagraphProperties aParaProp;
+        aParaProp.apply(*pTextParagraphStyle);
+        aParaProp.pushToPropSet(&rFilterBase, xProps, aioBulletList, &pTextParagraphStyle->getBulletList(),
+            true, nCharHeight, true);
     }
 }
 

@@ -9,12 +9,8 @@
 
 #include <sal/config.h>
 
-#include <memory>
 #include <thread>
 
-#include <config_features.h>
-
-#include <math.h>
 #include <rtl/math.hxx>
 #include <sal/log.hxx>
 
@@ -22,9 +18,6 @@
 #include <comphelper/random.hxx>
 #include <cppuhelper/bootstrap.hxx>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/registry/XSimpleRegistry.hpp>
-#include <com/sun/star/ucb/UniversalContentBroker.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/container/XNameAccess.hpp>
@@ -37,24 +30,19 @@
 #include <salhelper/thread.hxx>
 
 #include <comphelper/diagnose_ex.hxx>
-#include <tools/urlobj.hxx>
-#include <tools/stream.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wrkwin.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/graphicfilter.hxx>
 #include <vcl/toolkit/button.hxx>
-#include <vcl/toolkit/combobox.hxx>
 #include <vcl/toolbox.hxx>
 #include <vcl/toolkit/floatwin.hxx>
 #include <vcl/help.hxx>
 #include <vcl/kernarray.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/ImageTree.hxx>
-#include <vcl/BitmapEmbossGreyFilter.hxx>
+#include <vcl/bitmap/BitmapEmbossGreyFilter.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
 
-#include <basegfx/numeric/ftools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 
 #include <framework/desktop.hxx>
@@ -87,8 +75,7 @@ enum RenderStyle {
 
 class DemoRenderer
 {
-    Bitmap   maIntroBW;
-    BitmapEx maIntro;
+    Bitmap   maIntro;
 
     int mnSegmentsX;
     int mnSegmentsY;
@@ -114,7 +101,7 @@ class DemoRenderer
         virtual sal_uInt16 getTestRepeatCount() = 0;
 #define RENDER_DETAILS(name,key,repeat) \
         virtual OUString getName() override \
-            { return SAL_STRINGIFY(name); } \
+            { return u"" SAL_STRINGIFY(name) ""_ustr; } \
         virtual sal_uInt16 getAccelerator() override \
             { return key; } \
         virtual sal_uInt16 getTestRepeatCount() override \
@@ -143,13 +130,9 @@ public:
 #endif
     {
         if (!Application::LoadBrandBitmap(u"intro", maIntro))
-            Application::Abort("Failed to load intro image");
+            Application::Abort(u"Failed to load intro image"_ustr);
 
-        maIntroBW = maIntro.GetBitmap();
-
-        BitmapEx aTmpBmpEx(maIntroBW);
-        BitmapFilter::Filter(aTmpBmpEx, BitmapEmbossGreyFilter(0_deg100, 0_deg100));
-        maIntroBW = aTmpBmpEx.GetBitmap();
+        BitmapFilter::Filter(maIntro, BitmapEmbossGreyFilter(0_deg100, 0_deg100));
 
         InitRenderers();
         mnSegmentsY = rtl::math::round(std::sqrt(maRenderers.size()), 0,
@@ -389,43 +372,27 @@ public:
         {
             rDev.SetClipRegion( vcl::Region(r) );
 
-            const unsigned char pTextUTF8[] = {
-                0xd9, 0x88, 0xd8, 0xa7, 0xd8, 0xad, 0xd9, 0x90,
-                0xd8, 0xaf, 0xd9, 0x92, 0x20, 0xd8, 0xa5, 0xd8,
-                0xab, 0xd9, 0x8d, 0xd9, 0x86, 0xd9, 0x8a, 0xd9,
-                0x86, 0x20, 0xd8, 0xab, 0xd9, 0x84, 0xd8, 0xa7,
-                0xd8, 0xab, 0xd8, 0xa9, 0xd9, 0x8c, 0x00
-            };
-            OUString aArabicText( reinterpret_cast<char const *>(pTextUTF8),
-                            SAL_N_ELEMENTS( pTextUTF8 ) - 1,
-                            RTL_TEXTENCODING_UTF8 );
-
-            OUString aText;
+            const OUString aText = bArabicText?u"واحِدٌ اثْنَانِ ثَلاثَةٌ"_ustr
+                                              :u"Click any rect to zoom!"_ustr;
 
             // To have more text displayed one after the other (overlapping, and in different colours), then
             // change this value
             const int nPrintNumCopies=1;
 
-            if (bArabicText)
-                aText = aArabicText;
-            else
-                aText = "Click any rect to zoom!!!!";
-
-            std::vector<OUString> aFontNames;
+            std::vector<OUString> aFontNames =
+            {
+                u"Times"_ustr,
+                u"Liberation Sans"_ustr,
+                u"Arial"_ustr,
+                u"Linux Biolinum G"_ustr,
+                u"Linux Libertine Display G"_ustr
+            };
 
             static Color const nCols[] = {
                 COL_BLACK, COL_BLUE, COL_GREEN, COL_CYAN, COL_RED, COL_MAGENTA,
                 COL_BROWN, COL_GRAY, COL_LIGHTGRAY, COL_LIGHTBLUE, COL_LIGHTGREEN,
                 COL_LIGHTCYAN, COL_LIGHTRED, COL_LIGHTMAGENTA, COL_YELLOW, COL_WHITE
             };
-
-            // a few fonts to start with
-            const char *pNames[] = {
-                "Times", "Liberation Sans", "Arial", "Linux Biolinum G", "Linux Libertine Display G"
-              };
-
-            for (size_t i = 0; i < SAL_N_ELEMENTS(pNames); i++)
-                aFontNames.push_back(OUString::createFromAscii(pNames[i]));
 
             if (bClip && !bRotate)
             {
@@ -554,7 +521,7 @@ public:
             for (size_t i = 0; i < std::size(aRuns); ++i)
             {
                 // Legend
-                vcl::Font aIndexFont("sans", Size(0,20));
+                vcl::Font aIndexFont(u"sans"_ustr, Size(0,20));
                 aIndexFont.SetColor( COL_BLACK);
                 tools::Rectangle aTextRect;
                 rDev.SetFont(aIndexFont);
@@ -764,11 +731,11 @@ public:
             {
                 auto aRegions = partition(rCtx, 2, 2);
                 doInvert(rDev, aRegions[0], InvertFlags::NONE);
-                rDev.DrawText(aRegions[0], "InvertFlags::NONE");
+                rDev.DrawText(aRegions[0], u"InvertFlags::NONE"_ustr);
                 doInvert(rDev, aRegions[1], InvertFlags::N50);
-                rDev.DrawText(aRegions[1], "InvertFlags::N50");
+                rDev.DrawText(aRegions[1], u"InvertFlags::N50"_ustr);
                 doInvert(rDev, aRegions[3], InvertFlags::TrackFrame);
-                rDev.DrawText(aRegions[3], "InvertFlags::TrackFrame");
+                rDev.DrawText(aRegions[3], u"InvertFlags::TrackFrame"_ustr);
             }
         }
     };
@@ -814,11 +781,11 @@ public:
                     0, 0, 0, 0, 0
                 };
                 DemoRenderer::clearRects(rDev, aRegions);
-                assert(aRegions.size() <= SAL_N_ELEMENTS(nStartCols));
-                assert(aRegions.size() <= SAL_N_ELEMENTS(nEndCols));
-                assert(aRegions.size() <= SAL_N_ELEMENTS(eStyles));
-                assert(aRegions.size() <= SAL_N_ELEMENTS(nAngles));
-                assert(aRegions.size() <= SAL_N_ELEMENTS(nBorders));
+                assert(aRegions.size() <= std::size(nStartCols));
+                assert(aRegions.size() <= std::size(nEndCols));
+                assert(aRegions.size() <= std::size(eStyles));
+                assert(aRegions.size() <= std::size(nAngles));
+                assert(aRegions.size() <= std::size(nBorders));
                 for (size_t i = 0; i < aRegions.size(); i++)
                 {
                     tools::Rectangle aSub = aRegions[i];
@@ -851,7 +818,7 @@ public:
         // be done with a shader / gradient
         static void SimulateBorderStretch(OutputDevice &rDev, const tools::Rectangle& r)
         {
-            BitmapEx aPageShadowMask("sw/res/page-shadow-mask.png");
+            Bitmap aPageShadowMask(u"sw/res/page-shadow-mask.png"_ustr);
 
             BitmapEx aRight(aPageShadowMask);
             sal_Int32 nSlice = (aPageShadowMask.GetSizePixel().Width() - 3) / 4;
@@ -877,7 +844,7 @@ public:
                 aRenderPt.Move(aShadowStretch.GetSizePixel().Width() + 4, 0);
             }
 
-            AlphaMask aWholeMask(aPageShadowMask.GetBitmap());
+            AlphaMask aWholeMask(aPageShadowMask.CreateColorBitmap());
             aBlockColor = Bitmap(aPageShadowMask.GetSizePixel(), vcl::PixelFormat::N24_BPP);
             aBlockColor.Erase(COL_GREEN);
             BitmapEx aWhole(aBlockColor, aWholeMask);
@@ -895,7 +862,7 @@ public:
         virtual void RenderRegion(OutputDevice &rDev, tools::Rectangle r,
                                   const RenderContext &rCtx) override
         {
-            Bitmap aBitmap(rCtx.mpDemoRenderer->maIntroBW);
+            Bitmap aBitmap(rCtx.mpDemoRenderer->maIntro);
             aBitmap.Scale(r.GetSize(), BmpScaleFlag::BestQuality);
             rDev.DrawBitmap(r.TopLeft(), aBitmap);
 
@@ -1110,7 +1077,7 @@ public:
             }
             else if (eType == RENDER_AS_BITMAPEX)
             {
-                BitmapEx aBitmapEx(pNested->GetBitmapEx(Point(0,0),aWhole.GetSize()));
+                BitmapEx aBitmapEx(pNested->GetBitmap(Point(0,0),aWhole.GetSize()));
                 rDev.DrawBitmapEx(r.TopLeft(), aBitmapEx);
             }
             else if (eType == RENDER_AS_OUTDEV ||
@@ -1171,7 +1138,7 @@ public:
         RENDER_DETAILS(icons,KEY_I,1)
 
         std::vector<OUString> maIconNames;
-        std::vector<BitmapEx> maIcons;
+        std::vector<Bitmap> maIcons;
         bool bHasLoadedAll;
         DrawIcons() : bHasLoadedAll(false)
         {
@@ -1202,7 +1169,7 @@ public:
                 "cmd/lc_basicshapes.rectangle.png",
                 "cmd/lc_basicshapes.round-rectangle.png"
             };
-            for (size_t i = 0; i < SAL_N_ELEMENTS(pNames); i++)
+            for (size_t i = 0; i < std::size(pNames); i++)
             {
                 maIconNames.push_back(OUString::createFromAscii(pNames[i]));
                 maIcons.emplace_back(maIconNames[i]);
@@ -1376,7 +1343,7 @@ public:
                 Point aLocation(0,maIcons[0].GetSizePixel().Height() + 8);
                 for (size_t i = 0; i < maIcons.size(); i++)
                 {
-                    BitmapEx aSrc = maIcons[i];
+                    BitmapEx aSrc(maIcons[i]);
 
                     // original above
                     Point aAbove(aLocation);
@@ -1405,8 +1372,7 @@ public:
                     rDev.DrawBitmap(aBelow, aGrey);
 
                     aBelow.Move(aGrey.GetSizePixel().Width(),0);
-                    BitmapEx aGreyMask(aSrc);
-                    rDev.DrawBitmapEx(aBelow, aGreyMask);
+                    rDev.DrawBitmapEx(aBelow, aSrc);
 
                     aLocation.Move(aSrc.GetSizePixel().Width()*6,0);
                     if (aLocation.X() > r.Right())
@@ -1773,7 +1739,7 @@ public:
         else
         { // spawn another window
             VclPtrInstance<DemoWin> pNewWin(mrRenderer, testThreads);
-            pNewWin->SetText("Another interactive VCL demo window");
+            pNewWin->SetText(u"Another interactive VCL demo window"_ustr);
             pNewWin->Show();
         }
     }
@@ -1911,9 +1877,9 @@ public:
         mpToolbox(VclPtrInstance<ToolBox>(mpBox.get())),
         mpButton(VclPtrInstance<PushButton>(mpBox.get()))
     {
-        SetText("VCL widget demo");
+        SetText(u"VCL widget demo"_ustr);
 
-        Wallpaper aWallpaper(BitmapEx("sfx2/res/128x128_writer_doc-p.png"));
+        Wallpaper aWallpaper(Bitmap(u"sfx2/res/128x128_writer_doc-p.png"_ustr));
         aWallpaper.SetStyle(WallpaperStyle::BottomRight);
         aWallpaper.SetColor(COL_RED);
 
@@ -1921,13 +1887,13 @@ public:
         mpBox->Show();
 
         Help::EnableBalloonHelp();
-        mpToolbox->SetHelpText("Help text");
-        mpToolbox->InsertItem(ToolBoxItemId(0), "Toolbar item", OUString());
-        mpToolbox->SetQuickHelpText(ToolBoxItemId(0), "This is a tooltip popup");
+        mpToolbox->SetHelpText(u"Help text"_ustr);
+        mpToolbox->InsertItem(ToolBoxItemId(0), u"Toolbar item"_ustr, OUString());
+        mpToolbox->SetQuickHelpText(ToolBoxItemId(0), u"This is a tooltip popup"_ustr);
         mpToolbox->InsertSeparator();
         mpToolbox->Show();
 
-        mpButton->SetText("Click me; go on");
+        mpButton->SetText(u"Click me; go on"_ustr);
         mpButton->Show();
 
         int i = 0;
@@ -1950,9 +1916,9 @@ public:
         }
 
         mpBar = VclPtr<MenuBar>::Create();
-        mpBar->InsertItem(0,"File");
+        mpBar->InsertItem(0,u"File"_ustr);
         VclPtrInstance<PopupMenu> pPopup;
-        pPopup->InsertItem(0,"Item");
+        pPopup->InsertItem(0,u"Item"_ustr);
         mpBar->SetPopupMenu(0, pPopup);
         SetMenuBar(mpBar);
 
@@ -2004,7 +1970,7 @@ public:
 
 IMPL_LINK(DemoWidgets, CursorButtonClick, Button*, pButton, void)
 {
-    for (size_t i=0; i<SAL_N_ELEMENTS(gvPointerData); ++i)
+    for (size_t i=0; i<std::size(gvPointerData); ++i)
     {
         if (mvCursorButtons[i].get() == pButton)
         {
@@ -2038,7 +2004,7 @@ class DemoPopup : public FloatingWindow
 
         SetTextColor(COL_BLACK);
         SetTextAlign(ALIGN_TOP);
-        rRenderContext.DrawText(aTextRect, "This is a standalone help text test",
+        rRenderContext.DrawText(aTextRect, u"This is a standalone help text test"_ustr,
                  DrawTextFlags::MultiLine|DrawTextFlags::WordBreak|
                  DrawTextFlags::Left|DrawTextFlags::Top);
 
@@ -2194,7 +2160,7 @@ public:
             VclPtr<DemoWidgets> xWidgets;
             VclPtr<DemoPopup> xPopup;
 
-            aMainWin->SetText("Interactive VCL demo #1");
+            aMainWin->SetText(u"Interactive VCL demo #1"_ustr);
             if (bWidgets)
                 xWidgets = VclPtr< DemoWidgets >::Create ();
             else if (bPopup)
@@ -2234,7 +2200,7 @@ protected:
             uno::Reference<lang::XMultiServiceFactory> xMSF;
             xMSF.set(xComponentContext->getServiceManager(), uno::UNO_QUERY);
             if(!xMSF.is())
-                Application::Abort("Bootstrap failure - no service manager");
+                Application::Abort(u"Bootstrap failure - no service manager"_ustr);
 
             ::comphelper::setProcessServiceFactory(xMSF);
         }

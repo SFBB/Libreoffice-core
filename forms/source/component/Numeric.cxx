@@ -32,13 +32,8 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
-using namespace ::com::sun::star::awt;
-using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::form::binding;
 
 ONumericControl::ONumericControl(const Reference<XComponentContext>& _rxFactory)
     :OBoundControl(_rxFactory, VCL_CONTROL_NUMERICFIELD)
@@ -61,7 +56,7 @@ css::uno::Sequence<OUString> ONumericControl::getSupportedServiceNames()
 
 ONumericModel::ONumericModel(const Reference<XComponentContext>& _rxFactory)
                 :OEditBaseModel( _rxFactory, VCL_CONTROLMODEL_NUMERICFIELD, FRM_SUN_CONTROL_NUMERICFIELD, true, true )
-                                    // use the old control name for compytibility reasons
+                                    // use the old control name for compatibility reasons
 {
 
     m_nClassId = FormComponentType::NUMERICFIELD;
@@ -151,7 +146,7 @@ bool ONumericModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
                 return false;
             }
         }
-        m_aSaveValue = aControlValue;
+        m_aSaveValue = std::move(aControlValue);
     }
     return true;
 }
@@ -170,7 +165,7 @@ Any ONumericModel::translateDbColumnToControlValue()
 Any ONumericModel::getDefaultForReset() const
 {
     Any aValue;
-    if (m_aDefault.getValueType().getTypeClass() == TypeClass_DOUBLE)
+    if (m_aDefault.getValueTypeClass() == TypeClass_DOUBLE)
         aValue = m_aDefault;
 
     return aValue;

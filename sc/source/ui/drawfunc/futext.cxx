@@ -101,8 +101,8 @@ static void lcl_UpdateHyphenator( Outliner& rOutliner, const SdrObject* pObj )
 }
 
 FuText::FuText(ScTabViewShell& rViewSh, vcl::Window* pWin, ScDrawView* pViewP,
-               SdrModel* pDoc, const SfxRequest& rReq)
-    : FuConstruct(rViewSh, pWin, pViewP, pDoc, rReq)
+               SdrModel& rDoc, const SfxRequest& rReq)
+    : FuConstruct(rViewSh, pWin, pViewP, rDoc, rReq)
 {
 }
 
@@ -217,6 +217,7 @@ bool FuText::MouseButtonDown(const MouseEvent& rMEvt)
                     SdrObject* pMarkedObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
                     if( ScDrawLayer::IsNoteCaption( pMarkedObj ) )
                     {
+                        assert(pHdl);
                         if(pHdl->GetKind() != SdrHdlKind::Poly && pHdl->GetKind() != SdrHdlKind::Circle)
                             bDrag = true;
                     }
@@ -376,6 +377,7 @@ bool FuText::MouseButtonUp(const MouseEvent& rMEvt)
     if ( pView->MouseButtonUp(rMEvt, pWindow->GetOutDev()) )
         return true; // Event evaluated by SdrView
 
+    const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
     if ( pView->IsDragObj() )
     {
         pView->EndDragObj( rMEvt.IsShift() );
@@ -389,13 +391,12 @@ bool FuText::MouseButtonUp(const MouseEvent& rMEvt)
             if (aSfxRequest.GetSlot() == SID_DRAW_TEXT_MARQUEE)
             {
                 // create marquee-object?
-                const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
                 if (rMarkList.GetMark(0))
                 {
                     SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
 
                     // set needed attributes for scrolling
-                    SfxItemSetFixed<SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST> aItemSet( pDrDoc->GetItemPool());
+                    SfxItemSetFixed<SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST> aItemSet( rDrDoc.GetItemPool());
 
                     aItemSet.Put( makeSdrTextAutoGrowWidthItem( false ) );
                     aItemSet.Put( makeSdrTextAutoGrowHeightItem( false ) );
@@ -413,13 +414,12 @@ bool FuText::MouseButtonUp(const MouseEvent& rMEvt)
             bool bVertical = (SID_DRAW_TEXT_VERTICAL == nSlotID);
             if(bVertical)
             {
-                const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
                 if(rMarkList.GetMark(0))
                 {
                     SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
                     if(auto pText = DynCastSdrTextObj( pObj))
                     {
-                        SfxItemSet aSet(pDrDoc->GetItemPool());
+                        SfxItemSet aSet(rDrDoc.GetItemPool());
 
                         pText->SetVerticalWriting(true);
 
@@ -436,12 +436,12 @@ bool FuText::MouseButtonUp(const MouseEvent& rMEvt)
             SetInEditMode();
 
                 // leave mode when sole click (-> fuconstr)
-            if ( !pView->AreObjectsMarked() )
+            if ( rMarkList.GetMarkCount() == 0 )
             {
                 pView->MarkObj(aPnt, -2, false, rMEvt.IsMod1());
 
                 SfxDispatcher& rDisp = rViewShell.GetViewData().GetDispatcher();
-                if ( pView->AreObjectsMarked() )
+                if ( rMarkList.GetMarkCount() != 0 )
                     rDisp.Execute(SID_OBJECT_SELECT, SfxCallMode::SLOT | SfxCallMode::RECORD);
                 else
                     rDisp.Execute(aSfxRequest.GetSlot(), SfxCallMode::SLOT | SfxCallMode::RECORD);
@@ -456,12 +456,12 @@ bool FuText::MouseButtonUp(const MouseEvent& rMEvt)
     {
         pWindow->ReleaseMouse();
 
-        if ( !pView->AreObjectsMarked() && rMEvt.GetClicks() < 2 )
+        if ( rMarkList.GetMarkCount() == 0 && rMEvt.GetClicks() < 2 )
         {
             pView->MarkObj(aPnt, -2, false, rMEvt.IsMod1());
 
             SfxDispatcher& rDisp = rViewShell.GetViewData().GetDispatcher();
-            if ( pView->AreObjectsMarked() )
+            if ( rMarkList.GetMarkCount() != 0 )
                 rDisp.Execute(SID_OBJECT_SELECT, SfxCallMode::SLOT | SfxCallMode::RECORD);
             else
                 rDisp.Execute(aSfxRequest.GetSlot(), SfxCallMode::SLOT | SfxCallMode::RECORD);
@@ -540,9 +540,9 @@ void FuText::SetInEditMode(SdrObject* pObj, const Point* pMousePixel,
     if ( pObj && (pObj->GetLayer() == SC_LAYER_INTERN) )
         pView->UnlockInternalLayer();
 
-    if ( !pObj && pView->AreObjectsMarked() )
+    const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+    if ( !pObj && rMarkList.GetMarkCount() != 0 )
     {
-        const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
         if (rMarkList.GetMarkCount() == 1)
         {
             SdrMark* pMark = rMarkList.GetMark(0);
@@ -612,8 +612,7 @@ void FuText::SetInEditMode(SdrObject* pObj, const Point* pMousePixel,
     }
     else if ( bCursorToEnd )
     {
-        ESelection aNewSelection(EE_PARA_NOT_FOUND, EE_INDEX_NOT_FOUND, EE_PARA_NOT_FOUND, EE_INDEX_NOT_FOUND);
-        pOLV->SetSelection(aNewSelection);
+        pOLV->SetSelection(ESelection::AtEnd());
     }
 
     if ( pInitialKey )
@@ -629,7 +628,7 @@ rtl::Reference<SdrObject> FuText::CreateDefaultObject(const sal_uInt16 nID, cons
     // case SID_DRAW_NOTEEDIT:
 
     rtl::Reference<SdrObject> pObj(SdrObjFactory::MakeNewObject(
-        *pDrDoc,
+        rDrDoc,
         pView->GetCurrentObjInventor(),
         pView->GetCurrentObjIdentifier()));
 
@@ -650,7 +649,7 @@ rtl::Reference<SdrObject> FuText::CreateDefaultObject(const sal_uInt16 nID, cons
 
             if(bVertical)
             {
-                SfxItemSet aSet(pDrDoc->GetItemPool());
+                SfxItemSet aSet(rDrDoc.GetItemPool());
 
                 aSet.Put(makeSdrTextAutoGrowWidthItem(true));
                 aSet.Put(makeSdrTextAutoGrowHeightItem(false));
@@ -662,7 +661,7 @@ rtl::Reference<SdrObject> FuText::CreateDefaultObject(const sal_uInt16 nID, cons
 
             if(bMarquee)
             {
-                SfxItemSetFixed<SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST> aSet(pDrDoc->GetItemPool());
+                SfxItemSetFixed<SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST> aSet(rDrDoc.GetItemPool());
 
                 aSet.Put( makeSdrTextAutoGrowWidthItem( false ) );
                 aSet.Put( makeSdrTextAutoGrowHeightItem( false ) );

@@ -24,13 +24,12 @@
 #include <unotools/configitem.hxx>
 #include <swdllapi.h>
 
-class SwLabCfgItem;
-
 class SW_DLLPUBLIC SwLabItem final : public SfxPoolItem
 {
 
 public:
 
+    DECLARE_ITEM_TYPE_FUNCTION(SwLabItem)
     SwLabItem();
 
     SwLabItem& operator =(const SwLabItem& rItem);

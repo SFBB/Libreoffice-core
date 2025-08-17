@@ -19,6 +19,7 @@
 
 #include <svx/sdr/primitive2d/sdrframeborderprimitive2d.hxx>
 #include <drawinglayer/primitive2d/borderlineprimitive2d.hxx>
+#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
@@ -602,12 +603,11 @@ namespace
         const basegfx::B2DPoint aStart(rOrigin + (aPerpendX * aCombination.getRefModeOffset()));
 
         rTarget.append(
-            drawinglayer::primitive2d::Primitive2DReference(
                 new drawinglayer::primitive2d::BorderLinePrimitive2D(
                     aStart,
                     aStart + rX,
                     std::move(aBorderlines),
-                    std::move(aStrokeAttribute))));
+                    std::move(aStrokeAttribute)));
     }
 
     double getMinimalNonZeroValue(double fCurrent, double fNew)
@@ -763,13 +763,12 @@ namespace drawinglayer::primitive2d
         }
 
 
-        void SdrFrameBorderPrimitive2D::create2DDecomposition(
-            Primitive2DContainer& rContainer,
+        Primitive2DReference SdrFrameBorderPrimitive2D::create2DDecomposition(
             const geometry::ViewInformation2D& /*aViewInformation*/) const
         {
             if(getFrameBorders().empty())
             {
-                return;
+                return nullptr;
             }
 
             Primitive2DContainer aRetval;
@@ -780,70 +779,68 @@ namespace drawinglayer::primitive2d
                 ? mfMinimalNonZeroBorderWidthUsedForDecompose
                 : 0.0);
 
+            // decompose all buffered SdrFrameBorderData entries and try to merge them
+            // to reduce existing number of BorderLinePrimitive2D(s)
+            for(const auto& rCandidate : getFrameBorders())
             {
-                // decompose all buffered SdrFrameBorderData entries and try to merge them
-                // to reduce existing number of BorderLinePrimitive2D(s)
-                for(const auto& rCandidate : getFrameBorders())
+                // get decomposition on one SdrFrameBorderData entry
+                Primitive2DContainer aPartial;
+                rCandidate.create2DDecomposition(
+                    aPartial,
+                    fMinimalDiscreteUnit);
+
+                for(const auto& aCandidatePartial : aPartial)
                 {
-                    // get decomposition on one SdrFrameBorderData entry
-                    Primitive2DContainer aPartial;
-                    rCandidate.create2DDecomposition(
-                        aPartial,
-                        fMinimalDiscreteUnit);
-
-                    for(const auto& aCandidatePartial : aPartial)
+                    if(aRetval.empty())
                     {
-                        if(aRetval.empty())
+                        // no local data yet, just add as 1st entry, done
+                        aRetval.append(aCandidatePartial);
+                    }
+                    else
+                    {
+                        bool bDidMerge(false);
+
+                        for(auto& aCandidateRetval : aRetval)
                         {
-                            // no local data yet, just add as 1st entry, done
-                            aRetval.append(aCandidatePartial);
+                            // try to merge by appending new data to existing data
+                            const drawinglayer::primitive2d::Primitive2DReference aMergeRetvalPartial(
+                                drawinglayer::primitive2d::tryMergeBorderLinePrimitive2D(
+                                    static_cast<BorderLinePrimitive2D*>(aCandidateRetval.get()),
+                                    static_cast<BorderLinePrimitive2D*>(aCandidatePartial.get())));
+
+                            if(aMergeRetvalPartial.is())
+                            {
+                                // could append, replace existing data with merged data, done
+                                aCandidateRetval = aMergeRetvalPartial;
+                                bDidMerge = true;
+                                break;
+                            }
+
+                            // try to merge by appending existing data to new data
+                            const drawinglayer::primitive2d::Primitive2DReference aMergePartialRetval(
+                                drawinglayer::primitive2d::tryMergeBorderLinePrimitive2D(
+                                    static_cast<BorderLinePrimitive2D*>(aCandidatePartial.get()),
+                                    static_cast<BorderLinePrimitive2D*>(aCandidateRetval.get())));
+
+                            if(aMergePartialRetval.is())
+                            {
+                                // could append, replace existing data with merged data, done
+                                aCandidateRetval = aMergePartialRetval;
+                                bDidMerge = true;
+                                break;
+                            }
                         }
-                        else
+
+                        if(!bDidMerge)
                         {
-                            bool bDidMerge(false);
-
-                            for(auto& aCandidateRetval : aRetval)
-                            {
-                                // try to merge by appending new data to existing data
-                                const drawinglayer::primitive2d::Primitive2DReference aMergeRetvalPartial(
-                                    drawinglayer::primitive2d::tryMergeBorderLinePrimitive2D(
-                                        static_cast<BorderLinePrimitive2D*>(aCandidateRetval.get()),
-                                        static_cast<BorderLinePrimitive2D*>(aCandidatePartial.get())));
-
-                                if(aMergeRetvalPartial.is())
-                                {
-                                    // could append, replace existing data with merged data, done
-                                    aCandidateRetval = aMergeRetvalPartial;
-                                    bDidMerge = true;
-                                    break;
-                                }
-
-                                // try to merge by appending existing data to new data
-                                const drawinglayer::primitive2d::Primitive2DReference aMergePartialRetval(
-                                    drawinglayer::primitive2d::tryMergeBorderLinePrimitive2D(
-                                        static_cast<BorderLinePrimitive2D*>(aCandidatePartial.get()),
-                                        static_cast<BorderLinePrimitive2D*>(aCandidateRetval.get())));
-
-                                if(aMergePartialRetval.is())
-                                {
-                                    // could append, replace existing data with merged data, done
-                                    aCandidateRetval = aMergePartialRetval;
-                                    bDidMerge = true;
-                                    break;
-                                }
-                            }
-
-                            if(!bDidMerge)
-                            {
-                                // no merge after checking all existing data, append as new segment
-                                aRetval.append(aCandidatePartial);
-                            }
+                            // no merge after checking all existing data, append as new segment
+                            aRetval.append(aCandidatePartial);
                         }
                     }
                 }
             }
 
-            rContainer.append(std::move(aRetval));
+            return new GroupPrimitive2D(std::move(aRetval));
         }
 
         SdrFrameBorderPrimitive2D::SdrFrameBorderPrimitive2D(
@@ -899,9 +896,9 @@ namespace drawinglayer::primitive2d
                 {
                     // conditions of last local decomposition have changed, delete
                     // possible content
-                    if(!getBuffered2DDecomposition().empty())
+                    if(hasBuffered2DDecomposition())
                     {
-                        const_cast< SdrFrameBorderPrimitive2D* >(this)->setBuffered2DDecomposition(Primitive2DContainer());
+                        const_cast< SdrFrameBorderPrimitive2D* >(this)->setBuffered2DDecomposition(nullptr);
                     }
 
                     // remember new conditions

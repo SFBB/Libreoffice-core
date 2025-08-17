@@ -21,6 +21,7 @@
 #include <config_wasm_strip.h>
 
 #include <SwSpellDialogChildWindow.hxx>
+#include <navipi.hxx>
 #include <svl/eitem.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/linguprops.hxx>
@@ -29,6 +30,7 @@
 #include <viewopt.hxx>
 #include <globals.h>
 #include <sfx2/infobar.hxx>
+#include <sfx2/lokhelper.hxx>
 #include <sfx2/request.hxx>
 #include <svl/whiter.hxx>
 #include <svx/srchdlg.hxx>
@@ -37,11 +39,14 @@
 #include <sfx2/dispatch.hxx>
 #include <sfx2/sidebar/SidebarChildWindow.hxx>
 #include <uivwimp.hxx>
+#include <unotxdoc.hxx>
 #include <avmedia/mediaplayer.hxx>
 #include <swmodule.hxx>
 #include <com/sun/star/linguistic2/XLinguProperties.hpp>
+#include <comphelper/servicehelper.hxx>
 #include <osl/diagnose.h>
 
+#include <navicfg.hxx>
 #include <sfx2/objface.hxx>
 #include <wrtsh.hxx>
 #include <edtwin.hxx>
@@ -68,11 +73,15 @@
 #include <memory>
 #include <swabstdlg.hxx>
 
+#include <sfx2/sidebar/SidebarController.hxx>
+
+#include <strings.hrc>
+
 using namespace ::com::sun::star;
 
 SFX_IMPL_NAMED_VIEWFACTORY(SwView, "Default")
 {
-    if (utl::ConfigManager::IsFuzzing() || SvtModuleOptions().IsWriter())
+    if (comphelper::IsFuzzing() || SvtModuleOptions().IsWriterInstalled())
     {
         SFX_VIEW_REGISTRATION(SwDocShell);
         SFX_VIEW_REGISTRATION(SwGlobalDocShell);
@@ -83,7 +92,7 @@ SFX_IMPL_INTERFACE(SwView, SfxViewShell)
 
 void SwView::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterChildWindow(SID_NAVIGATOR, true);
+    GetStaticInterface()->RegisterChildWindow(SwNavigatorWrapper::GetChildWindowId(), true); // SID_NAVIGATOR
 
     GetStaticInterface()->RegisterChildWindow(::sfx2::sidebar::SidebarChildWindow::GetChildWindowId());
 
@@ -115,17 +124,6 @@ view::XSelectionSupplier* SwView::GetUNOObject()
     return m_pViewImpl->GetUNOObject();
 }
 
-void SwView::ApplyAccessibilityOptions()
-{
-#if ENABLE_WASM_STRIP_ACCESSIBILITY
-#else
-    m_pWrtShell->ApplyAccessibilityOptions();
-    //to enable the right state of the selection cursor in readonly documents
-    if(GetDocShell()->IsReadOnly())
-        m_pWrtShell->ShowCursor();
-#endif
-}
-
 void SwView::SetMailMergeConfigItem(std::shared_ptr<SwMailMergeConfigItem> const & rConfigItem)
 {
     m_pViewImpl->SetMailMergeConfigItem(rConfigItem);
@@ -139,14 +137,10 @@ std::shared_ptr<SwMailMergeConfigItem> const & SwView::GetMailMergeConfigItem() 
 
 static bool lcl_IsViewMarks( const SwViewOption& rVOpt )
 {
-    return  rVOpt.IsHardBlank() &&
-            rVOpt.IsSoftHyph() &&
-            rVOpt.IsFieldShadings();
+    return  rVOpt.IsFieldShadings();
 }
 static void lcl_SetViewMarks(SwViewOption& rVOpt, bool bOn )
 {
-    rVOpt.SetHardBlank(bOn);
-    rVOpt.SetSoftHyph(bOn);
     rVOpt.SetAppearanceFlag(
             ViewOptFlags::FieldShadings, bOn, true);
 }
@@ -185,6 +179,7 @@ void SwView::RecheckBrowseMode()
             //SID_AUTOSPELL_MARKOFF,
             SID_TOGGLE_RESOLVED_NOTES, /* 11672*/
             FN_RULER,       /*20211*/
+            FN_VIEW_BOUNDARIES,  /*20212*/
             FN_VIEW_GRAPHIC,    /*20213*/
             FN_VIEW_BOUNDS,     /**/
             FN_VIEW_FIELDS,     /*20215*/
@@ -199,6 +194,9 @@ void SwView::RecheckBrowseMode()
             FN_PRINT_LAYOUT, /*20237*/
             FN_QRY_MERGE,   /*20364*/
             FN_SHADOWCURSOR, /**/
+            FN_SINGLE_PAGE_PER_ROW, /**/
+            FN_MULTIPLE_PAGES_PER_ROW, /**/
+            FN_BOOKVIEW, /**/
             0
         };
     // the view must not exist!
@@ -224,7 +222,8 @@ void SwView::StateViewOptions(SfxItemSet &rSet)
     while(nWhich)
     {
         bool bReadonly = GetDocShell()->IsReadOnly();
-        if (bReadonly && nWhich != FN_VIEW_GRAPHIC && nWhich != FN_HIGHLIGHT_CHAR_DF)
+        if (bReadonly && nWhich != FN_VIEW_GRAPHIC && nWhich != FN_HIGHLIGHT_CHAR_DF
+            && nWhich != SID_AUTOSPELL_CHECK)
         {
             rSet.DisableItem(nWhich);
             nWhich = 0;
@@ -251,8 +250,10 @@ void SwView::StateViewOptions(SfxItemSet &rSet)
                 aBool.SetValue( bState );
             }
             break;
+            case FN_VIEW_BOUNDARIES:
+                aBool.SetValue( pOpt->IsShowBoundaries()); break;
             case FN_VIEW_BOUNDS:
-                aBool.SetValue( pOpt->IsDocBoundaries()); break;
+                aBool.SetValue( pOpt->IsTextBoundaries()); break;
             case FN_VIEW_SECTION_BOUNDARIES:
                 aBool.SetValue(pOpt->IsSectionBoundaries()); break;
             case FN_VIEW_GRAPHIC:
@@ -367,6 +368,18 @@ void SwView::StateViewOptions(SfxItemSet &rSet)
             case SID_SPOTLIGHT_CHARSTYLES:
                 aBool.SetValue(m_bIsSpotlightCharStyles);
             break;
+            case FN_SINGLE_PAGE_PER_ROW:
+                aBool.SetValue( !pOpt->IsMultipageView());
+            break;
+            case FN_MULTIPLE_PAGES_PER_ROW:
+                aBool.SetValue( pOpt->GetViewLayoutColumns() == 0);
+            break;
+            case FN_BOOKVIEW:
+                aBool.SetValue( pOpt->IsViewLayoutBookMode());
+            break;
+            case SID_CLICK_CHANGE_ROTATION:
+                aBool.SetValue( pOpt->IsClickChangeRotation());
+            break;
         }
 
         if( nWhich )
@@ -418,14 +431,26 @@ void SwView::ExecViewOptions(SfxRequest &rReq)
 
     case FN_VIEW_BOUNDS:
         if( STATE_TOGGLE == eState )
-            bFlag = !pOpt->IsDocBoundaries();
-        pOpt->SetAppearanceFlag(ViewOptFlags::DocBoundaries, bFlag, true );
+            bFlag = !pOpt->IsTextBoundaries();
+        pOpt->SetTextBoundaries( bFlag );
         break;
 
     case FN_VIEW_SECTION_BOUNDARIES:
         if( STATE_TOGGLE == eState )
             bFlag = !pOpt->IsSectionBoundaries();
-        pOpt->SetAppearanceFlag(ViewOptFlags::SectionBoundaries, bFlag, true );
+        pOpt->SetSectionBoundaries( bFlag );
+        break;
+
+    case FN_VIEW_TABLEGRID:
+        if( STATE_TOGGLE == eState )
+            bFlag = !pOpt->IsTableBoundaries();
+        pOpt->SetTableBoundaries( bFlag );
+        break;
+
+    case FN_VIEW_BOUNDARIES:
+        if( STATE_TOGGLE == eState )
+            bFlag = !pOpt->IsShowBoundaries();
+        pOpt->SetShowBoundaries( bFlag );
         break;
 
     case SID_GRID_VISIBLE:
@@ -536,20 +561,32 @@ void SwView::ExecViewOptions(SfxRequest &rReq)
 
         pOpt->SetViewAnyRuler( bFlag );
         break;
-
-    case FN_VIEW_TABLEGRID:
-        if( STATE_TOGGLE == eState )
-            bFlag = !pOpt->IsTableBoundaries();
-        pOpt->SetAppearanceFlag(ViewOptFlags::TableBoundaries, bFlag, true );
-        break;
-
     case FN_VIEW_FIELDNAME:
+    {
         if( STATE_TOGGLE == eState )
             bFlag = !pOpt->IsFieldName() ;
-
-        pOpt->SetFieldName( bFlag );
+        const bool bDoAsk = officecfg::Office::Common::Misc::QueryShowFieldName::get();
+        short nresult = RET_YES;
+        if (bFlag && bDoAsk)
+        {
+            VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
+            auto pDlg = pFact->CreateQueryDialog(
+                GetWrtShell().GetView().GetFrameWeld(), SwResId(STR_QUERY_FIELDNAME_TITLE),
+                SwResId(STR_QUERY_FIELDNAME_TEXT), SwResId(STR_QUERY_FIELDNAME_QUESTION), true);
+            nresult = pDlg->Execute();
+            if (pDlg->ShowAgain() == false)
+            {
+                std::shared_ptr<comphelper::ConfigurationChanges> xChanges(
+                    comphelper::ConfigurationChanges::create());
+                officecfg::Office::Common::Misc::QueryShowFieldName::set(false, xChanges);
+                xChanges->commit();
+            }
+            pDlg->disposeOnce();
+        }
+        if (nresult == RET_YES)
+            pOpt->SetFieldName(bFlag);
         break;
-
+    }
     case FN_VIEW_MARKS:
         if( STATE_TOGGLE == eState )
             bFlag = !lcl_IsViewMarks(*pOpt) ;
@@ -564,26 +601,64 @@ void SwView::ExecViewOptions(SfxRequest &rReq)
         break;
 
     case SID_SPOTLIGHT_PARASTYLES:
-        if (!pArgs || (pArgs && !pArgs->HasItem(FN_PARAM_1)))
-        {
-            const SfxStringItem sDeckName(SID_SIDEBAR_DECK, "StyleListDeck");
-            GetDispatcher().ExecuteList(SID_SIDEBAR_DECK, SfxCallMode::SYNCHRON, { &sDeckName });
-        }
+    {
         if (STATE_TOGGLE == eState)
             bFlag = !m_bIsSpotlightParaStyles;
         m_bIsSpotlightParaStyles = bFlag;
-        break;
+
+        if (!comphelper::LibreOfficeKit::isActive() && m_bIsSpotlightParaStyles)
+        {
+            if (!pArgs || !pArgs->HasItem(FN_PARAM_1))
+            {
+                // If the sidebar isn't open, open it to the styles deck.
+                sfx2::sidebar::SidebarController* pController
+                    = sfx2::sidebar::SidebarController::GetSidebarControllerForFrame(
+                        GetViewFrame().GetFrame().GetFrameInterface());
+                if (!pController)
+                {
+                    const SfxStringItem sDeckName(SID_SIDEBAR_DECK, u"StyleListDeck"_ustr);
+                    GetDispatcher().ExecuteList(SID_SIDEBAR_DECK, SfxCallMode::SYNCHRON,
+                                                { &sDeckName });
+                }
+                else
+                {
+                    // assure the styles panel is filled
+                    pController->CreateDeck(u"StyleListDeck");
+                }
+            }
+        }
+    }
+    break;
 
     case SID_SPOTLIGHT_CHARSTYLES:
-        if (!pArgs || (pArgs && !pArgs->HasItem(FN_PARAM_1)))
-        {
-            const SfxStringItem sDeckName(SID_SIDEBAR_DECK, "StyleListDeck");
-            GetDispatcher().ExecuteList(SID_SIDEBAR_DECK, SfxCallMode::SYNCHRON, { &sDeckName });
-        }
+    {
         if (STATE_TOGGLE == eState)
             bFlag = !m_bIsSpotlightCharStyles;
         m_bIsSpotlightCharStyles = bFlag;
-        break;
+
+        if (!comphelper::LibreOfficeKit::isActive() && m_bIsSpotlightCharStyles)
+        {
+            if (!pArgs || !pArgs->HasItem(FN_PARAM_1))
+            {
+                // If the sidebar isn't open, open it to the styles deck.
+                sfx2::sidebar::SidebarController* pController
+                    = sfx2::sidebar::SidebarController::GetSidebarControllerForFrame(
+                        GetViewFrame().GetFrame().GetFrameInterface());
+                if (!pController)
+                {
+                    const SfxStringItem sDeckName(SID_SIDEBAR_DECK, u"StyleListDeck"_ustr);
+                    GetDispatcher().ExecuteList(SID_SIDEBAR_DECK, SfxCallMode::SYNCHRON,
+                                                { &sDeckName });
+                }
+                else
+                {
+                    // assure the styles panel is filled
+                    pController->CreateDeck(u"StyleListDeck");
+                }
+            }
+        }
+    }
+    break;
 
     case FN_VIEW_META_CHARS:
         if( STATE_TOGGLE == eState )
@@ -705,6 +780,26 @@ void SwView::ExecViewOptions(SfxRequest &rReq)
         pOpt->SetShowChangesInMargin( bFlag );
         break;
 
+    case FN_SINGLE_PAGE_PER_ROW:
+        pOpt->SetViewLayoutBookMode( false );
+        pOpt->SetViewLayoutColumns( 1 );
+        break;
+
+    case FN_MULTIPLE_PAGES_PER_ROW:
+        pOpt->SetViewLayoutBookMode( false );
+        pOpt->SetViewLayoutColumns( 0 );
+        break;
+
+    case FN_BOOKVIEW:
+        pOpt->SetViewLayoutColumns( 2 );
+        pOpt->SetViewLayoutBookMode( true );
+        break;
+    case SID_CLICK_CHANGE_ROTATION:
+        if( STATE_TOGGLE == eState )
+            bFlag = !pOpt->IsClickChangeRotation();
+        pOpt->SetClickChangeRotation(bFlag);
+    break;
+
     default:
         OSL_FAIL("wrong request method");
         return;
@@ -714,7 +809,7 @@ void SwView::ExecViewOptions(SfxRequest &rReq)
     bool bWebView =  dynamic_cast<const SwWebView*>(this) !=  nullptr;
     SwWrtShell &rSh = GetWrtShell();
     rSh.StartAction();
-    SwModule* pModule = SW_MOD();
+    SwModule* pModule = SwModule::get();
     if( *rSh.GetViewOptions() != *pOpt )
     {
         rSh.ApplyViewOptions( *pOpt );
@@ -733,6 +828,14 @@ void SwView::ExecViewOptions(SfxRequest &rReq)
         rSh.ResetModified();
 
     pModule->ApplyUsrPref( *pOpt, this, bWebView ? SvViewOpt::DestWeb : SvViewOpt::DestText );
+
+    if (nSlot == SID_SPOTLIGHT_CHARSTYLES || nSlot == SID_SPOTLIGHT_PARASTYLES)
+    {
+        SwXTextDocument* pModel = comphelper::getFromUnoTunnel<SwXTextDocument>(GetCurrentDocument());
+        SfxLokHelper::notifyViewRenderState(this, pModel);
+        if (vcl::Window *pMyWin = rSh.GetWin())
+            pMyWin->Invalidate();
+    }
 
     // #i6193# let postits know about new spellcheck setting
     if ( nSlot == SID_AUTOSPELL_CHECK )
@@ -755,16 +858,58 @@ void SwView::ExecViewOptions(SfxRequest &rReq)
 void SwView::ExecFormatFootnote()
 {
     SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-    ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSwFootNoteOptionDlg(GetFrameWeld(), GetWrtShell()));
-    pDlg->Execute();
+    VclPtr<VclAbstractDialog> pDlg(pFact->CreateSwFootNoteOptionDlg(GetFrameWeld(), GetWrtShell()));
+    pDlg->StartExecuteAsync(
+        [pDlg] (sal_Int32 /*nResult*/)->void
+        {
+            pDlg->disposeOnce();
+        }
+    );
 }
 
 void SwView::ExecNumberingOutline(SfxItemPool & rPool)
 {
-    SfxItemSetFixed<FN_PARAM_1, FN_PARAM_1> aTmp(rPool);
+    SfxItemSet aTmp(SfxItemSet::makeFixedSfxItemSet<FN_PARAM_1, FN_PARAM_1>(rPool));
     SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-    ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateOutlineTabDialog(GetFrameWeld(), &aTmp, GetWrtShell()));
-    pDlg->Execute();
+    VclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateOutlineTabDialog(GetFrameWeld(), &aTmp, GetWrtShell()));
+    pDlg->StartExecuteAsync(
+        [pDlg] (sal_Int32 /*nResult*/)->void
+        {
+            pDlg->disposeOnce();
+        }
+    );
+}
+
+void SwView::ExecNavigatorWin(SfxRequest& rReq)
+{
+    const SfxItemSet *pArgs = rReq.GetArgs();
+    sal_uInt16 nSlot = rReq.GetSlot();
+
+    switch (nSlot)
+    {
+        case SID_NAVIGATOR_SELECT_COMMENT:
+        {
+            const SfxPoolItem* pItem;
+            if (pArgs && pArgs->HasItem(FN_PARAM_1, &pItem))
+            {
+                sal_uInt16 aCommentId = static_cast<const SfxUInt16Item*>(pItem)->GetValue();
+                if (SfxChildWindow* pWin = GetViewFrame().GetChildWindow(SID_NAVIGATOR))
+                {
+                    SwNavigatorWin* pNavWin = static_cast<SwNavigatorWin*>(pWin->GetWindow());
+                    if (pNavWin->m_xNavi && pNavWin->m_xNavi->m_xContentTree)
+                        pNavWin->m_xNavi->m_xContentTree->BringCommentToAttention(aCommentId);
+                }
+                else
+                    SAL_WARN("sw.ui", "GetChildWindow(SID_NAVIGATOR) == nullptr");
+            }
+            else
+                SAL_WARN("sw.ui", "failed to extract FN_PARAM_1 i.e. CommentNumber");
+        }
+        break;
+        default:
+            assert(false && "invalid slot!");
+            break;
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

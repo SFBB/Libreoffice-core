@@ -16,6 +16,14 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
+#include <config_gpgme.h>
+#if HAVE_FEATURE_GPGME
+#include <com/sun/star/xml/crypto/GPGSEInitializer.hpp>
+#include <com/sun/star/xml/crypto/SEInitializer.hpp>
+#include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
+#endif
+#include <com/sun/star/security/DocumentDigitalSignatures.hpp>
+#include <com/sun/star/security/XCertificate.hpp>
 
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
 #include <com/sun/star/ui/dialogs/XAsynchronousExecutableDialog.hpp>
@@ -55,15 +63,16 @@
 #include <svl/eitem.hxx>
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
+#include <comphelper/namedvaluecollection.hxx>
 #include <tools/urlobj.hxx>
 #include <tools/json_writer.hxx>
-#include <tools/urlobj.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <comphelper/mimeconfighelper.hxx>
 #include <comphelper/lok.hxx>
+#include <comphelper/xmlsechelper.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <utility>
 #include <vcl/svapp.hxx>
@@ -72,6 +81,7 @@
 #include <unotools/tempfile.hxx>
 #include <unotools/useroptions.hxx>
 
+#include <sfx2/docfile.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <sfx2/strings.hrc>
@@ -81,7 +91,6 @@
 #include <sfx2/sfxuno.hxx>
 #include <sfx2/viewsh.hxx>
 #include <sfx2/bindings.hxx>
-#include <alienwarn.hxx>
 
 #include <memory>
 #include <string_view>
@@ -93,6 +102,9 @@
 #include <com/sun/star/system/SystemShellExecuteFlags.hpp>
 
 #include <osl/file.hxx>
+#include <svl/cryptosign.hxx>
+
+#include <vcl/abstdlg.hxx>
 
 #ifdef _WIN32
 #include <Shlobj.h>
@@ -210,27 +222,27 @@ class DocumentSettingsGuard
 
     bool m_bRestoreSettings;
 public:
-    DocumentSettingsGuard( const uno::Reference< frame::XModel >& xModel, bool bReadOnly, bool bRestore )
+    DocumentSettingsGuard( const uno::Reference< frame::XModel2 >& xModel, bool bReadOnly, bool bRestore )
     : m_bPreserveReadOnly( false )
     , m_bReadOnlySupported( false )
     , m_bRestoreSettings( bRestore )
     {
         try
         {
-            uno::Reference< lang::XMultiServiceFactory > xDocSettingsSupplier( xModel, uno::UNO_QUERY_THROW );
-            m_xDocumentSettings.set(
-                xDocSettingsSupplier->createInstance( "com.sun.star.document.Settings" ),
-                uno::UNO_QUERY_THROW );
-
-            try
+            uno::Reference< lang::XMultiServiceFactory > xDocSettingsSupplier( xModel, uno::UNO_QUERY );
+            if (xDocSettingsSupplier)
             {
-                OUString aLoadReadonlyString( "LoadReadonly" );
-                m_xDocumentSettings->getPropertyValue( aLoadReadonlyString ) >>= m_bPreserveReadOnly;
-                m_xDocumentSettings->setPropertyValue( aLoadReadonlyString, uno::Any( bReadOnly ) );
-                m_bReadOnlySupported = true;
+                m_xDocumentSettings.set(
+                    xDocSettingsSupplier->createInstance( u"com.sun.star.document.Settings"_ustr ),
+                    uno::UNO_QUERY );
+                if (m_xDocumentSettings)
+                {
+                    OUString aLoadReadonlyString( u"LoadReadonly"_ustr );
+                    m_xDocumentSettings->getPropertyValue( aLoadReadonlyString ) >>= m_bPreserveReadOnly;
+                    m_xDocumentSettings->setPropertyValue( aLoadReadonlyString, uno::Any( bReadOnly ) );
+                    m_bReadOnlySupported = true;
+                }
             }
-            catch( const uno::Exception& )
-            {}
         }
         catch( const uno::Exception& )
         {}
@@ -246,7 +258,7 @@ public:
             try
             {
                 if ( m_bReadOnlySupported )
-                    m_xDocumentSettings->setPropertyValue( "LoadReadonly", uno::Any( m_bPreserveReadOnly ) );
+                    m_xDocumentSettings->setPropertyValue( u"LoadReadonly"_ustr, uno::Any( m_bPreserveReadOnly ) );
             }
             catch( const uno::Exception& )
             {
@@ -262,7 +274,7 @@ public:
 class ModelData_Impl
 {
     SfxStoringHelper* m_pOwner;
-    uno::Reference< frame::XModel > m_xModel;
+    uno::Reference< frame::XModel2 > m_xModel;
     uno::Reference< frame::XStorable > m_xStorable;
     uno::Reference< frame::XStorable2 > m_xStorable2;
 
@@ -276,25 +288,27 @@ class ModelData_Impl
     ::comphelper::SequenceAsHashMap m_aMediaDescrHM;
 
     bool m_bRecommendReadOnly;
+    bool m_bSignWithDefaultSignature;
 
     DECL_LINK(OptionsDialogClosedHdl, css::ui::dialogs::DialogClosedEvent*, void);
 
 public:
     ModelData_Impl( SfxStoringHelper& aOwner,
-                    uno::Reference< frame::XModel > xModel,
+                    uno::Reference< frame::XModel2 > xModel,
                     const uno::Sequence< beans::PropertyValue >& aMediaDescr );
 
     ~ModelData_Impl();
 
     void FreeDocumentProps();
 
-    uno::Reference< frame::XModel > const & GetModel() const;
+    uno::Reference< frame::XModel2 > const & GetModel() const;
     uno::Reference< frame::XStorable > const & GetStorable();
     uno::Reference< frame::XStorable2 > const & GetStorable2();
 
     ::comphelper::SequenceAsHashMap& GetMediaDescr() { return m_aMediaDescrHM; }
 
     bool IsRecommendReadOnly() const { return m_bRecommendReadOnly; }
+    bool IsSignWithDefaultSignature() const { return m_bSignWithDefaultSignature; }
 
     const ::comphelper::SequenceAsHashMap& GetDocProps();
 
@@ -326,8 +340,8 @@ public:
                                 bool bPreselectPassword,
                                 OUString& aSuggestedDir,
                                 sal_Int16 nDialog,
-                                const OUString& rStandardDir,
-                                const css::uno::Sequence< OUString >& rDenyList
+                                const css::uno::Sequence<OUString>& rDenyList,
+                                SignatureState const nScriptingSignatureState
                                 );
 
     bool ShowDocumentInfoDialog();
@@ -340,12 +354,13 @@ public:
 
 
 ModelData_Impl::ModelData_Impl( SfxStoringHelper& aOwner,
-                                uno::Reference< frame::XModel > xModel,
+                                uno::Reference< frame::XModel2 > xModel,
                                 const uno::Sequence< beans::PropertyValue >& aMediaDescr )
 : m_pOwner( &aOwner )
 , m_xModel(std::move( xModel ))
 , m_aMediaDescrHM( aMediaDescr )
 , m_bRecommendReadOnly( false )
+, m_bSignWithDefaultSignature( false )
 {
     CheckInteractionHandler();
 }
@@ -367,14 +382,13 @@ void ModelData_Impl::FreeDocumentProps()
 }
 
 
-uno::Reference< frame::XModel > const & ModelData_Impl::GetModel() const
+uno::Reference< frame::XModel2 > const & ModelData_Impl::GetModel() const
 {
     if ( !m_xModel.is() )
         throw uno::RuntimeException();
 
     return m_xModel;
 }
-
 
 uno::Reference< frame::XStorable > const & ModelData_Impl::GetStorable()
 {
@@ -437,7 +451,7 @@ const ::comphelper::SequenceAsHashMap& ModelData_Impl::GetModuleProps()
 
 OUString ModelData_Impl::GetDocServiceName()
 {
-    return GetModuleProps().getUnpackedValueOrDefault("ooSetupFactoryDocumentService", OUString());
+    return GetModuleProps().getUnpackedValueOrDefault(u"ooSetupFactoryDocumentService"_ustr, OUString());
 }
 
 
@@ -469,7 +483,7 @@ uno::Sequence< beans::PropertyValue > ModelData_Impl::GetDocServiceDefaultFilter
 {
     uno::Sequence< beans::PropertyValue > aProps;
 
-    const OUString aFilterName = GetModuleProps().getUnpackedValueOrDefault( "ooSetupFactoryDefaultFilter", OUString() );
+    const OUString aFilterName = GetModuleProps().getUnpackedValueOrDefault( u"ooSetupFactoryDefaultFilter"_ustr, OUString() );
 
     m_pOwner->GetFilterConfiguration()->getByName( aFilterName ) >>= aProps;
 
@@ -485,10 +499,10 @@ uno::Sequence< beans::PropertyValue > ModelData_Impl::GetDocServiceDefaultFilter
     if ( aProps.hasElements() )
     {
         ::comphelper::SequenceAsHashMap aFiltHM( aProps );
-        SfxFilterFlags nFlags = static_cast<SfxFilterFlags>(aFiltHM.getUnpackedValueOrDefault("Flags",
+        SfxFilterFlags nFlags = static_cast<SfxFilterFlags>(aFiltHM.getUnpackedValueOrDefault(u"Flags"_ustr,
                                                         sal_Int32(0) ));
         if ( ( ( nFlags & nMust ) == nMust ) && !( nFlags & nDont ) )
-            aFilterProps = aProps;
+            aFilterProps = std::move(aProps);
     }
 
     return aFilterProps;
@@ -497,7 +511,7 @@ uno::Sequence< beans::PropertyValue > ModelData_Impl::GetDocServiceDefaultFilter
 
 uno::Sequence< beans::PropertyValue > ModelData_Impl::GetDocServiceAnyFilter( SfxFilterFlags nMust, SfxFilterFlags nDont )
 {
-    uno::Sequence< beans::NamedValue > aSearchRequest { { "DocumentService", css::uno::Any(GetDocServiceName()) } };
+    uno::Sequence< beans::NamedValue > aSearchRequest { { u"DocumentService"_ustr, css::uno::Any(GetDocServiceName()) } };
 
     return ::comphelper::MimeConfigurationHelper::SearchForFilter( m_pOwner->GetFilterQuery(), aSearchRequest, nMust, nDont );
 }
@@ -518,8 +532,8 @@ uno::Sequence< beans::PropertyValue > ModelData_Impl::GetPreselectedFilter_Impl(
         // Preselect PDF-Filter for EXPORT
         uno::Sequence< beans::NamedValue > aSearchRequest
         {
-            { "Type", css::uno::Any(OUString("pdf_Portable_Document_Format")) },
-            { "DocumentService", css::uno::Any(GetDocServiceName()) }
+            { u"Type"_ustr, css::uno::Any(u"pdf_Portable_Document_Format"_ustr) },
+            { u"DocumentService"_ustr, css::uno::Any(GetDocServiceName()) }
         };
 
         aFilterProps = ::comphelper::MimeConfigurationHelper::SearchForFilter( m_pOwner->GetFilterQuery(), aSearchRequest, nMust, nDont );
@@ -529,8 +543,8 @@ uno::Sequence< beans::PropertyValue > ModelData_Impl::GetPreselectedFilter_Impl(
         // Preselect EPUB filter for export.
         uno::Sequence<beans::NamedValue> aSearchRequest
         {
-            { "Type", css::uno::Any(OUString("writer_EPUB_Document")) },
-            { "DocumentService", css::uno::Any(GetDocServiceName()) }
+            { u"Type"_ustr, css::uno::Any(u"writer_EPUB_Document"_ustr) },
+            { u"DocumentService"_ustr, css::uno::Any(GetDocServiceName()) }
         };
 
         aFilterProps = ::comphelper::MimeConfigurationHelper::SearchForFilter( m_pOwner->GetFilterQuery(), aSearchRequest, nMust, nDont );
@@ -606,8 +620,8 @@ bool ModelData_Impl::ExecuteFilterDialog_Impl( const OUString& aFilterName, bool
 
                         if ( bIsAsync )
                         {
-                            m_xFilterProperties = xFilterProperties;
-                            m_xFilterDialog = xAsyncFilterDialog;
+                            m_xFilterProperties = std::move(xFilterProperties);
+                            m_xFilterDialog = std::move(xAsyncFilterDialog);
 
                             auto aDialogClosedListener = rtl::Reference(new svt::DialogClosedListener());
                             aDialogClosedListener->SetDialogClosedLink( LINK( this, ModelData_Impl, OptionsDialogClosedHdl ) );
@@ -619,8 +633,8 @@ bool ModelData_Impl::ExecuteFilterDialog_Impl( const OUString& aFilterName, bool
                             if( !xFilterDialog->execute() )
                             {
                                 throw task::ErrorCodeIOException(
-                                    ("ModelData_Impl::ExecuteFilterDialog_Impl:"
-                                    " ERRCODE_IO_ABORT"),
+                                    (u"ModelData_Impl::ExecuteFilterDialog_Impl:"
+                                    " ERRCODE_IO_ABORT"_ustr),
                                     uno::Reference< uno::XInterface >(),
                                     sal_uInt32(ERRCODE_IO_ABORT));
                             }
@@ -657,16 +671,17 @@ bool ModelData_Impl::ExecuteFilterDialog_Impl( const OUString& aFilterName, bool
 
 void SfxStoringHelper::CallFinishGUIStoreModel()
 {
-    ::comphelper::SequenceAsHashMap::const_iterator aFileNameIter = m_xModelData->GetMediaDescr().find( OUString("URL") );
+    ::comphelper::SequenceAsHashMap::const_iterator aFileNameIter = m_xModelData->GetMediaDescr().find( u"URL"_ustr );
     uno::Sequence< beans::PropertyValue > aFilterProps = m_xModelData->GetPreselectedFilter_Impl( m_nStoreMode );
     const OUString aFilterFromMediaDescr = m_xModelData->GetMediaDescr().getUnpackedValueOrDefault( aFilterNameString, OUString() );
     const OUString aOldFilterName = m_xModelData->GetDocProps().getUnpackedValueOrDefault( aFilterNameString, OUString() );
     ::comphelper::SequenceAsHashMap aFilterPropsHM( aFilterProps );
-    OUString aFilterName = aFilterPropsHM.getUnpackedValueOrDefault( "Name", OUString() );
+    OUString aFilterName = aFilterPropsHM.getUnpackedValueOrDefault( u"Name"_ustr, OUString() );
 
     SfxStoringHelper::FinishGUIStoreModel(aFileNameIter, *m_xModelData, m_bRemote, m_nStoreMode, aFilterProps,
                                           m_bSetStandardName, m_bPreselectPassword, m_bDialogUsed,
-                                          aFilterFromMediaDescr, aOldFilterName, m_aArgsSequence, aFilterName);
+                                          aFilterFromMediaDescr, aOldFilterName, m_aArgsSequence,
+                                          aFilterName, m_nScriptingSignatureState);
 
     if (SfxViewShell::Current())
         SfxViewShell::Current()->SetStoringHelper(nullptr);
@@ -674,10 +689,12 @@ void SfxStoringHelper::CallFinishGUIStoreModel()
 
 IMPL_LINK( ModelData_Impl, OptionsDialogClosedHdl, css::ui::dialogs::DialogClosedEvent*, pEvt, void )
 {
+    SfxViewShell* pNotifier = comphelper::LibreOfficeKit::isActive() ? SfxViewShell::Current() : nullptr;
+
     if (pEvt->DialogResult == RET_OK && m_xFilterProperties)
     {
-        if ( comphelper::LibreOfficeKit::isActive() && SfxViewShell::Current() )
-            SfxViewShell::Current()->libreOfficeKitViewCallback( LOK_CALLBACK_EXPORT_FILE, "PENDING"_ostr );
+        if (pNotifier)
+            pNotifier->libreOfficeKitViewCallback( LOK_CALLBACK_EXPORT_FILE, "PENDING"_ostr );
 
         const uno::Sequence< beans::PropertyValue > aPropsFromDialog = m_xFilterProperties->getPropertyValues();
         for ( const auto& rProp : aPropsFromDialog )
@@ -685,9 +702,9 @@ IMPL_LINK( ModelData_Impl, OptionsDialogClosedHdl, css::ui::dialogs::DialogClose
 
         m_pOwner->CallFinishGUIStoreModel();
     }
-    else if ( comphelper::LibreOfficeKit::isActive() && SfxViewShell::Current() )
+    else if (pNotifier)
     {
-        SfxViewShell::Current()->libreOfficeKitViewCallback( LOK_CALLBACK_EXPORT_FILE, "ABORT"_ostr );
+        pNotifier->libreOfficeKitViewCallback( LOK_CALLBACK_EXPORT_FILE, "ABORT"_ostr );
     }
 }
 
@@ -701,7 +718,7 @@ sal_Int8 ModelData_Impl::CheckSaveAcceptable( sal_Int8 nCurStatus )
         // in case the configuration entry is not set or set to false
         // or in case of version creation
         if ( officecfg::Office::Common::Save::Document::AlwaysSaveAs::get()
-          && GetMediaDescr().find( OUString("VersionComment") ) == GetMediaDescr().end() )
+          && GetMediaDescr().find( u"VersionComment"_ustr ) == GetMediaDescr().end() )
         {
             // notify the user that SaveAs is going to be done
             std::unique_ptr<weld::MessageDialog> xMessageBox(Application::CreateMessageDialog(SfxStoringHelper::GetModelWindow(m_xModel),
@@ -753,7 +770,7 @@ sal_Int8 ModelData_Impl::CheckStateForSave()
     DBG_ASSERT( GetMediaDescr().size() == aAcceptedArgs.size(),
                 "Unacceptable parameters are provided in Save request!\n" );
     if ( GetMediaDescr().size() != aAcceptedArgs.size() )
-        GetMediaDescr() = aAcceptedArgs;
+        GetMediaDescr() = std::move(aAcceptedArgs);
 
     // check that the old filter is acceptable
     return CheckFilter( GetDocProps().getUnpackedValueOrDefault(aFilterNameString, OUString()) );
@@ -770,13 +787,13 @@ sal_Int8 ModelData_Impl::CheckFilter( const OUString& aFilterName )
         m_pOwner->GetFilterConfiguration()->getByName( aFilterName ) >>= aFilterProps;
 
         aFiltPropsHM = ::comphelper::SequenceAsHashMap( aFilterProps );
-        nFiltFlags = static_cast<SfxFilterFlags>(aFiltPropsHM.getUnpackedValueOrDefault("Flags", sal_Int32(0) ));
+        nFiltFlags = static_cast<SfxFilterFlags>(aFiltPropsHM.getUnpackedValueOrDefault(u"Flags"_ustr, sal_Int32(0) ));
     }
 
     // only a temporary solution until default filter retrieving feature is implemented
     // then GetDocServiceDefaultFilter() must be used
     ::comphelper::SequenceAsHashMap aDefFiltPropsHM = GetDocServiceDefaultFilterCheckFlags( SfxFilterFlags::IMPORT | SfxFilterFlags::EXPORT, SfxFilterFlags::NONE );
-    SfxFilterFlags nDefFiltFlags = static_cast<SfxFilterFlags>(aDefFiltPropsHM.getUnpackedValueOrDefault("Flags", sal_Int32(0) ));
+    SfxFilterFlags nDefFiltFlags = static_cast<SfxFilterFlags>(aDefFiltPropsHM.getUnpackedValueOrDefault(u"Flags"_ustr, sal_Int32(0) ));
 
     bool bAsk = false;
 
@@ -803,7 +820,7 @@ sal_Int8 ModelData_Impl::CheckFilter( const OUString& aFilterName )
     {
         OUString aSupportedFilters;
         const ::comphelper::SequenceAsHashMap& rDocumentProperties = GetDocProps();
-        const css::uno::Sequence<css::beans::NamedValue> aEncryptionData = rDocumentProperties.getUnpackedValueOrDefault("EncryptionData", css::uno::Sequence<css::beans::NamedValue>());
+        const css::uno::Sequence<css::beans::NamedValue> aEncryptionData = rDocumentProperties.getUnpackedValueOrDefault(u"EncryptionData"_ustr, css::uno::Sequence<css::beans::NamedValue>());
         if (aEncryptionData != css::uno::Sequence<css::beans::NamedValue>())
         {
             for (const css::beans::NamedValue& aNamedValue : aEncryptionData)
@@ -818,7 +835,7 @@ sal_Int8 ModelData_Impl::CheckFilter( const OUString& aFilterName )
         // if 'SupportedFilters' is empty assume that all filters are supported.
         if (!aSupportedFilters.isEmpty())
         {
-            const OUString aSelectedFilter = aFiltPropsHM.getUnpackedValueOrDefault("UIName", OUString());
+            const OUString aSelectedFilter = aFiltPropsHM.getUnpackedValueOrDefault(u"UIName"_ustr, OUString());
 
             aSupportedFilters = ";" + aSupportedFilters + ";";
             const OUString aSearchToken = ";" + aSelectedFilter + ";";
@@ -830,15 +847,17 @@ sal_Int8 ModelData_Impl::CheckFilter( const OUString& aFilterName )
     {
         // the default filter is acceptable and the old filter is alien one
         // so ask to make a saveAs operation
-        const OUString aUIName = aFiltPropsHM.getUnpackedValueOrDefault("UIName", OUString() );
-        const OUString aDefUIName = aDefFiltPropsHM.getUnpackedValueOrDefault("UIName", OUString() );
-        const OUString aPreusedFilterName = GetDocProps().getUnpackedValueOrDefault("PreusedFilterName", OUString() );
-        const OUString aDefType = aDefFiltPropsHM.getUnpackedValueOrDefault( "Type", OUString() );
+        const OUString aUIName = aFiltPropsHM.getUnpackedValueOrDefault(u"UIName"_ustr, OUString() );
+        const OUString aType = aFiltPropsHM.getUnpackedValueOrDefault( u"Type"_ustr, OUString() );
+        const OUString aExtension = GetRecommendedExtension(aType);
+        const OUString aPreusedFilterName = GetDocProps().getUnpackedValueOrDefault(u"PreusedFilterName"_ustr, OUString() );
+        const OUString aDefUIName = aDefFiltPropsHM.getUnpackedValueOrDefault(u"UIName"_ustr, OUString() );
+        const OUString aDefType = aDefFiltPropsHM.getUnpackedValueOrDefault( u"Type"_ustr, OUString() );
         const OUString aDefExtension = GetRecommendedExtension( aDefType );
 
         if ( aPreusedFilterName != aFilterName && aUIName != aDefUIName )
         {
-            if ( !SfxStoringHelper::WarnUnacceptableFormat( GetModel(), aUIName, aDefExtension,
+            if ( !SfxStoringHelper::WarnUnacceptableFormat( GetModel(), aUIName,aExtension, aDefExtension,
                                                             static_cast<bool>( nDefFiltFlags & SfxFilterFlags::ALIEN ) ) )
                 return STATUS_SAVEAS_STANDARDNAME;
         }
@@ -850,7 +869,7 @@ sal_Int8 ModelData_Impl::CheckFilter( const OUString& aFilterName )
 
 bool ModelData_Impl::CheckFilterOptionsDialogExistence()
 {
-    uno::Sequence< beans::NamedValue > aSearchRequest { { "DocumentService", css::uno::Any(GetDocServiceName()) } };
+    uno::Sequence< beans::NamedValue > aSearchRequest { { u"DocumentService"_ustr, css::uno::Any(GetDocServiceName()) } };
 
     uno::Reference< container::XEnumeration > xFilterEnum =
                                     m_pOwner->GetFilterQuery()->createSubSetEnumerationByProperties( aSearchRequest );
@@ -861,7 +880,7 @@ bool ModelData_Impl::CheckFilterOptionsDialogExistence()
         if ( xFilterEnum->nextElement() >>= aProps )
         {
             ::comphelper::SequenceAsHashMap aPropsHM( aProps );
-            if ( !aPropsHM.getUnpackedValueOrDefault("UIComponent", OUString()).isEmpty() )
+            if ( !aPropsHM.getUnpackedValueOrDefault(u"UIComponent"_ustr, OUString()).isEmpty() )
                 return true;
         }
     }
@@ -877,8 +896,8 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
                                             bool bPreselectPassword,
                                             OUString& aSuggestedDir,
                                             sal_Int16 nDialog,
-                                            const OUString& rStandardDir,
-                                            const css::uno::Sequence< OUString >& rDenyList)
+                                            const css::uno::Sequence<OUString>& rDenyList,
+                                            SignatureState const nScriptingSignatureState)
 {
     if ( nStoreMode == SAVEASREMOTE_REQUESTED )
         nStoreMode = SAVEAS_REQUESTED;
@@ -886,12 +905,12 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
     bool bUseFilterOptions = false;
 
     ::comphelper::SequenceAsHashMap::const_iterator aOverwriteIter =
-                GetMediaDescr().find( OUString("Overwrite") );
+                GetMediaDescr().find( u"Overwrite"_ustr );
 
     // the file name must be specified if overwrite option is set
     if ( aOverwriteIter != GetMediaDescr().end() )
            throw task::ErrorCodeIOException(
-               "ModelData_Impl::OutputFileDialog: ERRCODE_IO_INVALIDPARAMETER",
+               u"ModelData_Impl::OutputFileDialog: ERRCODE_IO_INVALIDPARAMETER"_ustr,
                uno::Reference< uno::XInterface >(),
                sal_uInt32(ERRCODE_IO_INVALIDPARAMETER));
 
@@ -936,27 +955,38 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
     SfxFilterFlags nMust = getMustFlags( nStoreMode );
     SfxFilterFlags nDont = getDontFlags( nStoreMode );
     weld::Window* pFrameWin = SfxStoringHelper::GetModelWindow(m_xModel);
+    OUString sPreselectedDir
+        = GetDocProps().getUnpackedValueOrDefault("ExportDirectory", OUString());
+
+    // Fall back to the document base URL - but only if the document is not based on a template.
+    // Otherwise the template's directory would be used, which is not what we want.
+    SfxObjectShell* pDocShell = SfxViewShell::Current()->GetObjectShell();
+    if (sPreselectedDir.isEmpty() && pDocShell && !pDocShell->IsBasedOnTemplate())
+        sPreselectedDir = GetDocProps().getUnpackedValueOrDefault("DocumentBaseURL", OUString());
+    INetURLObject aObj(sPreselectedDir);
+    aObj.removeSegment(); // remove file name from URL
+    sPreselectedDir = aObj.GetMainURL(INetURLObject::DecodeMechanism::NONE);
     if ( ( nStoreMode & EXPORT_REQUESTED ) && !( nStoreMode & WIDEEXPORT_REQUESTED ) )
     {
         if ( ( nStoreMode & PDFEXPORT_REQUESTED ) && !aPreselectedFilterPropsHM.empty() )
         {
             // this is a PDF export
             // the filter options has been shown already
-            const OUString aFilterUIName = aPreselectedFilterPropsHM.getUnpackedValueOrDefault( "UIName", OUString() );
-            pFileDlg.reset(new sfx2::FileDialogHelper( aDialogMode, aDialogFlags, aFilterUIName, u"pdf", rStandardDir, rDenyList, pFrameWin ));
+            const OUString aFilterUIName = aPreselectedFilterPropsHM.getUnpackedValueOrDefault( u"UIName"_ustr, OUString() );
+            pFileDlg.reset(new sfx2::FileDialogHelper( aDialogMode, aDialogFlags, aFilterUIName, u"pdf", sPreselectedDir, rDenyList, pFrameWin ));
             pFileDlg->SetCurrentFilter( aFilterUIName );
         }
         else if ((nStoreMode & EPUBEXPORT_REQUESTED) && !aPreselectedFilterPropsHM.empty())
         {
             // This is an EPUB export, the filter options has been shown already.
-            const OUString aFilterUIName = aPreselectedFilterPropsHM.getUnpackedValueOrDefault( "UIName", OUString() );
-            pFileDlg.reset(new sfx2::FileDialogHelper(aDialogMode, aDialogFlags, aFilterUIName, u"epub", rStandardDir, rDenyList, pFrameWin));
+            const OUString aFilterUIName = aPreselectedFilterPropsHM.getUnpackedValueOrDefault( u"UIName"_ustr, OUString() );
+            pFileDlg.reset(new sfx2::FileDialogHelper(aDialogMode, aDialogFlags, aFilterUIName, u"epub", sPreselectedDir, rDenyList, pFrameWin));
             pFileDlg->SetCurrentFilter(aFilterUIName);
         }
         else
         {
             // This is the normal dialog
-            pFileDlg.reset(new sfx2::FileDialogHelper( aDialogMode, aDialogFlags, aDocServiceName, nDialog, nMust, nDont, rStandardDir, rDenyList, pFrameWin ));
+            pFileDlg.reset(new sfx2::FileDialogHelper( aDialogMode, aDialogFlags, aDocServiceName, nDialog, nMust, nDont, sPreselectedDir, rDenyList, pFrameWin ));
         }
 
         sfx2::FileDialogHelper::Context eCtxt = sfx2::FileDialogHelper::UnknownContext;
@@ -968,7 +998,6 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
             eCtxt = sfx2::FileDialogHelper::WriterExport;
         else if ( aDocServiceName == "com.sun.star.sheet.SpreadsheetDocument" )
             eCtxt = sfx2::FileDialogHelper::CalcExport;
-
         if ( eCtxt != sfx2::FileDialogHelper::UnknownContext )
                pFileDlg->SetContext( eCtxt );
 
@@ -987,7 +1016,7 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
     {
         // This is the normal save as dialog
         pFileDlg.reset(new sfx2::FileDialogHelper( aDialogMode, aDialogFlags, aDocServiceName, nDialog,
-            nMust, nDont, rStandardDir, rDenyList, pFrameWin ));
+            nMust, nDont, sPreselectedDir, rDenyList, pFrameWin ));
         pFileDlg->CreateMatcher( aDocServiceName );
 
         sfx2::FileDialogHelper::Context eCtxt = sfx2::FileDialogHelper::UnknownContext;
@@ -1011,8 +1040,8 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
     if ( ( nStoreMode & EXPORT_REQUESTED ) && !( nStoreMode & WIDEEXPORT_REQUESTED ) )
     {
         // it is export, set the preselected filter
-        pFileDlg->SetCurrentFilter( aPreselectedFilterPropsHM.getUnpackedValueOrDefault( "UIName", OUString() ) );
-        aAdjustToType = aPreselectedFilterPropsHM.getUnpackedValueOrDefault( "Type", OUString() );
+        pFileDlg->SetCurrentFilter( aPreselectedFilterPropsHM.getUnpackedValueOrDefault( u"UIName"_ustr, OUString() ) );
+        aAdjustToType = aPreselectedFilterPropsHM.getUnpackedValueOrDefault( u"Type"_ustr, OUString() );
     }
     // it is no export, bSetStandardName == true means that user agreed to store document in the default (default default ;-)) format
     else if ( bSetStandardName || GetStorable()->hasLocation() )
@@ -1024,18 +1053,18 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
             m_pOwner->GetFilterConfiguration()->getByName( aOldFilterName ) >>= aOldFilterProps;
 
         ::comphelper::SequenceAsHashMap aOldFiltPropsHM( aOldFilterProps );
-        SfxFilterFlags nOldFiltFlags = static_cast<SfxFilterFlags>(aOldFiltPropsHM.getUnpackedValueOrDefault("Flags", sal_Int32(0) ));
+        SfxFilterFlags nOldFiltFlags = static_cast<SfxFilterFlags>(aOldFiltPropsHM.getUnpackedValueOrDefault(u"Flags"_ustr, sal_Int32(0) ));
 
         if ( bSetStandardName || ( nOldFiltFlags & nMust ) != nMust || bool(nOldFiltFlags & nDont) )
         {
             // the suggested type will be changed, the extension should be adjusted
-            aAdjustToType = aPreselectedFilterPropsHM.getUnpackedValueOrDefault( "Type", OUString() );
-            pFileDlg->SetCurrentFilter( aPreselectedFilterPropsHM.getUnpackedValueOrDefault( "UIName", OUString() ) );
+            aAdjustToType = aPreselectedFilterPropsHM.getUnpackedValueOrDefault( u"Type"_ustr, OUString() );
+            pFileDlg->SetCurrentFilter( aPreselectedFilterPropsHM.getUnpackedValueOrDefault( u"UIName"_ustr, OUString() ) );
         }
         else
         {
             pFileDlg->SetCurrentFilter( aOldFiltPropsHM.getUnpackedValueOrDefault(
-                                                        "UIName",
+                                                        u"UIName"_ustr,
                                                         OUString() ) );
         }
     }
@@ -1049,7 +1078,7 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
 
     uno::Reference < view::XSelectionSupplier > xSel( GetModel()->getCurrentController(), uno::UNO_QUERY );
     if ( xSel.is() && xSel->getSelection().hasValue() )
-        GetMediaDescr()[OUString("SelectionOnly")] <<= true;
+        GetMediaDescr()[u"SelectionOnly"_ustr] <<= true;
 
     // This is a temporary hardcoded solution must be removed when
     // dialogs do not need parameters in SidSet representation any more
@@ -1074,16 +1103,16 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
     // aFilterName is a pure output parameter, pDialogParams is an in/out parameter
     OUString aFilterName;
     // in LOK case we don't show File Picker so it will fail, but execute to do other preparations
-    if ( pFileDlg->Execute( pDialogParams, aFilterName ) != ERRCODE_NONE
+    if (pFileDlg->Execute(pDialogParams, aFilterName, nScriptingSignatureState) != ERRCODE_NONE
         && !comphelper::LibreOfficeKit::isActive() )
     {
         throw task::ErrorCodeIOException(
-            "ModelData_Impl::OutputFileDialog: ERRCODE_IO_ABORT",
+            u"ModelData_Impl::OutputFileDialog: ERRCODE_IO_ABORT"_ustr,
             uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_IO_ABORT));
     }
     else if (comphelper::LibreOfficeKit::isActive())
     {
-        aFilterName = aPreselectedFilterPropsHM.getUnpackedValueOrDefault( "Name", OUString() );
+        aFilterName = aPreselectedFilterPropsHM.getUnpackedValueOrDefault( u"Name"_ustr, OUString() );
     }
 
     // the following two arguments can not be converted in MediaDescriptor,
@@ -1091,6 +1120,10 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
     const SfxBoolItem* pRecommendReadOnly = SfxItemSet::GetItem<SfxBoolItem>(&*pDialogParams, SID_RECOMMENDREADONLY, false);
     m_bRecommendReadOnly = ( pRecommendReadOnly && pRecommendReadOnly->GetValue() );
     pDialogParams->ClearItem( SID_RECOMMENDREADONLY );
+
+    const SfxBoolItem* pSignWithDefaultKey = SfxItemSet::GetItem<SfxBoolItem>(&*pDialogParams, SID_GPGSIGN, false);
+    m_bSignWithDefaultSignature = (pSignWithDefaultKey && pSignWithDefaultKey->GetValue());
+    pDialogParams->ClearItem( SID_GPGSIGN );
 
     uno::Sequence< beans::PropertyValue > aPropsFromDialog;
     TransformItems( nSlotID, *pDialogParams, aPropsFromDialog );
@@ -1101,12 +1134,48 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
 
     if (comphelper::LibreOfficeKit::isActive())
     {
-        // keep name with extension
-        aSuggestedName = aRecommendedName;
-        OUString aExtension;
-        if (size_t nPos = aSuggestedName.lastIndexOf('.') + 1)
-            aExtension = aSuggestedName.copy(nPos, aSuggestedName.getLength() - nPos);
-        aURL.SetExtension(aExtension);
+#ifdef IOS
+        // The iOS app (and maybe the Android app) have fails to set the URL to
+        // save to so we need to set it to a temporary file.
+        // Note: the iOS app is responsible for deleting the temporary file.
+        if (nStoreMode & EXPORT_REQUESTED && aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE).isEmpty())
+        {
+            // Mirror the "export/docbasename.pdf" path format to match the
+            // format used in the "downloadas" message handler in the iOS app's
+            // -[DocumentViewController userContentController:didReceiveScriptMessage]
+            // selector.
+            // Important note: temporary files created here must be in their
+            // own subdirectory since the iOS app's UIDocumentPickerDelegate
+            // will try to delete both the temporary file and its parent
+            // directory.
+            OUString aFullName = u"export/" + aRecommendedName;
+            OUString aBaseName;
+            OUString aExtension;
+            sal_Int32 nPos = aFullName.lastIndexOf( '.' );
+            if ( nPos >= 0 )
+            {
+                aBaseName = aFullName.copy(0, nPos);
+                aExtension = aFullName.copy(nPos, aFullName.getLength() - nPos);
+            }
+            aURL = INetURLObject(::utl::CreateTempURL( aBaseName, false, aExtension, nullptr, true));
+
+            // Remove any stale files left from a previous export
+            OUString fileURL = aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
+            if (!fileURL.isEmpty())
+                osl::File::remove(fileURL);
+        }
+        else
+        {
+#endif
+            // keep name with extension
+            aSuggestedName = aRecommendedName;
+            OUString aExtension;
+            if (size_t nPos = aSuggestedName.lastIndexOf('.') + 1)
+                aExtension = aSuggestedName.copy(nPos, aSuggestedName.getLength() - nPos);
+            aURL.SetExtension(aExtension);
+#ifdef IOS
+        }
+#endif
     }
     else
     {
@@ -1187,8 +1256,18 @@ bool ModelData_Impl::OutputFileDialog( sal_Int16 nStoreMode,
     }
 
     // merge in results of the dialog execution
-    GetMediaDescr()[OUString("URL")] <<= aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+    GetMediaDescr()[u"URL"_ustr] <<= aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
     GetMediaDescr()[sFilterNameString] <<= aFilterName;
+
+    // for Export - keep a runtime var for each document where the document was last exported to
+    if (GetStorable()->hasLocation() && (nStoreMode & EXPORT_REQUESTED))
+    {
+        uno::Sequence< beans::PropertyValue > descriptor{
+            beans::PropertyValue(u"ExportDirectory"_ustr,
+                -1, uno::Any(aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE )), beans::PropertyState_DIRECT_VALUE),
+        };
+        GetModel()->setArgs(descriptor);
+    }
 
     return bUseFilterOptions;
 }
@@ -1213,7 +1292,7 @@ bool ModelData_Impl::ShowDocumentInfoDialog()
                 {
                     uno::Reference< frame::XDispatch > xDispatch = xFrameDispatch->queryDispatch(
                                                                                 aURL,
-                                                                                "_self",
+                                                                                u"_self"_ustr,
                                                                                 0 );
                     if ( xDispatch.is() )
                     {
@@ -1222,7 +1301,7 @@ bool ModelData_Impl::ShowDocumentInfoDialog()
                         // in SfxObjectShell::ExecFile_Impl to request that we
                         // do not want the properties dialog to be run async
                         uno::Sequence< beans::PropertyValue > aProperties{
-                            comphelper::makePropertyValue("SynchronMode", true)
+                            comphelper::makePropertyValue(u"SynchronMode"_ustr, true)
                         };
                         xDispatch->dispatch(aURL, aProperties);
                         bDialogUsed = true;
@@ -1245,7 +1324,7 @@ OUString ModelData_Impl::GetRecommendedExtension( const OUString& aTypeName )
        return OUString();
 
     uno::Reference< container::XNameAccess > xTypeDetection(
-       comphelper::getProcessServiceFactory()->createInstance("com.sun.star.document.TypeDetection"),
+       comphelper::getProcessServiceFactory()->createInstance(u"com.sun.star.document.TypeDetection"_ustr),
        uno::UNO_QUERY );
     if ( xTypeDetection.is() )
     {
@@ -1254,7 +1333,7 @@ OUString ModelData_Impl::GetRecommendedExtension( const OUString& aTypeName )
        {
            ::comphelper::SequenceAsHashMap aTypeNamePropsHM( aTypeNameProps );
            uno::Sequence< OUString > aExtensions = aTypeNamePropsHM.getUnpackedValueOrDefault(
-                                           "Extensions",
+                                           u"Extensions"_ustr,
                                            ::uno::Sequence< OUString >() );
            if ( aExtensions.hasElements() )
                return aExtensions[0];
@@ -1268,7 +1347,7 @@ OUString ModelData_Impl::GetRecommendedExtension( const OUString& aTypeName )
 OUString ModelData_Impl::GetRecommendedDir( const OUString& aSuggestedDir )
 {
     if ( ( !aSuggestedDir.isEmpty() || GetStorable()->hasLocation() )
-      && !GetMediaDescr().getUnpackedValueOrDefault("RepairPackage", false ) )
+      && !GetMediaDescr().getUnpackedValueOrDefault(u"RepairPackage"_ustr, false ) )
     {
         INetURLObject aLocation;
         if ( !aSuggestedDir.isEmpty() )
@@ -1280,7 +1359,7 @@ OUString ModelData_Impl::GetRecommendedDir( const OUString& aSuggestedDir )
             {
                 INetURLObject aTmp( aOldURL );
                 if ( aTmp.removeSegment() )
-                    aLocation = aTmp;
+                    aLocation = std::move(aTmp);
             }
 
             if ( aLocation.HasError() )
@@ -1295,14 +1374,15 @@ OUString ModelData_Impl::GetRecommendedDir( const OUString& aSuggestedDir )
 #ifdef _WIN32
         if( !bIsInTempPath )
         {
-            wchar_t sPath[MAX_PATH+1];
-            HRESULT hRes = SHGetFolderPathW( nullptr, CSIDL_INTERNET_CACHE, nullptr, SHGFP_TYPE_CURRENT, sPath );
+            PWSTR sPath;
+            HRESULT hRes = SHGetKnownFolderPath(FOLDERID_InternetCache, 0, nullptr, &sPath);
             if( SUCCEEDED(hRes) )
             {
                 OUString sTempINetFiles;
                 if( osl::FileBase::getFileURLFromSystemPath(OUString(o3tl::toU(sPath)), sTempINetFiles) == osl::FileBase::E_None )
                     bIsInTempPath = !sTempINetFiles.isEmpty() && sLocationURL.startsWith( sTempINetFiles );
             }
+            CoTaskMemFree(sPath);
         }
 #endif
         // Suggest somewhere other than the system's temp directory
@@ -1340,7 +1420,7 @@ OUString ModelData_Impl::GetRecommendedName( const OUString& aSuggestedName, con
     {
         // adjust the extension to the type
         uno::Reference< container::XNameAccess > xTypeDetection(
-            comphelper::getProcessServiceFactory()->createInstance("com.sun.star.document.TypeDetection"),
+            comphelper::getProcessServiceFactory()->createInstance(u"com.sun.star.document.TypeDetection"_ustr),
             uno::UNO_QUERY );
         if ( xTypeDetection.is() )
         {
@@ -1371,7 +1451,7 @@ uno::Reference< container::XNameAccess > const & SfxStoringHelper::GetFilterConf
 {
     if ( !m_xFilterCFG.is() )
     {
-        m_xFilterCFG.set( comphelper::getProcessServiceFactory()->createInstance("com.sun.star.document.FilterFactory"),
+        m_xFilterCFG.set( comphelper::getProcessServiceFactory()->createInstance(u"com.sun.star.document.FilterFactory"_ustr),
                           uno::UNO_QUERY_THROW );
     }
 
@@ -1399,11 +1479,12 @@ uno::Reference< css::frame::XModuleManager2 > const & SfxStoringHelper::GetModul
     return m_xModuleManager;
 }
 
-bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xModel,
+bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel2 >& xModel,
                                             std::u16string_view aSlotName,
                                             uno::Sequence< beans::PropertyValue >& aArgsSequence,
                                             bool bPreselectPassword,
-                                            SignatureState nDocumentSignatureState,
+                                            SignatureState const nDocumentSignatureState,
+                                            SignatureState const nScriptingSignatureState,
                                             bool bIsAsync)
 {
     m_xModelData = std::make_shared<ModelData_Impl>( *this, xModel, aArgsSequence );
@@ -1414,6 +1495,7 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
 
     m_bSetStandardName = false; // can be set only for SaveAs
     m_bPreselectPassword = bPreselectPassword;
+    m_nScriptingSignatureState = nScriptingSignatureState;
 
     // parse the slot name
     m_bRemote = false;
@@ -1428,7 +1510,7 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
     sal_Int8 nStatusSave = STATUS_NO_ACTION;
 
     ::comphelper::SequenceAsHashMap::const_iterator aSaveACopyIter =
-                        aModelData.GetMediaDescr().find( OUString("SaveACopy") );
+                        aModelData.GetMediaDescr().find( u"SaveACopy"_ustr );
     if ( aSaveACopyIter != aModelData.GetMediaDescr().end() )
     {
         bool bSaveACopy = false;
@@ -1440,7 +1522,7 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
     if ( m_nStoreMode & SAVEAS_REQUESTED )
     {
         ::comphelper::SequenceAsHashMap::const_iterator aSaveToIter =
-                        aModelData.GetMediaDescr().find( OUString("SaveTo") );
+                        aModelData.GetMediaDescr().find( u"SaveTo"_ustr );
         if ( aSaveToIter != aModelData.GetMediaDescr().end() )
         {
             bool bWideExport = false;
@@ -1452,7 +1534,7 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
         // if saving is not acceptable the warning must be shown even in case of SaveAs operation
         if ( ( m_nStoreMode & SAVEAS_REQUESTED ) && aModelData.CheckSaveAcceptable( STATUS_SAVEAS ) == STATUS_NO_ACTION )
             throw task::ErrorCodeIOException(
-                "SfxStoringHelper::GUIStoreModel: ERRCODE_IO_ABORT",
+                u"SfxStoringHelper::GUIStoreModel: ERRCODE_IO_ABORT"_ustr,
                 uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_IO_ABORT));
     }
     else if ( m_nStoreMode & SAVE_REQUESTED )
@@ -1462,7 +1544,7 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
 
         if ( nStatusSave == STATUS_NO_ACTION )
             throw task::ErrorCodeIOException(
-                "SfxStoringHelper::GUIStoreModel: ERRCODE_IO_ABORT",
+                u"SfxStoringHelper::GUIStoreModel: ERRCODE_IO_ABORT"_ustr,
                 uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_IO_ABORT));
         else if ( nStatusSave == STATUS_SAVE )
         {
@@ -1473,7 +1555,7 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
         if ( nStatusSave == STATUS_NO_ACTION )
         {
             throw task::ErrorCodeIOException(
-                "SfxStoringHelper::GUIStoreModel: ERRCODE_IO_ABORT",
+                u"SfxStoringHelper::GUIStoreModel: ERRCODE_IO_ABORT"_ustr,
                 uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_IO_ABORT));
         }
         else if ( nStatusSave != STATUS_SAVE )
@@ -1485,7 +1567,7 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
         }
     }
 
-    if (!comphelper::LibreOfficeKit::isActive() && !( m_nStoreMode & EXPORT_REQUESTED ) )
+    if (!comphelper::LibreOfficeKit::isActive() && !( m_nStoreMode & EXPORT_REQUESTED ) && SfxViewShell::Current() )
     {
         SfxObjectShell* pDocShell = SfxViewShell::Current()->GetObjectShell();
 
@@ -1502,7 +1584,7 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
             {
                 // the user has decided not to store the document
                 throw task::ErrorCodeIOException(
-                    "SfxStoringHelper::GUIStoreModel: ERRCODE_IO_ABORT (Preserve Signature)",
+                    u"SfxStoringHelper::GUIStoreModel: ERRCODE_IO_ABORT (Preserve Signature)"_ustr,
                     uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_IO_ABORT));
             }
         }
@@ -1540,16 +1622,16 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
     DBG_ASSERT( aFilterProps.hasElements(), "No filter for storing!\n" );
     if ( !aFilterProps.hasElements() )
         throw task::ErrorCodeIOException(
-            "SfxStoringHelper::GUIStoreModel: ERRCODE_IO_INVALIDPARAMETER",
+            u"SfxStoringHelper::GUIStoreModel: ERRCODE_IO_INVALIDPARAMETER"_ustr,
             uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_IO_INVALIDPARAMETER));
 
     ::comphelper::SequenceAsHashMap aFilterPropsHM( aFilterProps );
-    OUString aFilterName = aFilterPropsHM.getUnpackedValueOrDefault( "Name", OUString() );
+    OUString aFilterName = aFilterPropsHM.getUnpackedValueOrDefault( u"Name"_ustr, OUString() );
 
     const OUString aFilterFromMediaDescr = aModelData.GetMediaDescr().getUnpackedValueOrDefault( aFilterNameString, OUString() );
     const OUString aOldFilterName = aModelData.GetDocProps().getUnpackedValueOrDefault( aFilterNameString, OUString() );
 
-    ::comphelper::SequenceAsHashMap::const_iterator aFileNameIter = aModelData.GetMediaDescr().find( OUString("URL") );
+    ::comphelper::SequenceAsHashMap::const_iterator aFileNameIter = aModelData.GetMediaDescr().find( u"URL"_ustr );
 
     bool bPDFOptions = (m_nStoreMode & PDFEXPORT_REQUESTED) && !(m_nStoreMode & PDFDIRECTEXPORT_REQUESTED);
     bool bEPUBOptions = (m_nStoreMode & EPUBEXPORT_REQUESTED) && !(m_nStoreMode & EPUBDIRECTEXPORT_REQUESTED);
@@ -1557,7 +1639,7 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
     {
         // this is PDF or EPUB export, the filter options dialog should be shown before the export
         aModelData.GetMediaDescr()[aFilterNameString] <<= aFilterName;
-        if ( aModelData.GetMediaDescr().find( "FilterFlags" ) == aModelData.GetMediaDescr().end()
+        if ( aModelData.GetMediaDescr().find( u"FilterFlags"_ustr ) == aModelData.GetMediaDescr().end()
           && aModelData.GetMediaDescr().find( aFilterOptionsString ) == aModelData.GetMediaDescr().end()
           && aModelData.GetMediaDescr().find( aFilterDataString ) == aModelData.GetMediaDescr().end() )
         {
@@ -1572,17 +1654,19 @@ bool SfxStoringHelper::GUIStoreModel( const uno::Reference< frame::XModel >& xMo
 
     return SfxStoringHelper::FinishGUIStoreModel(aFileNameIter, aModelData, m_bRemote, m_nStoreMode, aFilterProps,
                                                  m_bSetStandardName, m_bPreselectPassword, m_bDialogUsed,
-                                                 aFilterFromMediaDescr, aOldFilterName, aArgsSequence, aFilterName);
+                                                 aFilterFromMediaDescr, aOldFilterName, aArgsSequence,
+                                                 aFilterName, nScriptingSignatureState);
 }
 
 bool SfxStoringHelper::FinishGUIStoreModel(::comphelper::SequenceAsHashMap::const_iterator& aFileNameIter,
                                           ModelData_Impl& aModelData, bool bRemote, sal_Int16 nStoreMode,
-                                          uno::Sequence< beans::PropertyValue >& aFilterProps,
+                                          const uno::Sequence< beans::PropertyValue >& aFilterProps,
                                           bool bSetStandardName, bool bPreselectPassword, bool bDialogUsed,
                                           std::u16string_view aFilterFromMediaDescr,
                                           std::u16string_view aOldFilterName,
                                           uno::Sequence< beans::PropertyValue >& aArgsSequence,
-                                          OUString aFilterName)
+                                          OUString aFilterName,
+                                          SignatureState const nScriptingSignatureState)
 {
     const OUString sFilterNameString(aFilterNameString);
     const OUString sFilterOptionsString(aFilterOptionsString);
@@ -1601,7 +1685,7 @@ bool SfxStoringHelper::FinishGUIStoreModel(::comphelper::SequenceAsHashMap::cons
         else
         {
             ::comphelper::SequenceAsHashMap::const_iterator aDlgIter =
-                aModelData.GetMediaDescr().find( OUString("UseSystemDialog") );
+                aModelData.GetMediaDescr().find( u"UseSystemDialog"_ustr );
             if ( aDlgIter != aModelData.GetMediaDescr().end() )
             {
                 bool bUseSystemDialog = true;
@@ -1616,35 +1700,29 @@ bool SfxStoringHelper::FinishGUIStoreModel(::comphelper::SequenceAsHashMap::cons
         }
 
         // The Dispatch supports parameter FolderName that overwrites SuggestedSaveAsDir
-        OUString aSuggestedDir = aModelData.GetMediaDescr().getUnpackedValueOrDefault("FolderName", OUString() );
+        OUString aSuggestedDir = aModelData.GetMediaDescr().getUnpackedValueOrDefault(u"FolderName"_ustr, OUString() );
         if ( aSuggestedDir.isEmpty() )
         {
-            aSuggestedDir = aModelData.GetMediaDescr().getUnpackedValueOrDefault("SuggestedSaveAsDir", OUString() );
+            aSuggestedDir = aModelData.GetMediaDescr().getUnpackedValueOrDefault(u"SuggestedSaveAsDir"_ustr, OUString() );
             if ( aSuggestedDir.isEmpty() )
-                aSuggestedDir = aModelData.GetDocProps().getUnpackedValueOrDefault("SuggestedSaveAsDir", OUString() );
+                aSuggestedDir = aModelData.GetDocProps().getUnpackedValueOrDefault(u"SuggestedSaveAsDir"_ustr, OUString() );
         }
 
-        OUString aSuggestedName = aModelData.GetMediaDescr().getUnpackedValueOrDefault("SuggestedSaveAsName", OUString() );
+        OUString aSuggestedName = aModelData.GetMediaDescr().getUnpackedValueOrDefault(u"SuggestedSaveAsName"_ustr, OUString() );
         if ( aSuggestedName.isEmpty() )
-            aSuggestedName = aModelData.GetDocProps().getUnpackedValueOrDefault("SuggestedSaveAsName", OUString() );
-
-        OUString sStandardDir;
-        ::comphelper::SequenceAsHashMap::const_iterator aStdDirIter =
-            aModelData.GetMediaDescr().find( OUString("StandardDir") );
-        if ( aStdDirIter != aModelData.GetMediaDescr().end() )
-            aStdDirIter->second >>= sStandardDir;
+            aSuggestedName = aModelData.GetDocProps().getUnpackedValueOrDefault(u"SuggestedSaveAsName"_ustr, OUString() );
 
         css::uno::Sequence< OUString >  aDenyList;
 
         ::comphelper::SequenceAsHashMap::const_iterator aDenyListIter =
-            aModelData.GetMediaDescr().find( OUString("DenyList") );
+            aModelData.GetMediaDescr().find( u"DenyList"_ustr );
         if ( aDenyListIter != aModelData.GetMediaDescr().end() )
             aDenyListIter->second >>= aDenyList;
 
         for (;;)
         {
             // in case the dialog is opened a second time the folder should be the same as previously navigated to by the user, not what was handed over by initial parameters
-            bUseFilterOptions = aModelData.OutputFileDialog( nStoreMode, aFilterProps, bSetStandardName, aSuggestedName, bPreselectPassword, aSuggestedDir, nDialog, sStandardDir, aDenyList );
+            bUseFilterOptions = aModelData.OutputFileDialog( nStoreMode, aFilterProps, bSetStandardName, aSuggestedName, bPreselectPassword, aSuggestedDir, nDialog, aDenyList, nScriptingSignatureState );
             if ( nStoreMode == SAVEAS_REQUESTED )
             {
                 // in case of saving check filter for possible alien warning
@@ -1666,7 +1744,7 @@ bool SfxStoringHelper::FinishGUIStoreModel(::comphelper::SequenceAsHashMap::cons
         }
 
         bDialogUsed = true;
-        aFileNameIter = aModelData.GetMediaDescr().find( OUString("URL") );
+        aFileNameIter = aModelData.GetMediaDescr().find( u"URL"_ustr );
     }
     else
     {
@@ -1708,12 +1786,12 @@ bool SfxStoringHelper::FinishGUIStoreModel(::comphelper::SequenceAsHashMap::cons
     {
         SAL_WARN( "sfx.doc", "This code must be unreachable!" );
         throw task::ErrorCodeIOException(
-            "SfxStoringHelper::GUIStoreModel: ERRCODE_IO_INVALIDPARAMETER",
+            u"SfxStoringHelper::GUIStoreModel: ERRCODE_IO_INVALIDPARAMETER"_ustr,
             uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_IO_INVALIDPARAMETER));
     }
 
     ::comphelper::SequenceAsHashMap::const_iterator aIter =
-                            aModelData.GetMediaDescr().find( OUString("FilterFlags") );
+                            aModelData.GetMediaDescr().find( u"FilterFlags"_ustr );
     bool bFilterFlagsSet = ( aIter != aModelData.GetMediaDescr().end() );
 
     // check if the filter Dialog has not been called before
@@ -1734,8 +1812,12 @@ bool SfxStoringHelper::FinishGUIStoreModel(::comphelper::SequenceAsHashMap::cons
     aArgsSequence = aModelData.GetMediaDescr().getAsConstPropertyValueList();
 
     // store the document and handle it's docinfo
-
-    DocumentSettingsGuard aSettingsGuard( aModelData.GetModel(), aModelData.IsRecommendReadOnly(), nStoreMode & EXPORT_REQUESTED );
+    // Restore when exporting (which is also done when LoKit is enable, see below).
+    const bool bRestore
+        = (nStoreMode & EXPORT_REQUESTED)
+          || ((nStoreMode & SAVEAS_REQUESTED) && comphelper::LibreOfficeKit::isActive());
+    DocumentSettingsGuard aSettingsGuard(aModelData.GetModel(), aModelData.IsRecommendReadOnly(),
+                                         bRestore);
 
     // Treat attempted PDF export like a print: update document print statistics
     if ((nStoreMode & PDFEXPORT_REQUESTED) && SfxViewShell::Current())
@@ -1759,7 +1841,7 @@ bool SfxStoringHelper::FinishGUIStoreModel(::comphelper::SequenceAsHashMap::cons
         OUString sPrintedBy(SfxResId(STR_SFX_FILTERNAME_PDF));
         if (pDocShell && pDocShell->IsUseUserData())
         {
-            const OUString& sFullName = SvtUserOptions().GetFullName();
+            const OUString sFullName = SvtUserOptions().GetFullName();
             if (!sFullName.isEmpty())
                 sPrintedBy += ": " + sFullName;
         }
@@ -1769,7 +1851,12 @@ bool SfxStoringHelper::FinishGUIStoreModel(::comphelper::SequenceAsHashMap::cons
             pDocShell->EnableSetModified(true);
     }
 
-    OSL_ENSURE( aModelData.GetMediaDescr().find( OUString( "Password" ) ) == aModelData.GetMediaDescr().end(), "The Password property of MediaDescriptor should not be used here!" );
+    OSL_ENSURE( aModelData.GetMediaDescr().find( u"Password"_ustr ) == aModelData.GetMediaDescr().end(), "The Password property of MediaDescriptor should not be used here!" );
+
+    // Fetch the current view early, saving may spin the main loop, which may change the current
+    // view.
+    SfxViewShell* pViewShell = SfxViewShell::Current();
+
     if ( officecfg::Office::Common::Save::Document::EditProperty::get()
       && ( !aModelData.GetStorable()->hasLocation()
           || INetURLObject( aModelData.GetStorable()->getLocation() ) != aURL ) )
@@ -1822,31 +1909,102 @@ bool SfxStoringHelper::FinishGUIStoreModel(::comphelper::SequenceAsHashMap::cons
 
         // this is actually a save operation with different parameters
         // so storeTo or storeAs without DocInfo operations are used
-        if ( nStoreMode & EXPORT_REQUESTED )
-            aModelData.GetStorable()->storeToURL( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), aArgsSequence );
-        else
-            aModelData.GetStorable()->storeAsURL( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), aArgsSequence );
+#ifdef IOS
+        try
+        {
+#endif
+            // SaveAs in LoKit is unhelpful. It saves the document to a new path, which
+            // breaks the link with the storage, so new modifications can't be uploaded.
+            if ((nStoreMode & EXPORT_REQUESTED)
+                || ((nStoreMode & SAVEAS_REQUESTED) && comphelper::LibreOfficeKit::isActive()))
+                aModelData.GetStorable()->storeToURL( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), aArgsSequence );
+            else
+                aModelData.GetStorable()->storeAsURL( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), aArgsSequence );
+#ifdef IOS
+        }
+        catch( const uno::Exception& )
+        {
+            // When using the iOS app (and maybe the Android app), the app
+            // will remain blocked if we rethrow an exception.
+        }
+#endif
+    }
+
+    if (aModelData.IsSignWithDefaultSignature())
+    {
+        auto SignWithDefaultSignature = [&]()
+        {
+#if HAVE_FEATURE_GPGME
+            auto aSigningKey = SvtUserOptions().GetSigningKey();
+            if (aSigningKey.isEmpty())
+                return;
+
+            std::vector<uno::Reference<xml::crypto::XXMLSecurityContext>> xSecurityContexts{
+                xml::crypto::GPGSEInitializer::create(comphelper::getProcessComponentContext())
+                    ->createSecurityContext({}),
+                xml::crypto::SEInitializer::create(comphelper::getProcessComponentContext())
+                    ->createSecurityContext({}),
+            };
+
+            for (const auto& xSecurityContext : xSecurityContexts)
+            {
+                if (xSecurityContext.is())
+                {
+                    css::uno::Reference<css::security::XCertificate> xCert
+                        = comphelper::xmlsec::FindCertInContext(xSecurityContext, aSigningKey);
+
+                    if (xCert.is() && SfxViewShell::Current())
+                    {
+                        SfxObjectShell* pDocShell = SfxViewShell::Current()->GetObjectShell();
+                        svl::crypto::SigningContext aSigningContext;
+                        aSigningContext.m_xCertificate = std::move(xCert);
+                        bool bSigned = pDocShell->SignDocumentContentUsingCertificate(aSigningContext);
+                        if (bSigned && pDocShell->HasValidSignatures())
+                        {
+                            std::unique_ptr<weld::MessageDialog> xBox(
+                                Application::CreateMessageDialog(
+                                    SfxStoringHelper::GetModelWindow(aModelData.GetModel()),
+                                    VclMessageType::Question, VclButtonsType::YesNo,
+                                    SfxResId(STR_QUERY_REMEMBERSIGNATURE)));
+                            pDocShell->SetRememberCurrentSignature(xBox->run() == RET_YES);
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // couldn't find the specified default signing certificate!
+            // alert the user the document won't be signed
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(
+                SfxStoringHelper::GetModelWindow(aModelData.GetModel()),
+                VclMessageType::Error, VclButtonsType::Ok,
+                SfxResId(STR_ERROR_NOMATCHINGDEFUALTCERT)));
+            xBox->run();
+            return;
+#endif
+        };
+        SignWithDefaultSignature();
     }
 
     // Launch PDF viewer
     if ( nStoreMode & PDFEXPORT_REQUESTED && !comphelper::LibreOfficeKit::isActive() )
     {
         FilterConfigItem aItem(u"Office.Common/Filter/PDF/Export/");
-        bool aViewPDF = aItem.ReadBool( "ViewPDFAfterExport", false );
+        bool aViewPDF = aItem.ReadBool( u"ViewPDFAfterExport"_ustr, false );
 
         if ( aViewPDF )
         {
             uno::Reference<XSystemShellExecute> xSystemShellExecute(SystemShellExecute::create( ::comphelper::getProcessComponentContext() ) );
-            xSystemShellExecute->execute( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), "", SystemShellExecuteFlags::URIS_ONLY );
+            xSystemShellExecute->execute( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), u""_ustr, SystemShellExecuteFlags::URIS_ONLY );
         }
     }
 
     if ( comphelper::LibreOfficeKit::isActive() )
     {
-        if ( SfxViewShell* pShell = SfxViewShell::Current() )
+        if ( pViewShell )
         {
             OUString sURL = aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
-            pShell->libreOfficeKitViewCallback( LOK_CALLBACK_EXPORT_FILE, sURL.toUtf8() );
+            pViewShell->libreOfficeKitViewCallback( LOK_CALLBACK_EXPORT_FILE, sURL.toUtf8() );
         }
     }
 
@@ -1870,7 +2028,7 @@ bool SfxStoringHelper::CheckFilterOptionsAppearance(
             if ( aAny >>= aProps )
             {
                 ::comphelper::SequenceAsHashMap aPropsHM( aProps );
-                if( !aPropsHM.getUnpackedValueOrDefault( "UIComponent", OUString() ).isEmpty() )
+                if( !aPropsHM.getUnpackedValueOrDefault( u"UIComponent"_ustr, OUString() ).isEmpty() )
                     bUseFilterOptions = true;
             }
         }
@@ -1885,7 +2043,7 @@ bool SfxStoringHelper::CheckFilterOptionsAppearance(
 
 // static
 void SfxStoringHelper::SetDocInfoState(
-        const uno::Reference< frame::XModel >& xModel,
+        const uno::Reference< frame::XModel2 >& xModel,
         const uno::Reference< document::XDocumentProperties>& i_xOldDocProps )
 {
     uno::Reference<document::XDocumentPropertiesSupplier> const
@@ -1960,8 +2118,9 @@ void SfxStoringHelper::SetDocInfoState(
 
 
 // static
-bool SfxStoringHelper::WarnUnacceptableFormat( const uno::Reference< frame::XModel >& xModel,
+bool SfxStoringHelper::WarnUnacceptableFormat( const uno::Reference< frame::XModel2 >& xModel,
                                                     std::u16string_view aOldUIName,
+                                                    std::u16string_view aExtension,
                                                     const OUString& aDefExtension,
                                                     bool bDefIsAlien )
 {
@@ -1969,12 +2128,34 @@ bool SfxStoringHelper::WarnUnacceptableFormat( const uno::Reference< frame::XMod
         return true;
 
     weld::Window* pWin = SfxStoringHelper::GetModelWindow(xModel);
-    SfxAlienWarningDialog aDlg(pWin, aOldUIName, aDefExtension, bDefIsAlien);
 
-    return aDlg.run() == RET_OK;
+    OUString sInfoText = SfxResId(STR_QUERY_ALIENFORMAT_TEXT);
+    sInfoText = sInfoText.replaceAll("%FORMATNAME", aOldUIName);
+    sInfoText = sInfoText.replaceAll("%EXTENSION", aExtension);
+
+    OUString sExtension = u"ODF"_ustr;
+    OUString sQuestion = "";
+    if (bDefIsAlien) {
+        sExtension = aDefExtension.toAsciiUpperCase();
+    }
+    else
+    {
+        sQuestion = SfxResId(STR_QUERY_ALIENFORMAT_QUESTION);
+        sQuestion = sQuestion.replaceAll("%EXTENSION", aDefExtension);
+    }
+
+    VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
+    auto pDlg = pFact->CreateQueryDialog(pWin, SfxResId(STR_QUERY_ALIENFORMAT_TTITLE), sInfoText, sQuestion, false);
+    pDlg->SetYesLabel(SfxResId(STR_QUERY_ALIENFORMAT_YES).replaceAll("%FORMATNAME", aOldUIName)); // "Use %FORMATNAME Format"
+    pDlg->SetNoLabel(SfxResId(STR_QUERY_ALIENFORMAT_NO).replaceAll("%DEFAULTEXTENSION", sExtension)); // "Use %DEFAULTEXTENSION _Format"
+
+    sal_Int32 nResult = pDlg->Execute();
+    pDlg->disposeOnce();
+
+    return nResult == RET_YES;
 }
 
-uno::Reference<awt::XWindow> SfxStoringHelper::GetModelXWindow(const uno::Reference<frame::XModel>& xModel)
+uno::Reference<awt::XWindow> SfxStoringHelper::GetModelXWindow(const uno::Reference<frame::XModel2>& xModel)
 {
     try {
         if ( xModel.is() )
@@ -1997,7 +2178,7 @@ uno::Reference<awt::XWindow> SfxStoringHelper::GetModelXWindow(const uno::Refere
     return uno::Reference<awt::XWindow>();
 }
 
-weld::Window* SfxStoringHelper::GetModelWindow( const uno::Reference< frame::XModel >& xModel )
+weld::Window* SfxStoringHelper::GetModelWindow( const uno::Reference< frame::XModel2 >& xModel )
 {
     weld::Window* pWin = nullptr;
 

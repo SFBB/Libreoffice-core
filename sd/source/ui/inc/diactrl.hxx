@@ -37,8 +37,8 @@ private:
     css::uno::Reference<css::frame::XFrame> m_xFrame;
 
     DECL_LINK(ModifyHdl, weld::SpinButton&, void);
-    DECL_STATIC_LINK(SdPagesField, OutputHdl, weld::SpinButton&, void);
-    DECL_LINK(spin_button_input, int* result, bool);
+    DECL_STATIC_LINK(SdPagesField, OutputHdl, sal_Int64, OUString);
+    DECL_LINK(spin_button_input, const OUString&, std::optional<int>);
     DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
 
 public:
@@ -52,7 +52,7 @@ public:
 
 // SdTbxCtlDiaPages:
 
-class SdTbxCtlDiaPages : public SfxToolBoxControl
+class SdTbxCtlDiaPages final : public SfxToolBoxControl
 {
 public:
     virtual void StateChangedAtToolBoxControl(sal_uInt16 nSID, SfxItemState eState,

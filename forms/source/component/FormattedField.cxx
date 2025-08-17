@@ -59,7 +59,6 @@ using namespace dbtools;
 using namespace css::uno;
 using namespace css::sdb;
 using namespace css::sdbc;
-using namespace css::sdbcx;
 using namespace css::beans;
 using namespace css::container;
 using namespace css::form;
@@ -67,7 +66,6 @@ using namespace css::awt;
 using namespace css::io;
 using namespace css::lang;
 using namespace css::util;
-using namespace css::form::binding;
 
 namespace frm
 {
@@ -159,11 +157,8 @@ OFormattedControl::OFormattedControl(const Reference<XComponentContext>& _rxFact
 {
     osl_atomic_increment(&m_refCount);
     {
-        Reference<XWindow>  xComp;
-        if (query_aggregation(m_xAggregate, xComp))
-        {
+        if (auto xComp = query_aggregation<XWindow>(m_xAggregate))
             xComp->addKeyListener(this);
-        }
     }
     osl_atomic_decrement(&m_refCount);
 }
@@ -268,7 +263,7 @@ void OFormattedModel::implConstruct()
 }
 OFormattedModel::OFormattedModel(const Reference<XComponentContext>& _rxFactory)
     :OEditBaseModel(_rxFactory, VCL_CONTROLMODEL_FORMATTEDFIELD, FRM_SUN_CONTROL_FORMATTEDFIELD, true, true )
-    // use the old control name for compytibility reasons
+    // use the old control name for compatibility reasons
     ,OErrorBroadcaster( OComponentHelper::rBHelper )
 {
     implConstruct();
@@ -425,7 +420,7 @@ void OFormattedModel::_propertyChanged( const css::beans::PropertyChangeEvent& e
 
     if ( evt.PropertyName == PROPERTY_FORMATKEY )
     {
-        if ( evt.NewValue.getValueType().getTypeClass() == TypeClass_LONG )
+        if ( evt.NewValue.getValueTypeClass() == TypeClass_LONG )
         {
             try
             {
@@ -464,7 +459,7 @@ void OFormattedModel::updateFormatterNullDate()
     // calc the current NULL date
     Reference< XNumberFormatsSupplier > xSupplier( calcFormatsSupplier() );
     if ( xSupplier.is() )
-        xSupplier->getNumberFormatSettings()->getPropertyValue("NullDate") >>= m_aNullDate;
+        xSupplier->getNumberFormatSettings()->getPropertyValue(u"NullDate"_ustr) >>= m_aNullDate;
 }
 
 Reference< XNumberFormatsSupplier > OFormattedModel::calcFormatsSupplier() const
@@ -607,7 +602,7 @@ void OFormattedModel::onConnectedDbColumn( const Reference< XInterface >& _rxFor
     Reference<XNumberFormatsSupplier>  xSupplier = calcFormatsSupplier();
     m_bNumeric = getBOOL( getPropertyValue( PROPERTY_TREATASNUMERIC ) );
     m_nKeyType  = getNumberFormatType( xSupplier->getNumberFormats(), nFormatKey );
-    xSupplier->getNumberFormatSettings()->getPropertyValue("NullDate") >>= m_aNullDate;
+    xSupplier->getNumberFormatSettings()->getPropertyValue(u"NullDate"_ustr) >>= m_aNullDate;
     OEditBaseModel::onConnectedDbColumn( _rxForm );
 }
 
@@ -639,7 +634,7 @@ void OFormattedModel::write(const Reference<XObjectOutputStream>& _rxOutStream)
     if (m_xAggregateSet.is())
     {
         Any aSupplier = m_xAggregateSet->getPropertyValue(PROPERTY_FORMATSSUPPLIER);
-        if (aSupplier.getValueType().getTypeClass() != TypeClass_VOID)
+        if (aSupplier.getValueTypeClass() != TypeClass_VOID)
         {
             OSL_VERIFY( aSupplier >>= xSupplier );
         }
@@ -692,7 +687,7 @@ void OFormattedModel::write(const Reference<XObjectOutputStream>& _rxOutStream)
         }
         {
             OStreamSection aDownCompat2(_rxOutStream);
-            switch (aEffectiveValue.getValueType().getTypeClass())
+            switch (aEffectiveValue.getValueTypeClass())
             {
                 case TypeClass_STRING:
                     _rxOutStream->writeShort(0x0000);
@@ -814,7 +809,7 @@ bool OFormattedModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
 
     // empty string + EmptyIsNull = void
     if  (   !aControlValue.hasValue()
-        ||  (   ( aControlValue.getValueType().getTypeClass() == TypeClass_STRING )
+        ||  (   ( aControlValue.getValueTypeClass() == TypeClass_STRING )
             &&  getString( aControlValue ).isEmpty()
             &&  m_bEmptyIsNull
             )
@@ -825,13 +820,13 @@ bool OFormattedModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
         try
         {
             double f = 0.0;
-            if ( aControlValue.getValueType().getTypeClass() == TypeClass_DOUBLE || (aControlValue >>= f)) // #i110323
+            if ( aControlValue.getValueTypeClass() == TypeClass_DOUBLE || (aControlValue >>= f)) // #i110323
             {
                 DBTypeConversion::setValue( m_xColumnUpdate, m_aNullDate, getDouble( aControlValue ), m_nKeyType );
             }
             else
             {
-                DBG_ASSERT( aControlValue.getValueType().getTypeClass() == TypeClass_STRING, "OFormattedModel::commitControlValueToDbColumn: invalid value type!" );
+                DBG_ASSERT( aControlValue.getValueTypeClass() == TypeClass_STRING, "OFormattedModel::commitControlValueToDbColumn: invalid value type!" );
                 m_xColumnUpdate->updateString( getString( aControlValue ) );
             }
         }
@@ -840,7 +835,7 @@ bool OFormattedModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
             return false;
         }
     }
-    m_aSaveValue = aControlValue;
+    m_aSaveValue = std::move(aControlValue);
     return true;
 }
 

@@ -48,9 +48,12 @@
 #include <connectivity/paramwrapper.hxx>
 #include <connectivity/FValue.hxx>
 #include <connectivity/warningscontainer.hxx>
+#include <unotools/weakref.hxx>
 
 namespace dbaccess
 {
+    class ORowSetClone;
+
     typedef ::cppu::WeakAggComponentImplHelper12    <   css::sdb::XResultSetAccess
                                                     ,   css::sdb::XRowSetApproveBroadcaster
                                                     ,   css::sdb::XRowsChangeBroadcaster
@@ -82,7 +85,7 @@ namespace dbaccess
         css::uno::Reference< css::sdb::XSingleSelectQueryComposer >   m_xComposer;
         css::uno::Reference< css::container::XNameAccess >    m_xColumns; // the columns from a table or query
 
-        connectivity::OWeakRefArray                 m_aClones;
+        std::vector<unotools::WeakReference<ORowSetClone>>    m_aClones;
         /** our parameters as XPropertySet instances and ORowSetValue instances
         */
         ::dbtools::param::ParametersContainerRef    m_pParameters;
@@ -445,11 +448,11 @@ namespace dbaccess
     //  ORowSetClone
 
     class ORowSetClone : public cppu::BaseMutex
-                         ,public OSubComponent
+                         ,public ::cppu::WeakComponentImplHelper<>
                          ,public ORowSetBase
                          ,public ::comphelper::OPropertyArrayUsageHelper < ORowSetClone >
     {
-        ORowSet*                    m_pParent;
+        unotools::WeakReference<ORowSet> m_xParent;
         sal_Int32                   m_nFetchDirection;
         sal_Int32                   m_nFetchSize;
         bool                    m_bIsBookmarkable;

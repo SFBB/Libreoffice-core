@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include <vcl/roadmapwizard.hxx>
+#include <vcl/roadmapwizardmachine.hxx>
 #include "addresssettings.hxx"
 #include "datasourcehandling.hxx"
 
@@ -28,8 +28,7 @@ using vcl::WizardTypes::CommitPageReason;
 
 namespace abp
 {
-    typedef ::vcl::RoadmapWizardMachine OAddressBookSourcePilot_Base;
-    class OAddressBookSourcePilot final : public OAddressBookSourcePilot_Base
+    class OAddressBookSourcePilot final : public vcl::RoadmapWizardMachine
     {
         css::uno::Reference< css::uno::XComponentContext >
                                 m_xORB;
@@ -56,7 +55,7 @@ namespace abp
 
         bool                connectToDataSource( bool _bForceReConnect );
 
-        void                    travelNext( ) { OAddressBookSourcePilot_Base::travelNext(); }
+        void                    travelNext( ) { vcl::RoadmapWizardMachine::travelNext(); }
 
         /// to be called when the selected type changed
         void                    typeSelectionChanged( AddressSourceType _eType );
@@ -68,7 +67,7 @@ namespace abp
         virtual bool                prepareLeaveCurrentState( CommitPageReason _eReason ) override;
         virtual bool                onFinish() override;
 
-        // RoadmapWizard
+        // RoadmapWizardMachine
         virtual OUString            getStateDisplayName( WizardState _nState ) const override;
 
         /** creates a new data source of the type indicated by m_aSettings

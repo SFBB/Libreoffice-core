@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_LINGUISTIC_SOURCE_CONVDICXML_HXX
-#define INCLUDED_LINGUISTIC_SOURCE_CONVDICXML_HXX
+#pragma once
 
 #include <com/sun/star/util/MeasureUnit.hpp>
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
@@ -45,7 +44,7 @@ public:
     ConvDicXMLExport( ConvDic &rConvDic,
         const OUString &rFileName,
         css::uno::Reference< css::xml::sax::XDocumentHandler > const &rHandler) :
-        SvXMLExport ( comphelper::getProcessComponentContext(), "com.sun.star.lingu2.ConvDicXMLExport", rFileName,
+        SvXMLExport ( comphelper::getProcessComponentContext(), u"com.sun.star.lingu2.ConvDicXMLExport"_ustr, rFileName,
                       css::util::MeasureUnit::CM, rHandler ),
         rDic        ( rConvDic ),
         bSuccess    ( false )
@@ -98,7 +97,5 @@ private:
         const css::uno::Reference< css::xml::sax::XFastAttributeList > & xAttrList ) override;
 };
 
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -26,7 +26,7 @@
 
 PointerStyle SdrHelpLine::GetPointer() const
 {
-    switch (eKind) {
+    switch (m_eKind) {
         case SdrHelpLineKind::Vertical  : return PointerStyle::ESize;
         case SdrHelpLineKind::Horizontal: return PointerStyle::SSize;
         default                    : return PointerStyle::Move;
@@ -36,16 +36,16 @@ PointerStyle SdrHelpLine::GetPointer() const
 bool SdrHelpLine::IsHit(const Point& rPnt, sal_uInt16 nTolLog, const OutputDevice& rOut) const
 {
     Size a1Pix(rOut.PixelToLogic(Size(1,1)));
-    bool bXHit=rPnt.X()>=aPos.X()-nTolLog && rPnt.X()<=aPos.X()+nTolLog+a1Pix.Width();
-    bool bYHit=rPnt.Y()>=aPos.Y()-nTolLog && rPnt.Y()<=aPos.Y()+nTolLog+a1Pix.Height();
-    switch (eKind) {
+    bool bXHit=rPnt.X()>=m_aPos.X()-nTolLog && rPnt.X()<=m_aPos.X()+nTolLog+a1Pix.Width();
+    bool bYHit=rPnt.Y()>=m_aPos.Y()-nTolLog && rPnt.Y()<=m_aPos.Y()+nTolLog+a1Pix.Height();
+    switch (m_eKind) {
         case SdrHelpLineKind::Vertical  : return bXHit;
         case SdrHelpLineKind::Horizontal: return bYHit;
         case SdrHelpLineKind::Point: {
             if (bXHit || bYHit) {
                 Size aRad(rOut.PixelToLogic(Size(SDRHELPLINE_POINT_PIXELSIZE,SDRHELPLINE_POINT_PIXELSIZE)));
-                return rPnt.X()>=aPos.X()-aRad.Width() && rPnt.X()<=aPos.X()+aRad.Width()+a1Pix.Width() &&
-                       rPnt.Y()>=aPos.Y()-aRad.Height() && rPnt.Y()<=aPos.Y()+aRad.Height()+a1Pix.Height();
+                return rPnt.X()>=m_aPos.X()-aRad.Width() && rPnt.X()<=m_aPos.X()+aRad.Width()+a1Pix.Width() &&
+                       rPnt.Y()>=m_aPos.Y()-aRad.Height() && rPnt.Y()<=m_aPos.Y()+aRad.Height()+a1Pix.Height();
             }
         } break;
     } // switch
@@ -54,10 +54,10 @@ bool SdrHelpLine::IsHit(const Point& rPnt, sal_uInt16 nTolLog, const OutputDevic
 
 tools::Rectangle SdrHelpLine::GetBoundRect(const OutputDevice& rOut) const
 {
-    tools::Rectangle aRet(aPos,aPos);
+    tools::Rectangle aRet(m_aPos,m_aPos);
     Point aOfs(rOut.GetMapMode().GetOrigin());
     Size aSiz(rOut.GetOutputSize());
-    switch (eKind) {
+    switch (m_eKind) {
         case SdrHelpLineKind::Vertical  : aRet.SetTop(-aOfs.Y() ); aRet.SetBottom(-aOfs.Y()+aSiz.Height() ); break;
         case SdrHelpLineKind::Horizontal: aRet.SetLeft(-aOfs.X() ); aRet.SetRight(-aOfs.X()+aSiz.Width() );  break;
         case SdrHelpLineKind::Point     : {
@@ -73,7 +73,7 @@ tools::Rectangle SdrHelpLine::GetBoundRect(const OutputDevice& rOut) const
 
 SdrHelpLineList& SdrHelpLineList::operator=(const SdrHelpLineList& rSrcList)
 {
-    aList.clear();
+    m_aList.clear();
     sal_uInt16 nCount=rSrcList.GetCount();
     for (sal_uInt16 i=0; i<nCount; i++) {
         Insert(rSrcList[i]);
@@ -88,7 +88,7 @@ bool SdrHelpLineList::operator==(const SdrHelpLineList& rSrcList) const
     if (nCount==rSrcList.GetCount()) {
         bEqual = true;
         for (sal_uInt16 i=0; i<nCount && bEqual; i++) {
-            if (*aList[i]!=*rSrcList.aList[i]) {
+            if (*m_aList[i]!=*rSrcList.m_aList[i]) {
                 bEqual = false;
             }
         }
@@ -101,7 +101,7 @@ sal_uInt16 SdrHelpLineList::HitTest(const Point& rPnt, sal_uInt16 nTolLog, const
     sal_uInt16 nCount=GetCount();
     for (sal_uInt16 i=nCount; i>0;) {
         i--;
-        if (aList[i]->IsHit(rPnt,nTolLog,rOut)) return i;
+        if (m_aList[i]->IsHit(rPnt,nTolLog,rOut)) return i;
     }
     return SDRHELPLINE_NOTFOUND;
 }

@@ -46,12 +46,11 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::container;
 
 namespace accessibility {
 
 AccessibleCell::AccessibleCell( const rtl::Reference< AccessibleTableShape>& rxParent, sdr::table::CellRef xCell, sal_Int32 nIndex, const AccessibleShapeTreeInfo& rShapeTreeInfo )
-: AccessibleCellBase( rxParent, AccessibleRole::TABLE_CELL )
+: AccessibleContextBase(rxParent, AccessibleRole::TABLE_CELL)
 , maShapeTreeInfo( rShapeTreeInfo )
 , mnIndexInParent( nIndex )
 , mxCell(std::move( xCell ))
@@ -124,28 +123,6 @@ bool AccessibleCell::ResetState (sal_Int64 aState)
     return bStateHasChanged;
 }
 
-
-// XInterface
-
-
-Any SAL_CALL AccessibleCell::queryInterface( const Type& aType )
-{
-    return AccessibleCellBase::queryInterface( aType );
-}
-
-
-void SAL_CALL AccessibleCell::acquire(  ) noexcept
-{
-    AccessibleCellBase::acquire();
-}
-
-
-void SAL_CALL AccessibleCell::release(  ) noexcept
-{
-    AccessibleCellBase::release();
-}
-
-
 // XAccessibleContext
 
 
@@ -154,7 +131,7 @@ void SAL_CALL AccessibleCell::release(  ) noexcept
 sal_Int64 SAL_CALL AccessibleCell::getAccessibleChildCount()
 {
     SolarMutexGuard aSolarGuard;
-    ThrowIfDisposed ();
+    ensureAlive();
     return mpText != nullptr ? mpText->GetChildCount () : 0;
 }
 
@@ -165,7 +142,7 @@ sal_Int64 SAL_CALL AccessibleCell::getAccessibleChildCount()
 Reference<XAccessible> SAL_CALL AccessibleCell::getAccessibleChild (sal_Int64 nIndex)
 {
     SolarMutexGuard aSolarGuard;
-    ThrowIfDisposed ();
+    ensureAlive();
 
     return mpText->GetChild (nIndex);
 }
@@ -230,12 +207,6 @@ sal_Int64 SAL_CALL AccessibleCell::getAccessibleStateSet()
 
 // XAccessibleComponent
 
-
-sal_Bool SAL_CALL AccessibleCell::containsPoint( const css::awt::Point& aPoint)
-{
-    return AccessibleComponentBase::containsPoint( aPoint );
-}
-
 /** The implementation below is at the moment straightforward.  It iterates
     over all children (and thereby instances all children which have not
     been already instantiated) until a child covering the specified point is
@@ -274,12 +245,8 @@ Reference<XAccessible > SAL_CALL  AccessibleCell::getAccessibleAtPoint ( const c
 }
 
 
-css::awt::Rectangle SAL_CALL AccessibleCell::getBounds()
+css::awt::Rectangle AccessibleCell::implGetBounds()
 {
-    SolarMutexGuard aSolarGuard;
-    ::osl::MutexGuard aGuard (m_aMutex);
-
-    ThrowIfDisposed ();
     css::awt::Rectangle aBoundingBox;
     if( mxCell.is() )
     {
@@ -288,7 +255,7 @@ css::awt::Rectangle SAL_CALL AccessibleCell::getBounds()
 
         // Transform coordinates from internal to pixel.
         if (maShapeTreeInfo.GetViewForwarder() == nullptr)
-            throw uno::RuntimeException ("AccessibleCell has no valid view forwarder", getXWeak());
+            throw uno::RuntimeException (u"AccessibleCell has no valid view forwarder"_ustr, getXWeak());
 
         ::Size aPixelSize( maShapeTreeInfo.GetViewForwarder()->LogicToPixel(::Size(aCellRect.GetWidth(), aCellRect.GetHeight())) );
         ::Point aPixelPosition( maShapeTreeInfo.GetViewForwarder()->LogicToPixel( aCellRect.TopLeft() ));
@@ -319,56 +286,9 @@ css::awt::Rectangle SAL_CALL AccessibleCell::getBounds()
     return aBoundingBox;
 }
 
-
-css::awt::Point SAL_CALL AccessibleCell::getLocation()
-{
-    ThrowIfDisposed ();
-    css::awt::Rectangle aBoundingBox(getBounds());
-    return css::awt::Point(aBoundingBox.X, aBoundingBox.Y);
-}
-
-
-css::awt::Point SAL_CALL AccessibleCell::getLocationOnScreen()
-{
-    ThrowIfDisposed ();
-
-    // Get relative position...
-    css::awt::Point aLocation(getLocation ());
-
-    // ... and add absolute position of the parent.
-    Reference<XAccessibleComponent> xParentComponent( getAccessibleParent(), uno::UNO_QUERY);
-    if(xParentComponent.is())
-    {
-        css::awt::Point aParentLocation(xParentComponent->getLocationOnScreen());
-        aLocation.X += aParentLocation.X;
-        aLocation.Y += aParentLocation.Y;
-    }
-    else
-    {
-        SAL_WARN("svx", "parent does not support XAccessibleComponent");
-    }
-
-    return aLocation;
-}
-
-
-awt::Size SAL_CALL AccessibleCell::getSize()
-{
-    ThrowIfDisposed ();
-    awt::Rectangle aBoundingBox (getBounds());
-    return awt::Size (aBoundingBox.Width, aBoundingBox.Height);
-}
-
-
-void SAL_CALL AccessibleCell::grabFocus()
-{
-    AccessibleComponentBase::grabFocus();
-}
-
-
 sal_Int32 SAL_CALL AccessibleCell::getForeground()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     // todo
     return sal_Int32(0x0ffffffL);
@@ -377,54 +297,21 @@ sal_Int32 SAL_CALL AccessibleCell::getForeground()
 
 sal_Int32 SAL_CALL AccessibleCell::getBackground()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     // todo
     return 0;
 }
-
-
-// XAccessibleExtendedComponent
-
-
-css::uno::Reference< css::awt::XFont > SAL_CALL AccessibleCell::getFont()
-{
-//todo
-    return AccessibleComponentBase::getFont();
-}
-
-
-OUString SAL_CALL AccessibleCell::getTitledBorderText()
-{
-    return AccessibleComponentBase::getTitledBorderText();
-}
-
-
-OUString SAL_CALL AccessibleCell::getToolTipText()
-{
-    return AccessibleComponentBase::getToolTipText();
-}
-
 
 // XAccessibleEventBroadcaster
 
 
 void SAL_CALL AccessibleCell::addAccessibleEventListener( const Reference<XAccessibleEventListener >& rxListener)
 {
-    SolarMutexGuard aSolarGuard;
-    ::osl::MutexGuard aGuard (m_aMutex);
-    if (rBHelper.bDisposed || rBHelper.bInDispose)
-    {
-        Reference<XInterface> xSource( static_cast<XComponent *>(this) );
-        lang::EventObject aEventObj(xSource);
-        rxListener->disposing(aEventObj);
-    }
-    else
-    {
-        AccessibleContextBase::addAccessibleEventListener (rxListener);
-        if (mpText != nullptr)
-            mpText->AddEventListener (rxListener);
-    }
+    AccessibleContextBase::addAccessibleEventListener(rxListener);
+
+    if (isAlive() && mpText)
+        mpText->AddEventListener (rxListener);
 }
 
 
@@ -442,14 +329,14 @@ void SAL_CALL AccessibleCell::removeAccessibleEventListener( const Reference<XAc
 
 OUString SAL_CALL AccessibleCell::getImplementationName()
 {
-    return "AccessibleCell";
+    return u"AccessibleCell"_ustr;
 }
 
 
 Sequence<OUString> SAL_CALL AccessibleCell::getSupportedServiceNames()
 {
-    ThrowIfDisposed ();
-    const css::uno::Sequence<OUString> vals { "com.sun.star.drawing.AccessibleCell" };
+    ensureAlive();
+    const css::uno::Sequence<OUString> vals { u"com.sun.star.drawing.AccessibleCell"_ustr };
     return comphelper::concatSequences(AccessibleContextBase::getSupportedServiceNames(), vals);
 }
 
@@ -498,7 +385,7 @@ void AccessibleCell::disposing()
 
 sal_Int64 SAL_CALL AccessibleCell::getAccessibleIndexInParent()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     return mnIndexInParent;
 }
 
@@ -542,7 +429,7 @@ OUString AccessibleCell::getCellName( sal_Int32 nCol, sal_Int32 nRow )
 
 OUString SAL_CALL AccessibleCell::getAccessibleName()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     SolarMutexGuard aSolarGuard;
 
     if( pAccTable )
@@ -558,7 +445,7 @@ OUString SAL_CALL AccessibleCell::getAccessibleName()
         }
     }
 
-    return AccessibleCellBase::getAccessibleName();
+    return AccessibleContextBase::getAccessibleName();
 }
 
 void AccessibleCell::UpdateChildren()
@@ -579,7 +466,7 @@ OUString SAL_CALL AccessibleCell::getAccessibleName() throw (css::uno::RuntimeEx
     if( mxCell.is() )
         return mxCell->getName();
 
-    return AccessibleCellBase::getAccessibleName();
+    return AccessibleContextBase::getAccessibleName();
 }
 */
 

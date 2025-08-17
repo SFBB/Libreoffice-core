@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <accessibility/vclxaccessibleheaderbar.hxx>
+
 #include <vcl/headbar.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <tools/debug.hxx>
@@ -881,7 +883,7 @@ void HeaderBar::Draw( OutputDevice* pDev, const Point& rPos,
     tools::Rectangle   aRect( aPos, aSize );
     vcl::Font   aFont = GetDrawPixelFont( pDev );
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
     pDev->SetFont( aFont );
     if ( nFlags & SystemTextColorFlags::Mono )
@@ -923,8 +925,6 @@ void HeaderBar::Draw( OutputDevice* pDev, const Point& rPos,
         ImplDrawItem(*pDev, i, false, aItemRect, &aRect );
         pDev->SetClipRegion();
     }
-
-    pDev->Pop();
 }
 
 void HeaderBar::Resize()
@@ -1069,13 +1069,7 @@ void HeaderBar::RemoveItem( sal_uInt16 nItemId )
 {
     sal_uInt16 nPos = GetItemPos( nItemId );
     if ( nPos != HEADERBAR_ITEM_NOTFOUND )
-    {
-        if ( nPos < mvItemList.size() ) {
-            auto it = mvItemList.begin();
-            it += nPos;
-            mvItemList.erase( it );
-        }
-    }
+        mvItemList.erase( mvItemList.begin() + nPos );
 }
 
 void HeaderBar::MoveItem( sal_uInt16 nItemId, sal_uInt16 nNewPos )
@@ -1222,12 +1216,12 @@ void HeaderBar::SetItemText( sal_uInt16 nItemId, const OUString& rText )
     }
 }
 
-OUString HeaderBar::GetItemText( sal_uInt16 nItemId ) const
+const OUString & HeaderBar::GetItemText( sal_uInt16 nItemId ) const
 {
     sal_uInt16 nPos = GetItemPos( nItemId );
     if ( nPos != HEADERBAR_ITEM_NOTFOUND )
         return mvItemList[ nPos ]->maText;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 OUString HeaderBar::GetHelpText( sal_uInt16 nItemId ) const
@@ -1240,7 +1234,7 @@ OUString HeaderBar::GetHelpText( sal_uInt16 nItemId ) const
         {
             Help* pHelp = Application::GetHelp();
             if ( pHelp )
-                pItem->maHelpText = pHelp->GetHelpText( OStringToOUString( pItem->maHelpId, RTL_TEXTENCODING_UTF8 ), this );
+                pItem->maHelpText = pHelp->GetHelpText( OStringToOUString( pItem->maHelpId, RTL_TEXTENCODING_UTF8 ) );
         }
 
         return pItem->maHelpText;
@@ -1280,22 +1274,22 @@ Size HeaderBar::CalcWindowSizePixel() const
     return aSize;
 }
 
-css::uno::Reference< css::accessibility::XAccessible > HeaderBar::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> HeaderBar::CreateAccessible()
 {
-    if ( !mxAccessible.is() )
+    if (!mpAccessible.is())
     {
         maCreateAccessibleHdl.Call( this );
 
-        if ( !mxAccessible.is() )
-            mxAccessible = Window::CreateAccessible();
+        if (!mpAccessible.is())
+            mpAccessible = new VCLXAccessibleHeaderBar(this);
     }
 
-    return mxAccessible;
+    return mpAccessible;
 }
 
-void HeaderBar::SetAccessible( const css::uno::Reference< css::accessibility::XAccessible >& _xAccessible )
+void HeaderBar::SetAccessible(rtl::Reference<comphelper::OAccessible>& rAccessible)
 {
-    mxAccessible = _xAccessible;
+    mpAccessible = rAccessible;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

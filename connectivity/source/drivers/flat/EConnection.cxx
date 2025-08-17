@@ -36,7 +36,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::lang;
 
 
 OFlatConnection::OFlatConnection(ODriver*   _pDriver) : OConnection(_pDriver)
@@ -55,7 +54,7 @@ OFlatConnection::~OFlatConnection()
 
 // XServiceInfo
 
-IMPLEMENT_SERVICE_INFO(OFlatConnection, "com.sun.star.sdbc.drivers.flat.Connection", "com.sun.star.sdbc.Connection")
+IMPLEMENT_SERVICE_INFO(OFlatConnection, u"com.sun.star.sdbc.drivers.flat.Connection"_ustr, u"com.sun.star.sdbc.Connection"_ustr)
 
 
 void OFlatConnection::construct(const OUString& url,const Sequence< PropertyValue >& info)
@@ -133,11 +132,11 @@ Reference< XDatabaseMetaData > SAL_CALL OFlatConnection::getMetaData(  )
 css::uno::Reference< XTablesSupplier > OFlatConnection::createCatalog()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
-    Reference< XTablesSupplier > xTab = m_xCatalog;
+    rtl::Reference< connectivity::sdbcx::OCatalog > xTab = m_xCatalog;
     if(!xTab.is())
     {
         xTab = new OFlatCatalog(this);
-        m_xCatalog = xTab;
+        m_xCatalog = xTab.get();
     }
     return xTab;
 }
@@ -168,8 +167,7 @@ Reference< XPreparedStatement > SAL_CALL OFlatConnection::prepareCall( const OUS
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OConnection_B::rBHelper.bDisposed);
 
-    ::dbtools::throwFeatureNotImplementedSQLException( "XConnection::prepareCall", *this );
-    return nullptr;
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XConnection::prepareCall"_ustr, *this );
 }
 
 

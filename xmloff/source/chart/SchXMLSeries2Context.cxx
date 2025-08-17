@@ -52,7 +52,6 @@
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/namespacemap.hxx>
 #include <xmloff/SchXMLSeriesHelper.hxx>
-#include <SchXMLImport.hxx>
 #include <xmloff/prstylei.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
@@ -111,12 +110,12 @@ void lcl_setAutomaticSymbolSize( const uno::Reference< beans::XPropertySet >& xS
         double fScale = 1;
         uno::Reference< beans::XPropertySet > xLegendProp( xChartDoc->getLegend(), uno::UNO_QUERY );
         chart::ChartLegendPosition aLegendPosition = chart::ChartLegendPosition_NONE;
-        if( xLegendProp.is() && (xLegendProp->getPropertyValue("Alignment") >>= aLegendPosition)
+        if( xLegendProp.is() && (xLegendProp->getPropertyValue(u"Alignment"_ustr) >>= aLegendPosition)
             && chart::ChartLegendPosition_NONE != aLegendPosition )
         {
 
             double fFontHeight = 6.0;
-            if( xLegendProp->getPropertyValue("CharHeight") >>= fFontHeight )
+            if( xLegendProp->getPropertyValue(u"CharHeight"_ustr) >>= fFontHeight )
                 fScale = 0.75*fFontHeight/6.0;
         }
         else
@@ -134,7 +133,7 @@ void lcl_setAutomaticSymbolSize( const uno::Reference< beans::XPropertySet >& xS
             aSymbolSize.Width = aSymbolSize.Height;
         }
     }
-    xSeriesOrPointProp->setPropertyValue("SymbolSize",uno::Any( aSymbolSize ));
+    xSeriesOrPointProp->setPropertyValue(u"SymbolSize"_ustr,uno::Any( aSymbolSize ));
 }
 
 void lcl_setSymbolSizeIfNeeded( const uno::Reference< beans::XPropertySet >& xSeriesOrPointProp, const SvXMLImport& rImport )
@@ -143,7 +142,7 @@ void lcl_setSymbolSizeIfNeeded( const uno::Reference< beans::XPropertySet >& xSe
         return;
 
     sal_Int32 nSymbolType = chart::ChartSymbolType::NONE;
-    if( !(xSeriesOrPointProp.is() && ( xSeriesOrPointProp->getPropertyValue("SymbolType") >>= nSymbolType)) )
+    if( !(xSeriesOrPointProp.is() && ( xSeriesOrPointProp->getPropertyValue(u"SymbolType"_ustr) >>= nSymbolType)) )
         return;
 
     if(chart::ChartSymbolType::NONE!=nSymbolType)
@@ -151,7 +150,7 @@ void lcl_setSymbolSizeIfNeeded( const uno::Reference< beans::XPropertySet >& xSe
         if( chart::ChartSymbolType::BITMAPURL==nSymbolType )
         {
             //set special size for graphics to indicate to use the bitmap size itself
-            xSeriesOrPointProp->setPropertyValue("SymbolSize",uno::Any( awt::Size(-1,-1) ));
+            xSeriesOrPointProp->setPropertyValue(u"SymbolSize"_ustr,uno::Any( awt::Size(-1,-1) ));
         }
         else
         {
@@ -179,11 +178,11 @@ void lcl_setLinkNumberFormatToSourceIfNeeded( const uno::Reference< beans::XProp
         return;
 
     bool bLinkToSource = false;
-    if( xPointProp.is() && (xPointProp->getPropertyValue("LinkNumberFormatToSource") >>= bLinkToSource) )
+    if( xPointProp.is() && (xPointProp->getPropertyValue(u"LinkNumberFormatToSource"_ustr) >>= bLinkToSource) )
     {
         if( bLinkToSource )
         {
-            xPointProp->setPropertyValue("LinkNumberFormatToSource", uno::Any(false));
+            xPointProp->setPropertyValue(u"LinkNumberFormatToSource"_ustr, uno::Any(false));
         }
     }
 }
@@ -193,7 +192,7 @@ void lcl_insertErrorBarLSequencesToMap(
     const uno::Reference< beans::XPropertySet > & xSeriesProp )
 {
     Reference< chart2::data::XDataSource > xErrorBarSource;
-    if( ( xSeriesProp->getPropertyValue( "ErrorBarY" ) >>= xErrorBarSource ) &&
+    if( ( xSeriesProp->getPropertyValue( u"ErrorBarY"_ustr ) >>= xErrorBarSource ) &&
         xErrorBarSource.is() )
     {
         const Sequence< Reference< chart2::data::XLabeledDataSequence > > aLSequences(
@@ -227,7 +226,7 @@ Reference< chart2::data::XLabeledDataSequence2 > lcl_createAndAddSequenceToSerie
     Reference< chart2::data::XDataSequence > xSeq = SchXMLTools::CreateDataSequence( rRange, xChartDoc );
     Reference< beans::XPropertySet > xSeqProp( xSeq, uno::UNO_QUERY );
     if( xSeqProp.is())
-        xSeqProp->setPropertyValue("Role", uno::Any( rRole));
+        xSeqProp->setPropertyValue(u"Role"_ustr, uno::Any( rRole));
     xLabeledSeq->setValues( xSeq );
 
     // add new sequence to data series / push to front to have the correct sequence order if charttype is changed afterwards
@@ -411,18 +410,18 @@ void SchXMLSeries2Context::startFastElement (sal_Int32 /*Element*/,
         if (xSeriesProp.is())
         {
             if (bHideLegend)
-                xSeriesProp->setPropertyValue("ShowLegendEntry", uno::Any(false));
+                xSeriesProp->setPropertyValue(u"ShowLegendEntry"_ustr, uno::Any(false));
 
             if( bIsCandleStick )
             {
                 // set default color for range-line to black (before applying styles)
-                xSeriesProp->setPropertyValue("Color",
+                xSeriesProp->setPropertyValue(u"Color"_ustr,
                         uno::Any( sal_Int32( 0x000000 ))); // black
             }
             else if ( maSeriesChartTypeName == "com.sun.star.chart2.PieChartType" )
             {
                 //@todo: this property should be saved
-                xSeriesProp->setPropertyValue("VaryColorsByPoint",
+                xSeriesProp->setPropertyValue(u"VaryColorsByPoint"_ustr,
                         uno::Any( true ));
             }
 
@@ -447,10 +446,10 @@ void SchXMLSeries2Context::startFastElement (sal_Int32 /*Element*/,
         Reference<beans::XPropertySet> xSeqProp(xSequenceValues, uno::UNO_QUERY);
         if (xSeqProp.is())
         {
-            OUString aMainRole("values-y");
+            OUString aMainRole(u"values-y"_ustr);
             if (maSeriesChartTypeName == "com.sun.star.chart2.BubbleChartType")
                 aMainRole = "values-size";
-            xSeqProp->setPropertyValue("Role", uno::Any(aMainRole));
+            xSeqProp->setPropertyValue(u"Role"_ustr, uno::Any(aMainRole));
         }
         xLabeledSeq->setValues(xSequenceValues);
 
@@ -479,9 +478,9 @@ void SchXMLSeries2Context::startFastElement (sal_Int32 /*Element*/,
 
         //Labels should always include hidden cells
         Reference<beans::XPropertySet> xSeqLabelProp(xSequenceLabel, uno::UNO_QUERY);
-        if (xSeqLabelProp.is() && xSeqLabelProp->getPropertySetInfo()->hasPropertyByName("IncludeHiddenCells"))
+        if (xSeqLabelProp.is() && xSeqLabelProp->getPropertySetInfo()->hasPropertyByName(u"IncludeHiddenCells"_ustr))
         {
-            xSeqLabelProp->setPropertyValue( "IncludeHiddenCells", uno::Any(true));
+            xSeqLabelProp->setPropertyValue( u"IncludeHiddenCells"_ustr, uno::Any(true));
         }
 
         xLabeledSeq->setLabel(xSequenceLabel);
@@ -554,7 +553,7 @@ void SchXMLSeries2Context::endFastElement(sal_Int32 )
     //different handling for different chart types necessary
     if( bIsScatterChart || ( nDomainCount==1 && !bIsBubbleChart ) )
     {
-        DomainInfo aDomainInfo( "values-x", m_rGlobalSeriesImportInfo.aFirstFirstDomainAddress, m_rGlobalSeriesImportInfo.nFirstFirstDomainIndex ) ;
+        DomainInfo aDomainInfo( u"values-x"_ustr, m_rGlobalSeriesImportInfo.aFirstFirstDomainAddress, m_rGlobalSeriesImportInfo.nFirstFirstDomainIndex ) ;
         bool bCreateXValues = true;
         if( !maDomainAddresses.empty() )
         {
@@ -587,7 +586,7 @@ void SchXMLSeries2Context::endFastElement(sal_Int32 )
     {
         if( nDomainCount>1 )
         {
-            DomainInfo aDomainInfo( "values-x", maDomainAddresses[1], m_rGlobalSeriesImportInfo.nCurrentDataIndex ) ;
+            DomainInfo aDomainInfo( u"values-x"_ustr, maDomainAddresses[1], m_rGlobalSeriesImportInfo.nCurrentDataIndex ) ;
             if( m_rGlobalSeriesImportInfo.aFirstSecondDomainAddress.isEmpty() )
             {
                 //for bubble chart the second domain contains the x values which should become an index smaller than y values for own data table
@@ -600,12 +599,12 @@ void SchXMLSeries2Context::endFastElement(sal_Int32 )
         }
         else if( !m_rGlobalSeriesImportInfo.aFirstSecondDomainAddress.isEmpty() )
         {
-            DomainInfo aDomainInfo( "values-x", m_rGlobalSeriesImportInfo.aFirstSecondDomainAddress, m_rGlobalSeriesImportInfo.nFirstSecondDomainIndex ) ;
+            DomainInfo aDomainInfo( u"values-x"_ustr, m_rGlobalSeriesImportInfo.aFirstSecondDomainAddress, m_rGlobalSeriesImportInfo.nFirstSecondDomainIndex ) ;
             aDomainInfos.push_back( aDomainInfo );
         }
         if( nDomainCount>0)
         {
-            DomainInfo aDomainInfo( "values-y", maDomainAddresses.front(), m_rGlobalSeriesImportInfo.nCurrentDataIndex ) ;
+            DomainInfo aDomainInfo( u"values-y"_ustr, maDomainAddresses.front(), m_rGlobalSeriesImportInfo.nCurrentDataIndex ) ;
             if( m_rGlobalSeriesImportInfo.aFirstFirstDomainAddress.isEmpty() )
             {
                 m_rGlobalSeriesImportInfo.aFirstFirstDomainAddress = maDomainAddresses.front();
@@ -616,7 +615,7 @@ void SchXMLSeries2Context::endFastElement(sal_Int32 )
         }
         else if( !m_rGlobalSeriesImportInfo.aFirstFirstDomainAddress.isEmpty() )
         {
-            DomainInfo aDomainInfo( "values-y", m_rGlobalSeriesImportInfo.aFirstFirstDomainAddress, m_rGlobalSeriesImportInfo.nFirstFirstDomainIndex ) ;
+            DomainInfo aDomainInfo( u"values-y"_ustr, m_rGlobalSeriesImportInfo.aFirstFirstDomainAddress, m_rGlobalSeriesImportInfo.nFirstFirstDomainIndex ) ;
             aDomainInfos.push_back( aDomainInfo );
         }
     }
@@ -638,7 +637,7 @@ void SchXMLSeries2Context::endFastElement(sal_Int32 )
                 -1, 1,
                 msAutoStyleName, mnAttachedAxis );
             aStyle.mbSymbolSizeForSeriesIsMissingInFile=mbSymbolSizeIsMissingInFile;
-            mrStyleVector.push_back( aStyle );
+            mrStyleVector.push_back(std::move(aStyle));
         }
         // And styles for a data-label child element too. In contrast to data-labels as child of data points,
         // an information about absolute position is useless here. We need only style information.
@@ -786,27 +785,27 @@ void SchXMLSeries2Context::setDefaultsToSeries( SeriesDefaultsAndStyles& rSeries
                 continue;
 
             if( rSeriesDefaultsAndStyles.maSymbolTypeDefault.hasValue() )
-                xSeries->setPropertyValue("SymbolType",rSeriesDefaultsAndStyles.maSymbolTypeDefault);
+                xSeries->setPropertyValue(u"SymbolType"_ustr,rSeriesDefaultsAndStyles.maSymbolTypeDefault);
             if( rSeriesDefaultsAndStyles.maDataCaptionDefault.hasValue() )
-                xSeries->setPropertyValue("DataCaption",rSeriesDefaultsAndStyles.maDataCaptionDefault);
+                xSeries->setPropertyValue(u"DataCaption"_ustr,rSeriesDefaultsAndStyles.maDataCaptionDefault);
 
             if( rSeriesDefaultsAndStyles.maErrorIndicatorDefault.hasValue() )
-                xSeries->setPropertyValue("ErrorIndicator",rSeriesDefaultsAndStyles.maErrorIndicatorDefault);
+                xSeries->setPropertyValue(u"ErrorIndicator"_ustr,rSeriesDefaultsAndStyles.maErrorIndicatorDefault);
             if( rSeriesDefaultsAndStyles.maErrorCategoryDefault.hasValue() )
-                xSeries->setPropertyValue("ErrorCategory",rSeriesDefaultsAndStyles.maErrorCategoryDefault);
+                xSeries->setPropertyValue(u"ErrorCategory"_ustr,rSeriesDefaultsAndStyles.maErrorCategoryDefault);
             if( rSeriesDefaultsAndStyles.maConstantErrorLowDefault.hasValue() )
-                xSeries->setPropertyValue("ConstantErrorLow",rSeriesDefaultsAndStyles.maConstantErrorLowDefault);
+                xSeries->setPropertyValue(u"ConstantErrorLow"_ustr,rSeriesDefaultsAndStyles.maConstantErrorLowDefault);
             if( rSeriesDefaultsAndStyles.maConstantErrorHighDefault.hasValue() )
-                xSeries->setPropertyValue("ConstantErrorHigh",rSeriesDefaultsAndStyles.maConstantErrorHighDefault);
+                xSeries->setPropertyValue(u"ConstantErrorHigh"_ustr,rSeriesDefaultsAndStyles.maConstantErrorHighDefault);
             if( rSeriesDefaultsAndStyles.maPercentageErrorDefault.hasValue() )
-                xSeries->setPropertyValue("PercentageError",rSeriesDefaultsAndStyles.maPercentageErrorDefault);
+                xSeries->setPropertyValue(u"PercentageError"_ustr,rSeriesDefaultsAndStyles.maPercentageErrorDefault);
             if( rSeriesDefaultsAndStyles.maErrorMarginDefault.hasValue() )
-                xSeries->setPropertyValue("ErrorMargin",rSeriesDefaultsAndStyles.maErrorMarginDefault);
+                xSeries->setPropertyValue(u"ErrorMargin"_ustr,rSeriesDefaultsAndStyles.maErrorMarginDefault);
 
             if( rSeriesDefaultsAndStyles.maMeanValueDefault.hasValue() )
-                xSeries->setPropertyValue("MeanValue",rSeriesDefaultsAndStyles.maMeanValueDefault);
+                xSeries->setPropertyValue(u"MeanValue"_ustr,rSeriesDefaultsAndStyles.maMeanValueDefault);
             if( rSeriesDefaultsAndStyles.maRegressionCurvesDefault.hasValue() )
-                xSeries->setPropertyValue("RegressionCurves",rSeriesDefaultsAndStyles.maRegressionCurvesDefault);
+                xSeries->setPropertyValue(u"RegressionCurves"_ustr,rSeriesDefaultsAndStyles.maRegressionCurvesDefault);
         }
         catch( uno::Exception &  )
         {
@@ -858,7 +857,7 @@ void SchXMLSeries2Context::setStylesToSeries( SeriesDefaultsAndStyles& rSeriesDe
 
             if( seriesStyle.mnAttachedAxis != 1 )
             {
-                xSeriesProp->setPropertyValue("Axis"
+                xSeriesProp->setPropertyValue(u"Axis"_ustr
                     , uno::Any(chart::ChartAxisAssign::SECONDARY_Y) );
             }
 
@@ -1039,10 +1038,10 @@ void SchXMLSeries2Context::setStylesToStatisticsObjects( SeriesDefaultsAndStyles
                 uno::Reference< beans::XPropertySet > xNewSeriesProp(seriesStyle.m_xSeries,uno::UNO_QUERY);
 
                 if (seriesStyle.m_xErrorXProperties.is())
-                    xNewSeriesProp->setPropertyValue("ErrorBarX",uno::Any(seriesStyle.m_xErrorXProperties));
+                    xNewSeriesProp->setPropertyValue(u"ErrorBarX"_ustr,uno::Any(seriesStyle.m_xErrorXProperties));
 
                 if (seriesStyle.m_xErrorYProperties.is())
-                    xNewSeriesProp->setPropertyValue("ErrorBarY",uno::Any(seriesStyle.m_xErrorYProperties));
+                    xNewSeriesProp->setPropertyValue(u"ErrorBarY"_ustr,uno::Any(seriesStyle.m_xErrorYProperties));
             }
 
             try
@@ -1070,10 +1069,10 @@ void SchXMLSeries2Context::setStylesToStatisticsObjects( SeriesDefaultsAndStyles
                         switch( seriesStyle.meType )
                         {
                             case DataRowPointStyle::MEAN_VALUE:
-                                xSeriesProp->getPropertyValue("DataMeanValueProperties") >>= xStatPropSet;
+                                xSeriesProp->getPropertyValue(u"DataMeanValueProperties"_ustr) >>= xStatPropSet;
                                 break;
                             case DataRowPointStyle::ERROR_INDICATOR:
-                                xSeriesProp->getPropertyValue("DataErrorProperties")  >>= xStatPropSet;
+                                xSeriesProp->getPropertyValue(u"DataErrorProperties"_ustr)  >>= xStatPropSet;
                                 break;
                             default:
                                 break;
@@ -1154,7 +1153,7 @@ void SchXMLSeries2Context::setStylesToDataPoints( SeriesDefaultsAndStyles& rSeri
                 {
                     //need to set this explicitly here for old files as the new api does not support this property fully anymore
                     if( bSwitchOffLinesForScatter )
-                        xPointProp->setPropertyValue("Lines",uno::Any(false));
+                        xPointProp->setPropertyValue(u"Lines"_ustr,uno::Any(false));
                 }
                 catch( const uno::Exception & )
                 {
@@ -1222,7 +1221,7 @@ void SchXMLSeries2Context::setStylesToDataPoints( SeriesDefaultsAndStyles& rSeri
 
                     Sequence< Reference<chart2::XDataPointCustomLabelField>> xLabels(nLabelCount);
                     auto pxLabels = xLabels.getArray();
-                    Reference< uno::XComponentContext > xContext( comphelper::getProcessComponentContext() );
+                    const Reference< uno::XComponentContext >& xContext( comphelper::getProcessComponentContext() );
                     for( size_t j = 0; j < nLabelCount; ++j )
                     {
                         Reference< chart2::XDataPointCustomLabelField > xCustomLabel = chart2::DataPointCustomLabelField::create(xContext);
@@ -1247,7 +1246,7 @@ void SchXMLSeries2Context::setStylesToDataPoints( SeriesDefaultsAndStyles& rSeri
                         if (xPointPropInfo.is())
                         {
                             uno::Sequence<beans::Property> aProperties = xPointPropInfo->getProperties();
-                            for (const auto& rProperty : std::as_const(aProperties))
+                            for (const auto& rProperty : aProperties)
                             {
                                 if (!rProperty.Name.startsWith("Char")
                                     || rProperty.Name.startsWith("Chart"))
@@ -1261,8 +1260,8 @@ void SchXMLSeries2Context::setStylesToDataPoints( SeriesDefaultsAndStyles& rSeri
                         }
                     }
 
-                    xPointProp->setPropertyValue("CustomLabelFields", uno::Any(xLabels));
-                    xPointProp->setPropertyValue("DataCaption", uno::Any(chart::ChartDataCaption::CUSTOM));
+                    xPointProp->setPropertyValue(u"CustomLabelFields"_ustr, uno::Any(xLabels));
+                    xPointProp->setPropertyValue(u"DataCaption"_ustr, uno::Any(chart::ChartDataCaption::CUSTOM));
                 }
 
                 if( seriesStyle.mCustomLabelPos[0] != 0.0 || seriesStyle.mCustomLabelPos[1] != 0.0 )
@@ -1270,7 +1269,7 @@ void SchXMLSeries2Context::setStylesToDataPoints( SeriesDefaultsAndStyles& rSeri
                     chart2::RelativePosition aCustomlabelPosition;
                     aCustomlabelPosition.Primary = seriesStyle.mCustomLabelPos[0];
                     aCustomlabelPosition.Secondary = seriesStyle.mCustomLabelPos[1];
-                    xPointProp->setPropertyValue("CustomLabelPosition", uno::Any(aCustomlabelPosition));
+                    xPointProp->setPropertyValue(u"CustomLabelPosition"_ustr, uno::Any(aCustomlabelPosition));
                 }
             }
             catch( const uno::Exception & )
@@ -1296,7 +1295,7 @@ void SchXMLSeries2Context::switchSeriesLinesOff( ::std::vector< DataRowPointStyl
             if( !xSeries.is() )
                 continue;
 
-            xSeries->setPropertyValue("Lines",uno::Any(false));
+            xSeries->setPropertyValue(u"Lines"_ustr,uno::Any(false));
         }
         catch( uno::Exception &  )
         {

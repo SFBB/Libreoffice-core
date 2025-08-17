@@ -52,7 +52,6 @@
 namespace rptui
 {
 using namespace ::com::sun::star;
-using namespace utl;
 using namespace ::comphelper;
 
 static OUString lcl_getImageId(const uno::Reference< report::XReportComponent>& _xElement)
@@ -203,7 +202,7 @@ public:
 };
 
 NavigatorTree::NavigatorTree(std::unique_ptr<weld::TreeView> xTreeView, OReportController& rController)
-    : OPropertyChangeListener(m_aMutex)
+    : OPropertyChangeListener()
     , m_xTreeView(std::move(xTreeView))
     , m_rController(rController)
 {
@@ -221,7 +220,7 @@ NavigatorTree::NavigatorTree(std::unique_ptr<weld::TreeView> xTreeView, OReportC
 
     m_xTreeView->set_selection_mode(SelectionMode::Multiple);
 
-    m_xTreeView->connect_changed(LINK(this, NavigatorTree, OnEntrySelDesel));
+    m_xTreeView->connect_selection_changed(LINK(this, NavigatorTree, OnEntrySelDesel));
     m_xTreeView->connect_popup_menu(LINK(this, NavigatorTree, CommandHdl));
 }
 
@@ -273,10 +272,10 @@ IMPL_LINK(NavigatorTree, CommandHdl, const CommandEvent&, rEvt, bool)
             bool bDeleteAllowed = m_rController.isEditable() && (xGroup.is() ||
                                       uno::Reference< report::XFunction>(pData->getContent(),uno::UNO_QUERY).is());
 
-            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xTreeView.get(), "modules/dbreport/ui/navigatormenu.ui"));
-            std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xTreeView.get(), u"modules/dbreport/ui/navigatormenu.ui"_ustr));
+            std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
 
-            const OUString aIds[] = { "sorting", "page", "report", "function", "properties", "delete" };
+            const OUString aIds[] = { u"sorting"_ustr, u"page"_ustr, u"report"_ustr, u"function"_ustr, u"properties"_ustr, u"delete"_ustr };
             for (size_t i = 0; i < SAL_N_ELEMENTS(aIds); ++i)
             {
                 sal_uInt16 nSId = mapIdent(aIds[i]);
@@ -360,7 +359,7 @@ void NavigatorTree::_selectionChanged( const lang::EventObject& aEvent )
     }
     else
     {
-        for (const uno::Reference<report::XReportComponent>& rElem : std::as_const(aSelection))
+        for (const uno::Reference<report::XReportComponent>& rElem : aSelection)
         {
             bool bEntry = find(rElem, *xEntry);
             if (bEntry && !m_xTreeView->is_selected(*xEntry))
@@ -673,7 +672,7 @@ void NavigatorTree::removeEntry(const weld::TreeIter& rEntry, bool bRemove)
 }
 
 NavigatorTree::UserData::UserData(NavigatorTree* pTree,uno::Reference<uno::XInterface> xContent)
-    : OPropertyChangeListener(m_aMutex)
+    : OPropertyChangeListener()
     , OContainerListener(m_aMutex)
     , m_xContent(std::move(xContent))
     , m_pTree(pTree)
@@ -783,9 +782,9 @@ void NavigatorTree::UserData::_disposing(const lang::EventObject& _rSource)
 }
 
 ONavigator::ONavigator(weld::Window* pParent, OReportController& rController)
-    : GenericDialogController(pParent, "modules/dbreport/ui/floatingnavigator.ui", "FloatingNavigator")
+    : GenericDialogController(pParent, u"modules/dbreport/ui/floatingnavigator.ui"_ustr, u"FloatingNavigator"_ustr)
     , m_xReport(rController.getReportDefinition())
-    , m_xNavigatorTree(std::make_unique<NavigatorTree>(m_xBuilder->weld_tree_view("treeview"), rController))
+    , m_xNavigatorTree(std::make_unique<NavigatorTree>(m_xBuilder->weld_tree_view(u"treeview"_ustr), rController))
 {
     reportdesign::OReportVisitor aVisitor(m_xNavigatorTree.get());
     aVisitor.start(m_xReport);

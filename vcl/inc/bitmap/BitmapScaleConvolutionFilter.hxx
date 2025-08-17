@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef VCL_INC_BITMAP_BITMAPSCALECONVOLUTIONFILTER_HXX
-#define VCL_INC_BITMAP_BITMAPSCALECONVOLUTIONFILTER_HXX
+#pragma once
 
-#include <vcl/BitmapFilter.hxx>
+#include <vcl/bitmap/BitmapFilter.hxx>
 
 #include <ResampleKernel.hxx>
 
@@ -37,7 +36,7 @@ protected:
     {
     }
 
-    virtual BitmapEx execute(BitmapEx const& rBitmap) const override;
+    virtual Bitmap execute(Bitmap const& rBitmap) const override;
 
 private:
     std::unique_ptr<Kernel> mxKernel;
@@ -72,7 +71,5 @@ public:
     }
 };
 }
-
-#endif // VCL_INC_BITMAPSCALECONVOLUTIONFILTER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

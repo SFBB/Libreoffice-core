@@ -87,7 +87,7 @@ typedef ::cppu::WeakImplHelper < XInputStream, XSeekable > FileInputStreamWrappe
 
 namespace {
 
-class FileStreamWrapper_Impl : public FileInputStreamWrapper_Base
+class FileStreamWrapper_Impl : public FileInputStreamWrapper_Base, public comphelper::ByteReader
 {
 protected:
     std::mutex    m_aMutex;
@@ -106,6 +106,8 @@ public:
     virtual void      SAL_CALL skipBytes(sal_Int32 nBytesToSkip) override;
     virtual sal_Int32 SAL_CALL available() override;
     virtual void      SAL_CALL closeInput() override;
+
+    virtual sal_Int32 readSomeBytes(sal_Int8* aData, sal_Int32 nBytesToRead) override;
 
 protected:
     void checkConnected();
@@ -164,6 +166,23 @@ sal_Int32 SAL_CALL FileStreamWrapper_Impl::readBytes(Sequence< sal_Int8 >& aData
     return nRead;
 }
 
+sal_Int32 FileStreamWrapper_Impl::readSomeBytes(sal_Int8* aData, sal_Int32 nBytesToRead)
+{
+    if ( m_aURL.isEmpty() )
+        return 0;
+
+    checkConnected();
+
+    if (nBytesToRead < 0)
+        throw BufferSizeExceededException(OUString(), getXWeak());
+
+    std::scoped_lock aGuard( m_aMutex );
+
+    sal_uInt32 nRead = m_pSvStream->ReadBytes(static_cast<void*>(aData), nBytesToRead);
+    checkError();
+
+    return nRead;
+}
 
 sal_Int32 SAL_CALL FileStreamWrapper_Impl::readSomeBytes(Sequence< sal_Int8 >& aData, sal_Int32 nMaxBytesToRead)
 {
@@ -550,9 +569,9 @@ struct UCBStorageElement_Impl
 
     ::ucbhelper::Content*       GetContent();
     bool                        IsModified() const;
-    OUString                    GetContentType() const;
+    const OUString &            GetContentType() const;
     void                        SetContentType( const OUString& );
-    OUString                    GetOriginalContentType() const;
+    const OUString &            GetOriginalContentType() const;
     bool                        IsLoaded() const
                                 { return m_xStream.is() || m_xStorage.is(); }
 };
@@ -567,7 +586,7 @@ struct UCBStorageElement_Impl
         return nullptr;
 }
 
-OUString UCBStorageElement_Impl::GetContentType() const
+const OUString & UCBStorageElement_Impl::GetContentType() const
 {
     if ( m_xStream.is() )
         return m_xStream->m_aContentType;
@@ -576,7 +595,7 @@ OUString UCBStorageElement_Impl::GetContentType() const
     else
     {
         OSL_FAIL("Element not loaded!");
-        return OUString();
+        return EMPTY_OUSTRING;
     }
 }
 
@@ -593,14 +612,14 @@ void UCBStorageElement_Impl::SetContentType( const OUString& rType )
     }
 }
 
-OUString UCBStorageElement_Impl::GetOriginalContentType() const
+const OUString & UCBStorageElement_Impl::GetOriginalContentType() const
 {
     if ( m_xStream.is() )
         return m_xStream->m_aOriginalContentType;
     else if ( m_xStorage.is() )
         return m_xStorage->m_aOriginalContentType;
     else
-        return OUString();
+        return EMPTY_OUSTRING;
 }
 
 bool UCBStorageElement_Impl::IsModified() const
@@ -635,7 +654,7 @@ UCBStorageStream_Impl::UCBStorageStream_Impl( const OUString& rName, StreamMode 
     try
     {
         // create the content
-        Reference< css::ucb::XCommandEnvironment > xComEnv;
+        rtl::Reference< ::ucbhelper::CommandEnvironment > xComEnv;
 
         OUString aTemp( rName );
 
@@ -1051,7 +1070,7 @@ sal_Int16 UCBStorageStream_Impl::Commit()
                 // create wrapper to stream that is only used while reading inside package component
                 aArg.Data.set(new FileStreamWrapper_Impl(m_aTempURL));
                 aArg.ReplaceExisting = true;
-                m_pContent->executeCommand( "insert", Any(aArg) );
+                m_pContent->executeCommand( u"insert"_ustr, Any(aArg) );
 
                 // wrapper now controls lifetime of temporary file
                 m_aTempURL.clear();
@@ -1600,7 +1619,7 @@ void UCBStorage_Impl::Init()
         {
             // get the manifest information from the package
             try {
-                Any aAny = m_oContent->getPropertyValue("MediaType");
+                Any aAny = m_oContent->getPropertyValue(u"MediaType"_ustr);
                 OUString aTmp;
                 if ( ( aAny >>= aTmp ) && !aTmp.isEmpty() )
                     m_aContentType = m_aOriginalContentType = aTmp;
@@ -1637,7 +1656,7 @@ void UCBStorage_Impl::CreateContent()
     try
     {
         // create content; where to put StreamMode ?! ( already done when opening the file of the package ? )
-        Reference< css::ucb::XCommandEnvironment > xComEnv;
+        rtl::Reference< ::ucbhelper::CommandEnvironment > xComEnv;
 
         OUString aTemp( m_aURL );
 
@@ -1676,7 +1695,7 @@ void UCBStorage_Impl::ReadContent()
             return;
 
         // create cursor for access to children
-        Reference< XResultSet > xResultSet = m_oContent->createCursor( { "Title", "IsFolder", "MediaType", "Size" }, ::ucbhelper::INCLUDE_FOLDERS_AND_DOCUMENTS );
+        Reference< XResultSet > xResultSet = m_oContent->createCursor( { u"Title"_ustr, u"IsFolder"_ustr, u"MediaType"_ustr, u"Size"_ustr }, ::ucbhelper::INCLUDE_FOLDERS_AND_DOCUMENTS );
         Reference< XRow > xRow( xResultSet, UNO_QUERY );
         if ( xResultSet.is() )
         {
@@ -1709,7 +1728,7 @@ void UCBStorage_Impl::ReadContent()
                     // streams can be external OLE objects, so they are now folders, but storages!
                     OUString aName( m_aURL + "/" + xRow->getString(1));
 
-                    Reference< css::ucb::XCommandEnvironment > xComEnv;
+                    rtl::Reference< ::ucbhelper::CommandEnvironment > xComEnv;
                     if ( m_bRepairPackage )
                     {
                         xComEnv = new ::ucbhelper::CommandEnvironment( Reference< css::task::XInteractionHandler >(),
@@ -1720,7 +1739,7 @@ void UCBStorage_Impl::ReadContent()
                     ::ucbhelper::Content aContent( aName, xComEnv, comphelper::getProcessComponentContext() );
 
                     OUString aMediaType;
-                    Any aAny = aContent.getPropertyValue("MediaType");
+                    Any aAny = aContent.getPropertyValue(u"MediaType"_ustr);
                     if ( ( aAny >>= aMediaType ) && ( aMediaType == "application/vnd.sun.star.oleobject" ) )
                         pElement->m_bIsStorage = true;
                     else if ( aMediaType.isEmpty() )
@@ -1875,8 +1894,8 @@ void UCBStorage_Impl::GetProps( sal_Int32& nProps, Sequence < Sequence < Propert
     if ( !m_bIsRoot )
         aPath += m_aName;
     aPath += "/";
-    Sequence < PropertyValue > aProps{ comphelper::makePropertyValue("MediaType", m_aContentType),
-                                       comphelper::makePropertyValue("FullPath", aPath) };
+    Sequence < PropertyValue > aProps{ comphelper::makePropertyValue(u"MediaType"_ustr, m_aContentType),
+                                       comphelper::makePropertyValue(u"FullPath"_ustr, aPath) };
     pSequence[nProps++] = aProps;
 
     if ( m_bIsRoot )
@@ -1894,8 +1913,8 @@ void UCBStorage_Impl::GetProps( sal_Int32& nProps, Sequence < Sequence < Propert
         {
             // properties of streams
             OUString aElementPath = aPath + pElement->m_aName;
-            aProps = { comphelper::makePropertyValue("MediaType", pElement->GetContentType()),
-                       comphelper::makePropertyValue("FullPath", aElementPath) };
+            aProps = { comphelper::makePropertyValue(u"MediaType"_ustr, pElement->GetContentType()),
+                       comphelper::makePropertyValue(u"FullPath"_ustr, aElementPath) };
             pSequence[ nProps++ ] = aProps;
         }
     }
@@ -1935,7 +1954,7 @@ bool UCBStorage_Impl::Insert( ::ucbhelper::Content *pContent )
                     continue;
 
                 Content aNewFolder;
-                if ( !pContent->insertNewContent( rCurr.Type, { "Title" }, { Any(m_aName) }, aNewFolder ) )
+                if ( !pContent->insertNewContent( rCurr.Type, { u"Title"_ustr }, { Any(m_aName) }, aNewFolder ) )
                     continue;
 
                 // remove old content, create an "empty" new one and initialize it with the new inserted
@@ -1996,7 +2015,7 @@ sal_Int16 UCBStorage_Impl::Commit()
                         // first remove all open stream handles
                         if (pContent && (!pElement->m_xStream.is() || pElement->m_xStream->Clear()))
                         {
-                            pContent->executeCommand( "delete", Any( true ) );
+                            pContent->executeCommand( u"delete"_ustr, Any( true ) );
                             nRet = COMMIT_RESULT_SUCCESS;
                         }
                         else
@@ -2031,7 +2050,7 @@ sal_Int16 UCBStorage_Impl::Commit()
                             pElement->m_xStream->m_aContentType = "application/vnd.sun.star.oleobject";
                             Any aValue;
                             aValue <<= true;
-                            pElement->m_xStream->m_pContent->setPropertyValue("Encrypted", aValue );
+                            pElement->m_xStream->m_pContent->setPropertyValue(u"Encrypted"_ustr, aValue );
                         }
 
                         pContent = pElement->GetContent();
@@ -2041,14 +2060,14 @@ sal_Int16 UCBStorage_Impl::Commit()
                     {
                         // name ( title ) of the element was changed
                         nLocalRet = COMMIT_RESULT_SUCCESS;
-                        pContent->setPropertyValue("Title", Any(pElement->m_aName) );
+                        pContent->setPropertyValue(u"Title"_ustr, Any(pElement->m_aName) );
                     }
 
                     if (pContent && pElement->IsLoaded() && pElement->GetContentType() != pElement->GetOriginalContentType())
                     {
                         // mediatype of the element was changed
                         nLocalRet = COMMIT_RESULT_SUCCESS;
-                        pContent->setPropertyValue("MediaType", Any(pElement->GetContentType()) );
+                        pContent->setPropertyValue(u"MediaType"_ustr, Any(pElement->GetContentType()) );
                     }
 
                     if ( nLocalRet != COMMIT_RESULT_NOTHING_TO_DO )
@@ -2095,14 +2114,14 @@ sal_Int16 UCBStorage_Impl::Commit()
                     // clipboard format and ClassId will be retrieved from the media type when the file is loaded again
                     Any aType;
                     aType <<= m_aContentType;
-                    m_oContent->setPropertyValue("MediaType", aType );
+                    m_oContent->setPropertyValue(u"MediaType"_ustr, aType );
 
                     if (  m_bIsLinked )
                     {
                         // write a manifest file
                         // first create a subfolder "META-inf"
                         Content aNewSubFolder;
-                        bool bRet = ::utl::UCBContentHelper::MakeFolder( *m_oContent, "META-INF", aNewSubFolder );
+                        bool bRet = ::utl::UCBContentHelper::MakeFolder( *m_oContent, u"META-INF"_ustr, aNewSubFolder );
                         if ( bRet )
                         {
                             // create a stream to write the manifest file - use a temp file
@@ -2128,7 +2147,7 @@ sal_Int16 UCBStorage_Impl::Commit()
                             xWriter = nullptr;
                             xOutputStream = nullptr;
                             pTempFile.reset();
-                            aNewSubFolder.transferContent( aSource, InsertOperation::Move, "manifest.xml", NameClash::OVERWRITE );
+                            aNewSubFolder.transferContent( aSource, InsertOperation::Move, u"manifest.xml"_ustr, NameClash::OVERWRITE );
                         }
                     }
                     else
@@ -2139,7 +2158,7 @@ sal_Int16 UCBStorage_Impl::Commit()
 #endif
                         // force writing
                         Any aAny;
-                        m_oContent->executeCommand( "flush", aAny );
+                        m_oContent->executeCommand( u"flush"_ustr, aAny );
                         if ( m_pSource != nullptr )
                         {
                             std::unique_ptr<SvStream> pStream(::utl::UcbStreamHelper::CreateStream( m_pTempFile->GetURL(), StreamMode::STD_READ ));
@@ -2398,7 +2417,7 @@ bool UCBStorage::CopyStorageElement_Impl( UCBStorageElement_Impl const & rElemen
                                      pUCBCopy->pImp->m_aUserTypeName );
         else
             pOtherStorage->SetClassId( pStorage->GetClassId() );
-        pStorage->CopyTo( pOtherStorage.get() );
+        pStorage->CopyTo( *pOtherStorage );
         SetError( pStorage->GetError() );
         if( pOtherStorage->GetError() )
             pDest->SetError( pOtherStorage->GetError() );
@@ -2423,10 +2442,10 @@ UCBStorageElement_Impl* UCBStorage::FindElement_Impl( std::u16string_view rName 
     return nullptr;
 }
 
-bool UCBStorage::CopyTo( BaseStorage* pDestStg ) const
+bool UCBStorage::CopyTo( BaseStorage& rDestStg ) const
 {
-    DBG_ASSERT( pDestStg != static_cast<BaseStorage const *>(this), "Self-Copying is not possible!" );
-    if ( pDestStg == static_cast<BaseStorage const *>(this) )
+    DBG_ASSERT( &rDestStg != static_cast<BaseStorage const *>(this), "Self-Copying is not possible!" );
+    if ( &rDestStg == static_cast<BaseStorage const *>(this) )
         return false;
 
     // perhaps it's also a problem if one storage is a parent of the other ?!
@@ -2434,24 +2453,24 @@ bool UCBStorage::CopyTo( BaseStorage* pDestStg ) const
 
     // For UCB storages, the class id and the format id may differ,
     // do passing the class id is not sufficient.
-    if( dynamic_cast<const UCBStorage *>(pDestStg) != nullptr )
-        pDestStg->SetClass( pImp->m_aClassId, pImp->m_nFormat,
-                            pImp->m_aUserTypeName );
+    if( dynamic_cast<const UCBStorage *>(&rDestStg) != nullptr )
+        rDestStg.SetClass( pImp->m_aClassId, pImp->m_nFormat,
+                           pImp->m_aUserTypeName );
     else
-        pDestStg->SetClassId( GetClassId() );
-    pDestStg->SetDirty();
+        rDestStg.SetClassId( GetClassId() );
+    rDestStg.SetDirty();
 
     bool bRet = true;
     for ( size_t i = 0; i < pImp->GetChildrenList().size() && bRet; ++i )
     {
         auto& pElement = pImp->GetChildrenList()[ i ];
         if ( !pElement->m_bIsRemoved )
-            bRet = CopyStorageElement_Impl( *pElement, pDestStg, pElement->m_aName );
+            bRet = CopyStorageElement_Impl( *pElement, &rDestStg, pElement->m_aName );
     }
 
     if( !bRet )
-        SetError( pDestStg->GetError() );
-    return Good() && pDestStg->Good();
+        SetError( rDestStg.GetError() );
+    return Good() && rDestStg.Good();
 }
 
 bool UCBStorage::CopyTo( const OUString& rElemName, BaseStorage* pDest, const OUString& rNew )

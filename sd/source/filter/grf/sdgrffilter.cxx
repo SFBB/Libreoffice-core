@@ -49,6 +49,7 @@
 #include <com/sun/star/task/XInteractionHandler.hpp>
 #include <com/sun/star/task/XInteractionRequest.hpp>
 #include <com/sun/star/drawing/GraphicFilterRequest.hpp>
+#include <DrawController.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -58,7 +59,6 @@ using namespace ::com::sun::star::graphic;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::ucb;
 using namespace com::sun::star::ui::dialogs;
-using namespace ::sfx2;
 
 namespace {
 
@@ -167,9 +167,8 @@ bool SdGRFFilter::Import()
             }
             for (size_t nPageIndex = 0; nPageIndex < nImages; ++nPageIndex)
             {
-                Graphic pGraphic = aAnim.Get(nPageIndex).maBitmapEx;
-                SdPage* pPage = mrDocument.GetSdPage(nPageIndex, PageKind::Standard);
-                InsertSdrGrafObj(pGraphic, pPage);
+                InsertSdrGrafObj(aAnim.Get(nPageIndex).maBitmapEx,
+                                 mrDocument.GetSdPage(nPageIndex, PageKind::Standard));
             }
         }
         else
@@ -183,11 +182,11 @@ bool SdGRFFilter::Import()
     return bRet;
 }
 
-void SdGRFFilter::InsertSdrGrafObj(Graphic pGraphic, SdPage* pPage)
+void SdGRFFilter::InsertSdrGrafObj(const Graphic& rGraphic, SdPage* pPage)
 {
     Point aPos;
     Size aPagSize(pPage->GetSize());
-    Size aGrfSize(OutputDevice::LogicToLogic(pGraphic.GetPrefSize(), pGraphic.GetPrefMapMode(),
+    Size aGrfSize(OutputDevice::LogicToLogic(rGraphic.GetPrefSize(), rGraphic.GetPrefMapMode(),
                                              MapMode(MapUnit::Map100thMM)));
 
     aPagSize.AdjustWidth(-(pPage->GetLeftBorder() + pPage->GetRightBorder()));
@@ -217,7 +216,7 @@ void SdGRFFilter::InsertSdrGrafObj(Graphic pGraphic, SdPage* pPage)
     aPos.setX(((aPagSize.Width() - aGrfSize.Width()) >> 1) + pPage->GetLeftBorder());
     aPos.setY(((aPagSize.Height() - aGrfSize.Height()) >> 1) + pPage->GetUpperBorder());
 
-    pPage->InsertObject(new SdrGrafObj(pPage->getSdrModelFromSdrPage(), pGraphic,
+    pPage->InsertObject(new SdrGrafObj(pPage->getSdrModelFromSdrPage(), rGraphic,
                                        ::tools::Rectangle(aPos, aGrfSize)));
 }
 
@@ -226,7 +225,7 @@ bool SdGRFFilter::Export()
     // SJ: todo: error handling, the GraphicExportFilter does not support proper errorhandling
     bool bRet = false;
 
-    uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     uno::Reference< drawing::XGraphicExportFilter > xExporter = drawing::GraphicExportFilter::create( xContext );
 
     SdPage* pPage = nullptr;
@@ -259,7 +258,7 @@ bool SdGRFFilter::Export()
                 const sal_uInt16 nFilter = rGraphicFilter.GetExportFormatNumberForTypeName( aTypeName );
                 if ( nFilter != GRFILTER_FORMAT_NOTFOUND )
                 {
-                    uno::Reference< task::XInteractionHandler > xInteractionHandler;
+                    rtl::Reference< SdGRFFilter_ImplInteractionHdl > xInteractionHandler;
 
                     beans::PropertyValues aArgs;
                     TransformItems( SID_SAVEASDOC, rSet, aArgs );
@@ -282,7 +281,7 @@ bool SdGRFFilter::Export()
                             if ( rArg.Value >>= xHdl )
                             {
                                 xInteractionHandler = new SdGRFFilter_ImplInteractionHdl( xHdl );
-                                rArg.Value <<= xInteractionHandler;
+                                rArg.Value <<= uno::Reference< task::XInteractionHandler >(xInteractionHandler);
                             }
                         }
                     }
@@ -300,22 +299,22 @@ bool SdGRFFilter::Export()
                         && rSet.Get( SID_SELECTION ).GetValue()
                         && pDrawViewShell )
                     {
-                        uno::Reference< view::XSelectionSupplier > xSelectionSupplier(
-                            pDrawViewShell->GetViewShellBase().GetController(), uno::UNO_QUERY );
-                        if ( xSelectionSupplier.is() )
+                        ::sd::DrawController* pDrawController =
+                            pDrawViewShell->GetViewShellBase().GetDrawController();
+                        if ( pDrawController )
                         {
-                            uno::Any aSelection( xSelectionSupplier->getSelection() );
+                            uno::Any aSelection( pDrawController->getSelection() );
                             uno::Reference< lang::XComponent > xSelection;
                             if ( aSelection >>= xSelection )
-                                xSource = xSelection;
+                                xSource = std::move(xSelection);
                         }
                     }
                     xExporter->setSourceDocument( xSource );
                     bRet = xExporter->filter( aArgs );
                     if ( !bRet && xInteractionHandler.is() )
                         SdGRFFilter::HandleGraphicFilterError(
-                            static_cast< SdGRFFilter_ImplInteractionHdl* >( xInteractionHandler.get() )->GetErrorCode(),
-                                            rGraphicFilter.GetLastError() );
+                            xInteractionHandler->GetErrorCode(),
+                            rGraphicFilter.GetLastError() );
                 }
             }
         }

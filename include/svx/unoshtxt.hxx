@@ -24,24 +24,13 @@
 #include <editeng/unoedsrc.hxx>
 #include <svx/svxdllapi.h>
 
-namespace com::sun::star {
-    namespace uno {
-        class XInterface;
-    }
-    namespace accessibility {
-        struct TextSegment;
-    }
-}
-
-class SvxTextForwarder;
 class SdrObject;
-class SdrModel;
 class SdrView;
 class OutputDevice;
 class SvxTextEditSourceImpl;
 class SdrText;
 
-class SVXCORE_DLLPUBLIC SvxTextEditSource final : public SvxEditSource, public SvxViewForwarder
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SvxTextEditSource final : public SvxEditSource, public SvxViewForwarder
 {
 public:
     SvxTextEditSource( SdrObject* pObj, SdrText* pText );

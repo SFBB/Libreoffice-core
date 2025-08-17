@@ -37,7 +37,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
@@ -46,7 +45,7 @@ using namespace ::com::sun::star::util;
 // OImageButtonModel
 OImageButtonModel::OImageButtonModel(const Reference<XComponentContext>& _rxFactory)
                     :OClickableImageBaseModel( _rxFactory, VCL_CONTROLMODEL_IMAGEBUTTON, FRM_SUN_CONTROL_IMAGEBUTTON )
-                    // use the old control name for compytibility reasons
+                    // use the old control name for compatibility reasons
 {
     m_nClassId = FormComponentType::IMAGEBUTTON;
 }
@@ -177,9 +176,7 @@ OImageButtonControl::OImageButtonControl(const Reference<XComponentContext>& _rx
     osl_atomic_increment(&m_refCount);
     {
         // Register as MouseListener
-        Reference< awt::XWindow >  xComp;
-        query_aggregation( m_xAggregate, xComp);
-        if (xComp.is())
+        if (auto xComp = query_aggregation<awt::XWindow>(m_xAggregate))
             xComp->addMouseListener( static_cast< awt::XMouseListener* >( this ) );
     }
     osl_atomic_decrement(&m_refCount);

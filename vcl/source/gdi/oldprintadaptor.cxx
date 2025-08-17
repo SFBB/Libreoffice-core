@@ -28,7 +28,6 @@
 #include <vector>
 
 using namespace vcl;
-using namespace cppu;
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::beans;
@@ -94,7 +93,7 @@ Sequence< PropertyValue > OldStylePrintAdaptor::getPageParameters( int i_nPage )
     css::awt::Size aSize;
     if( i_nPage < int(mpData->maPages.size() ) )
         aSize = mpData->maPages[i_nPage].maPageSize;
-    return { comphelper::makePropertyValue("PageSize", css::uno::Any(aSize)) };
+    return { comphelper::makePropertyValue(u"PageSize"_ustr, css::uno::Any(aSize)) };
 }
 
 void OldStylePrintAdaptor::printPage( int i_nPage ) const

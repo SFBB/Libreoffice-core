@@ -37,21 +37,20 @@
 #include <strings.hrc>
 
 ScLinkedAreaDlg::ScLinkedAreaDlg(weld::Widget* pParent)
-    : GenericDialogController(pParent, "modules/scalc/ui/externaldata.ui", "ExternalDataDialog")
-    , m_pSourceShell(nullptr)
-    , m_xCbUrl(new SvtURLBox(m_xBuilder->weld_combo_box("url")))
-    , m_xBtnBrowse(m_xBuilder->weld_button("browse"))
-    , m_xLbRanges(m_xBuilder->weld_tree_view("ranges"))
-    , m_xBtnReload(m_xBuilder->weld_check_button("reload"))
-    , m_xNfDelay(m_xBuilder->weld_spin_button("delay"))
-    , m_xFtSeconds(m_xBuilder->weld_label("secondsft"))
-    , m_xBtnOk(m_xBuilder->weld_button("ok"))
+    : GenericDialogController(pParent, u"modules/scalc/ui/externaldata.ui"_ustr, u"ExternalDataDialog"_ustr)
+    , m_xCbUrl(new SvtURLBox(m_xBuilder->weld_combo_box(u"url"_ustr)))
+    , m_xBtnBrowse(m_xBuilder->weld_button(u"browse"_ustr))
+    , m_xLbRanges(m_xBuilder->weld_tree_view(u"ranges"_ustr))
+    , m_xBtnReload(m_xBuilder->weld_check_button(u"reload"_ustr))
+    , m_xNfDelay(m_xBuilder->weld_spin_button(u"delay"_ustr))
+    , m_xFtSeconds(m_xBuilder->weld_label(u"secondsft"_ustr))
+    , m_xBtnOk(m_xBuilder->weld_button(u"ok"_ustr))
 {
     m_xLbRanges->set_selection_mode(SelectionMode::Multiple);
 
     m_xCbUrl->connect_entry_activate(LINK(this, ScLinkedAreaDlg, FileHdl));
     m_xBtnBrowse->connect_clicked(LINK( this, ScLinkedAreaDlg, BrowseHdl));
-    m_xLbRanges->connect_changed(LINK( this, ScLinkedAreaDlg, RangeHdl));
+    m_xLbRanges->connect_selection_changed(LINK(this, ScLinkedAreaDlg, RangeHdl));
     m_xLbRanges->set_size_request(m_xLbRanges->get_approximate_digit_width() * 54,
                                   m_xLbRanges->get_height_rows(5));
     m_xBtnReload->connect_toggled(LINK( this, ScLinkedAreaDlg, ReloadHdl));
@@ -109,8 +108,7 @@ void ScLinkedAreaDlg::LoadDocument( const OUString& rFile, const OUString& rFilt
     {
         //  unload old document
         m_pSourceShell->DoClose();
-        m_pSourceShell = nullptr;
-        aSourceRef.clear();
+        m_pSourceShell.clear();
     }
 
     if ( rFile.isEmpty() )
@@ -131,7 +129,6 @@ void ScLinkedAreaDlg::LoadDocument( const OUString& rFile, const OUString& rFilt
         if (nErr)
             ErrorHandler::HandleError( nErr );      // including warnings
 
-        aSourceRef = m_pSourceShell;
         aLoader.ReleaseDocRef();    // don't call DoClose in DocLoader dtor
     }
 }
@@ -208,7 +205,6 @@ IMPL_LINK( ScLinkedAreaDlg, DialogClosedHdl, sfx2::FileDialogHelper*, _pFileDlg,
         pMed->UseInteractionHandler( true );    // to enable the filter options dialog
 
         m_pSourceShell = new ScDocShell;
-        aSourceRef = m_pSourceShell;
         m_pSourceShell->DoLoad( pMed.get() );
 
         ErrCodeMsg nErr = m_pSourceShell->GetErrorCode();
@@ -222,8 +218,7 @@ IMPL_LINK( ScLinkedAreaDlg, DialogClosedHdl, sfx2::FileDialogHelper*, _pFileDlg,
         else
         {
             m_pSourceShell->DoClose();
-            m_pSourceShell = nullptr;
-            aSourceRef.clear();
+            m_pSourceShell.clear();
 
             m_xCbUrl->set_entry_text(OUString());
         }
@@ -248,7 +243,7 @@ void ScLinkedAreaDlg::UpdateSourceRanges()
         if (pFilter && pFilter->GetFilterName() == SC_TEXT_CSV_FILTER_NAME)
         {
             // Insert dummy All range to have something selectable.
-            m_xLbRanges->append_text("CSV_all");
+            m_xLbRanges->append_text(u"CSV_all"_ustr);
         }
 
         // tdf#142600 - list tables in order of their appearance in the document's source

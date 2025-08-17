@@ -19,8 +19,6 @@
 
 #pragma once
 
-#include <vector>
-
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
@@ -136,7 +134,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
 };
 
-class SC_DLLPUBLIC ScUnoHelpFunctions
+class ScUnoHelpFunctions
 {
 public:
     static bool             GetBoolProperty( const css::uno::Reference< css::beans::XPropertySet>& xProp,
@@ -154,8 +152,8 @@ public:
         const css::uno::Reference<css::beans::XPropertySet>& xProp,
         const OUString& rName, const OUString& rDefault );
 
-    static bool             GetBoolFromAny( const css::uno::Any& aAny );
-    static sal_Int16        GetInt16FromAny( const css::uno::Any& aAny );
+    SC_DLLPUBLIC static bool        GetBoolFromAny( const css::uno::Any& aAny );
+    SC_DLLPUBLIC static sal_Int16   GetInt16FromAny( const css::uno::Any& aAny );
     static sal_Int32        GetInt32FromAny( const css::uno::Any& aAny );
     static sal_Int32        GetEnumFromAny( const css::uno::Any& aAny );
 

@@ -46,7 +46,6 @@
 #include <expat.h>
 #include <xml2utf.hxx>
 
-using namespace ::osl;
 using namespace ::cppu;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::xml::sax;
@@ -91,7 +90,7 @@ namespace {
         catch( const css::uno::Exception &e ) {\
             pThis->bExceptionWasThrown = true; \
             pThis->bRTExceptionWasThrown = true; \
-            pImpl->rtexception = WrappedTargetRuntimeException("Non-runtime UNO exception caught during parse", e.Context, css::uno::Any(e)); \
+            pImpl->rtexception = WrappedTargetRuntimeException(u"Non-runtime UNO exception caught during parse"_ustr, e.Context, css::uno::Any(e)); \
         }\
     }\
     ((void)0)
@@ -140,7 +139,7 @@ struct Entity
     sax_expatwrap::XMLFile2UTFConverter converter;
 };
 
-
+class LocatorImpl;
 class SaxExpatParser_Impl
 {
 public: // module scope
@@ -153,7 +152,7 @@ public: // module scope
     css::uno::Reference< XErrorHandler >  rErrorHandler;
     css::uno::Reference< XDTDHandler >    rDTDHandler;
     css::uno::Reference< XEntityResolver > rEntityResolver;
-    css::uno::Reference < XLocator >      rDocumentLocator;
+    rtl::Reference < LocatorImpl >        rDocumentLocator;
 
 
     rtl::Reference < comphelper::AttributeList > rAttrList;
@@ -355,8 +354,7 @@ SaxExpatParser::SaxExpatParser(  )
 {
     m_pImpl.reset( new SaxExpatParser_Impl );
 
-    rtl::Reference<LocatorImpl> pLoc = new LocatorImpl( m_pImpl.get() );
-    m_pImpl->rDocumentLocator = pLoc;
+    m_pImpl->rDocumentLocator = new LocatorImpl( m_pImpl.get() );
 
     // Performance-improvement; handing out the same object with every call of
     // the startElement callback is allowed (see sax-specification):
@@ -418,7 +416,7 @@ void SaxExpatParser::parseStream(   const InputSource& structSource)
 
     if( ! entity.structSource.aInputStream.is() )
     {
-        throw SAXException("No input source",
+        throw SAXException(u"No input source"_ustr,
                             css::uno::Reference< css::uno::XInterface > () , css::uno::Any() );
     }
 
@@ -433,7 +431,7 @@ void SaxExpatParser::parseStream(   const InputSource& structSource)
     entity.pParser = XML_ParserCreate( nullptr );
     if( ! entity.pParser )
     {
-        throw SAXException("Couldn't create parser",
+        throw SAXException(u"Couldn't create parser"_ustr,
                             css::uno::Reference< css::uno::XInterface > (), css::uno::Any() );
     }
 
@@ -517,7 +515,7 @@ void SaxExpatParser::setLocale( const Locale & )
 // XServiceInfo
 OUString SaxExpatParser::getImplementationName()
 {
-    return "com.sun.star.comp.extensions.xml.sax.ParserExpat";
+    return u"com.sun.star.comp.extensions.xml.sax.ParserExpat"_ustr;
 }
 
 // XServiceInfo
@@ -529,7 +527,7 @@ sal_Bool SaxExpatParser::supportsService(const OUString& ServiceName)
 // XServiceInfo
 css::uno::Sequence< OUString > SaxExpatParser::getSupportedServiceNames()
 {
-    return { "com.sun.star.xml.sax.Parser" };
+    return { u"com.sun.star.xml.sax.Parser"_ustr };
 }
 
 
@@ -765,7 +763,7 @@ void SaxExpatParser_Impl::callbackEntityDecl(
         SAL_INFO("sax","SaxExpatParser: internal entity declaration, stopping");
         XML_StopParser(pImpl->getEntity().pParser, XML_FALSE);
         pImpl->exception = SAXParseException(
-            "SaxExpatParser: internal entity declaration, stopping",
+            u"SaxExpatParser: internal entity declaration, stopping"_ustr,
             nullptr, css::uno::Any(),
             pImpl->rDocumentLocator->getPublicId(),
             pImpl->rDocumentLocator->getSystemId(),

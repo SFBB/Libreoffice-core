@@ -40,16 +40,16 @@ public class UnoDialog
     XControlContainer xDlgContainer;
     private XNameAccess m_xDlgNameAccess;
     public XControl xControl;
-    public XDialog xDialog;
-    public XReschedule xReschedule;
-    public XWindow xWindow;
+    protected XDialog xDialog;
+    protected XReschedule xReschedule;
+    protected XWindow xWindow;
     public XComponent xComponent;
     public XInterface xDialogModel;
     private XInterface xUnoDialog;
     private XVclWindowPeer xVclWindowPeer;
-    public HashMap<String, Integer> ControlList;
-    public Resource m_oResource;
-    public XWindowPeer xWindowPeer = null;
+    private HashMap<String, Integer> ControlList;
+    protected Resource m_oResource;
+    protected XWindowPeer xWindowPeer = null;
     private PeerConfig m_oPeerConfig;
 
     public UnoDialog(XMultiServiceFactory xMSF)
@@ -78,7 +78,7 @@ public class UnoDialog
         }
     }
 
-    public int getControlKey(Object EventObject, HashMap<String, Integer> ControlList)
+    public int getControlKey(Object EventObject)
     {
         int iKey;
         XControl xContrl = UnoRuntime.queryInterface(XControl.class, EventObject);
@@ -149,6 +149,11 @@ public class UnoDialog
     public Resource getResource()
     {
         return m_oResource;
+    }
+
+    public XWindow getWindow()
+    {
+        return xWindow;
     }
 
     public void setControlProperties(String ControlName, String[] PropertyNames, Object[] PropertyValues)

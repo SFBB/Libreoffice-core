@@ -409,6 +409,16 @@ sub create_epm_header
         }
     }
 
+    if (!$foundreadmefile && $variableshashref->{'NO_README_IN_ROOTDIR'})
+    {
+        $infoline = "Fallback to dummy readme file\n";
+        push(@installer::globals::logfileinfo, $infoline);
+
+        $foundreadmefile = 1;
+        $line = "%readme DUMMY\n";
+        push(@epmheader, $line);
+    }
+
     # searching for and license file
 
     if ( $license_in_package_defined )
@@ -2393,7 +2403,7 @@ sub put_systemintegration_into_installset
 
     # Finding the modules defined in scp (with flag SYSTEMMODULE)
     # Getting name of package from scp-Module
-    # Search package in list off all include files
+    # Search package in list of all include files
     # Copy file into installation set and unpack it (always tar.gz)
     # tar.gz can contain a different number of packages -> automatically create hidden sub modules
 

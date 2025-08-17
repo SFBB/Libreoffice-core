@@ -21,10 +21,11 @@ const WhichRangesContainer
 
 SvxTextColumnsPage::SvxTextColumnsPage(weld::Container* pPage, weld::DialogController* pController,
                                        const SfxItemSet& rInAttrs)
-    : SfxTabPage(pPage, pController, "cui/ui/textcolumnstabpage.ui", "TextColumnsPage", &rInAttrs)
-    , m_xColumnsNumber(m_xBuilder->weld_spin_button("FLD_COL_NUMBER"))
-    , m_xColumnsSpacing(
-          m_xBuilder->weld_metric_spin_button("MTR_FLD_COL_SPACING", GetModuleFieldUnit(rInAttrs)))
+    : SfxTabPage(pPage, pController, u"cui/ui/textcolumnstabpage.ui"_ustr, u"TextColumnsPage"_ustr,
+                 &rInAttrs)
+    , m_xColumnsNumber(m_xBuilder->weld_spin_button(u"FLD_COL_NUMBER"_ustr))
+    , m_xColumnsSpacing(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_COL_SPACING"_ustr,
+                                                            GetModuleFieldUnit(rInAttrs)))
 {
 }
 
@@ -39,7 +40,7 @@ void SvxTextColumnsPage::Reset(const SfxItemSet* rAttrs)
     {
         auto pItem = GetItem(*rAttrs, SDRATTR_TEXTCOLUMNS_NUMBER);
         if (!pItem)
-            pItem = &pPool->GetDefaultItem(SDRATTR_TEXTCOLUMNS_NUMBER);
+            pItem = &pPool->GetUserOrPoolDefaultItem(SDRATTR_TEXTCOLUMNS_NUMBER);
         m_xColumnsNumber->set_value(pItem->GetValue());
         m_xColumnsNumber->save_value();
     }
@@ -48,7 +49,7 @@ void SvxTextColumnsPage::Reset(const SfxItemSet* rAttrs)
         MapUnit eUnit = pPool->GetMetric(SDRATTR_TEXTCOLUMNS_SPACING);
         auto pItem = GetItem(*rAttrs, SDRATTR_TEXTCOLUMNS_SPACING);
         if (!pItem)
-            pItem = &pPool->GetDefaultItem(SDRATTR_TEXTCOLUMNS_SPACING);
+            pItem = &pPool->GetUserOrPoolDefaultItem(SDRATTR_TEXTCOLUMNS_SPACING);
         SetMetricValue(*m_xColumnsSpacing, pItem->GetValue(), eUnit);
         m_xColumnsSpacing->save_value();
     }

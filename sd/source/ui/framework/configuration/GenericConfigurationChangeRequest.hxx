@@ -19,21 +19,19 @@
 
 #pragma once
 
-#include <com/sun/star/drawing/framework/XConfigurationChangeRequest.hpp>
+#include <framework/ConfigurationChangeRequest.hxx>
 #include <com/sun/star/container/XNamed.hpp>
 #include <comphelper/compbase.hxx>
 
-namespace com::sun::star::drawing::framework { class XConfiguration; }
-namespace com::sun::star::drawing::framework { class XResourceId; }
-
 namespace sd::framework {
+class ResourceId;
 
-typedef comphelper::WeakComponentImplHelper <
-      css::drawing::framework::XConfigurationChangeRequest,
+typedef cppu::ImplInheritanceHelper <
+      sd::framework::ConfigurationChangeRequest,
       css::container::XNamed
     > GenericConfigurationChangeRequestInterfaceBase;
 
-/** This implementation of the XConfigurationChangeRequest interface
+/** This implementation of the ConfigurationChangeRequest interface
     represents a single explicit request for a configuration change.  On its
     execution it may result in other, implicit, configuration changes.  For
     example this is the case when the deactivation of a unique resource is
@@ -58,7 +56,7 @@ public:
         @throws css::css::lang::IllegalArgumentException
     */
     GenericConfigurationChangeRequest (
-        const css::uno::Reference<css::drawing::framework::XResourceId>&
+        const rtl::Reference<sd::framework::ResourceId>&
             rxResourceId,
         const Mode eMode);
 
@@ -73,8 +71,8 @@ public:
         @param rxConfiguration
             The configuration to which the requested change is made.
     */
-    virtual void SAL_CALL execute (
-        const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration) override;
+    virtual void execute (
+        const rtl::Reference<sd::framework::Configuration>& rxConfiguration) override;
 
     // XNamed
 
@@ -89,7 +87,7 @@ public:
     virtual void SAL_CALL setName (const OUString& rName) override;
 
 private:
-    const css::uno::Reference<css::drawing::framework::XResourceId> mxResourceId;
+    const rtl::Reference<sd::framework::ResourceId> mxResourceId;
     const Mode meMode;
 };
 

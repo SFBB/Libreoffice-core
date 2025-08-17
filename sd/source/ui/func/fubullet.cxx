@@ -55,18 +55,18 @@ const sal_Unicode CHAR_NNBSP        =   u'\x202F'; //NARROW NO-BREAK SPACE
 
 
 FuBullet::FuBullet (
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window* pWin,
     ::sd::View* _pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest& rReq)
-    : FuPoor(pViewSh, pWin, _pView, pDoc, rReq)
+    : FuPoor(rViewSh, pWin, _pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuBullet::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuBullet::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuBullet( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuBullet( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
@@ -104,17 +104,17 @@ void FuBullet::InsertFormattingMark( sal_Unicode cMark )
     ::Outliner*   pOL = nullptr;
 
     // depending on ViewShell set Outliner and OutlinerView
-    if( dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr)
+    if( dynamic_cast< const DrawViewShell *>( &mrViewShell ) !=  nullptr)
     {
         pOV = mpView->GetTextEditOutlinerView();
         if (pOV)
             pOL = mpView->GetTextEditOutliner();
     }
-    else if( dynamic_cast< const OutlineViewShell *>( mpViewShell ) !=  nullptr)
+    else if( dynamic_cast< const OutlineViewShell *>( &mrViewShell ) !=  nullptr)
     {
         pOL = &static_cast<OutlineView*>(mpView)->GetOutliner();
         pOV = static_cast<OutlineView*>(mpView)->GetViewByWindow(
-            mpViewShell->GetActiveWindow());
+            mrViewShell.GetActiveWindow());
     }
 
     // insert string
@@ -126,20 +126,19 @@ void FuBullet::InsertFormattingMark( sal_Unicode cMark )
     pOL->SetUpdateLayout(false);
 
     // remove old selected text
-    pOV->InsertText( "" );
+    pOV->InsertText( u""_ustr );
 
     // prepare undo
     EditUndoManager& rUndoMgr =  pOL->GetUndoManager();
     rUndoMgr.EnterListAction(SdResId(STR_UNDO_INSERT_SPECCHAR),
-                                "", 0, mpViewShell->GetViewShellBase().GetViewShellId() );
+                                u""_ustr, 0, mrViewShell.GetViewShellBase().GetViewShellId() );
 
     // insert given text
     OUString aStr( cMark );
     pOV->InsertText( aStr, true);
 
     ESelection aSel = pOV->GetSelection();
-    aSel.nStartPara = aSel.nEndPara;
-    aSel.nStartPos = aSel.nEndPos;
+    aSel.CollapseToEnd();
     pOV->SetSelection(aSel);
 
     rUndoMgr.LeaveListAction();
@@ -169,7 +168,7 @@ void FuBullet::InsertSpecialCharacter( SfxRequest const & rReq )
         }
         else
         {
-            SfxItemSet aFontAttr( mpDoc->GetPool() );
+            SfxItemSet aFontAttr( mrDoc.GetPool() );
             mpView->GetAttributes( aFontAttr );
             const SvxFontItem* pFItem = aFontAttr.GetItem( SID_ATTR_CHAR_FONT );
             if( pFItem )
@@ -179,24 +178,31 @@ void FuBullet::InsertSpecialCharacter( SfxRequest const & rReq )
 
     if (aChars.isEmpty())
     {
-        SfxAllItemSet aSet( mpDoc->GetPool() );
+        SfxAllItemSet aSet( mrDoc.GetPool() );
         aSet.Put( SfxBoolItem( FN_PARAM_1, false ) );
 
-        SfxItemSet aFontAttr( mpDoc->GetPool() );
+        SfxItemSet aFontAttr( mrDoc.GetPool() );
         mpView->GetAttributes( aFontAttr );
         const SvxFontItem* pFontItem = aFontAttr.GetItem( SID_ATTR_CHAR_FONT );
         if( pFontItem )
             aSet.Put( *pFontItem );
 
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        auto xFrame = mpViewShell ? mpViewShell->GetFrame()->GetFrame().GetFrameInterface() : nullptr;
-        ScopedVclPtr<SfxAbstractDialog> pDlg( pFact->CreateCharMapDialog(mpView->GetViewShell()->GetFrameWeld(), aSet,
+        css::uno::Reference<css::frame::XFrame> xFrame;
+        if (SfxViewFrame* pFrame = mrViewShell.GetFrame())
+            xFrame = pFrame->GetFrame().GetFrameInterface();
+        VclPtr<SfxAbstractDialog> pDlg( pFact->CreateCharMapDialog(mpView->GetViewShell()->GetFrameWeld(), aSet,
             xFrame) );
 
         // If a character is selected, it can be shown
         // pDLg->SetFont( );
         // pDlg->SetChar( );
-        pDlg->Execute();
+        pDlg->StartExecuteAsync(
+            [pDlg] (sal_Int32 /*nResult*/)->void
+            {
+                pDlg->disposeOnce();
+            }
+        );
         return;
     }
 
@@ -207,7 +213,7 @@ void FuBullet::InsertSpecialCharacter( SfxRequest const & rReq )
     ::Outliner*   pOL = nullptr;
 
     // determine depending on ViewShell Outliner and OutlinerView
-    if(dynamic_cast< const DrawViewShell *>( mpViewShell ))
+    if(dynamic_cast< const DrawViewShell *>( &mrViewShell ))
     {
         pOV = mpView->GetTextEditOutlinerView();
         if (pOV)
@@ -215,11 +221,11 @@ void FuBullet::InsertSpecialCharacter( SfxRequest const & rReq )
             pOL = mpView->GetTextEditOutliner();
         }
     }
-    else if(dynamic_cast< const OutlineViewShell *>( mpViewShell ))
+    else if(dynamic_cast< const OutlineViewShell *>( &mrViewShell ))
     {
         pOL = &static_cast<OutlineView*>(mpView)->GetOutliner();
         pOV = static_cast<OutlineView*>(mpView)->GetViewByWindow(
-            mpViewShell->GetActiveWindow());
+            mrViewShell.GetActiveWindow());
     }
 
     // insert special character
@@ -235,21 +241,21 @@ void FuBullet::InsertSpecialCharacter( SfxRequest const & rReq )
        With that, we get unique attributes (and since there is no
        DeleteSelected() in OutlinerView, it is deleted by inserting an
        empty string). */
-    pOV->InsertText( "" );
+    pOV->InsertText( u""_ustr );
 
-    SfxItemSetFixed<EE_CHAR_FONTINFO, EE_CHAR_FONTINFO> aOldSet( mpDoc->GetPool() );
+    SfxItemSetFixed<EE_CHAR_FONTINFO, EE_CHAR_FONTINFO> aOldSet( mrDoc.GetPool() );
     aOldSet.Put( pOV->GetAttribs() );
 
     EditUndoManager& rUndoMgr = pOL->GetUndoManager();
-    ViewShellId nViewShellId = mpViewShell ? mpViewShell->GetViewShellBase().GetViewShellId() : ViewShellId(-1);
+    ViewShellId nViewShellId = mrViewShell.GetViewShellBase().GetViewShellId();
     rUndoMgr.EnterListAction(SdResId(STR_UNDO_INSERT_SPECCHAR),
-                             "", 0, nViewShellId );
+                             u""_ustr, 0, nViewShellId );
     pOV->InsertText(aChars, true);
 
     // set attributes (set font)
     SfxItemSet aSet(pOL->GetEmptyItemSet());
-    SvxFontItem aFontItem (aFont.GetFamilyType(), aFont.GetFamilyName(),
-                           aFont.GetStyleName(), aFont.GetPitch(),
+    SvxFontItem aFontItem (aFont.GetFamilyTypeMaybeAskConfig(), aFont.GetFamilyName(),
+                           aFont.GetStyleName(), aFont.GetPitchMaybeAskConfig(),
                            aFont.GetCharSet(),
                            EE_CHAR_FONTINFO);
     aSet.Put(aFontItem);
@@ -260,12 +266,11 @@ void FuBullet::InsertSpecialCharacter( SfxRequest const & rReq )
     pOV->SetAttribs(aSet);
 
     ESelection aSel = pOV->GetSelection();
-    aSel.nStartPara = aSel.nEndPara;
-    aSel.nStartPos = aSel.nEndPos;
+    aSel.CollapseToEnd();
     pOV->SetSelection(aSel);
 
     // do not go ahead with setting attributes of special characters
-    pOV->GetOutliner()->QuickSetAttribs(aOldSet, aSel);
+    pOV->GetOutliner().QuickSetAttribs(aOldSet, aSel);
 
     rUndoMgr.LeaveListAction();
 

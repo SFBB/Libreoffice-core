@@ -23,6 +23,8 @@
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
 #include <com/sun/star/awt/Size.hpp>
 
+#include <com/sun/star/chart2/PieChartSubType.hpp>
+
 #include "transporttypes.hxx"
 
 #include <vector>
@@ -30,13 +32,6 @@
 class SchXMLImportHelper;
 
 namespace com::sun::star {
-    namespace chart {
-        class XChartDocument;
-        struct ChartSeriesAddress;
-    }
-    namespace xml::sax {
-        class XAttributeList;
-    }
     namespace drawing {
         class XShapes;
     }
@@ -89,7 +84,7 @@ private:
     SchXMLTable maTable;
     SchXMLImportHelper& mrImportHelper;
 
-    OUString maMainTitle, maSubTitle;
+    std::vector<std::pair<OUString, OUString>> maMainTitle, maSubTitle;
     OUString m_aXLinkHRefAttributeToIndicateDataProvider;
     bool m_bHasRangeAtPlotArea;
     bool m_bHasTableElement;
@@ -98,6 +93,8 @@ private:
     bool mbRowHasLabels;
     css::chart::ChartDataRowSource meDataRowSource;
     bool mbIsStockChart;
+    css::chart2::PieChartSubType mPieSubType;
+    double mfPieSplitPos;
 
     OUString msCategoriesAddress;
     OUString msChartAddress;
@@ -127,14 +124,14 @@ class SchXMLTitleContext : public SvXMLImportContext
 {
 private:
     SchXMLImportHelper& mrImportHelper;
-    OUString& mrTitle;
+    std::vector<std::pair<OUString, OUString>>& mrTitle;
     css::uno::Reference< css::drawing::XShape > mxTitleShape;
     OUString msAutoStyleName;
 
 public:
     SchXMLTitleContext( SchXMLImportHelper& rImpHelper,
                         SvXMLImport& rImport,
-                        OUString& rTitle,
+                        std::vector<std::pair<OUString, OUString>>& rTitle,
                         css::uno::Reference< css::drawing::XShape > xTitleShape );
     virtual ~SchXMLTitleContext() override;
 

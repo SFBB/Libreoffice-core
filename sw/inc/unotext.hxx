@@ -20,6 +20,7 @@
 #ifndef INCLUDED_SW_INC_UNOTEXT_HXX
 #define INCLUDED_SW_INC_UNOTEXT_HXX
 
+#include "swdllapi.h"
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/XTextCopy.hpp>
 #include <com/sun/star/text/XTextRangeCompare.hpp>
@@ -30,19 +31,17 @@
 
 #include "unobaseclass.hxx"
 
-namespace com::sun::star {
-    namespace text {
-        class XTextContent;
-        class XText;
-    }
-}
-
+class SfxItemPropertySet;
 class SwDoc;
 class SwStartNode;
+class SwNodeRange;
 class SwPaM;
 class SwXTextCursor;
+class SwXParagraph;
+class SwXTextRange;
+class SwXTextTable;
 
-class SAL_DLLPUBLIC_RTTI SwXText
+class SAL_DLLPUBLIC_RTTI SAL_LOPLUGIN_ANNOTATE("crosscast") SwXText
     : public css::lang::XTypeProvider
     , public css::beans::XPropertySet
     , public css::text::XTextAppendAndConvert
@@ -54,9 +53,6 @@ class SAL_DLLPUBLIC_RTTI SwXText
 
 private:
 
-    class Impl;
-    ::sw::UnoImplPtr<Impl> m_pImpl;
-
     virtual void PrepareForAttach(
             css::uno::Reference< css::text::XTextRange > & xRange,
             SwPaM const & rPam);
@@ -64,11 +60,22 @@ private:
     /// @throws css::uno::RuntimeException
     virtual bool CheckForOwnMemberMeta(
             const SwPaM & rPam, const bool bAbsorb);
+    bool CheckForOwnMember(const SwPaM & rPaM);
+    sal_Int16 ComparePositions(
+            const css::uno::Reference<css::text::XTextRange>& xPos1,
+            const css::uno::Reference<css::text::XTextRange>& xPos2);
+    rtl::Reference<SwXParagraph> finishOrAppendParagraph(
+            const css::uno::Sequence< css::beans::PropertyValue > & rProperties,
+            const css::uno::Reference< css::text::XTextRange >& xInsertPosition);
+    void ConvertCell(
+            const css::uno::Sequence< css::uno::Reference< css::text::XTextRange > > & rCell,
+            std::vector<SwNodeRange> & rRowNodes,
+            SwNodeRange *const pLastCell);
 
 protected:
 
-    bool            IsValid() const;
-    void            Invalidate();
+    bool            IsValid() const { return m_bIsValid; }
+    void            Invalidate() { m_bIsValid = false; }
     void            SetDoc(SwDoc *const pDoc);
 
     virtual ~SwXText();
@@ -80,8 +87,8 @@ public:
 
     SwXText(SwDoc *const pDoc, const CursorType eType);
 
-    const SwDoc*    GetDoc() const;
-          SwDoc*    GetDoc();
+    const SwDoc*    GetDoc() const { return m_pDoc; }
+          SwDoc*    GetDoc() { return m_pDoc; }
 
     // declare these here to resolve ambiguity when we declared rtl::Reference<subtype-of-SwXText>
     virtual void SAL_CALL acquire() override = 0;
@@ -120,10 +127,10 @@ public:
     // XTextRange
     virtual css::uno::Reference< css::text::XText >
         SAL_CALL getText() override;
-    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getStart() override;
+    SW_DLLPUBLIC virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getStart() override;
     virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getEnd() override;
-    virtual OUString SAL_CALL getString() override;
-    virtual void SAL_CALL setString(const OUString& rString) override;
+    SW_DLLPUBLIC virtual OUString SAL_CALL getString() override;
+    SW_DLLPUBLIC virtual void SAL_CALL setString(const OUString& rString) override;
 
     // XSimpleText
     virtual void SAL_CALL insertString(
@@ -132,7 +139,7 @@ public:
     virtual void SAL_CALL insertControlCharacter(
             const css::uno::Reference< css::text::XTextRange > & xRange,
             sal_Int16 nControlCharacter, sal_Bool bAbsorb) override;
-    virtual css::uno::Reference< css::text::XTextCursor > SAL_CALL createTextCursorByRange(
+    SW_DLLPUBLIC virtual css::uno::Reference< css::text::XTextCursor > SAL_CALL createTextCursorByRange(
             const ::css::uno::Reference< ::css::text::XTextRange >& aTextPosition ) override final;
     virtual rtl::Reference< SwXTextCursor > createXTextCursorByRange(
             const ::css::uno::Reference< ::css::text::XTextRange >& aTextPosition ) = 0;
@@ -208,7 +215,7 @@ public:
                 rTableProperties) override;
 
     // XTextCopy
-    virtual void SAL_CALL copyText(
+    SW_DLLPUBLIC virtual void SAL_CALL copyText(
             const css::uno::Reference< css::text::XTextCopy >& xSource ) override;
 
     // XTextRangeCompare
@@ -232,6 +239,40 @@ public:
             const css::uno::Reference< css::text::XTextContent>& xSuccessor) override;
     virtual void SAL_CALL removeTextContentAfter(
             const css::uno::Reference< css::text::XTextContent>& xPredecessor) override;
+
+    SW_DLLPUBLIC rtl::Reference< SwXTextTable >
+        convertToSwTable(
+            css::uno::Sequence<
+                css::uno::Sequence<
+                    css::uno::Sequence<
+                        css::uno::Reference<
+                            css::text::XTextRange > > > > const&
+                rTableRanges,
+           css::uno::Sequence<
+                css::uno::Sequence<
+                    css::uno::Sequence<
+                        css::beans::PropertyValue > > > const&
+                rCellProperties,
+           css::uno::Sequence<
+                css::uno::Sequence<
+                    css::beans::PropertyValue > > const&
+                rRowProperties,
+           css::uno::Sequence<
+                css::beans::PropertyValue > const&
+                rTableProperties);
+
+private:
+    rtl::Reference< SwXTextCursor > getEndImpl(SolarMutexGuard& rGuard);
+    rtl::Reference< SwXTextRange > insertTextPortionImpl(
+            SolarMutexGuard& rGuard,
+            std::u16string_view rText,
+            const css::uno::Sequence< css::beans::PropertyValue >& rCharacterAndParagraphProperties,
+            const rtl::Reference<SwXTextCursor>& xTextCursor);
+
+    SfxItemPropertySet const&   m_rPropSet;
+    const CursorType            m_eType;
+    SwDoc *                     m_pDoc;
+    bool                        m_bIsValid;
 };
 
 #endif // INCLUDED_SW_INC_UNOTEXT_HXX

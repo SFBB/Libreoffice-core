@@ -27,12 +27,14 @@
 #include <com/sun/star/beans/Pair.hpp>
 #include <com/sun/star/embed/XRelationshipAccess.hpp>
 #include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/text/XTextDocument.hpp>
 #include <com/sun/star/xml/sax/XFastSAXSerializable.hpp>
 #include <com/sun/star/xml/sax/XSAXSerializable.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
 #include <o3tl/any.hxx>
 #include <unotools/mediadescriptor.hxx>
 #include <unotools/docinfohelper.hxx>
+#include <unotools/securityoptions.hxx>
 #include <sax/fshelper.hxx>
 #include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
@@ -53,7 +55,9 @@
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XOOXMLDocumentPropertiesImporter.hpp>
 #include <com/sun/star/xml/dom/DocumentBuilder.hpp>
+#include <comphelper/diagnose_ex.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/memorystream.hxx>
 #include <oox/core/filterdetect.hxx>
 #include <comphelper/stl_types.hxx>
 #include <comphelper/storagehelper.hxx>
@@ -77,7 +81,6 @@ namespace oox::core {
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::embed;
 using namespace ::com::sun::star::io;
@@ -95,61 +98,64 @@ const Sequence< beans::Pair< OUString, sal_Int32 > >& NamespaceIds()
 {
     static const Sequence< beans::Pair< OUString, sal_Int32 > > SINGLETON
         {
-            {"http://www.w3.org/XML/1998/namespace", NMSP_xml},
-            {"http://schemas.openxmlformats.org/package/2006/relationships",
+            {u"http://www.w3.org/XML/1998/namespace"_ustr, NMSP_xml},
+            {u"http://schemas.openxmlformats.org/package/2006/relationships"_ustr,
              NMSP_packageRel},
-            {"http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+            {u"http://schemas.openxmlformats.org/officeDocument/2006/relationships"_ustr,
              NMSP_officeRel},
-            {"http://purl.oclc.org/ooxml/officeDocument/relationships",
+            {u"http://purl.oclc.org/ooxml/officeDocument/relationships"_ustr,
              NMSP_officeRel},
-            {"http://schemas.openxmlformats.org/drawingml/2006/main", NMSP_dml},
-            {"http://purl.oclc.org/ooxml/drawingml/main", NMSP_dml},
-            {"http://schemas.openxmlformats.org/drawingml/2006/diagram",
+            {u"http://schemas.openxmlformats.org/drawingml/2006/main"_ustr, NMSP_dml},
+            {u"http://purl.oclc.org/ooxml/drawingml/main"_ustr, NMSP_dml},
+            {u"http://schemas.openxmlformats.org/drawingml/2006/diagram"_ustr,
              NMSP_dmlDiagram},
-            {"http://purl.oclc.org/ooxml/drawingml/diagram", NMSP_dmlDiagram},
-            {"http://schemas.openxmlformats.org/drawingml/2006/chart",
+            {u"http://purl.oclc.org/ooxml/drawingml/diagram"_ustr, NMSP_dmlDiagram},
+            {u"http://schemas.openxmlformats.org/drawingml/2006/chart"_ustr,
              NMSP_dmlChart},
-            {"http://schemas.openxmlformats.org/drawingml/2006/chartDrawing",
+            {u"http://schemas.openxmlformats.org/drawingml/2006/chartDrawing"_ustr,
              NMSP_dmlChartDr},
-            {"urn:schemas-microsoft-com:vml", NMSP_vml},
-            {"urn:schemas-microsoft-com:office:office", NMSP_vmlOffice},
-            {"urn:schemas-microsoft-com:office:word", NMSP_vmlWord},
-            {"urn:schemas-microsoft-com:office:excel", NMSP_vmlExcel},
-            {"urn:schemas-microsoft-com:office:powerpoint", NMSP_vmlPowerpoint},
-            {"http://schemas.microsoft.com/office/2006/activeX", NMSP_ax},
-            {"http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+            {u"urn:schemas-microsoft-com:vml"_ustr, NMSP_vml},
+            {u"urn:schemas-microsoft-com:office:office"_ustr, NMSP_vmlOffice},
+            {u"urn:schemas-microsoft-com:office:word"_ustr, NMSP_vmlWord},
+            {u"urn:schemas-microsoft-com:office:excel"_ustr, NMSP_vmlExcel},
+            {u"urn:schemas-microsoft-com:office:powerpoint"_ustr, NMSP_vmlPowerpoint},
+            {u"http://schemas.microsoft.com/office/2006/activeX"_ustr, NMSP_ax},
+            {u"http://schemas.openxmlformats.org/spreadsheetml/2006/main"_ustr,
              NMSP_xls},
-            {"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
+            {u"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"_ustr,
              NMSP_xm},
-            {"http://schemas.microsoft.com/office/excel/2006/main",
+            {u"http://schemas.microsoft.com/office/excel/2006/main"_ustr,
              NMSP_dmlSpreadDr},
-            {"http://schemas.openxmlformats.org/presentationml/2006/main",
+            {u"http://schemas.openxmlformats.org/presentationml/2006/main"_ustr,
              NMSP_ppt},
-            {"http://schemas.openxmlformats.org/markup-compatibility/2006",
+            {u"http://schemas.openxmlformats.org/markup-compatibility/2006"_ustr,
              NMSP_mce},
-            {"http://schemas.openxmlformats.org/spreadsheetml/2006/main/v2",
+            {u"http://schemas.openxmlformats.org/spreadsheetml/2006/main/v2"_ustr,
              NMSP_mceTest},
-            {"http://schemas.openxmlformats.org/officeDocument/2006/math",
+            {u"http://schemas.openxmlformats.org/officeDocument/2006/math"_ustr,
              NMSP_officeMath},
-            {"http://schemas.microsoft.com/office/drawing/2008/diagram",
+            {u"http://schemas.microsoft.com/office/drawing/2008/diagram"_ustr,
              NMSP_dsp},
-            {"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main",
+            {u"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"_ustr,
              NMSP_xls14Lst},
-            {"http://schemas.libreoffice.org/", NMSP_loext},
-            {"http://schemas.microsoft.com/office/drawing/2010/main",
+            {u"http://schemas.libreoffice.org/"_ustr, NMSP_loext},
+            {u"http://schemas.microsoft.com/office/drawing/2010/main"_ustr,
              NMSP_a14},
-            {"http://schemas.microsoft.com/office/powerpoint/2010/main",
+            {u"http://schemas.microsoft.com/office/powerpoint/2010/main"_ustr,
              NMSP_p14},
-            {"http://schemas.microsoft.com/office/powerpoint/2012/main",
+            {u"http://schemas.microsoft.com/office/powerpoint/2012/main"_ustr,
              NMSP_p15},
-            {"http://schemas.microsoft.com/office/spreadsheetml/2011/1/ac",
+            {u"http://schemas.microsoft.com/office/spreadsheetml/2011/1/ac"_ustr,
              NMSP_x12ac},
-            {"http://schemas.microsoft.com/office/drawing/2012/chart",
+            {u"http://schemas.microsoft.com/office/drawing/2012/chart"_ustr,
              NMSP_c15},
-            {"http://schemas.microsoft.com/office/spreadsheetml/2015/revision2",
+            {u"http://schemas.microsoft.com/office/spreadsheetml/2015/revision2"_ustr,
              NMSP_xr2},
-            {"http://schemas.microsoft.com/office/drawing/2017/decorative", NMSP_adec},
-            {"http://schemas.microsoft.com/office/drawing/2016/SVG/main", NMSP_asvg},
+            {u"http://schemas.microsoft.com/office/spreadsheetml/2017/revision16"_ustr,
+             NMSP_xr16},
+            {u"http://schemas.microsoft.com/office/drawing/2017/decorative"_ustr, NMSP_adec},
+            {u"http://schemas.microsoft.com/office/drawing/2016/SVG/main"_ustr, NMSP_asvg},
+            {u"http://schemas.microsoft.com/office/drawing/2014/chartex"_ustr, NMSP_cx},
         };
     return SINGLETON;
 };
@@ -197,7 +203,8 @@ XmlFilterBase::XmlFilterBase( const Reference< XComponentContext >& rxContext ) 
     FilterBase( rxContext ),
     mxImpl( new XmlFilterBaseImpl ),
     mnRelId( 1 ),
-    mnMaxDocId( 0 ),
+    // mnMaxDocId has to start from 1, Word doesn't accept id 0 for eg. grouped shapes
+    mnMaxDocId( 1 ),
     mbMSO2007(false),
     mbMSO(false),
     mbMissingExtDrawing(false)
@@ -234,7 +241,7 @@ void XmlFilterBase::checkDocumentProperties(const Reference<XDocumentProperties>
         return;
 
     comphelper::SequenceAsHashMap aUserDefinedProperties(xUserDefProps->getPropertyValues());
-    comphelper::SequenceAsHashMap::iterator it = aUserDefinedProperties.find("AppVersion");
+    comphelper::SequenceAsHashMap::iterator it = aUserDefinedProperties.find(u"AppVersion"_ustr);
     if (it == aUserDefinedProperties.end())
         return;
 
@@ -287,10 +294,12 @@ void XmlFilterBase::importDocumentProperties()
     rtl::Reference< ::oox::core::FilterDetect > xDetector( new ::oox::core::FilterDetect( xContext ) );
     xInputStream = xDetector->extractUnencryptedPackage( aMediaDesc );
     Reference< XComponent > xModel = getModel();
+    const bool repairPackage = aMediaDesc.getUnpackedValueOrDefault(u"RepairPackage"_ustr, false);
     Reference< XStorage > xDocumentStorage (
-            ::comphelper::OStorageHelper::GetStorageOfFormatFromInputStream( OFOPXML_STORAGE_FORMAT_STRING, xInputStream ) );
+        ::comphelper::OStorageHelper::GetStorageOfFormatFromInputStream(
+            OFOPXML_STORAGE_FORMAT_STRING, xInputStream, {}, repairPackage));
     Reference< XInterface > xTemp = xContext->getServiceManager()->createInstanceWithContext(
-            "com.sun.star.document.OOXMLDocumentPropertiesImporter",
+            u"com.sun.star.document.OOXMLDocumentPropertiesImporter"_ustr,
             xContext);
     Reference< XOOXMLDocumentPropertiesImporter > xImporter( xTemp, UNO_QUERY );
     Reference< XDocumentPropertiesSupplier > xPropSupplier( xModel, UNO_QUERY);
@@ -416,8 +425,7 @@ bool XmlFilterBase::importFragment( const rtl::Reference<FragmentHandler>& rxHan
         }
         catch( Exception& )
         {
-            OSL_FAIL( OStringBuffer( "XmlFilterBase::importFragment - XML parser failed in fragment '"  +
-                     OUStringToOString( aFragmentPath, RTL_TEXTENCODING_ASCII_US ) + "'" ).getStr() );
+            TOOLS_WARN_EXCEPTION("oox", "XmlFilterBase::importFragment - XML parser failed in fragment '" << aFragmentPath << "'" );
         }
     }
     catch( Exception& )
@@ -502,9 +510,10 @@ Reference< XOutputStream > XmlFilterBase::openFragmentStream( const OUString& rS
     return xOutputStream;
 }
 
-FSHelperPtr XmlFilterBase::openFragmentStreamWithSerializer( const OUString& rStreamName, const OUString& rMediaType )
+FSHelperPtr XmlFilterBase::openFragmentStreamWithSerializer(
+        const OUString& rStreamName, const OUString& rMediaType, bool bNoHeader /* = false */)
 {
-    const bool bWriteHeader = rMediaType.indexOf( "vml" ) < 0 || rMediaType.indexOf( "+xml" ) >= 0;
+    const bool bWriteHeader = !bNoHeader && (rMediaType.indexOf( "vml" ) < 0 || rMediaType.indexOf( "+xml" ) >= 0);
     return std::make_shared<FastSerializerHelper>( openFragmentStream( rStreamName, rMediaType ), bWriteHeader );
 }
 
@@ -604,7 +613,7 @@ writeElement( const FSHelperPtr& pDoc, sal_Int32 nXmlElement, const Sequence< OU
     OUStringBuffer sRep;
     // tdf#143175 - join elements including a delimiter using a standard iterator
     ::comphelper::intersperse(aItems.begin(), aItems.end(),
-                              ::comphelper::OUStringBufferAppender(sRep), OUString(" "));
+                              ::comphelper::OUStringBufferAppender(sRep), u" "_ustr);
 
     writeElement( pDoc, nXmlElement, sRep );
 }
@@ -622,8 +631,18 @@ writeElement( const FSHelperPtr& pDoc, sal_Int32 nXmlElement, const LanguageTag&
 static void
 writeCoreProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties >& xProperties )
 {
+    bool bRemovePersonalInfo
+        = SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo);
+    bool bRemoveUserInfo
+        = bRemovePersonalInfo
+          && !SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnKeepDocUserInfo);
+
+    // Although the spec says that ISOIEC_29500_2008 must use the "officedocument" URI,
+    // in MS errata they admit that DOCX just uses the old "package" URI from ECMA_376_1ST_EDITION.
+
     OUString sValue;
-    if( rSelf.getVersion() == oox::core::ISOIEC_29500_2008  )
+    const bool bDocx = dynamic_cast<text::XTextDocument*>(rSelf.getModel().get());
+    if (!bDocx && rSelf.getVersion() == oox::core::ISOIEC_29500_2008)
     {
         // The lowercase "officedocument" is intentional and according to the spec
         // (although most other places are written "officeDocument")
@@ -634,8 +653,8 @@ writeCoreProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties 
 
     rSelf.addRelation( sValue, u"docProps/core.xml" );
     FSHelperPtr pCoreProps = rSelf.openFragmentStreamWithSerializer(
-            "docProps/core.xml",
-            "application/vnd.openxmlformats-package.core-properties+xml" );
+            u"docProps/core.xml"_ustr,
+            u"application/vnd.openxmlformats-package.core-properties+xml"_ustr );
     pCoreProps->startElementNS( XML_cp, XML_coreProperties,
         FSNS(XML_xmlns, XML_cp),       rSelf.getNamespaceURL(OOX_NS(packageMetaCorePr)),
         FSNS(XML_xmlns, XML_dc),       rSelf.getNamespaceURL(OOX_NS(dc)),
@@ -647,7 +666,7 @@ writeCoreProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties 
     comphelper::SequenceAsHashMap aUserDefinedProperties(xUserDefinedProperties->getPropertyValues());
     comphelper::SequenceAsHashMap::iterator it;
 
-    it = aUserDefinedProperties.find("OOXMLCorePropertyCategory");
+    it = aUserDefinedProperties.find(u"OOXMLCorePropertyCategory"_ustr);
     if (it != aUserDefinedProperties.end())
     {
         OUString aValue;
@@ -655,7 +674,7 @@ writeCoreProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties 
             writeElement( pCoreProps, FSNS( XML_cp, XML_category ), aValue );
     }
 
-    it = aUserDefinedProperties.find("OOXMLCorePropertyContentStatus");
+    it = aUserDefinedProperties.find(u"OOXMLCorePropertyContentStatus"_ustr);
     if (it != aUserDefinedProperties.end())
     {
         OUString aValue;
@@ -663,18 +682,21 @@ writeCoreProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties 
             writeElement( pCoreProps, FSNS( XML_cp, XML_contentStatus ), aValue );
     }
 
-    it = aUserDefinedProperties.find("OOXMLCorePropertyContentType");
+    it = aUserDefinedProperties.find(u"OOXMLCorePropertyContentType"_ustr);
     if (it != aUserDefinedProperties.end())
     {
         OUString aValue;
         if (it->second >>= aValue)
             writeElement( pCoreProps, FSNS( XML_cp, XML_contentType ), aValue );
     }
-    writeElement( pCoreProps, FSNS( XML_dcterms, XML_created ),     xProperties->getCreationDate() );
-    writeElement( pCoreProps, FSNS( XML_dc, XML_creator ),          xProperties->getAuthor() );
+    if (!bRemoveUserInfo)
+    {
+        writeElement(pCoreProps, FSNS(XML_dcterms, XML_created), xProperties->getCreationDate());
+        writeElement(pCoreProps, FSNS(XML_dc, XML_creator), xProperties->getAuthor());
+    }
     writeElement( pCoreProps, FSNS( XML_dc, XML_description ),      xProperties->getDescription() );
 
-    it = aUserDefinedProperties.find("OOXMLCorePropertyIdentifier");
+    it = aUserDefinedProperties.find(u"OOXMLCorePropertyIdentifier"_ustr);
     if (it != aUserDefinedProperties.end())
     {
         OUString aValue;
@@ -683,14 +705,22 @@ writeCoreProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties 
     }
     writeElement( pCoreProps, FSNS( XML_cp, XML_keywords ),         xProperties->getKeywords() );
     writeElement( pCoreProps, FSNS( XML_dc, XML_language ),         LanguageTag( xProperties->getLanguage()) );
-    writeElement( pCoreProps, FSNS( XML_cp, XML_lastModifiedBy ),   xProperties->getModifiedBy() );
-    writeElement( pCoreProps, FSNS( XML_cp, XML_lastPrinted ),      xProperties->getPrintDate() );
-    writeElement( pCoreProps, FSNS( XML_dcterms, XML_modified ),    xProperties->getModificationDate() );
-    writeElement( pCoreProps, FSNS( XML_cp, XML_revision ),         xProperties->getEditingCycles() );
+
+    if (!bRemoveUserInfo)
+    {
+        writeElement(pCoreProps, FSNS(XML_cp, XML_lastModifiedBy), xProperties->getModifiedBy());
+        writeElement(pCoreProps, FSNS(XML_cp, XML_lastPrinted), xProperties->getPrintDate());
+        writeElement(pCoreProps, FSNS(XML_dcterms, XML_modified),
+                     xProperties->getModificationDate());
+    }
+    if (!bRemovePersonalInfo)
+    {
+        writeElement(pCoreProps, FSNS(XML_cp, XML_revision), xProperties->getEditingCycles());
+    }
     writeElement( pCoreProps, FSNS( XML_dc, XML_subject ),          xProperties->getSubject() );
     writeElement( pCoreProps, FSNS( XML_dc, XML_title ),            xProperties->getTitle() );
 
-    it = aUserDefinedProperties.find("OOXMLCorePropertyVersion");
+    it = aUserDefinedProperties.find(u"OOXMLCorePropertyVersion"_ustr);
     if (it != aUserDefinedProperties.end())
     {
         OUString aValue;
@@ -706,12 +736,17 @@ writeCoreProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties 
 static void
 writeAppProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties >& xProperties )
 {
+    bool bRemovePersonalInfo
+        = SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo);
+    bool bRemoveUserInfo
+        = bRemovePersonalInfo
+          && !SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnKeepDocUserInfo);
     rSelf.addRelation(
-            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties",
+            u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties"_ustr,
             u"docProps/app.xml" );
     FSHelperPtr pAppProps = rSelf.openFragmentStreamWithSerializer(
-            "docProps/app.xml",
-            "application/vnd.openxmlformats-officedocument.extended-properties+xml" );
+            u"docProps/app.xml"_ustr,
+            u"application/vnd.openxmlformats-officedocument.extended-properties+xml"_ustr );
     pAppProps->startElement( XML_Properties,
             XML_xmlns,               rSelf.getNamespaceURL(OOX_NS(officeExtPr)),
             FSNS(XML_xmlns, XML_vt), rSelf.getNamespaceURL(OOX_NS(officeDocPropsVT)));
@@ -720,9 +755,10 @@ writeAppProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties >
     comphelper::SequenceAsHashMap aUserDefinedProperties(xUserDefinedProperties->getPropertyValues());
     comphelper::SequenceAsHashMap::iterator it;
 
-    writeElement( pAppProps, XML_Template,              xProperties->getTemplateName() );
+    if (!bRemovePersonalInfo)
+        writeElement(pAppProps, XML_Template, xProperties->getTemplateName());
 
-    it = aUserDefinedProperties.find("Manager");
+    it = aUserDefinedProperties.find(u"Manager"_ustr);
     if (it != aUserDefinedProperties.end())
     {
         OUString aValue;
@@ -737,7 +773,8 @@ writeAppProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties >
     writeElement( pAppProps, XML_Notes,                 "notes" );
 #endif  /* def OOXTODO */
     // EditingDuration is in seconds, TotalTime is in minutes.
-    writeElement( pAppProps, XML_TotalTime,             xProperties->getEditingDuration() / 60 );
+    if (!bRemovePersonalInfo && !SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemoveEditingTimeInfo))
+        writeElement(pAppProps, XML_TotalTime, xProperties->getEditingDuration() / 60);
 #ifdef OOXTODO
     writeElement( pAppProps, XML_HiddenSlides,          "hidden slides" );
     writeElement( pAppProps, XML_MMClips,               "mm clips" );
@@ -752,7 +789,7 @@ writeAppProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties >
 #endif  /* def OOXTODO */
     writeElement( pAppProps, XML_Application,           utl::DocInfoHelper::GetGeneratorString() );
 
-    it = aUserDefinedProperties.find("HyperlinkBase");
+    it = aUserDefinedProperties.find(u"HyperlinkBase"_ustr);
     if (it != aUserDefinedProperties.end())
     {
         OUString aValue;
@@ -768,7 +805,7 @@ writeAppProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties >
     writeElement( pAppProps, XML_AppVersion, u"15.0000" );
 
     // OOXTODO Calculate DocSecurity value based on security (password, read-only etc.)
-    it = aUserDefinedProperties.find("DocSecurity");
+    it = aUserDefinedProperties.find(u"DocSecurity"_ustr);
     if (it != aUserDefinedProperties.end())
     {
         sal_Int32 nValue;
@@ -779,43 +816,43 @@ writeAppProperties( XmlFilterBase& rSelf, const Reference< XDocumentProperties >
     comphelper::SequenceAsHashMap aStats = xProperties->getDocumentStatistics();
     sal_Int32 nValue = 0;
 
-    it = aStats.find("PageCount");
+    it = aStats.find(u"PageCount"_ustr);
     if (it != aStats.end())
     {
             if (it->second >>= nValue)
                 writeElement(pAppProps, XML_Pages, nValue);
     }
 
-    it = aStats.find("WordCount");
+    it = aStats.find(u"WordCount"_ustr);
     if (it != aStats.end())
     {
             if (it->second >>= nValue)
                 writeElement(pAppProps, XML_Words, nValue);
     }
 
-    it = aStats.find("NonWhitespaceCharacterCount");
+    it = aStats.find(u"NonWhitespaceCharacterCount"_ustr);
     if (it != aStats.end())
     {
             if (it->second >>= nValue)
                 writeElement(pAppProps, XML_Characters, nValue);
     }
 
-    it = aStats.find("CharacterCount");
+    it = aStats.find(u"CharacterCount"_ustr);
     if (it != aStats.end())
     {
             if (it->second >>= nValue)
                 writeElement(pAppProps, XML_CharactersWithSpaces, nValue);
     }
 
-    it = aStats.find("ParagraphCount");
+    it = aStats.find(u"ParagraphCount"_ustr);
     if (it != aStats.end())
     {
             if (it->second >>= nValue)
                 writeElement(pAppProps, XML_Paragraphs, nValue);
     }
 
-    it = aUserDefinedProperties.find("Company");
-    if (it != aUserDefinedProperties.end())
+    it = aUserDefinedProperties.find(u"Company"_ustr);
+    if (it != aUserDefinedProperties.end() && !bRemoveUserInfo)
     {
         OUString aValue;
         if (it->second >>= aValue)
@@ -849,11 +886,11 @@ writeCustomProperties( XmlFilterBase& rSelf, const Reference< XDocumentPropertie
     }
 
     rSelf.addRelation(
-            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties",
+            u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties"_ustr,
             u"docProps/custom.xml" );
     FSHelperPtr pAppProps = rSelf.openFragmentStreamWithSerializer(
-            "docProps/custom.xml",
-            "application/vnd.openxmlformats-officedocument.custom-properties+xml" );
+            u"docProps/custom.xml"_ustr,
+            u"application/vnd.openxmlformats-officedocument.custom-properties+xml"_ustr );
     pAppProps->startElement( XML_Properties,
             XML_xmlns,               rSelf.getNamespaceURL(OOX_NS(officeCustomPr)),
             FSNS(XML_xmlns, XML_vt), rSelf.getNamespaceURL(OOX_NS(officeDocPropsVT)));
@@ -980,10 +1017,7 @@ Reference<XStream> XmlFilterBase::implGetOutputStream( MediaDescriptor& rMediaDe
     }
     else // We need to encrypt the stream so create a memory stream
     {
-        Reference< XComponentContext > xContext = getComponentContext();
-        return Reference< XStream > (
-                    xContext->getServiceManager()->createInstanceWithContext("com.sun.star.comp.MemoryStream", xContext),
-                    uno::UNO_QUERY_THROW );
+        return new comphelper::UNOMemoryStream();
     }
 }
 
@@ -1016,7 +1050,7 @@ StorageRef XmlFilterBase::implCreateStorage( const Reference< XInputStream >& rx
 {
     return std::make_shared<ZipStorage>(
         getComponentContext(), rxInStream,
-        getMediaDescriptor().getUnpackedValueOrDefault("RepairPackage", false));
+        getMediaDescriptor().getUnpackedValueOrDefault(u"RepairPackage"_ustr, false));
 }
 
 StorageRef XmlFilterBase::implCreateStorage( const Reference< XStream >& rxOutStream ) const
@@ -1097,9 +1131,9 @@ void XmlFilterBase::importCustomFragments(css::uno::Reference<css::embed::XStora
 
     // Adding the saved custom xml DOM
     comphelper::SequenceAsHashMap aGrabBagProperties;
-    aGrabBagProperties["OOXCustomFragments"] <<= comphelper::containerToSequence(aCustomFragments);
-    aGrabBagProperties["OOXCustomFragmentTypes"] <<= comphelper::containerToSequence(aCustomFragmentTypes);
-    aGrabBagProperties["OOXCustomFragmentTargets"] <<= comphelper::containerToSequence(aCustomFragmentTargets);
+    aGrabBagProperties[u"OOXCustomFragments"_ustr] <<= comphelper::containerToSequence(aCustomFragments);
+    aGrabBagProperties[u"OOXCustomFragmentTypes"_ustr] <<= comphelper::containerToSequence(aCustomFragmentTypes);
+    aGrabBagProperties[u"OOXCustomFragmentTargets"_ustr] <<= comphelper::containerToSequence(aCustomFragmentTargets);
 
     std::vector<uno::Reference<xml::dom::XDocument>> aCustomXmlDomList;
     std::vector<uno::Reference<xml::dom::XDocument>> aCustomXmlDomPropsList;
@@ -1119,16 +1153,16 @@ void XmlFilterBase::importCustomFragments(css::uno::Reference<css::embed::XStora
     }
 
     // Adding the saved custom xml DOM
-    aGrabBagProperties["OOXCustomXml"] <<= comphelper::containerToSequence(aCustomXmlDomList);
-    aGrabBagProperties["OOXCustomXmlProps"] <<= comphelper::containerToSequence(aCustomXmlDomPropsList);
+    aGrabBagProperties[u"OOXCustomXml"_ustr] <<= comphelper::containerToSequence(aCustomXmlDomList);
+    aGrabBagProperties[u"OOXCustomXmlProps"_ustr] <<= comphelper::containerToSequence(aCustomXmlDomPropsList);
 
     // Save the [Content_Types].xml after parsing.
     uno::Sequence<uno::Sequence<beans::StringPair>> aContentTypeInfo;
-    uno::Reference<io::XInputStream> xInputStream = openInputStream("[Content_Types].xml");
+    uno::Reference<io::XInputStream> xInputStream = openInputStream(u"[Content_Types].xml"_ustr);
     if (xInputStream.is())
         aContentTypeInfo = comphelper::OFOPXMLHelper::ReadContentTypeSequence(xInputStream, getComponentContext());
 
-    aGrabBagProperties["OOXContentTypes"] <<= aContentTypeInfo;
+    aGrabBagProperties[u"OOXContentTypes"_ustr] <<= aContentTypeInfo;
 
     Reference<XComponent> xModel = getModel();
     oox::core::XmlFilterBase::putPropertiesToDocumentGrabBag(xModel, aGrabBagProperties);
@@ -1152,7 +1186,7 @@ void XmlFilterBase::exportCustomFragments()
 
     uno::Sequence<beans::PropertyValue> propList;
     xPropSet->getPropertyValue(UNO_NAME_MISC_OBJ_INTEROPGRABBAG) >>= propList;
-    for (const auto& rProp : std::as_const(propList))
+    for (const auto& rProp : propList)
     {
         const OUString propName = rProp.Name;
         if (propName == "OOXCustomXml")
@@ -1184,8 +1218,8 @@ void XmlFilterBase::exportCustomFragments()
     // Expect customXmlDomPropslist.getLength() == customXmlDomlist.getLength().
     for (sal_Int32 j = 0; j < customXmlDomlist.getLength(); j++)
     {
-        uno::Reference<xml::dom::XDocument> customXmlDom = customXmlDomlist[j];
-        uno::Reference<xml::dom::XDocument> customXmlDomProps = customXmlDomPropslist[j];
+        const uno::Reference<xml::dom::XDocument>& customXmlDom = customXmlDomlist[j];
+        const uno::Reference<xml::dom::XDocument>& customXmlDomProps = customXmlDomPropslist[j];
         const OUString fragmentPath = "customXml/item" + OUString::number(j+1) + ".xml";
         if (customXmlDom.is())
         {
@@ -1193,7 +1227,7 @@ void XmlFilterBase::exportCustomFragments()
 
             uno::Reference<xml::sax::XSAXSerializable> serializer(customXmlDom, uno::UNO_QUERY);
             uno::Reference<xml::sax::XWriter> writer = xml::sax::Writer::create(comphelper::getProcessComponentContext());
-            writer->setOutputStream(openFragmentStream(fragmentPath, "application/xml"));
+            writer->setOutputStream(openFragmentStream(fragmentPath, u"application/xml"_ustr));
             serializer->serialize(uno::Reference<xml::sax::XDocumentHandler>(writer, uno::UNO_QUERY_THROW),
                                   uno::Sequence<beans::StringPair>());
         }
@@ -1203,12 +1237,12 @@ void XmlFilterBase::exportCustomFragments()
             uno::Reference<xml::sax::XSAXSerializable> serializer(customXmlDomProps, uno::UNO_QUERY);
             uno::Reference<xml::sax::XWriter> writer = xml::sax::Writer::create(comphelper::getProcessComponentContext());
             writer->setOutputStream(openFragmentStream("customXml/itemProps"+OUString::number(j+1)+".xml",
-                                    "application/vnd.openxmlformats-officedocument.customXmlProperties+xml"));
+                                    u"application/vnd.openxmlformats-officedocument.customXmlProperties+xml"_ustr));
             serializer->serialize(uno::Reference<xml::sax::XDocumentHandler>(writer, uno::UNO_QUERY_THROW),
                                   uno::Sequence<beans::StringPair>());
 
             // Adding itemprops's relationship entry to item.xml.rels file
-            addRelation(openFragmentStream(fragmentPath, "application/xml"),
+            addRelation(openFragmentStream(fragmentPath, u"application/xml"_ustr),
                         oox::getRelationship(Relationship::CUSTOMXMLPROPS),
                         Concat2View("itemProps"+OUString::number(j+1)+".xml"));
         }
@@ -1218,7 +1252,7 @@ void XmlFilterBase::exportCustomFragments()
     for (sal_Int32 j = 0; j < customFragments.getLength(); j++)
     {
         addRelation(customFragmentTypes[j], customFragmentTargets[j]);
-        const OUString aFilename = customFragmentTargets[j];
+        const OUString& aFilename = customFragmentTargets[j];
         Reference<XOutputStream> xOutStream = openOutputStream(aFilename);
         if (xOutStream.is())
         {
@@ -1227,8 +1261,8 @@ void XmlFilterBase::exportCustomFragments()
             if (xProps.is())
             {
                 const OUString aType = comphelper::OFOPXMLHelper::GetContentTypeByName(aContentTypes, aFilename);
-                const OUString aContentType = (aType.getLength() ? aType : OUString("application/octet-stream"));
-                xProps->setPropertyValue("MediaType", uno::Any(aContentType));
+                const OUString aContentType = (aType.getLength() ? aType : u"application/octet-stream"_ustr);
+                xProps->setPropertyValue(u"MediaType"_ustr, uno::Any(aContentType));
             }
         }
     }

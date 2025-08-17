@@ -40,7 +40,8 @@ using namespace ::com::sun::star;
 
 SfxPoolItem* SvxPageItem::CreateDefault() { return new SvxPageItem(TypedWhichId<SvxPageItem>(0));}
 
-SvxPageItem::SvxPageItem( const TypedWhichId<SvxPageItem> nId ) : SfxPoolItem( nId ),
+SvxPageItem::SvxPageItem( const TypedWhichId<SvxPageItem> nId )
+    : SfxPoolItem( nId ),
 
     eNumType    ( SVX_NUM_ARABIC ),
     bLandscape  ( false ),
@@ -108,7 +109,7 @@ namespace
         sal_uInt32 n = SvxNumberingTypeTable::FindIndex(eNumType);
         if (n != RESARRAY_INDEX_NOTFOUND)
             return SvxNumberingTypeTable::GetString(n);
-        css::uno::Reference<css::uno::XComponentContext> xContext = comphelper::getProcessComponentContext();
+        const css::uno::Reference<css::uno::XComponentContext>& xContext = comphelper::getProcessComponentContext();
         css::uno::Reference<css::text::XDefaultNumberingProvider> xDefNum = css::text::DefaultNumberingProvider::create(xContext);
         css::uno::Reference<css::text::XNumberingTypeInfo> xInfo(xDefNum, css::uno::UNO_QUERY);
         if (!xInfo.is())

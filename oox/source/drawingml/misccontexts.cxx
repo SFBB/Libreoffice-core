@@ -27,6 +27,7 @@
 #include <oox/token/tokens.hxx>
 #include <vcl/GraphicExternalLink.hxx>
 #include <vcl/graph.hxx>
+#include <sax/fastattribs.hxx>
 #include <unordered_map>
 #include <frozen/bits/defines.h>
 #include <frozen/bits/elsa_std.h>
@@ -34,7 +35,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::xml::sax;
 using ::oox::core::ContextHandler2;
 using ::oox::core::ContextHandlerRef;
 
@@ -146,8 +146,8 @@ ContextHandlerRef GradientFillContext::onCreateContext(
 namespace
 {
 
-constexpr frozen::unordered_map<sal_Int32, model::PatternPreset, 54> constPatternPresetMap
-{
+constexpr auto constPatternPresetMap = frozen::make_unordered_map<sal_Int32, model::PatternPreset>
+({
     { XML_pct5, model::PatternPreset::Percent_5 },
     { XML_pct10, model::PatternPreset::Percent_10 },
     { XML_pct20, model::PatternPreset::Percent_20 },
@@ -202,7 +202,7 @@ constexpr frozen::unordered_map<sal_Int32, model::PatternPreset, 54> constPatter
     { XML_wave, model::PatternPreset::Wave },
     { XML_trellis, model::PatternPreset::Trellis },
     { XML_zigZag, model::PatternPreset::ZigZag }
-};
+});
 
 } // end anonymous namespace
 PatternFillContext::PatternFillContext(ContextHandler2Helper const & rParent,
@@ -307,7 +307,7 @@ BlipContext::BlipContext(ContextHandler2Helper const & rParent, const AttributeL
             auto xGraphic = getFilter().getGraphicHelper().importEmbeddedGraphic(aFragmentPath);
             mrBlipProps.mxFillGraphic = xGraphic;
             if (mpBlipFill)
-                mpBlipFill->mxGraphic = xGraphic;
+                mpBlipFill->mxGraphic = std::move(xGraphic);
         }
     }
     else if( rAttribs.hasAttribute( R_TOKEN( link ) ) )
@@ -324,7 +324,7 @@ BlipContext::BlipContext(ContextHandler2Helper const & rParent, const AttributeL
         auto xGraphic = aGraphic.GetXGraphic();
         mrBlipProps.mxFillGraphic = xGraphic;
         if (mpBlipFill)
-            mpBlipFill->mxGraphic = xGraphic;
+            mpBlipFill->mxGraphic = std::move(xGraphic);
     }
 }
 
@@ -633,7 +633,7 @@ ContextHandlerRef BlipExtensionContext::onCreateContext(sal_Int32 nElement, cons
                     // Overwrite the fill graphic with the one containing SVG
                     mrBlipProps.mxFillGraphic = xGraphic;
                     if (mpBlipFill)
-                        mpBlipFill->mxGraphic = xGraphic;
+                        mpBlipFill->mxGraphic = std::move(xGraphic);
                 }
             }
             // TODO - link

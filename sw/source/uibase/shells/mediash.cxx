@@ -37,7 +37,7 @@ SFX_IMPL_INTERFACE(SwMediaShell, SwBaseShell)
 
 void SwMediaShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("media");
+    GetStaticInterface()->RegisterPopupMenu(u"media"_ustr);
 
     GetStaticInterface()->RegisterObjectBar(SFX_OBJECTBAR_OBJECT, SfxVisibilityFlags::Invisible,
                                             ToolbarId::Media_Toolbox);
@@ -57,7 +57,7 @@ void SwMediaShell::ExecMedia(SfxRequest const& rReq)
     switch (rReq.GetSlot())
     {
         case SID_DELETE:
-            if (pSh->IsObjSelected())
+            if (pSh->GetSelectedObjCount())
             {
                 pSh->SetModified();
                 pSh->DelSelectedObj();
@@ -70,7 +70,7 @@ void SwMediaShell::ExecMedia(SfxRequest const& rReq)
             break;
 
         case SID_AVMEDIA_TOOLBOX:
-            if (pSh->IsObjSelected())
+            if (pSh->GetSelectedObjCount())
                 MediaShellHelpers::Execute(pSdrView, rReq);
             break;
 
@@ -92,7 +92,7 @@ void SwMediaShell::GetMediaState(SfxItemSet& rSet)
 SwMediaShell::SwMediaShell(SwView& _rView)
     : SwBaseShell(_rView)
 {
-    SetName("Media Playback");
+    SetName(u"Media Playback"_ustr);
     SfxShell::SetContextName(vcl::EnumContext::GetContextName(vcl::EnumContext::Context::Media));
 }
 

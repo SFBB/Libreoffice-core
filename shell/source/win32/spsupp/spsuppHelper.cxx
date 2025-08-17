@@ -16,6 +16,7 @@
 #include <osl/file.hxx>
 #include <rtl/bootstrap.hxx>
 #include <spsuppStrings.hrc>
+#include <systools/win32/extended_max_path.hxx>
 #include <unotools/resmgr.hxx>
 #include "res/spsuppDlg.h"
 
@@ -31,8 +32,8 @@ const OUString& GetSofficeExe()
 {
     static const OUString s_sPath = []() {
         OUString result;
-        wchar_t sPath[MAX_PATH];
-        if (GetModuleFileNameW(nullptr, sPath, MAX_PATH) == 0)
+        wchar_t sPath[EXTENDED_MAX_PATH];
+        if (GetModuleFileNameW(nullptr, sPath, std::size(sPath)) == 0)
             return result;
         wchar_t* pSlashPos = wcsrchr(sPath, L'\\');
         if (pSlashPos == nullptr)
@@ -125,17 +126,14 @@ DWORD LOStart(const wchar_t* sModeArg, const wchar_t* sFilePath)
                         + o3tl::toU(sFilePath) + "\"";
     LPWSTR pCmdLine = const_cast<LPWSTR>(o3tl::toW(sCmdLine.getStr()));
 
-    STARTUPINFOW si = {};
-    si.cb = sizeof si;
-    si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_SHOW;
+    STARTUPINFOW si{ .cb = sizeof(si), .dwFlags = STARTF_USESHOWWINDOW, .wShowWindow = SW_SHOW };
     PROCESS_INFORMATION pi{};
     if (!CreateProcessW(nullptr, pCmdLine, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi))
     {
         DWORD dwError = GetLastError();
         const OUString sErrorMsg = "Could not start LibreOffice. Error is 0x"
                                    + OUString::number(dwError, 16) + ":\n\n"
-                                   + WindowsErrorString(dwError);
+                                   + comphelper::WindowsErrorString(dwError);
 
         // Report the error to user and return error
         MessageBoxW(nullptr, o3tl::toW(sErrorMsg.getStr()), nullptr, MB_ICONERROR);

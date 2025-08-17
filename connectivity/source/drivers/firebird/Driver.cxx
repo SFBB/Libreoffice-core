@@ -74,7 +74,7 @@ FirebirdDriver::FirebirdDriver(const css::uno::Reference< css::uno::XComponentCo
 #ifndef SYSTEM_FIREBIRD
     // Overrides firebird's hardcoded default of /usr/local/firebird on *nix,
     // however on Windows it seems to use the current directory as a default.
-    OUString sMsgURL("$BRAND_BASE_DIR/$BRAND_SHARE_SUBDIR/firebird");
+    OUString sMsgURL(u"$BRAND_BASE_DIR/$BRAND_SHARE_SUBDIR/firebird"_ustr);
     ::rtl::Bootstrap::expandMacros(sMsgURL);
     OUString sMsgPath;
     ::osl::FileBase::getSystemPathFromFileURL(sMsgURL, sMsgPath);
@@ -99,7 +99,7 @@ void FirebirdDriver::disposing()
 
     for (auto const& elem : m_xConnections)
     {
-        Reference< XComponent > xComp(elem.get(), UNO_QUERY);
+        rtl::Reference< Connection > xComp(elem.get());
         if (xComp.is())
             xComp->dispose();
     }
@@ -115,14 +115,14 @@ void FirebirdDriver::disposing()
 #endif /*MACOSX*/
 #endif /*!SYSTEM_FIREBIRD*/
 
-    OSL_VERIFY(fb_shutdown(0, 1));
+    OSL_VERIFY(fb_shutdown(0, 1) == 0);
 
     ODriver_BASE::disposing();
 }
 
 OUString SAL_CALL FirebirdDriver::getImplementationName()
 {
-    return "com.sun.star.comp.sdbc.firebird.Driver";
+    return u"com.sun.star.comp.sdbc.firebird.Driver"_ustr;
 }
 
 sal_Bool SAL_CALL FirebirdDriver::supportsService(const OUString& _rServiceName)
@@ -132,7 +132,7 @@ sal_Bool SAL_CALL FirebirdDriver::supportsService(const OUString& _rServiceName)
 
 Sequence< OUString > SAL_CALL FirebirdDriver::getSupportedServiceNames()
 {
-    return { "com.sun.star.sdbc.Driver", "com.sun.star.sdbcx.Driver" };
+    return { u"com.sun.star.sdbc.Driver"_ustr, u"com.sun.star.sdbcx.Driver"_ustr };
 }
 
 // ----  XDriver -------------------------------------------------------------
@@ -151,7 +151,7 @@ Reference< XConnection > SAL_CALL FirebirdDriver::connect(
     rtl::Reference<Connection> pCon = new Connection();
     pCon->construct(url, info);
 
-    m_xConnections.emplace_back(*pCon);
+    m_xConnections.push_back(pCon);
 
     return pCon;
 }

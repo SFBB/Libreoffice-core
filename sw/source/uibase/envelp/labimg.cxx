@@ -184,7 +184,7 @@ SwLabItem* SwLabItem::Clone(SfxItemPool*) const
 
 Sequence<OUString> SwLabCfgItem::GetPropertyNames() const
 {
-    static const char* aLabelPropNames[] =
+    static const char* const aLabelPropNames[] =
     {
         "Medium/Continuous",         // 0
         "Medium/Brand",             // 1
@@ -207,7 +207,7 @@ Sequence<OUString> SwLabCfgItem::GetPropertyNames() const
         "Inscription/Address",      //18
         "Inscription/Database"      //19
     };
-    static const char* aBusinessPropNames[] =
+    static const char* const aBusinessPropNames[] =
     {
         "PrivateAddress/FirstName",             //  0
         "PrivateAddress/Name",                  //  1
@@ -257,7 +257,7 @@ Sequence<OUString> SwLabCfgItem::GetPropertyNames() const
 }
 
 SwLabCfgItem::SwLabCfgItem(bool bLabel) :
-    ConfigItem(bLabel ? OUString("Office.Writer/Label") : OUString("Office.Writer/BusinessCard")),
+    ConfigItem(bLabel ? u"Office.Writer/Label"_ustr : u"Office.Writer/BusinessCard"_ustr),
     m_bIsLabel(bLabel)
 {
     Sequence<OUString> aNames = GetPropertyNames();
@@ -366,7 +366,7 @@ SwLabCfgItem::SwLabCfgItem(bool bLabel) :
     if(m_bIsLabel || !bNoConfigValues)
         return;
 
-    SvtUserOptions& rUserOpt = SW_MOD()->GetUserOptions();
+    SvtUserOptions& rUserOpt = SwModule::get()->GetUserOptions();
     m_aItem.m_aPrivFirstName = rUserOpt.GetFirstName();
     m_aItem.m_aPrivName = rUserOpt.GetLastName();
     m_aItem.m_aPrivShortCut = rUserOpt.GetID();

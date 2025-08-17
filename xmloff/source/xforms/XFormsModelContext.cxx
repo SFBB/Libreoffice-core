@@ -28,15 +28,12 @@
 
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlnamespace.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlerror.hxx>
 
-#include <osl/diagnose.h>
 #include <sal/log.hxx>
 
 #include <com/sun/star/util/XUpdatable.hpp>
-#include <com/sun/star/xforms/XModel2.hpp>
 
 
 using com::sun::star::util::XUpdatable;
@@ -55,7 +52,7 @@ void XFormsModelContext::HandleAttribute(const sax_fastparser::FastAttributeList
     switch( aIter.getToken() & TOKEN_MASK)
     {
     case XML_ID:
-        mxModel->setPropertyValue( "ID", Any( aIter.toString() ) );
+        mxModel->setPropertyValue( u"ID"_ustr, Any( aIter.toString() ) );
         break;
     case XML_SCHEMA:
         GetImport().SetError( XMLERROR_XFORMS_NO_SCHEMA_SUPPORT );

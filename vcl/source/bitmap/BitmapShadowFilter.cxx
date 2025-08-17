@@ -8,24 +8,23 @@
  *
  */
 
-#include <vcl/bitmapex.hxx>
+#include <vcl/bitmap/BitmapShadowFilter.hxx>
 #include <vcl/BitmapColor.hxx>
-#include <vcl/BitmapShadowFilter.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
 
-BitmapEx BitmapShadowFilter::execute(BitmapEx const& rBitmapEx) const
+Bitmap BitmapShadowFilter::execute(Bitmap const& rBitmap) const
 {
-    BitmapEx aBitmapEx(rBitmapEx);
-    BitmapScopedWriteAccess pWriteAccess(const_cast<Bitmap&>(aBitmapEx.GetBitmap()));
+    Bitmap aBitmap(rBitmap);
+    BitmapScopedWriteAccess pWriteAccess(aBitmap);
 
     if (!pWriteAccess)
-        return rBitmapEx;
+        return Bitmap();
 
-    for (sal_Int32 y(0); y < sal_Int32(pWriteAccess->Height()); y++)
+    for (sal_Int32 y(0), nHeight(pWriteAccess->Height()); y < nHeight; y++)
     {
         Scanline pScanline = pWriteAccess->GetScanline(y);
 
-        for (sal_Int32 x(0); x < sal_Int32(pWriteAccess->Width()); x++)
+        for (sal_Int32 x(0), nWidth(pWriteAccess->Width()); x < nWidth; x++)
         {
             const BitmapColor aColor = pWriteAccess->GetColor(y, x);
             sal_uInt16 nLuminance(static_cast<sal_uInt16>(aColor.GetLuminance()) + 1);
@@ -41,7 +40,7 @@ BitmapEx BitmapShadowFilter::execute(BitmapEx const& rBitmapEx) const
         }
     }
 
-    return aBitmapEx;
+    return aBitmap;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

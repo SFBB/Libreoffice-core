@@ -22,7 +22,6 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <vcl/weld.hxx>
 #include <unotools/resmgr.hxx>
-#include <unotools/useroptions.hxx>
 #include <unordered_map>
 
 namespace com::sun::star {
@@ -34,14 +33,16 @@ namespace com::sun::star {
 
 namespace com::sun::star::xml::crypto { class XXMLSecurityContext; }
 
-struct UserData
+class SfxViewShell;
+
+struct CertificateChooserUserData
 {
     css::uno::Reference<css::security::XCertificate> xCertificate;
     css::uno::Reference<css::xml::crypto::XXMLSecurityContext> xSecurityContext;
     css::uno::Reference<css::xml::crypto::XSecurityEnvironment> xSecurityEnvironment;
 };
 
-enum class UserAction
+enum class CertificateChooserUserAction
 {
     Sign,
     SelectSign, // Select signing certificate
@@ -51,18 +52,18 @@ enum class UserAction
 class CertificateChooser final : public weld::GenericDialogController
 {
 private:
-    static inline CertificateChooser* mxInstance = nullptr;
-
     std::vector< css::uno::Reference< css::xml::crypto::XXMLSecurityContext > > mxSecurityContexts;
-    std::vector<std::shared_ptr<UserData>> mvUserData;
+    std::vector<std::shared_ptr<CertificateChooserUserData>> mvUserData;
 
     bool                    mbInitialized;
-    UserAction const        meAction;
+    CertificateChooserUserAction const meAction;
+    SfxViewShell* m_pViewShell;
     OUString                msPreferredKey;
     css::uno::Reference<css::security::XCertificate> mxEncryptToSelf;
 
     std::unique_ptr<weld::Label>    m_xFTSign;
     std::unique_ptr<weld::Label>    m_xFTEncrypt;
+    std::unique_ptr<weld::Label>    m_xFTLoadedCerts;
     std::unique_ptr<weld::TreeView> m_xCertLB;
     std::unique_ptr<weld::Button>   m_xViewBtn;
     std::unique_ptr<weld::Button>   m_xOKBtn;
@@ -87,20 +88,27 @@ private:
 
 public:
     CertificateChooser(weld::Window* pParent,
+                       SfxViewShell* pViewShell,
                        std::vector< css::uno::Reference< css::xml::crypto::XXMLSecurityContext > > && rxSecurityContexts,
-                       UserAction eAction);
+                       CertificateChooserUserAction eAction);
     virtual ~CertificateChooser() override;
 
-    static CertificateChooser* getInstance(weld::Window* _pParent,
+    static std::shared_ptr<CertificateChooser> getInstance(weld::Window* _pParent,
+                        SfxViewShell* pViewShell,
                         std::vector< css::uno::Reference< css::xml::crypto::XXMLSecurityContext > > && rxSecurityContexts,
-                        UserAction eAction) {
-        if (!mxInstance)
-        {
-            mxInstance = new CertificateChooser(_pParent, std::move(rxSecurityContexts), eAction);
-        }
-        return mxInstance;
+                        CertificateChooserUserAction eAction) {
+        // Don't reuse CertificateChooser instances
+        // Reusing the same instance will, in the following case, lead to a
+        // crash. It appears that the CertificateChooser is getting disposed
+        // somewhere as mpDialogImpl in its base class ends up being null:
+        // 1. Create an empty Writer document and add a digital signature
+        //    in the Digital Signatures dialog
+        // 2. File > Save As the document, check the "Encrypt with GPG key"
+        //    checkbox, press Encrypt, and crash in Dialog::ImplStartExecute()
+        return std::make_shared<CertificateChooser>(_pParent, pViewShell, std::move(rxSecurityContexts), eAction);
     }
 
+    void BeforeRun();
     short run() override;
 
     css::uno::Sequence<css::uno::Reference< css::security::XCertificate > > GetSelectedCertificates();

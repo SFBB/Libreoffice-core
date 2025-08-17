@@ -38,32 +38,20 @@
 namespace
 {
 
-D2DTextAntiAliasMode lclGetSystemTextAntiAliasMode()
+D2D1_TEXT_ANTIALIAS_MODE lclGetSystemTextAntiAliasType()
 {
-    D2DTextAntiAliasMode eMode = D2DTextAntiAliasMode::Default;
-
-    BOOL bFontSmoothing;
-    if (!SystemParametersInfoW(SPI_GETFONTSMOOTHING, 0, &bFontSmoothing, 0))
-        return eMode;
-
-    if (bFontSmoothing)
-    {
-        eMode = D2DTextAntiAliasMode::AntiAliased;
-
-        UINT nType;
-        if (SystemParametersInfoW(SPI_GETFONTSMOOTHINGTYPE, 0, &nType, 0) && nType == FE_FONTSMOOTHINGCLEARTYPE)
-            eMode = D2DTextAntiAliasMode::ClearType;
-    }
-    else
-    {
-        eMode = D2DTextAntiAliasMode::Aliased;
-    }
-
-    return eMode;
+    UINT t;
+    if (Application::GetSettings().GetStyleSettings().GetUseSubpixelAA()
+        && SystemParametersInfoW(SPI_GETFONTSMOOTHINGTYPE, 0, &t, 0)
+        && t == FE_FONTSMOOTHINGCLEARTYPE)
+        return D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE;
+    return D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE;
 }
 
-IDWriteRenderingParams* lclSetRenderingMode(IDWriteFactory* pDWriteFactory, DWRITE_RENDERING_MODE eRenderingMode)
+IDWriteRenderingParams* lclSetRenderingMode(DWRITE_RENDERING_MODE eRenderingMode)
 {
+    IDWriteFactory* pDWriteFactory = WinSalGraphics::getDWriteFactory();
+
     IDWriteRenderingParams* pDefaultParameters = nullptr;
     pDWriteFactory->CreateRenderingParams(&pDefaultParameters);
 
@@ -79,94 +67,83 @@ IDWriteRenderingParams* lclSetRenderingMode(IDWriteFactory* pDWriteFactory, DWRI
 }
 
 #ifdef SAL_LOG_WARN
-HRESULT checkResult(HRESULT hr, const char* file, size_t line)
+HRESULT checkResult(HRESULT hr, const char* location)
 {
-    if (FAILED(hr))
-    {
-        OUString sLocationString = OUString::createFromAscii(file) + ":" + OUString::number(line) + " ";
-        SAL_DETAIL_LOG_STREAM(SAL_DETAIL_ENABLE_LOG_WARN, ::SAL_DETAIL_LOG_LEVEL_WARN,
-                              "vcl.gdi", sLocationString.toUtf8().getStr(),
-                              "HRESULT failed with: 0x" << OUString::number(hr, 16) << ": " << WindowsErrorStringFromHRESULT(hr));
-    }
+    SAL_DETAIL_LOG_STREAM(SAL_DETAIL_ENABLE_LOG_WARN && FAILED(hr), ::SAL_DETAIL_LOG_LEVEL_WARN,
+                          "vcl.gdi", location,
+                          "HRESULT failed with: 0x" << OUString::number(hr, 16) << ": " << comphelper::WindowsErrorStringFromHRESULT(hr));
     return hr;
 }
 
-#define CHECKHR(funct) checkResult(funct, __FILE__, __LINE__)
+#define CHECKHR(funct) checkResult(funct, SAL_WHERE)
 #else
 #define CHECKHR(funct) (funct)
 #endif
 
 
+// Sets and unsets the needed DirectWrite transform to support the font's rotation.
+class WinFontTransformGuard
+{
+public:
+    WinFontTransformGuard(ID2D1RenderTarget* pRenderTarget, float hscale,
+                          const GenericSalLayout& rLayout, const D2D1_POINT_2F& rBaseline,
+                          bool bIsVertical);
+    ~WinFontTransformGuard();
+
+private:
+    ID2D1RenderTarget* mpRenderTarget;
+    std::optional<D2D1::Matrix3x2F> moTransform;
+};
+
 } // end anonymous namespace
 
-D2DWriteTextOutRenderer::D2DWriteTextOutRenderer(bool bRenderingModeNatural)
+// static
+D2DWriteTextOutRenderer::MODE D2DWriteTextOutRenderer::GetMode(bool bRenderingModeNatural,
+                                                               bool bAntiAlias)
+{
+    D2D1_TEXT_ANTIALIAS_MODE eTextMode;
+    if (!Application::GetSettings().GetStyleSettings().GetUseFontAAFromSystem())
+        // Currently only for file output - see GraphicExporter::filter
+        eTextMode = bAntiAlias ? D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE : D2D1_TEXT_ANTIALIAS_MODE_ALIASED;
+    else if (BOOL bSmoothing; SystemParametersInfoW(SPI_GETFONTSMOOTHING, 0, &bSmoothing, 0))
+        eTextMode = bSmoothing ? lclGetSystemTextAntiAliasType() : D2D1_TEXT_ANTIALIAS_MODE_ALIASED;
+    else
+        eTextMode = D2D1_TEXT_ANTIALIAS_MODE_DEFAULT;
+
+    DWRITE_RENDERING_MODE eRenderingMode;
+    if (eTextMode == D2D1_TEXT_ANTIALIAS_MODE_ALIASED)
+        eRenderingMode = DWRITE_RENDERING_MODE_ALIASED; // no way to use bRenderingModeNatural
+    else if (bRenderingModeNatural)
+        eRenderingMode = DWRITE_RENDERING_MODE_NATURAL;
+    else if (eTextMode == D2D1_TEXT_ANTIALIAS_MODE_DEFAULT)
+        eRenderingMode = DWRITE_RENDERING_MODE_DEFAULT;
+    else // D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE || D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE
+        eRenderingMode = DWRITE_RENDERING_MODE_GDI_CLASSIC;
+
+    return { eTextMode, eRenderingMode };
+}
+
+D2DWriteTextOutRenderer::D2DWriteTextOutRenderer(MODE mode)
     : mpD2DFactory(nullptr),
     mpRT(nullptr),
     mRTProps(D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT,
                                           D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
                                           0, 0)),
-    mbRenderingModeNatural(bRenderingModeNatural),
-    meTextAntiAliasMode(D2DTextAntiAliasMode::Default)
+    maRenderingMode(mode)
 {
-    WinSalGraphics::getDWriteFactory(&mpDWriteFactory);
-    HRESULT hr = S_OK;
-    hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory), nullptr, reinterpret_cast<void **>(&mpD2DFactory));
+    HRESULT hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory), nullptr, IID_PPV_ARGS_Helper(&mpD2DFactory));
     if (SUCCEEDED(hr))
-        hr = CreateRenderTarget(bRenderingModeNatural);
-    meTextAntiAliasMode = lclGetSystemTextAntiAliasMode();
+        hr = CreateRenderTarget();
 }
 
-D2DWriteTextOutRenderer::~D2DWriteTextOutRenderer()
+HRESULT D2DWriteTextOutRenderer::CreateRenderTarget()
 {
-    if (mpRT)
-        mpRT->Release();
-    if (mpD2DFactory)
-        mpD2DFactory->Release();
-}
-
-void D2DWriteTextOutRenderer::applyTextAntiAliasMode(bool bRenderingModeNatural)
-{
-    D2D1_TEXT_ANTIALIAS_MODE eTextAAMode = D2D1_TEXT_ANTIALIAS_MODE_DEFAULT;
-    DWRITE_RENDERING_MODE eRenderingMode = DWRITE_RENDERING_MODE_DEFAULT;
-    switch (meTextAntiAliasMode)
-    {
-        case D2DTextAntiAliasMode::Default:
-            eRenderingMode = DWRITE_RENDERING_MODE_DEFAULT;
-            eTextAAMode = D2D1_TEXT_ANTIALIAS_MODE_DEFAULT;
-            break;
-        case D2DTextAntiAliasMode::Aliased:
-            eRenderingMode = DWRITE_RENDERING_MODE_ALIASED;
-            eTextAAMode = D2D1_TEXT_ANTIALIAS_MODE_ALIASED;
-            break;
-        case D2DTextAntiAliasMode::AntiAliased:
-            eRenderingMode = DWRITE_RENDERING_MODE_CLEARTYPE_GDI_CLASSIC;
-            eTextAAMode = D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE;
-            break;
-        case D2DTextAntiAliasMode::ClearType:
-            eRenderingMode = DWRITE_RENDERING_MODE_CLEARTYPE_GDI_CLASSIC;
-            eTextAAMode = D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE;
-            break;
-        default:
-            break;
-    }
-
-    if (bRenderingModeNatural)
-        eRenderingMode = DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL;
-
-    mpRT->SetTextRenderingParams(lclSetRenderingMode(mpDWriteFactory, eRenderingMode));
-    mpRT->SetTextAntialiasMode(eTextAAMode);
-}
-
-HRESULT D2DWriteTextOutRenderer::CreateRenderTarget(bool bRenderingModeNatural)
-{
-    if (mpRT)
-    {
-        mpRT->Release();
-        mpRT = nullptr;
-    }
     HRESULT hr = CHECKHR(mpD2DFactory->CreateDCRenderTarget(&mRTProps, &mpRT));
     if (SUCCEEDED(hr))
-        applyTextAntiAliasMode(bRenderingModeNatural);
+    {
+        mpRT->SetTextRenderingParams(lclSetRenderingMode(maRenderingMode.second));
+        mpRT->SetTextAntialiasMode(maRenderingMode.first);
+    }
     return hr;
 }
 
@@ -183,7 +160,7 @@ HRESULT D2DWriteTextOutRenderer::BindDC(HDC hDC, tools::Rectangle const & rRect)
     return CHECKHR(mpRT->BindDC(hDC, &rc));
 }
 
-bool D2DWriteTextOutRenderer::operator()(GenericSalLayout const & rLayout, SalGraphics& rGraphics, HDC hDC, bool bRenderingModeNatural)
+bool D2DWriteTextOutRenderer::operator()(GenericSalLayout const & rLayout, SalGraphics& rGraphics, HDC hDC)
 {
     bool bRetry = false;
     bool bResult = false;
@@ -191,71 +168,77 @@ bool D2DWriteTextOutRenderer::operator()(GenericSalLayout const & rLayout, SalGr
     do
     {
        bRetry = false;
-       bResult = performRender(rLayout, rGraphics, hDC, bRetry, bRenderingModeNatural);
+       bResult = performRender(rLayout, rGraphics, hDC, bRetry);
        nCount++;
     } while (bRetry && nCount < 3);
     return bResult;
 }
 
-bool D2DWriteTextOutRenderer::performRender(GenericSalLayout const & rLayout, SalGraphics& rGraphics, HDC hDC, bool& bRetry, bool bRenderingModeNatural)
+bool D2DWriteTextOutRenderer::performRender(GenericSalLayout const & rLayout, SalGraphics& rGraphics, HDC hDC, bool& bRetry)
 {
     if (!Ready())
         return false;
 
-    HRESULT hr = S_OK;
-    hr = BindDC(hDC);
+    HRESULT hr = BindDC(hDC);
 
     if (hr == D2DERR_RECREATE_TARGET)
     {
-        CreateRenderTarget(bRenderingModeNatural);
+        CreateRenderTarget();
         bRetry = true;
         return false;
     }
     if (FAILED(hr))
     {
         // If for any reason we can't bind fallback to legacy APIs.
-        return ExTextOutRenderer()(rLayout, rGraphics, hDC, bRenderingModeNatural);
+        return ExTextOutRenderer()(rLayout, rGraphics, hDC);
     }
 
     const WinFontInstance& rWinFont = static_cast<const WinFontInstance&>(rLayout.GetFont());
-    float fHScale = rWinFont.getHScale();
 
     float lfEmHeight = 0;
     IDWriteFontFace* pFontFace = GetDWriteFace(rWinFont, &lfEmHeight);
     if (!pFontFace)
         return false;
 
-    tools::Rectangle bounds;
-    bool succeeded = rLayout.GetBoundRect(bounds);
+    auto [succeeded, bounds] = [&rLayout]()
+    {
+        basegfx::B2DRectangle r;
+        bool result = rLayout.GetBoundRect(r);
+        if (result)
+            r.grow(1); // plus 1 pixel to the tight range
+        return std::make_pair(result, SalLayout::BoundRect2Rectangle(r));
+    }();
+
     if (succeeded)
     {
         hr = BindDC(hDC, bounds);   // Update the bounding rect.
-        succeeded &= SUCCEEDED(hr);
+        succeeded = SUCCEEDED(hr);
     }
 
-    ID2D1SolidColorBrush* pBrush = nullptr;
+    sal::systools::COMReference<ID2D1SolidColorBrush> pBrush;
     if (succeeded)
     {
         COLORREF bgrTextColor = GetTextColor(hDC);
         D2D1::ColorF aD2DColor(GetRValue(bgrTextColor) / 255.0f, GetGValue(bgrTextColor) / 255.0f, GetBValue(bgrTextColor) / 255.0f);
-        succeeded &= SUCCEEDED(CHECKHR(mpRT->CreateSolidColorBrush(aD2DColor, &pBrush)));
+        succeeded = SUCCEEDED(CHECKHR(mpRT->CreateSolidColorBrush(aD2DColor, &pBrush)));
     }
 
     if (succeeded)
     {
         mpRT->BeginDraw();
 
+        const float hscale = rWinFont.getHScale();
         int nStart = 0;
         basegfx::B2DPoint aPos;
         const GlyphItem* pGlyph;
         while (rLayout.GetNextGlyph(&pGlyph, aPos, nStart))
         {
             UINT16 glyphIndices[] = { static_cast<UINT16>(pGlyph->glyphId()) };
-            FLOAT glyphAdvances[] = { static_cast<FLOAT>(pGlyph->newWidth()) / fHScale };
+            FLOAT glyphAdvances[] = { static_cast<FLOAT>(pGlyph->newWidth()) / hscale };
             DWRITE_GLYPH_OFFSET glyphOffsets[] = { { 0.0f, 0.0f }, };
-            D2D1_POINT_2F baseline = { static_cast<FLOAT>(aPos.getX() - bounds.Left()) / fHScale,
+            D2D1_POINT_2F baseline = { static_cast<FLOAT>(aPos.getX() - bounds.Left()) / hscale,
                                        static_cast<FLOAT>(aPos.getY() - bounds.Top()) };
-            WinFontTransformGuard aTransformGuard(mpRT, fHScale, rLayout, baseline, pGlyph->IsVertical());
+            WinFontTransformGuard aTransformGuard(mpRT, hscale, rLayout, baseline, pGlyph->IsVertical());
             DWRITE_GLYPH_RUN glyphs = {
                 pFontFace,
                 lfEmHeight,
@@ -273,12 +256,9 @@ bool D2DWriteTextOutRenderer::performRender(GenericSalLayout const & rLayout, Sa
         hr = CHECKHR(mpRT->EndDraw());
     }
 
-    if (pBrush)
-        pBrush->Release();
-
     if (hr == D2DERR_RECREATE_TARGET)
     {
-        CreateRenderTarget(bRenderingModeNatural);
+        CreateRenderTarget();
         bRetry = true;
     }
 
@@ -289,53 +269,55 @@ IDWriteFontFace* D2DWriteTextOutRenderer::GetDWriteFace(const WinFontInstance& r
                                                         float* lfSize) const
 {
     auto pFontFace = rWinFont.GetDWFontFace();
-    if (pFontFace)
-    {
-        LOGFONTW aLogFont;
-        HFONT hFont = rWinFont.GetHFONT();
+    if (!pFontFace)
+        return nullptr;
 
-        GetObjectW(hFont, sizeof(LOGFONTW), &aLogFont);
-        float dpix, dpiy;
-        mpRT->GetDpi(&dpix, &dpiy);
-        *lfSize = aLogFont.lfHeight * 96.0f / dpiy;
+    LOGFONTW aLogFont;
+    HFONT hFont = rWinFont.GetHFONT();
 
-        assert(*lfSize < 0);
-        *lfSize *= -1;
-    }
+    GetObjectW(hFont, sizeof(LOGFONTW), &aLogFont);
+    float dpix, dpiy;
+    mpRT->GetDpi(&dpix, &dpiy);
+    *lfSize = aLogFont.lfHeight * 96.0f / dpiy;
+
+    assert(*lfSize < 0);
+    *lfSize *= -1;
 
     return pFontFace;
 }
 
-WinFontTransformGuard::WinFontTransformGuard(ID2D1RenderTarget* pRenderTarget, float fHScale,
+WinFontTransformGuard::WinFontTransformGuard(ID2D1RenderTarget* pRenderTarget, float hscale,
                                              const GenericSalLayout& rLayout,
                                              const D2D1_POINT_2F& rBaseline,
                                              bool bIsVertical)
     : mpRenderTarget(pRenderTarget)
 {
-    pRenderTarget->GetTransform(&maTransform);
-    D2D1::Matrix3x2F aTransform = maTransform;
-    if (fHScale != 1.0f)
-    {
-        aTransform
-            = aTransform * D2D1::Matrix3x2F::Scale(D2D1::Size(fHScale, 1.0f), D2D1::Point2F(0, 0));
-    }
-
     Degree10 angle = rLayout.GetOrientation();
-
     if (bIsVertical)
         angle += 900_deg10;
 
-    if (angle)
+    if (hscale != 1.0f || angle)
     {
+        D2D1::Matrix3x2F aTransform;
+        pRenderTarget->GetTransform(&aTransform);
+        moTransform = aTransform;
+
+        if (hscale != 1.0f) // basegfx::fTools::equal is useless with float
+            aTransform = aTransform * D2D1::Matrix3x2F::Scale(hscale, 1.0f, { 0, 0 });
+
         // DWrite angle is in clockwise degrees, our orientation is in counter-clockwise 10th
         // degrees.
-        aTransform = aTransform
-                     * D2D1::Matrix3x2F::Rotation(
-                           -toDegrees(angle), rBaseline);
+        if (angle)
+            aTransform = aTransform * D2D1::Matrix3x2F::Rotation(-toDegrees(angle), rBaseline);
+
+        mpRenderTarget->SetTransform(aTransform);
     }
-    mpRenderTarget->SetTransform(aTransform);
 }
 
-WinFontTransformGuard::~WinFontTransformGuard() { mpRenderTarget->SetTransform(maTransform); }
+WinFontTransformGuard::~WinFontTransformGuard()
+{
+    if (moTransform)
+        mpRenderTarget->SetTransform(*moTransform);
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

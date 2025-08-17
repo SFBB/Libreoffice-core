@@ -84,8 +84,8 @@ namespace connectivity
             m_xDatabaseMetaData = m_xConnection->getMetaData();
 
             m_bIsCaseSensitive = m_xDatabaseMetaData.is() && m_xDatabaseMetaData->supportsMixedCaseQuotedIdentifiers();
-            m_pTables = std::make_shared<OSQLTables>( m_bIsCaseSensitive );
-            m_pSubTables = std::make_shared<OSQLTables>( m_bIsCaseSensitive );
+            m_pTables = std::make_shared<OSQLTables>( UStringMixLess(m_bIsCaseSensitive) );
+            m_pSubTables = std::make_shared<OSQLTables>( UStringMixLess(m_bIsCaseSensitive) );
 
             m_xTableContainer = _rxTables;
 
@@ -269,7 +269,7 @@ namespace
         static constexpr OUString s_sWildcard = u"%"_ustr ;
 
         // we want all catalogues, all schemas, all tables
-        Sequence< OUString > sTableTypes { "VIEW", "TABLE", s_sWildcard }; // this last one just to be sure to include anything else...
+        Sequence< OUString > sTableTypes { u"VIEW"_ustr, u"TABLE"_ustr, s_sWildcard }; // this last one just to be sure to include anything else...
 
         if ( _rxDBMeta.is() )
         {
@@ -455,7 +455,7 @@ void OSQLParseTreeIterator::traverseOneTableName( OSQLTables& _rTables,const OSQ
     // get the object representing this table/query
     OSQLTable aTable = impl_locateRecordSource( aComposedName );
     if ( aTable.is() )
-        _rTables[ aTableRange ] = aTable;
+        _rTables[ aTableRange ] = std::move(aTable);
 }
 
 void OSQLParseTreeIterator::impl_fillJoinConditions(const OSQLParseNode* i_pJoinCondition)
@@ -610,7 +610,7 @@ void OSQLParseTreeIterator::getSelect_statement(OSQLTables& _rTables,const OSQLP
     }
     OSQLParseNode * pTableRefCommalist = pSelect->getChild(3)->getChild(0)->getChild(1);
 
-    OSL_ENSURE(pTableRefCommalist != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+    assert(pTableRefCommalist != nullptr && "OSQLParseTreeIterator: error in parse tree!");
     OSL_ENSURE(SQL_ISRULE(pTableRefCommalist,table_ref_commalist),"OSQLParseTreeIterator: error in parse tree!");
 
     const OSQLParseNode* pTableName = nullptr;
@@ -853,7 +853,7 @@ bool OSQLParseTreeIterator::traverseSelectColumnNames(const OSQLParseNode* pSele
     if (pSelectNode->getChild(2)->isRule() && SQL_ISPUNCTUATION(pSelectNode->getChild(2)->getChild(0),"*"))
     {
         // SELECT * ...
-        setSelectColumnName("*", "", "");
+        setSelectColumnName(u"*"_ustr, u""_ustr, u""_ustr);
     }
     else if (SQL_ISRULE(pSelectNode->getChild(2),scalar_exp_commalist))
     {
@@ -873,7 +873,7 @@ bool OSQLParseTreeIterator::traverseSelectColumnNames(const OSQLParseNode* pSele
                 // All the table's columns
                 OUString aTableRange;
                 pColumnRef->getChild(0)->parseNodeToStr( aTableRange, m_pImpl->m_xConnection, nullptr, false, false );
-                setSelectColumnName("*", "", aTableRange);
+                setSelectColumnName(u"*"_ustr, u""_ustr, aTableRange);
                 continue;
             }
             else if (SQL_ISRULE(pColumnRef,derived_column))
@@ -965,21 +965,21 @@ void OSQLParseTreeIterator::traverseByColumnNames(const OSQLParseNode* pSelectNo
     OSL_ENSURE(pSelectNode->count() >= 4,"OSQLParseTreeIterator: error in parse tree!");
 
     OSQLParseNode * pTableExp = pSelectNode->getChild(3);
-    OSL_ENSURE(pTableExp != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+    assert(pTableExp != nullptr && "OSQLParseTreeIterator: error in parse tree!");
     OSL_ENSURE(SQL_ISRULE(pTableExp,table_exp),"OSQLParseTreeIterator:table_exp error in parse tree!");
     OSL_ENSURE(pTableExp->count() == TABLE_EXPRESSION_CHILD_COUNT,"OSQLParseTreeIterator: error in parse tree!");
 
     sal_uInt32 nPos = ( _bOrder ? ORDER_BY_CHILD_POS : 2 );
 
     OSQLParseNode * pOptByClause = pTableExp->getChild(nPos);
-    OSL_ENSURE(pOptByClause != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+    assert(pOptByClause != nullptr && "OSQLParseTreeIterator: error in parse tree!");
     if ( pOptByClause->count() == 0 )
         return;
 
     OSL_ENSURE(pOptByClause->count() == 3,"OSQLParseTreeIterator: error in parse tree!");
 
     OSQLParseNode * pOrderingSpecCommalist = pOptByClause->getChild(2);
-    OSL_ENSURE(pOrderingSpecCommalist != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+    assert(pOrderingSpecCommalist != nullptr && "OSQLParseTreeIterator: error in parse tree!");
     OSL_ENSURE(!_bOrder || SQL_ISRULE(pOrderingSpecCommalist,ordering_spec_commalist),"OSQLParseTreeIterator:ordering_spec_commalist error in parse tree!");
     OSL_ENSURE(pOrderingSpecCommalist->count() > 0,"OSQLParseTreeIterator: error in parse tree!");
 
@@ -989,7 +989,7 @@ void OSQLParseTreeIterator::traverseByColumnNames(const OSQLParseNode* pSelectNo
     for (sal_uInt32 i = 0; i < nCount; ++i)
     {
         OSQLParseNode* pColumnRef  = pOrderingSpecCommalist->getChild(i);
-        OSL_ENSURE(pColumnRef  != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+        assert(pColumnRef != nullptr && "OSQLParseTreeIterator: error in parse tree!");
         if ( _bOrder )
         {
             OSL_ENSURE(SQL_ISRULE(pColumnRef,ordering_spec),"OSQLParseTreeIterator:ordering_spec error in parse tree!");
@@ -997,7 +997,7 @@ void OSQLParseTreeIterator::traverseByColumnNames(const OSQLParseNode* pSelectNo
 
             pColumnRef = pColumnRef->getChild(0);
         }
-        OSL_ENSURE(pColumnRef != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+        assert(pColumnRef != nullptr && "OSQLParseTreeIterator: error in parse tree!");
         aTableRange.clear();
         sColumnName.clear();
         if ( SQL_ISRULE(pColumnRef,column_ref) )
@@ -1035,7 +1035,7 @@ namespace
 {
     OUString lcl_generateParameterName( const OSQLParseNode& _rParentNode, const OSQLParseNode& _rParamNode )
     {
-        OUString sColumnName(  "param"  );
+        OUString sColumnName(  u"param"_ustr  );
         const sal_Int32 nCount = static_cast<sal_Int32>(_rParentNode.count());
         for ( sal_Int32 i = 0; i < nCount; ++i )
         {
@@ -1123,7 +1123,7 @@ bool OSQLParseTreeIterator::traverseSelectionCriteria(const OSQLParseNode* pSele
         OSL_ENSURE(pSelectNode->count() >= 4,"OSQLParseTreeIterator: error in parse tree!");
 
         OSQLParseNode * pTableExp = pSelectNode->getChild(3);
-        OSL_ENSURE(pTableExp != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+        assert(pTableExp != nullptr && "OSQLParseTreeIterator: error in parse tree!");
         OSL_ENSURE(SQL_ISRULE(pTableExp,table_exp),"OSQLParseTreeIterator: error in parse tree!");
         OSL_ENSURE(pTableExp->count() == TABLE_EXPRESSION_CHILD_COUNT,"OSQLParseTreeIterator: error in parse tree!");
 
@@ -1221,8 +1221,8 @@ void OSQLParseTreeIterator::traverseSearchCondition(OSQLParseNode const * pSearc
         OSQLParseNode * pNum_value_exp  = pPart2->getChild(nCurrentPos);
         OSQLParseNode * pOptEscape      = pPart2->getChild(nCurrentPos+1);
 
-        OSL_ENSURE(pNum_value_exp != nullptr,"OSQLParseTreeIterator: error in parse tree!");
-        OSL_ENSURE(pOptEscape != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+        assert(pNum_value_exp != nullptr && "OSQLParseTreeIterator: error in parse tree!");
+        assert(pOptEscape != nullptr && "OSQLParseTreeIterator: error in parse tree!");
 
         if (pOptEscape->count() != 0)
         {
@@ -1313,7 +1313,7 @@ void OSQLParseTreeIterator::traverseParameter(const OSQLParseNode* _pParseNode
                         ?   _rColumnAlias
                         :   !_aColumnName.isEmpty()
                         ?   _aColumnName
-                        :   OUString("?");
+                        :   u"?"_ustr;
     }
     else if (SQL_ISPUNCTUATION(pMark,":"))
     {
@@ -1516,8 +1516,8 @@ OSQLTable OSQLParseTreeIterator::impl_createTableObject( const OUString& rTableN
         nullptr,
         false,
         rTableName,
-        "Table",
-        "New Created Table",
+        u"Table"_ustr,
+        u"New Created Table"_ustr,
         rSchemaName,
         rCatalogName
     );
@@ -1533,18 +1533,14 @@ void OSQLParseTreeIterator::appendColumns(const OUString& _rTableAlias, const OS
     if ( !xColumns.is() )
         return;
 
-    Sequence< OUString > aColNames =  xColumns->getElementNames();
-    const OUString* pBegin = aColNames.getConstArray();
-    const OUString* pEnd = pBegin + aColNames.getLength();
-
     ::comphelper::UStringMixLess aCompare(isCaseSensitive());
     std::vector<OUString> aSelectColumnNames = getSelectColumnNames();
 
-    for(;pBegin != pEnd;++pBegin)
+    for (auto& colName : xColumns->getElementNames())
     {
-        OUString aName(getUniqueColumnName(aSelectColumnNames, *pBegin));
+        OUString aName(getUniqueColumnName(aSelectColumnNames, colName));
         Reference< XPropertySet > xColumn;
-        if(xColumns->hasByName(*pBegin) && (xColumns->getByName(*pBegin) >>= xColumn) && xColumn.is())
+        if(xColumns->hasByName(colName) && (xColumns->getByName(colName) >>= xColumn) && xColumn.is())
         {
             rtl::Reference<OParseColumn> pColumn = new OParseColumn(aName
                                                 ,   getString(xColumn->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPENAME)))
@@ -1562,13 +1558,13 @@ void OSQLParseTreeIterator::appendColumns(const OUString& _rTableAlias, const OS
                                                 ,   getString(xColumn->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TABLENAME))));
 
             pColumn->setTableName(_rTableAlias);
-            pColumn->setRealName(*pBegin);
+            pColumn->setRealName(colName);
             m_aSelectColumns->push_back(pColumn);
             // update aSelectColumnNames with newly insert aName
             aSelectColumnNames.insert(std::upper_bound(aSelectColumnNames.begin(), aSelectColumnNames.end(), aName, aCompare), aName);
         }
         else
-            impl_appendError( IParseContext::ErrorCode::InvalidColumn, pBegin, &_rTableAlias );
+            impl_appendError(IParseContext::ErrorCode::InvalidColumn, &colName, &_rTableAlias);
     }
 }
 
@@ -1591,7 +1587,7 @@ void OSQLParseTreeIterator::setSelectColumnName(const OUString & rColumnName,con
         // without table specified
         if ( !bFkt )
         {
-            Reference< XPropertySet> xNewColumn;
+            rtl::Reference< OParseColumn> xNewColumn;
 
             for (auto const& table : *m_pImpl->m_pTables)
             {
@@ -1624,7 +1620,7 @@ void OSQLParseTreeIterator::setSelectColumnName(const OUString & rColumnName,con
                 // did not find a column with this name in any of the tables
                 rtl::Reference<OParseColumn> pColumn = new OParseColumn(
                     aNewColName,
-                    "VARCHAR",
+                    u"VARCHAR"_ustr,
                         // TODO: does this match with _nType?
                         // Or should be fill this from the getTypeInfo of the connection?
                     OUString(),
@@ -1807,7 +1803,7 @@ const OSQLParseNode* OSQLParseTreeIterator::getWhereTree() const
     {
         OSL_ENSURE(m_pParseTree->count() >= 4,"ParseTreeIterator: error in parse tree!");
         OSQLParseNode * pTableExp = m_pParseTree->getChild(3);
-        OSL_ENSURE(pTableExp != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+        assert(pTableExp != nullptr && "OSQLParseTreeIterator: error in parse tree!");
         OSL_ENSURE(SQL_ISRULE(pTableExp,table_exp),"OSQLParseTreeIterator: error in parse tree!");
         OSL_ENSURE(pTableExp->count() == TABLE_EXPRESSION_CHILD_COUNT,"OSQLParseTreeIterator: error in parse tree!");
 
@@ -1848,7 +1844,7 @@ const OSQLParseNode* OSQLParseTreeIterator::getOrderTree() const
     OSQLParseNode * pOrderClause = nullptr;
     OSL_ENSURE(pParseTree->count() == 4, "OSQLParseTreeIterator::getOrderTree: expected a SELECT, and a SELECT must have exactly four children");
     OSQLParseNode * pTableExp = pParseTree->getChild(3);
-    OSL_ENSURE(pTableExp != nullptr, "OSQLParseTreeIterator::getOrderTree: got NULL table_exp");
+    assert(pTableExp != nullptr && "OSQLParseTreeIterator::getOrderTree: got NULL table_exp");
     OSL_ENSURE(SQL_ISRULE(pTableExp, table_exp), "OSQLParseTreeIterator::getOrderTree: expected table_exp but got something else");
     OSL_ENSURE(pTableExp->count() == TABLE_EXPRESSION_CHILD_COUNT,"OSQLParseTreeIterator::getOrderTree: table_exp doesn't have the expected number of children");
     // tdf#141115 upgrade the above to an assert;
@@ -1872,7 +1868,7 @@ const OSQLParseNode* OSQLParseTreeIterator::getGroupByTree() const
     OSQLParseNode * pGroupClause = nullptr;
     OSL_ENSURE(m_pParseTree->count() >= 4,"ParseTreeIterator: error in parse tree!");
     OSQLParseNode * pTableExp = m_pParseTree->getChild(3);
-    OSL_ENSURE(pTableExp != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+    assert(pTableExp != nullptr && "OSQLParseTreeIterator: error in parse tree!");
     OSL_ENSURE(SQL_ISRULE(pTableExp,table_exp),"OSQLParseTreeIterator: error in parse tree!");
     OSL_ENSURE(pTableExp->count() == TABLE_EXPRESSION_CHILD_COUNT,"OSQLParseTreeIterator: error in parse tree!");
 
@@ -1893,7 +1889,7 @@ const OSQLParseNode* OSQLParseTreeIterator::getHavingTree() const
     OSQLParseNode * pHavingClause = nullptr;
     OSL_ENSURE(m_pParseTree->count() >= 4,"ParseTreeIterator: error in parse tree!");
     OSQLParseNode * pTableExp = m_pParseTree->getChild(3);
-    OSL_ENSURE(pTableExp != nullptr,"OSQLParseTreeIterator: error in parse tree!");
+    assert(pTableExp != nullptr && "OSQLParseTreeIterator: error in parse tree!");
     OSL_ENSURE(SQL_ISRULE(pTableExp,table_exp),"OSQLParseTreeIterator: error in parse tree!");
     OSL_ENSURE(pTableExp->count() == TABLE_EXPRESSION_CHILD_COUNT,"OSQLParseTreeIterator: error in parse tree!");
 

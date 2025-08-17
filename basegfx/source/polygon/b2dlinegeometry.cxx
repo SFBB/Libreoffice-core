@@ -30,7 +30,6 @@
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <com/sun/star/drawing/LineCap.hpp>
 #include <basegfx/polygon/b2dpolypolygoncutter.hxx>
-#include <basegfx/polygon/b2dpolygontriangulator.hxx>
 
 namespace basegfx::utils
 {
@@ -147,7 +146,7 @@ namespace basegfx
             const B2DVector aTangentA(rCandidate.getTangent(0.0));
             const double fScalarAE(aEdge.scalar(aTangentA));
 
-            if(fTools::lessOrEqual(fScalarAE, 0.0))
+            if(fScalarAE <= 0.0)
             {
                 // angle between TangentA and Edge is bigger or equal 90 degrees
                 return false;
@@ -174,7 +173,7 @@ namespace basegfx
             const B2DVector aTangentB(rCandidate.getTangent(1.0));
             const double fScalarBE(aEdge.scalar(aTangentB));
 
-            if(fTools::lessOrEqual(fScalarBE, 0.0))
+            if(fScalarBE <= 0.0)
             {
                 // angle between TangentB and Edge is bigger or equal 90 degrees
                 return false;
@@ -335,8 +334,7 @@ namespace basegfx
             bool bStartRound,
             bool bEndRound,
             bool bStartSquare,
-            bool bEndSquare,
-            basegfx::triangulator::B2DTriangleVector* pTriangles)
+            bool bEndSquare)
         {
             // create polygon for edge
             // Unfortunately, while it would be geometrically correct to not add
@@ -418,27 +416,25 @@ namespace basegfx
                 }
 
                 // create upper edge.
+                if(bCutA)
                 {
-                    if(bCutA)
-                    {
-                        // calculate cut point and add
-                        aCutPoint = rEdge.getStartPoint() + (aPerpendStartA * fCutA);
-                        aBezierPolygon.append(aCutPoint);
-                    }
-                    else
-                    {
-                        // create scaled bezier segment
-                        const B2DPoint aStart(rEdge.getStartPoint() + aPerpendStartA);
-                        const B2DPoint aEnd(rEdge.getEndPoint() + aPerpendEndA);
-                        const B2DVector aEdge(aEnd - aStart);
-                        const double fLength(aEdge.getLength());
-                        const double fScale(bIsEdgeLengthZero ? 1.0 : fLength / fEdgeLength);
-                        const B2DVector fRelNext(rEdge.getControlPointA() - rEdge.getStartPoint());
-                        const B2DVector fRelPrev(rEdge.getControlPointB() - rEdge.getEndPoint());
+                    // calculate cut point and add
+                    aCutPoint = rEdge.getStartPoint() + (aPerpendStartA * fCutA);
+                    aBezierPolygon.append(aCutPoint);
+                }
+                else
+                {
+                    // create scaled bezier segment
+                    const B2DPoint aStart(rEdge.getStartPoint() + aPerpendStartA);
+                    const B2DPoint aEnd(rEdge.getEndPoint() + aPerpendEndA);
+                    const B2DVector aEdge(aEnd - aStart);
+                    const double fLength(aEdge.getLength());
+                    const double fScale(bIsEdgeLengthZero ? 1.0 : fLength / fEdgeLength);
+                    const B2DVector fRelNext(rEdge.getControlPointA() - rEdge.getStartPoint());
+                    const B2DVector fRelPrev(rEdge.getControlPointB() - rEdge.getEndPoint());
 
-                        aBezierPolygon.append(aStart);
-                        aBezierPolygon.appendBezierSegment(aStart + (fRelNext * fScale), aEnd + (fRelPrev * fScale), aEnd);
-                    }
+                    aBezierPolygon.append(aStart);
+                    aBezierPolygon.appendBezierSegment(aStart + (fRelNext * fScale), aEnd + (fRelPrev * fScale), aEnd);
                 }
 
                 // create right edge
@@ -481,27 +477,25 @@ namespace basegfx
                 }
 
                 // create lower edge.
+                if(bCutB)
                 {
-                    if(bCutB)
-                    {
-                        // calculate cut point and add
-                        aCutPoint = rEdge.getEndPoint() + (aPerpendEndB * fCutB);
-                        aBezierPolygon.append(aCutPoint);
-                    }
-                    else
-                    {
-                        // create scaled bezier segment
-                        const B2DPoint aStart(rEdge.getEndPoint() + aPerpendEndB);
-                        const B2DPoint aEnd(rEdge.getStartPoint() + aPerpendStartB);
-                        const B2DVector aEdge(aEnd - aStart);
-                        const double fLength(aEdge.getLength());
-                        const double fScale(bIsEdgeLengthZero ? 1.0 : fLength / fEdgeLength);
-                        const B2DVector fRelNext(rEdge.getControlPointB() - rEdge.getEndPoint());
-                        const B2DVector fRelPrev(rEdge.getControlPointA() - rEdge.getStartPoint());
+                    // calculate cut point and add
+                    aCutPoint = rEdge.getEndPoint() + (aPerpendEndB * fCutB);
+                    aBezierPolygon.append(aCutPoint);
+                }
+                else
+                {
+                    // create scaled bezier segment
+                    const B2DPoint aStart(rEdge.getEndPoint() + aPerpendEndB);
+                    const B2DPoint aEnd(rEdge.getStartPoint() + aPerpendStartB);
+                    const B2DVector aEdge(aEnd - aStart);
+                    const double fLength(aEdge.getLength());
+                    const double fScale(bIsEdgeLengthZero ? 1.0 : fLength / fEdgeLength);
+                    const B2DVector fRelNext(rEdge.getControlPointB() - rEdge.getEndPoint());
+                    const B2DVector fRelPrev(rEdge.getControlPointA() - rEdge.getStartPoint());
 
-                        aBezierPolygon.append(aStart);
-                        aBezierPolygon.appendBezierSegment(aStart + (fRelNext * fScale), aEnd + (fRelPrev * fScale), aEnd);
-                    }
+                    aBezierPolygon.append(aStart);
+                    aBezierPolygon.appendBezierSegment(aStart + (fRelNext * fScale), aEnd + (fRelPrev * fScale), aEnd);
                 }
 
                 // close
@@ -563,15 +557,6 @@ namespace basegfx
                     {
                         OSL_ENSURE(false, "Error in line geometry creation, could not solve self-intersection (!)");
                     }
-                }
-
-                if(nullptr != pTriangles)
-                {
-                    const basegfx::triangulator::B2DTriangleVector aResult(
-                        basegfx::triangulator::triangulate(
-                            aBezierPolygon));
-                    pTriangles->insert(pTriangles->end(), aResult.begin(), aResult.end());
-                    aBezierPolygon.clear();
                 }
 
                 // return
@@ -671,15 +656,6 @@ namespace basegfx
 
                 // close and return
                 aEdgePolygon.setClosed(true);
-
-                if(nullptr != pTriangles)
-                {
-                    const basegfx::triangulator::B2DTriangleVector aResult(
-                        basegfx::triangulator::triangulate(
-                            aEdgePolygon));
-                    pTriangles->insert(pTriangles->end(), aResult.begin(), aResult.end());
-                    aEdgePolygon.clear();
-                }
 
                 return aEdgePolygon;
             }
@@ -946,8 +922,7 @@ namespace basegfx
                                     bFirst && eCap == css::drawing::LineCap_ROUND,
                                     bLast && eCap == css::drawing::LineCap_ROUND,
                                     bFirst && eCap == css::drawing::LineCap_SQUARE,
-                                    bLast && eCap == css::drawing::LineCap_SQUARE,
-                                    nullptr));
+                                    bLast && eCap == css::drawing::LineCap_SQUARE));
                         }
                         else
                         {
@@ -958,8 +933,7 @@ namespace basegfx
                                     false,
                                     false,
                                     false,
-                                    false,
-                                    nullptr));
+                                    false));
                         }
 
                         // prepare next step

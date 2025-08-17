@@ -46,7 +46,7 @@ class ul_Compiler:
     parent_hierarchy_count = 0
     last_parent = []
     flag_for_QuerySaveDialog = False
-    math_element_selector_initializer= False;
+    math_element_selector_initializer= False
 
     def __init__(self, input_address, output_address):
         self.ui_dsl_mm = metamodel_from_file("ui_logger_dsl_grammar.tx")
@@ -254,7 +254,7 @@ class ul_Compiler:
         self.variables.append(line)
 
     def handle_uno(self, UNOCommand):
-        if UNOCommand.parameters == None:
+        if UNOCommand.parameters is None:
             line = (
                 tab * 3
                 + 'self.xUITest.executeCommand("'
@@ -961,7 +961,7 @@ class ul_Compiler:
 
     def handle_math_element_selector(self, math_element_selector):
 
-        if( self.math_element_selector_initializer == False ):
+        if not self.math_element_selector_initializer:
             # This part is for initializing the element selector in the Math application
             self.math_element_selector_initializer = True
             line = (
@@ -1072,7 +1072,8 @@ class ul_Compiler:
             self.output_stream.write(str(line))
 
     def do_nothing(self, Command):
-        line = "to be added in the future"
+        # to be added in the future
+        pass
 
     def __del__(self):
         self.output_stream.close()

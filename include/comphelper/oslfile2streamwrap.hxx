@@ -19,6 +19,7 @@
 #ifndef INCLUDED_COMPHELPER_OSLFILE2STREAMWRAP_HXX
 #define INCLUDED_COMPHELPER_OSLFILE2STREAMWRAP_HXX
 
+#include <config_options.h>
 #include <com/sun/star/io/XOutputStream.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <cppuhelper/implbase.hxx>
@@ -35,7 +36,7 @@ namespace comphelper
 class OSLInputStreamWrapper final : public ::cppu::WeakImplHelper<css::io::XInputStream>
 {
 public:
-    COMPHELPER_DLLPUBLIC OSLInputStreamWrapper(::osl::File& _rStream);
+    UNLESS_MERGELIBS(COMPHELPER_DLLPUBLIC) OSLInputStreamWrapper(::osl::File& _rStream);
 
 private:
     virtual ~OSLInputStreamWrapper() override;

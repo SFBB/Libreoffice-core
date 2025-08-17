@@ -31,13 +31,14 @@
 #include <comphelper/scopeguard.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/weld.hxx>
-#include <svtools/ehdl.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/request.hxx>
 #include <svx/dialmgr.hxx>
+#include <svx/ehdl.hxx>
 #include <svx/svxerr.hxx>
 #include <svx/svxdlg.hxx>
+#include <svx/chinese_translation_unodialog.hxx>
 #include <osl/diagnose.h>
 #include <swwait.hxx>
 #include <uitool.hxx>
@@ -73,9 +74,9 @@
 #include <com/sun/star/util/XURLTransformer.hpp>
 
 #include <vcl/svapp.hxx>
+#include <vcl/unohelp.hxx>
 #include <rtl/ustring.hxx>
 
-#include <cppuhelper/bootstrap.hxx>
 #include <svtools/langtab.hxx>
 
 #include <editeng/editerr.hxx>
@@ -106,102 +107,61 @@ void SwView::ExecLingu(SfxRequest &rReq)
         case SID_CHINESE_CONVERSION:
         {
             //open ChineseTranslationDialog
-            Reference< XComponentContext > xContext(
-                ::cppu::defaultBootstrap_InitialComponentContext() ); //@todo get context from calc if that has one
-            if(xContext.is())
+            Reference<awt::XWindow> xParentWindow;
+            if (weld::Window* pParentWindow = rReq.GetFrameWeld())
+                xParentWindow = pParentWindow->GetXWindow();
+            rtl::Reference< textconversiondlgs::ChineseTranslation_UnoDialog > xDialog(new textconversiondlgs::ChineseTranslation_UnoDialog(xParentWindow));
+
+            //execute dialog
+            sal_Int16 nDialogRet = xDialog->execute();
+            if( RET_OK == nDialogRet )
             {
-                Reference< lang::XMultiComponentFactory > xMCF( xContext->getServiceManager() );
-                if(xMCF.is())
+                //get some parameters from the dialog
+                bool bToSimplified = xDialog->getIsDirectionToSimplified();
+                bool bCommonTerms = xDialog->getIsTranslateCommonTerms();
+
+                //execute translation
+                LanguageType nSourceLang = bToSimplified ? LANGUAGE_CHINESE_TRADITIONAL : LANGUAGE_CHINESE_SIMPLIFIED;
+                LanguageType nTargetLang = bToSimplified ? LANGUAGE_CHINESE_SIMPLIFIED : LANGUAGE_CHINESE_TRADITIONAL;
+                sal_Int32 nOptions       = !bCommonTerms ? i18n::TextConversionOption::CHARACTER_BY_CHARACTER : 0;
+
+                vcl::Font aTargetFont = OutputDevice::GetDefaultFont( DefaultFontType::CJK_TEXT,
+                                        nTargetLang, GetDefaultFontFlags::OnlyOne );
+
+                // disallow formatting, updating the view, ... while
+                // converting the document. (saves time)
+                // Also remember the current view and cursor position for later
+                m_pWrtShell->StartAction();
+
+                // remember cursor position data for later restoration of the cursor
+                const SwPosition *pPoint = m_pWrtShell->GetCursor()->GetPoint();
+                bool bRestoreCursor = pPoint->GetNode().IsTextNode();
+                const SwNodeIndex aPointNodeIndex( pPoint->GetNode() );
+                sal_Int32 nPointIndex = pPoint->GetContentIndex();
+
+                // since this conversion is not interactive the whole converted
+                // document should be undone in a single undo step.
+                m_pWrtShell->StartUndo( SwUndoId::OVERWRITE );
+
+                StartTextConversion( nSourceLang, nTargetLang, &aTargetFont, nOptions, false );
+
+                m_pWrtShell->EndUndo( SwUndoId::OVERWRITE );
+
+                if (bRestoreCursor)
                 {
-                    Reference< ui::dialogs::XExecutableDialog > xDialog(
-                            xMCF->createInstanceWithContext(
-                                "com.sun.star.linguistic2.ChineseTranslationDialog", xContext),
-                            UNO_QUERY);
-                    Reference< lang::XInitialization > xInit( xDialog, UNO_QUERY );
-                    if( xInit.is() )
-                    {
-                        Reference<awt::XWindow> xParentWindow;
-                        if (weld::Window* pParentWindow = rReq.GetFrameWeld())
-                            xParentWindow = pParentWindow->GetXWindow();
-                        //  initialize dialog
-                        uno::Sequence<uno::Any> aSeq(comphelper::InitAnyPropertySequence(
-                        {
-                            {"ParentWindow", uno::Any(xParentWindow)}
-                        }));
-                        xInit->initialize( aSeq );
-
-                        //execute dialog
-                        sal_Int16 nDialogRet = xDialog->execute();
-                        if( RET_OK == nDialogRet )
-                        {
-                            //get some parameters from the dialog
-                            bool bToSimplified = true;
-                            bool bUseVariants = true;
-                            bool bCommonTerms = true;
-                            Reference< beans::XPropertySet >  xProp( xDialog, UNO_QUERY );
-                            if( xProp.is() )
-                            {
-                                try
-                                {
-                                    xProp->getPropertyValue( "IsDirectionToSimplified" ) >>= bToSimplified;
-                                    xProp->getPropertyValue( "IsUseCharacterVariants" ) >>= bUseVariants;
-                                    xProp->getPropertyValue( "IsTranslateCommonTerms" ) >>= bCommonTerms;
-                                }
-                                catch (const Exception&)
-                                {
-                                }
-                            }
-
-                            //execute translation
-                            LanguageType nSourceLang = bToSimplified ? LANGUAGE_CHINESE_TRADITIONAL : LANGUAGE_CHINESE_SIMPLIFIED;
-                            LanguageType nTargetLang = bToSimplified ? LANGUAGE_CHINESE_SIMPLIFIED : LANGUAGE_CHINESE_TRADITIONAL;
-                            sal_Int32 nOptions       = bUseVariants ? i18n::TextConversionOption::USE_CHARACTER_VARIANTS : 0;
-                            if( !bCommonTerms )
-                                nOptions = nOptions | i18n::TextConversionOption::CHARACTER_BY_CHARACTER;
-
-                            vcl::Font aTargetFont = OutputDevice::GetDefaultFont( DefaultFontType::CJK_TEXT,
-                                                    nTargetLang, GetDefaultFontFlags::OnlyOne );
-
-                            // disallow formatting, updating the view, ... while
-                            // converting the document. (saves time)
-                            // Also remember the current view and cursor position for later
-                            m_pWrtShell->StartAction();
-
-                            // remember cursor position data for later restoration of the cursor
-                            const SwPosition *pPoint = m_pWrtShell->GetCursor()->GetPoint();
-                            bool bRestoreCursor = pPoint->GetNode().IsTextNode();
-                            const SwNodeIndex aPointNodeIndex( pPoint->GetNode() );
-                            sal_Int32 nPointIndex = pPoint->GetContentIndex();
-
-                            // since this conversion is not interactive the whole converted
-                            // document should be undone in a single undo step.
-                            m_pWrtShell->StartUndo( SwUndoId::OVERWRITE );
-
-                            StartTextConversion( nSourceLang, nTargetLang, &aTargetFont, nOptions, false );
-
-                            m_pWrtShell->EndUndo( SwUndoId::OVERWRITE );
-
-                            if (bRestoreCursor)
-                            {
-                                SwTextNode *pTextNode = aPointNodeIndex.GetNode().GetTextNode();
-                                // check for unexpected error case
-                                OSL_ENSURE(pTextNode && pTextNode->GetText().getLength() >= nPointIndex,
-                                    "text missing: corrupted node?" );
-                                // restore cursor to its original position
-                                if (!pTextNode || pTextNode->GetText().getLength() < nPointIndex)
-                                    m_pWrtShell->GetCursor()->GetPoint()->Assign( aPointNodeIndex );
-                                else
-                                    m_pWrtShell->GetCursor()->GetPoint()->Assign( *pTextNode, nPointIndex );
-                            }
-
-                            // enable all, restore view and cursor position
-                            m_pWrtShell->EndAction();
-                        }
-                    }
-                    Reference< lang::XComponent > xComponent( xDialog, UNO_QUERY );
-                    if( xComponent.is() )
-                        xComponent->dispose();
+                    SwTextNode *pTextNode = aPointNodeIndex.GetNode().GetTextNode();
+                    // check for unexpected error case
+                    OSL_ENSURE(pTextNode && pTextNode->GetText().getLength() >= nPointIndex,
+                        "text missing: corrupted node?" );
+                    // restore cursor to its original position
+                    if (!pTextNode || pTextNode->GetText().getLength() < nPointIndex)
+                        m_pWrtShell->GetCursor()->GetPoint()->Assign( aPointNodeIndex );
+                    else
+                        m_pWrtShell->GetCursor()->GetPoint()->Assign( *pTextNode, nPointIndex );
                 }
+
+                // enable all, restore view and cursor position
+                m_pWrtShell->EndAction();
             }
             break;
         }
@@ -245,9 +205,9 @@ void SwView::StartTextConversion(
     const bool  bOther = !bSelection && !(m_pWrtShell->GetFrameType(nullptr,true) & FrameTypeFlags::BODY);
 
     {
-        const uno::Reference< uno::XComponentContext > xContext(
+        const uno::Reference< uno::XComponentContext >& xContext(
                     comphelper::getProcessComponentContext() );
-        SwHHCWrapper aWrap( this, xContext, nSourceLang, nTargetLang, pTargetFont,
+        SwHHCWrapper aWrap( *this, xContext, nSourceLang, nTargetLang, pTargetFont,
                             nOptions, bIsInteractive,
                             bStart, bOther, bSelection );
         aWrap.Convert();
@@ -408,8 +368,7 @@ void SwView::HyphenateDocument()
         return;
     }
 
-    SfxErrorContext aContext( ERRCTX_SVX_LINGU_HYPHENATION, OUString(), m_pEditWin->GetFrameWeld(),
-         RID_SVXERRCTX, SvxResLocale() );
+    SvxErrorContext aContext(ERRCTX_SVX_LINGU_HYPHENATION, OUString(), m_pEditWin->GetFrameWeld());
 
     Reference< XHyphenator >  xHyph( ::GetHyphenator() );
     if (!xHyph.is())
@@ -460,7 +419,7 @@ void SwView::HyphenateDocument()
 
         if( !bStop )
         {
-            SwHyphWrapper aWrap( this, xHyph, bStart, bOther, bSelection );
+            SwHyphWrapper aWrap( *this, xHyph, bStart, bOther, bSelection );
             aWrap.SpellDocument();
             m_pWrtShell->EndUndo(SwUndoId::INSATTR);
         }
@@ -532,8 +491,7 @@ void SwView::StartThesaurus()
     if (!IsValidSelectionForThesaurus())
         return;
 
-    SfxErrorContext aContext( ERRCTX_SVX_LINGU_THESAURUS, OUString(), m_pEditWin->GetFrameWeld(),
-         RID_SVXERRCTX, SvxResLocale() );
+    SvxErrorContext aContext(ERRCTX_SVX_LINGU_THESAURUS, OUString(), m_pEditWin->GetFrameWeld());
 
     // Determine language
     LanguageType eLang = m_pWrtShell->GetCurLang();
@@ -594,7 +552,6 @@ struct ExecuteInfo
 {
     uno::Reference< frame::XDispatch >  xDispatch;
     util::URL                           aTargetURL;
-    uno::Sequence< PropertyValue >      aArgs;
 };
 
 class AsyncExecute
@@ -614,7 +571,7 @@ IMPL_STATIC_LINK( AsyncExecute, ExecuteHdl_Impl, void*, p, void )
         // Asynchronous execution as this can lead to our own destruction!
         // Framework can recycle our current frame and the layout manager disposes all user interface
         // elements if a component gets detached from its frame!
-        pExecuteInfo->xDispatch->dispatch( pExecuteInfo->aTargetURL, pExecuteInfo->aArgs );
+        pExecuteInfo->xDispatch->dispatch(pExecuteInfo->aTargetURL, uno::Sequence<beans::PropertyValue>());
     }
     catch (const Exception&)
     {
@@ -624,7 +581,7 @@ IMPL_STATIC_LINK( AsyncExecute, ExecuteHdl_Impl, void*, p, void )
 }
 //!! End of extra code for context menu modifying extensions
 
-bool SwView::ExecSpellPopup(const Point& rPt)
+bool SwView::ExecSpellPopup(const Point& rPt, bool bIsMouseEvent)
 {
     bool bRet = false;
     const SwViewOption* pVOpt = m_pWrtShell->GetViewOptions();
@@ -670,7 +627,8 @@ bool SwView::ExecSpellPopup(const Point& rPt)
             // if neither spell checking nor grammar checking provides suggestions use the
             // default context menu.
             bool bUseGrammarContext = false;
-            Reference< XSpellAlternatives >  xAlt( m_pWrtShell->GetCorrection(&rPt, aToFill) );
+            Reference<XSpellAlternatives> xAlt(
+                m_pWrtShell->GetCorrection(bIsMouseEvent ? &rPt : nullptr, aToFill));
             ProofreadingResult aGrammarCheckRes;
             sal_Int32 nErrorInResult = -1;
             uno::Sequence< OUString > aSuggestions;
@@ -678,7 +636,9 @@ bool SwView::ExecSpellPopup(const Point& rPt)
             if (!xAlt.is() || !xAlt->getAlternatives().hasElements())
             {
                 sal_Int32 nErrorPosInText = -1;
-                bCorrectionRes = m_pWrtShell->GetGrammarCorrection( aGrammarCheckRes, nErrorPosInText, nErrorInResult, aSuggestions, &rPt, aToFill );
+                bCorrectionRes = m_pWrtShell->GetGrammarCorrection(
+                    aGrammarCheckRes, nErrorPosInText, nErrorInResult, aSuggestions,
+                    bIsMouseEvent ? &rPt : nullptr, aToFill);
                 OUString aMessageText;
                 if (nErrorInResult >= 0)
                     aMessageText = aGrammarCheckRes.aErrors[ nErrorInResult ].aShortComment;
@@ -728,7 +688,7 @@ bool SwView::ExecSpellPopup(const Point& rPt)
                 rtl::Reference<VCLXPopupMenu> xMenu;
 
                 OUString sMenuName = bUseGrammarContext ?
-                    OUString("private:resource/GrammarContextMenu") : OUString("private:resource/SpellContextMenu");
+                    u"private:resource/GrammarContextMenu"_ustr : u"private:resource/SpellContextMenu"_ustr;
                 rtl::Reference<VCLXPopupMenu> xMenuInterface = xPopup->CreateMenuInterface();
                 if (TryContextMenuInterception(xMenuInterface, sMenuName, xMenu, aEvent))
                 {
@@ -759,16 +719,14 @@ bool SwView::ExecSpellPopup(const Point& rPt)
 
                                 aURL.Complete = aCommand;
                                 xURLTransformer->parseStrict(aURL);
-                                uno::Sequence< beans::PropertyValue > aArgs;
                                 xDispatch = xDispatchProvider->queryDispatch( aURL, OUString(), 0 );
 
                                 if (xDispatch.is())
                                 {
                                     // Execute dispatch asynchronously
                                     ExecuteInfo* pExecuteInfo   = new ExecuteInfo;
-                                    pExecuteInfo->xDispatch     = xDispatch;
-                                    pExecuteInfo->aTargetURL    = aURL;
-                                    pExecuteInfo->aArgs         = aArgs;
+                                    pExecuteInfo->xDispatch     = std::move(xDispatch);
+                                    pExecuteInfo->aTargetURL    = std::move(aURL);
                                     Application::PostUserEvent( LINK(nullptr, AsyncExecute , ExecuteHdl_Impl), pExecuteInfo );
                                 }
                             }
@@ -820,19 +778,18 @@ void SwView::ExecSmartTagPopup( const Point& rPt )
     m_pWrtShell->Push();
 
     css::uno::Sequence< css::uno::Any > aArgs{
-        css::uno::Any(comphelper::makePropertyValue( "Frame", GetDispatcher().GetFrame()->GetFrame().GetFrameInterface() )),
-        css::uno::Any(comphelper::makePropertyValue( "CommandURL", OUString( ".uno:OpenSmartTagMenuOnCursor" ) ))
+        css::uno::Any(comphelper::makePropertyValue( u"Frame"_ustr, GetDispatcher().GetFrame()->GetFrame().GetFrameInterface() )),
+        css::uno::Any(comphelper::makePropertyValue( u"CommandURL"_ustr, u".uno:OpenSmartTagMenuOnCursor"_ustr ))
     };
 
-    css::uno::Reference< css::uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const css::uno::Reference< css::uno::XComponentContext >& xContext = comphelper::getProcessComponentContext();
     css::uno::Reference< css::frame::XPopupMenuController > xPopupController(
         xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-        "com.sun.star.comp.svx.SmartTagMenuController", aArgs, xContext ), css::uno::UNO_QUERY );
+        u"com.sun.star.comp.svx.SmartTagMenuController"_ustr, aArgs, xContext ), css::uno::UNO_QUERY );
 
-    css::uno::Reference< css::awt::XPopupMenu > xPopupMenu( xContext->getServiceManager()->createInstanceWithContext(
-        "com.sun.star.awt.PopupMenu", xContext ), css::uno::UNO_QUERY );
+    rtl::Reference< VCLXPopupMenu > xPopupMenu( new VCLXPopupMenu() );
 
-    if ( xPopupController.is() && xPopupMenu.is() )
+    if ( xPopupController.is() )
     {
         xPopupController->setPopupMenu( xPopupMenu );
 
@@ -842,7 +799,7 @@ void SwView::ExecSmartTagPopup( const Point& rPt )
 
         if ( aToFill.HasArea() )
             xPopupMenu->execute( m_pEditWin->GetComponentInterface(),
-                                 VCLUnoHelper::ConvertToAWTRect( m_pEditWin->LogicToPixel( aToFill.SVRect() ) ), css::awt::PopupMenuDirection::EXECUTE_DOWN );
+                                 vcl::unohelper::ConvertToAWTRect( m_pEditWin->LogicToPixel( aToFill.SVRect() ) ), css::awt::PopupMenuDirection::EXECUTE_DOWN );
 
         css::uno::Reference< css::lang::XComponent > xComponent( xPopupController, css::uno::UNO_QUERY );
         if ( xComponent.is() )

@@ -205,7 +205,7 @@ public:
 
     // call with true to clear graphics (setting None as drawable)
     // call with false to setup graphics with window (GetWindow())
-    virtual void                updateGraphics( bool bClear );
+    void                updateGraphics( bool bClear );
 
     virtual bool                PostEvent(std::unique_ptr<ImplSVEvent> pData) override;
 
@@ -239,7 +239,7 @@ public:
     virtual LanguageType        GetInputLanguage() override;
     virtual void                UpdateSettings( AllSettings& rSettings ) override;
     virtual void                Beep() override;
-    virtual const SystemEnvData*    GetSystemData() const override;
+    virtual const SystemEnvData& GetSystemData() const override;
     virtual SalPointerState     GetPointerState() override;
     virtual KeyIndicatorState   GetIndicatorState() override;
     virtual void                SimulateKeyPress( sal_uInt16 nKeyCode ) override;

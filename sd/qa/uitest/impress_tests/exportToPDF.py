@@ -13,6 +13,7 @@ from libreoffice.uno.propertyvalue import mkPropertyValues
 from org.libreoffice.unotest import systemPathToFileUrl
 from tempfile import TemporaryDirectory
 import os.path
+import os
 
 
 class exportToPDF(UITestCase):
@@ -20,7 +21,7 @@ class exportToPDF(UITestCase):
     def test_checkDefaultValues(self):
 
         with TemporaryDirectory() as tempdir:
-            xFilePath = os.path.join(tempdir, 'exportToPDFFromImpress-tmp.pdf')
+            xFilePath = os.path.join(tempdir, 'exportToPDFFromImpress-tmp' + str(os.getpid()) + '.pdf')
 
             with self.ui_test.create_doc_in_start_center("impress"):
 
@@ -37,13 +38,13 @@ class exportToPDF(UITestCase):
                 with self.ui_test.execute_dialog_through_command('.uno:ExportToPDF', close_button="") as xDialog:
 
                     selectedChildren = ['bookmarks', 'display', 'effects', 'enablea11y',
-                                        'enablecopy', 'exporturl', 'forms', 'reduceresolution', 'tagged']
+                                        'enablecopy', 'exporturl', 'changeresolution', 'tagged']
 
                     for child in selectedChildren:
                         self.assertEqual("true", get_state_as_dict(xDialog.getChild(child))['Selected'])
 
                     nonSelectedChildren = ['allowdups', 'center', 'comments', 'convert', 'embed', 'emptypages', 'export', 'exportplaceholders',
-                            'firstonleft', 'hiddenpages', 'menubar', 'notes', 'onlynotes', 'open', 'pdfa', 'pdfua', 'resize', 'singlepagesheets',
+                            'firstonleft', 'forms', 'hiddenpages', 'menubar', 'notes', 'onlynotes', 'open', 'pdfua', 'resize', 'singlepagesheets',
                             'toolbar', 'usereferencexobject', 'viewpdf', 'watermark', 'window']
 
                     for child in nonSelectedChildren:
@@ -74,9 +75,9 @@ class exportToPDF(UITestCase):
 
             with self.ui_test.load_file(systemPathToFileUrl(xFilePath)) as document:
 
-                self.assertEqual("", document.DrawPages[0].getByIndex(0).String)
-                self.assertEqual(" ", document.DrawPages[0].getByIndex(1).String)
-                self.assertEqual(" ", document.DrawPages[0].getByIndex(2).String)
-                self.assertEqual("Hello World", document.DrawPages[0].getByIndex(3).String)
+                self.assertEqual("", document.DrawPages[0][0].String)
+                self.assertEqual(" ", document.DrawPages[0][1].String)
+                self.assertEqual(" ", document.DrawPages[0][2].String)
+                self.assertEqual("Hello World", document.DrawPages[0][3].String)
 
 # vim: set shiftwidth=4 softtabstop=4 expandtab:

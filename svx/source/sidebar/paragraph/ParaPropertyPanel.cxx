@@ -52,11 +52,11 @@ std::unique_ptr<PanelLayout> ParaPropertyPanel::Create (
     const css::uno::Reference<css::ui::XSidebar>& rxSidebar)
 {
     if (pParent == nullptr)
-        throw lang::IllegalArgumentException("no parent Window given to ParaPropertyPanel::Create", nullptr, 0);
+        throw lang::IllegalArgumentException(u"no parent Window given to ParaPropertyPanel::Create"_ustr, nullptr, 0);
     if ( ! rxFrame.is())
-        throw lang::IllegalArgumentException("no XFrame given to ParaPropertyPanel::Create", nullptr, 1);
+        throw lang::IllegalArgumentException(u"no XFrame given to ParaPropertyPanel::Create"_ustr, nullptr, 1);
     if (pBindings == nullptr)
-        throw lang::IllegalArgumentException("no SfxBindings given to ParaPropertyPanel::Create", nullptr, 2);
+        throw lang::IllegalArgumentException(u"no SfxBindings given to ParaPropertyPanel::Create"_ustr, nullptr, 2);
 
     return std::make_unique<ParaPropertyPanel>(pParent, rxFrame, pBindings, rxSidebar);
 }
@@ -75,12 +75,6 @@ void ParaPropertyPanel::HandleContextChange (
     {
         case CombinedEnumContext(Application::Calc, Context::DrawText):
         case CombinedEnumContext(Application::WriterVariants, Context::DrawText):
-            mxTBxVertAlign->show();
-            mxTBxBackColor->hide();
-            mxTBxNumBullet->hide();
-            ReSize();
-            break;
-
         case CombinedEnumContext(Application::DrawImpress, Context::Draw):
         case CombinedEnumContext(Application::DrawImpress, Context::TextObject):
         case CombinedEnumContext(Application::DrawImpress, Context::Graphic):
@@ -89,6 +83,8 @@ void ParaPropertyPanel::HandleContextChange (
             mxTBxVertAlign->show();
             mxTBxBackColor->hide();
             mxTBxNumBullet->hide();
+            set_hyphenation_base_visible(false);
+            set_hyphenation_other_visible(false);
             ReSize();
             break;
 
@@ -97,6 +93,8 @@ void ParaPropertyPanel::HandleContextChange (
             mxTBxVertAlign->hide();
             mxTBxBackColor->show();
             mxTBxNumBullet->show();
+            set_hyphenation_base_visible(true);
+            set_hyphenation_other_visible(mxTBxHyphenation->get_item_active("Hyphenate"));
             ReSize();
             break;
 
@@ -104,6 +102,14 @@ void ParaPropertyPanel::HandleContextChange (
             mxTBxVertAlign->show();
             mxTBxBackColor->show();
             mxTBxNumBullet->show();
+            set_hyphenation_base_visible(true);
+            // close the optional controls (when the controls were hidden later,
+            // remained a big empty space before the Table panel)
+            // TODO: if the hyphenation is enabled in the table, and the hyphenation
+            // has exactly the same settings, as outside of the table, the controls
+            // remain hidden. Workaround: disable and enable hyphenation again.
+            // Enable it automatically by mouse hovering hyphenation sidebar toolbar?
+            set_hyphenation_other_visible(false);
             ReSize();
             break;
 
@@ -111,6 +117,7 @@ void ParaPropertyPanel::HandleContextChange (
             mxTBxVertAlign->hide();
             mxTBxBackColor->hide();
             mxTBxNumBullet->hide();
+            set_hyphenation_base_visible(true);
             ReSize();
             break;
 
@@ -120,6 +127,8 @@ void ParaPropertyPanel::HandleContextChange (
         case CombinedEnumContext(Application::Calc, Context::Sparkline):
         case CombinedEnumContext(Application::DrawImpress, Context::Text):
         case CombinedEnumContext(Application::DrawImpress, Context::OutlineText):
+            set_hyphenation_base_visible(false);
+            set_hyphenation_other_visible(false);
             break;
 
         default:
@@ -152,6 +161,52 @@ void ParaPropertyPanel::InitToolBoxSpacing()
     m_eULSpaceUnit = maULSpaceControl.GetCoreMetric();
 }
 
+void ParaPropertyPanel::set_hyphenation_base_visible( bool bVisible )
+{
+    // hide all hyphenation control for non-Writer applications
+    // TODO: add automatic hyphenation for these, too
+    mxHyphenationLabel->set_visible(bVisible);
+    mxTBxHyphenation->set_item_visible("Hyphenate", bVisible);
+    ReSize();
+}
+
+void ParaPropertyPanel::set_hyphenation_other_visible( bool bVisible )
+{
+    mxTBxHyphenation->set_item_visible("HyphenateCaps", bVisible);
+    mxTBxHyphenation->set_item_visible("HyphenateLastWord", bVisible);
+    mxTBxHyphenation->set_item_visible("HyphenateLastFullLine", bVisible);
+    mxTBxHyphenation->set_item_visible("HyphenateColumn", bVisible);
+    mxTBxHyphenation->set_item_visible("HyphenatePage", bVisible);
+    mxTBxHyphenation->set_item_visible("HyphenateSpread", bVisible);
+    mxAtLineEndLabel->set_visible(bVisible);
+    mxAtLineBeginLabel->set_visible(bVisible);
+    mxConsecutiveLabel->set_visible(bVisible);
+    mxCompoundLabel->set_visible(bVisible);
+    mxWordLengthLabel->set_visible(bVisible);
+    mxZoneLabel->set_visible(bVisible);
+    mxAtLineEnd->get_widget().set_visible(bVisible);
+    mxAtLineBegin->get_widget().set_visible(bVisible);
+    mxConsecutive->get_widget().set_visible(bVisible);
+    mxCompound->get_widget().set_visible(bVisible);
+    mxWordLength->get_widget().set_visible(bVisible);
+    mxZone->get_widget().set_visible(bVisible);
+    ReSize();
+}
+
+void ParaPropertyPanel::InitToolBoxHyphenation()
+{
+    // hide most of the controls of hyphenation
+    set_hyphenation_other_visible(false);
+    Link<weld::MetricSpinButton&,void> aLink = LINK( this, ParaPropertyPanel, HyphenationHdl_Impl );
+    mxAtLineEnd->connect_value_changed(aLink);
+    mxAtLineBegin->connect_value_changed(aLink);
+    mxConsecutive->connect_value_changed(aLink);
+    mxCompound->connect_value_changed(aLink);
+    mxWordLength->connect_value_changed(aLink);
+    mxZone->connect_value_changed(aLink);
+    m_eHyphenZoneUnit = m_aZoneControl.GetCoreMetric();
+}
+
 void ParaPropertyPanel::initial()
 {
     limitMetricWidths();
@@ -159,15 +214,18 @@ void ParaPropertyPanel::initial()
     //toolbox
     InitToolBoxIndent();
     InitToolBoxSpacing();
+    InitToolBoxHyphenation();
 }
 
 // for Paragraph Indent
 IMPL_LINK_NOARG( ParaPropertyPanel, ModifyIndentHdl_Impl, weld::MetricSpinButton&, void)
 {
     SvxLRSpaceItem aMargin( SID_ATTR_PARA_LRSPACE );
-    aMargin.SetTextLeft(mxLeftIndent->GetCoreValue(m_eLRSpaceUnit));
-    aMargin.SetRight(mxRightIndent->GetCoreValue(m_eLRSpaceUnit));
-    aMargin.SetTextFirstLineOffset(static_cast<short>(mxFLineIndent->GetCoreValue(m_eLRSpaceUnit)));
+    // tdf#36709: TODO: Handle font-relative units from GUI
+    aMargin.SetTextLeft(SvxIndentValue::twips(mxLeftIndent->GetCoreValue(m_eLRSpaceUnit)));
+    aMargin.SetRight(SvxIndentValue::twips(mxRightIndent->GetCoreValue(m_eLRSpaceUnit)));
+    aMargin.SetTextFirstLineOffset(
+        SvxIndentValue::twips(mxFLineIndent->GetCoreValue(m_eLRSpaceUnit)));
 
     GetBindings()->GetDispatcher()->ExecuteList(
         SID_ATTR_PARA_LRSPACE, SfxCallMode::RECORD, { &aMargin });
@@ -183,6 +241,86 @@ IMPL_LINK_NOARG( ParaPropertyPanel, ULSpaceHdl_Impl, weld::MetricSpinButton&, vo
 
     GetBindings()->GetDispatcher()->ExecuteList(
         SID_ATTR_PARA_ULSPACE, SfxCallMode::RECORD, { &aMargin });
+}
+
+void ParaPropertyPanel::fill_hyphenzone(SvxHyphenZoneItem & rHyphen)
+{
+    rHyphen.SetHyphen(mxTBxHyphenation->get_item_active("Hyphenate"));
+    rHyphen.GetMinLead() = static_cast<sal_uInt8>(mxAtLineEnd->get_value(FieldUnit::NONE));
+    rHyphen.GetMinTrail() = static_cast<sal_uInt8>(mxAtLineBegin->get_value(FieldUnit::NONE));
+    rHyphen.GetMinWordLength() = static_cast<sal_uInt8>(mxWordLength->get_value(FieldUnit::NONE));
+    rHyphen.GetMaxHyphens() = static_cast<sal_uInt8>(mxConsecutive->get_value(FieldUnit::NONE));
+    rHyphen.GetCompoundMinLead() = static_cast<sal_uInt8>(mxCompound->get_value(FieldUnit::NONE));
+    rHyphen.GetTextHyphenZone() = static_cast<sal_uInt16>(mxZone->GetCoreValue(m_eHyphenZoneUnit));
+    rHyphen.SetNoCapsHyphenation(!mxTBxHyphenation->get_item_active("HyphenateCaps"));
+    rHyphen.SetNoLastWordHyphenation(!mxTBxHyphenation->get_item_active("HyphenateLastWord"));
+    rHyphen.SetKeep(!mxTBxHyphenation->get_item_active("HyphenateSpread"));
+    rHyphen.GetKeepType() = !rHyphen.IsKeep()
+            ? 3
+            : mxTBxHyphenation->get_item_active("HyphenatePage")
+                ? 1
+                : mxTBxHyphenation->get_item_active("HyphenateColumn")
+                    ? 2
+                    : mxTBxHyphenation->get_item_active("HyphenateLastFullLine")
+                        ? 3
+                        : 4;
+    rHyphen.SetKeepLine(mbKeepLine);
+}
+
+// for hyphenation
+IMPL_LINK_NOARG( ParaPropertyPanel, HyphenationHdl_Impl, weld::MetricSpinButton&, void)
+{
+    SvxHyphenZoneItem aHyphen( false, 69 /*RES_PARATR_HYPHENZONE*/);
+    fill_hyphenzone(aHyphen);
+    GetBindings()->GetDispatcher()->ExecuteList(
+        SID_ATTR_PARA_HYPHENZONE, SfxCallMode::RECORD, { &aHyphen });
+}
+
+// for hyphenation toggle buttons
+IMPL_LINK( ParaPropertyPanel, HyphenationToggleButtonHdl_Impl, const OUString&, rBtn, void)
+{
+    if ( mbUpdatingHyphenateButtons )
+        return;
+
+    // skip connect_toggled() events triggered by set_item_active(), which resulted stuck buttons
+    mbUpdatingHyphenateButtons = true;
+
+    SvxHyphenZoneItem aHyphen( false, 69 /*RES_PARATR_HYPHENZONE*/);
+    sal_Int16 nButton = 0;
+    bool bEnabled = false;
+    // get the correct getKeepType(), if clicked on one of the Hyphenate Across icons
+    if(  rBtn == "HyphenateSpread" )
+    {
+        nButton = 4;
+        bEnabled = mxTBxHyphenation->get_item_active("HyphenateSpread");
+    }
+    else if( rBtn == "HyphenatePage" )
+    {
+        nButton = 3;
+        bEnabled = mxTBxHyphenation->get_item_active("HyphenatePage");
+    }
+    else if( rBtn == "HyphenateColumn" )
+    {
+        nButton = 2;
+        bEnabled = mxTBxHyphenation->get_item_active("HyphenateColumn");
+    }
+    else if( rBtn == "HyphenateLastFullLine" )
+    {
+        nButton = 1;
+        bEnabled = mxTBxHyphenation->get_item_active("HyphenateLastFullLine");
+    }
+    if (nButton > 0)
+    {
+        mxTBxHyphenation->set_item_active("HyphenateSpread", nButton == 4 && bEnabled);
+        mxTBxHyphenation->set_item_active("HyphenatePage", nButton > 3 || (nButton == 3 && bEnabled));
+        mxTBxHyphenation->set_item_active("HyphenateColumn", nButton > 2 || (nButton == 2 && bEnabled));
+        mxTBxHyphenation->set_item_active("HyphenateLastFullLine", nButton > 1 || bEnabled);
+    }
+    fill_hyphenzone(aHyphen);
+    GetBindings()->GetDispatcher()->ExecuteList(
+        SID_ATTR_PARA_HYPHENZONE, SfxCallMode::RECORD, { &aHyphen });
+
+    mbUpdatingHyphenateButtons = false;
 }
 
 // for Paragraph State change
@@ -216,6 +354,10 @@ void ParaPropertyPanel::NotifyItemUpdate(
 
     case SID_ATTR_PARA_ULSPACE:
         StateChangedULImpl( eState, pState );
+        break;
+
+    case SID_ATTR_PARA_HYPHENZONE:
+        StateChangedHyphenationImpl( eState, pState );
         break;
     }
 }
@@ -257,14 +399,16 @@ void ParaPropertyPanel::StateChangedIndentImpl( SfxItemState eState, const SfxPo
 
     if (pState && eState >= SfxItemState::DEFAULT)
     {
+        // tdf#36709: TODO: Handle font-relative units
         const SvxLRSpaceItem* pSpace = static_cast<const SvxLRSpaceItem*>(pState);
-        maTxtLeft = pSpace->GetTextLeft();
+
+        maTxtLeft = pSpace->ResolveTextLeft({});
         maTxtLeft = OutputDevice::LogicToLogic(maTxtLeft, m_eLRSpaceUnit, MapUnit::MapTwip);
 
-        tools::Long aTxtRight = pSpace->GetRight();
+        tools::Long aTxtRight = pSpace->ResolveRight({});
         aTxtRight = OutputDevice::LogicToLogic(aTxtRight, m_eLRSpaceUnit, MapUnit::MapTwip);
 
-        tools::Long aTxtFirstLineOfst = pSpace->GetTextFirstLineOffset();
+        tools::Long aTxtFirstLineOfst = pSpace->ResolveTextFirstLineOffset({});
         aTxtFirstLineOfst = OutputDevice::LogicToLogic( aTxtFirstLineOfst, m_eLRSpaceUnit, MapUnit::MapTwip );
 
         tools::Long nVal = o3tl::convert(maTxtLeft, o3tl::Length::twip, o3tl::Length::mm100);
@@ -314,9 +458,9 @@ void ParaPropertyPanel::StateChangedIndentImpl( SfxItemState eState, const SfxPo
     }
     else if (eState != SfxItemState::DISABLED )
     {
-        mxLeftIndent->set_text("");
-        mxRightIndent->set_text("");
-        mxFLineIndent->set_text("");
+        mxLeftIndent->set_text(u""_ustr);
+        mxRightIndent->set_text(u""_ustr);
+        mxFLineIndent->set_text(u""_ustr);
     }
 
     limitMetricWidths();
@@ -351,10 +495,45 @@ void ParaPropertyPanel::StateChangedULImpl( SfxItemState eState, const SfxPoolIt
     }
     else if (eState != SfxItemState::DISABLED )
     {
-        mxTopDist->set_text("");
-        mxBottomDist->set_text("");
+        mxTopDist->set_text(u""_ustr);
+        mxBottomDist->set_text(u""_ustr);
     }
     limitMetricWidths();
+}
+
+void ParaPropertyPanel::StateChangedHyphenationImpl( SfxItemState eState, const SfxPoolItem* pState )
+{
+    mxZone->set_max( mxZone->normalize( MAX_DURCH ), MapToFieldUnit(m_eHyphenZoneUnit) );
+
+    if( pState && eState >= SfxItemState::DEFAULT )
+    {
+        const SvxHyphenZoneItem* pOldItem = static_cast<const SvxHyphenZoneItem*>(pState);
+        maZone = pOldItem->GetTextHyphenZone();
+        maZone = OutputDevice::LogicToLogic(maZone, m_eHyphenZoneUnit, MapUnit::MapTwip);
+        sal_Int64 nVal = o3tl::convert(maZone, o3tl::Length::twip, o3tl::Length::cm);
+        nVal = mxZone->normalize( nVal );
+        mxZone->set_value( nVal, FieldUnit::CM );
+        mxAtLineEnd->set_value(pOldItem->GetMinLead(), FieldUnit::CHAR);
+        mxAtLineBegin->set_value(pOldItem->GetMinTrail(), FieldUnit::CHAR);
+        auto nMaxHyphens = pOldItem->GetMaxHyphens();
+        mxConsecutive->set_value(nMaxHyphens, FieldUnit::NONE);
+        mxCompound->set_value(pOldItem->GetCompoundMinLead(), FieldUnit::CHAR);
+        mxWordLength->set_value(pOldItem->GetMinWordLength(), FieldUnit::CHAR);
+        bool bHyph = pOldItem->IsHyphen();
+        mxTBxHyphenation->set_item_active("Hyphenate", bHyph);
+        mxTBxHyphenation->set_item_active("HyphenateCaps", !pOldItem->IsNoCapsHyphenation());
+        mxTBxHyphenation->set_item_active("HyphenateLastWord", !pOldItem->IsNoLastWordHyphenation());
+        mxTBxHyphenation->set_item_active("HyphenateLastFullLine", !pOldItem->IsKeep() || pOldItem->GetKeepType() < 4);
+        mxTBxHyphenation->set_item_active("HyphenateColumn", !pOldItem->IsKeep() || pOldItem->GetKeepType() < 3);
+        mxTBxHyphenation->set_item_active("HyphenatePage", !pOldItem->IsKeep() || pOldItem->GetKeepType() < 2);
+        mxTBxHyphenation->set_item_active("HyphenateSpread", !pOldItem->IsKeep() || pOldItem->GetKeepType() < 1);
+        // When hyphenation is disabled, set HyphenationKeepLine to the default true (i.e. Move Line = false),
+        // so enabling hyphenation on the sidebar will result the preferred "Move Line = false" state.
+        // When hyphenation is enabled, store and use the actual value of HyphenationKeepLine at
+        // changing HyphenationKeepType using the sidebar buttons.
+        mbKeepLine = !bHyph || pOldItem->IsKeepLine();
+        set_hyphenation_other_visible( bHyph );
+    }
 }
 
 FieldUnit ParaPropertyPanel::GetCurrentUnit( SfxItemState eState, const SfxPoolItem* pState )
@@ -374,9 +553,7 @@ FieldUnit ParaPropertyPanel::GetCurrentUnit( SfxItemState eState, const SfxPoolI
             SfxModule* pModule = pSh->GetModule();
             if ( pModule )
             {
-                const SfxPoolItem* pItem = pModule->GetItem( SID_ATTR_METRIC );
-                if ( pItem )
-                    eUnit = static_cast<FieldUnit>(static_cast<const SfxUInt16Item*>(pItem)->GetValue());
+                eUnit = pModule->GetFieldUnit();
             }
             else
             {
@@ -392,51 +569,76 @@ ParaPropertyPanel::ParaPropertyPanel(weld::Widget* pParent,
     const css::uno::Reference<css::frame::XFrame>& rxFrame,
     SfxBindings* pBindings,
     css::uno::Reference<css::ui::XSidebar> xSidebar)
-    : PanelLayout(pParent, "ParaPropertyPanel", "svx/ui/sidebarparagraph.ui"),
+    : PanelLayout(pParent, u"ParaPropertyPanel"_ustr, u"svx/ui/sidebarparagraph.ui"_ustr),
       //Alignment
-      mxTBxHorzAlign(m_xBuilder->weld_toolbar("horizontalalignment")),
+      mxTBxHorzAlign(m_xBuilder->weld_toolbar(u"horizontalalignment"_ustr)),
       mxHorzAlignDispatch(new ToolbarUnoDispatcher(*mxTBxHorzAlign, *m_xBuilder, rxFrame)),
-      mxTBxVertAlign(m_xBuilder->weld_toolbar("verticalalignment")),
+      mxTBxVertAlign(m_xBuilder->weld_toolbar(u"verticalalignment"_ustr)),
       mxVertAlignDispatch(new ToolbarUnoDispatcher(*mxTBxVertAlign, *m_xBuilder, rxFrame)),
       //NumBullet&Backcolor
-      mxTBxNumBullet(m_xBuilder->weld_toolbar("numberbullet")),
+      mxTBxNumBullet(m_xBuilder->weld_toolbar(u"numberbullet"_ustr)),
       mxNumBulletDispatch(new ToolbarUnoDispatcher(*mxTBxNumBullet, *m_xBuilder, rxFrame)),
-      mxTBxBackColor(m_xBuilder->weld_toolbar("backgroundcolor")),
+      mxTBxBackColor(m_xBuilder->weld_toolbar(u"backgroundcolor"_ustr)),
       mxBackColorDispatch(new ToolbarUnoDispatcher(*mxTBxBackColor, *m_xBuilder, rxFrame)),
-      mxTBxWriteDirection(m_xBuilder->weld_toolbar("writedirection")),
+      mxTBxWriteDirection(m_xBuilder->weld_toolbar(u"writedirection"_ustr)),
       mxWriteDirectionDispatch(new ToolbarUnoDispatcher(*mxTBxWriteDirection, *m_xBuilder, rxFrame)),
-      mxTBxParaSpacing(m_xBuilder->weld_toolbar("paraspacing")),
+      mxTBxParaSpacing(m_xBuilder->weld_toolbar(u"paraspacing"_ustr)),
       mxParaSpacingDispatch(new ToolbarUnoDispatcher(*mxTBxParaSpacing, *m_xBuilder, rxFrame)),
-      mxTBxLineSpacing(m_xBuilder->weld_toolbar("linespacing")),
+      mxTBxLineSpacing(m_xBuilder->weld_toolbar(u"linespacing"_ustr)),
       mxLineSpacingDispatch(new ToolbarUnoDispatcher(*mxTBxLineSpacing, *m_xBuilder, rxFrame)),
-      mxTBxIndent(m_xBuilder->weld_toolbar("indent")),
+      mxTBxIndent(m_xBuilder->weld_toolbar(u"indent"_ustr)),
       mxIndentDispatch(new ToolbarUnoDispatcher(*mxTBxIndent, *m_xBuilder, rxFrame)),
+      //Hyphenation
+      mxTBxHyphenation(m_xBuilder->weld_toolbar(u"hyphenation"_ustr)),
       //Paragraph spacing
-      mxTopDist(m_xBuilder->weld_metric_spin_button("aboveparaspacing", FieldUnit::CM)),
-      mxBottomDist(m_xBuilder->weld_metric_spin_button("belowparaspacing", FieldUnit::CM)),
-      mxLeftIndent(m_xBuilder->weld_metric_spin_button("beforetextindent", FieldUnit::CM)),
-      mxRightIndent(m_xBuilder->weld_metric_spin_button("aftertextindent", FieldUnit::CM)),
-      mxFLineIndent(m_xBuilder->weld_metric_spin_button("firstlineindent", FieldUnit::CM)),
+      mxTopDist(m_xBuilder->weld_metric_spin_button(u"aboveparaspacing"_ustr, FieldUnit::CM)),
+      mxBottomDist(m_xBuilder->weld_metric_spin_button(u"belowparaspacing"_ustr, FieldUnit::CM)),
+      mxLeftIndent(m_xBuilder->weld_metric_spin_button(u"beforetextindent"_ustr, FieldUnit::CM)),
+      mxRightIndent(m_xBuilder->weld_metric_spin_button(u"aftertextindent"_ustr, FieldUnit::CM)),
+      mxFLineIndent(m_xBuilder->weld_metric_spin_button(u"firstlineindent"_ustr, FieldUnit::CM)),
+      mxHyphenationLabel(m_xBuilder->weld_label(u"hyphenationlabel"_ustr)),
+      mxAtLineEndLabel(m_xBuilder->weld_label(u"lineend_label"_ustr)),
+      mxAtLineBeginLabel(m_xBuilder->weld_label(u"linebegin_label"_ustr)),
+      mxConsecutiveLabel(m_xBuilder->weld_label(u"consecutive_label"_ustr)),
+      mxCompoundLabel(m_xBuilder->weld_label(u"compound_label"_ustr)),
+      mxWordLengthLabel(m_xBuilder->weld_label(u"wordlength_label"_ustr)),
+      mxZoneLabel(m_xBuilder->weld_label(u"zone_label"_ustr)),
+      mxAtLineEnd(m_xBuilder->weld_metric_spin_button(u"lineend"_ustr, FieldUnit::CHAR)),
+      mxAtLineBegin(m_xBuilder->weld_metric_spin_button(u"linebegin"_ustr, FieldUnit::CHAR)),
+      mxConsecutive(m_xBuilder->weld_metric_spin_button(u"consecutive"_ustr, FieldUnit::NONE)),
+      mxCompound(m_xBuilder->weld_metric_spin_button(u"compound"_ustr, FieldUnit::CHAR)),
+      mxWordLength(m_xBuilder->weld_metric_spin_button(u"wordlength"_ustr, FieldUnit::CHAR)),
+      mxZone(m_xBuilder->weld_metric_spin_button(u"zone"_ustr, FieldUnit::CM)),
+      mbKeepLine(false),
+      mbUpdatingHyphenateButtons(false),
       maTxtLeft (0),
       maUpper (0),
       maLower (0),
+      maZone (0),
       m_eMetricUnit(FieldUnit::NONE),
       m_last_eMetricUnit(FieldUnit::NONE),
       m_eLRSpaceUnit(),
       m_eULSpaceUnit(),
+      m_eHyphenZoneUnit(),
       maLRSpaceControl (SID_ATTR_PARA_LRSPACE,*pBindings,*this),
       maULSpaceControl (SID_ATTR_PARA_ULSPACE, *pBindings,*this),
       m_aMetricCtl (SID_ATTR_METRIC, *pBindings,*this),
+      m_aAtLineEndControl (SID_ATTR_PARA_HYPHENZONE, *pBindings,*this),
+      m_aAtLineBeginControl (SID_ATTR_PARA_HYPHENZONE, *pBindings,*this),
+      m_aConsecutiveControl (SID_ATTR_PARA_HYPHENZONE, *pBindings,*this),
+      m_aCompoundControl (SID_ATTR_PARA_HYPHENZONE, *pBindings,*this),
+      m_aWordLengthControl (SID_ATTR_PARA_HYPHENZONE, *pBindings,*this),
+      m_aZoneControl (SID_ATTR_PARA_HYPHENZONE, *pBindings,*this),
       mpBindings(pBindings),
       mxSidebar(std::move(xSidebar))
 {
+    mxTBxHyphenation->connect_clicked(LINK( this, ParaPropertyPanel, HyphenationToggleButtonHdl_Impl));
     // tdf#130197 We want to give this toolbar a width as if it had 5 entries
     // (the parent grid has homogeneous width set so both columns will have the
     // same width).  This ParaPropertyPanel is a default panel in writer, so
     // subsequent panels, e.g. the TableEditPanel panel can have up to 5
     // entries in each of its column and remain in alignment with this panel
     padWidthForSidebar(*mxTBxIndent, rxFrame);
-
     initial();
     m_aMetricCtl.RequestUpdate();
 }
@@ -476,6 +678,8 @@ ParaPropertyPanel::~ParaPropertyPanel()
     mxIndentDispatch.reset();
     mxTBxIndent.reset();
 
+    mxTBxHyphenation.reset();
+
     mxTopDist.reset();
     mxBottomDist.reset();
     mxLeftIndent.reset();
@@ -485,6 +689,12 @@ ParaPropertyPanel::~ParaPropertyPanel()
     maLRSpaceControl.dispose();
     maULSpaceControl.dispose();
     m_aMetricCtl.dispose();
+    m_aAtLineEndControl.dispose();
+    m_aAtLineBeginControl.dispose();
+    m_aConsecutiveControl.dispose();
+    m_aCompoundControl.dispose();
+    m_aWordLengthControl.dispose();
+    m_aZoneControl.dispose();
 }
 
 } // end of namespace svx::sidebar

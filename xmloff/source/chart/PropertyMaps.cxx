@@ -33,8 +33,10 @@
 #include <xmloff/EnumPropertyHdl.hxx>
 #include <comphelper/attributelist.hxx>
 #include <xmloff/namespacemap.hxx>
+#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/shapeimport.hxx>
+#include <xmloff/xmlement.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/prhdlfac.hxx>
@@ -42,8 +44,16 @@
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
+#include <com/sun/star/chart/ChartAxisArrangeOrderType.hpp>
+#include <com/sun/star/chart/ChartAxisLabelPosition.hpp>
+#include <com/sun/star/chart/ChartAxisMarkPosition.hpp>
 #include <com/sun/star/chart/ChartAxisMarks.hpp>
 #include <com/sun/star/chart/ChartDataCaption.hpp>
+#include <com/sun/star/chart/ChartDataRowSource.hpp>
+#include <com/sun/star/chart/ChartSolidType.hpp>
+#include <com/sun/star/chart/DataLabelPlacement.hpp>
+#include <com/sun/star/chart/ErrorBarStyle.hpp>
+#include <com/sun/star/chart/MissingValueTreatment.hpp>
 #include <com/sun/star/chart2/MovingAverageType.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/chart2/data/XRangeXMLConversion.hpp>
@@ -922,8 +932,8 @@ bool XMLChartImportPropertyMapper::handleSpecialItem(
                 {
                     // convert from degrees (double) to 100th degrees (integer)
                     double fVal;
-                    ::sax::Converter::convertDouble( fVal, rValue );
-                    nValue = static_cast<sal_Int32>( fVal * 100.0 );
+                    ::sax::Converter::convertAngle(fVal, rValue);
+                    nValue = static_cast<sal_Int32>(basegfx::fround(fVal * 100));
                     rProperty.maValue <<= nValue;
                 }
                 break;
@@ -997,17 +1007,17 @@ bool XMLChartImportPropertyMapper::handleSpecialItem(
             case XML_SCH_CONTEXT_SPECIAL_REGRESSION_TYPE:
             {
                 if      (IsXMLToken( rValue, XML_LINEAR ))
-                    rProperty.maValue <<= OUString("com.sun.star.chart2.LinearRegressionCurve");
+                    rProperty.maValue <<= u"com.sun.star.chart2.LinearRegressionCurve"_ustr;
                 else if (IsXMLToken( rValue, XML_LOGARITHMIC))
-                    rProperty.maValue <<= OUString("com.sun.star.chart2.LogarithmicRegressionCurve");
+                    rProperty.maValue <<= u"com.sun.star.chart2.LogarithmicRegressionCurve"_ustr;
                 else if (IsXMLToken( rValue, XML_EXPONENTIAL))
-                    rProperty.maValue <<= OUString("com.sun.star.chart2.ExponentialRegressionCurve");
+                    rProperty.maValue <<= u"com.sun.star.chart2.ExponentialRegressionCurve"_ustr;
                 else if (IsXMLToken( rValue, XML_POWER))
-                    rProperty.maValue <<= OUString("com.sun.star.chart2.PotentialRegressionCurve");
+                    rProperty.maValue <<= u"com.sun.star.chart2.PotentialRegressionCurve"_ustr;
                 else if (IsXMLToken( rValue, XML_POLYNOMIAL))
-                    rProperty.maValue <<= OUString("com.sun.star.chart2.PolynomialRegressionCurve");
+                    rProperty.maValue <<= u"com.sun.star.chart2.PolynomialRegressionCurve"_ustr;
                 else if (IsXMLToken( rValue, XML_MOVING_AVERAGE))
-                    rProperty.maValue <<= OUString("com.sun.star.chart2.MovingAverageRegressionCurve");
+                    rProperty.maValue <<= u"com.sun.star.chart2.MovingAverageRegressionCurve"_ustr;
             }
             break;
 

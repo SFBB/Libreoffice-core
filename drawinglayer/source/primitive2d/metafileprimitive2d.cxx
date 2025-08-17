@@ -31,59 +31,57 @@ using namespace com::sun::star;
 
 namespace drawinglayer::primitive2d
 {
-        void MetafilePrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const
+        Primitive2DReference MetafilePrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const
         {
             // Interpret the Metafile and get the content. There should be only one target, as in the start condition,
             // but iterating will be the right thing to do when some push/pop is not closed
             Primitive2DContainer xRetval(wmfemfhelper::interpretMetafile(getMetaFile(), rViewInformation));
 
-            if(!xRetval.empty())
+            if(xRetval.empty())
+                return nullptr;
+
+            // get target size
+            const ::tools::Rectangle aMtfTarget(getMetaFile().GetPrefMapMode().GetOrigin(), getMetaFile().GetPrefSize());
+            const basegfx::B2DRange aMtfRange(vcl::unotools::b2DRectangleFromRectangle(aMtfTarget));
+
+            // tdf#113197 get content range and check if we have an overlap with
+            // defined target range (aMtfRange)
+            if (!aMtfRange.isEmpty())
             {
-                // get target size
-                const ::tools::Rectangle aMtfTarget(getMetaFile().GetPrefMapMode().GetOrigin(), getMetaFile().GetPrefSize());
-                const basegfx::B2DRange aMtfRange(vcl::unotools::b2DRectangleFromRectangle(aMtfTarget));
+                const basegfx::B2DRange aContentRange(xRetval.getB2DRange(rViewInformation));
 
-                // tdf#113197 get content range and check if we have an overlap with
-                // defined target range (aMtfRange)
-                if (!aMtfRange.isEmpty())
+                // also test equal since isInside gives also true for equal
+                if (!aMtfRange.equal(aContentRange) && !aMtfRange.isInside(aContentRange))
                 {
-                    const basegfx::B2DRange aContentRange(xRetval.getB2DRange(rViewInformation));
+                    // contentRange is partly larger than aMtfRange (stuff sticks
+                    // outside), clipping is needed
+                    const drawinglayer::primitive2d::Primitive2DReference xMask(
+                        new drawinglayer::primitive2d::MaskPrimitive2D(
+                            basegfx::B2DPolyPolygon(
+                                basegfx::utils::createPolygonFromRect(
+                                    aMtfRange)),
+                            std::move(xRetval)));
 
-                    // also test equal since isInside gives also true for equal
-                    if (!aMtfRange.equal(aContentRange) && !aMtfRange.isInside(aContentRange))
-                    {
-                        // contentRange is partly larger than aMtfRange (stuff sticks
-                        // outside), clipping is needed
-                        const drawinglayer::primitive2d::Primitive2DReference xMask(
-                            new drawinglayer::primitive2d::MaskPrimitive2D(
-                                basegfx::B2DPolyPolygon(
-                                    basegfx::utils::createPolygonFromRect(
-                                        aMtfRange)),
-                                std::move(xRetval)));
-
-                        xRetval = drawinglayer::primitive2d::Primitive2DContainer{ xMask };
-                    }
+                    xRetval = drawinglayer::primitive2d::Primitive2DContainer{ xMask };
                 }
-
-                // create transformation
-                basegfx::B2DHomMatrix aAdaptedTransform;
-
-                aAdaptedTransform.translate(-aMtfTarget.Left(), -aMtfTarget.Top());
-                aAdaptedTransform.scale(
-                    aMtfTarget.getOpenWidth() ? 1.0 / aMtfTarget.getOpenWidth() : 1.0,
-                    aMtfTarget.getOpenHeight() ? 1.0 / aMtfTarget.getOpenHeight() : 1.0);
-                aAdaptedTransform = getTransform() * aAdaptedTransform;
-
-                // embed to target transformation
-                const Primitive2DReference aEmbeddedTransform(
-                    new TransformPrimitive2D(
-                        aAdaptedTransform,
-                        std::move(xRetval)));
-
-                xRetval = Primitive2DContainer { aEmbeddedTransform };
             }
 
-            rContainer.append(std::move(xRetval));
+            // create transformation
+            basegfx::B2DHomMatrix aAdaptedTransform;
+
+            aAdaptedTransform.translate(-aMtfTarget.Left(), -aMtfTarget.Top());
+            aAdaptedTransform.scale(
+                aMtfTarget.getOpenWidth() ? 1.0 / aMtfTarget.getOpenWidth() : 1.0,
+                aMtfTarget.getOpenHeight() ? 1.0 / aMtfTarget.getOpenHeight() : 1.0);
+            aAdaptedTransform = getTransform() * aAdaptedTransform;
+
+            // embed to target transformation
+            const Primitive2DReference aEmbeddedTransform(
+                new TransformPrimitive2D(
+                    aAdaptedTransform,
+                    std::move(xRetval)));
+
+            return aEmbeddedTransform;
         }
 
         MetafilePrimitive2D::MetafilePrimitive2D(
@@ -93,7 +91,7 @@ namespace drawinglayer::primitive2d
             maMetaFile(rMetaFile)
         {
             // activate callback to flush buffered decomposition content
-            setCallbackSeconds(20);
+            activateFlushOnTimer();
         }
 
         bool MetafilePrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const

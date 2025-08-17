@@ -110,7 +110,7 @@ SfxVoidItem AddPrintArea SID_ADD_PRINTAREA
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -338,7 +338,7 @@ SfxBoolItem AutoComplete FID_AUTOCOMPLETE
 
 
 SfxVoidItem AutoFill FID_FILL_AUTO
-(SfxStringItem EndCell FID_FILL_AUTO)
+(SfxStringItem EndCell FID_FILL_AUTO,SfxBoolItem Copy FN_PARAM_1)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -543,7 +543,7 @@ SfxVoidItem ChangePrintArea SID_CHANGE_PRINTAREA
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -917,7 +917,7 @@ SfxVoidItem CreateNames FID_USE_NAME
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1021,7 +1021,7 @@ SfxVoidItem DataFilterAutoFilter SID_AUTO_FILTER
 [
     AutoUpdate = TRUE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1039,7 +1039,7 @@ SfxVoidItem DataFilterHideAutoFilter SID_AUTOFILTER_HIDE
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1057,7 +1057,7 @@ SfxVoidItem DataFilterRemoveFilter SID_UNFILTER
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1069,13 +1069,30 @@ SfxVoidItem DataFilterRemoveFilter SID_UNFILTER
     GroupId = SfxGroupId::Data;
 ]
 
+SfxVoidItem ClearAutoFilter SID_CLEAR_AUTO_FILTER
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Data;
+]
+
 
 SfxVoidItem DataFilterSpecialFilter SID_SPECIAL_FILTER
 ()
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1093,7 +1110,7 @@ SfxVoidItem DataFilterStandardFilter SID_FILTER
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1255,7 +1272,7 @@ SfxVoidItem DefineLabelRange SID_DEFINE_COLROWNAMERANGES
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1309,7 +1326,7 @@ SfxVoidItem DefinePrintArea SID_DEFINE_PRINTAREA
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1417,7 +1434,7 @@ SfxVoidItem DeletePrintArea SID_DELETE_PRINTAREA
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1543,7 +1560,7 @@ SfxVoidItem EditHeaderAndFooter SID_HFEDIT
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1579,7 +1596,7 @@ SfxVoidItem EditPrintArea SID_OPENDLG_EDIT_PRINTAREA
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1634,7 +1651,7 @@ SfxVoidItem FillDown FID_FILL_TO_BOTTOM
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1966,7 +1983,7 @@ SfxVoidItem FreezePanes SID_WINDOW_FIX
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1979,11 +1996,11 @@ SfxVoidItem FreezePanes SID_WINDOW_FIX
 ]
 
 SfxPointItem FreezePanesColumn SID_WINDOW_FIX_COL
-
+(SfxInt32Item Index FN_PARAM_1)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1996,11 +2013,11 @@ SfxPointItem FreezePanesColumn SID_WINDOW_FIX_COL
 ]
 
 SfxPointItem FreezePanesRow SID_WINDOW_FIX_ROW
-
+(SfxInt32Item Index FN_PARAM_1)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -2017,7 +2034,7 @@ SfxVoidItem FunctionBox FID_FUNCTION_BOX
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = TRUE,
     RecordAbsolute = FALSE,
@@ -3200,7 +3217,7 @@ SfxVoidItem InsertFile FID_INSERT_FILE
 
 
 SfxVoidItem InsertFunction SID_INS_FUNCTION
-()
+(SfxStringItem FunctionName FN_PARAM_1,SfxInt16Item FunctionCategory FN_PARAM_2,SfxStringItem FunctionId FN_PARAM_3)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -3240,7 +3257,7 @@ SfxVoidItem AddName FID_ADD_NAME
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3258,7 +3275,7 @@ SfxVoidItem InsertName FID_INSERT_NAME
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3598,7 +3615,7 @@ SfxVoidItem Mirror SID_OBJECT_MIRROR
 
 
 SfxVoidItem Move FID_TAB_MOVE
-(SfxStringItem DocName FID_TAB_MOVE,SfxUInt16Item Index FN_PARAM_1,SfxBoolItem Copy FN_PARAM_2,SfxBoolItem UseCurrentDocument FN_PARAM_3)
+(SfxStringItem DocName FID_TAB_MOVE,SfxUInt16Item Index FN_PARAM_1,SfxBoolItem Copy FN_PARAM_2,SfxBoolItem UseCurrentDocument FN_PARAM_3,SfxBoolItem FromContextMenu FN_PARAM_4,SfxUInt16Item ContextMenuIndex FN_PARAM_5,SfxBoolItem MoveOrCopySheetDialog FN_PARAM_6)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -3820,7 +3837,7 @@ SfxStringItem NumberFormat SID_NUMBER_FORMAT
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3839,7 +3856,7 @@ SfxBoolItem NumberFormatCurrency SID_NUMBER_CURRENCY
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3857,7 +3874,7 @@ SfxVoidItem NumberFormatDate SID_NUMBER_DATE
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3875,7 +3892,7 @@ SfxVoidItem NumberFormatDecDecimals SID_NUMBER_DECDEC
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3893,7 +3910,7 @@ SfxVoidItem NumberFormatDecimal SID_NUMBER_TWODEC
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3911,7 +3928,7 @@ SfxVoidItem NumberFormatIncDecimals SID_NUMBER_INCDEC
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3929,7 +3946,7 @@ SfxVoidItem NumberFormatPercent SID_NUMBER_PERCENT
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3947,7 +3964,7 @@ SfxVoidItem NumberFormatScientific SID_NUMBER_SCIENTIFIC
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3965,7 +3982,7 @@ SfxVoidItem NumberFormatStandard SID_NUMBER_STANDARD
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -3983,7 +4000,7 @@ SfxVoidItem NumberFormatTime SID_NUMBER_TIME
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -4001,7 +4018,7 @@ SfxVoidItem NumberFormatThousands SID_NUMBER_THOUSANDS
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -4461,7 +4478,7 @@ SfxVoidItem ResetAttributes SID_CELL_FORMAT_RESET
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -5649,7 +5666,7 @@ SfxVoidItem TableEvents FID_TAB_EVENTS
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -5759,7 +5776,7 @@ SfxVoidItem ToggleRelative SID_TOGGLE_REL
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -5795,7 +5812,7 @@ SfxBoolItem TraceChangeMode FID_CHG_RECORD
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -6054,6 +6071,32 @@ SfxBoolItem ViewValueHighlighting FID_TOGGLESYNTAX
     GroupId = SfxGroupId::View;
 ]
 
+SfxBoolItem HandleDuplicateRecords FID_HANDLEDUPLICATERECORDS
+(
+    SfxBoolItem Remove FID_HANDLEDUPLICATERECORDS,
+    SfxBoolItem IncludesHeaders FN_PARAM_1,
+    SfxBoolItem DuplicateRows FN_PARAM_2,
+    SfxInt32Item StartColumn FN_PARAM_3,
+    SfxInt32Item StartRow FN_PARAM_4,
+    SfxInt32Item EndColumn FN_PARAM_5,
+    SfxInt32Item EndRow FN_PARAM_6,
+    SfxInt32Item TabNo FN_PARAM_7
+)
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = TRUE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::View;
+]
 SfxBoolItem ViewColumnRowHighlighting FID_TOGGLECOLROWHIGHLIGHTING
 
 [
@@ -6114,7 +6157,7 @@ SfxBoolItem WrapText SID_ATTR_ALIGN_LINEBREAK
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -6684,4 +6727,36 @@ SfxVoidItem AutoSum SID_AUTO_SUM
     MenuConfig = FALSE,
     ToolBoxConfig = TRUE,
     GroupId = SfxGroupId::Intern;
+]
+
+
+SfxVoidItem MoveKeepInsertMode FID_MOVE_KEEP_INSERT_MODE
+(SfxBoolItem Enable FID_MOVE_KEEP_INSERT_MODE)
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    GroupId = SfxGroupId::Application;
+]
+
+SfxVoidItem CopyDelete SID_COPYDELETE
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Edit;
 ]

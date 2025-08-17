@@ -59,9 +59,8 @@ namespace basprov
 
     BasicMethodNodeImpl::BasicMethodNodeImpl( const Reference< XComponentContext >& rxContext,
         OUString sScriptingContext, SbMethod* pMethod, bool isAppScript )
-        : ::scripting_helper::OBroadcastHelperHolder( m_aMutex )
-        ,OPropertyContainer( GetBroadcastHelper() )
-        ,m_xContext( rxContext )
+        :
+        m_xContext( rxContext )
         ,m_sScriptingContext(std::move( sScriptingContext ))
         ,m_pMethod( pMethod )
         ,m_bIsAppScript( isAppScript )
@@ -103,13 +102,13 @@ namespace basprov
     // XInterface
 
 
-    IMPLEMENT_FORWARD_XINTERFACE2( BasicMethodNodeImpl, BasicMethodNodeImpl_BASE, OPropertyContainer )
+    IMPLEMENT_FORWARD_XINTERFACE2( BasicMethodNodeImpl, BasicMethodNodeImpl_BASE, comphelper::OPropertyContainer2 )
 
 
     // XTypeProvider
 
 
-    IMPLEMENT_FORWARD_XTYPEPROVIDER2( BasicMethodNodeImpl, BasicMethodNodeImpl_BASE, OPropertyContainer )
+    IMPLEMENT_FORWARD_XTYPEPROVIDER2( BasicMethodNodeImpl, BasicMethodNodeImpl_BASE, comphelper::OPropertyContainer2 )
 
 
     // XBrowseNode
@@ -190,7 +189,7 @@ namespace basprov
         if ( aFunctionName != BASPROV_PROPERTY_EDITABLE )
         {
             throw IllegalArgumentException(
-                "BasicMethodNodeImpl::invoke: function name not supported!",
+                u"BasicMethodNodeImpl::invoke: function name not supported!"_ustr,
                 Reference< XInterface >(), 1 );
         }
 
@@ -241,13 +240,13 @@ namespace basprov
                 Reference< frame::XDispatchHelper > xHelper( frame::DispatchHelper::create( m_xContext ) );
 
                 Sequence < PropertyValue > aArgs{
-                    comphelper::makePropertyValue("Document", sDocURL),
-                    comphelper::makePropertyValue("LibName", sLibName),
-                    comphelper::makePropertyValue("Name", sModName),
-                    comphelper::makePropertyValue("Type", OUString("Module")),
-                    comphelper::makePropertyValue("Line", static_cast< sal_uInt32 >( nLine1 ))
+                    comphelper::makePropertyValue(u"Document"_ustr, sDocURL),
+                    comphelper::makePropertyValue(u"LibName"_ustr, sLibName),
+                    comphelper::makePropertyValue(u"Name"_ustr, sModName),
+                    comphelper::makePropertyValue(u"Type"_ustr, u"Module"_ustr),
+                    comphelper::makePropertyValue(u"Line"_ustr, static_cast< sal_uInt32 >( nLine1 ))
                 };
-                xHelper->executeDispatch( xProv, ".uno:BasicIDEAppear", OUString(), 0, aArgs );
+                xHelper->executeDispatch( xProv, u".uno:BasicIDEAppear"_ustr, OUString(), 0, aArgs );
             }
         }
 
@@ -259,14 +258,14 @@ namespace basprov
     void BasicMethodNodeImpl::setValue( const OUString&, const Any& )
     {
         throw UnknownPropertyException(
-            "BasicMethodNodeImpl::setValue: property name is unknown!" );
+            u"BasicMethodNodeImpl::setValue: property name is unknown!"_ustr );
     }
 
 
     Any BasicMethodNodeImpl::getValue( const OUString& )
     {
         throw UnknownPropertyException(
-            "BasicMethodNodeImpl::getValue: property name is unknown!" );
+            u"BasicMethodNodeImpl::getValue: property name is unknown!"_ustr );
     }
 
 

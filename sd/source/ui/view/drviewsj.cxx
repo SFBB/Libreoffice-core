@@ -38,6 +38,7 @@
 #include <anminfo.hxx>
 #include <drawdoc.hxx>
 #include <drawview.hxx>
+#include <ViewShellBase.hxx>
 
 using namespace com::sun::star;
 
@@ -210,10 +211,8 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
                     ::tools::Long nVal1 = aAttrSet.Get( SDRATTR_EDGELINE1DELTA ).GetValue();
                     ::tools::Long nVal2 = aAttrSet.Get( SDRATTR_EDGELINE2DELTA ).GetValue();
                     ::tools::Long nVal3 = aAttrSet.Get( SDRATTR_EDGELINE3DELTA ).GetValue();
-                    {
-                        if( nVal1 != 0 || nVal2 != 0 || nVal3 != 0 )
-                            bDisable = false;
-                    }
+                    if( nVal1 != 0 || nVal2 != 0 || nVal3 != 0 )
+                        bDisable = false;
                 }
                 if( bDisable )
                     rSet.DisableItem( SID_CONNECTION_NEW_ROUTING );
@@ -483,6 +482,7 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
     // select no object
     else
     {
+        rSet.DisableItem(SID_SETLAYER);
         rSet.DisableItem( SID_ENTER_GROUP );
         rSet.DisableItem( SID_CUT );
         rSet.DisableItem( SID_COPY );
@@ -560,6 +560,16 @@ void DrawViewShell::GetMenuStateSel( SfxItemSet &rSet )
     {
         rSet.DisableItem(SID_GRAPHIC_SIZE_CHECK);
     }
+}
+
+const SdViewOptions& DrawViewShell::GetViewOptions() const
+{
+    return GetViewShellBase().GetViewOptions();
+}
+
+void DrawViewShell::SetViewOptions(const SdViewOptions& rOptions)
+{
+    GetViewShellBase().SetViewOptions(rOptions);
 }
 
 } // end of namespace sd

@@ -29,6 +29,8 @@
 #include <svl/style.hxx>
 
 #include <svl/intitem.hxx>
+#include <svl/itemset.hxx>
+#include <svl/eitem.hxx>
 #include <svl/ctloptions.hxx>
 #include <comphelper/processfactory.hxx>
 #include <unotools/securityoptions.hxx>
@@ -57,6 +59,7 @@
 #include <sfx2/strings.hrc>
 #include <sfx2/docfile.hxx>
 #include <sfx2/docfilt.hxx>
+#include <sfx2/IDocumentModelAccessor.hxx>
 #include <memory>
 #include <helpids.h>
 
@@ -92,24 +95,25 @@ bool operator> (const util::DateTime& i_rLeft, const util::DateTime& i_rRight)
 }
 
 std::shared_ptr<GDIMetaFile>
-SfxObjectShell::GetPreviewMetaFile( bool bFullContent ) const
+SfxObjectShell::GetPreviewMetaFile( bool bFullContent, bool bOutputForScreen ) const
 {
     auto xFile = std::make_shared<GDIMetaFile>();
     ScopedVclPtrInstance< VirtualDevice > pDevice;
     pDevice->EnableOutput( false );
-    if(!CreatePreview_Impl(bFullContent, pDevice, xFile.get()))
+    if(!CreatePreview_Impl(bFullContent, bOutputForScreen, pDevice, xFile.get()))
         return std::shared_ptr<GDIMetaFile>();
     return xFile;
 }
 
-BitmapEx SfxObjectShell::GetPreviewBitmap() const
+Bitmap SfxObjectShell::GetPreviewBitmap() const
 {
-    ScopedVclPtrInstance< VirtualDevice > pDevice;
+    SfxCloseVetoLock lock(this);
+    ScopedVclPtrInstance< VirtualDevice > pDevice(DeviceFormat::WITH_ALPHA);
     pDevice->SetAntialiasing(AntialiasingFlags::Enable | pDevice->GetAntialiasing());
-    if(!CreatePreview_Impl(/*bFullContent*/false, pDevice, nullptr))
-        return BitmapEx();
+    if(!CreatePreview_Impl(/*bFullContent*/false, false, pDevice, nullptr))
+        return Bitmap();
     Size size = pDevice->GetOutputSizePixel();
-    BitmapEx aBitmap = pDevice->GetBitmapEx( Point(), size);
+    Bitmap aBitmap( pDevice->GetBitmap( Point(), size) );
     // Scale down the image to the desired size from the 4*size from CreatePreview_Impl().
     size = Size( size.Width() / 4, size.Height() / 4 );
     aBitmap.Scale(size, BmpScaleFlag::BestQuality);
@@ -118,7 +122,7 @@ BitmapEx SfxObjectShell::GetPreviewBitmap() const
     return aBitmap;
 }
 
-bool SfxObjectShell::CreatePreview_Impl( bool bFullContent, VirtualDevice* pDevice, GDIMetaFile* pFile) const
+bool SfxObjectShell::CreatePreview_Impl( bool bFullContent, bool bOutputForScreen, VirtualDevice* pDevice, GDIMetaFile* pFile) const
 {
     // DoDraw can only be called when no printing is done, otherwise
     // the printer may be turned off
@@ -170,13 +174,13 @@ bool SfxObjectShell::CreatePreview_Impl( bool bFullContent, VirtualDevice* pDevi
             double      fWH = static_cast< double >( aSizePix.Width() ) / aSizePix.Height();
             if ( fWH <= 1.0 )
             {
-                aSizePix.setWidth( FRound( nMaximumExtent * fWH ) );
+                aSizePix.setWidth(basegfx::fround<tools::Long>(nMaximumExtent * fWH));
                 aSizePix.setHeight( nMaximumExtent );
             }
             else
             {
                 aSizePix.setWidth( nMaximumExtent );
-                aSizePix.setHeight( FRound(  nMaximumExtent / fWH ) );
+                aSizePix.setHeight(basegfx::fround<tools::Long>(nMaximumExtent / fWH));
             }
         }
         // do it 4x larger to be able to scale it down & get beautiful antialias
@@ -194,7 +198,7 @@ bool SfxObjectShell::CreatePreview_Impl( bool bFullContent, VirtualDevice* pDevi
 
     pDevice->SetDigitLanguage( eLang );
 
-    const_cast<SfxObjectShell*>(this)->DoDraw( pDevice, Point(0,0), aTmpSize, JobSetup(), nAspect );
+    const_cast<SfxObjectShell*>(this)->DoDraw( pDevice, Point(0,0), aTmpSize, JobSetup(), nAspect, bOutputForScreen );
 
     if(pFile)
         pFile->Stop();
@@ -234,8 +238,18 @@ void SfxObjectShell::UpdateDocInfoForSave()
             ::DateTime now( ::DateTime::SYSTEM );
             xDocProps->setModificationDate( now.GetUNODateTime() );
             xDocProps->setModifiedBy( aUserName );
-            UpdateTime_Impl( xDocProps );
+            if (!SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemoveEditingTimeInfo))
+                UpdateTime_Impl( xDocProps );
         }
+        // reset only editing time to zero if RemoveEditingTimeOnSaving is true
+        if (SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemoveEditingTimeInfo))
+            xDocProps->setEditingDuration(0);
+    }
+    else
+    {
+        // reset only editing time to zero if RemoveEditingTimeOnSaving is true
+        if (SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemoveEditingTimeInfo))
+            xDocProps->setEditingDuration(0);
     }
 }
 
@@ -261,8 +275,6 @@ void SfxObjectShell::UpdateTime_Impl(
 
     // Initialize some local member! It's necessary for follow operations!
     DateTime     aNow( DateTime::SYSTEM );   // Date and time at current moment
-    tools::Time  n24Time     (24,0,0,0)  ;   // Time-value for 24 hours - see follow calculation
-    tools::Time  nAddTime    (0)         ;   // Value to add on aOldTime
 
     // Save impossible cases!
     // User has changed time to the past between last editing and now... it's not possible!!!
@@ -274,6 +286,7 @@ void SfxObjectShell::UpdateTime_Impl(
     {
         // Count of days between now and last editing
         sal_Int32 nDays = aNow.GetSecFromDateTime(Date(pImpl->nTime.GetDate()))/86400 ;
+        tools::Time nAddTime(tools::Time::EMPTY); // Value to add on aOldTime
 
         if (nDays==0)
         {
@@ -287,8 +300,9 @@ void SfxObjectShell::UpdateTime_Impl(
 
             // If 1 or up to 31 days between now and last editing - calculate time indirectly.
             // nAddTime = (24h - nTime) + (nDays * 24h) + aNow
+            tools::Time n24Time (24,0,0,0); // Time-value for 24 hours
             --nDays;
-            nAddTime     =  tools::Time( nDays * n24Time.GetTime());
+            nAddTime.MakeTimeFromNS(nDays * n24Time.GetNSFromTime());
             nAddTime    +=  n24Time-static_cast<const tools::Time&>(pImpl->nTime);
             nAddTime    +=  aNow                    ;
         }
@@ -324,10 +338,11 @@ std::optional<NamedColor> SfxObjectShell::GetRecentColor(sal_uInt16 nSlotId)
     return std::nullopt;
 }
 
-void SfxObjectShell::SetRecentColor(sal_uInt16 nSlotId, const NamedColor& rColor)
+void SfxObjectShell::SetRecentColor(sal_uInt16 nSlotId, const NamedColor& rColor, bool bBroadcast)
 {
     pImpl->m_aRecentColors[nSlotId] = rColor;
-    Broadcast(SfxHint(SfxHintId::ColorsChanged));
+    if (bBroadcast)
+        Broadcast(SfxHint(SfxHintId::ColorsChanged));
 }
 
 std::set<Color> SfxObjectShell::GetDocColors()
@@ -337,6 +352,11 @@ std::set<Color> SfxObjectShell::GetDocColors()
 }
 
 std::shared_ptr<model::ColorSet> SfxObjectShell::GetThemeColors() { return {}; }
+
+std::shared_ptr<sfx::IDocumentModelAccessor> SfxObjectShell::GetDocumentModelAccessor() const
+{
+    return {};
+}
 
 sfx::AccessibilityIssueCollection SfxObjectShell::runAccessibilityCheck()
 {
@@ -401,7 +421,7 @@ void SfxObjectShell::LoadStyles
 
     for ( sal_uInt16 i = 0; i < nFound; ++i )
     {
-        pFound[i].pDest->GetItemSet().PutExtended(pFound[i].pSource->GetItemSet(), SfxItemState::DONTCARE, SfxItemState::DEFAULT);
+        pFound[i].pDest->GetItemSet().PutExtended(pFound[i].pSource->GetItemSet(), SfxItemState::INVALID, SfxItemState::DEFAULT);
         if(pFound[i].pSource->HasParentSupport())
             pFound[i].pDest->SetParent(pFound[i].pSource->GetParent());
         if(pFound[i].pSource->HasFollowSupport())
@@ -580,7 +600,12 @@ void SfxObjectShell::UpdateFromTemplate_Impl(  )
 
 bool SfxObjectShell::IsHelpDocument() const
 {
-    std::shared_ptr<const SfxFilter> pFilter = GetMedium()->GetFilter();
+    if (!pMedium)
+    {
+        return false;
+    }
+
+    std::shared_ptr<const SfxFilter> pFilter = pMedium->GetFilter();
     return (pFilter && pFilter->GetFilterName() == "writer_web_HTML_help");
 }
 
@@ -619,6 +644,14 @@ void SfxObjectShell::ResetFromTemplate( const OUString& rTemplateName, std::u16s
 bool SfxObjectShell::IsQueryLoadTemplate() const
 {
     return pImpl->bQueryLoadTemplate;
+}
+
+bool SfxObjectShell::IsBasedOnTemplate() const
+{
+    if (!pMedium)
+        return false;
+    const SfxBoolItem* pTemplateItem = pMedium->GetItemSet().GetItem(SID_TEMPLATE, false);
+    return pTemplateItem && pTemplateItem->GetValue();
 }
 
 bool SfxObjectShell::IsUseUserData() const

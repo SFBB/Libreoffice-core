@@ -23,18 +23,17 @@
 #include "PresenterAccessibility.hxx"
 #include "PresenterPaneContainer.hxx"
 #include "PresenterTheme.hxx"
+#include <PresenterHelper.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <com/sun/star/awt/XKeyListener.hpp>
 #include <com/sun/star/awt/XMouseListener.hpp>
-#include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <com/sun/star/presentation/XSlideShowController.hpp>
 #include <com/sun/star/frame/XFrameActionListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
+#include <framework/ConfigurationChangeListener.hxx>
+#include <framework/AbstractPane.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
 #include <rtl/ref.hxx>
@@ -43,20 +42,20 @@
 #include <memory>
 
 namespace sd { class DrawController; }
+namespace sd::framework { class ConfigurationController; }
+namespace sd::framework { class Pane; }
 
 namespace sdext::presenter {
 
 class PresenterCanvasHelper;
 class PresenterPaintManager;
-class PresenterPaneAnimator;
 class PresenterPaneContainer;
 class PresenterPaneBorderPainter;
 class PresenterScreen;
-class PresenterTheme;
 class PresenterWindowManager;
 
-typedef ::cppu::WeakComponentImplHelper <
-    css::drawing::framework::XConfigurationChangeListener,
+typedef ::cppu::ImplInheritanceHelper <
+    sd::framework::ConfigurationChangeListener,
     css::frame::XFrameActionListener,
     css::awt::XKeyListener,
     css::awt::XMouseListener
@@ -77,8 +76,7 @@ public:
     to frequently used values of the current theme.
 */
 class PresenterController
-    : protected ::cppu::BaseMutex,
-      public PresenterControllerInterfaceBase
+    : public PresenterControllerInterfaceBase
 {
 public:
     static ::rtl::Reference<PresenterController> Instance (
@@ -90,10 +88,10 @@ public:
         const rtl::Reference<::sd::DrawController>& rxController,
         const css::uno::Reference<css::presentation::XSlideShowController>& rxSlideShowController,
         rtl::Reference<PresenterPaneContainer> xPaneContainer,
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxMainPaneId);
+        const rtl::Reference<sd::framework::ResourceId>& rxMainPaneId);
     virtual ~PresenterController() override;
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     void UpdateCurrentSlide (const sal_Int32 nOffset);
 
@@ -108,7 +106,6 @@ public:
     const rtl::Reference<PresenterPaneContainer>& GetPaneContainer() const;
     const ::rtl::Reference<PresenterPaneBorderPainter>& GetPaneBorderPainter() const;
     const std::shared_ptr<PresenterCanvasHelper>& GetCanvasHelper() const;
-    const css::uno::Reference<css::drawing::XPresenterHelper>& GetPresenterHelper() const;
     const std::shared_ptr<PresenterPaintManager>& GetPaintManager() const;
     double GetSlideAspectRatio() const;
     void ShowView (const OUString& rsViewURL);
@@ -119,16 +116,16 @@ public:
     css::uno::Reference<css::frame::XDispatch> GetDispatch (
         const css::util::URL& rURL) const;
     css::util::URL CreateURLFromString (const OUString& rsURL) const;
-    const css::uno::Reference<css::drawing::framework::XConfigurationController>&
-        GetConfigurationController() const;
     const css::uno::Reference<css::drawing::XDrawPage>& GetCurrentSlide() const;
     static bool HasTransition (css::uno::Reference<css::drawing::XDrawPage> const & rxPage);
     static bool HasCustomAnimation (css::uno::Reference<css::drawing::XDrawPage> const & rxPage);
-    void SetAccessibilityActiveState (const bool bIsActive);
-    bool IsAccessibilityActive() const { return mbIsAccessibilityActive;}
 
     void HandleMouseClick (const css::awt::MouseEvent& rEvent);
     void UpdatePaneTitles();
+
+    // check if the 'NextSlide' needs an update when the given
+    // XShape is changed and trigger that update
+    void CheckNextSlideUpdate(const css::uno::Reference<css::drawing::XShape>& rxShape);
 
     /** Request activation or deactivation of (some of) the views according
         to the given parameters.
@@ -141,10 +138,10 @@ public:
     void SetPresentationTime(IPresentationTime* pPresentationTime);
     IPresentationTime* GetPresentationTime();
 
-    // XConfigurationChangeListener
+    // ConfigurationChangeListener
 
-    virtual void SAL_CALL notifyConfigurationChange (
-        const css::drawing::framework::ConfigurationChangeEvent& rEvent) override;
+    virtual void notifyConfigurationChange (
+        const sd::framework::ConfigurationChangeEvent& rEvent) override;
 
     // XEventListener
 
@@ -179,10 +176,9 @@ private:
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
     css::uno::Reference<css::rendering::XSpriteCanvas> mxCanvas;
     rtl::Reference<::sd::DrawController> mxController;
-    css::uno::Reference<css::drawing::framework::XConfigurationController>
-        mxConfigurationController;
+    rtl::Reference<::sd::framework::ConfigurationController> mxConfigurationController;
     css::uno::Reference<css::presentation::XSlideShowController> mxSlideShowController;
-    css::uno::Reference<css::drawing::framework::XResourceId> mxMainPaneId;
+    rtl::Reference<sd::framework::ResourceId> mxMainPaneId;
     rtl::Reference<PresenterPaneContainer> mpPaneContainer;
     sal_Int32 mnCurrentSlideIndex;
     css::uno::Reference<css::drawing::XDrawPage> mxCurrentSlide;
@@ -192,18 +188,16 @@ private:
     css::uno::Reference<css::awt::XWindow> mxMainWindow;
     ::rtl::Reference<PresenterPaneBorderPainter> mpPaneBorderPainter;
     std::shared_ptr<PresenterCanvasHelper> mpCanvasHelper;
-    css::uno::Reference<css::drawing::XPresenterHelper> mxPresenterHelper;
     std::shared_ptr<PresenterPaintManager> mpPaintManager;
     sal_Int32 mnPendingSlideNumber;
     css::uno::Reference<css::util::XURLTransformer> mxUrlTransformer;
     ::rtl::Reference<PresenterAccessible> mpAccessibleObject;
-    bool mbIsAccessibilityActive;
     IPresentationTime* mpPresentationTime;
 
     void GetSlides (const sal_Int32 nOffset);
     void UpdateViews();
-    void InitializeMainPane (const css::uno::Reference<css::drawing::framework::XPane>& rxPane);
-    void LoadTheme (const css::uno::Reference<css::drawing::framework::XPane>& rxPane);
+    void InitializeMainPane (const rtl::Reference<sd::framework::Pane>& rxPane);
+    void LoadTheme (const rtl::Reference<sd::framework::AbstractPane>& rxPane);
     void UpdatePendingSlideNumber (const sal_Int32 nPendingSlideNumber);
 
     /** This method is called when the user pressed one of the numerical

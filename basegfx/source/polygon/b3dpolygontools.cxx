@@ -103,17 +103,14 @@ namespace basegfx::utils
                 pLineTarget->clear();
             }
 
-            // provide callback as lambda
-            auto aLineCallback(
-                nullptr == pLineTarget
-                ? std::function<void(const basegfx::B3DPolygon&)>()
-                : [&pLineTarget](const basegfx::B3DPolygon& rSnippet){ pLineTarget->append(rSnippet); });
-
             // call version that uses callbacks
             applyLineDashing(
                 rCandidate,
                 rDotDashArray,
-                aLineCallback,
+                // provide callback as lambda
+                (!pLineTarget
+                    ? std::function<void(const basegfx::B3DPolygon&)>()
+                    : [&pLineTarget](const basegfx::B3DPolygon& rSnippet){ pLineTarget->append(rSnippet); }),
                 fDotDashLength);
         }
 
@@ -179,12 +176,12 @@ namespace basegfx::utils
             const sal_uInt32 nPointCount(rCandidate.count());
             const sal_uInt32 nDotDashCount(rDotDashArray.size());
 
-            if(fTools::lessOrEqual(fDotDashLength, 0.0))
+            if(fDotDashLength <= 0.0)
             {
                 fDotDashLength = std::accumulate(rDotDashArray.begin(), rDotDashArray.end(), 0.0);
             }
 
-            if(fTools::lessOrEqual(fDotDashLength, 0.0) || !rLineTargetCallback || !nPointCount)
+            if(fDotDashLength <= 0.0 || !rLineTargetCallback || !nPointCount)
             {
                 // parameters make no sense, just add source to targets
                 if (rLineTargetCallback)
@@ -701,7 +698,7 @@ namespace basegfx::utils
                         }
                     }
 
-                    if(fTools::more(fParamTestOnCurr, 0.0) && fTools::less(fParamTestOnCurr, 1.0))
+                    if(fParamTestOnCurr > 0.0 && fTools::less(fParamTestOnCurr, 1.0))
                     {
                         return true;
                     }

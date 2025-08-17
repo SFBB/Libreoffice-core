@@ -70,7 +70,8 @@ class SfxScriptLibraryContainer final : public SfxLibraryContainer
                         const css::uno::Reference< css::ucb::XSimpleFileAccess3 >& rToUseSFI, const css::uno::Reference< css::task::XInteractionHandler >& Handler ) override;
 
     virtual bool implLoadPasswordLibrary( SfxLibrary* pLib, const OUString& Name,
-                                          bool bVerifyPasswordOnly=false ) override;
+                                          bool bVerifyPasswordOnly,
+                                          std::unique_lock<std::mutex>& guard ) override;
 
     virtual void onNewRootStorage() override;
 
@@ -104,9 +105,9 @@ public:
 
 typedef std::unordered_map< OUString, css::script::ModuleInfo > ModuleInfoMap;
 
-typedef ::cppu::ImplHelper1< css::script::vba::XVBAModuleInfo > SfxScriptLibrary_BASE;
+typedef cppu::ImplInheritanceHelper< SfxLibrary, css::script::vba::XVBAModuleInfo > SfxScriptLibrary_BASE;
 
-class SfxScriptLibrary final : public SfxLibrary, public SfxScriptLibrary_BASE
+class SfxScriptLibrary final : public SfxScriptLibrary_BASE
 {
     friend class SfxScriptLibraryContainer;
 
@@ -138,9 +139,6 @@ public:
         const css::uno::Reference< css::ucb::XSimpleFileAccess3 >& xSFI,
         const OUString& aLibInfoFileURL, const OUString& aStorageURL, bool ReadOnly
     );
-
-    DECLARE_XINTERFACE()
-    DECLARE_XTYPEPROVIDER()
 
     // XVBAModuleInfo
     virtual css::script::ModuleInfo SAL_CALL getModuleInfo( const OUString& ModuleName ) override;

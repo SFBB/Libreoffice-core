@@ -24,11 +24,10 @@
 #include <rangelst.hxx>
 
 namespace com::sun::star::drawing { class XDrawPage; }
-namespace com::sun::star::sheet { class XSpreadsheet; }
-namespace com::sun::star::table { class XCellRange; }
 namespace com::sun::star::drawing { class XShapes; }
 
 class ScXMLImport;
+class ScTableSheetObj;
 
 struct ScXMLTabProtectionData
 {
@@ -42,6 +41,8 @@ struct ScXMLTabProtectionData
     bool            mbInsertRows;
     bool            mbDeleteColumns;
     bool            mbDeleteRows;
+    bool            mbUseAutoFilter;
+    bool            mbUsePivot;
 
     ScXMLTabProtectionData();
 };
@@ -53,7 +54,7 @@ private:
 
     ScMyOLEFixer                        aFixupOLEs;
 
-    css::uno::Reference< css::sheet::XSpreadsheet > xCurrentSheet;
+    rtl::Reference< ScTableSheetObj >   xCurrentSheet;
     css::uno::Reference< css::drawing::XDrawPage > xDrawPage;
     css::uno::Reference < css::drawing::XShapes > xShapes;
     OUString                       sCurrentSheetName;
@@ -73,6 +74,7 @@ public:
     void                                AddRow();
     void                                SetRowStyle(const OUString& rCellStyleName);
     void                                AddColumn(bool bIsCovered);
+    void                                AddColumns(sal_Int32 nRepeat);
     void                                FixupOLEs() { aFixupOLEs.FixupOLEs(); }
     static bool                         IsOLE(const css::uno::Reference< css::drawing::XShape >& rShape)
                                             { return ScMyOLEFixer::IsOLE(rShape); }
@@ -84,7 +86,7 @@ public:
     SCTAB                               GetCurrentSheet() const { return (maCurrentCellPos.Tab() >= 0) ? maCurrentCellPos.Tab() : 0; }
     SCCOL                               GetCurrentColCount() const;
     SCROW                               GetCurrentRow() const { return (maCurrentCellPos.Row() >= 0) ? maCurrentCellPos.Row() : 0; }
-    const css::uno::Reference< css::sheet::XSpreadsheet >&
+    const rtl::Reference< ScTableSheetObj >&
                                         GetCurrentXSheet() const { return xCurrentSheet; }
     css::uno::Reference< css::drawing::XDrawPage > const &
                                         GetCurrentXDrawPage();

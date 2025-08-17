@@ -55,7 +55,7 @@ namespace basic
     using ::com::sun::star::uno::XInterface;
     using ::com::sun::star::uno::UNO_QUERY;
     using ::com::sun::star::embed::XStorage;
-    using ::com::sun::star::script::XPersistentLibraryContainer;
+    using ::com::sun::star::script::XStorageBasedLibraryContainer;
     using ::com::sun::star::uno::UNO_QUERY_THROW;
     using ::com::sun::star::uno::Exception;
     using ::com::sun::star::document::XStorageBasedDocument;
@@ -168,15 +168,15 @@ namespace basic
         */
         static bool impl_getDocumentLibraryContainers_nothrow(
                     const Reference< XModel >& _rxDocument,
-                    Reference< XPersistentLibraryContainer >& _out_rxBasicLibraries,
-                    Reference< XPersistentLibraryContainer >& _out_rxDialogLibraries
+                    Reference<XStorageBasedLibraryContainer>& _out_rxBasicLibraries,
+                    Reference<XStorageBasedLibraryContainer>& _out_rxDialogLibraries
                 );
 
         /** initializes the given library containers, which belong to a document
         */
         static void impl_initDocLibraryContainers_nothrow(
-                    const Reference< XPersistentLibraryContainer >& _rxBasicLibraries,
-                    const Reference< XPersistentLibraryContainer >& _rxDialogLibraries
+                    const Reference<XStorageBasedLibraryContainer>& _rxBasicLibraries,
+                    const Reference<XStorageBasedLibraryContainer>& _rxDialogLibraries
                 );
 
         // OEventListenerAdapter overridables
@@ -272,12 +272,12 @@ namespace basic
         OUString aAppBasicDir( aPathCFG.GetBasicPath() );
         if ( aAppBasicDir.isEmpty() )
         {
-            aPathCFG.SetBasicPath("$(prog)");
+            aPathCFG.SetBasicPath(u"$(prog)"_ustr);
         }
 
         // Create basic and load it
         // AppBasicDir is now a PATH
-        INetURLObject aAppBasic( SvtPathOptions().SubstituteVariable("$(progurl)") );
+        INetURLObject aAppBasic( SvtPathOptions().SubstituteVariable(u"$(progurl)"_ustr) );
         aAppBasic.insertName( Application::GetAppName() );
 
         BasicManager* pBasicManager = new BasicManager( new StarBASIC, &aAppBasicDir );
@@ -306,8 +306,8 @@ namespace basic
         // global constants
 
         // StarDesktop
-        Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
-        pBasicManager->SetGlobalUNOConstant( "StarDesktop", css::uno::Any( Desktop::create(xContext)));
+        const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
+        pBasicManager->SetGlobalUNOConstant( u"StarDesktop"_ustr, css::uno::Any( Desktop::create(xContext)));
 
         // (BasicLibraries and DialogLibraries have automatically been added in SetLibraryContainerInfo)
 
@@ -371,10 +371,10 @@ namespace basic
         Reference< XInterface > xNormalized( _rxDocumentModel, UNO_QUERY );
         DBG_ASSERT( _rxDocumentModel.is(), "ImplRepository::impl_getLocationForModel: invalid model!" );
 
-        return m_aStore.find(xNormalized) != m_aStore.end();
+        return m_aStore.contains(xNormalized);
     }
 
-    void ImplRepository::impl_initDocLibraryContainers_nothrow( const Reference< XPersistentLibraryContainer >& _rxBasicLibraries, const Reference< XPersistentLibraryContainer >& _rxDialogLibraries )
+    void ImplRepository::impl_initDocLibraryContainers_nothrow( const Reference<XStorageBasedLibraryContainer>& _rxBasicLibraries, const Reference<XStorageBasedLibraryContainer>& _rxDialogLibraries )
     {
         OSL_PRECOND( _rxBasicLibraries.is() && _rxDialogLibraries.is(),
             "ImplRepository::impl_initDocLibraryContainers_nothrow: illegal library containers, this will crash!" );
@@ -413,8 +413,8 @@ namespace basic
             // the document is not able to provide the storage it is based on.
             return false;
         }
-        Reference< XPersistentLibraryContainer > xBasicLibs;
-        Reference< XPersistentLibraryContainer > xDialogLibs;
+        Reference<XStorageBasedLibraryContainer> xBasicLibs;
+        Reference<XStorageBasedLibraryContainer> xDialogLibs;
         if ( !impl_getDocumentLibraryContainers_nothrow( _rxDocumentModel, xBasicLibs, xDialogLibs ) )
         {
             m_aStore.erase(location);
@@ -430,7 +430,7 @@ namespace basic
             OUString aAppBasicDir = SvtPathOptions().GetBasicPath();
 
             // Storage and BaseURL are only needed by binary documents!
-            tools::SvRef<SotStorage> xDummyStor = new SotStorage( OUString() );
+            rtl::Reference<SotStorage> xDummyStor = new SotStorage(OUString());
             _out_rpBasicManager.reset(new BasicManager( *xDummyStor, u"" /* TODO/LATER: xStorage */,
                                                                 pAppBasic,
                                                                 &aAppBasicDir, true ));
@@ -473,7 +473,7 @@ namespace basic
         _out_rpBasicManager->GetLib(0)->SetParent( pAppBasic );
 
         // global properties in the document's Basic
-        _out_rpBasicManager->SetGlobalUNOConstant( "ThisComponent", css::uno::Any( _rxDocumentModel ) );
+        _out_rpBasicManager->SetGlobalUNOConstant( u"ThisComponent"_ustr, css::uno::Any( _rxDocumentModel ) );
 
         // notify
         impl_notifyCreationListeners( _rxDocumentModel, *_out_rpBasicManager );
@@ -519,15 +519,15 @@ namespace basic
 
 
     bool ImplRepository::impl_getDocumentLibraryContainers_nothrow( const Reference< XModel >& _rxDocument,
-        Reference< XPersistentLibraryContainer >& _out_rxBasicLibraries, Reference< XPersistentLibraryContainer >& _out_rxDialogLibraries )
+        Reference<XStorageBasedLibraryContainer>& _out_rxBasicLibraries, Reference<XStorageBasedLibraryContainer>& _out_rxDialogLibraries )
     {
         _out_rxBasicLibraries.clear();
         _out_rxDialogLibraries.clear();
         try
         {
             Reference< XEmbeddedScripts > xScripts( _rxDocument, UNO_QUERY_THROW );
-            _out_rxBasicLibraries.set( xScripts->getBasicLibraries(), UNO_QUERY_THROW );
-            _out_rxDialogLibraries.set( xScripts->getDialogLibraries(), UNO_QUERY_THROW );
+            _out_rxBasicLibraries.set( xScripts->getBasicLibraries() );
+            _out_rxDialogLibraries.set( xScripts->getDialogLibraries() );
         }
         catch( const Exception& )
         {

@@ -32,6 +32,7 @@
 #include <vcl/event.hxx>
 #include <vcl/status.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/unohelp.hxx>
 
 #include <sfx2/app.hxx>
 #include <sfx2/stbitem.hxx>
@@ -47,7 +48,6 @@
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <toolkit/helper/convert.hxx>
 
 using namespace ::com::sun::star;
 
@@ -331,7 +331,7 @@ void SAL_CALL SfxStatusBarControl::paint(
     OutputDevice* pOutDev = VCLUnoHelper::GetOutputDevice( xGraphics );
     if ( pOutDev )
     {
-        ::tools::Rectangle aRect = VCLRectangle( rOutputRectangle );
+        ::tools::Rectangle aRect = vcl::unohelper::ConvertToVCLRect(rOutputRectangle);
         UserDrawEvent aUserDrawEvent(pOutDev, aRect, pBar->GetCurItemId());
         Paint( aUserDrawEvent );
     }
@@ -376,7 +376,7 @@ void SfxStatusBarControl::StateChangedAtStatusBarControl
         pBar->SetItemText( nSID, pStr->GetValue() );
     else
     {
-        DBG_ASSERT( eState != SfxItemState::DEFAULT || pState->isVoidItem(),
+        DBG_ASSERT( eState != SfxItemState::DEFAULT || IsDisabledItem(pState),
                     "wrong SfxPoolItem subclass in SfxStatusBarControl" );
         pBar->SetItemText( nSID, OUString() );
     }

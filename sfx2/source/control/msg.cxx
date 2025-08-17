@@ -35,20 +35,19 @@ SfxSlotKind SfxSlot::GetKind() const
         return SfxSlotKind::Attribute;
 }
 
-
 sal_uInt16 SfxSlot::GetWhich( const SfxItemPool &rPool ) const
 {
     if ( !nMasterSlotId || nMasterSlotId == USHRT_MAX )
-        const_cast<SfxSlot*>(this) -> nMasterSlotId = rPool.GetWhich(nSlotId);
+        return rPool.GetWhichIDFromSlotID(nSlotId);
     return nMasterSlotId;
 }
 
 OUString SfxSlot::GetCommand() const
 {
-    if("FocusToFindbar" == pUnoName)
-        return "vnd.sun.star.findbar:" + pUnoName;
+    if("FocusToFindbar" == aUnoName)
+        return "vnd.sun.star.findbar:" + aUnoName;
     else
-        return ".uno:" + pUnoName;
+        return ".uno:" + aUnoName;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -17,17 +17,20 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_SALINST_HXX
-#define INCLUDED_VCL_INC_SALINST_HXX
+#pragma once
 
 #include <sal/types.h>
 #include <rtl/ref.hxx>
+#include <vcl/ColorDialog.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/salgtype.hxx>
 #include <vcl/vclenum.hxx>
 
 #include "displayconnectiondispatch.hxx"
 
+#include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
+#include <com/sun/star/datatransfer/dnd/XDragSource.hpp>
+#include <com/sun/star/datatransfer/dnd/XDropTarget.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/ui/dialogs/XFilePicker2.hpp>
 #include <com/sun/star/ui/dialogs/XFolderPicker2.hpp>
@@ -77,17 +80,15 @@ class VCL_DLLPUBLIC SalInstance
 private:
     rtl::Reference< vcl::DisplayConnectionDispatch > m_pEventInst;
     const std::unique_ptr<comphelper::SolarMutex> m_pYieldMutex;
-    css::uno::Reference<css::uno::XInterface> m_clipboard;
+    css::uno::Reference<css::datatransfer::clipboard::XClipboard> m_clipboard;
 
 protected:
-    bool m_bSupportsBitmap32 = false;
     bool m_bSupportsOpenGL = false;
 
 public:
     SalInstance(std::unique_ptr<comphelper::SolarMutex> pMutex);
     virtual ~SalInstance();
 
-    bool supportsBitmap32() const { return m_bSupportsBitmap32; }
     bool supportsOpenGL() const { return m_bSupportsOpenGL; }
 
     //called directly after Application::Init
@@ -106,14 +107,23 @@ public:
 
     // VirtualDevice
     // nDX and nDY in pixels
-    // nBitCount: 0 == default(=as window) / 1 == mono
     // pData allows for using a system dependent graphics or device context,
     // if a system context is passed in nDX and nDY are updated to reflect
     // its size; otherwise these remain unchanged.
     virtual std::unique_ptr<SalVirtualDevice>
                             CreateVirtualDevice( SalGraphics& rGraphics,
+                                                 tools::Long nDX, tools::Long nDY,
+                                                 DeviceFormat eFormat,
+                                                 bool bAlphaMaskTransparent = false ) = 0;
+
+    // VirtualDevice
+    // nDX and nDY in pixels
+    // pData allows for using a system dependent graphics or device context,
+    // nDX and nDY are updated to reflect its size; otherwise these remain unchanged.
+    virtual std::unique_ptr<SalVirtualDevice>
+                            CreateVirtualDevice( SalGraphics& rGraphics,
                                                  tools::Long &rDX, tools::Long &rDY,
-                                                 DeviceFormat eFormat, const SystemGraphicsData *pData = nullptr ) = 0;
+                                                 DeviceFormat eFormat, const SystemGraphicsData& rData ) = 0;
 
     // Printer
     // pSetupData->mpDriverData can be 0
@@ -137,7 +147,7 @@ public:
 
     // YieldMutex
     comphelper::SolarMutex* GetYieldMutex();
-    sal_uInt32              ReleaseYieldMutexAll();
+    sal_uInt32              ReleaseYieldMutex(bool all);
     void                    AcquireYieldMutex(sal_uInt32 nCount = 1);
 
     // return true, if the current thread is the main thread
@@ -167,23 +177,28 @@ public:
                                                 bool bAllowCycleFocusOut, sal_uInt64 nLOKWindowId = 0);
     virtual weld::MessageDialog* CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType,
                                                      VclButtonsType eButtonType, const OUString& rPrimaryMessage);
+    virtual std::unique_ptr<weld::ColorChooserDialog>
+    CreateColorChooserDialog(weld::Window* pParent, vcl::ColorPickerMode eMode);
     virtual weld::Window* GetFrameWeld(const css::uno::Reference<css::awt::XWindow>& rWindow);
 
-    // methods for XDisplayConnection
+    // methods for DisplayConnectionDispatch
 
     void                    SetEventCallback( rtl::Reference< vcl::DisplayConnectionDispatch > const & pInstance )
         { m_pEventInst = pInstance; }
 
-    bool                    CallEventCallback( void const * pEvent, int nBytes );
-
-    virtual OUString        GetConnectionIdentifier() = 0;
+    bool CallEventCallback(const void* pEvent);
 
     // dtrans implementation
-    virtual css::uno::Reference< css::uno::XInterface > CreateClipboard( const css::uno::Sequence< css::uno::Any >& i_rArguments );
-    virtual css::uno::Reference<css::uno::XInterface> ImplCreateDragSource(const SystemEnvData*);
-    virtual css::uno::Reference<css::uno::XInterface> ImplCreateDropTarget(const SystemEnvData*);
-    css::uno::Reference<css::uno::XInterface> CreateDragSource(const SystemEnvData* = nullptr);
-    css::uno::Reference<css::uno::XInterface> CreateDropTarget(const SystemEnvData* = nullptr);
+    virtual css::uno::Reference<css::datatransfer::clipboard::XClipboard>
+    CreateClipboard(const css::uno::Sequence<css::uno::Any>& i_rArguments);
+    virtual css::uno::Reference<css::datatransfer::dnd::XDragSource>
+    ImplCreateDragSource(const SystemEnvData& rSysEnv);
+    virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget>
+    ImplCreateDropTarget(const SystemEnvData& rSysEnv);
+    css::uno::Reference<css::datatransfer::dnd::XDragSource>
+    CreateDragSource(const SystemEnvData& rSysEnv);
+    css::uno::Reference<css::datatransfer::dnd::XDropTarget>
+    CreateDropTarget(const SystemEnvData& rSysEnv);
     virtual void            AddToRecentDocumentList(const OUString& rFileUrl, const OUString& rMimeType, const OUString& rDocumentService) = 0;
 
     virtual bool            hasNativeFileSelection() const { return false; }
@@ -195,7 +210,6 @@ public:
 
     // callbacks for printer updates
     virtual void            updatePrinterUpdate() {}
-    virtual void            jobEndedPrinterUpdate() {}
 
     /// Set the app's (somewhat) magic/main-thread to this one.
     virtual void            updateMainThread() {}
@@ -203,16 +217,13 @@ public:
     virtual void            releaseMainThread() {}
 
     /// get information about underlying versions
-    virtual OUString        getOSVersion() { return "-"; }
+    virtual OUString        getOSVersion() { return u"-"_ustr; }
 
     virtual const cairo_font_options_t* GetCairoFontOptions() { return nullptr; }
 
     virtual void* CreateGStreamerSink(const SystemChildWindow*) { return nullptr; }
 
     virtual void BeforeAbort(const OUString& /* rErrorText */, bool /* bDumpCore */) {}
-
-    // Note: we cannot make this a global variable, because it might be initialised BEFORE the putenv() call in cppunittester.
-    static bool IsRunningUnitTest() { return getenv("LO_TESTNAME") != nullptr; }
 
     // both must be implemented, if the VCL plugin needs to run via system event loop
     virtual bool DoExecute(int &nExitCode);
@@ -226,7 +237,5 @@ void DestroySalInstance( SalInstance* pInst );
 void SalAbort( const OUString& rErrorText, bool bDumpCore );
 
 const OUString& SalGetDesktopEnvironment();
-
-#endif // INCLUDED_VCL_INC_SALINST_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

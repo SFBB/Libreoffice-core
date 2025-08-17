@@ -72,8 +72,6 @@ public:
     explicit RandomAnimationNode( sal_Int16 nPresetClass );
     RandomAnimationNode();
 
-    void init( sal_Int16 nPresetClass );
-
     // XInitialization
     void SAL_CALL initialize( const Sequence< Any >& aArguments ) override;
 
@@ -180,25 +178,20 @@ RandomAnimationNode::RandomAnimationNode( const RandomAnimationNode& rNode )
 }
 
 RandomAnimationNode::RandomAnimationNode( sal_Int16 nPresetClass )
+    : mnPresetClass(nPresetClass)
+    , mnFill(AnimationFill::DEFAULT)
+    , mnFillDefault(AnimationFill::INHERIT)
+    , mnRestart(AnimationRestart::DEFAULT)
+    , mnRestartDefault(AnimationRestart::INHERIT)
+    , mfAcceleration(0.0)
+    , mfDecelerate(0.0)
+    , mbAutoReverse(false)
 {
-    init( nPresetClass );
 }
 
 RandomAnimationNode::RandomAnimationNode()
+    : RandomAnimationNode(1)
 {
-    init( 1 );
-}
-
-void RandomAnimationNode::init( sal_Int16 nPresetClass )
-{
-    mnPresetClass = nPresetClass;
-    mnFill = AnimationFill::DEFAULT;
-    mnFillDefault = AnimationFill::INHERIT;
-    mnRestart = AnimationRestart::DEFAULT;
-    mnRestartDefault = AnimationRestart::INHERIT;
-    mfAcceleration = 0.0;
-    mfDecelerate = 0.0;
-    mbAutoReverse = false;
 }
 
 // XInitialization
@@ -438,6 +431,7 @@ void SAL_CALL RandomAnimationNode::setParent( const Reference< XInterface >& Par
 // XCloneable
 Reference< XCloneable > SAL_CALL RandomAnimationNode::createClone()
 {
+    std::unique_lock aGuard( maMutex );
     Reference< XCloneable > xNewNode( new RandomAnimationNode( *this ) );
     return xNewNode;
 }
@@ -464,7 +458,7 @@ Reference< XEnumeration > SAL_CALL RandomAnimationNode::createEnumeration()
         Any aTarget( mxFirstNode->getTarget() );
         if( aTarget.hasValue() )
         {
-            maTarget = aTarget;
+            maTarget = std::move(aTarget);
             mxFirstNode.clear();
         }
     }
@@ -529,11 +523,11 @@ Reference< XAnimationNode > SAL_CALL RandomAnimationNode::appendChild( const Ref
     {
         Any aTarget( xAnimate->getTarget() );
         if( aTarget.hasValue() )
-            maTarget = aTarget;
+            maTarget = std::move(aTarget);
     }
 
     if( !maTarget.hasValue() && !mxFirstNode.is() )
-        mxFirstNode = xAnimate;
+        mxFirstNode = std::move(xAnimate);
 
     return newChild;
 }
@@ -541,7 +535,7 @@ Reference< XAnimationNode > SAL_CALL RandomAnimationNode::appendChild( const Ref
 // XServiceInfo
 OUString RandomAnimationNode::getImplementationName()
 {
-    return "sd::RandomAnimationNode" ;
+    return u"sd::RandomAnimationNode"_ustr ;
 }
 
 // XServiceInfo
@@ -553,7 +547,7 @@ sal_Bool RandomAnimationNode::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > RandomAnimationNode::getSupportedServiceNames()
 {
-    return { "com.sun.star.animations.ParallelTimeContainer", "com.sun.star.comp.sd.RandomAnimationNode" };
+    return { u"com.sun.star.animations.ParallelTimeContainer"_ustr, u"com.sun.star.comp.sd.RandomAnimationNode"_ustr };
 }
 
 }

@@ -124,7 +124,7 @@ void ScDocShell::SetVisAreaOrSize( const tools::Rectangle& rVisArea )
         ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell();
         if (pViewSh)
         {
-            if (pViewSh->GetViewData().GetDocShell() == this)
+            if (&pViewSh->GetViewData().GetDocShell() == this)
                 pViewSh->UpdateOleZoom();
         }
     }
@@ -228,12 +228,12 @@ static void lcl_AdjustPool( SfxStyleSheetBasePool* pStylePool )
 
 void ScDocShell::LoadStyles( SfxObjectShell &rSource )
 {
-    m_pDocument->StylesToNames();
+    m_pDocument->getCellAttributeHelper().AllStylesToNames();
 
     SfxObjectShell::LoadStyles(rSource);
     lcl_AdjustPool( GetStyleSheetPool() );      // adjust SetItems
 
-    m_pDocument->UpdStlShtPtrsFrmNms();
+    m_pDocument->getCellAttributeHelper().UpdateAllStyleSheets(*m_pDocument);
 
     UpdateAllRowHeights();
 
@@ -295,7 +295,7 @@ void ScDocShell::LoadStylesArgs( ScDocShell& rSource, bool bReplace, bool bCellS
     for ( sal_uInt16 i = 0; i < nFound; ++i )
     {
         pStyles[i].pDest->GetItemSet().PutExtended(
-            pStyles[i].pSource->GetItemSet(), SfxItemState::DONTCARE, SfxItemState::DEFAULT);
+            pStyles[i].pSource->GetItemSet(), SfxItemState::INVALID, SfxItemState::DEFAULT);
         if(pStyles[i].pSource->HasParentSupport())
             pStyles[i].pDest->SetParent(pStyles[i].pSource->GetParent());
         // follow is never used
@@ -352,7 +352,7 @@ void ScDocShell::UpdateLinks()
         OUString aDocName = m_pDocument->GetLinkDoc(i);
         OUString aFltName = m_pDocument->GetLinkFlt(i);
         OUString aOptions = m_pDocument->GetLinkOpt(i);
-        sal_uLong nRefresh  = m_pDocument->GetLinkRefreshDelay(i);
+        sal_Int32 nRefresh  = m_pDocument->GetLinkRefreshDelay(i);
         bool bThere = false;
         for (SCTAB j = 0; j < i && !bThere; ++j)                // several times in the document?
         {
@@ -374,7 +374,7 @@ void ScDocShell::UpdateLinks()
 
         if (!bThere)
         {
-            ScTableLink* pLink = new ScTableLink( this, aDocName, aFltName, aOptions, nRefresh );
+            ScTableLink* pLink = new ScTableLink( *this, aDocName, aFltName, aOptions, nRefresh );
             pLink->SetInCreate(true);
             pLinkManager->InsertFileLink(*pLink, sfx2::SvBaseLinkObjectType::ClientFile, aDocName, &aFltName);
             pLink->Update();
@@ -434,11 +434,14 @@ void ScDocShell::SetFormulaOptions( const ScFormulaOptions& rOpt, bool bForLoadi
      * once, for the very first document, empty or loaded. */
     static bool bInitOnce = true;
 
-    if (!bForLoading || bInitOnce)
+    // LOKit may need to juggle different symbols lists for different users so a
+    // single load is not enough, otherwise the wrong separators may be expected
+    // for the users locale
+    if (!bForLoading || bInitOnce || comphelper::LibreOfficeKit::isActive())
     {
         bool bForceInit = bInitOnce;
         bInitOnce = false;
-        if (bForceInit || rOpt.GetUseEnglishFuncName() != SC_MOD()->GetFormulaOptions().GetUseEnglishFuncName())
+        if (bForceInit || rOpt.GetUseEnglishFuncName() != ScModule::get()->GetFormulaOptions().GetUseEnglishFuncName())
         {
             // This needs to be called first since it may re-initialize the entire
             // opcode map.
@@ -479,7 +482,7 @@ void ScDocShell::CheckConfigOptions()
     OUString aDecSep = ScGlobal::getLocaleData().getNumDecimalSep();
     OUString aDecSepAlt = ScGlobal::getLocaleData().getNumDecimalSepAlt();
 
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     const ScFormulaOptions& rOpt=pScMod->GetFormulaOptions();
     const OUString& aSepArg = rOpt.GetFormulaSepArg();
     const OUString& aSepArrRow = rOpt.GetFormulaSepArrayRow();
@@ -491,18 +494,19 @@ void ScDocShell::CheckConfigOptions()
         // One of arg separators conflicts with the current decimal
         // separator.  Reset them to default.
         ScFormulaOptions aNew = rOpt;
+        aNew.GetCalcConfig().MergeDocumentSpecific(m_pDocument->GetCalcConfig());
         aNew.ResetFormulaSeparators();
         SetFormulaOptions(aNew);
         pScMod->SetFormulaOptions(aNew);
 
         // Launch a nice warning dialog to let the users know of this change.
-        ScTabViewShell* pViewShell = GetBestViewShell();
+        ScTabViewShell* pViewShell = comphelper::LibreOfficeKit::isActive() ? nullptr : GetBestViewShell();
         if (pViewShell)
         {
-            std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(pViewShell->GetFrameWeld(),
+            std::shared_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(pViewShell->GetFrameWeld(),
                                                           VclMessageType::Info, VclButtonsType::Ok,
-                                                          ScResId(STR_OPTIONS_WARN_SEPARATORS)));
-            xInfoBox->run();
+                                                          ScResId(STR_OPTIONS_WARN_SEPARATORS), pViewShell));
+            xInfoBox->runAsync(xInfoBox, [] (int) {});
         }
 
         // For now, this is the only option setting that could launch info

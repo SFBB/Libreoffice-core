@@ -30,6 +30,7 @@
 #include <editeng/flditem.hxx>
 
 #include <svl/sharedstringpool.hxx>
+#include <rtl/ustrbuf.hxx>
 
 #include <libxml/xmlwriter.h>
 #include <algorithm>
@@ -86,7 +87,7 @@ const XParaPortion& XParaPortionList::operator [](size_t i) const
 
 ContentInfo::ContentInfo( SfxItemPool& rPool ) :
     eFamily(SfxStyleFamily::Para),
-    aParaAttribs(rPool)
+    aParaAttribs(SfxItemSet::makeFixedSfxItemSet<EE_PARA_START, EE_CHAR_END>(rPool))
 {
 }
 
@@ -95,7 +96,7 @@ ContentInfo::ContentInfo( const ContentInfo& rCopyFrom, SfxItemPool& rPoolToUse 
     maText(rCopyFrom.maText),
     aStyle(rCopyFrom.aStyle),
     eFamily(rCopyFrom.eFamily),
-    aParaAttribs(rPoolToUse)
+    aParaAttribs(SfxItemSet::makeFixedSfxItemSet<EE_PARA_START, EE_CHAR_END>(rPoolToUse))
 {
     // this should ensure that the Items end up in the correct Pool!
     aParaAttribs.Set( rCopyFrom.GetParaAttribs() );
@@ -124,6 +125,12 @@ OUString ContentInfo::GetText() const
 {
     rtl_uString* p = const_cast<rtl_uString*>(maText.getData());
     return OUString(p);
+}
+
+sal_Int32 ContentInfo::GetTextLen() const
+{
+    const rtl_uString* p = maText.getData();
+    return p->length;
 }
 
 void ContentInfo::SetText( const OUString& rStr )
@@ -376,10 +383,10 @@ ContentInfo* EditTextObjectImpl::CreateAndInsertContent()
 sal_Int32 EditTextObjectImpl::GetParagraphCount() const
 {
     size_t nSize = maContents.size();
-    if (nSize > EE_PARA_MAX_COUNT)
+    if (nSize > EE_PARA_MAX)
     {
         SAL_WARN( "editeng", "EditTextObjectImpl::GetParagraphCount - overflow " << nSize);
-        return EE_PARA_MAX_COUNT;
+        return EE_PARA_MAX;
     }
     return static_cast<sal_Int32>(nSize);
 }
@@ -390,6 +397,34 @@ OUString EditTextObjectImpl::GetText(sal_Int32 nPara) const
         return OUString();
 
     return maContents[nPara]->GetText();
+}
+
+OUString EditTextObjectImpl::GetText(LineEnd eEnd) const
+{
+    const size_t nParas = maContents.size();
+    if (nParas == 0)
+        return OUString();
+
+    const OUString aSep = EditDoc::GetSepStr(eEnd);
+
+    OUStringBuffer aBuffer;
+
+    for (size_t nPara = 0; nPara < nParas; ++nPara)
+    {
+        if (!aSep.isEmpty() && nPara > 0)
+            aBuffer.append(aSep);
+        aBuffer.append(maContents[nPara]->GetText());
+    }
+
+    return aBuffer.makeStringAndClear();
+}
+
+sal_Int32 EditTextObjectImpl::GetTextLen(sal_Int32 nPara ) const
+{
+    if (nPara < 0 || o3tl::make_unsigned(nPara) >= maContents.size())
+        return 0;
+
+    return maContents[nPara]->GetTextLen();
 }
 
 void EditTextObjectImpl::ClearPortionInfo()

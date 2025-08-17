@@ -42,6 +42,7 @@
 #include <editeng/twolinesitem.hxx>
 #include <editeng/charhiddenitem.hxx>
 #include <editeng/boxitem.hxx>
+#include <editeng/nhypitem.hxx>
 #include <editeng/shaditem.hxx>
 #include <viewopt.hxx>
 #include <charfmt.hxx>
@@ -60,9 +61,10 @@
  * stack, the top most attribute on the stack is valid. Because some
  * kinds of attributes have to be pushed to the same stacks we map their
  * ids to stack ids
- * Attention: The first NUM_DEFAULT_VALUES ( defined in swfntcch.hxx )
+ * Attention: Stacks for character attributes (RES_CHRATR_*)
  * are stored in the defaultitem-cache, if you add one, you have to increase
- * NUM_DEFAULT_VALUES.
+ * NUM_DEFAULT_VALUES (defined in swfntcch.hxx), and ensure your new stack id
+ * is below this number.
  * Also adjust NUM_ATTRIBUTE_STACKS in atrhndl.hxx.
  */
 const sal_uInt8 StackPos[ RES_TXTATR_WITHEND_END - RES_CHRATR_BEGIN + 1 ] =
@@ -112,18 +114,19 @@ const sal_uInt8 StackPos[ RES_TXTATR_WITHEND_END - RES_CHRATR_BEGIN + 1 ] =
     38, // RES_CHRATR_HIGHLIGHT,                 // 42
      0, // RES_CHRATR_GRABBAG,                   // 43
      0, // RES_CHRATR_BIDIRTL,                   // 44
-     0, // RES_CHRATR_IDCTHINT,                  // 45
-    39, // RES_TXTATR_REFMARK,                   // 46
-    40, // RES_TXTATR_TOXMARK,                   // 47
-    41, // RES_TXTATR_META,                      // 48
-    41, // RES_TXTATR_METAFIELD,                 // 49
-     0, // RES_TXTATR_AUTOFMT,                   // 50
-     0, // RES_TXTATR_INETFMT                    // 51
-     0, // RES_TXTATR_CHARFMT,                   // 52
-    42, // RES_TXTATR_CJK_RUBY,                  // 53
-     0, // RES_TXTATR_UNKNOWN_CONTAINER,         // 54
-    43, // RES_TXTATR_INPUTFIELD                 // 55
-    44, // RES_TXTATR_CONTENTCONTROL             // 56
+     0, // RES_CHRATR_UNUSED3,                   // 45
+    39, // RES_CHRATR_SCRIPT_HINT,               // 46
+    40, // RES_TXTATR_REFMARK,                   // 47
+    41, // RES_TXTATR_TOXMARK,                   // 48
+    42, // RES_TXTATR_META,                      // 49
+    42, // RES_TXTATR_METAFIELD,                 // 50
+     0, // RES_TXTATR_AUTOFMT,                   // 51
+     0, // RES_TXTATR_INETFMT                    // 52
+     0, // RES_TXTATR_CHARFMT,                   // 53
+    43, // RES_TXTATR_CJK_RUBY,                  // 54
+     0, // RES_TXTATR_UNKNOWN_CONTAINER,         // 55
+    44, // RES_TXTATR_INPUTFIELD                 // 56
+    45, // RES_TXTATR_CONTENTCONTROL             // 57
 };
 
 namespace CharFormat
@@ -340,15 +343,19 @@ void SwAttrHandler::PushAndChg( const SwTextAttr& rAttr, SwFont& rFnt )
     // they have to be pushed to each stack they belong to
     if ( RES_TXTATR_INETFMT == rAttr.Which() ||
          RES_TXTATR_CHARFMT == rAttr.Which() ||
+         RES_PARATR_LIST_AUTOFMT == rAttr.Which() ||
          RES_TXTATR_AUTOFMT == rAttr.Which() )
     {
-        const SfxItemSet* pSet = CharFormat::GetItemSet( rAttr.GetAttr() );
+        const SfxItemSet* pSet = rAttr.Which() == RES_PARATR_LIST_AUTOFMT
+            ? rAttr.GetAttr().StaticWhichCast(RES_PARATR_LIST_AUTOFMT).GetStyleHandle().get()
+            : CharFormat::GetItemSet( rAttr.GetAttr() );
         if ( !pSet ) return;
 
+        bool const inParent{rAttr.Which() != RES_TXTATR_AUTOFMT && rAttr.Which() != RES_PARATR_LIST_AUTOFMT};
         for ( sal_uInt16 i = RES_CHRATR_BEGIN; i < RES_CHRATR_END; i++)
         {
             const SfxPoolItem* pItem;
-            bool bRet = SfxItemState::SET == pSet->GetItemState( i, rAttr.Which() != RES_TXTATR_AUTOFMT, &pItem );
+            bool bRet = SfxItemState::SET == pSet->GetItemState(i, inParent, &pItem);
 
             if ( bRet )
             {
@@ -366,6 +373,13 @@ void SwAttrHandler::PushAndChg( const SwTextAttr& rAttr, SwFont& rFnt )
                         FontChg( *pItem, rFnt, true );
                 }
             }
+        }
+
+        if (rAttr.Which() == RES_TXTATR_INETFMT)
+        {
+            if (m_nINETFMT == 0)
+                rFnt.SetURL(true);
+            ++m_nINETFMT;
         }
     }
     // this is the usual case, we have a basic attribute, push it onto the
@@ -433,6 +447,14 @@ void SwAttrHandler::PopAndChg( const SwTextAttr& rAttr, SwFont& rFnt )
         const SfxItemSet* pSet = CharFormat::GetItemSet( rAttr.GetAttr() );
         if ( !pSet ) return;
 
+        if (rAttr.Which() == RES_TXTATR_INETFMT)
+        {
+            assert(m_nINETFMT > 0);
+            --m_nINETFMT;
+            if (m_nINETFMT == 0)
+                rFnt.SetURL(false);
+        }
+
         for ( sal_uInt16 i = RES_CHRATR_BEGIN; i < RES_CHRATR_END; i++)
         {
             const SfxPoolItem* pItem;
@@ -472,8 +494,7 @@ void SwAttrHandler::Pop( const SwTextAttr& rAttr )
 
 void SwAttrHandler::ActivateTop( SwFont& rFnt, const sal_uInt16 nAttr )
 {
-    OSL_ENSURE( nAttr < RES_TXTATR_WITHEND_END,
-            "I cannot activate this attribute, nWhich >= RES_TXTATR_WITHEND_END" );
+    assert(nAttr < RES_TXTATR_WITHEND_END);
 
     const sal_uInt16 nStackPos = StackPos[ nAttr ];
     const SwTextAttr* pTopAt = GetTop(nStackPos);
@@ -615,8 +636,16 @@ void SwAttrHandler::FontChg(const SfxPoolItem& rItem, SwFont& rFnt, bool bPush )
                                           CharFormat::GetItem( *pTopAt, RES_CHRATR_HIDDEN ) :
                                           m_pDefaultArray[ nStackPos ];
 
+            const sal_uInt16 nStackPos2 = StackPos[ RES_CHRATR_NOHYPHEN ];
+            const SwTextAttr* pTopAt2 = GetTop(nStackPos2);
+
+            const SfxPoolItem* pTmpItem2 = pTopAt2 ?
+                                          CharFormat::GetItem( *pTopAt2, RES_CHRATR_NOHYPHEN ) :
+                                          m_pDefaultArray[ nStackPos2 ];
+
             if ((m_pShell && !m_pShell->GetWin()) ||
-                (pTmpItem && !pTmpItem->StaticWhichCast(RES_CHRATR_HIDDEN).GetValue()) )
+                (pTmpItem && !pTmpItem->StaticWhichCast(RES_CHRATR_HIDDEN).GetValue()) ||
+                (pTmpItem2 && !pTmpItem2->StaticWhichCast(RES_CHRATR_NOHYPHEN).GetValue()) )
             {
                 rFnt.SetUnderline( rItem.StaticWhichCast(RES_CHRATR_UNDERLINE).GetLineStyle() );
                 rFnt.SetUnderColor( rItem.StaticWhichCast(RES_CHRATR_UNDERLINE).GetColor() );
@@ -670,6 +699,19 @@ void SwAttrHandler::FontChg(const SfxPoolItem& rItem, SwFont& rFnt, bool bPush )
             break;
         case RES_CHRATR_HIGHLIGHT :
             rFnt.SetHighlightColor( rItem.StaticWhichCast(RES_CHRATR_HIGHLIGHT).GetColor() );
+            break;
+        case RES_CHRATR_NOHYPHEN :
+            if ( m_pShell && m_pShell->GetWin() &&
+                            m_pShell->GetViewOptions()->IsViewMetaChars() )
+            {
+                if ( rItem.StaticWhichCast(RES_CHRATR_NOHYPHEN).GetValue() )
+                {
+                    rFnt.SetUnderline( LINESTYLE_DOTTED );
+                    rFnt.SetUnderColor( COL_LIGHTGRAY );
+                }
+                else
+                    ActivateTop( rFnt, RES_CHRATR_UNDERLINE );
+            }
             break;
         case RES_CHRATR_CJK_FONT :
         {

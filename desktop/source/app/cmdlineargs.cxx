@@ -83,10 +83,9 @@ public:
 
     virtual std::optional< OUString > getCwdUrl() override { return m_cwdUrl; }
 
-    virtual bool next(OUString * argument) override {
-        OSL_ASSERT(argument != nullptr);
+    virtual bool next(OUString& argument) override {
         if (m_index < m_count) {
-            rtl_getAppCommandArg(m_index++, &argument->pData);
+            rtl_getAppCommandArg(m_index++, &argument.pData);
             return true;
         } else {
             return false;
@@ -166,7 +165,7 @@ CommandLineEvent CheckOfficeURI(/* in,out */ OUString& arg, CommandLineEvent cur
     if (nURIlen < 0)
         nURIlen = rest2.getLength();
     auto const uri = rest2.subView(0, nURIlen);
-    if (INetURLObject(uri).GetProtocol() == INetProtocol::Macro) {
+    if (INetURLObject(uri).IsExoticProtocol()) {
         // Let the "Open" machinery process the full command URI (leading to failure, by intention,
         // as the "Open" machinery does not know about those command URI schemes):
         curEvt = CommandLineEvent::Open;
@@ -285,7 +284,7 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
     for (;;)
     {
         OUString aArg;
-        if ( !supplier.next( &aArg ) )
+        if ( !supplier.next(aArg) )
         {
             break;
         }
@@ -410,7 +409,7 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
 
                 // We specifically need to consume the following 2 arguments
                 // for --protector
-                if ((!supplier.next(&aArg) || !supplier.next(&aArg)) && m_unknown.isEmpty())
+                if ((!supplier.next(aArg) || !supplier.next(aArg)) && m_unknown.isEmpty())
                     m_unknown = "--protector must be followed by two arguments";
             }
             else if ( oArg == "version" )
@@ -523,7 +522,7 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
                 // Print to special printer
                 eCurrentEvent = CommandLineEvent::PrintTo;
                 // first argument after "-pt" must be the printer name
-                if (supplier.next(&aArg))
+                if (supplier.next(aArg))
                     m_printername = aArg;
                 else if (m_unknown.isEmpty())
                     m_unknown = "--pt must be followed by printername";
@@ -538,10 +537,12 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
                 // open in viewmode
                 eCurrentEvent = CommandLineEvent::View;
             }
-            else if ( oArg == "show" )
+            else if (oArg == "show" || oArg.startsWith("show=", &rest))
             {
                 // open in viewmode
                 eCurrentEvent = CommandLineEvent::Start;
+                // start on the first slide unless a valid starting slide # was provided
+                m_startListParams = rest.toUInt32() > 0 ? rest : u"1"_ustr;
             }
             else if ( oArg == "display" )
             {
@@ -550,13 +551,13 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
                 // --display and its argument are handled "out of line"
                 // in Unix-only desktop/unx/source/splashx.c and vcl/unx/*,
                 // and just ignored here
-                (void)supplier.next(&aArg);
+                (void)supplier.next(aArg);
             }
             else if ( oArg == "convert-to" )
             {
                 eCurrentEvent = CommandLineEvent::Conversion;
                 // first argument must be the params
-                if (supplier.next(&aArg))
+                if (supplier.next(aArg))
                 {
                     m_conversionparams = aArg;
                     // It doesn't make sense to use convert-to without headless.
@@ -574,7 +575,7 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
                 if (eCurrentEvent == CommandLineEvent::BatchPrint)
                 {
                     // first argument is the printer name
-                    if (supplier.next(&aArg))
+                    if (supplier.next(aArg))
                         m_printername = aArg;
                     else if (m_unknown.isEmpty())
                         m_unknown = "--printer-name must be followed by printername";
@@ -589,7 +590,7 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
                 if (eCurrentEvent == CommandLineEvent::Conversion ||
                     eCurrentEvent == CommandLineEvent::BatchPrint)
                 {
-                    if (supplier.next(&aArg))
+                    if (supplier.next(aArg))
                         m_conversionout = aArg;
                     else if (m_unknown.isEmpty())
                         m_unknown = "--outdir must be followed by output directory path";
@@ -602,7 +603,7 @@ void CommandLineArgs::ParseCommandLine_Impl( Supplier& supplier )
             else if ( eCurrentEvent == CommandLineEvent::Conversion
                       && oArg == "convert-images-to" )
             {
-                if (supplier.next(&aArg))
+                if (supplier.next(aArg))
                     m_convertimages = aArg;
                 else if (m_unknown.isEmpty())
                     m_unknown = "--convert-images-to must be followed by an image type";
@@ -734,6 +735,11 @@ bool CommandLineArgs::HasModuleParam() const
 {
     return m_writer || m_calc || m_draw || m_impress || m_global || m_math
         || m_web || m_base;
+}
+
+void CommandLineArgs::RemoveFilesFromOpenListEndingWith(const OUString& rExt)
+{
+    std::erase_if(m_openlist, [rExt](OUString url) { return url.endsWithIgnoreAsciiCase(rExt); });
 }
 
 std::vector< OUString > CommandLineArgs::GetOpenList() const

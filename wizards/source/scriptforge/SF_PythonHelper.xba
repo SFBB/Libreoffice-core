@@ -446,7 +446,7 @@ Public Function PyGlobalScope(ByVal Library As Variant) As Object
 &apos;&apos;&apos;	Returns:
 &apos;&apos;&apos;		The GlobalScope value
 &apos;&apos;&apos;	Example: (Python code)
-&apos;&apos;&apos;	    MsgBox bas.GlobalScope.BasicLibraries()
+&apos;&apos;&apos;	    bas.Xray(bas.GlobalScope.BasicLibraries())
 
 Const cstThisSub = &quot;Basic.GlobalScope.BasicLibraries&quot;	&apos;	or DialogLibraries
 Const cstSubArgs = &quot;&quot;
@@ -551,6 +551,39 @@ Catch:
 	GoTo Finally
 End Function	&apos;	ScriptForge.SF_PythonHelper.PyMsgBox
 
+REM -----------------------------------------------------------------------------
+Public Sub PyWait(ByVal Millisec As Variant)
+&apos;&apos;&apos;	Convenient function to replicate Wait() in Python scripts
+&apos;&apos;&apos;	This method is normally not necessary. But constructions like:
+&apos;&apos;&apos;		import time
+&apos;&apos;&apos;		while True:
+&apos;&apos;&apos;			time.sleep(1)
+&apos;&apos;&apos;	have the drawback to often freeze the LibreOffice user interface.
+&apos;&apos;&apos;		basic = CreateScriptService(&apos;Basic&apos;)
+&apos;&apos;&apos;		white True:
+&apos;&apos;&apos;			basic.Wait(1000)
+&apos;&apos;&apos;	might be a good alternative, although less precise due to the Python/Basic exchanges.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		Millisec: the amount of time (in milliseconds) to wait before the program is continued
+
+Const cstThisSub = &quot;Basic.Wait&quot;
+Const cstSubArgs = &quot;millisec&quot;
+
+	If SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+
+Check:
+	SF_Utils._EnterFunction(cstThisSub, cstSubArgs)
+
+Try:
+	Wait Millisec
+
+Finally:
+	SF_Utils._ExitFunction(cstThisSub)
+	Exit Sub
+Catch:
+	GoTo Finally
+End Sub	&apos;	ScriptForge.SF_PythonHelper.PyWait
+
 REM ============================================================= PRIVATE METHODS
 
 REM -----------------------------------------------------------------------------
@@ -635,7 +668,7 @@ Check:
 	&apos;	Reinterpret arguments one by one into vArgs
 	&apos;	- convert UNO dates/times
 	&apos;	- identify conventional NoArgs/Empty/Null/Missing constants
-	&apos;	- convert arrays of property values into DictionarY
+	&apos;	- convert arrays of property values into Dictionary
 	iNbArgs = -1
 	vArgs = Array()
 
@@ -667,7 +700,8 @@ Check:
 				If IsArray(vArg) Then
 					If UBound(vArg) &gt;= 0 Then
 						If sess.UnoObjectType(vArg(0)) = &quot;com.sun.star.beans.PropertyValue&quot; Then
-							Set oDict = CreateScriptService(&quot;ScriptForge.Dictionary&quot;)
+							&apos;	Create a dictionary - keys in Python dicts are case-sensitive
+							Set oDict = CreateScriptService(&quot;ScriptForge.Dictionary&quot;, True)
 							oDict.ImportFromPropertyValues(vArg, Overwrite := True)
 							vArg = oDict
 						End If
@@ -774,6 +808,10 @@ Try:
 					vReturn = vBasicObject.Properties()
 				Else
 					Select Case sServiceName
+						Case &quot;ScriptForge.SF_Session&quot;
+							Select Case Script
+								Case &quot;GetRangeFromCalc&quot;	:	vReturn = vBasicObject.GetRangeFromCalc(vArgs(0), vArgs(1))
+							End Select
 						Case &quot;SFDatabases.Database&quot;
 							If Script = &quot;GetRows&quot; Then		vReturn = vBasicObject.GetRows(vArgs(0), vArgs(1), vArgs(2), vArgs(3))
 						Case &quot;SFDatabases.Dataset&quot;
@@ -784,12 +822,14 @@ Try:
 							If Script = &quot;SetTableData&quot; Then	vReturn = vBasicObject.SetTableData(vArgs(0), vArgs(1), vArgs(2))
 						Case &quot;SFDocuments.Document&quot;
 							Select Case Script
+								Case &quot;ContextMenus&quot;		:	vReturn = vBasicObject.ContextMenus(vArgs(0), vArgs(1))
 								Case &quot;Forms&quot;			:	vReturn = vBasicObject.Forms(vArgs(0))
 								Case &quot;Styles&quot;			:	vReturn = vBasicObject.Styles(vArgs(0), vArgs(1), vArgs(2), vArgs(3), vArgs(4), vArgs(5))
 								Case &quot;Toolbars&quot;			:	vReturn = vBasicObject.Toolbars(vArgs(0))
 							End Select
 						Case &quot;SFDocuments.Base&quot;
 							Select Case Script
+								Case &quot;ContextMenus&quot;		:	vReturn = vBasicObject.ContextMenus(vArgs(0), vArgs(1))
 								Case &quot;FormDocuments&quot;	:	vReturn = vBasicObject.FormDocuments()
 								Case &quot;Forms&quot;			:	vReturn = vBasicObject.Forms(vArgs(0), vArgs(1))
 								Case &quot;Toolbars&quot;			:	vReturn = vBasicObject.Toolbars(vArgs(0))
@@ -797,6 +837,7 @@ Try:
 						Case &quot;SFDocuments.Calc&quot;
 							Select Case Script
 								Case &quot;Charts&quot;			:	vReturn = vBasicObject.Charts(vArgs(0), vArgs(1))
+								Case &quot;ContextMenus&quot;		:	vReturn = vBasicObject.ContextMenus(vArgs(0), vArgs(1))
 								Case &quot;Forms&quot;			:	vReturn = vBasicObject.Forms(vArgs(0), vArgs(1))
 								Case &quot;GetFormula&quot;		:	vReturn = vBasicObject.GetFormula(vArgs(0))
 								Case &quot;GetValue&quot;			:	vReturn = vBasicObject.GetValue(vArgs(0))
@@ -815,11 +856,13 @@ Try:
 							If Script = &quot;Controls&quot; Then		vReturn = vBasicObject.Controls(vArgs(0))
 						Case &quot;SFDocuments.FormDocument&quot;
 							Select Case Script
+								Case &quot;ContextMenus&quot;		:	vReturn = vBasicObject.ContextMenus(vArgs(0), vArgs(1))
 								Case &quot;Forms&quot;			:	vReturn = vBasicObject.Forms(vArgs(0))
 								Case &quot;Toolbars&quot;			:	vReturn = vBasicObject.Toolbars(vArgs(0))
 							End Select
 						Case &quot;SFDocuments.Writer&quot;
 							Select Case Script
+								Case &quot;ContextMenus&quot;		:	vReturn = vBasicObject.ContextMenus(vArgs(0), vArgs(1))
 								Case &quot;Forms&quot;			:	vReturn = vBasicObject.Forms(vArgs(0))
 								Case &quot;Styles&quot;			:	vReturn = vBasicObject.Styles(vArgs(0), vArgs(1), vArgs(2), vArgs(3), vArgs(4), vArgs(5))
 								Case &quot;Toolbars&quot;			:	vReturn = vBasicObject.Toolbars(vArgs(0))
@@ -964,6 +1007,10 @@ Try:
 		If VarType(vReturn) = V_DATE Then vReturnArray(0) = CDateToUnoDateTime(vReturn) Else vReturnArray(0) = vReturn
 		vReturnArray(1) = VarType(vReturn)
 	End If
+
+	&apos;	Tests with non-modal dialogs and sleeping (time.sleep) Python processes show
+	&apos;	a more fluid reactivity when next statement is present, at a minimal cost.
+	Wait 0
 
 	_PythonDispatcher = vReturnArray
 		

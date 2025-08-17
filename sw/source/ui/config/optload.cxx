@@ -486,60 +486,38 @@ static bool lcl_isPropertyReadOnly(const SwCapObjType eType, const CapConfigProp
     return bReadOnly;
 }
 
-sal_uInt32 SwFieldUnitTable::Count()
-{
-    return SAL_N_ELEMENTS(STR_ARR_METRIC);
-}
-
-OUString SwFieldUnitTable::GetString(sal_uInt32 nPos)
-{
-    if (RESARRAY_INDEX_NOTFOUND != nPos && nPos < Count())
-        return SwResId(STR_ARR_METRIC[nPos].first);
-    return OUString();
-}
-
-FieldUnit SwFieldUnitTable::GetValue(sal_uInt32 nPos)
-{
-    if (RESARRAY_INDEX_NOTFOUND != nPos && nPos < Count())
-        return STR_ARR_METRIC[nPos].second;
-    return FieldUnit::NONE;
-}
-
 SwLoadOptPage::SwLoadOptPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/optgeneralpage.ui", "OptGeneralPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/optgeneralpage.ui"_ustr, u"OptGeneralPage"_ustr, &rSet)
     , m_pWrtShell(nullptr)
     , m_nLastTab(0)
     , m_nOldLinkMode(MANUAL)
-    , m_xAlwaysRB(m_xBuilder->weld_radio_button("always"))
-    , m_xRequestRB(m_xBuilder->weld_radio_button("onrequest"))
-    , m_xNeverRB(m_xBuilder->weld_radio_button("never"))
-    , m_xGridupdatelink(m_xBuilder->weld_widget("gridupdatelink"))
-    , m_xUpdateLinkImg(m_xBuilder->weld_widget("lockupdatelink"))
-    , m_xAutoUpdateFields(m_xBuilder->weld_check_button("updatefields"))
-    , m_xAutoUpdateFieldsImg(m_xBuilder->weld_widget("lockupdatefields"))
-    , m_xAutoUpdateCharts(m_xBuilder->weld_check_button("updatecharts"))
-    , m_xAutoUpdateChartsImg(m_xBuilder->weld_widget("lockupdatecharts"))
-    , m_xMetricLB(m_xBuilder->weld_combo_box("metric"))
-    , m_xMetricImg(m_xBuilder->weld_widget("lockmetric"))
-    , m_xTabFT(m_xBuilder->weld_label("tablabel"))
-    , m_xTabMF(m_xBuilder->weld_metric_spin_button("tab", FieldUnit::CM))
-    , m_xTabImg(m_xBuilder->weld_widget("locktab"))
-    , m_xUseSquaredPageMode(m_xBuilder->weld_check_button("squaremode"))
-    , m_xUseSquaredPageModeImg(m_xBuilder->weld_widget("locksquaremode"))
-    , m_xUseCharUnit(m_xBuilder->weld_check_button("usecharunit"))
-    , m_xUseCharUnitImg(m_xBuilder->weld_widget("lockusecharunit"))
-    , m_xWordCountED(m_xBuilder->weld_entry("wordcount"))
-    , m_xWordCountImg(m_xBuilder->weld_widget("lockwordcount"))
-    , m_xShowStandardizedPageCount(m_xBuilder->weld_check_button("standardizedpageshow"))
-    , m_xShowStandardizedPageCountImg(m_xBuilder->weld_widget("lockstandardizedpageshow"))
-    , m_xStandardizedPageSizeNF(m_xBuilder->weld_spin_button("standardpagesize"))
-    , m_xStandardizedPageSizeImg(m_xBuilder->weld_widget("lockstandardpagesize"))
+    , m_xAlwaysRB(m_xBuilder->weld_radio_button(u"always"_ustr))
+    , m_xRequestRB(m_xBuilder->weld_radio_button(u"onrequest"_ustr))
+    , m_xNeverRB(m_xBuilder->weld_radio_button(u"never"_ustr))
+    , m_xGridupdatelink(m_xBuilder->weld_widget(u"gridupdatelink"_ustr))
+    , m_xUpdateLinkImg(m_xBuilder->weld_widget(u"lockupdatelink"_ustr))
+    , m_xAutoUpdateFields(m_xBuilder->weld_check_button(u"updatefields"_ustr))
+    , m_xAutoUpdateFieldsImg(m_xBuilder->weld_widget(u"lockupdatefields"_ustr))
+    , m_xAutoUpdateCharts(m_xBuilder->weld_check_button(u"updatecharts"_ustr))
+    , m_xAutoUpdateChartsImg(m_xBuilder->weld_widget(u"lockupdatecharts"_ustr))
+    , m_xMetricLB(m_xBuilder->weld_combo_box(u"metric"_ustr))
+    , m_xMetricImg(m_xBuilder->weld_widget(u"lockmetric"_ustr))
+    , m_xTabFT(m_xBuilder->weld_label(u"tablabel"_ustr))
+    , m_xTabMF(m_xBuilder->weld_metric_spin_button(u"tab"_ustr, FieldUnit::CM))
+    , m_xTabImg(m_xBuilder->weld_widget(u"locktab"_ustr))
+    , m_xUseSquaredPageMode(m_xBuilder->weld_check_button(u"squaremode"_ustr))
+    , m_xUseSquaredPageModeImg(m_xBuilder->weld_widget(u"locksquaremode"_ustr))
+    , m_xUseCharUnit(m_xBuilder->weld_check_button(u"usecharunit"_ustr))
+    , m_xUseCharUnitImg(m_xBuilder->weld_widget(u"lockusecharunit"_ustr))
+    , m_xWordCountED(m_xBuilder->weld_entry(u"wordcount"_ustr))
+    , m_xWordCountImg(m_xBuilder->weld_widget(u"lockwordcount"_ustr))
+    , m_xShowStandardizedPageCount(m_xBuilder->weld_check_button(u"standardizedpageshow"_ustr))
+    , m_xShowStandardizedPageCountImg(m_xBuilder->weld_widget(u"lockstandardizedpageshow"_ustr))
+    , m_xStandardizedPageSizeNF(m_xBuilder->weld_spin_button(u"standardpagesize"_ustr))
+    , m_xStandardizedPageSizeImg(m_xBuilder->weld_widget(u"lockstandardpagesize"_ustr))
 {
-    for (sal_uInt32 i = 0; i < SwFieldUnitTable::Count(); ++i)
+    for (const auto& [pId, eFUnit] : STR_ARR_METRIC)
     {
-        const OUString sMetric = SwFieldUnitTable::GetString(i);
-        FieldUnit eFUnit = SwFieldUnitTable::GetValue(i);
-
         switch ( eFUnit )
         {
             case FieldUnit::MM:
@@ -549,7 +527,7 @@ SwLoadOptPage::SwLoadOptPage(weld::Container* pPage, weld::DialogController* pCo
             case FieldUnit::INCH:
             {
                 // use only these metrics
-                m_xMetricLB->append(OUString::number(static_cast<sal_uInt32>(eFUnit)), sMetric);
+                m_xMetricLB->append(OUString::number(static_cast<sal_uInt32>(eFUnit)), SwResId(pId));
                 break;
             }
             default:; //prevent warning
@@ -591,29 +569,29 @@ IMPL_LINK_NOARG(SwLoadOptPage, StandardizedPageCountCheckHdl, weld::Toggleable&,
 OUString SwLoadOptPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label2",   "label1", "label3", "label5",
-                          "tablabel", "label4", "label7", "labelstandardpages" };
+    OUString labels[] = { u"label2"_ustr,   u"label1"_ustr, u"label3"_ustr, u"label5"_ustr,
+                          u"tablabel"_ustr, u"label4"_ustr, u"label7"_ustr, u"labelstandardpages"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
     OUString checkButton[]
-        = { "updatefields", "updatecharts", "usecharunit", "squaremode", "standardizedpageshow" };
+        = { u"updatefields"_ustr, u"updatecharts"_ustr, u"usecharunit"_ustr, u"squaremode"_ustr, u"standardizedpageshow"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString radioButton[] = { "always", "onrequest", "never" };
+    OUString radioButton[] = { u"always"_ustr, u"onrequest"_ustr, u"never"_ustr };
 
     for (const auto& radio : radioButton)
     {
-        if (const auto& pString = m_xBuilder->weld_radio_button(radio))
+        if (const auto pString = m_xBuilder->weld_radio_button(radio))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -623,7 +601,7 @@ OUString SwLoadOptPage::GetAllStrings()
 bool SwLoadOptPage::FillItemSet( SfxItemSet* rSet )
 {
     bool bRet = false;
-    SwModule* pMod = SW_MOD();
+    SwModule* pMod = SwModule::get();
 
     sal_Int32 nNewLinkMode = AUTOMATIC;
     if (m_xNeverRB->get_active())
@@ -730,7 +708,7 @@ bool SwLoadOptPage::FillItemSet( SfxItemSet* rSet )
 
 void SwLoadOptPage::Reset( const SfxItemSet* rSet)
 {
-    const SwMasterUsrPref* pUsrPref = SW_MOD()->GetUsrPref(false);
+    const SwMasterUsrPref* pUsrPref = SwModule::get()->GetUsrPref(false);
     const SwPtrItem* pShellItem = rSet->GetItemIfSet(FN_PARAM_WRTSHELL, false);
 
     if(pShellItem)
@@ -869,8 +847,8 @@ IMPL_LINK_NOARG(SwLoadOptPage, MetricHdl, weld::ComboBox&, void)
 }
 
 SwCaptionOptDlg::SwCaptionOptDlg(weld::Window* pParent, const SfxItemSet& rSet)
-    : SfxSingleTabDialogController(pParent, &rSet, "modules/swriter/ui/captiondialog.ui",
-                                   "CaptionDialog")
+    : SfxSingleTabDialogController(pParent, &rSet, u"modules/swriter/ui/captiondialog.ui"_ustr,
+                                   u"CaptionDialog"_ustr)
 {
     // create TabPage
     SetTabPage(SwCaptionOptPage::Create(get_content_area(), this, &rSet));
@@ -930,7 +908,7 @@ IMPL_LINK(SwCaptionOptPage, TextFilterHdl, OUString&, rTest, bool)
 }
 
 SwCaptionOptPage::SwCaptionOptPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/optcaptionpage.ui", "OptCaptionPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/optcaptionpage.ui"_ustr, u"OptCaptionPage"_ustr, &rSet)
     , m_sSWTable(SwResId(STR_CAPTION_TABLE))
     , m_sSWFrame(SwResId(STR_CAPTION_FRAME))
     , m_sSWGraphic(SwResId(STR_CAPTION_GRAPHIC))
@@ -944,34 +922,34 @@ SwCaptionOptPage::SwCaptionOptPage(weld::Container* pPage, weld::DialogControlle
     , m_pMgr(new SwFieldMgr)
     , m_bHTMLMode(false)
     , m_aTextFilter(m_sNone)
-    , m_xCheckLB(m_xBuilder->weld_tree_view("objects"))
-    , m_xLbCaptionOrder(m_xBuilder->weld_combo_box("captionorder"))
-    , m_xLbCaptionOrderImg(m_xBuilder->weld_widget("lockcaptionorder"))
-    , m_xSettingsGroup(m_xBuilder->weld_widget("settings"))
-    , m_xCategoryBox(m_xBuilder->weld_combo_box("category"))
-    , m_xCategoryBoxImg(m_xBuilder->weld_widget("lockcategory"))
-    , m_xFormatText(m_xBuilder->weld_label("numberingft"))
-    , m_xFormatBox(m_xBuilder->weld_combo_box("numbering"))
-    , m_xFormatBoxImg(m_xBuilder->weld_widget("locknumbering"))
-    , m_xNumberingSeparatorFT(m_xBuilder->weld_label("numseparatorft"))
-    , m_xNumberingSeparatorED(m_xBuilder->weld_entry("numseparator"))
-    , m_xNumberingSeparatorImg(m_xBuilder->weld_widget("locknumseparator"))
-    , m_xTextText(m_xBuilder->weld_label("separatorft"))
-    , m_xTextEdit(m_xBuilder->weld_entry("separator"))
-    , m_xTextEditImg(m_xBuilder->weld_widget("lockseparator"))
-    , m_xPosBox(m_xBuilder->weld_combo_box("position"))
-    , m_xPosBoxImg(m_xBuilder->weld_widget("lockposition"))
-    , m_xNumCapt(m_xBuilder->weld_widget("numcaption"))
-    , m_xLbLevel(m_xBuilder->weld_combo_box("level"))
-    , m_xLbLevelImg(m_xBuilder->weld_widget("locklevel"))
-    , m_xEdDelim(m_xBuilder->weld_entry("chapseparator"))
-    , m_xEdDelimImg(m_xBuilder->weld_widget("lockchapseparator"))
-    , m_xCategory(m_xBuilder->weld_widget("categoryformat"))
-    , m_xCharStyleLB(m_xBuilder->weld_combo_box("charstyle"))
-    , m_xCharStyleImg(m_xBuilder->weld_widget("lockcharstyle"))
-    , m_xApplyBorderCB(m_xBuilder->weld_check_button("applyborder"))
-    , m_xApplyBorderImg(m_xBuilder->weld_widget("lockapplyborder"))
-    , m_xPreview(new weld::CustomWeld(*m_xBuilder, "preview", m_aPreview))
+    , m_xCheckLB(m_xBuilder->weld_tree_view(u"objects"_ustr))
+    , m_xLbCaptionOrder(m_xBuilder->weld_combo_box(u"captionorder"_ustr))
+    , m_xLbCaptionOrderImg(m_xBuilder->weld_widget(u"lockcaptionorder"_ustr))
+    , m_xSettingsGroup(m_xBuilder->weld_widget(u"settings"_ustr))
+    , m_xCategoryBox(m_xBuilder->weld_combo_box(u"category"_ustr))
+    , m_xCategoryBoxImg(m_xBuilder->weld_widget(u"lockcategory"_ustr))
+    , m_xFormatText(m_xBuilder->weld_label(u"numberingft"_ustr))
+    , m_xFormatBox(m_xBuilder->weld_combo_box(u"numbering"_ustr))
+    , m_xFormatBoxImg(m_xBuilder->weld_widget(u"locknumbering"_ustr))
+    , m_xNumberingSeparatorFT(m_xBuilder->weld_label(u"numseparatorft"_ustr))
+    , m_xNumberingSeparatorED(m_xBuilder->weld_entry(u"numseparator"_ustr))
+    , m_xNumberingSeparatorImg(m_xBuilder->weld_widget(u"locknumseparator"_ustr))
+    , m_xTextText(m_xBuilder->weld_label(u"separatorft"_ustr))
+    , m_xTextEdit(m_xBuilder->weld_entry(u"separator"_ustr))
+    , m_xTextEditImg(m_xBuilder->weld_widget(u"lockseparator"_ustr))
+    , m_xPosBox(m_xBuilder->weld_combo_box(u"position"_ustr))
+    , m_xPosBoxImg(m_xBuilder->weld_widget(u"lockposition"_ustr))
+    , m_xNumCapt(m_xBuilder->weld_widget(u"numcaption"_ustr))
+    , m_xLbLevel(m_xBuilder->weld_combo_box(u"level"_ustr))
+    , m_xLbLevelImg(m_xBuilder->weld_widget(u"locklevel"_ustr))
+    , m_xEdDelim(m_xBuilder->weld_entry(u"chapseparator"_ustr))
+    , m_xEdDelimImg(m_xBuilder->weld_widget(u"lockchapseparator"_ustr))
+    , m_xCategory(m_xBuilder->weld_widget(u"categoryformat"_ustr))
+    , m_xCharStyleLB(m_xBuilder->weld_combo_box(u"charstyle"_ustr))
+    , m_xCharStyleImg(m_xBuilder->weld_widget(u"lockcharstyle"_ustr))
+    , m_xApplyBorderCB(m_xBuilder->weld_check_button(u"applyborder"_ustr))
+    , m_xApplyBorderImg(m_xBuilder->weld_widget(u"lockapplyborder"_ustr))
+    , m_xPreview(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, m_aPreview))
 {
     m_xCategoryBox->connect_entry_insert_text(LINK(this, SwCaptionOptPage, TextFilterHdl));
 
@@ -1016,7 +994,7 @@ SwCaptionOptPage::SwCaptionOptPage(weld::Container* pPage, weld::DialogControlle
         m_xLbLevel->append_text(OUString::number(i + 1));
 
     sal_Unicode nLvl = MAXLEVEL;
-    OUString sDelim(": ");
+    OUString sDelim(u": "_ustr);
 
     if (pSh)
     {
@@ -1042,7 +1020,7 @@ SwCaptionOptPage::SwCaptionOptPage(weld::Container* pPage, weld::DialogControlle
 
     m_xLbCaptionOrder->connect_changed(LINK(this, SwCaptionOptPage, OrderHdl));
 
-    m_xCheckLB->connect_changed(LINK(this, SwCaptionOptPage, ShowEntryHdl));
+    m_xCheckLB->connect_selection_changed(LINK(this, SwCaptionOptPage, ShowEntryHdl));
     m_xCheckLB->connect_toggled(LINK(this, SwCaptionOptPage, ToggleEntryHdl));
 }
 
@@ -1062,17 +1040,17 @@ std::unique_ptr<SfxTabPage> SwCaptionOptPage::Create(weld::Container* pPage, wel
 OUString SwCaptionOptPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label1",         "label13",     "label2",  "label7",  "numberingft",
-                          "numseparatorft", "separatorft", "label18", "label11", "label4",
-                          "label6",         "label10",     "label3" };
+    OUString labels[] = { u"label1"_ustr,         u"label13"_ustr,     u"label2"_ustr,  u"label7"_ustr,  u"numberingft"_ustr,
+                          u"numseparatorft"_ustr, u"separatorft"_ustr, u"label18"_ustr, u"label11"_ustr, u"label4"_ustr,
+                          u"label6"_ustr,         u"label10"_ustr,     u"label3"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    if (const auto& pString = m_xBuilder->weld_check_button("applyborder"))
+    if (const auto pString = m_xBuilder->weld_check_button(u"applyborder"_ustr))
         sAllStrings += pString->get_label() + " ";
 
     return sAllStrings.replaceAll("_", "");
@@ -1081,7 +1059,7 @@ OUString SwCaptionOptPage::GetAllStrings()
 bool SwCaptionOptPage::FillItemSet( SfxItemSet* )
 {
     bool bRet = false;
-    SwModuleOptions* pModOpt = SW_MOD()->GetModuleConfig();
+    SwModuleOptions* pModOpt = SwModule::get()->GetModuleConfig();
 
     SaveEntry(m_xCheckLB->get_selected_index());    // apply current entry
 
@@ -1177,7 +1155,7 @@ void SwCaptionOptPage::Reset( const SfxItemSet* rSet)
         SetOptions( nPos++, OLE_CAP, &rOleId );
     }
     m_xLbCaptionOrder->set_active(
-        SW_MOD()->GetModuleConfig()->IsCaptionOrderNumberingFirst() ? 1 : 0);
+        SwModule::get()->GetModuleConfig()->IsCaptionOrderNumberingFirst() ? 1 : 0);
     m_xLbCaptionOrder->set_sensitive(!officecfg::Office::Writer::Insert::Caption::CaptionOrderNumberingFirst::isReadOnly());
     m_xLbCaptionOrderImg->set_visible(officecfg::Office::Writer::Insert::Caption::CaptionOrderNumberingFirst::isReadOnly());
     m_xCheckLB->select(0);
@@ -1187,7 +1165,7 @@ void SwCaptionOptPage::Reset( const SfxItemSet* rSet)
 void SwCaptionOptPage::SetOptions(const sal_uLong nPos,
         const SwCapObjType eObjType, const SvGlobalName *pOleId)
 {
-    SwModuleOptions* pModOpt = SW_MOD()->GetModuleConfig();
+    SwModuleOptions* pModOpt = SwModule::get()->GetModuleConfig();
     const InsCaptionOpt* pOpt = pModOpt->GetCapOption(m_bHTMLMode, eObjType, pOleId);
 
     if (pOpt)
@@ -1208,7 +1186,7 @@ void SwCaptionOptPage::DelUserData()
     for (int i = 0, nCount = m_xCheckLB->n_children(); i < nCount; ++i)
     {
         delete weld::fromId<InsCaptionOpt*>(m_xCheckLB->get_id(i));
-        m_xCheckLB->set_id(i, "0");
+        m_xCheckLB->set_id(i, u"0"_ustr);
     }
 }
 
@@ -1240,18 +1218,18 @@ void SwCaptionOptPage::UpdateEntry(int nSelEntry)
             {
                 SwFieldType *pType = m_pMgr->GetFieldType( SwFieldIds::Unknown, i );
                 if( pType->Which() == SwFieldIds::SetExp &&
-                    static_cast<SwSetExpFieldType *>( pType)->GetType() & nsSwGetSetExpType::GSE_SEQ )
+                    static_cast<SwSetExpFieldType *>( pType)->GetType() & SwGetSetExpType::Sequence )
                 {
-                    m_xCategoryBox->append_text(pType->GetName());
+                    m_xCategoryBox->append_text(pType->GetName().toString());
                 }
             }
         }
         else
         {
-            m_xCategoryBox->append_text(m_sIllustration);
-            m_xCategoryBox->append_text(m_sTable);
-            m_xCategoryBox->append_text(m_sText);
-            m_xCategoryBox->append_text(m_sDrawing);
+            m_xCategoryBox->append_text(m_sIllustration.toString());
+            m_xCategoryBox->append_text(m_sTable.toString());
+            m_xCategoryBox->append_text(m_sText.toString());
+            m_xCategoryBox->append_text(m_sDrawing.toString());
         }
 
         if (!pOpt->GetCategory().isEmpty())
@@ -1339,7 +1317,7 @@ void SwCaptionOptPage::UpdateEntry(int nSelEntry)
         m_xEdDelim->set_text(pOpt->GetSeparator());
         m_xNumberingSeparatorED->set_text(pOpt->GetNumSeparator());
         if (!pOpt->GetCharacterStyle().isEmpty())
-            m_xCharStyleLB->set_active_text(pOpt->GetCharacterStyle());
+            m_xCharStyleLB->set_active_text(pOpt->GetCharacterStyle().toString());
         else
             m_xCharStyleLB->set_active(0);
 
@@ -1376,7 +1354,7 @@ void SwCaptionOptPage::SaveEntry(int nEntry)
     pOpt->UseCaption() = m_xCheckLB->get_toggle(nEntry) == TRISTATE_TRUE;
     const OUString aName(m_xCategoryBox->get_active_text());
     if (aName == m_sNone)
-        pOpt->SetCategory("");
+        pOpt->SetCategory(u""_ustr);
     else
         pOpt->SetCategory(comphelper::string::strip(aName, ' '));
     pOpt->SetNumType(m_xFormatBox->get_active_id().toUInt32());
@@ -1388,9 +1366,9 @@ void SwCaptionOptPage::SaveEntry(int nEntry)
     pOpt->SetSeparator(m_xEdDelim->get_text());
     pOpt->SetNumSeparator(m_xNumberingSeparatorED->get_text());
     if (m_xCharStyleLB->get_active() == -1)
-        pOpt->SetCharacterStyle("");
+        pOpt->SetCharacterStyle(UIName(u""_ustr));
     else
-        pOpt->SetCharacterStyle(m_xCharStyleLB->get_active_text());
+        pOpt->SetCharacterStyle(UIName(m_xCharStyleLB->get_active_text()));
     pOpt->CopyAttributes() = m_xApplyBorderCB->get_active();
 }
 

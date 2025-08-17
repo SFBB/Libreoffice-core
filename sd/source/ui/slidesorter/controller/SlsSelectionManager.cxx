@@ -32,6 +32,7 @@
 #include <comphelper/diagnose_ex.hxx>
 #include <drawdoc.hxx>
 #include <sdpage.hxx>
+#include <unomodel.hxx>
 #include <drawview.hxx>
 #include <DrawViewShell.hxx>
 #include <ViewShellBase.hxx>
@@ -101,8 +102,8 @@ void SelectionManager::DeleteSelectedPages (const bool bSelectFollowingPage)
     else
         --nNewCurrentSlide;
 
-    const auto pViewShell = mrSlideSorter.GetViewShell();
-    const auto pDrawViewShell = pViewShell ? std::dynamic_pointer_cast<sd::DrawViewShell>(pViewShell->GetViewShellBase().GetMainViewShell()) : nullptr;
+    ViewShell& rViewShell = mrSlideSorter.GetViewShell();
+    const auto pDrawViewShell = std::dynamic_pointer_cast<sd::DrawViewShell>(rViewShell.GetViewShellBase().GetMainViewShell());
     const auto pDrawView = pDrawViewShell ? pDrawViewShell->GetDrawView() : nullptr;
 
     if (pDrawView)
@@ -153,7 +154,9 @@ void SelectionManager::DeleteSelectedNormalPages (const ::std::vector<SdPage*>& 
 
     try
     {
-        Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier( mrSlideSorter.GetModel().GetDocument()->getUnoModel(), UNO_QUERY_THROW );
+        rtl::Reference<SdXImpressDocument> xDrawPagesSupplier( mrSlideSorter.GetModel().GetDocument()->getUnoModel() );
+        if (!xDrawPagesSupplier)
+            return;
         Reference<drawing::XDrawPages> xPages( xDrawPagesSupplier->getDrawPages(), UNO_SET_THROW );
 
         // Iterate over all pages that were selected when this method was called
@@ -186,7 +189,9 @@ void SelectionManager::DeleteSelectedMasterPages (const ::std::vector<SdPage*>& 
 
     try
     {
-        Reference<drawing::XMasterPagesSupplier> xDrawPagesSupplier( mrSlideSorter.GetModel().GetDocument()->getUnoModel(), UNO_QUERY_THROW );
+        rtl::Reference<SdXImpressDocument> xDrawPagesSupplier( mrSlideSorter.GetModel().GetDocument()->getUnoModel() );
+        if (!xDrawPagesSupplier)
+            return;
         Reference<drawing::XDrawPages> xPages( xDrawPagesSupplier->getMasterPages(), UNO_SET_THROW );
 
         // Iterate over all pages that were selected when this method was called
@@ -214,27 +219,24 @@ void SelectionManager::DeleteSelectedMasterPages (const ::std::vector<SdPage*>& 
 
 void SelectionManager::SelectionHasChanged ()
 {
-    ViewShell* pViewShell = mrSlideSorter.GetViewShell();
-    if (pViewShell == nullptr)
-        return;
+    ViewShell& rViewShell = mrSlideSorter.GetViewShell();
 
-    pViewShell->Invalidate (SID_EXPAND_PAGE);
-    pViewShell->Invalidate (SID_SUMMARY_PAGE);
-    pViewShell->Invalidate(SID_SHOW_SLIDE);
-    pViewShell->Invalidate(SID_HIDE_SLIDE);
-    pViewShell->Invalidate(SID_DELETE_PAGE);
-    pViewShell->Invalidate(SID_DELETE_MASTER_PAGE);
-    pViewShell->Invalidate(SID_ASSIGN_LAYOUT);
+    rViewShell.Invalidate (SID_EXPAND_PAGE);
+    rViewShell.Invalidate (SID_SUMMARY_PAGE);
+    rViewShell.Invalidate(SID_SHOW_SLIDE);
+    rViewShell.Invalidate(SID_HIDE_SLIDE);
+    rViewShell.Invalidate(SID_DELETE_PAGE);
+    rViewShell.Invalidate(SID_DELETE_MASTER_PAGE);
+    rViewShell.Invalidate(SID_ASSIGN_LAYOUT);
 
     // StatusBar
-    pViewShell->Invalidate (SID_STATUS_PAGE);
-    pViewShell->Invalidate (SID_STATUS_LAYOUT);
-    pViewShell->Invalidate (SID_SCALE);
+    rViewShell.Invalidate (SID_STATUS_PAGE);
+    rViewShell.Invalidate (SID_STATUS_LAYOUT);
+    rViewShell.Invalidate (SID_SCALE);
 
-    OSL_ASSERT(mrController.GetCurrentSlideManager());
-    SharedPageDescriptor pDescriptor(mrController.GetCurrentSlideManager()->GetCurrentSlide());
+    SharedPageDescriptor pDescriptor(mrController.GetCurrentSlideManager().GetCurrentSlide());
     if (pDescriptor)
-        pViewShell->UpdatePreview(pDescriptor->GetPage());
+        rViewShell.UpdatePreview(pDescriptor->GetPage());
 
     // Tell the selection change listeners that the selection has changed.
     for (const auto& rLink : maSelectionChangeListeners)

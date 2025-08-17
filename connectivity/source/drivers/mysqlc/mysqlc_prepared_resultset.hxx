@@ -56,8 +56,8 @@ class OPreparedResultSet final : public cppu::BaseMutex,
                                  public OPropertyArrayUsageHelper<OPreparedResultSet>
 {
     OConnection& m_rConnection;
-    css::uno::WeakReferenceHelper m_aStatement;
-    css::uno::Reference<css::sdbc::XResultSetMetaData> m_xMetaData;
+    unotools::WeakReference<OPreparedStatement> m_xStatement;
+    rtl::Reference<OResultSetMetaData> m_xMetaData;
 
     // non-owning pointers
     MYSQL_RES* m_pResult;

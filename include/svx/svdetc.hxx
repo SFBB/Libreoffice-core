@@ -27,6 +27,7 @@
 #include <svl/whichranges.hxx>
 #include <unotools/syslocale.hxx>
 #include <memory>
+#include <o3tl/unit_conversion.hxx>
 
 
 /**
@@ -41,12 +42,7 @@
 
 class SdrOutliner;
 class SdrModel;
-class SvtSysLocale;
 class LocaleDataWrapper;
-
-namespace com::sun::star::lang {
-    struct Locale;
-}
 
 /**
  * Create an Outliner with the engine-global default settings on the heap.
@@ -67,11 +63,8 @@ namespace SdrEngineDefaults
     // Default FontColor is COL_AUTO
     inline Color GetFontColor() { return COL_AUTO; }
 
-    // Default FontHeight is 847. The font height uses logical units (MapUnit/MapFraction
-    // see below for further details). The default setting 847/100mm corresponds to about
-    // 24 Point. If e.g. one would use Twips (SetMapUnit(MapUnit::MapTwip)) (20 Twip = 1 Point)
-    // instead, one would need to set the font height to 480, in order to get a 24 Point height.
-    inline size_t GetFontHeight() { return 847; }
+    // Default font height
+    inline size_t GetFontHeight() { return o3tl::convert(24, o3tl::Length::pt, o3tl::Length::mm100); }
 
     // The MapMode is needed for the global Outliner.
     // Incidentally, every newly instantiated SdrModel is assigned this MapMode by default.
@@ -158,22 +151,22 @@ class OLEObjCache
 {
     std::vector<SdrOle2Obj*> maObjs;
 
-    size_t         nSize;
-    std::unique_ptr<AutoTimer>  pTimer;
+    size_t         mnSize;
+    std::unique_ptr<AutoTimer>  mpTimer;
 
     static bool UnloadObj(SdrOle2Obj& rObj);
     DECL_LINK( UnloadCheckHdl, Timer*, void );
 
 public:
     OLEObjCache();
-    SVXCORE_DLLPUBLIC ~OLEObjCache();
+    UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) ~OLEObjCache();
 
     void InsertObj(SdrOle2Obj* pObj);
     void RemoveObj(SdrOle2Obj* pObj);
 
-    SVXCORE_DLLPUBLIC size_t size() const;
-    SVXCORE_DLLPUBLIC SdrOle2Obj* operator[](size_t nPos);
-    SVXCORE_DLLPUBLIC const SdrOle2Obj* operator[](size_t nPos) const;
+    UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) size_t size() const;
+    UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) SdrOle2Obj* operator[](size_t nPos);
+    UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) const SdrOle2Obj* operator[](size_t nPos) const;
 };
 
 
@@ -182,14 +175,14 @@ class SVXCORE_DLLPUBLIC SdrGlobalData
     SvtSysLocale  maSysLocale;     // follows always locale settings
 public:
     std::vector<Link<SdrObjCreatorParams, rtl::Reference<SdrObject>>>
-                        aUserMakeObjHdl;
-    OLEObjCache         aOLEObjCache;
+                        maUserMakeObjHdl;
+    OLEObjCache         maOLEObjCache;
 
-    SdrGlobalData();
+    SAL_DLLPRIVATE SdrGlobalData();
 
     const SvtSysLocale& GetSysLocale() { return maSysLocale;  } // follows always locale settings
     const LocaleDataWrapper& GetLocaleData();    // follows always SysLocale
-    OLEObjCache&        GetOLEObjCache() { return aOLEObjCache; }
+    OLEObjCache&        GetOLEObjCache() { return maOLEObjCache; }
 };
 
 SVXCORE_DLLPUBLIC SdrGlobalData & GetSdrGlobalData();

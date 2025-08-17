@@ -106,7 +106,7 @@ bool ScDBDocFunc::AddDBRange( const OUString& rName, const ScRange& rRange )
     if (bUndo)
     {
         rDocShell.GetUndoManager()->AddUndoAction(
-                        std::make_unique<ScUndoDBData>( &rDocShell, std::move(pUndoColl),
+                        std::make_unique<ScUndoDBData>( rDocShell, std::move(pUndoColl),
                             std::make_unique<ScDBCollection>( *pDocColl ) ) );
     }
 
@@ -139,7 +139,7 @@ bool ScDBDocFunc::DeleteDBRange(const OUString& rName)
         if (bUndo)
         {
             rDocShell.GetUndoManager()->AddUndoAction(
-                            std::make_unique<ScUndoDBData>( &rDocShell, std::move(pUndoColl),
+                            std::make_unique<ScUndoDBData>( rDocShell, std::move(pUndoColl),
                                 std::make_unique<ScDBCollection>( *pDocColl ) ) );
         }
 
@@ -183,7 +183,7 @@ bool ScDBDocFunc::RenameDBRange( const OUString& rOld, const OUString& rNew )
             if (bUndo)
             {
                 rDocShell.GetUndoManager()->AddUndoAction(
-                                std::make_unique<ScUndoDBData>( &rDocShell, std::move(pUndoColl),
+                                std::make_unique<ScUndoDBData>( rDocShell, std::move(pUndoColl),
                                     std::make_unique<ScDBCollection>( *pDocColl ) ) );
             }
             else
@@ -235,7 +235,7 @@ void ScDBDocFunc::ModifyDBData( const ScDBData& rNewData )
     if (bUndo)
     {
         rDocShell.GetUndoManager()->AddUndoAction(
-                        std::make_unique<ScUndoDBData>( &rDocShell, std::move(pUndoColl),
+                        std::make_unique<ScUndoDBData>( rDocShell, std::move(pUndoColl),
                             std::make_unique<ScDBCollection>( *pDocColl ) ) );
     }
 
@@ -275,7 +275,7 @@ void ScDBDocFunc::ModifyAllDBData( const ScDBCollection& rNewColl, const std::ve
     if (bRecord)
     {
         rDocShell.GetUndoManager()->AddUndoAction(
-            std::make_unique<ScUndoDBData>(&rDocShell, std::move(pUndoColl),
+            std::make_unique<ScUndoDBData>(rDocShell, std::move(pUndoColl),
                 std::make_unique<ScDBCollection>(rNewColl)));
     }
 }
@@ -313,7 +313,7 @@ bool ScDBDocFunc::RepeatDB( const OUString& rDBName, bool bApi, bool bIsUnnamed,
 
         ScSubTotalParam aSubTotalParam;
         pDBData->GetSubTotalParam( aSubTotalParam );
-        bool bSubTotal = aSubTotalParam.bGroupActive[0] && !aSubTotalParam.bRemoveOnly;
+        bool bSubTotal = aSubTotalParam.aGroups[0].bActive && !aSubTotalParam.bRemoveOnly;
 
         if ( bQuery || bSort || bSubTotal )
         {
@@ -442,7 +442,7 @@ bool ScDBDocFunc::RepeatDB( const OUString& rDBName, bool bApi, bool bIsUnnamed,
                 }
 
                 rDocShell.GetUndoManager()->AddUndoAction(
-                    std::make_unique<ScUndoRepeatDB>( &rDocShell, nTab,
+                    std::make_unique<ScUndoRepeatDB>( rDocShell, nTab,
                                             nStartCol, nStartRow, nEndCol, nEndRow,
                                             nNewEndRow,
                                             //nCurX, nCurY,
@@ -522,7 +522,7 @@ bool ScDBDocFunc::Sort( SCTAB nTab, const ScSortParam& rSortParam,
         return false;
     }
 
-    const ScInputOptions aInputOption = SC_MOD()->GetInputOptions();
+    const ScInputOptions aInputOption = ScModule::get()->GetInputOptions();
     const bool bUpdateRefs = aInputOption.GetSortRefUpdate();
 
     // Adjust aLocalParam cols/rows to used data area. Keep sticky top row or
@@ -615,7 +615,7 @@ bool ScDBDocFunc::Sort( SCTAB nTab, const ScSortParam& rSortParam,
     {
         // Set up an undo object.
         rDocShell.GetUndoManager()->AddUndoAction(
-            std::make_unique<sc::UndoSort>(&rDocShell, aUndoParam));
+            std::make_unique<sc::UndoSort>(rDocShell, aUndoParam));
     }
 
     pDBData->SetSortParam(rSortParam);
@@ -623,14 +623,14 @@ bool ScDBDocFunc::Sort( SCTAB nTab, const ScSortParam& rSortParam,
     if (pDBData == rDoc.GetAnonymousDBData( nTab) || rDoc.GetDBCollection()->getAnonDBs().has( pDBData))
         pDBData->UpdateFromSortParam( rSortParam);
 
-    if (comphelper::LibreOfficeKit::isActive())
+    if (SfxViewShell* pKitSomeViewForThisDoc = comphelper::LibreOfficeKit::isActive() ?
+                                               rDocShell.GetBestViewShell(false) : nullptr)
     {
-        SfxViewShell* pSomeViewForThisDoc = rDocShell.GetBestViewShell(false);
         SfxViewShell* pViewShell = SfxViewShell::GetFirst();
         while (pViewShell)
         {
             ScTabViewShell* pTabViewShell = dynamic_cast<ScTabViewShell*>(pViewShell);
-            if (pTabViewShell && pTabViewShell->GetDocId() == pSomeViewForThisDoc->GetDocId())
+            if (pTabViewShell && pTabViewShell->GetDocId() == pKitSomeViewForThisDoc->GetDocId())
             {
                 if (ScPositionHelper* pPosHelper = pTabViewShell->GetViewData().GetLOKHeightHelper(nTab))
                     pPosHelper->invalidateByIndex(nStartRow);
@@ -639,7 +639,7 @@ bool ScDBDocFunc::Sort( SCTAB nTab, const ScSortParam& rSortParam,
         }
 
         ScTabViewShell::notifyAllViewsSheetGeomInvalidation(
-            pSomeViewForThisDoc, false /* bColumns */, true /* bRows */, true /* bSizes*/,
+            pKitSomeViewForThisDoc, false /* bColumns */, true /* bRows */, true /* bSizes*/,
             true /* bHidden */, true /* bFiltered */, true /* bGroups */, nTab);
     }
 
@@ -796,7 +796,7 @@ bool ScDBDocFunc::Query( SCTAB nTab, const ScQueryParam& rQueryParam,
         ScSubTotalParam aSubTotalParam;
         pDBData->GetSubTotalParam( aSubTotalParam );    // partial results exist?
 
-        if ( aSubTotalParam.bGroupActive[0] && !aSubTotalParam.bRemoveOnly )
+        if (aSubTotalParam.aGroups[0].bActive && !aSubTotalParam.bRemoveOnly)
             bKeepSub = true;
     }
 
@@ -992,7 +992,7 @@ bool ScDBDocFunc::Query( SCTAB nTab, const ScQueryParam& rQueryParam,
     {
         // create undo action after executing, because of drawing layer undo
         rDocShell.GetUndoManager()->AddUndoAction(
-                    std::make_unique<ScUndoQuery>( &rDocShell, nTab, rQueryParam, std::move(pUndoDoc), std::move(pUndoDB),
+                    std::make_unique<ScUndoQuery>( rDocShell, nTab, rQueryParam, std::move(pUndoDoc), std::move(pUndoDB),
                                         pOld, bDoSize, pAdvSource ) );
     }
 
@@ -1173,7 +1173,7 @@ void ScDBDocFunc::DoSubTotals( SCTAB nTab, const ScSubTotalParam& rParam,
     {
 //          ScDBData* pUndoDBData = pDBData ? new ScDBData( *pDBData ) : NULL;
         rDocShell.GetUndoManager()->AddUndoAction(
-            std::make_unique<ScUndoSubTotals>( &rDocShell, nTab,
+            std::make_unique<ScUndoSubTotals>( rDocShell, nTab,
                                     rParam, aNewParam.nRow2,
                                     std::move(pUndoDoc), std::move(pUndoTab), // pUndoDBData,
                                     std::move(pUndoRange), std::move(pUndoDB) ) );
@@ -1213,7 +1213,8 @@ bool lcl_EmptyExcept( ScDocument& rDoc, const ScRange& rRange, const ScRange& rE
     return true;        // nothing found - empty
 }
 
-bool isEditable(ScDocShell& rDocShell, const ScRangeList& rRanges, bool bApi)
+bool isEditable(ScDocShell& rDocShell, const ScRangeList& rRanges, bool bApi,
+    sc::EditAction eAction = sc::EditAction::Unknown)
 {
     ScDocument& rDoc = rDocShell.GetDocument();
     if (!rDocShell.IsEditable() || rDoc.GetChangeTrack())
@@ -1228,7 +1229,7 @@ bool isEditable(ScDocShell& rDocShell, const ScRangeList& rRanges, bool bApi)
     for (size_t i = 0, n = rRanges.size(); i < n; ++i)
     {
         const ScRange & r = rRanges[i];
-        ScEditableTester aTester(rDoc, r);
+        ScEditableTester aTester(rDoc, r, eAction);
         if (!aTester.IsEditable())
         {
             if (!bApi)
@@ -1249,7 +1250,8 @@ void createUndoDoc(ScDocumentUniquePtr& pUndoDoc, ScDocument& rDoc, const ScRang
     rDoc.CopyToDocument(rRange, InsertDeleteFlags::ALL, false, *pUndoDoc);
 }
 
-bool checkNewOutputRange(ScDPObject& rDPObj, ScDocShell& rDocShell, ScRange& rNewOut, bool bApi)
+bool checkNewOutputRange(ScDPObject& rDPObj, ScDocShell& rDocShell, ScRange& rNewOut, bool bApi,
+    sc::EditAction eAction = sc::EditAction::Unknown)
 {
     ScDocument& rDoc = rDocShell.GetDocument();
 
@@ -1279,14 +1281,17 @@ bool checkNewOutputRange(ScDPObject& rDPObj, ScDocShell& rDocShell, ScRange& rNe
         return false;
     }
 
-    ScEditableTester aTester(rDoc, rNewOut);
-    if (!aTester.IsEditable())
+    if (!rDoc.IsImportingXML())
     {
-        //  destination area isn't editable
-        if (!bApi)
-            rDocShell.ErrorMessage(aTester.GetMessageId());
+        ScEditableTester aTester(rDoc, rNewOut, eAction);
+        if (!aTester.IsEditable())
+        {
+            //  destination area isn't editable
+            if (!bApi)
+                rDocShell.ErrorMessage(aTester.GetMessageId());
 
-        return false;
+            return false;
+        }
     }
 
     return true;
@@ -1318,7 +1323,7 @@ bool ScDBDocFunc::DataPilotUpdate( ScDPObject* pOldObj, const ScDPObject* pNewOb
 
     ScRangeList aRanges;
     aRanges.push_back(pOldObj->GetOutRange());
-    aRanges.push_back(pNewObj->GetOutRange().aStart); // at least one cell in the output position must be editable.
+    aRanges.push_back(ScRange(pNewObj->GetOutRange().aStart)); // at least one cell in the output position must be editable.
     if (!isEditable(rDocShell, aRanges, bApi))
         return false;
 
@@ -1386,7 +1391,7 @@ bool ScDBDocFunc::DataPilotUpdate( ScDPObject* pOldObj, const ScDPObject* pNewOb
     {
         rDocShell.GetUndoManager()->AddUndoAction(
             std::make_unique<ScUndoDataPilot>(
-                &rDocShell, std::move(pOldUndoDoc), std::move(pNewUndoDoc), &aUndoDPObj, pOldObj, bAllowMove));
+                rDocShell, std::move(pOldUndoDoc), std::move(pNewUndoDoc), &aUndoDPObj, pOldObj, bAllowMove));
     }
 
     // notify API objects
@@ -1410,7 +1415,7 @@ bool ScDBDocFunc::RemovePivotTable(const ScDPObject& rDPObj, bool bRecord, bool 
     {
         // If we come from GUI - ask to delete the associated pivot charts too...
         std::vector<SdrOle2Obj*> aListOfObjects =
-                    sc::tools::getAllPivotChartsConnectedTo(rDPObj.GetName(), &rDocShell);
+                    sc::tools::getAllPivotChartsConnectedTo(rDPObj.GetName(), rDocShell);
 
         ScDrawLayer* pModel = rDoc.GetDrawLayer();
 
@@ -1469,7 +1474,7 @@ bool ScDBDocFunc::RemovePivotTable(const ScDPObject& rDPObj, bool bRecord, bool 
     {
         rDocShell.GetUndoManager()->AddUndoAction(
             std::make_unique<ScUndoDataPilot>(
-                &rDocShell, std::move(pOldUndoDoc), nullptr, pUndoDPObj.get(), nullptr, false));
+                rDocShell, std::move(pOldUndoDoc), nullptr, pUndoDPObj.get(), nullptr, false));
 
         // pUndoDPObj is copied
     }
@@ -1484,12 +1489,12 @@ bool ScDBDocFunc::CreatePivotTable(const ScDPObject& rDPObj, bool bRecord, bool 
     weld::WaitObject aWait(ScDocShell::GetActiveDialogParent());
 
     // At least one cell in the output range should be editable. Check in advance.
-    if (!isEditable(rDocShell, ScRange(rDPObj.GetOutRange().aStart), bApi))
+    ScDocument& rDoc = rDocShell.GetDocument();
+    if (!rDoc.IsImportingXML() && !isEditable(rDocShell, ScRange(rDPObj.GetOutRange().aStart), bApi))
         return false;
 
     ScDocumentUniquePtr pNewUndoDoc;
 
-    ScDocument& rDoc = rDocShell.GetDocument();
     if (bRecord && !rDoc.IsUndoEnabled())
         bRecord = false;
 
@@ -1537,8 +1542,9 @@ bool ScDBDocFunc::CreatePivotTable(const ScDPObject& rDPObj, bool bRecord, bool 
         return false;
     }
 
+    if (!rDoc.IsImportingXML())
     {
-        ScEditableTester aTester(rDoc, aNewOut);
+        ScEditableTester aTester(rDoc, aNewOut, sc::EditAction::Unknown);
         if (!aTester.IsEditable())
         {
             //  destination area isn't editable
@@ -1579,7 +1585,7 @@ bool ScDBDocFunc::CreatePivotTable(const ScDPObject& rDPObj, bool bRecord, bool 
     if (bRecord)
     {
         rDocShell.GetUndoManager()->AddUndoAction(
-            std::make_unique<ScUndoDataPilot>(&rDocShell, nullptr, std::move(pNewUndoDoc), nullptr, &rDestObj, false));
+            std::make_unique<ScUndoDataPilot>(rDocShell, nullptr, std::move(pNewUndoDoc), nullptr, &rDestObj, false));
     }
 
     // notify API objects
@@ -1594,7 +1600,7 @@ bool ScDBDocFunc::UpdatePivotTable(ScDPObject& rDPObj, bool bRecord, bool bApi)
     ScDocShellModificator aModificator( rDocShell );
     weld::WaitObject aWait( ScDocShell::GetActiveDialogParent() );
 
-    if (!isEditable(rDocShell, rDPObj.GetOutRange(), bApi))
+    if (!isEditable(rDocShell, rDPObj.GetOutRange(), bApi, sc::EditAction::UpdatePivotTable))
         return false;
 
     ScDocumentUniquePtr pOldUndoDoc;
@@ -1621,7 +1627,7 @@ bool ScDBDocFunc::UpdatePivotTable(ScDPObject& rDPObj, bool bRecord, bool bApi)
         rDPObj.SetName( rDoc.GetDPCollection()->CreateNewName() );
 
     ScRange aNewOut;
-    if (!checkNewOutputRange(rDPObj, rDocShell, aNewOut, bApi))
+    if (!checkNewOutputRange(rDPObj, rDocShell, aNewOut, bApi, sc::EditAction::UpdatePivotTable))
     {
         rDPObj = aUndoDPObj;
         return false;
@@ -1654,7 +1660,7 @@ bool ScDBDocFunc::UpdatePivotTable(ScDPObject& rDPObj, bool bRecord, bool bApi)
     {
         rDocShell.GetUndoManager()->AddUndoAction(
             std::make_unique<ScUndoDataPilot>(
-                &rDocShell, std::move(pOldUndoDoc), std::move(pNewUndoDoc), &aUndoDPObj, &rDPObj, false));
+                rDocShell, std::move(pOldUndoDoc), std::move(pNewUndoDoc), &aUndoDPObj, &rDPObj, false));
     }
 
     // notify API objects

@@ -21,6 +21,7 @@
 #include <sortedobjs.hxx>
 #include <tabfrm.hxx>
 #include <wrtsh.hxx>
+#include <sectfrm.hxx>
 
 namespace
 {
@@ -29,7 +30,7 @@ class Test : public SwModelTestBase
 {
 public:
     Test()
-        : SwModelTestBase("/sw/qa/core/layout/data/")
+        : SwModelTestBase(u"/sw/qa/core/layout/data/"_ustr)
     {
     }
 };
@@ -57,7 +58,7 @@ CPPUNIT_TEST_FIXTURE(Test, testSplitFlyNextRowInvalidatePos)
     // When adding a new paragraph at the end of B1:
     // Go to the table: A1 cell.
     SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
-    pWrtShell->GotoTable("Table1");
+    pWrtShell->GotoTable(UIName(u"Table1"_ustr));
     // Go to the column: B1 cell.
     pWrtShell->GoNextCell();
     // Go to the end of the B1 cell, on page 2.
@@ -79,12 +80,55 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf157096)
     createSwDoc("tdf157096.docx");
 
     CPPUNIT_ASSERT_EQUAL(2, getPages());
-    dispatchCommand(mxComponent, ".uno:SelectAll", {});
+    dispatchCommand(mxComponent, u".uno:SelectAll"_ustr, {});
 
     // Without the fix in place, it would have crashed here
-    dispatchCommand(mxComponent, ".uno:Delete", {});
+    dispatchCommand(mxComponent, u".uno:Delete"_ustr, {});
 
     CPPUNIT_ASSERT_EQUAL(1, getPages());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testSplitFlyInSection)
+{
+    // Given a document with multiple sections, the 2nd section on page 1 has a one-page floating
+    // table:
+    createSwDoc("floattable-in-section.docx");
+
+    // When laying out that document:
+    SwDoc* pDoc = getSwDoc();
+    SwRootFrame* pLayout = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
+
+    // Then make sure the table is on page 1, not on page 2:
+    auto pPage1 = pLayout->Lower()->DynCastPageFrame();
+    CPPUNIT_ASSERT(pPage1);
+    // Without the fix in place, it would have failed, the table was on page 2, not on page 1.
+    CPPUNIT_ASSERT(pPage1->GetSortedObjs());
+    SwSortedObjs& rPage1Objs = *pPage1->GetSortedObjs();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rPage1Objs.size());
+    auto pPage2 = pPage1->GetNext()->DynCastPageFrame();
+    CPPUNIT_ASSERT(pPage2);
+    CPPUNIT_ASSERT(!pPage2->GetSortedObjs());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testBadSplitSection)
+{
+    // Given a document with a section, containing 5 paragraphs:
+    createSwDoc("bad-split-section.odt");
+
+    // When laying out that document:
+    SwDoc* pDoc = getSwDoc();
+    SwRootFrame* pLayout = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
+
+    // Then make sure the entire section is on page 1:
+    auto pPage = pLayout->Lower()->DynCastPageFrame();
+    CPPUNIT_ASSERT(pPage);
+    auto pBody = pPage->FindBodyCont();
+    CPPUNIT_ASSERT(pBody);
+    auto pSection = dynamic_cast<SwSectionFrame*>(pBody->GetLastLower());
+    CPPUNIT_ASSERT(pSection);
+    // Without the fix in place, it would have failed, the section was split between page 1 and page
+    // 2.
+    CPPUNIT_ASSERT(!pSection->GetFollow());
 }
 }
 

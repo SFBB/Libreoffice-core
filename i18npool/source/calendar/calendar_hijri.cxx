@@ -26,8 +26,6 @@
 #include <tools/long.hxx>
 #include <basegfx/numeric/ftools.hxx>
 
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::i18n;
 
 namespace i18npool {
@@ -44,7 +42,7 @@ constexpr sal_Int32 GregRef = 1422;
 
 Calendar_hijri::Calendar_hijri()
 {
-    cCalendar = "com.sun.star.i18n.Calendar_hijri";
+    cCalendar = u"com.sun.star.i18n.Calendar_hijri"_ustr;
 }
 
 #define FIELDS  ((1 << CalendarFieldIndex::ERA) | (1 << CalendarFieldIndex::YEAR) | (1 << CalendarFieldIndex::MONTH) | (1 << CalendarFieldIndex::DAY_OF_MONTH))

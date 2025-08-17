@@ -165,13 +165,13 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLTextStyleContext::c
             nFamily = XML_TYPE_PROP_TABLE_ROW;
         if( nFamily )
         {
-            rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
+            SvXMLImportPropertyMapper* pImpPrMap =
                 GetStyles()->GetImportPropertyMapper( GetFamily() );
-            if( xImpPrMap.is() )
+            if( pImpPrMap )
                 return new XMLTextPropertySetContext( GetImport(), nElement, xAttrList,
                                                         nFamily,
                                                         GetProperties(),
-                                                        xImpPrMap,
+                                                        pImpPrMap,
                                                         m_sDropCapTextStyleName);
         }
     }
@@ -206,10 +206,10 @@ void XMLTextStyleContext::CreateAndInsert( bool bOverwrite )
     sal_uInt16 nCategory = ParagraphStyleCategory::TEXT;
     if(  XmlStyleFamily::TEXT_PARAGRAPH == GetFamily() &&
          !m_sCategoryVal.isEmpty() && xStyle->isUserDefined() &&
-         xPropSetInfo->hasPropertyByName("Category") &&
+         xPropSetInfo->hasPropertyByName(u"Category"_ustr) &&
         SvXMLUnitConverter::convertEnum( nCategory, m_sCategoryVal, aCategoryMap))
     {
-        xPropSet->setPropertyValue("Category", Any(static_cast<sal_Int16>(nCategory)));
+        xPropSet->setPropertyValue(u"Category"_ustr, Any(static_cast<sal_Int16>(nCategory)));
     }
 
     // tell the style about it's events (if applicable)
@@ -238,7 +238,7 @@ void XMLTextStyleContext::SetDefaults( )
         Reference < XMultiServiceFactory > xFactory ( GetImport().GetModel(), UNO_QUERY);
         if (xFactory.is())
         {
-            Reference < XInterface > xInt = xFactory->createInstance( "com.sun.star.text.Defaults" );
+            Reference < XInterface > xInt = xFactory->createInstance( u"com.sun.star.text.Defaults"_ustr );
             Reference < XPropertySet > xProperties ( xInt, UNO_QUERY );
             if ( xProperties.is() )
                 FillPropertySet ( xProperties );
@@ -330,7 +330,7 @@ void XMLTextStyleContext::Finish( bool bOverwrite )
 
             if (m_aListLevel.has_value())
             {
-                xPropSet->setPropertyValue("NumberingLevel", uno::Any(*m_aListLevel));
+                xPropSet->setPropertyValue(u"NumberingLevel"_ustr, uno::Any(*m_aListLevel));
             }
         }
     }
@@ -346,9 +346,9 @@ void XMLTextStyleContext::Finish( bool bOverwrite )
             GetImport().GetTextImport()->GetTextStyles();
         if( rTextStyles.is() &&
             rTextStyles->hasByName( sDisplayDropCapTextStyleName ) &&
-            xPropSetInfo->hasPropertyByName("DropCapCharStyleName"))
+            xPropSetInfo->hasPropertyByName(u"DropCapCharStyleName"_ustr))
         {
-            xPropSet->setPropertyValue("DropCapCharStyleName", Any(sDisplayDropCapTextStyleName));
+            xPropSet->setPropertyValue(u"DropCapCharStyleName"_ustr, Any(sDisplayDropCapTextStyleName));
         }
     }
 
@@ -380,10 +380,10 @@ void XMLTextStyleContext::FillPropertySet(
 
     // imitate XMLPropStyleContext::FillPropertySet(...)
     SvXMLStylesContext* pSvXMLStylesContext = GetStyles();
-    rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap = pSvXMLStylesContext->GetImportPropertyMapper(GetFamily());
-    DBG_ASSERT(xImpPrMap.is(),"Where is the import prop mapper?");
+    SvXMLImportPropertyMapper* pImpPrMap = pSvXMLStylesContext->GetImportPropertyMapper(GetFamily());
+    DBG_ASSERT(pImpPrMap,"Where is the import prop mapper?");
 
-    if(!xImpPrMap.is())
+    if(!pImpPrMap)
         return;
 
     // imitate SvXMLImportPropertyMapper::FillPropertySet(...)
@@ -434,8 +434,8 @@ void XMLTextStyleContext::FillPropertySet(
         if( GetAutoName().hasValue() )
         {
             OUString sAutoProp = ( GetFamily() == XmlStyleFamily::TEXT_TEXT ) ?
-                OUString( "CharAutoStyleName" ):
-                OUString( "ParaAutoStyleName" );
+                u"CharAutoStyleName"_ustr:
+                u"ParaAutoStyleName"_ustr;
 
             try
             {
@@ -464,11 +464,11 @@ void XMLTextStyleContext::FillPropertySet(
 
     if( bAutomatic )
     {
-        xImpPrMap->CheckSpecialContext( GetProperties(), rPropSet, aContextIDs );
+        pImpPrMap->CheckSpecialContext( GetProperties(), rPropSet, aContextIDs );
     }
     else
     {
-        xImpPrMap->FillPropertySet( GetProperties(), rPropSet, aContextIDs );
+        pImpPrMap->FillPropertySet( GetProperties(), rPropSet, aContextIDs );
     }
 
     sal_Int32 nIndex = aContextIDs[0].nIndex;
@@ -488,7 +488,7 @@ void XMLTextStyleContext::FillPropertySet(
     // border-model: same
     if(IsDefaultStyle() && XmlStyleFamily::TABLE_ROW == GetFamily())
     {
-        OUString sIsSplitAllowed("IsSplitAllowed");
+        OUString sIsSplitAllowed(u"IsSplitAllowed"_ustr);
         SAL_WARN_IF( !rPropSet->getPropertySetInfo()->hasPropertyByName( sIsSplitAllowed ), "xmloff", "property missing?" );
         rPropSet->setPropertyValue(
             sIsSplitAllowed,
@@ -497,7 +497,7 @@ void XMLTextStyleContext::FillPropertySet(
 
     if(IsDefaultStyle() && XmlStyleFamily::TABLE_TABLE == GetFamily())
     {
-        OUString sCollapsingBorders("CollapsingBorders");
+        OUString sCollapsingBorders(u"CollapsingBorders"_ustr);
         SAL_WARN_IF( !rPropSet->getPropertySetInfo()->hasPropertyByName( sCollapsingBorders ), "xmloff", "property missing?" );
         rPropSet->setPropertyValue(
             sCollapsingBorders,
@@ -558,7 +558,7 @@ void XMLTextStyleContext::FillPropertySet(
                     {
                         if(!rPropMapper.is())
                         {
-                            rPropMapper = xImpPrMap->getPropertySetMapper();
+                            rPropMapper = pImpPrMap->getPropertySetMapper();
                         }
 
                         // set property
@@ -604,7 +604,7 @@ void XMLTextStyleContext::FillPropertySet(
 
                             if(!rPropMapper.is())
                             {
-                                rPropMapper = xImpPrMap->getPropertySetMapper();
+                                rPropMapper = pImpPrMap->getPropertySetMapper();
                             }
 
                             // set property

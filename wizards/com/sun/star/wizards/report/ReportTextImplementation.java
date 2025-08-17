@@ -141,9 +141,9 @@ public class ReportTextImplementation extends ReportImplementationHelper impleme
     private void addTextSectionCopies()
     {
         m_aDoc.setLayoutSectionsVisible(false);
-        XTextCursor xTextCursor = ReportTextDocument.createTextCursor(m_aDoc.xTextDocument.getText());
+        XTextCursor xTextCursor = ReportTextDocument.createTextCursor(m_aDoc.getTextDocument().getText());
         xTextCursor.gotoStart(false);
-        for (int i = 0; i < getRecordParser().GroupFieldNames.length; i++)
+        for (int i = 0; i < getRecordParser().getGroupFieldNames().length; i++)
         {
             XNamed xNamedTextSection = addLinkedTextSection(xTextCursor, ReportTextDocument.GROUPSECTION + Integer.toString(i + 1), null, null);
             xNamedTextSection.setName(ReportTextDocument.COPYOFGROUPSECTION + (i + 1));
@@ -237,7 +237,7 @@ public class ReportTextImplementation extends ReportImplementationHelper impleme
                     getRecordParser().setSortFieldNames(sortFieldNames);
                 }
                 getRecordParser().setRecordFieldNames(sNewList);
-                getRecordParser().GroupFieldNames = JavaTools.ArrayoutofString(sGroupFieldNames, PropertyNames.SEMI_COLON);
+                getRecordParser().setGroupFieldNames(JavaTools.ArrayoutofString(sGroupFieldNames, PropertyNames.SEMI_COLON));
                 int nOrigCommandType = Integer.parseInt(sCommandType);
                 getRecordParser().setCommandType(nOrigCommandType);
 
@@ -277,7 +277,7 @@ public class ReportTextImplementation extends ReportImplementationHelper impleme
                         {
                             return bexecute;
                         }
-                        getRecordParser().getSQLQueryComposer().m_xQueryAnalyzer.setQuery(getRecordParser().Command);
+                        getRecordParser().getSQLQueryComposer().setQuery(getRecordParser().Command);
                         getRecordParser().getSQLQueryComposer().prependSortingCriteria();
                         getRecordParser().Command = getRecordParser().getSQLQueryComposer().getQuery();
 
@@ -330,15 +330,15 @@ public class ReportTextImplementation extends ReportImplementationHelper impleme
             getDoc().removeNonLayoutTextTables();
             addTextSectionCopies();
             getDoc().getallDBColumns();
-            int GroupFieldCount = getRecordParser().GroupFieldNames.length;
-            int FieldCount = getRecordParser().FieldColumns.length;
+            int GroupFieldCount = getRecordParser().getGroupFieldNames().length;
+            int FieldCount = getRecordParser().getFieldColumns().length;
             Object[] OldGroupFieldValues = new Object[GroupFieldCount];
             int RecordFieldCount = FieldCount - GroupFieldCount;
-            XTextDocument xTextDocument = getDoc().xTextDocument;
-            XTextCursor xTextCursor = ReportTextDocument.createTextCursor(getDoc().xTextDocument.getText());
+            XTextDocument xTextDocument = getDoc().getTextDocument();
+            XTextCursor xTextCursor = ReportTextDocument.createTextCursor(getDoc().getTextDocument().getText());
             xTextDocument.lockControllers();
 
-            if (getRecordParser().ResultSet.next())
+            if (getRecordParser().getResultSet().next())
             {
                 replaceUserFields();
                 Helper.setUnoPropertyValue(xTextCursor, "PageDescName", "First Page");
@@ -354,7 +354,7 @@ public class ReportTextImplementation extends ReportImplementationHelper impleme
                 if (getRecordParser().getcurrentRecordData(DataVector))
                 {
                     m_bStopProcess = false;
-                    while ((getRecordParser().ResultSet.next()) && (!m_bStopProcess))
+                    while ((getRecordParser().getResultSet().next()) && (!m_bStopProcess))
                     {
                         breset = false;
                         for (ColIndex = 0; ColIndex < GroupFieldCount; ColIndex++)
@@ -436,7 +436,7 @@ public class ReportTextImplementation extends ReportImplementationHelper impleme
         for (int i = 0; i < iCount; i++)
         {
             CurDBColumn = getDoc().DBColumnsVector.get(i);
-            xNameCellCursor = ReportTextDocument.createTextCursor(CurDBColumn.xNameCell);
+            xNameCellCursor = ReportTextDocument.createTextCursor(CurDBColumn.getNameCell());
             xNameCellCursor.gotoStart(false);
             FieldContent = getDoc().oTextFieldHandler.getUserFieldContent(xNameCellCursor);
             if (!FieldContent.equals(PropertyNames.EMPTY_STRING))
@@ -454,7 +454,7 @@ public class ReportTextImplementation extends ReportImplementationHelper impleme
 
     private XMultiServiceFactory getDocumentServiceFactory()
     {
-        return m_aDoc.xMSFDoc;
+        return m_aDoc.getMSFDoc();
     }
 
     public void store(String _sName, int _nOpenMode) throws com.sun.star.uno.Exception

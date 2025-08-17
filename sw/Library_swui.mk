@@ -19,7 +19,7 @@
 
 $(eval $(call gb_Library_Library,swui))
 
-$(eval $(call gb_Library_set_plugin_for,swui,sw))
+$(eval $(call gb_Library_set_componentfile,swui,sw/util/swui,services))
 
 $(eval $(call gb_Library_set_include,swui,\
     -I$(SRCDIR)/sw/inc \
@@ -57,7 +57,6 @@ $(eval $(call gb_Library_use_libraries,swui,\
     comphelper \
     cppu \
     cppuhelper \
-    cui \
     $(call gb_Helper_optional,DBCONNECTIVITY, \
         dbtools) \
     editeng \
@@ -73,6 +72,7 @@ $(eval $(call gb_Library_use_libraries,swui,\
     svx \
     svx \
     svxcore \
+	sw \
     tk \
     tl \
     ucbhelper \
@@ -168,6 +168,7 @@ $(eval $(call gb_Library_add_exception_objects,swui,\
     sw/source/ui/table/tabledlg \
     sw/source/ui/table/tautofmt \
     sw/source/ui/utlui/swrenamexnameddlg \
+    sw/source/ui/utlui/copyfielddlg \
 ))
 
 ifneq (,$(filter DBCONNECTIVITY,$(BUILD_TYPE)))

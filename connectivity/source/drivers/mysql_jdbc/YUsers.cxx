@@ -31,8 +31,6 @@ using namespace connectivity::mysql;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 
 OUsers::OUsers(::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex,
                const ::std::vector<OUString>& _rVector,
@@ -44,7 +42,7 @@ OUsers::OUsers(::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex,
 {
 }
 
-sdbcx::ObjectType OUsers::createObject(const OUString& _rName)
+css::uno::Reference<css::beans::XPropertySet> OUsers::createObject(const OUString& _rName)
 {
     return new OMySQLUser(m_xConnection, _rName);
 }
@@ -54,10 +52,10 @@ void OUsers::impl_refresh() { m_pParent->refreshUsers(); }
 Reference<XPropertySet> OUsers::createDescriptor() { return new OUserExtend(m_xConnection); }
 
 // XAppend
-sdbcx::ObjectType OUsers::appendObject(const OUString& _rForName,
-                                       const Reference<XPropertySet>& descriptor)
+css::uno::Reference<css::beans::XPropertySet>
+OUsers::appendObject(const OUString& _rForName, const Reference<XPropertySet>& descriptor)
 {
-    OUString aSql("GRANT USAGE ON * TO ");
+    OUString aSql(u"GRANT USAGE ON * TO "_ustr);
     OUString aQuote = m_xConnection->getMetaData()->getIdentifierQuoteString();
     aSql += ::dbtools::quoteName(aQuote, _rForName) + " @\"%\" ";
     OUString sPassword;
@@ -79,7 +77,7 @@ sdbcx::ObjectType OUsers::appendObject(const OUString& _rForName,
 // XDrop
 void OUsers::dropObject(sal_Int32 /*_nPos*/, const OUString& _sElementName)
 {
-    OUString aSql("DROP USER ");
+    OUString aSql(u"DROP USER "_ustr);
     OUString aQuote = m_xConnection->getMetaData()->getIdentifierQuoteString();
     aSql += ::dbtools::quoteName(aQuote, _sElementName);
 

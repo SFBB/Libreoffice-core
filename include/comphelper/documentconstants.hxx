@@ -67,6 +67,7 @@ inline constexpr OUString ODFVER_010_TEXT = u"1.0"_ustr;
 inline constexpr OUString ODFVER_011_TEXT = u"1.1"_ustr;
 inline constexpr OUString ODFVER_012_TEXT = u"1.2"_ustr;
 inline constexpr OUString ODFVER_013_TEXT = u"1.3"_ustr;
+inline constexpr OUString ODFVER_014_TEXT = u"1.4"_ustr;
 
 // filter flags
 // TODO/LATER: The flags should be part of the UNO specification
@@ -111,7 +112,7 @@ enum class SfxFilterFlags
     EXOTIC            = 0x00200000,
     COMBINED          = 0x00800000,
 
-    ENCRYPTION        = 0x01000000,
+    ENCRYPTION        = 0x01000000,  // password encryption
     PASSWORDTOMODIFY  = 0x02000000,
     GPGENCRYPTION     = 0x04000000,
     PREFERED          = 0x10000000,

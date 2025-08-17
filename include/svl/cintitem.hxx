@@ -29,11 +29,14 @@ class SVL_DLLPUBLIC CntByteItem: public SfxPoolItem
     sal_uInt8 m_nValue;
 
 public:
-
+    DECLARE_ITEM_TYPE_FUNCTION(CntByteItem)
     CntByteItem(sal_uInt16 which, sal_uInt8 nTheValue):
         SfxPoolItem(which), m_nValue(nTheValue) {}
 
-    virtual bool operator ==(const SfxPoolItem & rItem) const override;
+    virtual bool operator ==(const SfxPoolItem & rItem) const override final;
+
+    virtual bool supportsHashCode() const override final;
+    virtual size_t hashCode() const override final;
 
     virtual bool GetPresentation(SfxItemPresentation,
                                  MapUnit, MapUnit,
@@ -51,26 +54,23 @@ public:
 
     sal_uInt8 GetValue() const { return m_nValue; }
 
-    inline void SetValue(sal_uInt8 nTheValue);
+    void SetValue(sal_uInt8 nTheValue) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nValue = nTheValue; }
 };
-
-inline void CntByteItem::SetValue(sal_uInt8 nTheValue)
-{
-    DBG_ASSERT(GetRefCount() == 0, "CntByteItem::SetValue(): Pooled item");
-    m_nValue = nTheValue;
-}
 
 class SVL_DLLPUBLIC CntUInt16Item: public SfxPoolItem
 {
     sal_uInt16 m_nValue;
 
 public:
-
+    DECLARE_ITEM_TYPE_FUNCTION(CntUInt16Item)
     CntUInt16Item(sal_uInt16 which, sal_uInt16 nTheValue):
         SfxPoolItem(which), m_nValue(nTheValue)
     {}
 
     virtual bool operator ==(const SfxPoolItem & rItem) const override;
+
+    virtual bool supportsHashCode() const override final;
+    virtual size_t hashCode() const override final;
 
     virtual bool GetPresentation(SfxItemPresentation,
                                  MapUnit, MapUnit,
@@ -88,26 +88,24 @@ public:
 
     sal_uInt16 GetValue() const { return m_nValue; }
 
-    inline void SetValue(sal_uInt16 nTheValue);
+    void SetValue(sal_uInt16 nTheValue) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nValue = nTheValue; }
 };
 
-inline void CntUInt16Item::SetValue(sal_uInt16 nTheValue)
-{
-    DBG_ASSERT(GetRefCount() == 0, "CntUInt16Item::SetValue(): Pooled item");
-    m_nValue = nTheValue;
-}
 
 class SVL_DLLPUBLIC CntInt32Item: public SfxPoolItem
 {
     sal_Int32 m_nValue;
 
 public:
-
+    DECLARE_ITEM_TYPE_FUNCTION(CntInt32Item)
     CntInt32Item(sal_uInt16 which, sal_Int32 nTheValue):
         SfxPoolItem(which), m_nValue(nTheValue)
     {}
 
-    virtual bool operator ==(const SfxPoolItem & rItem) const override;
+    virtual bool operator ==(const SfxPoolItem & rItem) const override final;
+
+    virtual bool supportsHashCode() const override final;
+    virtual size_t hashCode() const override final;
 
     virtual bool GetPresentation(SfxItemPresentation,
                                  MapUnit, MapUnit,
@@ -125,26 +123,24 @@ public:
 
     sal_Int32 GetValue() const { return m_nValue; }
 
-    inline void SetValue(sal_Int32 nTheValue);
+    void SetValue(sal_Int32 nTheValue) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nValue = nTheValue; }
 };
 
-inline void CntInt32Item::SetValue(sal_Int32 nTheValue)
-{
-    DBG_ASSERT(GetRefCount() == 0, "CntInt32Item::SetValue(): Pooled item");
-    m_nValue = nTheValue;
-}
 
 class SVL_DLLPUBLIC CntUInt32Item: public SfxPoolItem
 {
     sal_uInt32 m_nValue;
 
 public:
-
+    DECLARE_ITEM_TYPE_FUNCTION(CntUInt32Item)
     CntUInt32Item(sal_uInt16 which, sal_uInt32 nTheValue):
         SfxPoolItem(which), m_nValue(nTheValue)
     {}
 
     virtual bool operator ==(const SfxPoolItem & rItem) const override;
+
+    virtual bool supportsHashCode() const override final;
+    virtual size_t hashCode() const override final;
 
     virtual bool GetPresentation(SfxItemPresentation,
                                  MapUnit, MapUnit,
@@ -162,14 +158,8 @@ public:
 
     sal_uInt32 GetValue() const { return m_nValue; }
 
-    inline void SetValue(sal_uInt32 nTheValue);
+    void SetValue(sal_uInt32 nTheValue) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nValue = nTheValue; }
 };
-
-inline void CntUInt32Item::SetValue(sal_uInt32 nTheValue)
-{
-    DBG_ASSERT(GetRefCount() == 0, "CntUInt32Item::SetValue(): Pooled item");
-    m_nValue = nTheValue;
-}
 
 #endif // INCLUDED_SVL_CINTITEM_HXX
 

@@ -21,18 +21,17 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 namespace sd::framework
 {
-FrameWindowPane::FrameWindowPane(const Reference<XResourceId>& rxPaneId, vcl::Window* pWindow)
+FrameWindowPane::FrameWindowPane(const rtl::Reference<ResourceId>& rxPaneId, vcl::Window* pWindow)
     : Pane(rxPaneId, pWindow)
 {
 }
 
 FrameWindowPane::~FrameWindowPane() noexcept {}
 
-sal_Bool SAL_CALL FrameWindowPane::isAnchorOnly() { return false; }
+bool FrameWindowPane::isAnchorOnly() { return false; }
 
 } // end of namespace sd::framework
 

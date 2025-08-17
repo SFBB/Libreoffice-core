@@ -14,8 +14,8 @@ using namespace ::com::sun::star;
 
 SwVbaFormFieldDropDownListEntry::SwVbaFormFieldDropDownListEntry(
     const uno::Reference<ooo::vba::XHelperInterface>& rParent,
-    const uno::Reference<uno::XComponentContext>& rContext,
-    sw::mark::IDropdownFieldmark& rFormField, sal_Int32 nZIndex)
+    const uno::Reference<uno::XComponentContext>& rContext, sw::mark::DropDownFieldmark& rFormField,
+    sal_Int32 nZIndex)
     : SwVbaFormFieldDropDownListEntry_BASE(rParent, rContext)
     , m_rDropDown(rFormField)
     , m_nZIndex(nZIndex)
@@ -44,12 +44,12 @@ void SwVbaFormFieldDropDownListEntry::Delete() { m_rDropDown.DelContent(m_nZInde
 // XHelperInterface
 OUString SwVbaFormFieldDropDownListEntry::getServiceImplName()
 {
-    return "SwVbaFormFieldDropDownListEntry";
+    return u"SwVbaFormFieldDropDownListEntry"_ustr;
 }
 
 uno::Sequence<OUString> SwVbaFormFieldDropDownListEntry::getServiceNames()
 {
-    static uno::Sequence<OUString> const aServiceNames{ "ooo.vba.word.ListEntry" };
+    static uno::Sequence<OUString> const aServiceNames{ u"ooo.vba.word.ListEntry"_ustr };
     return aServiceNames;
 }
 

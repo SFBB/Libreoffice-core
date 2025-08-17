@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_HEADLESS_SVPVD_HXX
-#define INCLUDED_VCL_INC_HEADLESS_SVPVD_HXX
+#pragma once
 
 #include <salvd.hxx>
 #include <basegfx/vector/b2ivector.hxx>
@@ -37,6 +36,7 @@ class VCL_DLLPUBLIC SvpSalVirtualDevice : public SalVirtualDevice
     std::vector< SvpSalGraphics* >      m_aGraphics;
 
     bool CreateSurface(tools::Long nNewDX, tools::Long nNewDY, sal_uInt8 *const pBuffer);
+    bool CreateSurface(tools::Long nNewDX, tools::Long nNewDY, bool bAlphaMaskTransparent = false);
 
 protected:
     SvpSalGraphics* AddGraphics(SvpSalGraphics* aGraphics);
@@ -49,10 +49,9 @@ public:
     virtual SalGraphics*    AcquireGraphics() override;
     virtual void            ReleaseGraphics( SalGraphics* pGraphics ) override;
 
-    virtual bool        SetSize( tools::Long nNewDX, tools::Long nNewDY ) override;
+    virtual bool        SetSize( tools::Long nNewDX, tools::Long nNewDY, bool bAlphaMaskTransparent ) override;
     virtual bool        SetSizeUsingBuffer( tools::Long nNewDX, tools::Long nNewDY,
-                                            sal_uInt8 * pBuffer
-                                          ) override;
+                                            sal_uInt8 * pBuffer) override;
 
     cairo_surface_t* GetSurface() const { return m_pSurface; }
 
@@ -60,7 +59,5 @@ public:
     virtual tools::Long GetWidth() const override;
     virtual tools::Long GetHeight() const override;
 };
-
-#endif // INCLUDED_VCL_INC_HEADLESS_SVPVD_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

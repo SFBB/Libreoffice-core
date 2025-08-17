@@ -24,7 +24,7 @@
 #include <scitems.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
-#include <unotools/fltrcfg.hxx>
+#include <officecfg/Office/Calc.hxx>
 
 #include <sfx2/docfile.hxx>
 #include <sfx2/objsh.hxx>
@@ -113,7 +113,7 @@ public:
         uno::Reference< container::XIndexContainer > xElement;
         if ( ! ( aElement >>= xElement ) )
             throw lang::IllegalArgumentException();
-        IdToOleNameHash[ aName ] = xElement;
+        IdToOleNameHash[ aName ] = std::move(xElement);
     }
     virtual void SAL_CALL removeByName( const OUString& aName ) override
     {
@@ -130,7 +130,7 @@ public:
         uno::Reference< container::XIndexContainer > xElement;
         if ( ! ( aElement >>= xElement ) )
             throw lang::IllegalArgumentException();
-        it->second = xElement;
+        it->second = std::move(xElement);
     }
 };
 
@@ -322,8 +322,7 @@ void ImportExcel8::Feat()
 void ImportExcel8::ReadBasic()
 {
     ScDocShell* pShell = GetDocShell();
-    tools::SvRef<SotStorage> xRootStrg = GetRootStorage();
-    const SvtFilterOptions& rFilterOpt = SvtFilterOptions::Get();
+    rtl::Reference<SotStorage> xRootStrg = GetRootStorage();
     if( !pShell || !xRootStrg.is() )
         return;
 
@@ -331,12 +330,12 @@ void ImportExcel8::ReadBasic()
     {
         // #FIXME need to get rid of this, we can also do this from within oox
         // via the "ooo.vba.VBAGlobals" service
-        if( ( rFilterOpt.IsLoadExcelBasicCode() ||
-              rFilterOpt.IsLoadExcelBasicStorage() ) &&
-            rFilterOpt.IsLoadExcelBasicExecutable() )
+        if( ( officecfg::Office::Calc::Filter::Import::VBA::Load::get() ||
+              officecfg::Office::Calc::Filter::Import::VBA::Save::get() ) &&
+              officecfg::Office::Calc::Filter::Import::VBA::Executable::get() )
         {
             // see if we have the XCB stream
-            tools::SvRef<SotStorageStream> xXCB = xRootStrg->OpenSotStream( "XCB", StreamMode::STD_READ );
+            rtl::Reference<SotStorageStream> xXCB = xRootStrg->OpenSotStream( u"XCB"_ustr, StreamMode::STD_READ );
             if ( xXCB.is()|| ERRCODE_NONE == xXCB->GetError() )
             {
                 ScCTBWrapper wrapper;
@@ -351,11 +350,11 @@ void ImportExcel8::ReadBasic()
         }
         try
         {
-            uno::Reference< uno::XComponentContext > aCtx( ::comphelper::getProcessComponentContext() );
+            const uno::Reference< uno::XComponentContext >& aCtx( ::comphelper::getProcessComponentContext() );
             SfxMedium& rMedium = GetMedium();
             uno::Reference< io::XInputStream > xIn = rMedium.GetInputStream();
             oox::ole::OleStorage root( aCtx, xIn, false );
-            oox::StorageRef vbaStg = root.openSubStorage( "_VBA_PROJECT_CUR", false );
+            oox::StorageRef vbaStg = root.openSubStorage( u"_VBA_PROJECT_CUR"_ustr, false );
             if ( vbaStg )
             {
                 oox::ole::VbaProject aVbaPrj( aCtx, pShell->GetModel(), u"Calc" );
@@ -413,7 +412,7 @@ void ImportExcel8::PostDocLoad()
         return;
 
     // BIFF5+ without storage is possible
-    tools::SvRef<SotStorage> xRootStrg = GetRootStorage();
+    rtl::Reference<SotStorage> xRootStrg = GetRootStorage();
     if( xRootStrg.is() ) try
     {
         uno::Reference< document::XDocumentPropertiesSupplier > xDPS( static_cast<cppu::OWeakObject*>(pShell->GetModel()), uno::UNO_QUERY_THROW );

@@ -22,6 +22,14 @@
 #include <memory>
 
 #include <basic/sberrors.hxx>
+#include <basic/sbmod.hxx>
+
+#include <rtl/ustrbuf.hxx>
+
+static bool EndsIfBranch(SbiToken eTok)
+{
+    return eTok == ELSEIF || eTok == ELSE || eTok == ENDIF;
+}
 
 // Single-line IF and Multiline IF
 
@@ -38,20 +46,19 @@ void SbiParser::If()
         // At the end of each block a jump to ENDIF must be inserted,
         // so that the condition is not evaluated again at ELSEIF.
         // The table collects all jump points.
-#define JMP_TABLE_SIZE 100
+        constexpr sal_uInt16 JMP_TABLE_SIZE = 100;
         sal_uInt32 pnJmpToEndLbl[JMP_TABLE_SIZE];   // 100 ELSEIFs allowed
         sal_uInt16 iJmp = 0;                        // current table index
 
         // multiline IF
         nEndLbl = aGen.Gen( SbiOpcode::JUMPF_, 0 );
         eTok = Peek();
-        while( !( eTok == ELSEIF || eTok == ELSE || eTok == ENDIF ) &&
-                !bAbort && Parse() )
+        while (!EndsIfBranch(eTok) && !bAbort && Parse())
         {
             eTok = Peek();
             if( IsEof() )
             {
-                Error( ERRCODE_BASIC_BAD_BLOCK, IF ); bAbort = true; return;
+                Error( ERRCODE_BASIC_BAD_BLOCK, ENDIF ); bAbort = true; return;
             }
         }
         while( eTok == ELSEIF )
@@ -73,13 +80,12 @@ void SbiParser::If()
             pCond.reset();
             TestToken( THEN );
             eTok = Peek();
-            while( !( eTok == ELSEIF || eTok == ELSE || eTok == ENDIF ) &&
-                    !bAbort && Parse() )
+            while (!EndsIfBranch(eTok) && !bAbort && Parse())
             {
                 eTok = Peek();
                 if( IsEof() )
                 {
-                    Error( ERRCODE_BASIC_BAD_BLOCK, ELSEIF );  bAbort = true; return;
+                    Error( ERRCODE_BASIC_BAD_BLOCK, ENDIF );  bAbort = true; return;
                 }
             }
         }
@@ -95,7 +101,12 @@ void SbiParser::If()
         }
         else if( eTok == ENDIF )
             Next();
-
+        else
+        {
+            Error(ERRCODE_BASIC_BAD_BLOCK, ENDIF);
+            bAbort = true;
+            return;
+        }
 
         while( iJmp > 0 )
         {
@@ -210,6 +221,11 @@ void SbiParser::For()
     if( bForEach )
         Next();
     SbiExpression aLvalue( this, SbOPERAND );
+    if (!aLvalue.IsVariable())
+    {
+        bAbort = true;
+        return; // the error is already set in SbiExpression ctor
+    }
     aLvalue.Gen();      // variable on the Stack
 
     if( bForEach )
@@ -265,6 +281,63 @@ void SbiParser::For()
 
 // WITH .. END WITH
 
+namespace
+{
+// Generate a '{_with_library.module_offset} = rVar'
+// Use the {_with_library.module_offset} in OpenBlock
+// The name of the variable can't be used by user: a name like [{_with_library.module_offset}]
+// is valid, but not without the square brackets
+struct WithLocalVar
+{
+    WithLocalVar(SbiParser& rParser, SbiExpression& rVar)
+        : m_rParser(rParser)
+        , m_aWithParent(createLocalVar(rParser))
+    {
+        // Assignment
+        m_aWithParent.Gen();
+        rVar.Gen();
+        m_rParser.aGen.Gen(SbiOpcode::PUTC_);
+    }
+
+    ~WithLocalVar()
+    {
+        // {_with_library.module_offset} = Nothing
+        m_aWithParent.Gen();
+        m_rParser.aGen.Gen(SbiOpcode::RTL_, m_rParser.aGblStrings.Add(u"Nothing"_ustr), SbxOBJECT);
+        m_rParser.aGen.Gen(SbiOpcode::PUTC_);
+    }
+
+    static SbiExpression createLocalVar(SbiParser& rParser)
+    {
+        // Create the unique name
+        OUStringBuffer moduleName(rParser.aGen.GetModule().GetName());
+        for (auto parent = rParser.aGen.GetModule().GetParent(); parent;
+             parent = parent->GetParent())
+            moduleName.insert(0, parent->GetName() + ".");
+
+        OUString uniqueName
+            = "{_with_" + moduleName + "_" + OUString::number(rParser.aGen.GetOffset()) + "}";
+        while (rParser.pPool->Find(uniqueName) != nullptr)
+        {
+            static sal_Int64 unique_suffix;
+            uniqueName = "{_with_" + moduleName + "_" + OUString::number(rParser.aGen.GetOffset())
+                         + "_" + OUString::number(unique_suffix++) + "}";
+        }
+        SbiSymDef* pWithParentDef = new SbiSymDef(uniqueName);
+        pWithParentDef->SetType(SbxOBJECT);
+        rParser.pPool->Add(pWithParentDef);
+
+        // DIM local variable: work with Option Explicit
+        rParser.aGen.Gen(SbiOpcode::LOCAL_, pWithParentDef->GetId(), pWithParentDef->GetType());
+
+        return SbiExpression(&rParser, *pWithParentDef);
+    }
+
+    SbiParser& m_rParser;
+    SbiExpression m_aWithParent;
+};
+}
+
 void SbiParser::With()
 {
     SbiExpression aVar( this, SbOPERAND );
@@ -279,22 +352,15 @@ void SbiParser::With()
     else if( pDef->GetType() != SbxOBJECT )
         Error( ERRCODE_BASIC_NEEDS_OBJECT );
 
-
     pNode->SetType( SbxOBJECT );
 
-    OpenBlock( NIL, aVar.GetExprNode() );
+    std::optional<WithLocalVar> oLocalVar;
+    if (pDef->GetProcDef())
+        oLocalVar.emplace(*this, aVar);
+
+    OpenBlock(NIL, oLocalVar ? oLocalVar->m_aWithParent.GetExprNode() : aVar.GetExprNode());
     StmntBlock( ENDWITH );
     CloseBlock();
-}
-
-// LOOP/NEXT/WEND without construct
-
-void SbiParser::BadBlock()
-{
-    if( eEndTok )
-        Error( ERRCODE_BASIC_BAD_BLOCK, eEndTok );
-    else
-        Error( ERRCODE_BASIC_BAD_BLOCK, "Loop/Next/Wend" );
 }
 
 // On expr Goto/Gosub n,n,n...
@@ -307,7 +373,7 @@ void SbiParser::OnGoto()
     SbiToken eTok = Next();
     if( eTok != GOTO && eTok != GOSUB )
     {
-        Error( ERRCODE_BASIC_EXPECTED, "GoTo/GoSub" );
+        Error( ERRCODE_BASIC_EXPECTED, u"GoTo/GoSub"_ustr );
         eTok = GOTO;
     }
 
@@ -528,7 +594,7 @@ void SbiParser::On()
             TestToken( NEXT );
             aGen.Gen( SbiOpcode::NOERROR_ );
         }
-        else Error( ERRCODE_BASIC_EXPECTED, "GoTo/Resume" );
+        else Error( ERRCODE_BASIC_EXPECTED, u"GoTo/Resume"_ustr );
     }
 }
 

@@ -75,18 +75,22 @@ public:
 
 /// Collection of SwLinePortion instances, representing one line of text.
 /// Typically owned by an SwParaPortion.
-class SW_DLLPUBLIC SwLineLayout : public SwTextPortion
+class SAL_DLLPUBLIC_RTTI SwLineLayout : public SwTextPortion
 {
 private:
     SwLineLayout *m_pNext;                // The next Line
     std::unique_ptr<std::vector<tools::Long>> m_pLLSpaceAdd;     // Used for justified alignment
     std::unique_ptr<std::deque<sal_uInt16>> m_pKanaComp;  // Used for Kana compression
+    std::vector<TextFrameIndex> m_aKashida;
     SwTwips m_nRealHeight;             // The height resulting from line spacing and register
     SwTwips m_nTextHeight;             // The max height of all non-FlyCnt portions in this Line
+    SwTwips m_nExtraAscent = 0;
+    SwTwips m_nExtraDescent = 0;
     bool m_bFormatAdj : 1;
     bool m_bDummy     : 1;
     bool m_bEndHyph   : 1;
     bool m_bMidHyph   : 1;
+    bool m_bLastHyph  : 1;
     bool m_bFly       : 1;
     bool m_bRest      : 1;
     bool m_bBlinking  : 1;
@@ -96,7 +100,6 @@ private:
     bool m_bRedlineEnd: 1; // Redlining for paragraph mark: tracked change at the end
     bool m_bForcedLeftMargin : 1; // Left adjustment moved by the Fly
     bool m_bHanging : 1; // Contains a hanging portion in the margin
-    bool m_bUnderscore : 1;
 
     enum RedlineType m_eRedlineEnd; // redline type of pilcrow and line break symbols
 
@@ -106,14 +109,14 @@ private:
 
     void DeleteNext();
 public:
-    // From SwPosSize
-    using SwPosSize::Height;
+    // From SwPositiveSize
+    using SwPositiveSize::Height;
     virtual void Height(const SwTwips nNew, const bool bText = true) override;
 
     // From SwLinePortion
     virtual SwLinePortion *Insert( SwLinePortion *pPortion ) override;
     virtual SwLinePortion *Append( SwLinePortion *pPortion ) override;
-    SwLinePortion *GetFirstPortion() const;
+    SW_DLLPUBLIC SwLinePortion *GetFirstPortion() const;
 
     // Flags
     void ResetFlags();
@@ -123,6 +126,8 @@ public:
     bool IsEndHyph() const { return m_bEndHyph; }
     void SetMidHyph( const bool bNew ) { m_bMidHyph = bNew; }
     bool IsMidHyph() const { return m_bMidHyph; }
+    void SetLastHyph( const bool bNew ) { m_bLastHyph = bNew; }
+    bool IsLastHyph() const { return m_bLastHyph; }
     void SetFly( const bool bNew ) { m_bFly = bNew; }
     bool IsFly() const { return m_bFly; }
     void SetRest( const bool bNew ) { m_bRest = bNew; }
@@ -143,8 +148,6 @@ public:
     bool HasForcedLeftMargin() const { return m_bForcedLeftMargin; }
     void SetHanging( const bool bNew ) { m_bHanging = bNew; }
     bool IsHanging() const { return m_bHanging; }
-    void SetUnderscore( const bool bNew ) { m_bUnderscore = bNew; }
-    bool HasUnderscore() const { return m_bUnderscore; }
 
     // Respecting empty dummy lines
     void SetDummy( const bool bNew ) { m_bDummy = bNew; }
@@ -169,6 +172,12 @@ public:
     SwTwips GetRealHeight() const { return m_nRealHeight; }
 
     SwTwips GetTextHeight() const { return m_nTextHeight; }
+
+    void SetExtraAscent(SwTwips nNew) { m_nExtraAscent = nNew; }
+    SwTwips GetExtraAscent() const { return m_nExtraAscent; }
+
+    void SetExtraDescent(SwTwips nNew) { m_nExtraDescent = nNew; }
+    SwTwips GetExtraDescent() const { return m_nExtraDescent; }
 
     // Creates the glue chain for short lines
     SwMarginPortion *CalcLeftMargin();
@@ -201,6 +210,9 @@ public:
     void FinishKanaComp() { m_pKanaComp.reset(); }
     std::deque<sal_uInt16>* GetpKanaComp() const { return m_pKanaComp.get(); }
     std::deque<sal_uInt16>& GetKanaComp() { return *m_pKanaComp; }
+
+    void SetKashida(std::vector<TextFrameIndex> aNew) { m_aKashida = std::move(aNew); }
+    std::span<const TextFrameIndex> GetKashida() const { return m_aKashida; }
 
     /** determine ascent and descent for positioning of as-character anchored
         object

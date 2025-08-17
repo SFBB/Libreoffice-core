@@ -39,15 +39,13 @@ namespace cli_uno
 
 extern "C"
 {
-void SAL_CALL Mapping_acquire( uno_Mapping * mapping )
-    SAL_THROW_EXTERN_C()
+void SAL_CALL Mapping_acquire( uno_Mapping * mapping ) noexcept
 {
     Mapping const * that = static_cast< Mapping const * >( mapping );
      that->m_bridge->acquire();
 }
 
-void SAL_CALL Mapping_release( uno_Mapping * mapping )
-    SAL_THROW_EXTERN_C()
+void SAL_CALL Mapping_release( uno_Mapping * mapping ) noexcept
 {
     Mapping const * that = static_cast< Mapping const * >( mapping );
     that->m_bridge->release();
@@ -56,20 +54,19 @@ void SAL_CALL Mapping_release( uno_Mapping * mapping )
 
 void SAL_CALL Mapping_cli2uno(
     uno_Mapping * mapping, void ** ppOut,
-    void * pIn, typelib_InterfaceTypeDescription * td )
-    SAL_THROW_EXTERN_C()
+    void * pIn, typelib_InterfaceTypeDescription * td ) noexcept
 {
     uno_Interface ** ppUnoI = (uno_Interface **)ppOut;
     intptr_t  cliI = (intptr_t)pIn;
 
-    OSL_ENSURE( ppUnoI && td, "### null ptr!" );
+    assert(ppUnoI && td && "### null ptr!");
 
-     if (0 != *ppUnoI)
-     {
-         uno_Interface * pUnoI = *(uno_Interface **)ppUnoI;
-         (*pUnoI->release)( pUnoI );
-         *ppUnoI = 0;
-     }
+    if (0 != *ppUnoI)
+    {
+        uno_Interface * pUnoI = *(uno_Interface **)ppUnoI;
+        (*pUnoI->release)( pUnoI );
+        *ppUnoI = 0;
+    }
     try
     {
         Mapping const * that = static_cast< Mapping const * >( mapping );
@@ -90,12 +87,11 @@ void SAL_CALL Mapping_cli2uno(
 
 void SAL_CALL Mapping_uno2cli(
     uno_Mapping * mapping, void ** ppOut,
-    void * pIn, typelib_InterfaceTypeDescription * td )
-    SAL_THROW_EXTERN_C()
+    void * pIn, typelib_InterfaceTypeDescription * td ) noexcept
 {
     try
     {
-        OSL_ENSURE( td && ppOut, "### null ptr!" );
+        assert(td && ppOut && "### null ptr!");
         OSL_ENSURE( (sizeof(System::Char) == sizeof(sal_Unicode))
                     && (sizeof(System::Boolean) == sizeof(sal_Bool))
                     && (sizeof(System::SByte) == sizeof(sal_Int8))
@@ -143,8 +139,7 @@ void SAL_CALL Mapping_uno2cli(
 }
 
 
-void SAL_CALL Bridge_free( uno_Mapping * mapping )
-    SAL_THROW_EXTERN_C()
+void SAL_CALL Bridge_free( uno_Mapping * mapping ) noexcept
 {
     Mapping * that = static_cast< Mapping * >( mapping );
     delete that->m_bridge;
@@ -204,7 +199,7 @@ Bridge::Bridge(
       m_uno_cli_env( uno_cli_env ),
       m_registered_cli2uno( registered_cli2uno )
 {
-    OSL_ASSERT( 0 != m_uno_cli_env && 0 != m_uno_env );
+    assert(m_uno_cli_env && m_uno_env);
     (*((uno_Environment *)m_uno_env)->acquire)( (uno_Environment *)m_uno_env );
     (*m_uno_cli_env->acquire)( m_uno_cli_env );
 
@@ -238,15 +233,13 @@ extern "C"
 namespace cli_uno
 {
 
-void SAL_CALL cli_env_disposing( uno_Environment * uno_cli_env )
-    SAL_THROW_EXTERN_C()
+void SAL_CALL cli_env_disposing( uno_Environment * uno_cli_env ) noexcept
 {
     uno_cli_env->pContext = 0;
 }
 
 
-SAL_DLLPUBLIC_EXPORT void SAL_CALL uno_initEnvironment( uno_Environment * uno_cli_env )
-    SAL_THROW_EXTERN_C()
+SAL_DLLPUBLIC_EXPORT void SAL_CALL uno_initEnvironment( uno_Environment * uno_cli_env ) noexcept
 {
     //ToDo: remove when compiled with .NET 2
 
@@ -273,10 +266,9 @@ SAL_DLLPUBLIC_EXPORT void SAL_CALL uno_initEnvironment( uno_Environment * uno_cl
 }
 
 SAL_DLLPUBLIC_EXPORT void SAL_CALL uno_ext_getMapping(
-    uno_Mapping ** ppMapping, uno_Environment * pFrom, uno_Environment * pTo )
-    SAL_THROW_EXTERN_C()
+    uno_Mapping ** ppMapping, uno_Environment * pFrom, uno_Environment * pTo ) noexcept
 {
-    OSL_ASSERT( 0 != ppMapping && 0 != pFrom && 0 != pTo );
+    assert(ppMapping && pFrom && pTo);
     if (*ppMapping)
     {
         (*(*ppMapping)->release)( *ppMapping );

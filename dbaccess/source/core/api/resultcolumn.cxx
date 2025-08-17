@@ -30,8 +30,6 @@
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::container;
 using namespace ::osl;
 using namespace ::comphelper;
 using namespace ::cppu;
@@ -80,6 +78,8 @@ void OResultColumn::impl_determineIsRowVersion_nothrow()
                         break;
                     }
                 }
+                Reference< XCloseable > xResultCloseable( xVersionColumns, UNO_QUERY_THROW );
+                xResultCloseable->close();
             }
         }
         catch(const SQLException&)
@@ -105,7 +105,7 @@ Sequence< sal_Int8 > OResultColumn::getImplementationId()
 // XServiceInfo
 OUString OResultColumn::getImplementationName(  )
 {
-    return "com.sun.star.sdb.OResultColumn";
+    return u"com.sun.star.sdb.OResultColumn"_ustr;
 }
 
 Sequence< OUString > OResultColumn::getSupportedServiceNames(  )

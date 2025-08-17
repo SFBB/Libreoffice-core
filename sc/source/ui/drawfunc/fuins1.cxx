@@ -22,6 +22,7 @@
 #include <officecfg/Office/Common.hxx>
 #include <editeng/sizeitem.hxx>
 #include <sal/log.hxx>
+#include <sfx2/lokhelper.hxx>
 #include <sfx2/opengrf.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <svx/svdograf.hxx>
@@ -47,6 +48,9 @@
 #include <strings.hrc>
 #include <globstr.hrc>
 #include <comphelper/lok.hxx>
+
+#include <tools/hostfilter.hxx>
+#include <tools/urlobj.hxx>
 
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/media/XPlayer.hpp>
@@ -125,27 +129,31 @@ static void lcl_InsertGraphic( const Graphic& rGraphic,
     // #i123922# check if an existing object is selected; if yes, evtl. replace
     // the graphic for a SdrGraphObj (including link state updates) or adapt the fill
     // style for other objects
-    if(pDrawView && 1 == pDrawView->GetMarkedObjectCount())
+    if(pDrawView)
     {
-        SdrObject* pPickObj = pDrawView->GetMarkedObjectByIndex(0);
-
-        if(pPickObj)
+        const SdrMarkList& rMarkList = pDrawView->GetMarkedObjectList();
+        if (1 == rMarkList.GetMarkCount())
         {
-            //sal_Int8 nAction(DND_ACTION_MOVE);
-            //Point aPos;
-            const OUString aBeginUndo(ScResId(STR_UNDO_DRAGDROP));
+            SdrObject* pPickObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
 
-            SdrObject* pResult = pDrawView->ApplyGraphicToObject(
-                *pPickObj,
-                rGraphic1,
-                aBeginUndo,
-                bAsLink ? rFileName : OUString());
-
-            if(pResult)
+            if(pPickObj)
             {
-                // we are done; mark the modified/new object
-                pDrawView->MarkObj(pResult, pDrawView->GetSdrPageView());
-                return;
+                //sal_Int8 nAction(DND_ACTION_MOVE);
+                //Point aPos;
+                const OUString aBeginUndo(ScResId(STR_UNDO_DRAGDROP));
+
+                SdrObject* pResult = pDrawView->ApplyGraphicToObject(
+                    *pPickObj,
+                    rGraphic1,
+                    aBeginUndo,
+                    bAsLink ? rFileName : OUString());
+
+                if(pResult)
+                {
+                    // we are done; mark the modified/new object
+                    pDrawView->MarkObj(pResult, pDrawView->GetSdrPageView());
+                    return;
+                }
             }
         }
     }
@@ -251,7 +259,7 @@ static void lcl_InsertMedia( const OUString& rMediaURL, bool bApi,
         *rData.GetDocument().GetDrawLayer(),
         tools::Rectangle(aInsertPos, aSize));
 
-    pObj->setURL( realURL, ""/*TODO?*/ );
+    pObj->setURL( realURL, u""_ustr/*TODO?*/ );
     pView->InsertObjectAtView( pObj.get(), *pPV, bApi ? SdrInsertFlags::DONTMARK : SdrInsertFlags::NONE );
 }
 #endif
@@ -259,16 +267,16 @@ static void lcl_InsertMedia( const OUString& rMediaURL, bool bApi,
 FuInsertGraphic::FuInsertGraphic( ScTabViewShell&   rViewSh,
                                   vcl::Window*      pWin,
                                   ScDrawView*       pViewP,
-                                  SdrModel*         pDoc,
+                                  SdrModel&         rDoc,
                                   SfxRequest&       rReq )
-       : FuPoor(rViewSh, pWin, pViewP, pDoc, rReq)
+       : FuPoor(rViewSh, pWin, pViewP, rDoc, rReq)
 {
     const SfxItemSet* pReqArgs = rReq.GetArgs();
     const SfxStringItem* pGraphicItem;
     if ( pReqArgs &&
          (pGraphicItem = pReqArgs->GetItemIfSet( SID_INSERT_GRAPHIC, true )) )
     {
-        OUString aFileName = pGraphicItem->GetValue();
+        const OUString& aFileName = pGraphicItem->GetValue();
 
         OUString aFilterName;
         if ( const SfxStringItem* pFilterItem = pReqArgs->GetItemIfSet( FN_PARAM_FILTER ) )
@@ -278,6 +286,13 @@ FuInsertGraphic::FuInsertGraphic( ScTabViewShell&   rViewSh,
         const SfxPoolItem* pItem;
         if ( pReqArgs->GetItemState( FN_PARAM_1, true, &pItem ) == SfxItemState::SET )
             bAsLink = static_cast<const SfxBoolItem*>(pItem)->GetValue();
+
+        if (comphelper::LibreOfficeKit::isActive())
+        {
+            INetURLObject aURL(aFileName);
+            if (INetProtocol::File != aURL.GetProtocol() && HostFilter::isForbidden(aURL.GetHost()))
+                SfxLokHelper::sendNetworkAccessError("insert");
+        }
 
         Graphic aGraphic;
         ErrCode nError = GraphicFilter::LoadGraphic( aFileName, aFilterName, aGraphic, &GraphicFilter::GetGraphicFilter() );
@@ -372,9 +387,9 @@ FuInsertGraphic::~FuInsertGraphic()
 FuInsertMedia::FuInsertMedia( ScTabViewShell&   rViewSh,
                               vcl::Window*      pWin,
                               ScDrawView*       pViewP,
-                              SdrModel*         pDoc,
+                              SdrModel&         rDoc,
                               const SfxRequest& rReq ) :
-    FuPoor(rViewSh, pWin, pViewP, pDoc, rReq)
+    FuPoor(rViewSh, pWin, pViewP, rDoc, rReq)
 {
 #if HAVE_FEATURE_AVMEDIA
     OUString     aURL;
@@ -421,7 +436,7 @@ FuInsertMedia::FuInsertMedia( ScTabViewShell&   rViewSh,
                 avmedia::MediaWindow::dispatchInsertAVMedia(xDispatchProvider, aSize, aURL, bLink);
             }));
 
-        const bool bIsMediaURL = ::avmedia::MediaWindow::isMediaURL(aURL, ""/*TODO?*/, true, xPlayerListener);
+        const bool bIsMediaURL = ::avmedia::MediaWindow::isMediaURL(aURL, u""_ustr/*TODO?*/, true, xPlayerListener);
 
         if( pWin )
             pWin->LeaveWait();

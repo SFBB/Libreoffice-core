@@ -83,7 +83,7 @@ void SmartTagMenuController::statusChanged( const css::frame::FeatureStateEvent&
     OUString aApplicationName;
     OUString aRangeText;
 
-    for ( const auto& aProperty : std::as_const(aProperties) )
+    for (const auto& aProperty : aProperties)
     {
         if ( aProperty.Name == "ActionComponents" )
             aProperty.Value >>= aActionComponents;
@@ -145,11 +145,11 @@ void SmartTagMenuController::FillMenu()
         const OUString aSmartTagCaption = xFirstAction->getSmartTagCaption( nSmartTagIndex, rLocale );
 
         // No sub-menus if there's only one smart tag type listed
-        css::uno::Reference<css::awt::XPopupMenu> xSubMenu = m_xPopupMenu;
+        rtl::Reference<VCLXPopupMenu> xSubMenu = m_xPopupMenu;
         if ( 1 < rActionComponentsSequence.getLength() )
         {
             m_xPopupMenu->insertItem(nMenuId, aSmartTagCaption, 0, -1);
-            xSubMenu.set(new VCLXPopupMenu);
+            xSubMenu = new VCLXPopupMenu;
             m_xPopupMenu->setPopupMenu(nMenuId++, xSubMenu);
         }
 
@@ -230,12 +230,12 @@ bool SmartTagMenuController::MenuSelect(sal_uInt16 nMyId)
 
 OUString SmartTagMenuController::getImplementationName()
 {
-    return "com.sun.star.comp.svx.SmartTagMenuController";
+    return u"com.sun.star.comp.svx.SmartTagMenuController"_ustr;
 }
 
 css::uno::Sequence< OUString > SmartTagMenuController::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.PopupMenuController" };
+    return { u"com.sun.star.frame.PopupMenuController"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *

@@ -33,6 +33,7 @@
 #include <swfont.hxx>
 #include "txtpaint.hxx"
 #include "porfld.hxx"
+#include "porfly.hxx"
 #include "portab.hxx"
 #include <txatbase.hxx>
 #include <charfmt.hxx>
@@ -40,6 +41,7 @@
 #include "porrst.hxx"
 #include "pormulti.hxx"
 #include <doc.hxx>
+#include <fmturl.hxx>
 
 // Returns, if we have an underline breaking situation
 // Adding some more conditions here means you also have to change them
@@ -129,11 +131,6 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
     ::std::optional<SwTaggedPDFHelper> & roTaggedParagraph,
     bool const isPDFTaggingEnabled)
 {
-#if OSL_DEBUG_LEVEL > 1
-//    sal_uInt16 nFntHeight = GetInfo().GetFont()->GetHeight( GetInfo().GetVsh(), GetInfo().GetOut() );
-//    sal_uInt16 nFntAscent = GetInfo().GetFont()->GetAscent( GetInfo().GetVsh(), GetInfo().GetOut() );
-#endif
-
     // maybe catch-up adjustment
     GetAdjusted();
     AddExtraBlankWidth();
@@ -220,7 +217,7 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
             GetInfo().GetPos().Y() + nTmpHeight > rPaint.Top() + rPaint.Height() )
         {
             bClip = false;
-            rClip.ChgClip( rPaint, m_pFrame, m_pCurr->HasUnderscore() );
+            rClip.ChgClip(rPaint, m_pFrame, m_pCurr->GetExtraAscent(), m_pCurr->GetExtraDescent());
         }
 #if OSL_DEBUG_LEVEL > 1
         static bool bClipAlways = false;
@@ -253,7 +250,7 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
         // tdf#117448 at small fixed line height, enlarge clipping area in table cells
         // to show previously clipped text content on the area of paragraph margins
         if ( rFrame.IsInTab() )
-            rClip.ChgClip( aLineRect, m_pFrame, false, rFrame.GetTopMargin(), rFrame.GetBottomMargin() );
+            rClip.ChgClip(aLineRect, m_pFrame, rFrame.GetTopMargin(), rFrame.GetBottomMargin());
         else
             rClip.ChgClip( aLineRect, m_pFrame );
         bClip = false;
@@ -375,7 +372,7 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
             GetInfo().X() + pPor->Width() + ( pPor->Height() / 2 ) > nMaxRight )
         {
             bClip = false;
-            rClip.ChgClip( rPaint, m_pFrame, m_pCurr->HasUnderscore() );
+            rClip.ChgClip(rPaint, m_pFrame, m_pCurr->GetExtraAscent(), m_pCurr->GetExtraDescent());
         }
 
         // Portions, which lay "below" the text like post-its
@@ -459,6 +456,24 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
         // reset (for special vertical alignment)
         GetInfo().Y( nOldY );
 
+        if (GetFnt()->IsURL() && pPor->InTextGrp())
+            GetInfo().NotifyURL(*pPor);
+        else if (pPor->IsFlyCntPortion())
+        {
+            if (auto* pFlyContentPortion = dynamic_cast<sw::FlyContentPortion*>(pPor))
+            {
+                if (auto* pFlyFrame = pFlyContentPortion->GetFlyFrame())
+                {
+                    if (auto* pFormat = pFlyFrame->GetFormat())
+                    {
+                        auto& url = pFormat->GetURL();
+                        if (!url.GetURL().isEmpty()) // TODO: url.GetMap() ?
+                            GetInfo().NotifyURL(*pPor);
+                    }
+                }
+            }
+        }
+
         bFirst &= !pPor->GetLen();
         if( pNext || !pPor->IsMarginPortion() )
             pPor->Move( GetInfo() );
@@ -516,7 +531,7 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
     delete GetInfo().GetUnderFnt();
     GetInfo().SetUnderFnt( nullptr );
 
-    // paint remaining stuff
+    // paint remaining stuff, e.g. the line ending symbols, pilcrow (¶) and the line break
     if( bDrawInWindow )
     {
         // If special vertical alignment is enabled, GetInfo().Y() is the
@@ -549,6 +564,12 @@ void SwTextPainter::DrawTextLine( const SwRect &rPaint, SwSaveClip &rClip,
                 GetInfo().Y( GetInfo().GetPos().Y()
                            + AdjustBaseLine( *m_pCurr, &aEnd ) );
             GetInfo().X( GetInfo().X() +
+                // tdf#163042 In the case of shrunk lines with a single portion, adjust
+                // the line width (if needed, i.e. if the shrunk line doesn't end in a space)
+                // to show the terminating pilcrow at the correct position, and not before that
+                ( ( !( pEndTempl->GetNextPortion() && pEndTempl->GetNextPortion()->IsHolePortion() ) &&
+                    std::abs( m_pCurr->Width() - m_pCurr->GetFirstPortion()->Width() ) <= 1 && m_pCurr->ExtraShrunkWidth() > 0 )
+                        ? m_pCurr->ExtraShrunkWidth() - m_pCurr->Width() : 0 ) +
                     ( GetCurr()->IsHanging() ? GetCurr()->GetHangingMargin() : 0 ) );
             aEnd.Paint( GetInfo() );
             GetInfo().Y( nOldY );

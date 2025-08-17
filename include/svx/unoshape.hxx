@@ -61,7 +61,6 @@ class SfxItemSet;
 class SdrModel;
 class SvxDrawPage;
 class SvGlobalName;
-class Pair;
 
 // Dimension arrows change size/position on save/reload (#i59051#)
 namespace basegfx
@@ -71,8 +70,6 @@ namespace basegfx
 
 struct SvxShapeImpl;
 class SvxShapeMaster;
-class SvxItemPropertySet;
-class SfxItemSet;
 
 void SVXCORE_DLLPUBLIC SvxItemPropertySet_setPropertyValue( const SfxItemPropertyMapEntry* pMap,
         const css::uno::Any& rVal, SfxItemSet& rSet );
@@ -194,7 +191,7 @@ public:
 
     // access methods for master objects
     /// @throws css::uno::RuntimeException
-    css::uno::Reference< css::beans::XPropertySetInfo > const & _getPropertySetInfo(  );
+    rtl::Reference< SfxItemPropertySetInfo > const & _getPropertySetInfo(  );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::beans::PropertyVetoException
     /// @throws css::lang::IllegalArgumentException
@@ -226,7 +223,7 @@ public:
     void setMaster( SvxShapeMaster* pMaster );
 
     // SfxListener
-    virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) noexcept override;
+    virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) noexcept override final;
 
     // XAggregation
     virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type& aType ) override;
@@ -379,10 +376,10 @@ public:
     virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
 };
 
-class SAL_DLLPUBLIC_RTTI SvxShapeRect final : public SvxShapeText
+class UNLESS_MERGELIBS(SAL_DLLPUBLIC_RTTI) SvxShapeRect final : public SvxShapeText
 {
 public:
-    SVXCORE_DLLPUBLIC SvxShapeRect(SdrObject* pObj);
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SvxShapeRect(SdrObject* pObj);
     virtual ~SvxShapeRect() noexcept override;
 
     // XInterface
@@ -416,7 +413,7 @@ public:
 /***********************************************************************
 *                                                                      *
 ***********************************************************************/
-class SVXCORE_DLLPUBLIC SvxShapeGroup final : public SvxShapeGroupAnyD,
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SvxShapeGroup final : public SvxShapeGroupAnyD,
                       public css::drawing::XShapeGroup,
                       public css::drawing::XShapes2
 {
@@ -517,7 +514,7 @@ public:
 /***********************************************************************
 *                                                                      *
 ***********************************************************************/
-class SVXCORE_DLLPUBLIC SvxShapeControl final : public css::drawing::XControlShape, public SvxShapeText
+class UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) SvxShapeControl final : public css::drawing::XControlShape, public SvxShapeText
 {
 protected:
     using SvxUnoTextRangeBase::setPropertyValue;
@@ -578,7 +575,7 @@ public:
 class SvxShapeCircle final : public SvxShapeText
 {
 public:
-    SVXCORE_DLLPUBLIC SvxShapeCircle(SdrObject* pObj);
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SvxShapeCircle(SdrObject* pObj);
     virtual ~SvxShapeCircle() noexcept override;
 };
 
@@ -587,10 +584,10 @@ public:
 ***********************************************************************/
 
 // #i118485# changed parent to SvxShapeText to allow Text handling over UNO API
-class SVXCORE_DLLPUBLIC SvxOle2Shape : public SvxShapeText
+class UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) SvxOle2Shape : public SvxShapeText
 {
 private:
-    OUString referer_;
+    OUString m_referer;
 protected:
     // override these for special property handling in subcasses. Return true if property is handled
     virtual bool setPropertyValueImpl( const OUString& rName, const SfxItemPropertyMapEntry* pProperty, const css::uno::Any& rValue ) override;
@@ -615,7 +612,7 @@ public:
 /***********************************************************************
 *                                                                      *
 ***********************************************************************/
-class SAL_DLLPUBLIC_RTTI SvxShapePolyPolygon final : public SvxShapeText
+class UNLESS_MERGELIBS(SAL_DLLPUBLIC_RTTI) SvxShapePolyPolygon final : public SvxShapeText
 {
     using SvxUnoTextRangeBase::setPropertyValue;
     using SvxUnoTextRangeBase::getPropertyValue;
@@ -630,7 +627,7 @@ class SAL_DLLPUBLIC_RTTI SvxShapePolyPolygon final : public SvxShapeText
 public:
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::beans::PropertyVetoException
-    SVXCORE_DLLPUBLIC SvxShapePolyPolygon( SdrObject* pObj );
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SvxShapePolyPolygon( SdrObject* pObj );
     virtual ~SvxShapePolyPolygon() noexcept override;
 
     // Local support functions
@@ -653,24 +650,23 @@ class SvxGraphicObject final : public SvxShapeText
     virtual bool getPropertyValueImpl( const OUString& rName, const SfxItemPropertyMapEntry* pProperty, css::uno::Any& rValue ) override;
 
 public:
-    SVXCORE_DLLPUBLIC SvxGraphicObject(SdrObject* pObj);
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SvxGraphicObject(SdrObject* pObj);
     virtual ~SvxGraphicObject() noexcept override;
 };
 
 /***********************************************************************
 *                                                                      *
 ***********************************************************************/
-class SAL_DLLPUBLIC_RTTI Svx3DSceneObject final : public SvxShapeGroupAnyD
+class UNLESS_MERGELIBS(SAL_DLLPUBLIC_RTTI) Svx3DSceneObject final : public SvxShapeGroupAnyD
 {
 private:
     rtl::Reference< SvxDrawPage > mxPage;
 
-protected:
+public:
     using SvxShape::setPropertyValue;
     using SvxShape::getPropertyValue;
 
-public:
-    SVXCORE_DLLPUBLIC Svx3DSceneObject(SdrObject* pObj, SvxDrawPage* pDrawPage);
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DSceneObject(SdrObject* pObj, SvxDrawPage* pDrawPage);
     // override these for special property handling in subcasses. Return true if property is handled
     virtual bool setPropertyValueImpl( const OUString& rName, const SfxItemPropertyMapEntry* pProperty, const css::uno::Any& rValue ) override;
     virtual bool getPropertyValueImpl(const OUString& rName, const SfxItemPropertyMapEntry* pProperty,
@@ -754,7 +750,7 @@ class Svx3DLatheObject final : public SvxShape
     virtual bool getPropertyValueImpl( const OUString& rName, const SfxItemPropertyMapEntry* pProperty, css::uno::Any& rValue ) override;
 
 public:
-    SVXCORE_DLLPUBLIC Svx3DLatheObject(SdrObject* pObj);
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DLatheObject(SdrObject* pObj);
     virtual ~Svx3DLatheObject() noexcept override;
 
     // XServiceInfo
@@ -767,7 +763,7 @@ public:
 class Svx3DExtrudeObject final : public SvxShape
 {
 public:
-    SVXCORE_DLLPUBLIC Svx3DExtrudeObject(SdrObject* pObj);
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DExtrudeObject(SdrObject* pObj);
 private:
     // override these for special property handling in subcasses. Return true if property is handled
     virtual bool setPropertyValueImpl( const OUString& rName, const SfxItemPropertyMapEntry* pProperty, const css::uno::Any& rValue ) override;
@@ -789,7 +785,7 @@ class Svx3DPolygonObject final : public SvxShape
     virtual bool getPropertyValueImpl( const OUString& rName, const SfxItemPropertyMapEntry* pProperty, css::uno::Any& rValue ) override;
 
 public:
-    SVXCORE_DLLPUBLIC Svx3DPolygonObject(SdrObject* pObj);
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) Svx3DPolygonObject(SdrObject* pObj);
     virtual ~Svx3DPolygonObject() noexcept override;
 
     // XServiceInfo
@@ -851,7 +847,7 @@ private:
     bool getPropertyStateImpl(const SfxItemPropertyMapEntry* pProperty,
                               css::beans::PropertyState& rState) override;
 
-    OUString referer_;
+    OUString m_referer;
 };
 
 #endif

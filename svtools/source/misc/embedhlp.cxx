@@ -291,7 +291,7 @@ struct EmbeddedObjectRef_Impl
             mxObj->getComponent(), css::uno::UNO_QUERY);
         if (pComponent.is())
         {
-            auto const s = pComponent->dump("");
+            auto const s = pComponent->dump(u""_ustr);
             auto const s1 = OUStringToOString(s, RTL_TEXTENCODING_ISO_8859_1); //TODO
             (void)xmlTextWriterWriteRawLen(
                 pWriter, reinterpret_cast<xmlChar const *>(s1.getStr()), s1.getLength());
@@ -452,31 +452,21 @@ const Link<LinkParamNone*, bool> & EmbeddedObjectRef::GetIsProtectedHdl() const
 
 void EmbeddedObjectRef::GetReplacement( bool bUpdate )
 {
-    Graphic aOldGraphic;
-
     if ( bUpdate )
     {
-        if (mpImpl->oGraphic)
-            aOldGraphic = *mpImpl->oGraphic;
-
-        mpImpl->oGraphic.reset();
+        // Do not clear / reset mpImpl->oGraphic, because it would appear as no replacement
+        // on any call to getReplacementGraphic during the external calls to the OLE object,
+        // which may release mutexes. Only replace it when done.
         mpImpl->aMediaType.clear();
-        mpImpl->oGraphic.emplace();
-        mpImpl->mnGraphicVersion++;
     }
-    else if ( !mpImpl->oGraphic )
-    {
-        mpImpl->oGraphic.emplace();
-        mpImpl->mnGraphicVersion++;
-    }
-    else
+    else if (mpImpl->oGraphic)
     {
         OSL_FAIL("No update, but replacement exists already!");
         return;
     }
 
     std::unique_ptr<SvStream> pGraphicStream(GetGraphicStream( bUpdate ));
-    if (!pGraphicStream && aOldGraphic.IsNone())
+    if (!pGraphicStream && bUpdate && (!mpImpl->oGraphic || mpImpl->oGraphic->IsNone()))
     {
         // We have no old graphic, tried to get an updated one, but that failed. Try to get an old
         // graphic instead of having no graphic at all.
@@ -488,20 +478,13 @@ void EmbeddedObjectRef::GetReplacement( bool bUpdate )
     if ( pGraphicStream )
     {
         GraphicFilter& rGF = GraphicFilter::GetGraphicFilter();
-        if( mpImpl->oGraphic )
-            rGF.ImportGraphic( *mpImpl->oGraphic, u"", *pGraphicStream );
-        mpImpl->mnGraphicVersion++;
-    }
-
-    // note that UpdateReplacementOnDemand which resets mpImpl->oGraphic to null may have been called
-    // e.g. when exporting ooo58458-1.odt to doc
-    if (bUpdate && (!mpImpl->oGraphic || mpImpl->oGraphic->IsNone()) && !aOldGraphic.IsNone())
-    {
-        // We used to have an old graphic, tried to update and the update
-        // failed. Go back to the old graphic instead of having no graphic at
-        // all.
-        mpImpl->oGraphic.emplace(aOldGraphic);
-        SAL_WARN("svtools.misc", "EmbeddedObjectRef::GetReplacement: failed to update graphic");
+        Graphic aNewGraphic;
+        rGF.ImportGraphic(aNewGraphic, u"", *pGraphicStream);
+        if (!aNewGraphic.IsNone())
+        {
+            mpImpl->oGraphic.emplace(aNewGraphic);
+            mpImpl->mnGraphicVersion++;
+        }
     }
 }
 
@@ -587,17 +570,13 @@ Size EmbeddedObjectRef::GetSize( MapMode const * pTargetMapMode ) const
 void EmbeddedObjectRef::SetGraphicStream( const uno::Reference< io::XInputStream >& xInGrStream,
                                             const OUString& rMediaType )
 {
-    mpImpl->oGraphic.emplace();
-    mpImpl->aMediaType = rMediaType;
-    mpImpl->mnGraphicVersion++;
-
+    Graphic aNewGraphic;
     std::unique_ptr<SvStream> pGraphicStream(::utl::UcbStreamHelper::CreateStream( xInGrStream ));
 
     if ( pGraphicStream )
     {
         GraphicFilter& rGF = GraphicFilter::GetGraphicFilter();
-        rGF.ImportGraphic( *mpImpl->oGraphic, u"", *pGraphicStream );
-        mpImpl->mnGraphicVersion++;
+        rGF.ImportGraphic(aNewGraphic, u"", *pGraphicStream);
 
         if ( mpImpl->pContainer )
         {
@@ -608,8 +587,10 @@ void EmbeddedObjectRef::SetGraphicStream( const uno::Reference< io::XInputStream
         }
     }
 
+    mpImpl->oGraphic.emplace(aNewGraphic);
+    mpImpl->aMediaType = rMediaType;
+    mpImpl->mnGraphicVersion++;
     mpImpl->bNeedUpdate = false;
-
 }
 
 void EmbeddedObjectRef::SetGraphic( const Graphic& rGraphic, const OUString& rMediaType )
@@ -735,7 +716,7 @@ void EmbeddedObjectRef::DrawPaintReplacement( const tools::Rectangle &rRect, con
 {
     MapMode aMM( MapUnit::MapAppFont );
     Size aAppFontSz = pOut->LogicToLogic( Size( 0, 8 ), &aMM, nullptr );
-    vcl::Font aFnt( "Helvetica", aAppFontSz );
+    vcl::Font aFnt( u"Noto Sans"_ustr, aAppFontSz );
     aFnt.SetTransparent( true );
     aFnt.SetColor( COL_LIGHTRED );
     aFnt.SetWeight( WEIGHT_BOLD );
@@ -775,7 +756,7 @@ void EmbeddedObjectRef::DrawPaintReplacement( const tools::Rectangle &rRect, con
             break;
     }
 
-    BitmapEx aBmp(BMP_PLUGIN);
+    Bitmap aBmp(BMP_PLUGIN);
     tools::Long nHeight = rRect.GetHeight() - pOut->GetTextHeight();
     tools::Long nWidth = rRect.GetWidth();
     if(nHeight > 0 && nWidth > 0 && aBmp.GetSizePixel().Width() > 0)
@@ -872,7 +853,7 @@ void EmbeddedObjectRef::SetGraphicToContainer( const Graphic& rGraphic,
     SvMemoryStream aStream;
     aStream.SetVersion( SOFFICE_FILEFORMAT_CURRENT );
 
-    auto pGfxLink = rGraphic.GetSharedGfxLink();
+    const auto& pGfxLink = rGraphic.GetSharedGfxLink();
     if (pGfxLink && pGfxLink->IsNative())
     {
         if (pGfxLink->ExportNative(aStream))
@@ -941,9 +922,7 @@ void EmbeddedObjectRef::UpdateOleObject( bool bUpdateOle )
 
 void EmbeddedObjectRef::UpdateReplacementOnDemand()
 {
-    mpImpl->oGraphic.reset();
     mpImpl->bNeedUpdate = true;
-    mpImpl->mnGraphicVersion++;
 
     if( mpImpl->pContainer )
     {
@@ -1015,7 +994,7 @@ OUString EmbeddedObjectRef::GetChartType()
                                 if( xProp.is())
                                 {
                                     bool bCurrent = false;
-                                    if( xProp->getPropertyValue( "SwapXAndYAxis" ) >>= bCurrent )
+                                    if( xProp->getPropertyValue( u"SwapXAndYAxis"_ustr ) >>= bCurrent )
                                     {
                                         if (bCurrent)
                                             Style += "Bars";

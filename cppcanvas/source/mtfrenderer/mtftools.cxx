@@ -51,7 +51,7 @@ namespace cppcanvas::tools
         ::Size getBaselineOffset( const ::cppcanvas::internal::OutDevState& outdevState,
                                   const VirtualDevice&                      rVDev )
         {
-            const ::FontMetric& aMetric = rVDev.GetFontMetric();
+            const ::FontMetric aMetric = rVDev.GetFontMetric();
 
             // calc offset for text output, the XCanvas always renders
             // baseline offset.
@@ -70,7 +70,7 @@ namespace cppcanvas::tools
 
                 default:
                     throw css::uno::RuntimeException(
-                                      "tools::getBaselineOffset(): Unexpected TextAlign value" );
+                                      u"tools::getBaselineOffset(): Unexpected TextAlign value"_ustr );
             }
         }
 
@@ -99,12 +99,12 @@ namespace cppcanvas::tools
             calcLogic2PixelLinearTransform(o_rMatrix, rVDev);
 
             // translate according to curr map mode/pref map mode offset
-            const ::Point  aEmptyPoint;
-            const ::Point& rTranslatedPoint(
+            const ::Point aEmptyPoint;
+            const ::Point aTranslatedPoint(
                 rVDev.LogicToPixel( aEmptyPoint ));
 
-            o_rMatrix.translate(rTranslatedPoint.X(),
-                                rTranslatedPoint.Y());
+            o_rMatrix.translate(aTranslatedPoint.X(),
+                                aTranslatedPoint.Y());
 
             return o_rMatrix;
         }
@@ -634,9 +634,7 @@ namespace cppcanvas::tools
                                                           viewState,
                                                           renderState );
 
-            ::basegfx::B2DRange aTransformedBounds;
-            return ::canvas::tools::calcTransformedRectBounds( aTransformedBounds,
-                                                               rBounds,
+            return  ::canvas::tools::calcTransformedRectBounds(rBounds,
                                                                aTransform );
         }
 

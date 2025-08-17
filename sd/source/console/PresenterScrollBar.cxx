@@ -24,6 +24,7 @@
 #include "PresenterPaintManager.hxx"
 #include "PresenterTimer.hxx"
 #include "PresenterUIPainter.hxx"
+#include <PresenterHelper.hxx>
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
@@ -88,22 +89,7 @@ PresenterScrollBar::PresenterScrollBar (
 {
     try
     {
-        Reference<lang::XMultiComponentFactory> xFactory (rxComponentContext->getServiceManager());
-        if ( ! xFactory.is())
-            throw RuntimeException();
-
-        mxPresenterHelper.set(
-            xFactory->createInstanceWithContext(
-                "com.sun.star.comp.Draw.PresenterHelper",
-                rxComponentContext),
-            UNO_QUERY_THROW);
-
-        if (mxPresenterHelper.is())
-            mxWindow = mxPresenterHelper->createWindow(rxParentWindow,
-                false,
-                false,
-                false,
-                false);
+        mxWindow = sd::presenter::PresenterHelper::createWindow(rxParentWindow, false);
 
         // Make the background transparent.  The slide show paints its own background.
         Reference<awt::XWindowPeer> xPeer (mxWindow, UNO_QUERY_THROW);
@@ -343,8 +329,7 @@ void SAL_CALL PresenterScrollBar::mouseReleased (const css::awt::MouseEvent&)
 {
     mpMousePressRepeater->Stop();
 
-    if (mxPresenterHelper.is())
-        mxPresenterHelper->releaseMouse(mxWindow);
+    sd::presenter::PresenterHelper::releaseMouse(mxWindow);
 }
 
 void SAL_CALL PresenterScrollBar::mouseEntered (const css::awt::MouseEvent&) {}
@@ -387,8 +372,7 @@ void SAL_CALL PresenterScrollBar::mouseDragged (const css::awt::MouseEvent& rEve
 
     mpMousePressRepeater->Stop();
 
-    if (mxPresenterHelper.is())
-        mxPresenterHelper->captureMouse(mxWindow);
+    sd::presenter::PresenterHelper::captureMouse(mxWindow);
 
     const double nDragDistance (GetDragDistance(rEvent.X,rEvent.Y));
     UpdateDragAnchor(nDragDistance);
@@ -674,14 +658,14 @@ void PresenterVerticalScrollBar::UpdateBitmaps()
     if (mpBitmaps == nullptr)
         return;
 
-    mpPrevButtonDescriptor = mpBitmaps->GetBitmap("Up");
-    mpNextButtonDescriptor = mpBitmaps->GetBitmap("Down");
-    mpPagerStartDescriptor = mpBitmaps->GetBitmap("PagerTop");
-    mpPagerCenterDescriptor = mpBitmaps->GetBitmap("PagerVertical");
-    mpPagerEndDescriptor = mpBitmaps->GetBitmap("PagerBottom");
-    mpThumbStartDescriptor = mpBitmaps->GetBitmap("ThumbTop");
-    mpThumbCenterDescriptor = mpBitmaps->GetBitmap("ThumbVertical");
-    mpThumbEndDescriptor = mpBitmaps->GetBitmap("ThumbBottom");
+    mpPrevButtonDescriptor = mpBitmaps->GetBitmap(u"Up"_ustr);
+    mpNextButtonDescriptor = mpBitmaps->GetBitmap(u"Down"_ustr);
+    mpPagerStartDescriptor = mpBitmaps->GetBitmap(u"PagerTop"_ustr);
+    mpPagerCenterDescriptor = mpBitmaps->GetBitmap(u"PagerVertical"_ustr);
+    mpPagerEndDescriptor = mpBitmaps->GetBitmap(u"PagerBottom"_ustr);
+    mpThumbStartDescriptor = mpBitmaps->GetBitmap(u"ThumbTop"_ustr);
+    mpThumbCenterDescriptor = mpBitmaps->GetBitmap(u"ThumbVertical"_ustr);
+    mpThumbEndDescriptor = mpBitmaps->GetBitmap(u"ThumbBottom"_ustr);
 
     mnScrollBarWidth = 0;
     UpdateWidthOrHeight(mnScrollBarWidth, mpPrevButtonDescriptor);
@@ -749,10 +733,10 @@ void PresenterScrollBar::MousePressRepeater::Start (const PresenterScrollBar::Ar
         Execute();
 
         // Schedule repeated executions.
-        auto pThis(shared_from_this());
+        auto xSelf(shared_from_this());
         mnMousePressRepeaterTaskId = PresenterTimer::ScheduleRepeatedTask (
             mpScrollBar->GetComponentContext(),
-            [pThis] (TimeValue const&) { return pThis->Callback(); },
+            [xSelf=std::move(xSelf)] (TimeValue const&) { return xSelf->Callback(); },
             500000000,
             250000000);
     }

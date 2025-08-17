@@ -50,6 +50,9 @@
 #include <dbdata.hxx>
 #include <filterentries.hxx>
 #include <export/ExportTools.hxx>
+#include <dpobject.hxx>
+#include <dpsave.hxx>
+#include <pivot/PivotTableFormats.hxx>
 
 #include <o3tl/safeint.hxx>
 #include <oox/export/utils.hxx>
@@ -833,7 +836,7 @@ sal_Int16 lclCheckFontItems( const SfxItemSet& rItemSet,
 
 sal_Int16 XclExpFontHelper::GetFirstUsedScript( const XclExpRoot& rRoot, const SfxItemSet& rItemSet )
 {
-    namespace ApiScriptType = ::com::sun::star::i18n::ScriptType;
+    namespace ApiScriptType = css::i18n::ScriptType;
 
     /*  #i17050# #i107170# We need to determine which font items are set in the
         item set, and which script type we should prefer according to the
@@ -1507,7 +1510,7 @@ bool XclExpCellAlign::FillFromItemSet(const XclRoot& rRoot, const SfxItemSet& rI
         case EXC_BIFF3: // attributes new in BIFF3
         {
             // text wrap
-            mbLineBreak = bForceLineBreak;
+            mbLineBreak = bForceLineBreak || rItemSet.Get( ATTR_LINEBREAK ).GetValue();
             bUsed |= bForceLineBreak || ScfTools::CheckItem( rItemSet, ATTR_LINEBREAK, bStyle );
 
             [[fallthrough]];
@@ -1619,7 +1622,7 @@ void lclGetBorderLine(
 
     enum CalcLineIndex{Idx_None, Idx_Solid, Idx_Dotted, Idx_Dashed, Idx_FineDashed, Idx_DashDot, Idx_DashDotDot, Idx_DoubleThin, Idx_Last};
     enum ExcelWidthIndex{Width_Hair, Width_Thin, Width_Medium, Width_Thick, Width_Last};
-    static sal_uInt8 Map_LineLO_toMS[Idx_Last][Width_Last] =
+    static const sal_uInt8 Map_LineLO_toMS[Idx_Last][Width_Last] =
     {
     //    0,05  -  0,74                  0,75  -  1,49                   1,50  -  2,49                 2,50  -  9,00          Width Range [pt]
     //   EXC_BORDER_HAIR                EXC_BORDER_THIN                EXC_BORDER_MEDIUM              EXC_BORDER_THICK        MS Width
@@ -2144,7 +2147,7 @@ void XclExpXF::Init( const SfxItemSet& rItemSet, sal_Int16 nScript,
 
     // number format
     if (nForceScNumFmt != NUMBERFORMAT_ENTRY_NOT_FOUND)
-        mnXclNumFmt = nForceScNumFmt;
+        mnScNumFmt = nForceScNumFmt;
     else
     {
         // Built-in formats of dedicated languages may be attributed using the
@@ -2810,12 +2813,11 @@ XclExpXFBuffer::FindKey XclExpXFBuffer::ToFindKey(XclExpXF const & rRec)
 sal_uInt32 XclExpXFBuffer::InsertCellXF( const ScPatternAttr* pPattern, sal_Int16 nScript,
         sal_uInt32 nForceScNumFmt, sal_uInt16 nForceXclFont, bool bForceLineBreak )
 {
-    const ScPatternAttr* pDefPattern = GetDoc().GetDefPattern();
     if( !pPattern )
-        pPattern = pDefPattern;
+        pPattern = &GetDoc().getCellAttributeHelper().getDefaultCellAttribute();
 
     // special handling for default cell formatting
-    if( SfxPoolItem::areSame(pPattern, pDefPattern) && !bForceLineBreak &&
+    if ( pPattern->isDefault() && !bForceLineBreak &&
         (nForceScNumFmt == NUMBERFORMAT_ENTRY_NOT_FOUND) &&
         (nForceXclFont == EXC_FONT_NOTFOUND) )
     {
@@ -3019,18 +3021,20 @@ void XclExpXFBuffer::InsertDefaultRecords()
     maBuiltInMap[ EXC_XF_DEFAULTCELL ].mbPredefined = true;
 
     // index 16-20: other built-in styles
-    XclExpDefaultXF aFormatStyle( GetRoot(), false );
-    aFormatStyle.SetFont( 1 );
-    aFormatStyle.SetNumFmt( 43 );
-    AppendBuiltInXFWithStyle( new XclExpDefaultXF( aFormatStyle ), EXC_STYLE_COMMA );
-    aFormatStyle.SetNumFmt( 41 );
-    AppendBuiltInXFWithStyle( new XclExpDefaultXF( aFormatStyle ), EXC_STYLE_COMMA_0 );
-    aFormatStyle.SetNumFmt( 44 );
-    AppendBuiltInXFWithStyle( new XclExpDefaultXF( aFormatStyle ), EXC_STYLE_CURRENCY );
-    aFormatStyle.SetNumFmt( 42 );
-    AppendBuiltInXFWithStyle( new XclExpDefaultXF( aFormatStyle ), EXC_STYLE_CURRENCY_0 );
-    aFormatStyle.SetNumFmt( 9 );
-    AppendBuiltInXFWithStyle( new XclExpDefaultXF( aFormatStyle ), EXC_STYLE_PERCENT );
+    {
+        XclExpDefaultXF aFormatStyle( GetRoot(), false );
+        aFormatStyle.SetFont( 1 );
+        aFormatStyle.SetNumFmt( 43 );
+        AppendBuiltInXFWithStyle( new XclExpDefaultXF( aFormatStyle ), EXC_STYLE_COMMA );
+        aFormatStyle.SetNumFmt( 41 );
+        AppendBuiltInXFWithStyle( new XclExpDefaultXF( aFormatStyle ), EXC_STYLE_COMMA_0 );
+        aFormatStyle.SetNumFmt( 44 );
+        AppendBuiltInXFWithStyle( new XclExpDefaultXF( aFormatStyle ), EXC_STYLE_CURRENCY );
+        aFormatStyle.SetNumFmt( 42 );
+        AppendBuiltInXFWithStyle( new XclExpDefaultXF( aFormatStyle ), EXC_STYLE_CURRENCY_0 );
+        aFormatStyle.SetNumFmt( 9 );
+        AppendBuiltInXFWithStyle( new XclExpDefaultXF( std::move(aFormatStyle) ), EXC_STYLE_PERCENT );
+    }
 
     // other built-in style XF records (i.e. Hyperlink styles) are created on demand
 
@@ -3066,12 +3070,12 @@ XclExpDxfs::XclExpDxfs( const XclExpRoot& rRoot )
     : XclExpRoot( rRoot ),
     mpKeywordTable( new NfKeywordTable )
 {
+    sal_Int32 nDxfId = 0;
     // Special number formatter for conversion.
     SvNumberFormatterPtr xFormatter(new SvNumberFormatter( comphelper::getProcessComponentContext(), LANGUAGE_ENGLISH_US ));
     xFormatter->FillKeywordTableForExcel( *mpKeywordTable );
 
     SCTAB nTables = rRoot.GetDoc().GetTableCount();
-    sal_Int32 nDxfId = 0;
     for(SCTAB nTab = 0; nTab < nTables; ++nTab)
     {
         // Color filters
@@ -3145,50 +3149,67 @@ XclExpDxfs::XclExpDxfs( const XclExpRoot& rRoot )
                             continue;
 
                         SfxItemSet& rSet = pStyle->GetItemSet();
-
-                        std::unique_ptr<XclExpCellBorder> pBorder(new XclExpCellBorder);
-                        if (!pBorder->FillFromItemSet( rSet, GetPalette(), GetBiff()) )
-                        {
-                            pBorder.reset();
-                        }
-
-                        std::unique_ptr<XclExpCellAlign> pAlign(new XclExpCellAlign);
-                        if (!pAlign->FillFromItemSet(rRoot, rSet, false, GetBiff()))
-                        {
-                            pAlign.reset();
-                        }
-
-                        std::unique_ptr<XclExpCellProt> pCellProt(new XclExpCellProt);
-                        if (!pCellProt->FillFromItemSet( rSet ))
-                        {
-                            pCellProt.reset();
-                        }
-
-                        std::unique_ptr<XclExpColor> pColor(new XclExpColor);
-                        if(!pColor->FillFromItemSet( rSet ))
-                        {
-                            pColor.reset();
-                        }
-
-                        std::unique_ptr<XclExpDxfFont> pFont(new XclExpDxfFont(rRoot, rSet));
-
-                        std::unique_ptr<XclExpNumFmt> pNumFormat;
-                        if( const SfxUInt32Item *pPoolItem = rSet.GetItemIfSet( ATTR_VALUE_FORMAT ) )
-                        {
-                            sal_uInt32 nScNumFmt = pPoolItem->GetValue();
-                            sal_Int32 nXclNumFmt = GetRoot().GetNumFmtBuffer().Insert(nScNumFmt);
-                            pNumFormat.reset(new XclExpNumFmt( nScNumFmt, nXclNumFmt, GetNumberFormatCode( *this, nScNumFmt, xFormatter.get(), mpKeywordTable.get() )));
-                        }
-
-                        maDxf.push_back(std::make_unique<XclExpDxf>( rRoot, std::move(pAlign), std::move(pBorder),
-                                std::move(pFont), std::move(pNumFormat), std::move(pCellProt), std::move(pColor) ));
-                        ++nDxfId;
+                        fillDxfFrom(rSet, xFormatter);
+                        nDxfId++;
                     }
 
                 }
             }
         }
     }
+
+    ScDPCollection* pCollection = rRoot.GetDoc().GetDPCollection();
+    for (size_t nIndex = 0; nIndex < pCollection->GetCount(); nIndex++)
+    {
+        const ScDPObject& rObject = (*pCollection)[nIndex];
+        ScDPSaveData* pSaveData = rObject.GetSaveData();
+        if (pSaveData && pSaveData->hasFormats())
+        {
+            sc::PivotTableFormats const& rFormats = pSaveData->getFormats();
+            for (sc::PivotTableFormat const& rFormat : rFormats.getVector())
+            {
+                if (!rFormat.pPattern)
+                    continue;
+
+                SfxItemSet& rItemSet = rFormat.pPattern->GetItemSetWritable();
+                fillDxfFrom(rItemSet, xFormatter);
+                maPatternToDxfId.emplace(rFormat.pPattern.get(), nDxfId);
+                nDxfId++;
+            }
+        }
+    }
+}
+
+void XclExpDxfs::fillDxfFrom(const SfxItemSet& rItemSet, const SvNumberFormatterPtr& xFormatter)
+{
+    std::unique_ptr<XclExpCellBorder> pBorder(new XclExpCellBorder);
+    if (!pBorder->FillFromItemSet(rItemSet, GetPalette(), GetBiff()))
+        pBorder.reset();
+
+    std::unique_ptr<XclExpCellAlign> pAlign(new XclExpCellAlign);
+    if (!pAlign->FillFromItemSet(GetRoot(), rItemSet, false, GetBiff()))
+        pAlign.reset();
+
+    std::unique_ptr<XclExpCellProt> pCellProtection(new XclExpCellProt);
+    if (!pCellProtection->FillFromItemSet(rItemSet))
+        pCellProtection.reset();
+
+    std::unique_ptr<XclExpColor> pColor(new XclExpColor);
+    if (!pColor->FillFromItemSet(rItemSet))
+        pColor.reset();
+
+    std::unique_ptr<XclExpDxfFont> pFont(new XclExpDxfFont(GetRoot(), rItemSet));
+
+    std::unique_ptr<XclExpNumFmt> pNumberFormat;
+    if (const SfxUInt32Item* pPoolItem = rItemSet.GetItemIfSet(ATTR_VALUE_FORMAT))
+    {
+        sal_uInt32 nScNumberFormat = pPoolItem->GetValue();
+        sal_Int32 nXclNumberFormat = GetRoot().GetNumFmtBuffer().Insert(nScNumberFormat);
+        pNumberFormat.reset(new XclExpNumFmt(nScNumberFormat, nXclNumberFormat, GetNumberFormatCode(*this, nScNumberFormat, xFormatter.get(), mpKeywordTable.get())));
+    }
+
+    maDxf.push_back(std::make_unique<XclExpDxf>(GetRoot(), std::move(pAlign), std::move(pBorder),
+                   std::move(pFont), std::move(pNumberFormat), std::move(pCellProtection), std::move(pColor)));
 }
 
 sal_Int32 XclExpDxfs::GetDxfId( const OUString& rStyleName ) const
@@ -3204,6 +3225,14 @@ sal_Int32 XclExpDxfs::GetDxfByColor(Color aColor) const
     std::map<Color, sal_Int32>::const_iterator itr = maColorToDxfId.find(aColor);
     if (itr != maColorToDxfId.end())
         return itr->second;
+    return -1;
+}
+
+sal_Int32 XclExpDxfs::GetDxfIdForPattern(ScPatternAttr* pPattern) const
+{
+    auto iterator = maPatternToDxfId.find(pPattern);
+    if (iterator != maPatternToDxfId.end())
+        return iterator->second;
     return -1;
 }
 
@@ -3321,7 +3350,7 @@ XclExpXmlStyleSheet::XclExpXmlStyleSheet( const XclExpRoot& rRoot )
 void XclExpXmlStyleSheet::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr aStyleSheet = rStrm.CreateOutputStream(
-            "xl/styles.xml",
+            u"xl/styles.xml"_ustr,
             u"styles.xml",
             rStrm.GetCurrentStream()->getOutputStream(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml",

@@ -11,7 +11,6 @@
 #include <test/container/xenumeration.hxx>
 
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
@@ -42,7 +41,7 @@ public:
 };
 
 ScIndexEnumeration_TableAutoFormatEnumeration::ScIndexEnumeration_TableAutoFormatEnumeration()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -53,7 +52,7 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_TableAutoFormatEnumeration::i
 
     uno::Reference<lang::XMultiServiceFactory> xMSF(xDoc, uno::UNO_QUERY_THROW);
     uno::Reference<container::XEnumerationAccess> xEA(
-        xMSF->createInstance("com.sun.star.sheet.TableAutoFormats"), uno::UNO_QUERY_THROW);
+        xMSF->createInstance(u"com.sun.star.sheet.TableAutoFormats"_ustr), uno::UNO_QUERY_THROW);
 
     return xEA->createEnumeration();
 }
@@ -61,7 +60,7 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_TableAutoFormatEnumeration::i
 void ScIndexEnumeration_TableAutoFormatEnumeration::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScIndexEnumeration_TableAutoFormatEnumeration);

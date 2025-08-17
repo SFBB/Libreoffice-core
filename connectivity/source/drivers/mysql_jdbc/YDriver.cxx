@@ -50,7 +50,7 @@ namespace
 OUString getJavaDriverClass(css::uno::Sequence<css::beans::PropertyValue> const& info)
 {
     return comphelper::NamedValueCollection::getOrDefault(info, u"JavaDriverClass",
-                                                          OUString("com.mysql.jdbc.Driver"));
+                                                          u"com.mysql.jdbc.Driver"_ustr);
 }
 }
 
@@ -80,11 +80,10 @@ void ODriverDelegator::disposing()
 
     for (auto const& connection : m_aConnections)
     {
-        Reference<XInterface> xTemp = connection.first.get();
+        Reference<XConnection> xTemp(connection.xConn);
         ::comphelper::disposeComponent(xTemp);
     }
     m_aConnections.clear();
-    TWeakPairVector().swap(m_aConnections);
 
     ODriverDelegator_BASE::disposing();
 }
@@ -165,7 +164,7 @@ Sequence<PropertyValue> lcl_convertProperties(T_DRIVERTYPE _eType,
     {
         if (!jdc)
         {
-            aProps.emplace_back("JavaDriverClass", 0, Any(OUString("com.mysql.jdbc.Driver")),
+            aProps.emplace_back("JavaDriverClass", 0, Any(u"com.mysql.jdbc.Driver"_ustr),
                                 PropertyState_DIRECT_VALUE);
         }
     }
@@ -174,7 +173,7 @@ Sequence<PropertyValue> lcl_convertProperties(T_DRIVERTYPE _eType,
         aProps.emplace_back("PublicConnectionURL", 0, Any(_sUrl), PropertyState_DIRECT_VALUE);
     }
     aProps.emplace_back("IsAutoRetrievingEnabled", 0, Any(true), PropertyState_DIRECT_VALUE);
-    aProps.emplace_back("AutoRetrievingStatement", 0, Any(OUString("SELECT LAST_INSERT_ID()")),
+    aProps.emplace_back("AutoRetrievingStatement", 0, Any(u"SELECT LAST_INSERT_ID()"_ustr),
                         PropertyState_DIRECT_VALUE);
     aProps.emplace_back("ParameterNameSubstitution", 0, Any(true), PropertyState_DIRECT_VALUE);
     return Sequence<PropertyValue>(aProps.data(), aProps.size());
@@ -260,9 +259,7 @@ Reference<XConnection> SAL_CALL ODriverDelegator::connect(const OUString& url,
                 auto pMetaConnection = comphelper::getFromUnoTunnel<OMetaConnection>(xConnection);
                 if (pMetaConnection)
                     pMetaConnection->setURL(url);
-                m_aConnections.emplace_back(
-                    WeakReferenceHelper(xConnection),
-                    TWeakConnectionPair(WeakReferenceHelper(), pMetaConnection));
+                m_aConnections.push_back({ xConnection, nullptr, pMetaConnection });
             }
         }
     }
@@ -284,12 +281,12 @@ ODriverDelegator::getPropertyInfo(const OUString& url, const Sequence<PropertyVa
     if (!acceptsURL(url))
         return Sequence<DriverPropertyInfo>();
 
-    Sequence<OUString> aBoolean{ "0", "1" };
+    Sequence<OUString> aBoolean{ u"0"_ustr, u"1"_ustr };
 
     std::vector<DriverPropertyInfo> aDriverInfo{
-        { "CharSet", "CharSet of the database.", false, {}, {} },
-        { "SuppressVersionColumns", "Display version columns (when available).", false, "0",
-          aBoolean }
+        { u"CharSet"_ustr, u"CharSet of the database."_ustr, false, {}, {} },
+        { u"SuppressVersionColumns"_ustr, u"Display version columns (when available)."_ustr, false,
+          u"0"_ustr, aBoolean }
     };
     const T_DRIVERTYPE eType = lcl_getDriverType(url);
     if (eType == T_DRIVERTYPE::Jdbc)
@@ -320,40 +317,38 @@ ODriverDelegator::getDataDefinitionByConnection(const Reference<XConnection>& co
     ::osl::MutexGuard aGuard(m_aMutex);
     checkDisposed(ODriverDelegator_BASE::rBHelper.bDisposed);
 
-    Reference<XTablesSupplier> xTab;
+    rtl::Reference<OMySQLCatalog> xTab;
     auto pConnection = comphelper::getFromUnoTunnel<OMetaConnection>(connection);
     if (pConnection)
     {
-        TWeakPairVector::iterator i
-            = std::find_if(m_aConnections.begin(), m_aConnections.end(),
-                           [&pConnection](const TWeakPairVector::value_type& rConnection) {
-                               return rConnection.second.second == pConnection;
-                           });
+        auto i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
+                              [&pConnection](const TConnectionInfo& rConnection) {
+                                  return rConnection.pMetaConn == pConnection;
+                              });
         if (i != m_aConnections.end())
         {
-            xTab.set(i->second.first.get(), UNO_QUERY);
+            xTab = i->xCatalog.get();
             if (!xTab.is())
             {
                 xTab = new OMySQLCatalog(connection);
-                i->second.first = WeakReferenceHelper(xTab);
+                i->xCatalog = xTab.get();
             }
         }
     } // if (pConnection)
     if (!xTab.is())
     {
-        TWeakPairVector::iterator i
-            = std::find_if(m_aConnections.begin(), m_aConnections.end(),
-                           [&connection](const TWeakPairVector::value_type& rConnection) {
-                               Reference<XConnection> xTemp(rConnection.first.get(), UNO_QUERY);
-                               return xTemp == connection;
-                           });
+        auto i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
+                              [&connection](const TConnectionInfo& rConnection) {
+                                  Reference<XConnection> xTemp(rConnection.xConn);
+                                  return xTemp == connection;
+                              });
         if (i != m_aConnections.end())
         {
-            xTab.set(i->second.first.get(), UNO_QUERY);
+            xTab = i->xCatalog.get();
             if (!xTab.is())
             {
                 xTab = new OMySQLCatalog(connection);
-                i->second.first = WeakReferenceHelper(xTab);
+                i->xCatalog = xTab.get();
             }
         }
     }
@@ -377,7 +372,7 @@ ODriverDelegator::getDataDefinitionByURL(const OUString& url, const Sequence<Pro
 
 OUString SAL_CALL ODriverDelegator::getImplementationName()
 {
-    return "org.openoffice.comp.drivers.MySQL.Driver";
+    return u"org.openoffice.comp.drivers.MySQL.Driver"_ustr;
 }
 
 sal_Bool SAL_CALL ODriverDelegator::supportsService(const OUString& _rServiceName)
@@ -387,7 +382,7 @@ sal_Bool SAL_CALL ODriverDelegator::supportsService(const OUString& _rServiceNam
 
 Sequence<OUString> SAL_CALL ODriverDelegator::getSupportedServiceNames()
 {
-    return { "com.sun.star.sdbc.Driver", "com.sun.star.sdbcx.Driver" };
+    return { u"com.sun.star.sdbc.Driver"_ustr, u"com.sun.star.sdbcx.Driver"_ustr };
 }
 
 } // namespace connectivity

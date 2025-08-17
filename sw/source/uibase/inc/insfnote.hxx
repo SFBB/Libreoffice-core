@@ -23,8 +23,6 @@
 
 class SwWrtShell;
 
-class VclFrame;
-
 class SwInsFootNoteDlg final : public weld::GenericDialogController
 {
     SwWrtShell     &m_rSh;
@@ -54,13 +52,13 @@ class SwInsFootNoteDlg final : public weld::GenericDialogController
     DECL_LINK(NumberExtCharHdl, weld::Button&, void);
     DECL_LINK(NextPrevHdl, weld::Button&, void);
 
-    void    Apply();
-
     void            Init();
+
+    void ImplDestroy();
 
 public:
     SwInsFootNoteDlg(weld::Window * pParent, SwWrtShell &rSh, bool bEd);
-    virtual ~SwInsFootNoteDlg() COVERITY_NOEXCEPT_FALSE override;
+    virtual ~SwInsFootNoteDlg() override;
 
     const OUString& GetFontName() const { return m_aFontName; }
     bool            IsEndNote() const { return m_xEndNoteBtn->get_active(); }
@@ -70,13 +68,7 @@ public:
             return m_xNumberCharEdit->get_text();
         return OUString();
     }
-    virtual short run() override
-    {
-        short nRet = GenericDialogController::run();
-        if (nRet == RET_OK)
-            Apply();
-        return nRet;
-    }
+    void    Apply();
 };
 
 #endif

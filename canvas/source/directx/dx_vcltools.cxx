@@ -63,11 +63,11 @@ namespace dxcanvas::tools
 
             /// Draw DI bits to given Graphics
             bool drawDIBits( const std::shared_ptr< Gdiplus::Graphics >& rGraphics,
-                             const void*                                     hDIB )
+                             void*                                       pDIB )
             {
                 bool            bRet( false );
 
-                const BITMAPINFO* pBI = static_cast<BITMAPINFO*>(GlobalLock( const_cast<void *>(hDIB) ));
+                const BITMAPINFO* pBI = static_cast<BITMAPINFO*>(pDIB);
 
                 if( pBI )
                 {
@@ -77,8 +77,6 @@ namespace dxcanvas::tools
                     // forward to outsourced GDI+ rendering method
                     // (header clashes)
                     bRet = tools::drawDIBits( rGraphics, *pBI, pBits );
-
-                    GlobalUnlock( const_cast<void *>(hDIB) );
                 }
 
                 return bRet;
@@ -173,7 +171,6 @@ namespace dxcanvas::tools
                 //    ScanlineFormat::N1BitMsbPal
                 //    ScanlineFormat::N8BitPal
                 //    ScanlineFormat::N24BitTcBgr
-                //    ScanlineFormat::N32BitTcMask
 
                 // and is always ScanlineFormat::BottomUp
 
@@ -234,7 +231,6 @@ namespace dxcanvas::tools
                             // to hand-formulate the following
                             // formats, too.
                         case ScanlineFormat::N1BitMsbPal:
-                        case ScanlineFormat::N32BitTcMask:
                             {
                                 Scanline pAScan = pAlphaReadAccess->GetScanline( y );
 
@@ -258,6 +254,10 @@ namespace dxcanvas::tools
                         case ScanlineFormat::N32BitTcArgb:
                         case ScanlineFormat::N32BitTcBgra:
                         case ScanlineFormat::N32BitTcRgba:
+                        case ScanlineFormat::N32BitTcXbgr:
+                        case ScanlineFormat::N32BitTcXrgb:
+                        case ScanlineFormat::N32BitTcBgrx:
+                        case ScanlineFormat::N32BitTcRgbx:
                         default:
                             ENSURE_OR_THROW( false,
                                             "::dxcanvas::tools::bitmapFromVCLBitmapEx(): "
@@ -295,11 +295,11 @@ namespace dxcanvas::tools
             if( !xIntBmp.is() )
                 return false;
 
-            ::BitmapEx aBmpEx = vcl::unotools::bitmapExFromXBitmap( xIntBmp );
-            if( aBmpEx.IsEmpty() )
+            ::Bitmap aBmp = vcl::unotools::bitmapFromXBitmap( xIntBmp );
+            if( aBmp.IsEmpty() )
                 return false;
 
-            return drawVCLBitmapEx( rGraphics, aBmpEx );
+            return drawVCLBitmapEx( rGraphics, BitmapEx(aBmp) );
         }
 }
 

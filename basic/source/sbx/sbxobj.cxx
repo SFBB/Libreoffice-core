@@ -139,16 +139,14 @@ void SbxObject::Clear()
 
 void SbxObject::Notify( SfxBroadcaster&, const SfxHint& rHint )
 {
-    const SbxHint* p = dynamic_cast<const SbxHint*>(&rHint);
-    if( !p )
-        return;
-
-    const SfxHintId nId = p->GetId();
+    const SfxHintId nId = rHint.GetId();
     bool bRead  = ( nId == SfxHintId::BasicDataWanted );
     bool bWrite = ( nId == SfxHintId::BasicDataChanged );
-    SbxVariable* pVar = p->GetVar();
     if( !(bRead || bWrite) )
         return;
+    const SbxHint* p = static_cast<const SbxHint*>(&rHint);
+
+    SbxVariable* pVar = p->GetVar();
 
     OUString aVarName( pVar->GetName() );
     sal_uInt16 nHash_ = MakeHashCode( aVarName );
@@ -183,7 +181,7 @@ SbxVariable* SbxObject::Find( const OUString& rName, SbxClassType t )
 {
 #ifdef DBG_UTIL
     static int nLvl = 1;
-    static const char* pCls[] = { "DontCare","Array","Value","Variable","Method","Property","Object" };
+    static const char* const pCls[] = { "DontCare","Array","Value","Variable","Method","Property","Object" };
     SAL_INFO(
         "basic.sbx",
         "search" << std::setw(nLvl) << " "
@@ -435,7 +433,7 @@ void SbxObject::Insert( SbxVariable* pVar )
     }
     SetModified( true );
 #ifdef DBG_UTIL
-    static const char* pCls[] =
+    static const char* const pCls[] =
         { "DontCare","Array","Value","Variable","Method","Property","Object" };
     OUString aVarName( pVar->GetName() );
     if (const SbxObject *pSbxObj = aVarName.isEmpty() ? dynamic_cast<const SbxObject*>(pVar) : nullptr)
@@ -479,7 +477,7 @@ void SbxObject::QuickInsert( SbxVariable* pVar )
     }
     SetModified( true );
 #ifdef DBG_UTIL
-    static const char* pCls[] =
+    static const char* const pCls[] =
         { "DontCare","Array","Value","Variable","Method","Property","Object" };
     OUString aVarName( pVar->GetName() );
     if (const SbxObject *pSbxObj = aVarName.isEmpty() ? dynamic_cast<const SbxObject*>(pVar) : nullptr)
@@ -623,7 +621,7 @@ std::pair<bool, sal_uInt32> SbxObject::StoreData( SvStream& rStrm ) const
     rStrm.Seek( nPos );
     rStrm.WriteUInt32( nNew - nPos );
     rStrm.Seek( nNew );
-    const auto& [bSuccess, nVersion] = pMethods->Store( rStrm );
+    const auto [bSuccess, nVersion] = pMethods->Store( rStrm );
     if( !bSuccess )
     {
         return { false, 0 };
@@ -693,7 +691,7 @@ void SbxObject::Dump( SvStream& rStrm, bool bFill )
         return;
     }
     ++nLevel;
-    OUString aIndent("");
+    OUString aIndent(u""_ustr);
     for ( sal_uInt16 n = 1; n < nLevel; ++n )
     {
         aIndent += "    ";

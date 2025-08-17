@@ -106,7 +106,7 @@ namespace cppu_threadpool
     }
 
     /******************
-     * This methods lets the thread wait a certain amount of time. If within this timespan
+     * This method lets the thread wait a certain amount of time. If within this timespan
      * a new request comes in, this thread is reused. This is done only to improve performance,
      * it is not required for threadpool functionality.
      ******************/
@@ -295,11 +295,11 @@ namespace cppu_threadpool
 
             ThreadIdHashMap::iterator ii = m_mapQueue.find( aThreadId );
 
-            OSL_ASSERT( ii != m_mapQueue.end() );
+            assert(ii != m_mapQueue.end());
             pQueue = (*ii).second.first;
         }
 
-        OSL_ASSERT( pQueue );
+        assert(pQueue);
         void *pReturn = pQueue->enter( nDisposeId );
 
         if( pQueue->isCallstackEmpty() )
@@ -366,7 +366,7 @@ ThreadPoolHolder getThreadPool( uno_ThreadPool hPool )
 }
 
 extern "C" uno_ThreadPool SAL_CALL
-uno_threadpool_create() SAL_THROW_EXTERN_C()
+uno_threadpool_create() noexcept
 {
     MutexGuard guard( Mutex::getGlobalMutex() );
     ThreadPoolHolder p;
@@ -388,7 +388,7 @@ uno_threadpool_create() SAL_THROW_EXTERN_C()
 }
 
 extern "C" void SAL_CALL
-uno_threadpool_attach( uno_ThreadPool hPool ) SAL_THROW_EXTERN_C()
+uno_threadpool_attach( uno_ThreadPool hPool ) noexcept
 {
     sal_Sequence *pThreadId = nullptr;
     uno_getIdOfCurrentThread( &pThreadId );
@@ -398,8 +398,7 @@ uno_threadpool_attach( uno_ThreadPool hPool ) SAL_THROW_EXTERN_C()
 }
 
 extern "C" void SAL_CALL
-uno_threadpool_enter( uno_ThreadPool hPool , void **ppJob )
-    SAL_THROW_EXTERN_C()
+uno_threadpool_enter( uno_ThreadPool hPool , void **ppJob ) noexcept
 {
     sal_Sequence *pThreadId = nullptr;
     uno_getIdOfCurrentThread( &pThreadId );
@@ -412,7 +411,7 @@ uno_threadpool_enter( uno_ThreadPool hPool , void **ppJob )
 }
 
 extern "C" void SAL_CALL
-uno_threadpool_detach(SAL_UNUSED_PARAMETER uno_ThreadPool) SAL_THROW_EXTERN_C()
+uno_threadpool_detach(SAL_UNUSED_PARAMETER uno_ThreadPool) noexcept
 {
     // we might do here some tidying up in case a thread called attach but never detach
 }
@@ -423,7 +422,7 @@ uno_threadpool_putJob(
     sal_Sequence *pThreadId,
     void *pJob,
     void ( SAL_CALL * doRequest ) ( void *pThreadSpecificData ),
-    sal_Bool bIsOneway ) SAL_THROW_EXTERN_C()
+    sal_Bool bIsOneway ) noexcept
 {
     if (!getThreadPool(hPool)->addJob( pThreadId, bIsOneway, pJob ,doRequest, hPool ))
     {
@@ -434,14 +433,14 @@ uno_threadpool_putJob(
 }
 
 extern "C" void SAL_CALL
-uno_threadpool_dispose( uno_ThreadPool hPool ) SAL_THROW_EXTERN_C()
+uno_threadpool_dispose( uno_ThreadPool hPool ) noexcept
 {
     getThreadPool(hPool)->dispose(
         hPool );
 }
 
 extern "C" void SAL_CALL
-uno_threadpool_destroy( uno_ThreadPool hPool ) SAL_THROW_EXTERN_C()
+uno_threadpool_destroy( uno_ThreadPool hPool ) noexcept
 {
     ThreadPoolHolder p( getThreadPool(hPool) );
     p->destroy(
@@ -449,7 +448,7 @@ uno_threadpool_destroy( uno_ThreadPool hPool ) SAL_THROW_EXTERN_C()
 
     bool empty;
     {
-        OSL_ASSERT( g_pThreadpoolHashSet );
+        assert(g_pThreadpoolHashSet);
 
         MutexGuard guard( Mutex::getGlobalMutex() );
 

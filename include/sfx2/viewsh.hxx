@@ -39,8 +39,6 @@
 
 class SfxTabPage;
 class SfxBaseController;
-class Size;
-class Point;
 class Fraction;
 namespace weld {
     class Container;
@@ -63,7 +61,6 @@ class VCLXPopupMenu;
 namespace rtl { class OStringBuffer; }
 namespace vcl { class PrinterController; }
 
-namespace com::sun::star::awt{ class XPopupMenu; }
 namespace com::sun::star::beans { struct PropertyValue; }
 namespace com::sun::star::datatransfer::clipboard { class XClipboardListener; }
 namespace com::sun::star::datatransfer::clipboard { class XClipboardNotifier; }
@@ -73,8 +70,9 @@ namespace com::sun::star::frame { class XModel; }
 namespace com::sun::star::ui { class XContextMenuInterceptor; }
 namespace com::sun::star::ui { struct ContextMenuExecuteEvent; }
 namespace com::sun::star::view { class XRenderable; }
-namespace tools { class Rectangle; }
+namespace com::sun::star::security { class XCertificate; }
 namespace svtools { enum ColorConfigEntry : int; }
+namespace svl::crypto { class CertificateOrName; }
 
 enum class SfxPrinterChangeFlags
 {
@@ -150,12 +148,12 @@ public: \
 #define SFX_VIEW_REGISTRATION(DocClass) \
             DocClass::Factory().RegisterViewFactory( *Factory() )
 
-template<class T> bool checkSfxViewShell(const SfxViewShell* pShell)
+template<class T> bool checkSfxViewShell(const SfxViewShell& pShell)
 {
-    return dynamic_cast<const T*>(pShell) != nullptr;
+    return dynamic_cast<const T*>(&pShell) != nullptr;
 }
 
-typedef std::unordered_map<OUString, std::pair<Color, int>> StylesHighlighterColorMap;
+typedef std::unordered_map<OUString, std::pair<Color, int>> StylesSpotlightColorMap;
 
 /**
  * One SfxViewShell more or less represents one edit window for a document, there can be multiple
@@ -187,8 +185,8 @@ friend class SfxPrinterController;
     /// Used for async export
     std::shared_ptr<SfxStoringHelper> m_xHelper;
 
-    StylesHighlighterColorMap ParaStylesColorMap;
-    StylesHighlighterColorMap CharStylesColorMap;
+    StylesSpotlightColorMap ParaStylesSpotlightColorMap;
+    StylesSpotlightColorMap CharStylesSpotlightColorMap;
 
 protected:
     virtual void                Activate(bool IsMDIActivate) override;
@@ -204,13 +202,14 @@ protected:
 
 public:
     // Iteration
-    SAL_WARN_UNUSED_RESULT static SfxViewShell* GetFirst( bool bOnlyVisible = true, const std::function<bool ( const SfxViewShell* )>& isViewShell = nullptr );
-    SAL_WARN_UNUSED_RESULT static SfxViewShell* GetNext( const SfxViewShell& rPrev,
-                                         bool bOnlyVisible = true,
-                                         const std::function<bool ( const SfxViewShell* )>& isViewShell = nullptr );
-    SAL_WARN_UNUSED_RESULT static SfxViewShell* Current();
+    SAL_RET_MAYBENULL static SfxViewShell* GetFirst( bool bOnlyVisible = true, const std::function<bool ( const SfxViewShell& )>& isViewShell = nullptr );
+    SAL_RET_MAYBENULL static SfxViewShell* GetNext( const SfxViewShell& rPrev,
+                   bool bOnlyVisible = true,
+                   const std::function<bool ( const SfxViewShell& )>& isViewShell = nullptr );
+    SAL_RET_MAYBENULL static SfxViewShell* Current();
+    SAL_WARN_UNUSED_RESULT static bool IsCurrentLokViewReadOnly();
 
-    SAL_WARN_UNUSED_RESULT static SfxViewShell* Get( const css::uno::Reference< css::frame::XController>& i_rController );
+    SAL_RET_MAYBENULL static SfxViewShell* Get( const css::uno::Reference< css::frame::XController>& i_rController );
 
     // Initialize Constructors/Destructors
                                 SFX_DECL_INTERFACE(SFX_INTERFACE_SFXVIEWSH)
@@ -221,6 +220,9 @@ private:
 
     LOKDocumentFocusListener& GetLOKDocumentFocusListener();
     const LOKDocumentFocusListener& GetLOKDocumentFocusListener() const;
+    bool lokReadOnlyView : 1 = false; // When true, this is a LOK readonly view
+    bool allowChangeComments : 1 = false; // Allow editing comments in readonly view mode
+    bool allowManageRedlines : 1 = false; // Allow accepting/rejecting changes in readonly view mode
 
 public:
 
@@ -244,6 +246,13 @@ public:
     void                        JumpToMark( const OUString& rMark );
     void                        VisAreaChanged();
 
+    void                        SetLokReadOnlyView(bool readOnlyView) { lokReadOnlyView = readOnlyView; };
+    bool                        IsLokReadOnlyView() const { return lokReadOnlyView; };
+    void                        SetAllowChangeComments(bool allow) { allowChangeComments = allow; }
+    bool                        IsAllowChangeComments() const { return allowChangeComments; }
+    void                        SetAllowManageRedlines(bool allow) { allowManageRedlines = allow; }
+    bool                        IsAllowManageRedlines() const { return allowManageRedlines; }
+
     // Misc
 
     /**
@@ -266,6 +275,7 @@ public:
 
     // ILibreOfficeKitNotifier
     virtual void                notifyWindow(vcl::LOKWindowId nLOKWindowId, const OUString& rAction, const std::vector<vcl::LOKPayloadItem>& rPayload = std::vector<vcl::LOKPayloadItem>()) const override;
+    virtual OString             dumpNotifyState() const override;
 
     // Focus, KeyInput, Cursor
     virtual void                ShowCursor( bool bOn = true );
@@ -477,15 +487,23 @@ public:
 
     // Blocked Command view settings
     void setBlockedCommandList(const char* blockedCommandList);
-    bool isBlockedCommand(OUString command);
+    bool isBlockedCommand(const OUString & command) const;
 
     void SetStoringHelper(const std::shared_ptr<SfxStoringHelper>& xHelper) { m_xHelper = xHelper; }
 
-    StylesHighlighterColorMap& GetStylesHighlighterParaColorMap() { return ParaStylesColorMap; }
-    StylesHighlighterColorMap& GetStylesHighlighterCharColorMap() { return CharStylesColorMap; }
+    StylesSpotlightColorMap& GetStylesSpotlightParaColorMap() { return ParaStylesSpotlightColorMap; }
+    StylesSpotlightColorMap& GetStylesSpotlightCharColorMap() { return CharStylesSpotlightColorMap; }
 
     OUString getA11yFocusedParagraph() const;
     int getA11yCaretPosition() const;
+    void SetSigningCertificate(const svl::crypto::CertificateOrName& rCertificateOrName);
+    svl::crypto::CertificateOrName GetSigningCertificate() const;
+
+    // These are used for visual signing: SetSignPDFCertificate() is called when the signature
+    // line is inserted, and GetSignPDFCertificate() is used by the signing code to get the already
+    // selected certificate.
+    void SetSignPDFCertificate(const svl::crypto::CertificateOrName& rCertificateOrName);
+    svl::crypto::CertificateOrName GetSignPDFCertificate() const;
 };
 
 #endif // INCLUDED_SFX2_VIEWSH_HXX

@@ -41,7 +41,7 @@ using namespace ::com::sun::star;
 class SdModelTestBase : public UnoApiXmlTest
 {
 public:
-    SdModelTestBase(OUString path)
+    SdModelTestBase(const OUString& path)
         : UnoApiXmlTest(path)
     {
     }
@@ -49,13 +49,13 @@ public:
     void createSdImpressDoc(const char* pName = nullptr, const char* pPassword = nullptr)
     {
         if (!pName)
-            load("private:factory/simpress");
+            loadFromURL(u"private:factory/simpress"_ustr);
         else
-            loadFromURL(OUString::createFromAscii(pName), pPassword);
+            loadFromFile(OUString::createFromAscii(pName), pPassword);
 
         uno::Reference<lang::XServiceInfo> xServiceInfo(mxComponent, uno::UNO_QUERY_THROW);
         CPPUNIT_ASSERT(
-            xServiceInfo->supportsService("com.sun.star.presentation.PresentationDocument"));
+            xServiceInfo->supportsService(u"com.sun.star.presentation.PresentationDocument"_ustr));
 
         CPPUNIT_ASSERT(!getSdDocShell()->GetMedium()->GetWarningError());
     }
@@ -63,12 +63,12 @@ public:
     void createSdDrawDoc(const char* pName = nullptr, const char* pPassword = nullptr)
     {
         if (!pName)
-            load("private:factory/sdraw");
+            loadFromURL(u"private:factory/sdraw"_ustr);
         else
-            loadFromURL(OUString::createFromAscii(pName), pPassword);
+            loadFromFile(OUString::createFromAscii(pName), pPassword);
 
         uno::Reference<lang::XServiceInfo> xServiceInfo(mxComponent, uno::UNO_QUERY_THROW);
-        CPPUNIT_ASSERT(xServiceInfo->supportsService("com.sun.star.drawing.DrawingDocument"));
+        CPPUNIT_ASSERT(xServiceInfo->supportsService(u"com.sun.star.drawing.DrawingDocument"_ustr));
 
         CPPUNIT_ASSERT(!getSdDocShell()->GetMedium()->GetWarningError());
     }
@@ -167,7 +167,7 @@ public:
         uno::Reference<beans::XPropertySet> xPropSet(xRun, uno::UNO_QUERY_THROW);
 
         uno::Reference<text::XTextField> xField;
-        xPropSet->getPropertyValue("TextField") >>= xField;
+        xPropSet->getPropertyValue(u"TextField"_ustr) >>= xField;
         return xField;
     }
 };

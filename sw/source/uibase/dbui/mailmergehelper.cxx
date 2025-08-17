@@ -95,7 +95,7 @@ uno::Reference< mail::XSmtpService > ConnectToSmtpServer(
         weld::Window* pDialogParentWindow )
 {
     uno::Reference< mail::XSmtpService > xSmtpServer;
-    uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     try
     {
         uno::Reference< mail::XMailServiceProvider > xMailServiceProvider(
@@ -126,11 +126,11 @@ uno::Reference< mail::XSmtpService > ConnectToSmtpServer(
                     new SwConnectionContext(
                         rConfigItem.GetInServerName(),
                         rConfigItem.GetInServerPort(),
-                        "Insecure");
+                        u"Insecure"_ustr);
             xInMailService->connect(xConnectionContext, xAuthenticator);
-            rxInMailService = xInMailService;
+            rxInMailService = std::move(xInMailService);
         }
-        uno::Reference< mail::XAuthenticator> xAuthenticator;
+        rtl::Reference<SwAuthenticator> xAuthenticator;
         if(rConfigItem.IsAuthentication() &&
                 !rConfigItem.IsSMTPAfterPOP() &&
                 !rConfigItem.GetMailUserName().isEmpty())
@@ -153,7 +153,7 @@ uno::Reference< mail::XSmtpService > ConnectToSmtpServer(
                 new SwConnectionContext(
                     rConfigItem.GetMailServer(),
                     rConfigItem.GetMailPort(),
-                    rConfigItem.IsSecureConnection() ? OUString("Ssl") : OUString("Insecure") );
+                    rConfigItem.IsSecureConnection() ? u"Ssl"_ustr : u"Insecure"_ustr );
         xSmtpServer->connect(xConnectionContext, xAuthenticator);
         rxInMailService = xSmtpServer;
     }
@@ -201,7 +201,7 @@ OUString SwAddressPreview::FillData(
     const std::vector<std::pair<OUString, int>>& rDefHeaders = rConfigItem.GetDefaultAddressHeaders();
 
     bool bIncludeCountry = rConfigItem.IsIncludeCountry();
-    const OUString rExcludeCountry = rConfigItem.GetExcludeCountry();
+    const OUString& rExcludeCountry = rConfigItem.GetExcludeCountry();
     bool bSpecialReplacementForCountry = (!bIncludeCountry || !rExcludeCountry.isEmpty());
     OUString sCountryColumn;
     if( bSpecialReplacementForCountry )
@@ -281,7 +281,7 @@ SwAddressPreview::SwAddressPreview(std::unique_ptr<weld::ScrolledWindow> xWindow
     : m_pImpl(new SwAddressPreview_Impl())
     , m_xVScrollBar(std::move(xWindow))
 {
-    m_xVScrollBar->connect_vadjustment_changed(LINK(this, SwAddressPreview, ScrollHdl));
+    m_xVScrollBar->connect_vadjustment_value_changed(LINK(this, SwAddressPreview, ScrollHdl));
 }
 
 SwAddressPreview::~SwAddressPreview()
@@ -368,7 +368,7 @@ void SwAddressPreview::UpdateScrollBar()
         if (nValue > nResultingRows)
             nValue = nResultingRows;
         m_xVScrollBar->set_vpolicy(m_pImpl->bEnableScrollBar && nResultingRows > m_pImpl->nRows ? VclPolicyType::ALWAYS : VclPolicyType::NEVER);
-        m_xVScrollBar->vadjustment_configure(nValue, 0, nResultingRows, 1, 10, m_pImpl->nRows);
+        m_xVScrollBar->vadjustment_configure(nValue, nResultingRows, 1, 10, m_pImpl->nRows);
     }
 }
 
@@ -685,7 +685,7 @@ uno::Sequence< datatransfer::DataFlavor > SwMailTransferable::getTransferDataFla
         aRet.HumanPresentableName = m_aName;
         aRet.DataType = cppu::UnoType<uno::Sequence<sal_Int8>>::get();
     }
-    return { aRet };
+    return { std::move(aRet) };
 }
 
 sal_Bool SwMailTransferable::isDataFlavorSupported(

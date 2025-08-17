@@ -29,6 +29,7 @@
 #include <sal/log.hxx>
 #include <salhelper/linkhelper.hxx>
 #include <salhelper/thread.hxx>
+#include <o3tl/environment.hxx>
 #include <o3tl/string_view.hxx>
 #include <memory>
 #include <utility>
@@ -62,7 +63,7 @@ using ::rtl::Reference;
 
 #if defined( UNX ) && !defined( MACOSX )
 namespace {
-char const *g_arJavaNames[] = {
+char const * const g_arJavaNames[] = {
     "",
     "j2re",
     "j2se",
@@ -74,7 +75,7 @@ char const *g_arJavaNames[] = {
 
 /* These are directory names which could contain multiple java installations.
  */
-char const *g_arCollectDirs[] = {
+char const * const g_arCollectDirs[] = {
     "",
 #ifndef JVM_ONE_PATH_CHECK
     "j2re/",
@@ -90,7 +91,7 @@ char const *g_arCollectDirs[] = {
 /* These are directories in which a java installation is
    looked for.
 */
-char const *g_arSearchPaths[] = {
+char const * const g_arSearchPaths[] = {
 #ifndef JVM_ONE_PATH_CHECK
     "",
     "usr/",
@@ -388,9 +389,9 @@ bool getJavaProps(const OUString & exePath,
 
     //prepare the arguments
     sal_Int32 const cArgs = 3;
-    OUString arg1 = "-classpath";// + sClassPath;
+    OUString arg1 = u"-classpath"_ustr;// + sClassPath;
     OUString arg2 = sClassPath;
-    OUString arg3("JREProperties");
+    OUString arg3(u"JREProperties"_ustr);
     rtl_uString *args[cArgs] = {arg1.pData, arg2.pData, arg3.pData};
 
     oslProcess javaProcess= nullptr;
@@ -539,6 +540,7 @@ static bool getJavaInfoFromRegistry(const wchar_t* szRegKey,
                 if( RegQueryValueExW(hKey, L"JavaHome", nullptr, &dwType, nullptr, &dwTmpPathLen)== ERROR_SUCCESS)
                 {
                     unsigned char* szTmpPath= static_cast<unsigned char *>(malloc(dwTmpPathLen+sizeof(sal_Unicode)));
+                    assert(szTmpPath && "Don't handle OOM conditions");
                     // According to https://msdn.microsoft.com/en-us/ms724911, the application should ensure
                     // that the string is properly terminated before using it
                     for (DWORD i = 0; i < sizeof(sal_Unicode); ++i)
@@ -1037,11 +1039,10 @@ void addJavaInfosFromPath(
 {
 #if !defined JVM_ONE_PATH_CHECK
 // Get Java from PATH environment variable
-    char *szPath= getenv("PATH");
-    if(!szPath)
+    OUString usAllPath = o3tl::getEnvironment(u"PATH"_ustr);
+    if (usAllPath.isEmpty())
         return;
 
-    OUString usAllPath(szPath, strlen(szPath), osl_getThreadTextEncoding());
     sal_Int32 nIndex = 0;
     do
     {
@@ -1091,10 +1092,9 @@ void addJavaInfoFromJavaHome(
     // variable. We set it in our build environment for build-time programs, though,
     // so it is set when running unit tests that involve Java functionality. (Which affects
     // at least CppunitTest_dbaccess_dialog_save, too, and not only the JunitTest ones.)
-    char *szJavaHome= getenv("JAVA_HOME");
-    if(szJavaHome)
+    OUString sHome = o3tl::getEnvironment(u"JAVA_HOME"_ustr);
+    if (!sHome.isEmpty())
     {
-        OUString sHome(szJavaHome, strlen(szJavaHome), osl_getThreadTextEncoding());
         OUString sHomeUrl;
         if(File::getFileURLFromSystemPath(sHome, sHomeUrl) == File::E_None)
         {
@@ -1161,8 +1161,8 @@ void addJavaInfosDirScan(
         aDir.close();
     }
 #else // MACOSX
-    OUString excMessage = "[Java framework] sunjavaplugin: "
-                          "Error in function addJavaInfosDirScan in util.cxx.";
+    OUString excMessage = u"[Java framework] sunjavaplugin: "
+                          "Error in function addJavaInfosDirScan in util.cxx."_ustr;
     int cJavaNames= SAL_N_ELEMENTS(g_arJavaNames);
     std::unique_ptr<OUString[]> sarJavaNames(new OUString[cJavaNames]);
     OUString *arNames = sarJavaNames.get();

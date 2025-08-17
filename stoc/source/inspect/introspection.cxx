@@ -28,6 +28,7 @@
 #include <set>
 
 #include <o3tl/any.hxx>
+#include <o3tl/string_view.hxx>
 #include <osl/diagnose.h>
 #include <sal/log.hxx>
 #include <cppuhelper/basemutex.hxx>
@@ -363,7 +364,7 @@ void IntrospectionAccessStatic_Impl::setPropertyValueByIndex(const Any& obj, sal
     Reference<XInterface> xInterface;
     if( !(obj >>= xInterface) )
     {
-        TypeClass eObjType = obj.getValueType().getTypeClass();
+        TypeClass eObjType = obj.getValueTypeClass();
         if( nSequenceIndex >= mnPropCount)
             throw IllegalArgumentException(
                 "IntrospectionAccessStatic_Impl::setPropertyValueByIndex(), index > propertyCount, " +
@@ -372,7 +373,7 @@ void IntrospectionAccessStatic_Impl::setPropertyValueByIndex(const Any& obj, sal
         if( eObjType != TypeClass_STRUCT && eObjType != TypeClass_EXCEPTION )
             throw IllegalArgumentException(
                 "IntrospectionAccessStatic_Impl::setPropertyValueByIndex(), expected struct or exception, got" +
-                obj.getValueType().getTypeName(), Reference<XInterface>(), 0);
+                obj.getValueTypeName(), Reference<XInterface>(), 0);
     }
 
     // Test flags
@@ -508,7 +509,7 @@ Any IntrospectionAccessStatic_Impl::getPropertyValueByIndex(const Any& obj, sal_
     Reference<XInterface> xInterface;
     if( !(obj >>= xInterface) )
     {
-        TypeClass eObjType = obj.getValueType().getTypeClass();
+        TypeClass eObjType = obj.getValueTypeClass();
         if( nSequenceIndex >= mnPropCount || ( eObjType != TypeClass_STRUCT && eObjType != TypeClass_EXCEPTION ) )
         {
             // throw IllegalArgumentException();
@@ -684,8 +685,8 @@ class ImplIntrospectionAccess : public IntrospectionAccessHelper
     Reference<XEnumerationAccess>   getXEnumerationAccess();
     Reference<XIdlArray>            getXIdlArray();
 
-    void cacheXNameContainer();
-    void cacheXIndexContainer();
+    void cacheXNameContainer(const std::unique_lock<std::mutex>& rGuard);
+    void cacheXIndexContainer(const std::unique_lock<std::mutex>& rGuard);
 
 public:
     ImplIntrospectionAccess( Any obj, rtl::Reference< IntrospectionAccessStatic_Impl >  pStaticImpl_ );
@@ -784,19 +785,12 @@ ImplIntrospectionAccess::ImplIntrospectionAccess
 Reference<XElementAccess> ImplIntrospectionAccess::getXElementAccess()
 {
     std::unique_lock aGuard( m_aMutex );
-
     if( !mxObjElementAccess.is() )
-    {
-        aGuard.unlock();
-        Reference<XElementAccess> xElementAccess( mxIface, UNO_QUERY );
-        aGuard.lock();
-        if( !mxObjElementAccess.is() )
-            mxObjElementAccess = xElementAccess;
-    }
+        mxObjElementAccess.set( mxIface, UNO_QUERY );
     return mxObjElementAccess;
 }
 
-void ImplIntrospectionAccess::cacheXNameContainer()
+void ImplIntrospectionAccess::cacheXNameContainer(const std::unique_lock<std::mutex>& /*rGuard*/)
 {
     Reference<XNameContainer> xNameContainer;
     Reference<XNameReplace> xNameReplace;
@@ -818,13 +812,12 @@ void ImplIntrospectionAccess::cacheXNameContainer()
     }
 
     {
-        std::unique_lock aGuard( m_aMutex );
         if( !mxObjNameContainer.is() )
-            mxObjNameContainer = xNameContainer;
+            mxObjNameContainer = std::move(xNameContainer);
         if( !mxObjNameReplace.is() )
-            mxObjNameReplace = xNameReplace;
+            mxObjNameReplace = std::move(xNameReplace);
         if( !mxObjNameAccess.is() )
-            mxObjNameAccess = xNameAccess;
+            mxObjNameAccess = std::move(xNameAccess);
     }
 }
 
@@ -833,10 +826,8 @@ Reference<XNameContainer> ImplIntrospectionAccess::getXNameContainer()
     std::unique_lock aGuard( m_aMutex );
 
     if( !mxObjNameContainer.is() )
-    {
-        aGuard.unlock();
-        cacheXNameContainer();
-    }
+        cacheXNameContainer(aGuard);
+
     return mxObjNameContainer;
 }
 
@@ -845,10 +836,8 @@ Reference<XNameReplace> ImplIntrospectionAccess::getXNameReplace()
     std::unique_lock aGuard( m_aMutex );
 
     if( !mxObjNameReplace.is() )
-    {
-        aGuard.unlock();
-        cacheXNameContainer();
-    }
+        cacheXNameContainer(aGuard);
+
     return mxObjNameReplace;
 }
 
@@ -857,14 +846,12 @@ Reference<XNameAccess> ImplIntrospectionAccess::getXNameAccess()
     std::unique_lock aGuard( m_aMutex );
 
     if( !mxObjNameAccess.is() )
-    {
-        aGuard.unlock();
-        cacheXNameContainer();
-    }
+        cacheXNameContainer(aGuard);
+
     return mxObjNameAccess;
 }
 
-void ImplIntrospectionAccess::cacheXIndexContainer()
+void ImplIntrospectionAccess::cacheXIndexContainer(const std::unique_lock<std::mutex>& /*rGuard*/)
 {
     Reference<XIndexContainer> xIndexContainer;
     Reference<XIndexReplace> xIndexReplace;
@@ -886,13 +873,12 @@ void ImplIntrospectionAccess::cacheXIndexContainer()
     }
 
     {
-        std::unique_lock aGuard( m_aMutex );
         if( !mxObjIndexContainer.is() )
-            mxObjIndexContainer = xIndexContainer;
+            mxObjIndexContainer = std::move(xIndexContainer);
         if( !mxObjIndexReplace.is() )
-            mxObjIndexReplace = xIndexReplace;
+            mxObjIndexReplace = std::move(xIndexReplace);
         if( !mxObjIndexAccess.is() )
-            mxObjIndexAccess = xIndexAccess;
+            mxObjIndexAccess = std::move(xIndexAccess);
     }
 }
 
@@ -901,10 +887,8 @@ Reference<XIndexContainer> ImplIntrospectionAccess::getXIndexContainer()
     std::unique_lock aGuard( m_aMutex );
 
     if( !mxObjIndexContainer.is() )
-    {
-        aGuard.unlock();
-        cacheXIndexContainer();
-    }
+        cacheXIndexContainer(aGuard);
+
     return mxObjIndexContainer;
 }
 
@@ -913,10 +897,8 @@ Reference<XIndexReplace> ImplIntrospectionAccess::getXIndexReplace()
     std::unique_lock aGuard( m_aMutex );
 
     if( !mxObjIndexReplace.is() )
-    {
-        aGuard.unlock();
-        cacheXIndexContainer();
-    }
+        cacheXIndexContainer(aGuard);
+
     return mxObjIndexReplace;
 }
 
@@ -925,40 +907,24 @@ Reference<XIndexAccess> ImplIntrospectionAccess::getXIndexAccess()
     std::unique_lock aGuard( m_aMutex );
 
     if( !mxObjIndexAccess.is() )
-    {
-        aGuard.unlock();
-        cacheXIndexContainer();
-    }
+        cacheXIndexContainer(aGuard);
+
     return mxObjIndexAccess;
 }
 
 Reference<XEnumerationAccess> ImplIntrospectionAccess::getXEnumerationAccess()
 {
     std::unique_lock aGuard( m_aMutex );
-
     if( !mxObjEnumerationAccess.is() )
-    {
-        aGuard.unlock();
-        Reference<XEnumerationAccess> xEnumerationAccess( mxIface, UNO_QUERY );
-        aGuard.lock();
-        if( !mxObjEnumerationAccess.is() )
-            mxObjEnumerationAccess = xEnumerationAccess;
-    }
+        mxObjEnumerationAccess.set( mxIface, UNO_QUERY );
     return mxObjEnumerationAccess;
 }
 
 Reference<XIdlArray> ImplIntrospectionAccess::getXIdlArray()
 {
     std::unique_lock aGuard( m_aMutex );
-
     if( !mxObjIdlArray.is() )
-    {
-        aGuard.unlock();
-        Reference<XIdlArray> xIdlArray( mxIface, UNO_QUERY );
-        aGuard.lock();
-        if( !mxObjIdlArray.is() )
-            mxObjIdlArray = xIdlArray;
-    }
+        mxObjIdlArray.set( mxIface, UNO_QUERY );
     return mxObjIdlArray;
 }
 
@@ -1535,7 +1501,7 @@ private:
     }
 
     virtual OUString SAL_CALL getImplementationName() override
-    { return "com.sun.star.comp.stoc.Introspection"; }
+    { return u"com.sun.star.comp.stoc.Introspection"_ustr; }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
@@ -1543,7 +1509,7 @@ private:
     virtual css::uno::Sequence<OUString> SAL_CALL
     getSupportedServiceNames() override
     {
-        Sequence<OUString> s { "com.sun.star.beans.Introspection" };
+        Sequence<OUString> s { u"com.sun.star.beans.Introspection"_ustr };
         return s;
     }
 
@@ -1581,7 +1547,7 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
     }
 
     // Examine object
-    TypeClass eType = aToInspectObj.getValueType().getTypeClass();
+    TypeClass eType = aToInspectObj.getValueTypeClass();
     if( eType != TypeClass_INTERFACE && eType != TypeClass_STRUCT  && eType != TypeClass_EXCEPTION )
         return css::uno::Reference<css::beans::XIntrospectionAccess>();
 
@@ -1754,7 +1720,7 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
                 aClassSeq.realloc( nIfaceCount + 1 );
                 aClassSeq.getArray()[ nIfaceCount ] = xImplClass2;
 
-                for( const Reference<XIdlClass>& rxIfaceClass : std::as_const(aClassSeq) )
+                for (const Reference<XIdlClass>& rxIfaceClass : aClassSeq)
                 {
                     if (!seen.insert(rxIfaceClass->getName()).second) {
                         continue;
@@ -2014,7 +1980,7 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
 
                                 // Get name and evaluate
                                 OUString aMethName2 = rxMethod_k->getName();
-                                OUString aPropName2;
+                                std::u16string_view aPropName2;
                                 if (!(aMethName2.startsWith("set", &aPropName2)
                                       && aPropName2 == aPropName))
                                     continue;
@@ -2061,7 +2027,7 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
                         else if( aMethName.startsWith("add", &aPropName) )
                         {
                             // Does it end with "Listener"?
-                            OUString aListenerName;
+                            std::u16string_view aListenerName;
                             if( !aPropName.endsWith("Listener", &aListenerName) )
                                 continue;
 
@@ -2083,11 +2049,12 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
 
                                 // Get name and evaluate
                                 OUString aMethName2 = rxMethod_k->getName();
-                                OUString aListenerName2;
+                                std::u16string_view rest;
+                                std::u16string_view aListenerName2;
                                 if (!(aMethName2.startsWith(
-                                          "remove", &aPropName)
-                                      && aPropName.endsWith(
-                                          "Listener", &aListenerName2)
+                                          "remove", &rest)
+                                      && o3tl::ends_with(rest,
+                                          u"Listener", &aListenerName2)
                                       && aListenerName2 == aListenerName))
                                     continue;
 
@@ -2298,8 +2265,8 @@ css::uno::Reference<css::beans::XIntrospectionAccess> Implementation::inspect(
                             //aMethName = rxMethod->getName();
                             //aListenerName = aMethName.Copy( 3, aMethName.Len()-8-3 );
                             //Reference<XIdlClass> xListenerClass = reflection->forName( aListenerName );
-                            Type aListenerType( TypeClass_INTERFACE, xListenerClass->getName() );
-                            pAccess->maSupportedListenerSeq[ iAllSupportedListener ] = aListenerType;
+                            pAccess->maSupportedListenerSeq[ iAllSupportedListener ] =
+                                Type(TypeClass_INTERFACE, xListenerClass->getName());
                             iAllSupportedListener++;
                         }
                     }

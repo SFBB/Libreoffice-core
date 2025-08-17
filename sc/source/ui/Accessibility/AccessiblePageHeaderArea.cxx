@@ -34,13 +34,11 @@
 #include <comphelper/sequence.hxx>
 #include <editeng/editobj.hxx>
 #include <svx/AccessibleTextHelper.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/unohelp.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
-
-    //=====  internal  ========================================================
 
 ScAccessiblePageHeaderArea::ScAccessiblePageHeaderArea(
         const uno::Reference<XAccessible>& rxParent,
@@ -60,7 +58,7 @@ ScAccessiblePageHeaderArea::~ScAccessiblePageHeaderArea()
 {
     if (!ScAccessibleContextBase::IsDefunc() && !rBHelper.bInDispose)
     {
-        // increment refcount to prevent double call off dtor
+        // increment refcount to prevent double call of dtor
         osl_atomic_increment( &m_refCount );
         dispose();
     }
@@ -89,10 +87,7 @@ void ScAccessiblePageHeaderArea::Notify( SfxBroadcaster& rBC, const SfxHint& rHi
         if (mpTextHelper)
             mpTextHelper->UpdateChildren();
 
-        AccessibleEventObject aEvent;
-        aEvent.EventId = AccessibleEventId::VISIBLE_DATA_CHANGED;
-        aEvent.Source = uno::Reference< XAccessibleContext >(this);
-        CommitChange(aEvent);
+        CommitChange(AccessibleEventId::VISIBLE_DATA_CHANGED, uno::Any(), uno::Any());
     }
     ScAccessibleContextBase::Notify(rBC, rHint);
 }
@@ -101,19 +96,19 @@ void ScAccessiblePageHeaderArea::Notify( SfxBroadcaster& rBC, const SfxHint& rHi
 uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeaderArea::getAccessibleAtPoint(
         const awt::Point& rPoint )
 {
-    uno::Reference<XAccessible> xRet;
+    rtl::Reference<comphelper::OAccessible> pRet;
     if (containsPoint(rPoint))
     {
         SolarMutexGuard aGuard;
-        IsObjectValid();
+        ensureAlive();
 
         if(!mpTextHelper)
             CreateTextHelper();
 
-        xRet = mpTextHelper->GetAt(rPoint);
+        pRet = mpTextHelper->GetAt(rPoint);
     }
 
-    return xRet;
+    return pRet;
 }
 
     //=====  XAccessibleContext  ==============================================
@@ -122,7 +117,7 @@ sal_Int64 SAL_CALL
     ScAccessiblePageHeaderArea::getAccessibleChildCount()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     if (!mpTextHelper)
         CreateTextHelper();
     return mpTextHelper->GetChildCount();
@@ -132,7 +127,7 @@ uno::Reference< XAccessible > SAL_CALL
     ScAccessiblePageHeaderArea::getAccessibleChild(sal_Int64 nIndex)
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     if (!mpTextHelper)
         CreateTextHelper();
     return mpTextHelper->GetChild(nIndex);
@@ -156,30 +151,6 @@ sal_Int64 SAL_CALL ScAccessiblePageHeaderArea::getAccessibleStateSet()
     return nStateSet;
 }
 
-// XServiceInfo
-
-OUString SAL_CALL
-       ScAccessiblePageHeaderArea::getImplementationName()
-{
-    return "ScAccessiblePageHeaderArea";
-}
-
-uno::Sequence< OUString> SAL_CALL
-       ScAccessiblePageHeaderArea::getSupportedServiceNames()
-{
-    const css::uno::Sequence<OUString> vals { "com.sun.star.sheet.AccessiblePageHeaderFooterAreasView" };
-    return comphelper::concatSequences(ScAccessibleContextBase::getSupportedServiceNames(), vals);
-}
-
-//=====  XTypeProvider  =======================================================
-
-uno::Sequence<sal_Int8> SAL_CALL
-    ScAccessiblePageHeaderArea::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
-}
-
-//===== internal ==============================================================
 OUString ScAccessiblePageHeaderArea::createAccessibleDescription()
 {
     OUString sDesc;
@@ -222,7 +193,7 @@ OUString ScAccessiblePageHeaderArea::createAccessibleName()
     return sName;
 }
 
-AbsoluteScreenPixelRectangle ScAccessiblePageHeaderArea::GetBoundingBoxOnScreen() const
+AbsoluteScreenPixelRectangle ScAccessiblePageHeaderArea::GetBoundingBoxOnScreen()
 {
     AbsoluteScreenPixelRectangle aRect;
     if (mxParent.is())
@@ -233,14 +204,16 @@ AbsoluteScreenPixelRectangle ScAccessiblePageHeaderArea::GetBoundingBoxOnScreen(
         {
             // has the same size and position on screen like the parent
             aRect = AbsoluteScreenPixelRectangle(
-                        AbsoluteScreenPixelPoint(VCLPoint(xComp->getLocationOnScreen())),
-                        AbsoluteScreenPixelSize(VCLRectangle(xComp->getBounds()).GetSize()));
+                AbsoluteScreenPixelPoint(
+                    vcl::unohelper::ConvertToVCLPoint(xComp->getLocationOnScreen())),
+                AbsoluteScreenPixelSize(
+                    vcl::unohelper::ConvertToVCLRect(xComp->getBounds()).GetSize()));
         }
     }
     return aRect;
 }
 
-tools::Rectangle ScAccessiblePageHeaderArea::GetBoundingBox() const
+tools::Rectangle ScAccessiblePageHeaderArea::GetBoundingBox()
 {
     tools::Rectangle aRect;
     if (mxParent.is())
@@ -250,7 +223,8 @@ tools::Rectangle ScAccessiblePageHeaderArea::GetBoundingBox() const
         if (xComp.is())
         {
             // has the same size and position on screen like the parent and so the pos is (0, 0)
-            tools::Rectangle aNewRect(Point(0, 0), VCLRectangle(xComp->getBounds()).GetSize());
+            tools::Rectangle aNewRect(Point(0, 0),
+                                      vcl::unohelper::ConvertToVCLRect(xComp->getBounds()).GetSize());
             aRect = aNewRect;
         }
     }

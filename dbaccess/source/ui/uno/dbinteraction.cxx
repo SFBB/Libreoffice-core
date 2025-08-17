@@ -54,9 +54,7 @@ namespace dbaui
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::ucb;
     using namespace ::com::sun::star::sdb;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::task;
-    using namespace ::com::sun::star::beans;
     using namespace ::dbtools;
 
     // BasicInteractionHandler
@@ -71,7 +69,7 @@ namespace dbaui
     void SAL_CALL BasicInteractionHandler::initialize(const Sequence<Any>& rArgs)
     {
         comphelper::SequenceAsHashMap aMap(rArgs);
-        m_xParentWindow.set(aMap.getValue("Parent"), UNO_QUERY);
+        m_xParentWindow.set(aMap.getValue(u"Parent"_ustr), UNO_QUERY);
     }
 
     sal_Bool SAL_CALL BasicInteractionHandler::handleInteractionRequest( const Reference< XInteractionRequest >& i_rRequest )
@@ -309,33 +307,32 @@ namespace dbaui
 
     sal_Int32 BasicInteractionHandler::getContinuation(Continuation _eCont, const Sequence< Reference< XInteractionContinuation > >& _rContinuations)
     {
-        const Reference< XInteractionContinuation >* pContinuations = _rContinuations.getConstArray();
-        for (sal_Int32 i=0; i<_rContinuations.getLength(); ++i, ++pContinuations)
+        for (sal_Int32 i = 0; i < _rContinuations.getLength(); ++i)
         {
             switch (_eCont)
             {
                 case APPROVE:
-                    if (Reference< XInteractionApprove >(*pContinuations, UNO_QUERY).is())
+                    if (Reference<XInteractionApprove>(_rContinuations[i], UNO_QUERY).is())
                         return i;
                     break;
                 case DISAPPROVE:
-                    if (Reference< XInteractionDisapprove >(*pContinuations, UNO_QUERY).is())
+                    if (Reference<XInteractionDisapprove>(_rContinuations[i], UNO_QUERY).is())
                         return i;
                     break;
                 case RETRY:
-                    if (Reference< XInteractionRetry >(*pContinuations, UNO_QUERY).is())
+                    if (Reference<XInteractionRetry>(_rContinuations[i], UNO_QUERY).is())
                         return i;
                     break;
                 case ABORT:
-                    if (Reference< XInteractionAbort >(*pContinuations, UNO_QUERY).is())
+                    if (Reference<XInteractionAbort>(_rContinuations[i], UNO_QUERY).is())
                         return i;
                     break;
                 case SUPPLY_PARAMETERS:
-                    if (Reference< XInteractionSupplyParameters >(*pContinuations, UNO_QUERY).is())
+                    if (Reference<XInteractionSupplyParameters>(_rContinuations[i], UNO_QUERY).is())
                         return i;
                     break;
                 case SUPPLY_DOCUMENTSAVE:
-                    if (Reference< XInteractionDocumentSave >(*pContinuations, UNO_QUERY).is())
+                    if (Reference<XInteractionDocumentSave>(_rContinuations[i], UNO_QUERY).is())
                         return i;
                     break;
             }
@@ -347,7 +344,7 @@ namespace dbaui
     // SQLExceptionInteractionHandler
     OUString SAL_CALL SQLExceptionInteractionHandler::getImplementationName()
     {
-        return "com.sun.star.comp.dbaccess.DatabaseInteractionHandler";
+        return u"com.sun.star.comp.dbaccess.DatabaseInteractionHandler"_ustr;
     }
     sal_Bool SAL_CALL SQLExceptionInteractionHandler::supportsService(const OUString& _rServiceName)
     {
@@ -360,13 +357,13 @@ namespace dbaui
     }
     css::uno::Sequence< OUString > SAL_CALL SQLExceptionInteractionHandler::getSupportedServiceNames()
     {
-        return { "com.sun.star.sdb.DatabaseInteractionHandler" };
+        return { u"com.sun.star.sdb.DatabaseInteractionHandler"_ustr };
     }
 
     // LegacyInteractionHandler
     OUString SAL_CALL LegacyInteractionHandler::getImplementationName()
     {
-        return "com.sun.star.comp.dbaccess.LegacyInteractionHandler";
+        return u"com.sun.star.comp.dbaccess.LegacyInteractionHandler"_ustr;
     }
     sal_Bool SAL_CALL LegacyInteractionHandler::supportsService(const OUString& _rServiceName)
     {
@@ -379,7 +376,7 @@ namespace dbaui
     }
     css::uno::Sequence< OUString > SAL_CALL LegacyInteractionHandler::getSupportedServiceNames()
     {
-        return { "com.sun.star.sdb.InteractionHandler" };
+        return { u"com.sun.star.sdb.InteractionHandler"_ustr };
     }
 
 }   // namespace dbaui

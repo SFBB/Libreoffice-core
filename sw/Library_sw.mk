@@ -56,7 +56,6 @@ $(eval $(call gb_Library_use_libraries,sw,\
     comphelper \
     cppu \
     cppuhelper \
-    cui \
     $(call gb_Helper_optional,DBCONNECTIVITY, \
         dbtools) \
     docmodel \
@@ -77,6 +76,7 @@ $(eval $(call gb_Library_use_libraries,sw,\
     svt \
     svx \
     svxcore \
+    textconversiondlgs \
     tk \
     tl \
     ucbhelper \
@@ -90,10 +90,13 @@ $(eval $(call gb_Library_use_libraries,sw,\
 
 $(eval $(call gb_Library_use_externals,sw,\
 	boost_headers \
+	frozen \
 	icui18n \
 	icuuc \
 	icu_headers \
 	libxml2 \
+	yrs \
+        md4c \
 ))
 
 ifneq ($(ENABLE_WASM_STRIP_ACCESSIBILITY),TRUE)
@@ -566,6 +569,11 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/filter/html/svxcss1 \
     sw/source/filter/html/swhtml \
     sw/source/filter/html/wrthtml \
+    sw/source/filter/md/mdcallbcks \
+    sw/source/filter/md/mdnum \
+    sw/source/filter/md/mdtab \
+    sw/source/filter/md/swmd \
+    sw/source/filter/md/wrtmd \
     sw/source/filter/writer/writer \
     sw/source/filter/writer/wrt_fn \
     sw/source/filter/writer/wrtswtbl \
@@ -736,7 +744,9 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/uibase/sidebar/ThemePanel \
     sw/source/uibase/sidebar/SwPanelFactory \
     sw/source/uibase/sidebar/WriterInspectorTextPanel \
+    sw/source/uibase/sidebar/CommentsPanel \
     sw/source/uibase/sidebar/A11yCheckIssuesPanel \
+    sw/source/uibase/sidebar/QuickFindPanel \
     sw/source/uibase/table/chartins \
     sw/source/uibase/table/swtablerep \
     sw/source/uibase/table/tablemgr \
@@ -778,14 +788,12 @@ $(eval $(call gb_Library_add_exception_objects,sw,\
     sw/source/uibase/utlui/AccessibilityStatusBarControl \
     sw/source/uibase/utlui/attrdesc \
     sw/source/uibase/utlui/bookctrl \
-    sw/source/uibase/utlui/condedit \
     sw/source/uibase/utlui/content \
     sw/source/uibase/utlui/glbltree \
     sw/source/uibase/utlui/gloslst \
     sw/source/uibase/utlui/initui \
     sw/source/uibase/utlui/navicfg \
     sw/source/uibase/utlui/navipi \
-    sw/source/uibase/utlui/gotodlg \
     sw/source/uibase/utlui/numfmtlb \
     sw/source/uibase/utlui/prcntfld \
     sw/source/uibase/utlui/shdwcrsr \

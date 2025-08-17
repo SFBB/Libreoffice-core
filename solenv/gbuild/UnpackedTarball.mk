@@ -24,7 +24,8 @@ $(GNUTAR) \
 	$(3) \
 	-C $(UNPACKED_DIR) \
 	$(STRIP_COMPONENTS)=$(UNPACKED_STRIP_COMPONENTS) \
-	-f $(UNPACKED_TARBALL)
+	--no-same-owner \
+	-f $(call gb_Helper_cyg_path,$(UNPACKED_TARBALL))
 endef
 
 define gb_UnpackedTarget__command_unzip
@@ -96,9 +97,7 @@ endef
 # The unpacked dir is recreated every time one of the patches, copied
 # files or the makefile changes.
 
-# This is what dmake patches use. Once all external modules are
-# converted, it is better to be changed to 1.
-gb_UnpackedTarball_PATCHLEVEL_DEFAULT := 2
+gb_UnpackedTarball_PATCHLEVEL_DEFAULT := 1
 
 gb_UnpackedTarball_CONVERTTODOS = \
 	$(gb_AWK) 'sub("$$","\r")' $(1) > $(1).TEMP && mv $(1).TEMP $(1)
@@ -151,7 +150,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		) \
 	    $(if $(gb_KEEP_PRISTINE), \
 			rm -fr $(call gb_UnpackedTarball_get_pristine_dir,$(2)) && \
-			cp -r $(call gb_UnpackedTarball_get_dir,$(2)) $(call gb_UnpackedTarball_get_pristine_dir,$(2)) && \
+			cp -r -P $(gb_UnpackedTarball_workdir)/$(2) $(call gb_UnpackedTarball_get_pristine_dir,$(2)) && \
 		) \
 		touch $(1) \
 		)\
@@ -172,7 +171,7 @@ $(call gb_UnpackedTarball_get_preparation_target,%) :
 $(call gb_UnpackedTarball_get_target,%) :
 	$(call gb_Output_announce,$*,$(true),PAT,2)
 	$(call gb_Trace_StartRange,$*,PAT)
-	$(call gb_UnpackedTarball__command,$@,$*,$(call gb_UnpackedTarball_get_dir,$*))
+	$(call gb_UnpackedTarball__command,$@,$*,$(gb_UnpackedTarball_workdir)/$*)
 	$(call gb_Trace_EndRange,$*,PAT)
 
 $(call gb_UnpackedTarball_get_final_target,%) :
@@ -186,7 +185,7 @@ $(call gb_UnpackedTarball_get_clean_target,%) :
 			$(call gb_UnpackedTarball_get_final_target,$*) \
 			$(call gb_UnpackedTarball_get_target,$*) \
 			$(call gb_UnpackedTarball_get_preparation_target,$*) \
-			$(call gb_UnpackedTarball_get_dir,$*) \
+			$(gb_UnpackedTarball_workdir)/$* \
 			$(call gb_UnpackedTarball_get_pristine_dir,$*) \
 	)
 
@@ -229,14 +228,14 @@ endef
 #
 # gb_UnpackedTarball_fix_end_of_line unpacked file(s)
 define gb_UnpackedTarball_fix_end_of_line
-$(call gb_UnpackedTarball_get_target,$(1)) : UNPACKED_FIX_EOL += $(addprefix $(call gb_UnpackedTarball_get_dir,$(1))/,$(2))
+$(call gb_UnpackedTarball_get_target,$(1)) : UNPACKED_FIX_EOL += $(addprefix $(gb_UnpackedTarball_workdir)/$(1)/,$(2))
 
 endef
 
 
 # Internal version of set_tarball, mostly to avoid repeated invocation of $(shell
 define gb_UnpackedTarball_set_tarball_internal
-$(call gb_UnpackedTarget_UnpackedTarget,$(2),$(call gb_UnpackedTarball_get_dir,$(1)),$(3),$(4))
+$(call gb_UnpackedTarget_UnpackedTarget,$(2),$(gb_UnpackedTarball_workdir)/$(1),$(3),$(4))
 $(call gb_UnpackedTarball_get_target,$(1)) : $(call gb_UnpackedTarget_get_target,$(2))
 $(call gb_UnpackedTarball_get_clean_target,$(1)) : $(call gb_UnpackedTarget_get_clean_target,$(2))
 $(call gb_UnpackedTarget_get_target,$(2)) : $(call gb_UnpackedTarball_get_preparation_target,$(1))
@@ -247,7 +246,7 @@ $(if $(findstring out,$(5)),$(call gb_Module_get_target,$(4)) : $(TARFILE_LOCATI
 $(TARFILE_LOCATION)/$(6) : $(call gb_Module_get_nonl10n_target,$(4))
 	$$(call gb_Output_announce,$(6),$(true),PKB,3)
 	$$(call gb_Trace_StartRange,$(6),PKB)
-	if test ! -f "$$@" ; then cd $(call gb_UnpackedTarball_get_dir,) && $(GNUTAR) -czf "$$@" $(1)/ || $(GNUTAR) -czf "$$@" $(1)/ ; else touch "$$@" ; fi
+	if test ! -f "$$@" ; then cd $(gb_UnpackedTarball_workdir)/ && $(GNUTAR) -czf "$$@" $(1)/ || $(GNUTAR) -czf "$$@" $(1)/ ; else touch "$$@" ; fi
 	$$(call gb_Trace_EndRange,$(6),PKB)
 )
 
@@ -272,8 +271,6 @@ $(call gb_UnpackedTarball_set_tarball_internal,$(1),$(2),$(3),$(4),)
 endef
 
 # Set patch level to be used for all patches
-#
-# The default value is 3 to be able to work with current dmake patches.
 #
 # gb_UnpackedTarball_set_patchlevel unpacked level
 define gb_UnpackedTarball_set_patchlevel
@@ -314,7 +311,7 @@ endef
 # gb_UnpackedTarball_add_file unpacked destfile file
 define gb_UnpackedTarball_add_file
 $(call gb_UnpackedTarball_get_target,$(1)) : UNPACKED_FILES += $(SRCDIR)/$(3)
-$(call gb_UnpackedTarball_get_target,$(1)) : UNPACKED_DESTFILES += $(call gb_UnpackedTarball_get_dir,$(1))/$(2)
+$(call gb_UnpackedTarball_get_target,$(1)) : UNPACKED_DESTFILES += $(gb_UnpackedTarball_workdir)/$(1)/$(2)
 $(call gb_UnpackedTarball_get_preparation_target,$(1)) : $(SRCDIR)/$(3)
 
 endef
@@ -363,7 +360,7 @@ $(call gb_UnpackedTarball_get_target,$(1)) : UNPACKED_POST_ACTION := $(strip $(2
 endef
 
 define gb_UnpackedTarbal__make_pattern_rule
-$(call gb_UnpackedTarball_get_dir,$(1))/%$(2) :
+$(gb_UnpackedTarball_workdir)/$(1)/%$(2) :
 	$$(if $$(wildcard $$@),,$$(call gb_Output_error,file $$@ does not exist in the tarball))
 	$$(if $$(UNPACKED_MODE),chmod $$(UNPACKED_MODE) $$@ &&) \
 	touch $$@
@@ -378,7 +375,7 @@ $(if $(filter $(2),$(gb_UnpackedTarball_PATTERN_RULES_$(1))),,$(call gb_Unpacked
 endef
 
 define gb_UnpackedTarbal__make_file_rule
-$(call gb_UnpackedTarball_get_dir,$(1))/$(2) :
+$(gb_UnpackedTarball_workdir)/$(1)/$(2) :
 	$$(if $$(wildcard $$@),,$$(call gb_Output_error,file $$@ does not exist in the tarball))
 	$$(if $$(UNPACKED_MODE),chmod $$(UNPACKED_MODE) $$@ &&) \
 	touch $$@
@@ -395,9 +392,9 @@ endef
 #
 # gb_UnpackedTarball_mark_output_file unpacked file
 define gb_UnpackedTarball_mark_output_file
-$(call gb_UnpackedTarball_get_final_target,$(1)) : $(call gb_UnpackedTarball_get_dir,$(1))/$(2)
-$(call gb_UnpackedTarball_get_dir,$(1))/$(2) : $(call gb_UnpackedTarball_get_target,$(1))
-$(call gb_UnpackedTarball_get_dir,$(1))/$(2) : UNPACKED_MODE := 644
+$(call gb_UnpackedTarball_get_final_target,$(1)) : $(gb_UnpackedTarball_workdir)/$(1)/$(2)
+$(gb_UnpackedTarball_workdir)/$(1)/$(2) : $(call gb_UnpackedTarball_get_target,$(1))
+$(gb_UnpackedTarball_workdir)/$(1)/$(2) : UNPACKED_MODE := 644
 $(if $(suffix $(2)),\
 	$(call gb_UnpackedTarbal__ensure_pattern_rule,$(1),$(suffix $(2))),\
 	$(call gb_UnpackedTarbal__make_file_rule,$(1),$(2)) \
@@ -440,10 +437,10 @@ endef
 	fi
 
 %.genpatch :
-	if [ -d $(call gb_UnpackedTarball_get_dir,$*) -a -d  $(call gb_UnpackedTarball_get_pristine_dir,$*) ] ; then \
+	if [ -d $(gb_UnpackedTarball_workdir)/$* -a -d  $(call gb_UnpackedTarball_get_pristine_dir,$*) ] ; then \
 		( \
 		    patch_file=$$(pwd)/$*.new.patch.1; \
-			cd $(call gb_UnpackedTarball_get_dir,) ; \
+			cd $(gb_UnpackedTarball_workdir)/ ; \
 			diff -ur $*.org $* > $$patch_file; \
 		    echo "Patch $$patch_file generated" ; \
 		); \

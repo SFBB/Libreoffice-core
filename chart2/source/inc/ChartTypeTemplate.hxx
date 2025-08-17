@@ -23,14 +23,11 @@
 #include "StackMode.hxx"
 #include <com/sun/star/chart2/XChartTypeTemplate.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
-#include "charttoolsdllapi.hxx"
 #include <rtl/ref.hxx>
 #include <vector>
 
 namespace com::sun::star::beans { struct PropertyValue; }
 namespace com::sun::star::chart2 { class XChartType; }
-namespace com::sun::star::chart2 { class XCoordinateSystem; }
-namespace com::sun::star::chart2 { class XCoordinateSystemContainer; }
 namespace com::sun::star::chart2 { class XDataSeries; }
 namespace com::sun::star::chart2 { class XDiagram; }
 namespace com::sun::star::chart2::data { class XDataSource; }
@@ -43,7 +40,6 @@ class BaseCoordinateSystem;
 class ChartType;
 class DataSeries;
 class Diagram;
-class LabeledDataSequence;
 
 /** For creating diagrams and modifying existing diagrams.  A base class that
     implements XChartTypeTemplate and offers some tooling for classes that
@@ -79,7 +75,7 @@ class LabeledDataSequence;
 
     * create an XLegend via the global service factory, set it at the diagram.
  */
-class OOO_DLLPUBLIC_CHARTTOOLS ChartTypeTemplate : public ::cppu::WeakImplHelper<
+class ChartTypeTemplate : public ::cppu::WeakImplHelper<
         css::chart2::XChartTypeTemplate,
         css::lang::XServiceName >
 {

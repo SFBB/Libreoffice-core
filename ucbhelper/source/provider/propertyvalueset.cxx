@@ -176,7 +176,7 @@ T PropertyValueSet::getValue(PropsSet nTypeName, sal_Int32 columnIndex)
     if ( !(rValue.nPropsSet & PropsSet::Object) )
     {
         /* Value is not (yet) available as Any. Create it. */
-        getObject( columnIndex, Reference< XNameAccess >() );
+        getObjectImpl(aGuard, columnIndex);
     }
 
     if ( rValue.nPropsSet & PropsSet::Object )
@@ -196,7 +196,7 @@ T PropertyValueSet::getValue(PropsSet nTypeName, sal_Int32 columnIndex)
             {
                 /* Last chance. Try type converter service... */
 
-                Reference< XTypeConverter > xConverter = getTypeConverter();
+                Reference< XTypeConverter > xConverter = getTypeConverter(aGuard);
                 if ( xConverter.is() )
                 {
                     try
@@ -337,14 +337,8 @@ PropertyValueSet::getCharacterStream( sal_Int32 columnIndex )
     return getValue<Reference< XInputStream >, &ucbhelper_impl::PropertyValue::xCharacterStream>(PropsSet::CharacterStream, columnIndex);
 }
 
-
-// virtual
-Any SAL_CALL PropertyValueSet::getObject(
-                                    sal_Int32 columnIndex,
-                                         const Reference< XNameAccess >& )
+Any PropertyValueSet::getObjectImpl(const std::unique_lock<std::mutex>& /*rGuard*/, sal_Int32 columnIndex)
 {
-    std::unique_lock aGuard( m_aMutex );
-
     Any aValue;
 
     m_bWasNull = true;
@@ -466,6 +460,13 @@ Any SAL_CALL PropertyValueSet::getObject(
     return aValue;
 }
 
+// virtual
+Any SAL_CALL PropertyValueSet::getObject(sal_Int32 columnIndex, const Reference<XNameAccess>&)
+{
+    std::unique_lock aGuard( m_aMutex );
+
+    return getObjectImpl(aGuard, columnIndex);
+}
 
 // virtual
 Reference< XRef > SAL_CALL PropertyValueSet::getRef( sal_Int32 columnIndex )
@@ -519,10 +520,8 @@ sal_Int32 SAL_CALL PropertyValueSet::findColumn( const OUString& columnName )
 // Non-interface methods.
 
 
-const Reference< XTypeConverter >& PropertyValueSet::getTypeConverter()
+const Reference< XTypeConverter >& PropertyValueSet::getTypeConverter(const std::unique_lock<std::mutex>& /*rGuard*/)
 {
-    std::unique_lock aGuard( m_aMutex );
-
     if ( !m_bTriedToGetTypeConverter && !m_xTypeConverter.is() )
     {
         m_bTriedToGetTypeConverter = true;
@@ -535,7 +534,6 @@ const Reference< XTypeConverter >& PropertyValueSet::getTypeConverter()
     return m_xTypeConverter;
 }
 
-
 template <class T, T ucbhelper_impl::PropertyValue::*_member_name_>
 void PropertyValueSet::appendValue(const OUString& rPropName, PropsSet nTypeName, const T& rValue)
 {
@@ -547,9 +545,8 @@ void PropertyValueSet::appendValue(const OUString& rPropName, PropsSet nTypeName
     aNewValue.nOrigValue    = nTypeName;
     aNewValue.*_member_name_ = rValue;
 
-    m_pValues->push_back( aNewValue );
+    m_pValues->push_back(std::move(aNewValue));
 }
-
 
 void PropertyValueSet::appendString( const OUString& rPropName,
                                      const OUString& rValue )
@@ -557,13 +554,11 @@ void PropertyValueSet::appendString( const OUString& rPropName,
     appendValue<OUString, &ucbhelper_impl::PropertyValue::aString>(rPropName, PropsSet::String, rValue);
 }
 
-
 void PropertyValueSet::appendBoolean( const OUString& rPropName,
                                       bool bValue )
 {
     appendValue<bool, &ucbhelper_impl::PropertyValue::bBoolean>(rPropName, PropsSet::Boolean, bValue);
 }
-
 
 void PropertyValueSet::appendLong( const OUString& rPropName,
                                    sal_Int64 nValue )

@@ -18,6 +18,7 @@
  */
 
 
+#include <sal/log.hxx>
 #include <tools/stream.hxx>
 #include <tools/zcodec.hxx>
 #include "codec.hxx"
@@ -37,7 +38,7 @@ bool GalleryCodec::IsCoded( SvStream& rStm, sal_uInt32& rVersion )
 
     rStm.ReadUChar( cByte1 ).ReadUChar( cByte2 ).ReadUChar( cByte3 ).ReadUChar( cByte4 ).ReadUChar( cByte5 ).ReadUChar( cByte6 );
 
-    if ( cByte1 == 'S' && cByte2 == 'V' && cByte3 == 'R' && cByte4 == 'L' && cByte5 == 'E' && ( cByte6 == '1' || cByte6 == '2' ) )
+    if (rStm.good() && cByte1 == 'S' && cByte2 == 'V' && cByte3 == 'R' && cByte4 == 'L' && cByte5 == 'E' && ( cByte6 == '1' || cByte6 == '2' ) )
     {
         rVersion = ( ( cByte6 == '1' ) ? 1 : 2 );
         bRet = true;
@@ -84,56 +85,12 @@ void GalleryCodec::Read( SvStream& rStmToRead )
     if( !IsCoded( rStm, nVersion ) )
         return;
 
-    sal_uInt32  nCompressedSize, nUnCompressedSize;
-
-    rStm.SeekRel( 6 );
-    rStm.ReadUInt32( nUnCompressedSize ).ReadUInt32( nCompressedSize );
+    rStm.SeekRel( 14 );
 
     // decompress
     if( 1 == nVersion )
     {
-        std::unique_ptr<sal_uInt8[]> pCompressedBuffer(new sal_uInt8[ nCompressedSize ]);
-        rStm.ReadBytes(pCompressedBuffer.get(), nCompressedSize);
-        sal_uInt8*  pInBuf = pCompressedBuffer.get();
-        std::unique_ptr<sal_uInt8[]> pOutBuf(new sal_uInt8[ nUnCompressedSize ]);
-        sal_uInt8*  pTmpBuf = pOutBuf.get();
-        sal_uInt8*  pLast = pOutBuf.get() + nUnCompressedSize - 1;
-        sal_uIntPtr   nIndex = 0, nCountByte, nRunByte;
-        bool    bEndDecoding = false;
-
-        do
-        {
-            nCountByte = *pInBuf++;
-
-            if ( !nCountByte )
-            {
-                nRunByte = *pInBuf++;
-
-                if ( nRunByte > 2 )
-                {
-                    // filling absolutely
-                    memcpy( &pTmpBuf[ nIndex ], pInBuf, nRunByte );
-                    pInBuf += nRunByte;
-                    nIndex += nRunByte;
-
-                    // note WORD alignment
-                    if ( nRunByte & 1 )
-                        pInBuf++;
-                }
-                else if ( nRunByte == 1 )   // End of the image
-                    bEndDecoding = true;
-            }
-            else
-            {
-                const sal_uInt8 cVal = *pInBuf++;
-
-                memset( &pTmpBuf[ nIndex ], cVal, nCountByte );
-                nIndex += nCountByte;
-            }
-        }
-        while ( !bEndDecoding && ( pTmpBuf <= pLast ) );
-
-        rStmToRead.WriteBytes(pOutBuf.get(), nUnCompressedSize);
+        SAL_WARN("svx", "staroffice binary file formats are no longer supported inside the gallery!");
     }
     else if( 2 == nVersion )
     {

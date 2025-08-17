@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CPPCANVAS_VCLFACTORY_HXX
-#define INCLUDED_CPPCANVAS_VCLFACTORY_HXX
+#pragma once
 
 #include <cppcanvas/canvas.hxx>
 #include <cppcanvas/bitmapcanvas.hxx>
@@ -29,7 +28,7 @@
 #include <cppcanvas/cppcanvasdllapi.h>
 
 namespace vcl { class Window; }
-class BitmapEx;
+class Bitmap;
 
 class GDIMetaFile;
 
@@ -63,7 +62,7 @@ namespace cppcanvas
 
         /** Create a bitmap from a VCL Bitmap
          */
-        static BitmapSharedPtr   createBitmap( const CanvasSharedPtr&, const ::BitmapEx& rBmpEx );
+        static BitmapSharedPtr   createBitmap( const CanvasSharedPtr&, const ::Bitmap& rBmp );
 
         /** Create a renderer object from a Metafile
 
@@ -81,7 +80,5 @@ namespace cppcanvas
     };
 
 }
-
-#endif // INCLUDED_CPPCANVAS_VCLFACTORY_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

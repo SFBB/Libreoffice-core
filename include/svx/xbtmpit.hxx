@@ -35,6 +35,7 @@ private:
 
 public:
             static SfxPoolItem* CreateDefault();
+            DECLARE_ITEM_TYPE_FUNCTION(XFillBitmapItem)
             XFillBitmapItem() : NameOrIndex(XATTR_FILLBITMAP, -1 ) {}
             XFillBitmapItem(const OUString& rName, const GraphicObject& rGraphicObject);
             XFillBitmapItem( const GraphicObject& rGraphicObject );
@@ -55,7 +56,7 @@ public:
     bool isPattern() const;
 
     static bool CompareValueFunc( const NameOrIndex* p1, const NameOrIndex* p2 );
-    std::unique_ptr<XFillBitmapItem> checkForUniqueItem( SdrModel* pModel ) const;
+    std::unique_ptr<XFillBitmapItem> checkForUniqueItem( SdrModel& rModel ) const;
 
     virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };

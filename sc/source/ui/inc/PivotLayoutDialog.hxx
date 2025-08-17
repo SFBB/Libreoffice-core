@@ -39,7 +39,7 @@ public:
     ScPivotLayoutTreeListBase* mpPreviouslyFocusedListBox;
 
 private:
-    ScViewData* mpViewData;
+    ScViewData& mrViewData;
     ScDocument& mrDocument;
 
     bool        mbNewPivotTable;
@@ -81,9 +81,10 @@ private:
     std::unique_ptr<weld::Button> mxBtnCancel;
 
     std::unique_ptr<weld::Frame> mxSourceFrame;
-    std::unique_ptr<weld::Label> mxSourceLabel;
     std::unique_ptr<weld::Frame> mxDestFrame;
-    std::unique_ptr<weld::Label> mxDestLabel;
+
+    std::unique_ptr<weld::Expander> mxOptions;
+    std::unique_ptr<weld::Expander> mxMore;
 
     DECL_LINK(CancelClicked, weld::Button&, void);
     DECL_LINK(OKClicked, weld::Button&, void);
@@ -111,7 +112,7 @@ private:
 
 public:
     ScPivotLayoutDialog(SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow, weld::Window* pParent,
-                             ScViewData* pViewData, const ScDPObject* pPivotTableObject, bool bCreateNewPivotTable);
+                             ScViewData& rViewData, const ScDPObject* pPivotTableObject, bool bCreateNewPivotTable);
     virtual ~ScPivotLayoutDialog() override;
 
     virtual void SetReference(const ScRange& rReferenceRange, ScDocument& rDocument) override;

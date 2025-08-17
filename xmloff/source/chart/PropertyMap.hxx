@@ -18,19 +18,8 @@
  */
 #pragma once
 
-#include <xmloff/maptype.hxx>
-#include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltypes.hxx>
 #include <xmloff/contextid.hxx>
-#include <xmloff/xmlement.hxx>
-#include <com/sun/star/chart/ChartAxisArrangeOrderType.hpp>
-#include <com/sun/star/chart/ChartAxisLabelPosition.hpp>
-#include <com/sun/star/chart/ChartAxisMarkPosition.hpp>
-#include <com/sun/star/chart/ErrorBarStyle.hpp>
-#include <com/sun/star/chart/ChartSolidType.hpp>
-#include <com/sun/star/chart/ChartDataRowSource.hpp>
-#include <com/sun/star/chart/DataLabelPlacement.hpp>
-#include <com/sun/star/chart/MissingValueTreatment.hpp>
 
 // custom types
 #define XML_SCH_TYPE_AXIS_ARRANGEMENT       ( XML_SCH_TYPES_START + 0 )
@@ -53,6 +42,7 @@
 #define XML_SCH_TYPE_LABEL_BORDER_STYLE     ( XML_SCH_TYPES_START + 17 )
 #define XML_SCH_TYPE_LABEL_BORDER_OPACITY   ( XML_SCH_TYPES_START + 18 )
 #define XML_SCH_TYPE_LABEL_FILL_STYLE       ( XML_SCH_TYPES_START + 19 )
+#define XML_SCH_TYPE_OF_PIE_TYPE            ( XML_SCH_TYPES_START + 20 )
 
 // context ids
 #define XML_SCH_CONTEXT_USER_SYMBOL                 ( XML_SCH_CTF_START + 0 )

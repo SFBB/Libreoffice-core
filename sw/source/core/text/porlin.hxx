@@ -24,31 +24,16 @@
 #include <txttypes.hxx>
 #include <TextFrameIndex.hxx>
 #include <rtl/ustring.hxx>
+#include <swporlayoutcontext.hxx>
 
 class SwTextSizeInfo;
 class SwTextPaintInfo;
 class SwTextFormatInfo;
 class SwPortionHandler;
 
-/// Portion groups
-/// @see enum PortionType in txttypes.hxx
-#define PORGRP_TXT      0x8000
-#define PORGRP_EXP      0x4000
-#define PORGRP_FLD      0x2000
-#define PORGRP_HYPH     0x1000
-#define PORGRP_NUMBER   0x0800
-#define PORGRP_GLUE     0x0400
-#define PORGRP_FIX      0x0200
-#define PORGRP_TAB      0x0100
-// Small special groups
-#define PORGRP_FIXMARG  0x0040
-//#define PORGRP_?  0x0020
-#define PORGRP_TABNOTLFT 0x0010
-#define PORGRP_TOXREF   0x0008
-
 /// Base class for anything that can be part of a line in the Writer layout.
 /// Typically owned by SwLineLayout.
-class SAL_DLLPUBLIC_RTTI SwLinePortion: public SwPosSize
+class SAL_DLLPUBLIC_RTTI SwLinePortion: public SwPositiveSize
 {
 protected:
     // Here we have areas with different attributes
@@ -63,7 +48,14 @@ private:
     PortionType mnWhichPor;       // Who's who?
     bool m_bJoinBorderWithPrev;
     bool m_bJoinBorderWithNext;
+    bool m_bIsFieldmarkText;
     SwTwips m_nExtraBlankWidth = 0;    // width of spaces after the break
+    SwTwips m_nExtraShrunkWidth = 0;   // width of not shrunk line
+    SwTwips m_nExtraSpaceSize = 0;     // extra space over normal space width
+    SwTwips m_nLetterSpacing = 0;      // letter spacing, TODO: add better resolution
+    TextFrameIndex m_nSpaceCount;      // space count for letter spacing
+
+    std::optional<SwLinePortionLayoutContext> m_nLayoutContext;
 
     void Truncate_();
 
@@ -86,8 +78,21 @@ public:
     void SubPrtWidth( const SwTwips nNew ) { Width( Width() - nNew ); }
     SwTwips ExtraBlankWidth() const { return m_nExtraBlankWidth; }
     void ExtraBlankWidth(const SwTwips nNew) { m_nExtraBlankWidth = nNew; }
+    SwTwips ExtraShrunkWidth() const { return m_nExtraShrunkWidth; }
+    void ExtraShrunkWidth(const SwTwips nNew) { m_nExtraShrunkWidth = nNew; }
+    SwTwips ExtraSpaceSize() const { return m_nExtraSpaceSize; }
+    void ExtraSpaceSize(const SwTwips nNew) { m_nExtraSpaceSize = nNew; }
+    SwTwips GetLetterSpacing() const { return m_nLetterSpacing; }
+    void SetLetterSpacing(const SwTwips nNew) { m_nLetterSpacing = nNew; }
+    TextFrameIndex GetSpaceCount() const { return m_nSpaceCount; }
+    void SetSpaceCount(TextFrameIndex const nSpaceCount) { m_nSpaceCount = nSpaceCount; }
     SwTwips GetHangingBaseline() const { return mnHangingBaseline; }
     void SetHangingBaseline( const SwTwips nNewBaseline ) { mnHangingBaseline = nNewBaseline; }
+    const std::optional<SwLinePortionLayoutContext> & GetLayoutContext() const { return m_nLayoutContext; }
+    void SetLayoutContext(std::optional<SwLinePortionLayoutContext> nNew)
+    {
+        m_nLayoutContext = nNew;
+    }
 
     // Insert methods
     virtual SwLinePortion *Insert( SwLinePortion *pPortion );
@@ -148,9 +153,8 @@ public:
     SwLinePortion *FindPrevPortion( const SwLinePortion *pRoot );
     SwLinePortion *FindLastPortion();
 
-    /// the parameter is actually SwTwips apparently?
-    virtual TextFrameIndex GetModelPositionForViewPoint(sal_uInt16 nOfst) const;
-    virtual SwPosSize GetTextSize( const SwTextSizeInfo &rInfo ) const;
+    virtual TextFrameIndex GetModelPositionForViewPoint(SwTwips nOfst) const;
+    virtual SwPositiveSize GetTextSize( const SwTextSizeInfo &rInfo ) const;
     void CalcTextSize( const SwTextSizeInfo &rInfo );
 
     // Output
@@ -166,7 +170,7 @@ public:
     virtual bool GetExpText( const SwTextSizeInfo &rInf, OUString &rText ) const;
 
     // For SwFieldPortion, SwSoftHyphPortion
-    virtual sal_uInt16 GetViewWidth( const SwTextSizeInfo &rInf ) const;
+    virtual SwTwips GetViewWidth(const SwTextSizeInfo& rInf) const;
 
     // for text- and multi-portions
     virtual SwTwips CalcSpacing( tools::Long nSpaceAdd, const SwTextSizeInfo &rInf ) const;
@@ -176,8 +180,10 @@ public:
 
     bool GetJoinBorderWithPrev() const { return m_bJoinBorderWithPrev; }
     bool GetJoinBorderWithNext() const { return m_bJoinBorderWithNext; }
+    bool IsFieldmarkText() const {return m_bIsFieldmarkText;}
     void SetJoinBorderWithPrev( const bool bJoinPrev ) { m_bJoinBorderWithPrev = bJoinPrev; }
     void SetJoinBorderWithNext( const bool bJoinNext ) { m_bJoinBorderWithNext = bJoinNext; }
+    void SetFieldmarkText(bool bSet) { m_bIsFieldmarkText = bSet; }
 
     virtual void dumpAsXml(xmlTextWriterPtr pWriter, const OUString& rText,
                            TextFrameIndex& rOffset) const;
@@ -187,7 +193,7 @@ public:
 
 inline SwLinePortion &SwLinePortion::operator=(const SwLinePortion &rPortion)
 {
-    *static_cast<SwPosSize*>(this) = rPortion;
+    *static_cast<SwPositiveSize*>(this) = rPortion;
     mnLineLength = rPortion.mnLineLength;
     mnAscent = rPortion.mnAscent;
     mnHangingBaseline = rPortion.mnHangingBaseline;
@@ -195,11 +201,16 @@ inline SwLinePortion &SwLinePortion::operator=(const SwLinePortion &rPortion)
     m_bJoinBorderWithPrev = rPortion.m_bJoinBorderWithPrev;
     m_bJoinBorderWithNext = rPortion.m_bJoinBorderWithNext;
     m_nExtraBlankWidth = rPortion.m_nExtraBlankWidth;
+    m_nExtraShrunkWidth = rPortion.m_nExtraShrunkWidth;
+    m_nExtraSpaceSize = rPortion.m_nExtraSpaceSize;
+    m_nLetterSpacing = rPortion.m_nLetterSpacing;
+    m_nSpaceCount = rPortion.m_nSpaceCount;
+    m_nLayoutContext = rPortion.m_nLayoutContext;
     return *this;
 }
 
 inline SwLinePortion::SwLinePortion(const SwLinePortion &rPortion) :
-    SwPosSize( rPortion ),
+    SwPositiveSize( rPortion ),
     mpNextPortion( nullptr ),
     mnLineLength( rPortion.mnLineLength ),
     mnAscent( rPortion.mnAscent ),
@@ -207,7 +218,13 @@ inline SwLinePortion::SwLinePortion(const SwLinePortion &rPortion) :
     mnWhichPor( rPortion.mnWhichPor ),
     m_bJoinBorderWithPrev( rPortion.m_bJoinBorderWithPrev ),
     m_bJoinBorderWithNext( rPortion.m_bJoinBorderWithNext ),
-    m_nExtraBlankWidth(rPortion.m_nExtraBlankWidth)
+    m_bIsFieldmarkText( rPortion.m_bIsFieldmarkText ),
+    m_nExtraBlankWidth(rPortion.m_nExtraBlankWidth),
+    m_nExtraShrunkWidth(rPortion.m_nExtraShrunkWidth),
+    m_nExtraSpaceSize(rPortion.m_nExtraSpaceSize),
+    m_nLetterSpacing(rPortion.m_nLetterSpacing),
+    m_nSpaceCount(rPortion.m_nSpaceCount),
+    m_nLayoutContext(rPortion.m_nLayoutContext)
 {
 }
 

@@ -27,6 +27,7 @@
 class SVXCORE_DLLPUBLIC XFillBmpPosItem final : public SfxEnumItem<RectPoint>
 {
 public:
+                            DECLARE_ITEM_TYPE_FUNCTION(XFillBmpPosItem)
                             XFillBmpPosItem( RectPoint eRP = RectPoint::MM );
 
     SVX_DLLPRIVATE virtual XFillBmpPosItem* Clone( SfxItemPool* pPool = nullptr ) const override;
@@ -36,7 +37,6 @@ public:
                                                  MapUnit ePresMetric,
                                                  OUString &rText, const IntlWrapper& ) const override;
 
-    SVX_DLLPRIVATE virtual sal_uInt16      GetValueCount() const override;
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 

@@ -145,19 +145,12 @@ void SwAutoCompleteClient::Notify(const SfxHint& rHint)
         case SfxHintId::Dying:
             DocumentDying();
             return;
-        case SfxHintId::SwLegacyModify:
-        {
-            auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-            switch(pLegacy->GetWhich())
-            {
-                case RES_REMOVE_UNO_OBJECT:
-                case RES_OBJECTDYING:
-                    DocumentDying();
-                    return;
-                default:
-                    return;
-            }
-        }
+        case SfxHintId::SwRemoveUnoObject:
+            DocumentDying();
+            return;
+        case SfxHintId::SwObjectDying:
+            DocumentDying();
+            return;
         default:
             return;
     }
@@ -326,7 +319,9 @@ void SwAutoCompleteWord::SetMinWordLen( sal_uInt16 n )
     // Do you really want to remove all words that are less than the minWrdLen?
     if( n < m_nMinWordLen )
     {
-        for (size_t nPos = 0; nPos < m_WordList.size(); ++nPos)
+        size_t nPos = 0;
+        while (nPos < m_WordList.size())
+        {
             if (m_WordList[ nPos ]->GetAutoCompleteString().getLength() < n)
             {
                 SwAutoCompleteString *const pDel =
@@ -336,9 +331,11 @@ void SwAutoCompleteWord::SetMinWordLen( sal_uInt16 n )
                 SwAutoCompleteStringPtrDeque::iterator it = std::find( m_aLRUList.begin(), m_aLRUList.end(), pDel );
                 OSL_ENSURE( m_aLRUList.end() != it, "String not found" );
                 m_aLRUList.erase( it );
-                --nPos;
                 delete pDel;
+                continue;
             }
+            ++nPos;
+        }
     }
 
     m_nMinWordLen = n;

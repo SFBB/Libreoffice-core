@@ -8,10 +8,10 @@
  *
  */
 
-#include <vcl/BitmapFilter.hxx>
-#include <vcl/animate/Animation.hxx>
-
 #include <sal/log.hxx>
+
+#include <vcl/animate/Animation.hxx>
+#include <vcl/bitmap/BitmapFilter.hxx>
 
 BitmapFilter::BitmapFilter() {}
 
@@ -19,15 +19,24 @@ BitmapFilter::~BitmapFilter() {}
 
 bool BitmapFilter::Filter(BitmapEx& rBmpEx, BitmapFilter const& rFilter)
 {
-    BitmapEx aTmpBmpEx(rFilter.execute(rBmpEx));
+    Bitmap aBitmap(rBmpEx);
+    bool bRet = Filter(aBitmap, rFilter);
+    if (bRet)
+        rBmpEx = BitmapEx(aBitmap);
+    return bRet;
+}
 
-    if (aTmpBmpEx.IsEmpty())
+bool BitmapFilter::Filter(Bitmap& rBmp, BitmapFilter const& rFilter)
+{
+    Bitmap aTmpBmp(rFilter.execute(rBmp));
+
+    if (aTmpBmp.IsEmpty())
     {
         SAL_WARN("vcl.gdi", "Bitmap filter failed " << typeid(rFilter).name());
         return false;
     }
 
-    rBmpEx = aTmpBmpEx;
+    rBmp = std::move(aTmpBmp);
     return true;
 }
 

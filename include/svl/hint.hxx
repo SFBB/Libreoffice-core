@@ -36,10 +36,31 @@ enum class SfxHintId {
     Deinitializing,
     ModeChanged,
     ColorsChanged,
+    ThemeColorsChanged,
     LanguageChanged,
     RedlineChanged,
     DocumentRepair,
     SvxViewChanged,
+    PoolItem,
+    SfxStyleSheetPool,
+    INetURLHistory,
+    SfxOpenUrl,
+
+// svx navigator tree
+    FmNavViewMarksChanged,
+    FmNavRequestSelect,
+    FmNavInserted,
+    FmNavModelReplaced,
+    FmNavRemoved,
+    FmNavNameChanged,
+    FmNavCleared,
+
+// svx filter navigator
+    FmFilterInserted,
+    FilterClearing,
+    FmFilterRemoved,
+    FmFilterTextChanged,
+    FmFilterCurrentChanged,
 
 // VCL text hints
     TextParaInserted,
@@ -61,6 +82,16 @@ enum class SfxHintId {
     BasicStart,
     BasicStop,
 
+// basctl
+    BasCtlDlgEd,
+
+    ScriptDocumentChanged,
+
+// reportdesign
+    ReportDesignDlgEd,
+
+// SVX
+    FmDesignModeChanged,
 // SVX edit source
     EditSourceParasMoved,
     EditSourceSelectionChanged,
@@ -90,6 +121,18 @@ enum class SfxHintId {
     ScHiddenRowsChanged,
     ScSelectionChanged,
     ScClearCache,
+    ScTabDeleted,
+    ScTabSizeChanged,
+    ScPaint,
+    ScUpdateRef,
+    ScLinkRefreshed,
+    ScAutoStyle,
+    ScDBRangeRefreshed,
+    ScDataPilotModified,
+    ScTables,
+    ScEditView,
+    ScUnoRefUndo,
+    ScBulkData,
 
 // SC accessibility hints
     ScAccTableChanged,
@@ -99,17 +142,25 @@ enum class SfxHintId {
     ScAccLeaveEditMode,
     ScAccMakeDrawLayer,
     ScAccWindowResized,
+    ScAccGridWinFocusLost,
+    ScAccGridWinFocusGot,
+    ScAccWinFocusGot,
+    ScAccWinFocusLost,
 
+// sd hints
+    SdViewShell,
 
 // SFX stylesheet
-    StyleSheetCreated,  // new
-    StyleSheetModified,  // changed
+    StyleSheetModified,  // changed (used by the SfxStyleSheetHint class)
+    StyleSheetModifiedExtended,  // changed (used by the SfxStyleSheetModifiedHint class)
     StyleSheetChanged,  // erased and re-created (replaced)
     StyleSheetErased,  // erased
     StyleSheetInDestruction,  // in the process of being destructed
+    StylesSpotlightModified,  // what styles to spotlight in a document changed
 
 // STARMATH
     MathFormatChanged,
+    SmNewUserFormula,
 
 // Sw
     SwDrawViewsCreated,
@@ -118,6 +169,7 @@ enum class SfxHintId {
     SwNavigatorUpdateTracking,
     SwNavigatorSelectOutlinesWithSelections,
     SwPreGraphicArrived,
+    SwPostGraphicArrived,
     SwGraphicPieceArrived,
     SwLinkedGraphicStreamArrived,
     SwLegacyModify,
@@ -154,6 +206,37 @@ enum class SfxHintId {
     SwTableHeadingChange,
     SwVirtPageNumHint,
     SwAutoFormatUsedHint,
+    SwFormatField,
+    SwFindRedline,
+    SwModifyChanged,
+    SwAttr,
+    SwDocumentDying,
+    SwRedlineDelText,
+    SwRedlineUnDelText,
+    SwMoveText,
+    SwRedlineContentAtPos,
+    SwRedlineShowChanged,
+    SwTableBoxFormatChanged,
+    SwFindContentFrame,
+    SwTableLineFormatChanged,
+    SwMoveTableBox,
+    SwMoveTableLine,
+    SwCondCollCondChg,
+    SwGatherDdeTables,
+    SwUnoCursorHint,
+    SwPageDesc,
+    SwPageFootnote,
+    SwLinkAnchorSearch,
+    SwInRangeSearch,
+    SwGrfRereadAndInCache,
+    SwFindUnoTextTableRowInstance,
+    SwFindUnoCellInstance,
+    SwRemoveUnoObject,
+    SwHiddenParaPrint,
+    SwFormatChange,
+    SwAttrSetChange,
+    SwObjectDying,
+    SwUpdateAttr,
 
     ThisIsAnSdrHint,
     ThisIsAnSfxEventHint
@@ -175,6 +258,7 @@ inline std::basic_ostream<charT, traits> & operator <<(
     case SfxHintId::Deinitializing: return stream << "Deinitializing";
     case SfxHintId::ModeChanged: return stream << "ModeChanged";
     case SfxHintId::ColorsChanged: return stream << "ColorsChanged";
+    case SfxHintId::ThemeColorsChanged: return stream << "ThemeColorsChanged";
     case SfxHintId::LanguageChanged: return stream << "LanguageChanged";
     case SfxHintId::RedlineChanged: return stream << "RedlineChanged";
     case SfxHintId::DocumentRepair: return stream << "DocumentRepair";
@@ -194,6 +278,8 @@ inline std::basic_ostream<charT, traits> & operator <<(
     case SfxHintId::BasicInfoWanted: return stream << "BasicInfoWanted";
     case SfxHintId::BasicStart: return stream << "BasicStart";
     case SfxHintId::BasicStop: return stream << "BasicStop";
+    case SfxHintId::ScriptDocumentChanged: return stream << "ScriptDocumentChanged";
+    case SfxHintId::FmDesignModeChanged: return stream << "FmDesignModeChanged";
     case SfxHintId::EditSourceParasMoved: return stream << "EditSourceParasMoved";
     case SfxHintId::EditSourceSelectionChanged: return stream << "EditSourceSelectionChanged";
     case SfxHintId::ScDataChanged: return stream << "ScDataChanged";
@@ -227,8 +313,8 @@ inline std::basic_ostream<charT, traits> & operator <<(
     case SfxHintId::ScAccLeaveEditMode: return stream << "ScAccLeaveEditMode";
     case SfxHintId::ScAccMakeDrawLayer: return stream << "ScAccMakeDrawLayer";
     case SfxHintId::ScAccWindowResized: return stream << "ScAccWindowResized";
-    case SfxHintId::StyleSheetCreated: return stream << "StyleSheetCreated";
     case SfxHintId::StyleSheetModified: return stream << "StyleSheetModified";
+    case SfxHintId::StyleSheetModifiedExtended: return stream << "StyleSheetModifiedExtended";
     case SfxHintId::StyleSheetChanged: return stream << "StyleSheetChanged";
     case SfxHintId::StyleSheetErased: return stream << "StyleSheetErased";
     case SfxHintId::StyleSheetInDestruction: return stream << "StyleSheetInDestruction";
@@ -241,6 +327,14 @@ inline std::basic_ostream<charT, traits> & operator <<(
         return stream << "SwNavigatorSelectOutlinesWithSelections";
     case SfxHintId::SwCollectTextMarks: return stream << "SwCollectTextMarks";
     case SfxHintId::SwCollectTextTOXMarksForLayout: return stream << "SwCollectTextTOXMarksForLayout";
+    case SfxHintId::SwFormatField: return stream << "SwFormatField";
+    case SfxHintId::SwFindRedline: return stream << "SwFindRedline";
+    case SfxHintId::SwModifyChanged: return stream << "SwModifyChanged";
+    case SfxHintId::SwAttr: return stream << "SwAttr";
+    case SfxHintId::SwDocumentDying: return stream << "SwDocumentDying";
+    case SfxHintId::SwRedlineDelText: return stream << "SwRedlineDelText";
+    case SfxHintId::SwRedlineUnDelText: return stream << "SwRedlineUnDelText";
+    case SfxHintId::SwMoveText: return stream << "SwMoveText";
     case SfxHintId::ThisIsAnSdrHint: return stream << "SdrHint";
     default: return stream << "unk(" << std::to_string(int(id)) << ")";
     }

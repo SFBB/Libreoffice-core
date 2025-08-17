@@ -52,25 +52,28 @@ class CWinClipboard final
                                                  css::datatransfer::clipboard::XFlushableClipboard,
                                                  css::lang::XServiceInfo>
 {
-    friend STDMETHODIMP_(ULONG) CXNotifyingDataObject::Release();
+    friend CXNotifyingDataObject::~CXNotifyingDataObject();
 
     css::uno::Reference<css::uno::XComponentContext> m_xContext;
     const OUString m_itsName;
     CMtaOleClipboard m_MtaOleClipboard;
-    CXNotifyingDataObject* m_pCurrentClipContent;
-    com::sun::star::uno::Reference<com::sun::star::datatransfer::XTransferable> m_foreignContent;
-    osl::Mutex m_aContentMutex;
-    osl::Mutex m_aContentCacheMutex;
+    CXNotifyingDataObject* m_pNewOwnClipContent = nullptr; // until onClipboardContentChanged
+    CXNotifyingDataObject* m_pCurrentOwnClipContent = nullptr;
+    css::uno::Reference<css::datatransfer::XTransferable> m_foreignContent;
     comphelper::OInterfaceContainerHelper4<css::datatransfer::clipboard::XClipboardListener>
         maClipboardListeners;
 
-    void notifyAllClipboardListener();
-    void onReleaseDataObject(CXNotifyingDataObject* theCaller);
+    CXNotifyingDataObject* getOwnClipContent() const;
+
+    void handleClipboardContentChanged();
+    void onReleaseDataObject(CXNotifyingDataObject& theCaller);
 
     void registerClipboardViewer();
     void unregisterClipboardViewer();
 
     static void WINAPI onClipboardContentChanged();
+
+    css::uno::Reference<css::datatransfer::XTransferable> getContents_noLock();
 
 public:
     CWinClipboard(const css::uno::Reference<css::uno::XComponentContext>& rxContext,

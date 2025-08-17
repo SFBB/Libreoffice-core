@@ -20,6 +20,7 @@
 #ifndef INCLUDED_XMLOFF_XMLCONSTANTSPROPERTYHANDLER_HXX
 #define INCLUDED_XMLOFF_XMLCONSTANTSPROPERTYHANDLER_HXX
 
+#include <config_options.h>
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <xmloff/xmlprhdl.hxx>
@@ -32,7 +33,7 @@ struct SvXMLEnumMapEntry;
 /** Abstract base-class for different XML-types. Derivations of this class
     knows how to compare, im/export a special XML-type
 */
-class XMLOFF_DLLPUBLIC XMLConstantsPropertyHandler: public XMLPropertyHandler
+class UNLESS_MERGELIBS_MORE(XMLOFF_DLLPUBLIC) XMLConstantsPropertyHandler: public XMLPropertyHandler
 {
     const SvXMLEnumMapEntry<sal_uInt16> *m_pMap;
     const enum ::xmloff::token::XMLTokenEnum m_eDefault;
@@ -50,13 +51,13 @@ public:
     virtual bool importXML(
             const OUString& rStrImpValue,
             css::uno::Any& rValue,
-            const SvXMLUnitConverter& rUnitConverter ) const override;
+            const SvXMLUnitConverter& rUnitConverter ) const override final;
 
     /// Exports the given value in case of the given XML-data-type
     virtual bool exportXML(
             OUString& rStrExpValue,
             const css::uno::Any& rValue,
-            const SvXMLUnitConverter& rUnitConverter ) const override;
+            const SvXMLUnitConverter& rUnitConverter ) const override final;
 };
 
 #endif // INCLUDED_XMLOFF_XMLCONSTANTSPROPERTYHANDLER_HXX

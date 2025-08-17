@@ -1281,7 +1281,7 @@ void SwAutoFormat::DelEmptyLine( bool bTstNextPara )
         TextFrameIndex(m_pCurTextFrame->GetText().getLength()));
     if (*m_aDelPam.GetPoint() != *m_aDelPam.GetMark())
     {   // tdf#137245 replace (not delete) to preserve any flys
-        m_pDoc->getIDocumentContentOperations().ReplaceRange(m_aDelPam, "", false);
+        m_pDoc->getIDocumentContentOperations().ReplaceRange(m_aDelPam, u""_ustr, false);
     }
 
     m_aDelPam.DeleteMark();
@@ -1482,7 +1482,14 @@ void SwAutoFormat::BuildEnum( sal_uInt16 nLvl, sal_uInt16 nDigitLevel )
 
         SwTextFrameInfo aInfo( m_pCurTextFrame );
         nLeftTextPos = aInfo.GetCharPos(nPos);
-        nLeftTextPos -= m_pCurTextFrame->GetTextNodeForParaProps()->GetSwAttrSet().GetTextLeftMargin().GetLeft(m_pCurTextFrame->GetTextNodeForParaProps()->GetSwAttrSet().GetFirstLineIndent());
+
+        nLeftTextPos -= m_pCurTextFrame->GetTextNodeForParaProps()
+                            ->GetSwAttrSet()
+                            .GetTextLeftMargin()
+                            .ResolveLeft(m_pCurTextFrame->GetTextNodeForParaProps()
+                                             ->GetSwAttrSet()
+                                             .GetFirstLineIndent(),
+                                         /*metrics*/ {});
     }
 
     if( m_bMoreLines )
@@ -1567,7 +1574,7 @@ void SwAutoFormat::BuildEnum( sal_uInt16 nLvl, sal_uInt16 nDigitLevel )
                         aFormat.SetBulletChar( cBullChar );
                         aFormat.SetNumberingType(SVX_NUM_CHAR_SPECIAL);
                         // #i93908# clear suffix for bullet lists
-                        aFormat.SetListFormat("", "", n);
+                        aFormat.SetListFormat(u""_ustr, u""_ustr, n);
                         aFormat.SetFirstLineOffset( lBulletFirstLineOffset );
                         aFormat.SetAbsLSpace( nAbsPos );
                         if( !aFormat.GetCharFormat() )
@@ -1648,7 +1655,7 @@ void SwAutoFormat::BuildEnum( sal_uInt16 nLvl, sal_uInt16 nDigitLevel )
                     {
                         SwNumFormat aFormat( aRule.Get( n ) );
 
-                        const OUString sPrefix = n ? "" : aPrefix.getToken(0, u'\x0001', nPrefixIdx);
+                        const OUString sPrefix = n ? u""_ustr : aPrefix.getToken(0, u'\x0001', nPrefixIdx);
                         aFormat.SetStart( o3tl::narrowing<sal_uInt16>(o3tl::toInt32(o3tl::getToken(aPrefix, 0, u'\x0001', nPrefixIdx )) ));
                         aFormat.SetListFormat(sPrefix, aPostfix.getToken(0, u'\x0001', nPostfixIdx), n);
                         aFormat.SetIncludeUpperLevels( MAXLEVEL );
@@ -1710,7 +1717,7 @@ void SwAutoFormat::BuildEnum( sal_uInt16 nLvl, sal_uInt16 nDigitLevel )
             const_cast<SwTextNode*>(m_pCurTextFrame->GetTextNodeForParaProps())->SetAttrListLevel(nLvl);
 
             // start new list
-            m_pDoc->SetNumRule(m_aDelPam, aRule, true, m_pEditShell->GetLayout());
+            m_pDoc->SetNumRule(m_aDelPam, aRule, SwDoc::SetNumRuleMode::CreateNewList, m_pEditShell->GetLayout());
             m_aDelPam.DeleteMark();
 
             *m_aDelPam.GetPoint() = m_pCurTextFrame->MapViewToModelPos(TextFrameIndex(0));
@@ -1746,10 +1753,10 @@ void SwAutoFormat::BuildEnum( sal_uInt16 nLvl, sal_uInt16 nDigitLevel )
                 m_aDelPam.SetMark();
                 *m_aDelPam.GetPoint() = m_pCurTextFrame->MapViewToModelPos(TextFrameIndex(1));
                 SetAllScriptItem( aSet,
-                     SvxFontItem( m_aFlags.aBulletFont.GetFamilyType(),
+                     SvxFontItem( m_aFlags.aBulletFont.GetFamilyTypeMaybeAskConfig(),
                                   m_aFlags.aBulletFont.GetFamilyName(),
                                   m_aFlags.aBulletFont.GetStyleName(),
-                                  m_aFlags.aBulletFont.GetPitch(),
+                                  m_aFlags.aBulletFont.GetPitchMaybeAskConfig(),
                                   m_aFlags.aBulletFont.GetCharSet(),
                                   RES_CHRATR_FONT ) );
                 m_pDoc->SetFormatItemByAutoFormat( m_aDelPam, aSet );
@@ -2316,6 +2323,7 @@ SwAutoFormat::SwAutoFormat( SwEditShell* pEdShell, SvxSwAutoFormatFlags aFlags,
     // set area for autoformatting
     if( pSttNd )
     {
+        assert(pEndNd);
         m_aNdIdx = *pSttNd;
         // for GoNextPara, one paragraph prior to that
         sw::GotoPrevLayoutTextFrame(m_aNdIdx, m_pEditShell->GetLayout());
@@ -2398,6 +2406,7 @@ SwAutoFormat::SwAutoFormat( SwEditShell* pEdShell, SvxSwAutoFormatFlags aFlags,
             break;
 
         case TST_EMPTY_LINE:
+            assert(m_pCurTextFrame);
             if (IsEmptyLine(*m_pCurTextFrame))
             {
                 if (m_aFlags.bDelEmptyNode && !HasObjects(*m_pCurTextFrame))
@@ -2419,6 +2428,7 @@ SwAutoFormat::SwAutoFormat( SwEditShell* pEdShell, SvxSwAutoFormatFlags aFlags,
             break;
 
         case TST_ALPHA_LINE:
+            assert(m_pCurTextFrame);
             if (IsNoAlphaLine(*m_pCurTextFrame))
             {
                 // recognize a table definition +---+---+
@@ -2457,6 +2467,7 @@ SwAutoFormat::SwAutoFormat( SwEditShell* pEdShell, SvxSwAutoFormatFlags aFlags,
 
         case GET_ALL_INFO:
             {
+                assert(m_pCurTextFrame);
                 if (m_pCurTextFrame->GetTextNodeForParaProps()->GetNumRule())
                 {
                     // do nothing in numbering, go to next
@@ -2501,9 +2512,14 @@ SwAutoFormat::SwAutoFormat( SwEditShell* pEdShell, SvxSwAutoFormatFlags aFlags,
                     SvxTextLeftMarginItem const*const pTextLeftMargin(
                         m_pCurTextFrame->GetTextNodeForParaProps()
                             ->GetSwAttrSet().GetItemIfSet(RES_MARGIN_TEXTLEFT));
-                    short nSz(pFirstLineIndent ? pFirstLineIndent->GetTextFirstLineOffset() : 0);
-                    if (0 != nSz ||
-                        (pTextLeftMargin && 0 != pTextLeftMargin->GetTextLeft()))
+
+                    // Unit conversion is not needed here: check the sign only
+                    double dIndentValue = 0.0;
+                    if (pFirstLineIndent)
+                        dIndentValue = pFirstLineIndent->GetTextFirstLineOffset().m_dValue;
+
+                    if (0.0 != dIndentValue
+                        || (pTextLeftMargin && (0.0 != pTextLeftMargin->GetTextLeft().m_dValue)))
                     {
                         // exception: numbering/enumeration can have an indentation
                         if (IsEnumericChar(*m_pCurTextFrame))
@@ -2522,11 +2538,13 @@ SwAutoFormat::SwAutoFormat( SwEditShell* pEdShell, SvxSwAutoFormatFlags aFlags,
                         if( bReplaceStyles )
                         {
                             // then use one of our templates
-                            if( 0 < nSz )           // positive 1st line indentation
+                            if (0.0 < dIndentValue) // positive 1st line indentation
                                 BuildIndent();
-                            else if( 0 > nSz )      // negative 1st line indentation
+                            else if (0.0 > dIndentValue) // negative 1st line indentation
                                 BuildNegIndent( aFInfo.GetLineStart() );
-                            else if (pTextLeftMargin && pTextLeftMargin->GetTextLeft() != 0)   // is indentation
+                            else if (pTextLeftMargin
+                                     && (pTextLeftMargin->GetTextLeft().m_dValue
+                                         != 0.0)) // is indentation
                                 BuildTextIndent();
                         }
                         eStat = READ_NEXT_PARA;
@@ -2566,6 +2584,8 @@ SwAutoFormat::SwAutoFormat( SwEditShell* pEdShell, SvxSwAutoFormatFlags aFlags,
                 eStat = TST_ENUMERIC;
                 if( !bReplaceStyles )
                     break;
+
+                assert(m_pCurTextFrame);
 
                 const OUString sClrStr( DelLeadingBlanks(m_pCurTextFrame->GetText()) );
 
@@ -2631,6 +2651,7 @@ SwAutoFormat::SwAutoFormat( SwEditShell* pEdShell, SvxSwAutoFormatFlags aFlags,
         case TST_ENUMERIC:
             {
                 bEmptyLine = false;
+                assert(m_pCurTextFrame);
                 if (IsEnumericChar(*m_pCurTextFrame))
                 {
                     if( nLevel >= MAXLEVEL )
@@ -2737,19 +2758,27 @@ SwAutoFormat::SwAutoFormat( SwEditShell* pEdShell, SvxSwAutoFormatFlags aFlags,
                     SvxTextLeftMarginItem const*const pTextLeftMargin(
                         m_pCurTextFrame->GetTextNodeForParaProps()
                             ->GetSwAttrSet().GetItemIfSet(RES_MARGIN_TEXTLEFT, false));
-                    short nSz(pFirstLineIndent ? pFirstLineIndent->GetTextFirstLineOffset() : 0);
-                    if( bReplaceStyles &&
-                        (0 != nSz ||
-                            (pTextLeftMargin && 0 != pTextLeftMargin->GetTextLeft())))
+
+                    // Unit conversion is not needed here: check the sign only
+                    double dIndentValue = 0.0;
+                    if (pFirstLineIndent)
+                        dIndentValue = pFirstLineIndent->GetTextFirstLineOffset().m_dValue;
+
+                    if (bReplaceStyles
+                        && (0.0 != dIndentValue
+                            || (pTextLeftMargin
+                                && (0.0 != pTextLeftMargin->GetTextLeft().m_dValue))))
                     {
                         // then use one of our templates
-                        if( 0 < nSz )           // positive 1st line indentation
+                        if (0.0 < dIndentValue) // positive 1st line indentation
                             BuildIndent();
-                        else if( 0 > nSz )      // negative 1st line indentation
+                        else if (0.0 > dIndentValue) // negative 1st line indentation
                         {
                             BuildNegIndent( aFInfo.GetLineStart() );
                         }
-                        else if (pTextLeftMargin && pTextLeftMargin->GetTextLeft()) // is indentation
+                        else if (pTextLeftMargin
+                                 && (0.0
+                                     != pTextLeftMargin->GetTextLeft().m_dValue)) // is indentation
                             BuildTextIndent();
                         else
                             BuildText();

@@ -47,7 +47,6 @@ namespace xmloff
 
     using namespace css;
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
 
     // NO using namespace ...util !!!
@@ -93,7 +92,7 @@ namespace xmloff
         css::uno::Sequence<T> anySeq;
         bool bSuccess = value >>= anySeq;
         assert(bSuccess); (void)bSuccess;
-        for (T const & i : std::as_const(anySeq))
+        for (T const& i : anySeq)
         {
             OUString sValue(implConvertAny(Any(i)));
             AddAttribute(XML_NAMESPACE_OFFICE, eValueAttName, sValue );
@@ -142,7 +141,7 @@ namespace xmloff
 
             // the type attribute
 
-            bool bIsEmptyValue = TypeClass_VOID == aValue.getValueType().getTypeClass();
+            bool bIsEmptyValue = TypeClass_VOID == aValue.getValueTypeClass();
             if ( bIsEmptyValue )
             {
                 css::beans::Property aPropDesc = m_xPropertyInfo->getPropertyByName( rProperty );
@@ -436,11 +435,11 @@ namespace xmloff
         exportedProperty(PROPERTY_TIMEFORMAT);
 
         // the following properties should have been exported at the shape already:
-        exportedProperty( "VerticalAlign" );
-        exportedProperty( "WritingMode" );
-        exportedProperty( "ScaleMode" );
+        exportedProperty( u"VerticalAlign"_ustr );
+        exportedProperty( u"WritingMode"_ustr );
+        exportedProperty( u"ScaleMode"_ustr );
         // ditto the TextWritingMode
-        exportedProperty( "WritingMode" );
+        exportedProperty( u"WritingMode"_ustr );
     }
 
     void OPropertyExport::exportGenericPropertyAttribute(

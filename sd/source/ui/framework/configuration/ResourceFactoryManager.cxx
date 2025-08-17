@@ -19,11 +19,12 @@
 
 #include "ResourceFactoryManager.hxx"
 #include <DrawController.hxx>
+#include <framework/ModuleController.hxx>
+#include <framework/ResourceFactory.hxx>
 #include <tools/wldcrd.hxx>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <comphelper/processfactory.hxx>
 #include <sal/log.hxx>
 
@@ -31,7 +32,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 #undef VERBOSE
 //#define VERBOSE 1
@@ -42,7 +42,7 @@ ResourceFactoryManager::ResourceFactoryManager (const rtl::Reference<::sd::DrawC
     : mxControllerManager(rxManager)
 {
     // Create the URL transformer.
-    Reference<uno::XComponentContext> xContext(::comphelper::getProcessComponentContext());
+    const Reference<uno::XComponentContext>& xContext(::comphelper::getProcessComponentContext());
     mxURLTransformer = util::URLTransformer::create(xContext);
 }
 
@@ -50,10 +50,9 @@ ResourceFactoryManager::~ResourceFactoryManager()
 {
     for (auto& rXInterfaceResource : maFactoryMap)
     {
-        Reference<lang::XComponent> xComponent (rXInterfaceResource.second, UNO_QUERY);
+        if (rXInterfaceResource.second.is())
+            rXInterfaceResource.second->dispose();
         rXInterfaceResource.second = nullptr;
-        if (xComponent.is())
-            xComponent->dispose();
     }
 
     Reference<lang::XComponent> xComponent (mxURLTransformer, UNO_QUERY);
@@ -63,7 +62,7 @@ ResourceFactoryManager::~ResourceFactoryManager()
 
 void ResourceFactoryManager::AddFactory (
     const OUString& rsURL,
-    const Reference<XResourceFactory>& rxFactory)
+    const rtl::Reference<ResourceFactory>& rxFactory)
 {
     if ( ! rxFactory.is())
         throw lang::IllegalArgumentException();
@@ -91,34 +90,8 @@ void ResourceFactoryManager::AddFactory (
     }
 }
 
-void ResourceFactoryManager::RemoveFactoryForURL (
-    const OUString& rsURL)
-{
-    if (rsURL.isEmpty())
-        throw lang::IllegalArgumentException();
-
-    std::scoped_lock aGuard (maMutex);
-
-    FactoryMap::iterator iFactory (maFactoryMap.find(rsURL));
-    if (iFactory != maFactoryMap.end())
-    {
-        maFactoryMap.erase(iFactory);
-    }
-    else
-    {
-        // The URL may be a pattern.  Look that up.
-        auto iPattern = std::find_if(maFactoryPatternList.begin(), maFactoryPatternList.end(),
-            [&rsURL](const FactoryPatternList::value_type& rPattern) { return rPattern.first == rsURL; });
-        if (iPattern != maFactoryPatternList.end())
-        {
-            // Found the pattern.  Remove it.
-            maFactoryPatternList.erase(iPattern);
-        }
-    }
-}
-
 void ResourceFactoryManager::RemoveFactoryForReference(
-    const Reference<XResourceFactory>& rxFactory)
+    const rtl::Reference<ResourceFactory>& rxFactory)
 {
     std::scoped_lock aGuard (maMutex);
 
@@ -139,7 +112,7 @@ void ResourceFactoryManager::RemoveFactoryForReference(
             [&] (FactoryPatternList::value_type const& it) { return it.second == rxFactory; });
 }
 
-Reference<XResourceFactory> ResourceFactoryManager::GetFactory (
+rtl::Reference<ResourceFactory> ResourceFactoryManager::GetFactory (
     const OUString& rsCompleteURL)
 {
     OUString sURLBase (rsCompleteURL);
@@ -151,11 +124,11 @@ Reference<XResourceFactory> ResourceFactoryManager::GetFactory (
             sURLBase = aURL.Main;
     }
 
-    Reference<XResourceFactory> xFactory = FindFactory(sURLBase);
+    rtl::Reference<ResourceFactory> xFactory = FindFactory(sURLBase);
 
     if ( ! xFactory.is() && mxControllerManager.is())
     {
-        Reference<XModuleController> xModuleController(mxControllerManager->getModuleController());
+        rtl::Reference<ModuleController> xModuleController(mxControllerManager->getModuleController());
         if (xModuleController.is())
         {
             // Ask the module controller to provide a factory of the
@@ -170,7 +143,7 @@ Reference<XResourceFactory> ResourceFactoryManager::GetFactory (
     return xFactory;
 }
 
-Reference<XResourceFactory> ResourceFactoryManager::FindFactory (const OUString& rsURLBase)
+rtl::Reference<ResourceFactory> ResourceFactoryManager::FindFactory (const OUString& rsURLBase)
 {
     std::scoped_lock aGuard (maMutex);
     FactoryMap::const_iterator iFactory (maFactoryMap.find(rsURLBase));

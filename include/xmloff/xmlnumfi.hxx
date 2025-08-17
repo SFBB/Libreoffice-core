@@ -31,7 +31,6 @@
 
 namespace com::sun::star::uno { class XComponentContext; }
 namespace com::sun::star::util { class XNumberFormatsSupplier; }
-namespace com::sun::star::xml::sax { class XAttributeList; }
 
 inline constexpr OUString XML_NUMBERSTYLES = u"NumberStyles"_ustr;
 
@@ -73,12 +72,9 @@ class SvXMLNumFmtHelper
 
 public:
     SvXMLNumFmtHelper(
-        const css::uno::Reference< css::util::XNumberFormatsSupplier >& rSupp,
-        const css::uno::Reference< css::uno::XComponentContext >& rxContext );
+        const css::uno::Reference< css::util::XNumberFormatsSupplier >& rSupp );
 
-    SvXMLNumFmtHelper(
-        SvNumberFormatter* pNumberFormatter,
-        const css::uno::Reference< css::uno::XComponentContext >& rxContext );
+    SvXMLNumFmtHelper( SvNumberFormatter* pNumberFormatter );
 
     ~SvXMLNumFmtHelper();
 
@@ -162,7 +158,10 @@ private:
     SvXMLDateElementAttributes  m_eDateSecs;
     bool                        m_bDateNoDefault;
 
-    SAL_DLLPRIVATE sal_Int32 PrivateGetKey();
+    SAL_DLLPRIVATE sal_Int32 PrivateGetKey(std::vector<SvXMLNumFormatContext*>& rCreateStack);
+
+    SAL_DLLPRIVATE sal_Int32 CreateAndInsert(SvNumberFormatter* pFormatter, std::vector<SvXMLNumFormatContext*>& rCreateStack);
+    SAL_DLLPRIVATE void CreateAndInsert(bool bOverwrite, std::vector<SvXMLNumFormatContext*>& rCreateStack);
 
 public:
                 SvXMLNumFormatContext( SvXMLImport& rImport,
@@ -181,10 +180,9 @@ public:
 
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
         sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
-    virtual void CreateAndInsert(bool bOverwrite) override;
+    virtual void CreateAndInsert(bool bOverwrite) override final;
 
     sal_Int32 GetKey();
-    sal_Int32 CreateAndInsert( SvNumberFormatter* pFormatter );
     sal_Int32 CreateAndInsert( css::uno::Reference< css::util::XNumberFormatsSupplier > const & xFormatsSupplier );
     SvXMLStylesTokens GetType() const           { return m_nType; }   // SvXMLStylesTokens
 

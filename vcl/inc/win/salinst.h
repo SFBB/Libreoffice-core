@@ -24,6 +24,7 @@
 #include <osl/conditn.hxx>
 
 #include <salinst.hxx>
+#include <win/salframe.h>
 
 class SalYieldMutex;
 
@@ -50,8 +51,13 @@ public:
     virtual void            DestroyObject( SalObject* pObject ) override;
     virtual std::unique_ptr<SalVirtualDevice>
                             CreateVirtualDevice( SalGraphics& rGraphics,
+                                                     tools::Long nDX, tools::Long nDY,
+                                                     DeviceFormat eFormat,
+                                                     bool bAlphaMaskTransparent = false ) override;
+    virtual std::unique_ptr<SalVirtualDevice>
+                            CreateVirtualDevice( SalGraphics& rGraphics,
                                                      tools::Long &nDX, tools::Long &nDY,
-                                                     DeviceFormat eFormat, const SystemGraphicsData *pData = nullptr ) override;
+                                                     DeviceFormat eFormat, const SystemGraphicsData& rData ) override;
     virtual SalInfoPrinter* CreateInfoPrinter( SalPrinterQueueInfo* pQueueInfo,
                                                ImplJobSetup* pSetupData ) override;
     virtual void            DestroyInfoPrinter( SalInfoPrinter* pPrinter ) override;
@@ -69,16 +75,18 @@ public:
     virtual std::unique_ptr<SalMenu>     CreateMenu( bool bMenuBar, Menu* ) override;
     virtual std::unique_ptr<SalMenuItem> CreateMenuItem( const SalItemParams & rItemData ) override;
     virtual OpenGLContext*      CreateOpenGLContext() override;
-    virtual OUString            GetConnectionIdentifier() override;
     virtual void                AddToRecentDocumentList(const OUString& rFileUrl, const OUString& rMimeType, const OUString& rDocumentService) override;
 
+    static DWORD getWindowsBuildNumber();
     virtual OUString            getOSVersion() override;
     virtual void BeforeAbort(const OUString&, bool) override;
 
     static int WorkaroundExceptionHandlingInUSER32Lib(int nExcept, LPEXCEPTION_POINTERS pExceptionInfo);
 
-    virtual css::uno::Reference<css::uno::XInterface> ImplCreateDragSource(const SystemEnvData*) override;
-    virtual css::uno::Reference<css::uno::XInterface> ImplCreateDropTarget(const SystemEnvData*) override;
+    virtual css::uno::Reference<css::datatransfer::dnd::XDragSource>
+    ImplCreateDragSource(const SystemEnvData& rSysEnv) override;
+    virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget>
+    ImplCreateDropTarget(const SystemEnvData& rSysEnv) override;
 };
 
 SalFrame* ImplSalCreateFrame( WinSalInstance* pInst, HWND hWndParent, SalFrameStyleFlags nSalFrameStyle );

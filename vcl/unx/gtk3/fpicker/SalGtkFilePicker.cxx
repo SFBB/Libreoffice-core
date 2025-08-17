@@ -18,6 +18,7 @@
  */
 
 #include <config_gio.h>
+#include <config_gpgme.h>
 
 #include <com/sun/star/awt/SystemDependentXWindow.hpp>
 #include <com/sun/star/awt/Toolkit.hpp>
@@ -109,7 +110,7 @@ void SalGtkFilePicker::InitialMapping()
 {
     if (!mbPreviewState )
     {
-        gtk_widget_hide( m_pPreview );
+        gtk_widget_set_visible(m_pPreview, false);
 #if !GTK_CHECK_VERSION(4, 0, 0)
         gtk_file_chooser_set_preview_widget_active( GTK_FILE_CHOOSER( m_pDialog ), false);
 #endif
@@ -182,14 +183,15 @@ SalGtkFilePicker::SalGtkFilePicker( const uno::Reference< uno::XComponentContext
     gtk_box_append(GTK_BOX(m_pVBox), pHBox);
     gtk_box_prepend(GTK_BOX(m_pVBox), pThinVBox);
 #endif
-    gtk_widget_show( pHBox );
-    gtk_widget_show( pThinVBox );
+    gtk_widget_set_visible(pHBox, true);
+    gtk_widget_set_visible(pThinVBox, true);
 
     OUString aLabel;
 
     for( i = 0; i < TOGGLE_LAST; i++ )
     {
         m_pToggles[i] = gtk_check_button_new();
+        gtk_widget_set_visible(m_pToggles[i], false);
 
 #define LABEL_TOGGLE( elem ) \
         case elem : \
@@ -201,6 +203,7 @@ SalGtkFilePicker::SalGtkFilePicker( const uno::Reference< uno::XComponentContext
         LABEL_TOGGLE( AUTOEXTENSION );
         LABEL_TOGGLE( PASSWORD );
         LABEL_TOGGLE( GPGENCRYPTION );
+        LABEL_TOGGLE( GPGSIGN );
         LABEL_TOGGLE( FILTEROPTIONS );
         LABEL_TOGGLE( READONLY );
         LABEL_TOGGLE( LINK );
@@ -221,10 +224,12 @@ SalGtkFilePicker::SalGtkFilePicker( const uno::Reference< uno::XComponentContext
     for( i = 0; i < LIST_LAST; i++ )
     {
         m_pHBoxs[i] = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+        gtk_widget_set_visible(m_pHBoxs[i], false);
 
         GtkListStore *pListStores[ LIST_LAST ];
         pListStores[i] = gtk_list_store_new (1, G_TYPE_STRING);
         m_pLists[i] = gtk_combo_box_new_with_model(GTK_TREE_MODEL(pListStores[i]));
+        gtk_widget_set_visible(m_pLists[i], false);
         g_object_unref (pListStores[i]); // owned by the widget.
         GtkCellRenderer *pCell = gtk_cell_renderer_text_new ();
         gtk_cell_layout_pack_start(
@@ -233,6 +238,7 @@ SalGtkFilePicker::SalGtkFilePicker( const uno::Reference< uno::XComponentContext
             GTK_CELL_LAYOUT (m_pLists[i]), pCell, "text", 0, nullptr);
 
         m_pListLabels[i] = gtk_label_new( "" );
+        gtk_widget_set_visible(m_pListLabels[i], false);
 
 #define LABEL_LIST( elem ) \
         case elem : \
@@ -255,8 +261,8 @@ SalGtkFilePicker::SalGtkFilePicker( const uno::Reference< uno::XComponentContext
         gtk_box_pack_end( GTK_BOX( m_pHBoxs[i] ), m_pLists[i], false, false, 0 );
         gtk_box_pack_end( GTK_BOX( m_pHBoxs[i] ), m_pListLabels[i], false, false, 0 );
 #else
-        gtk_box_append(GTK_BOX(m_pHBoxs[i]), m_pLists[i]);
         gtk_box_append(GTK_BOX(m_pHBoxs[i]), m_pListLabels[i]);
+        gtk_box_append(GTK_BOX(m_pHBoxs[i]), m_pLists[i]);
 #endif
         gtk_label_set_mnemonic_widget( GTK_LABEL(m_pListLabels[i]), m_pLists[i] );
         gtk_box_set_spacing( GTK_BOX( m_pHBoxs[i] ), 12 );
@@ -293,7 +299,7 @@ SalGtkFilePicker::SalGtkFilePicker( const uno::Reference< uno::XComponentContext
 #else
     gtk_expander_set_child(GTK_EXPANDER(m_pFilterExpander), scrolled_window);
 #endif
-    gtk_widget_show (scrolled_window);
+    gtk_widget_set_visible(scrolled_window, true);
 
     m_pFilterStore = gtk_list_store_new (4, G_TYPE_STRING, G_TYPE_STRING,
         G_TYPE_STRING, G_TYPE_STRING);
@@ -317,10 +323,13 @@ SalGtkFilePicker::SalGtkFilePicker( const uno::Reference< uno::XComponentContext
 #else
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled_window), m_pFilterView);
 #endif
-    gtk_widget_show (m_pFilterView);
+    gtk_widget_set_visible(m_pFilterView, true);
 
 #if !GTK_CHECK_VERSION(4, 0, 0)
     gtk_file_chooser_set_extra_widget( GTK_FILE_CHOOSER( m_pDialog ), m_pVBox );
+#else
+    GtkBox* pContentBox = GTK_BOX(gtk_dialog_get_content_area(GTK_DIALOG(m_pDialog)));
+    gtk_box_append(pContentBox, m_pVBox);
 #endif
 
     m_pPreview = gtk_image_new();
@@ -339,7 +348,7 @@ SalGtkFilePicker::SalGtkFilePicker( const uno::Reference< uno::XComponentContext
     g_signal_connect (G_OBJECT( m_pDialog ), "map",
                       G_CALLBACK (dialog_mapped_cb), this);
 
-    gtk_widget_show( m_pVBox );
+    gtk_widget_set_visible(m_pVBox, true);
 
     PangoLayout  *layout = gtk_widget_create_pango_layout (m_pFilterView, nullptr);
     guint ypad;
@@ -684,7 +693,8 @@ uno::Sequence<OUString> SAL_CALL SalGtkFilePicker::getFiles()
       and unimplementable for some heterogeneous pseudo-URIs eg. search:
       Thus crop unconditionally to a single selection.
     */
-    aFiles.realloc (1);
+    if (aFiles.getLength() > 1)
+        aFiles.realloc(1);
     return aFiles;
 }
 
@@ -893,6 +903,29 @@ void SAL_CALL SalGtkFilePicker::setTitle( const OUString& rTitle )
     implsetTitle(rTitle);
 }
 
+#if GTK_CHECK_VERSION(4, 0, 0)
+namespace
+{
+
+GtkColumnView* lcl_findColumnView(GtkWidget* pWidget)
+{
+    if (GTK_IS_COLUMN_VIEW(pWidget))
+        return GTK_COLUMN_VIEW(pWidget);
+
+    GtkWidget* pChild = gtk_widget_get_first_child(GTK_WIDGET(pWidget));
+    while (pChild)
+    {
+        if (GtkColumnView* pColumnView = lcl_findColumnView(pChild))
+            return pColumnView;
+        pChild = gtk_widget_get_next_sibling(pChild);
+    }
+
+    return nullptr;
+}
+
+}
+#endif
+
 sal_Int16 SAL_CALL SalGtkFilePicker::execute()
 {
     SolarMutexGuard g;
@@ -928,8 +961,16 @@ sal_Int16 SAL_CALL SalGtkFilePicker::execute()
         g_signal_connect( GTK_FILE_CHOOSER( m_pDialog ), "selection-changed",
             G_CALLBACK( selection_changed_cb ), static_cast<gpointer>(this) );
 #else
-    // no replacement in 4-0 that I can see :-(
-    mnHID_SelectionChange = 0;
+    // GtkFileChooser::selection-changed was dropped in GTK 4
+    // Make use of GTK implementation details to connect to
+    // GtkSelectionModel::selection-changed signal of the underlying model instead
+    GtkColumnView* pColumnView = lcl_findColumnView(m_pDialog);
+    assert(pColumnView && "Couldn't find the file dialog's column view");
+    GtkSelectionModel* pSelectionModel = gtk_column_view_get_model(pColumnView);
+    assert(pSelectionModel);
+    mnHID_SelectionChange
+        = g_signal_connect(pSelectionModel, "selection-changed", G_CALLBACK(selection_changed_cb),
+                           static_cast<gpointer>(this));
 #endif
 
     int btn = GTK_RESPONSE_NO;
@@ -964,7 +1005,7 @@ sal_Int16 SAL_CALL SalGtkFilePicker::execute()
                     Sequence < OUString > aPathSeq = getFiles();
                     if( aPathSeq.getLength() == 1 )
                     {
-                        OUString sFileName = aPathSeq[0];
+                        const OUString& sFileName = aPathSeq[0];
                         if (::utl::UCBContentHelper::Exists(sFileName))
                         {
                             INetURLObject aFileObj(sFileName);
@@ -1076,7 +1117,7 @@ sal_Int16 SAL_CALL SalGtkFilePicker::execute()
                 break;
         }
     }
-    gtk_widget_hide(m_pDialog);
+    gtk_widget_set_visible(m_pDialog, false);
 
     if (mnHID_FolderChange)
         g_signal_handler_disconnect(GTK_FILE_CHOOSER( m_pDialog ), mnHID_FolderChange);
@@ -1118,6 +1159,7 @@ GtkWidget *SalGtkFilePicker::getWidget( sal_Int16 nControlId, GType *pType )
         MAP_TOGGLE( AUTOEXTENSION );
         MAP_TOGGLE( PASSWORD );
         MAP_TOGGLE( GPGENCRYPTION );
+        MAP_TOGGLE( GPGSIGN );
         MAP_TOGGLE( FILTEROPTIONS );
         MAP_TOGGLE( READONLY );
         MAP_TOGGLE( LINK );
@@ -1191,7 +1233,7 @@ void SalGtkFilePicker::HandleSetListValue(GtkComboBox *pWidget, sal_Int16 nContr
             {
                 Sequence< OUString > aStringList;
                 rValue >>= aStringList;
-                for (const auto& rString : std::as_const(aStringList))
+                for (const auto& rString : aStringList)
                 {
                     ComboBoxAppendText(pWidget, rString);
                     if (!bVersionWidthUnset)
@@ -1530,7 +1572,12 @@ void SalGtkFilePicker::folder_changed_cb( GtkFileChooser *, SalGtkFilePicker *po
     pobjFP->impl_directoryChanged( evt );
 }
 
+#if !GTK_CHECK_VERSION(4, 0, 0)
 void SalGtkFilePicker::selection_changed_cb( GtkFileChooser *, SalGtkFilePicker *pobjFP )
+#else
+void SalGtkFilePicker::selection_changed_cb(GtkSelectionModel*, guint, guint,
+                                            SalGtkFilePicker* pobjFP)
+#endif
 {
     FilePickerEvent evt;
     SAL_INFO( "vcl.gtk", "selection_changed, isn't it great " << pobjFP );
@@ -1588,12 +1635,12 @@ sal_Bool SAL_CALL SalGtkFilePicker::setShowState( sal_Bool bShowState )
                     GTK_FILE_CHOOSER( m_pDialog ), "update-preview",
                     G_CALLBACK( update_preview_cb ), static_cast<gpointer>(this) );
             }
-            gtk_widget_show( m_pPreview );
+            gtk_widget_set_visible(m_pPreview, true);
         }
         else
         {
             // Hide
-            gtk_widget_hide( m_pPreview );
+            gtk_widget_set_visible(m_pPreview, false);
         }
 
         // also emit the signal
@@ -1653,7 +1700,7 @@ void SAL_CALL SalGtkFilePicker::initialize( const uno::Sequence<uno::Any>& aArgu
     uno::Any aAny;
     if( !aArguments.hasElements() )
         throw lang::IllegalArgumentException(
-            "no arguments",
+            u"no arguments"_ustr,
             static_cast<XFilePicker2*>( this ), 1 );
 
     aAny = aArguments[0];
@@ -1661,7 +1708,7 @@ void SAL_CALL SalGtkFilePicker::initialize( const uno::Sequence<uno::Any>& aArgu
     if( ( aAny.getValueType() != cppu::UnoType<sal_Int16>::get()) &&
          (aAny.getValueType() != cppu::UnoType<sal_Int8>::get()) )
          throw lang::IllegalArgumentException(
-            "invalid argument type",
+            u"invalid argument type"_ustr,
             static_cast<XFilePicker2*>( this ), 1 );
 
     sal_Int16 templateId = -1;
@@ -1698,6 +1745,9 @@ void SalGtkFilePicker::impl_initialize(GtkWidget* pParentWidget, sal_Int16 templ
             first_button_text = sSave.getStr();
             mbToggleVisibility[PASSWORD] = true;
             mbToggleVisibility[GPGENCRYPTION] = true;
+#if HAVE_FEATURE_GPGME
+            mbToggleVisibility[GPGSIGN] = true;
+#endif
             // TODO
             break;
         case FILESAVE_AUTOEXTENSION_PASSWORD_FILTEROPTIONS:
@@ -1705,6 +1755,9 @@ void SalGtkFilePicker::impl_initialize(GtkWidget* pParentWidget, sal_Int16 templ
             first_button_text = sSave.getStr();
             mbToggleVisibility[PASSWORD] = true;
             mbToggleVisibility[GPGENCRYPTION] = true;
+#if HAVE_FEATURE_GPGME
+            mbToggleVisibility[GPGSIGN] = true;
+#endif
             mbToggleVisibility[FILTEROPTIONS] = true;
             // TODO
                 break;
@@ -1755,6 +1808,13 @@ void SalGtkFilePicker::impl_initialize(GtkWidget* pParentWidget, sal_Int16 templ
             mbToggleVisibility[READONLY] = true;
             mbListVisibility[VERSION] = true;
             break;
+        case FILEOPEN_READONLY_VERSION_FILTEROPTIONS:
+            eAction = GTK_FILE_CHOOSER_ACTION_OPEN;
+            first_button_text = sOpen.getStr();
+            mbToggleVisibility[FILTEROPTIONS] = true;
+            mbToggleVisibility[READONLY] = true;
+            mbListVisibility[VERSION] = true;
+            break;
         case FILEOPEN_LINK_PREVIEW:
             eAction = GTK_FILE_CHOOSER_ACTION_OPEN;
             first_button_text = sOpen.getStr();
@@ -1775,7 +1835,7 @@ void SalGtkFilePicker::impl_initialize(GtkWidget* pParentWidget, sal_Int16 templ
                 break;
         default:
                 throw lang::IllegalArgumentException(
-                "Unknown template",
+                u"Unknown template"_ustr,
                 static_cast< XFilePicker2* >( this ),
                 1 );
     }
@@ -1806,7 +1866,7 @@ void SalGtkFilePicker::impl_initialize(GtkWidget* pParentWidget, sal_Int16 templ
     for( int nTVIndex = 0; nTVIndex < TOGGLE_LAST; nTVIndex++ )
     {
         if( mbToggleVisibility[nTVIndex] )
-            gtk_widget_show( m_pToggles[ nTVIndex ] );
+            gtk_widget_set_visible(m_pToggles[nTVIndex], true);
     }
 
     for( int nTVIndex = 0; nTVIndex < LIST_LAST; nTVIndex++ )
@@ -1814,9 +1874,9 @@ void SalGtkFilePicker::impl_initialize(GtkWidget* pParentWidget, sal_Int16 templ
         if( mbListVisibility[nTVIndex] )
         {
             gtk_widget_set_sensitive( m_pLists[ nTVIndex ], false );
-            gtk_widget_show( m_pLists[ nTVIndex ] );
-            gtk_widget_show( m_pListLabels[ nTVIndex ] );
-            gtk_widget_show( m_pHBoxs[ nTVIndex ] );
+            gtk_widget_set_visible(m_pLists[nTVIndex], true);
+            gtk_widget_set_visible(m_pListLabels[nTVIndex], true);
+            gtk_widget_set_visible(m_pHBoxs[nTVIndex], true);
         }
     }
 
@@ -2003,7 +2063,7 @@ void SalGtkFilePicker::SetFilters()
                 {   // it's a filter group
                     css::uno::Sequence< css::beans::StringPair > aSubFilters;
                     filter.getSubFilters( aSubFilters );
-                    for( const auto& rSubFilter : std::as_const(aSubFilters) )
+                    for (const auto& rSubFilter : aSubFilters)
                         aAllFormats.insert(rSubFilter.Second);
                 }
                 else
@@ -2047,7 +2107,7 @@ void SalGtkFilePicker::SetFilters()
 
     // We always hide the expander now and depend on the user using the glob
     // list, or type a filename suffix, to select a filter by inference.
-    gtk_widget_hide(m_pFilterExpander);
+    gtk_widget_set_visible(m_pFilterExpander, false);
 
     // set the default filter
     if (!sPseudoFilter.isEmpty())

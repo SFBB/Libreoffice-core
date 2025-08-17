@@ -43,12 +43,10 @@
 #include <o3tl/string_view.hxx>
 #include <com/sun/star/frame/theUICommandDescription.hpp>
 
-namespace uno = com::sun::star::uno;
-namespace frame = com::sun::star::frame;
-namespace lang = com::sun::star::lang;
-namespace container = com::sun::star::container;
-namespace beans = com::sun::star::beans;
-namespace graphic = com::sun::star::graphic;
+namespace uno = css::uno;
+namespace frame = css::frame;
+namespace container = css::container;
+namespace beans = css::beans;
 
 static bool isCategoryAvailable(std::u16string_view sClassId, std::u16string_view sUIItemId,
                                 std::u16string_view sActiveCategory, bool& isCategory)
@@ -79,21 +77,21 @@ static OUString getFileName(std::u16string_view aFileName)
     else if (aFileName == u"notebookbar_groupedbar_compact.ui")
         return CuiResId(RID_CUISTR_GROUPEDBAR_COMPACT);
     else
-        return "None";
+        return u"None"_ustr;
 }
 
 static OUString getModuleId(std::u16string_view sModuleName)
 {
     if (sModuleName == u"Writer")
-        return "com.sun.star.text.TextDocument";
+        return u"com.sun.star.text.TextDocument"_ustr;
     else if (sModuleName == u"Draw")
-        return "com.sun.star.drawing.DrawingDocument";
+        return u"com.sun.star.drawing.DrawingDocument"_ustr;
     else if (sModuleName == u"Impress")
-        return "com.sun.star.presentation.PresentationDocument";
+        return u"com.sun.star.presentation.PresentationDocument"_ustr;
     else if (sModuleName == u"Calc")
-        return "com.sun.star.sheet.SpreadsheetDocument";
+        return u"com.sun.star.sheet.SpreadsheetDocument"_ustr;
     else
-        return "None";
+        return u"None"_ustr;
 }
 
 SvxNotebookbarConfigPage::SvxNotebookbarConfigPage(weld::Container* pPage,
@@ -118,7 +116,7 @@ SvxNotebookbarConfigPage::SvxNotebookbarConfigPage(weld::Container* pPage,
     rCommandCategoryBox.hide();
 
     m_xContentsListBox.reset(
-        new SvxNotebookbarEntriesListBox(m_xBuilder->weld_tree_view("toolcontents"), this));
+        new SvxNotebookbarEntriesListBox(m_xBuilder->weld_tree_view(u"toolcontents"_ustr), this));
     m_xDropTargetHelper.reset(
         new SvxConfigPageFunctionDropTarget(*this, m_xContentsListBox->get_widget()));
     weld::TreeView& rTreeView = m_xContentsListBox->get_widget();
@@ -151,8 +149,8 @@ void SvxNotebookbarConfigPage::Init()
     m_xSaveInListBox->append(sSaveInListBoxID, sScopeName);
     m_xSaveInListBox->set_active_id(sSaveInListBoxID);
 
-    m_xTopLevelListBox->append("NotebookBar", CuiResId(RID_CUISTR_ALL_COMMANDS));
-    m_xTopLevelListBox->set_active_id("NotebookBar");
+    m_xTopLevelListBox->append(u"NotebookBar"_ustr, CuiResId(RID_CUISTR_ALL_COMMANDS));
+    m_xTopLevelListBox->set_active_id(u"NotebookBar"_ustr);
     SelectElement();
 }
 
@@ -198,7 +196,8 @@ void SvxConfigPage::InsertEntryIntoNotebookbarTabUI(std::u16string_view sClassId
                                                     const weld::TreeIter& rIter)
 {
     css::uno::Reference<css::container::XNameAccess> m_xCommandToLabelMap;
-    uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference<uno::XComponentContext>& xContext
+        = ::comphelper::getProcessComponentContext();
     uno::Reference<container::XNameAccess> xNameAccess(
         css::frame::theUICommandDescription::get(xContext));
 
@@ -217,7 +216,7 @@ void SvxConfigPage::InsertEntryIntoNotebookbarTabUI(std::u16string_view sClassId
     }
 
     OUString aLabel;
-    for (auto const& prop : std::as_const(aPropSeq))
+    for (auto const& prop : aPropSeq)
         if (prop.Name == "Name")
             prop.Value >>= aLabel;
 
@@ -225,7 +224,7 @@ void SvxConfigPage::InsertEntryIntoNotebookbarTabUI(std::u16string_view sClassId
 
     if (sClassId == u"GtkSeparatorMenuItem" || sClassId == u"GtkSeparator")
     {
-        rTreeView.set_text(rIter, "--------------------------------------------", 0);
+        rTreeView.set_text(rIter, u"--------------------------------------------"_ustr, 0);
     }
     else
     {
@@ -301,7 +300,7 @@ void SvxNotebookbarConfigPage::searchNodeandAttribute(std::vector<NotebookbarEnt
                     aCategoryEntry.sClassType = sClassId;
                     aCategoryList.push_back(aCategoryEntry);
 
-                    aCurItemEntry = aCategoryEntry;
+                    aCurItemEntry = std::move(aCategoryEntry);
                 }
                 else if (sClassId == "sfxlo-PriorityMergedHBox")
                 {
@@ -318,7 +317,7 @@ void SvxNotebookbarConfigPage::searchNodeandAttribute(std::vector<NotebookbarEnt
                               + " | " + sUIItemId;
                     }
                     aCategoryList.push_back(aCategoryEntry);
-                    aCurItemEntry = aCategoryEntry;
+                    aCurItemEntry = std::move(aCategoryEntry);
                 }
                 else if (sClassId == "svtlo-ManagedMenuButton")
                 {

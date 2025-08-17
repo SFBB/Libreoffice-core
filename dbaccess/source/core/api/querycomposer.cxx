@@ -43,7 +43,6 @@ using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 using namespace ::cppu;
 using namespace ::osl;
-using namespace ::utl;
 
 
 OQueryComposer::OQueryComposer(const Reference< XConnection>& _xConnection)
@@ -88,7 +87,7 @@ Any SAL_CALL OQueryComposer::queryInterface( const Type & rType )
 // XServiceInfo
 OUString OQueryComposer::getImplementationName(  )
 {
-    return "com.sun.star.sdb.dbaccess.OQueryComposer";
+    return u"com.sun.star.sdb.dbaccess.OQueryComposer"_ustr;
 }
 
 sal_Bool OQueryComposer::supportsService( const OUString& _rServiceName )

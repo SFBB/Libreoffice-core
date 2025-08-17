@@ -338,7 +338,7 @@ void StdTabControllerModel::getGroup( sal_Int32 nGroup, css::uno::Sequence< css:
             nG++;
         }
     }
-    rGroup = aSeq;
+    rGroup = std::move(aSeq);
 }
 
 void StdTabControllerModel::getGroupByName( const OUString& rName, css::uno::Sequence< css::uno::Reference< css::awt::XControlModel > >& rGroup )
@@ -367,7 +367,7 @@ void StdTabControllerModel::getGroupByName( const OUString& rName, css::uno::Seq
 // css::io::XPersistObject
 OUString StdTabControllerModel::getServiceName(  )
 {
-    return "stardiv.vcl.controlmodel.TabController";
+    return u"stardiv.vcl.controlmodel.TabController"_ustr;
 }
 
 void StdTabControllerModel::write( const css::uno::Reference< css::io::XObjectOutputStream >& OutStream )
@@ -412,7 +412,7 @@ void StdTabControllerModel::read( const css::uno::Reference< css::io::XObjectInp
 
 OUString StdTabControllerModel::getImplementationName()
 {
-    return "stardiv.Toolkit.StdTabControllerModel";
+    return u"stardiv.Toolkit.StdTabControllerModel"_ustr;
 }
 
 sal_Bool StdTabControllerModel::supportsService(OUString const & ServiceName)
@@ -423,8 +423,8 @@ sal_Bool StdTabControllerModel::supportsService(OUString const & ServiceName)
 css::uno::Sequence<OUString> StdTabControllerModel::getSupportedServiceNames()
 {
     return css::uno::Sequence<OUString>{
-        "com.sun.star.awt.TabControllerModel",
-        "stardiv.vcl.controlmodel.TabController"};
+        u"com.sun.star.awt.TabControllerModel"_ustr,
+        u"stardiv.vcl.controlmodel.TabController"_ustr};
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *

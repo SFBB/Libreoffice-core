@@ -100,7 +100,7 @@ void SwHTMLParser::InsertDrawObject( SdrObject* pNewDrawObj,
         if( rCSS1PropInfo.m_bLeftMargin )
         {
             // should be SvxLeftMarginItem... "cast" it
-            nLeftSpace = static_cast<sal_uInt16>(pLeft->GetTextLeft());
+            nLeftSpace = static_cast<sal_uInt16>(pLeft->ResolveTextLeft({}));
             rCSS1PropInfo.m_bLeftMargin = false;
         }
         rCSS1ItemSet.ClearItem(RES_MARGIN_TEXTLEFT);
@@ -109,7 +109,7 @@ void SwHTMLParser::InsertDrawObject( SdrObject* pNewDrawObj,
     {
         if( rCSS1PropInfo.m_bRightMargin )
         {
-            nRightSpace = static_cast< sal_uInt16 >(pRight->GetRight());
+            nRightSpace = static_cast<sal_uInt16>(pRight->ResolveRight({}));
             rCSS1PropInfo.m_bRightMargin = false;
         }
         rCSS1ItemSet.ClearItem(RES_MARGIN_RIGHT);
@@ -117,8 +117,8 @@ void SwHTMLParser::InsertDrawObject( SdrObject* pNewDrawObj,
     if( nLeftSpace || nRightSpace )
     {
         SvxLRSpaceItem aLRItem( RES_LR_SPACE );
-        aLRItem.SetLeft( nLeftSpace );
-        aLRItem.SetRight( nRightSpace );
+        aLRItem.SetLeft(SvxIndentValue::twips(nLeftSpace));
+        aLRItem.SetRight(SvxIndentValue::twips(nRightSpace));
         aFrameSet.Put( aLRItem );
     }
 
@@ -343,10 +343,10 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
 
     // create a DrawTextobj
     // #i52858# - method name changed
-    SwDrawModel* pModel = m_xDoc->getIDocumentDrawModelAccess().GetOrCreateDrawModel();
-    SdrPage* pPg = pModel->GetPage( 0 );
+    SwDrawModel& rModel = m_xDoc->getIDocumentDrawModelAccess().GetOrCreateDrawModel();
+    SdrPage* pPg = rModel.GetPage( 0 );
     m_pMarquee = static_cast<SdrTextObj*>(SdrObjFactory::MakeNewObject(
-        *pModel,
+        rModel,
         SdrInventor::Default,
         SdrObjKind::Text).get());
 
@@ -367,7 +367,7 @@ void SwHTMLParser::NewMarquee( HTMLTable *pCurTable )
             XATTR_FILL_FIRST,   XATTR_FILL_LAST,
             SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST,
             EE_CHAR_START,      EE_CHAR_END>
-        aItemSet( pModel->GetItemPool() );
+        aItemSet( rModel.GetItemPool() );
     aItemSet.Put( makeSdrTextAutoGrowWidthItem( false ) );
     aItemSet.Put( makeSdrTextAutoGrowHeightItem( true ) );
     aItemSet.Put( SdrTextAniKindItem( eAniKind ) );

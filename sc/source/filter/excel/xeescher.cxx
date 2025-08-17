@@ -38,6 +38,7 @@
 #include <editeng/outlobj.hxx>
 #include <unotools/tempfile.hxx>
 #include <unotools/ucbstreamhelper.hxx>
+#include <unotools/securityoptions.hxx>
 #include <svtools/embedhlp.hxx>
 
 #include <unonames.hxx>
@@ -424,8 +425,8 @@ void XclExpImgData::Save( XclExpStream& rStrm )
         Scanline pScanline = pAccess->GetScanline( nY );
         for( sal_Int32 nX = 0; nX < nWidth; ++nX )
         {
-            const BitmapColor& rBmpColor = pAccess->GetPixelFromData( pScanline, nX );
-            rStrm << rBmpColor.GetBlue() << rBmpColor.GetGreen() << rBmpColor.GetRed();
+            const BitmapColor aBmpColor = pAccess->GetPixelFromData( pScanline, nX );
+            rStrm << aBmpColor.GetBlue() << aBmpColor.GetGreen() << aBmpColor.GetRed();
         }
         rStrm.WriteZeroBytes( nPadding );
     }
@@ -536,7 +537,7 @@ XclExpOcxControlObj::XclExpOcxControlObj( XclExpObjectManager& rObjMgr, Referenc
 
     // OBJ record flags
     SetLocked( true );
-    SetPrintable( aCtrlProp.GetBoolProperty( "Printable" ) );
+    SetPrintable( aCtrlProp.GetBoolProperty( u"Printable"_ustr ) );
     SetAutoFill( false );
     SetAutoLine( false );
 
@@ -552,13 +553,13 @@ XclExpOcxControlObj::XclExpOcxControlObj( XclExpObjectManager& rObjMgr, Referenc
 
     // #i51348# name of the control, may overwrite shape name
     OUString aCtrlName;
-    if( aCtrlProp.GetProperty( aCtrlName, "Name" ) && !aCtrlName.isEmpty() )
+    if( aCtrlProp.GetProperty( aCtrlName, u"Name"_ustr ) && !aCtrlName.isEmpty() )
         aPropOpt.AddOpt( ESCHER_Prop_wzName, aCtrlName );
 
     // meta file
     //TODO - needs check
     Reference< XPropertySet > xShapePS( xShape, UNO_QUERY );
-    if( xShapePS.is() && aPropOpt.CreateGraphicProperties( xShapePS, "MetaFile", false ) )
+    if( xShapePS.is() && aPropOpt.CreateGraphicProperties( xShapePS, u"MetaFile"_ustr, false ) )
     {
         sal_uInt32 nBlipId;
         if( aPropOpt.GetOpt( ESCHER_Prop_pib, nBlipId ) )
@@ -667,7 +668,7 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
 
     // control type
     sal_Int16 nClassId = 0;
-    if( aCtrlProp.GetProperty( nClassId, "ClassId" ) )
+    if( aCtrlProp.GetProperty( nClassId, u"ClassId"_ustr ) )
     {
         switch( nClassId )
         {
@@ -687,7 +688,7 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
 
     // OBJ record flags
     SetLocked( true );
-    mbPrint = aCtrlProp.GetBoolProperty( "Printable" );
+    mbPrint = aCtrlProp.GetBoolProperty( u"Printable"_ustr );
     SetPrintable( mbPrint );
     SetAutoFill( false );
     SetAutoLine( false );
@@ -696,7 +697,7 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
     mrEscherEx.OpenContainer( ESCHER_SpContainer );
     mrEscherEx.AddShape( ESCHER_ShpInst_HostControl, ShapeFlag::HaveAnchor | ShapeFlag::HaveShapeProperty );
     EscherPropertyContainer aPropOpt;
-    mbVisible = aCtrlProp.GetBoolProperty( "EnableVisible" );
+    mbVisible = aCtrlProp.GetBoolProperty( u"EnableVisible"_ustr );
     aPropOpt.AddOpt( ESCHER_Prop_fPrint, mbVisible ? 0x00080000 : 0x00080002 ); // visible flag
 
     aPropOpt.AddOpt( ESCHER_Prop_LockAgainstGrouping, 0x01000100 ); // bool field
@@ -707,7 +708,7 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
     aPropOpt.AddOpt( ESCHER_Prop_fNoLineDrawDash, 0x00080000 );     // bool field
 
     // #i51348# name of the control, may overwrite shape name
-    if( aCtrlProp.GetProperty( msCtrlName, "Name" ) && !msCtrlName.isEmpty() )
+    if( aCtrlProp.GetProperty( msCtrlName, u"Name"_ustr ) && !msCtrlName.isEmpty() )
         aPropOpt.AddOpt( ESCHER_Prop_wzName, msCtrlName );
 
     //Export description as alt text
@@ -730,7 +731,7 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
     mrEscherEx.UpdateDffFragmentEnd();
 
     // control label
-    if( aCtrlProp.GetProperty( msLabel, "Label" ) )
+    if( aCtrlProp.GetProperty( msLabel, u"Label"_ustr ) )
     {
         /*  Be sure to construct the MSODRAWING record containing the
             ClientTextbox atom after the base OBJ's MSODRAWING record data is
@@ -756,7 +757,7 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
     mrEscherEx.CloseContainer();  // ESCHER_SpContainer
 
     // other properties
-    aCtrlProp.GetProperty( mnLineCount, "LineCount" );
+    aCtrlProp.GetProperty( mnLineCount, u"LineCount"_ustr );
 
     // border style
     sal_Int16 nApiButton = AwtVisualEffect::LOOK3D;
@@ -765,15 +766,17 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
     {
         case FormCompType::LISTBOX:
         case FormCompType::COMBOBOX:
-            aCtrlProp.GetProperty( nApiBorder, "Border" );
+            aCtrlProp.GetProperty( nApiBorder, u"Border"_ustr );
         break;
         case FormCompType::CHECKBOX:
         case FormCompType::RADIOBUTTON:
-            aCtrlProp.GetProperty( nApiButton, "VisualEffect" );
+            aCtrlProp.GetProperty( nApiButton, u"VisualEffect"_ustr );
             nApiBorder = AwtVisualEffect::NONE;
         break;
         // Push button cannot be set to flat in Excel
         case FormCompType::COMMANDBUTTON:
+        // Group box does not support flat style (#i34712#)
+        case FormCompType::GROUPBOX:
             nApiBorder = AwtVisualEffect::LOOK3D;
         break;
         // Label does not support a border in Excel
@@ -787,17 +790,13 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
             nApiButton = AwtVisualEffect::LOOK3D;
             nApiBorder = AwtVisualEffect::NONE;
         break;
-        // Group box does not support flat style (#i34712#)
-        case FormCompType::GROUPBOX:
-            nApiBorder = AwtVisualEffect::LOOK3D;
-        break;
     }
     mbFlatButton = nApiButton != AwtVisualEffect::LOOK3D;
     mbFlatBorder = nApiBorder != AwtVisualEffect::LOOK3D;
 
     // control state
     sal_Int16 nApiState = 0;
-    if( aCtrlProp.GetProperty( nApiState, "State" ) )
+    if( aCtrlProp.GetProperty( nApiState, u"State"_ustr ) )
     {
         switch( nApiState )
         {
@@ -812,9 +811,9 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
     {
         case FormCompType::LISTBOX:
         {
-            mbMultiSel = aCtrlProp.GetBoolProperty( "MultiSelection" );
+            mbMultiSel = aCtrlProp.GetBoolProperty( u"MultiSelection"_ustr );
             Sequence< sal_Int16 > aSelection;
-            if( aCtrlProp.GetProperty( aSelection, "SelectedItems" ) )
+            if( aCtrlProp.GetProperty( aSelection, u"SelectedItems"_ustr ) )
             {
                 if( aSelection.hasElements() )
                 {
@@ -824,7 +823,7 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
             }
 
             // convert listbox with dropdown button to Excel dropdown
-            if( aCtrlProp.GetBoolProperty( "Dropdown" ) )
+            if( aCtrlProp.GetBoolProperty( u"Dropdown"_ustr ) )
                 mnObjType = EXC_OBJTYPE_DROPDOWN;
         }
         break;
@@ -833,8 +832,8 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
         {
             Sequence< OUString > aStringList;
             OUString aDefText;
-            if( aCtrlProp.GetProperty( aStringList, "StringItemList" ) &&
-                aCtrlProp.GetProperty( aDefText, "Text" ) &&
+            if( aCtrlProp.GetProperty( aStringList, u"StringItemList"_ustr ) &&
+                aCtrlProp.GetProperty( aDefText, u"Text"_ustr ) &&
                 aStringList.hasElements() && !aDefText.isEmpty() )
             {
                 auto nIndex = comphelper::findValue(aStringList, aDefText);
@@ -845,7 +844,7 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
             }
 
             // convert combobox without dropdown button to Excel listbox
-            if( !aCtrlProp.GetBoolProperty( "Dropdown" ) )
+            if( !aCtrlProp.GetBoolProperty( u"Dropdown"_ustr ) )
                 mnObjType = EXC_OBJTYPE_LISTBOX;
         }
         break;
@@ -853,17 +852,17 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
         case FormCompType::SCROLLBAR:
         {
             sal_Int32 nApiValue = 0;
-            if( aCtrlProp.GetProperty( nApiValue, "ScrollValueMin" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"ScrollValueMin"_ustr ) )
                 mnScrollMin = limit_cast< sal_uInt16 >( nApiValue, EXC_OBJ_SCROLLBAR_MIN, EXC_OBJ_SCROLLBAR_MAX );
-            if( aCtrlProp.GetProperty( nApiValue, "ScrollValueMax" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"ScrollValueMax"_ustr ) )
                 mnScrollMax = limit_cast< sal_uInt16 >( nApiValue, mnScrollMin, EXC_OBJ_SCROLLBAR_MAX );
-            if( aCtrlProp.GetProperty( nApiValue, "ScrollValue" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"ScrollValue"_ustr ) )
                 mnScrollValue = limit_cast< sal_uInt16 >( nApiValue, mnScrollMin, mnScrollMax );
-            if( aCtrlProp.GetProperty( nApiValue, "LineIncrement" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"LineIncrement"_ustr ) )
                 mnScrollStep = limit_cast< sal_uInt16 >( nApiValue, EXC_OBJ_SCROLLBAR_MIN, EXC_OBJ_SCROLLBAR_MAX );
-            if( aCtrlProp.GetProperty( nApiValue, "BlockIncrement" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"BlockIncrement"_ustr ) )
                 mnScrollPage = limit_cast< sal_uInt16 >( nApiValue, EXC_OBJ_SCROLLBAR_MIN, EXC_OBJ_SCROLLBAR_MAX );
-            if( aCtrlProp.GetProperty( nApiValue, "Orientation" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"Orientation"_ustr ) )
                 mbScrollHor = nApiValue == AwtScrollOrient::HORIZONTAL;
         }
         break;
@@ -871,15 +870,15 @@ XclExpTbxControlObj::XclExpTbxControlObj( XclExpObjectManager& rRoot, Reference<
         case FormCompType::SPINBUTTON:
         {
             sal_Int32 nApiValue = 0;
-            if( aCtrlProp.GetProperty( nApiValue, "SpinValueMin" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"SpinValueMin"_ustr ) )
                 mnScrollMin = limit_cast< sal_uInt16 >( nApiValue, EXC_OBJ_SCROLLBAR_MIN, EXC_OBJ_SCROLLBAR_MAX );
-            if( aCtrlProp.GetProperty( nApiValue, "SpinValueMax" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"SpinValueMax"_ustr ) )
                 mnScrollMax = limit_cast< sal_uInt16 >( nApiValue, mnScrollMin, EXC_OBJ_SCROLLBAR_MAX );
-            if( aCtrlProp.GetProperty( nApiValue, "SpinValue" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"SpinValue"_ustr ) )
                 mnScrollValue = limit_cast< sal_uInt16 >( nApiValue, mnScrollMin, mnScrollMax );
-            if( aCtrlProp.GetProperty( nApiValue, "SpinIncrement" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"SpinIncrement"_ustr ) )
                 mnScrollStep = limit_cast< sal_uInt16 >( nApiValue, EXC_OBJ_SCROLLBAR_MIN, EXC_OBJ_SCROLLBAR_MAX );
-            if( aCtrlProp.GetProperty( nApiValue, "Orientation" ) )
+            if( aCtrlProp.GetProperty( nApiValue, u"Orientation"_ustr ) )
                 mbScrollHor = nApiValue == AwtScrollOrient::HORIZONTAL;
         }
         break;
@@ -1096,12 +1095,13 @@ class VmlFormControlExporter : public oox::vml::VMLExport
     OUString m_sFmlaLink;
     OUString m_aLabel;
     OUString m_aMacroName;
+    sal_Int16 m_nState;
 
 public:
     VmlFormControlExporter(const sax_fastparser::FSHelperPtr& p, sal_uInt16 nObjType,
                            const tools::Rectangle& rAreaFrom, const tools::Rectangle& rAreaTo,
                            const OUString& sControlName, const OUString& sFmlaLink,
-                           OUString aLabel, OUString aMacroName);
+                           OUString aLabel, OUString aMacroName, sal_Int16 nState);
 
 protected:
     using VMLExport::StartShape;
@@ -1116,7 +1116,8 @@ VmlFormControlExporter::VmlFormControlExporter(const sax_fastparser::FSHelperPtr
                                                const tools::Rectangle& rAreaTo,
                                                const OUString& sControlName,
                                                const OUString& sFmlaLink,
-                                               OUString aLabel, OUString aMacroName)
+                                               OUString aLabel, OUString aMacroName,
+                                               sal_Int16 nState)
     : VMLExport(p)
     , m_nObjType(nObjType)
     , m_aAreaFrom(rAreaFrom)
@@ -1125,6 +1126,7 @@ VmlFormControlExporter::VmlFormControlExporter(const sax_fastparser::FSHelperPtr
     , m_sFmlaLink(sFmlaLink)
     , m_aLabel(std::move(aLabel))
     , m_aMacroName(std::move(aMacroName))
+    , m_nState(nState)
 {
 }
 
@@ -1173,6 +1175,11 @@ void VmlFormControlExporter::EndShape(sal_Int32 nShapeElement)
         XclXmlUtils::WriteElement(pVmlDrawing, FSNS(XML_x, XML_FmlaMacro), m_aMacroName);
     }
 
+    if (m_nObjType == EXC_OBJTYPE_CHECKBOX && m_nState == EXC_OBJ_CHECKBOX_CHECKED)
+    {
+        XclXmlUtils::WriteElement(pVmlDrawing, FSNS(XML_x, XML_Checked), "1");
+    }
+
     // XclExpOcxControlObj::WriteSubRecs() has the same fixed values.
     if (m_nObjType == EXC_OBJTYPE_BUTTON)
     {
@@ -1205,12 +1212,37 @@ void XclExpTbxControlObj::SaveVml(XclExpXmlStream& rStrm)
               : OUString();
 
     VmlFormControlExporter aFormControlExporter(rStrm.GetCurrentStream(), GetObjType(), aAreaFrom,
-                                                aAreaTo, msCtrlName, sCellLink, msLabel, GetMacroName());
+                                                aAreaTo, msCtrlName, sCellLink, msLabel, GetMacroName(),
+                                                mnState);
     aFormControlExporter.SetSkipwzName(true);  // use XML_id for legacyid, not XML_ID
     aFormControlExporter.OverrideShapeIDGen(true, "_x0000_s"_ostr);
     aFormControlExporter.AddSdrObject(*pObj, /*bIsFollowingTextFlow=*/false, /*eHOri=*/-1,
                                       /*eVOri=*/-1, /*eHRel=*/-1, /*eVRel=*/-1,
                                       /*pWrapAttrList=*/nullptr, /*bOOxmlExport=*/true, mnShapeId);
+}
+
+void XclExpTbxControlObj::WriteAnchor(sax_fastparser::FSHelperPtr& rTarget, bool bIsDrawing) const
+{
+    tools::Rectangle aAreaFrom;
+    tools::Rectangle aAreaTo;
+    bool bNeedFromToCorrection = maAreaFrom.IsEmpty() || maAreaTo.IsEmpty();
+
+    if (bNeedFromToCorrection)
+    {
+        SdrObject* pObj = SdrObject::getSdrObjectFromXShape(mxShape);
+        lcl_GetFromTo(mrRoot, pObj->GetLogicRect(), GetTab(), aAreaFrom, aAreaTo, /*bInEMU=*/true);
+    }
+
+    const tools::Rectangle& rAreaFrom = bNeedFromToCorrection ? aAreaFrom : maAreaFrom;
+    const tools::Rectangle& rAreaTo = bNeedFromToCorrection ? aAreaTo : maAreaTo;
+
+    rTarget->startElement(bIsDrawing ? FSNS(XML_xdr, XML_from) : XML_from);
+    lcl_WriteAnchorVertex(rTarget, rAreaFrom);
+    rTarget->endElement(bIsDrawing ? FSNS(XML_xdr, XML_from) : XML_from);
+
+    rTarget->startElement(bIsDrawing ? FSNS(XML_xdr, XML_to) : XML_to);
+    lcl_WriteAnchorVertex(rTarget, rAreaTo);
+    rTarget->endElement(bIsDrawing ? FSNS(XML_xdr, XML_to) : XML_to);
 }
 
 // save into xl\drawings\drawing1.xml
@@ -1226,12 +1258,7 @@ void XclExpTbxControlObj::SaveXml( XclExpXmlStream& rStrm )
 
     pDrawing->startElement(FSNS(XML_xdr, XML_twoCellAnchor), XML_editAs, "oneCell");
     {
-        pDrawing->startElement(FSNS(XML_xdr, XML_from));
-        lcl_WriteAnchorVertex(pDrawing, maAreaFrom);
-        pDrawing->endElement(FSNS(XML_xdr, XML_from));
-        pDrawing->startElement(FSNS(XML_xdr, XML_to));
-        lcl_WriteAnchorVertex(pDrawing, maAreaTo);
-        pDrawing->endElement(FSNS(XML_xdr, XML_to));
+        WriteAnchor(pDrawing, /* bIsDrawing */ true);
 
         pDrawing->startElement(FSNS(XML_xdr, XML_sp));
         {
@@ -1289,19 +1316,19 @@ void XclExpTbxControlObj::SaveXml( XclExpXmlStream& rStrm )
                 {
                     css::uno::Any mAny;
 
-                    mAny = rXPropSet->getPropertyValue("TextLeftDistance");
+                    mAny = rXPropSet->getPropertyValue(u"TextLeftDistance"_ustr);
                     if (mAny.hasValue())
                         mAny >>= nLeft;
 
-                    mAny = rXPropSet->getPropertyValue("TextRightDistance");
+                    mAny = rXPropSet->getPropertyValue(u"TextRightDistance"_ustr);
                     if (mAny.hasValue())
                         mAny >>= nRight;
 
-                    mAny = rXPropSet->getPropertyValue("TextUpperDistance");
+                    mAny = rXPropSet->getPropertyValue(u"TextUpperDistance"_ustr);
                     if (mAny.hasValue())
                         mAny >>= nTop;
 
-                    mAny = rXPropSet->getPropertyValue("TextLowerDistance");
+                    mAny = rXPropSet->getPropertyValue(u"TextLowerDistance"_ustr);
                     if (mAny.hasValue())
                         mAny >>= nBottom;
                 }
@@ -1326,7 +1353,7 @@ void XclExpTbxControlObj::SaveXml( XclExpXmlStream& rStrm )
                     {
                         css::uno::Any mAny;
 
-                        mAny = rXPropSet->getPropertyValue("TextAutoGrowHeight");
+                        mAny = rXPropSet->getPropertyValue(u"TextAutoGrowHeight"_ustr);
                         if (mAny.hasValue())
                             mAny >>= bTextAutoGrowHeight;
                     }
@@ -1473,13 +1500,8 @@ void XclExpTbxControlObj::SaveSheetXml(XclExpXmlStream& rStrm, const OUString& a
             rWorksheet->write(">");
 
             rWorksheet->startElement(XML_anchor, XML_moveWithCells, "true", XML_sizeWithCells, "false");
-            rWorksheet->startElement(XML_from);
-            lcl_WriteAnchorVertex(rWorksheet, maAreaFrom);
-            rWorksheet->endElement(XML_from);
-            rWorksheet->startElement(XML_to);
-            lcl_WriteAnchorVertex(rWorksheet, maAreaTo);
-            rWorksheet->endElement(XML_to);
-            rWorksheet->endElement( XML_anchor );
+            WriteAnchor(rWorksheet, /* bIsDrawing */ false);
+            rWorksheet->endElement(XML_anchor);
 
             rWorksheet->write("</controlPr>");
 
@@ -1571,7 +1593,7 @@ XclExpChartObj::XclExpChartObj( XclExpObjectManager& rObjMgr, Reference< XShape 
     // create the chart substream object
     ScfPropertySet aShapeProp( xShape );
     css::awt::Rectangle aBoundRect;
-    aShapeProp.GetProperty( aBoundRect, "BoundRect" );
+    aShapeProp.GetProperty( aBoundRect, u"BoundRect"_ustr );
     tools::Rectangle aChartRect( Point( aBoundRect.X, aBoundRect.Y ), Size( aBoundRect.Width, aBoundRect.Height ) );
     mxChart = std::make_shared<XclExpChart>(GetRoot(), GetChartDoc(), aChartRect);
 }
@@ -1639,6 +1661,7 @@ XclExpNote::XclExpNote(const XclExpRoot& rRoot, const ScAddress& rScPos,
     , mbAutoFill(false)
     , mbColHidden(false)
     , mbRowHidden(false)
+    , mpAuthorIDs(new SvtSecurityMapPersonalInfo)
 {
     // get the main note text
     OUString aNoteText;
@@ -1681,8 +1704,18 @@ XclExpNote::XclExpNote(const XclExpRoot& rRoot, const ScAddress& rScPos,
                 // stAuthor (variable): An XLUnicodeString that specifies the name of the comment
                 // author. String length MUST be greater than or equal to 1 and less than or equal
                 // to 54.
+                bool bRemovePersonalInfo
+                    = SvtSecurityOptions::IsOptionSet(
+                          SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo)
+                      && !SvtSecurityOptions::IsOptionSet(
+                             SvtSecurityOptions::EOption::DocWarnKeepNoteAuthorDateInfo);
                 if( pScNote->GetAuthor().isEmpty() )
-                    maAuthor = XclExpString( " " );
+                    maAuthor = XclExpString( u" "_ustr );
+                else if (bRemovePersonalInfo)
+                    maAuthor = XclExpString(
+                        "Author"
+                            + OUString::number(mpAuthorIDs->GetInfoID(pScNote->GetAuthor())),
+                        XclStrFlags::NONE, 54);
                 else
                     maAuthor = XclExpString( pScNote->GetAuthor(), XclStrFlags::NONE, 54 );
 
@@ -1766,7 +1799,7 @@ void XclExpNote::WriteXml( sal_Int32 nAuthorId, XclExpXmlStream& rStrm )
     sax_fastparser::FSHelperPtr rComments = rStrm.GetCurrentStream();
 
     rComments->startElement( XML_comment,
-            XML_ref,        XclXmlUtils::ToOString(mrRoot.GetDoc(), maScPos),
+            XML_ref,        XclXmlUtils::ToOString(mrRoot.GetDoc(), ScRange(maScPos)),
             XML_authorId,   OString::number(nAuthorId)
             // OOXTODO: XML_guid
     );
@@ -1954,6 +1987,7 @@ XclExpObjectManager::XclExpObjectManager( const XclExpRoot& rRoot ) :
     XclExpRoot( rRoot )
 {
     InitStream( true );
+    assert(mpDffStrm);
     mxEscherEx = std::make_shared<XclEscherEx>( GetRoot(), *this, *mpDffStrm );
 }
 
@@ -1961,6 +1995,7 @@ XclExpObjectManager::XclExpObjectManager( const XclExpObjectManager& rParent ) :
     XclExpRoot( rParent.GetRoot() )
 {
     InitStream( false );
+    assert(mpDffStrm);
     mxEscherEx = std::make_shared<XclEscherEx>( GetRoot(), *this, *mpDffStrm, rParent.mxEscherEx.get() );
 }
 
@@ -2045,6 +2080,8 @@ void XclExpObjectManager::InitStream( bool bTempFile )
         mpBackupStrm = std::make_unique<SvMemoryStream>();
         mpDffStrm = mpBackupStrm.get();
     }
+
+    assert(mpDffStrm);
 
     mpDffStrm->SetEndian( SvStreamEndian::LITTLE );
 }

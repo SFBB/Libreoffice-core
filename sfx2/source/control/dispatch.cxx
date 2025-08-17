@@ -40,6 +40,8 @@
 #include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
+#include <config_vclplug.h>
+#include <officecfg/Office/Common.hxx>
 #include <rtl/strbuf.hxx>
 #include <sal/log.hxx>
 #include <sfx2/app.hxx>
@@ -228,7 +230,7 @@ void SfxDispatcher::Call_Impl(SfxShell& rShell, const SfxSlot &rSlot, SfxRequest
 
         if ( xSet.is() )
         {
-            css::uno::Any aProp = xSet->getPropertyValue("DispatchRecorderSupplier");
+            css::uno::Any aProp = xSet->getPropertyValue(u"DispatchRecorderSupplier"_ustr);
             css::uno::Reference< css::frame::XDispatchRecorderSupplier > xSupplier;
             css::uno::Reference< css::frame::XDispatchRecorder > xRecorder;
             aProp >>= xSupplier;
@@ -303,7 +305,7 @@ void SfxDispatcher::Construct_Impl()
     for (SfxObjectBars_Impl & rObjBar : xImp->aObjBars)
         rObjBar.eId = ToolbarId::None;
 
-    xImp->xPoster = new SfxHintPoster(std::bind(&SfxDispatcher::PostMsgHandler, this, std::placeholders::_1));
+    xImp->xPoster = new SfxHintPoster(this);
 
     xImp->aIdle.SetPriority(TaskPriority::HIGH_IDLE );
     xImp->aIdle.SetInvokeHandler( LINK(this, SfxDispatcher, EventHdl_Impl ) );
@@ -335,7 +337,7 @@ SfxDispatcher::~SfxDispatcher()
 
     // So that no timer by Reschedule in PlugComm strikes the LeaveRegistrations
     xImp->aIdle.Stop();
-    xImp->xPoster->SetEventHdl( std::function<void (std::unique_ptr<SfxRequest>)>() );
+    xImp->xPoster->ClearLink();
 
     // Notify the stack variables in Call_Impl
     if ( xImp->pInCallAliveFlag )
@@ -707,7 +709,7 @@ bool SfxDispatcher::GetShellAndSlot_Impl(sal_uInt16 nSlot, SfxShell** ppShell,
 
         *ppShell = GetShell(aSvr.GetShellLevel());
         *ppSlot = aSvr.GetSlot();
-        if ( nullptr == (*ppSlot)->GetExecFnc() && bRealSlot )
+        if ( nullptr == (*ppSlot)->GetExecFnc() && bRealSlot && *ppShell )
             *ppSlot = (*ppShell)->GetInterface()->GetRealSlot(*ppSlot);
         // Check only real slots as enum slots don't have an execute function!
         return !bRealSlot || ((nullptr != *ppSlot) && (nullptr != (*ppSlot)->GetExecFnc()) );
@@ -758,12 +760,11 @@ void SfxDispatcher::Execute_(SfxShell& rShell, const SfxSlot& rSlot,
 */
 static void MappedPut_Impl(SfxAllItemSet &rSet, const SfxPoolItem &rItem)
 {
-    // Put with mapped Which-Id if possible
-    const SfxItemPool *pPool = rSet.GetPool();
-    sal_uInt16 nWhich = rItem.Which();
-    if ( SfxItemPool::IsSlot(nWhich) )
-        nWhich = pPool->GetWhich(nWhich);
-    rSet.Put( rItem, nWhich );
+    // Put with mapped Which-Id if needed
+    if (SfxItemPool::IsSlot(rItem.Which()))
+        rSet.PutAsTargetWhich(rItem, rSet.GetPool()->GetWhichIDFromSlotID(rItem.Which()));
+    else
+        rSet.Put(rItem);
 }
 
 const SfxSlot* SfxDispatcher::GetSlot( const OUString& rCommand )
@@ -986,13 +987,15 @@ void SfxDispatcher::PostMsgHandler(std::unique_ptr<SfxRequest> pReq)
         SfxSlotServer aSvr;
         if ( FindServer_(pReq->GetSlot(), aSvr ) ) // HACK(x), whatever that was supposed to mean
         {
-            const SfxSlot *pSlot = aSvr.GetSlot();
-            SfxShell *pSh = GetShell(aSvr.GetShellLevel());
+            if (SfxShell *pSh = GetShell(aSvr.GetShellLevel()))
+            {
+                const SfxSlot *pSlot = aSvr.GetSlot();
 
-            // When the pSlot is a "Pseudoslot" for macros or Verbs, it can
-            // be destroyed in the Call_Impl, thus do not use it anymore!
-            pReq->SetSynchronCall( false );
-            Call_Impl( *pSh, *pSlot, *pReq, pReq->AllowsRecording() ); //! why bRecord?
+                // When the pSlot is a "Pseudoslot" for macros or Verbs, it can
+                // be destroyed in the Call_Impl, thus do not use it anymore!
+                pReq->SetSynchronCall( false );
+                Call_Impl( *pSh, *pSlot, *pReq, pReq->AllowsRecording() ); //! why bRecord?
+            }
         }
     }
     else
@@ -1010,6 +1013,9 @@ void SfxDispatcher::SetMenu_Impl()
     if ( !xImp->pFrame )
         return;
 
+    if (comphelper::LibreOfficeKit::isActive())
+        return;
+
     SfxViewFrame* pTop = xImp->pFrame->GetTopViewFrame();
     if ( !pTop || pTop->GetBindings().GetDispatcher() != this )
         return;
@@ -1022,11 +1028,11 @@ void SfxDispatcher::SetMenu_Impl()
     if ( xPropSet.is() )
     {
         css::uno::Reference< css::frame::XLayoutManager > xLayoutManager;
-        css::uno::Any aValue = xPropSet->getPropertyValue("LayoutManager");
+        css::uno::Any aValue = xPropSet->getPropertyValue(u"LayoutManager"_ustr);
         aValue >>= xLayoutManager;
         if ( xLayoutManager.is() )
         {
-            OUString aMenuBarURL( "private:resource/menubar/menubar" );
+            OUString aMenuBarURL( u"private:resource/menubar/menubar"_ustr );
             if ( !xLayoutManager->isElementVisible( aMenuBarURL ) )
                 xLayoutManager->createElement( aMenuBarURL );
         }
@@ -1079,7 +1085,7 @@ void SfxDispatcher::Update_Impl( bool bForce )
     {
         try
         {
-            css::uno::Any aValue = xPropSet->getPropertyValue("LayoutManager");
+            css::uno::Any aValue = xPropSet->getPropertyValue(u"LayoutManager"_ustr);
             aValue >>= xLayoutManager;
         }
         catch (const css::uno::Exception&)
@@ -1110,7 +1116,7 @@ void SfxDispatcher::Update_Impl( bool bForce )
 
     bool bIsActive = false;
     SfxDispatcher *pActDispat = pWorkWin->GetBindings().GetDispatcher_Impl();
-    if ( !bIsActive && this == pActDispat )
+    if ( this == pActDispat )
         bIsActive = true;
 
     Update_Impl_( bUIActive, !bIsIPActive, bIsIPActive, pWorkWin );
@@ -1123,10 +1129,11 @@ void SfxDispatcher::Update_Impl( bool bForce )
     if ( xLayoutManager.is() )
         xLayoutManager->unlock();
 
-    if ( SfxViewShell::Current() && SfxViewShell::Current()->GetDispatcher() )
+    const SfxViewShell* pViewShell = SfxViewShell::Current();
+    if (pViewShell && pViewShell->GetDispatcher())
     {
         SfxPoolItemHolder aItem;
-        SfxViewShell::Current()->GetDispatcher()->QueryState(SID_NOTEBOOKBAR, aItem);
+        pViewShell->GetDispatcher()->QueryState(SID_NOTEBOOKBAR, aItem);
     }
 }
 
@@ -1135,7 +1142,7 @@ void SfxDispatcher::Update_Impl_( bool bUIActive, bool bIsMDIApp, bool bIsIPOwne
     SfxWorkWindow *pWorkWin = xImp->pFrame->GetFrame().GetWorkWindow_Impl();
     bool bIsActive = false;
     SfxDispatcher *pActDispat = pWorkWin->GetBindings().GetDispatcher_Impl();
-    if ( pActDispat && !bIsActive )
+    if ( pActDispat )
     {
         if ( this == pActDispat )
             bIsActive = true;
@@ -1151,6 +1158,7 @@ void SfxDispatcher::Update_Impl_( bool bUIActive, bool bIsMDIApp, bool bIsIPOwne
         return;
 
     StatusBarId eStatBarId = StatusBarId::None;
+    const bool isViewerAppMode = officecfg::Office::Common::Misc::ViewerAppMode::get();
 
     SfxSlotPool* pSlotPool = &SfxSlotPool::GetSlotPool( GetFrame() );
     sal_uInt16 nTotCount = xImp->aStack.size();
@@ -1182,7 +1190,8 @@ void SfxDispatcher::Update_Impl_( bool bUIActive, bool bIsMDIApp, bool bIsIPOwne
             {
                 bool bViewerTbx( nFlags & SfxVisibilityFlags::Viewer );
                 SfxObjectShell* pSh = xImp->pFrame->GetObjectShell();
-                const SfxBoolItem* pItem = pSh->GetMedium()->GetItemSet().GetItem(SID_VIEWONLY, false);
+                const SfxMedium* pMedium = pSh->GetMedium();
+                const SfxBoolItem* pItem = pMedium ? pMedium->GetItemSet().GetItem(SID_VIEWONLY, false) : nullptr;
                 bool bIsViewer = pItem && pItem->GetValue();
                 if ( bIsViewer != bViewerTbx )
                     continue;
@@ -1212,6 +1221,14 @@ void SfxDispatcher::Update_Impl_( bool bUIActive, bool bIsMDIApp, bool bIsIPOwne
             sal_uInt32 nId = pIFace->GetChildWindowId(nNo);
             const SfxSlot *pSlot = pSlotPool->GetSlot( static_cast<sal_uInt16>(nId) );
             SAL_INFO_IF( !pSlot, "sfx.control", "Childwindow slot missing: " << nId );
+
+            if (isViewerAppMode)
+            {
+                // Skip if the slot is not allowed in viewer app mode
+                if (pSlot && !pSlot->IsMode(SfxSlotMode::VIEWERAPP))
+                    continue;
+            }
+
             if ( bReadOnlyShell )
             {
                 // only show ChildWindows if their slot is allowed for readonly documents
@@ -1271,7 +1288,7 @@ void SfxDispatcher::Update_Impl_( bool bUIActive, bool bIsMDIApp, bool bIsIPOwne
     bool bIsTaskActive = false;
 
     SfxDispatcher *pActDispatcher = pTaskWin->GetBindings().GetDispatcher_Impl();
-    if ( pActDispatcher && !bIsTaskActive )
+    if ( pActDispatcher )
     {
         if ( this == pActDispatcher )
             bIsTaskActive = true;
@@ -1518,6 +1535,45 @@ SfxSlotFilterState SfxDispatcher::IsSlotEnabledByFilter_Impl( sal_uInt16 nSID ) 
         return bFound ? SfxSlotFilterState::DISABLED : SfxSlotFilterState::ENABLED;
 }
 
+static bool IsCommandAllowedInLokReadOnlyViewMode(std::u16string_view commandName,
+                                                  const SfxViewShell& viewShell)
+{
+    if (viewShell.IsAllowChangeComments())
+    {
+        static constexpr std::u16string_view allowed[] = {
+            u".uno:InsertAnnotation",
+            u".uno:ReplyComment",
+            u".uno:ResolveComment",
+            u".uno:ResolveCommentThread",
+            u".uno:DeleteComment",
+            u".uno:DeleteAnnotation",
+            u".uno:EditAnnotation",
+            u".uno:PromoteComment",
+            u".uno:Save",
+        };
+
+        if (std::find(std::begin(allowed), std::end(allowed), commandName) != std::end(allowed))
+            return true;
+    }
+    if (viewShell.IsAllowManageRedlines())
+    {
+        static constexpr std::u16string_view allowed[] = {
+            u".uno:AcceptTrackedChange",
+            u".uno:RejectTrackedChange",
+            u".uno:AcceptAllTrackedChanges",
+            u".uno:RejectAllTrackedChanges",
+            u".uno:AcceptTrackedChangeToNext",
+            u".uno:RejectTrackedChangeToNext",
+            u".uno:CommentChangeTracking",
+            u".uno:Save",
+        };
+
+        if (std::find(std::begin(allowed), std::end(allowed), commandName) != std::end(allowed))
+            return true;
+    }
+    return false;
+}
+
 /** This helper method searches for the <Slot-Server> which currently serves
     the nSlot. As the result, rServe is filled accordingly.
 
@@ -1586,12 +1642,30 @@ bool SfxDispatcher::FindServer_(sal_uInt16 nSlot, SfxSlotServer& rServer)
         return false;
     }
 
-    bool bReadOnly = ( SfxSlotFilterState::ENABLED_READONLY != nSlotEnableMode && xImp->bReadOnly );
+    const bool isViewerAppMode = officecfg::Office::Common::Misc::ViewerAppMode::get();
+    const bool bReadOnlyGlobal = SfxSlotFilterState::ENABLED_READONLY != nSlotEnableMode && xImp->bReadOnly;
+    const bool bReadOnlyLokView = !bReadOnlyGlobal && comphelper::LibreOfficeKit::isActive()
+                                  && xImp->pFrame && xImp->pFrame->GetViewShell()
+                                  && xImp->pFrame->GetViewShell()->IsLokReadOnlyView();
+
+    const bool bIsInPlace = xImp->pFrame && xImp->pFrame->GetObjectShell()->IsInPlaceActive();
+    // Shell belongs to Server?
+    // AppDispatcher or IPFrame-Dispatcher
+    bool bIsServerShell = !xImp->pFrame || bIsInPlace;
+    // Of course ShellServer-Slots are also executable even when it is
+    // executed on a container dispatcher without an IPClient.
+    if (!bIsServerShell)
+    {
+        SfxViewShell* pViewSh = xImp->pFrame->GetViewShell();
+        bIsServerShell = !pViewSh || !pViewSh->GetUIActiveClient();
+    }
+    // Shell belongs to Container?
+    // AppDispatcher or no IPFrameDispatcher
+    const bool bIsContainerShell = !bIsInPlace;
 
     // search through all the shells of the chained dispatchers
     // from top to bottom
-    sal_uInt16 nFirstShell = 0;
-    for ( sal_uInt16 i = nFirstShell; i < nTotCount; ++i )
+    for (sal_uInt16 i = 0; i < nTotCount; ++i)
     {
         SfxShell *pObjShell = GetShell(i);
         if (!pObjShell)
@@ -1599,47 +1673,61 @@ bool SfxDispatcher::FindServer_(sal_uInt16 nSlot, SfxSlotServer& rServer)
 
         SfxInterface *pIFace = pObjShell->GetInterface();
         const SfxSlot *pSlot = pIFace->GetSlot(nSlot);
+        if (!pSlot)
+            continue;
 
-        if ( pSlot && pSlot->nDisableFlags != SfxDisableFlags::NONE &&
+        // Slot belongs to Container?
+        bool bIsContainerSlot = pSlot->IsMode(SfxSlotMode::CONTAINER);
+
+        // Shell and Slot match
+        if ( !( ( bIsContainerSlot && bIsContainerShell ) ||
+                ( !bIsContainerSlot && bIsServerShell ) ) )
+            continue;
+
+        if ( pSlot->nDisableFlags != SfxDisableFlags::NONE &&
              ( static_cast<int>(pSlot->nDisableFlags) & static_cast<int>(pObjShell->GetDisableFlags()) ) != 0 )
             return false;
 
-        if ( pSlot && !( pSlot->nFlags & SfxSlotMode::READONLYDOC ) && bReadOnly )
+        if (!(pSlot->nFlags & SfxSlotMode::VIEWERAPP) && isViewerAppMode)
             return false;
 
-        if ( pSlot )
+        // The slot is not read-only
+        if (!(pSlot->nFlags & SfxSlotMode::READONLYDOC))
         {
-            // Slot belongs to Container?
-            bool bIsContainerSlot = pSlot->IsMode(SfxSlotMode::CONTAINER);
-            bool bIsInPlace = xImp->pFrame && xImp->pFrame->GetObjectShell()->IsInPlaceActive();
-
-            // Shell belongs to Server?
-            // AppDispatcher or IPFrame-Dispatcher
-            bool bIsServerShell = !xImp->pFrame || bIsInPlace;
-
-            // Of course ShellServer-Slots are also executable even when it is
-            // executed on a container dispatcher without an IPClient.
-            if ( !bIsServerShell )
+            // 1. The global context is read-only
+            if (bReadOnlyGlobal)
             {
-                SfxViewShell *pViewSh = xImp->pFrame->GetViewShell();
-                bIsServerShell = !pViewSh || !pViewSh->GetUIActiveClient();
+                bool bAllowThis = false;
+                // Enable insert new annotation in Writer in read-only mode
+                if (getenv("EDIT_COMMENT_IN_READONLY_MODE") != nullptr)
+                {
+                    OUString sCommand = pSlot->GetCommand();
+                    if (sCommand == u".uno:InsertAnnotation"_ustr
+                        || sCommand == u".uno:Undo"_ustr
+                        || sCommand == u".uno:Redo"_ustr
+                        || ((sCommand == u".uno:FontDialog"_ustr
+                             || sCommand == u".uno:ParagraphDialog"_ustr)
+                            && pIFace->GetClassName() == "SwAnnotationShell"_ostr))
+                    {
+                        bAllowThis = true;
+                    }
+                }
+                if (!bAllowThis)
+                    return false;
             }
 
-            // Shell belongs to Container?
-            // AppDispatcher or no IPFrameDispatcher
-            bool bIsContainerShell = !xImp->pFrame || !bIsInPlace;
-            // Shell and Slot match
-            if ( !( ( bIsContainerSlot && bIsContainerShell ) ||
-                    ( !bIsContainerSlot && bIsServerShell ) ) )
-                pSlot = nullptr;
+            // 2. LOK view context is read-only
+            if (bReadOnlyLokView)
+            {
+                if (!IsCommandAllowedInLokReadOnlyViewMode(pSlot->GetCommand(),
+                                                           *xImp->pFrame->GetViewShell()))
+                    return false;
+            }
         }
 
-        if ( pSlot )
-        {
-            rServer.SetSlot(pSlot);
-            rServer.SetShellLevel(i);
-            return true;
-        }
+        rServer.SetSlot(pSlot);
+        rServer.SetShellLevel(i);
+        return true;
     }
 
     return false;
@@ -1697,7 +1785,7 @@ bool SfxDispatcher::FillState_(const SfxSlotServer& rSvr, SfxItemSet& rState,
                   pItem;
                   pItem = aIter.NextItem() )
             {
-                if ( !IsInvalidItem(pItem) && !pItem->isVoidItem() )
+                if ( !IsInvalidItem(pItem) && !IsDisabledItem(pItem) )
                 {
                     sal_uInt16 nSlotId = rState.GetPool()->GetSlotId(pItem->Which());
                     SAL_INFO_IF(
@@ -1841,15 +1929,32 @@ boost::property_tree::ptree SfxDispatcher::fillPopupMenu(const rtl::Reference<VC
 void SfxDispatcher::ExecutePopup( const OUString& rResName, vcl::Window* pWin, const Point* pPos )
 {
     css::uno::Sequence< css::uno::Any > aArgs{
-        css::uno::Any(comphelper::makePropertyValue( "Value", rResName )),
-        css::uno::Any(comphelper::makePropertyValue( "Frame", GetFrame()->GetFrame().GetFrameInterface() )),
-        css::uno::Any(comphelper::makePropertyValue( "IsContextMenu", true ))
+        css::uno::Any(comphelper::makePropertyValue( u"Value"_ustr, rResName )),
+        css::uno::Any(comphelper::makePropertyValue( u"Frame"_ustr, GetFrame()->GetFrame().GetFrameInterface() )),
+        css::uno::Any(comphelper::makePropertyValue( u"IsContextMenu"_ustr, true ))
     };
 
-    css::uno::Reference< css::uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const css::uno::Reference< css::uno::XComponentContext >& xContext = comphelper::getProcessComponentContext();
     css::uno::Reference< css::frame::XPopupMenuController > xPopupController(
         xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-        "com.sun.star.comp.framework.ResourceMenuController", aArgs, xContext ), css::uno::UNO_QUERY );
+        u"com.sun.star.comp.framework.ResourceMenuController"_ustr, aArgs, xContext ), css::uno::UNO_QUERY );
+#if defined EMSCRIPTEN && ENABLE_QT5
+    // At least under Emscripten with Qt5, the QMenu::exec underlying the below call to
+    // xPopupMenu->execute returns immediately, without going into a new event loop, and we need to
+    // keep the underlying QMenu instance alive via the static lastPopupController chain here, until
+    // the next popup menu is opened (there can only ever be a single popup menu open, so it
+    // suffices to have a single static lastPopupController instance):
+    static css::uno::Reference<css::frame::XPopupMenuController> lastPopupController;
+    if (lastPopupController.is()) {
+        if (css::uno::Reference<css::lang::XComponent> component(
+                lastPopupController, css::uno::UNO_QUERY);
+            component.is())
+        {
+            component->dispose();
+        }
+        lastPopupController = xPopupController;
+    }
+#endif
 
     rtl::Reference< VCLXPopupMenu > xPopupMenu = new VCLXPopupMenu();
 
@@ -1886,9 +1991,11 @@ void SfxDispatcher::ExecutePopup( const OUString& rResName, vcl::Window* pWin, c
         }
     }
 
+#if !(defined EMSCRIPTEN && ENABLE_QT5)
     css::uno::Reference< css::lang::XComponent > xComponent( xPopupController, css::uno::UNO_QUERY );
     if ( xComponent.is() )
         xComponent->dispose();
+#endif
 }
 
 /** With this method the SfxDispatcher can be locked and released. A locked
@@ -1936,7 +2043,7 @@ void SfxDispatcher::HideUI( bool bHide )
                 if ( xPropSet.is() )
                 {
                     css::uno::Reference< css::frame::XLayoutManager > xLayoutManager;
-                    css::uno::Any aValue = xPropSet->getPropertyValue("LayoutManager");
+                    css::uno::Any aValue = xPropSet->getPropertyValue(u"LayoutManager"_ustr);
                     aValue >>= xLayoutManager;
                     if ( xLayoutManager.is() )
                         xLayoutManager->setVisible( !bHide );
@@ -1956,7 +2063,7 @@ void SfxDispatcher::SetReadOnly_Impl( bool bOn )
 
 bool SfxDispatcher::GetReadOnly_Impl() const
 {
-    return xImp->bReadOnly;
+    return xImp->bReadOnly || SfxViewShell::IsCurrentLokViewReadOnly();
 }
 
 /** With 'bOn' the Dispatcher is quasi dead and transfers everything to the
@@ -1977,7 +2084,7 @@ SfxItemState SfxDispatcher::QueryState( sal_uInt16 nSlot, SfxPoolItemHolder& rSt
     if ( GetShellAndSlot_Impl( nSlot, &pShell, &pSlot, false, true ) )
     {
         rState = pShell->GetSlotState(nSlot);
-        if ( nullptr == rState.getItem() )
+        if (!rState)
             return SfxItemState::DISABLED;
         else
             return SfxItemState::DEFAULT;
@@ -1993,21 +2100,21 @@ SfxItemState SfxDispatcher::QueryState( sal_uInt16 nSID, css::uno::Any& rAny )
     if ( GetShellAndSlot_Impl( nSID, &pShell, &pSlot, false, true ) )
     {
         SfxPoolItemHolder aItem(pShell->GetSlotState(nSID));
-        if (nullptr == aItem.getItem())
+        if (!aItem)
             return SfxItemState::DISABLED;
         else
         {
             css::uno::Any aState;
-            if ( !aItem.getItem()->isVoidItem() )
+            if ( !IsDisabledItem(aItem.getItem()) )
             {
                 sal_uInt16 nSubId( 0 );
                 SfxItemPool& rPool = pShell->GetPool();
-                sal_uInt16 nWhich = rPool.GetWhich( nSID );
+                sal_uInt16 nWhich = rPool.GetWhichIDFromSlotID( nSID );
                 if ( rPool.GetMetric( nWhich ) == MapUnit::MapTwip )
                     nSubId |= CONVERT_TWIPS;
                 aItem.getItem()->QueryValue( aState, static_cast<sal_uInt8>(nSubId) );
             }
-            rAny = aState;
+            rAny = std::move(aState);
 
             return SfxItemState::DEFAULT;
         }
@@ -2018,16 +2125,21 @@ SfxItemState SfxDispatcher::QueryState( sal_uInt16 nSID, css::uno::Any& rAny )
 
 bool SfxDispatcher::IsReadOnlyShell_Impl( sal_uInt16 nShell ) const
 {
+    bool bResult = true;
     sal_uInt16 nShellCount = xImp->aStack.size();
     if ( nShell < nShellCount )
     {
         SfxShell* pShell = *( xImp->aStack.rbegin() + nShell );
         if( dynamic_cast< const SfxModule *>( pShell ) != nullptr || dynamic_cast< const SfxApplication *>( pShell ) != nullptr || dynamic_cast< const SfxViewFrame *>( pShell ) !=  nullptr )
-            return false;
+            bResult = false;
         else
-            return xImp->bReadOnly;
+            bResult = xImp->bReadOnly;
     }
-    return true;
+
+    if (!bResult && SfxViewShell::IsCurrentLokViewReadOnly())
+            bResult = true;
+
+    return bResult;
 }
 
 void SfxDispatcher::RemoveShell_Impl( SfxShell& rShell )

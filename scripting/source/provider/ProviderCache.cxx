@@ -98,7 +98,7 @@ ProviderCache::getAllProviders()
             Reference<provider::XScriptProvider> xScriptProvider = rDetail.second.provider;
             if ( xScriptProvider.is() )
             {
-                pproviders[ providerIndex++ ] = xScriptProvider;
+                pproviders[ providerIndex++ ] = std::move(xScriptProvider);
             }
             else
             {
@@ -106,7 +106,7 @@ ProviderCache::getAllProviders()
                 try
                 {
                     xScriptProvider = createProvider(rDetail.second);
-                    pproviders[ providerIndex++ ] = xScriptProvider;
+                    pproviders[ providerIndex++ ] = std::move(xScriptProvider);
                 }
                 catch ( const Exception& )
                 {
@@ -137,7 +137,7 @@ ProviderCache::populateCache()
     try
     {
         Reference< container::XContentEnumerationAccess > xEnumAccess( m_xMgr, UNO_QUERY_THROW );
-        Reference< container::XEnumeration > xEnum = xEnumAccess->createContentEnumeration ( "com.sun.star.script.provider.LanguageScriptProvider" );
+        Reference< container::XEnumeration > xEnum = xEnumAccess->createContentEnumeration ( u"com.sun.star.script.provider.LanguageScriptProvider"_ustr );
 
         while ( xEnum->hasMoreElements() )
         {
@@ -158,8 +158,8 @@ ProviderCache::populateCache()
                 {
                     serviceName = *pName;
                     ProviderDetails details;
-                    details.factory = factory;
-                    m_hProviderDetailsCache[ serviceName ] = details;
+                    details.factory = std::move(factory);
+                    m_hProviderDetailsCache[ serviceName ] = std::move(details);
                 }
             }
         }

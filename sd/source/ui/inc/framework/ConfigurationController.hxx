@@ -19,7 +19,10 @@
 
 #pragma once
 
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
+#include <sddllapi.h>
+#include <framework/ConfigurationChangeListener.hxx>
+#include <framework/ConfigurationChangeRequest.hxx>
+#include <framework/AbstractResource.hxx>
 #include <com/sun/star/lang/XInitialization.hpp>
 
 #include <cppuhelper/basemutex.hxx>
@@ -28,29 +31,39 @@
 
 #include <memory>
 
-
-namespace com::sun::star::drawing::framework { class XConfiguration; }
-namespace com::sun::star::drawing::framework { class XConfigurationChangeRequest; }
-namespace com::sun::star::drawing::framework { class XResourceId; }
-namespace com::sun::star::drawing::framework { struct ConfigurationChangeEvent; }
-namespace com::sun::star::frame { class XController; }
 namespace sd { class DrawController; }
 
 namespace sd::framework {
+class ResourceFactory;
+enum class ConfigurationChangeEventType;
 
-typedef ::cppu::WeakComponentImplHelper <
-    css::drawing::framework::XConfigurationController
-    > ConfigurationControllerInterfaceBase;
+/** The ResourceActivationMode specifies, for example for the
+    com::sun::star::drawing::framework::XConfigurationController::requestResourceActivation(),
+    whether a requested resource is to replace an existing resource of the
+    same class or is to be activated additionally.
+*/
+enum class ResourceActivationMode
+{
+    /** A resource is requested in addition to already existing ones.  This
+        is used for example for panes.
+    */
+    ADD,
+
+    /** A resource is requested to replace an already existing one of the
+        same class.  This is used for example for views.
+    */
+    REPLACE
+};
 
 /** The configuration controller is responsible for maintaining the current
     configuration.
 
-    @see css::drawing::framework::XConfigurationController
+    @see ConfigurationController
         for an extended documentation.
 */
-class ConfigurationController final
+class SD_DLLPUBLIC ConfigurationController final
     : private cppu::BaseMutex,
-      public ConfigurationControllerInterfaceBase
+      public  cppu::WeakComponentImplHelperBase
 {
 public:
     ConfigurationController(const rtl::Reference<::sd::DrawController>& rxController);
@@ -73,76 +86,76 @@ public:
     */
     void RequestSynchronousUpdate();
 
-    // XConfigurationController
+    void lock();
 
-    virtual void SAL_CALL lock() override;
+    void unlock();
 
-    virtual void SAL_CALL unlock() override;
+    void requestResourceActivation (
+        const rtl::Reference<sd::framework::ResourceId>& rxResourceId,
+        ResourceActivationMode eMode);
 
-    virtual void SAL_CALL requestResourceActivation (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxResourceId,
-        css::drawing::framework::ResourceActivationMode eMode) override;
+    void requestResourceDeactivation (
+        const rtl::Reference<sd::framework::ResourceId>&
+            rxResourceId);
 
-    virtual void SAL_CALL requestResourceDeactivation (
-        const css::uno::Reference<css::drawing::framework::XResourceId>&
-            rxResourceId) override;
+    rtl::Reference<sd::framework::AbstractResource>
+        getResource (
+            const rtl::Reference<sd::framework::ResourceId>& rxResourceId);
 
-    virtual css::uno::Reference<css::drawing::framework::XResource>
-        SAL_CALL getResource (
-            const css::uno::Reference<css::drawing::framework::XResourceId>& rxResourceId) override;
+    void update();
 
-    virtual void SAL_CALL update() override;
+    rtl::Reference<sd::framework::Configuration>
+        getRequestedConfiguration();
 
-    virtual  css::uno::Reference<
-        css::drawing::framework::XConfiguration>
-        SAL_CALL getRequestedConfiguration() override;
+    rtl::Reference<sd::framework::Configuration>
+        getCurrentConfiguration();
 
-    virtual  css::uno::Reference<
-        css::drawing::framework::XConfiguration>
-        SAL_CALL getCurrentConfiguration() override;
+    void restoreConfiguration (
+        const rtl::Reference<sd::framework::Configuration>&
+        rxConfiguration);
 
-    virtual void SAL_CALL restoreConfiguration (
-        const css::uno::Reference<css::drawing::framework::XConfiguration>&
-        rxConfiguration) override;
+    void addConfigurationChangeListener (
+        const rtl::Reference<
+            sd::framework::ConfigurationChangeListener>& rxListener,
+        ConfigurationChangeEventType rsEventType);
 
-    // XConfigurationControllerBroadcaster
+    void removeConfigurationChangeListener (
+        const rtl::Reference<
+            sd::framework::ConfigurationChangeListener>& rxListener);
 
-    virtual void SAL_CALL addConfigurationChangeListener (
-        const css::uno::Reference<
-            css::drawing::framework::XConfigurationChangeListener>& rxListener,
-        const OUString& rsEventType,
-        const css::uno::Any& rUserData) override;
+    void notifyEvent (
+        const sd::framework::ConfigurationChangeEvent& rEvent);
 
-    virtual void SAL_CALL removeConfigurationChangeListener (
-        const css::uno::Reference<
-            css::drawing::framework::XConfigurationChangeListener>& rxListener) override;
+    /** Return whether there are pending requests for configuration changes.
+        @return
+            Returns `TRUE` when there is at least one request object in the
+            queue that has not yet been processed.  It returns `FALSE` when
+            the queue is empty.
+    */
+    bool hasPendingRequests();
 
-    virtual void SAL_CALL notifyEvent (
-        const css::drawing::framework::ConfigurationChangeEvent& rEvent) override;
+    /** Add a request for a configuration change to the request queue.
+        <p>This method should not be called from outside the drawing
+        framework.  Other sub controllers of the drawing framework are typical
+        callers.  They can add change requests that can not be made with the
+        requestResourceActivation() and
+        requestResourceDeactivation() methods.</p>
+        @param xRequest
+            The configuration change represented by this request object must only
+            be committed to the configuration when the
+            sd::framework::ConfigurationChangeRequest::execute()
+            method of the xRequest object is called.
+    */
+    void postChangeRequest (
+        const rtl::Reference<
+            sd::framework::ConfigurationChangeRequest>& rxRequest);
 
-    // XConfigurationRequestQueue
-
-    virtual sal_Bool SAL_CALL hasPendingRequests() override;
-
-    virtual void SAL_CALL postChangeRequest (
-        const css::uno::Reference<
-            css::drawing::framework::XConfigurationChangeRequest>& rxRequest) override;
-
-    // XResourceFactoryManager
-
-    virtual void SAL_CALL addResourceFactory(
+    void addResourceFactory(
         const OUString& sResourceURL,
-        const css::uno::Reference<css::drawing::framework::XResourceFactory>& rxResourceFactory) override;
+        const rtl::Reference<sd::framework::ResourceFactory>& rxResourceFactory);
 
-    virtual void SAL_CALL removeResourceFactoryForURL(
-        const OUString& sResourceURL) override;
-
-    virtual void SAL_CALL removeResourceFactoryForReference(
-        const css::uno::Reference<css::drawing::framework::XResourceFactory>& rxResourceFactory) override;
-
-    virtual css::uno::Reference<css::drawing::framework::XResourceFactory>
-        SAL_CALL getResourceFactory (
-        const OUString& sResourceURL) override;
+    void removeResourceFactoryForReference(
+        const rtl::Reference<sd::framework::ResourceFactory>& rxResourceFactory);
 
     /** Use this class instead of calling lock() and unlock() directly in
         order to be exception safe.
@@ -150,12 +163,10 @@ public:
     class Lock
     {
     public:
-        Lock (const css::uno::Reference<
-            css::drawing::framework::XConfigurationController>& rxController);
+        Lock (const rtl::Reference<ConfigurationController>& rxController);
         ~Lock();
     private:
-        css::uno::Reference<
-            css::drawing::framework::XConfigurationController> mxController;
+        rtl::Reference<ConfigurationController> mxController;
     };
 
 private:

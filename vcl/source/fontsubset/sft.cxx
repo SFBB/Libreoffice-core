@@ -42,7 +42,6 @@
 #include <tools/fix16.hxx>
 #endif
 #include "ttcr.hxx"
-#include "xlat.hxx"
 #include <rtl/crc.h>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
@@ -75,16 +74,6 @@ struct TTGlyphMetrics {
 }
 
 /*- Data access methods for data stored in big-endian format */
-static sal_Int16 GetInt16(const sal_uInt8 *ptr, size_t offset)
-{
-    sal_Int16 t;
-    assert(ptr != nullptr);
-
-    t = (ptr+offset)[0] << 8 | (ptr+offset)[1];
-
-    return t;
-}
-
 static sal_uInt16 GetUInt16(const sal_uInt8 *ptr, size_t offset)
 {
     sal_uInt16 t;
@@ -95,15 +84,9 @@ static sal_uInt16 GetUInt16(const sal_uInt8 *ptr, size_t offset)
     return t;
 }
 
-static sal_Int32  GetInt32(const sal_uInt8 *ptr, size_t offset)
+static sal_Int16 GetInt16(const sal_uInt8* ptr, size_t offset)
 {
-    sal_Int32 t;
-    assert(ptr != nullptr);
-
-    t = (ptr+offset)[0] << 24 | (ptr+offset)[1] << 16 |
-        (ptr+offset)[2] << 8  | (ptr+offset)[3];
-
-    return t;
+    return static_cast<sal_Int16>(GetUInt16(ptr, offset));
 }
 
 static sal_uInt32 GetUInt32(const sal_uInt8 *ptr, size_t offset)
@@ -115,6 +98,11 @@ static sal_uInt32 GetUInt32(const sal_uInt8 *ptr, size_t offset)
         (ptr+offset)[2] << 8  | (ptr+offset)[3];
 
     return t;
+}
+
+static sal_Int32 GetInt32(const sal_uInt8* ptr, size_t offset)
+{
+    return static_cast<sal_Int32>(GetUInt32(ptr, offset));
 }
 
 static F16Dot16 fixedMul(F16Dot16 a, F16Dot16 b)
@@ -628,7 +616,9 @@ static int GetTTGlyphOutline(AbstractTrueTypeFont *ttf, sal_uInt32 glyphID, std:
 
 static OString nameExtract( const sal_uInt8* name, int nTableSize, int n, int dbFlag, OUString* ucs2result )
 {
-    OStringBuffer res;
+    if( ucs2result )
+        ucs2result->clear();
+
     const sal_uInt8* ptr = name + GetUInt16(name, 4) + GetUInt16(name + 6, 12 * n + 10);
     int len = GetUInt16(name+6, 12 * n + 8);
 
@@ -637,13 +627,10 @@ static OString nameExtract( const sal_uInt8* name, int nTableSize, int n, int db
     const int available_space = ptr > end_table ? 0 : (end_table - ptr);
     if( (len <= 0) || len > available_space)
     {
-        if( ucs2result )
-            ucs2result->clear();
         return OString();
     }
 
-    if( ucs2result )
-        ucs2result->clear();
+    OStringBuffer res;
     if (dbFlag) {
         res.setLength(len/2);
         for (int i = 0; i < len/2; i++)
@@ -663,8 +650,7 @@ static OString nameExtract( const sal_uInt8* name, int nTableSize, int n, int db
             *ucs2result = buf.makeStringAndClear();
         }
     } else {
-        res.setLength(len);
-        memcpy(static_cast<void*>(const_cast<char*>(res.getStr())), ptr, len);
+        memcpy(res.appendUninitialized(len), ptr, len);
     }
 
     return res.makeStringAndClear();
@@ -1259,7 +1245,7 @@ int GetTTGlyphComponents(AbstractTrueTypeFont *ttf, sal_uInt32 glyphID, std::vec
 
     if (std::find(glyphlist.begin(), glyphlist.end(), glyphID) != glyphlist.end())
     {
-        SAL_WARN("vcl.fonts", "Endless loop found in a compound glyph.");
+        SAL_INFO("vcl.fonts", "Already have this glyph, don't need to get it again");
         return 0;
     }
 
@@ -1428,7 +1414,7 @@ SFErrCodes CreateTTFromTTGlyphs(AbstractTrueTypeFont  *ttf,
 
 namespace
 {
-void FillFontSubsetInfo(AbstractTrueTypeFont* ttf, FontSubsetInfo& rInfo)
+void FillFontSubsetInfo(const AbstractTrueTypeFont* ttf, FontSubsetInfo& rInfo)
 {
     TTGlobalFontInfo aTTInfo;
     GetTTGlobalFontInfo(ttf, &aTTInfo);
@@ -1463,7 +1449,7 @@ bool CreateCFFfontSubset(const unsigned char* pFontBytes, int nByteLength,
     SvStream* pStream = aTempFile.GetStream(StreamMode::READWRITE);
 
     rInfo.LoadFont(FontType::CFF_FONT, pFontBytes, nByteLength);
-    bool bRet = rInfo.CreateFontSubset(FontType::TYPE1_PFB, pStream, nullptr, pGlyphIds, pEncoding,
+    bool bRet = rInfo.CreateFontSubset(FontType::TYPE1_PFB, pStream, pGlyphIds, pEncoding,
                                        nGlyphCount);
 
     if (bRet)
@@ -1568,7 +1554,7 @@ bool GetTTGlobalFontHeadInfo(const AbstractTrueTypeFont *ttf, int& xMin, int& yM
     return true;
 }
 
-void GetTTGlobalFontInfo(AbstractTrueTypeFont *ttf, TTGlobalFontInfo *info)
+void GetTTGlobalFontInfo(const AbstractTrueTypeFont *ttf, TTGlobalFontInfo *info)
 {
     int UPEm = ttf->unitsPerEm();
 

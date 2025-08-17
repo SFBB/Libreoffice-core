@@ -127,29 +127,28 @@ namespace drawinglayer::primitive2d
             {
                 const geometry::ViewInformation2D aViewInformation2D;
                 primitive2d::Primitive2DContainer xEmbedSeq {
-                    primitive2d::Primitive2DReference(
                         new primitive2d::TransformPrimitive2D(
                             basegfx::utils::createScaleB2DHomMatrix(mnDiscreteWidth, mnDiscreteHeight),
-                            Primitive2DContainer(getChildren())))
+                            Primitive2DContainer(getChildren()))
                 };
 
-                const BitmapEx aBitmapEx(
-                    convertToBitmapEx(
+                const Bitmap aBitmap(
+                    convertToBitmap(
                         std::move(xEmbedSeq),
                         aViewInformation2D,
                         mnDiscreteWidth,
                         mnDiscreteHeight,
                         mnDiscreteWidth * mnDiscreteHeight));
 
-                if(!aBitmapEx.IsEmpty())
+                if(!aBitmap.IsEmpty())
                 {
-                    const Size& rBmpPix = aBitmapEx.GetSizePixel();
+                    const Size aBmpPix = aBitmap.GetSizePixel();
 
-                    if(rBmpPix.Width() > 0 && rBmpPix.Height() > 0)
+                    if(aBmpPix.Width() > 0 && aBmpPix.Height() > 0)
                     {
                         const primitive2d::Primitive2DReference xEmbedRefBitmap(
                             new primitive2d::BitmapPrimitive2D(
-                                aBitmapEx,
+                                aBitmap,
                                 basegfx::B2DHomMatrix()));
                         aContent = primitive2d::Primitive2DContainer { xEmbedRefBitmap };
                     }
@@ -185,7 +184,7 @@ namespace drawinglayer::primitive2d
         }
 
         //  create buffered content in given resolution
-        BitmapEx PatternFillPrimitive2D::createTileImage(sal_uInt32 nWidth, sal_uInt32 nHeight) const
+        Bitmap PatternFillPrimitive2D::createTileImage(sal_uInt32 nWidth, sal_uInt32 nHeight) const
         {
             const geometry::ViewInformation2D aViewInformation2D;
             Primitive2DContainer aContent(createContent(aViewInformation2D));
@@ -195,7 +194,7 @@ namespace drawinglayer::primitive2d
                         std::move(aContent)));
             primitive2d::Primitive2DContainer xEmbedSeq { xEmbedRef };
 
-            return convertToBitmapEx(
+            return convertToBitmap(
                         std::move(xEmbedSeq),
                         aViewInformation2D,
                         nWidth,
@@ -203,20 +202,20 @@ namespace drawinglayer::primitive2d
                         nWidth * nHeight);
         }
 
-        void PatternFillPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const
+        Primitive2DReference PatternFillPrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const
         {
             Primitive2DContainer aRetval;
 
             if(getChildren().empty())
-                return;
+                return nullptr;
 
             if(!(!getReferenceRange().isEmpty() && getReferenceRange().getWidth() > 0.0 && getReferenceRange().getHeight() > 0.0))
-                return;
+                return nullptr;
 
             const basegfx::B2DRange aMaskRange(getMask().getB2DRange());
 
             if(!(!aMaskRange.isEmpty() && aMaskRange.getWidth() > 0.0 && aMaskRange.getHeight() > 0.0))
-                return;
+                return nullptr;
 
             // create tiling matrices
             std::vector< basegfx::B2DHomMatrix > aMatrices;
@@ -246,20 +245,17 @@ namespace drawinglayer::primitive2d
                         aMaskRange.getMinimum()));
 
                 aRetval = Primitive2DContainer {
-                    Primitive2DReference(
                         new TransformPrimitive2D(
                             aMaskTransform,
-                            std::move(aRetval)))
+                            std::move(aRetval))
                 };
             }
 
             // embed result in mask
-            {
-                rContainer.push_back(
-                    new MaskPrimitive2D(
-                        getMask(),
-                        std::move(aRetval)));
-            }
+            return
+                new MaskPrimitive2D(
+                    getMask(),
+                    std::move(aRetval));
         }
 
         PatternFillPrimitive2D::PatternFillPrimitive2D(
@@ -345,7 +341,7 @@ namespace drawinglayer::primitive2d
                 PatternFillPrimitive2D* pThat = const_cast< PatternFillPrimitive2D* >(this);
                 pThat->mnDiscreteWidth = nW;
                 pThat->mnDiscreteHeight = nH;
-                pThat->setBuffered2DDecomposition(Primitive2DContainer());
+                pThat->setBuffered2DDecomposition(nullptr);
             }
 
             // call parent

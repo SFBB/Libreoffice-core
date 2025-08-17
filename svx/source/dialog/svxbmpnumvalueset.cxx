@@ -25,6 +25,7 @@
 #include <i18nlangtag/mslangid.hxx>
 #include <svtools/valueset.hxx>
 #include <editeng/numitem.hxx>
+#include <officecfg/Office/Common.hxx>
 #include <svx/gallery.hxx>
 #include <vcl/event.hxx>
 #include <vcl/graph.hxx>
@@ -46,25 +47,11 @@ using namespace com::sun::star::text;
 using namespace com::sun::star::container;
 using namespace com::sun::star::style;
 
-
-// The selection of bullets from the star symbol
-const sal_Unicode aBulletTypes[] =
-{
-    0x2022,
-    0x25cf,
-    0xe00c,
-    0xe00a,
-    0x2794,
-    0x27a2,
-    0x2717,
-    0x2714
-};
-
 static vcl::Font& lcl_GetDefaultBulletFont()
 {
     static vcl::Font aDefBulletFont = []()
     {
-        static vcl::Font tmp("OpenSymbol", "", Size(0, 14));
+        static vcl::Font tmp(u"OpenSymbol"_ustr, u""_ustr, Size(0, 14));
         tmp.SetCharSet( RTL_TEXTENCODING_SYMBOL );
         tmp.SetFamily( FAMILY_DONTKNOW );
         tmp.SetPitch( PITCH_DONTKNOW );
@@ -94,18 +81,6 @@ static void lcl_PaintLevel(OutputDevice* pVDev, sal_Int16 nNumberingType,
         rLeft.AdjustX(pVDev->GetTextWidth(rText) );
     }
 }
-
- const TranslateId RID_SVXSTR_BULLET_DESCRIPTIONS[] =
-{
-    RID_SVXSTR_BULLET_DESCRIPTION_0,
-    RID_SVXSTR_BULLET_DESCRIPTION_1,
-    RID_SVXSTR_BULLET_DESCRIPTION_2,
-    RID_SVXSTR_BULLET_DESCRIPTION_3,
-    RID_SVXSTR_BULLET_DESCRIPTION_4,
-    RID_SVXSTR_BULLET_DESCRIPTION_5,
-    RID_SVXSTR_BULLET_DESCRIPTION_6,
-    RID_SVXSTR_BULLET_DESCRIPTION_7
-};
 
 const TranslateId RID_SVXSTR_SINGLENUM_DESCRIPTIONS[] =
 {
@@ -152,7 +127,8 @@ void SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
 
     vcl::RenderContext* pDev = rUDEvt.GetRenderContext();
     tools::Rectangle aRect = rUDEvt.GetRect();
-    sal_uInt16 nItemId = rUDEvt.GetItemId();
+    sal_uInt16 nIndex = rUDEvt.GetItemId() - 1;
+
 
     tools::Long nRectWidth = aRect.GetWidth();
     tools::Long nRectHeight = aRect.GetHeight();
@@ -171,8 +147,20 @@ void SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
     aRuleFont.SetFontSize(aSize);
     aRuleFont.SetColor(aTextColor);
     aRuleFont.SetFillColor(aBackColor);
-    if(ePageType == NumberingPageType::BULLET)
+    css::uno::Sequence< OUString > aBulletSymbols;
+
+    if(ePageType == NumberingPageType::BULLET || ePageType == NumberingPageType::DOCBULLET)
+    {
+        aBulletSymbols = officecfg::Office::Common::BulletsNumbering::DefaultBullets::get();
+        css::uno::Sequence< OUString > aBulletFonts(officecfg::Office::Common::BulletsNumbering::DefaultBulletsFonts::get());
+        aRuleFont.SetFamilyName(aBulletFonts[nIndex]);
         aFont = aRuleFont;
+    }
+    else if (ePageType == NumberingPageType::DOCBULLET)
+    {
+        aRuleFont.SetFamilyName(maCustomBullets[nIndex].second);
+        aFont = aRuleFont;
+    }
     else if(ePageType == NumberingPageType::OUTLINE)
     {
         aSize.setHeight( nRectHeight/8 );
@@ -215,7 +203,8 @@ void SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
     // Now comes the text
     static constexpr OUStringLiteral sValue(u"Value");
     if( NumberingPageType::SINGLENUM == ePageType ||
-           NumberingPageType::BULLET == ePageType )
+           NumberingPageType::BULLET == ePageType ||
+           NumberingPageType::DOCBULLET == ePageType)
     {
         Point aStart(aBLPos.X() + nRectWidth / 9,0);
         for( sal_uInt16 i = 0; i < 3; i++ )
@@ -225,15 +214,21 @@ void SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
             OUString sText;
             if(ePageType == NumberingPageType::BULLET)
             {
-                sText = OUString( aBulletTypes[nItemId - 1] );
+                sText = aBulletSymbols[nIndex];
+                aStart.AdjustY( -(pDev->GetTextHeight()/2) );
+                aStart.setX( aBLPos.X() + 5 );
+            }
+            else if (ePageType == NumberingPageType::DOCBULLET)
+            {
+                sText = maCustomBullets[nIndex].first;
                 aStart.AdjustY( -(pDev->GetTextHeight()/2) );
                 aStart.setX( aBLPos.X() + 5 );
             }
             else
             {
-                if(xFormatter.is() && aNumSettings.getLength() > nItemId - 1)
+                if(xFormatter.is() && aNumSettings.getLength() > nIndex)
                 {
-                    Sequence<PropertyValue> aLevel = aNumSettings.getConstArray()[nItemId - 1];
+                    Sequence<PropertyValue> aLevel = aNumSettings.getConstArray()[nIndex];
                     try
                     {
                         aLevel.realloc(aLevel.getLength() + 1);
@@ -264,9 +259,9 @@ void SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
         tools::Long nStartX = aOrgRect.Left();
         tools::Long nStartY = aOrgRect.Top();
 
-        if(xFormatter.is() && aOutlineSettings.getLength() > nItemId - 1)
+        if(xFormatter.is() && aOutlineSettings.getLength() > nIndex)
         {
-            Reference<XIndexAccess> xLevel = aOutlineSettings.getArray()[nItemId - 1];
+            Reference<XIndexAccess> xLevel = aOutlineSettings.getArray()[nIndex];
             try
             {
                 OUString sLevelTexts[5];
@@ -290,7 +285,7 @@ void SvxNumValueSet::UserDraw( const UserDrawEvent& rUDEvt )
                     aLevelAny >>= aLevel;
                     aNumberingTypes[i] = 0;
                     aParentNumberings[i] = 0;
-                    for(const PropertyValue& rProp : std::as_const(aLevel))
+                    for (const PropertyValue& rProp : aLevel)
                     {
                         if ( rProp.Name == "NumberingType" )
                             rProp.Value >>= aNumberingTypes[i];
@@ -419,7 +414,6 @@ void SvxNumValueSet::init(NumberingPageType eType)
         for ( sal_uInt16 i = 0; i < 8; i++ )
         {
             InsertItem( i + 1, i );
-            SetItemText(i + 1, SvxResId(RID_SVXSTR_BULLET_DESCRIPTIONS[i]));
         }
     }
 }
@@ -440,9 +434,9 @@ void SvxNumValueSet::SetNumberingSettings(
             SetStyle( GetStyle()|WB_VSCROLL);
     for ( sal_Int32 i = 0; i < aNum.getLength(); i++ )
     {
-            InsertItem( i + 1, i );
-            if( i < 8 )
-                SetItemText(i + 1, SvxResId(RID_SVXSTR_SINGLENUM_DESCRIPTIONS[i]));
+        InsertItem(i + 1, i);
+        if (i < 8)
+            SetItemText(i + 1, SvxResId(RID_SVXSTR_SINGLENUM_DESCRIPTIONS[i]));
     }
 }
 
@@ -461,6 +455,16 @@ void SvxNumValueSet::SetOutlineNumberingSettings(
         InsertItem( i + 1, i );
         if( i < 8 )
             SetItemText(i + 1, SvxResId(RID_SVXSTR_OUTLINENUM_DESCRIPTIONS[i]));
+    }
+}
+
+void SvxNumValueSet::SetCustomBullets(const std::vector<std::pair<OUString, OUString>>& rCustomBullets)
+{
+    Clear();
+    maCustomBullets = rCustomBullets;
+    for (size_t i = 0; i < rCustomBullets.size(); i++)
+    {
+        InsertItem(i + 1, i);
     }
 }
 

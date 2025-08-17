@@ -24,6 +24,7 @@
 #include <windows.h>
 #endif
 
+#include <osl/diagnose.h>
 #include <osl/thread.h>
 #include <osl/file.hxx>
 #include <osl/process.h>
@@ -133,7 +134,7 @@ static void GetOldStyleDicsInDir(
                     };
                 else
                     aDicEntry.aLocaleNames = { aLocaleName };
-                aRes.push_back( aDicEntry );
+                aRes.push_back(std::move(aDicEntry));
             }
         }
     }
@@ -207,7 +208,7 @@ std::vector< SvtLinguConfigDictionaryEntry > GetOldStyleDics( const char *pDicTy
 #ifndef IOS
     // follow the hunspell tool's example and check DICPATH for preferred dictionaries
     rtl_uString * pSearchPath = nullptr;
-    osl_getEnvironment(OUString("DICPATH").pData, &pSearchPath);
+    osl_getEnvironment(u"DICPATH"_ustr.pData, &pSearchPath);
 
     if (pSearchPath)
     {

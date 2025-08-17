@@ -102,8 +102,6 @@ ScMacroManager::~ScMacroManager()
 
 typedef ::cppu::WeakImplHelper< css::container::XContainerListener > ContainerListenerHelper;
 
-namespace {
-
 class VBAProjectListener : public ContainerListenerHelper
 {
     ScMacroManager* mpMacroMgr;
@@ -125,13 +123,11 @@ public:
 
 };
 
-}
-
 void ScMacroManager::InitUserFuncData()
 {
     // Clear unordered_map
     mhFuncToVolatile.clear();
-    OUString sProjectName("Standard");
+    OUString sProjectName(u"Standard"_ustr);
 
     Reference< container::XContainer > xModuleContainer;
     ScDocShell* pShell = mrDoc.GetDocumentShell();

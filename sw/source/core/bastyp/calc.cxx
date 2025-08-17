@@ -55,53 +55,15 @@
 
 using namespace ::com::sun::star;
 
-const char sCalc_Add[]  =   "add";
-const char sCalc_Sub[]  =   "sub";
-const char sCalc_Mul[]  =   "mul";
-const char sCalc_Div[]  =   "div";
-const char sCalc_Phd[]  =   "phd";
-const char sCalc_Sqrt[] =   "sqrt";
-const char sCalc_Pow[]  =   "pow";
-const char sCalc_Or[]   =   "or";
-const char sCalc_Xor[]  =   "xor";
-const char sCalc_And[]  =   "and";
-const char sCalc_Not[]  =   "not";
-const char sCalc_Eq[]   =   "eq";
-const char sCalc_Neq[]  =   "neq";
-const char sCalc_Leq[]  =   "leq";
-const char sCalc_Geq[]  =   "geq";
-const char sCalc_L[]    =   "l";
-const char sCalc_G[]    =   "g";
-const char sCalc_Sum[]  =   "sum";
-const char sCalc_Mean[] =   "mean";
-const char sCalc_Min[]  =   "min";
-const char sCalc_Max[]  =   "max";
-const char sCalc_Sin[]  =   "sin";
-const char sCalc_Cos[]  =   "cos";
-const char sCalc_Tan[]  =   "tan";
-const char sCalc_Asin[] =   "asin";
-const char sCalc_Acos[] =   "acos";
-const char sCalc_Atan[] =   "atan";
-const char sCalc_Round[]=   "round";
-const char sCalc_Date[] =   "date";
-const char sCalc_Product[] = "product";
-const char sCalc_Average[] = "average";
-const char sCalc_Count[]=   "count";
-const char sCalc_Sign[] =   "sign";
-const char sCalc_Abs[]  =   "abs";
-const char sCalc_Int[]  =   "int";
 
 // ATTENTION: sorted list of all operators
 struct CalcOp
 {
-    union{
-        const char* pName;
-        const OUString* pUName;
-    };
+    OUString aName;
     SwCalcOper eOp;
 };
 
-CalcOp const aOpTable[] = {
+CalcOp constexpr aOpTable[] = {
 /* ABS */     {{sCalc_Abs},        CALC_ABS},   // Abs (since LibreOffice 7.1)
 /* ACOS */    {{sCalc_Acos},       CALC_ACOS},  // Arc cosine
 /* ADD */     {{sCalc_Add},        CALC_PLUS},  // Addition
@@ -122,6 +84,7 @@ CalcOp const aOpTable[] = {
 /* MAX */     {{sCalc_Max},        CALC_MAX},   // Maximum value
 /* MEAN */    {{sCalc_Mean},       CALC_MEAN},  // Mean
 /* MIN */     {{sCalc_Min},        CALC_MIN},   // Minimum value
+/* MOD */     {{sCalc_Mod},        CALC_MOD},   // Modulo value
 /* MUL */     {{sCalc_Mul},        CALC_MUL},   // Multiplication
 /* NEQ */     {{sCalc_Neq},        CALC_NEQ},   // Not equal
 /* NOT */     {{sCalc_Not},        CALC_NOT},   // log. NOT
@@ -153,30 +116,26 @@ const sal_Int32 coStartFlags =
 
 // Continuing characters may be any alphanumeric, underscore, or dot.
 const sal_Int32 coContFlags =
-    (coStartFlags | i18n::KParseTokens::ASC_DOT | i18n::KParseTokens::GROUP_SEPARATOR_IN_NUMBER)
+    (coStartFlags | i18n::KParseTokens::ASC_DOT | i18n::KParseTokens::GROUP_SEPARATOR_IN_NUMBER_3)
         & ~i18n::KParseTokens::IGNORE_LEADING_WS;
 
 extern "C" {
-static int OperatorCompare( const void *pFirst, const void *pSecond)
+static int OperatorCompare(const void *pA, const void *pB)
 {
+    const CalcOp *pFirst = static_cast<const CalcOp*>(pA);
+    const CalcOp *pSecond = static_cast<const CalcOp*>(pB);
+
     int nRet = 0;
-    if( CALC_NAME == static_cast<const CalcOp*>(pFirst)->eOp )
+    if( CALC_NAME == pFirst->eOp )
     {
-        if( CALC_NAME == static_cast<const CalcOp*>(pSecond)->eOp )
-            nRet = static_cast<const CalcOp*>(pFirst)->pUName->compareTo(
-                   *static_cast<const CalcOp*>(pSecond)->pUName );
-        else
-            nRet = static_cast<const CalcOp*>(pFirst)->pUName->compareToAscii(
-                   static_cast<const CalcOp*>(pSecond)->pName );
+        nRet = pFirst->aName.compareTo(pSecond->aName );
     }
     else
     {
-        if( CALC_NAME == static_cast<const CalcOp*>(pSecond)->eOp )
-            nRet = -1 * static_cast<const CalcOp*>(pSecond)->pUName->compareToAscii(
-                        static_cast<const CalcOp*>(pFirst)->pName );
+        if( CALC_NAME == pSecond->eOp )
+            nRet = -1 * pSecond->aName.compareTo(pFirst->aName);
         else
-            nRet = strcmp( static_cast<const CalcOp*>(pFirst)->pName,
-                           static_cast<const CalcOp*>(pSecond)->pName );
+            nRet = pFirst->aName.compareTo(pSecond->aName);
     }
     return nRet;
 }
@@ -185,7 +144,7 @@ static int OperatorCompare( const void *pFirst, const void *pSecond)
 CalcOp* FindOperator( const OUString& rSrch )
 {
     CalcOp aSrch;
-    aSrch.pUName = &rSrch;
+    aSrch.aName = rSrch;
     aSrch.eOp = CALC_NAME;
 
     return static_cast<CalcOp*>(bsearch( static_cast<void*>(&aSrch),
@@ -215,6 +174,13 @@ static double lcl_ConvertToDateValue( SwDoc& rDoc, sal_Int32 nDate )
         nRet = aDate - rNull;
     }
     return nRet;
+}
+
+static SwCalcExp& lcl_GetCalcExp(std::unordered_map<OUString, SwCalcExp>& rVarTable, const OUString& rType)
+{
+    auto it = rVarTable.find(rType);
+    assert(it != rVarTable.end());
+    return it->second;
 }
 
 SwCalc::SwCalc( SwDoc& rD )
@@ -296,28 +262,28 @@ SwCalc::SwCalc( SwDoc& rD )
     for( n = 0; n < 25; ++n )
         m_aVarTable.insert( { sNTypeTab[n], SwCalcExp( nVal, nullptr ) } );
 
-    m_aVarTable.find( sNTypeTab[ 0 ] )->second.nValue.PutBool( false );
-    m_aVarTable.find( sNTypeTab[ 1 ] )->second.nValue.PutBool( true );
-    m_aVarTable.find( sNTypeTab[ 2 ] )->second.nValue.PutDouble( M_PI );
-    m_aVarTable.find( sNTypeTab[ 3 ] )->second.nValue.PutDouble( M_E );
+    lcl_GetCalcExp(m_aVarTable, sNTypeTab[0]).nValue.PutBool( false );
+    lcl_GetCalcExp(m_aVarTable, sNTypeTab[1]).nValue.PutBool( true );
+    lcl_GetCalcExp(m_aVarTable, sNTypeTab[2]).nValue.PutDouble( M_PI );
+    lcl_GetCalcExp(m_aVarTable, sNTypeTab[3]).nValue.PutDouble( M_E );
 
     for( n = 0; n < 3; ++n )
-        m_aVarTable.find( sNTypeTab[ n + 4 ] )->second.nValue.PutLong( rDocStat.*aDocStat1[ n ]  );
+        lcl_GetCalcExp(m_aVarTable, sNTypeTab[n + 4]).nValue.PutLong( rDocStat.*aDocStat1[ n ] );
     for( n = 0; n < 4; ++n )
-        m_aVarTable.find( sNTypeTab[ n + 7 ] )->second.nValue.PutLong( rDocStat.*aDocStat2[ n ]  );
+        lcl_GetCalcExp(m_aVarTable, sNTypeTab[n + 7]).nValue.PutLong( rDocStat.*aDocStat2[ n ]  );
 
-    SvtUserOptions& rUserOptions = SW_MOD()->GetUserOptions();
+    SvtUserOptions& rUserOptions = SwModule::get()->GetUserOptions();
 
-    m_aVarTable.find( sNTypeTab[ 11 ] )->second.nValue.PutString( rUserOptions.GetFirstName() );
-    m_aVarTable.find( sNTypeTab[ 12 ] )->second.nValue.PutString( rUserOptions.GetLastName() );
-    m_aVarTable.find( sNTypeTab[ 13 ] )->second.nValue.PutString( rUserOptions.GetID() );
+    lcl_GetCalcExp(m_aVarTable, sNTypeTab[11]).nValue.PutString( rUserOptions.GetFirstName() );
+    lcl_GetCalcExp(m_aVarTable, sNTypeTab[12]).nValue.PutString( rUserOptions.GetLastName() );
+    lcl_GetCalcExp(m_aVarTable, sNTypeTab[13]).nValue.PutString( rUserOptions.GetID() );
 
     for( n = 0; n < 11; ++n )
-        m_aVarTable.find( sNTypeTab[ n + 14 ] )->second.nValue.PutString(
+        lcl_GetCalcExp(m_aVarTable, sNTypeTab[n + 14] ).nValue.PutString(
                                         rUserOptions.GetToken( aAdrToken[ n ] ));
 
     nVal.PutString( rUserOptions.GetToken( aAdrToken[ 11 ] ));
-    m_aVarTable.insert( { sNTypeTab[ 25 ], SwCalcExp( nVal, nullptr ) } );
+    m_aVarTable.insert( { sNTypeTab[ 25 ], SwCalcExp( std::move(nVal), nullptr ) } );
 
 } // SwCalc::SwCalc
 
@@ -427,7 +393,7 @@ SwCalcExp* SwCalc::VarLook( const OUString& rStr, bool bIns )
         if( pFnd->pFieldType && pFnd->pFieldType->Which() == SwFieldIds::User )
         {
             SwUserFieldType* pUField = const_cast<SwUserFieldType*>(static_cast<const SwUserFieldType*>(pFnd->pFieldType));
-            if( nsSwGetSetExpType::GSE_STRING & pUField->GetType() )
+            if( SwUserType::String & pUField->GetType() )
             {
                 pFnd->nValue.PutString( pUField->GetContent() );
             }
@@ -448,12 +414,12 @@ SwCalcExp* SwCalc::VarLook( const OUString& rStr, bool bIns )
                 // ...and write them back.
                 m_nListPor = nListPor;
                 m_bHasNumber = bHasNumber;
-                m_nLastLeft = nLastLeft;
-                m_nNumberValue = nNumberValue;
+                m_nLastLeft = std::move(nLastLeft);
+                m_nNumberValue = std::move(nNumberValue);
                 m_nCommandPos = nCommandPos;
                 m_eCurrOper = eCurrOper;
                 m_eCurrListOper = eCurrListOper;
-                m_sCommand = sCurrCommand;
+                m_sCommand = std::move(sCurrCommand);
             }
             else
             {
@@ -654,6 +620,9 @@ SwCalcOper SwCalc::GetToken()
                     break;
                 case CALC_MAX:
                     m_eCurrListOper = CALC_MAX_IN;
+                    break;
+                case CALC_MOD:
+                    m_eCurrListOper = CALC_MOD_IN;
                     break;
                 case CALC_DATE:
                     m_eCurrListOper = CALC_MONTH;
@@ -878,6 +847,16 @@ SwSbxValue SwCalc::Term()
                 GetToken();
                 SwSbxValue e = Prim();
                 left = left.GetDouble() > e.GetDouble() ? left : e;
+            }
+            break;
+        case CALC_MOD_IN:
+            {
+                GetToken();
+                SwSbxValue e = Prim();
+                if ( e.GetDouble() == 0.0)
+                    m_eError = SwCalcError::DivByZero;
+                else
+                    left.PutLong(left.GetLong() % e.GetLong());
             }
             break;
         case CALC_MONTH:
@@ -1206,8 +1185,9 @@ SwSbxValue SwCalc::PrimFunc(bool &rChkPow)
         case CALC_DATE:
         case CALC_MIN:
         case CALC_MAX:
+        case CALC_MOD:
         {
-            SAL_INFO("sw.calc", "sum/product/date/min/max");
+            SAL_INFO("sw.calc", "sum/product/date/min/max/mod");
             GetToken();
             SwSbxValue nErg = Expr();
             return nErg;

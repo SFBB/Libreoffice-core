@@ -39,6 +39,8 @@
 #include <osl/diagnose.h>
 #include <officecfg/Office/Common.hxx>
 
+#include <vcl/tabs.hrc>
+
 SwParaDlg::SwParaDlg(weld::Window *pParent,
                     SwView& rVw,
                     const SfxItemSet& rCoreSet,
@@ -47,8 +49,8 @@ SwParaDlg::SwParaDlg(weld::Window *pParent,
                     bool bDraw,
                     const OUString& sDefPage)
     : SfxTabDialogController(pParent,
-                 "modules/swriter/ui/paradialog.ui",
-                 "ParagraphPropertiesDialog",
+                 u"modules/swriter/ui/paradialog.ui"_ustr,
+                 u"ParagraphPropertiesDialog"_ustr,
                  &rCoreSet,  nullptr != pTitle)
     , m_rView(rVw)
     , m_bDrawParaDlg(bDraw)
@@ -65,77 +67,80 @@ SwParaDlg::SwParaDlg(weld::Window *pParent,
 
     OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_STD_PARAGRAPH), "GetTabPageCreatorFunc fail!");
     OSL_ENSURE(pFact->GetTabPageRangesFunc(RID_SVXPAGE_STD_PARAGRAPH), "GetTabPageRangesFunc fail!");
-    AddTabPage("labelTP_PARA_STD", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_STD_PARAGRAPH),
-                                   pFact->GetTabPageRangesFunc(RID_SVXPAGE_STD_PARAGRAPH) );
+    AddTabPage(u"indents"_ustr, TabResId(RID_TAB_INDENTS.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_STD_PARAGRAPH),
+               pFact->GetTabPageRangesFunc(RID_SVXPAGE_STD_PARAGRAPH),
+               RID_M + RID_TAB_INDENTS.sIconName);
 
     OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_ALIGN_PARAGRAPH), "GetTabPageCreatorFunc fail!");
     OSL_ENSURE(pFact->GetTabPageRangesFunc(RID_SVXPAGE_ALIGN_PARAGRAPH), "GetTabPageRangesFunc fail!");
-    AddTabPage("labelTP_PARA_ALIGN", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_ALIGN_PARAGRAPH),
-                                      pFact->GetTabPageRangesFunc(RID_SVXPAGE_ALIGN_PARAGRAPH));
+    AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_ALIGN_PARAGRAPH),
+               pFact->GetTabPageRangesFunc(RID_SVXPAGE_ALIGN_PARAGRAPH),
+               RID_M + RID_TAB_ALIGNMENT.sIconName);
 
     if (!m_bDrawParaDlg && (!bHtmlMode || officecfg::Office::Common::Filter::HTML::Export::PrintLayout::get()))
     {
         OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_EXT_PARAGRAPH), "GetTabPageCreatorFunc fail!");
         OSL_ENSURE(pFact->GetTabPageRangesFunc(RID_SVXPAGE_EXT_PARAGRAPH), "GetTabPageRangesFunc fail!");
-        AddTabPage("textflow", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_EXT_PARAGRAPH),
-                               pFact->GetTabPageRangesFunc(RID_SVXPAGE_EXT_PARAGRAPH));
-
+        AddTabPage(u"textflow"_ustr, TabResId(RID_TAB_TEXTFLOW.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_EXT_PARAGRAPH),
+                   pFact->GetTabPageRangesFunc(RID_SVXPAGE_EXT_PARAGRAPH),
+                   RID_M + RID_TAB_TEXTFLOW.sIconName);
     }
-    else
-        RemoveTabPage("textflow");
 
     if(!bHtmlMode && SvtCJKOptions::IsAsianTypographyEnabled())
     {
         OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PARA_ASIAN), "GetTabPageCreatorFunc fail!");
         OSL_ENSURE(pFact->GetTabPageRangesFunc(RID_SVXPAGE_PARA_ASIAN), "GetTabPageRangesFunc fail!");
-        AddTabPage( "labelTP_PARA_ASIAN",  pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PARA_ASIAN),
-                                   pFact->GetTabPageRangesFunc(RID_SVXPAGE_PARA_ASIAN) );
+        AddTabPage(u"asiantypo"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PARA_ASIAN),
+                   pFact->GetTabPageRangesFunc(RID_SVXPAGE_PARA_ASIAN),
+                   RID_M + RID_TAB_ASIANTYPO.sIconName);
     }
-    else
-        RemoveTabPage("labelTP_PARA_ASIAN");
 
-    if(bHtmlMode)
-        RemoveTabPage("labelTP_TABULATOR");
-    else
+    if (!m_bDrawParaDlg)
+    {
+        if(!(nDialogMode & DLG_ENVELOP))
+            AddTabPage(u"outline"_ustr, TabResId(RID_TAB_OUTLINELIST.aLabel),
+                       SwParagraphNumTabPage::Create, SwParagraphNumTabPage::GetRanges,
+                       RID_M + RID_TAB_OUTLINELIST.sIconName);
+    }
+
+    if(!bHtmlMode)
     {
         OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_TABULATOR), "GetTabPageCreatorFunc fail!");
         OSL_ENSURE(pFact->GetTabPageRangesFunc(RID_SVXPAGE_TABULATOR), "GetTabPageRangesFunc fail!");
-        AddTabPage( "labelTP_TABULATOR", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_TABULATOR), pFact->GetTabPageRangesFunc(RID_SVXPAGE_TABULATOR) );
+        AddTabPage(u"tabs"_ustr, TabResId(RID_TAB_TABS.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_TABULATOR),
+                   pFact->GetTabPageRangesFunc(RID_SVXPAGE_TABULATOR),
+                   RID_M + RID_TAB_TABS.sIconName);
     }
 
-    // remove unwanted tabs for draw text box paragraph properties
-    if (m_bDrawParaDlg)
+    if (!m_bDrawParaDlg)
     {
-        RemoveTabPage("labelTP_NUMPARA");
-        RemoveTabPage("labelTP_DROPCAPS");
-        RemoveTabPage("labelTP_BORDER");
-        RemoveTabPage("area");
-        RemoveTabPage("transparence");
-    }
-    else
-    {
-        if(!(nDialogMode & DLG_ENVELOP))
-            AddTabPage("labelTP_NUMPARA", SwParagraphNumTabPage::Create, SwParagraphNumTabPage::GetRanges);
-        else
-            RemoveTabPage("labelTP_NUMPARA");
+        AddTabPage(u"dropcaps"_ustr, TabResId(RID_TAB_DROPCAPS.aLabel), SwDropCapsPage::Create,
+                   SwDropCapsPage::GetRanges, RID_M + RID_TAB_DROPCAPS.sIconName);
 
-        AddTabPage("labelTP_DROPCAPS",  SwDropCapsPage::Create, SwDropCapsPage::GetRanges);
+        OSL_ENSURE(pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BORDER ), "GetTabPageCreatorFunc fail!");
+        OSL_ENSURE(pFact->GetTabPageRangesFunc( RID_SVXPAGE_BORDER ), "GetTabPageRangesFunc fail!");
+        AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BORDER),
+                   pFact->GetTabPageRangesFunc(RID_SVXPAGE_BORDER),
+                   RID_M + RID_TAB_BORDER.sIconName);
 
         if(!bHtmlMode || (nHtmlMode & (HTMLMODE_SOME_STYLES|HTMLMODE_FULL_STYLES)))
         {
             // add Area and Transparence TabPages
-            AddTabPage("area", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_AREA ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_AREA ));
-            AddTabPage("transparence", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_TRANSPARENCE ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_TRANSPARENCE ) );
+            AddTabPage(u"area"_ustr, TabResId(RID_TAB_AREA.aLabel),
+                       pFact->GetTabPageCreatorFunc(RID_SVXPAGE_AREA),
+                       pFact->GetTabPageRangesFunc(RID_SVXPAGE_AREA),
+                       RID_M + RID_TAB_AREA.sIconName);
+            AddTabPage(u"transparence"_ustr, TabResId(RID_TAB_TRANSPARENCE.aLabel),
+                       pFact->GetTabPageCreatorFunc(RID_SVXPAGE_TRANSPARENCE),
+                       pFact->GetTabPageRangesFunc(RID_SVXPAGE_TRANSPARENCE),
+                       RID_M + RID_TAB_TRANSPARENCE.sIconName);
         }
-        else
-        {
-            RemoveTabPage("area");
-            RemoveTabPage("transparence");
-        }
-
-        OSL_ENSURE(pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BORDER ), "GetTabPageCreatorFunc fail!");
-        OSL_ENSURE(pFact->GetTabPageRangesFunc( RID_SVXPAGE_BORDER ), "GetTabPageRangesFunc fail!");
-        AddTabPage("labelTP_BORDER", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BORDER ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_BORDER ) );
     }
 
     if (!sDefPage.isEmpty())
@@ -152,12 +157,12 @@ void SwParaDlg::PageCreated(const OUString& rId, SfxTabPage& rPage)
     SfxAllItemSet aSet(*(GetInputSetImpl()->GetPool()));
 
     // Table borders cannot get any shade in Writer
-    if (rId == "labelTP_BORDER")
+    if (rId == "borders")
     {
         aSet.Put (SfxUInt16Item(SID_SWMODE_TYPE,static_cast<sal_uInt16>(SwBorderModes::PARA)));
         rPage.PageCreated(aSet);
     }
-    else if (rId == "labelTP_PARA_STD")
+    else if (rId == "indents")
     {
         aSet.Put(SfxUInt16Item(SID_SVXSTDPARAGRAPHTABPAGE_PAGEWIDTH,
                             static_cast< sal_uInt16 >(rSh.GetAnyCurRect(CurRectType::PagePrt).Width()) ));
@@ -172,7 +177,7 @@ void SwParaDlg::PageCreated(const OUString& rId, SfxTabPage& rPage)
         }
         rPage.PageCreated(aSet);
     }
-    else if (rId == "labelTP_PARA_ALIGN")
+    else if (rId == "alignment")
     {
         if (!m_bDrawParaDlg)
         {
@@ -191,11 +196,11 @@ void SwParaDlg::PageCreated(const OUString& rId, SfxTabPage& rPage)
             rPage.PageCreated(aSet);
         }
     }
-    else if (rId == "labelTP_DROPCAPS")
+    else if (rId == "dropcaps")
     {
         static_cast<SwDropCapsPage&>(rPage).SetFormat(false);
     }
-    else if (rId == "labelTP_NUMPARA")
+    else if (rId == "outline")
     {
         SwTextFormatColl* pTmpColl = rSh.GetCurTextFormatColl();
         if( pTmpColl && pTmpColl->IsAssignedToListLevelOfOutlineStyle() )

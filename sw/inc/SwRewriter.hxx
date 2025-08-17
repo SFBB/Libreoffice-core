@@ -16,13 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-
-#ifndef INCLUDED_SW_INC_SWREWRITER_HXX
-#define INCLUDED_SW_INC_SWREWRITER_HXX
+#pragma once
 
 #include <vector>
 #include <rtl/ustring.hxx>
 #include "swdllapi.h"
+#include "names.hxx"
 
 enum SwUndoArg
 {
@@ -41,12 +40,13 @@ public:
     SwRewriter();
 
     void AddRule(SwUndoArg eWhat, const OUString& rWith);
+    // convenience methods
+    void AddRule(SwUndoArg eWhat, const UIName& rWith) { AddRule(eWhat, rWith.toString()); }
+    void AddRule(SwUndoArg eWhat, const SwMarkName& rWith) { AddRule(eWhat, rWith.toString()); }
 
     OUString Apply(const OUString& rStr) const;
 
     static OUString GetPlaceHolder(SwUndoArg eId);
 };
-
-#endif // INCLUDED_SW_INC_SWREWRITER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

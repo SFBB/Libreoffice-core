@@ -43,6 +43,8 @@
 #include <tabfrm.hxx>
 #include <numrule.hxx>
 #include <wrong.hxx>
+#include <vcl/lineinfo.hxx>
+#include <officecfg/Office/Writer.hxx>
 
 #include <EnhancedPDFExportHelper.hxx>
 
@@ -96,7 +98,7 @@ public:
     }
 
     void PaintExtra( SwTwips nY, tools::Long nAsc, tools::Long nMax, bool bRed, const OUString* pRedlineText = nullptr );
-    void PaintRedline( SwTwips nY, tools::Long nMax );
+    void PaintRedline( SwTwips nY, tools::Long nMax, sal_Int16 nWordSpacing = 0 );
 };
 
 }
@@ -135,7 +137,7 @@ SwExtraPainter::SwExtraPainter( const SwTextFrame *pFrame, SwViewShell *pVwSh,
         m_nDivider = !m_rLineInf.GetDivider().isEmpty() ? m_rLineInf.GetDividerCountBy() : 0;
         m_nX = pFrame->getFrameArea().Left();
         SwCharFormat* pFormat = m_rLineInf.GetCharFormat( const_cast<IDocumentStylePoolAccess&>(pFrame->GetDoc().getIDocumentStylePoolAccess()) );
-        OSL_ENSURE( pFormat, "PaintExtraData without CharFormat" );
+        assert(pFormat && "PaintExtraData without CharFormat");
         m_pFnt.reset( new SwFont(&pFormat->GetAttrSet(), &pFrame->GetDoc().getIDocumentSettingAccess()) );
         m_pFnt->Invalidate();
         m_pFnt->ChgPhysFnt( m_pSh, *m_pSh->GetOut() );
@@ -206,7 +208,7 @@ void SwExtraPainter::PaintExtra( SwTwips nY, tools::Long nAsc, tools::Long nMax,
 
     if ( pRedlineText )
     {
-        m_pFnt->SetColor(NON_PRINTING_CHARACTER_COLOR);
+        m_pFnt->SetColor(m_pSh->GetViewOptions()->GetNonPrintingCharacterColor());
         // don't strike out text in Insertions In Margin mode
         if ( !m_pSh->GetViewOptions()->IsShowChangesInMargin2() )
             m_pFnt->SetStrikeout( STRIKEOUT_SINGLE );
@@ -279,7 +281,8 @@ void SwExtraPainter::PaintExtra( SwTwips nY, tools::Long nAsc, tools::Long nMax,
     }
 }
 
-void SwExtraPainter::PaintRedline( SwTwips nY, tools::Long nMax )
+// paint redline or word spacing indicator
+void SwExtraPainter::PaintRedline( SwTwips nY, tools::Long nMax, sal_Int16 nWordSpacing )
 {
     Point aStart( m_nRedX, nY );
     Point aEnd( m_nRedX, nY + nMax );
@@ -294,17 +297,20 @@ void SwExtraPainter::PaintRedline( SwTwips nY, tools::Long nMax )
             m_aClip.ChgClip( m_aRect, m_pTextFrame );
         }
     }
-    const Color aOldCol( m_pSh->GetOut()->GetLineColor() );
-    m_pSh->GetOut()->SetLineColor( SW_MOD()->GetRedlineMarkColor() );
+    m_pSh->GetOut()->Push(vcl::PushFlags::LINECOLOR);
+    m_pSh->GetOut()->SetLineColor(nWordSpacing ? COL_LIGHTRED : SwModule::get()->GetRedlineMarkColor());
 
-    if ( m_pTextFrame->IsVertical() )
+    if ( nWordSpacing )
     {
-        m_pTextFrame->SwitchHorizontalToVertical( aStart );
-        m_pTextFrame->SwitchHorizontalToVertical( aEnd );
-    }
+        LineInfo aLineInfo;
+        aLineInfo.SetStyle(LineStyle::Solid);
+        aLineInfo.SetWidth( nWordSpacing * 2540/1440 );
 
-    m_pSh->GetOut()->DrawLine( aStart, aEnd );
-    m_pSh->GetOut()->SetLineColor( aOldCol );
+        m_pSh->GetOut()->DrawLine( aStart, aEnd, aLineInfo );
+    }
+    else
+        m_pSh->GetOut()->DrawLine( aStart, aEnd );
+    m_pSh->GetOut()->Pop();
 }
 
 void SwTextFrame::PaintExtraData( const SwRect &rRect ) const
@@ -320,20 +326,23 @@ void SwTextFrame::PaintExtraData( const SwRect &rRect ) const
     const SwFormatLineNumber &rLineNum = GetAttrSet()->GetLineNumber();
     bool bLineNum = !IsInTab() && rLineInf.IsPaintLineNumbers() &&
                ( !IsInFly() || rLineInf.IsCountInFlys() ) && rLineNum.IsCount();
-    sal_Int16 eHor = static_cast<sal_Int16>(SW_MOD()->GetRedlineMarkPos());
+    sal_Int16 eHor = static_cast<sal_Int16>(SwModule::get()->GetRedlineMarkPos());
+    SwViewShell *pSh = getRootFrame()->GetCurrShell();
+    bool bWordSpacingIndicator = officecfg::Office::Writer::Content::Display::ShowWordSpacingIndicator::get()
+        && pSh->GetViewOptions()->IsViewMetaChars();
     if (eHor != text::HoriOrientation::NONE
+        && !bWordSpacingIndicator
         && (!IDocumentRedlineAccess::IsShowChanges(rIDRA.GetRedlineFlags())
             || getRootFrame()->IsHideRedlines()))
     {
         eHor = text::HoriOrientation::NONE;
     }
     bool bRedLine = eHor != text::HoriOrientation::NONE;
-    if ( !bLineNum && !bRedLine )
+    if ( !bLineNum && !bRedLine && !bWordSpacingIndicator )
         return;
 
     if( IsLocked() || IsHiddenNow() || !getFramePrintArea().Height() )
         return;
-    SwViewShell *pSh = getRootFrame()->GetCurrShell();
 
     SwSwapIfNotSwapped swap(const_cast<SwTextFrame *>(this));
     SwRect rOldRect( rRect );
@@ -361,7 +370,6 @@ void SwTextFrame::PaintExtraData( const SwRect &rRect ) const
         aLayoutModeModifier.Modify( false );
 
         SwTextPainter  aLine( const_cast<SwTextFrame*>(this), &aInf );
-        bool bNoDummy = !aLine.GetNext(); // Only one empty line!
 
         while( aLine.Y() + aLine.GetLineHeight() <= rRect.Top() )
         {
@@ -378,59 +386,53 @@ void SwTextFrame::PaintExtraData( const SwRect &rRect ) const
 
         tools::Long nBottom = rRect.Bottom();
 
-        bool bNoPrtLine = 0 == GetMinPrtLine();
-        if( !bNoPrtLine )
-        {
-            while ( aLine.Y() < GetMinPrtLine() )
-            {
-                if( ( rLineInf.IsCountBlankLines() || aLine.GetCurr()->HasContent() )
-                    && !aLine.GetCurr()->IsDummy() )
-                    aExtra.IncLineNr();
-                if( !aLine.Next() )
-                    break;
-            }
-            bNoPrtLine = aLine.Y() >= GetMinPrtLine();
-        }
         const bool bIsShowChangesInMargin = pSh->GetViewOptions()->IsShowChangesInMargin();
-        if( bNoPrtLine )
+        do
         {
-            do
+            // A comment from SwTextFormatter::CalcRealHeight:
+            // The dummy flag is set on lines that only contain flyportions. Unfortunately an empty
+            // line can be at the end of a paragraph (empty paragraphs or behind a Shift-Return).
+            if (!aLine.GetCurr()->IsDummy()
+                || (!aLine.GetCurr()->GetNext()
+                    && aLine.GetStart()
+                           >= TextFrameIndex(aLine.GetTextFrame()->GetText().getLength())))
             {
-                if( bNoDummy || !aLine.GetCurr()->IsDummy() )
+                SwTwips nExtraSpaceSize = aLine.GetCurr()->GetFirstPortion()->ExtraSpaceSize();
+                if ( nExtraSpaceSize && bWordSpacingIndicator )
+                    aExtra.PaintRedline( aLine.Y(), aLine.GetLineHeight(), nExtraSpaceSize );
+
+                bool bRed = bRedLine && aLine.GetCurr()->HasRedline();
+                if( rLineInf.IsCountBlankLines() || aLine.GetCurr()->HasContent() )
                 {
-                    bool bRed = bRedLine && aLine.GetCurr()->HasRedline();
-                    if( rLineInf.IsCountBlankLines() || aLine.GetCurr()->HasContent() )
+                    bool bRedInMargin = bIsShowChangesInMargin && bRed;
+                    bool bNum = bLineNum && ( aExtra.HasNumber() || aExtra.HasDivider() );
+                    if( bRedInMargin || bNum )
                     {
-                        bool bRedInMargin = bIsShowChangesInMargin && bRed;
-                        bool bNum = bLineNum && ( aExtra.HasNumber() || aExtra.HasDivider() );
-                        if( bRedInMargin || bNum )
+                        SwTwips nTmpHeight, nTmpAscent;
+                        aLine.CalcAscentAndHeight( nTmpAscent, nTmpHeight );
+                        if ( bRedInMargin )
                         {
-                            SwTwips nTmpHeight, nTmpAscent;
-                            aLine.CalcAscentAndHeight( nTmpAscent, nTmpHeight );
-                            if ( bRedInMargin )
+                            const OUString* pRedlineText = aLine.GetCurr()->GetRedlineText();
+                            if( !pRedlineText->isEmpty() )
                             {
-                                const OUString* pRedlineText = aLine.GetCurr()->GetRedlineText();
-                                if( !pRedlineText->isEmpty() )
-                                {
-                                    aExtra.PaintExtra( aLine.Y(), nTmpAscent,
-                                        nTmpHeight, bRed, pRedlineText );
-                                    bRed = false;
-                                    bNum = false;
-                                }
-                            }
-                            if ( bNum )
-                            {
-                                aExtra.PaintExtra( aLine.Y(), nTmpAscent, nTmpHeight, bRed );
+                                aExtra.PaintExtra( aLine.Y(), nTmpAscent,
+                                    nTmpHeight, bRed, pRedlineText );
                                 bRed = false;
+                                bNum = false;
                             }
                         }
-                        aExtra.IncLineNr();
+                        if ( bNum )
+                        {
+                            aExtra.PaintExtra( aLine.Y(), nTmpAscent, nTmpHeight, bRed );
+                            bRed = false;
+                        }
                     }
-                    if( bRed )
-                        aExtra.PaintRedline( aLine.Y(), aLine.GetLineHeight() );
+                    aExtra.IncLineNr();
                 }
-            } while( aLine.Next() && aLine.Y() <= nBottom );
-        }
+                if( bRed )
+                    aExtra.PaintRedline( aLine.Y(), aLine.GetLineHeight() );
+            }
+        } while( aLine.Next() && aLine.Y() <= nBottom );
     }
     else
     {
@@ -575,9 +577,9 @@ bool SwTextFrame::PaintEmpty( const SwRect &rRect, bool bCheck ) const
                 const SvxFirstLineIndentItem& rFirstLine(
                     GetTextNodeForParaProps()->GetSwAttrSet().GetFirstLineIndent());
 
-                if (0 < rFirstLine.GetTextFirstLineOffset())
+                if (0.0 < rFirstLine.GetTextFirstLineOffset().m_dValue)
                 {
-                    aPos.AdjustX(rFirstLine.GetTextFirstLineOffset());
+                    aPos.AdjustX(rFirstLine.ResolveTextFirstLineOffset({}));
                 }
 
                 std::unique_ptr<SwSaveClip, o3tl::default_delete<SwSaveClip>> xClip;
@@ -630,7 +632,7 @@ bool SwTextFrame::PaintEmpty( const SwRect &rRect, bool bCheck ) const
                             pFnt->SetUnderline( LINESTYLE_NONE );
                     }
 
-                    pFnt->SetColor(NON_PRINTING_CHARACTER_COLOR);
+                    pFnt->SetColor(pSh->GetViewOptions()->GetNonPrintingCharacterColor());
                     pFnt->DrawText_( aDrawInf );
                 }
             }
@@ -642,7 +644,7 @@ bool SwTextFrame::PaintEmpty( const SwRect &rRect, bool bCheck ) const
     return false;
 }
 
-void SwTextFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect const& rRect) const
+void SwTextFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect const& rRect, PaintFrameMode) const
 {
     ResetRepaint();
 
@@ -773,21 +775,11 @@ void SwTextFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect const&
         aLine.TwipsToLine( rRect.Top() + 1 );
         tools::Long nBottom = rRect.Bottom();
 
-        bool bNoPrtLine = 0 == GetMinPrtLine();
-        if( !bNoPrtLine )
+        do
         {
-            while ( aLine.Y() < GetMinPrtLine() && aLine.Next() )
-                ;
-            bNoPrtLine = aLine.Y() >= GetMinPrtLine();
-        }
-        if( bNoPrtLine )
-        {
-            do
-            {
-                aLine.DrawTextLine(rRect, aClip, IsUndersized(), oTaggedLabel, oTaggedParagraph, isPDFTaggingEnabled);
+            aLine.DrawTextLine(rRect, aClip, IsUndersized(), oTaggedLabel, oTaggedParagraph, isPDFTaggingEnabled);
 
-            } while( aLine.Next() && aLine.Y() <= nBottom );
-        }
+        } while( aLine.Next() && aLine.Y() <= nBottom );
 
         // Once is enough:
         if( aLine.IsPaintDrop() )

@@ -55,7 +55,6 @@
 #endif
 
 using namespace ::sd::slidesorter::model;
-using namespace ::drawinglayer::primitive2d;
 
 namespace sd::slidesorter::view {
 
@@ -75,7 +74,7 @@ namespace {
             mrView.Paint(rDevice,rRepaintArea);
         }
 
-        virtual void SetLayerInvalidator (const SharedILayerInvalidator&) override {}
+        virtual void SetLayerInvalidator (std::unique_ptr<ILayerInvalidator>) override {}
 
     private:
         SlideSorterView& mrView;
@@ -99,7 +98,7 @@ public:
         rDevice.DrawRect(rRepaintArea);
     }
 
-    virtual void SetLayerInvalidator (const SharedILayerInvalidator&) override {}
+    virtual void SetLayerInvalidator (std::unique_ptr<ILayerInvalidator>) override {}
 
     void SetColor (const Color& rColor) { maBackgroundColor = rColor; }
 
@@ -113,7 +112,7 @@ SlideSorterView::SlideSorterView (SlideSorter& rSlideSorter)
     : ::sd::View (
           *rSlideSorter.GetModel().GetDocument(),
           rSlideSorter.GetContentWindow()->GetOutDev(),
-          rSlideSorter.GetViewShell()),
+          &rSlideSorter.GetViewShell()),
       mrSlideSorter(rSlideSorter),
       mrModel(rSlideSorter.GetModel()),
       mbIsDisposed(false),
@@ -190,7 +189,7 @@ sal_Int32 SlideSorterView::GetPageIndexAtPoint (const Point& rWindowPosition) co
     sd::Window *pWindow (mrSlideSorter.GetContentWindow().get());
     if (pWindow)
     {
-        nIndex = mpLayouter->GetIndexAtPoint(pWindow->PixelToLogic(rWindowPosition), false, false);
+        nIndex = mpLayouter->GetIndexAtPoint(pWindow->PixelToLogic(rWindowPosition));
 
         // Clip the page index against the page count.
         if (nIndex >= mrModel.GetPageCount())
@@ -309,7 +308,7 @@ void SlideSorterView::UpdateOrientation()
 {
     // The layout of slides depends on whether the slide sorter is
     // displayed in the center or the side pane.
-    if (mrSlideSorter.GetViewShell()->IsMainViewShell())
+    if (mrSlideSorter.GetViewShell().IsMainViewShell())
         SetOrientation(Layouter::GRID);
     else
     {
@@ -384,8 +383,7 @@ void SlideSorterView::Layout ()
         pWindow->SetViewOrigin (aViewBox.TopLeft());
         pWindow->SetViewSize (aViewBox.GetSize());
 
-        std::shared_ptr<PageObjectLayouter> pPageObjectLayouter(
-            mpLayouter->GetPageObjectLayouter());
+        PageObjectLayouter* pPageObjectLayouter(mpLayouter->GetPageObjectLayouter());
         if (pPageObjectLayouter)
         {
             const Size aNewPreviewSize (mpLayouter->GetPageObjectLayouter()->GetPreviewSize());

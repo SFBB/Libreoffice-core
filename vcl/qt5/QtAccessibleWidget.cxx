@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -18,6 +18,7 @@
  */
 
 #include <QtAccessibleWidget.hxx>
+#include <QtAccessibleWidget.moc>
 
 #include <QtGui/QAccessibleInterface>
 
@@ -36,9 +37,12 @@
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleAction.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
+#include <com/sun/star/accessibility/XAccessibleContext.hpp>
+#include <com/sun/star/accessibility/XAccessibleContext2.hpp>
 #include <com/sun/star/accessibility/XAccessibleEditableText.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventListener.hpp>
+#include <com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp>
 #include <com/sun/star/accessibility/XAccessibleKeyBinding.hpp>
 #include <com/sun/star/accessibility/XAccessibleRelationSet.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
@@ -46,23 +50,25 @@
 #include <com/sun/star/accessibility/XAccessibleTableSelection.hpp>
 #include <com/sun/star/accessibility/XAccessibleText.hpp>
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 
 #include <comphelper/AccessibleImplementationHelper.hxx>
-#include <o3tl/any.hxx>
 #include <sal/log.hxx>
 #include <vcl/accessibility/AccessibleTextAttributeHelper.hxx>
+#include <vcl/qt/QtUtils.hxx>
 
 using namespace css;
 using namespace css::accessibility;
-using namespace css::beans;
 using namespace css::uno;
 
-QtAccessibleWidget::QtAccessibleWidget(const Reference<XAccessible> xAccessible, QObject* pObject)
+// property used to specify the QtAccessibleWidget* that should be used as the
+// custom accessible interface for an object
+const char* const PROPERTY_ACCESSIBLE = "accessible-interface";
+
+QtAccessibleWidget::QtAccessibleWidget(const Reference<XAccessible>& xAccessible, QObject& rObject)
     : m_xAccessible(xAccessible)
-    , m_pObject(pObject)
+    , m_rObject(rObject)
 {
     Reference<XAccessibleContext> xContext = xAccessible->getAccessibleContext();
     Reference<XAccessibleEventBroadcaster> xBroadcaster(xContext, UNO_QUERY);
@@ -125,11 +131,10 @@ QtAccessibleWidget::getAccessibleTableForParent() const
 
 QWindow* QtAccessibleWidget::window() const
 {
-    assert(m_pObject);
-    if (m_pObject->isWidgetType())
+    if (m_rObject.isWidgetType())
     {
-        QWidget* pWidget = static_cast<QWidget*>(m_pObject);
-        QWidget* pWindow = pWidget->window();
+        QWidget& rWidget = static_cast<QWidget&>(m_rObject);
+        QWidget* pWindow = rWidget.window();
         if (pWindow)
             return pWindow->windowHandle();
     }
@@ -194,15 +199,15 @@ sal_Int16 lcl_matchQtTextBoundaryType(QAccessible::TextBoundaryType boundaryType
     switch (boundaryType)
     {
         case QAccessible::CharBoundary:
-            return com::sun::star::accessibility::AccessibleTextType::CHARACTER;
+            return css::accessibility::AccessibleTextType::CHARACTER;
         case QAccessible::WordBoundary:
-            return com::sun::star::accessibility::AccessibleTextType::WORD;
+            return css::accessibility::AccessibleTextType::WORD;
         case QAccessible::SentenceBoundary:
-            return com::sun::star::accessibility::AccessibleTextType::SENTENCE;
+            return css::accessibility::AccessibleTextType::SENTENCE;
         case QAccessible::ParagraphBoundary:
-            return com::sun::star::accessibility::AccessibleTextType::PARAGRAPH;
+            return css::accessibility::AccessibleTextType::PARAGRAPH;
         case QAccessible::LineBoundary:
-            return com::sun::star::accessibility::AccessibleTextType::LINE;
+            return css::accessibility::AccessibleTextType::LINE;
         case QAccessible::NoBoundary:
             // assert here, better handle it directly at call site
             assert(false
@@ -216,35 +221,35 @@ sal_Int16 lcl_matchQtTextBoundaryType(QAccessible::TextBoundaryType boundaryType
     return -1;
 }
 
-QAccessible::Relation lcl_matchUnoRelation(short relationType)
+QAccessible::Relation lcl_matchUnoRelation(AccessibleRelationType eRelationType)
 {
     // Qt semantics is the other way around
-    switch (relationType)
+    switch (eRelationType)
     {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
-        case AccessibleRelationType::CONTENT_FLOWS_FROM:
+        case AccessibleRelationType_CONTENT_FLOWS_FROM:
             return QAccessible::FlowsTo;
-        case AccessibleRelationType::CONTENT_FLOWS_TO:
+        case AccessibleRelationType_CONTENT_FLOWS_TO:
             return QAccessible::FlowsFrom;
 #endif
-        case AccessibleRelationType::CONTROLLED_BY:
+        case AccessibleRelationType_CONTROLLED_BY:
             return QAccessible::Controller;
-        case AccessibleRelationType::CONTROLLER_FOR:
+        case AccessibleRelationType_CONTROLLER_FOR:
             return QAccessible::Controlled;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
-        case AccessibleRelationType::DESCRIBED_BY:
+        case AccessibleRelationType_DESCRIBED_BY:
             return QAccessible::DescriptionFor;
 #endif
-        case AccessibleRelationType::LABELED_BY:
+        case AccessibleRelationType_LABELED_BY:
             return QAccessible::Label;
-        case AccessibleRelationType::LABEL_FOR:
+        case AccessibleRelationType_LABEL_FOR:
             return QAccessible::Labelled;
-        case AccessibleRelationType::INVALID:
-        case AccessibleRelationType::MEMBER_OF:
-        case AccessibleRelationType::SUB_WINDOW_OF:
-        case AccessibleRelationType::NODE_CHILD_OF:
+        case AccessibleRelationType_INVALID:
+        case AccessibleRelationType_MEMBER_OF:
+        case AccessibleRelationType_SUB_WINDOW_OF:
+        case AccessibleRelationType_NODE_CHILD_OF:
         default:
-            SAL_WARN("vcl.qt", "Unmatched relation: " << relationType);
+            SAL_WARN("vcl.qt", "Unmatched relation: " << static_cast<int>(eRelationType));
             return {};
     }
 }
@@ -261,7 +266,7 @@ void lcl_appendRelation(QVector<QPair<QAccessibleInterface*, QAccessible::Relati
 
     for (sal_uInt32 i = 0; i < nTargetCount; i++)
     {
-        Reference<XAccessible> xAccessible(aRelation.TargetSet[i], uno::UNO_QUERY);
+        Reference<XAccessible> xAccessible = aRelation.TargetSet[i];
         relations->append(
             { QAccessible::queryAccessibleInterface(QtAccessibleRegistry::getQObject(xAccessible)),
               aQRelation });
@@ -323,8 +328,8 @@ QAccessibleInterface* QtAccessibleWidget::parent() const
         return QAccessible::queryAccessibleInterface(
             QtAccessibleRegistry::getQObject(xAc->getAccessibleParent()));
 
-    // go via the QObject hierarchy; some a11y objects like the application
-    // (at the root of the a11y hierarchy) are handled solely by Qt and have
+    // go via the QObject hierarchy; a11y objects like the application object
+    // and native weld::Widgets are handled solely by Qt and have
     // no LO-internal a11y objects associated with them
     QObject* pObj = object();
     if (pObj && pObj->parent())
@@ -363,12 +368,21 @@ QString QtAccessibleWidget::text(QAccessible::Text text) const
         case QAccessible::Description:
         case QAccessible::DebugDescription:
             return toQString(xAc->getAccessibleDescription());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        case QAccessible::Identifier:
+        {
+            Reference<XAccessibleContext2> xContext(getAccessibleContextImpl(), UNO_QUERY);
+            if (!xContext.is())
+                return QString();
+            return toQString(xContext->getAccessibleId());
+        }
+#endif
         case QAccessible::Value:
         case QAccessible::Help:
         case QAccessible::Accelerator:
         case QAccessible::UserText:
         default:
-            return QString("Unknown");
+            return QString();
     }
 }
 QAccessible::Role QtAccessibleWidget::role() const
@@ -383,6 +397,12 @@ QAccessible::Role QtAccessibleWidget::role() const
             return QAccessible::NoRole;
         case AccessibleRole::ALERT:
             return QAccessible::AlertMessage;
+        case AccessibleRole::BLOCK_QUOTE:
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+            return QAccessible::BlockQuote;
+#else
+            return QAccessible::Paragraph;
+#endif
         case AccessibleRole::COLUMN_HEADER:
             return QAccessible::ColumnHeader;
         case AccessibleRole::CANVAS:
@@ -420,7 +440,16 @@ QAccessible::Role QtAccessibleWidget::role() const
             return QAccessible::Footer;
         case AccessibleRole::FOOTNOTE:
             return QAccessible::Note;
-        case AccessibleRole::FRAME: // top-level window with title bar
+        case AccessibleRole::FRAME:
+            // report Pane instead of Window role for a frame that's not actually
+            // an accessible frame (top-level window with title bar) itself,
+            // but a child of the real top-level
+            if (QAccessibleInterface* pParent = parent())
+            {
+                const QAccessible::Role eParentRole = pParent->role();
+                if (eParentRole == QAccessible::Window || eParentRole == QAccessible::Dialog)
+                    return QAccessible::Pane;
+            }
             return QAccessible::Window;
         case AccessibleRole::GLASS_PANE:
             return QAccessible::UserRole;
@@ -462,7 +491,6 @@ QAccessible::Role QtAccessibleWidget::role() const
         case AccessibleRole::PANEL:
             return QAccessible::Pane;
         case AccessibleRole::PARAGRAPH:
-        case AccessibleRole::BLOCK_QUOTE:
             return QAccessible::Paragraph;
         case AccessibleRole::PASSWORD_TEXT:
             // Qt API doesn't have a separate role to distinguish password edits,
@@ -505,7 +533,7 @@ QAccessible::Role QtAccessibleWidget::role() const
         case AccessibleRole::TEXT:
             return QAccessible::EditableText;
         case AccessibleRole::TEXT_FRAME:
-            return QAccessible::UserRole;
+            return QAccessible::Pane;
         case AccessibleRole::TOGGLE_BUTTON:
             return QAccessible::Button;
         case AccessibleRole::TOOL_BAR:
@@ -742,6 +770,10 @@ void* QtAccessibleWidget::interface_cast(QAccessible::InterfaceType t)
     if (t == QAccessible::SelectionInterface && accessibleProvidesInterface<XAccessibleSelection>())
         return static_cast<QAccessibleSelectionInterface*>(this);
 #endif
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    if (t == QAccessible::AttributesInterface)
+        return static_cast<QAccessibleAttributesInterface*>(this);
+#endif
     return nullptr;
 }
 
@@ -751,7 +783,7 @@ bool QtAccessibleWidget::isValid() const
     return xAc.is();
 }
 
-QObject* QtAccessibleWidget::object() const { return m_pObject; }
+QObject* QtAccessibleWidget::object() const { return &m_rObject; }
 
 void QtAccessibleWidget::setText(QAccessible::Text /* t */, const QString& /* text */) {}
 
@@ -769,28 +801,40 @@ QAccessibleInterface* QtAccessibleWidget::childAt(int x, int y) const
             awt::Point(aLocalCoords.x(), aLocalCoords.y()))));
 }
 
-QAccessibleInterface* QtAccessibleWidget::customFactory(const QString& classname, QObject* object)
+QAccessibleInterface* QtAccessibleWidget::customFactory(const QString& classname, QObject* pObject)
 {
-    if (classname == QLatin1String("QtWidget") && object && object->isWidgetType())
+    if (!pObject)
+        return nullptr;
+
+    const QVariant aAccVariant = pObject->property(PROPERTY_ACCESSIBLE);
+    if (aAccVariant.isValid() && aAccVariant.canConvert<QtAccessibleWidget*>())
     {
-        QtWidget* pWidget = static_cast<QtWidget*>(object);
+        QtAccessibleWidget* pAccessibleWidget = aAccVariant.value<QtAccessibleWidget*>();
+        QtAccessibleRegistry::insert(pAccessibleWidget->m_xAccessible, pObject);
+        return pAccessibleWidget;
+    }
+
+    if (classname == QLatin1String("QtWidget") && pObject->isWidgetType())
+    {
+        QtWidget* pWidget = static_cast<QtWidget*>(pObject);
         vcl::Window* pWindow = pWidget->frame().GetWindow();
 
         if (pWindow)
         {
-            css::uno::Reference<XAccessible> xAcc = pWindow->GetAccessible();
+            rtl::Reference<comphelper::OAccessible> pAcc = pWindow->GetAccessible();
             // insert into registry so the association between the XAccessible and the QtWidget
             // is remembered rather than creating a different QtXAccessible when a QObject is needed later
-            QtAccessibleRegistry::insert(xAcc, object);
-            return new QtAccessibleWidget(xAcc, object);
+            QtAccessibleRegistry::insert(pAcc, pObject);
+            return new QtAccessibleWidget(pAcc, *pObject);
         }
     }
-    if (classname == QLatin1String("QtXAccessible") && object)
+    if (classname == QLatin1String("QtXAccessible"))
     {
-        QtXAccessible* pXAccessible = static_cast<QtXAccessible*>(object);
+        QtXAccessible* pXAccessible = static_cast<QtXAccessible*>(pObject);
         if (pXAccessible->m_xAccessible.is())
         {
-            QtAccessibleWidget* pRet = new QtAccessibleWidget(pXAccessible->m_xAccessible, object);
+            QtAccessibleWidget* pRet
+                = new QtAccessibleWidget(pXAccessible->m_xAccessible, *pObject);
             // clear the reference in the QtXAccessible, no longer needed now that the QtAccessibleWidget holds one
             pXAccessible->m_xAccessible.clear();
             return pRet;
@@ -798,6 +842,22 @@ QAccessibleInterface* QtAccessibleWidget::customFactory(const QString& classname
     }
 
     return nullptr;
+}
+
+void QtAccessibleWidget::setCustomAccessible(
+    QObject& rObject, const rtl::Reference<comphelper::OAccessible>& rAccessible)
+{
+    assert(rAccessible.is());
+
+    // unset/delete the current/default accessible of the object
+    QAccessibleInterface* pOldAccessible = QAccessible::queryAccessibleInterface(&rObject);
+    const QAccessible::Id nId = QAccessible::uniqueId(pOldAccessible);
+    QAccessible::deleteAccessibleInterface(nId);
+
+    // let QtAccessibleWidget::customFactory set the custom accessible
+    rObject.setProperty(PROPERTY_ACCESSIBLE,
+                        QVariant::fromValue(new QtAccessibleWidget(rAccessible, rObject)));
+    QAccessible::queryAccessibleInterface(&rObject);
 }
 
 // QAccessibleActionInterface
@@ -855,10 +915,102 @@ QStringList QtAccessibleWidget::keyBindingsForAction(const QString& actionName) 
     return keyBindings;
 }
 
-// QAccessibleTextInterface
-void QtAccessibleWidget::addSelection(int /* startOffset */, int /* endOffset */)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+
+// QAccessibleAttributesInterface helpers
+namespace
 {
-    SAL_INFO("vcl.qt", "Unsupported QAccessibleTextInterface::addSelection");
+void lcl_insertAttribute(QHash<QAccessible::Attribute, QVariant>& rQtAttrs, const OUString& rName,
+                         const OUString& rValue)
+{
+    if (rName == u"level"_ustr)
+    {
+        rQtAttrs.insert(QAccessible::Attribute::Level,
+                        QVariant::fromValue(static_cast<int>(rValue.toInt32())));
+    }
+    else
+    {
+        // for now, leave not explicitly handled attributes as they are and report
+        // via QAccessible::Attribute::Custom, but should consider suggesting to
+        // add more specific attributes on Qt side and use those instead
+        const QVariant aVariant = rQtAttrs.value(QAccessible::Attribute::Custom,
+                                                 QVariant::fromValue(QHash<QString, QString>()));
+        assert((aVariant.canConvert<QHash<QString, QString>>()));
+        QHash<QString, QString> aAttrs = aVariant.value<QHash<QString, QString>>();
+        aAttrs.insert(toQString(rName), toQString(rValue));
+        rQtAttrs.insert(QAccessible::Attribute::Custom, QVariant::fromValue(aAttrs));
+    }
+}
+}
+
+QHash<QAccessible::Attribute, QVariant> QtAccessibleWidget::attributes() const
+{
+    Reference<XAccessibleContext> xContext = getAccessibleContextImpl();
+    if (!xContext.is())
+        return {};
+
+    Reference<XAccessibleExtendedAttributes> xAttributes(xContext, UNO_QUERY);
+    if (!xAttributes.is())
+        return {};
+
+    QHash<QAccessible::Attribute, QVariant> aQtAttrs;
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    const css::lang::Locale aLocale = xContext->getLocale();
+    const QLocale aQLocale(toQString(aLocale.Language + u"_" + aLocale.Country));
+    aQtAttrs.insert(QAccessible::Attribute::Locale, aQLocale);
+#endif
+
+    const OUString sAttrs = xAttributes->getExtendedAttributes();
+    sal_Int32 nIndex = 0;
+    do
+    {
+        const OUString sAttribute = sAttrs.getToken(0, ';', nIndex);
+        sal_Int32 nColonPos = 0;
+        const OUString sName = sAttribute.getToken(0, ':', nColonPos);
+        const OUString sValue = sAttribute.getToken(0, ':', nColonPos);
+        assert(nColonPos == -1
+               && "Too many colons in attribute that should have \"name:value\" syntax");
+        if (!sName.isEmpty())
+            lcl_insertAttribute(aQtAttrs, sName, sValue);
+    } while (nIndex >= 0);
+
+    return aQtAttrs;
+}
+
+// QAccessibleAttributesInterface
+QList<QAccessible::Attribute> QtAccessibleWidget::attributeKeys() const
+{
+    const QHash<QAccessible::Attribute, QVariant> aAttributes = attributes();
+    return aAttributes.keys();
+}
+
+QVariant QtAccessibleWidget::attributeValue(QAccessible::Attribute eAttribute) const
+{
+    const QHash<QAccessible::Attribute, QVariant> aAllAttributes = attributes();
+    return aAllAttributes.value(eAttribute);
+}
+#endif
+
+// QAccessibleTextInterface
+void QtAccessibleWidget::addSelection(int startOffset, int endOffset)
+{
+    // only single selection supported currently
+    if (selectionCount() > 0)
+        return;
+
+    Reference<XAccessibleText> xText(getAccessibleContextImpl(), UNO_QUERY);
+    if (!xText.is())
+        return;
+
+    const sal_Int32 nTextLength = xText->getCharacterCount();
+    if (startOffset < 0 || startOffset > nTextLength || endOffset < 0 || endOffset > nTextLength)
+    {
+        SAL_WARN("vcl.qt", "QtAccessibleWidget::addSelection called with invalid offset.");
+        return;
+    }
+
+    xText->setSelection(startOffset, endOffset);
 }
 
 // Text attributes are returned in format specified in IAccessible2 spec, since that
@@ -952,9 +1104,24 @@ int QtAccessibleWidget::offsetAtPoint(const QPoint& rPoint) const
     return xText->getIndexAtPoint(aPoint);
 }
 
-void QtAccessibleWidget::removeSelection(int /* selectionIndex */)
+void QtAccessibleWidget::removeSelection(int selectionIndex)
 {
-    SAL_INFO("vcl.qt", "Unsupported QAccessibleTextInterface::removeSelection");
+    if (selectionIndex < 0 || selectionIndex >= selectionCount())
+    {
+        SAL_WARN("vcl.qt", "QtAccessibleWidget::removeSelection called with invalid index");
+        return;
+    }
+
+    Reference<XAccessibleText> xText(getAccessibleContextImpl(), UNO_QUERY);
+    if (!xText.is())
+        return;
+
+    // only single selection supported at the moment (s.a. seleciontCount();
+    // code below needs adjustment if that changes
+    assert(selectionIndex == 0);
+
+    const sal_Int32 nCaretPos = xText->getCaretPosition();
+    xText->setSelection(nCaretPos, nCaretPos);
 }
 
 void QtAccessibleWidget::scrollToSubstring(int startIndex, int endIndex)
@@ -1845,4 +2012,4 @@ bool QtAccessibleWidget::clear()
 }
 #endif
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -33,8 +33,9 @@
 #include <SwStyleNameMapper.hxx>
 
 #include <frmfmt.hxx>
+#include <names.hxx>
 
-SwNoTextNode::SwNoTextNode( SwNode& rWhere,
+SwNoTextNode::SwNoTextNode( const SwNode& rWhere,
                   const SwNodeType nNdType,
                   SwGrfFormatColl *pGrfColl,
                   SwAttrSet const * pAutoAttr ) :
@@ -61,9 +62,9 @@ void SwNoTextNode::NewAttrSet( SwAttrPool& rPool )
 
     // put names of parent style and conditional style:
     const SwFormatColl* pFormatColl = GetFormatColl();
-    OUString sVal;
+    ProgName sVal;
     SwStyleNameMapper::FillProgName( pFormatColl->GetName(), sVal, SwGetPoolIdFromName::TxtColl );
-    SfxStringItem aFormatColl( RES_FRMATR_STYLE_NAME, sVal );
+    SfxStringItem aFormatColl( RES_FRMATR_STYLE_NAME, sVal.toString() );
     aNewAttrSet.Put( aFormatColl );
 
     aNewAttrSet.SetParent( &GetFormatColl()->GetAttrSet() );
@@ -113,24 +114,20 @@ const tools::PolyPolygon *SwNoTextNode::HasContour() const
         {
             double nGrfDPIx = 0.0;
             double nGrfDPIy = 0.0;
+            if ( !bPixelGrf && m_bPixelContour )
             {
-                if ( !bPixelGrf && m_bPixelContour )
-                {
-                    basegfx::B2DSize aDPI = GetGraphic().GetPPI();
-                    nGrfDPIx = aDPI.getWidth();
-                    nGrfDPIy = aDPI.getHeight();
-                }
+                basegfx::B2DSize aDPI = GetGraphic().GetPPI();
+                nGrfDPIx = aDPI.getWidth();
+                nGrfDPIy = aDPI.getHeight();
             }
             OSL_ENSURE( !bPixelGrf || aGrfMap == aContourMap,
                         "scale factor for pixel unsupported" );
             OutputDevice* pOutDev =
                 (bPixelGrf || m_bPixelContour) ? Application::GetDefaultDevice()
                                              : nullptr;
-            sal_uInt16 nPolyCount = m_pContour->Count();
-            for( sal_uInt16 j=0; j<nPolyCount; j++ )
-            {
-                tools::Polygon& rPoly = (*m_pContour)[j];
 
+            for ( auto& rPoly : *m_pContour )
+            {
                 sal_uInt16 nCount = rPoly.GetSize();
                 for( sal_uInt16 i=0 ; i<nCount; i++ )
                 {
@@ -192,11 +189,8 @@ bool SwNoTextNode::GetContourAPI( tools::PolyPolygon &rContour ) const
         if( aGrfMap.GetMapUnit() != MapUnit::MapPixel &&
             aGrfMap != aContourMap )
         {
-            sal_uInt16 nPolyCount = rContour.Count();
-            for( sal_uInt16 j=0; j<nPolyCount; j++ )
+            for( auto& rPoly : rContour )
             {
-                tools::Polygon& rPoly = rContour[j];
-
                 sal_uInt16 nCount = rPoly.GetSize();
                 for( sal_uInt16 i=0 ; i<nCount; i++ )
                 {
@@ -236,7 +230,8 @@ Graphic SwNoTextNode::GetGraphic() const
     else
     {
         OSL_ENSURE( GetOLENode(), "new type of Node?" );
-        aRet = *const_cast<SwOLENode*>(static_cast<const SwOLENode*>(this))->SwOLENode::GetGraphic();
+        if (const Graphic* pGraphic = const_cast<SwOLENode*>(static_cast<const SwOLENode*>(this))->SwOLENode::GetGraphic())
+            aRet = *pGraphic;
     }
     return aRet;
 }

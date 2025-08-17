@@ -29,11 +29,10 @@ namespace accessibility {
 
 /** A page shape represents the actual page as seen on the screen.
 */
-class AccessiblePageShape
+class AccessiblePageShape final
     :   public AccessibleShape
 {
 public:
-    //=====  internal  ========================================================
 
     /** Create a new accessible object that makes the given shape accessible.
         @param rxParent
@@ -73,9 +72,10 @@ public:
     virtual css::uno::Reference<css::accessibility::XAccessible> SAL_CALL
         getAccessibleChild (sal_Int64 nIndex) override;
 
-    //=====  XAccessibleComponent  ============================================
+    // OAccessible
+    virtual css::awt::Rectangle implGetBounds() override;
 
-    virtual css::awt::Rectangle SAL_CALL getBounds() override;
+    //=====  XAccessibleComponent  ============================================
 
     virtual sal_Int32 SAL_CALL getForeground() override;
 

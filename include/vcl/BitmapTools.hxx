@@ -31,16 +31,16 @@ namespace vcl::bitmap {
 #if !ENABLE_WASM_STRIP_PREMULTIPLY
 typedef std::array<std::array<sal_uInt8, 256>, 256> lookup_table;
 
-VCL_DLLPUBLIC lookup_table const & get_premultiply_table();
+lookup_table const & get_premultiply_table();
 VCL_DLLPUBLIC lookup_table const & get_unpremultiply_table();
 #endif
 
 VCL_DLLPUBLIC sal_uInt8 unpremultiply(sal_uInt8 c, sal_uInt8 a);
 VCL_DLLPUBLIC sal_uInt8 premultiply(sal_uInt8 c, sal_uInt8 a);
 
-BitmapEx VCL_DLLPUBLIC loadFromName(const OUString& rFileName, const ImageLoadFlags eFlags = ImageLoadFlags::NONE);
+Bitmap VCL_DLLPUBLIC loadFromName(const OUString& rFileName, const ImageLoadFlags eFlags = ImageLoadFlags::NONE);
 
-void loadFromSvg(SvStream& rStream, const OUString& sPath, BitmapEx& rBitmapEx, double fScaleFactor);
+void loadFromSvg(SvStream& rStream, const OUString& sPath, Bitmap& rBitmap, double fScaleFactor);
 
 /** Copy block of image data into the bitmap.
     Assumes that the Bitmap has been constructed with the desired size.
@@ -50,40 +50,44 @@ void loadFromSvg(SvStream& rStream, const OUString& sPath, BitmapEx& rBitmapEx, 
     @param nStride
     The number of bytes in a scanline, must be >= (width * bitcount / 8)
 */
-BitmapEx VCL_DLLPUBLIC CreateFromData(sal_uInt8 const *pData,
+Bitmap VCL_DLLPUBLIC CreateFromData(sal_uInt8 const *pData,
                                       sal_Int32 nWidth, sal_Int32 nHeight, sal_Int32 nStride,
                                       sal_Int8 nBitsPerPixel,
                                       bool bReversColors = false, bool bReverseAlpha = false);
 
-BitmapEx VCL_DLLPUBLIC CreateFromData( RawBitmap && data );
+void VCL_DLLPUBLIC fillWithData(sal_uInt8* pData, BitmapEx const& rBitmapEx);
+
+Bitmap VCL_DLLPUBLIC CreateFromData( RawBitmap && data );
 
 #if ENABLE_CAIRO_CANVAS
-VCL_DLLPUBLIC BitmapEx* CreateFromCairoSurface(Size size, cairo_surface_t* pSurface);
+VCL_DLLPUBLIC Bitmap CreateFromCairoSurface(Size size, cairo_surface_t* pSurface);
 #endif
 
-VCL_DLLPUBLIC BitmapEx CanvasTransformBitmap( const BitmapEx& rBitmap,
+VCL_DLLPUBLIC ::Bitmap CanvasTransformBitmap( const ::Bitmap& rBitmap,
                                   const ::basegfx::B2DHomMatrix&  rTransform,
                                   ::basegfx::B2DRectangle const & rDestRect,
                                   ::basegfx::B2DHomMatrix const & rLocalTransform );
 
-VCL_DLLPUBLIC void DrawAlphaBitmapAndAlphaGradient(BitmapEx & rBitmapEx, bool bFixedTransparence, float fTransparence, AlphaMask & rNewMask);
+VCL_DLLPUBLIC void DrawAlphaBitmapAndAlphaGradient(Bitmap & rBitmap, bool bFixedTransparence, float fTransparence, const AlphaMask & rNewMask);
 
 VCL_DLLPUBLIC void DrawAndClipBitmap(const Point& rPos, const Size& rSize, const BitmapEx& rBitmap, BitmapEx & aBmpEx, basegfx::B2DPolyPolygon const & rClipPath);
 
 VCL_DLLPUBLIC css::uno::Sequence< sal_Int8 > GetMaskDIB(BitmapEx const & aBmpEx);
+VCL_DLLPUBLIC css::uno::Sequence< sal_Int8 > GetMaskDIB(Bitmap const & aBmp);
 
 /**
  * @param data will be filled with alpha data, if xBitmap is alpha/transparent image
  * @param bHasAlpha will be set to true if resulting surface has alpha
  **/
-VCL_DLLPUBLIC void CanvasCairoExtractBitmapData( BitmapEx const & rBmpEx, Bitmap & rBitmap, unsigned char*& data, bool& bHasAlpha, tools::Long& rnWidth, tools::Long& rnHeight );
+VCL_DLLPUBLIC void CanvasCairoExtractBitmapData( BitmapEx const & rBmpEx, Bitmap const & rBitmap, unsigned char*& data, bool& bHasAlpha, tools::Long& rnWidth, tools::Long& rnHeight );
+VCL_DLLPUBLIC void CanvasCairoExtractBitmapData( Bitmap const & rBitmap, unsigned char*& data, bool& bHasAlpha, tools::Long& rnWidth, tools::Long& rnHeight );
 
-VCL_DLLPUBLIC css::uno::Sequence< sal_Int8 > CanvasExtractBitmapData(BitmapEx const & rBitmapEx, const css::geometry::IntegerRectangle2D& rect);
+VCL_DLLPUBLIC css::uno::Sequence< sal_Int8 > CanvasExtractBitmapData(Bitmap const & rBitmap, const css::geometry::IntegerRectangle2D& rect);
 
 // helper to construct historical 8x8 bitmaps with two colors
 
-BitmapEx VCL_DLLPUBLIC createHistorical8x8FromArray(std::array<sal_uInt8,64> const & pArray, Color aColorPix, Color aColorBack);
-bool VCL_DLLPUBLIC isHistorical8x8(const BitmapEx& rBitmapEx, Color& o_rBack, Color& o_rFront);
+Bitmap VCL_DLLPUBLIC createHistorical8x8FromArray(std::array<sal_uInt8,64> const & pArray, Color aColorPix, Color aColorBack);
+bool VCL_DLLPUBLIC isHistorical8x8(const Bitmap& rBitmap, Color& o_rBack, Color& o_rFront);
 
 VCL_DLLPUBLIC bool convertBitmap32To24Plus8(BitmapEx const & rInput, BitmapEx & rResult);
 
@@ -96,6 +100,9 @@ VCL_DLLPUBLIC bool convertBitmap32To24Plus8(BitmapEx const & rInput, BitmapEx & 
  */
 VCL_DLLPUBLIC Bitmap GetDownsampledBitmap(Size const& rDstSizeTwip, Point const& rSrcPt, Size const& rSrcSz,
                             Bitmap const& rBmp, tools::Long nMaxBmpDPIX, tools::Long nMaxBmpDPIY);
+
+BitmapColor premultiply(const BitmapColor c);
+BitmapColor unpremultiply(const BitmapColor c);
 
 } // end vcl::bitmap
 

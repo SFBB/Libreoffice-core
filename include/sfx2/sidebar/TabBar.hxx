@@ -26,10 +26,6 @@
 
 namespace com::sun::star::frame { class XFrame; }
 
-namespace svt { class AcceleratorExecute; }
-
-namespace weld { class Toolbar; }
-
 namespace sfx2::sidebar {
 
 class FocusManager;
@@ -41,27 +37,14 @@ class TabBar final : public InterimItemWindow
 {
     friend class TabBarUIObject;
 public:
-    /** DeckMenuData has entries for display name, and a flag:
-         - isCurrentDeck for the deck selection data
-         - isEnabled     for the show/hide menu
-    */
-    class DeckMenuData
-    {
-    public:
-        OUString msDisplayName;
-        bool mbIsCurrentDeck;
-        bool mbIsActive;
-        bool mbIsEnabled;
-    };
     typedef ::std::function<void (
-            weld::Menu& rMainMenu, weld::Menu& rSubMenu,
-            const ::std::vector<DeckMenuData>& rMenuData)> PopupMenuProvider;
+            weld::Menu& rMainMenu, weld::Menu& rSubMenu)> PopupMenuSignalConnectFunction;
     TabBar (
         vcl::Window* pParentWindow,
         const css::uno::Reference<css::frame::XFrame>& rxFrame,
         ::std::function<void (const OUString& rsDeckId)> aDeckActivationFunctor,
-        PopupMenuProvider aPopupMenuProvider,
-        SidebarController* rParentSidebarController);
+        PopupMenuSignalConnectFunction aPopupMenuSignalConnectFunction,
+        SidebarController& rParentSidebarController);
 
     weld::Container* GetContainer() { return m_xContainer.get(); }
 
@@ -79,12 +62,13 @@ public:
     void RemoveDeckHighlight ();
     OUString const & GetDeckIdForIndex (const sal_Int32 nIndex) const;
     void ToggleHideFlag (const sal_Int32 nIndex);
-    void RestoreHideFlags();
 
     void UpdateFocusManager (FocusManager& rFocusManager);
 
     /// Enables/Disables the menu button. Used by LoKit.
     void EnableMenuButton(const bool bEnable);
+
+    void UpdateMenus();
 
     virtual FactoryFunction GetUITestFactory() const override;
 private:
@@ -112,24 +96,19 @@ private:
         DECL_LINK(HandleClick, const OUString&, void);
         std::unique_ptr<weld::Toolbar> mxButton;
         OUString msDeckId;
-        ::std::function<void (const OUString& rsDeckId)> maDeckActivationFunctor;
+        typedef ::std::function<void (const OUString& rsDeckId)> DeckActivationFunctor;
+        DeckActivationFunctor maDeckActivationFunctor;
         bool mbIsHidden;
-        bool mbIsHiddenByDefault;
     };
     typedef ::std::vector<std::unique_ptr<Item>> ItemContainer;
     ItemContainer maItems;
-    const ::std::function<void (const OUString& rsDeckId)> maDeckActivationFunctor;
-    PopupMenuProvider maPopupMenuProvider;
+    const Item::DeckActivationFunctor maDeckActivationFunctor;
 
     void CreateTabItem(weld::Toolbar& rButton, const DeckDescriptor& rDeckDescriptor);
     css::uno::Reference<css::graphic::XGraphic> GetItemImage(const DeckDescriptor& rDeskDescriptor) const;
     void UpdateButtonIcons();
 
-    DECL_LINK(OnToolboxClicked, weld::Toggleable&, void);
-
-    SidebarController* pParentSidebarController;
-    std::unique_ptr<svt::AcceleratorExecute> mpAccel;
-
+    SidebarController& mrParentSidebarController;
 };
 
 

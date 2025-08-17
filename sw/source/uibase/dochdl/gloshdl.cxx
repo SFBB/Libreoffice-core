@@ -69,25 +69,35 @@ struct TextBlockInfo_Impl
 void SwGlossaryHdl::GlossaryDlg()
 {
     SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-    ScopedVclPtr<AbstractGlossaryDlg> pDlg(pFact->CreateGlossaryDlg(m_rViewFrame, this, m_pWrtShell));
-    OUString sName;
-    OUString sShortName;
+    VclPtr<AbstractGlossaryDlg> pDlg(pFact->CreateGlossaryDlg(m_rViewFrame, this, m_pWrtShell));
 
-    if( RET_EDIT == pDlg->Execute() )
-    {
-        sName = pDlg->GetCurrGrpName();
-        sShortName = pDlg->GetCurrShortName();
-    }
+    pDlg->StartExecuteAsync(
+        [this, pDlg] (sal_Int32 nResult)->void
+        {
+            OUString sName;
+            OUString sShortName;
+            if (nResult == RET_OK)
+                pDlg->Apply();
+            if (nResult == RET_EDIT)
+            {
+                sName = pDlg->GetCurrGrpName();
+                sShortName = pDlg->GetCurrShortName();
+            }
+            pDlg->disposeOnce();
+            m_pCurGrp.reset();
+            if(HasGlossaryList())
+            {
+                GetGlossaryList()->ClearGroups();
+            }
 
-    pDlg.disposeAndClear();
-    m_pCurGrp.reset();
-    if(HasGlossaryList())
-    {
-        GetGlossaryList()->ClearGroups();
-    }
+            if( !sName.isEmpty() || !sShortName.isEmpty() )
+                m_rStatGlossaries.EditGroupDoc( sName, sShortName );
 
-    if( !sName.isEmpty() || !sShortName.isEmpty() )
-        m_rStatGlossaries.EditGroupDoc( sName, sShortName );
+            SwGlossaryList* pList = ::GetGlossaryList();
+            if(pList->IsActive())
+                pList->Update();
+        }
+    );
 }
 
 // set the default group; if called from the dialog
@@ -242,13 +252,13 @@ sal_uInt16 SwGlossaryHdl::GetGlossaryCnt() const
     return m_pCurGrp ? m_pCurGrp->GetCount() : 0;
 }
 
-OUString SwGlossaryHdl::GetGlossaryName( sal_uInt16 nId )
+const OUString & SwGlossaryHdl::GetGlossaryName( sal_uInt16 nId )
 {
     OSL_ENSURE(nId < GetGlossaryCnt(), "Text building block array over-indexed.");
     return m_pCurGrp->GetLongName( nId );
 }
 
-OUString SwGlossaryHdl::GetGlossaryShortName(sal_uInt16 nId)
+const OUString & SwGlossaryHdl::GetGlossaryShortName(sal_uInt16 nId)
 {
     OSL_ENSURE(nId < GetGlossaryCnt(), "Text building block array over-indexed.");
     return m_pCurGrp->GetShortName( nId );
@@ -373,7 +383,7 @@ bool SwGlossaryHdl::ExpandGlossary(weld::Window* pParent)
         if(m_pWrtShell->IsSelection())
             aShortName = m_pWrtShell->GetSelText();
     }
-    return pGlossary && Expand(pParent, aShortName, &m_rStatGlossaries, std::move(pGlossary));
+    return Expand(pParent, aShortName, &m_rStatGlossaries, std::move(pGlossary));
 }
 
 bool SwGlossaryHdl::Expand(weld::Window* pParent, const OUString& rShortName,
@@ -386,9 +396,10 @@ bool SwGlossaryHdl::Expand(weld::Window* pParent, const OUString& rShortName,
     // search for text block
     // - don't prefer current group depending on configuration setting
     const SvxAutoCorrCfg& rCfg = SvxAutoCorrCfg::Get();
-    sal_uInt16 nFound = !rCfg.IsSearchInAllCategories() ? pGlossary->GetIndex( aShortName ) : -1;
+    sal_uInt16 nFound = (!rCfg.IsSearchInAllCategories() && pGlossary) ?
+        pGlossary->GetIndex( aShortName ) : USHRT_MAX;
     // if not found then search in all groups
-    if( nFound == sal_uInt16(-1) )
+    if (nFound == USHRT_MAX)
     {
         const ::utl::TransliterationWrapper& rSCmp = GetAppCmpStrIgnore();
         SwGlossaryList* pGlossaryList = ::GetGlossaryList();
@@ -397,7 +408,7 @@ bool SwGlossaryHdl::Expand(weld::Window* pParent, const OUString& rShortName,
         {
             // get group name with path-extension
             const OUString sGroupName = pGlossaryList->GetGroupName(i);
-            if(sGroupName == pGlossary->GetName())
+            if (pGlossary && sGroupName == pGlossary->GetName())
                 continue;
             const sal_uInt16 nBlockCount = pGlossaryList->GetBlockCount(i);
             if(nBlockCount)
@@ -429,7 +440,10 @@ bool SwGlossaryHdl::Expand(weld::Window* pParent, const OUString& rShortName,
                 ScopedVclPtr<AbstractSwSelGlossaryDlg> pDlg(pFact->CreateSwSelGlossaryDlg(pParent, aShortName));
                 for(const TextBlockInfo_Impl & i : aFoundArr)
                 {
-                    pDlg->InsertGlos(i.sTitle, i.sLongName);
+                    if (i.sTitle == "My AutoText")
+                        pDlg->InsertGlos(SwResId(STR_MY_AUTOTEXT), i.sLongName);
+                    else
+                        pDlg->InsertGlos(i.sTitle, i.sLongName);
                 }
                 pDlg->SelectEntryPos(0);
                 const sal_Int32 nRet = RET_OK == pDlg->Execute() ?
@@ -444,7 +458,7 @@ bool SwGlossaryHdl::Expand(weld::Window* pParent, const OUString& rShortName,
                 }
                 else
                 {
-                    nFound = sal_uInt16(-1);
+                    nFound = USHRT_MAX;
                     bCancel = true;
                 }
             }
@@ -452,7 +466,7 @@ bool SwGlossaryHdl::Expand(weld::Window* pParent, const OUString& rShortName,
     }
 
     // not found
-    if( nFound == sal_uInt16(-1) )
+    if (nFound == USHRT_MAX)
     {
         if( !bCancel )
         {
@@ -465,10 +479,10 @@ bool SwGlossaryHdl::Expand(weld::Window* pParent, const OUString& rShortName,
             }
             OUString aTmp( SwResId(STR_NOGLOS));
             aTmp = aTmp.replaceFirst("%1", aShortName);
-            std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(m_pWrtShell->GetView().GetFrameWeld(),
+            std::shared_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(m_pWrtShell->GetView().GetFrameWeld(),
                                                           VclMessageType::Info, VclButtonsType::Ok,
                                                           aTmp));
-            xInfoBox->run();
+            xInfoBox->runAsync(xInfoBox, [] (sal_uInt32){ });
         }
 
         return false;
@@ -695,7 +709,7 @@ bool SwGlossaryHdl::ImportGlossaries( const OUString& rName )
     {
         std::shared_ptr<const SfxFilter> pFilter;
         SfxMedium aMed( rName, StreamMode::READ, nullptr, nullptr );
-        SfxFilterMatcher aMatcher( "swriter" );
+        SfxFilterMatcher aMatcher( u"swriter"_ustr );
         aMed.UseInteractionHandler( true );
         if (aMatcher.GuessFilter(aMed, pFilter, SfxFilterFlags::NONE) == ERRCODE_NONE)
         {

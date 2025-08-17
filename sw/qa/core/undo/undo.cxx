@@ -23,7 +23,7 @@ class SwCoreUndoTest : public SwModelTestBase
 {
 public:
     SwCoreUndoTest()
-        : SwModelTestBase("/sw/qa/core/undo/data/")
+        : SwModelTestBase(u"/sw/qa/core/undo/data/"_ustr)
     {
     }
 };
@@ -32,8 +32,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testTextboxCutSave)
 {
     // Load the document and select all.
     createSwDoc("textbox-cut-save.docx");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pDocShell = pTextDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
     pWrtShell->SelAll();
 
@@ -47,7 +46,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testTextboxCutSave)
     // Save.
     uno::Reference<frame::XStorable> xStorable(mxComponent, uno::UNO_QUERY);
     utl::MediaDescriptor aMediaDescriptor;
-    aMediaDescriptor["FilterName"] <<= OUString("Office Open XML Text");
+    aMediaDescriptor[u"FilterName"_ustr] <<= u"Office Open XML Text"_ustr;
 
     // Without the accompanying fix in place, this test would have failed with:
     // void sax_fastparser::FastSaxSerializer::endDocument(): Assertion `mbMarkStackEmpty && maMarkStack.empty()' failed.
@@ -58,8 +57,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testTextboxCutSave)
 CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testTextboxCutUndo)
 {
     createSwDoc("textbox-cut-undo.docx");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pDocShell = pTextDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
     SwDoc* pDoc = pDocShell->GetDoc();
 
@@ -85,8 +83,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testTableCopyRedline)
 {
     // Given a document with two table cells and redlining enabled:
     createSwDoc("table-copy-redline.odt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pDocShell = pTextDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
 
     // When doing select-all, copy, paste and undo:
@@ -103,11 +100,11 @@ CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testTableCopyRedline)
 CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testImagePropsCreateUndoAndModifyDoc)
 {
     createSwDoc("image-as-character.odt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pDocShell = pTextDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
+    SwXTextDocument* pTextDoc = getSwTextDoc();
     css::uno::Reference<css::beans::XPropertySet> xImage(
-        pTextDoc->getGraphicObjects()->getByName("Image1"), css::uno::UNO_QUERY_THROW);
+        pTextDoc->getGraphicObjects()->getByName(u"Image1"_ustr), css::uno::UNO_QUERY_THROW);
 
     CPPUNIT_ASSERT(pTextDoc->isSetModifiedEnabled());
     CPPUNIT_ASSERT(!pTextDoc->isModified());
@@ -115,7 +112,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testImagePropsCreateUndoAndModifyDoc)
 
     // Check that modifications of the geometry mark document dirty, and create an undo
 
-    xImage->setPropertyValue("RelativeWidth", css::uno::Any(sal_Int16(80)));
+    xImage->setPropertyValue(u"RelativeWidth"_ustr, css::uno::Any(sal_Int16(80)));
 
     // Without the fix, this would fail
     CPPUNIT_ASSERT(pTextDoc->isModified());
@@ -127,7 +124,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testImagePropsCreateUndoAndModifyDoc)
 
     // Check that modifications of anchor mark document dirty, and create an undo
 
-    xImage->setPropertyValue("AnchorType",
+    xImage->setPropertyValue(u"AnchorType"_ustr,
                              css::uno::Any(css::text::TextContentAnchorType_AT_PARAGRAPH));
 
     CPPUNIT_ASSERT(pTextDoc->isModified());
@@ -139,8 +136,9 @@ CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testImagePropsCreateUndoAndModifyDoc)
 
     // Check that setting the same values do not make it dirty and do not add undo
 
-    xImage->setPropertyValue("RelativeWidth", xImage->getPropertyValue("RelativeWidth"));
-    xImage->setPropertyValue("AnchorType", xImage->getPropertyValue("AnchorType"));
+    xImage->setPropertyValue(u"RelativeWidth"_ustr,
+                             xImage->getPropertyValue(u"RelativeWidth"_ustr));
+    xImage->setPropertyValue(u"AnchorType"_ustr, xImage->getPropertyValue(u"AnchorType"_ustr));
 
     CPPUNIT_ASSERT(!pTextDoc->isModified());
     CPPUNIT_ASSERT(!pWrtShell->GetLastUndoInfo(nullptr, nullptr, nullptr));
@@ -162,8 +160,8 @@ CPPUNIT_TEST_FIXTURE(SwCoreUndoTest, testAnchorTypeChangePosition)
     }
 
     // When changing the anchor type + undo:
-    dispatchCommand(mxComponent, ".uno:SetAnchorToChar", {});
-    dispatchCommand(mxComponent, ".uno:Undo", {});
+    dispatchCommand(mxComponent, u".uno:SetAnchorToChar"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:Undo"_ustr, {});
 
     // Then make sure the old position is also restored:
     const SwFormatHoriOrient& rHoriOrient = rFormats[0]->GetHoriOrient();

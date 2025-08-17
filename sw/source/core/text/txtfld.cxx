@@ -55,6 +55,7 @@
 #include <svl/grabbagitem.hxx>
 #include <svl/itemiter.hxx>
 #include <svl/whiter.hxx>
+#include <editeng/cmapitem.hxx>
 #include <editeng/colritem.hxx>
 #include <editeng/udlnitem.hxx>
 #include <editeng/crossedoutitem.hxx>
@@ -116,7 +117,11 @@ SwExpandPortion *SwTextFormatter::NewFieldPortion( SwTextFormatInfo &rInf,
         case SwFieldIds::DocStat:
             if (!bName && pSh && !pSh->Imp()->IsUpdateExpFields())
             {
-                static_cast<SwDocStatField*>(pField)->ChangeExpansion(m_pFrame);
+                SwDocStatField* pDocStatField = static_cast<SwDocStatField*>(pField);
+                sal_uInt16 nVirtPageCount = 0;
+                if (pDocStatField->GetSubType() == SwDocStatSubType::PageRange)
+                    nVirtPageCount = m_pFrame->GetVirtPageCount();
+                pDocStatField->ChangeExpansion(m_pFrame, nVirtPageCount);
             }
             break;
         case SwFieldIds::PageNumber:
@@ -129,11 +134,12 @@ SwExpandPortion *SwTextFormatter::NewFieldPortion( SwTextFormatInfo &rInf,
 
                 sal_uInt16 nVirtNum = m_pFrame->GetVirtPageNum();
                 sal_uInt16 nNumPages = pTmpRootFrame->GetPageNum();
+                auto pPageNumberField = static_cast<SwPageNumberField*>(pField);
                 SvxNumType nNumFormat = SvxNumType(-1);
-                if (SVX_NUM_PAGEDESC == pField->GetFormat())
+                if (SVX_NUM_PAGEDESC == pPageNumberField->GetFormat())
                     nNumFormat
                         = m_pFrame->FindPageFrame()->GetPageDesc()->GetNumType().GetNumberingType();
-                static_cast<SwPageNumberField*>(pField)->ChangeExpansion(nVirtNum, nNumPages);
+                pPageNumberField->ChangeExpansion(nVirtNum, nNumPages);
                 pPageNr->ChangeExpansion(pSh->GetDoc(), bVirt,
                                          nNumFormat != SvxNumType(-1) ? &nNumFormat : nullptr);
             }
@@ -172,22 +178,23 @@ SwExpandPortion *SwTextFormatter::NewFieldPortion( SwTextFormatInfo &rInf,
             break;
         case SwFieldIds::JumpEdit:
         {
+            auto pJumpEditField = static_cast<SwJumpEditField*>(pField);
             std::unique_ptr<SwFont> pFont;
             if (!bName)
             {
                 pFont = std::make_unique<SwFont>(*m_pFont);
                 pFont->SetDiffFnt(
-                    &static_cast<SwJumpEditField*>(pField)->GetCharFormat()->GetAttrSet(),
+                    &pJumpEditField->GetCharFormat()->GetAttrSet(),
                     &m_pFrame->GetDoc().getIDocumentSettingAccess());
             }
             return new SwJumpFieldPortion(ExpandField(*pField, *this, rInf), pField->GetPar2(),
-                                          std::move(pFont), pField->GetFormat());
+                                          std::move(pFont), pJumpEditField->GetFormat());
         }
         case SwFieldIds::GetRef:
             if (!bName)
             {
                 auto pGetRef = static_cast<SwGetRefField*>(pField);
-                if (pGetRef->GetSubType() == REF_STYLE)
+                if (pGetRef->GetSubType() == ReferencesSubtype::Style)
                     pGetRef->UpdateField(static_txtattr_cast<SwTextField const*>(pHint), m_pFrame);
             }
             break;
@@ -308,7 +315,7 @@ SwLinePortion *SwTextFormatter::NewExtraPortion( SwTextFormatInfo &rInf )
     }
     if( !pRet )
     {
-        auto pFieldPortion = new SwFieldPortion( "" );
+        auto pFieldPortion = new SwFieldPortion( u""_ustr );
         if (pHint->Which() == RES_TXTATR_CONTENTCONTROL)
         {
             pFieldPortion->SetContentControl(true);
@@ -344,19 +351,20 @@ static void checkApplyParagraphMarkFormatToNumbering(SwFont* pNumFnt, SwTextForm
     {
         // Insert attributes of referenced char format into current set
         const SwFormatCharFormat& rCharFormat = pCleanedSet->Get(RES_TXTATR_CHARFMT);
-        const SwAttrSet& rStyleAttrs = static_cast<const SwCharFormat *>(rCharFormat.GetRegisteredIn())->GetAttrSet();
+        const SwAttrSet& rStyleAttrs = rCharFormat.GetCharFormat()->GetAttrSet();
         SfxWhichIter aIter(rStyleAttrs);
         sal_uInt16 nWhich = aIter.FirstWhich();
         while (nWhich)
         {
+            const SfxPoolItem* pItem = nullptr;
             if (!SwTextNode::IsIgnoredCharFormatForNumbering(nWhich, /*bIsCharStyle=*/true)
                 && !pCleanedSet->HasItem(nWhich)
                 && !(pFormat && pFormat->HasItem(nWhich))
-                && rStyleAttrs.GetItemState(nWhich) > SfxItemState::DEFAULT)
+                && rStyleAttrs.GetItemState(nWhich, true, &pItem) > SfxItemState::DEFAULT)
             {
                 // Copy from parent sets only allowed items which will not overwrite
                 // values explicitly defined in current set (pCleanedSet) or in pFormat
-                if (const SfxPoolItem* pItem = rStyleAttrs.GetItem(nWhich, true))
+                if (pItem)
                     pCleanedSet->Put(*pItem);
             }
             nWhich = aIter.NextWhich();
@@ -382,8 +390,8 @@ static void checkApplyParagraphMarkFormatToNumbering(SwFont* pNumFnt, SwTextForm
             if (pCleanedSet->HasItem(RES_CHRATR_GRABBAG))
             {
                 SfxGrabBagItem aGrabBag = pCleanedSet->Get(RES_CHRATR_GRABBAG, /*bSrchInParent=*/false);
-                std::map<OUString, css::uno::Any>& rMap = aGrabBag.GetGrabBag();
-                auto aIterator = rMap.find("CharShadingMarker");
+                const std::map<OUString, css::uno::Any>& rMap = aGrabBag.GetGrabBag();
+                auto aIterator = rMap.find(u"CharShadingMarker"_ustr);
                 if (aIterator != rMap.end())
                     aIterator->second >>= bShadingWasImported;
             }
@@ -395,6 +403,13 @@ static void checkApplyParagraphMarkFormatToNumbering(SwFont* pNumFnt, SwTextForm
             {
                 pCleanedSet->ClearItem(pItem->Which());
             }
+        }
+        else if (pItem->Which() == RES_CHRATR_CASEMAP)
+        {
+            SvxCaseMap eCaseMap = static_cast<const SvxCaseMapItem*>(pItem)->GetCaseMap();
+            // MS only knows about "all caps" and "small caps". Small caps is not set on numbering
+            if (eCaseMap == SvxCaseMap::SmallCaps)
+                pCleanedSet->ClearItem(pItem->Which());
         }
         pItem = aIter.NextItem();
     };
@@ -409,7 +424,7 @@ static void checkApplyParagraphMarkFormatToNumbering(SwFont* pNumFnt, SwTextForm
 
     if (oFontBackColor)
         pNumFnt->SetBackColor(oFontBackColor);
-    if (aHighlight != COL_TRANSPARENT)
+    if (aHighlight != COL_TRANSPARENT && !pCleanedSet->HasItem(RES_CHRATR_HIGHLIGHT))
         pNumFnt->SetHighlightColor(aHighlight);
 }
 
@@ -457,7 +472,8 @@ static bool lcl_setRedlineAttr( SwTextFormatInfo &rInf, const SwTextNode& rTextN
         return false;
 
     // moved text: dark green with double underline or strikethrough
-    if ( bIsMoved )
+    bool bDisplayMovedTextInGreen = officecfg::Office::Writer::Comparison::DisplayMovedTextInGreen::get();
+    if ( bDisplayMovedTextInGreen && bIsMoved )
     {
         pNumFnt->SetColor(COL_GREEN);
         if ( RedlineType::Delete == pRedlineNum->GetType() )
@@ -475,9 +491,9 @@ static bool lcl_setRedlineAttr( SwTextFormatInfo &rInf, const SwTextNode& rTextN
             : pRedlineNum->GetAuthor();
 
     if ( RedlineType::Delete == pRedlineNum->GetType() )
-        SW_MOD()->GetDeletedAuthorAttr(aAuthor, aSet);
+        SwModule::get()->GetDeletedAuthorAttr(aAuthor, aSet);
     else
-        SW_MOD()->GetInsertAuthorAttr(aAuthor, aSet);
+        SwModule::get()->GetInsertAuthorAttr(aAuthor, aSet);
 
     if (const SvxColorItem* pItem = aSet.GetItemIfSet(RES_CHRATR_COLOR))
         pNumFnt->SetColor(pItem->GetValue());
@@ -620,64 +636,44 @@ SwNumberPortion *SwTextFormatter::NewNumberPortion( SwTextFormatInfo &rInf ) con
                 // (SwListRedlineType::SHOW, which counts removed and inserted numbered paragraphs
                 // in a single list)
                 bool bHasHiddenNum = false;
-                OUString aText( pTextNd->GetNumString(true, MAXLEVEL, m_pFrame->getRootFrame(), SwListRedlineType::HIDDEN) );
+                OUString aTextNow( pTextNd->GetNumString(true, MAXLEVEL, m_pFrame->getRootFrame(), SwListRedlineType::HIDDEN) );
                 const SwDoc& rDoc = pTextNd->GetDoc();
                 const SwRedlineTable& rTable = rDoc.getIDocumentRedlineAccess().GetRedlineTable();
                 if ( rTable.size() && !rInf.GetVsh()->GetLayout()->IsHideRedlines() )
                 {
-                    OUString aHiddenText( pTextNd->GetNumString(true, MAXLEVEL, m_pFrame->getRootFrame(), SwListRedlineType::ORIGTEXT) );
+                    // previous (outdated) text
+                    OUString aOriginalText( pTextNd->GetNumString(true, MAXLEVEL, m_pFrame->getRootFrame(), SwListRedlineType::ORIGTEXT) );
 
-                    if ( !aText.isEmpty() || !aHiddenText.isEmpty() )
+                    if ( !aTextNow.isEmpty() || !aOriginalText.isEmpty() )
                     {
+
                         bool bDisplayChangedParagraphNumbering = officecfg::Office::Writer::Comparison::DisplayChangedParagraphNumbering::get();
-                        if (bDisplayChangedParagraphNumbering && aText != aHiddenText && !aHiddenText.isEmpty())
+                        if (bDisplayChangedParagraphNumbering && aTextNow != aOriginalText && !aOriginalText.isEmpty())
                         {
                             bHasHiddenNum = true;
                             // show also original number after the actual one enclosed in [ and ],
                             // and replace tabulator with space to avoid messy indentation
                             // resulted by the longer numbering, e.g. "1.[2.]" instead of "1.".
-                            aText = aText +  "[" + aHiddenText + "]"
+                            aTextNow = aTextNow +  "[" + aOriginalText + "]"
                                      + pTextNd->GetLabelFollowedBy().replaceAll("\t", " ");
                         }
-                        else if (!aText.isEmpty())
-                            aText += pTextNd->GetLabelFollowedBy();
+                        else if (!aTextNow.isEmpty())
+                            aTextNow += pTextNd->GetLabelFollowedBy();
                     }
                 }
                 else if (pTextNd->getIDocumentSettingAccess()->get(DocumentSettingId::NO_NUMBERING_SHOW_FOLLOWBY)
-                    || !aText.isEmpty())
-                    aText += pTextNd->GetLabelFollowedBy();
+                    || !aTextNow.isEmpty())
+                    aTextNow += pTextNd->GetLabelFollowedBy();
 
                 // Not just an optimization ...
                 // A number portion without text will be assigned a width of 0.
                 // The succeeding text portion will flow into the BreakCut in the BreakLine,
                 // although  we have rInf.GetLast()->GetFlyPortion()!
-                if( !aText.isEmpty() )
+                if( !aTextNow.isEmpty() )
                 {
 
                     // Build a new numbering font basing on the current paragraph font:
                     std::unique_ptr<SwFont> pNumFnt(new SwFont( &rInf.GetCharAttr(), pIDSA ));
-
-                    const SwTextNode& rTextNode = *rInf.GetTextFrame()->GetTextNodeForParaProps();
-                    if (const SwpHints* pHints = rTextNode.GetpSwpHints())
-                    {
-                        // Also look for an empty character hint that sits at the paragraph end:
-                        for (size_t i = 0; i < pHints->Count(); ++i)
-                        {
-                            const SwTextAttr* pHint = pHints->GetSortedByEnd(i);
-                            if (pHint->Which() == RES_TXTATR_AUTOFMT && pHint->GetEnd()
-                                && pHint->GetStart() == *pHint->GetEnd()
-                                && pHint->GetStart() == rTextNode.GetText().getLength())
-                            {
-                                std::shared_ptr<SfxItemSet> pSet
-                                    = pHint->GetAutoFormat().GetStyleHandle();
-                                if (pSet)
-                                {
-                                    pNumFnt->SetDiffFnt(pSet.get(), pIDSA);
-                                    break;
-                                }
-                            }
-                        }
-                    }
 
                     // #i53199#
                     if ( !pIDSA->get(DocumentSettingId::DO_NOT_RESET_PARA_ATTRS_FOR_NUM_FONT) )
@@ -697,12 +693,12 @@ SwNumberPortion *SwTextFormatter::NewNumberPortion( SwTextFormatInfo &rInf ) con
                     checkApplyParagraphMarkFormatToNumbering(pNumFnt.get(), rInf, pIDSA, pFormat);
 
                     if ( !lcl_setRedlineAttr( rInf, *pTextNd, pNumFnt ) && bHasHiddenNum )
-                        pNumFnt->SetColor(NON_PRINTING_CHARACTER_COLOR);
+                        pNumFnt->SetColor(SwViewOption::GetCurrentViewOptions().GetNonPrintingCharacterColor());
 
                     // we do not allow a vertical font
                     pNumFnt->SetVertical( pNumFnt->GetOrientation(), m_pFrame->IsVertical() );
 
-                    pRet = new SwNumberPortion( aText, std::move(pNumFnt),
+                    pRet = new SwNumberPortion( aTextNow, std::move(pNumFnt),
                                                 bLeft, bCenter, nMinDist,
                                                 bLabelAlignmentPosAndSpaceModeActive );
                 }

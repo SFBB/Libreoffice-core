@@ -16,15 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_ANCHOREDOBJECT_HXX
-#define INCLUDED_SW_INC_ANCHOREDOBJECT_HXX
+#pragma once
 
 #include "swtypes.hxx"
 #include "swrect.hxx"
 #include <svx/svdobj.hxx>
 #include <libxml/xmlwriter.h>
 
-struct SwPosition;
 class SwFrame;
 class SwLayoutFrame;
 class SwTextFrame;
@@ -41,7 +39,7 @@ enum class RndStdIds;
     of Writer fly frames (derived classes of <SwFlyFrame>) and of drawing objects
     (derived classes of <SwAnchoredDrawObject>).
 */
-class SW_DLLPUBLIC SwAnchoredObject
+class SAL_DLLPUBLIC_RTTI SwAnchoredObject
 {
     private:
         // drawing object representing the anchored object in the drawing layer
@@ -214,7 +212,7 @@ class SW_DLLPUBLIC SwAnchoredObject
             and the anchor character frame for an at-character and as-character
             anchored object.
         */
-        SwFrame* GetAnchorFrameContainingAnchPos();
+        SW_DLLPUBLIC SwFrame* GetAnchorFrameContainingAnchPos();
 
         SwPageFrame* GetPageFrame() { return mpPageFrame; }
         const SwPageFrame* GetPageFrame() const { return mpPageFrame; }
@@ -318,8 +316,8 @@ class SW_DLLPUBLIC SwAnchoredObject
         void SetCurrRelPos( Point _aRelPos );
 
         // accessors to the format
-        virtual SwFrameFormat& GetFrameFormat() = 0;
-        virtual const SwFrameFormat& GetFrameFormat() const = 0;
+        virtual SwFrameFormat* GetFrameFormat() = 0;
+        virtual const SwFrameFormat* GetFrameFormat() const = 0;
 
         // accessors to the object area and its position
         virtual SwRect GetObjRect() const = 0;
@@ -336,7 +334,7 @@ class SW_DLLPUBLIC SwAnchoredObject
         virtual void UpdateLayoutDir();
 
         /** method to determine object area inclusive its spacing */
-        const SwRect& GetObjRectWithSpaces() const;
+        SW_DLLPUBLIC const SwRect& GetObjRectWithSpaces() const;
 
         void InvalidateObjRectWithSpaces() const
         {
@@ -514,7 +512,5 @@ class SwObjPositioningInProgress
         SwObjPositioningInProgress( SwAnchoredObject& _rAnchoredObj );
         ~SwObjPositioningInProgress();
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,13 +22,17 @@
 #include <osl/diagnose.h>
 #include <o3tl/any.hxx>
 #include <tools/UnitConversion.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/syslocale.hxx>
 
 #include <usrpref.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <unotools/localedatawrapper.hxx>
+
+#if defined(__GNUC__) && !defined(__clang__)
+#include <cstring>
+#endif
 
 using namespace utl;
 using namespace ::com::sun::star;
@@ -39,40 +43,44 @@ void SwMasterUsrPref::SetUsrPref(const SwViewOption &rCopy)
     *static_cast<SwViewOption*>(this) = rCopy;
 }
 
+static FieldUnit lclGetFieldUnit()
+{
+    if (comphelper::IsFuzzing())
+        return FieldUnit::CM;
+    MeasurementSystem eSystem = SvtSysLocale().GetLocaleData().getMeasurementSystemEnum();
+    return MeasurementSystem::Metric == eSystem ? FieldUnit::CM : FieldUnit::INCH;
+}
+
 SwMasterUsrPref::SwMasterUsrPref(bool bWeb) :
     m_eFieldUpdateFlags(AUTOUPD_OFF),
     m_nLinkUpdateMode(0),
+    m_eUserMetric(lclGetFieldUnit()),
+    m_eHScrollMetric(m_eUserMetric),
     m_bIsHScrollMetricSet(false),
+    m_eVScrollMetric(m_eUserMetric),
     m_bIsVScrollMetricSet(false),
     m_nDefTabInMm100( 2000 ), // 2 cm
     m_bIsSquaredPageMode(false),
     m_bIsAlignMathObjectsToBaseline(false),
+    m_bApplyCharUnit(false),
+    m_bUseDefaultZoom(true),
+    m_nDefaultZoomValue(100),
+    m_eDefaultZoomType(SvxZoomType::PERCENT),
     m_aContentConfig(bWeb, *this),
     m_aLayoutConfig(bWeb, *this),
     m_aGridConfig(bWeb, *this),
     m_aCursorConfig(*this),
     m_pWebColorConfig(bWeb ? new SwWebColorConfig(*this) : nullptr),
-    m_bApplyCharUnit(false)
+    m_aFmtAidsAutoComplConfig(*this)
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
     {
-        m_eHScrollMetric = m_eVScrollMetric = m_eUserMetric = FieldUnit::CM;
         // match defaults
         SetCore2Option(true, ViewOptCoreFlags2::CursorInProt);
         SetCore2Option(false, ViewOptCoreFlags2::HiddenPara);
         m_nDefTabInMm100 = 1250;
         return;
     }
-    MeasurementSystem eSystem = SvtSysLocale().GetLocaleData().getMeasurementSystemEnum();
-    m_eUserMetric = MeasurementSystem::Metric == eSystem ? FieldUnit::CM : FieldUnit::INCH;
-    m_eHScrollMetric = m_eVScrollMetric = m_eUserMetric;
-
-    m_aContentConfig.Load();
-    m_aLayoutConfig.Load();
-    m_aGridConfig.Load();
-    m_aCursorConfig.Load();
-    if(m_pWebColorConfig)
-        m_pWebColorConfig->Load();
 }
 
 SwMasterUsrPref::~SwMasterUsrPref()
@@ -81,6 +89,8 @@ SwMasterUsrPref::~SwMasterUsrPref()
 
 const auto g_UpdateLinkIndex = 17;
 const auto g_DefaultAnchor = 25;
+const auto g_ZoomType = 27;
+const auto g_ZoomValue = 28;
 
 Sequence<OUString> SwContentViewConfig::GetPropertyNames() const
 {
@@ -111,12 +121,23 @@ Sequence<OUString> SwContentViewConfig::GetPropertyNames() const
         "Display/ShowOutlineContentVisibilityButton", // 22
         "Display/TreatSubOutlineLevelsAsContent",     // 23
         "Display/ShowChangesInMargin",          // 24
-        "Display/DefaultAnchor"                 // 25
+        "Display/DefaultAnchor",                // 25
+        "Zoom/DefaultZoom",                     // 26
+        "Zoom/ZoomType",                        // 27
+        "Zoom/ZoomValue",                       // 28
+        "Display/TextBoundaries",               // 29
+        "Display/TextBoundariesFull",           // 30
+        "Display/SectionBoundaries",            // 31
+        "Display/TableBoundaries",              // 32
+        "Display/ShowBoundaries",               // 33
+        "Draw/ClickChangeRotation"              // 34
     };
 #if defined(__GNUC__) && !defined(__clang__)
     // clang 8.0.0 says strcmp isn't constexpr
     static_assert(std::strcmp("Update/Link", aPropNames[g_UpdateLinkIndex]) == 0);
     static_assert(std::strcmp("Display/DefaultAnchor", aPropNames[g_DefaultAnchor]) == 0);
+    static_assert(std::strcmp("Zoom/ZoomType", aPropNames[g_ZoomType]) == 0);
+    static_assert(std::strcmp("Zoom/ZoomValue", aPropNames[g_ZoomValue]) == 0);
 #endif
     const int nCount = m_bWeb ? 12 : SAL_N_ELEMENTS(aPropNames);
     Sequence<OUString> aNames(nCount);
@@ -129,7 +150,7 @@ Sequence<OUString> SwContentViewConfig::GetPropertyNames() const
 }
 
 SwContentViewConfig::SwContentViewConfig(bool bIsWeb, SwMasterUsrPref& rPar) :
-    ConfigItem(bIsWeb ? OUString("Office.WriterWeb/Content") :  OUString("Office.Writer/Content")),
+    ConfigItem(bIsWeb ? u"Office.WriterWeb/Content"_ustr :  u"Office.Writer/Content"_ustr),
     m_rParent(rPar),
     m_bWeb(bIsWeb)
 {
@@ -184,8 +205,19 @@ void SwContentViewConfig::ImplCommit()
             case 23: bVal = m_rParent.IsTreatSubOutlineLevelsAsContent(); break;// "Display/TreatSubOutlineLevelsAsContent"
             case 24: bVal = m_rParent.IsShowChangesInMargin(); break;// "Display/ShowChangesInMargin"
             case 25: pValues[nProp] <<= m_rParent.GetDefaultAnchor(); break;// "Display/DefaultAnchor"
+                //TODO: Save zoom preferred, zoom type, zoom value
+            case 26: bVal = m_rParent.IsDefaultZoom(); break;// "Zoom/DefaultZoom"
+            case 27:pValues[nProp] <<= static_cast<sal_Int32>(m_rParent.GetDefaultZoomType()); break; // "Zoom/ZoomType"
+            case 28: pValues[nProp] <<= static_cast<sal_Int32>(m_rParent.GetDefaultZoomValue()); break; // "Zoom/ZoomValue"
+            case 29: bVal = m_rParent.IsTextBoundaries(); break; // "Display/TextBoundaries"
+            case 30: bVal = m_rParent.IsTextBoundariesFull(); break; // "Display/TextBoundariesFull"
+            case 31: bVal = m_rParent.IsSectionBoundaries(); break; // "Display/SectionBoundaries"
+            case 32: bVal = m_rParent.IsTableBoundaries(); break; // "Display/TableBoundaries"
+            case 33: bVal = m_rParent.IsShowBoundaries(); break; // "Display/ShowBoundaries"
+            case 34: bVal = m_rParent.IsClickChangeRotation(); break; // "Draw/ClickChangeRotation"
         }
-        if ((nProp != g_UpdateLinkIndex) && (nProp != g_DefaultAnchor))
+        if ((nProp != g_UpdateLinkIndex) && (nProp != g_DefaultAnchor) &&
+            (nProp != g_ZoomType) && (nProp != g_ZoomValue))
             pValues[nProp] <<= bVal;
     }
     PutProperties(aNames, aValues);
@@ -203,7 +235,7 @@ void SwContentViewConfig::Load()
     {
         if(pValues[nProp].hasValue())
         {
-            bool bSet = ((nProp != g_UpdateLinkIndex) && (nProp != g_DefaultAnchor))
+            bool bSet = ((nProp != g_UpdateLinkIndex) && (nProp != g_DefaultAnchor) && (nProp != g_ZoomType)&& (nProp != g_ZoomValue))
                         && *o3tl::doAccess<bool>(pValues[nProp]);
             switch(nProp)
             {
@@ -245,6 +277,27 @@ void SwContentViewConfig::Load()
                     m_rParent.SetDefaultAnchor(nSet);
                 }
                 break; // "Display/DefaultAnchor"
+                case 26:  m_rParent.SetDefaultZoom(bSet); break; // "Zoom/DefaultZoom"
+                case 27:
+                {
+                    sal_Int32 nSet = 0;
+                    pValues[nProp] >>= nSet;
+                    m_rParent.SetDefaultZoomType(static_cast<SvxZoomType>(nSet), true);
+                }
+                break; //"Zoom/ZoomType", // 27
+                case 28:
+                {
+                    sal_Int32 nSet = 0;
+                    pValues[nProp] >>= nSet;
+                    m_rParent.SetDefaultZoomValue(static_cast<sal_uInt16>(nSet), true);
+                }
+                break; //"Zoom/ZoomValue" // 28
+                case 29: m_rParent.SetTextBoundaries(bSet); break; //"Display/TextBoundaries"
+                case 30: m_rParent.SetTextBoundariesFull(bSet); break; //"Display/TextBoundariesFull"
+                case 31: m_rParent.SetSectionBoundaries(bSet); break; //"Display/SectionBoundaries"
+                case 32: m_rParent.SetTableBoundaries(bSet); break; //"Display/TableBoundaries"
+                case 33: m_rParent.SetShowBoundaries(bSet); break; //"Display/ShowBoundaries"
+                case 34: m_rParent.SetClickChangeRotation(bSet); break; // "Draw/ClickChangeRotation"
             }
         }
     }
@@ -252,7 +305,7 @@ void SwContentViewConfig::Load()
 
 Sequence<OUString> SwLayoutViewConfig::GetPropertyNames() const
 {
-    static const char* aPropNames[] =
+    static const char* const aPropNames[] =
     {
         "Line/Guide",                           // 0
         "Window/HorizontalScroll",              // 1
@@ -286,12 +339,13 @@ Sequence<OUString> SwLayoutViewConfig::GetPropertyNames() const
     return aNames;
 }
 
-SwLayoutViewConfig::SwLayoutViewConfig(bool bIsWeb, SwMasterUsrPref& rPar) :
-    ConfigItem(bIsWeb ? OUString("Office.WriterWeb/Layout") :  OUString("Office.Writer/Layout"),
-        ConfigItemMode::ReleaseTree),
-    m_rParent(rPar),
-    m_bWeb(bIsWeb)
+SwLayoutViewConfig::SwLayoutViewConfig(bool bIsWeb, SwMasterUsrPref& rPar)
+    : ConfigItem(bIsWeb ? u"Office.WriterWeb/Layout"_ustr :  u"Office.Writer/Layout"_ustr)
+    , m_rParent(rPar)
+    , m_bWeb(bIsWeb)
 {
+    Load();
+    EnableNotification(GetPropertyNames());
 }
 
 SwLayoutViewConfig::~SwLayoutViewConfig()
@@ -398,11 +452,14 @@ void SwLayoutViewConfig::Load()
     }
 }
 
-void SwLayoutViewConfig::Notify( const css::uno::Sequence< OUString >& ) {}
+void SwLayoutViewConfig::Notify(const css::uno::Sequence<OUString>&)
+{
+    Load();
+}
 
 Sequence<OUString> SwGridConfig::GetPropertyNames()
 {
-    static const char* aPropNames[] =
+    static const char* const aPropNames[] =
     {
         "Option/SnapToGrid",            // 0
         "Option/VisibleGrid",           // 1
@@ -423,10 +480,11 @@ Sequence<OUString> SwGridConfig::GetPropertyNames()
 }
 
 SwGridConfig::SwGridConfig(bool bIsWeb, SwMasterUsrPref& rPar) :
-    ConfigItem(bIsWeb ? OUString("Office.WriterWeb/Grid") :  OUString("Office.Writer/Grid"),
-        ConfigItemMode::ReleaseTree),
+    ConfigItem(bIsWeb ? u"Office.WriterWeb/Grid"_ustr :  u"Office.Writer/Grid"_ustr),
     m_rParent(rPar)
 {
+    Load();
+    EnableNotification(GetPropertyNames());
 }
 
 SwGridConfig::~SwGridConfig()
@@ -489,11 +547,14 @@ void SwGridConfig::Load()
     m_rParent.SetSnapSize(aSnap);
 }
 
-void SwGridConfig::Notify( const css::uno::Sequence< OUString >& ) {}
+void SwGridConfig::Notify( const css::uno::Sequence< OUString >& )
+{
+    Load();
+}
 
 Sequence<OUString> SwCursorConfig::GetPropertyNames()
 {
-    static const char* aPropNames[] =
+    static const char* const aPropNames[] =
     {
         "DirectCursor/UseDirectCursor", // 0
         "DirectCursor/Insert",          // 1
@@ -507,10 +568,12 @@ Sequence<OUString> SwCursorConfig::GetPropertyNames()
     return aNames;
 }
 
-SwCursorConfig::SwCursorConfig(SwMasterUsrPref& rPar) :
-    ConfigItem("Office.Writer/Cursor", ConfigItemMode::ReleaseTree),
-    m_rParent(rPar)
+SwCursorConfig::SwCursorConfig(SwMasterUsrPref& rPar)
+    : ConfigItem(u"Office.Writer/Cursor"_ustr)
+    , m_rParent(rPar)
 {
+    Load();
+    EnableNotification(GetPropertyNames());
 }
 
 SwCursorConfig::~SwCursorConfig()
@@ -566,14 +629,93 @@ void SwCursorConfig::Load()
     }
 }
 
-void SwCursorConfig::Notify( const css::uno::Sequence< OUString >& ) {}
+void SwCursorConfig::Notify(const css::uno::Sequence<OUString>& )
+{
+    Load();
+}
 
-SwWebColorConfig::SwWebColorConfig(SwMasterUsrPref& rPar) :
-    ConfigItem("Office.WriterWeb/Background", ConfigItemMode::ReleaseTree),
-    m_rParent(rPar),
-    m_aPropNames(1)
+Sequence<OUString> SwFmtAidsAutoComplConfig::GetPropertyNames()
+{
+    static const char* const aPropNames[] = {
+        "EncloseWithCharacters", // 0
+    };
+    const int nCount = SAL_N_ELEMENTS(aPropNames);
+    Sequence<OUString> aNames(nCount);
+    OUString* pNames = aNames.getArray();
+    for (int i = 0; i < nCount; i++)
+        pNames[i] = OUString::createFromAscii(aPropNames[i]);
+    return aNames;
+}
+
+SwFmtAidsAutoComplConfig::SwFmtAidsAutoComplConfig(SwMasterUsrPref& rPar)
+    : ConfigItem(u"Office.Writer/FmtAidsAutocomplete"_ustr)
+    , m_rParent(rPar)
+{
+    Load();
+    EnableNotification(GetPropertyNames());
+}
+
+SwFmtAidsAutoComplConfig::~SwFmtAidsAutoComplConfig() {}
+
+void SwFmtAidsAutoComplConfig::ImplCommit()
+{
+    Sequence<OUString> aNames = GetPropertyNames();
+
+    Sequence<Any> aValues(aNames.getLength());
+    Any* pValues = aValues.getArray();
+
+    for (int nProp = 0; nProp < aNames.getLength(); nProp++)
+    {
+        switch (nProp)
+        {
+            case 0:
+                pValues[nProp] <<= m_rParent.IsEncloseWithCharactersOn();
+                break; // "FmtAidsAutocomplete/EncloseWithCharacters"
+        }
+    }
+    PutProperties(aNames, aValues);
+}
+
+void SwFmtAidsAutoComplConfig::Load()
+{
+    Sequence<OUString> aNames = GetPropertyNames();
+    Sequence<Any> aValues = GetProperties(aNames);
+    const Any* pValues = aValues.getConstArray();
+    OSL_ENSURE(aValues.getLength() == aNames.getLength(), "GetProperties failed");
+    if (aValues.getLength() != aNames.getLength())
+        return;
+
+    for (int nProp = 0; nProp < aNames.getLength(); nProp++)
+    {
+        if (pValues[nProp].hasValue())
+        {
+            switch (nProp)
+            {
+                case 0:
+                {
+                    bool bSet = false;
+                    pValues[nProp] >>= bSet;
+                    m_rParent.SetEncloseWithCharactersOn(bSet);
+                    break; // "FmtAidsAutocomplete/EncloseWithCharacters"
+                }
+            }
+        }
+    }
+}
+
+void SwFmtAidsAutoComplConfig::Notify(const css::uno::Sequence<OUString>&)
+{
+    Load();
+}
+
+SwWebColorConfig::SwWebColorConfig(SwMasterUsrPref& rPar)
+    : ConfigItem(u"Office.WriterWeb/Background"_ustr)
+    , m_rParent(rPar)
+    , m_aPropNames(1)
 {
     m_aPropNames.getArray()[0] = "Color";
+    Load();
+    EnableNotification(m_aPropNames);
 }
 
 SwWebColorConfig::~SwWebColorConfig()
@@ -594,7 +736,10 @@ void SwWebColorConfig::ImplCommit()
     PutProperties(m_aPropNames, aValues);
 }
 
-void SwWebColorConfig::Notify( const css::uno::Sequence< OUString >& ) {}
+void SwWebColorConfig::Notify(const css::uno::Sequence<OUString>&)
+{
+    Load();
+}
 
 void SwWebColorConfig::Load()
 {

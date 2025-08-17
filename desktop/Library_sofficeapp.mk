@@ -17,13 +17,13 @@ $(eval $(call gb_Library_set_include,sofficeapp,\
 ))
 
 $(eval $(call gb_Library_use_externals,sofficeapp, \
-	$(if $(ENABLE_BREAKPAD),breakpad) \
-	$(if $(filter OPENCL,$(BUILD_TYPE)),clew) \
-    boost_headers \
-    dbus \
     icu_headers \
     icui18n \
     icuuc \
+    $(if $(ENABLE_BREAKPAD),breakpad) \
+    $(if $(filter OPENCL,$(BUILD_TYPE)),clew) \
+    boost_headers \
+    dbus \
     $(if $(ENABLE_CURL), \
     $(if $(filter-out EMSCRIPTEN iOS,$(OS)), \
         curl \
@@ -36,6 +36,12 @@ $(eval $(call gb_Library_use_externals,sofficeapp, \
 $(eval $(call gb_Library_use_custom_headers,sofficeapp,\
 	officecfg/registry \
 ))
+
+ifeq ($(OS),EMSCRIPTEN)
+$(eval $(call gb_Library_use_custom_headers,sofficeapp, \
+    static/unoembind \
+))
+endif
 
 $(eval $(call gb_Library_use_api,sofficeapp,\
 	udkapi \
@@ -116,6 +122,7 @@ $(eval $(call gb_Library_add_exception_objects,sofficeapp,\
     desktop/source/app/cmdlinehelp \
     desktop/source/app/desktopcontext \
     desktop/source/app/dispatchwatcher \
+    desktop/source/app/initjsunoscripting \
     desktop/source/app/langselect \
     desktop/source/app/lockfile2 \
     desktop/source/app/officeipcthread \
@@ -132,13 +139,11 @@ ifneq ($(filter $(OS),ANDROID iOS MACOSX WNT),)
 $(eval $(call gb_Library_add_exception_objects,sofficeapp,\
 	desktop/source/lib/init \
 	desktop/source/lib/lokinteractionhandler \
-	$(if $(filter-out $(OS),iOS), \
-		desktop/source/lib/lokclipboard) \
+	desktop/source/lib/lokclipboard \
 	$(if $(filter $(OS),ANDROID), \
 		desktop/source/lib/lokandroid) \
 ))
-$(if $(filter-out $(OS),IOS), \
-    $(eval $(call gb_Library_set_componentfile,sofficeapp,desktop/lokclipboard,services)))
+$(eval $(call gb_Library_set_componentfile,sofficeapp,desktop/lokclipboard,services))
 else
 ifneq ($(filter TRUE,$(USING_X11) $(DISABLE_GUI))($filter EMSCRIPTEN,$(OS)),)
 $(eval $(call gb_Library_add_exception_objects,sofficeapp,\

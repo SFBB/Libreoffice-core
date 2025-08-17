@@ -19,7 +19,7 @@
 
 
 #include <sal/log.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/BitmapTools.hxx>
 #include <memory>
 
@@ -324,8 +324,11 @@ bool CGMBitmap::ImplGetDimensions( CGMBitmapDescriptor& rDesc )
     if ( ( rDesc.mnCompressionMode = mpCGM->ImplGetUI16() ) != 1 )
         rDesc.mbStatus = false;
 
-    if ( !( rDesc.mnX || rDesc.mnY ) )
+    if (!rDesc.mnX || !rDesc.mnY)
+    {
         rDesc.mbStatus = false;
+        return false;
+    }
 
     sal_uInt32 nHeaderSize = 2 + 3 * nPrecision + 3 * mpCGM->ImplGetPointSize();
 
@@ -375,7 +378,7 @@ bool CGMBitmap::ImplGetDimensions( CGMBitmapDescriptor& rDesc )
 void CGMBitmap::ImplInsert( CGMBitmapDescriptor const & rSource, CGMBitmapDescriptor& rDest )
 {
     ++mpCGM->mnBitmapInserts;
-    static const bool bFuzzing = utl::ConfigManager::IsFuzzing();
+    static const bool bFuzzing = comphelper::IsFuzzing();
     if (bFuzzing)
     {
         if (rDest.mxBitmap.GetSizePixel().Height() + rSource.mnY > SAL_MAX_UINT16)
@@ -391,7 +394,7 @@ void CGMBitmap::ImplInsert( CGMBitmapDescriptor const & rSource, CGMBitmapDescri
             return;
         }
     }
-    rDest.mxBitmap.Expand( 0, rSource.mnY );
+    rDest.mxBitmap.Expand( 0, rSource.mnY, nullptr );
     rDest.mxBitmap.CopyPixel( tools::Rectangle( Point( 0, rDest.mnY ), Size( rSource.mnX, rSource.mnY ) ),
         tools::Rectangle( Point( 0, 0 ), Size( rSource.mnX, rSource.mnY ) ), rSource.mxBitmap );
 

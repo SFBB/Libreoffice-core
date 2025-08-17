@@ -60,7 +60,7 @@ static sal_uInt16 HighestLevel( SwNodes & rNodes, const SwNodeRange & rRange );
  * @param rDocument TODO: provide documentation
  */
 SwNodes::SwNodes( SwDoc& rDocument )
-    : m_vIndices(nullptr), m_rMyDoc( rDocument )
+    : m_rMyDoc( rDocument )
 {
     m_bInNodesDel = m_bInDelUpdOutline = false;
 
@@ -201,7 +201,7 @@ void SwNodes::ChgNode( SwNodeIndex const & rDelPos, SwNodeOffset nSz,
         if( !bRestPersData && !bSavePersData && pDestDoc )
             bSavePersData = bRestPersData = true;
 
-        OUString sNumRule;
+        UIName sNumRule;
         for( SwNodeOffset n(0); n < nSz; n++ )
         {
             SwNode* pNd = &rDelPos.GetNode();
@@ -231,7 +231,7 @@ void SwNodes::ChgNode( SwNodeIndex const & rDelPos, SwNodeOffset nSz,
                         sNumRule = pNumRule->GetName();
                         SwNumRule* pDestRule = pDestDoc->FindNumRulePtr( sNumRule );
                         if( pDestRule )
-                            pDestRule->SetInvalidRule( true );
+                            pDestRule->Invalidate();
                         else
                             pDestDoc->MakeNumRule( sNumRule, pNumRule );
                     }
@@ -283,7 +283,7 @@ void SwNodes::ChgNode( SwNodeIndex const & rDelPos, SwNodeOffset nSz,
                                     SwTextField* pTextField = static_txtattr_cast<SwTextField*>(pAttr);
                                     rNds.GetDoc().getIDocumentFieldsAccess().InsDelFieldInFieldLst( !bToUndo, *pTextField );
 
-                                    const SwFieldType* pTyp = pTextField->GetFormatField().GetField()->GetTyp();
+                                    SwFieldType* pTyp = pTextField->GetFormatField().GetField()->GetTyp();
                                     if ( SwFieldIds::Postit == pTyp->Which() )
                                     {
                                         rNds.GetDoc().GetDocShell()->Broadcast(
@@ -296,9 +296,9 @@ void SwNodes::ChgNode( SwNodeIndex const & rDelPos, SwNodeOffset nSz,
                                     else if( SwFieldIds::Dde == pTyp->Which() )
                                     {
                                         if( bToUndo )
-                                            const_cast<SwDDEFieldType*>(static_cast<const SwDDEFieldType*>(pTyp))->DecRefCnt();
+                                            static_cast<SwDDEFieldType*>(pTyp)->DecRefCnt();
                                         else
-                                            const_cast<SwDDEFieldType*>(static_cast<const SwDDEFieldType*>(pTyp))->IncRefCnt();
+                                            static_cast<SwDDEFieldType*>(pTyp)->IncRefCnt();
                                     }
                                     static_cast<SwFormatField&>(pAttr->GetAttr())
                                         .InvalidateField();
@@ -1302,72 +1302,90 @@ void SwNodes::GoEndOfSection(SwNodeIndex *pIdx)
         (*pIdx) = *pIdx->GetNode().EndOfSectionNode();
 }
 
-SwContentNode* SwNodes::GoNext(SwNodeIndex *pIdx) const
+static SwContentNode* goNext(const SwNodeIndex& rIdx)
 {
-    if( pIdx->GetIndex() >= Count() - 1 )
-        return nullptr;
+    const SwNodes& rNodes = rIdx.GetNodes();
+    const SwNodeOffset last = rNodes.Count() - 1;
+    for (SwNodeOffset i(rIdx.GetIndex() + 1); i < last; ++i)
+        if (SwContentNode* pNd = rNodes[i]->GetContentNode())
+            return pNd;
 
-    SwNodeIndex aTmp(*pIdx, +1);
-    SwNode* pNd = nullptr;
-    while( aTmp < Count()-1 && !( pNd = &aTmp.GetNode())->IsContentNode() )
-        ++aTmp;
-
-    if( aTmp == Count()-1 )
-        pNd = nullptr;
-    else
-        (*pIdx) = aTmp;
-    return static_cast<SwContentNode*>(pNd);
+    return nullptr;
 }
 
-SwContentNode* SwNodes::GoNext(SwPosition *pIdx) const
+SwContentNode* SwNodes::GoNext(SwNodeIndex *pIdx)
 {
-    if( pIdx->GetNodeIndex() >= Count() - 1 )
-        return nullptr;
-
-    SwNodeIndex aTmp(pIdx->GetNode(), +1);
-    SwNode* pNd = nullptr;
-    while( aTmp < Count()-1 && !( pNd = &aTmp.GetNode())->IsContentNode() )
-        ++aTmp;
-
-    if( aTmp == Count()-1 )
-        pNd = nullptr;
-    else
-        pIdx->Assign(aTmp);
-    return static_cast<SwContentNode*>(pNd);
+    SwContentNode* pNd = goNext(*pIdx);
+    if (pNd)
+        *pIdx = *pNd;
+    return pNd;
 }
 
-SwContentNode* SwNodes::GoPrevious(SwNodeIndex *pIdx)
+SwContentNode* SwNodes::GoNext(SwPosition *pIdx)
 {
-    if( !pIdx->GetIndex() )
-        return nullptr;
-
-    SwNodeIndex aTmp( *pIdx, -1 );
-    SwNode* pNd = nullptr;
-    while( aTmp.GetIndex() && !( pNd = &aTmp.GetNode())->IsContentNode() )
-        --aTmp;
-
-    if( !aTmp.GetIndex() )
-        pNd = nullptr;
-    else
-        (*pIdx) = aTmp;
-    return static_cast<SwContentNode*>(pNd);
+    SwContentNode* pNd = goNext(pIdx->nNode);
+    if (pNd)
+        pIdx->AssignStartIndex(*pNd);
+    return pNd;
 }
 
-SwContentNode* SwNodes::GoPrevious(SwPosition *pIdx)
+static SwNodeOffset startOfGlobalSection(const SwNode& node)
 {
-    if( !pIdx->GetNodeIndex() )
-        return nullptr;
+    const SwNodes& rNodes = node.GetNodes();
+    const SwNodeOffset pos = node.GetIndex();
+    if (rNodes.GetEndOfExtras().GetIndex() < pos)
+        // Regular ContentSection
+        return rNodes.GetEndOfExtras().GetIndex() + SwNodeOffset(1);
+    if (rNodes.GetEndOfAutotext().GetIndex() < pos)
+        // Redlines
+        return rNodes.GetEndOfAutotext().GetIndex() + SwNodeOffset(1);
+    if (rNodes.GetEndOfInserts().GetIndex() < pos)
+    {
+        // Flys/Headers/Footers
+        if (auto* p = node.FindFlyStartNode())
+            return p->GetIndex();
+        if (auto* p = node.FindHeaderStartNode())
+            return p->GetIndex();
+        if (auto* p = node.FindFooterStartNode())
+            return p->GetIndex();
+        return rNodes.GetEndOfInserts().GetIndex() + SwNodeOffset(1);
+    }
+    if (rNodes.GetEndOfPostIts().GetIndex() < pos)
+    {
+        // Footnotes
+        if (auto* p = node.FindFootnoteStartNode())
+            return p->GetIndex();
+        return rNodes.GetEndOfPostIts().GetIndex() + SwNodeOffset(1);
+    }
+    return SwNodeOffset(0);
+}
 
-    SwNodeIndex aTmp( pIdx->GetNode(), -1 );
-    SwNode* pNd = nullptr;
-    while( aTmp.GetIndex() && !( pNd = &aTmp.GetNode())->IsContentNode() )
-        --aTmp;
+static SwContentNode* goPrevious(const SwNodeIndex& rIdx, bool canCrossBoundary)
+{
+    const SwNodes& rNodes = rIdx.GetNodes();
+    const SwNodeOffset first(canCrossBoundary ? SwNodeOffset(0)
+                                              : startOfGlobalSection(rIdx.GetNode()));
+    for (SwNodeOffset i(rIdx.GetIndex() - 1); i > first; --i)
+        if (SwContentNode* pNd = rNodes[i]->GetContentNode())
+            return pNd;
 
-    if( !aTmp.GetIndex() )
-        pNd = nullptr;
-    else
-        pIdx->Assign(aTmp);
-    return static_cast<SwContentNode*>(pNd);
+    return nullptr;
+}
+
+SwContentNode* SwNodes::GoPrevious(SwNodeIndex* pIdx, bool canCrossBoundary)
+{
+    SwContentNode* pNd = goPrevious(*pIdx, canCrossBoundary);
+    if (pNd)
+        *pIdx = *pNd;
+    return pNd;
+}
+
+SwContentNode* SwNodes::GoPrevious(SwPosition* pIdx, bool canCrossBoundary)
+{
+    SwContentNode* pNd = goPrevious(pIdx->nNode, canCrossBoundary);
+    if (pNd)
+        pIdx->AssignStartIndex(*pNd);
+    return pNd;
 }
 
 /** Delete a number of nodes
@@ -1475,16 +1493,16 @@ sal_uInt16 HighestLevel( SwNodes & rNodes, const SwNodeRange & rRange )
  */
 void SwNodes::MoveRange( SwPaM & rPam, SwPosition & rPos, SwNodes& rNodes )
 {
-    auto [pStt, pEnd] = rPam.StartEnd(); // SwPosition*
+    auto [pStart, pEnd] = rPam.StartEnd(); // SwPosition*
 
-    if( !rPam.HasMark() || *pStt >= *pEnd )
+    if( !rPam.HasMark() || *pStart >= *pEnd )
         return;
 
-    if( this == &rNodes && *pStt <= rPos && rPos < *pEnd )
+    if( this == &rNodes && *pStart <= rPos && rPos < *pEnd )
         return;
 
     SwNodeIndex aEndIdx( pEnd->GetNode() );
-    SwNodeIndex aSttIdx( pStt->GetNode() );
+    SwNodeIndex aSttIdx( pStart->GetNode() );
     SwTextNode *const pSrcNd = aSttIdx.GetNode().GetTextNode();
     SwTextNode * pDestNd = rPos.GetNode().GetTextNode();
     bool bSplitDestNd = true;
@@ -1505,15 +1523,15 @@ void SwNodes::MoveRange( SwPaM & rPam, SwPosition & rPos, SwNodes& rNodes )
                         pEnd->GetNode().IsTextNode();
 
         // move the content into the new node
-        bool bOneNd = pStt->GetNode() == pEnd->GetNode();
+        bool bOneNd = pStart->GetNode() == pEnd->GetNode();
         const sal_Int32 nLen =
                 ( bOneNd ? std::min(pEnd->GetContentIndex(), pSrcNd->Len()) : pSrcNd->Len() )
-                - pStt->GetContentIndex();
+                - pStart->GetContentIndex();
 
         if( !pEnd->GetNode().IsContentNode() )
         {
             bOneNd = true;
-            SwNodeOffset nSttNdIdx = pStt->GetNodeIndex() + 1;
+            SwNodeOffset nSttNdIdx = pStart->GetNodeIndex() + 1;
             const SwNodeOffset nEndNdIdx = pEnd->GetNodeIndex();
             for( ; nSttNdIdx < nEndNdIdx; ++nSttNdIdx )
             {
@@ -1553,12 +1571,12 @@ void SwNodes::MoveRange( SwPaM & rPam, SwPosition & rPos, SwNodes& rNodes )
             if( nLen )
             {
                 pSrcNd->CutText( pDestNd, SwContentIndex( pDestNd, pDestNd->Len()),
-                            pStt->nContent, nLen );
+                            pStart->nContent, nLen );
             }
         }
         else if ( nLen )
         {
-            pSrcNd->CutText( pDestNd, rPos.nContent, pStt->nContent, nLen );
+            pSrcNd->CutText( pDestNd, rPos.nContent, pStart->nContent, nLen );
         }
 
         if( bCopyCollFormat )
@@ -1573,7 +1591,7 @@ void SwNodes::MoveRange( SwPaM & rPam, SwPosition & rPos, SwNodes& rNodes )
             // Correct the PaM, because it might have happened that the move
             // went over the node borders (so the data might be in different nodes).
             // Also, a selection is invalidated.
-            pEnd->nContent = pStt->nContent;
+            pEnd->nContent = pStart->nContent;
             rPam.DeleteMark();
             GetDoc().GetDocShell()->Broadcast( SwFormatFieldHint( nullptr,
                 rNodes.IsDocNodes() ? SwFormatFieldHintWhich::INSERTED : SwFormatFieldHintWhich::REMOVED ) );
@@ -1668,30 +1686,30 @@ void SwNodes::MoveRange( SwPaM & rPam, SwPosition & rPos, SwNodes& rNodes )
     if( aEndIdx != aSttIdx )
     {
         // move the nodes into the NodesArray
-        const SwNodeOffset nSttDiff = aSttIdx.GetIndex() - pStt->GetNodeIndex();
+        const SwNodeOffset nSttDiff = aSttIdx.GetIndex() - pStart->GetNodeIndex();
         SwNodeRange aRg( aSttIdx, aEndIdx );
         MoveNodes( aRg, rNodes, rPos.GetNode() );
 
         // if in the same node array, all indices are now at new positions (so correct them)
         if( &rNodes == this )
         {
-            pStt->nNode = aRg.aEnd.GetIndex() - nSttDiff;
+            pStart->nNode = aRg.aEnd.GetIndex() - nSttDiff;
         }
     }
 
     // if the StartNode was moved to whom the cursor pointed, so
     // the content must be registered in the current content!
-    if ( pStt->GetNode() == GetEndOfContent() )
+    if ( pStart->GetNode() == GetEndOfContent() )
     {
-        const bool bSuccess = GoPrevious( &pStt->nNode );
+        const bool bSuccess = GoPrevious( &pStart->nNode );
         OSL_ENSURE( bSuccess, "Move() - no ContentNode here" );
     }
-    pStt->nContent.Assign( pStt->GetNode().GetContentNode(),
-                            pStt->GetContentIndex() );
+    pStart->nContent.Assign( pStart->GetNode().GetContentNode(),
+                            pStart->GetContentIndex() );
     // Correct the PaM, because it might have happened that the move
     // went over the node borders (so the data might be in different nodes).
     // Also, a selection is invalidated.
-    *pEnd = *pStt;
+    *pEnd = *pStart;
     rPam.DeleteMark();
     GetDoc().GetDocShell()->Broadcast( SwFormatFieldHint( nullptr,
                 rNodes.IsDocNodes() ? SwFormatFieldHintWhich::INSERTED : SwFormatFieldHintWhich::REMOVED ) );
@@ -1745,10 +1763,8 @@ void SwNodes::CopyNodes( const SwNodeRange& rRange,
         return;
 
     // when inserting into the source range, nothing need to be done
-    OSL_ENSURE( &aRg.aStart.GetNodes() == this,
-                "aRg should use this node array" );
-    OSL_ENSURE( &aRg.aStart.GetNodes() == &aRg.aEnd.GetNodes(),
-               "Range across different nodes arrays? You deserve punishment!");
+    assert(&aRg.aStart.GetNodes() == this);
+    assert(&aRg.aStart.GetNodes() == &aRg.aEnd.GetNodes());
     if( &rPos.GetNodes() == &aRg.aStart.GetNodes() &&
         rPos.GetIndex() >= aRg.aStart.GetIndex() &&
         rPos.GetIndex() < aRg.aEnd.GetIndex() )
@@ -1828,7 +1844,7 @@ void SwNodes::CopyNodes( const SwNodeRange& rRange,
             // If the end of the section is outside the copy range,
             // the section node will skipped, not copied!
             // If someone want to change this behaviour, he has to adjust the function
-            // lcl_NonCopyCount(..) in ndcopy.cxx which relies on it.
+            // lcl_NonCopyCount() which relies on it.
             if( pCurrentNode->EndOfSectionIndex() < aRg.aEnd.GetIndex() )
             {
                 // copy of the whole section, so create a new SectionNode
@@ -1920,7 +1936,7 @@ void SwNodes::DelDummyNodes( const SwNodeRange& rRg )
     }
 }
 
-SwStartNode* SwNodes::MakeEmptySection( SwNode& rWhere,
+SwStartNode* SwNodes::MakeEmptySection( const SwNode& rWhere,
                                         SwStartNodeType eSttNdTyp )
 {
     SwStartNode* pSttNd = new SwStartNode( rWhere, SwNodeType::Start, eSttNdTyp );
@@ -1938,66 +1954,43 @@ SwStartNode* SwNodes::MakeTextSection( const SwNode & rWhere,
     return pSttNd;
 }
 
-//TODO: provide better documentation
-/** go to next section that is not protected nor hidden
- *
- * @note if !bSkipHidden and !bSkipProtect, use GoNext/GoPrevious
- *
- * @param pIdx
- * @param bSkipHidden
- * @param bSkipProtect
- * @return
- * @see SwNodes::GoNext
- * @see SwNodes::GoPrevious
- * @see SwNodes::GoNextSection (TODO: seems to be C&P programming here)
-*/
-SwContentNode* SwNodes::GoNextSection( SwNodeIndex * pIdx,
-                            bool bSkipHidden, bool bSkipProtect ) const
+static bool shouldSkipSection(const SwSectionNode& rSectNode, bool bSkipHidden, bool bSkipProtect)
 {
-    bool bFirst = true;
-    SwNodeIndex aTmp( *pIdx );
-    const SwNode* pNd;
-    while( aTmp < Count() - 1 )
+    const SwSection& rSect = rSectNode.GetSection();
+    return (bSkipHidden && rSect.CalcHiddenFlag()) || (bSkipProtect && rSect.IsProtectFlag());
+}
+
+static SwContentNode* goNextSection(const SwNode& rNode, bool bSkipHidden, bool bSkipProtect)
+{
+    const SwNodes& rNodes = rNode.GetNodes();
+    const SwNodeOffset last = rNodes.Count() - 1;
+    for (SwNodeOffset i(rNode.GetIndex()); i < last; ++i)
     {
-        pNd = & aTmp.GetNode();
-        if (SwNodeType::Section == pNd->GetNodeType())
+        SwNode* pNd = rNodes[i];
+        if (SwSectionNode* pSectNd = pNd->GetSectionNode())
         {
-            const SwSection& rSect = static_cast<const SwSectionNode*>(pNd)->GetSection();
-            if( (bSkipHidden && rSect.IsHiddenFlag()) ||
-                (bSkipProtect && rSect.IsProtectFlag()) )
+            if (shouldSkipSection(*pSectNd, bSkipHidden, bSkipProtect))
                 // than skip the section
-                aTmp = *pNd->EndOfSectionNode();
+                i = pSectNd->EndOfSectionIndex();
         }
-        else if( bFirst )
+        else if (i == rNode.GetIndex()) // The first iteration
         {
-            if( pNd->m_pStartOfSection->IsSectionNode() )
-            {
-                const SwSection& rSect = static_cast<SwSectionNode*>(pNd->
-                                m_pStartOfSection)->GetSection();
-                if( (bSkipHidden && rSect.IsHiddenFlag()) ||
-                    (bSkipProtect && rSect.IsProtectFlag()) )
+            if ((pSectNd = pNd->StartOfSectionNode()->GetSectionNode()))
+                if (shouldSkipSection(*pSectNd, bSkipHidden, bSkipProtect))
                     // than skip the section
-                    aTmp = *pNd->EndOfSectionNode();
-            }
+                    i = pSectNd->EndOfSectionIndex();
         }
-        else if( SwNodeType::ContentMask & pNd->GetNodeType() )
+        else if (SwContentNode* pContentNode = pNd->GetContentNode())
         {
-            const SwSectionNode* pSectNd;
-            if( ( bSkipHidden || bSkipProtect ) &&
-                nullptr != (pSectNd = pNd->FindSectionNode() ) &&
-                ( ( bSkipHidden && pSectNd->GetSection().IsHiddenFlag() ) ||
-                  ( bSkipProtect && pSectNd->GetSection().IsProtectFlag() )) )
-            {
-                aTmp = *pSectNd->EndOfSectionNode();
-            }
-            else
-            {
-                (*pIdx) = aTmp;
-                return const_cast<SwContentNode*>(static_cast<const SwContentNode*>(pNd));
-            }
+            if (bSkipHidden || bSkipProtect)
+                if ((pSectNd = pNd->FindSectionNode()))
+                    if (shouldSkipSection(*pSectNd, bSkipHidden, bSkipProtect))
+                    {
+                        i = pSectNd->EndOfSectionIndex();
+                        continue;
+                    }
+            return pContentNode;
         }
-        ++aTmp;
-        bFirst = false;
     }
     return nullptr;
 }
@@ -2015,169 +2008,82 @@ SwContentNode* SwNodes::GoNextSection( SwNodeIndex * pIdx,
  * @see SwNodes::GoPrevious
  * @see SwNodes::GoNextSection (TODO: seems to be C&P programming here)
 */
-SwContentNode* SwNodes::GoNextSection( SwPosition * pIdx,
-                            bool bSkipHidden, bool bSkipProtect ) const
+SwContentNode* SwNodes::GoNextSection(SwNodeIndex* pIdx, bool bSkipHidden, bool bSkipProtect)
 {
-    bool bFirst = true;
-    SwNodeIndex aTmp( pIdx->GetNode() );
-    const SwNode* pNd;
-    while( aTmp < Count() - 1 )
+    SwContentNode* pNd = goNextSection(pIdx->GetNode(), bSkipHidden, bSkipProtect);
+    if (pNd)
+        *pIdx = *pNd;
+    return pNd;
+}
+
+//TODO: provide better documentation
+/** go to next section that is not protected nor hidden
+ *
+ * @note if !bSkipHidden and !bSkipProtect, use GoNext/GoPrevious
+ *
+ * @param pIdx
+ * @param bSkipHidden
+ * @param bSkipProtect
+ * @return
+ * @see SwNodes::GoNext
+ * @see SwNodes::GoPrevious
+ * @see SwNodes::GoNextSection (TODO: seems to be C&P programming here)
+*/
+SwContentNode* SwNodes::GoNextSection(SwPosition* pIdx, bool bSkipHidden, bool bSkipProtect)
+{
+    SwContentNode* pNd = goNextSection(pIdx->GetNode(), bSkipHidden, bSkipProtect);
+    if (pNd)
+        pIdx->AssignStartIndex(*pNd);
+    return pNd;
+}
+
+static SwContentNode* goPrevSection(const SwNode& rNode, bool bSkipHidden, bool bSkipProtect)
+{
+    const SwNodes& rNodes = rNode.GetNodes();
+    SwNodeOffset first(startOfGlobalSection(rNode));
+    for (SwNodeOffset i(rNode.GetIndex()); i > first; --i)
     {
-        pNd = & aTmp.GetNode();
-        if (SwNodeType::Section == pNd->GetNodeType())
+        SwNode* pNd = rNodes[i];
+        if (pNd->IsEndNode() || i == rNode.GetIndex() /* the first iteration */)
         {
-            const SwSection& rSect = static_cast<const SwSectionNode*>(pNd)->GetSection();
-            if( (bSkipHidden && rSect.IsHiddenFlag()) ||
-                (bSkipProtect && rSect.IsProtectFlag()) )
-                // than skip the section
-                aTmp = *pNd->EndOfSectionNode();
-        }
-        else if( bFirst )
-        {
-            if( pNd->m_pStartOfSection->IsSectionNode() )
+            if (SwSectionNode* pSectNd = pNd->StartOfSectionNode()->GetSectionNode())
             {
-                const SwSection& rSect = static_cast<SwSectionNode*>(pNd->
-                                m_pStartOfSection)->GetSection();
-                if( (bSkipHidden && rSect.IsHiddenFlag()) ||
-                    (bSkipProtect && rSect.IsProtectFlag()) )
-                    // than skip the section
-                    aTmp = *pNd->EndOfSectionNode();
+                if (shouldSkipSection(*pSectNd, bSkipHidden, bSkipProtect))
+                    // then skip section
+                    i = pSectNd->GetIndex();
             }
         }
-        else if( SwNodeType::ContentMask & pNd->GetNodeType() )
+        else if (SwContentNode* pContentNode = pNd->GetContentNode())
         {
-            const SwSectionNode* pSectNd;
-            if( ( bSkipHidden || bSkipProtect ) &&
-                nullptr != (pSectNd = pNd->FindSectionNode() ) &&
-                ( ( bSkipHidden && pSectNd->GetSection().IsHiddenFlag() ) ||
-                  ( bSkipProtect && pSectNd->GetSection().IsProtectFlag() )) )
-            {
-                aTmp = *pSectNd->EndOfSectionNode();
-            }
-            else
-            {
-                pIdx->Assign(aTmp);
-                return const_cast<SwContentNode*>(static_cast<const SwContentNode*>(pNd));
-            }
+            if (bSkipHidden || bSkipProtect)
+                if (const SwSectionNode* pSectNd = pNd->FindSectionNode())
+                    if (shouldSkipSection(*pSectNd, bSkipHidden, bSkipProtect))
+                    {
+                        i = pSectNd->GetIndex();
+                        continue;
+                    }
+            return pContentNode;
         }
-        ++aTmp;
-        bFirst = false;
     }
     return nullptr;
 }
 
-///@see SwNodes::GoNextSection (TODO: seems to be C&P programming here)
-SwContentNode* SwNodes::GoPrevSection( SwNodeIndex * pIdx,
-                            bool bSkipHidden, bool bSkipProtect )
+///@see SwNodes::GoNextSection
+SwContentNode* SwNodes::GoPrevSection(SwNodeIndex* pIdx, bool bSkipHidden, bool bSkipProtect)
 {
-    bool bFirst = true;
-    SwNodeIndex aTmp( *pIdx );
-    const SwNode* pNd;
-    while( aTmp > SwNodeOffset(0) )
-    {
-        pNd = & aTmp.GetNode();
-        if (SwNodeType::End == pNd->GetNodeType())
-        {
-            if( pNd->m_pStartOfSection->IsSectionNode() )
-            {
-                const SwSection& rSect = static_cast<SwSectionNode*>(pNd->
-                                            m_pStartOfSection)->GetSection();
-                if( (bSkipHidden && rSect.IsHiddenFlag()) ||
-                    (bSkipProtect && rSect.IsProtectFlag()) )
-                    // than skip section
-                    aTmp = *pNd->StartOfSectionNode();
-            }
-            bFirst = false;
-        }
-        else if( bFirst )
-        {
-            bFirst = false;
-            if( pNd->m_pStartOfSection->IsSectionNode() )
-            {
-                const SwSection& rSect = static_cast<SwSectionNode*>(pNd->
-                                m_pStartOfSection)->GetSection();
-                if( (bSkipHidden && rSect.IsHiddenFlag()) ||
-                    (bSkipProtect && rSect.IsProtectFlag()) )
-                    // than skip section
-                    aTmp = *pNd->StartOfSectionNode();
-            }
-        }
-        else if( SwNodeType::ContentMask & pNd->GetNodeType() )
-        {
-            const SwSectionNode* pSectNd;
-            if( ( bSkipHidden || bSkipProtect ) &&
-                nullptr != (pSectNd = pNd->FindSectionNode() ) &&
-                ( ( bSkipHidden && pSectNd->GetSection().IsHiddenFlag() ) ||
-                  ( bSkipProtect && pSectNd->GetSection().IsProtectFlag() )) )
-            {
-                aTmp = *pSectNd;
-            }
-            else
-            {
-                (*pIdx) = aTmp;
-                return const_cast<SwContentNode*>(static_cast<const SwContentNode*>(pNd));
-            }
-        }
-        --aTmp;
-    }
-    return nullptr;
+    SwContentNode* pNd = goPrevSection(pIdx->GetNode(), bSkipHidden, bSkipProtect);
+    if (pNd)
+        *pIdx = *pNd;
+    return pNd;
 }
 
-///@see SwNodes::GoNextSection (TODO: seems to be C&P programming here)
-SwContentNode* SwNodes::GoPrevSection( SwPosition * pIdx,
-                            bool bSkipHidden, bool bSkipProtect )
+///@see SwNodes::GoNextSection
+SwContentNode* SwNodes::GoPrevSection(SwPosition* pIdx, bool bSkipHidden, bool bSkipProtect)
 {
-    bool bFirst = true;
-    SwNodeIndex aTmp( pIdx->GetNode() );
-    const SwNode* pNd;
-    while( aTmp > SwNodeOffset(0) )
-    {
-        pNd = & aTmp.GetNode();
-        if (SwNodeType::End == pNd->GetNodeType())
-        {
-            if( pNd->m_pStartOfSection->IsSectionNode() )
-            {
-                const SwSection& rSect = static_cast<SwSectionNode*>(pNd->
-                                            m_pStartOfSection)->GetSection();
-                if( (bSkipHidden && rSect.IsHiddenFlag()) ||
-                    (bSkipProtect && rSect.IsProtectFlag()) )
-                    // than skip section
-                    aTmp = *pNd->StartOfSectionNode();
-            }
-            bFirst = false;
-        }
-        else if( bFirst )
-        {
-            bFirst = false;
-            if( pNd->m_pStartOfSection->IsSectionNode() )
-            {
-                const SwSection& rSect = static_cast<SwSectionNode*>(pNd->
-                                m_pStartOfSection)->GetSection();
-                if( (bSkipHidden && rSect.IsHiddenFlag()) ||
-                    (bSkipProtect && rSect.IsProtectFlag()) )
-                    // than skip section
-                    aTmp = *pNd->StartOfSectionNode();
-            }
-        }
-        else if( SwNodeType::ContentMask & pNd->GetNodeType() )
-        {
-            const SwSectionNode* pSectNd;
-            if( ( bSkipHidden || bSkipProtect ) &&
-                nullptr != (pSectNd = pNd->FindSectionNode() ) &&
-                ( ( bSkipHidden && pSectNd->GetSection().IsHiddenFlag() ) ||
-                  ( bSkipProtect && pSectNd->GetSection().IsProtectFlag() )) )
-            {
-                aTmp = *pSectNd;
-            }
-            else
-            {
-                pIdx->Assign(aTmp);
-                return const_cast<SwContentNode*>(static_cast<const SwContentNode*>(pNd));
-            }
-        }
-        --aTmp;
-    }
-    return nullptr;
+    SwContentNode* pNd = goPrevSection(pIdx->GetNode(), bSkipHidden, bSkipProtect);
+    if (pNd)
+        pIdx->AssignStartIndex(*pNd);
+    return pNd;
 }
 
 //TODO: The inventor of the "single responsibility principle" will be crying if you ever show this code to him!
@@ -2369,6 +2275,7 @@ SwNode* SwNodes::FindPrvNxtFrameNode( const SwNode& rFrameNd,
 void SwNodes::ForEach( SwNodeOffset nStart, SwNodeOffset nEnd,
                        FnForEach_SwNodes fn, void* pArgs )
 {
+    assert( nEnd <= SwNodeOffset(m_nSize) );
     if( nEnd > SwNodeOffset(m_nSize) )
         nEnd = SwNodeOffset(m_nSize);
 
@@ -2403,7 +2310,7 @@ void SwNodes::ForEach( const SwNodeIndex& rStart, const SwNodeIndex& rEnd,
     ForEach( rStart.GetIndex(), rEnd.GetIndex(), fnForEach, pArgs );
 }
 
-void SwNodes::ForEach( SwNode& rStart, SwNode& rEnd,
+void SwNodes::ForEach( const SwNode& rStart, const SwNode& rEnd,
                     FnForEach_SwNodes fnForEach, void* pArgs )
 {
     ForEach( rStart.GetIndex(), rEnd.GetIndex(), fnForEach, pArgs );
@@ -2414,6 +2321,7 @@ void SwNodes::RemoveNode( SwNodeOffset nDelPos, SwNodeOffset nSz, bool bDel )
 #ifndef NDEBUG
     SwNode *const pFirst((*this)[nDelPos]);
 #endif
+    std::vector<SwTextAttr*> flys;
     for (SwNodeOffset nCnt(0); nCnt < nSz; nCnt++)
     {
         SwNode* pNode = (*this)[ nDelPos + nCnt ];
@@ -2426,11 +2334,11 @@ void SwNodes::RemoveNode( SwNodeOffset nDelPos, SwNodeOffset nSz, bool bDel )
             // so their anchor still points to correct node when deleted!
             // NOTE: this will call RemoveNode() recursively!
             // so adjust our indexes to account for removed nodes
-            SwNodeOffset const nPos = pTextNd->GetIndex();
             SwpHints *const pHints(pTextNd->GetpSwpHints());
             if (pHints)
             {
-                std::vector<SwTextAttr*> flys;
+                SwNodeOffset const nPos = pTextNd->GetIndex();
+                flys.clear();
                 for (size_t i = 0; i < pHints->Count(); ++i)
                 {
                     SwTextAttr *const pHint(pHints->Get(i));
@@ -2463,9 +2371,11 @@ void SwNodes::RemoveNode( SwNodeOffset nDelPos, SwNodeOffset nSz, bool bDel )
         }
 
         SwSectionNode* pSectionNode = pNode->GetSectionNode();
-        if (comphelper::LibreOfficeKit::isActive() && pSectionNode && !GetDoc().IsClipBoard() && SfxViewShell::Current())
+        SfxViewShell* pKitClipSh = (comphelper::LibreOfficeKit::isActive() && pSectionNode && !GetDoc().IsClipBoard())
+            ? SfxViewShell::Current() : nullptr;
+        if (pKitClipSh)
         {
-            OUString fieldCommand = pSectionNode->GetSection().GetSectionName();
+            OUString fieldCommand = pSectionNode->GetSection().GetSectionName().toString();
             tools::JsonWriter aJson;
             aJson.put("commandName", ".uno:DeleteSection");
             aJson.put("success", true);
@@ -2474,19 +2384,19 @@ void SwNodes::RemoveNode( SwNodeOffset nDelPos, SwNodeOffset nSz, bool bDel )
                 aJson.put("DeleteSection", fieldCommand);
             }
 
-            SfxViewShell::Current()->libreOfficeKitViewCallback(LOK_CALLBACK_UNO_COMMAND_RESULT, aJson.finishAndGetAsOString());
-
+            pKitClipSh->libreOfficeKitViewCallback(LOK_CALLBACK_UNO_COMMAND_RESULT, aJson.finishAndGetAsOString());
         }
     }
 
     SwNodeOffset nEnd = nDelPos + nSz;
     SwNode* pNew = (*this)[ nEnd ];
 
-    for (SwNodeIndex& rIndex : m_vIndices->GetRingContainer())
+    for (SwNodeOffset nCnt(0); nCnt < nSz; nCnt++)
     {
-        SwNodeOffset const nIdx = rIndex.GetIndex();
-        if (nDelPos <= nIdx && nIdx < nEnd)
-            rIndex = *pNew;
+        SwNode* pNode = (*this)[ nDelPos + nCnt ];
+        // the assignment will de-link the entry from the ring
+        while (pNode->m_vIndices)
+            (*pNode->m_vIndices) = *pNew;
     }
 
     std::vector<BigPtrEntry> aTempEntries;
@@ -2507,14 +2417,8 @@ void SwNodes::RemoveNode( SwNodeOffset nDelPos, SwNodeOffset nSz, bool bDel )
             delete pDel;
             // coverity[use_after_free : FALSE] - pPrev will be reassigned if there will be another iteration to the loop
             pDel = pPrev;
-            sal_uLong nPrevNdIdx = pPrev->GetPos();
             BigPtrEntry* pTempEntry = &aTempEntries[sal_Int32(nCnt)];
-            BigPtrArray::Replace( nPrevNdIdx+1, pTempEntry );
-            if( nCnt )
-                pPrev = BigPtrArray::operator []( nPrevNdIdx  - 1 );
-                    // the accessed element can be a naked BigPtrEntry from
-                    // aTempEntries, so the downcast to SwNode* in
-                    // SwNodes::operator[] would be illegal (and unnecessary)
+            pPrev = ReplaceTheOneAfter(pPrev, pTempEntry);
         }
         nDelPos = SwNodeOffset(pDel->GetPos() + 1);
     }

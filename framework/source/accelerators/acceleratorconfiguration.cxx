@@ -121,13 +121,13 @@ void SAL_CALL XMLBasedAcceleratorConfiguration::setKeyEvent(const css::awt::KeyE
         (aKeyEvent.Modifiers == 0)
         )
         throw css::lang::IllegalArgumentException(
-            "Such key event seems not to be supported by any operating system.",
+            u"Such key event seems not to be supported by any operating system."_ustr,
             static_cast< ::cppu::OWeakObject* >(this),
             0);
 
     if (sCommand.isEmpty())
         throw css::lang::IllegalArgumentException(
-            "Empty command strings are not allowed here.",
+            u"Empty command strings are not allowed here."_ustr,
             static_cast< ::cppu::OWeakObject* >(this),
             1);
 
@@ -151,7 +151,7 @@ css::uno::Sequence< css::awt::KeyEvent > SAL_CALL XMLBasedAcceleratorConfigurati
 {
     if (sCommand.isEmpty())
         throw css::lang::IllegalArgumentException(
-                "Empty command strings are not allowed here.",
+                u"Empty command strings are not allowed here."_ustr,
                 static_cast< ::cppu::OWeakObject* >(this),
                 1);
 
@@ -181,7 +181,7 @@ css::uno::Sequence< css::uno::Any > SAL_CALL XMLBasedAcceleratorConfiguration::g
         const OUString& rCommand = lCommandList[i];
         if (rCommand.isEmpty())
             throw css::lang::IllegalArgumentException(
-                    "Empty command strings are not allowed here.",
+                    u"Empty command strings are not allowed here."_ustr,
                     static_cast< ::cppu::OWeakObject* >(this),
                     static_cast<sal_Int16>(i));
 
@@ -203,7 +203,7 @@ void SAL_CALL XMLBasedAcceleratorConfiguration::removeCommandFromAllKeyEvents(co
 {
     if (sCommand.isEmpty())
         throw css::lang::IllegalArgumentException(
-                "Empty command strings are not allowed here.",
+                u"Empty command strings are not allowed here."_ustr,
                 static_cast< ::cppu::OWeakObject* >(this),
                 0);
 
@@ -211,7 +211,7 @@ void SAL_CALL XMLBasedAcceleratorConfiguration::removeCommandFromAllKeyEvents(co
     AcceleratorCache& rCache = impl_getCFG(true); // sal_True => force getting of a writeable cache!
     if (!rCache.hasCommand(sCommand))
         throw css::container::NoSuchElementException(
-                "Command does not exists inside this container.",
+                u"Command does not exists inside this container."_ustr,
                 static_cast< ::cppu::OWeakObject* >(this));
     rCache.removeCommand(sCommand);
 }
@@ -236,7 +236,7 @@ void SAL_CALL XMLBasedAcceleratorConfiguration::reload()
         xIn = xStream->getInputStream();
     if (!xIn.is())
         throw css::io::IOException(
-            "Could not open accelerator configuration for reading.",
+            u"Could not open accelerator configuration for reading."_ustr,
             static_cast< ::cppu::OWeakObject* >(this));
 
     // impl_ts_load() does not clear the cache
@@ -272,7 +272,7 @@ void SAL_CALL XMLBasedAcceleratorConfiguration::store()
 
     if (!xOut.is())
         throw css::io::IOException(
-            "Could not open accelerator configuration for saving.",
+            u"Could not open accelerator configuration for saving."_ustr,
             static_cast< ::cppu::OWeakObject* >(this));
 
     impl_ts_save(xOut);
@@ -294,7 +294,7 @@ void SAL_CALL XMLBasedAcceleratorConfiguration::storeToStorage(const css::uno::R
 
     if (!xOut.is())
         throw css::io::IOException(
-                "Could not open accelerator configuration for saving.",
+                u"Could not open accelerator configuration for saving."_ustr,
                 static_cast< ::cppu::OWeakObject* >(this));
 
     impl_ts_save(xOut);
@@ -310,17 +310,7 @@ sal_Bool SAL_CALL XMLBasedAcceleratorConfiguration::isModified()
 
 sal_Bool SAL_CALL XMLBasedAcceleratorConfiguration::isReadOnly()
 {
-    css::uno::Reference< css::io::XStream > xStream;
-    {
-        SolarMutexGuard g;
-        xStream = m_aPresetHandler.openTarget(TARGET_CURRENT,
-                css::embed::ElementModes::READWRITE); // open or create!
-    }
-
-    css::uno::Reference< css::io::XOutputStream > xOut;
-    if (xStream.is())
-        xOut = xStream->getOutputStream();
-    return !(xOut.is());
+    return m_aPresetHandler.isReadOnly();
 }
 
 void SAL_CALL XMLBasedAcceleratorConfiguration::setStorage(const css::uno::Reference< css::embed::XStorage >& /*xStorage*/)
@@ -464,12 +454,13 @@ AcceleratorCache& XMLBasedAcceleratorConfiguration::impl_getCFG(bool bWriteAcces
         return m_aReadCache;
 }
 
-OUString XMLBasedAcceleratorConfiguration::impl_ts_getLocale() const
+// static
+OUString XMLBasedAcceleratorConfiguration::impl_ts_getLocale()
 {
     OUString sISOLocale = officecfg::Setup::L10N::ooLocale::get();
 
     if (sISOLocale.isEmpty())
-        return "en-US";
+        return u"en-US"_ustr;
     return sISOLocale;
 }
 
@@ -483,7 +474,7 @@ XCUBasedAcceleratorConfiguration::XCUBasedAcceleratorConfiguration(css::uno::Ref
                                 : m_xContext      (std::move(xContext                     ))
 {
     m_xCfg.set(
-             ::comphelper::ConfigurationHelper::openConfig( m_xContext, "org.openoffice.Office.Accelerators", ::comphelper::EConfigurationModes::AllLocales ),
+             ::comphelper::ConfigurationHelper::openConfig( m_xContext, u"org.openoffice.Office.Accelerators"_ustr, ::comphelper::EConfigurationModes::AllLocales ),
              css::uno::UNO_QUERY );
 }
 
@@ -535,13 +526,13 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::setKeyEvent(const css::awt::KeyE
         (aKeyEvent.Modifiers == 0)
         )
         throw css::lang::IllegalArgumentException(
-                "Such key event seems not to be supported by any operating system.",
+                u"Such key event seems not to be supported by any operating system."_ustr,
                 static_cast< ::cppu::OWeakObject* >(this),
                 0);
 
     if (sCommand.isEmpty())
                 throw css::lang::IllegalArgumentException(
-                    "Empty command strings are not allowed here.",
+                    u"Empty command strings are not allowed here."_ustr,
                     static_cast< ::cppu::OWeakObject* >(this),
                     1);
 
@@ -643,7 +634,7 @@ css::uno::Sequence< css::awt::KeyEvent > SAL_CALL XCUBasedAcceleratorConfigurati
 {
     if (sCommand.isEmpty())
         throw css::lang::IllegalArgumentException(
-                "Empty command strings are not allowed here.",
+                u"Empty command strings are not allowed here."_ustr,
                 static_cast< ::cppu::OWeakObject* >(this),
                 1);
 
@@ -687,7 +678,7 @@ css::uno::Sequence< css::uno::Any > SAL_CALL XCUBasedAcceleratorConfiguration::g
         const OUString& rCommand = lCommandList[i];
         if (rCommand.isEmpty())
             throw css::lang::IllegalArgumentException(
-                    "Empty command strings are not allowed here.",
+                    u"Empty command strings are not allowed here."_ustr,
                     static_cast< ::cppu::OWeakObject* >(this),
                     static_cast<sal_Int16>(i));
 
@@ -713,7 +704,7 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::removeCommandFromAllKeyEvents(co
 {
     if (sCommand.isEmpty())
         throw css::lang::IllegalArgumentException(
-                "Empty command strings are not allowed here.",
+                u"Empty command strings are not allowed here."_ustr,
                 static_cast< ::cppu::OWeakObject* >(this),
                 0);
 
@@ -724,7 +715,7 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::removeCommandFromAllKeyEvents(co
 
     if (!rPrimaryCache.hasCommand(sCommand) && !rSecondaryCache.hasCommand(sCommand))
         throw css::container::NoSuchElementException(
-                "Command does not exists inside this container.",
+                u"Command does not exists inside this container."_ustr,
                 static_cast< ::cppu::OWeakObject* >(this));
 
     if (rPrimaryCache.hasCommand(sCommand))
@@ -781,17 +772,17 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::storeToStorage(const css::uno::R
         return;
 
     tools::Long nOpenModes = css::embed::ElementModes::READWRITE;
-    css::uno::Reference< css::embed::XStorage > xAcceleratorTypeStorage = xStorage->openStorageElement("accelerator", nOpenModes);
+    css::uno::Reference< css::embed::XStorage > xAcceleratorTypeStorage = xStorage->openStorageElement(u"accelerator"_ustr, nOpenModes);
     if (!xAcceleratorTypeStorage.is())
         return;
 
-    css::uno::Reference< css::io::XStream > xStream = xAcceleratorTypeStorage->openStreamElement("current", nOpenModes);
+    css::uno::Reference< css::io::XStream > xStream = xAcceleratorTypeStorage->openStreamElement(u"current"_ustr, nOpenModes);
     css::uno::Reference< css::io::XOutputStream > xOut;
     if (xStream.is())
         xOut = xStream->getOutputStream();
     if (!xOut.is())
         throw css::io::IOException(
-            "Could not open accelerator configuration for saving.",
+            u"Could not open accelerator configuration for saving."_ustr,
             static_cast< ::cppu::OWeakObject* >(this));
 
     // the original m_aCache has been split into primary cache and secondary cache...
@@ -896,16 +887,15 @@ void SAL_CALL XCUBasedAcceleratorConfiguration::removeResetListener(const css::u
     SAL_INFO("fwk.accelerators", "XCUBasedAcceleratorConfiguration::removeResetListener(): implement me");
 }
 
-void SAL_CALL XCUBasedAcceleratorConfiguration::changesOccurred(const css::util::ChangesEvent& aEvent)
+void SAL_CALL XCUBasedAcceleratorConfiguration::changesOccurred(const css::util::ChangesEvent& aReceivedEvents)
 {
     SAL_INFO( "fwk.accelerators", "XCUBasedAcceleratorConfiguration::changesOccurred()" );
 
     css::uno::Reference< css::container::XHierarchicalNameAccess > xHAccess;
-    aEvent.Base >>= xHAccess;
+    aReceivedEvents.Base >>= xHAccess;
     if (! xHAccess.is ())
         return;
 
-    css::util::ChangesEvent aReceivedEvents( aEvent );
     const sal_Int32 c = aReceivedEvents.Changes.getLength();
     for (sal_Int32 i=0; i<c; ++i)
     {
@@ -972,7 +962,7 @@ void XCUBasedAcceleratorConfiguration::impl_ts_load( bool bPreferred, const css:
         sal_Int32 nKeys = lKeys.getLength();
         for ( sal_Int32 i=0; i<nKeys; ++i )
         {
-            OUString sKey = lKeys[i];
+            const OUString& sKey = lKeys[i];
             xAccess->getByName(sKey) >>= xKey;
             xKey->getByName(CFG_PROP_COMMAND) >>= xCommand;
 
@@ -1311,12 +1301,13 @@ AcceleratorCache& XCUBasedAcceleratorConfiguration::impl_getCFG(bool bPreferred,
     }
 }
 
-OUString XCUBasedAcceleratorConfiguration::impl_ts_getLocale() const
+// static
+OUString XCUBasedAcceleratorConfiguration::impl_ts_getLocale()
 {
     OUString sISOLocale = officecfg::Setup::L10N::ooLocale::get();
 
     if (sISOLocale.isEmpty())
-        return "en-US";
+        return u"en-US"_ustr;
     return sISOLocale;
 }
 

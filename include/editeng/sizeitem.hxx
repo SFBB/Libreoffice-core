@@ -38,6 +38,7 @@ class EDITENG_DLLPUBLIC SvxSizeItem : public SfxPoolItem
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxSizeItem)
     explicit SvxSizeItem( const sal_uInt16 nId );
     SvxSizeItem( const sal_uInt16 nId, const Size& rSize);
 
@@ -56,12 +57,15 @@ public:
     virtual bool             HasMetrics() const override;
 
     const Size& GetSize() const { return m_aSize; }
-    void        SetSize(const Size& rSize) { m_aSize = rSize; }
+    void        SetSize(const Size& rSize)
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_aSize = rSize; }
 
     tools::Long GetWidth() const { return m_aSize.getWidth();  }
     tools::Long GetHeight() const { return m_aSize.getHeight(); }
-    void SetWidth(tools::Long n) { m_aSize.setWidth(n); }
-    void SetHeight(tools::Long n) { m_aSize.setHeight(n); }
+    void SetWidth(tools::Long n)
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_aSize.setWidth(n); }
+    void SetHeight(tools::Long n)
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_aSize.setHeight(n); }
 };
 
 #endif

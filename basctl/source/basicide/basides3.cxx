@@ -72,9 +72,9 @@ VclPtr<DialogWindow> Shell::CreateDlgWin( const ScriptDocument& rDocument, const
             if ( xISP.is() )
             {
                 // create dialog model
-                Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+                const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
                 Reference< container::XNameContainer > xDialogModel( xContext->getServiceManager()->createInstanceWithContext
-                    ( "com.sun.star.awt.UnoControlDialogModel", xContext ), UNO_QUERY );
+                    ( u"com.sun.star.awt.UnoControlDialogModel"_ustr, xContext ), UNO_QUERY );
                 Reference< XInputStream > xInput( xISP->createInputStream() );
                 ::xmlscript::importDialogModel( xInput, xDialogModel, xContext, rDocument.isDocument() ? rDocument.getDocument() : Reference< frame::XModel >() );
                 LocalizationMgr::setStringResourceAtDialog( rDocument, rLibName, aDlgName, xDialogModel );
@@ -117,7 +117,7 @@ VclPtr<DialogWindow> Shell::FindDlgWin (
     bool bCreateIfNotExist, bool bFindSuspended
 )
 {
-    if (VclPtr<BaseWindow> pWin = FindWindow(rDocument, rLibName, rName, TYPE_DIALOG, bFindSuspended))
+    if (VclPtr<BaseWindow> pWin = FindWindow(rDocument, rLibName, rName, SBX_TYPE_DIALOG, bFindSuspended))
         return static_cast<DialogWindow*>(pWin.get());
     return bCreateIfNotExist ? CreateDlgWin(rDocument, rLibName, rName) : nullptr;
 }

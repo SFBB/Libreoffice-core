@@ -35,21 +35,20 @@ class SvNumberFormatter;
 class SwDoc;
 class SwFormatAnchor;
 class SwFrameFormat;
-class SwContentIndex;
-class SwNodeRange;
+class SwHistory;
 class SwPaM;
 class SwNode;
 struct SwPosition;
 
 namespace sw::mark
 {
-    class IMark;
+    class MarkBase;
 
     class SaveBookmark
     {
     public:
             SaveBookmark(
-                const ::sw::mark::IMark& rBkmk,
+                const ::sw::mark::MarkBase& rBkmk,
                 const SwNode& rMvPos,
                 std::optional<sal_Int32> oContentIdx);
             void SetInDoc(SwDoc* pDoc,
@@ -57,7 +56,7 @@ namespace sw::mark
                 std::optional<sal_Int32> oContentIdx = std::nullopt);
 
     private:
-            OUString m_aName;
+            SwMarkName m_aName;
             OUString m_aShortName;
             bool m_bHidden;
             OUString m_aHideCondition;

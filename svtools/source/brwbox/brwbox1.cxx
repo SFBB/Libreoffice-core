@@ -17,12 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <comphelper/diagnose_ex.hxx>
 #include <svtools/brwbox.hxx>
 #include <svtools/brwhead.hxx>
 #include <svtools/scrolladaptor.hxx>
 #include <o3tl/numeric.hxx>
 #include <o3tl/safeint.hxx>
 #include "datwin.hxx"
+#include <osl/diagnose.h>
 #include <tools/debug.hxx>
 #include <tools/fract.hxx>
 #include <sal/log.hxx>
@@ -34,81 +36,42 @@
 #include <com/sun/star/accessibility/AccessibleTableModelChange.hpp>
 #include <com/sun/star/accessibility/AccessibleTableModelChangeType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
 #include <tools/multisel.hxx>
-#include "brwimpl.hxx"
 
 
 #define SCROLL_FLAGS (ScrollFlags::Clip | ScrollFlags::NoChildren)
 
-using namespace com::sun::star::accessibility::AccessibleEventId;
 using namespace com::sun::star::accessibility::AccessibleTableModelChangeType;
 using com::sun::star::accessibility::AccessibleTableModelChange;
+using namespace com::sun::star::accessibility;
 using namespace ::com::sun::star::uno;
 using namespace svt;
 
 namespace
 {
-    void disposeAndClearHeaderCell(::svt::BrowseBoxImpl::THeaderCellMap& _rHeaderCell)
-    {
-        ::std::for_each(
-                        _rHeaderCell.begin(),
-                        _rHeaderCell.end(),
-                        ::svt::BrowseBoxImpl::THeaderCellMapFunctorDispose()
-                            );
-        _rHeaderCell.clear();
-    }
-}
 
-void BrowseBox::ConstructImpl( BrowserMode nMode )
+void disposeAndClearHeaderCell(BrowseBox::THeaderCellMap& _rHeaderCell)
 {
-    SAL_INFO("svtools", "BrowseBox:ConstructImpl " << this );
-    bMultiSelection = false;
-    pColSel = nullptr;
-    pVScroll = nullptr;
-    pDataWin = VclPtr<BrowserDataWin>::Create( this ).get();
-    m_pImpl.reset( new ::svt::BrowseBoxImpl() );
-
-    InitSettings_Impl( this );
-    InitSettings_Impl( pDataWin );
-
-    bBootstrapped = false;
-    m_nDataRowHeight = 0;
-    nTitleLines = 1;
-    nFirstCol = 0;
-    nTopRow = 0;
-    nCurRow = BROWSER_ENDOFSELECTION;
-    nCurColId = 0;
-    nResizeX = 0;
-    nMinResizeX = 0;
-    nDragX = 0;
-    nResizeCol = 0;
-    bResizing = false;
-    bSelect = false;
-    bSelecting = false;
-    bScrolling = false;
-    bSelectionIsVisible = false;
-    bNotToggleSel = false;
-    bRowDividerDrag = false;
-    bHit = false;
-    mbInteractiveRowHeight = false;
-    bHideSelect = false;
-    bHideCursor = TRISTATE_FALSE;
-    nRowCount = 0;
-    m_bFocusOnlyCursor = true;
-    m_aCursorColor = COL_TRANSPARENT;
-    m_nCurrentMode = BrowserMode::NONE;
-    nControlAreaWidth = USHRT_MAX;
-    uRow.nSel = BROWSER_ENDOFSELECTION;
-
-    aHScroll->SetLineSize(1);
-    aHScroll->SetScrollHdl( LINK( this, BrowseBox, HorzScrollHdl ) );
-    pDataWin->Show();
-
-    SetMode( nMode );
-    bSelectionIsVisible = bKeepHighlight;
-    bHasFocus = HasChildPathFocus();
-    pDataWin->nCursorHidden =
-                ( bHasFocus ? 0 : 1 ) + ( GetUpdateMode() ? 0 : 1 );
+    ::std::for_each(
+        _rHeaderCell.begin(), _rHeaderCell.end(),
+        [](const BrowseBox::THeaderCellMap::value_type& rType)
+        {
+            css::uno::Reference<css::lang::XComponent> xComp(rType.second, css::uno::UNO_QUERY);
+            OSL_ENSURE(xComp.is() || !rType.second.is(),
+                       "THeaderCellMapFunctorDispose: invalid accessible cell (no XComponent)!");
+            if (xComp.is())
+                try
+                {
+                    xComp->dispose();
+                }
+                catch (const css::uno::Exception&)
+                {
+                    TOOLS_WARN_EXCEPTION("svtools", "THeaderCellMapFunctorDispose");
+                }
+        });
+    _rHeaderCell.clear();
+}
 }
 
 // we're just measuring the "real" NavigationBar
@@ -121,11 +84,11 @@ private:
     std::unique_ptr<weld::Label> m_xRecordCount;
 public:
     MeasureStatusBar(vcl::Window *pParent)
-        : InterimItemWindow(pParent, "svx/ui/navigationbar.ui", "NavigationBar")
-        , m_xRecordText(m_xBuilder->weld_label("recordtext"))
-        , m_xAbsolute(m_xBuilder->weld_entry("entry-noframe"))
-        , m_xRecordOf(m_xBuilder->weld_label("recordof"))
-        , m_xRecordCount(m_xBuilder->weld_label("recordcount"))
+        : InterimItemWindow(pParent, u"svx/ui/navigationbar.ui"_ustr, u"NavigationBar"_ustr)
+        , m_xRecordText(m_xBuilder->weld_label(u"recordtext"_ustr))
+        , m_xAbsolute(m_xBuilder->weld_entry(u"entry-noframe"_ustr))
+        , m_xRecordOf(m_xBuilder->weld_label(u"recordof"_ustr))
+        , m_xRecordCount(m_xBuilder->weld_label(u"recordcount"_ustr))
     {
         vcl::Font aApplFont(Application::GetSettings().GetStyleSettings().GetToolFont());
         m_xAbsolute->set_font(aApplFont);
@@ -172,7 +135,52 @@ BrowseBox::BrowseBox( vcl::Window* pParent, WinBits nBits, BrowserMode nMode )
     ,m_nActualCornerWidth(0)
     ,m_bNavigationBar(false)
 {
-    ConstructImpl( nMode );
+    bMultiSelection = false;
+    pColSel = nullptr;
+    pVScroll = nullptr;
+    pDataWin = VclPtr<BrowserDataWin>::Create( this ).get();
+
+    InitSettings_Impl( this );
+    InitSettings_Impl( pDataWin );
+
+    bBootstrapped = false;
+    m_nDataRowHeight = 0;
+    nTitleLines = 1;
+    nFirstCol = 0;
+    nTopRow = 0;
+    nCurRow = BROWSER_ENDOFSELECTION;
+    nCurColId = 0;
+    nResizeX = 0;
+    nMinResizeX = 0;
+    nDragX = 0;
+    nResizeCol = 0;
+    bResizing = false;
+    bSelect = false;
+    bSelecting = false;
+    bScrolling = false;
+    bSelectionIsVisible = false;
+    bNotToggleSel = false;
+    bRowDividerDrag = false;
+    bHit = false;
+    mbInteractiveRowHeight = false;
+    bHideSelect = false;
+    bHideCursor = TRISTATE_FALSE;
+    nRowCount = 0;
+    m_bFocusOnlyCursor = true;
+    m_aCursorColor = COL_TRANSPARENT;
+    m_nCurrentMode = BrowserMode::NONE;
+    nControlAreaWidth = USHRT_MAX;
+    uRow.nSel = BROWSER_ENDOFSELECTION;
+
+    aHScroll->SetLineSize(1);
+    aHScroll->SetScrollHdl( LINK( this, BrowseBox, HorzScrollHdl ) );
+    pDataWin->Show();
+
+    SetMode( nMode );
+    bSelectionIsVisible = bKeepHighlight;
+    bHasFocus = HasChildPathFocus();
+    pDataWin->nCursorHidden =
+        ( bHasFocus ? 0 : 1 ) + ( GetUpdateMode() ? 0 : 1 );
 }
 
 BrowseBox::~BrowseBox()
@@ -182,12 +190,12 @@ BrowseBox::~BrowseBox()
 
 void BrowseBox::DisposeAccessible()
 {
-    if (m_pImpl->m_pAccessible )
+    if (m_xAccessible)
     {
-        disposeAndClearHeaderCell(m_pImpl->m_aColHeaderCellMap);
-        disposeAndClearHeaderCell(m_pImpl->m_aRowHeaderCellMap);
-        m_pImpl->m_pAccessible->dispose();
-        m_pImpl->m_pAccessible = nullptr;
+        disposeAndClearHeaderCell(m_aColHeaderCellMap);
+        disposeAndClearHeaderCell(m_aRowHeaderCellMap);
+        m_xAccessible->dispose();
+        m_xAccessible = nullptr;
     }
 }
 
@@ -499,7 +507,7 @@ void BrowseBox::SetColumnPos( sal_uInt16 nColumnId, sal_uInt16 nPos )
         return;
 
     commitTableEvent(
-        TABLE_MODEL_CHANGED,
+        AccessibleEventId::TABLE_MODEL_CHANGED,
         Any( AccessibleTableModelChange(
                     COLUMNS_REMOVED,
                     -1,
@@ -512,7 +520,7 @@ void BrowseBox::SetColumnPos( sal_uInt16 nColumnId, sal_uInt16 nPos )
     );
 
     commitTableEvent(
-        TABLE_MODEL_CHANGED,
+        AccessibleEventId::TABLE_MODEL_CHANGED,
         Any( AccessibleTableModelChange(
                     COLUMNS_INSERTED,
                     -1,
@@ -562,7 +570,7 @@ void BrowseBox::SetColumnTitle( sal_uInt16 nItemId, const OUString& rTitle )
 
     if ( isAccessibleAlive() )
     {
-        commitTableEvent(   TABLE_COLUMN_DESCRIPTION_CHANGED,
+        commitTableEvent(AccessibleEventId::TABLE_COLUMN_DESCRIPTION_CHANGED,
             Any( rTitle ),
             Any( sOld )
         );
@@ -745,7 +753,7 @@ void BrowseBox::RemoveColumn( sal_uInt16 nItemId )
         return;
 
     commitTableEvent(
-        TABLE_MODEL_CHANGED,
+        AccessibleEventId::TABLE_MODEL_CHANGED,
         Any( AccessibleTableModelChange(COLUMNS_REMOVED,
                                                 -1,
                                                 -1,
@@ -757,7 +765,7 @@ void BrowseBox::RemoveColumn( sal_uInt16 nItemId )
     );
 
     commitHeaderBarEvent(
-        CHILD,
+        AccessibleEventId::CHILD,
         Any(),
         Any( CreateAccessibleColumnHeader( nPos ) ),
         true
@@ -805,21 +813,21 @@ void BrowseBox::RemoveColumns()
     // all columns should be removed, so we remove the column header bar and append it again
     // to avoid to notify every column remove
     commitBrowseBoxEvent(
-        CHILD,
+        AccessibleEventId::CHILD,
         Any(),
-        Any(m_pImpl->getAccessibleHeaderBar(AccessibleBrowseBoxObjType::ColumnHeaderBar))
+        Any(getAccessibleHeaderBar(AccessibleBrowseBoxObjType::ColumnHeaderBar))
     );
 
     // and now append it again
     commitBrowseBoxEvent(
-        CHILD,
-        Any(m_pImpl->getAccessibleHeaderBar(AccessibleBrowseBoxObjType::ColumnHeaderBar)),
+        AccessibleEventId::CHILD,
+        Any(getAccessibleHeaderBar(AccessibleBrowseBoxObjType::ColumnHeaderBar)),
         Any()
     );
 
     // notify a table model change
     commitTableEvent(
-        TABLE_MODEL_CHANGED,
+        AccessibleEventId::TABLE_MODEL_CHANGED,
         Any ( AccessibleTableModelChange( COLUMNS_REMOVED,
                         -1,
                         -1,
@@ -832,12 +840,12 @@ void BrowseBox::RemoveColumns()
 }
 
 
-OUString BrowseBox::GetColumnTitle( sal_uInt16 nId ) const
+const OUString & BrowseBox::GetColumnTitle( sal_uInt16 nId ) const
 {
 
     sal_uInt16 nItemPos = GetColumnPos( nId );
     if ( nItemPos >= mvCols.size() )
-        return OUString();
+        return EMPTY_OUSTRING;
     return mvCols[ nItemPos ]->Title();
 }
 
@@ -1125,21 +1133,21 @@ void BrowseBox::Clear()
         return;
 
     commitBrowseBoxEvent(
-        CHILD,
+        AccessibleEventId::CHILD,
         Any(),
-        Any( m_pImpl->getAccessibleHeaderBar( AccessibleBrowseBoxObjType::RowHeaderBar ) )
+        Any(getAccessibleHeaderBar( AccessibleBrowseBoxObjType::RowHeaderBar))
     );
 
     // and now append it again
     commitBrowseBoxEvent(
-        CHILD,
-        Any( m_pImpl->getAccessibleHeaderBar( AccessibleBrowseBoxObjType::RowHeaderBar ) ),
+        AccessibleEventId::CHILD,
+        Any(getAccessibleHeaderBar(AccessibleBrowseBoxObjType::RowHeaderBar)),
         Any()
     );
 
     // notify a table model change
     commitTableEvent(
-        TABLE_MODEL_CHANGED,
+        AccessibleEventId::TABLE_MODEL_CHANGED,
         Any( AccessibleTableModelChange(ROWS_REMOVED,
             0,
             nOldRowCount,
@@ -1225,7 +1233,7 @@ void BrowseBox::RowInserted( sal_Int32 nRow, sal_Int32 nNumRows, bool bDoPaint, 
     if ( isAccessibleAlive() )
     {
         commitTableEvent(
-            TABLE_MODEL_CHANGED,
+            AccessibleEventId::TABLE_MODEL_CHANGED,
             Any( AccessibleTableModelChange(
                         ROWS_INSERTED,
                         nRow,
@@ -1240,7 +1248,7 @@ void BrowseBox::RowInserted( sal_Int32 nRow, sal_Int32 nNumRows, bool bDoPaint, 
         for (tools::Long i = nRow+1 ; i <= nRowCount ; ++i)
         {
             commitHeaderBarEvent(
-                CHILD,
+                AccessibleEventId::CHILD,
                 Any( CreateAccessibleRowHeader( i ) ),
                 Any(),
                 false
@@ -1368,34 +1376,34 @@ void BrowseBox::RowRemoved( sal_Int32 nRow, sal_Int32 nNumRows, bool bDoPaint )
             // all columns should be removed, so we remove the column header bar and append it again
             // to avoid to notify every column remove
             commitBrowseBoxEvent(
-                CHILD,
+                AccessibleEventId::CHILD,
                 Any(),
-                Any( m_pImpl->getAccessibleHeaderBar( AccessibleBrowseBoxObjType::RowHeaderBar ) )
+                Any(getAccessibleHeaderBar(AccessibleBrowseBoxObjType::RowHeaderBar))
             );
 
             // and now append it again
             commitBrowseBoxEvent(
-                CHILD,
-                Any(m_pImpl->getAccessibleHeaderBar(AccessibleBrowseBoxObjType::RowHeaderBar)),
+                AccessibleEventId::CHILD,
+                Any(getAccessibleHeaderBar(AccessibleBrowseBoxObjType::RowHeaderBar)),
                 Any()
             );
             commitBrowseBoxEvent(
-                CHILD,
+                AccessibleEventId::CHILD,
                 Any(),
-                Any( m_pImpl->getAccessibleTable() )
+                Any(getAccessibleTable())
             );
 
             // and now append it again
             commitBrowseBoxEvent(
-                CHILD,
-                Any( m_pImpl->getAccessibleTable() ),
+                AccessibleEventId::CHILD,
+                Any(getAccessibleTable()),
                 Any()
             );
         }
         else
         {
             commitTableEvent(
-                TABLE_MODEL_CHANGED,
+                AccessibleEventId::TABLE_MODEL_CHANGED,
                 Any( AccessibleTableModelChange(
                             ROWS_REMOVED,
                             nRow,
@@ -1410,7 +1418,7 @@ void BrowseBox::RowRemoved( sal_Int32 nRow, sal_Int32 nNumRows, bool bDoPaint )
             for (tools::Long i = nRow+1 ; i <= (nRow+nNumRows) ; ++i)
             {
                 commitHeaderBarEvent(
-                    CHILD,
+                    AccessibleEventId::CHILD,
                     Any(),
                     Any( CreateAccessibleRowHeader( i ) ),
                     false
@@ -1642,7 +1650,7 @@ void BrowseBox::SetNoSelection()
     if ( isAccessibleAlive() )
     {
         commitTableEvent(
-            SELECTION_CHANGED,
+            AccessibleEventId::SELECTION_CHANGED,
             Any(),
             Any()
         );
@@ -1695,19 +1703,19 @@ void BrowseBox::SelectAll()
         return;
 
     commitTableEvent(
-        SELECTION_CHANGED,
+        AccessibleEventId::SELECTION_CHANGED,
         Any(),
         Any()
     );
     commitHeaderBarEvent(
-        SELECTION_CHANGED,
+        AccessibleEventId::SELECTION_CHANGED,
         Any(),
         Any(),
         true
     ); // column header event
 
     commitHeaderBarEvent(
-        SELECTION_CHANGED,
+        AccessibleEventId::SELECTION_CHANGED,
         Any(),
         Any(),
         false
@@ -1774,12 +1782,12 @@ void BrowseBox::SelectRow( sal_Int32 nRow, bool _bSelect, bool bExpand )
         return;
 
     commitTableEvent(
-        SELECTION_CHANGED,
+        AccessibleEventId::SELECTION_CHANGED,
         Any(),
         Any()
     );
     commitHeaderBarEvent(
-        SELECTION_CHANGED,
+        AccessibleEventId::SELECTION_CHANGED,
         Any(),
         Any(),
         false
@@ -1841,12 +1849,12 @@ void BrowseBox::SelectColumnPos( sal_uInt16 nNewColPos, bool _bSelect, bool bMak
         if ( isAccessibleAlive() )
         {
             commitTableEvent(
-                SELECTION_CHANGED,
+                AccessibleEventId::SELECTION_CHANGED,
                 Any(),
                 Any()
             );
             commitHeaderBarEvent(
-                SELECTION_CHANGED,
+                AccessibleEventId::SELECTION_CHANGED,
                 Any(),
                 Any(),
                 true
@@ -2260,7 +2268,7 @@ void BrowseBox::VisibleRowsChanged( sal_Int32, sal_uInt16 )
     }
     else if ( nRowCount > GetRowCount() )
     {
-        RowRemoved(nRowCount-(nRowCount - GetRowCount()),nRowCount - GetRowCount(), false);
+        RowRemoved(GetRowCount(), nRowCount - GetRowCount(), false);
     }
 }
 
@@ -2339,11 +2347,10 @@ void BrowseBox::CursorMoved()
     // before implementing more here, please adjust the EditBrowseBox
 
     if ( isAccessibleAlive() && HasFocus() )
-        commitTableEvent(
-            ACTIVE_DESCENDANT_CHANGED,
-            Any( CreateAccessibleCell( GetCurRow(),GetColumnPos( GetCurColumnId() ) ) ),
-            Any()
-        );
+        commitTableEvent(AccessibleEventId::ACTIVE_DESCENDANT_CHANGED,
+                         Any(css::uno::Reference<css::accessibility::XAccessible>(
+                             CreateAccessibleCell(GetCurRow(), GetColumnPos(GetCurColumnId())))),
+                         Any());
 }
 
 void BrowseBox::LoseFocus()

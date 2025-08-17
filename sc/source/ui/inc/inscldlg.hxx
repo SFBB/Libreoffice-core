@@ -22,6 +22,7 @@
 #include <vcl/weld.hxx>
 
 #include <global.hxx>
+#include "viewdata.hxx"
 
 class ScInsertCellDlg : public weld::GenericDialogController
 {
@@ -30,12 +31,20 @@ private:
     std::unique_ptr<weld::RadioButton> m_xBtnCellsRight;
     std::unique_ptr<weld::RadioButton> m_xBtnInsRow;
     std::unique_ptr<weld::RadioButton> m_xBtnInsCol;
+    std::unique_ptr<weld::SpinButton> m_xNumberOfRows;
+    std::unique_ptr<weld::SpinButton> m_xNumberOfCols;
+
+    // These are arbitrarily chosen.
+    static constexpr size_t MAX_INS_ROWS = 4000;
+    static constexpr size_t MAX_INS_COLS = 4000;
 
 public:
-    ScInsertCellDlg(weld::Window* pParent, bool bDisallowCellMove);
+    ScInsertCellDlg(weld::Window* pParent, ScViewData& rViewData, bool bDisallowCellMove);
     virtual ~ScInsertCellDlg() override;
 
     InsCellCmd GetInsCellCmd() const;
+    size_t GetCount() const;
+    DECL_LINK(RadioButtonsHdl, weld::Toggleable&, void);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

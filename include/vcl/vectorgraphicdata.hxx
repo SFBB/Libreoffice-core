@@ -31,10 +31,10 @@
 namespace com::sun::star::graphic { class XPrimitive2D; }
 
 
-// helper to convert any Primitive2DSequence to a good quality BitmapEx,
+// helper to convert any Primitive2DSequence to a good quality Bitmap,
 // using default parameters and graphic::XPrimitive2DRenderer
 
-BitmapEx VCL_DLLPUBLIC convertPrimitive2DSequenceToBitmapEx(
+Bitmap VCL_DLLPUBLIC convertPrimitive2DSequenceToBitmap(
     const std::deque< css::uno::Reference< css::graphic::XPrimitive2D > >& rSequence,
     const basegfx::B2DRange& rTargetRange,
     const sal_uInt32 nMaximumQuadraticPixels = 500000,
@@ -60,7 +60,7 @@ private:
     bool                        mbSequenceCreated;
     basegfx::B2DRange           maRange;
     std::deque< css::uno::Reference< css::graphic::XPrimitive2D > > maSequence;
-    BitmapEx                    maReplacement;
+    Bitmap                      maReplacement;
     size_t                      mNestedBitmapSize;
     VectorGraphicDataType meType;
 
@@ -81,7 +81,6 @@ private:
     VectorGraphicData& operator=(const VectorGraphicData&) = delete;
 
 public:
-    VectorGraphicData(const OUString& rPath, VectorGraphicDataType eVectorDataType);
     VectorGraphicData(
         BinaryDataContainer aDataContainer,
         VectorGraphicDataType eVectorDataType,
@@ -105,7 +104,8 @@ public:
     /// data read and evtl. on demand creation
     const basegfx::B2DRange& getRange() const;
     const std::deque<css::uno::Reference<css::graphic::XPrimitive2D>>& getPrimitive2DSequence() const;
-    const BitmapEx& getReplacement() const;
+    Bitmap getBitmap(const Size& pixelSize) const;
+    const Bitmap& getReplacement() const;
     BitmapChecksum GetChecksum() const;
 
     sal_Int32 getPageIndex() const

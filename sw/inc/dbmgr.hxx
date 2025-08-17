@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_DBMGR_HXX
-#define INCLUDED_SW_INC_DBMGR_HXX
+#pragma once
 
 #include <rtl/ustring.hxx>
 #include <tools/solar.h>
@@ -76,7 +75,6 @@ namespace weld {
 
 class SwView;
 class SwWrtShell;
-class ListBox;
 class SvNumberFormatter;
 class SwXMailMerge;
 class SwMailMergeConfigItem;
@@ -238,10 +236,10 @@ struct SwMergeDescriptor
 
 class SwDoc;
 
-class SW_DLLPUBLIC SwDBManager
+class SwDBManager
 {
     struct SwDBManager_Impl;
-    class SAL_DLLPRIVATE ConnectionDisposedListener_Impl;
+    class ConnectionDisposedListener_Impl;
     class MailDispatcherListener_Impl;
 
     enum class MergeStatus
@@ -271,22 +269,22 @@ class SW_DLLPUBLIC SwDBManager
     /// The document that owns this manager.
     SwDoc* m_pDoc;
 
-    SAL_DLLPRIVATE SwDSParam*          FindDSData(const SwDBData& rData, bool bCreate);
-    SAL_DLLPRIVATE SwDSParam*          FindDSConnection(const OUString& rSource, bool bCreate);
+    SwDSParam*          FindDSData(const SwDBData& rData, bool bCreate);
+    SwDSParam*          FindDSConnection(const OUString& rSource, bool bCreate);
 
     /// Insert data record as text into document.
-    SAL_DLLPRIVATE void ImportFromConnection( SwWrtShell* pSh);
+    void ImportFromConnection( SwWrtShell* pSh);
 
     /// Insert a single data record as text into document.
-    SAL_DLLPRIVATE void ImportDBEntry(SwWrtShell* pSh);
+    void ImportDBEntry(SwWrtShell* pSh);
 
     /// Run the mail merge for defined modes, except DBMGR_MERGE
-    SAL_DLLPRIVATE bool MergeMailFiles( SwWrtShell* pSh,
+    bool MergeMailFiles( SwWrtShell* pSh,
                                         const SwMergeDescriptor& rMergeDescriptor );
 
-    SAL_DLLPRIVATE bool ToNextMergeRecord();
-    SAL_DLLPRIVATE bool IsValidMergeRecord() const;
-    SAL_DLLPRIVATE void ImplDestroy();
+    bool ToNextMergeRecord();
+    bool IsValidMergeRecord() const;
+    void ImplDestroy();
 
     SwDBManager(SwDBManager const&) = delete;
     SwDBManager& operator=(SwDBManager const&) = delete;
@@ -309,19 +307,19 @@ public:
     bool     IsMergeOk() const     { return MergeStatus::Ok     == m_aMergeStatus; }
     bool     IsMergeError() const  { return MergeStatus::Error  <= m_aMergeStatus; }
 
-    static std::shared_ptr<SwMailMergeConfigItem> PerformMailMerge(SwView const * pView);
+    SW_DLLPUBLIC static std::shared_ptr<SwMailMergeConfigItem> PerformMailMerge(SwView const * pView);
 
     /// Initialize data fields that lack name of database.
     bool     IsInitDBFields() const  { return m_bInitDBFields; }
     void     SetInitDBFields(bool b) { m_bInitDBFields = b;    }
 
     /// Fill listbox with all table names of a database.
-    bool            GetTableNames(weld::ComboBox& rBox, const OUString& rDBName);
+    SW_DLLPUBLIC bool GetTableNames(weld::ComboBox& rBox, const OUString& rDBName);
 
     /// Fill listbox with all column names of a database table.
-    void            GetColumnNames(weld::ComboBox& rBox,
+    SW_DLLPUBLIC void GetColumnNames(weld::ComboBox& rBox,
                             const OUString& rDBName, const OUString& rTableName);
-    static void GetColumnNames(weld::ComboBox& rBox,
+    SW_DLLPUBLIC static void GetColumnNames(weld::ComboBox& rBox,
                             css::uno::Reference< css::sdbc::XConnection> const & xConnection,
                             const OUString& rTableName);
 
@@ -381,7 +379,7 @@ public:
 
     static const SwDBData& GetAddressDBName();
 
-    static OUString GetDBField(
+    SW_DLLPUBLIC static OUString GetDBField(
                     css::uno::Reference< css::beans::XPropertySet > const & xColumnProp,
                     const SwDBFormatData& rDBFormatData,
                     double *pNumber = nullptr);
@@ -391,12 +389,12 @@ public:
                 css::uno::Reference< css::sdbc::XDataSource>& rxSource,
                 const SwView* pView);
 
-    static css::uno::Reference< css::sdbcx::XColumnsSupplier>
+    SW_DLLPUBLIC static css::uno::Reference< css::sdbcx::XColumnsSupplier>
             GetColumnSupplier(css::uno::Reference< css::sdbc::XConnection> const & xConnection,
                                     const OUString& rTableOrQuery,
                                     SwDBSelect eTableOrQuery = SwDBSelect::UNKNOWN);
 
-    static css::uno::Sequence<OUString> GetExistingDatabaseNames();
+    SW_DLLPUBLIC static css::uno::Sequence<OUString> GetExistingDatabaseNames();
 
     /**
      Loads a data source from file and registers it.
@@ -405,7 +403,7 @@ public:
      the filename returned by a file picker and additional settings dialog.
      In case of success it returns the registered name, otherwise an empty string.
      */
-    static OUString            LoadAndRegisterDataSource(weld::Window* pParent, SwDocShell* pDocShell = nullptr);
+    SW_DLLPUBLIC static OUString LoadAndRegisterDataSource(weld::Window* pParent, SwDocShell* pDocShell = nullptr);
 
     /**
      Loads a data source from file and registers it.
@@ -413,13 +411,13 @@ public:
      Convenience function, which calls GetDBunoURI and has just one mandatory parameter.
      In case of success it returns the registered name, otherwise an empty string.
      */
-    static OUString            LoadAndRegisterDataSource(std::u16string_view rURI, const OUString *pDestDir);
+    SW_DLLPUBLIC static OUString LoadAndRegisterDataSource(std::u16string_view rURI, const OUString *pDestDir);
 
     /// Load the embedded data source of the document and also register it.
     void LoadAndRegisterEmbeddedDataSource(const SwDBData& rData, const SwDocShell& rDocShell);
 
     /// Unregister a data source.
-    static void RevokeDataSource(const OUString& rName);
+    SW_DLLPUBLIC static void RevokeDataSource(const OUString& rName);
 
     /** try to get the data source from the given connection through the XChild interface.
         If this is not possible, the data source will be created through its name.
@@ -446,7 +444,7 @@ public:
             The new created RowSet.
 
     */
-    static css::uno::Reference< css::sdbc::XResultSet>
+    SW_DLLPUBLIC static css::uno::Reference< css::sdbc::XResultSet>
             createCursor(const OUString& _sDataSourceName,
                          const OUString& _sCommand,
                          sal_Int32 _nCommandType,
@@ -467,10 +465,10 @@ public:
     void releaseRevokeListener();
 
     /// Revoke not committed registrations in case of mail merge cancel
-    void RevokeLastRegistrations();
+    SW_DLLPUBLIC void RevokeLastRegistrations();
 
     /// Accept not committed registrations
-    void CommitLastRegistrations();
+    SW_DLLPUBLIC void CommitLastRegistrations();
 
     /// Remove not used connections.
     void RevokeNotUsedConnections();
@@ -485,14 +483,11 @@ enum class DBConnURIType
     CALC,
     DBASE,
     FLAT,
-    MSJET,
     MSACE,
     WRITER
 };
 
 DBConnURIType SW_DLLPUBLIC GetDBunoType(const INetURLObject &rURL);
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

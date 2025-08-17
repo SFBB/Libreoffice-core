@@ -738,7 +738,7 @@ void SwHTMLWrtTable::Write( SwHTMLWriter& rWrt, sal_Int16 eAlign,
 
             const SwWriteTableCol *pColumn = m_aCols[nCol].get();
 
-            HtmlWriter html(rWrt.Strm(), rWrt.maNamespace);
+            HtmlWriter html(rWrt.Strm(), rWrt.GetNamespace());
             html.prettyPrint(false); // We add newlines ourself
             html.start(OOO_STRING_SVTOOLS_HTML_col ""_ostr);
 
@@ -885,7 +885,8 @@ SwHTMLWriter& OutHTML_SwTableNode( SwHTMLWriter& rWrt, SwTableNode & rNode,
             eFlyHoriOri = text::HoriOrientation::LEFT;
 
         const SvxLRSpaceItem& rLRSpace = pFlyFrameFormat->GetLRSpace();
-        nFlyHSpace = static_cast< sal_uInt16 >((rLRSpace.GetLeft() + rLRSpace.GetRight()) / 2);
+        nFlyHSpace
+            = static_cast<sal_uInt16>((rLRSpace.ResolveLeft({}) + rLRSpace.ResolveRight({})) / 2);
 
         const SvxULSpaceItem& rULSpace = pFlyFrameFormat->GetULSpace();
         nFlyVSpace = (rULSpace.GetUpper() + rULSpace.GetLower()) / 2;
@@ -924,7 +925,7 @@ SwHTMLWriter& OutHTML_SwTableNode( SwHTMLWriter& rWrt, SwTableNode & rNode,
     case text::HoriOrientation::NONE:
         {
             const SvxLRSpaceItem& aLRItem = pFormat->GetLRSpace();
-            if( aLRItem.GetRight() )
+            if (aLRItem.ResolveRight({}))
             {
                 // The table width is defined on the basis of the left and
                 // right margin. Therefore we try to define the actual
@@ -977,19 +978,18 @@ SwHTMLWriter& OutHTML_SwTableNode( SwHTMLWriter& rWrt, SwTableNode & rNode,
                 rWrt.GetNextNumInfo(),
                 "NumInfo for next paragraph is missing!" );
         const SvxLRSpaceItem& aLRItem = pFormat->GetLRSpace();
-        if( aLRItem.GetLeft() > 0 && rWrt.m_nDefListMargin > 0 &&
-            ( !rWrt.GetNumInfo().GetNumRule() ||
-              ( rWrt.GetNextNumInfo() &&
-                (rWrt.GetNumInfo().GetNumRule() != rWrt.GetNextNumInfo()->GetNumRule() ||
-                 rWrt.GetNextNumInfo()->IsRestart(rWrt.GetNumInfo())) ) ) )
+        if (aLRItem.ResolveLeft({}) > 0 && rWrt.m_nDefListMargin > 0
+            && (!rWrt.GetNumInfo().GetNumRule()
+                || (rWrt.GetNextNumInfo()
+                    && (rWrt.GetNumInfo().GetNumRule() != rWrt.GetNextNumInfo()->GetNumRule()
+                        || rWrt.GetNextNumInfo()->IsRestart(rWrt.GetNumInfo())))))
         {
             // If the paragraph before the table is not numbered or the
             // paragraph after the table starts with a new numbering or with
             // a different rule, we can maintain the indentation with a DL.
             // Otherwise we keep the indentation of the numbering.
-            nNewDefListLvl = static_cast< sal_uInt16 >(
-                (aLRItem.GetLeft() + (rWrt.m_nDefListMargin/2)) /
-                rWrt.m_nDefListMargin );
+            nNewDefListLvl = static_cast<sal_uInt16>(
+                (aLRItem.ResolveLeft({}) + (rWrt.m_nDefListMargin / 2)) / rWrt.m_nDefListMargin);
         }
     }
 
@@ -1043,7 +1043,7 @@ SwHTMLWriter& OutHTML_SwTableNode( SwHTMLWriter& rWrt, SwTableNode & rNode,
         nFlyHSpace = nFlyVSpace = 0;
 
     if( !pFormat->GetName().isEmpty() )
-        rWrt.OutImplicitMark( pFormat->GetName(), "table" );
+        rWrt.OutImplicitMark( pFormat->GetName().toString(), "table" );
 
     if( text::HoriOrientation::NONE!=eDivHoriOri )
     {

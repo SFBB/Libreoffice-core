@@ -245,7 +245,7 @@ bool SwDoc::SplitDoc( sal_uInt16 eDocType, const OUString& rPath, bool bOutline,
 
     DateTime aTmplDate( DateTime::SYSTEM );
     {
-        tools::Time a2Min( 0 ); a2Min.SetMin( 2 );
+        tools::Time a2Min(0, 2);
         aTmplDate += a2Min;
     }
 
@@ -369,7 +369,7 @@ bool SwDoc::SplitDoc( sal_uInt16 eDocType, const OUString& rPath, bool bOutline,
 
                             // If FlyFrames are still around, delete these too
                             auto& rSpzs = *GetSpzFrameFormats();
-                            for(sw::FrameFormats<sw::SpzFrameFormat*>::size_type n = 0; n < GetSpzFrameFormats()->size(); ++n)
+                            for(sw::FrameFormats<sw::SpzFrameFormat*>::size_type n = 0; n < GetSpzFrameFormats()->size(); )
                             {
                                 auto pFly = rSpzs[n];
                                 const SwFormatAnchor* pAnchor = &pFly->GetAnchor();
@@ -382,8 +382,9 @@ bool SwDoc::SplitDoc( sal_uInt16 eDocType, const OUString& rPath, bool bOutline,
                                     *pAnchorNode < aEIdx.GetNode() )
                                 {
                                     getIDocumentLayoutAccess().DelLayoutFormat( pFly );
-                                    --n;
                                 }
+                                else
+                                    ++n;
                             }
 
                             GetNodes().Delete( aSIdx, nNodeDiff );
@@ -406,7 +407,7 @@ bool SwDoc::SplitDoc( sal_uInt16 eDocType, const OUString& rPath, bool bOutline,
                     {
                         const OUString sNm(INetURLObject(sFileName).GetLastName());
                         SwSectionData aSectData( SectionType::FileLink,
-                                        GetUniqueSectionName( &sNm ));
+                                        UIName(GetUniqueSectionName( &sNm )));
                         SwSectionFormat* pFormat = MakeSectionFormat();
                         aSectData.SetLinkFileName(sFileName);
                         aSectData.SetProtectFlag(true);

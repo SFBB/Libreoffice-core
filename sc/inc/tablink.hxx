@@ -27,14 +27,14 @@
 #include <memory>
 
 class ScDocShell;
-struct TableLink_Impl;
 
 namespace weld { class Window; }
 
 class ScTableLink final : public ::sfx2::SvBaseLink, public ScRefreshTimer
 {
 private:
-    std::unique_ptr<TableLink_Impl> pImpl;
+    ScDocShell&            m_rDocSh;
+    Link<sfx2::SvBaseLink&,void> m_aEndEditLink;
     OUString aFileName;
     OUString aFilterName;
     OUString aOptions;
@@ -43,7 +43,7 @@ private:
     bool bAddUndo:1;
 
 public:
-    ScTableLink( ScDocShell* pDocSh, OUString aFile,
+    ScTableLink( ScDocShell& rDocSh, OUString aFile,
                     OUString aFilter, OUString aOpt, sal_Int32 nRefreshDelaySeconds );
     virtual ~ScTableLink() override;
     virtual void Closed() override;
@@ -73,18 +73,17 @@ class SfxFilter;
 class SC_DLLPUBLIC ScDocumentLoader
 {
 private:
-    ScDocShell*         pDocShell;
-    SfxObjectShellRef   aRef;
+    rtl::Reference<ScDocShell> pDocShell;
     SfxMedium*          pMedium;
 
 public:
     ScDocumentLoader(const OUString& rFileName, OUString& rFilterName, OUString& rOptions,
                      sal_uInt32 nRekCnt = 0, weld::Window* pInteractionParent = nullptr,
-                     css::uno::Reference<css::io::XInputStream> xInputStream
+                     const css::uno::Reference<css::io::XInputStream>& xInputStream
                      = css::uno::Reference<css::io::XInputStream>());
     ~ScDocumentLoader();
     ScDocument*         GetDocument();
-    ScDocShell*         GetDocShell()       { return pDocShell; }
+    ScDocShell*         GetDocShell()       { return pDocShell.get(); }
     bool                IsError() const;
 
     void                ReleaseDocRef();    // without calling DoClose

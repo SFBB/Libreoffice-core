@@ -62,10 +62,11 @@
 #include <comphelper/diagnose_ex.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/sequence.hxx>
-#include <toolkit/helper/convert.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 #include <framework/titlehelper.hxx>
 #include <comphelper/processfactory.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/unohelp.hxx>
 #include <tools/svborder.hxx>
 
 #include <sfx2/event.hxx>
@@ -334,7 +335,7 @@ void SAL_CALL IMPL_SfxBaseController_CloseListenerHelper::queryClosing( const la
         bool bCanClose = pShell->PrepareClose( false );
         if ( !bCanClose )
         {
-            throw util::CloseVetoException("Controller disagree ...",getXWeak());
+            throw util::CloseVetoException(u"Controller disagree ..."_ustr,getXWeak());
         }
     }
 }
@@ -355,12 +356,12 @@ struct IMPL_SfxBaseController_DataContainer
     ::sfx2::UserInputInterception           m_aUserInputInterception;
     ::comphelper::OMultiTypeInterfaceContainerHelper2      m_aListenerContainer    ;
     ::comphelper::OInterfaceContainerHelper3<ui::XContextMenuInterceptor> m_aInterceptorContainer ;
-    Reference< XStatusIndicator >           m_xIndicator            ;
+    rtl::Reference< SfxStatusIndicator >    m_xIndicator            ;
     SfxViewShell*                           m_pViewShell            ;
     SfxBaseController*                      m_pController           ;
     bool                                    m_bDisposing            ;
     bool                                    m_bSuspendState         ;
-    Reference< XTitle >                     m_xTitleHelper          ;
+    rtl::Reference< ::framework::TitleHelper > m_xTitleHelper          ;
     Sequence< PropertyValue >               m_aCreationArgs         ;
 
     IMPL_SfxBaseController_DataContainer(   ::osl::Mutex&              aMutex      ,
@@ -681,7 +682,7 @@ GetSlotDispatchWithFallback(SfxViewFrame* pViewFrame, const css::util::URL& aURL
     // try to find parent SfxViewFrame
     if (const auto& xOwnFrame = pViewFrame->GetFrame().GetFrameInterface())
     {
-        if (const auto& xParentFrame = xOwnFrame->getCreator())
+        if (const auto xParentFrame = xOwnFrame->getCreator())
         {
             // TODO/LATER: in future probably SfxViewFrame hierarchy should be the same as XFrame hierarchy
             // SfxViewFrame* pParentFrame = pViewFrame->GetParentViewFrame();
@@ -830,9 +831,9 @@ awt::Rectangle SAL_CALL SfxBaseController::queryBorderedArea( const awt::Rectang
     SolarMutexGuard aGuard;
     if ( m_pData->m_pViewShell )
     {
-        tools::Rectangle aTmpRect = VCLRectangle( aPreliminaryRectangle );
+        tools::Rectangle aTmpRect = vcl::unohelper::ConvertToVCLRect(aPreliminaryRectangle);
         m_pData->m_pViewShell->QueryObjAreaPixel( aTmpRect );
-        return AWTRectangle( aTmpRect );
+        return vcl::unohelper::ConvertToAWTRect(aTmpRect);
     }
 
     return aPreliminaryRectangle;
@@ -1150,8 +1151,8 @@ void SfxBaseController::ConnectSfxFrame_Impl( const ConnectSfxFrame i_eConnect )
                     {
                         Reference< beans::XPropertySet > xFrameProps( m_pData->m_xFrame, uno::UNO_QUERY_THROW );
                         Reference< beans::XPropertySet > xLayouterProps(
-                            xFrameProps->getPropertyValue("LayoutManager"), uno::UNO_QUERY_THROW );
-                        xLayouterProps->setPropertyValue("PreserveContentSize", uno::Any( true ) );
+                            xFrameProps->getPropertyValue(u"LayoutManager"_ustr), uno::UNO_QUERY_THROW );
+                        xLayouterProps->setPropertyValue(u"PreserveContentSize"_ustr, uno::Any( true ) );
                     }
                     catch (const uno::Exception&)
                     {
@@ -1184,7 +1185,7 @@ void SfxBaseController::ConnectSfxFrame_Impl( const ConnectSfxFrame i_eConnect )
         if ( i_eConnect == E_CONNECT )
         {
             css::uno::Reference<css::frame::XModel3> xModel(getModel(), css::uno::UNO_QUERY_THROW);
-            const sal_Int16 nPluginMode = ::comphelper::NamedValueCollection::getOrDefault( xModel->getArgs2( { "PluginMode" } ), u"PluginMode", sal_Int16( 0 ) );
+            const sal_Int16 nPluginMode = ::comphelper::NamedValueCollection::getOrDefault( xModel->getArgs2( { u"PluginMode"_ustr } ), u"PluginMode", sal_Int16( 0 ) );
             const bool bHasPluginMode = ( nPluginMode != 0 );
 
             SfxFrame& rFrame = pViewFrame->GetFrame();
@@ -1233,11 +1234,11 @@ void SfxBaseController::ConnectSfxFrame_Impl( const ConnectSfxFrame i_eConnect )
             ::comphelper::NamedValueCollection aViewArgs(getCreationArguments());
 
             // sometimes we want to avoid adding to the recent documents
-            bool bAllowPickListEntry = aViewArgs.getOrDefault("PickListEntry", true);
+            bool bAllowPickListEntry = aViewArgs.getOrDefault(u"PickListEntry"_ustr, true);
             m_pData->m_pViewShell->GetObjectShell()->AvoidRecentDocs(!bAllowPickListEntry);
 
             // if there's a JumpMark given, then, well, jump to it
-            const OUString sJumpMark = aViewArgs.getOrDefault( "JumpMark", OUString() );
+            const OUString sJumpMark = aViewArgs.getOrDefault( u"JumpMark"_ustr, OUString() );
             const bool bHasJumpMark = !sJumpMark.isEmpty();
             OSL_ENSURE( ( !m_pData->m_pViewShell->GetObjectShell()->IsLoading() )
                     ||  ( sJumpMark.isEmpty() ),
@@ -1277,7 +1278,7 @@ void SfxBaseController::ConnectSfxFrame_Impl( const ConnectSfxFrame i_eConnect )
                     for ( sal_Int32 i=0; i<nCount; ++i )
                     {
                         const ::comphelper::NamedValueCollection aViewData( xViewData->getByIndex(i) );
-                        OUString sViewId( aViewData.getOrDefault( "ViewId", OUString() ) );
+                        OUString sViewId( aViewData.getOrDefault( u"ViewId"_ustr, OUString() ) );
                         if ( sViewId.isEmpty() )
                             continue;
 
@@ -1357,7 +1358,7 @@ void SfxBaseController::ShowInfoBars( )
 
     // Get the Frame and show the InfoBar if not checked out
     SfxViewFrame* pViewFrame = m_pData->m_pViewShell->GetFrame();
-    auto pInfoBar = pViewFrame->AppendInfoBar("checkout", "", SfxResId(STR_NONCHECKEDOUT_DOCUMENT),
+    auto pInfoBar = pViewFrame->AppendInfoBar(u"checkout"_ustr, u""_ustr, SfxResId(STR_NONCHECKEDOUT_DOCUMENT),
                                               InfobarType::WARNING);
     if (pInfoBar)
     {
@@ -1448,9 +1449,9 @@ void SAL_CALL SfxBaseController::appendInfobar(const OUString& sId, const OUStri
         = pViewFrame->AppendInfoBar(sId, sPrimaryMessage, sSecondaryMessage,
                                     static_cast<InfobarType>(aInfobarType), bShowCloseButton);
     if (!pInfoBar)
-        throw uno::RuntimeException("Could not create Infobar");
+        throw uno::RuntimeException(u"Could not create Infobar"_ustr);
 
-    for (const StringPair & actionButton : std::as_const(actionButtons))
+    for (const StringPair& actionButton : actionButtons)
     {
         if (actionButton.First.isEmpty() || actionButton.Second.isEmpty())
             continue;

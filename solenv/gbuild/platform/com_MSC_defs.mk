@@ -17,9 +17,6 @@
 #   the License at http://www.apache.org/licenses/LICENSE-2.0 .
 #
 
-# set tmpdir to some mixed case path, suitable for native tools
-gb_TMPDIR:=$(if $(TMPDIR),$(shell cygpath -m $(TMPDIR)),$(shell cygpath -m /tmp))
-
 # please make generic Windows modifications to windows.mk
 include $(GBUILDDIR)/platform/windows.mk
 
@@ -49,7 +46,6 @@ endif
 # like std::copy, std::transform (when MSVC_USE_DEBUG_RUNTIME is enabled)
 
 gb_COMPILERDEFS := \
-	-DBOOST_ERROR_CODE_HEADER_ONLY \
 	-DBOOST_OPTIONAL_USE_OLD_DEFINITION_OF_NONE \
 	-DBOOST_SYSTEM_NO_DEPRECATED \
 	-D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING \
@@ -86,8 +82,7 @@ gb_AFLAGS := $(AFLAGS)
 
 # C4201: nonstandard extension used : nameless struct/union
 
-# C4244: nonstandard extension used : formal parameter 'identifier'
-#   was previously defined as a type
+# C4244: 'argument' : conversion from 'type1' to 'type2', possible loss of data
 
 # C4250: 'class1' : inherits 'class2::member' via dominance
 
@@ -108,6 +103,11 @@ gb_AFLAGS := $(AFLAGS)
 
 # C4706: assignment within conditional expression
 
+# build-time penalty is too high for ci use/disable when JENKINS_HOME is set
+MSVC_ANALYZE_FLAGS := $(if $(ENABLE_MSVC_ANALYZE),-analyze:ruleset$(SRCDIR)/solenv/vs/LibreOffice.ruleset,)
+
+gb_FilterOutClangCFLAGS += $(MSVC_ANALYZE_FLAGS)
+
 gb_CFLAGS := \
 	-utf-8 \
 	-Gd \
@@ -122,14 +122,6 @@ gb_CFLAGS := \
 	-bigobj \
 
 gb_CXXFLAGS_DISABLE_WARNINGS = -w
-
-ifneq ($(COM_IS_CLANG),TRUE)
-
-# clang-cl doesn't support -Wv:18 for now
-gb_CFLAGS += \
-	-Wv:18 \
-
-endif
 
 gb_CXXFLAGS := \
 	-utf-8 \
@@ -153,6 +145,7 @@ gb_CXXFLAGS := \
 	-wd4611 \
 	-wd4706 \
 	-bigobj \
+	$(if $(ENABLE_DEBUG),$(MSVC_ANALYZE_FLAGS),) \
 
 ifneq ($(COM_IS_CLANG),TRUE)
 gb_CXXFLAGS += -Zc:inline
@@ -180,13 +173,11 @@ endif
 
 ifneq ($(COM_IS_CLANG),TRUE)
 
-# clang-cl doesn't support -Wv:18 for now
 # Work around MSVC 2017 C4702 compiler bug with release builds
-# http://document-foundation-mail-archive.969070.n3.nabble.com/Windows-32-bit-build-failure-unreachable-code-tp4243848.html
-# http://document-foundation-mail-archive.969070.n3.nabble.com/64-bit-Windows-build-failure-after-MSVC-Update-tp4246816.html
+# https://lists.freedesktop.org/archives/libreoffice/2018-July/080532.html
+# https://lists.freedesktop.org/archives/libreoffice/2018-August/080776.html
 gb_CXXFLAGS += \
-	-Wv:18 \
-	$(if $(filter 0,$(gb_DEBUGLEVEL)),-wd4702) \
+	$(if $(ENABLE_OPTIMIZED),-wd4702) \
 
 endif
 
@@ -268,20 +259,27 @@ endif
 
 gb_LTOFLAGS := $(if $(filter TRUE,$(ENABLE_LTO)),-GL)
 
-# When compiling for CLR, disable "warning C4339: use of undefined type detected
-# in CLR meta-data - use of this type may lead to a runtime exception":
+# VS2019 produces a warning C4857, that it doesn't support -std:c++20; it can't
+# be suppressed by -wd4857, only by -Wv:18. The warning seems incorrect, because
+# using -std:c++17 produces errors about undeclared 'char8_t'. VS2022 doesn't
+# have the problem, so drop -Wv:18 when bumping baseline.
+# Similarly, at least VS2022 Preview 17.12.0 Preview 2.1 with --with-latest-c++ emits a "warning
+# C4857: C++/CLI mode does not support C++ versions newer than C++20; setting language to
+# /std:c++20" that cannot be disabled by adding -wd4857, so hardcode a -std:c++20 substitution in
+# that case:
 gb_CXXCLRFLAGS := \
 	$(if $(COM_IS_CLANG), \
 	    $(patsubst -std=%,-std:c++20 -Zc:__cplusplus,$(gb_CXXFLAGS)), \
-	    $(gb_CXXFLAGS)) \
+	    $(if $(filter -std:c++latest,$(CXXFLAGS_CXX11)), \
+	        $(patsubst -std:c++latest,-std:c++20,$(gb_CXXFLAGS)), \
+	        $(gb_CXXFLAGS))) \
 	$(gb_LinkTarget_EXCEPTIONFLAGS) \
 	-AI $(INSTDIR)/$(LIBO_URE_LIB_FOLDER) \
 	-EHa \
 	-clr \
-	-wd4339 \
-	-Wv:18 \
-	-wd4267 \
+	$(if $(filter 16.0,$(VCVER)),-Wv:18) \
 	-Zc:twoPhase- \
+
 
 ifeq ($(COM_IS_CLANG),TRUE)
 
@@ -331,15 +329,15 @@ endif
 
 # Helper class
 
-gb_Helper_set_ld_path := PATH="$(shell cygpath -u $(INSTDIR_FOR_BUILD)/$(LIBO_URE_LIB_FOLDER)):$(shell cygpath -u $(INSTDIR_FOR_BUILD)/$(LIBO_BIN_FOLDER)):$$PATH"
+gb_Helper_set_ld_path := $(call gb_Helper_cyg_path,PATH="$(INSTDIR_FOR_BUILD)/$(LIBO_URE_LIB_FOLDER):$(INSTDIR_FOR_BUILD)/$(LIBO_BIN_FOLDER):$$PATH")
 
 define gb_Helper_prepend_ld_path
-PATH="$(shell cygpath -u $(INSTDIR_FOR_BUILD)/$(LIBO_URE_LIB_FOLDER)):$(shell cygpath -u $(INSTDIR_FOR_BUILD)/$(LIBO_BIN_FOLDER)):$(1):$$PATH"
+PATH="$(call gb_Helper_cyg_path,$(INSTDIR_FOR_BUILD)/$(LIBO_URE_LIB_FOLDER):$(INSTDIR_FOR_BUILD)/$(LIBO_BIN_FOLDER):$(1):$$PATH")
 endef
 
 # $(1): one directory pathname to append to the ld path
 define gb_Helper_extend_ld_path
-$(gb_Helper_set_ld_path)':$(shell cygpath -u $(1))'
+$(gb_Helper_set_ld_path)':$(call gb_Helper_cyg_path,$(1))'
 endef
 
 # common macros to build GPG related libraries

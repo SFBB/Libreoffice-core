@@ -49,28 +49,25 @@
 const Size ThumbSize(150, 150);
 
 TipOfTheDayDialog::TipOfTheDayDialog(weld::Window* pParent)
-    : GenericDialogController(pParent, "cui/ui/tipofthedaydialog.ui", "TipOfTheDayDialog")
-    , m_pParent(pParent)
-    , m_pText(m_xBuilder->weld_label("lbText"))
-    , m_pShowTip(m_xBuilder->weld_check_button("cbShowTip"))
-    , m_pNext(m_xBuilder->weld_button("btnNext"))
-    , m_pLink(m_xBuilder->weld_link_button("btnLink"))
-    , m_pPreview(new weld::CustomWeld(*m_xBuilder, "imPreview", m_aPreview))
+    : GenericDialogController(pParent, u"cui/ui/tipofthedaydialog.ui"_ustr,
+                              u"TipOfTheDayDialog"_ustr)
+    , m_xParent(pParent ? pParent->GetXWindow() : nullptr)
+    , m_pText(m_xBuilder->weld_label(u"lbText"_ustr))
+    , m_pShowTip(m_xBuilder->weld_check_button(u"cbShowTip"_ustr))
+    , m_pNext(m_xBuilder->weld_button(u"btnNext"_ustr))
+    , m_pLink(m_xBuilder->weld_link_button(u"btnLink"_ustr))
+    , m_pPreview(new weld::CustomWeld(*m_xBuilder, u"imPreview"_ustr, m_aPreview))
 {
     m_pShowTip->set_active(officecfg::Office::Common::Misc::ShowTipOfTheDay::get());
     m_pNext->connect_clicked(LINK(this, TipOfTheDayDialog, OnNextClick));
     m_nCurrentTip = officecfg::Office::Common::Misc::LastTipOfTheDayID::get();
     m_pPreview->set_size_request(ThumbSize.Width(), ThumbSize.Height());
 
-    if (pParent != nullptr)
+    if (m_xParent.is())
     {
-        css::uno::Reference<css::awt::XWindow> xWindow = pParent->GetXWindow();
-        if (xWindow.is())
-        {
-            VclPtr<vcl::Window> xVclWin(VCLUnoHelper::GetWindow(xWindow));
-            if (xVclWin != nullptr)
-                xVclWin->AddEventListener(LINK(this, TipOfTheDayDialog, Terminated));
-        }
+        VclPtr<vcl::Window> xVclWin(VCLUnoHelper::GetWindow(m_xParent));
+        if (xVclWin != nullptr)
+            xVclWin->AddEventListener(LINK(this, TipOfTheDayDialog, Terminated));
     }
 
     const auto t0 = std::chrono::system_clock::now().time_since_epoch();
@@ -94,7 +91,7 @@ IMPL_LINK(TipOfTheDayDialog, Terminated, VclWindowEvent&, rEvent, void)
 {
     if (rEvent.GetId() == VclEventId::ObjectDying)
     {
-        m_pParent = nullptr;
+        m_xParent.clear();
         TipOfTheDayDialog::response(RET_OK);
     }
 }
@@ -107,15 +104,11 @@ TipOfTheDayDialog::~TipOfTheDayDialog()
     officecfg::Office::Common::Misc::ShowTipOfTheDay::set(m_pShowTip->get_active(), xChanges);
     xChanges->commit();
 
-    if (m_pParent != nullptr)
+    if (m_xParent.is())
     {
-        css::uno::Reference<css::awt::XWindow> xWindow = m_pParent->GetXWindow();
-        if (xWindow.is())
-        {
-            VclPtr<vcl::Window> xVclWin(VCLUnoHelper::GetWindow(xWindow));
-            if (xVclWin != nullptr)
-                xVclWin->RemoveEventListener(LINK(this, TipOfTheDayDialog, Terminated));
-        }
+        VclPtr<vcl::Window> xVclWin(VCLUnoHelper::GetWindow(m_xParent));
+        if (xVclWin != nullptr)
+            xVclWin->RemoveEventListener(LINK(this, TipOfTheDayDialog, Terminated));
     }
 }
 
@@ -129,8 +122,21 @@ void TipOfTheDayDialog::UpdateTip()
 {
     constexpr sal_Int32 nNumberOfTips = std::size(TIPOFTHEDAY_STRINGARRAY);
 
-    if ((m_nCurrentTip >= nNumberOfTips) || (m_nCurrentTip < 0))
-        m_nCurrentTip = 0;
+    for (;;)
+    {
+        if ((m_nCurrentTip >= nNumberOfTips) || (m_nCurrentTip < 0))
+            m_nCurrentTip = 0;
+        if (std::get<1>(TIPOFTHEDAY_STRINGARRAY[m_nCurrentTip])
+                == "svx/ui/safemodedialog/SafeModeDialog"
+            && !officecfg::Office::Common::Misc::OfferSafeMode::get())
+        {
+            ++m_nCurrentTip;
+        }
+        else
+        {
+            break;
+        }
+    }
 
     //title
     m_xDialog->set_title(CuiResId(STR_TITLE)
@@ -168,7 +174,7 @@ void TipOfTheDayDialog::UpdateTip()
             {
                 css::util::URL aCommandURL;
                 aCommandURL.Complete = sLink;
-                const css::uno::Reference<css::uno::XComponentContext> xContext
+                const css::uno::Reference<css::uno::XComponentContext>& xContext
                     = comphelper::getProcessComponentContext();
                 const css::uno::Reference<css::util::XURLTransformer> xParser
                     = css::util::URLTransformer::create(xContext);
@@ -213,7 +219,7 @@ void TipOfTheDayDialog::UpdateTip()
         m_pLink->connect_activate_link(LINK(this, TipOfTheDayDialog, OnLinkClick));
     }
     // image
-    OUString aURL("$BRAND_BASE_DIR/$BRAND_SHARE_SUBDIR/tipoftheday/");
+    OUString aURL(u"$BRAND_BASE_DIR/$BRAND_SHARE_SUBDIR/tipoftheday/"_ustr);
     rtl::Bootstrap::expandMacros(aURL);
     OUString aImageName = sImage;
     Graphic aGraphic;
@@ -227,10 +233,10 @@ void TipOfTheDayDialog::UpdateTip()
                 RID_SVXBMP_TOTD_IMPRESS, RID_SVXBMP_TOTD_SOFFICE };
         const OUString aIconTheme
             = Application::GetSettings().GetStyleSettings().DetermineIconTheme();
-        BitmapEx aBmpEx;
-        ImageTree::get().loadImage(sModuleImage[nType], aIconTheme, aBmpEx, true,
+        Bitmap aBmp;
+        ImageTree::get().loadImage(sModuleImage[nType], aIconTheme, aBmp, true,
                                    ImageLoadFlags::IgnoreDarkTheme);
-        aGraphic = aBmpEx;
+        aGraphic = aBmp;
     }
 
     if (!aGraphic.IsAnimated())

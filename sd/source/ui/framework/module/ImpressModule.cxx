@@ -22,13 +22,13 @@
 #include <framework/FrameworkHelper.hxx>
 #include "ViewTabBarModule.hxx"
 #include "CenterViewFocusModule.hxx"
+#include "NotesPaneModule.hxx"
 #include "SlideSorterModule.hxx"
 #include "ToolBarModule.hxx"
 #include "ShellStackGuard.hxx"
 #include <DrawController.hxx>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
 
 namespace sd::framework {
 
@@ -37,12 +37,13 @@ void ImpressModule::Initialize (rtl::Reference<sd::DrawController> const & rxCon
     new CenterViewFocusModule(rxController);
     new ViewTabBarModule(
         rxController,
-        FrameworkHelper::CreateResourceId(
+        new ::sd::framework::ResourceId(
             FrameworkHelper::msViewTabBarURL,
             FrameworkHelper::msCenterPaneURL));
     new SlideSorterModule(
         rxController,
         FrameworkHelper::msLeftImpressPaneURL);
+    new NotesPaneModule(rxController);
     new ToolBarModule(rxController);
     new ShellStackGuard(rxController);
 }

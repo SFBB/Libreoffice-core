@@ -124,7 +124,7 @@ Sequence< sal_Int16 > Adapter::getOutIndexes( const OUString & functionName )
             if( !introspection.is() )
             {
                 throw RuntimeException(
-                    "pyuno bridge: Couldn't inspect uno adapter ( the python class must implement com.sun.star.lang.XTypeProvider !)" );
+                    u"pyuno bridge: Couldn't inspect uno adapter ( the python class must implement com.sun.star.lang.XTypeProvider !)"_ustr );
             }
 
             Reference< XIdlMethod > method = introspection->getMethod(
@@ -273,7 +273,7 @@ Any Adapter::invoke( const OUString &aFunctionName,
                     }
 
                     aOutParam.realloc( nOutLength );
-                    ret = std::as_const(seq)[0];
+                    ret = seq[0];
                     std::copy_n(std::next(std::cbegin(seq)), nOutLength, aOutParam.getArray());
                 }
                 // else { sequence is a return value !}

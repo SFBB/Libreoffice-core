@@ -31,7 +31,6 @@ using namespace com::sun::star::lang;
 using namespace com::sun::star::sdbc;
 using namespace com::sun::star::ucb;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::util;
 using namespace cppu;
 
 
@@ -43,8 +42,8 @@ CachedContentResultSetStub::CachedContentResultSetStub( Reference< XResultSet > 
                 , m_bFirstFetchSizePropagationDone( false )
                 , m_nLastFetchSize( 1 )//this value is not important at all
                 , m_bLastFetchDirection( true )//this value is not important at all
-                , m_aPropertyNameForFetchSize( OUString("FetchSize") )
-                , m_aPropertyNameForFetchDirection( OUString("FetchDirection") )
+                , m_aPropertyNameForFetchSize( u"FetchSize"_ustr )
+                , m_aPropertyNameForFetchDirection( u"FetchDirection"_ustr )
 {
     impl_init();
 }
@@ -164,7 +163,7 @@ Sequence< Type > SAL_CALL CachedContentResultSetStub
 
 OUString SAL_CALL CachedContentResultSetStub::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.CachedContentResultSetStub";
+    return u"com.sun.star.comp.ucb.CachedContentResultSetStub"_ustr;
 }
 
 sal_Bool SAL_CALL CachedContentResultSetStub::supportsService( const OUString& ServiceName )
@@ -174,7 +173,7 @@ sal_Bool SAL_CALL CachedContentResultSetStub::supportsService( const OUString& S
 
 css::uno::Sequence< OUString > SAL_CALL CachedContentResultSetStub::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.CachedContentResultSetStub" };
+    return { u"com.sun.star.ucb.CachedContentResultSetStub"_ustr };
 }
 
 
@@ -367,16 +366,12 @@ void CachedContentResultSetStub
     if( !m_bNeedToPropagateFetchSize )
         return;
 
-    bool bNeedAction;
     sal_Int32 nLastSize;
     bool bLastDirection;
     bool bFirstPropagationDone;
-    bNeedAction             = m_bNeedToPropagateFetchSize;
     nLastSize               = m_nLastFetchSize;
     bLastDirection          = m_bLastFetchDirection;
     bFirstPropagationDone   = m_bFirstFetchSizePropagationDone;
-    if( !bNeedAction )
-        return;
 
     if( nLastSize == nFetchSize
         && bLastDirection == bFetchDirection
@@ -387,7 +382,7 @@ void CachedContentResultSetStub
     {
         //check whether the properties 'FetchSize' and 'FetchDirection' do exist
 
-        Reference< XPropertySetInfo > xPropertySetInfo = getPropertySetInfo();
+        Reference< XPropertySetInfo > xPropertySetInfo = getPropertySetInfoImpl(rGuard);
         bool bHasSize = xPropertySetInfo->hasPropertyByName( m_aPropertyNameForFetchSize );
         bool bHasDirection = xPropertySetInfo->hasPropertyByName( m_aPropertyNameForFetchDirection );
 
@@ -507,7 +502,7 @@ CachedContentResultSetStubFactory::~CachedContentResultSetStubFactory()
 
 OUString SAL_CALL CachedContentResultSetStubFactory::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.CachedContentResultSetStubFactory";
+    return u"com.sun.star.comp.ucb.CachedContentResultSetStubFactory"_ustr;
 }
 sal_Bool SAL_CALL CachedContentResultSetStubFactory::supportsService( const OUString& ServiceName )
 {
@@ -515,7 +510,7 @@ sal_Bool SAL_CALL CachedContentResultSetStubFactory::supportsService( const OUSt
 }
 css::uno::Sequence< OUString > SAL_CALL CachedContentResultSetStubFactory::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.CachedContentResultSetStubFactory" };
+    return { u"com.sun.star.ucb.CachedContentResultSetStubFactory"_ustr };
 }
 
 // Service factory implementation.

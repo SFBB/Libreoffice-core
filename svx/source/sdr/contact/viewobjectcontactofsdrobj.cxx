@@ -50,14 +50,9 @@ ViewObjectContactOfSdrObj::~ViewObjectContactOfSdrObj()
 {
 }
 
-bool ViewObjectContactOfSdrObj::isObjectVisibleOnAnyLayer(const SdrObject& rSdrObject, const SdrLayerIDSet& rLayers)
+bool ViewObjectContactOfSdrObj::isPrimitiveVisibleOnAnyLayer(const SdrLayerIDSet& aLayers) const
 {
-    return rLayers.IsSet(rSdrObject.GetLayer());
-}
-
-bool ViewObjectContactOfSdrObj::isPrimitiveVisibleOnAnyLayer(const SdrLayerIDSet& rLayers) const
-{
-    return ViewObjectContactOfSdrObj::isObjectVisibleOnAnyLayer(getSdrObject(), rLayers);
+    return aLayers.IsSet(getSdrObject().GetLayer());
 }
 
 bool ViewObjectContactOfSdrObj::isPrimitiveVisible(const DisplayInfo& rDisplayInfo) const
@@ -88,6 +83,9 @@ bool ViewObjectContactOfSdrObj::isPrimitiveVisible(const DisplayInfo& rDisplayIn
     {
         return false;
     }
+
+    if (GetObjectContact().isOutputToPDFFile() && rObject.isAnnotationObject())
+        return false;
 
     // Test for Calc object hiding (for OLE and Graphic it's extra, see there)
     const SdrPageView* pSdrPageView = GetObjectContact().TryToGetSdrPageView();
@@ -151,11 +149,11 @@ bool ViewObjectContactOfSdrObj::isPrimitiveVisible(const DisplayInfo& rDisplayIn
     // painted on the page where it is anchored)
     // Note that we cannot check the ViewInformation2D ViewPort for this
     // because it is only the part of the page that is currently visible.
-    basegfx::B2IPoint const& rAnchor(vcl::unotools::b2IPointFromPoint(getSdrObject().GetAnchorPos()));
-    if (rAnchor.getX() || rAnchor.getY()) // only Writer sets anchor position
+    basegfx::B2IPoint const aAnchor(vcl::unotools::b2IPointFromPoint(getSdrObject().GetAnchorPos()));
+    if (aAnchor.getX() || aAnchor.getY()) // only Writer sets anchor position
     {
         if (!rDisplayInfo.GetWriterPageFrame().isEmpty() &&
-            !rDisplayInfo.GetWriterPageFrame().isInside(rAnchor))
+            !rDisplayInfo.GetWriterPageFrame().isInside(aAnchor))
         {
             return false;
         }

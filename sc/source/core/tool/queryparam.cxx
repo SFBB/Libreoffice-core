@@ -18,6 +18,7 @@
  */
 
 #include <memory>
+#include <interpretercontext.hxx>
 #include <queryparam.hxx>
 #include <queryentry.hxx>
 #include <scmatrix.hxx>
@@ -67,6 +68,7 @@ ScQueryParamBase::const_iterator ScQueryParamBase::end() const
 ScQueryParamBase::ScQueryParamBase() :
     eSearchType(utl::SearchParam::SearchType::Normal),
     bHasHeader(true),
+    bHasTotals(false),
     bByRow(true),
     bInplace(true),
     bCaseSens(false),
@@ -77,9 +79,9 @@ ScQueryParamBase::ScQueryParamBase() :
 }
 
 ScQueryParamBase::ScQueryParamBase(const ScQueryParamBase& r) :
-    eSearchType(r.eSearchType), bHasHeader(r.bHasHeader), bByRow(r.bByRow), bInplace(r.bInplace),
-    bCaseSens(r.bCaseSens), bDuplicate(r.bDuplicate), mbRangeLookup(r.mbRangeLookup),
-    m_Entries(r.m_Entries)
+    eSearchType(r.eSearchType), bHasHeader(r.bHasHeader), bHasTotals(r.bHasTotals), bByRow(r.bByRow),
+    bInplace(r.bInplace), bCaseSens(r.bCaseSens), bDuplicate(r.bDuplicate),
+    mbRangeLookup(r.mbRangeLookup), m_Entries(r.m_Entries)
 {
 }
 
@@ -89,6 +91,7 @@ ScQueryParamBase& ScQueryParamBase::operator=(const ScQueryParamBase& r)
     {
         eSearchType = r.eSearchType;
         bHasHeader  = r.bHasHeader;
+        bHasTotals = r.bHasTotals;
         bByRow = r.bByRow;
         bInplace = r.bInplace;
         bCaseSens = r.bCaseSens;
@@ -202,7 +205,7 @@ void ScQueryParamBase::Resize(size_t nNew)
 }
 
 void ScQueryParamBase::FillInExcelSyntax(
-    svl::SharedStringPool& rPool, const OUString& rCellStr, SCSIZE nIndex, SvNumberFormatter* pFormatter )
+    svl::SharedStringPool& rPool, const OUString& rCellStr, SCSIZE nIndex, ScInterpreterContext* pContext )
 {
     if (nIndex >= m_Entries.size())
         Resize(nIndex+1);
@@ -265,10 +268,10 @@ void ScQueryParamBase::FillInExcelSyntax(
         }
     }
 
-    if (!pFormatter)
+    if (!pContext)
         return;
 
-    /* TODO: pFormatter currently is also used as a flag whether matching
+    /* TODO: pContext currently is also used as a flag whether matching
      * empty cells with an empty string is triggered from the interpreter.
      * This could be handled independently if all queries should support
      * it, needs to be evaluated if that actually is desired. */
@@ -291,7 +294,7 @@ void ScQueryParamBase::FillInExcelSyntax(
     else
     {
         sal_uInt32 nFormat = 0;
-        bool bNumber = pFormatter->IsNumberFormat( rItem.maString.getString(), nFormat, rItem.mfVal);
+        bool bNumber = pContext->NFIsNumberFormat( rItem.maString.getString(), nFormat, rItem.mfVal);
         rItem.meType = bNumber ? ScQueryEntry::ByValue : ScQueryEntry::ByString;
     }
 }
@@ -336,7 +339,7 @@ void ScQueryParam::Clear()
     nRow1=nRow2 = 0;
     nTab = SCTAB_MAX;
     eSearchType = utl::SearchParam::SearchType::Normal;
-    bHasHeader = bCaseSens = false;
+    bHasHeader = bHasTotals = bCaseSens = false;
     bInplace = bByRow = bDuplicate = true;
 
     for (auto & itr : m_Entries)
@@ -378,6 +381,7 @@ bool ScQueryParam::operator==( const ScQueryParam& rOther ) const
         && (nRow2       == rOther.nRow2)
         && (nTab        == rOther.nTab)
         && (bHasHeader  == rOther.bHasHeader)
+        && (bHasTotals  == rOther.bHasTotals)
         && (bByRow      == rOther.bByRow)
         && (bInplace    == rOther.bInplace)
         && (bCaseSens   == rOther.bCaseSens)

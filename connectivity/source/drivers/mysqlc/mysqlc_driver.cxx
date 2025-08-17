@@ -41,7 +41,7 @@ void MysqlCDriver::disposing()
     // when driver will be destroyed so all our connections have to be destroyed as well
     for (auto const& connection : m_xConnections)
     {
-        Reference<XComponent> xComp(connection.get(), UNO_QUERY);
+        rtl::Reference<OConnection> xComp(connection);
         if (xComp.is())
         {
             xComp->dispose();
@@ -55,12 +55,12 @@ void MysqlCDriver::disposing()
 // static ServiceInfo
 OUString MysqlCDriver::getImplementationName_Static()
 {
-    return "com.sun.star.comp.sdbc.mysqlc.MysqlCDriver";
+    return u"com.sun.star.comp.sdbc.mysqlc.MysqlCDriver"_ustr;
 }
 
 Sequence<OUString> MysqlCDriver::getSupportedServiceNames_Static()
 {
-    return { "com.sun.star.sdbc.Driver", "com.sun.star.sdbcx.Driver" };
+    return { u"com.sun.star.sdbc.Driver"_ustr, u"com.sun.star.sdbcx.Driver"_ustr };
 }
 
 OUString SAL_CALL MysqlCDriver::getImplementationName() { return getImplementationName_Static(); }
@@ -89,7 +89,7 @@ Reference<XConnection> SAL_CALL MysqlCDriver::connect(const OUString& url,
     rtl::Reference<OConnection> pCon = new OConnection(*this);
 
     pCon->construct(url, info);
-    m_xConnections.push_back(WeakReferenceHelper(*pCon));
+    m_xConnections.push_back(pCon);
     return pCon;
 }
 
@@ -103,8 +103,8 @@ MysqlCDriver::getPropertyInfo(const OUString& url, const Sequence<PropertyValue>
 {
     if (acceptsURL(url))
     {
-        return { { "Hostname", "Name of host", true, "localhost", {} },
-                 { "Port", "Port", true, "3306", {} } };
+        return { { u"Hostname"_ustr, u"Name of host"_ustr, true, u"localhost"_ustr, {} },
+                 { u"Port"_ustr, u"Port"_ustr, true, u"3306"_ustr, {} } };
     }
 
     return Sequence<DriverPropertyInfo>();

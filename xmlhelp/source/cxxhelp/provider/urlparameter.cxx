@@ -120,7 +120,7 @@ OUString const & URLParameter::get_id()
     return m_aId;
 }
 
-OUString URLParameter::get_tag()
+const OUString & URLParameter::get_tag()
 {
     if( isFile() )
         return get_the_tag();
@@ -129,7 +129,7 @@ OUString URLParameter::get_tag()
 }
 
 
-OUString URLParameter::get_title()
+const OUString & URLParameter::get_title()
 {
     if( isFile() )
         return get_the_title();
@@ -176,7 +176,7 @@ void URLParameter::init()
 }
 
 
-OUString URLParameter::get_the_tag()
+const OUString & URLParameter::get_the_tag()
 {
     if(m_bUseDB) {
         if( ! m_bHelpDataFileRead )
@@ -187,7 +187,7 @@ OUString URLParameter::get_the_tag()
         return m_aTag;
     }
     else
-        return OUString();
+        return EMPTY_OUSTRING;
 }
 
 
@@ -205,7 +205,7 @@ OUString const & URLParameter::get_path()
 }
 
 
-OUString URLParameter::get_the_title()
+const OUString & URLParameter::get_the_title()
 {
     if(m_bUseDB) {
         if( ! m_bHelpDataFileRead )
@@ -215,7 +215,7 @@ OUString URLParameter::get_the_title()
         return m_aTitle;
     }
     else
-        return OUString();
+        return EMPTY_OUSTRING;
 }
 
 
@@ -746,7 +746,7 @@ InputStreamTransformer::InputStreamTransformer( URLParameter* urlParam,
                           RTL_TEXTENCODING_UTF8 ) + "'";
 
         parString[last++] = "imgtheme"_ostr;
-        parString[last++] = "'" + pDatabases->getImageTheme() + "'";
+        parString[last++] = "'" + chelp::Databases::getImageTheme() + "'";
         parString[last++] = "hp"_ostr;
         parString[last++] = "'" + urlParam->getByName( "HelpPrefix" ) + "'";
 
@@ -802,7 +802,7 @@ InputStreamTransformer::InputStreamTransformer( URLParameter* urlParam,
 
         if( bAddExtensionPath )
         {
-            Reference< XComponentContext > xContext(
+            const Reference< XComponentContext >& xContext(
                 comphelper::getProcessComponentContext() );
 
             OUString aOUExpandedExtensionPath = Databases::expandURL( aExtensionRegistryPath, xContext );

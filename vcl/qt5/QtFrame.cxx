@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -17,24 +17,22 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <QtCustomStyle.hxx>
 #include <QtFrame.hxx>
 #include <QtFrame.moc>
 
 #include <QtData.hxx>
 #include <QtDragAndDrop.hxx>
-#include <QtFontFace.hxx>
 #include <QtGraphics.hxx>
 #include <QtInstance.hxx>
 #include <QtMainWindow.hxx>
-#include <QtMenu.hxx>
 #include <QtSvpGraphics.hxx>
-#include <QtSystem.hxx>
-#include <QtTools.hxx>
 #include <QtTransferable.hxx>
 #if CHECK_ANY_QT_USING_X11
 #include <QtX11Support.hxx>
 #endif
 
+#include <QtCore/QLibraryInfo>
 #include <QtCore/QMimeData>
 #include <QtCore/QPoint>
 #include <QtCore/QSize>
@@ -57,42 +55,18 @@
 #endif
 
 #include <window.h>
-#include <vcl/syswin.hxx>
+#include <vcl/qt/QtUtils.hxx>
 
 #include <com/sun/star/datatransfer/dnd/DNDConstants.hpp>
 
 #include <cairo.h>
 #include <headless/svpgdi.hxx>
 
-#include <unx/fontmanager.hxx>
-
 static void SvpDamageHandler(void* handle, sal_Int32 nExtentsX, sal_Int32 nExtentsY,
                              sal_Int32 nExtentsWidth, sal_Int32 nExtentsHeight)
 {
     QtFrame* pThis = static_cast<QtFrame*>(handle);
     pThis->Damage(nExtentsX, nExtentsY, nExtentsWidth, nExtentsHeight);
-}
-
-namespace
-{
-sal_Int32 screenNumber(const QScreen* pScreen)
-{
-    const QList<QScreen*> screens = QApplication::screens();
-
-    sal_Int32 nScreen = 0;
-    bool bFound = false;
-    for (const QScreen* pCurScreen : screens)
-    {
-        if (pScreen == pCurScreen)
-        {
-            bFound = true;
-            break;
-        }
-        nScreen++;
-    }
-
-    return bFound ? nScreen : -1;
-}
 }
 
 QtFrame::QtFrame(QtFrame* pParent, SalFrameStyleFlags nStyle, bool bUseCairo)
@@ -103,7 +77,6 @@ QtFrame::QtFrame(QtFrame* pParent, SalFrameStyleFlags nStyle, bool bUseCairo)
     , m_ePointerStyle(PointerStyle::Arrow)
     , m_pDragSource(nullptr)
     , m_pDropTarget(nullptr)
-    , m_bInDrag(false)
     , m_bDefaultSize(true)
     , m_bDefaultPos(true)
     , m_bFullScreen(false)
@@ -113,8 +86,7 @@ QtFrame::QtFrame(QtFrame* pParent, SalFrameStyleFlags nStyle, bool bUseCairo)
 #endif
     , m_nInputLanguage(LANGUAGE_DONTKNOW)
 {
-    QtInstance* pInst = GetQtInstance();
-    pInst->insertFrame(this);
+    GetQtInstance().insertFrame(this);
 
     m_aDamageHandler.handle = this;
     m_aDamageHandler.damaged = ::SvpDamageHandler;
@@ -175,24 +147,14 @@ QtFrame::QtFrame(QtFrame* pParent, SalFrameStyleFlags nStyle, bool bUseCairo)
             m_pQWidget->setAttribute(Qt::WA_AlwaysShowToolTips);
     }
 
-    FillSystemEnvData(m_aSystemData, reinterpret_cast<sal_IntPtr>(this), m_pQWidget);
-
-    QWindow* pChildWindow = windowHandle();
-    connect(pChildWindow, &QWindow::screenChanged, this, &QtFrame::screenChanged);
-
-    if (pParent && !(pParent->m_nStyle & SalFrameStyleFlags::PLUG))
-    {
-        QWindow* pParentWindow = pParent->windowHandle();
-        if (pParentWindow && pChildWindow && (pParentWindow != pChildWindow))
-            pChildWindow->setTransientParent(pParentWindow);
-    }
+    FillSystemEnvData(m_aSystemData, m_pQWidget, this);
 
     SetIcon(SV_ICON_ID_OFFICE);
 }
 
 void QtFrame::screenChanged(QScreen*) { m_pQWidget->fakeResize(); }
 
-void QtFrame::FillSystemEnvData(SystemEnvData& rData, sal_IntPtr pWindow, QWidget* pWidget)
+void QtFrame::FillSystemEnvData(SystemEnvData& rData, QWidget* pWidget, QtFrame* pFrame)
 {
     assert(rData.platform == SystemEnvData::Platform::Invalid);
     assert(rData.toolkit == SystemEnvData::Toolkit::Invalid);
@@ -211,23 +173,24 @@ void QtFrame::FillSystemEnvData(SystemEnvData& rData, sal_IntPtr pWindow, QWidge
     }
 
     rData.toolkit = SystemEnvData::Toolkit::Qt;
-    rData.aShellWindow = pWindow;
+    rData.pSalFrame = pFrame;
     rData.pWidget = pWidget;
 }
 
 QtFrame::~QtFrame()
 {
-    QtInstance* pInst = GetQtInstance();
-    pInst->eraseFrame(this);
+    GetQtInstance().eraseFrame(this);
     delete asChild();
-    m_aSystemData.aShellWindow = 0;
+    m_aSystemData.pSalFrame = nullptr;
 }
 
 void QtFrame::Damage(sal_Int32 nExtentsX, sal_Int32 nExtentsY, sal_Int32 nExtentsWidth,
                      sal_Int32 nExtentsHeight) const
 {
-    m_pQWidget->update(scaledQRect(QRect(nExtentsX, nExtentsY, nExtentsWidth, nExtentsHeight),
-                                   1 / devicePixelRatioF()));
+    GetQtInstance().EmscriptenLightweightRunInMainThread([
+        this, r = scaledQRect(QRect(nExtentsX, nExtentsY, nExtentsWidth, nExtentsHeight),
+                              1 / devicePixelRatioF())
+    ] { m_pQWidget->update(r); });
 }
 
 SalGraphics* QtFrame::AcquireGraphics()
@@ -278,8 +241,7 @@ void QtFrame::ReleaseGraphics(SalGraphics* pSalGraph)
 
 bool QtFrame::PostEvent(std::unique_ptr<ImplSVEvent> pData)
 {
-    QtInstance* pInst = GetQtInstance();
-    pInst->PostEvent(this, pData.release(), SalEvent::UserEvent);
+    GetQtInstance().PostEvent(this, pData.release(), SalEvent::UserEvent);
     return true;
 }
 
@@ -290,7 +252,11 @@ QWidget* QtFrame::asChild() const
     return m_pQWidget;
 }
 
-qreal QtFrame::devicePixelRatioF() const { return asChild()->devicePixelRatioF(); }
+qreal QtFrame::devicePixelRatioF() const
+{
+    return GetQtInstance().EmscriptenLightweightRunInMainThread(
+        [child = asChild()] { return child->devicePixelRatioF(); });
+}
 
 bool QtFrame::isWindow() const { return asChild()->isWindow(); }
 
@@ -301,12 +267,14 @@ QWindow* QtFrame::windowHandle() const
     assert(pChild->window() == pChild);
     switch (m_aSystemData.platform)
     {
+        case SystemEnvData::Platform::WASM:
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+            // no idea, why Qt::WA_NativeWindow breaks the menubar for EMSCRIPTEN
+            break;
+#endif
         case SystemEnvData::Platform::Wayland:
         case SystemEnvData::Platform::Xcb:
             pChild->setAttribute(Qt::WA_NativeWindow);
-            break;
-        case SystemEnvData::Platform::WASM:
-            // no idea, why Qt::WA_NativeWindow breaks the menubar for EMSCRIPTEN
             break;
         case SystemEnvData::Platform::Invalid:
             std::abort();
@@ -317,18 +285,28 @@ QWindow* QtFrame::windowHandle() const
 
 QScreen* QtFrame::screen() const { return asChild()->screen(); }
 
+sal_Int32 QtFrame::screenNumber() const
+{
+    QScreen* pScreen = screen();
+    const QList<QScreen*> screens = QApplication::screens();
+    return screens.indexOf(pScreen);
+}
+
 bool QtFrame::GetUseDarkMode() const
 {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-    const QStyleHints* pStyleHints = QApplication::styleHints();
-    return pStyleHints->colorScheme() == Qt::ColorScheme::Dark;
-#else
+    const Qt::ColorScheme eColorScheme = QApplication::styleHints()->colorScheme();
+    if (eColorScheme == Qt::ColorScheme::Dark)
+        return true;
+    if (eColorScheme == Qt::ColorScheme::Light)
+        return false;
+#endif
+
     // use same mechanism for determining dark mode preference as xdg-desktop-portal-kde, s.
     // https://invent.kde.org/plasma/xdg-desktop-portal-kde/-/blob/0a4237549debf9518f8cfbaf531456850c0729bd/src/settings.cpp#L213-227
     const QPalette aPalette = QApplication::palette();
     const int nWindowBackGroundGray = qGray(aPalette.window().color().rgb());
     return nWindowBackGroundGray < 192;
-#endif
 }
 
 bool QtFrame::isMinimized() const { return asChild()->isMinimized(); }
@@ -342,14 +320,19 @@ void QtFrame::SetWindowStateImpl(Qt::WindowStates eState)
 
 void QtFrame::SetTitle(const OUString& rTitle)
 {
-    QtInstance* pSalInst(GetQtInstance());
-    assert(pSalInst);
-    pSalInst->RunInMainThread(
+    GetQtInstance().RunInMainThread(
         [this, rTitle]() { m_pQWidget->window()->setWindowTitle(toQString(rTitle)); });
 }
 
 void QtFrame::SetIcon(sal_uInt16 nIcon)
 {
+    QtInstance& rQtInstance = GetQtInstance();
+    if (!rQtInstance.IsMainThread())
+    {
+        rQtInstance.RunInMainThread([this, nIcon]() { SetIcon(nIcon); });
+        return;
+    }
+
     if (m_nStyle
             & (SalFrameStyleFlags::PLUG | SalFrameStyleFlags::SYSTEMCHILD
                | SalFrameStyleFlags::FLOAT | SalFrameStyleFlags::INTRO
@@ -376,6 +359,20 @@ void QtFrame::SetIcon(sal_uInt16 nIcon)
 
     QIcon aIcon = QIcon::fromTheme(appicon);
     m_pQWidget->window()->setWindowIcon(aIcon);
+
+    if (QGuiApplication::platformName() == "wayland" && m_pQWidget->window()->isVisible())
+    {
+        // Qt currently doesn't provide API to directly set the app_id for a single
+        // window/toplevel on Wayland, but the one set for the application is picked up
+        // on hide/show, so do that.
+        // An alternative would be to use private Qt API and low-level wayland API to set the
+        // app_id directly, s. discussion in QTBUG-77182.
+        const QString sOrigDesktopFileName = QGuiApplication::desktopFileName();
+        QGuiApplication::setDesktopFileName(appicon);
+        m_pQWidget->window()->hide();
+        m_pQWidget->window()->show();
+        QGuiApplication::setDesktopFileName(sOrigDesktopFileName);
+    }
 }
 
 void QtFrame::SetMenu(SalMenu*) {}
@@ -384,32 +381,46 @@ void QtFrame::SetExtendedFrameStyle(SalExtStyle /*nExtStyle*/) { /* not needed *
 
 void QtFrame::Show(bool bVisible, bool bNoActivate)
 {
+    SolarMutexGuard g;
+    QtInstance& rQtInstance = GetQtInstance();
+    if (!rQtInstance.IsMainThread())
+    {
+        rQtInstance.RunInMainThread([&] { Show(bVisible, bNoActivate); });
+        return;
+    }
+
     assert(m_pQWidget);
     if (bVisible == asChild()->isVisible())
         return;
 
-    auto* pSalInst(GetQtInstance());
-    assert(pSalInst);
-
     if (!bVisible) // hide
     {
-        pSalInst->RunInMainThread([this]() { asChild()->setVisible(false); });
+        asChild()->setVisible(false);
         return;
+    }
+
+    QWindow* pChildWindow = windowHandle();
+    connect(pChildWindow, &QWindow::screenChanged, this, &QtFrame::screenChanged,
+            Qt::UniqueConnection);
+
+    if (m_pParent && !(m_pParent->m_nStyle & SalFrameStyleFlags::PLUG))
+    {
+        QWindow* pParentWindow = m_pParent->windowHandle();
+        if (pParentWindow && pChildWindow && (pParentWindow != pChildWindow))
+            pChildWindow->setTransientParent(pParentWindow);
     }
 
     // show
     SetDefaultSize();
 
-    pSalInst->RunInMainThread([this, bNoActivate]() {
-        QWidget* const pChild = asChild();
-        pChild->setVisible(true);
-        pChild->raise();
-        if (!bNoActivate)
-        {
-            pChild->activateWindow();
-            pChild->setFocus();
-        }
-    });
+    QWidget* const pChild = asChild();
+    pChild->setVisible(true);
+    pChild->raise();
+    if (!bNoActivate)
+    {
+        pChild->activateWindow();
+        pChild->setFocus();
+    }
 }
 
 void QtFrame::SetMinClientSize(tools::Long nWidth, tools::Long nHeight)
@@ -417,7 +428,10 @@ void QtFrame::SetMinClientSize(tools::Long nWidth, tools::Long nHeight)
     if (!isChild())
     {
         const qreal fRatio = devicePixelRatioF();
-        asChild()->setMinimumSize(round(nWidth / fRatio), round(nHeight / fRatio));
+        GetQtInstance().EmscriptenLightweightRunInMainThread(
+            [ child = asChild(), w = round(nWidth / fRatio), h = round(nHeight / fRatio) ] {
+                child->setMinimumSize(w, h);
+            });
     }
 }
 
@@ -428,14 +442,6 @@ void QtFrame::SetMaxClientSize(tools::Long nWidth, tools::Long nHeight)
         const qreal fRatio = devicePixelRatioF();
         asChild()->setMaximumSize(round(nWidth / fRatio), round(nHeight / fRatio));
     }
-}
-
-int QtFrame::menuBarOffset() const
-{
-    QtMainWindow* pTopLevel = m_pParent->GetTopLevelWindow();
-    if (pTopLevel && pTopLevel->menuBar() && pTopLevel->menuBar()->isVisible())
-        return round(pTopLevel->menuBar()->geometry().height() * devicePixelRatioF());
-    return 0;
 }
 
 void QtFrame::SetDefaultPos()
@@ -450,7 +456,6 @@ void QtFrame::SetDefaultPos()
         QWidget* const pParentWin = m_pParent->asChild()->window();
         QWidget* const pChildWin = asChild()->window();
         QPoint aPos = (pParentWin->rect().center() - pChildWin->rect().center()) * fRatio;
-        aPos.ry() -= menuBarOffset();
         SetPosSize(aPos.x(), aPos.y(), 0, 0, SAL_FRAME_POSSIZE_X | SAL_FRAME_POSSIZE_Y);
         assert(!m_bDefaultPos);
     }
@@ -474,7 +479,7 @@ Size QtFrame::CalcDefaultSize()
     {
         if (!m_bFullScreenSpanAll)
         {
-            aSize = toSize(QGuiApplication::screens().at(maGeometry.screen())->size());
+            aSize = toSize(screen()->size());
         }
         else
         {
@@ -500,6 +505,14 @@ void QtFrame::SetDefaultSize()
 void QtFrame::SetPosSize(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
                          sal_uInt16 nFlags)
 {
+    SolarMutexGuard g;
+    QtInstance& rQtInstance = GetQtInstance();
+    if (!rQtInstance.IsMainThread())
+    {
+        rQtInstance.RunInMainThread([&] { SetPosSize(nX, nY, nWidth, nHeight, nFlags); });
+        return;
+    }
+
     if (!isWindow() || isChild(true, false))
         return;
 
@@ -508,9 +521,9 @@ void QtFrame::SetPosSize(tools::Long nX, tools::Long nY, tools::Long nWidth, too
         if (isChild(false) || !m_pQWidget->isMaximized())
         {
             if (!(nFlags & SAL_FRAME_POSSIZE_WIDTH))
-                nWidth = maGeometry.width();
+                nWidth = GetWidth();
             else if (!(nFlags & SAL_FRAME_POSSIZE_HEIGHT))
-                nHeight = maGeometry.height();
+                nHeight = GetHeight();
 
             if (nWidth > 0 && nHeight > 0)
             {
@@ -522,13 +535,6 @@ void QtFrame::SetPosSize(tools::Long nX, tools::Long nY, tools::Long nWidth, too
                 else
                     asChild()->setFixedSize(nNewWidth, nNewHeight);
             }
-
-            // assume the resize happened
-            // needed for calculations and will eventually be corrected by events
-            if (nWidth > 0)
-                maGeometry.setWidth(nWidth);
-            if (nHeight > 0)
-                maGeometry.setHeight(nHeight);
         }
     }
 
@@ -541,22 +547,18 @@ void QtFrame::SetPosSize(tools::Long nX, tools::Long nY, tools::Long nWidth, too
 
     if (m_pParent)
     {
-        const SalFrameGeometry& aParentGeometry = m_pParent->maGeometry;
+        const SalFrameGeometry aParentGeometry = m_pParent->GetUnmirroredGeometry();
         if (QGuiApplication::isRightToLeft())
-            nX = aParentGeometry.x() + aParentGeometry.width() - nX - maGeometry.width() - 1;
+            nX = aParentGeometry.x() + aParentGeometry.width() - nX - GetWidth() - 1;
         else
             nX += aParentGeometry.x();
-        nY += aParentGeometry.y() + menuBarOffset();
+        nY += aParentGeometry.y();
     }
 
     if (!(nFlags & SAL_FRAME_POSSIZE_X))
-        nX = maGeometry.x();
+        nX = GetUnmirroredGeometry().x();
     else if (!(nFlags & SAL_FRAME_POSSIZE_Y))
-        nY = maGeometry.y();
-
-    // assume the reposition happened
-    // needed for calculations and will eventually be corrected by events later
-    maGeometry.setPos({ nX, nY });
+        nY = GetUnmirroredGeometry().y();
 
     m_bDefaultPos = false;
     asChild()->move(round(nX / devicePixelRatioF()), round(nY / devicePixelRatioF()));
@@ -566,6 +568,22 @@ void QtFrame::GetClientSize(tools::Long& rWidth, tools::Long& rHeight)
 {
     rWidth = round(m_pQWidget->width() * devicePixelRatioF());
     rHeight = round(m_pQWidget->height() * devicePixelRatioF());
+}
+
+SalFrameGeometry QtFrame::GetUnmirroredGeometry() const
+{
+    SalFrameGeometry aGeometry;
+
+    const qreal fRatio = devicePixelRatioF();
+    const QPoint aScreenPos = m_pQWidget->mapToGlobal(QPoint(0, 0));
+    aGeometry.setX(aScreenPos.x() * fRatio);
+    aGeometry.setY(aScreenPos.y() * fRatio);
+    aGeometry.setWidth(m_pQWidget->width() * fRatio);
+    aGeometry.setHeight(m_pQWidget->height() * fRatio);
+
+    aGeometry.setScreen(std::max(sal_Int32(0), screenNumber()));
+
+    return aGeometry;
 }
 
 void QtFrame::GetWorkArea(AbsoluteScreenPixelRectangle& rRect)
@@ -587,9 +605,7 @@ void QtFrame::SetModal(bool bModal)
     if (!isWindow() || asChild()->isModal() == bModal)
         return;
 
-    auto* pSalInst(GetQtInstance());
-    assert(pSalInst);
-    pSalInst->RunInMainThread([this, bModal]() {
+    GetQtInstance().RunInMainThread([this, bModal]() {
 
         QWidget* const pChild = asChild();
         const bool bWasVisible = pChild->isVisible();
@@ -614,10 +630,15 @@ void QtFrame::SetModal(bool bModal)
     });
 }
 
-bool QtFrame::GetModal() const { return isWindow() && windowHandle()->isModal(); }
-
 void QtFrame::SetWindowState(const vcl::WindowData* pState)
 {
+    QtInstance& rQtInstance = GetQtInstance();
+    if (!rQtInstance.IsMainThread())
+    {
+        rQtInstance.RunInMainThread([this, pState]() { SetWindowState(pState); });
+        return;
+    }
+
     if (!isWindow() || !pState || isChild(true, false))
         return;
 
@@ -697,40 +718,39 @@ void QtFrame::ShowFullScreen(bool bFullScreen, sal_Int32 nScreen)
     if (m_bFullScreen)
     {
         m_aRestoreGeometry = m_pTopLevel->geometry();
-        m_nRestoreScreen = maGeometry.screen();
+        m_nRestoreScreen = std::max(sal_Int32(0), screenNumber());
         SetScreenNumber(m_bFullScreenSpanAll ? m_nRestoreScreen : nScreen);
         if (!m_bFullScreenSpanAll)
-            windowHandle()->showFullScreen();
+            m_pTopLevel->showFullScreen();
         else
-            windowHandle()->showNormal();
+            m_pTopLevel->showNormal();
     }
     else
     {
         SetScreenNumber(m_nRestoreScreen);
-        windowHandle()->showNormal();
+        m_pTopLevel->showNormal();
         m_pTopLevel->setGeometry(m_aRestoreGeometry);
     }
 }
 
 void QtFrame::StartPresentation(bool bStart)
 {
-#if CHECK_ANY_QT_USING_X11
-    // meh - so there's no Qt platform independent solution
-    // https://forum.qt.io/topic/38504/solved-qdialog-in-fullscreen-disable-os-screensaver
+#if !defined EMSCRIPTEN
     assert(m_aSystemData.platform != SystemEnvData::Platform::Invalid);
-    unsigned int nRootWindow(0);
-    std::optional<Display*> aDisplay;
 
 #if CHECK_QT5_USING_X11
+    unsigned int nRootWindow(0);
+    std::optional<Display*> aDisplay;
     if (QX11Info::isPlatformX11())
     {
         nRootWindow = QX11Info::appRootWindow();
         aDisplay = QX11Info::display();
     }
-#endif
-
     m_SessionManagerInhibitor.inhibit(bStart, u"presentation", APPLICATION_INHIBIT_IDLE,
                                       nRootWindow, aDisplay);
+#else
+    m_SessionManagerInhibitor.inhibit(bStart, u"presentation", APPLICATION_INHIBIT_IDLE);
+#endif
 #else
     Q_UNUSED(bStart)
 #endif
@@ -748,9 +768,7 @@ void QtFrame::SetAlwaysOnTop(bool bOnTop)
 
 void QtFrame::ToTop(SalFrameToTop nFlags)
 {
-    QtInstance* pSalInst(GetQtInstance());
-    assert(pSalInst);
-    pSalInst->RunInMainThread([this, nFlags]() {
+    GetQtInstance().RunInMainThread([this, nFlags]() {
         QWidget* const pWidget = asChild();
         if (isWindow() && !(nFlags & SalFrameToTop::GrabFocusOnly))
             pWidget->raise();
@@ -771,11 +789,14 @@ void QtFrame::ToTop(SalFrameToTop nFlags)
 
 void QtFrame::SetPointer(PointerStyle ePointerStyle)
 {
-    if (ePointerStyle == m_ePointerStyle)
-        return;
-    m_ePointerStyle = ePointerStyle;
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        if (ePointerStyle == m_ePointerStyle)
+            return;
+        m_ePointerStyle = ePointerStyle;
 
-    m_pQWidget->setCursor(GetQtData()->getCursor(ePointerStyle));
+        m_pQWidget->setCursor(GetQtData()->getCursor(ePointerStyle));
+    });
 }
 
 void QtFrame::CaptureMouse(bool bMouse)
@@ -811,7 +832,7 @@ bool QtFrame::ShowTooltip(const OUString& rText, const tools::Rectangle& rHelpAr
 {
     QRect aHelpArea(toQRect(rHelpArea));
     if (QGuiApplication::isRightToLeft())
-        aHelpArea.moveLeft(maGeometry.width() - aHelpArea.width() - aHelpArea.left() - 1);
+        aHelpArea.moveLeft(GetWidth() - aHelpArea.width() - aHelpArea.left() - 1);
     m_aTooltipText = rText;
     m_aTooltipArea = aHelpArea;
     return true;
@@ -828,11 +849,7 @@ void QtFrame::SetInputContext(SalInputContext* pContext)
     m_pQWidget->setAttribute(Qt::WA_InputMethodEnabled);
 }
 
-void QtFrame::EndExtTextInput(EndExtTextInputFlags /*nFlags*/)
-{
-    if (m_pQWidget)
-        m_pQWidget->endExtTextInput();
-}
+void QtFrame::EndExtTextInput(EndExtTextInputFlags /*nFlags*/) { m_pQWidget->endExtTextInput(); }
 
 OUString QtFrame::GetKeyName(sal_uInt16 nKeyCode)
 {
@@ -1011,211 +1028,184 @@ void QtFrame::setInputLanguage(LanguageType nInputLanguage)
     CallCallback(SalEvent::InputLanguageChange, nullptr);
 }
 
-static Color toColor(const QColor& rColor)
-{
-    return Color(rColor.red(), rColor.green(), rColor.blue());
-}
-
-static bool toVclFont(const QFont& rQFont, const css::lang::Locale& rLocale, vcl::Font& rVclFont)
-{
-    FontAttributes aFA;
-    QtFontFace::fillAttributesFromQFont(rQFont, aFA);
-
-    bool bFound = psp::PrintFontManager::get().matchFont(aFA, rLocale);
-    SAL_INFO("vcl.qt", "font match result for '"
-                           << rQFont.family() << "': "
-                           << (bFound ? OUString::Concat("'") + aFA.GetFamilyName() + "'"
-                                      : OUString("failed")));
-
-    if (!bFound)
-        return false;
-
-    QFontInfo qFontInfo(rQFont);
-    int nPointHeight = qFontInfo.pointSize();
-    if (nPointHeight <= 0)
-        nPointHeight = rQFont.pointSize();
-
-    vcl::Font aFont(aFA.GetFamilyName(), Size(0, nPointHeight));
-    if (aFA.GetWeight() != WEIGHT_DONTKNOW)
-        aFont.SetWeight(aFA.GetWeight());
-    if (aFA.GetWidthType() != WIDTH_DONTKNOW)
-        aFont.SetWidthType(aFA.GetWidthType());
-    if (aFA.GetItalic() != ITALIC_DONTKNOW)
-        aFont.SetItalic(aFA.GetItalic());
-    if (aFA.GetPitch() != PITCH_DONTKNOW)
-        aFont.SetPitch(aFA.GetPitch());
-
-    rVclFont = aFont;
-    return true;
-}
-
 void QtFrame::UpdateSettings(AllSettings& rSettings)
 {
-    if (QtData::noNativeControls())
-        return;
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        if (QtData::noNativeControls())
+            return;
+        QtCustomStyle::LoadCustomStyle(GetUseDarkMode());
 
-    StyleSettings style(rSettings.GetStyleSettings());
-    const css::lang::Locale aLocale = rSettings.GetUILanguageTag().getLocale();
+        StyleSettings style(rSettings.GetStyleSettings());
+        const css::lang::Locale aLocale = rSettings.GetUILanguageTag().getLocale();
 
-    // General settings
-    QPalette pal = QApplication::palette();
+        // General settings
+        QPalette pal = QApplication::palette();
 
-    style.SetToolbarIconSize(ToolbarIconSize::Large);
+        style.SetToolbarIconSize(ToolbarIconSize::Large);
 
-    Color aFore = toColor(pal.color(QPalette::Active, QPalette::WindowText));
-    Color aBack = toColor(pal.color(QPalette::Active, QPalette::Window));
-    Color aText = toColor(pal.color(QPalette::Active, QPalette::Text));
-    Color aBase = toColor(pal.color(QPalette::Active, QPalette::Base));
-    Color aButn = toColor(pal.color(QPalette::Active, QPalette::ButtonText));
-    Color aMid = toColor(pal.color(QPalette::Active, QPalette::Mid));
-    Color aHigh = toColor(pal.color(QPalette::Active, QPalette::Highlight));
-    Color aHighText = toColor(pal.color(QPalette::Active, QPalette::HighlightedText));
-    Color aLink = toColor(pal.color(QPalette::Active, QPalette::Link));
-    Color aVisitedLink = toColor(pal.color(QPalette::Active, QPalette::LinkVisited));
+        Color aFore = toColor(pal.color(QPalette::Active, QPalette::WindowText));
+        Color aBack = toColor(pal.color(QPalette::Active, QPalette::Window));
+        Color aText = toColor(pal.color(QPalette::Active, QPalette::Text));
+        Color aBase = toColor(pal.color(QPalette::Active, QPalette::Base));
+        Color aButn = toColor(pal.color(QPalette::Active, QPalette::ButtonText));
+        Color aMid = toColor(pal.color(QPalette::Active, QPalette::Mid));
+        Color aHigh = toColor(pal.color(QPalette::Active, QPalette::Highlight));
+        Color aHighText = toColor(pal.color(QPalette::Active, QPalette::HighlightedText));
+        Color aLink = toColor(pal.color(QPalette::Active, QPalette::Link));
+        Color aVisitedLink = toColor(pal.color(QPalette::Active, QPalette::LinkVisited));
 
-    style.SetSkipDisabledInMenus(true);
+        style.SetSkipDisabledInMenus(true);
 
-    // Foreground
-    style.SetRadioCheckTextColor(aFore);
-    style.SetLabelTextColor(aFore);
-    style.SetDialogTextColor(aFore);
-    style.SetGroupTextColor(aFore);
+        // Foreground
+        style.SetRadioCheckTextColor(aFore);
+        style.SetLabelTextColor(aFore);
+        style.SetDialogTextColor(aFore);
+        style.SetGroupTextColor(aFore);
 
-    // Text
-    style.SetFieldTextColor(aText);
-    style.SetFieldRolloverTextColor(aText);
-    style.SetListBoxWindowTextColor(aText);
-    style.SetWindowTextColor(aText);
-    style.SetToolTextColor(aText);
+        // Text
+        style.SetFieldTextColor(aText);
+        style.SetFieldRolloverTextColor(aText);
+        style.SetListBoxWindowTextColor(aText);
+        style.SetWindowTextColor(aText);
+        style.SetToolTextColor(aText);
 
-    // Base
-    style.SetFieldColor(aBase);
-    style.SetWindowColor(aBase);
-    style.SetActiveTabColor(aBase);
-    style.SetListBoxWindowBackgroundColor(aBase);
-    style.SetAlternatingRowColor(toColor(pal.color(QPalette::Active, QPalette::AlternateBase)));
+        // Base
+        style.SetFieldColor(aBase);
+        style.SetActiveTabColor(aBase);
+        style.SetListBoxWindowBackgroundColor(aBase);
+        style.SetAlternatingRowColor(toColor(pal.color(QPalette::Active, QPalette::AlternateBase)));
 
-    // Buttons
-    style.SetDefaultButtonTextColor(aButn);
-    style.SetButtonTextColor(aButn);
-    style.SetDefaultActionButtonTextColor(aButn);
-    style.SetActionButtonTextColor(aButn);
-    style.SetFlatButtonTextColor(aButn);
-    style.SetDefaultButtonRolloverTextColor(aButn);
-    style.SetButtonRolloverTextColor(aButn);
-    style.SetDefaultActionButtonRolloverTextColor(aButn);
-    style.SetActionButtonRolloverTextColor(aButn);
-    style.SetFlatButtonRolloverTextColor(aButn);
-    style.SetDefaultButtonPressedRolloverTextColor(aButn);
-    style.SetButtonPressedRolloverTextColor(aButn);
-    style.SetDefaultActionButtonPressedRolloverTextColor(aButn);
-    style.SetActionButtonPressedRolloverTextColor(aButn);
-    style.SetFlatButtonPressedRolloverTextColor(aButn);
+        // Buttons
+        style.SetDefaultButtonTextColor(aButn);
+        style.SetButtonTextColor(aButn);
+        style.SetDefaultActionButtonTextColor(aButn);
+        style.SetActionButtonTextColor(aButn);
+        style.SetFlatButtonTextColor(aButn);
+        style.SetDefaultButtonRolloverTextColor(aButn);
+        style.SetButtonRolloverTextColor(aButn);
+        style.SetDefaultActionButtonRolloverTextColor(aButn);
+        style.SetActionButtonRolloverTextColor(aButn);
+        style.SetFlatButtonRolloverTextColor(aButn);
+        style.SetDefaultButtonPressedRolloverTextColor(aButn);
+        style.SetButtonPressedRolloverTextColor(aButn);
+        style.SetDefaultActionButtonPressedRolloverTextColor(aButn);
+        style.SetActionButtonPressedRolloverTextColor(aButn);
+        style.SetFlatButtonPressedRolloverTextColor(aButn);
 
-    // Tabs
-    style.SetTabTextColor(aButn);
-    style.SetTabRolloverTextColor(aButn);
-    style.SetTabHighlightTextColor(aButn);
+        // Tabs
+        style.SetTabTextColor(aButn);
+        style.SetTabRolloverTextColor(aButn);
+        style.SetTabHighlightTextColor(aButn);
 
-    // Disable color
-    style.SetDisableColor(toColor(pal.color(QPalette::Disabled, QPalette::WindowText)));
+        // Disable color
+        style.SetDisableColor(toColor(pal.color(QPalette::Disabled, QPalette::WindowText)));
 
-    // Background
-    style.BatchSetBackgrounds(aBack);
-    style.SetInactiveTabColor(aBack);
+        // Background
+        style.BatchSetBackgrounds(aBack);
+        style.SetInactiveTabColor(aBack);
+        style.SetWindowColor(aBack);
 
-    // Workspace
-    style.SetWorkspaceColor(aMid);
+        // Workspace
+        style.SetWorkspaceColor(aMid);
 
-    // Selection
-    // https://invent.kde.org/plasma/plasma-workspace/-/merge_requests/305
-    style.SetAccentColor(aHigh);
-    style.SetHighlightColor(aHigh);
-    style.SetHighlightTextColor(aHighText);
-    style.SetListBoxWindowHighlightColor(aHigh);
-    style.SetListBoxWindowHighlightTextColor(aHighText);
-    style.SetActiveColor(aHigh);
-    style.SetActiveTextColor(aHighText);
+        // Selection
+        // https://invent.kde.org/plasma/plasma-workspace/-/merge_requests/305
+        style.SetAccentColor(aHigh);
+        style.SetHighlightColor(aHigh);
+        style.SetHighlightTextColor(aHighText);
+        style.SetListBoxWindowHighlightColor(aHigh);
+        style.SetListBoxWindowHighlightTextColor(aHighText);
+        style.SetActiveColor(aHigh);
+        style.SetActiveTextColor(aHighText);
 
-    // Links
-    style.SetLinkColor(aLink);
-    style.SetVisitedLinkColor(aVisitedLink);
+        // Links
+        style.SetLinkColor(aLink);
+        style.SetVisitedLinkColor(aVisitedLink);
 
-    // Tooltip
-    style.SetHelpColor(toColor(QToolTip::palette().color(QPalette::Active, QPalette::ToolTipBase)));
-    style.SetHelpTextColor(
-        toColor(QToolTip::palette().color(QPalette::Active, QPalette::ToolTipText)));
+        // Tooltip
+        style.SetHelpColor(
+            toColor(QToolTip::palette().color(QPalette::Active, QPalette::ToolTipBase)));
+        style.SetHelpTextColor(
+            toColor(QToolTip::palette().color(QPalette::Active, QPalette::ToolTipText)));
 
-    // Menu
-    std::unique_ptr<QMenuBar> pMenuBar = std::make_unique<QMenuBar>();
-    QPalette qMenuCG = pMenuBar->palette();
+        // Menu
+        std::unique_ptr<QMenuBar> pMenuBar = std::make_unique<QMenuBar>();
+        QPalette qMenuCG = pMenuBar->palette();
 
-    // Menu text and background color, theme specific
-    Color aMenuFore = toColor(qMenuCG.color(QPalette::WindowText));
-    Color aMenuBack = toColor(qMenuCG.color(QPalette::Window));
+        // Menu text and background color, theme specific
+        Color aMenuFore = toColor(qMenuCG.color(QPalette::WindowText));
+        Color aMenuBack = toColor(qMenuCG.color(QPalette::Window));
 
-    style.SetMenuTextColor(aMenuFore);
-    style.SetMenuBarTextColor(style.GetPersonaMenuBarTextColor().value_or(aMenuFore));
-    style.SetMenuColor(aMenuBack);
-    style.SetMenuBarColor(aMenuBack);
-    style.SetMenuHighlightColor(toColor(qMenuCG.color(QPalette::Highlight)));
-    style.SetMenuHighlightTextColor(toColor(qMenuCG.color(QPalette::HighlightedText)));
+        style.SetMenuTextColor(aMenuFore);
+        style.SetMenuBarTextColor(aMenuFore);
+        style.SetMenuColor(aMenuBack);
+        style.SetMenuBarColor(aMenuBack);
+        style.SetMenuHighlightColor(toColor(qMenuCG.color(QPalette::Highlight)));
+        style.SetMenuHighlightTextColor(toColor(qMenuCG.color(QPalette::HighlightedText)));
 
-    // set special menubar highlight text color
-    if (QApplication::style()->inherits("HighContrastStyle"))
-        ImplGetSVData()->maNWFData.maMenuBarHighlightTextColor
-            = toColor(qMenuCG.color(QPalette::HighlightedText));
-    else
-        ImplGetSVData()->maNWFData.maMenuBarHighlightTextColor = aMenuFore;
+        // set special menubar highlight text color
+        if (QApplication::style()->inherits("HighContrastStyle"))
+            ImplGetSVData()->maNWFData.maMenuBarHighlightTextColor
+                = toColor(qMenuCG.color(QPalette::HighlightedText));
+        else
+            ImplGetSVData()->maNWFData.maMenuBarHighlightTextColor = aMenuFore;
 
-    // set menubar rollover color
-    if (pMenuBar->style()->styleHint(QStyle::SH_MenuBar_MouseTracking))
-    {
-        style.SetMenuBarRolloverColor(toColor(qMenuCG.color(QPalette::Highlight)));
-        style.SetMenuBarRolloverTextColor(ImplGetSVData()->maNWFData.maMenuBarHighlightTextColor);
-    }
-    else
-    {
-        style.SetMenuBarRolloverColor(aMenuBack);
-        style.SetMenuBarRolloverTextColor(aMenuFore);
-    }
-    style.SetMenuBarHighlightTextColor(style.GetMenuHighlightTextColor());
+        // set menubar rollover color
+        if (pMenuBar->style()->styleHint(QStyle::SH_MenuBar_MouseTracking))
+        {
+            style.SetMenuBarRolloverColor(toColor(qMenuCG.color(QPalette::Highlight)));
+            style.SetMenuBarRolloverTextColor(
+                ImplGetSVData()->maNWFData.maMenuBarHighlightTextColor);
+        }
+        else
+        {
+            style.SetMenuBarRolloverColor(aMenuBack);
+            style.SetMenuBarRolloverTextColor(aMenuFore);
+        }
+        style.SetMenuBarHighlightTextColor(style.GetMenuHighlightTextColor());
 
-    // Default fonts
-    vcl::Font aFont;
-    if (toVclFont(QApplication::font(), aLocale, aFont))
-    {
-        style.BatchSetFonts(aFont, aFont);
-        aFont.SetWeight(WEIGHT_BOLD);
-        style.SetTitleFont(aFont);
-        style.SetFloatTitleFont(aFont);
-    }
+        // Default fonts
+        vcl::Font aFont;
+        if (toVclFont(QApplication::font(), aLocale, aFont))
+        {
+            style.BatchSetFonts(aFont, aFont);
+            aFont.SetWeight(WEIGHT_BOLD);
+            style.SetTitleFont(aFont);
+            style.SetFloatTitleFont(aFont);
+        }
 
-    // Tooltip font
-    if (toVclFont(QToolTip::font(), aLocale, aFont))
-        style.SetHelpFont(aFont);
+        // Tooltip font
+        if (toVclFont(QToolTip::font(), aLocale, aFont))
+            style.SetHelpFont(aFont);
 
-    // Menu bar font
-    if (toVclFont(pMenuBar->font(), aLocale, aFont))
-        style.SetMenuFont(aFont);
+        // Menu bar font
+        if (toVclFont(pMenuBar->font(), aLocale, aFont))
+            style.SetMenuFont(aFont);
 
-    // Icon theme
-    const bool bPreferDarkTheme = GetUseDarkMode();
-    style.SetPreferredIconTheme(toOUString(QIcon::themeName()), bPreferDarkTheme);
+        // Icon theme
+        const bool bPreferDarkTheme = GetUseDarkMode();
+        style.SetPreferredIconTheme(toOUString(QIcon::themeName()), bPreferDarkTheme);
 
-    // Scroll bar size
-    style.SetScrollBarSize(QApplication::style()->pixelMetric(QStyle::PM_ScrollBarExtent));
-    style.SetMinThumbSize(QApplication::style()->pixelMetric(QStyle::PM_ScrollBarSliderMin));
+        // Scroll bar size
+        style.SetScrollBarSize(QApplication::style()->pixelMetric(QStyle::PM_ScrollBarExtent));
+        style.SetMinThumbSize(QApplication::style()->pixelMetric(QStyle::PM_ScrollBarSliderMin));
 
-    // These colors are used for the ruler text and marks
-    style.SetShadowColor(toColor(pal.color(QPalette::Disabled, QPalette::WindowText)));
-    style.SetDarkShadowColor(toColor(pal.color(QPalette::Inactive, QPalette::WindowText)));
+        // These colors are used for the ruler text and marks
+        style.SetShadowColor(toColor(pal.color(QPalette::Disabled, QPalette::WindowText)));
+        style.SetDarkShadowColor(toColor(pal.color(QPalette::Inactive, QPalette::WindowText)));
 
-    // Cursor blink interval
-    int nFlashTime = QApplication::cursorFlashTime();
-    style.SetCursorBlinkTime(nFlashTime != 0 ? nFlashTime / 2 : STYLE_CURSOR_NOBLINKTIME);
+        // match native QComboBox behavior of putting text cursor to end of text
+        // without text selection when combobox entry is selected
+        style.SetComboBoxTextSelectionMode(ComboBoxTextSelectionMode::CursorToEnd);
 
-    rSettings.SetStyleSettings(style);
+        // Cursor blink interval
+        int nFlashTime = QApplication::cursorFlashTime();
+        style.SetCursorBlinkTime(nFlashTime != 0 ? nFlashTime / 2 : STYLE_CURSOR_NOBLINKTIME);
+        style.SetSystemColorsLoaded(true);
+
+        rSettings.SetStyleSettings(style);
+    });
 }
 
 void QtFrame::Beep() { QApplication::beep(); }
@@ -1224,9 +1214,10 @@ SalFrame::SalPointerState QtFrame::GetPointerState()
 {
     SalPointerState aState;
     aState.maPos = toPoint(QCursor::pos() * devicePixelRatioF());
-    aState.maPos.Move(-maGeometry.x(), -maGeometry.y());
-    aState.mnState = GetMouseModCode(QGuiApplication::mouseButtons())
-                     | GetKeyModCode(QGuiApplication::keyboardModifiers());
+    SalFrameGeometry aGeometry = GetUnmirroredGeometry();
+    aState.maPos.Move(-aGeometry.x(), -aGeometry.y());
+    aState.mnState = toVclMouseButtons(QGuiApplication::mouseButtons())
+                     | toVclKeyboardModifiers(QGuiApplication::keyboardModifiers());
     return aState;
 }
 
@@ -1271,40 +1262,34 @@ void QtFrame::SetScreenNumber(unsigned int nScreen)
         return;
 
     QList<QScreen*> screens = QApplication::screens();
-    if (static_cast<int>(nScreen) < screens.size() || m_bFullScreenSpanAll)
+    if (static_cast<int>(nScreen) >= screens.size() && !m_bFullScreenSpanAll)
     {
-        QRect screenGeo;
-
-        if (!m_bFullScreenSpanAll)
-        {
-            screenGeo = QGuiApplication::screens().at(nScreen)->geometry();
-            pWindow->setScreen(QApplication::screens()[nScreen]);
-        }
-        else // special case: fullscreen over all available screens
-        {
-            assert(m_bFullScreen);
-            // left-most screen
-            QScreen* pScreen = QGuiApplication::screenAt(QPoint(0, 0));
-            // entire virtual desktop
-            screenGeo = pScreen->availableVirtualGeometry();
-            pWindow->setScreen(pScreen);
-            pWindow->setGeometry(screenGeo);
-            nScreen = screenNumber(pScreen);
-        }
-
-        // setScreen by itself has no effect, explicitly move the widget to
-        // the new screen
-        asChild()->move(screenGeo.topLeft());
-    }
-    else
-    {
-        // index outta bounds, use primary screen
-        QScreen* primaryScreen = QApplication::primaryScreen();
-        pWindow->setScreen(primaryScreen);
-        nScreen = static_cast<sal_uInt32>(screenNumber(primaryScreen));
+        SAL_WARN("vcl.qt", "Ignoring request to set invalid screen number");
+        return;
     }
 
-    maGeometry.setScreen(nScreen);
+    QRect screenGeo;
+
+    if (!m_bFullScreenSpanAll)
+    {
+        screenGeo = QGuiApplication::screens().at(nScreen)->geometry();
+        pWindow->setScreen(QApplication::screens().at(nScreen));
+    }
+    else // special case: fullscreen over all available screens
+    {
+        assert(m_bFullScreen);
+        // left-most screen
+        QScreen* pScreen = QGuiApplication::screenAt(QPoint(0, 0));
+        // entire virtual desktop
+        screenGeo = pScreen->availableVirtualGeometry();
+        pWindow->setScreen(pScreen);
+        pWindow->setGeometry(screenGeo);
+    }
+
+    // setScreen by itself has no effect, explicitly move the widget to
+    // the new screen
+    GetQtInstance().EmscriptenLightweightRunInMainThread(
+        [ child = asChild(), topLeft = screenGeo.topLeft() ] { child->move(topLeft); });
 }
 
 void QtFrame::SetApplicationID(const OUString& rWMClass)
@@ -1325,11 +1310,20 @@ void QtFrame::ResolveWindowHandle(SystemEnvData& rData) const
     if (!rData.pWidget)
         return;
     assert(rData.platform != SystemEnvData::Platform::Invalid);
-    if (rData.platform != SystemEnvData::Platform::Wayland)
+    // Calling QWidget::winId() implicitly enables native windows to be used instead
+    // of "alien widgets" that don't have a native widget associated with them,
+    // s. https://doc.qt.io/qt-6/qwidget.html#native-widgets-vs-alien-widgets
+    // Avoid native widgets with Qt 5 on Wayland and with Qt 6 altogether as they
+    // cause unresponsive UI, s. tdf#122293/QTBUG-75766 and tdf#160565
+    // (for qt5 xcb, they're needed for video playback)
+    if (rData.platform != SystemEnvData::Platform::Wayland
+        && QLibraryInfo::version().majorVersion() < 6)
+    {
         rData.SetWindowHandle(static_cast<QWidget*>(rData.pWidget)->winId());
+    }
 }
 
-bool QtFrame::GetUseReducedAnimation() const { return GetQtInstance()->GetUseReducedAnimation(); }
+bool QtFrame::GetUseReducedAnimation() const { return GetQtInstance().GetUseReducedAnimation(); }
 
 // Drag'n'drop foo
 
@@ -1339,182 +1333,117 @@ void QtFrame::registerDragSource(QtDragSource* pDragSource)
     m_pDragSource = pDragSource;
 }
 
-void QtFrame::deregisterDragSource(QtDragSource const* pDragSource)
-{
-    assert(m_pDragSource == pDragSource);
-    (void)pDragSource;
-    m_pDragSource = nullptr;
-}
-
 void QtFrame::registerDropTarget(QtDropTarget* pDropTarget)
 {
     assert(!m_pDropTarget);
     m_pDropTarget = pDropTarget;
 
-    QtInstance* pSalInst(GetQtInstance());
-    assert(pSalInst);
-    pSalInst->RunInMainThread([this]() { m_pQWidget->setAcceptDrops(true); });
+    GetQtInstance().RunInMainThread([this]() { m_pQWidget->setAcceptDrops(true); });
 }
 
-void QtFrame::deregisterDropTarget(QtDropTarget const* pDropTarget)
+void QtFrame::handleDragEnter(QDragEnterEvent* pEvent)
 {
-    assert(m_pDropTarget == pDropTarget);
-    (void)pDropTarget;
-    m_pDropTarget = nullptr;
-}
+    assert(pEvent);
+    assert(m_pDropTarget);
 
-static css::uno::Reference<css::datatransfer::XTransferable>
-lcl_getXTransferable(const QMimeData* pMimeData)
-{
-    css::uno::Reference<css::datatransfer::XTransferable> xTransferable;
-    const QtMimeData* pQtMimeData = dynamic_cast<const QtMimeData*>(pMimeData);
-    if (!pQtMimeData)
-        xTransferable = new QtDnDTransferable(pMimeData);
-    else
-        xTransferable = pQtMimeData->xTransferable();
-    return xTransferable;
-}
-
-static sal_Int8 lcl_getUserDropAction(const QDropEvent* pEvent, const sal_Int8 nSourceActions,
-                                      const QMimeData* pMimeData)
-{
-// we completely ignore all proposals by the Qt event, as they don't
-// match at all with the preferred LO DnD actions.
-// check the key modifiers to detect a user-overridden DnD action
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    const Qt::KeyboardModifiers eKeyMod = pEvent->modifiers();
-#else
-    const Qt::KeyboardModifiers eKeyMod = pEvent->keyboardModifiers();
-#endif
-    sal_Int8 nUserDropAction = 0;
-    if ((eKeyMod & Qt::ShiftModifier) && !(eKeyMod & Qt::ControlModifier))
-        nUserDropAction = css::datatransfer::dnd::DNDConstants::ACTION_MOVE;
-    else if ((eKeyMod & Qt::ControlModifier) && !(eKeyMod & Qt::ShiftModifier))
-        nUserDropAction = css::datatransfer::dnd::DNDConstants::ACTION_COPY;
-    else if ((eKeyMod & Qt::ShiftModifier) && (eKeyMod & Qt::ControlModifier))
-        nUserDropAction = css::datatransfer::dnd::DNDConstants::ACTION_LINK;
-    nUserDropAction &= nSourceActions;
-
-    // select the default DnD action, if there isn't a user preference
-    if (0 == nUserDropAction)
-    {
-        // default LO internal action is move, but default external action is copy
-        nUserDropAction = dynamic_cast<const QtMimeData*>(pMimeData)
-                              ? css::datatransfer::dnd::DNDConstants::ACTION_MOVE
-                              : css::datatransfer::dnd::DNDConstants::ACTION_COPY;
-        nUserDropAction &= nSourceActions;
-
-        // if the default doesn't match any allowed source action, fall back to the
-        // preferred of all allowed source actions
-        if (0 == nUserDropAction)
-            nUserDropAction = toVclDropAction(getPreferredDropAction(nSourceActions));
-
-        // this is "our" preference, but actually we would even prefer any default,
-        // if there is any
-        nUserDropAction |= css::datatransfer::dnd::DNDConstants::ACTION_DEFAULT;
-    }
-    return nUserDropAction;
+    m_pDropTarget->handleDragEnterEvent(*pEvent, devicePixelRatioF());
 }
 
 void QtFrame::handleDragMove(QDragMoveEvent* pEvent)
 {
+    assert(pEvent);
     assert(m_pDropTarget);
 
-    // prepare our suggested drop action for the drop target
-    const sal_Int8 nSourceActions = toVclDropActions(pEvent->possibleActions());
-    const QMimeData* pMimeData = pEvent->mimeData();
-    const sal_Int8 nUserDropAction = lcl_getUserDropAction(pEvent, nSourceActions, pMimeData);
-
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    const Point aPos = toPoint(pEvent->position().toPoint() * devicePixelRatioF());
-#else
-    const Point aPos = toPoint(pEvent->pos() * devicePixelRatioF());
-#endif
-
-    css::datatransfer::dnd::DropTargetDragEnterEvent aEvent;
-    aEvent.Source = static_cast<css::datatransfer::dnd::XDropTarget*>(m_pDropTarget);
-    aEvent.Context = static_cast<css::datatransfer::dnd::XDropTargetDragContext*>(m_pDropTarget);
-    aEvent.LocationX = aPos.X();
-    aEvent.LocationY = aPos.Y();
-    aEvent.DropAction = nUserDropAction;
-    aEvent.SourceActions = nSourceActions;
-
-    // ask the drop target to accept our drop action
-    if (!m_bInDrag)
-    {
-        aEvent.SupportedDataFlavors = lcl_getXTransferable(pMimeData)->getTransferDataFlavors();
-        m_pDropTarget->fire_dragEnter(aEvent);
-        m_bInDrag = true;
-    }
-    else
-        m_pDropTarget->fire_dragOver(aEvent);
-
-    // the drop target accepted our drop action => inform Qt
-    if (m_pDropTarget->proposedDropAction() != 0)
-    {
-        pEvent->setDropAction(getPreferredDropAction(m_pDropTarget->proposedDropAction()));
-        pEvent->accept();
-    }
-    else // or maybe someone else likes it?
-        pEvent->ignore();
+    m_pDropTarget->handleDragMoveEvent(*pEvent, devicePixelRatioF());
 }
 
 void QtFrame::handleDrop(QDropEvent* pEvent)
 {
+    assert(pEvent);
     assert(m_pDropTarget);
 
-    // prepare our suggested drop action for the drop target
-    const sal_Int8 nSourceActions = toVclDropActions(pEvent->possibleActions());
-    const sal_Int8 nUserDropAction
-        = lcl_getUserDropAction(pEvent, nSourceActions, pEvent->mimeData());
-
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    const Point aPos = toPoint(pEvent->position().toPoint() * devicePixelRatioF());
-#else
-    const Point aPos = toPoint(pEvent->pos() * devicePixelRatioF());
-#endif
-
-    css::datatransfer::dnd::DropTargetDropEvent aEvent;
-    aEvent.Source = static_cast<css::datatransfer::dnd::XDropTarget*>(m_pDropTarget);
-    aEvent.Context = static_cast<css::datatransfer::dnd::XDropTargetDropContext*>(m_pDropTarget);
-    aEvent.LocationX = aPos.X();
-    aEvent.LocationY = aPos.Y();
-    aEvent.SourceActions = nSourceActions;
-    aEvent.DropAction = nUserDropAction;
-    aEvent.Transferable = lcl_getXTransferable(pEvent->mimeData());
-
-    // ask the drop target to accept our drop action
-    m_pDropTarget->fire_drop(aEvent);
-    m_bInDrag = false;
-
-    const bool bDropSuccessful = m_pDropTarget->dropSuccessful();
-    const sal_Int8 nDropAction = m_pDropTarget->proposedDropAction();
+    m_pDropTarget->handleDropEvent(*pEvent, devicePixelRatioF());
 
     // inform the drag source of the drag-origin frame of the drop result
     if (pEvent->source())
     {
-        QtWidget* pWidget = dynamic_cast<QtWidget*>(pEvent->source());
+        QtWidget* pWidget = qobject_cast<QtWidget*>(pEvent->source());
         assert(pWidget); // AFAIK there shouldn't be any non-Qt5Widget as source in LO itself
         if (pWidget)
-            pWidget->frame().m_pDragSource->fire_dragEnd(nDropAction, bDropSuccessful);
+            pWidget->frame().m_pDragSource->fire_dragEnd(m_pDropTarget->proposedDropAction(),
+                                                         m_pDropTarget->dropSuccessful());
     }
-
-    // the drop target accepted our drop action => inform Qt
-    if (bDropSuccessful)
-    {
-        pEvent->setDropAction(getPreferredDropAction(nDropAction));
-        pEvent->accept();
-    }
-    else // or maybe someone else likes it?
-        pEvent->ignore();
 }
 
-void QtFrame::handleDragLeave()
+void QtFrame::handleDragLeave() { m_pDropTarget->dragExit(); }
+
+void QtFrame::handleMoveEvent(QMoveEvent*) { CallCallback(SalEvent::Move, nullptr); }
+
+void QtFrame::handlePaintEvent(const QPaintEvent* pEvent, QWidget* pWidget)
 {
-    css::datatransfer::dnd::DropTargetEvent aEvent;
-    aEvent.Source = static_cast<css::datatransfer::dnd::XDropTarget*>(m_pDropTarget);
-    m_pDropTarget->fire_dragExit(aEvent);
-    m_bInDrag = false;
+    QPainter p(pWidget);
+    if (!m_bNullRegion)
+        p.setClipRegion(m_aRegion);
+
+    QImage aImage;
+    if (m_bUseCairo)
+    {
+        cairo_surface_t* pSurface = m_pSurface.get();
+        cairo_surface_flush(pSurface);
+
+        aImage = QImage(cairo_image_surface_get_data(pSurface),
+                        cairo_image_surface_get_width(pSurface),
+                        cairo_image_surface_get_height(pSurface), Qt_DefaultFormat32);
+    }
+    else
+        aImage = *m_pQImage;
+
+    const qreal fRatio = devicePixelRatioF();
+    aImage.setDevicePixelRatio(fRatio);
+    QRectF source(pEvent->rect().topLeft() * fRatio, pEvent->rect().size() * fRatio);
+    p.drawImage(pEvent->rect(), aImage, source);
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+void QtFrame::handleResizeEvent(const QResizeEvent* pEvent)
+{
+    const qreal fRatio = devicePixelRatioF();
+    const int nWidth = ceil(pEvent->size().width() * fRatio);
+    const int nHeight = ceil(pEvent->size().height() * fRatio);
+
+    if (m_bUseCairo)
+    {
+        if (m_pSurface)
+        {
+            const int nOldWidth = cairo_image_surface_get_width(m_pSurface.get());
+            const int nOldHeight = cairo_image_surface_get_height(m_pSurface.get());
+            if (nOldWidth != nWidth || nOldHeight != nHeight)
+            {
+                cairo_surface_t* pSurface
+                    = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, nWidth, nHeight);
+                cairo_surface_set_user_data(pSurface, SvpSalGraphics::getDamageKey(),
+                                            &m_aDamageHandler, nullptr);
+                m_pSvpGraphics->setSurface(pSurface, basegfx::B2IVector(nWidth, nHeight));
+                UniqueCairoSurface old_surface(m_pSurface.release());
+                m_pSurface.reset(pSurface);
+
+                const int nMinWidth = qMin(nOldWidth, nWidth);
+                const int nMinHeight = qMin(nOldHeight, nHeight);
+                SalTwoRect rect(0, 0, nMinWidth, nMinHeight, 0, 0, nMinWidth, nMinHeight);
+                m_pSvpGraphics->copySource(rect, old_surface.get());
+            }
+        }
+    }
+    else
+    {
+        if (m_pQImage && m_pQImage->size() != QSize(nWidth, nHeight))
+        {
+            QImage* pImage = new QImage(m_pQImage->copy(0, 0, nWidth, nHeight));
+            m_pQtGraphics->ChangeQImage(pImage);
+            m_pQImage.reset(pImage);
+        }
+    }
+
+    CallCallback(SalEvent::Resize, nullptr);
+}
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -20,6 +20,7 @@
 #pragma once
 
 #include <xmloff/xmlstyle.hxx>
+#include <xmloff/XMLFontStylesContext.hxx>
 
 namespace com::sun::star::io {
     class XOutputStream;
@@ -59,6 +60,7 @@ public:
                          sal_Int32 nCharsetIdx ) const;
 
     OUString familyName() const;
+    OUString styleName() const;
 
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
         sal_Int32 nElement,

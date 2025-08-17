@@ -44,18 +44,13 @@ using namespace ::com::sun::star::accessibility;
 
 #define DEFAULT_LINE_WIDTH 2
 
-//=====  internal  ============================================================
-
-ScAccessibleCellBase::ScAccessibleCellBase(
-        const uno::Reference<XAccessible>& rxParent,
-        ScDocument* pDoc,
-        const ScAddress& rCellAddress,
-        sal_Int64 nIndex)
-    :
-    ScAccessibleContextBase(rxParent, AccessibleRole::TABLE_CELL),
-    maCellAddress(rCellAddress),
-    mpDoc(pDoc),
-    mnIndex(nIndex)
+ScAccessibleCellBase::ScAccessibleCellBase(const uno::Reference<XAccessible>& rxParent,
+                                           ScDocument* pDoc, const ScAddress& rCellAddress,
+                                           sal_Int64 nIndex)
+    : ImplInheritanceHelper(rxParent, AccessibleRole::TABLE_CELL)
+    , maCellAddress(rCellAddress)
+    , mpDoc(pDoc)
+    , mnIndex(nIndex)
 {
 }
 
@@ -68,7 +63,7 @@ ScAccessibleCellBase::~ScAccessibleCellBase()
 bool ScAccessibleCellBase::isVisible()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     // test whether the cell is hidden (column/row - hidden/filtered)
     bool bVisible(true);
     if (mpDoc)
@@ -87,7 +82,7 @@ bool ScAccessibleCellBase::isVisible()
 sal_Int32 SAL_CALL ScAccessibleCellBase::getForeground()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     sal_Int32 nColor(0);
     if (mpDoc)
     {
@@ -126,7 +121,7 @@ sal_Int32 SAL_CALL ScAccessibleCellBase::getForeground()
 sal_Int32 SAL_CALL ScAccessibleCellBase::getBackground()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     sal_Int32 nColor(0);
 
     if (mpDoc)
@@ -164,33 +159,13 @@ sal_Int32 SAL_CALL ScAccessibleCellBase::getBackground()
     return nColor;
 }
 
-    //=====  XInterface  =====================================================
-
-uno::Any SAL_CALL ScAccessibleCellBase::queryInterface( uno::Type const & rType )
-{
-    uno::Any aAny (ScAccessibleCellBaseImpl::queryInterface(rType));
-    return aAny.hasValue() ? aAny : ScAccessibleContextBase::queryInterface(rType);
-}
-
-void SAL_CALL ScAccessibleCellBase::acquire()
-    noexcept
-{
-    ScAccessibleContextBase::acquire();
-}
-
-void SAL_CALL ScAccessibleCellBase::release()
-    noexcept
-{
-    ScAccessibleContextBase::release();
-}
-
     //=====  XAccessibleContext  ==============================================
 
 sal_Int64
     ScAccessibleCellBase::getAccessibleIndexInParent()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     return mnIndex;
 }
 
@@ -214,7 +189,7 @@ uno::Any SAL_CALL
     ScAccessibleCellBase::getCurrentValue()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     uno::Any aAny;
     if (mpDoc)
     {
@@ -227,7 +202,7 @@ sal_Bool SAL_CALL
     ScAccessibleCellBase::setCurrentValue( const uno::Any& aNumber )
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     double fValue = 0;
     bool bResult = false;
     if((aNumber >>= fValue) && mpDoc && mpDoc->GetDocumentShell())
@@ -265,26 +240,6 @@ uno::Any SAL_CALL
     return uno::Any();
 }
 
-    //=====  XServiceInfo  ====================================================
-
-OUString SAL_CALL ScAccessibleCellBase::getImplementationName()
-{
-    return "ScAccessibleCellBase";
-}
-
-    //=====  XTypeProvider  ===================================================
-
-uno::Sequence< uno::Type > SAL_CALL ScAccessibleCellBase::getTypes()
-{
-    return comphelper::concatSequences(ScAccessibleCellBaseImpl::getTypes(), ScAccessibleContextBase::getTypes());
-}
-
-uno::Sequence<sal_Int8> SAL_CALL
-    ScAccessibleCellBase::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
-}
-
 bool ScAccessibleCellBase::IsEditable(sal_Int64 nParentStates)
 {
     bool bEditable = nParentStates & AccessibleStateType::EDITABLE;
@@ -294,7 +249,7 @@ bool ScAccessibleCellBase::IsEditable(sal_Int64 nParentStates)
 OUString ScAccessibleCellBase::GetNote() const
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     OUString sNote;
     if (mpDoc)
     {
@@ -340,7 +295,7 @@ OUString ScAccessibleCellBase::GetNote() const
 OUString ScAccessibleCellBase::getShadowAttrs() const
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     table::ShadowFormat aShadowFmt;
     if (mpDoc)
     {
@@ -374,9 +329,9 @@ OUString ScAccessibleCellBase::getShadowAttrs() const
         }
     }
     //construct shadow attributes string
-    OUString sShadowAttrs("Shadow:");
-    OUString sInnerSplit(",");
-    OUString sOuterSplit(";");
+    OUString sShadowAttrs(u"Shadow:"_ustr);
+    OUString sInnerSplit(u","_ustr);
+    OUString sOuterSplit(u";"_ustr);
     sal_Int32 nLocationVal = 0;
     switch( aShadowFmt.Location )
     {
@@ -420,7 +375,7 @@ OUString ScAccessibleCellBase::getShadowAttrs() const
 OUString ScAccessibleCellBase::getBorderAttrs()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     table::BorderLine aTopBorder;
     table::BorderLine aBottomBorder;
     table::BorderLine aLeftBorder;
@@ -479,8 +434,8 @@ OUString ScAccessibleCellBase::getBorderAttrs()
 
     //construct border attributes string
     OUString sBorderAttrs;
-    OUString sInnerSplit(",");
-    OUString sOuterSplit(";");
+    OUString sInnerSplit(u","_ustr);
+    OUString sOuterSplit(u";"_ustr);
     //top border
     //if top of the cell has no border
     if ( aTopBorder.InnerLineWidth == 0 && aTopBorder.OuterLineWidth == 0 )

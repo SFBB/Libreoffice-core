@@ -14,6 +14,7 @@
 #include <doc.hxx>
 #include <docsh.hxx>
 #include <unotextrange.hxx>
+#include <unotxdoc.hxx>
 
 #include "vbaformfield.hxx"
 #include "vbaformfieldcheckbox.hxx"
@@ -33,8 +34,8 @@ using namespace ::com::sun::star;
  */
 SwVbaFormField::SwVbaFormField(const uno::Reference<ooo::vba::XHelperInterface>& rParent,
                                const uno::Reference<uno::XComponentContext>& rContext,
-                               const uno::Reference<text::XTextDocument>& xTextDocument,
-                               sw::mark::IFieldmark& rFormField)
+                               const rtl::Reference<SwXTextDocument>& xTextDocument,
+                               sw::mark::Fieldmark& rFormField)
     : SwVbaFormField_BASE(rParent, rContext)
     , m_xTextDocument(xTextDocument)
     , m_rFormField(rFormField)
@@ -63,7 +64,7 @@ uno::Any SwVbaFormField::TextInput()
 
 uno::Any SwVbaFormField::Previous()
 {
-    SwDoc* pDoc = word::getDocShell(m_xTextDocument)->GetDoc();
+    SwDoc* pDoc = m_xTextDocument->GetDocShell()->GetDoc();
     if (!pDoc)
         return uno::Any();
 
@@ -71,15 +72,15 @@ uno::Any SwVbaFormField::Previous()
     if (!pMarkAccess)
         return uno::Any();
 
-    sw::mark::IFieldmark* pFieldMark = pMarkAccess->getFieldmarkBefore(m_rFormField.GetMarkPos(),
-                                                                       /*bLoop=*/false);
+    sw::mark::Fieldmark* pFieldMark = pMarkAccess->getFieldmarkBefore(m_rFormField.GetMarkPos(),
+                                                                      /*bLoop=*/false);
 
     // DateFields are a LO specialty, and do not exist natively in MS documents. Ignore if added...
-    auto pDateField = dynamic_cast<sw::mark::IDateFieldmark*>(pFieldMark);
+    auto pDateField = dynamic_cast<sw::mark::DateFieldmark*>(pFieldMark);
     while (pDateField)
     {
         pFieldMark = pMarkAccess->getFieldmarkBefore(pDateField->GetMarkPos(), /*bLoop=*/false);
-        pDateField = dynamic_cast<sw::mark::IDateFieldmark*>(pFieldMark);
+        pDateField = dynamic_cast<sw::mark::DateFieldmark*>(pFieldMark);
     }
 
     if (!pFieldMark)
@@ -91,7 +92,7 @@ uno::Any SwVbaFormField::Previous()
 
 uno::Any SwVbaFormField::Next()
 {
-    SwDoc* pDoc = word::getDocShell(m_xTextDocument)->GetDoc();
+    SwDoc* pDoc = m_xTextDocument->GetDocShell()->GetDoc();
     if (!pDoc)
         return uno::Any();
 
@@ -99,15 +100,15 @@ uno::Any SwVbaFormField::Next()
     if (!pMarkAccess)
         return uno::Any();
 
-    sw::mark::IFieldmark* pFieldMark = pMarkAccess->getFieldmarkAfter(m_rFormField.GetMarkPos(),
-                                                                      /*bLoop=*/false);
+    sw::mark::Fieldmark* pFieldMark = pMarkAccess->getFieldmarkAfter(m_rFormField.GetMarkPos(),
+                                                                     /*bLoop=*/false);
 
     // DateFields are a LO specialty, and do not exist natively in MS documents. Ignore if added...
-    auto pDateField = dynamic_cast<sw::mark::IDateFieldmark*>(pFieldMark);
+    auto pDateField = dynamic_cast<sw::mark::DateFieldmark*>(pFieldMark);
     while (pDateField)
     {
         pFieldMark = pMarkAccess->getFieldmarkAfter(pDateField->GetMarkPos(), /*bLoop=*/false);
-        pDateField = dynamic_cast<sw::mark::IDateFieldmark*>(pFieldMark);
+        pDateField = dynamic_cast<sw::mark::DateFieldmark*>(pFieldMark);
     }
 
     if (!pFieldMark)
@@ -119,20 +120,17 @@ uno::Any SwVbaFormField::Next()
 
 uno::Reference<word::XRange> SwVbaFormField::Range()
 {
-    uno::Reference<word::XRange> xRet;
-    SwDoc* pDoc = word::getDocShell(m_xTextDocument)->GetDoc();
-    if (pDoc)
-    {
-        rtl::Reference<SwXTextRange> xText(SwXTextRange::CreateXTextRange(
-            *pDoc, m_rFormField.GetMarkStart(), &m_rFormField.GetMarkEnd()));
-        if (xText.is())
-            xRet = new SwVbaRange(mxParent, mxContext, m_xTextDocument, xText->getStart(),
-                                  xText->getEnd());
-    }
-    return xRet;
+    SwDoc* pDoc = m_xTextDocument->GetDocShell()->GetDoc();
+    if (!pDoc)
+        return nullptr;
+    rtl::Reference<SwXTextRange> xText(SwXTextRange::CreateXTextRange(
+        *pDoc, m_rFormField.GetMarkStart(), &m_rFormField.GetMarkEnd()));
+    if (!xText.is())
+        return nullptr;
+    return new SwVbaRange(mxParent, mxContext, m_xTextDocument, xText->getStart(), xText->getEnd());
 }
 
-OUString SwVbaFormField::getDefaultPropertyName() { return "Type"; }
+OUString SwVbaFormField::getDefaultPropertyName() { return u"Type"_ustr; }
 
 sal_Int32 SwVbaFormField::getType()
 {
@@ -169,25 +167,25 @@ void SwVbaFormField::setEnabled(sal_Bool /*bSet*/)
 OUString SwVbaFormField::getEntryMacro()
 {
     OUString sMacro;
-    (*m_rFormField.GetParameters())["EntryMacro"] >>= sMacro;
+    (*m_rFormField.GetParameters())[u"EntryMacro"_ustr] >>= sMacro;
     return sMacro;
 }
 
 void SwVbaFormField::setEntryMacro(const OUString& rSet)
 {
-    (*m_rFormField.GetParameters())["EntryMacro"] <<= rSet;
+    (*m_rFormField.GetParameters())[u"EntryMacro"_ustr] <<= rSet;
 }
 
 OUString SwVbaFormField::getExitMacro()
 {
     OUString sMacro;
-    (*m_rFormField.GetParameters())["ExitMacro"] >>= sMacro;
+    (*m_rFormField.GetParameters())[u"ExitMacro"_ustr] >>= sMacro;
     return sMacro;
 }
 
 void SwVbaFormField::setExitMacro(const OUString& rSet)
 {
-    (*m_rFormField.GetParameters())["ExitMacro"] <<= rSet;
+    (*m_rFormField.GetParameters())[u"ExitMacro"_ustr] <<= rSet;
 }
 
 OUString SwVbaFormField::getHelpText() { return m_rFormField.GetFieldHelptext(); }
@@ -205,7 +203,7 @@ void SwVbaFormField::setOwnHelp(sal_Bool /*bSet*/)
     SAL_INFO("sw.vba", "SwVbaFormField::setOwnHelp stub");
 }
 
-OUString SwVbaFormField::getName() { return m_rFormField.GetName(); }
+OUString SwVbaFormField::getName() { return m_rFormField.GetName().toString(); }
 
 void SwVbaFormField::setName(const OUString& rSet)
 {
@@ -216,8 +214,8 @@ OUString SwVbaFormField::getResult() { return m_rFormField.GetContent(); }
 
 void SwVbaFormField::setResult(const OUString& rSet)
 {
-    if (dynamic_cast<sw::mark::ICheckboxFieldmark*>(&m_rFormField))
-        m_rFormField.ReplaceContent("false");
+    if (dynamic_cast<sw::mark::CheckboxFieldmark*>(&m_rFormField))
+        m_rFormField.ReplaceContent(u"false"_ustr);
     else
         m_rFormField.ReplaceContent(rSet);
 }
@@ -244,11 +242,11 @@ void SwVbaFormField::setOwnStatus(sal_Bool /*bSet*/)
     SAL_INFO("sw.vba", "SwVbaFormField::setOwnStatus stub");
 }
 
-OUString SwVbaFormField::getServiceImplName() { return "SwVbaFormField"; }
+OUString SwVbaFormField::getServiceImplName() { return u"SwVbaFormField"_ustr; }
 
 uno::Sequence<OUString> SwVbaFormField::getServiceNames()
 {
-    static uno::Sequence<OUString> const aServiceNames{ "ooo.vba.word.FormField" };
+    static uno::Sequence<OUString> const aServiceNames{ u"ooo.vba.word.FormField"_ustr };
     return aServiceNames;
 }
 

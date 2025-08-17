@@ -14,11 +14,13 @@
 #include <unx/gensys.h>
 #include <unx/sessioninhibitor.hxx>
 
+#if USING_X11
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 
 #if !defined(__sun)
 #include <X11/extensions/dpms.h>
+#endif
 #endif
 
 #include <config_gio.h>
@@ -38,17 +40,12 @@
 #define GSM_DBUS_PATH           "/org/gnome/SessionManager"
 #define GSM_DBUS_INTERFACE      "org.gnome.SessionManager"
 
-// Mate <= 1.10 uses org.mate.SessionManager, > 1.10 will use org.gnome.SessionManager
-#define MSM_DBUS_SERVICE        "org.mate.SessionManager"
-#define MSM_DBUS_PATH           "/org/mate/SessionManager"
-#define MSM_DBUS_INTERFACE      "org.mate.SessionManager"
 #endif
 
 #include <sal/log.hxx>
 
 void SessionManagerInhibitor::inhibit(bool bInhibit, std::u16string_view sReason, ApplicationInhibitFlags eType,
-                                      unsigned int window_system_id, std::optional<Display*> pDisplay,
-                                      const char* application_id)
+                                      unsigned int window_system_id, const char* application_id)
 {
     const char* appname = application_id ? application_id : SalGenericSystem::getFrameClassName();
     const OString aReason = OUStringToOString( sReason, RTL_TEXTENCODING_UTF8 );
@@ -59,16 +56,26 @@ void SessionManagerInhibitor::inhibit(bool bInhibit, std::u16string_view sReason
         inhibitFDOPM( bInhibit, appname, aReason.getStr() );
     }
 
+    inhibitGSM(bInhibit, appname, aReason.getStr(), eType, window_system_id);
+
+}
+
+
+#if USING_X11
+void SessionManagerInhibitor::inhibit(bool bInhibit, std::u16string_view sReason, ApplicationInhibitFlags eType,
+                                      unsigned int window_system_id, std::optional<Display*> pDisplay,
+                                      const char* application_id)
+{
+    inhibit(bInhibit, sReason, eType, window_system_id, application_id);
+
     if (eType == APPLICATION_INHIBIT_IDLE && pDisplay)
     {
         inhibitXScreenSaver( bInhibit, *pDisplay );
         inhibitXAutoLock( bInhibit, *pDisplay );
         inhibitDPMS( bInhibit, *pDisplay );
     }
-
-    inhibitGSM(bInhibit, appname, aReason.getStr(), eType, window_system_id);
-    inhibitMSM(bInhibit, appname, aReason.getStr(), eType, window_system_id);
 }
+#endif
 
 #if ENABLE_GIO
 static void dbusInhibit( bool bInhibit,
@@ -236,37 +243,7 @@ void SessionManagerInhibitor::inhibitGSM( bool bInhibit, const char* appname, co
 #endif // ENABLE_GIO
 }
 
-void SessionManagerInhibitor::inhibitMSM( bool bInhibit, const char* appname, const char* reason, ApplicationInhibitFlags eType, unsigned int window_system_id )
-{
-#if ENABLE_GIO
-    dbusInhibit( bInhibit,
-                 MSM_DBUS_SERVICE, MSM_DBUS_PATH, MSM_DBUS_INTERFACE,
-                 [appname, reason, eType, window_system_id] ( GDBusProxy *proxy, GError*& error ) -> GVariant* {
-                     return g_dbus_proxy_call_sync( proxy, "Inhibit",
-                                                    g_variant_new("(susu)",
-                                                                  appname,
-                                                                  window_system_id,
-                                                                  reason,
-                                                                  eType
-                                                                 ),
-                                                    G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error );
-                 },
-                 [] ( GDBusProxy *proxy, const guint nCookie, GError*& error ) -> GVariant* {
-                     return g_dbus_proxy_call_sync( proxy, "Uninhibit",
-                                                    g_variant_new("(u)", nCookie),
-                                                    G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error );
-                 },
-                 mnMSMCookie );
-#else
-    (void) this;
-    (void) bInhibit;
-    (void) appname;
-    (void) reason;
-    (void) eType;
-    (void) window_system_id;
-#endif // ENABLE_GIO
-}
-
+#if USING_X11
 /**
  * Disable screensavers using the XSetScreenSaver/XGetScreenSaver API.
  *
@@ -366,5 +343,6 @@ void SessionManagerInhibitor::inhibitDPMS( bool bInhibit, Display* pDisplay )
     }
 #endif // !defined(__sun)
 }
+#endif // USING_X11
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

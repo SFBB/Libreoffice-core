@@ -142,7 +142,6 @@ SvxTextForwarder* ScAnnotationEditSource::GetTextForwarder()
         else
         {
             rtl::Reference<SfxItemPool> pEnginePool = EditEngine::CreatePool();
-            pEnginePool->FreezeIdRanges();
             pEditEngine.reset( new ScEditEngineDefaulter( pEnginePool.get(), true ) );
         }
         pForwarder.reset( new SvxEditEngineForwarder(*pEditEngine) );
@@ -184,7 +183,7 @@ void ScAnnotationEditSource::UpdateData()
 
 void ScAnnotationEditSource::Notify( SfxBroadcaster&, const SfxHint& rHint )
 {
-    if ( dynamic_cast<const ScUpdateRefHint*>(&rHint) )
+    if ( rHint.GetId() == SfxHintId::ScUpdateRef )
     {
         //! reference update
     }

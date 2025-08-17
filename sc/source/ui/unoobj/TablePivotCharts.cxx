@@ -42,7 +42,7 @@ using namespace css;
 namespace sc
 {
 
-SC_SIMPLE_SERVICE_INFO(TablePivotCharts, "TablePivotCharts", "com.sun.star.table.TablePivotCharts")
+SC_SIMPLE_SERVICE_INFO(TablePivotCharts, u"TablePivotCharts"_ustr, u"com.sun.star.table.TablePivotCharts"_ustr)
 
 TablePivotCharts::TablePivotCharts(ScDocShell* pDocShell, SCTAB nTab)
     : m_pDocShell(pDocShell)
@@ -94,7 +94,7 @@ void SAL_CALL TablePivotCharts::addNewByName(OUString const & rName,
 
     uno::Reference<embed::XEmbeddedObject> xObject;
 
-    if (SvtModuleOptions().IsChart())
+    if (SvtModuleOptions().IsChartInstalled())
         xObject = m_pDocShell->GetEmbeddedObjectContainer().CreateEmbeddedObject(SvGlobalName(SO3_SCH_CLASSID).GetByteSequence(), aName);
 
     if (!xObject.is())
@@ -128,8 +128,6 @@ void SAL_CALL TablePivotCharts::addNewByName(OUString const & rName,
     rtl::Reference<sc::PivotTableDataProvider> pPivotTableDataProvider(new sc::PivotTableDataProvider(rDoc));
     pPivotTableDataProvider->setPivotTableName(rDataPilotName);
 
-    uno::Reference<chart2::data::XDataProvider> xDataProvider(pPivotTableDataProvider);
-
     uno::Reference<chart2::data::XDataReceiver> xReceiver;
 
     if (xObject.is())
@@ -137,7 +135,7 @@ void SAL_CALL TablePivotCharts::addNewByName(OUString const & rName,
 
     if (xReceiver.is())
     {
-        xReceiver->attachDataProvider(xDataProvider);
+        xReceiver->attachDataProvider(uno::Reference<chart2::data::XDataProvider>(pPivotTableDataProvider));
 
         uno::Reference<util::XNumberFormatsSupplier> xNumberFormatsSupplier(cppu::getXWeak(m_pDocShell->GetModel()), uno::UNO_QUERY);
         xReceiver->attachNumberFormatsSupplier(xNumberFormatsSupplier);

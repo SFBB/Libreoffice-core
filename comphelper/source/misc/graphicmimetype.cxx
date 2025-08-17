@@ -33,6 +33,10 @@
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
 
+#include <frozen/bits/defines.h>
+#include <frozen/bits/elsa_std.h>
+#include <frozen/unordered_map.h>
+
 using namespace css;
 using namespace css::beans;
 using namespace css::graphic;
@@ -43,29 +47,31 @@ namespace comphelper
 {
 OUString GraphicMimeTypeHelper::GetMimeTypeForExtension(std::string_view rExt)
 {
-    struct XMLGraphicMimeTypeMapper
-    {
-        const char* pExt;
-        const char* pMimeType;
-    };
+#if defined(_MSC_VER) && !defined(__clang__)
+    static const
+#else
+    static constexpr
+#endif
+        auto aMapper
+        = frozen::make_unordered_map<std::string_view, OUString>(
+            { { "gif", u"image/gif"_ustr },
+              { "png", u"image/png"_ustr },
+              { "jpg", u"image/jpeg"_ustr },
+              { "tif", u"image/tiff"_ustr },
+              { "svg", u"image/svg+xml"_ustr },
+              { "pdf", u"application/pdf"_ustr },
+              { "wmf", u"image/x-wmf"_ustr },
+              { "emf", u"image/x-emf"_ustr },
+              { "eps", u"image/x-eps"_ustr },
+              { "bmp", u"image/bmp"_ustr },
+              { "pct", u"image/x-pict"_ustr },
+              { "svm", u"image/x-svm"_ustr } });
 
-    static const XMLGraphicMimeTypeMapper aMapper[]
-        = { { "gif", "image/gif" },   { "png", "image/png" },     { "jpg", "image/jpeg" },
-            { "tif", "image/tiff" },  { "svg", "image/svg+xml" }, { "pdf", "application/pdf" },
-            { "wmf", "image/x-wmf" }, { "emf", "image/x-emf" },   { "eps", "image/x-eps" },
-            { "bmp", "image/bmp" },   { "pct", "image/x-pict" },  { "svm", "image/x-svm" } };
+    auto iterator = aMapper.find(rExt);
+    if (iterator != aMapper.end())
+        return iterator->second;
 
-    OUString aMimeType;
-
-    size_t const nCount = std::size(aMapper);
-    for (size_t i = 0; (i < nCount) && aMimeType.isEmpty(); ++i)
-    {
-        if (rExt == aMapper[i].pExt)
-            aMimeType = OUString(aMapper[i].pMimeType, strlen(aMapper[i].pMimeType),
-                                 RTL_TEXTENCODING_ASCII_US);
-    }
-
-    return aMimeType;
+    return OUString();
 }
 
 OUString GraphicMimeTypeHelper::GetMimeTypeForXGraphic(const Reference<XGraphic>& xGraphic)
@@ -73,11 +79,11 @@ OUString GraphicMimeTypeHelper::GetMimeTypeForXGraphic(const Reference<XGraphic>
     OUString aSourceMimeType;
     Reference<XPropertySet> const xGraphicPropertySet(xGraphic, UNO_QUERY);
     if (xGraphicPropertySet.is() && // it's null if it's an external link
-        (xGraphicPropertySet->getPropertyValue("MimeType") >>= aSourceMimeType))
+        (xGraphicPropertySet->getPropertyValue(u"MimeType"_ustr) >>= aSourceMimeType))
     {
         return aSourceMimeType;
     }
-    return "";
+    return u""_ustr;
 }
 
 OUString
@@ -86,7 +92,7 @@ GraphicMimeTypeHelper::GetMimeTypeForImageStream(const Reference<XInputStream>& 
     // Create the graphic to retrieve the mimetype from it
     Reference<XGraphicProvider> xProvider
         = css::graphic::GraphicProvider::create(comphelper::getProcessComponentContext());
-    Sequence<PropertyValue> aMediaProperties{ comphelper::makePropertyValue("InputStream",
+    Sequence<PropertyValue> aMediaProperties{ comphelper::makePropertyValue(u"InputStream"_ustr,
                                                                             xInputStream) };
     Reference<XGraphic> xGraphic(xProvider->queryGraphic(aMediaProperties));
 
@@ -98,29 +104,29 @@ OUString GraphicMimeTypeHelper::GetMimeTypeForConvertDataFormat(ConvertDataForma
     switch (convertDataFormat)
     {
         case ConvertDataFormat::BMP:
-            return "image/bmp";
+            return u"image/bmp"_ustr;
         case ConvertDataFormat::GIF:
-            return "image/gif";
+            return u"image/gif"_ustr;
         case ConvertDataFormat::JPG:
-            return "image/jpeg";
+            return u"image/jpeg"_ustr;
         case ConvertDataFormat::PCT:
-            return "image/x-pict";
+            return u"image/x-pict"_ustr;
         case ConvertDataFormat::PNG:
-            return "image/png";
+            return u"image/png"_ustr;
         case ConvertDataFormat::SVM:
-            return "image/x-svm";
+            return u"image/x-svm"_ustr;
         case ConvertDataFormat::TIF:
-            return "image/tiff";
+            return u"image/tiff"_ustr;
         case ConvertDataFormat::WMF:
-            return "image/x-wmf";
+            return u"image/x-wmf"_ustr;
         case ConvertDataFormat::EMF:
-            return "image/x-emf";
+            return u"image/x-emf"_ustr;
         case ConvertDataFormat::SVG:
-            return "image/svg+xml";
+            return u"image/svg+xml"_ustr;
         case ConvertDataFormat::MET: // What is this?
         case ConvertDataFormat::Unknown:
         default:
-            return "";
+            return u""_ustr;
     }
 }
 

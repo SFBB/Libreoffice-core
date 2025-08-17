@@ -25,6 +25,7 @@
 #include <com/sun/star/container/XIndexAccess.hpp>
 
 #include <rtl/ustring.hxx>
+#include <rtl/ref.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/propshlp.hxx>
 
@@ -33,7 +34,6 @@
 namespace framework
 {
 
-class RootItemContainer;
 class ItemContainer;
 class ConstItemContainer final : public ::cppu::WeakImplHelper<
                                                     css::container::XIndexAccess,
@@ -76,11 +76,11 @@ class ConstItemContainer final : public ::cppu::WeakImplHelper<
         virtual css::uno::Any SAL_CALL getFastPropertyValue( sal_Int32 nHandle ) override;
 
     private:
-        ::cppu::IPropertyArrayHelper& getInfoHelper();
-        css::uno::Sequence< css::beans::Property > impl_getStaticPropertyDescriptor();
+        static ::cppu::IPropertyArrayHelper& getInfoHelper();
+        static css::uno::Sequence< css::beans::Property > impl_getStaticPropertyDescriptor();
 
         void copyItemContainer( const std::vector< css::uno::Sequence< css::beans::PropertyValue > >& rSourceVector );
-        css::uno::Reference< css::container::XIndexAccess > deepCopyContainer( const css::uno::Reference< css::container::XIndexAccess >& rSubContainer );
+        static rtl::Reference< ConstItemContainer > deepCopyContainer( const css::uno::Reference< css::container::XIndexAccess >& rSubContainer );
 
         std::vector< css::uno::Sequence< css::beans::PropertyValue > >       m_aItemVector;
         OUString                                                             m_aUIName;

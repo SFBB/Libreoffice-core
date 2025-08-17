@@ -18,8 +18,6 @@
  */
 
 #include <comphelper/lok.hxx>
-#include <o3tl/safeint.hxx>
-#include <vcl/syswin.hxx>
 #include <sal/log.hxx>
 
 #include <headless/svpframe.hxx>
@@ -418,7 +416,7 @@ void SvpSalFrame::UpdateSettings( AllSettings& rSettings )
         vcl::Font aStdFont( FAMILY_SWISS, Size( 0, 14 ) );
         aStdFont.SetCharSet( osl_getThreadTextEncoding() );
         aStdFont.SetWeight( WEIGHT_NORMAL );
-        aStdFont.SetFamilyName( "Liberation Sans" );
+        aStdFont.SetFamilyName( u"Liberation Sans"_ustr );
         aStyleSettings.BatchSetFonts( aStdFont, aStdFont );
 
         aStdFont.SetFontSize(Size(0, 12));
@@ -451,9 +449,9 @@ void SvpSalFrame::Beep()
 {
 }
 
-const SystemEnvData* SvpSalFrame::GetSystemData() const
+const SystemEnvData& SvpSalFrame::GetSystemData() const
 {
-    return &m_aSystemChildData;
+    return m_aSystemChildData;
 }
 
 SalFrame::SalPointerState SvpSalFrame::GetPointerState()

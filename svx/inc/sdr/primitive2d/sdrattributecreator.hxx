@@ -31,7 +31,6 @@ namespace drawinglayer::attribute {
     class SdrLineAttribute;
     class SdrLineStartEndAttribute;
     class SdrShadowAttribute;
-    class SdrGlowAttribute;
     class SdrFillAttribute;
     class SdrTextAttribute;
     class FillGradientAttribute;

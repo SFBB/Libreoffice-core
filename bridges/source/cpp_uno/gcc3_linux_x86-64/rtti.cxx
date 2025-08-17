@@ -20,6 +20,7 @@
 #include <sal/config.h>
 
 #include <cassert>
+#include <cxxabi.h>
 #include <memory>
 #include <mutex>
 #include <typeinfo>

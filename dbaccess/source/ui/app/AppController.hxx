@@ -41,7 +41,6 @@
 
 #include <memory>
 
-class TransferableHelper;
 class TransferableClipboardListener;
 
 namespace com::sun::star {
@@ -67,9 +66,7 @@ namespace weld
 namespace dbaui
 {
     class ODataClipboard;
-    class TreeListBox;
     class SubComponentManager;
-    class OApplicationController;
     class OApplicationView;
     class OLinkedDocumentsAccess;
     class SelectionNotifier;
@@ -136,12 +133,6 @@ namespace dbaui
                 the database name
         */
         OUString getDatabaseName() const;
-
-        /** returns the stripped database name.
-            @return
-                The stripped database name either the registered name or if it is a file url the last segment.
-        */
-        OUString getStrippedDatabaseName() const;
 
         /** return the element type for given container
             @param  _xContainer The container where the element type has to be found

@@ -26,15 +26,19 @@
 #include <tools/gen.hxx>
 
 SwPageNumberDlg::SwPageNumberDlg(weld::Window* pParent)
-    : SfxDialogController(pParent, "modules/swriter/ui/pagenumberdlg.ui", "PageNumberDialog")
-    , m_xOk(m_xBuilder->weld_button("ok"))
-    , m_xCancel(m_xBuilder->weld_button("cancel"))
-    , m_xPageNumberPosition(m_xBuilder->weld_combo_box("positionCombo"))
-    , m_xPageNumberAlignment(m_xBuilder->weld_combo_box("alignmentCombo"))
-    , m_xMirrorOnEvenPages(m_xBuilder->weld_check_button("mirrorCheckbox"))
-    , m_xIncludePageTotal(m_xBuilder->weld_check_button("pagetotalCheckbox"))
-    , m_xPageNumberTypeLB(new SvxPageNumberListBox(m_xBuilder->weld_combo_box("numfmtlb")))
-    , m_xPreviewImage(m_xBuilder->weld_image("previewImage"))
+    : SfxDialogController(pParent, u"modules/swriter/ui/pagenumberdlg.ui"_ustr,
+                          u"PageNumberDialog"_ustr)
+    , m_xOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xCancel(m_xBuilder->weld_button(u"cancel"_ustr))
+    , m_xPageNumberPosition(m_xBuilder->weld_combo_box(u"positionCombo"_ustr))
+    , m_xPageNumberAlignment(m_xBuilder->weld_combo_box(u"alignmentCombo"_ustr))
+    , m_xMirrorOnEvenPages(m_xBuilder->weld_check_button(u"mirrorCheckbox"_ustr))
+    , m_xIncludePageTotal(m_xBuilder->weld_check_button(u"pagetotalCheckbox"_ustr))
+    , m_xIncludePageRangeTotal(m_xBuilder->weld_check_button(u"pagerangetotalCheckbox"_ustr))
+    , m_xFitIntoExistingMargins(
+          m_xBuilder->weld_check_button(u"fitintoexistingmarginsCheckbox"_ustr))
+    , m_xPageNumberTypeLB(new SvxPageNumberListBox(m_xBuilder->weld_combo_box(u"numfmtlb"_ustr)))
+    , m_xPreviewImage(m_xBuilder->weld_image(u"previewImage"_ustr))
     , m_aPageNumberPosition(1) // bottom
     , m_aPageNumberAlignment(1) // center
     , m_nPageNumberType(SVX_NUM_CHARS_UPPER_LETTER)
@@ -47,10 +51,14 @@ SwPageNumberDlg::SwPageNumberDlg(weld::Window* pParent)
     m_xMirrorOnEvenPages->set_sensitive(false);
     m_xMirrorOnEvenPages->set_state(TRISTATE_TRUE);
     m_xIncludePageTotal->set_state(TRISTATE_FALSE);
+    m_xIncludePageRangeTotal->set_state(TRISTATE_FALSE);
+    m_xFitIntoExistingMargins->set_state(TRISTATE_FALSE);
     SvxNumOptionsTabPageHelper::GetI18nNumbering(m_xPageNumberTypeLB->get_widget(),
                                                  ::std::numeric_limits<sal_uInt16>::max());
     m_xPageNumberTypeLB->connect_changed(LINK(this, SwPageNumberDlg, NumberTypeSelectHdl));
     m_xIncludePageTotal->connect_toggled(LINK(this, SwPageNumberDlg, IncludePageTotalChangeHdl));
+    m_xIncludePageRangeTotal->connect_toggled(
+        LINK(this, SwPageNumberDlg, IncludePageRangeTotalChangeHdl));
     updateImage();
 }
 
@@ -80,18 +88,35 @@ IMPL_LINK_NOARG(SwPageNumberDlg, NumberTypeSelectHdl, weld::ComboBox&, void)
 
 IMPL_LINK_NOARG(SwPageNumberDlg, IncludePageTotalChangeHdl, weld::Toggleable&, void)
 {
+    m_xIncludePageRangeTotal->set_sensitive(m_xIncludePageTotal->get_state() != TRISTATE_TRUE);
     updateImage();
 }
 
-bool SwPageNumberDlg::GetMirrorOnEvenPages()
+IMPL_LINK_NOARG(SwPageNumberDlg, IncludePageRangeTotalChangeHdl, weld::Toggleable&, void)
+{
+    m_xIncludePageTotal->set_sensitive(m_xIncludePageRangeTotal->get_state() != TRISTATE_TRUE);
+    updateImage();
+}
+
+bool SwPageNumberDlg::GetMirrorOnEvenPages() const
 {
     return m_xMirrorOnEvenPages->get_sensitive()
            && m_xMirrorOnEvenPages->get_state() == TRISTATE_TRUE;
 }
 
-bool SwPageNumberDlg::GetIncludePageTotal()
+bool SwPageNumberDlg::GetIncludePageTotal() const
 {
     return m_xIncludePageTotal->get_state() == TRISTATE_TRUE;
+}
+
+bool SwPageNumberDlg::GetIncludePageRangeTotal() const
+{
+    return m_xIncludePageRangeTotal->get_state() == TRISTATE_TRUE;
+}
+
+bool SwPageNumberDlg::GetFitIntoExistingMargins() const
+{
+    return m_xFitIntoExistingMargins->get_state() == TRISTATE_TRUE;
 }
 
 void SwPageNumberDlg::SetPageNumberType(SvxNumType nSet)
@@ -113,9 +138,10 @@ void SwPageNumberDlg::updateImage()
     pVirtualDev->SetBackground(Color(0xF0, 0xF0, 0xF0));
     pVirtualDev->Erase();
 
-    OUString sText = "#";
+    OUString sText = u"#"_ustr;
 
-    if (m_xIncludePageTotal->get_state() == TRISTATE_TRUE)
+    if (m_xIncludePageTotal->get_state() == TRISTATE_TRUE
+        || m_xIncludePageRangeTotal->get_state() == TRISTATE_TRUE)
     {
         sText += " / #";
     }

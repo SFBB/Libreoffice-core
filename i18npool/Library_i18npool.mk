@@ -7,6 +7,10 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
+i18npool_ICULT53 := $(filter 1, $(shell expr $(ICU_MAJOR) \< 53))
+i18npool_LCDALL := $(wildcard $(SRCDIR)/i18npool/source/collator/data/*.txt)
+i18npool_LCDTXTS := $(if $(i18npool_ICULT53), $(i18npool_LCDALL), $(filter-out %/ko_charset.txt, $(i18npool_LCDALL)))
+
 $(eval $(call gb_Library_Library,i18npool))
 
 ifeq ($(WITH_LOCALES),en)
@@ -32,10 +36,13 @@ $(eval $(call gb_Library_use_libraries,i18npool,\
 ))
 
 $(eval $(call gb_Library_use_externals,i18npool,\
-	boost_headers \
 	icui18n \
 	icuuc \
 	icu_headers \
+))
+
+$(eval $(call gb_Library_use_custom_headers,i18npool,\
+       officecfg/registry \
 ))
 
 ifeq ($(DISABLE_DYNLOADING),TRUE)
@@ -47,9 +54,7 @@ endif
 $(eval $(call gb_Library_add_exception_objects,i18npool,\
 	i18npool/source/breakiterator/breakiterator_cjk \
 	i18npool/source/breakiterator/breakiteratorImpl \
-	i18npool/source/breakiterator/breakiterator_th \
 	i18npool/source/breakiterator/breakiterator_unicode \
-	i18npool/source/breakiterator/xdictionary \
 	i18npool/source/calendar/calendarImpl \
 	i18npool/source/calendar/calendar_gregorian \
 	i18npool/source/calendar/calendar_hijri \
@@ -119,8 +124,14 @@ $(eval $(call gb_Library_add_exception_objects,i18npool,\
 	i18npool/source/transliteration/transliteration_OneToOne \
 ))
 
+# collator data
+$(eval $(call gb_Library_add_generated_exception_objects,i18npool,\
+	$(foreach txt,$(i18npool_LCDTXTS),\
+		CustomTarget/i18npool/collator/collator_$(notdir $(basename $(txt)))) \
+))
+
 ifeq ($(DISABLE_DYNLOADING),TRUE)
-$(call gb_CxxObject_get_target,i18npool/source/localedata/localedata): $(call gb_CustomTarget_get_workdir,i18npool/localedata)/localedata_static.hxx
+$(call gb_CxxObject_get_target,i18npool/source/localedata/localedata): $(gb_CustomTarget_workdir)/i18npool/localedata/localedata_static.hxx
 
 ifeq ($(WITH_LOCALES),)
 i18npool_locale_pattern=%
@@ -128,25 +139,37 @@ else
 i18npool_locale_pattern=$(WITH_LOCALES) $(addsuffix _%,$(WITH_LOCALES))
 endif
 
-$(call gb_CustomTarget_get_workdir,i18npool/localedata)/localedata_static.hxx : $(SRCDIR)/i18npool/source/localedata/genstaticheader.pl
-	mkdir -p $(call gb_CustomTarget_get_workdir,i18npool/localedata) && $(PERL) $(SRCDIR)/i18npool/source/localedata/genstaticheader.pl $(filter $(i18npool_locale_pattern),$(patsubst $(SRCDIR)/i18npool/source/localedata/data/%.xml,%,$(shell echo $(SRCDIR)/i18npool/source/localedata/data/*.xml))) >$@
+$(gb_CustomTarget_workdir)/i18npool/localedata/localedata_static.hxx : $(SRCDIR)/i18npool/source/localedata/genstaticheader.pl
+	mkdir -p $(gb_CustomTarget_workdir)/i18npool/localedata && $(PERL) $(SRCDIR)/i18npool/source/localedata/genstaticheader.pl $(filter $(i18npool_locale_pattern),$(patsubst $(SRCDIR)/i18npool/source/localedata/data/%.xml,%,$(shell echo $(SRCDIR)/i18npool/source/localedata/data/*.xml))) >$@
 
 $(call gb_CxxObject_get_target,i18npool/source/localedata/localedata) : \
-	INCLUDE += -I$(call gb_CustomTarget_get_workdir,i18npool/localedata)
+	INCLUDE += -I$(gb_CustomTarget_workdir)/i18npool/localedata
 
 endif # DISABLE_DYNLOADING
 
 # collator_unicode.cxx includes generated lrl_include.hxx
 $(call gb_CxxObject_get_target,i18npool/source/collator/collator_unicode) : \
-	INCLUDE += -I$(call gb_CustomTarget_get_workdir,i18npool/collator)
+	INCLUDE += -I$(gb_CustomTarget_workdir)/i18npool/collator
 $(call gb_CxxObject_get_target,i18npool/source/collator/collator_unicode) :| \
-	$(call gb_CustomTarget_get_workdir,i18npool/collator)/lrl_include.hxx
+	$(gb_CustomTarget_workdir)/i18npool/collator/lrl_include.hxx
 
 $(eval $(call gb_Library_add_generated_cobjects,i18npool,\
 	CustomTarget/i18npool/breakiterator/OpenOffice_dat \
 	$(foreach txt,$(wildcard $(SRCDIR)/i18npool/source/breakiterator/data/*.txt),\
 		CustomTarget/i18npool/breakiterator/$(notdir $(basename $(txt)))_brk),\
 	$(if $(filter GCC,$(COM)),-Wno-unused-macros) \
+))
+
+# index data
+$(eval $(call gb_Library_add_generated_exception_objects,i18npool,\
+	$(foreach txt,$(wildcard $(SRCDIR)/i18npool/source/indexentry/data/*.txt),\
+		CustomTarget/i18npool/indexentry/$(notdir $(basename $(txt)))) \
+))
+
+# textconv_dict
+$(eval $(call gb_Library_add_generated_exception_objects,i18npool,\
+	$(foreach txt,$(wildcard $(SRCDIR)/i18npool/source/textconversion/data/*.dic),\
+		CustomTarget/i18npool/textconversion/$(notdir $(basename $(txt)))) \
 ))
 
 # vim: set noet sw=4 ts=4:

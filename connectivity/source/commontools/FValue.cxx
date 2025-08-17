@@ -818,8 +818,6 @@ bool ORowSetValue::operator==(const ORowSetValue& _rRH) const
         case DataType::BINARY:
         case DataType::VARBINARY:
         case DataType::LONGVARBINARY:
-            bRet = false;
-            break;
         case DataType::BLOB:
         case DataType::CLOB:
         case DataType::OBJECT:
@@ -860,21 +858,21 @@ Any ORowSetValue::makeAny() const
                 rValue <<= m_aValue.m_nDouble;
                 break;
             case DataType::DATE:
-                OSL_ENSURE(m_aValue.m_pValue,"Value is null!");
+                assert(m_aValue.m_pValue && "Value is null!");
                 rValue <<= *static_cast<Date*>(m_aValue.m_pValue);
                 break;
             case DataType::TIME:
-                OSL_ENSURE(m_aValue.m_pValue,"Value is null!");
+                assert(m_aValue.m_pValue && "Value is null!");
                 rValue <<= *static_cast<Time*>(m_aValue.m_pValue);
                 break;
             case DataType::TIMESTAMP:
-                OSL_ENSURE(m_aValue.m_pValue,"Value is null!");
+                assert(m_aValue.m_pValue && "Value is null!");
                 rValue <<= *static_cast<DateTime*>(m_aValue.m_pValue);
                 break;
             case DataType::BINARY:
             case DataType::VARBINARY:
             case DataType::LONGVARBINARY:
-                OSL_ENSURE(m_aValue.m_pValue,"Value is null!");
+                assert(m_aValue.m_pValue && "Value is null!");
                 rValue <<= *static_cast<Sequence<sal_Int8>*>(m_aValue.m_pValue);
                 break;
             case DataType::BLOB:
@@ -965,11 +963,8 @@ OUString ORowSetValue::getString( ) const
             case DataType::LONGVARBINARY:
                 {
                     OUStringBuffer sVal("0x");
-                    Sequence<sal_Int8> aSeq(getSequence());
-                    const sal_Int8* pBegin  = aSeq.getConstArray();
-                    const sal_Int8* pEnd    = pBegin + aSeq.getLength();
-                    for(;pBegin != pEnd;++pBegin)
-                        sVal.append(static_cast<sal_Int32>(*pBegin),16);
+                    for (sal_Int32 byte : getSequence())
+                        sVal.append(byte, 16);
                     aRet = sVal.makeStringAndClear();
                 }
                 break;
@@ -1962,8 +1957,6 @@ css::util::Time ORowSetValue::getTime()        const
                 break;
             case DataType::DECIMAL:
             case DataType::NUMERIC:
-                aValue = DBTypeConversion::toTime(getDouble());
-                break;
             case DataType::FLOAT:
             case DataType::DOUBLE:
             case DataType::REAL:
@@ -2006,8 +1999,6 @@ css::util::DateTime ORowSetValue::getDateTime()    const
                 break;
             case DataType::DECIMAL:
             case DataType::NUMERIC:
-                aValue = DBTypeConversion::toDateTime(getDouble());
-                break;
             case DataType::FLOAT:
             case DataType::DOUBLE:
             case DataType::REAL:
@@ -2308,7 +2299,7 @@ void ORowSetValue::impl_fill( const sal_Int32 _nType, bool _bNullable, const det
 
 void ORowSetValue::fill(const Any& _rValue)
 {
-    switch (_rValue.getValueType().getTypeClass())
+    switch (_rValue.getValueTypeClass())
     {
         case TypeClass_VOID:
             setNull();            break;

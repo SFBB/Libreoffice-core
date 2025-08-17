@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_DBFLD_HXX
-#define INCLUDED_SW_INC_DBFLD_HXX
+#pragma once
 
 #include "swdllapi.h"
 #include "fldbas.hxx"
@@ -29,7 +28,7 @@ class SwDoc;
 class SW_DLLPUBLIC SwDBFieldType final : public SwValueFieldType
 {
     SwDBData    m_aDBData;
-    OUString m_sName;          ///< only used in ::GetName() !
+    UIName m_sName;          ///< only used in ::GetName() !
     OUString m_sColumn;
     tools::Long        m_nRefCnt;
 
@@ -38,7 +37,7 @@ public:
     SwDBFieldType(SwDoc* pDocPtr, const OUString& rColumnName, SwDBData aDBData);
     virtual ~SwDBFieldType() override;
 
-    virtual OUString GetName() const override;
+    virtual UIName GetName() const override;
     virtual std::unique_ptr<SwFieldType> Copy() const override;
 
     void     AddRef() { m_nRefCnt++; }
@@ -58,7 +57,7 @@ class SW_DLLPUBLIC SwDBField final : public SwValueField
 {
     OUString m_aContent;
     OUString m_sFieldCode; ///< contains Word's field code
-    sal_uInt16  m_nSubType;
+    SwDBFieldSubType m_nSubType;
     bool    m_bIsInBodyText    : 1;
     bool    m_bValidValue     : 1;
     bool    m_bInitialized    : 1;
@@ -67,7 +66,7 @@ class SW_DLLPUBLIC SwDBField final : public SwValueField
     virtual std::unique_ptr<SwField> Copy() const override;
 
 public:
-    SwDBField(SwDBFieldType*, sal_uInt32 nFormat = 0);
+    SwDBField(SwDBFieldType*, sal_uInt32 nFormat = 0, SwDBFieldSubType nSubType = SwDBFieldSubType::None);
     virtual ~SwDBField() override;
 
     virtual SwFieldType*    ChgTyp( SwFieldType* ) override;
@@ -75,8 +74,8 @@ public:
     /// Current text.
     inline  void        SetExpansion(const OUString& rStr);
 
-    virtual sal_uInt16      GetSubType() const override;
-    virtual void        SetSubType(sal_uInt16 nType) override;
+    SwDBFieldSubType GetSubType() const;
+    void SetSubType(SwDBFieldSubType nType);
 
     virtual OUString    GetFieldName() const override;
 
@@ -122,7 +121,8 @@ inline void SwDBField::ChgBodyTextFlag( bool bIsInBody )
 class SW_DLLPUBLIC SwDBNameInfField : public SwField
 {
     SwDBData        m_aDBData;
-    sal_uInt16      m_nSubType;
+    SwDBFieldSubType m_nSubType;
+    sal_uInt32      m_nFormat;
 
 protected:
     const SwDBData& GetDBData() const {return m_aDBData;}
@@ -131,6 +131,9 @@ protected:
     SwDBNameInfField(SwFieldType* pTyp, SwDBData aDBData, sal_uInt32 nFormat = 0);
 
 public:
+    sal_uInt32 GetFormat() const { return m_nFormat; }
+    void SetFormat(sal_uInt32 nFormat) { m_nFormat = nFormat; }
+
     /// DBName
     const SwDBData&  GetRealDBData() const { return m_aDBData; }
     SwDBData&        GetRealDBData() { return m_aDBData; }
@@ -142,8 +145,8 @@ public:
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt16 nWhich ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt16 nWhich ) override;
-    virtual sal_uInt16      GetSubType() const override;
-    virtual void            SetSubType(sal_uInt16 nType) override;
+    SwDBFieldSubType        GetSubType() const;
+    void                    SetSubType(SwDBFieldSubType nType);
 };
 
 // Database field next record.
@@ -246,7 +249,7 @@ public:
 class SwDBNameField final : public SwDBNameInfField
 {
 public:
-    SwDBNameField(SwDBNameFieldType*, const SwDBData& rDBData);
+    SwDBNameField(SwDBNameFieldType*, const SwDBData& rDBData, sal_uInt32 nFormat = 0);
 
     virtual OUString    ExpandImpl(SwRootFrame const* pLayout) const override;
     virtual std::unique_ptr<SwField> Copy() const override;
@@ -285,7 +288,5 @@ inline tools::Long SwDBSetNumberField::GetSetNumber() const
 
 inline void SwDBSetNumberField::SetSetNumber(tools::Long nNum)
     { m_nNumber = nNum; }
-
-#endif // INCLUDED_SW_INC_DBFLD_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -176,7 +176,7 @@ private:
         while (!isTerminateRequested())
         {
             std::optional<DataStream::LinesType> oLines;
-            std::unique_lock aGuard(maMtxLines);
+            std::unique_lock aGuard(getLinesMutex());
 
             if (!maUsedLines.empty())
             {
@@ -192,10 +192,12 @@ private:
             }
 
             // Read & store new lines from stream.
+            OStringBuffer aBuffer;
             for (DataStream::Line & rLine : *oLines)
             {
                 rLine.maCells.clear();
-                mpStream->ReadLine(rLine.maLine);
+                mpStream->ReadLine(aBuffer);
+                rLine.maLine = aBuffer.toString(); // produces minimal string, and keeps buffer
                 CSVHandler aHdl(rLine, mnColCount);
                 orcus::csv_parser<CSVHandler> parser(rLine.maLine, aHdl, maConfig);
                 parser.parse();
@@ -249,7 +251,7 @@ void DataStream::MakeToolbarVisible()
         return;
 
     css::uno::Reference< css::frame::XLayoutManager > xLayoutManager;
-    xPropSet->getPropertyValue("LayoutManager") >>= xLayoutManager;
+    xPropSet->getPropertyValue(u"LayoutManager"_ustr) >>= xLayoutManager;
     if (!xLayoutManager.is())
         return;
 

@@ -49,9 +49,11 @@ class VerticalTabControl final : public VclHBox
     VerticalTabPageData* GetPageData(const SvxIconChoiceCtrlEntry* pEntry) const;
 
 public:
-    VerticalTabControl(vcl::Window* pParent);
+    VerticalTabControl(vcl::Window* pParent, bool bWithIcons);
     virtual ~VerticalTabControl() override;
     virtual void dispose() override;
+
+    virtual bool EventNotify(NotifyEvent& rNEvt) override;
 
     sal_uInt16 GetPageCount() const { return m_xChooser->GetEntryCount(); }
 
@@ -80,6 +82,7 @@ public:
 
     vcl::Window* GetPageParent() { return m_xBox.get(); }
 
+    virtual Size GetOptimalSize() const override;
     virtual void DumpAsPropertyTree(tools::JsonWriter& rJsonWriter) override;
 
     virtual FactoryFunction GetUITestFactory() const override;

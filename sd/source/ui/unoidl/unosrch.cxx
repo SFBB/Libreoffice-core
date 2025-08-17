@@ -324,7 +324,7 @@ uno::Reference< css::uno::XInterface > SAL_CALL SdUnoSearchReplaceShape::findNex
                     // get next shape on our page
                     uno::Reference< drawing::XShape > xFound2( GetNextShape( mpPage, xCurrentShape ) );
                     if( xFound2.is() && (xFound2.get() != xCurrentShape.get()) )
-                        xCurrentShape = xFound2;
+                        xCurrentShape = std::move(xFound2);
                     else
                         xCurrentShape = nullptr;
 
@@ -461,14 +461,14 @@ uno::Reference< text::XTextRange >  SdUnoSearchReplaceShape::Search( const uno::
                             ESelection aEndSel( GetSelection( xPortion->getEnd() ) );
 
                             // special case for empty portions with content or length one portions with content (fields)
-                            if( (aStartSel.nStartPos == aEndSel.nStartPos) || ( (aStartSel.nStartPos == (aEndSel.nStartPos - 1)) && (nLen > 1) ) )
+                            if( (aStartSel.start.nIndex == aEndSel.start.nIndex) || ( (aStartSel.start.nIndex == (aEndSel.start.nIndex - 1)) && (nLen > 1) ) )
                             {
                                 for( sal_Int32 i = 0; i < nLen; i++ )
                                 {
                                     if( ndbg < (nTextLen+2) )
                                     {
-                                        *pPos++ = aStartSel.nStartPos;
-                                        *pPara++ = aStartSel.nStartPara;
+                                        *pPos++ = aStartSel.start.nIndex;
+                                        *pPara++ = aStartSel.start.nPara;
 
                                         ndbg += 1;
                                     }
@@ -478,7 +478,7 @@ uno::Reference< text::XTextRange >  SdUnoSearchReplaceShape::Search( const uno::
                                     }
                                 }
 
-                                nLastPos = aStartSel.nStartPos;
+                                nLastPos = aStartSel.start.nIndex;
                             }
                             // normal case
                             else
@@ -487,8 +487,8 @@ uno::Reference< text::XTextRange >  SdUnoSearchReplaceShape::Search( const uno::
                                 {
                                     if( ndbg < (nTextLen+2) )
                                     {
-                                        *pPos++ = aStartSel.nStartPos++;
-                                        *pPara++ = aStartSel.nStartPara;
+                                        *pPos++ = aStartSel.start.nIndex++;
+                                        *pPara++ = aStartSel.start.nPara;
 
                                         ndbg += 1;
                                     }
@@ -498,10 +498,10 @@ uno::Reference< text::XTextRange >  SdUnoSearchReplaceShape::Search( const uno::
                                     }
                                 }
 
-                                nLastPos = aStartSel.nStartPos - 1;
-                                DBG_ASSERT( aEndSel.nStartPos == aStartSel.nStartPos, "Search is not working" );
+                                nLastPos = aStartSel.start.nIndex - 1;
+                                DBG_ASSERT( aEndSel.start.nIndex == aStartSel.start.nIndex, "Search is not working" );
                             }
-                            nLastPara = aStartSel.nStartPara;
+                            nLastPara = aStartSel.start.nPara;
                         }
                     }
                 }
@@ -519,7 +519,6 @@ uno::Reference< text::XTextRange >  SdUnoSearchReplaceShape::Search( const uno::
         }
     }
 
-    uno::Reference< text::XTextRange >  xFound;
     ESelection aSel;
 
     if( xText.is() )
@@ -529,33 +528,30 @@ uno::Reference< text::XTextRange >  SdUnoSearchReplaceShape::Search( const uno::
     sal_Int32 nEndPos   = 0;
     for( nStartPos = 0; nStartPos < nTextLen; nStartPos++ )
     {
-        if( pConvertPara[nStartPos] == aSel.nStartPara && pConvertPos[nStartPos] == aSel.nStartPos )
+        if( pConvertPara[nStartPos] == aSel.start.nPara && pConvertPos[nStartPos] == aSel.start.nIndex )
             break;
     }
 
-    if( Search( aText, nStartPos, nEndPos, pDescr ) )
+    if( !Search( aText, nStartPos, nEndPos, pDescr ) )
+        return nullptr;
+
+    if( nStartPos > nTextLen || nEndPos > nTextLen )
     {
-        if( nStartPos <= nTextLen && nEndPos <= nTextLen )
-        {
-            ESelection aSelection( pConvertPara[nStartPos], pConvertPos[nStartPos],
-                             pConvertPara[nEndPos], pConvertPos[nEndPos] );
-
-            SvxUnoTextBase* pParent = comphelper::getFromUnoTunnel<SvxUnoTextBase>( xParent );
-
-            if(pParent)
-            {
-                rtl::Reference<SvxUnoTextRange> pRange = new SvxUnoTextRange( *pParent );
-                xFound = pRange;
-                pRange->SetSelection(aSelection);
-            }
-        }
-        else
-        {
-            OSL_FAIL("Array overflow while searching!");
-        }
+        OSL_FAIL("Array overflow while searching!");
+        return nullptr;
     }
 
-    return xFound;
+    ESelection aSelection( pConvertPara[nStartPos], pConvertPos[nStartPos],
+                     pConvertPara[nEndPos], pConvertPos[nEndPos] );
+
+    SvxUnoTextBase* pParent = comphelper::getFromUnoTunnel<SvxUnoTextBase>( xParent );
+    if(!pParent)
+        return nullptr;
+
+    rtl::Reference<SvxUnoTextRange> pRange = new SvxUnoTextRange( *pParent );
+    pRange->SetSelection(aSelection);
+
+    return pRange;
 }
 
 bool SdUnoSearchReplaceShape::Search( const OUString& rText, sal_Int32& nStartPos, sal_Int32& nEndPos, SdUnoSearchReplaceDescriptor* pDescr ) noexcept
@@ -621,7 +617,7 @@ uno::Reference< drawing::XShape >  SdUnoSearchReplaceShape::GetShape( const uno:
                     if(!xParent.is() || xText.get() == xParent.get())
                         return xShape;
 
-                    xText = xParent;
+                    xText = std::move(xParent);
                 }
             } while( !xShape.is() );
         }

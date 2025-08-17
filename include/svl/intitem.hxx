@@ -29,7 +29,7 @@ class SVL_DLLPUBLIC SfxByteItem: public CntByteItem
 {
 public:
     static SfxPoolItem* CreateDefault();
-
+    DECLARE_ITEM_TYPE_FUNCTION(SfxByteItem)
     explicit SfxByteItem(sal_uInt16 which = 0, sal_uInt8 nValue = 0):
         CntByteItem(which, nValue) {}
 
@@ -43,12 +43,14 @@ class SVL_DLLPUBLIC SfxInt16Item: public SfxPoolItem
 
 public:
     static SfxPoolItem* CreateDefault();
-
+    DECLARE_ITEM_TYPE_FUNCTION(SfxInt16Item)
     explicit SfxInt16Item(sal_uInt16 which = 0, sal_Int16 nTheValue = 0):
         SfxPoolItem(which), m_nValue(nTheValue)
     {}
 
     virtual bool operator ==(const SfxPoolItem & rItem) const override;
+    virtual bool supportsHashCode() const override final { return true; }
+    virtual size_t hashCode() const override final { return m_nValue; }
 
     virtual bool GetPresentation(SfxItemPresentation,
                                                 MapUnit, MapUnit,
@@ -68,21 +70,15 @@ public:
 
     sal_Int16 GetValue() const { return m_nValue; }
 
-    inline void SetValue(sal_Int16 nTheValue);
+    void SetValue(sal_Int16 nTheValue) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nValue = nTheValue; }
 };
-
-inline void SfxInt16Item::SetValue(sal_Int16 nTheValue)
-{
-    DBG_ASSERT(GetRefCount() == 0, "SfxInt16Item::SetValue(); Pooled item");
-    m_nValue = nTheValue;
-}
 
 
 class SVL_DLLPUBLIC SfxUInt16Item: public CntUInt16Item
 {
 public:
     static SfxPoolItem* CreateDefault();
-
+    DECLARE_ITEM_TYPE_FUNCTION(SfxUInt16Item)
     explicit SfxUInt16Item(sal_uInt16 which = 0, sal_uInt16 nValue = 0):
         CntUInt16Item(which, nValue) {}
 
@@ -99,6 +95,7 @@ class SVL_DLLPUBLIC SfxInt32Item: public CntInt32Item
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SfxInt32Item)
     explicit SfxInt32Item(sal_uInt16 which = 0, sal_Int32 nValue = 0):
         CntInt32Item(which, nValue) {}
 
@@ -114,7 +111,7 @@ class SVL_DLLPUBLIC SfxUInt32Item: public CntUInt32Item
 {
 public:
     static SfxPoolItem* CreateDefault();
-
+    DECLARE_ITEM_TYPE_FUNCTION(SfxUInt32Item)
     explicit SfxUInt32Item(sal_uInt16 which = 0, sal_uInt32 nValue = 0):
         CntUInt32Item(which, nValue) {}
 

@@ -22,8 +22,10 @@
 #include <com/sun/star/text/XParagraphCursor.hpp>
 #include "wordvbahelper.hxx"
 #include "vbarange.hxx"
+#include <unotxdoc.hxx>
 
 using namespace ::ooo::vba;
+using namespace ::ooo::vba::word;
 using namespace ::com::sun::star;
 
 SwVbaAutoTextEntry::SwVbaAutoTextEntry( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, uno::Reference< text::XAutoTextEntry >  xEntry ) :
@@ -41,14 +43,14 @@ uno::Reference< word::XRange > SAL_CALL SwVbaAutoTextEntry::Insert( const uno::R
     if( pWhere )
     {
         uno::Reference< text::XTextRange > xTextRange = pWhere->getXTextRange();
-        xTextRange->setString( "x" ); // set marker
+        xTextRange->setString( u"x"_ustr ); // set marker
         uno::Reference< text::XTextRange > xEndMarker = xTextRange->getEnd();
-        xEndMarker->setString( "x" ); // set marker
+        xEndMarker->setString( u"x"_ustr ); // set marker
         uno::Reference< text::XText > xText = pWhere->getXText();
         mxEntry->applyTo( xEndMarker->getStart() );
         uno::Reference< text::XTextCursor > xTC = xText->createTextCursorByRange( xTextRange->getStart() );
         xTC->goRight( 1, true );
-        xTC->setString( "" ); // remove marker
+        xTC->setString( u""_ustr ); // remove marker
         // remove the blank paragraph if it is a rich text
         bool bRich = false;
         _richtext >>= bRich;
@@ -59,15 +61,15 @@ uno::Reference< word::XRange > SAL_CALL SwVbaAutoTextEntry::Insert( const uno::R
             if( xParaCursor->isStartOfParagraph() && xParaCursor->isEndOfParagraph() )
             {
                 //remove the blank paragraph
-                uno::Reference< frame::XModel > xModel( getCurrentWordDoc( mxContext ), uno::UNO_SET_THROW );
+                rtl::Reference< SwXTextDocument > xModel( getCurrentWordDoc( mxContext ) );
                 uno::Reference< text::XTextViewCursor > xTVCursor = word::getXTextViewCursor( xModel );
                 uno::Reference< text::XTextRange > xCurrentRange( xTC->getEnd(), uno::UNO_SET_THROW );
                 xTVCursor->gotoRange( xCurrentRange, false );
-                dispatchRequests( xModel,".uno:Delete" );
+                dispatchRequests( static_cast<SfxBaseModel*>(xModel.get()), u".uno:Delete"_ustr );
                 xTVCursor->gotoRange( xEndMarker->getEnd(), false );
             }
         }
-        xEndMarker->setString( "" ); // remove marker
+        xEndMarker->setString( u""_ustr ); // remove marker
         xTC = xText->createTextCursorByRange( xEndMarker->getEnd() );
         pWhere->setXTextCursor( xTC );
     }
@@ -77,7 +79,7 @@ uno::Reference< word::XRange > SAL_CALL SwVbaAutoTextEntry::Insert( const uno::R
 OUString
 SwVbaAutoTextEntry::getServiceImplName()
 {
-    return "SwVbaAutoTextEntry";
+    return u"SwVbaAutoTextEntry"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -85,7 +87,7 @@ SwVbaAutoTextEntry::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.word.AutoTextEntry"
+        u"ooo.vba.word.AutoTextEntry"_ustr
     };
     return aServiceNames;
 }
@@ -103,7 +105,7 @@ SwVbaAutoTextEntries::getElementType()
 uno::Reference< container::XEnumeration >
 SwVbaAutoTextEntries::createEnumeration()
 {
-    throw uno::RuntimeException("Not implemented" );
+    throw uno::RuntimeException(u"Not implemented"_ustr );
 }
 
 uno::Any
@@ -116,7 +118,7 @@ SwVbaAutoTextEntries::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaAutoTextEntries::getServiceImplName()
 {
-    return "SwVbaAutoTextEntries";
+    return u"SwVbaAutoTextEntries"_ustr;
 }
 
 css::uno::Sequence<OUString>
@@ -124,7 +126,7 @@ SwVbaAutoTextEntries::getServiceNames()
 {
     static uno::Sequence< OUString > const sNames
     {
-        "ooo.vba.word.AutoTextEntries"
+        u"ooo.vba.word.AutoTextEntries"_ustr
     };
     return sNames;
 }

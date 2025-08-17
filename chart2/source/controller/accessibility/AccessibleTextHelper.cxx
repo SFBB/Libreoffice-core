@@ -39,7 +39,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
 using ::com::sun::star::uno::Reference;
-using ::com::sun::star::uno::Sequence;
 
 namespace chart
 {
@@ -53,31 +52,28 @@ AccessibleTextHelper::~AccessibleTextHelper()
 {
 }
 
-void AccessibleTextHelper::initialize( const OUString& aCID,
-                                const Reference< XAccessible >& xEventSource,
-                                const Reference< awt::XWindow >& xWindow )
+void AccessibleTextHelper::initialize(const OUString& aCID,
+                                      const rtl::Reference<comphelper::OAccessible>& rEventSource,
+                                      vcl::Window* pWindow)
 {
     OSL_ENSURE( !aCID.isEmpty(), "Empty CID" );
-    OSL_ENSURE( xEventSource.is(), "Empty Event Source" );
-    OSL_ENSURE( xWindow.is(), "Empty Window" );
-    if( !xEventSource.is() || aCID.isEmpty() )
+    assert(rEventSource.is() && "Empty Event Source");
+    if (aCID.isEmpty())
         return;
 
     SolarMutexGuard aSolarGuard;
 
     m_oTextHelper.reset();
 
-    VclPtr<vcl::Window> pWindow( VCLUnoHelper::GetWindow( xWindow ));
     if( pWindow )
     {
-        SdrView * pView = m_pDrawViewWrapper;
-        if( pView )
+        if (m_pDrawViewWrapper)
         {
             SdrObject * pTextObj = m_pDrawViewWrapper->getNamedSdrObject( aCID );
             if( pTextObj )
             {
-                m_oTextHelper.emplace( std::make_unique<SvxTextEditSource>(*pTextObj, nullptr, *pView, *pWindow->GetOutDev()) );
-                m_oTextHelper->SetEventSource( xEventSource );
+                m_oTextHelper.emplace(std::make_unique<SvxTextEditSource>(*pTextObj, nullptr, *m_pDrawViewWrapper, *pWindow->GetOutDev()));
+                m_oTextHelper->SetEventSource(rEventSource);
             }
         }
     }

@@ -16,6 +16,7 @@
 #include "rtl/string.h"
 #include "rtl/ustring.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <memory>
@@ -82,14 +83,6 @@ C* addDataHelper( C* buffer, const C* data, std::size_t length )
     return buffer + length;
 }
 
-inline
-sal_Unicode* addDataLiteral( sal_Unicode* buffer, const char* data, std::size_t length )
-{
-    for( std::size_t i = 0; i != length; ++i )
-        *buffer++ = *data++;
-    return buffer;
-}
-
 template <typename C> inline
 C* addDataString( C* buffer, const C* str )
 {
@@ -126,7 +119,7 @@ struct ToStringHelper< const char[ N ] >
 {
     static std::size_t length( const char str[ N ] ) { (void)str; assert( strlen( str ) == N - 1 ); return N - 1; }
     char* operator()( char* buffer, const char str[ N ] ) const { return addDataHelper( buffer, str, N - 1 ); }
-    sal_Unicode* operator()( sal_Unicode* buffer, const char str[ N ] ) const { return addDataLiteral( buffer, str, N - 1 ); }
+    sal_Unicode* operator()( sal_Unicode* buffer, const char str[ N ] ) const { return std::copy_n( str, N - 1, buffer ); }
 };
 
 template<>
@@ -158,7 +151,7 @@ struct ToStringHelper<sal_Unicode[ N ]>
         return std::char_traits<char16_t>::length( str );
     }
     sal_Unicode * operator()(sal_Unicode * buffer, sal_Unicode const str[N]) const
-    { return addDataHelper(buffer, str, N - 1); }
+    { return addDataString(buffer, str); }
 };
 
 template<std::size_t N>

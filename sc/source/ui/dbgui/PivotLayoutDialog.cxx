@@ -71,52 +71,52 @@ ScRange lclGetRangeForNamedRange(OUString const & aName, const ScDocument& rDocu
 
 ScPivotLayoutDialog::ScPivotLayoutDialog(
                             SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow, weld::Window* pParent,
-                            ScViewData* pViewData, const ScDPObject* pPivotTableObject, bool bNewPivotTable)
-    : ScAnyRefDlgController(pSfxBindings, pChildWindow, pParent, "modules/scalc/ui/pivottablelayoutdialog.ui", "PivotTableLayout")
+                            ScViewData& rViewData, const ScDPObject* pPivotTableObject, bool bNewPivotTable)
+    : ScAnyRefDlgController(pSfxBindings, pChildWindow, pParent, u"modules/scalc/ui/pivottablelayoutdialog.ui"_ustr, u"PivotTableLayout"_ustr)
     , maPivotTableObject(*pPivotTableObject)
     , mpPreviouslyFocusedListBox(nullptr)
-    , mpViewData(pViewData)
-    , mrDocument(pViewData->GetDocument())
+    , mrViewData(rViewData)
+    , mrDocument(rViewData.GetDocument())
     , mbNewPivotTable(bNewPivotTable)
     , maAddressDetails(mrDocument.GetAddressConvention(), 0, 0)
     , mbDialogLostFocus(false)
     , mpActiveEdit(nullptr)
-    , mxListBoxField(new ScPivotLayoutTreeListLabel(m_xBuilder->weld_tree_view("listbox-fields")))
-    , mxListBoxPage(new ScPivotLayoutTreeList(m_xBuilder->weld_tree_view("listbox-page")))
-    , mxListBoxColumn(new ScPivotLayoutTreeList(m_xBuilder->weld_tree_view("listbox-column")))
-    , mxListBoxRow(new ScPivotLayoutTreeList(m_xBuilder->weld_tree_view("listbox-row")))
-    , mxListBoxData(new ScPivotLayoutTreeListData(m_xBuilder->weld_tree_view("listbox-data")))
-    , mxCheckIgnoreEmptyRows(m_xBuilder->weld_check_button("check-ignore-empty-rows"))
-    , mxCheckTotalColumns(m_xBuilder->weld_check_button("check-total-columns"))
-    , mxCheckAddFilter(m_xBuilder->weld_check_button("check-add-filter"))
-    , mxCheckIdentifyCategories(m_xBuilder->weld_check_button("check-identify-categories"))
-    , mxCheckTotalRows(m_xBuilder->weld_check_button("check-total-rows"))
-    , mxCheckDrillToDetail(m_xBuilder->weld_check_button("check-drill-to-details"))
-    , mxCheckExpandCollapse(m_xBuilder->weld_check_button("check-show-expand-collapse"))
-    , mxSourceRadioNamedRange(m_xBuilder->weld_radio_button("source-radio-named-range"))
-    , mxSourceRadioSelection(m_xBuilder->weld_radio_button("source-radio-selection"))
-    , mxSourceListBox(m_xBuilder->weld_combo_box("source-list"))
-    , mxSourceEdit(new formula::RefEdit(m_xBuilder->weld_entry("source-edit")))
-    , mxSourceButton(new formula::RefButton(m_xBuilder->weld_button("source-button")))
-    , mxDestinationRadioNewSheet(m_xBuilder->weld_radio_button("destination-radio-new-sheet"))
-    , mxDestinationRadioNamedRange(m_xBuilder->weld_radio_button("destination-radio-named-range"))
-    , mxDestinationRadioSelection(m_xBuilder->weld_radio_button("destination-radio-selection"))
-    , mxDestinationListBox(m_xBuilder->weld_combo_box("destination-list"))
-    , mxDestinationEdit(new formula::RefEdit(m_xBuilder->weld_entry("destination-edit")))
-    , mxDestinationButton(new formula::RefButton(m_xBuilder->weld_button("destination-button")))
-    , mxBtnOK(m_xBuilder->weld_button("ok"))
-    , mxBtnCancel(m_xBuilder->weld_button("cancel"))
-    , mxSourceFrame(m_xBuilder->weld_frame("frame2"))
-    , mxSourceLabel(mxSourceFrame->weld_label_widget())
-    , mxDestFrame(m_xBuilder->weld_frame("frame1"))
-    , mxDestLabel(mxDestFrame->weld_label_widget())
+    , mxListBoxField(new ScPivotLayoutTreeListLabel(m_xBuilder->weld_tree_view(u"listbox-fields"_ustr)))
+    , mxListBoxPage(new ScPivotLayoutTreeList(m_xBuilder->weld_tree_view(u"listbox-page"_ustr)))
+    , mxListBoxColumn(new ScPivotLayoutTreeList(m_xBuilder->weld_tree_view(u"listbox-column"_ustr)))
+    , mxListBoxRow(new ScPivotLayoutTreeList(m_xBuilder->weld_tree_view(u"listbox-row"_ustr)))
+    , mxListBoxData(new ScPivotLayoutTreeListData(m_xBuilder->weld_tree_view(u"listbox-data"_ustr)))
+    , mxCheckIgnoreEmptyRows(m_xBuilder->weld_check_button(u"check-ignore-empty-rows"_ustr))
+    , mxCheckTotalColumns(m_xBuilder->weld_check_button(u"check-total-columns"_ustr))
+    , mxCheckAddFilter(m_xBuilder->weld_check_button(u"check-add-filter"_ustr))
+    , mxCheckIdentifyCategories(m_xBuilder->weld_check_button(u"check-identify-categories"_ustr))
+    , mxCheckTotalRows(m_xBuilder->weld_check_button(u"check-total-rows"_ustr))
+    , mxCheckDrillToDetail(m_xBuilder->weld_check_button(u"check-drill-to-details"_ustr))
+    , mxCheckExpandCollapse(m_xBuilder->weld_check_button(u"check-show-expand-collapse"_ustr))
+    , mxSourceRadioNamedRange(m_xBuilder->weld_radio_button(u"source-radio-named-range"_ustr))
+    , mxSourceRadioSelection(m_xBuilder->weld_radio_button(u"source-radio-selection"_ustr))
+    , mxSourceListBox(m_xBuilder->weld_combo_box(u"source-list"_ustr))
+    , mxSourceEdit(new formula::RefEdit(m_xBuilder->weld_entry(u"source-edit"_ustr)))
+    , mxSourceButton(new formula::RefButton(m_xBuilder->weld_button(u"source-button"_ustr)))
+    , mxDestinationRadioNewSheet(m_xBuilder->weld_radio_button(u"destination-radio-new-sheet"_ustr))
+    , mxDestinationRadioNamedRange(m_xBuilder->weld_radio_button(u"destination-radio-named-range"_ustr))
+    , mxDestinationRadioSelection(m_xBuilder->weld_radio_button(u"destination-radio-selection"_ustr))
+    , mxDestinationListBox(m_xBuilder->weld_combo_box(u"destination-list"_ustr))
+    , mxDestinationEdit(new formula::RefEdit(m_xBuilder->weld_entry(u"destination-edit"_ustr)))
+    , mxDestinationButton(new formula::RefButton(m_xBuilder->weld_button(u"destination-button"_ustr)))
+    , mxBtnOK(m_xBuilder->weld_button(u"ok"_ustr))
+    , mxBtnCancel(m_xBuilder->weld_button(u"cancel"_ustr))
+    , mxSourceFrame(m_xBuilder->weld_frame(u"frame2"_ustr))
+    , mxDestFrame(m_xBuilder->weld_frame(u"frame1"_ustr))
+    , mxOptions(m_xBuilder->weld_expander(u"options"_ustr))
+    , mxMore(m_xBuilder->weld_expander(u"more"_ustr))
 {
     // Source UI
     Link<weld::Toggleable&,void> aLink2 = LINK(this, ScPivotLayoutDialog, ToggleSource);
     mxSourceRadioNamedRange->connect_toggled(aLink2);
     mxSourceRadioSelection->connect_toggled(aLink2);
 
-    mxSourceEdit->SetReferences(this, mxSourceLabel.get());
+    mxSourceEdit->SetReferences(this, mxSourceFrame.get());
     mxSourceButton->SetReferences(this, mxSourceEdit.get());
 
     Link<formula::RefEdit&,void> aEditLink = LINK(this, ScPivotLayoutDialog, GetEditFocusHandler);
@@ -136,7 +136,7 @@ ScPivotLayoutDialog::ScPivotLayoutDialog(
     mxDestinationRadioNamedRange->connect_toggled(aLink2);
     mxDestinationRadioSelection->connect_toggled(aLink2);
 
-    mxDestinationEdit->SetReferences(this, mxDestLabel.get());
+    mxDestinationEdit->SetReferences(this, mxDestFrame.get());
     mxDestinationButton->SetReferences(this, mxDestinationEdit.get());
 
     Link<formula::RefButton&,void> aButtonLink = LINK(this, ScPivotLayoutDialog, GetButtonFocusHandler);
@@ -477,9 +477,9 @@ void ScPivotLayoutDialog::ApplyChanges()
     SetDispatcherLock(false);
     SwitchToDocument();
 
-    sal_uInt16 nWhichPivot = SC_MOD()->GetPool().GetWhich(SID_PIVOT_TABLE);
+    sal_uInt16 nWhichPivot = ScModule::get()->GetPool().GetWhichIDFromSlotID(SID_PIVOT_TABLE);
     ScPivotItem aPivotItem(nWhichPivot, &aSaveData, &aDestinationRange, bToNewSheet);
-    mpViewData->GetViewShell()->SetDialogDPObject(std::make_unique<ScDPObject>(maPivotTableObject));
+    mrViewData.GetViewShell()->SetDialogDPObject(std::make_unique<ScDPObject>(maPivotTableObject));
 
 
     SfxDispatcher* pDispatcher = GetBindings().GetDispatcher();
@@ -487,7 +487,7 @@ void ScPivotLayoutDialog::ApplyChanges()
     const SfxPoolItemHolder aResult(pDispatcher->ExecuteList(SID_PIVOT_TABLE,
             nCallMode, { &aPivotItem }));
 
-    if (nullptr != aResult.getItem())
+    if (aResult)
     {
         // existing pivot table might have moved to a new range or a new sheet
         if ( pOldDPObj != nullptr  )
@@ -504,9 +504,9 @@ void ScPivotLayoutDialog::ApplyChanges()
             }
             if (pDPObj)
             {
-                ScDBDocFunc aFunc( *(mpViewData->GetDocShell() ));
+                ScDBDocFunc aFunc( mrViewData.GetDocShell() );
                 aFunc.RemovePivotTable( *pDPObj, true, false);
-                mpViewData->GetView()->CursorPosChanged();
+                mrViewData.GetView()->CursorPosChanged();
             }
         }
         return;

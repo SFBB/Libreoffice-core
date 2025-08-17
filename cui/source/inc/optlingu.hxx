@@ -25,9 +25,6 @@
 #include <com/sun/star/configuration/ReadWriteAccess.hpp>
 
 namespace com::sun::star{
-    namespace beans{
-        class XPropertySet;
-    }
     namespace linguistic2{
         class XDictionary;
         class XDictionaryList;
@@ -36,12 +33,6 @@ namespace com::sun::star{
 }
 
 class SvxLinguData_Impl;
-
-// define ----------------------------------------------------------------
-
-#define GROUP_MODULES   (sal_uInt16(0x0008))
-
-// forward ---------------------------------------------------------------
 
 class SvxEditModulesDlg : public weld::GenericDialogController
 {
@@ -113,7 +104,7 @@ private:
 
     std::unique_ptr<SvxLinguData_Impl>  pLinguData;
 
-    std::unique_ptr<weld::Label> m_xLinguModulesFT;
+    std::unique_ptr<weld::Container> m_xLinguModulesFrame;
     std::unique_ptr<weld::TreeView> m_xLinguModulesCLB;
     std::unique_ptr<weld::Button> m_xLinguModulesEditPB;
     std::unique_ptr<weld::Label> m_xLinguDicsFT;
@@ -150,7 +141,7 @@ public:
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
 
-    void                HideGroups( sal_uInt16 nGrp );
+    void                HideModulesGroup();
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -184,7 +184,7 @@ TransliterationImpl::getName()
     if (numCascade == 1 && bodyCascade[0].is())
         return bodyCascade[0]->getName();
     if (numCascade < 1)
-        return ( OUString("Not Loaded"));
+        return ( u"Not Loaded"_ustr);
     throw RuntimeException();
 }
 
@@ -296,7 +296,7 @@ TransliterationImpl::loadModulesByImplNames(const Sequence< OUString >& implName
 Sequence<OUString> SAL_CALL
 TransliterationImpl::getAvailableModules( const Locale& rLocale, sal_Int16 sType )
 {
-    const Sequence<OUString> &translist = mxLocaledata->getTransliterations(rLocale);
+    const Sequence<OUString> translist = mxLocaledata->getTransliterations(rLocale);
     std::vector<OUString> r;
     r.reserve(translist.getLength());
     Reference<XExtendedTransliteration> body;
@@ -354,7 +354,7 @@ TransliterationImpl::transliterate( const OUString& inStr, sal_Int32 startPos, s
             for (sal_Int32& ix : asNonConstRange(to))
                 ix = from[ix];
         }
-        offset = to;
+        offset = std::move(to);
         return tmpStr;
     }
 }
@@ -405,7 +405,7 @@ TransliterationImpl::folding( const OUString& inStr, sal_Int32 startPos, sal_Int
             for (sal_Int32& ix : asNonConstRange(to))
                 ix = from[ix];
         }
-        offset = to;
+        offset = std::move(to);
         return tmpStr;
     }
 }
@@ -525,7 +525,7 @@ TransliterationImpl::getRange(const Sequence< OUString > &inStrs,
     std::vector<OUString> ostr;
     ostr.reserve(nMaxOutputLength);
     for (sal_Int32 j = 0; j < length; j+=2) {
-        const Sequence< OUString >& temp = bodyCascade[_numCascade]->transliterateRange(inStrs[j], inStrs[j+1]);
+        const Sequence< OUString > temp = bodyCascade[_numCascade]->transliterateRange(inStrs[j], inStrs[j+1]);
 
         for (const auto& rStr : temp) {
             if ( j_tmp++ >= nMaxOutputLength ) throw RuntimeException();
@@ -654,7 +654,7 @@ TransliterationImpl::loadModuleByName( std::u16string_view implName,
 OUString SAL_CALL
 TransliterationImpl::getImplementationName()
 {
-    return "com.sun.star.i18n.Transliteration";
+    return u"com.sun.star.i18n.Transliteration"_ustr;
 }
 
 sal_Bool SAL_CALL
@@ -666,7 +666,7 @@ TransliterationImpl::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 TransliterationImpl::getSupportedServiceNames()
 {
-    return { "com.sun.star.i18n.Transliteration" };
+    return { u"com.sun.star.i18n.Transliteration"_ustr };
 }
 
 }

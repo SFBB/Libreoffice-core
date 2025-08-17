@@ -32,7 +32,7 @@ SfxPoolItem* SvxZoomItem::CreateDefault() { return new SvxZoomItem; }
 constexpr OUString ZOOM_PARAM_VALUE = u"Value"_ustr;
 constexpr OUString ZOOM_PARAM_VALUESET = u"ValueSet"_ustr;
 constexpr OUString ZOOM_PARAM_TYPE = u"Type"_ustr;
-#define ZOOM_PARAMS         3
+constexpr auto ZOOM_PARAMS = 3;
 
 
 SvxZoomItem::SvxZoomItem
@@ -106,7 +106,7 @@ bool SvxZoomItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
                 sal_Int16 nTypeTmp( 0 );
                 bool bAllConverted( true );
                 sal_Int16 nConvertedCount( 0 );
-                for ( const auto& rProp : std::as_const(aSeq) )
+                for (const auto& rProp : aSeq)
                 {
                     if ( rProp.Name == ZOOM_PARAM_VALUE )
                     {

@@ -24,14 +24,12 @@
 #include <svdata.hxx>
 #include <salinst.hxx>
 
-using namespace osl;
 using namespace vcl;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::awt;
 
 DisplayConnectionDispatch::DisplayConnectionDispatch()
 {
-    m_ConnectionIdentifier = ImplGetSVData()->mpDefInst->GetConnectionIdentifier();
 }
 
 DisplayConnectionDispatch::~DisplayConnectionDispatch()
@@ -57,53 +55,37 @@ void DisplayConnectionDispatch::terminate()
     SolarMutexReleaser aRel;
 
     std::scoped_lock aGuard( m_aMutex );
-    Any aEvent;
-    std::vector< css::uno::Reference< XEventHandler > > aLocalList( m_aHandlers );
+    std::vector<rtl::Reference<DisplayEventHandler>> aLocalList(m_aHandlers);
     for (auto const& elem : aLocalList)
-        elem->handleEvent( aEvent );
+        elem->shutdown();
 }
 
-void SAL_CALL DisplayConnectionDispatch::addEventHandler( const Any& /*window*/, const css::uno::Reference< XEventHandler >& handler, sal_Int32 /*eventMask*/ )
+void DisplayConnectionDispatch::addEventHandler(const rtl::Reference<DisplayEventHandler>& handler)
 {
     std::scoped_lock aGuard( m_aMutex );
 
     m_aHandlers.push_back( handler );
 }
 
-void SAL_CALL DisplayConnectionDispatch::removeEventHandler( const Any& /*window*/, const css::uno::Reference< XEventHandler >& handler )
+void DisplayConnectionDispatch::removeEventHandler(
+    const rtl::Reference<DisplayEventHandler>& handler)
 {
     std::scoped_lock aGuard( m_aMutex );
 
     std::erase(m_aHandlers, handler);
 }
 
-void SAL_CALL DisplayConnectionDispatch::addErrorHandler( const css::uno::Reference< XEventHandler >& )
-{
-}
-
-void SAL_CALL DisplayConnectionDispatch::removeErrorHandler( const css::uno::Reference< XEventHandler >& )
-{
-}
-
-Any SAL_CALL DisplayConnectionDispatch::getIdentifier()
-{
-    return Any(m_ConnectionIdentifier);
-}
-
-bool DisplayConnectionDispatch::dispatchEvent( void const * pData, int nBytes )
+bool DisplayConnectionDispatch::dispatchEvent(const void* pEvent)
 {
     SolarMutexReleaser aRel;
 
-    Sequence< sal_Int8 > aSeq( static_cast<const sal_Int8*>(pData), nBytes );
-    Any aEvent;
-    aEvent <<= aSeq;
-    ::std::vector< css::uno::Reference< XEventHandler > > handlers;
+    std::vector<rtl::Reference<DisplayEventHandler>> handlers;
     {
         std::scoped_lock aGuard( m_aMutex );
         handlers = m_aHandlers;
     }
     for (auto const& handle : handlers)
-        if( handle->handleEvent( aEvent ) )
+        if (handle->handleEvent(pEvent))
             return true;
     return false;
 }

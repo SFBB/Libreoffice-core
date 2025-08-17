@@ -24,11 +24,11 @@
 #include <memory>
 
 #include "jni_bridge.h"
+#include "jni_helper.h"
 #include "jniunoenvironmentdata.hxx"
 
 #include <jvmaccess/unovirtualmachine.hxx>
 #include <rtl/ref.hxx>
-#include <rtl/strbuf.hxx>
 #include <uno/lbnames.h>
 
 using namespace ::jni_uno;
@@ -39,16 +39,14 @@ extern "C"
 {
 
 
-void Mapping_acquire( uno_Mapping * mapping )
-    SAL_THROW_EXTERN_C()
+void Mapping_acquire( uno_Mapping * mapping ) noexcept
 {
     Mapping const * that = static_cast< Mapping const * >( mapping );
     that->m_bridge->acquire();
 }
 
 
-void Mapping_release( uno_Mapping * mapping )
-    SAL_THROW_EXTERN_C()
+void Mapping_release( uno_Mapping * mapping ) noexcept
 {
     Mapping const * that = static_cast< Mapping const * >( mapping );
     that->m_bridge->release();
@@ -57,8 +55,7 @@ void Mapping_release( uno_Mapping * mapping )
 
 void Mapping_map_to_uno(
     uno_Mapping * mapping, void ** ppOut,
-    void * pIn, typelib_InterfaceTypeDescription * td )
-    SAL_THROW_EXTERN_C()
+    void * pIn, typelib_InterfaceTypeDescription * td ) noexcept
 {
     uno_Interface ** ppUnoI = reinterpret_cast<uno_Interface **>(ppOut);
     jobject javaI = static_cast<jobject>(pIn);
@@ -116,8 +113,7 @@ void Mapping_map_to_uno(
 
 void Mapping_map_to_java(
     uno_Mapping * mapping, void ** ppOut,
-    void * pIn, typelib_InterfaceTypeDescription * td )
-    SAL_THROW_EXTERN_C()
+    void * pIn, typelib_InterfaceTypeDescription * td ) noexcept
 {
     jobject * ppJavaI = reinterpret_cast<jobject *>(ppOut);
     uno_Interface * pUnoI = static_cast<uno_Interface *>(pIn);
@@ -177,8 +173,7 @@ void Mapping_map_to_java(
 }
 
 
-void Bridge_free( uno_Mapping * mapping )
-    SAL_THROW_EXTERN_C()
+void Bridge_free( uno_Mapping * mapping ) noexcept
 {
     Mapping * that = static_cast< Mapping * >( mapping );
     delete that->m_bridge;
@@ -242,7 +237,7 @@ Bridge::Bridge(
     if (static_cast<jni_uno::JniUnoEnvironmentData *>(m_java_env->pContext)
         == nullptr)
     {
-        throw BridgeRuntimeError("error during JNI-UNO's uno_initEnvironment");
+        throw BridgeRuntimeError(u"error during JNI-UNO's uno_initEnvironment"_ustr);
     }
 
     (*m_uno_env->aBase.acquire)( &m_uno_env->aBase );
@@ -465,8 +460,7 @@ static void java_env_disposing(uno_Environment * env) {
 #endif
 
 
-SAL_DLLPUBLIC_EXPORT void uno_initEnvironment( uno_Environment * java_env )
-    SAL_THROW_EXTERN_C()
+SAL_DLLPUBLIC_EXPORT void uno_initEnvironment( uno_Environment * java_env ) noexcept
 {
     try {
         // JavaComponentLoader::getJavaLoader (in
@@ -511,8 +505,7 @@ SAL_DLLPUBLIC_EXPORT void uno_initEnvironment( uno_Environment * java_env )
 
 
 SAL_DLLPUBLIC_EXPORT void uno_ext_getMapping(
-    uno_Mapping ** ppMapping, uno_Environment * pFrom, uno_Environment * pTo )
-    SAL_THROW_EXTERN_C()
+    uno_Mapping ** ppMapping, uno_Environment * pFrom, uno_Environment * pTo ) noexcept
 {
     assert(ppMapping != nullptr);
     assert(pFrom != nullptr);

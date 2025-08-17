@@ -58,7 +58,7 @@ using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 
-IMPLEMENT_SERVICE_INFO(java_sql_ResultSet,"com.sun.star.sdbcx.JResultSet","com.sun.star.sdbc.ResultSet");
+IMPLEMENT_SERVICE_INFO(java_sql_ResultSet,u"com.sun.star.sdbcx.JResultSet"_ustr,u"com.sun.star.sdbc.ResultSet"_ustr);
 
 //************ Class: java.sql.ResultSet
 
@@ -74,7 +74,7 @@ java_sql_ResultSet::java_sql_ResultSet( JNIEnv * pEnv, jobject myObj, const java
     SDBThreadAttach::addRef();
     osl_atomic_increment(&m_refCount);
     if ( pStmt )
-        m_xStatement = *pStmt;
+        m_xStatement = pStmt;
 
     osl_atomic_decrement(&m_refCount);
 }
@@ -104,7 +104,8 @@ void java_sql_ResultSet::disposing()
     ::osl::MutexGuard aGuard(m_aMutex);
     if( object )
     {
-        SDBThreadAttach t; OSL_ENSURE(t.pEnv,"Java environment has been deleted!");
+        SDBThreadAttach t;
+        assert(t.pEnv && "Java environment has been deleted!");
         static jmethodID mID(nullptr);
         callVoidMethod_ThrowSQL("close", mID);
         clearObject(*t.pEnv);
@@ -451,7 +452,7 @@ sal_Bool SAL_CALL java_sql_ResultSet::previous(  )
 
 Reference< XInterface > SAL_CALL java_sql_ResultSet::getStatement(  )
 {
-    return m_xStatement;
+    return cppu::getXWeak(m_xStatement.get());
 }
 
 
@@ -730,7 +731,7 @@ void SAL_CALL java_sql_ResultSet::updateBinaryStream( sal_Int32 columnIndex, con
     catch(const Exception&)
     {
         Any anyEx = ::cppu::getCaughtException();
-        ::dbtools::throwFeatureNotImplementedSQLException( "XRowUpdate::updateBinaryStream", *this, anyEx );
+        ::dbtools::throwFeatureNotImplementedSQLException( u"XRowUpdate::updateBinaryStream"_ustr, *this, anyEx );
     }
 }
 
@@ -762,7 +763,7 @@ void SAL_CALL java_sql_ResultSet::updateCharacterStream( sal_Int32 columnIndex, 
     catch(const Exception&)
     {
         Any anyEx = ::cppu::getCaughtException();
-        ::dbtools::throwFeatureNotImplementedSQLException( "XRowUpdate::updateCharacterStream", *this, anyEx );
+        ::dbtools::throwFeatureNotImplementedSQLException( u"XRowUpdate::updateCharacterStream"_ustr, *this, anyEx );
     }
 }
 

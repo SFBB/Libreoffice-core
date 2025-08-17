@@ -19,8 +19,6 @@
 
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/container/XNameReplace.hpp>
-#include <com/sun/star/presentation/AnimationSpeed.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <tools/urlobj.hxx>
 #include <osl/diagnose.h>
 #include <sal/log.hxx>
@@ -35,14 +33,12 @@
 #include <xmloff/namespacemap.hxx>
 #include "eventimp.hxx"
 
-using namespace ::cppu;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::xml;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::presentation;
@@ -198,9 +194,9 @@ SdXMLEventContext::SdXMLEventContext( SvXMLImport& rImp,
                 }
                 else
                 {
-                    const OUString &rTmp =
+                    const OUString aTmp =
                         rImp.GetAbsoluteReference(aIter.toString());
-                    INetURLObject::translateToInternal( rTmp, maData.msBookmark,
+                    INetURLObject::translateToInternal( aTmp, maData.msBookmark,
                         INetURLObject::DecodeMechanism::Unambiguous );
                 }
             }
@@ -210,6 +206,9 @@ SdXMLEventContext::SdXMLEventContext( SvXMLImport& rImp,
 
     if( maData.mbValid )
         maData.mbValid = !sEventName.isEmpty();
+
+    if (!maData.msMacroName.isEmpty())
+        rImp.NotifyMacroEventRead();
 }
 
 css::uno::Reference< css::xml::sax::XFastContextHandler > SdXMLEventContext::createFastChildContext(
@@ -312,7 +311,7 @@ void SdXMLEventContextData::ApplyProperties()
 
                 pProperties->Name = "EventType";
                 pProperties->Handle = -1;
-                pProperties->Value <<= OUString( "StarBasic" );
+                pProperties->Value <<= u"StarBasic"_ustr;
                 pProperties->State = beans::PropertyState_DIRECT_VALUE;
                 pProperties++;
 
@@ -331,7 +330,7 @@ void SdXMLEventContextData::ApplyProperties()
             {
                 pProperties->Name = "EventType";
                 pProperties->Handle = -1;
-                pProperties->Value <<= OUString( "Script" );
+                pProperties->Value <<= u"Script"_ustr;
                 pProperties->State = beans::PropertyState_DIRECT_VALUE;
                 pProperties++;
 
@@ -345,7 +344,7 @@ void SdXMLEventContextData::ApplyProperties()
         {
             pProperties->Name = "EventType";
             pProperties->Handle = -1;
-            pProperties->Value <<= OUString( "Presentation" );
+            pProperties->Value <<= u"Presentation"_ustr;
             pProperties->State = beans::PropertyState_DIRECT_VALUE;
             pProperties++;
 

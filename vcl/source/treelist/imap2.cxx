@@ -60,12 +60,12 @@ void IMapObject::AppendNCSACoords(OStringBuffer& rBuf, const Point& rPoint100)
 
 void IMapObject::AppendCERNURL(OStringBuffer& rBuf) const
 {
-    rBuf.append(OUStringToOString(URIHelper::simpleNormalizedMakeRelative("", aURL), osl_getThreadTextEncoding()));
+    rBuf.append(OUStringToOString(URIHelper::simpleNormalizedMakeRelative(u""_ustr, aURL), osl_getThreadTextEncoding()));
 }
 
 void IMapObject::AppendNCSAURL(OStringBuffer& rBuf) const
 {
-    rBuf.append(OUStringToOString(URIHelper::simpleNormalizedMakeRelative("", aURL), osl_getThreadTextEncoding()));
+    rBuf.append(OUStringToOString(URIHelper::simpleNormalizedMakeRelative(u""_ustr, aURL), osl_getThreadTextEncoding()));
     rBuf.append(' ');
 }
 
@@ -282,11 +282,16 @@ void ImageMap::ImpReadCERNLine( std::string_view rLine  )
     }
     else if ( ( aToken == "polygon" ) || ( aToken == "poly" ) )
     {
-        const sal_uInt16 nCount = comphelper::string::getTokenCount(aStr, '(') - 1;
-        tools::Polygon aPoly( nCount );
+        const sal_Int32 nTokenCount = comphelper::string::getTokenCount(aStr, '(');
+        tools::Polygon aPoly;
+        if (nTokenCount > 0)
+        {
+            const sal_uInt16 nCount = nTokenCount - 1;
+            aPoly.SetSize(nCount);
 
-        for ( sal_uInt16 i = 0; i < nCount; i++ )
-            aPoly[ i ] = ImpReadCERNCoords( &pStr );
+            for (sal_uInt16 i = 0; i < nCount; ++i)
+                aPoly[ i ] = ImpReadCERNCoords( &pStr );
+        }
 
         const OUString aURL = ImpReadCERNURL( &pStr );
 
@@ -416,12 +421,17 @@ void ImageMap::ImpReadNCSALine( std::string_view rLine )
     }
     else if ( aToken == "poly" )
     {
-        const sal_uInt16 nCount = comphelper::string::getTokenCount(aStr, ',') - 1;
+        const sal_Int32 nTokenCount = comphelper::string::getTokenCount(aStr, ',');
         const OUString aURL( ImpReadNCSAURL( &pStr ) );
-        tools::Polygon aPoly( nCount );
+        tools::Polygon aPoly;
+        if (nTokenCount > 0)
+        {
+            const sal_uInt16 nCount = nTokenCount - 1;
+            aPoly.SetSize(nCount);
 
-        for ( sal_uInt16 i = 0; i < nCount; i++ )
-            aPoly[ i ] = ImpReadNCSACoords( &pStr );
+            for (sal_uInt16 i = 0; i < nCount; ++i)
+                aPoly[ i ] = ImpReadNCSACoords( &pStr );
+        }
 
         maList.emplace_back( new IMapPolygonObject( aPoly, aURL, OUString(), OUString(), OUString(), OUString() ) );
     }

@@ -31,12 +31,11 @@ class Test : public UnoApiTest
 {
 public:
     Test()
-        : UnoApiTest("/filter/qa/data/")
+        : UnoApiTest(u"/filter/qa/data/"_ustr)
     {
     }
 
     void setUp() override;
-    void tearDown() override;
     void doTestCommentsInMargin(bool commentsInMarginEnabled);
 };
 
@@ -44,14 +43,7 @@ void Test::setUp()
 {
     UnoApiTest::setUp();
 
-    MacrosTest::setUpNssGpg(m_directories, "filter_pdf");
-}
-
-void Test::tearDown()
-{
-    MacrosTest::tearDownNssGpg();
-
-    UnoApiTest::tearDown();
+    MacrosTest::setUpX509(m_directories, u"filter_pdf"_ustr);
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testSignCertificateSubjectName)
@@ -61,17 +53,16 @@ CPPUNIT_TEST_FIXTURE(Test, testSignCertificateSubjectName)
         return;
 
     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
-        = xml::crypto::SEInitializer::create(mxComponentContext);
+        = xml::crypto::SEInitializer::create(m_xContext);
     uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
         = xSEInitializer->createSecurityContext(OUString());
     uno::Reference<xml::crypto::XSecurityEnvironment> xSecurityEnvironment
         = xSecurityContext->getSecurityEnvironment();
     uno::Sequence<beans::PropertyValue> aFilterData{
-        comphelper::makePropertyValue("SignPDF", true),
+        comphelper::makePropertyValue(u"SignPDF"_ustr, true),
         comphelper::makePropertyValue(
-            "SignCertificateSubjectName",
-            OUString(
-                "CN=Xmlsecurity RSA Test example Alice,O=Xmlsecurity RSA Test,ST=England,C=UK")),
+            u"SignCertificateSubjectName"_ustr,
+            u"CN=Xmlsecurity RSA Test example Alice,O=Xmlsecurity RSA Test,ST=England,C=UK"_ustr),
     };
     if (!GetValidCertificate(xSecurityEnvironment->getPersonalCertificates(), xSecurityEnvironment,
                              aFilterData))
@@ -80,21 +71,21 @@ CPPUNIT_TEST_FIXTURE(Test, testSignCertificateSubjectName)
     }
 
     // Given an empty document:
-    mxComponent.set(loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument"));
+    loadFromURL(u"private:factory/swriter"_ustr);
 
     // When exporting to PDF, and referring to a certificate using a subject name:
     uno::Reference<css::lang::XMultiServiceFactory> xFactory = getMultiServiceFactory();
     uno::Reference<document::XFilter> xFilter(
-        xFactory->createInstance("com.sun.star.document.PDFFilter"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.document.PDFFilter"_ustr), uno::UNO_QUERY);
     uno::Reference<document::XExporter> xExporter(xFilter, uno::UNO_QUERY);
     xExporter->setSourceDocument(mxComponent);
     SvMemoryStream aStream;
     uno::Reference<io::XOutputStream> xOutputStream(new utl::OStreamWrapper(aStream));
 
     uno::Sequence<beans::PropertyValue> aDescriptor{
-        comphelper::makePropertyValue("FilterName", OUString("writer_pdf_Export")),
-        comphelper::makePropertyValue("FilterData", aFilterData),
-        comphelper::makePropertyValue("OutputStream", xOutputStream),
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"writer_pdf_Export"_ustr),
+        comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+        comphelper::makePropertyValue(u"OutputStream"_ustr, xOutputStream),
     };
     xFilter->filter(aDescriptor);
 
@@ -114,19 +105,20 @@ CPPUNIT_TEST_FIXTURE(Test, testPdfDecompositionSize)
         return;
 
     // Given an empty Writer document:
-    mxComponent.set(loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument"));
+    loadFromURL(u"private:factory/swriter"_ustr);
 
     // When inserting a 267 points wide PDF image into the document:
     uno::Sequence<beans::PropertyValue> aArgs = {
-        comphelper::makePropertyValue("FileName", createFileURL(u"picture.pdf")),
+        comphelper::makePropertyValue(u"FileName"_ustr, createFileURL(u"picture.pdf")),
     };
-    dispatchCommand(mxComponent, ".uno:InsertGraphic", aArgs);
+    dispatchCommand(mxComponent, u".uno:InsertGraphic"_ustr, aArgs);
 
     // Then make sure that its size is correct:
     uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xDrawPage = xDrawPageSupplier->getDrawPage();
     uno::Reference<beans::XPropertySet> xShape(xDrawPage->getByIndex(0), uno::UNO_QUERY);
-    auto xGraphic = xShape->getPropertyValue("Graphic").get<uno::Reference<graphic::XGraphic>>();
+    auto xGraphic
+        = xShape->getPropertyValue(u"Graphic"_ustr).get<uno::Reference<graphic::XGraphic>>();
     CPPUNIT_ASSERT(xGraphic.is());
     Graphic aGraphic(xGraphic);
     basegfx::B2DRange aRange = aGraphic.getVectorGraphicData()->getRange();
@@ -151,20 +143,20 @@ void Test::doTestCommentsInMargin(bool commentsInMarginEnabled)
     if (!pPDFium)
         return;
 
-    loadFromURL(u"commentsInMargin.odt");
+    loadFromFile(u"commentsInMargin.odt");
     uno::Reference<css::lang::XMultiServiceFactory> xFactory = getMultiServiceFactory();
     uno::Reference<document::XFilter> xFilter(
-        xFactory->createInstance("com.sun.star.document.PDFFilter"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.document.PDFFilter"_ustr), uno::UNO_QUERY);
     uno::Reference<document::XExporter> xExporter(xFilter, uno::UNO_QUERY);
     xExporter->setSourceDocument(mxComponent);
     SvMemoryStream aStream;
     uno::Reference<io::XOutputStream> xOutputStream(new utl::OStreamWrapper(aStream));
     uno::Sequence<beans::PropertyValue> aFilterData{ comphelper::makePropertyValue(
-        "ExportNotesInMargin", commentsInMarginEnabled) };
+        u"ExportNotesInMargin"_ustr, commentsInMarginEnabled) };
     uno::Sequence<beans::PropertyValue> aDescriptor{
-        comphelper::makePropertyValue("FilterName", OUString("writer_pdf_Export")),
-        comphelper::makePropertyValue("FilterData", aFilterData),
-        comphelper::makePropertyValue("OutputStream", xOutputStream),
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"writer_pdf_Export"_ustr),
+        comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+        comphelper::makePropertyValue(u"OutputStream"_ustr, xOutputStream),
     };
     xFilter->filter(aDescriptor);
 
@@ -195,24 +187,24 @@ CPPUNIT_TEST_FIXTURE(Test, testWatermarkColor)
     std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
     if (!pPDFium)
         return;
-    mxComponent.set(loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument"));
+    loadFromURL(u"private:factory/swriter"_ustr);
 
     // When exporting that as PDF with a red watermark:
     uno::Reference<css::lang::XMultiServiceFactory> xFactory = getMultiServiceFactory();
     uno::Reference<document::XFilter> xFilter(
-        xFactory->createInstance("com.sun.star.document.PDFFilter"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.document.PDFFilter"_ustr), uno::UNO_QUERY);
     uno::Reference<document::XExporter> xExporter(xFilter, uno::UNO_QUERY);
     xExporter->setSourceDocument(mxComponent);
     SvMemoryStream aStream;
     uno::Reference<io::XOutputStream> xOutputStream(new utl::OStreamWrapper(aStream));
     uno::Sequence<beans::PropertyValue> aFilterData{
-        comphelper::makePropertyValue("Watermark", OUString("X")),
-        comphelper::makePropertyValue("WatermarkColor", static_cast<sal_Int32>(0xff0000)),
+        comphelper::makePropertyValue(u"Watermark"_ustr, u"X"_ustr),
+        comphelper::makePropertyValue(u"WatermarkColor"_ustr, static_cast<sal_Int32>(0xff0000)),
     };
     uno::Sequence<beans::PropertyValue> aDescriptor{
-        comphelper::makePropertyValue("FilterName", OUString("writer_pdf_Export")),
-        comphelper::makePropertyValue("FilterData", aFilterData),
-        comphelper::makePropertyValue("OutputStream", xOutputStream),
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"writer_pdf_Export"_ustr),
+        comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+        comphelper::makePropertyValue(u"OutputStream"_ustr, xOutputStream),
     };
     xFilter->filter(aDescriptor);
 
@@ -239,25 +231,25 @@ CPPUNIT_TEST_FIXTURE(Test, testWatermarkFontHeight)
     std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
     if (!pPDFium)
         return;
-    mxComponent.set(loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument"));
+    loadFromURL(u"private:factory/swriter"_ustr);
 
     // When exporting that as PDF with a 100pt-sized watermark:
     uno::Reference<css::lang::XMultiServiceFactory> xFactory = getMultiServiceFactory();
     uno::Reference<document::XFilter> xFilter(
-        xFactory->createInstance("com.sun.star.document.PDFFilter"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.document.PDFFilter"_ustr), uno::UNO_QUERY);
     uno::Reference<document::XExporter> xExporter(xFilter, uno::UNO_QUERY);
     xExporter->setSourceDocument(mxComponent);
     SvMemoryStream aStream;
     uno::Reference<io::XOutputStream> xOutputStream(new utl::OStreamWrapper(aStream));
     sal_Int32 nExpectedFontSize = 100;
     uno::Sequence<beans::PropertyValue> aFilterData{
-        comphelper::makePropertyValue("Watermark", OUString("X")),
-        comphelper::makePropertyValue("WatermarkFontHeight", nExpectedFontSize),
+        comphelper::makePropertyValue(u"Watermark"_ustr, u"X"_ustr),
+        comphelper::makePropertyValue(u"WatermarkFontHeight"_ustr, nExpectedFontSize),
     };
     uno::Sequence<beans::PropertyValue> aDescriptor{
-        comphelper::makePropertyValue("FilterName", OUString("writer_pdf_Export")),
-        comphelper::makePropertyValue("FilterData", aFilterData),
-        comphelper::makePropertyValue("OutputStream", xOutputStream),
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"writer_pdf_Export"_ustr),
+        comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+        comphelper::makePropertyValue(u"OutputStream"_ustr, xOutputStream),
     };
     xFilter->filter(aDescriptor);
 
@@ -284,25 +276,25 @@ CPPUNIT_TEST_FIXTURE(Test, testWatermarkFontName)
     std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
     if (!pPDFium)
         return;
-    mxComponent.set(loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument"));
+    loadFromURL(u"private:factory/swriter"_ustr);
 
     // When exporting that as PDF with a serif watermark:
     uno::Reference<css::lang::XMultiServiceFactory> xFactory = getMultiServiceFactory();
     uno::Reference<document::XFilter> xFilter(
-        xFactory->createInstance("com.sun.star.document.PDFFilter"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.document.PDFFilter"_ustr), uno::UNO_QUERY);
     uno::Reference<document::XExporter> xExporter(xFilter, uno::UNO_QUERY);
     xExporter->setSourceDocument(mxComponent);
     SvMemoryStream aStream;
     uno::Reference<io::XOutputStream> xOutputStream(new utl::OStreamWrapper(aStream));
-    OUString aExpectedFontName("Liberation Serif");
+    OUString aExpectedFontName(u"Liberation Serif"_ustr);
     uno::Sequence<beans::PropertyValue> aFilterData{
-        comphelper::makePropertyValue("Watermark", OUString("X")),
-        comphelper::makePropertyValue("WatermarkFontName", aExpectedFontName),
+        comphelper::makePropertyValue(u"Watermark"_ustr, u"X"_ustr),
+        comphelper::makePropertyValue(u"WatermarkFontName"_ustr, aExpectedFontName),
     };
     uno::Sequence<beans::PropertyValue> aDescriptor{
-        comphelper::makePropertyValue("FilterName", OUString("writer_pdf_Export")),
-        comphelper::makePropertyValue("FilterData", aFilterData),
-        comphelper::makePropertyValue("OutputStream", xOutputStream),
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"writer_pdf_Export"_ustr),
+        comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+        comphelper::makePropertyValue(u"OutputStream"_ustr, xOutputStream),
     };
     xFilter->filter(aDescriptor);
 
@@ -329,12 +321,12 @@ CPPUNIT_TEST_FIXTURE(Test, testWatermarkRotateAngle)
     std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
     if (!pPDFium)
         return;
-    mxComponent.set(loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument"));
+    loadFromURL(u"private:factory/swriter"_ustr);
 
     // When exporting that as PDF with a rotated watermark:
     uno::Reference<css::lang::XMultiServiceFactory> xFactory = getMultiServiceFactory();
     uno::Reference<document::XFilter> xFilter(
-        xFactory->createInstance("com.sun.star.document.PDFFilter"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.document.PDFFilter"_ustr), uno::UNO_QUERY);
     uno::Reference<document::XExporter> xExporter(xFilter, uno::UNO_QUERY);
     xExporter->setSourceDocument(mxComponent);
     SvMemoryStream aStream;
@@ -342,13 +334,13 @@ CPPUNIT_TEST_FIXTURE(Test, testWatermarkRotateAngle)
     // 45.0 degrees, counter-clockwise.
     sal_Int32 nExpectedRotateAngle = 45;
     uno::Sequence<beans::PropertyValue> aFilterData{
-        comphelper::makePropertyValue("Watermark", OUString("X")),
-        comphelper::makePropertyValue("WatermarkRotateAngle", nExpectedRotateAngle * 10),
+        comphelper::makePropertyValue(u"Watermark"_ustr, u"X"_ustr),
+        comphelper::makePropertyValue(u"WatermarkRotateAngle"_ustr, nExpectedRotateAngle * 10),
     };
     uno::Sequence<beans::PropertyValue> aDescriptor{
-        comphelper::makePropertyValue("FilterName", OUString("writer_pdf_Export")),
-        comphelper::makePropertyValue("FilterData", aFilterData),
-        comphelper::makePropertyValue("OutputStream", xOutputStream),
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"writer_pdf_Export"_ustr),
+        comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+        comphelper::makePropertyValue(u"OutputStream"_ustr, xOutputStream),
     };
     xFilter->filter(aDescriptor);
 
@@ -374,6 +366,66 @@ CPPUNIT_TEST_FIXTURE(Test, testWatermarkRotateAngle)
     // i.e. the rotation angle was 270 for an A4 page, not the requested 45 degrees.
     CPPUNIT_ASSERT_EQUAL(nExpectedRotateAngle, nActualRotateAngle);
 }
+
+#ifdef UNX
+CPPUNIT_TEST_FIXTURE(Test, testSignCertificatePEM)
+{
+    // Given an empty document:
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+        return;
+
+    uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
+        = xml::crypto::SEInitializer::create(m_xContext);
+    uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
+        = xSEInitializer->createSecurityContext(OUString());
+    uno::Reference<xml::crypto::XSecurityEnvironment> xSecurityEnvironment
+        = xSecurityContext->getSecurityEnvironment();
+    OUString aKeyPath = createFileURL(u"key.pem");
+    SvFileStream aKeyStream(aKeyPath, StreamMode::READ);
+    OUString aKeyPem
+        = OUString::fromUtf8(read_uInt8s_ToOString(aKeyStream, aKeyStream.remainingSize()));
+    OUString aCertPath = createFileURL(u"cert.pem");
+    SvFileStream aCertStream(aCertPath, StreamMode::READ);
+    OUString aCertPem
+        = OUString::fromUtf8(read_uInt8s_ToOString(aCertStream, aCertStream.remainingSize()));
+    OUString aCaPath = createFileURL(u"ca.pem");
+    SvFileStream aCaStream(aCaPath, StreamMode::READ);
+    OUString aCaPem
+        = OUString::fromUtf8(read_uInt8s_ToOString(aCaStream, aCaStream.remainingSize()));
+    uno::Sequence<beans::PropertyValue> aFilterData{
+        comphelper::makePropertyValue("SignPDF", true),
+        comphelper::makePropertyValue("SignCertificateCertPem", aCertPem),
+        comphelper::makePropertyValue("SignCertificateKeyPem", aKeyPem),
+        comphelper::makePropertyValue("aSignCertificateCaPem", aCaPem),
+    };
+    loadFromURL(u"private:factory/swriter"_ustr);
+
+    // When exporting to PDF, and referring to a certificate using a cert/key/ca PEM, which is not
+    // in the NSS database:
+    uno::Reference<css::lang::XMultiServiceFactory> xFactory = getMultiServiceFactory();
+    uno::Reference<document::XFilter> xFilter(
+        xFactory->createInstance("com.sun.star.document.PDFFilter"), uno::UNO_QUERY);
+    uno::Reference<document::XExporter> xExporter(xFilter, uno::UNO_QUERY);
+    xExporter->setSourceDocument(mxComponent);
+    SvMemoryStream aStream;
+    uno::Reference<io::XOutputStream> xOutputStream(new utl::OStreamWrapper(aStream));
+    uno::Sequence<beans::PropertyValue> aDescriptor{
+        comphelper::makePropertyValue("FilterName", OUString("writer_pdf_Export")),
+        comphelper::makePropertyValue("FilterData", aFilterData),
+        comphelper::makePropertyValue("OutputStream", xOutputStream),
+    };
+    xFilter->filter(aDescriptor);
+
+    // Then make sure the resulting PDF has a signature:
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
+        = pPDFium->openDocument(aStream.GetData(), aStream.GetSize(), OString());
+    // Without the accompanying fix in place, this test would have failed, as signing was enabled
+    // without configured certificate, so the whole export failed.
+    CPPUNIT_ASSERT(pPdfDocument);
+    CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getSignatureCount());
+}
+#endif
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

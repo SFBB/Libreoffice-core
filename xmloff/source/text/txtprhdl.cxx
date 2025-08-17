@@ -24,7 +24,6 @@
 #include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/style/DropCapFormat.hpp>
 #include <com/sun/star/text/FontRelief.hpp>
 #include <com/sun/star/text/WrapTextMode.hpp>
@@ -36,6 +35,7 @@
 #include <com/sun/star/text/RubyAdjust.hpp>
 #include <com/sun/star/text/RubyPosition.hpp>
 #include <com/sun/star/text/FontEmphasis.hpp>
+#include <com/sun/star/text/ParagraphHyphenationKeepType.hpp>
 #include <com/sun/star/text/ParagraphVertAlign.hpp>
 #include <com/sun/star/graphic/XGraphic.hpp>
 #include <sax/tools/converter.hxx>
@@ -228,6 +228,16 @@ SvXMLEnumMapEntry<sal_uInt16> const pXML_ParaVerticalAlign_Enum[] =
     { XML_BOTTOM,       ParagraphVertAlign::BOTTOM  },
     { XML_BASELINE,     ParagraphVertAlign::BASELINE    },
     { XML_AUTO,         ParagraphVertAlign::AUTOMATIC   },
+    { XML_TOKEN_INVALID, 0 }
+};
+
+SvXMLEnumMapEntry<sal_uInt16> const pXML_ParaHyphenationKeepType_Enum[] =
+{
+    { XML_ALWAYS,       ParagraphHyphenationKeepType::ALWAYS  },
+    { XML_AUTO,         ParagraphHyphenationKeepType::AUTO    },
+    { XML_COLUMN,       ParagraphHyphenationKeepType::COLUMN  },
+    { XML_PAGE,         ParagraphHyphenationKeepType::PAGE    },
+    { XML_SPREAD,       ParagraphHyphenationKeepType::SPREAD  },
     { XML_TOKEN_INVALID, 0 }
 };
 
@@ -1163,7 +1173,7 @@ bool XMLNumber8OneBasedHdl::importXML(
         const SvXMLUnitConverter& ) const
 {
     sal_Int32 nValue = 0;
-    bool const bRet = ::sax::Converter::convertNumber(nValue, rStrImpValue);
+    bool const bRet = ::sax::Converter::convertNumber(nValue, rStrImpValue, SAL_MIN_INT8+1, SAL_MAX_INT8);
     if( bRet )
         rValue <<= static_cast<sal_Int8>( nValue - 1 );
     return bRet;
@@ -1414,6 +1424,12 @@ static const XMLPropertyHandler *GetPropertyHandler
         break;
     case XML_TYPE_COMPLEX_COLOR:
         pHdl = new XMLComplexColorHandler;
+        break;
+    case XML_TYPE_HYPHENATION_KEEP:
+        pHdl = new XMLNamedBoolPropertyHdl( ::xmloff::token::XML_PAGE, ::xmloff::token::XML_AUTO );
+        break;
+    case XML_TYPE_HYPHENATION_KEEP_TYPE:
+        pHdl = new XMLConstantsPropertyHandler( pXML_ParaHyphenationKeepType_Enum, XML_TOKEN_INVALID );
         break;
     default:
     {

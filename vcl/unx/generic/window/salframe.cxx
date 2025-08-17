@@ -263,23 +263,18 @@ static void CreateNetWmAppIcon( sal_uInt16 nIcon, NetWmIconData& netwm_icon )
         else
             sIcon = SV_ICON_SIZE16[nIcon];
 
-        BitmapEx aIcon = vcl::bitmap::loadFromName(sIcon, ImageLoadFlags::IgnoreScalingFactor);
+        Bitmap aIcon = vcl::bitmap::loadFromName(sIcon, ImageLoadFlags::IgnoreScalingFactor);
 
         if( aIcon.IsEmpty())
             continue;
-        vcl::bitmap::convertBitmap32To24Plus8(aIcon, aIcon);
-        Bitmap icon = aIcon.GetBitmap();
-        AlphaMask mask = aIcon.GetAlphaMask();
-        BitmapScopedReadAccess iconData(icon);
-        BitmapScopedReadAccess maskData(mask);
+        BitmapScopedReadAccess iconData(aIcon);
         netwm_icon[ pos++ ] = size; // width
         netwm_icon[ pos++ ] = size; // height
         for( int y = 0; y < size; ++y )
             for( int x = 0; x < size; ++x )
             {
                 BitmapColor col = iconData->GetColor( y, x );
-                BitmapColor alpha = maskData->GetColor( y, x );
-                netwm_icon[ pos++ ] = (((( 255 - alpha.GetBlue()) * 256U ) + col.GetRed()) * 256 + col.GetGreen()) * 256 + col.GetBlue();
+                netwm_icon[ pos++ ] = (((( 255 - col.GetAlpha()) * 256U ) + col.GetRed()) * 256 + col.GetGreen()) * 256 + col.GetBlue();
             }
     }
     netwm_icon.resize( pos );
@@ -445,9 +440,9 @@ void X11SalFrame::Init( SalFrameStyleFlags nSalFrameStyle, SalX11Screen nXScreen
                 {
                     // set a document position and size
                     // the first frame gets positioned by the window manager
-                    const SalFrameGeometry& rGeom( pFrame->GetUnmirroredGeometry() );
-                    x = rGeom.x();
-                    y = rGeom.y();
+                    const SalFrameGeometry aGeom( pFrame->GetUnmirroredGeometry() );
+                    x = aGeom.x();
+                    y = aGeom.y();
                     if( x+static_cast<int>(w)+40 <= static_cast<int>(aScreenSize.Width()) &&
                         y+static_cast<int>(h)+40 <= static_cast<int>(aScreenSize.Height())
                         )
@@ -572,7 +567,7 @@ void X11SalFrame::Init( SalFrameStyleFlags nSalFrameStyle, SalX11Screen nXScreen
             Hints.window_group = GetShellWindow();
     }
 
-    maGeometry.setPosSize({ x, y }, { w, h });
+    maGeometry.setPosSize({ x, y }, { static_cast<tools::Long>(w), static_cast<tools::Long>(h) });
     updateScreenNumber();
 
     XSync( GetXDisplay(), False );
@@ -815,17 +810,8 @@ X11SalFrame::~X11SalFrame()
         doReparentPresentationDialogues( GetDisplay() );
     }
 
-    if( pGraphics_ )
-    {
-        pGraphics_->DeInit();
-        pGraphics_.reset();
-    }
-
-    if( pFreeGraphics_ )
-    {
-        pFreeGraphics_->DeInit();
-        pFreeGraphics_.reset();
-    }
+    pGraphics_.reset();
+    pFreeGraphics_.reset();
 
     // reset all OpenGL contexts using this window
     rtl::Reference<OpenGLContext> pContext = ImplGetSVData()->maGDIData.mpLastContext;
@@ -851,7 +837,7 @@ void X11SalFrame::SetExtendedFrameStyle( SalExtStyle nStyle )
     }
 }
 
-const SystemEnvData* X11SalFrame::GetSystemData() const
+const SystemEnvData& X11SalFrame::GetSystemData() const
 {
     X11SalFrame *pFrame = const_cast<X11SalFrame*>(this);
     pFrame->maSystemChildData.pDisplay      = GetXDisplay();
@@ -860,10 +846,9 @@ const SystemEnvData* X11SalFrame::GetSystemData() const
     pFrame->maSystemChildData.pWidget       = nullptr;
     pFrame->maSystemChildData.pVisual       = GetDisplay()->GetVisual( m_nXScreen ).GetVisual();
     pFrame->maSystemChildData.nScreen       = m_nXScreen.getXScreen();
-    pFrame->maSystemChildData.aShellWindow  = pFrame->GetShellWindow();
     pFrame->maSystemChildData.toolkit       = SystemEnvData::Toolkit::Gen;
     pFrame->maSystemChildData.platform      = SystemEnvData::Platform::Xcb;
-    return &maSystemChildData;
+    return maSystemChildData;
 }
 
 SalGraphics *X11SalFrame::AcquireGraphics()
@@ -1470,7 +1455,7 @@ void X11SalFrame::SetWindowState( const vcl::WindowData *pState )
                               pState->width(), pState->height());
             // guess maximized geometry from last time
             maGeometry.setPos({ pState->GetMaximizedX(), pState->GetMaximizedY() });
-            maGeometry.setSize({ pState->GetMaximizedWidth(), pState->GetMaximizedHeight() });
+            maGeometry.setSize({ static_cast<tools::Long>(pState->GetMaximizedWidth()), static_cast<tools::Long>(pState->GetMaximizedHeight()) });
             cairo_xlib_surface_set_size(mpSurface,  pState->GetMaximizedWidth(), pState->GetMaximizedHeight());
             updateScreenNumber();
         }
@@ -1847,8 +1832,8 @@ void X11SalFrame::SetScreenNumber( unsigned int nNewScreen )
         if( nNewScreen >= GetDisplay()->GetXineramaScreens().size() )
             return;
 
-        tools::Rectangle aOldScreenRect( GetDisplay()->GetXineramaScreens()[maGeometry.screen()] );
-        tools::Rectangle aNewScreenRect( GetDisplay()->GetXineramaScreens()[nNewScreen] );
+        tools::Rectangle aOldScreenRect(GetDisplay()->GetXineramaScreens().at(maGeometry.screen()));
+        tools::Rectangle aNewScreenRect(GetDisplay()->GetXineramaScreens().at(nNewScreen));
         bool bVisible = bMapped_;
         if( bVisible )
             Show( false );
@@ -1910,7 +1895,7 @@ void X11SalFrame::ShowFullScreen( bool bFullScreen, sal_Int32 nScreen )
             if( nScreen < 0 || o3tl::make_unsigned(nScreen) >= GetDisplay()->GetXineramaScreens().size() )
                 aRect = AbsoluteScreenPixelRectangle( AbsoluteScreenPixelPoint(0,0), GetDisplay()->GetScreenSize( m_nXScreen ) );
             else
-                aRect = GetDisplay()->GetXineramaScreens()[nScreen];
+                aRect = GetDisplay()->GetXineramaScreens().at(nScreen);
             m_bIsPartialFullScreen = true;
             bool bVisible = bMapped_;
             if( bVisible )
@@ -2136,7 +2121,7 @@ void X11SalFrame::UpdateSettings( AllSettings& rSettings )
 {
     StyleSettings aStyleSettings = rSettings.GetStyleSettings();
     aStyleSettings.SetCursorBlinkTime( 500 );
-    aStyleSettings.SetMenuBarTextColor( aStyleSettings.GetPersonaMenuBarTextColor().value_or( COL_BLACK ) );
+    aStyleSettings.SetMenuBarTextColor( COL_BLACK );
     rSettings.SetStyleSettings( aStyleSettings );
 }
 
@@ -3478,7 +3463,7 @@ bool X11SalFrame::HandleReparentEvent( XReparentEvent *pEvent )
          *  note: this works because hWM_Parent is direct child of root,
          *  not necessarily parent of GetShellWindow()
          */
-        maGeometry.setPosSize({ xp + nLeft, yp + nTop }, { w, h });
+        maGeometry.setPosSize({ xp + nLeft, yp + nTop }, { static_cast<tools::Long>(w), static_cast<tools::Long>(h) });
     }
 
     // limit width and height if we are too large: #47757

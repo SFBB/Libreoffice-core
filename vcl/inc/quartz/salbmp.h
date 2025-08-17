@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_QUARTZ_SALBMP_H
-#define INCLUDED_VCL_INC_QUARTZ_SALBMP_H
+#pragma once
 
 #include <tools/gen.hxx>
 
@@ -62,8 +61,7 @@ public:
     bool            Create( const SalBitmap& rSalBmp, SalGraphics* pGraphics ) override;
     bool            Create( const SalBitmap& rSalBmp, vcl::PixelFormat eNewPixelFormat) override;
     virtual bool    Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& rBitmapCanvas,
-                            Size& rSize,
-                            bool bMask = false ) override;
+                            Size& rSize ) override;
 
     void            Destroy() override;
 
@@ -99,7 +97,5 @@ public:
 
     void doDestroy();
 };
-
-#endif // INCLUDED_VCL_INC_QUARTZ_SALBMP_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

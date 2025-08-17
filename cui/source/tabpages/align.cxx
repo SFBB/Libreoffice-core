@@ -54,26 +54,26 @@ const WhichRangesContainer AlignmentTabPage::s_pRanges(
 
 namespace {
 
-template<typename JustContainerType, typename JustEnumType>
+template<class JustifyItem_t>
 void lcl_MaybeResetAlignToDistro(
-    weld::ComboBox& rLB, sal_uInt16 nListId, const SfxItemSet& rCoreAttrs, TypedWhichId<SfxEnumItemInterface> nWhichAlign, TypedWhichId<SfxEnumItemInterface> nWhichJM, JustEnumType eBlock)
+    weld::ComboBox& rLB, sal_uInt16 nListId, const SfxItemSet& rCoreAttrs, TypedWhichId<JustifyItem_t> nWhichAlign, TypedWhichId<SvxJustifyMethodItem> nWhichJM, decltype(std::declval<JustifyItem_t>().GetValue()) eBlock)
 {
-    const SfxEnumItemInterface* p = rCoreAttrs.GetItemIfSet(nWhichAlign);
-    if (!p)
+    const auto* p1 = rCoreAttrs.GetItemIfSet(nWhichAlign);
+    if (!p1)
         // alignment not set.
         return;
 
-    JustContainerType eVal = static_cast<JustContainerType>(p->GetEnumValue());
+    auto eVal = p1->GetValue();
     if (eVal != eBlock)
         // alignment is not 'justify'.  No need to go further.
         return;
 
-    p = rCoreAttrs.GetItemIfSet(nWhichJM);
-    if (!p)
+    const auto* p2 = rCoreAttrs.GetItemIfSet(nWhichJM);
+    if (!p2)
         // justification method is not set.
         return;
 
-    SvxCellJustifyMethod eMethod = static_cast<SvxCellJustifyMethod>(p->GetEnumValue());
+    SvxCellJustifyMethod eMethod = p2->GetValue();
     if (eMethod == SvxCellJustifyMethod::Distribute)
     {
         // Select the 'distribute' entry in the specified list box.
@@ -107,37 +107,37 @@ void lcl_SetJustifyMethodToItemSet(SfxItemSet& rSet, const SfxItemSet& rOldSet, 
 }//namespace
 
 AlignmentTabPage::AlignmentTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreAttrs)
-    : SfxTabPage(pPage, pController, "cui/ui/cellalignment.ui", "CellAlignPage", &rCoreAttrs)
+    : SfxTabPage(pPage, pController, u"cui/ui/cellalignment.ui"_ustr, u"CellAlignPage"_ustr, &rCoreAttrs)
     , m_aVsRefEdge(nullptr)
     // text alignment
-    , m_xLbHorAlign(m_xBuilder->weld_combo_box("comboboxHorzAlign"))
-    , m_xFtIndent(m_xBuilder->weld_label("labelIndent"))
-    , m_xEdIndent(m_xBuilder->weld_metric_spin_button("spinIndentFrom", FieldUnit::POINT))
-    , m_xFtVerAlign(m_xBuilder->weld_label("labelVertAlign"))
-    , m_xLbVerAlign(m_xBuilder->weld_combo_box("comboboxVertAlign"))
+    , m_xLbHorAlign(m_xBuilder->weld_combo_box(u"comboboxHorzAlign"_ustr))
+    , m_xFtIndent(m_xBuilder->weld_label(u"labelIndent"_ustr))
+    , m_xEdIndent(m_xBuilder->weld_metric_spin_button(u"spinIndentFrom"_ustr, FieldUnit::POINT))
+    , m_xFtVerAlign(m_xBuilder->weld_label(u"labelVertAlign"_ustr))
+    , m_xLbVerAlign(m_xBuilder->weld_combo_box(u"comboboxVertAlign"_ustr))
     //text rotation
-    , m_xFtRotate(m_xBuilder->weld_label("labelDegrees"))
-    , m_xNfRotate(m_xBuilder->weld_metric_spin_button("spinDegrees", FieldUnit::DEGREE))
-    , m_xFtRefEdge(m_xBuilder->weld_label("labelRefEdge"))
+    , m_xFtRotate(m_xBuilder->weld_label(u"labelDegrees"_ustr))
+    , m_xNfRotate(m_xBuilder->weld_metric_spin_button(u"spinDegrees"_ustr, FieldUnit::DEGREE))
+    , m_xFtRefEdge(m_xBuilder->weld_label(u"labelRefEdge"_ustr))
     //Asian mode
-    , m_xCbStacked(m_xBuilder->weld_check_button("checkVertStack"))
-    , m_xCbAsianMode(m_xBuilder->weld_check_button("checkAsianMode"))
+    , m_xCbStacked(m_xBuilder->weld_check_button(u"checkVertStack"_ustr))
+    , m_xCbAsianMode(m_xBuilder->weld_check_button(u"checkAsianMode"_ustr))
     // Properties
-    , m_xBtnWrap(m_xBuilder->weld_check_button("checkWrapTextAuto"))
-    , m_xBtnHyphen(m_xBuilder->weld_check_button("checkHyphActive"))
-    , m_xBtnShrink(m_xBuilder->weld_check_button("checkShrinkFitCellSize"))
-    , m_xLbFrameDir(new svx::FrameDirectionListBox(m_xBuilder->weld_combo_box("comboTextDirBox")))
+    , m_xBtnWrap(m_xBuilder->weld_check_button(u"checkWrapTextAuto"_ustr))
+    , m_xBtnHyphen(m_xBuilder->weld_check_button(u"checkHyphActive"_ustr))
+    , m_xBtnShrink(m_xBuilder->weld_check_button(u"checkShrinkFitCellSize"_ustr))
+    , m_xLbFrameDir(new svx::FrameDirectionListBox(m_xBuilder->weld_combo_box(u"comboTextDirBox"_ustr)))
     //ValueSet hover strings
-    , m_xFtBotLock(m_xBuilder->weld_label("labelSTR_BOTTOMLOCK"))
-    , m_xFtTopLock(m_xBuilder->weld_label("labelSTR_TOPLOCK"))
-    , m_xFtCelLock(m_xBuilder->weld_label("labelSTR_CELLLOCK"))
-    , m_xFtABCD(m_xBuilder->weld_label("labelABCD"))
-    , m_xAlignmentFrame(m_xBuilder->weld_widget("alignment"))
-    , m_xOrientFrame(m_xBuilder->weld_widget("orientation"))
-    , m_xPropertiesFrame(m_xBuilder->weld_widget("properties"))
-    , m_xVsRefEdge(new weld::CustomWeld(*m_xBuilder, "references", m_aVsRefEdge))
+    , m_xFtBotLock(m_xBuilder->weld_label(u"labelSTR_BOTTOMLOCK"_ustr))
+    , m_xFtTopLock(m_xBuilder->weld_label(u"labelSTR_TOPLOCK"_ustr))
+    , m_xFtCelLock(m_xBuilder->weld_label(u"labelSTR_CELLLOCK"_ustr))
+    , m_xFtABCD(m_xBuilder->weld_label(u"labelABCD"_ustr))
+    , m_xAlignmentFrame(m_xBuilder->weld_widget(u"alignment"_ustr))
+    , m_xOrientFrame(m_xBuilder->weld_widget(u"orientation"_ustr))
+    , m_xPropertiesFrame(m_xBuilder->weld_widget(u"properties"_ustr))
+    , m_xVsRefEdge(new weld::CustomWeld(*m_xBuilder, u"references"_ustr, m_aVsRefEdge))
     , m_xCtrlDial(new DialControl)
-    , m_xCtrlDialWin(new weld::CustomWeld(*m_xBuilder, "dialcontrol", *m_xCtrlDial))
+    , m_xCtrlDialWin(new weld::CustomWeld(*m_xBuilder, u"dialcontrol"_ustr, *m_xCtrlDial))
 {
     m_xCtrlDial->SetLinkedField(m_xNfRotate.get());
     m_xCtrlDial->SetText(m_xFtABCD->get_label());
@@ -374,12 +374,12 @@ bool AlignmentTabPage::FillItemSet( SfxItemSet* rSet )
 
     // Special treatment for distributed alignment; we need to set the justify
     // method to 'distribute' to distinguish from the normal justification.
-    TypedWhichId<SfxEnumItemInterface> nWhichHorJM(GetWhich(SID_ATTR_ALIGN_HOR_JUSTIFY_METHOD));
+    TypedWhichId<SvxJustifyMethodItem> nWhichHorJM(GetWhich(SID_ATTR_ALIGN_HOR_JUSTIFY_METHOD));
     lcl_SetJustifyMethodToItemSet(*rSet, rOldSet, nWhichHorJM, *m_xLbHorAlign, ALIGNDLG_HORALIGN_DISTRIBUTED);
     if (!bChanged)
         bChanged = HasAlignmentChanged(*rSet, nWhichHorJM);
 
-    TypedWhichId<SfxEnumItemInterface> nWhichVerJM(GetWhich(SID_ATTR_ALIGN_VER_JUSTIFY_METHOD));
+    TypedWhichId<SvxJustifyMethodItem> nWhichVerJM(GetWhich(SID_ATTR_ALIGN_VER_JUSTIFY_METHOD));
     lcl_SetJustifyMethodToItemSet(*rSet, rOldSet, nWhichVerJM, *m_xLbVerAlign, ALIGNDLG_VERALIGN_DISTRIBUTED);
     if (!bChanged)
         bChanged = HasAlignmentChanged(*rSet, nWhichVerJM);
@@ -402,7 +402,7 @@ namespace
                 rBtn.set_sensitive(false);
                 rTriState.bTriStateEnabled = false;
                 break;
-            case SfxItemState::DONTCARE:
+            case SfxItemState::INVALID:
                 rBtn.set_state(TRISTATE_INDET);
                 rTriState.bTriStateEnabled = true;
                 break;
@@ -439,7 +439,7 @@ void AlignmentTabPage::Reset(const SfxItemSet* pCoreAttrs)
         case SfxItemState::DISABLED:
             m_xLbHorAlign->set_sensitive(false);
             break;
-        case SfxItemState::DONTCARE:
+        case SfxItemState::INVALID:
             m_xLbHorAlign->set_active(-1);
             break;
         case SfxItemState::DEFAULT:
@@ -482,8 +482,8 @@ void AlignmentTabPage::Reset(const SfxItemSet* pCoreAttrs)
         case SfxItemState::DISABLED:
             m_xEdIndent->set_sensitive(false);
             break;
-        case SfxItemState::DONTCARE:
-            m_xEdIndent->set_text("");
+        case SfxItemState::INVALID:
+            m_xEdIndent->set_text(u""_ustr);
             break;
         case SfxItemState::DEFAULT:
         case SfxItemState::SET:
@@ -505,7 +505,7 @@ void AlignmentTabPage::Reset(const SfxItemSet* pCoreAttrs)
         case SfxItemState::DISABLED:
             m_xLbVerAlign->set_sensitive(false);
             break;
-        case SfxItemState::DONTCARE:
+        case SfxItemState::INVALID:
             m_xLbVerAlign->set_active(-1);
             break;
         case SfxItemState::DEFAULT:
@@ -546,7 +546,7 @@ void AlignmentTabPage::Reset(const SfxItemSet* pCoreAttrs)
             m_xNfRotate->set_sensitive(false);
             m_xCtrlDialWin->set_sensitive(false);
             break;
-        case SfxItemState::DONTCARE:
+        case SfxItemState::INVALID:
             m_xCtrlDial->SetNoRotation();
             break;
         case SfxItemState::DEFAULT:
@@ -568,7 +568,7 @@ void AlignmentTabPage::Reset(const SfxItemSet* pCoreAttrs)
         case SfxItemState::DISABLED:
             m_xVsRefEdge->set_sensitive(false);
             break;
-        case SfxItemState::DONTCARE:
+        case SfxItemState::INVALID:
             m_aVsRefEdge.SetNoSelection();
             break;
         case SfxItemState::DEFAULT:
@@ -606,7 +606,7 @@ void AlignmentTabPage::Reset(const SfxItemSet* pCoreAttrs)
         case SfxItemState::DISABLED:
             m_xLbFrameDir->set_sensitive(false);
             break;
-        case SfxItemState::DONTCARE:
+        case SfxItemState::INVALID:
             m_xLbFrameDir->set_active(-1);
             break;
         case SfxItemState::DEFAULT:
@@ -620,7 +620,7 @@ void AlignmentTabPage::Reset(const SfxItemSet* pCoreAttrs)
 
     // Special treatment for distributed alignment; we need to set the justify
     // method to 'distribute' to distinguish from the normal justification.
-    TypedWhichId<SfxEnumItemInterface> nHorJustifyMethodWhich(GetWhich(SID_ATTR_ALIGN_HOR_JUSTIFY_METHOD));
+    TypedWhichId<SvxJustifyMethodItem> nHorJustifyMethodWhich(GetWhich(SID_ATTR_ALIGN_HOR_JUSTIFY_METHOD));
     SfxItemState eHorJustifyMethodState = pCoreAttrs->GetItemState(nHorJustifyMethodWhich);
     if (eHorJustifyMethodState == SfxItemState::UNKNOWN)
     {
@@ -632,13 +632,13 @@ void AlignmentTabPage::Reset(const SfxItemSet* pCoreAttrs)
     else
     {
         // feature known, e.g. calc
-        lcl_MaybeResetAlignToDistro<SvxCellHorJustify, SvxCellHorJustify>(
+        lcl_MaybeResetAlignToDistro(
             *m_xLbHorAlign, ALIGNDLG_HORALIGN_DISTRIBUTED, *pCoreAttrs,
-            TypedWhichId<SfxEnumItemInterface>(GetWhich(SID_ATTR_ALIGN_HOR_JUSTIFY)), nHorJustifyMethodWhich,
+            TypedWhichId<SvxHorJustifyItem>(GetWhich(SID_ATTR_ALIGN_HOR_JUSTIFY)), nHorJustifyMethodWhich,
             SvxCellHorJustify::Block);
     }
 
-    TypedWhichId<SfxEnumItemInterface> nVerJustifyMethodWhich( GetWhich(SID_ATTR_ALIGN_VER_JUSTIFY_METHOD) );
+    TypedWhichId<SvxJustifyMethodItem> nVerJustifyMethodWhich( GetWhich(SID_ATTR_ALIGN_VER_JUSTIFY_METHOD) );
     SfxItemState eVerJustifyMethodState = pCoreAttrs->GetItemState(nVerJustifyMethodWhich);
     if (eVerJustifyMethodState == SfxItemState::UNKNOWN)
     {
@@ -650,9 +650,9 @@ void AlignmentTabPage::Reset(const SfxItemSet* pCoreAttrs)
     else
     {
         // feature known, e.g. calc
-        lcl_MaybeResetAlignToDistro<SvxCellVerJustify, SvxCellVerJustify>(
+        lcl_MaybeResetAlignToDistro(
             *m_xLbVerAlign, ALIGNDLG_VERALIGN_DISTRIBUTED, *pCoreAttrs,
-            TypedWhichId<SfxEnumItemInterface>(GetWhich(SID_ATTR_ALIGN_VER_JUSTIFY)), nVerJustifyMethodWhich,
+            GetWhich(SID_ATTR_ALIGN_VER_JUSTIFY), nVerJustifyMethodWhich,
             SvxCellVerJustify::Block);
     }
 
@@ -734,49 +734,49 @@ void AlignmentTabPage::UpdateEnableControls()
     m_xNfRotate->set_sensitive(!bHorFill && !bStackedText);
 }
 
-bool AlignmentTabPage::HasAlignmentChanged( const SfxItemSet& rNew, TypedWhichId<SfxEnumItemInterface> nWhich ) const
+bool AlignmentTabPage::HasAlignmentChanged( const SfxItemSet& rNew, TypedWhichId<SvxJustifyMethodItem> nWhich ) const
 {
     const SfxItemSet& rOld = GetItemSet();
     SvxCellJustifyMethod eMethodOld = SvxCellJustifyMethod::Auto;
     SvxCellJustifyMethod eMethodNew = SvxCellJustifyMethod::Auto;
-    if (const SfxEnumItemInterface* p = rOld.GetItemIfSet(nWhich))
+    if (const SvxJustifyMethodItem* p = rOld.GetItemIfSet(nWhich))
     {
-        eMethodOld = static_cast<SvxCellJustifyMethod>(p->GetEnumValue());
+        eMethodOld = p->GetValue();
     }
 
-    if (const SfxEnumItemInterface* p = rNew.GetItemIfSet(nWhich))
+    if (const SvxJustifyMethodItem* p = rNew.GetItemIfSet(nWhich))
     {
-        eMethodNew = static_cast<SvxCellJustifyMethod>(p->GetEnumValue());
+        eMethodNew = p->GetValue();
     }
 
     return eMethodOld != eMethodNew;
 }
 
-IMPL_LINK(AlignmentTabPage, StackedClickHdl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(AlignmentTabPage, StackedClickHdl, weld::Toggleable&, void)
 {
-    m_aStackedState.ButtonToggled(rToggle);
+    m_aStackedState.CheckButtonToggled(*m_xCbStacked);
     UpdateEnableControls();
 }
 
-IMPL_LINK(AlignmentTabPage, AsianModeClickHdl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(AlignmentTabPage, AsianModeClickHdl, weld::Toggleable&, void)
 {
-    m_aAsianModeState.ButtonToggled(rToggle);
+    m_aAsianModeState.CheckButtonToggled(*m_xCbAsianMode);
 }
 
-IMPL_LINK(AlignmentTabPage, WrapClickHdl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(AlignmentTabPage, WrapClickHdl, weld::Toggleable&, void)
 {
-    m_aWrapState.ButtonToggled(rToggle);
+    m_aWrapState.CheckButtonToggled(*m_xBtnWrap);
     UpdateEnableControls();
 }
 
-IMPL_LINK(AlignmentTabPage, HyphenClickHdl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(AlignmentTabPage, HyphenClickHdl, weld::Toggleable&, void)
 {
-    m_aHyphenState.ButtonToggled(rToggle);
+    m_aHyphenState.CheckButtonToggled(*m_xBtnHyphen);
 }
 
-IMPL_LINK(AlignmentTabPage, ShrinkClickHdl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(AlignmentTabPage, ShrinkClickHdl, weld::Toggleable&, void)
 {
-    m_aShrinkState.ButtonToggled(rToggle);
+    m_aShrinkState.CheckButtonToggled(*m_xBtnShrink);
 }
 
 IMPL_LINK_NOARG(AlignmentTabPage, UpdateEnableHdl, weld::ComboBox&, void)

@@ -48,7 +48,7 @@ class XFillBitmapItem;
 
 namespace svx::sidebar {
 
-class SVX_DLLPUBLIC AreaPropertyPanelBase
+class UNLESS_MERGELIBS(SVX_DLLPUBLIC) AreaPropertyPanelBase
 :   public PanelLayout,
     public ::sfx2::sidebar::IContextChangeReceiver,
     public ::sfx2::sidebar::ControllerItem::ItemUpdateReceiverInterface
@@ -102,7 +102,6 @@ public:
 
 private:
     void Initialize();
-    virtual void HandleContextChange(const vcl::EnumContext& rContext) override;
 
 protected:
     const css::uno::Reference<css::frame::XFrame>&      mxFrame;
@@ -177,6 +176,8 @@ protected:
 
     // MCGR: Preserve ColorStops until we have a UI to edit these
     basegfx::BColorStops createColorStops();
+
+    virtual void HandleContextChange(const vcl::EnumContext& rContext) override;
 };
 
 } // end of namespace svx::sidebar

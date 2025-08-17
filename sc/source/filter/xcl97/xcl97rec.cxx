@@ -43,7 +43,6 @@
 #include <xelink.hxx>
 #include <xlcontent.hxx>
 
-#include <unotools/fltrcfg.hxx>
 #include <editeng/adjustitem.hxx>
 #include <editeng/eeitem.hxx>
 #include <filter/msfilter/msoleexp.hxx>
@@ -64,6 +63,7 @@
 #include <com/sun/star/chart2/XChartDocument.hpp>
 
 #include <sax/fastattribs.hxx>
+#include <officecfg/Office/Common.hxx>
 #include <oox/token/tokens.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/relationship.hxx>
@@ -260,6 +260,7 @@ void SaveDrawingMLObjects( XclExpObjList& rList, XclExpXmlStream& rStrm )
 
     sal_Int32 nDrawing = drawingml::DrawingML::getNewDrawingUniqueId();
     OUString sId;
+    // export in [Content_Types].xml
     sax_fastparser::FSHelperPtr pDrawing = rStrm.CreateOutputStream(
             XclXmlUtils::GetStreamName( "xl/", "drawings/drawing", nDrawing ),
             XclXmlUtils::GetStreamName( "../", "drawings/drawing", nDrawing ),
@@ -921,8 +922,7 @@ XclTxo::XclTxo( const XclExpRoot& rRoot, const EditTextObject& rEditObj, SdrObje
     // Excel has one alignment per NoteObject while Calc supports
     // one alignment per paragraph - use the first paragraph
     // alignment (if set) as our overall alignment.
-    OUString aParaText( rEditObj.GetText( 0 ) );
-    if( !aParaText.isEmpty() )
+    if( rEditObj.HasText( 0 ) )
     {
         const SfxItemSet& aSet( rEditObj.GetParaAttribs( 0));
         if( const SvxAdjustItem* pItem = aSet.GetItemIfSet( EE_PARA_JUST ) )
@@ -1010,13 +1010,13 @@ XclObjOle::~XclObjOle()
 void XclObjOle::WriteSubRecs( XclExpStream& rStrm )
 {
     // write only as embedded, not linked
-    OUString        aStorageName( "MBD" );
+    OUString        aStorageName( u"MBD"_ustr );
     char        aBuf[ sizeof(sal_uInt32) * 2 + 1 ];
     // FIXME Eeek! Is this just a way to get a unique id?
     sal_uInt32          nPictureId = sal_uInt32(reinterpret_cast<sal_uIntPtr>(this) >> 2);
     o3tl::sprintf( aBuf, "%08X", static_cast< unsigned int >( nPictureId ) );
     aStorageName += OUString::createFromAscii(aBuf);
-    tools::SvRef<SotStorage>    xOleStg = pRootStorage->OpenSotStorage( aStorageName );
+    rtl::Reference<SotStorage> xOleStg = pRootStorage->OpenSotStorage(aStorageName);
     if( !xOleStg.is() )
         return;
 
@@ -1027,17 +1027,16 @@ void XclObjOle::WriteSubRecs( XclExpStream& rStrm )
     // set version to "old" version, because it must be
     // saved in MS notation.
     sal_uInt32                  nFl = 0;
-    const SvtFilterOptions& rFltOpts = SvtFilterOptions::Get();
-    if( rFltOpts.IsMath2MathType() )
+    if( officecfg::Office::Common::Filter::Microsoft::Export::MathToMathType::get() )
         nFl |= OLE_STARMATH_2_MATHTYPE;
 
-    if( rFltOpts.IsWriter2WinWord() )
+    if( officecfg::Office::Common::Filter::Microsoft::Export::WriterToWinWord::get() )
         nFl |= OLE_STARWRITER_2_WINWORD;
 
-    if( rFltOpts.IsCalc2Excel() )
+    if( officecfg::Office::Common::Filter::Microsoft::Export::CalcToExcel::get() )
         nFl |= OLE_STARCALC_2_EXCEL;
 
-    if( rFltOpts.IsImpress2PowerPoint() )
+    if( officecfg::Office::Common::Filter::Microsoft::Export::ImpressToPowerPoint::get() )
         nFl |= OLE_STARIMPRESS_2_POWERPOINT;
 
     SvxMSExportOLEObjects   aOLEExpFilt( nFl );
@@ -1305,6 +1304,13 @@ bool ScURLTransformer::isExternalURL(const OUString& rURL) const
 
 void XclObjAny::SaveXml( XclExpXmlStream& rStrm )
 {
+    // Return early if unknown shape type, otherwise bogus drawing XML gets written
+    if (!ShapeExport::IsShapeTypeKnown(mxShape))
+    {
+        SAL_INFO("sc.filter", "unknown shape");
+        return;
+    }
+
     // Do not output any of the detective shapes and validation circles.
     SdrObject* pObject = SdrObject::getSdrObjectFromXShape(mxShape);
     if (pObject)
@@ -1478,7 +1484,7 @@ void ExcEScenarioCell::SaveXml( XclExpXmlStream& rStrm ) const
     rStrm.GetCurrentStream()->singleElement( XML_inputCells,
             // OOXTODO: XML_deleted,
             // OOXTODO: XML_numFmtId,
-            XML_r,      XclXmlUtils::ToOString( rStrm.GetRoot().GetDoc(), ScAddress( nCol, nRow, 0 ) ),
+            XML_r,      XclXmlUtils::ToOString( rStrm.GetRoot().GetDoc(), ScRange( ScAddress( nCol, nRow, 0 ) ) ),
             // OOXTODO: XML_undone,
             XML_val,    XclXmlUtils::ToOString( sText ) );
 }

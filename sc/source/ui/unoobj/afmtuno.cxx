@@ -122,9 +122,9 @@ static std::span<const SfxItemPropertyMapEntry> lcl_GetAutoFieldMap()
 
 constexpr OUString SCAUTOFORMATSOBJ_SERVICE = u"com.sun.star.sheet.TableAutoFormats"_ustr;
 
-SC_SIMPLE_SERVICE_INFO( ScAutoFormatFieldObj, "ScAutoFormatFieldObj", "com.sun.star.sheet.TableAutoFormatField" )
-SC_SIMPLE_SERVICE_INFO( ScAutoFormatObj, "ScAutoFormatObj", "com.sun.star.sheet.TableAutoFormat" )
-SC_SIMPLE_SERVICE_INFO( ScAutoFormatsObj, "stardiv.StarCalc.ScAutoFormatsObj", SCAUTOFORMATSOBJ_SERVICE )
+SC_SIMPLE_SERVICE_INFO( ScAutoFormatFieldObj, u"ScAutoFormatFieldObj"_ustr, u"com.sun.star.sheet.TableAutoFormatField"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScAutoFormatObj, u"ScAutoFormatObj"_ustr, u"com.sun.star.sheet.TableAutoFormat"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScAutoFormatsObj, u"stardiv.StarCalc.ScAutoFormatsObj"_ustr, SCAUTOFORMATSOBJ_SERVICE )
 
 static bool lcl_FindAutoFormatIndex( const ScAutoFormat& rFormats, std::u16string_view rName, sal_uInt16& rOutIndex )
 {
@@ -261,7 +261,7 @@ void SAL_CALL ScAutoFormatsObj::removeByName( const OUString& aName )
 uno::Reference<container::XEnumeration> SAL_CALL ScAutoFormatsObj::createEnumeration()
 {
     SolarMutexGuard aGuard;
-    return new ScIndexEnumeration(this, "com.sun.star.sheet.TableAutoFormatEnumeration");
+    return new ScIndexEnumeration(this, u"com.sun.star.sheet.TableAutoFormatEnumeration"_ustr);
 }
 
 // container::XIndexAccess
@@ -275,10 +275,10 @@ sal_Int32 SAL_CALL ScAutoFormatsObj::getCount()
 uno::Any SAL_CALL ScAutoFormatsObj::getByIndex( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
-    uno::Reference< container::XNamed >  xFormat(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
+    rtl::Reference< ScAutoFormatObj > xFormat(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
     if (!xFormat.is())
         throw lang::IndexOutOfBoundsException();
-    return uno::Any(xFormat);
+    return uno::Any(uno::Reference< container::XNamed >(xFormat));
 }
 
 uno::Type SAL_CALL ScAutoFormatsObj::getElementType()
@@ -297,10 +297,10 @@ sal_Bool SAL_CALL ScAutoFormatsObj::hasElements()
 uno::Any SAL_CALL ScAutoFormatsObj::getByName( const OUString& aName )
 {
     SolarMutexGuard aGuard;
-    uno::Reference< container::XNamed >  xFormat(GetObjectByName_Impl(aName));
+    rtl::Reference< ScAutoFormatObj > xFormat(GetObjectByName_Impl(aName));
     if (!xFormat.is())
         throw container::NoSuchElementException();
-    return uno::Any(xFormat);
+    return uno::Any(uno::Reference< container::XNamed >(xFormat));
 }
 
 uno::Sequence<OUString> SAL_CALL ScAutoFormatsObj::getElementNames()
@@ -368,7 +368,7 @@ rtl::Reference<ScAutoFormatFieldObj> ScAutoFormatObj::GetObjectByIndex_Impl(sal_
 uno::Reference<container::XEnumeration> SAL_CALL ScAutoFormatObj::createEnumeration()
 {
     SolarMutexGuard aGuard;
-    return new ScIndexEnumeration(this, "com.sun.star.sheet.TableAutoFormatEnumeration");
+    return new ScIndexEnumeration(this, u"com.sun.star.sheet.TableAutoFormatEnumeration"_ustr);
 }
 
 // container::XIndexAccess
@@ -433,7 +433,7 @@ void SAL_CALL ScAutoFormatObj::setName( const OUString& aNewName )
     ScAutoFormat::iterator it = pFormats->begin();
     std::advance(it, nFormatIndex);
     ScAutoFormatData *const pData = it->second.get();
-    OSL_ENSURE(pData,"AutoFormat data not available");
+    assert(pData && "AutoFormat data not available");
 
     std::unique_ptr<ScAutoFormatData> pNew(new ScAutoFormatData(*pData));
     pNew->SetName( aNewName );
@@ -504,7 +504,7 @@ uno::Any SAL_CALL ScAutoFormatObj::getPropertyValue( const OUString& aPropertyNa
     if (IsInserted() && nFormatIndex < pFormats->size())
     {
         ScAutoFormatData* pData = pFormats->findByIndex(nFormatIndex);
-        OSL_ENSURE(pData,"AutoFormat data not available");
+        assert(pData && "AutoFormat data not available");
 
         bool bValue;
         bool bError = false;

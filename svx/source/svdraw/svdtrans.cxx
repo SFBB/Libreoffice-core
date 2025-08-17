@@ -46,8 +46,8 @@ void ResizeRect(tools::Rectangle& rRect, const Point& rRef, const Fraction& rxFa
         tools::Long nWdt = rRect.Right() - rRect.Left();
         if (nWdt == 0) rRect.AdjustRight( 1 );
     }
-    rRect.SetLeft( rRef.X() + FRound( (rRect.Left()  - rRef.X()) * double(aXFact) ) );
-    rRect.SetRight( rRef.X() + FRound( (rRect.Right() - rRef.X()) * double(aXFact) ) );
+    rRect.SetLeft( rRef.X() + basegfx::fround<tools::Long>( (rRect.Left()  - rRef.X()) * double(aXFact) ) );
+    rRect.SetRight( rRef.X() + basegfx::fround<tools::Long>( (rRect.Right() - rRef.X()) * double(aXFact) ) );
 
     if (!aYFact.IsValid()) {
         SAL_WARN( "svx.svdraw", "invalid fraction yFract, using Fraction(1,1)" );
@@ -55,8 +55,8 @@ void ResizeRect(tools::Rectangle& rRect, const Point& rRef, const Fraction& rxFa
         tools::Long nHgt = rRect.Bottom() - rRect.Top();
         if (nHgt == 0) rRect.AdjustBottom( 1 );
     }
-    rRect.SetTop( rRef.Y() + FRound( (rRect.Top()    - rRef.Y()) * double(aYFact) ) );
-    rRect.SetBottom( rRef.Y() + FRound( (rRect.Bottom() - rRef.Y()) * double(aYFact) ) );
+    rRect.SetTop( rRef.Y() + basegfx::fround<tools::Long>( (rRect.Top()    - rRef.Y()) * double(aYFact) ) );
+    rRect.SetBottom( rRef.Y() + basegfx::fround<tools::Long>( (rRect.Bottom() - rRef.Y()) * double(aYFact) ) );
 
     rRect.Normalize();
 }
@@ -178,7 +178,7 @@ double CrookRotateXPoint(Point& rPnt, Point* pC1, Point* pC2, const Point& rCent
             // move into the direction of the center, as a basic position for the rotation
             pC1->AdjustY( -y0 );
             // resize, account for the distance from the center
-            pC1->setY(FRound(static_cast<double>(pC1->Y()) /rRad.X()*(cx-pC1->X())) );
+            pC1->setY(basegfx::fround<tools::Long>(static_cast<double>(pC1->Y()) /rRad.X()*(cx-pC1->X())) );
             pC1->AdjustY(cy );
         } else {
             // move into the direction of the center, as a basic position for the rotation
@@ -186,7 +186,7 @@ double CrookRotateXPoint(Point& rPnt, Point* pC1, Point* pC2, const Point& rCent
             // resize, account for the distance from the center
             tools::Long nPntRad=cy-pC1->Y();
             double nFact=static_cast<double>(nPntRad)/static_cast<double>(rRad.Y());
-            pC1->setX(FRound(static_cast<double>(pC1->X())*nFact) );
+            pC1->setX(basegfx::fround<tools::Long>(static_cast<double>(pC1->X()) * nFact));
             pC1->AdjustX(cx );
         }
         RotatePoint(*pC1,rCenter,sn,cs);
@@ -196,7 +196,7 @@ double CrookRotateXPoint(Point& rPnt, Point* pC1, Point* pC2, const Point& rCent
             // move into the direction of the center, as a basic position for the rotation
             pC2->AdjustY( -y0 );
             // resize, account for the distance from the center
-            pC2->setY(FRound(static_cast<double>(pC2->Y()) /rRad.X()*(rCenter.X()-pC2->X())) );
+            pC2->setY(basegfx::fround<tools::Long>(static_cast<double>(pC2->Y()) /rRad.X()*(rCenter.X()-pC2->X())) );
             pC2->AdjustY(cy );
         } else {
             // move into the direction of the center, as a basic position for the rotation
@@ -204,7 +204,7 @@ double CrookRotateXPoint(Point& rPnt, Point* pC1, Point* pC2, const Point& rCent
             // resize, account for the distance from the center
             tools::Long nPntRad=rCenter.Y()-pC2->Y();
             double nFact=static_cast<double>(nPntRad)/static_cast<double>(rRad.Y());
-            pC2->setX(FRound(static_cast<double>(pC2->X())*nFact) );
+            pC2->setX(basegfx::fround<tools::Long>(static_cast<double>(pC2->X()) * nFact));
             pC2->AdjustX(cx );
         }
         RotatePoint(*pC2,rCenter,sn,cs);
@@ -283,7 +283,7 @@ double CrookStretchXPoint(Point& rPnt, Point* pC1, Point* pC2, const Point& rCen
         tools::Long dy=rPnt.Y()-y0;
         double a=static_cast<double>(y0-nTop)/nHgt;
         a*=dy;
-        rPnt.setY(y0+FRound(a) );
+        rPnt.setY(y0 + basegfx::fround<tools::Long>(a));
     }
     return 0.0;
 }
@@ -393,7 +393,7 @@ Degree100 GetAngle(const Point& rPnt)
         if (rPnt.Y()>0) a=-9000_deg100;
         else a=9000_deg100;
     } else {
-        a = Degree100(FRound(basegfx::rad2deg<100>(atan2(static_cast<double>(-rPnt.Y()), static_cast<double>(rPnt.X())))));
+        a = Degree100(basegfx::fround(basegfx::rad2deg<100>(atan2(-static_cast<double>(rPnt.Y()), static_cast<double>(rPnt.X())))));
     }
     return a;
 }
@@ -423,7 +423,7 @@ tools::Long GetLen(const Point& rPnt)
         x*=x;
         y*=y;
         x+=y;
-        x=FRound(sqrt(static_cast<double>(x)));
+        x = basegfx::fround<tools::Long>(sqrt(x));
         return x;
     } else {
         double nx=x;
@@ -435,7 +435,7 @@ tools::Long GetLen(const Point& rPnt)
         if (nx>0x7FFFFFFF) {
             return 0x7FFFFFFF; // we can't go any further, for fear of an overrun!
         } else {
-            return FRound(nx);
+            return basegfx::fround<tools::Long>(nx);
         }
     }
 }
@@ -573,7 +573,7 @@ tools::Long BigMulDiv(tools::Long nVal, tools::Long nMul, tools::Long nDiv)
 
 static FrPair toPair(o3tl::Length eFrom, o3tl::Length eTo)
 {
-    const auto& [nNum, nDen] = o3tl::getConversionMulDiv(eFrom, eTo);
+    const auto [nNum, nDen] = o3tl::getConversionMulDiv(eFrom, eTo);
     return FrPair(nNum, nDen);
 }
 
@@ -653,7 +653,7 @@ void SdrFormatter::Undirty()
     const o3tl::Length eTo = MapToO3tlLength(m_eDstMU, o3tl::Length::invalid);
     if (eFrom != o3tl::Length::invalid && eTo != o3tl::Length::invalid)
     {
-        const auto& [mul, div] = o3tl::getConversionMulDiv(eFrom, eTo);
+        const auto [mul, div] = o3tl::getConversionMulDiv(eFrom, eTo);
         sal_Int64 nMul = mul;
         sal_Int64 nDiv = div;
         short nComma = 0;
@@ -801,37 +801,37 @@ OUString SdrFormatter::GetUnitStr(MapUnit eUnit)
     {
         // metrically
         case MapUnit::Map100thMM   :
-            return "/100mm";
+            return u"/100mm"_ustr;
         case MapUnit::Map10thMM    :
-            return "/10mm";
+            return u"/10mm"_ustr;
         case MapUnit::MapMM         :
-            return "mm";
+            return u"mm"_ustr;
         case MapUnit::MapCM         :
-            return "cm";
+            return u"cm"_ustr;
 
         // Inch
         case MapUnit::Map1000thInch:
-            return "/1000\"";
+            return u"/1000\""_ustr;
         case MapUnit::Map100thInch :
-            return "/100\"";
+            return u"/100\""_ustr;
         case MapUnit::Map10thInch  :
-            return "/10\"";
+            return u"/10\""_ustr;
         case MapUnit::MapInch       :
-            return "\"";
+            return u"\""_ustr;
         case MapUnit::MapPoint      :
-            return "pt";
+            return u"pt"_ustr;
         case MapUnit::MapTwip       :
-            return "twip";
+            return u"twip"_ustr;
 
         // others
         case MapUnit::MapPixel      :
-            return "pixel";
+            return u"pixel"_ustr;
         case MapUnit::MapSysFont    :
-            return "sysfont";
+            return u"sysfont"_ustr;
         case MapUnit::MapAppFont    :
-            return "appfont";
+            return u"appfont"_ustr;
         case MapUnit::MapRelative   :
-            return "%";
+            return u"%"_ustr;
         default:
             return OUString();
     }
@@ -848,33 +848,33 @@ OUString SdrFormatter::GetUnitStr(FieldUnit eUnit)
 
         // metrically
         case FieldUnit::MM_100TH:
-            return "/100mm";
+            return u"/100mm"_ustr;
         case FieldUnit::MM     :
-            return "mm";
+            return u"mm"_ustr;
         case FieldUnit::CM     :
-            return "cm";
+            return u"cm"_ustr;
         case FieldUnit::M      :
-            return "m";
+            return u"m"_ustr;
         case FieldUnit::KM     :
-            return "km";
+            return u"km"_ustr;
 
         // Inch
         case FieldUnit::TWIP   :
-            return "twip";
+            return u"twip"_ustr;
         case FieldUnit::POINT  :
-            return "pt";
+            return u"pt"_ustr;
         case FieldUnit::PICA   :
-            return "pica";
+            return u"pica"_ustr;
         case FieldUnit::INCH   :
-            return "\"";
+            return u"\""_ustr;
         case FieldUnit::FOOT   :
-            return "ft";
+            return u"ft"_ustr;
         case FieldUnit::MILE   :
-            return "mile(s)";
+            return u"mile(s)"_ustr;
 
         // others
         case FieldUnit::PERCENT:
-            return "%";
+            return u"%"_ustr;
     }
 }
 

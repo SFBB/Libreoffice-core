@@ -37,8 +37,6 @@ namespace com::sun::star::linguistic2 { class XHyphenatedWord; }
 
 class SvxBrushItem;
 class SvxLineSpacingItem;
-class SvxTabStop;
-class SvxTabStopItem;
 class SwFlyPortion;
 class SwFormatDrop;
 class SwLinePortion;
@@ -64,21 +62,21 @@ class SwLineInfo
     std::optional<SvxTabStopItem> m_oRuler;
     const SvxLineSpacingItem *m_pSpace;
     SvxParaVertAlignItem::Align m_nVertAlign;
-    sal_uInt16 m_nDefTabStop;
+    SwTwips m_nDefTabStop;
     bool m_bListTabStopIncluded;
     tools::Long m_nListTabStopPosition;
 
     void CtorInitLineInfo( const SwAttrSet& rAttrSet,
                            const SwTextNode& rTextNode );
 
-    SwLineInfo();
-    ~SwLineInfo();
+    SW_DLLPUBLIC SwLineInfo();
+    SW_DLLPUBLIC ~SwLineInfo();
 public:
     // #i24363# tab stops relative to indent - returns the tab stop following nSearchPos or NULL
     const SvxTabStop* GetTabStop(const SwTwips nSearchPos, SwTwips& nRight) const;
     const SvxLineSpacingItem *GetLineSpacing() const { return m_pSpace; }
-    sal_uInt16 GetDefTabStop() const { return m_nDefTabStop; }
-    void SetDefTabStop( sal_uInt16 nNew ) const
+    SwTwips GetDefTabStop() const { return m_nDefTabStop; }
+    void SetDefTabStop(SwTwips nNew) const
         { const_cast<SwLineInfo*>(this)->m_nDefTabStop = nNew; }
 
     // vertical alignment
@@ -126,7 +124,7 @@ public:
 class SwTextSizeInfo : public SwTextInfo
 {
 private:
-    typedef std::map< SwLinePortion const *, sal_uInt16 > SwTextPortionMap;
+    typedef std::map<SwLinePortion const*, SwTwips> SwTextPortionMap;
 
 protected:
     // during formatting, a small database is built, mapping portion pointers
@@ -155,6 +153,7 @@ protected:
     TextFrameIndex m_nIdx;
     TextFrameIndex m_nLen;
     TextFrameIndex m_nMeasureLen;
+    std::optional<SwLinePortionLayoutContext> m_nLayoutContext;
     sal_uInt16 m_nKanaIdx;
     bool m_bOnWin     : 1;
     bool m_bNotEOL    : 1;
@@ -174,6 +173,8 @@ protected:
     bool m_bForbiddenChars : 1; // Forbidden start/endline characters
     bool m_bSnapToGrid : 1;   // paragraph snaps to grid
     sal_uInt8 m_nDirection : 2; // writing direction: 0/90/180/270 degree
+    SwTwips m_nExtraSpace;    // extra space before shrinking = nSpacesInLine * (nSpaceWidth/0.8 - nSpaceWidth)
+    SwTwips m_nBreakWidth;    // break width to calculate space width at justification
 
 protected:
     void CtorInitTextSizeInfo( OutputDevice* pRenderContext, SwTextFrame *pFrame,
@@ -183,7 +184,7 @@ public:
     SwTextSizeInfo( const SwTextSizeInfo &rInf );
     SwTextSizeInfo( const SwTextSizeInfo &rInf, const OUString* pText,
                    TextFrameIndex nIdx = TextFrameIndex(0) );
-    SwTextSizeInfo(SwTextFrame *pTextFrame, TextFrameIndex nIndex = TextFrameIndex(0));
+    SW_DLLPUBLIC SwTextSizeInfo(SwTextFrame *pTextFrame, TextFrameIndex nIndex = TextFrameIndex(0));
 
     // GetMultiAttr returns the text attribute of the multiportion,
     // if rPos is inside any multi-line part.
@@ -245,17 +246,19 @@ public:
 
     sal_uInt16      GetTextHeight() const;
 
-    SwPosSize GetTextSize( OutputDevice* pOut, const SwScriptInfo* pSI,
+    SwPositiveSize GetTextSize( OutputDevice* pOut, const SwScriptInfo* pSI,
                           const OUString& rText, TextFrameIndex nIdx,
                           TextFrameIndex nLen ) const;
-    SwPosSize GetTextSize() const;
-    void GetTextSize( const SwScriptInfo* pSI, TextFrameIndex nIdx,
-                      TextFrameIndex nLen, const sal_uInt16 nComp,
-                      sal_uInt16& nMinSize, sal_uInt16& nMaxSizeDiff,
-                      vcl::text::TextLayoutCache const* = nullptr) const;
-    inline SwPosSize GetTextSize(const SwScriptInfo* pSI, TextFrameIndex nIdx,
+    SwPositiveSize GetTextSize(std::optional<SwLinePortionLayoutContext> nLayoutContext
+                          = std::nullopt) const;
+    void GetTextSize(const SwScriptInfo* pSI, TextFrameIndex nIdx, TextFrameIndex nLen,
+                     std::optional<SwLinePortionLayoutContext> nLayoutContext,
+                     const sal_uInt16 nComp, SwTwips& nMinSize, tools::Long& nMaxSizeDiff,
+                     SwTwips& nExtraAscent, SwTwips& nExtraDescent,
+                     vcl::text::TextLayoutCache const* = nullptr) const;
+    inline SwPositiveSize GetTextSize(const SwScriptInfo* pSI, TextFrameIndex nIdx,
                                  TextFrameIndex nLen) const;
-    inline SwPosSize GetTextSize( const OUString &rText ) const;
+    inline SwPositiveSize GetTextSize( const OUString &rText ) const;
 
     TextFrameIndex GetTextBreak( const tools::Long nLineWidth,
                             const TextFrameIndex nMaxLen,
@@ -278,6 +281,13 @@ public:
     void SetMeasureLen(const TextFrameIndex nNew) { m_nMeasureLen = nNew; }
     void SetText( const OUString &rNew ){ m_pText = &rNew; }
 
+    const std::optional<SwLinePortionLayoutContext> & GetLayoutContext() const { return m_nLayoutContext; }
+
+    void SetLayoutContext(std::optional<SwLinePortionLayoutContext> nNew)
+    {
+        m_nLayoutContext = nNew;
+    }
+
     // No Bullets for the symbol font!
     bool IsNoSymbol() const
     { return RTL_TEXTENCODING_SYMBOL != m_pFnt->GetCharSet( m_pFnt->GetActual() ); }
@@ -290,16 +300,23 @@ public:
 
     bool HasHint(TextFrameIndex nPos) const;
 
+    // extra space before shrinking = nSpacesInLine * (nSpaceWidth/0.8 - nSpaceWidth)
+    void SetExtraSpace(SwTwips nVal) { m_nExtraSpace = nVal; }
+    SwTwips GetExtraSpace() const { return m_nExtraSpace; }
+    // set break width to calculate space width later
+    void SetBreakWidth(SwTwips nVal) { m_nBreakWidth = nVal; }
+    SwTwips GetBreakWidth() const { return m_nBreakWidth; }
+
     // If Kana Compression is enabled, a minimum and maximum portion width
     // is calculated. We format lines with minimal size and share remaining
     // space among compressed kanas.
     // During formatting, the maximum values of compressible portions are
     // stored in m_aMaxWidth and discarded after a line has been formatted.
-    void SetMaxWidthDiff( const SwLinePortion *nKey, sal_uInt16 nVal )
+    void SetMaxWidthDiff(const SwLinePortion* nKey, SwTwips nVal)
     {
         m_aMaxWidth.insert( std::make_pair( nKey, nVal ) );
     };
-    sal_uInt16 GetMaxWidthDiff( const SwLinePortion *nKey )
+    SwTwips GetMaxWidthDiff(const SwLinePortion* nKey)
     {
         SwTextPortionMap::iterator it = m_aMaxWidth.find( nKey );
 
@@ -358,6 +375,7 @@ class SwTextPaintInfo : public SwTextSizeInfo
                    const bool bGrammarCheck = false );
 
     SwTextPaintInfo &operator=(const SwTextPaintInfo&) = delete;
+    void NotifyURL_(const SwLinePortion& rPor) const;
 
 protected:
     SwTextPaintInfo()
@@ -418,6 +436,12 @@ public:
 
     void DrawCSDFHighlighting(const SwLinePortion &rPor) const;
 
+    void NotifyURL(const SwLinePortion& rPor) const
+    {
+        if (URLNotify())
+            NotifyURL_(rPor);
+    }
+
     /**
      * Calculate the rectangular area where the portion takes place.
      * @param[in]   rPor        portion for which the method specify the painting area
@@ -477,7 +501,6 @@ class SwTextFormatInfo : public SwTextPaintInfo
 
     TextFrameIndex m_nSoftHyphPos;   ///< SoftHyphPos for Hyphenation
     TextFrameIndex m_nLineStart;     ///< Current line start in rText
-    TextFrameIndex m_nUnderScorePos; ///< enlarge repaint if underscore has been found
     TextFrameIndex m_nLastBookmarkPos; ///< need to check for bookmarks at every portion
     // #i34348# Changed type from sal_uInt16 to SwTwips
     SwTwips m_nLeft;              // Left margin
@@ -485,11 +508,13 @@ class SwTextFormatInfo : public SwTextPaintInfo
     SwTwips m_nFirst;             // EZE
     /// First or left margin, depending on context.
     SwTwips m_nLeftMargin = 0;
-    sal_uInt16 m_nRealWidth;      // "real" line width
-    sal_uInt16 m_nWidth;          // "virtual" line width
-    sal_uInt16 m_nLineHeight;     // Final height after CalcLine
-    sal_uInt16 m_nLineNetHeight; // line height without spacing
-    sal_uInt16 m_nForcedLeftMargin; // Shift of left margin due to frame
+    SwTwips m_nRealWidth; // "real" line width
+    SwTwips m_nWidth; // "virtual" line width
+    SwTwips m_nLineHeight;     // Final height after CalcLine
+    SwTwips m_nLineNetHeight; // line height without spacing
+    SwTwips m_nForcedLeftMargin; // Shift of left margin due to frame
+    SwTwips m_nExtraAscent = 0; // Enlarge clipping area for glyphs above the line height
+    SwTwips m_nExtraDescent = 0; // Enlarge clipping area for glyphs below the line height
 
     bool m_bFull : 1;             // Line is full
     bool m_bFootnoteDone : 1;          // Footnote already formatted
@@ -517,6 +542,16 @@ class SwTextFormatInfo : public SwTextPaintInfo
     sal_Unicode   m_cHookChar;    // For tabs in fields etc.
     sal_uInt8   m_nMaxHyph;       // Max. line count of followup hyphenations
 
+    // Used to stop justification after center/right/decimal tab stops - see tdf#tdf#106234
+    enum class TabSeen
+    {
+        None,
+        Left,
+        Center,
+        Right,
+        Decimal,
+    } m_eLastTabsSeen = TabSeen::None;
+
     // Hyphenating ...
     bool InitHyph( const bool bAuto = false );
     bool CheckFootnotePortion_( SwLineLayout const * pCurr );
@@ -532,8 +567,8 @@ public:
     SwTextFormatInfo( const SwTextFormatInfo& rInf, SwLineLayout& rLay,
         SwTwips nActWidth );
 
-    sal_uInt16 Width() const { return m_nWidth; }
-    void Width( const sal_uInt16 nNew ) { m_nWidth = nNew; }
+    SwTwips Width() const { return m_nWidth; }
+    void Width(const SwTwips nNew) { m_nWidth = nNew; }
            void Init();
 
     /**
@@ -553,10 +588,10 @@ public:
     SwTwips First() const { return m_nFirst; }
     void First( const SwTwips nNew ) { m_nFirst = nNew; }
     void LeftMargin( const SwTwips nNew) { m_nLeftMargin = nNew; }
-    sal_uInt16 RealWidth() const { return m_nRealWidth; }
-    void RealWidth( const sal_uInt16 nNew ) { m_nRealWidth = nNew; }
-    sal_uInt16 ForcedLeftMargin() const { return m_nForcedLeftMargin; }
-    void ForcedLeftMargin( const sal_uInt16 nN ) { m_nForcedLeftMargin = nN; }
+    SwTwips RealWidth() const { return m_nRealWidth; }
+    void RealWidth(const SwTwips nNew) { m_nRealWidth = nNew; }
+    SwTwips ForcedLeftMargin() const { return m_nForcedLeftMargin; }
+    void ForcedLeftMargin(const SwTwips nN) { m_nForcedLeftMargin = nN; }
 
     sal_uInt8 &MaxHyph() { return m_nMaxHyph; }
     const sal_uInt8 &MaxHyph() const { return m_nMaxHyph; }
@@ -566,7 +601,7 @@ public:
 
     void SetRoot( SwLineLayout *pNew ) { m_pRoot = pNew; }
     SwLinePortion *GetLast() { return m_pLast; }
-    void SetLast( SwLinePortion *pNewLast ) { m_pLast = pNewLast; }
+    void SetLast(SwLinePortion* pNewLast);
     bool IsFull() const { return m_bFull; }
     void SetFull( const bool bNew ) { m_bFull = bNew; }
     bool IsHyphForbud() const
@@ -593,15 +628,22 @@ public:
     void SetDropInit( const bool bNew ) { m_bDropInit = bNew; }
     bool IsQuick() const { return m_bQuick; }
     bool IsTest() const { return m_bTestFormat; }
+    // see tdf#106234
+    void UpdateTabSeen(PortionType);
+    bool DontBlockJustify() const
+    {
+        return m_eLastTabsSeen == TabSeen::Center || m_eLastTabsSeen == TabSeen::Right
+               || m_eLastTabsSeen == TabSeen::Decimal;
+    }
 
     TextFrameIndex GetLineStart() const { return m_nLineStart; }
     void SetLineStart(TextFrameIndex const nNew) { m_nLineStart = nNew; }
 
     // these are used during fly calculation
-    sal_uInt16 GetLineHeight() const { return m_nLineHeight; }
-    void SetLineHeight( const sal_uInt16 nNew ) { m_nLineHeight = nNew; }
-    sal_uInt16 GetLineNetHeight() const { return m_nLineNetHeight; }
-    void SetLineNetHeight( const sal_uInt16 nNew ) { m_nLineNetHeight = nNew; }
+    SwTwips GetLineHeight() const { return m_nLineHeight; }
+    void SetLineHeight(const SwTwips nNew) { m_nLineHeight = nNew; }
+    SwTwips GetLineNetHeight() const { return m_nLineNetHeight; }
+    void SetLineNetHeight(const SwTwips nNew) { m_nLineNetHeight = nNew; }
 
     const SwLinePortion *GetUnderflow() const { return m_pUnderflow; }
     SwLinePortion *GetUnderflow() { return m_pUnderflow; }
@@ -645,8 +687,12 @@ public:
 
     // Should the hyphenate helper be discarded?
     bool IsHyphenate() const;
-    TextFrameIndex GetUnderScorePos() const { return m_nUnderScorePos; }
-    void SetUnderScorePos(TextFrameIndex const nNew) { m_nUnderScorePos = nNew; }
+
+    SwTwips GetExtraAscent() const { return m_nExtraAscent; }
+    void SetExtraAscent(SwTwips nNew) { m_nExtraAscent = std::max(m_nExtraAscent, nNew); }
+
+    SwTwips GetExtraDescent() const { return m_nExtraDescent; }
+    void SetExtraDescent(SwTwips nNew) { m_nExtraDescent = std::max(m_nExtraDescent, nNew); }
 
     // Calls HyphenateWord() of Hyphenator
     css::uno::Reference< css::linguistic2::XHyphenatedWord >
@@ -669,6 +715,9 @@ public:
     void SetTabOverflow( bool bOverflow ) { m_bTabOverflow = bOverflow; }
     bool IsTabOverflow() const { return m_bTabOverflow; }
 
+    // get line space count between line start and break position
+    // by stripping also terminating spaces
+    sal_Int32 GetLineSpaceCount(TextFrameIndex nBreakPos);
 };
 
 /**
@@ -730,12 +779,12 @@ inline sal_uInt16 SwTextSizeInfo::GetHangingBaseline() const
     return const_cast<SwFont*>(GetFont())->GetHangingBaseline( m_pVsh, *GetOut() );
 }
 
-inline SwPosSize SwTextSizeInfo::GetTextSize( const OUString &rText ) const
+inline SwPositiveSize SwTextSizeInfo::GetTextSize( const OUString &rText ) const
 {
     return GetTextSize(m_pOut, nullptr, rText, TextFrameIndex(0), TextFrameIndex(rText.getLength()));
 }
 
-inline SwPosSize SwTextSizeInfo::GetTextSize( const SwScriptInfo* pSI,
+inline SwPositiveSize SwTextSizeInfo::GetTextSize( const SwScriptInfo* pSI,
                                             TextFrameIndex const nNewIdx,
                                             TextFrameIndex const nNewLen) const
 {

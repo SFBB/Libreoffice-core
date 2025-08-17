@@ -66,7 +66,6 @@ class Graphic;
 namespace oox {
 
 OOX_DLLPUBLIC css::uno::Reference<css::io::XInputStream> GetOLEObjectStream(
-    css::uno::Reference<css::uno::XComponentContext> const& xContext,
     css::uno::Reference<css::embed::XEmbeddedObject> const& xObj,
     std::u16string_view i_rProgID,
     OUString & o_rMediaType,
@@ -116,6 +115,7 @@ public:
     void SetURLTranslator(const std::shared_ptr<URLTransformer>& pTransformer);
 
     static bool         NonEmptyText( const css::uno::Reference< css::uno::XInterface >& xIface );
+    static bool         IsShapeTypeKnown( const css::uno::Reference< css::drawing::XShape >& xShape );
 
     ShapeExport&
                         WritePolyPolygonShape( const css::uno::Reference< css::drawing::XShape >& xShape, bool bClosed );

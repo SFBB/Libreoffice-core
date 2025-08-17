@@ -28,7 +28,6 @@
 #include <vector>
 
 namespace com::sun::star::drawing { class XDrawPage; }
-namespace com::sun::star::drawing { class XDrawView; }
 namespace weld { class ComboBox; }
 namespace com::sun::star::animations { class XAnimationNode; }
 namespace sd::tools { class EventMultiplexerEvent; }
@@ -41,10 +40,11 @@ class MotionPathTag;
 class SdPropertySubControl;
 class STLPropertySet;
 class ViewShellBase;
+class DrawController;
 
 typedef std::vector< rtl::Reference< MotionPathTag > > MotionPathTagVector;
 
-class CustomAnimationPane : public PanelLayout
+class CustomAnimationPane final : public PanelLayout
                           , public sfx2::sidebar::ILayoutableWindow
                           , public ICustomAnimationListController
 {
@@ -98,7 +98,7 @@ private:
     static bool setProperty1Value( sal_Int32 nType, const CustomAnimationEffectPtr& pEffect, const css::uno::Any& rValue );
     sal_Int32 fillAnimationLB( bool bHasText );
     PathKind getCreatePathKind() const;
-    void createPath( PathKind eKind, std::vector< ::com::sun::star::uno::Any >& rTargets, double fDuration );
+    void createPath( PathKind eKind, std::vector< css::uno::Any >& rTargets, double fDuration );
 
     DECL_LINK( implControlListBoxHdl, weld::ComboBox&, void );
     DECL_LINK( implClickHdl, weld::Button&, void );
@@ -159,7 +159,7 @@ private:
     MainSequencePtr mpMainSequence;
 
     css::uno::Reference< css::drawing::XDrawPage > mxCurrentPage;
-    css::uno::Reference< css::drawing::XDrawView > mxView;
+    rtl::Reference< ::sd::DrawController > mxView;
 
     /** The CustomAnimationPresets is initialized either on demand or
         after a short time after the construction of a new object of this

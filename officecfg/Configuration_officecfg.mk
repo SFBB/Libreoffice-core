@@ -38,7 +38,6 @@ $(eval $(call gb_Configuration_add_datas,registry,officecfg/registry/data,\
 	org/openoffice/Office/ExtensionManager.xcu \
 	org/openoffice/Office/Impress.xcu \
 	org/openoffice/Office/Jobs.xcu \
-	org/openoffice/Office/Linguistic.xcu \
 	org/openoffice/Office/Logging.xcu \
 	org/openoffice/Office/Math.xcu \
 	org/openoffice/Office/ProtocolHandler.xcu \
@@ -87,11 +86,11 @@ $(eval $(call gb_Configuration_add_spool_modules,registry,officecfg/registry/dat
 	org/openoffice/Office/Common-unx.xcu \
 	org/openoffice/Office/Common-unixdesktop.xcu \
 	org/openoffice/Office/Common-macosx.xcu \
+	org/openoffice/Office/Common-macosxsandbox.xcu \
 	org/openoffice/Office/Common-wnt.xcu \
 	org/openoffice/Office/Common-UseOOoFileDialogs.xcu \
 	org/openoffice/Office/Common-32bit.xcu \
 	org/openoffice/Office/Jobs-impress.xcu \
-	org/openoffice/Office/Linguistic-ForceDefaultLanguage.xcu \
 	org/openoffice/Office/ProtocolHandler-impress.xcu \
 	org/openoffice/Office/Common-cjk.xcu \
 	org/openoffice/Office/Common-ctl.xcu \
@@ -150,8 +149,9 @@ $(eval $(call gb_Configuration_add_localized_datas,registry,officecfg/registry/d
 	) \
 	org/openoffice/Office/Common.xcu \
 	org/openoffice/Office/DataAccess.xcu \
-	org/openoffice/Office/PresentationMinimizer.xcu \
-	org/openoffice/Office/PresenterScreen.xcu \
+	$(if $(ENABLE_WASM_STRIP_BASIC_DRAW_MATH_IMPRESS),, \
+	    org/openoffice/Office/PresentationMinimizer.xcu \
+	    org/openoffice/Office/PresenterScreen.xcu) \
 	org/openoffice/Office/TableWizard.xcu \
 	org/openoffice/Office/UI.xcu \
 	org/openoffice/Office/Embedding.xcu \
@@ -178,14 +178,17 @@ $(eval $(call gb_Configuration_add_localized_datas,registry,officecfg/registry/d
 	org/openoffice/Office/UI/DbBrowserWindowState.xcu \
 	org/openoffice/Office/UI/DbTableDataWindowState.xcu \
 	org/openoffice/Office/UI/DrawImpressCommands.xcu \
-	org/openoffice/Office/UI/Effects.xcu \
+	$(if $(ENABLE_WASM_STRIP_BASIC_DRAW_MATH_IMPRESS),, \
+	    org/openoffice/Office/UI/Effects.xcu) \
 	org/openoffice/Office/UI/GenericCommands.xcu \
-	org/openoffice/Office/UI/MathCommands.xcu \
+	$(if $(ENABLE_WASM_STRIP_BASIC_DRAW_MATH_IMPRESS),, \
+	    org/openoffice/Office/UI/MathCommands.xcu) \
 	org/openoffice/Office/UI/BasicIDEWindowState.xcu \
 	org/openoffice/Office/UI/CalcWindowState.xcu \
-	org/openoffice/Office/UI/DrawWindowState.xcu \
-	org/openoffice/Office/UI/ImpressWindowState.xcu \
-	org/openoffice/Office/UI/MathWindowState.xcu \
+	$(if $(ENABLE_WASM_STRIP_BASIC_DRAW_MATH_IMPRESS),, \
+	    org/openoffice/Office/UI/DrawWindowState.xcu \
+	    org/openoffice/Office/UI/ImpressWindowState.xcu \
+	    org/openoffice/Office/UI/MathWindowState.xcu) \
 	$(call gb_Helper_optional,REPORTBUILDER, \
 		org/openoffice/Office/UI/ReportCommands.xcu \
 	) \

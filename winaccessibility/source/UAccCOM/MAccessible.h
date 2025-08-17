@@ -33,6 +33,7 @@
 
 namespace {
 enum class XInterfaceType;
+enum class NavigationDirection;
 }
 
 /**
@@ -64,6 +65,7 @@ public:
     COM_INTERFACE_ENTRY(IMAccessible)
     COM_INTERFACE_ENTRY(IAccessible)
     COM_INTERFACE_ENTRY(IAccessible2)
+    COM_INTERFACE_ENTRY(IAccessible2_2)
     COM_INTERFACE_ENTRY(IDispatch)
     COM_INTERFACE_ENTRY(IAccessibleApplication)
     COM_INTERFACE_ENTRY(IServiceProvider)
@@ -101,7 +103,6 @@ public:
     STDMETHOD(get_accParent)( IDispatch **ppdispParent) override;
 
     // methods which are defined only in the IAccessible2
-    // These methods only declare here, and their implementation bodies are empty now.
     STDMETHOD(get_nRelations)( long __RPC_FAR *nRelations) override;
     STDMETHOD(get_relation)( long relationIndex, IAccessibleRelation __RPC_FAR *__RPC_FAR *relation) override;
     STDMETHOD(get_relations)( long maxRelations, IAccessibleRelation __RPC_FAR *__RPC_FAR *relation, long __RPC_FAR *nRelations) override;
@@ -122,6 +123,11 @@ public:
     STDMETHOD(get_locale)( IA2Locale __RPC_FAR *locale ) override;
     STDMETHOD(get_attributes)(/*[out]*/ BSTR *pAttr) override;
 
+    // IAccessible2_2 methods
+    STDMETHOD(get_attribute)(BSTR name, VARIANT* attribute) override;
+    STDMETHOD(get_accessibleWithCaret)(IUnknown** accessible, long* caretOffset) override;
+    STDMETHOD(get_relationTargetsOfType)(BSTR type, long maxTargets, IUnknown*** targets, long* nTargets) override;
+
     //IServiceProvider.
     STDMETHOD(QueryService)(REFGUID guidService, REFIID riid, void** ppvObject) override;
 
@@ -135,7 +141,6 @@ public:
     // These methods are provided for UNO management system.
     // The UNO management system use these methods to put Accessibility
     // information to COM.
-    STDMETHOD(Put_XAccName)(const OLECHAR __RPC_FAR *pszName) override;
     STDMETHOD(Put_XAccRole)(unsigned short pRole) override;
     STDMETHOD(DecreaseState)(DWORD pXSate) override;
     STDMETHOD(IncreaseState)(DWORD pXSate) override;
@@ -147,13 +152,9 @@ public:
     STDMETHOD(Put_XAccChildID)(long dChildID) override;
     STDMETHOD(Put_XAccObjectManager)(hyper pManager) override;
     STDMETHOD(NotifyDestroy)() override;
-    STDMETHOD(Put_ActionDescription)( const OLECHAR* szAction) override;
-    STDMETHOD(SetDefaultAction)(hyper pAction) override;
-    STDMETHOD(GetUNOInterface)(hyper*) override;
     STDMETHOD(SetXAccessible)(hyper) override;
 
 private:
-    BSTR m_pszName;
     BSTR m_pszValue;
     BSTR m_pszActionDescription;
     unsigned short m_iRole;
@@ -177,16 +178,13 @@ private:
     bool m_isDestroy;
 
     css::uno::Reference<css::accessibility::XAccessible> m_xAccessible;
-    // initially m_xAction and m_xContext are the same object
-    // but they may be different once AccObject::UpdateAction() is called?
-    css::uno::Reference<css::accessibility::XAccessibleAction>  m_xAction;
     css::uno::Reference<css::accessibility::XAccessibleContext> m_xContext;
 
 private:
 
     // the helper methods in order to implement the above public methods
     IMAccessible* GetChildInterface(long dChildIndex);//notice here the parameter is child index,not child id
-    IMAccessible* GetNavigateChildForDM(VARIANT varCur,short flags);//for descendant manage
+    IMAccessible* GetNavigateChildForDM(VARIANT varCur, NavigationDirection eDirection);
     HRESULT GetFirstChild(VARIANT varStart,VARIANT* pvarEndUpAt);//for accNavigate implementation
     HRESULT GetLastChild(VARIANT varStart,VARIANT* pvarEndUpAt);//for accNavigate implementation
     HRESULT GetNextSibling(VARIANT varStart,VARIANT* pvarEndUpAt);//for accNavigate implementation

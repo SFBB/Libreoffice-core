@@ -18,21 +18,31 @@
  */
 
 #include <sal/config.h>
+#include <config_cpdb.h>
+#include <config_cups.h>
 
 #include <stdlib.h>
 
 #include <comphelper/string.hxx>
 #include <o3tl/string_view.hxx>
 #include <i18nlangtag/languagetag.hxx>
+#include <jobdata.hxx>
 #include <ppdparser.hxx>
+#include <printerinfomanager.hxx>
 #include <strhelper.hxx>
 #include <utility>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 
 #include <unx/helper.hxx>
-#include <unx/cupsmgr.hxx>
+
+#if ENABLE_CPDB
 #include <unx/cpdmgr.hxx>
+#endif
+
+#if ENABLE_CUPS
+#include <unx/cupsmgr.hxx>
+#endif
 
 #include <tools/urlobj.hxx>
 #include <tools/stream.hxx>
@@ -51,7 +61,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#ifdef ENABLE_CUPS
+#if ENABLE_CUPS
 #include <cups/cups.h>
 #endif
 
@@ -450,7 +460,7 @@ void PPDParser::initPPDFiles(PPDCache &rPPDCache)
         INetURLObject aPPDDir( path, INetProtocol::File, INetURLObject::EncodeMechanism::All );
         scanPPDDir( aPPDDir.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
     }
-    if( rPPDCache.xAllPPDFiles->find( OUString( "SGENPRT" ) ) != rPPDCache.xAllPPDFiles->end() )
+    if( rPPDCache.xAllPPDFiles->find( u"SGENPRT"_ustr ) != rPPDCache.xAllPPDFiles->end() )
         return;
 
     // last try: search in directory of executable (mainly for setup)
@@ -463,7 +473,7 @@ void PPDParser::initPPDFiles(PPDCache &rPPDCache)
                 << aDir.GetMainURL(INetURLObject::DecodeMechanism::NONE));
         scanPPDDir( aDir.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
         SAL_INFO("vcl.unx.print", "SGENPRT "
-                << (rPPDCache.xAllPPDFiles->find("SGENPRT") ==
+                << (rPPDCache.xAllPPDFiles->find(u"SGENPRT"_ustr) ==
                     rPPDCache.xAllPPDFiles->end() ? "not found" : "found"));
     }
 }
@@ -564,12 +574,12 @@ const PPDParser* PPDParser::getParser( const OUString& rFile )
         PrinterInfoManager& rMgr = PrinterInfoManager::get();
         if( rMgr.getType() == PrinterInfoManager::Type::CUPS )
         {
-#ifdef ENABLE_CUPS
+#if ENABLE_CUPS
             pNewParser = const_cast<PPDParser*>(static_cast<CUPSManager&>(rMgr).createCUPSParser( aFile ));
 #endif
         } else if ( rMgr.getType() == PrinterInfoManager::Type::CPD )
         {
-#if ENABLE_DBUS && ENABLE_GIO
+#if ENABLE_CPDB
             pNewParser = const_cast<PPDParser*>(static_cast<CPDManager&>(rMgr).createCPDParser( aFile ));
 #endif
         }
@@ -608,47 +618,46 @@ PPDParser::PPDParser(OUString aFile, const std::vector<PPDKey*>& keys)
     // fill in shortcuts
     const PPDKey* pKey;
 
-    pKey = getKey( "PageSize" );
+    pKey = getKey( u"PageSize"_ustr );
 
     if ( pKey ) {
-        std::unique_ptr<PPDKey> pImageableAreas(new PPDKey("ImageableArea"));
-        std::unique_ptr<PPDKey> pPaperDimensions(new PPDKey("PaperDimension"));
-#if defined(CUPS_VERSION_MAJOR)
-#if (CUPS_VERSION_MAJOR == 1 && CUPS_VERSION_MINOR >= 7) || CUPS_VERSION_MAJOR > 1
+        std::unique_ptr<PPDKey> pImageableAreas(new PPDKey(u"ImageableArea"_ustr));
+        std::unique_ptr<PPDKey> pPaperDimensions(new PPDKey(u"PaperDimension"_ustr));
+#if ENABLE_CUPS
         for (int i = 0; i < pKey->countValues(); i++) {
             const PPDValue* pValue = pKey -> getValue(i);
             OUString aValueName = pValue -> m_aOption;
-            PPDValue* pImageableAreaValue = pImageableAreas -> insertValue( aValueName, eQuoted );
-            PPDValue* pPaperDimensionValue = pPaperDimensions -> insertValue( aValueName, eQuoted );
+            PPDValue* pImageableAreaValue
+                = pImageableAreas->insertValue(aValueName, PPDValueType::Quoted);
+            PPDValue* pPaperDimensionValue
+                = pPaperDimensions->insertValue(aValueName, PPDValueType::Quoted);
             rtl_TextEncoding aEncoding = osl_getThreadTextEncoding();
             OString o = OUStringToOString( aValueName, aEncoding );
             pwg_media_t *pPWGMedia = pwgMediaForPWG(o.pData->buffer);
             if (pPWGMedia != nullptr) {
-                OUStringBuffer aBuf( 256 );
-                aBuf = "0 0 " +
-                    OUString::number(PWG_TO_POINTS(pPWGMedia -> width)) +
-                    " " +
-                    OUString::number(PWG_TO_POINTS(pPWGMedia -> length));
                 if ( pImageableAreaValue )
-                    pImageableAreaValue->m_aValue = aBuf.makeStringAndClear();
-                aBuf.append( OUString::number(PWG_TO_POINTS(pPWGMedia -> width))
-                    + " "
-                    + OUString::number(PWG_TO_POINTS(pPWGMedia -> length) ));
+                    pImageableAreaValue->m_aValue =
+                        "0 0 " +
+                        OUString::number(PWG_TO_POINTS(pPWGMedia -> width)) +
+                        " " +
+                        OUString::number(PWG_TO_POINTS(pPWGMedia -> length));
                 if ( pPaperDimensionValue )
-                    pPaperDimensionValue->m_aValue = aBuf.makeStringAndClear();
+                    pPaperDimensionValue->m_aValue =
+                        OUString::number(PWG_TO_POINTS(pPWGMedia -> width))
+                        + " "
+                        + OUString::number(PWG_TO_POINTS(pPWGMedia -> length));
                 if (aValueName.equals(pKey -> getDefaultValue() -> m_aOption)) {
                     pImageableAreas -> m_pDefaultValue = pImageableAreaValue;
                     pPaperDimensions -> m_pDefaultValue = pPaperDimensionValue;
                 }
             }
         }
-#endif // HAVE_CUPS_API_1_7
 #endif
         insertKey(std::move(pImageableAreas));
         insertKey(std::move(pPaperDimensions));
     }
 
-    m_pImageableAreas = getKey( "ImageableArea" );
+    m_pImageableAreas = getKey( u"ImageableArea"_ustr );
     const PPDValue* pDefaultImageableArea = nullptr;
     if( m_pImageableAreas )
         pDefaultImageableArea = m_pImageableAreas->getDefaultValue();
@@ -659,7 +668,7 @@ PPDParser::PPDParser(OUString aFile, const std::vector<PPDKey*>& keys)
         SAL_WARN( "vcl.unx.print", "no DefaultImageableArea in " << m_aFile);
     }
 
-    m_pPaperDimensions = getKey( "PaperDimension" );
+    m_pPaperDimensions = getKey( u"PaperDimension"_ustr );
     if( m_pPaperDimensions )
         m_pDefaultPaperDimension = m_pPaperDimensions->getDefaultValue();
     if (m_pPaperDimensions == nullptr) {
@@ -669,7 +678,7 @@ PPDParser::PPDParser(OUString aFile, const std::vector<PPDKey*>& keys)
         SAL_WARN( "vcl.unx.print", "no DefaultPaperDimensions in " << m_aFile);
     }
 
-    auto pResolutions = getKey( "Resolution" );
+    auto pResolutions = getKey( u"Resolution"_ustr );
     if( pResolutions )
         m_pDefaultResolution = pResolutions->getDefaultValue();
     if (pResolutions == nullptr) {
@@ -677,7 +686,7 @@ PPDParser::PPDParser(OUString aFile, const std::vector<PPDKey*>& keys)
     }
     SAL_INFO_IF(!m_pDefaultResolution, "vcl.unx.print", "no DefaultResolution in " + m_aFile);
 
-    auto pInputSlots = getKey( "InputSlot" );
+    auto pInputSlots = getKey( u"InputSlot"_ustr );
     if( pInputSlots )
         m_pDefaultInputSlot = pInputSlots->getDefaultValue();
     SAL_INFO_IF(!pInputSlots, "vcl.unx.print", "no InputSlot in " << m_aFile);
@@ -770,11 +779,21 @@ PPDParser::PPDParser( OUString aFile ) :
             char const* pVType = "<unknown>";
             switch( pValue->m_eType )
             {
-                case eInvocation:       pVType = "invocation";break;
-                case eQuoted:           pVType = "quoted";break;
-                case eString:           pVType = "string";break;
-                case eSymbol:           pVType = "symbol";break;
-                case eNo:               pVType = "no";break;
+                case PPDValueType::Invocation:
+                    pVType = "invocation";
+                    break;
+                case PPDValueType::Quoted:
+                    pVType = "quoted";
+                    break;
+                case PPDValueType::String:
+                    pVType = "string";
+                    break;
+                case PPDValueType::Symbol:
+                    pVType = "symbol";
+                    break;
+                case PPDValueType::No:
+                    pVType = "no";
+                    break;
                 default: break;
             }
             SAL_INFO("vcl.unx.print", "\t\t"
@@ -796,7 +815,7 @@ PPDParser::PPDParser( OUString aFile ) :
     }
 #endif
 
-    m_pImageableAreas = getKey( "ImageableArea" );
+    m_pImageableAreas = getKey( u"ImageableArea"_ustr );
     const PPDValue * pDefaultImageableArea = nullptr;
     if( m_pImageableAreas )
         pDefaultImageableArea = m_pImageableAreas->getDefaultValue();
@@ -807,7 +826,7 @@ PPDParser::PPDParser( OUString aFile ) :
         SAL_WARN( "vcl.unx.print", "no DefaultImageableArea in " << m_aFile);
     }
 
-    m_pPaperDimensions = getKey( "PaperDimension" );
+    m_pPaperDimensions = getKey( u"PaperDimension"_ustr );
     if( m_pPaperDimensions )
         m_pDefaultPaperDimension = m_pPaperDimensions->getDefaultValue();
     if (m_pPaperDimensions == nullptr) {
@@ -817,7 +836,7 @@ PPDParser::PPDParser( OUString aFile ) :
         SAL_WARN( "vcl.unx.print", "no DefaultPaperDimensions in " << m_aFile);
     }
 
-    auto pResolutions = getKey( "Resolution" );
+    auto pResolutions = getKey( u"Resolution"_ustr );
     if( pResolutions )
         m_pDefaultResolution = pResolutions->getDefaultValue();
     if (pResolutions == nullptr) {
@@ -825,7 +844,7 @@ PPDParser::PPDParser( OUString aFile ) :
     }
     SAL_INFO_IF(!m_pDefaultResolution, "vcl.unx.print", "no DefaultResolution in " + m_aFile);
 
-    auto pInputSlots = getKey( "InputSlot" );
+    auto pInputSlots = getKey( u"InputSlot"_ustr );
     if( pInputSlots )
         m_pDefaultInputSlot = pInputSlots->getDefaultValue();
     SAL_INFO_IF(!pInputSlots, "vcl.unx.print", "no InputSlot in " << m_aFile);
@@ -998,16 +1017,16 @@ void PPDParser::parse( ::std::vector< OString >& rLines )
         }
         else if( aKey == "CustomPageSize" ) // currently not handled
             continue;
-        else if (aKey.startsWith("Custom", &aKey) )
+        else if ( std::string_view rest; aKey.startsWith("Custom", &rest) )
         {
             //fdo#43049 very basic support for Custom entries, we ignore the
             //validation params and types
-            OUString aUniKey(OStringToOUString(aKey, RTL_TEXTENCODING_MS_1252));
+            OUString aUniKey(OStringToOUString(rest, RTL_TEXTENCODING_MS_1252));
             keyit = m_aKeys.find( aUniKey );
             if(keyit != m_aKeys.end())
             {
                 PPDKey* pKey = keyit->second.get();
-                pKey->insertValue("Custom", eInvocation, true);
+                pKey->insertValue(u"Custom"_ustr, PPDValueType::Invocation, true);
             }
             continue;
         }
@@ -1058,7 +1077,7 @@ void PPDParser::parse( ::std::vector< OString >& rLines )
                 aOption = aOption.copy(0,  nTransPos);
         }
 
-        PPDValueType eType = eNo;
+        PPDValueType eType = PPDValueType::No;
         OUString aValue;
         OUString aOptionTranslation;
         OUString aValueTranslation;
@@ -1091,9 +1110,9 @@ void PPDParser::parse( ::std::vector< OString >& rLines )
             {
                 if( !aOption.isEmpty() &&
                     !aUniKey.startsWith( "JCL" ) )
-                    eType = eInvocation;
+                    eType = PPDValueType::Invocation;
                 else
-                    eType = eQuoted;
+                    eType = PPDValueType::Quoted;
             }
             // check for invocation or quoted value
             else if(aLine[0] == '"')
@@ -1111,16 +1130,16 @@ void PPDParser::parse( ::std::vector< OString >& rLines )
                 // check for quoted value
                 if( !aOption.isEmpty() &&
                     !aUniKey.startsWith( "JCL" ) )
-                    eType = eInvocation;
+                    eType = PPDValueType::Invocation;
                 else
-                    eType = eQuoted;
+                    eType = PPDValueType::Quoted;
             }
             // check for symbol value
             else if(aLine[0] == '^')
             {
                 aLine = aLine.copy(1);
                 aValue = OStringToOUString(aLine, RTL_TEXTENCODING_MS_1252);
-                eType = eSymbol;
+                eType = PPDValueType::Symbol;
             }
             else
             {
@@ -1135,7 +1154,7 @@ void PPDParser::parse( ::std::vector< OString >& rLines )
                 aValue = OStringToOUString(aLine.subView(0, nTransPos), RTL_TEXTENCODING_MS_1252);
                 if (nTransPos+1 < aLine.getLength())
                     aValueTranslation = handleTranslation( aLine.copy( nTransPos+1 ), bIsGlobalizedLine );
-                eType = eString;
+                eType = PPDValueType::String;
             }
         }
 
@@ -1167,7 +1186,7 @@ void PPDParser::parse( ::std::vector< OString >& rLines )
         else
             pKey = keyit->second.get();
 
-        if( eType == eNo && bQuery )
+        if (eType == PPDValueType::No && bQuery)
             continue;
 
         PPDValue* pValue = pKey->insertValue( aOption, eType );
@@ -1217,7 +1236,7 @@ void PPDParser::parse( ::std::vector< OString >& rLines )
                     // (example: DefaultResolution)
                     // so invent that key here and have a default value
                     std::unique_ptr<PPDKey> pKey(new PPDKey( aKey ));
-                    pKey->insertValue( aOption, eInvocation /*or what ?*/ );
+                    pKey->insertValue(aOption, PPDValueType::Invocation /*or what ?*/);
                     pKey->m_pDefaultValue = pKey->getValue( aOption );
                     insertKey( std::move(pKey) );
                 }
@@ -1340,12 +1359,12 @@ void PPDParser::parseConstraint( const OString& rLine )
         m_aConstraints.push_back( aConstraint );
 }
 
-OUString PPDParser::getDefaultPaperDimension() const
+const OUString & PPDParser::getDefaultPaperDimension() const
 {
     if( m_pDefaultPaperDimension )
         return m_pDefaultPaperDimension->m_aOption;
 
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 bool PPDParser::getMargins(
@@ -1408,7 +1427,7 @@ bool PPDParser::getPaperDimension(
     return true;
 }
 
-OUString PPDParser::matchPaperImpl(int nWidth, int nHeight, bool bSwaped, psp::orientation* pOrientation) const
+OUString PPDParser::matchPaperImpl(int nWidth, int nHeight, bool bSwapped, psp::orientation* pOrientation) const
 {
     if( ! m_pPaperDimensions )
         return OUString();
@@ -1439,7 +1458,7 @@ OUString PPDParser::matchPaperImpl(int nWidth, int nHeight, bool bSwaped, psp::o
         }
     }
 
-    if (nPDim == -1 && !bSwaped)
+    if (nPDim == -1 && !bSwapped)
     {
         // swap portrait/landscape and try again
         return matchPaperImpl(nHeight, nWidth, true, pOrientation);
@@ -1448,7 +1467,7 @@ OUString PPDParser::matchPaperImpl(int nWidth, int nHeight, bool bSwaped, psp::o
     if (nPDim == -1)
         return OUString();
 
-    if (bSwaped && pOrientation)
+    if (bSwapped && pOrientation)
     {
         switch (*pOrientation)
         {
@@ -1466,14 +1485,14 @@ OUString PPDParser::matchPaperImpl(int nWidth, int nHeight, bool bSwaped, psp::o
 
 OUString PPDParser::matchPaper(int nWidth, int nHeight, psp::orientation* pOrientation) const
 {
-    return matchPaperImpl(nHeight, nWidth, true, pOrientation);
+    return matchPaperImpl(nHeight, nWidth, false, pOrientation);
 }
 
-OUString PPDParser::getDefaultInputSlot() const
+const OUString & PPDParser::getDefaultInputSlot() const
 {
     if( m_pDefaultInputSlot )
         return m_pDefaultInputSlot->m_aValue;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 void PPDParser::getResolutionFromString(std::u16string_view rString,
@@ -1588,7 +1607,7 @@ PPDValue* PPDKey::insertValue(const OUString& rOption, PPDValueType eType, bool 
     aValue.m_bCustomOption = bCustomOption;
     aValue.m_bCustomOptionSetViaApp = false;
     aValue.m_eType = eType;
-    m_aValues[ rOption ] = aValue;
+    m_aValues[rOption] = std::move(aValue);
     PPDValue* pValue = &m_aValues[rOption];
     m_aOrderedValues.push_back( pValue );
     return pValue;
@@ -1723,9 +1742,9 @@ bool PPDContext::resetValue( const PPDKey* pKey, bool bDefaultable )
     if( ! pKey || ! m_pParser || ! m_pParser->hasKey( pKey ) )
         return false;
 
-    const PPDValue* pResetValue = pKey->getValue( "None" );
+    const PPDValue* pResetValue = pKey->getValue( u"None"_ustr );
     if( ! pResetValue )
-        pResetValue = pKey->getValue( "False" );
+        pResetValue = pKey->getValue( u"False"_ustr );
     if( ! pResetValue && bDefaultable )
         pResetValue = pKey->getDefaultValue();
 
@@ -1890,7 +1909,7 @@ void PPDContext::rebuildFromStreamBuffer(const std::vector<char> &rBuffer)
                 SAL_INFO("vcl.unx.print",
                     "PPDContext::rebuildFromStreamBuffer: read PPDKeyValue { "
                     << pKey->getKey() << " , "
-                    << (pValue ? aOption : "<nil>")
+                    << (pValue ? aOption : u"<nil>"_ustr)
                     << " }");
             }
         }
@@ -1905,7 +1924,7 @@ int PPDContext::getRenderResolution() const
     if( m_pParser )
     {
         int nDPIx = 300, nDPIy = 300;
-        const PPDKey* pKey = m_pParser->getKey( "Resolution" );
+        const PPDKey* pKey = m_pParser->getKey( u"Resolution"_ustr );
         if( pKey )
         {
             const PPDValue* pValue = getValue( pKey );
@@ -1931,7 +1950,7 @@ void PPDContext::getPageSize( OUString& rPaper, int& rWidth, int& rHeight ) cons
     if( !m_pParser )
         return;
 
-    const PPDKey* pKey = m_pParser->getKey( "PageSize" );
+    const PPDKey* pKey = m_pParser->getKey( u"PageSize"_ustr );
     if( !pKey )
         return;
 

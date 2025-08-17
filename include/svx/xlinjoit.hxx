@@ -31,6 +31,7 @@ class SVXCORE_DLLPUBLIC XLineJointItem final : public SfxEnumItem<css::drawing::
 {
 public:
                             static SfxPoolItem* CreateDefault();
+                            DECLARE_ITEM_TYPE_FUNCTION(XLineJointItem)
                             XLineJointItem( css::drawing::LineJoint eLineJoint = css::drawing::LineJoint_ROUND );
 
     virtual XLineJointItem* Clone( SfxItemPool* pPool = nullptr ) const override;
@@ -40,8 +41,6 @@ public:
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric, MapUnit ePresMetric,
                                   OUString &rText, const IntlWrapper& ) const override;
-
-    virtual sal_uInt16       GetValueCount() const override;
 };
 
 #endif // INCLUDED_SVX_XLINJOIT_HXX

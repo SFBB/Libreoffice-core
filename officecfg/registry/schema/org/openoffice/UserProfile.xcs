@@ -170,7 +170,7 @@
       <prop oor:name="signingkey" oor:type="xs:string" oor:nillable="false">
         <!-- UIHints: Tools - Options - General - User Data -->
         <info>
-          <desc>Specifies user's preferred OpenPGP key used for document signing.</desc>
+          <desc>Specifies user's preferred key used for document signing.</desc>
         </info>
         <value/>
       </prop>
@@ -187,6 +187,18 @@
           <desc>Whether to encrypt documents for recipient(s) and also for the user with their preferred encryption key.</desc>
         </info>
         <value>true</value>
+      </prop>
+      <prop oor:name="signingkeydisplayname" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Cached signing key display name.</desc>
+        </info>
+        <value/>
+      </prop>
+      <prop oor:name="encryptionkeydisplayname" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Cached encryption key display name.</desc>
+        </info>
+        <value/>
       </prop>
     </group>
     <group oor:name="WinUserInfo">

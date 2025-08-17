@@ -35,6 +35,7 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/range/b2irange.hxx>
 #include <canvas/canvastools.hxx>
+#include <comphelper/DirectoryHelper.hxx>
 #include <cppcanvas/canvas.hxx>
 #include <avmedia/mediawindow.hxx>
 #include <svx/svdobj.hxx>
@@ -59,7 +60,8 @@ namespace slideshow::internal
 {
         ViewMediaShape::ViewMediaShape( const ViewLayerSharedPtr&                       rViewLayer,
                                         uno::Reference< drawing::XShape >         xShape,
-                                        uno::Reference< uno::XComponentContext >  xContext ) :
+                                        uno::Reference< uno::XComponentContext >  xContext,
+                                        const OUString&                           aFallbackDir ) :
             mpViewLayer( rViewLayer ),
             maWindowOffset( 0, 0 ),
             maBounds(),
@@ -67,7 +69,8 @@ namespace slideshow::internal
             mxPlayer(),
             mxPlayerWindow(),
             mxComponentContext(std::move( xContext )),
-            mbIsSoundEnabled(true)
+            mbIsSoundEnabled(true),
+            maFallbackDir(aFallbackDir)
         {
             ENSURE_OR_THROW( mxShape.is(), "ViewMediaShape::ViewMediaShape(): Invalid Shape" );
             ENSURE_OR_THROW( mpViewLayer, "ViewMediaShape::ViewMediaShape(): Invalid View" );
@@ -168,13 +171,13 @@ namespace slideshow::internal
                 uno::Reference< beans::XPropertySet > xPropSet( mxShape, uno::UNO_QUERY );
                 if (xPropSet.is())
                 {
-                    xPropSet->getPropertyValue("FallbackGraphic") >>= xGraphic;
+                    xPropSet->getPropertyValue(u"FallbackGraphic"_ustr) >>= xGraphic;
                 }
 
                 Graphic aGraphic(xGraphic);
-                const BitmapEx aBmp = aGraphic.GetBitmapEx();
+                const Bitmap aBmp(aGraphic.GetBitmapEx());
 
-                uno::Reference< rendering::XBitmap > xBitmap(vcl::unotools::xBitmapFromBitmapEx(aBmp));
+                uno::Reference< rendering::XBitmap > xBitmap(vcl::unotools::xBitmapFromBitmap(aBmp));
 
                 rendering::ViewState aViewState;
                 aViewState.AffineTransform = pCanvas->getViewState().AffineTransform;
@@ -217,7 +220,7 @@ namespace slideshow::internal
             if( xPropSet.is() &&
                 getPropertyValue( xParentWindow,
                                   xPropSet,
-                                  "Window") )
+                                  u"Window"_ustr) )
             {
                 const awt::Rectangle aRect( xParentWindow->getPosSize() );
 
@@ -225,16 +228,15 @@ namespace slideshow::internal
                 maWindowOffset.Y = aRect.Y;
             }
 
-            ::basegfx::B2DRange aTmpRange;
-            ::canvas::tools::calcTransformedRectBounds( aTmpRange,
+            ::basegfx::B2DRange aTmpRange = ::canvas::tools::calcTransformedRectBounds(
                                                         rNewBounds,
                                                         mpViewLayer->getTransformation() );
-            const ::basegfx::B2IRange& rRangePix(
+            const ::basegfx::B2IRange aRangePix(
                 ::basegfx::unotools::b2ISurroundingRangeFromB2DRange( aTmpRange ));
 
-            mxPlayerWindow->setEnable( !rRangePix.isEmpty() );
+            mxPlayerWindow->setEnable( !aRangePix.isEmpty() );
 
-            if( rRangePix.isEmpty() )
+            if( aRangePix.isEmpty() )
                 return true;
 
             awt::Rectangle aCanvasArea;
@@ -242,10 +244,10 @@ namespace slideshow::internal
             if (xUnoView)
                 aCanvasArea = xUnoView->getUnoView()->getCanvasArea();
 
-            const Point aPosPixel( rRangePix.getMinX() + maWindowOffset.X + aCanvasArea.X,
-                                   rRangePix.getMinY() + maWindowOffset.Y + aCanvasArea.Y );
-            const Size  aSizePixel( rRangePix.getMaxX() - rRangePix.getMinX(),
-                                    rRangePix.getMaxY() - rRangePix.getMinY() );
+            const Point aPosPixel( aRangePix.getMinX() + maWindowOffset.X + aCanvasArea.X,
+                                   aRangePix.getMinY() + maWindowOffset.Y + aCanvasArea.Y );
+            const Size  aSizePixel( aRangePix.getMaxX() - aRangePix.getMinX(),
+                                    aRangePix.getMaxY() - aRangePix.getMinY() );
 
             if( mpMediaWindow )
             {
@@ -286,14 +288,24 @@ namespace slideshow::internal
                         if (xPropSet.is())
                         {
                             OUString aURL;
-                            xPropSet->getPropertyValue("MediaMimeType") >>= sMimeType;
-                            if ((xPropSet->getPropertyValue("PrivateTempFileURL") >>= aURL)
+                            xPropSet->getPropertyValue(u"MediaMimeType"_ustr) >>= sMimeType;
+                            if ((xPropSet->getPropertyValue(u"PrivateTempFileURL"_ustr) >>= aURL)
                                 && !aURL.isEmpty())
                             {
                                 implInitializeMediaPlayer( aURL, sMimeType );
                             }
-                            else if (xPropSet->getPropertyValue("MediaURL") >>= aURL)
+                            else if (xPropSet->getPropertyValue(u"MediaURL"_ustr) >>= aURL)
                             {
+                                if ( maFallbackDir.getLength() &&
+                                     aURL.startsWith("file:///") &&
+                                     !comphelper::DirectoryHelper::fileExists(aURL) )
+                                {
+                                    auto fileNameStartIdx = aURL.lastIndexOf("/");
+                                    if (fileNameStartIdx != -1)
+                                    {
+                                        aURL = OUString::Concat(maFallbackDir) + aURL.subView(fileNameStartIdx + 1);
+                                    }
+                                }
                                 implInitializeMediaPlayer( aURL, sMimeType );
                             }
                         }
@@ -337,19 +349,19 @@ namespace slideshow::internal
             bool bLoop( false );
             getPropertyValue( bLoop,
                               rxProps,
-                              "Loop");
+                              u"Loop"_ustr);
             mxPlayer->setPlaybackLoop( bLoop );
 
             bool bMute( false );
             getPropertyValue( bMute,
                               rxProps,
-                              "Mute");
+                              u"Mute"_ustr);
             mxPlayer->setMute( bMute || !mbIsSoundEnabled);
 
             sal_Int16 nVolumeDB(0);
             getPropertyValue( nVolumeDB,
                               rxProps,
-                              "VolumeDB");
+                              u"VolumeDB"_ustr);
             mxPlayer->setVolumeDB( nVolumeDB );
 
             if( mxPlayerWindow.is() )
@@ -357,7 +369,7 @@ namespace slideshow::internal
                 media::ZoomLevel eZoom(media::ZoomLevel_FIT_TO_WINDOW);
                 getPropertyValue( eZoom,
                                   rxProps,
-                                  "Zoom");
+                                  u"Zoom"_ustr);
                 mxPlayerWindow->setZoomLevel( eZoom );
             }
         }
@@ -376,7 +388,7 @@ namespace slideshow::internal
             {
                 if( !rMediaURL.isEmpty() )
                 {
-                    mxPlayer = avmedia::MediaWindow::createPlayer( rMediaURL, ""/*TODO!*/, &rMimeType );
+                    mxPlayer = avmedia::MediaWindow::createPlayer( rMediaURL, u""_ustr/*TODO!*/, &rMimeType );
                 }
             }
             catch( uno::RuntimeException& )
@@ -409,19 +421,17 @@ namespace slideshow::internal
 
                 if( pWindow )
                 {
-                    ::basegfx::B2DRange aTmpRange;
-                    ::canvas::tools::calcTransformedRectBounds( aTmpRange,
-                                                                rBounds,
+                    ::basegfx::B2DRange aTmpRange = ::canvas::tools::calcTransformedRectBounds( rBounds,
                                                                 mpViewLayer->getTransformation() );
-                    const ::basegfx::B2IRange& rRangePix(
+                    const ::basegfx::B2IRange aRangePix(
                         ::basegfx::unotools::b2ISurroundingRangeFromB2DRange( aTmpRange ));
 
-                    if( !rRangePix.isEmpty() )
+                    if( !aRangePix.isEmpty() )
                     {
-                        awt::Rectangle              aAWTRect( rRangePix.getMinX(),
-                                                              rRangePix.getMinY(),
-                                                                rRangePix.getMaxX() - rRangePix.getMinX(),
-                                                                rRangePix.getMaxY() - rRangePix.getMinY() );
+                        awt::Rectangle              aAWTRect( aRangePix.getMinX(),
+                                                              aRangePix.getMinY(),
+                                                                aRangePix.getMaxX() - aRangePix.getMinX(),
+                                                                aRangePix.getMaxY() - aRangePix.getMinY() );
                         {
                             mpMediaWindow.disposeAndClear();
                             mpMediaWindow = VclPtr<SystemChildWindow>::Create( pWindow, WB_CLIPCHILDREN );
@@ -454,11 +464,15 @@ namespace slideshow::internal
 
                             SdrObject* pObj = SdrObject::getSdrObjectFromXShape(mxShape);
                             auto pMediaObj = dynamic_cast<SdrMediaObj*>(pObj);
-                            const avmedia::MediaItem* pMediaItem = nullptr;
+                            avmedia::MediaItem* pMediaItem = nullptr;
                             if (pMediaObj)
                             {
-                                pMediaItem = &pMediaObj->getMediaProperties();
+                                pMediaItem = pMediaObj->getMediaProperties().Clone();
                             }
+
+                            // TODO In slideshow we cannot play/pause/stop the video
+                            if (pMediaItem)
+                                pMediaItem->setState(avmedia::MediaState::Play);
 
                             uno::Sequence< uno::Any >   aArgs{
                                 uno::Any(nParentWindowHandle),

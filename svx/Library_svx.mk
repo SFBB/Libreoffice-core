@@ -110,7 +110,9 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/accessibility/GraphCtlAccessibleContext \
     svx/source/accessibility/ShapeTypeHandler \
     svx/source/accessibility/SvxShapeTypes \
+    svx/source/accessibility/accessiblewrapper \
     svx/source/accessibility/lookupcolorname \
+    svx/source/accessibility/proxyaggregation \
 ))
 endif
 
@@ -124,12 +126,15 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/customshapes/EnhancedCustomShapeFontWork \
     svx/source/customshapes/EnhancedCustomShapeHandle \
     svx/source/dialog/GenericCheckDialog \
+    svx/source/dialog/GenericDropDownFieldDialog \
     svx/source/dialog/_bmpmask \
     svx/source/dialog/charmap \
+    svx/source/dialog/cuicharmap \
     svx/source/dialog/searchcharmap \
     svx/source/dialog/connctrl \
     svx/source/dialog/_contdlg \
     svx/source/dialog/contwnd \
+    svx/source/dialog/gotodlg \
     svx/source/dialog/compressgraphicdialog \
     $(call gb_Helper_optional,BREAKPAD, \
 		svx/source/dialog/crashreportdlg \
@@ -138,6 +143,7 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/dialog/ClassificationCommon \
     svx/source/dialog/ClassificationDialog \
     svx/source/dialog/ClassificationEditView \
+    svx/source/dialog/ClassificationField \
     svx/source/dialog/databaseregistrationui \
     svx/source/dialog/dialcontrol \
     svx/source/dialog/dlgctl3d \
@@ -194,6 +200,7 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/form/tbxform \
     svx/source/items/algitem \
     svx/source/items/autoformathelper \
+	svx/source/items/ehdl \
     svx/source/items/hlnkitem \
     svx/source/items/numfmtsh \
     svx/source/items/legacyitem \
@@ -233,6 +240,7 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/sidebar/area/AreaPropertyPanelBase \
     svx/source/sidebar/area/AreaTransparencyGradientPopup \
     svx/source/sidebar/effect/EffectPropertyPanel \
+    svx/source/sidebar/effect/TextEffectPropertyPanel \
     svx/source/sidebar/fontwork/FontworkPropertyPanel \
     svx/source/sidebar/shadow/ShadowPropertyPanel \
     svx/source/sidebar/graphic/GraphicPropertyPanel \
@@ -261,6 +269,7 @@ $(eval $(call gb_Library_add_exception_objects,svx,\
     svx/source/table/tabledesign \
     svx/source/table/tablertfexporter \
     svx/source/table/tablertfimporter \
+	svx/source/table/tablehtmlimporter \
     svx/source/tbxctrls/bulletsnumbering \
     svx/source/tbxctrls/colrctrl \
     svx/source/tbxctrls/SvxColorChildWindow \

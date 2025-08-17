@@ -81,23 +81,12 @@ using namespace ::com::sun::star::uno;
 
 // Prototypes
 static void lcl_FrameGetMaxLineWidth(const SvxBorderLine* pBorderLine, SvxBorderLine& rBorderLine);
-static const SwFrameFormat* lcl_GetFrameFormatByName(SwWrtShell const & rSh, std::u16string_view rName)
-{
-    const size_t nCount = rSh.GetFlyCount(FLYCNTTYPE_FRM);
-    for( size_t i = 0; i < nCount; ++i )
-    {
-        const SwFrameFormat* pFormat = rSh.GetFlyNum(i, FLYCNTTYPE_FRM);
-        if(pFormat->GetName() == rName)
-            return pFormat;
-    }
-    return nullptr;
-}
 
 SFX_IMPL_INTERFACE(SwFrameShell, SwBaseShell)
 
 void SwFrameShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("frame");
+    GetStaticInterface()->RegisterPopupMenu(u"frame"_ustr);
 
     GetStaticInterface()->RegisterObjectBar(SFX_OBJECTBAR_OBJECT, SfxVisibilityFlags::Invisible, ToolbarId::Frame_Toolbox);
 }
@@ -166,7 +155,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
             if (!pArgs)
             {
                 // Frame already exists, open frame dialog for editing.
-                SfxStringItem aDefPage(FN_FORMAT_FRAME_DLG, "columns");
+                SfxStringItem aDefPage(FN_FORMAT_FRAME_DLG, u"columns"_ustr);
                 rSh.GetView().GetViewFrame().GetDispatcher()->ExecuteList(
                         FN_FORMAT_FRAME_DLG,
                         SfxCallMode::SYNCHRON|SfxCallMode::RECORD,
@@ -220,16 +209,16 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                 SwFormatURL aURL( aSet.Get( RES_URL ) );
 
                 OUString sOldName(rHLinkItem.GetName().toAsciiUpperCase());
-                OUString sFlyName(rSh.GetFlyName().toAsciiUpperCase());
+                OUString sFlyName(rSh.GetFlyName().toString().toAsciiUpperCase());
                 if (sOldName != sFlyName)
                 {
                     OUString sName(sOldName);
                     sal_uInt16 i = 1;
-                    while (rSh.FindFlyByName(sName))
+                    while (rSh.FindFlyByName(UIName(sName)))
                     {
                         sName = sOldName + "_" + OUString::number(i++);
                     }
-                    rSh.SetFlyName(sName);
+                    rSh.SetFlyName(UIName(sName));
                 }
                 aURL.SetURL( rURL, false );
                 aURL.SetTargetFrameName(rTarget);
@@ -355,7 +344,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
         case SID_ATTR_ULSPACE:
         case SID_ATTR_LRSPACE:
         {
-            if(pArgs && SfxItemState::SET == pArgs->GetItemState(GetPool().GetWhich(nSlot), false, &pItem))
+            if(pArgs && SfxItemState::SET == pArgs->GetItemState(GetPool().GetWhichIDFromSlotID(nSlot), false, &pItem))
             {
                 aMgr.SetAttrSet( *pArgs );
                 bCopyToFormat = true;
@@ -481,7 +470,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                 if(nSel & SelectionType::Ole)
                     aSet.Put( SfxBoolItem(FN_KEEP_ASPECT_RATIO, pVOpt->IsKeepRatio()) );
                 aSet.Put(SfxUInt16Item(SID_HTML_MODE, ::GetHtmlMode(GetView().GetDocShell())));
-                aSet.Put(SfxStringItem(FN_SET_FRM_NAME, rSh.GetFlyName()));
+                aSet.Put(SfxStringItem(FN_SET_FRM_NAME, rSh.GetFlyName().toString()));
                 aSet.Put(SfxStringItem(FN_UNO_DESCRIPTION, rSh.GetObjDescription()));
                 if( nSel & SelectionType::Ole )
                 {
@@ -491,23 +480,27 @@ void SwFrameShell::Execute(SfxRequest &rReq)
 
                 const SwRect &rPg = rSh.GetAnyCurRect(CurRectType::Page);
                 SwFormatFrameSize aFrameSize(SwFrameSize::Variable, rPg.Width(), rPg.Height());
-                aFrameSize.SetWhich(GetPool().GetWhich(SID_ATTR_PAGE_SIZE));
+                aFrameSize.SetWhich(GetPool().GetWhichIDFromSlotID(SID_ATTR_PAGE_SIZE));
                 aSet.Put(aFrameSize);
 
                 const SwRect &rPr = rSh.GetAnyCurRect(CurRectType::PagePrt);
                 SwFormatFrameSize aPrtSize(SwFrameSize::Variable, rPr.Width(), rPr.Height());
-                aPrtSize.SetWhich(GetPool().GetWhich(FN_GET_PRINT_AREA));
+                aPrtSize.SetWhich(GetPool().GetWhichIDFromSlotID(FN_GET_PRINT_AREA));
                 aSet.Put(aPrtSize);
 
                 aSet.Put(aMgr.GetAttrSet());
                 aSet.SetParent( aMgr.GetAttrSet().GetParent() );
 
                 // On % values initialize size
-                SwFormatFrameSize& rSize = const_cast<SwFormatFrameSize&>(aSet.Get(RES_FRM_SIZE));
-                if (rSize.GetWidthPercent() && rSize.GetWidthPercent() != SwFormatFrameSize::SYNCED)
-                    rSize.SetWidth(rSh.GetAnyCurRect(CurRectType::FlyEmbedded).Width());
-                if (rSize.GetHeightPercent() && rSize.GetHeightPercent() != SwFormatFrameSize::SYNCED)
-                    rSize.SetHeight(rSh.GetAnyCurRect(CurRectType::FlyEmbedded).Height());
+                SwFormatFrameSize aSize(aSet.Get(RES_FRM_SIZE));
+                if (aSize.GetWidthPercent() && aSize.GetWidthPercent() != SwFormatFrameSize::SYNCED)
+                    aSize.SetWidth(rSh.GetAnyCurRect(CurRectType::FlyEmbedded).Width());
+                if (aSize.GetHeightPercent() && aSize.GetHeightPercent() != SwFormatFrameSize::SYNCED)
+                    aSize.SetHeight(rSh.GetAnyCurRect(CurRectType::FlyEmbedded).Height());
+                if (aSize != aSet.Get(RES_FRM_SIZE))
+                {
+                    aSet.Put(aSize);
+                }
 
                 // disable vertical positioning for Math Objects anchored 'as char' if baseline alignment is activated
                 aSet.Put( SfxBoolItem( FN_MATH_BASELINE_ALIGNMENT,
@@ -522,12 +515,13 @@ void SwFrameShell::Execute(SfxRequest &rReq)
 
                 aSet.Put(SfxFrameItem( SID_DOCFRAME, &GetView().GetViewFrame().GetFrame()));
                 FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebView*>( &GetView()) != nullptr );
-                SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric) ));
+                SwModule* mod = SwModule::get();
+                mod->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast<sal_uInt16>(eMetric)));
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
                 ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateFrameTabDialog(
-                                                        nSel & SelectionType::Graphic ? OUString("PictureDialog") :
-                                                        nSel & SelectionType::Ole ? OUString("ObjectDialog"):
-                                                                                        OUString("FrameDialog"),
+                                                        nSel & SelectionType::Graphic ? u"PictureDialog"_ustr :
+                                                        nSel & SelectionType::Ole ? u"ObjectDialog"_ustr:
+                                                                                        u"FrameDialog"_ustr,
                                                         GetView().GetViewFrame(),
                                                         GetView().GetFrameWeld(),
                                                         aSet,
@@ -536,7 +530,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
 
                 if ( nSlot == FN_DRAW_WRAP_DLG )
                 {
-                    pDlg->SetCurPageId("wrap");
+                    pDlg->SetCurPageId(u"wrap"_ustr);
                 }
 
                 if ( pDlg->Execute() )
@@ -551,7 +545,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                         {
                             SwViewOption aUsrPref( *pVOpt );
                             aUsrPref.SetKeepRatio(pRatioItem->GetValue());
-                            SW_MOD()->ApplyUsrPref(aUsrPref, &GetView());
+                            mod->ApplyUsrPref(aUsrPref, &GetView());
                         }
                         if (const SfxStringItem* pAltNameItem = pOutSet->GetItemIfSet(FN_SET_FRM_ALT_NAME))
                         {
@@ -568,14 +562,14 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                             rSh.AutoUpdateFrame(pFormat, *pOutSet);
                             // Anything which is not supported by the format must be set hard.
                             if(const SfxStringItem* pFrameName = pOutSet->GetItemIfSet(FN_SET_FRM_NAME, false))
-                                rSh.SetFlyName(pFrameName->GetValue());
+                                rSh.SetFlyName(UIName(pFrameName->GetValue()));
                             SfxItemSetFixed<
                                     RES_FRM_SIZE, RES_FRM_SIZE,
                                     RES_SURROUND, RES_ANCHOR>  aShellSet( GetPool() );
                             aShellSet.Put(*pOutSet);
                             aMgr.SetAttrSet(aShellSet);
                             if(const SfxStringItem* pFrameName = pOutSet->GetItemIfSet(FN_SET_FRM_NAME, false))
-                                rSh.SetFlyName(pFrameName->GetValue());
+                                rSh.SetFlyName(UIName(pFrameName->GetValue()));
                         }
                         else
                             aMgr.SetAttrSet( *pOutSet );
@@ -604,8 +598,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                             if (!sPrevName.isEmpty())
                             {
                                 //needs cast - no non-const method available
-                                SwFrameFormat* pPrevFormat = const_cast<SwFrameFormat*>(
-                                    lcl_GetFrameFormatByName(rSh, sPrevName));
+                                SwFrameFormat* pPrevFormat = rSh.GetDoc()->GetFlyFrameFormatByName(UIName(sPrevName));
                                 SAL_WARN_IF(!pPrevFormat, "sw.ui", "No frame found!");
                                 if(pPrevFormat)
                                 {
@@ -636,8 +629,7 @@ void SwFrameShell::Execute(SfxRequest &rReq)
                             if (!sNextName.isEmpty())
                             {
                                 //needs cast - no non-const method available
-                                SwFrameFormat* pNextFormat = const_cast<SwFrameFormat*>(
-                                    lcl_GetFrameFormatByName(rSh, sNextName));
+                                SwFrameFormat* pNextFormat = rSh.GetDoc()->GetFlyFrameFormatByName(UIName(sNextName));
                                 SAL_WARN_IF(!pNextFormat, "sw.ui", "No frame found!");
                                 if(pNextFormat)
                                 {
@@ -671,18 +663,21 @@ void SwFrameShell::Execute(SfxRequest &rReq)
             bUpdateMgr = false;
             SdrView* pSdrView = rSh.GetDrawViewWithValidMarkList();
             if ( pSdrView &&
-                 pSdrView->GetMarkedObjectCount() == 1 )
+                 pSdrView->GetMarkedObjectList().GetMarkCount() == 1 )
             {
-                OUString aName(rSh.GetFlyName());
+                UIName aName(rSh.GetFlyName());
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                ScopedVclPtr<AbstractSvxObjectNameDialog> pDlg(
-                    pFact->CreateSvxObjectNameDialog(GetView().GetFrameWeld(), aName));
+                VclPtr<AbstractSvxObjectNameDialog> pDlg(
+                    pFact->CreateSvxObjectNameDialog(GetView().GetFrameWeld(), aName.toString()));
 
-                if ( pDlg->Execute() == RET_OK )
-                {
-                    pDlg->GetName(aName);
-                    rSh.SetFlyName(aName);
-                }
+                pDlg->StartExecuteAsync(
+                    [this, pDlg] (sal_Int32 nResult)->void
+                    {
+                        if (nResult == RET_OK)
+                            GetShell().SetFlyName(UIName(pDlg->GetName()));
+                        pDlg->disposeOnce();
+                    }
+                );
             }
         }
         break;
@@ -692,27 +687,29 @@ void SwFrameShell::Execute(SfxRequest &rReq)
             bUpdateMgr = false;
             SdrView* pSdrView = rSh.GetDrawViewWithValidMarkList();
             if ( pSdrView &&
-                 pSdrView->GetMarkedObjectCount() == 1 )
+                 pSdrView->GetMarkedObjectList().GetMarkCount() == 1 )
             {
                 OUString aDescription(rSh.GetObjDescription());
                 OUString aTitle(rSh.GetObjTitle());
                 bool isDecorative(rSh.IsObjDecorative());
 
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                ScopedVclPtr<AbstractSvxObjectTitleDescDialog> pDlg(
+                VclPtr<AbstractSvxObjectTitleDescDialog> pDlg(
                     pFact->CreateSvxObjectTitleDescDialog(GetView().GetFrameWeld(),
                         aTitle, aDescription, isDecorative));
 
-                if ( pDlg->Execute() == RET_OK )
-                {
-                    pDlg->GetDescription(aDescription);
-                    pDlg->GetTitle(aTitle);
-                    pDlg->IsDecorative(isDecorative);
-
-                    rSh.SetObjDescription(aDescription);
-                    rSh.SetObjTitle(aTitle);
-                    rSh.SetObjDecorative(isDecorative);
-                }
+                pDlg->StartExecuteAsync(
+                    [this, pDlg] (sal_Int32 nResult)->void
+                    {
+                        if (nResult == RET_OK)
+                        {
+                            GetShell().SetObjDescription(pDlg->GetDescription());
+                            GetShell().SetObjTitle(pDlg->GetTitle());
+                            GetShell().SetObjDecorative(pDlg->IsDecorative());
+                        }
+                        pDlg->disposeOnce();
+                    }
+                );
             }
         }
         break;
@@ -778,7 +775,7 @@ void SwFrameShell::GetState(SfxItemSet& rSet)
             case RES_PRINT:
             case RES_SURROUND:
             {
-                rSet.Put(aSet.Get(GetPool().GetWhich(nWhich)));
+                rSet.Put(aSet.Get(GetPool().GetWhichIDFromSlotID(nWhich)));
             }
             break;
             case SID_OBJECT_ALIGN:
@@ -817,7 +814,7 @@ void SwFrameShell::GetState(SfxItemSet& rSet)
                         default:
                             break;
                     }
-                    SwFormatHoriOrient aHOrient(aMgr.GetHoriOrient());
+                    const SwFormatHoriOrient& aHOrient(aMgr.GetHoriOrient());
                     if (nHoriOrient != -1)
                         rSet.Put(SfxBoolItem(nWhich, nHoriOrient == aHOrient.GetHoriOrient()));
                 }
@@ -887,27 +884,29 @@ void SwFrameShell::GetState(SfxItemSet& rSet)
                                 }
                             }
                         }
-                        OUString aModuleName(vcl::CommandInfoProvider::GetModuleIdentifier(GetFrame()->GetFrame().GetFrameInterface()));
+                        OUString aModuleName;
+                        if (SfxViewFrame* pFrame = GetFrame())
+                            aModuleName = vcl::CommandInfoProvider::GetModuleIdentifier(pFrame->GetFrame().GetFrameInterface());
                         switch (nWhich)
                         {
                             case SID_OBJECT_ALIGN_UP :
                             case FN_FRAME_ALIGN_VERT_TOP:
                             {
-                                auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(".uno:AlignTop", aModuleName);
+                                auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(u".uno:AlignTop"_ustr, aModuleName);
                                 sNewLabel = vcl::CommandInfoProvider::GetLabelForCommand(aProperties);
                                 break;
                             }
                             case SID_OBJECT_ALIGN_MIDDLE:
                             case FN_FRAME_ALIGN_VERT_CENTER:
                             {
-                                auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(".uno:AlignVerticalCenter", aModuleName);
+                                auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(u".uno:AlignVerticalCenter"_ustr, aModuleName);
                                 sNewLabel = vcl::CommandInfoProvider::GetLabelForCommand(aProperties);
                                 break;
                             }
                             case SID_OBJECT_ALIGN_DOWN:
                             case FN_FRAME_ALIGN_VERT_BOTTOM:
                             {
-                                auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(".uno:AlignBottom", aModuleName);
+                                auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(u".uno:AlignBottom"_ustr, aModuleName);
                                 sNewLabel = vcl::CommandInfoProvider::GetLabelForCommand(aProperties);
                                 break;
                             }
@@ -928,7 +927,7 @@ void SwFrameShell::GetState(SfxItemSet& rSet)
                 {
                     aHLinkItem.SetURL(pFormatURL->GetURL());
                     aHLinkItem.SetTargetFrame(pFormatURL->GetTargetFrameName());
-                    aHLinkItem.SetName(rSh.GetFlyName());
+                    aHLinkItem.SetName(rSh.GetFlyName().toString());
                 }
 
                 aHLinkItem.SetInsertMode(static_cast<SvxLinkInsertMode>(aHLinkItem.GetInsertMode() |
@@ -1030,7 +1029,7 @@ void SwFrameShell::GetState(SfxItemSet& rSet)
                 SwWrtShell &rWrtSh = GetShell();
                 SdrView* pSdrView = rWrtSh.GetDrawViewWithValidMarkList();
                 if ( !pSdrView ||
-                     pSdrView->GetMarkedObjectCount() != 1 )
+                     pSdrView->GetMarkedObjectList().GetMarkCount() != 1 )
                 {
                     rSet.DisableItem( nWhich );
                 }
@@ -1068,7 +1067,7 @@ void SwFrameShell::GetState(SfxItemSet& rSet)
 SwFrameShell::SwFrameShell(SwView &_rView) :
     SwBaseShell( _rView )
 {
-    SetName("Frame");
+    SetName(u"Frame"_ustr);
 
     // #96392# Use this to announce it is the frame shell who creates the selection.
     SwTransferable::CreateSelection( _rView.GetWrtShell(), this );
@@ -1403,7 +1402,7 @@ void SwFrameShell::ExecDrawDlgTextFrame(SfxRequest const & rReq)
                         // set attributes at FlyFrame
                         GetShell().SetFlyFrameAttr(const_cast< SfxItemSet& >(*pDlg->GetOutputItemSet()));
 
-                        static sal_uInt16 aInval[] =
+                        static const sal_uInt16 aInval[] =
                         {
                             SID_ATTR_FILL_STYLE,
                             SID_ATTR_FILL_COLOR,

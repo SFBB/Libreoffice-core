@@ -18,7 +18,6 @@
  */
 
 #include "ximpstyl.hxx"
-#include <utility>
 #include <xmloff/maptype.hxx>
 #include <xmloff/XMLDrawingPageStyleContext.hxx>
 #include <xmloff/XMLShapeStyleContext.hxx>
@@ -41,24 +40,19 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/presentation/XHandoutMasterSupplier.hpp>
-#include <com/sun/star/util/Color.hpp>
 #include <comphelper/namecontainer.hxx>
 #include <xmloff/autolayout.hxx>
 #include <xmloff/xmlprcon.hxx>
 #include <xmloff/families.hxx>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <svl/numformat.hxx>
-#include <svl/zforlist.hxx>
 #include "layerimp.hxx"
 #include <xmloff/XMLGraphicsDefaultStyle.hxx>
 #include <XMLNumberStylesImport.hxx>
 #include <XMLThemeContext.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <xmloff/xmlerror.hxx>
 #include <xmloff/table/XMLTableImport.hxx>
-#include <comphelper/sequenceashashmap.hxx>
-#include <sax/tools/converter.hxx>
-#include <comphelper/sequence.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -74,7 +68,7 @@ public:
     SdXMLDrawingPagePropertySetContext( SvXMLImport& rImport, sal_Int32 nElement,
                  const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList,
                  ::std::vector< XMLPropertyState > &rProps,
-                 const rtl::Reference < SvXMLImportPropertyMapper > &rMap );
+                 SvXMLImportPropertyMapper* pMap );
 
     using SvXMLPropertySetContext::createFastChildContext;
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > createFastChildContext(
@@ -89,9 +83,9 @@ SdXMLDrawingPagePropertySetContext::SdXMLDrawingPagePropertySetContext(
                  SvXMLImport& rImport, sal_Int32 nElement,
                  const uno::Reference< xml::sax::XFastAttributeList > & xAttrList,
                  ::std::vector< XMLPropertyState > &rProps,
-                 const rtl::Reference < SvXMLImportPropertyMapper > &rMap ) :
+                 SvXMLImportPropertyMapper* pMap ) :
     SvXMLPropertySetContext( rImport, nElement, xAttrList,
-                             XML_TYPE_PROP_DRAWING_PAGE, rProps, rMap )
+                             XML_TYPE_PROP_DRAWING_PAGE, rProps, pMap )
 {
 }
 
@@ -101,7 +95,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > SdXMLDrawingPageProper
     ::std::vector< XMLPropertyState > &rProperties,
     const XMLPropertyState& rProp )
 {
-    switch( mxMapper->getPropertySetMapper()->GetEntryContextId( rProp.mnIndex ) )
+    switch( mpMapper->getPropertySetMapper()->GetEntryContextId( rProp.mnIndex ) )
     {
     case CTF_PAGE_SOUND_URL:
     {
@@ -178,7 +172,7 @@ XMLDrawingPageStyleContext::XMLDrawingPageStyleContext(
     size_t size(1); // for the -1 entry
     for (ContextID_Index_Pair const* pTemp(pContextIDs); pTemp->nContextID != -1; ++size, ++pTemp);
     m_pContextIDs.reset(new ContextID_Index_Pair[size]);
-    std::memcpy(m_pContextIDs.get(), pContextIDs, size * sizeof(ContextID_Index_Pair));
+    std::copy(pContextIDs, pContextIDs + size, m_pContextIDs.get());
 }
 
 SdXMLDrawingPageStyleContext::SdXMLDrawingPageStyleContext(
@@ -194,13 +188,13 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > SdXMLDrawingPageStyleC
 {
     if( nElement == XML_ELEMENT(STYLE, XML_DRAWING_PAGE_PROPERTIES) )
     {
-        rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
+        SvXMLImportPropertyMapper* pImpPrMap =
             GetStyles()->GetImportPropertyMapper( GetFamily() );
-        if( xImpPrMap.is() )
+        if( pImpPrMap )
             return new SdXMLDrawingPagePropertySetContext( GetImport(), nElement,
                                                     xAttrList,
                                                     GetProperties(),
-                                                    xImpPrMap );
+                                                    pImpPrMap );
     }
 
     return XMLPropStyleContext::createFastChildContext( nElement, xAttrList );
@@ -249,11 +243,10 @@ void SdXMLDrawingPageStyleContext::Finish( bool bOverwrite )
 void XMLDrawingPageStyleContext::FillPropertySet(
     const Reference< beans::XPropertySet > & rPropSet )
 {
-    rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
+    SvXMLImportPropertyMapper* pImpPrMap =
         GetStyles()->GetImportPropertyMapper( GetFamily() );
-    SAL_WARN_IF( !xImpPrMap.is(), "xmloff", "There is the import prop mapper" );
-    if( xImpPrMap.is() )
-        xImpPrMap->FillPropertySet(GetProperties(), rPropSet, m_pContextIDs.get());
+    assert( pImpPrMap );
+    pImpPrMap->FillPropertySet(GetProperties(), rPropSet, m_pContextIDs.get());
 
     Reference< beans::XPropertySetInfo > xInfo;
     for (size_t i=0; m_pContextIDs[i].nContextID != -1; ++i)
@@ -275,7 +268,7 @@ void XMLDrawingPageStyleContext::FillPropertySet(
                                                           sStyleName );
             // get property set mapper
             rtl::Reference<XMLPropertySetMapper> rPropMapper =
-                                        xImpPrMap->getPropertySetMapper();
+                                        pImpPrMap->getPropertySetMapper();
 
             // set property
             const OUString& rPropertyName =
@@ -687,6 +680,7 @@ SdXMLPresentationPlaceholderContext::~SdXMLPresentationPlaceholderContext()
 }
 
 
+// Only called for handout master
 SdXMLMasterPageContext::SdXMLMasterPageContext(
     SdXMLImport& rImport,
     sal_Int32 nElement,
@@ -694,7 +688,7 @@ SdXMLMasterPageContext::SdXMLMasterPageContext(
     uno::Reference< drawing::XShapes > const & rShapes)
 :   SdXMLGenericPageContext( rImport, xAttrList, rShapes )
 {
-    const bool bHandoutMaster = (nElement & TOKEN_MASK) == XML_HANDOUT_MASTER;
+    assert((nElement & TOKEN_MASK) == XML_HANDOUT_MASTER); (void)nElement;
     OUString sStyleName, sPageMasterName;
 
     for (auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ))
@@ -754,13 +748,110 @@ SdXMLMasterPageContext::SdXMLMasterPageContext(
 
     GetImport().GetShapeImport()->startPage( GetLocalShapesContext() );
 
-    // set page name?
-    if(!bHandoutMaster && !msDisplayName.isEmpty() && GetLocalShapesContext().is())
+    // set page-master?
+    if(!sPageMasterName.isEmpty())
     {
-        uno::Reference < container::XNamed > xNamed(GetLocalShapesContext(), uno::UNO_QUERY);
-        if(xNamed.is())
-            xNamed->setName(msDisplayName);
+        SetPageMaster( sPageMasterName );
     }
+
+    SetStyle( sStyleName );
+
+    SetLayout();
+
+    DeleteAllShapes();
+}
+
+// only called for normal master pages
+SdXMLMasterPageContext::SdXMLMasterPageContext(
+    SdXMLImport& rImport,
+    sal_Int32 nElement,
+    const uno::Reference< xml::sax::XFastAttributeList>& xAttrList,
+    uno::Reference< drawing::XDrawPages2 > const & xMasterPages)
+:   SdXMLGenericPageContext( rImport, xAttrList )
+{
+    assert((nElement & TOKEN_MASK) != XML_HANDOUT_MASTER); (void)nElement;
+    OUString sStyleName, sPageMasterName;
+
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ))
+    {
+        const OUString sValue = aIter.toString();
+        switch(aIter.getToken())
+        {
+            case XML_ELEMENT(STYLE, XML_NAME):
+            {
+                msName = sValue;
+                break;
+            }
+            case XML_ELEMENT(STYLE, XML_DISPLAY_NAME):
+            {
+                msDisplayName = sValue;
+                break;
+            }
+            case XML_ELEMENT(STYLE, XML_PAGE_LAYOUT_NAME):
+            {
+                sPageMasterName = sValue;
+                break;
+            }
+            case XML_ELEMENT(DRAW, XML_STYLE_NAME):
+            {
+                sStyleName = sValue;
+                break;
+            }
+            case XML_ELEMENT(PRESENTATION, XML_PRESENTATION_PAGE_LAYOUT_NAME):
+            {
+                maPageLayoutName = sValue;
+                break;
+            }
+            case XML_ELEMENT(PRESENTATION, XML_USE_HEADER_NAME):
+            {
+                maUseHeaderDeclName =  sValue;
+                break;
+            }
+            case XML_ELEMENT(PRESENTATION, XML_USE_FOOTER_NAME):
+            {
+                maUseFooterDeclName =  sValue;
+                break;
+            }
+            case XML_ELEMENT(PRESENTATION, XML_USE_DATE_TIME_NAME):
+            {
+                maUseDateTimeDeclName =  sValue;
+                break;
+            }
+            default:
+                XMLOFF_WARN_UNKNOWN("xmloff", aIter);
+        }
+    }
+
+    if( msDisplayName.isEmpty() )
+        msDisplayName = msName;
+    else if( msDisplayName != msName )
+        GetImport().AddStyleDisplayName( XmlStyleFamily::MASTER_PAGE, msName, msDisplayName );
+
+    sal_Int32 nNewMasterPageCount = GetSdImport().GetNewMasterPageCount();
+    sal_Int32 nMasterPageCount = xMasterPages->getCount();
+    uno::Reference< drawing::XDrawPage > xNewMasterPage;
+    if (nNewMasterPageCount + 1 > nMasterPageCount)
+    {
+        // new page, create and insert
+        xNewMasterPage = xMasterPages->insertNamedNewByIndex(nMasterPageCount, msDisplayName);
+        SetShapes(xNewMasterPage);
+    }
+    else
+    {
+        // existing page, use it
+        xMasterPages->getByIndex(nNewMasterPageCount) >>= xNewMasterPage;
+        SetShapes(xNewMasterPage);
+        if(!msDisplayName.isEmpty())
+        {
+            uno::Reference < container::XNamed > xNamed(xNewMasterPage, uno::UNO_QUERY);
+            if(xNamed.is())
+                xNamed->setName(msDisplayName);
+        }
+    }
+    // increment global import page counter
+    GetSdImport().IncrementNewMasterPageCount();
+
+    GetImport().GetShapeImport()->startPage( GetLocalShapesContext() );
 
     // set page-master?
     if(!sPageMasterName.isEmpty())
@@ -852,7 +943,7 @@ SdXMLStylesContext::SdXMLStylesContext(
 {
     Reference< uno::XComponentContext > xContext = rImport.GetComponentContext();
     mpNumFormatter = std::make_unique<SvNumberFormatter>( xContext, LANGUAGE_SYSTEM );
-    mpNumFmtHelper = std::make_unique<SvXMLNumFmtHelper>( mpNumFormatter.get(), xContext );
+    mpNumFmtHelper = std::make_unique<SvXMLNumFmtHelper>( mpNumFormatter.get() );
 }
 
 SvXMLStyleContext* SdXMLStylesContext::CreateStyleChildContext(
@@ -945,22 +1036,16 @@ SvXMLStyleContext* SdXMLStylesContext::CreateDefaultStyleStyleChildContext(
     return SvXMLStylesContext::CreateDefaultStyleStyleChildContext(nFamily, nElement, xAttrList);
 }
 
-rtl::Reference< SvXMLImportPropertyMapper > SdXMLStylesContext::GetImportPropertyMapper(
+SvXMLImportPropertyMapper* SdXMLStylesContext::GetImportPropertyMapper(
     XmlStyleFamily nFamily) const
 {
-    rtl::Reference < SvXMLImportPropertyMapper > xMapper;
+    SvXMLImportPropertyMapper* pMapper = nullptr;
 
     switch( nFamily )
     {
     case XmlStyleFamily::SD_DRAWINGPAGE_ID:
     {
-        if(!xPresImpPropMapper.is())
-        {
-            rtl::Reference< XMLShapeImportHelper > aImpHelper = const_cast<SvXMLImport&>(GetImport()).GetShapeImport();
-            const_cast<SdXMLStylesContext*>(this)->xPresImpPropMapper =
-                aImpHelper->GetPresPagePropsMapper();
-        }
-        xMapper = xPresImpPropMapper;
+        pMapper = const_cast<SvXMLImport&>(GetImport()).GetShapeImport()->GetPresPagePropsMapper();
         break;
     }
 
@@ -972,9 +1057,9 @@ rtl::Reference< SvXMLImportPropertyMapper > SdXMLStylesContext::GetImportPropert
 
         switch( nFamily )
         {
-        case XmlStyleFamily::TABLE_COLUMN: xMapper = xTableImport->GetColumnImportPropertySetMapper().get(); break;
-        case XmlStyleFamily::TABLE_ROW: xMapper = xTableImport->GetRowImportPropertySetMapper().get(); break;
-        case XmlStyleFamily::TABLE_CELL: xMapper = xTableImport->GetCellImportPropertySetMapper().get(); break;
+        case XmlStyleFamily::TABLE_COLUMN: pMapper = xTableImport->GetColumnImportPropertySetMapper(); break;
+        case XmlStyleFamily::TABLE_ROW: pMapper = xTableImport->GetRowImportPropertySetMapper(); break;
+        case XmlStyleFamily::TABLE_CELL: pMapper = xTableImport->GetCellImportPropertySetMapper(); break;
         default: break;
         }
         break;
@@ -983,9 +1068,9 @@ rtl::Reference< SvXMLImportPropertyMapper > SdXMLStylesContext::GetImportPropert
     }
 
     // call base class
-    if( !xMapper.is() )
-        xMapper = SvXMLStylesContext::GetImportPropertyMapper(nFamily);
-    return xMapper;
+    if( !pMapper )
+        pMapper = SvXMLStylesContext::GetImportPropertyMapper(nFamily);
+    return pMapper;
 }
 
 // Process all style and object info
@@ -1040,8 +1125,8 @@ void SdXMLStylesContext::endFastElement(sal_Int32 )
         {
             uno::Reference< beans::XPropertySetInfo > xInfoSetInfo( xInfoSet->getPropertySetInfo() );
 
-            if( xInfoSetInfo->hasPropertyByName("PageLayouts") )
-                xInfoSet->setPropertyValue("PageLayouts", uno::Any( getPageLayouts() ) );
+            if( xInfoSetInfo->hasPropertyByName(u"PageLayouts"_ustr) )
+                xInfoSet->setPropertyValue(u"PageLayouts"_ustr, uno::Any( getPageLayouts() ) );
         }
 
     }
@@ -1080,9 +1165,9 @@ void SdXMLStylesContext::ImpSetGraphicStyles() const
 {
     if(GetSdImport().GetLocalDocStyleFamilies().is()) try
     {
-        uno::Reference< container::XNameAccess > xGraphicPageStyles( GetSdImport().GetLocalDocStyleFamilies()->getByName("graphics"), uno::UNO_QUERY_THROW );
+        uno::Reference< container::XNameAccess > xGraphicPageStyles( GetSdImport().GetLocalDocStyleFamilies()->getByName(u"graphics"_ustr), uno::UNO_QUERY_THROW );
 
-        ImpSetGraphicStyles(xGraphicPageStyles, XmlStyleFamily::SD_GRAPHICS_ID, u"");
+        ImpSetGraphicStyles(xGraphicPageStyles, XmlStyleFamily::SD_GRAPHICS_ID, u""_ustr);
     }
     catch( uno::Exception& )
     {
@@ -1094,9 +1179,9 @@ void SdXMLStylesContext::ImpSetCellStyles() const
 {
     if(GetSdImport().GetLocalDocStyleFamilies().is()) try
     {
-        uno::Reference< container::XNameAccess > xGraphicPageStyles( GetSdImport().GetLocalDocStyleFamilies()->getByName("cell"), uno::UNO_QUERY_THROW );
+        uno::Reference< container::XNameAccess > xGraphicPageStyles( GetSdImport().GetLocalDocStyleFamilies()->getByName(u"cell"_ustr), uno::UNO_QUERY_THROW );
 
-        ImpSetGraphicStyles(xGraphicPageStyles, XmlStyleFamily::TABLE_CELL, u"");
+        ImpSetGraphicStyles(xGraphicPageStyles, XmlStyleFamily::TABLE_CELL, u""_ustr);
     }
     catch( uno::Exception& )
     {
@@ -1117,7 +1202,7 @@ static bool canSkipReset(std::u16string_view rName, const XMLPropStyleContext* p
     if (pPropStyle && rName == u"TextAutoGrowHeight")
     {
         bool bOldStyleTextAutoGrowHeight(false);
-        rPropSet->getPropertyValue("TextAutoGrowHeight") >>= bOldStyleTextAutoGrowHeight;
+        rPropSet->getPropertyValue(u"TextAutoGrowHeight"_ustr) >>= bOldStyleTextAutoGrowHeight;
 
         sal_Int32 nIndexStyle = rPrMap->GetEntryIndex(XML_NAMESPACE_DRAW, u"auto-grow-height", 0);
         if (nIndexStyle != -1)
@@ -1138,41 +1223,33 @@ static bool canSkipReset(std::u16string_view rName, const XMLPropStyleContext* p
 
 // help function used by ImpSetGraphicStyles() and ImpSetMasterPageStyles()
 
-void SdXMLStylesContext::ImpSetGraphicStyles( uno::Reference< container::XNameAccess > const & xPageStyles,  XmlStyleFamily nFamily, std::u16string_view rPrefix) const
+void SdXMLStylesContext::ImpSetGraphicStyles( uno::Reference< container::XNameAccess > const & xPageStyles,  XmlStyleFamily nFamily, const OUString& rPrefix) const
 {
-    sal_Int32 nPrefLen(rPrefix.size());
-
-    sal_uInt32 a;
+    sal_Int32 nPrefLen(rPrefix.getLength());
 
     // set defaults
-    for( a = 0; a < GetStyleCount(); a++)
+    auto [itStart1, itEnd1] = FindStyleChildContextByDisplayNamePrefix(nFamily, u""_ustr);
+    for (auto it = itStart1; it != itEnd1; ++it)
     {
-        const SvXMLStyleContext* pStyle = GetStyle(a);
-
-        if(nFamily == pStyle->GetFamily() && pStyle->IsDefaultStyle())
+        const SvXMLStyleContext* pStyle = *it;
+        if(pStyle->IsDefaultStyle())
         {
             const_cast<SvXMLStyleContext*>(pStyle)->SetDefaults();
         }
     }
 
     // create all styles and set properties
-    for( a = 0; a < GetStyleCount(); a++)
+    auto [itStart, itEnd] = FindStyleChildContextByDisplayNamePrefix(nFamily, rPrefix);
+    for (auto it = itStart; it != itEnd; ++it)
     {
+        const SvXMLStyleContext* pStyle = *it;
         try
         {
-            const SvXMLStyleContext* pStyle = GetStyle(a);
-            if(nFamily == pStyle->GetFamily() && !pStyle->IsDefaultStyle())
+            if(!pStyle->IsDefaultStyle())
             {
                 OUString aStyleName(pStyle->GetDisplayName());
-
                 if( nPrefLen )
-                {
-                    sal_Int32 nStylePrefLen = aStyleName.lastIndexOf( '-' ) + 1;
-                    if( (nPrefLen != nStylePrefLen) || !aStyleName.startsWith(rPrefix) )
-                        continue;
-
                     aStyleName = aStyleName.copy( nPrefLen );
-                }
 
                 XMLPropStyleContext* pPropStyle = dynamic_cast< XMLPropStyleContext* >(const_cast< SvXMLStyleContext* >( pStyle ) );
 
@@ -1192,10 +1269,10 @@ void SdXMLStylesContext::ImpSetGraphicStyles( uno::Reference< container::XNameAc
                     if( xPropState.is() )
                     {
                         rtl::Reference < XMLPropertySetMapper > xPrMap;
-                        rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap = GetImportPropertyMapper( nFamily );
-                        SAL_WARN_IF( !xImpPrMap.is(), "xmloff", "There is the import prop mapper" );
-                        if( xImpPrMap.is() )
-                            xPrMap = xImpPrMap->getPropertySetMapper();
+                        SvXMLImportPropertyMapper* pImpPrMap = GetImportPropertyMapper( nFamily );
+                        SAL_WARN_IF( !pImpPrMap, "xmloff", "There is the import prop mapper" );
+                        if( pImpPrMap )
+                            xPrMap = pImpPrMap->getPropertySetMapper();
                         if( xPrMap.is() )
                         {
                             const sal_Int32 nCount = xPrMap->GetEntryCount();
@@ -1224,7 +1301,7 @@ void SdXMLStylesContext::ImpSetGraphicStyles( uno::Reference< container::XNameAc
                         if(xNewStyle.is())
                         {
                             // remember style
-                            xStyle = xNewStyle;
+                            xStyle = std::move(xNewStyle);
 
                             // add new style to graphics style pool
                             uno::Reference< container::XNameContainer > xInsertContainer(xPageStyles, uno::UNO_QUERY);
@@ -1253,21 +1330,17 @@ void SdXMLStylesContext::ImpSetGraphicStyles( uno::Reference< container::XNameAc
     }
 
     // now set parents for all styles (when necessary)
-    for(a = 0; a < GetStyleCount(); a++)
+    for (auto it = itStart; it != itEnd; ++it)
     {
-        const SvXMLStyleContext* pStyle = GetStyle(a);
+        const SvXMLStyleContext* pStyle = *it;
 
-        if(pStyle && !pStyle->GetDisplayName().isEmpty() && (nFamily == pStyle->GetFamily())) try
+        if(pStyle->GetDisplayName().isEmpty())
+            continue;
+        try
         {
             OUString aStyleName(pStyle->GetDisplayName());
             if( nPrefLen )
-            {
-                sal_Int32 nStylePrefLen = aStyleName.lastIndexOf( '-' ) + 1;
-                if( (nPrefLen != nStylePrefLen) || !aStyleName.startsWith( rPrefix ) )
-                    continue;
-
                 aStyleName = aStyleName.copy( nPrefLen );
-            }
 
             uno::Reference< style::XStyle > xStyle( xPageStyles->getByName(aStyleName), UNO_QUERY );
             if(xStyle.is())
@@ -1282,7 +1355,8 @@ void SdXMLStylesContext::ImpSetGraphicStyles( uno::Reference< container::XNameAc
 
                     sParentStyleDisplayName = sParentStyleDisplayName.copy( nPrefLen );
                 }
-                xStyle->setParentStyle( sParentStyleDisplayName );
+                if (xStyle->getParentStyle() != sParentStyleDisplayName)
+                    xStyle->setParentStyle( sParentStyleDisplayName );
             }
         }
         catch( const Exception& e )
@@ -1329,41 +1403,24 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > SdXMLMasterStylesConte
     else if( nElement == XML_ELEMENT(STYLE, XML_MASTER_PAGE) )
     {
         // style:masterpage inside office:styles context
-        uno::Reference< drawing::XDrawPage > xNewMasterPage;
-        uno::Reference< drawing::XDrawPages > xMasterPages(GetSdImport().GetLocalMasterPages(), uno::UNO_QUERY);
+        uno::Reference< drawing::XDrawPages2 > xMasterPages(GetSdImport().GetLocalMasterPages());
 
         if( xMasterPages.is() )
         {
-            sal_Int32 nNewMasterPageCount = GetSdImport().GetNewMasterPageCount();
             sal_Int32 nMasterPageCount = xMasterPages->getCount();
-            if (nNewMasterPageCount + 1 > nMasterPageCount)
-            {
-                // arbitrary limit to master pages when fuzzing to avoid deadend timeouts
-                if (nMasterPageCount >= 64 && utl::ConfigManager::IsFuzzing())
-                    return nullptr;
+            // arbitrary limit to master pages when fuzzing to avoid deadend timeouts
+            if (nMasterPageCount >= 64 && comphelper::IsFuzzing())
+               return nullptr;
 
-                // new page, create and insert
-                xNewMasterPage = xMasterPages->insertNewByIndex(nMasterPageCount);
-            }
-            else
-            {
-                // existing page, use it
-                xMasterPages->getByIndex(nNewMasterPageCount) >>= xNewMasterPage;
-            }
+            // new page, create and insert
 
-            // increment global import page counter
-            GetSdImport().IncrementNewMasterPageCount();
-
-            if(xNewMasterPage.is())
+            if(GetSdImport().GetShapeImport()->GetStylesContext())
             {
-                if(GetSdImport().GetShapeImport()->GetStylesContext())
-                {
-                    const rtl::Reference<SdXMLMasterPageContext> xLclContext{
-                        new SdXMLMasterPageContext(GetSdImport(),
-                            nElement, xAttrList, xNewMasterPage)};
-                    maMasterPageList.push_back(xLclContext);
-                    return xLclContext;
-                }
+                const rtl::Reference<SdXMLMasterPageContext> xLclContext{
+                    new SdXMLMasterPageContext(GetSdImport(),
+                        nElement, xAttrList, xMasterPages)};
+                maMasterPageList.push_back(xLclContext);
+                return xLclContext;
             }
         }
     }
@@ -1457,7 +1514,7 @@ bool IsIgnoreFillStyleNamedItem(
 
     // note: the caller must have called FillPropertySet() previously
     drawing::FillStyle fillStyle{drawing::FillStyle_NONE};
-    xProps->getPropertyValue("FillStyle") >>= fillStyle;
+    xProps->getPropertyValue(u"FillStyle"_ustr) >>= fillStyle;
     return fillStyle != nExpectedFillStyle;
 }
 

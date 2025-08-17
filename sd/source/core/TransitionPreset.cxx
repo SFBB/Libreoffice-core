@@ -33,6 +33,7 @@
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/lok.hxx>
 #include <unotools/syslocaleoptions.hxx>
+#include <officecfg/Office/Impress.hxx>
 #include <officecfg/Office/UI/Effects.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
@@ -116,7 +117,10 @@ bool TransitionPreset::importTransitionsFile( TransitionPresetList& rList,
             TransitionType::WATERFALLWIPE,
             TransitionType::SPIRALWIPE,
             TransitionType::MISCDIAGONALWIPE,
-            TransitionType::BOXSNAKESWIPE
+            TransitionType::BOXSNAKESWIPE,
+            TransitionType::BLINDSWIPE,
+            TransitionType::MISCSHAPEWIPE,
+            TransitionType::ZOOM
     };
 
     const std::set<sal_Int16> LOKSupportedTransitionSubTypes = {
@@ -210,7 +214,20 @@ bool TransitionPreset::importTransitionsFile( TransitionPresetList& rList,
             TransitionSubType::TWOBOXLEFT,
             TransitionSubType::TWOBOXRIGHT,
             TransitionSubType::FOURBOXVERTICAL,
-            TransitionSubType::FOURBOXHORIZONTAL
+            TransitionSubType::FOURBOXHORIZONTAL,
+            TransitionSubType::COMBVERTICAL,
+            TransitionSubType::COMBHORIZONTAL,
+            TransitionSubType::FANOUTHORIZONTAL,
+            TransitionSubType::HEART,
+            TransitionSubType::ROTATEIN
+    };
+
+    const std::set<sal_Int16> LOKMiscShapeWipeNonSupportedTransitionSubTypes = {
+            TransitionSubType::DIAMOND,
+            TransitionSubType::HEART,
+            TransitionSubType::CIRCLE,
+            TransitionSubType::VERTICAL,
+            TransitionSubType::TOPLEFT
     };
 
     try {
@@ -234,6 +251,12 @@ bool TransitionPreset::importTransitionsFile( TransitionPresetList& rList,
                     {
                         continue;
                     }
+
+                    if( eTransitionType == TransitionType::MISCSHAPEWIPE
+                            && LOKMiscShapeWipeNonSupportedTransitionSubTypes.find(eTransitionSubType) != LOKMiscShapeWipeNonSupportedTransitionSubTypes.end() )
+                    {
+                        continue;
+                    }
                 }
 
                 OUString aPresetId( pPreset->getPresetId() );
@@ -249,8 +272,8 @@ bool TransitionPreset::importTransitionsFile( TransitionPresetList& rList,
                         OUString sSet;
                         OUString sVariant;
 
-                        xTransitionNode->getByName( "Set" ) >>= sSet;
-                        xTransitionNode->getByName( "Variant" ) >>= sVariant;
+                        xTransitionNode->getByName( u"Set"_ustr ) >>= sSet;
+                        xTransitionNode->getByName( u"Variant"_ustr ) >>= sVariant;
 
                         Reference< container::XNameAccess > xSetNode;
 
@@ -258,26 +281,26 @@ bool TransitionPreset::importTransitionsFile( TransitionPresetList& rList,
                         if( xSetNode.is() )
                         {
                             pPreset->maSetId = sSet;
-                            xSetNode->getByName( "Label" ) >>= sSet;
+                            xSetNode->getByName( u"Label"_ustr ) >>= sSet;
                             pPreset->maSetLabel = sSet;
 
                             OUString sGroup;
 
-                            xSetNode->getByName( "Group" ) >>= sGroup;
+                            xSetNode->getByName( u"Group"_ustr ) >>= sGroup;
 
                             Reference< container::XNameAccess > xGroupNode;
                             xTransitionGroups->getByName( sGroup ) >>= xGroupNode;
 
                             if( xGroupNode.is() )
                             {
-                                xGroupNode->getByName( "Label" ) >>= sGroup;
+                                xGroupNode->getByName( u"Label"_ustr ) >>= sGroup;
                                 if( !sVariant.isEmpty() )
                                 {
                                     Reference< container::XNameAccess > xVariantNode;
                                     xTransitionVariants->getByName( sVariant ) >>= xVariantNode;
                                     if( xVariantNode.is() )
                                     {
-                                        xVariantNode->getByName( "Label" ) >>= sVariant;
+                                        xVariantNode->getByName( u"Label"_ustr ) >>= sVariant;
                                         pPreset->maVariantLabel = sVariant;
                                     }
                                 }
@@ -285,7 +308,7 @@ bool TransitionPreset::importTransitionsFile( TransitionPresetList& rList,
                                 pPreset->maSetLabel = sSet;
                                 SAL_INFO("sd.transitions", aPresetId << ": " << sGroup << "/" << sSet << (sVariant.isEmpty() ? OUString() : OUString("/" + sVariant)));
 
-                                rList.push_back( pPreset );
+                                rList.push_back(std::move(pPreset));
                             }
                             else
                                 SAL_WARN("sd.transitions", "group node " << sGroup << " not found");
@@ -312,14 +335,14 @@ bool TransitionPreset::importTransitionsFile( TransitionPresetList& rList,
 
 bool TransitionPreset::importTransitionPresetList( TransitionPresetList& rList )
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return false;
 
     bool bRet = false;
 
     try
     {
-        uno::Reference< uno::XComponentContext > xContext(
+        const uno::Reference< uno::XComponentContext >& xContext(
             comphelper::getProcessComponentContext() );
         Reference< XMultiServiceFactory > xServiceFactory(
             xContext->getServiceManager(), UNO_QUERY_THROW );
@@ -329,19 +352,9 @@ bool TransitionPreset::importTransitionPresetList( TransitionPresetList& rList )
             configuration::theDefaultProvider::get( xContext );
 
         // read path to transition effects files from config
-        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
-        {
-            {"nodepath", uno::Any(OUString("/org.openoffice.Office.Impress/Misc"))}
-        }));
-        Reference<container::XNameAccess> xNameAccess(
-            xConfigProvider->createInstanceWithArguments(
-                "com.sun.star.configuration.ConfigurationAccess",
-                aArgs),
-                UNO_QUERY_THROW );
         uno::Sequence< OUString > aFiles;
-        xNameAccess->getByName("TransitionFiles") >>= aFiles;
-
-        for( const auto& rFile : std::as_const(aFiles) )
+        aFiles = officecfg::Office::Impress::Misc::TransitionFiles::get();
+        for (const auto& rFile : aFiles)
         {
             OUString aURL = comphelper::getExpandedUri(xContext, rFile);
 

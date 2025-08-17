@@ -48,11 +48,11 @@ public:
                     explicit DateTime( DateTimeInitSystem );
                     DateTime( const DateTime& rDateTime ) :
                         Date( rDateTime ), Time( rDateTime ) {}
-                    DateTime( const Date& rDate ) : Date( rDate ), Time(0) {}
-                    DateTime( const tools::Time& rTime ) : Date(0), Time( rTime ) {}
+                    explicit DateTime( const Date& rDate ) : Date( rDate ), Time(Time::EMPTY) {}
+                    explicit DateTime( const tools::Time& rTime ) : Date(0), Time( rTime ) {}
                     DateTime( const Date& rDate, const tools::Time& rTime ) :
                         Date( rDate ), Time( rTime ) {}
-                    DateTime( const css::util::DateTime& rDateTime );
+                    explicit DateTime( const css::util::DateTime& rDateTime );
 
     css::util::DateTime
                     GetUNODateTime() const
@@ -64,21 +64,20 @@ public:
 
     bool            IsEqualIgnoreNanoSec( const DateTime& rDateTime ) const
                     {
-                        if ( Date::operator!=( rDateTime ) )
+                        if ( GetDate() != rDateTime.GetDate() )
                             return false;
                         return Time::IsEqualIgnoreNanoSec( rDateTime );
                     }
 
-    bool            operator ==( const DateTime& rDateTime ) const
-                        { return (Date::operator==( rDateTime ) &&
-                                  Time::operator==( rDateTime )); }
-    bool            operator !=( const DateTime& rDateTime ) const
-                        { return (Date::operator!=( rDateTime ) ||
-                                  Time::operator!=( rDateTime )); }
-    bool            operator  >( const DateTime& rDateTime ) const;
-    bool            operator  <( const DateTime& rDateTime ) const;
-    bool            operator >=( const DateTime& rDateTime ) const;
-    bool            operator <=( const DateTime& rDateTime ) const;
+    auto            operator <=>( const DateTime& rDateTime ) const
+                    {
+                        return std::make_pair(GetDate(), GetTime()) <=>
+                            std::make_pair(rDateTime.GetDate(), rDateTime.GetTime());
+                    }
+    bool            operator==(const DateTime& rDateTime) const
+                    {
+                        return (Date::operator==(rDateTime) && tools::Time::operator==(rDateTime));
+                    }
 
     sal_Int64       GetSecFromDateTime( const Date& rDate ) const;
 

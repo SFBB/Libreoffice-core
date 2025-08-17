@@ -44,7 +44,7 @@
 #define FRAME_OFFSET 4
 
 AutoFormatPreview::AutoFormatPreview()
-    : maCurrentData(OUString())
+    : maCurrentData(TableStyleName())
     , mbFitWidth(false)
     , mbRTL(false)
     , maStringJan(SwResId(STR_JAN))
@@ -55,7 +55,8 @@ AutoFormatPreview::AutoFormatPreview()
     , maStringSouth(SwResId(STR_SOUTH))
     , maStringSum(SwResId(STR_SUM))
 {
-    uno::Reference<uno::XComponentContext> xContext = comphelper::getProcessComponentContext();
+    const uno::Reference<uno::XComponentContext>& xContext
+        = comphelper::getProcessComponentContext();
     m_xBreak = i18n::BreakIterator::create(xContext);
     mxNumFormat.reset(new SvNumberFormatter(xContext, LANGUAGE_SYSTEM));
 
@@ -102,7 +103,7 @@ static void lcl_SetFontProperties(vcl::Font& rFont, const SvxFontItem& rFontItem
 void AutoFormatPreview::MakeFonts(vcl::RenderContext const& rRenderContext, sal_uInt8 nIndex,
                                   vcl::Font& rFont, vcl::Font& rCJKFont, vcl::Font& rCTLFont)
 {
-    const SwBoxAutoFormat& rBoxFormat = maCurrentData.GetBoxFormat(nIndex);
+    const SwAutoFormatProps& rBoxFormat = maCurrentData.GetBoxFormat(nIndex).GetProps();
 
     rFont = rCJKFont = rCTLFont = rRenderContext.GetFont();
     Size aFontSize(rFont.GetFontSize().Width(), 10 * rRenderContext.GetDPIScaleFactor());
@@ -215,7 +216,9 @@ void AutoFormatPreview::DrawString(vcl::RenderContext& rRenderContext, size_t nC
             {
                 OUString sFormat;
                 LanguageType eLng, eSys;
-                maCurrentData.GetBoxFormat(sal_uInt8(nNum)).GetValueFormat(sFormat, eLng, eSys);
+                maCurrentData.GetBoxFormat(sal_uInt8(nNum))
+                    .GetProps()
+                    .GetValueFormat(sFormat, eLng, eSys);
 
                 SvNumFormatType nType;
                 bool bNew;
@@ -237,9 +240,10 @@ void AutoFormatPreview::DrawString(vcl::RenderContext& rRenderContext, size_t nC
     Size aStrSize;
     sal_uInt8 nFormatIndex = GetFormatIndex(nCol, nRow);
     const basegfx::B2DRange aCellRange(maArray.GetCellRange(nCol, nRow));
-    const tools::Rectangle cellRect(
-        basegfx::fround(aCellRange.getMinX()), basegfx::fround(aCellRange.getMinY()),
-        basegfx::fround(aCellRange.getMaxX()), basegfx::fround(aCellRange.getMaxY()));
+    const tools::Rectangle cellRect(basegfx::fround<tools::Long>(aCellRange.getMinX()),
+                                    basegfx::fround<tools::Long>(aCellRange.getMinY()),
+                                    basegfx::fround<tools::Long>(aCellRange.getMaxX()),
+                                    basegfx::fround<tools::Long>(aCellRange.getMaxY()));
     Point aPos = cellRect.TopLeft();
     tools::Long nRightX = 0;
 
@@ -282,7 +286,7 @@ void AutoFormatPreview::DrawString(vcl::RenderContext& rRenderContext, size_t nC
         aPos.AdjustX(nRightX);
     else if (maCurrentData.IsJustify())
     {
-        const SvxAdjustItem& rAdj = maCurrentData.GetBoxFormat(nFormatIndex).GetAdjust();
+        const SvxAdjustItem& rAdj = maCurrentData.GetBoxFormat(nFormatIndex).GetProps().GetAdjust();
         switch (rAdj.GetAdjust())
         {
             case SvxAdjust::Left:
@@ -321,15 +325,20 @@ void AutoFormatPreview::DrawBackground(vcl::RenderContext& rRenderContext)
         for (size_t nCol = 0; nCol < 5; ++nCol)
         {
             SvxBrushItem aBrushItem(
-                maCurrentData.GetBoxFormat(GetFormatIndex(nCol, nRow)).GetBackground());
+                maCurrentData.GetBoxFormat(GetFormatIndex(nCol, nRow)).GetProps().GetBackground());
 
             rRenderContext.Push(vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR);
             rRenderContext.SetLineColor();
-            rRenderContext.SetFillColor(aBrushItem.GetColor());
+            if (aBrushItem.GetColor() == COL_TRANSPARENT)
+                rRenderContext.SetFillColor();
+            else
+                rRenderContext.SetFillColor(aBrushItem.GetColor());
             const basegfx::B2DRange aCellRange(maArray.GetCellRange(nCol, nRow));
-            rRenderContext.DrawRect(tools::Rectangle(
-                basegfx::fround(aCellRange.getMinX()), basegfx::fround(aCellRange.getMinY()),
-                basegfx::fround(aCellRange.getMaxX()), basegfx::fround(aCellRange.getMaxY())));
+            rRenderContext.DrawRect(
+                tools::Rectangle(basegfx::fround<tools::Long>(aCellRange.getMinX()),
+                                 basegfx::fround<tools::Long>(aCellRange.getMinY()),
+                                 basegfx::fround<tools::Long>(aCellRange.getMaxX()),
+                                 basegfx::fround<tools::Long>(aCellRange.getMaxY())));
             rRenderContext.Pop();
         }
     }
@@ -400,7 +409,7 @@ void AutoFormatPreview::CalcLineMap()
             svx::frame::Style aStyle;
 
             const SvxBoxItem& rItem
-                = maCurrentData.GetBoxFormat(GetFormatIndex(nCol, nRow)).GetBox();
+                = maCurrentData.GetBoxFormat(GetFormatIndex(nCol, nRow)).GetProps().GetBox();
             lclSetStyleFromBorder(aStyle, rItem.GetLeft());
             maArray.SetCellStyleLeft(nCol, nRow, aStyle);
             lclSetStyleFromBorder(aStyle, rItem.GetRight());
@@ -432,7 +441,8 @@ void AutoFormatPreview::Paint(vcl::RenderContext& rRenderContext, const tools::R
 {
     rRenderContext.Push(vcl::PushFlags::ALL);
 
-    const Color& rWinColor = SW_MOD()->GetColorConfig().GetColorValue(::svtools::DOCCOLOR).nColor;
+    const Color& rWinColor
+        = SwModule::get()->GetColorConfig().GetColorValue(::svtools::DOCCOLOR).nColor;
     rRenderContext.SetBackground(Wallpaper(rWinColor));
     rRenderContext.Erase();
 

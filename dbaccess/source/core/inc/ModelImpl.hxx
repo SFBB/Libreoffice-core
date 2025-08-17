@@ -44,44 +44,33 @@
 #include <rtl/digest.h>
 #include <rtl/ref.hxx>
 #include <o3tl/enumarray.hxx>
+#include <unotools/weakref.hxx>
 
-namespace comphelper
-{
-    class NamedValueCollection;
-}
+#include <span>
 
 namespace dbaccess
 {
+class OCommandContainer;
+class OConnection;
 
 typedef std::vector< css::uno::WeakReference< css::sdbc::XConnection > > OWeakConnectionArray;
 
-struct AsciiPropertyValue
+struct DefaultPropertyValue
 {
-    // note: the canonic member order would be AsciiName / DefaultValue, but
-    // this crashes on unxlngi6.pro, since there's a bug which somehow results in
-    // getDefaultDataSourceSettings returning corrupted Any instances then.
+    OUString               Name;
     css::uno::Any          DefaultValue;
-    const char*            AsciiName;
     const css::uno::Type&  ValueType;
 
-    AsciiPropertyValue()
-        :DefaultValue( )
-        ,AsciiName( nullptr )
-        ,ValueType( ::cppu::UnoType<void>::get() )
-    {
-    }
-
-    AsciiPropertyValue( const char* _pAsciiName, const css::uno::Any& _rDefaultValue )
-        :DefaultValue( _rDefaultValue )
-        ,AsciiName( _pAsciiName )
+    DefaultPropertyValue(const OUString& _aName, const css::uno::Any& _rDefaultValue)
+        :Name( _aName )
+        ,DefaultValue( _rDefaultValue )
         ,ValueType( _rDefaultValue.getValueType() )
     {
         OSL_ENSURE( ValueType.getTypeClass() != css::uno::TypeClass_VOID,
             "AsciiPropertyValue::AsciiPropertyValue: NULL values not allowed here, use the other CTOR for this!" );
     }
-    AsciiPropertyValue( const char* _pAsciiName, const css::uno::Type& _rValeType )
-        :DefaultValue()
-        ,AsciiName( _pAsciiName )
+    DefaultPropertyValue(const OUString& _aName, const css::uno::Type& _rValeType)
+        :Name( _aName )
         ,ValueType( _rValeType )
     {
         OSL_ENSURE( ValueType.getTypeClass() != css::uno::TypeClass_VOID,
@@ -95,6 +84,7 @@ typedef ::utl::SharedUNOComponent< css::embed::XStorage >  SharedStorage;
 class ODatabaseContext;
 class DocumentStorageAccess;
 class ODatabaseSource;
+class ODatabaseDocument;
 
 
 /** The class OSharedConnectionManager implements a structure to share connections.
@@ -116,7 +106,7 @@ class OSharedConnectionManager : public ::cppu::WeakImplHelper< css::lang::XEven
     // contains the currently used master connections
     struct TConnectionHolder
     {
-        css::uno::Reference< css::sdbc::XConnection >    xMasterConnection;
+        rtl::Reference< OConnection >    xMasterConnection;
         oslInterlockedCount         nALiveCount;
     };
 
@@ -181,8 +171,8 @@ public:
     };
 
 private:
-    css::uno::WeakReference< css::frame::XModel >                     m_xModel;
-    css::uno::WeakReference< css::sdbc::XDataSource >                 m_xDataSource;
+    unotools::WeakReference< ODatabaseDocument >                      m_xModel;
+    unotools::WeakReference< ODatabaseSource >                        m_xDataSource;
 
     rtl::Reference<DocumentStorageAccess>                             m_pStorageAccess;
     o3tl::enumarray< ObjectType, TContentPtr >                        m_aContainer;   // one for each ObjectType
@@ -230,7 +220,7 @@ public:
 
 public:
     css::uno::WeakReference< css::container::XNameAccess >    m_xCommandDefinitions;
-    css::uno::WeakReference< css::container::XNameAccess >    m_xTableDefinitions;
+    unotools::WeakReference< ::dbaccess::OCommandContainer > m_xTableDefinitions;
 
     css::uno::Reference< css::util::XNumberFormatsSupplier >
                                                               m_xNumberFormatsSupplier;
@@ -353,7 +343,7 @@ public:
 
     /** returns the model, if there already exists one
     */
-    css::uno::Reference< css::frame::XModel > getModel_noCreate() const;
+    rtl::Reference< ODatabaseDocument > getModel_noCreate() const;
 
     /** returns a new ->ODatabaseDocument
 
@@ -363,7 +353,7 @@ public:
         @seealso
             getModel_noCreate
     */
-    css::uno::Reference< css::frame::XModel > createNewModel_deliverOwnership();
+    rtl::Reference< ODatabaseDocument > createNewModel_deliverOwnership();
 
     struct ResetModelAccess { friend class ODatabaseDocument; private: ResetModelAccess() { } };
 
@@ -386,7 +376,7 @@ public:
     void release();
 
     /// returns all known data source settings, including their default values
-    static const AsciiPropertyValue* getDefaultDataSourceSettings();
+    static std::span<const DefaultPropertyValue> getDefaultDataSourceSettings();
 
     /** retrieves the requested container of objects (forms/reports/tables/queries)
     */
@@ -440,7 +430,7 @@ public:
     css::uno::Reference< css::script::XStorageBasedLibraryContainer >
             getLibraryContainer( bool _bScript );
 
-    /** lets our library containers store themself into the given root storage
+    /** lets our library containers store themselves into the given root storage
     */
     void    storeLibraryContainersTo( const css::uno::Reference< css::embed::XStorage >& _rxToRootStorage );
 
@@ -532,7 +522,7 @@ public:
     void checkDisposed() const
     {
         if ( !m_pImpl.is() )
-            throw css::lang::DisposedException( "Component is already disposed.", getThis() );
+            throw css::lang::DisposedException( u"Component is already disposed."_ustr, getThis() );
     }
 
     void lockModify()

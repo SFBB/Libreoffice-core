@@ -33,11 +33,8 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
-using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
 
 
@@ -84,7 +81,7 @@ void OHiddenModel::setFastPropertyValue_NoBroadcast(sal_Int32 _nHandle, const An
     switch (_nHandle)
     {
         case PROPERTY_ID_HIDDEN_VALUE :
-            DBG_ASSERT(_rValue.getValueType().getTypeClass() == TypeClass_STRING, "OHiddenModel::setFastPropertyValue_NoBroadcast : invalid type !" );
+            DBG_ASSERT(_rValue.getValueTypeClass() == TypeClass_STRING, "OHiddenModel::setFastPropertyValue_NoBroadcast : invalid type !" );
             _rValue >>= m_sHiddenValue;
             break;
         default:

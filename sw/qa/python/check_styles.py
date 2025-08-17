@@ -11,9 +11,7 @@ import unittest
 from org.libreoffice.unotest import UnoInProcess
 from com.sun.star.container import NoSuchElementException
 from com.sun.star.beans import UnknownPropertyException
-from com.sun.star.lang import IndexOutOfBoundsException
 from com.sun.star.lang import IllegalArgumentException
-
 
 class CheckStyle(unittest.TestCase):
 
@@ -62,8 +60,8 @@ class CheckStyle(unittest.TestCase):
         with self.assertRaises(NoSuchElementException):
             xFamily.getByName("foobarbaz")
 
-        with self.assertRaises(IndexOutOfBoundsException):
-            xFamily.getByIndex(-1)
+        with self.assertRaises(IndexError):
+            xFamily[len(xFamily) + 1]
 
         for sStylename in xFamily.ElementNames:
             self.assertTrue(xFamily.hasByName(sStylename))
@@ -149,7 +147,7 @@ class CheckStyle(unittest.TestCase):
     def test_FrameFamily(self):
         xDoc = CheckStyle._uno.openEmptyWriterDoc()
         xFrameStyles = xDoc.StyleFamilies["FrameStyles"]
-        vEmptyDocStyles = ['Formula', 'Frame', 'Graphics', 'Labels', 'Marginalia', 'OLE', 'Watermark']
+        vEmptyDocStyles = ['Formula', 'Frame', 'Graphics', 'Inline Heading', 'Labels', 'Marginalia', 'OLE', 'Watermark']
         self.__test_StyleFamily(xFrameStyles, vEmptyDocStyles, "SwXStyle")
         self.__test_StyleFamilyIndex(xFrameStyles, vEmptyDocStyles, "SwXStyle")
         self.__test_StyleFamilyInsert(xDoc, xFrameStyles, vEmptyDocStyles, "com.sun.star.style.FrameStyle", "com.sun.star.style.CharacterStyle")

@@ -10,7 +10,7 @@
 #ifndef INCLUDED_LIBREOFFICEKIT_LIBREOFFICEKITINIT_H
 #define INCLUDED_LIBREOFFICEKIT_LIBREOFFICEKITINIT_H
 
-#include <LibreOfficeKit/LibreOfficeKit.h>
+#include "LibreOfficeKit.h"
 
 #if defined __GNUC__ || defined __clang__
 #  define LOK_TOLERATE_UNUSED __attribute__((used))
@@ -34,6 +34,14 @@
     #ifdef __APPLE__
         #define TARGET_LIB        "lib" "sofficeapp" ".dylib"
         #define TARGET_MERGED_LIB "lib" "mergedlo" ".dylib"
+
+        #if !defined TARGET_OS_IPHONE || TARGET_OS_IPHONE == 0
+            #if defined TARGET_OS_OSX && TARGET_OS_OSX == 1
+                #error LibreOfficeKit is not supported on macOS
+            #else
+                #error LibreOfficeKit is not supported on tvOS, visionOS or watchOS
+            #endif
+        #endif
     #else
         #define TARGET_LIB        "lib" "sofficeapp" ".so"
         #define TARGET_MERGED_LIB "lib" "mergedlo" ".so"
@@ -158,6 +166,7 @@ extern "C"
             size_sEnvPath = strlen(sEnvPath);
         buffer_size = size_sEnvPath + 2*strlen(pPath) + strlen(UNOPATH) + 4;
         sNewPath = (char *) malloc(buffer_size);
+        assert(sNewPath);
         sNewPath[0] = L'\0';
         strcat_s(sNewPath, buffer_size, pPath);     // program to PATH
         strcat_s(sNewPath, buffer_size, ";");

@@ -47,6 +47,7 @@
 #include <comphelper/types.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <svtools/imageresourceaccess.hxx>
+#include <unotools/securityoptions.hxx>
 #define LOCAL_URL_PREFIX    '#'
 
 
@@ -61,7 +62,6 @@ namespace frm
     using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::form;
     using namespace ::com::sun::star::awt;
-    using namespace ::com::sun::star::io;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::util;
     using namespace ::com::sun::star::frame;
@@ -234,7 +234,7 @@ namespace frm
             case FormButtonType_SUBMIT:
             {
                 // if some outer component can provide an interaction handler, use it
-                Reference< XInteractionHandler > xHandler( m_aFeatureInterception.queryDispatch( "private:/InteractionHandler" ), UNO_QUERY );
+                Reference< XInteractionHandler > xHandler( m_aFeatureInterception.queryDispatch( u"private:/InteractionHandler"_ustr ), UNO_QUERY );
                 try
                 {
                     implSubmit( rEvt, xHandler );
@@ -301,24 +301,24 @@ namespace frm
                             FrameSearchFlag::SELF | FrameSearchFlag::PARENT |
                             FrameSearchFlag::SIBLINGS | FrameSearchFlag::CREATE );
 
-                    Sequence<PropertyValue> aArgs { comphelper::makePropertyValue("Referer", xModel->getURL()) };
+                    Sequence<PropertyValue> aArgs { comphelper::makePropertyValue(u"Referer"_ustr, xModel->getURL()) };
 
                     if (xDisp.is())
                         xDisp->dispatch( aURL, aArgs );
                 }
                 else
                 {
-                    URL aHyperLink = m_aFeatureInterception.getTransformer().getStrictURL( ".uno:OpenHyperlink" );
+                    URL aHyperLink = m_aFeatureInterception.getTransformer().getStrictURL( u".uno:OpenHyperlink"_ustr );
 
                     Reference< XDispatch >  xDisp = Reference< XDispatchProvider > (xFrame,UNO_QUERY_THROW)->queryDispatch(aHyperLink, OUString() , 0);
 
                     if ( xDisp.is() )
                     {
                         Sequence<PropertyValue> aProps{
-                            comphelper::makePropertyValue("URL", aURL.Complete),
+                            comphelper::makePropertyValue(u"URL"_ustr, aURL.Complete),
                             comphelper::makePropertyValue(
-                                "FrameName", xSet->getPropertyValue(PROPERTY_TARGET_FRAME)),
-                            comphelper::makePropertyValue("Referer", xModel->getURL())
+                                u"FrameName"_ustr, xSet->getPropertyValue(PROPERTY_TARGET_FRAME)),
+                            comphelper::makePropertyValue(u"Referer"_ustr, xModel->getURL())
                         };
 
                         xDisp->dispatch( aHyperLink, aProps );
@@ -441,7 +441,7 @@ namespace frm
     OClickableImageBaseModel::OClickableImageBaseModel( const Reference< XComponentContext >& _rxFactory, const OUString& _rUnoControlModelTypeName,
             const OUString& rDefault )
         :OControlModel( _rxFactory, _rUnoControlModelTypeName, rDefault )
-        ,OPropertyChangeListener(m_aMutex)
+        ,OPropertyChangeListener()
         ,m_bDispatchUrlInternal(false)
         ,m_bProdStarted(false)
     {
@@ -452,7 +452,7 @@ namespace frm
 
     OClickableImageBaseModel::OClickableImageBaseModel( const OClickableImageBaseModel* _pOriginal, const Reference<XComponentContext>& _rxFactory )
         :OControlModel( _pOriginal, _rxFactory )
-        ,OPropertyChangeListener( m_aMutex )
+        ,OPropertyChangeListener()
         ,m_xGraphicObject( _pOriginal->m_xGraphicObject )
         ,m_bDispatchUrlInternal(false)
         ,m_bProdStarted( false )
@@ -606,17 +606,17 @@ namespace frm
                 break;
 
             case PROPERTY_ID_TARGET_URL :
-                DBG_ASSERT(rValue.getValueType().getTypeClass() == TypeClass_STRING, "OClickableImageBaseModel::setFastPropertyValue_NoBroadcast : invalid type !" );
+                DBG_ASSERT(rValue.getValueTypeClass() == TypeClass_STRING, "OClickableImageBaseModel::setFastPropertyValue_NoBroadcast : invalid type !" );
                 rValue >>= m_sTargetURL;
                 break;
 
             case PROPERTY_ID_TARGET_FRAME :
-                DBG_ASSERT(rValue.getValueType().getTypeClass() == TypeClass_STRING, "OClickableImageBaseModel::setFastPropertyValue_NoBroadcast : invalid type !" );
+                DBG_ASSERT(rValue.getValueTypeClass() == TypeClass_STRING, "OClickableImageBaseModel::setFastPropertyValue_NoBroadcast : invalid type !" );
                 rValue >>= m_sTargetFrame;
                 break;
 
             case PROPERTY_ID_DISPATCHURLINTERNAL:
-                DBG_ASSERT(rValue.getValueType().getTypeClass() == TypeClass_BOOLEAN, "OClickableImageBaseModel::setFastPropertyValue_NoBroadcast : invalid type !" );
+                DBG_ASSERT(rValue.getValueTypeClass() == TypeClass_BOOLEAN, "OClickableImageBaseModel::setFastPropertyValue_NoBroadcast : invalid type !" );
                 rValue >>= m_bDispatchUrlInternal;
                 break;
 
@@ -653,7 +653,7 @@ namespace frm
         ImageProducer *pImgProd = GetImageProducer();
         // grab the ImageURL
         OUString sURL;
-        getPropertyValue("ImageURL") >>= sURL;
+        getPropertyValue(u"ImageURL"_ustr) >>= sURL;
         if (!m_pMedium)
         {
             if ( ::svt::GraphicAccess::isSupportedURL( sURL )  )
@@ -736,7 +736,7 @@ namespace frm
 
         // the SfxMedium is not allowed to be created with an invalid URL, so we have to check this first
         INetURLObject aUrl(rURL);
-        if (INetProtocol::NotValid == aUrl.GetProtocol())
+        if (INetProtocol::NotValid == aUrl.GetProtocol() || aUrl.IsExoticProtocol())
             // we treat an invalid URL like we would treat no URL
             return;
 
@@ -757,8 +757,12 @@ namespace frm
 
             m_bProdStarted = false;
 
-            // Kick off download (caution: can be synchronous).
-            m_pMedium->Download(LINK(this, OClickableImageBaseModel, DownloadDoneLink));
+            OUString referer;
+            getPropertyValue(u"Referer"_ustr) >>= referer;
+            if (!SvtSecurityOptions::isUntrustedReferer(referer)) {
+                // Kick off download (caution: can be synchronous).
+                m_pMedium->Download(LINK(this, OClickableImageBaseModel, DownloadDoneLink));
+            }
         }
         else
         {

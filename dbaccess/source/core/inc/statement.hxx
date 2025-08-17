@@ -33,13 +33,15 @@
 #include <comphelper/proparrhlp.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/implbase3.hxx>
-#include <apitools.hxx>
+#include <cppuhelper/compbase.hxx>
+#include <unotools/weakref.hxx>
 
+namespace dbaccess { class OConnection; class OResultSet; }
 
 //  OStatementBase
 
 class OStatementBase :  public cppu::BaseMutex,
-                        public OSubComponent,
+                        public ::cppu::WeakComponentImplHelper<>,
                         public ::cppu::OPropertySetHelper,
                         public ::comphelper::OPropertyArrayUsageHelper < OStatementBase >,
                         public css::util::XCancellable,
@@ -50,9 +52,10 @@ class OStatementBase :  public cppu::BaseMutex,
                         public css::sdbc::XGeneratedResultSet
 {
 protected:
+    unotools::WeakReference<::dbaccess::OConnection> m_xParent;
     ::osl::Mutex            m_aCancelMutex;
 
-    css::uno::WeakReferenceHelper                   m_aResultSet;
+    unotools::WeakReference<::dbaccess::OResultSet> m_xWeakResultSet;
     css::uno::Reference< css::beans::XPropertySet > m_xAggregateAsSet;
     css::uno::Reference< css::util::XCancellable >  m_xAggregateAsCancellable;
     bool                m_bUseBookmarks;
@@ -61,7 +64,7 @@ protected:
     virtual ~OStatementBase() override;
 
 public:
-    OStatementBase(const css::uno::Reference< css::sdbc::XConnection > & _xConn,
+    OStatementBase(const rtl::Reference< ::dbaccess::OConnection > & _xConn,
                    const css::uno::Reference< css::uno::XInterface > & _xStatement);
 
 
@@ -141,7 +144,7 @@ private:
     bool                                                          m_bAttemptedComposerCreation;
 
 public:
-    OStatement(const css::uno::Reference< css::sdbc::XConnection > & _xConn,
+    OStatement(const rtl::Reference< ::dbaccess::OConnection > & _xConn,
                const css::uno::Reference< css::uno::XInterface > & _xStatement);
 
     DECLARE_XINTERFACE()

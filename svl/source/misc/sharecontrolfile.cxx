@@ -75,11 +75,11 @@ ShareControlFile::ShareControlFile( std::u16string_view aOrigURL )
                 SvMemoryStream aStream(0,0);
                 aInsertArg.Data.set(new ::utl::OInputStreamWrapper(aStream));
                 aInsertArg.ReplaceExisting = false;
-                aContent.executeCommand( "insert", uno::Any( aInsertArg ) );
+                aContent.executeCommand( u"insert"_ustr, uno::Any( aInsertArg ) );
 
                 // try to let the file be hidden if possible
                 try {
-                    aContent.setPropertyValue("IsHidden", uno::Any( true ) );
+                    aContent.setPropertyValue(u"IsHidden"_ustr, uno::Any( true ) );
                 } catch( uno::Exception& ) {}
 
                 // Try to open one more time
@@ -93,7 +93,7 @@ ShareControlFile::ShareControlFile( std::u16string_view aOrigURL )
         m_xInputStream.set( xStream->getInputStream(), uno::UNO_SET_THROW );
         m_xOutputStream.set( xStream->getOutputStream(), uno::UNO_SET_THROW );
         m_xTruncate.set( m_xOutputStream, uno::UNO_QUERY_THROW );
-        m_xStream = xStream;
+        m_xStream = std::move(xStream);
     }
 
     if ( !IsValid() )
@@ -142,7 +142,7 @@ std::vector< o3tl::enumarray< LockFileComponent, OUString > > ShareControlFile::
     return GetUsersDataImpl(aGuard);
 }
 
-std::vector< o3tl::enumarray< LockFileComponent, OUString > > ShareControlFile::GetUsersDataImpl(std::unique_lock<std::mutex>& /*rGuard*/)
+const std::vector< o3tl::enumarray< LockFileComponent, OUString > > & ShareControlFile::GetUsersDataImpl(std::unique_lock<std::mutex>& /*rGuard*/)
 {
     if ( !IsValid() )
         throw io::NotConnectedException();
@@ -150,7 +150,7 @@ std::vector< o3tl::enumarray< LockFileComponent, OUString > > ShareControlFile::
     if ( m_aUsersData.empty() )
     {
         sal_Int64 nLength = m_xSeekable->getLength();
-        if ( nLength > SAL_MAX_INT32 )
+        if (nLength > SAL_MAX_INT32 || nLength < 0)
             throw uno::RuntimeException();
 
         uno::Sequence< sal_Int8 > aBuffer( static_cast<sal_Int32>(nLength) );
@@ -176,7 +176,6 @@ std::vector< o3tl::enumarray< LockFileComponent, OUString > > ShareControlFile::
 
     return m_aUsersData;
 }
-
 
 void ShareControlFile::SetUsersDataAndStore( std::unique_lock<std::mutex>& /*rGuard*/, std::vector< LockFileEntry >&& aUsersData )
 {
@@ -205,9 +204,8 @@ void ShareControlFile::SetUsersDataAndStore( std::unique_lock<std::mutex>& /*rGu
     OString aStringData( OUStringToOString( aBuffer, RTL_TEXTENCODING_UTF8 ) );
     uno::Sequence< sal_Int8 > aData( reinterpret_cast<sal_Int8 const *>(aStringData.getStr()), aStringData.getLength() );
     m_xOutputStream->writeBytes( aData );
-    m_aUsersData = aUsersData;
+    m_aUsersData = std::move(aUsersData);
 }
-
 
 LockFileEntry ShareControlFile::InsertOwnEntry()
 {

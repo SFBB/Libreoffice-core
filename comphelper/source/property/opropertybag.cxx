@@ -89,11 +89,11 @@ namespace comphelper
         } else {
             ::comphelper::NamedValueCollection aArguments( _rArguments );
 
-            if ( aArguments.get_ensureType( "AllowedTypes", aTypes ) )
+            if ( aArguments.get_ensureType( u"AllowedTypes"_ustr, aTypes ) )
                 m_aAllowedTypes.insert(std::cbegin(aTypes), std::cend(aTypes));
 
-            aArguments.get_ensureType( "AutomaticAddition", m_bAutoAddProperties );
-            aArguments.get_ensureType( "AllowEmptyPropertyName",
+            aArguments.get_ensureType( u"AutomaticAddition"_ustr, m_bAutoAddProperties );
+            aArguments.get_ensureType( u"AllowEmptyPropertyName"_ustr,
                 AllowEmptyPropertyName );
         }
         if (AllowEmptyPropertyName) {
@@ -104,7 +104,7 @@ namespace comphelper
 
     OUString SAL_CALL OPropertyBag::getImplementationName()
     {
-        return "com.sun.star.comp.comphelper.OPropertyBag";
+        return u"com.sun.star.comp.comphelper.OPropertyBag"_ustr;
     }
 
     sal_Bool SAL_CALL OPropertyBag::supportsService( const OUString& rServiceName )
@@ -114,7 +114,7 @@ namespace comphelper
 
     Sequence< OUString > SAL_CALL OPropertyBag::getSupportedServiceNames(  )
     {
-         return { "com.sun.star.beans.PropertyBag" };
+         return { u"com.sun.star.beans.PropertyBag"_ustr };
     }
 
     void OPropertyBag::fireEvents(
@@ -197,7 +197,7 @@ namespace comphelper
         // If we ever have a smarter XPropertyContainer::addProperty interface, we can remove this, ehm, well, hack.
         Property aProperty;
         if ( !( _element >>= aProperty ) )
-            throw IllegalArgumentException( "element is not Property", *this, 1 );
+            throw IllegalArgumentException( u"element is not Property"_ustr, *this, 1 );
 
         {
             osl::MutexGuard g(m_aMutex);
@@ -206,7 +206,7 @@ namespace comphelper
             // by m_aDynamicProperties
             if (!m_aAllowedTypes.empty()
                 && m_aAllowedTypes.find(aProperty.Type) == m_aAllowedTypes.end())
-                throw IllegalArgumentException("not in list of allowed types", *this, 1);
+                throw IllegalArgumentException(u"not in list of allowed types"_ustr, *this, 1);
 
             m_aDynamicProperties.addVoidProperty(aProperty.Name, aProperty.Type, findFreeHandle(),
                                                  aProperty.Attributes);
@@ -389,7 +389,7 @@ namespace comphelper
         {
             aValues = OPropertyBag_PBase::getPropertyValues( aNames );
             if ( aValues.getLength() != aNames.getLength() )
-                throw RuntimeException();
+                throw RuntimeException(u"property name and value counts out of sync"_ustr);
         }
         catch( const RuntimeException& )
         {
@@ -404,17 +404,14 @@ namespace comphelper
         ::cppu::IPropertyArrayHelper& rPropInfo = getInfoHelper();
 
         Sequence< PropertyValue > aPropertyValues( aNames.getLength() );
-        const OUString* pName = aNames.getConstArray();
-        const OUString* pNamesEnd = aNames.getConstArray() + aNames.getLength();
-        const Any* pValue = aValues.getArray();
         PropertyValue* pPropertyValue = aPropertyValues.getArray();
 
-        for ( ; pName != pNamesEnd; ++pName, ++pValue, ++pPropertyValue )
+        for (sal_Int32 i = 0; i < aNames.getLength(); ++i)
         {
-            pPropertyValue->Name = *pName;
-            pPropertyValue->Handle = rPropInfo.getHandleByName( *pName );
-            pPropertyValue->Value = *pValue;
-            pPropertyValue->State = getPropertyStateByHandle( pPropertyValue->Handle );
+            pPropertyValue[i].Name = aNames[i];
+            pPropertyValue[i].Handle = rPropInfo.getHandleByName(aNames[i]);
+            pPropertyValue[i].Value = aValues[i];
+            pPropertyValue[i].State = getPropertyStateByHandle(pPropertyValue[i].Handle);
         }
 
         return aPropertyValues;
@@ -452,16 +449,12 @@ namespace comphelper
             sal_Int32 nCount = aNames.getLength();
 
             Sequence< sal_Int32 > aHandles( nCount );
-            sal_Int32* pHandle = aHandles.getArray();
-            const PropertyValue* pProperty = aProperties.getConstArray();
-            for (   const OUString* pName = aNames.getConstArray();
-                    pName != aNames.getConstArray() + aNames.getLength();
-                    ++pName, ++pHandle, ++pProperty
-                )
+            sal_Int32* pHandles = aHandles.getArray();
+            for (sal_Int32 i = 0; i < nCount; ++i)
             {
                 ::cppu::IPropertyArrayHelper& rPropInfo = getInfoHelper();
-                *pHandle = rPropInfo.getHandleByName( *pName );
-                if ( *pHandle != -1 )
+                pHandles[i] = rPropInfo.getHandleByName(aNames[i]);
+                if (pHandles[i] != -1)
                     continue;
 
                 // there's a property requested which we do not know
@@ -469,12 +462,12 @@ namespace comphelper
                 {
                     // add the property
                     sal_Int16 const nAttributes = PropertyAttribute::BOUND | PropertyAttribute::REMOVABLE | PropertyAttribute::MAYBEDEFAULT;
-                    addProperty( *pName, nAttributes, pProperty->Value );
+                    addProperty(aNames[i], nAttributes, aProperties[i].Value);
                     continue;
                 }
 
                 // no way out
-                throw UnknownPropertyException( *pName, *this );
+                throw UnknownPropertyException(aNames[i], *this);
             }
 
             // a sequence of values
@@ -486,7 +479,7 @@ namespace comphelper
                 ExtractPropertyValue()
             );
 
-            setFastPropertyValues( nCount, aHandles.getArray(), aValues.getConstArray(), nCount );
+            setFastPropertyValues(nCount, pHandles, aValues.getConstArray(), nCount);
         }
         catch( const PropertyVetoException& )       { throw; }
         catch( const IllegalArgumentException& )    { throw; }

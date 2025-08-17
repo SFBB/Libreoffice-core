@@ -21,9 +21,7 @@
 #include <DrawViewWrapper.hxx>
 
 #include <SelectionHelper.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartModel.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <ChartType.hxx>
 #include <ChartTypeHelper.hxx>
@@ -82,9 +80,9 @@ DragMethod_RotateDiagram::DragMethod_RotateDiagram( DrawViewWrapper& rDrawViewWr
     xDiagram->getRotationAngle(
         m_fInitialXAngleRad, m_fInitialYAngleRad, m_fInitialZAngleRad );
 
-    if( ChartTypeHelper::isSupportingRightAngledAxes(
-        xDiagram->getChartTypeByIndex( 0 ) ) )
-        xDiagram->getPropertyValue("RightAngledAxes") >>= m_bRightAngledAxes;
+    auto xChartType = xDiagram->getChartTypeByIndex(0);
+    if (xChartType.is() ? xChartType->isSupportingRightAngledAxes() : true)
+        xDiagram->getPropertyValue(u"RightAngledAxes"_ustr) >>= m_bRightAngledAxes;
     if(m_bRightAngledAxes)
     {
         if( m_eRotationDirection==ROTATIONDIRECTION_Z )
@@ -175,7 +173,7 @@ bool DragMethod_RotateDiagram::EndSdrDrag(bool /*bCopy*/)
 }
 void DragMethod_RotateDiagram::CreateOverlayGeometry(
     sdr::overlay::OverlayManager& rOverlayManager,
-    const sdr::contact::ObjectContact& rObjectContact)
+    const sdr::contact::ObjectContact& rObjectContact, bool /* bIsGeometrySizeValid */)
 {
     ::basegfx::B3DHomMatrix aCurrentTransform;
     aCurrentTransform.translate( -FIXED_SIZE_FOR_3D_CHART_VOLUME/2.0,

@@ -46,6 +46,9 @@ class CSVFetchThread : public salhelper::Thread
 
     std::function<void()> maImportFinishedHdl;
 
+    std::exception_ptr mpLastException;
+    bool mbIsParseError;
+
 
 public:
     CSVFetchThread(ScDocument& rDoc, OUString , std::function<void()> aImportFinishedHdl,
@@ -56,6 +59,8 @@ public:
     bool IsRequestedTerminate();
     void Terminate();
     void EndThread();
+    bool IsParseError() { return mbIsParseError; }
+    auto GetLastException() { return mpLastException; }
 
     virtual void execute() override;
 };
@@ -141,7 +146,6 @@ public:
 
     static std::shared_ptr<DataProvider> getDataProvider(ScDocument* pDoc, sc::ExternalDataSource& rDataSource);
 
-    static std::vector<OUString> getDataProviders();
 };
 
 }

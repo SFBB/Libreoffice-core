@@ -198,6 +198,7 @@ struct Entity : public ParserData
     void characters( const OUString& sChars );
     void endElement();
     void processingInstruction( const OUString& rTarget, const OUString& rData );
+    void transferUsedEvents();
     EventList& getEventList();
     Event& getEvent( CallbackType aType );
 };
@@ -279,7 +280,7 @@ private:
 
     sal_Int32 GetToken( const xmlChar* pName );
     /// @throws css::xml::sax::SAXException
-    sal_Int32 GetTokenWithPrefix( const xmlChar* pPrefix, const xmlChar* pName );
+    sal_Int32 GetTokenWithPrefix( std::string_view sPrefix, const xmlChar* pName );
     /// @throws css::xml::sax::SAXException
     OUString const & GetNamespaceURL( std::string_view rPrefix );
     sal_Int32 GetNamespaceToken( const OUString& rNamespaceURL );
@@ -434,7 +435,7 @@ void Entity::startElement( Event const *pEvent )
 
     try
     {
-        const Reference< XFastAttributeList > & xAttr( pEvent->mxAttributes );
+        const Reference< XFastAttributeList > xAttr( pEvent->mxAttributes );
         Reference< XFastContextHandler > xContext;
 
         if ( mxNamespaceHandler.is() )
@@ -534,18 +535,23 @@ void Entity::processingInstruction( const OUString& rTarget, const OUString& rDa
     }
 }
 
+void Entity::transferUsedEvents()
+{
+    std::unique_lock aGuard(maEventProtector);
+    if (!maUsedEvents.empty())
+    {
+        mxProducedEvents = std::move(maUsedEvents.front());
+        maUsedEvents.pop();
+        aGuard.unlock(); // unlock
+        mnProducedEventsSize = 0;
+    }
+}
+
 EventList& Entity::getEventList()
 {
     if (!mxProducedEvents)
     {
-        std::unique_lock aGuard(maEventProtector);
-        if (!maUsedEvents.empty())
-        {
-            mxProducedEvents = std::move(maUsedEvents.front());
-            maUsedEvents.pop();
-            aGuard.unlock(); // unlock
-            mnProducedEventsSize = 0;
-        }
+        transferUsedEvents();
         if (!mxProducedEvents)
         {
             mxProducedEvents.emplace();
@@ -698,13 +704,12 @@ sal_Int32 FastSaxParserImpl::GetToken(const xmlChar* pName)
                                                     XML_CAST( pName ) ); // uses utf-8
 }
 
-sal_Int32 FastSaxParserImpl::GetTokenWithPrefix( const xmlChar* pPrefix, const xmlChar* pName )
+sal_Int32 FastSaxParserImpl::GetTokenWithPrefix( std::string_view sPrefix, const xmlChar* pName )
 {
     Entity& rEntity = getEntity();
     if (rEntity.maNamespaceCount.empty())
         return FastToken::DONTKNOW;
 
-    std::string_view sPrefix(XML_CAST(pPrefix));
     sal_uInt32 nNamespace = rEntity.maNamespaceCount.top();
     while( nNamespace-- )
     {
@@ -879,9 +884,9 @@ void FastSaxParserImpl::parseStream(const InputSource& rStructSource)
         aEnsureFree.joinThread();
         deleteUsedEvents();
 
-        // callbacks used inside XML_Parse may have caught an exception
-        // No need to lock maSavedExceptionMutex here because parser
-        // thread is joined.
+        // callbacks used inside XML_Parse may have caught an exception No need
+        // to lock maSavedExceptionMutex here because parser thread is joined.
+        // coverity[missing_lock : SUPPRESS] 2024.6.1
         if( rEntity.maSavedException.hasValue() )
             rEntity.throwException( mxDocumentLocator, true );
     }
@@ -992,10 +997,11 @@ void FastSaxParserImpl::produce( bool bForceFlush )
     }
 
     rEntity.maPendingEvents.push(std::move(*rEntity.mxProducedEvents));
-    rEntity.mxProducedEvents.reset();
-    assert(!rEntity.mxProducedEvents);
 
     aGuard.unlock(); // unlock
+
+    rEntity.mxProducedEvents.reset();
+    assert(!rEntity.mxProducedEvents);
 
     rEntity.maConsumeResume.set();
 }
@@ -1038,7 +1044,7 @@ void FastSaxParserImpl::pushEntity(const ParserData& rEntityData,
         xml::sax::InputSource const& rSource)
 {
     if (!rSource.aInputStream.is())
-        throw SAXException("No input source", Reference<XInterface>(), Any());
+        throw SAXException(u"No input source"_ustr, Reference<XInterface>(), Any());
 
     maEntities.emplace(rEntityData);
     mpTop = &maEntities.top();
@@ -1097,7 +1103,7 @@ void FastSaxParserImpl::parse()
             rEntity.mpParser = xmlCreatePushParserCtxt( &callbacks, this,
                 reinterpret_cast<const char*>(seqOut.getConstArray()), nRead, nullptr );
             if( !rEntity.mpParser )
-                throw SAXException("Couldn't create parser", Reference< XInterface >(), Any() );
+                throw SAXException(u"Couldn't create parser"_ustr, Reference< XInterface >(), Any() );
 
             // Tell libxml2 parser to decode entities in attribute values.
             // Also allow XML attribute values which are larger than 10MB, because this used to work
@@ -1136,7 +1142,7 @@ void FastSaxParserImpl::callbackStartElement(const xmlChar *localName , const xm
     if( rEntity.maNamespaceCount.empty() )
     {
         rEntity.maNamespaceCount.push(0);
-        DefineNamespace( "xml"_ostr, "http://www.w3.org/XML/1998/namespace");
+        DefineNamespace( "xml"_ostr, u"http://www.w3.org/XML/1998/namespace"_ustr);
     }
     else
     {
@@ -1184,6 +1190,9 @@ void FastSaxParserImpl::callbackStartElement(const xmlChar *localName , const xm
             First, process all namespaces, second, process the attributes after namespaces
             have been initialized. */
 
+        std::string_view sPrefix; // convert to string_view so we only do strlen() once.
+        if (prefix != nullptr)
+            sPrefix = XML_CAST(prefix);
         // #158414# first: get namespaces
         for (int i = 0; i < numNamespaces * 2; i += 2)
         {
@@ -1217,7 +1226,7 @@ void FastSaxParserImpl::callbackStartElement(const xmlChar *localName , const xm
                 // attributes[] is ( localname / prefix / nsURI / valueBegin / valueEnd )
                 if( attributes[ i + 1 ] != nullptr )
                 {
-                    sal_Int32 nAttributeToken = GetTokenWithPrefix(attributes[ i + 1 ], attributes[ i ]);
+                    sal_Int32 nAttributeToken = GetTokenWithPrefix(XML_CAST(attributes[ i + 1 ]), attributes[ i ]);
                     if( nAttributeToken != FastToken::DONTKNOW )
                         rEvent.mxAttributes->add( nAttributeToken, std::string_view(XML_CAST( attributes[ i + 3 ] ), attributes[ i + 4 ] - attributes[ i + 3 ]) );
                     else
@@ -1238,8 +1247,8 @@ void FastSaxParserImpl::callbackStartElement(const xmlChar *localName , const xm
                 }
             }
 
-            if( prefix != nullptr )
-                rEvent.mnElementToken = GetTokenWithPrefix(prefix, localName);
+            if( !sPrefix.empty() )
+                rEvent.mnElementToken = GetTokenWithPrefix(sPrefix, localName);
             else if( !sNamespace.isEmpty() )
                 rEvent.mnElementToken = GetTokenWithContextNamespace(nNamespaceToken, localName);
             else
@@ -1262,9 +1271,9 @@ void FastSaxParserImpl::callbackStartElement(const xmlChar *localName , const xm
         if( rEvent.mnElementToken == FastToken::DONTKNOW )
         {
             OUString aElementPrefix;
-            if( prefix != nullptr )
+            if( !sPrefix.empty() )
             {
-                aElementPrefix = OUString( XML_CAST( prefix ), strlen( XML_CAST( prefix )), RTL_TEXTENCODING_UTF8 );
+                aElementPrefix = OUString( sPrefix.data(), sPrefix.size(), RTL_TEXTENCODING_UTF8 );
                 if ( URI != nullptr )
                     sNamespace = OUString( XML_CAST( URI ), strlen( XML_CAST( URI )), RTL_TEXTENCODING_UTF8 );
                 else if ( m_bIgnoreMissingNSDecl )
@@ -1303,9 +1312,9 @@ void FastSaxParserImpl::addUnknownElementWithPrefix(const xmlChar **attributes, 
     OUString aNamespaceURI;
     if ( !m_bIgnoreMissingNSDecl || attributes[i + 2] != nullptr )
         aNamespaceURI = OUString( XML_CAST( attributes[ i + 2 ] ), strlen( XML_CAST( attributes[ i + 2 ] )), RTL_TEXTENCODING_UTF8 );
-    const OString& rPrefix = OString( XML_CAST( attributes[ i + 1 ] ));
-    const OString& rLocalName = OString( XML_CAST( attributes[ i ] ));
-    OString aQualifiedName = (rPrefix.isEmpty())? rLocalName : rPrefix + ":" + rLocalName;
+    const OString aPrefix( XML_CAST( attributes[ i + 1 ] ));
+    const OString aLocalName( XML_CAST( attributes[ i ] ));
+    OString aQualifiedName = (aPrefix.isEmpty())? aLocalName : aPrefix + ":" + aLocalName;
     xAttributes->addUnknown( aNamespaceURI, aQualifiedName,
         OString( XML_CAST( attributes[ i + 3 ] ), attributes[ i + 4 ] - attributes[ i + 3 ] ));
     SAL_INFO("xmloff", "unknown element " << aQualifiedName << " " << aNamespaceURI);
@@ -1512,7 +1521,7 @@ void FastSaxParser::setNamespaceHandler( const uno::Reference< css::xml::sax::XF
 
 OUString FastSaxParser::getImplementationName()
 {
-    return "com.sun.star.comp.extensions.xml.sax.FastParser";
+    return u"com.sun.star.comp.extensions.xml.sax.FastParser"_ustr;
 }
 
 void FastSaxParser::setCustomEntityNames(
@@ -1528,7 +1537,7 @@ sal_Bool FastSaxParser::supportsService( const OUString& ServiceName )
 
 uno::Sequence<OUString> FastSaxParser::getSupportedServiceNames()
 {
-    return { "com.sun.star.xml.sax.FastParser" };
+    return { u"com.sun.star.xml.sax.FastParser"_ustr };
 }
 
 } // namespace sax_fastparser
@@ -1580,10 +1589,10 @@ static bool NormalizeW3URI( OUString& rName )
     // - xforms
 
     bool bSuccess = false;
-    const OUString& sURIPrefix = XML_URI_W3_PREFIX;
+    const OUString sURIPrefix = XML_URI_W3_PREFIX;
     if( rName.startsWith( sURIPrefix ) )
     {
-        const OUString& sURISuffix = XML_URI_XFORMS_SUFFIX ;
+        const OUString sURISuffix = XML_URI_XFORMS_SUFFIX ;
         sal_Int32 nCompareFrom = rName.getLength() - sURISuffix.getLength();
         if( rName.subView( nCompareFrom ) == sURISuffix )
         {
@@ -1624,12 +1633,12 @@ static bool NormalizeOasisURN( OUString& rName )
 
     sal_Int32 nNameLen = rName.getLength();
     // :urn:oasis:names:tc.*
-    const OUString& rOasisURN = XML_URN_OASIS_NAMES_TC;
-    if( !rName.startsWith( rOasisURN ) )
+    const OUString aOasisURN = XML_URN_OASIS_NAMES_TC;
+    if( !rName.startsWith( aOasisURN ) )
         return false;
 
     // :urn:oasis:names:tc:.*
-    sal_Int32 nPos = rOasisURN.getLength();
+    sal_Int32 nPos = aOasisURN.getLength();
     if( nPos >= nNameLen || rName[nPos] != ':' )
         return false;
 
@@ -1642,12 +1651,12 @@ static bool NormalizeOasisURN( OUString& rName )
     // :urn:oasis:names:tc:[^:]:xmlns.*
     nPos = nTCIdEnd + 1;
     std::u16string_view sTmp( rName.subView( nPos ) );
-    const OUString& rXMLNS = XML_XMLNS;
-    if( !o3tl::starts_with(sTmp, rXMLNS ) )
+    const OUString aXMLNS = XML_XMLNS;
+    if( !o3tl::starts_with(sTmp, aXMLNS ) )
         return false;
 
     // :urn:oasis:names:tc:[^:]:xmlns:.*
-    nPos += rXMLNS.getLength();
+    nPos += aXMLNS.getLength();
     if( nPos >= nNameLen || rName[nPos] != ':' )
         return false;
 

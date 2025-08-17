@@ -19,14 +19,6 @@
 #include <tools/stream.hxx>
 #include <vcl/vclevent.hxx>
 
-namespace com::sun::star::beans
-{
-struct PropertyValue;
-}
-namespace com::sun::star::uno
-{
-template <class E> class Sequence;
-}
 struct EventDescription;
 class Control;
 class KeyEvent;
@@ -42,9 +34,6 @@ private:
 
 public:
     UITestLogger();
-
-    void logCommand(std::u16string_view rAction,
-                    const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
 
     void logAction(VclPtr<Control> const& xUIElement, VclEventId nEvent);
 

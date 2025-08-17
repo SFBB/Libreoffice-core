@@ -38,7 +38,7 @@
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <rtl/bootstrap.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/streamwrap.hxx>
 #include <tools/stream.hxx>
 #include <tools/UnitConversion.hxx>
@@ -125,7 +125,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::style;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::linguistic2;
 using namespace ::sd;
 
@@ -150,7 +149,6 @@ void SdDrawDocument::CreateLayoutTemplates()
     pSheet->SetHelpId( aHelpFile, HID_STANDARD_STYLESHEET_NAME );
     SfxItemSet& rISet = pSheet->GetItemSet();
 
-    ::basegfx::B2DPolyPolygon aNullPolyPolygon;
     Color    aNullCol(COL_DEFAULT_SHAPE_STROKE);
 
     XDash     aNullDash;
@@ -167,8 +165,8 @@ void SdDrawDocument::CreateLayoutTemplates()
     rISet.Put(XLineColorItem(OUString(), COL_DEFAULT_SHAPE_STROKE));
     rISet.Put(XLineWidthItem(0));
     rISet.Put(XLineDashItem(aNullDash));
-    rISet.Put(XLineStartItem(aNullPolyPolygon));
-    rISet.Put(XLineEndItem(aNullPolyPolygon));
+    rISet.Put(XLineStartItem(basegfx::B2DPolyPolygon()));
+    rISet.Put(XLineEndItem(basegfx::B2DPolyPolygon()));
     rISet.Put(XLineStartWidthItem(200));
     rISet.Put(XLineEndWidthItem(200));
     rISet.Put(XLineStartCenterItem());
@@ -196,13 +194,13 @@ void SdDrawDocument::CreateLayoutTemplates()
 
     getDefaultFonts( aLatinFont, aCJKFont, aCTLFont );
 
-    SvxFontItem aSvxFontItem( aLatinFont.GetFamilyType(), aLatinFont.GetFamilyName(), aLatinFont.GetStyleName(), aLatinFont.GetPitch(),
+    SvxFontItem aSvxFontItem( aLatinFont.GetFamilyTypeMaybeAskConfig(), aLatinFont.GetFamilyName(), aLatinFont.GetStyleName(), aLatinFont.GetPitchMaybeAskConfig(),
                               aLatinFont.GetCharSet(), EE_CHAR_FONTINFO );
 
-    SvxFontItem aSvxFontItemCJK( aCJKFont.GetFamilyType(), aCJKFont.GetFamilyName(), aCJKFont.GetStyleName(), aCJKFont.GetPitch(),
+    SvxFontItem aSvxFontItemCJK( aCJKFont.GetFamilyTypeMaybeAskConfig(), aCJKFont.GetFamilyName(), aCJKFont.GetStyleName(), aCJKFont.GetPitchMaybeAskConfig(),
                                  aCJKFont.GetCharSet(), EE_CHAR_FONTINFO_CJK );
 
-    SvxFontItem aSvxFontItemCTL( aCTLFont.GetFamilyType(), aCTLFont.GetFamilyName(), aCTLFont.GetStyleName(), aCTLFont.GetPitch(),
+    SvxFontItem aSvxFontItemCTL( aCTLFont.GetFamilyTypeMaybeAskConfig(), aCTLFont.GetFamilyName(), aCTLFont.GetStyleName(), aCTLFont.GetPitchMaybeAskConfig(),
                                  aCTLFont.GetCharSet(), EE_CHAR_FONTINFO_CTL );
 
     rISet.Put( aSvxFontItem );
@@ -300,7 +298,7 @@ void SdDrawDocument::CreateLayoutTemplates()
         pSheet = &(pSSPool->Make(aTextName, SfxStyleFamily::Para, nMask));
         pSheet->SetHelpId( aHelpFile, HID_POOLSHEET_TEXT );
         pISet = &pSheet->GetItemSet();
-        aSvxFontItem.SetFamilyName("Noto Sans");
+        aSvxFontItem.SetFamilyName(u"Noto Sans"_ustr);
         pISet->Put( aSvxFontItem );                                        // Noto Sans
         pISet->Put(XFillStyleItem(drawing::FillStyle_SOLID));              // solid fill
         pISet->Put(XFillColorItem(OUString(), Color(0xeeeeee)));           // light gray 5
@@ -399,7 +397,7 @@ void SdDrawDocument::CreateLayoutTemplates()
         pSheet = &(pSSPool->Make(aGraphicName, SfxStyleFamily::Para, nMask));
         pSheet->SetHelpId( aHelpFile, HID_POOLSHEET_GRAPHIC );
         pISet = &pSheet->GetItemSet();
-        aSvxFontItem.SetFamilyName("Liberation Sans");                     // Liberation Sans
+        aSvxFontItem.SetFamilyName(u"Liberation Sans"_ustr);                     // Liberation Sans
         pISet->Put( aSvxFontItem );
         pISet->Put( SvxFontHeightItem(635, 100, EE_CHAR_FONTHEIGHT) );     // 18 pt
         pISet->Put( XFillStyleItem(drawing::FillStyle_SOLID) );            // solid fill
@@ -628,17 +626,17 @@ void SdDrawDocument::CreateLayoutTemplates()
 
 void SdDrawDocument::CreateDefaultCellStyles()
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
 
-    Reference<css::uno::XComponentContext> xContext(comphelper::getProcessComponentContext());
+    const Reference<css::uno::XComponentContext>& xContext(comphelper::getProcessComponentContext());
     Reference<css::document::XImporter> xImporter(xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-        "com.sun.star.comp.Draw.XMLOasisStylesImporter",
-        { Any(comphelper::makePropertyValue("OrganizerMode", true)) }, xContext), UNO_QUERY);
+        u"com.sun.star.comp.Draw.XMLOasisStylesImporter"_ustr,
+        { Any(comphelper::makePropertyValue(u"OrganizerMode"_ustr, true)) }, xContext), UNO_QUERY);
     if (xImporter)
         xImporter->setTargetDocument(mpDocSh->GetModel());
 
-    OUString aURL("$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/config/soffice.cfg/simpress/styles.xml");
+    OUString aURL(u"$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/config/soffice.cfg/simpress/styles.xml"_ustr);
     rtl::Bootstrap::expandMacros(aURL);
     SvFileStream aFile(aURL, StreamMode::READ);
 
@@ -654,17 +652,17 @@ void SdDrawDocument::CreateDefaultCellStyles()
 
     getDefaultFonts( aLatinFont, aCJKFont, aCTLFont );
 
-    SvxFontItem aSvxFontItem( aLatinFont.GetFamilyType(), aLatinFont.GetFamilyName(), aLatinFont.GetStyleName(), aLatinFont.GetPitch(),
+    SvxFontItem aSvxFontItem( aLatinFont.GetFamilyTypeMaybeAskConfig(), aLatinFont.GetFamilyName(), aLatinFont.GetStyleName(), aLatinFont.GetPitchMaybeAskConfig(),
                               aLatinFont.GetCharSet(), EE_CHAR_FONTINFO );
 
-    SvxFontItem aSvxFontItemCJK( aCJKFont.GetFamilyType(), aCJKFont.GetFamilyName(), aCJKFont.GetStyleName(), aCJKFont.GetPitch(),
+    SvxFontItem aSvxFontItemCJK( aCJKFont.GetFamilyTypeMaybeAskConfig(), aCJKFont.GetFamilyName(), aCJKFont.GetStyleName(), aCJKFont.GetPitchMaybeAskConfig(),
                                  aCJKFont.GetCharSet(), EE_CHAR_FONTINFO_CJK );
 
-    SvxFontItem aSvxFontItemCTL( aCTLFont.GetFamilyType(), aCTLFont.GetFamilyName(), aCTLFont.GetStyleName(), aCTLFont.GetPitch(),
+    SvxFontItem aSvxFontItemCTL( aCTLFont.GetFamilyTypeMaybeAskConfig(), aCTLFont.GetFamilyName(), aCTLFont.GetStyleName(), aCTLFont.GetPitchMaybeAskConfig(),
                                  aCTLFont.GetCharSet(), EE_CHAR_FONTINFO_CTL );
 
     SdStyleSheetPool* pSSPool = static_cast<SdStyleSheetPool*>(GetStyleSheetPool());
-    SfxStyleSheetBase* pDefaultStyle = pSSPool->Find("default", SfxStyleFamily::Frame);
+    SfxStyleSheetBase* pDefaultStyle = pSSPool->Find(u"default"_ustr, SfxStyleFamily::Frame);
     if (pDefaultStyle)
     {
         SfxItemSet& rSet(pDefaultStyle->GetItemSet());
@@ -684,7 +682,7 @@ void SdDrawDocument::CreateDefaultCellStyles()
         pSheet = pSSPool->Next();
     }
 
-    Reference<form::XReset> xReset(pSSPool->getByName("table"), UNO_QUERY);
+    Reference<form::XReset> xReset(pSSPool->getByName(u"table"_ustr), UNO_QUERY);
     if (xReset)
         xReset->reset();
 }
@@ -898,7 +896,7 @@ void SdDrawDocument::SpellObject(SdrTextObj* pObj)
 
                     // taking text from the outliner
                     // use non-broadcasting version to avoid O(n^2)
-                    pObj->NbcSetOutlinerParaObject( std::move(pOPO) );
+                    pObj->NbcSetOutlinerParaObject( std::move(pOPO), false );
                 }
             }
         }
@@ -1016,13 +1014,12 @@ OUString SdDrawDocument::CreatePageNumValue(sal_uInt16 nNum) const
 // (including ~LT~). This is unlike rNewName.
 void SdDrawDocument::RenameLayoutTemplate(const OUString& rOldLayoutName, const OUString& rNewName)
 {
-    OUString aSep(SD_LT_SEPARATOR);
     OUString aOldName(rOldLayoutName);
-    sal_Int32 nPos = aOldName.indexOf( aSep );
+    sal_Int32 nPos = aOldName.indexOf( SD_LT_SEPARATOR );
 
     // erase everything after '~LT~'
     if (nPos != -1)
-        aOldName = aOldName.copy(0, nPos + aSep.getLength());
+        aOldName = aOldName.copy(0, nPos + SD_LT_SEPARATOR.getLength());
 
     std::vector<StyleReplaceData> aReplList;
     SfxStyleSheetIterator aIter(mxStyleSheetPool.get(), SfxStyleFamily::Page);
@@ -1035,7 +1032,7 @@ void SdDrawDocument::RenameLayoutTemplate(const OUString& rOldLayoutName, const 
         // if the sheetname starts with aOldName + "~LT~"
         if (aSheetName.startsWith(aOldName))
         {
-            aSheetName = aSheetName.replaceAt(0, aOldName.getLength() - aSep.getLength(), rNewName);
+            aSheetName = aSheetName.replaceAt(0, aOldName.getLength() - SD_LT_SEPARATOR.getLength(), rNewName);
 
             StyleReplaceData aReplData;
             aReplData.nFamily     = pSheet->GetFamily();
@@ -1044,15 +1041,16 @@ void SdDrawDocument::RenameLayoutTemplate(const OUString& rOldLayoutName, const 
             aReplData.aNewName   = aSheetName;
             aReplList.push_back(aReplData);
 
-            pSheet->SetName(aSheetName);
+            pSheet->SetName(aSheetName, /*bReindexNow*/false);
         }
 
         pSheet = aIter.Next();
     }
+    mxStyleSheetPool->Reindex();
 
     // Now set the layout name of the drawing and the notes page, as well as
     // their master pages.
-    OUString aPageLayoutName = rNewName + aSep + STR_LAYOUT_OUTLINE;
+    OUString aPageLayoutName = rNewName + SD_LT_SEPARATOR + STR_LAYOUT_OUTLINE;
 
     // Inform all text objects on pages that use the renamed layout and set the
     // new name.
@@ -1147,7 +1145,7 @@ void SdDrawDocument::SetTextDefaults() const
     aBulletItem.SetStart(1);
     aBulletItem.SetScale(45);               // In percent
     aBulletItem.SetSymbol( 0x25CF );                // In points
-    m_pItemPool->SetPoolDefaultItem( aBulletItem );
+    m_pItemPool->SetUserDefaultItem( aBulletItem );
 
     // New BulletItem
     SvxNumberFormat aNumberFormat(SVX_NUM_CHAR_SPECIAL);
@@ -1173,12 +1171,12 @@ void SdDrawDocument::SetTextDefaults() const
     }
 
     SvxNumBulletItem aNumBulletItem( std::move(aNumRule), EE_PARA_NUMBULLET );
-    m_pItemPool->SetPoolDefaultItem( aNumBulletItem );
+    m_pItemPool->SetUserDefaultItem( aNumBulletItem );
 }
 
 css::text::WritingMode SdDrawDocument::GetDefaultWritingMode() const
 {
-    const SfxPoolItem*                  pItem = ( m_pItemPool ? m_pItemPool->GetPoolDefaultItem( EE_PARA_WRITINGDIR ) : nullptr );
+    const SfxPoolItem*                  pItem = ( m_pItemPool ? m_pItemPool->GetUserDefaultItem( EE_PARA_WRITINGDIR ) : nullptr );
     css::text::WritingMode eRet = css::text::WritingMode_LR_TB;
 
     if( pItem )
@@ -1215,14 +1213,14 @@ void SdDrawDocument::SetDefaultWritingMode(css::text::WritingMode eMode )
     }
 
     SvxFrameDirectionItem aModeItem( nVal, EE_PARA_WRITINGDIR );
-    m_pItemPool->SetPoolDefaultItem( aModeItem );
+    m_pItemPool->SetUserDefaultItem( aModeItem );
 
     SvxAdjustItem aAdjust( SvxAdjust::Left, EE_PARA_JUST );
 
     if( eMode == css::text::WritingMode_RL_TB )
         aAdjust.SetAdjust( SvxAdjust::Right );
 
-    m_pItemPool->SetPoolDefaultItem( aAdjust );
+    m_pItemPool->SetUserDefaultItem( aAdjust );
 }
 
 void SdDrawDocument::getDefaultFonts( vcl::Font& rLatinFont, vcl::Font& rCJKFont, vcl::Font& rCTLFont )

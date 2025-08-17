@@ -34,6 +34,7 @@
 #include <editeng/outliner.hxx>
 #include <editeng/editview.hxx>
 #include <editeng/langitem.hxx>
+#include <editeng/scripthintitem.hxx>
 
 #include <svl/languageoptions.hxx>
 #include <svtools/langtab.hxx>
@@ -58,11 +59,11 @@ namespace SwLangHelper
     {
         ESelection aSelection = pOLV->GetSelection();
         EditView& rEditView=pOLV->GetEditView();
-        EditEngine* pEditEngine=rEditView.GetEditEngine();
+        EditEngine& rEditEngine = rEditView.getEditEngine();
 
         // the value of used script types
         const SvtScriptType nScriptType =pOLV->GetSelectedScriptType();
-        OUString aScriptTypesInUse( OUString::number( static_cast<int>(nScriptType) ) );//pEditEngine->GetScriptType(aSelection)
+        OUString aScriptTypesInUse( OUString::number( static_cast<int>(nScriptType) ) );//rEditEngine.GetScriptType(aSelection)
 
         // get keyboard language
         OUString aKeyboardLang;
@@ -71,18 +72,18 @@ namespace SwLangHelper
             aKeyboardLang = SvtLanguageTable::GetLanguageString( nLang );
 
         // get the language that is in use
-        OUString aCurrentLang("*");
+        OUString aCurrentLang(u"*"_ustr);
         SfxItemSet aSet(pOLV->GetAttribs());
         nLang = SwLangHelper::GetCurrentLanguage( aSet,nScriptType );
         if (nLang != LANGUAGE_DONTKNOW)
             aCurrentLang = SvtLanguageTable::GetLanguageString( nLang );
 
         // build sequence for status value
-        uno::Sequence< OUString > aSeq{ aCurrentLang,
+        uno::Sequence<OUString> aSeq{ aCurrentLang,
                                         aScriptTypesInUse,
                                         aKeyboardLang,
-                                        SwLangHelper::GetTextForLanguageGuessing( pEditEngine,
-                                                                                  aSelection ) };
+                                        SwLangHelper::GetTextForLanguageGuessing(&rEditEngine, aSelection)
+        };
 
         // set sequence as status value
         SfxStringListItem aItem( SID_LANGUAGE_STATUS );
@@ -90,7 +91,7 @@ namespace SwLangHelper
         rSet.Put( aItem );
     }
 
-    bool SetLanguageStatus( OutlinerView* pOLV, SfxRequest &rReq, SwView const &rView, SwWrtShell &rSh )
+    bool SetLanguageStatus( const OutlinerView* pOLV, SfxRequest &rReq, SwView const &rView, SwWrtShell &rSh )
     {
         bool bRestoreSelection = false;
         ESelection   aSelection  = pOLV->GetSelection();
@@ -200,21 +201,35 @@ namespace SwLangHelper
         if (nLang == LANGUAGE_DONTKNOW)
             return;
 
-        EditEngine* pEditEngine = pOLV ? pOLV->GetEditView().GetEditEngine() : nullptr;
+        EditEngine* pEditEngine = pOLV ? &pOLV->GetEditView().getEditEngine() : nullptr;
         OSL_ENSURE( !pOLV || pEditEngine, "OutlinerView without EditEngine???" );
 
         //get ScriptType
         TypedWhichId<SvxLanguageItem> nLangWhichId(0);
         bool bIsSingleScriptType = true;
-        switch (SvtLanguageOptions::GetScriptTypeOfLanguage( nLang ))
+
+        auto nHintWhichId = pEditEngine ? EE_CHAR_SCRIPT_HINT : RES_CHRATR_SCRIPT_HINT;
+        auto eHintType = i18nutil::ScriptHintType::Automatic;
+
+        switch (SvtLanguageOptions::GetScriptTypeOfLanguage(nLang))
         {
-            case SvtScriptType::LATIN :    nLangWhichId = pEditEngine ? EE_CHAR_LANGUAGE : RES_CHRATR_LANGUAGE; break;
-            case SvtScriptType::ASIAN :    nLangWhichId = pEditEngine ? EE_CHAR_LANGUAGE_CJK : RES_CHRATR_CJK_LANGUAGE; break;
-            case SvtScriptType::COMPLEX :  nLangWhichId = pEditEngine ? EE_CHAR_LANGUAGE_CTL : RES_CHRATR_CTL_LANGUAGE; break;
+            case SvtScriptType::LATIN:
+                nLangWhichId = pEditEngine ? EE_CHAR_LANGUAGE : RES_CHRATR_LANGUAGE;
+                eHintType = i18nutil::ScriptHintType::Latin;
+                break;
+            case SvtScriptType::ASIAN:
+                nLangWhichId = pEditEngine ? EE_CHAR_LANGUAGE_CJK : RES_CHRATR_CJK_LANGUAGE;
+                eHintType = i18nutil::ScriptHintType::Asian;
+                break;
+            case SvtScriptType::COMPLEX:
+                nLangWhichId = pEditEngine ? EE_CHAR_LANGUAGE_CTL : RES_CHRATR_CTL_LANGUAGE;
+                eHintType = i18nutil::ScriptHintType::Complex;
+                break;
             default:
                 bIsSingleScriptType = false;
-                OSL_FAIL("unexpected case" );
+                OSL_FAIL("unexpected case");
         }
+
         if (!bIsSingleScriptType)
             return;
 
@@ -227,12 +242,14 @@ namespace SwLangHelper
             if (pEditEngine)
             {
                 rCoreSet.Put( SvxLanguageItem( nLang, nLangWhichId ));
+                rCoreSet.Put(SvxScriptHintItem(eHintType, nHintWhichId));
                 pEditEngine->QuickSetAttribs(rCoreSet, rSelection);
             }
             else
             {
                 rWrtSh.GetCurAttr( rCoreSet );
                 rCoreSet.Put( SvxLanguageItem( nLang, nLangWhichId ));
+                rCoreSet.Put(SvxScriptHintItem(eHintType, nHintWhichId));
                 rWrtSh.SetAttrSet( rCoreSet );
             }
         }
@@ -284,7 +301,7 @@ namespace SwLangHelper
             // (for paragraph is handled by previously having set the selection to the
             // whole paragraph)
 
-            EditEngine* pEditEngine = pOLV ? pOLV->GetEditView().GetEditEngine() : nullptr;
+            EditEngine* pEditEngine = pOLV ? &pOLV->GetEditView().getEditEngine() : nullptr;
             OSL_ENSURE( !pOLV || pEditEngine, "OutlinerView without EditEngine???" );
             if (pEditEngine)
             {
@@ -332,13 +349,13 @@ namespace SwLangHelper
 
             // ugly hack, as it seems that EditView/EditEngine does not update their spellchecking marks
             // when setting a new language attribute
-            EditEngine* pEditEngine = rEditView.GetEditEngine();
-            EEControlBits nCntrl = pEditEngine->GetControlWord();
+            EditEngine& rEditEngine = rEditView.getEditEngine();
+            EEControlBits nCntrl = rEditEngine.GetControlWord();
             // turn off
-            pEditEngine->SetControlWord(nCntrl & ~EEControlBits::ONLINESPELLING);
+            rEditEngine.SetControlWord(nCntrl & ~EEControlBits::ONLINESPELLING);
             //turn back on
-            pEditEngine->SetControlWord(nCntrl);
-            pEditEngine->CompleteOnlineSpelling();
+            rEditEngine.SetControlWord(nCntrl);
+            rEditEngine.CompleteOnlineSpelling();
 
             rEditView.Invalidate();
         }
@@ -377,9 +394,9 @@ namespace SwLangHelper
         else if (nState == SfxItemState::DEFAULT)
         {
             // since the attribute is not set: retrieve the default value
-            nLang = aSet.GetPool()->GetDefaultItem( nLangWhichId ).GetLanguage();
+            nLang = aSet.GetPool()->GetUserOrPoolDefaultItem( nLangWhichId ).GetLanguage();
         }
-        else if (nState == SfxItemState::DONTCARE)
+        else if (nState == SfxItemState::INVALID)
         {
             // there is more than one language...
             nLang = LANGUAGE_DONTKNOW;
@@ -512,11 +529,11 @@ namespace SwLangHelper
         // string for guessing language
 
         // get the full text of the paragraph that the end of selection is in
-        OUString aText = rEditEngine->GetText(rDocSelection.nEndPos);
+        OUString aText = rEditEngine->GetText(rDocSelection.end.nIndex);
         if (!aText.isEmpty())
         {
             sal_Int32 nStt = 0;
-            sal_Int32 nEnd = rDocSelection.nEndPos;
+            sal_Int32 nEnd = rDocSelection.end.nIndex;
             // at most 100 chars to the left...
             nStt = nEnd > 100 ? nEnd - 100 : 0;
             // ... and 100 to the right of the cursor position
@@ -529,7 +546,7 @@ namespace SwLangHelper
 
     void SelectPara( EditView &rEditView, const ESelection &rCurSel )
     {
-        ESelection aParaSel( rCurSel.nStartPara, 0, rCurSel.nStartPara, EE_TEXTPOS_ALL );
+        ESelection aParaSel(rCurSel.start.nPara, 0, rCurSel.start.nPara, EE_TEXTPOS_MAX);
         rEditView.SetSelection( aParaSel );
     }
 

@@ -18,24 +18,25 @@
 namespace sw
 {
 DropDownFormFieldDialog::DropDownFormFieldDialog(weld::Widget* pParent,
-                                                 mark::IFieldmark* pDropDownField)
-    : GenericDialogController(pParent, "modules/swriter/ui/dropdownformfielddialog.ui",
-                              "DropDownFormFieldDialog")
+                                                 mark::Fieldmark* pDropDownField)
+    : GenericDialogController(pParent, u"modules/swriter/ui/dropdownformfielddialog.ui"_ustr,
+                              u"DropDownFormFieldDialog"_ustr)
     , m_pDropDownField(pDropDownField)
     , m_bListHasChanged(false)
-    , m_xListItemEntry(m_xBuilder->weld_entry("item_entry"))
-    , m_xListAddButton(m_xBuilder->weld_button("add_button"))
-    , m_xListItemsTreeView(m_xBuilder->weld_tree_view("items_treeview"))
-    , m_xListRemoveButton(m_xBuilder->weld_button("remove_button"))
-    , m_xListUpButton(m_xBuilder->weld_button("up_button"))
-    , m_xListDownButton(m_xBuilder->weld_button("down_button"))
+    , m_xListItemEntry(m_xBuilder->weld_entry(u"item_entry"_ustr))
+    , m_xListAddButton(m_xBuilder->weld_button(u"add_button"_ustr))
+    , m_xListItemsTreeView(m_xBuilder->weld_tree_view(u"items_treeview"_ustr))
+    , m_xListRemoveButton(m_xBuilder->weld_button(u"remove_button"_ustr))
+    , m_xListUpButton(m_xBuilder->weld_button(u"up_button"_ustr))
+    , m_xListDownButton(m_xBuilder->weld_button(u"down_button"_ustr))
 {
     m_xListItemEntry->connect_key_press(LINK(this, DropDownFormFieldDialog, KeyPressedHdl));
     m_xListItemEntry->connect_changed(LINK(this, DropDownFormFieldDialog, EntryChangedHdl));
 
     m_xListItemsTreeView->set_size_request(m_xListItemEntry->get_preferred_size().Width(),
                                            m_xListItemEntry->get_preferred_size().Height() * 5);
-    m_xListItemsTreeView->connect_changed(LINK(this, DropDownFormFieldDialog, ListChangedHdl));
+    m_xListItemsTreeView->connect_selection_changed(
+        LINK(this, DropDownFormFieldDialog, ListChangedHdl));
 
     Link<weld::Button&, void> aPushButtonLink(LINK(this, DropDownFormFieldDialog, ButtonPushedHdl));
     m_xListAddButton->connect_clicked(aPushButtonLink);
@@ -102,7 +103,7 @@ void DropDownFormFieldDialog::InitControls()
 {
     if (m_pDropDownField != nullptr)
     {
-        const mark::IFieldmark::parameter_map_t* const pParameters
+        const mark::Fieldmark::parameter_map_t* const pParameters
             = m_pDropDownField->GetParameters();
 
         auto pListEntries = pParameters->find(ODF_FORMDROPDOWN_LISTENTRY);
@@ -110,7 +111,7 @@ void DropDownFormFieldDialog::InitControls()
         {
             css::uno::Sequence<OUString> vListEntries;
             pListEntries->second >>= vListEntries;
-            for (const OUString& rItem : std::as_const(vListEntries))
+            for (const OUString& rItem : vListEntries)
                 m_xListItemsTreeView->append_text(rItem);
 
             // Select the current one
@@ -173,7 +174,7 @@ void DropDownFormFieldDialog::Apply()
     if (!(m_pDropDownField != nullptr && m_bListHasChanged))
         return;
 
-    mark::IFieldmark::parameter_map_t* pParameters = m_pDropDownField->GetParameters();
+    mark::Fieldmark::parameter_map_t* pParameters = m_pDropDownField->GetParameters();
 
     css::uno::Sequence<OUString> vListEntries(m_xListItemsTreeView->n_children());
     auto vListEntriesRange = asNonConstRange(vListEntries);

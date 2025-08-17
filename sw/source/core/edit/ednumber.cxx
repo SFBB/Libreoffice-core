@@ -355,7 +355,7 @@ void SwEditShell::SetIndent(short nIndent, const SwPosition & rPos)
 
         // change numbering rule - changed numbering rule is not applied at <aPaM>
         SwPaM aPaM(pos);
-        GetDoc()->SetNumRule(aPaM, aRule, false, GetLayout(), OUString(), false);
+        GetDoc()->SetNumRule(aPaM, aRule, SwDoc::SetNumRuleMode::DontSetItem, GetLayout(), OUString());
     }
 
     EndAllAction();
@@ -428,10 +428,10 @@ bool SwEditShell::MoveNumParas( bool bUpperLower, bool bUpperLeft )
                 {
                     SwNodeOffset nStt = aPos.GetNodeIndex(), nIdx = nStt - 1;
 
-                    if (SwTextNode const*const pStt = aPos.GetNode().GetTextNode())
+                    if (SwTextNode const*const pStart = aPos.GetNode().GetTextNode())
                     {
                         std::pair<SwTextNode *, SwTextNode *> nodes(
-                            sw::GetFirstAndLastNode(*GetLayout(), *pStt));
+                            sw::GetFirstAndLastNode(*GetLayout(), *pStart));
                         nIdx = nodes.first->GetIndex() - 1;
                     }
                     while( nIdx && (
@@ -451,10 +451,10 @@ bool SwEditShell::MoveNumParas( bool bUpperLower, bool bUpperLeft )
                     pOrig == aCursor.GetPointNode().GetTextNode()->GetNumRule() )
                 {
                     SwNodeOffset nStt = aCursor.GetPoint()->GetNodeIndex(), nIdx = nStt+1;
-                    if (SwTextNode const*const pStt = aCursor.GetPoint()->GetNode().GetTextNode())
+                    if (SwTextNode const*const pStart = aCursor.GetPoint()->GetNode().GetTextNode())
                     {
                         std::pair<SwTextNode *, SwTextNode *> nodes(
-                            sw::GetFirstAndLastNode(*GetLayout(), *pStt));
+                            sw::GetFirstAndLastNode(*GetLayout(), *pStart));
                         nIdx = nodes.second->GetIndex() + 1;
                     }
 
@@ -540,10 +540,11 @@ bool SwEditShell::OutlineUpDown( short nOffset )
     return bRet;
 }
 
-bool SwEditShell::MoveOutlinePara( SwOutlineNodes::difference_type nOffset )
+bool SwEditShell::MoveOutlinePara( SwOutlineNodes::difference_type nOffset,
+                const SwOutlineNodesInline* pOutlineNodesInline )
 {
     StartAllAction();
-    bool bRet = GetDoc()->MoveOutlinePara( *GetCursor(), nOffset );
+    bool bRet = GetDoc()->MoveOutlinePara( *GetCursor(), nOffset, pOutlineNodesInline );
     EndAllAction();
     return bRet;
 }
@@ -556,11 +557,10 @@ bool SwEditShell::IsProtectedOutlinePara() const
     if( rNd.IsTextNode() )
     {
         const SwOutlineNodes& rOutlNd = GetDoc()->GetNodes().GetOutLineNds();
-        SwNode* pNd = const_cast<SwNode*>(&rNd);
         bool bFirst = true;
         SwOutlineNodes::size_type nPos;
         int nLvl(0);
-        if( !rOutlNd.Seek_Entry( pNd, &nPos ) && nPos )
+        if (!rOutlNd.Seek_Entry(&rNd, &nPos) && nPos)
             --nPos;
 
         for( ; nPos < rOutlNd.size(); ++nPos )
@@ -629,15 +629,13 @@ bool SwEditShell::IsOutlineCopyable( SwOutlineNodes::size_type nIdx ) const
     return lcl_IsOutlineMoveAndCopyable( *this, nIdx, true );
 }
 
-bool SwEditShell::NumOrNoNum(
-    bool bNumOn,
-    bool bChkStart )
+bool SwEditShell::NumOrNoNum( bool bNumOn )
 {
     bool bRet = false;
 
     if ( !IsMultiSelection()
          && !HasSelection()
-         && ( !bChkStart || IsSttPara() ) )
+         && IsSttPara() )
     {
         StartAllAction();
         SwPosition const pos(sw::GetParaPropsPos(*GetLayout(), *GetCursor()->GetPoint()));
@@ -647,14 +645,14 @@ bool SwEditShell::NumOrNoNum(
     return bRet;
 }
 
-bool SwEditShell::IsNoNum( bool bChkStart ) const
+bool SwEditShell::IsNoNum() const
 {
     // a Backspace in the paragraph without number becomes a Delete
     bool bResult = false;
 
     if ( !IsMultiSelection()
          && !HasSelection()
-         && ( !bChkStart || IsSttPara() ) )
+         && IsSttPara() )
     {
         const SwTextNode* pTextNd = sw::GetParaPropsNode(*GetLayout(), GetCursor()->GetPoint()->GetNode());
         if ( pTextNd != nullptr )
@@ -751,8 +749,9 @@ void SwEditShell::SetCurNumRule( const SwNumRule& rRule,
         for (SwPaM& rPaM : pCursor->GetRingContainer())
         {
             OUString sListId = GetDoc()->SetNumRule(rPaM, rRule,
-                                  bCreateNewList, GetLayout(), sContinuedListId,
-                                  true, bResetIndentAttrs );
+              (bCreateNewList ? SwDoc::SetNumRuleMode::CreateNewList : SwDoc::SetNumRuleMode::Default)
+              | (bResetIndentAttrs ? SwDoc::SetNumRuleMode::ResetIndentAttrs : SwDoc::SetNumRuleMode::Default),
+              GetLayout(), sContinuedListId);
 
             //tdf#87548 On creating a new list for a multi-selection only
             //create a single new list for the multi-selection, not one per selection
@@ -768,8 +767,9 @@ void SwEditShell::SetCurNumRule( const SwNumRule& rRule,
     else
     {
         GetDoc()->SetNumRule( *pCursor, rRule,
-                              bCreateNewList, GetLayout(), rContinuedListId,
-                              true, bResetIndentAttrs );
+              (bCreateNewList ? SwDoc::SetNumRuleMode::CreateNewList : SwDoc::SetNumRuleMode::Default)
+              | (bResetIndentAttrs ? SwDoc::SetNumRuleMode::ResetIndentAttrs : SwDoc::SetNumRuleMode::Default),
+              GetLayout(), rContinuedListId);
         GetDoc()->SetCounted( *pCursor, true, GetLayout() );
     }
     GetDoc()->GetIDocumentUndoRedo().EndUndo( SwUndoId::INSATTR, nullptr );
@@ -777,7 +777,7 @@ void SwEditShell::SetCurNumRule( const SwNumRule& rRule,
     EndAllAction();
 }
 
-OUString SwEditShell::GetUniqueNumRuleName() const
+UIName SwEditShell::GetUniqueNumRuleName() const
 {
     return GetDoc()->GetUniqueNumRuleName();
 }
@@ -789,7 +789,7 @@ void SwEditShell::ChgNumRuleFormats( const SwNumRule& rRule )
     EndAllAction();
 }
 
-void SwEditShell::ReplaceNumRule( const OUString& rOldRule, const OUString& rNewRule )
+void SwEditShell::ReplaceNumRule( const UIName& rOldRule, const UIName& rNewRule )
 {
     StartAllAction();
     SwPosition const pos(sw::GetParaPropsPos(*GetLayout(), *GetCursor()->GetPoint()));
@@ -875,6 +875,11 @@ const SwNumRule * SwEditShell::SearchNumRule( const bool bNum,
     return GetDoc()->SearchNumRule( *(GetCursor()->Start()),
                                     false/*bForward*/, bNum, false/*bOutline*/, -1/*nNonEmptyAllowe*/,
                                     sListId, GetLayout() );
+}
+
+std::set<OUString> SwEditShell::GetUsedBullets()
+{
+    return GetDoc()->GetUsedBullets();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

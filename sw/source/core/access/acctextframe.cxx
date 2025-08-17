@@ -19,7 +19,6 @@
 
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/supportsservice.hxx>
 #include <vcl/svapp.hxx>
 #include <sal/log.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
@@ -77,11 +76,8 @@ void SwAccessibleTextFrame::Notify(const SfxHint& rHint)
         {
             auto rTitleChanged = static_cast<const sw::TitleChanged&>(rHint);
             msTitle = rTitleChanged.m_sNew;
-            AccessibleEventObject aEvent;
-            aEvent.EventId = AccessibleEventId::NAME_CHANGED;
-            aEvent.OldValue <<= rTitleChanged.m_sOld;
-            aEvent.NewValue <<= msTitle;
-            FireAccessibleEvent( aEvent );
+            FireAccessibleEvent(AccessibleEventId::NAME_CHANGED, uno::Any(rTitleChanged.m_sOld),
+                                uno::Any(msTitle));
             if(!pFlyFrameFormat || !pFlyFrameFormat->GetObjDescription().isEmpty())
                 break;
             [[fallthrough]];
@@ -96,11 +92,8 @@ void SwAccessibleTextFrame::Notify(const SfxHint& rHint)
                 msDesc = msTitle;
             if(msDesc == sOldDesc)
                 return;
-            AccessibleEventObject aEvent;
-            aEvent.EventId = AccessibleEventId::DESCRIPTION_CHANGED;
-            aEvent.OldValue <<= sOldDesc;
-            aEvent.NewValue <<= msDesc;
-            FireAccessibleEvent(aEvent);
+            FireAccessibleEvent(AccessibleEventId::DESCRIPTION_CHANGED, uno::Any(sOldDesc),
+                                uno::Any(msDesc));
             return;
         }
     }
@@ -233,26 +226,6 @@ OUString SAL_CALL SwAccessibleTextFrame::getAccessibleDescription()
 
 }
 
-OUString SAL_CALL SwAccessibleTextFrame::getImplementationName()
-{
-    return "com.sun.star.comp.Writer.SwAccessibleTextFrameView";
-}
-
-sal_Bool SAL_CALL SwAccessibleTextFrame::supportsService(const OUString& sTestServiceName)
-{
-    return cppu::supportsService(this, sTestServiceName);
-}
-
-uno::Sequence< OUString > SAL_CALL SwAccessibleTextFrame::getSupportedServiceNames()
-{
-    return { "com.sun.star.text.AccessibleTextFrameView", sAccessibleServiceName };
-}
-
-uno::Sequence< sal_Int8 > SAL_CALL SwAccessibleTextFrame::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
-}
-
 // XAccessibleRelationSet
 
 SwFlyFrame* SwAccessibleTextFrame::getFlyFrame() const
@@ -269,10 +242,10 @@ SwFlyFrame* SwAccessibleTextFrame::getFlyFrame() const
     return pFlyFrame;
 }
 
-AccessibleRelation SwAccessibleTextFrame::makeRelation( sal_Int16 nType, const SwFlyFrame* pFrame )
+AccessibleRelation SwAccessibleTextFrame::makeRelation(AccessibleRelationType eType, const SwFlyFrame* pFrame )
 {
-    uno::Sequence<uno::Reference<XInterface> > aSequence { GetMap()->GetContext( pFrame ) };
-    return AccessibleRelation( nType, aSequence );
+    uno::Sequence<uno::Reference<XAccessible>> aSequence { GetMap()->GetContext(pFrame) };
+    return AccessibleRelation(eType, aSequence);
 }
 
 uno::Reference<XAccessibleRelationSet> SAL_CALL SwAccessibleTextFrame::getAccessibleRelationSet( )
@@ -291,12 +264,12 @@ uno::Reference<XAccessibleRelationSet> SAL_CALL SwAccessibleTextFrame::getAccess
     const SwFlyFrame* pPrevFrame = pFlyFrame->GetPrevLink();
     if( pPrevFrame != nullptr )
         pHelper->AddRelation( makeRelation(
-            AccessibleRelationType::CONTENT_FLOWS_FROM, pPrevFrame ) );
+            AccessibleRelationType_CONTENT_FLOWS_FROM, pPrevFrame ) );
 
     const SwFlyFrame* pNextFrame = pFlyFrame->GetNextLink();
     if( pNextFrame != nullptr )
         pHelper->AddRelation( makeRelation(
-            AccessibleRelationType::CONTENT_FLOWS_TO, pNextFrame ) );
+            AccessibleRelationType_CONTENT_FLOWS_TO, pNextFrame ) );
 
     return pHelper;
 }

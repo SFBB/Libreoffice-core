@@ -49,7 +49,7 @@ NameContainer::~NameContainer()
 //XServiceInfo
 OUString SAL_CALL NameContainer::getImplementationName()
 {
-    return "com.sun.star.comp.chart.XMLNameSpaceMap";
+    return u"com.sun.star.comp.chart.XMLNameSpaceMap"_ustr;
 }
 
 sal_Bool SAL_CALL NameContainer::supportsService( const OUString& ServiceName )
@@ -59,13 +59,13 @@ sal_Bool SAL_CALL NameContainer::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL NameContainer::getSupportedServiceNames()
 {
-    return { "com.sun.star.xml.NamespaceMap" };
+    return { u"com.sun.star.xml.NamespaceMap"_ustr };
 }
 
 // XNameContainer
 void SAL_CALL NameContainer::insertByName( const OUString& rName, const Any& rElement )
 {
-    if( m_aMap.find( rName ) != m_aMap.end() )
+    if( m_aMap.contains( rName ))
         throw container::ElementExistException();
     m_aMap.emplace( rName, rElement );
 }
@@ -103,7 +103,7 @@ Sequence< OUString > SAL_CALL NameContainer::getElementNames()
 
 sal_Bool SAL_CALL NameContainer::hasByName( const OUString& rName )
 {
-    return ( m_aMap.find( rName ) != m_aMap.end() );
+    return m_aMap.contains( rName );
 }
 
 // XElementAccess

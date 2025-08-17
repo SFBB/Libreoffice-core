@@ -54,6 +54,7 @@
 #include <vcl/ptrstyle.hxx>
 #include <optional>
 #include <sdmod.hxx>
+#include <ResourceId.hxx>
 
 namespace {
 const sal_uInt32 SINGLE_CLICK             (0x00000001);
@@ -295,7 +296,7 @@ SelectionFunction::SelectionFunction (
         rSlideSorter.GetViewShell(),
         rSlideSorter.GetContentWindow(),
         &rSlideSorter.GetView(),
-        rSlideSorter.GetModel().GetDocument(),
+        *rSlideSorter.GetModel().GetDocument(),
         rRequest),
       mrSlideSorter(rSlideSorter),
       mrController(mrSlideSorter.GetController()),
@@ -364,21 +365,21 @@ bool SelectionFunction::KeyInput (const KeyEvent& rEvent)
         case KEY_RETURN:
         {
             model::SharedPageDescriptor pDescriptor (rFocusManager.GetFocusedPageDescriptor());
-            ViewShell* pViewShell = mrSlideSorter.GetViewShell();
-            if (rFocusManager.HasFocus() && pDescriptor && pViewShell!=nullptr)
+            ViewShell& rViewShell = mrSlideSorter.GetViewShell();
+            if (rFocusManager.HasFocus() && pDescriptor)
             {
                 // The Return key triggers different functions depending on
                 // whether the slide sorter is the main view or displayed in
                 // the right pane.
-                if (pViewShell->IsMainViewShell())
+                if (rViewShell.IsMainViewShell())
                 {
                     mpModeHandler->SetCurrentPage(pDescriptor);
                     mpModeHandler->SwitchView(pDescriptor);
                 }
-                else if (pViewShell->GetDispatcher() != nullptr)
+                else if (rViewShell.GetDispatcher() != nullptr)
                 {
                     // tdf#111737 - add new (master) page depending on the edit mode
-                    pViewShell->GetDispatcher()->Execute(
+                    rViewShell.GetDispatcher()->Execute(
                         mrSlideSorter.GetModel().GetEditMode() == EditMode::Page
                             ? SID_INSERTPAGE
                             : SID_INSERT_MASTER_PAGE,
@@ -563,14 +564,14 @@ void SelectionFunction::DoCut()
     mrController.GetClipboard().DoCut();
 }
 
-void SelectionFunction::DoCopy()
+void SelectionFunction::DoCopy(bool bMergeMasterPagesOnly )
 {
-    mrController.GetClipboard().DoCopy();
+    mrController.GetClipboard().DoCopy(bMergeMasterPagesOnly);
 }
 
-void SelectionFunction::DoPaste()
+void SelectionFunction::DoPaste(bool bMergeMasterPagesOnly )
 {
-    mrController.GetClipboard().DoPaste();
+    mrController.GetClipboard().DoPaste(bMergeMasterPagesOnly);
 }
 
 bool SelectionFunction::cancel()
@@ -582,11 +583,11 @@ bool SelectionFunction::cancel()
 void SelectionFunction::GotoNextPage (int nOffset)
 {
     model::SharedPageDescriptor pDescriptor
-        = mrController.GetCurrentSlideManager()->GetCurrentSlide();
+        = mrController.GetCurrentSlideManager().GetCurrentSlide();
     if (pDescriptor)
     {
         SdPage* pPage = pDescriptor->GetPage();
-        OSL_ASSERT(pPage!=nullptr);
+        assert(pPage!=nullptr);
         sal_Int32 nIndex = (pPage->GetPageNum()-1) / 2;
         GotoPage(nIndex + nOffset);
     }
@@ -897,7 +898,7 @@ void SelectionFunction::ModeHandler::SetCurrentPage (
     const model::SharedPageDescriptor& rpDescriptor)
 {
     SelectOnePage(rpDescriptor);
-    mrSlideSorter.GetController().GetCurrentSlideManager()->SwitchCurrentSlide(rpDescriptor);
+    mrSlideSorter.GetController().GetCurrentSlideManager().SwitchCurrentSlide(rpDescriptor);
 }
 
 void SelectionFunction::ModeHandler::DeselectAllPages()
@@ -917,14 +918,14 @@ void SelectionFunction::ModeHandler::SwitchView (const model::SharedPageDescript
 {
     // Switch to the draw view.  This is done only when the current
     // view is the main view.
-    ViewShell* pViewShell = mrSlideSorter.GetViewShell();
-    if (pViewShell==nullptr || !pViewShell->IsMainViewShell())
+    ViewShell& rViewShell = mrSlideSorter.GetViewShell();
+    if (!rViewShell.IsMainViewShell())
         return;
 
     if (rpDescriptor && rpDescriptor->GetPage()!=nullptr)
     {
         mrSlideSorter.GetModel().GetDocument()->SetSelected(rpDescriptor->GetPage(), true);
-        pViewShell->GetFrameView()->SetSelectedPage(
+        rViewShell.GetFrameView()->SetSelectedPage(
             (rpDescriptor->GetPage()->GetPageNum()-1)/2);
     }
     if (mrSlideSorter.GetViewShellBase() != nullptr)
@@ -941,7 +942,7 @@ void SelectionFunction::ModeHandler::StartDrag (
     // modifier key can trigger a MouseMotion event in the originating
     // window (focus still in there).  Together with the mouse button pressed
     // (drag-and-drop is active) this triggers the start of drag-and-drop.)
-    if (SD_MOD()->pTransferDrag != nullptr)
+    if (SdModule::get()->pTransferDrag != nullptr)
         return;
 
     mrSelectionFunction.SwitchToDragAndDropMode(rMousePosition);
@@ -977,10 +978,6 @@ bool NormalModeHandler::ProcessButtonDownEvent (
 
     switch (rDescriptor.mnEventCode)
     {
-        case BUTTON_DOWN | LEFT_BUTTON | SINGLE_CLICK | OVER_UNSELECTED_PAGE:
-            SetCurrentPage(rDescriptor.mpHitDescriptor);
-            break;
-
         case BUTTON_DOWN | LEFT_BUTTON | SINGLE_CLICK | OVER_SELECTED_PAGE:
             break;
 
@@ -999,6 +996,7 @@ bool NormalModeHandler::ProcessButtonDownEvent (
             break;
 
             // Right button for context menu.
+        case BUTTON_DOWN | LEFT_BUTTON | SINGLE_CLICK | OVER_UNSELECTED_PAGE:
         case BUTTON_DOWN | RIGHT_BUTTON | SINGLE_CLICK | OVER_UNSELECTED_PAGE:
             // Single right click and shift+F10 select as preparation to
             // show the context menu.  Change the selection only when the
@@ -1013,12 +1011,6 @@ bool NormalModeHandler::ProcessButtonDownEvent (
             break;
 
         case BUTTON_DOWN | RIGHT_BUTTON | SINGLE_CLICK | NOT_OVER_PAGE:
-            // Remember the current selection so that when a multi selection
-            // is started, we can restore the previous selection.
-            mrSlideSorter.GetModel().SaveCurrentSelection();
-            DeselectAllPages();
-            break;
-
         case ANY_MODIFIER(BUTTON_DOWN | LEFT_BUTTON | SINGLE_CLICK | NOT_OVER_PAGE):
             // Remember the current selection so that when a multi selection
             // is started, we can restore the previous selection.
@@ -1042,7 +1034,7 @@ bool NormalModeHandler::ProcessButtonDownEvent (
             mrSlideSorter.GetController().GetSelectionManager()->SetInsertionPosition(
                 pInsertionIndicatorHandler->GetInsertionPageIndex());
 
-            mrSlideSorter.GetViewShell()->GetDispatcher()->Execute(
+            mrSlideSorter.GetViewShell().GetDispatcher()->Execute(
                 SID_INSERTPAGE,
                 SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
 
@@ -1154,7 +1146,7 @@ void NormalModeHandler::RangeSelect (const model::SharedPageDescriptor& rpDescri
     // page.  This way the PageSelector will recognize it again as
     // anchor (the first selected page after a DeselectAllPages()
     // becomes the anchor.)
-    const sal_uInt16 nStep ((nAnchorIndex < nOtherIndex) ? +1 : -1);
+    const sal_Int16 nStep ((nAnchorIndex < nOtherIndex) ? +1 : -1);
     sal_uInt16 nIndex (nAnchorIndex);
     while (true)
     {
@@ -1369,10 +1361,7 @@ void MultiSelectionModeHandler::UpdateSelection()
     const sal_Int32 nPageCount (rModel.GetPageCount());
 
     const sal_Int32 nIndexUnderMouse (
-        mrSlideSorter.GetView().GetLayouter().GetIndexAtPoint (
-            maSecondCorner,
-            false,
-            false));
+        mrSlideSorter.GetView().GetLayouter().GetIndexAtPoint(maSecondCorner));
     if (nIndexUnderMouse < 0 || nIndexUnderMouse >= nPageCount)
         return;
 
@@ -1398,14 +1387,15 @@ DragAndDropModeHandler::DragAndDropModeHandler (
     vcl::Window* pWindow)
     : ModeHandler(rSlideSorter, rSelectionFunction, false)
 {
-    SdTransferable* pDragTransferable = SD_MOD()->pTransferDrag;
-    if (pDragTransferable==nullptr && mrSlideSorter.GetViewShell() != nullptr)
+    SdModule* mod = SdModule::get();
+    SdTransferable* pDragTransferable = mod->pTransferDrag;
+    if (pDragTransferable==nullptr)
     {
         SlideSorterViewShell* pSlideSorterViewShell
-            = dynamic_cast<SlideSorterViewShell*>(mrSlideSorter.GetViewShell());
+            = dynamic_cast<SlideSorterViewShell*>(&mrSlideSorter.GetViewShell());
         if (pSlideSorterViewShell != nullptr)
             pSlideSorterViewShell->StartDrag(rMousePosition, pWindow);
-        pDragTransferable = SD_MOD()->pTransferDrag;
+        pDragTransferable = mod->pTransferDrag;
     }
 
     mpDragAndDropContext.reset(new DragAndDropContext(mrSlideSorter));

@@ -39,7 +39,7 @@ class ToolBox;
 #define TAB_PAGE_NOTFOUND   (sal_uInt16(0xFFFF))
 #endif /* !TAB_APPEND */
 
-class VCL_DLLPUBLIC TabControl : public Control
+class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) TabControl : public Control
 {
 protected:
     std::unique_ptr<ImplTabCtrlData> mpTabCtrlData;
@@ -190,7 +190,6 @@ public:
     Control* GetOpenMenu();
 
     virtual Size        calculateRequisition() const override;
-    static sal_uInt16   GetHeaderHeight();
 
 protected:
     virtual bool ImplPlaceTabs( tools::Long nWidth ) override;

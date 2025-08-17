@@ -27,9 +27,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::oox::core;
-using namespace ::oox::drawingml;
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::xml::sax;
 
 namespace oox::ppt {
 
@@ -83,6 +80,8 @@ SlideTransitionContext::~SlideTransitionContext() noexcept
         return this;
     case PPT_TOKEN( cover ):
     case PPT_TOKEN( pull ):
+    case PPT_TOKEN( push ):
+    case PPT_TOKEN( wipe ):
         if (!mbHasTransition)
         {
             mbHasTransition = true;
@@ -95,14 +94,6 @@ SlideTransitionContext::~SlideTransitionContext() noexcept
         {
             mbHasTransition = true;
             maTransition.setOoxTransitionType( aElementToken, sal_Int32(rAttribs.getBool( XML_thruBlk, false )), 0);
-        }
-        return this;
-    case PPT_TOKEN( push ):
-    case PPT_TOKEN( wipe ):
-        if (!mbHasTransition)
-        {
-            mbHasTransition = true;
-            maTransition.setOoxTransitionType( aElementToken, rAttribs.getToken( XML_dir, XML_l ), 0 );
         }
         return this;
     case PPT_TOKEN( split ):

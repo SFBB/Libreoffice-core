@@ -23,6 +23,7 @@
 #include <osl/time.h>
 #include <osl/thread.hxx>
 #include <salhelper/thread.hxx>
+#include <condition_variable>
 
 #include <com/sun/star/ucb/LockScope.hpp>
 #include <thread>
@@ -58,25 +59,28 @@ private:
 void TickerThread::execute()
 {
     osl_setThreadName("http_dav_ucp::TickerThread");
+    SAL_INFO("ucb.ucp.webdav", "TickerThread: start.");
 
-    SAL_INFO("ucb.ucp.webdav",  "TickerThread: start." );
+    std::unique_lock aGuard(m_rLockStore.m_aMutex);
 
-    // we have to go through the loop more often to be able to finish ~quickly
-    const int nNth = 25;
-
-    int nCount = nNth;
-    while ( !m_bFinish )
+    while (!m_bFinish)
     {
-        if ( nCount-- <= 0 )
-        {
-            m_rLockStore.refreshLocks();
-            nCount = nNth;
-        }
+        auto sleep_duration = m_rLockStore.refreshLocks(aGuard);
 
-        std::this_thread::sleep_for( std::chrono::milliseconds(1000/25) );
+        if (sleep_duration == std::chrono::milliseconds::max())
+        {
+            // Wait until a lock is added or shutdown
+            m_rLockStore.m_aCondition.wait(
+                aGuard, [this] { return !m_rLockStore.m_aLockInfoMap.empty() || m_bFinish; });
+        }
+        else
+        {
+            // Wait until the next deadline or a notification
+            m_rLockStore.m_aCondition.wait_for(aGuard, sleep_duration);
+        }
     }
 
-    SAL_INFO("ucb.ucp.webdav",  "TickerThread: stop." );
+    SAL_INFO("ucb.ucp.webdav", "TickerThread: stop.");
 }
 
 
@@ -101,17 +105,14 @@ SerfLockStore::~SerfLockStore()
     }
 }
 
-void SerfLockStore::startTicker()
+void SerfLockStore::startTicker(std::unique_lock<std::mutex> & /* rGuard is held */)
 {
-    std::unique_lock aGuard( m_aMutex );
-
     if ( !m_pTickerThread.is() )
     {
         m_pTickerThread = new TickerThread( *this );
         m_pTickerThread->launch();
     }
 }
-
 
 void SerfLockStore::stopTicker(std::unique_lock<std::mutex> & rGuard)
 {
@@ -122,6 +123,7 @@ void SerfLockStore::stopTicker(std::unique_lock<std::mutex> & rGuard)
         m_pTickerThread->finish(); // needs mutex
         // the TickerThread may run refreshLocks() at most once after this
         pTickerThread = m_pTickerThread;
+
         m_pTickerThread.clear();
     }
 
@@ -131,6 +133,25 @@ void SerfLockStore::stopTicker(std::unique_lock<std::mutex> & rGuard)
     {
         pTickerThread->join(); // without m_aMutex locked (to prevent deadlock)
     }
+}
+
+bool SerfLockStore::joinThreads()
+{
+    std::unique_lock aGuard(m_aMutex);
+    // FIXME: cure could be worse than the problem; we don't
+    // want to block on a long-standing webdav lock refresh request.
+    // perhaps we should timeout on a condition instead if a request
+    // is in progress.
+    if (m_pTickerThread.is())
+        stopTicker(aGuard);
+    return true;
+}
+
+void SerfLockStore::startThreads()
+{
+    std::unique_lock aGuard( m_aMutex );
+    if (!m_aLockInfoMap.empty())
+        startTicker(aGuard);
 }
 
 OUString const*
@@ -168,21 +189,17 @@ SerfLockStore::getLockTokenForURI(OUString const& rURI, css::ucb::Lock const*con
     return &it->second.m_sToken;
 }
 
-void SerfLockStore::addLock( const OUString& rURI,
-                             ucb::Lock const& rLock,
-                             const OUString& sToken,
-                             rtl::Reference<CurlSession> const & xSession,
-                             sal_Int32 nLastChanceToSendRefreshRequest )
+void SerfLockStore::addLock(const OUString& rURI, ucb::Lock const& rLock, const OUString& sToken,
+                            rtl::Reference<CurlSession> const& xSession,
+                            sal_Int32 nLastChanceToSendRefreshRequest)
 {
     assert(rURI.startsWith("http://") || rURI.startsWith("https://"));
-    {
-        std::unique_lock aGuard( m_aMutex );
+    std::unique_lock aGuard(m_aMutex);
 
-        m_aLockInfoMap[ rURI ]
-            = LockInfo(sToken, rLock, xSession, nLastChanceToSendRefreshRequest);
-    }
+    m_aLockInfoMap[rURI] = LockInfo(sToken, rLock, xSession, nLastChanceToSendRefreshRequest);
+    m_aCondition.notify_all(); // Wake up the TickerThread
 
-    startTicker();
+    startTicker(aGuard);
 }
 
 
@@ -205,11 +222,17 @@ void SerfLockStore::removeLockImpl(std::unique_lock<std::mutex> & rGuard, const 
     }
 }
 
-void SerfLockStore::refreshLocks()
+std::chrono::milliseconds SerfLockStore::refreshLocks(std::unique_lock<std::mutex>& rGuard)
 {
-    std::unique_lock aGuard( m_aMutex );
+    assert(rGuard.owns_lock());
+    (void)rGuard;
+
+    TimeValue currentTimeVal;
+    osl_getSystemTime(&currentTimeVal);
+    sal_Int32 currentTime = currentTimeVal.Seconds;
 
     ::std::vector<OUString> authFailedLocks;
+    std::chrono::milliseconds min_remaining = std::chrono::milliseconds::max();
 
     for ( auto& rLockInfo : m_aLockInfoMap )
     {
@@ -217,10 +240,8 @@ void SerfLockStore::refreshLocks()
         if ( rInfo.m_nLastChanceToSendRefreshRequest != -1 )
         {
             // 30 seconds or less remaining until lock expires?
-            TimeValue t1;
-            osl_getSystemTime( &t1 );
-            if ( rInfo.m_nLastChanceToSendRefreshRequest - 30
-                     <= sal_Int32( t1.Seconds ) )
+            sal_Int32 deadline = rInfo.m_nLastChanceToSendRefreshRequest - 30;
+            if ( deadline <= currentTime )
             {
                 // refresh the lock.
                 sal_Int32 nlastChanceToSendRefreshRequest = -1;
@@ -243,13 +264,26 @@ void SerfLockStore::refreshLocks()
                     rInfo.m_nLastChanceToSendRefreshRequest = -1;
                 }
             }
+            if (rInfo.m_nLastChanceToSendRefreshRequest != -1)
+            {
+                sal_Int32 remaining = (rInfo.m_nLastChanceToSendRefreshRequest - 30) - currentTime;
+                if (remaining > 0)
+                {
+                    auto remaining_ms = std::chrono::seconds(remaining);
+                    if ( remaining_ms < min_remaining )
+                        min_remaining
+                            = std::chrono::duration_cast<std::chrono::milliseconds>(remaining_ms);
+                }
+            }
         }
     }
 
     for (auto const& rLock : authFailedLocks)
     {
-        removeLockImpl(aGuard, rLock);
+        removeLockImpl(rGuard, rLock);
     }
+
+    return min_remaining;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

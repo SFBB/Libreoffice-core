@@ -82,7 +82,7 @@ void OColumnControlModel::registerProperties()
     registerProperty( PROPERTY_COLUMN, PROPERTY_ID_COLUMN, PropertyAttribute::TRANSIENT | PropertyAttribute::BOUND,
             &m_xColumn, cppu::UnoType<decltype(m_xColumn)>::get() );
 
-    registerMayBeVoidProperty( PROPERTY_TABSTOP, PROPERTY_ID_TABSTOP, PropertyAttribute::BOUND | PropertyAttribute::MAYBEVOID,
+    registerMayBeVoidProperty( PROPERTY_TABSTOP2, PROPERTY_ID_TABSTOP, PropertyAttribute::BOUND | PropertyAttribute::MAYBEVOID,
             &m_aTabStop, ::cppu::UnoType<sal_Int16>::get() );
     registerProperty( PROPERTY_DEFAULTCONTROL, PROPERTY_ID_DEFAULTCONTROL, PropertyAttribute::BOUND,
             &m_sDefaultControl, cppu::UnoType<decltype(m_sDefaultControl)>::get() );
@@ -130,7 +130,7 @@ css::uno::Reference< css::beans::XPropertySetInfo >  SAL_CALL OColumnControlMode
 
 OUString SAL_CALL OColumnControlModel::getImplementationName()
 {
-    return "com.sun.star.comp.dbu.OColumnControlModel";
+    return u"com.sun.star.comp.dbu.OColumnControlModel"_ustr;
 }
 sal_Bool SAL_CALL OColumnControlModel::supportsService(const OUString& _rServiceName)
     {
@@ -143,7 +143,7 @@ sal_Bool SAL_CALL OColumnControlModel::supportsService(const OUString& _rService
     }
 css::uno::Sequence< OUString > SAL_CALL OColumnControlModel::getSupportedServiceNames()
 {
-    return { "com.sun.star.awt.UnoControlModel","com.sun.star.sdb.ColumnDescriptorControlModel" };
+    return { u"com.sun.star.awt.UnoControlModel"_ustr,u"com.sun.star.sdb.ColumnDescriptorControlModel"_ustr };
 }
 IMPLEMENT_FORWARD_REFCOUNT( OColumnControlModel, OColumnControlModel_BASE )
 Any SAL_CALL OColumnControlModel::queryInterface( const Type& _rType )

@@ -204,7 +204,7 @@ void TypeSerializer::readGraphic(Graphic& rGraphic)
             mrStream.Seek(nInitialStreamPosition);
             mrStream.SetError(ERRCODE_IO_WRONGFORMAT);
         }
-        rGraphic = aGraphic;
+        rGraphic = std::move(aGraphic);
     }
     else
     {
@@ -354,7 +354,7 @@ void TypeSerializer::writeGraphic(const Graphic& rGraphic)
 
             case GraphicType::Bitmap:
             {
-                auto pVectorGraphicData = aGraphic.getVectorGraphicData();
+                const auto& pVectorGraphicData = aGraphic.getVectorGraphicData();
                 if (pVectorGraphicData)
                 {
                     // stream out Vector Graphic defining data (length, byte array and evtl. path)
@@ -398,7 +398,7 @@ void TypeSerializer::writeGraphic(const Graphic& rGraphic)
                 }
                 else
                 {
-                    WriteDIBBitmapEx(aGraphic.GetBitmapEx(), mrStream);
+                    WriteDIBBitmapEx(aGraphic.GetBitmap(), mrStream);
                 }
             }
             break;
@@ -439,34 +439,50 @@ static bool UselessScaleForMapMode(const Fraction& rScale)
     // cannot be expressed as an int
     if (rScale.GetNumerator() == std::numeric_limits<sal_Int32>::min())
         return true;
-    if (static_cast<double>(rScale) < 0.0)
+    if (static_cast<double>(rScale) <= 0.0)
         return true;
     return false;
 }
 
-void TypeSerializer::readMapMode(MapMode& rMapMode)
+bool TypeSerializer::readMapMode(MapMode& rMapMode)
 {
     VersionCompatRead aCompat(mrStream);
-    sal_uInt16 nTmp16(0);
-    Point aOrigin;
-    Fraction aScaleX;
-    Fraction aScaleY;
-    bool bSimple(true);
 
-    mrStream.ReadUInt16(nTmp16);
-    MapUnit eUnit = static_cast<MapUnit>(nTmp16);
+    sal_Int16 nUnit(0);
+    mrStream.ReadInt16(nUnit);
+
+    Point aOrigin;
     readPoint(aOrigin);
+
+    Fraction aScaleX;
     readFraction(aScaleX);
+
+    Fraction aScaleY;
     readFraction(aScaleY);
+
+    bool bSimple(true);
     mrStream.ReadCharAsBool(bSimple);
 
-    const bool bBogus = UselessScaleForMapMode(aScaleX) || UselessScaleForMapMode(aScaleY);
-    SAL_WARN_IF(bBogus, "vcl", "invalid scale");
+    if (nUnit < sal_Int16(MapUnit::Map100thMM) || nUnit > sal_Int16(MapUnit::LAST))
+    {
+        SAL_WARN("vcl.gdi", "Parsing error: invalid mapmode");
+        return false;
+    }
+    MapUnit eUnit = static_cast<MapUnit>(nUnit);
 
-    if (bSimple || bBogus)
+    if (bSimple)
         rMapMode = MapMode(eUnit);
     else
+    {
+        const bool bBogus = UselessScaleForMapMode(aScaleX) || UselessScaleForMapMode(aScaleY);
+        if (bBogus)
+        {
+            SAL_WARN("vcl", "invalid scale");
+            return false;
+        }
         rMapMode = MapMode(eUnit, aOrigin, aScaleX, aScaleY);
+    }
+    return true;
 }
 
 void TypeSerializer::writeMapMode(MapMode const& rMapMode)

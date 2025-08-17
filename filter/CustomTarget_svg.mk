@@ -11,7 +11,7 @@
 $(eval $(call gb_CustomTarget_CustomTarget,filter/source/svg))
 
 filter_SVGSRC := $(SRCDIR)/filter/source/svg
-filter_SVGWORK := $(call gb_CustomTarget_get_workdir,filter/source/svg)
+filter_SVGWORK := $(gb_CustomTarget_workdir)/filter/source/svg
 
 filter_SRC_svg_Tokens := $(filter_SVGSRC)/tokens.txt
 filter_SRC_svg_GenToken := $(filter_SVGSRC)/gentoken.py
@@ -39,10 +39,9 @@ $(filter_GEN_svg_Tokens_hxx) : $(filter_GEN_svg_Tokens_gperf)
 
 $(filter_GEN_svg_Tokens_cxx) : $(filter_GEN_svg_Tokens_gperf)
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),build,GPF,1)
-	$(call gb_Helper_abbreviate_dirs, \
-		 $(GPERF) --compare-strncmp -C -m 20 --switch=2 --readonly-tables $(filter_GEN_svg_Tokens_gperf) \
-			 | sed -e "s/(char\*)0/(char\*)0$(COMMA) 0/g" \
-			 > $(filter_GEN_svg_Tokens_cxx))
+	$(call gb_Helper_wsl_path,\
+		$(GPERF) --compare-strncmp -C -m 20 --switch=2 --readonly-tables --pic $(filter_GEN_svg_Tokens_gperf)) \
+			 | sed -e '/^#line/d' -e 's/(char\*)0/(char\*)0, 0/g' > $@
 
 $(filter_GEN_svg_Script_hxx) : \
 			$(call gb_ExternalExecutable_get_dependencies,python) \

@@ -33,6 +33,7 @@
 namespace svx::sidebar { class SelectionChangeHandler; }
 namespace com::sun::star::lang { class XEventListener; }
 namespace com::sun::star::scanner { class XScannerManager2; }
+namespace com::sun::star::presentation { class XSlideShow; }
 
 class Outliner;
 class SdPage;
@@ -57,7 +58,11 @@ class Ruler;
 class AnnotationManager;
 class ViewOverlayManager;
 
-#define CHECK_RANGE(nMin, nValue, nMax) ((nValue >= nMin) && (nValue <= nMax))
+template <typename MIN_T, typename T, typename MAX_T>
+constexpr bool CHECK_RANGE(MIN_T nMin, T nValue, MAX_T nMax)
+{
+    return nValue >= nMin && nValue <= nMax;
+}
 
 /** Base class of the stacked shells that provide graphical views to
     Draw and Impress documents and editing functionality.  In contrast
@@ -128,7 +133,7 @@ public:
     virtual void    SetZoom( ::tools::Long nZoom ) override;
     virtual void    SetZoomRect( const ::tools::Rectangle& rZoomRect ) override;
 
-    void            InsertURLField(const OUString& rURL, const OUString& rText, const OUString& rTarget);
+    void            InsertURLField(const OUString& rURL, const OUString& rText, const OUString& rTarget, OUString const& rAltText);
     void            InsertURLButton(const OUString& rURL, const OUString& rText, const OUString& rTarget,
                                     const Point* pPos);
 
@@ -222,10 +227,15 @@ public:
     void            ExecGoToLastPage (SfxRequest& rReq);
     void            GetStateGoToLastPage (SfxItemSet& rSet);
 
+    void            ExecGoToPage (SfxRequest& rReq);
+    void            GetStateGoToPage (SfxItemSet& rSet);
+
     SD_DLLPUBLIC void ExecChar(SfxRequest& rReq);
 
     void            ExecuteAnnotation (SfxRequest const & rRequest);
     void            GetAnnotationState (SfxItemSet& rItemSet);
+
+    AnnotationManager* getAnnotationManagerPtr() { return mpAnnotationManager.get(); }
 
     void            StartRulerDrag (const Ruler& rRuler, const MouseEvent& rMEvt);
 
@@ -243,7 +253,8 @@ public:
 
     void            ResetActualPage();
     void            ResetActualLayer();
-    bool            SwitchPage(sal_uInt16 nPage, bool bAllowChangeFocus = true);
+    SD_DLLPUBLIC bool SwitchPage(sal_uInt16 nPage, bool bAllowChangeFocus = true,
+                                 bool bUpdateScrollbars = true);
     bool            IsSwitchPageAllowed() const;
 
     /**
@@ -306,8 +317,8 @@ public:
         @return
             Returns an <type>AccessibleDrawDocumentView</type> object.
    */
-    virtual css::uno::Reference<css::accessibility::XAccessible>
-        CreateAccessibleDocumentView (::sd::Window* pWindow) override;
+    virtual rtl::Reference<comphelper::OAccessible>
+    CreateAccessibleDocumentView(::sd::Window* pWindow) override;
 
     /** Return the number of layers managed by the layer tab control.  This
         will usually differ from the number of layers managed by the layer
@@ -373,9 +384,13 @@ public:
 
     bool IsInSwitchPage() const { return mbIsInSwitchPage; }
 
-    const SdViewOptions& GetViewOptions() const { return maViewOptions; }
+    const SdViewOptions& GetViewOptions() const;
+    void SetViewOptions(const SdViewOptions& rOptions);
     //move this method to ViewShell.
     //void  NotifyAccUpdate();
+
+    void destroyXSlideShowInstance();
+
 protected:
                     DECL_DLLPRIVATE_LINK( ClipboardChanged, TransferableDataHelper*, void );
                     DECL_DLLPRIVATE_LINK( TabSplitHdl, TabBar *, void );
@@ -491,14 +506,15 @@ private:
     bool                                                  mbPastePossible;
     bool                                                  mbMouseButtonDown;
     bool                                                  mbMouseSelecting;
-    ::std::unique_ptr< AnnotationManager > mpAnnotationManager;
-    ::std::unique_ptr< ViewOverlayManager > mpViewOverlayManager;
+    std::unique_ptr<AnnotationManager> mpAnnotationManager;
+    std::unique_ptr<ViewOverlayManager> mpViewOverlayManager;
     std::vector<std::unique_ptr<SdrExternalToolEdit>> m_ExternalEdits;
-    SdViewOptions maViewOptions;
+
+    css::uno::Reference<css::presentation::XSlideShow> mxSlideShow;
 };
 
-    /// Merge the background properties together and deposit the result in rMergeAttr
-    void MergePageBackgroundFilling(SdPage *pPage, SdStyleSheet *pStyleSheet, bool bMasterPage, SfxItemSet& rMergedAttr);
+/// Merge the background properties together and deposit the result in rMergeAttr
+SD_DLLPUBLIC void MergePageBackgroundFilling(SdPage *pPage, SdStyleSheet *pStyleSheet, bool bMasterPage, SfxItemSet& rMergedAttr);
 
 } // end of namespace sd
 

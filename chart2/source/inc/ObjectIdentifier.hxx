@@ -23,7 +23,6 @@
 #include <string_view>
 
 #include "TitleHelper.hxx"
-#include "charttoolsdllapi.hxx"
 
 #include <rtl/ustring.hxx>
 #include <rtl/ref.hxx>
@@ -32,12 +31,7 @@ namespace chart { class ChartModel; }
 namespace com::sun::star::awt { struct Point; }
 namespace com::sun::star::beans { class XPropertySet; }
 namespace com::sun::star::chart2 { class XAxis; }
-namespace com::sun::star::chart2 { class XChartDocument; }
-namespace com::sun::star::chart2 { class XCoordinateSystem; }
-namespace com::sun::star::chart2 { class XDataSeries; }
-namespace com::sun::star::chart2 { class XDiagram; }
 namespace com::sun::star::drawing { class XShape; }
-namespace com::sun::star::frame { class XModel; }
 namespace com::sun::star::uno { class XInterface; }
 
 namespace chart
@@ -79,7 +73,7 @@ enum ObjectType
     OBJECTTYPE_UNKNOWN
 };
 
-class OOO_DLLPUBLIC_CHARTTOOLS ObjectIdentifier
+class ObjectIdentifier
 {
     //CID == ClassifiedIdentifier <--> name of shape
     //semicolon, colon, equal sign and slash have special meanings in a CID
@@ -105,7 +99,6 @@ public:
     ObjectIdentifier( const css::uno::Any& rAny );
 
     bool operator==( const ObjectIdentifier& rOID ) const;
-    bool operator!=( const ObjectIdentifier& rOID ) const;
     bool operator<( const ObjectIdentifier& rOID ) const;
 
     static OUString createClassifiedIdentifierForObject(
@@ -135,7 +128,7 @@ public:
         , const rtl::Reference<::chart::ChartModel>& xChartModel
         , sal_Int32 nSubIndex = -1 );//-1: main grid, 0: first subgrid etc
 
-    SAL_DLLPRIVATE static OUString createParticleForDiagram();
+    static OUString createParticleForDiagram();
 
     static OUString createParticleForCoordinateSystem(
           const rtl::Reference< ::chart::BaseCoordinateSystem >& xCooSys
@@ -196,7 +189,7 @@ public:
     static OUString createDataCurveCID( std::u16string_view rSeriesParticle, sal_Int32 nCurveIndex, bool bAverageLine );
     static OUString createDataCurveEquationCID( std::u16string_view rSeriesParticle, sal_Int32 nCurveIndex );
 
-    SAL_DLLPRIVATE static OUString getObjectID( std::u16string_view rCID );
+    static OUString getObjectID( std::u16string_view rCID );
     static std::u16string_view getParticleID( std::u16string_view rCID );
     static std::u16string_view getFullParentParticle( std::u16string_view rCID );
 

@@ -25,11 +25,8 @@
 #include <vcl/BitmapColor.hxx>
 #include <vcl/BitmapAccessMode.hxx>
 
-bool Bitmap32IsPreMultipled();
-
-typedef BitmapColor (*FncGetPixel)(ConstScanline pScanline, tools::Long nX, const ColorMask& rMask);
-typedef void (*FncSetPixel)(Scanline pScanline, tools::Long nX, const BitmapColor& rBitmapColor,
-                            const ColorMask& rMask);
+typedef BitmapColor (*FncGetPixel)(ConstScanline pScanline, tools::Long nX);
+typedef void (*FncSetPixel)(Scanline pScanline, tools::Long nX, const BitmapColor& rBitmapColor);
 
 class VCL_DLLPUBLIC BitmapInfoAccess
 {
@@ -52,7 +49,7 @@ public:
     {
         assert(mpBuffer && "Access is not valid!");
 
-        return mpBuffer && (mpBuffer->mnFormat & ScanlineFormat::TopDown);
+        return mpBuffer && mpBuffer->meDirection == ScanlineDirection::TopDown;
     }
 
     bool IsBottomUp() const { return !IsTopDown(); }
@@ -61,7 +58,7 @@ public:
     {
         assert(mpBuffer && "Access is not valid!");
 
-        return mpBuffer ? RemoveScanline(mpBuffer->mnFormat) : ScanlineFormat::NONE;
+        return mpBuffer ? mpBuffer->meFormat : ScanlineFormat::NONE;
     }
 
     sal_uInt32 GetScanlineSize() const
@@ -133,15 +130,6 @@ public:
     /// of the required color. Returns SAL_MAX_UINT16 if nothing found.
     sal_uInt16 GetMatchingPaletteIndex(const BitmapColor& rBitmapColor) const;
 
-    const ColorMask& GetColorMask() const
-    {
-        const BitmapBuffer* pBuffer = mpBuffer;
-
-        assert(pBuffer && "Access is not valid!");
-
-        return pBuffer->maColorMask;
-    }
-
 private:
     BitmapInfoAccess(const BitmapInfoAccess&) = delete;
     BitmapInfoAccess& operator=(const BitmapInfoAccess&) = delete;
@@ -149,7 +137,6 @@ private:
 protected:
     Bitmap maBitmap;
     BitmapBuffer* mpBuffer;
-    ColorMask maColorMask;
     BitmapAccessMode mnAccessMode;
 };
 

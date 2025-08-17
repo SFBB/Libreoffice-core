@@ -30,10 +30,6 @@
 #include <svx/AccessibleShape.hxx>
 #include <svx/svxdllapi.h>
 
-namespace com::sun::star {
-    namespace accessibility { class XAccessibleKeyBinding; }
-}
-
 namespace accessibility {
 
 class AccessibleShapeInfo;
@@ -49,7 +45,6 @@ class SVX_DLLPUBLIC AccessibleOLEShape
         public css::accessibility::XAccessibleAction
 {
 public:
-    //=====  internal  ========================================================
     AccessibleOLEShape (
         const AccessibleShapeInfo& rShapeInfo,
         const AccessibleShapeTreeInfo& rShapeTreeInfo);
@@ -93,7 +88,7 @@ public:
     virtual css::uno::Sequence< css::uno::Type> SAL_CALL
         getTypes() override;
 // ====== XAccessibleExtendedAttributes =====================================
-    virtual css::uno::Any SAL_CALL getExtendedAttributes() override ;
+    virtual OUString SAL_CALL getExtendedAttributes() override;
 protected:
     /// Create a name string that contains the accessible name.
     virtual OUString

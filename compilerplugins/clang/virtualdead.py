@@ -23,7 +23,7 @@ with io.open("workdir/loplugin.virtualdead.log", "r", encoding="ascii", errors="
                 sourceLocation = tokens[2]
                 returnValue = tokens[3]
                 callInfo = (nameAndParams, sourceLocation)
-                if not callInfo in callDict:
+                if callInfo not in callDict:
                     callDict[callInfo] = set()
                 callDict[callInfo].add(returnValue)
                 definitionToSourceLocationMap[nameAndParams] = sourceLocation
@@ -55,52 +55,72 @@ for callInfo, callValues in iter(callDict.items()):
     if "pure" in callValue:
         continue
     srcloc = callInfo[1]
-    if srcloc.startswith("workdir/"): continue
+    if srcloc.startswith("workdir/"):
+        continue
     # ignore Qt stuff
-    if srcloc.startswith("Gui/"): continue
-    if srcloc.startswith("Widgets/"): continue
-    if srcloc.startswith("Core/"): continue
-    if srcloc.startswith("/Qt"): continue
-    if srcloc.startswith("Qt"): continue
-    if srcloc.startswith("64-"): continue
+    if srcloc.startswith("Gui/"):
+        continue
+    if srcloc.startswith("Widgets/"):
+        continue
+    if srcloc.startswith("Core/"):
+        continue
+    if srcloc.startswith("/Qt"):
+        continue
+    if srcloc.startswith("Qt"):
+        continue
+    if srcloc.startswith("64-"):
+        continue
     functionSig = callInfo[0]
     tmp1list.append((srcloc, functionSig, callValue))
 
 def merge_bitfield(a, b):
-    if len(a) == 0: return b
+    if len(a) == 0:
+        return b
     ret = ""
     for i, c in enumerate(b):
         if c == "1" or a[i] == "1":
             ret += "1"
         else:
             ret += "0"
-    return ret;
+    return ret
 tmp2dict = dict()
 tmp2list = list()
 for paramInfo in paramSet:
     name = paramInfo[0]
     bitfield = paramInfo[1]
-    if re.match( r"\w+ com::", name): continue
-    if re.match( r"\w+ ooo::vba::", name): continue
-    if re.match( r"\w+ orcus::", name): continue
-    if re.match( r"\w+ std::", name): continue
-    if not name in tmp2dict:
+    if re.match( r"\w+ com::", name):
+        continue
+    if re.match( r"\w+ ooo::vba::", name):
+        continue
+    if re.match( r"\w+ orcus::", name):
+        continue
+    if re.match( r"\w+ std::", name):
+        continue
+    if name not in tmp2dict:
         tmp2dict[name] = bitfield
     else:
         tmp2dict[name] = merge_bitfield(tmp2dict[name], bitfield)
 for name, bitfield in iter(tmp2dict.items()):
     srcloc = definitionToSourceLocationMap[name]
     # ignore Qt stuff
-    if srcloc.startswith("Gui/"): continue
-    if srcloc.startswith("Widgets/"): continue
-    if srcloc.startswith("Core/"): continue
-    if srcloc.startswith("/Qt"): continue
-    if srcloc.startswith("Qt"): continue
-    if srcloc.startswith("64-"): continue
+    if srcloc.startswith("Gui/"):
+        continue
+    if srcloc.startswith("Widgets/"):
+        continue
+    if srcloc.startswith("Core/"):
+        continue
+    if srcloc.startswith("/Qt"):
+        continue
+    if srcloc.startswith("Qt"):
+        continue
+    if srcloc.startswith("64-"):
+        continue
     # ignore external stuff
-    if srcloc.startswith("workdir/"): continue
+    if srcloc.startswith("workdir/"):
+        continue
     # referenced by generated code in workdir/
-    if srcloc.startswith("writerfilter/source/ooxml/OOXMLFactory.hxx"): continue
+    if srcloc.startswith("sw/source/writerfilter/ooxml/OOXMLFactory.hxx"):
+        continue
     if "0" in bitfield:
         tmp2list.append((srcloc, name, bitfield))
 

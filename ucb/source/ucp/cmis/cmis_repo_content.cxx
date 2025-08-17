@@ -15,17 +15,16 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/ucb/InteractiveNetworkResolveNameException.hpp>
+#include <com/sun/star/ucb/InteractiveNetworkConnectException.hpp>
+#include <com/sun/star/ucb/InteractiveNetworkReadException.hpp>
 #include <com/sun/star/ucb/XCommandInfo.hpp>
 #include <com/sun/star/ucb/XDynamicResultSet.hpp>
-#ifndef SYSTEM_CURL
-#include <com/sun/star/xml/crypto/XDigestContext.hpp>
-#include <com/sun/star/xml/crypto/DigestID.hpp>
-#include <com/sun/star/xml/crypto/NSSInitializer.hpp>
-#endif
 
 #include <config_oauth2.h>
 #include <rtl/uri.hxx>
 #include <sal/log.hxx>
+#include <systools/curlinit.hxx>
 #include <tools/urlobj.hxx>
 #include <ucbhelper/cancelcommandexecution.hxx>
 #include <ucbhelper/contentidentifier.hxx>
@@ -34,7 +33,6 @@
 #include <ucbhelper/macros.hxx>
 
 #include "auth_provider.hxx"
-#include "certvalidation_handler.hxx"
 #include "cmis_content.hxx"
 #include "cmis_provider.hxx"
 #include "cmis_repo_content.hxx"
@@ -72,7 +70,7 @@ namespace cmis
     uno::Any RepoContent::getBadArgExcept()
     {
         return uno::Any( lang::IllegalArgumentException(
-            "Wrong argument type!",
+            u"Wrong argument type!"_ustr,
             getXWeak(), -1) );
     }
 
@@ -119,18 +117,6 @@ namespace cmis
 
     void RepoContent::getRepositories( const uno::Reference< ucb::XCommandEnvironment > & xEnv )
     {
-#ifndef SYSTEM_CURL
-        // Initialize NSS library to make sure libcmis (and curl) can access CACERTs using NSS
-        // when using internal libcurl.
-        uno::Reference< css::xml::crypto::XNSSInitializer >
-            xNSSInitializer = css::xml::crypto::NSSInitializer::create( m_xContext );
-
-        uno::Reference< css::xml::crypto::XDigestContext > xDigestContext(
-                xNSSInitializer->getDigestContext( css::xml::crypto::DigestID::SHA256,
-                                                          uno::Sequence< beans::NamedValue >() ),
-                                                          uno::UNO_SET_THROW );
-#endif
-
         // Set the proxy if needed. We are doing that all times as the proxy data shouldn't be cached.
         ucbhelper::InternetProxyDecider aProxyDecider( m_xContext );
         INetURLObject aBindingUrl( m_aURL.getBindingUrl( ) );
@@ -141,10 +127,8 @@ namespace cmis
         if ( !m_aRepositories.empty() )
             return;
 
-        // Set the SSL Validation handler
-        libcmis::CertValidationHandlerPtr certHandler(
-                new CertValidationHandler( xEnv, m_xContext, aBindingUrl.GetHost( ) ) );
-        libcmis::SessionFactory::setCertificateValidationHandler( certHandler );
+        // init libcurl callback
+        libcmis::SessionFactory::setCurlInitProtocolsFunction(&::InitCurl_easy);
 
         // Get the auth credentials
         AuthProvider authProvider( xEnv, m_xIdentifier->getContentIdentifier( ), m_aURL.getBindingUrl( ) );
@@ -187,7 +171,7 @@ namespace cmis
 
                     std::unique_ptr<libcmis::Session> session(libcmis::SessionFactory::createSession(
                             OUSTR_TO_STDSTR( m_aURL.getBindingUrl( ) ),
-                            rUsername, rPassword, "", false, oauth2Data ));
+                            rUsername, rPassword, "", false, std::move(oauth2Data) ));
                     if (!session)
                         ucbhelper::cancelCommandExecution(
                                             ucb::IOErrorCode_INVALID_DEVICE,
@@ -201,7 +185,37 @@ namespace cmis
                 {
                     SAL_INFO( "ucb.ucp.cmis", "Error getting repositories: " << e.what() );
 
-                    if ( e.getType() != "permissionDenied" )
+                    if (e.getType() == "dnsFailed")
+                    {
+                        uno::Any ex;
+                        ex <<= ucb::InteractiveNetworkResolveNameException(
+                                OStringToOUString(e.what(), RTL_TEXTENCODING_UTF8),
+                                getXWeak(),
+                                task::InteractionClassification_ERROR,
+                                m_aURL.getBindingUrl());
+                        ucbhelper::cancelCommandExecution(ex, xEnv);
+                    }
+                    else if (e.getType() == "connectFailed" || e.getType() == "connectTimeout")
+                    {
+                        uno::Any ex;
+                        ex <<= ucb::InteractiveNetworkConnectException(
+                                OStringToOUString(e.what(), RTL_TEXTENCODING_UTF8),
+                                getXWeak(),
+                                task::InteractionClassification_ERROR,
+                                m_aURL.getBindingUrl());
+                        ucbhelper::cancelCommandExecution(ex, xEnv);
+                    }
+                    else if (e.getType() == "transferFailed")
+                    {
+                        uno::Any ex;
+                        ex <<= ucb::InteractiveNetworkReadException(
+                                OStringToOUString(e.what(), RTL_TEXTENCODING_UTF8),
+                                getXWeak(),
+                                task::InteractionClassification_ERROR,
+                                m_aURL.getBindingUrl());
+                        ucbhelper::cancelCommandExecution(ex, xEnv);
+                    }
+                    else if (e.getType() != "permissionDenied")
                     {
                         ucbhelper::cancelCommandExecution(
                                         ucb::IOErrorCode_INVALID_DEVICE,
@@ -217,7 +231,7 @@ namespace cmis
                                     ucb::IOErrorCode_ABORT,
                                     uno::Sequence< uno::Any >( 0 ),
                                     xEnv,
-                                    "Authentication cancelled" );
+                                    u"Authentication cancelled"_ustr );
             }
         }
     }
@@ -246,16 +260,16 @@ namespace cmis
     {
         static const beans::Property aGenericProperties[] =
         {
-            beans::Property( "IsDocument",
+            beans::Property( u"IsDocument"_ustr,
                 -1, cppu::UnoType<bool>::get(),
                 beans::PropertyAttribute::BOUND | beans::PropertyAttribute::READONLY ),
-            beans::Property( "IsFolder",
+            beans::Property( u"IsFolder"_ustr,
                 -1, cppu::UnoType<bool>::get(),
                 beans::PropertyAttribute::BOUND | beans::PropertyAttribute::READONLY ),
-            beans::Property( "Title",
+            beans::Property( u"Title"_ustr,
                 -1, cppu::UnoType<OUString>::get(),
                 beans::PropertyAttribute::BOUND ),
-            beans::Property( "IsReadOnly",
+            beans::Property( u"IsReadOnly"_ustr,
                 -1, cppu::UnoType<bool>::get(),
                 beans::PropertyAttribute::BOUND | beans::PropertyAttribute::READONLY ),
         };
@@ -271,21 +285,21 @@ namespace cmis
         {
             // Required commands
             ucb::CommandInfo
-            ( "getCommandInfo",
+            ( u"getCommandInfo"_ustr,
               -1, cppu::UnoType<void>::get() ),
             ucb::CommandInfo
-            ( "getPropertySetInfo",
+            ( u"getPropertySetInfo"_ustr,
               -1, cppu::UnoType<void>::get() ),
             ucb::CommandInfo
-            ( "getPropertyValues",
+            ( u"getPropertyValues"_ustr,
               -1, cppu::UnoType<uno::Sequence< beans::Property >>::get() ),
             ucb::CommandInfo
-            ( "setPropertyValues",
+            ( u"setPropertyValues"_ustr,
               -1, cppu::UnoType<uno::Sequence< beans::PropertyValue >>::get() ),
 
             // Optional standard commands
             ucb::CommandInfo
-            ( "open",
+            ( u"open"_ustr,
               -1, cppu::UnoType<ucb::OpenCommandArgument2>::get() ),
         };
 
@@ -306,12 +320,12 @@ namespace cmis
 
     OUString SAL_CALL RepoContent::getImplementationName()
     {
-       return "com.sun.star.comp.CmisRepoContent";
+       return u"com.sun.star.comp.CmisRepoContent"_ustr;
     }
 
     uno::Sequence< OUString > SAL_CALL RepoContent::getSupportedServiceNames()
     {
-       return { "com.sun.star.ucb.Content" };
+       return { u"com.sun.star.ucb.Content"_ustr };
     }
 
     OUString SAL_CALL RepoContent::getContentType()

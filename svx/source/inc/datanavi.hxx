@@ -49,8 +49,6 @@
 #include <string_view>
 #include <vector>
 
-class FmFormShell;
-
 
 namespace svxform
 {
@@ -74,9 +72,7 @@ namespace svxform
     };
 
     struct ItemNode;
-    class XFormsPage;
     class DataNavigatorWindow;
-    class AddInstanceDialog;
 
     class ReplaceString
     {
@@ -112,7 +108,7 @@ namespace svxform
 
         /** convert submission replace string from UI to API.
             Use 'none' as default. */
-        OUString toAPI( std::u16string_view rStr ) const
+        const OUString & toAPI( std::u16string_view rStr ) const
         {
             if( rStr == m_sDoc_UI )
                 return m_sDoc_API;
@@ -156,7 +152,7 @@ namespace svxform
         }
 
         /** convert from UI to API; put is default */
-        OUString toAPI( std::u16string_view rStr ) const
+        const OUString & toAPI( std::u16string_view rStr ) const
         {
             if( rStr == m_sGet_UI )
                 return m_sGet_API;

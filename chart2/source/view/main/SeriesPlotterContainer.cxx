@@ -33,12 +33,15 @@
 #include <DiagramHelper.hxx>
 #include <Axis.hxx>
 #include <AxisIndexDefines.hxx>
+#include <ConfigColorScheme.hxx>
+#include <ChartColorScheme.hxx>
 #include <DataSeriesHelper.hxx>
 #include <ExplicitCategoriesProvider.hxx>
 #include <unonames.hxx>
 
 #include <com/sun/star/chart/ChartAxisPosition.hpp>
 #include <com/sun/star/chart2/AxisType.hpp>
+#include <com/sun/star/chart2/PieChartSubType.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
 #include <comphelper/classids.hxx>
@@ -123,7 +126,6 @@ VCoordinateSystem* SeriesPlotterContainer::addCooSysToList(
         ObjectIdentifier::createParticleForCoordinateSystem(xCooSys, &rChartModel));
     pVCooSys->setParticle(aCooSysParticle);
 
-    pVCooSys->setExplicitCategoriesProvider(new ExplicitCategoriesProvider(xCooSys, rChartModel));
     rVCooSysList.push_back(std::move(pVCooSys));
     return rVCooSysList.back().get();
 }
@@ -152,18 +154,23 @@ void SeriesPlotterContainer::initializeCooSysAndSeriesPlotter(ChartModel& rChart
     bool bSecondaryYaxisVisible = true;
     sal_Int32 nStartingAngle = 90;
     sal_Int32 n3DRelativeHeight = 100;
+    PieChartSubType ePieChartSubType = PieChartSubType_NONE;
+    double nSplitPos = 2;
     try
     {
         xDiagram->getPropertyValue(CHART_UNONAME_SORT_BY_XVALUES) >>= bSortByXValues;
-        xDiagram->getPropertyValue("ConnectBars") >>= bConnectBars;
-        xDiagram->getPropertyValue("GroupBarsPerAxis") >>= bGroupBarsPerAxis;
-        xDiagram->getPropertyValue("IncludeHiddenCells") >>= bIncludeHiddenCells;
-        xDiagram->getPropertyValue("StartingAngle") >>= nStartingAngle;
+        xDiagram->getPropertyValue(u"ConnectBars"_ustr) >>= bConnectBars;
+        xDiagram->getPropertyValue(u"GroupBarsPerAxis"_ustr) >>= bGroupBarsPerAxis;
+        xDiagram->getPropertyValue(u"IncludeHiddenCells"_ustr) >>= bIncludeHiddenCells;
+        xDiagram->getPropertyValue(u"StartingAngle"_ustr) >>= nStartingAngle;
 
         if (nDimensionCount == 3)
         {
-            xDiagram->getPropertyValue("3DRelativeHeight") >>= n3DRelativeHeight;
+            xDiagram->getPropertyValue(u"3DRelativeHeight"_ustr) >>= n3DRelativeHeight;
         }
+        xDiagram->getPropertyValue(u"SubPieType"_ustr) >>= ePieChartSubType;
+
+        xDiagram->getPropertyValue(u"SplitPos"_ustr) >>= nSplitPos;
     }
     catch (const uno::Exception&)
     {
@@ -171,7 +178,7 @@ void SeriesPlotterContainer::initializeCooSysAndSeriesPlotter(ChartModel& rChart
     }
 
     if (xDiagram->getDataTable().is())
-        m_bForceShiftPosition = true;
+        m_bTableShiftPosition = true;
 
     //prepare for autoscaling and shape creation
     // - create plotter for charttypes (for each first scale group at each plotter, as they are independent)
@@ -179,12 +186,16 @@ void SeriesPlotterContainer::initializeCooSysAndSeriesPlotter(ChartModel& rChart
     // - add plotter to coordinate systems
 
     //iterate through all coordinate systems
-    uno::Reference<XColorScheme> xColorScheme(xDiagram->getDefaultColorScheme());
+    uno::Reference<XColorScheme> xColorScheme;
+    if (!rChartModel.usesColorPalette())
+        xColorScheme = xDiagram->getDefaultColorScheme();
+    else
+        xColorScheme = new ChartColorScheme(*rChartModel.getCurrentColorPalette());
     auto aCooSysList = xDiagram->getBaseCoordinateSystems();
     sal_Int32 nGlobalSeriesIndex = 0; //for automatic symbols
     for (std::size_t nCS = 0; nCS < aCooSysList.size(); ++nCS)
     {
-        rtl::Reference<BaseCoordinateSystem> xCooSys(aCooSysList[nCS]);
+        const rtl::Reference<BaseCoordinateSystem>& xCooSys(aCooSysList[nCS]);
         VCoordinateSystem* pVCooSys
             = SeriesPlotterContainer::addCooSysToList(m_rVCooSysList, xCooSys, rChartModel);
         // Let's check whether the secondary Y axis is visible
@@ -193,7 +204,7 @@ void SeriesPlotterContainer::initializeCooSysAndSeriesPlotter(ChartModel& rChart
             if (xCooSys->getMaximumAxisIndexByDimension(1) > 0)
             {
                 rtl::Reference<Axis> xAxisProp = xCooSys->getAxisByDimension2(1, 1);
-                xAxisProp->getPropertyValue("Show") >>= bSecondaryYaxisVisible;
+                xAxisProp->getPropertyValue(u"Show"_ustr) >>= bSecondaryYaxisVisible;
             }
         }
         catch (const lang::IndexOutOfBoundsException&)
@@ -204,7 +215,7 @@ void SeriesPlotterContainer::initializeCooSysAndSeriesPlotter(ChartModel& rChart
         std::vector<rtl::Reference<ChartType>> aChartTypeList(xCooSys->getChartTypes2());
         for (std::size_t nT = 0; nT < aChartTypeList.size(); ++nT)
         {
-            rtl::Reference<ChartType> xChartType(aChartTypeList[nT]);
+            const rtl::Reference<ChartType>& xChartType(aChartTypeList[nT]);
             if (nDimensionCount == 3
                 && xChartType->getChartType().equalsIgnoreAsciiCase(
                        CHART2_SERVICE_NAME_CHARTTYPE_PIE))
@@ -225,6 +236,17 @@ void SeriesPlotterContainer::initializeCooSysAndSeriesPlotter(ChartModel& rChart
                 }
             }
 
+            if (ePieChartSubType != PieChartSubType_NONE)
+            {
+                xChartType->setFastPropertyValue(PROP_PIECHARTTYPE_SUBTYPE,
+                                                 uno::Any(ePieChartSubType));
+                // Reset the diagram-level property so it's not persistent.
+                xDiagram->setPropertyValue(u"SubPieType"_ustr, uno::Any(PieChartSubType_NONE));
+
+                xChartType->setFastPropertyValue(PROP_PIECHARTTYPE_SPLIT_POS, uno::Any(nSplitPos));
+                //xDiagram->setPropertyValue(u"SplitPos"_ustr, uno::Any(nSplitPos));
+            }
+
             if (nT == 0)
                 m_bChartTypeUsesShiftedCategoryPositionPerDefault
                     = ChartTypeHelper::shiftCategoryPosAtXAxisPerDefault(xChartType);
@@ -240,7 +262,8 @@ void SeriesPlotterContainer::initializeCooSysAndSeriesPlotter(ChartModel& rChart
             pPlotter->setNumberFormatsSupplier(xNumberFormatsSupplier);
             pPlotter->setColorScheme(xColorScheme);
             if (pVCooSys)
-                pPlotter->setExplicitCategoriesProvider(pVCooSys->getExplicitCategoriesProvider());
+                pPlotter->setExplicitCategoriesProvider(
+                    &xCooSys->getExplicitCategoriesProvider(rChartModel));
             sal_Int32 nMissingValueTreatment
                 = xDiagram->getCorrectedMissingValueTreatment(xChartType);
 
@@ -281,7 +304,8 @@ void SeriesPlotterContainer::initializeCooSysAndSeriesPlotter(ChartModel& rChart
 
                 //ignore secondary axis for charttypes that do not support them
                 if (pSeries->getAttachedAxisIndex() != MAIN_AXIS_INDEX
-                    && (!ChartTypeHelper::isSupportingSecondaryAxis(xChartType, nDimensionCount)
+                    && (!(xChartType.is() ? xChartType->isSupportingSecondaryAxis(nDimensionCount)
+                                          : true)
                         || !bSecondaryYaxisVisible))
                 {
                     pSeries->setAttachedAxisIndex(MAIN_AXIS_INDEX);
@@ -317,6 +341,13 @@ void SeriesPlotterContainer::initializeCooSysAndSeriesPlotter(ChartModel& rChart
         }
     }
 
+    auto order
+        = [](const std::unique_ptr<VSeriesPlotter>& a, const std::unique_ptr<VSeriesPlotter>& b) {
+              return a->getRenderOrder() < b->getRenderOrder();
+          };
+
+    std::stable_sort(m_aSeriesPlotterList.begin(), m_aSeriesPlotterList.end(), order);
+
     //transport seriesnames to the coordinatesystems if needed
     if (m_aSeriesPlotterList.empty())
         return;
@@ -340,12 +371,9 @@ void SeriesPlotterContainer::initializeCooSysAndSeriesPlotter(ChartModel& rChart
 bool SeriesPlotterContainer::isCategoryPositionShifted(const chart2::ScaleData& rSourceScale,
                                                        bool bHasComplexCategories)
 {
-    if (m_bForceShiftPosition)
-        return true;
-
     if (rSourceScale.AxisType == AxisType::CATEGORY)
         return bHasComplexCategories || rSourceScale.ShiftedCategoryPosition
-               || m_bChartTypeUsesShiftedCategoryPositionPerDefault;
+               || m_bTableShiftPosition || m_bChartTypeUsesShiftedCategoryPositionPerDefault;
 
     if (rSourceScale.AxisType == AxisType::DATE)
         return rSourceScale.ShiftedCategoryPosition;
@@ -353,7 +381,7 @@ bool SeriesPlotterContainer::isCategoryPositionShifted(const chart2::ScaleData& 
     return rSourceScale.AxisType == AxisType::SERIES;
 }
 
-void SeriesPlotterContainer::initAxisUsageList(const Date& rNullDate)
+void SeriesPlotterContainer::initAxisUsageList(const Date& rNullDate, ChartModel& rChartModel)
 {
     m_aAxisUsageList.clear();
 
@@ -363,13 +391,14 @@ void SeriesPlotterContainer::initAxisUsageList(const Date& rNullDate)
     {
         rtl::Reference<BaseCoordinateSystem> xCooSys = pVCooSys->getModel();
         sal_Int32 nDimCount = xCooSys->getDimension();
-        bool bComplexCategoryAllowed = ChartTypeHelper::isSupportingComplexCategory(
-            AxisHelper::getChartTypeByIndex(xCooSys, 0));
+        auto xChartType = AxisHelper::getChartTypeByIndex(xCooSys, 0);
+        bool bComplexCategoryAllowed
+            = xChartType.is() ? xChartType->isSupportingComplexCategory() : true;
 
         for (sal_Int32 nDimIndex = 0; nDimIndex < nDimCount; ++nDimIndex)
         {
-            bool bDateAxisAllowed = ChartTypeHelper::isSupportingDateAxis(
-                AxisHelper::getChartTypeByIndex(xCooSys, 0), nDimIndex);
+            bool bDateAxisAllowed
+                = xChartType.is() ? xChartType->isSupportingDateAxis(nDimIndex) : true;
 
             // Each dimension may have primary and secondary axes.
             const sal_Int32 nMaxAxisIndex = xCooSys->getMaximumAxisIndexByDimension(nDimIndex);
@@ -385,13 +414,13 @@ void SeriesPlotterContainer::initAxisUsageList(const Date& rNullDate)
                     // Create axis usage object for this axis.
 
                     chart2::ScaleData aSourceScale = xAxis->getScaleData();
-                    ExplicitCategoriesProvider* pCatProvider
-                        = pVCooSys->getExplicitCategoriesProvider();
+                    ExplicitCategoriesProvider& rCatProvider
+                        = xCooSys->getExplicitCategoriesProvider(rChartModel);
                     if (nDimIndex == 0)
-                        AxisHelper::checkDateAxis(aSourceScale, pCatProvider, bDateAxisAllowed);
+                        AxisHelper::checkDateAxis(aSourceScale, &rCatProvider, bDateAxisAllowed);
 
-                    bool bHasComplexCat = pCatProvider && pCatProvider->hasComplexCategories()
-                                          && bComplexCategoryAllowed;
+                    bool bHasComplexCat
+                        = rCatProvider.hasComplexCategories() && bComplexCategoryAllowed;
                     aSourceScale.ShiftedCategoryPosition
                         = isCategoryPositionShifted(aSourceScale, bHasComplexCat);
 
@@ -408,7 +437,7 @@ void SeriesPlotterContainer::initAxisUsageList(const Date& rNullDate)
     m_nMaxAxisIndex = 0;
     for (const auto& pVCooSys : m_rVCooSysList)
     {
-        uno::Reference<XCoordinateSystem> xCooSys = pVCooSys->getModel();
+        rtl::Reference<BaseCoordinateSystem> xCooSys = pVCooSys->getModel();
         sal_Int32 nDimCount = xCooSys->getDimension();
 
         for (sal_Int32 nDimIndex = 0; nDimIndex < nDimCount; ++nDimIndex)
@@ -572,7 +601,7 @@ void SeriesPlotterContainer::AdaptScaleOfYAxisWithoutAttachedSeries(ChartModel& 
                 std::vector<rtl::Reference<DataSeries>> aSeriesVector = xDiagram->getDataSeries();
                 for (auto const& series : aSeriesVector)
                 {
-                    sal_Int32 nCurrentIndex = DataSeriesHelper::getAttachedAxisIndex(series);
+                    sal_Int32 nCurrentIndex = series->getAttachedAxisIndex();
                     if (nAxisIndex == nCurrentIndex)
                     {
                         bSeriesAttachedToThisAxis = true;
@@ -679,11 +708,12 @@ void SeriesPlotterContainer::AdaptScaleOfYAxisWithoutAttachedSeries(ChartModel& 
             {
                 css::chart::ChartAxisPosition eCrossingMainAxisPos(
                     css::chart::ChartAxisPosition_ZERO);
-                xCrossingMainAxis->getPropertyValue("CrossoverPosition") >>= eCrossingMainAxisPos;
+                xCrossingMainAxis->getPropertyValue(u"CrossoverPosition"_ustr)
+                    >>= eCrossingMainAxisPos;
                 if (eCrossingMainAxisPos == css::chart::ChartAxisPosition_VALUE)
                 {
                     double fValue = 0.0;
-                    xCrossingMainAxis->getPropertyValue("CrossoverValue") >>= fValue;
+                    xCrossingMainAxis->getPropertyValue(u"CrossoverValue"_ustr) >>= fValue;
                     aExplicitScale.Origin = fValue;
                 }
                 else if (eCrossingMainAxisPos == css::chart::ChartAxisPosition_ZERO)

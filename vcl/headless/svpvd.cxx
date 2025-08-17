@@ -19,8 +19,6 @@
 
 #ifndef IOS
 
-#include <headless/svpbmp.hxx>
-#include <headless/svpinst.hxx>
 #include <headless/svpvd.hxx>
 #include <headless/svpgdi.hxx>
 
@@ -60,13 +58,35 @@ SalGraphics* SvpSalVirtualDevice::AcquireGraphics()
 
 void SvpSalVirtualDevice::ReleaseGraphics( SalGraphics* pGraphics )
 {
-    std::erase(m_aGraphics, dynamic_cast<SvpSalGraphics*>(pGraphics));
+    assert(dynamic_cast<SvpSalGraphics*>(pGraphics));
+    std::erase(m_aGraphics, static_cast<SvpSalGraphics*>(pGraphics));
     delete pGraphics;
 }
 
-bool SvpSalVirtualDevice::SetSize( tools::Long nNewDX, tools::Long nNewDY )
+bool SvpSalVirtualDevice::SetSize( tools::Long nNewDX, tools::Long nNewDY, bool bAlphaMaskTransparent )
 {
-    return SetSizeUsingBuffer(nNewDX, nNewDY, nullptr);
+    if (nNewDX == 0)
+        nNewDX = 1;
+    if (nNewDY == 0)
+        nNewDY = 1;
+
+    if (m_pSurface && m_aFrameSize.getX() == nNewDX && m_aFrameSize.getY() == nNewDY)
+        return true;
+
+    bool bSuccess = true;
+
+    m_aFrameSize = basegfx::B2IVector(nNewDX, nNewDY);
+
+    if (m_bOwnsSurface)
+        bSuccess = CreateSurface(nNewDX, nNewDY, bAlphaMaskTransparent);
+
+    assert(m_pSurface);
+
+    // update device in existing graphics
+    for (auto const& graphic : m_aGraphics)
+        graphic->setSurface(m_pSurface, m_aFrameSize);
+
+    return bSuccess;
 }
 
 bool SvpSalVirtualDevice::CreateSurface(tools::Long nNewDX, tools::Long nNewDY, sal_uInt8 *const pBuffer)
@@ -76,21 +96,30 @@ bool SvpSalVirtualDevice::CreateSurface(tools::Long nNewDX, tools::Long nNewDY, 
         cairo_surface_destroy(m_pSurface);
     }
 
-    if (pBuffer)
-    {
-        // The buffer should only be set by VirtualDevice::SetOutputSizePixelScaleOffsetAndLOKBuffer()
-        // when used to draw a tile for LOK. It cannot be used for something else, because otherwise
-        // this would need a way to detect whether this is a tiled paint that needs LOK handling
-        // or whether it's that something else that just might happen to be called with LOK active.
-        assert(comphelper::LibreOfficeKit::isActive());
-        // Force scaling of the painting
-        double fScale = comphelper::LibreOfficeKit::getDPIScale();
+    // The buffer should only be set by VirtualDevice::SetOutputSizePixelScaleOffsetAndLOKBuffer()
+    // when used to draw a tile for LOK. It cannot be used for something else, because otherwise
+    // this would need a way to detect whether this is a tiled paint that needs LOK handling
+    // or whether it's that something else that just might happen to be called with LOK active.
+    assert(comphelper::LibreOfficeKit::isActive());
+    // Force scaling of the painting
+    double fScale = comphelper::LibreOfficeKit::getDPIScale();
 
-        m_pSurface = cairo_image_surface_create_for_data(pBuffer, CAIRO_FORMAT_ARGB32,
-                            nNewDX, nNewDY, cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, nNewDX));
-        dl_cairo_surface_set_device_scale(m_pSurface, fScale, fScale);
+    m_pSurface = cairo_image_surface_create_for_data(pBuffer, CAIRO_FORMAT_ARGB32,
+                        nNewDX, nNewDY, cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, nNewDX));
+    dl_cairo_surface_set_device_scale(m_pSurface, fScale, fScale);
+
+    SAL_WARN_IF(cairo_surface_status(m_pSurface) != CAIRO_STATUS_SUCCESS, "vcl", "surface of size " << nNewDX << " by " << nNewDY << " creation failed with status of: " << cairo_status_to_string(cairo_surface_status(m_pSurface)));
+    return cairo_surface_status(m_pSurface) == CAIRO_STATUS_SUCCESS;
+}
+
+bool SvpSalVirtualDevice::CreateSurface(tools::Long nNewDX, tools::Long nNewDY, bool bAlphaMaskTransparent)
+{
+    if (m_pSurface)
+    {
+        cairo_surface_destroy(m_pSurface);
     }
-    else if(nNewDX <= 32 && nNewDY <= 32)
+
+    if(nNewDX <= 32 && nNewDY <= 32)
     {
         double fXScale, fYScale;
         dl_cairo_surface_get_device_scale(m_pRefSurface, &fXScale, &fYScale);
@@ -103,11 +132,25 @@ bool SvpSalVirtualDevice::CreateSurface(tools::Long nNewDX, tools::Long nNewDY, 
         // in software (which should be fairly cheap for small surfaces anyway).
         m_pSurface = cairo_surface_create_similar_image(m_pRefSurface, CAIRO_FORMAT_ARGB32, nNewDX, nNewDY);
         dl_cairo_surface_set_device_scale(m_pSurface, fXScale, fYScale);
+
+        cairo_t* cr = cairo_create(m_pSurface);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+        cairo_rectangle(cr, 0, 0, nNewDX, nNewDY);
+        cairo_set_source_rgba(cr, 0, 0, 0, bAlphaMaskTransparent ? 0 : 1);
+        cairo_fill(cr);
+        cairo_destroy(cr);
     }
     else
     {
         m_pSurface = cairo_surface_create_similar(m_pRefSurface, CAIRO_CONTENT_COLOR_ALPHA, nNewDX, nNewDY);
         // Device scale is inherited in this case.
+
+        cairo_t* cr = cairo_create(m_pSurface);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+        cairo_rectangle(cr, 0, 0, nNewDX, nNewDY);
+        cairo_set_source_rgba(cr, 1, 1, 1, bAlphaMaskTransparent ? 0 : 1);
+        cairo_fill(cr);
+        cairo_destroy(cr);
     }
 
     SAL_WARN_IF(cairo_surface_status(m_pSurface) != CAIRO_STATUS_SUCCESS, "vcl", "surface of size " << nNewDX << " by " << nNewDY << " creation failed with status of: " << cairo_status_to_string(cairo_surface_status(m_pSurface)));
@@ -117,27 +160,31 @@ bool SvpSalVirtualDevice::CreateSurface(tools::Long nNewDX, tools::Long nNewDY, 
 bool SvpSalVirtualDevice::SetSizeUsingBuffer( tools::Long nNewDX, tools::Long nNewDY,
         sal_uInt8 *const pBuffer)
 {
-    bool bSuccess = true;
-
     if (nNewDX == 0)
         nNewDX = 1;
     if (nNewDY == 0)
         nNewDY = 1;
 
-    if (!m_pSurface || m_aFrameSize.getX() != nNewDX ||
-                       m_aFrameSize.getY() != nNewDY)
+    if (m_pSurface && m_aFrameSize.getX() == nNewDX && m_aFrameSize.getY() == nNewDY)
     {
-        m_aFrameSize = basegfx::B2IVector(nNewDX, nNewDY);
-
-        if (m_bOwnsSurface)
-            bSuccess = CreateSurface(nNewDX, nNewDY, pBuffer);
-
-        assert(m_pSurface);
-
-        // update device in existing graphics
-        for (auto const& graphic : m_aGraphics)
-            graphic->setSurface(m_pSurface, m_aFrameSize);
+        assert(false && "this means that the pBuffer parameter is going to be ignored");
+        return true;
     }
+
+    bool bSuccess = true;
+
+    m_aFrameSize = basegfx::B2IVector(nNewDX, nNewDY);
+
+    if (m_bOwnsSurface)
+        bSuccess = CreateSurface(nNewDX, nNewDY, pBuffer);
+    else
+        assert(false && "this means that the pBuffer parameter is going to be ignored");
+
+    assert(m_pSurface);
+
+    // update device in existing graphics
+    for (auto const& graphic : m_aGraphics)
+        graphic->setSurface(m_pSurface, m_aFrameSize);
 
     return bSuccess;
 }

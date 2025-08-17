@@ -35,7 +35,6 @@
 #include <basegfx/matrix/b3dhommatrix.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/vector/b2dsize.hxx>
-#include <basegfx/vector/b2ivector.hxx>
 #include <basegfx/range/b3drange.hxx>
 #include <basegfx/range/b2irange.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
@@ -287,8 +286,8 @@ namespace basegfx::unotools
                     if( !xLinePoly.is() )
                     {
                         throw lang::IllegalArgumentException(
-                            "basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(): Invalid input"
-                            "poly-polygon, cannot retrieve vertex data",
+                            u"basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(): Invalid input"
+                            "poly-polygon, cannot retrieve vertex data"_ustr,
                             uno::Reference< uno::XInterface >(),
                             0 );
                     }

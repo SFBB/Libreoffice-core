@@ -58,7 +58,7 @@ std::unique_ptr<SwField> SwMacroField::Copy() const
 
 OUString SwMacroField::GetFieldName() const
 {
-    return GetTyp()->GetName() + " " + m_aMacro;
+    return GetTyp()->GetName().toString() + " " + m_aMacro;
 }
 
 OUString SwMacroField::GetLibName() const
@@ -209,7 +209,7 @@ bool SwMacroField::isScriptURL( const OUString& str )
 {
     try
     {
-        uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+        const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
         uno::Reference<uri::XUriReferenceFactory> xFactory = uri::UriReferenceFactory::create(xContext);
         uno::Reference<uri::XVndSunStarScriptUrl> xUrl(xFactory->parse(str), uno::UNO_QUERY);
         return xUrl.is();

@@ -30,8 +30,6 @@ using namespace connectivity::sdbcx;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 
 OIndexColumns::OIndexColumns(   OIndexHelper* _pIndex,
                         ::osl::Mutex& _rMutex,
@@ -41,7 +39,7 @@ OIndexColumns::OIndexColumns(   OIndexHelper* _pIndex,
 {
 }
 
-sdbcx::ObjectType OIndexColumns::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OIndexColumns::createObject(const OUString& _rName)
 {
     ::dbtools::OPropertyMap& rPropMap = OMetaConnection::getPropMap();
     OUString aCatalog, aSchema, aTable;
@@ -67,33 +65,33 @@ sdbcx::ObjectType OIndexColumns::createObject(const OUString& _rName)
     xResult = m_pIndex->getTable()->getConnection()->getMetaData()->getColumns(
         Catalog, aSchema, aTable, _rName);
 
-    sdbcx::ObjectType xRet;
-    if ( xResult.is() )
-    {
-        Reference< XRow > xRow(xResult,UNO_QUERY);
-        while( xResult->next() )
-        {
-            if ( xRow->getString(4) == _rName )
-            {
-                sal_Int32 nDataType = xRow->getInt(5);
-                OUString aTypeName(xRow->getString(6));
-                sal_Int32 nSize = xRow->getInt(7);
-                sal_Int32 nDec  = xRow->getInt(9);
-                sal_Int32 nNull = xRow->getInt(11);
-                OUString aColumnDef(xRow->getString(13));
+    if ( !xResult.is() )
+        return nullptr;
 
-                xRet = new OIndexColumn(bAsc,
-                                        _rName,
-                                        aTypeName,
-                                        aColumnDef,
-                                        nNull,
-                                        nSize,
-                                        nDec,
-                                        nDataType,
-                                        true,
-                                        aCatalog, aSchema, aTable);
-                break;
-            }
+    rtl::Reference< OIndexColumn > xRet;
+    Reference< XRow > xRow(xResult,UNO_QUERY);
+    while( xResult->next() )
+    {
+        if ( xRow->getString(4) == _rName )
+        {
+            sal_Int32 nDataType = xRow->getInt(5);
+            OUString aTypeName(xRow->getString(6));
+            sal_Int32 nSize = xRow->getInt(7);
+            sal_Int32 nDec  = xRow->getInt(9);
+            sal_Int32 nNull = xRow->getInt(11);
+            OUString aColumnDef(xRow->getString(13));
+
+            xRet = new OIndexColumn(bAsc,
+                                    _rName,
+                                    aTypeName,
+                                    aColumnDef,
+                                    nNull,
+                                    nSize,
+                                    nDec,
+                                    nDataType,
+                                    true,
+                                    aCatalog, aSchema, aTable);
+            break;
         }
     }
 

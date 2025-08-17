@@ -32,7 +32,6 @@
 #include <comphelper/genericpropertyset.hxx>
 #include <comphelper/propertysetinfo.hxx>
 
-using namespace ::osl;
 using namespace ::cppu;
 using namespace ::comphelper;
 using namespace ::com::sun::star;
@@ -98,12 +97,9 @@ void SAL_CALL GenericPropertySet::addPropertyChangeListener( const OUString& aPr
     std::unique_lock aGuard(maMutex);
     if ( aPropertyName.isEmpty() )
     {
-        Sequence< Property> aSeq = xInfo->getProperties();
-        const Property* pIter = aSeq.getConstArray();
-        const Property* pEnd  = pIter + aSeq.getLength();
-        for( ; pIter != pEnd ; ++pIter)
+        for (auto& prop : xInfo->getProperties())
         {
-            m_aListener.addInterface(aGuard, pIter->Name,xListener);
+            m_aListener.addInterface(aGuard, prop.Name, xListener);
         }
     }
     else if ( xInfo->hasPropertyByName(aPropertyName) )
@@ -121,12 +117,9 @@ void SAL_CALL GenericPropertySet::removePropertyChangeListener( const OUString& 
     std::unique_lock aGuard(maMutex);
     if ( aPropertyName.isEmpty() )
     {
-        Sequence< Property> aSeq = xInfo->getProperties();
-        const Property* pIter = aSeq.getConstArray();
-        const Property* pEnd  = pIter + aSeq.getLength();
-        for( ; pIter != pEnd ; ++pIter)
+        for (auto& prop : xInfo->getProperties())
         {
-            m_aListener.removeInterface(aGuard, pIter->Name,xListener);
+            m_aListener.removeInterface(aGuard, prop.Name, xListener);
         }
     }
     else if ( xInfo->hasPropertyByName(aPropertyName) )
@@ -224,12 +217,12 @@ sal_Bool SAL_CALL GenericPropertySet::supportsService( const  OUString& ServiceN
 
 OUString SAL_CALL GenericPropertySet::getImplementationName()
 {
-    return "com.sun.star.comp.comphelper.GenericPropertySet";
+    return u"com.sun.star.comp.comphelper.GenericPropertySet"_ustr;
 }
 
 Sequence< OUString > SAL_CALL GenericPropertySet::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.beans.XPropertySet" };
+    return { u"com.sun.star.beans.XPropertySet"_ustr };
 }
 
 css::uno::Reference< css::beans::XPropertySet > comphelper::GenericPropertySet_CreateInstance( comphelper::PropertySetInfo* pInfo )

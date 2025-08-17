@@ -34,7 +34,7 @@ class AquaSalFrame;
 @end
 
 // our very own application
-@interface VCL_NSApplication : NSApplication
+@interface VCL_NSApplication : NSApplication <NSApplicationDelegate>
 {
 }
 -(void)applicationDidFinishLaunching:(NSNotification*)pNotification;
@@ -62,7 +62,9 @@ class AquaSalFrame;
 -(void)applicationWillResignActive: (NSNotification *)pNotification;
 #endif
 -(BOOL)applicationShouldHandleReopen: (NSApplication*)pApp hasVisibleWindows: (BOOL)bWinVisible;
+-(BOOL)applicationSupportsSecureRestorableState: (NSApplication *)pApp;
 -(void)setDockIconClickHandler: (NSObject*)pHandler;
+-(NSImage*)createNSImage: (NSValue*)pImageValue;
 @end
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -396,7 +396,7 @@ public:
 
         @return  The 'prefix' of URLs of the given scheme.
      */
-    static OUString GetScheme(INetProtocol eTheScheme);
+    static const OUString & GetScheme(INetProtocol eTheScheme);
 
     /** Return the human-readable name for a given scheme.
 
@@ -1210,7 +1210,7 @@ inline bool INetURLObject::GetNewAbsURL(OUString const & rTheRelURIRef,
                          FSysStyle::Detect))
         return false;
     if (pTheAbsURIRef)
-        *pTheAbsURIRef = aTheAbsURIRef;
+        *pTheAbsURIRef = std::move(aTheAbsURIRef);
     return true;
 }
 

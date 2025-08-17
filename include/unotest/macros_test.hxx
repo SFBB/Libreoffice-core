@@ -20,6 +20,7 @@
 
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/frame/XDesktop2.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/uno/Any.h>
 #include <utility>
 
@@ -35,10 +36,6 @@ class SvStream;
 namespace test
 {
 class Directories;
-}
-namespace utl
-{
-class TempFileNamed;
 }
 
 namespace com::sun::star::security
@@ -92,12 +89,19 @@ public:
                     const OUString& rCommand,
                     const css::uno::Sequence<css::beans::PropertyValue>& rPropertyValues);
 
+    static css::uno::Any
+    queryDispatchStatus(css::uno::Reference<css::lang::XComponent> const& xComponent,
+                        css::uno::Reference<css::uno::XComponentContext> const& xContext,
+                        OUString const& rURL);
+
     /// Opens rStreamName from rTempFile, assuming it's a ZIP storage.
     static std::unique_ptr<SvStream> parseExportStream(const OUString& url,
                                                        const OUString& rStreamName);
 
-    void setUpNssGpg(const test::Directories& rDirectories, const OUString& rTestName);
-    void tearDownNssGpg();
+    // note: there is no tearDownX509
+    void setUpX509(const test::Directories& rDirectories, const OUString& rTestName);
+    static void setUpGpg(const test::Directories& rDirectories, std::u16string_view rTestName);
+    static void tearDownGpg();
 
     static bool IsValid(const css::uno::Reference<css::security::XCertificate>& cert,
                         const css::uno::Reference<css::xml::crypto::XSecurityEnvironment>& env);
@@ -111,9 +115,6 @@ protected:
 
 private:
     std::unique_ptr<BasicDLL> mpDll;
-#if HAVE_GPGCONF_SOCKETDIR
-    OString m_gpgconfCommandPrefix;
-#endif
 };
 }
 

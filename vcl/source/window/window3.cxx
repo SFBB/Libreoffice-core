@@ -20,6 +20,7 @@
 #include <vcl/window.hxx>
 #include <window.h>
 #include <vcl/cursor.hxx>
+#include <salframe.hxx>
 
 namespace vcl
 {
@@ -214,6 +215,30 @@ void Window::SetSettings(const AllSettings& rSettings, bool bChild)
 Color Window::GetBackgroundColor() const { return GetOutDev()->GetBackgroundColor(); }
 
 void Window::EnableRTL(bool bEnable) { GetOutDev()->EnableRTL(bEnable); }
+
+void Window::FlashWindow() const
+{
+    vcl::Window* pMyParent = ImplGetTopmostFrameWindow();
+
+    if (pMyParent && pMyParent->mpWindowImpl)
+        pMyParent->mpWindowImpl->mpFrame->FlashWindow();
+}
+
+void Window::SetTaskBarProgress(int nCurrentProgress)
+{
+    vcl::Window* pMyParent = ImplGetTopmostFrameWindow();
+
+    if (pMyParent && pMyParent->mpWindowImpl)
+        pMyParent->mpWindowImpl->mpFrame->SetTaskBarProgress(nCurrentProgress);
+}
+
+void Window::SetTaskBarState(VclTaskBarStates eTaskBarState)
+{
+    vcl::Window* pMyParent = ImplGetTopmostFrameWindow();
+
+    if (pMyParent && pMyParent->mpWindowImpl)
+        pMyParent->mpWindowImpl->mpFrame->SetTaskBarState(eTaskBarState);
+}
 
 } /* namespace vcl */
 

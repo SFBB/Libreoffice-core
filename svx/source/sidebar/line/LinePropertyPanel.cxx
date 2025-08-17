@@ -42,8 +42,6 @@ LinePropertyPanel::LinePropertyPanel(
     maDashControl (SID_ATTR_LINE_DASH, *pBindings, *this),
     maWidthControl(SID_ATTR_LINE_WIDTH, *pBindings, *this),
     maTransControl(SID_ATTR_LINE_TRANSPARENCE, *pBindings, *this),
-    maEdgeStyle(SID_ATTR_LINE_JOINT, *pBindings, *this),
-    maCapStyle(SID_ATTR_LINE_CAP, *pBindings, *this),
     mpBindings(pBindings)
 {
     setMapUnit(maWidthControl.GetCoreMetric());
@@ -55,8 +53,6 @@ LinePropertyPanel::~LinePropertyPanel()
     maDashControl.dispose();
     maWidthControl.dispose();
     maTransControl.dispose();
-    maEdgeStyle.dispose();
-    maCapStyle.dispose();
 }
 
 std::unique_ptr<PanelLayout> LinePropertyPanel::Create (
@@ -65,11 +61,11 @@ std::unique_ptr<PanelLayout> LinePropertyPanel::Create (
     SfxBindings* pBindings)
 {
     if (pParent == nullptr)
-        throw lang::IllegalArgumentException("no parent Window given to LinePropertyPanel::Create", nullptr, 0);
+        throw lang::IllegalArgumentException(u"no parent Window given to LinePropertyPanel::Create"_ustr, nullptr, 0);
     if ( ! rxFrame.is())
-        throw lang::IllegalArgumentException("no XFrame given to LinePropertyPanel::Create", nullptr, 1);
+        throw lang::IllegalArgumentException(u"no XFrame given to LinePropertyPanel::Create"_ustr, nullptr, 1);
     if (pBindings == nullptr)
-        throw lang::IllegalArgumentException("no SfxBindings given to LinePropertyPanel::Create", nullptr, 2);
+        throw lang::IllegalArgumentException(u"no SfxBindings given to LinePropertyPanel::Create"_ustr, nullptr, 2);
 
     return std::make_unique<LinePropertyPanel>(pParent, rxFrame, pBindings);
 }
@@ -92,16 +88,6 @@ void LinePropertyPanel::NotifyItemUpdate(
         case SID_ATTR_LINE_WIDTH:
         {
             updateLineWidth(bDisabled, bSetOrDefault, pState);
-            break;
-        }
-        case SID_ATTR_LINE_JOINT:
-        {
-            updateLineJoint(bDisabled, bSetOrDefault, pState);
-            break;
-        }
-        case SID_ATTR_LINE_CAP:
-        {
-            updateLineCap(bDisabled, bSetOrDefault, pState);
             break;
         }
     }
@@ -135,18 +121,6 @@ void LinePropertyPanel::HandleContextChange(
         disableArrowHead();
     else
         enableArrowHead();
-}
-
-void LinePropertyPanel::setLineJoint(const XLineJointItem* pItem)
-{
-    GetBindings()->GetDispatcher()->ExecuteList(SID_ATTR_LINE_JOINT,
-            SfxCallMode::RECORD, { pItem });
-}
-
-void LinePropertyPanel::setLineCap(const XLineCapItem* pItem)
-{
-    GetBindings()->GetDispatcher()->ExecuteList(SID_ATTR_LINE_CAP,
-            SfxCallMode::RECORD, { pItem });
 }
 
 void LinePropertyPanel::setLineTransparency(const XLineTransparenceItem& rItem)

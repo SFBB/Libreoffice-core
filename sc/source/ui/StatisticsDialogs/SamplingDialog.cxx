@@ -22,7 +22,7 @@
 ScSamplingDialog::ScSamplingDialog(SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
                                    weld::Window* pParent, ScViewData& rViewData)
     : ScAnyRefDlgController(pSfxBindings, pChildWindow, pParent,
-                          "modules/scalc/ui/samplingdialog.ui", "SamplingDialog")
+                          u"modules/scalc/ui/samplingdialog.ui"_ustr, u"SamplingDialog"_ustr)
     , mpActiveEdit(nullptr)
     , mViewData(rViewData)
     , mDocument(rViewData.GetDocument())
@@ -33,20 +33,20 @@ ScSamplingDialog::ScSamplingDialog(SfxBindings* pSfxBindings, SfxChildWindow* pC
     , mnLastSampleSizeValue(1)
     , mnLastPeriodValue(1)
     , mDialogLostFocus(false)
-    , mxInputRangeLabel(m_xBuilder->weld_label("input-range-label"))
-    , mxInputRangeEdit(new formula::RefEdit(m_xBuilder->weld_entry("input-range-edit")))
-    , mxInputRangeButton(new formula::RefButton(m_xBuilder->weld_button("input-range-button")))
-    , mxOutputRangeLabel(m_xBuilder->weld_label("output-range-label"))
-    , mxOutputRangeEdit(new formula::RefEdit(m_xBuilder->weld_entry("output-range-edit")))
-    , mxOutputRangeButton(new formula::RefButton(m_xBuilder->weld_button("output-range-button")))
-    , mxSampleSize(m_xBuilder->weld_spin_button("sample-size-spin"))
-    , mxPeriod(m_xBuilder->weld_spin_button("period-spin"))
-    , mxRandomMethodRadio(m_xBuilder->weld_radio_button("random-method-radio"))
-    , mxWithReplacement(m_xBuilder->weld_check_button("with-replacement"))
-    , mxKeepOrder(m_xBuilder->weld_check_button("keep-order"))
-    , mxPeriodicMethodRadio(m_xBuilder->weld_radio_button("periodic-method-radio"))
-    , mxButtonOk(m_xBuilder->weld_button("ok"))
-    , mxButtonCancel(m_xBuilder->weld_button("cancel"))
+    , mxInputRangeLabel(m_xBuilder->weld_label(u"input-range-label"_ustr))
+    , mxInputRangeEdit(new formula::RefEdit(m_xBuilder->weld_entry(u"input-range-edit"_ustr)))
+    , mxInputRangeButton(new formula::RefButton(m_xBuilder->weld_button(u"input-range-button"_ustr)))
+    , mxOutputRangeLabel(m_xBuilder->weld_label(u"output-range-label"_ustr))
+    , mxOutputRangeEdit(new formula::RefEdit(m_xBuilder->weld_entry(u"output-range-edit"_ustr)))
+    , mxOutputRangeButton(new formula::RefButton(m_xBuilder->weld_button(u"output-range-button"_ustr)))
+    , mxSampleSize(m_xBuilder->weld_spin_button(u"sample-size-spin"_ustr))
+    , mxPeriod(m_xBuilder->weld_spin_button(u"period-spin"_ustr))
+    , mxRandomMethodRadio(m_xBuilder->weld_radio_button(u"random-method-radio"_ustr))
+    , mxWithReplacement(m_xBuilder->weld_check_button(u"with-replacement"_ustr))
+    , mxKeepOrder(m_xBuilder->weld_check_button(u"keep-order"_ustr))
+    , mxPeriodicMethodRadio(m_xBuilder->weld_radio_button(u"periodic-method-radio"_ustr))
+    , mxButtonOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , mxButtonCancel(m_xBuilder->weld_button(u"cancel"_ustr))
 {
     mxInputRangeEdit->SetReferences(this, mxInputRangeLabel.get());
     mxInputRangeButton->SetReferences(this, mxInputRangeEdit.get());
@@ -170,7 +170,7 @@ void ScSamplingDialog::SetReference( const ScRange& rReferenceRange, ScDocument&
     mxButtonOk->set_sensitive(mInputRange.IsValid() && mOutputAddress.IsValid());
 }
 
-ScRange ScSamplingDialog::PerformPeriodicSampling(ScDocShell* pDocShell)
+ScRange ScSamplingDialog::PerformPeriodicSampling(ScDocShell& rDocShell)
 {
     ScAddress aStart = mInputRange.aStart;
     ScAddress aEnd   = mInputRange.aEnd;
@@ -193,7 +193,7 @@ ScRange ScSamplingDialog::PerformPeriodicSampling(ScDocShell* pDocShell)
                 if (i % aPeriod == aPeriod - 1 ) // Sample the last of period
                 {
                     double aValue = mDocument.GetValue(ScAddress(inCol, inRow, inTab));
-                    pDocShell->GetDocFunc().SetValueCell(ScAddress(outCol, outRow, outTab), aValue, true);
+                    rDocShell.GetDocFunc().SetValueCell(ScAddress(outCol, outRow, outTab), aValue, true);
                     outRow++;
                 }
                 i++;
@@ -206,7 +206,7 @@ ScRange ScSamplingDialog::PerformPeriodicSampling(ScDocShell* pDocShell)
     return ScRange(mOutputAddress, ScAddress(outTab, outRow, outTab) );
 }
 
-ScRange ScSamplingDialog::PerformRandomSampling(ScDocShell* pDocShell)
+ScRange ScSamplingDialog::PerformRandomSampling(ScDocShell& rDocShell)
 {
     ScAddress aStart = mInputRange.aStart;
     ScAddress aEnd   = mInputRange.aEnd;
@@ -273,7 +273,7 @@ ScRange ScSamplingDialog::PerformRandomSampling(ScDocShell* pDocShell)
                 }
 
                 const double fValue = mDocument.GetValue( ScAddress(inCol, nRandom, inTab) );
-                pDocShell->GetDocFunc().SetValueCell(ScAddress(outCol, outRow, outTab), fValue, true);
+                rDocShell.GetDocFunc().SetValueCell(ScAddress(outCol, outRow, outTab), fValue, true);
                 outRow++;
             }
             outCol++;
@@ -284,7 +284,7 @@ ScRange ScSamplingDialog::PerformRandomSampling(ScDocShell* pDocShell)
     return ScRange(mOutputAddress, ScAddress(outTab, outRow, outTab) );
 }
 
-ScRange ScSamplingDialog::PerformRandomSamplingKeepOrder(ScDocShell* pDocShell)
+ScRange ScSamplingDialog::PerformRandomSamplingKeepOrder(ScDocShell& rDocShell)
 {
     ScAddress aStart = mInputRange.aStart;
     ScAddress aEnd   = mInputRange.aEnd;
@@ -317,7 +317,7 @@ ScRange ScSamplingDialog::PerformRandomSamplingKeepOrder(ScDocShell* pDocShell)
                 else
                 {
                     double aValue = mDocument.GetValue( ScAddress(inCol, inRow, inTab) );
-                    pDocShell->GetDocFunc().SetValueCell(ScAddress(outCol, outRow, outTab), aValue, true);
+                    rDocShell.GetDocFunc().SetValueCell(ScAddress(outCol, outRow, outTab), aValue, true);
                     inRow++;
                     outRow++;
                 }
@@ -333,8 +333,8 @@ ScRange ScSamplingDialog::PerformRandomSamplingKeepOrder(ScDocShell* pDocShell)
 void ScSamplingDialog::PerformSampling()
 {
     OUString aUndo(ScResId(STR_SAMPLING_UNDO_NAME));
-    ScDocShell* pDocShell = mViewData.GetDocShell();
-    SfxUndoManager* pUndoManager = pDocShell->GetUndoManager();
+    ScDocShell& rDocShell = mViewData.GetDocShell();
+    SfxUndoManager* pUndoManager = rDocShell.GetUndoManager();
 
     ScRange aModifiedRange;
 
@@ -343,17 +343,17 @@ void ScSamplingDialog::PerformSampling()
     if (mxRandomMethodRadio->get_active())
     {
         if (mxKeepOrder->get_sensitive() && mxKeepOrder->get_active())
-            aModifiedRange = PerformRandomSamplingKeepOrder(pDocShell);
+            aModifiedRange = PerformRandomSamplingKeepOrder(rDocShell);
         else
-            aModifiedRange = PerformRandomSampling(pDocShell);
+            aModifiedRange = PerformRandomSampling(rDocShell);
     }
     else if (mxPeriodicMethodRadio->get_active())
     {
-        aModifiedRange = PerformPeriodicSampling(pDocShell);
+        aModifiedRange = PerformPeriodicSampling(rDocShell);
     }
 
     pUndoManager->LeaveListAction();
-    pDocShell->PostPaint(aModifiedRange, PaintPartFlags::Grid);
+    rDocShell.PostPaint(aModifiedRange, PaintPartFlags::Grid);
 }
 
 sal_Int64 ScSamplingDialog::GetPopulationSize() const

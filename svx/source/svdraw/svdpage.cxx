@@ -23,16 +23,16 @@
 #include <unordered_set>
 
 #include <svx/svdpage.hxx>
-#include <svx/unoshape.hxx>
 #include <svx/unopage.hxx>
 
 #include <o3tl/safeint.hxx>
 #include <string.h>
 
 #include <tools/debug.hxx>
+#include <tools/json_writer.hxx>
 #include <comphelper/diagnose_ex.hxx>
-#include <comphelper/lok.hxx>
 
+#include <sfx2/viewsh.hxx>
 #include <svtools/colorcfg.hxx>
 #include <svx/svdetc.hxx>
 #include <svx/svdobj.hxx>
@@ -45,17 +45,19 @@
 #include <svx/svdpagv.hxx>
 #include <svx/svdundo.hxx>
 #include <svx/xfillit0.hxx>
-#include <svx/ColorSets.hxx>
 
 #include <sdr/contact/viewcontactofsdrpage.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <svx/sdr/contact/displayinfo.hxx>
+#include <svx/annotation/Annotation.hxx>
+#include <svx/annotation/ObjectAnnotationData.hxx>
 #include <algorithm>
 #include <clonelist.hxx>
 #include <svl/hint.hxx>
 #include <rtl/strbuf.hxx>
 #include <libxml/xmlwriter.h>
 #include <docmodel/theme/Theme.hxx>
+#include <comphelper/lok.hxx>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
@@ -70,7 +72,7 @@ SdrObjList::SdrObjList()
 {
 }
 
-void SdrObjList::impClearSdrObjList(bool bBroadcast)
+void SdrObjList::impClearSdrObjList()
 {
     SdrModel* pSdrModelFromRemovedSdrObject(nullptr);
 
@@ -84,22 +86,20 @@ void SdrObjList::impClearSdrObjList(bool bBroadcast)
         // to delete the object and thus refresh visualisations
         pObj->GetViewContact().flushViewObjectContacts();
 
-        if(bBroadcast)
+        if(nullptr == pSdrModelFromRemovedSdrObject)
         {
-            if(nullptr == pSdrModelFromRemovedSdrObject)
-            {
-                pSdrModelFromRemovedSdrObject = &pObj->getSdrModelFromSdrObject();
-            }
-
-            // sent remove hint (after removal, see RemoveObject())
-            // TTTT SdrPage not needed, can be accessed using SdrObject
-            SdrHint aHint(SdrHintKind::ObjectRemoved, *pObj, getSdrPageFromSdrObjList());
-            pObj->getSdrModelFromSdrObject().Broadcast(aHint);
+            pSdrModelFromRemovedSdrObject = &pObj->getSdrModelFromSdrObject();
         }
+
+        // sent remove hint (after removal, see RemoveObject())
+        // TTTT SdrPage not needed, can be accessed using SdrObject
+        SdrHint aHint(SdrHintKind::ObjectRemoved, *pObj, getSdrPageFromSdrObjList());
+        pObj->getSdrModelFromSdrObject().Broadcast(aHint);
+
         pObj->setParentOfSdrObject(nullptr);
     }
 
-    if(bBroadcast && nullptr != pSdrModelFromRemovedSdrObject)
+    if(nullptr != pSdrModelFromRemovedSdrObject)
     {
         pSdrModelFromRemovedSdrObject->SetChanged();
     }
@@ -108,7 +108,7 @@ void SdrObjList::impClearSdrObjList(bool bBroadcast)
 void SdrObjList::ClearSdrObjList()
 {
     // clear SdrObjects with broadcasting
-    impClearSdrObjList(true);
+    impClearSdrObjList();
 }
 
 SdrObjList::~SdrObjList()
@@ -128,6 +128,28 @@ SdrObject* SdrObjList::getSdrObjectFromSdrObjList() const
 {
     // default is no SdrObject (SdrObjGroup)
     return nullptr;
+}
+
+OString SdrObjList::GetObjectRectangles(const SdrObjList& rSrcList)
+{
+    tools::JsonWriter jsWriter;
+
+    {
+        auto array = jsWriter.startAnonArray();
+
+        for (const rtl::Reference<SdrObject>& item: rSrcList)
+        {
+            if (item->IsPrintable() && item->IsVisible())
+            {
+                tools::Rectangle rectangle = item->GetCurrentBoundRect();
+                OString value = rectangle.toString() + ", "_ostr + OString::number(item->GetOrdNum());
+                auto subArray = jsWriter.startAnonArray();
+                jsWriter.putRaw(value);
+            }
+        }
+    }
+
+    return jsWriter.finishAndGetAsOString();
 }
 
 void SdrObjList::CopyObjects(const SdrObjList& rSrcList)
@@ -153,14 +175,24 @@ void SdrObjList::CopyObjects(const SdrObjList& rSrcList)
         ? getSdrPageFromSdrObjList()->getSdrModelFromSdrPage()
         : getSdrObjectFromSdrObjList()->getSdrModelFromSdrObject());
 
-    for (const rtl::Reference<SdrObject>& pSO : rSrcList)
+    for (const rtl::Reference<SdrObject>& pSourceObject : rSrcList)
     {
-        rtl::Reference<SdrObject> pDO(pSO->CloneSdrObject(rTargetSdrModel));
+        rtl::Reference<SdrObject> pTargetObject(pSourceObject->CloneSdrObject(rTargetSdrModel));
 
-        if(pDO)
+        if (pTargetObject)
         {
-            NbcInsertObject(pDO.get(), SAL_MAX_SIZE);
-            aCloneList.AddPair(pSO.get(), pDO.get());
+            NbcInsertObject(pTargetObject.get(), SAL_MAX_SIZE);
+            aCloneList.AddPair(pSourceObject.get(), pTargetObject.get());
+            if (pSourceObject->isAnnotationObject())
+            {
+                pTargetObject->setAsAnnotationObject();
+                pTargetObject->SetPrintable(false);
+                rtl::Reference<sdr::annotation::Annotation> xNewAnnotation;
+                SdrPage* pPage = pTargetObject->getSdrPageFromSdrObject();
+                xNewAnnotation = pSourceObject->getAnnotationData()->mxAnnotation->clone(pPage);
+                pTargetObject->getAnnotationData()->mxAnnotation = xNewAnnotation;
+                pPage->addAnnotationNoNotify(xNewAnnotation, -1);
+            }
         }
 #ifdef DBG_UTIL
         else
@@ -580,16 +612,16 @@ void SdrObjList::sort( std::vector<sal_Int32>& sortOrder)
     auto it = std::find_if( sortOrder.begin(), sortOrder.end(), [this](const sal_Int32& rIt)
          { return ( rIt < 0 || o3tl::make_unsigned(rIt) >= maList.size() ); } );
     if ( it != sortOrder.end())
-        throw css::lang::IllegalArgumentException("negative index of shape", nullptr, 1);
+        throw css::lang::IllegalArgumentException(u"negative index of shape"_ustr, nullptr, 1);
 
     // no duplicates
     std::vector<bool> aNoDuplicates(sortOrder.size(), false);
-    for (size_t i = 0; i < sortOrder.size(); ++i )
+    for (const sal_Int32 nSortOrder : sortOrder )
     {
-        size_t idx =  static_cast<size_t>( sortOrder[i] );
+        size_t idx =  static_cast<size_t>( nSortOrder );
 
         if ( aNoDuplicates[idx] )
-            throw css::lang::IllegalArgumentException("duplicate index of shape", nullptr, 2);
+            throw css::lang::IllegalArgumentException(u"duplicate index of shape"_ustr, nullptr, 2);
 
         aNoDuplicates[idx] = true;
     }
@@ -618,7 +650,7 @@ void SdrObjList::sort( std::vector<sal_Int32>& sortOrder)
 
     if (aShapesWithTextbox.size() != maList.size() - sortOrder.size())
     {
-        throw lang::IllegalArgumentException("mismatch of no. of shapes", nullptr, 0);
+        throw lang::IllegalArgumentException(u"mismatch of no. of shapes"_ustr, nullptr, 0);
     }
 
     for (size_t i = 0; i< sortOrder.size(); ++i)
@@ -651,7 +683,7 @@ void SdrObjList::sort( std::vector<sal_Int32>& sortOrder)
     {
         if (nPrev != aDuplicates[i])
             aNewSortOrder[i] = aDuplicates[i] + aIncrements[aDuplicates[i]];
-        else
+        else if (i > 0)
             aNewSortOrder[i] = aNewSortOrder[i-1] + 1;
 
         nPrev = aDuplicates[i];
@@ -1165,7 +1197,10 @@ void SdrPageProperties::ImpAddStyleSheet(SfxStyleSheet& rNewStyleSheet)
     }
 }
 
-static void ImpPageChange(SdrPage& rSdrPage)
+namespace
+{
+
+void ImpPageChange(SdrPage& rSdrPage)
 {
     rSdrPage.ActionChanged();
     rSdrPage.getSdrModelFromSdrPage().SetChanged();
@@ -1173,14 +1208,16 @@ static void ImpPageChange(SdrPage& rSdrPage)
     rSdrPage.getSdrModelFromSdrPage().Broadcast(aHint);
 }
 
+} // end anonymous namespace
+
 SdrPageProperties::SdrPageProperties(SdrPage& rSdrPage)
-    : mpSdrPage(&rSdrPage)
+    : mrSdrPage(rSdrPage)
     , mpStyleSheet(nullptr)
     , maProperties(
-        mpSdrPage->getSdrModelFromSdrPage().GetItemPool(),
+        mrSdrPage.getSdrModelFromSdrPage().GetItemPool(),
         svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST>)
 {
-    if (!rSdrPage.IsMasterPage())
+    if (!mrSdrPage.IsMasterPage())
     {
         maProperties.Put(XFillStyleItem(drawing::FillStyle_NONE));
     }
@@ -1198,7 +1235,7 @@ void SdrPageProperties::Notify(SfxBroadcaster& /*rBC*/, const SfxHint& rHint)
         case SfxHintId::DataChanged :
             {
                 // notify change, broadcast
-                ImpPageChange(*mpSdrPage);
+                ImpPageChange(mrSdrPage);
                 break;
             }
         case SfxHintId::Dying :
@@ -1213,29 +1250,28 @@ void SdrPageProperties::Notify(SfxBroadcaster& /*rBC*/, const SfxHint& rHint)
 
 bool SdrPageProperties::isUsedByModel() const
 {
-    assert(mpSdrPage);
-    return mpSdrPage->IsInserted();
+    return mrSdrPage.IsInserted();
 }
 
 
 void SdrPageProperties::PutItemSet(const SfxItemSet& rSet)
 {
-    OSL_ENSURE(!mpSdrPage->IsMasterPage(), "Item set at MasterPage Attributes (!)");
+    OSL_ENSURE(!mrSdrPage.IsMasterPage(), "Item set at MasterPage Attributes (!)");
     maProperties.Put(rSet);
-    ImpPageChange(*mpSdrPage);
+    ImpPageChange(mrSdrPage);
 }
 
 void SdrPageProperties::PutItem(const SfxPoolItem& rItem)
 {
-    OSL_ENSURE(!mpSdrPage->IsMasterPage(), "Item set at MasterPage Attributes (!)");
+    OSL_ENSURE(!mrSdrPage.IsMasterPage(), "Item set at MasterPage Attributes (!)");
     maProperties.Put(rItem);
-    ImpPageChange(*mpSdrPage);
+    ImpPageChange(mrSdrPage);
 }
 
 void SdrPageProperties::ClearItem(const sal_uInt16 nWhich)
 {
     maProperties.ClearItem(nWhich);
-    ImpPageChange(*mpSdrPage);
+    ImpPageChange(mrSdrPage);
 }
 
 void SdrPageProperties::SetStyleSheet(SfxStyleSheet* pStyleSheet)
@@ -1249,37 +1285,31 @@ void SdrPageProperties::SetStyleSheet(SfxStyleSheet* pStyleSheet)
         ImpRemoveStyleSheet();
     }
 
-    ImpPageChange(*mpSdrPage);
+    ImpPageChange(mrSdrPage);
 }
 
 void SdrPageProperties::setTheme(std::shared_ptr<model::Theme> const& pTheme)
 {
-    if (!mpSdrPage)
-        return;
-
     // Only set the theme on a master page, else set it on the model
 
-    if (mpSdrPage->IsMasterPage())
+    if (mrSdrPage.IsMasterPage())
     {
         if (mpTheme != pTheme)
             mpTheme = pTheme;
     }
     else
     {
-        mpSdrPage->getSdrModelFromSdrPage().setTheme(pTheme);
+        mrSdrPage.getSdrModelFromSdrPage().setTheme(pTheme);
     }
 }
 
 std::shared_ptr<model::Theme> const& SdrPageProperties::getTheme() const
 {
-    // if set - page theme has priority
+    // If the page theme is available use that, else get the theme from the model
     if (mpTheme)
         return mpTheme;
-    // else the model theme
-    else if (mpSdrPage)
-        return mpSdrPage->getSdrModelFromSdrPage().getTheme();
-    // else return empty shared_ptr
-    return mpTheme;
+    else
+        return mrSdrPage.getSdrModelFromSdrPage().getTheme();
 }
 
 void SdrPageProperties::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -1694,6 +1724,12 @@ void SdrPage::MakePageObjectsNamesUnique()
     }
 }
 
+bool SdrPage::RestoreDefaultText(SdrObject* /*pObj*/, const OUString& /*rStr*/)
+{
+    assert(false);
+    return false;
+}
+
 const SdrPageGridFrameList* SdrPage::GetGridFrameList(const SdrPageView* /*pPV*/, const tools::Rectangle* /*pRect*/) const
 {
     return nullptr;
@@ -1707,11 +1743,6 @@ const SdrLayerAdmin& SdrPage::GetLayerAdmin() const
 SdrLayerAdmin& SdrPage::GetLayerAdmin()
 {
     return *mpLayerAdmin;
-}
-
-OUString SdrPage::GetLayoutName() const
-{
-    return OUString();
 }
 
 void SdrPage::SetInserted( bool bIns )
@@ -1771,8 +1802,13 @@ Color SdrPage::GetPageBackgroundColor( SdrPageView const * pView, bool bScreenDi
 
     if(bScreenDisplay && (!pView || pView->GetApplicationDocumentColor() == COL_AUTO))
     {
-        svtools::ColorConfig aColorConfig;
-        aColor = aColorConfig.GetColorValue( svtools::DOCCOLOR ).nColor;
+        if (const SfxViewShell* pViewShell = SfxViewShell::Current())
+            aColor = pViewShell->GetColorConfigColor(svtools::DOCCOLOR);
+        else
+        {
+            svtools::ColorConfig aColorConfig;
+            aColor = aColorConfig.GetColorValue( svtools::DOCCOLOR ).nColor;
+        }
     }
     else
     {
@@ -1785,7 +1821,23 @@ Color SdrPage::GetPageBackgroundColor( SdrPageView const * pView, bool bScreenDi
     {
         if(drawing::FillStyle_NONE == pBackgroundFill->Get(XATTR_FILLSTYLE).GetValue())
         {
-            pBackgroundFill = &TRG_GetMasterPage().getSdrPageProperties().GetItemSet();
+            // See unomodel.cxx: "It is guaranteed, that after a standard page the corresponding notes page follows."
+            bool notesPage = GetPageNum() % 2 == 0;
+
+            if (!comphelper::LibreOfficeKit::isActive() || !notesPage || !getSdrModelFromSdrPage().IsImpress())
+                pBackgroundFill = &TRG_GetMasterPage().getSdrPageProperties().GetItemSet();
+            else
+            {
+                /*
+                    See sdrmasterpagedescriptor.cxx: e.g. the Notes MasterPage has no StyleSheet set (and there maybe others).
+                */
+
+                // This is a notes page. Try to get itemset from standard page's master.
+                if (getSdrModelFromSdrPage().GetPage(GetPageNum() - 1))
+                    pBackgroundFill = &getSdrModelFromSdrPage().GetPage(GetPageNum() - 1)->TRG_GetMasterPage().getSdrPageProperties().GetItemSet();
+                else
+                    pBackgroundFill = &TRG_GetMasterPage().getSdrPageProperties().GetItemSet();
+            }
         }
     }
 
@@ -1873,5 +1925,35 @@ const SdrPageProperties* SdrPage::getCorrectSdrPageProperties() const
     }
 }
 
+rtl::Reference<sdr::annotation::Annotation> SdrPage::createAnnotation()
+{
+    assert(false);
+    return nullptr;
+}
+
+void SdrPage::addAnnotation(rtl::Reference<sdr::annotation::Annotation> const& /*xAnnotation*/, int /*nIndex*/)
+{
+    assert(false);
+}
+
+void SdrPage::addAnnotationNoNotify(rtl::Reference<sdr::annotation::Annotation> const& /*xAnnotation*/, int /*nIndex*/)
+{
+    assert(false);
+}
+
+void SdrPage::removeAnnotation(rtl::Reference<sdr::annotation::Annotation> const& /*xAnnotation*/)
+{
+    assert(false);
+}
+
+void SdrPage::removeAnnotationNoNotify(rtl::Reference<sdr::annotation::Annotation> const& /*xAnnotation*/)
+{
+    assert(false);
+}
+
+std::vector<rtl::Reference<sdr::annotation::Annotation>> const& SdrPage::getAnnotations() const
+{
+    return maAnnotations;
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

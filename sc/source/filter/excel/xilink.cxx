@@ -118,7 +118,7 @@ public:
     /** Returns the specified macro name (1-based) or an empty string on error. */
     OUString     GetMacroName( sal_uInt16 nXclNameIdx ) const;
 
-    OUString     GetTabName( sal_uInt16 nXtiTab ) const;
+    const OUString &    GetTabName( sal_uInt16 nXtiTab ) const;
 
     sal_uInt16          GetTabCount() const;
 
@@ -567,8 +567,7 @@ XclImpSupbookTab::XclImpSupbookTab( OUString aTabName ) :
 
 void XclImpSupbookTab::ReadCrn( XclImpStream& rStrm, const XclAddress& rXclPos )
 {
-    XclImpCrnRef crnRef = std::make_shared<XclImpCrn>(rStrm, rXclPos);
-    maCrnList.push_back( crnRef );
+    maCrnList.push_back(std::make_shared<XclImpCrn>(rStrm, rXclPos));
 }
 
 void XclImpSupbookTab::LoadCachedValues( const ScExternalRefCache::TableTypeRef& pCacheTable,
@@ -725,10 +724,10 @@ OUString XclImpSupbook::GetMacroName( sal_uInt16 nXclNameIdx ) const
     return (pName && pName->IsVBName()) ? pName->GetScName() : OUString();
 }
 
-OUString XclImpSupbook::GetTabName( sal_uInt16 nXtiTab ) const
+const OUString & XclImpSupbook::GetTabName( sal_uInt16 nXtiTab ) const
 {
     if (nXtiTab >= maSupbTabList.size())
-        return OUString();
+        return EMPTY_OUSTRING;
     return maSupbTabList[nXtiTab]->GetTabName();
 }
 
@@ -772,7 +771,7 @@ void XclImpLinkManagerImpl::ReadExternsheet( XclImpStream& rStrm )
 {
     sal_uInt16 nXtiCount;
     nXtiCount = rStrm.ReaduInt16();
-    OSL_ENSURE( static_cast< std::size_t >( nXtiCount * 6 ) == rStrm.GetRecLeft(), "XclImpLinkManagerImpl::ReadExternsheet - invalid count" );
+    OSL_ENSURE( static_cast< std::size_t >( nXtiCount ) * 6 == rStrm.GetRecLeft(), "XclImpLinkManagerImpl::ReadExternsheet - invalid count" );
     nXtiCount = static_cast< sal_uInt16 >( ::std::min< std::size_t >( nXtiCount, rStrm.GetRecLeft() / 6 ) );
 
     /*  #i104057# A weird external XLS generator writes multiple EXTERNSHEET

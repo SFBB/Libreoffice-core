@@ -45,6 +45,7 @@
 #include <oox/token/properties.hxx>
 #include <o3tl/typed_flags_set.hxx>
 #include <o3tl/string_view.hxx>
+#include <formula/FormulaCompiler.hxx>
 
 namespace {
 
@@ -866,6 +867,51 @@ const FunctionData saFuncTable2016[] =
 };
 
 
+
+/** Functions new in Excel 2021.
+
+
+    @See sc/source/filter/excel/xlformula.cxx saFuncTable_2021
+ */
+/* FIXME: BIFF?? function identifiers available? Where to obtain? */
+const FunctionData saFuncTable2021[] =
+{
+    { "COM.MICROSOFT.XLOOKUP",             "XLOOKUP",             NOID,   NOID,   3,  6,  R, { VR, VA, VR }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.XMATCH",              "XMATCH",              NOID,   NOID,   2,  4,  V, { VR, VA }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.FILTER",              "FILTER",              NOID,   NOID,   2,  3,  A, { VR, VA }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.SORT",                "SORT",                NOID,   NOID,   1,  4,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.SORTBY",              "SORTBY",              NOID,   NOID,   2,  MX, V, { RO, RO, VR }, FuncFlags::MACROCALL_NEW | FuncFlags::PARAMPAIRS },
+    { "COM.MICROSOFT.SEQUENCE",            "SEQUENCE",            NOID,   NOID,   1,  4,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.RANDARRAY",           "RANDARRAY",           NOID,   NOID,   0,  5,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.UNIQUE",              "UNIQUE",              NOID,   NOID,   1,  3,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.LET",                 "LET",                 NOID,   NOID,   3,  MX, R, { VR, VR, VA }, FuncFlags::MACROCALL_NEW | FuncFlags::PARAMPAIRS },
+};
+
+/** Functions new in Excel 2024.
+
+
+    @See sc/source/filter/excel/xlformula.cxx saFuncTable_2024
+ */
+/* FIXME: BIFF?? function identifiers available? Where to obtain? */
+const FunctionData saFuncTable2024[] =
+{
+    { "COM.MICROSOFT.CHOOSECOLS",          "CHOOSECOLS",          NOID,   NOID,   1,  MX, A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.CHOOSEROWS",          "CHOOSEROWS",          NOID,   NOID,   1,  MX, A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.DROP",                "DROP",                NOID,   NOID,   1,  3,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.EXPAND",              "EXPAND",              NOID,   NOID,   2,  4,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.HSTACK",              "HSTACK",              NOID,   NOID,   1,  MX, A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.VSTACK",              "VSTACK",              NOID,   NOID,   1,  MX, A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.TAKE",                "TAKE",                NOID,   NOID,   1,  3,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.TEXTAFTER",           "TEXTAFTER",           NOID,   NOID,   1,  6,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.TEXTBEFORE",          "TEXTBEFORE",          NOID,   NOID,   1,  6,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.TEXTSPLIT",           "TEXTSPLIT",           NOID,   NOID,   1,  6,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.TOCOL",               "TOCOL",               NOID,   NOID,   1,  3,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.TOROW",               "TOROW",               NOID,   NOID,   1,  3,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.WRAPCOLS",            "WRAPCOLS",            NOID,   NOID,   2,  3,  A, { VO }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.WRAPROWS",            "WRAPROWS",            NOID,   NOID,   2,  3,  A, { VO }, FuncFlags::MACROCALL_NEW },
+};
+
+
 /** Functions defined by OpenFormula, but not supported by Calc or by Excel. */
 const FunctionData saFuncTableOdf[] =
 {
@@ -898,14 +944,20 @@ const FunctionData saFuncTableOOoLO[] =
     { "ORG.OPENOFFICE.ERRORTYPE",   "ORG.OPENOFFICE.ERRORTYPE",     NOID,   NOID,   1,  1,  V, { VR }, FuncFlags::MACROCALL_NEW  },
     { "ORG.OPENOFFICE.MULTIRANGE",  "ORG.OPENOFFICE.MULTIRANGE",    NOID,   NOID,   1, MX,  V, { RX }, FuncFlags::MACROCALL_NEW },
     { "ORG.OPENOFFICE.GOALSEEK",    "ORG.OPENOFFICE.GOALSEEK",      NOID,   NOID,   3,  3,  V, { VR }, FuncFlags::MACROCALL_NEW },
-    { "ORG.OPENOFFICE.EASTERSUNDAY","ORG.OPENOFFICE.EASTERSUNDAY",  NOID,   NOID,   1,  1,  V, { VR }, FuncFlags::MACROCALL_NEW },
+    // EASTERSUNDAY is defined as of ODFF 1.4 (was ORG.OPENOFFICE.EASTERSUNDAY).
+    // Note that we still write it as _xlfn.ORG.OPENOFFICE.EASTERSUNDAY through
+    // RID_STRLIST_FUNCTION_NAMES_ENGLISH_OOXML because Excel _might_ expect it
+    // (does it?).
+    { "EASTERSUNDAY",               "EASTERSUNDAY",                 NOID,   NOID,   1,  1,  V, { VR }, FuncFlags::MACROCALL_NEW },
+    { "EASTERSUNDAY",               "ORG.OPENOFFICE.EASTERSUNDAY",  NOID,   NOID,   1,  1,  V, { VR }, FuncFlags::MACROCALL_NEW | FuncFlags::IMPORTONLY },
     { "ORG.OPENOFFICE.CURRENT",     "ORG.OPENOFFICE.CURRENT",       NOID,   NOID,   0,  0,  V, { VR }, FuncFlags::MACROCALL_NEW },
     { "ORG.OPENOFFICE.STYLE",       "ORG.OPENOFFICE.STYLE",         NOID,   NOID,   1,  3,  V, { VR }, FuncFlags::MACROCALL_NEW },
     // And the import for the wrongly written functions even without _xlfn.
     { "ORG.OPENOFFICE.ERRORTYPE",   "ERRORTYPE",    NOID,   NOID,   1,  1,  V, { VR }, FuncFlags::IMPORTONLY },
     { "ORG.OPENOFFICE.MULTIRANGE",  "MULTIRANGE",   NOID,   NOID,   1, MX,  V, { RX }, FuncFlags::IMPORTONLY },
     { "ORG.OPENOFFICE.GOALSEEK",    "GOALSEEK",     NOID,   NOID,   3,  3,  V, { VR }, FuncFlags::IMPORTONLY },
-    { "ORG.OPENOFFICE.EASTERSUNDAY","EASTERSUNDAY", NOID,   NOID,   1,  1,  V, { VR }, FuncFlags::IMPORTONLY },
+    // EASTERSUNDAY is defined as of ODFF 1.4
+    { "EASTERSUNDAY",               "EASTERSUNDAY", NOID,   NOID,   1,  1,  V, { VR }, FuncFlags::IMPORTONLY },
     { "ORG.OPENOFFICE.CURRENT",     "CURRENT",      NOID,   NOID,   0,  0,  V, { VR }, FuncFlags::IMPORTONLY },
     { "ORG.OPENOFFICE.STYLE",       "STYLE",        NOID,   NOID,   1,  3,  V, { VR }, FuncFlags::IMPORTONLY },
     // Other functions.
@@ -1008,6 +1060,8 @@ FunctionProviderImpl::FunctionProviderImpl( bool bImportFilter )
     initFuncs(saFuncTable2010 , std::end(saFuncTable2010) , bImportFilter);
     initFuncs(saFuncTable2013 , std::end(saFuncTable2013) , bImportFilter);
     initFuncs(saFuncTable2016 , std::end(saFuncTable2016) , bImportFilter);
+    initFuncs(saFuncTable2021 , std::end(saFuncTable2021 ), bImportFilter);
+    initFuncs(saFuncTable2024 , std::end(saFuncTable2024 ), bImportFilter);
     initFuncs(saFuncTableOdf  , std::end(saFuncTableOdf)  , bImportFilter);
     initFuncs(saFuncTableOOoLO, std::end(saFuncTableOOoLO), bImportFilter);
 }
@@ -1135,9 +1189,9 @@ private:
     typedef ::std::map< OUString, ApiToken >    ApiTokenMap;
     typedef Sequence< FormulaOpCodeMapEntry >   OpCodeEntrySequence;
 
-    static bool         fillEntrySeq( OpCodeEntrySequence& orEntrySeq, const Reference< XFormulaOpCodeMapper >& rxMapper, sal_Int32 nMapGroup );
-    static bool         fillTokenMap( ApiTokenMap& orTokenMap, OpCodeEntrySequence& orEntrySeq, const Reference< XFormulaOpCodeMapper >& rxMapper, sal_Int32 nMapGroup );
-    bool                fillFuncTokenMaps( ApiTokenMap& orIntFuncTokenMap, ApiTokenMap& orExtFuncTokenMap, OpCodeEntrySequence& orEntrySeq, const Reference< XFormulaOpCodeMapper >& rxMapper ) const;
+    static bool         fillEntrySeq( OpCodeEntrySequence& orEntrySeq, const formula::FormulaCompiler& rMapper, sal_Int32 nMapGroup );
+    static bool         fillTokenMap( ApiTokenMap& orTokenMap, OpCodeEntrySequence& orEntrySeq, const formula::FormulaCompiler& rMapper, sal_Int32 nMapGroup );
+    bool                fillFuncTokenMaps( ApiTokenMap& orIntFuncTokenMap, ApiTokenMap& orExtFuncTokenMap, OpCodeEntrySequence& orEntrySeq, const formula::FormulaCompiler& rMapper ) const;
 
     static bool         initOpCode( sal_Int32& ornOpCode, const OpCodeEntrySequence& rEntrySeq, sal_Int32 nSpecialId );
     bool                initOpCode( sal_Int32& ornOpCode, const ApiTokenMap& rTokenMap, const OUString& rOdfName, const OUString& rOoxName );
@@ -1156,12 +1210,11 @@ OpCodeProviderImpl::OpCodeProviderImpl( const FunctionInfoVector& rFuncInfos,
 
     try
     {
-        Reference< XFormulaOpCodeMapper > xMapper( rxModelFactory->createInstance(
-            "com.sun.star.sheet.FormulaOpCodeMapper" ), UNO_QUERY_THROW );
+        formula::FormulaCompiler xMapper;
 
         // op-codes provided as attributes
-        OPCODE_UNKNOWN = xMapper->getOpCodeUnknown();
-        OPCODE_EXTERNAL = xMapper->getOpCodeExternal();
+        OPCODE_UNKNOWN = formula::FormulaCompiler::OpCodeMap::getOpCodeUnknown();
+        OPCODE_EXTERNAL = ocExternal;
 
         using namespace ::com::sun::star::sheet::FormulaMapGroup;
         using namespace ::com::sun::star::sheet::FormulaMapGroupSpecialOffset;
@@ -1230,38 +1283,36 @@ OpCodeProviderImpl::OpCodeProviderImpl( const FunctionInfoVector& rFuncInfos,
 }
 
 bool OpCodeProviderImpl::fillEntrySeq( OpCodeEntrySequence& orEntrySeq,
-        const Reference< XFormulaOpCodeMapper >& rxMapper, sal_Int32 nMapGroup )
+        const formula::FormulaCompiler& rMapper, sal_Int32 nMapGroup )
 {
-    try
+    formula::FormulaCompiler::OpCodeMapPtr xMap = rMapper.GetOpCodeMap(css::sheet::FormulaLanguage::ODFF);
+    if (xMap)
     {
-        orEntrySeq = rxMapper->getAvailableMappings( css::sheet::FormulaLanguage::ODFF, nMapGroup );
+        orEntrySeq = xMap->createSequenceOfAvailableMappings( rMapper, nMapGroup);
         return orEntrySeq.hasElements();
-    }
-    catch( Exception& )
-    {
     }
     return false;
 }
 
 bool OpCodeProviderImpl::fillTokenMap( ApiTokenMap& orTokenMap, OpCodeEntrySequence& orEntrySeq,
-        const Reference< XFormulaOpCodeMapper >& rxMapper, sal_Int32 nMapGroup )
+        const formula::FormulaCompiler& rMapper, sal_Int32 nMapGroup )
 {
     orTokenMap.clear();
-    if( fillEntrySeq( orEntrySeq, rxMapper, nMapGroup ) )
+    if( fillEntrySeq( orEntrySeq, rMapper, nMapGroup ) )
     {
-        for( const FormulaOpCodeMapEntry& rEntry : std::as_const(orEntrySeq) )
+        for (const FormulaOpCodeMapEntry& rEntry : orEntrySeq)
             orTokenMap[ rEntry.Name ] = rEntry.Token;
     }
     return orEntrySeq.hasElements();
 }
 
-bool OpCodeProviderImpl::fillFuncTokenMaps( ApiTokenMap& orIntFuncTokenMap, ApiTokenMap& orExtFuncTokenMap, OpCodeEntrySequence& orEntrySeq, const Reference< XFormulaOpCodeMapper >& rxMapper ) const
+bool OpCodeProviderImpl::fillFuncTokenMaps( ApiTokenMap& orIntFuncTokenMap, ApiTokenMap& orExtFuncTokenMap, OpCodeEntrySequence& orEntrySeq, const formula::FormulaCompiler& rMapper ) const
 {
     orIntFuncTokenMap.clear();
     orExtFuncTokenMap.clear();
-    if( fillEntrySeq( orEntrySeq, rxMapper, css::sheet::FormulaMapGroup::FUNCTIONS ) )
+    if( fillEntrySeq( orEntrySeq, rMapper, css::sheet::FormulaMapGroup::FUNCTIONS ) )
     {
-        for( const FormulaOpCodeMapEntry& rEntry : std::as_const(orEntrySeq) )
+        for (const FormulaOpCodeMapEntry& rEntry : orEntrySeq)
             ((rEntry.Token.OpCode == OPCODE_EXTERNAL) ? orExtFuncTokenMap : orIntFuncTokenMap)[ rEntry.Name ] = rEntry.Token;
     }
     return orEntrySeq.hasElements();
@@ -1441,7 +1492,7 @@ ApiParserWrapper::ApiParserWrapper(
 {
     if( rxModelFactory.is() ) try
     {
-        mxParser.set( rxModelFactory->createInstance( "com.sun.star.sheet.FormulaParser" ), UNO_QUERY_THROW );
+        mxParser.set( rxModelFactory->createInstance( u"com.sun.star.sheet.FormulaParser"_ustr ), UNO_QUERY_THROW );
     }
     catch( Exception& )
     {

@@ -92,7 +92,7 @@ bool PropItem::Read( OUString& rString, sal_uInt32 nStringType, bool bAlign )
     {
         case VT_LPSTR :
         {
-            if (nItemSize)
+            if (nItemSize > 0)
             {
                 auto nMaxSizePossible = remainingSize();
                 if (nItemSize > nMaxSizePossible)
@@ -102,7 +102,7 @@ bool PropItem::Read( OUString& rString, sal_uInt32 nStringType, bool bAlign )
                 }
             }
 
-            if (nItemSize)
+            if (nItemSize > 0)
             {
                 try
                 {
@@ -322,8 +322,9 @@ void Section::Read( SotStorageStream *pStrm )
         nSecSize = nStrmSize;
     }
 
-    while (nPropCount--)
+    while (nPropCount > 0)
     {
+        --nPropCount;
         sal_uInt32 nPropId(0), nPropOfs(0);
         pStrm->ReadUInt32(nPropId).ReadUInt32(nPropOfs);
         if (!pStrm->good())

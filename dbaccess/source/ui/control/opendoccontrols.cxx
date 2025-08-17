@@ -52,18 +52,14 @@ namespace dbaui
         using ::com::sun::star::ui::XImageManager;
         using ::com::sun::star::graphic::XGraphic;
 
-        Reference< XGraphic> GetCommandIcon( const char* _pCommandURL, const OUString& _rModuleName )
+        Reference< XGraphic> GetCommandIcon( const OUString& sCommandURL, const OUString& _rModuleName )
         {
-            if ( !_pCommandURL || !*_pCommandURL )
-                return nullptr;
-
-            OUString sCommandURL = OUString::createFromAscii( _pCommandURL );
             try
             {
                 do
                 {
                     // Retrieve popup menu labels
-                    Reference< css::uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+                    const Reference< css::uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
                     if ( !xContext.is() )
                         break;
 
@@ -94,24 +90,16 @@ namespace dbaui
 
     // OpenButton
 
-    OpenDocumentButton::OpenDocumentButton(std::unique_ptr<weld::Button> xControl, const char* _pAsciiModuleName)
+    OpenDocumentButton::OpenDocumentButton(std::unique_ptr<weld::Button> xControl, const OUString& _rAsciiModuleName)
         : m_xControl(std::move(xControl))
     {
-        impl_init( _pAsciiModuleName );
-    }
-
-    void OpenDocumentButton::impl_init( const char* _pAsciiModuleName )
-    {
-        OSL_ENSURE( _pAsciiModuleName, "OpenDocumentButton::impl_init: invalid module name!" );
-        m_sModule = OUString::createFromAscii( _pAsciiModuleName );
-
         // our label should equal the UI text of the "Open" command
-        auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(".uno:Open", m_sModule);
+        auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(u".uno:Open"_ustr, _rAsciiModuleName);
         OUString sLabel(vcl::CommandInfoProvider::GetLabelForCommand(aProperties));
         m_xControl->set_label(" " + sLabel.replaceAll("~", ""));
 
         // Place icon left of text and both centered in the button.
-        m_xControl->set_image(GetCommandIcon(".uno:Open", m_sModule));
+        m_xControl->set_image(GetCommandIcon(u".uno:Open"_ustr, _rAsciiModuleName));
     }
 
     // OpenDocumentListBox
@@ -133,7 +121,7 @@ namespace dbaui
         std::vector< SvtHistoryOptions::HistoryItem > aHistory = SvtHistoryOptions::GetList( EHistoryType::PickList );
         Reference< XNameAccess > xFilterFactory;
         xFilterFactory.set(::comphelper::getProcessServiceFactory()->createInstance(
-            "com.sun.star.document.FilterFactory" ), css::uno::UNO_QUERY);
+            u"com.sun.star.document.FilterFactory"_ustr ), css::uno::UNO_QUERY);
 
         for ( const SvtHistoryOptions::HistoryItem& rHistoryItem : aHistory )
         {
@@ -151,7 +139,7 @@ namespace dbaui
 
                 ::comphelper::SequenceAsHashMap aFilterProperties( aProps );
                 OUString sDocumentService = aFilterProperties.getUnpackedValueOrDefault(
-                    "DocumentService", OUString() );
+                    u"DocumentService"_ustr, OUString() );
                 if ( sDocumentService.equalsAscii( _pAsciiModuleName ) )
                 {
                     // yes, it's a Base document

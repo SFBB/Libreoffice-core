@@ -25,7 +25,6 @@
 #include <basic/sberrors.hxx>
 
 #include <svl/svdde.hxx>
-#include <unotools/configmgr.hxx>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
@@ -60,6 +59,8 @@
 #include "getbasctlfunction.hxx"
 
 using namespace ::com::sun::star;
+
+SfxLinkItem::~SfxLinkItem() = default;
 
 static SfxApplication* g_pSfxApplication = nullptr;
 
@@ -114,11 +115,11 @@ SfxApplication* SfxApplication::GetOrCreate()
 #if HAVE_FEATURE_XMLHELP || defined(EMSCRIPTEN)
         bool bHelpTip = officecfg::Office::Common::Help::Tip::get();
         bool bExtendedHelpTip = officecfg::Office::Common::Help::ExtendedTip::get();
-        if (!utl::ConfigManager::IsFuzzing() && bHelpTip)
+        if (bHelpTip)
             Help::EnableQuickHelp();
         else
             Help::DisableQuickHelp();
-        if (!utl::ConfigManager::IsFuzzing() && bHelpTip && bExtendedHelpTip)
+        if (bHelpTip && bExtendedHelpTip)
             Help::EnableBalloonHelp();
         else
             Help::DisableBalloonHelp();
@@ -130,7 +131,7 @@ SfxApplication* SfxApplication::GetOrCreate()
 SfxApplication::SfxApplication()
     : pImpl( new SfxAppData_Impl )
 {
-    SetName( "StarOffice" );
+    SetName( u"StarOffice"_ustr );
 
     SAL_INFO( "sfx.appl", "{ initialize DDE" );
 
@@ -163,7 +164,7 @@ SfxApplication::SfxApplication()
 
 SfxApplication::~SfxApplication()
 {
-    SAL_WARN_IF(GetObjectShells_Impl().size() != 0, "sfx.appl", "Memory leak: some object shells were not removed!");
+    SAL_WARN_IF(!GetObjectShells_Impl().empty(), "sfx.appl", "Memory leak: some object shells were not removed!");
 
     Broadcast( SfxHint(SfxHintId::Dying) );
 
@@ -179,49 +180,6 @@ SfxApplication::~SfxApplication()
         Deinitialize();
 
     g_pSfxApplication = nullptr;
-}
-
-
-const OUString& SfxApplication::GetLastDir_Impl() const
-
-/*  [Description]
-
-    Internal method by which the last set directory with the method
-    <SfxApplication::SetLastDir_Impl()> in SFX is returned.
-
-    This is usually the most recently addressed by the
-    SfxFileDialog directory.
-
-    [Cross-reference]
-    <SfxApplication::SetLastDir_Impl()>
-*/
-
-{
-    return pImpl->aLastDir;
-}
-
-void SfxApplication::SetLastDir_Impl
-(
-    const OUString&   rNewDir     /* Complete directory path as a string */
-)
-
-/*  [Description]
-
-    Internal Method, by which a directory path is set that was last addressed
-    (eg by the SfxFileDialog).
-
-    [Cross-reference]
-    <SfxApplication::GetLastDir_Impl()>
-*/
-
-{
-    pImpl->aLastDir = rNewDir;
-}
-
-
-void SfxApplication::ResetLastDir()
-{
-    pImpl->aLastDir.clear();
 }
 
 
@@ -257,6 +215,15 @@ void SfxApplication::SetViewFrame_Impl( SfxViewFrame *pFrame )
 
         if( pFrame )
         {
+            // Keep SfxViewFrame::Current() consistent with SfxViewFrame::First
+            pImpl->MoveFrameToFirstFrame(*pFrame);
+            SfxViewShell* pViewShell = pFrame->GetViewShell();
+            if (pViewShell)
+            {
+                // Keep SfxViewShell::Current() consistent with SfxViewShell::First
+                pImpl->MoveShellToFirstShell(*pViewShell);
+            }
+
             pFrame->DoActivate( bTaskActivate );
             if ( bTaskActivate && pFrame->GetObjectShell() )
             {
@@ -273,7 +240,7 @@ void SfxApplication::SetViewFrame_Impl( SfxViewFrame *pFrame )
                     pProgress->SetState( pProgress->GetState() );
             }
 
-            if ( pImpl->pViewFrame->GetViewShell() )
+            if (pViewShell)
             {
                 SfxDispatcher* pDisp = pImpl->pViewFrame->GetDispatcher();
                 pDisp->Flush();
@@ -450,7 +417,7 @@ bool SfxApplication::IsXScriptURL( const OUString& rScriptURL )
 #if !HAVE_FEATURE_SCRIPTING
     (void) rScriptURL;
 #else
-    css::uno::Reference< css::uno::XComponentContext > xContext =
+    const css::uno::Reference< css::uno::XComponentContext >& xContext =
             ::comphelper::getProcessComponentContext();
 
     css::uno::Reference< css::uri::XUriReferenceFactory >
@@ -510,6 +477,7 @@ void SfxApplication::MacroOrganizer(weld::Window* pParent, const uno::Reference<
 #if !HAVE_FEATURE_SCRIPTING
     (void) pParent;
     (void) nTabId;
+    (void) xDocFrame;
 #else
 
 #ifndef DISABLE_DYNLOADING

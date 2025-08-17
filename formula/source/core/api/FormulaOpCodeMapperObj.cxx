@@ -28,6 +28,8 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
+namespace com::sun::star::uno { class XComponentContext; }
+
 namespace formula
 {
     using namespace ::com::sun::star;
@@ -82,12 +84,12 @@ SAL_CALL FormulaOpCodeMapperObj::getAvailableMappings(
 
 OUString SAL_CALL FormulaOpCodeMapperObj::getImplementationName(  )
 {
-    return "simple.formula.FormulaOpCodeMapperObj";
+    return u"simple.formula.FormulaOpCodeMapperObj"_ustr;
 }
 
 uno::Sequence< OUString > SAL_CALL FormulaOpCodeMapperObj::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.sheet.FormulaOpCodeMapper" };
+    return { u"com.sun.star.sheet.FormulaOpCodeMapper"_ustr };
 }
 
 } // formula

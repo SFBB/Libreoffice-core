@@ -25,11 +25,12 @@
 
 class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxColorListItem final : public SfxPoolItem
 {
-    XColorListRef     pColorList;
+    XColorListRef     m_pColorList;
 
 public:
                             static SfxPoolItem* CreateDefault();
 
+                            DECLARE_ITEM_TYPE_FUNCTION(SvxColorListItem)
                             SvxColorListItem();
                             SvxColorListItem( XColorListRef pTable,
                                     TypedWhichId<SvxColorListItem> nWhich  );
@@ -45,16 +46,17 @@ public:
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    const XColorListRef&     GetColorList() const { return pColorList; }
+    const XColorListRef&     GetColorList() const { return m_pColorList; }
 };
 
 class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxGradientListItem final : public SfxPoolItem
 {
-    XGradientListRef  pGradientList;
+    XGradientListRef  m_pGradientList;
 
 public:
                             static SfxPoolItem* CreateDefault();
 
+                            DECLARE_ITEM_TYPE_FUNCTION(SvxGradientListItem)
                             SvxGradientListItem();
                             SvxGradientListItem( XGradientListRef pList,
                                     TypedWhichId<SvxGradientListItem> nWhich  );
@@ -70,15 +72,16 @@ public:
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    const XGradientListRef& GetGradientList() const { return pGradientList; }
+    const XGradientListRef& GetGradientList() const { return m_pGradientList; }
 };
 
 class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxHatchListItem final : public SfxPoolItem
 {
-    XHatchListRef     pHatchList;
+    XHatchListRef     m_pHatchList;
 
 public:
                             static SfxPoolItem* CreateDefault();
+                            DECLARE_ITEM_TYPE_FUNCTION(SvxHatchListItem)
                             SvxHatchListItem();
                             SvxHatchListItem( XHatchListRef pList,
                                     TypedWhichId<SvxHatchListItem> nWhich  );
@@ -94,16 +97,17 @@ public:
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    const XHatchListRef&    GetHatchList() const { return pHatchList; }
+    const XHatchListRef&    GetHatchList() const { return m_pHatchList; }
 };
 
 class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxBitmapListItem final : public SfxPoolItem
 {
-    XBitmapListRef    pBitmapList;
+    XBitmapListRef    m_pBitmapList;
 
 public:
                             static SfxPoolItem* CreateDefault();
 
+                            DECLARE_ITEM_TYPE_FUNCTION(SvxBitmapListItem)
                             SvxBitmapListItem();
                             SvxBitmapListItem( XBitmapListRef pBL,
                                     TypedWhichId<SvxBitmapListItem> nWhich  );
@@ -119,16 +123,17 @@ public:
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    const XBitmapListRef&   GetBitmapList() const { return pBitmapList; }
+    const XBitmapListRef&   GetBitmapList() const { return m_pBitmapList; }
 };
 
 class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxPatternListItem final : public SfxPoolItem
 {
-    XPatternListRef    pPatternList;
+    XPatternListRef    m_pPatternList;
 
 public:
                             static SfxPoolItem* CreateDefault();
 
+                            DECLARE_ITEM_TYPE_FUNCTION(SvxPatternListItem)
                             SvxPatternListItem();
                             SvxPatternListItem( XPatternListRef pBL,
                                    TypedWhichId<SvxPatternListItem> nWhich   );
@@ -143,16 +148,17 @@ public:
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    const XPatternListRef&  GetPatternList() const { return pPatternList; }
+    const XPatternListRef&  GetPatternList() const { return m_pPatternList; }
 };
 
 class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxDashListItem final : public SfxPoolItem
 {
-    XDashListRef      pDashList;
+    XDashListRef      m_pDashList;
 
 public:
                             static SfxPoolItem* CreateDefault();
 
+                            DECLARE_ITEM_TYPE_FUNCTION(SvxDashListItem)
                             SvxDashListItem();
                             SvxDashListItem( XDashListRef pList,
                                     TypedWhichId<SvxDashListItem> nWhich  );
@@ -168,16 +174,17 @@ public:
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    const XDashListRef&     GetDashList() const { return pDashList; }
+    const XDashListRef&     GetDashList() const { return m_pDashList; }
 };
 
 class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxLineEndListItem final : public SfxPoolItem
 {
-    XLineEndListRef   pLineEndList;
+    XLineEndListRef   m_pLineEndList;
 
 public:
                             static SfxPoolItem* CreateDefault();
 
+                            DECLARE_ITEM_TYPE_FUNCTION(SvxLineEndListItem)
                             SvxLineEndListItem();
                             SvxLineEndListItem( XLineEndListRef pList,
                                     TypedWhichId<SvxLineEndListItem> nWhich  );
@@ -193,7 +200,7 @@ public:
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    const XLineEndListRef&  GetLineEndList() const { return pLineEndList; }
+    const XLineEndListRef&  GetLineEndList() const { return m_pLineEndList; }
 };
 
 #endif

@@ -32,12 +32,11 @@ namespace pcr
 
 
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
 
     OControlFontDialog::OControlFontDialog(const Reference< XComponentContext >& _rxContext )
-        :OGenericUnoDialog( _rxContext )
-        ,m_pItemPoolDefaults(nullptr)
+    : OGenericUnoDialog( _rxContext )
+    , maFontList(Application::GetDefaultDevice())
     {
         registerProperty(PROPERTY_INTROSPECTEDOBJECT, static_cast<sal_Int32>(OwnPropertyId::INTROSPECTEDOBJECT),
             PropertyAttribute::BOUND | PropertyAttribute::TRANSIENT,
@@ -53,7 +52,7 @@ namespace pcr
             if (m_xDialog)
             {
                 destroyDialog();
-                ControlCharacterDialog::destroyItemSet(m_pFontItems, m_pItemPool, m_pItemPoolDefaults);
+                ControlCharacterDialog::destroyItemSet(m_pFontItems, m_pItemPool);
             }
         }
     }
@@ -67,13 +66,13 @@ namespace pcr
 
     OUString SAL_CALL OControlFontDialog::getImplementationName()
     {
-        return "org.openoffice.comp.form.ui.OControlFontDialog";
+        return u"org.openoffice.comp.form.ui.OControlFontDialog"_ustr;
     }
 
 
     css::uno::Sequence<OUString> SAL_CALL OControlFontDialog::getSupportedServiceNames()
     {
-        return { "com.sun.star.form.ControlFontDialog" };
+        return { u"com.sun.star.form.ControlFontDialog"_ustr };
     }
 
     void OControlFontDialog::initialize( const Sequence< Any >& aArguments )
@@ -81,7 +80,7 @@ namespace pcr
         Reference<XPropertySet> xGridModel;
         if (aArguments.getLength() == 1 && (aArguments[0] >>= xGridModel))
         {
-            Sequence aNewArguments{ Any(comphelper::makePropertyValue("IntrospectedObject",
+            Sequence aNewArguments{ Any(comphelper::makePropertyValue(u"IntrospectedObject"_ustr,
                                                                       xGridModel)) };
             OControlFontDialog_DBase::initialize(aNewArguments);
         }
@@ -112,7 +111,7 @@ namespace pcr
 
     std::unique_ptr<weld::DialogController> OControlFontDialog::createDialog(const css::uno::Reference<css::awt::XWindow>& rParent)
     {
-        ControlCharacterDialog::createItemSet(m_pFontItems, m_pItemPool, m_pItemPoolDefaults);
+        ControlCharacterDialog::createItemSet(m_pFontItems, m_pItemPool, maFontList);
 
         OSL_ENSURE(m_xControlModel.is(), "OControlFontDialog::createDialog: no introspectee set!");
         if (m_xControlModel.is())

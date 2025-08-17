@@ -139,7 +139,7 @@ XclImpPalette::ExportPalette()
     if ( pModel )
     {
         uno::Reference< container::XIndexAccess > xIndex( new PaletteIndex( std::move(aColors) ) );
-        pModel->setPropertyValue( "ColorPalette", uno::Any( xIndex ) );
+        pModel->setPropertyValue( u"ColorPalette"_ustr, uno::Any( xIndex ) );
     }
 
 }
@@ -227,8 +227,8 @@ void XclImpFont::SetFontData( const XclFontData& rFontData, bool bHasCharSet )
                 if( const FontList* pFontList = pInfoItem->GetFontList() )
                 {
                     FontMetric aFontMetric( pFontList->Get( maData.maName, maData.maStyle ) );
-                    maData.SetScWeight( aFontMetric.GetWeight() );
-                    maData.SetScPosture( aFontMetric.GetItalic() );
+                    maData.SetScWeight( aFontMetric.GetWeightMaybeAskConfig() );
+                    maData.SetScPosture( aFontMetric.GetItalicMaybeAskConfig() );
                 }
             }
         }
@@ -967,7 +967,7 @@ bool lclConvertBorderLine( ::editeng::SvxBorderLine& rLine, const XclImpPalette&
 
     if( nXclLine == EXC_LINE_NONE )
         return false;
-    if( nXclLine >= SAL_N_ELEMENTS( ppnLineParam ) )
+    if( nXclLine >= std::size( ppnLineParam ) )
         nXclLine = EXC_LINE_THIN;
 
     rLine.SetColor( rPalette.GetColor( nXclColor ) );
@@ -1249,8 +1249,8 @@ const ScPatternAttr& XclImpXF::CreatePattern( bool bSkipPoolDefs )
         return *mpPattern;
 
     // create new pattern attribute set
-    mpPattern.reset( new ScPatternAttr( GetDoc().GetPool() ) );
-    SfxItemSet& rItemSet = mpPattern->GetItemSet();
+    mpPattern.reset( new ScPatternAttr(GetDoc().getCellAttributeHelper()) );
+    SfxItemSet& rItemSet = mpPattern->GetItemSetWritable();
     XclImpXF* pParentXF = IsCellXF() ? GetXFBuffer().GetXF( mnParent ) : nullptr;
 
     // parent cell style
@@ -1376,9 +1376,9 @@ void XclImpXF::ApplyPatternToAttrVector(
 
     if (nForceScNumFmt != NUMBERFORMAT_ENTRY_NOT_FOUND)
     {
-        ScPatternAttr aNumPat(rDoc.GetPool());
-        GetNumFmtBuffer().FillScFmtToItemSet(aNumPat.GetItemSet(), nForceScNumFmt);
-        rPat.GetItemSet().Put(aNumPat.GetItemSet());
+        ScPatternAttr aNumPat(rDoc.getCellAttributeHelper());
+        GetNumFmtBuffer().FillScFmtToItemSet(aNumPat.GetItemSetWritable(), nForceScNumFmt);
+        rPat.GetItemSetWritable().Put(aNumPat.GetItemSet());
     }
 
     // Make sure we skip unnamed styles.
@@ -1399,14 +1399,14 @@ void XclImpXF::ApplyPatternToAttrVector(
         // Fill this gap with the default pattern.
         ScAttrEntry aEntry;
         aEntry.nEndRow = nRow1 - 1;
-        aEntry.pPattern = rDoc.GetDefPattern();
-        rAttrs.push_back(aEntry);
+        aEntry.setScPatternAttr(&rDoc.getCellAttributeHelper().getDefaultCellAttribute());
+        rAttrs.push_back(std::move(aEntry));
     }
 
     ScAttrEntry aEntry;
     aEntry.nEndRow = nRow2;
-    aEntry.pPattern = &rDoc.GetPool()->DirectPutItemInPool(rPat);
-    rAttrs.push_back(aEntry);
+    aEntry.setScPatternAttr(&rPat, false);
+    rAttrs.push_back(std::move(aEntry));
 }
 
 void XclImpXF::ApplyPattern(
@@ -1724,7 +1724,7 @@ void XclImpXFRangeColumn::SetDefaultXF( const XclImpXFIndex& rXFIndex, const Xcl
     OSL_ENSURE( maIndexList.empty(), "XclImpXFRangeColumn::SetDefaultXF - Setting Default Column XF is not empty" );
 
     // insert a complete row range with one insert.
-    maIndexList.push_back( std::make_unique<XclImpXFRange>( 0, rRoot.GetDoc().MaxRow(), rXFIndex ) );
+    maIndexList.push_back( XclImpXFRange( 0, rRoot.GetDoc().MaxRow(), rXFIndex ) );
 }
 
 void XclImpXFRangeColumn::SetXF( SCROW nScRow, const XclImpXFIndex& rXFIndex )
@@ -1748,7 +1748,7 @@ void XclImpXFRangeColumn::SetXF( SCROW nScRow, const XclImpXFIndex& rXFIndex )
             SCROW nLastScRow = pPrevRange->mnScRow2;
             sal_uLong nIndex = nNextIndex - 1;
             XclImpXFRange* pThisRange = pPrevRange;
-            pPrevRange = (nIndex > 0 && nIndex <= maIndexList.size()) ? maIndexList[ nIndex - 1 ].get() : nullptr;
+            pPrevRange = (nIndex > 0 && nIndex <= maIndexList.size()) ? &maIndexList[ nIndex - 1 ] : nullptr;
 
             if( nFirstScRow == nLastScRow )         // replace solely XF
             {
@@ -1761,20 +1761,21 @@ void XclImpXFRangeColumn::SetXF( SCROW nScRow, const XclImpXFIndex& rXFIndex )
                 ++(pThisRange->mnScRow1);
                 // try to concatenate with previous of this
                 if( !pPrevRange || !pPrevRange->Expand( nScRow, rXFIndex ) )
-                    Insert( new XclImpXFRange( nScRow, rXFIndex ), nIndex );
+                    Insert( XclImpXFRange( nScRow, rXFIndex ), nIndex );
             }
             else if( nLastScRow == nScRow )         // replace last XF
             {
                 --(pThisRange->mnScRow2);
                 if( !pNextRange || !pNextRange->Expand( nScRow, rXFIndex ) )
-                    Insert( new XclImpXFRange( nScRow, rXFIndex ), nNextIndex );
+                    Insert( XclImpXFRange( nScRow, rXFIndex ), nNextIndex );
             }
             else                                    // insert in the middle of the range
             {
                 pThisRange->mnScRow1 = nScRow + 1;
+                XclImpXFIndex aXFIndex(pThisRange->maXFIndex);
                 // List::Insert() moves entries towards end of list, so insert twice at nIndex
-                Insert( new XclImpXFRange( nScRow, rXFIndex ), nIndex );
-                Insert( new XclImpXFRange( nFirstScRow, nScRow - 1, pThisRange->maXFIndex ), nIndex );
+                Insert( XclImpXFRange( nScRow, rXFIndex ), nIndex );
+                Insert( XclImpXFRange( nFirstScRow, nScRow - 1, aXFIndex ), nIndex );
             }
             return;
         }
@@ -1790,12 +1791,12 @@ void XclImpXFRangeColumn::SetXF( SCROW nScRow, const XclImpXFIndex& rXFIndex )
         return;
 
     // create new range
-    Insert( new XclImpXFRange( nScRow, rXFIndex ), nNextIndex );
+    Insert( XclImpXFRange( nScRow, rXFIndex ), nNextIndex );
 }
 
-void XclImpXFRangeColumn::Insert(XclImpXFRange* pXFRange, sal_uLong nIndex)
+void XclImpXFRangeColumn::Insert(XclImpXFRange aXFRange, sal_uLong nIndex)
 {
-    maIndexList.insert( maIndexList.begin() + nIndex, std::unique_ptr<XclImpXFRange>(pXFRange) );
+    maIndexList.insert( maIndexList.begin() + nIndex, std::move(aXFRange) );
 }
 
 void XclImpXFRangeColumn::Find(
@@ -1811,8 +1812,8 @@ void XclImpXFRangeColumn::Find(
         return;
     }
 
-    rpPrevRange = maIndexList.front().get();
-    rpNextRange = maIndexList.back().get();
+    rpPrevRange = &maIndexList.front();
+    rpNextRange = &maIndexList.back();
 
     // test whether row is at end of list (contained in or behind last range)
     // rpPrevRange will contain a possible existing row
@@ -1843,8 +1844,8 @@ void XclImpXFRangeColumn::Find(
     while( ((rnNextIndex - nPrevIndex) > 1) && (rpPrevRange->mnScRow2 < nScRow) )
     {
         nMidIndex = (nPrevIndex + rnNextIndex) / 2;
-        pMidRange = maIndexList[nMidIndex].get();
-        OSL_ENSURE( pMidRange, "XclImpXFRangeColumn::Find - missing XF index range" );
+        pMidRange = &maIndexList[nMidIndex];
+        assert(pMidRange && "XclImpXFRangeColumn::Find - missing XF index range");
         if( nScRow < pMidRange->mnScRow1 )      // row is really before pMidRange
         {
             rpNextRange = pMidRange;
@@ -1861,7 +1862,7 @@ void XclImpXFRangeColumn::Find(
     if( nScRow <= rpPrevRange->mnScRow2 )
     {
         rnNextIndex = nPrevIndex + 1;
-        rpNextRange = maIndexList[rnNextIndex].get();
+        rpNextRange = &maIndexList[rnNextIndex];
     }
 }
 
@@ -1870,8 +1871,8 @@ void XclImpXFRangeColumn::TryConcatPrev( sal_uLong nIndex )
     if( !nIndex || nIndex >= maIndexList.size() )
         return;
 
-    XclImpXFRange& prevRange = *maIndexList[ nIndex - 1 ];
-    XclImpXFRange& nextRange = *maIndexList[ nIndex ];
+    XclImpXFRange& prevRange = maIndexList[ nIndex - 1 ];
+    XclImpXFRange& nextRange = maIndexList[ nIndex ];
 
     if( prevRange.Expand( nextRange ) )
         maIndexList.erase( maIndexList.begin() + nIndex );
@@ -1903,7 +1904,7 @@ void XclImpXFRangeBuffer::SetXF( const ScAddress& rScPos, sal_uInt16 nXFIndex, X
     if( maColumns.size() <= nIndex )
         maColumns.resize( nIndex + 1 );
     if( !maColumns[ nIndex ] )
-        maColumns[ nIndex ] = std::make_shared<XclImpXFRangeColumn>();
+        maColumns[ nIndex ].emplace();
     // remember all Boolean cells, they will get 'Standard' number format
     maColumns[ nIndex ]->SetXF( nScRow, XclImpXFIndex( nXFIndex, eMode == xlXFModeBoolCell ) );
 
@@ -1941,7 +1942,7 @@ void XclImpXFRangeBuffer::SetBoolXF( const ScAddress& rScPos, sal_uInt16 nXFInde
 
 void XclImpXFRangeBuffer::SetRowDefXF( SCROW nScRow, sal_uInt16 nXFIndex )
 {
-    for( SCCOL nScCol = 0; nScCol <= GetDoc().MaxCol(); ++nScCol )
+    for( SCCOL nScCol = 0; nScCol < static_cast<SCCOL>(maColumns.size()); ++nScCol )
         SetXF( ScAddress( nScCol, nScRow, 0 ), nXFIndex, xlXFModeRow );
 }
 
@@ -1952,7 +1953,7 @@ void XclImpXFRangeBuffer::SetColumnDefXF( SCCOL nScCol, sal_uInt16 nXFIndex )
     if( maColumns.size() <= nIndex )
         maColumns.resize( nIndex + 1 );
     OSL_ENSURE( !maColumns[ nIndex ], "XclImpXFRangeBuffer::SetColumnDefXF - default column of XFs already has values" );
-    maColumns[ nIndex ] = std::make_shared<XclImpXFRangeColumn>();
+    maColumns[ nIndex ].emplace();
     maColumns[ nIndex ]->SetDefaultXF( XclImpXFIndex( nXFIndex ), GetRoot());
 }
 
@@ -1995,7 +1996,7 @@ void XclImpXFRangeBuffer::Finalize()
     SCCOL pendingColStart = -1;
     SCCOL pendingColEnd = -1;
     SCCOL nScCol = 0;
-    for( const auto& rxColumn : maColumns )
+    for( auto& rxColumn : maColumns )
     {
         // apply all cell styles of an existing column
         if( rxColumn )
@@ -2004,9 +2005,8 @@ void XclImpXFRangeBuffer::Finalize()
             std::vector<ScAttrEntry> aAttrs;
             aAttrs.reserve(rColumn.end() - rColumn.begin());
 
-            for (const auto& rxStyle : rColumn)
+            for (const auto& rStyle : rColumn)
             {
-                XclImpXFRange& rStyle = *rxStyle;
                 const XclImpXFIndex& rXFIndex = rStyle.maXFIndex;
                 XclImpXF* pXF = rXFBuffer.GetXF( rXFIndex.GetXFIndex() );
                 if (!pXF)
@@ -2022,8 +2022,8 @@ void XclImpXFRangeBuffer::Finalize()
             {
                 ScAttrEntry aEntry;
                 aEntry.nEndRow = rDoc.MaxRow();
-                aEntry.pPattern = rDoc.GetDefPattern();
-                aAttrs.push_back(aEntry);
+                aEntry.setScPatternAttr(&rDoc.getCellAttributeHelper().getDefaultCellAttribute());
+                aAttrs.push_back(std::move(aEntry));
             }
 
             aAttrs.shrink_to_fit();

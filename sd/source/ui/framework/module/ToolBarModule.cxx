@@ -18,23 +18,26 @@
  */
 
 #include "ToolBarModule.hxx"
+#include <ViewShell.hxx>
 #include <ViewShellBase.hxx>
+#include <ViewShellManager.hxx>
 #include <DrawController.hxx>
+#include <EventMultiplexer.hxx>
 #include <comphelper/servicehelper.hxx>
+#include <framework/ConfigurationController.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
 #include <framework/FrameworkHelper.hxx>
+#include <framework/AbstractView.hxx>
+#include <vcl/EnumContext.hxx>
+
+#include <com/sun/star/frame/XController.hpp>
+#include <comphelper/processfactory.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing::framework;
 
 using ::sd::framework::FrameworkHelper;
-
-namespace {
-    const sal_Int32 gnConfigurationUpdateStartEvent(0);
-    const sal_Int32 gnConfigurationUpdateEndEvent(1);
-    const sal_Int32 gnResourceActivationRequestEvent(2);
-    const sal_Int32 gnResourceDeactivationRequestEvent(3);
-}
 
 namespace sd::framework {
 
@@ -58,24 +61,23 @@ ToolBarModule::ToolBarModule (
 
     mxConfigurationController->addConfigurationChangeListener(
         this,
-        FrameworkHelper::msConfigurationUpdateStartEvent,
-        Any(gnConfigurationUpdateStartEvent));
+        ConfigurationChangeEventType::ConfigurationUpdateStart);
     mxConfigurationController->addConfigurationChangeListener(
         this,
-        FrameworkHelper::msConfigurationUpdateEndEvent,
-        Any(gnConfigurationUpdateEndEvent));
+        ConfigurationChangeEventType::ConfigurationUpdateEnd);
     mxConfigurationController->addConfigurationChangeListener(
         this,
-        FrameworkHelper::msResourceActivationRequestEvent,
-        Any(gnResourceActivationRequestEvent));
+        ConfigurationChangeEventType::ResourceActivationRequest);
     mxConfigurationController->addConfigurationChangeListener(
         this,
-        FrameworkHelper::msResourceDeactivationRequestEvent,
-        Any(gnResourceDeactivationRequestEvent));
+        ConfigurationChangeEventType::ResourceDeactivationRequest);
 }
 
 ToolBarModule::~ToolBarModule()
 {
+    if (mpBase && mbListeningEventMultiplexer)
+        mpBase->GetEventMultiplexer()->RemoveEventListener(
+            LINK(this, ToolBarModule, EventMultiplexerListener));
 }
 
 void ToolBarModule::disposing(std::unique_lock<std::mutex>&)
@@ -87,26 +89,34 @@ void ToolBarModule::disposing(std::unique_lock<std::mutex>&)
     }
 }
 
-void SAL_CALL ToolBarModule::notifyConfigurationChange (
+void ToolBarModule::notifyConfigurationChange (
     const ConfigurationChangeEvent& rEvent)
 {
     if (!mxConfigurationController.is())
         return;
 
-    sal_Int32 nEventType = 0;
-    rEvent.UserData >>= nEventType;
-    switch (nEventType)
+    // since EventMultiplexer isn't available when the ToolBarModule is
+    // initialized, subscribing the event listener hacked here.
+    if (!mbListeningEventMultiplexer && mpBase)
     {
-        case gnConfigurationUpdateStartEvent:
+        mpBase->GetEventMultiplexer()->AddEventListener(
+            LINK(this, ToolBarModule, EventMultiplexerListener));
+        mbListeningEventMultiplexer = true;
+    }
+
+
+    switch (rEvent.Type)
+    {
+        case ConfigurationChangeEventType::ConfigurationUpdateStart:
             HandleUpdateStart();
             break;
 
-        case gnConfigurationUpdateEndEvent:
+        case ConfigurationChangeEventType::ConfigurationUpdateEnd:
             HandleUpdateEnd();
             break;
 
-        case gnResourceActivationRequestEvent:
-        case gnResourceDeactivationRequestEvent:
+        case ConfigurationChangeEventType::ResourceActivationRequest:
+        case ConfigurationChangeEventType::ResourceDeactivationRequest:
             // Remember the request for the activation or deactivation
             // of the center pane view.  When that happens then on end
             // of the next configuration update the set of visible tool
@@ -120,7 +130,36 @@ void SAL_CALL ToolBarModule::notifyConfigurationChange (
                     mbMainViewSwitchUpdatePending = true;
                 }
             break;
+        default: break;
     }
+}
+
+void ToolBarModule::HandlePaneViewShellFocused(const rtl::Reference<sd::framework::ResourceId>& rxResourceId)
+{
+    if(!mpBase)
+        return;
+
+    std::shared_ptr<FrameworkHelper> pFrameworkHelper(FrameworkHelper::Instance(*mpBase));
+    std::shared_ptr<ViewShell> pViewShell
+        = FrameworkHelper::GetViewShell(pFrameworkHelper->GetView(rxResourceId));
+
+    if(mpBase->GetMainViewShell() == pViewShell)
+    {
+        mpBase->GetViewShellManager()->RemoveOverridingMainShell();
+        return;
+    }
+
+    switch(pViewShell->GetShellType())
+    {
+        // shells that override mainviewshell functionality when used in a pane
+        case ViewShell::ST_NOTESPANEL:
+            mpBase->GetViewShellManager()->SetOverridingMainShell(pViewShell);
+            UpdateToolbars(pViewShell.get());
+            break;
+        default:
+            break;
+    }
+    mpToolBarManagerLock.reset();
 }
 
 void ToolBarModule::HandleUpdateStart()
@@ -146,26 +185,17 @@ void ToolBarModule::HandleUpdateEnd()
         // no longer visible.  This is done before the old view shell is
         // destroyed in order to avoid unnecessary updates of those tool
         // bars.
-        std::shared_ptr<ToolBarManager> pToolBarManager (mpBase->GetToolBarManager());
-        std::shared_ptr<FrameworkHelper> pFrameworkHelper (
-            FrameworkHelper::Instance(*mpBase));
-        ViewShell* pViewShell
-            = pFrameworkHelper->GetViewShell(FrameworkHelper::msCenterPaneURL).get();
-        if (pViewShell != nullptr)
+        if (mpBase != nullptr)
         {
-            pToolBarManager->MainViewShellChanged(*pViewShell);
-            pToolBarManager->SelectionHasChanged(
-                *pViewShell,
-                *pViewShell->GetView());
-            pToolBarManager->PreUpdate();
-        }
-        else
-        {
-            pToolBarManager->MainViewShellChanged();
-            pToolBarManager->PreUpdate();
+            std::shared_ptr<ToolBarManager> pToolBarManager (mpBase->GetToolBarManager());
+            std::shared_ptr<FrameworkHelper> pFrameworkHelper (
+                FrameworkHelper::Instance(*mpBase));
+            auto pViewShell
+                = pFrameworkHelper->GetViewShell(FrameworkHelper::msCenterPaneURL);
+
+            UpdateToolbars(pViewShell.get());
         }
     }
-
     // Releasing the update lock of the ToolBarManager  will let the
     // ToolBarManager with the help of the ViewShellManager take care of
     // updating tool bars and view shell with the minimal amount of
@@ -173,14 +203,62 @@ void ToolBarModule::HandleUpdateEnd()
     mpToolBarManagerLock.reset();
 }
 
+void ToolBarModule::UpdateToolbars(const ViewShell* pViewShell)
+{
+    // Update the set of visible tool bars and deactivate those that are
+    // no longer visible.  This is done before the old view shell is
+    // destroyed in order to avoid unnecessary updates of those tool
+    // bars.
+    if (!mpBase)
+        return;
+
+    std::shared_ptr<ToolBarManager> pToolBarManager (mpBase->GetToolBarManager());
+
+    if(!pToolBarManager)
+        return;
+
+    if (pViewShell)
+    {
+        pToolBarManager->MainViewShellChanged(*pViewShell);
+        pToolBarManager->SelectionHasChanged(
+            *pViewShell,
+            *pViewShell->GetView());
+        pToolBarManager->PreUpdate();
+    }
+    else
+    {
+        pToolBarManager->MainViewShellChanged();
+        pToolBarManager->PreUpdate();
+    }
+}
+
 void SAL_CALL ToolBarModule::disposing (const lang::EventObject& rEvent)
 {
     if (mxConfigurationController.is()
-        && rEvent.Source == mxConfigurationController)
+        && rEvent.Source == cppu::getXWeak(mxConfigurationController.get()))
     {
         // Without the configuration controller this class can do nothing.
         mxConfigurationController = nullptr;
         dispose();
+    }
+}
+
+IMPL_LINK(ToolBarModule, EventMultiplexerListener, sd::tools::EventMultiplexerEvent&, rEvent,
+          void)
+{
+    if (!mpBase)
+        return;
+
+    switch(rEvent.meEventId)
+    {
+        case EventMultiplexerEventId::FocusShifted:
+            {
+                if (rEvent.mxUserData)
+                    HandlePaneViewShellFocused(rEvent.mxUserData);
+                break;
+            }
+        default:
+            break;
     }
 }
 

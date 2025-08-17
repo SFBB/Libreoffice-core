@@ -81,15 +81,15 @@ void SwTemplateControl::Command( const CommandEvent& rCEvt )
         if (nullptr != pWrtShell &&
             !pWrtShell->SwCursorShell::HasSelection()&&
             !pWrtShell->IsSelFrameMode() &&
-            !pWrtShell->IsObjSelected())
+            !pWrtShell->GetSelectedObjCount())
         {
             SfxStyleSheetBasePool* pPool = pView->GetDocShell()->
                                                         GetStyleSheetPool();
             auto xIter = pPool->CreateIterator(SfxStyleFamily::Page);
             if (xIter->Count() > 1)
             {
-                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "modules/swriter/ui/pagestylemenu.ui"));
-                std::unique_ptr<weld::Menu> xPopup(xBuilder->weld_menu("menu"));
+                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, u"modules/swriter/ui/pagestylemenu.ui"_ustr));
+                std::unique_ptr<weld::Menu> xPopup(xBuilder->weld_menu(u"menu"_ustr));
 
                 sal_uInt32 nCount = 0;
                 SfxStyleSheetBase* pStyle = xIter->First();
@@ -102,9 +102,9 @@ void SwTemplateControl::Command( const CommandEvent& rCEvt )
                 ::tools::Rectangle aRect(rCEvt.GetMousePosPixel(), Size(1, 1));
                 weld::Window* pParent = weld::GetPopupParent(GetStatusBar(), aRect);
                 OUString sResult = xPopup->popup_at_rect(pParent, aRect);
-                if (!sResult.isEmpty())
+                sal_uInt32 nCurrId = sResult.toUInt32();
+                if (nCurrId > 0)
                 {
-                    sal_uInt32 nCurrId = sResult.toUInt32();
                     // looks a bit awkward, but another way is not possible
                     pStyle = xIter->operator[]( nCurrId - 1 );
                     SfxStringItem aStyle( FN_SET_PAGE_STYLE, pStyle->GetName() );

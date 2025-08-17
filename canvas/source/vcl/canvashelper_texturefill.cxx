@@ -210,13 +210,13 @@ namespace vclcanvas
             // the 'left'. Since we postpone actual rendering into the
             // loop below, we set the _right_ edge here, which will be
             // readily copied into the left edge in the loop below
-            const ::basegfx::B2DPoint& rPoint1( aLeftTop - 2.0*nDiagonalLength*aDirection );
-            aTempPoly[1] = ::Point( ::basegfx::fround( rPoint1.getX() ),
-                                    ::basegfx::fround( rPoint1.getY() ) );
+            const ::basegfx::B2DPoint aPoint1( aLeftTop - 2.0*nDiagonalLength*aDirection );
+            aTempPoly[1] = ::Point( ::basegfx::fround<::tools::Long>( aPoint1.getX() ),
+                                    ::basegfx::fround<::tools::Long>( aPoint1.getY() ) );
 
-            const ::basegfx::B2DPoint& rPoint2( aLeftBottom - 2.0*nDiagonalLength*aDirection );
-            aTempPoly[2] = ::Point( ::basegfx::fround( rPoint2.getX() ),
-                                    ::basegfx::fround( rPoint2.getY() ) );
+            const ::basegfx::B2DPoint aPoint2( aLeftBottom - 2.0*nDiagonalLength*aDirection );
+            aTempPoly[2] = ::Point( ::basegfx::fround<::tools::Long>( aPoint2.getX() ),
+                                    ::basegfx::fround<::tools::Long>( aPoint2.getY() ) );
 
 
             // iteratively render all other strips
@@ -255,17 +255,17 @@ namespace vclcanvas
                 // increased by one, to account for the fact that we
                 // calculate the right border here (whereas the fill
                 // color is governed by the left edge)
-                const ::basegfx::B2DPoint& rPoint3(
+                const ::basegfx::B2DPoint aPoint3(
                     (nStepCount - i-1)/double(nStepCount)*aLeftTop +
                     (i+1)/double(nStepCount)*aRightTop );
-                aTempPoly[1] = ::Point( ::basegfx::fround( rPoint3.getX() ),
-                                        ::basegfx::fround( rPoint3.getY() ) );
+                aTempPoly[1] = ::Point( ::basegfx::fround<::tools::Long>( aPoint3.getX() ),
+                                        ::basegfx::fround<::tools::Long>( aPoint3.getY() ) );
 
-                const ::basegfx::B2DPoint& rPoint4(
+                const ::basegfx::B2DPoint aPoint4(
                     (nStepCount - i-1)/double(nStepCount)*aLeftBottom +
                     (i+1)/double(nStepCount)*aRightBottom );
-                aTempPoly[2] = ::Point( ::basegfx::fround( rPoint4.getX() ),
-                                        ::basegfx::fround( rPoint4.getY() ) );
+                aTempPoly[2] = ::Point( ::basegfx::fround<::tools::Long>( aPoint4.getX() ),
+                                        ::basegfx::fround<::tools::Long>( aPoint4.getY() ) );
 
                 rOutDev.DrawPolygon( aTempPoly );
             }
@@ -282,13 +282,13 @@ namespace vclcanvas
             // calculate new right edge, by moving right edge of the
             // gradient rect two times the bound rect's diagonal to
             // the 'right'.
-            const ::basegfx::B2DPoint& rPoint3( aRightTop + 2.0*nDiagonalLength*aDirection );
-            aTempPoly[0] = aTempPoly[4] = ::Point( ::basegfx::fround( rPoint3.getX() ),
-                                                   ::basegfx::fround( rPoint3.getY() ) );
+            const ::basegfx::B2DPoint aPoint3( aRightTop + 2.0*nDiagonalLength*aDirection );
+            aTempPoly[0] = aTempPoly[4] = ::Point( ::basegfx::fround<::tools::Long>( aPoint3.getX() ),
+                                                   ::basegfx::fround<::tools::Long>( aPoint3.getY() ) );
 
-            const ::basegfx::B2DPoint& rPoint4( aRightBottom + 2.0*nDiagonalLength*aDirection );
-            aTempPoly[3] = ::Point( ::basegfx::fround( rPoint4.getX() ),
-                                    ::basegfx::fround( rPoint4.getY() ) );
+            const ::basegfx::B2DPoint aPoint4( aRightBottom + 2.0*nDiagonalLength*aDirection );
+            aTempPoly[3] = ::Point( ::basegfx::fround<::tools::Long>( aPoint4.getX() ),
+                                    ::basegfx::fround<::tools::Long>( aPoint4.getY() ) );
 
             rOutDev.SetFillColor( rColors.back() );
 
@@ -418,8 +418,8 @@ namespace vclcanvas
                     const ::basegfx::B2DPoint& rInnerPoint( aInnerPoly.getB2DPoint(p) );
 
                     aTempPoly[static_cast<sal_uInt16>(p)] = ::Point(
-                        basegfx::fround( fT*rInnerPoint.getX() + (1-fT)*rOuterPoint.getX() ),
-                        basegfx::fround( fT*rInnerPoint.getY() + (1-fT)*rOuterPoint.getY() ) );
+                        basegfx::fround<::tools::Long>( fT*rInnerPoint.getX() + (1-fT)*rOuterPoint.getX() ),
+                        basegfx::fround<::tools::Long>( fT*rInnerPoint.getY() + (1-fT)*rOuterPoint.getY() ) );
                 }
 
                 // close polygon explicitly
@@ -574,9 +574,8 @@ namespace vclcanvas
             // extra-verbosity
             {
                 ::basegfx::B2DRectangle aRect(0.0, 0.0, 1.0, 1.0);
-                ::basegfx::B2DRectangle aTextureDeviceRect;
                 ::basegfx::B2DHomMatrix aTextureTransform;
-                ::canvas::tools::calcTransformedRectBounds( aTextureDeviceRect,
+                ::basegfx::B2DRectangle aTextureDeviceRect = ::canvas::tools::calcTransformedRectBounds(
                                                             aRect,
                                                             aTextureTransform );
                 rOutDev.SetLineColor( COL_RED );
@@ -629,20 +628,20 @@ namespace vclcanvas
                 {
                     // copy state from Gradient polypoly locally
                     // (given object might change!)
-                    const ::canvas::ParametricPolyPolygon::Values& rValues(
+                    const ::canvas::ParametricPolyPolygon::Values aValues(
                         pGradient->getValues() );
 
-                    if( rValues.maColors.getLength() < 2 )
+                    if( aValues.maColors.getLength() < 2 )
                     {
                         rendering::RenderState aTempState=renderState;
-                        aTempState.DeviceColor = rValues.maColors[0];
+                        aTempState.DeviceColor = aValues.maColors[0];
                         fillPolyPolygon(pCanvas, xPolyPolygon, viewState, aTempState);
                     }
                     else
                     {
-                        std::vector< ::Color > aColors(rValues.maColors.getLength());
-                        std::transform(&rValues.maColors[0],
-                                       &rValues.maColors[0]+rValues.maColors.getLength(),
+                        std::vector< ::Color > aColors(aValues.maColors.getLength());
+                        std::transform(&aValues.maColors[0],
+                                       &aValues.maColors[0]+aValues.maColors.getLength(),
                                        aColors.begin(),
                                        [](const uno::Sequence< double >& aColor) {
                                            return vcl::unotools::stdColorSpaceSequenceToColor( aColor );
@@ -652,7 +651,7 @@ namespace vclcanvas
                         // TODO(F1): FillRule
                         gradientFill( mpOutDevProvider->getOutDev(),
                                       mp2ndOutDevProvider ? &mp2ndOutDevProvider->getOutDev() : nullptr,
-                                      rValues,
+                                      aValues,
                                       aColors,
                                       aPolyPoly,
                                       viewState,
@@ -699,8 +698,7 @@ namespace vclcanvas
                 aTotalTransform *= aTextureTransform;
 
                 const ::basegfx::B2DRectangle aRect(0.0, 0.0, 1.0, 1.0);
-                ::basegfx::B2DRectangle aTextureDeviceRect;
-                ::canvas::tools::calcTransformedRectBounds( aTextureDeviceRect,
+                ::basegfx::B2DRectangle aTextureDeviceRect = ::canvas::tools::calcTransformedRectBounds(
                                                             aRect,
                                                             aTotalTransform );
 
@@ -750,7 +748,7 @@ namespace vclcanvas
                     // texturing parameters
                     // ===========================================
 
-                    BitmapEx aBmpEx( tools::bitmapExFromXBitmap( textures[0].Bitmap ) );
+                    ::Bitmap aBmp( tools::bitmapFromXBitmap( textures[0].Bitmap ) );
 
                     // scale down bitmap to [0,1]x[0,1] rect, as required
                     // from the XCanvas interface.
@@ -799,15 +797,14 @@ namespace vclcanvas
                         const double nAngleInTenthOfDegrees (3600.0 - basegfx::rad2deg<10>(nRotate));
                         aGrfAttr.SetRotation( Degree10(::basegfx::fround(nAngleInTenthOfDegrees)) );
 
-                        pGrfObj = std::make_shared<GraphicObject>( aBmpEx );
+                        pGrfObj = std::make_shared<GraphicObject>( aBmp );
                     }
                     else
                     {
                         // modify output position, to account for the fact
                         // that transformBitmap() always normalizes its output
                         // bitmap into the smallest enclosing box.
-                        ::basegfx::B2DRectangle aDestRect;
-                        ::canvas::tools::calcTransformedRectBounds( aDestRect,
+                        ::basegfx::B2DRectangle aDestRect = ::canvas::tools::calcTransformedRectBounds(
                                                                     ::basegfx::B2DRectangle(0,
                                                                                             0,
                                                                                             aBmpSize.Width,
@@ -819,17 +816,16 @@ namespace vclcanvas
 
                         // complex transformation, use generic affine bitmap
                         // transformation
-                        aBmpEx = tools::transformBitmap( aBmpEx,
-                                                         aTotalTransform);
+                        aBmp = tools::transformBitmap( aBmp, aTotalTransform);
 
-                        pGrfObj = std::make_shared<GraphicObject>( aBmpEx );
+                        pGrfObj = std::make_shared<GraphicObject>( aBmp );
 
                         // clear scale values, generated bitmap already
                         // contains scaling
                         aScale.setX( 1.0 ); aScale.setY( 1.0 );
 
                         // update bitmap size, bitmap has changed above.
-                        aBmpSize = vcl::unotools::integerSize2DFromSize(aBmpEx.GetSizePixel());
+                        aBmpSize = vcl::unotools::integerSize2DFromSize(aBmp.GetSizePixel());
                     }
 
 
@@ -867,8 +863,7 @@ namespace vclcanvas
                     // Finally, the bound rect is transformed back to
                     // device coordinate space, were we determine the
                     // start point from it.
-                    ::basegfx::B2DRectangle aTextureSpacePolygonRect;
-                    ::canvas::tools::calcTransformedRectBounds( aTextureSpacePolygonRect,
+                    ::basegfx::B2DRectangle aTextureSpacePolygonRect = ::canvas::tools::calcTransformedRectBounds(
                                                                 vcl::unotools::b2DRectangleFromRectangle(aPolygonDeviceRect),
                                                                 aInverseTextureTransform );
 
@@ -891,22 +886,21 @@ namespace vclcanvas
                         nY1 + 1.0 );
 
                     // and convert back to device space
-                    ::basegfx::B2DRectangle aSingleDeviceTextureRect;
-                    ::canvas::tools::calcTransformedRectBounds( aSingleDeviceTextureRect,
+                    ::basegfx::B2DRectangle aSingleDeviceTextureRect = ::canvas::tools::calcTransformedRectBounds(
                                                                 aSingleTextureRect,
                                                                 aPureTotalTransform );
 
                     const ::Point aPtRepeat( vcl::unotools::pointFromB2DPoint(
                                                  aSingleDeviceTextureRect.getMinimum() ) );
-                    const ::Size  aSz( ::basegfx::fround( aScale.getX() * aBmpSize.Width ),
-                                       ::basegfx::fround( aScale.getY() * aBmpSize.Height ) );
+                    const ::Size  aSz( ::basegfx::fround<::tools::Long>( aScale.getX() * aBmpSize.Width ),
+                                       ::basegfx::fround<::tools::Long>( aScale.getY() * aBmpSize.Height ) );
                     const ::Size  aIntegerNextTileX( vcl::unotools::sizeFromB2DSize(aNextTileX) );
                     const ::Size  aIntegerNextTileY( vcl::unotools::sizeFromB2DSize(aNextTileY) );
 
                     const ::Point aPt( textures[0].RepeatModeX == rendering::TexturingMode::NONE ?
-                                       ::basegfx::fround( aOutputPos.getX() ) : aPtRepeat.X(),
+                                       ::basegfx::fround<::tools::Long>( aOutputPos.getX() ) : aPtRepeat.X(),
                                        textures[0].RepeatModeY == rendering::TexturingMode::NONE ?
-                                       ::basegfx::fround( aOutputPos.getY() ) : aPtRepeat.Y() );
+                                       ::basegfx::fround<::tools::Long>( aOutputPos.getY() ) : aPtRepeat.Y() );
                     const sal_Int32 nTilesX( textures[0].RepeatModeX == rendering::TexturingMode::NONE ?
                                              1 : nX2 - nX1 );
                     const sal_Int32 nTilesY( textures[0].RepeatModeX == rendering::TexturingMode::NONE ?
@@ -1008,7 +1002,7 @@ namespace vclcanvas
                             // target position.
                             const ::Point aEmptyPoint;
                             BitmapEx aContentBmp(
-                                pVDev->GetBitmapEx( aEmptyPoint,
+                                pVDev->GetBitmap( aEmptyPoint,
                                                  pVDev->GetOutputSizePixel() ) );
 
                             sal_uInt8 nCol( static_cast< sal_uInt8 >(

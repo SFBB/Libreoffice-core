@@ -109,6 +109,7 @@ $(eval $(call gb_Library_add_exception_objects,sal,\
 	sal/rtl/hash \
 	sal/rtl/locale \
 	sal/rtl/math \
+	sal/rtl/preinit \
 	sal/rtl/random \
 	sal/rtl/rtl_process \
 	sal/rtl/strbuf \
@@ -232,7 +233,6 @@ $(eval $(call gb_Library_add_exception_objects,sal,\
 	sal/osl/w32/module \
 	sal/osl/w32/mutex \
 	sal/osl/w32/nlsupport \
-	sal/osl/w32/path_helper \
 	sal/osl/w32/pipe \
 	sal/osl/w32/process \
 	sal/osl/w32/procimpl \

@@ -19,7 +19,6 @@
 
 #include <svx/svdmodel.hxx>
 #include <cassert>
-#include <math.h>
 #include <sal/log.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
@@ -45,6 +44,7 @@
 #include <svx/svdpool.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdotext.hxx>
+#include <svx/unoshape.hxx>
 #include <textchain.hxx>
 #include <svx/svdetc.hxx>
 #include <svx/svdoutl.hxx>
@@ -99,7 +99,7 @@ struct SdrModelImpl
         , mbLegacyFontwork(false)
         , mbConnectorUseSnapRect(false)
         , mbIgnoreBreakAfterMultilineField(false)
-        , mpTheme(new model::Theme("Office"))
+        , mpTheme(new model::Theme(u"Office"_ustr))
     {}
 
     void initTheme()
@@ -129,11 +129,10 @@ SdrModel::SdrModel(SfxItemPool* pPool, comphelper::IEmbeddedHelper* pEmbeddedHel
     , m_pLinkManager(nullptr)
     , m_nUndoLevel(0)
     , m_bIsWriter(true)
+    , m_bIsWriterIdle(false)
     , m_bThemedControls(true)
     , mbUndoEnabled(true)
     , mbChanged(false)
-    , m_bPagNumsDirty(false)
-    , m_bMPgNumsDirty(false)
     , m_bTransportContainer(false)
     , m_bReadOnly(false)
     , m_bTransparentTextFrames(false)
@@ -142,6 +141,7 @@ SdrModel::SdrModel(SfxItemPool* pPool, comphelper::IEmbeddedHelper* pEmbeddedHel
     , m_bStarDrawPreviewMode(false)
     , mbDisableTextEditUsesCommonUndoManager(false)
     , mbVOCInvalidationIsReliable(false)
+    , m_bIsPDFDocument(false)
     , m_nDefaultTabulator(0)
     , m_nMaxUndoCount(16)
     , m_pTextChain(new TextChain)
@@ -153,7 +153,7 @@ SdrModel::SdrModel(SfxItemPool* pPool, comphelper::IEmbeddedHelper* pEmbeddedHel
     , mbAddExtLeading(false)
     , mbInDestruction(false)
 {
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         mnCharCompressType = static_cast<CharCompressType>(
             officecfg::Office::Common::AsianLayout::CompressCharacterDistance::get());
@@ -172,11 +172,11 @@ SdrModel::SdrModel(SfxItemPool* pPool, comphelper::IEmbeddedHelper* pEmbeddedHel
     m_pItemPool->SetDefaultMetric(m_eObjUnit);
 
 // using static SdrEngineDefaults only if default SvxFontHeight item is not available
-    const SfxPoolItem* pPoolItem = m_pItemPool->GetPoolDefaultItem( EE_CHAR_FONTHEIGHT );
+    const SfxPoolItem* pPoolItem = m_pItemPool->GetUserDefaultItem( EE_CHAR_FONTHEIGHT );
     if (pPoolItem)
         mnDefTextHgt = static_cast<const SvxFontHeightItem*>(pPoolItem)->GetHeight();
 
-    m_pItemPool->SetPoolDefaultItem( makeSdrTextWordWrapItem( false ) );
+    m_pItemPool->SetUserDefaultItem( makeSdrTextWordWrapItem( false ) );
 
     SetTextDefaults();
     m_pLayerAdmin->SetModel(this);
@@ -195,7 +195,7 @@ SdrModel::SdrModel(SfxItemPool* pPool, comphelper::IEmbeddedHelper* pEmbeddedHel
     m_pChainingOutliner = SdrMakeOutliner( OutlinerMode::TextObject, *this );
     ImpSetOutlinerDefaults(m_pChainingOutliner.get(), true);
 
-    ImpCreateTables(bDisablePropertyFiles || utl::ConfigManager::IsFuzzing());
+    ImpCreateTables(bDisablePropertyFiles || comphelper::IsFuzzing());
 
     mpImpl->initTheme();
 }
@@ -223,7 +223,6 @@ SdrModel::~SdrModel()
     implDtorClearModel();
 
 #ifdef DBG_UTIL
-    // SdrObjectLifetimeWatchDog:
     if(!maAllIncarnatedObjects.empty())
     {
         SAL_WARN("svx",
@@ -393,7 +392,7 @@ void SdrModel::BegUndo()
         ViewShellId nViewShellId(-1);
         if (SfxViewShell* pViewShell = SfxViewShell::Current())
             nViewShellId = pViewShell->GetViewShellId();
-        mpImpl->mpUndoManager->EnterListAction("","",0,nViewShellId);
+        mpImpl->mpUndoManager->EnterListAction(u""_ustr,u""_ustr,0,nViewShellId);
         m_nUndoLevel++;
     }
     else if( IsUndoEnabled() )
@@ -417,7 +416,7 @@ void SdrModel::BegUndo(const OUString& rComment)
         ViewShellId nViewShellId(-1);
         if (SfxViewShell* pViewShell = SfxViewShell::Current())
             nViewShellId = pViewShell->GetViewShellId();
-        mpImpl->mpUndoManager->EnterListAction( rComment, "", 0, nViewShellId );
+        mpImpl->mpUndoManager->EnterListAction( rComment, u""_ustr, 0, nViewShellId );
         m_nUndoLevel++;
     }
     else if( IsUndoEnabled() )
@@ -442,7 +441,7 @@ void SdrModel::BegUndo(const OUString& rComment, const OUString& rObjDescr, SdrR
         ViewShellId nViewShellId(-1);
         if (SfxViewShell* pViewShell = SfxViewShell::Current())
             nViewShellId = pViewShell->GetViewShellId();
-        mpImpl->mpUndoManager->EnterListAction( aComment,"",0,nViewShellId );
+        mpImpl->mpUndoManager->EnterListAction( aComment,u""_ustr,0,nViewShellId );
         m_nUndoLevel++;
     }
     else if( IsUndoEnabled() )
@@ -566,11 +565,11 @@ bool SdrModel::IsUndoEnabled() const
 void SdrModel::ImpCreateTables(bool bDisablePropertyFiles)
 {
     // use standard path for initial construction
-    const OUString aTablePath(!bDisablePropertyFiles ? SvtPathOptions().GetPalettePath() : "");
+    const OUString aTablePath(!bDisablePropertyFiles ? SvtPathOptions().GetPalettePath() : u""_ustr);
 
     for( auto i : o3tl::enumrange<XPropertyListType>() )
     {
-        maProperties[i] = XPropertyList::CreatePropertyList(i, aTablePath, ""/*TODO?*/ );
+        maProperties[i] = XPropertyList::CreatePropertyList(i, aTablePath, u""_ustr/*TODO?*/ );
     }
 }
 
@@ -581,6 +580,25 @@ void SdrModel::ClearModel(bool bCalledFromDestructor)
         mbInDestruction = true;
     }
 
+    // Disconnect all SvxShape's from their SdrObjects to prevent the SdrObjects
+    // from hanging around and causing use-after-free.
+    // Make a copy because it might modified during InvalidateSdrObject calls.
+    std::vector<rtl::Reference<SdrObject>> allObjs(maAllIncarnatedObjects.begin(), maAllIncarnatedObjects.end());
+    for (const auto & pSdrObj : allObjs)
+    {
+        uno::Reference<uno::XInterface> xShape = pSdrObj->getWeakUnoShape().get();
+        rtl::Reference<SvxShape> pSvxShape = dynamic_cast<SvxShape*>(xShape.get());
+        // calling getWeakUnoShape so we don't accidentally create new UNO shapes
+        if (pSvxShape)
+            pSvxShape->InvalidateSdrObject();
+        else
+        {
+            // because some things like SwXShape don't subclass SvxShape
+            uno::Reference<lang::XComponent> xComp(xShape, uno::UNO_QUERY);
+            if (xComp)
+                xComp->dispose();
+        }
+    }
     sal_Int32 i;
     // delete all drawing pages
     sal_Int32 nCount=GetPageCount();
@@ -627,45 +645,45 @@ void SdrModel::SetTextDefaults( SfxItemPool* pItemPool, sal_Int32 nDefTextHgt )
     SvxFontItem aSvxFontItemCJK(EE_CHAR_FONTINFO_CJK);
     SvxFontItem aSvxFontItemCTL(EE_CHAR_FONTINFO_CTL);
     LanguageType nLanguage;
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
         nLanguage = Application::GetSettings().GetLanguageTag().getLanguageType();
     else
         nLanguage = LANGUAGE_ENGLISH_US;
 
     // get DEFAULTFONT_LATIN_TEXT and set at pool as dynamic default
     vcl::Font aFont(OutputDevice::GetDefaultFont(DefaultFontType::LATIN_TEXT, nLanguage, GetDefaultFontFlags::OnlyOne));
-    aSvxFontItem.SetFamily(aFont.GetFamilyType());
+    aSvxFontItem.SetFamily(aFont.GetFamilyTypeMaybeAskConfig());
     aSvxFontItem.SetFamilyName(aFont.GetFamilyName());
     aSvxFontItem.SetStyleName(OUString());
-    aSvxFontItem.SetPitch( aFont.GetPitch());
+    aSvxFontItem.SetPitch( aFont.GetPitchMaybeAskConfig());
     aSvxFontItem.SetCharSet( aFont.GetCharSet() );
-    pItemPool->SetPoolDefaultItem(aSvxFontItem);
+    pItemPool->SetUserDefaultItem(aSvxFontItem);
 
     // get DEFAULTFONT_CJK_TEXT and set at pool as dynamic default
     vcl::Font aFontCJK(OutputDevice::GetDefaultFont(DefaultFontType::CJK_TEXT, nLanguage, GetDefaultFontFlags::OnlyOne));
-    aSvxFontItemCJK.SetFamily( aFontCJK.GetFamilyType());
+    aSvxFontItemCJK.SetFamily( aFontCJK.GetFamilyTypeMaybeAskConfig());
     aSvxFontItemCJK.SetFamilyName(aFontCJK.GetFamilyName());
     aSvxFontItemCJK.SetStyleName(OUString());
-    aSvxFontItemCJK.SetPitch( aFontCJK.GetPitch());
+    aSvxFontItemCJK.SetPitch( aFontCJK.GetPitchMaybeAskConfig());
     aSvxFontItemCJK.SetCharSet( aFontCJK.GetCharSet());
-    pItemPool->SetPoolDefaultItem(aSvxFontItemCJK);
+    pItemPool->SetUserDefaultItem(aSvxFontItemCJK);
 
     // get DEFAULTFONT_CTL_TEXT and set at pool as dynamic default
     vcl::Font aFontCTL(OutputDevice::GetDefaultFont(DefaultFontType::CTL_TEXT, nLanguage, GetDefaultFontFlags::OnlyOne));
-    aSvxFontItemCTL.SetFamily(aFontCTL.GetFamilyType());
+    aSvxFontItemCTL.SetFamily(aFontCTL.GetFamilyTypeMaybeAskConfig());
     aSvxFontItemCTL.SetFamilyName(aFontCTL.GetFamilyName());
     aSvxFontItemCTL.SetStyleName(OUString());
-    aSvxFontItemCTL.SetPitch( aFontCTL.GetPitch() );
+    aSvxFontItemCTL.SetPitch( aFontCTL.GetPitchMaybeAskConfig() );
     aSvxFontItemCTL.SetCharSet( aFontCTL.GetCharSet());
-    pItemPool->SetPoolDefaultItem(aSvxFontItemCTL);
+    pItemPool->SetUserDefaultItem(aSvxFontItemCTL);
 
     // set dynamic FontHeight defaults
-    pItemPool->SetPoolDefaultItem( SvxFontHeightItem(nDefTextHgt, 100, EE_CHAR_FONTHEIGHT ) );
-    pItemPool->SetPoolDefaultItem( SvxFontHeightItem(nDefTextHgt, 100, EE_CHAR_FONTHEIGHT_CJK ) );
-    pItemPool->SetPoolDefaultItem( SvxFontHeightItem(nDefTextHgt, 100, EE_CHAR_FONTHEIGHT_CTL ) );
+    pItemPool->SetUserDefaultItem( SvxFontHeightItem(nDefTextHgt, 100, EE_CHAR_FONTHEIGHT ) );
+    pItemPool->SetUserDefaultItem( SvxFontHeightItem(nDefTextHgt, 100, EE_CHAR_FONTHEIGHT_CJK ) );
+    pItemPool->SetUserDefaultItem( SvxFontHeightItem(nDefTextHgt, 100, EE_CHAR_FONTHEIGHT_CTL ) );
 
     // set FontColor defaults
-    pItemPool->SetPoolDefaultItem( SvxColorItem(SdrEngineDefaults::GetFontColor(), EE_CHAR_COLOR) );
+    pItemPool->SetUserDefaultItem( SvxColorItem(SdrEngineDefaults::GetFontColor(), EE_CHAR_COLOR) );
 }
 
 SdrOutliner& SdrModel::GetDrawOutliner(const SdrTextObj* pObj) const
@@ -695,7 +713,7 @@ void SdrModel::ImpSetOutlinerDefaults( SdrOutliner* pOutliner, bool bInit )
     {
         pOutliner->EraseVirtualDevice();
         pOutliner->SetUpdateLayout(false);
-        pOutliner->SetEditTextObjectPool(m_pItemPool.get());
+        pOutliner->SetEditEnginePool(m_pItemPool.get());
         pOutliner->SetDefTab(m_nDefaultTabulator);
     }
 
@@ -864,7 +882,7 @@ void SdrModel::ImpSetUIUnit()
     sal_Int32 nMul = 1, nDiv = 1;
     if (eFrom != o3tl::Length::invalid && eTo != o3tl::Length::invalid)
     {
-        const auto& [mul, div] = o3tl::getConversionMulDiv(eFrom, eTo);
+        const auto [mul, div] = o3tl::getConversionMulDiv(eFrom, eTo);
         nMul = mul;
         nDiv = div;
     }
@@ -944,29 +962,29 @@ OUString SdrModel::GetUnitString(FieldUnit eUnit)
         case FieldUnit::CUSTOM :
             return OUString();
         case FieldUnit::MM_100TH:
-            return OUString{"/100mm"};
+            return u"/100mm"_ustr;
         case FieldUnit::MM     :
-            return OUString{"mm"};
+            return u"mm"_ustr;
         case FieldUnit::CM     :
-            return OUString{"cm"};
+            return u"cm"_ustr;
         case FieldUnit::M      :
-            return OUString{"m"};
+            return u"m"_ustr;
         case FieldUnit::KM     :
-            return OUString{"km"};
+            return u"km"_ustr;
         case FieldUnit::TWIP   :
-            return OUString{"twip"};
+            return u"twip"_ustr;
         case FieldUnit::POINT  :
-            return OUString{"pt"};
+            return u"pt"_ustr;
         case FieldUnit::PICA   :
-            return OUString{"pica"};
+            return u"pica"_ustr;
         case FieldUnit::INCH   :
-            return OUString{"\""};
+            return u"\""_ustr;
         case FieldUnit::FOOT   :
-            return OUString{"ft"};
+            return u"ft"_ustr;
         case FieldUnit::MILE   :
-            return OUString{"mile(s)"};
+            return u"mile(s)"_ustr;
         case FieldUnit::PERCENT:
-            return OUString{"%"};
+            return u"%"_ustr;
     }
 }
 
@@ -1156,23 +1174,27 @@ void SdrModel::RecalcPageNums(bool bMaster)
 {
     if(bMaster)
     {
-        sal_uInt16 nCount=sal_uInt16(maMasterPages.size());
-        sal_uInt16 i;
-        for (i=0; i<nCount; i++) {
-            SdrPage* pPg = maMasterPages[i].get();
-            pPg->SetPageNum(i);
+        if (m_nMasterPageNumsDirtyFrom != SAL_MAX_UINT16)
+        {
+            sal_uInt16 nCount=sal_uInt16(maMasterPages.size());
+            for (sal_uInt16 i=m_nMasterPageNumsDirtyFrom; i<nCount; i++) {
+                SdrPage* pPg = maMasterPages[i].get();
+                pPg->SetPageNum(i);
+            }
+            m_nMasterPageNumsDirtyFrom = SAL_MAX_UINT16;
         }
-        m_bMPgNumsDirty=false;
     }
     else
     {
-        sal_uInt16 nCount=sal_uInt16(maPages.size());
-        sal_uInt16 i;
-        for (i=0; i<nCount; i++) {
-            SdrPage* pPg = maPages[i].get();
-            pPg->SetPageNum(i);
+        if (m_nPageNumsDirtyFrom != SAL_MAX_UINT16)
+        {
+            sal_uInt16 nCount=sal_uInt16(maPages.size());
+            for (sal_uInt16 i = m_nPageNumsDirtyFrom; i<nCount; i++) {
+                SdrPage* pPg = maPages[i].get();
+                pPg->SetPageNum(i);
+            }
+            m_nPageNumsDirtyFrom = SAL_MAX_UINT16;
         }
-        m_bPagNumsDirty=false;
     }
 }
 
@@ -1190,7 +1212,7 @@ void SdrModel::InsertPage(SdrPage* pPage, sal_uInt16 nPos)
     if (mbMakePageObjectsNamesUnique)
         pPage->MakePageObjectsNamesUnique();
 
-    if (nPos<nCount) m_bPagNumsDirty=true;
+    if (nPos<nCount) m_nPageNumsDirtyFrom = std::min(m_nPageNumsDirtyFrom, static_cast<sal_uInt16>(nPos + 1));
     SetChanged();
     SdrHint aHint(SdrHintKind::PageOrderChange, pPage);
     Broadcast(aHint);
@@ -1209,7 +1231,7 @@ rtl::Reference<SdrPage> SdrModel::RemovePage(sal_uInt16 nPgNum)
     if (pPg) {
         pPg->SetInserted(false);
     }
-    m_bPagNumsDirty=true;
+    m_nPageNumsDirtyFrom = std::min(m_nPageNumsDirtyFrom, nPgNum);
     SetChanged();
     SdrHint aHint(SdrHintKind::PageOrderChange, pPg.get());
     Broadcast(aHint);
@@ -1219,9 +1241,11 @@ rtl::Reference<SdrPage> SdrModel::RemovePage(sal_uInt16 nPgNum)
 void SdrModel::MovePage(sal_uInt16 nPgNum, sal_uInt16 nNewPos)
 {
     rtl::Reference<SdrPage> pPg = std::move(maPages[nPgNum]);
-    if (pPg) {
+    if (pPg)
+    {
         maPages.erase(maPages.begin()+nPgNum); // shortcut to avoid two broadcasts
         PageListChanged();
+        m_nPageNumsDirtyFrom = std::min(m_nPageNumsDirtyFrom, nPgNum);
         pPg->SetInserted(false);
         InsertPage(pPg.get(), nNewPos);
     }
@@ -1239,7 +1263,7 @@ void SdrModel::InsertMasterPage(SdrPage* pPage, sal_uInt16 nPos)
     pPage->SetPageNum(nPos);
 
     if (nPos<nCount) {
-        m_bMPgNumsDirty=true;
+        m_nMasterPageNumsDirtyFrom = std::min(m_nMasterPageNumsDirtyFrom, static_cast<sal_uInt16>(nPos + 1));
     }
 
     SetChanged();
@@ -1271,7 +1295,7 @@ rtl::Reference<SdrPage> SdrModel::RemoveMasterPage(sal_uInt16 nPgNum)
         pRetPg->SetInserted(false);
     }
 
-    m_bMPgNumsDirty=true;
+    m_nMasterPageNumsDirtyFrom = std::min(m_nMasterPageNumsDirtyFrom, nPgNum);
     SetChanged();
     SdrHint aHint(SdrHintKind::PageOrderChange, pRetPg.get());
     Broadcast(aHint);
@@ -1288,7 +1312,7 @@ void SdrModel::MoveMasterPage(sal_uInt16 nPgNum, sal_uInt16 nNewPos)
         maMasterPages.insert(maMasterPages.begin()+nNewPos,pPg);
         MasterPageListChanged();
     }
-    m_bMPgNumsDirty=true;
+    m_nMasterPageNumsDirtyFrom = std::min(m_nMasterPageNumsDirtyFrom, std::min(nPgNum, nNewPos));
     SetChanged();
     SdrHint aHint(SdrHintKind::PageOrderChange, pPg.get());
     Broadcast(aHint);
@@ -1464,7 +1488,7 @@ void SdrModel::Merge(SdrModel& rSourceModel,
                     maMasterPages.insert(maMasterPages.begin()+nDstMasterPageCnt, pPg);
                     MasterPageListChanged();
                     pPg->SetInserted();
-                    m_bMPgNumsDirty=true;
+                    m_nMasterPageNumsDirtyFrom = std::min(m_nMasterPageNumsDirtyFrom, nDstMasterPageCnt);
                     if (bUndo) AddUndo(GetSdrUndoFactory().CreateUndoNewPage(*pPg));
                 } else {
                     OSL_FAIL("SdrModel::Merge(): MasterPage not found in SourceModel.");
@@ -1547,8 +1571,8 @@ void SdrModel::Merge(SdrModel& rSourceModel,
     pMasterMap.reset();
     pMasterNeed.reset();
 
-    m_bMPgNumsDirty=true;
-    m_bPagNumsDirty=true;
+    m_nMasterPageNumsDirtyFrom = 0;
+    m_nPageNumsDirtyFrom = 0;
 
     SetChanged();
     // TODO: Missing: merging and mapping of layers
@@ -1625,9 +1649,8 @@ void SdrModel::setLock( bool bLock )
 }
 
 
-void SdrModel::MigrateItemSet( const SfxItemSet* pSourceSet, SfxItemSet* pDestSet, SdrModel* pNewModelel )
+void SdrModel::MigrateItemSet( const SfxItemSet* pSourceSet, SfxItemSet* pDestSet, SdrModel& rNewModel )
 {
-    assert(pNewModelel != nullptr);
     if( !(pSourceSet && pDestSet && (pSourceSet != pDestSet )) )
         return;
 
@@ -1644,26 +1667,26 @@ void SdrModel::MigrateItemSet( const SfxItemSet* pSourceSet, SfxItemSet* pDestSe
             switch( nWhich )
             {
             case XATTR_FILLBITMAP:
-                pResultItem = static_cast<const XFillBitmapItem*>(pPoolItem)->checkForUniqueItem( pNewModelel );
+                pResultItem = static_cast<const XFillBitmapItem*>(pPoolItem)->checkForUniqueItem( rNewModel );
                 break;
             case XATTR_LINEDASH:
-                pResultItem = static_cast<const XLineDashItem*>(pPoolItem)->checkForUniqueItem( pNewModelel );
+                pResultItem = static_cast<const XLineDashItem*>(pPoolItem)->checkForUniqueItem( rNewModel );
                 break;
             case XATTR_LINESTART:
-                pResultItem = static_cast<const XLineStartItem*>(pPoolItem)->checkForUniqueItem( pNewModelel );
+                pResultItem = static_cast<const XLineStartItem*>(pPoolItem)->checkForUniqueItem( rNewModel );
                 break;
             case XATTR_LINEEND:
-                pResultItem = static_cast<const XLineEndItem*>(pPoolItem)->checkForUniqueItem( pNewModelel );
+                pResultItem = static_cast<const XLineEndItem*>(pPoolItem)->checkForUniqueItem( rNewModel );
                 break;
             case XATTR_FILLGRADIENT:
-                pResultItem = static_cast<const XFillGradientItem*>(pPoolItem)->checkForUniqueItem( pNewModelel );
+                pResultItem = static_cast<const XFillGradientItem*>(pPoolItem)->checkForUniqueItem( rNewModel );
                 break;
             case XATTR_FILLFLOATTRANSPARENCE:
                 // allow all kinds of XFillFloatTransparenceItem to be set
-                pResultItem = static_cast<const XFillFloatTransparenceItem*>(pPoolItem)->checkForUniqueItem( pNewModelel );
+                pResultItem = static_cast<const XFillFloatTransparenceItem*>(pPoolItem)->checkForUniqueItem( rNewModel );
                 break;
             case XATTR_FILLHATCH:
-                pResultItem = static_cast<const XFillHatchItem*>(pPoolItem)->checkForUniqueItem( pNewModelel );
+                pResultItem = static_cast<const XFillHatchItem*>(pPoolItem)->checkForUniqueItem( rNewModel );
                 break;
             }
 

@@ -29,6 +29,7 @@
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/range/b2drectangle.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <osl/process.h>
 #include <rtl/bootstrap.h>
@@ -59,13 +60,15 @@
 
 #include <config_features.h>
 #include <vcl/skia/SkiaHelper.hxx>
-#if HAVE_FEATURE_SKIA
-#include <skia/osx/gdiimpl.hxx>
+#if !HAVE_FEATURE_SKIA
+static_assert(false, "skia is required on macOS");
 #endif
+#include <skia/osx/gdiimpl.hxx>
 
 #include <quartz/SystemFontList.hxx>
 #include <quartz/CoreTextFont.hxx>
 #include <quartz/CoreTextFontFace.hxx>
+#include <quartz/salgdi.h>
 
 using namespace vcl;
 
@@ -132,7 +135,6 @@ AquaSalGraphics::AquaSalGraphics(bool bPrinter)
 {
     SAL_INFO( "vcl.quartz", "AquaSalGraphics::AquaSalGraphics() this=" << this );
 
-#if HAVE_FEATURE_SKIA
     // tdf#146842 Do not use Skia for printing
     // Skia does not work with a native print graphics contexts. I am not sure
     // why but from what I can see, the Skia implementation drawing to a bitmap
@@ -140,15 +142,13 @@ AquaSalGraphics::AquaSalGraphics(bool bPrinter)
     // is CGPDFContext so even if this bug could be solved by blitting the
     // Skia bitmap buffer, the printed PDF would not have selectable text so
     // always disable Skia for print graphics contexts.
-    if(!bPrinter && SkiaHelper::isVCLSkiaEnabled())
-        mpBackend.reset(new AquaSkiaSalGraphicsImpl(*this, maShared));
-#else
-    (void)bPrinter;
-    if(false)
-        ;
-#endif
-    else
+    if(bPrinter)
         mpBackend.reset(new AquaGraphicsBackend(maShared));
+    else
+    {
+        assert(SkiaHelper::isVCLSkiaEnabled() && "skia is required on macOS");
+        mpBackend.reset(new AquaSkiaSalGraphicsImpl(*this, maShared));
+    }
 
     for (int i = 0; i < MAX_FALLBACK; ++i)
         mpFont[i] = nullptr;
@@ -216,7 +216,24 @@ static bool AddTempDevFont(const OUString& rFontFileURL)
 
     CFErrorRef error;
     bool success = CTFontManagerRegisterFontsForURL(rFontURL, kCTFontManagerScopeProcess, &error);
-    if (!success)
+    if (success)
+    {
+        // tdf155212 clear the cached system font list after loading a font
+        // If the system font is not cached in SalData, loading embedded
+        // fonts will be extremely slow and will trigger each frame and each
+        // of its internal subframes to reload the system font list when
+        // loading documents with embedded fonts.
+        // So instead, reenable caching of the system font list in SalData
+        // by reverting commit 3b6e9582ce43242a2304047561116bb26808408b.
+        // Then, to prevent tdf#72456 from reoccurring, clear the cached
+        // system font list after a font has been loaded or unloaded.
+        // This should cause the first frame's request to reload the cached
+        // system font list and all subsequent frames will avoid doing
+        // duplicate font reloads.
+        SalData* pSalData = GetSalData();
+        pSalData->mpFontList.reset();
+    }
+    else
     {
         CFRelease(error);
     }
@@ -224,6 +241,25 @@ static bool AddTempDevFont(const OUString& rFontFileURL)
     CFRelease(rFontURL);
 
     return success;
+}
+
+static bool RemoveTempDevFont(const OUString& rFontFileURL)
+{
+    OUString aUSystemPath;
+    OSL_VERIFY(!osl::FileBase::getSystemPathFromFileURL(rFontFileURL, aUSystemPath));
+    OString aCFileName = OUStringToOString(aUSystemPath, RTL_TEXTENCODING_UTF8);
+
+    CFStringRef rFontPath
+        = CFStringCreateWithCString(nullptr, aCFileName.getStr(), kCFStringEncodingUTF8);
+    CFURLRef rFontURL
+        = CFURLCreateWithFileSystemPath(nullptr, rFontPath, kCFURLPOSIXPathStyle, true);
+
+    CTFontManagerUnregisterFontsForURL(rFontURL, kCTFontManagerScopeProcess, nullptr);
+
+    CFRelease(rFontPath);
+    CFRelease(rFontURL);
+
+    return true; // Assume that even errors meant that there was nothing to remove
 }
 
 static void AddTempFontDir( const OUString &rFontDirUrl )
@@ -271,8 +307,20 @@ void AquaSalGraphics::GetDevFontList(vcl::font::PhysicalFontCollection* pFontCol
 
     AddLocalTempFontDirs();
 
+    // The idea is to cache the list of system fonts once it has been generated.
+    // SalData seems to be a good place for this caching. However we have to
+    // carefully make the access to the font list thread-safe. If we register
+    // a font-change event handler to update the font list in case fonts have
+    // changed on the system we have to lock access to the list. The right
+    // way to do that is the solar mutex since GetDevFontList is protected
+    // through it as should be all event handlers
+
+    // Related tdf#155212: the system font list needs to be cached but that
+    // should not cause tdf#72456 to reoccur now that the cached system font
+    // is cleared immediately after a font has been loaded
     SalData* pSalData = GetSalData();
-    pSalData->mpFontList = GetCoretextFontList();
+    if( !pSalData->mpFontList )
+        pSalData->mpFontList = GetCoretextFontList();
 
     // Copy all PhysicalFontFace objects contained in the SystemFontList
     pSalData->mpFontList->AnnounceFonts( *pFontCollection );
@@ -293,10 +341,27 @@ bool AquaSalGraphics::AddTempDevFont(vcl::font::PhysicalFontCollection*,
     return ::AddTempDevFont(rFontFileURL);
 }
 
+bool AquaSalGraphics::RemoveTempDevFont(const OUString& rFontFileURL, const OUString& /*rFontName*/)
+{
+    return ::RemoveTempDevFont(rFontFileURL);
+}
+
 void AquaSalGraphics::DrawTextLayout(const GenericSalLayout& rLayout)
 {
     mpBackend->drawTextLayout(rLayout);
 }
+
+#ifdef MACOSX
+
+bool AquaSalGraphics::ShouldDownscaleIconsAtSurface(double& rScaleOut) const
+{
+    if (comphelper::LibreOfficeKit::isActive())
+        return SalGraphics::ShouldDownscaleIconsAtSurface(rScaleOut);
+    rScaleOut = sal::aqua::getWindowScaling();
+    return true;
+}
+
+#endif
 
 void AquaGraphicsBackend::drawTextLayout(const GenericSalLayout& rLayout)
 {

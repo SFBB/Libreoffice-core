@@ -24,6 +24,11 @@ interface BaseTextTable
         ExecMethod = Execute ;
         StateMethod = NoState ;
     ]
+    FN_BREAK_ABOVE_TABLE
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
+    ]
     SID_ATTR_BRUSH
     [
         ExecMethod = Execute ;
@@ -446,5 +451,25 @@ interface BaseTextTable
         StateMethod = GetState ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
+
+    SID_ATTR_TABLE_ALIGNMENT
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_ATTR_TABLE_LEFT_SPACE
+    [
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_ATTR_TABLE_RIGHT_SPACE
+    [
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
 }
 

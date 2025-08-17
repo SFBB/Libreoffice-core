@@ -682,6 +682,10 @@ IsoLanguageCountryEntry const aImplIsoLangEntries[] =
     { LANGUAGE_USER_ENGLISH_ANTIGUA_BARBUDA,"en", "AG", k0    },
     { LANGUAGE_USER_SARAIKI,               "skr", "PK", k0    },
     { LANGUAGE_USER_MORISYEN,              "mfe", "MU", k0    },
+    { LANGUAGE_USER_FRENCH_GUINEA,          "fr", "GN", k0    },
+    { LANGUAGE_USER_ABKHAZ,                 "ab", ""  , k0    },
+    { LANGUAGE_USER_ENGLISH_GUYANA,         "en", "GY", k0    },
+    { LANGUAGE_USER_GRONINGS,              "gos", "NL", k0    },
     // Add new languages ^^^ there.
     { LANGUAGE_MULTIPLE,                   "mul", ""  , k0    },    // multiple languages, many languages are used
     { LANGUAGE_UNDETERMINED,               "und", ""  , k0    },    // undetermined language, language cannot be identified
@@ -781,6 +785,7 @@ IsoLanguageScriptCountryEntry const aImplIsoLangScriptEntries[] =
     { LANGUAGE_KANURI_NIGERIA,                      "kr-Latn", "NG", k0    },   // macrolanguage code; MS since rev.15
     { LANGUAGE_TAMAZIGHT_ARABIC_MOROCCO,           "tzm-Arab", "MA", k0    },   // MS since rev.15, was reserved
     { LANGUAGE_USER_ROHINGYA_HANIFI,               "rhg-Rhog", "MM", k0    },
+    { LANGUAGE_USER_SANTALI_OLCHIKI_INDIA,         "sat-Olck", "IN", k0    },
 };
 
 Bcp47CountryEntry const aImplBcp47CountryEntries[] =
@@ -1181,6 +1186,7 @@ css::lang::Locale MsLangId::Conversion::lookupFallbackLocale(
             {
                 if (rEntry.mnLang.anyOf(
                     // These are known to have no country assigned.
+                    LANGUAGE_USER_ABKHAZ,
                     LANGUAGE_USER_ESPERANTO,
                     LANGUAGE_USER_INTERLINGUA,
                     LANGUAGE_USER_INTERLINGUE,

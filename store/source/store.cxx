@@ -64,7 +64,7 @@ using namespace store;
 
 storeError store_acquireHandle (
     storeHandle Handle
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     OStoreObject *pHandle = static_cast<OStoreObject*>(Handle);
     if (!pHandle)
@@ -76,7 +76,7 @@ storeError store_acquireHandle (
 
 storeError store_releaseHandle (
     storeHandle Handle
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     OStoreObject *pHandle = static_cast<OStoreObject*>(Handle);
     if (!pHandle)
@@ -89,7 +89,7 @@ storeError store_releaseHandle (
 storeError store_createMemoryFile (
     sal_uInt16       nPageSize,
     storeFileHandle *phFile
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     if (!phFile)
         return store_E_InvalidParameter;
@@ -103,8 +103,6 @@ storeError store_createMemoryFile (
     OSL_ASSERT(xLockBytes.is());
 
     Reference<OStorePageManager> xManager (new OStorePageManager());
-    if (!xManager.is())
-        return store_E_OutOfMemory;
 
     eErrCode = xManager->initialize (
         &*xLockBytes, storeAccessMode::Create, nPageSize);
@@ -122,7 +120,7 @@ storeError store_openFile (
     storeAccessMode  eAccessMode,
     sal_uInt16       nPageSize,
     storeFileHandle *phFile
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     if (phFile)
         *phFile = nullptr;
@@ -138,9 +136,6 @@ storeError store_openFile (
     OSL_ASSERT(xLockBytes.is());
 
     Reference<OStorePageManager> xManager (new OStorePageManager());
-    if (!xManager.is())
-        return store_E_OutOfMemory;
-
     eErrCode = xManager->initialize (
         &*xLockBytes, eAccessMode, nPageSize);
     if (eErrCode != store_E_None)
@@ -157,7 +152,7 @@ storeError store_openFile (
  */
 storeError store_closeFile (
     storeFileHandle Handle
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     OStorePageManager *pManager =
         OStoreHandle<OStorePageManager>::query (Handle);
@@ -171,7 +166,7 @@ storeError store_closeFile (
 
 storeError store_flushFile (
     storeFileHandle Handle
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     OStoreHandle<OStorePageManager> xManager (
         OStoreHandle<OStorePageManager>::query (Handle));
@@ -187,7 +182,7 @@ storeError store_openDirectory (
     rtl_uString const    *pName,
     storeAccessMode       eAccessMode,
     storeDirectoryHandle *phDirectory
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     storeError eErrCode = store_E_None;
     if (phDirectory)
@@ -202,8 +197,6 @@ storeError store_openDirectory (
         return store_E_InvalidParameter;
 
     Reference<OStoreDirectory_Impl> xDirectory (new OStoreDirectory_Impl());
-    if (!xDirectory.is())
-        return store_E_OutOfMemory;
 
     OString aPath (pPath->buffer, pPath->length, RTL_TEXTENCODING_UTF8);
     OString aName (pName->buffer, pName->length, RTL_TEXTENCODING_UTF8);
@@ -221,7 +214,7 @@ storeError store_openDirectory (
 storeError store_findFirst (
     storeDirectoryHandle  Handle,
     storeFindData        *pFindData
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     OStoreHandle<OStoreDirectory_Impl> xDirectory (
         OStoreHandle<OStoreDirectory_Impl>::query (Handle));
@@ -242,7 +235,7 @@ storeError store_findFirst (
 storeError store_findNext (
     storeDirectoryHandle  Handle,
     storeFindData        *pFindData
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     OStoreHandle<OStoreDirectory_Impl> xDirectory (
         OStoreHandle<OStoreDirectory_Impl>::query (Handle));
@@ -267,7 +260,7 @@ storeError store_openStream (
     rtl_uString const *pName,
     storeAccessMode    eAccessMode,
     storeStreamHandle *phStream
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     storeError eErrCode = store_E_None;
     if (phStream)
@@ -282,8 +275,6 @@ storeError store_openStream (
         return store_E_InvalidParameter;
 
     Reference<OStoreLockBytes> xLockBytes (new OStoreLockBytes());
-    if (!xLockBytes.is())
-        return store_E_OutOfMemory;
 
     OString aPath (pPath->buffer, pPath->length, RTL_TEXTENCODING_UTF8);
     OString aName (pName->buffer, pName->length, RTL_TEXTENCODING_UTF8);
@@ -307,7 +298,7 @@ storeError store_readStream (
     void              *pBuffer,
     sal_uInt32         nBytes,
     sal_uInt32        *pnDone
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     OStoreHandle<OStoreLockBytes> xLockBytes (
         OStoreHandle<OStoreLockBytes>::query (Handle));
@@ -326,7 +317,7 @@ storeError store_writeStream (
     const void        *pBuffer,
     sal_uInt32         nBytes,
     sal_uInt32        *pnDone
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     OStoreHandle<OStoreLockBytes> xLockBytes (
         OStoreHandle<OStoreLockBytes>::query (Handle));
@@ -343,7 +334,7 @@ storeError store_remove (
     storeFileHandle Handle,
     rtl_uString const *pPath,
     rtl_uString const *pName
-) SAL_THROW_EXTERN_C()
+) noexcept
 {
     storeError eErrCode = store_E_None;
 

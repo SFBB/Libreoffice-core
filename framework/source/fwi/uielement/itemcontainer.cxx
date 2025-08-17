@@ -76,7 +76,7 @@ ItemContainer::ItemContainer( const Reference< XIndexAccess >& rSourceContainer,
                 }
 
                 if ( xIndexAccess.is() && nContainerIndex >= 0 )
-                    aPropSeq.getArray()[nContainerIndex].Value <<= deepCopyContainer( xIndexAccess, rMutex );
+                    aPropSeq.getArray()[nContainerIndex].Value <<= Reference<XIndexAccess>(deepCopyContainer( xIndexAccess, rMutex ));
 
                 m_aItemVector.push_back( aPropSeq );
             }
@@ -111,24 +111,22 @@ void ItemContainer::copyItemContainer( const std::vector< Sequence< PropertyValu
         }
 
         if ( xIndexAccess.is() && nContainerIndex >= 0 )
-            aPropSeq.getArray()[nContainerIndex].Value <<= deepCopyContainer( xIndexAccess, rMutex );
+            aPropSeq.getArray()[nContainerIndex].Value <<= Reference<XIndexAccess>(deepCopyContainer( xIndexAccess, rMutex ));
 
         m_aItemVector.push_back( aPropSeq );
     }
 }
 
-Reference< XIndexAccess > ItemContainer::deepCopyContainer( const Reference< XIndexAccess >& rSubContainer, const ShareableMutex& rMutex )
+rtl::Reference< ItemContainer > ItemContainer::deepCopyContainer( const Reference< XIndexAccess >& rSubContainer, const ShareableMutex& rMutex )
 {
-    Reference< XIndexAccess > xReturn;
+    rtl::Reference< ItemContainer > xReturn;
     if ( rSubContainer.is() )
     {
         ConstItemContainer* pSource = dynamic_cast<ConstItemContainer*>( rSubContainer.get() );
-        rtl::Reference<ItemContainer> pSubContainer;
         if ( pSource )
-            pSubContainer = new ItemContainer( *pSource, rMutex );
+            xReturn = new ItemContainer( *pSource, rMutex );
         else
-            pSubContainer = new ItemContainer( rSubContainer, rMutex );
-        xReturn = pSubContainer;
+            xReturn = new ItemContainer( rSubContainer, rMutex );
     }
 
     return xReturn;
@@ -198,7 +196,7 @@ void SAL_CALL ItemContainer::replaceByIndex( sal_Int32 Index, const Any& aItem )
     if ( sal_Int32( m_aItemVector.size()) <= Index )
         throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
 
-    m_aItemVector[Index] = aSeq;
+    m_aItemVector[Index] = std::move(aSeq);
 }
 
 } // namespace framework

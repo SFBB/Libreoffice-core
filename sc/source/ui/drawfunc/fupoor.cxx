@@ -33,17 +33,18 @@
 #include <svx/sdrhittesthelper.hxx>
 
 FuPoor::FuPoor(ScTabViewShell& rViewSh, vcl::Window* pWin, ScDrawView* pViewP,
-               SdrModel* pDoc, const SfxRequest& rReq) :
+               SdrModel& rDoc, const SfxRequest& rReq) :
     pView(pViewP),
     rViewShell(rViewSh),
     pWindow(pWin),
-    pDrDoc(pDoc),
+    rDrDoc(rDoc),
     aSfxRequest(rReq),
     aScrollTimer("sc FuPoor aScrollTimer"),
     aDragTimer("sc FuPoor aDragTimer"),
     bIsInDragMode(false),
     // remember MouseButton state
-    mnCode(0)
+    mnCode(0),
+    mbSelectionHasChanged(false)
 {
     aScrollTimer.SetInvokeHandler( LINK(this, FuPoor, ScrollHdl) );
     aScrollTimer.SetTimeout(SELENG_AUTOREPEAT_INTERVAL);
@@ -251,9 +252,9 @@ bool FuPoor::doConstructOrthogonal() const
     }
 
     // Detect image/media and resize proportionally, but don't constrain movement by default
-    if (pView->AreObjectsMarked())
+    const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+    if (rMarkList.GetMarkCount() != 0)
     {
-        const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
         if (rMarkList.GetMarkCount() == 1)
         {
             SdrObjKind aObjIdentifier = rMarkList.GetMark(0)->GetMarkedSdrObj()->GetObjIdentifier();

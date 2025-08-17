@@ -50,7 +50,6 @@
 #include <svl/numformat.hxx>
 #include <svl/sharedstring.hxx>
 
-#include <sfx2/objsh.hxx>
 #include <vcl/svapp.hxx>
 
 #include <com/sun/star/beans/UnknownPropertyException.hpp>
@@ -63,12 +62,12 @@
 
 #include <limits>
 
-SC_SIMPLE_SERVICE_INFO( ScChart2DataProvider, "ScChart2DataProvider",
-        "com.sun.star.chart2.data.DataProvider")
-SC_SIMPLE_SERVICE_INFO( ScChart2DataSource, "ScChart2DataSource",
-        "com.sun.star.chart2.data.DataSource")
-SC_SIMPLE_SERVICE_INFO( ScChart2DataSequence, "ScChart2DataSequence",
-        "com.sun.star.chart2.data.DataSequence")
+SC_SIMPLE_SERVICE_INFO( ScChart2DataProvider, u"ScChart2DataProvider"_ustr,
+        u"com.sun.star.chart2.data.DataProvider"_ustr)
+SC_SIMPLE_SERVICE_INFO( ScChart2DataSource, u"ScChart2DataSource"_ustr,
+        u"com.sun.star.chart2.data.DataSource"_ustr)
+SC_SIMPLE_SERVICE_INFO( ScChart2DataSequence, u"ScChart2DataSequence"_ustr,
+        u"com.sun.star.chart2.data.DataSequence"_ustr)
 
 using namespace ::com::sun::star;
 using namespace ::formula;
@@ -345,7 +344,7 @@ Chart2PositionMap::Chart2PositionMap(SCCOL nAllColCount,  SCROW nAllRowCount,
             if (nHeaderColCount && !bFoundValuesInCol && bFoundAnythingInCol && nCol == nHeaderColCount)
             {
                 // There is no values in row, but some data. And this column is next to header
-                // So lets put it to header
+                // So let's put it to header
                 nHeaderColCount++;
             }
         }
@@ -622,12 +621,12 @@ void Chart2Positioner::calcGlueState(SCCOL nColSize, SCROW nRowSize)
     {
         ScComplexRefData aData;
         ScRefTokenHelper::getDoubleRefDataFromToken(aData, rxToken);
-        SCCOL nCol1 = aData.Ref1.Col() - mnStartCol;
-        SCCOL nCol2 = aData.Ref2.Col() - mnStartCol;
+        auto nCol1 = aData.Ref1.Col() - mnStartCol;
+        auto nCol2 = aData.Ref2.Col() - mnStartCol;
         SCROW nRow1 = aData.Ref1.Row() - mnStartRow;
         SCROW nRow2 = aData.Ref2.Row() - mnStartRow;
-        for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
-            for (SCROW nRow = nRow1; nRow <= nRow2; ++nRow)
+        for (SCCOLROW nCol = nCol1; nCol <= nCol2 && nCol >= 0; ++nCol)
+            for (SCCOLROW nRow = nRow1; nRow <= nRow2 && nRow >= 0; ++nRow)
             {
                 size_t i = nCol*nRowSize + nRow;
                 aCellStates[i] = Occupied;
@@ -642,7 +641,7 @@ void Chart2Positioner::calcGlueState(SCCOL nColSize, SCROW nRowSize)
 
     bool bGlue = true;
     bool bGlueCols = false;
-    for (SCCOL nCol = 0; bGlue && nCol < nColSize; ++nCol)
+    for (auto nCol = 0; bGlue && nCol < nColSize; ++nCol)
     {
         for (SCROW nRow = 0; bGlue && nRow < nRowSize; ++nRow)
         {
@@ -743,15 +742,16 @@ void Chart2Positioner::createPositionMap()
 
         for (SCTAB nTab = nTab1; nTab <= nTab2; ++nTab)
         {
-            // columns on secondary sheets are appended; we treat them as if
-            // all columns are on the same sheet.  TODO: We can't assume that
-            // the column range is 16-bit; remove that restriction.
-            sal_uInt32 nInsCol = (static_cast<sal_uInt32>(nTab) << 16) |
-                (bNoGlue ? 0 : static_cast<sal_uInt32>(nCol1));
+            assert (nCol1 >= 0);
+            sal_uInt32 nInsCol = bNoGlue ? 0 : static_cast<sal_uInt32>(nCol1) & 0xFFFF;
 
             for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol, ++nInsCol)
             {
-                FormulaTokenMap& rCol = aCols[nInsCol];
+                // columns on secondary sheets are appended; we treat them as if
+                // all columns are on the same sheet.  TODO: We can't assume that
+                // the column range is 16-bit; remove that restriction.
+                sal_uInt32 nInsKey = (static_cast<sal_uInt32>(nTab) << 16) | nInsCol;
+                FormulaTokenMap& rCol = aCols[nInsKey];
 
                 auto nInsRow = bNoGlue ? nNoGlueRow : nRow1;
                 for (SCROW nRow = nRow1; nRow <= nRow2; ++nRow, ++nInsRow)
@@ -926,9 +926,7 @@ private:
             return false;
         bool bExternal = ScRefTokenHelper::isExternalRef(pToken);
         sal_uInt16 nFileId = bExternal ? pToken->GetIndex() : 0;
-        svl::SharedString aTabName = svl::SharedString::getEmptyString();
-        if (bExternal)
-            aTabName = pToken->GetString();
+        const svl::SharedString aTabName = bExternal ? pToken->GetString() : svl::SharedString::getEmptyString();
 
         // In saving to XML, we don't prepend address with '$'.
         setRelative(aData.Ref1);
@@ -1039,7 +1037,7 @@ uno::Reference< chart2::data::XLabeledDataSequence > lcl_createLabeledDataSequen
     {
         try
         {
-            uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+            const uno::Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
             if ( xContext.is() )
             {
                 xResult.set( chart2::data::LabeledDataSequence::create(xContext), uno::UNO_QUERY_THROW );
@@ -1309,7 +1307,7 @@ bool lcl_addUpperLeftCornerIfMissing(const ScDocument* pDoc, vector<ScTokenRef>&
         if (bExternal)
         {
             ScTokenRef pCorner(
-                new ScExternalSingleRefToken(nFileId, aExtTabName, aData));
+                new ScExternalSingleRefToken(nFileId, std::move(aExtTabName), aData));
             ScRefTokenHelper::join(pDoc, rRefTokens, pCorner, ScAddress());
         }
         else
@@ -1329,7 +1327,7 @@ bool lcl_addUpperLeftCornerIfMissing(const ScDocument* pDoc, vector<ScTokenRef>&
         if (bExternal)
         {
             ScTokenRef pCorner(
-                new ScExternalDoubleRefToken(nFileId, aExtTabName, r));
+                new ScExternalDoubleRefToken(nFileId, std::move(aExtTabName), r));
             ScRefTokenHelper::join(pDoc, rRefTokens, pCorner, ScAddress());
         }
         else
@@ -1555,7 +1553,7 @@ ScChart2DataProvider::createDataSource(
         aSeqVector.push_back(aSeq);
     }
 
-    for( const sal_Int32 nNewIndex : std::as_const(aSequenceMapping) )
+    for (const sal_Int32 nNewIndex : aSequenceMapping)
     {
         // note: assuming that the values in the sequence mapping are always non-negative
         ::std::vector< uno::Reference< chart2::data::XLabeledDataSequence > >::size_type nOldIndex( static_cast< sal_uInt32 >( nNewIndex ) );
@@ -1804,7 +1802,7 @@ uno::Sequence< beans::PropertyValue > SAL_CALL ScChart2DataProvider::detectArgum
                 {
                     uno::Reference< beans::XPropertySet > xSeqProp( xLS->getValues(), uno::UNO_QUERY );
                     OUString aRole;
-                    if( xSeqProp.is() && (xSeqProp->getPropertyValue("Role") >>= aRole) &&
+                    if( xSeqProp.is() && (xSeqProp->getPropertyValue(u"Role"_ustr) >>= aRole) &&
                         aRole == "categories" )
                         bThisIsCategories = bHasCategories = true;
                 }
@@ -1990,9 +1988,9 @@ uno::Sequence< beans::PropertyValue > SAL_CALL ScChart2DataProvider::detectArgum
 
         if( xDataSource.is() && xCompareDataSource.is() )
         {
-            const uno::Sequence< uno::Reference< chart2::data::XLabeledDataSequence> >& aOldSequences =
+            const uno::Sequence< uno::Reference< chart2::data::XLabeledDataSequence> > aOldSequences =
                 xCompareDataSource->getDataSequences();
-            const uno::Sequence< uno::Reference< chart2::data::XLabeledDataSequence> >& aNewSequences =
+            const uno::Sequence< uno::Reference< chart2::data::XLabeledDataSequence> > aNewSequences =
                 xDataSource->getDataSequences();
 
             std::map<std::pair<OUString, OUString>,sal_Int32> aOldEntryToIndex;
@@ -2771,7 +2769,7 @@ void ScChart2DataSequence::UpdateTokensFromRanges(const ScRangeList& rRanges)
 
         ScRefTokenHelper::getTokenFromRange(m_pDocument, pToken, rRange);
         sal_uInt32 nOrigPos = (*m_oRangeIndices)[i];
-        m_aTokens[nOrigPos] = pToken;
+        m_aTokens[nOrigPos] = std::move(pToken);
     }
 
     RefChanged();
@@ -2805,7 +2803,7 @@ void ScChart2DataSequence::StopListeningToAllExternalRefs()
 
 void ScChart2DataSequence::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint)
 {
-    if ( dynamic_cast<const ScUpdateRefHint*>(&rHint) )
+    if ( rHint.GetId() == SfxHintId::ScUpdateRef )
     {
         // Create a range list from the token list, have the range list
         // updated, and bring the change back to the token list.
@@ -2834,7 +2832,7 @@ void ScChart2DataSequence::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint
 
         const ScUpdateRefHint& rRef = static_cast<const ScUpdateRefHint&>(rHint);
         bool bChanged = aRanges.UpdateReference(
-            rRef.GetMode(), m_pDocument, rRef.GetRange(), rRef.GetDx(), rRef.GetDy(), rRef.GetDz());
+            rRef.GetMode(), *m_pDocument, rRef.GetRange(), rRef.GetDx(), rRef.GetDy(), rRef.GetDz());
 
         if (bChanged)
         {
@@ -2849,8 +2847,9 @@ void ScChart2DataSequence::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint
                 m_pDocument->AddUnoRefChange(m_nObjectId, *pUndoRanges);
         }
     }
-    else if ( auto pUndoHint = dynamic_cast<const ScUnoRefUndoHint*>(&rHint) )
+    else if ( rHint.GetId() == SfxHintId::ScUnoRefUndo )
     {
+        auto pUndoHint = static_cast<const ScUnoRefUndoHint*>(&rHint);
         do
         {
             if (pUndoHint->GetObjectId() != m_nObjectId)
@@ -3209,7 +3208,7 @@ namespace {
 
 sal_uInt32 getDisplayNumberFormat(const ScDocument* pDoc, const ScAddress& rPos)
 {
-    sal_uInt32 nFormat = pDoc->GetNumberFormat(rPos); // original format from cell.
+    sal_uInt32 nFormat = pDoc->GetNumberFormat(ScRange(rPos)); // original format from cell.
     return nFormat;
 }
 

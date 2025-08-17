@@ -414,7 +414,7 @@ void SwHeadFootFrame::FormatSize(SwTwips nUL, const SwBorderAttrs * pAttrs)
 
 void SwHeadFootFrame::Format(vcl::RenderContext* pRenderContext, const SwBorderAttrs * pAttrs)
 {
-    OSL_ENSURE( pAttrs, "SwFooterFrame::Format, pAttrs is 0." );
+    assert(pAttrs && "SwFooterFrame::Format, pAttrs is 0.");
 
     if ( isFramePrintAreaValid() && isFrameAreaSizeValid() )
         return;
@@ -437,17 +437,18 @@ void SwHeadFootFrame::Format(vcl::RenderContext* pRenderContext, const SwBorderA
     }
 }
 
-SwTwips SwHeadFootFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
+SwTwips SwHeadFootFrame::GrowFrame( SwTwips nDist, SwResizeLimitReason& reason, bool bTst, bool bInfo )
 {
     SwTwips nResult;
 
     if ( IsColLocked() )
     {
         nResult = 0;
+        reason = SwResizeLimitReason::Unspecified;
     }
     else if (!GetEatSpacing())
     {
-        nResult = SwLayoutFrame::GrowFrame(nDist, bTst, bInfo);
+        nResult = SwLayoutFrame::GrowFrame(nDist, reason, bTst, bInfo);
     }
     else
     {
@@ -514,15 +515,16 @@ SwTwips SwHeadFootFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
 
         if (nDist - nEat > 0)
         {
-            const SwTwips nFrameGrow =
-                SwLayoutFrame::GrowFrame( nDist - nEat, bTst, bInfo );
+            const SwTwips nFrameGrow = SwLayoutFrame::GrowFrame(nDist - nEat, reason, bTst, bInfo);
 
             nResult += nFrameGrow;
-            if ( nFrameGrow > 0 )
+            if (nFrameGrow > 0)
             {
                 bNotifyFlys = false;
             }
         }
+        else
+            reason = SwResizeLimitReason::Unspecified;
 
         // notify fly frames, if necessary and triggered.
         if ( ( nResult > 0 ) && bNotifyFlys )
@@ -652,7 +654,7 @@ SwTwips SwHeadFootFrame::ShrinkFrame( SwTwips nDist, bool bTst, bool bInfo )
 bool SwHeadFootFrame::GetEatSpacing() const
 {
     const SwFrameFormat * pFormat = GetFormat();
-    OSL_ENSURE(pFormat, "SwHeadFootFrame: no format?");
+    assert(pFormat && "SwHeadFootFrame: no format?");
 
     return pFormat->GetHeaderAndFooterEatSpacing().GetValue();
 }

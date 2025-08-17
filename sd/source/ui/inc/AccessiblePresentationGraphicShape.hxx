@@ -28,11 +28,10 @@ namespace accessibility {
 
 /** This class makes Impress shapes accessible.
 */
-class AccessiblePresentationGraphicShape
+class AccessiblePresentationGraphicShape final
     :   public AccessibleGraphicShape
 {
 public:
-    //=====  internal  ========================================================
     AccessiblePresentationGraphicShape (
         const AccessibleShapeInfo& rShapeInfo,
         const AccessibleShapeTreeInfo& rShapeTreeInfo);
@@ -44,8 +43,6 @@ public:
     */
     virtual OUString SAL_CALL
         getImplementationName() override;
-
-    //=====  internal  ========================================================
 
     /// Create a name string that contains the accessible name.
     virtual OUString

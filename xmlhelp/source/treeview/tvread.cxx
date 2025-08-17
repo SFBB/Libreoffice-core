@@ -39,6 +39,8 @@
 #include <com/sun/star/uri/XVndSunStarExpandUrl.hpp>
 #include <i18nlangtag/languagetag.hxx>
 #include <unotools/pathoptions.hxx>
+#include <officecfg/Office/Common.hxx>
+#include <officecfg/Setup.hxx>
 #include <memory>
 #include <utility>
 
@@ -157,11 +159,11 @@ using namespace com::sun::star::util;
 using namespace com::sun::star::container;
 using namespace com::sun::star::deployment;
 
-const char prodName[] = "%PRODUCTNAME";
-const char vendName[] = "%VENDORNAME";
-const char vendVersion[] = "%VENDORVERSION";
-const char vendShort[] = "%VENDORSHORT";
-const char prodVersion[] = "%PRODUCTVERSION";
+constexpr OUStringLiteral prodName = u"%PRODUCTNAME";
+constexpr OUStringLiteral vendName = u"%VENDORNAME";
+constexpr OUStringLiteral vendVersion = u"%VENDORVERSION";
+constexpr OUStringLiteral vendShort = u"%VENDORSHORT";
+constexpr OUStringLiteral prodVersion = u"%PRODUCTVERSION";
 
 ConfigData::ConfigData()
 {
@@ -261,7 +263,7 @@ TVRead::getByName( const OUString& aName )
 Sequence< OUString > SAL_CALL
 TVRead::getElementNames( )
 {
-    return { "Title", "TargetURL", "Children" };
+    return { u"Title"_ustr, u"TargetURL"_ustr, u"Children"_ustr };
 }
 
 sal_Bool SAL_CALL
@@ -367,9 +369,9 @@ TVChildTarget::TVChildTarget( const ConfigData& configData,TVDom* tvDom )
         Elements[i] = new TVRead( configData,tvDom->children[i].get() );
 }
 
-TVChildTarget::TVChildTarget( const Reference< XComponentContext >& xContext )
+TVChildTarget::TVChildTarget()
 {
-    ConfigData configData = init( xContext );
+    ConfigData configData = init();
 
     if( configData.locale.isEmpty() || configData.system.isEmpty() )
         return;
@@ -572,20 +574,17 @@ TVChildTarget::hasByHierarchicalName( const OUString& aName )
         return hasByName( aName );
 }
 
-ConfigData TVChildTarget::init( const Reference< XComponentContext >& xContext )
+ConfigData TVChildTarget::init()
 {
     ConfigData configData;
-    Reference< XMultiServiceFactory > sProvider( getConfiguration(xContext) );
 
     /**********************************************************************/
     /*                       reading Office.Common                        */
     /**********************************************************************/
 
-    Reference< XHierarchicalNameAccess > xHierAccess( getHierAccess( sProvider,
-                                                                     "org.openoffice.Office.Common" ) );
-    OUString system( getKey( xHierAccess,"Help/System" ) );
-    bool showBasic( getBooleanKey(xHierAccess,"Help/ShowBasic") );
-    OUString instPath( getKey( xHierAccess,"Path/Current/Help" ) );
+    configData.system = officecfg::Office::Common::Help::System::get();
+    bool showBasic = officecfg::Office::Common::Help::ShowBasic::get();
+    OUString instPath = officecfg::Office::Common::Path::Current::Help::get();
     if( instPath.isEmpty() )
       // try to determine path from default
       instPath = "$(instpath)/help";
@@ -597,37 +596,14 @@ ConfigData TVChildTarget::init( const Reference< XComponentContext >& xContext )
     /*                       reading setup                                */
     /**********************************************************************/
 
-    xHierAccess = getHierAccess( sProvider,
-                                 "org.openoffice.Setup" );
+    OUString setupversion = officecfg::Setup::Product::ooSetupVersion::get();
+    OUString setupextension = officecfg::Setup::Product::ooSetupExtension::get();
 
-    OUString setupversion( getKey( xHierAccess,"Product/ooSetupVersion" ) );
-    OUString setupextension;
+    configData.m_vReplacement[0] = utl::ConfigManager::getProductName();
+    configData.m_vReplacement[1] = setupversion + " " + setupextension; // productVersion
+    // m_vReplacement[2...4] (vendorName/-Version/-Short) are empty strings
 
-    try
-    {
-        Reference< lang::XMultiServiceFactory > xConfigProvider = theDefaultProvider::get( xContext );
-
-        uno::Sequence<uno::Any> lParams(comphelper::InitAnyPropertySequence(
-        {
-            {"nodepath", uno::Any(OUString("/org.openoffice.Setup/Product"))}
-        }));
-
-        // open it
-        uno::Reference< uno::XInterface > xCFG( xConfigProvider->createInstanceWithArguments(
-                    "com.sun.star.configuration.ConfigurationAccess",
-                    lParams) );
-
-        uno::Reference< container::XNameAccess > xDirectAccess(xCFG, uno::UNO_QUERY);
-        uno::Any aRet = xDirectAccess->getByName("ooSetupExtension");
-
-        aRet >>= setupextension;
-    }
-    catch ( uno::Exception& )
-    {
-    }
-
-    OUString productVersion( setupversion + " " + setupextension );
-    OUString locale( getKey( xHierAccess,"L10N/ooLocale" ) );
+    configData.locale = officecfg::Setup::L10N::ooLocale::get();
 
     // Determine fileurl from url and locale
     OUString url;
@@ -638,24 +614,24 @@ ConfigData TVChildTarget::init( const Reference< XComponentContext >& xContext )
     OUString ret;
     sal_Int32 idx;
     osl::DirectoryItem aDirItem;
-    if( osl::FileBase::E_None == osl::DirectoryItem::get( url + locale,aDirItem ) )
-        ret = locale;
-    else if( ( ( idx = locale.indexOf( '-' ) ) != -1 ||
-               ( idx = locale.indexOf( '_' ) ) != -1 ) &&
-             osl::FileBase::E_None == osl::DirectoryItem::get( url + locale.subView( 0,idx ),
+    if( osl::FileBase::E_None == osl::DirectoryItem::get( url + configData.locale, aDirItem ) )
+        ret = configData.locale;
+    else if( ( ( idx = configData.locale.indexOf( '-' ) ) != -1 ||
+               ( idx = configData.locale.indexOf( '_' ) ) != -1 ) &&
+             osl::FileBase::E_None == osl::DirectoryItem::get( url + configData.locale.subView( 0,idx ),
                                                                aDirItem ) )
-        ret = locale.copy( 0,idx );
+        ret = configData.locale.copy( 0,idx );
     else
-        {
-        locale = "en-US";
+    {
+        configData.locale= "en-US";
         ret = "en";
-        }
+    }
     url += ret;
 
     // first of all, try do determine whether there are any *.tree files present
 
     // Start with extensions to set them at the end of the list
-    TreeFileIterator aTreeIt( locale );
+    TreeFileIterator aTreeIt(configData.locale);
     OUString aTreeFile;
     sal_Int32 nFileSize;
     for (;;)
@@ -716,12 +692,7 @@ ConfigData TVChildTarget::init( const Reference< XComponentContext >& xContext )
     configData.m_vAdd[2] = 11;
     configData.m_vAdd[3] = 14;
     configData.m_vAdd[4] = 12;
-    configData.m_vReplacement[0] = utl::ConfigManager::getProductName();
-    configData.m_vReplacement[1] = productVersion;
-    // m_vReplacement[2...4] (vendorName/-Version/-Short) are empty strings
 
-    configData.system = system;
-    configData.locale = locale;
     configData.appendix =
         "?Language=" +
         configData.locale +
@@ -730,92 +701,6 @@ ConfigData TVChildTarget::init( const Reference< XComponentContext >& xContext )
         "&UseDB=no";
 
     return configData;
-}
-
-Reference< XMultiServiceFactory >
-TVChildTarget::getConfiguration(const Reference< XComponentContext >& rxContext)
-{
-    Reference< XMultiServiceFactory > xProvider;
-    if( rxContext.is() )
-    {
-        try
-        {
-            xProvider = theDefaultProvider::get( rxContext );
-        }
-        catch( const css::uno::Exception& )
-        {
-            OSL_ENSURE( xProvider.is(),"can not instantiate configuration" );
-        }
-    }
-
-    return xProvider;
-}
-
-Reference< XHierarchicalNameAccess >
-TVChildTarget::getHierAccess( const Reference< XMultiServiceFactory >& sProvider,
-                              const char* file )
-{
-    Reference< XHierarchicalNameAccess > xHierAccess;
-
-    if( sProvider.is() )
-    {
-        try
-        {
-            xHierAccess =
-                Reference< XHierarchicalNameAccess >
-                ( sProvider->createInstanceWithArguments( "com.sun.star.configuration.ConfigurationAccess", { Any(OUString::createFromAscii(file)) }),
-                  UNO_QUERY );
-        }
-        catch( const css::uno::Exception& )
-        {
-        }
-    }
-
-    return xHierAccess;
-}
-
-OUString
-TVChildTarget::getKey( const Reference< XHierarchicalNameAccess >& xHierAccess,
-                       const char* key )
-{
-    OUString instPath;
-    if( xHierAccess.is() )
-    {
-        Any aAny;
-        try
-        {
-            aAny =
-                xHierAccess->getByHierarchicalName( OUString::createFromAscii( key ) );
-        }
-        catch( const css::container::NoSuchElementException& )
-        {
-        }
-        aAny >>= instPath;
-    }
-    return instPath;
-}
-
-bool
-TVChildTarget::getBooleanKey(const Reference<
-                             XHierarchicalNameAccess >& xHierAccess,
-                             const char* key)
-{
-    bool ret = false;
-    if( xHierAccess.is() )
-    {
-      Any aAny;
-      try
-        {
-          aAny =
-            xHierAccess->getByHierarchicalName(
-                                               OUString::createFromAscii(key));
-        }
-      catch( const css::container::NoSuchElementException& )
-        {
-        }
-      aAny >>= ret;
-    }
-    return ret;
 }
 
 void TVChildTarget::subst( OUString& instpath )
@@ -834,7 +719,7 @@ TreeFileIterator::TreeFileIterator( OUString aLanguage )
     m_xContext = ::comphelper::getProcessComponentContext();
     if( !m_xContext.is() )
     {
-        throw RuntimeException( "TreeFileIterator::TreeFileIterator(), no XComponentContext" );
+        throw RuntimeException( u"TreeFileIterator::TreeFileIterator(), no XComponentContext"_ustr );
     }
 
     m_xSFA = ucb::SimpleFileAccess::create(m_xContext);
@@ -904,7 +789,7 @@ Reference< deployment::XPackage > TreeFileIterator::implGetNextUserHelpPackage
     if( !m_bUserPackagesLoaded )
     {
         Reference< XPackageManager > xUserManager =
-            thePackageManagerFactory::get( m_xContext )->getPackageManager("user");
+            thePackageManagerFactory::get( m_xContext )->getPackageManager(u"user"_ustr);
         m_aUserPackagesSeq = xUserManager->getDeployedPackages
             ( Reference< task::XAbortChannel >(), Reference< ucb::XCommandEnvironment >() );
 
@@ -934,7 +819,7 @@ Reference< deployment::XPackage > TreeFileIterator::implGetNextSharedHelpPackage
     if( !m_bSharedPackagesLoaded )
     {
         Reference< XPackageManager > xSharedManager =
-            thePackageManagerFactory::get( m_xContext )->getPackageManager("shared");
+            thePackageManagerFactory::get( m_xContext )->getPackageManager(u"shared"_ustr);
         m_aSharedPackagesSeq = xSharedManager->getDeployedPackages
             ( Reference< task::XAbortChannel >(), Reference< ucb::XCommandEnvironment >() );
 
@@ -964,7 +849,7 @@ Reference< deployment::XPackage > TreeFileIterator::implGetNextBundledHelpPackag
     if( !m_bBundledPackagesLoaded )
     {
         Reference< XPackageManager > xBundledManager =
-            thePackageManagerFactory::get( m_xContext )->getPackageManager("bundled");
+            thePackageManagerFactory::get( m_xContext )->getPackageManager(u"bundled"_ustr);
         m_aBundledPackagesSeq = xBundledManager->getDeployedPackages
             ( Reference< task::XAbortChannel >(), Reference< ucb::XCommandEnvironment >() );
 

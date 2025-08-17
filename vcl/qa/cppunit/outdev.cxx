@@ -7,10 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <tools/color.hxx>
 #include <test/bootstrapfixture.hxx>
 #include <test/outputdevice.hxx>
 
-#include <sal/log.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/numeric/ftools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
@@ -205,8 +205,8 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testDrawBlackBitmap)
     // test to see if the color is black
     Bitmap aBlackBmp(pVDev->GetBitmap(Point(0, 0), Size(10, 10)));
     BitmapScopedReadAccess pReadAccess(aBlackBmp);
-    const BitmapColor& rColor = pReadAccess->GetColor(0, 0);
-    CPPUNIT_ASSERT_EQUAL(BitmapColor(COL_BLACK), rColor);
+    const BitmapColor aColor = pReadAccess->GetColor(0, 0);
+    CPPUNIT_ASSERT_EQUAL(BitmapColor(COL_BLACK), aColor);
 }
 
 CPPUNIT_TEST_FIXTURE(VclOutdevTest, testDrawWhiteBitmap)
@@ -249,8 +249,8 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testDrawWhiteBitmap)
     // test to see if the color is white
     Bitmap aWhiteBmp(pVDev->GetBitmap(Point(0, 0), Size(10, 10)));
     BitmapScopedReadAccess pReadAccess(aWhiteBmp);
-    const BitmapColor& rColor = pReadAccess->GetColor(0, 0);
-    CPPUNIT_ASSERT_EQUAL(BitmapColor(COL_WHITE), rColor);
+    const BitmapColor aColor = pReadAccess->GetColor(0, 0);
+    CPPUNIT_ASSERT_EQUAL(BitmapColor(COL_WHITE), aColor);
 }
 
 CPPUNIT_TEST_FIXTURE(VclOutdevTest, testDrawBitmap)
@@ -320,8 +320,8 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testDrawGrayBitmap)
     // check to ensure that the bitmap is red
     {
         BitmapScopedReadAccess pReadAccess(aBmp);
-        const BitmapColor& rColor = pReadAccess->GetColor(0, 0);
-        CPPUNIT_ASSERT_EQUAL(BitmapColor(COL_RED), rColor);
+        const BitmapColor aColor = pReadAccess->GetColor(0, 0);
+        CPPUNIT_ASSERT_EQUAL(BitmapColor(COL_RED), aColor);
     }
 
     ScopedVclPtrInstance<VirtualDevice> pVDev;
@@ -333,8 +333,8 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testDrawGrayBitmap)
     Bitmap aVDevBmp(pVDev->GetBitmap(Point(), Size(1, 1)));
     {
         BitmapScopedReadAccess pReadAccess(aVDevBmp);
-        const BitmapColor& rColor = pReadAccess->GetColor(0, 0);
-        CPPUNIT_ASSERT_EQUAL(BitmapColor(0x26, 0x26, 0x26), rColor);
+        const BitmapColor aColor = pReadAccess->GetColor(0, 0);
+        CPPUNIT_ASSERT_EQUAL(BitmapColor(0x26, 0x26, 0x26), aColor);
     }
 }
 
@@ -486,7 +486,7 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testDefaultFillColor)
     aMtf.Record(pVDev.get());
 
     CPPUNIT_ASSERT(pVDev->IsFillColor());
-    CPPUNIT_ASSERT_EQUAL(Color(0xFF, 0xFF, 0xFF), pVDev->GetFillColor());
+    CPPUNIT_ASSERT_EQUAL(COL_WHITE, pVDev->GetFillColor());
 
     pVDev->SetFillColor();
     CPPUNIT_ASSERT(!pVDev->IsFillColor());
@@ -501,16 +501,16 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testDefaultFillColor)
 CPPUNIT_TEST_FIXTURE(VclOutdevTest, testTransparentFillColor)
 {
     // Create a virtual device, and connect a metafile to it.
-    ScopedVclPtrInstance<VirtualDevice> pVDev;
+    ScopedVclPtrInstance<VirtualDevice> pVDev(DeviceFormat::WITH_ALPHA);
 
     GDIMetaFile aMtf;
     aMtf.Record(pVDev.get());
 
     CPPUNIT_ASSERT(pVDev->IsFillColor());
-    CPPUNIT_ASSERT_EQUAL(Color(0xFF, 0xFF, 0xFF), pVDev->GetFillColor());
+    CPPUNIT_ASSERT_EQUAL(COL_WHITE, pVDev->GetFillColor());
 
     pVDev->SetFillColor(COL_TRANSPARENT);
-    CPPUNIT_ASSERT(!pVDev->IsFillColor());
+    CPPUNIT_ASSERT(pVDev->IsFillColor());
     CPPUNIT_ASSERT_EQUAL(COL_TRANSPARENT, pVDev->GetFillColor());
     MetaAction* pAction = aMtf.GetAction(0);
     CPPUNIT_ASSERT_EQUAL(MetaActionType::FILLCOLOR, pAction->GetType());
@@ -528,7 +528,7 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testFillColor)
     aMtf.Record(pVDev.get());
 
     CPPUNIT_ASSERT(pVDev->IsFillColor());
-    CPPUNIT_ASSERT_EQUAL(Color(0xFF, 0xFF, 0xFF), pVDev->GetFillColor());
+    CPPUNIT_ASSERT_EQUAL(COL_WHITE, pVDev->GetFillColor());
 
     pVDev->SetFillColor(COL_RED);
     CPPUNIT_ASSERT(pVDev->IsFillColor());
@@ -564,7 +564,7 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testDefaultLineColor)
 CPPUNIT_TEST_FIXTURE(VclOutdevTest, testTransparentLineColor)
 {
     // Create a virtual device, and connect a metafile to it.
-    ScopedVclPtrInstance<VirtualDevice> pVDev;
+    ScopedVclPtrInstance<VirtualDevice> pVDev(DeviceFormat::WITH_ALPHA);
 
     GDIMetaFile aMtf;
     aMtf.Record(pVDev.get());
@@ -609,7 +609,7 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testFont)
 
     // Use Dejavu fonts, they are shipped with LO, so they should be ~always available.
     // Use Sans variant for simpler glyph shapes (no serifs).
-    vcl::Font font("DejaVu Sans", "Book", Size(0, 36));
+    vcl::Font font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 36));
     font.SetColor(COL_BLACK);
     font.SetFillColor(COL_RED);
 
@@ -656,7 +656,7 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testTransparentFont)
 
     // Use Dejavu fonts, they are shipped with LO, so they should be ~always available.
     // Use Sans variant for simpler glyph shapes (no serifs).
-    vcl::Font font("DejaVu Sans", "Book", Size(0, 36));
+    vcl::Font font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 36));
     font.SetColor(COL_TRANSPARENT);
 
     GDIMetaFile aMtf;
@@ -886,9 +886,11 @@ public:
     {
     }
 
-    bool AcquireGraphics() const { return true; }
-    void ReleaseGraphics(bool) {}
-    bool UsePolyPolygonForComplexGradient() { return false; }
+    bool AcquireGraphics() const override { return true; }
+    void ReleaseGraphics(bool) override {}
+    bool UsePolyPolygonForComplexGradient() override { return false; }
+    bool CanAnimate() const override { return false; }
+    virtual bool HasAlpha() const override { return false; }
 
     bool testShouldDrawWavePixelAsRect(tools::Long nLineWidth)
     {
@@ -970,11 +972,11 @@ CPPUNIT_TEST_FIXTURE(VclOutdevTest, testErase)
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Not a rect action", MetaActionType::RECT, pAction->GetType());
 
     pAction = aMtf.GetAction(INITIAL_SETUP_ACTION_COUNT + 3);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Not a line color action (end)", MetaActionType::LINECOLOR,
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Not a fill color action (end)", MetaActionType::FILLCOLOR,
                                  pAction->GetType());
 
     pAction = aMtf.GetAction(INITIAL_SETUP_ACTION_COUNT + 4);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Not a fill color action (end)", MetaActionType::FILLCOLOR,
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Not a line color action (end)", MetaActionType::LINECOLOR,
                                  pAction->GetType());
 }
 

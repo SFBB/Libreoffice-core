@@ -33,8 +33,6 @@
 class GDIMetaFile;
 class Size;
 
-namespace vcl { class PDFWriter; }
-
 class PDFExport
 {
 private:
@@ -66,7 +64,7 @@ private:
 
     void                ImplWriteWatermark( vcl::PDFWriter& rWriter, const Size& rPageSize );
     void                ImplWriteTiledWatermark( vcl::PDFWriter& rWriter, const Size& rPageSize );
-    css::uno::Reference<css::security::XCertificate> GetCertificateFromSubjectName(const std::u16string_view& rSubjectName) const;
+    css::uno::Reference<css::security::XCertificate> GetCertificateFromSubjectName(std::u16string_view rSubjectName) const;
 
 
 public:

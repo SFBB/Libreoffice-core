@@ -33,18 +33,23 @@
 #include <uitool.hxx>
 #include <poolfmt.hxx>
 #include <SwStyleNameMapper.hxx>
+#include <names.hxx>
 #include <memory>
 
+#include <vcl/tabs.hrc>
+
 SwFootNoteOptionDlg::SwFootNoteOptionDlg(weld::Window *pParent, SwWrtShell &rS)
-    : SfxTabDialogController(pParent, "modules/swriter/ui/footendnotedialog.ui", "FootEndnoteDialog")
+    : SfxTabDialogController(pParent, u"modules/swriter/ui/footendnotedialog.ui"_ustr, u"FootEndnoteDialog"_ustr)
     , m_rSh( rS )
 {
     RemoveResetButton();
 
     GetOKButton().connect_clicked(LINK(this, SwFootNoteOptionDlg, OkHdl));
 
-    AddTabPage("footnotes", SwFootNoteOptionPage::Create, nullptr);
-    AddTabPage("endnotes",  SwEndNoteOptionPage::Create, nullptr);
+    AddTabPage(u"footnotes"_ustr, TabResId(RID_TAB_FOOTNOTES.aLabel), SwFootNoteOptionPage::Create,
+               RID_L + RID_TAB_FOOTNOTES.sIconName);
+    AddTabPage(u"endnotes"_ustr, TabResId(RID_TAB_ENDNOTES.aLabel), SwEndNoteOptionPage::Create,
+               RID_L + RID_TAB_ENDNOTES.sIconName);
 }
 
 void SwFootNoteOptionDlg::PageCreated(const OUString& /*rId*/, SfxTabPage &rPage)
@@ -67,28 +72,28 @@ IMPL_LINK(SwFootNoteOptionDlg, OkHdl, weld::Button&, rBtn, void)
 SwEndNoteOptionPage::SwEndNoteOptionPage(weld::Container* pPage, weld::DialogController* pController, bool bEN,
     const SfxItemSet &rSet)
     : SfxTabPage(pPage, pController,
-        bEN ? OUString("modules/swriter/ui/endnotepage.ui") : OUString("modules/swriter/ui/footnotepage.ui"),
-        bEN ? OUString("EndnotePage") : OUString("FootnotePage"),
+        bEN ? u"modules/swriter/ui/endnotepage.ui"_ustr : u"modules/swriter/ui/footnotepage.ui"_ustr,
+        bEN ? u"EndnotePage"_ustr : u"FootnotePage"_ustr,
         &rSet)
     , m_pSh(nullptr)
     , m_bPosDoc(false)
     , m_bEndNote(bEN)
-    , m_xNumViewBox(new SwNumberingTypeListBox(m_xBuilder->weld_combo_box("numberinglb")))
-    , m_xOffsetLbl(m_xBuilder->weld_label("offset"))
-    , m_xOffsetField(m_xBuilder->weld_spin_button("offsetnf"))
-    , m_xNumCountBox(m_xBuilder->weld_combo_box("countinglb"))
-    , m_xPrefixED(m_xBuilder->weld_entry("prefix"))
-    , m_xSuffixED(m_xBuilder->weld_entry("suffix"))
-    , m_xPosPageBox(m_xBuilder->weld_radio_button("pospagecb"))
-    , m_xPosChapterBox(m_xBuilder->weld_radio_button("posdoccb"))
-    , m_xStylesContainer(m_xBuilder->weld_widget("allstyles"))
-    , m_xParaTemplBox(m_xBuilder->weld_combo_box("parastylelb"))
-    , m_xPageTemplLbl(m_xBuilder->weld_label("pagestyleft"))
-    , m_xPageTemplBox(m_xBuilder->weld_combo_box("pagestylelb"))
-    , m_xFootnoteCharAnchorTemplBox(m_xBuilder->weld_combo_box("charanchorstylelb"))
-    , m_xFootnoteCharTextTemplBox(m_xBuilder->weld_combo_box("charstylelb"))
-    , m_xContEdit(m_xBuilder->weld_entry("conted"))
-    , m_xContFromEdit(m_xBuilder->weld_entry("contfromed"))
+    , m_xNumViewBox(new SwNumberingTypeListBox(m_xBuilder->weld_combo_box(u"numberinglb"_ustr)))
+    , m_xOffsetLbl(m_xBuilder->weld_label(u"offset"_ustr))
+    , m_xOffsetField(m_xBuilder->weld_spin_button(u"offsetnf"_ustr))
+    , m_xNumCountBox(m_xBuilder->weld_combo_box(u"countinglb"_ustr))
+    , m_xPrefixED(m_xBuilder->weld_entry(u"prefix"_ustr))
+    , m_xSuffixED(m_xBuilder->weld_entry(u"suffix"_ustr))
+    , m_xPosPageBox(m_xBuilder->weld_radio_button(u"pospagecb"_ustr))
+    , m_xPosChapterBox(m_xBuilder->weld_radio_button(u"posdoccb"_ustr))
+    , m_xStylesContainer(m_xBuilder->weld_widget(u"allstyles"_ustr))
+    , m_xParaTemplBox(m_xBuilder->weld_combo_box(u"parastylelb"_ustr))
+    , m_xPageTemplLbl(m_xBuilder->weld_label(u"pagestyleft"_ustr))
+    , m_xPageTemplBox(m_xBuilder->weld_combo_box(u"pagestylelb"_ustr))
+    , m_xFootnoteCharAnchorTemplBox(m_xBuilder->weld_combo_box(u"charanchorstylelb"_ustr))
+    , m_xFootnoteCharTextTemplBox(m_xBuilder->weld_combo_box(u"charstylelb"_ustr))
+    , m_xContEdit(m_xBuilder->weld_entry(u"conted"_ustr))
+    , m_xContFromEdit(m_xBuilder->weld_entry(u"contfromed"_ustr))
 {
     m_xNumViewBox->Reload(SwInsertNumTypes::Extended);
     if (!m_bEndNote)
@@ -154,11 +159,11 @@ void SwEndNoteOptionPage::Reset( const SfxItemSet* )
 
     const SwCharFormat* pCharFormat = pInf->GetCharFormat(
                         *m_pSh->GetView().GetDocShell()->GetDoc());
-    m_xFootnoteCharTextTemplBox->set_active_text(pCharFormat->GetName());
+    m_xFootnoteCharTextTemplBox->set_active_text(pCharFormat->GetName().toString());
     m_xFootnoteCharTextTemplBox->save_value();
 
     pCharFormat = pInf->GetAnchorCharFormat( *m_pSh->GetDoc() );
-    m_xFootnoteCharAnchorTemplBox->set_active_text( pCharFormat->GetName() );
+    m_xFootnoteCharAnchorTemplBox->set_active_text( pCharFormat->GetName().toString() );
     m_xFootnoteCharAnchorTemplBox->save_value();
 
         // styles   special regions
@@ -171,42 +176,42 @@ void SwEndNoteOptionPage::Reset( const SfxItemSet* )
         pStyle = pStyleSheetPool->Next();
     }
 
-    OUString sStr;
+    UIName sStr;
     SwStyleNameMapper::FillUIName( static_cast< sal_uInt16 >(m_bEndNote ? RES_POOLCOLL_ENDNOTE
                            : RES_POOLCOLL_FOOTNOTE), sStr );
-    if (m_xParaTemplBox->find_text(sStr) == -1)
-        m_xParaTemplBox->append_text(sStr);
+    if (m_xParaTemplBox->find_text(sStr.toString()) == -1)
+        m_xParaTemplBox->append_text(sStr.toString());
 
     SwTextFormatColl* pColl = pInf->GetFootnoteTextColl();
     if( !pColl )
-        m_xParaTemplBox->set_active_text(sStr);      // Default
+        m_xParaTemplBox->set_active_text(sStr.toString());      // Default
     else
     {
         OSL_ENSURE(!pColl->IsDefault(), "default style for footnotes is wrong");
-        const int nPos = m_xParaTemplBox->find_text(pColl->GetName());
+        const int nPos = m_xParaTemplBox->find_text(pColl->GetName().toString());
         if (nPos != -1)
             m_xParaTemplBox->set_active( nPos );
         else
         {
-            m_xParaTemplBox->append_text(pColl->GetName());
-            m_xParaTemplBox->set_active_text(pColl->GetName());
+            m_xParaTemplBox->append_text(pColl->GetName().toString());
+            m_xParaTemplBox->set_active_text(pColl->GetName().toString());
         }
     }
 
     // page
     for (sal_uInt16 i = RES_POOLPAGE_BEGIN; i < RES_POOLPAGE_END; ++i)
-        m_xPageTemplBox->append_text(SwStyleNameMapper::GetUIName(i, OUString()));
+        m_xPageTemplBox->append_text(SwStyleNameMapper::GetUIName(i, ProgName()).toString());
 
     const size_t nCount = m_pSh->GetPageDescCnt();
     for(size_t i = 0; i < nCount; ++i)
     {
         const SwPageDesc &rPageDesc = m_pSh->GetPageDesc(i);
-        if (m_xPageTemplBox->find_text(rPageDesc.GetName()) == -1)
-            m_xPageTemplBox->append_text(rPageDesc.GetName());
+        if (m_xPageTemplBox->find_text(rPageDesc.GetName().toString()) == -1)
+            m_xPageTemplBox->append_text(rPageDesc.GetName().toString());
     }
     m_xPageTemplBox->make_sorted();
 
-    m_xPageTemplBox->set_active_text(pInf->GetPageDesc(*m_pSh->GetDoc())->GetName());
+    m_xPageTemplBox->set_active_text(pInf->GetPageDesc(*m_pSh->GetDoc())->GetName().toString());
 }
 
 std::unique_ptr<SfxTabPage> SwEndNoteOptionPage::Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rSet )
@@ -349,14 +354,14 @@ bool SwEndNoteOptionPage::FillItemSet( SfxItemSet * )
     if (nPos != -1)
     {
         const OUString aFormatName( m_xParaTemplBox->get_active_text() );
-        SwTextFormatColl *pColl = m_pSh->GetParaStyle(aFormatName, SwWrtShell::GETSTYLE_CREATEANY);
-        OSL_ENSURE(pColl, "paragraph style not found");
+        SwTextFormatColl *pColl = m_pSh->GetParaStyle(UIName(aFormatName), SwWrtShell::GETSTYLE_CREATEANY);
+        assert(pColl && "paragraph style not found");
         pInf->SetFootnoteTextColl(*pColl);
     }
 
     // page template
     pInf->ChgPageDesc( m_pSh->FindPageDescByName(
-                                m_xPageTemplBox->get_active_text(), true ) );
+                                UIName(m_xPageTemplBox->get_active_text()), true ) );
 
     if ( m_bEndNote )
     {

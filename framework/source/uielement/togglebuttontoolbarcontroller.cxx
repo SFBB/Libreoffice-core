@@ -28,9 +28,7 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::util;
 
 namespace framework
 {
@@ -63,8 +61,8 @@ void SAL_CALL ToggleButtonToolbarController::dispose()
 Sequence<PropertyValue> ToggleButtonToolbarController::getExecuteArgs(sal_Int16 KeyModifier) const
 {
     Sequence<PropertyValue> aArgs{ // Add key modifier to argument list
-                                   comphelper::makePropertyValue("KeyModifier", KeyModifier),
-                                   comphelper::makePropertyValue("Text", m_aCurrentSelection) };
+                                   comphelper::makePropertyValue(u"KeyModifier"_ustr, KeyModifier),
+                                   comphelper::makePropertyValue(u"Text"_ustr, m_aCurrentSelection) };
     return aArgs;
 }
 
@@ -113,15 +111,15 @@ void ToggleButtonToolbarController::executeControlCommand( const css::frame::Con
                 m_aCurrentSelection.clear();
 
                 arg.Value >>= aList;
-                for ( OUString const & label : std::as_const(aList) )
+                for (OUString const& label : aList)
                 {
                     m_aDropdownMenuList.push_back( DropdownMenuItem() );
                     m_aDropdownMenuList.back().mLabel = label;
                 }
 
                 // send notification
-                uno::Sequence< beans::NamedValue > aInfo { { "List", css::uno::Any(aList) } };
-                addNotifyInfo( "ListChanged",
+                uno::Sequence< beans::NamedValue > aInfo { { u"List"_ustr, css::uno::Any(aList) } };
+                addNotifyInfo( u"ListChanged"_ustr,
                             getDispatchFromCommand( m_aCommandURL ),
                             aInfo );
 
@@ -145,8 +143,8 @@ void ToggleButtonToolbarController::executeControlCommand( const css::frame::Con
                     m_aCurrentSelection = m_aDropdownMenuList[nPos].mLabel;
 
                     // send notification
-                    uno::Sequence< beans::NamedValue > aInfo { { "ItemChecked", css::uno::Any(nPos) } };
-                    addNotifyInfo( "Pos",
+                    uno::Sequence< beans::NamedValue > aInfo { { u"ItemChecked"_ustr, css::uno::Any(nPos) } };
+                    addNotifyInfo( u"Pos"_ustr,
                                 getDispatchFromCommand( m_aCommandURL ),
                                 aInfo );
                 }

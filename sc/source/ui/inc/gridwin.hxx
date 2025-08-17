@@ -33,11 +33,8 @@
 #include <vector>
 
 
-namespace editeng {
-    struct MisspellRanges;
-}
-
 namespace sc {
+    struct MisspellRangeResult;
     class SpellCheckContext;
 }
 
@@ -51,7 +48,7 @@ class ScDPFieldButton;
 class ScOutputData;
 class SdrObject;
 class SdrEditView;
-class ScNoteMarker;
+class ScNoteOverlay;
 class SdrHdlList;
 class ScTransferObj;
 struct SpellCallbackInfo;
@@ -80,6 +77,13 @@ class ScLokRTLContext;
 #define SC_PD_RANGE_BR      (SC_PD_RANGE_B|SC_PD_RANGE_R)
 #define SC_PD_BREAK_H       16
 #define SC_PD_BREAK_V       32
+
+struct UrlData
+{
+    OUString aName;
+    OUString aUrl;
+    OUString aTarget;
+};
 
 // predefines
 namespace sdr::overlay { class OverlayObjectList; }
@@ -156,7 +160,7 @@ class SAL_DLLPUBLIC_RTTI ScGridWindow : public vcl::DocWindow, public DropTarget
     ScHSplitPos             eHWhich;
     ScVSplitPos             eVWhich;
 
-    std::unique_ptr<ScNoteMarker, o3tl::default_delete<ScNoteMarker>> mpNoteMarker;
+    std::unique_ptr<ScNoteOverlay, o3tl::default_delete<ScNoteOverlay>> mpNoteOverlay;
 
     std::shared_ptr<ScFilterListBox> mpFilterBox;
     std::unique_ptr<ScCheckListMenuControl> mpAutoFilterPopup;
@@ -202,6 +206,8 @@ class SAL_DLLPUBLIC_RTTI ScGridWindow : public vcl::DocWindow, public DropTarget
 
     ScAddress               aAutoMarkPos;
     ScAddress               aListValPos;
+
+    Point                   aDrawSelectionPos;
 
     tools::Rectangle               aInvertRect;
 
@@ -292,9 +298,6 @@ class SAL_DLLPUBLIC_RTTI ScGridWindow : public vcl::DocWindow, public DropTarget
     void            DrawHiddenIndicator( SCCOL nX1, SCROW nY1, SCCOL nX2, SCROW nY2, vcl::RenderContext& rRenderContext);
     void            DrawPagePreview( SCCOL nX1, SCROW nY1, SCCOL nX2, SCROW nY2, vcl::RenderContext& rRenderContext);
 
-    bool            GetEditUrl( const Point& rPos,
-                                OUString* pName=nullptr, OUString* pUrl=nullptr, OUString* pTarget=nullptr );
-
     bool            HitRangeFinder( const Point& rMouse, RfCorner& rCorner, sal_uInt16* pIndex,
                                     SCCOL* pAddX, SCROW* pAddY );
 
@@ -356,9 +359,7 @@ public:
     virtual void dispose() override;
 
     virtual void    KeyInput(const KeyEvent& rKEvt) override;
-    // #i70788# flush and get overlay
     rtl::Reference<sdr::overlay::OverlayManager> getOverlayManager() const;
-    void flushOverlayManager();
 
     virtual OUString GetSurroundingText() const override;
     virtual Selection GetSurroundingTextSelection() const override;
@@ -383,6 +384,7 @@ public:
     void LogicInvalidate(const tools::Rectangle* pRectangle) override;
     void LogicInvalidatePart(const tools::Rectangle* pRectangle, int nPart);
 
+    bool InvalidateByForeignEditView(EditView* pEditView) override;
     /// Update the cell selection according to what handles have been dragged.
     /// @see vcl::ITiledRenderable::setTextSelection() for the values of nType.
     /// Coordinates are in pixels.
@@ -390,11 +392,16 @@ public:
     /// Get the cell selection, coordinates are in logic units.
     void GetCellSelection(std::vector<tools::Rectangle>& rLogicRects);
 
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    bool GetEditUrl(const Point& rPos, OUString* pName = nullptr, OUString* pUrl = nullptr,
+                    OUString* pTarget = nullptr, SCCOL* pnCol= nullptr);
+
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     void            FakeButtonUp();
 
     const Point&    GetMousePosPixel() const { return aCurMousePos; }
+    ScSplitPos      getScSplitPos() const { return eWhich; }
+
     void            UpdateStatusPosSize();
 
     void            ClickExtern();
@@ -431,6 +438,7 @@ public:
     using Window::Draw;
     void            Draw( SCCOL nX1, SCROW nY1, SCCOL nX2, SCROW nY2,
                           ScUpdateMode eMode );
+    void Resize() override;
 
     /// Draw content of the gridwindow; shared between the desktop and the tiled rendering.
     void DrawContent(OutputDevice &rDevice, const ScTableInfo& rTableInfo, ScOutputData& aOutputData, bool bLogicText);
@@ -444,7 +452,7 @@ public:
     void            UpdateListValPos( bool bVisible, const ScAddress& rPos );
 
     bool            ShowNoteMarker( SCCOL nPosX, SCROW nPosY, bool bKeyboard );
-    void            HideNoteMarker();
+    void            HideNoteOverlay();
 
     /// MapMode for the drawinglayer objects.
     MapMode         GetDrawMapMode( bool bForce = false );
@@ -467,8 +475,8 @@ public:
     void SetAutoSpellContext( const std::shared_ptr<sc::SpellCheckContext> &ctx );
     void ResetAutoSpell();
     void ResetAutoSpellForContentChange();
-    void SetAutoSpellData( SCCOL nPosX, SCROW nPosY, const std::vector<editeng::MisspellRanges>* pRanges );
-    const std::vector<editeng::MisspellRanges>* GetAutoSpellData( SCCOL nPosX, SCROW nPosY );
+    void SetAutoSpellData( SCCOL nPosX, SCROW nPosY, const sc::MisspellRangeResult& rRangeResult );
+    sc::MisspellRangeResult GetAutoSpellData( SCCOL nPosX, SCROW nPosY );
     bool InsideVisibleRange( SCCOL nPosX, SCROW nPosY );
 
     void UpdateSparklineGroupOverlay();
@@ -498,6 +506,7 @@ public:
     /// notify this view with new positions for other view's cursors (after zoom)
     void updateKitOtherCursors() const;
     void updateOtherKitSelections() const;
+    void resetCachedViewGridOffsets() const;
 
     void notifyKitCellFollowJump() const;
 
@@ -508,6 +517,8 @@ public:
     void updateLOKInputHelp(const OUString& title, const OUString& content) const;
 
     void initiatePageBreaks();
+
+    std::vector<UrlData> GetEditUrls(const ScAddress& rSelectedCell);
 
 protected:
     void ImpCreateOverlayObjects();

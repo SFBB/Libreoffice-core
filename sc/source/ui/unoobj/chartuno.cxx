@@ -54,8 +54,8 @@ using namespace css;
 
 #define PROP_HANDLE_RELATED_CELLRANGES  1
 
-SC_SIMPLE_SERVICE_INFO( ScChartObj, "ScChartObj", "com.sun.star.table.TableChart" )
-SC_SIMPLE_SERVICE_INFO( ScChartsObj, "ScChartsObj", "com.sun.star.table.TableCharts" )
+SC_SIMPLE_SERVICE_INFO( ScChartObj, u"ScChartObj"_ustr, u"com.sun.star.table.TableChart"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScChartsObj, u"ScChartsObj"_ustr, u"com.sun.star.table.TableCharts"_ustr )
 
 ScChartsObj::ScChartsObj(ScDocShell* pDocSh, SCTAB nT) :
     pDocShell( pDocSh ),
@@ -172,7 +172,7 @@ void SAL_CALL ScChartsObj::addNewByName( const OUString& rName,
     ScRangeListRef xNewRanges( pList );
 
     uno::Reference < embed::XEmbeddedObject > xObj;
-    if ( SvtModuleOptions().IsChart() )
+    if ( SvtModuleOptions().IsChartInstalled() )
         xObj = pDocShell->GetEmbeddedObjectContainer().CreateEmbeddedObject( SvGlobalName( SO3_SCH_CLASSID ).GetByteSequence(), aName );
     if ( !xObj.is() )
             return;
@@ -228,16 +228,16 @@ void SAL_CALL ScChartsObj::addNewByName( const OUString& rName,
         // set arguments
         uno::Sequence< beans::PropertyValue > aArgs{
             beans::PropertyValue(
-                    "CellRangeRepresentation", -1,
+                    u"CellRangeRepresentation"_ustr, -1,
                     uno::Any( sRangeStr ), beans::PropertyState_DIRECT_VALUE ),
             beans::PropertyValue(
-                    "HasCategories", -1,
+                    u"HasCategories"_ustr, -1,
                     uno::Any( bRowHeaders ), beans::PropertyState_DIRECT_VALUE ),
             beans::PropertyValue(
-                    "FirstCellAsLabel", -1,
+                    u"FirstCellAsLabel"_ustr, -1,
                     uno::Any( bColumnHeaders ), beans::PropertyState_DIRECT_VALUE ),
             beans::PropertyValue(
-                    "DataRowSource", -1,
+                    u"DataRowSource"_ustr, -1,
                     uno::Any( chart::ChartDataRowSource_COLUMNS ), beans::PropertyState_DIRECT_VALUE )
         };
         xReceiver->setArguments( aArgs );
@@ -289,7 +289,7 @@ void SAL_CALL ScChartsObj::removeByName( const OUString& aName )
 uno::Reference<container::XEnumeration> SAL_CALL ScChartsObj::createEnumeration()
 {
     SolarMutexGuard aGuard;
-    return new ScIndexEnumeration(this, "com.sun.star.table.TableChartsEnumeration");
+    return new ScIndexEnumeration(this, u"com.sun.star.table.TableChartsEnumeration"_ustr);
 }
 
 // XIndexAccess
@@ -325,11 +325,11 @@ sal_Int32 SAL_CALL ScChartsObj::getCount()
 uno::Any SAL_CALL ScChartsObj::getByIndex( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
-    uno::Reference<table::XTableChart> xChart(GetObjectByIndex_Impl(nIndex));
+    rtl::Reference<ScChartObj> xChart(GetObjectByIndex_Impl(nIndex));
     if (!xChart.is())
         throw lang::IndexOutOfBoundsException();
 
-    return uno::Any(xChart);
+    return uno::Any(uno::Reference<table::XTableChart>(xChart));
 }
 
 uno::Type SAL_CALL ScChartsObj::getElementType()
@@ -346,11 +346,11 @@ sal_Bool SAL_CALL ScChartsObj::hasElements()
 uno::Any SAL_CALL ScChartsObj::getByName( const OUString& aName )
 {
     SolarMutexGuard aGuard;
-    uno::Reference<table::XTableChart> xChart(GetObjectByName_Impl(aName));
+    rtl::Reference<ScChartObj> xChart(GetObjectByName_Impl(aName));
     if (!xChart.is())
         throw container::NoSuchElementException();
 
-    return uno::Any(xChart);
+    return uno::Any(uno::Reference<table::XTableChart>(xChart));
 }
 
 uno::Sequence<OUString> SAL_CALL ScChartsObj::getElementNames()
@@ -406,15 +406,13 @@ sal_Bool SAL_CALL ScChartsObj::hasByName( const OUString& aName )
 }
 
 ScChartObj::ScChartObj(ScDocShell* pDocSh, SCTAB nT, OUString aN)
-    :ScChartObj_Base( m_aMutex )
-    ,ScChartObj_PBase( ScChartObj_Base::rBHelper )
-    ,pDocShell( pDocSh )
+    :pDocShell( pDocSh )
     ,nTab( nT )
     ,aChartName(std::move( aN ))
 {
     pDocShell->GetDocument().AddUnoObject(*this);
 
-    registerPropertyNoMember( "RelatedCellRanges",
+    registerPropertyNoMember( u"RelatedCellRanges"_ustr,
         PROP_HANDLE_RELATED_CELLRANGES, beans::PropertyAttribute::MAYBEVOID,
         cppu::UnoType<uno::Sequence<table::CellRangeAddress>>::get(),
         css::uno::Any(uno::Sequence<table::CellRangeAddress>()) );
@@ -506,7 +504,7 @@ void ScChartObj::Update_Impl( const ScRangeListRef& rRanges, bool bColHeaders, b
         if (bUndo)
         {
             pDocShell->GetUndoManager()->AddUndoAction(
-                std::make_unique<ScUndoChartData>( pDocShell, aChartName, rRanges, bColHeaders, bRowHeaders, false ) );
+                std::make_unique<ScUndoChartData>( *pDocShell, aChartName, rRanges, bColHeaders, bRowHeaders, false ) );
         }
         rDoc.UpdateChartArea( aChartName, rRanges, bColHeaders, bRowHeaders, false );
     }
@@ -519,7 +517,7 @@ void ScChartObj::Update_Impl( const ScRangeListRef& rRanges, bool bColHeaders, b
     return *ScChartObj_PABase::getArrayHelper();
 }
 
-void ScChartObj::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const uno::Any& rValue )
+void ScChartObj::setFastPropertyValue_NoBroadcast( std::unique_lock<std::mutex>& /*rGuard*/, sal_Int32 nHandle, const uno::Any& rValue )
 {
     switch ( nHandle )
     {
@@ -529,7 +527,7 @@ void ScChartObj::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const uno:
                 if ( rValue >>= aCellRanges )
                 {
                     ScRangeListRef rRangeList = new ScRangeList();
-                    for ( table::CellRangeAddress const & aCellRange : std::as_const(aCellRanges) )
+                    for (table::CellRangeAddress const& aCellRange : aCellRanges)
                     {
                         ScRange aRange;
                         ScUnoConversion::FillScRange( aRange, aCellRange );
@@ -551,7 +549,7 @@ void ScChartObj::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const uno:
     }
 }
 
-void ScChartObj::getFastPropertyValue( uno::Any& rValue, sal_Int32 nHandle ) const
+void ScChartObj::getFastPropertyValue( std::unique_lock<std::mutex>& /*rGuard*/, uno::Any& rValue, sal_Int32 nHandle ) const
 {
     switch ( nHandle )
     {
@@ -569,16 +567,16 @@ void ScChartObj::getFastPropertyValue( uno::Any& rValue, sal_Int32 nHandle ) con
             if (!pListener)
                 break;
 
-            const ScRangeListRef& rRangeList = pListener->GetRangeList();
-            if (!rRangeList.is())
+            const ScRangeListRef xRangeList = pListener->GetRangeList();
+            if (!xRangeList.is())
                 break;
 
-            size_t nCount = rRangeList->size();
+            size_t nCount = xRangeList->size();
             uno::Sequence<table::CellRangeAddress> aCellRanges(nCount);
             table::CellRangeAddress* pCellRanges = aCellRanges.getArray();
             for (size_t i = 0; i < nCount; ++i)
             {
-                ScRange const & rRange = (*rRangeList)[i];
+                ScRange const & rRange = (*xRangeList)[i];
                 table::CellRangeAddress aCellRange;
                 ScUnoConversion::FillApiRange(aCellRange, rRange);
                 pCellRanges[i] = aCellRange;

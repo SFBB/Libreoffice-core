@@ -21,8 +21,11 @@
 #include <unotools/intlwrapper.hxx>
 #include <unotools/localedatawrapper.hxx>
 #include <com/sun/star/chart/ChartAxisArrangeOrderType.hpp>
+#include <o3tl/hash_combine.hxx>
 
+#include <svx/ChartColorPaletteType.hxx>
 #include <svx/chrtitem.hxx>
+#include <svx/unomid.hxx>
 
 using namespace ::com::sun::star;
 
@@ -100,13 +103,13 @@ bool SvxChartTextOrderItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /*nMe
 
 SvxDoubleItem::SvxDoubleItem(double fValue, TypedWhichId<SvxDoubleItem> nId) :
     SfxPoolItem(nId),
-    fVal(fValue)
+    m_fVal(fValue)
 {
 }
 
 SvxDoubleItem::SvxDoubleItem(const SvxDoubleItem& rItem) :
     SfxPoolItem(rItem),
-    fVal(rItem.fVal)
+    m_fVal(rItem.m_fVal)
 {
 }
 
@@ -115,7 +118,7 @@ bool SvxDoubleItem::GetPresentation
               MapUnit /*ePresentationMetric*/, OUString& rText,
               const IntlWrapper& rIntlWrapper) const
 {
-    rText = ::rtl::math::doubleToUString( fVal, rtl_math_StringFormat_E, 4,
+    rText = ::rtl::math::doubleToUString( m_fVal, rtl_math_StringFormat_E, 4,
         rIntlWrapper.getLocaleData()->getNumDecimalSep()[0], true );
     return true;
 }
@@ -123,7 +126,7 @@ bool SvxDoubleItem::GetPresentation
 bool SvxDoubleItem::operator == (const SfxPoolItem& rItem) const
 {
     assert(SfxPoolItem::operator==(rItem));
-    return static_cast<const SvxDoubleItem&>(rItem).fVal == fVal;
+    return static_cast<const SvxDoubleItem&>(rItem).m_fVal == m_fVal;
 }
 
 SvxDoubleItem* SvxDoubleItem::Clone(SfxItemPool* /*pPool*/) const
@@ -133,13 +136,14 @@ SvxDoubleItem* SvxDoubleItem::Clone(SfxItemPool* /*pPool*/) const
 
 bool SvxDoubleItem::QueryValue( uno::Any& rVal, sal_uInt8 /*nMemberId*/ ) const
 {
-    rVal <<= fVal;
+    rVal <<= m_fVal;
     return true;
 }
 
 bool SvxDoubleItem::PutValue( const uno::Any& rVal, sal_uInt8 /*nMemberId*/ )
 {
-    return rVal >>= fVal;
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
+    return rVal >>= m_fVal;
 }
 
 SvxChartKindErrorItem::SvxChartKindErrorItem(SvxChartKindError eOrient,
@@ -173,6 +177,85 @@ SvxChartRegressItem::SvxChartRegressItem(SvxChartRegress eOrient,
 SvxChartRegressItem* SvxChartRegressItem::Clone(SfxItemPool* /*pPool*/) const
 {
     return new SvxChartRegressItem(*this);
+}
+
+// SvxChartColorPaletteItem implementation
+
+SvxChartColorPaletteItem::SvxChartColorPaletteItem(const ChartColorPaletteType eType,
+                                                   const sal_uInt32 nIndex,
+                                                   const TypedWhichId<SvxChartColorPaletteItem> nId)
+    : SfxPoolItem(nId)
+    , meType(eType)
+    , mnIndex(nIndex)
+{
+}
+
+SvxChartColorPaletteItem::SvxChartColorPaletteItem(const SvxChartColorPaletteItem& rItem)
+    : SfxPoolItem(rItem)
+    , meType(rItem.meType)
+    , mnIndex(rItem.mnIndex)
+{
+}
+
+bool SvxChartColorPaletteItem::QueryValue(uno::Any& rVal, const sal_uInt8 nMemberId) const
+{
+    if (nMemberId == MID_CHART_COLOR_PALETTE_TYPE)
+    {
+        rVal <<= static_cast<sal_Int32>(meType);
+        return true;
+    }
+    if (nMemberId == MID_CHART_COLOR_PALETTE_INDEX)
+    {
+        rVal <<= mnIndex;
+        return true;
+    }
+    return false;
+}
+
+bool SvxChartColorPaletteItem::PutValue(const uno::Any& rVal, const sal_uInt8 nMemberId)
+{
+    if (nMemberId == MID_CHART_COLOR_PALETTE_TYPE)
+    {
+        sal_Int32 nType = -1;
+        rVal >>= nType;
+        meType = static_cast<ChartColorPaletteType>(nType);
+        return true;
+    }
+    if (nMemberId == MID_CHART_COLOR_PALETTE_INDEX)
+    {
+        rVal >>= mnIndex;
+        return true;
+    }
+    return false;
+}
+
+bool SvxChartColorPaletteItem::GetPresentation(SfxItemPresentation /*ePres*/,
+                                               MapUnit /*eCoreMetric*/, MapUnit /*ePresMetric*/,
+                                               OUString& rText, const IntlWrapper&) const
+{
+    if (meType == ChartColorPaletteType::Colorful)
+        rText = u"Colorful"_ustr;
+    else if (meType == ChartColorPaletteType::Monochromatic)
+        rText = u"Monochromatic"_ustr;
+    else
+        rText = u"Unknown"_ustr;
+
+    rText += u" "_ustr;
+    rText += OUString::number(mnIndex);
+
+    return true;
+}
+
+bool SvxChartColorPaletteItem::operator==(const SfxPoolItem& rItem) const
+{
+    assert(SfxPoolItem::operator==(rItem));
+    const auto& rOther = static_cast<const SvxChartColorPaletteItem&>(rItem);
+    return (meType == rOther.meType && mnIndex == rOther.mnIndex);
+}
+
+SvxChartColorPaletteItem* SvxChartColorPaletteItem::Clone(SfxItemPool* /*pPool*/) const
+{
+    return new SvxChartColorPaletteItem(*this);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

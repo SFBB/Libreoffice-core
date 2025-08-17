@@ -27,9 +27,14 @@
 #include <GroupProperties.hxx>
 #include <comphelper/uno3.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <rtl/ref.hxx>
+#include <unotools/weakref.hxx>
 
 namespace reportdesign
 {
+    class OFunctions;
+    class OGroups;
+    class OSection;
     typedef ::cppu::WeakComponentImplHelper< css::report::XGroup
                                          ,   css::lang::XServiceInfo> GroupBase;
     typedef ::cppu::PropertySetMixin< css::report::XGroup> GroupPropertySet;
@@ -43,10 +48,10 @@ namespace reportdesign
                     ,public GroupPropertySet
     {
         css::uno::Reference< css::uno::XComponentContext >    m_xContext;
-        css::uno::WeakReference< css::report::XGroups >       m_xParent;
-        css::uno::Reference< css::report::XSection>           m_xHeader;
-        css::uno::Reference< css::report::XSection>           m_xFooter;
-        css::uno::Reference< css::report::XFunctions >        m_xFunctions;
+        unotools::WeakReference< OGroups >                    m_xParent;
+        rtl::Reference< OSection>                             m_xHeader;
+        rtl::Reference< OSection>                             m_xFooter;
+        rtl::Reference< OFunctions >                          m_xFunctions;
         ::rptshared::GroupProperties                          m_aProps;
 
     private:
@@ -86,7 +91,7 @@ namespace reportdesign
         void setSection(     const OUString& _sProperty
                             ,bool _bOn
                             ,const OUString& _sName
-                            ,css::uno::Reference< css::report::XSection>& _member);
+                            ,rtl::Reference< OSection>& _member);
     protected:
         // TODO: VirtualFunctionFinder: This is virtual function!
 
@@ -98,7 +103,7 @@ namespace reportdesign
 
         virtual void SAL_CALL disposing() override;
     public:
-        OGroup(const css::uno::Reference< css::report::XGroups >& _xParent
+        OGroup(const rtl::Reference< OGroups >& _xParent
             ,const css::uno::Reference< css::uno::XComponentContext >& context);
 
         DECLARE_XINTERFACE( )
@@ -159,6 +164,7 @@ namespace reportdesign
         {
             cppu::WeakComponentImplHelperBase::removeEventListener(aListener);
         }
+        rtl::Reference< OGroups > getOGroups() const;
     };
 
 } // namespace reportdesign

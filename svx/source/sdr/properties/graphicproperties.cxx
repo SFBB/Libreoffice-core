@@ -50,8 +50,8 @@ namespace sdr::properties
             else
             {
                 RectangleProperties::applyDefaultStyleSheetFromSdrModel();
-                SetMergedItem(XFillStyleItem(com::sun::star::drawing::FillStyle_NONE));
-                SetMergedItem(XLineStyleItem(com::sun::star::drawing::LineStyle_NONE));
+                SetMergedItem(XFillStyleItem(css::drawing::FillStyle_NONE));
+                SetMergedItem(XLineStyleItem(css::drawing::LineStyle_NONE));
             }
         }
 
@@ -94,37 +94,26 @@ namespace sdr::properties
             return std::unique_ptr<BaseProperties>(new GraphicProperties(*this, rObj));
         }
 
-        void GraphicProperties::ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich)
+        void GraphicProperties::ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich, bool bAdjustTextFrameWidthAndHeight)
         {
             SdrGrafObj& rObj = static_cast<SdrGrafObj&>(GetSdrObject());
 
             // local changes
             rObj.SetXPolyDirty();
 
-            // #i29367# Update GraphicAttr, too. This was formerly
-            // triggered by SdrGrafObj::Notify, which is no longer
-            // called nowadays. BTW: strictly speaking, the whole
-            // ImpSetAttrToGrafInfostuff could
-            // be dumped, when SdrGrafObj::aGrafInfo is removed and
-            // always created on the fly for repaint.
-            rObj.ImpSetAttrToGrafInfo();
-
             // call parent
-            RectangleProperties::ItemSetChanged(aChangedItems, nDeletedWhich);
+            RectangleProperties::ItemSetChanged(aChangedItems, nDeletedWhich, bAdjustTextFrameWidthAndHeight);
         }
 
         void GraphicProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast)
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight)
         {
             // call parent (always first thing to do, may create the SfxItemSet)
-            RectangleProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr, bBroadcast);
+            RectangleProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr, bBroadcast, bAdjustTextFrameWidthAndHeight);
 
             // local changes
             SdrGrafObj& rObj = static_cast<SdrGrafObj&>(GetSdrObject());
             rObj.SetXPolyDirty();
-
-            // local changes
-            rObj.ImpSetAttrToGrafInfo();
         }
 
         void GraphicProperties::ForceDefaultAttributes()

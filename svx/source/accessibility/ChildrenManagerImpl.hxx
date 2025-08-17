@@ -20,6 +20,7 @@
 #ifndef INCLUDED_SVX_SOURCE_ACCESSIBILITY_CHILDRENMANAGERIMPL_HXX
 #define INCLUDED_SVX_SOURCE_ACCESSIBILITY_CHILDRENMANAGERIMPL_HXX
 
+#include <svx/AccessibleShape.hxx>
 #include <svx/IAccessibleViewForwarderListener.hxx>
 #include <svx/IAccessibleParent.hxx>
 #include <svx/AccessibleShapeTreeInfo.hxx>
@@ -34,8 +35,6 @@
 #include <com/sun/star/accessibility/XAccessible.hpp>
 
 namespace accessibility {
-
-class AccessibleShape;
 
 class ChildDescriptor; // See below for declaration.
 typedef ::std::vector<ChildDescriptor> ChildDescriptorListType;
@@ -96,10 +95,10 @@ public:
             for new and deleted children, i.e. that holds a list of
             listeners to be informed.
     */
-    ChildrenManagerImpl (css::uno::Reference<css::accessibility::XAccessible> xParent,
-        css::uno::Reference<css::drawing::XShapes> xShapeList,
-        const AccessibleShapeTreeInfo& rShapeTreeInfo,
-        AccessibleContextBase& rContext);
+    ChildrenManagerImpl(rtl::Reference<comphelper::OAccessible> pParent,
+                        css::uno::Reference<css::drawing::XShapes> xShapeList,
+                        const AccessibleShapeTreeInfo& rShapeTreeInfo,
+                        AccessibleContextBase& rContext);
 
     /** If there still are managed children these are disposed and
         released.
@@ -133,8 +132,7 @@ public:
         @throws
             Throws an IndexOutOfBoundsException if the index is not valid.
     */
-    css::uno::Reference<css::accessibility::XAccessible>
-        GetChild (sal_Int64 nIndex);
+    rtl::Reference<comphelper::OAccessible> GetChild(sal_Int64 nIndex);
 
     /** Return the requested accessible child.
         @param aChildDescriptor
@@ -148,8 +146,8 @@ public:
             accessible object of the corresponding shape.
         @throws css::uno::RuntimeException
     */
-    css::uno::Reference<css::accessibility::XAccessible>
-        GetChild (ChildDescriptor& aChildDescriptor,sal_Int32 _nIndex);
+    rtl::Reference<comphelper::OAccessible> GetChild(ChildDescriptor& aChildDescriptor,
+                                                     sal_Int32 _nIndex);
 
     /** Update the child manager.  Take care of a modified set of children
         and modified visible area.  This method can optimize the update
@@ -262,7 +260,7 @@ public:
     // Add the impl method for IAccessibleParent interface
     virtual AccessibleControlShape* GetAccControlShapeFromModel
         (css::beans::XPropertySet* pSet) override;
-    virtual css::uno::Reference<css::accessibility::XAccessible>
+    virtual AccessibleShape*
         GetAccessibleCaption (const css::uno::Reference<css::drawing::XShape>& xShape) override;
 
 private:
@@ -301,7 +299,7 @@ private:
     /** The parent of the shapes.  It is used for creating accessible
         objects for given shapes.
     */
-    css::uno::Reference<css::accessibility::XAccessible> mxParent;
+    rtl::Reference<comphelper::OAccessible> mpParent;
 
     /** Bundle of information passed down the shape tree.
     */

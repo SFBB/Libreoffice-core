@@ -34,6 +34,7 @@
 #include <linguistic/spelldta.hxx>
 #include <unotools/pathoptions.hxx>
 #include <unotools/useroptions.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
@@ -454,8 +455,6 @@ sal_Bool SAL_CALL
         // postprocess result for errors that should be ignored
         if (   (!rHelper.IsSpellUpperCase()  && IsUpper( rWord, nLang ))
             || (!rHelper.IsSpellWithDigits() && HasDigits( rWord ))
-            || (!rHelper.IsSpellCapitalization()
-                &&  nFailure == SpellFailure::CAPTION_ERROR)
         )
             nFailure = -1;
     }

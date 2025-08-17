@@ -63,7 +63,7 @@ OUString SvxEditEngineForwarder::GetText( const ESelection& rSel ) const
 
 SfxItemSet SvxEditEngineForwarder::GetAttribs( const ESelection& rSel, EditEngineAttribs nOnlyHardAttrib ) const
 {
-    if( rSel.nStartPara == rSel.nEndPara )
+    if (rSel.start.nPara == rSel.end.nPara)
     {
         GetAttribsFlags nFlags = GetAttribsFlags::NONE;
         switch( nOnlyHardAttrib )
@@ -78,7 +78,7 @@ SfxItemSet SvxEditEngineForwarder::GetAttribs( const ESelection& rSel, EditEngin
             OSL_FAIL("unknown flags for SvxOutlinerForwarder::GetAttribs");
         }
 
-        return rEditEngine.GetAttribs( rSel.nStartPara, rSel.nStartPos, rSel.nEndPos, nFlags );
+        return rEditEngine.GetAttribs( rSel.start.nPara, rSel.start.nIndex, rSel.end.nIndex, nFlags );
     }
     else
     {
@@ -184,17 +184,17 @@ SfxItemState GetSvxEditEngineItemState( EditEngine const & rEditEngine, const ES
     SfxItemState eState = SfxItemState::DEFAULT;
 
     // check all paragraphs inside the selection
-    for( sal_Int32 nPara = rSel.nStartPara; nPara <= rSel.nEndPara; nPara++ )
+    for (sal_Int32 nPara = rSel.start.nPara; nPara <= rSel.end.nPara; nPara++)
     {
         SfxItemState eParaState = SfxItemState::DEFAULT;
 
         // calculate start and endpos for this paragraph
         sal_Int32 nPos = 0;
-        if( rSel.nStartPara == nPara )
-            nPos = rSel.nStartPos;
+        if (rSel.start.nPara == nPara)
+            nPos = rSel.start.nIndex;
 
-        sal_Int32 nEndPos = rSel.nEndPos;
-        if( rSel.nEndPara != nPara )
+        sal_Int32 nEndPos = rSel.end.nIndex;
+        if (rSel.end.nPara != nPara)
             nEndPos = rEditEngine.GetTextLen( nPara );
 
 
@@ -209,7 +209,7 @@ SfxItemState GetSvxEditEngineItemState( EditEngine const & rEditEngine, const ES
 
         for (auto const& attrib : aAttribs)
         {
-            DBG_ASSERT(attrib.pAttr, "GetCharAttribs gives corrupt data");
+            assert(attrib.pAttr && "GetCharAttribs gives corrupt data");
 
             const bool bEmptyPortion = attrib.nStart == attrib.nEnd;
             if((!bEmptyPortion && attrib.nStart >= nEndPos) ||
@@ -228,7 +228,7 @@ SfxItemState GetSvxEditEngineItemState( EditEngine const & rEditEngine, const ES
             {
                 // ... and its different to this one than the state is don't care
                 if(*pParaItem != *(attrib.pAttr))
-                    return SfxItemState::DONTCARE;
+                    return SfxItemState::INVALID;
             }
             else
                 pParaItem = attrib.pAttr;
@@ -248,7 +248,7 @@ SfxItemState GetSvxEditEngineItemState( EditEngine const & rEditEngine, const ES
         if( bEmpty )
             eParaState = SfxItemState::DEFAULT;
         else if( bGaps )
-            eParaState = SfxItemState::DONTCARE;
+            eParaState = SfxItemState::INVALID;
         else
             eParaState = SfxItemState::SET;
 
@@ -256,7 +256,7 @@ SfxItemState GetSvxEditEngineItemState( EditEngine const & rEditEngine, const ES
         if( pLastItem )
         {
             if( (pParaItem == nullptr) || (*pLastItem != *pParaItem) )
-                return SfxItemState::DONTCARE;
+                return SfxItemState::INVALID;
         }
         else
         {
@@ -284,14 +284,9 @@ LanguageType SvxEditEngineForwarder::GetLanguage( sal_Int32 nPara, sal_Int32 nIn
     return rEditEngine.GetLanguage(nPara, nIndex).nLang;
 }
 
-sal_Int32 SvxEditEngineForwarder::GetFieldCount( sal_Int32 nPara ) const
+std::vector<EFieldInfo> SvxEditEngineForwarder::GetFieldInfo( sal_Int32 nPara ) const
 {
-    return rEditEngine.GetFieldCount(nPara);
-}
-
-EFieldInfo SvxEditEngineForwarder::GetFieldInfo( sal_Int32 nPara, sal_uInt16 nField ) const
-{
-    return rEditEngine.GetFieldInfo( nPara, nField );
+    return rEditEngine.GetFieldInfo( nPara );
 }
 
 EBulletInfo SvxEditEngineForwarder::GetBulletInfo( sal_Int32 ) const
@@ -318,7 +313,7 @@ tools::Rectangle SvxEditEngineForwarder::GetCharBounds( sal_Int32 nPara, sal_Int
         if( nIndex )
         {
             // use last character, if possible
-            aLast = rEditEngine.GetCharacterBounds( EPosition(nPara, nIndex-1) );
+            aLast = rEditEngine.GetCharacterBounds(EPaM(nPara, nIndex - 1));
 
             // move at end of this last character, make one pixel wide
             aLast.Move( aLast.Right() - aLast.Left(), 0 );
@@ -344,7 +339,7 @@ tools::Rectangle SvxEditEngineForwarder::GetCharBounds( sal_Int32 nPara, sal_Int
     }
     else
     {
-        return SvxEditSourceHelper::EEToUserSpace( rEditEngine.GetCharacterBounds( EPosition(nPara, nIndex) ),
+        return SvxEditSourceHelper::EEToUserSpace( rEditEngine.GetCharacterBounds( EPaM(nPara, nIndex) ),
                                                    aSize, bIsVertical );
     }
 }
@@ -396,7 +391,7 @@ bool SvxEditEngineForwarder::GetIndexAtPoint( const Point& rPos, sal_Int32& nPar
                                                       aSize,
                                                       rEditEngine.IsEffectivelyVertical() ));
 
-    EPosition aDocPos = rEditEngine.FindDocPosition( aEEPos );
+    EPaM aDocPos = rEditEngine.FindDocPosition(aEEPos);
 
     nPara = aDocPos.nPara;
     nIndex = aDocPos.nIndex;
@@ -408,11 +403,11 @@ bool SvxEditEngineForwarder::GetWordIndices( sal_Int32 nPara, sal_Int32 nIndex, 
 {
     ESelection aRes = rEditEngine.GetWord( ESelection(nPara, nIndex, nPara, nIndex), css::i18n::WordType::DICTIONARY_WORD );
 
-    if( aRes.nStartPara == nPara &&
-        aRes.nStartPara == aRes.nEndPara )
+    if( aRes.start.nPara == nPara &&
+        aRes.start.nPara == aRes.end.nPara )
     {
-        nStart = aRes.nStartPos;
-        nEnd = aRes.nEndPos;
+        nStart = aRes.start.nIndex;
+        nEnd = aRes.end.nIndex;
 
         return true;
     }
@@ -470,6 +465,12 @@ bool SvxEditEngineForwarder::InsertText( const OUString& rStr, const ESelection&
     return true;
 }
 
+bool SvxEditEngineForwarder::SupportsOutlineDepth() const
+{
+    // EditEngine does not support outline depth indirectly - directly supports EE_PARA_OUTLLEVEL
+    return false;
+}
+
 sal_Int16 SvxEditEngineForwarder::GetDepth( sal_Int32 ) const
 {
     // EditEngine does not support outline depth
@@ -501,7 +502,7 @@ sal_Int32 SvxEditEngineForwarder::AppendTextPortion( sal_Int32 nPara, const OUSt
     if (0 <= nPara && nPara < nParaCount)
     {
         nLen = rEditEngine.GetTextLen( nPara );
-        rEditEngine.QuickInsertText( rText, ESelection( nPara, nLen, nPara, nLen ) );
+        rEditEngine.QuickInsertText(rText, ESelection(nPara, nLen));
     }
 
     return nLen;

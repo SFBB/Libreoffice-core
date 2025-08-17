@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVX_SMARTTAGMGR_HXX
-#define INCLUDED_SVX_SMARTTAGMGR_HXX
+#pragma once
 
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/uno/Reference.hxx>
@@ -53,8 +52,6 @@ namespace com::sun::star::i18n {
 
 namespace com::sun::star::lang {
     struct Locale;
-    struct EventObject;
-    struct ChangesEvent;
 }
 
 namespace com::sun::star::beans {
@@ -226,7 +223,5 @@ public:
     // css::util::XChangesListener
       virtual void SAL_CALL changesOccurred( const css::util::ChangesEvent& Event ) override;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

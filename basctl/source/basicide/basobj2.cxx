@@ -238,7 +238,7 @@ OUString ChooseMacro(weld::Window* pParent,
     SbMethod* pMethod = nullptr;
 
     MacroChooser aChooser(pParent, xDocFrame);
-    if ( bChooseOnly || !SvtModuleOptions::IsBasicIDE() )
+    if (bChooseOnly || !SvtModuleOptions::IsBasicIDEInstalled())
         aChooser.SetMode(MacroChooser::ChooseOnly);
 
     if ( !bChooseOnly && rxLimitToDocument.is() )
@@ -342,7 +342,7 @@ OUString ChooseMacro(weld::Window* pParent,
             if ( !rxLimitToDocument.is() )
             {
                 MacroExecutionData* pExecData = new MacroExecutionData;
-                pExecData->aDocument = aDocument;
+                pExecData->aDocument = std::move(aDocument);
                 pExecData->xMethod = pMethod;   // keep alive until the event has been processed
                 Application::PostUserEvent( LINK( nullptr, MacroExecution, ExecuteMacroEvent ), pExecData );
             }
@@ -389,9 +389,9 @@ Sequence< OUString > GetMethodNames( const ScriptDocument& rDocument, const OUSt
         for ( sal_uInt32 i = 0 ; i < nCount; ++i )
         {
             SbMethod* pMethod = static_cast<SbMethod*>(pMod->GetMethods()->Get(i));
+            assert(pMethod && "Method not found! (NULL)");
             if( pMethod->IsHidden() )
                 continue;
-            SAL_WARN_IF( !pMethod, "basctl.basicide","Method not found! (NULL)" );
             aSeqMethods.getArray()[ iTarget++ ] = pMethod->GetName();
         }
     }

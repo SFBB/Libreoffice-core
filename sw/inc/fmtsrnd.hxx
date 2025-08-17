@@ -25,8 +25,6 @@
 #include "format.hxx"
 #include <svl/eitem.hxx>
 
-class IntlWrapper;
-
 /// Defines the way you want text to wrap around an object. This pool item can appear in a frame
 /// styles and in the item set of an sw::SpzFrameFormat. It's Format -> Image -> Properties -> Wrap
 /// on the UI.
@@ -36,12 +34,12 @@ class SW_DLLPUBLIC SwFormatSurround final : public SfxEnumItem<css::text::WrapTe
     bool    m_bContour    :1;
     bool    m_bOutside    :1;
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatSurround)
     SwFormatSurround( css::text::WrapTextMode eNew = css::text::WrapTextMode_PARALLEL );
 
     // "Pure virtual Methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual SwFormatSurround* Clone( SfxItemPool* pPool = nullptr ) const override;
-    virtual sal_uInt16      GetValueCount() const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,

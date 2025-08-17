@@ -34,7 +34,6 @@
 using namespace css::uno;
 using namespace css::lang;
 using namespace css::beans;
-using namespace css::container;
 using namespace css::frame;
 using namespace framework;
 
@@ -238,7 +237,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.PopupMenuControllerFactory";
+        return u"com.sun.star.comp.framework.PopupMenuControllerFactory"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -248,7 +247,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.frame.PopupMenuControllerFactory"};
+        return {u"com.sun.star.frame.PopupMenuControllerFactory"_ustr};
     }
 
 };
@@ -265,7 +264,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.ToolBarControllerFactory";
+        return u"com.sun.star.comp.framework.ToolBarControllerFactory"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -275,7 +274,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.frame.ToolbarControllerFactory"};
+        return {u"com.sun.star.frame.ToolbarControllerFactory"_ustr};
     }
 
 };
@@ -292,7 +291,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.StatusBarControllerFactory";
+        return u"com.sun.star.comp.framework.StatusBarControllerFactory"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -302,7 +301,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.frame.StatusbarControllerFactory"};
+        return {u"com.sun.star.frame.StatusbarControllerFactory"_ustr};
     }
 
 };

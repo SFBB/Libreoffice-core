@@ -51,8 +51,8 @@ ScDescriptiveStatisticsDialog::ScDescriptiveStatisticsDialog(
                     weld::Window* pParent, ScViewData& rViewData ) :
     ScStatisticsInputOutputDialog(
             pSfxBindings, pChildWindow, pParent, rViewData,
-            "modules/scalc/ui/descriptivestatisticsdialog.ui",
-            "DescriptiveStatisticsDialog")
+            u"modules/scalc/ui/descriptivestatisticsdialog.ui"_ustr,
+            u"DescriptiveStatisticsDialog"_ustr)
 {}
 
 ScDescriptiveStatisticsDialog::~ScDescriptiveStatisticsDialog()
@@ -68,9 +68,9 @@ TranslateId ScDescriptiveStatisticsDialog::GetUndoNameId()
     return STR_DESCRIPTIVE_STATISTICS_UNDO_NAME;
 }
 
-ScRange ScDescriptiveStatisticsDialog::ApplyOutput(ScDocShell* pDocShell)
+ScRange ScDescriptiveStatisticsDialog::ApplyOutput(ScDocShell& rDocShell)
 {
-    AddressWalkerWriter aOutput(mOutputAddress, pDocShell, mDocument,
+    AddressWalkerWriter aOutput(mOutputAddress, rDocShell, mDocument,
             formula::FormulaGrammar::mergeToGrammar( formula::FormulaGrammar::GRAM_ENGLISH, mAddressDetails.eConv));
     FormulaTemplate aTemplate(&mDocument);
 

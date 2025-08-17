@@ -7,9 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-
-#ifndef TOXTABSTOPTOKENHANDLER_HXX_
-#define TOXTABSTOPTOKENHANDLER_HXX_
+#pragma once
 
 #include <rtl/ustring.hxx>
 
@@ -45,8 +43,11 @@ public:
      *          and to provide the returned SvxTabStop to the attributes of the node.
      */
     virtual HandledTabStopToken
-    HandleTabStopToken(const SwFormToken& aToken, const SwTextNode& targetNode,
-            const SwRootFrame *currentLayout) const = 0;
+    HandleTabStopToken(const SwFormToken& aToken, const SwTextNode& targetNode)
+        const = 0;
+
+    virtual auto CalcEndStop(SwTextNode const& rNode,
+            SwRootFrame const* pLayout) const -> tools::Long = 0;
 };
 
 /** The default implementation of ToxTabStopTokenHandler */
@@ -83,8 +84,11 @@ public:
      * method behaves differently when deriving the tab stop position.
      */
     ToxTabStopTokenHandler::HandledTabStopToken
-    HandleTabStopToken(const SwFormToken& aToken, const SwTextNode& targetNode,
-            const SwRootFrame *currentLayout) const override;
+    HandleTabStopToken(const SwFormToken& aToken, const SwTextNode& targetNode)
+        const override;
+
+    auto CalcEndStop(SwTextNode const& rNode,
+            SwRootFrame const* pLayout) const -> tools::Long override;
 
 private:
     /** Test whether the page layout can be obtained by a layout rectangle.
@@ -108,7 +112,5 @@ private:
 };
 
 }
-
-#endif /* TOXTABSTOPTOKENHANDLER_HXX_ */
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

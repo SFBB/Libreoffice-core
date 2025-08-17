@@ -14,10 +14,13 @@
 #include "UCBDeadPropertyValue.hxx"
 #include "webdavresponseparser.hxx"
 
+#include <cppuhelper/implbase.hxx>
+#include <comphelper/processfactory.hxx>
 #include <comphelper/attributelist.hxx>
-#include <comphelper/lok.hxx>
 #include <comphelper/scopeguard.hxx>
 #include <comphelper/string.hxx>
+#include <cppuhelper/queryinterface.hxx>
+#include <cppuhelper/supportsservice.hxx>
 
 #include <o3tl/safeint.hxx>
 #include <o3tl/string_view.hxx>
@@ -27,6 +30,7 @@
 
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/io/Pipe.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/io/SequenceInputStream.hpp>
 #include <com/sun/star/io/SequenceOutputStream.hpp>
 #include <com/sun/star/xml/sax/Writer.hpp>
@@ -37,6 +41,7 @@
 #include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <systools/curlinit.hxx>
+#include <tools/hostfilter.hxx>
 #include <config_version.h>
 
 #include <map>
@@ -44,10 +49,18 @@
 #include <tuple>
 #include <utility>
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#endif
+
 using namespace ::com::sun::star;
 
 namespace
 {
+void lock_cb(CURL*, curl_lock_data, curl_lock_access, void*);
+void unlock_cb(CURL*, curl_lock_data, void*);
+
 /// globals container
 struct Init
 {
@@ -55,16 +68,74 @@ struct Init
     ///       so don't call LockStore with m_Mutex held to prevent deadlock.
     ::http_dav_ucp::SerfLockStore LockStore;
 
+    /// libcurl shared data - to store cookies beyond one connection
+    ::std::mutex ShareLock[CURL_LOCK_DATA_LAST];
+    ::std::unique_ptr<CURLSH, http_dav_ucp::deleter_from_fn<CURLSH, curl_share_cleanup>> pShare;
+
     Init()
     {
         if (curl_global_init(CURL_GLOBAL_ALL) != CURLE_OK)
         {
             assert(!"curl_global_init failed");
+            ::std::abort(); // can't handle error here
         }
+        pShare.reset(curl_share_init());
+        if (!pShare)
+        {
+            assert(!"curl_share_init failed");
+            ::std::abort(); // can't handle error here
+        }
+        CURLSHcode sh = curl_share_setopt(pShare.get(), CURLSHOPT_LOCKFUNC, lock_cb);
+        if (sh != CURLSHE_OK)
+        {
+            assert(!"curl_share_setopt failed");
+            ::std::abort(); // can't handle error here
+        }
+        sh = curl_share_setopt(pShare.get(), CURLSHOPT_UNLOCKFUNC, unlock_cb);
+        if (sh != CURLSHE_OK)
+        {
+            assert(!"curl_share_setopt failed");
+            ::std::abort(); // can't handle error here
+        }
+        sh = curl_share_setopt(pShare.get(), CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
+        if (sh != CURLSHE_OK)
+        {
+            assert(!"curl_share_setopt failed");
+            ::std::abort(); // can't handle error here
+        }
+        sh = curl_share_setopt(pShare.get(), CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
+        // might fail but this is just a perf improvement
+        SAL_WARN_IF(sh != CURLSHE_OK, "ucb.ucp.webdav.curl", "curl_share_setopt failed");
+        sh = curl_share_setopt(pShare.get(), CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
+        // might fail but this is just a perf improvement
+        SAL_WARN_IF(sh != CURLSHE_OK, "ucb.ucp.webdav.curl", "curl_share_setopt failed");
+        // note: CURL_LOCK_DATA_CONNECT isn't safe in a multi threaded program.
     }
     // do not call curl_global_cleanup() - this is not the only client of curl
 };
 Init g_Init;
+
+// global callbacks
+
+void lock_cb(CURL* /*handle*/, curl_lock_data const data, curl_lock_access /*access*/,
+             void* /*userptr*/)
+{
+    assert(0 <= data && data < CURL_LOCK_DATA_LAST);
+    try
+    {
+        g_Init.ShareLock[data].lock();
+    }
+    catch (std::exception const&)
+    {
+        ::std::abort();
+    }
+}
+
+void unlock_cb(CURL* /*handle*/, curl_lock_data const data, void* /*userptr*/)
+{
+    assert(0 <= data && data < CURL_LOCK_DATA_LAST);
+    g_Init.ShareLock[data].unlock();
+}
 
 struct ResponseHeaders
 {
@@ -165,15 +236,6 @@ struct CurlOption
         }
     }
 };
-
-// NOBODY will prevent logging the response body in ProcessRequest() exception
-// handler, so only use it if logging is disabled
-const CurlOption g_NoBody{ CURLOPT_NOBODY,
-                           sal_detail_log_report(SAL_DETAIL_LOG_LEVEL_INFO, "ucb.ucp.webdav.curl")
-                                   == SAL_DETAIL_LOG_ACTION_IGNORE
-                               ? 1L
-                               : 0L,
-                           nullptr };
 
 /// combined guard class to ensure things are released in correct order,
 /// particularly in ProcessRequest() error handling
@@ -457,19 +519,19 @@ static auto ProcessHeaders(::std::vector<OString> const& rHeaders) -> ::std::map
     ::std::map<OUString, OUString> ret;
     for (OString const& rLine : rHeaders)
     {
-        OString line;
+        std::string_view line;
         if (!rLine.endsWith("\r\n", &line))
         {
             SAL_WARN("ucb.ucp.webdav.curl", "invalid header field (no CRLF)");
             continue;
         }
-        if (line.startsWith("HTTP/") // first line
-            || line.isEmpty()) // last line
+        if (o3tl::starts_with(line, "HTTP/") // first line
+            || line.empty()) // last line
         {
             continue;
         }
-        auto const nColon(line.indexOf(':'));
-        if (nColon == -1)
+        const std::string_view::size_type nColon(line.find(':'));
+        if (nColon == std::string_view::npos)
         {
             {
                 SAL_WARN("ucb.ucp.webdav.curl", "invalid header field (no :)");
@@ -481,21 +543,22 @@ static auto ProcessHeaders(::std::vector<OString> const& rHeaders) -> ::std::map
             SAL_WARN("ucb.ucp.webdav.curl", "invalid header field (empty name)");
             continue;
         }
+        assert(nColon != std::string_view::npos);
         // case insensitive; must be ASCII
-        auto const name(::rtl::OStringToOUString(line.copy(0, nColon).toAsciiLowerCase(),
+        auto const name(::rtl::OStringToOUString(OString(line.substr(0, nColon)).toAsciiLowerCase(),
                                                  RTL_TEXTENCODING_ASCII_US));
-        sal_Int32 nStart(nColon + 1);
-        while (nStart < line.getLength() && (line[nStart] == ' ' || line[nStart] == '\t'))
+        std::string_view::size_type nStart(nColon + 1);
+        while (nStart < line.size() && (line[nStart] == ' ' || line[nStart] == '\t'))
         {
             ++nStart;
         }
-        sal_Int32 nEnd(line.getLength());
+        std::string_view::size_type nEnd(line.size());
         while (nStart < nEnd && (line[nEnd - 1] == ' ' || line[nEnd - 1] == '\t'))
         {
             --nEnd;
         }
         // RFC 7230 says that only ASCII works reliably anyway (neon also did this)
-        auto const value(::rtl::OStringToOUString(line.subView(nStart, nEnd - nStart),
+        auto const value(::rtl::OStringToOUString(line.substr(nStart, nEnd - nStart),
                                                   RTL_TEXTENCODING_ASCII_US));
         auto const it(ret.find(name));
         if (it != ret.end())
@@ -588,6 +651,67 @@ static auto ExtractRealm(ResponseHeaders const& rHeaders, char const* const pAut
     return buf.makeStringAndClear();
 }
 
+#ifndef _WIN32
+
+static std::string makeIPAddress(const sockaddr& ai_addr)
+{
+    char addrstr[INET6_ADDRSTRLEN];
+
+    static_assert(INET6_ADDRSTRLEN >= INET_ADDRSTRLEN, "ipv6 addresses are longer than ipv4");
+    const void* inAddr = nullptr;
+    switch (ai_addr.sa_family)
+    {
+        case AF_INET:
+        {
+            auto ipv4 = reinterpret_cast<const sockaddr_in*>(&ai_addr);
+            inAddr = &(ipv4->sin_addr);
+            break;
+        }
+        case AF_INET6:
+        {
+            auto ipv6 = reinterpret_cast<const sockaddr_in6*>(&ai_addr);
+            inAddr = &(ipv6->sin6_addr);
+            break;
+        }
+    }
+
+    if (!inAddr)
+    {
+        SAL_WARN("ucb.ucp.webdav.curl", "Unknown sa_family: " << ai_addr.sa_family);
+        return std::string();
+    }
+
+    const char* result = inet_ntop(ai_addr.sa_family, inAddr, addrstr, sizeof(addrstr));
+    if (!result)
+    {
+        SAL_WARN("ucb.ucp.webdav.curl", "inet_ntop failure");
+        return std::string();
+    }
+    return std::string(result);
+}
+
+// filter out connections to instance metadata
+static curl_socket_t opensocket_callback(void* /*clientp*/, curlsocktype purpose,
+                                         struct curl_sockaddr* address)
+{
+    if (purpose == CURLSOCKTYPE_IPCXN)
+    {
+        if (address->family == AF_INET && makeIPAddress(address->addr) == "169.254.169.254")
+        {
+            SAL_WARN("ucb.ucp.webdav.curl", "ignoring instance metadata ip");
+            return CURL_SOCKET_BAD;
+        }
+        else if (address->family == AF_INET6 && makeIPAddress(address->addr) == "fd00:ec2::254")
+        {
+            SAL_WARN("ucb.ucp.webdav.curl", "ignoring instance metadata ip");
+            return CURL_SOCKET_BAD;
+        }
+    }
+    return socket(address->family, address->socktype, address->protocol);
+}
+
+#endif
+
 CurlSession::CurlSession(uno::Reference<uno::XComponentContext> xContext,
                          ::rtl::Reference<DAVSessionFactory> const& rpFactory, OUString const& rURI,
                          uno::Sequence<beans::NamedValue> const& rFlags,
@@ -672,6 +796,8 @@ CurlSession::CurlSession(uno::Reference<uno::XComponentContext> xContext,
         assert(rc == CURLE_OK);
 #endif
     }
+    rc = curl_easy_setopt(m_pCurl.get(), CURLOPT_SHARE, g_Init.pShare.get());
+    assert(rc == CURLE_OK);
     // set this initially, may be overwritten during authentication
     rc = curl_easy_setopt(m_pCurl.get(), CURLOPT_HTTPAUTH, CURLAUTH_ANY);
     assert(rc == CURLE_OK); // ANY is always available
@@ -698,14 +824,20 @@ CurlSession::CurlSession(uno::Reference<uno::XComponentContext> xContext,
         rc = curl_easy_setopt(m_pCurl.get(), CURLOPT_FORBID_REUSE, 1L);
         assert(rc == CURLE_OK);
     }
-    // If WOPI-like host has self-signed certificate, it's not possible to insert images
-    // to the document, so here is a compromise. The user has already accepted the self
-    // signed certificate in the browser, when we get here.
-    if (comphelper::LibreOfficeKit::isActive())
+    if (HostFilter::isExemptVerifyHost(m_URI.GetHost()))
     {
-        rc = curl_easy_setopt(m_pCurl.get(), CURLOPT_SSL_VERIFYPEER, 0L);
+        rc = curl_easy_setopt(m_pCurl.get(), CURLOPT_SSL_VERIFYHOST, 0L);
         assert(rc == CURLE_OK);
     }
+
+#ifndef _WIN32
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        //See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html
+        rc = curl_easy_setopt(m_pCurl.get(), CURLOPT_OPENSOCKETFUNCTION, opensocket_callback);
+        assert(rc == CURLE_OK);
+    }
+#endif
 }
 
 CurlSession::~CurlSession() {}
@@ -917,7 +1049,7 @@ auto CurlProcessor::ProcessRequestImpl(
         }
         if (rSession.m_AbortFlag.load())
         { // flag was set by abort() -> not sure what exception to throw?
-            throw DAVException(DAVException::DAV_HTTP_ERROR, "abort() was called", 0);
+            throw DAVException(DAVException::DAV_HTTP_ERROR, u"abort() was called"_ustr, 0);
         }
     } while (nRunning != 0);
     // there should be exactly 1 CURLMsg now, but the interface is
@@ -940,18 +1072,21 @@ auto CurlProcessor::ProcessRequestImpl(
     if (rc != CURLE_OK)
     {
         // TODO: is there any value in extracting CURLINFO_OS_ERRNO
-        SAL_WARN("ucb.ucp.webdav.curl",
-                 "curl_easy_perform failed: " << GetErrorString(rc, rSession.m_ErrorBuffer));
+        auto const errorString(GetErrorString(rc, rSession.m_ErrorBuffer));
+        SAL_WARN("ucb.ucp.webdav.curl", "curl_easy_perform failed: " << errorString);
         switch (rc)
         {
             case CURLE_UNSUPPORTED_PROTOCOL:
-                throw DAVException(DAVException::DAV_UNSUPPORTED);
+                throw DAVException(DAVException::DAV_UNSUPPORTED, u""_ustr,
+                                   rtl::OStringToOUString(errorString, RTL_TEXTENCODING_UTF8));
             case CURLE_COULDNT_RESOLVE_PROXY:
-                throw DAVException(DAVException::DAV_HTTP_LOOKUP, rSession.m_Proxy);
+                throw DAVException(DAVException::DAV_HTTP_LOOKUP, rSession.m_Proxy,
+                                   rtl::OStringToOUString(errorString, RTL_TEXTENCODING_UTF8));
             case CURLE_COULDNT_RESOLVE_HOST:
                 throw DAVException(
                     DAVException::DAV_HTTP_LOOKUP,
-                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()));
+                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()),
+                    rtl::OStringToOUString(errorString, RTL_TEXTENCODING_UTF8));
             case CURLE_COULDNT_CONNECT:
             case CURLE_SSL_CONNECT_ERROR:
             case CURLE_SSL_CERTPROBLEM:
@@ -966,13 +1101,15 @@ auto CurlProcessor::ProcessRequestImpl(
 #endif
                 throw DAVException(
                     DAVException::DAV_HTTP_CONNECT,
-                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()));
+                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()),
+                    rtl::OStringToOUString(errorString, RTL_TEXTENCODING_UTF8));
             case CURLE_REMOTE_ACCESS_DENIED:
             case CURLE_LOGIN_DENIED:
             case CURLE_AUTH_ERROR:
                 throw DAVException(
                     DAVException::DAV_HTTP_AUTH, // probably?
-                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()));
+                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()),
+                    rtl::OStringToOUString(errorString, RTL_TEXTENCODING_UTF8));
             case CURLE_WRITE_ERROR:
             case CURLE_READ_ERROR: // error returned from our callbacks
             case CURLE_OUT_OF_MEMORY:
@@ -985,13 +1122,16 @@ auto CurlProcessor::ProcessRequestImpl(
             case CURLE_RECURSIVE_API_CALL:
                 throw DAVException(
                     DAVException::DAV_HTTP_FAILED,
-                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()));
+                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()),
+                    rtl::OStringToOUString(errorString, RTL_TEXTENCODING_UTF8));
             case CURLE_OPERATION_TIMEDOUT:
                 throw DAVException(
                     DAVException::DAV_HTTP_TIMEOUT,
-                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()));
+                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()),
+                    rtl::OStringToOUString(errorString, RTL_TEXTENCODING_UTF8));
             default: // lots of generic errors
-                throw DAVException(DAVException::DAV_HTTP_ERROR, "", 0);
+                throw DAVException(DAVException::DAV_HTTP_ERROR, u""_ustr,
+                                   rtl::OStringToOUString(errorString, RTL_TEXTENCODING_UTF8));
         }
     }
     // error handling part 2: HTTP status codes
@@ -1040,9 +1180,7 @@ auto CurlProcessor::ProcessRequestImpl(
                 {
                     // Sharepoint 2016 workaround: contains unencoded U+0020
                     OUString const redirectURL(::rtl::Uri::encode(
-                        pRedirectURL
-                            ? OUString(pRedirectURL, strlen(pRedirectURL), RTL_TEXTENCODING_UTF8)
-                            : OUString(),
+                        OUString(pRedirectURL, strlen(pRedirectURL), RTL_TEXTENCODING_UTF8),
                         rtl_UriCharClassUric, rtl_UriEncodeKeepEscapes, RTL_TEXTENCODING_UTF8));
 
                     throw DAVException(DAVException::DAV_HTTP_REDIRECT, redirectURL);
@@ -1116,6 +1254,12 @@ auto CurlProcessor::ProcessRequest(
     ::std::pair<::std::vector<OUString> const&, DAVResource&> const* const pRequestedHeaders)
     -> void
 {
+    if (HostFilter::isForbidden(rURI.GetHost()))
+    {
+        SAL_WARN("ucb.ucp.webdav.curl", "Access denied to host: " << rURI.GetHost());
+        throw uno::RuntimeException(u"access to host denied"_ustr);
+    }
+
     if (pEnv)
     { // add custom request headers passed by caller
         for (auto const& rHeader : pEnv->m_aRequestHeaders)
@@ -1127,7 +1271,7 @@ auto CurlProcessor::ProcessRequest(
                 curl_slist_append(pRequestHeaderList.release(), utf8Header.getStr()));
             if (!pRequestHeaderList)
             {
-                throw uno::RuntimeException("curl_slist_append failed");
+                throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
             }
         }
     }
@@ -1141,7 +1285,7 @@ auto CurlProcessor::ProcessRequest(
             auto const len(xSeekable->getLength() - xSeekable->getPosition());
             if ((**pxInStream).readBytes(data, len) != len)
             {
-                throw uno::RuntimeException("short readBytes");
+                throw uno::RuntimeException(u"short readBytes"_ustr);
             }
         }
         else
@@ -1183,10 +1327,10 @@ auto CurlProcessor::ProcessRequest(
         OUString UserName;
         OUString PassWord;
         decltype(CURLAUTH_ANY) AuthMask; ///< allowed auth methods
-        Auth(OUString aUserName, OUString aPassword, decltype(CURLAUTH_ANY) const & rAuthMask)
+        Auth(OUString aUserName, OUString aPassword, decltype(CURLAUTH_ANY) aAuthMask)
             : UserName(std::move(aUserName))
             , PassWord(std::move(aPassword))
-            , AuthMask(rAuthMask)
+            , AuthMask(aAuthMask)
         {
         }
     };
@@ -1267,9 +1411,14 @@ auto CurlProcessor::ProcessRequest(
                 throw DAVException(DAVException::DAV_INVALID_ARG);
             }
             rc = curl_easy_setopt(rSession.m_pCurl.get(), CURLOPT_HTTPAUTH, oAuth->AuthMask);
-            assert(
-                rc
-                == CURLE_OK); // it shouldn't be possible to reduce auth to 0 via the authSystem masks
+            if (rc != CURLE_OK)
+            { // NEGOTIATE typically disabled on Linux, NTLM is optional too
+                assert(rc == CURLE_NOT_BUILT_IN);
+                SAL_INFO("ucb.ucp.webdav.curl", "no auth method available");
+                throw DAVException(
+                    DAVException::DAV_HTTP_NOAUTH,
+                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()));
+            }
         }
 
         if (oAuthProxy && !rSession.m_isAuthenticatedProxy)
@@ -1295,9 +1444,14 @@ auto CurlProcessor::ProcessRequest(
                 throw DAVException(DAVException::DAV_INVALID_ARG);
             }
             rc = curl_easy_setopt(rSession.m_pCurl.get(), CURLOPT_PROXYAUTH, oAuthProxy->AuthMask);
-            assert(
-                rc
-                == CURLE_OK); // it shouldn't be possible to reduce auth to 0 via the authSystem masks
+            if (rc != CURLE_OK)
+            { // NEGOTIATE typically disabled on Linux, NTLM is optional too
+                assert(rc == CURLE_NOT_BUILT_IN);
+                SAL_INFO("ucb.ucp.webdav.curl", "no auth method available");
+                throw DAVException(
+                    DAVException::DAV_HTTP_NOAUTH,
+                    ConnectionEndPointString(rSession.m_URI.GetHost(), rSession.m_URI.GetPort()));
+            }
         }
 
         ResponseHeaders headers(rSession.m_pCurl.get());
@@ -1379,6 +1533,31 @@ auto CurlProcessor::ProcessRequest(
                         }
                         break;
                     }
+                    case SC_FORBIDDEN:
+                    {
+                        ::std::map<OUString, OUString> const headerMap(
+                            ProcessHeaders(headers.HeaderFields.back().first));
+                        // X-MSDAVEXT_Error see [MS-WEBDAVE] 2.2.3.1.9
+                        auto const it(headerMap.find(u"x-msdavext_error"_ustr));
+                        if (it == headerMap.end() || !it->second.startsWith("917656;"))
+                        {
+                            break;
+                        }
+                        // fallback needs cookie engine enabled
+                        CURLcode rc
+                            = curl_easy_setopt(rSession.m_pCurl.get(), CURLOPT_COOKIEFILE, "");
+                        assert(rc == CURLE_OK);
+                        (void)rc;
+                        SAL_INFO("ucb.ucp.webdav.curl", "403 fallback authentication");
+                        // disable 302 redirect
+                        pRequestHeaderList.reset(curl_slist_append(
+                            pRequestHeaderList.release(), "X-FORMS_BASED_AUTH_ACCEPTED: f"));
+                        if (!pRequestHeaderList)
+                        {
+                            throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
+                        }
+                    }
+                        [[fallthrough]]; // SP, no cookie, or cookie failed: try NTLM/Negotiate
                     case SC_UNAUTHORIZED:
                     case SC_PROXY_AUTHENTICATION_REQUIRED:
                     {
@@ -1386,8 +1565,9 @@ auto CurlProcessor::ProcessRequest(
                              ? rSession.m_isAuthenticated
                              : rSession.m_isAuthenticatedProxy)
                             = false; // any auth data in m_pCurl is invalid
-                        auto& rnAuthRequests(statusCode == SC_UNAUTHORIZED ? nAuthRequests
-                                                                           : nAuthRequestsProxy);
+                        auto& rnAuthRequests(statusCode != SC_PROXY_AUTHENTICATION_REQUIRED
+                                                 ? nAuthRequests
+                                                 : nAuthRequestsProxy);
                         if (rnAuthRequests == 10)
                         {
                             SAL_INFO("ucb.ucp.webdav.curl", "aborting authentication after "
@@ -1395,22 +1575,54 @@ auto CurlProcessor::ProcessRequest(
                         }
                         else if (pEnv && pEnv->m_xAuthListener)
                         {
-                            ::std::optional<OUString> const oRealm(ExtractRealm(
-                                headers, statusCode == SC_UNAUTHORIZED ? "WWW-Authenticate"
-                                                                       : "Proxy-Authenticate"));
+                            ::std::optional<OUString> const oRealm(
+                                ExtractRealm(headers, statusCode != SC_PROXY_AUTHENTICATION_REQUIRED
+                                                          ? "WWW-Authenticate"
+                                                          : "Proxy-Authenticate"));
 
                             ::std::optional<Auth>& roAuth(
-                                statusCode == SC_UNAUTHORIZED ? oAuth : oAuthProxy);
+                                statusCode != SC_PROXY_AUTHENTICATION_REQUIRED ? oAuth
+                                                                               : oAuthProxy);
                             OUString userName(roAuth ? roAuth->UserName : OUString());
                             OUString passWord(roAuth ? roAuth->PassWord : OUString());
                             long authAvail(0);
-                            auto const rc = curl_easy_getinfo(rSession.m_pCurl.get(),
-                                                              statusCode == SC_UNAUTHORIZED
-                                                                  ? CURLINFO_HTTPAUTH_AVAIL
-                                                                  : CURLINFO_PROXYAUTH_AVAIL,
-                                                              &authAvail);
+                            auto rc
+                                = curl_easy_getinfo(rSession.m_pCurl.get(),
+                                                    statusCode != SC_PROXY_AUTHENTICATION_REQUIRED
+                                                        ? CURLINFO_HTTPAUTH_AVAIL
+                                                        : CURLINFO_PROXYAUTH_AVAIL,
+                                                    &authAvail);
                             assert(rc == CURLE_OK);
-                            (void)rc;
+                            if (statusCode == SC_FORBIDDEN)
+                            { // SharePoint fallback: try Negotiate auth
+                                assert(authAvail == 0);
+                                // note: this must be a single value!
+                                // would need 2 iterations to try CURLAUTH_NTLM too
+                                rc = curl_easy_setopt(rSession.m_pCurl.get(), CURLOPT_HTTPAUTH,
+                                                      CURLAUTH_NEGOTIATE);
+                                if (rc == CURLE_OK)
+                                {
+                                    authAvail = CURLAUTH_NEGOTIATE;
+                                }
+                                else
+                                {
+                                    rc = curl_easy_setopt(rSession.m_pCurl.get(), CURLOPT_HTTPAUTH,
+                                                          CURLAUTH_NTLM);
+                                    if (rc == CURLE_OK)
+                                    {
+                                        authAvail = CURLAUTH_NTLM;
+                                    }
+                                    else
+                                    { // can't work
+                                        SAL_INFO("ucb.ucp.webdav.curl",
+                                                 "no SP fallback auth method available");
+                                        throw DAVException(
+                                            DAVException::DAV_HTTP_NOAUTH,
+                                            ConnectionEndPointString(rSession.m_URI.GetHost(),
+                                                                     rSession.m_URI.GetPort()));
+                                    }
+                                }
+                            }
                             // only allow SystemCredentials once - the
                             // PasswordContainer may have stored it in the
                             // Config (TrySystemCredentialsFirst or
@@ -1428,9 +1640,10 @@ auto CurlProcessor::ProcessRequest(
                             guard.Release();
 
                             auto const ret = pEnv->m_xAuthListener->authenticate(
-                                oRealm ? *oRealm : "",
-                                statusCode == SC_UNAUTHORIZED ? rSession.m_URI.GetHost()
-                                                              : rSession.m_Proxy,
+                                oRealm ? *oRealm : u""_ustr,
+                                statusCode != SC_PROXY_AUTHENTICATION_REQUIRED
+                                    ? rSession.m_URI.GetHost()
+                                    : rSession.m_Proxy,
                                 userName, passWord, isSystemCredSupported);
 
                             if (ret == 0)
@@ -1515,16 +1728,15 @@ auto CurlSession::OPTIONS(OUString const& rURIReference,
 
     CurlUri const uri(CurlProcessor::URIReferenceToURI(*this, rURIReference));
 
-    ::std::vector<OUString> const headerNames{ "allow", "dav" };
+    ::std::vector<OUString> const headerNames{ u"allow"_ustr, u"dav"_ustr };
     DAVResource result;
     ::std::pair<::std::vector<OUString> const&, DAVResource&> const headers(headerNames, result);
 
-    ::std::vector<CurlOption> const options{
-        g_NoBody, { CURLOPT_CUSTOMREQUEST, "OPTIONS", "CURLOPT_CUSTOMREQUEST" }
-    };
+    ::std::vector<CurlOption> const options{ { CURLOPT_CUSTOMREQUEST, "OPTIONS",
+                                               "CURLOPT_CUSTOMREQUEST" } };
 
-    CurlProcessor::ProcessRequest(*this, uri, "OPTIONS", options, &rEnv, nullptr, nullptr, nullptr,
-                                  &headers);
+    CurlProcessor::ProcessRequest(*this, uri, u"OPTIONS"_ustr, options, &rEnv, nullptr, nullptr,
+                                  nullptr, &headers);
 
     for (auto const& it : result.properties)
     {
@@ -1585,7 +1797,7 @@ auto CurlProcessor::PropFind(
     pList.reset(curl_slist_append(pList.release(), "Content-Type: application/xml"));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
     OString depth;
     switch (nDepth)
@@ -1605,7 +1817,7 @@ auto CurlProcessor::PropFind(
     pList.reset(curl_slist_append(pList.release(), depth.getStr()));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
 
     uno::Reference<io::XSequenceOutputStream> const xSeqOutStream(
@@ -1617,36 +1829,36 @@ auto CurlProcessor::PropFind(
     xWriter->setOutputStream(xRequestOutStream);
     xWriter->startDocument();
     rtl::Reference<::comphelper::AttributeList> const pAttrList(new ::comphelper::AttributeList);
-    pAttrList->AddAttribute("xmlns", "DAV:");
-    xWriter->startElement("propfind", pAttrList);
+    pAttrList->AddAttribute(u"xmlns"_ustr, u"DAV:"_ustr);
+    xWriter->startElement(u"propfind"_ustr, pAttrList);
     if (o_pResourceInfos)
     {
-        xWriter->startElement("propname", nullptr);
-        xWriter->endElement("propname");
+        xWriter->startElement(u"propname"_ustr, nullptr);
+        xWriter->endElement(u"propname"_ustr);
     }
     else
     {
         if (::std::get<0>(*o_pRequestedProperties).empty())
         {
-            xWriter->startElement("allprop", nullptr);
-            xWriter->endElement("allprop");
+            xWriter->startElement(u"allprop"_ustr, nullptr);
+            xWriter->endElement(u"allprop"_ustr);
         }
         else
         {
-            xWriter->startElement("prop", nullptr);
+            xWriter->startElement(u"prop"_ustr, nullptr);
             for (OUString const& rName : ::std::get<0>(*o_pRequestedProperties))
             {
                 SerfPropName name;
                 DAVProperties::createSerfPropName(rName, name);
                 pAttrList->Clear();
-                pAttrList->AddAttribute("xmlns", OUString::createFromAscii(name.nspace));
+                pAttrList->AddAttribute(u"xmlns"_ustr, OUString::createFromAscii(name.nspace));
                 xWriter->startElement(OUString::createFromAscii(name.name), pAttrList);
                 xWriter->endElement(OUString::createFromAscii(name.name));
             }
-            xWriter->endElement("prop");
+            xWriter->endElement(u"prop"_ustr);
         }
     }
-    xWriter->endElement("propfind");
+    xWriter->endElement(u"propfind"_ustr);
     xWriter->endDocument();
 
     uno::Reference<io::XInputStream> const xRequestInStream(
@@ -1669,8 +1881,9 @@ auto CurlProcessor::PropFind(
     assert(xResponseInStream.is());
     assert(xResponseOutStream.is());
 
-    CurlProcessor::ProcessRequest(rSession, rURI, "PROPFIND", options, &rEnv, ::std::move(pList),
-                                  &xResponseOutStream, &xRequestInStream, nullptr);
+    CurlProcessor::ProcessRequest(rSession, rURI, u"PROPFIND"_ustr, options, &rEnv,
+                                  ::std::move(pList), &xResponseOutStream, &xRequestInStream,
+                                  nullptr);
 
     if (o_pResourceInfos)
     {
@@ -1746,7 +1959,7 @@ auto CurlSession::PROPPATCH(OUString const& rURIReference,
     pList.reset(curl_slist_append(pList.release(), "Content-Type: application/xml"));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
 
     // generate XML document for PROPPATCH
@@ -1758,19 +1971,18 @@ auto CurlSession::PROPPATCH(OUString const& rURIReference,
     xWriter->setOutputStream(xRequestOutStream);
     xWriter->startDocument();
     rtl::Reference<::comphelper::AttributeList> const pAttrList(new ::comphelper::AttributeList);
-    pAttrList->AddAttribute("xmlns", "DAV:");
-    xWriter->startElement("propertyupdate", pAttrList);
+    pAttrList->AddAttribute(u"xmlns"_ustr, u"DAV:"_ustr);
+    xWriter->startElement(u"propertyupdate"_ustr, pAttrList);
     for (ProppatchValue const& rPropValue : rValues)
     {
         assert(rPropValue.operation == PROPSET || rPropValue.operation == PROPREMOVE);
-        OUString const operation((rPropValue.operation == PROPSET) ? OUString("set")
-                                                                   : OUString("remove"));
+        OUString const operation((rPropValue.operation == PROPSET) ? u"set"_ustr : u"remove"_ustr);
         xWriter->startElement(operation, nullptr);
-        xWriter->startElement("prop", nullptr);
+        xWriter->startElement(u"prop"_ustr, nullptr);
         SerfPropName name;
         DAVProperties::createSerfPropName(rPropValue.name, name);
         pAttrList->Clear();
-        pAttrList->AddAttribute("xmlns", OUString::createFromAscii(name.nspace));
+        pAttrList->AddAttribute(u"xmlns"_ustr, OUString::createFromAscii(name.nspace));
         xWriter->startElement(OUString::createFromAscii(name.name), pAttrList);
         if (rPropValue.operation == PROPSET)
         {
@@ -1780,14 +1992,14 @@ auto CurlSession::PROPPATCH(OUString const& rURIReference,
                     UCBDeadPropertyValue::toXML(rPropValue.value));
                 if (oProp)
                 {
-                    xWriter->startElement("ucbprop", nullptr);
-                    xWriter->startElement("type", nullptr);
+                    xWriter->startElement(u"ucbprop"_ustr, nullptr);
+                    xWriter->startElement(u"type"_ustr, nullptr);
                     xWriter->characters(oProp->first);
-                    xWriter->endElement("type");
-                    xWriter->startElement("value", nullptr);
+                    xWriter->endElement(u"type"_ustr);
+                    xWriter->startElement(u"value"_ustr, nullptr);
                     xWriter->characters(oProp->second);
-                    xWriter->endElement("value");
-                    xWriter->endElement("ucbprop");
+                    xWriter->endElement(u"value"_ustr);
+                    xWriter->endElement(u"ucbprop"_ustr);
                 }
             }
             else
@@ -1798,10 +2010,10 @@ auto CurlSession::PROPPATCH(OUString const& rURIReference,
             }
         }
         xWriter->endElement(OUString::createFromAscii(name.name));
-        xWriter->endElement("prop");
+        xWriter->endElement(u"prop"_ustr);
         xWriter->endElement(operation);
     }
-    xWriter->endElement("propertyupdate");
+    xWriter->endElement(u"propertyupdate"_ustr);
     xWriter->endDocument();
 
     uno::Reference<io::XInputStream> const xRequestInStream(
@@ -1818,7 +2030,7 @@ auto CurlSession::PROPPATCH(OUString const& rURIReference,
         { CURLOPT_INFILESIZE_LARGE, len, nullptr, CurlOption::Type::CurlOffT }
     };
 
-    CurlProcessor::ProcessRequest(*this, uri, "PROPPATCH", options, &rEnv, ::std::move(pList),
+    CurlProcessor::ProcessRequest(*this, uri, u"PROPPATCH"_ustr, options, &rEnv, ::std::move(pList),
                                   nullptr, &xRequestInStream, nullptr);
 }
 
@@ -1829,13 +2041,19 @@ auto CurlSession::HEAD(OUString const& rURIReference, ::std::vector<OUString> co
 
     CurlUri const uri(CurlProcessor::URIReferenceToURI(*this, rURIReference));
 
-    ::std::vector<CurlOption> const options{ g_NoBody };
+    ::std::vector<CurlOption> const options{
+        // NOBODY will prevent logging the response body in ProcessRequest()
+        // exception, but omitting it here results in a long timeout until the
+        // server closes the connection, which is worse
+        { CURLOPT_NOBODY, 1L, nullptr },
+        { CURLOPT_CUSTOMREQUEST, "HEAD", "CURLOPT_CUSTOMREQUEST" }
+    };
 
     ::std::pair<::std::vector<OUString> const&, DAVResource&> const headers(rHeaderNames,
                                                                             io_rResource);
 
-    CurlProcessor::ProcessRequest(*this, uri, "HEAD", options, &rEnv, nullptr, nullptr, nullptr,
-                                  &headers);
+    CurlProcessor::ProcessRequest(*this, uri, u"HEAD"_ustr, options, &rEnv, nullptr, nullptr,
+                                  nullptr, &headers);
 }
 
 auto CurlSession::GET(OUString const& rURIReference, DAVRequestEnvironment const& rEnv)
@@ -1857,8 +2075,8 @@ auto CurlSession::GET(OUString const& rURIReference, DAVRequestEnvironment const
 
     ::std::vector<CurlOption> const options{ { CURLOPT_HTTPGET, 1L, nullptr } };
 
-    CurlProcessor::ProcessRequest(*this, uri, "GET", options, &rEnv, nullptr, &xResponseOutStream,
-                                  nullptr, nullptr);
+    CurlProcessor::ProcessRequest(*this, uri, u"GET"_ustr, options, &rEnv, nullptr,
+                                  &xResponseOutStream, nullptr, nullptr);
 
     uno::Reference<io::XInputStream> const xResponseInStream(
         io::SequenceInputStream::createStreamFromSequence(m_xContext,
@@ -1877,8 +2095,8 @@ auto CurlSession::GET(OUString const& rURIReference, uno::Reference<io::XOutputS
 
     ::std::vector<CurlOption> const options{ { CURLOPT_HTTPGET, 1L, nullptr } };
 
-    CurlProcessor::ProcessRequest(*this, uri, "GET", options, &rEnv, nullptr, &rxOutStream, nullptr,
-                                  nullptr);
+    CurlProcessor::ProcessRequest(*this, uri, u"GET"_ustr, options, &rEnv, nullptr, &rxOutStream,
+                                  nullptr, nullptr);
 }
 
 auto CurlSession::GET(OUString const& rURIReference, ::std::vector<OUString> const& rHeaderNames,
@@ -1899,8 +2117,8 @@ auto CurlSession::GET(OUString const& rURIReference, ::std::vector<OUString> con
     ::std::pair<::std::vector<OUString> const&, DAVResource&> const headers(rHeaderNames,
                                                                             io_rResource);
 
-    CurlProcessor::ProcessRequest(*this, uri, "GET", options, &rEnv, nullptr, &xResponseOutStream,
-                                  nullptr, &headers);
+    CurlProcessor::ProcessRequest(*this, uri, u"GET"_ustr, options, &rEnv, nullptr,
+                                  &xResponseOutStream, nullptr, &headers);
 
     uno::Reference<io::XInputStream> const xResponseInStream(
         io::SequenceInputStream::createStreamFromSequence(m_xContext,
@@ -1923,8 +2141,8 @@ auto CurlSession::GET(OUString const& rURIReference, uno::Reference<io::XOutputS
     ::std::pair<::std::vector<OUString> const&, DAVResource&> const headers(rHeaderNames,
                                                                             io_rResource);
 
-    CurlProcessor::ProcessRequest(*this, uri, "GET", options, &rEnv, nullptr, &rxOutStream, nullptr,
-                                  &headers);
+    CurlProcessor::ProcessRequest(*this, uri, u"GET"_ustr, options, &rEnv, nullptr, &rxOutStream,
+                                  nullptr, &headers);
 }
 
 auto CurlSession::PUT(OUString const& rURIReference,
@@ -1939,7 +2157,7 @@ auto CurlSession::PUT(OUString const& rURIReference,
     uno::Reference<io::XSeekable> const xSeekable(rxInStream, uno::UNO_QUERY);
     if (!xSeekable.is())
     {
-        throw uno::RuntimeException("TODO: not seekable");
+        throw uno::RuntimeException(u"TODO: not seekable"_ustr);
     }
     curl_off_t const len(xSeekable->getLength() - xSeekable->getPosition());
 
@@ -1959,7 +2177,7 @@ auto CurlSession::PUT(OUString const& rURIReference,
         pList.reset(curl_slist_append(pList.release(), utf8If.getStr()));
         if (!pList)
         {
-            throw uno::RuntimeException("curl_slist_append failed");
+            throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
         }
     }
 
@@ -1971,8 +2189,8 @@ auto CurlSession::PUT(OUString const& rURIReference,
         { CURLOPT_INFILESIZE_LARGE, len, nullptr, CurlOption::Type::CurlOffT }
     };
 
-    CurlProcessor::ProcessRequest(*this, uri, "PUT", options, &rEnv, ::std::move(pList), nullptr,
-                                  &rxInStream, nullptr);
+    CurlProcessor::ProcessRequest(*this, uri, u"PUT"_ustr, options, &rEnv, ::std::move(pList),
+                                  nullptr, &rxInStream, nullptr);
 }
 
 auto CurlSession::POST(OUString const& rURIReference, OUString const& rContentType,
@@ -1988,20 +2206,20 @@ auto CurlSession::POST(OUString const& rURIReference, OUString const& rContentTy
         curl_slist_append(nullptr, "Transfer-Encoding: chunked"));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
     OString const utf8ContentType("Content-Type: "
                                   + OUStringToOString(rContentType, RTL_TEXTENCODING_ASCII_US));
     pList.reset(curl_slist_append(pList.release(), utf8ContentType.getStr()));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
     OString const utf8Referer("Referer: " + OUStringToOString(rReferer, RTL_TEXTENCODING_ASCII_US));
     pList.reset(curl_slist_append(pList.release(), utf8Referer.getStr()));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
 
     ::std::vector<CurlOption> const options{ { CURLOPT_POST, 1L, nullptr } };
@@ -2011,7 +2229,7 @@ auto CurlSession::POST(OUString const& rURIReference, OUString const& rContentTy
     uno::Reference<io::XOutputStream> const xResponseOutStream(xSeqOutStream);
     assert(xResponseOutStream.is());
 
-    CurlProcessor::ProcessRequest(*this, uri, "POST", options, &rEnv, ::std::move(pList),
+    CurlProcessor::ProcessRequest(*this, uri, u"POST"_ustr, options, &rEnv, ::std::move(pList),
                                   &xResponseOutStream, &rxInStream, nullptr);
 
     uno::Reference<io::XInputStream> const xResponseInStream(
@@ -2036,25 +2254,25 @@ auto CurlSession::POST(OUString const& rURIReference, OUString const& rContentTy
         curl_slist_append(nullptr, "Transfer-Encoding: chunked"));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
     OString const utf8ContentType("Content-Type: "
                                   + OUStringToOString(rContentType, RTL_TEXTENCODING_ASCII_US));
     pList.reset(curl_slist_append(pList.release(), utf8ContentType.getStr()));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
     OString const utf8Referer("Referer: " + OUStringToOString(rReferer, RTL_TEXTENCODING_ASCII_US));
     pList.reset(curl_slist_append(pList.release(), utf8Referer.getStr()));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
 
     ::std::vector<CurlOption> const options{ { CURLOPT_POST, 1L, nullptr } };
 
-    CurlProcessor::ProcessRequest(*this, uri, "POST", options, &rEnv, ::std::move(pList),
+    CurlProcessor::ProcessRequest(*this, uri, u"POST"_ustr, options, &rEnv, ::std::move(pList),
                                   &rxOutStream, &rxInStream, nullptr);
 }
 
@@ -2064,12 +2282,11 @@ auto CurlSession::MKCOL(OUString const& rURIReference, DAVRequestEnvironment con
 
     CurlUri const uri(CurlProcessor::URIReferenceToURI(*this, rURIReference));
 
-    ::std::vector<CurlOption> const options{
-        g_NoBody, { CURLOPT_CUSTOMREQUEST, "MKCOL", "CURLOPT_CUSTOMREQUEST" }
-    };
+    ::std::vector<CurlOption> const options{ { CURLOPT_CUSTOMREQUEST, "MKCOL",
+                                               "CURLOPT_CUSTOMREQUEST" } };
 
-    CurlProcessor::ProcessRequest(*this, uri, "MKCOL", options, &rEnv, nullptr, nullptr, nullptr,
-                                  nullptr);
+    CurlProcessor::ProcessRequest(*this, uri, u"MKCOL"_ustr, options, &rEnv, nullptr, nullptr,
+                                  nullptr, nullptr);
 }
 
 auto CurlProcessor::MoveOrCopy(CurlSession& rSession, std::u16string_view rSourceURIReference,
@@ -2085,18 +2302,17 @@ auto CurlProcessor::MoveOrCopy(CurlSession& rSession, std::u16string_view rSourc
         curl_slist_append(nullptr, utf8Destination.getStr()));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
     OString const utf8Overwrite(OString::Concat("Overwrite: ") + (isOverwrite ? "T" : "F"));
     pList.reset(curl_slist_append(pList.release(), utf8Overwrite.getStr()));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
 
-    ::std::vector<CurlOption> const options{
-        g_NoBody, { CURLOPT_CUSTOMREQUEST, pMethod, "CURLOPT_CUSTOMREQUEST" }
-    };
+    ::std::vector<CurlOption> const options{ { CURLOPT_CUSTOMREQUEST, pMethod,
+                                               "CURLOPT_CUSTOMREQUEST" } };
 
     CurlProcessor::ProcessRequest(rSession, uriSource, OUString::createFromAscii(pMethod), options,
                                   &rEnv, ::std::move(pList), nullptr, nullptr, nullptr);
@@ -2126,12 +2342,11 @@ auto CurlSession::DESTROY(OUString const& rURIReference, DAVRequestEnvironment c
 
     CurlUri const uri(CurlProcessor::URIReferenceToURI(*this, rURIReference));
 
-    ::std::vector<CurlOption> const options{
-        g_NoBody, { CURLOPT_CUSTOMREQUEST, "DELETE", "CURLOPT_CUSTOMREQUEST" }
-    };
+    ::std::vector<CurlOption> const options{ { CURLOPT_CUSTOMREQUEST, "DELETE",
+                                               "CURLOPT_CUSTOMREQUEST" } };
 
-    CurlProcessor::ProcessRequest(*this, uri, "DESTROY", options, &rEnv, nullptr, nullptr, nullptr,
-                                  nullptr);
+    CurlProcessor::ProcessRequest(*this, uri, u"DESTROY"_ustr, options, &rEnv, nullptr, nullptr,
+                                  nullptr, nullptr);
 }
 
 auto CurlProcessor::Lock(
@@ -2165,7 +2380,7 @@ auto CurlProcessor::Lock(
     TimeValue startTime;
     osl_getSystemTime(&startTime);
 
-    CurlProcessor::ProcessRequest(rSession, rURI, "LOCK", options, pEnv,
+    CurlProcessor::ProcessRequest(rSession, rURI, u"LOCK"_ustr, options, pEnv,
                                   ::std::move(pRequestHeaderList), &xResponseOutStream,
                                   pxRequestInStream, nullptr);
 
@@ -2229,35 +2444,35 @@ auto CurlSession::LOCK(OUString const& rURIReference, ucb::Lock /*const*/& rLock
     xWriter->setOutputStream(xRequestOutStream);
     xWriter->startDocument();
     rtl::Reference<::comphelper::AttributeList> const pAttrList(new ::comphelper::AttributeList);
-    pAttrList->AddAttribute("xmlns", "DAV:");
-    xWriter->startElement("lockinfo", pAttrList);
-    xWriter->startElement("lockscope", nullptr);
+    pAttrList->AddAttribute(u"xmlns"_ustr, u"DAV:"_ustr);
+    xWriter->startElement(u"lockinfo"_ustr, pAttrList);
+    xWriter->startElement(u"lockscope"_ustr, nullptr);
     switch (rLock.Scope)
     {
         case ucb::LockScope_EXCLUSIVE:
-            xWriter->startElement("exclusive", nullptr);
-            xWriter->endElement("exclusive");
+            xWriter->startElement(u"exclusive"_ustr, nullptr);
+            xWriter->endElement(u"exclusive"_ustr);
             break;
         case ucb::LockScope_SHARED:
-            xWriter->startElement("shared", nullptr);
-            xWriter->endElement("shared");
+            xWriter->startElement(u"shared"_ustr, nullptr);
+            xWriter->endElement(u"shared"_ustr);
             break;
         default:
             assert(false);
     }
-    xWriter->endElement("lockscope");
-    xWriter->startElement("locktype", nullptr);
-    xWriter->startElement("write", nullptr);
-    xWriter->endElement("write");
-    xWriter->endElement("locktype");
+    xWriter->endElement(u"lockscope"_ustr);
+    xWriter->startElement(u"locktype"_ustr, nullptr);
+    xWriter->startElement(u"write"_ustr, nullptr);
+    xWriter->endElement(u"write"_ustr);
+    xWriter->endElement(u"locktype"_ustr);
     OUString owner;
     if ((rLock.Owner >>= owner) && !owner.isEmpty())
     {
-        xWriter->startElement("owner", nullptr);
+        xWriter->startElement(u"owner"_ustr, nullptr);
         xWriter->characters(owner);
-        xWriter->endElement("owner");
+        xWriter->endElement(u"owner"_ustr);
     }
-    xWriter->endElement("lockinfo");
+    xWriter->endElement(u"lockinfo"_ustr);
     xWriter->endDocument();
 
     uno::Reference<io::XInputStream> const xRequestInStream(
@@ -2269,7 +2484,7 @@ auto CurlSession::LOCK(OUString const& rURIReference, ucb::Lock /*const*/& rLock
     pList.reset(curl_slist_append(pList.release(), "Content-Type: application/xml"));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
     OString depth;
     switch (rLock.Depth)
@@ -2289,7 +2504,7 @@ auto CurlSession::LOCK(OUString const& rURIReference, ucb::Lock /*const*/& rLock
     pList.reset(curl_slist_append(pList.release(), depth.getStr()));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
     OString timeout;
     switch (rLock.Timeout)
@@ -2308,7 +2523,7 @@ auto CurlSession::LOCK(OUString const& rURIReference, ucb::Lock /*const*/& rLock
     pList.reset(curl_slist_append(pList.release(), timeout.getStr()));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
 
     auto const acquiredLocks
@@ -2337,13 +2552,13 @@ auto CurlProcessor::Unlock(CurlSession& rSession, CurlUri const& rURI,
         curl_slist_append(nullptr, utf8LockToken.getStr()));
     if (!pList)
     {
-        throw uno::RuntimeException("curl_slist_append failed");
+        throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
     }
 
     ::std::vector<CurlOption> const options{ { CURLOPT_CUSTOMREQUEST, "UNLOCK",
                                                "CURLOPT_CUSTOMREQUEST" } };
 
-    CurlProcessor::ProcessRequest(rSession, rURI, "UNLOCK", options, pEnv, ::std::move(pList),
+    CurlProcessor::ProcessRequest(rSession, rURI, u"UNLOCK"_ustr, options, pEnv, ::std::move(pList),
                                   nullptr, nullptr, nullptr);
 }
 
@@ -2380,7 +2595,7 @@ auto CurlSession::NonInteractive_LOCK(OUString const& rURI, ::std::u16string_vie
         pList.reset(curl_slist_append(pList.release(), utf8If.getStr()));
         if (!pList)
         {
-            throw uno::RuntimeException("curl_slist_append failed");
+            throw uno::RuntimeException(u"curl_slist_append failed"_ustr);
         }
 
         auto const acquiredLocks
@@ -2438,5 +2653,43 @@ auto CurlSession::NonInteractive_UNLOCK(OUString const& rURI) -> void
 }
 
 } // namespace http_dav_ucp
+
+namespace
+{
+/// Manage lifecycle of global DAV worker threads
+class WebDAVManager : public cppu::WeakImplHelper<css::lang::XServiceInfo>,
+                      public comphelper::LibreOfficeKit::ThreadJoinable
+{
+public:
+    WebDAVManager() {}
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override
+    {
+        return "com.sun.star.comp.WebDAVManager";
+    }
+    virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override
+    {
+        return cppu::supportsService(this, ServiceName);
+    }
+    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
+    {
+        return { "com.sun.star.ucb.WebDAVManager" };
+    }
+
+    // comphelper::LibreOfficeKit::ThreadJoinable
+    virtual bool joinThreads() override { return g_Init.LockStore.joinThreads(); }
+
+    virtual void startThreads() override { g_Init.LockStore.startThreads(); }
+};
+
+} // anonymous namespace
+
+extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
+ucb_webdav_manager_get_implementation(css::uno::XComponentContext*,
+                                      css::uno::Sequence<css::uno::Any> const&)
+{
+    return cppu::acquire(new WebDAVManager());
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

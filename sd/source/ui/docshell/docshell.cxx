@@ -84,7 +84,7 @@ namespace sd {
 SFX_IMPL_OBJECTFACTORY(
     DrawDocShell,
     SvGlobalName(SO3_SIMPRESS_CLASSID),
-    "simpress" )
+    u"simpress"_ustr )
 
 void DrawDocShell::Construct( bool bClipboard )
 {
@@ -105,7 +105,7 @@ void DrawDocShell::Construct( bool bClipboard )
     pUndoManager->SetDocShell(this);
     mpUndoManager = std::move(pUndoManager);
 
-    if (!utl::ConfigManager::IsFuzzing()
+    if (!comphelper::IsFuzzing()
         && officecfg::Office::Common::Undo::Steps::get() < 1)
     {
         mpUndoManager->EnableUndo(false); // tdf#108863 disable if 0 steps
@@ -223,7 +223,7 @@ void DrawDocShell::GetState(SfxItemSet &rSet)
 
             case SID_SEARCH_ITEM:
             {
-                rSet.Put( *SD_MOD()->GetSearchItem() );
+                rSet.Put(*SdModule::get()->GetSearchItem());
             }
             break;
 
@@ -241,7 +241,7 @@ void DrawDocShell::GetState(SfxItemSet &rSet)
                               SearchOptionFlags::SIMILARITY  |
                               SearchOptionFlags::SELECTION;
 
-                if (!IsReadOnly())
+                if (!IsReadOnly() && !SfxViewShell::IsCurrentLokViewReadOnly())
                 {
                     nOpt |= SearchOptionFlags::REPLACE;
                     nOpt |= SearchOptionFlags::REPLACE_ALL;

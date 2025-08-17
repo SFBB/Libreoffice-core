@@ -48,7 +48,7 @@ class SwPaM;
 class SwTextBlocks;
 struct SwPosition;
 struct Writer_Impl;
-namespace sw::mark { class IMark; }
+namespace sw::mark { class MarkBase; }
 namespace com::sun::star::embed { class XStorage; }
 
 // Defines the count of chars at which a paragraph read via ASCII/W4W-Reader
@@ -146,7 +146,7 @@ public:
 class SW_DLLPUBLIC SwReader: public SwDocFac
 {
     SvStream* mpStrm;
-    tools::SvRef<SotStorage> mpStg;
+    rtl::Reference<SotStorage> mpStg;
     css::uno::Reference < css::embed::XStorage > mxStg;
     SfxMedium* mpMedium;     // Who wants to obtain a Medium (W4W).
 
@@ -154,6 +154,8 @@ class SW_DLLPUBLIC SwReader: public SwDocFac
     OUString maFileName;
     OUString msBaseURL;
     bool mbSkipImages;
+    bool mbSkipInvalidateNumRules = false;
+    bool mbIsInPaste = false;
 
 public:
 
@@ -175,6 +177,13 @@ public:
     bool HasGlossaries( const Reader& );
     bool ReadGlossaries( const Reader&, SwTextBlocks&, bool bSaveRelFiles );
 
+    void SetSkipInvalidateNumRules(bool bSkipInvalidateNumRules)
+    {
+        mbSkipInvalidateNumRules = bSkipInvalidateNumRules;
+    }
+    void SetInPaste(bool val) { mbIsInPaste = val; }
+    bool IsInPaste() const { return mbIsInPaste; }
+
 protected:
     void                SetBaseURL( const OUString& rURL ) { msBaseURL = rURL; }
     void                SetSkipImages( bool bSkipImages ) { mbSkipImages = bSkipImages; }
@@ -195,6 +204,7 @@ namespace o3tl {
 extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportDOC(SvStream &rStream, const OUString &rFltName);
 extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportDOCX(SvStream &rStream);
 extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportRTF(SvStream &rStream);
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestPDFExportRTF(SvStream &rStream);
 extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportHTML(SvStream &rStream);
 SAL_DLLPUBLIC_EXPORT void FlushFontCache();
 
@@ -202,7 +212,6 @@ class SW_DLLPUBLIC Reader
 {
     friend class SwReader;
     friend bool TestImportDOC(SvStream &rStream, const OUString &rFltName);
-    friend bool TestImportRTF(SvStream &rStream);
     friend bool TestImportHTML(SvStream &rStream);
     rtl::Reference<SwDoc> mxTemplate;
     OUString m_aTemplateName;
@@ -213,7 +222,7 @@ class SW_DLLPUBLIC Reader
 
 protected:
     SvStream* m_pStream;
-    tools::SvRef<SotStorage> m_pStorage;
+    rtl::Reference<SotStorage> m_pStorage;
     css::uno::Reference < css::embed::XStorage > m_xStorage;
     SfxMedium* m_pMedium;     // Who wants to obtain a Medium (W4W).
 
@@ -226,6 +235,7 @@ protected:
     bool m_bHasAskTemplateName : 1;
     bool m_bIgnoreHTMLComments : 1;
     bool m_bSkipImages : 1;
+    bool m_bIsInPaste : 1 = false;
 
     virtual OUString GetTemplateName(SwDoc& rDoc) const;
 
@@ -263,6 +273,9 @@ public:
 
     void SetIgnoreHTMLComments( bool bSet ) { m_bIgnoreHTMLComments = bSet; }
 
+    bool IsInPaste() const { return m_bIsInPaste; }
+    void SetInPaste(bool bSet) { m_bIsInPaste = bSet; }
+
     virtual bool HasGlossaries() const;
     virtual bool ReadGlossaries( SwTextBlocks&, bool bSaveRelFiles ) const;
 
@@ -271,8 +284,8 @@ public:
     virtual size_t GetSectionList( SfxMedium& rMedium,
                                    std::vector<OUString>& rStrings) const;
 
-    const tools::SvRef<SotStorage>& getSotStorageRef() const { return m_pStorage; };
-    void setSotStorageRef(const tools::SvRef<SotStorage>& pStgRef) { m_pStorage = pStgRef; };
+    const rtl::Reference<SotStorage>& getSotStorageRef() const { return m_pStorage; };
+    void setSotStorageRef(const rtl::Reference<SotStorage>& pStgRef) { m_pStorage = pStgRef; };
 
 private:
     virtual ErrCodeMsg Read(SwDoc &, const OUString& rBaseURL, SwPaM &, const OUString &)=0;
@@ -290,6 +303,14 @@ public:
     AsciiReader(): Reader() {}
 };
 
+class MarkdownReader final : public Reader
+{
+    friend class SwReader;
+    virtual ErrCodeMsg Read( SwDoc &, const OUString& rBaseURL, SwPaM &, const OUString &) override;
+public:
+    MarkdownReader(): Reader() {}
+};
+
 class SW_DLLPUBLIC StgReader : public Reader
 {
     OUString m_aFltName;
@@ -305,6 +326,8 @@ public:
 
 class SwImpBlocks;
 
+/// Used for autotext handling. The list of autotexts get imported to a temporary document, and then
+/// this class provides the actual glossary document which is the final target for autotext.
 class SW_DLLPUBLIC SwTextBlocks
 {
     std::unique_ptr<SwImpBlocks> m_pImp;
@@ -320,14 +343,14 @@ public:
     void   SetName( const OUString& );
     ErrCode const & GetError() const { return m_nErr; }
 
-    OUString GetBaseURL() const;
+    const OUString & GetBaseURL() const;
     void   SetBaseURL( const OUString& rURL );
 
     sal_uInt16 GetCount() const;                        // Get count text modules.
     sal_uInt16 GetIndex( const OUString& ) const;       // Get index of short names.
     sal_uInt16 GetLongIndex( std::u16string_view ) const;   // Get index of long names.
-    OUString GetShortName( sal_uInt16 ) const;          // Get short name for index.
-    OUString GetLongName( sal_uInt16 ) const;           // Get long name for index.
+    const OUString & GetShortName( sal_uInt16 ) const;          // Get short name for index.
+    const OUString & GetLongName( sal_uInt16 ) const;           // Get long name for index.
 
     bool   Delete( sal_uInt16 );
     void   Rename( sal_uInt16, const OUString*, const OUString* );
@@ -357,7 +380,7 @@ public:
 
 // BEGIN source/filter/basflt/fltini.cxx
 
-extern Reader *ReadAscii, *ReadHTML, *ReadXML;
+extern Reader *ReadAscii, *ReadHTML, *ReadXML, *ReadMarkdown;
 
 SW_DLLPUBLIC Reader* SwGetReaderXML();
 
@@ -377,7 +400,7 @@ class SW_DLLPUBLIC Writer
     OUString       m_sBaseURL;
 
     void AddFontItem( SfxItemPool& rPool, const SvxFontItem& rFont );
-    void AddFontItems_( SfxItemPool& rPool, sal_uInt16 nWhichId );
+    void AddFontItems_( SfxItemPool& rPool, TypedWhichId<SvxFontItem> nWhichId );
 
     std::unique_ptr<Writer_Impl> m_pImpl;
 
@@ -450,7 +473,7 @@ public:
     // Search all Bookmarks in the range and return it in the Array.
     bool GetBookmarks( const SwContentNode& rNd,
                         sal_Int32 nStt, sal_Int32 nEnd,
-                        std::vector< const ::sw::mark::IMark* >& rArr );
+                        std::vector< const ::sw::mark::MarkBase* >& rArr );
 
     // Create new PaM at position.
     static std::shared_ptr<SwUnoCursor> NewUnoCursor(SwDoc & rDoc,
@@ -473,7 +496,7 @@ typedef tools::SvRef<Writer> WriterRef;
 class SW_DLLPUBLIC StgWriter : public Writer
 {
 protected:
-    tools::SvRef<SotStorage> m_pStg;
+    rtl::Reference<SotStorage> m_pStg;
     css::uno::Reference < css::embed::XStorage > m_xStg;
 
     // Create error at call.
@@ -560,6 +583,7 @@ void GetRTFWriter( std::u16string_view, const OUString&, WriterRef& );
 void GetASCWriter( std::u16string_view, const OUString&, WriterRef&);
 void GetHTMLWriter( std::u16string_view, const OUString&, WriterRef& );
 void GetXMLWriter( std::u16string_view, const OUString&, WriterRef& );
+void GetMDWriter(std::u16string_view, const OUString&, WriterRef&);
 
 #endif
 

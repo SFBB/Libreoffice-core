@@ -316,6 +316,7 @@ uno::Reference<drawing::XShapeGroup> SwFmDrawPage::GetShapeGroup(SdrObject* pObj
 
 uno::Reference< drawing::XShape > SwFmDrawPage::CreateShape( SdrObject *pObj ) const
 {
+    assert(pObj);
     uno::Reference< drawing::XShape >  xRet;
     if(dynamic_cast<const SwVirtFlyDrawObj*>( pObj) !=  nullptr || pObj->GetObjInventor() == SdrInventor::Swg)
     {
@@ -323,28 +324,28 @@ uno::Reference< drawing::XShape > SwFmDrawPage::CreateShape( SdrObject *pObj ) c
         if(pFlyContact)
         {
             SwFrameFormat* pFlyFormat = pFlyContact->GetFormat();
-            SwDoc* pDoc = pFlyFormat->GetDoc();
+            SwDoc& rDoc = pFlyFormat->GetDoc();
             const SwNodeIndex* pIdx;
             if( RES_FLYFRMFMT == pFlyFormat->Which()
                 && nullptr != ( pIdx = pFlyFormat->GetContent().GetContentIdx() )
                 && pIdx->GetNodes().IsDocNodes()
                 )
             {
-                const SwNode* pNd = pDoc->GetNodes()[ pIdx->GetIndex() + 1 ];
+                const SwNode* pNd = rDoc.GetNodes()[ pIdx->GetIndex() + 1 ];
                 if(!pNd->IsNoTextNode())
                 {
-                    xRet.set(cppu::getXWeak(SwXTextFrame::CreateXTextFrame(*pDoc, pFlyFormat).get()),
+                    xRet.set(cppu::getXWeak(SwXTextFrame::CreateXTextFrame(rDoc, pFlyFormat).get()),
                             uno::UNO_QUERY);
                 }
                 else if( pNd->IsGrfNode() )
                 {
                     xRet.set(cppu::getXWeak(SwXTextGraphicObject::CreateXTextGraphicObject(
-                                *pDoc, pFlyFormat).get()), uno::UNO_QUERY);
+                                rDoc, pFlyFormat).get()), uno::UNO_QUERY);
                 }
                 else if( pNd->IsOLENode() )
                 {
                     xRet.set(cppu::getXWeak(SwXTextEmbeddedObject::CreateXTextEmbeddedObject(
-                                *pDoc, pFlyFormat).get()), uno::UNO_QUERY);
+                                rDoc, pFlyFormat).get()), uno::UNO_QUERY);
                 }
             }
             else
@@ -416,7 +417,11 @@ void SwFmDrawPage::setPropertyValue(const OUString& rPropertyName, const uno::An
         case WID_PAGE_USERATTRIBS:
         case WID_PAGE_ISDARK:
         case WID_NAVORDER:
+            break;
+
         case WID_PAGE_BACKFULL:
+            if (bool bVal; aValue >>= bVal)
+                GetSdrPage()->SetBackgroundFullSize(bVal);
             break;
 
         default:
@@ -461,7 +466,10 @@ uno::Any SwFmDrawPage::getPropertyValue(const OUString& rPropertyName)
         case WID_PAGE_USERATTRIBS:
         case WID_PAGE_ISDARK:
         case WID_NAVORDER:
+            break;
+
         case WID_PAGE_BACKFULL:
+            aAny <<= GetSdrPage()->IsBackgroundFullSize();
             break;
 
         default:
@@ -547,7 +555,7 @@ uno::Any SwXShapesEnumeration::nextElement()
 
 OUString SwXShapesEnumeration::getImplementationName()
 {
-    return "SwXShapeEnumeration";
+    return u"SwXShapeEnumeration"_ustr;
 }
 
 sal_Bool SwXShapesEnumeration::supportsService(const OUString& ServiceName)
@@ -557,7 +565,7 @@ sal_Bool SwXShapesEnumeration::supportsService(const OUString& ServiceName)
 
 uno::Sequence< OUString > SwXShapesEnumeration::getSupportedServiceNames()
 {
-    return { OUString("com.sun.star.container.XEnumeration") };
+    return { u"com.sun.star.container.XEnumeration"_ustr };
 }
 
 uno::Reference< container::XEnumeration > SwFmDrawPage::createEnumeration()
@@ -569,7 +577,7 @@ uno::Reference< container::XEnumeration > SwFmDrawPage::createEnumeration()
 
 OUString SwFmDrawPage::getImplementationName()
 {
-    return "SwFmDrawPage";
+    return u"SwFmDrawPage"_ustr;
 }
 
 sal_Bool SwFmDrawPage::supportsService(const OUString& rServiceName)
@@ -579,7 +587,7 @@ sal_Bool SwFmDrawPage::supportsService(const OUString& rServiceName)
 
 uno::Sequence< OUString > SwFmDrawPage::getSupportedServiceNames()
 {
-    return { "com.sun.star.drawing.GenericDrawPage" };
+    return { u"com.sun.star.drawing.GenericDrawPage"_ustr };
 }
 
 sal_Int32 SwFmDrawPage::getCount()
@@ -630,7 +638,7 @@ void SwFmDrawPage::add(const uno::Reference< drawing::XShape > & xShape)
 
     // this is not a writer shape
     if(!pShape)
-        throw uno::RuntimeException("illegal object",
+        throw uno::RuntimeException(u"illegal object"_ustr,
                                     getXWeak() );
 
     // we're already registered in the model / SwXDrawPage::add() already called
@@ -772,7 +780,7 @@ void SwFmDrawPage::add(const uno::Reference< drawing::XShape > & xShape)
 
     if (pSvxShape->GetSdrObject()->GetName().isEmpty())
     {
-        pSvxShape->GetSdrObject()->SetName(m_pDoc->GetUniqueShapeName());
+        pSvxShape->GetSdrObject()->SetName(m_pDoc->GetUniqueShapeName().toString());
     }
 
     SwFrameFormat* pFormat = ::FindFrameFormat( pObj );
@@ -780,7 +788,7 @@ void SwFmDrawPage::add(const uno::Reference< drawing::XShape > & xShape)
     {
         if (pFormat->GetName().isEmpty())
         {
-            pFormat->SetFormatName(pSvxShape->GetSdrObject()->GetName(), false);
+            pFormat->SetFormatName(UIName(pSvxShape->GetSdrObject()->GetName()), false);
         }
     }
     pShape->m_bDescriptor = false;
@@ -824,7 +832,7 @@ uno::Reference< drawing::XShapeGroup >  SwFmDrawPage::group(const uno::Reference
                                     pObj))->GetAnchor().GetAnchorId())
             {
                 throw lang::IllegalArgumentException(
-                    "Shape must not have 'as character' anchor!", nullptr, 0);
+                    u"Shape must not have 'as character' anchor!"_ustr, nullptr, 0);
             }
         }
 
@@ -970,6 +978,9 @@ SwXShape::~SwXShape()
     m_pImpl.reset();
     if(m_pPage)
        const_cast<SwFmDrawPage*>(m_pPage)->RemoveShape(this);
+    // these have to be destructed under the solarmutex
+    m_xShapeAgg.clear();
+    mxShape.clear();
 }
 
 uno::Any SwXShape::queryInterface( const uno::Type& aType )
@@ -1062,7 +1073,7 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
         if(pFormat)
         {
             SwAttrSet aSet(pFormat->GetAttrSet());
-            SwDoc* pDoc = pFormat->GetDoc();
+            SwDoc& rDoc = pFormat->GetDoc();
             if(RES_ANCHOR == pEntry->nWID && MID_ANCHOR_ANCHORFRAME == pEntry->nMemberId)
             {
                 bool bDone = false;
@@ -1071,10 +1082,10 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
                 {
                     SwXFrame* pFrame = dynamic_cast<SwXFrame*>(xFrame.get());
                     if(pFrame && pFrame->GetFrameFormat() &&
-                        pFrame->GetFrameFormat()->GetDoc() == pDoc)
+                        &pFrame->GetFrameFormat()->GetDoc() == &rDoc)
                     {
-                        UnoActionContext aCtx(pDoc);
-                        SfxItemSetFixed<RES_FRMATR_BEGIN, RES_FRMATR_END - 1> aItemSet( pDoc->GetAttrPool() );
+                        UnoActionContext aCtx(&rDoc);
+                        SfxItemSetFixed<RES_FRMATR_BEGIN, RES_FRMATR_END - 1> aItemSet( rDoc.GetAttrPool() );
                         aItemSet.SetParent(&pFormat->GetAttrSet());
                         SwFormatAnchor aAnchor = static_cast<const SwFormatAnchor&>(aItemSet.Get(pEntry->nWID));
                         SwPosition aPos(*pFrame->GetFrameFormat()->GetContent().GetContentIdx());
@@ -1097,16 +1108,16 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
                     SdrObject* pObj = pSvxShape->GetSdrObject();
                     // set layer of new drawing
                     // object to corresponding invisible layer.
-                    bool bIsVisible = pDoc->getIDocumentDrawModelAccess().IsVisibleLayerId( pObj->GetLayer() );
+                    bool bIsVisible = rDoc.getIDocumentDrawModelAccess().IsVisibleLayerId( pObj->GetLayer() );
                     if(SdrInventor::FmForm != pObj->GetObjInventor())
                     {
                         pObj->SetLayer( *o3tl::doAccess<bool>(aValue)
-                                        ? ( bIsVisible ? pDoc->getIDocumentDrawModelAccess().GetHeavenId() : pDoc->getIDocumentDrawModelAccess().GetInvisibleHeavenId() )
-                                        : ( bIsVisible ? pDoc->getIDocumentDrawModelAccess().GetHellId() : pDoc->getIDocumentDrawModelAccess().GetInvisibleHellId() ));
+                                        ? ( bIsVisible ? rDoc.getIDocumentDrawModelAccess().GetHeavenId() : rDoc.getIDocumentDrawModelAccess().GetInvisibleHeavenId() )
+                                        : ( bIsVisible ? rDoc.getIDocumentDrawModelAccess().GetHellId() : rDoc.getIDocumentDrawModelAccess().GetInvisibleHellId() ));
                     }
                     else
                     {
-                        pObj->SetLayer( bIsVisible ? pDoc->getIDocumentDrawModelAccess().GetControlsId() : pDoc->getIDocumentDrawModelAccess().GetInvisibleControlsId());
+                        pObj->SetLayer( bIsVisible ? rDoc.getIDocumentDrawModelAccess().GetControlsId() : rDoc.getIDocumentDrawModelAccess().GetInvisibleControlsId());
                     }
 
                 }
@@ -1123,7 +1134,7 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
                 }
 
                 std::unique_ptr<SwUnoInternalPaM> pInternalPam(
-                                new SwUnoInternalPaM( *(pFormat->GetDoc()) ));
+                                new SwUnoInternalPaM( pFormat->GetDoc() ));
                 uno::Reference< text::XTextRange > xRg;
                 aValue >>= xRg;
                 if (!::sw::XTextRangeToSwPaM(*pInternalPam, xRg) )
@@ -1184,10 +1195,8 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
                 }
                 else if (pEntry->nMemberId == MID_TEXT_BOX_CONTENT)
                 {
-                    if (aValue.getValueType()
-                        == cppu::UnoType<uno::Reference<text::XTextFrame>>::get())
-                        SwTextBoxHelper::set(pFormat, pObj,
-                                             aValue.get<uno::Reference<text::XTextFrame>>());
+                    if (uno::Reference<text::XTextFrame> xTextFrame; aValue >>= xTextFrame)
+                        SwTextBoxHelper::set(pFormat, pObj, xTextFrame);
                     else
                         SAL_WARN( "sw.uno", "This is not a TextFrame!" );
                 }
@@ -1205,9 +1214,9 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
                 aValue >>= nPositionLayoutDir;
                 pFormat->SetPositionLayoutDir( nPositionLayoutDir );
             }
-            else if( pDoc->getIDocumentLayoutAccess().GetCurrentLayout())
+            else if( rDoc.getIDocumentLayoutAccess().GetCurrentLayout())
             {
-                UnoActionContext aCtx(pDoc);
+                UnoActionContext aCtx(&rDoc);
                 if(RES_ANCHOR == pEntry->nWID && MID_ANCHOR_ANCHORTYPE == pEntry->nMemberId)
                 {
                     SdrObject* pObj = pFormat->FindSdrObject();
@@ -1216,12 +1225,12 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
                     aList.InsertEntry(aMark);
                     sal_Int32 nAnchor = 0;
                     cppu::enum2int( nAnchor, aValue );
-                    pDoc->ChgAnchor( aList, static_cast<RndStdIds>(nAnchor),
+                    rDoc.ChgAnchor( aList, static_cast<RndStdIds>(nAnchor),
                                             false, true );
                 }
                 else
                 {
-                    m_pPropSet->setPropertyValue(*pEntry, aValue, aSet);
+                    SfxItemPropertySet::setPropertyValue(*pEntry, aValue, aSet);
                     pFormat->SetFormatAttr(aSet);
                 }
             }
@@ -1266,12 +1275,12 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
                     SAL_WARN("sw.core", "SwXShape: fixing invalid horizontal RelOrientation for at-page anchor");
                     value <<= nRelOrient;
                 }
-                m_pPropSet->setPropertyValue( *pEntry, value, aSet );
+                SfxItemPropertySet::setPropertyValue( *pEntry, value, aSet );
                 pFormat->SetFormatAttr(aSet);
             }
             else
             {
-                m_pPropSet->setPropertyValue( *pEntry, aValue, aSet );
+                SfxItemPropertySet::setPropertyValue( *pEntry, aValue, aSet );
 
                 if(RES_ANCHOR == pEntry->nWID && MID_ANCHOR_ANCHORTYPE == pEntry->nMemberId)
                 {
@@ -1313,12 +1322,12 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
                         SwFormatAnchor aNewAnchor( aSet.Get( RES_ANCHOR ) );
                         //if the fly has been anchored at page then it needs to be connected
                         //to the content position
-                        SwPaM aPam(pDoc->GetNodes().GetEndOfContent());
-                        if( pDoc->getIDocumentLayoutAccess().GetCurrentLayout() )
+                        SwPaM aPam(rDoc.GetNodes().GetEndOfContent());
+                        if( rDoc.getIDocumentLayoutAccess().GetCurrentLayout() )
                         {
                             SwCursorMoveState aState( CursorMoveState::SetOnlyText );
                             Point aTmp( pObj->GetSnapRect().TopLeft() );
-                            pDoc->getIDocumentLayoutAccess().GetCurrentLayout()->GetModelPositionForViewPoint( aPam.GetPoint(), aTmp, &aState );
+                            rDoc.getIDocumentLayoutAccess().GetCurrentLayout()->GetModelPositionForViewPoint( aPam.GetPoint(), aTmp, &aState );
                         }
                         else
                         {
@@ -1334,12 +1343,12 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
                     if( text::TextContentAnchorType_AS_CHARACTER == eNewAnchor &&
                         (RndStdIds::FLY_AS_CHAR != eOldAnchorId))
                     {
-                        SwPaM aPam(pDoc->GetNodes().GetEndOfContent());
-                        if( pDoc->getIDocumentLayoutAccess().GetCurrentLayout() )
+                        SwPaM aPam(rDoc.GetNodes().GetEndOfContent());
+                        if( rDoc.getIDocumentLayoutAccess().GetCurrentLayout() )
                         {
                             SwCursorMoveState aState( CursorMoveState::SetOnlyText );
                             Point aTmp( pObj->GetSnapRect().TopLeft() );
-                            pDoc->getIDocumentLayoutAccess().GetCurrentLayout()->GetModelPositionForViewPoint( aPam.GetPoint(), aTmp, &aState );
+                            rDoc.getIDocumentLayoutAccess().GetCurrentLayout()->GetModelPositionForViewPoint( aPam.GetPoint(), aTmp, &aState );
                         }
                         else
                         {
@@ -1456,9 +1465,9 @@ void SwXShape::setPropertyValue(const OUString& rPropertyName, const uno::Any& a
         {
                 aKeepedPosition = getPosition();
         }
-        if( pFormat && pFormat->GetDoc()->getIDocumentLayoutAccess().GetCurrentViewShell() )
+        if( pFormat && pFormat->GetDoc().getIDocumentLayoutAccess().GetCurrentViewShell() )
         {
-            UnoActionContext aCtx(pFormat->GetDoc());
+            UnoActionContext aCtx(&pFormat->GetDoc());
             (*xPrSet)->setPropertyValue(rPropertyName, aValue);
         }
         else
@@ -1499,9 +1508,12 @@ uno::Any SwXShape::getPropertyValue(const OUString& rPropertyName)
                     {
                         SdrObject* pObj = pSvxShape->GetSdrObject();
                         // consider invisible layers
+                        SdrLayerID nLayerId = pObj->GetLayer();
+                        const IDocumentDrawModelAccess& rIDMA = pFormat->GetDoc().getIDocumentDrawModelAccess();
                         aRet <<=
-                            ( pObj->GetLayer() != pFormat->GetDoc()->getIDocumentDrawModelAccess().GetHellId() &&
-                              pObj->GetLayer() != pFormat->GetDoc()->getIDocumentDrawModelAccess().GetInvisibleHellId() );
+                            ( nLayerId != rIDMA.GetHellId() &&
+                              nLayerId != rIDMA.GetHeaderFooterHellId() &&
+                              nLayerId != rIDMA.GetInvisibleHellId() );
                     }
                 }
                 else if(FN_ANCHOR_POSITION == pEntry->nWID)
@@ -1533,7 +1545,7 @@ uno::Any SwXShape::getPropertyValue(const OUString& rPropertyName)
                         {
                             const rtl::Reference<SwXTextRange> xTextRange
                                 = SwXTextRange::CreateXTextRange(
-                                                    *pFormat->GetDoc(),
+                                                    pFormat->GetDoc(),
                                                     *aAnchor.GetContentAnchor(),
                                                     nullptr );
                             aRet <<= uno::Reference<text::XTextRange>(xTextRange);
@@ -1583,7 +1595,7 @@ uno::Any SwXShape::getPropertyValue(const OUString& rPropertyName)
                 {
                     // get property <::drawing::Shape::Transformation>
                     // without conversion to layout direction as below
-                    aRet = _getPropAtAggrObj( "Transformation" );
+                    aRet = _getPropAtAggrObj( u"Transformation"_ustr );
                 }
                 else if ( FN_SHAPE_POSITION_LAYOUT_DIR == pEntry->nWID )
                 {
@@ -1594,13 +1606,13 @@ uno::Any SwXShape::getPropertyValue(const OUString& rPropertyName)
                 {
                     // get property <::drawing::Shape::StartPosition>
                     // without conversion to layout direction as below
-                    aRet = _getPropAtAggrObj( "StartPosition" );
+                    aRet = _getPropAtAggrObj( u"StartPosition"_ustr );
                 }
                 else if ( FN_SHAPE_ENDPOSITION_IN_HORI_L2R == pEntry->nWID )
                 {
                     // get property <::drawing::Shape::EndPosition>
                     // without conversion to layout direction as below
-                    aRet = _getPropAtAggrObj( "EndPosition" );
+                    aRet = _getPropAtAggrObj( u"EndPosition"_ustr );
                 }
                 else if (pEntry->nWID == RES_FRM_SIZE &&
                          (pEntry->nMemberId == MID_FRMSIZE_REL_HEIGHT ||
@@ -1637,7 +1649,7 @@ uno::Any SwXShape::getPropertyValue(const OUString& rPropertyName)
                 else
                 {
                     const SwAttrSet& rSet = pFormat->GetAttrSet();
-                    m_pPropSet->getPropertyValue(*pEntry, rSet, aRet);
+                    SfxItemPropertySet::getPropertyValue(*pEntry, rSet, aRet);
                 }
             }
             else
@@ -1691,7 +1703,7 @@ uno::Any SwXShape::getPropertyValue(const OUString& rPropertyName)
                     {
                         // get property <::drawing::Shape::Transformation>
                         // without conversion to layout direction as below
-                        aRet = _getPropAtAggrObj( "Transformation" );
+                        aRet = _getPropAtAggrObj( u"Transformation"_ustr );
                     }
                     break;
                     case FN_SHAPE_POSITION_LAYOUT_DIR:
@@ -1704,14 +1716,14 @@ uno::Any SwXShape::getPropertyValue(const OUString& rPropertyName)
                     {
                         // get property <::drawing::Shape::StartPosition>
                         // without conversion to layout direction as below
-                        aRet = _getPropAtAggrObj( "StartPosition" );
+                        aRet = _getPropAtAggrObj( u"StartPosition"_ustr );
                     }
                     break;
                     case FN_SHAPE_ENDPOSITION_IN_HORI_L2R:
                     {
                         // get property <::drawing::Shape::StartPosition>
                         // without conversion to layout direction as below
-                        aRet = _getPropAtAggrObj( "EndPosition" );
+                        aRet = _getPropAtAggrObj( u"EndPosition"_ustr );
                     }
                     break;
                 }
@@ -1935,10 +1947,10 @@ void SwXShape::setPropertyToDefault( const OUString& rPropertyName )
         if(pFormat)
         {
             const SfxItemSet& rSet = pFormat->GetAttrSet();
-            SfxItemSet aSet(pFormat->GetDoc()->GetAttrPool(), pEntry->nWID, pEntry->nWID);
+            SfxItemSet aSet(pFormat->GetDoc().GetAttrPool(), pEntry->nWID, pEntry->nWID);
             aSet.SetParent(&rSet);
             aSet.ClearItem(pEntry->nWID);
-            pFormat->GetDoc()->SetAttr(aSet, *pFormat);
+            pFormat->GetDoc().SetAttr(aSet, *pFormat);
         }
         else
         {
@@ -1996,7 +2008,7 @@ uno::Any SwXShape::getPropertyDefault( const OUString& rPropertyName )
             throw uno::RuntimeException();
 
         const SfxPoolItem& rDefItem =
-            pFormat->GetDoc()->GetAttrPool().GetDefaultItem(pEntry->nWID);
+            pFormat->GetDoc().GetAttrPool().GetUserOrPoolDefaultItem(pEntry->nWID);
         rDefItem.QueryValue(aRet, pEntry->nMemberId);
 
     }
@@ -2019,7 +2031,7 @@ void SwXShape::addPropertyChangeListener(
     const uno::Reference< beans::XPropertyChangeListener > & _listener )
 {
     if ( !m_xShapeAgg.is() )
-        throw uno::RuntimeException("no shape aggregate", *this );
+        throw uno::RuntimeException(u"no shape aggregate"_ustr, *this );
 
     // must be handled by the aggregate
     uno::Reference< beans::XPropertySet > xShapeProps;
@@ -2032,7 +2044,7 @@ void SwXShape::removePropertyChangeListener(
     const uno::Reference< beans::XPropertyChangeListener > & _listener)
 {
     if ( !m_xShapeAgg.is() )
-        throw uno::RuntimeException("no shape aggregate", *this );
+        throw uno::RuntimeException(u"no shape aggregate"_ustr, *this );
 
     // must be handled by the aggregate
     uno::Reference< beans::XPropertySet > xShapeProps;
@@ -2088,7 +2100,7 @@ void SwXShape::attach(const uno::Reference< text::XTextRange > & xTextRange)
         {
             uno::Any aPos;
             aPos <<= xTextRange;
-            setPropertyValue("TextRange", aPos);
+            setPropertyValue(u"TextRange"_ustr, aPos);
             uno::Reference< drawing::XShape > xTemp( getXWeak(), uno::UNO_QUERY );
             xDP->add( xTemp );
         }
@@ -2111,11 +2123,11 @@ uno::Reference< text::XTextRange > SwXShape::getAnchor()
             if (rAnchor.GetAnchorId() == RndStdIds::FLY_AT_PARA)
             {   // ensure that SwXTextRange has SwContentIndex
                 const SwNode* pAnchorNode = rAnchor.GetAnchorNode();
-                aRef = SwXTextRange::CreateXTextRange(*pFormat->GetDoc(), SwPosition(*pAnchorNode), nullptr);
+                aRef = SwXTextRange::CreateXTextRange(pFormat->GetDoc(), SwPosition(*pAnchorNode), nullptr);
             }
             else
             {
-                aRef = SwXTextRange::CreateXTextRange(*pFormat->GetDoc(), *rAnchor.GetContentAnchor(), nullptr);
+                aRef = SwXTextRange::CreateXTextRange(pFormat->GetDoc(), *rAnchor.GetContentAnchor(), nullptr);
             }
         }
     }
@@ -2159,7 +2171,7 @@ void SwXShape::dispose()
                 pTextNode->DeleteAttributes( RES_TXTATR_FLYCNT, nIdx );
             }
             else
-                pFormat->GetDoc()->getIDocumentLayoutAccess().DelLayoutFormat( pFormat );
+                pFormat->GetDoc().getIDocumentLayoutAccess().DelLayoutFormat( pFormat );
         }
     }
     if(m_xShapeAgg.is())
@@ -2196,7 +2208,7 @@ void SwXShape::removeEventListener(
 
 OUString SwXShape::getImplementationName()
 {
-    return "SwXShape";
+    return u"SwXShape"_ustr;
 }
 
 sal_Bool SwXShape::supportsService(const OUString& rServiceName)
@@ -2210,7 +2222,7 @@ uno::Sequence< OUString > SwXShape::getSupportedServiceNames()
     if (SvxShape* pSvxShape = GetSvxShape())
         aSeq = pSvxShape->getSupportedServiceNames();
     return comphelper::concatSequences(
-        aSeq, std::initializer_list<std::u16string_view>{ u"com.sun.star.drawing.Shape" });
+        aSeq, std::initializer_list<OUString>{ u"com.sun.star.drawing.Shape"_ustr });
 }
 
 SvxShape*   SwXShape::GetSvxShape()
@@ -2403,9 +2415,9 @@ awt::Point SwXShape::GetAttrPosition()
 {
     awt::Point aAttrPos;
 
-    uno::Any aHoriPos( getPropertyValue("HoriOrientPosition") );
+    uno::Any aHoriPos( getPropertyValue(u"HoriOrientPosition"_ustr) );
     aHoriPos >>= aAttrPos.X;
-    uno::Any aVertPos( getPropertyValue("VertOrientPosition") );
+    uno::Any aVertPos( getPropertyValue(u"VertOrientPosition"_ustr) );
     aVertPos >>= aAttrPos.Y;
     // #i35798# - fallback, if attribute position is (0,0)
     // and no anchor position is applied to the drawing object
@@ -2428,7 +2440,7 @@ awt::Point SwXShape::GetAttrPosition()
     text::TextContentAnchorType eTextAnchorType =
                             text::TextContentAnchorType_AT_PARAGRAPH;
     {
-        uno::Any aAny = getPropertyValue( "AnchorType" );
+        uno::Any aAny = getPropertyValue( u"AnchorType"_ustr );
         aAny >>= eTextAnchorType;
     }
     if ( eTextAnchorType == text::TextContentAnchorType_AS_CHARACTER )
@@ -2557,7 +2569,7 @@ void SwXShape::AdjustPositionProperties( const awt::Point& rPosition )
     text::TextContentAnchorType eTextAnchorType =
                             text::TextContentAnchorType_AT_PARAGRAPH;
     {
-        uno::Any aAny = getPropertyValue( "AnchorType" );
+        uno::Any aAny = getPropertyValue( u"AnchorType"_ustr );
         aAny >>= eTextAnchorType;
     }
     if ( eTextAnchorType != text::TextContentAnchorType_AS_CHARACTER )
@@ -2692,15 +2704,11 @@ css::drawing::PolyPolygonBezierCoords SwXShape::ConvertPolyPolygonBezierToLayout
             // apply translation difference to PolyPolygonBezier.
             if ( aTranslateDiff.X != 0 || aTranslateDiff.Y != 0 )
             {
-                const basegfx::B2DHomMatrix aMatrix(basegfx::utils::createTranslateB2DHomMatrix(
-                    aTranslateDiff.X, aTranslateDiff.Y));
-
                 for(drawing::PointSequence& rInnerSequence : asNonConstRange(aConvertedPath.Coordinates))
                 {
                     for(awt::Point& rPoint : asNonConstRange(rInnerSequence))
                     {
-                        basegfx::B2DPoint aNewCoordinatePair(rPoint.X, rPoint.Y);
-                        aNewCoordinatePair *= aMatrix;
+                        basegfx::B2DPoint aNewCoordinatePair(rPoint.X + aTranslateDiff.X, rPoint.Y + aTranslateDiff.Y);
                         rPoint.X = basegfx::fround(aNewCoordinatePair.getX());
                         rPoint.Y = basegfx::fround(aNewCoordinatePair.getY());
                     }
@@ -2778,18 +2786,18 @@ void SwXGroupShape::add( const uno::Reference< XShape >& xShape )
         SdrObject* pObj = pAddShape->GetSdrObject();
         if(pObj)
         {
-            SwDoc* pDoc = pFormat->GetDoc();
+            SwDoc& rDoc = pFormat->GetDoc();
             // set layer of new drawing
             // object to corresponding invisible layer.
             if( SdrInventor::FmForm != pObj->GetObjInventor())
             {
                 pObj->SetLayer( pSwShape->m_pImpl->GetOpaque()
-                                ? pDoc->getIDocumentDrawModelAccess().GetInvisibleHeavenId()
-                                : pDoc->getIDocumentDrawModelAccess().GetInvisibleHellId() );
+                                ? rDoc.getIDocumentDrawModelAccess().GetInvisibleHeavenId()
+                                : rDoc.getIDocumentDrawModelAccess().GetInvisibleHellId() );
             }
             else
             {
-                pObj->SetLayer(pDoc->getIDocumentDrawModelAccess().GetInvisibleControlsId());
+                pObj->SetLayer(rDoc.getIDocumentDrawModelAccess().GetInvisibleControlsId());
             }
         }
     }

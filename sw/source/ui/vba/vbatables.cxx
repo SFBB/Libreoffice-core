@@ -29,25 +29,21 @@
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/table/XCellRange.hpp>
 #include <cppuhelper/implbase.hxx>
+#include <unotxdoc.hxx>
+#include <unocoll.hxx>
+#include <unotbl.hxx>
 #include <utility>
 
 using namespace ::ooo::vba;
 using namespace css;
 
-static uno::Reference< container::XIndexAccess > lcl_getTables( const uno::Reference< frame::XModel >& xDoc )
-{
-    uno::Reference< container::XIndexAccess > xTables;
-    uno::Reference< text::XTextTablesSupplier > xSupp( xDoc, uno::UNO_QUERY );
-    if ( xSupp.is() )
-        xTables.set( xSupp->getTextTables(), uno::UNO_QUERY_THROW );
-    return xTables;
-}
-
-static uno::Any lcl_createTable( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, const uno::Reference< frame::XModel >& xDocument, const uno::Any& aSource )
+static uno::Any lcl_createTable( const uno::Reference< XHelperInterface >& xParent,
+                                 const uno::Reference< uno::XComponentContext >& xContext,
+                                 const rtl::Reference< SwXTextDocument >& xDocument,
+                                 const uno::Any& aSource )
 {
     uno::Reference< text::XTextTable > xTextTable( aSource, uno::UNO_QUERY_THROW );
-    uno::Reference< text::XTextDocument > xTextDocument( xDocument, uno::UNO_QUERY_THROW );
-    uno::Reference< word::XTable > xTable( new SwVbaTable( xParent, xContext, xTextDocument, xTextTable ) );
+    uno::Reference< word::XTable > xTable( new SwVbaTable( xParent, xContext, xDocument, xTextTable ) );
     return uno::Any( xTable );
 }
 
@@ -62,25 +58,23 @@ static bool lcl_isInHeaderFooter( const uno::Reference< text::XTextTable >& xTab
     return aImplName == "SwXHeadFootText";
 }
 
-typedef std::vector< uno::Reference< text::XTextTable > > XTextTableVec;
-
 namespace {
 
 class TableCollectionHelper : public ::cppu::WeakImplHelper< container::XIndexAccess,
                                                              container::XNameAccess >
 {
-    XTextTableVec mxTables;
-    XTextTableVec::iterator m_cachePos;
+    std::vector<rtl::Reference<SwXTextTable>> mxTables;
+    std::vector<rtl::Reference<SwXTextTable>>::iterator m_cachePos;
 
 public:
-    explicit TableCollectionHelper( const uno::Reference< frame::XModel >& xDocument )
+    explicit TableCollectionHelper( const rtl::Reference< SwXTextDocument >& xDocument )
     {
         // only count the tables in the body text, not in the header/footer
-        uno::Reference< container::XIndexAccess > xTables = lcl_getTables( xDocument );
+        rtl::Reference< SwXTextTables > xTables = xDocument->getSwTextTables();
         sal_Int32 nCount = xTables->getCount();
         for( sal_Int32 i = 0; i < nCount; i++ )
         {
-            uno::Reference< text::XTextTable > xTable( xTables->getByIndex( i ) , uno::UNO_QUERY_THROW );
+            rtl::Reference< SwXTextTable > xTable = xTables->getTextTableByIndex( i );
             if( !lcl_isInHeaderFooter( xTable ) )
                 mxTables.push_back( xTable );
         }
@@ -95,8 +89,7 @@ public:
     {
         if ( Index < 0 || Index >= getCount() )
             throw lang::IndexOutOfBoundsException();
-        uno::Reference< text::XTextTable > xTable( mxTables[ Index ], uno::UNO_SET_THROW );
-        return uno::Any( xTable );
+        return uno::Any( uno::Reference< text::XTextTable >( mxTables[ Index ] ) );
     }
     // XElementAccess
     virtual uno::Type SAL_CALL getElementType(  ) override { return  cppu::UnoType<text::XTextTable>::get(); }
@@ -115,8 +108,7 @@ public:
         OUString* pString = sNames.getArray();
         for ( const auto& rxTable : mxTables )
         {
-            uno::Reference< container::XNamed > xName( rxTable, uno::UNO_QUERY_THROW );
-            *pString = xName->getName();
+            *pString = rxTable->getName();
             ++pString;
         }
         return sNames;
@@ -124,11 +116,10 @@ public:
     virtual sal_Bool SAL_CALL hasByName( const OUString& aName ) override
     {
         m_cachePos = mxTables.begin();
-        XTextTableVec::iterator it_end = mxTables.end();
+        auto it_end = mxTables.end();
         for ( ; m_cachePos != it_end; ++m_cachePos )
         {
-            uno::Reference< container::XNamed > xName( *m_cachePos, uno::UNO_QUERY_THROW );
-            if ( aName.equalsIgnoreAsciiCase( xName->getName() ) )
+            if ( aName.equalsIgnoreAsciiCase( (*m_cachePos)->getName() ) )
                 break;
         }
         return ( m_cachePos != it_end );
@@ -139,11 +130,16 @@ class TableEnumerationImpl : public ::cppu::WeakImplHelper< css::container::XEnu
 {
     uno::Reference< XHelperInterface > mxParent;
     uno::Reference< uno::XComponentContext > mxContext;
-    uno::Reference< frame::XModel > mxDocument;
+    rtl::Reference< SwXTextDocument > mxDocument;
     uno::Reference< container::XIndexAccess > mxIndexAccess;
     sal_Int32 mnCurIndex;
 public:
-    TableEnumerationImpl(  uno::Reference< XHelperInterface > xParent, uno::Reference< uno::XComponentContext > xContext, uno::Reference< frame::XModel >  xDocument, uno::Reference< container::XIndexAccess >  xIndexAccess ) : mxParent(std::move( xParent )), mxContext(std::move( xContext )), mxDocument(std::move( xDocument )), mxIndexAccess(std::move( xIndexAccess )), mnCurIndex(0)
+    TableEnumerationImpl( uno::Reference< XHelperInterface > xParent,
+                          uno::Reference< uno::XComponentContext > xContext,
+                          rtl::Reference< SwXTextDocument > xDocument,
+                          uno::Reference< container::XIndexAccess >  xIndexAccess )
+    : mxParent(std::move( xParent )), mxContext(std::move( xContext )),
+      mxDocument(std::move( xDocument )), mxIndexAccess(std::move( xIndexAccess )), mnCurIndex(0)
     {
     }
     virtual sal_Bool SAL_CALL hasMoreElements(  ) override
@@ -161,7 +157,11 @@ public:
 
 }
 
-SwVbaTables::SwVbaTables( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext > & xContext, const uno::Reference< frame::XModel >& xDocument ) : SwVbaTables_BASE( xParent, xContext , uno::Reference< container::XIndexAccess >( new TableCollectionHelper( xDocument ) ) ), mxDocument( xDocument )
+SwVbaTables::SwVbaTables( const uno::Reference< XHelperInterface >& xParent,
+                          const uno::Reference< uno::XComponentContext > & xContext,
+                          const rtl::Reference< SwXTextDocument >& xDocument )
+: SwVbaTables_BASE( xParent, xContext , uno::Reference< container::XIndexAccess >( new TableCollectionHelper( xDocument ) ) ),
+  mxDocument( xDocument )
 {
 }
 
@@ -177,22 +177,19 @@ SwVbaTables::Add( const uno::Reference< word::XRange >& Range, const uno::Any& N
     if ( nCols <= 0 || nRows <= 0 )
         throw uno::RuntimeException(); // #FIXME better exception??
 
-    uno::Reference< frame::XModel > xModel( pVbaRange->getDocument(), uno::UNO_QUERY_THROW );
-    uno::Reference< lang::XMultiServiceFactory > xMsf( xModel, uno::UNO_QUERY_THROW );
+    rtl::Reference< SwXTextDocument > xModel( pVbaRange->getDocument() );
     uno::Reference< text::XTextRange > xTextRange = pVbaRange->getXTextRange();
 
-    uno::Reference< text::XTextTable > xTable;
-    xTable.set( xMsf->createInstance("com.sun.star.text.TextTable"), uno::UNO_QUERY_THROW );
+    rtl::Reference< SwXTextTable > xTable(SwXTextTable::CreateXTextTable(nullptr));
 
     xTable->initialize( nRows, nCols );
     uno::Reference< text::XText > xText = xTextRange->getText();
-    uno::Reference< text::XTextContent > xContext( xTable, uno::UNO_QUERY_THROW );
+    uno::Reference< text::XTextContent > xContext( xTable );
 
     xText->insertTextContent( xTextRange, xContext, true );
 
     // move the current cursor to the first table cell
-    uno::Reference< table::XCellRange > xCellRange( xTable, uno::UNO_QUERY_THROW );
-    uno::Reference< text::XText> xFirstCellText( xCellRange->getCellByPosition(0, 0), uno::UNO_QUERY_THROW );
+    uno::Reference< text::XText> xFirstCellText( xTable->getCellByPosition(0, 0), uno::UNO_QUERY_THROW );
     word::getXTextViewCursor( mxDocument )->gotoRange( xFirstCellText->getStart(), false );
 
     uno::Reference< word::XTable > xVBATable( new SwVbaTable( mxParent, mxContext,  pVbaRange->getDocument(), xTable ) );
@@ -216,7 +213,7 @@ SwVbaTables::createCollectionObject( const uno::Any& aSource )
 OUString
 SwVbaTables::getServiceImplName()
 {
-    return "SwVbaTables";
+    return u"SwVbaTables"_ustr;
 }
 
 // XEnumerationAccess
@@ -231,7 +228,7 @@ SwVbaTables::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.word.Tables"
+        u"ooo.vba.word.Tables"_ustr
     };
     return aServiceNames;
 }

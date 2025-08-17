@@ -27,6 +27,7 @@
 #include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <systools/win32/oleauto.hxx>
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include "MAccessible.h"
@@ -70,7 +71,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_accessibleAt(long row, long col
         pRet->AddRef();
         return S_OK;
     }
-    else if(pRAcc.is())
+    else
     {
         Reference<XAccessible> pxTable(pRXTable, UNO_QUERY);
 
@@ -125,7 +126,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_columnDescription(long column, 
     const OUString& ouStr = pRXTable->getAccessibleColumnDescription(column);
 
     SysFreeString(*description);
-    *description = SysAllocString(o3tl::toW(ouStr.getStr()));
+    *description = sal::systools::BStr::newBSTR(ouStr);
     if (*description==nullptr)
         return E_FAIL;
     return S_OK;
@@ -323,7 +324,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_rowDescription(long row, BSTR *
     const OUString& ouStr = pRXTable->getAccessibleRowDescription(row);
 
     SysFreeString(*description);
-    *description = SysAllocString(o3tl::toW(ouStr.getStr()));
+    *description = sal::systools::BStr::newBSTR(ouStr);
     if (*description==nullptr)
         return E_FAIL;
     return S_OK;
@@ -803,7 +804,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::put_XInterface(hyper pXInterface)
     try {
 
     CUNOXWrapper::put_XInterface(pXInterface);
-    //special query.
+
     if(pUNOInterface == nullptr)
         return E_INVALIDARG;
 
@@ -987,6 +988,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_selectedChildren(long, long **c
 
     *nChildren = nChildCount;
     *children = static_cast<long*>(CoTaskMemAlloc(nChildCount * sizeof(long)));
+    assert(*children && "Don't handle OOM conditions");
 
     for( sal_Int64 i = 0; i< nChildCount; i++)
     {
@@ -1049,6 +1051,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTable::get_selectedCells(IUnknown * * * ce
     *nSelectedCells = nSelected;
 
     *cells = static_cast<IUnknown**>(CoTaskMemAlloc(nSelected * sizeof(IUnknown*)));
+    assert(*cells && "Don't handle OOM conditions");
 
     for (sal_Int64 i = 0; i < nSelected; i++)
     {

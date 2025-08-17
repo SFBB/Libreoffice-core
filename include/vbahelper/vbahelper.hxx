@@ -75,15 +75,14 @@ namespace ooo::vba
         VBAHELPER_DLLPUBLIC SfxObjectShell* getSfxObjShell( const css::uno::Reference< css::frame::XModel >& xModel );
 
         /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::frame::XModel > getCurrentDoc( const OUString& sKey );
+        VBAHELPER_DLLPUBLIC css::uno::Reference< css::frame::XModel > getCurrentDoc( const OUString& sKey );
         /// @throws css::uno::RuntimeException
         VBAHELPER_DLLPUBLIC css::uno::Reference< css::frame::XModel > getThisExcelDoc( const css::uno::Reference< css::uno::XComponentContext >& xContext );
         /// @throws css::uno::RuntimeException
-        VBAHELPER_DLLPUBLIC css::uno::Reference< css::frame::XModel > getThisWordDoc( const css::uno::Reference< css::uno::XComponentContext >& xContext );
-        /// @throws css::uno::RuntimeException
         VBAHELPER_DLLPUBLIC css::uno::Reference< css::frame::XModel > getCurrentExcelDoc( const css::uno::Reference< css::uno::XComponentContext >& xContext );
-        /// @throws css::uno::RuntimeException
-        VBAHELPER_DLLPUBLIC css::uno::Reference< css::frame::XModel > getCurrentWordDoc( const css::uno::Reference< css::uno::XComponentContext >& xContext );
+
+        /// @throws uno::RuntimeException
+        VBAHELPER_DLLPUBLIC css::uno::Reference< css::frame::XModel > getCurrentDocCtx( const OUString& ctxName, const css::uno::Reference< css::uno::XComponentContext >& xContext );
 
         /// @throws css::uno::RuntimeException
         VBAHELPER_DLLPUBLIC css::uno::Reference< css::beans::XIntrospectionAccess > getIntrospectionAccess( const css::uno::Any& aObject );
@@ -131,7 +130,7 @@ namespace ooo::vba
         VBAHELPER_DLLPUBLIC bool setPropertyValue( css::uno::Sequence< css::beans::PropertyValue >& aProp, const OUString& aName, const css::uno::Any& aValue );
         VBAHELPER_DLLPUBLIC void setOrAppendPropertyValue( css::uno::Sequence< css::beans::PropertyValue >& aProp, const OUString& aName, const css::uno::Any& aValue );
 
-        VBAHELPER_DLLPUBLIC bool executeRunTimeLibrary(const std::u16string_view& rSbRtl_command,
+        VBAHELPER_DLLPUBLIC bool executeRunTimeLibrary(std::u16string_view rSbRtl_command,
                                                        SbxArray* pParameters);
 
 class VBAHELPER_DLLPUBLIC Millimeter
@@ -205,9 +204,6 @@ public:
     virtual void setWidth( double nWidth) override;
     virtual ~ConcreteXShapeGeometryAttributes() override;
 };
-
-#define VBA_LEFT "PositionX"
-#define VBA_TOP "PositionY"
 
 class VBAHELPER_DLLPUBLIC UserFormGeometryHelper final : public AbstractGeometryAttributes
 {

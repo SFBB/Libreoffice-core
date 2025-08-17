@@ -101,7 +101,7 @@ SwCharFormat* SwLineNumberInfo::GetCharFormat( IDocumentStylePoolAccess& rIDSPA 
     if ( !GetRegisteredIn() )
     {
         SwCharFormat* pFormat = rIDSPA.GetCharFormatFromPool( RES_POOLCHR_LINENUM );
-        pFormat->Add( const_cast<SwLineNumberInfo*>(this) );
+        pFormat->Add(const_cast<SwLineNumberInfo&>(*this));
     }
     return const_cast<SwCharFormat*>(static_cast<const SwCharFormat*>(GetRegisteredIn()));
 }
@@ -109,21 +109,27 @@ SwCharFormat* SwLineNumberInfo::GetCharFormat( IDocumentStylePoolAccess& rIDSPA 
 void SwLineNumberInfo::SetCharFormat( SwCharFormat *pChFormat )
 {
     OSL_ENSURE( pChFormat, "SetCharFormat, 0 is not a valid pointer" );
-    pChFormat->Add( this );
+    pChFormat->Add(*this);
 }
 
 void SwLineNumberInfo::SwClientNotify(const SwModify&, const SfxHint& rHint)
 {
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
+    if (rHint.GetId() != SfxHintId::SwLegacyModify
+        && rHint.GetId() != SfxHintId::SwFormatChange
+        && rHint.GetId() != SfxHintId::SwAttrSetChange
+        && rHint.GetId() != SfxHintId::SwUpdateAttr)
         return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    CheckRegistration( pLegacy->m_pOld );
-    SwDoc *pDoc = static_cast<SwCharFormat*>(GetRegisteredIn())->GetDoc();
-    SwRootFrame* pRoot = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
+    if (rHint.GetId() == SfxHintId::SwObjectDying)
+    {
+        auto pDyingHint = static_cast<const sw::ObjectDyingHint*>(&rHint);
+        CheckRegistration( *pDyingHint );
+    }
+    SwDoc& rDoc = static_cast<SwCharFormat*>(GetRegisteredIn())->GetDoc();
+    SwRootFrame* pRoot = rDoc.getIDocumentLayoutAccess().GetCurrentLayout();
     if( pRoot )
     {
         pRoot->StartAllAction();
-        for( auto aLayout : pDoc->GetAllLayouts() )
+        for( auto aLayout : rDoc.GetAllLayouts() )
             aLayout->AllAddPaintRect();
         pRoot->EndAllAction();
     }

@@ -55,12 +55,12 @@ static bool lcl_IsReference( OpCode eOp, StackVar eType )
 // --- class FormulaToken --------------------------------------------------------
 
 FormulaToken::FormulaToken( StackVar eTypeP, OpCode e ) :
-    eOp(e), eType( eTypeP ), mnRefCnt(0)
+    eOp(e), eType( eTypeP ), eRefCntPolicy(RefCntPolicy::ThreadSafe), mnRefCnt(0)
 {
 }
 
 FormulaToken::FormulaToken( const FormulaToken& r ) :
-    eOp(r.eOp), eType( r.eType ), mnRefCnt(0)
+    eOp(r.eOp), eType( r.eType ), eRefCntPolicy(RefCntPolicy::ThreadSafe), mnRefCnt(0)
 {
 }
 
@@ -188,12 +188,10 @@ double FormulaToken::GetDouble() const
     return 0.0;
 }
 
-double & FormulaToken::GetDoubleAsReference()
+void FormulaToken::SetDouble(double)
 {
     // This Get is worth an assert.
     assert( !"virtual dummy called" );
-    static double fVal = 0.0;
-    return fVal;
 }
 
 sal_Int16 FormulaToken::GetDoubleType() const
@@ -418,10 +416,8 @@ bool FormulaTokenArray::AddFormulaToken(
             {
                 // long is svIndex, used for name / database area, or "byte" for spaces
                 sal_Int32 nValue = rToken.Data.get<sal_Int32>();
-                if ( eOpCode == ocDBArea )
+                if ( eOpCode == ocDBArea || eOpCode == ocName )
                     Add( new formula::FormulaIndexToken( eOpCode, static_cast<sal_uInt16>(nValue) ) );
-                else if ( eOpCode == ocTableRef )
-                    bError = true;  /* TODO: implementation */
                 else if ( eOpCode == ocSpaces )
                     Add( new formula::FormulaByteToken( ocSpaces, static_cast<sal_uInt8>(nValue) ) );
                 else
@@ -437,6 +433,8 @@ bool FormulaTokenArray::AddFormulaToken(
                     AddBad( aStrVal );
                 else if ( eOpCode == ocStringXML )
                     AddStringXML( aStrVal );
+                else if ( eOpCode == ocStringName )
+                    AddStringName( aStrVal );
                 else if ( eOpCode == ocExternal || eOpCode == ocMacro )
                     Add( new formula::FormulaExternalToken( eOpCode, aStrVal ) );
                 else if ( eOpCode == ocWhitespace )
@@ -791,6 +789,24 @@ FormulaToken* FormulaTokenArray::ReplaceToken( sal_uInt16 nOffset, FormulaToken*
     }
 }
 
+FormulaToken* FormulaTokenArray::ReplaceRPNToken( sal_uInt16 nOffset, FormulaToken* t )
+{
+    if (nOffset < nRPN)
+    {
+        CheckToken(*t);
+        t->IncRef();
+        FormulaToken* p = pRPN[nOffset];
+        pRPN[nOffset] = t;
+        p->DecRef();    // may be dead now
+        return t;
+    }
+    else
+    {
+        t->DeleteIfZeroRef();
+        return nullptr;
+    }
+}
+
 sal_uInt16 FormulaTokenArray::RemoveToken( sal_uInt16 nOffset, sal_uInt16 nCount )
 {
     if (nOffset < nLen)
@@ -890,6 +906,11 @@ FormulaToken* FormulaTokenArray::AddString( const svl::SharedString& rStr )
     return Add( new FormulaStringToken( rStr ) );
 }
 
+FormulaToken* FormulaTokenArray::AddStringName( const svl::SharedString& rStr )
+{
+    return Add( new FormulaStringNameToken( rStr ) );
+}
+
 FormulaToken* FormulaTokenArray::AddDouble( double fVal )
 {
     return Add( new FormulaDoubleToken( fVal ) );
@@ -916,6 +937,10 @@ FormulaToken* FormulaTokenArray::AddStringXML( const OUString& rStr )
     return Add( new FormulaStringOpToken( ocStringXML, svl::SharedString( rStr ) ) );   // string not interned
 }
 
+FormulaToken* FormulaTokenArray::AddStringName( const OUString& rStr )
+{
+    return Add( new FormulaStringOpToken( ocStringName, svl::SharedString( rStr ) ) );   // string not interned
+}
 
 void FormulaTokenArray::AddRecalcMode( ScRecalcMode nBits )
 {
@@ -1578,12 +1603,15 @@ FormulaToken* FormulaTokenArray::AddOpCode( OpCode eOp )
         case ocIfError:
         case ocIfNA:
         case ocChoose:
+        case ocLet:
             {
-                short nJump[FORMULA_MAXJUMPCOUNT + 1];
+                short nJump[FORMULA_MAXPARAMS + 1];
                 if ( eOp == ocIf )
                     nJump[ 0 ] = 3;
                 else if ( eOp == ocChoose )
                     nJump[ 0 ] = FORMULA_MAXJUMPCOUNT + 1;
+                else if ( eOp == ocLet )
+                    nJump[ 0 ] = FORMULA_MAXPARAMS + 1;
                 else
                     nJump[ 0 ] = 2;
                 pRet = new FormulaJumpToken( eOp, nJump );
@@ -1614,13 +1642,13 @@ void FormulaTokenArray::ReinternStrings( svl::SharedStringPool& rPool )
 
 /*----------------------------------------------------------------------*/
 
-FormulaTokenIterator::Item::Item(const FormulaTokenArray* pArray, short pc, short stop) :
-    pArr(pArray), nPC(pc), nStop(stop)
+FormulaTokenIterator::Item::Item(const FormulaTokenArray* pArray, short pc, short stop, bool lambda) :
+    pArr(pArray), nPC(pc), nStop(stop), bLambda(lambda)
 {
 }
 
 FormulaTokenIterator::FormulaTokenIterator( const FormulaTokenArray& rArr )
-    : maStack{ FormulaTokenIterator::Item(&rArr, -1, SHRT_MAX) }
+    : maStack{ FormulaTokenIterator::Item(&rArr, -1, SHRT_MAX, false) }
 {
 }
 
@@ -1630,7 +1658,7 @@ FormulaTokenIterator::~FormulaTokenIterator()
 
 void FormulaTokenIterator::Push( const FormulaTokenArray* pArr )
 {
-    FormulaTokenIterator::Item item(pArr, -1, SHRT_MAX);
+    FormulaTokenIterator::Item item(pArr, -1, SHRT_MAX, false);
 
     maStack.push_back(item);
 }
@@ -1640,12 +1668,23 @@ void FormulaTokenIterator::Pop()
     maStack.pop_back();
 }
 
+void FormulaTokenIterator::FrontPop()
+{
+    maStack.erase(maStack.begin());
+}
+
+void FormulaTokenIterator::Lambda(bool bOpt)
+{
+    maStack.back().bLambda = bOpt;
+}
+
 void FormulaTokenIterator::Reset()
 {
     while( maStack.size() > 1 )
         maStack.pop_back();
 
-    maStack.back().nPC = -1;
+    if (!maStack.back().bLambda)
+        maStack.back().nPC = -1;
 }
 
 FormulaToken* FormulaTokenArrayPlainIterator::GetNextName()
@@ -1656,6 +1695,20 @@ FormulaToken* FormulaTokenArrayPlainIterator::GetNextName()
         {
             FormulaToken* t = mpFTA->GetArray()[ mnIndex++ ];
             if( t->GetType() == svIndex )
+                return t;
+        }
+    }
+    return nullptr;
+}
+
+FormulaToken* FormulaTokenArrayPlainIterator::GetNextStringName()
+{
+    if (mpFTA->GetCode())
+    {
+        while (mnIndex < mpFTA->GetCodeLen())
+        {
+            FormulaToken* t = mpFTA->GetCode()[ mnIndex++ ];
+            if (t->GetType() == svStringName)
                 return t;
         }
     }
@@ -1900,10 +1953,6 @@ void FormulaTokenArrayPlainIterator::AfterRemoveToken( sal_uInt16 nOffset, sal_u
 
 // real implementations of virtual functions
 
-
-double      FormulaDoubleToken::GetDouble() const            { return fDouble; }
-double &    FormulaDoubleToken::GetDoubleAsReference()       { return fDouble; }
-
 sal_Int16 FormulaDoubleToken::GetDoubleType() const
 {
     // This is a plain double value without type information, don't emit a
@@ -1983,6 +2032,35 @@ void FormulaStringOpToken::SetString( const svl::SharedString& rStr )
 bool FormulaStringOpToken::operator==( const FormulaToken& r ) const
 {
     return FormulaByteToken::operator==( r ) && maString == r.GetString();
+}
+
+FormulaStringNameToken::FormulaStringNameToken( svl::SharedString r ) :
+    FormulaToken( svStringName ), maString(std::move( r ))
+{
+}
+
+FormulaStringNameToken::FormulaStringNameToken( const FormulaStringNameToken& r ) :
+    FormulaToken( r ), maString( r.maString ) {
+}
+
+FormulaToken* FormulaStringNameToken::Clone() const
+{
+    return new FormulaStringNameToken(*this);
+}
+
+const svl::SharedString& FormulaStringNameToken::GetString() const
+{
+    return maString;
+}
+
+void FormulaStringNameToken::SetString( const svl::SharedString& rStr )
+{
+    maString = rStr;
+}
+
+bool FormulaStringNameToken::operator==( const FormulaToken& r ) const
+{
+    return FormulaToken::operator==( r ) && maString == r.GetString();
 }
 
 sal_uInt16  FormulaIndexToken::GetIndex() const             { return nIndex; }

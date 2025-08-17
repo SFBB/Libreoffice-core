@@ -43,9 +43,7 @@ namespace utl{
 }
 
 class Size;
-class SwPathFinder;
 class Graphic;
-class OutputDevice;
 class CharClass;
 class CollatorWrapper;
 class LanguageTag;
@@ -60,6 +58,9 @@ constexpr SwTwips cMinHdFtHeight = 56; // ~1mm
 
 #define MINFLY 23   // Minimal size for FlyFrames.
 #define MINLAY 23   // Minimal size for other Frames.
+
+/// hard-coded value of read-only TableColumnRelativeSum property
+constexpr int UNO_TABLE_COLUMN_SUM{10000};
 
 // Default column distance of two text columns corresponds to 0.3 cm.
 constexpr SwTwips DEF_GUTTER_WIDTH = o3tl::toTwips(3, o3tl::Length::mm);
@@ -151,11 +152,13 @@ enum class SetAttrMode
     /// for Undo, translated to SwInsertFlags::NOHINTEXPAND
     NOHINTEXPAND    = 0x0100,
     /// don't change the cursor position
-    NO_CURSOR_CHANGE = 0x0200
+    NO_CURSOR_CHANGE = 0x0200,
+    // remove all char attributes and char styles when para/char styles are applied
+    REMOVE_ALL_ATTR = 0x0400
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SetAttrMode> : is_typed_flags<SetAttrMode, 0x3ff> {};
+    template<> struct typed_flags<SetAttrMode> : is_typed_flags<SetAttrMode, 0x7ff> {};
 }
 
 namespace sw {
@@ -178,6 +181,8 @@ constexpr bool SW_ISPRINTABLE(sal_Unicode c) { return c >= ' ' && 127 != c; }
 #define CHAR_ZWSP           u'\x200B'
 #define CHAR_WJ             u'\x2060'
 #define CHAR_NNBSP          u'\x202F' //NARROW NO-BREAK SPACE
+
+inline constexpr OUString vEnSpaces = u"\u2002\u2002\u2002\u2002\u2002"_ustr;
 
 // Returns the APP - CharClass instance - used for all ToUpper/ToLower/...
 SW_DLLPUBLIC CharClass& GetAppCharClass();

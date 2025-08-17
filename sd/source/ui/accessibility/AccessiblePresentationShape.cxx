@@ -28,12 +28,9 @@
 #include <com/sun/star/drawing/XShape.hpp>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::accessibility;
 
 namespace accessibility
 {
-//=====  internal  ============================================================
-
 AccessiblePresentationShape::AccessiblePresentationShape(
     const AccessibleShapeInfo& rShapeInfo, const AccessibleShapeTreeInfo& rShapeTreeInfo)
     : AccessibleShape(rShapeInfo, rShapeTreeInfo)
@@ -46,7 +43,7 @@ AccessiblePresentationShape::~AccessiblePresentationShape() {}
 
 OUString SAL_CALL AccessiblePresentationShape::getImplementationName()
 {
-    return "AccessiblePresentationShape";
+    return u"AccessiblePresentationShape"_ustr;
 }
 
 /// Set this object's name if is different to the current name.

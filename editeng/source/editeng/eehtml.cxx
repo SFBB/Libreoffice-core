@@ -41,6 +41,8 @@ EditHTMLParser::EditHTMLParser( SvStream& rIn, OUString _aBaseURL, SvKeyValueIte
     mpEditEngine(nullptr),
     bInPara(false),
     bWasInPara(false),
+    mbBreakForDivs(false),
+    mbNewBlockNeeded(false),
     bFieldsInserted(false),
     bInTitle(false),
     nInTable(0),
@@ -57,7 +59,25 @@ EditHTMLParser::EditHTMLParser( SvStream& rIn, OUString _aBaseURL, SvKeyValueIte
     SetSwitchToUCS2( true );
 
     if ( pHTTPHeaderAttrs )
+    {
         SetEncodingByHTTPHeader( pHTTPHeaderAttrs );
+        SetBreakForDivs(*pHTTPHeaderAttrs);
+    }
+}
+
+void EditHTMLParser::SetBreakForDivs(SvKeyValueIterator& rHTTPOptions)
+{
+    SvKeyValue aKV;
+    bool bCont = rHTTPOptions.GetFirst(aKV);
+    while (bCont)
+    {
+        if (aKV.GetKey() == "newline-on-div")
+        {
+            mbBreakForDivs = aKV.GetValue() == "true";
+            break;
+        }
+        bCont = rHTTPOptions.GetNext(aKV);
+    }
 }
 
 EditHTMLParser::~EditHTMLParser()
@@ -93,6 +113,14 @@ SvParserState EditHTMLParser::CallParser(EditEngine* pEE, const EditPaM& rPaM)
             mpEditEngine->UpdateFieldsOnly();
     }
     return _eState;
+}
+
+void EditHTMLParser::Newline()
+{
+    bool bHasText = HasTextInCurrentPara();
+    if ( bHasText )
+        ImpInsertParaBreak();
+    StartPara( false );
 }
 
 void EditHTMLParser::NextToken( HtmlTokenId nToken )
@@ -160,7 +188,7 @@ void EditHTMLParser::NextToken( HtmlTokenId nToken )
     {
         if ( bInPara )
         {
-            ImpInsertText( " " );
+            ImpInsertText( u" "_ustr );
         }
     }
     break;
@@ -280,7 +308,16 @@ void EditHTMLParser::NextToken( HtmlTokenId nToken )
     case HtmlTokenId::TABLEHEADER_ON:
     case HtmlTokenId::TABLEDATA_ON:
         nInCell++;
-        [[fallthrough]];
+        Newline();
+    break;
+
+    case HtmlTokenId::DIVISION_ON:
+    case HtmlTokenId::DIVISION_OFF:
+    {
+        mbNewBlockNeeded = true;
+        break;
+    }
+
     case HtmlTokenId::BLOCKQUOTE_ON:
     case HtmlTokenId::BLOCKQUOTE_OFF:
     case HtmlTokenId::BLOCKQUOTE30_ON:
@@ -291,28 +328,23 @@ void EditHTMLParser::NextToken( HtmlTokenId nToken )
     case HtmlTokenId::DT_ON:
     case HtmlTokenId::ORDERLIST_ON:
     case HtmlTokenId::UNORDERLIST_ON:
-    {
-        bool bHasText = HasTextInCurrentPara();
-        if ( bHasText )
-            ImpInsertParaBreak();
-        StartPara( false );
-    }
+        Newline();
     break;
 
     case HtmlTokenId::TABLEHEADER_OFF:
     case HtmlTokenId::TABLEDATA_OFF:
-    {
         if ( nInCell )
             nInCell--;
-        [[fallthrough]];
-    }
+        EndPara();
+    break;
     case HtmlTokenId::LISTHEADER_OFF:
     case HtmlTokenId::LI_OFF:
     case HtmlTokenId::DD_OFF:
     case HtmlTokenId::DT_OFF:
     case HtmlTokenId::ORDERLIST_OFF:
-    case HtmlTokenId::UNORDERLIST_OFF:  EndPara();
-                                break;
+    case HtmlTokenId::UNORDERLIST_OFF:
+        EndPara();
+    break;
 
     case HtmlTokenId::TABLEROW_ON:
     case HtmlTokenId::TABLEROW_OFF: // A RETURN only after a CELL, for Calc
@@ -352,8 +384,6 @@ void EditHTMLParser::NextToken( HtmlTokenId nToken )
     // HTML 3.0
     case HtmlTokenId::BANNER_ON:
     case HtmlTokenId::BANNER_OFF:
-    case HtmlTokenId::DIVISION_ON:
-    case HtmlTokenId::DIVISION_OFF:
 //  case HtmlTokenId::LISTHEADER_ON:        //! special handling
 //  case HtmlTokenId::LISTHEADER_OFF:
     case HtmlTokenId::NOTE_ON:
@@ -501,6 +531,7 @@ void EditHTMLParser::ImpInsertParaBreak()
         mpEditEngine->CallHtmlImportHandler(aImportInfo);
     }
     aCurSel = mpEditEngine->InsertParaBreak(aCurSel);
+    mbNewBlockNeeded = false;
 }
 
 void EditHTMLParser::ImpSetAttribs( const SfxItemSet& rItems )
@@ -631,13 +662,13 @@ void EditHTMLParser::ImpSetStyleSheet( sal_uInt16 nHLevel )
     if ( nHLevel == STYLE_PRE )
     {
         vcl::Font aFont = OutputDevice::GetDefaultFont( DefaultFontType::FIXED, LANGUAGE_SYSTEM, GetDefaultFontFlags::NONE );
-        SvxFontItem aFontItem( aFont.GetFamilyType(), aFont.GetFamilyName(), OUString(), aFont.GetPitch(), aFont.GetCharSet(), EE_CHAR_FONTINFO );
+        SvxFontItem aFontItem( aFont.GetFamilyTypeMaybeAskConfig(), aFont.GetFamilyName(), OUString(), aFont.GetPitchMaybeAskConfig(), aFont.GetCharSet(), EE_CHAR_FONTINFO );
         aItems.Put( aFontItem );
 
-        SvxFontItem aFontItemCJK( aFont.GetFamilyType(), aFont.GetFamilyName(), OUString(), aFont.GetPitch(), aFont.GetCharSet(), EE_CHAR_FONTINFO_CJK );
+        SvxFontItem aFontItemCJK( aFont.GetFamilyTypeMaybeAskConfig(), aFont.GetFamilyName(), OUString(), aFont.GetPitchMaybeAskConfig(), aFont.GetCharSet(), EE_CHAR_FONTINFO_CJK );
         aItems.Put( aFontItemCJK );
 
-        SvxFontItem aFontItemCTL( aFont.GetFamilyType(), aFont.GetFamilyName(), OUString(), aFont.GetPitch(), aFont.GetCharSet(), EE_CHAR_FONTINFO_CTL );
+        SvxFontItem aFontItemCTL( aFont.GetFamilyTypeMaybeAskConfig(), aFont.GetFamilyName(), OUString(), aFont.GetPitchMaybeAskConfig(), aFont.GetCharSet(), EE_CHAR_FONTINFO_CTL );
         aItems.Put( aFontItemCTL );
     }
 
@@ -646,6 +677,13 @@ void EditHTMLParser::ImpSetStyleSheet( sal_uInt16 nHLevel )
 
 void EditHTMLParser::ImpInsertText( const OUString& rText )
 {
+    if (mbNewBlockNeeded)
+    {
+        if (mbBreakForDivs)
+            Newline();
+        mbNewBlockNeeded = false;
+    }
+
     if (mpEditEngine->IsHtmlImportHandlerSet())
     {
         HtmlImportInfo aImportInfo(HtmlImportState::InsertText, this, mpEditEngine->CreateESelection(aCurSel));

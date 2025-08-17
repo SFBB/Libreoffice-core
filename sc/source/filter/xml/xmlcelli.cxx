@@ -180,9 +180,14 @@ ScXMLTableRowCellContext::ScXMLTableRowCellContext( ScXMLImport& rImport,
                     nMatrixRows = static_cast<SCROW>(it.toInt32());
                 break;
                 case XML_ELEMENT( TABLE, XML_NUMBER_COLUMNS_REPEATED ):
-                    nColsRepeated = static_cast<SCCOL>(
-                        std::min<sal_Int32>( rImport.GetDocument()->GetSheetLimits().GetMaxColCount(),
-                        std::max( it.toInt32(), static_cast<sal_Int32>(1) ) ));
+                {
+                    if (ScDocument* pDoc = rImport.GetDocument())
+                    {
+                        nColsRepeated = static_cast<SCCOL>(
+                            std::min<sal_Int32>( pDoc->GetSheetLimits().GetMaxColCount(),
+                            std::max( it.toInt32(), static_cast<sal_Int32>(1) ) ));
+                    }
+                }
                 break;
                 case XML_ELEMENT( OFFICE, XML_VALUE_TYPE ):
                     nCellType = ScXMLImport::GetCellType(it.toCString(), it.getLength());
@@ -328,10 +333,9 @@ void ScXMLTableRowCellContext::PushParagraphField(std::unique_ptr<SvxFieldData> 
 
     sal_Int32 nPos = maParagraph.getLength();
     maParagraph.append('\1'); // Placeholder text for inserted field item.
-    rField.maSelection.nStartPara = mnCurParagraph;
-    rField.maSelection.nEndPara = mnCurParagraph;
-    rField.maSelection.nStartPos = nPos;
-    rField.maSelection.nEndPos = nPos+1;
+    rField.maSelection.start.nPara = rField.maSelection.end.nPara = mnCurParagraph;
+    rField.maSelection.start.nIndex = nPos;
+    rField.maSelection.end.nIndex = nPos+1;
 
     PushFormat(nPos, nPos+1, rStyleName);
 }
@@ -370,9 +374,9 @@ void ScXMLTableRowCellContext::PushFormat(sal_Int32 nBegin, sal_Int32 nEnd, cons
     mbHasFormatRuns = true;
     maFormats.push_back(std::make_unique<ParaFormat>(*mpEditEngine));
     ParaFormat& rFmt = *maFormats.back();
-    rFmt.maSelection.nStartPara = rFmt.maSelection.nEndPara = mnCurParagraph;
-    rFmt.maSelection.nStartPos = nBegin;
-    rFmt.maSelection.nEndPos = nEnd;
+    rFmt.maSelection.start.nPara = rFmt.maSelection.end.nPara = mnCurParagraph;
+    rFmt.maSelection.start.nIndex = nBegin;
+    rFmt.maSelection.end.nIndex = nEnd;
 
     // Store the used text styles for export.
     ScSheetSaveData* pSheetData = rXMLImport.GetScModel()->GetSheetSaveData();
@@ -689,21 +693,23 @@ uno::Reference< xml::sax::XFastContextHandler > SAL_CALL ScXMLTableRowCellContex
         uno::Reference<drawing::XShapes> xShapes (rXMLImport.GetTables().GetCurrentXShapes());
         if (xShapes.is())
         {
-            ScDocument* pDoc = rXMLImport.GetDocument();
-            if (aCellPos.Col() > pDoc->MaxCol())
-                aCellPos.SetCol(pDoc->MaxCol());
-            if (aCellPos.Row() > pDoc->MaxRow())
-                aCellPos.SetRow(pDoc->MaxRow());
-            XMLTableShapeImportHelper* pTableShapeImport =
-                    static_cast< XMLTableShapeImportHelper* >( rXMLImport.GetShapeImport().get() );
-            pTableShapeImport->SetOnTable(false);
-            pTableShapeImport->SetCell(aCellPos);
-            pContext = XMLShapeImportHelper::CreateGroupChildContext(
-                rXMLImport, nElement, xAttrList, xShapes);
-            if (pContext)
+            if (ScDocument* pDoc = rXMLImport.GetDocument())
             {
-                bIsEmpty = false;
-                rXMLImport.ProgressBarIncrement();
+                if (aCellPos.Col() > pDoc->MaxCol())
+                    aCellPos.SetCol(pDoc->MaxCol());
+                if (aCellPos.Row() > pDoc->MaxRow())
+                    aCellPos.SetRow(pDoc->MaxRow());
+                XMLTableShapeImportHelper* pTableShapeImport =
+                        static_cast< XMLTableShapeImportHelper* >( rXMLImport.GetShapeImport().get() );
+                pTableShapeImport->SetOnTable(false);
+                pTableShapeImport->SetCell(aCellPos);
+                pContext = XMLShapeImportHelper::CreateGroupChildContext(
+                    rXMLImport, nElement, xAttrList, xShapes);
+                if (pContext)
+                {
+                    bIsEmpty = false;
+                    rXMLImport.ProgressBarIncrement();
+                }
             }
         }
     }
@@ -715,13 +721,15 @@ void ScXMLTableRowCellContext::DoMerge( const ScAddress& rScAddress, const SCCOL
 {
     SCCOL mergeToCol = rScAddress.Col() + nCols;
     SCROW mergeToRow = rScAddress.Row() + nRows;
-    ScDocument* pDoc = rXMLImport.GetDocument();
-    bool bInBounds = rScAddress.Col() <= pDoc->MaxCol() && rScAddress.Row() <= pDoc->MaxRow() &&
-                       mergeToCol <= pDoc->MaxCol() && mergeToRow <= pDoc->MaxRow();
-    if( bInBounds )
+    if (ScDocument* pDoc = rXMLImport.GetDocument())
     {
-        pDoc->DoMerge( rScAddress.Col(), rScAddress.Row(),
-                       mergeToCol, mergeToRow, rScAddress.Tab() );
+        bool bInBounds = rScAddress.Col() <= pDoc->MaxCol() && rScAddress.Row() <= pDoc->MaxRow() &&
+                           mergeToCol <= pDoc->MaxCol() && mergeToRow <= pDoc->MaxRow();
+        if( bInBounds )
+        {
+            pDoc->DoMerge( rScAddress.Col(), rScAddress.Row(),
+                           mergeToCol, mergeToRow, rScAddress.Tab() );
+        }
     }
 }
 
@@ -766,6 +774,9 @@ void ScXMLTableRowCellContext::SetContentValidation( const ScRange& rScRange )
         return;
 
     ScDocument* pDoc = rXMLImport.GetDocument();
+    if (!pDoc)
+        return;
+
     ScMyImportValidation aValidation;
     aValidation.eGrammar1 = aValidation.eGrammar2 = pDoc->GetStorageGrammar();
     if( !rXMLImport.GetValidation(*maContentValidationName, aValidation) )
@@ -780,6 +791,7 @@ void ScXMLTableRowCellContext::SetContentValidation( const ScRange& rScRange )
     );
 
     aScValidationData.SetIgnoreBlank( aValidation.bIgnoreBlanks );
+    aScValidationData.SetCaseSensitive( aValidation.bCaseSensitive );
     aScValidationData.SetListType( aValidation.nShowList );
 
     // set strings for error / input even if disabled (and disable afterwards)
@@ -795,8 +807,8 @@ void ScXMLTableRowCellContext::SetContentValidation( const ScRange& rScRange )
 
     sal_uInt32 nIndex = pDoc->AddValidationEntry( aScValidationData );
 
-    ScPatternAttr aPattern( pDoc->GetPool() );
-    aPattern.GetItemSet().Put( SfxUInt32Item( ATTR_VALIDDATA, nIndex ) );
+    ScPatternAttr aPattern(pDoc->getCellAttributeHelper());
+    aPattern.ItemSetPut(SfxUInt32Item(ATTR_VALIDDATA, nIndex));
     if( rScRange.aStart == rScRange.aEnd )  //for a single cell
     {
         pDoc->ApplyPattern( rScRange.aStart.Col(), rScRange.aStart.Row(),
@@ -842,10 +854,11 @@ void ScXMLTableRowCellContext::SetAnnotation(const ScAddress& rPos)
 
         /*  Don't attempt to get the style from the SdrObject,
             as it might be a default assigned one. */
-        auto pStyle = rXMLImport.GetShapeImport()->GetAutoStylesContext()->FindStyleChildContext(
-            XmlStyleFamily::SD_GRAPHICS_ID, mxAnnotationData->maStyleName);
+        const SvXMLStylesContext* pStylesCtxt = rXMLImport.GetShapeImport()->GetAutoStylesContext();
+        const SvXMLStyleContext* pStyle = pStylesCtxt ? pStylesCtxt->FindStyleChildContext(
+            XmlStyleFamily::SD_GRAPHICS_ID, mxAnnotationData->maStyleName) : nullptr;
         OUString aStyleName = pStyle ? pStyle->GetParentName() : mxAnnotationData->maStyleName;
-        assert(!rXMLImport.GetShapeImport()->GetAutoStylesContext()->FindStyleChildContext(
+        assert(!pStylesCtxt || !pStylesCtxt->FindStyleChildContext(
             XmlStyleFamily::SD_GRAPHICS_ID, aStyleName));
         aStyleName = rXMLImport.GetStyleDisplayName(XmlStyleFamily::SD_GRAPHICS_ID, aStyleName);
 
@@ -917,11 +930,26 @@ void ScXMLTableRowCellContext::SetAnnotation(const ScAddress& rPos)
         double fDate;
         if (rXMLImport.GetMM100UnitConverter().convertDateTime(fDate, mxAnnotationData->maCreateDate))
         {
-            SvNumberFormatter* pNumForm = pDoc->GetFormatTable();
-            sal_uInt32 nfIndex = pNumForm->GetFormatIndex( NF_DATE_SYS_DDMMYYYY, LANGUAGE_SYSTEM );
             OUString aDate;
-            const Color* pColor = nullptr;
-            pNumForm->GetOutputString( fDate, nfIndex, aDate, &pColor );
+            if (comphelper::LibreOfficeKit::isActive())
+            {
+                //online handles the date format itself in browser
+                aDate = mxAnnotationData->maCreateDate;
+            }
+            else
+            {
+                SvNumberFormatter* pNumForm = pDoc->GetFormatTable();
+
+                // Date string is in format ISO 8601 inside <dc:date>
+                // i.e: 2024-08-14 or 2024-08-14T23:55:06 or 20240814T235506
+                // Time always has prefix 'T'
+                sal_uInt32 nfIndex = pNumForm->GetFormatIndex(
+                    mxAnnotationData->maCreateDate.indexOf('T') > -1 ? NF_DATETIME_SYS_DDMMYYYY_HHMMSS
+                                                                    : NF_DATE_SYS_DDMMYYYY,
+                    LANGUAGE_SYSTEM);
+                const Color* pColor = nullptr;
+                pNumForm->GetOutputString( fDate, nfIndex, aDate, &pColor );
+            }
             pNote->SetDate( aDate );
         }
         pNote->SetAuthor( mxAnnotationData->maAuthor );
@@ -980,7 +1008,7 @@ void ScXMLTableRowCellContext::SetCellRangeSource( const ScAddress& rPosition )
         rPosition.Row() + static_cast<SCROW>(pCellRangeSource->nRows - 1), rPosition.Tab() );
     OUString sFilterName( pCellRangeSource->sFilterName );
     OUString sSourceStr( pCellRangeSource->sSourceStr );
-    ScAreaLink* pLink = new ScAreaLink( pDoc->GetDocumentShell(), pCellRangeSource->sURL,
+    ScAreaLink* pLink = new ScAreaLink( *pDoc->GetDocumentShell(), pCellRangeSource->sURL,
         sFilterName, pCellRangeSource->sFilterOptions, sSourceStr, aDestRange, pCellRangeSource->nRefresh );
     sfx2::LinkManager* pLinkManager = pDoc->GetLinkManager();
     pLinkManager->InsertFileLink( *pLink, sfx2::SvBaseLinkObjectType::ClientFile, pCellRangeSource->sURL, &sFilterName, &sSourceStr );
@@ -1083,7 +1111,6 @@ void ScXMLTableRowCellContext::PutTextCell( const ScAddress& rCurrentPos,
         if (maStringValue)
         {
             rDoc.setStringCell(rCurrentPos, *maStringValue);
-            bDoIncrement = true;
         }
         else if (mbEditEngineHasText)
         {
@@ -1106,12 +1133,10 @@ void ScXMLTableRowCellContext::PutTextCell( const ScAddress& rCurrentPos,
                 // is a prerequisite for using this constructor of ScEditCell.
                 rDoc.setEditCell(rCurrentPos, mpEditEngine->CreateTextObject());
             }
-            bDoIncrement = true;
         }
         else if ( nCurrentCol > 0 && pOUText && !pOUText->isEmpty() )
         {
             rDoc.setStringCell(rCurrentPos, *pOUText);
-            bDoIncrement = true;
         }
         else
             bDoIncrement = false;
@@ -1261,6 +1286,13 @@ void ScXMLTableRowCellContext::AddTextAndValueCell( const ScAddress& rCellPos,
                     rTables.AddColumn(false);
                 }
             }
+            // if nothing else useful can happen in the loop, just exit early
+            if (i != 0 && bIsEmpty && rCurrentPos.Row() != 0)
+            {
+                rCurrentPos.SetCol( rCellPos.Col() + nColsRepeated - 1 );
+                rTables.AddColumns(nColsRepeated - i - 1);
+                break;
+            }
         }
     }
 }
@@ -1298,8 +1330,8 @@ OUString getOutputString( ScDocument* pDoc, const ScAddress& aCellPos )
         {
             //  like in GetString for document (column)
             const Color* pColor;
-            sal_uInt32 nNumFmt = pDoc->GetNumberFormat(aCellPos);
-            return ScCellFormat::GetString(aCell, nNumFmt, &pColor, *pDoc->GetFormatTable(), *pDoc);
+            sal_uInt32 nNumFmt = pDoc->GetNumberFormat(ScRange(aCellPos));
+            return ScCellFormat::GetString(aCell, nNumFmt, &pColor, nullptr, *pDoc);
         }
     }
 }
@@ -1346,6 +1378,9 @@ void ScXMLTableRowCellContext::AddNonFormulaCell( const ScAddress& rCellPos )
 void ScXMLTableRowCellContext::PutFormulaCell( const ScAddress& rCellPos )
 {
     ScDocument* pDoc = rXMLImport.GetDocument();
+    if (!pDoc)
+        return;
+
     ScDocumentImport& rDocImport = rXMLImport.GetDoc();
 
     const OUString & aText = maFormula->first;

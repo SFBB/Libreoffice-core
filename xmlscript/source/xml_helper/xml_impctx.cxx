@@ -29,6 +29,7 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <sal/log.hxx>
+#include <rtl/ref.hxx>
 
 #include <memory>
 #include <mutex>
@@ -36,7 +37,6 @@
 #include <unordered_map>
 #include <vector>
 
-using namespace ::osl;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
@@ -59,8 +59,7 @@ struct PrefixEntry
 
 }
 
-typedef std::unordered_map<
-    OUString, std::unique_ptr<PrefixEntry> > t_OUString2PrefixMap;
+typedef std::unordered_map< OUString, PrefixEntry > t_OUString2PrefixMap;
 
 namespace {
 
@@ -172,9 +171,9 @@ DocumentHandlerImpl::DocumentHandlerImpl(
     : m_xRoot( xRoot ),
       m_uid_count( 0 ),
       m_nLastURI_lookup( UID_UNKNOWN ),
-      m_aLastURI_lookup( "<<< unknown URI >>>" ),
+      m_aLastURI_lookup( u"<<< unknown URI >>>"_ustr ),
       m_nLastPrefix_lookup( UID_UNKNOWN ),
-      m_aLastPrefix_lookup( "<<< unknown URI >>>" ),
+      m_aLastPrefix_lookup( u"<<< unknown URI >>>"_ustr ),
       m_nSkipElements( 0 )
 {
     m_elements.reserve( 10 );
@@ -226,7 +225,7 @@ inline sal_Int32 DocumentHandlerImpl::getUidByPrefix(
             m_prefixes.find( rPrefix ) );
         if (iFind != m_prefixes.end())
         {
-            const PrefixEntry & rPrefixEntry = *iFind->second;
+            const PrefixEntry & rPrefixEntry = iFind->second;
             SAL_WARN_IF( rPrefixEntry.m_Uids.empty(), "xmlscript.xmlhelper", "rPrefixEntry.m_Uids is empty" );
             m_nLastPrefix_lookup = rPrefixEntry.m_Uids.back();
             m_aLastPrefix_lookup = rPrefix;
@@ -247,16 +246,16 @@ inline void DocumentHandlerImpl::pushPrefix(
     sal_Int32 nUid = getUidByURI( rURI );
 
     // mark prefix with id
-    t_OUString2PrefixMap::const_iterator iFind( m_prefixes.find( rPrefix ) );
+    t_OUString2PrefixMap::iterator iFind( m_prefixes.find( rPrefix ) );
     if (iFind == m_prefixes.end()) // unused prefix
     {
-        PrefixEntry * pEntry = new PrefixEntry();
-        pEntry->m_Uids.push_back( nUid ); // latest id for prefix
-        m_prefixes[rPrefix].reset(pEntry);
+        PrefixEntry aEntry;
+        aEntry.m_Uids.push_back( nUid ); // latest id for prefix
+        m_prefixes[rPrefix] = std::move(aEntry);
     }
     else
     {
-        PrefixEntry& rEntry = *iFind->second;
+        PrefixEntry& rEntry = iFind->second;
         SAL_WARN_IF(rEntry.m_Uids.empty(), "xmlscript.xmlhelper", "pEntry->m_Uids is empty");
         rEntry.m_Uids.push_back(nUid);
     }
@@ -271,7 +270,7 @@ inline void DocumentHandlerImpl::popPrefix(
     t_OUString2PrefixMap::iterator iFind( m_prefixes.find( rPrefix ) );
     if (iFind != m_prefixes.end()) // unused prefix
     {
-        PrefixEntry& rEntry = *iFind->second;
+        PrefixEntry& rEntry = iFind->second;
         rEntry.m_Uids.pop_back(); // pop last id for prefix
         if (rEntry.m_Uids.empty()) // erase prefix key
         {
@@ -354,7 +353,7 @@ inline ExtendedAttributes::ExtendedAttributes(
 
 OUString DocumentHandlerImpl::getImplementationName()
 {
-    return "com.sun.star.comp.xml.input.SaxDocumentHandler";
+    return u"com.sun.star.comp.xml.input.SaxDocumentHandler"_ustr;
 }
 
 sal_Bool DocumentHandlerImpl::supportsService( OUString const & servicename )
@@ -364,7 +363,7 @@ sal_Bool DocumentHandlerImpl::supportsService( OUString const & servicename )
 
 Sequence< OUString > DocumentHandlerImpl::getSupportedServiceNames()
 {
-    return { "com.sun.star.xml.input.SaxDocumentHandler" };
+    return { u"com.sun.star.xml.input.SaxDocumentHandler"_ustr };
 }
 
 // XInitialization
@@ -378,9 +377,9 @@ void DocumentHandlerImpl::initialize(
         !(arguments[ 0 ] >>= xRoot) ||
         !xRoot.is())
     {
-        throw RuntimeException( "missing root instance!" );
+        throw RuntimeException( u"missing root instance!"_ustr );
     }
-    m_xRoot = xRoot;
+    m_xRoot = std::move(xRoot);
 }
 
 // XNamespaceMapping
@@ -400,7 +399,7 @@ OUString DocumentHandlerImpl::getUriByUid( sal_Int32 Uid )
         if (rURIUid.second == Uid)
             return rURIUid.first;
     }
-    throw container::NoSuchElementException( "no such xmlns uid!" , getXWeak() );
+    throw container::NoSuchElementException( u"no such xmlns uid!"_ustr , getXWeak() );
 }
 
 // XDocumentHandler
@@ -420,7 +419,7 @@ void DocumentHandlerImpl::startElement(
     Reference< xml::sax::XAttributeList > const & xAttribs )
 {
     Reference< xml::input::XElement > xCurrentElement;
-    Reference< xml::input::XAttributes > xAttributes;
+    rtl::Reference< ExtendedAttributes > xAttributes;
     sal_Int32 nUid;
     OUString aLocalName;
     ElementEntry elementEntry;

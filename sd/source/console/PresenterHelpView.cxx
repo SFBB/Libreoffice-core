@@ -24,9 +24,9 @@
 #include "PresenterCanvasHelper.hxx"
 #include "PresenterGeometryHelper.hxx"
 #include <DrawController.hxx>
+#include <framework/ConfigurationController.hxx>
 #include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 #include <com/sun/star/rendering/TextDirection.hpp>
 #include <com/sun/star/util/Color.hpp>
@@ -120,11 +120,10 @@ class PresenterHelpView::TextContainer : public vector<std::shared_ptr<Block> >
 
 PresenterHelpView::PresenterHelpView (
     const Reference<uno::XComponentContext>& rxContext,
-    const Reference<XResourceId>& rxViewId,
+    const rtl::Reference<sd::framework::ResourceId>& rxViewId,
     const rtl::Reference<::sd::DrawController>& rxController,
     ::rtl::Reference<PresenterController> xPresenterController)
-    : PresenterHelpViewInterfaceBase(m_aMutex),
-      mxComponentContext(rxContext),
+    : mxComponentContext(rxContext),
       mxViewId(rxViewId),
       mpPresenterController(std::move(xPresenterController)),
       mnSeparatorY(0),
@@ -133,9 +132,9 @@ PresenterHelpView::PresenterHelpView (
     try
     {
         // Get the content window via the pane anchor.
-        Reference<XConfigurationController> xCC (
-            rxController->getConfigurationController(), UNO_SET_THROW);
-        mxPane.set(xCC->getResource(rxViewId->getAnchor()), UNO_QUERY_THROW);
+        rtl::Reference<sd::framework::ConfigurationController> xCC (
+            rxController->getConfigurationController());
+        mxPane = dynamic_cast<sd::framework::AbstractPane*>(xCC->getResource(rxViewId->getAnchor()).get());
 
         mxWindow = mxPane->getWindow();
         ProvideCanvas();
@@ -163,7 +162,7 @@ PresenterHelpView::PresenterHelpView (
             mpPresenterController->GetTheme(),
             mxWindow,
             mxCanvas,
-            "HelpViewCloser");
+            u"HelpViewCloser"_ustr);
 
         ReadHelpStrings();
         Resize();
@@ -180,14 +179,13 @@ PresenterHelpView::~PresenterHelpView()
 {
 }
 
-void SAL_CALL PresenterHelpView::disposing()
+void PresenterHelpView::disposing(std::unique_lock<std::mutex>&)
 {
     mxViewId = nullptr;
 
     if (mpCloseButton.is())
     {
-        Reference<lang::XComponent> xComponent = mpCloseButton;
-        mpCloseButton = nullptr;
+        rtl::Reference<PresenterButton> xComponent = std::move(mpCloseButton);
         if (xComponent.is())
             xComponent->dispose();
     }
@@ -218,24 +216,32 @@ void SAL_CALL PresenterHelpView::disposing (const lang::EventObject& rEventObjec
 
 void SAL_CALL PresenterHelpView::windowResized (const awt::WindowEvent&)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     Resize();
 }
 
 void SAL_CALL PresenterHelpView::windowMoved (const awt::WindowEvent&)
 {
-    ThrowIfDisposed();
+    std::unique_lock l(m_aMutex);
+    throwIfDisposed(l);
 }
 
 void SAL_CALL PresenterHelpView::windowShown (const lang::EventObject&)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     Resize();
 }
 
 void SAL_CALL PresenterHelpView::windowHidden (const lang::EventObject&)
 {
-    ThrowIfDisposed();
+    std::unique_lock l(m_aMutex);
+    throwIfDisposed(l);
 }
 
 //----- XPaintListener --------------------------------------------------------
@@ -339,10 +345,10 @@ void PresenterHelpView::ReadHelpStrings()
     mpTextContainer.reset(new TextContainer);
     PresenterConfigurationAccess aConfiguration (
         mxComponentContext,
-        "/org.openoffice.Office.PresenterScreen/",
+        u"/org.openoffice.Office.PresenterScreen/"_ustr,
         PresenterConfigurationAccess::READ_ONLY);
     Reference<container::XNameAccess> xStrings (
-        aConfiguration.GetConfigurationNode("PresenterScreenSettings/HelpView/HelpStrings"),
+        aConfiguration.GetConfigurationNode(u"PresenterScreenSettings/HelpView/HelpStrings"_ustr),
         UNO_QUERY);
     PresenterConfigurationAccess::ForAll(
         xStrings,
@@ -359,9 +365,9 @@ void PresenterHelpView::ProcessString (
         return;
 
     OUString sLeftText;
-    PresenterConfigurationAccess::GetProperty(rsProperties, "Left") >>= sLeftText;
+    PresenterConfigurationAccess::GetProperty(rsProperties, u"Left"_ustr) >>= sLeftText;
     OUString sRightText;
-    PresenterConfigurationAccess::GetProperty(rsProperties, "Right") >>= sRightText;
+    PresenterConfigurationAccess::GetProperty(rsProperties, u"Right"_ustr) >>= sRightText;
     mpTextContainer->push_back(
         std::make_shared<Block>(
             sLeftText, sRightText, mpFont->mxFont, mnMaximalWidth));
@@ -395,7 +401,7 @@ void PresenterHelpView::CheckFontSize()
         }
 
         // Use a simple linear transformation to calculate initial guess of
-        // a size that lets all help text be shown inside the window.
+        // a size that lets all help text to be shown inside the window.
         const double nScale (double(mnSeparatorY-gnVerticalBorder) / nY);
         if (nScale > 1.0 && nScale < 1.05)
             break;
@@ -426,15 +432,18 @@ void PresenterHelpView::CheckFontSize()
     }
 }
 
-//----- XResourceId -----------------------------------------------------------
+//----- AbstractResource -----------------------------------------------------------
 
-Reference<XResourceId> SAL_CALL PresenterHelpView::getResourceId()
+rtl::Reference<sd::framework::ResourceId> PresenterHelpView::getResourceId()
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     return mxViewId;
 }
 
-sal_Bool SAL_CALL PresenterHelpView::isAnchorOnly()
+bool PresenterHelpView::isAnchorOnly()
 {
     return false;
 }
@@ -473,16 +482,6 @@ void PresenterHelpView::Resize()
         aWindowBox.Height - mpCloseButton->GetSize().Height/2.0));
 
     CheckFontSize();
-}
-
-void PresenterHelpView::ThrowIfDisposed()
-{
-    if (rBHelper.bDisposed || rBHelper.bInDispose)
-    {
-        throw lang::DisposedException (
-            "PresenterHelpView has been already disposed",
-            static_cast<uno::XWeak*>(this));
-    }
 }
 
 //===== LineDescriptor =========================================================

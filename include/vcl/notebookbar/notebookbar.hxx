@@ -15,15 +15,12 @@
 #include <vcl/settings.hxx>
 #include <vector>
 
-namespace com::sun::star::ui { class XContextChangeEventListener; }
-
 class NotebookBarContextChangeEventListener;
 class NotebookbarContextControl;
-class SystemWindow;
 class SfxViewShell;
 
 /// This implements Widget Layout-based notebook-like menu bar.
-class VCL_DLLPUBLIC NotebookBar final : public Control, public VclBuilderContainer
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) NotebookBar final : public Control, public VclBuilderContainer
 {
 friend class NotebookBarContextChangeEventListener;
 public:
@@ -63,12 +60,10 @@ private:
     Link<const SfxViewShell*, void> m_rDisposeLink;
 
     AllSettings DefaultSettings;
-    AllSettings PersonaSettings;
 
     void UpdateBackground();
 
     void UpdateDefaultSettings();
-    void UpdatePersonaSettings();
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

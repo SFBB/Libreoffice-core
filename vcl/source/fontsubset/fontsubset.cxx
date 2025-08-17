@@ -35,7 +35,6 @@ FontSubsetInfo::FontSubsetInfo()
     , meInFontType( FontType::NO_FONT)
     , mnReqFontTypeMask( FontType::NO_FONT )
     , mpOutFile(nullptr)
-    , mpReqFontName(nullptr)
     , mpReqGlyphIds(nullptr)
     , mpReqEncodedIds(nullptr)
     , mnReqGlyphCount(0)
@@ -58,20 +57,16 @@ void FontSubsetInfo::LoadFont(
 
 bool FontSubsetInfo::CreateFontSubset(
     FontType nReqFontTypeMask,
-    SvStream* pOutFile, const char* pReqFontName,
+    SvStream* pOutFile,
     const sal_GlyphId* pReqGlyphIds, const sal_uInt8* pReqEncodedIds, int nReqGlyphCount)
 {
     // prepare request details needed by all underlying subsetters
     mnReqFontTypeMask = nReqFontTypeMask;
     mpOutFile       = pOutFile;
-    mpReqFontName   = pReqFontName;
     mpReqGlyphIds   = pReqGlyphIds;
     mpReqEncodedIds = pReqEncodedIds;
     mnReqGlyphCount = nReqGlyphCount;
-
-    OString aPSName = m_aPSName.toUtf8();
-    if (!mpReqFontName)
-        mpReqFontName = aPSName.getStr();
+    maReqFontName = m_aPSName.toUtf8();
 
     // TODO: move the glyphid/encid/notdef reshuffling from the callers to here
 

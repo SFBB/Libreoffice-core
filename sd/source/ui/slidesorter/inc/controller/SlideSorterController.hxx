@@ -143,8 +143,8 @@ public:
     */
     ScrollBarManager& GetScrollBarManager();
 
-    std::shared_ptr<CurrentSlideManager> const& GetCurrentSlideManager() const;
-    std::shared_ptr<SlotManager> const& GetSlotManager() const;
+    CurrentSlideManager& GetCurrentSlideManager() const;
+    SlotManager& GetSlotManager() const;
     std::shared_ptr<SelectionManager> const& GetSelectionManager() const;
     std::shared_ptr<InsertionIndicatorHandler> const& GetInsertionIndicatorHandler() const;
 
@@ -216,7 +216,7 @@ public:
         this method should be called between calls to
         PrepareEditModeChange() and FinishEditModeChange().
     */
-    void ChangeEditMode(EditMode eEditMode);
+    SD_DLLPUBLIC void ChangeEditMode(EditMode eEditMode);
 
     /** Finish the change of the edit mode.  Here we may select a page or
         restore a previously saved selection.
@@ -253,9 +253,9 @@ private:
     view::SlideSorterView& mrView;
     std::unique_ptr<PageSelector> mpPageSelector;
     std::unique_ptr<FocusManager> mpFocusManager;
-    std::shared_ptr<SlotManager> mpSlotManager;
+    std::unique_ptr<SlotManager> mpSlotManager;
     std::unique_ptr<ScrollBarManager> mpScrollBarManager;
-    mutable std::shared_ptr<CurrentSlideManager> mpCurrentSlideManager;
+    mutable std::unique_ptr<CurrentSlideManager> mpCurrentSlideManager;
     std::shared_ptr<SelectionManager> mpSelectionManager;
     std::unique_ptr<controller::Clipboard> mpClipboard;
     std::shared_ptr<InsertionIndicatorHandler> mpInsertionIndicatorHandler;

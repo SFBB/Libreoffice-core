@@ -23,8 +23,7 @@
 #include <sfx2/dispatch.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <avmedia/mediaplayer.hxx>
-#include <helpids.h>
-#include <galbrws2.hxx>
+#include <galbrws1.hxx>
 #include <svx/galtheme.hxx>
 #include <svx/galmisc.hxx>
 #include <svx/galctrl.hxx>
@@ -36,7 +35,7 @@
 #include <bitmaps.hlst>
 #include <svl/itemset.hxx>
 
-GalleryPreview::GalleryPreview(GalleryBrowser2* pParent, std::unique_ptr<weld::ScrolledWindow> xScrolledWindow)
+GalleryPreview::GalleryPreview(GalleryBrowser* pParent, std::unique_ptr<weld::ScrolledWindow> xScrolledWindow)
     : mxScrolledWindow(std::move(xScrolledWindow))
     , mpParent(pParent)
     , mpTheme(nullptr)
@@ -65,8 +64,6 @@ void GalleryPreview::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     Size aSize = pDrawingArea->get_ref_device().LogicToPixel(Size(70, 88), MapMode(MapUnit::MapAppFont));
     pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
     SetOutputSizePixel(aSize);
-
-    pDrawingArea->set_help_id(HID_GALLERY_WINDOW);
 
     mxDragDropTargetHelper.reset(new GalleryDragDrop(mpParent, pDrawingArea->get_drop_target()));
 }
@@ -117,15 +114,15 @@ void GalleryPreview::Paint(vcl::RenderContext& rRenderContext, const tools::Rect
     rRenderContext.SetBackground(Wallpaper(GALLERY_BG_COLOR));
     rRenderContext.Erase();
 
-    if (ImplGetGraphicCenterRect(aGraphicObj.GetGraphic(), aPreviewRect))
+    if (ImplGetGraphicCenterRect(m_aGraphicObj.GetGraphic(), m_aPreviewRect))
     {
-        const Point aPos( aPreviewRect.TopLeft() );
-        const Size  aSize( aPreviewRect.GetSize() );
+        const Point aPos( m_aPreviewRect.TopLeft() );
+        const Size  aSize( m_aPreviewRect.GetSize() );
 
-        if( aGraphicObj.IsAnimated() )
-            aGraphicObj.StartAnimation(rRenderContext, aPos, aSize);
+        if( m_aGraphicObj.IsAnimated() )
+            m_aGraphicObj.StartAnimation(rRenderContext, aPos, aSize);
         else
-            aGraphicObj.Draw(rRenderContext, aPos, aSize);
+            m_aGraphicObj.Draw(rRenderContext, aPos, aSize);
     }
 }
 
@@ -150,7 +147,7 @@ bool GalleryPreview::KeyInput(const KeyEvent& rKEvt)
 {
     if(mpTheme)
     {
-        GalleryBrowser2* pBrowser = mpParent;
+        GalleryBrowser* pBrowser = mpParent;
 
         switch( rKEvt.GetKeyCode().GetCode() )
         {
@@ -212,7 +209,7 @@ void GalleryPreview::PreviewMedia( const INetURLObject& rURL )
     }
 
     if (pFloater)
-        pFloater->setURL( rURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ), "", true );
+        pFloater->setURL( rURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ), u""_ustr, true );
 #else
     (void) rURL;
 #endif
@@ -227,7 +224,6 @@ void DialogGalleryPreview::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     CustomWidgetController::SetDrawingArea(pDrawingArea);
     Size aSize(pDrawingArea->get_ref_device().LogicToPixel(Size(70, 88), MapMode(MapUnit::MapAppFont)));
     pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
-    pDrawingArea->set_help_id(HID_GALLERY_WINDOW);
 }
 
 bool DialogGalleryPreview::SetGraphic( const INetURLObject& _aURL )
@@ -235,9 +231,9 @@ bool DialogGalleryPreview::SetGraphic( const INetURLObject& _aURL )
     bool bRet = true;
     Graphic aGraphic;
 #if HAVE_FEATURE_AVMEDIA
-    if( ::avmedia::MediaWindow::isMediaURL( _aURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ), "" ) )
+    if( ::avmedia::MediaWindow::isMediaURL( _aURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ), u""_ustr ) )
     {
-        aGraphic = BitmapEx(RID_SVXBMP_GALLERY_MEDIA);
+        aGraphic = Bitmap(RID_SVXBMP_GALLERY_MEDIA);
     }
     else
 #endif
@@ -262,15 +258,15 @@ void DialogGalleryPreview::Paint(vcl::RenderContext& rRenderContext, const tools
 {
     rRenderContext.SetBackground(Wallpaper(GALLERY_BG_COLOR));
 
-    if (ImplGetGraphicCenterRect(aGraphicObj.GetGraphic(), aPreviewRect))
+    if (ImplGetGraphicCenterRect(maGraphicObj.GetGraphic(), maPreviewRect))
     {
-        const Point aPos( aPreviewRect.TopLeft() );
-        const Size  aSize( aPreviewRect.GetSize() );
+        const Point aPos( maPreviewRect.TopLeft() );
+        const Size  aSize( maPreviewRect.GetSize() );
 
-        if( aGraphicObj.IsAnimated() )
-            aGraphicObj.StartAnimation(rRenderContext, aPos, aSize);
+        if( maGraphicObj.IsAnimated() )
+            maGraphicObj.StartAnimation(rRenderContext, aPos, aSize);
         else
-            aGraphicObj.Draw(rRenderContext, aPos, aSize);
+            maGraphicObj.Draw(rRenderContext, aPos, aSize);
     }
 }
 
@@ -284,7 +280,7 @@ void GalleryIconView::drawTransparenceBackground(vcl::RenderContext& rOut, const
     rOut.DrawCheckered(rPos, rSize, nLen, aW, aG);
 }
 
-GalleryIconView::GalleryIconView(GalleryBrowser2* pParent, std::unique_ptr<weld::ScrolledWindow> xScrolledWindow)
+GalleryIconView::GalleryIconView(GalleryBrowser* pParent, std::unique_ptr<weld::ScrolledWindow> xScrolledWindow)
     : ValueSet(std::move(xScrolledWindow))
     , mpParent(pParent)
     , mpTheme(nullptr)
@@ -302,7 +298,6 @@ void GalleryIconView::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     SetStyle(GetStyle() | WB_TABSTOP | WB_3DLOOK | WB_BORDER | WB_ITEMBORDER | WB_DOUBLEBORDER | WB_VSCROLL | WB_FLATVALUESET);
     EnableFullItemMode( false );
 
-    SetHelpId( HID_GALLERY_WINDOW );
     SetExtraSpacing( 2 );
     SetItemWidth( S_THUMB + 6 );
     SetItemHeight( S_THUMB + 6 );
@@ -319,14 +314,14 @@ void GalleryIconView::UserDraw(const UserDrawEvent& rUDEvt)
 
     const tools::Rectangle& rRect = rUDEvt.GetRect();
     const Size aSize(rRect.GetWidth(), rRect.GetHeight());
-    BitmapEx aBitmapEx;
+    Bitmap aBitmap;
     Size aPreparedSize;
     OUString aItemTextTitle;
     OUString aItemTextPath;
 
-    mpTheme->GetPreviewBitmapExAndStrings(nId - 1, aBitmapEx, aPreparedSize, aItemTextTitle, aItemTextPath);
+    mpTheme->GetPreviewBitmapAndStrings(nId - 1, aBitmap, aPreparedSize, aItemTextTitle, aItemTextPath);
 
-    bool bNeedToCreate(aBitmapEx.IsEmpty());
+    bool bNeedToCreate(aBitmap.IsEmpty());
 
     if (!bNeedToCreate && aItemTextTitle.isEmpty())
     {
@@ -344,28 +339,28 @@ void GalleryIconView::UserDraw(const UserDrawEvent& rUDEvt)
 
         if(pObj)
         {
-            aBitmapEx = pObj->createPreviewBitmapEx(aSize);
-            aItemTextTitle = GalleryBrowser2::GetItemText(*pObj, GalleryItemFlags::Title);
+            aBitmap = Bitmap(pObj->createPreviewBitmapEx(aSize));
+            aItemTextTitle = GalleryBrowser::GetItemText(*pObj, GalleryItemFlags::Title);
 
-            mpTheme->SetPreviewBitmapExAndStrings(nId - 1, aBitmapEx, aSize, aItemTextTitle, aItemTextPath);
+            mpTheme->SetPreviewBitmapAndStrings(nId - 1, aBitmap, aSize, aItemTextTitle, aItemTextPath);
         }
     }
 
-    if (!aBitmapEx.IsEmpty())
+    if (!aBitmap.IsEmpty())
     {
-        const Size aBitmapExSizePixel(aBitmapEx.GetSizePixel());
+        const Size aBitmapExSizePixel(aBitmap.GetSizePixel());
         const Point aPos(
             ((aSize.Width() - aBitmapExSizePixel.Width()) >> 1) + rRect.Left(),
             ((aSize.Height() - aBitmapExSizePixel.Height()) >> 1) + rRect.Top());
         OutputDevice* pDev = rUDEvt.GetRenderContext();
 
-        if(aBitmapEx.IsAlpha())
+        if(aBitmap.HasAlpha())
         {
             // draw checkered background for full rectangle.
             GalleryIconView::drawTransparenceBackground(*pDev, rRect.TopLeft(), rRect.GetSize());
         }
 
-        pDev->DrawBitmapEx(aPos, aBitmapEx);
+        pDev->DrawBitmapEx(aPos, aBitmap);
     }
 
     SetItemText(nId, aItemTextTitle);

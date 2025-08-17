@@ -25,6 +25,8 @@
 
 #include <WPFTEncodingDialog.hxx>
 
+#include <vcl/svapp.hxx>
+
 namespace writerperfect
 {
 namespace
@@ -77,12 +79,10 @@ std::pair<std::u16string_view, std::u16string_view> const s_encodings[]
         { u"CP865", u"Western Europe (DOS/OS2-865/Nordic)" },
         { u"CP1252", u"Western Europe (Windows-1252/WinLatin 1)" } };
 
-std::size_t const numEncodings = SAL_N_ELEMENTS(s_encodings);
-
 void insertEncodings(weld::ComboBox& box)
 {
-    for (std::size_t i = 0; i < numEncodings; ++i)
-        box.append(OUString(s_encodings[i].first), OUString(s_encodings[i].second));
+    for (const auto& rEncoding : s_encodings)
+        box.append(OUString(rEncoding.first), OUString(rEncoding.second));
 }
 
 void selectEncoding(weld::ComboBox& box, const OUString& encoding) { box.set_active_id(encoding); }
@@ -92,11 +92,11 @@ OUString getEncoding(const weld::ComboBox& box) { return box.get_active_id(); }
 
 WPFTEncodingDialog::WPFTEncodingDialog(weld::Window* pParent, const OUString& title,
                                        const OUString& encoding)
-    : GenericDialogController(pParent, "writerperfect/ui/wpftencodingdialog.ui",
-                              "WPFTEncodingDialog")
+    : GenericDialogController(pParent, u"writerperfect/ui/wpftencodingdialog.ui"_ustr,
+                              u"WPFTEncodingDialog"_ustr)
     , m_userHasCancelled(false)
-    , m_xLbCharset(m_xBuilder->weld_combo_box("comboboxtext"))
-    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
+    , m_xLbCharset(m_xBuilder->weld_combo_box(u"comboboxtext"_ustr))
+    , m_xBtnCancel(m_xBuilder->weld_button(u"cancel"_ustr))
 {
     m_xBtnCancel->connect_clicked(LINK(this, WPFTEncodingDialog, CancelHdl));
 
@@ -105,6 +105,14 @@ WPFTEncodingDialog::WPFTEncodingDialog(weld::Window* pParent, const OUString& ti
     selectEncoding(*m_xLbCharset, encoding);
 
     m_xDialog->set_title(title);
+
+    m_xDialog->SetInstallLOKNotifierHdl(LINK(this, WPFTEncodingDialog, InstallLOKNotifierHdl));
+}
+
+IMPL_STATIC_LINK_NOARG(WPFTEncodingDialog, InstallLOKNotifierHdl, void*,
+                       vcl::ILibreOfficeKitNotifier*)
+{
+    return GetpApp();
 }
 
 WPFTEncodingDialog::~WPFTEncodingDialog() {}

@@ -36,11 +36,11 @@ DMLPresetShapeExporter::DMLPresetShapeExporter(DrawingML* pDMLExporter,
     // This class only work with custom shapes!
     OSL_ASSERT(xShape->getShapeType() == "com.sun.star.drawing.CustomShape");
 
-    m_xShape = xShape;
+    m_xShape = std::move(xShape);
     m_bHasHandleValues = false;
     uno::Reference<beans::XPropertySet> xShapeProps(m_xShape, uno::UNO_QUERY);
     css::uno::Sequence<css::beans::PropertyValue> aCustomShapeGeometry
-        = xShapeProps->getPropertyValue("CustomShapeGeometry")
+        = xShapeProps->getPropertyValue(u"CustomShapeGeometry"_ustr)
               .get<uno::Sequence<beans::PropertyValue>>();
 
     for (auto const& rCustomShapeGeometryItem : aCustomShapeGeometry)
@@ -221,7 +221,7 @@ bool DMLPresetShapeExporter::WriteShape()
         if (!m_bHasHandleValues)
         {
             OUString sShapeType = GetShapeType();
-            const OString& sPresetShape = msfilter::util::GetOOXMLPresetGeometry(sShapeType);
+            const OString sPresetShape = msfilter::util::GetOOXMLPresetGeometry(sShapeType);
             m_pDMLexporter->WriteShapeTransformation(m_xShape, XML_a, IsXFlipped(), IsYFlipped(),
                                                      false, false);
             m_pDMLexporter->WritePresetShape(sPresetShape);
@@ -252,8 +252,8 @@ bool DMLPresetShapeExporter::StartAVListWriting()
 {
     try
     {
-        const OString& pShape = msfilter::util::GetOOXMLPresetGeometry(GetShapeType());
-        m_pDMLexporter->GetFS()->startElementNS(XML_a, XML_prstGeom, XML_prst, pShape);
+        const OString aShape = msfilter::util::GetOOXMLPresetGeometry(GetShapeType());
+        m_pDMLexporter->GetFS()->startElementNS(XML_a, XML_prstGeom, XML_prst, aShape);
         m_pDMLexporter->GetFS()->startElementNS(XML_a, XML_avLst);
         return true;
     }
@@ -735,11 +735,6 @@ bool DMLPresetShapeExporter::WriteShapeWithAVlist()
             // Does not have handle points, so preset enough.
             return false;
         }
-        if (sShapeType == "flowChartDecision")
-        {
-            // Does not have handle points, so preset enough.
-            return false;
-        }
         if (sShapeType == "flowChartDelay")
         {
             // Does not have handle points, so preset enough.
@@ -821,11 +816,6 @@ bool DMLPresetShapeExporter::WriteShapeWithAVlist()
             return false;
         }
         if (sShapeType == "flowChartOr")
-        {
-            // Does not have handle points, so preset enough.
-            return false;
-        }
-        if (sShapeType == "flowChartDecision")
         {
             // Does not have handle points, so preset enough.
             return false;

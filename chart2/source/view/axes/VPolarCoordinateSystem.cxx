@@ -32,7 +32,6 @@
 namespace chart
 {
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 using ::com::sun::star::uno::Reference;
 
 VPolarCoordinateSystem::VPolarCoordinateSystem( const rtl::Reference< BaseCoordinateSystem >& xCooSys )
@@ -96,7 +95,7 @@ void VPolarCoordinateSystem::createVAxisList(
                 continue;
 
             rtl::Reference<Diagram> xDiagram(xChartDoc->getFirstChartDiagram());
-            AxisProperties aAxisProperties(xAxis,getExplicitCategoriesProvider(), xDiagram->getDataTableRef());
+            AxisProperties aAxisProperties(xAxis, &m_xCooSysModel->getExplicitCategoriesProvider(*xChartDoc), xDiagram->getDataTableRef());
             aAxisProperties.init();
             if(aAxisProperties.m_bDisplayLabels)
                 aAxisProperties.m_nNumberFormatKey = getNumberFormatKeyForAxis(xAxis, xChartDoc);

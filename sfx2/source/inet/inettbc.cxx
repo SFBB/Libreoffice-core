@@ -42,7 +42,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::task;
 
 
 // SfxURLToolBoxControl_Impl
@@ -54,7 +53,7 @@ SfxURLToolBoxControl_Impl::SfxURLToolBoxControl_Impl( sal_uInt16 nSlotId, ToolBo
     : SfxToolBoxControl( nSlotId, nId, rBox )
     , m_bModified(false)
 {
-    addStatusListener( ".uno:CurrentURL");
+    addStatusListener( u".uno:CurrentURL"_ustr);
 }
 
 SfxURLToolBoxControl_Impl::~SfxURLToolBoxControl_Impl()
@@ -69,8 +68,8 @@ private:
     DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
 public:
     URLBoxItemWindow(vcl::Window* pParent)
-        : InterimItemWindow(pParent, "sfx/ui/urlbox.ui", "URLBox")
-        , m_xWidget(new SvtURLBox(m_xBuilder->weld_combo_box("urlbox")))
+        : InterimItemWindow(pParent, u"sfx/ui/urlbox.ui"_ustr, u"URLBox"_ustr)
+        , m_xWidget(new SvtURLBox(m_xBuilder->weld_combo_box(u"urlbox"_ustr)))
     {
         InitControlBase(m_xWidget->getWidget());
 
@@ -125,7 +124,7 @@ void SfxURLToolBoxControl_Impl::OpenURL( const OUString& rName ) const
     INetURLObject aObj( rName );
     if ( aObj.GetProtocol() == INetProtocol::NotValid )
     {
-        aName = SvtURLBox::ParseSmart( rName, "" );
+        aName = SvtURLBox::ParseSmart( rName, u""_ustr );
     }
     else
         aName = rName;
@@ -141,16 +140,16 @@ void SfxURLToolBoxControl_Impl::OpenURL( const OUString& rName ) const
     aTargetURL.Complete = aName;
 
     getURLTransformer()->parseStrict( aTargetURL );
-    Reference< XDispatch > xDispatch = xDispatchProvider->queryDispatch( aTargetURL, "_default", 0 );
+    Reference< XDispatch > xDispatch = xDispatchProvider->queryDispatch( aTargetURL, u"_default"_ustr, 0 );
     if ( !xDispatch.is() )
         return;
 
     SfxURLToolBoxControl_Impl::ExecuteInfo* pExecuteInfo = new SfxURLToolBoxControl_Impl::ExecuteInfo;
-    pExecuteInfo->xDispatch     = xDispatch;
-    pExecuteInfo->aTargetURL    = aTargetURL;
+    pExecuteInfo->xDispatch     = std::move(xDispatch);
+    pExecuteInfo->aTargetURL    = std::move(aTargetURL);
     pExecuteInfo->aArgs         = {
-        comphelper::makePropertyValue("Referer", OUString( "private:user" )),
-        comphelper::makePropertyValue("FileName", aName)
+        comphelper::makePropertyValue(u"Referer"_ustr, u"private:user"_ustr),
+        comphelper::makePropertyValue(u"FileName"_ustr, aName)
     };
 
     Application::PostUserEvent( LINK( nullptr, SfxURLToolBoxControl_Impl, ExecuteHdl_Impl), pExecuteInfo );

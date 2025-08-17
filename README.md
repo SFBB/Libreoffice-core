@@ -1,7 +1,7 @@
 # LibreOffice
 [![Coverity Scan Build Status](https://scan.coverity.com/projects/211/badge.svg)](https://scan.coverity.com/projects/211) [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/307/badge)](https://bestpractices.coreinfrastructure.org/projects/307) [![Translation status](https://weblate.documentfoundation.org/widgets/libo_ui-master/-/svg-badge.svg)](https://weblate.documentfoundation.org/engage/libo_ui-master/?utm_source=widget)
 
-<img align="right" width="150" height="200" src="https://opensource.org/files/OSIApproved.png">
+<img align="right" width="150" src="https://opensource.org/wp-content/uploads/2009/06/OSIApproved.svg">
 
 LibreOffice is an integrated office suite based on copyleft licenses
 and compatible with most document formats and standards. Libreoffice
@@ -35,19 +35,19 @@ These are the current minimal operating system and compiler versions to
 run and compile LibreOffice, also used by the TDF builds:
 
 * Windows:
-    * Runtime: Windows 7
+    * Runtime: Windows 10
     * Build: Cygwin + Visual Studio 2019 version 16.10
 * macOS:
-    * Runtime: 10.15
-    * Build: 12 (13 for aarch64) + Xcode 14
+    * Runtime: 11
+    * Build: 13 or later + Xcode 14.3 or later (using latest version available for a given version of macOS)
 * Linux:
     * Runtime: RHEL 8 or CentOS 8 and comparable
-    * Build: either GCC 12; or Clang 12 with libstdc++ 8.5
+    * Build: either GCC 12; or Clang 12 with libstdc++ 10
 * iOS (only for LibreOfficeKit):
-    * Runtime: 11.4 (only support for newer i devices == 64 bit)
-    * Build: Xcode 9.3 and iPhone SDK 11.4
+    * Runtime: 14.5 (only support for newer i devices == 64 bit)
+    * Build: Xcode 12.5 and iPhone SDK 14.5
 * Android:
-    * Build: NDK r23 and SDK 30.0.3
+    * Build: NDK 27 and SDK 30.0.3
 * Emscripten / WASM:
     * Runtime: a browser with SharedMemory support (threads + atomics)
     * Build: Qt 5.15 with Qt supported Emscripten 1.39.8
@@ -58,6 +58,10 @@ Java is required for building many parts of LibreOffice. In TDF Wiki article
 exact modules that depend on Java are listed.
 
 The baseline for Java is Java Development Kit (JDK) Version 17 or later.
+
+The baseline for Python is version 3.11. It follows the version available
+in SUSE Linux Enterprise Desktop and the Maintenance Support version of
+Red Hat Enterprise Linux.
 
 If you want to use Clang with the LibreOffice compiler plugins, the minimal
 version of Clang is 12.0.1. Since Xcode doesn't provide the compiler plugin
@@ -132,3 +136,7 @@ on the mailing list libreoffice@lists.freedesktop.org (no subscription
 required) or poke people on IRC `#libreoffice-dev` on irc.libera.chat -
 we're a friendly and generally helpful mob. We know the code can be
 hard to get into at first, and so there are no silly questions.
+
+## SAST Tools
+
+[PVS-Studio](https://pvs-studio.com/en/pvs-studio/?utm_source=website&utm_medium=github&utm_campaign=open_source) - static analyzer for C, C++, C#, and Java code.

@@ -17,8 +17,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_UIBASE_INC_BREAK_HXX
-#define INCLUDED_SW_SOURCE_UIBASE_INC_BREAK_HXX
+#pragma once
 
 #include <vcl/weld.hxx>
 #include <optional>
@@ -38,6 +37,7 @@ class SwBreakDlg final : public weld::GenericDialogController
     std::unique_ptr<weld::CheckButton> m_xPageNumBox;
     std::unique_ptr<weld::SpinButton> m_xPageNumEdit;
     std::unique_ptr<weld::Button> m_xOkBtn;
+    std::unique_ptr<weld::Image> m_xTypeImage;
 
     SwWrtShell& m_rSh;
     OUString m_aTemplate;
@@ -49,11 +49,13 @@ class SwBreakDlg final : public weld::GenericDialogController
 
     DECL_LINK(ToggleHdl, weld::Toggleable&, void);
     DECL_LINK(ChangeHdl, weld::ComboBox&, void);
+    DECL_LINK(LineClearHdl, weld::ComboBox&, void);
     DECL_LINK(PageNumHdl, weld::Toggleable&, void);
     DECL_LINK(PageNumModifyHdl, weld::SpinButton&, void);
     DECL_LINK(OkHdl, weld::Button&, void);
 
     void CheckEnable();
+    void UpdateImage();
     void rememberResult();
 
 public:
@@ -63,7 +65,5 @@ public:
     const ::std::optional<sal_uInt16>& GetPageNumber() const { return m_oPgNum; }
     const std::optional<SwLineBreakClear>& GetClear() const { return m_eClear; }
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

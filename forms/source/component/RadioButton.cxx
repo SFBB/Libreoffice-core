@@ -36,11 +36,8 @@ using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
-using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::form::binding;
 
 
 css::uno::Sequence<OUString> SAL_CALL ORadioButtonControl::getSupportedServiceNames()
@@ -63,7 +60,7 @@ ORadioButtonControl::ORadioButtonControl(const Reference<XComponentContext>& _rx
 
 ORadioButtonModel::ORadioButtonModel(const Reference<XComponentContext>& _rxFactory)
     :OReferenceValueComponent( _rxFactory, VCL_CONTROLMODEL_RADIOBUTTON, FRM_SUN_CONTROL_RADIOBUTTON )
-                    // use the old control name for compytibility reasons
+                    // use the old control name for compatibility reasons
 {
 
     m_nClassId = FormComponentType::RADIOBUTTON;

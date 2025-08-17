@@ -120,7 +120,7 @@ const XIMStyle g_nSupportedStatusStyle(
 
 // Constructor for an InputContext (IC)
 
-SalI18N_InputContext::SalI18N_InputContext ( SalFrame *pFrame ) :
+SalI18N_InputContext::SalI18N_InputContext(X11SalFrame* pFrame) :
         mbUseable( True ),
         maContext( nullptr ),
         mnSupportedPreeditStyle(
@@ -162,9 +162,8 @@ SalI18N_InputContext::SalI18N_InputContext ( SalFrame *pFrame ) :
     if (pInputMethod->UseMethod()
         && SupportInputMethodStyle( pInputMethod->GetSupportedStyles() ) )
     {
-        const SystemEnvData* pEnv = pFrame->GetSystemData();
-        ::Window  aClientWindow = pEnv->aShellWindow;
-        ::Window  aFocusWindow  = pEnv->GetWindowHandle(pFrame);
+        ::Window aClientWindow = pFrame->GetShellWindow();
+        ::Window aFocusWindow  = pFrame->GetWindow();
 
         // for status callbacks and commit string callbacks
 #define PREEDIT_BUFSZ 16
@@ -361,7 +360,7 @@ SalI18N_InputContext::Unmap()
 }
 
 void
-SalI18N_InputContext::Map( SalFrame *pFrame )
+SalI18N_InputContext::Map(X11SalFrame* pFrame)
 {
     if( !mbUseable )
         return;
@@ -539,16 +538,15 @@ SalI18N_InputContext::UpdateSpotLocation()
 // in unmapped state
 
 void
-SalI18N_InputContext::SetICFocus( SalFrame* pFocusFrame )
+SalI18N_InputContext::SetICFocus(X11SalFrame* pFocusFrame)
 {
     if ( !(mbUseable && (maContext != nullptr))  )
         return;
 
     maClientData.pFrame = pFocusFrame;
 
-    const SystemEnvData* pEnv   = pFocusFrame->GetSystemData();
-    ::Window  aClientWindow  = pEnv->aShellWindow;
-    ::Window  aFocusWindow   = pEnv->GetWindowHandle(pFocusFrame);
+    ::Window aClientWindow = pFocusFrame->GetShellWindow();
+    ::Window  aFocusWindow = pFocusFrame->GetWindow();
 
     XSetICValues( maContext,
                   XNFocusWindow,       aFocusWindow,

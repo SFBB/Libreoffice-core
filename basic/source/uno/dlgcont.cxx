@@ -34,6 +34,7 @@
 #include <comphelper/fileformat.h>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/diagnose_ex.hxx>
+#include <o3tl/temporary.hxx>
 #include <utility>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
@@ -53,7 +54,6 @@ using namespace com::sun::star::io;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::ucb;
 using namespace com::sun::star::lang;
-using namespace com::sun::star::script;
 using namespace com::sun::star::xml::sax;
 using namespace com::sun::star;
 using namespace cppu;
@@ -93,7 +93,7 @@ SfxDialogLibraryContainer::SfxDialogLibraryContainer()
 
 SfxDialogLibraryContainer::SfxDialogLibraryContainer( const uno::Reference< embed::XStorage >& xStorage )
 {
-    init( OUString(), xStorage );
+    init(OUString(), xStorage, o3tl::temporary(std::unique_lock(m_aMutex)));
 }
 
 // Methods to get library instances of the correct type
@@ -126,7 +126,7 @@ bool SfxDialogLibraryContainer::isLibraryElementValid(const Any& rElement) const
 static bool writeOasis2OOoLibraryElement(
     const Reference< XInputStream >& xInput, const Reference< XOutputStream >& xOutput )
 {
-    Reference< XComponentContext > xContext(
+    const Reference< XComponentContext >& xContext(
         comphelper::getProcessComponentContext() );
 
     Reference< lang::XMultiComponentFactory > xSMgr(
@@ -141,7 +141,7 @@ static bool writeOasis2OOoLibraryElement(
     Sequence<Any> aArgs{ Any(xWriter) };
     Reference< xml::sax::XDocumentHandler > xHandler(
         xSMgr->createInstanceWithArgumentsAndContext(
-            "com.sun.star.comp.Oasis2OOoTransformer",
+            u"com.sun.star.comp.Oasis2OOoTransformer"_ustr,
             aArgs, xContext ),
         UNO_QUERY );
 
@@ -245,7 +245,7 @@ void SfxDialogLibraryContainer::storeLibrariesToStorage( const uno::Reference< e
                 {
                     Reference< io::XInputStream > xInput( xISP->createInputStream() );
                     Reference< XNameContainer > xDialogModel(
-                        mxContext->getServiceManager()->createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", mxContext),
+                        mxContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.awt.UnoControlDialogModel"_ustr, mxContext),
                         UNO_QUERY );
                     ::xmlscript::importDialogModel( xInput, xDialogModel, mxContext, mxOwnerDocument );
                     std::vector<uno::Reference<graphic::XGraphic>> vxGraphicList;
@@ -292,7 +292,7 @@ Any SfxDialogLibraryContainer::importLibraryElement
     Reference< XParser > xParser = xml::sax::Parser::create( mxContext );
 
     Reference< XNameContainer > xDialogModel(
-        mxContext->getServiceManager()->createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", mxContext),
+        mxContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.awt.UnoControlDialogModel"_ustr, mxContext),
         UNO_QUERY );
     if( !xDialogModel.is() )
     {
@@ -325,7 +325,7 @@ Any SfxDialogLibraryContainer::importLibraryElement
         return aRetAny;
 
     InputSource source;
-    source.aInputStream = xInput;
+    source.aInputStream = std::move(xInput);
     source.sSystemId    = aFile;
 
     try {
@@ -388,19 +388,19 @@ Reference< css::resource::XStringResourcePersistence >
             xLibrariesStor = mxStorage->openStorageElement( maLibrariesDir, embed::ElementModes::READ );
                 // TODO: Should be READWRITE with new storage concept using store() instead of storeTo()
             if ( !xLibrariesStor.is() )
-                throw uno::RuntimeException("null returned from openStorageElement",getXWeak());
+                throw uno::RuntimeException(u"null returned from openStorageElement"_ustr,getXWeak());
 
             xLibraryStor = xLibrariesStor->openStorageElement( aLibName, embed::ElementModes::READ );
                 // TODO: Should be READWRITE with new storage concept using store() instead of storeTo()
             if ( !xLibraryStor.is() )
-                throw uno::RuntimeException("null returned from openStorageElement",getXWeak());
+                throw uno::RuntimeException(u"null returned from openStorageElement"_ustr,getXWeak());
         }
         catch(const uno::Exception& )
         {
             // Something went wrong while trying to get the storage library.
             // Return an object that supports StringResourceWithStorage, give it a storage location later.
             xRet = Reference< resource::XStringResourcePersistence >(
-              mxContext->getServiceManager()->createInstanceWithContext("com.sun.star.resource.StringResourceWithStorage", mxContext),
+              mxContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.resource.StringResourceWithStorage"_ustr, mxContext),
               UNO_QUERY );
             return xRet;
         }
@@ -422,7 +422,7 @@ Reference< css::resource::XStringResourcePersistence >
 void SfxDialogLibraryContainer::onNewRootStorage()
 {
     // the library container is not modified, go through the libraries and check whether they are modified
-    Sequence< OUString > aNames = maNameContainer->getElementNames();
+    Sequence< OUString > aNames = maNameContainer.getElementNames();
     const OUString* pNames = aNames.getConstArray();
     sal_Int32 nNameCount = aNames.getLength();
 
@@ -441,12 +441,12 @@ void SfxDialogLibraryContainer::onNewRootStorage()
             try {
                 xLibrariesStor = mxStorage->openStorageElement( maLibrariesDir, embed::ElementModes::READWRITE );
                 if ( !xLibrariesStor.is() )
-                    throw uno::RuntimeException("null returned from openStorageElement",getXWeak());
+                    throw uno::RuntimeException(u"null returned from openStorageElement"_ustr,getXWeak());
 
                 OUString aLibName = pDialogLibrary->getName();
                 xLibraryStor = xLibrariesStor->openStorageElement( aLibName, embed::ElementModes::READWRITE );
                 if ( !xLibraryStor.is() )
-                    throw uno::RuntimeException("null returned from openStorageElement",getXWeak());
+                    throw uno::RuntimeException(u"null returned from openStorageElement"_ustr,getXWeak());
 
                 Reference< resource::XStringResourceWithStorage >
                     xStringResourceWithStorage( xStringResourcePersistence, UNO_QUERY );
@@ -471,13 +471,13 @@ SfxDialogLibraryContainer:: HasExecutableCode( const OUString& /*Library*/ )
 
 OUString SAL_CALL SfxDialogLibraryContainer::getImplementationName( )
 {
-    return "com.sun.star.comp.sfx2.DialogLibraryContainer";
+    return u"com.sun.star.comp.sfx2.DialogLibraryContainer"_ustr;
 }
 
 Sequence< OUString > SAL_CALL SfxDialogLibraryContainer::getSupportedServiceNames( )
 {
-    return {"com.sun.star.script.DocumentDialogLibraryContainer",
-            "com.sun.star.script.DialogLibraryContainer"}; // for compatibility
+    return {u"com.sun.star.script.DocumentDialogLibraryContainer"_ustr,
+            u"com.sun.star.script.DialogLibraryContainer"_ustr}; // for compatibility
 }
 
 // Implementation class SfxDialogLibrary
@@ -487,7 +487,7 @@ SfxDialogLibrary::SfxDialogLibrary( ModifiableHelper& _rModifiable,
                                     OUString aName,
                                     const Reference< XSimpleFileAccess3 >& xSFI,
                                     SfxDialogLibraryContainer* pParent )
-    : SfxLibrary( _rModifiable, cppu::UnoType<XInputStreamProvider>::get(), xSFI )
+    : SfxDialogLibrary_BASE(_rModifiable, cppu::UnoType<XInputStreamProvider>::get(), xSFI)
     , m_pParent( pParent )
     , m_aName(std::move( aName ))
 {
@@ -500,15 +500,12 @@ SfxDialogLibrary::SfxDialogLibrary( ModifiableHelper& _rModifiable,
                                     const OUString& aStorageURL,
                                     bool ReadOnly,
                                     SfxDialogLibraryContainer* pParent )
-    : SfxLibrary( _rModifiable, cppu::UnoType<XInputStreamProvider>::get(),
+    : SfxDialogLibrary_BASE(_rModifiable, cppu::UnoType<XInputStreamProvider>::get(),
                        xSFI, aLibInfoFileURL, aStorageURL, ReadOnly)
     , m_pParent( pParent )
     , m_aName(std::move( aName ))
 {
 }
-
-IMPLEMENT_FORWARD_XINTERFACE2( SfxDialogLibrary, SfxLibrary, SfxDialogLibrary_BASE );
-IMPLEMENT_FORWARD_XTYPEPROVIDER2( SfxDialogLibrary, SfxLibrary, SfxDialogLibrary_BASE );
 
 // Provide modify state including resources
 bool SfxDialogLibrary::isModified()

@@ -38,9 +38,10 @@ using namespace com::sun::star;
 SwFlyFrame *SwFEShell::FindFlyFrame( const uno::Reference < embed::XEmbeddedObject >& xObj ) const
 {
     SwFlyFrame *pFly = GetSelectedFlyFrame();
-    if ( pFly && pFly->Lower() && pFly->Lower()->IsNoTextFrame() )
+    SwFrame* pLower = pFly ? pFly->Lower() : nullptr;
+    if ( pLower && pLower->IsNoTextFrame() )
     {
-        SwOLENode *pNd = static_cast<SwNoTextFrame*>(pFly->Lower())->GetNode()->GetOLENode();
+        SwOLENode *pNd = static_cast<SwNoTextFrame*>(pLower)->GetNode()->GetOLENode();
         if ( !pNd || pNd->GetOLEObj().GetOleRef() != xObj )
             pFly = nullptr;
     }
@@ -75,19 +76,23 @@ SwFlyFrame *SwFEShell::FindFlyFrame( const uno::Reference < embed::XEmbeddedObje
     return pFly;
 }
 
-OUString SwFEShell::GetUniqueOLEName() const
+UIName SwFEShell::GetUniqueOLEName() const
 {
     return GetDoc()->GetUniqueOLEName();
 }
 
-OUString SwFEShell::GetUniqueFrameName() const
+UIName SwFEShell::GetUniqueFrameName() const
 {
     return GetDoc()->GetUniqueFrameName();
 }
 
 bool SwFEShell::FinishOLEObj()                      // Server is terminated
 {
-    SfxInPlaceClient* pIPClient = GetSfxViewShell()->GetIPClient();
+    SfxViewShell* pNotifySh = GetSfxViewShell();
+    if (!pNotifySh)
+        return false;
+
+    SfxInPlaceClient* pIPClient = pNotifySh->GetIPClient();
     if ( !pIPClient )
         return false;
 
@@ -101,21 +106,24 @@ bool SwFEShell::FinishOLEObj()                      // Server is terminated
             IsCheckForOLEInCaption() )
             SetCheckForOLEInCaption( !IsCheckForOLEInCaption() );
 
-        // enable update of the link preview
-        comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = GetDoc()->GetDocShell()->getEmbeddedObjectContainer();
-        const bool aUserAllowsLinkUpdate = rEmbeddedObjectContainer.getUserAllowsLinkUpdate();
-        rEmbeddedObjectContainer.setUserAllowsLinkUpdate(true);
+        if (const SwDocShell* pShell = GetDoc()->GetDocShell())
+        {
+            // enable update of the link preview
+            comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = pShell->getEmbeddedObjectContainer();
+            const bool aUserAllowsLinkUpdate = rEmbeddedObjectContainer.getUserAllowsLinkUpdate();
+            rEmbeddedObjectContainer.setUserAllowsLinkUpdate(true);
 
-        // leave UIActive state
-        pIPClient->DeactivateObject();
+            // leave UIActive state
+            pIPClient->DeactivateObject();
 
-        // if we have more than one link let's update them too
-        sfx2::LinkManager& rLinkManager = GetDoc()->getIDocumentLinksAdministration().GetLinkManager();
-        if (rLinkManager.GetLinks().size() > 1)
-            rLinkManager.UpdateAllLinks(false, false, nullptr);
+            // if we have more than one link let's update them too
+            sfx2::LinkManager& rLinkManager = GetDoc()->getIDocumentLinksAdministration().GetLinkManager();
+            if (rLinkManager.GetLinks().size() > 1)
+                rLinkManager.UpdateAllLinks(false, false, nullptr, u""_ustr);
 
-        // return back original value of the "update of the link preview" flag
-        rEmbeddedObjectContainer.setUserAllowsLinkUpdate(aUserAllowsLinkUpdate);
+            // return back original value of the "update of the link preview" flag
+            rEmbeddedObjectContainer.setUserAllowsLinkUpdate(aUserAllowsLinkUpdate);
+        }
     }
     return bRet;
 }

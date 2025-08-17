@@ -9,6 +9,7 @@
  */
 
 #include <docmodel/theme/Theme.hxx>
+#include <docmodel/uno/UnoTheme.hxx>
 
 #include <utility>
 #include <libxml/xmlwriter.h>
@@ -17,8 +18,11 @@
 #include <sal/log.hxx>
 #include <sal/types.h>
 #include <o3tl/enumrange.hxx>
+#include <o3tl/underlyingenumvalue.hxx>
 #include <com/sun/star/util/Color.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <com/sun/star/util/XTheme.hpp>
 
 using namespace com::sun::star;
 
@@ -60,71 +64,75 @@ void Theme::dumpAsXml(xmlTextWriterPtr pWriter) const
 void Theme::ToAny(uno::Any& rVal) const
 {
     comphelper::SequenceAsHashMap aMap;
-    aMap["Name"] <<= maName;
+    aMap[u"Name"_ustr] <<= maName;
 
     if (mpColorSet)
     {
         std::vector<util::Color> aColorScheme;
         for (auto eThemeColorType : o3tl::enumrange<model::ThemeColorType>())
         {
-            if (eThemeColorType != model::ThemeColorType::Unknown)
-            {
-                Color aColor = mpColorSet->getColor(eThemeColorType);
-                aColorScheme.push_back(sal_Int32(aColor));
-            }
+            Color aColor = mpColorSet->getColor(eThemeColorType);
+            aColorScheme.push_back(sal_Int32(aColor));
         }
 
-        aMap["ColorSchemeName"] <<= mpColorSet->getName();
-        aMap["ColorScheme"] <<= comphelper::containerToSequence(aColorScheme);
+        aMap[u"ColorSchemeName"_ustr] <<= mpColorSet->getName();
+        aMap[u"ColorScheme"_ustr] <<= comphelper::containerToSequence(aColorScheme);
     }
 
     rVal <<= aMap.getAsConstPropertyValueList();
 }
 
-std::unique_ptr<Theme> Theme::FromAny(const uno::Any& rVal)
+static std::shared_ptr<model::ColorSet> makeColorSet(const OUString& name,
+                                                     const uno::Sequence<util::Color>& colors)
 {
+    auto colorset = std::make_shared<model::ColorSet>(name);
+    for (auto eThemeColorType : o3tl::enumrange<model::ThemeColorType>())
+    {
+        const size_t nIndex(o3tl::to_underlying(eThemeColorType));
+        if (nIndex >= colors.size())
+            break;
+        const Color aColor(ColorTransparency, colors[nIndex]);
+        colorset->add(eThemeColorType, aColor);
+    }
+    return colorset;
+}
+
+std::shared_ptr<Theme> Theme::FromAny(const uno::Any& rVal)
+{
+    if (!rVal.hasValue())
+        return {};
+
+    if (css::uno::Reference<css::util::XTheme> xTheme; rVal >>= xTheme)
+    {
+        if (!xTheme)
+            return {};
+
+        if (auto* pUnoTheme = dynamic_cast<UnoTheme*>(xTheme.get()))
+            return pUnoTheme->getTheme();
+
+        auto pTheme = std::make_shared<Theme>(xTheme->getName());
+        if (auto aColors = xTheme->getColorSet(); aColors.hasElements())
+            pTheme->setColorSet(makeColorSet(xTheme->getName(), aColors)); // Reuse theme name
+        return pTheme;
+    }
+
     comphelper::SequenceAsHashMap aMap(rVal);
-    std::unique_ptr<Theme> pTheme;
-    std::shared_ptr<model::ColorSet> pColorSet;
 
-    auto it = aMap.find("Name");
-    if (it != aMap.end())
+    OUString aThemeName;
+    if (auto it = aMap.find(u"Name"_ustr); it != aMap.end())
+        it->second >>= aThemeName;
+    else
+        return {};
+    auto pTheme = std::make_shared<Theme>(aThemeName);
+
+    if (auto it = aMap.find(u"ColorSchemeName"_ustr); it != aMap.end())
     {
-        OUString aName;
-        it->second >>= aName;
-        pTheme = std::make_unique<Theme>(aName);
-    }
+        OUString aColorSchemeName;
+        it->second >>= aColorSchemeName;
 
-    it = aMap.find("ColorSchemeName");
-    if (it != aMap.end() && pTheme)
-    {
-        OUString aName;
-        it->second >>= aName;
-        pColorSet = std::make_shared<model::ColorSet>(aName);
-        pTheme->setColorSet(pColorSet);
-    }
-
-    it = aMap.find("ColorScheme");
-    if (it != aMap.end() && pColorSet)
-    {
-        uno::Sequence<util::Color> aColors;
-        it->second >>= aColors;
-
-        SAL_WARN_IF(aColors.size() > 12, "svx",
-                    "Theme::FromAny: number of colors greater than max theme colors supported");
-
-        for (auto eThemeColorType : o3tl::enumrange<model::ThemeColorType>())
-        {
-            if (eThemeColorType != model::ThemeColorType::Unknown)
-            {
-                size_t nIndex(static_cast<sal_Int16>(eThemeColorType));
-                if (nIndex < aColors.size())
-                {
-                    Color aColor(ColorTransparency, aColors[nIndex]);
-                    pColorSet->add(eThemeColorType, aColor);
-                }
-            }
-        }
+        pTheme->setColorSet(makeColorSet(
+            aColorSchemeName,
+            aMap.getUnpackedValueOrDefault(u"ColorScheme"_ustr, uno::Sequence<util::Color>{})));
     }
 
     return pTheme;
@@ -138,8 +146,7 @@ std::vector<Color> Theme::GetColors() const
     std::vector<Color> aColors;
     for (auto eThemeColorType : o3tl::enumrange<model::ThemeColorType>())
     {
-        if (eThemeColorType != model::ThemeColorType::Unknown)
-            aColors.push_back(mpColorSet->getColor(eThemeColorType));
+        aColors.push_back(mpColorSet->getColor(eThemeColorType));
     }
     return aColors;
 }

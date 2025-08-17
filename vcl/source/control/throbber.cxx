@@ -17,19 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <vcl/toolkit/throbber.hxx>
-#include <vcl/svapp.hxx>
-
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/graphic/GraphicProvider.hpp>
-#include <com/sun/star/graphic/XGraphicProvider.hpp>
-#include <com/sun/star/awt/ImageScaleMode.hpp>
-
 #include <comphelper/namedvaluecollection.hxx>
 #include <comphelper/processfactory.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <sal/log.hxx>
-#include <tools/urlobj.hxx>
+
+#include <vcl/svapp.hxx>
+#include <vcl/toolkit/throbber.hxx>
+
+#include <com/sun/star/graphic/GraphicProvider.hpp>
+#include <com/sun/star/awt/ImageScaleMode.hpp>
 
 #include <limits>
 
@@ -37,10 +32,10 @@ using ::com::sun::star::uno::Reference;
 using ::com::sun::star::graphic::XGraphic;
 using ::com::sun::star::graphic::XGraphicProvider;
 using ::com::sun::star::uno::Exception;
-namespace ImageScaleMode = ::com::sun::star::awt::ImageScaleMode;
+namespace ImageScaleMode = css::awt::ImageScaleMode;
 
-Throbber::Throbber( vcl::Window* i_parentWindow, WinBits i_style )
-    :ImageControl( i_parentWindow, i_style )
+Throbber::Throbber(vcl::Window* pParentWindow, WinBits eStyle )
+    :ImageControl(pParentWindow, eStyle )
     ,mbRepeat( true )
     ,mnStepTime( 100 )
     ,mnCurStep( 0 )
@@ -70,7 +65,7 @@ namespace
     {
         ::std::vector< Image > aImages;
 
-        const Reference< css::uno::XComponentContext > aContext( ::comphelper::getProcessComponentContext() );
+        const Reference< css::uno::XComponentContext >& aContext( ::comphelper::getProcessComponentContext() );
         const Reference< XGraphicProvider > xGraphicProvider( css::graphic::GraphicProvider::create(aContext) );
 
         ::std::vector< OUString > aImageURLs( Throbber::getDefaultImageURLs( i_imageSet ) );
@@ -80,7 +75,7 @@ namespace
         for ( const auto& rImageURL : aImageURLs )
         {
             Reference< XGraphic > xGraphic;
-            aMediaProperties.put( "URL", rImageURL );
+            aMediaProperties.put( u"URL"_ustr, rImageURL );
             xGraphic = xGraphicProvider->queryGraphic( aMediaProperties.getPropertyValues() );
             aImages.emplace_back( xGraphic );
         }

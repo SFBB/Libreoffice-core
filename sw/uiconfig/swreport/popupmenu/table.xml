@@ -71,6 +71,7 @@
   <menu:menuitem menu:id=".uno:OutlineBullet"/>
   <menu:menuseparator/>
   <menu:menuitem menu:id=".uno:FieldDialog"/>
+  <menu:menuitem menu:id=".uno:ConvertSelectedField"/>
   <menu:menuitem menu:id=".uno:EditFootnote"/>
   <menu:menuitem menu:id=".uno:IndexEntryDialog"/>
   <menu:menuitem menu:id=".uno:AuthoritiesEntryDialog"/>
@@ -83,6 +84,7 @@
   <menu:menuitem menu:id=".uno:NextTrackedChange"/>
   <menu:menuitem menu:id=".uno:PreviousTrackedChange"/>
   <menu:menuseparator/>
+  <menu:menuitem menu:id=".uno:InsertHyperlink"/>
   <menu:menuitem menu:id=".uno:OpenHyperlinkOnCursor"/>
   <menu:menuitem menu:id=".uno:EditHyperlink"/>
   <menu:menuitem menu:id=".uno:CopyHyperlinkLocation"/>

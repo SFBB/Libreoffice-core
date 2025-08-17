@@ -31,10 +31,8 @@ using namespace ::com::sun::star;
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Any;
-using ::osl::MutexGuard;
 
 // necessary for MS compiler
-using ::comphelper::OPropertyContainer;
 using ::chart::impl::CachedDataSequence_Base;
 
 namespace
@@ -53,26 +51,20 @@ namespace chart
 {
 
 CachedDataSequence::CachedDataSequence()
-        : OPropertyContainer( GetBroadcastHelper()),
-          CachedDataSequence_Base( GetMutex()),
-          m_eCurrentDataType( NUMERICAL ),
+        : m_eCurrentDataType( NUMERICAL ),
           m_xModifyEventForwarder( new ModifyEventForwarder() )
 {
     registerProperties();
 }
 CachedDataSequence::CachedDataSequence( const Reference< uno::XComponentContext > & /*xContext*/ )
-        : OPropertyContainer( GetBroadcastHelper()),
-          CachedDataSequence_Base( GetMutex()),
-          m_eCurrentDataType( MIXED ),
+        : m_eCurrentDataType( MIXED ),
           m_xModifyEventForwarder( new ModifyEventForwarder() )
 {
     registerProperties();
 }
 
 CachedDataSequence::CachedDataSequence( const OUString & rSingleText )
-        : OPropertyContainer( GetBroadcastHelper()),
-          CachedDataSequence_Base( GetMutex()),
-          m_eCurrentDataType( TEXTUAL ),
+        : m_eCurrentDataType( TEXTUAL ),
           m_aTextualSequence({rSingleText}),
           m_xModifyEventForwarder( new ModifyEventForwarder() )
 {
@@ -80,9 +72,7 @@ CachedDataSequence::CachedDataSequence( const OUString & rSingleText )
 }
 
 CachedDataSequence::CachedDataSequence( const CachedDataSequence & rSource )
-        : OPropertyContainer( GetBroadcastHelper()),
-          CachedDataSequence_Base( GetMutex()),
-          m_nNumberFormatKey( rSource.m_nNumberFormatKey ),
+        : m_nNumberFormatKey( rSource.m_nNumberFormatKey ),
           m_sRole( rSource.m_sRole ),
           m_eCurrentDataType( rSource.m_eCurrentDataType ),
           m_xModifyEventForwarder( new ModifyEventForwarder() )
@@ -108,13 +98,13 @@ CachedDataSequence::~CachedDataSequence()
 
 void CachedDataSequence::registerProperties()
 {
-    registerProperty( "NumberFormatKey",
+    registerProperty( u"NumberFormatKey"_ustr,
                       PROP_NUMBERFORMAT_KEY,
                       0,   // PropertyAttributes
                       & m_nNumberFormatKey,
                       cppu::UnoType<decltype(m_nNumberFormatKey)>::get() );
 
-    registerProperty( "Role",
+    registerProperty( u"Role"_ustr,
                       PROP_PROPOSED_ROLE,
                       0,   // PropertyAttributes
                       & m_sRole,
@@ -126,29 +116,11 @@ Sequence< double > CachedDataSequence::Impl_getNumericalData() const
     if( m_eCurrentDataType == NUMERICAL )
         return m_aNumericalSequence;
 
-    sal_Int32 nSize = ( m_eCurrentDataType == TEXTUAL )
-        ? m_aTextualSequence.getLength()
-        : m_aMixedSequence.getLength();
-
-    Sequence< double > aResult( nSize );
-    double * pResultArray = aResult.getArray();
-
     if( m_eCurrentDataType == TEXTUAL )
-    {
-        const OUString * pTextArray = m_aTextualSequence.getConstArray();
-        std::transform( pTextArray, pTextArray + nSize,
-                          pResultArray,
-                          CommonFunctors::OUStringToDouble() );
-    }
-    else
-    {
-        OSL_ASSERT( m_eCurrentDataType == MIXED );
-        const Any * pMixedArray = m_aMixedSequence.getConstArray();
-        std::transform( pMixedArray, pMixedArray + nSize,
-                          pResultArray,
-                          CommonFunctors::AnyToDouble() );
-    }
-    return aResult;
+        return CommonFunctors::convertToSequence(m_aTextualSequence, CommonFunctors::ToDouble());
+
+    OSL_ASSERT(m_eCurrentDataType == MIXED);
+    return CommonFunctors::convertToSequence(m_aMixedSequence, CommonFunctors::ToDouble());
 }
 
 Sequence< OUString > CachedDataSequence::Impl_getTextualData() const
@@ -156,30 +128,11 @@ Sequence< OUString > CachedDataSequence::Impl_getTextualData() const
     if( m_eCurrentDataType == TEXTUAL )
         return m_aTextualSequence;
 
-    sal_Int32 nSize = ( m_eCurrentDataType == NUMERICAL )
-        ? m_aNumericalSequence.getLength()
-        : m_aMixedSequence.getLength();
-
-    Sequence< OUString > aResult( nSize );
-    OUString * pResultArray = aResult.getArray();
-
     if( m_eCurrentDataType == NUMERICAL )
-    {
-        const double * pTextArray = m_aNumericalSequence.getConstArray();
-        std::transform( pTextArray, pTextArray + nSize,
-                          pResultArray,
-                          CommonFunctors::DoubleToOUString() );
-    }
-    else
-    {
-        OSL_ASSERT( m_eCurrentDataType == MIXED );
-        const Any * pMixedArray = m_aMixedSequence.getConstArray();
-        std::transform( pMixedArray, pMixedArray + nSize,
-                          pResultArray,
-                          CommonFunctors::AnyToString() );
-    }
+        return CommonFunctors::convertToSequence(m_aNumericalSequence, CommonFunctors::ToString());
 
-    return aResult;
+    OSL_ASSERT(m_eCurrentDataType == MIXED);
+    return CommonFunctors::convertToSequence(m_aMixedSequence, CommonFunctors::ToString());
 }
 
 Sequence< Any > CachedDataSequence::Impl_getMixedData() const
@@ -187,34 +140,15 @@ Sequence< Any > CachedDataSequence::Impl_getMixedData() const
     if( m_eCurrentDataType == MIXED )
         return m_aMixedSequence;
 
-    sal_Int32 nSize = ( m_eCurrentDataType == NUMERICAL )
-        ? m_aNumericalSequence.getLength()
-        : m_aTextualSequence.getLength();
-
-    Sequence< Any > aResult( nSize );
-    Any * pResultArray = aResult.getArray();
-
     if( m_eCurrentDataType == NUMERICAL )
-    {
-        const double * pTextArray = m_aNumericalSequence.getConstArray();
-        std::transform( pTextArray, pTextArray + nSize,
-                          pResultArray,
-                          CommonFunctors::makeAny< double >() );
-    }
-    else
-    {
-        OSL_ASSERT( m_eCurrentDataType == TEXTUAL );
-        const OUString * pMixedArray = m_aTextualSequence.getConstArray();
-        std::transform( pMixedArray, pMixedArray + nSize,
-                          pResultArray,
-                          CommonFunctors::makeAny< OUString >() );
-    }
+        return CommonFunctors::convertToSequence(m_aNumericalSequence, CommonFunctors::makeAny());
 
-    return aResult;
+    OSL_ASSERT(m_eCurrentDataType == TEXTUAL);
+    return CommonFunctors::convertToSequence(m_aTextualSequence, CommonFunctors::makeAny());
 }
 
-IMPLEMENT_FORWARD_XINTERFACE2( CachedDataSequence, CachedDataSequence_Base, OPropertyContainer )
-IMPLEMENT_FORWARD_XTYPEPROVIDER2( CachedDataSequence, CachedDataSequence_Base, OPropertyContainer )
+IMPLEMENT_FORWARD_XINTERFACE2( CachedDataSequence, CachedDataSequence_Base, comphelper::OPropertyContainer2 )
+IMPLEMENT_FORWARD_XTYPEPROVIDER2( CachedDataSequence, CachedDataSequence_Base, comphelper::OPropertyContainer2 )
 
 // ____ XPropertySet ____
 Reference< beans::XPropertySetInfo > SAL_CALL CachedDataSequence::getPropertySetInfo()
@@ -252,16 +186,16 @@ css::uno::Sequence< OUString > SAL_CALL CachedDataSequence::getSupportedServiceN
 {
     return {
         lcl_aServiceName,
-        "com.sun.star.chart2.data.DataSequence",
-        "com.sun.star.chart2.data.NumericalDataSequence",
-        "com.sun.star.chart2.data.TextualDataSequence"
+        u"com.sun.star.chart2.data.DataSequence"_ustr,
+        u"com.sun.star.chart2.data.NumericalDataSequence"_ustr,
+        u"com.sun.star.chart2.data.TextualDataSequence"_ustr
     };
 }
 
 // ________ XNumericalDataSequence ________
 Sequence< double > SAL_CALL CachedDataSequence::getNumericalData()
 {
-    MutexGuard aGuard( GetMutex() );
+    std::unique_lock aGuard( m_aMutex );
 
     if( m_eCurrentDataType == NUMERICAL )
         return m_aNumericalSequence;
@@ -272,7 +206,7 @@ Sequence< double > SAL_CALL CachedDataSequence::getNumericalData()
 // ________ XTextualDataSequence ________
 Sequence< OUString > SAL_CALL CachedDataSequence::getTextualData()
 {
-    MutexGuard aGuard( GetMutex() );
+    std::unique_lock aGuard( m_aMutex );
 
     if( m_eCurrentDataType == TEXTUAL )
         return m_aTextualSequence;
@@ -283,7 +217,7 @@ Sequence< OUString > SAL_CALL CachedDataSequence::getTextualData()
 // ________ XDataSequence  ________
 Sequence< Any > SAL_CALL CachedDataSequence::getData()
 {
-    MutexGuard aGuard( GetMutex() );
+    std::unique_lock aGuard( m_aMutex );
     return Impl_getMixedData();
 }
 
@@ -322,17 +256,17 @@ void SAL_CALL CachedDataSequence::removeModifyListener( const Reference< util::X
 void SAL_CALL CachedDataSequence::initialize(const uno::Sequence< uno::Any > & _aArguments)
 {
     ::comphelper::SequenceAsHashMap aMap(_aArguments);
-    m_aNumericalSequence = aMap.getUnpackedValueOrDefault( "DataSequence" ,m_aNumericalSequence);
+    m_aNumericalSequence = aMap.getUnpackedValueOrDefault( u"DataSequence"_ustr ,m_aNumericalSequence);
     if ( m_aNumericalSequence.hasElements() )
         m_eCurrentDataType = NUMERICAL;
     else
     {
-        m_aTextualSequence = aMap.getUnpackedValueOrDefault( "DataSequence" ,m_aTextualSequence);
+        m_aTextualSequence = aMap.getUnpackedValueOrDefault( u"DataSequence"_ustr ,m_aTextualSequence);
         if ( m_aTextualSequence.hasElements() )
             m_eCurrentDataType = TEXTUAL;
         else
         {
-            m_aMixedSequence = aMap.getUnpackedValueOrDefault( "DataSequence" ,m_aMixedSequence);
+            m_aMixedSequence = aMap.getUnpackedValueOrDefault( u"DataSequence"_ustr ,m_aMixedSequence);
             if ( m_aMixedSequence.hasElements() )
                 m_eCurrentDataType = MIXED;
         }

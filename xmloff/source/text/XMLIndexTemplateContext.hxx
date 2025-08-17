@@ -22,13 +22,13 @@
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmltoken.hxx>
 
+#include <span>
 #include <vector>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/beans/PropertyValues.hpp>
 
 
 namespace com::sun::star {
-    namespace xml::sax { class XAttributeList; }
     namespace beans { class XPropertySet; }
 }
 template<typename EnumT> struct SvXMLEnumMapEntry;
@@ -38,23 +38,23 @@ template<typename EnumT> struct SvXMLEnumMapEntry;
 
 // TOC and user defined index:
 extern const SvXMLEnumMapEntry<sal_uInt16> aSvLevelNameTOCMap[];
-extern const char* aLevelStylePropNameTOCMap[];
+extern std::span<const OUString> const aLevelStylePropNameTOCMap;
 extern const bool aAllowedTokenTypesTOC[];
 extern const bool aAllowedTokenTypesUser[];
 
 // alphabetical index:
 extern const SvXMLEnumMapEntry<sal_uInt16> aLevelNameAlphaMap[];
-extern const char* aLevelStylePropNameAlphaMap[];
+extern std::span<const OUString> const aLevelStylePropNameAlphaMap;
 extern const bool aAllowedTokenTypesAlpha[];
 
 // bibliography:
 extern const SvXMLEnumMapEntry<sal_uInt16> aLevelNameBibliographyMap[];
-extern const char* aLevelStylePropNameBibliographyMap[];
+extern std::span<const OUString> const aLevelStylePropNameBibliographyMap;
 extern const bool aAllowedTokenTypesBibliography[];
 
 // table, illustration and object tables:
 extern const SvXMLEnumMapEntry<sal_uInt16>* aLevelNameTableMap; // NULL: no outline-level
-extern const char* aLevelStylePropNameTableMap[];
+extern std::span<const OUString> const aLevelStylePropNameTableMap;
 extern const bool aAllowedTokenTypesTable[];
 
 
@@ -70,7 +70,7 @@ class XMLIndexTemplateContext : public SvXMLImportContext
 
     const SvXMLEnumMapEntry<sal_uInt16>* pOutlineLevelNameMap;
     enum ::xmloff::token::XMLTokenEnum eOutlineLevelAttrName;
-    const char** pOutlineLevelStylePropMap;
+    std::span<const OUString> pOutlineLevelStylePropMap;
     const bool* pAllowedTokenTypesMap;
 
     sal_Int32 nOutlineLevel;
@@ -88,7 +88,7 @@ public:
         css::uno::Reference<css::beans::XPropertySet> & rPropSet,
         const SvXMLEnumMapEntry<EnumT>* aLevelNameMap,
         enum ::xmloff::token::XMLTokenEnum eLevelAttrName,
-        const char** aLevelStylePropNameMap,
+        std::span<const OUString> aLevelStylePropNameMap,
         const bool* aAllowedTokenTypes,
         bool bTOC_=false)
         : XMLIndexTemplateContext(rImport,rPropSet,
@@ -99,7 +99,7 @@ public:
         css::uno::Reference<css::beans::XPropertySet> & rPropSet,
         const SvXMLEnumMapEntry<sal_uInt16>* aLevelNameMap,
         enum ::xmloff::token::XMLTokenEnum eLevelAttrName,
-        const char** aLevelStylePropNameMap,
+        std::span<const OUString> aLevelStylePropNameMap,
         const bool* aAllowedTokenTypes,
         bool bTOC);
 

@@ -34,7 +34,6 @@
 #include <svx/svdoutl.hxx>
 #include <svx/svdview.hxx>
 #include <editeng/flditem.hxx>
-#include <svx/obj3d.hxx>
 #include <svx/svddrgmt.hxx>
 #include <svx/svdotable.hxx>
 #include <tools/debug.hxx>
@@ -148,13 +147,10 @@ SdrView::SdrView(
     mbNoExtendedKeyDispatcher(false),
     mbMasterPagePaintCaching(false)
 {
-    maAccessibilityOptions.AddListener(this);
-    onAccessibilityOptionsChanged();
 }
 
 SdrView::~SdrView()
 {
-    maAccessibilityOptions.RemoveListener(this);
 }
 
 bool SdrView::KeyInput(const KeyEvent& rKEvt, vcl::Window* pWin)
@@ -483,10 +479,10 @@ SdrHitKind SdrView::PickAnything(const Point& rLogicPos, SdrViewEvent& rVEvt) co
                         // that data
                         static SvxURLField aSvxURLField;
 
-                        aSvxURLField.SetURL(pTextHierarchyFieldPrimitive2D->getValue("URL"));
-                        aSvxURLField.SetRepresentation(pTextHierarchyFieldPrimitive2D->getValue("Representation"));
-                        aSvxURLField.SetTargetFrame(pTextHierarchyFieldPrimitive2D->getValue("TargetFrame"));
-                        const OUString aFormat(pTextHierarchyFieldPrimitive2D->getValue("SvxURLFormat"));
+                        aSvxURLField.SetURL(pTextHierarchyFieldPrimitive2D->getValue(u"URL"_ustr));
+                        aSvxURLField.SetRepresentation(pTextHierarchyFieldPrimitive2D->getValue(u"Representation"_ustr));
+                        aSvxURLField.SetTargetFrame(pTextHierarchyFieldPrimitive2D->getValue(u"TargetFrame"_ustr));
+                        const OUString aFormat(pTextHierarchyFieldPrimitive2D->getValue(u"SvxURLFormat"_ustr));
 
                         if (!aFormat.isEmpty())
                         {
@@ -518,17 +514,16 @@ SdrHitKind SdrView::PickAnything(const Point& rLogicPos, SdrViewEvent& rVEvt) co
 
         // Around the TextEditArea there's a border to select without going into text edit mode.
         tools::Rectangle aBoundRect;
-        const GeoStat& rGeo = pTextObj->GetGeoStat();
-        if (pTextObj && !rGeo.m_nRotationAngle && !rGeo.m_nShearAngle)
+        // Force to SnapRect when Fontwork
+        if (pTextObj && pTextObj->IsFontwork())
+            aBoundRect = pHitObj->GetSnapRect();
+        else if (pTextObj && !pTextObj->GetGeoStat().m_nRotationAngle
+            && !pTextObj->GetGeoStat().m_nShearAngle)
         {
             pTextObj->TakeTextEditArea(nullptr, nullptr, &aBoundRect, nullptr);
         }
         else
             aBoundRect = pHitObj->GetCurrentBoundRect();
-
-        // Force to SnapRect when Fontwork
-        if( pTextObj && pTextObj->IsFontwork() )
-            aBoundRect = pHitObj->GetSnapRect();
 
         sal_Int32 nTolerance(mnHitTolLog);
         bool bBoundRectHit(false);
@@ -859,11 +854,12 @@ bool SdrView::DoMouseEvent(const SdrViewEvent& rVEvt)
             if (rVEvt.mbPrevNextMark) {
                 bRet=MarkNextObj(aLogicPos, mnHitTolLog, rVEvt.mbMarkPrev);
             } else {
-                SortMarkedObjects();
-                const size_t nCount0=GetMarkedObjectCount();
+                const SdrMarkList& rMarkList = GetMarkedObjectList();
+                rMarkList.ForceSort();
+                const size_t nCount0=rMarkList.GetMarkCount();
                 bRet=MarkObj(aLogicPos, mnHitTolLog, rVEvt.mbAddMark);
-                SortMarkedObjects();
-                const size_t nCount1=GetMarkedObjectCount();
+                rMarkList.ForceSort();
+                const size_t nCount1=rMarkList.GetMarkCount();
                 bUnmark=nCount1<nCount0;
             }
             if (!bUnmark) {
@@ -974,10 +970,10 @@ PointerStyle SdrView::GetPreferredPointer(const Point& rMousePos, const OutputDe
     if (IsMacroObj()) {
         SdrObjMacroHitRec aHitRec;
         aHitRec.aPos=pOut->LogicToPixel(rMousePos);
-        aHitRec.nTol=nMacroTol;
-        aHitRec.pVisiLayer=&pMacroPV->GetVisibleLayers();
-        aHitRec.pPageView=pMacroPV;
-        return pMacroObj->GetMacroPointer(aHitRec);
+        aHitRec.nTol=m_nMacroTol;
+        aHitRec.pVisiLayer=&m_pMacroPV->GetVisibleLayers();
+        aHitRec.pPageView=m_pMacroPV;
+        return m_pMacroObj->GetMacroPointer(aHitRec);
     }
 
     // TextEdit, ObjEdit, Macro
@@ -1081,8 +1077,9 @@ PointerStyle SdrView::GetPreferredPointer(const Point& rMousePos, const OutputDe
 
                 // are 3D objects selected?
                 bool b3DObjSelected = false;
-                for (size_t a=0; !b3DObjSelected && a<GetMarkedObjectCount(); ++a) {
-                    SdrObject* pObj = GetMarkedObjectByIndex(a);
+                const SdrMarkList& rMarkList = GetMarkedObjectList();
+                for (size_t a=0; !b3DObjSelected && a<rMarkList.GetMarkCount(); ++a) {
+                    SdrObject* pObj = rMarkList.GetMark(a)->GetMarkedSdrObj();
                     if(DynCastE3dObject(pObj))
                         b3DObjSelected = true;
                 }
@@ -1205,7 +1202,8 @@ OUString SdrView::GetStatusText()
     }
     else if(IsMarkObj())
     {
-        if(AreObjectsMarked())
+        const SdrMarkList& rMarkList = GetMarkedObjectList();
+        if(rMarkList.GetMarkCount() != 0)
         {
             aStr = SvxResId(STR_ViewMarkMoreObjs);
         }
@@ -1238,9 +1236,9 @@ OUString SdrView::GetStatusText()
     else if (IsTextEdit() && mpTextEditOutlinerView != nullptr) {
         aStr=SvxResId(STR_ViewTextEdit); // "TextEdit - Row y, Column x";
         ESelection aSel(mpTextEditOutlinerView->GetSelection());
-        tools::Long nPar = aSel.nEndPara,nLin=0,nCol=aSel.nEndPos;
-        if (aSel.nEndPara>0) {
-            for (sal_Int32 nParaNum=0; nParaNum<aSel.nEndPara; nParaNum++) {
+        tools::Long nPar = aSel.end.nPara, nLin = 0, nCol = aSel.end.nIndex;
+        if (aSel.end.nPara>0) {
+            for (sal_Int32 nParaNum=0; nParaNum<aSel.end.nPara; nParaNum++) {
                 nLin += mpTextEditOutliner->GetLineCount(nParaNum);
             }
         }
@@ -1248,11 +1246,11 @@ OUString SdrView::GetStatusText()
         // At the end of a line of any multi-line paragraph, we display the
         // position of the next line of the same paragraph, if there is one.
         sal_uInt16 nParaLine = 0;
-        sal_uLong nParaLineCount = mpTextEditOutliner->GetLineCount(aSel.nEndPara);
+        sal_Int32 nParaLineCount = mpTextEditOutliner->GetLineCount(aSel.end.nPara);
         bool bBrk = false;
         while (!bBrk)
         {
-            sal_uInt16 nLen = mpTextEditOutliner->GetLineLen(aSel.nEndPara, nParaLine);
+            sal_uInt16 nLen = mpTextEditOutliner->GetLineLen(aSel.end.nPara, nParaLine);
             bool bLastLine = (nParaLine == nParaLineCount - 1);
             if (nCol>nLen || (!bLastLine && nCol == nLen))
             {
@@ -1272,13 +1270,14 @@ OUString SdrView::GetStatusText()
         aStr = aStr.replaceFirst("%3", OUString::number(nCol + 1));
 
 #ifdef DBG_UTIL
-        aStr +=  ", Level " + OUString::number(mpTextEditOutliner->GetDepth( aSel.nEndPara ));
+        aStr +=  ", Level " + OUString::number(mpTextEditOutliner->GetDepth( aSel.end.nPara ));
 #endif
     }
 
     if(aStr == STR_NOTHING)
     {
-        if (AreObjectsMarked()) {
+        const SdrMarkList& rMarkList = GetMarkedObjectList();
+        if (rMarkList.GetMarkCount() != 0) {
             aStr = ImpGetDescriptionString(STR_ViewMarked);
             if (IsGluePointEditMode()) {
                 if (HasMarkedGluePoints()) {
@@ -1311,26 +1310,27 @@ SdrViewContext SdrView::GetContext() const
     if( IsGluePointEditMode() )
         return SdrViewContext::GluePointEdit;
 
-    const size_t nMarkCount = GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount = rMarkList.GetMarkCount();
 
     if( HasMarkablePoints() && !IsFrameHandles() )
     {
         bool bPath=true;
         for( size_t nMarkNum = 0; nMarkNum < nMarkCount && bPath; ++nMarkNum )
-            if (dynamic_cast<const SdrPathObj*>(GetMarkedObjectByIndex(nMarkNum)) == nullptr)
+            if (dynamic_cast<const SdrPathObj*>(rMarkList.GetMark(nMarkNum)->GetMarkedSdrObj()) == nullptr)
                 bPath=false;
 
         if( bPath )
             return SdrViewContext::PointEdit;
     }
 
-    if( GetMarkedObjectCount() )
+    if( rMarkList.GetMarkCount() )
     {
         bool bGraf = true, bMedia = true, bTable = true;
 
         for( size_t nMarkNum = 0; nMarkNum < nMarkCount && ( bGraf || bMedia ); ++nMarkNum )
         {
-            const SdrObject* pMarkObj = GetMarkedObjectByIndex( nMarkNum );
+            const SdrObject* pMarkObj = rMarkList.GetMark(nMarkNum)->GetMarkedSdrObj();
             DBG_ASSERT( pMarkObj, "SdrView::GetContext(), null pointer in mark list!" );
 
             if( !pMarkObj )
@@ -1360,7 +1360,7 @@ SdrViewContext SdrView::GetContext() const
 void SdrView::MarkAll()
 {
     if (IsTextEdit()) {
-        GetTextEditOutlinerView()->SetSelection(ESelection(0,0,EE_PARA_ALL,EE_TEXTPOS_ALL));
+        GetTextEditOutlinerView()->SetSelection(ESelection::All());
     } else if (IsGluePointEditMode()) MarkAllGluePoints();
     else if (HasMarkablePoints()) MarkAllPoints();
     else {
@@ -1371,7 +1371,7 @@ void SdrView::MarkAll()
         {
             const SdrObject* pObj(rMarkList.GetMark(0)->GetMarkedSdrObj());
             SdrView* pView = this;
-            if (pObj && pView && (pObj->GetObjInventor() == SdrInventor::Default)
+            if (pObj && (pObj->GetObjInventor() == SdrInventor::Default)
                 && (pObj->GetObjIdentifier() == SdrObjKind::Table))
             {
                 mxSelectionController.clear();
@@ -1396,8 +1396,7 @@ void SdrView::UnmarkAll()
 {
     if (IsTextEdit()) {
         ESelection eSel=GetTextEditOutlinerView()->GetSelection();
-        eSel.nStartPara=eSel.nEndPara;
-        eSel.nStartPos=eSel.nEndPos;
+        eSel.CollapseToEnd();
         GetTextEditOutlinerView()->SetSelection(eSel);
     } else if (HasMarkedGluePoints()) UnmarkAllGluePoints();
     else if (HasMarkedPoints()) UnmarkAllPoints(); // Marked, not Markable!
@@ -1463,7 +1462,8 @@ bool SdrView::MoveShapeHandle(const sal_uInt32 handleNum, const Point& aEndPoint
     if (GetHdlList().IsMoveOutside())
         return false;
 
-    if (!GetMarkedObjectList().GetMarkCount())
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (!rMarkList.GetMarkCount())
         return false;
 
     SdrHdl * pHdl = GetHdlList().GetHdl(handleNum);
@@ -1501,18 +1501,6 @@ bool SdrView::MoveShapeHandle(const sal_uInt32 handleNum, const Point& aEndPoint
         SetSnapEnabled(bWasSnapEnabled);
 
     return true;
-}
-
-void SdrView::ConfigurationChanged( ::utl::ConfigurationBroadcaster*p, ConfigurationHints nHint)
-{
-    onAccessibilityOptionsChanged();
-    SdrCreateView::ConfigurationChanged(p, nHint);
-}
-
-
-/** method is called whenever the global SvtAccessibilityOptions is changed */
-void SdrView::onAccessibilityOptionsChanged()
-{
 }
 
 void SdrView::SetMasterPagePaintCaching(bool bOn)

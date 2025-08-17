@@ -43,6 +43,7 @@
 #include <svx/svdobj.hxx>
 #include <svx/svdpage.hxx>
 #include <osl/diagnose.h>
+#include <vcl/scheduler.hxx>
 
 using namespace ::com::sun::star;
 
@@ -128,7 +129,7 @@ SwFrameFormat *DocumentLayoutManager::MakeLayoutFormat( RndStdIds eRequest, cons
     case RndStdIds::FOOTER:
         {
             pFormat = new SwFrameFormat( m_rDoc.GetAttrPool(),
-                                 (bHeader ? "Right header" : "Right footer"),
+                                 UIName(bHeader ? u"Right header"_ustr : u"Right footer"_ustr),
                                  m_rDoc.GetDfltFrameFormat() );
 
             const SwNode& rEndOfAutotext( m_rDoc.GetNodes().GetEndOfAutotext() );
@@ -158,7 +159,7 @@ SwFrameFormat *DocumentLayoutManager::MakeLayoutFormat( RndStdIds eRequest, cons
 
     case RndStdIds::DRAW_OBJECT:
         {
-            pFormat = m_rDoc.MakeDrawFrameFormat( OUString(), m_rDoc.GetDfltFrameFormat() );
+            pFormat = m_rDoc.MakeDrawFrameFormat( UIName(), m_rDoc.GetDfltFrameFormat() );
             if( pSet )      // Set a few more attributes
                 pFormat->SetFormatAttr( *pSet );
 
@@ -191,6 +192,9 @@ SwFrameFormat *DocumentLayoutManager::MakeLayoutFormat( RndStdIds eRequest, cons
 /// Deletes the denoted format and its content.
 void DocumentLayoutManager::DelLayoutFormat( SwFrameFormat *pFormat )
 {
+    // Do not paint, until the destruction is complete. Paint may access the layout and nodes
+    // while it's in inconsistent state, and crash.
+    Scheduler::IdlesLockGuard g;
     // A chain of frames needs to be merged, if necessary,
     // so that the Frame's contents are adjusted accordingly before we destroy the Frames.
     const SwFormatChain &rChain = pFormat->GetChain();
@@ -248,7 +252,7 @@ void DocumentLayoutManager::DelLayoutFormat( SwFrameFormat *pFormat )
                 pContentIdx = pFormat->GetContent().GetContentIdx();
             if (pContentIdx)
             {
-                sw::SpzFrameFormats* pSpzs = pFormat->GetDoc()->GetSpzFrameFormats();
+                sw::SpzFrameFormats* pSpzs = pFormat->GetDoc().GetSpzFrameFormats();
                 if ( pSpzs )
                 {
                     std::vector<SwFrameFormat*> aToDeleteFrameFormats;
@@ -268,7 +272,7 @@ void DocumentLayoutManager::DelLayoutFormat( SwFrameFormat *pFormat )
                     while ( !aToDeleteFrameFormats.empty() )
                     {
                         SwFrameFormat* pTmpFormat = aToDeleteFrameFormats.back();
-                        pFormat->GetDoc()->getIDocumentLayoutAccess().DelLayoutFormat( pTmpFormat );
+                        pFormat->GetDoc().getIDocumentLayoutAccess().DelLayoutFormat( pTmpFormat );
 
                         aToDeleteFrameFormats.pop_back();
                     }
@@ -326,7 +330,7 @@ SwFrameFormat *DocumentLayoutManager::CopyLayoutFormat(
     const bool bDraw = RES_DRAWFRMFMT == rSource.Which();
     OSL_ENSURE( bFly || bDraw, "this method only works for fly or draw" );
 
-    SwDoc* pSrcDoc = const_cast<SwDoc*>(rSource.GetDoc());
+    SwDoc& rSrcDoc = const_cast<SwDoc&>(rSource.GetDoc());
 
     // May we copy this object?
     // We may, unless it's 1) it's a control (and therefore a draw)
@@ -350,7 +354,7 @@ SwFrameFormat *DocumentLayoutManager::CopyLayoutFormat(
         return nullptr;
 
     SwFrameFormat* pDest = m_rDoc.GetDfltFrameFormat();
-    if( rSource.GetRegisteredIn() != pSrcDoc->GetDfltFrameFormat() )
+    if( rSource.GetRegisteredIn() != rSrcDoc.GetDfltFrameFormat() )
         pDest = m_rDoc.CopyFrameFormat( *static_cast<const SwFrameFormat*>(rSource.GetRegisteredIn()) );
     if( bFly )
     {
@@ -366,7 +370,7 @@ SwFrameFormat *DocumentLayoutManager::CopyLayoutFormat(
         SwXFrame::GetOrCreateSdrObject(*pFormat);
     }
     else
-        pDest = m_rDoc.MakeDrawFrameFormat( OUString(), pDest );
+        pDest = m_rDoc.MakeDrawFrameFormat( UIName(), pDest );
 
     // Copy all other or new attributes
     pDest->CopyAttrs( rSource );
@@ -390,17 +394,17 @@ SwFrameFormat *DocumentLayoutManager::CopyLayoutFormat(
         pDest->SetFormatAttr( aAttr );
         pDest->SetFormatAttr( rNewAnchor );
 
-        if( !m_rDoc.IsCopyIsMove() || &m_rDoc != pSrcDoc )
+        if( !m_rDoc.IsCopyIsMove() || &m_rDoc != &rSrcDoc )
         {
             if( (m_rDoc.IsInReading() && !bInHeaderFooter) || m_rDoc.IsInMailMerge() )
-                pDest->SetFormatName( OUString() );
+                pDest->SetFormatName( UIName() );
             else
             {
                 // Test first if the name is already taken, if so generate a new one.
                 SwNodeType nNdTyp = aRg.aStart.GetNode().GetNodeType();
 
-                OUString sOld( pDest->GetName() );
-                pDest->SetFormatName( OUString() );
+                UIName sOld( pDest->GetName() );
+                pDest->SetFormatName( UIName() );
                 if( m_rDoc.FindFlyByName( sOld, nNdTyp ) )     // found one
                     switch( nNdTyp )
                     {
@@ -425,7 +429,7 @@ SwFrameFormat *DocumentLayoutManager::CopyLayoutFormat(
         //contact object itself. They should be managed by SwUndoInsLayFormat.
         const ::sw::DrawUndoGuard drawUndoGuard(m_rDoc.GetIDocumentUndoRedo());
 
-        pSrcDoc->GetDocumentContentOperationsManager().CopyWithFlyInFly(aRg, aIdx.GetNode(), nullptr, false, true, true);
+        rSrcDoc.GetDocumentContentOperationsManager().CopyWithFlyInFly(aRg, aIdx.GetNode(), nullptr, false, true, true);
     }
     else
     {
@@ -466,7 +470,7 @@ SwFrameFormat *DocumentLayoutManager::CopyLayoutFormat(
         // Format name should have unique name. Let's use object name as a fallback
         SdrObject *pObj = pDest->FindSdrObject();
         if (pObj)
-            pDest->SetFormatName(pObj->GetName());
+            pDest->SetFormatName(UIName(pObj->GetName()));
     }
 
     // If the draw format has a TextBox, then copy its fly format as well.

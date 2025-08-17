@@ -139,7 +139,7 @@ css::uno::Reference< css::xml::crypto::sax::XReferenceResolvedListener > XSecCon
         {
             OUString aId = "idSignedProperties_" +  internalSignatureInfor.signatureInfor.ouSignatureId;
             // We write a new reference, so it's possible to use the correct type URI.
-            internalSignatureInfor.addReference(SignatureReferenceType::SAMEDOCUMENT, digestID, aId, -1, "http://uri.etsi.org/01903#SignedProperties");
+            internalSignatureInfor.addReference(SignatureReferenceType::SAMEDOCUMENT, digestID, aId, -1, u"http://uri.etsi.org/01903#SignedProperties"_ustr);
             size++;
         }
 
@@ -189,7 +189,7 @@ void XSecController::signAStream( sal_Int32 securityId, const OUString& uri, boo
     {
         InternalSignatureInformation isi(securityId, nullptr);
         isi.addReference(type, digestID, uri, -1, OUString());
-        m_vInternalSignatureInformations.push_back( isi );
+        m_vInternalSignatureInformations.push_back(std::move(isi));
     }
     else
     {
@@ -222,7 +222,7 @@ void XSecController::setX509Certificate(
         isi.signatureInfor.X509Datas.back().back().X509Certificate = ouX509Cert;
         isi.signatureInfor.X509Datas.back().back().CertDigest = ouX509CertDigest;
         isi.signatureInfor.eAlgorithmID = eAlgorithmID;
-        m_vInternalSignatureInformations.push_back( isi );
+        m_vInternalSignatureInformations.push_back(std::move(isi));
     }
     else
     {
@@ -252,7 +252,7 @@ void XSecController::setGpgCertificate(
         isi.signatureInfor.ouGpgCertificate = ouCert;
         isi.signatureInfor.ouGpgOwner = ouOwner;
         isi.signatureInfor.ouGpgKeyID = ouKeyDigest;
-        m_vInternalSignatureInformations.push_back( isi );
+        m_vInternalSignatureInformations.push_back(std::move(isi));
     }
     else
     {
@@ -275,7 +275,7 @@ void XSecController::setDate(
     {
         InternalSignatureInformation isi(nSecurityId, nullptr);
         isi.signatureInfor.stDateTime = rDateTime;
-        m_vInternalSignatureInformations.push_back( isi );
+        m_vInternalSignatureInformations.push_back(std::move(isi));
     }
     else
     {
@@ -293,7 +293,7 @@ void XSecController::setDescription(sal_Int32 nSecurityId, const OUString& rDesc
     {
         InternalSignatureInformation aInformation(nSecurityId, nullptr);
         aInformation.signatureInfor.ouDescription = rDescription;
-        m_vInternalSignatureInformations.push_back(aInformation);
+        m_vInternalSignatureInformations.push_back(std::move(aInformation));
     }
     else
     {
@@ -310,7 +310,7 @@ void XSecController::setSignatureLineId(sal_Int32 nSecurityId, const OUString& r
     {
         InternalSignatureInformation aInformation(nSecurityId, nullptr);
         aInformation.signatureInfor.ouSignatureLineId = rSignatureLineId;
-        m_vInternalSignatureInformations.push_back(aInformation);
+        m_vInternalSignatureInformations.push_back(std::move(aInformation));
     }
     else
     {
@@ -328,7 +328,7 @@ void XSecController::setSignatureLineValidGraphic(sal_Int32 nSecurityId,
     {
         InternalSignatureInformation aInformation(nSecurityId, nullptr);
         aInformation.signatureInfor.aValidSignatureImage = xValidGraphic;
-        m_vInternalSignatureInformations.push_back(aInformation);
+        m_vInternalSignatureInformations.push_back(std::move(aInformation));
     }
     else
     {
@@ -347,7 +347,7 @@ void XSecController::setSignatureLineInvalidGraphic(
     {
         InternalSignatureInformation aInformation(nSecurityId, nullptr);
         aInformation.signatureInfor.aInvalidSignatureImage = xInvalidGraphic;
-        m_vInternalSignatureInformations.push_back(aInformation);
+        m_vInternalSignatureInformations.push_back(std::move(aInformation));
     }
     else
     {

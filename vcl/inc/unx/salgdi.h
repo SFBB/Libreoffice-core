@@ -37,24 +37,12 @@
 /* From <X11/Intrinsic.h> */
 typedef unsigned long Pixel;
 
-class SalBitmap;
-class SalColormap;
-class SalDisplay;
 class SalFrame;
 class X11SalFrame;
 class X11SalVirtualDevice;
 class X11SkiaSalVirtualDevice;
-namespace vcl::font
-{
-class PhysicalFontCollection;
-class PhysicalFontFace;
-}
 class SalGraphicsImpl;
 class TextRenderImpl;
-
-namespace basegfx {
-    class B2DTrapezoid;
-}
 
 class X11Common
 {
@@ -82,9 +70,8 @@ public:
 
     void                            Init(X11SalFrame& rFrame, Drawable aDrawable, SalX11Screen nXScreen);
     void                            Init(X11SalVirtualDevice *pVirtualDevice, SalColormap* pColormap = nullptr,
-                                         bool bDeleteColormap = false);
+                                         bool bDeleteColormap = false, bool bAlphaMaskTransparent = false);
     void                            Init( X11SkiaSalVirtualDevice *pVirtualDevice );
-    void                            DeInit();
 
     virtual SalGraphicsImpl*        GetImpl() const override;
     SalGeometryProvider*            GetGeometryProvider() const;
@@ -105,6 +92,7 @@ public:
     virtual void                    GetDevFontList( vcl::font::PhysicalFontCollection* ) override;
     virtual void                    ClearDevFontCache() override;
     virtual bool                    AddTempDevFont( vcl::font::PhysicalFontCollection*, const OUString& rFileURL, const OUString& rFontName ) override;
+    virtual bool                    RemoveTempDevFont( const OUString& rFileURL, const OUString& rFontName ) override;
 
     virtual std::unique_ptr<GenericSalLayout>
                                     GetTextLayout(int nFallbackLevel) override;
@@ -123,7 +111,7 @@ public:
 private:
     using SalGraphics::GetPixel;
 
-    void                            freeResources();
+    void FreeColorMap();
 
     SalFrame*                       m_pFrame; // the SalFrame which created this Graphics or NULL
     SalVirtualDevice*               m_pVDev;  // the SalVirtualDevice which created this Graphics or NULL

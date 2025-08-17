@@ -34,6 +34,7 @@
 #include <svl/urihelper.hxx>
 #include <rtl/character.hxx>
 #include <tools/debug.hxx>
+#include <o3tl/string_view.hxx>
 
 #include <sstream>
 
@@ -495,13 +496,13 @@ static OString lcl_FlushToAscii()
     return aDest.makeStringAndClear();
 }
 
-OString HTMLOutFuncs::ConvertStringToHTML( const OUString& rSrc,
+OString HTMLOutFuncs::ConvertStringToHTML( std::u16string_view rSrc,
     OUString *pNonConvertableChars )
 {
     OStringBuffer aDest;
-    for( sal_Int32 i=0, nLen = rSrc.getLength(); i < nLen; )
+    for( sal_Int32 i=0, nLen = rSrc.size(); i < nLen; )
         aDest.append(lcl_ConvertCharToHTML(
-            rSrc.iterateCodePoints(&i), pNonConvertableChars));
+            o3tl::iterateCodePoints(rSrc, &i), pNonConvertableChars));
     aDest.append(lcl_FlushToAscii());
     return aDest.makeStringAndClear();
 }
@@ -527,12 +528,12 @@ SvStream& HTMLOutFuncs::Out_Char( SvStream& rStream, sal_uInt32 c,
     return rStream;
 }
 
-SvStream& HTMLOutFuncs::Out_String( SvStream& rStream, const OUString& rOUStr,
+SvStream& HTMLOutFuncs::Out_String( SvStream& rStream, std::u16string_view rOUStr,
                                     OUString *pNonConvertableChars )
 {
-    sal_Int32 nLen = rOUStr.getLength();
+    sal_Int32 nLen = rOUStr.size();
     for( sal_Int32 n = 0; n < nLen; )
-        HTMLOutFuncs::Out_Char( rStream, rOUStr.iterateCodePoints(&n),
+        HTMLOutFuncs::Out_Char( rStream, o3tl::iterateCodePoints(rOUStr, &n),
                                 pNonConvertableChars );
     HTMLOutFuncs::FlushToAscii( rStream );
     return rStream;
@@ -701,7 +702,7 @@ SvStream& HTMLOutFuncs::Out_ImageMap( SvStream& rStream,
 
                 sOut.append(OString::Concat("<") + OOO_STRING_SVTOOLS_HTML_area
                         " " OOO_STRING_SVTOOLS_HTML_O_shape
-                        "=" + pShape + " "
+                        "=\"" + pShape + "\" "
                         OOO_STRING_SVTOOLS_HTML_O_coords "=\"" +
                         aCoords + "\" ");
                 rStream.WriteOString( sOut );
@@ -755,7 +756,7 @@ SvStream& HTMLOutFuncs::Out_ImageMap( SvStream& rStream,
                     Out_Events( rStream, rMacroTab, pEventTable,
                                 bOutStarBasic );
 
-                rStream.WriteChar( '>' );
+                rStream.WriteOString("/>");
             }
         }
 
@@ -773,7 +774,7 @@ SvStream& HTMLOutFuncs::Out_ImageMap( SvStream& rStream,
 SvStream& HTMLOutFuncs::OutScript( SvStream& rStrm,
                                    const OUString& rBaseURL,
                                    std::u16string_view rSource,
-                                   const OUString& rLanguage,
+                                   std::u16string_view rLanguage,
                                    ScriptType eScriptType,
                                    const OUString& rSrc,
                                    const OUString *pSBLibrary,
@@ -782,7 +783,7 @@ SvStream& HTMLOutFuncs::OutScript( SvStream& rStrm,
     // script is not indented!
     OStringBuffer sOut("<" OOO_STRING_SVTOOLS_HTML_script);
 
-    if( !rLanguage.isEmpty() )
+    if( !rLanguage.empty() )
     {
         sOut.append(" " OOO_STRING_SVTOOLS_HTML_O_language "=\"");
         rStrm.WriteOString( sOut );
@@ -879,8 +880,7 @@ SvStream& HTMLOutFuncs::OutScript( SvStream& rStrm,
 SvStream& HTMLOutFuncs::Out_Events( SvStream& rStrm,
                                     const SvxMacroTableDtor& rMacroTable,
                                     const HTMLOutEvent *pEventTable,
-                                    bool bOutStarBasic,
-                                    OUString *pNonConvertableChars )
+                                    bool bOutStarBasic )
 {
     sal_uInt16 i=0;
     while( pEventTable[i].pBasicName || pEventTable[i].pJavaName )
@@ -900,7 +900,7 @@ SvStream& HTMLOutFuncs::Out_Events( SvStream& rStrm,
                 OString sOut = OString::Concat(" ") + pStr + "=\"";
                 rStrm.WriteOString( sOut );
 
-                Out_String( rStrm, pMacro->GetMacName(), pNonConvertableChars ).WriteChar( '\"' );
+                Out_String( rStrm, pMacro->GetMacName(), /*pNonConvertableChars*/nullptr ).WriteChar( '\"' );
             }
         }
         i++;
@@ -919,8 +919,7 @@ OString HTMLOutFuncs::CreateTableDataOptionsValNum(
     if ( bValue )
     {
         // printf / scanf is not precise enough
-        OUString aValStr;
-        rFormatter.GetInputLineString( fVal, 0, aValStr );
+        OUString aValStr = rFormatter.GetInputLineString( fVal, 0 );
         OString sTmp(OUStringToOString(aValStr, RTL_TEXTENCODING_UTF8));
         aStrTD.append(" " OOO_STRING_SVTOOLS_HTML_O_SDval "=\"" +
                 sTmp + "\"");

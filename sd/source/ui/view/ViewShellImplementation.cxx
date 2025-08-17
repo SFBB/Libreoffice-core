@@ -48,11 +48,6 @@
 
 #include <undo/undoobjects.hxx>
 
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
-
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
-
 namespace sd {
 
 ViewShell::Implementation::Implementation (ViewShell& rViewShell)
@@ -110,10 +105,13 @@ void ViewShell::Implementation::ProcessModifyPageSlot (
             // First make sure that the sidebar is visible
             mrViewShell.GetDrawView()->SdrEndTextEdit();
             mrViewShell.GetDrawView()->UnmarkAll();
-            mrViewShell.GetViewFrame()->ShowChildWindow(SID_SIDEBAR);
-            sfx2::sidebar::Sidebar::TogglePanel(
-                u"SdLayoutsPanel",
-                mrViewShell.GetViewFrame()->GetFrame().GetFrameInterface());
+            if (SfxViewFrame* pViewFrame = mrViewShell.GetViewFrame())
+            {
+                pViewFrame->ShowChildWindow(SID_SIDEBAR);
+                sfx2::sidebar::Sidebar::TogglePanel(
+                    u"SdLayoutsPanel",
+                    pViewFrame->GetFrame().GetFrameInterface());
+            }
             break;
         }
         else if (pArgs->Count() == 4)
@@ -167,7 +165,7 @@ void ViewShell::Implementation::ProcessModifyPageSlot (
             pUndoManager->EnterListAction(aComment, aComment, 0, mrViewShell.GetViewShellBase().GetViewShellId());
             pUndoManager->AddUndoAction(
                 std::make_unique<ModifyPageUndoAction>(
-                    pDocument, pUndoPage, aNewName, aNewAutoLayout, bBVisible, bBObjsVisible));
+                    *pDocument, pUndoPage, aNewName, aNewAutoLayout, bBVisible, bBObjsVisible));
 
             // Clear the selection because the selected object may be removed as
             // a result of the assignment of the layout.
@@ -296,6 +294,7 @@ SfxInterfaceId ViewShell::Implementation::GetViewId() const
         // Since we have to return a view id for every possible shell type
         // and there is not (yet) a proper ViewShellBase sub class for the
         // remaining types we chose the Impress factory as a fall back.
+        case ViewShell::ST_NOTESPANEL:
         case ViewShell::ST_SIDEBAR:
         case ViewShell::ST_NONE:
         default:

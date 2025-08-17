@@ -50,17 +50,17 @@ struct SwAddressFragment
     std::unique_ptr<weld::Entry> m_xEntry;
     weld::Container* m_pGrid;
 
-    SwAddressFragment(weld::Container* pGrid, int nLine)
-        : m_xBuilder(Application::CreateBuilder(pGrid, "modules/swriter/ui/addressfragment.ui"))
-        , m_xLabel(m_xBuilder->weld_label("label"))
-        , m_xEntry(m_xBuilder->weld_entry("entry"))
+    SwAddressFragment(weld::Grid* pGrid, int nLine)
+        : m_xBuilder(Application::CreateBuilder(pGrid, u"modules/swriter/ui/addressfragment.ui"_ustr))
+        , m_xLabel(m_xBuilder->weld_label(u"label"_ustr))
+        , m_xEntry(m_xBuilder->weld_entry(u"entry"_ustr))
         , m_pGrid(pGrid)
     {
-        m_xLabel->set_grid_left_attach(0);
-        m_xLabel->set_grid_top_attach(nLine);
+        pGrid->set_child_left_attach(*m_xLabel, 0);
+        pGrid->set_child_top_attach(*m_xLabel, nLine);
 
-        m_xEntry->set_grid_left_attach(1);
-        m_xEntry->set_grid_top_attach(nLine);
+        pGrid->set_child_left_attach(*m_xEntry, 1);
+        pGrid->set_child_top_attach(*m_xEntry, nLine);
     }
 
     ~SwAddressFragment()
@@ -82,7 +82,7 @@ class SwAddressControl_Impl
     bool                            m_bNoDataSet;
 
     std::unique_ptr<weld::ScrolledWindow> m_xScrollBar;
-    std::unique_ptr<weld::Container> m_xWindow;
+    std::unique_ptr<weld::Grid> m_xWindow;
     std::vector<std::unique_ptr<SwAddressFragment>> m_aLines;
 
     DECL_LINK(GotFocusHdl_Impl, weld::Widget&, void);
@@ -105,8 +105,8 @@ SwAddressControl_Impl::SwAddressControl_Impl(weld::Builder& rBuilder)
     : m_pData(nullptr)
     , m_nCurrentDataSet(0)
     , m_bNoDataSet(true)
-    , m_xScrollBar(rBuilder.weld_scrolled_window("scrollwin"))
-    , m_xWindow(rBuilder.weld_container("CONTAINER"))
+    , m_xScrollBar(rBuilder.weld_scrolled_window(u"scrollwin"_ustr))
+    , m_xWindow(rBuilder.weld_grid(u"CONTAINER"_ustr))
 {
 }
 
@@ -213,22 +213,22 @@ void SwAddressControl_Impl::SetCursorTo(std::size_t nElement)
 
 SwCreateAddressListDialog::SwCreateAddressListDialog(
         weld::Window* pParent, OUString aURL, SwMailMergeConfigItem const & rConfig)
-    : SfxDialogController(pParent, "modules/swriter/ui/createaddresslist.ui", "CreateAddressList")
+    : SfxDialogController(pParent, u"modules/swriter/ui/createaddresslist.ui"_ustr, u"CreateAddressList"_ustr)
     , m_sAddressListFilterName(SwResId(ST_FILTERNAME))
     , m_sURL(std::move(aURL))
     , m_pCSVData(new SwCSVData)
     , m_xAddressControl(new SwAddressControl_Impl(*m_xBuilder))
-    , m_xNewPB(m_xBuilder->weld_button("NEW"))
-    , m_xDeletePB(m_xBuilder->weld_button("DELETE"))
-    , m_xFindPB(m_xBuilder->weld_button("FIND"))
-    , m_xCustomizePB(m_xBuilder->weld_button("CUSTOMIZE"))
-    , m_xStartPB(m_xBuilder->weld_button("START"))
-    , m_xPrevPB(m_xBuilder->weld_button("PREV"))
-    , m_xSetNoED(m_xBuilder->weld_entry("SETNOED"))
-    , m_xSetNoNF(m_xBuilder->weld_spin_button("SETNOSB"))
-    , m_xNextPB(m_xBuilder->weld_button("NEXT"))
-    , m_xEndPB(m_xBuilder->weld_button("END"))
-    , m_xOK(m_xBuilder->weld_button("ok"))
+    , m_xNewPB(m_xBuilder->weld_button(u"NEW"_ustr))
+    , m_xDeletePB(m_xBuilder->weld_button(u"DELETE"_ustr))
+    , m_xFindPB(m_xBuilder->weld_button(u"FIND"_ustr))
+    , m_xCustomizePB(m_xBuilder->weld_button(u"CUSTOMIZE"_ustr))
+    , m_xStartPB(m_xBuilder->weld_button(u"START"_ustr))
+    , m_xPrevPB(m_xBuilder->weld_button(u"PREV"_ustr))
+    , m_xSetNoED(m_xBuilder->weld_entry(u"SETNOED"_ustr))
+    , m_xSetNoNF(m_xBuilder->weld_spin_button(u"SETNOSB"_ustr))
+    , m_xNextPB(m_xBuilder->weld_button(u"NEXT"_ustr))
+    , m_xEndPB(m_xBuilder->weld_button(u"END"_ustr))
+    , m_xOK(m_xBuilder->weld_button(u"ok"_ustr))
 {
     m_xSetNoNF->set_min(1);
 
@@ -270,7 +270,7 @@ SwCreateAddressListDialog::SwCreateAddressListDialog(
                             "Wrong format of header");
                     if(sHeader.size() > 2)
                     {
-                        m_pCSVData->aDBColumnHeaders.push_back( OUString(sHeader.substr(1, sHeader.size() -2)));
+                        m_pCSVData->aDBColumnHeaders.emplace_back(sHeader.substr(1, sHeader.size() -2));
                     }
                 }
                 while (nIndex > 0);
@@ -290,7 +290,7 @@ SwCreateAddressListDialog::SwCreateAddressListDialog(
                     else
                         aNewData.push_back(sData);
                 }
-                m_pCSVData->aDBData.push_back( aNewData );
+                m_pCSVData->aDBData.push_back(std::move(aNewData));
             }
         }
     }
@@ -303,7 +303,7 @@ SwCreateAddressListDialog::SwCreateAddressListDialog(
             m_pCSVData->aDBColumnHeaders.push_back(rAddressHeader[nHeader].first);
         std::vector<OUString> aNewData;
         aNewData.insert(aNewData.begin(), nCount, OUString());
-        m_pCSVData->aDBData.push_back(aNewData);
+        m_pCSVData->aDBData.push_back(std::move(aNewData));
     }
     //now fill the address control
     m_xAddressControl->SetData(*m_pCSVData);
@@ -423,7 +423,7 @@ IMPL_LINK_NOARG(SwCreateAddressListDialog, OkHdl_Impl, weld::Button&, void)
                                           FileDialogFlags::NONE, m_xDialog.get());
         aDlgHelper.SetContext(sfx2::FileDialogHelper::WriterCreateAddressList);
         uno::Reference < XFilePicker3 > xFP = aDlgHelper.GetFilePicker();
-        xFP->appendFilter( m_sAddressListFilterName, "*.csv" );
+        xFP->appendFilter( m_sAddressListFilterName, u"*.csv"_ustr );
         xFP->setCurrentFilter( m_sAddressListFilterName ) ;
 
         if( ERRCODE_NONE == aDlgHelper.Execute() )
@@ -552,13 +552,13 @@ void SwCreateAddressListDialog::Find(const OUString& rSearch, sal_Int32 nColumn)
 }
 
 SwFindEntryDialog::SwFindEntryDialog(SwCreateAddressListDialog* pParent)
-    : GenericDialogController(pParent->getDialog(), "modules/swriter/ui/findentrydialog.ui", "FindEntryDialog")
+    : GenericDialogController(pParent->getDialog(), u"modules/swriter/ui/findentrydialog.ui"_ustr, u"FindEntryDialog"_ustr)
     , m_pParent(pParent)
-    , m_xFindED(m_xBuilder->weld_entry("entry"))
-    , m_xFindOnlyCB(m_xBuilder->weld_check_button("findin"))
-    , m_xFindOnlyLB(m_xBuilder->weld_combo_box("area"))
-    , m_xFindPB(m_xBuilder->weld_button("find"))
-    , m_xCancel(m_xBuilder->weld_button("cancel"))
+    , m_xFindED(m_xBuilder->weld_entry(u"entry"_ustr))
+    , m_xFindOnlyCB(m_xBuilder->weld_check_button(u"findin"_ustr))
+    , m_xFindOnlyLB(m_xBuilder->weld_combo_box(u"area"_ustr))
+    , m_xFindPB(m_xBuilder->weld_button(u"find"_ustr))
+    , m_xCancel(m_xBuilder->weld_button(u"cancel"_ustr))
 {
     m_xFindPB->connect_clicked(LINK(this, SwFindEntryDialog, FindHdl_Impl));
     m_xFindED->connect_changed(LINK(this, SwFindEntryDialog, FindEnableHdl_Impl));

@@ -21,7 +21,7 @@
 
 #include <avmedia/mediaplayer.hxx>
 #include <avmedia/mediatoolbox.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <svx/fmobjfac.hxx>
 #include <svx/objfac3d.hxx>
@@ -87,7 +87,10 @@ using namespace ::com::sun::star;
 // Register all Factories
 void SdDLL::RegisterFactorys()
 {
-    if (utl::ConfigManager::IsFuzzing() || SvtModuleOptions().IsImpress())
+    std::optional<SvtModuleOptions> oOpts;
+    if (!comphelper::IsFuzzing())
+        oOpts.emplace();
+    if (!oOpts || oOpts->IsImpressInstalled())
     {
         ::sd::ImpressViewShellBase::RegisterFactory (
             ::sd::IMPRESS_FACTORY_ID);
@@ -110,7 +113,7 @@ void SdDLL::RegisterFactorys()
                 ::sd::PRESENTATION_FACTORY_ID);
         }
     }
-    if (!utl::ConfigManager::IsFuzzing() && SvtModuleOptions().IsDraw())
+    if (oOpts && oOpts->IsDrawInstalled())
     {
         ::sd::GraphicViewShellBase::RegisterFactory (::sd::DRAW_FACTORY_ID);
     }
@@ -169,13 +172,12 @@ void SdDLL::RegisterControllers(SdModule* pMod)
     SvxBmpMaskChildWindow::RegisterChildWindow(false, pMod);
     SvxIMapDlgChildWindow::RegisterChildWindow(false, pMod);
     SvxHlinkDlgWrapper::RegisterChildWindow(false, pMod);
-    ::sd::SpellDialogChildWindow::RegisterChildWindow(
-        false, pMod, comphelper::LibreOfficeKit::isActive() ? SfxChildWindowFlags::NEVERCLONE
-                                                            : SfxChildWindowFlags::NONE);
+    ::sd::SpellDialogChildWindow::RegisterChildWindow(false, pMod);
 #if HAVE_FEATURE_AVMEDIA
     ::avmedia::MediaPlayer::RegisterChildWindow(false, pMod);
 #endif
     ::sd::LeftPaneImpressChildWindow::RegisterChildWindow(false, pMod);
+    ::sd::BottomPaneImpressChildWindow::RegisterChildWindow(false, pMod);
     ::sd::LeftPaneDrawChildWindow::RegisterChildWindow(false, pMod);
     ::sfx2::sidebar::SidebarChildWindow::RegisterChildWindow(false, pMod);
     DevelopmentToolChildWindow::RegisterChildWindow(false, pMod);
@@ -223,26 +225,29 @@ void SdDLL::Init()
     SfxObjectFactory* pDrawFact = nullptr;
     SfxObjectFactory* pImpressFact = nullptr;
 
-    if (utl::ConfigManager::IsFuzzing() || SvtModuleOptions().IsImpress())
+    std::optional<SvtModuleOptions> oOptions;
+    if (!comphelper::IsFuzzing())
+        oOptions.emplace();
+    if (!oOptions || oOptions->IsImpressInstalled())
         pImpressFact = &::sd::DrawDocShell::Factory();
 
-    if (!utl::ConfigManager::IsFuzzing() && SvtModuleOptions().IsDraw())
+    if (oOptions && oOptions->IsDrawInstalled())
         pDrawFact = &::sd::GraphicDocShell::Factory();
 
     auto pUniqueModule = std::make_unique<SdModule>(pImpressFact, pDrawFact);
     SdModule* pModule = pUniqueModule.get();
     SfxApplication::SetModule(SfxToolsModule::Draw, std::move(pUniqueModule));
 
-    if (!utl::ConfigManager::IsFuzzing() && SvtModuleOptions().IsImpress())
+    if (oOptions && oOptions->IsImpressInstalled())
     {
         // Register the Impress shape types in order to make the shapes accessible.
         ::accessibility::RegisterImpressShapeTypes ();
-        ::sd::DrawDocShell::Factory().SetDocumentServiceName( "com.sun.star.presentation.PresentationDocument" );
+        ::sd::DrawDocShell::Factory().SetDocumentServiceName( u"com.sun.star.presentation.PresentationDocument"_ustr );
     }
 
-    if (!utl::ConfigManager::IsFuzzing() && SvtModuleOptions().IsDraw())
+    if (oOptions && oOptions->IsDrawInstalled())
     {
-        ::sd::GraphicDocShell::Factory().SetDocumentServiceName( "com.sun.star.drawing.DrawingDocument" );
+        ::sd::GraphicDocShell::Factory().SetDocumentServiceName( u"com.sun.star.drawing.DrawingDocument"_ustr );
     }
 
     // register your view-factories here
@@ -262,7 +267,7 @@ void SdDLL::Init()
 
     // register your exotic remote controls here
 #ifdef ENABLE_SDREMOTE
-    if (!utl::ConfigManager::IsFuzzing() && !Application::IsHeadlessModeEnabled())
+    if (!comphelper::IsFuzzing() && !Application::IsHeadlessModeEnabled())
         RegisterRemotes();
 #endif
 }

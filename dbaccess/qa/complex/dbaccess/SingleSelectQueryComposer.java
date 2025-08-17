@@ -44,7 +44,11 @@ import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-
+/**
+ Note that this test CANNOT BE CONVERTED TO C++
+ because the JDBC driver uses a STA/AFFINE UNO compartment thing, which is extremely deadlock prone
+ when called from inside the same process.
+*/
 public class SingleSelectQueryComposer extends CRMBasedTestCase
 {
 

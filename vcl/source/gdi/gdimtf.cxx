@@ -205,9 +205,7 @@ void GDIMetaFile::ReplaceAction( rtl::Reference<MetaAction> pAction, size_t nAct
     {
         return;
     }
-    //fdo#39995 This doesn't increment the incoming action ref-count nor does it
-    //decrement the outgoing action ref-count
-    std::swap(pAction, m_aList[nAction]);
+    m_aList[nAction] = std::move(pAction);
 }
 
 GDIMetaFile& GDIMetaFile::operator=( const GDIMetaFile& rMtf )
@@ -360,7 +358,7 @@ void GDIMetaFile::Play(OutputDevice& rOut, size_t nPos)
     // This is necessary, since old metafiles don't even know of these
     // recent add-ons. Newer metafiles must of course explicitly set
     // those states.
-    rOut.Push(vcl::PushFlags::TEXTLAYOUTMODE|vcl::PushFlags::TEXTLANGUAGE);
+    auto popIt = rOut.ScopedPush(vcl::PushFlags::TEXTLAYOUTMODE | vcl::PushFlags::TEXTLANGUAGE);
     rOut.SetLayoutMode(vcl::text::ComplexTextLayoutFlags::Default);
     rOut.SetDigitLanguage(LANGUAGE_SYSTEM);
 
@@ -385,7 +383,6 @@ void GDIMetaFile::Play(OutputDevice& rOut, size_t nPos)
             pAction = NextAction();
         }
     }
-    rOut.Pop();
 }
 
 bool GDIMetaFile::ImplPlayWithRenderer(OutputDevice& rOut, const Point& rPos, Size rLogicDestSize)
@@ -419,7 +416,7 @@ bool GDIMetaFile::ImplPlayWithRenderer(OutputDevice& rOut, const Point& rPos, Si
             uno::Reference< rendering::XBitmapCanvas > xBitmapCanvas( xBitmap, uno::UNO_QUERY );
             if( xBitmapCanvas.is() )
             {
-                uno::Reference< uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
+                const uno::Reference< uno::XComponentContext >& xContext = comphelper::getProcessComponentContext();
                 uno::Reference< rendering::XMtfRenderer > xMtfRenderer = rendering::MtfRenderer::createWithBitmapCanvas( xContext, xBitmapCanvas );
 
                 xBitmapCanvas->clear();
@@ -432,13 +429,13 @@ bool GDIMetaFile::ImplPlayWithRenderer(OutputDevice& rOut, const Point& rPos, Si
 
                 xMtfRenderer->draw( rDestSize.Width(), rDestSize.Height() );
 
-                BitmapEx aBitmapEx;
-                if( aBitmapEx.Create( xBitmapCanvas, aSize ) )
+                Bitmap aBitmap;
+                if( aBitmap.Create( xBitmapCanvas, aSize ) )
                 {
                     if (rOut.GetMapMode().GetMapUnit() == MapUnit::MapPixel)
-                        rOut.DrawBitmapEx( rPos, aBitmapEx );
+                        rOut.DrawBitmapEx( rPos, aBitmap );
                     else
-                        rOut.DrawBitmapEx( rPos, rLogicDestSize, aBitmapEx );
+                        rOut.DrawBitmapEx( rPos, rLogicDestSize, aBitmap );
                     return true;
                 }
             }
@@ -514,13 +511,13 @@ void GDIMetaFile::Play(OutputDevice& rOut, const Point& rPos,
     // because one would still get round-off errors (the
     // round-trip error for LogicToPixel( PixelToLogic() ) was the
     // reason for having pixel offset in the first place).
-    const Size& rOldOffset(rOut.GetPixelOffset());
-    const Size  aEmptySize;
+    const Size aOldOffset(rOut.GetPixelOffset());
+    const Size aEmptySize;
     rOut.SetPixelOffset(aEmptySize);
     aDrawMap.SetOrigin(rOut.PixelToLogic(rOut.LogicToPixel(rPos), aDrawMap));
-    rOut.SetPixelOffset(rOldOffset);
+    rOut.SetPixelOffset(aOldOffset);
 
-    rOut.Push();
+    auto popIt = rOut.ScopedPush();
 
     bool bIsRecord = (pMtf && pMtf->IsRecord());
     rOut.SetMetafileMapMode(aDrawMap, bIsRecord);
@@ -533,8 +530,6 @@ void GDIMetaFile::Play(OutputDevice& rOut, const Point& rPos,
     rOut.SetDigitLanguage(LANGUAGE_SYSTEM);
 
     Play(rOut);
-
-    rOut.Pop();
 }
 
 void GDIMetaFile::Pause( bool _bPause )
@@ -749,8 +744,8 @@ void GDIMetaFile::Scale( double fScaleX, double fScaleY )
 {
     ScaleActions(fScaleX, fScaleY);
 
-    m_aPrefSize.setWidth( FRound( m_aPrefSize.Width() * fScaleX ) );
-    m_aPrefSize.setHeight( FRound( m_aPrefSize.Height() * fScaleY ) );
+    m_aPrefSize.setWidth(basegfx::fround<tools::Long>(m_aPrefSize.Width() * fScaleX));
+    m_aPrefSize.setHeight(basegfx::fround<tools::Long>(m_aPrefSize.Height() * fScaleY));
 }
 
 void GDIMetaFile::Scale( const Fraction& rScaleX, const Fraction& rScaleY )
@@ -795,8 +790,8 @@ Point GDIMetaFile::ImplGetRotatedPoint( const Point& rPt, const Point& rRotatePt
     const tools::Long nX = rPt.X() - rRotatePt.X();
     const tools::Long nY = rPt.Y() - rRotatePt.Y();
 
-    return Point( FRound( fCos * nX + fSin * nY ) + rRotatePt.X() + rOffset.Width(),
-                  -FRound( fSin * nX - fCos * nY ) + rRotatePt.Y() + rOffset.Height() );
+    return { basegfx::fround<tools::Long>(fCos * nX + fSin * nY) + rRotatePt.X() + rOffset.Width(),
+             basegfx::fround<tools::Long>(fCos * nY - fSin * nX) + rRotatePt.Y() + rOffset.Height() };
 }
 
 tools::Polygon GDIMetaFile::ImplGetRotatedPolygon( const tools::Polygon& rPoly, const Point& rRotatePt,
@@ -852,7 +847,7 @@ void GDIMetaFile::Rotate( Degree10 nAngle10 )
         return;
 
     GDIMetaFile     aMtf;
-    ScopedVclPtrInstance< VirtualDevice > aMapVDev;
+    ScopedVclPtrInstance< VirtualDevice > aMapVDev(DeviceFormat::WITH_ALPHA);
     const double    fAngle = toRadians(nAngle10);
     const double    fSin = sin( fAngle );
     const double    fCos = cos( fAngle );
@@ -986,8 +981,10 @@ void GDIMetaFile::Rotate( Degree10 nAngle10 )
             case MetaActionType::TEXTARRAY:
             {
                 MetaTextArrayAction* pAct = static_cast<MetaTextArrayAction*>(pAction);
-                aMtf.AddAction( new MetaTextArrayAction( ImplGetRotatedPoint( pAct->GetPoint(), aRotAnchor, aRotOffset, fSin, fCos ),
-                                                                              pAct->GetText(), pAct->GetDXArray(), pAct->GetKashidaArray(), pAct->GetIndex(), pAct->GetLen() ) );
+                aMtf.AddAction(new MetaTextArrayAction(
+                    ImplGetRotatedPoint(pAct->GetPoint(), aRotAnchor, aRotOffset, fSin, fCos),
+                    pAct->GetText(), pAct->GetDXArray(), pAct->GetKashidaArray(), pAct->GetIndex(),
+                    pAct->GetLen(), pAct->GetLayoutContextIndex(), pAct->GetLayoutContextLen()));
             }
             break;
 
@@ -1321,7 +1318,7 @@ static void ImplActionBounds( tools::Rectangle& o_rOutBounds,
 
 tools::Rectangle GDIMetaFile::GetBoundRect( OutputDevice& i_rReference ) const
 {
-    ScopedVclPtrInstance< VirtualDevice > aMapVDev(  i_rReference  );
+    ScopedVclPtrInstance< VirtualDevice > aMapVDev( i_rReference, DeviceFormat::WITH_ALPHA );
 
     aMapVDev->EnableOutput( false );
     aMapVDev->SetMapMode( GetPrefMapMode() );
@@ -1915,7 +1912,7 @@ void GDIMetaFile::ImplExchangeColors( ColorExchangeFnc pFncCol, const void* pCol
                 aWall.SetColor( pFncCol( aWall.GetColor(), pColParam ) );
 
                 if( aWall.IsBitmap() )
-                    aWall.SetBitmap( pFncBmp( aWall.GetBitmap(), pBmpParam ) );
+                    aWall.SetBitmap( Bitmap(pFncBmp( BitmapEx(aWall.GetBitmap()), pBmpParam )) );
 
                 if( aWall.IsGradient() )
                 {
@@ -2108,15 +2105,15 @@ void GDIMetaFile::Adjust( short nLuminancePercent, short nContrastPercent,
     {
         if(!msoBrightness)
         {
-            aColParam.pMapR[ nX ] = FRound(std::clamp( nX * fM + fROff, 0.0, 255.0 ));
-            aColParam.pMapG[ nX ] = FRound(std::clamp( nX * fM + fGOff, 0.0, 255.0 ));
-            aColParam.pMapB[ nX ] = FRound(std::clamp( nX * fM + fBOff, 0.0, 255.0 ));
+            aColParam.pMapR[nX] = basegfx::fround<sal_uInt8>(nX * fM + fROff);
+            aColParam.pMapG[nX] = basegfx::fround<sal_uInt8>(nX * fM + fGOff);
+            aColParam.pMapB[nX] = basegfx::fround<sal_uInt8>(nX * fM + fBOff);
         }
         else
         {
-            aColParam.pMapR[ nX ] = FRound(std::clamp( (nX+fROff/2-128) * fM + 128 + fROff/2, 0.0, 255.0 ));
-            aColParam.pMapG[ nX ] = FRound(std::clamp( (nX+fGOff/2-128) * fM + 128 + fGOff/2, 0.0, 255.0 ));
-            aColParam.pMapB[ nX ] = FRound(std::clamp( (nX+fBOff/2-128) * fM + 128 + fBOff/2, 0.0, 255.0 ));
+            aColParam.pMapR[nX] = basegfx::fround<sal_uInt8>((nX+fROff/2-128) * fM + 128 + fROff/2);
+            aColParam.pMapG[nX] = basegfx::fround<sal_uInt8>((nX+fGOff/2-128) * fM + 128 + fGOff/2);
+            aColParam.pMapB[nX] = basegfx::fround<sal_uInt8>((nX+fBOff/2-128) * fM + 128 + fBOff/2);
         }
         if( bGamma )
         {
@@ -2267,7 +2264,7 @@ sal_uLong GDIMetaFile::GetSizeBytes() const
     return nSizeBytes;
 }
 
-bool GDIMetaFile::CreateThumbnail(BitmapEx& rBitmapEx, BmpConversion eColorConversion, BmpScaleFlag nScaleFlag) const
+bool GDIMetaFile::CreateThumbnail(Bitmap& rBitmap, BmpConversion eColorConversion, BmpScaleFlag nScaleFlag) const
 {
     // initialization seems to be complicated but is used to avoid rounding errors
     ScopedVclPtrInstance< VirtualDevice > aVDev;
@@ -2282,8 +2279,8 @@ bool GDIMetaFile::CreateThumbnail(BitmapEx& rBitmapEx, BmpConversion eColorConve
     Size            aSizePix( std::abs( aBRPix.X() - aTLPix.X() ) + 1, std::abs( aBRPix.Y() - aTLPix.Y() ) + 1 );
     sal_uInt32      nMaximumExtent = 512;
 
-    if (!rBitmapEx.IsEmpty())
-        rBitmapEx.SetEmpty();
+    if (!rBitmap.IsEmpty())
+        rBitmap.SetEmpty();
 
     // determine size that has the same aspect ratio as image size and
     // fits into the rectangle determined by nMaximumExtent
@@ -2298,17 +2295,17 @@ bool GDIMetaFile::CreateThumbnail(BitmapEx& rBitmapEx, BmpConversion eColorConve
 
         if ( fWH <= 1.0 )
         {
-            aSizePix.setWidth( FRound( nMaximumExtent * fWH ) );
+            aSizePix.setWidth(basegfx::fround<tools::Long>(nMaximumExtent * fWH));
             aSizePix.setHeight( nMaximumExtent );
         }
         else
         {
             aSizePix.setWidth( nMaximumExtent );
-            aSizePix.setHeight( FRound(  nMaximumExtent / fWH ) );
+            aSizePix.setHeight(basegfx::fround<tools::Long>(nMaximumExtent / fWH));
         }
 
-        aDrawSize.setWidth( FRound( ( static_cast< double >( aDrawSize.Width() ) * aSizePix.Width() ) / aOldSizePix.Width() ) );
-        aDrawSize.setHeight( FRound( ( static_cast< double >( aDrawSize.Height() ) * aSizePix.Height() ) / aOldSizePix.Height() ) );
+        aDrawSize.setWidth( basegfx::fround<tools::Long>( ( static_cast< double >( aDrawSize.Width() ) * aSizePix.Width() ) / aOldSizePix.Width() ) );
+        aDrawSize.setHeight( basegfx::fround<tools::Long>( ( static_cast< double >( aDrawSize.Height() ) * aSizePix.Height() ) / aOldSizePix.Height() ) );
     }
 
     // draw image(s) into VDev and get resulting image
@@ -2324,7 +2321,7 @@ bool GDIMetaFile::CreateThumbnail(BitmapEx& rBitmapEx, BmpConversion eColorConve
         const_cast<GDIMetaFile *>(this)->Play(*aVDev, Point(), aAntialias);
 
         // get paint bitmap
-        BitmapEx aBitmap( aVDev->GetBitmapEx( aNullPt, aVDev->GetOutputSizePixel() ) );
+        Bitmap aBitmap( aVDev->GetBitmap( aNullPt, aVDev->GetOutputSizePixel() ) );
 
         // scale down the image to the desired size - use the input scaler for the scaling operation
         aBitmap.Scale(aDrawSize, nScaleFlag);
@@ -2334,10 +2331,10 @@ bool GDIMetaFile::CreateThumbnail(BitmapEx& rBitmapEx, BmpConversion eColorConve
         if (aSize.Width() && aSize.Height())
             aBitmap.Convert(eColorConversion);
 
-        rBitmapEx = aBitmap;
+        rBitmap = std::move(aBitmap);
     }
 
-    return !rBitmapEx.IsEmpty();
+    return !rBitmap.IsEmpty();
 }
 
 void GDIMetaFile::UseCanvas( bool _bUseCanvas )
@@ -2347,7 +2344,7 @@ void GDIMetaFile::UseCanvas( bool _bUseCanvas )
 
 void GDIMetaFile::dumpAsXml(const char* pFileName) const
 {
-    SvFileStream aStream(pFileName ? OUString::fromUtf8(pFileName) : OUString("file:///tmp/metafile.xml"),
+    SvFileStream aStream(pFileName ? OUString::fromUtf8(pFileName) : u"file:///tmp/metafile.xml"_ustr,
             StreamMode::STD_READWRITE | StreamMode::TRUNC);
     assert(aStream.good());
     MetafileXmlDump aDumper;

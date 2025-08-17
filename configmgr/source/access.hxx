@@ -23,6 +23,7 @@
 
 #include <set>
 #include <vector>
+#include <o3tl/sorted_vector.hxx>
 #include "config_map.hxx"
 
 #include <com/sun/star/beans/XExactName.hpp>
@@ -56,7 +57,6 @@
 
 namespace com::sun::star {
     namespace beans {
-        class XHierarchicalPropertySetInfo;
         class XPropertiesChangeListener;
         class XPropertyChangeListener;
         class XVetoableChangeListener;
@@ -67,7 +67,6 @@ namespace com::sun::star {
     namespace uno {
         class Any;
         class Type;
-        class XInterface;
     }
     namespace util { struct ElementChange; }
 }
@@ -402,19 +401,19 @@ private:
     typedef config_map< ChildAccess * > WeakChildMap;
 
     typedef
-        std::multiset<
+        o3tl::sorted_vector<
             css::uno::Reference<
                 css::lang::XEventListener > >
         DisposeListeners;
 
     typedef
-        std::multiset<
+        o3tl::sorted_vector<
             css::uno::Reference<
                 css::container::XContainerListener > >
         ContainerListeners;
 
     typedef
-        std::multiset<
+        o3tl::sorted_vector<
             css::uno::Reference<
                 css::beans::XPropertyChangeListener > >
         PropertyChangeListenersElement;
@@ -423,7 +422,7 @@ private:
         PropertyChangeListeners;
 
     typedef
-        std::multiset<
+        o3tl::sorted_vector<
             css::uno::Reference<
                 css::beans::XVetoableChangeListener > >
         VetoableChangeListenersElement;
@@ -432,7 +431,7 @@ private:
         VetoableChangeListeners;
 
     typedef
-        std::multiset<
+        o3tl::sorted_vector<
             css::uno::Reference<
                 css::beans::XPropertiesChangeListener > >
         PropertiesChangeListeners;

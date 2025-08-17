@@ -27,8 +27,6 @@
 #include <svx/obj3d.hxx>
 #include <svx/svxdllapi.h>
 
-namespace sdr::contact { class ViewContact; }
-
 class E3dDefaultAttributes;
 
 /*************************************************************************
@@ -44,14 +42,14 @@ class E3dDefaultAttributes;
 |*
 \************************************************************************/
 
-class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC E3dCubeObj final : public E3dCompoundObject
+class SAL_WARN_UNUSED E3dCubeObj final : public E3dCompoundObject
 {
     // Parameter
-    basegfx::B3DPoint                   aCubePos;
-    basegfx::B3DVector                  aCubeSize;
+    basegfx::B3DPoint                   m_aCubePos;
+    basegfx::B3DVector                  m_aCubeSize;
 
     // BOOLeans
-    bool                                bPosIsCenter : 1;
+    bool                                m_bPosIsCenter : 1;
 
     void SetDefaultAttributes(const E3dDefaultAttributes& rDefault);
     virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
@@ -61,7 +59,7 @@ private:
     virtual ~E3dCubeObj() override;
 
 public:
-    E3dCubeObj(SdrModel& rSdrModel,
+    SVXCORE_DLLPUBLIC E3dCubeObj(SdrModel& rSdrModel,
         const E3dDefaultAttributes& rDefault,
         const basegfx::B3DPoint& aPos,
         const basegfx::B3DVector& r3DSize);
@@ -75,13 +73,13 @@ public:
 
     // Set local parameters with geometry recreation
     void SetCubePos(const basegfx::B3DPoint& rNew);
-    const basegfx::B3DPoint& GetCubePos() const { return aCubePos; }
+    const basegfx::B3DPoint& GetCubePos() const { return m_aCubePos; }
 
     void SetCubeSize(const basegfx::B3DVector& rNew);
-    const basegfx::B3DVector& GetCubeSize() const { return aCubeSize; }
+    const basegfx::B3DVector& GetCubeSize() const { return m_aCubeSize; }
 
     void SetPosIsCenter(bool bNew);
-    bool GetPosIsCenter() const { return bPosIsCenter; }
+    bool GetPosIsCenter() const { return m_bPosIsCenter; }
 
     // TakeObjName...() is for the display in the UI, for example "3 frames selected".
     virtual OUString TakeObjNameSingul() const override;

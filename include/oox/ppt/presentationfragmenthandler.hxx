@@ -33,7 +33,6 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace oox { class AttributeList; }
 namespace oox::core { class XmlFilterBase; }
 
 namespace oox::ppt {
@@ -53,12 +52,13 @@ private:
                         const oox::ppt::SlidePersistPtr& rPersist );
     void importSlide(sal_uInt32 nSlide, bool bFirstSlide, bool bImportNotes);
     void importMasterSlides();
-    void importMasterSlide(const ::com::sun::star::uno::Reference<::com::sun::star::frame::XModel>& xModel,
+    void importMasterSlide(const css::uno::Reference<css::frame::XModel>& xModel,
                            ::oox::ppt::PowerPointImport& rFilter,
                            const OUString& rMasterFragmentPath);
     void saveThemeToGrabBag(const oox::drawingml::ThemePtr& pThemePtr, sal_Int32 nThemeIdx);
+    void saveColorMapToGrabBag(const oox::drawingml::ClrMapPtr& pClrMapPtr);
     void importCustomSlideShow(std::vector<CustomShow>& rCustomShowList);
-    static void importSlideNames(::oox::core::XmlFilterBase& rFilter, const std::vector<SlidePersistPtr>& rSlidePersist);
+    static void importSlideNames(const ::oox::core::XmlFilterBase& rFilter, const std::vector<SlidePersistPtr>& rSlidePersist);
 
     std::vector< OUString > maSlideMasterVector;
     std::vector< OUString > maSlidesVector;
@@ -72,6 +72,8 @@ private:
 
     CommentAuthorList           maAuthorList;
     bool                        mbCommentAuthorsRead; // read commentAuthors.xml only once
+
+    bool mbEmbedTrueTypeFonts = false;
 };
 
 }

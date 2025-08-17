@@ -37,11 +37,10 @@ class EDITENG_DLLPUBLIC SvxTabStop
 private:
     sal_Int32       nTabPos;
     SvxTabAdjust    eAdjustment;
-    mutable sal_Unicode
-                    m_cDecimal;
+    sal_Unicode     m_cDecimal;
     sal_Unicode     cFill;
 
-    void fillDecimal() const;
+    void fillDecimal();
 
 public:
     SvxTabStop();
@@ -56,8 +55,8 @@ public:
     SvxTabAdjust& GetAdjustment() { return eAdjustment; }
     SvxTabAdjust  GetAdjustment() const { return eAdjustment; }
 
-    sal_Unicode&  GetDecimal() { fillDecimal(); return m_cDecimal; }
-    sal_Unicode   GetDecimal() const { fillDecimal(); return m_cDecimal; }
+    sal_Unicode&  GetDecimal() { return m_cDecimal; }
+    sal_Unicode   GetDecimal() const { return m_cDecimal; }
 
     sal_Unicode&  GetFill() { return cFill; }
     sal_Unicode   GetFill() const { return cFill; }
@@ -98,6 +97,7 @@ class EDITENG_DLLPUBLIC SvxTabStopItem final : public SfxPoolItem
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxTabStopItem)
     explicit SvxTabStopItem( sal_uInt16 nWhich  );
     SvxTabStopItem( const sal_uInt16 nTabs,
                     const sal_uInt16 nDist,
@@ -117,7 +117,7 @@ public:
     bool                Insert( const SvxTabStop& rTab );
     void                Insert( const SvxTabStopItem* pTabs );
     void                Remove( const sal_uInt16 nPos, const sal_uInt16 nLen = 1 )
-                        { maTabStops.erase( maTabStops.begin() + nPos, maTabStops.begin() + nPos + nLen ); }
+                        { ASSERT_CHANGE_REFCOUNTED_ITEM; maTabStops.erase( maTabStops.begin() + nPos, maTabStops.begin() + nPos + nLen ); }
 
     // Assignment operator, equality operator (caution: expensive!)
 
@@ -135,6 +135,8 @@ public:
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool             operator==( const SfxPoolItem& ) const override;
+    virtual bool             supportsHashCode() const override { return true; }
+    virtual size_t           hashCode() const override final;
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 

@@ -23,13 +23,6 @@
 #include <rtl/ref.hxx>
 
 namespace com::sun::star::uno { class XComponentContext; }
-namespace comphelper { template <class Tp, class Arg> class mem_fun1_t; }
-
-namespace com::sun::star {
-    namespace chart2 {
-        class XChartDocument;
-    }
-}
 
 namespace chart
 {
@@ -57,8 +50,8 @@ private:
     std::unique_ptr<weld::Toolbar> m_xTbxData;
     std::unique_ptr<weld::Button> m_xCloseBtn;
     std::unique_ptr<weld::Container> m_xTable;
-    std::unique_ptr<weld::Container> m_xColumns;
-    std::unique_ptr<weld::Container> m_xColors;
+    std::unique_ptr<weld::Box> m_xColumns;
+    std::unique_ptr<weld::Box> m_xColors;
     css::uno::Reference<css::awt::XWindow> m_xTableCtrlParent;
     VclPtr<DataBrowser> m_xBrwData;
 

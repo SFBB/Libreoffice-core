@@ -35,20 +35,13 @@ class SwXParagraphEnumeration final : public UnoApiTest, public apitest::XEnumer
 {
 public:
     SwXParagraphEnumeration()
-        : UnoApiTest("")
+        : UnoApiTest(u""_ustr)
     {
-    }
-
-    virtual void setUp() override
-    {
-        UnoApiTest::setUp();
-        mxDesktop.set(frame::Desktop::create(mxComponentContext));
-        mxComponent = loadFromDesktop("private:factory/swriter");
-        CPPUNIT_ASSERT(mxComponent.is());
     }
 
     Reference<XInterface> init() override
     {
+        loadFromURL(u"private:factory/swriter"_ustr);
         Reference<text::XTextDocument> xTextDocument(mxComponent, UNO_QUERY_THROW);
         Reference<lang::XMultiServiceFactory> xMSF(mxComponent, UNO_QUERY_THROW);
 
@@ -59,9 +52,11 @@ public:
         {
             try
             {
-                xText->insertString(xCursor, "The quick brown fox jumps over the lazy dog", false);
+                xText->insertString(xCursor, u"The quick brown fox jumps over the lazy dog"_ustr,
+                                    false);
                 xText->insertControlCharacter(xCursor, text::ControlCharacter::LINE_BREAK, false);
-                xText->insertString(xCursor, "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG", false);
+                xText->insertString(xCursor, u"THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG"_ustr,
+                                    false);
                 xText->insertControlCharacter(xCursor, text::ControlCharacter::LINE_BREAK, false);
             }
             catch (lang::IllegalArgumentException&)

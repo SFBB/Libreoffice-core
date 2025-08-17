@@ -32,8 +32,6 @@
 #include <drawdoc.hxx>
 #include "sdtransform.hxx"
 
-using namespace ::com::sun::star::style;
-
 namespace {
 
 class SdTransformOOo2xDocument
@@ -269,9 +267,10 @@ bool SdTransformOOo2xDocument::getBulletState( const SfxItemSet& rSet, SfxStyleS
 
 bool SdTransformOOo2xDocument::getBulletState( const SfxItemSet& rSet, sal_uInt16 nWhich, bool& rState )
 {
-    if( rSet.GetItemState( nWhich ) == SfxItemState::SET )
+    const SfxPoolItem* pItem = nullptr;
+    if( rSet.GetItemState( nWhich, true, &pItem ) == SfxItemState::SET )
     {
-        const SvXMLAttrContainerItem& rAttr = *rSet.GetItem<SvXMLAttrContainerItem>( nWhich );
+        const SvXMLAttrContainerItem& rAttr = *static_cast<const SvXMLAttrContainerItem*>( pItem );
 
         const sal_uInt16 nCount = rAttr.GetAttrCount();
         for( sal_uInt16 nItem = 0; nItem < nCount; nItem++ )
@@ -295,10 +294,10 @@ bool SdTransformOOo2xDocument::transformItemSet( SfxItemSet& rSet, bool bNumberi
     if (pItem)
     {
         SvxLRSpaceItem aItem(*pItem);
-        if( (aItem.GetLeft() != 0) || (aItem.GetTextFirstLineOffset() != 0) )
+        if ((aItem.GetLeft().m_dValue != 0.0) || (aItem.GetTextFirstLineOffset().m_dValue != 0.0))
         {
-            aItem.SetLeftValue( 0 );
-            aItem.SetTextFirstLineOffset( 0 );
+            aItem.SetLeft(SvxIndentValue::zero());
+            aItem.SetTextFirstLineOffset(SvxIndentValue::zero());
             rSet.Put( aItem );
             bRet = true;
         }
@@ -316,9 +315,10 @@ bool SdTransformOOo2xDocument::removeAlienAttributes( SfxItemSet& rSet )
 
 bool SdTransformOOo2xDocument::removeAlienAttributes( SfxItemSet& rSet, sal_uInt16 nWhich )
 {
-    if( rSet.GetItemState( nWhich ) == SfxItemState::SET )
+    const SfxPoolItem* pItem = nullptr;
+    if( rSet.GetItemState( nWhich, true, &pItem ) == SfxItemState::SET )
     {
-        const SvXMLAttrContainerItem& rAttr = *rSet.GetItem<SvXMLAttrContainerItem>( nWhich );
+        const SvXMLAttrContainerItem& rAttr = *static_cast<const SvXMLAttrContainerItem*>( pItem );
 
         const sal_uInt16 nCount = rAttr.GetAttrCount();
         for( sal_uInt16 nItem = 0; nItem < nCount; nItem++ )
@@ -338,15 +338,15 @@ bool SdTransformOOo2xDocument::removeAlienAttributes( SfxItemSet& rSet, sal_uInt
                     {
                         if( nItem != nFound )
                         {
-                            OUString const& rNamespace(rAttr.GetAttrNamespace(nItem));
-                            OUString const& rPrefix(rAttr.GetAttrPrefix(nItem));
-                            if (rPrefix.isEmpty())
+                            OUString const aNamespace(rAttr.GetAttrNamespace(nItem));
+                            OUString const aPrefix(rAttr.GetAttrPrefix(nItem));
+                            if (aPrefix.isEmpty())
                             {
                                 aNewItem.AddAttr(rAttr.GetAttrLName(nItem), rAttr.GetAttrValue(nItem));
                             }
                             else
                             {
-                                aNewItem.AddAttr(rPrefix, rNamespace, rAttr.GetAttrLName(nItem), rAttr.GetAttrValue(nItem));
+                                aNewItem.AddAttr(aPrefix, aNamespace, rAttr.GetAttrLName(nItem), rAttr.GetAttrValue(nItem));
                             }
                         }
                     }

@@ -18,16 +18,12 @@
  */
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlimp.hxx>
 
 #include "descriptionimp.hxx"
 
-using namespace ::cppu;
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::xml;
-using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::beans;
@@ -50,14 +46,16 @@ void SdXMLDescriptionContext::endFastElement(sal_Int32 )
 
     try
     {
-        uno::Reference< beans::XPropertySet > xPropSet(mxShape, uno::UNO_QUERY_THROW);
+        uno::Reference< beans::XPropertySet > xPropSet(mxShape, uno::UNO_QUERY);
+        if (!xPropSet)
+            return;
         if( (mnElement & TOKEN_MASK) == XML_TITLE)
         {
-            xPropSet->setPropertyValue("Title", Any(msText));
+            xPropSet->setPropertyValue(u"Title"_ustr, Any(msText));
         }
         else
         {
-            xPropSet->setPropertyValue("Description", Any(msText));
+            xPropSet->setPropertyValue(u"Description"_ustr, Any(msText));
         }
     }
     catch( uno::Exception& )

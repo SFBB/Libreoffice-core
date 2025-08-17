@@ -18,6 +18,8 @@
  */
 
 #include "PresenterFrameworkObserver.hxx"
+#include <framework/ConfigurationController.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <utility>
 
@@ -29,10 +31,9 @@ using namespace ::com::sun::star::drawing::framework;
 namespace sdext::presenter {
 
 PresenterFrameworkObserver::PresenterFrameworkObserver (
-    css::uno::Reference<css::drawing::framework::XConfigurationController> xController,
+    rtl::Reference<sd::framework::ConfigurationController> xController,
     const Action& rAction)
-    : PresenterFrameworkObserverInterfaceBase(m_aMutex),
-      mxConfigurationController(std::move(xController)),
+    : mxConfigurationController(std::move(xController)),
       maAction(rAction)
 {
     if ( ! mxConfigurationController.is())
@@ -42,8 +43,7 @@ PresenterFrameworkObserver::PresenterFrameworkObserver (
     {
         mxConfigurationController->addConfigurationChangeListener(
             this,
-            "ConfigurationUpdateEnd",
-            Any());
+            sd::framework::ConfigurationChangeEventType::ConfigurationUpdateEnd);
     }
     else
     {
@@ -56,7 +56,7 @@ PresenterFrameworkObserver::~PresenterFrameworkObserver()
 }
 
 void PresenterFrameworkObserver::RunOnUpdateEnd (
-    const css::uno::Reference<css::drawing::framework::XConfigurationController>&rxController,
+    const rtl::Reference<sd::framework::ConfigurationController>&rxController,
     const Action& rAction)
 {
     new PresenterFrameworkObserver(
@@ -64,7 +64,7 @@ void PresenterFrameworkObserver::RunOnUpdateEnd (
         rAction);
 }
 
-void SAL_CALL PresenterFrameworkObserver::disposing()
+void PresenterFrameworkObserver::disposing(std::unique_lock<std::mutex>&)
 {
     if (maAction)
         maAction(false);
@@ -86,7 +86,7 @@ void SAL_CALL PresenterFrameworkObserver::disposing (const lang::EventObject& rE
     if ( ! rEvent.Source.is())
         return;
 
-    if (rEvent.Source == mxConfigurationController)
+    if (rEvent.Source == cppu::getXWeak(mxConfigurationController.get()))
     {
         mxConfigurationController = nullptr;
         if (maAction)
@@ -94,8 +94,8 @@ void SAL_CALL PresenterFrameworkObserver::disposing (const lang::EventObject& rE
     }
 }
 
-void SAL_CALL PresenterFrameworkObserver::notifyConfigurationChange (
-    const ConfigurationChangeEvent& /*rEvent*/)
+void PresenterFrameworkObserver::notifyConfigurationChange (
+    const sd::framework::ConfigurationChangeEvent& /*rEvent*/)
 {
     Action aAction(maAction);
     Shutdown();

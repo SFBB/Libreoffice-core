@@ -148,7 +148,7 @@ bool SwObjectFormatterTextFrame::DoFormatObj( SwAnchoredObject& _rAnchoredObj,
                 _rAnchoredObj.RestartLayoutProcess() &&
                 !( _rAnchoredObj.PositionLocked() &&
                    _rAnchoredObj.GetAnchorFrame()->IsInFly() &&
-                   _rAnchoredObj.GetFrameFormat().GetFollowTextFlow().GetValue() );
+                   _rAnchoredObj.GetFrameFormat()->GetFollowTextFlow().GetValue() );
         if ( bRestart )
         {
             bSuccess = false;
@@ -168,7 +168,7 @@ bool SwObjectFormatterTextFrame::DoFormatObj( SwAnchoredObject& _rAnchoredObj,
         if ( bSuccess &&
              _rAnchoredObj.ConsiderObjWrapInfluenceOnObjPos() &&
              ( _bCheckForMovedFwd ||
-               _rAnchoredObj.GetFrameFormat().GetWrapInfluenceOnObjPos().
+               _rAnchoredObj.GetFrameFormat()->GetWrapInfluenceOnObjPos().
                     // #i35017# - handle ITERATIVE as ONCE_SUCCESSIVE
                     GetWrapInfluenceOnObjPos( true ) ==
                         // #i35017# - constant name has changed
@@ -194,7 +194,7 @@ bool SwObjectFormatterTextFrame::DoFormatObj( SwAnchoredObject& _rAnchoredObj,
                 {
                     bool bInsert( true );
                     sal_uInt32 nToPageNum( 0 );
-                    const SwDoc& rDoc = *(GetPageFrame().GetFormat()->GetDoc());
+                    const SwDoc& rDoc = GetPageFrame().GetFormat()->GetDoc();
                     if ( SwLayouter::FrameMovedFwdByObjPos(
                                             rDoc, mrAnchorTextFrame, nToPageNum ) )
                     {
@@ -223,8 +223,8 @@ bool SwObjectFormatterTextFrame::DoFormatObj( SwAnchoredObject& _rAnchoredObj,
                 // index of anchored object in collection of page numbers and
                 // anchor types
                 sal_uInt32 nIdx( CountOfCollected() );
-                OSL_ENSURE( nIdx > 0,
-                        "<SwObjectFormatterTextFrame::DoFormatObj(..)> - anchored object not collected!?" );
+                assert(nIdx > 0 &&
+                        "<SwObjectFormatterTextFrame::DoFormatObj(..)> - anchored object not collected!?");
                 --nIdx;
 
                 sal_uInt32 nToPageNum( 0 );
@@ -245,7 +245,7 @@ bool SwObjectFormatterTextFrame::DoFormatObj( SwAnchoredObject& _rAnchoredObj,
                     // could already been marked to move forward.
                     bool bInsert( true );
                     sal_uInt32 nMovedFwdToPageNum( 0 );
-                    const SwDoc& rDoc = *(GetPageFrame().GetFormat()->GetDoc());
+                    const SwDoc& rDoc = GetPageFrame().GetFormat()->GetDoc();
                     if ( SwLayouter::FrameMovedFwdByObjPos(
                                             rDoc, mrAnchorTextFrame, nMovedFwdToPageNum ) )
                     {
@@ -294,7 +294,7 @@ bool SwObjectFormatterTextFrame::DoFormatObj( SwAnchoredObject& _rAnchoredObj,
                       mrAnchorTextFrame.GetFollow()->GetOffset() == TextFrameIndex(0))
             {
                 SwLayouter::RemoveMovedFwdFrame(
-                                *(mrAnchorTextFrame.FindPageFrame()->GetFormat()->GetDoc()),
+                                mrAnchorTextFrame.FindPageFrame()->GetFormat()->GetDoc(),
                                 mrAnchorTextFrame );
             }
         }
@@ -392,7 +392,7 @@ bool SwObjectFormatterTextFrame::DoFormatObjs()
             {
                 bool bInsert( true );
                 sal_uInt32 nTmpToPageNum( 0 );
-                const SwDoc& rDoc = *(GetPageFrame().GetFormat()->GetDoc());
+                const SwDoc& rDoc = GetPageFrame().GetFormat()->GetDoc();
                 if ( SwLayouter::FrameMovedFwdByObjPos(
                                         rDoc, mrAnchorTextFrame, nTmpToPageNum ) )
                 {
@@ -432,7 +432,7 @@ bool SwObjectFormatterTextFrame::DoFormatObjs()
             // could already been marked to move forward.
             bool bInsert( true );
             sal_uInt32 nMovedFwdToPageNum( 0 );
-            const SwDoc& rDoc = *(GetPageFrame().GetFormat()->GetDoc());
+            const SwDoc& rDoc = GetPageFrame().GetFormat()->GetDoc();
             if ( SwLayouter::FrameMovedFwdByObjPos(
                                     rDoc, mrAnchorTextFrame, nMovedFwdToPageNum ) )
             {
@@ -471,7 +471,7 @@ bool SwObjectFormatterTextFrame::DoFormatObjs()
                   mrAnchorTextFrame.GetFollow()->GetOffset() == TextFrameIndex(0))
         {
             SwLayouter::RemoveMovedFwdFrame(
-                            *(mrAnchorTextFrame.FindPageFrame()->GetFormat()->GetDoc()),
+                            mrAnchorTextFrame.FindPageFrame()->GetFormat()->GetDoc(),
                             mrAnchorTextFrame );
         }
     }
@@ -481,10 +481,11 @@ bool SwObjectFormatterTextFrame::DoFormatObjs()
 
 void SwObjectFormatterTextFrame::InvalidatePrevObjs( SwAnchoredObject& _rAnchoredObj )
 {
+    const SwFrameFormat* pObjFormat = _rAnchoredObj.GetFrameFormat();
     // invalidate all previous objects, whose wrapping influence on the object
     // positioning is <NONE_CONCURRENT_POSITIONED>.
     // Note: list of objects at anchor frame is sorted by this property.
-    if ( _rAnchoredObj.GetFrameFormat().GetWrapInfluenceOnObjPos().
+    if (pObjFormat->GetWrapInfluenceOnObjPos().
                 // #i35017# - handle ITERATIVE as ONCE_SUCCESSIVE
                 GetWrapInfluenceOnObjPos( true ) !=
                             // #i35017# - constant name has changed
@@ -501,7 +502,7 @@ void SwObjectFormatterTextFrame::InvalidatePrevObjs( SwAnchoredObject& _rAnchore
     {
         --i;
         SwAnchoredObject* pAnchoredObj = (*pObjs)[i];
-        if ( pAnchoredObj->GetFrameFormat().GetWrapInfluenceOnObjPos().
+        if (pObjFormat->GetWrapInfluenceOnObjPos().
                 // #i35017# - handle ITERATIVE as ONCE_SUCCESSIVE
                 GetWrapInfluenceOnObjPos( true ) ==
                     // #i35017# - constant name has changed
@@ -546,7 +547,7 @@ SwAnchoredObject* SwObjectFormatterTextFrame::GetFirstObjWithMovedFwdAnchor(
     {
         SwAnchoredObject* pAnchoredObj = GetCollectedObj(i);
         if ( pAnchoredObj->ConsiderObjWrapInfluenceOnObjPos() &&
-             pAnchoredObj->GetFrameFormat().GetWrapInfluenceOnObjPos().
+             pAnchoredObj->GetFrameFormat()->GetWrapInfluenceOnObjPos().
                     // #i35017# - handle ITERATIVE as ONCE_SUCCESSIVE
                     GetWrapInfluenceOnObjPos( true ) == _nWrapInfluenceOnPosition )
         {
@@ -574,6 +575,8 @@ SwAnchoredObject* SwObjectFormatterTextFrame::GetFirstObjWithMovedFwdAnchor(
 static SwRowFrame const* FindTopLevelRowFrame(SwFrame const*const pFrame)
 {
     SwRowFrame * pRow = const_cast<SwFrame*>(pFrame)->FindRowFrame();
+    if (!pRow)
+        return nullptr;
     // looks like SwTabFrame has mbInfTab = true so go up 2 levels
     while (pRow->GetUpper()->GetUpper()->IsInTab())
     {
@@ -648,8 +651,8 @@ bool SwObjectFormatterTextFrame::CheckMovedFwdCondition(
     // which will be on the next page.
     if ( !bAnchorIsMovedForward &&
          _bAnchoredAtMasterBeforeFormatAnchor &&
-        ((_rAnchoredObj.GetFrameFormat().GetAnchor().GetAnchorId() == RndStdIds::FLY_AT_CHAR) ||
-         (_rAnchoredObj.GetFrameFormat().GetAnchor().GetAnchorId() == RndStdIds::FLY_AT_PARA)))
+        ((_rAnchoredObj.GetFrameFormat()->GetAnchor().GetAnchorId() == RndStdIds::FLY_AT_CHAR) ||
+         (_rAnchoredObj.GetFrameFormat()->GetAnchor().GetAnchorId() == RndStdIds::FLY_AT_PARA)))
     {
         SwFrame* pAnchorFrame = _rAnchoredObj.GetAnchorFrameContainingAnchPos();
         OSL_ENSURE( pAnchorFrame->IsTextFrame(),
@@ -703,9 +706,10 @@ bool SwObjectFormatterTextFrame::CheckMovedFwdCondition(
                 if ((pObjAnchorPage == &rFromPageFrame
                         ? _boInFollow // same-page but will move forward
                         : rFromPageFrame.GetPhyPageNum() < pObjAnchorPage->GetPhyPageNum())
-                    && pObj->GetFrameFormat().GetAnchor().GetAnchorId()
+                    && pObj->GetFrameFormat()->GetAnchor().GetAnchorId()
                         != RndStdIds::FLY_AS_CHAR)
                 {
+                    assert(pPageFrameOfAnchor);
                     if (pPageFrameOfAnchor->GetPhyPageNum() < pObjAnchorPage->GetPhyPageNum())
                     {
                         SAL_INFO("sw.layout", "SwObjectFormatterTextFrame::CheckMovedFwdCondition(): o_rbPageHasFlysAnchoredBelowThis because next page");
@@ -731,7 +735,7 @@ bool SwObjectFormatterTextFrame::CheckMovedFwdCondition(
                                 // "below" and the row could potentially be split
                                 // TODO refine check if needed
                                 if (!pInBodyFrameAnchoredObj->IsInTab()
-                                    || FindTopLevelRowFrame(pInBodyFrameAnchoredObj)
+                                    || FindTopLevelRowFrame(pInBodyFrameObj)
                                         != FindTopLevelRowFrame(pInBodyFrameAnchoredObj))
                                 {   // anchored in next chain on same page
                                     SAL_INFO("sw.layout", "SwObjectFormatterTextFrame::CheckMovedFwdCondition(): o_rbPageHasFlysAnchoredBelowThis because next chain on same page");
@@ -925,14 +929,17 @@ void SwObjectFormatterTextFrame::FormatAnchorFrameAndItsPrevs( SwTextFrame& _rAn
     // format anchor frame - format of its follow not needed
     // #i43255# - forbid follow format, only if anchor text
     // frame is in table
-    if ( _rAnchorTextFrame.IsInTab() )
+    if (!_rAnchorTextFrame.IsInDtor())
     {
-        SwForbidFollowFormat aForbidFollowFormat( _rAnchorTextFrame );
-        _rAnchorTextFrame.Calc(_rAnchorTextFrame.getRootFrame()->GetCurrShell()->GetOut());
-    }
-    else
-    {
-        _rAnchorTextFrame.Calc(_rAnchorTextFrame.getRootFrame()->GetCurrShell()->GetOut());
+        if (_rAnchorTextFrame.IsInTab())
+        {
+            SwForbidFollowFormat aForbidFollowFormat(_rAnchorTextFrame);
+            _rAnchorTextFrame.Calc(_rAnchorTextFrame.getRootFrame()->GetCurrShell()->GetOut());
+        }
+        else
+        {
+            _rAnchorTextFrame.Calc(_rAnchorTextFrame.getRootFrame()->GetCurrShell()->GetOut());
+        }
     }
 }
 

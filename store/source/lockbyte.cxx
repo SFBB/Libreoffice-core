@@ -36,7 +36,11 @@ using namespace store;
 
 storeError ILockBytes::initialize (rtl::Reference< PageData::Allocator > & rxAllocator, sal_uInt16 nPageSize)
 {
-    OSL_PRECOND((STORE_MINIMUM_PAGESIZE <= nPageSize) && (nPageSize <= STORE_MAXIMUM_PAGESIZE), "invalid PageSize");
+    if (nPageSize < STORE_MINIMUM_PAGESIZE || nPageSize > STORE_MAXIMUM_PAGESIZE)
+    {
+        SAL_WARN("store", "invalid PageSize");
+        return store_E_InvalidParameter;
+    }
     return initialize_Impl (rxAllocator, nPageSize);
 }
 
@@ -372,7 +376,7 @@ storeError FileLockBytes::readPageAt_Impl (std::shared_ptr<PageData> & rPage, sa
 storeError FileLockBytes::writePageAt_Impl (std::shared_ptr<PageData> const & rPage, sal_uInt32 nOffset)
 {
     PageData const * pagedata = rPage.get();
-    OSL_PRECOND(pagedata != nullptr, "contract violation");
+    assert(pagedata != nullptr && "contract violation");
     return writeAt_Impl (nOffset, pagedata, pagedata->size());
 }
 
@@ -716,7 +720,7 @@ storeError MemoryLockBytes::readPageAt_Impl (std::shared_ptr<PageData> & rPage, 
 storeError MemoryLockBytes::writePageAt_Impl (std::shared_ptr<PageData> const & rPage, sal_uInt32 nOffset)
 {
     PageData const * pagedata = rPage.get();
-    OSL_PRECOND(!(pagedata == nullptr), "contract violation");
+    assert(pagedata != nullptr && "contract violation");
     return writeAt_Impl (nOffset, pagedata, pagedata->size());
 }
 
@@ -852,8 +856,6 @@ FileLockBytes_createInstance (
         if (xMapping.get().initialize (xFile.get().m_handle) == osl_File_E_None)
         {
             rxLockBytes = new MappedLockBytes (xMapping.get());
-            if (!rxLockBytes.is())
-                return store_E_OutOfMemory;
             (void) xFile.release();
             (void) xMapping.release();
         }
@@ -861,8 +863,6 @@ FileLockBytes_createInstance (
     if (!rxLockBytes.is())
     {
         rxLockBytes = new FileLockBytes (xFile.get());
-        if (!rxLockBytes.is())
-            return store_E_OutOfMemory;
         (void) xFile.release();
     }
 
@@ -875,9 +875,6 @@ MemoryLockBytes_createInstance (
 )
 {
     rxLockBytes = new MemoryLockBytes();
-    if (!rxLockBytes.is())
-        return store_E_OutOfMemory;
-
     return store_E_None;
 }
 

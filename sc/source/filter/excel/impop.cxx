@@ -28,7 +28,7 @@
 #include <sfx2/docfile.hxx>
 #include <svx/svxids.hrc>
 #include <svl/numformat.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <sal/log.hxx>
 
 #include <sfx2/objsh.hxx>
@@ -97,7 +97,7 @@ ImportExcel::ImportExcel( XclImpRootData& rImpData, SvStream& rStrm ):
     mnLastRecId(0),
     mbBiff2HasXfs(false),
     mbBiff2HasXfsValid(false),
-    mbFuzzing(utl::ConfigManager::IsFuzzing())
+    mbFuzzing(comphelper::IsFuzzing())
 {
     nBdshtTab = 0;
 
@@ -241,17 +241,16 @@ void ImportExcel::ReadDimensions()
     }
     else
     {
-        sal_uInt32 nXclRow1 = 0, nXclRow2 = 0;
-        nXclRow1 = maStrm.ReaduInt32();
-        nXclRow2 = maStrm.ReaduInt32();
+        sal_uInt32 nXclRow1 = maStrm.ReaduInt32();
+        sal_uInt32 nXclRow2 = maStrm.ReaduInt32();
         aXclUsedArea.maFirst.mnCol = maStrm.ReaduInt16();
         aXclUsedArea.maLast.mnCol = maStrm.ReaduInt16();
-        if( (nXclRow1 < nXclRow2) && (aXclUsedArea.GetColCount() > 1) &&
+        if( nXclRow2 != 0 && (nXclRow1 < nXclRow2) && (aXclUsedArea.GetColCount() > 1) &&
             (nXclRow1 <= o3tl::make_unsigned( GetScMaxPos().Row() )) )
         {
             // Excel stores first unused row/column index
             --nXclRow2;
-            --aXclUsedArea.maLast.mnCol;
+            aXclUsedArea.maLast.mnCol = o3tl::sanitizing_dec(aXclUsedArea.maLast.mnCol);
             // convert row indexes to 16-bit values
             aXclUsedArea.maFirst.mnRow = static_cast< sal_uInt16 >( nXclRow1 );
             aXclUsedArea.maLast.mnRow = limit_cast< sal_uInt16 >( nXclRow2, aXclUsedArea.maFirst.mnRow, SAL_MAX_UINT16 );
@@ -471,14 +470,19 @@ void ImportExcel:: WinProtection()
 
 void ImportExcel::Columndefault()
 {// Default Cell Attributes
-    sal_uInt16  nColMic, nColMac;
-    sal_uInt8   nOpt0;
-
-    nColMic = aIn.ReaduInt16();
-    nColMac = aIn.ReaduInt16();
+    sal_uInt16 nColMic = aIn.ReaduInt16();
+    sal_uInt16 nColMac = aIn.ReaduInt16();
 
     OSL_ENSURE( aIn.GetRecLeft() == static_cast<std::size_t>(nColMac - nColMic) * 3 + 2,
                 "ImportExcel::Columndefault - wrong record size" );
+
+    if (nColMac == 0)
+    {
+        SAL_WARN("sc", "dodgy column defaults");
+        return;
+    }
+
+    assert(nColMac > 0 && "coverity 2023.12.2");
 
     nColMac--;
 
@@ -487,7 +491,7 @@ void ImportExcel::Columndefault()
 
     for( sal_uInt16 nCol = nColMic ; nCol <= nColMac ; nCol++ )
     {
-        nOpt0 = aIn.ReaduInt8();
+        sal_uInt8 nOpt0 = aIn.ReaduInt8();
         aIn.Ignore( 2 );   // only 0. Attribute-Byte used
 
         if( nOpt0 & 0x80 )  // Col hidden?
@@ -781,9 +785,9 @@ void ImportExcel::Hideobj()
             break;
     }
 
-    aOpts.SetObjMode( VOBJ_TYPE_OLE,   eOle );
-    aOpts.SetObjMode( VOBJ_TYPE_CHART, eChart );
-    aOpts.SetObjMode( VOBJ_TYPE_DRAW,  eDraw );
+    aOpts.SetObjMode(sc::ViewObjectType::OLE,   eOle );
+    aOpts.SetObjMode(sc::ViewObjectType::CHART, eChart );
+    aOpts.SetObjMode(sc::ViewObjectType::DRAW,  eDraw );
 
     rD.SetViewOptions( aOpts );
 }

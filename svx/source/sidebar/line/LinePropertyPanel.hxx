@@ -24,15 +24,6 @@
 #include <svx/sidebar/LinePropertyPanelBase.hxx>
 #include <vcl/EnumContext.hxx>
 
-class XLineStyleItem;
-class XLineDashItem;
-class XLineStartItem;
-class XLineEndItem;
-class XLineEndList;
-class XDashList;
-class ListBox;
-class ToolBox;
-
 namespace svx::sidebar
 {
 
@@ -73,8 +64,6 @@ public:
 protected:
 
     virtual void setLineTransparency(const XLineTransparenceItem& rItem) override;
-    virtual void setLineJoint(const XLineJointItem* pItem) override;
-    virtual void setLineCap(const XLineCapItem* pItem) override;
 
 private:
     //ControllerItem
@@ -82,8 +71,6 @@ private:
     sfx2::sidebar::ControllerItem maDashControl;
     sfx2::sidebar::ControllerItem maWidthControl;
     sfx2::sidebar::ControllerItem maTransControl;
-    sfx2::sidebar::ControllerItem maEdgeStyle;
-    sfx2::sidebar::ControllerItem maCapStyle;
 
     SfxBindings* mpBindings;
     vcl::EnumContext maContext;

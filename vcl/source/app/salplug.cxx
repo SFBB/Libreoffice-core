@@ -168,34 +168,6 @@ SalInstance* tryInstance( const OUString& rModuleBase, bool bForce = false )
 #endif // !STATIC_SAL_INSTANCE
 
 #if UNIX_DESKTOP_DETECT
-#ifndef DISABLE_DYNLOADING
-extern "C" typedef DesktopType Fn_get_desktop_environment();
-#else
-extern "C" DesktopType get_desktop_environment();
-#endif
-
-DesktopType lcl_get_desktop_environment()
-{
-    DesktopType ret = DESKTOP_UNKNOWN;
-#ifdef DISABLE_DYNLOADING
-    ret = get_desktop_environment();
-#else
-    OUString aModule(DESKTOP_DETECTOR_DLL_NAME);
-    oslModule aMod = osl_loadModuleRelative(
-        reinterpret_cast< oslGenericFunction >( &tryInstance ), aModule.pData,
-        SAL_LOADMODULE_DEFAULT );
-    if( aMod )
-    {
-        Fn_get_desktop_environment * pSym
-            = reinterpret_cast<Fn_get_desktop_environment *>(
-                osl_getAsciiFunctionSymbol(aMod, "get_desktop_environment"));
-        if( pSym )
-            ret = pSym();
-    }
-    osl_unloadModule( aMod );
-#endif
-    return ret;
-}
 
 #if !STATIC_SAL_INSTANCE
 const char* const* autodetect_plugin_list()
@@ -256,7 +228,7 @@ const char* const* autodetect_plugin_list()
     };
 #endif
 
-    DesktopType desktop = lcl_get_desktop_environment();
+    DesktopType desktop = get_desktop_environment();
     const char * const * pList = pStandardFallbackList;
 
 #if ENABLE_HEADLESS
@@ -305,7 +277,7 @@ bool IsHeadlessModeRequested()
 SalInstance *CreateSalInstance()
 {
     OUString aUsePlugin;
-    rtl::Bootstrap::get("SAL_USE_VCLPLUGIN", aUsePlugin);
+    rtl::Bootstrap::get(u"SAL_USE_VCLPLUGIN"_ustr, aUsePlugin);
     SAL_INFO_IF(!aUsePlugin.isEmpty(), "vcl.plugadapt", "Requested VCL plugin: " << aUsePlugin);
 
     if (Application::IsBitmapRendering() || (aUsePlugin.isEmpty() && IsHeadlessModeRequested()))
@@ -423,7 +395,7 @@ void SalAbort( const OUString& rErrorText, bool bDumpCore )
         std::fprintf( stderr, "Unspecified Application Error\n" );
     else
     {
-        CrashReporter::addKeyValue("AbortMessage", rErrorText, CrashReporter::Write);
+        CrashReporter::addKeyValue(u"AbortMessage"_ustr, rErrorText, CrashReporter::Write);
         std::fprintf( stderr, "%s\n", OUStringToOString(rErrorText, osl_getThreadTextEncoding()).getStr() );
     }
 #endif
@@ -450,29 +422,18 @@ const OUString& SalGetDesktopEnvironment()
     static OUString aDesktopEnvironment("iOS");
 #elif UNIX_DESKTOP_DETECT
     // Order to match desktops.hxx' DesktopType
-    static const char * const desktop_strings[] = {
-        "none", "unknown", "GNOME", "UNITY",
-        "XFCE", "MATE", "PLASMA5", "PLASMA6", "LXQT" };
+    static constexpr OUString desktop_strings[] = {
+        u"none"_ustr, u"unknown"_ustr, u"GNOME"_ustr, u"UNITY"_ustr,
+        u"XFCE"_ustr, u"MATE"_ustr, u"PLASMA5"_ustr, u"PLASMA6"_ustr, u"LXQT"_ustr };
     static OUString aDesktopEnvironment;
     if( aDesktopEnvironment.isEmpty())
     {
-        aDesktopEnvironment = OUString::createFromAscii(
-            desktop_strings[lcl_get_desktop_environment()]);
+        aDesktopEnvironment = desktop_strings[get_desktop_environment()];
     }
 #else
     static OUString aDesktopEnvironment("unknown");
 #endif
     return aDesktopEnvironment;
 }
-
-#ifdef _WIN32
-bool HasAtHook()
-{
-    BOOL bIsRunning = FALSE;
-    // pvParam must be BOOL
-    return SystemParametersInfoW(SPI_GETSCREENREADER, 0, &bIsRunning, 0)
-        && bIsRunning;
-}
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -29,33 +29,20 @@
 #include <svx/svxdllapi.h>
 #include <vector>
 
-namespace sd {
-    class View;
-}
-
 namespace com::sun::star::linguistic2 {
     class XDictionary;
-    class XSpellChecker1;
-    class XSpellChecker;
-    class XThesaurus;
-    class XHyphenator;
 }
 class SdrModel;
 class SdrView;
-class SvxSpellWrapper;
 enum class TransliterationFlags;
 struct ExchangeData;
-class INetURLObject;
 class GalleryTheme;
-class SvxHyperlinkTabPageBase;
 class SearchAttrItemList;
-class FmFormShell;
 class Graphic;
 class SdrObject;
-class SvxSpellWrapper;
 struct FmSearchContext;
 
-typedef WhichRangesContainer (*DialogGetRanges)();
+typedef const WhichRangesContainer & (*DialogGetRanges)();
 
 typedef ::std::vector< OUString > TargetList;
 
@@ -88,6 +75,7 @@ class AbstractSpellDialog : public VclAbstractDialog
 protected:
     virtual ~AbstractSpellDialog() override = default;
 public:
+    virtual void Initialize() = 0;
     virtual void InvalidateDialog() = 0;
     virtual std::shared_ptr<SfxDialogController> GetController() = 0;
     virtual SfxBindings& GetBindings() = 0;
@@ -162,11 +150,10 @@ class AbstractSvxNameDialog : public VclAbstractDialog
 protected:
     virtual ~AbstractSvxNameDialog() override = default;
 public:
-    virtual void    GetName( OUString& rName ) = 0;
+    virtual OUString GetName() = 0;
     virtual void    SetCheckNameHdl( const Link<AbstractSvxNameDialog&,bool>& rLink ) = 0;
     virtual void    SetCheckNameTooltipHdl( const Link<AbstractSvxNameDialog&,OUString>& rLink ) = 0;
     virtual void    SetEditHelpId(const OUString&) = 0;
-    virtual void    SetHelpId( const OUString& ) = 0;
     virtual void    SetText( const OUString& rStr ) = 0;
 };
 
@@ -175,7 +162,7 @@ class AbstractSvxObjectNameDialog :public VclAbstractDialog
 protected:
     virtual ~AbstractSvxObjectNameDialog() override = default;
 public:
-    virtual void GetName(OUString& rName) = 0;
+    virtual OUString GetName() = 0;
     virtual void SetCheckNameHdl(const Link<AbstractSvxObjectNameDialog&,bool>& rLink) = 0;
 };
 
@@ -184,9 +171,9 @@ class AbstractSvxObjectTitleDescDialog :public VclAbstractDialog
 protected:
     virtual ~AbstractSvxObjectTitleDescDialog() override = default;
 public:
-    virtual void GetTitle(OUString& rTitle) = 0;
-    virtual void GetDescription(OUString& rDescription) = 0;
-    virtual void IsDecorative(bool & rIsDecorative) = 0;
+    virtual OUString GetTitle() = 0;
+    virtual OUString GetDescription() = 0;
+    virtual bool IsDecorative() = 0;
 };
 
 /// Abstract class provides the get information from the numbering and position dialog.
@@ -377,7 +364,7 @@ public:
     virtual VclPtr<AbstractSvxNewDictionaryDialog> CreateSvxNewDictionaryDialog(weld::Window* pParent) = 0;
     virtual VclPtr<VclAbstractDialog>     CreateSvxEditDictionaryDialog(weld::Window* pParent, const OUString& rName) = 0;
     virtual VclPtr<AbstractSvxNameDialog> CreateSvxNameDialog(weld::Window* pParent,
-                                            const OUString& rName, const OUString& rDesc, const OUString& rTitle = "" ) = 0;
+                                            const OUString& rName, const OUString& rDesc, const OUString& rTitle = u""_ustr ) = 0;
 
     // #i68101#
     virtual VclPtr<AbstractSvxObjectNameDialog> CreateSvxObjectNameDialog(weld::Window* pParent, const OUString& rName) = 0;
@@ -418,14 +405,19 @@ public:
                                                                         sal_uInt32 nResId )=0;
     virtual VclPtr<SfxAbstractDialog>       CreateCharMapDialog(weld::Window* pParent, const SfxItemSet& rAttr,
                                                                 const css::uno::Reference<css::frame::XFrame>& rFrame) = 0;
-    virtual VclPtr<SfxAbstractDialog>       CreateEventConfigDialog(weld::Widget* pParent, const SfxItemSet& rAttr,
+    virtual VclPtr<SfxAbstractDialog>       CreateEventConfigDialog(weld::Widget* pParent, std::unique_ptr<const SfxItemSet> xAttr,
                                                                     const css::uno::Reference< css::frame::XFrame >& rFrame) = 0;
     virtual VclPtr<AbstractSvxPostItDialog>    CreateSvxPostItDialog(weld::Widget* pParent, const SfxItemSet& rCoreSet, bool bPrevNext = false) = 0;
     virtual VclPtr<VclAbstractDialog>          CreateSvxScriptOrgDialog(weld::Window* pParent, const OUString& rLanguage) override = 0;
 
     virtual DialogGetRanges                    GetDialogGetRangesFunc() = 0;
 
+    virtual VclPtr<AbstractSecurityOptionsDialog> CreateSvxSecurityOptionsDialog(weld::Window* pParent) override = 0;
+
     virtual VclPtr<AbstractScriptSelectorDialog> CreateScriptSelectorDialog(weld::Window* pParent,
+            const css::uno::Reference< css::frame::XFrame >& rxFrame) override = 0;
+
+    virtual VclPtr<AbstractMacroManagerDialog> CreateMacroManagerDialog(weld::Window* pParent,
             const css::uno::Reference< css::frame::XFrame >& rxFrame) override = 0;
 
     virtual void ShowAsyncScriptErrorDialog(weld::Window* pParent, const css::uno::Any& rException) override = 0;

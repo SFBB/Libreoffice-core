@@ -348,7 +348,6 @@
 #include <svtools/sfxecode.hxx>
 #include <svtools/soerr.hxx>
 #include <svtools/svtdllapi.h>
-#include <toolkit/helper/convert.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/color.hxx>
 #include <tools/datetime.hxx>
@@ -411,7 +410,6 @@
 #include <sfx2/childwin.hxx>
 #include <sfx2/classificationhelper.hxx>
 #include <sfx2/ctrlitem.hxx>
-#include <sfx2/devtools/DevelopmentToolDockingWindow.hxx>
 #include <sfx2/dinfdlg.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/dllapi.h>
@@ -427,7 +425,7 @@
 #include <sfx2/frame.hxx>
 #include <sfx2/frmdescr.hxx>
 #include <sfx2/infobar.hxx>
-#include <sfx2/inputdlg.hxx>
+#include <inputdlg.hxx>
 #include <sfx2/ipclient.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <sfx2/lnkbase.hxx>

@@ -28,7 +28,7 @@ namespace sw
 {
     struct SW_DLLPUBLIC UnoCursorHint final : public SfxHint
     {
-        UnoCursorHint() {}
+        UnoCursorHint() : SfxHint(SfxHintId::SwUnoCursorHint) {}
         virtual ~UnoCursorHint() override;
     };
 }
@@ -130,7 +130,7 @@ namespace sw
             {
                 if(m_pCursor)
                 {
-                    if(typeid(rHint) == typeid(UnoCursorHint))
+                    if(rHint.GetId() == SfxHintId::SwUnoCursorHint)
                         EndListening(rBC);
                 }
                 if(!GetBroadcasterCount())
@@ -142,7 +142,7 @@ namespace sw
                 { return get(); }
             SwUnoCursor& operator*() const
                 { return *get(); }
-            UnoCursorPointer& operator=(UnoCursorPointer aOther)
+            UnoCursorPointer& operator=(const UnoCursorPointer& aOther)
             {
                 if (m_pCursor)
                 {
@@ -155,7 +155,7 @@ namespace sw
             }
             explicit operator bool() const
                 { return static_cast<bool>(m_pCursor); }
-            void reset(std::shared_ptr<SwUnoCursor> pNew)
+            void reset(const std::shared_ptr<SwUnoCursor>& pNew)
             {
                 if(pNew)
                     StartListening(pNew->m_aNotifier);

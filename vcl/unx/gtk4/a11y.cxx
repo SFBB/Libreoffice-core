@@ -7,6 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
@@ -14,15 +15,15 @@
 #include <com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp>
 #include <com/sun/star/accessibility/XAccessibleText.hpp>
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
+#include <comphelper/OAccessible.hxx>
 #include <unx/gtk/gtkframe.hxx>
 #include <gtk/gtk.h>
 #include <o3tl/string_view.hxx>
 
-#if GTK_CHECK_VERSION(4, 9, 0)
-
 #include "a11y.hxx"
 #include "gtkaccessibleeventlistener.hxx"
 #include "gtkaccessibleregistry.hxx"
+#include "gtkaccessibletext.hxx"
 
 #define OOO_TYPE_FIXED (ooo_fixed_get_type())
 #define OOO_FIXED(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), OOO_TYPE_FIXED, OOoFixed))
@@ -48,6 +49,10 @@ map_accessible_role(const css::uno::Reference<css::accessibility::XAccessible>& 
     {
         css::uno::Reference<css::accessibility::XAccessibleContext> xContext(
             rAccessible->getAccessibleContext());
+
+        if (!xContext.is())
+            return GTK_ACCESSIBLE_ROLE_NONE;
+
         // https://w3c.github.io/core-aam/#mapping_role
         // https://hg.mozilla.org/mozilla-central/file/tip/accessible/base/RoleMap.h
         // https://gitlab.gnome.org/GNOME/gtk/-/blob/main/gtk/a11y/gtkatspiutils.c
@@ -91,10 +96,9 @@ map_accessible_role(const css::uno::Reference<css::accessibility::XAccessible>& 
                 eRole = GTK_ACCESSIBLE_ROLE_LINK;
                 break;
             case css::accessibility::AccessibleRole::PANEL:
-                eRole = GTK_ACCESSIBLE_ROLE_GROUP;
-                break;
             case css::accessibility::AccessibleRole::ROOT_PANE:
-                eRole = GTK_ACCESSIBLE_ROLE_GROUP;
+            case css::accessibility::AccessibleRole::SPLIT_PANE:
+                eRole = GTK_ACCESSIBLE_ROLE_GENERIC;
                 break;
             case css::accessibility::AccessibleRole::MENU_BAR:
                 eRole = GTK_ACCESSIBLE_ROLE_MENU_BAR;
@@ -105,9 +109,6 @@ map_accessible_role(const css::uno::Reference<css::accessibility::XAccessible>& 
             case css::accessibility::AccessibleRole::MENU:
             case css::accessibility::AccessibleRole::POPUP_MENU:
                 eRole = GTK_ACCESSIBLE_ROLE_MENU;
-                break;
-            case css::accessibility::AccessibleRole::SPLIT_PANE:
-                eRole = GTK_ACCESSIBLE_ROLE_GROUP;
                 break;
             case css::accessibility::AccessibleRole::TOOL_BAR:
                 eRole = GTK_ACCESSIBLE_ROLE_TOOLBAR;
@@ -157,7 +158,8 @@ map_accessible_role(const css::uno::Reference<css::accessibility::XAccessible>& 
 #endif
                 break;
             case css::accessibility::AccessibleRole::FILLER:
-                eRole = GTK_ACCESSIBLE_ROLE_GENERIC;
+                // GTK maps this to ATSPI_ROLE_FILLER
+                eRole = GTK_ACCESSIBLE_ROLE_WIDGET;
                 break;
             case css::accessibility::AccessibleRole::PUSH_BUTTON:
             case css::accessibility::AccessibleRole::BUTTON_DROPDOWN:
@@ -230,7 +232,7 @@ map_accessible_role(const css::uno::Reference<css::accessibility::XAccessible>& 
     return eRole;
 }
 
-static css::uno::Reference<css::accessibility::XAccessible> get_uno_accessible(GtkWidget* pWidget)
+static rtl::Reference<comphelper::OAccessible> get_uno_accessible(GtkWidget* pWidget)
 {
     GtkWidget* pTopLevel = widget_get_toplevel(pWidget);
     if (!pTopLevel)
@@ -274,63 +276,63 @@ static void applyStates(GtkAccessible* pGtkAccessible,
     const sal_Int64 nStates = xContext->getAccessibleStateSet();
     gtk_accessible_update_property(
         pGtkAccessible, GTK_ACCESSIBLE_PROPERTY_MODAL,
-        bool(nStates & com::sun::star::accessibility::AccessibleStateType::MODAL),
+        bool(nStates & css::accessibility::AccessibleStateType::MODAL),
         GTK_ACCESSIBLE_PROPERTY_MULTI_LINE,
-        bool(nStates & com::sun::star::accessibility::AccessibleStateType::MULTI_LINE),
+        bool(nStates & css::accessibility::AccessibleStateType::MULTI_LINE),
         GTK_ACCESSIBLE_PROPERTY_MULTI_SELECTABLE,
-        bool(nStates & com::sun::star::accessibility::AccessibleStateType::MULTI_SELECTABLE),
+        bool(nStates & css::accessibility::AccessibleStateType::MULTI_SELECTABLE),
         GTK_ACCESSIBLE_PROPERTY_READ_ONLY,
-        bool(!(nStates & com::sun::star::accessibility::AccessibleStateType::EDITABLE)), -1);
-    if (nStates & com::sun::star::accessibility::AccessibleStateType::HORIZONTAL)
+        bool(!(nStates & css::accessibility::AccessibleStateType::EDITABLE)), -1);
+    if (nStates & css::accessibility::AccessibleStateType::HORIZONTAL)
     {
         gtk_accessible_update_property(pGtkAccessible, GTK_ACCESSIBLE_PROPERTY_ORIENTATION,
                                        GTK_ORIENTATION_HORIZONTAL, -1);
     }
-    else if (nStates & com::sun::star::accessibility::AccessibleStateType::VERTICAL)
+    else if (nStates & css::accessibility::AccessibleStateType::VERTICAL)
     {
         gtk_accessible_update_property(pGtkAccessible, GTK_ACCESSIBLE_PROPERTY_ORIENTATION,
                                        GTK_ORIENTATION_VERTICAL, -1);
     }
 
-    gtk_accessible_update_state(
-        pGtkAccessible, GTK_ACCESSIBLE_STATE_BUSY,
-        bool(nStates & com::sun::star::accessibility::AccessibleStateType::BUSY),
-        GTK_ACCESSIBLE_STATE_DISABLED,
-        bool(!(nStates & com::sun::star::accessibility::AccessibleStateType::ENABLED)), -1);
+    gtk_accessible_update_state(pGtkAccessible, GTK_ACCESSIBLE_STATE_BUSY,
+                                bool(nStates & css::accessibility::AccessibleStateType::BUSY),
+                                GTK_ACCESSIBLE_STATE_DISABLED,
+                                bool(!(nStates & css::accessibility::AccessibleStateType::ENABLED)),
+                                -1);
 
     // when explicitly setting any value for GTK_ACCESSIBLE_STATE_CHECKED,
     // Gtk will also report ATSPI_STATE_CHECKABLE on the AT-SPI layer
-    if (nStates & com::sun::star::accessibility::AccessibleStateType::CHECKABLE)
+    if (nStates & css::accessibility::AccessibleStateType::CHECKABLE)
     {
         GtkAccessibleTristate eState = GTK_ACCESSIBLE_TRISTATE_FALSE;
-        if (nStates & com::sun::star::accessibility::AccessibleStateType::INDETERMINATE)
+        if (nStates & css::accessibility::AccessibleStateType::INDETERMINATE)
             eState = GTK_ACCESSIBLE_TRISTATE_MIXED;
-        else if (nStates & com::sun::star::accessibility::AccessibleStateType::CHECKED)
+        else if (nStates & css::accessibility::AccessibleStateType::CHECKED)
             eState = GTK_ACCESSIBLE_TRISTATE_TRUE;
         gtk_accessible_update_state(pGtkAccessible, GTK_ACCESSIBLE_STATE_CHECKED, eState, -1);
     }
 
-    if (nStates & com::sun::star::accessibility::AccessibleStateType::EXPANDABLE)
+    if (nStates & css::accessibility::AccessibleStateType::EXPANDABLE)
     {
         gtk_accessible_update_state(
             pGtkAccessible, GTK_ACCESSIBLE_STATE_EXPANDED,
-            bool(nStates & com::sun::star::accessibility::AccessibleStateType::EXPANDED), -1);
+            bool(nStates & css::accessibility::AccessibleStateType::EXPANDED), -1);
     }
 
-    if (nStates & com::sun::star::accessibility::AccessibleStateType::SELECTABLE)
+    if (nStates & css::accessibility::AccessibleStateType::SELECTABLE)
     {
         gtk_accessible_update_state(
             pGtkAccessible, GTK_ACCESSIBLE_STATE_SELECTED,
-            bool(nStates & com::sun::star::accessibility::AccessibleStateType::SELECTED), -1);
+            bool(nStates & css::accessibility::AccessibleStateType::SELECTED), -1);
     }
 
     const sal_Int16 nRole = xContext->getAccessibleRole();
-    if (nRole == com::sun::star::accessibility::AccessibleRole::TOGGLE_BUTTON)
+    if (nRole == css::accessibility::AccessibleRole::TOGGLE_BUTTON)
     {
         GtkAccessibleTristate eState = GTK_ACCESSIBLE_TRISTATE_FALSE;
-        if (nStates & com::sun::star::accessibility::AccessibleStateType::INDETERMINATE)
+        if (nStates & css::accessibility::AccessibleStateType::INDETERMINATE)
             eState = GTK_ACCESSIBLE_TRISTATE_MIXED;
-        else if (nStates & com::sun::star::accessibility::AccessibleStateType::PRESSED)
+        else if (nStates & css::accessibility::AccessibleStateType::PRESSED)
             eState = GTK_ACCESSIBLE_TRISTATE_TRUE;
         gtk_accessible_update_state(pGtkAccessible, GTK_ACCESSIBLE_STATE_PRESSED, eState, -1);
     }
@@ -373,8 +375,7 @@ applyObjectAttributes(GtkAccessible* pGtkAccessible,
     if (!xAttributes.is())
         return;
 
-    OUString sAttrs;
-    xAttributes->getExtendedAttributes() >>= sAttrs;
+    const OUString sAttrs = xAttributes->getExtendedAttributes();
 
     sal_Int32 nIndex = 0;
     do
@@ -390,19 +391,80 @@ applyObjectAttributes(GtkAccessible* pGtkAccessible,
     } while (nIndex >= 0);
 }
 
-#define LO_TYPE_ACCESSIBLE (lo_accessible_get_type())
-#define LO_ACCESSIBLE(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), LO_TYPE_ACCESSIBLE, LoAccessible))
-// #define LO_IS_ACCESSIBLE(obj) (G_TYPE_CHECK_INSTANCE_TYPE ((obj), LO_TYPE_ACCESSIBLE))
+static void applyRelations(LoAccessible* pLoAccessible,
+                           css::uno::Reference<css::accessibility::XAccessibleContext>& xContext)
+{
+    assert(pLoAccessible);
+
+    if (!xContext)
+        return;
+
+    css::uno::Reference<css::accessibility::XAccessibleRelationSet> xRelationSet
+        = xContext->getAccessibleRelationSet();
+    if (!xRelationSet.is())
+        return;
+
+    for (sal_Int32 i = 0; i < xRelationSet->getRelationCount(); i++)
+    {
+        GtkAccessibleRelation eGtkRelation;
+        css::accessibility::AccessibleRelation aRelation = xRelationSet->getRelation(i);
+        switch (aRelation.RelationType)
+        {
+            case css::accessibility::AccessibleRelationType_CONTENT_FLOWS_TO:
+                eGtkRelation = GTK_ACCESSIBLE_RELATION_FLOW_TO;
+                break;
+            case css::accessibility::AccessibleRelationType_CONTROLLER_FOR:
+                eGtkRelation = GTK_ACCESSIBLE_RELATION_CONTROLS;
+                break;
+            case css::accessibility::AccessibleRelationType_DESCRIBED_BY:
+                eGtkRelation = GTK_ACCESSIBLE_RELATION_DESCRIBED_BY;
+                break;
+            case css::accessibility::AccessibleRelationType_LABELED_BY:
+                eGtkRelation = GTK_ACCESSIBLE_RELATION_LABELLED_BY;
+                break;
+            case css::accessibility::AccessibleRelationType_CONTENT_FLOWS_FROM:
+            case css::accessibility::AccessibleRelationType_CONTROLLED_BY:
+            case css::accessibility::AccessibleRelationType_INVALID:
+            case css::accessibility::AccessibleRelationType_LABEL_FOR:
+            case css::accessibility::AccessibleRelationType_MEMBER_OF:
+            case css::accessibility::AccessibleRelationType_NODE_CHILD_OF:
+            case css::accessibility::AccessibleRelationType_SUB_WINDOW_OF:
+                // GTK has no equivalent for these
+                continue;
+            default:
+                assert(false && "Unhandled relation type");
+        }
+
+        gtk_accessible_reset_relation(GTK_ACCESSIBLE(pLoAccessible),
+                                      GTK_ACCESSIBLE_RELATION_FLOW_TO);
+
+        GList* pTargetObjects = nullptr;
+        for (const css::uno::Reference<css::accessibility::XAccessible>& xTargetAcc :
+             aRelation.TargetSet)
+        {
+            LoAccessible* pTargetLOAcc
+                = GtkAccessibleRegistry::getLOAccessible(xTargetAcc, pLoAccessible->display);
+            assert(pTargetLOAcc);
+            GObject* pObject = G_OBJECT(pTargetLOAcc);
+            g_object_ref(pObject);
+            pTargetObjects = g_list_append(pTargetObjects, pObject);
+        }
+
+        GValue aValue = G_VALUE_INIT;
+        gtk_accessible_relation_init_value(eGtkRelation, &aValue);
+        g_value_set_pointer(&aValue, pTargetObjects);
+        gtk_accessible_update_relation_value(GTK_ACCESSIBLE(pLoAccessible), 1, &eGtkRelation,
+                                             &aValue);
+    }
+}
 
 struct LoAccessibleClass
 {
     GObjectClass parent_class;
 };
 
-#if GTK_CHECK_VERSION(4, 10, 0)
-static void lo_accessible_range_init(GtkAccessibleRangeInterface* iface);
+static void lo_accessible_range_init(gpointer iface_, gpointer);
 static gboolean lo_accessible_range_set_current_value(GtkAccessibleRange* self, double fNewValue);
-#endif
 
 extern "C" {
 typedef GType (*GetGIfaceType)();
@@ -414,10 +476,12 @@ const struct
     GetGIfaceType const aGetGIfaceType;
     const css::uno::Type& (*aGetUnoType)();
 } TYPE_TABLE[] = {
-#if GTK_CHECK_VERSION(4, 10, 0)
-    { "Value", reinterpret_cast<GInterfaceInitFunc>(lo_accessible_range_init),
-      gtk_accessible_range_get_type, cppu::UnoType<css::accessibility::XAccessibleValue>::get }
+#if GTK_CHECK_VERSION(4, 14, 0)
+    { "Text", lo_accessible_text_init, gtk_accessible_text_get_type,
+      cppu::UnoType<css::accessibility::XAccessibleText>::get },
 #endif
+    { "Value", lo_accessible_range_init, gtk_accessible_range_get_type,
+      cppu::UnoType<css::accessibility::XAccessibleValue>::get },
 };
 
 static bool isOfType(css::uno::XInterface* xInterface, const css::uno::Type& rType)
@@ -527,11 +591,9 @@ static GtkATContext* lo_accessible_get_at_context(GtkAccessible* self)
 {
     LoAccessible* pAccessible = LO_ACCESSIBLE(self);
 
-    GtkAccessibleRole eRole = map_accessible_role(pAccessible->uno_accessible);
-
-    if (!pAccessible->at_context
-        || gtk_at_context_get_accessible_role(pAccessible->at_context) != eRole)
+    if (!pAccessible->at_context)
     {
+        GtkAccessibleRole eRole = map_accessible_role(pAccessible->uno_accessible);
         pAccessible->at_context = gtk_at_context_create(eRole, self, pAccessible->display);
         if (!pAccessible->at_context)
             return nullptr;
@@ -560,12 +622,11 @@ static void lo_accessible_accessible_init(GtkAccessibleInterface* iface)
     iface->get_platform_state = lo_accessible_get_platform_state;
 }
 
-#if GTK_CHECK_VERSION(4, 10, 0)
-static void lo_accessible_range_init(GtkAccessibleRangeInterface* iface)
+static void lo_accessible_range_init(gpointer iface_, gpointer)
 {
+    auto const iface = static_cast<GtkAccessibleRangeInterface*>(iface_);
     iface->set_current_value = lo_accessible_range_set_current_value;
 }
-#endif
 
 // silence loplugin:unreffun
 #ifdef __GNUC__
@@ -619,6 +680,8 @@ lo_accessible_new(GdkDisplay* pDisplay, GtkAccessible* pParent,
     applyStates(pGtkAccessible, xContext);
 
     applyObjectAttributes(GTK_ACCESSIBLE(ret), xContext);
+
+    applyRelations(ret, xContext);
 
     // set values from XAccessibleValue interface if that's implemented
     css::uno::Reference<css::accessibility::XAccessibleValue> xAccessibleValue(xContext,
@@ -700,8 +763,18 @@ static GtkAccessible* lo_accessible_get_next_accessible_sibling(GtkAccessible* s
 
     css::uno::Reference<css::accessibility::XAccessibleContext> xContext(
         pAccessible->uno_accessible->getAccessibleContext());
+    if (!xContext.is())
+    {
+        SAL_WARN("vcl.gtk", "Accessible has no accessible context");
+        return nullptr;
+    }
+
     sal_Int64 nThisChildIndex = xContext->getAccessibleIndexInParent();
-    assert(nThisChildIndex != -1);
+    if (nThisChildIndex < 0)
+    {
+        SAL_WARN("vcl.gtk", "Invalid accessible index in parent");
+        return nullptr;
+    }
     sal_Int64 nNextChildIndex = nThisChildIndex + 1;
 
     css::uno::Reference<css::accessibility::XAccessible> xParent = xContext->getAccessibleParent();
@@ -744,7 +817,6 @@ static gboolean lo_accessible_get_platform_state(GtkAccessible* self,
     return false;
 }
 
-#if GTK_CHECK_VERSION(4, 10, 0)
 static gboolean lo_accessible_range_set_current_value(GtkAccessibleRange* self, double fNewValue)
 {
     // return 'true' in any case, since otherwise no proper AT-SPI DBus reply gets sent
@@ -785,31 +857,8 @@ static gboolean lo_accessible_range_set_current_value(GtkAccessibleRange* self, 
     xValue->setCurrentValue(aValue);
     return true;
 }
-#endif
 
 static void lo_accessible_init(LoAccessible* /*iface*/) {}
-
-static GtkATContext* get_at_context(GtkAccessible* self)
-{
-    OOoFixed* pFixed = OOO_FIXED(self);
-
-    css::uno::Reference<css::accessibility::XAccessible> xAccessible(
-        get_uno_accessible(GTK_WIDGET(pFixed)));
-    GtkAccessibleRole eRole = map_accessible_role(xAccessible);
-
-    if (!pFixed->at_context || gtk_at_context_get_accessible_role(pFixed->at_context) != eRole)
-    {
-        //        if (pFixed->at_context)
-        //            g_clear_object(&pFixed->at_context);
-
-        pFixed->at_context
-            = gtk_at_context_create(eRole, self, gtk_widget_get_display(GTK_WIDGET(pFixed)));
-        if (!pFixed->at_context)
-            return nullptr;
-    }
-
-    return g_object_ref(pFixed->at_context);
-}
 
 #if 0
 gboolean get_platform_state(GtkAccessible* self, GtkAccessiblePlatformState state)
@@ -821,14 +870,9 @@ gboolean get_platform_state(GtkAccessible* self, GtkAccessiblePlatformState stat
 static gboolean get_bounds(GtkAccessible* accessible, int* x, int* y, int* width, int* height)
 {
     OOoFixed* pFixed = OOO_FIXED(accessible);
-    css::uno::Reference<css::accessibility::XAccessible> xAccessible(
-        get_uno_accessible(GTK_WIDGET(pFixed)));
-    css::uno::Reference<css::accessibility::XAccessibleContext> xContext(
-        xAccessible->getAccessibleContext());
-    css::uno::Reference<css::accessibility::XAccessibleComponent> xAccessibleComponent(
-        xContext, css::uno::UNO_QUERY);
+    rtl::Reference<comphelper::OAccessible> pAccessible = get_uno_accessible(GTK_WIDGET(pFixed));
 
-    css::awt::Rectangle aBounds = xAccessibleComponent->getBounds();
+    css::awt::Rectangle aBounds = pAccessible->getBounds();
     *x = aBounds.X;
     *y = aBounds.Y;
     *width = aBounds.Width;
@@ -839,16 +883,13 @@ static gboolean get_bounds(GtkAccessible* accessible, int* x, int* y, int* width
 static GtkAccessible* get_first_accessible_child(GtkAccessible* accessible)
 {
     OOoFixed* pFixed = OOO_FIXED(accessible);
-    css::uno::Reference<css::accessibility::XAccessible> xAccessible(
-        get_uno_accessible(GTK_WIDGET(pFixed)));
-    if (!xAccessible)
+    rtl::Reference<comphelper::OAccessible> pAccessible = get_uno_accessible(GTK_WIDGET(pFixed));
+    if (!pAccessible.is())
         return nullptr;
-    css::uno::Reference<css::accessibility::XAccessibleContext> xContext(
-        xAccessible->getAccessibleContext());
-    if (!xContext->getAccessibleChildCount())
+    if (!pAccessible->getAccessibleChildCount())
         return nullptr;
     css::uno::Reference<css::accessibility::XAccessible> xFirstChild(
-        xContext->getAccessibleChild(0));
+        pAccessible->getAccessibleChild(0));
     LoAccessible* child_accessible = GtkAccessibleRegistry::getLOAccessible(
         xFirstChild, gtk_widget_get_display(GTK_WIDGET(pFixed)), accessible);
     return GTK_ACCESSIBLE(g_object_ref(child_accessible));
@@ -858,7 +899,6 @@ static void ooo_fixed_accessible_init(GtkAccessibleInterface* iface)
 {
     GtkAccessibleInterface* parent_iface
         = static_cast<GtkAccessibleInterface*>(g_type_interface_peek_parent(iface));
-    iface->get_at_context = get_at_context;
     iface->get_bounds = get_bounds;
     iface->get_first_accessible_child = get_first_accessible_child;
     iface->get_platform_state = parent_iface->get_platform_state;
@@ -881,7 +921,5 @@ static void ooo_fixed_class_init(OOoFixedClass* /*klass*/) {}
 static void ooo_fixed_init(OOoFixed* /*area*/) {}
 
 GtkWidget* ooo_fixed_new() { return GTK_WIDGET(g_object_new(OOO_TYPE_FIXED, nullptr)); }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

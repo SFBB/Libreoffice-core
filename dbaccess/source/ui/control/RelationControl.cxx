@@ -46,7 +46,6 @@ namespace dbaui
 {
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::sdbcx;
     using namespace ::com::sun::star::container;
     using namespace svt;
@@ -223,7 +222,7 @@ namespace dbaui
             OConnectionLineDataVec& rLines = m_pConnData->GetConnLineDataList();
             if ( rLines.size() <= o3tl::make_unsigned(nRow) )
             {
-                rLines.emplace_back();
+                rLines.emplace_back(new OConnectionLineData());
                 nRow = rLines.size() - 1;
                 // add new past-rLines row
                 m_ops.emplace_back(INSERT, make_pair(nRow+1, nRow+2));
@@ -359,12 +358,9 @@ namespace dbaui
                 //sal_Int32 nRows = GetRowCount();
                 Reference<XColumnsSupplier> xSup(_xDest,UNO_QUERY);
                 Reference<XNameAccess> xColumns = xSup->getColumns();
-                Sequence< OUString> aNames = xColumns->getElementNames();
-                const OUString* pIter = aNames.getConstArray();
-                const OUString* pEnd = pIter + aNames.getLength();
-                for(;pIter != pEnd;++pIter)
+                for (auto& text : xColumns->getElementNames())
                 {
-                    rList.append_text(*pIter);
+                    rList.append_text(text);
                 }
                 rList.insert_text(0, OUString());
             }
@@ -437,9 +433,9 @@ namespace dbaui
     OTableListBoxControl::OTableListBoxControl(weld::Builder* _pParent,
         const OJoinTableView::OTableWindowMap* _pTableMap,
         IRelationControlInterface* _pParentDialog)
-        : m_xLeftTable(_pParent->weld_combo_box("table1"))
-        , m_xRightTable(_pParent->weld_combo_box("table2"))
-        , m_xTable(_pParent->weld_container("relations"))
+        : m_xLeftTable(_pParent->weld_combo_box(u"table1"_ustr))
+        , m_xRightTable(_pParent->weld_combo_box(u"table2"_ustr))
+        , m_xTable(_pParent->weld_container(u"relations"_ustr))
         , m_xTableCtrlParent(m_xTable->CreateChildFrame())
         , m_xRC_Tables(VclPtr<ORelationControl>::Create(m_xTableCtrlParent))
         , m_pTableMap(_pTableMap)

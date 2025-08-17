@@ -22,6 +22,7 @@
 #include <editeng/escapementitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/pgrditem.hxx>
+#include <editeng/fontitem.hxx>
 #include <vcl/svapp.hxx>
 #include <comphelper/scopeguard.hxx>
 
@@ -47,6 +48,7 @@
 #include <IDocumentRedlineAccess.hxx>
 #include <IDocumentSettingAccess.hxx>
 #include <IDocumentDeviceAccess.hxx>
+#include <IDocumentLayoutAccess.hxx>
 
 #include <crsrsh.hxx>
 #include <swtypes.hxx>
@@ -74,6 +76,16 @@ void SwTmpEndPortion::Paint( const SwTextPaintInfo &rInf ) const
 
     SwFont aFont(*pOldFnt);
 
+    const SwDoc& rDoc = rInf.GetTextFrame()->GetDoc();
+    if (aFont.IsSymbol(rDoc.getIDocumentLayoutAccess().GetCurrentViewShell()))
+    {
+        const SvxFontItem& rFontItem = rDoc.GetDefault(RES_CHRATR_FONT);
+        aFont.SetName( rFontItem.GetFamilyName(), SwFontScript::Latin );
+        aFont.SetStyleName( rFontItem.GetStyleName(), SwFontScript::Latin );
+        aFont.SetFamily( rFontItem.GetFamily(), SwFontScript::Latin );
+        aFont.SetPitch( rFontItem.GetPitch(), SwFontScript::Latin );
+        aFont.SetCharSet( rFontItem.GetCharSet(), SwFontScript::Latin );
+    }
     // Paint strikeout/underline based on redline color and settings
     // (with an extra pilcrow in the background, because there is
     // no SetStrikeoutColor(), also SetUnderColor() doesn't work()).
@@ -90,7 +102,7 @@ void SwTmpEndPortion::Paint( const SwTextPaintInfo &rInf ) const
 
     }
 
-    aFont.SetColor( NON_PRINTING_CHARACTER_COLOR );
+    aFont.SetColor( SwViewOption::GetCurrentViewOptions().GetNonPrintingCharacterColor() );
     aFont.SetStrikeout( STRIKEOUT_NONE );
     aFont.SetUnderline( LINESTYLE_NONE );
     const_cast<SwTextPaintInfo&>(rInf).SetFont(&aFont);
@@ -116,13 +128,12 @@ SwBreakPortion::SwBreakPortion( const SwLinePortion &rPortion, const SwTextAttr*
     m_nTextHeight = 0;
 }
 
-TextFrameIndex SwBreakPortion::GetModelPositionForViewPoint(const sal_uInt16) const
+TextFrameIndex SwBreakPortion::GetModelPositionForViewPoint(const SwTwips) const
 {
     return TextFrameIndex(0);
 }
 
-sal_uInt16 SwBreakPortion::GetViewWidth( const SwTextSizeInfo & ) const
-{ return 0; }
+SwTwips SwBreakPortion::GetViewWidth(const SwTextSizeInfo&) const { return 0; }
 
 SwLinePortion *SwBreakPortion::Compress()
 { return (GetNextPortion() && GetNextPortion()->InTextGrp() ? nullptr : this); }
@@ -287,7 +298,7 @@ void SwKernPortion::Paint( const SwTextPaintInfo &rInf ) const
         rInf.CalcRect( *this, &aClipRect );
         SwSaveClip aClip( const_cast<OutputDevice*>(rInf.GetOut()) );
         aClip.ChgClip( aClipRect );
-        rInf.DrawText("  ", *this, TextFrameIndex(0), TextFrameIndex(2), true );
+        rInf.DrawText(u"  "_ustr, *this, TextFrameIndex(0), TextFrameIndex(2), true );
     }
 }
 
@@ -317,7 +328,7 @@ SwArrowPortion::SwArrowPortion( const SwLinePortion &rPortion ) :
 SwArrowPortion::SwArrowPortion( const SwTextPaintInfo &rInf )
     : m_bLeft( false )
 {
-    Height( o3tl::narrowing<sal_uInt16>(rInf.GetTextFrame()->getFramePrintArea().Height()) );
+    Height(rInf.GetTextFrame()->getFramePrintArea().Height());
     m_aPos.setX( rInf.GetTextFrame()->getFrameArea().Left() +
                rInf.GetTextFrame()->getFramePrintArea().Right() );
     m_aPos.setY( rInf.GetTextFrame()->getFrameArea().Top() +
@@ -409,7 +420,8 @@ bool SwTextFrame::FormatEmpty()
 {
     OSL_ENSURE( ! IsVertical() || ! IsSwapped(),"SwTextFrame::FormatEmpty with swapped frame" );
 
-    bool bCollapse = EmptyHeight( ) == 1 && IsCollapse( );
+    SwTwips nHeight = EmptyHeight();
+    bool bCollapse = nHeight == 1 && IsCollapse();
 
     // sw_redlinehide: just disable FormatEmpty optimisation for now
     // Split fly frames: non-last parts of the anchor want this optimization to clear the old
@@ -437,6 +449,8 @@ bool SwTextFrame::FormatEmpty()
     const SvxLineSpacingItem &rSpacing = aSet.GetLineSpacing();
     if( !bCollapse && ( SvxLineSpaceRule::Min == rSpacing.GetLineSpaceRule() ||
         SvxLineSpaceRule::Fix == rSpacing.GetLineSpaceRule() ||
+        (rSpacing.GetInterLineSpaceRule() == SvxInterLineSpaceRule::Prop
+            && rSpacing.GetPropLineSpace() < 100) ||
         aSet.GetFirstLineIndent().IsAutoFirst()))
     {
         return false;
@@ -460,14 +474,14 @@ bool SwTextFrame::FormatEmpty()
     for (SwContentIndex const* pIndex = GetTextNodeFirst()->GetFirstIndex();
          pIndex; pIndex = pIndex->GetNext())
     {
-        sw::mark::IMark const*const pMark = pIndex->GetMark();
-        if (dynamic_cast<const sw::mark::IBookmark*>(pMark) != nullptr)
+        if (!pIndex->GetOwner() || pIndex->GetOwner()->GetOwnerType() != SwContentIndexOwnerType::Mark)
+            continue;
+        auto const pMark = static_cast<sw::mark::MarkBase const*>(pIndex->GetOwner());
+        if (dynamic_cast<const sw::mark::Bookmark*>(pMark) != nullptr)
         {   // need bookmark portions!
             return false;
         }
     }
-
-    SwTwips nHeight = EmptyHeight();
 
     if (aSet.GetParaGrid().GetValue() &&
             IsInDocBody() )
@@ -640,15 +654,14 @@ void SwHiddenTextPortion::Paint( const SwTextPaintInfo & rInf) const
 {
 #ifdef DBG_UTIL
     OutputDevice* pOut = const_cast<OutputDevice*>(rInf.GetOut());
-    Color aCol( rInf.GetOpt().GetFieldShadingsColor() );
-    Color aOldColor( pOut->GetFillColor() );
-    pOut->SetFillColor( aCol );
+    pOut->Push(vcl::PushFlags::FILLCOLOR);
+    pOut->SetFillColor( rInf.GetOpt().GetFieldShadingsColor() );
     Point aPos( rInf.GetPos() );
     aPos.AdjustY( -150 );
     aPos.AdjustX( -25 );
     SwRect aRect( aPos, Size( 100, 200 ) );
     pOut->DrawRect( aRect.SVRect() );
-    pOut->SetFillColor( aOldColor );
+    pOut->Pop();
 #else
     (void)rInf;
 #endif
@@ -665,7 +678,7 @@ bool SwHiddenTextPortion::Format( SwTextFormatInfo &rInf )
 bool SwControlCharPortion::DoPaint(SwTextPaintInfo const& rTextPaintInfo,
         OUString & rOutString, SwFont & rTmpFont, int &) const
 {
-    if (mcChar == CHAR_WJ || !rTextPaintInfo.GetOpt().IsFieldShadings())
+    if (mcChar == CHAR_WJ || !rTextPaintInfo.GetOpt().IsViewMetaChars())
     {
         return false;
     }
@@ -684,6 +697,7 @@ bool SwControlCharPortion::DoPaint(SwTextPaintInfo const& rTextPaintInfo,
     }
 
     rTmpFont.SetEscapement( CHAR_ZWSP == mcChar ? DFLT_ESC_AUTO_SUB : -25 );
+    rTmpFont.SetColor( SwViewOption::GetCurrentViewOptions().GetNonPrintingCharacterColor() );
     const sal_uInt16 nProp = 40;
     rTmpFont.SetProportion( nProp );  // a smaller font
 
@@ -704,7 +718,7 @@ bool SwBookmarkPortion::DoPaint(SwTextPaintInfo const& rTextPaintInfo,
     // init font: we want OpenSymbol to ensure it doesn't look too crazy;
     // thin and a bit higher than the surrounding text
     auto const nOrigAscent(rFont.GetAscent(rTextPaintInfo.GetVsh(), *rTextPaintInfo.GetOut()));
-    rFont.SetName("OpenSymbol", rFont.GetActual());
+    rFont.SetName(u"OpenSymbol"_ustr, rFont.GetActual());
     Size aSize(rFont.GetSize(rFont.GetActual()));
     // use also the external leading (line gap) of the portion, but don't use
     // 100% of it because i can't figure out how to baseline align that
@@ -805,6 +819,8 @@ void SwBookmarkPortion::Paint( const SwTextPaintInfo &rInf ) const
     if ( !mnHalfCharWidth )
         mnHalfCharWidth = rInf.GetTextSize( aOutString ).Width() / 2;
 
+    auto nHeight = rInf.GetTextSize( aOutString ).Height();
+
     Point aOldPos = rInf.GetPos();
     Point aNewPos( aOldPos );
     auto const deltaX((Width() / 2) - mnHalfCharWidth);
@@ -834,16 +850,19 @@ void SwBookmarkPortion::Paint( const SwTextPaintInfo &rInf ) const
         // some |text| here
         //     [[    ]]
         if (m_nStart > 1)
-            aNewPos.AdjustX(static_cast<tools::Long>(mnHalfCharWidth) * -2 * (m_aColors.size() - 1));
+            aNewPos.AdjustX(mnHalfCharWidth * -2 * (m_aColors.size() - 1));
     }
     else if ( m_nStart != 0 && m_nEnd != 0 )
         // both end and start boundary marks: adjust them around the bookmark position
         // |te|xt|
         //  ]] [[
-        aNewPos.AdjustX(static_cast<tools::Long>(mnHalfCharWidth) * -(2 * m_nEnd - 1 + m_nPoint) );
+        aNewPos.AdjustX(mnHalfCharWidth * -(2 * m_nEnd - 1 + m_nPoint) );
 
     const_cast< SwTextPaintInfo& >( rInf ).SetPos( aNewPos );
 
+    SwTwips nTypePos = 0; // shift to the position of the next rdf:type label
+    sal_Int32 nDirection = -1; // start with the closing brackets
+    bool bStart = true;
     for ( const auto& it : m_aColors )
     {
         // set bold for custom colored bookmark symbol
@@ -851,6 +870,12 @@ void SwBookmarkPortion::Paint( const SwTextPaintInfo &rInf ) const
         aTmpFont.SetWeight( COL_TRANSPARENT == std::get<1>(it) ? WEIGHT_THIN : WEIGHT_BOLD, aTmpFont.GetActual() );
         aTmpFont.SetColor( COL_TRANSPARENT == std::get<1>(it) ? rInf.GetOpt().GetFieldShadingsColor() : std::get<1>(it) );
         aOutString = OUString(std::get<0>(it) == SwScriptInfo::MarkKind::Start ? '[' : ']');
+
+        if (nDirection == -1 && std::get<0>(it) != SwScriptInfo::MarkKind::End)
+        {
+            nDirection = 1;
+            nTypePos = mnHalfCharWidth * 2; // start label after the opening bracket
+        }
 
         // MarkKind::Point: drawn I-beam (e.g. U+2336) as overlapping ][
         if ( std::get<0>(it) == SwScriptInfo::MarkKind::Point )
@@ -866,6 +891,65 @@ void SwBookmarkPortion::Paint( const SwTextPaintInfo &rInf ) const
             aOutString = OUString('[');
         }
         rInf.DrawText( aOutString, *this );
+
+        // show rdf:type labels, left-aligned top position after the opening brackets
+        // right-aligned bottom position before the closing brackets
+        // if there are multiple opening or closing brackets, collect
+        // their length in nTypePos to show non-overlapping labels
+        OUString sType = std::get<3>(it);
+        if ( !sType.isEmpty() )
+        {
+            Size aTmpSz = aTmpFont.GetSize( SwFontScript::Latin );
+            auto origSize = aTmpSz;
+
+            // calculate label size
+            aTmpSz.setHeight( std::min( tools::Long(60), 100 * aTmpSz.Height() / 250 ) );
+            aTmpSz.setWidth( std::min( tools::Long(60), 100 * aTmpSz.Width() / 250 ) );
+
+            // vertical rdf:type label position for the opening and closing brackets
+            sal_Int32 fPos = std::get<0>(it) == SwScriptInfo::MarkKind::Start
+                    ? -0.65 * nHeight
+                    : aTmpSz.Height();
+
+            if ( aTmpSz.Width() || aTmpSz.Height() )
+            {
+                aTmpFont.SetSize( aTmpSz, SwFontScript::Latin );
+                auto aTextSize =  rInf.GetTextSize(sType);
+
+                aNewPos.AdjustY(fPos);
+                if ( nDirection == -1 )
+                {
+                    if (bStart)
+                    {
+                        nTypePos += aTextSize.Width();
+                        bStart = false;
+                    }
+                    else
+                        nTypePos += aTextSize.Width() +
+                                        rInf.GetTextSize( " " ).Width() + 2 * mnHalfCharWidth;
+                }
+                aNewPos.AdjustX( nDirection * nTypePos );
+
+                const_cast< SwTextPaintInfo& >( rInf ).SetPos( aNewPos );
+
+                SwRect aRect( rInf.GetPos(), Size(aTextSize.Width(), -aTextSize.Height() * 0.8) );
+                rInf.DrawRect( aRect, true );  // white background
+                rInf.DrawText( sType, *this ); // label
+
+                // restore original position
+                aNewPos.AdjustX( -nDirection * nTypePos );
+                if ( nDirection == 1 )
+                    nTypePos += aTextSize.Width() +
+                                        rInf.GetTextSize( " " ).Width() - mnHalfCharWidth * 2;
+
+                aNewPos.AdjustY(-fPos);
+            }
+            // restore original text size
+            aTmpSz.setHeight(origSize.Height());
+            aTmpSz.setWidth(origSize.Width());
+            aTmpFont.SetSize( origSize, SwFontScript::Latin );
+        }
+
         // place the next symbol after the previous one
         // TODO: fix orientation and start/end
         aNewPos.AdjustX(mnHalfCharWidth * 2);
@@ -880,7 +964,7 @@ void SwBookmarkPortion::HandlePortion( SwPortionHandler& rPH ) const
     OUStringBuffer aStr;
     for ( const auto& it : m_aColors )
     {
-        aStr.append("#" + std::get<2>(it) + " " + SwResId(STR_BOOKMARK_DEF_NAME));
+        aStr.append("#" + std::get<2>(it).toString() + " " + SwResId(STR_BOOKMARK_DEF_NAME));
         switch (std::get<0>(it))
         {
             case SwScriptInfo::MarkKind::Point:
@@ -908,7 +992,7 @@ void SwBookmarkPortion::dumpAsXml(xmlTextWriterPtr pWriter, const OUString& rTex
         OUStringBuffer aStr;
         for (const auto& rColor : m_aColors)
         {
-            aStr.append("#" + std::get<2>(rColor) + " " + SwResId(STR_BOOKMARK_DEF_NAME));
+            aStr.append("#" + std::get<2>(rColor).toString() + " " + SwResId(STR_BOOKMARK_DEF_NAME));
             switch (std::get<0>(rColor))
             {
                 case SwScriptInfo::MarkKind::Point:
@@ -938,7 +1022,7 @@ bool SwControlCharPortion::Format( SwTextFormatInfo &rInf )
     return false;
 }
 
-sal_uInt16 SwControlCharPortion::GetViewWidth( const SwTextSizeInfo& rInf ) const
+SwTwips SwControlCharPortion::GetViewWidth(const SwTextSizeInfo& rInf) const
 {
     if( !mnViewWidth )
         mnViewWidth = rInf.GetTextSize(OUString(' ')).Width();

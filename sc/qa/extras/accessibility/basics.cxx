@@ -15,13 +15,11 @@
 
 #include <com/sun/star/awt/Key.hpp>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
-#include <vcl/scheduler.hxx>
 
 #include <tools/date.hxx>
 #include <tools/time.hxx>
 
 #include <test/a11y/accessibletestbase.hxx>
-#include <test/a11y/AccessibilityTools.hxx>
 
 using namespace css;
 
@@ -60,10 +58,11 @@ CPPUNIT_TEST_FIXTURE(test::AccessibleTestBase, TestCalcMenu)
     std::cout << "A1 (value): " << value << std::endl;
     uno::Reference<util::XNumberFormatsSupplier> xSupplier(mxDocument, uno::UNO_QUERY_THROW);
     util::Date nullDate;
-    CPPUNIT_ASSERT(xSupplier->getNumberFormatSettings()->getPropertyValue("NullDate") >>= nullDate);
+    CPPUNIT_ASSERT(xSupplier->getNumberFormatSettings()->getPropertyValue(u"NullDate"_ustr)
+                   >>= nullDate);
     const Date afterDate(Date::SYSTEM);
-    CPPUNIT_ASSERT_GREATEREQUAL(double(beforeDate - nullDate), value);
-    CPPUNIT_ASSERT_LESSEQUAL(double(afterDate - nullDate), value);
+    CPPUNIT_ASSERT_GREATEREQUAL(double(beforeDate - Date(nullDate)), value);
+    CPPUNIT_ASSERT_LESSEQUAL(double(afterDate - Date(nullDate)), value);
 
     // cell A2 contains time, no date, so we have to be careful passing midnight
     xCell = sheet->getAccessibleCellAt(1, 0)->getAccessibleContext();

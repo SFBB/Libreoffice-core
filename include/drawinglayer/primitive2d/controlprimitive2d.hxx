@@ -72,9 +72,8 @@ private:
     Primitive2DReference createPlaceholderDecomposition() const;
 
     /// local decomposition
-    virtual void
-    create2DDecomposition(Primitive2DContainer& rContainer,
-                          const geometry::ViewInformation2D& rViewInformation) const override;
+    virtual Primitive2DReference
+    create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
 public:
     /** constructor with an optional XControl as parameter to allow to hand it over at incarnation time
@@ -93,6 +92,9 @@ public:
     {
         return mxControlModel;
     }
+
+    /// check if this control is visible as ChildWindow
+    bool isVisibleAsChildWindow() const;
 
     /** mxControl access. This will on demand create the awt::XControl using createXControl()
         if it does not exist. It may already have been created or even handed over at

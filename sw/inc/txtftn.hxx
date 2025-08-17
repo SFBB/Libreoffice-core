@@ -23,8 +23,6 @@
 #include "txatbase.hxx"
 #include "ndindex.hxx"
 
-class SwNodeIndex;
-class SwNodes;
 class SwDoc;
 class SwRootFrame;
 
@@ -37,7 +35,9 @@ class SW_DLLPUBLIC SwTextFootnote final : public SwTextAttr
     sal_uInt16 m_nSeqNo;
 
 public:
-    SwTextFootnote( SwFormatFootnote& rAttr, sal_Int32 nStart );
+    SwTextFootnote(
+        const SfxPoolItemHolder& rAttr,
+        sal_Int32 nStart );
     virtual ~SwTextFootnote() override;
 
     const SwNodeIndex *GetStartNode() const { return m_oStartNode ? &*m_oStartNode : nullptr; }

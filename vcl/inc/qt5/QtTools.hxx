@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -21,18 +21,26 @@
 
 #include <config_vclplug.h>
 
+#include <QtCore/QDate>
 #include <QtCore/QPoint>
 #include <QtCore/QRect>
 #include <QtCore/QSize>
 #include <QtCore/QString>
 #include <QtGui/QImage>
+#include <QtGui/QMouseEvent>
+#include <QtWidgets/QMessageBox>
 
 #include <rtl/string.hxx>
 #include <rtl/ustring.hxx>
 #include <tools/color.hxx>
+#include <tools/date.hxx>
 #include <tools/gen.hxx>
 #include <vcl/bitmap/BitmapTypes.hxx>
+#include <vcl/event.hxx>
+#include <vcl/qt/QtUtils.hxx>
+#include <vcl/vclenum.hxx>
 
+#include <com/sun/star/lang/Locale.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/datatransfer/dnd/DNDConstants.hpp>
 
@@ -40,17 +48,6 @@
 
 class Image;
 class QImage;
-
-inline OUString toOUString(const QString& s)
-{
-    // QString stores UTF16, just like OUString
-    return OUString(reinterpret_cast<const sal_Unicode*>(s.data()), s.length());
-}
-
-inline QString toQString(const OUString& s)
-{
-    return QString::fromUtf16(s.getStr(), s.getLength());
-}
 
 inline QRect toQRect(const tools::Rectangle& rRect)
 {
@@ -78,6 +75,8 @@ inline QSize toQSize(const Size& rSize) { return QSize(rSize.Width(), rSize.Heig
 
 inline Size toSize(const QSize& rSize) { return Size(rSize.width(), rSize.height()); }
 
+inline QPoint toQPoint(const Point& rPoint) { return QPoint(rPoint.X(), rPoint.Y()); }
+
 inline Point toPoint(const QPoint& rPoint) { return Point(rPoint.x(), rPoint.y()); }
 
 inline QColor toQColor(const Color& rColor)
@@ -85,10 +84,24 @@ inline QColor toQColor(const Color& rColor)
     return QColor(rColor.GetRed(), rColor.GetGreen(), rColor.GetBlue(), rColor.GetAlpha());
 }
 
+inline Color toColor(const QColor& rColor)
+{
+    return Color(rColor.red(), rColor.green(), rColor.blue());
+}
+
+inline QDate toQDate(const Date& rDate)
+{
+    return QDate(rDate.GetYear(), rDate.GetMonth(), rDate.GetDay());
+}
+
+inline Date toDate(const QDate& rDate) { return Date(rDate.day(), rDate.month(), rDate.year()); }
+
+Qt::CheckState toQtCheckState(TriState eTristate);
+TriState toVclTriState(Qt::CheckState eTristate);
+
 Qt::DropActions toQtDropActions(sal_Int8 dragOperation);
 sal_Int8 toVclDropActions(Qt::DropActions dragOperation);
 sal_Int8 toVclDropAction(Qt::DropAction dragOperation);
-Qt::DropAction getPreferredDropAction(sal_Int8 dragOperation);
 
 inline QList<int> toQList(const css::uno::Sequence<sal_Int32>& aSequence)
 {
@@ -146,10 +159,30 @@ struct CairoDeleter
 
 typedef std::unique_ptr<cairo_surface_t, CairoDeleter> UniqueCairoSurface;
 
-sal_uInt16 GetKeyModCode(Qt::KeyboardModifiers eKeyModifiers);
-sal_uInt16 GetMouseModCode(Qt::MouseButtons eButtons);
+sal_uInt16 toVclKeyboardModifiers(Qt::KeyboardModifiers eKeyModifiers);
+sal_uInt16 toVclKeyCode(int nKeyval, Qt::KeyboardModifiers eModifiers);
+KeyEvent toVclKeyEvent(QKeyEvent& rEvent);
+sal_uInt16 toVclMouseButtons(Qt::MouseButtons eButtons);
+MouseEvent toVclMouseEvent(QMouseEvent& rEvent);
 
 QImage toQImage(const Image& rImage);
+
+QFont toQtFont(const vcl::Font& rVclFont);
+
+bool toVclFont(const QFont& rQFont, const css::lang::Locale& rLocale, vcl::Font& rVclFont);
+
+QMessageBox::Icon vclMessageTypeToQtIcon(VclMessageType eType);
+QString vclMessageTypeToQtTitle(VclMessageType eType);
+
+/** Converts a string potentially containing a '~' character to indicate an accelerator
+ *  to the Qt variant using '&' for the accelerator.
+ */
+QString vclToQtStringWithAccelerator(const OUString& rText);
+
+/** Converts a string potentially containing a '&' character to indicate an accelerator
+ *  to the VCL variant using '~' for the accelerator.
+ */
+OUString qtToVclStringWithAccelerator(const QString& rText);
 
 template <typename charT, typename traits>
 inline std::basic_ostream<charT, traits>& operator<<(std::basic_ostream<charT, traits>& stream,
@@ -185,4 +218,4 @@ inline std::basic_ostream<charT, traits>& operator<<(std::basic_ostream<charT, t
 
 #define CHECK_ANY_QT_USING_X11 CHECK_QT5_USING_X11 || CHECK_QT6_USING_X11
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

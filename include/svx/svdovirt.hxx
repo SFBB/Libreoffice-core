@@ -40,7 +40,7 @@ protected:
     virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
 
     rtl::Reference<SdrObject> mxRefObj; // Referenced drawing object
-    tools::Rectangle aSnapRect;
+    tools::Rectangle maSnapRect;
 
 protected:
     virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
@@ -61,6 +61,10 @@ public:
     const SdrObject& GetReferencedObj() const;
     virtual void NbcSetAnchorPos(const Point& rAnchorPos) override;
 
+    virtual void SetPrintable(bool isPrintable) override;
+    virtual bool IsPrintable() const override;
+    virtual void SetVisible(bool isVisible) override;
+    virtual bool IsVisible() const override;
     virtual void TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
     virtual SdrInventor GetObjInventor() const override;
     virtual SdrObjKind GetObjIdentifier() const override;
@@ -129,7 +133,8 @@ public:
 
     virtual const tools::Rectangle& GetLogicRect() const override;
     virtual void SetLogicRect(const tools::Rectangle& rRect) override;
-    virtual void NbcSetLogicRect(const tools::Rectangle& rRect) override;
+    virtual void NbcSetLogicRect(const tools::Rectangle& rRect,
+                                 bool bAdaptTextMinSize = true) override;
 
     virtual Degree100 GetRotateAngle() const override;
     virtual Degree100 GetShearAngle(bool bVertical = false) const override;

@@ -32,7 +32,7 @@ namespace com::sun::star::frame { class XFrame; }
 class PaletteManager;
 class ToolBox;
 
-class SVXCORE_DLLPUBLIC ColorStatus
+class UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) ColorStatus
 {
     Color maColor;
     Color maTLBRColor;
@@ -42,8 +42,6 @@ public:
     void statusChanged( const css::frame::FeatureStateEvent& rEvent );
     Color GetColor();
 };
-
-class Button;
 
 #define COL_NONE_COLOR    ::Color(ColorTransparency, 0x80, 0xFF, 0xFF, 0xFF)
 
@@ -80,7 +78,7 @@ public:
 class SVXCORE_DLLPUBLIC ColorWindow final : public WeldToolbarPopup
 {
 private:
-    const sal_uInt16    theSlotId;
+    const sal_uInt16    mnSlotId;
     OUString            maCommand;
     MenuOrToolMenuButton maMenuButton;
     std::shared_ptr<PaletteManager> mxPaletteManager;

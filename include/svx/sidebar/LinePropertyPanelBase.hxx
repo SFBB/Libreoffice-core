@@ -28,22 +28,14 @@
 #include <com/sun/star/frame/XFrame.hpp>
 
 class ToolbarUnoDispatcher;
-class XLineStyleItem;
-class XLineDashItem;
-class XLineStartItem;
 class XLineWidthItem;
-class XLineEndItem;
-class XLineEndList;
-class XLineJointItem;
-class XLineCapItem;
 class XLineTransparenceItem;
-class XDashList;
 
 namespace svx::sidebar
 {
 class LineStyleNoneChange;
 
-class SVX_DLLPUBLIC LinePropertyPanelBase : public PanelLayout
+class UNLESS_MERGELIBS(SVX_DLLPUBLIC) LinePropertyPanelBase : public PanelLayout
 {
 public:
     virtual ~LinePropertyPanelBase() override;
@@ -73,13 +65,9 @@ protected:
     void ActivateControls();
 
     virtual void setLineTransparency(const XLineTransparenceItem& rItem) = 0;
-    virtual void setLineJoint(const XLineJointItem* pItem) = 0;
-    virtual void setLineCap(const XLineCapItem* pItem) = 0;
 
     void updateLineTransparence(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
     virtual void updateLineWidth(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
-    void updateLineJoint(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
-    void updateLineCap(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem);
 
     void setMapUnit(MapUnit eMapUnit);
 
@@ -101,12 +89,9 @@ private:
     std::unique_ptr<weld::Toolbar> mxTBWidth;
     std::unique_ptr<weld::Label> mxFTTransparency;
     std::unique_ptr<weld::MetricSpinButton> mxMFTransparent;
-    std::unique_ptr<weld::Label> mxFTEdgeStyle;
-    std::unique_ptr<weld::ComboBox> mxLBEdgeStyle;
-    std::unique_ptr<weld::Label> mxFTCapStyle;
-    std::unique_ptr<weld::ComboBox> mxLBCapStyle;
-    std::unique_ptr<weld::Widget> mxGridLineProps;
-    std::unique_ptr<weld::Widget> mxBoxArrowProps;
+    std::unique_ptr<weld::Label> mxArrowHeadStyleFT;
+    std::unique_ptr<weld::Toolbar> mxArrowHeadStyleTB;
+    std::unique_ptr<ToolbarUnoDispatcher> mxArrowHeadStyleDispatch;
     //popup windows
     std::unique_ptr<LineWidthPopup> mxLineWidthPopup;
 
@@ -119,7 +104,7 @@ private:
     OUString maIMGNone;
 
     // multi-images
-    BitmapEx maIMGWidthIcon[8];
+    Bitmap maIMGWidthIcon[8];
 
     bool mbWidthValuable : 1;
     bool mbArrowSupported;
@@ -129,8 +114,6 @@ private:
 
     DECL_DLLPRIVATE_LINK(ToolboxWidthSelectHdl, const OUString&, void);
     DECL_DLLPRIVATE_LINK(ChangeTransparentHdl, weld::MetricSpinButton&, void);
-    DECL_DLLPRIVATE_LINK(ChangeEdgeStyleHdl, weld::ComboBox&, void);
-    DECL_DLLPRIVATE_LINK(ChangeCapStyleHdl, weld::ComboBox&, void);
 };
 
 } // end of namespace svx::sidebar

@@ -80,10 +80,10 @@ void SAL_CALL StatusIndicatorFactory::initialize(const css::uno::Sequence< css::
            // it's an old-style initialisation using properties
             ::comphelper::SequenceAsHashMap lArgs(lArguments);
 
-            m_xFrame             = lArgs.getUnpackedValueOrDefault("Frame"            , css::uno::Reference< css::frame::XFrame >());
-            m_xPluggWindow       = lArgs.getUnpackedValueOrDefault("Window"           , css::uno::Reference< css::awt::XWindow >() );
-            m_bAllowParentShow   = lArgs.getUnpackedValueOrDefault("AllowParentShow"  , false );
-            m_bDisableReschedule = lArgs.getUnpackedValueOrDefault("DisableReschedule", false );
+            m_xFrame             = lArgs.getUnpackedValueOrDefault(u"Frame"_ustr            , css::uno::Reference< css::frame::XFrame >());
+            m_xPluggWindow       = lArgs.getUnpackedValueOrDefault(u"Window"_ustr           , css::uno::Reference< css::awt::XWindow >() );
+            m_bAllowParentShow   = lArgs.getUnpackedValueOrDefault(u"AllowParentShow"_ustr  , false );
+            m_bDisableReschedule = lArgs.getUnpackedValueOrDefault(u"DisableReschedule"_ustr, false );
        }
     }
 
@@ -286,6 +286,17 @@ void StatusIndicatorFactory::setValue( const css::uno::Reference< css::task::XSt
     impl_reschedule(false);
 }
 
+bool StatusIndicatorFactory::joinThreads()
+{
+    WakeUpThread::joinThread();
+    return true;
+}
+
+void StatusIndicatorFactory::startThreads()
+{
+    WakeUpThread::startThread();
+}
+
 void StatusIndicatorFactory::implts_makeParentVisibleIfAllowed()
 {
     css::uno::Reference< css::frame::XFrame > xFrame;
@@ -308,7 +319,7 @@ void StatusIndicatorFactory::implts_makeParentVisibleIfAllowed()
     if (xFrame.is())
         xParentWindow = xFrame->getContainerWindow();
     else
-        xParentWindow = xPluggWindow;
+        xParentWindow = std::move(xPluggWindow);
 
     // don't disturb user in case he put the loading document into the background!
     // Suppress any setVisible() or toFront() call in case the initial show was
@@ -425,7 +436,7 @@ void StatusIndicatorFactory::impl_createProgress()
     }
 
     std::scoped_lock g(m_mutex);
-    m_xProgress = xProgress;
+    m_xProgress = std::move(xProgress);
 }
 
 void StatusIndicatorFactory::impl_showProgress()
@@ -466,7 +477,7 @@ void StatusIndicatorFactory::impl_showProgress()
     }
 
     std::scoped_lock g(m_mutex);
-    m_xProgress = xProgress;
+    m_xProgress = std::move(xProgress);
 }
 
 void StatusIndicatorFactory::impl_hideProgress()
@@ -544,24 +555,19 @@ void StatusIndicatorFactory::impl_startWakeUpThread()
     if (m_bDisableReschedule)
         return;
 
-    if (!m_pWakeUp.is())
-    {
-        m_pWakeUp = new WakeUpThread(this);
-        m_pWakeUp->launch();
-    }
+    if (!m_pWakeUp)
+        m_pWakeUp.reset(new WakeUpThread(this));
 }
 
 void StatusIndicatorFactory::impl_stopWakeUpThread()
 {
-    rtl::Reference<WakeUpThread> wakeUp;
+    std::unique_ptr<WakeUpThread> wakeUp;
     {
         std::scoped_lock g(m_mutex);
         std::swap(wakeUp, m_pWakeUp);
     }
-    if (wakeUp.is())
-    {
+    if (wakeUp)
         wakeUp->stop();
-    }
 }
 
 } // namespace framework

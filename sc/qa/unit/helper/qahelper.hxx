@@ -76,6 +76,12 @@ SCQAHELPER_DLLPUBLIC std::ostream& operator<<(std::ostream& rStrm, const ScRange
 
 SCQAHELPER_DLLPUBLIC std::ostream& operator<<(std::ostream& rStrm, const OpCode& rCode);
 
+namespace svl {
+
+SCQAHELPER_DLLPUBLIC std::ostream& operator<<(std::ostream& rStrm, const SharedString& rStr);
+
+}
+
 SCQAHELPER_DLLPUBLIC bool checkOutput(
     const ScDocument* pDoc, const ScRange& aOutRange,
     const std::vector<std::vector<const char*>>& aCheck, const char* pCaption );
@@ -149,7 +155,7 @@ protected:
 class SCQAHELPER_DLLPUBLIC ScModelTestBase : public UnoApiXmlTest
 {
 public:
-    ScModelTestBase(OUString path)
+    ScModelTestBase(const OUString& path)
         : UnoApiXmlTest(path)
     {
     }
@@ -179,9 +185,9 @@ public:
     void testFormats(ScDocument* pDoc,std::u16string_view sFormat);
 
     void goToCell(const OUString& rCell);
-    void typeString(const std::u16string_view& rStr);
-    void insertStringToCell(const OUString& rCell, const std::u16string_view& rStr);
-    void insertArrayToCell(const OUString& rCell, const std::u16string_view& rStr);
+    void typeString(std::u16string_view rStr);
+    void insertStringToCell(const OUString& rCell, std::u16string_view rStr);
+    void insertArrayToCell(const OUString& rCell, std::u16string_view rStr);
     void insertNewSheet(ScDocument& rDoc);
     void executeAutoSum();
 
@@ -200,16 +206,5 @@ private:
 
 #define ASSERT_DOUBLES_EQUAL_MESSAGE( message, expected, result )   \
     CPPUNIT_ASSERT_DOUBLES_EQUAL_MESSAGE( (message), (expected), (result), 1e-14 )
-
-inline void assertPointEqual(
-    const Point& rExpected, const Point& rActual, const sal_Int32 nTolerance,
-    const CppUnit::SourceLine& rSourceLine )
-{
-    CPPUNIT_NS::assertDoubleEquals( rExpected.X(), rActual.X(), nTolerance, rSourceLine, "different X" );
-    CPPUNIT_NS::assertDoubleEquals( rExpected.Y(), rActual.Y(), nTolerance, rSourceLine, "different Y" );
-}
-
-#define CPPUNIT_ASSERT_POINT_EQUAL_WITH_TOLERANCE(aExpected, aActual, aTolerance) \
-        assertPointEqual( aExpected, aActual, aTolerance, CPPUNIT_SOURCELINE() )
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

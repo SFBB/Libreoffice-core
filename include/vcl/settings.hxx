@@ -23,16 +23,16 @@
 #include <config_options.h>
 
 #include <vcl/dllapi.h>
+#include <vcl/themecolors.hxx>
 #include <tools/color.hxx>
 #include <tools/gen.hxx>
+#include <o3tl/cow_wrapper.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 #include <memory>
 #include <vector>
 
-#include <optional>
-
-class BitmapEx;
+class Bitmap;
 class LanguageTag;
 class SvtSysLocale;
 
@@ -84,11 +84,13 @@ enum class MouseWheelBehaviour
 class VCL_DLLPUBLIC MouseSettings
 {
 private:
-    void                            CopyData();
-    std::shared_ptr<ImplMouseData>  mxData;
+    o3tl::cow_wrapper<ImplMouseData>  mxData;
 
 public:
                                     MouseSettings();
+                                    MouseSettings(const MouseSettings&);
+                                    ~MouseSettings();
+    MouseSettings&                  operator=(const MouseSettings&);
 
     void                            SetOptions( MouseSettingsOptions nOptions );
     MouseSettingsOptions            GetOptions() const;
@@ -97,31 +99,31 @@ public:
     sal_uInt64                      GetDoubleClickTime() const;
 
     void                            SetDoubleClickWidth( sal_Int32 nDoubleClkWidth );
-    sal_Int32                       GetDoubleClickWidth() const;
+    SAL_DLLPRIVATE sal_Int32                       GetDoubleClickWidth() const;
 
     void                            SetDoubleClickHeight( sal_Int32 nDoubleClkHeight );
-    sal_Int32                       GetDoubleClickHeight() const;
+    SAL_DLLPRIVATE sal_Int32                       GetDoubleClickHeight() const;
 
     void                            SetStartDragWidth( sal_Int32 nDragWidth );
-    sal_Int32                       GetStartDragWidth() const;
+    SAL_DLLPRIVATE sal_Int32                       GetStartDragWidth() const;
 
     void                            SetStartDragHeight( sal_Int32 nDragHeight );
-    sal_Int32                       GetStartDragHeight() const;
+    SAL_DLLPRIVATE sal_Int32                       GetStartDragHeight() const;
 
-    static sal_uInt16               GetStartDragCode();
+    SAL_DLLPRIVATE static sal_uInt16               GetStartDragCode();
 
-    static sal_uInt16               GetContextMenuCode();
+    SAL_DLLPRIVATE static sal_uInt16               GetContextMenuCode();
 
-    static sal_uInt16               GetContextMenuClicks();
+    SAL_DLLPRIVATE static sal_uInt16               GetContextMenuClicks();
 
-    static sal_Int32                GetScrollRepeat();
+    SAL_DLLPRIVATE static sal_Int32                GetScrollRepeat();
 
-    static sal_Int32                GetButtonStartRepeat();
+    SAL_DLLPRIVATE static sal_Int32                GetButtonStartRepeat();
 
     void                            SetButtonRepeat( sal_Int32 nRepeat );
     sal_Int32                       GetButtonRepeat() const;
 
-    static sal_Int32                GetActionDelay();
+    SAL_DLLPRIVATE static sal_Int32                GetActionDelay();
 
     void                            SetMenuDelay( sal_Int32 nDelay );
     sal_Int32                       GetMenuDelay() const;
@@ -136,7 +138,6 @@ public:
     MouseWheelBehaviour             GetWheelBehavior() const;
 
     bool                            operator ==( const MouseSettings& rSet ) const;
-    bool                            operator !=( const MouseSettings& rSet ) const;
 };
 
 struct DialogStyle
@@ -205,19 +206,31 @@ enum class ToolbarIconSize
     Size32       = 3,
 };
 
+/** Text selection behavior when selecting an entry in an editable combobox. */
+enum class ComboBoxTextSelectionMode
+{
+    SelectText, // select the whole text of the new entry
+    CursorToStart, // don't select text, put text cursor to start of text
+    CursorToEnd // don't select text, put text cursor to end of text
+};
+
 #define STYLE_CURSOR_NOBLINKTIME    SAL_MAX_UINT64
 
 class VCL_DLLPUBLIC StyleSettings
 {
-    void                            CopyData();
-
 private:
-    std::shared_ptr<ImplStyleData>  mxData;
+    o3tl::cow_wrapper<ImplStyleData> mxData;
 
 public:
                                     StyleSettings();
+                                    StyleSettings(const StyleSettings&);
+                                    ~StyleSettings();
+    StyleSettings&                  operator=(const StyleSettings&);
 
-    void                            Set3DColors( const Color& rColor );
+    SAL_DLLPRIVATE void             Set3DColors( const Color& rColor );
+
+    void                            SetSystemColorsLoaded( bool bLoaded );
+    bool                            GetSystemColorsLoaded() const;
 
     void                            SetFaceColor( const Color& rColor );
     const Color&                    GetFaceColor() const;
@@ -227,7 +240,7 @@ public:
     Color                           GetSeparatorColor() const;
 
     void                            SetCheckedColor( const Color& rColor );
-    void                            SetCheckedColorSpecialCase( );
+    SAL_DLLPRIVATE void             SetCheckedColorSpecialCase( );
     const Color&                    GetCheckedColor() const;
 
     void                            SetLightColor( const Color& rColor );
@@ -249,43 +262,43 @@ public:
     const Color&                    GetButtonTextColor() const;
 
     void                            SetDefaultActionButtonTextColor( const Color& rColor );
-    const Color&                    GetDefaultActionButtonTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetDefaultActionButtonTextColor() const;
 
     void                            SetActionButtonTextColor( const Color& rColor );
-    const Color&                    GetActionButtonTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetActionButtonTextColor() const;
 
     void                            SetFlatButtonTextColor( const Color& rColor );
-    const Color&                    GetFlatButtonTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetFlatButtonTextColor() const;
 
     void                            SetDefaultButtonRolloverTextColor( const Color& rColor );
-    const Color&                    GetDefaultButtonRolloverTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetDefaultButtonRolloverTextColor() const;
 
     void                            SetButtonRolloverTextColor( const Color& rColor );
     const Color&                    GetButtonRolloverTextColor() const;
 
     void                            SetDefaultActionButtonRolloverTextColor( const Color& rColor );
-    const Color&                    GetDefaultActionButtonRolloverTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetDefaultActionButtonRolloverTextColor() const;
 
     void                            SetActionButtonRolloverTextColor( const Color& rColor );
-    const Color&                    GetActionButtonRolloverTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetActionButtonRolloverTextColor() const;
 
     void                            SetFlatButtonRolloverTextColor( const Color& rColor );
-    const Color&                    GetFlatButtonRolloverTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetFlatButtonRolloverTextColor() const;
 
     void                            SetDefaultButtonPressedRolloverTextColor( const Color& rColor );
-    const Color&                    GetDefaultButtonPressedRolloverTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetDefaultButtonPressedRolloverTextColor() const;
 
     void                            SetButtonPressedRolloverTextColor( const Color& rColor );
-    const Color&                    GetButtonPressedRolloverTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetButtonPressedRolloverTextColor() const;
 
     void                            SetDefaultActionButtonPressedRolloverTextColor( const Color& rColor );
-    const Color&                    GetDefaultActionButtonPressedRolloverTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetDefaultActionButtonPressedRolloverTextColor() const;
 
     void                            SetActionButtonPressedRolloverTextColor( const Color& rColor );
-    const Color&                    GetActionButtonPressedRolloverTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetActionButtonPressedRolloverTextColor() const;
 
     void                            SetFlatButtonPressedRolloverTextColor( const Color& rColor );
-    const Color&                    GetFlatButtonPressedRolloverTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetFlatButtonPressedRolloverTextColor() const;
 
     void                            SetRadioCheckTextColor( const Color& rColor );
     const Color&                    GetRadioCheckTextColor() const;
@@ -353,6 +366,12 @@ public:
     void                            SetWarningColor( const Color& rColor );
     const Color&                    GetWarningColor() const;
 
+    const Color&                    GetWarningTextColor() const;
+
+    const Color&                    GetErrorColor() const;
+
+    const Color&                    GetErrorTextColor() const;
+
     void                            SetHelpColor( const Color& rColor );
     const Color&                    GetHelpColor() const;
 
@@ -390,28 +409,28 @@ public:
     const Color&                    GetMenuHighlightTextColor() const;
 
     void                            SetListBoxWindowBackgroundColor( const Color& rColor );
-    const Color&                    GetListBoxWindowBackgroundColor() const;
+    SAL_DLLPRIVATE const Color&     GetListBoxWindowBackgroundColor() const;
 
     void                            SetListBoxWindowTextColor( const Color& rColor );
-    const Color&                    GetListBoxWindowTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetListBoxWindowTextColor() const;
 
     void                            SetListBoxWindowHighlightColor( const Color& rColor );
-    const Color&                    GetListBoxWindowHighlightColor() const;
+    SAL_DLLPRIVATE const Color&     GetListBoxWindowHighlightColor() const;
 
     void                            SetListBoxWindowHighlightTextColor( const Color& rColor );
-    const Color&                    GetListBoxWindowHighlightTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetListBoxWindowHighlightTextColor() const;
 
     void                            SetTabTextColor( const Color& rColor );
-    const Color&                    GetTabTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetTabTextColor() const;
 
     void                            SetTabRolloverTextColor( const Color& rColor );
-    const Color&                    GetTabRolloverTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetTabRolloverTextColor() const;
 
     void                            SetTabHighlightTextColor( const Color& rColor );
-    const Color&                    GetTabHighlightTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetTabHighlightTextColor() const;
 
     void                            SetToolTextColor( const Color& rColor );
-    const Color&                    GetToolTextColor() const;
+    SAL_DLLPRIVATE const Color&     GetToolTextColor() const;
 
     void                            SetLinkColor( const Color& rColor );
     const Color&                    GetLinkColor() const;
@@ -429,7 +448,7 @@ public:
     const Color&                    GetInactiveTabColor() const;
 
     void SetAlternatingRowColor(const Color& rColor);
-    const Color&                    GetAlternatingRowColor() const;
+    SAL_DLLPRIVATE const Color&                    GetAlternatingRowColor() const;
 
     void                            SetHighContrastMode(bool bHighContrast );
     bool                            GetHighContrastMode() const;
@@ -440,20 +459,25 @@ public:
     void SetUseFontAAFromSystem(bool bUseFontAAFromSystem);
     bool GetUseFontAAFromSystem() const;
 
-    void                            SetUseFlatBorders( bool bUseFlatBorders );
-    bool                            GetUseFlatBorders() const;
+    // Using subpixel anti-aliasing is unwanted in some cases, like when saving to file,
+    // even when the use of anti-aliasing itself is defined by system settings.
+    void SetUseSubpixelAA(bool val);
+    bool GetUseSubpixelAA() const;
 
-    void                            SetUseFlatMenus( bool bUseFlatMenus );
-    bool                            GetUseFlatMenus() const;
+    SAL_DLLPRIVATE void             SetUseFlatBorders( bool bUseFlatBorders );
+    SAL_DLLPRIVATE bool             GetUseFlatBorders() const;
+
+    SAL_DLLPRIVATE void             SetUseFlatMenus( bool bUseFlatMenus );
+    SAL_DLLPRIVATE bool             GetUseFlatMenus() const;
 
     void                            SetUseImagesInMenus( TriState eUseImagesInMenus );
     bool                            GetUseImagesInMenus() const;
 
     void                            SetPreferredUseImagesInMenus( bool bPreferredUseImagesInMenus );
-    bool                            GetPreferredUseImagesInMenus() const;
+    SAL_DLLPRIVATE bool             GetPreferredUseImagesInMenus() const;
 
     void                            SetSkipDisabledInMenus( bool bSkipDisabledInMenus );
-    bool                            GetSkipDisabledInMenus() const;
+    SAL_DLLPRIVATE bool             GetSkipDisabledInMenus() const;
 
     void                            SetHideDisabledMenuItems( bool bHideDisabledMenuItems );
     bool                            GetHideDisabledMenuItems() const;
@@ -462,10 +486,10 @@ public:
     bool                            GetContextMenuShortcuts() const;
 
     void                            SetPreferredContextMenuShortcuts( bool bContextMenuShortcuts );
-    bool                            GetPreferredContextMenuShortcuts() const;
+    SAL_DLLPRIVATE bool             GetPreferredContextMenuShortcuts() const;
 
     void                            SetPrimaryButtonWarpsSlider( bool bPrimaryButtonWarpsSlider );
-    bool                            GetPrimaryButtonWarpsSlider() const;
+    SAL_DLLPRIVATE bool             GetPrimaryButtonWarpsSlider() const;
 
     void                            SetAppFont( const vcl::Font& rFont );
     const vcl::Font&                GetAppFont() const;
@@ -500,28 +524,28 @@ public:
     void                            SetFieldFont( const vcl::Font& rFont );
     const vcl::Font&                GetFieldFont() const;
 
-    void                            SetIconFont( const vcl::Font& rFont );
-    const vcl::Font&                GetIconFont() const;
+    SAL_DLLPRIVATE void             SetIconFont( const vcl::Font& rFont );
+    SAL_DLLPRIVATE const vcl::Font& GetIconFont() const;
 
     void                            SetTabFont( const vcl::Font& rFont );
     const vcl::Font&                GetTabFont() const;
 
-    static sal_Int32                GetBorderSize();
+    SAL_DLLPRIVATE static sal_Int32 GetBorderSize();
 
-    void                            SetTitleHeight( sal_Int32 nSize );
+    SAL_DLLPRIVATE void             SetTitleHeight( sal_Int32 nSize );
     sal_Int32                       GetTitleHeight() const;
 
-    void                            SetFloatTitleHeight( sal_Int32 nSize );
-    sal_Int32                       GetFloatTitleHeight() const;
+    SAL_DLLPRIVATE void             SetFloatTitleHeight( sal_Int32 nSize );
+    SAL_DLLPRIVATE sal_Int32        GetFloatTitleHeight() const;
 
     void                            SetScrollBarSize( sal_Int32 nSize );
     sal_Int32                       GetScrollBarSize() const;
 
     void                            SetMinThumbSize( sal_Int32 nSize );
-    sal_Int32                       GetMinThumbSize() const;
+    SAL_DLLPRIVATE sal_Int32        GetMinThumbSize() const;
 
-    void                            SetSpinSize( sal_Int32 nSize );
-    sal_Int32                       GetSpinSize() const;
+    SAL_DLLPRIVATE void             SetSpinSize( sal_Int32 nSize );
+    SAL_DLLPRIVATE sal_Int32        GetSpinSize() const;
 
     static sal_Int32                GetSplitSize();
 
@@ -538,10 +562,10 @@ public:
     SelectionOptions                GetSelectionOptions() const;
 
     void                            SetDisplayOptions( DisplayOptions nOptions );
-    DisplayOptions                  GetDisplayOptions() const;
+    SAL_DLLPRIVATE DisplayOptions   GetDisplayOptions() const;
 
     void                            SetAntialiasingMinPixelHeight( sal_Int32 nMinPixel );
-    sal_Int32                       GetAntialiasingMinPixelHeight() const;
+    SAL_DLLPRIVATE sal_Int32        GetAntialiasingMinPixelHeight() const;
 
     void                            SetOptions( StyleSettingsOptions nOptions );
     StyleSettingsOptions            GetOptions() const;
@@ -553,7 +577,7 @@ public:
 
     void                            SetToolbarIconSize( ToolbarIconSize nSize );
     ToolbarIconSize                 GetToolbarIconSize() const;
-    Size                            GetToolbarIconSizePixel() const;
+    SAL_DLLPRIVATE Size             GetToolbarIconSizePixel() const;
 
     /** Set the icon theme to use. */
     void                            SetIconTheme(const OUString&);
@@ -583,12 +607,7 @@ public:
     void                            SetPreferredIconTheme(const OUString&, bool bDarkIconTheme = false);
 
     const DialogStyle&              GetDialogStyle() const;
-
-    BitmapEx const &                GetPersonaHeader() const;
-
-    BitmapEx const &                GetPersonaFooter() const;
-
-    const std::optional<Color>&   GetPersonaMenuBarTextColor() const;
+    const Bitmap&                   GetAppBackgroundBitmap() const;
 
     // global switch to allow EdgeBlenging; currently possible for ValueSet and ListBox
     // when activated there using Get/SetEdgeBlending; default is true
@@ -612,11 +631,14 @@ public:
     void                            SetColorValueSetColumnCount(sal_uInt16 nCount);
     sal_uInt16                      GetColorValueSetColumnCount() const;
 
-    void                            SetListBoxPreviewDefaultLogicSize(Size const & rSize);
+    SAL_DLLPRIVATE void             SetListBoxPreviewDefaultLogicSize(Size const & rSize);
     const Size&                     GetListBoxPreviewDefaultPixelSize() const;
 
     // the default LineWidth for ListBox UI previews (LineStyle, LineDash, LineStartEnd). Default is 1.
     static sal_uInt16               GetListBoxPreviewDefaultLineWidth();
+
+    void SetComboBoxTextSelectionMode(ComboBoxTextSelectionMode eMode);
+    ComboBoxTextSelectionMode GetComboBoxTextSelectionMode() const;
 
     // defines if previews which contain potentially transparent objects (e.g. the dash/line/LineStartEnd previews and others)
     // use the default transparent visualization background (checkered background) as it has got standard in graphic programs nowadays
@@ -626,7 +648,6 @@ public:
     void                            SetStandardStyles();
 
     bool                            operator ==( const StyleSettings& rSet ) const;
-    bool                            operator !=( const StyleSettings& rSet ) const;
 
     // Batch setters used by various backends
     void                            BatchSetBackgrounds( const Color &aBackColor,
@@ -643,22 +664,19 @@ class VCL_DLLPUBLIC MiscSettings
 public:
                                     MiscSettings();
 
-#ifdef _WIN32
-    void                            SetEnableATToolSupport( bool bEnable );
-#endif
-    bool                            GetEnableATToolSupport() const;
+    static bool                     GetEnableATToolSupport();
     bool                            GetDisablePrinting() const;
     void                            SetEnableLocalizedDecimalSep( bool bEnable );
     bool                            GetEnableLocalizedDecimalSep() const;
-    // 0 auto, 1 light, 2, dark
-    static void                     SetDarkMode(int nMode);
-    static int                      GetDarkMode();
     // return if dark mode is active, resolving 'auto' to dark (true) or light (false)
     static bool                     GetUseDarkMode();
-    static void                     SetAppColorMode(int nMode);
-    static int                      GetAppColorMode();
+    static void                     SetAppColorMode(AppearanceMode nMode);
+    static AppearanceMode           GetAppColorMode();
     // return true if system preferences are set to use reduced animation
     static bool                     GetUseReducedAnimation();
+    static bool                     IsAnimatedGraphicAllowed();
+    static bool                     IsAnimatedOthersAllowed();
+    static bool                     IsAnimatedTextAllowed();
     bool                            operator ==( const MiscSettings& rSet ) const;
     bool                            operator !=( const MiscSettings& rSet ) const;
 };
@@ -696,12 +714,13 @@ namespace o3tl
 class VCL_DLLPUBLIC AllSettings
 {
 private:
-    void                                    CopyData();
-
-    std::shared_ptr<ImplAllSettingsData>    mxData;
+    o3tl::cow_wrapper<ImplAllSettingsData> mxData;
 
 public:
                                             AllSettings();
+                                            AllSettings(const AllSettings&);
+                                            ~AllSettings();
+    AllSettings&                            operator=(const AllSettings&);
 
     void                                    SetMouseSettings( const MouseSettings& rSet );
     const MouseSettings&                    GetMouseSettings() const;
@@ -734,13 +753,12 @@ public:
     SAL_DLLPRIVATE static AllSettingsFlags GetWindowUpdate()
     { return AllSettingsFlags::MOUSE | AllSettingsFlags::STYLE | AllSettingsFlags::MISC | AllSettingsFlags::LOCALE; }
 
-    AllSettingsFlags                        Update( AllSettingsFlags nFlags, const AllSettings& rSettings );
+    SAL_DLLPRIVATE AllSettingsFlags         Update( AllSettingsFlags nFlags, const AllSettings& rSettings );
     SAL_DLLPRIVATE AllSettingsFlags         GetChangeFlags( const AllSettings& rSettings ) const;
 
-    bool                                    operator ==( const AllSettings& rSet ) const;
-    bool                                    operator !=( const AllSettings& rSet ) const;
+    SAL_DLLPRIVATE bool                    operator ==( const AllSettings& rSet ) const;
     SAL_DLLPRIVATE static void             LocaleSettingsChanged( ConfigurationHints nHint );
-    SAL_DLLPRIVATE SvtSysLocale&           GetSysLocale();
+    SAL_DLLPRIVATE const SvtSysLocale&     GetSysLocale() const;
 };
 
 #endif // INCLUDED_VCL_SETTINGS_HXX

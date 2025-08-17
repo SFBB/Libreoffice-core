@@ -30,7 +30,6 @@
 using namespace     ::com::sun::star::container;
 using namespace     ::com::sun::star::lang;
 using namespace     ::com::sun::star::uno;
-using namespace     ::com::sun::star::beans;
 
 SvtFolderPicker::SvtFolderPicker()
 {
@@ -71,7 +70,7 @@ void SAL_CALL SvtFolderPicker::startExecuteModal( const Reference< css::ui::dial
 
 std::shared_ptr<SvtFileDialog_Base> SvtFolderPicker::implCreateDialog( weld::Window* pParent )
 {
-    return o3tl::make_shared<SvtFileDialog>(pParent, PickerFlags::PathDialog);
+    return std::make_shared<SvtFileDialog>(pParent, PickerFlags::PathDialog);
 }
 
 sal_Int16 SvtFolderPicker::implExecutePicker( )
@@ -150,7 +149,7 @@ void SvtFolderPicker::cancel()
 /* XServiceInfo */
 OUString SAL_CALL SvtFolderPicker::getImplementationName()
 {
-    return "com.sun.star.svtools.OfficeFolderPicker";
+    return u"com.sun.star.svtools.OfficeFolderPicker"_ustr;
 }
 
 /* XServiceInfo */
@@ -162,7 +161,7 @@ sal_Bool SAL_CALL SvtFolderPicker::supportsService( const OUString& sServiceName
 /* XServiceInfo */
 Sequence< OUString > SAL_CALL SvtFolderPicker::getSupportedServiceNames()
 {
-    return { "com.sun.star.ui.dialogs.OfficeFolderPicker" };
+    return { u"com.sun.star.ui.dialogs.OfficeFolderPicker"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

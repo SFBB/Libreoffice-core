@@ -30,7 +30,6 @@
 #include <svx/dialmgr.hxx>
 #include <svx/strings.hrc>
 #include <comphelper/accessiblecontexthelper.hxx>
-#include <comphelper/types.hxx>
 
 namespace svx
 {
@@ -52,11 +51,12 @@ SvxShowCharSetItem::~SvxShowCharSetItem()
     if ( m_xItem.is() )
     {
         m_xItem->ParentDestroyed();
+        m_xItem->dispose();
         m_xItem.clear();
     }
 }
 
-rtl::Reference<SvxShowCharSetItemAcc> SvxShowCharSetItem::GetAccessible()
+const rtl::Reference<SvxShowCharSetItemAcc> & SvxShowCharSetItem::GetAccessible()
 {
     if( !m_xItem.is() )
     {
@@ -69,11 +69,6 @@ rtl::Reference<SvxShowCharSetItemAcc> SvxShowCharSetItem::GetAccessible()
 SvxShowCharSetAcc::SvxShowCharSetAcc(SvxShowCharSet* pParent)
     : m_pParent(pParent)
 {
-    osl_atomic_increment(&m_refCount);
-    {
-        lateInit(this);
-    }
-    osl_atomic_decrement(&m_refCount);
 }
 
 SvxShowCharSetAcc::~SvxShowCharSetAcc()
@@ -228,16 +223,13 @@ uno::Reference< css::accessibility::XAccessible > SAL_CALL SvxShowCharSetAcc::ge
 {
     OExternalLockGuard aGuard( this );
 
-    uno::Reference< css::accessibility::XAccessible >    xRet;
     const sal_uInt16 nItemId = sal::static_int_cast<sal_uInt16>(
         m_pParent->PixelToMapIndex( Point( aPoint.X, aPoint.Y ) ));
 
-    if( sal_uInt16(-1) != nItemId )
-    {
-        SvxShowCharSetItem* pItem = m_pParent->ImplGetItem( nItemId );
-        xRet = pItem->GetAccessible();
-    }
-    return xRet;
+    if( sal_uInt16(-1) == nItemId )
+        return nullptr;
+    SvxShowCharSetItem* pItem = m_pParent->ImplGetItem( nItemId );
+    return pItem->GetAccessible();
 }
 
 void SAL_CALL SvxShowCharSetAcc::grabFocus()
@@ -366,11 +358,6 @@ sal_Int32 SAL_CALL SvxShowCharSetAcc::getAccessibleColumn( sal_Int64 nChildIndex
 SvxShowCharSetItemAcc::SvxShowCharSetItemAcc( SvxShowCharSetItem* pParent ) : mpParent( pParent )
 {
     OSL_ENSURE(pParent,"NO parent supplied!");
-    osl_atomic_increment(&m_refCount);
-    { // #b6211265 #
-        lateInit(this);
-    }
-    osl_atomic_decrement(&m_refCount);
 }
 
 
@@ -520,7 +507,7 @@ sal_Bool SvxShowCharSetItemAcc::doAccessibleAction ( sal_Int32 nIndex )
 OUString SvxShowCharSetItemAcc::getAccessibleActionDescription ( sal_Int32 nIndex )
 {
     if( nIndex == 0 )
-        return "press";
+        return u"press"_ustr;
     throw IndexOutOfBoundsException();
 }
 

@@ -46,10 +46,7 @@ namespace svxform
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::form;
-    using namespace ::com::sun::star::awt;
     using namespace ::com::sun::star::container;
-    using namespace ::com::sun::star::script;
-    using namespace ::com::sun::star::sdb;
 
     OFormComponentObserver::OFormComponentObserver(NavigatorTreeModel* _pModel)
         :m_pNavModel(_pModel)
@@ -459,7 +456,7 @@ namespace svxform
 
 
         // unregister as PropertyChangeListener
-        Reference< XPropertySet > xSet( pFormData->GetPropertySet() );
+        const Reference< XPropertySet >& xSet( pFormData->GetPropertySet() );
         if ( xSet.is() )
             xSet->removePropertyChangeListener( FM_PROP_NAME, m_pPropChangeList );
     }
@@ -474,7 +471,7 @@ namespace svxform
 
 
         // unregister as PropertyChangeListener
-        Reference< XPropertySet >  xSet( pControlData->GetPropertySet() );
+        const Reference< XPropertySet >&  xSet( pControlData->GetPropertySet() );
         if (xSet.is())
             xSet->removePropertyChangeListener( FM_PROP_NAME, m_pPropChangeList);
     }
@@ -678,8 +675,9 @@ namespace svxform
             UpdateContent(nullptr);
         }
         // changed mark of controls?
-        else if (const FmNavViewMarksChanged* pvmcHint = dynamic_cast<const FmNavViewMarksChanged*>(&rHint))
+        else if (rHint.GetId() == SfxHintId::FmNavViewMarksChanged)
         {
+            const FmNavViewMarksChanged* pvmcHint = static_cast<const FmNavViewMarksChanged*>(&rHint);
             BroadcastMarkedObjects(pvmcHint->GetAffectedView()->GetMarkedObjectList());
         }
     }
@@ -794,7 +792,6 @@ namespace svxform
             // an empty list causes NavigatorTree to remove his selection
     }
 
-
     void NavigatorTreeModel::UpdateContent( const Reference< css::form::XForms > & xForms )
     {
 
@@ -812,10 +809,9 @@ namespace svxform
         if(!m_pFormShell) return;       // no shell
 
         FmFormView* pFormView = m_pFormShell->GetFormView();
-        DBG_ASSERT(pFormView != nullptr, "NavigatorTreeModel::UpdateContent : no FormView");
+        assert(pFormView != nullptr && "NavigatorTreeModel::UpdateContent : no FormView");
         BroadcastMarkedObjects(pFormView->GetMarkedObjectList());
     }
-
 
     void NavigatorTreeModel::UpdateContent( FmFormShell* pShell )
     {
@@ -857,7 +853,6 @@ namespace svxform
         }
     }
 
-
     Reference< XIndexContainer >  NavigatorTreeModel::GetFormComponents( FmFormData const * pFormData )
     {
 
@@ -867,7 +862,6 @@ namespace svxform
 
         return Reference< XIndexContainer > ();
     }
-
 
     bool NavigatorTreeModel::Rename( FmEntryData* pEntryData, const OUString& rNewText )
     {

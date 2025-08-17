@@ -34,7 +34,6 @@ namespace dbaui
 {
 
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
 
 OUserSettingsDialog::OUserSettingsDialog(const Reference< XComponentContext >& _rxORB)
@@ -49,12 +48,12 @@ Sequence<sal_Int8> SAL_CALL OUserSettingsDialog::getImplementationId(  )
 
 OUString SAL_CALL OUserSettingsDialog::getImplementationName()
 {
-    return "org.openoffice.comp.dbu.OUserSettingsDialog";
+    return u"org.openoffice.comp.dbu.OUserSettingsDialog"_ustr;
 }
 
 css::uno::Sequence<OUString> SAL_CALL OUserSettingsDialog::getSupportedServiceNames()
 {
-    return { "com.sun.star.sdb.UserAdministrationDialog" };
+    return { u"com.sun.star.sdb.UserAdministrationDialog"_ustr };
 }
 
 Reference<XPropertySetInfo>  SAL_CALL OUserSettingsDialog::getPropertySetInfo()

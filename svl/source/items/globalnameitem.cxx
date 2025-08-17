@@ -30,7 +30,8 @@
 SfxPoolItem* SfxGlobalNameItem::CreateDefault() { return new SfxGlobalNameItem; }
 
 
-SfxGlobalNameItem::SfxGlobalNameItem()
+SfxGlobalNameItem::SfxGlobalNameItem() :
+    SfxPoolItem(0)
 {
 }
 

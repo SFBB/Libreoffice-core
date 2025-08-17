@@ -301,7 +301,9 @@ void SheetDataContext::importRow( const AttributeList& rAttribs )
     {
         std::u16string_view aColSpanToken = o3tl::getToken(aColSpansText, 0, ' ', nIndex );
         size_t nSepPos = aColSpanToken.find( ':' );
-        if( (0 < nSepPos) && (nSepPos + 1 < aColSpanToken.size()) )
+        if (nSepPos == std::u16string_view::npos)
+            continue;
+        if (nSepPos > 0 && (nSepPos + 1 < aColSpanToken.size()))
         {
             // OOXML uses 1-based integer column indexes, row model expects 0-based colspans
             const sal_Int32 nCol1 = o3tl::toInt32(aColSpanToken.substr( 0, nSepPos )) - 1;
@@ -320,20 +322,23 @@ void SheetDataContext::importRow( const AttributeList& rAttribs )
 
 bool SheetDataContext::importCell( const AttributeList& rAttribs )
 {
-    bool bValid = true;
+    bool bValid = false;
     std::string_view p = rAttribs.getView(XML_r);
 
-    if (p.empty())
+    if (!p.empty())
+    {
+        bValid = mrAddressConv.convertToCellAddress(maCellData.maCellAddr, OUString::fromUtf8(p),
+                                                    mnSheet, true);
+        if (bValid)
+            mnCol = maCellData.maCellAddr.Col();
+    }
+
+    if (!bValid)
     {
         ++mnCol;
         ScAddress aAddress( mnCol, mnRow, mnSheet );
         bValid = mrAddressConv.checkCellAddress( aAddress, true );
         maCellData.maCellAddr = aAddress;
-    }
-    else
-    {
-        bValid = mrAddressConv.convertToCellAddress(maCellData.maCellAddr, p, mnSheet, true);
-        mnCol = maCellData.maCellAddr.Col();
     }
 
     if( bValid )

@@ -60,7 +60,6 @@ void GtkSalObjectBase::Init()
     // system data
     // tdf#139609 deliberately defer using m_pParent->GetNativeWindowHandle(m_pSocket)) to set m_aSystemData.aWindow
     // unless its explicitly needed
-    m_aSystemData.aShellWindow  = reinterpret_cast<sal_IntPtr>(this);
     m_aSystemData.pSalFrame     = nullptr;
     m_aSystemData.pWidget       = m_pSocket;
     m_aSystemData.nScreen       = m_pParent->getXScreenNumber().getXScreen();
@@ -205,12 +204,7 @@ void GtkSalObject::Reparent(SalFrame* pFrame)
 void GtkSalObject::Show( bool bVisible )
 {
     if( m_pSocket )
-    {
-        if( bVisible )
-            gtk_widget_show(m_pSocket);
-        else
-            gtk_widget_hide(m_pSocket);
-    }
+        gtk_widget_set_visible(m_pSocket, bVisible);
 }
 
 Size GtkSalObjectBase::GetOptimalSize() const
@@ -239,9 +233,9 @@ Size GtkSalObjectBase::GetOptimalSize() const
     return Size();
 }
 
-const SystemEnvData* GtkSalObjectBase::GetSystemData() const
+const SystemEnvData& GtkSalObjectBase::GetSystemData() const
 {
-    return &m_aSystemData;
+    return m_aSystemData;
 }
 
 #if !GTK_CHECK_VERSION(4, 0, 0)
@@ -327,7 +321,7 @@ GtkSalObjectWidgetClip::GtkSalObjectWidgetClip(GtkSalFrame* pParent, bool bShow)
 #else
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(m_pScrolledWindow), m_pViewPort);
 #endif
-    gtk_widget_show(m_pViewPort);
+    gtk_widget_set_visible(m_pViewPort, true);
 
     // our plug window
     m_pSocket = gtk_grid_new();
@@ -336,7 +330,7 @@ GtkSalObjectWidgetClip::GtkSalObjectWidgetClip(GtkSalFrame* pParent, bool bShow)
 #else
     gtk_viewport_set_child(GTK_VIEWPORT(m_pViewPort), m_pSocket);
 #endif
-    gtk_widget_show(m_pSocket);
+    gtk_widget_set_visible(m_pSocket, true);
 
     Show(bShow);
 
@@ -514,7 +508,7 @@ void GtkSalObjectWidgetClip::Show( bool bVisible )
         return;
     if( bVisible )
     {
-        gtk_widget_show(m_pScrolledWindow);
+        gtk_widget_set_visible(m_pScrolledWindow, true);
         // tdf#146641 allocations attempted while hidden are discarded by gtk,
         // so on transition to visible ApplyClipRegion needs to be called
         ApplyClipRegion();
@@ -531,7 +525,7 @@ void GtkSalObjectWidgetClip::Show( bool bVisible )
 
         g_object_set_data(G_OBJECT(pTopLevel), "g-lo-BlockFocusChange", GINT_TO_POINTER(true) );
 
-        gtk_widget_hide(m_pScrolledWindow);
+        gtk_widget_set_visible(m_pScrolledWindow, false);
 
         GtkWidget* pNewFocus = GTK_IS_WINDOW(pTopLevel) ? gtk_window_get_focus(GTK_WINDOW(pTopLevel)) : nullptr;
         if (pOldFocus && pOldFocus != pNewFocus)

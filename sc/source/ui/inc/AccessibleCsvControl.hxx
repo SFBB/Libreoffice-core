@@ -28,7 +28,7 @@
 #include <tools/gen.hxx>
 #include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
-#include <comphelper/accessiblecomponenthelper.hxx>
+#include <comphelper/OAccessible.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <editeng/AccessibleStaticTextBase.hxx>
 #include <comphelper/uno3.hxx>
@@ -37,7 +37,7 @@
 class ScCsvControl;
 
 /** Accessible base class used for CSV controls. */
-class ScAccessibleCsvControl : public comphelper::OAccessibleComponentHelper
+class ScAccessibleCsvControl : public comphelper::OAccessible
 {
 private:
     ScCsvControl*               mpControl;          /// Pointer to the VCL control.
@@ -82,10 +82,8 @@ protected:
 class ScCsvRuler;
 
 /** Accessible class representing the CSV ruler control. */
-class ScAccessibleCsvRuler : public cppu::ImplInheritanceHelper<
-                                     ScAccessibleCsvControl,
-                                     css::accessibility::XAccessible,
-                                     css::accessibility::XAccessibleText>
+class ScAccessibleCsvRuler final : public cppu::ImplInheritanceHelper<ScAccessibleCsvControl,
+                                                                css::accessibility::XAccessibleText>
 {
 private:
     OUStringBuffer       maBuffer;   /// Contains the text representation of the ruler.
@@ -93,9 +91,6 @@ private:
 public:
     explicit                    ScAccessibleCsvRuler( ScCsvRuler& rRuler );
     virtual                     ~ScAccessibleCsvRuler() override;
-
-    // XAccessibleComponent -----------------------------------------------------
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override { return this; }
 
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleParent(  ) override;
 
@@ -213,11 +208,10 @@ class ScCsvGrid;
 class ScAccessibleCsvCell;
 
 /** Accessible class representing the CSV grid control. */
-class ScAccessibleCsvGrid : public cppu::ImplInheritanceHelper<
-                                ScAccessibleCsvControl,
-                                css::accessibility::XAccessible,
-                                css::accessibility::XAccessibleTable,
-                                css::accessibility::XAccessibleSelection>
+class ScAccessibleCsvGrid final
+    : public cppu::ImplInheritanceHelper<ScAccessibleCsvControl,
+                                         css::accessibility::XAccessibleTable,
+                                         css::accessibility::XAccessibleSelection>
 {
 protected:
     typedef std::map< sal_Int64, rtl::Reference<ScAccessibleCsvCell> > XAccessibleSet;
@@ -229,9 +223,6 @@ public:
     explicit                    ScAccessibleCsvGrid( ScCsvGrid& rGrid );
     virtual                     ~ScAccessibleCsvGrid() override;
     virtual void SAL_CALL       disposing() override;
-
-    // XAccessibleComponent ---------------------------------------------------
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override { return this; }
 
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleParent(  ) override;
 
@@ -399,10 +390,8 @@ private:
 };
 
 /** Accessible class representing a cell of the CSV grid control. */
-class ScAccessibleCsvCell : public cppu::ImplInheritanceHelper<
-                                ScAccessibleCsvControl,
-                                css::accessibility::XAccessible>
-                          , public ::accessibility::AccessibleStaticTextBase
+class ScAccessibleCsvCell final : public ScAccessibleCsvControl,
+                            public ::accessibility::AccessibleStaticTextBase
 {
 protected:
     typedef ::std::unique_ptr< SvxEditSource >      SvxEditSourcePtr;
@@ -428,8 +417,6 @@ public:
     virtual void SAL_CALL grabFocus() override;
 
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleParent(  ) override;
-
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override { return this; }
 
     virtual OUString SAL_CALL getAccessibleDescription(  ) override;
     virtual OUString SAL_CALL getAccessibleName(  ) override;

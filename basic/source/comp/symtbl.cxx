@@ -40,10 +40,10 @@ SbiStringPool::SbiStringPool( )
 SbiStringPool::~SbiStringPool()
 {}
 
-OUString SbiStringPool::Find( sal_uInt32 n ) const
+const OUString & SbiStringPool::Find( sal_uInt32 n ) const
 {
     if( n == 0 || n > aData.size() )
-        return OUString();
+        return EMPTY_OUSTRING;
     else
         return aData[n - 1];
 }
@@ -170,7 +170,7 @@ void SbiSymPool::Add( SbiSymDef* pDef )
     {
 #ifdef DBG_UTIL
 
-        pParser->Error( ERRCODE_BASIC_INTERNAL_ERROR, "Dbl Pool" );
+        pParser->Error( ERRCODE_BASIC_INTERNAL_ERROR, u"Dbl Pool"_ustr );
 #endif
         return;
     }
@@ -494,7 +494,7 @@ void SbiProcDef::setPropertyMode( PropertyMode ePropMode )
 
     // CompleteProcName includes "Property xxx "
     // to avoid conflicts with other symbols
-    OUString aCompleteProcName = "Property ";
+    OUString aCompleteProcName = u"Property "_ustr;
     switch( mePropMode )
     {
     case PropertyMode::Get:  aCompleteProcName += "Get "; break;

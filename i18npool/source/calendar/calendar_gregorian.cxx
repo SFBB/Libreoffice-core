@@ -157,7 +157,7 @@ Calendar_gregorian::Calendar_gregorian(const Era *_earArray)
 void
 Calendar_gregorian::init(const Era *_eraArray)
 {
-    cCalendar = "com.sun.star.i18n.Calendar_gregorian";
+    cCalendar = u"com.sun.star.i18n.Calendar_gregorian"_ustr;
 
     fieldSet = 0;
 
@@ -199,7 +199,7 @@ Calendar_gregorian::~Calendar_gregorian()
 
 Calendar_hanja::Calendar_hanja()
 {
-    cCalendar = "com.sun.star.i18n.Calendar_hanja";
+    cCalendar = u"com.sun.star.i18n.Calendar_hanja"_ustr;
 }
 
 OUString SAL_CALL
@@ -207,7 +207,7 @@ Calendar_hanja::getDisplayName( sal_Int16 displayIndex, sal_Int16 idx, sal_Int16
 {
     if ( displayIndex == CalendarDisplayIndex::AM_PM ) {
         // Am/Pm string for Korean Hanja calendar will refer to Japanese locale
-        css::lang::Locale jaLocale("ja", OUString(), OUString());
+        css::lang::Locale jaLocale(u"ja"_ustr, OUString(), OUString());
         if (idx == 0) return LocaleDataImpl::get()->getLocaleItem(jaLocale).timeAM;
         else if (idx == 1) return LocaleDataImpl::get()->getLocaleItem(jaLocale).timePM;
         else throw RuntimeException();
@@ -219,7 +219,7 @@ Calendar_hanja::getDisplayName( sal_Int16 displayIndex, sal_Int16 idx, sal_Int16
 
 Calendar_hanja_yoil::Calendar_hanja_yoil()
 {
-    cCalendar = "com.sun.star.i18n.Calendar_hanja_yoil";
+    cCalendar = u"com.sun.star.i18n.Calendar_hanja_yoil"_ustr;
 }
 
 OUString SAL_CALL
@@ -227,7 +227,7 @@ Calendar_hanja_yoil::getDisplayName( sal_Int16 displayIndex, sal_Int16 idx, sal_
 {
     if ( displayIndex == CalendarDisplayIndex::AM_PM ) {
         // Am/Pm string for Korean Hanja calendar will refer to Japanese locale
-        css::lang::Locale jaLocale("ja", OUString(), OUString());
+        css::lang::Locale jaLocale(u"ja"_ustr, OUString(), OUString());
         if (idx == 0) return LocaleDataImpl::get()->getLocaleItem(jaLocale).timeAM;
         else if (idx == 1) return LocaleDataImpl::get()->getLocaleItem(jaLocale).timePM;
         else throw RuntimeException();
@@ -247,7 +247,7 @@ const Era gengou_eraArray[] = {
 };
 Calendar_gengou::Calendar_gengou() : Calendar_gregorian(gengou_eraArray)
 {
-    cCalendar = "com.sun.star.i18n.Calendar_gengou";
+    cCalendar = u"com.sun.star.i18n.Calendar_gengou"_ustr;
 }
 
 const Era ROC_eraArray[] = {
@@ -256,7 +256,7 @@ const Era ROC_eraArray[] = {
 };
 Calendar_ROC::Calendar_ROC() : Calendar_gregorian(ROC_eraArray)
 {
-    cCalendar = "com.sun.star.i18n.Calendar_ROC";
+    cCalendar = u"com.sun.star.i18n.Calendar_ROC"_ustr;
 }
 
 /**
@@ -269,7 +269,7 @@ const Era dangi_eraArray[] = {
 };
 Calendar_dangi::Calendar_dangi() : Calendar_gregorian(dangi_eraArray)
 {
-    cCalendar = "com.sun.star.i18n.Calendar_dangi";
+    cCalendar = u"com.sun.star.i18n.Calendar_dangi"_ustr;
 }
 
 const Era buddhist_eraArray[] = {
@@ -278,7 +278,7 @@ const Era buddhist_eraArray[] = {
 };
 Calendar_buddhist::Calendar_buddhist() : Calendar_gregorian(buddhist_eraArray)
 {
-    cCalendar = "com.sun.star.i18n.Calendar_buddhist";
+    cCalendar = u"com.sun.star.i18n.Calendar_buddhist"_ustr;
 }
 
 void SAL_CALL
@@ -1030,8 +1030,8 @@ Calendar_gregorian::getDisplayStringImpl( sal_Int32 nCalendarDisplayCode, sal_In
                 nCalendarDisplayCode == CalendarDisplayCode::LONG_YEAR)
             && (nNativeNumberMode == NativeNumberMode::NATNUM1 ||
                 nNativeNumberMode == NativeNumberMode::NATNUM2)) {
-            static sal_Unicode gan = 0x5143;
-            return OUString(&gan, 1);
+            constexpr sal_Unicode gan = 0x5143;
+            return OUString(gan);
         }
         sal_Int16 nNatNum = NatNumForCalendar(aLocale, nCalendarDisplayCode, nNativeNumberMode, value);
         if (nNatNum > 0)
@@ -1061,7 +1061,7 @@ Calendar_buddhist::getDisplayString( sal_Int32 nCalendarDisplayCode, sal_Int16 n
 OUString SAL_CALL
 Calendar_gregorian::getImplementationName()
 {
-    return OUString::createFromAscii(cCalendar);
+    return cCalendar;
 }
 
 sal_Bool SAL_CALL
@@ -1073,8 +1073,7 @@ Calendar_gregorian::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 Calendar_gregorian::getSupportedServiceNames()
 {
-    Sequence< OUString > aRet { OUString::createFromAscii(cCalendar) };
-    return aRet;
+    return { cCalendar };
 }
 
 }

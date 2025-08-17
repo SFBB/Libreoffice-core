@@ -50,14 +50,12 @@
 #include <salhelper/simplereferenceobject.hxx>
 
 namespace com::sun::star {
-    namespace awt { struct Size; }
     namespace drawing { class XShape; }
     namespace form { class XFormComponent; }
     namespace frame { class XModel; }
 }
 
 class SdrPage;
-class SdrObject;
 class SvStream;
 class SfxItemSet;
 class SdrOutliner;
@@ -174,9 +172,6 @@ enum class TSS_Type : unsigned {
 };
 
 const int nMaxPPTLevels = 10;
-
-// Object IDs for StarDraw UserData
-#define PPT_OBJECTINFO_ID       (1)
 
 struct MSFILTER_DLLPUBLIC PptDocumentAtom
 {
@@ -655,7 +650,7 @@ public:
                                 const sal_uInt32* pTableArry,
                                 SvxMSDffSolverContainer* pSolverContainer
                             );
-    virtual bool ReadFormControl( tools::SvRef<SotStorage>& rSrc1, css::uno::Reference< css::form::XFormComponent > & rFormComp ) const = 0;
+    virtual bool ReadFormControl( rtl::Reference<SotStorage>& rSrc1, css::uno::Reference< css::form::XFormComponent > & rFormComp ) const = 0;
 };
 
 struct PPTTextParagraphStyleAtomInterpreter
@@ -906,14 +901,8 @@ struct ImplPPTParaPropSet final : public salhelper::SimpleReferenceObject
 
 struct PPTParaPropSet
 {
-    sal_uInt32          mnOriginalTextPos;
     rtl::Reference<ImplPPTParaPropSet> mxParaSet;
-
-                        PPTParaPropSet();
-                        PPTParaPropSet( PPTParaPropSet const & rParaPropSet );
-                        ~PPTParaPropSet();
-
-    PPTParaPropSet&     operator=( const PPTParaPropSet& rParaPropSet );
+    PPTParaPropSet();
 };
 
 struct ImplPPTCharPropSet
@@ -1085,14 +1074,13 @@ struct PPTStyleTextPropReader
                 const DffRecordHeader& rTextHeader,
                 const OUString& aString,
                 PPTTextRulerInterpreter const & rRuler,
-                sal_uInt32& nCharCount,
                 bool& bTextPropAtom
             );
-    static void ReadCharProps(
+    // returns CharCount
+    static sal_uInt32 ReadCharProps(
                 SvStream& rIn,
                 PPTCharPropSet& aCharPropSet,
                 std::u16string_view aString,
-                sal_uInt32& nCharCount,
                 sal_uInt32 nCharReadCnt,
                 bool& bTextPropAtom,
                 sal_uInt32 nExtParaPos,
@@ -1285,7 +1273,7 @@ public:
         ePageKind               ( ePKind ),
         mpPPTImporter           ( pPPTImporter )
     {};
-    bool ReadOCXStream( tools::SvRef<SotStorage>& rSrc1,
+    bool ReadOCXStream( rtl::Reference<SotStorage>& rSrc1,
         css::uno::Reference<css::drawing::XShape > *pShapeRef );
     virtual bool InsertControl(
         const css::uno::Reference< css::form::XFormComponent > &rFComp,

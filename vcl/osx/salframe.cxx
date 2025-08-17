@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <IconThemeSelector.hxx>
 #include <string>
 
 #include <comphelper/fileurl.hxx>
@@ -34,6 +35,7 @@
 #include <vcl/window.hxx>
 #include <vcl/syswin.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/themecolors.hxx>
 
 #include <osx/saldata.hxx>
 #include <quartz/salgdi.h>
@@ -55,7 +57,6 @@
 #include <quartz/CGHelpers.hxx>
 #include <postmac.h>
 
-
 const int nMinBlinkCursorDelay = 500;
 
 AquaSalFrame* AquaSalFrame::s_pCaptureFrame = nullptr;
@@ -70,8 +71,7 @@ AquaSalFrame::AquaSalFrame( SalFrame* pParent, SalFrameStyleFlags salFrameStyle 
     mnMinHeight(0),
     mnMaxWidth(0),
     mnMaxHeight(0),
-    mbGraphics(false),
-    mbFullScreen( false ),
+    mbGraphicsAcquired(false),
     mbShown(false),
     mbInitShow(true),
     mbPositioned(false),
@@ -87,7 +87,13 @@ AquaSalFrame::AquaSalFrame( SalFrame* pParent, SalFrameStyleFlags salFrameStyle 
     mrClippingPath( nullptr ),
     mnICOptions( InputContextFlags::NONE ),
     mnBlinkCursorDelay( nMinBlinkCursorDelay ),
-    mbForceFlush( false )
+    mbForceFlushScrolling( false ),
+    mbForceFlushProgressBar( false ),
+    mbInternalFullScreen( false ),
+    maInternalFullScreenRestoreRect( NSZeroRect ),
+    maInternalFullScreenExpectedRect( NSZeroRect ),
+    mbNativeFullScreen( false ),
+    maNativeFullScreenRestoreRect( NSZeroRect )
 {
     mpParent = dynamic_cast<AquaSalFrame*>(pParent);
 
@@ -119,7 +125,7 @@ AquaSalFrame::AquaSalFrame( SalFrame* pParent, SalFrameStyleFlags salFrameStyle 
 
 AquaSalFrame::~AquaSalFrame()
 {
-    if (mbFullScreen)
+    if (mbInternalFullScreen)
         doShowFullScreen(false, maGeometry.screen());
 
     assert( GetSalData()->mpInstance->IsMainThread() );
@@ -244,20 +250,6 @@ void AquaSalFrame::initWindowAndView()
 
     [mpNSWindow setRestorable:NO];
 
-    // tdf#155092 use tracking areas instead of tracking rectangles
-    // Apparently, the older, tracking rectangles selectors cause
-    // unexpected window resizing upon the first mouse down after the
-    // window has been manually resized so switch to the newer,
-    // tracking areas selectors. Also, the NSTrackingInVisibleRect
-    // option allows us to create one single tracking area that
-    // resizes itself automatically over the lifetime of the view.
-    // Note: for some unknown reason, both NSTrackingMouseMoved and
-    // NSTrackingAssumeInside are necessary options for this fix
-    // to work.
-    NSTrackingArea *pTrackingArea = [[NSTrackingArea alloc] initWithRect: [mpNSView bounds] options: ( NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSTrackingActiveAlways | NSTrackingAssumeInside | NSTrackingInVisibleRect ) owner: mpNSView userInfo: nil];
-    [mpNSView addTrackingArea: pTrackingArea];
-    [pTrackingArea release];
-
     maSysData.mpNSView = mpNSView;
 
     UpdateFrameGeometry();
@@ -317,7 +309,7 @@ void AquaSalFrame::screenParametersChanged()
 
 SalGraphics* AquaSalFrame::AcquireGraphics()
 {
-    if ( mbGraphics )
+    if ( mbGraphicsAcquired )
         return nullptr;
 
     if ( !mpGraphics )
@@ -326,14 +318,14 @@ SalGraphics* AquaSalFrame::AcquireGraphics()
         mpGraphics->SetWindowGraphics( this );
     }
 
-    mbGraphics = true;
+    mbGraphicsAcquired = true;
     return mpGraphics;
 }
 
 void AquaSalFrame::ReleaseGraphics( SalGraphics *pGraphics )
 {
     SAL_WARN_IF( pGraphics != mpGraphics, "vcl", "graphics released on wrong frame" );
-    mbGraphics = false;
+    mbGraphicsAcquired = false;
 }
 
 bool AquaSalFrame::PostEvent(std::unique_ptr<ImplSVEvent> pData)
@@ -413,7 +405,7 @@ void AquaSalFrame::initShow()
     OSX_SALDATA_RUNINMAIN( initShow() )
 
     mbInitShow = false;
-    if( ! mbPositioned && ! mbFullScreen )
+    if( ! mbPositioned && ! mbInternalFullScreen )
     {
         AbsoluteScreenPixelRectangle aScreenRect;
         GetWorkArea( aScreenRect );
@@ -554,7 +546,26 @@ void AquaSalFrame::Show(bool bVisible, bool bNoActivate)
         if( mpParent && [mpNSWindow parentWindow] == mpParent->mpNSWindow )
             [mpParent->mpNSWindow removeChildWindow: mpNSWindow];
 
-        [mpNSWindow orderOut: NSApp];
+        // Related: tdf#161623 close windows, don't order them out
+        // Ordering out a native full screen window would leave the
+        // application in a state where there is no Desktop and both
+        // the menubar and the Dock are hidden.
+        [mpNSWindow close];
+
+        // Related: tdf#165448 move parent window to front after closing window
+        // When a floating window such as the dropdown list in the
+        // font combobox is open when selecting any of the menu items
+        // inserted by macOS in the windows menu, the parent window
+        // will be hidden. So if there is a key window, force the key
+        // window back to the front.
+        // Previously, delaying closing of the window was used to avoid
+        // this bug, but that caused Skia/Metal to crash when the
+        // window was released before the delayed close occurred. This
+        // crash was found when rapidly dragging the border between two
+        // column headings side to side in a Calc document.
+        NSWindow *pKeyWin = [NSApp keyWindow];
+        if( pKeyWin )
+            [pKeyWin orderFront: NSApp];
     }
 }
 
@@ -685,7 +696,7 @@ void AquaSalFrame::SetWindowState(const vcl::WindowData* pState)
 
     // set normal state
     NSRect aStateRect = [mpNSWindow frame];
-    aStateRect = [NSWindow contentRectForFrameRect: aStateRect styleMask: mnStyleMask];
+    aStateRect = [mpNSWindow contentRectForFrameRect: aStateRect];
     CocoaToVCL(aStateRect);
     if (pState->mask() & vcl::WindowDataMask::X)
         aStateRect.origin.x = float(pState->x());
@@ -696,7 +707,15 @@ void AquaSalFrame::SetWindowState(const vcl::WindowData* pState)
     if (pState->mask() & vcl::WindowDataMask::Height)
         aStateRect.size.height = float(pState->height());
     VCLToCocoa(aStateRect);
-    aStateRect = [NSWindow frameRectForContentRect: aStateRect styleMask: mnStyleMask];
+
+    // Related: tdf#128186 don't change size of native full screen windows
+    if ([mpNSWindow styleMask] & NSWindowStyleMaskFullScreen)
+    {
+        maNativeFullScreenRestoreRect = aStateRect;
+        return;
+    }
+
+    aStateRect = [mpNSWindow frameRectForContentRect: aStateRect];
     [mpNSWindow setFrame: aStateRect display: NO];
 
     if (pState->state() == vcl::WindowState::Minimized)
@@ -755,19 +774,54 @@ bool AquaSalFrame::GetWindowState(vcl::WindowData* pState)
     pState->setMask(vcl::WindowDataMask::PosSizeState);
 
     NSRect aStateRect = [mpNSWindow frame];
-    aStateRect = [NSWindow contentRectForFrameRect: aStateRect styleMask: mnStyleMask];
+    aStateRect = [mpNSWindow contentRectForFrameRect: aStateRect];
     CocoaToVCL( aStateRect );
-    pState->setX(static_cast<sal_Int32>(aStateRect.origin.x));
-    pState->setY(static_cast<sal_Int32>(aStateRect.origin.y));
-    pState->setWidth(static_cast<sal_uInt32>(aStateRect.size.width));
-    pState->setHeight(static_cast<sal_uInt32>(aStateRect.size.height));
 
-    if( [mpNSWindow isMiniaturized] )
-        pState->setState(vcl::WindowState::Minimized);
-    else if( ! [mpNSWindow isZoomed] )
+    if( mbInternalFullScreen && !NSIsEmptyRect( maInternalFullScreenRestoreRect ) )
+    {
+        pState->setX(maInternalFullScreenRestoreRect.origin.x);
+        pState->setY(maInternalFullScreenRestoreRect.origin.y);
+        pState->setWidth(maInternalFullScreenRestoreRect.size.width);
+        pState->setHeight(maInternalFullScreenRestoreRect.size.height);
+        pState->SetMaximizedX(static_cast<sal_Int32>(aStateRect.origin.x));
+        pState->SetMaximizedY(static_cast<sal_Int32>(aStateRect.origin.x));
+        pState->SetMaximizedWidth(static_cast<sal_uInt32>(aStateRect.size.width));
+        pState->SetMaximizedHeight(static_cast<sal_uInt32>(aStateRect.size.height));
+
+        pState->rMask() |= vcl::WindowDataMask::MaximizedX | vcl::WindowDataMask::MaximizedY | vcl::WindowDataMask::MaximizedWidth | vcl::WindowDataMask::MaximizedHeight;
+
+        pState->setState(vcl::WindowState::FullScreen);
+    }
+    else if( mbNativeFullScreen && !NSIsEmptyRect( maNativeFullScreenRestoreRect ) )
+    {
+        pState->setX(maNativeFullScreenRestoreRect.origin.x);
+        pState->setY(maNativeFullScreenRestoreRect.origin.y);
+        pState->setWidth(maNativeFullScreenRestoreRect.size.width);
+        pState->setHeight(maNativeFullScreenRestoreRect.size.height);
+        pState->SetMaximizedX(static_cast<sal_Int32>(aStateRect.origin.x));
+        pState->SetMaximizedY(static_cast<sal_Int32>(aStateRect.origin.x));
+        pState->SetMaximizedWidth(static_cast<sal_uInt32>(aStateRect.size.width));
+        pState->SetMaximizedHeight(static_cast<sal_uInt32>(aStateRect.size.height));
+
+        pState->rMask() |= vcl::WindowDataMask::MaximizedX | vcl::WindowDataMask::MaximizedY | vcl::WindowDataMask::MaximizedWidth | vcl::WindowDataMask::MaximizedHeight;
+
+        // tdf#128186 use non-full screen values for native full screen windows
         pState->setState(vcl::WindowState::Normal);
+    }
     else
-        pState->setState(vcl::WindowState::Maximized);
+    {
+        pState->setX(static_cast<sal_Int32>(aStateRect.origin.x));
+        pState->setY(static_cast<sal_Int32>(aStateRect.origin.y));
+        pState->setWidth(static_cast<sal_uInt32>(aStateRect.size.width));
+        pState->setHeight(static_cast<sal_uInt32>(aStateRect.size.height));
+
+        if( [mpNSWindow isMiniaturized] )
+            pState->setState(vcl::WindowState::Minimized);
+        else if( ! [mpNSWindow isZoomed] )
+            pState->setState(vcl::WindowState::Normal);
+        else
+            pState->setState(vcl::WindowState::Maximized);
+    }
 
     return true;
 }
@@ -823,22 +877,18 @@ void AquaSalFrame::doShowFullScreen( bool bFullScreen, sal_Int32 nDisplay )
         return;
     }
 
-    SAL_INFO("vcl.osx", __func__ << ": mbFullScreen=" << mbFullScreen << ", bFullScreen=" << bFullScreen);
+    SAL_INFO("vcl.osx", __func__ << ": mbInternalFullScreen=" << mbInternalFullScreen << ", bFullScreen=" << bFullScreen);
 
-    if( mbFullScreen == bFullScreen )
+    if( mbInternalFullScreen == bFullScreen )
         return;
 
     OSX_SALDATA_RUNINMAIN( ShowFullScreen( bFullScreen, nDisplay ) )
 
-    mbFullScreen = bFullScreen;
+    mbInternalFullScreen = bFullScreen;
 
     if( bFullScreen )
     {
-        // hide the dock and the menubar if we are on the menu screen
-        // which is always on index 0 according to documentation
-        bool bHideMenu = (nDisplay == 0);
-
-        NSRect aNewContentRect = NSZeroRect;
+        NSRect aNewFrameRect = NSZeroRect;
         // get correct screen
         NSScreen* pScreen = nil;
         NSArray* pScreens = [NSScreen screens];
@@ -849,51 +899,129 @@ void AquaSalFrame::doShowFullScreen( bool bFullScreen, sal_Int32 nDisplay )
             else
             {
                 // this means span all screens
-                bHideMenu = true;
                 NSEnumerator* pEnum = [pScreens objectEnumerator];
                 while( (pScreen = [pEnum nextObject]) != nil )
                 {
                     NSRect aScreenRect = [pScreen frame];
-                    if( aScreenRect.origin.x < aNewContentRect.origin.x )
+                    if( aScreenRect.origin.x < aNewFrameRect.origin.x )
                     {
-                        aNewContentRect.size.width += aNewContentRect.origin.x - aScreenRect.origin.x;
-                        aNewContentRect.origin.x = aScreenRect.origin.x;
+                        aNewFrameRect.size.width += aNewFrameRect.origin.x - aScreenRect.origin.x;
+                        aNewFrameRect.origin.x = aScreenRect.origin.x;
                     }
-                    if( aScreenRect.origin.y < aNewContentRect.origin.y )
+                    if( aScreenRect.origin.y < aNewFrameRect.origin.y )
                     {
-                        aNewContentRect.size.height += aNewContentRect.origin.y - aScreenRect.origin.y;
-                        aNewContentRect.origin.y = aScreenRect.origin.y;
+                        aNewFrameRect.size.height += aNewFrameRect.origin.y - aScreenRect.origin.y;
+                        aNewFrameRect.origin.y = aScreenRect.origin.y;
                     }
-                    if( aScreenRect.origin.x + aScreenRect.size.width > aNewContentRect.origin.x + aNewContentRect.size.width )
-                        aNewContentRect.size.width = aScreenRect.origin.x + aScreenRect.size.width - aNewContentRect.origin.x;
-                    if( aScreenRect.origin.y + aScreenRect.size.height > aNewContentRect.origin.y + aNewContentRect.size.height )
-                        aNewContentRect.size.height = aScreenRect.origin.y + aScreenRect.size.height - aNewContentRect.origin.y;
+                    if( aScreenRect.origin.x + aScreenRect.size.width > aNewFrameRect.origin.x + aNewFrameRect.size.width )
+                        aNewFrameRect.size.width = aScreenRect.origin.x + aScreenRect.size.width - aNewFrameRect.origin.x;
+                    if( aScreenRect.origin.y + aScreenRect.size.height > aNewFrameRect.origin.y + aNewFrameRect.size.height )
+                        aNewFrameRect.size.height = aScreenRect.origin.y + aScreenRect.size.height - aNewFrameRect.origin.y;
                 }
             }
         }
-        if( aNewContentRect.size.width == 0 && aNewContentRect.size.height == 0 )
+        if( aNewFrameRect.size.width == 0 && aNewFrameRect.size.height == 0 )
         {
             if( pScreen == nil )
                 pScreen = [mpNSWindow screen];
             if( pScreen == nil )
                 pScreen = [NSScreen mainScreen];
 
-            aNewContentRect = [pScreen frame];
+            aNewFrameRect = [pScreen frame];
         }
 
-        if( bHideMenu )
-            [NSMenu setMenuBarVisible:NO];
+        // Hide the dock and the menubar if this or one of its child
+        // windows are the key window
+        if( AquaSalFrame::isAlive( this ) )
+        {
+            bool bNativeFullScreen = false;
+            const AquaSalFrame *pParentFrame = this;
+            while( pParentFrame )
+            {
+                bNativeFullScreen |= pParentFrame->mbNativeFullScreen;
+                pParentFrame = AquaSalFrame::isAlive( pParentFrame->mpParent ) ? pParentFrame->mpParent : nullptr;
+            }
 
-        maFullScreenRect = [mpNSWindow frame];
+            if( !bNativeFullScreen )
+            {
+                const NSWindow *pParentWindow = [NSApp keyWindow];
+                while( pParentWindow && pParentWindow != mpNSWindow )
+                    pParentWindow = [pParentWindow parentWindow];
+                if( pParentWindow == mpNSWindow )
+                    [NSMenu setMenuBarVisible: NO];
+            }
+        }
 
-        [mpNSWindow setFrame: [NSWindow frameRectForContentRect: aNewContentRect styleMask: mnStyleMask] display: mbShown ? YES : NO];
+        if( mbNativeFullScreen && !NSIsEmptyRect( maNativeFullScreenRestoreRect ) )
+        {
+            maInternalFullScreenRestoreRect = maNativeFullScreenRestoreRect;
+
+            // Show the menubar if application is in native full screen mode
+            // since hiding the menubar in that mode will cause the window's
+            // titlebar to fail to display or hide as expected.
+            [NSMenu setMenuBarVisible: YES];
+        }
+        else
+        {
+            // Related: tdf#128186 restore rectangles are in VCL coordinates
+            NSRect aFrame = [mpNSWindow frame];
+            NSRect aContentRect = [NSWindow contentRectForFrameRect: aFrame styleMask: [mpNSWindow styleMask] & ~NSWindowStyleMaskFullScreen];
+            CocoaToVCL( aContentRect );
+            maInternalFullScreenRestoreRect = aContentRect;
+        }
+
+        // Related: tdf#161623 do not add the window's titlebar height
+        // to the window's frame as that will cause the titlebar to be
+        // pushed offscreen.
+        maInternalFullScreenExpectedRect = aNewFrameRect;
+
+        [mpNSWindow setFrame: maInternalFullScreenExpectedRect display: mbShown ? YES : NO];
     }
     else
     {
-        [mpNSWindow setFrame: maFullScreenRect display: mbShown ? YES : NO];
+        // Show the dock and the menubar if this or one of its children are
+        // the key window
+        const NSWindow *pParentWindow = [NSApp keyWindow];
+        while( pParentWindow && pParentWindow != mpNSWindow )
+            pParentWindow = [pParentWindow parentWindow];
+        if( pParentWindow == mpNSWindow )
+        {
+            [NSMenu setMenuBarVisible: YES];
+        }
+        // Show the dock and the menubar if there is no native modal dialog
+        // and if the key window is nil or is not a SalFrameWindow instance.
+        // If a SalFrameWindow is the key window, it should have already set
+        // the menubar visibility to match its LibreOffice full screen mode
+        // state.
+        else if( ![NSApp modalWindow] )
+        {
+            NSWindow *pKeyWindow = [NSApp keyWindow];
+            if( !pKeyWindow || ![pKeyWindow isKindOfClass: [SalFrameWindow class]] )
+                [NSMenu setMenuBarVisible: YES];
+        }
 
-        // show the dock and the menubar
-        [NSMenu setMenuBarVisible:YES];
+        if( !NSIsEmptyRect( maInternalFullScreenRestoreRect ) )
+        {
+            if( mbNativeFullScreen && !NSIsEmptyRect( maNativeFullScreenRestoreRect ) )
+            {
+                // Related: tdf#128186 force window to unzoom
+                // If we exit LibreOffice's internal full screen mode while
+                // the window is in native full screen mode, the window will
+                // be zoomed after exiting native full screen mode.
+                [mpNSWindow setIsZoomed: NO];
+            }
+            else
+            {
+                NSRect aContentRect = maInternalFullScreenRestoreRect;
+                VCLToCocoa( aContentRect );
+                NSRect aFrame = [NSWindow frameRectForContentRect: aContentRect styleMask: [mpNSWindow styleMask] & ~NSWindowStyleMaskFullScreen];
+                [mpNSWindow setFrame: aFrame display: mbShown ? YES : NO];
+            }
+
+            maInternalFullScreenRestoreRect = NSZeroRect;
+        }
+
+        maInternalFullScreenExpectedRect = NSZeroRect;
     }
 
     UpdateFrameGeometry();
@@ -1021,7 +1149,7 @@ void AquaSalFrame::SetPointerPos( tools::Long nX, tools::Long nY )
 
 void AquaSalFrame::Flush()
 {
-    if( !(mbGraphics && mpGraphics && mpNSView && mbShown) )
+    if( !(mbGraphicsAcquired && mpGraphics && mpNSView && mbShown) )
         return;
 
     OSX_SALDATA_RUNINMAIN( Flush() )
@@ -1031,21 +1159,13 @@ void AquaSalFrame::Flush()
     // outside of the application's event loop (e.g. IntroWindow)
     // nothing would trigger paint event handling
     // => fall back to synchronous painting
-    if( mbForceFlush || ImplGetSVData()->maAppData.mnDispatchLevel <= 0 )
-    {
-        mbForceFlush = false;
-        mpGraphics->Flush();
-        // Related: tdf#155266 skip redisplay of the view when forcing flush
-        // It appears that calling -[NSView display] overwhelms some Intel Macs
-        // so only flush the graphics and skip immediate redisplay of the view.
-        if( ImplGetSVData()->maAppData.mnDispatchLevel <= 0 )
-            [mpNSView display];
-    }
+    if( doFlush() )
+        [mpNSView display];
 }
 
 void AquaSalFrame::Flush( const tools::Rectangle& rRect )
 {
-    if( !(mbGraphics && mpGraphics && mpNSView && mbShown) )
+    if( !(mbGraphicsAcquired && mpGraphics && mpNSView && mbShown) )
         return;
 
     OSX_SALDATA_RUNINMAIN( Flush( rRect ) )
@@ -1057,16 +1177,28 @@ void AquaSalFrame::Flush( const tools::Rectangle& rRect )
     // outside of the application's event loop (e.g. IntroWindow)
     // nothing would trigger paint event handling
     // => fall back to synchronous painting
-    if( mbForceFlush || ImplGetSVData()->maAppData.mnDispatchLevel <= 0 )
+    if( doFlush() )
+        [mpNSView displayRect: aNSRect];
+}
+
+bool AquaSalFrame::doFlush()
+{
+    bool bRet = false;
+
+    if( mbForceFlushScrolling || mbForceFlushProgressBar || ImplGetSVData()->maAppData.mnDispatchLevel <= 0 )
     {
-        mbForceFlush = false;
-        mpGraphics->Flush( rRect );
+        mpGraphics->Flush();
+
         // Related: tdf#155266 skip redisplay of the view when forcing flush
         // It appears that calling -[NSView display] overwhelms some Intel Macs
         // so only flush the graphics and skip immediate redisplay of the view.
-        if( ImplGetSVData()->maAppData.mnDispatchLevel <= 0 )
-            [mpNSView display];
+        bRet = ImplGetSVData()->maAppData.mnDispatchLevel <= 0;
+
+        mbForceFlushScrolling = false;
+        mbForceFlushProgressBar = false;
     }
+
+    return bRet;
 }
 
 void AquaSalFrame::SetInputContext( SalInputContext* pContext )
@@ -1322,22 +1454,32 @@ void AquaSalFrame::getResolution( sal_Int32& o_rDPIX, sal_Int32& o_rDPIY )
 
 void AquaSalFrame::UpdateDarkMode()
 {
-    if (@available(macOS 10.14, iOS 13, *))
+    NSAppearance *pCurrentAppearance = [NSApp appearance];
+
+    switch (MiscSettings::GetAppColorMode())
     {
-        switch (MiscSettings::GetDarkMode())
-        {
-            case 0: // auto
-            default:
+        case AppearanceMode::AUTO:
+        default:
+            if (pCurrentAppearance)
                 [NSApp setAppearance: nil];
-                break;
-            case 1: // light
+            break;
+        case AppearanceMode::LIGHT:
+            if (!pCurrentAppearance || ![NSAppearanceNameAqua isEqualToString: [pCurrentAppearance name]])
                 [NSApp setAppearance: [NSAppearance appearanceNamed: NSAppearanceNameAqua]];
-                break;
-            case 2: // dark
+            break;
+        case AppearanceMode::DARK:
+            if (!pCurrentAppearance || ![NSAppearanceNameDarkAqua isEqualToString: [pCurrentAppearance name]])
                 [NSApp setAppearance: [NSAppearance appearanceNamed: NSAppearanceNameDarkAqua]];
-                break;
-        }
+            break;
     }
+
+    // Related: tdf#165266 sync NSView's appearance to NSApp's appearance
+    // Invoking -[NSApp setAppearance:] does immediately update the
+    // appearance of each NSWindow's titlebar, but it does not appear
+    // to update any NSView's appearance so explicitly sync appearances.
+    NSAppearance *pNewAppearance = [NSApp appearance];
+    if (mpNSView.appearance != pNewAppearance)
+        mpNSView.appearance = pNewAppearance;
 }
 
 bool AquaSalFrame::GetUseDarkMode() const
@@ -1359,6 +1501,58 @@ bool AquaSalFrame::GetUseReducedAnimation() const
     return [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceMotion];
 }
 
+static void lcl_LoadColorsFromTheme(StyleSettings& rStyleSet)
+{
+    const ThemeColors& rThemeColors = ThemeColors::GetThemeColors();
+    rStyleSet.SetWindowColor(rThemeColors.GetWindowColor());
+    rStyleSet.BatchSetBackgrounds(rThemeColors.GetWindowColor());
+    rStyleSet.SetActiveTabColor(rThemeColors.GetWindowColor());
+    rStyleSet.SetInactiveTabColor(rThemeColors.GetBaseColor());
+    rStyleSet.SetDisableColor(rThemeColors.GetDisabledColor()); // tab outline
+    // Highlight related colors
+    rStyleSet.SetAccentColor(rThemeColors.GetAccentColor());
+    rStyleSet.SetHighlightColor(rThemeColors.GetAccentColor());
+    rStyleSet.SetListBoxWindowHighlightColor(rThemeColors.GetAccentColor());
+    rStyleSet.SetListBoxWindowTextColor(rThemeColors.GetWindowTextColor());
+    rStyleSet.SetListBoxWindowBackgroundColor(rThemeColors.GetBaseColor());
+    rStyleSet.SetListBoxWindowHighlightTextColor(rThemeColors.GetMenuHighlightTextColor());
+    rStyleSet.SetWindowTextColor(rThemeColors.GetWindowTextColor()); // Treeview Lists
+    rStyleSet.SetRadioCheckTextColor(rThemeColors.GetWindowTextColor());
+    rStyleSet.SetLabelTextColor(rThemeColors.GetWindowTextColor());
+    rStyleSet.SetFieldTextColor(rThemeColors.GetWindowTextColor());
+    rStyleSet.SetFieldColor(rThemeColors.GetBaseColor());
+    rStyleSet.SetMenuBarTextColor(rThemeColors.GetMenuBarTextColor());
+    rStyleSet.SetMenuTextColor(rThemeColors.GetMenuTextColor());
+    rStyleSet.SetDefaultActionButtonTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetActionButtonTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetShadowColor(rThemeColors.GetShadeColor());
+    rStyleSet.SetDefaultButtonTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetDefaultButtonRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetDefaultButtonPressedRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetFlatButtonTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetFlatButtonPressedRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetFlatButtonRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetButtonRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetDefaultActionButtonRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetDefaultActionButtonPressedRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetActionButtonRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetActionButtonPressedRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetFieldRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetButtonRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetButtonPressedRolloverTextColor(rThemeColors.GetButtonTextColor());
+    rStyleSet.SetHelpColor(rThemeColors.GetWindowColor());
+    rStyleSet.SetHelpTextColor(rThemeColors.GetWindowTextColor());
+    // rStyleSet.SetHighlightTextColor(rThemeColors.GetActiveTextColor());
+    // rStyleSet.SetActiveColor(rThemeColors.GetActiveColor());
+    // rStyleSet.SetActiveTextColor(rThemeColors.GetActiveTextColor());
+    // rStyleSet.SetLinkColor(rThemeColors.GetAccentColor());
+    // Color aVisitedLinkColor = rThemeColors.GetActiveColor();
+    // aVisitedLinkColor.Merge(rThemeColors.GetWindowColor(), 100);
+    // rStyleSet.SetVisitedLinkColor(aVisitedLinkColor);
+    // rStyleSet.SetToolTextColor(Color(255, 0, 0));
+    rStyleSet.SetTabRolloverTextColor(rThemeColors.GetMenuBarHighlightTextColor());
+}
+
 // on OSX-Aqua the style settings are independent of the frame, so it does
 // not really belong here. Since the connection to the Appearance_Manager
 // is currently done in salnativewidgets.cxx this would be a good place.
@@ -1371,6 +1565,31 @@ void AquaSalFrame::UpdateSettings( AllSettings& rSettings )
         return;
 
     OSX_SALDATA_RUNINMAIN( UpdateSettings( rSettings ) )
+
+    // tdf#165266 Force NSColor to use current effective appearance
+    // +[NSAppearance setCurrentAppearance:] is deprecated and calling
+    // that appears to do less and less with each new version of macos
+    // or Xcode so run all system +[NSColor ...] calls in a block passed
+    // to -[NSAppearance performAsCurrentDrawingAppearance:].
+    UpdateDarkMode();
+    if (@available(macOS 11, *))
+    {
+        assert(mpNSView);
+        [mpNSView.effectiveAppearance performAsCurrentDrawingAppearance:^() {
+            doUpdateSettings( rSettings );
+            return;
+        }];
+    }
+    else
+    {
+        doUpdateSettings( rSettings );
+    }
+}
+
+void AquaSalFrame::doUpdateSettings( AllSettings& rSettings )
+{
+    assert(mpNSWindow);
+    assert(mpNSView);
 
 SAL_WNODEPRECATED_DECLARATIONS_PUSH
         // "'lockFocus' is deprecated: first deprecated in macOS 10.14 - To draw, subclass NSView
@@ -1390,8 +1609,18 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
     StyleSettings aStyleSettings = rSettings.GetStyleSettings();
 
     bool bUseDarkMode(GetUseDarkMode());
-    OUString sThemeName(!bUseDarkMode ? u"sukapura" : u"sukapura_dark");
-    aStyleSettings.SetPreferredIconTheme(sThemeName, bUseDarkMode);
+    if (!ThemeColors::VclPluginCanUseThemeColors())
+    {
+        OUString sThemeName(!bUseDarkMode ? u"sukapura_svg" : u"sukapura_dark_svg");
+        aStyleSettings.SetPreferredIconTheme(sThemeName, bUseDarkMode);
+    }
+    else
+    {
+        aStyleSettings.SetPreferredIconTheme(
+            vcl::IconThemeSelector::GetIconThemeForDesktopEnvironment(
+                Application::GetDesktopEnvironment(),
+                ThemeColors::GetThemeColors().GetWindowColor().IsDark()));
+    }
 
     Color aControlBackgroundColor(getNSBoxBackgroundColor([NSColor controlBackgroundColor]));
     Color aWindowBackgroundColor(getNSBoxBackgroundColor([NSColor windowBackgroundColor]));
@@ -1554,6 +1783,10 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
     aStyleSettings.SetHideDisabledMenuItems( true );
     aStyleSettings.SetPreferredContextMenuShortcuts( false );
 
+    if (ThemeColors::VclPluginCanUseThemeColors())
+        lcl_LoadColorsFromTheme(aStyleSettings);
+    aStyleSettings.SetSystemColorsLoaded(true);
+
     rSettings.SetStyleSettings( aStyleSettings );
 
     // don't draw frame around each and every toolbar
@@ -1567,9 +1800,9 @@ SAL_WNODEPRECATED_DECLARATIONS_PUSH
 SAL_WNODEPRECATED_DECLARATIONS_POP
 }
 
-const SystemEnvData* AquaSalFrame::GetSystemData() const
+const SystemEnvData& AquaSalFrame::GetSystemData() const
 {
-    return &maSysData;
+    return maSysData;
 }
 
 void AquaSalFrame::Beep()
@@ -1594,7 +1827,7 @@ void AquaSalFrame::SetPosSize(
         [mpNSWindow deminiaturize: NSApp]; // expand the window
 
     NSRect aFrameRect = [mpNSWindow frame];
-    NSRect aContentRect = [NSWindow contentRectForFrameRect: aFrameRect styleMask: mnStyleMask];
+    NSRect aContentRect = [mpNSWindow contentRectForFrameRect: aFrameRect];
 
     // position is always relative to parent frame
     NSRect aParentContentRect;
@@ -1609,13 +1842,20 @@ void AquaSalFrame::SetPosSize(
                 nX = static_cast<tools::Long>(mpParent->maGeometry.width()) - aContentRect.size.width - 1 - nX;
         }
         NSRect aParentFrameRect = [mpParent->mpNSWindow frame];
-        aParentContentRect = [NSWindow contentRectForFrameRect: aParentFrameRect styleMask: mpParent->mnStyleMask];
+        aParentContentRect = [mpParent->mpNSWindow contentRectForFrameRect: aParentFrameRect];
     }
     else
         aParentContentRect = maScreenRect; // use screen if no parent
 
     CocoaToVCL( aContentRect );
     CocoaToVCL( aParentContentRect );
+
+    // Related: tdf#128186 don't change size of native full screen windows
+    if ([mpNSWindow styleMask] & NSWindowStyleMaskFullScreen)
+    {
+        maNativeFullScreenRestoreRect = aContentRect;
+        return;
+    }
 
     bool bPaint = false;
     if( (nFlags & (SAL_FRAME_POSSIZE_WIDTH | SAL_FRAME_POSSIZE_HEIGHT)) != 0 )
@@ -1640,7 +1880,7 @@ void AquaSalFrame::SetPosSize(
 
     // do not display yet, we need to update our backbuffer
     {
-        [mpNSWindow setFrame: [NSWindow frameRectForContentRect: aContentRect styleMask: mnStyleMask] display: NO];
+        [mpNSWindow setFrame: [mpNSWindow frameRectForContentRect: aContentRect] display: NO];
     }
 
     UpdateFrameGeometry();
@@ -1885,7 +2125,7 @@ void AquaSalFrame::UpdateFrameGeometry()
     }
 
     NSRect aFrameRect = [mpNSWindow frame];
-    NSRect aContentRect = [NSWindow contentRectForFrameRect: aFrameRect styleMask: mnStyleMask];
+    NSRect aContentRect = [mpNSWindow contentRectForFrameRect: aFrameRect];
 
     NSRect aTrackRect = { NSZeroPoint, aContentRect.size };
 

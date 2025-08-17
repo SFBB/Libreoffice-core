@@ -18,10 +18,10 @@
  */
 #pragma once
 
+#include <config_options.h>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include "charttoolsdllapi.hxx"
 
 namespace com::sun::star::beans { struct PropertyValue; }
 namespace com::sun::star::embed { class XStorage; }
@@ -43,7 +43,7 @@ namespace com::sun::star::io { class XStream; }
 namespace apphelper
 {
 
-class OOO_DLLPUBLIC_CHARTTOOLS MediaDescriptorHelper final
+class MediaDescriptorHelper final
 {
 public:
     MediaDescriptorHelper( const css::uno::Sequence< css::beans::PropertyValue > & rMediaDescriptor );
@@ -82,7 +82,7 @@ public:
     bool                ISSET_Stream;
 
 private:
-    SAL_DLLPRIVATE void impl_init();
+    void impl_init();
 };
 
 }

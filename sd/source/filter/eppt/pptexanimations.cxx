@@ -118,6 +118,8 @@ static void ImplTranslateAttribute( OUString& rString, const TranslateMode eTran
 
         while( *ps )
         {
+            if (nIndex == -1)
+                nIndex = 0;
             const OUString aSearch( OUString::createFromAscii( *ps ) );
             while( (nIndex = rString.indexOf( aSearch, nIndex )) != -1  )
             {
@@ -382,8 +384,7 @@ void AnimationExporter::processAfterEffectNodes( const Reference< XAnimationNode
                                     if (p != aUserData.end())
                                         p->Value >>= xMaster;
 
-                                    AfterEffectNodePtr pAfterEffectNode = std::make_shared<AfterEffectNode>( xChildNode3, xMaster );
-                                    maAfterEffectNodes.push_back( pAfterEffectNode );
+                                    maAfterEffectNodes.push_back(std::make_shared<AfterEffectNode>(xChildNode3, xMaster));
                                 }
                                 break;
                             }
@@ -704,7 +705,7 @@ void AnimationExporter::exportNode( SvStream& rStrm, Reference< XAnimationNode >
                         {
                             if ( xChildNode->getType() == AnimationNodeType::AUDIO )
                             {
-                                xAudioNode = xChildNode;
+                                xAudioNode = std::move(xChildNode);
                                 nAudioGroup = mnCurrentGroup;
                             }
                             else
@@ -1094,7 +1095,7 @@ bool AnimationExporter::exportAnimProperty( SvStream& rStrm, const sal_uInt16 nP
     bool bRet = false;
     if ( rAny.hasValue() )
     {
-        switch( rAny.getValueType().getTypeClass() )
+        switch( rAny.getValueTypeClass() )
         {
             case css::uno::TypeClass_UNSIGNED_SHORT :
             case css::uno::TypeClass_SHORT :
@@ -1389,7 +1390,7 @@ Any AnimationExporter::convertAnimateValue( const Any& rSourceValue, std::u16str
     {
         sal_Int32 nColor = 0;
         Sequence< double > aHSL( 3 );
-        OUString aP( "," );
+        OUString aP( u","_ustr );
         if ( rSourceValue >>= aHSL )
         {
             aDest += "hsl("

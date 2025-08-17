@@ -96,7 +96,8 @@ enum SwViewSettingsPropertyHandles
     HANDLE_VIEWSET_BOOKMARKS,
     HANDLE_VIEWSET_SHOW_OUTLINECONTENTVISIBILITYBUTTON,
     HANDLE_VIEWSET_TREAT_SUB_OUTLINE_LEVELS_AS_CONTENT,
-    HANDLE_VIEWSET_CHANGES_IN_MARGIN
+    HANDLE_VIEWSET_CHANGES_IN_MARGIN,
+    HANDLE_VIEWSET_TEXTBOUNDARIES
 };
 
 enum SwPrintSettingsPropertyHandles
@@ -126,54 +127,55 @@ static rtl::Reference<ChainablePropertySetInfo> lcl_createViewSettingsInfo()
 {
     static PropertyInfo const aViewSettingsMap_Impl[] =
     {
-        { OUString( "HelpURL" ),             HANDLE_VIEWSET_HELP_URL             , cppu::UnoType<OUString>::get(),    PROPERTY_NONE},
-        { OUString( "HorizontalRulerMetric"),HANDLE_VIEWSET_HORI_RULER_METRIC   , cppu::UnoType<sal_Int32>::get(), PROPERTY_NONE},
-        { OUString( "IsRasterVisible"),      HANDLE_VIEWSET_IS_RASTER_VISIBLE,       cppu::UnoType<bool>::get(),   PROPERTY_NONE},
-        { OUString( "IsSnapToRaster"),       HANDLE_VIEWSET_IS_SNAP_TO_RASTER,       cppu::UnoType<bool>::get(),   PROPERTY_NONE},
-        { OUString( "IsVertRulerRightAligned"),HANDLE_VIEWSET_VRULER_RIGHT         , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowContentTips" ),     HANDLE_VIEWSET_SHOW_CONTENT_TIPS      , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowInlineTooltips" ),  HANDLE_VIEWSET_INLINECHANGES_TIPS      , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "UseHeaderFooterMenu" ), HANDLE_VIEWSET_USE_HEADERFOOTERMENU , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowOutlineContentVisibilityButton" ), HANDLE_VIEWSET_SHOW_OUTLINECONTENTVISIBILITYBUTTON , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "TreatSubOutlineLevelsAsContent" ), HANDLE_VIEWSET_TREAT_SUB_OUTLINE_LEVELS_AS_CONTENT , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowChangesInMargin" ), HANDLE_VIEWSET_CHANGES_IN_MARGIN,       cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "RasterResolutionX"),    HANDLE_VIEWSET_RASTER_RESOLUTION_X,     cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
-        { OUString( "RasterResolutionY"),    HANDLE_VIEWSET_RASTER_RESOLUTION_Y,     cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
-        { OUString( "RasterSubdivisionX"),   HANDLE_VIEWSET_RASTER_SUBDIVISION_X,    cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
-        { OUString( "RasterSubdivisionY"),   HANDLE_VIEWSET_RASTER_SUBDIVISION_Y,    cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
-        { OUString( "ShowAnnotations" ),     HANDLE_VIEWSET_ANNOTATIONS          , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowBookmarks" ), HANDLE_VIEWSET_BOOKMARKS, cppu::UnoType<bool>::get(), PROPERTY_NONE },
-        { OUString( "ShowBreaks"),           HANDLE_VIEWSET_BREAKS               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowDrawings"),         HANDLE_VIEWSET_DRAWINGS             , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowFieldCommands"),    HANDLE_VIEWSET_FIELD_COMMANDS       , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowFootnoteBackground"),HANDLE_VIEWSET_FOOTNOTE_BACKGROUND , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowGraphics"),         HANDLE_VIEWSET_GRAPHICS             , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowHiddenCharacters"), HANDLE_VIEWSET_HIDDEN_CHARACTERS    , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "HideWhitespace"),       HANDLE_VIEWSET_HIDE_WHITESPACE      , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowHiddenParagraphs"), HANDLE_VIEWSET_HIDDEN_PARAGRAPHS    , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowHiddenText"),       HANDLE_VIEWSET_HIDDEN_TEXT          , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowHoriRuler"),        HANDLE_VIEWSET_HRULER               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowHoriScrollBar"),    HANDLE_VIEWSET_HSCROLL              , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowIndexMarkBackground"),HANDLE_VIEWSET_INDEX_MARK_BACKGROUND, cppu::UnoType<bool>::get(),PROPERTY_NONE},
-        { OUString( "ShowNonprintingCharacters"),HANDLE_VIEWSET_NONPRINTING_CHARACTERS, cppu::UnoType<bool>::get(),PROPERTY_NONE},
-        { OUString( "ShowOnlineLayout"),     HANDLE_VIEWSET_ONLINE_LAYOUT        , cppu::UnoType<bool>::get(), PropertyAttribute::MAYBEVOID},
-        { OUString( "ShowParaBreaks"),       HANDLE_VIEWSET_PARA_BREAKS          , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowProtectedSpaces"),  HANDLE_VIEWSET_PROTECTED_SPACES     , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowRulers"),           HANDLE_VIEWSET_SHOW_RULER           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowScrollBarTips"),    HANDLE_VIEWSET_SCROLLBAR_TIPS       , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowSoftHyphens"),      HANDLE_VIEWSET_SOFT_HYPHENS         , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowSpaces"),           HANDLE_VIEWSET_SPACES               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowTableBoundaries"),  HANDLE_VIEWSET_TABLE_BOUNDARIES     , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowTables"),           HANDLE_VIEWSET_TABLES               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowTabstops"),         HANDLE_VIEWSET_TABSTOPS             , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowTextBoundaries"),   HANDLE_VIEWSET_TEXT_BOUNDARIES      , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowTextFieldBackground"),HANDLE_VIEWSET_TEXT_FIELD_BACKGROUND, cppu::UnoType<bool>::get(),PROPERTY_NONE},
-        { OUString( "ShowVertRuler"),        HANDLE_VIEWSET_VRULER               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "ShowVertScrollBar"),    HANDLE_VIEWSET_VSCROLL              , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "SmoothScrolling"),      HANDLE_VIEWSET_SMOOTH_SCROLLING     , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "VerticalRulerMetric"),  HANDLE_VIEWSET_VERT_RULER_METRIC   , cppu::UnoType<sal_Int32>::get(), PROPERTY_NONE},
-        { OUString( "ZoomType"),             HANDLE_VIEWSET_ZOOM_TYPE            , cppu::UnoType<sal_Int16>::get(),   PROPERTY_NONE},
-        { OUString( "ZoomValue"),            HANDLE_VIEWSET_ZOOM                 , cppu::UnoType<sal_Int16>::get(),   PROPERTY_NONE},
+        { u"HelpURL"_ustr,             HANDLE_VIEWSET_HELP_URL             , cppu::UnoType<OUString>::get(),    PROPERTY_NONE},
+        { u"HorizontalRulerMetric"_ustr,HANDLE_VIEWSET_HORI_RULER_METRIC   , cppu::UnoType<sal_Int32>::get(), PROPERTY_NONE},
+        { u"IsRasterVisible"_ustr,      HANDLE_VIEWSET_IS_RASTER_VISIBLE,       cppu::UnoType<bool>::get(),   PROPERTY_NONE},
+        { u"IsSnapToRaster"_ustr,       HANDLE_VIEWSET_IS_SNAP_TO_RASTER,       cppu::UnoType<bool>::get(),   PROPERTY_NONE},
+        { u"IsVertRulerRightAligned"_ustr,HANDLE_VIEWSET_VRULER_RIGHT         , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowContentTips"_ustr,     HANDLE_VIEWSET_SHOW_CONTENT_TIPS      , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowInlineTooltips"_ustr,  HANDLE_VIEWSET_INLINECHANGES_TIPS      , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"UseHeaderFooterMenu"_ustr, HANDLE_VIEWSET_USE_HEADERFOOTERMENU , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowOutlineContentVisibilityButton"_ustr, HANDLE_VIEWSET_SHOW_OUTLINECONTENTVISIBILITYBUTTON , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"TreatSubOutlineLevelsAsContent"_ustr, HANDLE_VIEWSET_TREAT_SUB_OUTLINE_LEVELS_AS_CONTENT , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowChangesInMargin"_ustr, HANDLE_VIEWSET_CHANGES_IN_MARGIN,       cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"RasterResolutionX"_ustr,    HANDLE_VIEWSET_RASTER_RESOLUTION_X,     cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
+        { u"RasterResolutionY"_ustr,    HANDLE_VIEWSET_RASTER_RESOLUTION_Y,     cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
+        { u"RasterSubdivisionX"_ustr,   HANDLE_VIEWSET_RASTER_SUBDIVISION_X,    cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
+        { u"RasterSubdivisionY"_ustr,   HANDLE_VIEWSET_RASTER_SUBDIVISION_Y,    cppu::UnoType<sal_Int32>::get(),     PROPERTY_NONE},
+        { u"ShowAnnotations"_ustr,     HANDLE_VIEWSET_ANNOTATIONS          , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowBookmarks"_ustr, HANDLE_VIEWSET_BOOKMARKS, cppu::UnoType<bool>::get(), PROPERTY_NONE },
+        { u"ShowBreaks"_ustr,           HANDLE_VIEWSET_BREAKS               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowDrawings"_ustr,         HANDLE_VIEWSET_DRAWINGS             , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowFieldCommands"_ustr,    HANDLE_VIEWSET_FIELD_COMMANDS       , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowFootnoteBackground"_ustr,HANDLE_VIEWSET_FOOTNOTE_BACKGROUND , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowGraphics"_ustr,         HANDLE_VIEWSET_GRAPHICS             , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowHiddenCharacters"_ustr, HANDLE_VIEWSET_HIDDEN_CHARACTERS    , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"HideWhitespace"_ustr,       HANDLE_VIEWSET_HIDE_WHITESPACE      , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowHiddenParagraphs"_ustr, HANDLE_VIEWSET_HIDDEN_PARAGRAPHS    , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowHiddenText"_ustr,       HANDLE_VIEWSET_HIDDEN_TEXT          , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowHoriRuler"_ustr,        HANDLE_VIEWSET_HRULER               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowHoriScrollBar"_ustr,    HANDLE_VIEWSET_HSCROLL              , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowIndexMarkBackground"_ustr,HANDLE_VIEWSET_INDEX_MARK_BACKGROUND, cppu::UnoType<bool>::get(),PROPERTY_NONE},
+        { u"ShowNonprintingCharacters"_ustr,HANDLE_VIEWSET_NONPRINTING_CHARACTERS, cppu::UnoType<bool>::get(),PROPERTY_NONE},
+        { u"ShowOnlineLayout"_ustr,     HANDLE_VIEWSET_ONLINE_LAYOUT        , cppu::UnoType<bool>::get(), PropertyAttribute::MAYBEVOID},
+        { u"ShowParaBreaks"_ustr,       HANDLE_VIEWSET_PARA_BREAKS          , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowProtectedSpaces"_ustr,  HANDLE_VIEWSET_PROTECTED_SPACES     , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowRulers"_ustr,           HANDLE_VIEWSET_SHOW_RULER           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowScrollBarTips"_ustr,    HANDLE_VIEWSET_SCROLLBAR_TIPS       , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowSoftHyphens"_ustr,      HANDLE_VIEWSET_SOFT_HYPHENS         , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowSpaces"_ustr,           HANDLE_VIEWSET_SPACES               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowTableBoundaries"_ustr,  HANDLE_VIEWSET_TABLE_BOUNDARIES     , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowTables"_ustr,           HANDLE_VIEWSET_TABLES               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowTabstops"_ustr,         HANDLE_VIEWSET_TABSTOPS             , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowTextBoundaries"_ustr,   HANDLE_VIEWSET_TEXT_BOUNDARIES      , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowTextFieldBackground"_ustr,HANDLE_VIEWSET_TEXT_FIELD_BACKGROUND, cppu::UnoType<bool>::get(),PROPERTY_NONE},
+        { u"ShowVertRuler"_ustr,        HANDLE_VIEWSET_VRULER               , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"ShowVertScrollBar"_ustr,    HANDLE_VIEWSET_VSCROLL              , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"SmoothScrolling"_ustr,      HANDLE_VIEWSET_SMOOTH_SCROLLING     , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"VerticalRulerMetric"_ustr,  HANDLE_VIEWSET_VERT_RULER_METRIC   , cppu::UnoType<sal_Int32>::get(), PROPERTY_NONE},
+        { u"ZoomType"_ustr,             HANDLE_VIEWSET_ZOOM_TYPE            , cppu::UnoType<sal_Int16>::get(),   PROPERTY_NONE},
+        { u"ZoomValue"_ustr,            HANDLE_VIEWSET_ZOOM                 , cppu::UnoType<sal_Int16>::get(),   PROPERTY_NONE},
+        { u"TextBoundaries"_ustr,       HANDLE_VIEWSET_TEXTBOUNDARIES       , cppu::UnoType<sal_Int16>::get(),   PROPERTY_NONE},
         { OUString(), 0, css::uno::Type(), 0 }
     };
     return new ChainablePropertySetInfo ( aViewSettingsMap_Impl );
@@ -183,23 +185,23 @@ static rtl::Reference<ChainablePropertySetInfo> lcl_createPrintSettingsInfo()
 {
     static PropertyInfo const aPrintSettingsMap_Impl[] =
     {
-        { OUString( "PrintAnnotationMode" ), HANDLE_PRINTSET_ANNOTATION_MODE , cppu::UnoType<sal_Int16>::get(),   PROPERTY_NONE},
-        { OUString( "PrintBlackFonts" ),      HANDLE_PRINTSET_BLACK_FONTS        , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintControls" ),        HANDLE_PRINTSET_CONTROLS           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintDrawings" ),        HANDLE_PRINTSET_DRAWINGS           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintGraphics" ),        HANDLE_PRINTSET_GRAPHICS           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintHiddenText"),       HANDLE_PRINTSET_HIDDEN_TEXT        , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintLeftPages" ),       HANDLE_PRINTSET_LEFT_PAGES         , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintPageBackground" ),  HANDLE_PRINTSET_PAGE_BACKGROUND    , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintProspect" ),        HANDLE_PRINTSET_PROSPECT           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintProspectRTL" ),     HANDLE_PRINTSET_PROSPECT_RTL       , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintReversed" ),        HANDLE_PRINTSET_REVERSED           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintRightPages" ),      HANDLE_PRINTSET_RIGHT_PAGES        , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintFaxName" ),         HANDLE_PRINTSET_FAX_NAME           , cppu::UnoType<OUString>::get(), PROPERTY_NONE},
-        { OUString( "PrintPaperFromSetup" ),  HANDLE_PRINTSET_PAPER_FROM_SETUP   , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintTables" ),          HANDLE_PRINTSET_TABLES             , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintTextPlaceholder"),  HANDLE_PRINTSET_PLACEHOLDER        , cppu::UnoType<bool>::get(), PROPERTY_NONE},
-        { OUString( "PrintEmptyPages" ),      HANDLE_PRINTSET_EMPTY_PAGES        , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintAnnotationMode"_ustr, HANDLE_PRINTSET_ANNOTATION_MODE , cppu::UnoType<sal_Int16>::get(),   PROPERTY_NONE},
+        { u"PrintBlackFonts"_ustr,      HANDLE_PRINTSET_BLACK_FONTS        , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintControls"_ustr,        HANDLE_PRINTSET_CONTROLS           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintDrawings"_ustr,        HANDLE_PRINTSET_DRAWINGS           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintGraphics"_ustr,        HANDLE_PRINTSET_GRAPHICS           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintHiddenText"_ustr,       HANDLE_PRINTSET_HIDDEN_TEXT        , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintLeftPages"_ustr,       HANDLE_PRINTSET_LEFT_PAGES         , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintPageBackground"_ustr,  HANDLE_PRINTSET_PAGE_BACKGROUND    , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintProspect"_ustr,        HANDLE_PRINTSET_PROSPECT           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintProspectRTL"_ustr,     HANDLE_PRINTSET_PROSPECT_RTL       , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintReversed"_ustr,        HANDLE_PRINTSET_REVERSED           , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintRightPages"_ustr,      HANDLE_PRINTSET_RIGHT_PAGES        , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintFaxName"_ustr,         HANDLE_PRINTSET_FAX_NAME           , cppu::UnoType<OUString>::get(), PROPERTY_NONE},
+        { u"PrintPaperFromSetup"_ustr,  HANDLE_PRINTSET_PAPER_FROM_SETUP   , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintTables"_ustr,          HANDLE_PRINTSET_TABLES             , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintTextPlaceholder"_ustr,  HANDLE_PRINTSET_PLACEHOLDER        , cppu::UnoType<bool>::get(), PROPERTY_NONE},
+        { u"PrintEmptyPages"_ustr,      HANDLE_PRINTSET_EMPTY_PAGES        , cppu::UnoType<bool>::get(), PROPERTY_NONE},
         { OUString(), 0, css::uno::Type(), 0}
     };
     return new ChainablePropertySetInfo ( aPrintSettingsMap_Impl );
@@ -237,7 +239,7 @@ Reference< XPropertySet >  SwXModule::getPrintSettings()
 
 OUString SwXModule::getImplementationName()
 {
-    return "SwXModule";
+    return u"SwXModule"_ustr;
 }
 
 sal_Bool SwXModule::supportsService(const OUString& rServiceName)
@@ -247,7 +249,7 @@ sal_Bool SwXModule::supportsService(const OUString& rServiceName)
 
 Sequence< OUString > SwXModule::getSupportedServiceNames()
 {
-    return { "com.sun.star.text.GlobalSettings" };
+    return { u"com.sun.star.text.GlobalSettings"_ustr };
 }
 
 SwXPrintSettings::SwXPrintSettings(SwXPrintSettingsType eType, SwDoc* pDoc)
@@ -268,7 +270,7 @@ void SwXPrintSettings::_preSetValues ()
     switch (meType)
     {
         case SwXPrintSettingsType::Module:
-            mpPrtOpt = SW_MOD()->GetPrtOptions( false );
+            mpPrtOpt = SwModule::get()->GetPrtOptions(false);
         break;
         case SwXPrintSettingsType::Document:
         {
@@ -405,7 +407,7 @@ void SwXPrintSettings::_preGetValues()
     switch (meType)
     {
         case SwXPrintSettingsType::Module:
-            mpPrtOpt = SW_MOD()->GetPrtOptions( false );
+            mpPrtOpt = SwModule::get()->GetPrtOptions(false);
         break;
         case SwXPrintSettingsType::Document:
         {
@@ -494,7 +496,7 @@ void SwXPrintSettings::_postGetValues ()
 
 OUString SwXPrintSettings::getImplementationName()
 {
-    return "SwXPrintSettings";
+    return u"SwXPrintSettings"_ustr;
 }
 
 sal_Bool SwXPrintSettings::supportsService(const OUString& rServiceName)
@@ -504,7 +506,7 @@ sal_Bool SwXPrintSettings::supportsService(const OUString& rServiceName)
 
 Sequence< OUString > SwXPrintSettings::getSupportedServiceNames()
 {
-    Sequence<OUString> aRet { "com.sun.star.text.PrintSettings" };
+    Sequence<OUString> aRet { u"com.sun.star.text.PrintSettings"_ustr };
     return aRet;
 }
 
@@ -521,7 +523,7 @@ SwXViewSettings::SwXViewSettings(SwView* pVw)
 {
     // This property only exists if we have a view (ie, not at the module )
     if ( !m_pView )
-        mxInfo->remove ( "HelpURL" );
+        mxInfo->remove ( u"HelpURL"_ustr );
 
 }
 
@@ -541,7 +543,7 @@ void SwXViewSettings::_preSetValues ()
         pVOpt = m_pView->GetWrtShell().GetViewOptions();
     }
     else
-        pVOpt = SW_MOD()->GetViewOption(false);
+        pVOpt = SwModule::get()->GetViewOption(false);
 
     mpViewOption.reset( new SwViewOption (*pVOpt) );
     mbApplyZoom = false;
@@ -579,8 +581,8 @@ void SwXViewSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, c
         case  HANDLE_VIEWSET_HIDDEN_TEXT           :   mpViewOption->SetShowHiddenField(*o3tl::doAccess<bool>(rValue));  break;
         case  HANDLE_VIEWSET_HIDDEN_CHARACTERS     :   mpViewOption->SetShowHiddenChar(*o3tl::doAccess<bool>(rValue)); break;
         case  HANDLE_VIEWSET_HIDDEN_PARAGRAPHS     :   mpViewOption->SetShowHiddenPara(*o3tl::doAccess<bool>(rValue));   break;
-        case  HANDLE_VIEWSET_TABLE_BOUNDARIES      :   mpViewOption->SetAppearanceFlag(ViewOptFlags::TableBoundaries, *o3tl::doAccess<bool>(rValue), true);    break;
-        case  HANDLE_VIEWSET_TEXT_BOUNDARIES       :   mpViewOption->SetDocBoundaries(*o3tl::doAccess<bool>(rValue));    break;
+        case  HANDLE_VIEWSET_TABLE_BOUNDARIES      :   mpViewOption->SetTableBoundaries(*o3tl::doAccess<bool>(rValue));    break;
+        case  HANDLE_VIEWSET_TEXT_BOUNDARIES       :   mpViewOption->SetTextBoundaries(*o3tl::doAccess<bool>(rValue));    break;
         case  HANDLE_VIEWSET_SMOOTH_SCROLLING      :   mpViewOption->SetSmoothScroll(*o3tl::doAccess<bool>(rValue)); break;
         case  HANDLE_VIEWSET_SHOW_CONTENT_TIPS     :   mpViewOption->SetShowContentTips(*o3tl::doAccess<bool>(rValue)); break;
         case  HANDLE_VIEWSET_IS_RASTER_VISIBLE     : mpViewOption->SetGridVisible(*o3tl::doAccess<bool>(rValue)); break;
@@ -661,7 +663,7 @@ void SwXViewSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, c
                 break;
                 default:
                     throw IllegalArgumentException(
-                        "SwXViewSettings: invalid zoom type", nullptr, 0);
+                        u"SwXViewSettings: invalid zoom type"_ustr, nullptr, 0);
             }
             mpViewOption->SetZoomType( eZoom );
             mbApplyZoom = true;
@@ -756,6 +758,7 @@ void SwXViewSettings::_setSingleValue( const comphelper::PropertyInfo & rInfo, c
 
 void SwXViewSettings::_postSetValues()
 {
+    SwModule* mod = SwModule::get();
     if( m_pView )
     {
         if(mbApplyZoom )
@@ -770,12 +773,12 @@ void SwXViewSettings::_postSetValues()
     else
     {
         if(mbApplyHRulerMetric)
-            SW_MOD()->ApplyRulerMetric( m_eHRulerUnit, true, false );
+            mod->ApplyRulerMetric(m_eHRulerUnit, true, false);
         if(mbApplyVRulerMetric)
-            SW_MOD()->ApplyRulerMetric( m_eVRulerUnit, false, false );
+            mod->ApplyRulerMetric(m_eVRulerUnit, false, false);
     }
 
-    SW_MOD()->ApplyUsrPref( *mpViewOption, m_pView, m_pView ? SvViewOpt::DestViewOnly
+    mod->ApplyUsrPref( *mpViewOption, m_pView, m_pView ? SvViewOpt::DestViewOnly
                                                   : SvViewOpt::DestText );
 
     mpViewOption.reset();
@@ -790,7 +793,7 @@ void SwXViewSettings::_preGetValues ()
         mpConstViewOption = m_pView->GetWrtShell().GetViewOptions();
     }
     else
-        mpConstViewOption = SW_MOD()->GetViewOption(false);
+        mpConstViewOption = SwModule::get()->GetViewOption(false);
 }
 
 void SwXViewSettings::_getSingleValue( const comphelper::PropertyInfo & rInfo, uno::Any & rValue )
@@ -826,7 +829,7 @@ void SwXViewSettings::_getSingleValue( const comphelper::PropertyInfo & rInfo, u
         case  HANDLE_VIEWSET_HIDE_WHITESPACE       :   bBoolVal = mpConstViewOption->IsHideWhitespaceMode(); break;
         case  HANDLE_VIEWSET_HIDDEN_PARAGRAPHS     :   bBoolVal = mpConstViewOption->IsShowHiddenPara();    break;
         case  HANDLE_VIEWSET_TABLE_BOUNDARIES      :   bBoolVal = mpConstViewOption->IsTableBoundaries(); break;
-        case  HANDLE_VIEWSET_TEXT_BOUNDARIES       :   bBoolVal = mpConstViewOption->IsDocBoundaries(); break;
+        case  HANDLE_VIEWSET_TEXT_BOUNDARIES       :   bBoolVal = mpConstViewOption->IsTextBoundaries(); break;
         case  HANDLE_VIEWSET_SMOOTH_SCROLLING      :   bBoolVal = mpConstViewOption->IsSmoothScroll();  break;
         case  HANDLE_VIEWSET_SHOW_CONTENT_TIPS     :   bBoolVal = mpConstViewOption->IsShowContentTips(); break;
         case  HANDLE_VIEWSET_INLINECHANGES_TIPS    :   bBoolVal = mpConstViewOption->IsShowInlineTooltips(); break;
@@ -907,7 +910,7 @@ void SwXViewSettings::_getSingleValue( const comphelper::PropertyInfo & rInfo, u
             }
             else
             {
-                const SwMasterUsrPref* pUsrPref = SW_MOD()->GetUsrPref( false );
+                const SwMasterUsrPref* pUsrPref = SwModule::get()->GetUsrPref(false);
                 rValue <<= static_cast<sal_Int32>(pUsrPref->GetHScrollMetric());
             }
             bBool = false;
@@ -923,7 +926,7 @@ void SwXViewSettings::_getSingleValue( const comphelper::PropertyInfo & rInfo, u
             }
             else
             {
-                const SwMasterUsrPref* pUsrPref = SW_MOD()->GetUsrPref( false );
+                const SwMasterUsrPref* pUsrPref = SwModule::get()->GetUsrPref(false);
                 rValue <<= static_cast<sal_Int32>(pUsrPref->GetVScrollMetric());
             }
             bBool = false;
@@ -942,7 +945,7 @@ void SwXViewSettings::_postGetValues ()
 
 OUString SwXViewSettings::getImplementationName()
 {
-    return "SwXViewSettings";
+    return u"SwXViewSettings"_ustr;
 }
 
 sal_Bool SwXViewSettings::supportsService(const OUString& rServiceName)
@@ -952,7 +955,7 @@ sal_Bool SwXViewSettings::supportsService(const OUString& rServiceName)
 
 Sequence< OUString > SwXViewSettings::getSupportedServiceNames()
 {
-    Sequence<OUString> aRet { "com.sun.star.text.ViewSettings" };
+    Sequence<OUString> aRet { u"com.sun.star.text.ViewSettings"_ustr };
     return aRet;
 }
 

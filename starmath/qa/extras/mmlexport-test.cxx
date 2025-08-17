@@ -24,7 +24,7 @@ class MathMLExportTest : public UnoApiXmlTest
 {
 public:
     MathMLExportTest()
-        : UnoApiXmlTest("starmath/qa/extras/data/")
+        : UnoApiXmlTest(u"starmath/qa/extras/data/"_ustr)
     {
     }
 
@@ -33,6 +33,7 @@ public:
     void testTdf101022();
     void testMaj();
     void testHadd();
+    void testTdf158867();
 
     CPPUNIT_TEST_SUITE(MathMLExportTest);
     CPPUNIT_TEST(testBlank);
@@ -40,6 +41,7 @@ public:
     CPPUNIT_TEST(testTdf101022);
     CPPUNIT_TEST(testMaj);
     CPPUNIT_TEST(testHadd);
+    CPPUNIT_TEST(testTdf158867);
     CPPUNIT_TEST_SUITE_END();
 
 protected:
@@ -55,63 +57,59 @@ void MathMLExportTest::registerNamespaces(xmlXPathContextPtr& pXmlXPathCtx)
 
 void MathMLExportTest::testBlank()
 {
-    mxComponent = loadFromDesktop("private:factory/smath");
+    loadFromURL(u"private:factory/smath"_ustr);
     SfxBaseModel* pModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
     SmDocShell* pDocShell = static_cast<SmDocShell*>(pModel->GetObjectShell());
-    pDocShell->SetText("x`y~~z");
-    save("MathML XML (Math)");
+    pDocShell->SetText(u"x`y~~z"_ustr);
+    save(u"MathML XML (Math)"_ustr);
     xmlDocUniquePtr pDoc = parseXml(maTempFile);
     CPPUNIT_ASSERT(pDoc);
-    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mspace[1]"_ostr, "width"_ostr, "0.5em");
-    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mspace[2]"_ostr, "width"_ostr, "4em");
+    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mspace[1]", "width", u"0.5em");
+    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mspace[2]", "width", u"4em");
 }
 
 void MathMLExportTest::testTdf97049()
 {
-    mxComponent = loadFromDesktop("private:factory/smath");
+    loadFromURL(u"private:factory/smath"_ustr);
     SfxBaseModel* pModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
     SmDocShell* pDocShell = static_cast<SmDocShell*>(pModel->GetObjectShell());
-    pDocShell->SetText("intd {{1 over x} dx}");
-    save("MathML XML (Math)");
+    pDocShell->SetText(u"intd {{1 over x} dx}"_ustr);
+    save(u"MathML XML (Math)"_ustr);
     xmlDocUniquePtr pDoc = parseXml(maTempFile);
     CPPUNIT_ASSERT(pDoc);
-    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mo[1]"_ostr, "stretchy"_ostr, "true");
-    auto aContent = getXPathContent(pDoc, "/m:math/m:semantics/m:mrow/m:mo[1]"_ostr);
+    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mo[1]", "stretchy", u"true");
+    auto aContent = getXPathContent(pDoc, "/m:math/m:semantics/m:mrow/m:mo[1]");
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aContent.getLength());
     CPPUNIT_ASSERT_EQUAL(u'\x222B', aContent[0]);
 }
 
 void MathMLExportTest::checkMathVariant(SmDocShell& rDocShell, bool bCapital, bool bSmall)
 {
-    rDocShell.SetText("%GAMMA %iGAMMA {ital %GAMMA} {nitalic %iGAMMA} "
-                      "%gamma %igamma {ital %gamma} {nitalic %igamma}");
-    save("MathML XML (Math)");
+    rDocShell.SetText(u"%GAMMA %iGAMMA {ital %GAMMA} {nitalic %iGAMMA} "
+                      "%gamma %igamma {ital %gamma} {nitalic %igamma}"_ustr);
+    save(u"MathML XML (Math)"_ustr);
     xmlDocUniquePtr pDoc = parseXml(maTempFile);
     CPPUNIT_ASSERT(pDoc);
     if (bCapital)
-        assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mi[1]"_ostr, "mathvariant"_ostr);
+        assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mi[1]", "mathvariant");
     else
-        assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mi[1]"_ostr, "mathvariant"_ostr, "normal");
-    assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mstyle[1]/m:mi[1]"_ostr,
-                           "mathvariant"_ostr);
-    assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mi[2]"_ostr, "mathvariant"_ostr);
-    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mstyle[2]/m:mi[1]"_ostr, "mathvariant"_ostr,
-                "normal");
+        assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mi[1]", "mathvariant", u"normal");
+    assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mstyle[1]/m:mi[1]", "mathvariant");
+    assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mi[2]", "mathvariant");
+    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mstyle[2]/m:mi[1]", "mathvariant", u"normal");
     if (bSmall)
-        assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mi[3]"_ostr, "mathvariant"_ostr);
+        assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mi[3]", "mathvariant");
     else
-        assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mi[3]"_ostr, "mathvariant"_ostr, "normal");
-    assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mstyle[3]/m:mi[1]"_ostr,
-                           "mathvariant"_ostr);
-    assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mi[4]"_ostr, "mathvariant"_ostr);
-    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mstyle[4]/m:mi[1]"_ostr, "mathvariant"_ostr,
-                "normal");
-    rDocShell.SetText("");
+        assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mi[3]", "mathvariant", u"normal");
+    assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mstyle[3]/m:mi[1]", "mathvariant");
+    assertXPathNoAttribute(pDoc, "/m:math/m:semantics/m:mrow/m:mi[4]", "mathvariant");
+    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:mstyle[4]/m:mi[1]", "mathvariant", u"normal");
+    rDocShell.SetText(u""_ustr);
 }
 
 void MathMLExportTest::testTdf101022()
 {
-    mxComponent = loadFromDesktop("private:factory/smath");
+    loadFromURL(u"private:factory/smath"_ustr);
     SfxBaseModel* pModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
     SmDocShell* pDocShell = static_cast<SmDocShell*>(pModel->GetObjectShell());
 
@@ -126,31 +124,43 @@ void MathMLExportTest::testTdf101022()
 
 void MathMLExportTest::testMaj()
 {
-    mxComponent = loadFromDesktop("private:factory/smath");
+    loadFromURL(u"private:factory/smath"_ustr);
     SfxBaseModel* pModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
     SmDocShell* pDocShell = static_cast<SmDocShell*>(pModel->GetObjectShell());
     pDocShell->SetText(
         u"maj to { \u0661 } from { \U0001EE0A = \u0660 } { \u0661 over \U0001EE0A }"_ustr);
-    save("MathML XML (Math)");
+    save(u"MathML XML (Math)"_ustr);
     xmlDocUniquePtr pDoc = parseXml(maTempFile);
     CPPUNIT_ASSERT(pDoc);
-    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:munderover/m:mo"_ostr, "stretchy"_ostr,
-                "false");
-    assertXPathContent(pDoc, "/m:math/m:semantics/m:mrow/m:munderover/m:mo"_ostr,
-                       u"\U0001EEF0"_ustr);
+    assertXPath(pDoc, "/m:math/m:semantics/m:mrow/m:munderover/m:mo", "stretchy", u"false");
+    assertXPathContent(pDoc, "/m:math/m:semantics/m:mrow/m:munderover/m:mo", u"\U0001EEF0");
 }
 
 void MathMLExportTest::testHadd()
 {
-    mxComponent = loadFromDesktop("private:factory/smath");
+    loadFromURL(u"private:factory/smath"_ustr);
     SfxBaseModel* pModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
     SmDocShell* pDocShell = static_cast<SmDocShell*>(pModel->GetObjectShell());
     pDocShell->SetText(u"hadd to { \U0001EE4E } from { \U0001EE4E } \U0001EE4E"_ustr);
-    save("MathML XML (Math)");
+    save(u"MathML XML (Math)"_ustr);
     xmlDocUniquePtr pDoc = parseXml(maTempFile);
     CPPUNIT_ASSERT(pDoc);
-    assertXPathContent(pDoc, "/m:math/m:semantics/m:mrow/m:munderover/m:mi"_ostr,
-                       u"\U0001EEF1"_ustr);
+    assertXPathContent(pDoc, "/m:math/m:semantics/m:mrow/m:munderover/m:mi", u"\U0001EEF1");
+}
+
+void MathMLExportTest::testTdf158867()
+{
+    loadFromURL(u"private:factory/smath"_ustr);
+    SfxBaseModel* pModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
+    SmDocShell* pDocShell = static_cast<SmDocShell*>(pModel->GetObjectShell());
+    pDocShell->SetText(u"1,2 over 2 = 0,65"_ustr);
+    save(u"MathML XML (Math)"_ustr);
+    xmlDocUniquePtr pDoc = parseXml(maTempFile);
+    CPPUNIT_ASSERT(pDoc);
+    assertXPathContent(pDoc, "/m:math/m:semantics/m:mrow/m:mfrac/m:mn[1]", u"1,2");
+    assertXPathContent(pDoc, "/m:math/m:semantics/m:mrow/m:mfrac/m:mn[2]", u"2");
+    assertXPathContent(pDoc, "/m:math/m:semantics/m:mrow/m:mo", u"=");
+    assertXPathContent(pDoc, "/m:math/m:semantics/m:mrow/m:mn", u"0,65");
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(MathMLExportTest);

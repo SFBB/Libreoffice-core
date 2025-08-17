@@ -137,8 +137,7 @@ void SdUnoPageBackground::fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet )
                         case XATTR_FILLBITMAP :
                         {
                             if (pProp->nMemberId == MID_BITMAP &&
-                                (pAny->getValueType() == cppu::UnoType<css::awt::XBitmap>::get() ||
-                                 pAny->getValueType() == cppu::UnoType<css::graphic::XGraphic>::get()))
+                                (pAny->getValueTypeClass() == css::uno::TypeClass_INTERFACE))
                             {
                                 setPropertyValue( aPropertyName, *pAny );
                             }
@@ -163,7 +162,7 @@ void SdUnoPageBackground::fillItemSet( SdDrawDocument* pDoc, SfxItemSet& rSet )
 // XServiceInfo
 OUString SAL_CALL SdUnoPageBackground::getImplementationName()
 {
-    return "SdUnoPageBackground";
+    return u"SdUnoPageBackground"_ustr;
 }
 
 sal_Bool SAL_CALL SdUnoPageBackground::supportsService( const OUString& ServiceName )
@@ -212,7 +211,7 @@ void SAL_CALL SdUnoPageBackground::setPropertyValue( const OUString& aPropertyNa
         aSet.Put( *mpSet );
 
         if( !aSet.Count() )
-            aSet.Put( rPool.GetDefaultItem( pEntry->nWID ) );
+            aSet.Put( rPool.GetUserOrPoolDefaultItem( pEntry->nWID ) );
 
         if( pEntry->nMemberId == MID_NAME && ( pEntry->nWID == XATTR_FILLBITMAP || pEntry->nWID == XATTR_FILLGRADIENT || pEntry->nWID == XATTR_FILLHATCH || pEntry->nWID == XATTR_FILLFLOATTRANSPARENCE ) )
         {
@@ -272,7 +271,7 @@ uno::Any SAL_CALL SdUnoPageBackground::getPropertyValue( const OUString& Propert
             aSet.Put( *mpSet );
 
             if( !aSet.Count() )
-                aSet.Put( rPool.GetDefaultItem( pEntry->nWID ) );
+                aSet.Put( rPool.GetUserOrPoolDefaultItem( pEntry->nWID ) );
 
             // get value from ItemSet
             aAny = SvxItemPropertySet_getPropertyValue( pEntry, aSet );
@@ -323,7 +322,7 @@ beans::PropertyState SAL_CALL SdUnoPageBackground::getPropertyState( const OUStr
         case SfxItemState::DEFAULT:
             return beans::PropertyState_DEFAULT_VALUE;
         default:
-//      case SfxItemState::DONTCARE:
+//      case SfxItemState::INVALID:
 //      case SfxItemState::DISABLED:
             return beans::PropertyState_AMBIGUOUS_VALUE;
         }
@@ -391,7 +390,7 @@ uno::Any SAL_CALL SdUnoPageBackground::getPropertyDefault( const OUString& aProp
     {
         SfxItemPool& rPool = *mpSet->GetPool();
         SfxItemSet aSet(rPool, pEntry->nWID, pEntry->nWID);
-        aSet.Put(rPool.GetDefaultItem(pEntry->nWID));
+        aSet.Put(rPool.GetUserOrPoolDefaultItem(pEntry->nWID));
 
         aAny = SvxItemPropertySet_getPropertyValue(pEntry, aSet);
     }

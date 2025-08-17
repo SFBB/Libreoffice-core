@@ -20,14 +20,11 @@
 #pragma once
 
 #include <sal/types.h>
+#include <rtl/ref.hxx>
 
-namespace com::sun::star::drawing::framework
+namespace sd::framework
 {
-class XConfiguration;
-}
-namespace com::sun::star::drawing::framework
-{
-class XResourceId;
+class Configuration;
 }
 namespace com::sun::star::uno
 {
@@ -36,20 +33,22 @@ template <typename> class Reference;
 
 namespace sd::framework
 {
+class ResourceId;
+
 /** Print debug information about configurations to the standard error
     output channel.
 */
 class ConfigurationTracer
 {
 public:
-    static void TraceConfiguration(
-        const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration,
-        const char* pMessage);
+    static void
+    TraceConfiguration(const rtl::Reference<sd::framework::Configuration>& rxConfiguration,
+                       const char* pMessage);
 #if OSL_DEBUG_LEVEL >= 1
-    static void TraceBoundResources(
-        const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration,
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxResourceId,
-        const int nIndentation);
+    static void
+    TraceBoundResources(const rtl::Reference<sd::framework::Configuration>& rxConfiguration,
+                        const rtl::Reference<sd::framework::ResourceId>& rxResourceId,
+                        const int nIndentation);
 #endif
 };
 

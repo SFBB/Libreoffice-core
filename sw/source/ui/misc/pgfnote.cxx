@@ -29,6 +29,7 @@
 #include <svx/pageitem.hxx>
 #include <svl/eitem.hxx>
 #include <editeng/ulspitem.hxx>
+#include <svl/grabbagitem.hxx>
 #include <uitool.hxx>
 #include <pagedesc.hxx>
 #include <pgfnote.hxx>
@@ -94,19 +95,23 @@ IMPL_LINK(SwFootNotePage, LineColorSelected_Impl, ColorListBox&, rColorBox, void
 }
 
 SwFootNotePage::SwFootNotePage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/footnoteareapage.ui", "FootnoteAreaPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/footnoteareapage.ui"_ustr, u"FootnoteAreaPage"_ustr, &rSet)
     , m_lMaxHeight(0)
-    , m_xMaxHeightPageBtn(m_xBuilder->weld_radio_button("maxheightpage"))
-    , m_xMaxHeightBtn(m_xBuilder->weld_radio_button("maxheight"))
-    , m_xMaxHeightEdit(m_xBuilder->weld_metric_spin_button("maxheightsb", FieldUnit::CM))
-    , m_xDistEdit(m_xBuilder->weld_metric_spin_button("spacetotext", FieldUnit::CM))
-    , m_xLinePosBox(m_xBuilder->weld_combo_box("position"))
-    , m_xLineTypeBox(new SvtLineListBox(m_xBuilder->weld_menu_button("style")))
-    , m_xLineWidthEdit(m_xBuilder->weld_metric_spin_button("thickness", FieldUnit::POINT))
-    , m_xLineColorBox(new ColorListBox(m_xBuilder->weld_menu_button("color"),
+    , m_xMaxHeightPageBtn(m_xBuilder->weld_radio_button(u"maxheightpage"_ustr))
+    , m_xMaxHeightBtn(m_xBuilder->weld_radio_button(u"maxheight"_ustr))
+    , m_xMaxHeightEdit(m_xBuilder->weld_metric_spin_button(u"maxheightsb"_ustr, FieldUnit::CM))
+    , m_xDistLabel(m_xBuilder->weld_label(u"spacetotextlabel"_ustr))
+    , m_xDistEdit(m_xBuilder->weld_metric_spin_button(u"spacetotext"_ustr, FieldUnit::CM))
+    , m_xLinePosLabel(m_xBuilder->weld_label(u"positionlabel"_ustr))
+    , m_xLinePosBox(m_xBuilder->weld_combo_box(u"position"_ustr))
+    , m_xLineTypeBox(new SvtLineListBox(m_xBuilder->weld_menu_button(u"style"_ustr)))
+    , m_xLineWidthEdit(m_xBuilder->weld_metric_spin_button(u"thickness"_ustr, FieldUnit::POINT))
+    , m_xLineColorBox(new ColorListBox(m_xBuilder->weld_menu_button(u"color"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xLineLengthEdit(m_xBuilder->weld_metric_spin_button("length", FieldUnit::PERCENT))
-    , m_xLineDistEdit(m_xBuilder->weld_metric_spin_button("spacingtocontents", FieldUnit::CM))
+    , m_xLineLengthLabel(m_xBuilder->weld_label(u"lengthlabel"_ustr))
+    , m_xLineLengthEdit(m_xBuilder->weld_metric_spin_button(u"length"_ustr, FieldUnit::PERCENT))
+    , m_xLineDistLabel(m_xBuilder->weld_label(u"spacingtocontentslabel"_ustr))
+    , m_xLineDistEdit(m_xBuilder->weld_metric_spin_button(u"spacingtocontents"_ustr, FieldUnit::CM))
 {
     SetExchangeSupport();
     FieldUnit aMetric = ::GetDfltMetric(false);
@@ -116,6 +121,30 @@ SwFootNotePage::SwFootNotePage(weld::Container* pPage, weld::DialogController* p
     MeasurementSystem eSys = SvtSysLocale().GetLocaleData().getMeasurementSystemEnum();
     tools::Long nHeightValue = MeasurementSystem::Metric != eSys ? 1440 : 1134;
     m_xMaxHeightEdit->set_value(m_xMaxHeightEdit->normalize(nHeightValue),FieldUnit::TWIP);
+
+    bool bContinuousEndnotes = false;
+    if (const SfxGrabBagItem* pGragbagItem = rSet.GetItemIfSet(SID_ATTR_CHAR_GRABBAG))
+    {
+        auto it = pGragbagItem->GetGrabBag().find(u"ContinuousEndnotes"_ustr);
+        if (it != pGragbagItem->GetGrabBag().end())
+        {
+            it->second >>= bContinuousEndnotes;
+        }
+    }
+
+    if (bContinuousEndnotes)
+    {
+        // These are ignored in SwFootnoteContFrame::Format() and SwFootnoteContFrame::PaintLine(),
+        // hide them.
+        m_xDistLabel->set_visible(false);
+        m_xDistEdit->set_visible(false);
+        m_xLinePosLabel->set_visible(false);
+        m_xLinePosBox->set_visible(false);
+        m_xLineLengthLabel->set_visible(false);
+        m_xLineLengthEdit->set_visible(false);
+        m_xLineDistLabel->set_visible(false);
+        m_xLineDistEdit->set_visible(false);
+    }
 }
 
 SwFootNotePage::~SwFootNotePage()
@@ -262,21 +291,21 @@ void SwFootNotePage::ActivatePage(const SfxItemSet& rSet)
     auto const & rSize = rSet.Get( RES_FRM_SIZE );
     m_lMaxHeight = rSize.GetHeight();
 
-    if( const SvxSetItem* pHeaderSetItem = rSet.GetItemIfSet( rSet.GetPool()->GetWhich( SID_ATTR_PAGE_HEADERSET), false ) )
+    if( const SvxSetItem* pHeaderSetItem = rSet.GetItemIfSet( rSet.GetPool()->GetWhichIDFromSlotID( SID_ATTR_PAGE_HEADERSET), false ) )
     {
         const SfxItemSet& rHeaderSet = pHeaderSetItem->GetItemSet();
         const SfxBoolItem& rHeaderOn =
-            rHeaderSet.Get( rSet.GetPool()->GetWhich( SID_ATTR_PAGE_ON ) );
+            rHeaderSet.Get( rSet.GetPool()->GetWhichIDFromSlotID( SID_ATTR_PAGE_ON ) );
 
         if ( rHeaderOn.GetValue() )
         {
             const SvxSizeItem& rSizeItem =
-                rHeaderSet.Get(rSet.GetPool()->GetWhich(SID_ATTR_PAGE_SIZE));
+                rHeaderSet.Get(rSet.GetPool()->GetWhichIDFromSlotID(SID_ATTR_PAGE_SIZE));
             m_lMaxHeight -= rSizeItem.GetSize().Height();
         }
     }
 
-    if( const SvxSetItem* pFooterSetItem = rSet.GetItemIfSet( rSet.GetPool()->GetWhich( SID_ATTR_PAGE_FOOTERSET),
+    if( const SvxSetItem* pFooterSetItem = rSet.GetItemIfSet( rSet.GetPool()->GetWhichIDFromSlotID( SID_ATTR_PAGE_FOOTERSET),
             false ) )
     {
         const SfxItemSet& rFooterSet = pFooterSetItem->GetItemSet();
@@ -285,7 +314,7 @@ void SwFootNotePage::ActivatePage(const SfxItemSet& rSet)
         if ( rFooterOn.GetValue() )
         {
             const SvxSizeItem& rSizeItem =
-                rFooterSet.Get( rSet.GetPool()->GetWhich( SID_ATTR_PAGE_SIZE ) );
+                rFooterSet.Get( rSet.GetPool()->GetWhichIDFromSlotID( SID_ATTR_PAGE_SIZE ) );
             m_lMaxHeight -= rSizeItem.GetSize().Height();
         }
     }

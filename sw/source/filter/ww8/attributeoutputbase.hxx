@@ -27,13 +27,13 @@
 #include <editeng/svxenum.hxx>
 #include <tools/solar.h>
 #include <optional>
+#include <tuple>
 
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
 #include <swtypes.hxx>
 #include <fldbas.hxx>
 #include <utility>
 
-class Point;
 class SvxCaseMapItem;
 class SvxColorItem;
 class SvxContourItem;
@@ -52,16 +52,6 @@ class SvxBlinkItem;
 class SvxBrushItem;
 class XFillStyleItem;
 class XFillGradientItem;
-class SvxFontItem;
-class SvxFontHeightItem;
-class SvxLanguageItem;
-class SvxPostureItem;
-class SvxWeightItem;
-class SvxFontItem;
-class SvxFontHeightItem;
-class SvxLanguageItem;
-class SvxPostureItem;
-class SvxWeightItem;
 class SvxCharRotateItem;
 class SvxEmphasisMarkItem;
 class SvxTwoLinesItem;
@@ -69,6 +59,7 @@ class SvxCharScaleWidthItem;
 class SvxCharReliefItem;
 class SvxCharHiddenItem;
 class SvxBoxItem;
+class SvxScriptHintItem;
 class SwFormatINetFormat;
 class SwFormatCharFormat;
 class SwFormatField;
@@ -96,8 +87,6 @@ class SwFormatSurround;
 class SwFormatVertOrient;
 class SwFormatHoriOrient;
 class SwFormatAnchor;
-class SvxBrushItem;
-class SvxBoxItem;
 class SwFormatCol;
 class SvxFormatKeepItem;
 class SwTextGridItem;
@@ -112,18 +101,10 @@ class SwRedlineData;
 class SwSection;
 class SwFormatDrop;
 class SwFrameFormat;
-class SwNumFormat;
-class SwFormat;
-struct WW8_SepInfo;
 class SwLineNumberInfo;
 class SwNumRule;
-class wwFont;
 
 namespace editeng { class SvxBorderLine; }
-
-namespace rtl { class OUString; }
-
-class MSWordExportBase;
 
 namespace ww8 { class Frame; }
 
@@ -152,10 +133,10 @@ public:
     virtual void RTLAndCJKState( bool bIsRTL, sal_uInt16 nScript ) = 0;
 
     /// Start of the paragraph.
-    virtual sal_Int32 StartParagraph( ww8::WW8TableNodeInfo::Pointer_t pTextNodeInfo, bool bGenerateParaId ) = 0;
+    virtual sal_Int32 StartParagraph( const ww8::WW8TableNodeInfo::Pointer_t& pTextNodeInfo, bool bGenerateParaId ) = 0;
 
     /// End of the paragraph.
-    virtual void EndParagraph( ww8::WW8TableNodeInfoInner::Pointer_t pTextNodeInfoInner ) = 0;
+    virtual void EndParagraph( const ww8::WW8TableNodeInfoInner::Pointer_t& pTextNodeInfoInner ) = 0;
 
     /// Called in order to output section breaks.
     virtual void SectionBreaks(const SwNode& rNode) = 0;
@@ -200,10 +181,10 @@ public:
     virtual void StartRuby( const SwTextNode& rNode, sal_Int32 nPos, const SwFormatRuby& rRuby ) = 0;
 
     /// Output ruby end.
-    virtual void EndRuby( const SwTextNode& rNode, sal_Int32 nPos ) = 0;
+    virtual void EndRuby( const SwTextNode& rNode, sal_Int32 nPos, bool bEmptyBaseText ) = 0;
 
     /// Output URL start.
-    virtual bool StartURL( const OUString& rUrl, const OUString& rTarget ) = 0;
+    virtual bool StartURL(const OUString& rUrl, const OUString& rTarget, const OUString& rName = OUString()) = 0;
 
     /// Output URL end.
     virtual bool EndURL(bool isAtEndOfParagraph) = 0;
@@ -371,6 +352,9 @@ public:
         const SvxBrushItem* pBrush, // #i120928 export graphic of bullet
         bool isLegal) = 0;
 
+    // Output the floating tables attached to the text node
+    virtual void CheckAndWriteFloatingTables(const SwNode& /*rNode*/) {}
+
 protected:
 
     static void GetNumberPara( OUString& rStr, const SwField& rField );
@@ -460,9 +444,6 @@ protected:
     /// Sfx item RES_CHRATR_BidiRTL
     virtual void CharBidiRTL( const SfxPoolItem& ) = 0;
 
-    /// Sfx item RES_CHRATR_IdctHint
-    virtual void CharIdctHint( const SfxPoolItem& ) = 0;
-
     /// Sfx item RES_CHRATR_ROTATE
     virtual void CharRotate( const SvxCharRotateItem& ) = 0;
 
@@ -482,11 +463,16 @@ protected:
     virtual void CharHidden( const SvxCharHiddenItem& ) = 0;
 
     /// Sfx item RES_CHRATR_BOX
-    void FormatCharBorder( const SvxBoxItem& rBox );
-    virtual void CharBorder( const ::editeng::SvxBorderLine* pAllBorder, const sal_uInt16 nDist, const bool bShadow ) = 0;
+    // pAllBorder, nDist, bShadow
+    std::tuple<const editeng::SvxBorderLine*, sal_uInt16, bool>
+    FormatCharBorder(const SvxBoxItem& rBox, const SfxItemSet* pItemSet = nullptr) const;
+    virtual void CharBorder( const SvxBoxItem& ) = 0;
 
     /// Sfx item RES_CHRATR_HIGHLIGHT
     virtual void CharHighlight( const SvxBrushItem& ) = 0;
+
+    /// Sfx item RES_CHRATR_SCRIPT_HINT
+    virtual void CharScriptHint(const SvxScriptHintItem&) = 0;
 
     /// Sfx item RES_TXTATR_INETFMT
     virtual void TextINetFormat( const SwFormatINetFormat& ) = 0;

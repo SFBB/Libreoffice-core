@@ -29,8 +29,6 @@
 class SfxShell;
 
 namespace sd { class ViewShellBase; }
-namespace com::sun::star::awt { class XWindow; }
-namespace com::sun::star::drawing::framework { class XResourceId; }
 
 namespace sd::framework {
 
@@ -48,7 +46,7 @@ class ChildWindowPane
 {
 public:
     ChildWindowPane (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId,
+        const rtl::Reference<sd::framework::ResourceId>& rxPaneId,
         sal_uInt16 nChildWindowId,
         ViewShellBase& rViewShellBase,
         ::std::unique_ptr<SfxShell> && pShell);
@@ -58,7 +56,7 @@ public:
     */
     void Hide();
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     /** This returns the content window when the child window is already
         visible.  Otherwise <NULL/> is returned.  In that case a later call
@@ -72,11 +70,7 @@ public:
     /** The local getWindow() first calls GetWindow() to provide a valid
         window pointer before forwarding the call to the base class.
     */
-    virtual css::uno::Reference<css::awt::XWindow>
-        SAL_CALL getWindow() override;
-
-    DECLARE_XINTERFACE()
-    DECLARE_XTYPEPROVIDER()
+    virtual css::uno::Reference<css::awt::XWindow> getWindow() override;
 
     // XEventListener
 

@@ -24,6 +24,7 @@
 #include <drawinglayer/attribute/sdrlightattribute3d.hxx>
 #include <drawinglayer/primitive2d/bitmapprimitive2d.hxx>
 #include <drawinglayer/primitive2d/PolygonHairlinePrimitive2D.hxx>
+#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <processor3d/zbufferprocessor3d.hxx>
 #include <processor3d/shadow3dextractor.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
@@ -33,6 +34,7 @@
 #include <basegfx/raster/bzpixelraster.hxx>
 #include <utility>
 #include <vcl/BitmapTools.hxx>
+#include <vcl/skia/SkiaHelper.hxx>
 #include <comphelper/threadpool.hxx>
 #include <comphelper/lok.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
@@ -42,9 +44,9 @@ using namespace com::sun::star;
 
 namespace
 {
-    BitmapEx BPixelRasterToBitmapEx(const basegfx::BZPixelRaster& rRaster, sal_uInt16 mnAntiAlialize)
+    Bitmap BPixelRasterToBitmap(const basegfx::BZPixelRaster& rRaster, sal_uInt16 mnAntiAlialize)
     {
-        BitmapEx aRetval;
+        Bitmap aRetval;
         const sal_uInt32 nWidth(mnAntiAlialize ? rRaster.getWidth()/mnAntiAlialize : rRaster.getWidth());
         const sal_uInt32 nHeight(mnAntiAlialize ? rRaster.getHeight()/mnAntiAlialize : rRaster.getHeight());
 
@@ -212,8 +214,9 @@ namespace drawinglayer::primitive2d
             }
         }
 
-        void ScenePrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const
+        Primitive2DReference ScenePrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const
         {
+            Primitive2DContainer aContainer;
             // create 2D shadows from contained 3D primitives. This creates the shadow primitives on demand and tells if
             // there are some or not. Do this at start, the shadow might still be visible even when the scene is not
             if(impGetShadow3D())
@@ -226,7 +229,7 @@ namespace drawinglayer::primitive2d
                 if(aViewRange.isEmpty() || aShadow2DRange.overlaps(aViewRange))
                 {
                     // add extracted 2d shadows (before 3d scene creations itself)
-                    rContainer.append(maShadowPrimitives);
+                    aContainer.append(maShadowPrimitives);
                 }
             }
 
@@ -238,7 +241,7 @@ namespace drawinglayer::primitive2d
             calculateDiscreteSizes(rViewInformation, aDiscreteRange, aVisibleDiscreteRange, aUnitVisibleRange);
 
             if(aVisibleDiscreteRange.isEmpty())
-                return;
+                return new GroupPrimitive2D(std::move(aContainer));
 
             // test if discrete view size (pixel) maybe too big and limit it
             double fViewSizeX(aVisibleDiscreteRange.getWidth());
@@ -412,7 +415,7 @@ namespace drawinglayer::primitive2d
             }
 
             if(!(nRasterWidth && nRasterHeight))
-                return;
+                return new GroupPrimitive2D(std::move(aContainer));
 
             // create view unit buffer
             basegfx::BZPixelRaster aBZPixelRaster(
@@ -420,7 +423,10 @@ namespace drawinglayer::primitive2d
                 nOversampleValue ? nRasterHeight * nOversampleValue : nRasterHeight);
 
             // check for parallel execution possibilities
-            static bool bMultithreadAllowed = false; // loplugin:constvars:ignore
+            // Skia does not like being touched from multiple threads
+            // at the same time, and methods like DefaultProcessor3D::impRenderBitmapTexturePrimitive3D
+            // are going to do that.
+            static bool bMultithreadAllowed = !SkiaHelper::isVCLSkiaEnabled(); // loplugin:constvars:ignore
             sal_Int32 nThreadCount(0);
             comphelper::ThreadPool& rThreadPool(comphelper::ThreadPool::getSharedOptimalPool());
 
@@ -504,11 +510,11 @@ namespace drawinglayer::primitive2d
                 aZBufferProcessor3D.finish();
             }
 
-            const_cast< ScenePrimitive2D* >(this)->maOldRenderedBitmap = BPixelRasterToBitmapEx(aBZPixelRaster, nOversampleValue);
+            const_cast< ScenePrimitive2D* >(this)->maOldRenderedBitmap = BPixelRasterToBitmap(aBZPixelRaster, nOversampleValue);
             const Size aBitmapSizePixel(maOldRenderedBitmap.GetSizePixel());
 
             if(!(aBitmapSizePixel.getWidth() && aBitmapSizePixel.getHeight()))
-                return;
+                return new GroupPrimitive2D(std::move(aContainer));
 
             // create transform for the created bitmap in discrete coordinates first.
             basegfx::B2DHomMatrix aNew2DTransform;
@@ -522,7 +528,7 @@ namespace drawinglayer::primitive2d
             aNew2DTransform *= aInverseOToV;
 
             // create bitmap primitive and add
-            rContainer.push_back(
+            aContainer.push_back(
                 new BitmapPrimitive2D(
                     maOldRenderedBitmap,
                     aNew2DTransform));
@@ -534,8 +540,9 @@ namespace drawinglayer::primitive2d
             {
                 basegfx::B2DPolygon aOutline(basegfx::utils::createUnitPolygon());
                 aOutline.transform(aNew2DTransform);
-                rContainer.push_back(new PolygonHairlinePrimitive2D(std::move(aOutline), basegfx::BColor(1.0, 0.0, 0.0)));
+                aContainer.push_back(new PolygonHairlinePrimitive2D(std::move(aOutline), basegfx::BColor(1.0, 0.0, 0.0)));
             }
+            return new GroupPrimitive2D(std::move(aContainer));
         }
 
         Primitive2DContainer ScenePrimitive2D::getGeometry2D() const
@@ -609,7 +616,7 @@ namespace drawinglayer::primitive2d
             const sal_Int32 nY(basegfx::fround(fRelativeY * aBitmapSizePixel.Height()));
 
             // try to get a statement about transparency in that pixel
-            o_rResult = (0 != maOldRenderedBitmap.GetAlpha(nX, nY));
+            o_rResult = (0 != maOldRenderedBitmap.GetPixelColor(nX, nY).GetAlpha());
             return true;
         }
 
@@ -630,7 +637,7 @@ namespace drawinglayer::primitive2d
             mfOldDiscreteSizeY(0.0)
         {
             // activate callback to flush buffered decomposition content
-            setCallbackSeconds(45);
+            activateFlushOnTimer();
         }
 
         bool ScenePrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
@@ -684,7 +691,7 @@ namespace drawinglayer::primitive2d
             bool bNeedNewDecomposition(false);
             bool bDiscreteSizesAreCalculated(false);
 
-            if(!getBuffered2DDecomposition().empty())
+            if(hasBuffered2DDecomposition())
             {
                 basegfx::B2DRange aVisibleDiscreteRange;
                 calculateDiscreteSizes(rViewInformation, aDiscreteRange, aVisibleDiscreteRange, aUnitVisibleRange);
@@ -712,10 +719,10 @@ namespace drawinglayer::primitive2d
             if(bNeedNewDecomposition)
             {
                 // conditions of last local decomposition have changed, delete
-                const_cast< ScenePrimitive2D* >(this)->setBuffered2DDecomposition(Primitive2DContainer());
+                const_cast< ScenePrimitive2D* >(this)->setBuffered2DDecomposition(nullptr);
             }
 
-            if(getBuffered2DDecomposition().empty())
+            if(!hasBuffered2DDecomposition())
             {
                 if(!bDiscreteSizesAreCalculated)
                 {

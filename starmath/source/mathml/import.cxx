@@ -58,7 +58,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
@@ -76,7 +75,8 @@ SmMlElement* SmMLImportWrapper::getElementTree()
 ErrCode SmMLImportWrapper::Import(SfxMedium& rMedium)
 {
     // Fetch context
-    uno::Reference<uno::XComponentContext> xContext(comphelper::getProcessComponentContext());
+    const uno::Reference<uno::XComponentContext>& xContext(
+        comphelper::getProcessComponentContext());
     if (!xContext.is())
     {
         SAL_WARN("starmath", "Failed to fetch model while file input");
@@ -143,7 +143,7 @@ ErrCode SmMLImportWrapper::Import(SfxMedium& rMedium)
     // Set base URI
     // needed for relative URLs; but it's OK to import e.g. MathML from the clipboard without one
     SAL_INFO_IF(rMedium.GetBaseURL().isEmpty(), "starmath", "SmMLImportWrapper: no base URL");
-    xInfoSet->setPropertyValue("BaseURI", Any(rMedium.GetBaseURL()));
+    xInfoSet->setPropertyValue(u"BaseURI"_ustr, Any(rMedium.GetBaseURL()));
 
     // Fetch progress range
     sal_Int32 nProgressRange(rMedium.IsStorage() ? 3 : 1);
@@ -166,7 +166,7 @@ ErrCode SmMLImportWrapper::Import(SfxMedium& rMedium)
                 aName = pDocHierarchItem->GetValue();
 
             if (!aName.isEmpty())
-                xInfoSet->setPropertyValue("StreamRelPath", Any(aName));
+                xInfoSet->setPropertyValue(u"StreamRelPath"_ustr, Any(aName));
         }
 
         // Check if use OASIS ( new document format )
@@ -285,7 +285,8 @@ ErrCode SmMLImportWrapper::Import(SfxMedium& rMedium)
 ErrCode SmMLImportWrapper::Import(std::u16string_view aSource)
 {
     // Fetch context
-    uno::Reference<uno::XComponentContext> xContext(comphelper::getProcessComponentContext());
+    const uno::Reference<uno::XComponentContext>& xContext(
+        comphelper::getProcessComponentContext());
     if (!xContext.is())
     {
         SAL_WARN("starmath", "Failed to fetch model while file input");
@@ -296,14 +297,6 @@ ErrCode SmMLImportWrapper::Import(std::u16string_view aSource)
     if (!m_xModel.is())
     {
         SAL_WARN("starmath", "Failed to fetch model while file input");
-        return ERRCODE_SFX_DOLOADFAILED;
-    }
-
-    // Make a model component from our SmModel
-    uno::Reference<lang::XComponent> xModelComp = m_xModel;
-    if (!xModelComp.is())
-    {
-        SAL_WARN("starmath", "Failed to make model while file input");
         return ERRCODE_SFX_DOLOADFAILED;
     }
 
@@ -338,7 +331,8 @@ ErrCode SmMLImportWrapper::Import(std::u16string_view aSource)
 
     // Read data
     // read a component from text
-    ErrCode nError = ReadThroughComponentMS(aSource, xModelComp, xContext, xInfoSet);
+    ErrCode nError = ReadThroughComponentMS(aSource, uno::Reference<lang::XComponent>(m_xModel),
+                                            xContext, xInfoSet);
 
     // Declare any error
     if (nError != ERRCODE_NONE)
@@ -514,12 +508,12 @@ ErrCode SmMLImportWrapper::ReadThroughComponentS(const uno::Reference<embed::XSt
 
         // Determine if stream is encrypted or not
         uno::Reference<beans::XPropertySet> xProps(xEventsStream, uno::UNO_QUERY);
-        Any aAny = xProps->getPropertyValue("Encrypted");
+        Any aAny = xProps->getPropertyValue(u"Encrypted"_ustr);
         bool bEncrypted = false;
         aAny >>= bEncrypted;
 
         // Set base URL and open stream
-        rPropSet->setPropertyValue("StreamName", Any(OUString(pStreamName)));
+        rPropSet->setPropertyValue(u"StreamName"_ustr, Any(OUString(pStreamName)));
         Reference<io::XInputStream> xStream = xEventsStream->getInputStream();
 
         // Execute read
@@ -593,14 +587,14 @@ Math_MLImporter_get_implementation(uno::XComponentContext* pCtx,
                                    uno::Sequence<uno::Any> const& /*rSeq*/)
 {
     return cppu::acquire(
-        new SmMLImport(pCtx, "com.sun.star.comp.Math.XMLImporter", SvXMLImportFlags::ALL));
+        new SmMLImport(pCtx, u"com.sun.star.comp.Math.XMLImporter"_ustr, SvXMLImportFlags::ALL));
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
 Math_MLOasisMetaImporter_get_implementation(uno::XComponentContext* pCtx,
                                             uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    return cppu::acquire(new SmMLImport(pCtx, "com.sun.star.comp.Math.XMLOasisMetaImporter",
+    return cppu::acquire(new SmMLImport(pCtx, u"com.sun.star.comp.Math.XMLOasisMetaImporter"_ustr,
                                         SvXMLImportFlags::META));
 }
 
@@ -608,8 +602,8 @@ extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
 Math_MLOasisSettingsImporter_get_implementation(uno::XComponentContext* pCtx,
                                                 uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    return cppu::acquire(new SmMLImport(pCtx, "com.sun.star.comp.Math.XMLOasisSettingsImporter",
-                                        SvXMLImportFlags::SETTINGS));
+    return cppu::acquire(new SmMLImport(
+        pCtx, u"com.sun.star.comp.Math.XMLOasisSettingsImporter"_ustr, SvXMLImportFlags::SETTINGS));
 }
 
 // SmMLImportContext
@@ -676,9 +670,7 @@ public:
 uno::Reference<XFastContextHandler> SAL_CALL
 SmMLImportContext::createFastChildContext(sal_Int32, const uno::Reference<XFastAttributeList>&)
 {
-    uno::Reference<xml::sax::XFastContextHandler> xContext;
-    xContext = new SmMLImportContext(static_cast<SmMLImport&>(GetImport()), &m_pElement);
-    return xContext;
+    return new SmMLImportContext(static_cast<SmMLImport&>(GetImport()), &m_pElement);
 }
 
 void SmMLImportContext::declareMlError()
@@ -925,8 +917,8 @@ void SmMLImportContext::handleAttributes(const Reference<XFastAttributeList>& aA
             case XML_HREF:
             {
                 aAttribute.setMlAttributeValueType(SmMlAttributeValueType::MlHref);
-                OUString* aRef = new OUString(aIter.toString());
-                SmMlHref aHref = { SmMlAttributeValueHref::NMlValid, aRef };
+                OUString aRef(aIter.toString());
+                SmMlHref aHref = { SmMlAttributeValueHref::NMlValid, &aRef };
                 aAttribute.setMlHref(&aHref);
                 break;
             }
@@ -1390,7 +1382,7 @@ SmMLImport::SmMLImport(const css::uno::Reference<css::uno::XComponentContext>& r
     : SvXMLImport(rContext, implementationName, nImportFlags)
     , m_pElementTree(nullptr)
     , m_bSuccess(false)
-    , m_nSmSyntaxVersion(SM_MOD()->GetConfig()->GetDefaultSmSyntaxVersion())
+    , m_nSmSyntaxVersion(SmModule::get()->GetConfig()->GetDefaultSmSyntaxVersion())
 {
 }
 

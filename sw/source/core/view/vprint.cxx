@@ -318,9 +318,9 @@ void SwViewShell::FillPrtDoc( SwDoc& rPrtDoc, const SfxPrinter* pPrt)
     const SfxItemPool& rPool = GetAttrPool();
     for( sal_uInt16 nWh = POOLATTR_BEGIN; nWh < POOLATTR_END; ++nWh )
     {
-        const SfxPoolItem* pCpyItem = rPool.GetPoolDefaultItem( nWh );
+        const SfxPoolItem* pCpyItem = rPool.GetUserDefaultItem( nWh );
         if( nullptr != pCpyItem )
-            rPrtDoc.GetAttrPool().SetPoolDefaultItem( *pCpyItem );
+            rPrtDoc.GetAttrPool().SetUserDefaultItem( *pCpyItem );
     }
 
     // JP 29.07.99 - Bug 67951 - set all Styles from the SourceDoc into
@@ -366,7 +366,7 @@ void SwViewShell::FillPrtDoc( SwDoc& rPrtDoc, const SfxPrinter* pPrt)
     if( !pFESh->IsTableMode() && pActCursor && pActCursor->HasMark() )
     {   // Tweak paragraph attributes of last paragraph
         SwNodeIndex aNodeIdx( *rPrtDoc.GetNodes().GetEndOfContent().StartOfSectionNode() );
-        SwTextNode* pTextNd = rPrtDoc.GetNodes().GoNext( &aNodeIdx )->GetTextNode();
+        SwTextNode* pTextNd = SwNodes::GoNext(&aNodeIdx)->GetTextNode();
         SwContentNode *pLastNd =
             (*pActCursor->GetMark()) <= (*pActCursor->GetPoint())
             ? pActCursor->GetPointContentNode()
@@ -382,7 +382,7 @@ void SwViewShell::FillPrtDoc( SwDoc& rPrtDoc, const SfxPrinter* pPrt)
     // set the page style at the first paragraph
     {
         SwNodeIndex aNodeIdx( *rPrtDoc.GetNodes().GetEndOfContent().StartOfSectionNode() );
-        SwContentNode* pCNd = rPrtDoc.GetNodes().GoNext( &aNodeIdx ); // go to 1st ContentNode
+        SwContentNode* pCNd = SwNodes::GoNext(&aNodeIdx); // go to 1st ContentNode
         if( pFESh->IsTableMode() )
         {
             SwTableNode* pTNd = pCNd->FindTableNode();
@@ -599,33 +599,24 @@ void SwViewShell::PrtOle2( SwDoc *pDoc, const SwViewOption *pOpt, const SwPrintD
 /// Check if the DocNodesArray contains fields.
 bool SwViewShell::IsAnyFieldInDoc() const
 {
-    for (const SfxPoolItem* pItem : mxDoc->GetAttrPool().GetItemSurrogates(RES_TXTATR_FIELD))
-    {
-        auto pFormatField = dynamic_cast<const SwFormatField*>(pItem);
-        if(pFormatField)
+    bool bFound = false;
+    mxDoc->ForEachFormatField(RES_TXTATR_FIELD,
+        [&bFound] (const SwFormatField& /*rFormatField*/) -> bool
         {
-            const SwTextField* pTextField = pFormatField->GetTextField();
-            if( pTextField && pTextField->GetTextNode().GetNodes().IsDocNodes() )
-            {
-                return true;
-            }
-        }
-    }
+            bFound = true;
+            return false;
+        });
+    if (bFound)
+        return true;
 
-    for (const SfxPoolItem* pItem : mxDoc->GetAttrPool().GetItemSurrogates(RES_TXTATR_INPUTFIELD))
-    {
-        const SwFormatField* pFormatField = dynamic_cast<const SwFormatField*>(pItem);
-        if(pFormatField)
+    mxDoc->ForEachFormatField(RES_TXTATR_INPUTFIELD,
+        [&bFound] (const SwFormatField& /*rFormatField*/) -> bool
         {
-            const SwTextField* pTextField = pFormatField->GetTextField();
-            if( pTextField && pTextField->GetTextNode().GetNodes().IsDocNodes() )
-            {
-                return true;
-            }
-        }
-    }
+            bFound = true;
+            return false;
+        });
 
-    return false;
+    return bFound;
 }
 
 ///  Saves some settings at the draw view
@@ -635,7 +626,7 @@ SwDrawViewSave::SwDrawViewSave( SdrView* pSdrView )
 {
     if ( pDV )
     {
-        bPrintControls = pDV->IsLayerPrintable( "Controls" );
+        bPrintControls = pDV->IsLayerPrintable( u"Controls"_ustr );
     }
 }
 
@@ -643,7 +634,7 @@ SwDrawViewSave::~SwDrawViewSave()
 {
     if ( pDV )
     {
-        pDV->SetLayerPrintable( "Controls", bPrintControls );
+        pDV->SetLayerPrintable( u"Controls"_ustr, bPrintControls );
     }
 }
 
@@ -664,11 +655,11 @@ void SwViewShell::PrepareForPrint( const SwPrintData &rOptions, bool bIsPDFExpor
     // OD 09.01.2003 #i6467# - consider, if view shell belongs to page preview
     if ( !IsPreview() )
     {
-        pDrawView->SetLayerPrintable( "Controls", rOptions.m_bPrintControl );
+        pDrawView->SetLayerPrintable( u"Controls"_ustr, rOptions.m_bPrintControl );
     }
     else
     {
-        pDrawView->SetLayerVisible( "Controls", rOptions.m_bPrintControl );
+        pDrawView->SetLayerVisible( u"Controls"_ustr, rOptions.m_bPrintControl );
     }
 }
 

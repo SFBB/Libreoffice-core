@@ -86,15 +86,16 @@
 
 #include <filter.hxx>
 #include <scabstdlg.hxx>
+#include <acctrl.hxx>
 
 OUString ScResId(TranslateId aId)
 {
-    return Translate::get(aId, SC_MOD()->GetResLocale());
+    return Translate::get(aId, ScModule::get()->GetResLocale());
 }
 
 OUString ScResId(TranslateNId aContextSingularPlural, int nCardinality)
 {
-    return Translate::nget(aContextSingularPlural, nCardinality, SC_MOD()->GetResLocale());
+    return Translate::nget(aContextSingularPlural, nCardinality, ScModule::get()->GetResLocale());
 }
 
 void ScDLL::Init()
@@ -106,7 +107,7 @@ void ScDLL::Init()
     ScModule* pMod = pUniqueModule.get();
     SfxApplication::SetModule(SfxToolsModule::Calc, std::move(pUniqueModule));
 
-    ScDocShell::Factory().SetDocumentServiceName( "com.sun.star.sheet.SpreadsheetDocument" );
+    ScDocShell::Factory().SetDocumentServiceName( u"com.sun.star.sheet.SpreadsheetDocument"_ustr );
 
     // Not until the ResManager is initialized
     // The AppOptions must be initialized not until after ScGlobal::Init
@@ -173,6 +174,7 @@ void ScDLL::Init()
     SvxZoomSliderControl            ::RegisterControl(SID_ATTR_ZOOMSLIDER,  pMod);
     SvxModifyControl                ::RegisterControl(SID_DOC_MODIFIED,     pMod);
     XmlSecStatusBarControl          ::RegisterControl( SID_SIGNATURE,       pMod );
+    ScAutoCalculateControl          ::RegisterControl(FID_AUTO_CALC,        pMod);
 
     SvxPosSizeStatusBarControl      ::RegisterControl(SID_ATTR_SIZE,        pMod);
 
@@ -221,9 +223,7 @@ void ScDLL::Init()
     SvxHlinkDlgWrapper          ::RegisterChildWindow(false, pMod);
     SvxFontWorkChildWindow      ::RegisterChildWindow(false, pMod);
     SvxIMapDlgChildWindow       ::RegisterChildWindow(false, pMod);
-    ScSpellDialogChildWindow::RegisterChildWindow(
-        false, pMod, comphelper::LibreOfficeKit::isActive() ? SfxChildWindowFlags::NEVERCLONE
-                                                            : SfxChildWindowFlags::NONE);
+    ScSpellDialogChildWindow    ::RegisterChildWindow(false, pMod);
 
     ScValidityRefChildWin::RegisterChildWindow(false, pMod);
     sc::SearchResultsDlgWrapper::RegisterChildWindow(false, pMod);

@@ -31,7 +31,7 @@ void SwRewriter::AddRule(SwUndoArg eWhat, const OUString& rWith)
                   [&aRule](SwRewriteRule const& a) { return a.first == aRule.first; });
 
     if (aIt != mRules.end())
-        *aIt = aRule;
+        *aIt = std::move(aRule);
     else
         mRules.push_back(aRule);
 }
@@ -53,15 +53,15 @@ OUString SwRewriter::GetPlaceHolder(SwUndoArg eId)
     switch (eId)
     {
         case UndoArg1:
-            return "$1";
+            return u"$1"_ustr;
         case UndoArg2:
-            return "$2";
+            return u"$2"_ustr;
         case UndoArg3:
-            return "$3";
+            return u"$3"_ustr;
         default:
             break;
     }
-    return "$1";
+    return u"$1"_ustr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

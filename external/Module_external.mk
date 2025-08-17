@@ -9,10 +9,6 @@
 
 $(eval $(call gb_Module_Module,external))
 
-ifeq ($(COM),MSC)
-$(eval $(call gb_Module_add_moduledir,external,msc-externals))
-endif
-
 $(eval $(call gb_Module_add_moduledirs,external,\
 	$(call gb_Helper_optional,XMLSEC,xmlsec) \
 	$(call gb_Helper_optional,ABW,libabw) \
@@ -73,9 +69,10 @@ $(eval $(call gb_Module_add_moduledirs,external,\
 	$(call gb_Helper_optional,LIBTOMMATH,libtommath) \
 	$(call gb_Helper_optional,LXML,lxml) \
 	$(call gb_Helper_optional,MARIADB_CONNECTOR_C,mariadb-connector-c) \
+	$(call gb_Helper_optional,MD4C,md4c) \
 	$(call gb_Helper_optional,MDDS,mdds) \
 	$(call gb_Helper_optional,MDNSRESPONDER,mdnsresponder) \
-	$(if $(WITH_EXTRA_EXTENSIONS),misc_extensions) \
+	$(call gb_Helper_optional,MESON,meson) \
 	$(call gb_Helper_optional,MORE_FONTS,more_fonts) \
 	$(call gb_Helper_optional,MSPUB,libmspub) \
 	$(call gb_Helper_optional,MWAW,libmwaw) \
@@ -105,7 +102,9 @@ $(eval $(call gb_Module_add_moduledirs,external,\
 	$(call gb_Helper_optional,WPG,libwpg) \
 	$(call gb_Helper_optional,WPS,libwps) \
 	$(call gb_Helper_optional,XSLTML,xsltml) \
+	$(call gb_Helper_optional,YRS,y-crdt) \
 	$(call gb_Helper_optional,ZLIB,zlib) \
+	$(call gb_Helper_optional,ZSTD,zstd) \
 	$(call gb_Helper_optional,ZMF,libzmf) \
 ))
 

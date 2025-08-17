@@ -90,7 +90,7 @@
 #include <unotools/syslocale.hxx>
 #include <string>
 
-#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <libxml/xmlwriter.h>
 
 using namespace ::com::sun::star;
@@ -101,18 +101,21 @@ NameOrIndex::NameOrIndex(TypedWhichId<NameOrIndex> _nWhich, sal_Int32 nIndex) :
     SfxStringItem(_nWhich, OUString()),
     m_nPalIndex(nIndex)
 {
+    setNameOrIndex();
 }
 
 NameOrIndex::NameOrIndex(TypedWhichId<NameOrIndex> _nWhich, const OUString& rName) :
     SfxStringItem(_nWhich, rName),
     m_nPalIndex(-1)
 {
+    setNameOrIndex();
 }
 
 NameOrIndex::NameOrIndex(const NameOrIndex& rNameOrIndex) :
     SfxStringItem(rNameOrIndex),
     m_nPalIndex(rNameOrIndex.m_nPalIndex)
 {
+    setNameOrIndex();
 }
 
 bool NameOrIndex::operator==(const SfxPoolItem& rItem) const
@@ -131,26 +134,28 @@ NameOrIndex* NameOrIndex::Clone(SfxItemPool* /*pPool*/) const
     Argument pPool2 can be null.
     If returned string equals NameOrIndex->GetName(), the name was already unique.
 */
-OUString NameOrIndex::CheckNamedItem( const NameOrIndex* pCheckItem, const sal_uInt16 nWhich, const SfxItemPool* pPool1, SvxCompareValueFunc pCompareValueFunc, TranslateId pPrefixResId, const XPropertyListRef &pDefaults )
+OUString NameOrIndex::CheckNamedItem(const sal_uInt16 nWhich, const SfxItemPool* pPool1, SvxCompareValueFunc pCompareValueFunc, TranslateId pPrefixResId, const XPropertyListRef &pDefaults) const
 {
     bool bForceNew = false;
 
-    OUString aUniqueName = SvxUnogetInternalNameForItem(nWhich, pCheckItem->GetName());
+    OUString aUniqueName = SvxUnogetInternalNameForItem(nWhich, GetName());
 
     // 2. if we have a name check if there is already an item with the
     // same name in the documents pool with a different line end or start
 
     if (!aUniqueName.isEmpty() && pPool1)
     {
-        for (const SfxPoolItem* pItem : pPool1->GetItemSurrogates(nWhich))
+        // use special version to get buffered NameOrIndex Items
+        for (const SfxPoolItem* pItem : pPool1->GetItemSurrogatesForItem(*this))
         {
             const NameOrIndex *pNameOrIndex = static_cast<const NameOrIndex*>(pItem);
 
-            if( pNameOrIndex->GetName() == pCheckItem->GetName() )
+            // need to check for WhichID, GetItemSurrogatesForItem does buffer on type only
+            if( pNameOrIndex != this && pNameOrIndex->Which() == nWhich && pNameOrIndex->GetName() == GetName() )
             {
                 // if there is already an item with the same name and the same
                 // value it's ok to set it
-                if( !pCompareValueFunc( pNameOrIndex, pCheckItem ) )
+                if( !pCompareValueFunc( pNameOrIndex, this ) )
                 {
                     // same name but different value, we need a new name for this item
                     aUniqueName.clear();
@@ -183,26 +188,26 @@ OUString NameOrIndex::CheckNamedItem( const NameOrIndex* pCheckItem, const sal_u
                     {
                     case XATTR_FILLBITMAP:
                     {
-                        const GraphicObject& rGraphicObjectA(static_cast<const XFillBitmapItem*>(pCheckItem)->GetGraphicObject());
+                        const GraphicObject& rGraphicObjectA(static_cast<const XFillBitmapItem*>(this)->GetGraphicObject());
                         const GraphicObject& rGraphicObjectB(static_cast<const XBitmapEntry*>(pEntry)->GetGraphicObject());
 
                         bFound = (rGraphicObjectA == rGraphicObjectB);
                         break;
                     }
                     case XATTR_LINEDASH:
-                        bFound = static_cast<const XLineDashItem*>(pCheckItem)->GetDashValue() == static_cast<const XDashEntry*>(pEntry)->GetDash();
+                        bFound = static_cast<const XLineDashItem*>(this)->GetDashValue() == static_cast<const XDashEntry*>(pEntry)->GetDash();
                         break;
                     case XATTR_LINESTART:
-                        bFound = static_cast<const XLineStartItem*>(pCheckItem)->GetLineStartValue() == static_cast<const XLineEndEntry*>(pEntry)->GetLineEnd();
+                        bFound = static_cast<const XLineStartItem*>(this)->GetLineStartValue() == static_cast<const XLineEndEntry*>(pEntry)->GetLineEnd();
                         break;
                     case XATTR_LINEEND:
-                        bFound = static_cast<const XLineEndItem*>(pCheckItem)->GetLineEndValue() == static_cast<const XLineEndEntry*>(pEntry)->GetLineEnd();
+                        bFound = static_cast<const XLineEndItem*>(this)->GetLineEndValue() == static_cast<const XLineEndEntry*>(pEntry)->GetLineEnd();
                         break;
                     case XATTR_FILLGRADIENT:
-                        bFound = static_cast<const XFillGradientItem*>(pCheckItem)->GetGradientValue() == static_cast<const XGradientEntry*>(pEntry)->GetGradient();
+                        bFound = static_cast<const XFillGradientItem*>(this)->GetGradientValue() == static_cast<const XGradientEntry*>(pEntry)->GetGradient();
                         break;
                     case XATTR_FILLHATCH:
-                        bFound = static_cast<const XFillHatchItem*>(pCheckItem)->GetHatchValue() == static_cast<const XHatchEntry*>(pEntry)->GetHatch();
+                        bFound = static_cast<const XFillHatchItem*>(this)->GetHatchValue() == static_cast<const XHatchEntry*>(pEntry)->GetHatch();
                         break;
                     }
 
@@ -227,13 +232,15 @@ OUString NameOrIndex::CheckNamedItem( const NameOrIndex* pCheckItem, const sal_u
 
         if (aUniqueName.isEmpty() && pPool1)
         {
-            for (const SfxPoolItem* pItem : pPool1->GetItemSurrogates(nWhich))
+            // use special version to get buffered NameOrIndex Items
+            for (const SfxPoolItem* pItem : pPool1->GetItemSurrogatesForItem(*this))
             {
                 const NameOrIndex *pNameOrIndex = static_cast<const NameOrIndex*>(pItem);
 
-                if( !pNameOrIndex->GetName().isEmpty() )
+                // need to check for WhichID, GetItemSurrogatesForItem does buffer on type only
+                if( pNameOrIndex != this && pNameOrIndex->Which() == nWhich && !pNameOrIndex->GetName().isEmpty() )
                 {
-                    if( !bForceNew && pCompareValueFunc( pNameOrIndex, pCheckItem ) )
+                    if( !bForceNew && pCompareValueFunc( pNameOrIndex, this ) )
                         return pNameOrIndex->GetName();
 
                     if( pNameOrIndex->GetName().startsWith( aUser ) )
@@ -261,29 +268,29 @@ void NameOrIndex::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterEndElement(pWriter);
 }
 
-SfxPoolItem* XColorItem::CreateDefault() { return new XColorItem; }
+SfxPoolItem* XColorItem::CreateDefault() { return new XColorItem(); }
 
 XColorItem::XColorItem(TypedWhichId<XColorItem> _nWhich, sal_Int32 nIndex, const Color& rTheColor) :
     NameOrIndex(_nWhich, nIndex),
-    aColor(rTheColor)
+    m_aColor(rTheColor)
 {
 }
 
 XColorItem::XColorItem(TypedWhichId<XColorItem> _nWhich, const OUString& rName, const Color& rTheColor) :
     NameOrIndex(_nWhich, rName),
-    aColor(rTheColor)
+    m_aColor(rTheColor)
 {
 }
 
 XColorItem::XColorItem(TypedWhichId<XColorItem> _nWhich, const Color& rTheColor)
     : NameOrIndex(_nWhich, OUString())
-    , aColor(rTheColor)
+    , m_aColor(rTheColor)
 {
 }
 
 XColorItem::XColorItem(const XColorItem& rItem) :
     NameOrIndex(rItem),
-    aColor(rItem.aColor),
+    m_aColor(rItem.m_aColor),
     maComplexColor(rItem.maComplexColor)
 {
 }
@@ -296,14 +303,14 @@ XColorItem* XColorItem::Clone(SfxItemPool* /*pPool*/) const
 bool XColorItem::operator==(const SfxPoolItem& rItem) const
 {
     return ( NameOrIndex::operator==(rItem) &&
-            static_cast<const XColorItem&>(rItem).aColor == aColor ) &&
+            static_cast<const XColorItem&>(rItem).m_aColor == m_aColor ) &&
             static_cast<const XColorItem&>(rItem).maComplexColor == maComplexColor;
 }
 
 const Color& XColorItem::GetColorValue() const
 {
     assert(!IsIndex());
-    return aColor;
+    return m_aColor;
 
 }
 
@@ -386,7 +393,7 @@ void XColorItem::dumpAsXml(xmlTextWriterPtr pWriter) const
         (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST("XATTR_FILLCOLOR"));
     }
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("aColor"),
-                                BAD_CAST(aColor.AsRGBHexString().toUtf8().getStr()));
+                                BAD_CAST(m_aColor.AsRGBHexString().toUtf8().getStr()));
 
     NameOrIndex::dumpAsXml(pWriter);
 
@@ -476,30 +483,25 @@ bool XLineStyleItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /*nMemberId*
     return true;
 }
 
-sal_uInt16 XLineStyleItem::GetValueCount() const
-{
-    return 3;
-}
-
 XDash::XDash(css::drawing::DashStyle eTheDash, sal_uInt16 nTheDots, double nTheDotLen,
              sal_uInt16 nTheDashes, double nTheDashLen, double nTheDistance) :
-    eDash(eTheDash),
-    nDots(nTheDots),
-    nDashes(nTheDashes),
-    nDotLen(nTheDotLen),
-    nDashLen(nTheDashLen),
-    nDistance(nTheDistance)
+    m_eDash(eTheDash),
+    m_nDots(nTheDots),
+    m_nDashes(nTheDashes),
+    m_nDotLen(nTheDotLen),
+    m_nDashLen(nTheDashLen),
+    m_nDistance(nTheDistance)
 {
 }
 
 bool XDash::operator==(const XDash& rDash) const
 {
-    return ( eDash      == rDash.eDash      &&
-             nDots      == rDash.nDots      &&
-             nDotLen    == rDash.nDotLen    &&
-             nDashes    == rDash.nDashes    &&
-             nDashLen   == rDash.nDashLen   &&
-             nDistance  == rDash.nDistance );
+    return ( m_eDash      == rDash.m_eDash      &&
+             m_nDots      == rDash.m_nDots      &&
+             m_nDotLen    == rDash.m_nDotLen    &&
+             m_nDashes    == rDash.m_nDashes    &&
+             m_nDashLen   == rDash.m_nDashLen   &&
+             m_nDistance  == rDash.m_nDistance );
 }
 
 // XDash is translated into an array of doubles which describe the lengths of the
@@ -654,19 +656,19 @@ SfxPoolItem* XLineDashItem::CreateDefault() {return new XLineDashItem;}
 
 XLineDashItem::XLineDashItem(const OUString& rName, const XDash& rTheDash) :
     NameOrIndex(XATTR_LINEDASH, rName),
-    aDash(rTheDash)
+    m_aDash(rTheDash)
 {
 }
 
 XLineDashItem::XLineDashItem(const XLineDashItem& rItem) :
     NameOrIndex(rItem),
-    aDash(rItem.aDash)
+    m_aDash(rItem.m_aDash)
 {
 }
 
 XLineDashItem::XLineDashItem(const XDash& rTheDash)
 :   NameOrIndex( XATTR_LINEDASH, -1 ),
-    aDash(rTheDash)
+    m_aDash(rTheDash)
 {
 }
 
@@ -678,7 +680,7 @@ XLineDashItem* XLineDashItem::Clone(SfxItemPool* /*pPool*/) const
 bool XLineDashItem::operator==(const SfxPoolItem& rItem) const
 {
     return ( NameOrIndex::operator==(rItem) &&
-             aDash == static_cast<const XLineDashItem&>(rItem).aDash );
+             m_aDash == static_cast<const XLineDashItem&>(rItem).m_aDash );
 }
 
 bool XLineDashItem::GetPresentation
@@ -700,9 +702,9 @@ bool XLineDashItem::HasMetrics() const
 
 void XLineDashItem::ScaleMetrics(tools::Long nMul, tools::Long nDiv)
 {
-    aDash.SetDotLen( BigInt::Scale( aDash.GetDotLen(), nMul, nDiv ) );
-    aDash.SetDashLen( BigInt::Scale( aDash.GetDashLen(), nMul, nDiv ) );
-    aDash.SetDistance( BigInt::Scale( aDash.GetDistance(), nMul, nDiv ) );
+    m_aDash.SetDotLen( BigInt::Scale( m_aDash.GetDotLen(), nMul, nDiv ) );
+    m_aDash.SetDashLen( BigInt::Scale( m_aDash.GetDashLen(), nMul, nDiv ) );
+    m_aDash.SetDistance( BigInt::Scale( m_aDash.GetDistance(), nMul, nDiv ) );
 }
 
 bool XLineDashItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) const
@@ -724,8 +726,8 @@ bool XLineDashItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) const
             aLineDash.Distance = rXD.GetDistance();
 
             uno::Sequence< beans::PropertyValue > aPropSeq{
-                comphelper::makePropertyValue("Name", SvxUnogetApiNameForItem(Which(), GetName())),
-                comphelper::makePropertyValue("LineDash", aLineDash)
+                comphelper::makePropertyValue(u"Name"_ustr, SvxUnogetApiNameForItem(Which(), GetName())),
+                comphelper::makePropertyValue(u"LineDash"_ustr, aLineDash)
             };
             rVal <<= aPropSeq;
             break;
@@ -817,7 +819,7 @@ bool XLineDashItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
                 css::drawing::LineDash aLineDash;
                 OUString aName;
                 bool bLineDash( false );
-                for ( const auto& rProp : std::as_const(aPropSeq) )
+                for (const auto& rProp : aPropSeq)
                 {
                     if ( rProp.Name == "Name" )
                         rProp.Value >>= aName;
@@ -952,19 +954,16 @@ bool XLineDashItem::CompareValueFunc( const NameOrIndex* p1, const NameOrIndex* 
     return static_cast<const XLineDashItem*>(p1)->GetDashValue() == static_cast<const XLineDashItem*>(p2)->GetDashValue();
 }
 
-std::unique_ptr<XLineDashItem> XLineDashItem::checkForUniqueItem( SdrModel* pModel ) const
+std::unique_ptr<XLineDashItem> XLineDashItem::checkForUniqueItem( SdrModel& rModel ) const
 {
-    if( pModel )
-    {
-        const OUString aUniqueName = NameOrIndex::CheckNamedItem(
-                this, XATTR_LINEDASH, &pModel->GetItemPool(),
-                XLineDashItem::CompareValueFunc, RID_SVXSTR_DASH20,
-                pModel->GetPropertyList( XPropertyListType::Dash ) );
+    const OUString aUniqueName(CheckNamedItem(
+        XATTR_LINEDASH, &rModel.GetItemPool(),
+        XLineDashItem::CompareValueFunc, RID_SVXSTR_DASH20,
+        rModel.GetPropertyList(XPropertyListType::Dash)));
 
-        // if the given name is not valid, replace it!
-        if( aUniqueName != GetName() )
-            return std::make_unique<XLineDashItem>( aUniqueName, aDash );
-    }
+    // if the given name is not valid, replace it!
+    if( aUniqueName != GetName() )
+        return std::make_unique<XLineDashItem>( aUniqueName, m_aDash );
 
     return nullptr;
 }
@@ -1205,203 +1204,162 @@ bool XLineStartItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
     return true;
 }
 
+static bool HasConflictingStartEndItems(const SfxItemPool& pool, std::u16string_view name,
+                                        const basegfx::B2DPolyPolygon& value)
+{
+    // XATTR_LINESTART
+    for (const SfxPoolItem* p : pool.GetItemSurrogatesForItem(SfxItemType::XLineStartItemType))
+    {
+        auto pItem = static_cast<const XLineStartItem*>(p);
+
+        if (pItem->GetName() == name)
+        {
+            // if there is already an item with the same name and the same value it's not a conflict
+            if (pItem->GetLineStartValue() == value)
+                break;
+            // same name but different value
+            return true;
+        }
+    }
+    // XATTR_LINEEND
+    for (const SfxPoolItem* p : pool.GetItemSurrogatesForItem(SfxItemType::XLineEndItemType))
+    {
+        auto pItem = static_cast<const XLineEndItem*>(p);
+
+        if (pItem->GetName() == name)
+        {
+            // if there is already an item with the same name and the same value it's not a conflict
+            if (pItem->GetLineEndValue() == value)
+                break;
+            // same name but different value
+            return true;
+        }
+    }
+    return false;
+}
+
+/** this function searches in both the models pool and the styles pool for XLineStartItem and
+    XLineEndItem with the same name and returns true when it exists and has a different value. */
+static bool HasConflictingStartEndItems(const SdrModel& model, std::u16string_view name,
+                                        const basegfx::B2DPolyPolygon& value)
+{
+    return HasConflictingStartEndItems(model.GetItemPool(), name, value)
+           || (model.GetStyleSheetPool()
+               && HasConflictingStartEndItems(model.GetStyleSheetPool()->GetPool(), name, value));
+}
+
+static OUString CreateNameForValue(const SfxItemPool& pool, const basegfx::B2DPolyPolygon& value,
+                                   bool forceNew)
+{
+    sal_Int32 nUserIndex = 1;
+    const OUString aUser(SvxResId(RID_SVXSTR_LINEEND));
+
+    // XATTR_LINEEND first, because previous code preferred existing name from it
+    for (const SfxPoolItem* p : pool.GetItemSurrogatesForItem(SfxItemType::XLineEndItemType))
+    {
+        auto pItem = static_cast<const XLineEndItem*>(p);
+
+        if (!pItem->GetName().isEmpty())
+        {
+            if (!forceNew && pItem->GetLineEndValue() == value)
+                return pItem->GetName(); // Found existing
+
+            if (pItem->GetName().startsWith(aUser))
+            {
+                sal_Int32 nThisIndex = o3tl::toInt32(pItem->GetName().subView(aUser.getLength()));
+                if (nThisIndex >= nUserIndex)
+                    nUserIndex = nThisIndex + 1;
+            }
+        }
+    }
+
+    // XATTR_LINESTART
+    for (const SfxPoolItem* p : pool.GetItemSurrogatesForItem(SfxItemType::XLineStartItemType))
+    {
+        auto pItem = static_cast<const XLineStartItem*>(p);
+
+        if (!pItem->GetName().isEmpty())
+        {
+            if (!forceNew && pItem->GetLineStartValue() == value)
+                return pItem->GetName(); // Found existing
+
+            if (pItem->GetName().startsWith(aUser))
+            {
+                sal_Int32 nThisIndex = o3tl::toInt32(pItem->GetName().subView(aUser.getLength()));
+                if (nThisIndex >= nUserIndex)
+                    nUserIndex = nThisIndex + 1;
+            }
+        }
+    }
+
+    return aUser + " " + OUString::number(nUserIndex);
+}
+
 /** this function searches in both the models pool and the styles pool for XLineStartItem
     and XLineEndItem with the same value or name and returns an item with the value of
     this item and a unique name for an item with this value. */
-std::unique_ptr<XLineStartItem> XLineStartItem::checkForUniqueItem( SdrModel* pModel ) const
+std::unique_ptr<XLineStartItem> XLineStartItem::checkForUniqueItem( SdrModel& rModel ) const
 {
-    if( pModel )
+    std::unique_ptr<XLineStartItem> pTempItem;
+    const XLineStartItem* pLineStartItem = this;
+
+    OUString aUniqueName( GetName() );
+
+    if( !maPolyPolygon.count() )
     {
-        std::unique_ptr<XLineStartItem> pTempItem;
-        const XLineStartItem* pLineStartItem = this;
-
-        OUString aUniqueName( GetName() );
-
-        if( !maPolyPolygon.count() )
-        {
-            // if the polygon is empty, check if the name is empty
-            if( aUniqueName.isEmpty() )
-                return nullptr;
-
-            // force empty name for empty polygons
-            return std::make_unique<XLineStartItem>( "", maPolyPolygon );
-        }
-
-        if( maPolyPolygon.count() > 1 )
-        {
-            // check if the polygon is closed
-            if(!maPolyPolygon.isClosed())
-            {
-                // force a closed polygon
-                basegfx::B2DPolyPolygon aNew(maPolyPolygon);
-                aNew.setClosed(true);
-                pTempItem.reset(new XLineStartItem( aUniqueName, std::move(aNew) ));
-                pLineStartItem = pTempItem.get();
-            }
-        }
-
-        bool bForceNew = false;
-
-        // 2. if we have a name check if there is already an item with the
-        // same name in the documents pool with a different line end or start
-
-        const SfxItemPool& rPool1 = pModel->GetItemPool();
-        if (!aUniqueName.isEmpty())
-        {
-            for (const SfxPoolItem* p : rPool1.GetItemSurrogates(XATTR_LINESTART))
-            {
-                auto pItem = dynamic_cast<const XLineStartItem*>(p);
-
-                if( pItem && ( pItem->GetName() == pLineStartItem->GetName() ) )
-                {
-                    // if there is already an item with the same name and the same
-                    // value it's ok to set it
-                    if( pItem->GetLineStartValue() != pLineStartItem->GetLineStartValue() )
-                    {
-                        // same name but different value, we need a new name for this item
-                        aUniqueName.clear();
-                        bForceNew = true;
-                    }
-                    break;
-                }
-            }
-
-            if( !bForceNew )
-            {
-                for (const SfxPoolItem* p : rPool1.GetItemSurrogates(XATTR_LINEEND))
-                {
-                    auto pItem = dynamic_cast<const XLineEndItem*>(p);
-
-                    if( pItem && ( pItem->GetName() == pLineStartItem->GetName() ) )
-                    {
-                        // if there is already an item with the same name and the same
-                        // value it's ok to set it
-                        if( pItem->GetLineEndValue() != pLineStartItem->GetLineStartValue() )
-                        {
-                            // same name but different value, we need a new name for this item
-                            aUniqueName.clear();
-                            bForceNew = true;
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-
-        const SfxItemPool* pPool2 = pModel->GetStyleSheetPool() ? &pModel->GetStyleSheetPool()->GetPool() : nullptr;
-        if( !aUniqueName.isEmpty() && pPool2)
-        {
-            for (const SfxPoolItem* p : pPool2->GetItemSurrogates(XATTR_LINESTART))
-            {
-                auto pItem = dynamic_cast<const XLineStartItem*>(p);
-
-                if( pItem && ( pItem->GetName() == pLineStartItem->GetName() ) )
-                {
-                    // if there is already an item with the same name and the same
-                    // value it's ok to set it
-                    if( pItem->GetLineStartValue() != pLineStartItem->GetLineStartValue() )
-                    {
-                        // same name but different value, we need a new name for this item
-                        aUniqueName.clear();
-                        bForceNew = true;
-                    }
-                    break;
-                }
-            }
-
-            if( !bForceNew )
-            {
-                for (const SfxPoolItem* p : pPool2->GetItemSurrogates(XATTR_LINEEND))
-                {
-                    auto pItem = dynamic_cast<const XLineEndItem*>(p);
-
-                    if( pItem && ( pItem->GetName() == pLineStartItem->GetName() ) )
-                    {
-                        // if there is already an item with the same name and the same
-                        // value it's ok to set it
-                        if( pItem->GetLineEndValue() != pLineStartItem->GetLineStartValue() )
-                        {
-                            // same name but different value, we need a new name for this item
-                            aUniqueName.clear();
-                            bForceNew = true;
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-
-        // if we have no name yet, find existing item with same content or
-        // create a unique name
+        // if the polygon is empty, check if the name is empty
         if( aUniqueName.isEmpty() )
+            return nullptr;
+
+        // force empty name for empty polygons
+        return std::make_unique<XLineStartItem>( "", maPolyPolygon );
+    }
+
+    if( maPolyPolygon.count() > 1 )
+    {
+        // check if the polygon is closed
+        if(!maPolyPolygon.isClosed())
         {
-            bool bFoundExisting = false;
-
-            sal_Int32 nUserIndex = 1;
-            const OUString aUser(SvxResId(RID_SVXSTR_LINEEND));
-
-            for (const SfxPoolItem* p : rPool1.GetItemSurrogates(XATTR_LINESTART))
-            {
-                auto pItem = dynamic_cast<const XLineStartItem*>(p);
-
-                if (pItem && !pItem->GetName().isEmpty())
-                {
-                    if (!bForceNew && pItem->GetLineStartValue() == pLineStartItem->GetLineStartValue())
-                    {
-                        aUniqueName = pItem->GetName();
-                        bFoundExisting = true;
-                        break;
-                    }
-
-                    if (pItem->GetName().startsWith(aUser))
-                    {
-                        sal_Int32 nThisIndex = o3tl::toInt32(pItem->GetName().subView(aUser.getLength()));
-                        if (nThisIndex >= nUserIndex)
-                            nUserIndex = nThisIndex + 1;
-                    }
-                }
-            }
-
-            for (const SfxPoolItem* p : rPool1.GetItemSurrogates(XATTR_LINEEND))
-            {
-                auto pItem = dynamic_cast<const XLineEndItem*>(p);
-
-                if (pItem && !pItem->GetName().isEmpty())
-                {
-                    if (!bForceNew && pItem->GetLineEndValue() == pLineStartItem->GetLineStartValue())
-                    {
-                        aUniqueName = pItem->GetName();
-                        bFoundExisting = true;
-                        break;
-                    }
-
-                    if (pItem->GetName().startsWith(aUser))
-                    {
-                        sal_Int32 nThisIndex = o3tl::toInt32(pItem->GetName().subView(aUser.getLength()));
-                        if (nThisIndex >= nUserIndex)
-                            nUserIndex = nThisIndex + 1;
-                    }
-                }
-            }
-
-            if( !bFoundExisting )
-            {
-                aUniqueName = aUser + " " + OUString::number( nUserIndex );
-            }
+            // force a closed polygon
+            basegfx::B2DPolyPolygon aNew(maPolyPolygon);
+            aNew.setClosed(true);
+            pTempItem.reset(new XLineStartItem( aUniqueName, std::move(aNew) ));
+            pLineStartItem = pTempItem.get();
         }
+    }
 
-        // if the given name is not valid, replace it!
-        if( aUniqueName != GetName() || pTempItem )
+    bool bForceNew = false;
+
+    // 2. if we have a name check if there is already an item with the
+    // same name in the documents pool with a different line end or start
+
+    if (!aUniqueName.isEmpty()
+        && HasConflictingStartEndItems(rModel, pLineStartItem->GetName(),
+                                       pLineStartItem->GetLineStartValue()))
+    {
+        bForceNew = true;
+        aUniqueName.clear();
+    }
+
+    // if we have no name yet, find existing item with same content or
+    // create a unique name
+    if( aUniqueName.isEmpty() )
+    {
+        aUniqueName = CreateNameForValue(rModel.GetItemPool(), pLineStartItem->GetLineStartValue(),
+                                         bForceNew);
+    }
+
+    // if the given name is not valid, replace it!
+    if( aUniqueName != GetName() || pTempItem )
+    {
+        if( pTempItem )
         {
-            if( pTempItem )
-            {
-                pTempItem->SetName( aUniqueName );
-                return pTempItem;
-            }
-            else
-            {
-                return std::make_unique<XLineStartItem>( aUniqueName, maPolyPolygon );
-            }
+            pTempItem->SetName( aUniqueName );
+            return pTempItem;
+        }
+        else
+        {
+            return std::make_unique<XLineStartItem>( aUniqueName, maPolyPolygon );
         }
     }
 
@@ -1447,200 +1405,68 @@ bool XLineEndItem::operator==(const SfxPoolItem& rItem) const
 /** this function searches in both the models pool and the styles pool for XLineStartItem
     and XLineEndItem with the same value or name and returns an item with the value of
     this item and a unique name for an item with this value. */
-std::unique_ptr<XLineEndItem> XLineEndItem::checkForUniqueItem( SdrModel* pModel ) const
+std::unique_ptr<XLineEndItem> XLineEndItem::checkForUniqueItem( SdrModel& rModel ) const
 {
-    if( pModel )
+    std::unique_ptr<XLineEndItem> pTempItem;
+    const XLineEndItem* pLineEndItem = this;
+
+    OUString aUniqueName( GetName() );
+
+    if( !maPolyPolygon.count() )
     {
-        std::unique_ptr<XLineEndItem> pTempItem;
-        const XLineEndItem* pLineEndItem = this;
-
-        OUString aUniqueName( GetName() );
-
-        if( !maPolyPolygon.count() )
-        {
-            // if the polygon is empty, check if the name is empty
-            if( aUniqueName.isEmpty() )
-                return nullptr;
-
-            // force empty name for empty polygons
-            return std::make_unique<XLineEndItem>( "", maPolyPolygon );
-        }
-
-        if( maPolyPolygon.count() > 1 )
-        {
-            // check if the polygon is closed
-            if(!maPolyPolygon.isClosed())
-            {
-                // force a closed polygon
-                basegfx::B2DPolyPolygon aNew(maPolyPolygon);
-                aNew.setClosed(true);
-                pTempItem.reset(new XLineEndItem( aUniqueName, std::move(aNew) ));
-                pLineEndItem = pTempItem.get();
-            }
-        }
-
-        bool bForceNew = false;
-
-        // 2. if we have a name check if there is already an item with the
-        // same name in the documents pool with a different line end or start
-
-        const SfxItemPool& rPool1 = pModel->GetItemPool();
-        if (!aUniqueName.isEmpty())
-        {
-            for (const SfxPoolItem* p : rPool1.GetItemSurrogates(XATTR_LINESTART))
-            {
-                auto pItem = dynamic_cast<const XLineStartItem*>(p);
-
-                if( pItem && ( pItem->GetName() == pLineEndItem->GetName() ) )
-                {
-                    // if there is already an item with the same name and the same
-                    // value it's ok to set it
-                    if( pItem->GetLineStartValue() != pLineEndItem->GetLineEndValue() )
-                    {
-                        // same name but different value, we need a new name for this item
-                        aUniqueName.clear();
-                        bForceNew = true;
-                    }
-                    break;
-                }
-            }
-
-            if( !bForceNew )
-            {
-                for (const SfxPoolItem* p : rPool1.GetItemSurrogates(XATTR_LINEEND))
-                {
-                    auto pItem = dynamic_cast<const XLineEndItem*>(p);
-
-                    if( pItem && ( pItem->GetName() == pLineEndItem->GetName() ) )
-                    {
-                        // if there is already an item with the same name and the same
-                        // value it's ok to set it
-                        if( pItem->GetLineEndValue() != pLineEndItem->GetLineEndValue() )
-                        {
-                            // same name but different value, we need a new name for this item
-                            aUniqueName.clear();
-                            bForceNew = true;
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-
-        const SfxItemPool* pPool2 = pModel->GetStyleSheetPool() ? &pModel->GetStyleSheetPool()->GetPool() : nullptr;
-        if( !aUniqueName.isEmpty() && pPool2)
-        {
-            for (const SfxPoolItem* p : pPool2->GetItemSurrogates(XATTR_LINESTART))
-            {
-                auto pItem = dynamic_cast<const XLineStartItem*>(p);
-
-                if( pItem && ( pItem->GetName() == pLineEndItem->GetName() ) )
-                {
-                    // if there is already an item with the same name and the same
-                    // value it's ok to set it
-                    if( pItem->GetLineStartValue() != pLineEndItem->GetLineEndValue() )
-                    {
-                        // same name but different value, we need a new name for this item
-                        aUniqueName.clear();
-                        bForceNew = true;
-                    }
-                    break;
-                }
-            }
-
-            if( !bForceNew )
-            {
-                for (const SfxPoolItem* p : pPool2->GetItemSurrogates(XATTR_LINEEND))
-                {
-                    auto pItem = dynamic_cast<const XLineEndItem*>(p);
-
-                    if( pItem && ( pItem->GetName() == pLineEndItem->GetName() ) )
-                    {
-                        // if there is already an item with the same name and the same
-                        // value it's ok to set it
-                        if( pItem->GetLineEndValue() != pLineEndItem->GetLineEndValue() )
-                        {
-                            // same name but different value, we need a new name for this item
-                            aUniqueName.clear();
-                            bForceNew = true;
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-
-        // if we have no name yet, find existing item with same content or
-        // create a unique name
+        // if the polygon is empty, check if the name is empty
         if( aUniqueName.isEmpty() )
+            return nullptr;
+
+        // force empty name for empty polygons
+        return std::make_unique<XLineEndItem>( "", maPolyPolygon );
+    }
+
+    if( maPolyPolygon.count() > 1 )
+    {
+        // check if the polygon is closed
+        if(!maPolyPolygon.isClosed())
         {
-            bool bFoundExisting = false;
-
-            sal_Int32 nUserIndex = 1;
-            const OUString aUser(SvxResId(RID_SVXSTR_LINEEND));
-
-            for (const SfxPoolItem* p : rPool1.GetItemSurrogates(XATTR_LINESTART))
-            {
-                auto pItem = dynamic_cast<const XLineStartItem*>(p);
-
-                if (pItem && !pItem->GetName().isEmpty())
-                {
-                    if (!bForceNew && pItem->GetLineStartValue() == pLineEndItem->GetLineEndValue())
-                    {
-                        aUniqueName = pItem->GetName();
-                        bFoundExisting = true;
-                        break;
-                    }
-
-                    if (pItem->GetName().startsWith(aUser))
-                    {
-                        sal_Int32 nThisIndex = o3tl::toInt32(pItem->GetName().subView(aUser.getLength()));
-                        if (nThisIndex >= nUserIndex)
-                            nUserIndex = nThisIndex + 1;
-                    }
-                }
-            }
-
-            for (const SfxPoolItem* p : rPool1.GetItemSurrogates(XATTR_LINEEND))
-            {
-                auto pItem = dynamic_cast<const XLineEndItem*>(p);
-
-                if (pItem && !pItem->GetName().isEmpty())
-                {
-                    if (!bForceNew && pItem->GetLineEndValue() == pLineEndItem->GetLineEndValue())
-                    {
-                        aUniqueName = pItem->GetName();
-                        bFoundExisting = true;
-                        break;
-                    }
-
-                    if (pItem->GetName().startsWith(aUser))
-                    {
-                        sal_Int32 nThisIndex = o3tl::toInt32(pItem->GetName().subView(aUser.getLength()));
-                        if (nThisIndex >= nUserIndex)
-                            nUserIndex = nThisIndex + 1;
-                    }
-                }
-            }
-
-            if( !bFoundExisting )
-            {
-                aUniqueName = aUser + " " + OUString::number( nUserIndex );
-            }
+            // force a closed polygon
+            basegfx::B2DPolyPolygon aNew(maPolyPolygon);
+            aNew.setClosed(true);
+            pTempItem.reset(new XLineEndItem( aUniqueName, std::move(aNew) ));
+            pLineEndItem = pTempItem.get();
         }
+    }
 
-        // if the given name is not valid, replace it!
-        if( aUniqueName != GetName() || pTempItem )
+    bool bForceNew = false;
+
+    // 2. if we have a name check if there is already an item with the
+    // same name in the documents pool with a different line end or start
+
+    if (!aUniqueName.isEmpty()
+        && HasConflictingStartEndItems(rModel, pLineEndItem->GetName(),
+                                       pLineEndItem->GetLineEndValue()))
+    {
+        bForceNew = true;
+        aUniqueName.clear();
+    }
+
+    // if we have no name yet, find existing item with same content or
+    // create a unique name
+    if( aUniqueName.isEmpty() )
+    {
+        aUniqueName = CreateNameForValue(rModel.GetItemPool(), pLineEndItem->GetLineEndValue(),
+                                         bForceNew);
+    }
+
+    // if the given name is not valid, replace it!
+    if( aUniqueName != GetName() || pTempItem )
+    {
+        if( pTempItem )
         {
-            if( pTempItem )
-            {
-                pTempItem->SetName( aUniqueName );
-                return pTempItem;
-            }
-            else
-            {
-                return std::make_unique<XLineEndItem>( aUniqueName, maPolyPolygon );
-            }
+            pTempItem->SetName( aUniqueName );
+            return pTempItem;
+        }
+        else
+        {
+            return std::make_unique<XLineEndItem>( aUniqueName, maPolyPolygon );
         }
     }
 
@@ -1909,11 +1735,6 @@ bool XFillStyleItem::GetPresentation
     if (pId)
         rText = SvxResId(pId);
     return true;
-}
-
-sal_uInt16 XFillStyleItem::GetValueCount() const
-{
-    return 5;
 }
 
 bool XFillStyleItem::QueryValue( css::uno::Any& rVal, sal_uInt8 /*nMemberId*/) const
@@ -2188,28 +2009,31 @@ bool XSecondaryFillColorItem::GetPresentation
 SfxPoolItem* XFillGradientItem::CreateDefault() { return new XFillGradientItem; }
 
 XFillGradientItem::XFillGradientItem(sal_Int32 nIndex,
-                                   const basegfx::BGradient& rTheGradient) :
-    NameOrIndex(XATTR_FILLGRADIENT, nIndex),
-    aGradient(rTheGradient)
+                                   const basegfx::BGradient& rTheGradient,
+                                   TypedWhichId<XFillGradientItem> nWhich) :
+    NameOrIndex(nWhich, nIndex),
+    m_aGradient(rTheGradient)
 {
 }
 
 XFillGradientItem::XFillGradientItem(const OUString& rName,
-                                   const basegfx::BGradient& rTheGradient, TypedWhichId<XFillGradientItem> nWhich)
+                                   const basegfx::BGradient& rTheGradient,
+                                   TypedWhichId<XFillGradientItem> nWhich)
     : NameOrIndex(nWhich, rName)
-    , aGradient(rTheGradient)
+    , m_aGradient(rTheGradient)
 {
 }
 
 XFillGradientItem::XFillGradientItem(const XFillGradientItem& rItem) :
     NameOrIndex(rItem),
-    aGradient(rItem.aGradient)
+    m_aGradient(rItem.m_aGradient)
 {
 }
 
-XFillGradientItem::XFillGradientItem( const basegfx::BGradient& rTheGradient )
-:   NameOrIndex( XATTR_FILLGRADIENT, -1 ),
-    aGradient(rTheGradient)
+XFillGradientItem::XFillGradientItem( const basegfx::BGradient& rTheGradient,
+                                    TypedWhichId<XFillGradientItem> nWhich)
+:   NameOrIndex( nWhich, -1 ),
+    m_aGradient(rTheGradient)
 {
 }
 
@@ -2221,16 +2045,16 @@ XFillGradientItem* XFillGradientItem::Clone(SfxItemPool* /*pPool*/) const
 bool XFillGradientItem::operator==(const SfxPoolItem& rItem) const
 {
     return ( NameOrIndex::operator==(rItem) &&
-             aGradient == static_cast<const XFillGradientItem&>(rItem).aGradient );
+             m_aGradient == static_cast<const XFillGradientItem&>(rItem).m_aGradient );
 }
 
 const basegfx::BGradient& XFillGradientItem::GetGradientValue() const // GetValue -> GetGradientValue
 {
     if (!IsIndex())
-        return aGradient;
+        return m_aGradient;
     // ToDo: This should fail. We never called this code with a table so this should always
     // have failed. Thus, I'm thinking that XFillGradientItem can't be an Index.
-    return aGradient;
+    return m_aGradient;
 }
 
 bool XFillGradientItem::GetPresentation
@@ -2257,8 +2081,8 @@ bool XFillGradientItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) c
 
             // create sequence
             uno::Sequence< beans::PropertyValue > aPropSeq{
-                comphelper::makePropertyValue("Name", SvxUnogetApiNameForItem(Which(), GetName())),
-                comphelper::makePropertyValue("FillGradient", aGradient2)
+                comphelper::makePropertyValue(u"Name"_ustr, SvxUnogetApiNameForItem(Which(), GetName())),
+                comphelper::makePropertyValue(u"FillGradient"_ustr, aGradient2)
             };
             rVal <<= aPropSeq;
             break;
@@ -2322,7 +2146,7 @@ bool XFillGradientItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId
             {
                 OUString aName;
 
-                for ( const auto& rProp : std::as_const(aPropSeq) )
+                for (const auto& rProp : aPropSeq)
                 {
                     if ( rProp.Name == "Name" )
                         rProp.Value >>= aName;
@@ -2452,19 +2276,16 @@ bool XFillGradientItem::CompareValueFunc( const NameOrIndex* p1, const NameOrInd
     return static_cast<const XFillGradientItem*>(p1)->GetGradientValue() == static_cast<const XFillGradientItem*>(p2)->GetGradientValue();
 }
 
-std::unique_ptr<XFillGradientItem> XFillGradientItem::checkForUniqueItem( SdrModel* pModel ) const
+std::unique_ptr<XFillGradientItem> XFillGradientItem::checkForUniqueItem( SdrModel& rModel ) const
 {
-    if( pModel )
-    {
-        const OUString aUniqueName = NameOrIndex::CheckNamedItem(
-                this, Which(), &pModel->GetItemPool(),
-                XFillGradientItem::CompareValueFunc, RID_SVXSTR_GRADIENT,
-                pModel->GetPropertyList( XPropertyListType::Gradient ) );
+    const OUString aUniqueName(CheckNamedItem(
+        Which(), &rModel.GetItemPool(),
+        XFillGradientItem::CompareValueFunc, RID_SVXSTR_GRADIENT,
+        rModel.GetPropertyList(XPropertyListType::Gradient)));
 
-        // if the given name is not valid, replace it!
-        if( aUniqueName != GetName() )
-            return std::make_unique<XFillGradientItem>( aUniqueName, aGradient, TypedWhichId<XFillGradientItem>(Which()) );
-    }
+    // if the given name is not valid, replace it!
+    if( aUniqueName != GetName() )
+        return std::make_unique<XFillGradientItem>( aUniqueName, m_aGradient, TypedWhichId<XFillGradientItem>(Which()) );
 
     return nullptr;
 }
@@ -2485,37 +2306,33 @@ boost::property_tree::ptree XFillGradientItem::dumpAsJSON() const
 SfxPoolItem* XFillFloatTransparenceItem::CreateDefault() { return new XFillFloatTransparenceItem; }
 
 XFillFloatTransparenceItem::XFillFloatTransparenceItem() :
-    bEnabled( false )
+    XFillGradientItem(XATTR_FILLFLOATTRANSPARENCE),
+    m_bEnabled( false )
 {
-    SetWhich( XATTR_FILLFLOATTRANSPARENCE );
 }
 
 XFillFloatTransparenceItem::XFillFloatTransparenceItem(const OUString& rName, const basegfx::BGradient& rGradient, bool bEnable ) :
-    XFillGradientItem   ( rName, rGradient ),
-    bEnabled            ( bEnable )
+    XFillGradientItem   ( rName, rGradient, XATTR_FILLFLOATTRANSPARENCE ),
+    m_bEnabled            ( bEnable )
 {
-    SetWhich( XATTR_FILLFLOATTRANSPARENCE );
 }
 
 XFillFloatTransparenceItem::XFillFloatTransparenceItem( const XFillFloatTransparenceItem& rItem ) :
     XFillGradientItem   ( rItem ),
-    bEnabled            ( rItem.bEnabled )
+    m_bEnabled            ( rItem.m_bEnabled )
 {
-    SetWhich( XATTR_FILLFLOATTRANSPARENCE );
 }
 
 XFillFloatTransparenceItem::XFillFloatTransparenceItem(const basegfx::BGradient& rTheGradient, bool bEnable )
-:   XFillGradientItem   ( -1, rTheGradient ),
-    bEnabled            ( bEnable )
+:   XFillGradientItem   ( -1, rTheGradient, XATTR_FILLFLOATTRANSPARENCE ),
+    m_bEnabled            ( bEnable )
 {
-    SetWhich( XATTR_FILLFLOATTRANSPARENCE );
 }
 
 bool XFillFloatTransparenceItem::operator==( const SfxPoolItem& rItem ) const
 {
-    return ( NameOrIndex::operator==(rItem) ) &&
-           ( GetGradientValue() == static_cast<const XFillGradientItem&>(rItem).GetGradientValue() ) &&
-           ( bEnabled == static_cast<const XFillFloatTransparenceItem&>(rItem).bEnabled );
+    return ( XFillGradientItem::operator==(rItem) ) &&
+           ( m_bEnabled == static_cast<const XFillFloatTransparenceItem&>(rItem).m_bEnabled );
 }
 
 XFillFloatTransparenceItem* XFillFloatTransparenceItem::Clone( SfxItemPool* /*pPool*/) const
@@ -2571,25 +2388,22 @@ bool XFillFloatTransparenceItem::CompareValueFunc( const NameOrIndex* p1, const 
             static_cast<const XFillFloatTransparenceItem*>(p1)->GetGradientValue()  == static_cast<const XFillFloatTransparenceItem*>(p2)->GetGradientValue();
 }
 
-std::unique_ptr<XFillFloatTransparenceItem> XFillFloatTransparenceItem::checkForUniqueItem( SdrModel* pModel ) const
+std::unique_ptr<XFillFloatTransparenceItem> XFillFloatTransparenceItem::checkForUniqueItem( SdrModel& rModel ) const
 {
     // #85953# unique name only necessary when enabled
     if(IsEnabled())
     {
-        if( pModel )
-        {
-            const OUString aUniqueName = NameOrIndex::CheckNamedItem( this,
-                                                                    XATTR_FILLFLOATTRANSPARENCE,
-                                                                    &pModel->GetItemPool(),
-                                                                    XFillFloatTransparenceItem::CompareValueFunc,
-                                                                    RID_SVXSTR_TRASNGR0,
-                                                                    XPropertyListRef() );
+        const OUString aUniqueName(CheckNamedItem(
+            XATTR_FILLFLOATTRANSPARENCE,
+            &rModel.GetItemPool(),
+            XFillFloatTransparenceItem::CompareValueFunc,
+            RID_SVXSTR_TRASNGR0,
+            XPropertyListRef()));
 
-            // if the given name is not valid, replace it!
-            if( aUniqueName != GetName() )
-            {
-                return std::make_unique<XFillFloatTransparenceItem>( aUniqueName, GetGradientValue(), true );
-            }
+        // if the given name is not valid, replace it!
+        if( aUniqueName != GetName() )
+        {
+            return std::make_unique<XFillFloatTransparenceItem>( aUniqueName, GetGradientValue(), true );
         }
     }
     else
@@ -2609,7 +2423,7 @@ boost::property_tree::ptree XFillFloatTransparenceItem::dumpAsJSON() const
     boost::property_tree::ptree aTree = XFillGradientItem::dumpAsJSON();
     aTree.put("commandName", ".uno:FillFloatTransparence");
 
-    if (!bEnabled)
+    if (!m_bEnabled)
     {
         boost::property_tree::ptree& rState = aTree.get_child("state");
         // When gradient fill is disabled, the intensity fields contain the
@@ -2627,19 +2441,19 @@ boost::property_tree::ptree XFillFloatTransparenceItem::dumpAsJSON() const
 
 XHatch::XHatch(const Color& rCol, css::drawing::HatchStyle eTheStyle, tools::Long nTheDistance,
                Degree10 nTheAngle) :
-    eStyle(eTheStyle),
-    aColor(rCol),
-    nDistance(nTheDistance),
-    nAngle(nTheAngle)
+    m_eStyle(eTheStyle),
+    m_aColor(rCol),
+    m_nDistance(nTheDistance),
+    m_nAngle(nTheAngle)
 {
 }
 
 bool XHatch::operator==(const XHatch& rHatch) const
 {
-    return ( eStyle     == rHatch.eStyle    &&
-             aColor     == rHatch.aColor    &&
-             nDistance  == rHatch.nDistance &&
-             nAngle     == rHatch.nAngle );
+    return ( m_eStyle     == rHatch.m_eStyle    &&
+             m_aColor     == rHatch.m_aColor    &&
+             m_nDistance  == rHatch.m_nDistance &&
+             m_nAngle     == rHatch.m_nAngle );
 }
 
 
@@ -2648,19 +2462,19 @@ SfxPoolItem* XFillHatchItem::CreateDefault() { return new XFillHatchItem; }
 XFillHatchItem::XFillHatchItem(const OUString& rName,
                              const XHatch& rTheHatch) :
     NameOrIndex(XATTR_FILLHATCH, rName),
-    aHatch(rTheHatch)
+    m_aHatch(rTheHatch)
 {
 }
 
 XFillHatchItem::XFillHatchItem(const XFillHatchItem& rItem) :
     NameOrIndex(rItem),
-    aHatch(rItem.aHatch)
+    m_aHatch(rItem.m_aHatch)
 {
 }
 
 XFillHatchItem::XFillHatchItem(const XHatch& rTheHatch)
 :   NameOrIndex( XATTR_FILLHATCH, -1 ),
-    aHatch(rTheHatch)
+    m_aHatch(rTheHatch)
 {
 }
 
@@ -2672,7 +2486,7 @@ XFillHatchItem* XFillHatchItem::Clone(SfxItemPool* /*pPool*/) const
 bool XFillHatchItem::operator==(const SfxPoolItem& rItem) const
 {
     return ( NameOrIndex::operator==(rItem) &&
-             aHatch == static_cast<const XFillHatchItem&>(rItem).aHatch );
+             m_aHatch == static_cast<const XFillHatchItem&>(rItem).m_aHatch );
 }
 
 bool XFillHatchItem::GetPresentation
@@ -2694,7 +2508,7 @@ bool XFillHatchItem::HasMetrics() const
 
 void XFillHatchItem::ScaleMetrics(tools::Long nMul, tools::Long nDiv)
 {
-    aHatch.SetDistance( BigInt::Scale( aHatch.GetDistance(), nMul, nDiv ) );
+    m_aHatch.SetDistance( BigInt::Scale( m_aHatch.GetDistance(), nMul, nDiv ) );
 }
 
 bool XFillHatchItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) const
@@ -2707,14 +2521,14 @@ bool XFillHatchItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) cons
         {
             css::drawing::Hatch aUnoHatch;
 
-            aUnoHatch.Style = aHatch.GetHatchStyle();
-            aUnoHatch.Color = sal_Int32(aHatch.GetColor());
-            aUnoHatch.Distance = aHatch.GetDistance();
-            aUnoHatch.Angle = aHatch.GetAngle().get();
+            aUnoHatch.Style = m_aHatch.GetHatchStyle();
+            aUnoHatch.Color = sal_Int32(m_aHatch.GetColor());
+            aUnoHatch.Distance = m_aHatch.GetDistance();
+            aUnoHatch.Angle = m_aHatch.GetAngle().get();
 
             uno::Sequence< beans::PropertyValue > aPropSeq{
-                comphelper::makePropertyValue("Name", SvxUnogetApiNameForItem(Which(), GetName())),
-                comphelper::makePropertyValue("FillHatch", aUnoHatch)
+                comphelper::makePropertyValue(u"Name"_ustr, SvxUnogetApiNameForItem(Which(), GetName())),
+                comphelper::makePropertyValue(u"FillHatch"_ustr, aUnoHatch)
             };
             rVal <<= aPropSeq;
             break;
@@ -2724,10 +2538,10 @@ bool XFillHatchItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) cons
         {
             css::drawing::Hatch aUnoHatch;
 
-            aUnoHatch.Style = aHatch.GetHatchStyle();
-            aUnoHatch.Color = sal_Int32(aHatch.GetColor());
-            aUnoHatch.Distance = aHatch.GetDistance();
-            aUnoHatch.Angle = aHatch.GetAngle().get();
+            aUnoHatch.Style = m_aHatch.GetHatchStyle();
+            aUnoHatch.Color = sal_Int32(m_aHatch.GetColor());
+            aUnoHatch.Distance = m_aHatch.GetDistance();
+            aUnoHatch.Angle = m_aHatch.GetAngle().get();
             rVal <<= aUnoHatch;
             break;
         }
@@ -2739,13 +2553,13 @@ bool XFillHatchItem::QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId ) cons
         }
 
         case MID_HATCH_STYLE:
-            rVal <<= aHatch.GetHatchStyle(); break;
+            rVal <<= m_aHatch.GetHatchStyle(); break;
         case MID_HATCH_COLOR:
-            rVal <<= aHatch.GetColor(); break;
+            rVal <<= m_aHatch.GetColor(); break;
         case MID_HATCH_DISTANCE:
-            rVal <<= aHatch.GetDistance(); break;
+            rVal <<= m_aHatch.GetDistance(); break;
         case MID_HATCH_ANGLE:
-            rVal <<= aHatch.GetAngle().get(); break;
+            rVal <<= m_aHatch.GetAngle().get(); break;
 
         default: OSL_FAIL("Wrong MemberId!"); return false;
     }
@@ -2767,7 +2581,7 @@ bool XFillHatchItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
                 css::drawing::Hatch aUnoHatch;
                 OUString aName;
                 bool bHatch( false );
-                for ( const auto& rProp : std::as_const(aPropSeq) )
+                for (const auto& rProp : aPropSeq)
                 {
                     if ( rProp.Name == "Name" )
                         rProp.Value >>= aName;
@@ -2781,10 +2595,10 @@ bool XFillHatchItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
                 SetName( aName );
                 if ( bHatch )
                 {
-                    aHatch.SetHatchStyle( aUnoHatch.Style );
-                    aHatch.SetColor( Color(ColorTransparency, aUnoHatch.Color) );
-                    aHatch.SetDistance( aUnoHatch.Distance );
-                    aHatch.SetAngle( Degree10(aUnoHatch.Angle) );
+                    m_aHatch.SetHatchStyle( aUnoHatch.Style );
+                    m_aHatch.SetColor( Color(ColorTransparency, aUnoHatch.Color) );
+                    m_aHatch.SetDistance( aUnoHatch.Distance );
+                    m_aHatch.SetAngle( Degree10(aUnoHatch.Angle) );
                 }
 
                 return true;
@@ -2799,10 +2613,10 @@ bool XFillHatchItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
             if(!(rVal >>= aUnoHatch))
                 return false;
 
-            aHatch.SetHatchStyle( aUnoHatch.Style );
-            aHatch.SetColor( Color(ColorTransparency, aUnoHatch.Color) );
-            aHatch.SetDistance( aUnoHatch.Distance );
-            aHatch.SetAngle( Degree10(aUnoHatch.Angle) );
+            m_aHatch.SetHatchStyle( aUnoHatch.Style );
+            m_aHatch.SetColor( Color(ColorTransparency, aUnoHatch.Color) );
+            m_aHatch.SetDistance( aUnoHatch.Distance );
+            m_aHatch.SetAngle( Degree10(aUnoHatch.Angle) );
             break;
         }
 
@@ -2820,7 +2634,7 @@ bool XFillHatchItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
             sal_Int16 nVal = sal_Int16();
             if (!(rVal >>= nVal ))
                 return false;
-            aHatch.SetHatchStyle( static_cast<css::drawing::HatchStyle>(nVal) );
+            m_aHatch.SetHatchStyle( static_cast<css::drawing::HatchStyle>(nVal) );
             break;
         }
 
@@ -2833,11 +2647,11 @@ bool XFillHatchItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
                 return false;
 
             if ( nMemberId == MID_HATCH_COLOR )
-                aHatch.SetColor( Color(ColorTransparency, nVal) );
+                m_aHatch.SetColor( Color(ColorTransparency, nVal) );
             else if ( nMemberId == MID_HATCH_DISTANCE )
-                aHatch.SetDistance( nVal );
+                m_aHatch.SetDistance( nVal );
             else
-                aHatch.SetAngle( Degree10(nVal) );
+                m_aHatch.SetAngle( Degree10(nVal) );
             break;
         }
 
@@ -2852,19 +2666,16 @@ bool XFillHatchItem::CompareValueFunc( const NameOrIndex* p1, const NameOrIndex*
     return static_cast<const XFillHatchItem*>(p1)->GetHatchValue() == static_cast<const XFillHatchItem*>(p2)->GetHatchValue();
 }
 
-std::unique_ptr<XFillHatchItem> XFillHatchItem::checkForUniqueItem( SdrModel* pModel ) const
+std::unique_ptr<XFillHatchItem> XFillHatchItem::checkForUniqueItem( SdrModel& rModel ) const
 {
-    if( pModel )
-    {
-        const OUString aUniqueName = NameOrIndex::CheckNamedItem(
-                this, XATTR_FILLHATCH, &pModel->GetItemPool(),
-                XFillHatchItem::CompareValueFunc, RID_SVXSTR_HATCH10,
-                pModel->GetPropertyList( XPropertyListType::Hatch ) );
+    const OUString aUniqueName(CheckNamedItem(
+        XATTR_FILLHATCH, &rModel.GetItemPool(),
+        XFillHatchItem::CompareValueFunc, RID_SVXSTR_HATCH10,
+        rModel.GetPropertyList(XPropertyListType::Hatch)));
 
-        // if the given name is not valid, replace it!
-        if( aUniqueName != GetName() )
-            return std::make_unique<XFillHatchItem>( aUniqueName, aHatch );
-    }
+    // if the given name is not valid, replace it!
+    if( aUniqueName != GetName() )
+        return std::make_unique<XFillHatchItem>( aUniqueName, m_aHatch );
 
     return nullptr;
 }
@@ -2882,11 +2693,6 @@ XFormTextStyleItem::XFormTextStyleItem(XFormTextStyle eTheStyle) :
 XFormTextStyleItem* XFormTextStyleItem::Clone(SfxItemPool* /*pPool*/) const
 {
     return new XFormTextStyleItem( *this );
-}
-
-sal_uInt16 XFormTextStyleItem::GetValueCount() const
-{
-    return 5;
 }
 
 bool XFormTextStyleItem::QueryValue( uno::Any& rVal, sal_uInt8 /*nMemberId*/) const
@@ -2915,11 +2721,6 @@ XFormTextAdjustItem::XFormTextAdjustItem(XFormTextAdjust eTheAdjust) :
 XFormTextAdjustItem* XFormTextAdjustItem::Clone(SfxItemPool* /*pPool*/) const
 {
     return new XFormTextAdjustItem( *this );
-}
-
-sal_uInt16 XFormTextAdjustItem::GetValueCount() const
-{
-    return 4;
 }
 
 bool XFormTextAdjustItem::QueryValue( uno::Any& rVal, sal_uInt8 /*nMemberId*/) const
@@ -2998,11 +2799,6 @@ XFormTextShadowItem* XFormTextShadowItem::Clone(SfxItemPool* /*pPool*/) const
     return new XFormTextShadowItem( *this );
 }
 
-sal_uInt16 XFormTextShadowItem::GetValueCount() const
-{
-    return 3;
-}
-
 bool XFormTextShadowItem::QueryValue( uno::Any& rVal, sal_uInt8 /*nMemberId*/) const
 {
     rVal <<= static_cast<sal_Int32>(GetValue());
@@ -3078,8 +2874,8 @@ XLineAttrSetItem::XLineAttrSetItem( SfxItemSet&& pItemSet ) :
 }
 
 XLineAttrSetItem::XLineAttrSetItem( SfxItemPool* pItemPool ) :
-    SfxSetItem( XATTRSET_LINE,
-        SfxItemSetFixed<XATTR_LINE_FIRST, XATTR_LINE_LAST>( *pItemPool ))
+    SfxSetItem(XATTRSET_LINE,
+               SfxItemSet::makeFixedSfxItemSet<XATTR_LINE_FIRST, XATTR_LINE_LAST>(*pItemPool))
 {
 }
 
@@ -3106,8 +2902,8 @@ XFillAttrSetItem::XFillAttrSetItem( SfxItemSet&& pItemSet ) :
 }
 
 XFillAttrSetItem::XFillAttrSetItem( SfxItemPool* pItemPool ) :
-    SfxSetItem( XATTRSET_FILL,
-        SfxItemSetFixed<XATTR_FILL_FIRST, XATTR_FILL_LAST>( *pItemPool ))
+    SfxSetItem(XATTRSET_FILL,
+               SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(*pItemPool))
 {
 }
 

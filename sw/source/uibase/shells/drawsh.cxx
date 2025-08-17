@@ -62,7 +62,7 @@ SFX_IMPL_INTERFACE(SwDrawShell, SwDrawBaseShell)
 
 void SwDrawShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("draw");
+    GetStaticInterface()->RegisterPopupMenu(u"draw"_ustr);
 
     GetStaticInterface()->RegisterObjectBar(SFX_OBJECTBAR_OBJECT, SfxVisibilityFlags::Invisible, ToolbarId::Draw_Toolbox_Sw);
 
@@ -81,12 +81,12 @@ SdrObject* SwDrawShell::IsSingleFillableNonOLESelected()
         return nullptr;
     }
 
-    if(1 != pSdrView->GetMarkedObjectCount())
+    if(1 != pSdrView->GetMarkedObjectList().GetMarkCount())
     {
         return nullptr;
     }
 
-    SdrObject* pPickObj = pSdrView->GetMarkedObjectByIndex(0);
+    SdrObject* pPickObj = pSdrView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
 
     if(!pPickObj)
     {
@@ -188,15 +188,7 @@ void SwDrawShell::Execute(SfxRequest &rReq)
     switch (nSlotId)
     {
         case SID_OBJECT_ROTATE:
-            if (rSh.IsObjSelected() && pSdrView->IsRotateAllowed())
-            {
-                if (GetView().IsDrawRotate())
-                    rSh.SetDragMode(SdrDragMode::Move);
-                else
-                    rSh.SetDragMode(SdrDragMode::Rotate);
-
-                GetView().FlipDrawRotate();
-            }
+            GetView().ToggleRotate();
             break;
         case SID_MOVE_SHAPE_HANDLE:
         {
@@ -239,7 +231,7 @@ void SwDrawShell::Execute(SfxRequest &rReq)
             break;
 
         case SID_OBJECT_HELL:
-            if (rSh.IsObjSelected())
+            if (rSh.GetSelectedObjCount())
             {
                 rSh.StartUndo( SwUndoId::START );
                 SetWrapMode(FN_FRAME_WRAPTHRU_TRANSP);
@@ -250,7 +242,7 @@ void SwDrawShell::Execute(SfxRequest &rReq)
             break;
 
         case SID_OBJECT_HEAVEN:
-            if (rSh.IsObjSelected())
+            if (rSh.GetSelectedObjCount())
             {
                 rSh.StartUndo( SwUndoId::START );
                 SetWrapMode(FN_FRAME_WRAPTHRU);
@@ -261,7 +253,7 @@ void SwDrawShell::Execute(SfxRequest &rReq)
             break;
 
         case FN_TOOL_HIERARCHIE:
-            if (rSh.IsObjSelected())
+            if (rSh.GetSelectedObjCount())
             {
                 rSh.StartUndo( SwUndoId::START );
                 if (rSh.GetLayerId() == SdrLayerID(0))
@@ -290,7 +282,7 @@ void SwDrawShell::Execute(SfxRequest &rReq)
         case SID_FONTWORK:
         {
             FieldUnit eMetric = ::GetDfltMetric( dynamic_cast<SwWebView*>( &rSh.GetView()) != nullptr );
-            SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)) );
+            SwModule::get()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)) );
             SfxViewFrame& rVFrame = GetView().GetViewFrame();
             if (pArgs)
             {
@@ -417,17 +409,17 @@ void SwDrawShell::GetState(SfxItemSet& rSet)
         switch( nWhich )
         {
             case SID_OBJECT_HELL:
-                if ( !rSh.IsObjSelected() || rSh.GetLayerId() == SdrLayerID(0) || bProtected )
+                if ( !rSh.GetSelectedObjCount() || rSh.GetLayerId() == SdrLayerID(0) || bProtected )
                     rSet.DisableItem( nWhich );
                 break;
 
             case SID_OBJECT_HEAVEN:
-                if ( !rSh.IsObjSelected() || rSh.GetLayerId() == SdrLayerID(1) || bProtected )
+                if ( !rSh.GetSelectedObjCount() || rSh.GetLayerId() == SdrLayerID(1) || bProtected )
                     rSet.DisableItem( nWhich );
                 break;
 
             case FN_TOOL_HIERARCHIE:
-                if ( !rSh.IsObjSelected() || bProtected )
+                if ( !rSh.GetSelectedObjCount() || bProtected )
                     rSet.DisableItem( nWhich );
                 break;
 
@@ -508,7 +500,7 @@ void SwDrawShell::GetState(SfxItemSet& rSet)
                         if (SdrObjCustomShape* pCustomShape = dynamic_cast<SdrObjCustomShape*>( pObj) )
                         {
                             const SdrCustomShapeGeometryItem& rGeometryItem = pCustomShape->GetMergedItem(SDRATTR_CUSTOMSHAPE_GEOMETRY);
-                            if (const uno::Any* pAny = rGeometryItem.GetPropertyValueByName("Type"))
+                            if (const uno::Any* pAny = rGeometryItem.GetPropertyValueByName(u"Type"_ustr))
                                 // But still disallow fontwork shapes.
                                 bDisable = pAny->get<OUString>().startsWith("fontwork-");
                         }
@@ -544,7 +536,7 @@ void SwDrawShell::GetState(SfxItemSet& rSet)
 SwDrawShell::SwDrawShell(SwView &_rView) :
     SwDrawBaseShell(_rView)
 {
-    SetName("Draw");
+    SetName(u"Draw"_ustr);
 
     vcl::EnumContext::Context eContext = vcl::EnumContext::Context::Draw;
 

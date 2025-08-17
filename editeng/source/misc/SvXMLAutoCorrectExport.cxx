@@ -34,7 +34,7 @@ SvXMLAutoCorrectExport::SvXMLAutoCorrectExport(
     const SvxAutocorrWordList *  pNewAutocorr_List,
     const OUString &rFileName,
     css::uno::Reference< css::xml::sax::XDocumentHandler> const &rHandler)
-:   SvXMLExport( xContext, "", rFileName, util::MeasureUnit::CM, rHandler ),
+:   SvXMLExport( xContext, u""_ustr, rFileName, util::MeasureUnit::CM, rHandler ),
     pAutocorr_List( pNewAutocorr_List )
 {
     GetNamespaceMap_().Add( GetXMLToken ( XML_NP_BLOCK_LIST),
@@ -48,8 +48,7 @@ ErrCode SvXMLAutoCorrectExport::exportDoc(enum XMLTokenEnum /*eClass*/)
 
     addChaffWhenEncryptedStorage();
 
-    AddAttribute ( XML_NAMESPACE_NONE,
-                   GetNamespaceMap_().GetAttrNameByKey ( XML_NAMESPACE_BLOCKLIST ),
+    AddAttribute ( GetNamespaceMap_().GetAttrNameByKey ( XML_NAMESPACE_BLOCKLIST ),
                    GetNamespaceMap_().GetNameByKey ( XML_NAMESPACE_BLOCKLIST ) );
     {
         SvXMLElementExport aRoot (*this, XML_NAMESPACE_BLOCKLIST, XML_BLOCK_LIST, true, true);
@@ -75,7 +74,7 @@ SvXMLExceptionListExport::SvXMLExceptionListExport(
     const SvStringsISortDtor &rNewList,
     const OUString &rFileName,
     css::uno::Reference< css::xml::sax::XDocumentHandler> const &rHandler)
-:   SvXMLExport( xContext, "", rFileName, util::MeasureUnit::CM, rHandler ),
+:   SvXMLExport( xContext, u""_ustr, rFileName, util::MeasureUnit::CM, rHandler ),
     rList( rNewList )
 {
     GetNamespaceMap_().Add( GetXMLToken ( XML_NP_BLOCK_LIST ),
@@ -89,8 +88,7 @@ ErrCode SvXMLExceptionListExport::exportDoc(enum XMLTokenEnum /*eClass*/)
 
     addChaffWhenEncryptedStorage();
 
-    AddAttribute ( XML_NAMESPACE_NONE,
-                   GetNamespaceMap_().GetAttrNameByKey ( XML_NAMESPACE_BLOCKLIST ),
+    AddAttribute ( GetNamespaceMap_().GetAttrNameByKey ( XML_NAMESPACE_BLOCKLIST ),
                    GetNamespaceMap_().GetNameByKey ( XML_NAMESPACE_BLOCKLIST ) );
     {
         SvXMLElementExport aRoot (*this, XML_NAMESPACE_BLOCKLIST, XML_BLOCK_LIST, true, true);

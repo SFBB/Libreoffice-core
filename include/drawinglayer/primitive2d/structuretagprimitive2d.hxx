@@ -43,12 +43,14 @@ namespace drawinglayer::primitive2d
         {
         private:
             /// the PDF structure element this grouping represents
-            vcl::PDFWriter::StructElement           maStructureElement;
+            vcl::pdf::StructElement maStructureElement;
 
             /// flag for background object
             bool                                    mbBackground;
             /// flag for image (OBJ_GRAF)
             bool                                    mbIsImage;
+            /// flag for form control object
+            bool                                    mbIsDecorative;
             /// anchor structure element (Writer)
             void const* m_pAnchorStructureElementKey;
             /// for Annot structure element, the ids of the annotations
@@ -57,20 +59,22 @@ namespace drawinglayer::primitive2d
         public:
             /// constructor
             StructureTagPrimitive2D(
-                const vcl::PDFWriter::StructElement& rStructureElement,
+                const vcl::pdf::StructElement& rStructureElement,
                 bool bBackground,
                 bool bIsImage,
+                bool bIsDecorative,
                 Primitive2DContainer&& aChildren,
                 void const* pAnchorStructureElementKey = nullptr,
                 ::std::vector<sal_Int32> const* pAnnotIds = nullptr);
 
             /// data read access
-            const vcl::PDFWriter::StructElement& getStructureElement() const { return maStructureElement; }
+            const vcl::pdf::StructElement& getStructureElement() const { return maStructureElement; }
             bool isBackground() const { return mbBackground; }
             bool isImage() const { return mbIsImage; }
+            bool isDecorative() const { return mbIsDecorative; }
             bool isTaggedSdrObject() const;
             void const* GetAnchorStructureElementKey() const { return m_pAnchorStructureElementKey; }
-            ::std::vector<sal_Int32> GetAnnotIds() const { return m_AnnotIds; }
+            const ::std::vector<sal_Int32> & GetAnnotIds() const { return m_AnnotIds; }
 
             /// compare operator
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;

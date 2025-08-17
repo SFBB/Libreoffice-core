@@ -51,14 +51,14 @@ enum tipModule : sal_uInt8
 
 const std::tuple<TranslateId, OUString, OUString, tipModule> TIPOFTHEDAY_STRINGARRAY[] =
 {
-     { NC_("RID_CUI_TIPOFTHEDAY", "%PRODUCTNAME offers a variety of user interface options to make you feel at home"), ".uno:ToolbarModeUI", "toolbarmode.png", soffice},
+     { NC_("RID_CUI_TIPOFTHEDAY", "%PRODUCTNAME offers a variety of user interface options to make you feel at home"), ".uno:UIPicker", "toolbarmode.png", soffice},
      { NC_("RID_CUI_TIPOFTHEDAY", "Need to allow changes to parts of a read-only document in Writer? Insert frames or sections that can authorize changes."), "https://help.libreoffice.org/%PRODUCTVERSION/%LANGUAGENAME/text/swriter/guide/section_edit.html", "", swriter}, //local help missing
      { NC_("RID_CUI_TIPOFTHEDAY", "To print the notes of your slides go to File ▸ Print ▸ %PRODUCTNAME Impress tab and select Notes under Document ▸ Type."), "", "printnote.png", soffice},
      { NC_("RID_CUI_TIPOFTHEDAY", "To start temporarily with a fresh user profile, or to restore a non-working %PRODUCTNAME, use Help ▸ Restart in Safe Mode."), "svx/ui/safemodedialog/SafeModeDialog", "", soffice}, //https://help.libreoffice.org/%PRODUCTVERSION/%LANGUAGENAME/text/shared/01/profile_safe_mode.html
      { NC_("RID_CUI_TIPOFTHEDAY", "Writing a book? %PRODUCTNAME master document lets you manage large documents as a container for individual %PRODUCTNAME Writer files."), "https://help.libreoffice.org/%PRODUCTVERSION/%LANGUAGENAME/text/swriter/guide/globaldoc.html", "", swriter}, //local help missing
      { NC_("RID_CUI_TIPOFTHEDAY", "You can create editable Hybrid PDFs with %PRODUCTNAME."), "https://wiki.documentfoundation.org/Documentation/HowTo/CreateAHybridPDF", "hybrid_pdf.png", soffice},
      { NC_("RID_CUI_TIPOFTHEDAY", "Explore the ten different functions in the status bar (at the bottom of the document window). Place the cursor over each field for an explanation. If not visible, use View ▸ Status Bar."), "", "", swriter},
-     { NC_("RID_CUI_TIPOFTHEDAY", "Want to sum a cell through several sheets? Refer to the range of sheets e.g. =SUM(Sheet1.A1:Sheet3.A1)."), "", "sum_sheets.png", scalc},
+     { NC_("RID_CUI_TIPOFTHEDAY", "Want to sum a cell through several sheets? Refer to the range of sheets e.g. =SUM(Sheet1.A1:Sheet2.A3)."), "", "sum_sheets.png", scalc},
      { NC_("RID_CUI_TIPOFTHEDAY", "You can create fillable form documents (even PDFs) with %PRODUCTNAME."), "https://www.techrepublic.com/article/how-to-create-interactive-pdfs-with-libreoffice", "formdocuments.png", soffice},
      { NC_("RID_CUI_TIPOFTHEDAY", "Cannot see all the text in a cell? Expand the input line in the formula bar and you can scroll."), "", "expand_formula_bar.png", scalc},
      { NC_("RID_CUI_TIPOFTHEDAY", "Optimize your table layout with Table ▸ Size ▸ Distribute Rows / Columns Evenly."), "", "", swriter},
@@ -87,7 +87,7 @@ const std::tuple<TranslateId, OUString, OUString, tipModule> TIPOFTHEDAY_STRINGA
      { NC_("RID_CUI_TIPOFTHEDAY", "%MOD1+Shift+F9 recalculates all formulas in all spreadsheets."), "", "", scalc},
      { NC_("RID_CUI_TIPOFTHEDAY", "Want to keep a part of an editable document as read-only? Insert ▸ Section. Add text to the section, then right-click “Edit Section” and check “Protect”."), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "Use the Backspace key instead of Delete in Calc. You can choose what to delete."), "", "", scalc},
-     { NC_("RID_CUI_TIPOFTHEDAY", "Best way to fix bad-looking MS Word table cells via Table ▸ Size ▸ Optimal Row Height / Column Width."), "", "", swriter},
+     { NC_("RID_CUI_TIPOFTHEDAY", "The best way to fix bad-looking MS Word table cells is via Table ▸ Size ▸ Optimal Row Height / Column Width."), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "To repeat a table heading when a table spans over a page, use Table ▸ Table Properties ▸ Text Flow ▸ Repeat heading."), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "Want to quickly insert or delete rows? Select the desired number of rows (or columns) and press %MOD1+Plus sign (+) to add or %MOD1+Minus sign (-) to delete."), "modules/scalc/ui/insertcells/InsertCellsDialog", "", scalc},
      { NC_("RID_CUI_TIPOFTHEDAY", "To repeat rows/columns on every pages use Format ▸ Print Ranges ▸ Edit."), "", "", scalc},
@@ -101,7 +101,7 @@ const std::tuple<TranslateId, OUString, OUString, tipModule> TIPOFTHEDAY_STRINGA
      { NC_("RID_CUI_TIPOFTHEDAY", "Hold down %MOD1 and turn the mouse wheel to change the zoom factor."), "", "", soffice},
      { NC_("RID_CUI_TIPOFTHEDAY", "%PRODUCTNAME has great extensions to increase your productivity—check them out."), "https://extensions.libreoffice.org", "", soffice},
      { NC_("RID_CUI_TIPOFTHEDAY", "Want to count words for just one particular paragraph style? Use Edit ▸ Find and Replace, click Paragraph Styles, select the style in Find, and click Find All. Read the result in the status bar."), "", "", swriter},
-     { NC_("RID_CUI_TIPOFTHEDAY", "Generate fully customized PDF documents with the exact format, image compression, comments, access rights, password, etc., via File ▸ Export as PDF."), "", "", soffice},
+     { NC_("RID_CUI_TIPOFTHEDAY", "Generate fully customized PDF documents with the exact format, image compression, comments, access rights, password, etc., you specify via File ▸ Export as PDF."), "", "", soffice},
 #if ENABLE_LIBRELOGO
      { NC_("RID_CUI_TIPOFTHEDAY", "Writer includes LibreLogo: simple Logo-like programming environment with turtle vector graphics, DTP and graphic design."), "https://help.libreoffice.org/%PRODUCTVERSION/%LANGUAGENAME/text/swriter/librelogo/LibreLogo.html", "", swriter}, //local help missing
 #endif
@@ -115,9 +115,9 @@ const std::tuple<TranslateId, OUString, OUString, tipModule> TIPOFTHEDAY_STRINGA
      { NC_("RID_CUI_TIPOFTHEDAY", "Did you know that you can attach comments to portions of text? Just use the shortcut %MOD1+%MOD2+C."), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "Need to move one or more paragraphs? No need to cut and paste: Use the keyboard shortcut %MOD1+%MOD2+Arrow (Up/Down)"), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "Change the basic fonts for the predefined template or current document per Tools ▸ Options ▸ %PRODUCTNAME Writer ▸ Basic Fonts."), "modules/swriter/ui/optfonttabpage/OptFontTabPage", "", swriter}, //https://help.libreoffice.org/%PRODUCTVERSION/%LANGUAGENAME/text/shared/optionen/01040300.html
-     { NC_("RID_CUI_TIPOFTHEDAY", "Want to find words containing more than 10 characters? Edit ▸ Find and Replace ▸ Search ▸ [a-z]{10,} ▸ Other Options ▸ check Regular expressions."), "", "", swriter},
+     { NC_("RID_CUI_TIPOFTHEDAY", "Want to find words containing 10 or more characters? Edit ▸ Find and Replace ▸ Search ▸ \\w{10,} ▸ Other Options ▸ check Regular expressions."), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "Open a CSV file as a new sheet in the current spreadsheet via Sheet ▸ Sheet from file."), "", "", scalc},
-     { NC_("RID_CUI_TIPOFTHEDAY", "You can continue writing with the default formatting attributes after manually applying bold, italic or underline by pressing %MOD1+Shift+X."), "", "", swriter},
+     { NC_("RID_CUI_TIPOFTHEDAY", "You can continue writing with the default formatting attributes after manually applying bold, italic or underline by pressing %MOD1+M."), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "Use %MOD1+%MOD2+Shift+V to paste the contents of the clipboard as unformatted text."), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "Customize footnote appearance with Tools ▸ Footnote/Endnote Settings…"), ".uno:FootnoteDialog", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "With Slide Show ▸ Custom Slide Show, reorder and pick slides to fit a slideshow to the needs of your viewers."), "", "", simpress},
@@ -133,7 +133,7 @@ const std::tuple<TranslateId, OUString, OUString, tipModule> TIPOFTHEDAY_STRINGA
      { NC_("RID_CUI_TIPOFTHEDAY", "You can copy from one sheet to another without the clipboard. Select the area to copy, %MOD1+click the target sheet’s tab and use Sheet ▸ Fill Cells ▸ Fill Sheets."), "", "", scalc},
      { NC_("RID_CUI_TIPOFTHEDAY", "You can change the look of %PRODUCTNAME via View ▸ User Interface."), "", "", soffice},
      { NC_("RID_CUI_TIPOFTHEDAY", "In %PRODUCTNAME Impress, use Insert ▸ Media ▸ Photo Album to create a slideshow from a series of pictures with the “Photo Album” feature."), "", "", simpress},
-     { NC_("RID_CUI_TIPOFTHEDAY", "You can show formulas instead of results with View ▸ Show Formula (or Tools ▸ Options ▸ %PRODUCTNAME Calc ▸ View ▸ Display ▸ Formulas)."), "", "", scalc},
+     { NC_("RID_CUI_TIPOFTHEDAY", "You can show formulas instead of results with View ▸ Show Formulas (or Tools ▸ Options ▸ %PRODUCTNAME Calc ▸ View ▸ Display ▸ Formulas)."), "", "", scalc},
      { NC_("RID_CUI_TIPOFTHEDAY", "%PRODUCTNAME is developed by a friendly community, made up of hundreds of contributors around the world. Join us with your skills beyond coding."), "https://www.libreoffice.org/community/get-involved/", "", soffice},
      { NC_("RID_CUI_TIPOFTHEDAY", "Left-handed? Enable Tools ▸ Options ▸ Languages and Locales ▸ General ▸ Asian and check Tools ▸ Options ▸ %PRODUCTNAME Writer ▸ View ▸ Ruler ▸ Right-aligned, which displays the scrollbar to the left."), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "Want headings to always begin a page? Edit the paragraph style applied to the headings. Check “Insert” on the “Text Flow” tab, with Type “Page” and Position “Before”."), "cui/ui/textflowpage/checkInsert", "", swriter},
@@ -149,7 +149,7 @@ const std::tuple<TranslateId, OUString, OUString, tipModule> TIPOFTHEDAY_STRINGA
      { NC_("RID_CUI_TIPOFTHEDAY", "Want to open hyperlinks without pressing the %MOD1 key? Uncheck “%MOD1+click required to open hyperlinks” in Tools ▸ Options ▸ %PRODUCTNAME ▸ Security ▸ Options ▸ Security Options."), "cui/ui/securityoptionsdialog/ctrlclick", "", soffice},
      { NC_("RID_CUI_TIPOFTHEDAY", "You would like to view the calculation of individual elements of a formula, select the respective elements and press F9."), "", "", scalc},
      { NC_("RID_CUI_TIPOFTHEDAY", "You can protect cells with Format ▸ Cells ▸ Protection. To prevent insert, delete, rename, move/copy of sheets use Tools ▸ Protect Sheet."), "https://help.libreoffice.org/%PRODUCTVERSION/%LANGUAGENAME/text/scalc/guide/cell_protect.html", "", scalc}, //local help missing
-     { NC_("RID_CUI_TIPOFTHEDAY", "Write along a curve? Draw the curve, double click, type the text, Format ▸ Text Box and Shape ▸ Fontwork. Select one of the alignment options: Rotate, Upright, Slant Horizontal or Slant Vertical."), "", "", swriter},
+     { NC_("RID_CUI_TIPOFTHEDAY", "You can make text follow the shape of a curve. Draw the curve, double-click it, type the text, and choose Format ▸ Text along Path. Select one of the alignment options: Rotate, Upright, Slant Horizontal or Slant Vertical."), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "Want to display only the highest values in a spreadsheet? Select menu Data ▸ AutoFilter, click the drop-down arrow, and choose “Top10”."), "", "", scalc},
      { NC_("RID_CUI_TIPOFTHEDAY", "To remove the page number from your table of contents go to Insert ▸ Table of Contents and Index (or right-click and Edit Index to edit a previously inserted index). In the Entries tab delete the page number (#) from Structure line."), "", "", swriter},
      { NC_("RID_CUI_TIPOFTHEDAY", "With the Navigator you can select & move up/down headings and the text below the heading, in the Navigator and in the document."), "", "", swriter},

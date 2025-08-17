@@ -56,7 +56,6 @@ using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::frame::status;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::task;
@@ -65,7 +64,7 @@ using namespace ::com::sun::star::ui;
 using namespace ::dbtools;
 using namespace ::comphelper;
 
-#define ALL_FEATURES                -1
+constexpr auto ALL_FEATURES = -1;
 
 typedef std::unordered_map< sal_Int16, sal_Int16 > CommandHashMap;
 
@@ -80,7 +79,7 @@ void OGenericUnoController::executeUserDefinedFeatures( const URL& _rFeatureURL,
         Reference< XDispatchProvider > xDispatchProvider( xController->getFrame(), UNO_QUERY_THROW );
         Reference< XDispatch > xDispatch( xDispatchProvider->queryDispatch(
             _rFeatureURL,
-            "_self",
+            u"_self"_ustr,
             FrameSearchFlag::AUTO
         ) );
 
@@ -167,7 +166,7 @@ IMPL_LINK_NOARG(OGenericUnoController, OnAsyncInvalidateAll, void*, void)
         InvalidateFeature_Impl();
 }
 
-void OGenericUnoController::impl_initialize()
+void OGenericUnoController::impl_initialize(const ::comphelper::NamedValueCollection& /*rArguments*/)
 {
 }
 
@@ -178,45 +177,44 @@ void SAL_CALL OGenericUnoController::initialize( const Sequence< Any >& aArgumen
 
     Reference< XFrame > xFrame;
 
-    PropertyValue aValue;
-    const Any* pIter    = aArguments.getConstArray();
-    const Any* pEnd     = pIter + aArguments.getLength();
-
-    for ( ; pIter != pEnd; ++pIter )
+    for (auto& arg : aArguments)
     {
-        if ( ( *pIter >>= aValue ) && aValue.Name == "Frame" )
+        PropertyValue aValue;
+        if (arg >>= aValue)
         {
-            xFrame.set(aValue.Value,UNO_QUERY_THROW);
-        }
-        else if ( ( *pIter >>= aValue ) && aValue.Name == "Preview" )
-        {
-            aValue.Value >>= m_bPreview;
-            m_bReadOnly = true;
+            if (aValue.Name == "Frame")
+            {
+                xFrame.set(aValue.Value, UNO_QUERY_THROW);
+            }
+            else if (aValue.Name == "Preview")
+            {
+                aValue.Value >>= m_bPreview;
+                m_bReadOnly = true;
+            }
         }
     }
     try
     {
         if ( !xFrame.is() )
-            throw IllegalArgumentException("need a frame", *this, 1 );
+            throw IllegalArgumentException(u"need a frame"_ustr, *this, 1 );
 
         Reference<XWindow> xParent = xFrame->getContainerWindow();
         VclPtr<vcl::Window> pParentWin = VCLUnoHelper::GetWindow(xParent);
         if (!pParentWin)
         {
-            throw IllegalArgumentException("Parent window is null", *this, 1 );
+            throw IllegalArgumentException(u"Parent window is null"_ustr, *this, 1 );
         }
 
-        m_aInitParameters.assign( aArguments );
         Construct( pParentWin );
 
         ODataView* pView = getView();
         if ( !pView )
-            throw RuntimeException("unable to create a view", *this );
+            throw RuntimeException(u"unable to create a view"_ustr, *this );
 
         if ( m_bReadOnly || m_bPreview )
             pView->EnableInput( false );
 
-        impl_initialize();
+        impl_initialize(::comphelper::NamedValueCollection(aArguments));
     }
     catch(Exception&)
     {
@@ -283,7 +281,7 @@ Reference<XSidebarProvider> SAL_CALL OGenericUnoController::getSidebar()
 
 OUString SAL_CALL OGenericUnoController::getViewControllerName()
 {
-    return "Default";
+    return u"Default"_ustr;
 }
 
 Sequence< PropertyValue > SAL_CALL OGenericUnoController::getCreationArguments()
@@ -389,7 +387,7 @@ void OGenericUnoController::ImplBroadcastFeatureState(const OUString& _rFeature,
         // it is possible that listeners are registered or revoked while
         // we are notifying them, so we must use a copy of m_arrStatusListener, not
         // m_arrStatusListener itself
-        Dispatch aNotifyLoop( m_arrStatusListener );
+        std::vector<DispatchTarget> aNotifyLoop( m_arrStatusListener );
 
         for (auto const& elem : aNotifyLoop)
         {
@@ -544,19 +542,13 @@ Reference< XDispatch >  OGenericUnoController::queryDispatch(const URL& aURL, co
 
 Sequence< Reference< XDispatch > > OGenericUnoController::queryDispatches(const Sequence< DispatchDescriptor >& aDescripts)
 {
-    Sequence< Reference< XDispatch > > aReturn;
-    sal_Int32 nLen = aDescripts.getLength();
-    if ( nLen )
+    Sequence< Reference< XDispatch > > aReturn(aDescripts.getLength());
+    if (aDescripts.hasElements())
     {
-        aReturn.realloc( nLen );
-        Reference< XDispatch >* pReturn     = aReturn.getArray();
-        const   Reference< XDispatch >* pReturnEnd  = aReturn.getArray() + nLen;
-        const   DispatchDescriptor*     pDescripts  = aDescripts.getConstArray();
-
-        for ( ; pReturn != pReturnEnd; ++ pReturn, ++pDescripts )
-        {
-            *pReturn = queryDispatch( pDescripts->FeatureURL, pDescripts->FrameName, pDescripts->SearchFlags );
-        }
+        std::transform(aDescripts.begin(), aDescripts.end(), aReturn.getArray(),
+                       [this](auto& desc) {
+                           return queryDispatch(desc.FeatureURL, desc.FrameName, desc.SearchFlags);
+                       });
     }
 
     return aReturn;
@@ -618,7 +610,7 @@ void OGenericUnoController::removeStatusListener(const Reference< XStatusListene
     else
     {
         // remove the listener only for the given URL
-        Dispatch::iterator iterSearch = std::find_if(m_arrStatusListener.begin(), m_arrStatusListener.end(),
+        auto iterSearch = std::find_if(m_arrStatusListener.begin(), m_arrStatusListener.end(),
             [&aListener, &_rURL](const DispatchTarget& rCurrent) {
                 return (rCurrent.xListener == aListener) && (rCurrent.aURL.Complete == _rURL.Complete); });
         if (iterSearch != m_arrStatusListener.end())
@@ -632,7 +624,7 @@ void OGenericUnoController::removeStatusListener(const Reference< XStatusListene
     SupportedFeatures::const_iterator aIter = m_aSupportedFeatures.find(_rURL.Complete);
     if (aIter != m_aSupportedFeatures.end())
     {   // clear the cache for that feature
-        StateCache::const_iterator aCachePos = m_aStateCache.find( aIter->second.nFeatureId );
+        auto aCachePos = m_aStateCache.find( aIter->second.nFeatureId );
         if ( aCachePos != m_aStateCache.end() )
             m_aStateCache.erase( aCachePos );
     }
@@ -661,7 +653,7 @@ void OGenericUnoController::disposing()
     {
         EventObject aDisposeEvent;
         aDisposeEvent.Source = static_cast<XWeak*>(this);
-        Dispatch aStatusListener = m_arrStatusListener;
+        std::vector<DispatchTarget> aStatusListener = m_arrStatusListener;
         for (auto const& statusListener : aStatusListener)
         {
             statusListener.xListener->disposing(aDisposeEvent);
@@ -687,7 +679,6 @@ void OGenericUnoController::disposing()
     m_xSlaveDispatcher = nullptr;
     m_xTitleHelper.clear();
     m_xUrlTransformer.clear();
-    m_aInitParameters.clear();
 }
 
 void SAL_CALL OGenericUnoController::addEventListener( const Reference< XEventListener >& xListener )
@@ -733,11 +724,11 @@ void OGenericUnoController::implDescribeSupportedFeature( const OUString& _rComm
 void OGenericUnoController::describeSupportedFeatures()
 {
     // add all supported features
-    implDescribeSupportedFeature( ".uno:Copy", ID_BROWSER_COPY, CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:Cut", ID_BROWSER_CUT, CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:Paste", ID_BROWSER_PASTE, CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:ClipboardFormatItems", ID_BROWSER_CLIPBOARD_FORMAT_ITEMS );
-    implDescribeSupportedFeature( ".uno:DSBEditDoc", ID_BROWSER_EDITDOC, CommandGroup::DOCUMENT );
+    implDescribeSupportedFeature( u".uno:Copy"_ustr, ID_BROWSER_COPY, CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:Cut"_ustr, ID_BROWSER_CUT, CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:Paste"_ustr, ID_BROWSER_PASTE, CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:ClipboardFormatItems"_ustr, ID_BROWSER_CLIPBOARD_FORMAT_ITEMS );
+    implDescribeSupportedFeature( u".uno:DSBEditDoc"_ustr, ID_BROWSER_EDITDOC, CommandGroup::DOCUMENT );
 }
 
 FeatureState OGenericUnoController::GetState( sal_uInt16 _nId ) const
@@ -877,7 +868,7 @@ Reference< XLayoutManager > OGenericUnoController::getLayoutManager(const Refere
     {
         try
         {
-            xLayoutManager.set(xPropSet->getPropertyValue("LayoutManager"),UNO_QUERY);
+            xLayoutManager.set(xPropSet->getPropertyValue(u"LayoutManager"_ustr),UNO_QUERY);
         }
         catch ( Exception& )
         {
@@ -892,8 +883,8 @@ void OGenericUnoController::loadMenu(const Reference< XFrame >& _xFrame)
     if ( xLayoutManager.is() )
     {
         xLayoutManager->lock();
-        xLayoutManager->createElement( "private:resource/menubar/menubar" );
-        xLayoutManager->createElement( "private:resource/toolbar/toolbar" );
+        xLayoutManager->createElement( u"private:resource/menubar/menubar"_ustr );
+        xLayoutManager->createElement( u"private:resource/toolbar/toolbar"_ustr );
         xLayoutManager->unlock();
         xLayoutManager->doLayout();
     }

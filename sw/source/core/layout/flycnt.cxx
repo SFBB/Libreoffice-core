@@ -100,13 +100,22 @@ SwFlyAtContentFrame::~SwFlyAtContentFrame()
 
 void SwFlyAtContentFrame::SwClientNotify(const SwModify& rMod, const SfxHint& rHint)
 {
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
+    if (rHint.GetId() != SfxHintId::SwLegacyModify && rHint.GetId() != SfxHintId::SwAttrSetChange)
     {
         SwFlyFrame::SwClientNotify(rMod, rHint);
         return;
     }
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    const SwFormatAnchor* pAnch = pLegacy->m_pNew ? GetAnchorFromPoolItem(*pLegacy->m_pNew) : nullptr;
+    const SwFormatAnchor* pAnch;
+    if (rHint.GetId() == SfxHintId::SwLegacyModify)
+    {
+        auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
+        pAnch = pLegacy->m_pNew ? GetAnchorFromPoolItem(*pLegacy->m_pNew) : nullptr;
+    }
+    else // rHint.GetId() == SfxHintId::SwAttrSetChange
+    {
+        auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+        pAnch = pChangeHint->m_pNew ? GetAnchorFromPoolItem(*pChangeHint->m_pNew) : nullptr;
+    }
     if(!pAnch)
     {
         SwFlyFrame::SwClientNotify(rMod, rHint);
@@ -162,13 +171,13 @@ void SwFlyAtContentFrame::SwClientNotify(const SwModify& rMod, const SfxHint& rH
         // of the given fly frame format is registered.
         if(bFound && pContent && pContent->GetDrawObjs())
         {
-            SwFrameFormat* pMyFlyFrameFormat(&GetFrameFormat());
+            SwFrameFormat* pMyFlyFrameFormat(GetFrameFormat());
             SwSortedObjs &rObjs = *pContent->GetDrawObjs();
             for(SwAnchoredObject* rObj : rObjs)
             {
                 SwFlyFrame* pFlyFrame = rObj->DynCastFlyFrame();
                 if (pFlyFrame &&
-                     &(pFlyFrame->GetFrameFormat()) == pMyFlyFrameFormat)
+                     pFlyFrame->GetFrameFormat() == pMyFlyFrameFormat)
                 {
                     bFound = false;
                     break;
@@ -330,7 +339,8 @@ bool SwOszControl::ChkOsz()
 |*/
 void SwFlyAtContentFrame::MakeAll(vcl::RenderContext* pRenderContext)
 {
-    if ( !GetFormat()->GetDoc()->getIDocumentDrawModelAccess().IsVisibleLayerId( GetVirtDrawObj()->GetLayer() ) )
+    const SwDoc& rDoc = GetFormat()->GetDoc();
+    if (!rDoc.getIDocumentDrawModelAccess().IsVisibleLayerId(GetVirtDrawObj()->GetLayer()))
     {
         return;
     }
@@ -450,7 +460,6 @@ void SwFlyAtContentFrame::MakeAll(vcl::RenderContext* pRenderContext)
                 SwTextFrame* pAnchorTextFrame( static_cast<SwTextFrame*>(AnchorFrame()) );
                 bool bInsert( true );
                 sal_uInt32 nAnchorFrameToPageNum( 0 );
-                const SwDoc& rDoc = *(GetFrameFormat().GetDoc());
                 if ( SwLayouter::FrameMovedFwdByObjPos(
                                         rDoc, *pAnchorTextFrame, nAnchorFrameToPageNum ) )
                 {
@@ -518,7 +527,7 @@ void SwFlyAtContentFrame::MakeAll(vcl::RenderContext* pRenderContext)
               !bConsiderWrapInfluenceDueToOverlapPrevCol &&
               // #i40444#
               !bConsiderWrapInfluenceDueToMovedFwdAnchor &&
-              GetFormat()->GetDoc()->getIDocumentDrawModelAccess().IsVisibleLayerId( GetVirtDrawObj()->GetLayer() ) );
+              rDoc.getIDocumentDrawModelAccess().IsVisibleLayerId( GetVirtDrawObj()->GetLayer() ) );
 
     // #i3317# - instead of attribute change apply
     // temporarily the 'straightforward positioning process'.
@@ -1388,7 +1397,7 @@ void SwFlyAtContentFrame::SetAbsPos( const Point &rNew )
                 nX = rNew.X() - pFrame->getFrameArea().Left();
         }
     }
-    GetFormat()->GetDoc()->GetIDocumentUndoRedo().StartUndo( SwUndoId::START, nullptr );
+    GetFormat()->GetDoc().GetIDocumentUndoRedo().StartUndo( SwUndoId::START, nullptr );
 
     if( pCnt != GetAnchorFrame() || ( IsAutoPos() && pCnt->IsTextFrame() &&
                                   GetFormat()->getIDocumentSettingAccess().get(DocumentSettingId::HTML_MODE)) )
@@ -1439,7 +1448,7 @@ void SwFlyAtContentFrame::SetAbsPos( const Point &rNew )
         // anchor attribute is change and re-create them afterwards.
         {
             SwHandleAnchorNodeChg aHandleAnchorNodeChg( *pFormat, aAnch, this );
-            pFormat->GetDoc()->SetAttr( aAnch, *pFormat );
+            pFormat->GetDoc().SetAttr( aAnch, *pFormat );
         }
     }
     else if ( pTmpPage && pTmpPage != GetPageFrame() )
@@ -1447,7 +1456,7 @@ void SwFlyAtContentFrame::SetAbsPos( const Point &rNew )
 
     const Point aRelPos = bVert ? Point( -nY, nX ) : Point( nX, nY );
     ChgRelPos( aRelPos );
-    GetFormat()->GetDoc()->GetIDocumentUndoRedo().EndUndo( SwUndoId::END, nullptr );
+    GetFormat()->GetDoc().GetIDocumentUndoRedo().EndUndo( SwUndoId::END, nullptr );
 
     if ( pOldPage != FindPageFrame() )
         ::Notify_Background( GetVirtDrawObj(), pOldPage, aOld, PrepareHint::FlyFrameLeave, false );
@@ -1474,7 +1483,6 @@ void SwFlyAtContentFrame::RegisterAtCorrectPage()
 
 void SwFlyAtContentFrame::RegisterAtPage(SwPageFrame & rPageFrame)
 {
-    assert(GetPageFrame() != &rPageFrame);
     if (GetPageFrame())
     {
         GetPageFrame()->MoveFly( this, &rPageFrame );
@@ -1630,7 +1638,17 @@ SwLayoutFrame *SwFrame::GetNextFlyLeaf( MakePageType eMakePage )
             {
                 // Make sure the candidate is not inside the same body frame, that would prevent
                 // inserting a new page.
-                if (pFlyAnchor->FindBodyFrame() == pLayLeaf->FindBodyFrame())
+                SwBodyFrame const* pAnchorBody(pFlyAnchor->FindBodyFrame());
+                while (!pAnchorBody->IsPageBodyFrame())
+                {
+                    pAnchorBody = pAnchorBody->GetUpper()->FindBodyFrame();
+                };
+                SwBodyFrame const* pLeafBody(pLayLeaf->FindBodyFrame());
+                while (!pLeafBody->IsPageBodyFrame())
+                {
+                    pLeafBody = pLeafBody->GetUpper()->FindBodyFrame();
+                };
+                if (pAnchorBody == pLeafBody)
                 {
                     bSameBody = true;
                 }
@@ -1652,7 +1670,13 @@ SwLayoutFrame *SwFrame::GetNextFlyLeaf( MakePageType eMakePage )
             {
                 // The above conditions are not held, reject.
                 pOldLayLeaf = pLayLeaf;
-                pLayLeaf = pLayLeaf->GetNextLayoutLeaf();
+                do
+                {
+                    pLayLeaf = pLayLeaf->GetNextLayoutLeaf();
+                }
+                // skip deleted section frames - do not move into these
+                while (pLayLeaf && pLayLeaf->FindSctFrame()
+                    && !pLayLeaf->FindSctFrame()->GetSection());
 
                 if (pLayLeaf && pLayLeaf->IsInDocBody() && !bSameBody && !pLayLeaf->IsInFly() && pLayLeaf->IsInTab())
                 {

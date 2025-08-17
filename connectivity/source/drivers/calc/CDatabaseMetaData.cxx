@@ -34,7 +34,6 @@ using namespace connectivity::file;
 using namespace connectivity::component;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::table;
@@ -68,7 +67,7 @@ static bool lcl_IsEmptyOrHidden( const Reference<XSpreadsheets>& xSheets, const 
     if (xProp.is())
     {
         bool bVisible;
-        Any aVisAny = xProp->getPropertyValue("IsVisible");
+        Any aVisAny = xProp->getPropertyValue(u"IsVisible"_ustr);
         if ( (aVisAny >>= bVisible) && !bVisible)
             return true;                // hidden
     }
@@ -109,7 +108,7 @@ static bool lcl_IsUnnamed( const Reference<XDatabaseRanges>& xRanges, const OUSt
         {
             try
             {
-                Any aUserAny = xRangeProp->getPropertyValue("IsUserDefined");
+                Any aUserAny = xRangeProp->getPropertyValue(u"IsUserDefined"_ustr);
                 bool bUserDefined;
                 if ( aUserAny >>= bUserDefined )
                     bUnnamed = !bUserDefined;
@@ -135,27 +134,23 @@ Reference< XResultSet > SAL_CALL OCalcDatabaseMetaData::getTables(
     // check if ORowSetValue type is given
     // when no types are given then we have to return all tables e.g. TABLE
 
-    OUString aTable("TABLE");
+    static constexpr OUString aTable(u"TABLE"_ustr);
 
-    bool bTableFound = true;
-    sal_Int32 nLength = types.getLength();
-    if(nLength)
+    if (types.hasElements())
     {
-        bTableFound = false;
+        bool bTableFound = false;
 
-        const OUString* pIter = types.getConstArray();
-        const OUString* pEnd = pIter + nLength;
-        for(;pIter != pEnd;++pIter)
+        for (auto& type : types)
         {
-            if(*pIter == aTable)
+            if (type == aTable)
             {
                 bTableFound = true;
                 break;
             }
         }
+        if (!bTableFound)
+            return pResult;
     }
-    if(!bTableFound)
-        return pResult;
 
     // get the sheet names from the document
 
@@ -172,7 +167,7 @@ Reference< XResultSet > SAL_CALL OCalcDatabaseMetaData::getTables(
     sal_Int32 nSheetCount = aSheetNames.getLength();
     for (sal_Int32 nSheet=0; nSheet<nSheetCount; nSheet++)
     {
-        OUString aName = aSheetNames[nSheet];
+        const OUString& aName = aSheetNames[nSheet];
         if ( !lcl_IsEmptyOrHidden( xSheets, aName ) && match(tableNamePattern,aName,'\0') )
         {
             aRows.push_back( { nullptr, nullptr, nullptr,
@@ -188,7 +183,7 @@ Reference< XResultSet > SAL_CALL OCalcDatabaseMetaData::getTables(
     Reference<XPropertySet> xDocProp( xDoc, UNO_QUERY );
     if ( xDocProp.is() )
     {
-        Any aRangesAny = xDocProp->getPropertyValue("DatabaseRanges");
+        Any aRangesAny = xDocProp->getPropertyValue(u"DatabaseRanges"_ustr);
         Reference<XDatabaseRanges> xRanges;
         if ( aRangesAny >>= xRanges )
         {
@@ -196,7 +191,7 @@ Reference< XResultSet > SAL_CALL OCalcDatabaseMetaData::getTables(
             sal_Int32 nDBCount = aDBNames.getLength();
             for (sal_Int32 nRange=0; nRange<nDBCount; nRange++)
             {
-                OUString aName = aDBNames[nRange];
+                const OUString& aName = aDBNames[nRange];
                 if ( !lcl_IsUnnamed( xRanges, aName ) && match(tableNamePattern,aName,'\0') )
                 {
                     aRows.push_back( { nullptr, nullptr, nullptr,

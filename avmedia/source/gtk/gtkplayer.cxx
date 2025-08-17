@@ -9,18 +9,12 @@
 
 #include <sal/config.h>
 
-#include <mutex>
-
 #include <cppuhelper/supportsservice.hxx>
-#include <sal/log.hxx>
 #include <rtl/string.hxx>
-#include <tools/link.hxx>
 #include <vcl/BitmapTools.hxx>
 #include <vcl/graph.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/syschild.hxx>
 #include <vcl/sysdata.hxx>
-#include <vcl/timer.hxx>
 
 #include <gstwindow.hxx>
 #include "gtkplayer.hxx"
@@ -343,11 +337,7 @@ uno::Reference<::media::XPlayerWindow>
         return nullptr;
 
     m_pVideo = gtk_picture_new_for_paintable(GDK_PAINTABLE(m_pStream));
-#if GTK_CHECK_VERSION(4, 7, 2)
     gtk_picture_set_content_fit(GTK_PICTURE(m_pVideo), GTK_CONTENT_FIT_FILL);
-#else
-    gtk_picture_set_keep_aspect_ratio(GTK_PICTURE(m_pVideo), false);
-#endif
     gtk_widget_set_can_target(m_pVideo, false);
     gtk_widget_set_vexpand(m_pVideo, true);
     gtk_widget_set_hexpand(m_pVideo, true);
@@ -355,12 +345,8 @@ uno::Reference<::media::XPlayerWindow>
     GtkWidget* pParent = static_cast<GtkWidget*>(pEnvData->pWidget);
     gtk_widget_set_can_target(pParent, false);
     gtk_grid_attach(GTK_GRID(pParent), m_pVideo, 0, 0, 1, 1);
-    // "‘void gtk_widget_show(GtkWidget*)’ is deprecated: Use 'gtk_widget_set_visible or
-    // gtk_window_present' instead":
-    SAL_WNODEPRECATED_DECLARATIONS_PUSH
-    gtk_widget_show(m_pVideo);
-    gtk_widget_show(pParent);
-    SAL_WNODEPRECATED_DECLARATIONS_POP
+    gtk_widget_set_visible(m_pVideo, true);
+    gtk_widget_set_visible(pParent, true);
 
     xRet = new ::avmedia::gstreamer::Window;
 
@@ -425,12 +411,12 @@ public:
 
         gsk_render_node_unref(node);
 
-        std::unique_ptr<BitmapEx> xBitmap(
-            vcl::bitmap::CreateFromCairoSurface(Size(m_aSize.Width, m_aSize.Height), surface));
+        Bitmap aBitmap
+            = vcl::bitmap::CreateFromCairoSurface(Size(m_aSize.Width, m_aSize.Height), surface);
 
         cairo_surface_destroy(surface);
 
-        return Graphic(*xBitmap).GetXGraphic();
+        return Graphic(aBitmap).GetXGraphic();
     }
 };
 }

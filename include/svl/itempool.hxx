@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <config_options.h>
 #include <rtl/ref.hxx>
 #include <svl/poolitem.hxx>
 #include <svl/svldllapi.h>
@@ -27,38 +28,118 @@
 #include <memory>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <o3tl/sorted_vector.hxx>
 #include <salhelper/simplereferenceobject.hxx>
+#include <svl/SfxBroadcaster.hxx>
 
-class SfxBroadcaster;
-struct SfxItemPool_Impl;
+// flag definitions to be used for _nItemInfoFlags
+// in SfxItemInfo
+#define SFX_ITEMINFOFLAG_NONE               0x0000
 
-struct SfxItemInfo
+// Defines if this Item needs to be registered at the pool
+// to make it accessible for the GetItemSurrogates call. It
+// will not be included when this flag is not set, but also
+// needs no registration. There are SAL_INFO calls in the
+// GetItemSurrogates impl that will mention that
+#define SFX_ITEMINFOFLAG_SUPPORT_SURROGATE  0x0001
+
+class SfxItemSet;
+
+class SVL_DLLPUBLIC ItemInfo
 {
-    // Defines a mapping between WhichID <-> SlotID
-    sal_uInt16       _nSID;
+    sal_uInt16          m_nWhich;
+    sal_uInt16          m_nSlotID;
+    sal_uInt16          m_nItemInfoFlags;
 
-    // Defines if this Item needs to be registered at the pool
-    // to make it accessible for the GetItemSurrogates call. It
-    // will not be included when this flag is not set, but also
-    // needs no registration. There are SAL_INFO calls in the
-    // GetItemSurrogates impl that will mention that
-    bool             _bNeedsPoolRegistration : 1;
+public:
+    ItemInfo(sal_uInt16 nWhich, sal_uInt16 nSlotID, sal_uInt16 nItemInfoFlags)
+    : m_nWhich(nWhich), m_nSlotID(nSlotID), m_nItemInfoFlags(nItemInfoFlags) {}
+    ItemInfo(const ItemInfo& rIemInfo) = default;
+    virtual ~ItemInfo() = default;
 
-    // Defines if the Item can be shared/RefCounted else it will be cloned.
-    // Default is true - as it should be for all Items. It is needed by some
-    // SW items, so protected to let them set it in constructor. If this could
-    // be fixed at that Items we may remove this again.
-    bool             _bShareable : 1;
+    sal_uInt16 getWhich() const { return m_nWhich; }
+    virtual const SfxPoolItem* getItem() const = 0;
+    sal_uInt16 getSlotID() const { return m_nSlotID; }
+    sal_uInt16 getItemInfoFlags() const { return m_nItemInfoFlags; }
 };
 
-class SfxItemPool;
-typedef std::unordered_set<const SfxPoolItem*> registeredSfxPoolItems;
+class SVL_DLLPUBLIC ItemInfoStatic final : public ItemInfo
+{
+    friend class ItemInfoPackage;
+    void setItem(SfxPoolItem* pItem)
+    {
+        if (nullptr != pItem)
+            pItem->setStaticDefault();
+        m_pItem.reset(pItem);
+    }
 
-#ifdef DBG_UTIL
-SVL_DLLPUBLIC size_t getAllDirectlyPooledSfxPoolItemCount();
-SVL_DLLPUBLIC size_t getRemainingDirectlyPooledSfxPoolItemCount();
-#endif
+    std::unique_ptr<const SfxPoolItem> m_pItem;
+
+public:
+    ItemInfoStatic(sal_uInt16 nWhich, SfxPoolItem* pItem, sal_uInt16 nSlotID, sal_uInt16 nItemInfoFlags)
+    : ItemInfo(nWhich, nSlotID, nItemInfoFlags)
+    , m_pItem(pItem) { if(nullptr != pItem) pItem->setStaticDefault(); }
+
+    virtual const SfxPoolItem* getItem() const override { return m_pItem.get(); }
+};
+
+class SVL_DLLPUBLIC ItemInfoDynamic final : public ItemInfo
+{
+    std::unique_ptr<const SfxPoolItem> m_pItem;
+
+public:
+    ItemInfoDynamic(const ItemInfo& rItemInfo, SfxPoolItem* pItem)
+    : ItemInfo(rItemInfo)
+    , m_pItem(pItem) { if(nullptr != pItem) pItem->setDynamicDefault(); }
+
+    virtual const SfxPoolItem* getItem() const override { return m_pItem.get(); }
+};
+
+class UNLESS_MERGELIBS(SVL_DLLPUBLIC) ItemInfoUser final : public ItemInfo
+{
+    const SfxPoolItem* m_pItem;
+
+public:
+    ItemInfoUser(const ItemInfo& rItemInfo, const SfxItemPool& rItemPool, const SfxPoolItem& rItem, bool bPassingOwnership = false);
+    virtual ~ItemInfoUser();
+
+    virtual const SfxPoolItem* getItem() const override { return m_pItem; }
+};
+
+typedef std::unordered_map<sal_uInt16, sal_uInt16> SlotIDToWhichIDMap;
+
+class SVL_DLLPUBLIC ItemInfoPackage
+{
+protected:
+    // this is needed for on-demand creation of static entries in constructors
+    // derived from ItemInfoPackage or implementations of ::getItemInfo(). This
+    // takes ownership of the item
+    static void setItemAtItemInfoStatic(SfxPoolItem* pItem, ItemInfoStatic& rItemInfo) { rItemInfo.setItem(pItem); }
+
+private:
+    // mechanism for buffered SlotIDToWhichIDMap
+    virtual const ItemInfoStatic& getItemInfoStatic(size_t nIndex) const = 0;
+    mutable SlotIDToWhichIDMap maSlotIDToWhichIDMap;
+
+public:
+    ItemInfoPackage() = default;
+    virtual ~ItemInfoPackage() = default;
+
+    virtual size_t size() const = 0;
+    virtual const ItemInfo& getItemInfo(size_t nIndex, SfxItemPool& rPool) = 0;
+    virtual const ItemInfo& getExistingItemInfo(size_t /*nIndex*/);
+    const SlotIDToWhichIDMap& getSlotIDToWhichIDMap() const;
+};
+
+typedef std::unordered_set<SfxItemSet*> registeredSfxItemSets;
+class SfxPoolItemHolder;
+typedef std::unordered_set<SfxPoolItemHolder*> registeredSfxPoolItemHolders;
+typedef std::vector<const SfxPoolItem*> ItemSurrogates;
+typedef std::unordered_map<sal_uInt16, const ItemInfo*> userItemInfos;
+typedef std::vector<const ItemInfo*> itemInfoVector;
+typedef std::unordered_map<const SfxPoolItem*, sal_uInt32> NameOrIndexContent;
+typedef std::unordered_map<SfxItemType, NameOrIndexContent> registeredNameOrIndex;
 
 /** Base class for providers of defaults of SfxPoolItems.
  *
@@ -69,70 +150,116 @@ SVL_DLLPUBLIC size_t getRemainingDirectlyPooledSfxPoolItemCount();
  */
 class SVL_DLLPUBLIC SfxItemPool : public salhelper::SimpleReferenceObject
 {
-    friend struct SfxItemPool_Impl;
     friend class SfxItemSet;
+    friend class SfxPoolItemHolder;
     friend class SfxAllItemSet;
 
     // allow ItemSetTooling to access
-    friend SfxPoolItem const* implCreateItemEntry(SfxItemPool&, SfxPoolItem const*, sal_uInt16, bool);
-    friend void implCleanupItemEntry(SfxItemPool&, SfxPoolItem const*);
+    friend SfxPoolItem const* implCreateItemEntry(const SfxItemPool&, SfxPoolItem const*, bool);
+    friend void implCleanupItemEntry(SfxPoolItem const*);
 
-    // unit testing
-    friend class PoolItemTest;
+    SfxBroadcaster                  aBC;
+    OUString                        aName;
+    SfxItemPool*                    mpMaster;
+    rtl::Reference<SfxItemPool>     mpSecondary;
+    mutable WhichRangesContainer    maPoolRanges;
+    sal_uInt16                      mnStart;
+    sal_uInt16                      mnEnd;
+    MapUnit                         eDefMetric;
 
-    const SfxItemInfo*              pItemInfos;
-    std::unique_ptr<SfxItemPool_Impl>               pImpl;
+    registeredSfxItemSets maRegisteredSfxItemSets;
+    registeredSfxPoolItemHolders maRegisteredSfxPoolItemHolders;
 
-    registeredSfxPoolItems** ppRegisteredSfxPoolItems;
+    // place to register all NameOrIndex Items that are either set in an
+    // SfxItemSet or SfxPolItemHolder for this Model/Pool
+    registeredNameOrIndex maRegisteredNameOrIndex;
+
+    bool mbShutdownHintSent;
+
+    itemInfoVector maItemInfos;
+    userItemInfos maUserItemInfos;
+    const SlotIDToWhichIDMap* mpSlotIDToWhichIDMap;
+
+public:
+    void registerItemInfoPackage(
+        ItemInfoPackage& rPackage,
+        const std::function<SfxPoolItem*(sal_uInt16)>& rCallback = std::function<SfxPoolItem*(sal_uInt16)>());
+protected:
+    const ItemInfo* impCheckItemInfoForClone(const ItemInfo* pInfo);
+    void impClearUserDefault(const userItemInfos::iterator& rHit);
+    void impCreateUserDefault(const SfxPoolItem& rItem);
+private:
+    void cleanupItemInfos();
 
 private:
-    sal_uInt16                      GetIndex_Impl(sal_uInt16 nWhich) const;
-    sal_uInt16                      GetSize_Impl() const;
+    sal_uInt16 GetIndex_Impl(sal_uInt16 nWhich) const
+    {
+        if (IsInRange(nWhich))
+            return nWhich - mnStart;
+        assert(false && "missing bounds check before use");
+        return 0;
+    }
+    sal_uInt16 GetSize_Impl() const { return mnEnd - mnStart + 1; }
+    SfxItemPool* getTargetPool(sal_uInt16 nWhich) const;
 
-    SVL_DLLPRIVATE bool             NeedsPoolRegistration_Impl(sal_uInt16 nPos) const
-    { return pItemInfos[nPos]._bNeedsPoolRegistration; }
-    SVL_DLLPRIVATE bool             Shareable_Impl(sal_uInt16 nPos) const
-    { return pItemInfos[nPos]._bShareable; }
+    // moved to private: use the access methods, e.g. NeedsSurrogateSupport
+    SVL_DLLPRIVATE bool CheckItemInfoFlag(sal_uInt16 nWhich, sal_uInt16 nMask) const;
+    SVL_DLLPRIVATE bool CheckItemInfoFlag_Impl(sal_uInt16 nPos, sal_uInt16 nMask) const
+        { return maItemInfos[nPos]->getItemInfoFlags() & nMask; }
+
+    void registerItemSet(SfxItemSet& rSet);
+    void unregisterItemSet(SfxItemSet& rSet);
+
+    void registerPoolItemHolder(SfxPoolItemHolder& rHolder);
+    void unregisterPoolItemHolder(SfxPoolItemHolder& rHolder);
+
+    void registerNameOrIndex(const SfxPoolItem& rItem);
+    void unregisterNameOrIndex(const SfxPoolItem& rItem);
 
 public:
     // for default SfxItemSet::CTOR, set default WhichRanges
-    void                            FillItemIdRanges_Impl( WhichRangesContainer& pWhichRanges ) const;
-    const WhichRangesContainer &    GetFrozenIdRanges() const;
+    const WhichRangesContainer& GetMergedIdRanges() const;
 
 protected:
-    static inline void              ClearRefCount(SfxPoolItem& rItem);
     static inline void              AddRef(const SfxPoolItem& rItem);
     static inline sal_uInt32        ReleaseRef(const SfxPoolItem& rItem, sal_uInt32 n = 1);
 
 public:
-                                    SfxItemPool( const SfxItemPool &rPool,
-                                                 bool bCloneStaticDefaults = false );
-                                    SfxItemPool( const OUString &rName,
-                                                 sal_uInt16 nStart, sal_uInt16 nEnd,
-                                                 const SfxItemInfo *pItemInfos,
-                                                 std::vector<SfxPoolItem*> *pDefaults = nullptr );
-
-public:
-    virtual                         ~SfxItemPool();
+    SfxItemPool(const SfxItemPool &rPool);
+    SfxItemPool(const OUString &rName);
+    virtual ~SfxItemPool();
 
     SfxBroadcaster&                 BC();
 
-    void                            SetPoolDefaultItem( const SfxPoolItem& );
+    // UserDefaults: Every PoolDefault can be 'overloaded' with a user-defined
+    // default. This is then owned by the pool. The read access is limited
+    // to check the UserDefaults, so it *will* return nullptr if none is set
+    void                            SetUserDefaultItem( const SfxPoolItem& );
+    const SfxPoolItem*              GetUserDefaultItem( sal_uInt16 nWhich ) const;
+    template<class T> const T*      GetUserDefaultItem( TypedWhichId<T> nWhich ) const
+    { return static_cast<const T*>(GetUserDefaultItem(sal_uInt16(nWhich))); }
+    void                            ResetUserDefaultItem( sal_uInt16 nWhich );
 
-    const SfxPoolItem*              GetPoolDefaultItem( sal_uInt16 nWhich ) const;
+    // PoolDefaults: Owned by the pool. The read access will only return
+    // nullptr if the WhichID asked for is not in the range of the pool,
+    // making the request invalid.
+    const SfxPoolItem *             GetPoolDefaultItem(sal_uInt16 nWhich) const;
     template<class T> const T*      GetPoolDefaultItem( TypedWhichId<T> nWhich ) const
     { return static_cast<const T*>(GetPoolDefaultItem(sal_uInt16(nWhich))); }
 
-    void                            ResetPoolDefaultItem( sal_uInt16 nWhich );
-
-    void                            SetDefaults(std::vector<SfxPoolItem*>* pDefaults);
-    void                            ClearDefaults();
-    void                            ReleaseDefaults( bool bDelete = false );
-    static void                     ReleaseDefaults( std::vector<SfxPoolItem*> *pDefaults, bool bDelete = false );
+    // UserOrPoolDefaults: Combination of UserDefaults and PoolDefaults.
+    // UserDefaults will be preferred. If none is set for that WhichID,
+    // the PoolDefault will be returned.
+    // Note that read access will return a reference, but this will lead
+    // to an asserted error when the given WhichID is not in the range of
+    // the pool.
+    const SfxPoolItem&              GetUserOrPoolDefaultItem( sal_uInt16 nWhich ) const;
+    template<class T> const T&      GetUserOrPoolDefaultItem( TypedWhichId<T> nWhich ) const
+    { return static_cast<const T&>(GetUserOrPoolDefaultItem(sal_uInt16(nWhich))); }
 
     virtual MapUnit                 GetMetric( sal_uInt16 nWhich ) const;
     void                            SetDefaultMetric( MapUnit eNewMetric );
-    MapUnit                         GetDefaultMetric() const;
+    MapUnit GetDefaultMetric() const { return eDefMetric; }
 
     /** Request string representation of pool items.
 
@@ -165,103 +292,89 @@ public:
                                                      OUString& rText,
                                                      const IntlWrapper& rIntlWrapper ) const;
     virtual rtl::Reference<SfxItemPool> Clone() const;
-    const OUString&                 GetName() const;
+    const OUString& GetName() const { return aName; }
 
-    template<class T> const T&      DirectPutItemInPool( std::unique_ptr<T> xItem, sal_uInt16 nWhich = 0 )
-    { return static_cast<const T&>(DirectPutItemInPoolImpl( *xItem.release(), nWhich, /*bPassingOwnership*/true)); }
-    template<class T> const T&      DirectPutItemInPool( const T& rItem, sal_uInt16 nWhich = 0 )
-    { return static_cast<const T&>(DirectPutItemInPoolImpl( rItem, nWhich, /*bPassingOwnership*/false)); }
-    void                            DirectRemoveItemFromPool( const SfxPoolItem& );
-
-    const SfxPoolItem&              GetDefaultItem( sal_uInt16 nWhich ) const;
-    template<class T> const T&      GetDefaultItem( TypedWhichId<T> nWhich ) const
-    { return static_cast<const T&>(GetDefaultItem(sal_uInt16(nWhich))); }
-
-    struct Item2Range
+public:
+    // SurrogateData callback helper for iterateItemSurrogates
+    class SurrogateData
     {
-        o3tl::sorted_vector<SfxPoolItem*>::const_iterator m_begin;
-        o3tl::sorted_vector<SfxPoolItem*>::const_iterator m_end;
-        o3tl::sorted_vector<SfxPoolItem*>::const_iterator const & begin() const { return m_begin; }
-        o3tl::sorted_vector<SfxPoolItem*>::const_iterator const & end() const { return m_end; }
+    public:
+        virtual ~SurrogateData() = default;
+        SurrogateData(const SurrogateData&) = default;
+        SurrogateData() = default;
+
+        // read-access to Item
+        virtual const SfxPoolItem& getItem() const = 0;
+
+        // write-access when Item needs to be modified
+        virtual const SfxPoolItem* setItem(std::unique_ptr<SfxPoolItem>) = 0;
     };
-    const SfxPoolItem *             GetItem2Default(sal_uInt16 nWhich) const;
-    template<class T> const T*      GetItem2Default( TypedWhichId<T> nWhich ) const
-    { return static_cast<const T*>(GetItem2Default(sal_uInt16(nWhich))); }
 
-    const registeredSfxPoolItems&   GetItemSurrogates(sal_uInt16 nWhich) const;
-    /*
-        This is only valid for SfxPoolItem that override IsSortable and operator<.
-        Returns a range of items defined by using operator<.
-        @param rNeedle must be the same type or a supertype of the pool items for nWhich.
-    */
-    std::vector<const SfxPoolItem*> FindItemSurrogate(sal_uInt16 nWhich, SfxPoolItem const & rNeedle) const;
+    // Iterate using a lambda/callback with read/write access to registered SfxPoolItems.
+    // If you use this (look for current usages) inside the callback you may
+    //   return true; // to continue callback (like 'continue')
+    //   return false; // to end callbacks (like 'break')
+    void iterateItemSurrogates(
+        sal_uInt16 nWhich,
+        const std::function<bool(SfxItemPool::SurrogateData& rData)>& rItemCallback) const;
 
-    sal_uInt16                      GetFirstWhich() const;
-    sal_uInt16                      GetLastWhich() const;
-    bool                            IsInRange( sal_uInt16 nWhich ) const;
+    // Read-only access to registered SfxPoolItems
+    // NOTE: In *no* case use const_cast and change those Items (!)
+    // Read commit text for more information
+    ItemSurrogates GetItemSurrogates(sal_uInt16 nWhich) const;
+
+    // special version for read-only itemSurrogates for NameOrIndex Items
+    ItemSurrogates GetItemSurrogatesForItem(const SfxPoolItem& rItem) const;
+    ItemSurrogates GetItemSurrogatesForItem(SfxItemType eItemType) const;
+
+    sal_uInt16 GetFirstWhich() const { return mnStart; }
+    sal_uInt16 GetLastWhich() const { return mnEnd; }
+    bool IsInRange( sal_uInt16 nWhich ) const { return nWhich >= mnStart && nWhich <= mnEnd; }
+
     void                            SetSecondaryPool( SfxItemPool *pPool );
-    SfxItemPool*                    GetSecondaryPool() const;
+    SfxItemPool* GetSecondaryPool() const { return mpSecondary.get(); }
     /* get the last pool by following the GetSecondaryPool chain */
     SfxItemPool*                    GetLastPoolInChain();
-    SfxItemPool*                    GetMasterPool() const;
-    void                            FreezeIdRanges();
+    SfxItemPool* GetMasterPool() const { return mpMaster; }
+    void sendShutdownHint();
 
-    void                            Delete();
+    // syntactical sugar: direct call to not have to use the flag define
+    // and make the intention clearer
+    bool NeedsSurrogateSupport(sal_uInt16 nWhich) const
+        { return CheckItemInfoFlag(nWhich, SFX_ITEMINFOFLAG_SUPPORT_SURROGATE); }
 
-    bool                            NeedsPoolRegistration(sal_uInt16 nWhich) const;
-    bool                            NeedsPoolRegistration(const SfxPoolItem &rItem) const
-                                    { return NeedsPoolRegistration(rItem.Which()); }
+    // tries to translate back from SlotID to WhichID.
+    // If none is defined, return nSlot.
+    // If nSlot is not a SlotID, return nSlot.
+    sal_uInt16 GetWhichIDFromSlotID(sal_uInt16 nSlot, bool bDeep = true) const;
+    template<class T> TypedWhichId<T> GetWhichIDFromSlotID(TypedWhichId<T> nSlot, bool bDeep = true) const
+     { return TypedWhichId<T>(GetWhichIDFromSlotID(sal_uInt16(nSlot), bDeep)); }
 
-    bool                            Shareable(sal_uInt16 nWhich) const;
-    bool                            Shareable(const SfxPoolItem &rItem) const
-                                    { return Shareable(rItem.Which()); }
+    // get SlotID that may be registered in the SfxItemInfo for
+    // the given WhichID.
+    // If none is defined, return nWhich.
+    // If nWhich is not a WhichID, return nWhich.
+    sal_uInt16 GetSlotId( sal_uInt16 nWhich ) const;
 
-    void                            SetItemInfos( const SfxItemInfo *pInfos );
-    sal_uInt16                      GetWhich( sal_uInt16 nSlot, bool bDeep = true ) const;
-    template<class T>
-    TypedWhichId<T>                 GetWhich( TypedWhichId<T> nSlot, bool bDeep = true ) const
-    { return TypedWhichId<T>(GetWhich(sal_uInt16(nSlot), bDeep)); }
-    sal_uInt16                      GetSlotId( sal_uInt16 nWhich ) const;
-    sal_uInt16                      GetTrueWhich( sal_uInt16 nSlot, bool bDeep = true ) const;
-    sal_uInt16                      GetTrueSlotId( sal_uInt16 nWhich ) const;
+    // same as GetWhichIDFromSlotID, but returns 0 in error cases, so:
+    // If none is defined, return 0.
+    // If nSlot is not a SlotID, return 0.
+    sal_uInt16 GetTrueWhichIDFromSlotID( sal_uInt16 nSlot, bool bDeep = true ) const;
 
-    static bool                     IsWhich(sal_uInt16 nId) {
-                                        return nId && nId <= SFX_WHICH_MAX; }
-    static bool                     IsSlot(sal_uInt16 nId) {
-                                        return nId && nId > SFX_WHICH_MAX; }
+    // same as GetSlotId, but returns 0 in error cases, so:
+    // If none is defined, return 0.
+    // If nWhich is not a WhichID, return 0.
+    sal_uInt16 GetTrueSlotId( sal_uInt16 nWhich ) const;
 
-    // This method will try to register the Item at this Pool.
-    void registerSfxPoolItem(const SfxPoolItem& rItem);
-
-    // this method will unregister an Item from this Pool
-    void unregisterSfxPoolItem(const SfxPoolItem& rItem);
-
-    // check if this Item is registered at this Pool, needed to detect
-    // if an Item is to be set at another Pool and needs to be cloned
-    bool isSfxPoolItemRegisteredAtThisPool(const SfxPoolItem& rItem) const;
-
-    // try to find an equal existing Item to given one in pool
-    const SfxPoolItem* tryToGetEqualItem(const SfxPoolItem& rItem, sal_uInt16 nWhich) const;
-
-    void                            dumpAsXml(xmlTextWriterPtr pWriter) const;
-
-protected:
-    const SfxPoolItem&      DirectPutItemInPoolImpl( const SfxPoolItem&, sal_uInt16 nWhich = 0, bool bPassingOwnership = false );
-    virtual void newItem_Callback(const SfxPoolItem& rItem) const;
-    virtual bool newItem_UseDirect(const SfxPoolItem& rItem) const;
+    static bool IsWhich(sal_uInt16 nId) { return nId && nId <= SFX_WHICH_MAX; }
+    static bool IsSlot(sal_uInt16 nId) { return nId && nId > SFX_WHICH_MAX; }
 
 private:
-    const SfxItemPool&              operator=(const SfxItemPool &) = delete;
+    const SfxItemPool& operator=(const SfxItemPool &) = delete;
 
      //IDs below or equal are Which IDs, IDs above slot IDs
-    static const sal_uInt16         SFX_WHICH_MAX = 4999;
+    static const sal_uInt16 SFX_WHICH_MAX = 4999;
 };
-
-// only the pool may manipulate the reference counts
-inline void SfxItemPool::ClearRefCount(SfxPoolItem& rItem)
-{
-    rItem.SetRefCount(0);
-}
 
 // only the pool may manipulate the reference counts
 inline void SfxItemPool::AddRef(const SfxPoolItem& rItem)

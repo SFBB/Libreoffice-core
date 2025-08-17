@@ -20,7 +20,6 @@
 #include <vcl/svapp.hxx>
 #include <vcl/font.hxx>
 
-#include <factory.hxx>
 #include <svdata.hxx>
 
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
@@ -36,17 +35,12 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::awt;
-
 namespace vcl
 {
 
 namespace {
 
-class FontIdentificator : public ::cppu::WeakImplHelper< XMaterialHolder, XInitialization, XServiceInfo >
+class FontIdentificator : public ::cppu::WeakImplHelper<css::beans::XMaterialHolder, css::lang::XInitialization, css::lang::XServiceInfo>
 {
     Font        m_aFont;
 public:
@@ -55,24 +49,24 @@ public:
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName(  ) override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ) override;
-    virtual Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
+    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
     // XInitialization
-    virtual void SAL_CALL initialize( const Sequence< Any >& ) override;
+    virtual void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>&) override;
 
     // XMaterialHolder
-    virtual Any SAL_CALL getMaterial() override;
+    virtual css::uno::Any SAL_CALL getMaterial() override;
 
 };
 
 }
 
-void SAL_CALL FontIdentificator::initialize( const Sequence<Any>& i_rArgs )
+void SAL_CALL FontIdentificator::initialize(const css::uno::Sequence<css::uno::Any>& i_rArgs)
 {
     if( !ImplGetSVData() )
         return; // VCL not initialized
 
-    Sequence< sal_Int8 > aFontBuf;
+    css::uno::Sequence<sal_Int8> aFontBuf;
     for( const auto& rArg : i_rArgs )
     {
         if( rArg >>= aFontBuf )
@@ -83,12 +77,12 @@ void SAL_CALL FontIdentificator::initialize( const Sequence<Any>& i_rArgs )
     }
 }
 
-Any SAL_CALL FontIdentificator::getMaterial()
+css::uno::Any SAL_CALL FontIdentificator::getMaterial()
 {
     if( !ImplGetSVData() )
-        return Any(); // VCL not initialized
+        return css::uno::Any(); // VCL not initialized
 
-    FontDescriptor aFD;
+    css::awt::FontDescriptor aFD;
     aFD.Name                = m_aFont.GetFamilyName();
     aFD.Height              = 0;
     aFD.Width               = 0;
@@ -101,7 +95,7 @@ Any SAL_CALL FontIdentificator::getMaterial()
     aFD.Kerning             = false;
     aFD.WordLineMode        = false;
     aFD.Type                = 0;
-    switch( m_aFont.GetFamilyType() )
+    switch( m_aFont.GetFamilyTypeMaybeAskConfig() )
     {
     case FAMILY_DECORATIVE: aFD.Family = css::awt::FontFamily::DECORATIVE;break;
     case FAMILY_MODERN: aFD.Family = css::awt::FontFamily::MODERN;break;
@@ -113,7 +107,7 @@ Any SAL_CALL FontIdentificator::getMaterial()
         aFD.Family = css::awt::FontFamily::DONTKNOW;
         break;
     }
-    switch( m_aFont.GetPitch() )
+    switch( m_aFont.GetPitchMaybeAskConfig() )
     {
     case PITCH_VARIABLE: aFD.Pitch = css::awt::FontPitch::VARIABLE;break;
     case PITCH_FIXED: aFD.Pitch = css::awt::FontPitch::FIXED;break;
@@ -121,13 +115,13 @@ Any SAL_CALL FontIdentificator::getMaterial()
         aFD.Pitch = css::awt::FontPitch::DONTKNOW;
         break;
     }
-    switch( m_aFont.GetWeight() )
+    switch( m_aFont.GetWeightMaybeAskConfig() )
     {
     case WEIGHT_THIN: aFD.Weight = css::awt::FontWeight::THIN;break;
     case WEIGHT_ULTRALIGHT: aFD.Weight = css::awt::FontWeight::ULTRALIGHT;break;
     case WEIGHT_LIGHT: aFD.Weight = css::awt::FontWeight::LIGHT;break;
     case WEIGHT_SEMILIGHT: aFD.Weight = css::awt::FontWeight::SEMILIGHT;break;
-    case WEIGHT_MEDIUM:
+    case WEIGHT_MEDIUM: aFD.Weight = css::awt::FontWeight::MEDIUM;break;
     case WEIGHT_NORMAL: aFD.Weight = css::awt::FontWeight::NORMAL;break;
     case WEIGHT_SEMIBOLD: aFD.Weight = css::awt::FontWeight::SEMIBOLD;break;
     case WEIGHT_BOLD: aFD.Weight = css::awt::FontWeight::BOLD;break;
@@ -137,7 +131,7 @@ Any SAL_CALL FontIdentificator::getMaterial()
         aFD.Weight = css::awt::FontWeight::DONTKNOW;
         break;
     }
-    switch( m_aFont.GetItalic() )
+    switch( m_aFont.GetItalicMaybeAskConfig() )
     {
     case ITALIC_OBLIQUE: aFD.Slant = css::awt::FontSlant_OBLIQUE;break;
     case ITALIC_NORMAL: aFD.Slant = css::awt::FontSlant_ITALIC;break;
@@ -145,13 +139,13 @@ Any SAL_CALL FontIdentificator::getMaterial()
         aFD.Slant = css::awt::FontSlant_DONTKNOW;
         break;
     }
-    return Any( aFD );
+    return css::uno::Any( aFD );
 }
 
 // XServiceInfo
 OUString SAL_CALL FontIdentificator::getImplementationName()
 {
-    return "vcl::FontIdentificator";
+    return u"vcl::FontIdentificator"_ustr;
 }
 
 sal_Bool SAL_CALL FontIdentificator::supportsService( const OUString& i_rServiceName )
@@ -159,9 +153,9 @@ sal_Bool SAL_CALL FontIdentificator::supportsService( const OUString& i_rService
     return cppu::supportsService(this, i_rServiceName);
 }
 
-Sequence< OUString > SAL_CALL FontIdentificator::getSupportedServiceNames()
+css::uno::Sequence<OUString> SAL_CALL FontIdentificator::getSupportedServiceNames()
 {
-    return { "com.sun.star.awt.FontIdentificator" };
+    return { u"com.sun.star.awt.FontIdentificator"_ustr };
 }
 
 } // namespace vcl

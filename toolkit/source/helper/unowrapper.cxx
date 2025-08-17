@@ -85,11 +85,7 @@ static rtl::Reference<VCLXWindow> CreateXWindow( vcl::Window const * pWindow )
 
         case WindowType::WINDOW:
         case WindowType::TABPAGE:        return new VCLXContainer;
-
-        case WindowType::TOOLBOX:        return new VCLXToolBox;
         case WindowType::TABCONTROL:     return new VCLXMultiPage;
-
-        case WindowType::HEADERBAR:     return new VCLXHeaderBar;
 
         case WindowType::BORDERWINDOW:
         {
@@ -113,6 +109,8 @@ static rtl::Reference<VCLXWindow> CreateXWindow( vcl::Window const * pWindow )
         // case WindowType::SCROLLBARBOX:
         // case WindowType::PATTERNBOX:
         // case WindowType::CURRENCYBOX:
+        case WindowType::HEADERBAR:
+        case WindowType::TOOLBOX:
         default:                    return new VCLXWindow( true );
     }
 }
@@ -252,7 +250,7 @@ void UnoWrapper::WindowDestroyed( vcl::Window* pWindow )
             pClient.disposeAndClear();
         }
 
-        pChild = pNextChild;
+        pChild = std::move(pNextChild);
     }
 
     // find system windows...
@@ -271,7 +269,7 @@ void UnoWrapper::WindowDestroyed( vcl::Window* pWindow )
                 xComp->dispose();
             }
 
-            pOverlap = pNextOverlap;
+            pOverlap = std::move(pNextOverlap);
         }
     }
 
@@ -308,14 +306,8 @@ void UnoWrapper::WindowDestroyed( vcl::Window* pWindow )
         VclPtr< vcl::Window > pNextTopChild = pTopWindowChild->GetWindow( GetWindowType::NextTopWindowSibling );
 
         pTopWindowChild.disposeAndClear();
-        pTopWindowChild = pNextTopChild;
+        pTopWindowChild = std::move(pNextTopChild);
     }
-}
-
-
-css::uno::Reference< css::accessibility::XAccessible > UnoWrapper::CreateAccessible( Menu* pMenu, bool bIsMenuBar )
-{
-    return maAccessibleFactoryAccess.getFactory().createAccessible( pMenu, bIsMenuBar );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

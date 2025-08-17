@@ -19,11 +19,14 @@
 
 #pragma once
 
-#include <memory>
 #include <vcl/toolkit/button.hxx>
 #include <vcl/toolkit/dialog.hxx>
-#include <vcl/roadmapwizard.hxx>
+#include <vcl/toolkit/roadmap.hxx>
+#include <vcl/roadmapwizardmachine.hxx>
 #include <vcl/tabpage.hxx>
+
+#include <map>
+#include <memory>
 
 struct ImplWizPageData
 {
@@ -31,16 +34,15 @@ struct ImplWizPageData
     VclPtr<TabPage>     mpPage;
 };
 
+struct ImplWizButtonData
+{
+    ImplWizButtonData* mpNext;
+    VclPtr<Button> mpButton;
+    tools::Long mnOffset;
+};
+
 namespace vcl
 {
-    struct RoadmapWizardImpl;
-    class RoadmapWizard;
-
-    namespace RoadmapWizardTypes
-    {
-        typedef VclPtr<TabPage> (* RoadmapPageFactory)( RoadmapWizard& );
-    };
-
     //= RoadmapWizard
 
     /** wizard for a roadmap
@@ -71,7 +73,8 @@ namespace vcl
         VclPtr<TabPage>         mpCurTabPage;
         VclPtr<PushButton>      mpPrevBtn;
         VclPtr<PushButton>      mpNextBtn;
-        VclPtr<vcl::Window>     mpViewWindow;
+        VclPtr<ORoadmap>        mpRoadmap;
+        std::map<VclPtr<vcl::Window>, short> maResponses;
         sal_uInt16              mnCurLevel;
         sal_Int16               mnLeftAlignCount;
         bool                    mbEmptyViewMargin;
@@ -113,11 +116,9 @@ namespace vcl
         virtual void        StateChanged( StateChangedType nStateChange ) override;
         virtual bool        EventNotify( NotifyEvent& rNEvt ) override;
 
-        void                ActivatePage();
-
         virtual void        queue_resize(StateChangedType eReason = StateChangedType::Layout) override;
 
-        bool                ShowPage( sal_uInt16 nLevel );
+        void                ShowPage(sal_uInt16 nLevel);
         void                Finish( tools::Long nResult = 0 );
         sal_uInt16          GetCurLevel() const { return mnCurLevel; }
 
@@ -134,7 +135,7 @@ namespace vcl
         const Size&         GetPageSizePixel() const { return maPageSize; }
 
         void            SetRoadmapHelpId( const OUString& _rId );
-        void            SetRoadmapBitmap( const BitmapEx& maBitmap );
+        void            SetRoadmapBitmap( const Bitmap& maBitmap );
 
         void            InsertRoadmapItem(int nIndex, const OUString& rLabel, int nId, bool bEnabled);
         void            DeleteRoadmapItems();
@@ -146,13 +147,6 @@ namespace vcl
         FactoryFunction GetUITestFactory() const override;
 
     private:
-
-        /// to override to create new pages
-        VclPtr<TabPage>     createPage(WizardTypes::WizardState nState);
-
-        /// will be called when a new page is about to be displayed
-        void                enterState(WizardTypes::WizardState _nState);
-
         /** determine the next state to travel from the given one
 
             This method ensures that traveling happens along the active path.
@@ -181,13 +175,10 @@ namespace vcl
 
             The skipped states appear in the state history, so <method>travelPrevious</method> will make use of them.
 
-            @return
-                <TRUE/> if and only if traveling was successful
-
             @see skip
             @see skipBackwardUntil
         */
-        bool                    skipUntil(WizardTypes::WizardState nTargetState);
+        void skipUntil(WizardTypes::WizardState nTargetState);
 
         /** moves back one or more states, until a given state is reached
 
@@ -199,13 +190,10 @@ namespace vcl
             since you're interested in the target page only. Using <member>skipBackwardUntil</member> relieves
             you of this.
 
-            @return
-                <TRUE/> if and only if traveling was successful
-
             @see skipUntil
             @see skip
         */
-        bool                    skipBackwardUntil(WizardTypes::WizardState nTargetState);
+        void skipBackwardUntil(WizardTypes::WizardState nTargetState);
 
         /** returns the current state of the machine
 
@@ -213,14 +201,8 @@ namespace vcl
         */
         WizardTypes::WizardState getCurrentState() const { return GetCurLevel(); }
 
-        /** returns a human readable name for a given state
-
-            There is a default implementation for this method, which returns the display name
-            as given in a call to describeState. If there is no description for the given state,
-            this is worth an assertion in a non-product build, and then an empty string is
-            returned.
-        */
-        OUString  getStateDisplayName(WizardTypes::WizardState nState) const;
+        /** returns a human readable name for a given state */
+        static OUString getStateDisplayName(WizardTypes::WizardState nState);
 
         DECL_LINK( OnRoadmapItemSelected, LinkParamNone*, void );
 
@@ -242,8 +224,6 @@ namespace vcl
         bool                   isTravelingSuspended() const;
 
     private:
-        void GetOrCreatePage(const WizardTypes::WizardState i_nState);
-
         void             ImplCalcSize( Size& rSize );
         void             ImplPosCtrls();
         void             ImplPosTabPage();
@@ -255,7 +235,7 @@ namespace vcl
         DECL_LINK(OnPrevPage, Button*, void);
         DECL_LINK(OnFinish, Button*, void);
 
-        void     implConstruct( const WizardButtonFlags _nButtonFlags );
+        void implConstruct();
 
         virtual void     DumpAsPropertyTree(tools::JsonWriter& rJsonWriter) override;
     };

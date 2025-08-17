@@ -9,10 +9,7 @@
 
 #include "op_logical.hxx"
 
-#include <formula/vectortoken.hxx>
 #include <sstream>
-
-using namespace formula;
 
 namespace sc::opencl {
 

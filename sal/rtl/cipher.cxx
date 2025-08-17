@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include <sal/types.h>
@@ -25,6 +26,10 @@
 #include <algorithm>
 
 #if defined LIBO_CIPHER_OPENSSL_BACKEND
+#include <o3tl/safeint.hxx>
+#include <cassert>
+#include <cstring>
+#include <limits>
 #include <openssl/evp.h>
 #endif
 
@@ -120,7 +125,7 @@ struct Cipher_Impl
 
 rtlCipher SAL_CALL rtl_cipher_create(
     rtlCipherAlgorithm Algorithm,
-    rtlCipherMode      Mode) SAL_THROW_EXTERN_C()
+    rtlCipherMode      Mode) noexcept
 {
     rtlCipher Cipher = nullptr;
     switch (Algorithm)
@@ -143,7 +148,7 @@ rtlCipherError SAL_CALL rtl_cipher_init(
     rtlCipher          Cipher,
     rtlCipherDirection Direction,
     const sal_uInt8 *pKeyData, sal_Size nKeyLen,
-    const sal_uInt8 *pArgData, sal_Size nArgLen) SAL_THROW_EXTERN_C()
+    const sal_uInt8 *pArgData, sal_Size nArgLen) noexcept
 {
     Cipher_Impl *pImpl = static_cast<Cipher_Impl*>(Cipher);
     if (!pImpl)
@@ -159,7 +164,7 @@ rtlCipherError SAL_CALL rtl_cipher_init(
 rtlCipherError SAL_CALL rtl_cipher_encode(
     rtlCipher   Cipher,
     const void *pData,   sal_Size nDatLen,
-    sal_uInt8  *pBuffer, sal_Size nBufLen) SAL_THROW_EXTERN_C()
+    sal_uInt8  *pBuffer, sal_Size nBufLen) noexcept
 {
     Cipher_Impl *pImpl = static_cast<Cipher_Impl*>(Cipher);
     if (!pImpl)
@@ -174,7 +179,7 @@ rtlCipherError SAL_CALL rtl_cipher_encode(
 rtlCipherError SAL_CALL rtl_cipher_decode(
     rtlCipher   Cipher,
     const void *pData,   sal_Size nDatLen,
-    sal_uInt8  *pBuffer, sal_Size nBufLen) SAL_THROW_EXTERN_C()
+    sal_uInt8  *pBuffer, sal_Size nBufLen) noexcept
 {
     Cipher_Impl *pImpl = static_cast<Cipher_Impl*>(Cipher);
     if (!pImpl)
@@ -186,7 +191,7 @@ rtlCipherError SAL_CALL rtl_cipher_decode(
     return (pImpl->m_decode)(Cipher, pData, nDatLen, pBuffer, nBufLen);
 }
 
-void SAL_CALL rtl_cipher_destroy(rtlCipher Cipher) SAL_THROW_EXTERN_C()
+void SAL_CALL rtl_cipher_destroy(rtlCipher Cipher) noexcept
 {
     Cipher_Impl *pImpl = static_cast<Cipher_Impl*>(Cipher);
     if (pImpl && pImpl->m_delete)
@@ -996,7 +1001,7 @@ static sal_uInt32 BF(CipherKeyBF *key, sal_uInt32 x)
 
     Reference: Bruce Schneier: Applied Cryptography, 2nd edition, ch. 14.3
 */
-rtlCipher SAL_CALL rtl_cipher_createBF(rtlCipherMode Mode) SAL_THROW_EXTERN_C()
+rtlCipher SAL_CALL rtl_cipher_createBF(rtlCipherMode Mode) noexcept
 {
     CipherBF_Impl *pImpl = nullptr;
 
@@ -1028,7 +1033,7 @@ rtlCipherError SAL_CALL rtl_cipher_initBF(
     rtlCipher          Cipher,
     rtlCipherDirection Direction,
     const sal_uInt8 *pKeyData, sal_Size nKeyLen,
-    const sal_uInt8 *pArgData, sal_Size nArgLen) SAL_THROW_EXTERN_C()
+    const sal_uInt8 *pArgData, sal_Size nArgLen) noexcept
 {
     CipherBF_Impl *pImpl = static_cast<CipherBF_Impl*>(Cipher);
 
@@ -1087,7 +1092,7 @@ rtlCipherError SAL_CALL rtl_cipher_initBF(
 rtlCipherError SAL_CALL rtl_cipher_encodeBF(
     rtlCipher   Cipher,
     const void *pData,   sal_Size nDatLen,
-    sal_uInt8  *pBuffer, sal_Size nBufLen) SAL_THROW_EXTERN_C()
+    sal_uInt8  *pBuffer, sal_Size nBufLen) noexcept
 {
     CipherBF_Impl *pImpl = static_cast<CipherBF_Impl*>(Cipher);
     if (!pImpl)
@@ -1111,7 +1116,7 @@ rtlCipherError SAL_CALL rtl_cipher_encodeBF(
 rtlCipherError SAL_CALL rtl_cipher_decodeBF(
     rtlCipher   Cipher,
     const void *pData,   sal_Size nDatLen,
-    sal_uInt8  *pBuffer, sal_Size nBufLen) SAL_THROW_EXTERN_C()
+    sal_uInt8  *pBuffer, sal_Size nBufLen) noexcept
 {
     CipherBF_Impl *pImpl = static_cast<CipherBF_Impl*>(Cipher);
     if (!pImpl)
@@ -1132,7 +1137,7 @@ rtlCipherError SAL_CALL rtl_cipher_decodeBF(
         static_cast<const sal_uInt8*>(pData), nDatLen, pBuffer, nBufLen);
 }
 
-void SAL_CALL rtl_cipher_destroyBF(rtlCipher Cipher) SAL_THROW_EXTERN_C()
+void SAL_CALL rtl_cipher_destroyBF(rtlCipher Cipher) noexcept
 {
     CipherBF_Impl *pImpl = static_cast<CipherBF_Impl*>(Cipher);
     if (!pImpl)
@@ -1320,8 +1325,7 @@ static rtlCipherError rtl_cipherARCFOUR_update_Impl(
 
   Reference: Bruce Schneier: Applied Cryptography, 2nd edition, ch. 17.1
 */
-rtlCipher SAL_CALL rtl_cipher_createARCFOUR(rtlCipherMode Mode)
-    SAL_THROW_EXTERN_C()
+rtlCipher SAL_CALL rtl_cipher_createARCFOUR(rtlCipherMode Mode) noexcept
 {
     CipherARCFOUR_Impl *pImpl = nullptr;
 
@@ -1348,8 +1352,7 @@ rtlCipherError SAL_CALL rtl_cipher_initARCFOUR(
     rtlCipher          Cipher,
     rtlCipherDirection Direction,
     const sal_uInt8 *pKeyData, sal_Size nKeyLen,
-    SAL_UNUSED_PARAMETER const sal_uInt8 *, SAL_UNUSED_PARAMETER sal_Size)
-    SAL_THROW_EXTERN_C()
+    SAL_UNUSED_PARAMETER const sal_uInt8 *, SAL_UNUSED_PARAMETER sal_Size) noexcept
 {
     CipherARCFOUR_Impl *pImpl = static_cast<CipherARCFOUR_Impl*>(Cipher);
 
@@ -1370,7 +1373,7 @@ rtlCipherError SAL_CALL rtl_cipher_initARCFOUR(
 rtlCipherError SAL_CALL rtl_cipher_encodeARCFOUR(
     rtlCipher   Cipher,
     const void *pData,   sal_Size nDatLen,
-    sal_uInt8  *pBuffer, sal_Size nBufLen) SAL_THROW_EXTERN_C()
+    sal_uInt8  *pBuffer, sal_Size nBufLen) noexcept
 {
     CipherARCFOUR_Impl *pImpl = static_cast<CipherARCFOUR_Impl*>(Cipher);
     if (!pImpl)
@@ -1390,7 +1393,7 @@ rtlCipherError SAL_CALL rtl_cipher_encodeARCFOUR(
 rtlCipherError SAL_CALL rtl_cipher_decodeARCFOUR(
     rtlCipher   Cipher,
     const void *pData,   sal_Size nDatLen,
-    sal_uInt8  *pBuffer, sal_Size nBufLen) SAL_THROW_EXTERN_C()
+    sal_uInt8  *pBuffer, sal_Size nBufLen) noexcept
 {
     CipherARCFOUR_Impl *pImpl = static_cast<CipherARCFOUR_Impl*>(Cipher);
     if (!pImpl)
@@ -1407,7 +1410,7 @@ rtlCipherError SAL_CALL rtl_cipher_decodeARCFOUR(
         static_cast<const sal_uInt8*>(pData), nDatLen, pBuffer, nBufLen);
 }
 
-void SAL_CALL rtl_cipher_destroyARCFOUR(rtlCipher Cipher) SAL_THROW_EXTERN_C()
+void SAL_CALL rtl_cipher_destroyARCFOUR(rtlCipher Cipher) noexcept
 {
     CipherARCFOUR_Impl *pImpl = static_cast<CipherARCFOUR_Impl*>(Cipher);
     if (!pImpl)

@@ -41,7 +41,11 @@ ShapePrWrapperContext::~ShapePrWrapperContext()
 
 ContextHandlerRef ShapePrWrapperContext::onCreateContext( sal_Int32 nElement, const AttributeList& )
 {
-    return (isRootElement() && (nElement == C_TOKEN( spPr ))) ? new ShapePropertiesContext( *this, mrModel ) : nullptr;
+    if (isRootElement() && (nElement == C_TOKEN(spPr) || nElement == CX_TOKEN(spPr))) {
+        return new ShapePropertiesContext( *this, mrModel );
+    } else {
+        return nullptr;
+    }
 }
 
 LayoutContext::LayoutContext( ContextHandler2Helper& rParent, LayoutModel& rModel ) :
@@ -58,10 +62,12 @@ ContextHandlerRef LayoutContext::onCreateContext( sal_Int32 nElement, const Attr
     switch( getCurrentElement() )
     {
         case C_TOKEN( layout ):
+        case C15_TOKEN(layout):
             switch( nElement )
             {
                 case C_TOKEN( manualLayout ):
-                    mrModel.mbAutoLayout = false;
+                    if (getCurrentElement() == C_TOKEN(layout))
+                        mrModel.mbAutoLayout = false;
                     return this;
             }
         break;

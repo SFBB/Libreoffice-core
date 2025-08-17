@@ -12,14 +12,12 @@
 
 #include <sal/config.h>
 
-#include <docmodel/uno/UnoComplexColor.hxx>
 #include <docmodel/theme/Theme.hxx>
 #include <editeng/colritem.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/borderline.hxx>
 #include <svx/svditer.hxx>
-#include <svx/theme/ThemeColorChangerCommon.hxx>
 
 #include <undodraw.hxx>
 #include <stlpool.hxx>
@@ -36,6 +34,7 @@
 #include <undoblk.hxx>
 #include <SparklineGroup.hxx>
 #include <SparklineList.hxx>
+#include <sfx2/app.hxx>
 
 #include <undo/UndoThemeChange.hxx>
 
@@ -139,7 +138,7 @@ bool changeStyles(ScDocShell& rDocShell, model::ColorSet const& rColorSet)
                 ScStyleSaveData aNewData;
                 aNewData.InitFromStyle(pStyle);
                 rDocShell.GetUndoManager()->AddUndoAction(std::make_unique<ScUndoModifyStyle>(
-                    &rDocShell, SfxStyleFamily::Para, aOldData, aNewData));
+                    rDocShell, SfxStyleFamily::Para, aOldData, aNewData));
             }
             static_cast<SfxStyleSheet*>(pStyle)->Broadcast(SfxHint(SfxHintId::DataChanged));
             bChanged = true;
@@ -173,7 +172,7 @@ bool changeSheets(ScDocShell& rDocShell, ScTabViewShell* pViewShell, ScDrawLayer
                     continue;
 
                 ScPatternAttr aNewPattern(*pPattern);
-                auto& rItemSet = aNewPattern.GetItemSet();
+                auto& rItemSet = aNewPattern.GetItemSetWritable();
                 bool bItemChanged = changeCellItems(rItemSet, rColorSet);
                 bChanged = bChanged || bItemChanged;
 
@@ -193,7 +192,7 @@ bool changeSheets(ScDocShell& rDocShell, ScTabViewShell* pViewShell, ScDrawLayer
                                              &aMark);
 
                     auto pUndo = std::make_unique<ScUndoSelectionAttr>(
-                        &rDocShell, aMark, aRange.aStart.Col(), aRange.aStart.Row(),
+                        rDocShell, aMark, aRange.aStart.Col(), aRange.aStart.Row(),
                         aRange.aStart.Tab(), aRange.aEnd.Col(), aRange.aEnd.Row(),
                         aRange.aEnd.Tab(), std::move(pUndoDoc), true, &aNewPattern);
 
@@ -225,7 +224,7 @@ bool changeSheets(ScDocShell& rDocShell, ScTabViewShell* pViewShell, ScDrawLayer
             if (pUndo)
             {
                 bChanged = true;
-                auto pUndoDraw = std::make_unique<ScUndoDraw>(std::move(pUndo), &rDocShell);
+                auto pUndoDraw = std::make_unique<ScUndoDraw>(std::move(pUndo), rDocShell);
                 rDocShell.GetUndoManager()->AddUndoAction(std::move(pUndoDraw));
             }
         }
@@ -256,8 +255,8 @@ void changeSparklines(ScDocShell& rDocShell, model::ColorSet const& rColorSet)
         auto* pSparklineList = rDocument.GetSparklineList(nTab);
         if (pSparklineList && !pSparklineList->getSparklineGroups().empty())
         {
-            auto const& rSparklineGroups = pSparklineList->getSparklineGroups();
-            for (auto const& rSparklineGroup : rSparklineGroups)
+            auto const aSparklineGroups = pSparklineList->getSparklineGroups();
+            for (auto const& rSparklineGroup : aSparklineGroups)
             {
                 auto aAttributes = rSparklineGroup->getAttributes();
 
@@ -311,7 +310,7 @@ void changeThemeColorInTheDocModel(ScDocShell& rDocShell,
 
 } // end anonymous ns
 
-void ThemeColorChanger::apply(std::shared_ptr<model::ColorSet> const& pColorSet)
+void ThemeColorChanger::doApply(std::shared_ptr<model::ColorSet> const& pColorSet)
 {
     // Can't change to an empty color set
     if (!pColorSet)
@@ -344,6 +343,7 @@ void ThemeColorChanger::apply(std::shared_ptr<model::ColorSet> const& pColorSet)
     changeSparklines(m_rDocShell, *pColorSet);
 
     changeThemeColorInTheDocModel(m_rDocShell, pColorSet);
+    m_rDocShell.Broadcast(SfxHint(SfxHintId::ThemeColorsChanged));
 
     if (bUndo)
     {

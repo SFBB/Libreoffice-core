@@ -435,16 +435,12 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
     {
         case USCRIPT_CODE_LIMIT:
         case USCRIPT_INVALID_CODE:
-            sRet = "zxx"_ostr;
-            break;
-        case USCRIPT_COMMON:
-        case USCRIPT_INHERITED:
-            sRet = "und"_ostr;
-            break;
         case USCRIPT_MATHEMATICAL_NOTATION:
         case USCRIPT_SYMBOLS:
             sRet = "zxx"_ostr;
             break;
+        case USCRIPT_COMMON:
+        case USCRIPT_INHERITED:
         case USCRIPT_UNWRITTEN_LANGUAGES:
         case USCRIPT_UNKNOWN:
             sRet = "und"_ostr;
@@ -480,6 +476,7 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
             sRet = "am"_ostr;
             break;
         case USCRIPT_GEORGIAN:
+        case USCRIPT_KHUTSURI:
             sRet = "ka"_ostr;
             break;
         case USCRIPT_GOTHIC:
@@ -489,6 +486,7 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
             sRet = "el"_ostr;
             break;
         case USCRIPT_GUJARATI:
+        case USCRIPT_KHOJKI:
             sRet = "gu"_ostr;
             break;
         case USCRIPT_GURMUKHI:
@@ -498,7 +496,9 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
             sRet = "zh"_ostr;
             break;
         case USCRIPT_HANGUL:
-            sRet = "ko"_ostr;
+        case USCRIPT_KOREAN:
+        case USCRIPT_JAMO:
+            sRet = "ko"_ostr;   // Jamo - elements of Hangul Syllables
             break;
         case USCRIPT_HEBREW:
             sRet = "hr"_ostr;
@@ -546,9 +546,11 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
             sRet = "si"_ostr;
             break;
         case USCRIPT_SYRIAC:
+        case USCRIPT_ESTRANGELO_SYRIAC:
             sRet = "syr"_ostr;
             break;
         case USCRIPT_TAMIL:
+        case USCRIPT_GRANTHA:
             sRet = "ta"_ostr;
             break;
         case USCRIPT_TELUGU:
@@ -615,6 +617,7 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
             sRet = "ch"_ostr;
             break;
         case USCRIPT_KHAROSHTHI:
+        case USCRIPT_BRAHMI:
             sRet = "pra"_ostr;
             break;
         case USCRIPT_SYLOTI_NAGRI:
@@ -638,13 +641,11 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
         case USCRIPT_BLISSYMBOLS:
             sRet = "en"_ostr;
             break;
-        case USCRIPT_BRAHMI:
-            sRet = "pra"_ostr;
-            break;
         case USCRIPT_CHAM:
             sRet = "cja"_ostr;
             break;
         case USCRIPT_CIRTH:
+        case USCRIPT_TENGWAR:
             sRet = "sjn"_ostr;
             break;
         case USCRIPT_OLD_CHURCH_SLAVONIC_CYRILLIC:
@@ -654,9 +655,6 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
         case USCRIPT_HIERATIC_EGYPTIAN:
         case USCRIPT_EGYPTIAN_HIEROGLYPHS:
             sRet = "egy"_ostr;
-            break;
-        case USCRIPT_KHUTSURI:
-            sRet = "ka"_ostr;
             break;
         case USCRIPT_SIMPLIFIED_HAN:
             sRet = "zh"_ostr;
@@ -694,6 +692,7 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
         case USCRIPT_MAYAN_HIEROGLYPHS:
             sRet = "myn"_ostr;
             break;
+        case USCRIPT_MEROITIC_CURSIVE:
         case USCRIPT_MEROITIC:
             sRet = "xmr"_ostr;
             break;
@@ -721,17 +720,11 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
         case USCRIPT_SARATI:
             sRet = "qya"_ostr;
             break;
-        case USCRIPT_ESTRANGELO_SYRIAC:
-            sRet = "syr"_ostr;
-            break;
         case USCRIPT_WESTERN_SYRIAC:
             sRet = "tru"_ostr;
             break;
         case USCRIPT_EASTERN_SYRIAC:
             sRet = "aii"_ostr;
-            break;
-        case USCRIPT_TENGWAR:
-            sRet = "sjn"_ostr;
             break;
         case USCRIPT_VAI:
             sRet = "vai"_ostr;
@@ -787,9 +780,6 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
         case USCRIPT_CHAKMA:
             sRet = "ccp"_ostr;
             break;
-        case USCRIPT_KOREAN:
-            sRet = "ko"_ostr;
-            break;
         case USCRIPT_KAITHI:
             sRet = "awa"_ostr;
             break;
@@ -838,9 +828,6 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
         case USCRIPT_ELBASAN:
             sRet = "sq"_ostr;
             break;
-        case USCRIPT_GRANTHA:
-            sRet = "ta"_ostr;
-            break;
         case USCRIPT_KPELLE:
             sRet = "kpe"_ostr;
             break;
@@ -849,9 +836,6 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
             break;
         case USCRIPT_MENDE:
             sRet = "men"_ostr;
-            break;
-        case USCRIPT_MEROITIC_CURSIVE:
-            sRet = "xmr"_ostr;
             break;
         case USCRIPT_OLD_NORTH_ARABIAN:
             sRet = "xna"_ostr;
@@ -891,9 +875,6 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
             break;
         case USCRIPT_ANATOLIAN_HIEROGLYPHS:
             sRet = "hlu"_ostr;
-            break;
-        case USCRIPT_KHOJKI:
-            sRet = "gu"_ostr;
             break;
         case USCRIPT_TIRHUTA:
             sRet = "mai"_ostr;
@@ -940,9 +921,6 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
         case USCRIPT_HAN_WITH_BOPOMOFO:
             sRet = "mis-Hanb"_ostr;   // Han with Bopomofo, zh-Hanb ?
             break;
-        case USCRIPT_JAMO:
-            sRet = "ko"_ostr;   // Jamo - elements of Hangul Syllables
-            break;
         case USCRIPT_SYMBOLS_EMOJI:
             sRet = "mis-Zsye"_ostr;   // Emoji variant
             break;
@@ -971,8 +949,6 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
             sRet = "rhg"_ostr;
             break;
         case USCRIPT_SOGDIAN:
-            sRet = "sog"_ostr;
-            break;
         case USCRIPT_OLD_SOGDIAN:
             sRet = "sog"_ostr;
             break;
@@ -1025,6 +1001,34 @@ OString unicode::getExemplarLanguageForUScriptCode(UScriptCode eScript)
             sRet = "unr-Nagm"_ostr;
             break;
 #endif
+#if (U_ICU_VERSION_MAJOR_NUM >= 75)
+        case USCRIPT_ARABIC_NASTALIQ:
+            sRet = "fa-Aran"_ostr;
+            break;
+#endif
+#if (U_ICU_VERSION_MAJOR_NUM >= 76)
+        case USCRIPT_GARAY:
+            sRet = "wo-Gara"_ostr;
+            break;
+        case USCRIPT_GURUNG_KHEMA:
+            sRet = "gvr-Gukh"_ostr;
+            break;
+        case USCRIPT_KIRAT_RAI:
+            sRet = "bap-Krai"_ostr;
+            break;
+        case USCRIPT_OL_ONAL:
+            sRet = "unr-Onao"_ostr;
+            break;
+        case USCRIPT_SUNUWAR:
+            sRet = "suz-Sunu"_ostr;
+            break;
+        case USCRIPT_TODHRI:
+            sRet = "sq-Todr"_ostr;
+            break;
+        case USCRIPT_TULU_TIGALARI:
+            sRet = "sa-Tutg"_ostr;
+            break;
+#endif
     }
     return sRet;
 }
@@ -1044,7 +1048,7 @@ OUString unicode::formatPercent(double dNumber,
     // http://www.unicode.org/cldr/charts/24/by_type/numbers.number_formatting_patterns.html
     // so format using French which has the desired rules
     if (aLangTag.getLanguage() == "es" || aLangTag.getLanguage() == "sl")
-        aLangTag.reset("fr-FR");
+        aLangTag.reset(u"fr-FR"_ustr);
 
     icu::Locale aLocale = LanguageTagIcu::getIcuLocale(aLangTag);
 
@@ -1068,13 +1072,15 @@ OUString unicode::formatPercent(double dNumber,
     return aRet;
 }
 
-bool ToggleUnicodeCodepoint::AllowMoreInput(sal_Unicode uChar)
+bool ToggleUnicodeCodepoint::AllowMoreInput(sal_uInt32 uChar)
 {
+    assert(!mbInputEnded);
+
+    if (uChar == 0)
+        return false;
+
     //arbitrarily chosen maximum length allowed - normal max usage would be around 30.
     if( maInput.getLength() > 255 )
-        mbAllowMoreChars = false;
-
-    if( !mbAllowMoreChars )
         return false;
 
     bool bPreventNonHex = false;
@@ -1084,32 +1090,37 @@ bool ToggleUnicodeCodepoint::AllowMoreInput(sal_Unicode uChar)
     switch ( unicode::getUnicodeType(uChar) )
     {
         case css::i18n::UnicodeType::SURROGATE:
-            if( bPreventNonHex )
+            if (bPreventNonHex || mbIsHexString)
             {
-                mbAllowMoreChars = false;
                 return false;
             }
 
             if( rtl::isLowSurrogate(uChar) && maUtf16.isEmpty() && maInput.isEmpty()  )
             {
-                maUtf16.append(uChar);
+                maUtf16.append(sal_Unicode(uChar));
                 return true;
             }
             if( rtl::isHighSurrogate(uChar) && maInput.isEmpty() )
-                maUtf16.insert(0, uChar );
-            //end of hex strings, or unexpected order of high/low, so don't accept more
+                maUtf16.insert(0, sal_Unicode(uChar));
+            if (maUtf16.getLength() == 2)
+            {
+                assert(rtl::isHighSurrogate(maUtf16[0]) && rtl::isLowSurrogate(maUtf16[1]));
+                // The resulting codepoint may itself be combining, so may allow more
+                sal_uInt32 nUCS4 = rtl::combineSurrogates(maUtf16[0], maUtf16[1]);
+                maUtf16.setLength(0);
+                return AllowMoreInput(nUCS4);
+            }
+            // unexpected order of high/low, so don't accept more
             if( !maUtf16.isEmpty() )
                 maInput.append(maUtf16);
             if( !maCombining.isEmpty() )
                 maInput.append(maCombining);
-            mbAllowMoreChars = false;
-            break;
+            return false;
 
         case css::i18n::UnicodeType::NON_SPACING_MARK:
         case css::i18n::UnicodeType::COMBINING_SPACING_MARK:
-            if( bPreventNonHex )
+            if (bPreventNonHex || mbIsHexString)
             {
-                mbAllowMoreChars = false;
                 return false;
             }
 
@@ -1119,10 +1130,9 @@ bool ToggleUnicodeCodepoint::AllowMoreInput(sal_Unicode uChar)
                 maInput = maUtf16;
                 if( !maCombining.isEmpty() )
                     maInput.append(maCombining);
-                mbAllowMoreChars = false;
                 return false;
             }
-            maCombining.insert(0, uChar);
+            maCombining.insertUtf32(0, uChar);
             break;
 
         default:
@@ -1132,22 +1142,19 @@ bool ToggleUnicodeCodepoint::AllowMoreInput(sal_Unicode uChar)
                 maInput = maUtf16;
                 if( !maCombining.isEmpty() )
                     maInput.append(maCombining);
-                mbAllowMoreChars = false;
                 return false;
             }
 
             if( !maCombining.isEmpty() )
             {
-                maCombining.insert(0, uChar);
+                maCombining.insertUtf32(0, uChar);
                 maInput = maCombining;
-                mbAllowMoreChars = false;
                 return false;
             }
 
             // 0 - 1f are control characters.  Do not process those.
             if( uChar < 0x20 )
             {
-                mbAllowMoreChars = false;
                 return false;
             }
 
@@ -1164,36 +1171,36 @@ bool ToggleUnicodeCodepoint::AllowMoreInput(sal_Unicode uChar)
                     // treat as a normal character
                     else
                     {
-                        mbAllowMoreChars = false;
                         if( !bPreventNonHex )
                             maInput.insertUtf32(0, uChar);
+                        return false;
                     }
                     break;
                 case '+':
                     // + already found: skip when not U, or edge case of +U+xxxx
                     if( mbRequiresU || (maInput.indexOf("U+") == 0) )
-                        mbAllowMoreChars = false;
+                        return false;
                     // hex chars followed by '+' - now require a 'U'
                     else if ( !maInput.isEmpty() )
                         mbRequiresU = true;
                     // treat as a normal character
                     else
                     {
-                        mbAllowMoreChars = false;
                         if( !bPreventNonHex )
                             maInput.insertUtf32(0, uChar);
+                        return false;
                     }
                     break;
                 default:
                     // + already found. Since not U, cancel further input
                     if( mbRequiresU )
-                        mbAllowMoreChars = false;
+                        return false;
                     // maximum digits per notation is 8: only one notation
                     else if( maInput.indexOf("U+") == -1 && maInput.getLength() == 8 )
-                        mbAllowMoreChars = false;
+                        return false;
                     // maximum digits per notation is 8: previous notation found
                     else if( maInput.indexOf("U+") == 8 )
-                        mbAllowMoreChars = false;
+                        return false;
                     // a hex character. Add to string.
                     else if( rtl::isAsciiHexDigit(uChar) )
                     {
@@ -1203,35 +1210,34 @@ bool ToggleUnicodeCodepoint::AllowMoreInput(sal_Unicode uChar)
                     // not a hex character: stop input. keep if it is the first input provided
                     else
                     {
-                        mbAllowMoreChars = false;
                         if( maInput.isEmpty() )
                             maInput.insertUtf32(0, uChar);
+                        return false;
                     }
             }
     }
-    return mbAllowMoreChars;
+    return true;
 }
 
 OUString ToggleUnicodeCodepoint::StringToReplace()
 {
+    // this function potentially modifies the input string. No more addition of characters
+#ifndef NDEBUG
+    mbInputEnded = true;
+#endif
+
     if( maInput.isEmpty() )
     {
         //edge case - input finished with incomplete low surrogate or combining characters without a base
-        if( mbAllowMoreChars )
-        {
-            if( !maUtf16.isEmpty() )
-                maInput = maUtf16;
-            if( !maCombining.isEmpty() )
-                maInput.append(maCombining);
-        }
+        if (!maUtf16.isEmpty())
+            maInput = maUtf16;
+        if (!maCombining.isEmpty())
+            maInput.append(maCombining);
         return maInput.toString();
     }
 
     if( !mbIsHexString )
         return maInput.toString();
-
-    //this function potentially modifies the input string.  Prevent addition of further characters
-    mbAllowMoreChars = false;
 
     //validate unicode notation.
     OUString sIn;
@@ -1260,19 +1266,6 @@ OUString ToggleUnicodeCodepoint::StringToReplace()
     if( !rtl::isUnicodeCodePoint(nUnicode) || nUnicode < 0x20 )
        maInput.truncate().append( sIn[sIn.getLength()-1] );
     return maInput.toString();
-}
-
-sal_uInt32 ToggleUnicodeCodepoint::CharsToDelete()
-{
-    OUString sIn = StringToReplace();
-    sal_Int32 nPos = 0;
-    sal_uInt32 counter = 0;
-    while( nPos < sIn.getLength() )
-    {
-        sIn.iterateCodePoints(&nPos);
-        ++counter;
-    }
-    return counter;
 }
 
 OUString ToggleUnicodeCodepoint::ReplacementString()

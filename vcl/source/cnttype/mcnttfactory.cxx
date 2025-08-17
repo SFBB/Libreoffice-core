@@ -22,7 +22,6 @@
 #include "mcnttfactory.hxx"
 #include "mcnttype.hxx"
 
-using namespace ::osl;
 using namespace ::cppu;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
@@ -41,7 +40,7 @@ Reference< XMimeContentType > CMimeContentTypeFactory::createMimeContentType( co
 
 OUString SAL_CALL CMimeContentTypeFactory::getImplementationName(  )
 {
-    return "com.sun.star.datatransfer.MimeCntTypeFactory";
+    return u"com.sun.star.datatransfer.MimeCntTypeFactory"_ustr;
 }
 
 sal_Bool SAL_CALL CMimeContentTypeFactory::supportsService( const OUString& ServiceName )
@@ -51,7 +50,7 @@ sal_Bool SAL_CALL CMimeContentTypeFactory::supportsService( const OUString& Serv
 
 Sequence< OUString > SAL_CALL CMimeContentTypeFactory::getSupportedServiceNames( )
 {
-    return { "com.sun.star.datatransfer.MimeContentTypeFactory" };
+    return { u"com.sun.star.datatransfer.MimeContentTypeFactory"_ustr };
 }
 
 

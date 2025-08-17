@@ -18,20 +18,14 @@
  */
 
 #include "gstframegrabber.hxx"
-#include "gstplayer.hxx"
 
 #include <cppuhelper/supportsservice.hxx>
 
 #include <gst/gstbuffer.h>
-#include <gst/video/video.h>
-#include <gst/video/gstvideosink.h>
 #include <o3tl/safeint.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/BitmapTools.hxx>
 
-#include <string>
-
-constexpr OUStringLiteral AVMEDIA_GST_FRAMEGRABBER_IMPLEMENTATIONNAME = u"com.sun.star.comp.avmedia.FrameGrabber_GStreamer";
 constexpr OUString AVMEDIA_GST_FRAMEGRABBER_SERVICENAME = u"com.sun.star.media.FrameGrabber_GStreamer"_ustr;
 
 using namespace ::com::sun::star;
@@ -150,7 +144,7 @@ uno::Reference< graphic::XGraphic > SAL_CALL FrameGrabber::grabFrame( double fMe
         pData = aMapInfo.data;
 
         int nStride = GST_ROUND_UP_4( nWidth * 3 );
-        BitmapEx aBmp = vcl::bitmap::CreateFromData(pData, nWidth, nHeight, nStride, /*nBitsPerPixel*/24);
+        Bitmap aBmp = vcl::bitmap::CreateFromData(pData, nWidth, nHeight, nStride, /*nBitsPerPixel*/24);
 
         gst_buffer_unmap( pBuf, &aMapInfo );
         xRet = Graphic( aBmp ).GetXGraphic();
@@ -161,7 +155,7 @@ uno::Reference< graphic::XGraphic > SAL_CALL FrameGrabber::grabFrame( double fMe
 
 OUString SAL_CALL FrameGrabber::getImplementationName(  )
 {
-    return AVMEDIA_GST_FRAMEGRABBER_IMPLEMENTATIONNAME;
+    return u"com.sun.star.comp.avmedia.FrameGrabber_GStreamer"_ustr;
 }
 
 sal_Bool SAL_CALL FrameGrabber::supportsService( const OUString& ServiceName )

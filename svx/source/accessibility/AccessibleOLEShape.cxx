@@ -103,15 +103,15 @@ void SAL_CALL
 OUString SAL_CALL
     AccessibleOLEShape::getImplementationName()
 {
-    return "AccessibleOLEShape";
+    return u"AccessibleOLEShape"_ustr;
 }
 
 
 css::uno::Sequence< OUString> SAL_CALL
     AccessibleOLEShape::getSupportedServiceNames()
 {
-    ThrowIfDisposed();
-    const css::uno::Sequence<OUString> vals { "com.sun.star.drawing.AccessibleOLEShape" };
+    ensureAlive();
+    const css::uno::Sequence<OUString> vals { u"com.sun.star.drawing.AccessibleOLEShape"_ustr };
     return comphelper::concatSequences(AccessibleShape::getSupportedServiceNames(), vals);
 }
 
@@ -124,17 +124,12 @@ uno::Sequence<uno::Type> SAL_CALL AccessibleOLEShape::getTypes()
 }
 
 // XAccessibleExtendedAttributes
-uno::Any SAL_CALL AccessibleOLEShape::getExtendedAttributes()
+OUString SAL_CALL AccessibleOLEShape::getExtendedAttributes()
 {
-    uno::Any strRet;
-    OUString style;
-    if( m_pShape )
-    {
-        style = "style:" + static_cast<SdrOle2Obj*>(m_pShape)->GetStyleString();
-    }
-    style += ";";
-    strRet <<= style;
-    return strRet;
+    if (m_pShape)
+        return "style:" + static_cast<SdrOle2Obj*>(m_pShape)->GetStyleString() + ";";
+
+    return OUString();
 }
 
 /// Set this object's name if is different to the current name.

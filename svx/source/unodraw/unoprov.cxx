@@ -34,7 +34,6 @@
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/lang/Locale.hpp>
 #include <tools/fldunit.hxx>
-#include <vcl/svapp.hxx>
 #include <comphelper/propertysetinfo.hxx>
 #include <comphelper/sequence.hxx>
 #include <svx/dialmgr.hxx>
@@ -66,6 +65,7 @@ static std::span<SfxItemPropertyMapEntry const> ImplGetSvxShapePropertyMap()
         LINKTARGET_PROPERTIES
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         TEXT_PROPERTIES
         // #FontWork#
@@ -90,6 +90,7 @@ static std::span<SfxItemPropertyMapEntry const> ImplGetSvxTextShapePropertyMap()
         LINKTARGET_PROPERTIES
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         TEXT_PROPERTIES
         // #FontWork#
@@ -115,6 +116,7 @@ static std::span<SfxItemPropertyMapEntry const> ImplGetSvxConnectorPropertyMap()
         LINKTARGET_PROPERTIES
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         TEXT_PROPERTIES
         // #FontWork#
@@ -140,6 +142,7 @@ static std::span<SfxItemPropertyMapEntry const> ImplGetSvxDimensioningPropertyMa
         LINKTARGET_PROPERTIES
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         TEXT_PROPERTIES
         // #FontWork#
@@ -165,6 +168,7 @@ static std::span<SfxItemPropertyMapEntry const> ImplGetSvxCirclePropertyMap()
         LINKTARGET_PROPERTIES
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         TEXT_PROPERTIES
         // #FontWork#
@@ -192,6 +196,7 @@ static std::span<SfxItemPropertyMapEntry const> ImplGetSvxPolyPolygonPropertyMap
         LINKTARGET_PROPERTIES
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         TEXT_PROPERTIES
         // #FontWork#
@@ -222,6 +227,7 @@ static std::span<SfxItemPropertyMapEntry const> ImplGetSvxGraphicObjectPropertyM
         LINKTARGET_PROPERTIES
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         TEXT_PROPERTIES
         // #FontWork#
@@ -367,6 +373,7 @@ static std::span<SfxItemPropertyMapEntry const> ImplGetSvxAllPropertyMap()
     {
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         LINE_PROPERTIES
         LINE_PROPERTIES_START_END
@@ -429,6 +436,7 @@ static std::span<SfxItemPropertyMapEntry const> ImplGetSvxOle2PropertyMap()
         LINKTARGET_PROPERTIES
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         TEXT_PROPERTIES
         FONTWORK_PROPERTIES
@@ -683,6 +691,7 @@ static std::span<SfxItemPropertyMapEntry const> ImplGetSvxCustomShapePropertyMap
         LINKTARGET_PROPERTIES
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         TEXT_PROPERTIES
         {u"UserDefinedAttributes"_ustr,     SDRATTR_XMLATTRIBUTES,      cppu::UnoType<css::container::XNameContainer>::get(),        0,     0},
@@ -765,6 +774,7 @@ static std::span<comphelper::PropertyMapEntry const> ImplGetSvxDrawingDefaultsPr
     {
         GLOW_PROPERTIES
         SOFTEDGE_PROPERTIES
+        GLOW_TEXT_PROPERTIES
         SHADOW_PROPERTIES
         LINE_PROPERTIES_DEFAULTS
         FILL_PROPERTIES_BMP
@@ -784,7 +794,7 @@ static std::span<comphelper::PropertyMapEntry const> ImplGetAdditionalWriterDraw
 {
     static comphelper::PropertyMapEntry const aSvxAdditionalDefaultsPropertyMap_Impl[] =
     {
-        { "IsFollowingTextFlow", SID_SW_FOLLOW_TEXT_FLOW, cppu::UnoType<bool>::get(), 0, 0},
+        { u"IsFollowingTextFlow"_ustr, SID_SW_FOLLOW_TEXT_FLOW, cppu::UnoType<bool>::get(), 0, 0},
     };
 
     return aSvxAdditionalDefaultsPropertyMap_Impl;
@@ -823,6 +833,7 @@ const UHashMapImpl& GetUHashImpl()
             { "com.sun.star.drawing.AppletShape",          SdrObjKind::OLE2Applet },
             { "com.sun.star.drawing.CustomShape",          SdrObjKind::CustomShape },
             { "com.sun.star.drawing.MediaShape",           SdrObjKind::Media },
+            { "com.sun.star.drawing.AnnotationShape",      SdrObjKind::Annotation },
 
             { "com.sun.star.drawing.Shape3DSceneObject",   SdrObjKind::E3D_Scene },
             { "com.sun.star.drawing.Shape3DCubeObject",    SdrObjKind::E3D_Cube },
@@ -875,7 +886,7 @@ SvxUnoPropertyMapProvider& getSvxMapProvider()
 SvxUnoPropertyMapProvider::SvxUnoPropertyMapProvider()
 {
     for(sal_uInt16 i=0;i<SVXMAP_END; i++)
-        aSetArr[i] = nullptr;
+        m_aSetArr[i] = nullptr;
 }
 
 SvxUnoPropertyMapProvider::~SvxUnoPropertyMapProvider()
@@ -886,46 +897,46 @@ SvxUnoPropertyMapProvider::~SvxUnoPropertyMapProvider()
 std::span<const SfxItemPropertyMapEntry> SvxUnoPropertyMapProvider::GetMap(sal_uInt16 nPropertyId)
 {
     assert(nPropertyId < SVXMAP_END);
-    if(aMapArr[nPropertyId].empty()) {
+    if(m_aMapArr[nPropertyId].empty()) {
         switch(nPropertyId) {
-            case SVXMAP_SHAPE: aMapArr[SVXMAP_SHAPE]=ImplGetSvxShapePropertyMap(); break;
-            case SVXMAP_CONNECTOR: aMapArr[SVXMAP_CONNECTOR]=ImplGetSvxConnectorPropertyMap(); break;
-            case SVXMAP_DIMENSIONING: aMapArr[SVXMAP_DIMENSIONING]=ImplGetSvxDimensioningPropertyMap(); break;
-            case SVXMAP_CIRCLE: aMapArr[SVXMAP_CIRCLE]=ImplGetSvxCirclePropertyMap(); break;
-            case SVXMAP_POLYPOLYGON: aMapArr[SVXMAP_POLYPOLYGON]=ImplGetSvxPolyPolygonPropertyMap(); break;
-            case SVXMAP_GRAPHICOBJECT: aMapArr[SVXMAP_GRAPHICOBJECT]=ImplGetSvxGraphicObjectPropertyMap(); break;
-            case SVXMAP_3DSCENEOBJECT: aMapArr[SVXMAP_3DSCENEOBJECT]=ImplGetSvx3DSceneObjectPropertyMap(); break;
-            case SVXMAP_3DCUBEOBJECT: aMapArr[SVXMAP_3DCUBEOBJECT]=ImplGetSvx3DCubeObjectPropertyMap(); break;
-            case SVXMAP_3DSPHEREOBJECT: aMapArr[SVXMAP_3DSPHEREOBJECT]=ImplGetSvx3DSphereObjectPropertyMap(); break;
-            case SVXMAP_3DLATHEOBJECT: aMapArr[SVXMAP_3DLATHEOBJECT]=ImplGetSvx3DLatheObjectPropertyMap(); break;
-            case SVXMAP_3DEXTRUDEOBJECT: aMapArr[SVXMAP_3DEXTRUDEOBJECT]=ImplGetSvx3DExtrudeObjectPropertyMap(); break;
-            case SVXMAP_3DPOLYGONOBJECT: aMapArr[SVXMAP_3DPOLYGONOBJECT]=ImplGetSvx3DPolygonObjectPropertyMap(); break;
-            case SVXMAP_ALL: aMapArr[SVXMAP_ALL]=ImplGetSvxAllPropertyMap(); break;
-            case SVXMAP_GROUP: aMapArr[SVXMAP_GROUP]=ImplGetSvxGroupPropertyMap(); break;
-            case SVXMAP_CAPTION: aMapArr[SVXMAP_CAPTION]=ImplGetSvxCaptionPropertyMap(); break;
-            case SVXMAP_OLE2: aMapArr[SVXMAP_OLE2]=ImplGetSvxOle2PropertyMap(); break;
-            case SVXMAP_PLUGIN: aMapArr[SVXMAP_PLUGIN]=ImplGetSvxPluginPropertyMap(); break;
-            case SVXMAP_FRAME: aMapArr[SVXMAP_FRAME]=ImplGetSvxFramePropertyMap(); break;
-            case SVXMAP_APPLET: aMapArr[SVXMAP_APPLET]=ImplGetSvxAppletPropertyMap(); break;
-            case SVXMAP_CONTROL: aMapArr[SVXMAP_CONTROL]=ImplGetSvxControlShapePropertyMap(); break;
-            case SVXMAP_TEXT: aMapArr[SVXMAP_TEXT]=ImplGetSvxTextShapePropertyMap(); break;
-            case SVXMAP_CUSTOMSHAPE: aMapArr[SVXMAP_CUSTOMSHAPE]=ImplGetSvxCustomShapePropertyMap(); break;
-            case SVXMAP_MEDIA: aMapArr[SVXMAP_MEDIA]=ImplGetSvxMediaShapePropertyMap(); break;
-            case SVXMAP_TABLE: aMapArr[SVXMAP_TABLE]=ImplGetSvxTableShapePropertyMap(); break;
-            case SVXMAP_PAGE: aMapArr[SVXMAP_PAGE] = ImplGetSvxPageShapePropertyMap(); break;
+            case SVXMAP_SHAPE: m_aMapArr[SVXMAP_SHAPE]=ImplGetSvxShapePropertyMap(); break;
+            case SVXMAP_CONNECTOR: m_aMapArr[SVXMAP_CONNECTOR]=ImplGetSvxConnectorPropertyMap(); break;
+            case SVXMAP_DIMENSIONING: m_aMapArr[SVXMAP_DIMENSIONING]=ImplGetSvxDimensioningPropertyMap(); break;
+            case SVXMAP_CIRCLE: m_aMapArr[SVXMAP_CIRCLE]=ImplGetSvxCirclePropertyMap(); break;
+            case SVXMAP_POLYPOLYGON: m_aMapArr[SVXMAP_POLYPOLYGON]=ImplGetSvxPolyPolygonPropertyMap(); break;
+            case SVXMAP_GRAPHICOBJECT: m_aMapArr[SVXMAP_GRAPHICOBJECT]=ImplGetSvxGraphicObjectPropertyMap(); break;
+            case SVXMAP_3DSCENEOBJECT: m_aMapArr[SVXMAP_3DSCENEOBJECT]=ImplGetSvx3DSceneObjectPropertyMap(); break;
+            case SVXMAP_3DCUBEOBJECT: m_aMapArr[SVXMAP_3DCUBEOBJECT]=ImplGetSvx3DCubeObjectPropertyMap(); break;
+            case SVXMAP_3DSPHEREOBJECT: m_aMapArr[SVXMAP_3DSPHEREOBJECT]=ImplGetSvx3DSphereObjectPropertyMap(); break;
+            case SVXMAP_3DLATHEOBJECT: m_aMapArr[SVXMAP_3DLATHEOBJECT]=ImplGetSvx3DLatheObjectPropertyMap(); break;
+            case SVXMAP_3DEXTRUDEOBJECT: m_aMapArr[SVXMAP_3DEXTRUDEOBJECT]=ImplGetSvx3DExtrudeObjectPropertyMap(); break;
+            case SVXMAP_3DPOLYGONOBJECT: m_aMapArr[SVXMAP_3DPOLYGONOBJECT]=ImplGetSvx3DPolygonObjectPropertyMap(); break;
+            case SVXMAP_ALL: m_aMapArr[SVXMAP_ALL]=ImplGetSvxAllPropertyMap(); break;
+            case SVXMAP_GROUP: m_aMapArr[SVXMAP_GROUP]=ImplGetSvxGroupPropertyMap(); break;
+            case SVXMAP_CAPTION: m_aMapArr[SVXMAP_CAPTION]=ImplGetSvxCaptionPropertyMap(); break;
+            case SVXMAP_OLE2: m_aMapArr[SVXMAP_OLE2]=ImplGetSvxOle2PropertyMap(); break;
+            case SVXMAP_PLUGIN: m_aMapArr[SVXMAP_PLUGIN]=ImplGetSvxPluginPropertyMap(); break;
+            case SVXMAP_FRAME: m_aMapArr[SVXMAP_FRAME]=ImplGetSvxFramePropertyMap(); break;
+            case SVXMAP_APPLET: m_aMapArr[SVXMAP_APPLET]=ImplGetSvxAppletPropertyMap(); break;
+            case SVXMAP_CONTROL: m_aMapArr[SVXMAP_CONTROL]=ImplGetSvxControlShapePropertyMap(); break;
+            case SVXMAP_TEXT: m_aMapArr[SVXMAP_TEXT]=ImplGetSvxTextShapePropertyMap(); break;
+            case SVXMAP_CUSTOMSHAPE: m_aMapArr[SVXMAP_CUSTOMSHAPE]=ImplGetSvxCustomShapePropertyMap(); break;
+            case SVXMAP_MEDIA: m_aMapArr[SVXMAP_MEDIA]=ImplGetSvxMediaShapePropertyMap(); break;
+            case SVXMAP_TABLE: m_aMapArr[SVXMAP_TABLE]=ImplGetSvxTableShapePropertyMap(); break;
+            case SVXMAP_PAGE: m_aMapArr[SVXMAP_PAGE] = ImplGetSvxPageShapePropertyMap(); break;
 
             default:
                 OSL_FAIL( "Unknown property map for SvxUnoPropertyMapProvider!" );
         }
 //      Sort(nPropertyId);
     }
-    return aMapArr[nPropertyId];
+    return m_aMapArr[nPropertyId];
 }
 const SvxItemPropertySet* SvxUnoPropertyMapProvider::GetPropertySet(sal_uInt16 nPropertyId, SfxItemPool& rPool)
 {
-    if( !aSetArr[nPropertyId] )
-        aSetArr[nPropertyId].reset(new SvxItemPropertySet( GetMap( nPropertyId ), rPool ));
-    return aSetArr[nPropertyId].get();
+    if( !m_aSetArr[nPropertyId] )
+        m_aSetArr[nPropertyId].reset(new SvxItemPropertySet( GetMap( nPropertyId ), rPool ));
+    return m_aSetArr[nPropertyId].get();
 }
 
 /** maps the vcl MapUnit enum to an API constant MeasureUnit.
@@ -1648,7 +1659,7 @@ static bool SvxUnoConvertResourceStringToApi(const TranslateId* pSourceResIds, c
 
     for (int i = 0; i < nCount; ++i)
     {
-        const OUString & aCompare = SvxResId(pSourceResIds[i]);
+        const OUString aCompare = SvxResId(pSourceResIds[i]);
         if( aShortString == aCompare )
         {
             rString = rString.replaceAt( 0, aShortString.size(), pDestResIds[i] );

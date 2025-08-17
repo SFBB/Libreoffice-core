@@ -25,7 +25,9 @@
 #include <utility>
 
 #define BOX2D_SLIDE_SIZE_IN_METERS 100.00f
-constexpr double fDefaultStaticBodyBounciness(0.1);
+constexpr float fDefaultStaticBodyBounciness(0.1f);
+constexpr float fDefaultStaticDensity(1.0f);
+constexpr float fDefaultStaticFriction(0.3f);
 
 namespace box2d::utils
 {
@@ -80,8 +82,7 @@ b2Vec2 convertB2DPointToBox2DVec2(const basegfx::B2DPoint& aPoint, const double 
 
 // expects rTriangleVector to have coordinates relative to the shape's bounding box center
 void addTriangleVectorToBody(const basegfx::triangulator::B2DTriangleVector& rTriangleVector,
-                             b2Body* aBody, const float fDensity, const float fFriction,
-                             const float fRestitution, const double fScaleFactor)
+                             b2Body* aBody, const double fScaleFactor)
 {
     for (const basegfx::triangulator::B2DTriangle& aTriangle : rTriangleVector)
     {
@@ -92,41 +93,27 @@ void addTriangleVectorToBody(const basegfx::triangulator::B2DTriangleVector& rTr
                 convertB2DPointToBox2DVec2(aTriangle.getB(), fScaleFactor),
                 convertB2DPointToBox2DVec2(aTriangle.getC(), fScaleFactor) };
 
-        bool bValidPointDistance = true;
-
-        // check whether the triangle has degenerately close points
-        for (int nPointIndexA = 0; nPointIndexA < 3; nPointIndexA++)
-        {
-            for (int nPointIndexB = 0; nPointIndexB < 3; nPointIndexB++)
-            {
-                if (nPointIndexA == nPointIndexB)
-                    continue;
-
-                if (b2DistanceSquared(aTriangleVertices[nPointIndexA],
-                                      aTriangleVertices[nPointIndexB])
-                    < 0.003f)
-                {
-                    bValidPointDistance = false;
-                }
-            }
-        }
+        bool bValidPointDistance
+            = b2DistanceSquared(aTriangleVertices[0], aTriangleVertices[1]) > 0.003f
+              && b2DistanceSquared(aTriangleVertices[0], aTriangleVertices[2]) > 0.003f
+              && b2DistanceSquared(aTriangleVertices[1], aTriangleVertices[2]) > 0.003f;
 
         if (bValidPointDistance)
         {
             // create a fixture that represents the triangle
             aPolygonShape.Set(aTriangleVertices, 3);
             aFixture.shape = &aPolygonShape;
-            aFixture.density = fDensity;
-            aFixture.friction = fFriction;
-            aFixture.restitution = fRestitution;
+            aFixture.density = fDefaultStaticDensity;
+            aFixture.friction = fDefaultStaticFriction;
+            aFixture.restitution = fDefaultStaticBodyBounciness;
             aBody->CreateFixture(&aFixture);
         }
     }
 }
 
 // expects rPolygon to have coordinates relative to it's center
-void addEdgeShapeToBody(const basegfx::B2DPolygon& rPolygon, b2Body* aBody, const float fDensity,
-                        const float fFriction, const float fRestitution, const double fScaleFactor)
+void addEdgeShapeToBody(const basegfx::B2DPolygon& rPolygon, b2Body* aBody,
+                        const double fScaleFactor)
 {
     // make sure there's no bezier curves on the polygon
     assert(!rPolygon.areControlPointsUsed());
@@ -198,9 +185,9 @@ void addEdgeShapeToBody(const basegfx::B2DPolygon& rPolygon, b2Body* aBody, cons
             // create a quadrilateral shaped fixture to represent the edge
             aPolygonShape.Set(aQuadrilateralVertices, 4);
             aFixture.shape = &aPolygonShape;
-            aFixture.density = fDensity;
-            aFixture.friction = fFriction;
-            aFixture.restitution = fRestitution;
+            aFixture.density = fDefaultStaticDensity;
+            aFixture.friction = fDefaultStaticFriction;
+            aFixture.restitution = fDefaultStaticBodyBounciness;
             aBody->CreateFixture(&aFixture);
 
             // prepare the quadrilateral edge for next connection
@@ -211,12 +198,11 @@ void addEdgeShapeToBody(const basegfx::B2DPolygon& rPolygon, b2Body* aBody, cons
 }
 
 void addEdgeShapeToBody(const basegfx::B2DPolyPolygon& rPolyPolygon, b2Body* aBody,
-                        const float fDensity, const float fFriction, const float fRestitution,
                         const double fScaleFactor)
 {
     for (const basegfx::B2DPolygon& rPolygon : rPolyPolygon)
     {
-        addEdgeShapeToBody(rPolygon, aBody, fDensity, fFriction, fRestitution, fScaleFactor);
+        addEdgeShapeToBody(rPolygon, aBody, fScaleFactor);
     }
 }
 }
@@ -235,23 +221,9 @@ box2DWorld::box2DWorld(const ::basegfx::B2DVector& rSlideSize)
 
 box2DWorld::~box2DWorld() = default;
 
-bool box2DWorld::initiateWorld(const ::basegfx::B2DVector& rSlideSize)
-{
-    if (!mpBox2DWorld)
-    {
-        mpBox2DWorld = std::make_unique<b2World>(b2Vec2(0.0f, -30.0f));
-        createStaticFrameAroundSlide(rSlideSize);
-        return false;
-    }
-    else
-    {
-        return true;
-    }
-}
-
 void box2DWorld::createStaticFrameAroundSlide(const ::basegfx::B2DVector& rSlideSize)
 {
-    assert(mpBox2DWorld);
+    mpBox2DWorld = std::make_unique<b2World>(b2Vec2(0.0f, -30.0f));
 
     float fWidth = static_cast<float>(rSlideSize.getX() * mfScaleFactor);
     float fHeight = static_cast<float>(rSlideSize.getY() * mfScaleFactor);
@@ -281,7 +253,7 @@ void box2DWorld::createStaticFrameAroundSlide(const ::basegfx::B2DVector& rSlide
     pStaticBody->CreateFixture(&aFixtureDef);
 }
 
-void box2DWorld::setShapePosition(const css::uno::Reference<com::sun::star::drawing::XShape> xShape,
+void box2DWorld::setShapePosition(const css::uno::Reference<css::drawing::XShape>& xShape,
                                   const basegfx::B2DPoint& rOutPos)
 {
     const auto iter = mpXShapeToBodyMap.find(xShape);
@@ -291,10 +263,9 @@ void box2DWorld::setShapePosition(const css::uno::Reference<com::sun::star::draw
 }
 
 void box2DWorld::setShapePositionByLinearVelocity(
-    const css::uno::Reference<com::sun::star::drawing::XShape> xShape,
-    const basegfx::B2DPoint& rOutPos, const double fPassedTime)
+    const css::uno::Reference<css::drawing::XShape>& xShape, const basegfx::B2DPoint& rOutPos,
+    const double fPassedTime)
 {
-    assert(mpBox2DWorld);
     if (fPassedTime > 0) // this only makes sense if there was an advance in time
     {
         const auto iter = mpXShapeToBodyMap.find(xShape);
@@ -304,18 +275,16 @@ void box2DWorld::setShapePositionByLinearVelocity(
     }
 }
 
-void box2DWorld::setShapeLinearVelocity(
-    const css::uno::Reference<com::sun::star::drawing::XShape> xShape,
-    const basegfx::B2DVector& rVelocity)
+void box2DWorld::setShapeLinearVelocity(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                        const basegfx::B2DVector& rVelocity)
 {
-    assert(mpBox2DWorld);
     const auto iter = mpXShapeToBodyMap.find(xShape);
     assert(iter != mpXShapeToBodyMap.end());
     Box2DBodySharedPtr pBox2DBody = iter->second;
     pBox2DBody->setLinearVelocity(rVelocity);
 }
 
-void box2DWorld::setShapeAngle(const css::uno::Reference<com::sun::star::drawing::XShape> xShape,
+void box2DWorld::setShapeAngle(const css::uno::Reference<css::drawing::XShape>& xShape,
                                const double fAngle)
 {
     const auto iter = mpXShapeToBodyMap.find(xShape);
@@ -325,10 +294,9 @@ void box2DWorld::setShapeAngle(const css::uno::Reference<com::sun::star::drawing
 }
 
 void box2DWorld::setShapeAngleByAngularVelocity(
-    const css::uno::Reference<com::sun::star::drawing::XShape> xShape, const double fAngle,
+    const css::uno::Reference<css::drawing::XShape>& xShape, const double fAngle,
     const double fPassedTime)
 {
-    assert(mpBox2DWorld);
     if (fPassedTime > 0) // this only makes sense if there was an advance in time
     {
         const auto iter = mpXShapeToBodyMap.find(xShape);
@@ -338,21 +306,18 @@ void box2DWorld::setShapeAngleByAngularVelocity(
     }
 }
 
-void box2DWorld::setShapeAngularVelocity(
-    const css::uno::Reference<com::sun::star::drawing::XShape> xShape,
-    const double fAngularVelocity)
+void box2DWorld::setShapeAngularVelocity(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                         const double fAngularVelocity)
 {
-    assert(mpBox2DWorld);
     const auto iter = mpXShapeToBodyMap.find(xShape);
     assert(iter != mpXShapeToBodyMap.end());
     Box2DBodySharedPtr pBox2DBody = iter->second;
     pBox2DBody->setAngularVelocity(fAngularVelocity);
 }
 
-void box2DWorld::setShapeCollision(
-    const css::uno::Reference<com::sun::star::drawing::XShape> xShape, bool bCanCollide)
+void box2DWorld::setShapeCollision(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                   bool bCanCollide)
 {
-    assert(mpBox2DWorld);
     const auto iter = mpXShapeToBodyMap.find(xShape);
     assert(iter != mpXShapeToBodyMap.end());
     Box2DBodySharedPtr pBox2DBody = iter->second;
@@ -405,8 +370,6 @@ void box2DWorld::processUpdateQueue(const double fPassedTime)
 void box2DWorld::initiateAllShapesAsStaticBodies(
     const slideshow::internal::ShapeManagerSharedPtr& pShapeManager)
 {
-    assert(mpBox2DWorld);
-
     mbShapesInitialized = true;
     auto aXShapeToShapeMap = pShapeManager->getXShapeToShapeMap();
 
@@ -463,18 +426,17 @@ void box2DWorld::setHasWorldStepper(const bool bHasWorldStepper)
     mbHasWorldStepper = bHasWorldStepper;
 }
 
-void box2DWorld::queueDynamicPositionUpdate(
-    const css::uno::Reference<com::sun::star::drawing::XShape>& xShape,
-    const basegfx::B2DPoint& rOutPos)
+void box2DWorld::queueDynamicPositionUpdate(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                            const basegfx::B2DPoint& rOutPos)
 {
     Box2DDynamicUpdateInformation aQueueElement = { xShape, {}, BOX2D_UPDATE_POSITION_CHANGE };
     aQueueElement.maPosition = rOutPos;
     maShapeParallelUpdateQueue.push(aQueueElement);
 }
 
-void box2DWorld::queueLinearVelocityUpdate(
-    const css::uno::Reference<com::sun::star::drawing::XShape>& xShape,
-    const basegfx::B2DVector& rVelocity, const int nDelayForSteps)
+void box2DWorld::queueLinearVelocityUpdate(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                           const basegfx::B2DVector& rVelocity,
+                                           const int nDelayForSteps)
 {
     Box2DDynamicUpdateInformation aQueueElement
         = { xShape, {}, BOX2D_UPDATE_LINEAR_VELOCITY, nDelayForSteps };
@@ -482,17 +444,16 @@ void box2DWorld::queueLinearVelocityUpdate(
     maShapeParallelUpdateQueue.push(aQueueElement);
 }
 
-void box2DWorld::queueDynamicRotationUpdate(
-    const css::uno::Reference<com::sun::star::drawing::XShape>& xShape, const double fAngle)
+void box2DWorld::queueDynamicRotationUpdate(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                            const double fAngle)
 {
     Box2DDynamicUpdateInformation aQueueElement = { xShape, {}, BOX2D_UPDATE_ANGLE };
     aQueueElement.mfAngle = fAngle;
     maShapeParallelUpdateQueue.push(aQueueElement);
 }
 
-void box2DWorld::queueAngularVelocityUpdate(
-    const css::uno::Reference<com::sun::star::drawing::XShape>& xShape,
-    const double fAngularVelocity, const int nDelayForSteps)
+void box2DWorld::queueAngularVelocityUpdate(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                            const double fAngularVelocity, const int nDelayForSteps)
 {
     Box2DDynamicUpdateInformation aQueueElement
         = { xShape, {}, BOX2D_UPDATE_ANGULAR_VELOCITY, nDelayForSteps };
@@ -500,17 +461,16 @@ void box2DWorld::queueAngularVelocityUpdate(
     maShapeParallelUpdateQueue.push(aQueueElement);
 }
 
-void box2DWorld::queueShapeVisibilityUpdate(
-    const css::uno::Reference<com::sun::star::drawing::XShape>& xShape, const bool bVisibility)
+void box2DWorld::queueShapeVisibilityUpdate(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                            const bool bVisibility)
 {
     Box2DDynamicUpdateInformation aQueueElement = { xShape, {}, BOX2D_UPDATE_VISIBILITY };
     aQueueElement.mbVisibility = bVisibility;
     maShapeParallelUpdateQueue.push(aQueueElement);
 }
 
-void box2DWorld::queueShapePositionUpdate(
-    const css::uno::Reference<com::sun::star::drawing::XShape>& xShape,
-    const basegfx::B2DPoint& rOutPos)
+void box2DWorld::queueShapePositionUpdate(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                          const basegfx::B2DPoint& rOutPos)
 {
     Box2DDynamicUpdateInformation aQueueElement = { xShape, {}, BOX2D_UPDATE_POSITION };
     aQueueElement.maPosition = rOutPos;
@@ -518,7 +478,7 @@ void box2DWorld::queueShapePositionUpdate(
 }
 
 void box2DWorld::queueShapePathAnimationUpdate(
-    const css::uno::Reference<com::sun::star::drawing::XShape>& xShape,
+    const css::uno::Reference<css::drawing::XShape>& xShape,
     const slideshow::internal::ShapeAttributeLayerSharedPtr& pAttrLayer, const bool bIsFirstUpdate)
 {
     // Workaround for PathAnimations since they do not have their own AttributeType
@@ -528,7 +488,7 @@ void box2DWorld::queueShapePathAnimationUpdate(
 }
 
 void box2DWorld::queueShapeAnimationUpdate(
-    const css::uno::Reference<com::sun::star::drawing::XShape>& xShape,
+    const css::uno::Reference<css::drawing::XShape>& xShape,
     const slideshow::internal::ShapeAttributeLayerSharedPtr& pAttrLayer,
     const slideshow::internal::AttributeType eAttrType, const bool bIsFirstUpdate)
 {
@@ -554,7 +514,7 @@ void box2DWorld::queueShapeAnimationUpdate(
 }
 
 void box2DWorld::queueShapeAnimationEndUpdate(
-    const css::uno::Reference<com::sun::star::drawing::XShape>& xShape,
+    const css::uno::Reference<css::drawing::XShape>& xShape,
     const slideshow::internal::AttributeType eAttrType)
 {
     switch (eAttrType)
@@ -604,7 +564,7 @@ void box2DWorld::alertPhysicsAnimationStart(
     const slideshow::internal::ShapeManagerSharedPtr& pShapeManager)
 {
     if (!mpBox2DWorld)
-        initiateWorld(rSlideSize);
+        createStaticFrameAroundSlide(rSlideSize);
 
     if (!mbShapesInitialized)
         initiateAllShapesAsStaticBodies(pShapeManager);
@@ -612,17 +572,14 @@ void box2DWorld::alertPhysicsAnimationStart(
     mnPhysicsAnimationCounter++;
 }
 
-void box2DWorld::step(const float fTimeStep, const int nVelocityIterations,
-                      const int nPositionIterations)
+double box2DWorld::stepAmount(const double fPassedTime)
 {
     assert(mpBox2DWorld);
-    mpBox2DWorld->Step(fTimeStep, nVelocityIterations, nPositionIterations);
-}
 
-double box2DWorld::stepAmount(const double fPassedTime, const float fTimeStep,
-                              const int nVelocityIterations, const int nPositionIterations)
-{
-    assert(mpBox2DWorld);
+    // attention fTimeStep should not vary.
+    const float fTimeStep = 1.0f / 100.0f;
+    const int nVelocityIterations = 6;
+    const int nPositionIterations = 2;
 
     unsigned int nStepAmount = static_cast<unsigned int>(std::round(fPassedTime / fTimeStep));
     // find the actual time that will be stepped through so
@@ -636,7 +593,7 @@ double box2DWorld::stepAmount(const double fPassedTime, const float fTimeStep,
     {
         for (unsigned int nStepCounter = 0; nStepCounter < nStepAmount; nStepCounter++)
         {
-            step(fTimeStep, nVelocityIterations, nPositionIterations);
+            mpBox2DWorld->Step(fTimeStep, nVelocityIterations, nPositionIterations);
         }
     }
     else
@@ -680,16 +637,6 @@ Box2DBodySharedPtr makeBodyDynamic(const Box2DBodySharedPtr& pBox2DBody)
     return pBox2DBody;
 }
 
-Box2DBodySharedPtr box2DWorld::makeShapeStatic(const slideshow::internal::ShapeSharedPtr& pShape)
-{
-    assert(mpBox2DWorld);
-    assert(pShape && pShape->getXShape());
-    const auto iter = mpXShapeToBodyMap.find(pShape->getXShape());
-    assert(iter != mpXShapeToBodyMap.end());
-    Box2DBodySharedPtr pBox2DBody = iter->second;
-    return makeBodyStatic(pBox2DBody);
-}
-
 Box2DBodySharedPtr makeBodyStatic(const Box2DBodySharedPtr& pBox2DBody)
 {
     if (pBox2DBody->getType() != BOX2D_STATIC_BODY)
@@ -699,11 +646,8 @@ Box2DBodySharedPtr makeBodyStatic(const Box2DBodySharedPtr& pBox2DBody)
     return pBox2DBody;
 }
 
-Box2DBodySharedPtr box2DWorld::createStaticBody(const slideshow::internal::ShapeSharedPtr& rShape,
-                                                const float fDensity, const float fFriction)
+Box2DBodySharedPtr box2DWorld::createStaticBody(const slideshow::internal::ShapeSharedPtr& rShape)
 {
-    assert(mpBox2DWorld);
-
     ::basegfx::B2DRectangle aShapeBounds = rShape->getBounds();
 
     b2BodyDef aBodyDef;
@@ -773,17 +717,14 @@ Box2DBodySharedPtr box2DWorld::createStaticBody(const slideshow::internal::Shape
             }
             else // otherwise it will be an edge representation (example: smile line of the smiley shape)
             {
-                addEdgeShapeToBody(rPolygon, pBody.get(), fDensity, fFriction,
-                                   static_cast<float>(fDefaultStaticBodyBounciness), mfScaleFactor);
+                addEdgeShapeToBody(rPolygon, pBody.get(), mfScaleFactor);
             }
         }
-        addTriangleVectorToBody(aTriangleVector, pBody.get(), fDensity, fFriction,
-                                static_cast<float>(fDefaultStaticBodyBounciness), mfScaleFactor);
+        addTriangleVectorToBody(aTriangleVector, pBody.get(), mfScaleFactor);
     }
     else
     {
-        addEdgeShapeToBody(aPolyPolygon, pBody.get(), fDensity, fFriction,
-                           static_cast<float>(fDefaultStaticBodyBounciness), mfScaleFactor);
+        addEdgeShapeToBody(aPolyPolygon, pBody.get(), mfScaleFactor);
     }
 
     return std::make_shared<box2DBody>(pBody, mfScaleFactor);

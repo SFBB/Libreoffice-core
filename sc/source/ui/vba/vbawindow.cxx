@@ -106,14 +106,14 @@ public:
     {
         ScModelObj* pModel = static_cast< ScModelObj* >( xModel.get() );
         if ( !pModel )
-            throw uno::RuntimeException("Cannot obtain current document" );
+            throw uno::RuntimeException(u"Cannot obtain current document"_ustr );
         m_xModel = pModel;
         ScDocShell* pDocShell = static_cast<ScDocShell*>(pModel->GetEmbeddedObject());
         if ( !pDocShell )
-            throw uno::RuntimeException("Cannot obtain docshell" );
+            throw uno::RuntimeException(u"Cannot obtain docshell"_ustr );
         ScTabViewShell* pViewShell = excel::getBestViewShell( m_xModel );
         if ( !pViewShell )
-            throw uno::RuntimeException("Cannot obtain view shell" );
+            throw uno::RuntimeException(u"Cannot obtain view shell"_ustr );
 
         SCTAB nTabCount = pDocShell->GetDocument().GetTableCount();
         SCTAB nIndex = 0;
@@ -192,7 +192,8 @@ ScVbaWindow::ScVbaWindow(
         const uno::Reference< uno::XComponentContext >& xContext,
         const uno::Reference< frame::XModel >& xModel,
         const uno::Reference< frame::XController >& xController ) :
-    WindowImpl_BASE( xParent, xContext, xModel, xController )
+    WindowImpl_BASE( xParent, xContext, xController ),
+    m_xModel(xModel)
 {
     init();
 }
@@ -200,7 +201,8 @@ ScVbaWindow::ScVbaWindow(
 ScVbaWindow::ScVbaWindow(
         const uno::Sequence< uno::Any >& args,
         const uno::Reference< uno::XComponentContext >& xContext ) :
-    WindowImpl_BASE( args, xContext )
+    WindowImpl_BASE( args, xContext ),
+    m_xModel(getXSomethingFromArgs< frame::XModel >( args, 1, false ))
 {
     init();
 }
@@ -380,15 +382,17 @@ ScVbaWindow::getWindowState()
 {
     sal_Int32 nwindowState = xlNormal;
     // !! TODO !! get view shell from controller
-    ScTabViewShell* pViewShell = excel::getBestViewShell( m_xModel );
-    SfxViewFrame& rViewFrame = pViewShell->GetViewFrame();
-    WorkWindow* pWork = static_cast<WorkWindow*>( rViewFrame.GetFrame().GetSystemWindow() );
-    if ( pWork )
+    if (ScTabViewShell* pViewShell = excel::getBestViewShell( m_xModel ))
     {
-        if ( pWork -> IsMaximized())
-            nwindowState = xlMaximized;
-        else if (pWork -> IsMinimized())
-            nwindowState = xlMinimized;
+        SfxViewFrame& rViewFrame = pViewShell->GetViewFrame();
+        WorkWindow* pWork = static_cast<WorkWindow*>( rViewFrame.GetFrame().GetSystemWindow() );
+        if ( pWork )
+        {
+            if ( pWork -> IsMaximized())
+                nwindowState = xlMaximized;
+            else if (pWork -> IsMinimized())
+                nwindowState = xlMinimized;
+        }
     }
     return uno::Any( nwindowState );
 }
@@ -399,19 +403,21 @@ ScVbaWindow::setWindowState( const uno::Any& _windowstate )
     sal_Int32 nwindowState = xlMaximized;
     _windowstate >>= nwindowState;
     // !! TODO !! get view shell from controller
-    ScTabViewShell* pViewShell = excel::getBestViewShell( m_xModel );
-    SfxViewFrame& rViewFrame = pViewShell->GetViewFrame();
-    WorkWindow* pWork = static_cast<WorkWindow*>( rViewFrame.GetFrame().GetSystemWindow() );
-    if ( pWork )
+    if (ScTabViewShell* pViewShell = excel::getBestViewShell( m_xModel ))
     {
-        if ( nwindowState == xlMaximized)
-            pWork -> Maximize();
-        else if (nwindowState == xlMinimized)
-            pWork -> Minimize();
-        else if (nwindowState == xlNormal)
-            pWork -> Restore();
-        else
-            throw uno::RuntimeException("Invalid Parameter" );
+        SfxViewFrame& rViewFrame = pViewShell->GetViewFrame();
+        WorkWindow* pWork = static_cast<WorkWindow*>( rViewFrame.GetFrame().GetSystemWindow() );
+        if ( pWork )
+        {
+            if ( nwindowState == xlMaximized)
+                pWork -> Maximize();
+            else if (nwindowState == xlMinimized)
+                pWork -> Minimize();
+            else if (nwindowState == xlNormal)
+                pWork -> Restore();
+            else
+                throw uno::RuntimeException(u"Invalid Parameter"_ustr );
+        }
     }
 }
 
@@ -846,7 +852,7 @@ void SAL_CALL ScVbaWindow::setTabRatio( double fRatio )
 OUString
 ScVbaWindow::getServiceImplName()
 {
-    return "ScVbaWindow";
+    return u"ScVbaWindow"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -854,7 +860,7 @@ ScVbaWindow::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.excel.Window"
+        u"ooo.vba.excel.Window"_ustr
     };
     return aServiceNames;
 }

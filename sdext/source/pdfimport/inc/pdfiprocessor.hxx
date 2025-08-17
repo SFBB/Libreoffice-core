@@ -20,6 +20,7 @@
 #ifndef INCLUDED_SDEXT_SOURCE_PDFIMPORT_INC_PDFIPROCESSOR_HXX
 #define INCLUDED_SDEXT_SOURCE_PDFIMPORT_INC_PDFIPROCESSOR_HXX
 
+#include <com/sun/star/drawing/LineJoint.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <com/sun/star/geometry/RealSize2D.hpp>
@@ -41,11 +42,9 @@
 namespace pdfi
 {
 
-    class  PDFIProcessor;
     struct Element;
     struct DocumentElement;
     struct PageElement;
-    class  ElementFactory;
     class  XmlEmitter;
     class  CharGlyph;
 
@@ -71,6 +70,7 @@ namespace pdfi
         const GraphicsContext& getGraphicsContext( sal_Int32 nGCId ) const;
         GraphicsContext& getCurrentContext() { return m_aGCStack.back(); }
         const GraphicsContext& getCurrentContext() const { return m_aGCStack.back(); }
+        const ImageContainer& getImages() const { return m_aImages; };
 
         const css::uno::Reference< css::task::XStatusIndicator >& getStatusIndicator() const
         { return m_xStatusIndicator; }
@@ -80,7 +80,7 @@ namespace pdfi
 
         static void sortElements( Element* pElement );
 
-        static OUString SubstituteBidiMirrored(const OUString& rString);
+        static OUString SubstituteBidiMirrored(std::u16string_view rString);
 
     private:
         void processGlyphLine();
@@ -99,7 +99,7 @@ namespace pdfi
         virtual void setTransformation( const css::geometry::AffineMatrix2D& rMatrix ) override;
         virtual void setLineDash( const css::uno::Sequence<double>& dashes,
                                   double                                         start ) override;
-        virtual void setLineJoin(sal_Int8) override;
+        virtual void setLineJoin(basegfx::B2DLineJoin) override;
         virtual void setLineCap(sal_Int8) override;
         virtual void setMiterLimit(double) override;
         virtual void setLineWidth(double) override;
@@ -117,6 +117,8 @@ namespace pdfi
 
         virtual void intersectClip(const css::uno::Reference<
                                          css::rendering::XPolyPolygon2D >& rPath) override;
+        virtual void intersectClipToStroke(const css::uno::Reference<
+                                                 css::rendering::XPolyPolygon2D >& rPath) override;
         virtual void intersectEoClip(const css::uno::Reference<
                                            css::rendering::XPolyPolygon2D >& rPath) override;
 
@@ -149,6 +151,15 @@ namespace pdfi
                                                 css::beans::PropertyValue>& xImage,
                                           const css::uno::Sequence<
                                                 css::beans::PropertyValue>& xMask) override;
+
+        virtual void tilingPatternFill(int nX0, int nY0, int nX1, int nY1,
+                                       double nxStep, double nyStep,
+                                       int nPaintType,
+                                       css::geometry::AffineMatrix2D& rMat,
+                                       const css::uno::Sequence<css::beans::PropertyValue>& xTile) override;
+
+        virtual void beginTransparencyGroup(bool bForSoftMask) override;
+        virtual void endTransparencyGroup(void) override;
 
         void startIndicator( const OUString& rText );
         void endIndicator();

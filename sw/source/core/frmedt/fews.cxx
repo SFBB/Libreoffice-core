@@ -124,61 +124,59 @@ const SwRect& SwFEShell::GetAnyCurRect( CurRectType eType, const Point* pPt,
     bool bFrame = true;
     switch ( eType )
     {
-        case CurRectType::PagePrt: bFrame = false;
-                                    [[fallthrough]];
-        case CurRectType::Page :    pFrame = pFrame->FindPageFrame();
-                                    break;
-
+        case CurRectType::PagePrt:
+            bFrame = false;
+            [[fallthrough]];
+        case CurRectType::Page :
+            pFrame = pFrame->FindPageFrame();
+            break;
         case CurRectType::PageCalc:
-                                {
-                                    DisableCallbackAction a(const_cast<SwRootFrame&>(*pFrame->getRootFrame()));
-                                    pFrame->Calc(Imp()->GetShell()->GetOut());
-                                    pFrame = pFrame->FindPageFrame();
-                                    pFrame->Calc(Imp()->GetShell()->GetOut());
-                                }
-                                    break;
-
+        {
+            DisableCallbackAction a(const_cast<SwRootFrame&>(*pFrame->getRootFrame()));
+            pFrame->Calc(GetOut());
+            pFrame = pFrame->FindPageFrame();
+            pFrame->Calc(GetOut());
+        }
+            break;
         case CurRectType::FlyEmbeddedPrt:
-                                    bFrame = false;
-                                    [[fallthrough]];
+            bFrame = false;
+            [[fallthrough]];
         case CurRectType::FlyEmbedded:
         {
-                                    const SwFrame *pFlyFrame = xObj.is() ? FindFlyFrame(xObj) : nullptr;
-                                    pFrame = pFlyFrame ? pFlyFrame
-                                                : pFrame->IsFlyFrame()
-                                                    ? pFrame
-                                                    : pFrame->FindFlyFrame();
-                                    break;
+            const SwFrame *pFlyFrame = xObj.is() ? FindFlyFrame(xObj) : nullptr;
+            pFrame = pFlyFrame ? pFlyFrame
+                        : pFrame->IsFlyFrame()
+                            ? pFrame
+                            : pFrame->FindFlyFrame();
+            break;
         }
         case CurRectType::SectionOutsideTable :
-                                    if( pFrame->IsInTab() )
-                                        pFrame = pFrame->FindTabFrame();
-                                    else {
-                                        OSL_FAIL( "Missing Table" );
-                                    }
-                                    [[fallthrough]];
+            if( pFrame->IsInTab() )
+                pFrame = pFrame->FindTabFrame();
+            else {
+                OSL_FAIL( "Missing Table" );
+            }
+            [[fallthrough]];
         case CurRectType::SectionPrt:
         case CurRectType::Section:
-                                    if( pFrame->IsInSct() )
-                                        pFrame = pFrame->FindSctFrame();
-                                    else {
-                                        OSL_FAIL( "Missing section" );
-                                    }
+            if( pFrame->IsInSct() )
+                pFrame = pFrame->FindSctFrame();
+            else {
+                OSL_FAIL( "Missing section" );
+            }
 
-                                    if( CurRectType::SectionPrt == eType )
-                                        bFrame = false;
-                                    break;
-
+            if( CurRectType::SectionPrt == eType )
+                bFrame = false;
+            break;
         case CurRectType::HeaderFooter:
-                                    pFrame = pFrame->FindFooterOrHeader();
-                                    if( nullptr == pFrame )
-                                        return GetLayout()->getFrameArea();
-                                    break;
-
+            pFrame = pFrame->FindFooterOrHeader();
+            if( nullptr == pFrame )
+                return GetLayout()->getFrameArea();
+            break;
         case CurRectType::PagesArea:
-                                    return GetLayout()->GetPagesArea();
-
-        default:                    break;
+            return GetLayout()->GetPagesArea();
+        default:
+            break;
     }
     return bFrame ? pFrame->getFrameArea() : pFrame->getFramePrintArea();
 }
@@ -255,49 +253,59 @@ FrameTypeFlags SwFEShell::GetFrameType( const Point *pPt, bool bStopAtFly ) cons
         switch ( pFrame->GetType() )
         {
             case SwFrameType::Column:
-                                if( pFrame->GetUpper()->IsSctFrame() )
-                                {
-                                    // Check, if isn't not only a single column
-                                    // from a section with footnotes at the end.
-                                    if( pFrame->GetNext() || pFrame->GetPrev() )
-                                        // Sectioncolumns
-                                        nReturn |= ( nReturn & FrameTypeFlags::TABLE ) ?
-                                            FrameTypeFlags::COLSECTOUTTAB : FrameTypeFlags::COLSECT;
-                                }
-                                else // only pages and frame columns
-                                    nReturn |= FrameTypeFlags::COLUMN;
-                                break;
+                if( pFrame->GetUpper()->IsSctFrame() )
+                {
+                    // Check, if isn't not only a single column
+                    // from a section with footnotes at the end.
+                    if( pFrame->GetNext() || pFrame->GetPrev() )
+                        // Sectioncolumns
+                        nReturn |= ( nReturn & FrameTypeFlags::TABLE ) ?
+                            FrameTypeFlags::COLSECTOUTTAB : FrameTypeFlags::COLSECT;
+                }
+                else // only pages and frame columns
+                    nReturn |= FrameTypeFlags::COLUMN;
+                break;
             case SwFrameType::Page:
-                                nReturn |= FrameTypeFlags::PAGE;
-                                if( static_cast<const SwPageFrame*>(pFrame)->IsFootnotePage() )
-                                    nReturn |= FrameTypeFlags::FTNPAGE;
-                                break;
-            case SwFrameType::Header:    nReturn |= FrameTypeFlags::HEADER;      break;
-            case SwFrameType::Footer:    nReturn |= FrameTypeFlags::FOOTER;      break;
+                nReturn |= FrameTypeFlags::PAGE;
+                if( static_cast<const SwPageFrame*>(pFrame)->IsFootnotePage() )
+                    nReturn |= FrameTypeFlags::FTNPAGE;
+                break;
+            case SwFrameType::Header:
+                nReturn |= FrameTypeFlags::HEADER;
+                break;
+            case SwFrameType::Footer:
+                nReturn |= FrameTypeFlags::FOOTER;
+                break;
             case SwFrameType::Body:
-                                if( pFrame->GetUpper()->IsPageFrame() ) // not for ColumnFrames
-                                    nReturn |= FrameTypeFlags::BODY;
-                                break;
-            case SwFrameType::Ftn:       nReturn |= FrameTypeFlags::FOOTNOTE;    break;
+                if( pFrame->GetUpper()->IsPageFrame() ) // not for ColumnFrames
+                    nReturn |= FrameTypeFlags::BODY;
+                break;
+            case SwFrameType::Footnote:
+                nReturn |= FrameTypeFlags::FOOTNOTE;
+                break;
             case SwFrameType::Fly:
-                                if( static_cast<const SwFlyFrame*>(pFrame)->IsFlyLayFrame() )
-                                    nReturn |= FrameTypeFlags::FLY_FREE;
-                                else if ( static_cast<const SwFlyFrame*>(pFrame)->IsFlyAtContentFrame() )
-                                    nReturn |= FrameTypeFlags::FLY_ATCNT;
-                                else
-                                {
-                                    OSL_ENSURE( static_cast<const SwFlyFrame*>(pFrame)->IsFlyInContentFrame(),
-                                            "New frametype?" );
-                                    nReturn |= FrameTypeFlags::FLY_INCNT;
-                                }
-                                nReturn |= FrameTypeFlags::FLY_ANY;
-                                if( bStopAtFly )
-                                    return nReturn;
-                                break;
+                if( static_cast<const SwFlyFrame*>(pFrame)->IsFlyLayFrame() )
+                    nReturn |= FrameTypeFlags::FLY_FREE;
+                else if ( static_cast<const SwFlyFrame*>(pFrame)->IsFlyAtContentFrame() )
+                    nReturn |= FrameTypeFlags::FLY_ATCNT;
+                else
+                {
+                    OSL_ENSURE( static_cast<const SwFlyFrame*>(pFrame)->IsFlyInContentFrame(),
+                            "New frametype?" );
+                    nReturn |= FrameTypeFlags::FLY_INCNT;
+                }
+                nReturn |= FrameTypeFlags::FLY_ANY;
+                if( bStopAtFly )
+                    return nReturn;
+                break;
             case SwFrameType::Tab:
             case SwFrameType::Row:
-            case SwFrameType::Cell:      nReturn |= FrameTypeFlags::TABLE;       break;
-            default:            /* do nothing */                break;
+            case SwFrameType::Cell:
+                nReturn |= FrameTypeFlags::TABLE;
+                break;
+            default:
+                /* do nothing */
+                break;
         }
         if ( pFrame->IsFlyFrame() )
             pFrame = static_cast<const SwFlyFrame*>(pFrame)->GetAnchorFrame();
@@ -316,7 +324,7 @@ void SwFEShell::ShellGetFocus()
     {
         if (!comphelper::LibreOfficeKit::isActive())
             Imp()->GetDrawView()->showMarkHandles();
-        if ( Imp()->GetDrawView()->AreObjectsMarked() )
+        if ( Imp()->GetDrawView()->GetMarkedObjectList().GetMarkCount() != 0 )
             FrameNotify( this, FLY_DRAG_START );
     }
 }
@@ -325,7 +333,7 @@ void SwFEShell::ShellLoseFocus()
 {
     SwCursorShell::ShellLoseFocus();
 
-    if ( HasDrawView() && Imp()->GetDrawView()->AreObjectsMarked() )
+    if ( HasDrawView() && Imp()->GetDrawView()->GetMarkedObjectList().GetMarkCount() != 0 )
     {
         if (!comphelper::LibreOfficeKit::isActive())
             Imp()->GetDrawView()->hideMarkHandles();
@@ -422,7 +430,7 @@ sal_uInt16 SwFEShell::GetPageOffset() const
 void SwFEShell::InsertLabel( const SwLabelType eType, const OUString &rText, const OUString& rSeparator,
                              const OUString& rNumberSeparator,
                              const bool bBefore, const sal_uInt16 nId,
-                             const OUString& rCharacterStyle,
+                             const UIName& rCharacterStyle,
                              const bool bCpyBrd )
 {
     // get node index of cursor position, SwDoc can do everything else itself
@@ -464,12 +472,12 @@ void SwFEShell::InsertLabel( const SwLabelType eType, const OUString &rText, con
                 // This table is in a split fly, but we will insert a label, which means this is not
                 // a floating table anymore, disable the "can split" bit, it'll be hidden on the UI
                 // anyway.
-                SwFrameFormat& rFlyFormat = pFly->GetFrameFormat();
+                SwFrameFormat* pFormat = pFly->GetFrameFormat();
                 SfxItemSetFixed<RES_FLY_SPLIT, RES_FLY_SPLIT> aSet(GetDoc()->GetAttrPool());
                 SwFormatFlySplit aSplit(false);
                 aSet.Put(aSplit);
                 // SwUndoFormatAttr is created for us.
-                GetDoc()->SetFlyFrameAttr(rFlyFormat, aSet);
+                GetDoc()->SetFlyFrameAttr(*pFormat, aSet);
             }
         }
         break;
@@ -494,6 +502,7 @@ void SwFEShell::InsertLabel( const SwLabelType eType, const OUString &rText, con
             while ( !aDrawObjs.empty() )
             {
                 SdrObject* pDrawObj = aDrawObjs.back();
+                assert(pDrawObj);
                 if ( dynamic_cast<const SwVirtFlyDrawObj*>( pDrawObj) ==  nullptr &&
                      dynamic_cast<const SwFlyDrawObj*>( pDrawObj) ==  nullptr )
                 {
@@ -1104,12 +1113,10 @@ void SwFEShell::CalcBoundRect( SwRect& _orRect,
                 }
             }
             // only use 90% of height for character bound
-            {
-                if( aRectFnSet.IsVert() || aRectFnSet.IsVertL2R() )
-                    _orRect.Width( (_orRect.Width()*9)/10 );
-                else
-                    _orRect.Height( (_orRect.Height()*9)/10 );
-            }
+            if( aRectFnSet.IsVert() || aRectFnSet.IsVertL2R() )
+                _orRect.Width( (_orRect.Width()*9)/10 );
+            else
+                _orRect.Height( (_orRect.Height()*9)/10 );
         }
 
         const SwTwips nBaseOfstForFly = ( pFrame->IsTextFrame() && pFly ) ?
@@ -1335,7 +1342,7 @@ void SwFEShell::MoveObjectIfActive( svt::EmbeddedObjectRef&, const Point& )
 void SwFEShell::ToggleHeaderFooterEdit()
 {
     // Clear objects selection
-    if ( Imp()->GetDrawView()->AreObjectsMarked() )
+    if ( Imp()->GetDrawView()->GetMarkedObjectList().GetMarkCount() != 0 )
     {
         Imp()->GetDrawView()->UnmarkAll();
         ClearMark();

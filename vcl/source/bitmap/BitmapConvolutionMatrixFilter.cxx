@@ -10,132 +10,134 @@
 
 #include <tools/helpers.hxx>
 
-#include <vcl/bitmap.hxx>
-#include <vcl/bitmapex.hxx>
-#include <vcl/BitmapConvolutionMatrixFilter.hxx>
-#include <vcl/BitmapSharpenFilter.hxx>
+#include <vcl/bitmap/BitmapConvolutionMatrixFilter.hxx>
+#include <vcl/bitmap/BitmapSharpenFilter.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
 
 #include <array>
 
-BitmapEx BitmapConvolutionMatrixFilter::execute(BitmapEx const& rBitmapEx) const
+Bitmap BitmapConvolutionMatrixFilter::execute(Bitmap const& rBitmap) const
 {
-    Bitmap aBitmap(rBitmapEx.GetBitmap());
+    Bitmap aBitmap(rBitmap);
 
-    const sal_Int32 nDivisor = 8;
     BitmapScopedReadAccess pReadAcc(aBitmap);
     if (!pReadAcc)
-        return BitmapEx();
+        return Bitmap();
 
     Bitmap aNewBmp(aBitmap.GetSizePixel(), vcl::PixelFormat::N24_BPP);
     BitmapScopedWriteAccess pWriteAcc(aNewBmp);
     if (!pWriteAcc)
-        return BitmapEx();
+        return Bitmap();
 
-    const sal_Int32 nWidth = pWriteAcc->Width(), nWidth2 = nWidth + 2;
-    const sal_Int32 nHeight = pWriteAcc->Height(), nHeight2 = nHeight + 2;
+    std::array<std::array<sal_Int32, 256>, 9> aCoeff;
+
+    // create LUT of products of matrix value and possible color component values
+    for (sal_Int32 nY = 0; nY < 9; nY++)
+    {
+        for (sal_Int32 nX = 0, nTmp = 0, nMatrixVal = mrMatrix[nY]; nX < 256;
+             nX++, nTmp += nMatrixVal)
+        {
+            aCoeff[nY][nX] = nTmp;
+        }
+    }
+
+    const sal_Int32 nWidth = pWriteAcc->Width();
+    const sal_Int32 nWidth2 = nWidth + 2;
     std::unique_ptr<sal_Int32[]> pColm(new sal_Int32[nWidth2]);
+
+    // create column LUT
+    for (sal_Int32 nColIdx = 0; nColIdx < nWidth2; nColIdx++)
+    {
+        pColm[nColIdx] = (nColIdx > 0) ? (nColIdx - 1) : 0;
+    }
+
+    pColm[nWidth + 1] = pColm[nWidth];
+
+    const sal_Int32 nHeight = pWriteAcc->Height();
+    const sal_Int32 nHeight2 = nHeight + 2;
     std::unique_ptr<sal_Int32[]> pRows(new sal_Int32[nHeight2]);
+
+    // create row LUT
+    for (sal_Int32 nRowIdx = 0; nRowIdx < nHeight2; nRowIdx++)
+    {
+        pRows[nRowIdx] = (nRowIdx > 0) ? (nRowIdx - 1) : 0;
+    }
+
+    pRows[nHeight + 1] = pRows[nHeight];
+
     std::unique_ptr<BitmapColor[]> pColRow1(new BitmapColor[nWidth2]);
     std::unique_ptr<BitmapColor[]> pColRow2(new BitmapColor[nWidth2]);
     std::unique_ptr<BitmapColor[]> pColRow3(new BitmapColor[nWidth2]);
     BitmapColor* pRowTmp1 = pColRow1.get();
     BitmapColor* pRowTmp2 = pColRow2.get();
     BitmapColor* pRowTmp3 = pColRow3.get();
-    BitmapColor* pColor;
-    sal_Int32 nY, nX, i, nSumR, nSumG, nSumB, nMatrixVal, nTmp;
-    std::array<std::array<sal_Int32, 256>, 9> aKoeff;
-    sal_Int32* pTmp;
-
-    // create LUT of products of matrix value and possible color component values
-    for (nY = 0; nY < 9; nY++)
-    {
-        for (nX = nTmp = 0, nMatrixVal = mrMatrix[nY]; nX < 256; nX++, nTmp += nMatrixVal)
-        {
-            aKoeff[nY][nX] = nTmp;
-        }
-    }
-
-    // create column LUT
-    for (i = 0; i < nWidth2; i++)
-    {
-        pColm[i] = (i > 0) ? (i - 1) : 0;
-    }
-
-    pColm[nWidth + 1] = pColm[nWidth];
-
-    // create row LUT
-    for (i = 0; i < nHeight2; i++)
-    {
-        pRows[i] = (i > 0) ? (i - 1) : 0;
-    }
-
-    pRows[nHeight + 1] = pRows[nHeight];
 
     // read first three rows of bitmap color
-    for (i = 0; i < nWidth2; i++)
+    for (sal_Int32 nRowIdx = 0; nRowIdx < nWidth2; nRowIdx++)
     {
-        pColRow1[i] = pReadAcc->GetColor(pRows[0], pColm[i]);
-        pColRow2[i] = pReadAcc->GetColor(pRows[1], pColm[i]);
-        pColRow3[i] = pReadAcc->GetColor(pRows[2], pColm[i]);
+        pColRow1[nRowIdx] = pReadAcc->GetColor(pRows[0], pColm[nRowIdx]);
+        pColRow2[nRowIdx] = pReadAcc->GetColor(pRows[1], pColm[nRowIdx]);
+        pColRow3[nRowIdx] = pReadAcc->GetColor(pRows[2], pColm[nRowIdx]);
     }
 
     // do convolution
-    for (nY = 0; nY < nHeight;)
+    for (sal_Int32 nY = 0; nY < nHeight;)
     {
         Scanline pScanline = pWriteAcc->GetScanline(nY);
-        for (nX = 0; nX < nWidth; nX++)
+        for (sal_Int32 nX = 0; nX < nWidth; nX++)
         {
             // first row
-            pTmp = aKoeff[0].data();
-            pColor = pRowTmp1 + nX;
-            nSumR = pTmp[pColor->GetRed()];
-            nSumG = pTmp[pColor->GetGreen()];
-            nSumB = pTmp[pColor->GetBlue()];
+            sal_Int32* pTmp = aCoeff[0].data();
+            BitmapColor* pColor = pRowTmp1 + nX;
+            sal_Int32 nSumR = pTmp[pColor->GetRed()];
+            sal_Int32 nSumG = pTmp[pColor->GetGreen()];
+            sal_Int32 nSumB = pTmp[pColor->GetBlue()];
 
-            pTmp = aKoeff[1].data();
+            pTmp = aCoeff[1].data();
             nSumR += pTmp[(++pColor)->GetRed()];
             nSumG += pTmp[pColor->GetGreen()];
             nSumB += pTmp[pColor->GetBlue()];
 
-            pTmp = aKoeff[2].data();
+            pTmp = aCoeff[2].data();
             nSumR += pTmp[(++pColor)->GetRed()];
             nSumG += pTmp[pColor->GetGreen()];
             nSumB += pTmp[pColor->GetBlue()];
 
             // second row
-            pTmp = aKoeff[3].data();
+            pTmp = aCoeff[3].data();
             pColor = pRowTmp2 + nX;
             nSumR += pTmp[pColor->GetRed()];
             nSumG += pTmp[pColor->GetGreen()];
             nSumB += pTmp[pColor->GetBlue()];
 
-            pTmp = aKoeff[4].data();
+            pTmp = aCoeff[4].data();
             nSumR += pTmp[(++pColor)->GetRed()];
             nSumG += pTmp[pColor->GetGreen()];
             nSumB += pTmp[pColor->GetBlue()];
 
-            pTmp = aKoeff[5].data();
+            pTmp = aCoeff[5].data();
             nSumR += pTmp[(++pColor)->GetRed()];
             nSumG += pTmp[pColor->GetGreen()];
             nSumB += pTmp[pColor->GetBlue()];
 
             // third row
-            pTmp = aKoeff[6].data();
+            pTmp = aCoeff[6].data();
             pColor = pRowTmp3 + nX;
             nSumR += pTmp[pColor->GetRed()];
             nSumG += pTmp[pColor->GetGreen()];
             nSumB += pTmp[pColor->GetBlue()];
 
-            pTmp = aKoeff[7].data();
+            pTmp = aCoeff[7].data();
             nSumR += pTmp[(++pColor)->GetRed()];
             nSumG += pTmp[pColor->GetGreen()];
             nSumB += pTmp[pColor->GetBlue()];
 
-            pTmp = aKoeff[8].data();
+            pTmp = aCoeff[8].data();
             nSumR += pTmp[(++pColor)->GetRed()];
             nSumG += pTmp[pColor->GetGreen()];
             nSumB += pTmp[pColor->GetBlue()];
+
+            const sal_Int32 nDivisor = 8;
 
             // calculate destination color
             pWriteAcc->SetPixelOnData(
@@ -169,7 +171,7 @@ BitmapEx BitmapConvolutionMatrixFilter::execute(BitmapEx const& rBitmapEx) const
                 pRowTmp3 = pColRow3.get();
             }
 
-            for (i = 0; i < nWidth2; i++)
+            for (sal_Int32 i = 0; i < nWidth2; i++)
             {
                 pRowTmp3[i] = pReadAcc->GetColor(pRows[nY + 2], pColm[i]);
             }
@@ -182,12 +184,12 @@ BitmapEx BitmapConvolutionMatrixFilter::execute(BitmapEx const& rBitmapEx) const
     const MapMode aMap(aBitmap.GetPrefMapMode());
     const Size aPrefSize(aBitmap.GetPrefSize());
 
-    aBitmap = aNewBmp;
+    aBitmap = std::move(aNewBmp);
 
     aBitmap.SetPrefMapMode(aMap);
     aBitmap.SetPrefSize(aPrefSize);
 
-    return BitmapEx(aBitmap);
+    return aBitmap;
 }
 
 const sal_Int32 g_SharpenMatrix[] = { -1, -1, -1, -1, 16, -1, -1, -1, -1 };

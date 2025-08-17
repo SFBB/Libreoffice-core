@@ -47,7 +47,7 @@ SidebarDockingWindow::SidebarDockingWindow(SfxBindings* pSfxBindings, SidebarChi
     // Get the XFrame from the bindings.
     if (pSfxBindings==nullptr || pSfxBindings->GetDispatcher()==nullptr)
     {
-        OSL_ASSERT(pSfxBindings!=nullptr);
+        assert(pSfxBindings != nullptr);
         OSL_ASSERT(pSfxBindings->GetDispatcher()!=nullptr);
     }
     else if (!comphelper::LibreOfficeKit::isActive())
@@ -74,8 +74,7 @@ SidebarDockingWindow::~SidebarDockingWindow()
 
 void SidebarDockingWindow::dispose()
 {
-    Reference<lang::XComponent> xComponent(mpSidebarController);
-    mpSidebarController.clear();
+    rtl::Reference<SidebarController> xComponent = std::move(mpSidebarController);
     if (xComponent.is())
         xComponent->dispose();
 
@@ -136,75 +135,78 @@ SfxChildAlignment SidebarDockingWindow::CheckAlignment (
 
 bool SidebarDockingWindow::EventNotify(NotifyEvent& rEvent)
 {
-    NotifyEventType nType = rEvent.GetType();
-    if (NotifyEventType::KEYINPUT == nType)
+    if (mpSidebarController)
     {
-        const vcl::KeyCode& rKeyCode = rEvent.GetKeyEvent()->GetKeyCode();
-        switch (rKeyCode.GetCode())
+        NotifyEventType nType = rEvent.GetType();
+        if (NotifyEventType::KEYINPUT == nType)
         {
-            case KEY_UP:
-            case KEY_DOWN:
-            case KEY_PAGEUP:
-            case KEY_PAGEDOWN:
-            case KEY_HOME:
-            case KEY_END:
-            case KEY_LEFT:
-            case KEY_RIGHT:
-            case KEY_BACKSPACE:
-            case KEY_DELETE:
-            case KEY_INSERT:
-            case KEY_RETURN:
-            case KEY_ESCAPE:
+            const vcl::KeyCode& rKeyCode = rEvent.GetKeyEvent()->GetKeyCode();
+            switch (rKeyCode.GetCode())
             {
+                case KEY_UP:
+                case KEY_DOWN:
+                case KEY_PAGEUP:
+                case KEY_PAGEDOWN:
+                case KEY_HOME:
+                case KEY_END:
+                case KEY_LEFT:
+                case KEY_RIGHT:
+                case KEY_BACKSPACE:
+                case KEY_DELETE:
+                case KEY_INSERT:
+                case KEY_RETURN:
+                case KEY_ESCAPE:
+                {
+                    return true;
+                }
+                default:
+                break;
+            }
+            if (!mpAccel)
+            {
+                mpAccel = svt::AcceleratorExecute::createAcceleratorHelper();
+                mpAccel->init(comphelper::getProcessComponentContext(), mpSidebarController->getXFrame());
+            }
+            const OUString aCommand(mpAccel->findCommand(svt::AcceleratorExecute::st_VCLKey2AWTKey(rKeyCode)));
+            if (".uno:DesignerDialog" == aCommand)
+            {
+                std::shared_ptr<PanelDescriptor> xPanelDescriptor =
+                        mpSidebarController->GetResourceManager()->GetPanelDescriptor( u"StyleListPanel" );
+                if ( xPanelDescriptor && mpSidebarController->IsDeckVisible( xPanelDescriptor->msDeckId ) )
+                    Close();
                 return true;
             }
-            default:
-            break;
-        }
-        if (!mpAccel)
-        {
-            mpAccel = svt::AcceleratorExecute::createAcceleratorHelper();
-            mpAccel->init(comphelper::getProcessComponentContext(), mpSidebarController->getXFrame());
-        }
-        const OUString aCommand(mpAccel->findCommand(svt::AcceleratorExecute::st_VCLKey2AWTKey(rKeyCode)));
-        if (".uno:DesignerDialog" == aCommand)
-        {
-            std::shared_ptr<PanelDescriptor> xPanelDescriptor =
-                    mpSidebarController->GetResourceManager()->GetPanelDescriptor( u"StyleListPanel" );
-            if ( xPanelDescriptor && mpSidebarController->IsDeckVisible( xPanelDescriptor->msDeckId ) )
-                Close();
-            return true;
-        }
-        if (".uno:Undo" == aCommand || ".uno:Redo" == aCommand)
-        {
-            comphelper::dispatchCommand(aCommand, {});
-            return true;
-        }
-    }
-    else if (NotifyEventType::MOUSEBUTTONDOWN == nType)
-    {
-        const MouseEvent *mEvt = rEvent.GetMouseEvent();
-        if (mEvt->IsLeft())
-        {
-            tools::Rectangle aGrip = mpSidebarController->GetDeckDragArea();
-            if ( aGrip.Contains( mEvt->GetPosPixel() ) )
-                mbIsReadyToDrag = true;
-        }
-    }
-    else if (NotifyEventType::MOUSEMOVE == nType)
-    {
-        const MouseEvent *mEvt = rEvent.GetMouseEvent();
-        tools::Rectangle aGrip = mpSidebarController->GetDeckDragArea();
-        if (mEvt->IsLeft() && aGrip.Contains( mEvt->GetPosPixel() ) && mbIsReadyToDrag )
-        {
-            Point aPos = mEvt->GetPosPixel();
-            vcl::Window* pWindow = rEvent.GetWindow();
-            if ( pWindow != this )
+            if (".uno:Undo" == aCommand || ".uno:Redo" == aCommand)
             {
-                aPos = pWindow->OutputToScreenPixel( aPos );
-                aPos = ScreenToOutputPixel( aPos );
+                comphelper::dispatchCommand(aCommand, {});
+                return true;
             }
-            ImplStartDocking( aPos );
+        }
+        else if (NotifyEventType::MOUSEBUTTONDOWN == nType)
+        {
+            const MouseEvent *mEvt = rEvent.GetMouseEvent();
+            if (mEvt->IsLeft())
+            {
+                tools::Rectangle aGrip = mpSidebarController->GetDeckDragArea();
+                if ( aGrip.Contains( mEvt->GetPosPixel() ) )
+                    mbIsReadyToDrag = true;
+            }
+        }
+        else if (NotifyEventType::MOUSEMOVE == nType)
+        {
+            const MouseEvent *mEvt = rEvent.GetMouseEvent();
+            tools::Rectangle aGrip = mpSidebarController->GetDeckDragArea();
+            if (mEvt->IsLeft() && aGrip.Contains( mEvt->GetPosPixel() ) && mbIsReadyToDrag )
+            {
+                Point aPos = mEvt->GetPosPixel();
+                vcl::Window* pWindow = rEvent.GetWindow();
+                if ( pWindow != this )
+                {
+                    aPos = pWindow->OutputToScreenPixel( aPos );
+                    aPos = ScreenToOutputPixel( aPos );
+                }
+                ImplStartDocking( aPos );
+            }
         }
     }
 

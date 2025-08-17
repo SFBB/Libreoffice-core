@@ -42,7 +42,7 @@
 #include <vcl/stdtext.hxx>
 #include <vcl/weld.hxx>
 
-#include <memory>
+#include <comphelper/sequence.hxx>
 
 namespace basctl
 {
@@ -82,11 +82,18 @@ const tools::Long WIN_BORDER = 2;
 
 } // namespace
 
+static Reference<XModel> lclGetModel()
+{
+    if (SfxViewShell* pCurrent = SfxViewShell::Current())
+        return pCurrent->GetCurrentDocument();
+    return Reference<XModel>();
+}
+
 PropBrw::PropBrw (DialogWindowLayout& rLayout_):
     DockingWindow(&rLayout_),
     m_xContentArea(VclPtr<VclVBox>::Create(this)),
     m_bInitialStateChange(true),
-    m_xContextDocument(SfxViewShell::Current() ? SfxViewShell::Current()->GetCurrentDocument() : Reference<XModel>()),
+    m_xContextDocument(lclGetModel()),
     pView(nullptr)
 {
     Size aPropWinSize(STD_WIN_SIZE_X,STD_WIN_SIZE_Y);
@@ -105,7 +112,7 @@ PropBrw::PropBrw (DialogWindowLayout& rLayout_):
         // create a frame wrapper for myself
         m_xMeAsFrame = frame::Frame::create( comphelper::getProcessComponentContext() );
         m_xMeAsFrame->initialize(VCLUnoHelper::GetInterface(m_xContentArea));
-        m_xMeAsFrame->setName( "form property browser" );  // change name!
+        m_xMeAsFrame->setName( u"form property browser"_ustr );  // change name!
     }
     catch (const Exception&)
     {
@@ -128,13 +135,13 @@ void PropBrw::ImplReCreateController()
 
     try
     {
-        Reference< XComponentContext > xOwnContext = comphelper::getProcessComponentContext();
+        const Reference< XComponentContext >& xOwnContext = comphelper::getProcessComponentContext();
 
         // a ComponentContext for the
         ::cppu::ContextEntry_Init aHandlerContextInfo[] =
         {
-            ::cppu::ContextEntry_Init( "DialogParentWindow", Any(VCLUnoHelper::GetInterface(this))),
-            ::cppu::ContextEntry_Init( "ContextDocument", Any( m_xContextDocument ) )
+            ::cppu::ContextEntry_Init( u"DialogParentWindow"_ustr, Any(VCLUnoHelper::GetInterface(this))),
+            ::cppu::ContextEntry_Init( u"ContextDocument"_ustr, Any( m_xContextDocument ) )
         };
         Reference< XComponentContext > xInspectorContext(
             ::cppu::createComponentContext( aHandlerContextInfo, std::size( aHandlerContextInfo ), xOwnContext ) );
@@ -234,13 +241,13 @@ bool PropBrw::Close()
 Sequence< Reference< XInterface > >
     PropBrw::CreateMultiSelectionSequence( const SdrMarkList& _rMarkList )
 {
-    Sequence< Reference< XInterface > > aSeq;
     InterfaceArray aInterfaces;
 
     const size_t nMarkCount = _rMarkList.GetMarkCount();
     for( size_t i = 0 ; i < nMarkCount ; ++i )
     {
         SdrObject* pCurrent = _rMarkList.GetMark(i)->GetMarkedSdrObj();
+        assert(pCurrent && "GetMarkedSdrObj will succeed");
 
         std::optional<SdrObjListIter> oGroupIterator;
         if (pCurrent->IsGroupObject())
@@ -263,13 +270,7 @@ Sequence< Reference< XInterface > >
         }
     }
 
-    sal_Int32 nCount = aInterfaces.size();
-    aSeq.realloc( nCount );
-    Reference< XInterface >* pInterfaces = aSeq.getArray();
-    for( sal_Int32 i = 0 ; i < nCount ; i++ )
-        pInterfaces[i] = aInterfaces[i];
-
-    return aSeq;
+    return comphelper::containerToSequence(aInterfaces);
 }
 
 
@@ -292,7 +293,7 @@ void PropBrw::implSetNewObject( const Reference< XPropertySet >& _rxObject )
 {
     if ( m_xBrowserController.is() )
     {
-        m_xBrowserController->setPropertyValue( "IntrospectedObject",
+        m_xBrowserController->setPropertyValue( u"IntrospectedObject"_ustr,
             Any( _rxObject )
         );
 
@@ -312,95 +313,95 @@ OUString PropBrw::GetHeadlineName( const Reference< XPropertySet >& _rxObject )
         OUString sResId;
         aName = IDEResId(RID_STR_BRWTITLE_PROPERTIES);
 
-        if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlDialogModel" ) )
+        if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlDialogModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_DIALOG;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlButtonModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlButtonModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_BUTTON;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlRadioButtonModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlRadioButtonModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_RADIOBUTTON;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlCheckBoxModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlCheckBoxModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_CHECKBOX;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlListBoxModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlListBoxModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_LISTBOX;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlComboBoxModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlComboBoxModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_COMBOBOX;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlGroupBoxModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlGroupBoxModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_GROUPBOX;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlEditModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlEditModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_EDIT;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlFixedTextModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlFixedTextModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_FIXEDTEXT;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlImageControlModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlImageControlModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_IMAGECONTROL;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlProgressBarModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlProgressBarModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_PROGRESSBAR;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlScrollBarModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlScrollBarModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_SCROLLBAR;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlFixedLineModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlFixedLineModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_FIXEDLINE;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlDateFieldModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlDateFieldModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_DATEFIELD;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlTimeFieldModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlTimeFieldModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_TIMEFIELD;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlNumericFieldModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlNumericFieldModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_NUMERICFIELD;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlCurrencyFieldModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlCurrencyFieldModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_CURRENCYFIELD;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlFormattedFieldModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlFormattedFieldModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_FORMATTEDFIELD;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlPatternFieldModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlPatternFieldModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_PATTERNFIELD;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlFileControlModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlFileControlModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_FILECONTROL;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.tree.TreeControlModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.tree.TreeControlModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_TREECONTROL;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.grid.UnoControlGridModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.grid.UnoControlGridModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_GRIDCONTROL;
         }
-        else if ( xServiceInfo->supportsService( "com.sun.star.awt.UnoControlFixedHyperlinkModel" ) )
+        else if ( xServiceInfo->supportsService( u"com.sun.star.awt.UnoControlFixedHyperlinkModel"_ustr ) )
         {
             sResId = RID_STR_CLASS_HYPERLINKCONTROL;
         }
@@ -435,7 +436,7 @@ void PropBrw::ImplUpdate( const Reference< XModel >& _rxContextDocument, SdrView
 
     if ( xContextDocument != m_xContextDocument )
     {
-        m_xContextDocument = xContextDocument;
+        m_xContextDocument = std::move(xContextDocument);
         ImplReCreateController();
     }
 

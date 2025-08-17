@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_AUTHFLD_HXX
-#define INCLUDED_SW_INC_AUTHFLD_HXX
+#pragma once
 
 #include <sal/config.h>
 
@@ -32,7 +31,6 @@
 #include <vector>
 
 class SwTOXInternational;
-class SwTextAttr;
 class SwForm;
 
 class SwAuthEntry final : public salhelper::SimpleReferenceObject
@@ -239,7 +237,5 @@ inline void SwAuthEntry::SetAuthorField(ToxAuthorityField ePos, const OUString& 
     if(AUTH_FIELD_END > ePos)
         m_aAuthFields[ePos] = rField;
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

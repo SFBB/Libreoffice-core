@@ -38,18 +38,13 @@
 #include <memory>
 #include <vector>
 
-class SfxApplication;
 class SfxProgress;
 class SfxDdeDocTopic_Impl;
-class DdeService;
 class SfxItemPool;
-class SfxFilterMatcher;
-class ISfxTemplateCommon;
 class SfxStatusDispatcher;
 class SfxDdeTriggerTopic_Impl;
 class SfxFrame;
 class SfxViewFrame;
-class SfxInterface;
 class BasicManager;
 class SfxBasicManagerHolder;
 class SfxBasicManagerCreationListener;
@@ -61,7 +56,6 @@ class SfxAppData_Impl
 {
 public:
     IndexBitSet                         aIndexBitSet;           // for counting noname documents
-    OUString                            aLastDir;               // for IO dialog
 
     // DDE stuff
     std::unique_ptr<DdeService>              pDdeService;
@@ -114,6 +108,7 @@ public:
 
     bool                        bDowning:1;   // sal_True on Exit and afterwards
     bool                        bInQuit : 1;
+    bool                        bClosingDocs : 1;
 
                                 SfxAppData_Impl();
                                 ~SfxAppData_Impl();
@@ -128,6 +123,9 @@ public:
         BasicManager is created before the application's BasicManager exists.
     */
     void                        OnApplicationBasicManagerCreated( BasicManager& _rManager );
+
+    void MoveFrameToFirstFrame(SfxViewFrame& rFrame);
+    void MoveShellToFirstShell(SfxViewShell& rShell);
 };
 
 class SfxDdeTriggerTopic_Impl final : public DdeTopic

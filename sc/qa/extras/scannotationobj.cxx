@@ -15,7 +15,6 @@
 #include <test/text/xsimpletext.hxx>
 #include <test/text/xtextrange.hxx>
 
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSheetAnnotationAnchor.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
@@ -81,8 +80,8 @@ public:
 };
 
 ScAnnontationObj::ScAnnontationObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
-    , XServiceInfo("ScAnnotationObj", "com.sun.star.sheet.CellAnnotation")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
+    , XServiceInfo(u"ScAnnotationObj"_ustr, u"com.sun.star.sheet.CellAnnotation"_ustr)
 {
 }
 
@@ -123,7 +122,7 @@ void ScAnnontationObj::setUp()
     UnoApiTest::setUp();
 
     // get the test file
-    loadFromURL(u"ScAnnotationObj.ods");
+    loadFromFile(u"ScAnnotationObj.ods");
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScAnnontationObj);

@@ -83,7 +83,7 @@ namespace comphelper
         static bool         mbSafeModeDirExists;
 
         // internal upper limit (max) of allowed backups
-        static sal_uInt16   mnMaxAllowedBackups;
+        static constexpr sal_uInt16 mnMaxAllowedBackups = 10;
 
         // path to User's configuration directory and derived strings
         static OUString     maInitialBaseURL;
@@ -107,7 +107,6 @@ namespace comphelper
 
         // allow to set static global flag when app had to call _exit()
         static void setExitWasCalled();
-        static bool getExitWasCalled();
 
         // This call initializes the state of the UserDirectory as needed, it may
         // initialize to SafeMode configuration or return from it by moving files

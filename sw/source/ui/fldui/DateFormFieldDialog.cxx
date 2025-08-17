@@ -17,13 +17,14 @@
 
 namespace sw
 {
-DateFormFieldDialog::DateFormFieldDialog(weld::Widget* pParent,
-                                         sw::mark::IDateFieldmark* pDateField, SwDoc& rDoc)
-    : GenericDialogController(pParent, "modules/swriter/ui/dateformfielddialog.ui",
-                              "DateFormFieldDialog")
+DateFormFieldDialog::DateFormFieldDialog(weld::Widget* pParent, sw::mark::DateFieldmark* pDateField,
+                                         SwDoc& rDoc)
+    : GenericDialogController(pParent, u"modules/swriter/ui/dateformfielddialog.ui"_ustr,
+                              u"DateFormFieldDialog"_ustr)
     , m_pDateField(pDateField)
     , m_pNumberFormatter(rDoc.GetNumberFormatter())
-    , m_xFormatLB(new SwNumFormatTreeView(m_xBuilder->weld_tree_view("date_formats_treeview")))
+    , m_xFormatLB(
+          new SwNumFormatTreeView(m_xBuilder->weld_tree_view(u"date_formats_treeview"_ustr)))
 {
     m_xFormatLB->SetFormatType(SvNumFormatType::DATE);
     m_xFormatLB->SetAutomaticLanguage(true);
@@ -41,13 +42,15 @@ DateFormFieldDialog::~DateFormFieldDialog() {}
 
 void DateFormFieldDialog::Apply()
 {
-    if (m_pDateField == nullptr)
+    if (!m_pDateField)
         return;
 
     // Try to find out the current date value and replace the content
     // with the right formatted date string
-    sw::mark::IFieldmark::parameter_map_t* pParameters = m_pDateField->GetParameters();
+    sw::mark::Fieldmark::parameter_map_t* pParameters = m_pDateField->GetParameters();
     const SvNumberformat* pFormat = m_pNumberFormatter->GetEntry(m_xFormatLB->GetFormat());
+    if (!pFormat)
+        return;
 
     // Get date value first
     std::pair<bool, double> aResult = m_pDateField->GetCurrentDate();
@@ -73,7 +76,7 @@ void DateFormFieldDialog::InitControls()
     if (m_pDateField == nullptr)
         return;
 
-    sw::mark::IFieldmark::parameter_map_t* pParameters = m_pDateField->GetParameters();
+    sw::mark::Fieldmark::parameter_map_t* pParameters = m_pDateField->GetParameters();
 
     OUString sFormatString;
     auto pResult = pParameters->find(ODF_FORMDATE_DATEFORMAT);

@@ -21,6 +21,7 @@
 #include <TimerTriggeredControllerLock.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ref.hxx>
+#include <ChartTypeTemplate.hxx>
 
 #include <map>
 #include <memory>
@@ -28,15 +29,10 @@
 
 namespace chart { class ChartModel; }
 namespace com::sun::star::beans { struct PropertyValue; }
-namespace com::sun::star::chart2 { class XChartDocument; }
-namespace com::sun::star::frame { class XModel; }
-namespace com::sun::star::uno { class XComponentContext; }
 namespace com::sun::star::uno { template <class E> class Sequence; }
 
 namespace com::sun::star::chart2 {
-    class XDataSeriesContainer;
     class XDataSeries;
-    class XChartType;
     namespace data {
         class XDataProvider;
         class XLabeledDataSequence;
@@ -46,10 +42,8 @@ namespace com::sun::star::chart2 {
 namespace chart
 {
 class ChartType;
-class ChartTypeTemplate;
 class DataSeries;
 struct InterpretedData;
-class LabeledDataSequence;
 class RangeSelectionHelper;
 
 struct DialogModelTimeBasedInfo

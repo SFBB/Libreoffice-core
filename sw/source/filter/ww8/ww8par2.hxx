@@ -28,8 +28,6 @@
 #include "ww8scan.hxx"
 #include "ww8par.hxx"
 
-class WW8RStyle;
-
 class WW8DupProperties
 {
 public:
@@ -39,7 +37,7 @@ private:
     WW8DupProperties(const WW8DupProperties&) = delete;
     WW8DupProperties& operator=(const WW8DupProperties&) = delete;
     SwWW8FltControlStack* m_pCtrlStck;
-    SfxItemSetFixed<RES_CHRATR_BEGIN, RES_CHRATR_END - 1> m_aChrSet,m_aParSet;
+    SfxItemSet m_aChrSet, m_aParSet;
 };
 
 struct WW8SwFlyPara
@@ -140,7 +138,7 @@ public:
     SprmResult HasParaSprm(sal_uInt16 nId) const;
 };
 
-class WW8FlySet: public SfxItemSetFixed<RES_FRMATR_BEGIN,RES_FRMATR_END-1>
+class WW8FlySet: public SfxItemSet
 {
 private:
     const WW8FlySet& operator=(const WW8FlySet&) = delete;
@@ -229,7 +227,7 @@ class WW8TabDesc
     short m_nBands;
     short m_nMinLeft;
     short m_nMaxRight;
-    short m_nSwWidth;
+    SwTwips m_nSwWidth;
     short m_nPreferredWidth;
     short m_nPercentWidth;
 
@@ -291,7 +289,7 @@ public:
     const WW8_TCell* GetCurrentWWCell() const { return m_pCurrentWWCell; }
     short GetCurrentCol() const { return m_nCurrentCol; }
     // find name of numrule valid for current WW-COL
-    OUString GetNumRuleName() const;
+    const OUString & GetNumRuleName() const;
     void SetNumRuleName( const OUString& rName );
 
     sw::util::RedlineStack* getOldRedlineStack() { return mxOldRedlineStack.get(); }

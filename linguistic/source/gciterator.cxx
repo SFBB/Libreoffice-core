@@ -27,6 +27,7 @@
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/linguistic2/XDictionary.hpp>
 #include <com/sun/star/linguistic2/XSupportedLocales.hpp>
 #include <com/sun/star/linguistic2/XProofreader.hpp>
 #include <com/sun/star/linguistic2/XProofreadingIterator.hpp>
@@ -54,6 +55,7 @@
 #include <comphelper/diagnose_ex.hxx>
 
 #include <map>
+#include <algorithm>
 
 #include <linguistic/misc.hxx>
 
@@ -119,17 +121,10 @@ const sal_Unicode aWhiteSpaces[] =
    const sal_Int32 PROOFINFO_GET_PROOFRESULT = 1;
    const sal_Int32 PROOFINFO_MARK_PARAGRAPH = 2;
 
-const int nWhiteSpaces = SAL_N_ELEMENTS( aWhiteSpaces );
-
 static bool lcl_IsWhiteSpace( sal_Unicode cChar )
 {
-    bool bFound = false;
-    for (int i = 0;  i < nWhiteSpaces && !bFound;  ++i)
-    {
-        if (cChar == aWhiteSpaces[i])
-            bFound = true;
-    }
-    return bFound;
+    return std::any_of(std::begin(aWhiteSpaces), std::end(aWhiteSpaces),
+        [&cChar](const sal_Unicode c) { return c == cChar; });
 }
 
 static sal_Int32 lcl_SkipWhiteSpaces( const OUString &rText, sal_Int32 nStartPos )
@@ -250,7 +245,7 @@ css::uno::Any SAL_CALL LngXStringKeyMap::getValue(const OUString& aKey)
 
 sal_Bool SAL_CALL LngXStringKeyMap::hasValue(const OUString& aKey)
 {
-    return maMap.find(aKey) != maMap.end();
+    return maMap.contains(aKey);
 }
 
 ::sal_Int32 SAL_CALL LngXStringKeyMap::getCount() { return maMap.size(); }
@@ -309,7 +304,20 @@ void GrammarCheckingIterator::TerminateThread()
         osl_joinWithThread(t);
         osl_destroyThread(t);
     }
+    // After m_bEnd was used to flag lcl_workerfunc to quit, now
+    // reset it so lcl_workerfunc could be relaunched later.
+    {
+        ::osl::Guard< ::osl::Mutex > aGuard( MyMutex() );
+        m_bEnd = false;
+    }
 }
+
+bool GrammarCheckingIterator::joinThreads()
+{
+    TerminateThread();
+    return true;
+}
+
 
 sal_Int32 GrammarCheckingIterator::NextDocId()
 {
@@ -327,7 +335,7 @@ OUString GrammarCheckingIterator::GetOrCreateDocId(
     OUString aRes;
     if (xComponent.is())
     {
-        if (m_aDocIdMap.find( xComponent.get() ) != m_aDocIdMap.end())
+        if (m_aDocIdMap.contains( xComponent.get() ))
         {
             // return already existing entry
             aRes = m_aDocIdMap[ xComponent.get() ];
@@ -409,39 +417,54 @@ void GrammarCheckingIterator::ProcessResult(
                 uno::Sequence< text::TextMarkupDescriptor > aDescriptors( nErrors + 1 );
                 text::TextMarkupDescriptor * pDescriptors = aDescriptors.getArray();
 
+                uno::Reference< linguistic2::XDictionary > xIgnoreAll = ::GetIgnoreAllList();
+                sal_Int32 ignoredCount = 0;
+
                 // at pos 0 .. nErrors-1 -> all grammar errors
                 for (const linguistic2::SingleProofreadingError &rError : rRes.aErrors)
                 {
-                    text::TextMarkupDescriptor &rDesc = *pDescriptors++;
+                    OUString word(rRes.aText.subView(rError.nErrorStart, rError.nErrorLength));
+                    bool ignored = xIgnoreAll.is() && xIgnoreAll->getEntry(word).is();
 
-                    rDesc.nType   = rError.nErrorType;
-                    rDesc.nOffset = rError.nErrorStart;
-                    rDesc.nLength = rError.nErrorLength;
-
-                    // the proofreader may return SPELLING but right now our core
-                    // does only handle PROOFREADING if the result is from the proofreader...
-                    // (later on we may wish to color spelling errors found by the proofreader
-                    // differently for example. But no special handling right now.
-                    if (rDesc.nType == text::TextMarkupType::SPELLCHECK)
-                        rDesc.nType = text::TextMarkupType::PROOFREADING;
-
-                    uno::Reference< container::XStringKeyMap > xKeyMap(
-                        new LngXStringKeyMap());
-                    for( const beans::PropertyValue& rProperty : rError.aProperties )
+                    if (!ignored)
                     {
-                        if ( rProperty.Name == "LineColor" )
+                        text::TextMarkupDescriptor &rDesc = *pDescriptors++;
+
+                        rDesc.nType   = rError.nErrorType;
+                        rDesc.nOffset = rError.nErrorStart;
+                        rDesc.nLength = rError.nErrorLength;
+
+                        // the proofreader may return SPELLING but right now our core
+                        // does only handle PROOFREADING if the result is from the proofreader...
+                        // (later on we may wish to color spelling errors found by the proofreader
+                        // differently for example. But no special handling right now.
+                        if (rDesc.nType == text::TextMarkupType::SPELLCHECK)
+                            rDesc.nType = text::TextMarkupType::PROOFREADING;
+
+                        uno::Reference< container::XStringKeyMap > xKeyMap(new LngXStringKeyMap());
+                        for( const beans::PropertyValue& rProperty : rError.aProperties )
                         {
-                            xKeyMap->insertValue(rProperty.Name,
-                                                 rProperty.Value);
-                            rDesc.xMarkupInfoContainer = xKeyMap;
-                        }
-                        else if ( rProperty.Name == "LineType" )
-                        {
-                            xKeyMap->insertValue(rProperty.Name,
-                                                 rProperty.Value);
-                            rDesc.xMarkupInfoContainer = xKeyMap;
+                            if ( rProperty.Name == "LineColor" )
+                            {
+                                xKeyMap->insertValue(rProperty.Name, rProperty.Value);
+                                rDesc.xMarkupInfoContainer = xKeyMap;
+                            }
+                            else if ( rProperty.Name == "LineType" )
+                            {
+                                xKeyMap->insertValue(rProperty.Name, rProperty.Value);
+                                rDesc.xMarkupInfoContainer = xKeyMap;
+                            }
                         }
                     }
+                    else
+                        ignoredCount++;
+                }
+
+                if (ignoredCount != 0)
+                {
+                    aDescriptors.realloc(aDescriptors.getLength() - ignoredCount);
+                    pDescriptors = aDescriptors.getArray();
+                    pDescriptors += aDescriptors.getLength() - 1;
                 }
 
                 // at pos nErrors -> sentence markup
@@ -521,7 +544,7 @@ uno::Reference< linguistic2::XProofreader > GrammarCheckingIterator::GetGrammarC
         m_bGCServicesChecked = true;
     }
 
-    if (const auto& [aSvcImplName, oFallbackBcp47] = getServiceForLocale(rLocale);
+    if (const auto [aSvcImplName, oFallbackBcp47] = getServiceForLocale(rLocale);
         !aSvcImplName.isEmpty()) // matching configured language found?
     {
         if (oFallbackBcp47)
@@ -535,7 +558,7 @@ uno::Reference< linguistic2::XProofreader > GrammarCheckingIterator::GetGrammarC
         {
             try
             {
-                uno::Reference< uno::XComponentContext > xContext( comphelper::getProcessComponentContext() );
+                const uno::Reference< uno::XComponentContext >& xContext( comphelper::getProcessComponentContext() );
                 uno::Reference< linguistic2::XProofreader > xGC(
                         xContext->getServiceManager()->createInstanceWithContext(aSvcImplName, xContext),
                         uno::UNO_QUERY_THROW );
@@ -578,10 +601,10 @@ lcl_makeProperties(uno::Reference<text::XFlatParagraph> const& xFlatPara, sal_In
             xFlatPara, uno::UNO_QUERY_THROW);
     css::uno::Any a (nProofInfo);
     return comphelper::InitPropertySequence({
-        { "FieldPositions", xProps->getPropertyValue("FieldPositions") },
-        { "FootnotePositions", xProps->getPropertyValue("FootnotePositions") },
-        { "SortedTextId", xProps->getPropertyValue("SortedTextId") },
-        { "DocumentElementsCount", xProps->getPropertyValue("DocumentElementsCount") },
+        { "FieldPositions", xProps->getPropertyValue(u"FieldPositions"_ustr) },
+        { "FootnotePositions", xProps->getPropertyValue(u"FootnotePositions"_ustr) },
+        { "SortedTextId", xProps->getPropertyValue(u"SortedTextId"_ustr) },
+        { "DocumentElementsCount", xProps->getPropertyValue(u"DocumentElementsCount"_ustr) },
         { "ProofInfo", a }
     });
 }
@@ -665,7 +688,7 @@ void GrammarCheckingIterator::DequeueAndCheck()
                                     aRes.nBehindEndOfSentencePosition = nSuggestedEnd;
                                 }
 
-                                aRes.xFlatParagraph = xFlatPara;
+                                aRes.xFlatParagraph = std::move(xFlatPara);
                                 aRes.nStartOfSentencePosition = nStartPos;
                             }
                             else
@@ -673,9 +696,9 @@ void GrammarCheckingIterator::DequeueAndCheck()
                                 // no grammar checker -> no error
                                 // but we need to provide the data below in order to continue with the next sentence
                                 aRes.aDocumentIdentifier = aCurDocId;
-                                aRes.xFlatParagraph = xFlatPara;
+                                aRes.xFlatParagraph = std::move(xFlatPara);
                                 aRes.aText = aCurTxt;
-                                aRes.aLocale = aCurLocale;
+                                aRes.aLocale = std::move(aCurLocale);
                                 aRes.nStartOfSentencePosition = nStartPos;
                                 aRes.nBehindEndOfSentencePosition = nSuggestedEnd;
                             }
@@ -771,80 +794,79 @@ linguistic2::ProofreadingResult SAL_CALL GrammarCheckingIterator::checkSentenceA
 {
     // for the context menu...
 
-    linguistic2::ProofreadingResult aRes;
-
     uno::Reference< lang::XComponent > xComponent( xDoc, uno::UNO_QUERY );
-    if (xFlatPara.is() && xComponent.is() &&
-        ( nErrorPosInPara < 0 || nErrorPosInPara < rText.getLength()))
+    const bool bDoCheck = (xFlatPara.is() && xComponent.is() &&
+        ( nErrorPosInPara < 0 || nErrorPosInPara < rText.getLength()));
+
+    if (!bDoCheck)
+        return linguistic2::ProofreadingResult();
+
+    // iterate through paragraph until we find the sentence we are interested in
+    linguistic2::ProofreadingResult aTmpRes;
+    sal_Int32 nStartPos = nStartOfSentencePos >= 0 ? nStartOfSentencePos : 0;
+
+    bool bFound = false;
+    do
     {
-        // iterate through paragraph until we find the sentence we are interested in
-        linguistic2::ProofreadingResult aTmpRes;
-        sal_Int32 nStartPos = nStartOfSentencePos >= 0 ? nStartOfSentencePos : 0;
+        lang::Locale aCurLocale = lcl_GetPrimaryLanguageOfSentence( xFlatPara, nStartPos );
+        sal_Int32 nOldStartOfSentencePos = nStartPos;
+        uno::Reference< linguistic2::XProofreader > xGC;
+        OUString aDocId;
 
-        bool bFound = false;
-        do
+        // ---- THREAD SAFE START ----
         {
-            lang::Locale aCurLocale = lcl_GetPrimaryLanguageOfSentence( xFlatPara, nStartPos );
-            sal_Int32 nOldStartOfSentencePos = nStartPos;
-            uno::Reference< linguistic2::XProofreader > xGC;
-            OUString aDocId;
+            ::osl::Guard< ::osl::Mutex > aGuard( MyMutex() );
+            aDocId = GetOrCreateDocId( xComponent );
+            nSuggestedEndOfSentencePos = GetSuggestedEndOfSentence( rText, nStartPos, aCurLocale );
+            DBG_ASSERT( nSuggestedEndOfSentencePos > nStartPos, "nSuggestedEndOfSentencePos calculation failed?" );
 
-            // ---- THREAD SAFE START ----
-            {
-                ::osl::Guard< ::osl::Mutex > aGuard( MyMutex() );
-                aDocId = GetOrCreateDocId( xComponent );
-                nSuggestedEndOfSentencePos = GetSuggestedEndOfSentence( rText, nStartPos, aCurLocale );
-                DBG_ASSERT( nSuggestedEndOfSentencePos > nStartPos, "nSuggestedEndOfSentencePos calculation failed?" );
-
-                xGC = GetGrammarChecker( aCurLocale );
-            }
-            // ---- THREAD SAFE START ----
-            sal_Int32 nEndPos = -1;
-            if (xGC.is())
-            {
-                uno::Sequence<beans::PropertyValue> const aProps(
-                        lcl_makeProperties(xFlatPara, PROOFINFO_GET_PROOFRESULT));
-                aTmpRes = xGC->doProofreading( aDocId, rText,
-                    aCurLocale, nStartPos, nSuggestedEndOfSentencePos, aProps );
-
-                //!! work-around to prevent looping if the grammar checker
-                //!! failed to properly identify the sentence end
-                if (aTmpRes.nBehindEndOfSentencePosition <= nStartPos)
-                {
-                    SAL_WARN( "linguistic", "!! Grammarchecker failed to provide end of sentence !!" );
-                    aTmpRes.nBehindEndOfSentencePosition = nSuggestedEndOfSentencePos;
-                }
-
-                aTmpRes.xFlatParagraph           = xFlatPara;
-                aTmpRes.nStartOfSentencePosition = nStartPos;
-                nEndPos = aTmpRes.nBehindEndOfSentencePosition;
-
-                if ((nErrorPosInPara< 0 || nStartPos <= nErrorPosInPara) && nErrorPosInPara < nEndPos)
-                    bFound = true;
-            }
-            if (nEndPos == -1) // no result from grammar checker
-                nEndPos = nSuggestedEndOfSentencePos;
-            nStartPos = lcl_SkipWhiteSpaces( rText, nEndPos );
-            aTmpRes.nBehindEndOfSentencePosition = nEndPos;
-            aTmpRes.nStartOfNextSentencePosition = nStartPos;
-            aTmpRes.nBehindEndOfSentencePosition = lcl_BacktraceWhiteSpaces( rText, aTmpRes.nStartOfNextSentencePosition );
-
-            // prevent endless loop by forcefully advancing if needs be...
-            if (nStartPos <= nOldStartOfSentencePos)
-            {
-                SAL_WARN( "linguistic", "end-of-sentence detection failed?" );
-                nStartPos = nOldStartOfSentencePos + 1;
-            }
+            xGC = GetGrammarChecker( aCurLocale );
         }
-        while (!bFound && nStartPos < rText.getLength());
+        // ---- THREAD SAFE START ----
+        sal_Int32 nEndPos = -1;
+        if (xGC.is())
+        {
+            uno::Sequence<beans::PropertyValue> const aProps(
+                    lcl_makeProperties(xFlatPara, PROOFINFO_GET_PROOFRESULT));
+            aTmpRes = xGC->doProofreading( aDocId, rText,
+                aCurLocale, nStartPos, nSuggestedEndOfSentencePos, aProps );
 
-        if (bFound && !xFlatPara->isModified())
-            aRes = aTmpRes;
+            //!! work-around to prevent looping if the grammar checker
+            //!! failed to properly identify the sentence end
+            if (aTmpRes.nBehindEndOfSentencePosition <= nStartPos)
+            {
+                SAL_WARN( "linguistic", "!! Grammarchecker failed to provide end of sentence !!" );
+                aTmpRes.nBehindEndOfSentencePosition = nSuggestedEndOfSentencePos;
+            }
+
+            aTmpRes.xFlatParagraph           = xFlatPara;
+            aTmpRes.nStartOfSentencePosition = nStartPos;
+            nEndPos = aTmpRes.nBehindEndOfSentencePosition;
+
+            if ((nErrorPosInPara< 0 || nStartPos <= nErrorPosInPara) && nErrorPosInPara < nEndPos)
+                bFound = true;
+        }
+        if (nEndPos == -1) // no result from grammar checker
+            nEndPos = nSuggestedEndOfSentencePos;
+        nStartPos = lcl_SkipWhiteSpaces( rText, nEndPos );
+        aTmpRes.nBehindEndOfSentencePosition = nEndPos;
+        aTmpRes.nStartOfNextSentencePosition = nStartPos;
+        aTmpRes.nBehindEndOfSentencePosition = lcl_BacktraceWhiteSpaces( rText, aTmpRes.nStartOfNextSentencePosition );
+
+        // prevent endless loop by forcefully advancing if needs be...
+        if (nStartPos <= nOldStartOfSentencePos)
+        {
+            SAL_WARN( "linguistic", "end-of-sentence detection failed?" );
+            nStartPos = nOldStartOfSentencePos + 1;
+        }
     }
+    while (!bFound && nStartPos < rText.getLength());
 
-    return aRes;
+    if (bFound && !xFlatPara->isModified())
+        return aTmpRes;
+
+    return linguistic2::ProofreadingResult();
 }
-
 
 sal_Int32 GrammarCheckingIterator::GetSuggestedEndOfSentence(
     const OUString &rText,
@@ -855,7 +877,7 @@ sal_Int32 GrammarCheckingIterator::GetSuggestedEndOfSentence(
 
     if (!m_xBreakIterator.is())
     {
-        uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         m_xBreakIterator = i18n::BreakIterator::create(xContext);
     }
     sal_Int32 nTextLen = rText.getLength();
@@ -1067,18 +1089,18 @@ uno::Reference< util::XChangesBatch > const & GrammarCheckingIterator::GetUpdate
         try
         {
             // get configuration provider
-            uno::Reference< uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
+            const uno::Reference< uno::XComponentContext >& xContext = comphelper::getProcessComponentContext();
             uno::Reference< lang::XMultiServiceFactory > xConfigurationProvider =
                     configuration::theDefaultProvider::get( xContext );
 
             // get configuration update access
             beans::PropertyValue aValue;
             aValue.Name  = "nodepath";
-            aValue.Value <<= OUString("org.openoffice.Office.Linguistic/ServiceManager");
+            aValue.Value <<= u"org.openoffice.Office.Linguistic/ServiceManager"_ustr;
             uno::Sequence< uno::Any > aProps{ uno::Any(aValue) };
             m_xUpdateAccess.set(
                     xConfigurationProvider->createInstanceWithArguments(
-                        "com.sun.star.configuration.ConfigurationUpdateAccess", aProps ),
+                        u"com.sun.star.configuration.ConfigurationUpdateAccess"_ustr, aProps ),
                         uno::UNO_QUERY_THROW );
         }
         catch (uno::Exception &)
@@ -1098,7 +1120,7 @@ void GrammarCheckingIterator::GetConfiguredGCSvcs_Impl()
     {
         // get node names (locale iso strings) for configured grammar checkers
         uno::Reference< container::XNameAccess > xNA( GetUpdateAccess(), uno::UNO_QUERY_THROW );
-        xNA.set( xNA->getByName( "GrammarCheckerList" ), uno::UNO_QUERY_THROW );
+        xNA.set( xNA->getByName( u"GrammarCheckerList"_ustr ), uno::UNO_QUERY_THROW );
         const uno::Sequence< OUString > aElementNames( xNA->getElementNames() );
 
         for (const OUString& rElementName : aElementNames)
@@ -1110,8 +1132,7 @@ void GrammarCheckingIterator::GetConfiguredGCSvcs_Impl()
                 if (aImplNames.hasElements())
                 {
                     // only the first entry is used, there should be only one grammar checker per language
-                    const OUString aImplName( aImplNames[0] );
-                    aTmpGCImplNamesByLang[rElementName] = aImplName;
+                    aTmpGCImplNamesByLang[rElementName] = aImplNames[0];
                 }
             }
             else
@@ -1143,13 +1164,13 @@ sal_Bool SAL_CALL GrammarCheckingIterator::supportsService(
 
 OUString SAL_CALL GrammarCheckingIterator::getImplementationName(  )
 {
-    return "com.sun.star.lingu2.ProofreadingIterator";
+    return u"com.sun.star.lingu2.ProofreadingIterator"_ustr;
 }
 
 
 uno::Sequence< OUString > SAL_CALL GrammarCheckingIterator::getSupportedServiceNames(  )
 {
-    return  { "com.sun.star.linguistic2.ProofreadingIterator" };
+    return  { u"com.sun.star.linguistic2.ProofreadingIterator"_ustr };
 }
 
 

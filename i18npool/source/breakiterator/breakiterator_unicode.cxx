@@ -48,7 +48,7 @@ namespace i18npool {
 thread_local static BreakIterator_Unicode::BIMap theBIMap;
 
 BreakIterator_Unicode::BreakIterator_Unicode()
-    : cBreakIterator( "com.sun.star.i18n.BreakIterator_Unicode" )    // implementation name
+    : cBreakIterator( u"com.sun.star.i18n.BreakIterator_Unicode"_ustr )    // implementation name
     , lineRule( "line" )
     , icuBI( nullptr )
 {
@@ -179,8 +179,7 @@ void BreakIterator_Unicode::loadICUBreakIterator(const css::lang::Locale& rLocal
                         rbi.reset();
                     }
                 }
-                //use icu's breakiterator for Thai, Tibetan and Dzongkha
-                else if (rLocale.Language != "th" && rLocale.Language != "lo" && rLocale.Language != "bo" && rLocale.Language != "dz" && rLocale.Language != "km")
+                else
                 {
                     // language;rule (not langtag, unless we'd actually load such)
                     OString aLanguage( LanguageTag( rLocale).getLanguage().toUtf8());
@@ -277,11 +276,11 @@ void BreakIterator_Unicode::loadICUBreakIterator(const css::lang::Locale& rLocal
                     throw uno::RuntimeException("Failed to create ICU BreakIterator: error " + OUString::createFromAscii(u_errorName(status)));
                 }
                 icuBI->mpValue = std::make_shared<BI_ValueData>();
-                icuBI->mpValue->mpBreakIterator = pBI;
+                icuBI->mpValue->mpBreakIterator = std::move(pBI);
                 theBIMap.insert( std::make_pair( aBIMapLocaleTypeKey, icuBI->mpValue));
             } while (false);
         if (!icuBI->mpValue || !icuBI->mpValue->mpBreakIterator) {
-            throw uno::RuntimeException("ICU BreakIterator is not properly initialized");
+            throw uno::RuntimeException(u"ICU BreakIterator is not properly initialized"_ustr);
         }
         icuBI->maBIMapKey = aBIMapGlobalKey;
         if (!bInMap)
@@ -355,7 +354,7 @@ Boundary SAL_CALL BreakIterator_Unicode::nextWord( const OUString& Text, sal_Int
     Boundary rv;
     rv.startPos = icuBI->mpValue->mpBreakIterator->following(nStartPos);
     if( rv.startPos >= Text.getLength() || rv.startPos == icu::BreakIterator::DONE )
-        rv.endPos = result.startPos;
+        rv.endPos = rv.startPos;
     else {
         if ((rWordType == WordType::ANYWORD_IGNOREWHITESPACES
              && u_isUWhiteSpace(Text.iterateCodePoints(&rv.startPos, 0)))
@@ -579,7 +578,7 @@ LineBreakResults SAL_CALL BreakIterator_Unicode::getLineBreak(
 OUString SAL_CALL
 BreakIterator_Unicode::getImplementationName()
 {
-    return OUString::createFromAscii(cBreakIterator);
+    return cBreakIterator;
 }
 
 sal_Bool SAL_CALL
@@ -591,8 +590,7 @@ BreakIterator_Unicode::supportsService(const OUString& rServiceName)
 uno::Sequence< OUString > SAL_CALL
 BreakIterator_Unicode::getSupportedServiceNames()
 {
-    uno::Sequence< OUString > aRet { OUString::createFromAscii(cBreakIterator) };
-    return aRet;
+    return{ cBreakIterator };
 }
 
 }

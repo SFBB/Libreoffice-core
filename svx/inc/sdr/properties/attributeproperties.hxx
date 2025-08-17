@@ -46,7 +46,7 @@ namespace sdr::properties
             virtual void ItemChange(const sal_uInt16 nWhich, const SfxPoolItem* pNewItem = nullptr) override;
 
             // react on ItemSet changes
-            virtual void ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich) override;
+            virtual void ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich, bool bAdjustTextFrameWidthAndHeight = true) override;
 
             // apply the correct SfyStyleSheet from SdrObject's SdrModel
             virtual void applyDefaultStyleSheetFromSdrModel();
@@ -63,14 +63,14 @@ namespace sdr::properties
 
             // Get the local ItemSet. This directly returns the local ItemSet of the object. No
             // merging of ItemSets is done for e.g. Group objects.
-            virtual const SfxItemSet& GetObjectItemSet() const override;
+            virtual const SfxItemSet& GetObjectItemSet() const override final;
 
             // destructor
             virtual ~AttributeProperties() override;
 
             // set a new StyleSheet and broadcast
             virtual void SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast) override;
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight = true) override;
 
             // get the installed StyleSheet
             virtual SfxStyleSheet* GetStyleSheet() const override;

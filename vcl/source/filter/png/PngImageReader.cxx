@@ -10,12 +10,13 @@
 
 #include <vcl/filter/PngImageReader.hxx>
 #include <png.h>
+#include <iostream>
 #include <rtl/crc.h>
 #include <tools/stream.hxx>
 #include <vcl/bitmap.hxx>
 #include <vcl/alpha.hxx>
 #include <vcl/BitmapTools.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <comphelper/scopeguard.hxx>
 #include <osl/endian.h>
 #include <vcl/BitmapWriteAccess.hxx>
@@ -41,14 +42,21 @@ void lclReadStream(png_structp pPng, png_bytep pOutBytes, png_size_t nBytesToRea
     if (nBytesRead != nBytesToRead)
     {
         if (!nBytesRead)
-            png_error(pPng, "Error reading");
+        {
+            png_error(pPng, "Stream read: no data read from the stream.");
+        }
         else
         {
             // Make sure to not reuse old data (could cause infinite loop).
             memset(pOutBytes + nBytesRead, 0, nBytesToRead - nBytesRead);
-            png_warning(pPng, "Short read");
+            png_warning(pPng, "Stream read: read less bytes than asked for.");
         }
     }
+}
+
+void lclError(png_structp /*pPng*/, png_const_charp error_msg)
+{
+    throw std::runtime_error(error_msg);
 }
 
 bool isPng(SvStream& rStream)
@@ -322,10 +330,9 @@ bool fcTLbeforeIDAT(SvStream& rStream)
     return false;
 }
 
-bool reader(SvStream& rStream, Graphic& rGraphic,
+bool reader(SvStream& rStream, ImportOutput& rImportOutput,
             GraphicFilterImportFlags nImportFlags = GraphicFilterImportFlags::NONE,
-            BitmapScopedWriteAccess* pAccess = nullptr,
-            BitmapScopedWriteAccess* pAlphaAccess = nullptr)
+            BitmapScopedWriteAccess* pAccess = nullptr)
 {
     if (!isPng(rStream))
         return false;
@@ -351,195 +358,148 @@ bool reader(SvStream& rStream, Graphic& rGraphic,
     // All variables holding resources need to be declared here in order to be
     // properly cleaned up in case of an error, otherwise libpng's longjmp()
     // jumps over the destructor calls.
-    BitmapEx aBitmapEx;
     Bitmap aBitmap;
-    AlphaMask aBitmapAlpha;
     Size prefSize;
     BitmapScopedWriteAccess pWriteAccessInstance;
-    BitmapScopedWriteAccess pWriteAccessAlphaInstance;
-    const bool bFuzzing = utl::ConfigManager::IsFuzzing();
-    const bool bSupportsBitmap32 = bFuzzing || ImplGetSVData()->mpDefInst->supportsBitmap32();
+    const bool bFuzzing = comphelper::IsFuzzing();
     const bool bOnlyCreateBitmap
         = static_cast<bool>(nImportFlags & GraphicFilterImportFlags::OnlyCreateBitmap);
     const bool bUseExistingBitmap
         = static_cast<bool>(nImportFlags & GraphicFilterImportFlags::UseExistingBitmap);
 
-    if (setjmp(png_jmpbuf(pPng)))
-    {
-        if (!bUseExistingBitmap)
-        {
-            // Set the bitmap if it contains something, even on failure. This allows
-            // reading images that are only partially broken.
-            pWriteAccessInstance.reset();
-            pWriteAccessAlphaInstance.reset();
-            if (!aBitmap.IsEmpty() && !aBitmapAlpha.IsEmpty())
-                aBitmapEx = BitmapEx(aBitmap, aBitmapAlpha);
-            else if (!aBitmap.IsEmpty())
-                aBitmapEx = BitmapEx(aBitmap);
-            if (!aBitmapEx.IsEmpty() && !prefSize.IsEmpty())
-            {
-                aBitmapEx.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
-                aBitmapEx.SetPrefSize(prefSize);
-            }
-            rGraphic = aBitmapEx;
-        }
-        return false;
-    }
-
-    png_set_option(pPng, PNG_MAXIMUM_INFLATE_WINDOW, PNG_OPTION_ON);
-
-    png_set_read_fn(pPng, &rStream, lclReadStream);
-
-    if (!bFuzzing)
-        png_set_crc_action(pPng, PNG_CRC_ERROR_QUIT, PNG_CRC_WARN_DISCARD);
-    else
-        png_set_crc_action(pPng, PNG_CRC_QUIET_USE, PNG_CRC_QUIET_USE);
-
-    png_set_sig_bytes(pPng, PNG_SIGNATURE_SIZE);
-
-    png_read_info(pPng, pInfo);
-
+    int nNumberOfPasses(0);
+    int colorType = -1;
     png_uint_32 width = 0;
     png_uint_32 height = 0;
-    int bitDepth = 0;
-    int colorType = -1;
-    int interlace = -1;
 
-    png_uint_32 returnValue = png_get_IHDR(pPng, pInfo, &width, &height, &bitDepth, &colorType,
-                                           &interlace, nullptr, nullptr);
-
-    if (returnValue != 1)
-        return false;
-
-    if (colorType == PNG_COLOR_TYPE_PALETTE)
-        png_set_palette_to_rgb(pPng);
-
-    if (colorType == PNG_COLOR_TYPE_GRAY)
-        png_set_expand_gray_1_2_4_to_8(pPng);
-
-    if (png_get_valid(pPng, pInfo, PNG_INFO_tRNS))
-        png_set_tRNS_to_alpha(pPng);
-
-    if (bitDepth == 16)
-        png_set_scale_16(pPng);
-
-    if (bitDepth < 8)
-        png_set_packing(pPng);
-
-    // Convert gray+alpha to RGBA, keep gray as gray.
-    if (colorType == PNG_COLOR_TYPE_GRAY_ALPHA
-        || (colorType == PNG_COLOR_TYPE_GRAY && png_get_valid(pPng, pInfo, PNG_INFO_tRNS)))
+    try
     {
-        png_set_gray_to_rgb(pPng);
-    }
+        png_set_option(pPng, PNG_MAXIMUM_INFLATE_WINDOW, PNG_OPTION_ON);
 
-    // Sets the filler byte - if RGB it converts to RGBA
-    // png_set_filler(pPng, 0xFF, PNG_FILLER_AFTER);
+        png_set_read_fn(pPng, &rStream, lclReadStream);
 
-    int nNumberOfPasses = png_set_interlace_handling(pPng);
+        png_set_error_fn(pPng, nullptr, lclError, nullptr);
 
-    png_read_update_info(pPng, pInfo);
-    returnValue = png_get_IHDR(pPng, pInfo, &width, &height, &bitDepth, &colorType, nullptr,
-                               nullptr, nullptr);
+        if (!bFuzzing)
+            png_set_crc_action(pPng, PNG_CRC_ERROR_QUIT, PNG_CRC_WARN_DISCARD);
+        else
+            png_set_crc_action(pPng, PNG_CRC_QUIET_USE, PNG_CRC_QUIET_USE);
 
-    if (returnValue != 1)
-        return false;
+        png_set_sig_bytes(pPng, PNG_SIGNATURE_SIZE);
 
-    if (bitDepth != 8
-        || (colorType != PNG_COLOR_TYPE_RGB && colorType != PNG_COLOR_TYPE_RGB_ALPHA
-            && colorType != PNG_COLOR_TYPE_GRAY))
-    {
-        return false;
-    }
+        png_read_info(pPng, pInfo);
 
-    png_uint_32 res_x = 0;
-    png_uint_32 res_y = 0;
-    int unit_type = 0;
-    if (png_get_pHYs(pPng, pInfo, &res_x, &res_y, &unit_type) != 0
-        && unit_type == PNG_RESOLUTION_METER && res_x && res_y)
-    {
-        // convert into MapUnit::Map100thMM
-        prefSize = Size(static_cast<sal_Int32>((100000.0 * width) / res_x),
-                        static_cast<sal_Int32>((100000.0 * height) / res_y));
-    }
+        int bitDepth = 0;
+        int interlace = -1;
 
-    if (!bUseExistingBitmap)
-    {
-        switch (colorType)
-        {
-            case PNG_COLOR_TYPE_RGB:
-                aBitmap = Bitmap(Size(width, height), vcl::PixelFormat::N24_BPP);
-                break;
-            case PNG_COLOR_TYPE_RGBA:
-                if (bSupportsBitmap32)
-                    aBitmap = Bitmap(Size(width, height), vcl::PixelFormat::N32_BPP);
-                else
-                {
-                    aBitmap = Bitmap(Size(width, height), vcl::PixelFormat::N24_BPP);
-                    aBitmapAlpha = AlphaMask(Size(width, height), nullptr);
-                    aBitmapAlpha.Erase(0); // opaque
-                }
-                break;
-            case PNG_COLOR_TYPE_GRAY:
-                aBitmap = Bitmap(Size(width, height), vcl::PixelFormat::N8_BPP,
-                                 &Bitmap::GetGreyPalette(256));
-                break;
-            default:
-                abort();
-        }
+        png_uint_32 returnValue = png_get_IHDR(pPng, pInfo, &width, &height, &bitDepth, &colorType,
+                                               &interlace, nullptr, nullptr);
 
-        if (bOnlyCreateBitmap)
-        {
-            if (!aBitmapAlpha.IsEmpty())
-                aBitmapEx = BitmapEx(aBitmap, aBitmapAlpha);
-            else
-                aBitmapEx = BitmapEx(aBitmap);
-            if (!prefSize.IsEmpty())
-            {
-                aBitmapEx.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
-                aBitmapEx.SetPrefSize(prefSize);
-            }
-            rGraphic = aBitmapEx;
-            return true;
-        }
-
-        pWriteAccessInstance = aBitmap;
-        if (!pWriteAccessInstance)
+        if (returnValue != 1)
             return false;
-        if (!aBitmapAlpha.IsEmpty())
+
+        if (colorType == PNG_COLOR_TYPE_PALETTE)
+            png_set_palette_to_rgb(pPng);
+
+        if (colorType == PNG_COLOR_TYPE_GRAY)
+            png_set_expand_gray_1_2_4_to_8(pPng);
+
+        if (png_get_valid(pPng, pInfo, PNG_INFO_tRNS))
+            png_set_tRNS_to_alpha(pPng);
+
+        if (bitDepth == 16)
+            png_set_scale_16(pPng);
+
+        if (bitDepth < 8)
+            png_set_packing(pPng);
+
+        // Convert gray+alpha to RGBA, keep gray as gray.
+        if (colorType == PNG_COLOR_TYPE_GRAY_ALPHA
+            || (colorType == PNG_COLOR_TYPE_GRAY && png_get_valid(pPng, pInfo, PNG_INFO_tRNS)))
         {
-            pWriteAccessAlphaInstance = aBitmapAlpha;
-            if (!pWriteAccessAlphaInstance)
+            png_set_gray_to_rgb(pPng);
+        }
+
+        // Sets the filler byte - if RGB it converts to RGBA
+        // png_set_filler(pPng, 0xFF, PNG_FILLER_AFTER);
+
+        nNumberOfPasses = png_set_interlace_handling(pPng);
+
+        png_read_update_info(pPng, pInfo);
+        returnValue = png_get_IHDR(pPng, pInfo, &width, &height, &bitDepth, &colorType, nullptr,
+                                   nullptr, nullptr);
+
+        if (returnValue != 1)
+            return false;
+
+        if (bitDepth != 8
+            || (colorType != PNG_COLOR_TYPE_RGB && colorType != PNG_COLOR_TYPE_RGB_ALPHA
+                && colorType != PNG_COLOR_TYPE_GRAY))
+        {
+            return false;
+        }
+
+        png_uint_32 res_x = 0;
+        png_uint_32 res_y = 0;
+        int unit_type = 0;
+        if (png_get_pHYs(pPng, pInfo, &res_x, &res_y, &unit_type) != 0
+            && unit_type == PNG_RESOLUTION_METER && res_x && res_y)
+        {
+            // convert into MapUnit::Map100thMM
+            prefSize = Size(static_cast<sal_Int32>((100000.0 * width) / res_x),
+                            static_cast<sal_Int32>((100000.0 * height) / res_y));
+        }
+
+        if (!bUseExistingBitmap)
+        {
+            switch (colorType)
+            {
+                case PNG_COLOR_TYPE_RGB:
+                    aBitmap = Bitmap(Size(width, height), vcl::PixelFormat::N24_BPP);
+                    break;
+                case PNG_COLOR_TYPE_RGBA:
+                    aBitmap = Bitmap(Size(width, height), vcl::PixelFormat::N32_BPP);
+                    break;
+                case PNG_COLOR_TYPE_GRAY:
+                    aBitmap = Bitmap(Size(width, height), vcl::PixelFormat::N8_BPP,
+                                     &Bitmap::GetGreyPalette(256));
+                    break;
+                default:
+                    abort();
+            }
+
+            if (bOnlyCreateBitmap)
+            {
+                if (!prefSize.IsEmpty())
+                {
+                    aBitmap.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
+                    aBitmap.SetPrefSize(prefSize);
+                }
+                rImportOutput.moBitmap = aBitmap;
+                return true;
+            }
+
+            pWriteAccessInstance = aBitmap;
+            if (!pWriteAccessInstance)
                 return false;
         }
     }
-    BitmapScopedWriteAccess& pWriteAccess = pAccess ? *pAccess : pWriteAccessInstance;
-    BitmapScopedWriteAccess& pWriteAccessAlpha
-        = pAlphaAccess ? *pAlphaAccess : pWriteAccessAlphaInstance;
-
-    if (colorType == PNG_COLOR_TYPE_RGB)
+    catch (const std::runtime_error& ex)
     {
-        ScanlineFormat eFormat = pWriteAccess->GetScanlineFormat();
-        if (eFormat == ScanlineFormat::N24BitTcBgr)
-            png_set_bgr(pPng);
+        std::cerr << "libpng error: " << ex.what() << std::endl;
 
-        for (int pass = 0; pass < nNumberOfPasses; pass++)
-        {
-            for (png_uint_32 y = 0; y < height; y++)
-            {
-                Scanline pScanline = pWriteAccess->GetScanline(y);
-                png_read_row(pPng, pScanline, nullptr);
-            }
-        }
+        pWriteAccessInstance.reset();
+        return false;
     }
-    else if (colorType == PNG_COLOR_TYPE_RGB_ALPHA)
-    {
-        size_t aRowSizeBytes = png_get_rowbytes(pPng, pInfo);
 
-        if (bSupportsBitmap32)
+    BitmapScopedWriteAccess& pWriteAccess = pAccess ? *pAccess : pWriteAccessInstance;
+
+    try
+    {
+        if (colorType == PNG_COLOR_TYPE_RGB)
         {
             ScanlineFormat eFormat = pWriteAccess->GetScanlineFormat();
-            if (eFormat == ScanlineFormat::N32BitTcAbgr || eFormat == ScanlineFormat::N32BitTcBgra)
+            if (eFormat == ScanlineFormat::N24BitTcBgr)
                 png_set_bgr(pPng);
 
             for (int pass = 0; pass < nNumberOfPasses; pass++)
@@ -550,56 +510,10 @@ bool reader(SvStream& rStream, Graphic& rGraphic,
                     png_read_row(pPng, pScanline, nullptr);
                 }
             }
-#if !ENABLE_WASM_STRIP_PREMULTIPLY
-            const vcl::bitmap::lookup_table& premultiply = vcl::bitmap::get_premultiply_table();
-#endif
-            if (eFormat == ScanlineFormat::N32BitTcAbgr || eFormat == ScanlineFormat::N32BitTcArgb)
-            { // alpha first and premultiply
-                for (png_uint_32 y = 0; y < height; y++)
-                {
-                    Scanline pScanline = pWriteAccess->GetScanline(y);
-                    for (size_t i = 0; i < aRowSizeBytes; i += 4)
-                    {
-                        const sal_uInt8 alpha = pScanline[i + 3];
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                        pScanline[i + 3] = vcl::bitmap::premultiply(alpha, pScanline[i + 2]);
-                        pScanline[i + 2] = vcl::bitmap::premultiply(alpha, pScanline[i + 1]);
-                        pScanline[i + 1] = vcl::bitmap::premultiply(alpha, pScanline[i]);
-#else
-                        pScanline[i + 3] = premultiply[alpha][pScanline[i + 2]];
-                        pScanline[i + 2] = premultiply[alpha][pScanline[i + 1]];
-                        pScanline[i + 1] = premultiply[alpha][pScanline[i]];
-#endif
-                        pScanline[i] = alpha;
-                    }
-                }
-            }
-            else
-            { // keep alpha last, only premultiply
-                for (png_uint_32 y = 0; y < height; y++)
-                {
-                    Scanline pScanline = pWriteAccess->GetScanline(y);
-                    for (size_t i = 0; i < aRowSizeBytes; i += 4)
-                    {
-                        const sal_uInt8 alpha = pScanline[i + 3];
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                        pScanline[i] = vcl::bitmap::premultiply(alpha, pScanline[i]);
-                        pScanline[i + 1] = vcl::bitmap::premultiply(alpha, pScanline[i + 1]);
-                        pScanline[i + 2] = vcl::bitmap::premultiply(alpha, pScanline[i + 2]);
-#else
-                        pScanline[i] = premultiply[alpha][pScanline[i]];
-                        pScanline[i + 1] = premultiply[alpha][pScanline[i + 1]];
-                        pScanline[i + 2] = premultiply[alpha][pScanline[i + 2]];
-#endif
-                    }
-                }
-            }
         }
-        else
+        else if (colorType == PNG_COLOR_TYPE_RGB_ALPHA)
         {
-            ScanlineFormat eFormat = pWriteAccess->GetScanlineFormat();
-            if (eFormat == ScanlineFormat::N24BitTcBgr)
-                png_set_bgr(pPng);
+            size_t aRowSizeBytes = png_get_rowbytes(pPng, pInfo);
 
             if (nNumberOfPasses == 1)
             {
@@ -608,17 +522,12 @@ bool reader(SvStream& rStream, Graphic& rGraphic,
                 for (png_uint_32 y = 0; y < height; y++)
                 {
                     Scanline pScanline = pWriteAccess->GetScanline(y);
-                    Scanline pScanAlpha = pWriteAccessAlpha->GetScanline(y);
                     png_bytep pRow = aRow.data();
                     png_read_row(pPng, pRow, nullptr);
-                    size_t iAlpha = 0;
-                    size_t iColor = 0;
                     for (size_t i = 0; i < aRowSizeBytes; i += 4)
                     {
-                        pScanline[iColor++] = pRow[i + 0];
-                        pScanline[iColor++] = pRow[i + 1];
-                        pScanline[iColor++] = pRow[i + 2];
-                        pScanAlpha[iAlpha++] = pRow[i + 3];
+                        Color aCol(ColorAlpha, pRow[i + 3], pRow[i + 0], pRow[i + 1], pRow[i + 2]);
+                        pWriteAccess->SetPixelOnData(pScanline, i / 4, aCol);
                     }
                 }
             }
@@ -631,50 +540,86 @@ bool reader(SvStream& rStream, Graphic& rGraphic,
                 {
                     for (png_uint_32 y = 0; y < height; y++)
                     {
-                        Scanline pScanline = pWriteAccess->GetScanline(y);
-                        Scanline pScanAlpha = pWriteAccessAlpha->GetScanline(y);
                         png_bytep pRow = aRows[y].data();
                         png_read_row(pPng, pRow, nullptr);
-                        size_t iAlpha = 0;
-                        size_t iColor = 0;
-                        for (size_t i = 0; i < aRowSizeBytes; i += 4)
-                        {
-                            pScanline[iColor++] = pRow[i + 0];
-                            pScanline[iColor++] = pRow[i + 1];
-                            pScanline[iColor++] = pRow[i + 2];
-                            pScanAlpha[iAlpha++] = pRow[i + 3];
-                        }
+                    }
+                }
+                for (png_uint_32 y = 0; y < height; y++)
+                {
+                    Scanline pScanline = pWriteAccess->GetScanline(y);
+                    png_bytep pRow = aRows[y].data();
+                    for (size_t i = 0; i < aRowSizeBytes; i += 4)
+                    {
+                        Color aCol(ColorAlpha, pRow[i + 3], pRow[i + 0], pRow[i + 1], pRow[i + 2]);
+                        pWriteAccess->SetPixelOnData(pScanline, i / 4, aCol);
                     }
                 }
             }
         }
-    }
-    else if (colorType == PNG_COLOR_TYPE_GRAY)
-    {
-        for (int pass = 0; pass < nNumberOfPasses; pass++)
+        else if (colorType == PNG_COLOR_TYPE_GRAY)
         {
-            for (png_uint_32 y = 0; y < height; y++)
+            for (int pass = 0; pass < nNumberOfPasses; pass++)
             {
-                Scanline pScanline = pWriteAccess->GetScanline(y);
-                png_read_row(pPng, pScanline, nullptr);
+                for (png_uint_32 y = 0; y < height; y++)
+                {
+                    Scanline pScanline = pWriteAccess->GetScanline(y);
+                    png_read_row(pPng, pScanline, nullptr);
+                }
             }
         }
+        else
+            assert(false);
     }
+    catch (const std::runtime_error& ex)
+    {
+        std::cerr << "libpng error: " << ex.what() << std::endl;
 
-    png_read_end(pPng, pInfo);
+        pWriteAccessInstance.reset();
+
+        if (!bUseExistingBitmap)
+        {
+            // Set the bitmap if it contains something, even on failure. This allows
+            // reading images that are only partially broken.
+            pWriteAccessInstance.reset();
+            if (!aBitmap.IsEmpty() && !prefSize.IsEmpty())
+            {
+                aBitmap.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
+                aBitmap.SetPrefSize(prefSize);
+            }
+            rImportOutput.moBitmap = aBitmap;
+        }
+        return false;
+    }
+    // If an error is thrown when calling png_read_end
+    try
+    {
+        png_read_end(pPng, pInfo);
+    }
+    catch (const std::runtime_error& ex)
+    {
+        std::cerr << "libpng error: " << ex.what() << std::endl;
+
+        if (!bUseExistingBitmap)
+        {
+            pWriteAccessInstance.reset();
+            if (!aBitmap.IsEmpty() && !prefSize.IsEmpty())
+            {
+                aBitmap.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
+                aBitmap.SetPrefSize(prefSize);
+            }
+            rImportOutput.moBitmap = aBitmap;
+        }
+        // Return true in this case, as we read the bitmap
+        return true;
+    }
 
     if (!bUseExistingBitmap)
     {
         pWriteAccess.reset();
-        pWriteAccessAlpha.reset();
-        if (!aBitmapAlpha.IsEmpty())
-            aBitmapEx = BitmapEx(aBitmap, aBitmapAlpha);
-        else
-            aBitmapEx = BitmapEx(aBitmap);
         if (!prefSize.IsEmpty())
         {
-            aBitmapEx.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
-            aBitmapEx.SetPrefSize(prefSize);
+            aBitmap.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
+            aBitmap.SetPrefSize(prefSize);
         }
     }
 
@@ -704,7 +649,7 @@ bool reader(SvStream& rStream, Graphic& rGraphic,
                 if (aDisposal == Disposal::Previous)
                     aDisposal = Disposal::Back;
                 AnimationFrame aAnimationFrame(
-                    aBitmapEx, aFirstPoint, aCanvasSize,
+                    BitmapEx(aBitmap), aFirstPoint, aCanvasSize,
                     NumDenToTime(aFctlChunk->delay_num, aFctlChunk->delay_den), aDisposal, aBlend);
                 aAnimation.Insert(aAnimationFrame);
             }
@@ -740,25 +685,26 @@ bool reader(SvStream& rStream, Graphic& rGraphic,
             aFrameStream.WriteUInt32(PNG_IEND_SIZE);
             aFrameStream.WriteUInt32(PNG_IEND_SIGNATURE);
             aFrameStream.WriteUInt32(PNG_IEND_CRC);
-            Graphic aFrameGraphic;
+            ImportOutput aFrameImportOutput;
             aFrameStream.Seek(0);
-            bool bSuccess = reader(aFrameStream, aFrameGraphic);
+            bool bSuccess = reader(aFrameStream, aFrameImportOutput);
             if (!bSuccess)
                 return false;
-            BitmapEx aFrameBitmapEx = aFrameGraphic.GetBitmapEx();
+            Bitmap aFrameBitmap = *aFrameImportOutput.moBitmap;
             Point aStartPoint(aFctlChunk->x_offset, aFctlChunk->y_offset);
             Size aSize(aFctlChunk->width, aFctlChunk->height);
             AnimationFrame aAnimationFrame(
-                aFrameBitmapEx, aStartPoint, aSize,
+                BitmapEx(aFrameBitmap), aStartPoint, aSize,
                 NumDenToTime(aFctlChunk->delay_num, aFctlChunk->delay_den), aDisposal, aBlend);
             aAnimation.Insert(aAnimationFrame);
         }
-        rGraphic = aAnimation;
+        rImportOutput.mbIsAnimated = true;
+        rImportOutput.moAnimation = aAnimation;
         return true;
     }
     else
     {
-        rGraphic = aBitmapEx;
+        rImportOutput.moBitmap = aBitmap;
     }
 
     return true;
@@ -772,7 +718,7 @@ BinaryDataContainer getMsGifChunk(SvStream& rStream)
     // try to get it using libpng.
     // https://en.wikipedia.org/wiki/Portable_Network_Graphics#File_format
     // Each chunk is: 4 bytes length, 4 bytes type, <length> bytes, 4 bytes crc
-    bool ignoreCrc = utl::ConfigManager::IsFuzzing();
+    bool ignoreCrc = comphelper::IsFuzzing();
     for (;;)
     {
         sal_uInt32 length(0), type(0), crc(0);
@@ -785,10 +731,7 @@ BinaryDataContainer getMsGifChunk(SvStream& rStream)
         if (type == PNGCHUNK_msOG && length > MSGifHeaderSize)
         {
             // calculate chunktype CRC (swap it back to original byte order)
-            sal_uInt32 typeForCrc = type;
-#if defined(__LITTLEENDIAN) || defined(OSL_LITENDIAN)
-            typeForCrc = OSL_SWAPDWORD(typeForCrc);
-#endif
+            sal_uInt32 typeForCrc = OSL_NETDWORD(type);
             sal_uInt32 computedCrc = rtl_crc32(0, &typeForCrc, 4);
             const sal_uInt64 pos = rStream.Tell();
             if (pos + length >= rStream.TellEnd())
@@ -827,21 +770,28 @@ PngImageReader::PngImageReader(SvStream& rStream)
 {
 }
 
-bool PngImageReader::read(BitmapEx& rBitmapEx)
+bool PngImageReader::read(Bitmap& rBitmap)
 {
-    Graphic aGraphic;
-    bool bRet = reader(mrStream, aGraphic);
-    rBitmapEx = aGraphic.GetBitmapEx();
+    ImportOutput aImportOutput;
+    bool bRet = reader(mrStream, aImportOutput);
+    if (bRet)
+        rBitmap = *aImportOutput.moBitmap;
     return bRet;
 }
 
-bool PngImageReader::read(Graphic& rGraphic) { return reader(mrStream, rGraphic); }
+bool PngImageReader::read(ImportOutput& rImportOutput) { return reader(mrStream, rImportOutput); }
 
-BitmapEx PngImageReader::read()
+Bitmap PngImageReader::read()
 {
-    Graphic aGraphic;
-    read(aGraphic);
-    return aGraphic.GetBitmapEx();
+    ImportOutput aImportOutput;
+    if (read(aImportOutput))
+    {
+        if (!aImportOutput.mbIsAnimated)
+            return *aImportOutput.moBitmap;
+        else
+            return Bitmap(aImportOutput.moAnimation->GetBitmapEx());
+    }
+    return Bitmap();
 }
 
 BinaryDataContainer PngImageReader::getMicrosoftGifChunk(SvStream& rStream)
@@ -855,15 +805,15 @@ BinaryDataContainer PngImageReader::getMicrosoftGifChunk(SvStream& rStream)
     return chunk;
 }
 
-bool ImportPNG(SvStream& rInputStream, Graphic& rGraphic, GraphicFilterImportFlags nImportFlags,
-               BitmapScopedWriteAccess* pAccess, BitmapScopedWriteAccess* pAlphaAccess)
+bool ImportPNG(SvStream& rInputStream, ImportOutput& rImportOutput,
+               GraphicFilterImportFlags nImportFlags, BitmapScopedWriteAccess* pAccess)
 {
     // Creating empty bitmaps should be practically a no-op, and thus thread-safe.
-    Graphic aGraphic;
-    if (reader(rInputStream, aGraphic, nImportFlags, pAccess, pAlphaAccess))
+    ImportOutput aImportOutput;
+    if (reader(rInputStream, aImportOutput, nImportFlags, pAccess))
     {
         if (!(nImportFlags & GraphicFilterImportFlags::UseExistingBitmap))
-            rGraphic = aGraphic;
+            rImportOutput = std::move(aImportOutput);
         return true;
     }
     return false;
@@ -885,9 +835,11 @@ bool PngImageReader::isAPng(SvStream& rStream)
     rStream.ReadUInt32(nChunkType);
     if (!rStream.good() || nChunkType != PNG_IHDR_SIGNATURE)
         return false;
-    rStream.SeekRel(nChunkSize);
+    if (!checkSeek(rStream, rStream.Tell() + nChunkSize))
+        return false;
     // Skip IHDR CRC
-    rStream.SeekRel(PNG_CRC_SIZE);
+    if (!checkSeek(rStream, rStream.Tell() + PNG_CRC_SIZE))
+        return false;
     // Look for acTL chunk that exists before the first IDAT chunk
     while (true)
     {

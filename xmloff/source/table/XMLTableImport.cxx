@@ -29,13 +29,11 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
-#include <com/sun/star/style/XStyle.hpp>
 #include <comphelper/sequence.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
 #include <utility>
 #include <xmloff/table/XMLTableImport.hxx>
-#include <xmloff/xmltypes.hxx>
 #include <xmloff/maptype.hxx>
 #include <xmloff/xmlprmap.hxx>
 #include <xmloff/txtimp.hxx>
@@ -253,16 +251,16 @@ XMLTableImport::XMLTableImport( SvXMLImport& rImport, const rtl::Reference< XMLP
     }
     else
     {
-        mxCellImportPropertySetMapper = new SvXMLImportPropertyMapper( xCellPropertySetMapper, rImport );
+        mxCellImportPropertySetMapper = std::make_unique<SvXMLImportPropertyMapper>( xCellPropertySetMapper, rImport );
         mxCellImportPropertySetMapper->ChainImportMapper(XMLTextImportHelper::CreateParaExtPropMapper(rImport));
-        mxCellImportPropertySetMapper->ChainImportMapper(new XMLCellImportPropertyMapper(new XMLPropertySetMapper(getCellPropertiesMap(), xFactoryRef, true), rImport));
+        mxCellImportPropertySetMapper->ChainImportMapper(std::make_unique<XMLCellImportPropertyMapper>(new XMLPropertySetMapper(getCellPropertiesMap(), xFactoryRef, true), rImport));
     }
 
     rtl::Reference < XMLPropertySetMapper > xRowMapper( new XMLPropertySetMapper( getRowPropertiesMap(), xFactoryRef, false ) );
-    mxRowImportPropertySetMapper = new SvXMLImportPropertyMapper( xRowMapper, rImport );
+    mxRowImportPropertySetMapper = std::make_unique<SvXMLImportPropertyMapper>( xRowMapper, rImport );
 
     rtl::Reference < XMLPropertySetMapper > xColMapper( new XMLPropertySetMapper( getColumnPropertiesMap(), xFactoryRef, false ) );
-    mxColumnImportPropertySetMapper = new SvXMLImportPropertyMapper( xColMapper, rImport );
+    mxColumnImportPropertySetMapper = std::make_unique<SvXMLImportPropertyMapper>( xColMapper, rImport );
 }
 
 XMLTableImport::~XMLTableImport()
@@ -310,7 +308,7 @@ void XMLTableImport::finishStyles()
         {
             const OUString sTemplateName( rTemplate.first );
             Reference< XNameReplace > xTemplate(xFactory ? xFactory->createInstance() :
-                xMultiFactory->createInstance("com.sun.star.style.TableStyle"), UNO_QUERY_THROW);
+                xMultiFactory->createInstance(u"com.sun.star.style.TableStyle"_ustr), UNO_QUERY_THROW);
 
             std::shared_ptr< XMLTableTemplate > xT( rTemplate.second );
 
@@ -386,7 +384,7 @@ SvXMLImportContextRef XMLTableImportContext::ImportColumn( const Reference< XFas
 
         if( nRepeated <= 1 )
         {
-            maColumnInfos.push_back( xInfo );
+            maColumnInfos.push_back(std::move(xInfo));
         }
         else
         {
@@ -495,8 +493,7 @@ SvXMLImportContext * XMLTableImportContext::ImportRow( const Reference< XFastAtt
         }
     }
 
-    SvXMLImportContextRef xThis( this );
-    return new XMLProxyContext( GetImport(), xThis );
+    return new XMLProxyContext( GetImport(), SvXMLImportContextRef(this) );
 }
 
 SvXMLImportContextRef XMLTableImportContext::ImportCell( sal_Int32 nElement, const Reference< XFastAttributeList >& xAttrList )
@@ -674,7 +671,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLCellImportContext::
 
     SvXMLImportContext * pContext = nullptr;
 
-    // if we have a text cursor, lets  try to import some text
+    // if we have a text cursor, let's try to import some text
     if( mxCursor.is() )
     {
         pContext = GetImport().GetTextImport()->CreateTextChildContext( GetImport(), nElement, xAttrList );
@@ -692,7 +689,7 @@ void XMLCellImportContext::endFastElement(sal_Int32 )
         // delete addition newline
         mxCursor->gotoEnd( false );
         mxCursor->goLeft( 1, true );
-        mxCursor->setString( "" );
+        mxCursor->setString( u""_ustr );
 
         // reset cursor
         GetImport().GetTextImport()->ResetCursor();

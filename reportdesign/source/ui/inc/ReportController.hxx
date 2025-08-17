@@ -52,7 +52,6 @@
 #include <memory>
 
 class TransferableClipboardListener;
-class VclWindowEvent;
 class SfxUndoManager;
 namespace rptui
 {
@@ -61,6 +60,7 @@ namespace rptui
     class OSectionView;
     class OAddFieldWindow;
     class OSectionWindow;
+    class OPropertyMediator;
 
     typedef ::dbaui::DBSubComponentController   OReportController_BASE;
     typedef ::cppu::ImplHelper5 <   css::container::XContainerListener
@@ -94,7 +94,7 @@ namespace rptui
         css::uno::Reference< css::report::XReportEngine >             m_xReportEngine;
         css::uno::Reference< css::frame::XDesktop2 >                  m_xFrameLoader;
         css::uno::Reference< css::sdbc::XRowSet >                     m_xRowSet;
-        css::uno::Reference< css::beans::XPropertyChangeListener >    m_xRowSetMediator;
+        rtl::Reference< OPropertyMediator >                           m_xRowSetMediator;
         css::uno::Reference< css::util::XNumberFormatter >            m_xFormatter;   // a number formatter working with the report's NumberFormatsSupplier
         mutable css::uno::Reference< css::lang::XComponent >          m_xHoldAlive;
         mutable css::uno::Reference< css::container::XNameAccess >    m_xColumns;
@@ -127,13 +127,13 @@ namespace rptui
         * \param _sFunction the function which will be set at the data field.
         */
         void createControl(const css::uno::Sequence< css::beans::PropertyValue >& _aArgs,const css::uno::Reference< css::report::XSection>& _xSection,const OUString& _sFunction ,SdrObjKind _nObjectId = SdrObjKind::ReportDesignFormattedField);
-        /** switch the report header/footer sectionon off with undo or without depending on the given id.
+        /** switch the report header/footer section on/off with undo or without depending on the given id.
         *
         * \param _nId   Can either be SID_REPORTHEADER_WITHOUT_UNDO or SID_REPORTFOOTER_WITHOUT_UNDO or SID_REPORTHEADERFOOTER.
         */
         void switchReportSection(const sal_Int16 _nId);
 
-        /** switch the report header/footer sectionon off with undo or without depending on the given id.
+        /** switch the report header/footer section on/off with undo or without depending on the given id.
         *
         * \param _nId   Can either be SID_PAGEHEADER_WITHOUT_UNDO or SID_PAGEFOOTER_WITHOUT_UNDO or SID_PAGEHEADERFOOTER.
         */
@@ -274,7 +274,7 @@ namespace rptui
         virtual void impl_onModifyChanged() override;
 
         virtual void onLoadedMenu( const css::uno::Reference< css::frame::XLayoutManager >& _xLayoutManager ) override;
-        virtual void impl_initialize( ) override;
+        virtual void impl_initialize( const ::comphelper::NamedValueCollection& rArguments ) override;
         bool isUiVisible() const;
 
         /** creates a new default control for the currently set type when the modifier KEY_MOD1 was pressed
@@ -287,7 +287,8 @@ namespace rptui
             @param  _rState     the state to fill
         */
         void impl_fillState_nothrow(const OUString& _sProperty,dbaui::FeatureState& _rState) const;
-        void impl_fillCustomShapeState_nothrow(const char* _pCustomShapeType,dbaui::FeatureState& _rState) const;
+        void impl_fillCustomShapeState_nothrow(std::u16string_view sCustomShapeType,
+                                               dbaui::FeatureState& _rState) const;
 
         /** set the property at all selected controls.
             @return <TRUE/> when the selection is not empty

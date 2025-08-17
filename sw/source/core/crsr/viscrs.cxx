@@ -36,6 +36,7 @@
 #include <txtfld.hxx>
 #include <scriptinfo.hxx>
 #include <view.hxx>
+#include <swmodule.hxx>
 #include <IDocumentLayoutAccess.hxx>
 
 #include <svx/sdr/overlay/overlaymanager.hxx>
@@ -75,11 +76,16 @@ tools::Long SwSelPaintRects::s_nPixPtY = 0;
 MapMode* SwSelPaintRects::s_pMapMode = nullptr;
 
 // Starting from here: classes / methods for the non-text-cursor
-SwVisibleCursor::SwVisibleCursor( const SwCursorShell * pCShell )
-    : m_pCursorShell( pCShell )
+SwVisibleCursor::SwVisibleCursor(::sw::VisibleCursorState const& rState,
+        const SwCursorShell *const pCShell)
+    : m_rState(rState)
+    , m_pCursorShell(pCShell)
     , m_nPageLastTime(0)
 {
-    pCShell->GetWin()->SetCursor( &m_aTextCursor );
+    if (&rState == pCShell)
+    {
+        pCShell->GetWin()->SetCursor( &m_aTextCursor );
+    }
     m_bIsVisible = m_aTextCursor.IsVisible();
     m_bIsDragCursor = false;
     m_aTextCursor.SetWidth( 0 );
@@ -90,7 +96,10 @@ SwVisibleCursor::~SwVisibleCursor()
     if( m_bIsVisible && m_aTextCursor.IsVisible() )
         m_aTextCursor.Hide();
 
-    m_pCursorShell->GetWin()->SetCursor( nullptr );
+    if (m_pCursorShell->GetWin()->GetCursor() == &m_aTextCursor)
+    {
+        m_pCursorShell->GetWin()->SetCursor( nullptr );
+    }
 }
 
 void SwVisibleCursor::Show()
@@ -100,7 +109,7 @@ void SwVisibleCursor::Show()
         m_bIsVisible = true;
 
         // display at all?
-        if( m_pCursorShell->VisArea().Overlaps( m_pCursorShell->m_aCharRect ) || comphelper::LibreOfficeKit::isActive() )
+        if (m_pCursorShell->VisArea().Overlaps(m_rState.m_aCharRect) || comphelper::LibreOfficeKit::isActive())
             SetPosAndShow(nullptr);
     }
 }
@@ -133,33 +142,33 @@ OString buildHyperlinkJSON(const OUString& sText, const OUString& sLink)
 
 }
 
-void SwVisibleCursor::SetPosAndShow(SfxViewShell const * pViewShell)
+::std::pair<SwRect, bool> SwVisibleCursor::SetPos()
 {
     SwRect aRect;
-    tools::Long nTmpY = m_pCursorShell->m_aCursorHeight.getY();
+    tools::Long nTmpY = m_rState.m_aCursorHeight.getY();
     if( 0 > nTmpY )
     {
         nTmpY = -nTmpY;
         m_aTextCursor.SetOrientation( 900_deg10 );
-        aRect = SwRect( m_pCursorShell->m_aCharRect.Pos(),
-           Size( m_pCursorShell->m_aCharRect.Height(), nTmpY ) );
-        aRect.Pos().setX(aRect.Pos().getX() + m_pCursorShell->m_aCursorHeight.getX());
-        if( m_pCursorShell->IsOverwriteCursor() )
+        aRect = SwRect( m_rState.m_aCharRect.Pos(),
+           Size( m_rState.m_aCharRect.Height(), nTmpY ) );
+        aRect.Pos().setX(aRect.Pos().getX() + m_rState.m_aCursorHeight.getX());
+        if (m_rState.IsOverwriteCursor())
             aRect.Pos().setY(aRect.Pos().getY() + aRect.Width());
     }
     else
     {
         m_aTextCursor.SetOrientation();
-        aRect = SwRect( m_pCursorShell->m_aCharRect.Pos(),
-           Size( m_pCursorShell->m_aCharRect.Width(), nTmpY ) );
-        aRect.Pos().setY(aRect.Pos().getY() + m_pCursorShell->m_aCursorHeight.getX());
+        aRect = SwRect( m_rState.m_aCharRect.Pos(),
+           Size( m_rState.m_aCharRect.Width(), nTmpY ) );
+        aRect.Pos().setY(aRect.Pos().getY() + m_rState.m_aCursorHeight.getX());
     }
 
     // check if cursor should show the current cursor bidi level
     m_aTextCursor.SetDirection();
-    const SwCursor* pTmpCursor = m_pCursorShell->GetCursor_();
+    const SwCursor* pTmpCursor = m_rState.m_pCurrentCursor;
 
-    if ( pTmpCursor && !m_pCursorShell->IsOverwriteCursor() )
+    if ( pTmpCursor && !m_rState.IsOverwriteCursor() )
     {
         SwNode& rNode = pTmpCursor->GetPoint()->GetNode();
         if( rNode.IsTextNode() )
@@ -201,23 +210,22 @@ void SwVisibleCursor::SetPosAndShow(SfxViewShell const * pViewShell)
         if (!comphelper::LibreOfficeKit::isActive())
             ::SwAlignRect( aRect, static_cast<SwViewShell const *>(m_pCursorShell), m_pCursorShell->GetOut() );
     }
-    if( !m_pCursorShell->IsOverwriteCursor() || m_bIsDragCursor ||
+    if( !m_rState.IsOverwriteCursor() || m_bIsDragCursor ||
         m_pCursorShell->IsSelection() )
         aRect.Width( 0 );
 
+    bool bIsCursorPosChanged = m_aTextCursor.GetPos() != aRect.Pos();
+
     m_aTextCursor.SetSize( aRect.SSize() );
-
     m_aTextCursor.SetPos( aRect.Pos() );
+    return { aRect, bIsCursorPosChanged };
+}
 
-    bool bPostItActive = false;
-    SwView* pView = dynamic_cast<SwView*>(m_pCursorShell->GetSfxViewShell());
-    if (pView)
-    {
-        if (SwPostItMgr* pPostItMgr = pView->GetPostItMgr())
-            bPostItActive = pPostItMgr->GetActiveSidebarWin() != nullptr;
-    }
+void SwVisibleCursor::SetPosAndShow(SfxViewShell const * pViewShell)
+{
+    auto const [aRect, bIsCursorPosChanged] {SetPos()};
 
-    if (comphelper::LibreOfficeKit::isActive() && !bPostItActive)
+    if (SfxViewShell* pNotifyViewShell = comphelper::LibreOfficeKit::isActive() ? m_pCursorShell->GetSfxViewShell() : nullptr)
     {
         // notify about page number change (if that happened)
         sal_uInt16 nPage, nVirtPage;
@@ -228,7 +236,7 @@ void SwVisibleCursor::SetPosAndShow(SfxViewShell const * pViewShell)
         {
             m_nPageLastTime = nPage;
             OString aPayload = OString::number(nPage - 1);
-            m_pCursorShell->GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_SET_PART, aPayload);
+            pNotifyViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_SET_PART, aPayload);
         }
 
         // This may get called often, so instead of sending data on each update, just notify
@@ -237,21 +245,21 @@ void SwVisibleCursor::SetPosAndShow(SfxViewShell const * pViewShell)
         m_aLastLOKRect = aRect;
         if (pViewShell)
         {
-            if (pViewShell == m_pCursorShell->GetSfxViewShell())
+            if (pViewShell == pNotifyViewShell)
             {
-                SfxLokHelper::notifyUpdatePerViewId(pViewShell, LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR);
+                SfxLokHelper::notifyUpdatePerViewId(*pViewShell, LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR);
             }
             else
             {
-                SfxLokHelper::notifyUpdatePerViewId(pViewShell, m_pCursorShell->GetSfxViewShell(), pViewShell,
+                SfxLokHelper::notifyUpdatePerViewId(*pViewShell, pNotifyViewShell, *pViewShell,
                     LOK_CALLBACK_INVALIDATE_VIEW_CURSOR);
             }
         }
-        else
+        else if ( bIsCursorPosChanged || m_pCursorShell->IsTableMode())
         {
-            SfxLokHelper::notifyUpdatePerViewId(m_pCursorShell->GetSfxViewShell(), SfxViewShell::Current(),
-                m_pCursorShell->GetSfxViewShell(), LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR);
-            SfxLokHelper::notifyOtherViewsUpdatePerViewId(m_pCursorShell->GetSfxViewShell(), LOK_CALLBACK_INVALIDATE_VIEW_CURSOR);
+            SfxLokHelper::notifyUpdatePerViewId(*pNotifyViewShell, SfxViewShell::Current(),
+                *pNotifyViewShell, LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR);
+            SfxLokHelper::notifyOtherViewsUpdatePerViewId(pNotifyViewShell, LOK_CALLBACK_INVALIDATE_VIEW_CURSOR);
         }
     }
 
@@ -327,16 +335,15 @@ std::optional<OString> SwVisibleCursor::getLOKPayload(int nType, int nViewId) co
         else if (bIsSelection)
         {
             SwWrtShell* pShell = m_pCursorShell->GetDoc()->GetDocShell()->GetWrtShell();
-
-            if (pShell)
+            if (SfxViewShell* pNotifySh = pShell ? m_pCursorShell->GetSfxViewShell() : nullptr)
             {
-                SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT>
-                     aSet(m_pCursorShell->GetSfxViewShell()->GetPool());
+                SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT> aSet(pNotifySh->GetPool());
                 pShell->GetCurAttr(aSet);
-                if(SfxItemState::SET <= aSet.GetItemState( RES_TXTATR_INETFMT ))
+                const SwFormatINetFormat* pItem = nullptr;
+                if(SfxItemState::SET <= aSet.GetItemState( RES_TXTATR_INETFMT, true, &pItem ))
                 {
                     sHyperlink = buildHyperlinkJSON(m_pCursorShell->GetSelText(),
-                                                    aSet.GetItem(RES_TXTATR_INETFMT)->GetValue());
+                                                    pItem->GetValue());
                 }
             }
         }
@@ -352,7 +359,7 @@ const vcl::Cursor& SwVisibleCursor::GetTextCursor() const
     return m_aTextCursor;
 }
 
-SwSelPaintRects::SwSelPaintRects( const SwCursorShell& rCSh )
+SwSelPaintRects::SwSelPaintRects(const SwCursorShell& rCSh)
     : m_pCursorShell( &rCSh )
 #if HAVE_FEATURE_DESKTOP
     , m_bShowTextInputFieldOverlay(true)
@@ -462,8 +469,16 @@ void SwSelPaintRects::Show(std::vector<OString>* pSelectionRectangles)
 
         if (xTargetOverlay.is())
         {
+            ::std::optional<Color> oColor;
+#if ENABLE_YRS
+            if (SwVisibleCursor *const pVisibleCursor{GetShell()->FindVisibleCursorForPeer(*this)})
+            {
+                ::std::size_t const authorId{SwModule::get()->InsertRedlineAuthor(*pVisibleCursor->m_Author)};
+                oColor.emplace(SwPostItMgr::GetColorAnchor(authorId));
+            }
+#endif
             // get the system's highlight color
-            const Color aHighlight(SvtOptionsDrawinglayer::getHilightColor());
+            const Color aHighlight(oColor ? *oColor : SvtOptionsDrawinglayer::getHilightColor());
 
             // create correct selection
             m_pCursorOverlay.reset( new sdr::overlay::OverlaySelection(
@@ -658,14 +673,14 @@ void SwSelPaintRects::HighlightContentControl()
         }
         if (pCurContentControlAtCursor)
         {
-            auto pCursorForContentControl = std::make_unique<SwShellCursor>(
+            SwShellCursor aCursorForContentControl(
                 *GetShell(), SwPosition(*pTextNode, pCurContentControlAtCursor->GetStart()));
-            pCursorForContentControl->SetMark();
-            pCursorForContentControl->GetMark()->Assign(
+            aCursorForContentControl.SetMark();
+            aCursorForContentControl.GetMark()->Assign(
                 *pTextNode, *(pCurContentControlAtCursor->End()));
 
-            pCursorForContentControl->FillRects();
-            SwRects* pRects = pCursorForContentControl.get();
+            aCursorForContentControl.FillRects();
+            SwRects* pRects = &aCursorForContentControl;
             for (const auto& rRect : *pRects)
             {
                 tools::Rectangle aRect(rRect.SVRect());
@@ -696,6 +711,13 @@ void SwSelPaintRects::HighlightContentControl()
         }
     }
 
+    // clear an obsolete dropdown if the cursor has moved away from the content control
+    if (m_pContentControlButton
+        && (!pContentControl || m_pContentControlButton->GetContentControl() != pContentControl))
+    {
+        m_pContentControlButton.disposeAndClear();
+    }
+
     auto pWrtShell = dynamic_cast<const SwWrtShell*>(GetShell());
     if (!aContentControlRanges.empty())
     {
@@ -708,7 +730,7 @@ void SwSelPaintRects::HighlightContentControl()
 
             if (pContentControl && (pContentControl->GetComboBox() || pContentControl->GetDropDown()))
             {
-                tools::ScopedJsonWriterArray aItems = aJson.startArray("items");
+                auto aItems = aJson.startArray("items");
                 for (const auto& rItem : pContentControl->GetListItems())
                 {
                     aJson.putSimpleValue(rItem.ToString());
@@ -756,11 +778,6 @@ void SwSelPaintRects::HighlightContentControl()
             if (pWrtShell)
             {
                 auto& rEditWin = const_cast<SwEditWin&>(pWrtShell->GetView().GetEditWin());
-                if (m_pContentControlButton
-                    && m_pContentControlButton->GetContentControl() != pContentControl)
-                {
-                    m_pContentControlButton.disposeAndClear();
-                }
                 if (!m_pContentControlButton)
                 {
                     m_pContentControlButton = VclPtr<SwDropDownContentControlButton>::Create(
@@ -783,11 +800,6 @@ void SwSelPaintRects::HighlightContentControl()
             if (pWrtShell)
             {
                 auto& rEditWin = const_cast<SwEditWin&>(pWrtShell->GetView().GetEditWin());
-                if (m_pContentControlButton
-                    && m_pContentControlButton->GetContentControl() != pContentControl)
-                {
-                    m_pContentControlButton.disposeAndClear();
-                }
                 if (!m_pContentControlButton)
                 {
                     m_pContentControlButton = VclPtr<SwDateContentControlButton>::Create(
@@ -815,19 +827,14 @@ void SwSelPaintRects::HighlightContentControl()
     }
     else
     {
-        if (comphelper::LibreOfficeKit::isActive() && m_pContentControlOverlay)
+        if (SfxViewShell* pNotifySh = comphelper::LibreOfficeKit::isActive() && m_pContentControlOverlay ? GetShell()->GetSfxViewShell() : nullptr)
         {
             tools::JsonWriter aJson;
             aJson.put("action", "hide");
             OString pJson(aJson.finishAndGetAsOString());
-            GetShell()->GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_CONTENT_CONTROL, pJson);
+            pNotifySh->libreOfficeKitViewCallback(LOK_CALLBACK_CONTENT_CONTROL, pJson);
         }
         m_pContentControlOverlay.reset();
-
-        if (m_pContentControlButton)
-        {
-            m_pContentControlButton.disposeAndClear();
-        }
 
         if (pWrtShell)
         {
@@ -957,6 +964,25 @@ void SwShellCursor::FillRects()
     {
         GetShell()->GetLayout()->CalcFrameRects(*this, *this);
     }
+#if ENABLE_YRS
+    if (!HasMark())
+    {
+        if (SwVisibleCursor *const pVisibleCursor{GetShell()->FindVisibleCursorForPeer(*this)})
+        {
+            // use OutDev.GetSettings().GetStyleSettings().GetCursorSize() as width?
+            auto [cursorRect, _] {pVisibleCursor->SetPos()};
+            if (cursorRect.IsEmpty())
+            {
+                cursorRect.Width(20);
+            }
+            SAL_INFO("sw.yrs", "YRS FillRects extra rect " << cursorRect);
+            emplace_back(cursorRect);
+            SwRect const temp{Point{cursorRect.Left() - cursorRect.Height()/2,
+                cursorRect.Bottom()}, Size{cursorRect.Height() + 20, 20}};
+            emplace_back(temp);
+        }
+    }
+#endif
 }
 
 void SwShellCursor::Show(SfxViewShell const * pViewShell)
@@ -984,12 +1010,24 @@ void SwShellCursor::Show(SfxViewShell const * pViewShell)
     {
         // Just notify pViewShell about our existing selection.
         if (pViewShell != GetShell()->GetSfxViewShell())
-            SfxLokHelper::notifyOtherView(GetShell()->GetSfxViewShell(), pViewShell, LOK_CALLBACK_TEXT_VIEW_SELECTION, "selection", sRect);
+            SfxLokHelper::notifyOtherView(*GetShell()->GetSfxViewShell(), pViewShell, LOK_CALLBACK_TEXT_VIEW_SELECTION, "selection", sRect);
     }
     else
     {
-        GetShell()->GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_TEXT_SELECTION, sRect);
-        SfxLokHelper::notifyOtherViews(GetShell()->GetSfxViewShell(), LOK_CALLBACK_TEXT_VIEW_SELECTION, "selection", sRect);
+        const SwCursorShell* pShell = GetShell();
+        if (!pShell)
+        {
+            return;
+        }
+
+        SfxViewShell* pSfxViewShell = pShell->GetSfxViewShell();
+        if (!pSfxViewShell)
+        {
+            return;
+        }
+
+        pSfxViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_TEXT_SELECTION, sRect);
+        SfxLokHelper::notifyOtherViews(pSfxViewShell, LOK_CALLBACK_TEXT_VIEW_SELECTION, "selection", sRect);
     }
 }
 
@@ -1041,8 +1079,8 @@ short SwShellCursor::MaxReplaceArived()
             }
             vActionCounts.push_back(nActCnt);
         }
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pDlg->getDialog(), "modules/swriter/ui/asksearchdialog.ui"));
-        std::unique_ptr<weld::MessageDialog> xDialog(xBuilder->weld_message_dialog("AskSearchDialog"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pDlg->getDialog(), u"modules/swriter/ui/asksearchdialog.ui"_ustr));
+        std::unique_ptr<weld::MessageDialog> xDialog(xBuilder->weld_message_dialog(u"AskSearchDialog"_ustr));
         nRet = xDialog->run();
         auto pActionCount = vActionCounts.begin();
         for(SwViewShell& rShell : const_cast< SwCursorShell* >( GetShell() )->GetRingContainer())
@@ -1069,33 +1107,6 @@ void SwShellCursor::SaveTableBoxContent( const SwPosition* pPos )
 
 bool SwShellCursor::UpDown( bool bUp, sal_uInt16 nCnt )
 {
-    // tdf#124603 trigger pending spell checking of the node
-    if ( nCnt == 1 )
-    {
-        SwTextNode* pNode = GetPoint()->GetNode().GetTextNode();
-        if( pNode && sw::WrongState::PENDING == pNode->GetWrongDirty() )
-        {
-            SwWrtShell* pShell = pNode->GetDoc().GetDocShell()->GetWrtShell();
-            if ( pShell && !pShell->IsSelection() && !pShell->IsSelFrameMode() )
-            {
-                const SwViewOption* pVOpt = pShell->GetViewOptions();
-                if ( pVOpt && pVOpt->IsOnlineSpell() )
-                {
-                    const bool bOldViewLock = pShell->IsViewLocked();
-                    pShell->LockView( true );
-
-                    SwTextFrame* pFrame(
-                        static_cast<SwTextFrame*>(pNode->getLayoutFrame(GetShell()->GetLayout())));
-                    SwRect aRepaint(pFrame->AutoSpell_(*pNode, 0));
-                    if (aRepaint.HasArea())
-                        pShell->InvalidateWindows(aRepaint);
-
-                    pShell->LockView( bOldViewLock );
-                }
-            }
-        }
-    }
-
     return SwCursor::UpDown( bUp, nCnt,
                             &GetPtPos(), GetShell()->GetUpDownX(),
                             *GetShell()->GetLayout());
@@ -1159,7 +1170,6 @@ void SwShellTableCursor::FillRects()
     SwRegionRects aReg( comphelper::LibreOfficeKit::isActive()
         ? GetShell()->getIDocumentLayoutAccess().GetCurrentLayout()->getFrameArea()
         : GetShell()->VisArea() );
-    SwNodes& rNds = GetDoc().GetNodes();
     SwFrame* pEndFrame = nullptr;
     for (size_t n = 0; n < m_SelectedBoxes.size(); ++n)
     {
@@ -1167,7 +1177,7 @@ void SwShellTableCursor::FillRects()
         const SwTableNode* pSelTableNd = pSttNd->FindTableNode();
 
         SwNodeIndex aIdx( *pSttNd );
-        SwContentNode* pCNd = rNds.GoNextSection( &aIdx, true, false );
+        SwContentNode* pCNd = SwNodes::GoNextSection(&aIdx, true, false);
 
         // table in table
         // (see also lcl_FindTopLevelTable in unoobj2.cxx for a different
@@ -1176,7 +1186,7 @@ void SwShellTableCursor::FillRects()
         while ( pSelTableNd != pCurTableNd && pCurTableNd )
         {
             aIdx = pCurTableNd->EndOfSectionIndex();
-            pCNd = rNds.GoNextSection( &aIdx, true, false );
+            pCNd = SwNodes::GoNextSection(&aIdx, true, false);
             pCurTableNd = pCNd->FindTableNode();
         }
 
@@ -1225,11 +1235,10 @@ bool SwShellTableCursor::Contains( const Point& rPt ) const
     if (m_SelectedBoxes.empty() || m_bParked || !GetPoint()->GetNodeIndex())
         return false;
 
-    SwNodes& rNds = GetDoc().GetNodes();
     for (size_t n = 0; n < m_SelectedBoxes.size(); ++n)
     {
         SwNodeIndex aIdx( *m_SelectedBoxes[n]->GetSttNd() );
-        SwContentNode* pCNd = rNds.GoNextSection( &aIdx, true, false );
+        SwContentNode* pCNd = SwNodes::GoNextSection(&aIdx, true, false);
         if( !pCNd )
             continue;
 

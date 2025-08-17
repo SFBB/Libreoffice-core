@@ -18,11 +18,9 @@
  */
 
 #include "XMLSectionSourceImportContext.hxx"
-#include "XMLSectionImportContext.hxx"
 #include <com/sun/star/text/SectionFileLink.hpp>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <com/sun/star/uno/Reference.h>
@@ -85,12 +83,12 @@ void XMLSectionSourceImportContext::startFastElement( sal_Int32 /*nElement*/,
         aFileLink.FileURL = GetImport().GetAbsoluteReference( sURL );
         aFileLink.FilterName = sFilterName;
 
-        rSectionPropertySet->setPropertyValue("FileLink", Any(aFileLink));
+        rSectionPropertySet->setPropertyValue(u"FileLink"_ustr, Any(aFileLink));
     }
 
     if (!sSectionName.isEmpty())
     {
-        rSectionPropertySet->setPropertyValue("LinkRegion", Any(sSectionName));
+        rSectionPropertySet->setPropertyValue(u"LinkRegion"_ustr, Any(sSectionName));
     }
 }
 

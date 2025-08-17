@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_CRSTATE_HXX
-#define INCLUDED_SW_INC_CRSTATE_HXX
+#pragma once
 
 #include <com/sun/star/text/HoriOrientation.hpp>
 #include <tools/gen.hxx>
@@ -139,7 +138,7 @@ struct SwCursorMoveState
     sal_uInt8            m_nCursorBidiLevel;
     bool m_bStop;
     bool m_bRealHeight;           ///< should the real height be calculated?
-    bool m_bFieldInfo;            ///< should be fields recognized?
+    bool m_bFieldInfo;            ///< should fields be recognized? (get position of field start)
     bool m_bPosCorr;              ///< Point had to be corrected
     bool m_bFootnoteNoInfo;            ///< recognized footnote numbering
     bool m_bExactOnly;            /**< let GetModelPositionForViewPoint look for exact matches only,
@@ -151,7 +150,7 @@ struct SwCursorMoveState
     bool m_bNoScroll;             ///< No scrolling of undersized textframes
     bool m_bPosMatchesBounds;         /**< GetModelPositionForViewPoint should not return the next
                                        position if screen position is inside second
-                                       have of bound rect */
+                                       half of bound rect */
 
     bool m_bContentCheck;           // #i43742# Cursor position over content?
 
@@ -208,7 +207,5 @@ struct SwCursorMoveState
         m_nInNumPortionOffset(0) // #i23726#
     {}
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,15 +21,13 @@
 #include <sal/config.h>
 #include <sal/log.hxx>
 
-#include <cppuhelper/basemutex.hxx>
-#include <cppuhelper/compbase.hxx>
+#include <comphelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <comphelper/diagnose_ex.hxx>
 #include <utility>
 #include <vcl/svapp.hxx>
 
-#include <factory.hxx>
 #include <svdata.hxx>
 #include <salinst.hxx>
 #include <salsession.hxx>
@@ -52,8 +50,7 @@ SalSession::~SalSession()
 namespace {
 
 class VCLSession:
-    private cppu::BaseMutex,
-    public cppu::WeakComponentImplHelper < XSessionManagerClient, css::lang::XServiceInfo >
+    public comphelper::WeakComponentImplHelper < XSessionManagerClient, css::lang::XServiceInfo >
 {
     struct Listener
     {
@@ -89,7 +86,7 @@ class VCLSession:
     virtual sal_Bool SAL_CALL cancelShutdown() override;
 
     OUString SAL_CALL getImplementationName() override {
-        return "com.sun.star.frame.VCLSessionManagerClient";
+        return u"com.sun.star.frame.VCLSessionManagerClient"_ustr;
     }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override {
@@ -97,10 +94,10 @@ class VCLSession:
     }
 
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override {
-        return {"com.sun.star.frame.SessionManagerClient"};
+        return {u"com.sun.star.frame.SessionManagerClient"_ustr};
     }
 
-    void SAL_CALL disposing() override;
+    void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     void callSaveRequested( bool bShutdown );
     void callShutdownCancelled();
@@ -114,8 +111,7 @@ public:
 }
 
 VCLSession::VCLSession()
-        : WeakComponentImplHelper( m_aMutex ),
-          m_xSession( ImplGetSVData()->mpDefInst->CreateSalSession() ),
+        : m_xSession( ImplGetSVData()->mpDefInst->CreateSalSession() ),
           m_bInteractionRequested( false ),
           m_bInteractionGranted( false ),
           m_bInteractionDone( false ),
@@ -133,7 +129,7 @@ void VCLSession::callSaveRequested( bool bShutdown )
 
     std::vector< Listener > aListeners;
     {
-        osl::MutexGuard aGuard( m_aMutex );
+        std::unique_lock aGuard( m_aMutex );
         // reset listener states
         for (auto & listener : m_aListeners) {
             listener.m_bSaveDone = listener.m_bInteractionRequested = listener.m_bInteractionDone = false;
@@ -172,7 +168,7 @@ void VCLSession::callInteractionGranted( bool bInteractionGranted )
 
     std::vector< Listener > aListeners;
     {
-        osl::MutexGuard aGuard( m_aMutex );
+        std::unique_lock aGuard( m_aMutex );
         // copy listener vector since calling a listener may remove it.
         for (auto const & listener: m_aListeners)
             if( listener.m_bInteractionRequested )
@@ -204,7 +200,7 @@ void VCLSession::callShutdownCancelled()
 
     std::vector< Listener > aListeners;
     {
-        osl::MutexGuard aGuard( m_aMutex );
+        std::unique_lock aGuard( m_aMutex );
         // copy listener vector since calling a listener may remove it.
         aListeners = m_aListeners;
         // set back interaction state
@@ -222,7 +218,7 @@ void VCLSession::callQuit()
 
     std::vector< Listener > aListeners;
     {
-        osl::MutexGuard aGuard( m_aMutex );
+        std::unique_lock aGuard( m_aMutex );
         // copy listener vector since calling a listener may remove it.
         aListeners = m_aListeners;
         // set back interaction state
@@ -274,7 +270,7 @@ void SAL_CALL VCLSession::addSessionManagerListener( const css::uno::Reference<X
 {
     SAL_INFO("vcl.se", "VCLSession::addSessionManagerListener" );
 
-    osl::MutexGuard aGuard( m_aMutex );
+    std::unique_lock aGuard( m_aMutex );
 
     SAL_INFO("vcl.se.debug", "  m_aListeners.size() = " << m_aListeners.size() );
     m_aListeners.emplace_back( xListener );
@@ -284,7 +280,7 @@ void SAL_CALL VCLSession::removeSessionManagerListener( const css::uno::Referenc
 {
     SAL_INFO("vcl.se", "VCLSession::removeSessionManagerListener" );
 
-    osl::MutexGuard aGuard( m_aMutex );
+    std::unique_lock aGuard( m_aMutex );
 
     SAL_INFO("vcl.se.debug", "  m_aListeners.size() = " << m_aListeners.size() );
 
@@ -297,16 +293,21 @@ void SAL_CALL VCLSession::queryInteraction( const css::uno::Reference<XSessionMa
 
     SAL_INFO("vcl.se.debug", "  m_bInteractionGranted = " << (m_bInteractionGranted ? "true" : "false") <<
                              ", m_bInteractionRequested = "<< (m_bInteractionRequested ? "true" : "false"));
+
+    std::unique_lock aGuard( m_aMutex );
+
     if( m_bInteractionGranted )
     {
-        if( m_bInteractionDone )
+        bool bInteractionDone = m_bInteractionDone;
+        aGuard.unlock();
+
+        if( bInteractionDone )
             xListener->approveInteraction( false );
         else
             xListener->approveInteraction( true );
         return;
     }
 
-    osl::MutexGuard aGuard( m_aMutex );
     if( ! m_bInteractionRequested )
     {
         if (m_xSession)
@@ -329,7 +330,7 @@ void SAL_CALL VCLSession::interactionDone( const css::uno::Reference< XSessionMa
 {
     SAL_INFO("vcl.se", "VCLSession::interactionDone");
 
-    osl::MutexGuard aGuard( m_aMutex );
+    std::unique_lock aGuard( m_aMutex );
     int nRequested = 0, nDone = 0;
     for (auto & listener: m_aListeners)
     {
@@ -357,7 +358,7 @@ void SAL_CALL VCLSession::saveDone( const css::uno::Reference< XSessionManagerLi
 {
     SAL_INFO("vcl.se", "VCLSession::saveDone");
 
-    osl::MutexGuard aGuard( m_aMutex );
+    std::unique_lock aGuard( m_aMutex );
 
     bool bSaveDone = true;
     for (auto & listener: m_aListeners)
@@ -385,22 +386,23 @@ sal_Bool SAL_CALL VCLSession::cancelShutdown()
     return m_xSession && m_xSession->cancelShutdown();
 }
 
-void VCLSession::disposing() {
+void VCLSession::disposing(std::unique_lock<std::mutex>& rGuard) {
     SAL_INFO("vcl.se", "VCLSession::disposing");
 
     std::vector<Listener> vector;
     {
-        osl::MutexGuard g(m_aMutex);
         vector.swap(m_aListeners);
     }
     css::lang::EventObject src(getXWeak());
     for (auto const & listener: vector) {
+        rGuard.unlock();
         try {
             listener.m_xListener->disposing(src);
             SAL_INFO("vcl.se.debug", "  call Listener disposing");
         } catch (css::uno::RuntimeException &) {
             TOOLS_WARN_EXCEPTION("vcl.se", "ignoring");
         }
+        rGuard.lock();
     }
 }
 

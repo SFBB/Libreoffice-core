@@ -25,6 +25,7 @@
 #include <basegfx/range/b2drange.hxx>
 
 #ifdef DBG_UTIL
+#include <o3tl/environment.hxx>
 #include <tools/stream.hxx>
 #include <vcl/filter/PngImageWriter.hxx>
 #endif
@@ -33,14 +34,14 @@ namespace drawinglayer::processor2d
 {
 void setOffsetXYCreatedBitmap(
     drawinglayer::primitive2d::FillGraphicPrimitive2D& rFillGraphicPrimitive2D,
-    const BitmapEx& rBitmap)
+    const Bitmap& rBitmap)
 {
     rFillGraphicPrimitive2D.impSetOffsetXYCreatedBitmap(rBitmap);
 }
 
 void takeCareOfOffsetXY(
     const drawinglayer::primitive2d::FillGraphicPrimitive2D& rFillGraphicPrimitive2D,
-    BitmapEx& rTarget, basegfx::B2DRange& rFillUnitRange)
+    Bitmap& rTarget, basegfx::B2DRange& rFillUnitRange)
 {
     const attribute::FillGraphicAttribute& rFillGraphicAttribute(
         rFillGraphicPrimitive2D.getFillGraphic());
@@ -53,19 +54,20 @@ void takeCareOfOffsetXY(
     {
         if (rFillGraphicPrimitive2D.getOffsetXYCreatedBitmap().IsEmpty())
         {
-            const Size& rSize(rTarget.GetSizePixel());
-            const tools::Long w(rSize.Width());
-            const tools::Long a(basegfx::fround(w * (1.0 - rFillGraphicAttribute.getOffsetX())));
+            const Size aSize(rTarget.GetSizePixel());
+            const tools::Long w(aSize.Width());
+            const tools::Long a(
+                basegfx::fround<tools::Long>(w * (1.0 - rFillGraphicAttribute.getOffsetX())));
 
             if (0 != a && w != a)
             {
-                const tools::Long h(rSize.Height());
+                const tools::Long h(aSize.Height());
                 const tools::Long b(w - a);
-                BitmapEx aTarget(Size(w, h * 2), rTarget.getPixelFormat());
+                Bitmap aTarget(Size(w, h * 2), rTarget.getPixelFormat());
 
                 aTarget.SetPrefSize(
                     Size(rTarget.GetPrefSize().Width(), rTarget.GetPrefSize().Height() * 2));
-                const tools::Rectangle aSrcDst(Point(), rSize);
+                const tools::Rectangle aSrcDst(Point(), aSize);
                 aTarget.CopyPixel(aSrcDst, // Dst
                                   aSrcDst, // Src
                                   rTarget);
@@ -96,19 +98,20 @@ void takeCareOfOffsetXY(
     {
         if (rFillGraphicPrimitive2D.getOffsetXYCreatedBitmap().IsEmpty())
         {
-            const Size& rSize(rTarget.GetSizePixel());
-            const tools::Long h(rSize.Height());
-            const tools::Long a(basegfx::fround(h * (1.0 - rFillGraphicAttribute.getOffsetY())));
+            const Size aSize(rTarget.GetSizePixel());
+            const tools::Long h(aSize.Height());
+            const tools::Long a(
+                basegfx::fround<tools::Long>(h * (1.0 - rFillGraphicAttribute.getOffsetY())));
 
             if (0 != a && h != a)
             {
-                const tools::Long w(rSize.Width());
+                const tools::Long w(aSize.Width());
                 const tools::Long b(h - a);
-                BitmapEx aTarget(Size(w * 2, h), rTarget.getPixelFormat());
+                Bitmap aTarget(Size(w * 2, h), rTarget.getPixelFormat());
 
                 aTarget.SetPrefSize(
                     Size(rTarget.GetPrefSize().Width() * 2, rTarget.GetPrefSize().Height()));
-                const tools::Rectangle aSrcDst(Point(), rSize);
+                const tools::Rectangle aSrcDst(Point(), aSize);
                 aTarget.CopyPixel(aSrcDst, // Dst
                                   aSrcDst, // Src
                                   rTarget);
@@ -139,7 +142,7 @@ void takeCareOfOffsetXY(
 
 bool prepareBitmapForDirectRender(
     const drawinglayer::primitive2d::FillGraphicPrimitive2D& rFillGraphicPrimitive2D,
-    const drawinglayer::geometry::ViewInformation2D& rViewInformation2D, BitmapEx& rTarget,
+    const drawinglayer::geometry::ViewInformation2D& rViewInformation2D, Bitmap& rTarget,
     basegfx::B2DRange& rFillUnitRange, double fBigDiscreteArea)
 {
     const attribute::FillGraphicAttribute& rFillGraphicAttribute(
@@ -182,7 +185,7 @@ bool prepareBitmapForDirectRender(
         basegfx::B2DRange aDiscreteRange(basegfx::B2DRange::getUnitB2DRange());
         aDiscreteRange.transform(aLocalTransform);
 
-        if (!rDiscreteViewPort.overlaps(rDiscreteViewPort))
+        if (!aDiscreteRange.overlaps(rDiscreteViewPort))
         {
             // we have a Viewport and visible range of geometry is outside -> not visible, done
             return false;
@@ -200,7 +203,7 @@ bool prepareBitmapForDirectRender(
     {
         // bitmap graphic, always handle locally, so get bitmap data independent
         // if it'sie or it's discrete display size
-        rTarget = rGraphic.GetBitmapEx();
+        rTarget = Bitmap(rGraphic.GetBitmapEx());
     }
     else
     {
@@ -240,7 +243,7 @@ bool prepareBitmapForDirectRender(
             // at BitmapEx is possible, just get the default fallback Bitmap from the
             // vector data to continue. Trust the existing converters for now to
             // do something with good quality.
-            rTarget = rGraphic.GetBitmapEx();
+            rTarget = Bitmap(rGraphic.GetBitmapEx());
         }
     }
 
@@ -258,8 +261,7 @@ bool prepareBitmapForDirectRender(
     static bool bDoSaveForVisualControl(false); // loplugin:constvars:ignore
     if (bDoSaveForVisualControl)
     {
-        static const OUString sDumpPath(
-            OUString::createFromAscii(std::getenv("VCL_DUMP_BMP_PATH")));
+        static const OUString sDumpPath(o3tl::getEnvironment(u"VCL_DUMP_BMP_PATH"_ustr));
         if (!sDumpPath.isEmpty())
         {
             SvFileStream aNew(sDumpPath + "test_getreplacement.png",

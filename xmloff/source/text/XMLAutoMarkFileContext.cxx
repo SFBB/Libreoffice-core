@@ -19,13 +19,10 @@
 
 #include "XMLAutoMarkFileContext.hxx"
 #include <xmloff/xmlimp.hxx>
-#include <rtl/ustring.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <sal/log.hxx>
 
@@ -68,7 +65,7 @@ void XMLAutoMarkFileContext::startFastElement(
                     GetImport().GetModel(), UNO_QUERY );
                 if (xPropertySet.is())
                 {
-                    xPropertySet->setPropertyValue( "IndexAutoMarkFileURL", aAny );
+                    xPropertySet->setPropertyValue( u"IndexAutoMarkFileURL"_ustr, aAny );
                 }
                 break;
             }

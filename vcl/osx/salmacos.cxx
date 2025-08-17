@@ -26,6 +26,7 @@
 #include <osl/diagnose.h>
 
 #include <vcl/bitmap.hxx>
+#include <vcl/skia/SkiaHelper.hxx>
 
 #include <quartz/salbmp.h>
 #include <quartz/salgdi.h>
@@ -125,7 +126,8 @@ void AquaGraphicsBackend::copyBits(const SalTwoRect &rPosAry, SalGraphics *pSrcG
         mrShared.applyXorContext();
         pSrcShared->applyXorContext();
         std::shared_ptr<SalBitmap> pBitmap = pSrcGraphics->GetImpl()->getBitmap(rPosAry.mnSrcX, rPosAry.mnSrcY,
-                                                                        rPosAry.mnSrcWidth, rPosAry.mnSrcHeight);
+                                                                        rPosAry.mnSrcWidth, rPosAry.mnSrcHeight,
+                                                                        /*bWithoutAlpha*/false);
         if (pBitmap)
         {
             SalTwoRect aPosAry(rPosAry);
@@ -459,7 +461,7 @@ void AquaSalVirtualDevice::Destroy()
     }
 }
 
-bool AquaSalVirtualDevice::SetSize(tools::Long nDX, tools::Long nDY)
+bool AquaSalVirtualDevice::SetSize(tools::Long nDX, tools::Long nDY, bool bAlphaMaskTransparent)
 {
     SAL_INFO("vcl.virdev", "AquaSalVirtualDevice::SetSize() this=" << this <<
              " (" << nDX << "x" << nDY << ") mbForeignContext=" << (mbForeignContext ? "YES" : "NO"));
@@ -503,7 +505,13 @@ bool AquaSalVirtualDevice::SetSize(tools::Long nDX, tools::Long nDY)
         mnBitmapDepth = 32;
         aColorSpace = GetSalData()->mxRGBSpace;
 
-        nFlags = uint32_t(kCGImageAlphaNoneSkipFirst) | uint32_t(kCGBitmapByteOrder32Host);
+        nFlags = uint32_t(kCGImageAlphaPremultipliedFirst) | uint32_t(kCGBitmapByteOrder32Host);
+    }
+
+    if (SkiaHelper::isVCLSkiaEnabled())
+    {
+        mpGraphics->SetVirDevGraphics(this, maLayer, nullptr, mnBitmapDepth);
+        return true;
     }
 
     // Allocate buffer for virtual device graphics as bitmap context to store graphics with highest required (scaled) resolution
@@ -512,6 +520,24 @@ bool AquaSalVirtualDevice::SetSize(tools::Long nDX, tools::Long nDY)
     size_t nScaledHeight = mnHeight * fScale;
     size_t nBytesPerRow = mnBitmapDepth * nScaledWidth / 8;
     maBitmapContext.set(CGBitmapContextCreate(nullptr, nScaledWidth, nScaledHeight, 8, nBytesPerRow, aColorSpace, nFlags));
+
+    if (mnBitmapDepth == 32)
+    {
+        if (bAlphaMaskTransparent)
+        {
+            CGColorRef transparentCol = CGColorCreateGenericRGB(0, 0, 0, 0);
+            CGContextSetFillColorWithColor(maBitmapContext.get(), transparentCol);
+            CGContextFillRect(maBitmapContext.get(), CGRectMake(0, 0, nScaledWidth, nScaledHeight));
+            CGColorRelease(transparentCol);
+        }
+        else
+        {
+            CGColorRef opaqueCol = CGColorCreateGenericRGB(0, 0, 0, 1.0);
+            CGContextSetFillColorWithColor(maBitmapContext.get(), opaqueCol);
+            CGContextFillRect(maBitmapContext.get(), CGRectMake(0, 0, nScaledWidth, nScaledHeight));
+            CGColorRelease(opaqueCol);
+        }
+    }
 
     SAL_INFO("vcl.virdev", "AquaSalVirtualDevice::SetSize() this=" << this <<
              " fScale=" << fScale << " mnBitmapDepth=" << mnBitmapDepth);

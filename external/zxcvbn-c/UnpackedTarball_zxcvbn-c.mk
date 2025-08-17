@@ -11,6 +11,8 @@ $(eval $(call gb_UnpackedTarball_UnpackedTarball,zxcvbn-c))
 
 $(eval $(call gb_UnpackedTarball_set_tarball,zxcvbn-c,$(ZXCVBN_C_TARBALL)))
 
+$(eval $(call gb_UnpackedTarball_set_patchlevel,zxcvbn-c,2))
+
 $(eval $(call gb_UnpackedTarball_add_patches,zxcvbn-c,\
 	external/zxcvbn-c/zxcvbn-c-2.5-do-not-use-stdafx.patch \
 ))

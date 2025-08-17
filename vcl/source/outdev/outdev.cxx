@@ -24,7 +24,7 @@
 #include <tools/debug.hxx>
 
 #include <vcl/graph.hxx>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <vcl/metaact.hxx>
 #include <vcl/toolkit/unowrap.hxx>
 #include <vcl/svapp.hxx>
@@ -70,7 +70,6 @@ OutputDevice::OutputDevice(OutDevType eOutDevType) :
     mpFontInstance                  = nullptr;
     mpForcedFallbackInstance        = nullptr;
     mpFontFaceCollection            = nullptr;
-    mpAlphaVDev                     = nullptr;
     mpExtOutDevData                 = nullptr;
     mnOutOffX                       = 0;
     mnOutOffY                       = 0;
@@ -178,9 +177,8 @@ void OutputDevice::dispose()
     // release ImplFontList specific to this OutputDevice
     mxFontCollection.reset();
 
-    mpAlphaVDev.disposeAndClear();
-    mpPrevGraphics.clear();
-    mpNextGraphics.clear();
+    mpPrevGraphics.reset();
+    mpNextGraphics.reset();
     VclReferenceBase::dispose();
 }
 
@@ -217,9 +215,6 @@ void OutputDevice::SetConnectMetaFile( GDIMetaFile* pMtf )
 void OutputDevice::SetSettings( const AllSettings& rSettings )
 {
     *moSettings = rSettings;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetSettings( rSettings );
 }
 
 SystemGraphicsData OutputDevice::GetSystemGfxData() const
@@ -227,6 +222,11 @@ SystemGraphicsData OutputDevice::GetSystemGfxData() const
     if (!mpGraphics && !AcquireGraphics())
         return SystemGraphicsData();
     assert(mpGraphics);
+
+#if USE_HEADLESS_CODE
+    if (OUTDEV_WINDOW == GetOutDevType())
+        mpGraphics->ApplyFullDamage();
+#endif
 
     return mpGraphics->GetGraphicsData();
 }
@@ -302,9 +302,6 @@ void OutputDevice::SetRefPoint()
     mbRefPoint = false;
     maRefPoint.setX(0);
     maRefPoint.setY(0);
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetRefPoint();
 }
 
 void OutputDevice::SetRefPoint( const Point& rRefPoint )
@@ -314,9 +311,6 @@ void OutputDevice::SetRefPoint( const Point& rRefPoint )
 
     mbRefPoint = true;
     maRefPoint = rRefPoint;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetRefPoint( rRefPoint );
 }
 
 void OutputDevice::SetRasterOp( RasterOp eRasterOp )
@@ -335,17 +329,11 @@ void OutputDevice::SetRasterOp( RasterOp eRasterOp )
             mpGraphics->SetXORMode( (RasterOp::Invert == meRasterOp) || (RasterOp::Xor == meRasterOp), RasterOp::Invert == meRasterOp );
         }
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetRasterOp( eRasterOp );
 }
 
 void OutputDevice::EnableOutput( bool bEnable )
 {
     mbOutput = bEnable;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->EnableOutput( bEnable );
 }
 
 void OutputDevice::SetAntialiasing( AntialiasingFlags nMode )
@@ -358,17 +346,11 @@ void OutputDevice::SetAntialiasing( AntialiasingFlags nMode )
         if (mpGraphics)
             mpGraphics->setAntiAlias(bool(mnAntialiasing & AntialiasingFlags::Enable));
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetAntialiasing( nMode );
 }
 
 void OutputDevice::SetDrawMode(DrawModeFlags nDrawMode)
 {
     mnDrawMode = nDrawMode;
-
-    if (mpAlphaVDev)
-        mpAlphaVDev->SetDrawMode(nDrawMode);
 }
 
 sal_uInt16 OutputDevice::GetBitCount() const
@@ -464,9 +446,6 @@ void OutputDevice::DrawOutDev( const Point& rDestPt, const Size& rDestSize,
         if ( aPosAry.mnSrcWidth && aPosAry.mnSrcHeight && aPosAry.mnDestWidth && aPosAry.mnDestHeight )
             mpGraphics->CopyBits(aPosAry, *this);
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawOutDev( rDestPt, rDestSize, rSrcPt, rSrcSize );
 }
 
 void OutputDevice::DrawOutDev( const Point& rDestPt, const Size& rDestSize,
@@ -484,16 +463,8 @@ void OutputDevice::DrawOutDev( const Point& rDestPt, const Size& rDestSize,
 
     if ( mpMetaFile )
     {
-        if (rOutDev.mpAlphaVDev)
-        {
-            const BitmapEx aBmpEx(rOutDev.GetBitmapEx(rSrcPt, rSrcSize));
-            mpMetaFile->AddAction(new MetaBmpExScaleAction(rDestPt, rDestSize, aBmpEx));
-        }
-        else
-        {
-            const Bitmap aBmp(rOutDev.GetBitmap(rSrcPt, rSrcSize));
-            mpMetaFile->AddAction(new MetaBmpScaleAction(rDestPt, rDestSize, aBmp));
-        }
+        const BitmapEx aBmpEx(rOutDev.GetBitmap(rSrcPt, rSrcSize));
+        mpMetaFile->AddAction(new MetaBmpExScaleAction(rDestPt, rDestSize, aBmpEx));
     }
 
     if ( !IsDeviceOutputNecessary() )
@@ -509,28 +480,17 @@ void OutputDevice::DrawOutDev( const Point& rDestPt, const Size& rDestSize,
     if ( mbOutputClipped )
         return;
 
-    if (rOutDev.mpAlphaVDev)
-    {
-        // alpha-blend source over destination
-        DrawBitmapEx(rDestPt, rDestSize, rOutDev.GetBitmapEx(rSrcPt, rSrcSize));
-    }
-    else
-    {
-        SalTwoRect aPosAry(rOutDev.ImplLogicXToDevicePixel(rSrcPt.X()),
-                           rOutDev.ImplLogicYToDevicePixel(rSrcPt.Y()),
-                           rOutDev.ImplLogicWidthToDevicePixel(rSrcSize.Width()),
-                           rOutDev.ImplLogicHeightToDevicePixel(rSrcSize.Height()),
-                           ImplLogicXToDevicePixel(rDestPt.X()),
-                           ImplLogicYToDevicePixel(rDestPt.Y()),
-                           ImplLogicWidthToDevicePixel(rDestSize.Width()),
-                           ImplLogicHeightToDevicePixel(rDestSize.Height()));
+    SalTwoRect aPosAry(rOutDev.ImplLogicXToDevicePixel(rSrcPt.X()),
+                             rOutDev.ImplLogicYToDevicePixel(rSrcPt.Y()),
+                             rOutDev.ImplLogicWidthToDevicePixel(rSrcSize.Width()),
+                             rOutDev.ImplLogicHeightToDevicePixel(rSrcSize.Height()),
+                             ImplLogicXToDevicePixel(rDestPt.X()),
+                             ImplLogicYToDevicePixel(rDestPt.Y()),
+                             ImplLogicWidthToDevicePixel(rDestSize.Width()),
+                             ImplLogicHeightToDevicePixel(rDestSize.Height()));
 
-        drawOutDevDirect(rOutDev, aPosAry);
-
-        // #i32109#: make destination rectangle opaque - source has no alpha
-        if (mpAlphaVDev)
-            mpAlphaVDev->ImplFillOpaqueRectangle(tools::Rectangle(rDestPt, rDestSize));
-    }
+    // if we have alpha, this will blend source over destination
+    drawOutDevDirect(rOutDev, aPosAry);
 }
 
 void OutputDevice::CopyArea( const Point& rDestPt,
@@ -571,9 +531,6 @@ void OutputDevice::CopyArea( const Point& rDestPt,
     }
 
     SetRasterOp( eOldRop );
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->CopyArea( rDestPt, rSrcPt, rSrcSize, bWindowInvalidate );
 }
 
 // Direct OutputDevice drawing protected function
@@ -649,9 +606,6 @@ tools::Rectangle OutputDevice::GetBackgroundComponentBounds() const
 void OutputDevice::EnableRTL( bool bEnable )
 {
     mbEnableRTL = bEnable;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->EnableRTL( bEnable );
 }
 
 bool OutputDevice::ImplIsAntiparallel() const
@@ -698,7 +652,7 @@ void OutputDevice::ReMirror( vcl::Region &rRegion ) const
         aMirroredRegion.Union(rectangle);
     }
 
-    rRegion = aMirroredRegion;
+    rRegion = std::move(aMirroredRegion);
 
 }
 
@@ -769,7 +723,7 @@ Reference< css::rendering::XSpriteCanvas > OutputDevice::GetSpriteCanvas() const
 }
 
 // Generic implementation, Window will override.
-com::sun::star::uno::Reference< css::rendering::XCanvas > OutputDevice::ImplGetCanvas( bool bSpriteCanvas ) const
+css::uno::Reference< css::rendering::XCanvas > OutputDevice::ImplGetCanvas( bool bSpriteCanvas ) const
 {
     /* Arguments:
        0: ptr to creating instance (Window or VirtualDevice)
@@ -786,9 +740,9 @@ com::sun::star::uno::Reference< css::rendering::XCanvas > OutputDevice::ImplGetC
         GetSystemGfxDataAny()
     };
 
-    Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
 
-    static vcl::DeleteUnoReferenceOnDeinit<css::lang::XMultiComponentFactory> xStaticCanvasFactory(
+    static tools::DeleteUnoReferenceOnDeinit<css::lang::XMultiComponentFactory> xStaticCanvasFactory(
         css::rendering::CanvasFactory::create( xContext ) );
     Reference<css::lang::XMultiComponentFactory> xCanvasFactory(xStaticCanvasFactory.get());
     Reference< css::rendering::XCanvas > xCanvas;
@@ -797,8 +751,8 @@ com::sun::star::uno::Reference< css::rendering::XCanvas > OutputDevice::ImplGetC
     {
         xCanvas.set( xCanvasFactory->createInstanceWithArgumentsAndContext(
                          bSpriteCanvas ?
-                         OUString( "com.sun.star.rendering.SpriteCanvas" ) :
-                         OUString( "com.sun.star.rendering.Canvas" ),
+                         u"com.sun.star.rendering.SpriteCanvas"_ustr :
+                         u"com.sun.star.rendering.Canvas"_ustr,
                          aArg,
                          xContext ),
                      UNO_QUERY );

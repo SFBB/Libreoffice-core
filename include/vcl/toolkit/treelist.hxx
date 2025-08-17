@@ -23,6 +23,7 @@
 #error "don't use this in new code"
 #endif
 
+#include <config_options.h>
 #include <vcl/dllapi.h>
 #include <vcl/toolkit/treelistentries.hxx>
 
@@ -61,7 +62,7 @@ struct SvSortData
     const SvTreeListEntry* pRight;
 };
 
-class VCL_DLLPUBLIC SvTreeList final
+class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeList final
 {
     friend class        SvListView;
 
@@ -94,25 +95,25 @@ class VCL_DLLPUBLIC SvTreeList final
 
     sal_uInt32           GetChildSelectionCount( const SvListView*,SvTreeListEntry* pParent ) const;
 
-    VCL_DLLPRIVATE void SetAbsolutePositions();
+    SAL_DLLPRIVATE void SetAbsolutePositions();
 
-    VCL_DLLPRIVATE void CloneChildren(
+    SAL_DLLPRIVATE void CloneChildren(
         SvTreeListEntries& rDst, sal_uInt32& rCloneCount, SvTreeListEntries& rSrc, SvTreeListEntry& rNewParent) const;
 
     /**
      * Invalidate the cached position data to have them re-generated before
      * the next access.
      */
-    VCL_DLLPRIVATE static void SetListPositions( SvTreeListEntries& rEntries );
+    SAL_DLLPRIVATE static void SetListPositions( SvTreeListEntries& rEntries );
 
     // rPos is not changed for SortModeNone
-    VCL_DLLPRIVATE void GetInsertionPos(
+    SAL_DLLPRIVATE void GetInsertionPos(
                             SvTreeListEntry const * pEntry,
                             SvTreeListEntry* pParent,
                             sal_uInt32& rPos
                         );
 
-    VCL_DLLPRIVATE void ResortChildren( SvTreeListEntry* pParent );
+    SAL_DLLPRIVATE void ResortChildren( SvTreeListEntry* pParent );
 
     SvTreeList(const SvTreeList&) = delete;
     SvTreeList& operator= (const SvTreeList&) = delete;
@@ -199,7 +200,7 @@ public:
     void                Resort();
 };
 
-class VCL_DLLPUBLIC SvListView
+class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvListView
 {
     friend class SvTreeList;
 

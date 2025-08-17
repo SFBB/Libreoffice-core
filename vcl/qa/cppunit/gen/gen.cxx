@@ -7,6 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <tools/color.hxx>
 #include <test/unoapi_test.hxx>
 
 #include <sfx2/objsh.hxx>
@@ -22,20 +23,20 @@ class GenTest : public UnoApiTest
 {
 public:
     GenTest()
-        : UnoApiTest("/vcl/qa/cppunit/gen/data/")
+        : UnoApiTest(u"/vcl/qa/cppunit/gen/data/"_ustr)
     {
     }
 
     Bitmap load(const char* pName)
     {
-        loadFromURL(OUString::createFromAscii(pName));
+        loadFromFile(OUString::createFromAscii(pName));
         SfxBaseModel* pModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
         CPPUNIT_ASSERT(pModel);
         SfxObjectShell* pShell = pModel->GetObjectShell();
         std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
-        BitmapEx aResultBitmap;
+        Bitmap aResultBitmap;
         CPPUNIT_ASSERT(xMetaFile->CreateThumbnail(aResultBitmap));
-        return aResultBitmap.GetBitmap();
+        return aResultBitmap;
     }
 };
 
@@ -43,8 +44,8 @@ CPPUNIT_TEST_FIXTURE(GenTest, testTdf121120)
 {
     Bitmap aBitmap = load("tdf121120.png");
     BitmapScopedReadAccess pAccess(aBitmap);
-    const Size& rSize = aBitmap.GetSizePixel();
-    Color aColor(pAccess->GetPixel(rSize.getHeight() / 2, rSize.getWidth() / 2));
+    const Size aSize = aBitmap.GetSizePixel();
+    Color aColor(pAccess->GetPixel(aSize.getHeight() / 2, aSize.getWidth() / 2));
     // Without the accompanying fix in place, this test would have failed with 'Expected: 255;
     // Actual  : 1'. I.e. center of the preview (which has the background color) was ~black, not
     // white.
@@ -63,9 +64,9 @@ CPPUNIT_TEST_FIXTURE(GenTest, testTdf107966)
     aMapMode.SetMapUnit(MapUnit::MapTwip);
     pVirtualDevice->SetMapMode(aMapMode);
     pVirtualDevice->SetOutputSizePixel(Size(90, 15));
-    pVirtualDevice->SetFillColor(Color(255, 255, 255));
+    pVirtualDevice->SetFillColor(COL_WHITE);
     pVirtualDevice->DrawRect(tools::Rectangle(Point(), Size(1350, 225)));
-    pVirtualDevice->SetFillColor(Color(0, 0, 0));
+    pVirtualDevice->SetFillColor(COL_BLACK);
     AntialiasingFlags nOldAA = pVirtualDevice->GetAntialiasing();
     pVirtualDevice->SetAntialiasing(nOldAA & ~AntialiasingFlags::Enable);
 
@@ -83,7 +84,7 @@ CPPUNIT_TEST_FIXTURE(GenTest, testTdf107966)
     Color aPixel(pAccess->GetPixel(0, 0));
     // Without the accompanying fix in place, this test would have failed with 'Expected: 000000;
     // Actual: ffffff', i.e. the top left pixel was white, not black.
-    CPPUNIT_ASSERT_EQUAL(OUString("000000"), aPixel.AsRGBHexString());
+    CPPUNIT_ASSERT_EQUAL(u"000000"_ustr, aPixel.AsRGBHexString());
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

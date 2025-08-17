@@ -49,9 +49,11 @@ public:
         // some false +
         if (loplugin::isSamePathname(fn, SRCDIR "/unoidl/source/sourcetreeprovider.cxx"))
             return false;
-        if (loplugin::isSamePathname(fn, SRCDIR "/writerfilter/source/dmapper/StyleSheetTable.cxx"))
+        if (loplugin::isSamePathname(fn,
+                                     SRCDIR "/sw/source/writerfilter/dmapper/StyleSheetTable.cxx"))
             return false;
-        if (loplugin::isSamePathname(fn, SRCDIR "/writerfilter/source/dmapper/GraphicImport.cxx"))
+        if (loplugin::isSamePathname(fn,
+                                     SRCDIR "/sw/source/writerfilter/dmapper/GraphicImport.cxx"))
             return false;
         if (loplugin::isSamePathname(fn, SRCDIR "/sdext/source/pdfimport/pdfparse/pdfparse.cxx"))
             return false;
@@ -117,12 +119,26 @@ bool BufferAdd::VisitCallExpr(CallExpr const* callExpr)
     if (ignoreLocation(callExpr))
         return true;
 
+    // calls to "buffer = foo" are OK
+    // calls to "xxx = foo1 + buffer" are OK
+    if (auto operatorCall = dyn_cast<CXXOperatorCallExpr>(callExpr))
+    {
+        auto op = operatorCall->getOperator();
+        if (op == OO_PlusEqual || op == OO_Equal || op == OO_Plus)
+            return true;
+    }
+
+    // exclude buffer vars where the var is passed as a parameter to another function
     for (unsigned i = 0; i != callExpr->getNumArgs(); ++i)
     {
         auto a = ignore(callExpr->getArg(i));
         if (auto declRefExpr = dyn_cast<DeclRefExpr>(a))
             if (auto varDecl = dyn_cast<VarDecl>(declRefExpr->getDecl()))
+            {
                 badMap.insert(varDecl);
+                if (varDecl->getName() == "noelf7")
+                    callExpr->dump();
+            }
     }
     return true;
 }
@@ -210,6 +226,28 @@ void BufferAdd::findBufferAssignOrAdd(const Stmt* parentStmt, Stmt const* stmt)
                     }
                 }
             return;
+        }
+    }
+
+    // check for assignment to string buffer
+    if (auto operatorCall = dyn_cast<CXXOperatorCallExpr>(stmt))
+    {
+        auto op = operatorCall->getOperator();
+        if (op == OO_PlusEqual || op == OO_Equal)
+        {
+            if (auto declRefExprLHS = dyn_cast<DeclRefExpr>(ignore(operatorCall->getArg(0))))
+            {
+                if (auto varDeclLHS = dyn_cast<VarDecl>(declRefExprLHS->getDecl()))
+                {
+                    auto tc = loplugin::TypeCheck(varDeclLHS->getType());
+                    if (tc.Class("OUStringBuffer").Namespace("rtl").GlobalNamespace()
+                        || tc.Class("OStringBuffer").Namespace("rtl").GlobalNamespace())
+                    {
+                        addToGoodMap(varDeclLHS, parentStmt);
+                        return;
+                    }
+                }
+            }
         }
     }
 
@@ -314,7 +352,7 @@ bool BufferAdd::isSideEffectFree(Expr const* expr)
     if (auto operatorCall = dyn_cast<CXXOperatorCallExpr>(expr))
     {
         auto op = operatorCall->getOperator();
-        if (op == OO_PlusEqual || op == OO_Plus)
+        if (op == OO_PlusEqual || op == OO_Plus || op == OO_Equal)
             if (isSideEffectFree(operatorCall->getArg(0))
                 && isSideEffectFree(operatorCall->getArg(1)))
                 return true;

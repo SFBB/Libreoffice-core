@@ -27,6 +27,7 @@
 class SdrMeasureOverhangItem final : public SdrMetricItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SdrMeasureOverhangItem)
     SdrMeasureOverhangItem(tools::Long nVal)
         : SdrMetricItem(SDRATTR_MEASUREOVERHANG, nVal)
     {

@@ -21,6 +21,7 @@
 #include "dp_gui_updatedata.hxx"
 
 #include <sal/config.h>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <cppuhelper/exc_hlp.hxx>
 #include <utility>
@@ -47,6 +48,7 @@
 #include <dp_misc.h>
 #include "dp_gui_extensioncmdqueue.hxx"
 #include <ucbhelper/content.hxx>
+#include <tools/urlobj.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ref.hxx>
 #include <salhelper/thread.hxx>
@@ -56,12 +58,35 @@
 #include <string_view>
 #include <vector>
 
-using dp_misc::StrTitle;
-
 namespace dp_gui {
 
+class UpdateCommandEnv
+    : public ::cppu::WeakImplHelper< css::ucb::XCommandEnvironment,
+                                      css::task::XInteractionHandler,
+                                      css::ucb::XProgressHandler >
+{
+    css::uno::Reference< css::uno::XComponentContext > m_xContext;
+
+public:
+    UpdateCommandEnv(css::uno::Reference<css::uno::XComponentContext> xCtx);
+
+    // XCommandEnvironment
+    virtual css::uno::Reference<css::task::XInteractionHandler > SAL_CALL
+    getInteractionHandler() override;
+    virtual css::uno::Reference<css::ucb::XProgressHandler >
+    SAL_CALL getProgressHandler() override;
+
+    // XInteractionHandler
+    virtual void SAL_CALL handle(
+        css::uno::Reference<css::task::XInteractionRequest > const & xRequest ) override;
+
+    // XProgressHandler
+    virtual void SAL_CALL push( css::uno::Any const & Status ) override;
+    virtual void SAL_CALL update( css::uno::Any const & Status ) override;
+    virtual void SAL_CALL pop() override;
+};
+
 class UpdateInstallDialog::Thread: public salhelper::Thread {
-    friend class UpdateCommandEnv;
 public:
     Thread(css::uno::Reference< css::uno::XComponentContext > const & ctx,
         UpdateInstallDialog & dialog, std::vector< dp_gui::UpdateData > & aVecUpdateData);
@@ -92,36 +117,6 @@ private:
 
 };
 
-class UpdateCommandEnv
-    : public ::cppu::WeakImplHelper< css::ucb::XCommandEnvironment,
-                                      css::task::XInteractionHandler,
-                                      css::ucb::XProgressHandler >
-{
-    friend class UpdateInstallDialog::Thread;
-
-    ::rtl::Reference<UpdateInstallDialog::Thread> m_installThread;
-    css::uno::Reference< css::uno::XComponentContext > m_xContext;
-
-public:
-    UpdateCommandEnv( css::uno::Reference< css::uno::XComponentContext > xCtx,
-        ::rtl::Reference<UpdateInstallDialog::Thread> thread);
-
-    // XCommandEnvironment
-    virtual css::uno::Reference<css::task::XInteractionHandler > SAL_CALL
-    getInteractionHandler() override;
-    virtual css::uno::Reference<css::ucb::XProgressHandler >
-    SAL_CALL getProgressHandler() override;
-
-    // XInteractionHandler
-    virtual void SAL_CALL handle(
-        css::uno::Reference<css::task::XInteractionRequest > const & xRequest ) override;
-
-    // XProgressHandler
-    virtual void SAL_CALL push( css::uno::Any const & Status ) override;
-    virtual void SAL_CALL update( css::uno::Any const & Status ) override;
-    virtual void SAL_CALL pop() override;
-};
-
 
 UpdateInstallDialog::Thread::Thread(
     css::uno::Reference< css::uno::XComponentContext> const & xCtx,
@@ -131,7 +126,7 @@ UpdateInstallDialog::Thread::Thread(
     m_dialog(dialog),
     m_xComponentContext(xCtx),
     m_aVecUpdateData(aVecUpdateData),
-    m_updateCmdEnv(new UpdateCommandEnv(xCtx, this)),
+    m_updateCmdEnv(new UpdateCommandEnv(xCtx)),
     m_stop(false)
 {}
 
@@ -171,16 +166,14 @@ void UpdateInstallDialog::Thread::execute()
         if (! m_stop)
              m_dialog.updateDone();
     }
-    //UpdateCommandEnv keeps a reference to Thread and prevents destruction. Therefore remove it.
-    m_updateCmdEnv->m_installThread.clear();
 }
 
 UpdateInstallDialog::UpdateInstallDialog(
     weld::Window* pParent,
     std::vector<dp_gui::UpdateData> & aVecUpdateData,
     css::uno::Reference< css::uno::XComponentContext > const & xCtx)
-    : GenericDialogController(pParent, "desktop/ui/updateinstalldialog.ui",
-                              "UpdateInstallDialog")
+    : GenericDialogController(pParent, u"desktop/ui/updateinstalldialog.ui"_ustr,
+                              u"UpdateInstallDialog"_ustr)
     , m_thread(new Thread(xCtx, *this, aVecUpdateData))
     , m_bError(false)
     , m_bNoEntry(true)
@@ -192,13 +185,13 @@ UpdateInstallDialog::UpdateInstallDialog(
     , m_sErrorLicenseDeclined(DpResId(RID_DLG_UPDATE_INSTALL_ERROR_LIC_DECLINED))
     , m_sNoInstall(DpResId(RID_DLG_UPDATE_INSTALL_EXTENSION_NOINSTALL))
     , m_sThisErrorOccurred(DpResId(RID_DLG_UPDATE_INSTALL_THIS_ERROR_OCCURRED))
-    , m_xFt_action(m_xBuilder->weld_label("DOWNLOADING"))
-    , m_xStatusbar(m_xBuilder->weld_progress_bar("STATUSBAR"))
-    , m_xFt_extension_name(m_xBuilder->weld_label("EXTENSION_NAME"))
-    , m_xMle_info(m_xBuilder->weld_text_view("INFO"))
-    , m_xHelp(m_xBuilder->weld_button("help"))
-    , m_xOk(m_xBuilder->weld_button("ok"))
-    , m_xCancel(m_xBuilder->weld_button("cancel"))
+    , m_xFt_action(m_xBuilder->weld_label(u"DOWNLOADING"_ustr))
+    , m_xStatusbar(m_xBuilder->weld_progress_bar(u"STATUSBAR"_ustr))
+    , m_xFt_extension_name(m_xBuilder->weld_label(u"EXTENSION_NAME"_ustr))
+    , m_xMle_info(m_xBuilder->weld_text_view(u"INFO"_ustr))
+    , m_xHelp(m_xBuilder->weld_button(u"help"_ustr))
+    , m_xOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xCancel(m_xBuilder->weld_button(u"cancel"_ustr))
 {
     m_xMle_info->set_size_request(m_xMle_info->get_approximate_digit_width() * 52,
                                   m_xMle_info->get_height_rows(5));
@@ -292,7 +285,7 @@ void UpdateInstallDialog::Thread::downloadExtensions()
         //create the download directory in the temp folder
         OUString sTempDir;
         if (::osl::FileBase::getTempDirURL(sTempDir) != ::osl::FileBase::E_None)
-            throw css::uno::Exception("Could not get URL for the temp directory. No extensions will be installed.", nullptr);
+            throw css::uno::Exception(u"Could not get URL for the temp directory. No extensions will be installed."_ustr, nullptr);
 
         //create a unique name for the directory
         OUString tempEntry, destFolder;
@@ -439,15 +432,15 @@ void UpdateInstallDialog::Thread::installExtensions()
             }
             if (!updateData.aUpdateSource.is() && !updateData.sLocalURL.isEmpty())
             {
-                css::beans::NamedValue prop("EXTENSION_UPDATE", css::uno::Any(OUString("1")));
+                css::beans::NamedValue prop(u"EXTENSION_UPDATE"_ustr, css::uno::Any(u"1"_ustr));
                 if (!updateData.bIsShared)
                     xExtension = m_dialog.getExtensionManager()->addExtension(
                         updateData.sLocalURL, css::uno::Sequence<css::beans::NamedValue>(&prop, 1),
-                        "user", xAbortChannel, m_updateCmdEnv);
+                        u"user"_ustr, xAbortChannel, m_updateCmdEnv);
                 else
                     xExtension = m_dialog.getExtensionManager()->addExtension(
                         updateData.sLocalURL, css::uno::Sequence<css::beans::NamedValue>(&prop, 1),
-                        "shared", xAbortChannel, m_updateCmdEnv);
+                        u"shared"_ustr, xAbortChannel, m_updateCmdEnv);
             }
             else if (updateData.aUpdateSource.is())
             {
@@ -456,15 +449,15 @@ void UpdateInstallDialog::Thread::installExtensions()
                 //add extension. Currently it contains only "SUPPRESS_LICENSE". So it could happen
                 //that a license is displayed when updating from the shared repository, although the
                 //shared extension was installed using "SUPPRESS_LICENSE".
-                css::beans::NamedValue prop("EXTENSION_UPDATE", css::uno::Any(OUString("1")));
+                css::beans::NamedValue prop(u"EXTENSION_UPDATE"_ustr, css::uno::Any(u"1"_ustr));
                 if (!updateData.bIsShared)
                     xExtension = m_dialog.getExtensionManager()->addExtension(
                         updateData.aUpdateSource->getURL(), css::uno::Sequence<css::beans::NamedValue>(&prop, 1),
-                        "user", xAbortChannel, m_updateCmdEnv);
+                        u"user"_ustr, xAbortChannel, m_updateCmdEnv);
                 else
                     xExtension = m_dialog.getExtensionManager()->addExtension(
                         updateData.aUpdateSource->getURL(), css::uno::Sequence<css::beans::NamedValue>(&prop, 1),
-                        "shared", xAbortChannel, m_updateCmdEnv);
+                        u"shared"_ustr, xAbortChannel, m_updateCmdEnv);
             }
         }
         catch (css::deployment::DeploymentException & de)
@@ -539,17 +532,17 @@ bool UpdateInstallDialog::Thread::download(OUString const & sDownloadURL, Update
     }
 
     OSL_ASSERT(m_sDownloadFolder.getLength());
-    OUString destFolder, tempEntry;
+    OUString tempEntry;
     if (::osl::File::createTempFile(
         &m_sDownloadFolder,
         nullptr, &tempEntry ) != ::osl::File::E_None)
     {
         //ToDo feedback in window that download of this component failed
-        throw css::uno::Exception("Could not create temporary file in folder " + destFolder + ".", nullptr);
+        throw css::uno::Exception("Could not create temporary file in folder " + m_sDownloadFolder + ".", nullptr);
     }
     tempEntry = tempEntry.copy( tempEntry.lastIndexOf( '/' ) + 1 );
 
-    destFolder = dp_misc::makeURL( m_sDownloadFolder, tempEntry ) + "_";
+    OUString destFolder = dp_misc::makeURL(m_sDownloadFolder, tempEntry) + "_";
 
     ::ucbhelper::Content destFolderContent;
     dp_misc::create_folder( &destFolderContent, destFolder, m_updateCmdEnv );
@@ -557,7 +550,20 @@ bool UpdateInstallDialog::Thread::download(OUString const & sDownloadURL, Update
     ::ucbhelper::Content sourceContent;
     (void)dp_misc::create_ucb_content(&sourceContent, sDownloadURL, m_updateCmdEnv);
 
-    const OUString sTitle( StrTitle::getTitle( sourceContent ) );
+    OUString sTitle(dp_misc::StrTitle::getTitle(sourceContent));
+    if (sTitle.indexOf('.') < 0)
+    {
+        // The title could be changed due to redirection (seen with github URLs, which arrive
+        // something like 'eff2c80e-138d-4b06-8139-e433f4672379'). This will create problems in
+        // PackageRegistryImpl::bindPackage, where extension will be required to get mediatype.
+        // Try to restore the filename with extension from the URL.
+        // TODO: could also use Content-Disposition (RFC 6266), where the filename is provided.
+        INetURLObject aUrl(sDownloadURL);
+        aUrl.removeFinalSlash();
+        OUString newTitle = aUrl.GetLastName(INetURLObject::DecodeMechanism::WithCharset);
+        if (newTitle.indexOf('.') >= 0)
+            sTitle = newTitle;
+    }
 
     destFolderContent.transferContent(
             sourceContent, ::ucbhelper::InsertOperation::Copy,
@@ -570,16 +576,14 @@ bool UpdateInstallDialog::Thread::download(OUString const & sDownloadURL, Update
             return m_stop;
         }
         //all errors should be handled by the command environment.
-        aUpdateData.sLocalURL = destFolder + "/" + sTitle;
+        aUpdateData.sLocalURL = dp_misc::makeURLAppendSysPathSegment(destFolder, sTitle);
     }
 
     return m_stop;
 }
 
-UpdateCommandEnv::UpdateCommandEnv( css::uno::Reference< css::uno::XComponentContext > xCtx,
-    ::rtl::Reference<UpdateInstallDialog::Thread> thread)
-    : m_installThread(std::move(thread)),
-    m_xContext(std::move(xCtx))
+UpdateCommandEnv::UpdateCommandEnv(css::uno::Reference<css::uno::XComponentContext> xCtx)
+    : m_xContext(std::move(xCtx))
 {
 }
 
@@ -623,21 +627,14 @@ void UpdateCommandEnv::handle(
     else
     {
         // select:
-        css::uno::Sequence< css::uno::Reference< css::task::XInteractionContinuation > > conts(
-            xRequest->getContinuations() );
-        css::uno::Reference< css::task::XInteractionContinuation > const * pConts =
-            conts.getConstArray();
-        sal_Int32 len = conts.getLength();
-        for ( sal_Int32 pos = 0; pos < len; ++pos )
+        for (auto& cont : xRequest->getContinuations())
         {
-            if (approve) {
-                css::uno::Reference< css::task::XInteractionApprove > xInteractionApprove(
-                    pConts[ pos ], css::uno::UNO_QUERY );
-                if (xInteractionApprove.is()) {
-                    xInteractionApprove->select();
-                    // don't query again for ongoing continuations:
-                    approve = false;
-                }
+            css::uno::Reference< css::task::XInteractionApprove > xInteractionApprove(
+                cont, css::uno::UNO_QUERY );
+            if (xInteractionApprove.is()) {
+                xInteractionApprove->select();
+                // don't query again for ongoing continuations:
+                break;
             }
         }
     }

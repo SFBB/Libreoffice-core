@@ -269,7 +269,7 @@ void SwProtocol::Record( const SwFrame* pFrame, PROT nFunction, DbgAction nAct, 
 void SwProtocol::Init()
 {
     s_nRecord = PROT::FileInit;
-    SvFileStream aStream( "dbg_lay.go", StreamMode::READ );
+    SvFileStream aStream( u"dbg_lay.go"_ustr, StreamMode::READ );
     if( aStream.IsOpen() )
     {
         s_pImpl = new SwImplProtocol();
@@ -304,7 +304,7 @@ SwImplProtocol::SwImplProtocol()
 bool SwImplProtocol::NewStream()
 {
     m_nLineCount = 0;
-    m_pStream.reset(new SvFileStream("dbg_lay.out", StreamMode::WRITE | StreamMode::TRUNC));
+    m_pStream.reset(new SvFileStream(u"dbg_lay.out"_ustr, StreamMode::WRITE | StreamMode::TRUNC));
     if (m_pStream->GetError())
     {
         m_pStream.reset();
@@ -425,7 +425,7 @@ void SwImplProtocol::CheckLine( OString& rLine )
 /// read the file "dbg_lay.ini" in the current directory and evaluate it.
 void SwImplProtocol::FileInit()
 {
-    SvFileStream aStream( "dbg_lay.ini", StreamMode::READ );
+    SvFileStream aStream( u"dbg_lay.ini"_ustr, StreamMode::READ );
     if( aStream.IsOpen() )
     {
         OString aLine;
@@ -520,8 +520,8 @@ static OString lcl_TableInfo(const SwTabFrame* pTabFrame)
 {
     const SwTable* pTable = pTabFrame->GetTable();
     const SwFormat* pFormat = static_cast<const SwFormat*>(pTable->GetRegisteredIn());
-    const OUString& text = pFormat->GetName();
-    return OUStringToOString(text, RTL_TEXTENCODING_ASCII_US);
+    const UIName& text = pFormat->GetName();
+    return OUStringToOString(text.toString(), RTL_TEXTENCODING_ASCII_US);
 }
 
 static OString lcl_RowInfo(const SwRowFrame* pFrame)

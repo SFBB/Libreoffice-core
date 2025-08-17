@@ -33,35 +33,33 @@ class SAL_WARN_UNUSED SW_DLLPUBLIC SwNodeIndex final : public sw::Ring<SwNodeInd
 
     void RegisterIndex()
     {
-        SwNodes& rNodes = GetNodes();
-        if(!rNodes.m_vIndices)
+        if(!m_pNode->m_vIndices)
         {
 #if defined(__GNUC__) && (__GNUC__ == 12 || __GNUC__ == 13)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdangling-pointer"
 #endif
-            rNodes.m_vIndices = this;
+            m_pNode->m_vIndices = this;
 #if defined(__GNUC__) && (__GNUC__ == 12 || __GNUC__ == 13)
 #pragma GCC diagnostic pop
 #endif
         }
-        MoveTo(rNodes.m_vIndices);
+        MoveTo(m_pNode->m_vIndices);
     }
     void DeRegisterIndex()
     {
-        SwNodes& rNodes = GetNodes();
-        if(rNodes.m_vIndices == this)
-            rNodes.m_vIndices = GetNextInRing();
+        if(m_pNode->m_vIndices == this)
+            m_pNode->m_vIndices = GetNextInRing();
         MoveTo(nullptr);
-        if(rNodes.m_vIndices == this)
-            rNodes.m_vIndices = nullptr;
+        if(m_pNode->m_vIndices == this)
+            m_pNode->m_vIndices = nullptr;
     }
 
     SwNodeIndex(SwNode* pNode) : m_pNode(pNode) { RegisterIndex(); }
 
 public:
-    SwNodeIndex( SwNodes& rNds, sal_Int32 nIdx ) : SwNodeIndex(rNds, SwNodeOffset(nIdx)) {}
-    explicit SwNodeIndex( SwNodes& rNds, SwNodeOffset nIdx = SwNodeOffset(0) )
+    SwNodeIndex( const SwNodes& rNds, sal_Int32 nIdx ) : SwNodeIndex(rNds, SwNodeOffset(nIdx)) {}
+    explicit SwNodeIndex( const SwNodes& rNds, SwNodeOffset nIdx = SwNodeOffset(0) )
         : SwNodeIndex( rNds[ nIdx ] ) {}
 
     SwNodeIndex( const SwNodeIndex& rIdx, sal_Int32 nDiff ) : SwNodeIndex(rIdx, SwNodeOffset(nDiff)) {}
@@ -119,7 +117,6 @@ public:
     const SwNodes& GetNodes() const { return m_pNode->GetNodes(); }
           SwNodes& GetNodes() { return m_pNode->GetNodes(); }
 
-    const SwNodeIndex* GetNext() const { return GetNextInRing(); }
     SwNode& GetNode() const { return *m_pNode; }
 };
 
@@ -142,7 +139,7 @@ public:
         : aStart( rS ), aEnd( rE ) {}
     SwNodeRange( const SwNodeRange &rRange ) = default;
 
-    SwNodeRange( SwNodes& rNds, SwNodeOffset nSttIdx, SwNodeOffset nEndIdx = SwNodeOffset(0) )
+    SwNodeRange( const SwNodes& rNds, SwNodeOffset nSttIdx, SwNodeOffset nEndIdx = SwNodeOffset(0) )
         : aStart( rNds, nSttIdx ), aEnd( rNds, nEndIdx ) {}
 
     SwNodeRange( const SwNodeIndex& rS, SwNodeOffset nSttDiff, const SwNodeIndex& rE, SwNodeOffset nEndDiff = SwNodeOffset(0) )
@@ -156,31 +153,35 @@ public:
 
 inline SwNodeIndex& SwNodeIndex::operator=( SwNodeOffset const nNew )
 {
-    m_pNode = GetNodes()[ nNew ];
+    auto pNewNode = GetNodes()[ nNew ];
+    if (pNewNode != m_pNode)
+    {
+        DeRegisterIndex();
+        m_pNode = GetNodes()[ nNew ];
+        RegisterIndex();
+    }
     return *this;
 }
 
 SwNodeIndex& SwNodeIndex::operator=( const SwNode& rNd )
 {
-    if (&GetNodes() != &rNd.GetNodes())
+    if (&rNd != m_pNode)
     {
         DeRegisterIndex();
         m_pNode = const_cast<SwNode*>(&rNd);
         RegisterIndex();
     }
-    else
-        m_pNode = const_cast<SwNode*>(&rNd);
     return *this;
 }
 
 SwNodeIndex& SwNodeIndex::Assign( const SwNode& rNd, SwNodeOffset nOffset )
 {
-    *this = rNd;
-
-    if( nOffset )
-        m_pNode = GetNodes()[ GetIndex() + nOffset ];
-
-    return *this;
+    const SwNode* pNewNode;
+    if (nOffset)
+        pNewNode = rNd.GetNodes()[ rNd.GetIndex() + nOffset ];
+    else
+        pNewNode = &rNd;
+    return operator=(*pNewNode);
 }
 
 #endif

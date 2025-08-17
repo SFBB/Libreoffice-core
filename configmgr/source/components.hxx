@@ -91,12 +91,14 @@ public:
 
     void insertModificationXcuFile(
         OUString const & fileUri,
-        std::set< OUString > const & includedPaths,
-        std::set< OUString > const & excludedPaths,
+        css::uno::Sequence< OUString > const & includedPaths,
+        css::uno::Sequence< OUString > const & excludedPaths,
         Modifications * modifications);
 
     css::beans::Optional< css::uno::Any >
     getExternalValue(std::u16string_view descriptor);
+
+    osl::Mutex & getLock() const { return *lock_; }
 
 private:
     Components(const Components&) = delete;

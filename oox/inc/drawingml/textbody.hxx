@@ -31,6 +31,10 @@ namespace com::sun::star::text {
     class XTextCursor;
 }
 
+namespace com::sun::star::style {
+    class XStyle;
+}
+
 namespace oox::core { class XmlFilterBase; }
 
 namespace oox::drawingml {
@@ -64,7 +68,10 @@ public:
                             const TextCharacterProperties& rTextStyleProperties,
                             const TextListStylePtr& pMasterTextListStyle ) const;
     bool isEmpty() const;
+    /// Returns first run of text
     OUString toString() const;
+    /// Returns first paragraph of text
+    OUString firstParatoString() const;
 
     /** Returns whether the textbody had a rPr tag in it that alters it visually
      *
@@ -86,6 +93,12 @@ public:
     void                ApplyStyleEmpty(
                             const ::oox::core::XmlFilterBase& rFilterBase,
                             const css::uno::Reference < css::text::XText > & xText,
+                            const TextCharacterProperties& rTextStyleProperties,
+                            const TextListStylePtr& pMasterTextListStylePtr) const;
+
+    void                ApplyMasterTextStyle(
+                            const ::oox::core::XmlFilterBase& rFilterBase,
+                            const css::uno::Reference< css::style::XStyle > & aXStyle,
                             const TextCharacterProperties& rTextStyleProperties,
                             const TextListStylePtr& pMasterTextListStylePtr) const;
 private:

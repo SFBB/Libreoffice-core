@@ -460,7 +460,7 @@ struct MSFILTER_DLLPUBLIC EscherConnectorListEntry
     css::awt::Point                               maPointB;
     css::uno::Reference< css::drawing::XShape >   mXConnectToB;
 
-    sal_uInt32      GetConnectorRule( bool bFirst );
+    sal_Int32       GetConnectorRule( bool bFirst );
 
                     EscherConnectorListEntry( css::uno::Reference< css::drawing::XShape > xC,
                                         const css::awt::Point& rPA,
@@ -473,7 +473,7 @@ struct MSFILTER_DLLPUBLIC EscherConnectorListEntry
                                             maPointB    ( rPB ),
                                             mXConnectToB(std::move( xSB )) {}
 
-                    static sal_uInt32 GetClosestPoint( const tools::Polygon& rPoly, const css::awt::Point& rP );
+    static sal_Int32 GetClosestPoint(const tools::Polygon& rPoly, const css::awt::Point& rP);
 };
 
 struct MSFILTER_DLLPUBLIC EscherExContainer
@@ -824,7 +824,8 @@ public:
         // creates all necessary CustomShape properties, this includes also Text-, Shadow-, Fill-, and LineProperties
     void        CreateCustomShapeProperties(
                     const MSO_SPT eShapeType,
-                    const css::uno::Reference< css::drawing::XShape > &
+                    const css::uno::Reference< css::drawing::XShape > &,
+                    bool bOOXML = false
                 );
     bool        IsFontWork() const;
 
@@ -1062,6 +1063,7 @@ class MSFILTER_DLLPUBLIC EscherEx : public EscherPersistTable
 
         sal_uInt32                  mnGroupLevel;
         SdrLayerID                  mnHellLayerId;
+        SdrLayerID                  mnHeaderFooterHellLayerId;
 
         bool                        mbEscherSpgr;
         bool                        mbEscherDg;
@@ -1211,6 +1213,8 @@ public:
 
     void SetHellLayerId( SdrLayerID nId )       { mnHellLayerId = nId; }
     SdrLayerID GetHellLayerId() const           { return mnHellLayerId; }
+    void SetHeaderFooterHellLayerId( SdrLayerID nId )       { mnHeaderFooterHellLayerId = nId; }
+    SdrLayerID GetHeaderFooterHellLayerId() const           { return mnHeaderFooterHellLayerId; }
 
 private:
                         EscherEx( const EscherEx& ) = delete;

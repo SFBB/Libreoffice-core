@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_SALBMP_HXX
-#define INCLUDED_VCL_INC_SALBMP_HXX
+#pragma once
 
 #include <tools/gen.hxx>
 #include <tools/solar.h>
@@ -48,7 +47,7 @@ extern const sal_uLong nVCLBLut[ 6 ];
 extern const sal_uLong nVCLDitherLut[ 256 ];
 extern const sal_uLong nVCLLut[ 256 ];
 
-class VCL_PLUGIN_PUBLIC SalBitmap
+class VCL_PLUGIN_PUBLIC SalBitmap : public basegfx::SystemDependentDataHolder
 {
 public:
 
@@ -69,8 +68,7 @@ public:
     virtual bool            Create( const SalBitmap& rSalBmp,
                                     vcl::PixelFormat eNewPixelFormat) = 0;
     virtual bool            Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& rBitmapCanvas,
-                                    Size& rSize,
-                                    bool bMask = false ) = 0;
+                                    Size& rSize ) = 0;
     virtual void            Destroy() = 0;
     virtual Size            GetSize() const = 0;
     virtual sal_uInt16      GetBitCount() const = 0;
@@ -156,25 +154,17 @@ protected:
         BitConvert type );
 
 public:
-    // access to SystemDependentDataHolder, to support overload in derived class(es)
-    virtual const basegfx::SystemDependentDataHolder* accessSystemDependentDataHolder() const;
-
     // exclusive management op's for SystemDependentData at SalBitmap
     template<class T>
-    std::shared_ptr<T> getSystemDependentData() const
+    std::shared_ptr<T> getSystemDependentData(basegfx::SDD_Type aType) const
     {
-        const basegfx::SystemDependentDataHolder* pDataHolder(accessSystemDependentDataHolder());
-        if(pDataHolder)
-            return std::static_pointer_cast<T>(pDataHolder->getSystemDependentData(typeid(T).hash_code()));
-        return std::shared_ptr<T>();
+        return std::static_pointer_cast<T>(basegfx::SystemDependentDataHolder::getSystemDependentData(aType));
     }
 
     template<class T, class... Args>
     std::shared_ptr<T> addOrReplaceSystemDependentData(Args&&... args) const
     {
-        const basegfx::SystemDependentDataHolder* pDataHolder(accessSystemDependentDataHolder());
-        if(!pDataHolder)
-            return std::shared_ptr<T>();
+        const basegfx::SystemDependentDataHolder* pDataHolder = this;
 
         std::shared_ptr<T> r = std::make_shared<T>(std::forward<Args>(args)...);
 
@@ -193,7 +183,5 @@ private:
     bool           mbChecksumValid;
 
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

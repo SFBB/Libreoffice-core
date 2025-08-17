@@ -19,7 +19,7 @@ from com.sun.star.lang import Locale
 # Chart Display Data Labels dialog
 class chartDataLabels(UITestCase):
    def test_chart_data_labels_dialog(self):
-    with self.ui_test.load_file(get_url_for_data_file("tdf98390.ods")) as calc_doc:
+    with self.ui_test.load_file(get_url_for_data_file("chart.ods")) as calc_doc:
         xCalcDoc = self.xUITest.getTopFocusWindow()
         gridwin = xCalcDoc.getChild("grid_window")
 
@@ -225,8 +225,8 @@ class chartDataLabels(UITestCase):
                 sourceformat = dialog.getChild("sourceformat")
 
                 # Select currency
-                sourceformat.executeAction("CLICK", tuple());
-                categoryformat.getChild("4").executeAction("SELECT", tuple());
+                sourceformat.executeAction("CLICK", tuple())
+                categoryformat.getChild("4").executeAction("SELECT", tuple())
 
                 self.assertEqual(get_state_as_dict(categoryformat)["SelectEntryText"], "Currency")
 
@@ -272,7 +272,7 @@ class chartDataLabels(UITestCase):
 
             with self.ui_test.execute_dialog_through_action(xDataLabel, "COMMAND", mkPropertyValues({"COMMAND": "TransformDialog"})) as xDialog:
 
-                self.assertEqual("0.74", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_X"))['Value'])
+                self.assertEqual("0.73", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_X"))['Value'])
                 self.assertEqual("2.82", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_Y"))['Value'])
 
                 # Use OK button in order to test tdf#137165
@@ -283,7 +283,7 @@ class chartDataLabels(UITestCase):
             with self.ui_test.execute_dialog_through_action(xDataLabel, "COMMAND", mkPropertyValues({"COMMAND": "TransformDialog"})) as xDialog:
 
                 # Check the position has changed after moving the label using the arrows keys
-                self.assertEqual("0.64", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_X"))['Value'])
+                self.assertEqual("0.63", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_X"))['Value'])
                 self.assertEqual("2.72", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_Y"))['Value'])
 
 

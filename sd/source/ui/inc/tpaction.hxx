@@ -38,8 +38,9 @@ class SdDrawDocument;
  */
 class SdActionDlg final : public SfxSingleTabDialogController
 {
+    std::unique_ptr<weld::Container> m_xContent;
 public:
-    SdActionDlg(weld::Window* pParent, const SfxItemSet* pAttr, ::sd::View const * pView);
+    SdActionDlg(weld::Window* pParent, const SfxItemSet& rAttr, ::sd::View const * pView);
 };
 
 /**
@@ -50,7 +51,6 @@ class SdTPAction final : public SfxTabPage
 private:
     const ::sd::View*       mpView;
     SdDrawDocument*         mpDoc;
-    XColorListRef           pColList;
 
     bool                    bTreeUpdated;
     std::vector<css::presentation::ClickAction> maCurrentActions;

@@ -24,9 +24,8 @@
 #include <svx/svxdllapi.h>
 #include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 
-class SdrLayerIDSet;
-class SdrPage;
 class SdrObject;
+class SdrPageView;
 
 namespace sdr::contact
 {
@@ -122,6 +121,10 @@ public:
     // React on changes of the object of this ViewContact
     virtual void ActionChanged();
 
+    // IASS: helpers for IASS invalidates
+    void ActionChangedIfDifferentPageView(const SdrPageView& rSdrPageView);
+    bool hasMultipleViewObjectContacts() const;
+
     // access to the local primitive. This will ensure that the primitive is
     // current in comparing the local one with a fresh created incarnation
     void getViewIndependentPrimitive2DContainer(
@@ -148,9 +151,7 @@ public:
     // It is always possible to delete the VOCs, these are re-created on demand
     void flushViewObjectContacts(bool bWithHierarchy = true);
 
-    // helper around getPrimitive2DSequenceHierarchy to enable a given implementation
-    // to optimize getting a Primitive2DSequenceHierarchy for a child of index a
-    virtual void getPrimitive2DSequenceHierarchyOfIndex(
+    void getPrimitive2DSequenceHierarchyOfIndex(
         sal_uInt32 a, DisplayInfo& rDisplayInfo, ObjectContact& rObjectContact,
         drawinglayer::primitive2d::Primitive2DDecompositionVisitor& rVisitor);
 };

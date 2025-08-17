@@ -66,7 +66,7 @@ namespace
     // ProductRootEnvironmentVariable *must* match the constants
     // (minus 1) in offapi/com/sun/star/mozilla/MozillaProductType.idl
     // DO NOT CHANGE THE ORDER; ADD ONLY TO THE END
-    const char* DefaultProductDir[NB_PRODUCTS][NB_CANDIDATES] =
+    const char* const DefaultProductDir[NB_PRODUCTS][NB_CANDIDATES] =
     {
     #if defined(_WIN32)
         { "Mozilla/SeaMonkey/", nullptr, nullptr, nullptr },
@@ -83,7 +83,7 @@ namespace
     #endif
     };
 
-    const char* ProductRootEnvironmentVariable[NB_PRODUCTS] =
+    const char* const ProductRootEnvironmentVariable[NB_PRODUCTS] =
     {
         "MOZILLA_PROFILE_ROOT",
         "MOZILLA_FIREFOX_PROFILE_ROOT",
@@ -148,10 +148,10 @@ namespace
 }
 
 
-OUString getRegistryDir(MozillaProductType product)
+const OUString & getRegistryDir(MozillaProductType product)
 {
     if (product == MozillaProductType_Default)
-        return OUString();
+        return EMPTY_OUSTRING;
 
     return lcl_guessProfileRoot( product );
 }

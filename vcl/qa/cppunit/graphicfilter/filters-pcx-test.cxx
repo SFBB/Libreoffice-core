@@ -9,9 +9,8 @@
 
 #include <unotest/filters-test.hxx>
 #include <test/bootstrapfixture.hxx>
-#include <vcl/FilterConfigItem.hxx>
 #include <tools/stream.hxx>
-#include <vcl/graph.hxx>
+#include <vcl/filter/ImportOutput.hxx>
 #include <filter/PcxReader.hxx>
 
 using namespace css;
@@ -44,8 +43,8 @@ bool PcxFilterTest::load(const OUString &,
     SfxFilterFlags, SotClipboardFormatId, unsigned int)
 {
     SvFileStream aFileStream(rURL, StreamMode::READ);
-    Graphic aGraphic;
-    return ImportPcxGraphic(aFileStream, aGraphic);
+    ImportOutput aImportOutput;
+    return ImportPcxGraphic(aFileStream, aImportOutput);
 }
 
 void PcxFilterTest::testCVEs()

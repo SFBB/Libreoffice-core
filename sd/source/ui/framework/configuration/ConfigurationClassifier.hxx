@@ -21,20 +21,18 @@
 
 #include "debugtrace.hxx"
 #include <com/sun/star/uno/Reference.hxx>
-
+#include <rtl/ref.hxx>
 #include <vector>
 
-namespace com::sun::star::drawing::framework
+namespace sd::framework
 {
-class XConfiguration;
-}
-namespace com::sun::star::drawing::framework
-{
-class XResourceId;
+class Configuration;
 }
 
 namespace sd::framework
 {
+class ResourceId;
+
 /** A ConfigurationClassifier object compares two configurations of
     resources and gives access to the differences.  It is used mainly when
     changes to the current configuration have been requested and the various
@@ -47,9 +45,8 @@ public:
     /** Create a new ConfigurationClassifier object that will compare the
         two given configurations.
     */
-    ConfigurationClassifier(
-        const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration1,
-        const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration2);
+    ConfigurationClassifier(const rtl::Reference<sd::framework::Configuration>& rxConfiguration1,
+                            const rtl::Reference<sd::framework::Configuration>& rxConfiguration2);
 
     /** Calculate three lists of resource ids.  These contain the resources
         that belong to one configuration but not the other, or that belong
@@ -60,8 +57,7 @@ public:
     */
     bool Partition();
 
-    typedef ::std::vector<css::uno::Reference<css::drawing::framework::XResourceId>>
-        ResourceIdVector;
+    typedef ::std::vector<rtl::Reference<sd::framework::ResourceId>> ResourceIdVector;
 
     /** Return the resources that belong to the configuration given as
         rxConfiguration1 to the constructor but that do not belong to
@@ -99,8 +95,8 @@ public:
 #endif
 
 private:
-    css::uno::Reference<css::drawing::framework::XConfiguration> mxConfiguration1;
-    css::uno::Reference<css::drawing::framework::XConfiguration> mxConfiguration2;
+    rtl::Reference<sd::framework::Configuration> mxConfiguration1;
+    rtl::Reference<sd::framework::Configuration> mxConfiguration2;
 
     /** After the call to Classify() this vector holds all elements from
         mxConfiguration1 that are not in mxConfiguration2.
@@ -118,28 +114,27 @@ private:
         URLs for classification.  Therefore this method calls itself
         recursively.
         @param rS1
-            One sequence of XResourceId objects.
+            One sequence of ResourceId objects.
         @param rS2
-            Another sequence of XResourceId objects.
+            Another sequence of ResourceId objects.
     */
-    void PartitionResources(
-        const css::uno::Sequence<css::uno::Reference<css::drawing::framework::XResourceId>>& rS1,
-        const css::uno::Sequence<css::uno::Reference<css::drawing::framework::XResourceId>>& rS2);
+    void PartitionResources(const std::vector<rtl::Reference<sd::framework::ResourceId>>& rS1,
+                            const std::vector<rtl::Reference<sd::framework::ResourceId>>& rS2);
 
     /** Compare the given sequences of resource ids and put their elements
         in one of three vectors depending on whether an element belongs to
         both sequences or to one but not the other.  Note that only the
-        resource URLs of the XResourceId objects are used for the
+        resource URLs of the ResourceId objects are used for the
         classification.
         @param rS1
-            One sequence of XResourceId objects.
+            One sequence of ResourceId objects.
         @param rS2
-            Another sequence of XResourceId objects.
+            Another sequence of ResourceId objects.
     */
-    static void ClassifyResources(
-        const css::uno::Sequence<css::uno::Reference<css::drawing::framework::XResourceId>>& rS1,
-        const css::uno::Sequence<css::uno::Reference<css::drawing::framework::XResourceId>>& rS2,
-        ResourceIdVector& rS1minusS2, ResourceIdVector& rS2minusS1, ResourceIdVector& rS1andS2);
+    static void ClassifyResources(const std::vector<rtl::Reference<sd::framework::ResourceId>>& rS1,
+                                  const std::vector<rtl::Reference<sd::framework::ResourceId>>& rS2,
+                                  ResourceIdVector& rS1minusS2, ResourceIdVector& rS2minusS1,
+                                  ResourceIdVector& rS1andS2);
 
     /** Copy the resources given in rSource to the list of resources
         specified by rTarget.  Resources bound to the ones in rSource,
@@ -154,10 +149,9 @@ private:
             This list is filled with resources from rSource and the ones
             bound to them.
     */
-    static void CopyResources(
-        const ResourceIdVector& rSource,
-        const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration,
-        ResourceIdVector& rTarget);
+    static void CopyResources(const ResourceIdVector& rSource,
+                              const rtl::Reference<sd::framework::Configuration>& rxConfiguration,
+                              ResourceIdVector& rTarget);
 };
 
 } // end of namespace sd::framework

@@ -10,14 +10,13 @@
 
 #pragma once
 
-#include <memory>
 #include <utility>
 #include <variant>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
 
-class ScTable;
-class ScDocShell;
+#include "document.hxx"
+#include <docsh.hxx>
 
 namespace sc
 {
@@ -39,11 +38,34 @@ enum SolverParameter
     SP_LO_ENGINE, // Engine name used in LO
     SP_MS_ENGINE, // Engine ID used in MSO
     SP_INTEGER, // Assume all variables are integer (0: no, 1: yes)
+    // LpSolve, CoinMP and SwarmSolver
     SP_NON_NEGATIVE, // Assume non negativity (1: yes, 2: no)
     SP_EPSILON_LEVEL, // Epsilon level
     SP_LIMIT_BBDEPTH, // Branch and bound depth
     SP_TIMEOUT, // Time limit to return a solution
-    SP_ALGORITHM // Algorithm used by the SwarmSolver (1, 2 or 3)
+    SP_ALGORITHM, // Algorithm used by the SwarmSolver (1, 2 or 3)
+    // Engine options common for DEPS and SCO
+    SP_SWARM_SIZE, // Size of Swarm
+    SP_LEARNING_CYCLES, // Learning Cycles
+    SP_GUESS_VARIABLE_RANGE, // Variable Bounds Guessing
+    SP_VARIABLE_RANGE_THRESHOLD, // Variable Bounds Threshold (when guessing)
+    SP_ACR_COMPARATOR, // Use ACR Comparator (instead of BCH)
+    SP_RND_STARTING_POINT, // Use Random starting point
+    SP_STRONGER_PRNG, // Use a stronger random generator (slower)
+    SP_STAGNATION_LIMIT, // Stagnation Limit
+    SP_STAGNATION_TOLERANCE, // Stagnation Tolerance
+    SP_ENHANCED_STATUS, // Show enhanced solver status
+    // DEPS Options
+    SP_AGENT_SWITCH_RATE, // Agent Switch Rate (DE Probability)
+    SP_SCALING_MIN, // DE: Min Scaling Factor (0-1.2)
+    SP_SCALING_MAX, // DE: Max Scaling Factor (0-1.2)
+    SP_CROSSOVER_PROB, // DE: Crossover Probability (0-1)
+    SP_COGNITIVE_CONST, // Cognitive Constant
+    SP_SOCIAL_CONST, // Social Constant
+    SP_CONSTRICTION_COEFF, // PS: Constriction Coefficient
+    SP_MUTATION_PROB, // Mutation Probability (0-0.005)
+    // SCO Options
+    SP_LIBRARY_SIZE, // Size of library
 };
 
 // Starts at 1 to maintain MS compatibility
@@ -123,7 +145,28 @@ private:
     OUString m_sLimitBBDepth;
     OUString m_sTimeout;
     OUString m_sAlgorithm;
-    css::uno::Sequence<css::beans::PropertyValue> m_aEngineOptions;
+    // DEPS and SCO
+    OUString m_sSwarmSize;
+    OUString m_sLearningCycles;
+    OUString m_sGuessVariableRange;
+    OUString m_sVariableRangeThreshold;
+    OUString m_sUseACRComparator;
+    OUString m_sUseRandomStartingPoint;
+    OUString m_sUseStrongerPRNG;
+    OUString m_sStagnationLimit;
+    OUString m_sTolerance;
+    OUString m_sEnhancedSolverStatus;
+    // DEPS only
+    OUString m_sAgentSwitchRate;
+    OUString m_sScalingFactorMin;
+    OUString m_sScalingFactorMax;
+    OUString m_sCrossoverProbability;
+    OUString m_sCognitiveConstant;
+    OUString m_sSocialConstant;
+    OUString m_sConstrictionCoeff;
+    OUString m_sMutationProbability;
+    // SCO only
+    OUString m_sLibrarySize;
 
     std::vector<ModelConstraint> m_aConstraints;
 
@@ -131,7 +174,9 @@ private:
 
     // Used to create or read a single solver parameter based on its named range
     bool ReadParamValue(SolverParameter eParam, OUString& rValue, bool bRemoveQuotes = false);
+    bool ReadDoubleParamValue(SolverParameter eParam, OUString& rValue);
     void WriteParamValue(SolverParameter eParam, OUString sValue, bool bQuoted = false);
+    void WriteDoubleParamValue(SolverParameter eParam, std::u16string_view sValue);
 
     // Creates or reads all constraints stored in named ranges
     void ReadConstraints();
@@ -139,7 +184,7 @@ private:
 
     // Used to create or get a single constraint part
     bool ReadConstraintPart(ConstraintPart ePart, tools::Long nIndex, OUString& rValue);
-    void WriteConstraintPart(ConstraintPart ePart, tools::Long nIndex, OUString sValue);
+    void WriteConstraintPart(ConstraintPart ePart, tools::Long nIndex, const OUString& sValue);
 
     // Creates or reads all named ranges associated with solver engine options
     void ReadEngine();
@@ -149,19 +194,46 @@ private:
 
     // Maps solver parameters to named ranges
     std::map<SolverParameter, OUString> m_mNamedRanges
-        = { { SP_OBJ_CELL, "solver_opt" },      { SP_OBJ_TYPE, "solver_typ" },
-            { SP_OBJ_VAL, "solver_val" },       { SP_VAR_CELLS, "solver_adj" },
-            { SP_CONSTR_COUNT, "solver_num" },  { SP_LO_ENGINE, "solver_lo_eng" },
-            { SP_MS_ENGINE, "solver_eng" },     { SP_INTEGER, "solver_int" },
-            { SP_NON_NEGATIVE, "solver_neg" },  { SP_EPSILON_LEVEL, "solver_eps" },
-            { SP_LIMIT_BBDEPTH, "solver_bbd" }, { SP_TIMEOUT, "solver_tim" },
-            { SP_ALGORITHM, "solver_alg" } };
+        = { { SP_OBJ_CELL, "solver_opt" },
+            { SP_OBJ_TYPE, "solver_typ" },
+            { SP_OBJ_VAL, "solver_val" },
+            { SP_VAR_CELLS, "solver_adj" },
+            { SP_CONSTR_COUNT, "solver_num" },
+            { SP_LO_ENGINE, "solver_lo_eng" },
+            { SP_MS_ENGINE, "solver_eng" },
+            { SP_INTEGER, "solver_int" },
+            { SP_NON_NEGATIVE, "solver_neg" },
+            { SP_EPSILON_LEVEL, "solver_eps" },
+            { SP_LIMIT_BBDEPTH, "solver_bbd" },
+            { SP_TIMEOUT, "solver_tim" },
+            { SP_ALGORITHM, "solver_alg" },
+            { SP_SWARM_SIZE, "solver_ssz" },
+            { SP_LEARNING_CYCLES, "solver_lcy" },
+            { SP_GUESS_VARIABLE_RANGE, "solver_gvr" },
+            { SP_VARIABLE_RANGE_THRESHOLD, "solver_vrt" },
+            { SP_ACR_COMPARATOR, "solver_acr" },
+            { SP_RND_STARTING_POINT, "solver_rsp" },
+            { SP_STRONGER_PRNG, "solver_prng" },
+            { SP_STAGNATION_LIMIT, "solver_slim" },
+            { SP_STAGNATION_TOLERANCE, "solver_stol" },
+            { SP_ENHANCED_STATUS, "solver_enst" },
+            { SP_AGENT_SWITCH_RATE, "solver_asr" },
+            { SP_SCALING_MIN, "solver_smin" },
+            { SP_SCALING_MAX, "solver_smax" },
+            { SP_CROSSOVER_PROB, "solver_crpb" },
+            { SP_COGNITIVE_CONST, "solver_cog" },
+            { SP_SOCIAL_CONST, "solver_soc" },
+            { SP_CONSTRICTION_COEFF, "solver_ccoeff" },
+            { SP_MUTATION_PROB, "solver_mtpb" },
+            { SP_LIBRARY_SIZE, "solver_lbsz" } };
 
     // Maps LO solver implementation names to MS engine codes
     std::map<OUString, OUString> SolverNamesToExcelEngines = {
         { "com.sun.star.comp.Calc.CoinMPSolver", "2" }, // Simplex LP
         { "com.sun.star.comp.Calc.LpsolveSolver", "2" }, // Simplex LP
-        { "com.sun.star.comp.Calc.SwarmSolver", "1" } // GRG Nonlinear
+        { "com.sun.star.comp.Calc.SwarmSolver", "1" }, // GRG Nonlinear
+        { "com.sun.star.comp.Calc.NLPSolver.DEPSSolverImpl", "3" }, // DEPS
+        { "com.sun.star.comp.Calc.NLPSolver.SCOSolverImpl", "3" } // SCO
     };
 
     // Maps MS solver engine codes to LO solver implementation names
@@ -175,16 +247,41 @@ private:
     // NonNegative: for MS compatibility, use 1 for selected and 2 for not selected
     typedef std::vector<std::variant<OUString, SolverParameter>> TParamInfo;
     std::map<OUString, TParamInfo> SolverParamNames
-        = { { "Integer", { SP_INTEGER, "solver_int", "bool" } },
-            { "NonNegative", { SP_NON_NEGATIVE, "solver_neg", "bool" } },
-            { "EpsilonLevel", { SP_EPSILON_LEVEL, "solver_eps", "int" } },
-            { "LimitBBDepth", { SP_LIMIT_BBDEPTH, "solver_bbd", "bool" } },
-            { "Timeout", { SP_TIMEOUT, "solver_tim", "int" } },
-            { "Algorithm", { SP_ALGORITHM, "solver_alg", "int" } } };
+        = { { u"Integer"_ustr, { SP_INTEGER, "solver_int", "bool" } },
+            { u"NonNegative"_ustr, { SP_NON_NEGATIVE, "solver_neg", "bool" } },
+            { u"EpsilonLevel"_ustr, { SP_EPSILON_LEVEL, "solver_eps", "int" } },
+            { u"LimitBBDepth"_ustr, { SP_LIMIT_BBDEPTH, "solver_bbd", "bool" } },
+            { u"Timeout"_ustr, { SP_TIMEOUT, "solver_tim", "int" } },
+            { u"Algorithm"_ustr, { SP_ALGORITHM, "solver_alg", "int" } },
+            // SCO and DEPS
+            { u"AssumeNonNegative"_ustr, { SP_NON_NEGATIVE, "solver_neg", "bool" } },
+            { u"SwarmSize"_ustr, { SP_SWARM_SIZE, "solver_ssz", "int" } },
+            { u"LearningCycles"_ustr, { SP_LEARNING_CYCLES, "solver_lcy", "int" } },
+            { u"GuessVariableRange"_ustr, { SP_GUESS_VARIABLE_RANGE, "solver_gvr", "bool" } },
+            { u"VariableRangeThreshold"_ustr,
+              { SP_VARIABLE_RANGE_THRESHOLD, "solver_vrt", "double" } },
+            { u"UseACRComparator"_ustr, { SP_ACR_COMPARATOR, "solver_acr", "bool" } },
+            { u"UseRandomStartingPoint"_ustr, { SP_RND_STARTING_POINT, "solver_rsp", "bool" } },
+            { u"UseStrongerPRNG"_ustr, { SP_STRONGER_PRNG, "solver_prng", "bool" } },
+            { u"StagnationLimit"_ustr, { SP_STAGNATION_LIMIT, "solver_slim", "int" } },
+            { u"Tolerance"_ustr, { SP_STAGNATION_TOLERANCE, "solver_stol", "double" } },
+            { u"EnhancedSolverStatus"_ustr, { SP_ENHANCED_STATUS, "solver_enst", "bool" } },
+            // DEPS only
+            { u"AgentSwitchRate"_ustr, { SP_AGENT_SWITCH_RATE, "solver_asr", "double" } },
+            { u"DEFactorMin"_ustr, { SP_SCALING_MIN, "solver_smin", "double" } },
+            { u"DEFactorMax"_ustr, { SP_SCALING_MAX, "solver_smax", "double" } },
+            { u"DECR"_ustr, { SP_CROSSOVER_PROB, "solver_crpb", "double" } },
+            { u"PSC1"_ustr, { SP_COGNITIVE_CONST, "solver_cog", "double" } },
+            { u"PSC2"_ustr, { SP_SOCIAL_CONST, "solver_soc", "double" } },
+            { u"PSWeight"_ustr, { SP_CONSTRICTION_COEFF, "solver_ccoeff", "double" } },
+            { u"PSCL"_ustr, { SP_MUTATION_PROB, "solver_mtpb", "double" } },
+            // SCO only
+            { u"LibrarySize"_ustr, { SP_LIBRARY_SIZE, "solver_lbsz", "int" } } };
 
     // Stores the roots used for named ranges of constraint parts
     // Items here must be in the same order as in ConstraintPart enum
-    std::vector<OUString> m_aConstraintParts{ "solver_lhs", "solver_rel", "solver_rhs" };
+    std::vector<OUString> m_aConstraintParts{ u"solver_lhs"_ustr, u"solver_rel"_ustr,
+                                              u"solver_rhs"_ustr };
 
 public:
     /* A SolverSettings object is linked to the ScTable where solver parameters
@@ -192,16 +289,18 @@ public:
     SolverSettings(ScTable& pTable);
 
     SC_DLLPUBLIC OUString GetParameter(SolverParameter eParam);
-    SC_DLLPUBLIC void SetParameter(SolverParameter eParam, OUString sValue);
+    SC_DLLPUBLIC void SetParameter(SolverParameter eParam, const OUString& sValue);
     SC_DLLPUBLIC ObjectiveType GetObjectiveType() { return m_eObjType; }
     SC_DLLPUBLIC void SetObjectiveType(ObjectiveType eType);
     SC_DLLPUBLIC void GetEngineOptions(css::uno::Sequence<css::beans::PropertyValue>& aOptions);
-    SC_DLLPUBLIC void SetEngineOptions(css::uno::Sequence<css::beans::PropertyValue>& aOptions);
-    SC_DLLPUBLIC std::vector<ModelConstraint> GetConstraints() { return m_aConstraints; }
+    SC_DLLPUBLIC void
+    SetEngineOptions(const css::uno::Sequence<css::beans::PropertyValue>& aOptions);
+    SC_DLLPUBLIC const std::vector<ModelConstraint>& GetConstraints() { return m_aConstraints; }
     SC_DLLPUBLIC void SetConstraints(std::vector<ModelConstraint> aConstraints);
 
     SC_DLLPUBLIC void SaveSolverSettings();
     SC_DLLPUBLIC void ResetToDefaults();
+    SC_DLLPUBLIC bool TabHasSolverModel();
 };
 
 } // namespace sc

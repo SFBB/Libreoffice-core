@@ -28,11 +28,10 @@ namespace com::sun::star::datatransfer { class XTransferable; }
 class ScDocument;
 class ScViewData;
 class ScDrawObjData;
-class SdrUndoManager;
 
 class ScDrawView final : public FmFormView
 {
-    ScViewData*             pViewData;
+    ScViewData&             rViewData;
     VclPtr<OutputDevice>    pDev;                   //! needed ?
     ScDocument&             rDoc;
     SCTAB                   nTab;
@@ -57,7 +56,7 @@ class ScDrawView final : public FmFormView
 public:
     ScDrawView(
         OutputDevice* pOut,
-        ScViewData* pData);
+        ScViewData& rData);
 
     virtual ~ScDrawView() override;
 

@@ -20,29 +20,24 @@
 #pragma once
 
 #include <vcl/weld.hxx>
-#include <com/sun/star/beans/PropertyValue.hpp>
 
 #include "documentsignaturehelper.hxx"
-#include "xmlsignaturehelper.hxx"
 #include "documentsignaturemanager.hxx"
 
-#include <vector>
-
 namespace com::sun::star {
-    namespace lang { class XMultiServiceFactory; }
     namespace io { class XStream; }
     namespace embed { class XStorage; }
-    namespace xml::dom { class XDocumentBuilder; }
 }
 
 
-class HeaderBar;
 class CertificateViewer;
+class SfxViewShell;
 
 class DigitalSignaturesDialog final : public weld::GenericDialogController
 {
 private:
     DocumentSignatureManager maSignatureManager;
+    std::optional<DocumentSignatureManager> moScriptSignatureManager;
     bool                    mbVerifySignatures;
     bool                    mbSignaturesChanged;
 
@@ -54,9 +49,10 @@ private:
 
     bool m_bAdESCompliant = true;
 
+    SfxViewShell* m_pViewShell;
+
     std::unique_ptr<weld::Label>       m_xHintDocFT;
     std::unique_ptr<weld::Label>       m_xHintBasicFT;
-    std::unique_ptr<weld::Label>       m_xHintPackageFT;
     std::unique_ptr<weld::TreeView>    m_xSignaturesLB;
     std::unique_ptr<weld::Image>       m_xSigsValidImg;
     std::unique_ptr<weld::Label>       m_xSigsValidFI;
@@ -77,6 +73,7 @@ private:
 
     DECL_LINK(ViewButtonHdl, weld::Button&, void);
     DECL_LINK(AddButtonHdl, weld::Button&, void);
+    void AddButtonHdlImpl();
     DECL_LINK(RemoveButtonHdl, weld::Button&, void);
     DECL_LINK(SignatureHighlightHdl, weld::TreeView&, void);
     DECL_LINK(SignatureSelectHdl, weld::TreeView&, bool);
@@ -96,14 +93,15 @@ private:
     //See the spec at specs/www/appwide/security/Electronic_Signatures_and_Security.sxw
     //(6.6.2)Behaviour with regard to ODF 1.2
     bool canAdd();
-    bool canRemove();
+    void canRemove(const std::function<void(bool)>& rCallback);
 
     bool canAddRemove();
 
 public:
     DigitalSignaturesDialog(weld::Window* pParent, const css::uno::Reference<
         css::uno::XComponentContext >& rxCtx, DocumentSignatureMode eMode,
-        bool bReadOnly, OUString sODFVersion, bool bHasDocumentSignature);
+        bool bReadOnly, OUString sODFVersion, bool bHasDocumentSignature,
+        SfxViewShell* pViewShell);
     virtual ~DigitalSignaturesDialog() override;
 
     // Initialize the dialog and the security environment, returns TRUE on success
@@ -112,6 +110,7 @@ public:
             // Set the storage which should be signed or verified
     void    SetStorage( const css::uno::Reference < css::embed::XStorage >& rxStore );
     void    SetSignatureStream( const css::uno::Reference < css::io::XStream >& rxStream );
+    void    SetScriptingSignatureStream( const css::uno::Reference < css::io::XStream >& rxStream );
 
     // Execute the dialog...
     void    beforeRun();

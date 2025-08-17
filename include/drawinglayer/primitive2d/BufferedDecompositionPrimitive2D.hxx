@@ -22,7 +22,7 @@
 #include <drawinglayer/drawinglayerdllapi.h>
 #include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
-#include <salhelper/timer.hxx>
+#include <chrono>
 
 namespace drawinglayer::geometry
 {
@@ -31,6 +31,8 @@ class ViewInformation2D;
 
 namespace drawinglayer::primitive2d
 {
+class BufferedDecompositionFlusher;
+
 /** BufferedDecompositionPrimitive2D class
 
     Baseclass for all C++ implementations of css::graphic::XPrimitive2D
@@ -64,37 +66,35 @@ class DRAWINGLAYERCORE_DLLPUBLIC BufferedDecompositionPrimitive2D : public BaseP
 {
 private:
     // exclusive helper for Primitive2DFlusher
-    friend void flushBufferedDecomposition(BufferedDecompositionPrimitive2D&);
+    friend class BufferedDecompositionFlusher;
 
     /// a sequence used for buffering the last create2DDecomposition() result
-    Primitive2DContainer maBuffered2DDecomposition;
+    mutable Primitive2DReference maBuffered2DDecomposition;
 
     /// offer callback mechanism to flush buffered content timer-based
-    ::rtl::Reference<::salhelper::Timer> maCallbackTimer;
-    sal_uInt16 maCallbackSeconds;
-
-    /// When a shadow wraps a list of primitives, this primitive wants to influence the transparency
-    /// of the shadow.
-    sal_uInt16 mnTransparenceForShadow;
+    mutable std::mutex maCallbackLock;
+    /// atomic because this is touched from the main thread and the background thread running
+    /// the BufferedDecompositionFlusher.
+    mutable std::atomic<std::chrono::time_point<std::chrono::steady_clock>> maLastAccess;
+    bool mbFlushOnTimer;
 
 protected:
     /** access methods to maBuffered2DDecomposition. The usage of this methods may allow
         later thread-safe stuff to be added if needed. Only to be used by getDecomposition()
         implementations for buffering the last decomposition.
      */
-    const Primitive2DContainer& getBuffered2DDecomposition() const;
-    void setBuffered2DDecomposition(Primitive2DContainer&& rNew);
+    bool hasBuffered2DDecomposition() const;
+    void setBuffered2DDecomposition(Primitive2DReference rNew);
 
     /** method which is to be used to implement the local decomposition of a 2D primitive. */
-    virtual void
-    create2DDecomposition(Primitive2DContainer& rContainer,
-                          const geometry::ViewInformation2D& rViewInformation) const = 0;
+    virtual Primitive2DReference
+    create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const = 0;
 
     // when changing from null (which is inactive) to a count of seconds, the
     // callback mechanism to flush buffered content timer-based will be activated.
     // it is protected since the idea is that this gets called in the constructor
     // of derived classes.
-    void setCallbackSeconds(sal_uInt16 nNew) { maCallbackSeconds = nNew; }
+    void activateFlushOnTimer();
 
 public:
     // constructor/destructor
@@ -110,13 +110,6 @@ public:
     virtual void
     get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor,
                        const geometry::ViewInformation2D& rViewInformation) const override;
-
-    void setTransparenceForShadow(sal_uInt16 nTransparenceForShadow)
-    {
-        mnTransparenceForShadow = nTransparenceForShadow;
-    }
-
-    sal_uInt16 getTransparenceForShadow() const { return mnTransparenceForShadow; }
 };
 
 } // end of namespace drawinglayer::primitive2d

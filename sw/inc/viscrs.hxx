@@ -18,6 +18,7 @@
  */
 #pragma once
 
+#include <config_collab.h>
 #include <config_feature_desktop.h>
 
 #include <vcl/cursor.hxx>
@@ -30,6 +31,7 @@
 
 namespace sdr::overlay { class OverlaySelection; }
 
+namespace sw { struct VisibleCursorState; }
 class SwCursorShell;
 class SfxViewShell;
 class SwContentControlButton;
@@ -41,6 +43,7 @@ class SW_DLLPUBLIC SwVisibleCursor
     friend void InitCore();
     friend void FinitCore();
 
+    ::sw::VisibleCursorState const& m_rState;
     const SwCursorShell* m_pCursorShell;
     vcl::Cursor m_aTextCursor;
 
@@ -52,7 +55,7 @@ class SW_DLLPUBLIC SwVisibleCursor
     bool m_bIsDragCursor;
 
 public:
-    SwVisibleCursor( const SwCursorShell * pCShell );
+    SwVisibleCursor(::sw::VisibleCursorState const& rState, const SwCursorShell * pCShell);
     ~SwVisibleCursor();
 
     void Show();
@@ -60,10 +63,15 @@ public:
 
     bool IsVisible() const { return m_bIsVisible; }
     void SetDragCursor( bool bFlag = true ) { m_bIsDragCursor = bFlag; }
+    ::std::pair<SwRect, bool> SetPos();
     void SetPosAndShow(SfxViewShell const * pViewShell);
     const vcl::Cursor& GetTextCursor() const;
 
     std::optional<OString> getLOKPayload(int nType, int nViewId) const;
+
+#if ENABLE_YRS
+    ::std::optional<OUString> m_Author;
+#endif
 };
 
 // From here classes/methods for selections.

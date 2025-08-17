@@ -31,11 +31,7 @@ namespace dbaccess
     using namespace connectivity;
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::sdb;
-    using namespace ::com::sun::star::sdbcx;
-    using namespace ::com::sun::star::container;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::script;
     using namespace ::cppu;
     using namespace ::osl;
@@ -75,30 +71,30 @@ namespace dbaccess
         OPrivateColumns_Base::disposing();
     }
 
-    connectivity::sdbcx::ObjectType OPrivateColumns::createObject(const OUString& _rName)
+    css::uno::Reference< css::beans::XPropertySet > OPrivateColumns::createObject(const OUString& _rName)
     {
         if ( m_aColumns.is() )
         {
-            ::connectivity::OSQLColumns::Vector::const_iterator aIter = find(m_aColumns->begin(),m_aColumns->end(),_rName,isCaseSensitive());
+            ::connectivity::OSQLColumns::Vector::const_iterator aIter = find(m_aColumns->begin(),m_aColumns->end(),_rName,UStringMixEqual(isCaseSensitive()));
             if(aIter == m_aColumns->end())
-                aIter = findRealName(m_aColumns->begin(),m_aColumns->end(),_rName,isCaseSensitive());
+                aIter = findRealName(m_aColumns->begin(),m_aColumns->end(),_rName,UStringMixEqual(isCaseSensitive()));
 
             if(aIter != m_aColumns->end())
-                return connectivity::sdbcx::ObjectType(*aIter,UNO_QUERY);
+                return *aIter;
 
             OSL_FAIL("Column not found in collection!");
         }
         return nullptr;
     }
 
-    connectivity::sdbcx::ObjectType OPrivateTables::createObject(const OUString& _rName)
+    css::uno::Reference< css::beans::XPropertySet > OPrivateTables::createObject(const OUString& _rName)
     {
         if ( !m_aTables.empty() )
         {
             OSQLTables::iterator aIter = m_aTables.find(_rName);
             OSL_ENSURE(aIter != m_aTables.end(),"Table not found!");
             OSL_ENSURE(aIter->second.is(),"Table is null!");
-            return connectivity::sdbcx::ObjectType(m_aTables.find(_rName)->second,UNO_QUERY);
+            return css::uno::Reference< css::beans::XPropertySet >(m_aTables.find(_rName)->second,UNO_QUERY);
         }
         return nullptr;
     }

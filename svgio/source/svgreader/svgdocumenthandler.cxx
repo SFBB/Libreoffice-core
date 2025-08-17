@@ -27,6 +27,7 @@
 #include <svgrectnode.hxx>
 #include <svggradientnode.hxx>
 #include <svggradientstopnode.hxx>
+#include <svgswitchnode.hxx>
 #include <svgsymbolnode.hxx>
 #include <svgusenode.hxx>
 #include <svgcirclenode.hxx>
@@ -41,11 +42,15 @@
 #include <svgstylenode.hxx>
 #include <svgimagenode.hxx>
 #include <svgclippathnode.hxx>
+#include <svgfeblendnode.hxx>
 #include <svgfecolormatrixnode.hxx>
+#include <svgfecompositenode.hxx>
 #include <svgfedropshadownode.hxx>
 #include <svgfefloodnode.hxx>
 #include <svgfeimagenode.hxx>
 #include <svgfegaussianblurnode.hxx>
+#include <svgfemergenode.hxx>
+#include <svgfemergenodenode.hxx>
 #include <svgfeoffsetnode.hxx>
 #include <svgfilternode.hxx>
 #include <svgmasknode.hxx>
@@ -65,7 +70,46 @@ namespace svgio::svgreader
 
 namespace
 {
-    svgio::svgreader::SvgCharacterNode* whiteSpaceHandling(svgio::svgreader::SvgNode const * pNode, svgio::svgreader::SvgTspanNode* pParentLine, svgio::svgreader::SvgCharacterNode* pLast)
+using CharacterNodeHandlerFunc
+    = svgio::svgreader::SvgCharacterNode*(svgio::svgreader::SvgCharacterNode* pCharNode,
+                                          svgio::svgreader::SvgTspanNode* pParentLine,
+                                          svgio::svgreader::SvgCharacterNode* pLast);
+    // clean whitespace in text span
+    svgio::svgreader::SvgCharacterNode* whiteSpaceHandling(svgio::svgreader::SvgCharacterNode* pCharNode,
+                                                           svgio::svgreader::SvgTspanNode* pParentLine,
+                                                           svgio::svgreader::SvgCharacterNode* pLast)
+    {
+        pCharNode->setParentLine(pParentLine);
+        return pCharNode->whiteSpaceHandling(pLast);
+    }
+
+    // set correct widths of text lines
+    svgio::svgreader::SvgCharacterNode* calcTextLineWidths(svgio::svgreader::SvgCharacterNode* pCharNode,
+                                                           svgio::svgreader::SvgTspanNode* pParentLine,
+                                                           svgio::svgreader::SvgCharacterNode* /*pLast*/)
+    {
+        if (const SvgStyleAttributes* pSvgStyleAttributes = pCharNode->getSvgStyleAttributes())
+        {
+            const drawinglayer::attribute::FontAttribute aFontAttribute(
+                svgio::svgreader::SvgCharacterNode::getFontAttribute(*pSvgStyleAttributes));
+
+            double fFontWidth(pSvgStyleAttributes->getFontSizeNumber().solve(*pCharNode));
+            double fFontHeight(fFontWidth);
+
+            css::lang::Locale aLocale;
+            drawinglayer::primitive2d::TextLayouterDevice aTextLayouterDevice;
+            aTextLayouterDevice.setFontAttribute(aFontAttribute, fFontWidth, fFontHeight, aLocale);
+            double fTextWidth = aTextLayouterDevice.getTextWidth(pCharNode->getText(), 0.0,
+                                                                 pCharNode->getText().getLength());
+            pParentLine->concatenateTextLineWidth(fTextWidth);
+        }
+        return nullptr; // no pLast handling
+    }
+
+    svgio::svgreader::SvgCharacterNode* walkRecursive(svgio::svgreader::SvgNode const* pNode,
+                                                      svgio::svgreader::SvgTspanNode* pParentLine,
+                                                      svgio::svgreader::SvgCharacterNode* pLast,
+                                                      CharacterNodeHandlerFunc* pHandlerFunc)
     {
         if(pNode)
         {
@@ -82,34 +126,9 @@ namespace
                     {
                         case SVGToken::Character:
                         {
-                            // clean whitespace in text span
                             svgio::svgreader::SvgCharacterNode* pCharNode = static_cast< svgio::svgreader::SvgCharacterNode* >(pCandidate);
 
-                            pCharNode->setParentLine(pParentLine);
-
-                            pCharNode->whiteSpaceHandling();
-                            pLast = pCharNode->addGap(pLast);
-
-                            double fTextWidth(0.0);
-
-                            const SvgStyleAttributes* pSvgStyleAttributes = pCharNode->getSvgStyleAttributes();
-
-                            if(pSvgStyleAttributes)
-                            {
-                                const drawinglayer::attribute::FontAttribute aFontAttribute(
-                                        svgio::svgreader::SvgCharacterNode::getFontAttribute(*pSvgStyleAttributes));
-
-                                double fFontWidth(pSvgStyleAttributes->getFontSizeNumber().solve(*pCharNode));
-                                double fFontHeight(fFontWidth);
-
-                                css::lang::Locale aLocale;
-
-                                drawinglayer::primitive2d::TextLayouterDevice aTextLayouterDevice;
-                                aTextLayouterDevice.setFontAttribute(aFontAttribute, fFontWidth, fFontHeight, aLocale);
-                                fTextWidth = aTextLayouterDevice.getTextWidth(pCharNode->getText(), 0.0, pCharNode->getText().getLength());
-                            }
-
-                            pParentLine->concatenateTextLineWidth(fTextWidth);
+                            pLast = pHandlerFunc(pCharNode, pParentLine, pLast);
                             break;
                         }
                         case SVGToken::Tspan:
@@ -120,20 +139,22 @@ namespace
                             if(!pTspanNode->getX().empty() || !pTspanNode->getY().empty())
                                 pParentLine = pTspanNode;
 
-                            // recursively clean whitespaces in subhierarchy
-                            pLast = whiteSpaceHandling(pCandidate, pParentLine, pLast);
+                            // recursively handle subhierarchy
+                            pLast = walkRecursive(pCandidate, pParentLine, pLast, pHandlerFunc);
                             break;
                         }
                         case SVGToken::TextPath:
                         case SVGToken::Tref:
                         {
-                            // recursively clean whitespaces in subhierarchy
-                            pLast = whiteSpaceHandling(pCandidate, pParentLine, pLast);
+                            // recursively handle subhierarchy
+                            pLast = walkRecursive(pCandidate, pParentLine, pLast, pHandlerFunc);
                             break;
                         }
+                        case SVGToken::Desc:
+                            break;
                         default:
                         {
-                            OSL_ENSURE(false, "Unexpected token inside SVGTokenText (!)");
+                            SAL_WARN("svgio", "Unexpected token inside SVGTokenText, SVGToken=" << static_cast<int>(pCandidate->getType()));
                             break;
                         }
                     }
@@ -199,7 +220,13 @@ namespace
                     mpTarget->parseAttributes(xAttribs);
                     break;
                 }
-                case SVGToken::Switch: //TODO: Support switch element
+                case SVGToken::Switch:
+                {
+                    /// new node for Switch
+                    mpTarget = new SvgSwitchNode(maDocument, mpTarget);
+                    mpTarget->parseAttributes(xAttribs);
+                    break;
+                }
                 case SVGToken::Defs:
                 case SVGToken::G:
                 {
@@ -375,10 +402,24 @@ namespace
                     mpTarget->parseAttributes(xAttribs);
                     break;
                 }
+                case SVGToken::FeBlend:
+                {
+                    /// new node for feBlend
+                    mpTarget = new SvgFeBlendNode(maDocument, mpTarget);
+                    mpTarget->parseAttributes(xAttribs);
+                    break;
+                }
                 case SVGToken::FeColorMatrix:
                 {
                     /// new node for feColorMatrix
                     mpTarget = new SvgFeColorMatrixNode(maDocument, mpTarget);
+                    mpTarget->parseAttributes(xAttribs);
+                    break;
+                }
+                case SVGToken::FeComposite:
+                {
+                    /// new node for feComposite
+                    mpTarget = new SvgFeCompositeNode(maDocument, mpTarget);
                     mpTarget->parseAttributes(xAttribs);
                     break;
                 }
@@ -407,6 +448,20 @@ namespace
                 {
                     /// new node for feGaussianBlur
                     mpTarget = new SvgFeGaussianBlurNode(maDocument, mpTarget);
+                    mpTarget->parseAttributes(xAttribs);
+                    break;
+                }
+                case SVGToken::FeMerge:
+                {
+                    /// new node for feMerge
+                    mpTarget = new SvgFeMergeNode(aSVGToken, maDocument, mpTarget);
+                    mpTarget->parseAttributes(xAttribs);
+                    break;
+                }
+                case SVGToken::FeMergeNode:
+                {
+                    /// new node for feMergeNode
+                    mpTarget = new SvgFeMergeNodeNode(maDocument, mpTarget);
                     mpTarget->parseAttributes(xAttribs);
                     break;
                 }
@@ -509,7 +564,12 @@ namespace
             if(pTextNode)
             {
                 // cleanup read strings
-                whiteSpaceHandling(pTextNode, static_cast< SvgTspanNode*>(pTextNode), nullptr);
+                // First pass: handle whitespace. This works in a way that handling a following
+                // node may append a space to a previous node; so correct line width calculation
+                // may only happen after this pass finishes
+                walkRecursive(pTextNode, static_cast<SvgTspanNode*>(pTextNode), nullptr, whiteSpaceHandling);
+                // Second pass: calculate line widths
+                walkRecursive(pTextNode, static_cast<SvgTspanNode*>(pTextNode), nullptr, calcTextLineWidths);
             }
         }
 

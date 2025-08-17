@@ -172,6 +172,7 @@ certain functionality.
 @li @c desktop.migration
 @li @c desktop.offacc
 @li @c desktop.splash
+@li @c desktop.startuptime - Log area for start up measurement time
 @li @c desktop.test
 @li @c desktop.updater
 
@@ -198,6 +199,7 @@ certain functionality.
 @li @c editeng.chaining
 @li @c editeng.items
 @li @c editeng.quicktextsize
+@li @c editeng.yrs
 
 @section embeddedobj
 
@@ -243,6 +245,7 @@ certain functionality.
 @li @c filter.xmlfa
 @li @c filter.xmlfd
 @li @c filter.xslt - xslt import/export
+@li @c filter.graphic
 
 @section oox
 
@@ -315,6 +318,7 @@ certain functionality.
 @li @c jfw
 @li @c jfw.level1
 @li @c jfw.level2
+@li @c jvmfwk.javaenvsetup
 
 @section LanguageTool
 
@@ -371,6 +375,7 @@ certain functionality.
 @li @c sfx.notify
 @li @c sfx.sidebar
 @li @c sfx.view
+@li @c sfx.yrs
 
 @section slideshow
 
@@ -483,7 +488,6 @@ certain functionality.
 @li @c vcl.debugevent
 @li @c vcl.driver Graphics driver handling
 @li @c vcl.emf - EMF/EMF+ processing
-@li @c vcl.eventtesting
 @li @c vcl.filter
 @li @c vcl.filter.webp
 @li @c vcl.fonts - font-specific code
@@ -554,16 +558,19 @@ certain functionality.
 @li @c sw.layout - Writer core view: document layout
 @li @c sw.layout.debug - Writer layout dbg_lay output
 @li @c sw.mailmerge - Writer mail merge
+@li @c sw.md - Markdown export filter
 @li @c sw.pageframe - debug lifecycle of SwPageFrame
 @li @c sw.qa
 @li @c sw.rtf - .rtf export filter
 @li @c sw.tiled
+@li @c sw.transform - Transform documents API
 @li @c sw.ui
 @li @c sw.uno - Writer UNO interfaces
 @li @c sw.vba - Writer VBA
 @li @c sw.ww8 - .doc/.docx export filter, .doc import filter (not writerfilter)
 @li @c sw.ww8.level2 - further info for sw.ww8
 @li @c sw.xml - Writer .odt import/export
+@li @c sw.yrs
 
 @section writerfilter
 
@@ -641,6 +648,7 @@ certain functionality.
 @li @c lingucomponent
 @li @c linguistic
 @li @c lwp - lotuswordpro
+@li @c net
 @li @c opencl
 @li @c opencl.device
 @li @c opencl.file

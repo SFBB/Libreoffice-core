@@ -4473,10 +4473,10 @@ const SvxMSDffVertPair mso_sptRibbonVert[] =
 const sal_uInt16 mso_sptRibbonSegm[] =
 {
     0x4000, 0x0001, 0xa701, 0x0003, 0xa801, 0x0005, 0xa801, 0x0001, 0xa701, 0x0003, 0x6000, 0x8000,
-    0x4000, 0xaa00, 0xa801, 0x0001, 0xa702, 0x0001, 0x8000,
-    0x4000, 0xaa00, 0xa801, 0x0001, 0xa702, 0x0001, 0x8000,
-    0x4000, 0xaa00, 0x0001, 0x8000,
-    0x4000, 0xaa00, 0x0001, 0x8000
+    0x4000, 0xa801, 0x0001, 0xa702, 0x0001, 0x6000, 0x8000,
+    0x4000, 0xa801, 0x0001, 0xa702, 0x0001, 0x6000, 0x8000,
+    0x4000, 0x0001, 0x6000, 0x8000,
+    0x4000, 0x0001, 0x6000, 0x8000
 };
 const SvxMSDffCalculationData mso_sptRibbonCalc[] =
 {
@@ -4537,57 +4537,35 @@ const mso_CustomShape msoRibbon =
 //odp path = A ?f9 ?f38 ?f8 ?f37 0 ?f27 ?f0 ?f26 ?f9 ?f13 ?f8 ?f4 ?f0 ?f25 ?f22 ?f25 ?f9 ?f38 ?f8 ?f37 ?f22 ?f26 ?f3 ?f27 L ?f7 ?f40 ?f3 0 W ?f9 ?f35 ?f8 ?f10 ?f3 0 ?f21 ?f33 ?f9 ?f36 ?f8 ?f1 ?f21 ?f31 ?f20 ?f31 ?f9 ?f35 ?f8 ?f10 ?f20 ?f33 0 0 L ?f5 ?f40 Z N W ?f9 ?f36 ?f8 ?f1 ?f20 ?f31 ?f0 ?f32 F L ?f20 ?f33 N A ?f9 ?f36 ?f8 ?f1 ?f21 ?f31 ?f22 ?f32 F L ?f21 ?f33 N M ?f0 ?f26 F L ?f0 ?f32 N M ?f22 ?f26 F L ?f22 ?f32 N
 const SvxMSDffVertPair mso_sptEllipseRibbonVert[] =
 {
-    { 9 MSO_I , 38 MSO_I },
-    { 8 MSO_I , 37 MSO_I },
-    { 0 , 27 MSO_I },
-    { 0 MSO_I , 26 MSO_I },
-    { 9 MSO_I , 13 MSO_I },
-    { 8 MSO_I , 4 MSO_I },
-    { 0 MSO_I , 25 MSO_I },
-    { 22 MSO_I , 25 MSO_I },
-    { 9 MSO_I , 38 MSO_I },
-    { 8 MSO_I , 37 MSO_I },
-    { 22 MSO_I , 26 MSO_I },
-    { 3 MSO_I , 27 MSO_I },
-    { 7 MSO_I , 40 MSO_I },
-    { 3 MSO_I , 0 },
-    { 9 MSO_I , 35 MSO_I },
-    { 8 MSO_I , 10 MSO_I },
-    { 3 MSO_I , 0 },
-    { 21 MSO_I , 33 MSO_I },
-    { 9 MSO_I , 36 MSO_I },
-    { 8 MSO_I , 1 MSO_I },
-    { 21 MSO_I , 31 MSO_I },
-    { 20 MSO_I , 31 MSO_I },
-    { 9 MSO_I , 35 MSO_I },
-    { 8 MSO_I , 10 MSO_I },
-    { 20 MSO_I , 33 MSO_I },
-    { 0 , 0 },
-    { 5 MSO_I , 40 MSO_I },
-    { 9 MSO_I , 36 MSO_I },
-    { 8 MSO_I , 1 MSO_I },
-    { 20 MSO_I , 31 MSO_I },
-    { 0 MSO_I , 32 MSO_I },
-    { 20 MSO_I , 33 MSO_I },
-    { 9 MSO_I , 36 MSO_I },
-    { 8 MSO_I , 1 MSO_I },
-    { 21 MSO_I , 31 MSO_I },
-    { 22 MSO_I , 32 MSO_I },
-    { 21 MSO_I , 33 MSO_I },
-    { 0 MSO_I , 26 MSO_I },
-    { 0 MSO_I , 32 MSO_I },
-    { 22 MSO_I , 26 MSO_I },
-    { 22 MSO_I , 32 MSO_I }
+    { 9 MSO_I , 38 MSO_I }, { 8 MSO_I , 37 MSO_I }, { 0 , 27 MSO_I }, { 0 MSO_I , 26 MSO_I },        // ar 1
+    { 9 MSO_I , 13 MSO_I }, { 8 MSO_I , 4 MSO_I }, { 0 MSO_I , 25 MSO_I }, { 22 MSO_I , 25 MSO_I },  // ar 2
+    { 9 MSO_I , 38 MSO_I }, { 8 MSO_I , 37 MSO_I }, { 22 MSO_I , 26 MSO_I }, { 3 MSO_I , 27 MSO_I }, // ar 3
+    { 7 MSO_I , 40 MSO_I }, { 3 MSO_I , 0 }, // l
+    { 9 MSO_I , 35 MSO_I }, { 8 MSO_I , 10 MSO_I }, { 3 MSO_I , 0 }, { 21 MSO_I , 33 MSO_I },        // wa 1
+    { 9 MSO_I , 36 MSO_I }, { 8 MSO_I , 1 MSO_I }, { 21 MSO_I , 31 MSO_I }, { 20 MSO_I , 31 MSO_I }, // wa 2
+    { 9 MSO_I , 35 MSO_I }, { 8 MSO_I , 10 MSO_I }, { 20 MSO_I , 33 MSO_I }, { 0 , 0 },              // wa 3
+    { 5 MSO_I , 40 MSO_I },  // l
+
+    { 9 MSO_I , 36 MSO_I }, { 8 MSO_I , 1 MSO_I }, { 20 MSO_I , 31 MSO_I }, { 0 MSO_I , 32 MSO_I },  // wr
+    { 20 MSO_I , 33 MSO_I }, // l
+
+    { 9 MSO_I , 36 MSO_I }, { 8 MSO_I , 1 MSO_I }, { 21 MSO_I , 31 MSO_I }, { 22 MSO_I , 32 MSO_I }, // ar
+    { 21 MSO_I , 33 MSO_I }, // l
+
+    { 0 MSO_I , 26 MSO_I },  // m
+    { 0 MSO_I , 32 MSO_I },  // l
+
+    { 22 MSO_I , 26 MSO_I }, // m
+    { 22 MSO_I , 32 MSO_I }  // l
 };
 
 const sal_uInt16 mso_sptEllipseRibbonSegm[] =
 {
-    0xa30c /*ar*/,0x0002/*l*/,0xa50c/*wa*/,0x0001/*l*/,
-    0x6001/*x*/, 0x8000/*e*/,0xa504/*wr*/,0xaa00/*nf*/,
-    0x0001/*l*/, 0x8000/*e*/,0xa304/*ar*/,0xaa00/*nf*/,
-    0x0001/*l*/, 0x8000/*e*/,0x4000/*m*/,0xaa00/*nf*/,
-    0x0001/*l*/, 0x8000/*e*/,0x4000/*m*/,0xaa00/*nf*/,
-    0x0001/*l*/, 0x8000/*e*/
+    0xa30c/*ar*/, 0x0002/*l*/,  0xa50c/*wa*/, 0x0001/*l*/, 0x6001/*x*/, 0x8000/*e*/,
+    0xa504/*wr*/, 0x0001/*l*/,  0x6001/*x*/,  0x8000/*e*/,
+    0xa304/*ar*/, 0x0001/*l*/,  0x6001/*x*/,  0x8000/*e*/,
+    0x4000/*m*/,  0xaa00/*nf*/, 0x0001/*l*/,  0x8000/*e*/,
+    0x4000/*m*/,  0xaa00/*nf*/, 0x0001/*l*/,  0x8000/*e*/
 };
 
 const SvxMSDffCalculationData mso_sptEllipseRibbonCalc[] =
@@ -4682,56 +4660,32 @@ const mso_CustomShape msosptEllipseRibbon =
 //svg path = wr@9@34@8@35,0@24@0@23@9,0@8@11@0@22@19@22@9@34@8@35@19@23@3@24l@7@36@3@4at@9@31@8@32@3@4@18@30@9@1@8@33@18@28@17@28@9@31@8@32@17@30,0@4l@5@36xear@9@1@8@33@17@28@0@29nfl@17@30ewr@9@1@8@33@18@28@19@29nfl@18@30em@0@23nfl@0@29em@19@23nfl@19@29e
 const SvxMSDffVertPair mso_sptEllipseRibbon2Vert[] =
 {
-    { 9 MSO_I , 34 MSO_I },
-    { 8 MSO_I , 35 MSO_I },
-    { 0 , 24 MSO_I },
-    { 0 MSO_I , 23 MSO_I },
-    { 9 MSO_I , 0 },
-    { 8 MSO_I , 11 MSO_I },
-    { 0 MSO_I , 22 MSO_I },
-    { 19 MSO_I , 22 MSO_I },
-    { 9 MSO_I , 34 MSO_I },
-    { 8 MSO_I , 35 MSO_I },
-    { 19 MSO_I , 23 MSO_I },
-    { 3 MSO_I , 24 MSO_I },
-    { 7 MSO_I , 36 MSO_I },
-    { 3 MSO_I , 4 MSO_I },
-    { 9 MSO_I , 31 MSO_I },
-    { 8 MSO_I , 32 MSO_I },
-    { 3 MSO_I , 4 MSO_I },
-    { 18 MSO_I , 30 MSO_I },
-    { 9 MSO_I , 1 MSO_I },
-    { 8 MSO_I , 33 MSO_I },
-    { 18 MSO_I , 28 MSO_I },
-    { 17 MSO_I , 28 MSO_I },
-    { 9 MSO_I , 31 MSO_I },
-    { 8 MSO_I , 32 MSO_I },
-    { 17 MSO_I , 30 MSO_I },
-    { 0 , 4l MSO_I },
-    { 5 MSO_I , 36 MSO_I },
-    { 9 MSO_I , 1 MSO_I },
-    { 8 MSO_I , 33 MSO_I },
-    { 17 MSO_I , 28 MSO_I },
-    { 0 MSO_I , 29 MSO_I },
-    { 17 MSO_I , 30 MSO_I },
-    { 9 MSO_I , 1 MSO_I },
-    { 8 MSO_I , 33 MSO_I },
-    { 18 MSO_I , 28 MSO_I },
-    { 19 MSO_I , 29 MSO_I },
-    { 18 MSO_I , 30 MSO_I },
-    { 0 MSO_I , 23 MSO_I },
-    { 0 MSO_I , 29 MSO_I },
-    { 19 MSO_I , 23 MSO_I },
-    { 19 MSO_I , 29 MSO_I }
+    { 9 MSO_I , 34 MSO_I }, { 8 MSO_I , 35 MSO_I }, { 0 , 24 MSO_I }, { 0 MSO_I , 23 MSO_I },        // wr 1
+    { 9 MSO_I , 0 }, { 8 MSO_I , 11 MSO_I }, { 0 MSO_I , 22 MSO_I }, { 19 MSO_I , 22 MSO_I },        // wr 2
+    { 9 MSO_I , 34 MSO_I }, { 8 MSO_I , 35 MSO_I }, { 19 MSO_I , 23 MSO_I }, { 3 MSO_I , 24 MSO_I }, // wr 3
+    { 7 MSO_I , 36 MSO_I }, { 3 MSO_I , 4 MSO_I },   // l
+    { 9 MSO_I , 31 MSO_I }, { 8 MSO_I , 32 MSO_I }, { 3 MSO_I , 4 MSO_I }, { 18 MSO_I , 30 MSO_I },  // at 1
+    { 9 MSO_I , 1 MSO_I }, { 8 MSO_I , 33 MSO_I }, { 18 MSO_I , 28 MSO_I }, { 17 MSO_I , 28 MSO_I }, // at 2
+    { 9 MSO_I , 31 MSO_I }, { 8 MSO_I , 32 MSO_I }, { 17 MSO_I , 30 MSO_I }, { 0 , 4l MSO_I },       // at 3
+    { 5 MSO_I , 36 MSO_I },  // l
+
+    { 9 MSO_I , 1 MSO_I }, { 8 MSO_I , 33 MSO_I }, { 17 MSO_I , 28 MSO_I }, { 0 MSO_I , 29 MSO_I },  // ar
+    { 17 MSO_I , 30 MSO_I }, // l
+
+    { 9 MSO_I , 1 MSO_I }, { 8 MSO_I , 33 MSO_I }, { 18 MSO_I , 28 MSO_I }, { 19 MSO_I , 29 MSO_I }, // wr
+    { 18 MSO_I , 30 MSO_I }, // l
+
+    { 0 MSO_I , 23 MSO_I }, { 0 MSO_I , 29 MSO_I },  // m l
+
+    { 19 MSO_I , 23 MSO_I }, { 19 MSO_I , 29 MSO_I } // m l
 };
 const sal_uInt16 mso_sptEllipseRibbon2Segm[] =
 {
-    0xa50c/*wr*/,0x0002/*l*/,0xa30c/*at*/,0x0001/*l*/,
-    0x6001/*x*/, 0x8000/*e*/,0xa304/*ar*/,0xaa00/*nf*/,
-    0x0001/*l*/, 0x8000/*e*/,0xa504/*wr*/,0xaa00/*nf*/,
-    0x0001/*l*/, 0x8000/*e*/,0x4000/*m*/,0xaa00/*nf*/,
-    0x0001/*l*/, 0x8000/*e*/,0x4000/*m*/,0xaa00/*nf*/,
-    0x0001/*l*/, 0x8000/*e*/
+    0xa50c/*wr*/, 0x0002/*l*/,  0xa30c/*at*/, 0x0001/*l*/, 0x6001/*x*/, 0x8000/*e*/,
+    0xa304/*ar*/, 0x0001/*l*/,  0x6001/*x*/,  0x8000/*e*/,
+    0xa504/*wr*/, 0x0001/*l*/,  0x6001/*x*/,  0x8000/*e*/,
+    0x4000/*m*/,  0xaa00/*nf*/, 0x0001/*l*/,  0x8000/*e*/,
+    0x4000/*m*/,  0xaa00/*nf*/, 0x0001/*l*/,  0x8000/*e*/
 };
 
 const SvxMSDffCalculationData mso_sptEllipseRibbon2Calc[] =
@@ -8352,6 +8306,62 @@ const mso_CustomShape msoTearDrop =
     std::span<const SvxMSDffHandle>(mso_sptTearDropHandle),
 };
 
+///////////////////////////// sinusoid
+const SvxMSDffVertPair mso_sptSinusoidVert[] =
+{
+    // calculations courtesy of section 6.3.2 of
+    // https://documentation.libreoffice.org/assets/Uploads/Documentation/en/Tutorials/CustomShapes7/Custom-Shape-Tutorial.pdf#page=52
+
+    // taking K = (3pi/2 - 3pi^2/8 - 1/2)
+    // transforming points to viewbox of size 21600 x 21600
+
+    // Start point
+    {     0, 10800 }, // (0, 0)
+    // First Bezier
+    {  1757,  5278 }, // (K, K)
+    {  3437,     0 }, // (1, 1)
+    {  5400,     0 }, // (pi/2, 1)
+    // Second Bezier
+    {  7362,     0 }, // (pi - 1, 1)
+    {  9042,  5278 }, // (pi - K, K)
+    { 10800, 10800 }, // (pi, 0)
+    // Third Bezier
+    { 12557, 16321 }, // (pi + K, -K)
+    { 14237, 21600 }, // (pi + 1, -1)
+    { 16200, 21600 }, // (3pi/2, -1)
+    // Fourth Bezier
+    { 18162, 21600 }, // (2pi - 1, -1)
+    { 19842, 16321 }, // (2pi - K, -K)
+    { 21600, 10800 }  // (2pi, 0)
+};
+
+const sal_uInt16 mso_sptSinusoidSegm[] =
+{
+    0x4000, 0x2004, 0x8000
+};
+
+const SvxMSDffVertPair mso_sptSinusoidGluePoints[] =
+{
+    {     0, 10800 },  // x = 0.00
+    {  5400,     0 },  // x = 0.25
+    { 10800, 10800 },  // x = 0.50
+    { 16200, 21600 },  // x = 0.75
+    { 21600, 10800 }   // x = 1.00
+};
+
+const mso_CustomShape msoSinusoid =
+{
+    std::span<const SvxMSDffVertPair>(mso_sptSinusoidVert),                         // vertices
+    const_cast<sal_uInt16*>(mso_sptSinusoidSegm), sizeof(mso_sptSinusoidSegm) >> 1, // segments, count
+    std::span<const SvxMSDffCalculationData>(),                                     // calculations (none)
+    nullptr,                                                                        // default values (none)
+    std::span<const SvxMSDffTextRectangles>(),                                      // text area (default)
+    21600, 21600,                                                                   // viewbox w, h (default)
+    MIN_INT32, MIN_INT32,                                                           // stretch x, y (unset)
+    std::span<const SvxMSDffVertPair>(mso_sptSinusoidGluePoints),                   // glue points
+    std::span<const SvxMSDffHandle>(),                                              // handles (none)
+};
+
 
 const mso_CustomShape* GetCustomShapeContent( MSO_SPT eSpType )
 {
@@ -8481,6 +8491,7 @@ const mso_CustomShape* GetCustomShapeContent( MSO_SPT eSpType )
         case mso_sptCloudCallout :              pCustomShape = &msoCloudCallout; break;
         case mso_sptWave :                      pCustomShape = &msoWave; break;
         case mso_sptDoubleWave :                pCustomShape = &msoDoubleWave; break;
+        case mso_sptSinusoid :                  pCustomShape = &msoSinusoid; break;
 
         // callout
         case mso_sptCallout1 :                  pCustomShape = &msoCallout1; break;

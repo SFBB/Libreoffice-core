@@ -131,7 +131,7 @@ void SAL_CALL ButtonToolbarController::dispose()
         m_xContext.clear();
         m_xURLTransformer.clear();
         m_xFrame.clear();
-        m_pToolbar.clear();
+        m_pToolbar.reset();
         m_bDisposed = true;
     }
 }
@@ -224,7 +224,7 @@ void SAL_CALL ButtonToolbarController::execute( sal_Int16 KeyModifier )
     try
     {
         // Provide key modifier information to dispatch function
-        Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue("KeyModifier", KeyModifier) };
+        Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue(u"KeyModifier"_ustr, KeyModifier) };
 
         xDispatch->dispatch( aTargetURL, aArgs );
     }

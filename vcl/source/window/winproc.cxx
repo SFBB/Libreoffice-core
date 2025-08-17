@@ -29,6 +29,7 @@
 #include <dndeventdispatcher.hxx>
 #include <comphelper/lok.hxx>
 #include <vcl/QueueInfo.hxx>
+#include <vcl/dndlistenercontainer.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/event.hxx>
 #include <vcl/GestureEventPan.hxx>
@@ -56,13 +57,39 @@
 #include <window.h>
 #include <helpwin.hxx>
 #include <brdwin.hxx>
-#include <dndlistenercontainer.hxx>
 
 #include <com/sun/star/datatransfer/dnd/DNDConstants.hpp>
 #include <com/sun/star/datatransfer/dnd/XDragSource.hpp>
 #include <com/sun/star/awt/MouseEvent.hpp>
 
 #define IMPL_MIN_NEEDSYSWIN         49
+
+namespace
+{
+
+class GenericDropTargetDropContext
+    : public ::cppu::WeakImplHelper<css::datatransfer::dnd::XDropTargetDropContext>
+{
+public:
+    GenericDropTargetDropContext() {}
+
+    // XDropTargetDropContext
+    virtual void SAL_CALL acceptDrop(sal_Int8 /*dragOperation*/) override {}
+    virtual void SAL_CALL rejectDrop() override {}
+    virtual void SAL_CALL dropComplete(sal_Bool /*success*/) override {}
+};
+
+class GenericDropTargetDragContext
+    : public ::cppu::WeakImplHelper<css::datatransfer::dnd::XDropTargetDragContext>
+{
+public:
+    GenericDropTargetDragContext() {}
+
+    // XDropTargetDragContext
+    virtual void SAL_CALL acceptDrag(sal_Int8 /*dragOperation*/) override {}
+    virtual void SAL_CALL rejectDrag() override {}
+};
+}
 
 bool ImplCallPreNotify( NotifyEvent& rEvt )
 {
@@ -482,9 +509,8 @@ bool ImplHandleMouseEvent( const VclPtr<vcl::Window>& xWindow, NotifyEventType n
                         if( pMouseDownWin->ImplGetFrameData()->mbInternalDragGestureRecognizer )
                         {
                             // query DropTarget from child window
-                            css::uno::Reference< css::datatransfer::dnd::XDragGestureRecognizer > xDragGestureRecognizer(
-                                    pMouseDownWin->ImplGetWindowImpl()->mxDNDListenerContainer,
-                                    css::uno::UNO_QUERY );
+                            rtl::Reference< DNDListenerContainer > xDragGestureRecognizer(
+                                    pMouseDownWin->ImplGetWindowImpl()->mxDNDListenerContainer );
 
                             if( xDragGestureRecognizer.is() )
                             {
@@ -513,7 +539,7 @@ bool ImplHandleMouseEvent( const VclPtr<vcl::Window>& xWindow, NotifyEventType n
 
                                 if( xDragSource.is() )
                                 {
-                                    static_cast < DNDListenerContainer * > ( xDragGestureRecognizer.get() )->fireDragGestureEvent( 0,
+                                    xDragGestureRecognizer->fireDragGestureEvent( 0,
                                         relLoc.X(), relLoc.Y(), xDragSource, css::uno::Any( aMouseEvent ) );
                                 }
                             }
@@ -791,9 +817,9 @@ bool ImplHandleMouseEvent( const VclPtr<vcl::Window>& xWindow, NotifyEventType n
                         *   Yield stack.
                         */
                         ContextMenuEvent* pEv = new ContextMenuEvent;
-                        pEv->pWindow = pChild;
+                        pEv->pWindow = std::move(pChild);
                         pEv->aChildPos = aChildPos;
-                        Application::PostUserEvent( Link<void*,void>( pEv, ContextMenuEventLink ) );
+                        Application::PostUserEvent( LINK_NONMEMBER( pEv, ContextMenuEventLink ) );
                     }
                     else
                         bRet = ! ImplCallCommand( pChild, CommandEventId::ContextMenu, nullptr, true, &aChildPos );
@@ -836,8 +862,8 @@ bool ImplLOKHandleMouseEvent(const VclPtr<vcl::Window>& xWindow, NotifyEventType
     {
         css::uno::Reference<css::datatransfer::dnd::XDropTargetDragContext> xDropTargetDragContext =
             new GenericDropTargetDragContext();
-        css::uno::Reference<css::datatransfer::dnd::XDropTarget> xDropTarget(
-            pDragWin->ImplGetWindowImpl()->mxDNDListenerContainer, css::uno::UNO_QUERY);
+        rtl::Reference<DNDListenerContainer> xDropTarget(
+            pDragWin->ImplGetWindowImpl()->mxDNDListenerContainer);
 
         if (!xDropTarget.is() ||
             !xDropTargetDragContext.is() ||
@@ -848,7 +874,7 @@ bool ImplLOKHandleMouseEvent(const VclPtr<vcl::Window>& xWindow, NotifyEventType
             return false;
         }
 
-        static_cast<DNDListenerContainer *>(xDropTarget.get())->fireDragOverEvent(
+        xDropTarget->fireDragOverEvent(
             xDropTargetDragContext,
             css::datatransfer::dnd::DNDConstants::ACTION_MOVE,
             aWinPos.X(),
@@ -867,8 +893,8 @@ bool ImplLOKHandleMouseEvent(const VclPtr<vcl::Window>& xWindow, NotifyEventType
         css::uno::Reference<css::datatransfer::XTransferable> xTransfer;
         css::uno::Reference<css::datatransfer::dnd::XDropTargetDropContext> xDropTargetDropContext =
             new GenericDropTargetDropContext();
-        css::uno::Reference<css::datatransfer::dnd::XDropTarget> xDropTarget(
-            pDragWin->ImplGetWindowImpl()->mxDNDListenerContainer, css::uno::UNO_QUERY);
+        rtl::Reference<DNDListenerContainer> xDropTarget(
+            pDragWin->ImplGetWindowImpl()->mxDNDListenerContainer);
 
         if (!xDropTarget.is() || !xDropTargetDropContext.is())
         {
@@ -877,7 +903,7 @@ bool ImplLOKHandleMouseEvent(const VclPtr<vcl::Window>& xWindow, NotifyEventType
         }
 
         Point dragOverPos = pDragWin->ScreenToOutputPixel(aMousePos);
-        static_cast<DNDListenerContainer *>(xDropTarget.get())->fireDropEvent(
+        xDropTarget->fireDropEvent(
             xDropTargetDropContext,
             css::datatransfer::dnd::DNDConstants::ACTION_MOVE,
             dragOverPos.X(),
@@ -922,9 +948,8 @@ bool ImplLOKHandleMouseEvent(const VclPtr<vcl::Window>& xWindow, NotifyEventType
                     if (pFrameData->mbInternalDragGestureRecognizer)
                     {
                         // query DropTarget from child window
-                        css::uno::Reference< css::datatransfer::dnd::XDragGestureRecognizer > xDragGestureRecognizer(
-                            pDownWin->ImplGetWindowImpl()->mxDNDListenerContainer,
-                            css::uno::UNO_QUERY );
+                        rtl::Reference<DNDListenerContainer> xDragGestureRecognizer(
+                            pDownWin->ImplGetWindowImpl()->mxDNDListenerContainer );
 
                         if (xDragGestureRecognizer.is())
                         {
@@ -946,7 +971,7 @@ bool ImplLOKHandleMouseEvent(const VclPtr<vcl::Window>& xWindow, NotifyEventType
 
                             if (xDragSource.is())
                             {
-                                static_cast<DNDListenerContainer *>(xDragGestureRecognizer.get())->
+                                xDragGestureRecognizer->
                                     fireDragGestureEvent(
                                         0,
                                         aWinPos.X(),
@@ -2274,7 +2299,7 @@ static void ImplHandleClose( const vcl::Window* pWindow )
     {
         DelayedCloseEvent* pEv = new DelayedCloseEvent;
         pEv->pWindow = pWin;
-        Application::PostUserEvent( Link<void*,void>( pEv, DelayedCloseEventLink ) );
+        Application::PostUserEvent( LINK_NONMEMBER( pEv, DelayedCloseEventLink ) );
     }
 }
 
@@ -2773,7 +2798,7 @@ bool ImplWindowFrameProc( vcl::Window* _pWindow, SalEvent nEvent, const void* pE
             if( AllSettings::GetLayoutRTL() )
             {
                 SalFrame* pSalFrame = pWindow->ImplGetWindowImpl()->mpFrame;
-                const_cast<SalPaintEvent *>(pPaintEvt)->mnBoundX = pSalFrame->maGeometry.width() - pPaintEvt->mnBoundWidth - pPaintEvt->mnBoundX;
+                const_cast<SalPaintEvent *>(pPaintEvt)->mnBoundX = pSalFrame->GetWidth() - pPaintEvt->mnBoundWidth - pPaintEvt->mnBoundX;
             }
 
             tools::Rectangle aBoundRect( Point( pPaintEvt->mnBoundX, pPaintEvt->mnBoundY ),

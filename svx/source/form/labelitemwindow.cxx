@@ -8,12 +8,13 @@
  */
 
 #include <svx/labelitemwindow.hxx>
+#include <vcl/svapp.hxx>
 
 LabelItemWindow::LabelItemWindow(vcl::Window* pParent, const OUString& rLabel)
-    : InterimItemWindow(pParent, "svx/ui/labelbox.ui", "LabelBox")
-    , m_xBox(m_xBuilder->weld_box("LabelBox"))
-    , m_xLabel(m_xBuilder->weld_label("label"))
-    , m_xImage(m_xBuilder->weld_image("image"))
+    : InterimItemWindow(pParent, u"svx/ui/labelbox.ui"_ustr, u"LabelBox"_ustr)
+    , m_xBox(m_xBuilder->weld_box(u"LabelBox"_ustr))
+    , m_xLabel(m_xBuilder->weld_label(u"label"_ustr))
+    , m_xImage(m_xBuilder->weld_image(u"image"_ustr))
 {
     InitControlBase(m_xLabel.get());
 
@@ -36,19 +37,26 @@ void LabelItemWindow::SetOptimalSize()
 
 void LabelItemWindow::set_label(const OUString& rLabel, const LabelItemWindowType eType)
 {
-    m_xLabel->set_visible(false); // a11y announcement
+    // hide temporarily, to trigger a11y announcement for SHOWING event for
+    // the label with NOTIFICATION a11y role when label gets shown again below
+    if (!rLabel.isEmpty())
+        m_xLabel->set_visible(false);
+
     m_xLabel->set_label(rLabel);
     if ((eType == LabelItemWindowType::Text) || rLabel.isEmpty())
     {
         m_xImage->hide();
         m_xLabel->set_font_color(COL_AUTO);
-        m_xBox->set_background(COL_AUTO);
+        m_xBox->set_background(); // reset to default
     }
     else if (eType == LabelItemWindowType::Info)
     {
         m_xImage->show();
-        m_xLabel->set_font_color(Color(0x00, 0x47, 0x85));
-        m_xBox->set_background(Color(0xBD, 0xE5, 0xF8)); // same as InfobarType::INFO
+        const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
+        if (rStyleSettings.GetDialogColor().IsDark())
+            m_xBox->set_background(Color(0x00, 0x56, 0x80));
+        else
+            m_xBox->set_background(Color(0xBD, 0xE5, 0xF8)); // same as InfobarType::INFO
     }
     m_xLabel->set_visible(
         true); // always show and not just if !rLabel.isEmpty() to not make the chevron appear
@@ -58,7 +66,9 @@ OUString LabelItemWindow::get_label() const { return m_xLabel->get_label(); }
 
 void LabelItemWindow::dispose()
 {
+    m_xImage.reset();
     m_xLabel.reset();
+    m_xBox.reset();
     InterimItemWindow::dispose();
 }
 

@@ -18,9 +18,11 @@
  */
 
 #include <anchoredobjectposition.hxx>
+#include <bodyfrm.hxx>
 #include <environmentofanchoredobject.hxx>
 #include <flyfrm.hxx>
 #include <flyfrms.hxx>
+#include <formatflysplit.hxx>
 #include <txtfrm.hxx>
 #include <pagefrm.hxx>
 #include <frmatr.hxx>
@@ -37,6 +39,7 @@
 #include <IDocumentSettingAccess.hxx>
 #include <textboxhelper.hxx>
 #include <fmtsrnd.hxx>
+#include <rowfrm.hxx>
 #include <osl/diagnose.h>
 
 using namespace ::com::sun::star;
@@ -106,7 +109,7 @@ void SwAnchoredObjectPosition::GetInfoAboutObj()
     // determine format the object belongs to
     {
         // #i28701#
-        mpFrameFormat = &mpAnchoredObj->GetFrameFormat();
+        mpFrameFormat = mpAnchoredObj->GetFrameFormat();
         assert(mpFrameFormat &&
                 "<SwAnchoredObjectPosition::GetInfoAboutObj() - missing frame format.");
     }
@@ -119,12 +122,24 @@ void SwAnchoredObjectPosition::GetInfoAboutObj()
     // determine, if anchored object has not to be captured on the page.
     // the following conditions must be hold to *not* capture it:
     // - corresponding document compatibility flag is set
-    // - it's a drawing object or it's a non-textbox wrap-though fly frame
+    // - shape is considered:
+    //   - draw case: wrap through or is not part of a textbox
+    //   - fly case: wrap through and is not part of a textbox
     // - it doesn't follow the text flow
     {
-        bool bTextBox = SwTextBoxHelper::isTextBox(mpFrameFormat, RES_FLYFRMFMT);
         bool bWrapThrough = mpFrameFormat->GetSurround().GetSurround() == css::text::WrapTextMode_THROUGH;
-        mbDoNotCaptureAnchoredObj = (!mbIsObjFly || (!bTextBox && bWrapThrough)) && !mbFollowTextFlow &&
+        bool bConsidered{};
+        if (mbIsObjFly)
+        {
+            bool bTextBox = SwTextBoxHelper::isTextBox(mpFrameFormat, RES_FLYFRMFMT);
+            bConsidered = bWrapThrough && !bTextBox;
+        }
+        else
+        {
+            bool bTextBox = SwTextBoxHelper::isTextBox(mpFrameFormat, RES_DRAWFRMFMT);
+            bConsidered = bWrapThrough || !bTextBox;
+        }
+        mbDoNotCaptureAnchoredObj = bConsidered && !mbFollowTextFlow &&
                                     mpFrameFormat->getIDocumentSettingAccess().get(DocumentSettingId::DO_NOT_CAPTURE_DRAW_OBJS_ON_PAGE);
     }
 }
@@ -385,10 +400,9 @@ SwTwips SwAnchoredObjectPosition::GetVertRelPos(
         break;
         case text::VertOrientation::TOP:
         {
-              nRelPosY +=   aRectFnSet.IsVert()
-                            ? ( aRectFnSet.IsVertL2R()
-                                ? _rLRSpacing.GetLeft()
-                                : _rLRSpacing.GetRight() )
+            nRelPosY += aRectFnSet.IsVert()
+                            ? (aRectFnSet.IsVertL2R() ? _rLRSpacing.ResolveLeft({})
+                                                      : _rLRSpacing.ResolveRight({}))
                             : _rULSpacing.GetUpper();
         }
         break;
@@ -399,12 +413,12 @@ SwTwips SwAnchoredObjectPosition::GetVertRelPos(
         break;
         case text::VertOrientation::BOTTOM:
         {
-            nRelPosY += nAlignAreaHeight -
-                        ( nObjHeight + ( aRectFnSet.IsVert()
-                                         ? ( aRectFnSet.IsVertL2R()
-                                             ? _rLRSpacing.GetRight()
-                                             : _rLRSpacing.GetLeft() )
-                                         : _rULSpacing.GetLower() ) );
+            nRelPosY += nAlignAreaHeight
+                        - (nObjHeight
+                           + (aRectFnSet.IsVert()
+                                  ? (aRectFnSet.IsVertL2R() ? _rLRSpacing.ResolveRight({})
+                                                            : _rLRSpacing.ResolveLeft({}))
+                                  : _rULSpacing.GetLower()));
         }
         break;
         default:
@@ -432,6 +446,7 @@ SwTwips SwAnchoredObjectPosition::ImplAdjustVertRelPos( const SwTwips nTopOfAnch
                                                          const bool bVert,
                                                          const bool bVertL2R,
                                                          const SwFrame& rPageAlignLayFrame,
+                                                         const SwFormatVertOrient& rVertOrient,
                                                          const SwTwips nProposedRelPosY,
                                                          const bool bFollowTextFlow,
                                                          const bool bCheckBottom ) const
@@ -456,17 +471,60 @@ SwTwips SwAnchoredObjectPosition::ImplAdjustVertRelPos( const SwTwips nTopOfAnch
     // to its environment (e.g. page header/footer).
     SwRect aPgAlignArea;
     {
+        const IDocumentSettingAccess& rIDSA = mpFrameFormat->getIDocumentSettingAccess();
+        const bool bMSOLayout = rIDSA.get(DocumentSettingId::CONSIDER_WRAP_ON_OBJECT_POSITION);
+        const SwFormatSurround& rSurround = mpFrameFormat->GetSurround();
+        bool bWrapThrough = rSurround.GetSurround() == css::text::WrapTextMode_THROUGH;
+        // If the frame format is a TextBox of a draw shape, then use the
+        // surround of the original shape.
+        SwTextBoxHelper::getShapeWrapThrough(mpFrameFormat, bWrapThrough);
+
         // #i26945# - no extension of restricted area, if
         // object's attribute follow text flow is set and its inside a table
-        if ( GetFrameFormat().getIDocumentSettingAccess().get(DocumentSettingId::CONSIDER_WRAP_ON_OBJECT_POSITION) &&
+        if (bMSOLayout &&
              ( !bFollowTextFlow ||
                !GetAnchoredObj().GetAnchorFrame()->IsInTab() ) )
         {
-            aPgAlignArea = rPageAlignLayFrame.FindPageFrame()->getFrameArea();
+            const SwPageFrame& rPageFrame = *rPageAlignLayFrame.FindPageFrame();
+            aPgAlignArea = rPageFrame.getFrameArea();
+
+            // re-using existing compat option to determine old (<=compat14) behaviour
+            const bool bCompat15 = !rIDSA.get(DocumentSettingId::ADD_FLY_OFFSETS);
+
+            // Instead of using the top of the page as the vertical limit,
+            // DOCX compatibilityMode 15 started to use the text body as the vertical limit
+            // for most paragraph or line-oriented anchored non-wrapthrough objects.
+            // Floating tables are an exception.
+            const bool bIsFloatingTable = mpFrameFormat->GetFlySplit().GetValue();
+            // FramePr paragraph-defined textboxes are another exception.
+            // bVert is also untouched to avoid issues: who knows what should happen in that case.
+            if (!bVert && bCompat15 && !bWrapThrough && !bIsFloatingTable
+                && rPageAlignLayFrame.IsPageFrame()
+                && rVertOrient.GetRelationOrient() != text::RelOrientation::PAGE_FRAME
+                && rVertOrient.GetRelationOrient() != text::RelOrientation::PAGE_PRINT_AREA
+                && !SwTextBoxHelper::TextBoxIsFramePr(*mpFrameFormat))
+            {
+                const SwBodyFrame* pBodyFrame = mpAnchorFrame->FindBodyFrame();
+                while (pBodyFrame && !pBodyFrame->IsPageBodyFrame())
+                    pBodyFrame = pBodyFrame->GetUpper()->FindBodyFrame();
+                if (pBodyFrame && pBodyFrame->GetUpper() == &rPageFrame) // same physical page...
+                    aPgAlignArea = pBodyFrame->getFrameArea();
+            }
         }
         else
         {
             aPgAlignArea = rPageAlignLayFrame.getFrameArea();
+
+            // When Microsoft follows text flow,
+            // it prevents vertical movement beyond the cell margin (unless wrap-through).
+            // Don't touch bVert to avoid issues: who knows what should happen in that case
+            if (bMSOLayout && bFollowTextFlow && rPageAlignLayFrame.IsCellFrame() && !bWrapThrough
+                && !bVert)
+            {
+                const auto pRow = const_cast<SwFrame&>(rPageAlignLayFrame).FindRowFrame();
+                assert(pRow);
+                aPgAlignArea.AddTop(pRow->GetTopMarginForLowers()); //reduces size and lowers
+            }
         }
     }
 
@@ -852,7 +910,10 @@ SwTwips SwAnchoredObjectPosition::CalcRelPosX(
     if ( _rHoriOrient.GetHoriOrient() == text::HoriOrientation::NONE )
     {
         // 'manual' horizontal position
-        const bool bR2L = rAnchorFrame.IsRightToLeft();
+        const IDocumentSettingAccess& rIDSA = mpFrameFormat->getIDocumentSettingAccess();
+        // If compat flag is active, then disable automatic mirroring for RTL.
+        bool bMirrorRtlDrawObjs = !rIDSA.get(DocumentSettingId::DO_NOT_MIRROR_RTL_DRAW_OBJS);
+        const bool bR2L = rAnchorFrame.IsRightToLeft() && bMirrorRtlDrawObjs;
         if( IsAnchoredToChar() && text::RelOrientation::CHAR == eRelOrient )
         {
             if( bR2L )
@@ -873,12 +934,13 @@ SwTwips SwAnchoredObjectPosition::CalcRelPosX(
     }
     else if ( text::HoriOrientation::CENTER == eHoriOrient )
         nRelPosX += (nWidth / 2) - (nObjWidth / 2);
-    else if ( text::HoriOrientation::RIGHT == eHoriOrient )
-        nRelPosX += nWidth -
-                    ( nObjWidth +
-                      ( aRectFnSet.IsVert() ? _rULSpacing.GetLower() : _rLRSpacing.GetRight() ) );
+    else if (text::HoriOrientation::RIGHT == eHoriOrient)
+        nRelPosX
+            += nWidth
+               - (nObjWidth
+                  + (aRectFnSet.IsVert() ? _rULSpacing.GetLower() : _rLRSpacing.ResolveRight({})));
     else
-        nRelPosX += aRectFnSet.IsVert() ? _rULSpacing.GetUpper() : _rLRSpacing.GetLeft();
+        nRelPosX += aRectFnSet.IsVert() ? _rULSpacing.GetUpper() : _rLRSpacing.ResolveLeft({});
 
     // adjust relative position by distance between anchor frame and
     // the frame, the object is oriented at.
@@ -1020,31 +1082,34 @@ SwTwips SwAnchoredObjectPosition::AdjustHoriRelPosForDrawAside(
             else
             {
                 const SvxLRSpaceItem& rOtherLR = pFly->GetFormat()->GetLRSpace();
-                const SwTwips nOtherLeft = pFly->getFrameArea().Left() - rOtherLR.GetLeft();
-                const SwTwips nOtherRight = pFly->getFrameArea().Right() + rOtherLR.GetRight();
-                if( nOtherLeft <= aTmpObjRect.Right() + _rLRSpacing.GetRight() &&
-                    nOtherRight >= aTmpObjRect.Left() - _rLRSpacing.GetLeft() )
+                const SwTwips nOtherLeft = pFly->getFrameArea().Left() - rOtherLR.ResolveLeft({});
+                const SwTwips nOtherRight
+                    = pFly->getFrameArea().Right() + rOtherLR.ResolveRight({});
+                if (nOtherLeft <= aTmpObjRect.Right() + _rLRSpacing.ResolveRight({})
+                    && nOtherRight >= aTmpObjRect.Left() - _rLRSpacing.ResolveLeft({}))
                 {
                     if ( _eHoriOrient == text::HoriOrientation::LEFT )
                     {
-                        SwTwips nTmp = nOtherRight + 1 + _rLRSpacing.GetLeft() -
-                                       rAnchorTextFrame.getFrameArea().Left();
-                        if ( nTmp > nAdjustedRelPosX &&
-                             rAnchorTextFrame.getFrameArea().Left() + nTmp +
-                             aObjBoundRect.Width() + _rLRSpacing.GetRight()
-                             <= pObjPage->getFrameArea().Width() + pObjPage->getFrameArea().Left() )
+                        SwTwips nTmp = nOtherRight + 1 + _rLRSpacing.ResolveLeft({})
+                                       - rAnchorTextFrame.getFrameArea().Left();
+                        if (nTmp > nAdjustedRelPosX
+                            && rAnchorTextFrame.getFrameArea().Left() + nTmp + aObjBoundRect.Width()
+                                       + _rLRSpacing.ResolveRight({})
+                                   <= pObjPage->getFrameArea().Width()
+                                          + pObjPage->getFrameArea().Left())
                         {
                             nAdjustedRelPosX = nTmp;
                         }
                     }
                     else if ( _eHoriOrient == text::HoriOrientation::RIGHT )
                     {
-                        SwTwips nTmp = nOtherLeft - 1 - _rLRSpacing.GetRight() -
-                                       aObjBoundRect.Width() -
-                                       rAnchorTextFrame.getFrameArea().Left();
-                        if ( nTmp < nAdjustedRelPosX &&
-                             rAnchorTextFrame.getFrameArea().Left() + nTmp - _rLRSpacing.GetLeft()
-                             >= pObjPage->getFrameArea().Left() )
+                        SwTwips nTmp = nOtherLeft - 1 - _rLRSpacing.ResolveRight({})
+                                       - aObjBoundRect.Width()
+                                       - rAnchorTextFrame.getFrameArea().Left();
+                        if (nTmp < nAdjustedRelPosX
+                            && rAnchorTextFrame.getFrameArea().Left() + nTmp
+                                       - _rLRSpacing.ResolveLeft({})
+                                   >= pObjPage->getFrameArea().Left())
                         {
                             nAdjustedRelPosX = nTmp;
                         }

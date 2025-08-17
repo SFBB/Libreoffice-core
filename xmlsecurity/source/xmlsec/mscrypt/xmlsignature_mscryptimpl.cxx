@@ -20,8 +20,9 @@
 #include <sal/config.h>
 #include <sal/log.hxx>
 #include <rtl/uuid.h>
-#include <xmlsec-wrapper.h>
 
+#include <xmlsec/xmldsig.h>
+#include <xmlsec/xmltree.h> // this MUST precede the mscng/x509.h for some reason
 #include <xmlsec/mscng/x509.h>
 
 #include <com/sun/star/xml/crypto/SecurityOperationStatus.hpp>
@@ -142,6 +143,7 @@ SAL_CALL XMLSignature_MSCryptImpl::generate(
     }
 
     //Sign the template
+    pDsigCtx->keyInfoReadCtx.flags |= XMLSEC_KEYINFO_FLAGS_X509DATA_DONT_VERIFY_CERTS;
     if( xmlSecDSigCtxSign( pDsigCtx , pNode ) == 0 )
     {
         if (pDsigCtx->status == xmlSecDSigStatusSucceeded)

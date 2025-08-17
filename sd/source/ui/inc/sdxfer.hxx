@@ -58,12 +58,16 @@ public:
     void                            SetStartPos( const Point& rStartPos ) { maStartPos = rStartPos; }
     const Point&                    GetStartPos() const { return maStartPos; }
 
+    // tdf#118171 - snap rectangles of objects without line width
+    void SetBoundStartPos(const Point& rBoundStartPos) { maBoundStartPos = rBoundStartPos; }
+    const Point& GetBoundStartPos() const { return maBoundStartPos; }
+
     void                            SetInternalMove( bool bSet ) { mbInternalMove = bSet; }
     bool                            IsInternalMove() const { return mbInternalMove; }
 
     bool                            HasSourceDoc( const SdDrawDocument* pDoc ) const { return( mpSourceDoc == pDoc ); }
 
-    void                            SetPageBookmarks( std::vector<OUString>&& rPageBookmarks, bool bPersistent );
+    void                            SetPageBookmarks( std::vector<OUString>&& rPageBookmarks, bool bPersistent, bool bMergeMasterPagesOnly = false );
     bool                            IsPageTransferable() const { return mbPageTransferable; }
     bool                            HasPageBookmarks() const { return( mpPageDocShell && ( !maPageBookmarks.empty() ) ); }
     const std::vector<OUString>&    GetPageBookmarks() const { return maPageBookmarks; }
@@ -105,7 +109,7 @@ protected:
 
     virtual void                    AddSupportedFormats() override;
     virtual bool                    GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
-    virtual bool                    WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId, const css::datatransfer::DataFlavor& rFlavor ) override;
+    virtual bool                    WriteObject( SvStream& rOStm, void* pUserObject, sal_uInt32 nUserObjectId, const css::datatransfer::DataFlavor& rFlavor ) override;
     virtual void                    ObjectReleased() override final;
 
 private:
@@ -126,6 +130,7 @@ private:
     std::unique_ptr<ImageMap>       mpImageMap;
     ::tools::Rectangle                       maVisArea;
     Point                           maStartPos;
+    Point                           maBoundStartPos;
     bool                            mbInternalMove               : 1;
     bool                            mbOwnDocument                : 1;
     bool                            mbOwnView                    : 1;

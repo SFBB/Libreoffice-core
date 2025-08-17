@@ -82,15 +82,19 @@ void ScClipUtil::PasteFromClipboard( ScViewData& rViewData, ScTabViewShell* pTab
         weld::WaitObject aWait( rViewData.GetDialogParent() );
         if (!pOwnClip)
         {
-            pTabViewShell->PasteFromSystem();
+            pTabViewShell->PasteFromSystem(true);
             // Anchor To Cell rather than To Page
             ScDrawView* pDrawView = pTabViewShell->GetScDrawView();
-            if(pDrawView && 1 == pDrawView->GetMarkedObjectCount())
+            if(pDrawView)
             {
-                SdrObject* pPickObj = pDrawView->GetMarkedObjectByIndex(0);
-                if(pPickObj)
+                const SdrMarkList& rMarkList = pDrawView->GetMarkedObjectList();
+                if (1 == rMarkList.GetMarkCount())
                 {
-                    ScDrawLayer::SetCellAnchoredFromPosition( *pPickObj,  rThisDoc, nThisTab, false );
+                    SdrObject* pPickObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
+                    if(pPickObj)
+                    {
+                        ScDrawLayer::SetCellAnchoredFromPosition( *pPickObj,  rThisDoc, nThisTab, false );
+                    }
                 }
             }
         }
@@ -126,6 +130,9 @@ void ScClipUtil::PasteFromClipboard( ScViewData& rViewData, ScTabViewShell* pTab
         const SfxBoolItem* pItem = rThisDoc.GetAttr(nThisCol, nThisRow, nThisTab, ATTR_LINEBREAK);
         if (pItem->GetValue() || entireColumnOrRowSelected)
         {
+            pTabViewShell->OnLOKSetWidthOrHeight(nThisCol, true);
+            pTabViewShell->OnLOKSetWidthOrHeight(nThisRow, false);
+
             ScTabViewShell::notifyAllViewsSheetGeomInvalidation(
                 pTabViewShell, true /* bColumns */, true /* bRows */, true /* bSizes*/,
                 true /* bHidden */, true /* bFiltered */, true /* bGroups */, nThisTab);

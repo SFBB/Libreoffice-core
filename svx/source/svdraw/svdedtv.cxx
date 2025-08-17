@@ -33,9 +33,9 @@
 #include <svx/svdview.hxx>
 #include <clonelist.hxx>
 #include <svx/svdogrp.hxx>
-#include <svx/scene3d.hxx>
 #include <svx/xfillit0.hxx>
 #include <osl/diagnose.h>
+#include <sfx2/viewsh.hxx>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
@@ -147,6 +147,7 @@ bool SdrEditView::ImpDelLayerCheck(SdrObjList const * pOL, SdrLayerID nDelID) co
     {
         nObjNum--;
         SdrObject* pObj = pOL->GetObj(nObjNum);
+        assert(pObj);
         SdrObjList* pSubOL = pObj->GetSubList();
 
         // explicitly test for group objects and 3d scenes
@@ -181,6 +182,7 @@ void SdrEditView::ImpDelLayerDelObjs(SdrObjList* pOL, SdrLayerID nDelID)
     {
         nObjNum--;
         SdrObject* pObj = pOL->GetObj(nObjNum);
+        assert(pObj);
         SdrObjList* pSubOL = pObj->GetSubList();
 
 
@@ -246,6 +248,7 @@ void SdrEditView::DeleteLayer(const OUString& rName)
             {
                 nObjNum--;
                 SdrObject* pObj = pPage->GetObj(nObjNum);
+                assert(pObj);
                 SdrObjList* pSubOL = pObj->GetSubList();
 
                 // explicitly test for group objects and 3d scenes
@@ -487,9 +490,10 @@ void SdrEditView::CheckPossibilities()
     if (!m_bPossibilitiesDirty)
         return;
 
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
     ImpResetPossibilityFlags();
-    SortMarkedObjects();
-    const size_t nMarkCount = GetMarkedObjectCount();
+    rMarkList.ForceSort();
+    const size_t nMarkCount = rMarkList.GetMarkCount();
     if (nMarkCount != 0)
     {
         m_bReverseOrderPossible = (nMarkCount >= 2);
@@ -501,7 +505,7 @@ void SdrEditView::CheckPossibilities()
         {
             // check bCombinePossible more thoroughly
             // still missing ...
-            const SdrObject* pObj=GetMarkedObjectByIndex(0);
+            const SdrObject* pObj=rMarkList.GetMark(0)->GetMarkedSdrObj();
             //const SdrPathObj* pPath=dynamic_cast<SdrPathObj*>( pObj );
             bool bGroup=pObj->GetSubList()!=nullptr;
             bool bHasText=pObj->GetOutlinerParaObject()!=nullptr;
@@ -531,14 +535,14 @@ void SdrEditView::CheckPossibilities()
         if(m_bGradientAllowed)
         {
             // gradient depends on fill style
-            const SdrMark* pM = GetSdrMarkByIndex(0);
+            const SdrMark* pM = rMarkList.GetMark(0);
             const SdrObject* pObj = pM->GetMarkedSdrObj();
 
             // may be group object, so get merged ItemSet
             const SfxItemSet& rSet = pObj->GetMergedItemSet();
             SfxItemState eState = rSet.GetItemState(XATTR_FILLSTYLE, false);
 
-            if(SfxItemState::DONTCARE != eState)
+            if(SfxItemState::INVALID != eState)
             {
                 // If state is not DONTCARE, test the item
                 drawing::FillStyle eFillStyle = rSet.Get(XATTR_FILLSTYLE).GetValue();
@@ -554,7 +558,7 @@ void SdrEditView::CheckPossibilities()
         const SdrPageView* pPV0=nullptr;
 
         for (size_t nm=0; nm<nMarkCount; ++nm) {
-            const SdrMark* pM=GetSdrMarkByIndex(nm);
+            const SdrMark* pM=rMarkList.GetMark(nm);
             const SdrObject* pObj=pM->GetMarkedSdrObj();
             const SdrPageView* pPV=pM->GetPageView();
             if (pPV!=pPV0) {
@@ -649,7 +653,7 @@ void SdrEditView::CheckPossibilities()
     static_cast<SdrPolyEditView*>(this)->ImpCheckPolyPossibilities();
     m_bPossibilitiesDirty=false;
 
-    if (m_bReadOnly) {
+    if (m_bReadOnly || SfxViewShell::IsCurrentLokViewReadOnly() ) {
         bool bTemp=m_bGrpEnterPossible;
         ImpResetPossibilityFlags();
         m_bReadOnly=true;
@@ -660,7 +664,7 @@ void SdrEditView::CheckPossibilities()
     // Don't allow moving glued connectors.
     // Currently only implemented for single selection.
     if (nMarkCount==1) {
-        SdrObject* pObj=GetMarkedObjectByIndex(0);
+        SdrObject* pObj=rMarkList.GetMark(0)->GetMarkedSdrObj();
         SdrEdgeObj* pEdge=dynamic_cast<SdrEdgeObj*>( pObj );
         if (pEdge!=nullptr) {
             SdrObject* pNode1=pEdge->GetConnectedNode(true);
@@ -672,7 +676,7 @@ void SdrEditView::CheckPossibilities()
     // Don't allow enter Diagrams
     if (1 == nMarkCount && m_bGrpEnterPossible)
     {
-        SdrObject* pCandidate(GetMarkedObjectByIndex(0));
+        SdrObject* pCandidate(rMarkList.GetMark(0)->GetMarkedSdrObj());
 
         if(nullptr != pCandidate && pCandidate->isDiagram())
             m_bGrpEnterPossible = false;
@@ -682,9 +686,10 @@ void SdrEditView::CheckPossibilities()
 
 void SdrEditView::ForceMarkedObjToAnotherPage()
 {
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
     bool bFlg=false;
-    for (size_t nm=0; nm<GetMarkedObjectCount(); ++nm) {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+    for (size_t nm=0; nm<rMarkList.GetMarkCount(); ++nm) {
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pObj=pM->GetMarkedSdrObj();
         tools::Rectangle aObjRect(pObj->GetCurrentBoundRect());
         tools::Rectangle aPgRect(pM->GetPageView()->GetPageRect());
@@ -793,26 +798,26 @@ static void lcl_LazyDelete(std::vector<rtl::Reference<SdrObject>> & rLazyDelete)
 
 void SdrEditView::DeleteMarkedObj()
 {
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
     // #i110981# return when nothing is to be done at all
-    if(!GetMarkedObjectCount())
+    if(!rMarkList.GetMarkCount())
     {
         return;
     }
 
     // moved breaking action and undo start outside loop
     BrkAction();
-    BegUndo(SvxResId(STR_EditDelete),GetDescriptionOfMarkedObjects(),SdrRepeatFunc::Delete);
+    BegUndo(SvxResId(STR_EditDelete),rMarkList.GetMarkDescription(),SdrRepeatFunc::Delete);
 
     std::vector<rtl::Reference<SdrObject>> lazyDeleteObjects;
     // remove as long as something is selected. This allows to schedule objects for
     // removal for a next run as needed
-    while(GetMarkedObjectCount())
+    while(rMarkList.GetMarkCount())
     {
         // vector to remember the parents which may be empty after object removal
         std::vector< SdrObject* > aParents;
 
         {
-            const SdrMarkList& rMarkList = GetMarkedObjectList();
             const size_t nCount(rMarkList.GetMarkCount());
 
             for(size_t a = 0; a < nCount; ++a)
@@ -864,12 +869,12 @@ void SdrEditView::DeleteMarkedObj()
 
         // original stuff: remove selected objects. Handle clear will
         // do something only once
-        auto temp(DeleteMarkedList(GetMarkedObjectList()));
+        auto temp(DeleteMarkedList(rMarkList));
         lazyDeleteObjects.insert(lazyDeleteObjects.end(), temp.begin(), temp.end());
         GetMarkedObjectListWriteAccess().Clear();
         maHdlList.Clear();
 
-        while(!aParents.empty() && !GetMarkedObjectCount())
+        while(!aParents.empty() && !rMarkList.GetMarkCount())
         {
             // iterate over remembered parents
             SdrObject* pParent = aParents.back();
@@ -901,9 +906,10 @@ void SdrEditView::DeleteMarkedObj()
 
 void SdrEditView::CopyMarkedObj()
 {
-    SortMarkedObjects();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    rMarkList.ForceSort();
 
-    SdrMarkList aSourceObjectsForCopy(GetMarkedObjectList());
+    SdrMarkList aSourceObjectsForCopy(rMarkList);
     // The following loop is used instead of MarkList::Merge(), to be
     // able to flag the MarkEntries.
     const size_t nEdgeCnt = GetEdgesOfMarkedNodes().GetMarkCount();
@@ -995,8 +1001,8 @@ bool SdrEditView::InsertObjectAtView(SdrObject* pObj, SdrPageView& rPV, SdrInser
 
     css::uno::Reference<lang::XServiceInfo> xServices(GetModel().getUnoModel(),
                                                       css::uno::UNO_QUERY);
-    if (xServices.is() && (xServices->supportsService("com.sun.star.sheet.SpreadsheetDocument") ||
-                           xServices->supportsService("com.sun.star.text.TextDocument")))
+    if (xServices.is() && (xServices->supportsService(u"com.sun.star.sheet.SpreadsheetDocument"_ustr) ||
+                           xServices->supportsService(u"com.sun.star.text.TextDocument"_ustr)))
     {
         const bool bUndo(IsUndoEnabled());
         GetModel().EnableUndo(false);

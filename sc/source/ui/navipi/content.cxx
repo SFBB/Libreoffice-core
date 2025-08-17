@@ -24,7 +24,6 @@
 #include <svx/svditer.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdview.hxx>
-#include <svx/svdocapt.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/viewfrm.hxx>
@@ -43,7 +42,6 @@
 #include <scmod.hxx>
 #include <rangenam.hxx>
 #include <dbdata.hxx>
-#include <tablink.hxx>
 #include <drwlayer.hxx>
 #include <transobj.hxx>
 #include <drwtrans.hxx>
@@ -188,7 +186,23 @@ void ScContentTree::InitRoot( ScContentId nType )
     }
 
     auto const & aImage = aContentBmps[static_cast<int>(nType) - 1];
-    OUString aName(ScResId(SCSTR_CONTENT_ARY[static_cast<int>(nType)]));
+
+    OUString aName;
+    if(comphelper::LibreOfficeKit::isActive())
+    {
+        //In case of LOK we may have many different ScContentTrees in different languages.
+        //At creation time, we store what language we use, and then use it later too.
+        //It does not work in the constructor, that is why it is here.
+        if (!m_pResLocaleForLOK)
+        {
+            m_pResLocaleForLOK = std::make_unique<std::locale>(ScModule::get()->GetResLocale());
+        }
+        aName = Translate::get(SCSTR_CONTENT_ARY[static_cast<int>(nType)], *m_pResLocaleForLOK);
+    }
+    else
+    {
+        aName = ScResId(SCSTR_CONTENT_ARY[static_cast<int>(nType)]);
+    }
     // back to the correct position:
     sal_uInt16 nPos = nRootType != ScContentId::ROOT ? 0 : pPosList[nType]-1;
     m_aRootNodes[nType] = m_xTreeView->make_iterator();
@@ -372,7 +386,7 @@ IMPL_LINK_NOARG(ScContentTree, ContentDoubleClickHdl, weld::TreeView&, bool)
                 pParentWindow->SetCurrentCell( aPos.Col(), aPos.Row() );
                 // Check whether the comment is currently visible and toggle its visibility
                 ScDocument* pSrcDoc = GetSourceDocument();
-                if (ScPostIt* pNote = pSrcDoc->GetNote(aPos.Col(), aPos.Row(), aPos.Tab()))
+                if (ScPostIt* pNote = pSrcDoc ? pSrcDoc->GetNote(aPos.Col(), aPos.Row(), aPos.Tab()) : nullptr)
                 {
                     bool bVisible = pNote->IsCaptionShown();
                     // Effectivelly set the visibility of the comment
@@ -549,26 +563,29 @@ IMPL_LINK(ScContentTree, CommandHdl, const CommandEvent&, rCEvt, bool)
     {
         case CommandEventId::ContextMenu:
             {
+                if (comphelper::LibreOfficeKit::isActive())
+                    break;
+
                 //  drag-and-drop mode
-                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xTreeView.get(), "modules/scalc/ui/dropmenu.ui"));
-                std::unique_ptr<weld::Menu> xPop(xBuilder->weld_menu("contextmenu"));
-                std::unique_ptr<weld::Menu> xDropMenu(xBuilder->weld_menu("dragmodesubmenu"));
+                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xTreeView.get(), u"modules/scalc/ui/dropmenu.ui"_ustr));
+                std::unique_ptr<weld::Menu> xPop(xBuilder->weld_menu(u"contextmenu"_ustr));
+                std::unique_ptr<weld::Menu> xDropMenu(xBuilder->weld_menu(u"dragmodesubmenu"_ustr));
 
                 switch (pParentWindow->GetDropMode())
                 {
                     case 0:
-                        xDropMenu->set_active("hyperlink", true);
+                        xDropMenu->set_active(u"hyperlink"_ustr, true);
                         break;
                     case 1:
-                        xDropMenu->set_active("link", true);
+                        xDropMenu->set_active(u"link"_ustr, true);
                         break;
                     case 2:
-                        xDropMenu->set_active("copy", true);
+                        xDropMenu->set_active(u"copy"_ustr, true);
                         break;
                 }
 
                 //  displayed document
-                std::unique_ptr<weld::Menu> xDocMenu(xBuilder->weld_menu("displaymenu"));
+                std::unique_ptr<weld::Menu> xDocMenu(xBuilder->weld_menu(u"displaymenu"_ustr));
                 sal_uInt16 i=0;
                 OUString sActive;
                 OUString sId;
@@ -601,9 +618,12 @@ IMPL_LINK(ScContentTree, CommandHdl, const CommandEvent&, rCEvt, bool)
                     sActive = sId;
                 xDocMenu->set_active(sActive, true);
 
-                // Edit Comments entry is only visible for comments
+                // Edit/Delete Comments are only visible for comments
                 if (nType != ScContentId::NOTE)
-                    xPop->set_visible("edit", false);
+                {
+                    xPop->set_visible(u"edit"_ustr, false);
+                    xPop->set_visible(u"delete"_ustr, false);
+                }
 
                 OUString sIdent = xPop->popup_at_rect(m_xTreeView.get(), tools::Rectangle(rCEvt.GetMousePosPixel(), Size(1, 1)));
                 if (sIdent == "hyperlink")
@@ -629,7 +649,16 @@ IMPL_LINK(ScContentTree, CommandHdl, const CommandEvent&, rCEvt, bool)
                         GetManualOrCurrent()->GetDocFunc().ShowNote(aPos, true);
                         ScTabViewShell* pScTabViewShell = ScNavigatorDlg::GetTabViewShell();
                         pScTabViewShell->EditNote();
+                        bDone = true;
                     }
+                }
+                else if (sIdent == "delete")
+                {
+                    ScAddress aPos = GetNotePos(nChild);
+                    pParentWindow->SetCurrentTable(aPos.Tab());
+                    pParentWindow->SetCurrentCell(aPos.Col(), aPos.Row());
+                    ScTabViewShell* pScTabViewShell = ScNavigatorDlg::GetTabViewShell();
+                    pScTabViewShell->DeleteContents(InsertDeleteFlags::NOTE);
                 }
             }
             break;
@@ -910,7 +939,7 @@ void ScContentTree::GetLinkNames()
         return;
 
     sfx2::LinkManager* pLinkManager = pDoc->GetLinkManager();
-    OSL_ENSURE(pLinkManager, "no LinkManager on document?");
+    assert(pLinkManager && "no LinkManager on document?");
     const ::sfx2::SvBaseLinks& rLinks = pLinkManager->GetLinks();
     sal_uInt16 nCount = rLinks.size();
     for (sal_uInt16 i=0; i<nCount; i++)
@@ -931,7 +960,7 @@ const ScAreaLink* ScContentTree::GetLink( sal_uLong nIndex )
 
     sal_uLong nFound = 0;
     sfx2::LinkManager* pLinkManager = pDoc->GetLinkManager();
-    OSL_ENSURE(pLinkManager, "no LinkManager on document?");
+    assert(pLinkManager && "no LinkManager on document?");
     const ::sfx2::SvBaseLinks& rLinks = pLinkManager->GetLinks();
     sal_uInt16 nCount = rLinks.size();
     for (sal_uInt16 i=0; i<nCount; i++)
@@ -1105,11 +1134,11 @@ static bool lcl_GetRange( const ScDocument& rDoc, ScContentId nType, const OUStr
     return bFound;
 }
 
-static bool lcl_DoDragObject( ScDocShell* pSrcShell, std::u16string_view rName, ScContentId nType, weld::TreeView& rTreeView )
+static bool lcl_DoDragObject( ScDocShell& rSrcShell, std::u16string_view rName, ScContentId nType, weld::TreeView& rTreeView )
 {
     bool bDisallow = true;
 
-    ScDocument& rSrcDoc = pSrcShell->GetDocument();
+    ScDocument& rSrcDoc = rSrcShell.GetDocument();
     ScDrawLayer* pModel = rSrcDoc.GetDrawLayer();
     if (pModel)
     {
@@ -1142,16 +1171,16 @@ static bool lcl_DoDragObject( ScDocShell* pSrcShell, std::u16string_view rName, 
             ScDrawLayer::SetGlobalDrawPersist(nullptr);
 
             TransferableObjectDescriptor aObjDesc;
-            pSrcShell->FillTransferableObjectDescriptor( aObjDesc );
-            aObjDesc.maDisplayName = pSrcShell->GetMedium()->GetURLObject().GetURLNoPass();
+            rSrcShell.FillTransferableObjectDescriptor( aObjDesc );
+            aObjDesc.maDisplayName = rSrcShell.GetMedium()->GetURLObject().GetURLNoPass();
             // maSize is set in ScDrawTransferObj ctor
 
-            rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( std::move(pDragModel), pSrcShell, std::move(aObjDesc) );
+            rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( std::move(pDragModel), rSrcShell, std::move(aObjDesc) );
 
             pTransferObj->SetDragSourceObj( *pObject, nTab );
             pTransferObj->SetDragSourceFlags(ScDragSrc::Navigator);
 
-            SC_MOD()->SetDragObject( nullptr, pTransferObj.get() );
+            ScModule::get()->SetDragObject(nullptr, pTransferObj.get());
 
             rtl::Reference<TransferDataContainer> xHelper(pTransferObj);
             rTreeView.enable_drag_source(xHelper, DND_ACTION_COPY | DND_ACTION_LINK);
@@ -1163,11 +1192,11 @@ static bool lcl_DoDragObject( ScDocShell* pSrcShell, std::u16string_view rName, 
     return bDisallow;
 }
 
-static bool lcl_DoDragCells( ScDocShell* pSrcShell, const ScRange& rRange, ScDragSrc nFlags, weld::TreeView& rTreeView )
+static bool lcl_DoDragCells( ScDocShell& rSrcShell, const ScRange& rRange, ScDragSrc nFlags, weld::TreeView& rTreeView )
 {
     bool bDisallow = true;
 
-    ScDocument& rSrcDoc = pSrcShell->GetDocument();
+    ScDocument& rSrcDoc = rSrcShell.GetDocument();
     ScMarkData aMark(rSrcDoc.GetSheetLimits());
     aMark.SelectTable( rRange.aStart.Tab(), true );
     aMark.SetMarkArea( rRange );
@@ -1182,16 +1211,16 @@ static bool lcl_DoDragCells( ScDocShell* pSrcShell, const ScRange& rRange, ScDra
         // pClipDoc->ExtendMerge( rRange, sal_True );
 
         TransferableObjectDescriptor aObjDesc;
-        pSrcShell->FillTransferableObjectDescriptor( aObjDesc );
-        aObjDesc.maDisplayName = pSrcShell->GetMedium()->GetURLObject().GetURLNoPass();
+        rSrcShell.FillTransferableObjectDescriptor( aObjDesc );
+        aObjDesc.maDisplayName = rSrcShell.GetMedium()->GetURLObject().GetURLNoPass();
         // maSize is set in ScTransferObj ctor
 
         rtl::Reference<ScTransferObj> pTransferObj = new ScTransferObj( std::move(pClipDoc), std::move(aObjDesc) );
 
-        pTransferObj->SetDragSource( pSrcShell, aMark );
+        pTransferObj->SetDragSource( &rSrcShell, aMark );
         pTransferObj->SetDragSourceFlags( nFlags );
 
-        SC_MOD()->SetDragObject( pTransferObj.get(), nullptr );      // for internal D&D
+        ScModule::get()->SetDragObject(pTransferObj.get(), nullptr); // for internal D&D
 
         rtl::Reference<TransferDataContainer> xHelper(pTransferObj);
         rTreeView.enable_drag_source(xHelper, DND_ACTION_COPY | DND_ACTION_LINK);
@@ -1210,7 +1239,7 @@ IMPL_LINK(ScContentTree, DragBeginHdl, bool&, rUnsetDragIcon, bool)
 
     bool bDisallow = true;
 
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
 
     ScContentId nType;
     sal_uLong nChild;
@@ -1299,7 +1328,7 @@ IMPL_LINK(ScContentTree, DragBeginHdl, bool&, rUnsetDragIcon, bool)
                             ScRange aRange;
                             if ( lcl_GetRange( rSrcDoc, nType, aText, aRange ) )
                             {
-                                bDisallow = lcl_DoDragCells( pSrcShell, aRange, ScDragSrc::Navigator, *m_xTreeView );
+                                bDisallow = lcl_DoDragCells( *pSrcShell, aRange, ScDragSrc::Navigator, *m_xTreeView );
                             }
                         }
                         else if ( nType == ScContentId::TABLE )
@@ -1308,13 +1337,13 @@ IMPL_LINK(ScContentTree, DragBeginHdl, bool&, rUnsetDragIcon, bool)
                             if ( rSrcDoc.GetTable( aText, nTab ) )
                             {
                                 ScRange aRange(0, 0, nTab, rSrcDoc.MaxCol(), rSrcDoc.MaxRow(), nTab);
-                                bDisallow = lcl_DoDragCells( pSrcShell, aRange, (ScDragSrc::Navigator | ScDragSrc::Table), *m_xTreeView );
+                                bDisallow = lcl_DoDragCells( *pSrcShell, aRange, (ScDragSrc::Navigator | ScDragSrc::Table), *m_xTreeView );
                             }
                         }
                         else if ( nType == ScContentId::GRAPHIC || nType == ScContentId::OLEOBJECT ||
                                     nType == ScContentId::DRAWING )
                         {
-                            bDisallow = lcl_DoDragObject( pSrcShell, aText, nType, *m_xTreeView );
+                            bDisallow = lcl_DoDragObject( *pSrcShell, aText, nType, *m_xTreeView );
 
                             //  during ExecuteDrag the navigator can be deleted
                             //  -> don't access member anymore !!!
@@ -1346,7 +1375,7 @@ void ScContentTree::SetRootType( ScContentId nNew )
         nRootType = nNew;
         Refresh();
 
-        ScNavipiCfg& rCfg = SC_MOD()->GetNavipiCfg();
+        ScNavipiCfg& rCfg = ScModule::get()->GetNavipiCfg();
         rCfg.SetRootType( nRootType );
     }
 }
@@ -1473,7 +1502,7 @@ void ScContentTree::SelectEntryByName(const ScContentId nRoot, std::u16string_vi
 {
     weld::TreeIter* pParent = m_aRootNodes[nRoot].get();
 
-    if (pParent || !m_xTreeView->iter_has_child(*pParent))
+    if (!pParent || !m_xTreeView->iter_has_child(*pParent))
         return;
 
     std::unique_ptr<weld::TreeIter> xEntry(m_xTreeView->make_iterator(pParent));

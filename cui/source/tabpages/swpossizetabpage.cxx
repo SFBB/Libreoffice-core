@@ -37,6 +37,9 @@
 #include <svx/svxids.hrc>
 #include <svtools/unitconv.hxx>
 #include <osl/diagnose.h>
+#include <svl/grabbagitem.hxx>
+
+#include <bitmaps.hlst>
 
 using namespace ::com::sun::star::text;
 
@@ -286,7 +289,7 @@ constexpr auto HORI_CHAR_REL = LB::Frame|LB::PrintArea|LB::RelPageLeft|LB::RelPa
                                       LB::RelPageFrame|LB::RelPagePrintArea|LB::RelFrameLeft|
                                       LB::RelFrameRight|LB::RelChar;
 
-static FrmMap aHCharMap[] =
+const FrmMap aHCharMap[] =
 {
     {SvxSwFramePosString::LEFT,          SvxSwFramePosString::MIR_LEFT,       HoriOrientation::LEFT,      HORI_CHAR_REL},
     {SvxSwFramePosString::RIGHT,         SvxSwFramePosString::MIR_RIGHT,      HoriOrientation::RIGHT,     HORI_CHAR_REL},
@@ -296,13 +299,13 @@ static FrmMap aHCharMap[] =
 
 #define HTML_HORI_CHAR_REL  (LB::Frame|LB::PrintArea|LB::RelChar)
 
-static FrmMap aHCharHtmlMap[] =
+const FrmMap aHCharHtmlMap[] =
 {
     {SvxSwFramePosString::LEFT,          SvxSwFramePosString::LEFT,           HoriOrientation::LEFT,      HTML_HORI_CHAR_REL},
     {SvxSwFramePosString::RIGHT,         SvxSwFramePosString::RIGHT,          HoriOrientation::RIGHT,     HTML_HORI_CHAR_REL}
 };
 
-static FrmMap aHCharHtmlAbsMap[] =
+const FrmMap aHCharHtmlAbsMap[] =
 {
     {SvxSwFramePosString::LEFT,          SvxSwFramePosString::MIR_LEFT,       HoriOrientation::LEFT,          LB::PrintArea|LB::RelChar},
     {SvxSwFramePosString::RIGHT,         SvxSwFramePosString::MIR_RIGHT,      HoriOrientation::RIGHT,     LB::PrintArea},
@@ -314,7 +317,7 @@ static FrmMap aHCharHtmlAbsMap[] =
 constexpr auto VERT_CHAR_REL = LB::VertFrame|LB::VertPrintArea|
                                       LB::RelPageFrame|LB::RelPagePrintArea|LB::RelPagePrintAreaBottom;
 
-static FrmMap aVCharMap[] =
+const FrmMap aVCharMap[] =
 {
     // #i22341#
     // introduce mappings for new vertical alignment at top of line <LB::VertLine>
@@ -431,14 +434,16 @@ static std::size_t lcl_GetFrmMapCount(const FrmMap* pMap)
 }
 
 static SvxSwFramePosString::StringId lcl_ChangeResIdToVerticalOrRTL(
-            SvxSwFramePosString::StringId eStringId, bool bVertical, bool bRTL)
+            SvxSwFramePosString::StringId eStringId, bool bVertical, bool bRTL, bool bDontMirrorRTL)
 {
     //special handling of STR_FROMLEFT
     if(SvxSwFramePosString::FROMLEFT == eStringId)
     {
+        bool bMirrorRtlDrawObjs = !bDontMirrorRTL;
+        bool bSwapLR = bRTL && bMirrorRtlDrawObjs;
         eStringId = bVertical ?
             bRTL ? SvxSwFramePosString::FROMBOTTOM : SvxSwFramePosString::FROMTOP :
-            bRTL ? SvxSwFramePosString::FROMRIGHT : SvxSwFramePosString::FROMLEFT;
+            bSwapLR ? SvxSwFramePosString::FROMRIGHT : SvxSwFramePosString::FROMLEFT;
         return eStringId;
     }
     if(bVertical)
@@ -524,7 +529,7 @@ static LB lcl_GetLBRelationsForStrID(const FrmMap* _pMap,
 }
 
 SvxSwPosSizeTabPage::SvxSwPosSizeTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SfxTabPage(pPage, pController, "cui/ui/swpossizepage.ui", "SwPosSizePage", &rInAttrs)
+    : SfxTabPage(pPage, pController, u"cui/ui/swpossizepage.ui"_ustr, u"SwPosSizePage"_ustr, &rInAttrs)
     , m_pVMap(nullptr)
     , m_pHMap(nullptr)
     , m_pSdrView(nullptr)
@@ -539,32 +544,37 @@ SvxSwPosSizeTabPage::SvxSwPosSizeTabPage(weld::Container* pPage, weld::DialogCon
     , m_bIsMultiSelection(false)
     , m_bIsInRightToLeft(false)
     , m_nProtectSizeState(TRISTATE_FALSE)
-    , m_xWidthMF(m_xBuilder->weld_metric_spin_button("width", FieldUnit::CM))
-    , m_xHeightMF(m_xBuilder->weld_metric_spin_button("height", FieldUnit::CM))
-    , m_xKeepRatioCB(m_xBuilder->weld_check_button("ratio"))
-    , m_xToPageRB(m_xBuilder->weld_radio_button("topage"))
-    , m_xToParaRB(m_xBuilder->weld_radio_button("topara"))
-    , m_xToCharRB(m_xBuilder->weld_radio_button("tochar"))
-    , m_xAsCharRB(m_xBuilder->weld_radio_button("aschar"))
-    , m_xToFrameRB(m_xBuilder->weld_radio_button("toframe"))
-    , m_xPositionCB(m_xBuilder->weld_check_button("pos"))
-    , m_xSizeCB(m_xBuilder->weld_check_button("size"))
-    , m_xPosFrame(m_xBuilder->weld_widget("posframe"))
-    , m_xHoriFT(m_xBuilder->weld_label("horiposft"))
-    , m_xHoriLB(m_xBuilder->weld_combo_box("horipos"))
-    , m_xHoriByFT(m_xBuilder->weld_label("horibyft"))
-    , m_xHoriByMF(m_xBuilder->weld_metric_spin_button("byhori", FieldUnit::CM))
-    , m_xHoriToFT(m_xBuilder->weld_label("horitoft"))
-    , m_xHoriToLB(m_xBuilder->weld_combo_box("horianchor"))
-    , m_xHoriMirrorCB(m_xBuilder->weld_check_button("mirror"))
-    , m_xVertFT(m_xBuilder->weld_label("vertposft"))
-    , m_xVertLB(m_xBuilder->weld_combo_box("vertpos"))
-    , m_xVertByFT(m_xBuilder->weld_label("vertbyft"))
-    , m_xVertByMF(m_xBuilder->weld_metric_spin_button("byvert", FieldUnit::CM))
-    , m_xVertToFT(m_xBuilder->weld_label("verttoft"))
-    , m_xVertToLB(m_xBuilder->weld_combo_box("vertanchor"))
-    , m_xFollowCB(m_xBuilder->weld_check_button("followtextflow"))
-    , m_xExampleWN(new weld::CustomWeld(*m_xBuilder, "preview", m_aExampleWN))
+    , m_aRatioTop(ConnectorType::Top)
+    , m_aRatioBottom(ConnectorType::Bottom)
+    , m_xWidthMF(m_xBuilder->weld_metric_spin_button(u"width"_ustr, FieldUnit::CM))
+    , m_xHeightMF(m_xBuilder->weld_metric_spin_button(u"height"_ustr, FieldUnit::CM))
+    , m_xKeepRatioCB(m_xBuilder->weld_check_button(u"ratio"_ustr))
+    , m_xCbxScaleImg(m_xBuilder->weld_image(u"imRatio"_ustr))
+    , m_xImgRatioTop(new weld::CustomWeld(*m_xBuilder, u"daRatioTop"_ustr, m_aRatioTop))
+    , m_xImgRatioBottom(new weld::CustomWeld(*m_xBuilder, u"daRatioBottom"_ustr, m_aRatioBottom))
+    , m_xToPageRB(m_xBuilder->weld_radio_button(u"topage"_ustr))
+    , m_xToParaRB(m_xBuilder->weld_radio_button(u"topara"_ustr))
+    , m_xToCharRB(m_xBuilder->weld_radio_button(u"tochar"_ustr))
+    , m_xAsCharRB(m_xBuilder->weld_radio_button(u"aschar"_ustr))
+    , m_xToFrameRB(m_xBuilder->weld_radio_button(u"toframe"_ustr))
+    , m_xPositionCB(m_xBuilder->weld_check_button(u"pos"_ustr))
+    , m_xSizeCB(m_xBuilder->weld_check_button(u"size"_ustr))
+    , m_xPosFrame(m_xBuilder->weld_widget(u"posframe"_ustr))
+    , m_xHoriFT(m_xBuilder->weld_label(u"horiposft"_ustr))
+    , m_xHoriLB(m_xBuilder->weld_combo_box(u"horipos"_ustr))
+    , m_xHoriByFT(m_xBuilder->weld_label(u"horibyft"_ustr))
+    , m_xHoriByMF(m_xBuilder->weld_metric_spin_button(u"byhori"_ustr, FieldUnit::CM))
+    , m_xHoriToFT(m_xBuilder->weld_label(u"horitoft"_ustr))
+    , m_xHoriToLB(m_xBuilder->weld_combo_box(u"horianchor"_ustr))
+    , m_xHoriMirrorCB(m_xBuilder->weld_check_button(u"mirror"_ustr))
+    , m_xVertFT(m_xBuilder->weld_label(u"vertposft"_ustr))
+    , m_xVertLB(m_xBuilder->weld_combo_box(u"vertpos"_ustr))
+    , m_xVertByFT(m_xBuilder->weld_label(u"vertbyft"_ustr))
+    , m_xVertByMF(m_xBuilder->weld_metric_spin_button(u"byvert"_ustr, FieldUnit::CM))
+    , m_xVertToFT(m_xBuilder->weld_label(u"verttoft"_ustr))
+    , m_xVertToLB(m_xBuilder->weld_combo_box(u"vertanchor"_ustr))
+    , m_xFollowCB(m_xBuilder->weld_check_button(u"followtextflow"_ustr))
+    , m_xExampleWN(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, m_aExampleWN))
 {
     setOptimalFrmWidth();
     setOptimalRelWidth();
@@ -574,6 +584,20 @@ SvxSwPosSizeTabPage::SvxSwPosSizeTabPage(weld::Container* pPage, weld::DialogCon
     SetFieldUnit(*m_xVertByMF, eDlgUnit, true);
     SetFieldUnit(*m_xWidthMF , eDlgUnit, true);
     SetFieldUnit(*m_xHeightMF, eDlgUnit, true);
+
+    // vertical alignment = fill makes the drawingarea expand the associated spinedits so we have to size it here
+    const sal_Int16 aHeight
+        = static_cast<sal_Int16>(std::max(int(m_xKeepRatioCB->get_preferred_size().getHeight() / 2
+                                              - m_xWidthMF->get_preferred_size().getHeight() / 2),
+                                          12));
+    const sal_Int16 aWidth
+        = static_cast<sal_Int16>(m_xKeepRatioCB->get_preferred_size().getWidth() / 2);
+    m_xImgRatioTop->set_size_request(aWidth, aHeight);
+    m_xImgRatioBottom->set_size_request(aWidth, aHeight);
+    //init needed for gtk3
+    m_xCbxScaleImg->set_from_icon_name(m_xKeepRatioCB->get_active() ? RID_SVXBMP_LOCKED
+                                                                    : RID_SVXBMP_UNLOCKED);
+    m_xKeepRatioCB->connect_toggled(LINK(this, SvxSwPosSizeTabPage, RatioHdl_Impl));
 
     SetExchangeSupport();
 
@@ -719,7 +743,7 @@ std::unique_ptr<SfxTabPage> SvxSwPosSizeTabPage::Create(weld::Container* pPage, 
     return std::make_unique<SvxSwPosSizeTabPage>(pPage, pController, *rSet);
 }
 
-WhichRangesContainer SvxSwPosSizeTabPage::GetRanges()
+const WhichRangesContainer & SvxSwPosSizeTabPage::GetRanges()
 {
     static const WhichRangesContainer ranges(svl::Items<
         SID_ATTR_TRANSFORM_POS_X, SID_ATTR_TRANSFORM_POS_Y,
@@ -728,7 +752,8 @@ WhichRangesContainer SvxSwPosSizeTabPage::GetRanges()
         SID_ATTR_TRANSFORM_AUTOWIDTH, SID_ATTR_TRANSFORM_VERT_ORIENT,
         SID_HTML_MODE, SID_HTML_MODE,
         SID_SW_FOLLOW_TEXT_FLOW, SID_SW_FOLLOW_TEXT_FLOW,
-        SID_ATTR_TRANSFORM_HORI_POSITION, SID_ATTR_TRANSFORM_VERT_POSITION
+        SID_ATTR_TRANSFORM_HORI_POSITION, SID_ATTR_TRANSFORM_VERT_POSITION,
+        SID_ATTR_CHAR_GRABBAG, SID_ATTR_CHAR_GRABBAG
     >);
     return ranges;
 }
@@ -745,7 +770,7 @@ bool SvxSwPosSizeTabPage::FillItemSet( SfxItemSet* rSet)
     }
     if (m_xPositionCB->get_state_changed_from_saved())
     {
-        if (m_xPositionCB->get_inconsistent())
+        if (m_xPositionCB->get_state() == TRISTATE_INDET)
             rSet->InvalidateItem( SID_ATTR_TRANSFORM_PROTECT_POS );
         else
             rSet->Put(
@@ -756,7 +781,7 @@ bool SvxSwPosSizeTabPage::FillItemSet( SfxItemSet* rSet)
 
     if (m_xSizeCB->get_state_changed_from_saved())
     {
-        if (m_xSizeCB->get_inconsistent())
+        if (m_xSizeCB->get_state() == TRISTATE_INDET)
             rSet->InvalidateItem( SID_ATTR_TRANSFORM_PROTECT_SIZE );
         else
             rSet->Put(
@@ -923,7 +948,7 @@ void SvxSwPosSizeTabPage::Reset( const SfxItemSet* rSet)
     }
     else
     {
-        m_xPositionCB->set_inconsistent(true);
+        m_xPositionCB->set_state(TRISTATE_INDET);
     }
 
     m_xPositionCB->save_state();
@@ -935,7 +960,7 @@ void SvxSwPosSizeTabPage::Reset( const SfxItemSet* rSet)
         m_xSizeCB->set_active(static_cast<const SfxBoolItem*>(pItem)->GetValue());
     }
     else
-        m_xSizeCB->set_inconsistent(true);
+        m_xSizeCB->set_state(TRISTATE_INDET);
     m_xSizeCB->save_state();
 
     pItem = GetItem( *rSet, SID_HTML_MODE );
@@ -966,6 +991,17 @@ void SvxSwPosSizeTabPage::Reset( const SfxItemSet* rSet)
         m_xFollowCB->set_active(bFollowTextFlow);
     }
     m_xFollowCB->save_state();
+
+    const SfxGrabBagItem* pGrabBag = GetItem(*rSet, SID_ATTR_CHAR_GRABBAG);
+    if (pGrabBag)
+    {
+        const std::map<OUString, css::uno::Any>& rMap = pGrabBag->GetGrabBag();
+        auto it = rMap.find(u"DoNotMirrorRtlDrawObjs"_ustr);
+        if (it != rMap.end())
+        {
+            it->second >>= m_bDoNotMirrorRtlDrawObjs;
+        }
+    }
 
     if(m_bHtmlMode)
     {
@@ -1107,6 +1143,11 @@ RndStdIds SvxSwPosSizeTabPage::GetAnchorType(bool* pbHasChanged)
              *pbHasChanged = false;
     }
     return nRet;
+}
+
+IMPL_LINK_NOARG(SvxSwPosSizeTabPage, RatioHdl_Impl, weld::Toggleable&, void)
+{
+    m_xCbxScaleImg->set_from_icon_name(m_xKeepRatioCB->get_active() ? RID_SVXBMP_LOCKED : RID_SVXBMP_UNLOCKED);
 }
 
 IMPL_LINK_NOARG(SvxSwPosSizeTabPage, RangeModifyClickHdl, weld::Toggleable&, void)
@@ -1651,7 +1692,7 @@ void SvxSwPosSizeTabPage::FillRelLB(FrmMap const *pMap, sal_uInt16 nMapPos, sal_
                         {
                             SvxSwFramePosString::StringId sStrId1 = aAsCharRelationMap[nRelPos].eStrId;
 
-                            sStrId1 = lcl_ChangeResIdToVerticalOrRTL(sStrId1, m_bIsVerticalFrame, m_bIsInRightToLeft);
+                            sStrId1 = lcl_ChangeResIdToVerticalOrRTL(sStrId1, m_bIsVerticalFrame, m_bIsInRightToLeft, m_bDoNotMirrorRtlDrawObjs);
                             OUString sEntry = SvxSwFramePosString::GetString(sStrId1);
                             rLB.append(weld::toId(&aAsCharRelationMap[nRelPos]), sEntry);
                             if (pMap[_nMapPos].nAlign == nAlign)
@@ -1706,7 +1747,7 @@ void SvxSwPosSizeTabPage::FillRelLB(FrmMap const *pMap, sal_uInt16 nMapPos, sal_
                         if (aRelationMap[nRelPos].nLBRelation == static_cast<LB>(nBit))
                         {
                             SvxSwFramePosString::StringId sStrId1 = m_xHoriMirrorCB->get_active() ? aRelationMap[nRelPos].eMirrorStrId : aRelationMap[nRelPos].eStrId;
-                            sStrId1 = lcl_ChangeResIdToVerticalOrRTL(sStrId1, m_bIsVerticalFrame, m_bIsInRightToLeft);
+                            sStrId1 = lcl_ChangeResIdToVerticalOrRTL(sStrId1, m_bIsVerticalFrame, m_bIsInRightToLeft, m_bDoNotMirrorRtlDrawObjs);
                             OUString sEntry = SvxSwFramePosString::GetString(sStrId1);
                             rLB.append(weld::toId(&aRelationMap[nRelPos]), sEntry);
                             if (sSelEntry.isEmpty() && aRelationMap[nRelPos].nRelation == nRel)
@@ -1783,7 +1824,7 @@ sal_uInt16 SvxSwPosSizeTabPage::FillPosLB(FrmMap const *_pMap,
     for (std::size_t i = 0; _pMap && i < nCount; ++i)
     {
         SvxSwFramePosString::StringId eStrId = m_xHoriMirrorCB->get_active() ? _pMap[i].eMirrorStrId : _pMap[i].eStrId;
-        eStrId = lcl_ChangeResIdToVerticalOrRTL(eStrId, m_bIsVerticalFrame, m_bIsInRightToLeft);
+        eStrId = lcl_ChangeResIdToVerticalOrRTL(eStrId, m_bIsVerticalFrame, m_bIsInRightToLeft, m_bDoNotMirrorRtlDrawObjs);
         OUString sEntry(SvxSwFramePosString::GetString(eStrId));
         if (_rLB.find_text(sEntry) == -1)
         {

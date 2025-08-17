@@ -21,8 +21,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <chrono>
-#include <cstddef>
 #include <cstring>
 #include <map>
 #include <mutex>
@@ -50,8 +48,6 @@
 #include <gst/pbutils/missing-plugins.h>
 #include <gst/pbutils/pbutils.h>
 
-constexpr OUStringLiteral AVMEDIA_GST_PLAYER_IMPLEMENTATIONNAME = u"com.sun.star.comp.avmedia.Player_GStreamer";
-constexpr OUString AVMEDIA_GST_PLAYER_SERVICENAME        = u"com.sun.star.media.Player_GStreamer"_ustr;
 #define AVVERSION "gst 1.0: "
 
 using namespace ::com::sun::star;
@@ -140,7 +136,7 @@ void MissingPluginInstaller::report(
     rtl::Reference<MissingPluginInstallerThread> launch;
     {
         std::unique_lock g(mutex_);
-        if (reported_.find(detStr) != reported_.end()) {
+        if (reported_.contains(detStr)) {
             return;
         }
         auto & i = queued_[detStr];
@@ -832,8 +828,6 @@ uno::Reference< ::media::XPlayerWindow > SAL_CALL Player::createPlayerWindow( co
 {
     ::osl::MutexGuard aGuard(m_aMutex);
 
-    uno::Reference< ::media::XPlayerWindow >    xRet;
-
     if (rArguments.getLength() > 1)
        rArguments[1] >>= maArea;
 
@@ -844,93 +838,92 @@ uno::Reference< ::media::XPlayerWindow > SAL_CALL Player::createPlayerWindow( co
 
     SAL_INFO( "avmedia.gstreamer", AVVERSION "Player::createPlayerWindow " << aSize.Width << "x" << aSize.Height << " length: " << rArguments.getLength() );
 
-    if( aSize.Width > 0 && aSize.Height > 0 )
+    if( aSize.Width <= 0 || aSize.Height <= 0 )
+        return nullptr;
+
+    if (rArguments.getLength() <= 2)
     {
-        if (rArguments.getLength() <= 2)
-        {
-            xRet = new ::avmedia::gstreamer::Window;
-            return xRet;
-        }
+        return new ::avmedia::gstreamer::Window;
+    }
 
-        sal_IntPtr pIntPtr = 0;
-        rArguments[ 2 ] >>= pIntPtr;
-        SystemChildWindow *pParentWindow = reinterpret_cast< SystemChildWindow* >( pIntPtr );
-        if (!pParentWindow)
-            return nullptr;
+    sal_IntPtr pIntPtr = 0;
+    rArguments[ 2 ] >>= pIntPtr;
+    SystemChildWindow *pParentWindow = reinterpret_cast< SystemChildWindow* >( pIntPtr );
+    if (!pParentWindow)
+        return nullptr;
 
-        const SystemEnvData* pEnvData = pParentWindow->GetSystemData();
-        if (!pEnvData)
-            return nullptr;
+    const SystemEnvData* pEnvData = pParentWindow->GetSystemData();
+    if (!pEnvData)
+        return nullptr;
 
-        // tdf#124027: the position of embedded window is identical w/ the position
-        // of media object in all other vclplugs (kf5, gen), in gtk3 w/o gtksink it
-        // needs to be translated
+    // tdf#124027: the position of embedded window is identical w/ the position
+    // of media object in all other vclplugs (kf5, gen), in gtk3 w/o gtksink it
+    // needs to be translated
+    if (pEnvData->toolkit == SystemEnvData::Toolkit::Gtk)
+    {
+        Point aPoint = pParentWindow->GetPosPixel();
+        maArea.X = aPoint.getX();
+        maArea.Y = aPoint.getY();
+    }
+
+    mbUseGtkSink = false;
+
+    GstElement *pVideosink = static_cast<GstElement*>(pParentWindow->CreateGStreamerSink());
+    if (pVideosink)
+    {
         if (pEnvData->toolkit == SystemEnvData::Toolkit::Gtk)
-        {
-            Point aPoint = pParentWindow->GetPosPixel();
-            maArea.X = aPoint.getX();
-            maArea.Y = aPoint.getY();
-        }
-
-        mbUseGtkSink = false;
-
-        GstElement *pVideosink = static_cast<GstElement*>(pParentWindow->CreateGStreamerSink());
-        if (pVideosink)
-        {
-            if (pEnvData->toolkit == SystemEnvData::Toolkit::Gtk)
-                mbUseGtkSink = true;
-        }
+            mbUseGtkSink = true;
+    }
+    else
+    {
+        if (pEnvData->platform == SystemEnvData::Platform::Wayland)
+            pVideosink = gst_element_factory_make("waylandsink", "video-output");
         else
+            pVideosink = gst_element_factory_make("autovideosink", "video-output");
+        if (!pVideosink)
+            return nullptr;
+    }
+
+    rtl::Reference< ::avmedia::gstreamer::Window > xRet = new ::avmedia::gstreamer::Window;
+
+    g_object_set(G_OBJECT(mpPlaybin), "video-sink", pVideosink, nullptr);
+    g_object_set(G_OBJECT(mpPlaybin), "force-aspect-ratio", FALSE, nullptr);
+
+    if ((rArguments.getLength() >= 4) && (rArguments[3] >>= pIntPtr) && pIntPtr)
+    {
+        auto pItem = reinterpret_cast<const avmedia::MediaItem*>(pIntPtr);
+        Graphic aGraphic = pItem->getGraphic();
+        const text::GraphicCrop& rCrop = pItem->getCrop();
+        if (!aGraphic.IsNone() && (rCrop.Bottom > 0 || rCrop.Left > 0 || rCrop.Right > 0 || rCrop.Top > 0))
         {
-            if (pEnvData->platform == SystemEnvData::Platform::Wayland)
-                pVideosink = gst_element_factory_make("waylandsink", "video-output");
-            else
-                pVideosink = gst_element_factory_make("autovideosink", "video-output");
-            if (!pVideosink)
-                return nullptr;
-        }
-
-        xRet = new ::avmedia::gstreamer::Window;
-
-        g_object_set(G_OBJECT(mpPlaybin), "video-sink", pVideosink, nullptr);
-        g_object_set(G_OBJECT(mpPlaybin), "force-aspect-ratio", FALSE, nullptr);
-
-        if ((rArguments.getLength() >= 4) && (rArguments[3] >>= pIntPtr) && pIntPtr)
-        {
-            auto pItem = reinterpret_cast<const avmedia::MediaItem*>(pIntPtr);
-            Graphic aGraphic = pItem->getGraphic();
-            const text::GraphicCrop& rCrop = pItem->getCrop();
-            if (!aGraphic.IsNone() && (rCrop.Bottom > 0 || rCrop.Left > 0 || rCrop.Right > 0 || rCrop.Top > 0))
+            // The media item has a non-empty cropping set. Try to crop the video accordingly.
+            Size aPref = aGraphic.GetPrefSize();
+            Size aPixel = aGraphic.GetSizePixel();
+            tools::Long nLeft = aPixel.getWidth() * rCrop.Left / aPref.getWidth();
+            tools::Long nTop = aPixel.getHeight() * rCrop.Top / aPref.getHeight();
+            tools::Long nRight = aPixel.getWidth() * rCrop.Right / aPref.getWidth();
+            tools::Long nBottom = aPixel.getHeight() * rCrop.Bottom / aPref.getHeight();
+            GstElement* pVideoFilter = gst_element_factory_make("videocrop", nullptr);
+            if (pVideoFilter)
             {
-                // The media item has a non-empty cropping set. Try to crop the video accordingly.
-                Size aPref = aGraphic.GetPrefSize();
-                Size aPixel = aGraphic.GetSizePixel();
-                tools::Long nLeft = aPixel.getWidth() * rCrop.Left / aPref.getWidth();
-                tools::Long nTop = aPixel.getHeight() * rCrop.Top / aPref.getHeight();
-                tools::Long nRight = aPixel.getWidth() * rCrop.Right / aPref.getWidth();
-                tools::Long nBottom = aPixel.getHeight() * rCrop.Bottom / aPref.getHeight();
-                GstElement* pVideoFilter = gst_element_factory_make("videocrop", nullptr);
-                if (pVideoFilter)
-                {
-                    g_object_set(G_OBJECT(pVideoFilter), "left", nLeft, nullptr);
-                    g_object_set(G_OBJECT(pVideoFilter), "top", nTop, nullptr);
-                    g_object_set(G_OBJECT(pVideoFilter), "right", nRight, nullptr);
-                    g_object_set(G_OBJECT(pVideoFilter), "bottom", nBottom, nullptr);
-                    g_object_set(G_OBJECT(mpPlaybin), "video-filter", pVideoFilter, nullptr);
-                }
+                g_object_set(G_OBJECT(pVideoFilter), "left", nLeft, nullptr);
+                g_object_set(G_OBJECT(pVideoFilter), "top", nTop, nullptr);
+                g_object_set(G_OBJECT(pVideoFilter), "right", nRight, nullptr);
+                g_object_set(G_OBJECT(pVideoFilter), "bottom", nBottom, nullptr);
+                g_object_set(G_OBJECT(mpPlaybin), "video-filter", pVideoFilter, nullptr);
             }
         }
-
-        if (!mbUseGtkSink)
-        {
-            mnWindowID = pEnvData->GetWindowHandle(pParentWindow->ImplGetFrame());
-            mpDisplay = pEnvData->pDisplay;
-            SAL_INFO( "avmedia.gstreamer", AVVERSION "set window id to " << static_cast<int>(mnWindowID) << " XOverlay " << mpXOverlay);
-        }
-        gst_element_set_state( mpPlaybin, GST_STATE_PAUSED );
-        if (!mbUseGtkSink && mpXOverlay)
-            gst_video_overlay_set_window_handle( mpXOverlay, mnWindowID );
     }
+
+    if (!mbUseGtkSink)
+    {
+        mnWindowID = pEnvData->GetWindowHandle(pParentWindow->ImplGetFrame());
+        mpDisplay = pEnvData->pDisplay;
+        SAL_INFO( "avmedia.gstreamer", AVVERSION "set window id to " << static_cast<int>(mnWindowID) << " XOverlay " << mpXOverlay);
+    }
+    gst_element_set_state( mpPlaybin, GST_STATE_PAUSED );
+    if (!mbUseGtkSink && mpXOverlay)
+        gst_video_overlay_set_window_handle( mpXOverlay, mnWindowID );
 
     return xRet;
 }
@@ -951,7 +944,7 @@ uno::Reference< media::XFrameGrabber > SAL_CALL Player::createFrameGrabber()
 
 OUString SAL_CALL Player::getImplementationName()
 {
-    return AVMEDIA_GST_PLAYER_IMPLEMENTATIONNAME;
+    return u"com.sun.star.comp.avmedia.Player_GStreamer"_ustr;
 }
 
 
@@ -963,7 +956,7 @@ sal_Bool SAL_CALL Player::supportsService( const OUString& ServiceName )
 
 uno::Sequence< OUString > SAL_CALL Player::getSupportedServiceNames()
 {
-    return { AVMEDIA_GST_PLAYER_SERVICENAME };
+    return { u"com.sun.star.media.Player_GStreamer"_ustr };
 }
 
 } // namespace

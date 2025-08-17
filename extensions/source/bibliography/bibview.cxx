@@ -32,7 +32,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::form;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 
@@ -44,8 +43,8 @@ namespace
         std::unique_ptr<weld::CheckButton> m_xWarningOnBox;
     public:
         MessageWithCheck(weld::Window *pParent)
-            : MessageDialogController(pParent, "modules/sbibliography/ui/querydialog.ui", "QueryDialog", "ask")
-            , m_xWarningOnBox(m_xBuilder->weld_check_button("ask"))
+            : MessageDialogController(pParent, u"modules/sbibliography/ui/querydialog.ui"_ustr, u"QueryDialog"_ustr, u"ask"_ustr)
+            , m_xWarningOnBox(m_xBuilder->weld_check_button(u"ask"_ustr))
         {
         }
         bool get_active() const { return m_xWarningOnBox->get_active(); }
@@ -76,7 +75,7 @@ namespace bib
     void BibView::dispose()
     {
         VclPtr<BibGeneralPage> pGeneralPage = m_pGeneralPage;
-        m_pGeneralPage.clear();
+        m_pGeneralPage.reset();
         pGeneralPage.disposeAndClear(); // dispose will commit any uncommitted weld::Entry changes
 
         if ( m_aFormControlContainer.isFormConnected() )

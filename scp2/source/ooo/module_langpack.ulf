@@ -52,6 +52,12 @@ en-US = "Frisian"
 [STR_DESC_MODULE_LANGPACK_FY]
 en-US = "Installs the Frisian user interface"
 
+[STR_NAME_MODULE_LANGPACK_HY]
+en-US = "Armenian"
+
+[STR_DESC_MODULE_LANGPACK_HY]
+en-US = "Installs the Armenian user interface"
+
 [STR_NAME_MODULE_LANGPACK_IT]
 en-US = "Italian"
 
@@ -63,6 +69,12 @@ en-US = "Spanish"
 
 [STR_DESC_MODULE_LANGPACK_ES]
 en-US = "Installs the Spanish user interface"
+
+[STR_NAME_MODULE_LANGPACK_SUN]
+en-US = "Sundanese"
+
+[STR_DESC_MODULE_LANGPACK_SUN]
+en-US = "Installs the Sundanese user interface"
 
 [STR_NAME_MODULE_LANGPACK_SV]
 en-US = "Swedish"
@@ -238,6 +250,12 @@ en-US = "Southern Sotho (Sutu)"
 [STR_DESC_MODULE_LANGPACK_ST]
 en-US = "Installs the Southern Sotho (Sutu) user interface"
 
+[STR_NAME_MODULE_LANGPACK_TL]
+en-US = "Tagalog"
+
+[STR_DESC_MODULE_LANGPACK_TL]
+en-US = "Installs the Tagalog user interface"
+
 [STR_NAME_MODULE_LANGPACK_TN]
 en-US = "Tswana"
 
@@ -255,6 +273,12 @@ en-US = "Zulu"
 
 [STR_DESC_MODULE_LANGPACK_ZU]
 en-US = "Installs the Zulu user interface"
+
+[STR_NAME_MODULE_LANGPACK_AB]
+en-US = "Abkhaz"
+
+[STR_DESC_MODULE_LANGPACK_AB]
+en-US = "Installs the Abkhazian user interface"
 
 [STR_NAME_MODULE_LANGPACK_AF]
 en-US = "Afrikaans"
@@ -699,6 +723,12 @@ en-US = "Santali"
 
 [STR_DESC_MODULE_LANGPACK_SAT]
 en-US = "Installs the Santali user interface"
+
+[STR_NAME_MODULE_LANGPACK_SAT_OLCK]
+en-US = "Santali (Ol-Chiki)"
+
+[STR_DESC_MODULE_LANGPACK_SAT_OLCK]
+en-US = "Installs the Santali (Ol-Chiki) user interface"
 
 [STR_NAME_MODULE_LANGPACK_SD]
 en-US = "Sindhi"

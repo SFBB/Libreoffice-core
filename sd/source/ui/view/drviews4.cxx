@@ -59,6 +59,7 @@
 #include <svx/bmpmask.hxx>
 #include <LayerTabBar.hxx>
 #include <ViewShellBase.hxx>
+#include <unomodel.hxx>
 
 #include <SlideSorterViewShell.hxx>
 #include <svx/svditer.hxx>
@@ -99,7 +100,9 @@ void DrawViewShell::DeleteActualPage()
 
     try
     {
-        Reference<XDrawPagesSupplier> xDrawPagesSupplier( GetDoc()->getUnoModel(), UNO_QUERY_THROW );
+        rtl::Reference<SdXImpressDocument> xDrawPagesSupplier( GetDoc()->getUnoModel() );
+        if (!xDrawPagesSupplier)
+            return;
         Reference<XDrawPages> xPages( xDrawPagesSupplier->getDrawPages(), UNO_SET_THROW );
         sal_uInt16 nPageCount   = GetDoc()->GetSdPageCount(mePageKind);
         SdPage* pPage = nullptr;
@@ -146,25 +149,25 @@ void DrawViewShell::DeleteActualLayer()
 
     SdrLayerAdmin& rAdmin = GetDoc()->GetLayerAdmin();
     sal_uInt16 nId = GetLayerTabControl()->GetCurPageId();
-    const OUString& rName = GetLayerTabControl()->GetLayerName(nId);
-    if(LayerTabBar::IsRealNameOfStandardLayer(rName))
+    const OUString aName = GetLayerTabControl()->GetLayerName(nId);
+    if(LayerTabBar::IsRealNameOfStandardLayer(aName))
     {
         assert(false && "Standard layer may not be deleted.");
         return;
     }
-    const OUString& rDisplayName(GetLayerTabControl()->GetPageText(nId));
+    const OUString aDisplayName(GetLayerTabControl()->GetPageText(nId));
     OUString aString(SdResId(STR_ASK_DELETE_LAYER));
 
     // replace placeholder
-    aString = aString.replaceFirst("$", rDisplayName);
+    aString = aString.replaceFirst("$", aDisplayName);
 
     std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(GetFrameWeld(),
                                                    VclMessageType::Question, VclButtonsType::YesNo,
                                                    aString));
     if (xQueryBox->run() == RET_YES)
     {
-        const SdrLayer* pLayer = rAdmin.GetLayer(rName);
-        mpDrawView->DeleteLayer( pLayer->GetName() );
+        if (const SdrLayer* pLayer = rAdmin.GetLayer(aName))
+            mpDrawView->DeleteLayer(pLayer->GetName());
 
         /* in order to redraw TabBar and Window; should be initiated later on by
            a hint from Joe (as by a change if the layer order). */
@@ -306,16 +309,9 @@ void DrawViewShell::FreshNavigatrTree()
     SfxViewFrame *pViewFrame = GetViewFrame();
     if (!pViewFrame)
         return;
-    SfxChildWindow* pWindow = pViewFrame->GetChildWindow( SID_NAVIGATOR );
-    if( pWindow )
-    {
-        SdNavigatorFloat* pNavWin = static_cast<SdNavigatorFloat*>( pWindow->GetWindow() );
-        if( pNavWin )
-            pNavWin->FreshTree( GetDoc() );
-    }
-    // sidebar version
     SfxBindings& rBindings = pViewFrame->GetBindings();
     rBindings.Invalidate(SID_NAVIGATOR_STATE, true);
+    rBindings.Update();
 }
 
 void DrawViewShell::MouseButtonDown(const MouseEvent& rMEvt,
@@ -530,7 +526,8 @@ void DrawViewShell::Command(const CommandEvent& rCEvt, ::sd::Window* pWin)
     if( GetView() &&GetView()->getSmartTags().Command(rCEvt) )
         return;
 
-    const bool bNativeShow (SlideShow::IsRunning(GetViewShellBase()));
+    const bool bNativeShow (SlideShow::IsRunning(GetViewShellBase())
+        && !SlideShow::IsInteractiveSlideshow(&GetViewShellBase())); // IASS
 
     if( rCEvt.GetCommand() == CommandEventId::PasteSelection && !bNativeShow )
     {
@@ -546,7 +543,7 @@ void DrawViewShell::Command(const CommandEvent& rCEvt, ::sd::Window* pWin)
 
             if( !mpDrawView->InsertData( aDataHelper, aPos, nDnDAction, false ) )
             {
-                INetBookmark    aINetBookmark( "", "" );
+                INetBookmark    aINetBookmark( u""_ustr, u""_ustr );
 
                 if( ( aDataHelper.HasFormat( SotClipboardFormatId::NETSCAPE_BOOKMARK ) &&
                       aDataHelper.GetINetBookmark( SotClipboardFormatId::NETSCAPE_BOOKMARK, aINetBookmark ) ) ||
@@ -555,13 +552,13 @@ void DrawViewShell::Command(const CommandEvent& rCEvt, ::sd::Window* pWin)
                     ( aDataHelper.HasFormat( SotClipboardFormatId::UNIFORMRESOURCELOCATOR ) &&
                       aDataHelper.GetINetBookmark( SotClipboardFormatId::UNIFORMRESOURCELOCATOR, aINetBookmark ) ) )
                 {
-                    InsertURLField( aINetBookmark.GetURL(), aINetBookmark.GetDescription(), "" );
+                    InsertURLField(aINetBookmark.GetURL(), aINetBookmark.GetDescription(), u""_ustr, u""_ustr);
                 }
             }
         }
     }
     else if( rCEvt.GetCommand() == CommandEventId::ContextMenu && !bNativeShow &&
-             pWin != nullptr && !mpDrawView->IsAction() && !SD_MOD()->GetWaterCan() )
+             pWin != nullptr && !mpDrawView->IsAction() && !SdModule::get()->GetWaterCan() )
     {
         OUString aPopupId; // Resource name for popup menu
 
@@ -603,11 +600,8 @@ void DrawViewShell::Command(const CommandEvent& rCEvt, ::sd::Window* pWin)
             LanguageType eLanguage( LANGUAGE_SYSTEM );
 
             // Format popup with outliner language, if possible
-            if( pOLV->GetOutliner() )
-            {
-                ESelection aSelection( pOLV->GetSelection() );
-                eLanguage = pOLV->GetOutliner()->GetLanguage( aSelection.nStartPara, aSelection.nStartPos );
-            }
+            ESelection aSelection( pOLV->GetSelection() );
+            eLanguage = pOLV->GetOutliner().GetLanguage( aSelection.start.nPara, aSelection.start.nIndex );
 
             //fdo#44998 if the outliner has captured the mouse events release the lock
             //so the SdFieldPopup can get them
@@ -630,10 +624,10 @@ void DrawViewShell::Command(const CommandEvent& rCEvt, ::sd::Window* pWin)
                 // select field, so that it will be deleted on insert
                 ESelection aSel = pOLV->GetSelection();
                 bool bSel = true;
-                if( aSel.nStartPos == aSel.nEndPos )
+                if (aSel.start.nIndex == aSel.end.nIndex)
                 {
                     bSel = false;
-                    aSel.nEndPos++;
+                    aSel.end.nIndex++;
                 }
                 pOLV->SetSelection( aSel );
 
@@ -641,17 +635,17 @@ void DrawViewShell::Command(const CommandEvent& rCEvt, ::sd::Window* pWin)
 
                 // reset selection back to original state
                 if( !bSel )
-                    aSel.nEndPos--;
+                    aSel.end.nIndex--;
                 pOLV->SetSelection( aSel );
             }
         }
         else
         {
             // is something selected?
-            if (mpDrawView->AreObjectsMarked() &&
-                mpDrawView->GetMarkedObjectList().GetMarkCount() == 1 )
+            const SdrMarkList& rMarkList(mpDrawView->GetMarkedObjectList());
+            if (rMarkList.GetMarkCount() == 1)
             {
-                pObj = mpDrawView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
+                pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
                 if( HasCurrentFunction(SID_BEZIER_EDIT) && (dynamic_cast< SdrPathObj * >( pObj ) != nullptr ) )
                 {
                     aPopupId = "bezier";
@@ -763,6 +757,9 @@ void DrawViewShell::Command(const CommandEvent& rCEvt, ::sd::Window* pWin)
                                 case SdrObjKind::Table:
                                     aPopupId = "table";
                                     break;
+                                case SdrObjKind::Annotation:
+                                    aPopupId = "annotation";
+                                    break;
                                 default: ;
                             }
                         }
@@ -787,15 +784,19 @@ void DrawViewShell::Command(const CommandEvent& rCEvt, ::sd::Window* pWin)
             }
 
             // multiple selection
-            else if (mpDrawView->AreObjectsMarked() &&
-                mpDrawView->GetMarkedObjectList().GetMarkCount() > 1 )
+            else if (rMarkList.GetMarkCount() > 1)
             {
                 aPopupId = "multiselect";
             }
 
             // nothing selected
-            else
+            else if (!SlideShow::IsRunning(GetViewShellBase()))
             {
+                // tdf#163124 this is the non-native SlideShow (see !bNativeShow),
+                // thus the above checks/actions have to be done to make the
+                // EditView work normally, but use the "page" standard context menu
+                // fallback only when SlideShow is not running to get the
+                // SlideShow popup menu - as expected when SlideShow is running
                 aPopupId = "page";
             }
         }
@@ -814,11 +815,12 @@ void DrawViewShell::Command(const CommandEvent& rCEvt, ::sd::Window* pWin)
                 Point aMenuPos(GetActiveWindow()->GetSizePixel().Width()/2
                         ,GetActiveWindow()->GetSizePixel().Height()/2);
 
+                const SdrMarkList& rMarkList(mpDrawView->GetMarkedObjectList());
                 //middle of the bounding rect if something is marked
-                if( mpDrawView->AreObjectsMarked() && mpDrawView->GetMarkedObjectList().GetMarkCount() >= 1 )
+                if (rMarkList.GetMarkCount() >= 1)
                 {
                     ::tools::Rectangle aMarkRect;
-                    mpDrawView->GetMarkedObjectList().TakeBoundRect(nullptr,aMarkRect);
+                    rMarkList.TakeBoundRect(nullptr,aMarkRect);
                     aMenuPos = GetActiveWindow()->LogicToPixel( aMarkRect.Center() );
 
                     //move the point into the visible window area
@@ -925,19 +927,19 @@ void DrawViewShell::ShowSnapLineContextMenu(weld::Window* pParent, const ::tools
                                             SdrPageView& rPageView, const sal_uInt16 nSnapLineIndex)
 {
     const SdrHelpLine& rHelpLine (rPageView.GetHelpLines()[nSnapLineIndex]);
-    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "modules/simpress/ui/snapmenu.ui"));
-    std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu("menu"));
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, u"modules/simpress/ui/snapmenu.ui"_ustr));
+    std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu(u"menu"_ustr));
 
     if (rHelpLine.GetKind() == SdrHelpLineKind::Point)
     {
         xMenu->append(OUString::number(SID_SET_SNAPITEM), SdResId(STR_POPUP_EDIT_SNAPPOINT));
-        xMenu->append_separator("separator");
+        xMenu->append_separator(u"separator"_ustr);
         xMenu->append(OUString::number(SID_DELETE_SNAPITEM), SdResId(STR_POPUP_DELETE_SNAPPOINT));
     }
     else
     {
         xMenu->append(OUString::number(SID_SET_SNAPITEM), SdResId(STR_POPUP_EDIT_SNAPLINE));
-        xMenu->append_separator("separator");
+        xMenu->append_separator(u"separator"_ustr);
         xMenu->append(OUString::number(SID_DELETE_SNAPITEM), SdResId(STR_POPUP_DELETE_SNAPLINE));
     }
 

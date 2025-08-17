@@ -76,7 +76,7 @@ ODatabaseExport::ODatabaseExport(sal_Int32 nRows,
                                  bool _bAutoIncrementEnabled,
                                  SvStream& _rInputStream)
     :m_vColumnPositions(std::move(_rColumnPositions))
-    ,m_aDestColumns(true)
+    ,m_aDestColumns(comphelper::UStringMixLess(true))
     ,m_xFormatter(_rxNumberF)
     ,m_xContext(_rxContext)
     ,m_pFormatter(nullptr)
@@ -125,7 +125,7 @@ ODatabaseExport::ODatabaseExport(const SharedConnection& _rxConnection,
                                  const Reference< XNumberFormatter >& _rxNumberF,
                                  const Reference< css::uno::XComponentContext >& _rxContext,
                                  SvStream& _rInputStream)
-    :m_aDestColumns(_rxConnection->getMetaData().is() && _rxConnection->getMetaData()->supportsMixedCaseQuotedIdentifiers())
+    :m_aDestColumns(comphelper::UStringMixLess(_rxConnection->getMetaData().is() && _rxConnection->getMetaData()->supportsMixedCaseQuotedIdentifiers()))
     ,m_xConnection(_rxConnection)
     ,m_xFormatter(_rxNumberF)
     ,m_xContext(_rxContext)
@@ -421,9 +421,6 @@ sal_Int16 ODatabaseExport::CheckString(const OUString& aCheckToken, sal_Int16 _n
                 case NumberFormat::ALL:
                     nNumberFormat = NumberFormat::ALL;
                     break;
-                case NumberFormat::DEFINED:
-                    nNumberFormat = NumberFormat::TEXT;
-                    break;
                 case NumberFormat::DATE:
                     switch(_nOldNumberFormat)
                     {
@@ -459,12 +456,10 @@ sal_Int16 ODatabaseExport::CheckString(const OUString& aCheckToken, sal_Int16 _n
                 case NumberFormat::CURRENCY:
                     switch(_nOldNumberFormat)
                     {
-                        case NumberFormat::NUMBER:
-                            nNumberFormat = NumberFormat::CURRENCY;
-                            break;
                         case NumberFormat::CURRENCY:
                             nNumberFormat = _nOldNumberFormat;
                             break;
+                        case NumberFormat::NUMBER:
                         case NumberFormat::ALL:
                             nNumberFormat = NumberFormat::CURRENCY;
                             break;
@@ -496,6 +491,7 @@ sal_Int16 ODatabaseExport::CheckString(const OUString& aCheckToken, sal_Int16 _n
                 case NumberFormat::TEXT:
                 case NumberFormat::UNDEFINED:
                 case NumberFormat::LOGICAL:
+                case NumberFormat::DEFINED:
                     nNumberFormat = NumberFormat::TEXT; // Text overwrites everything
                     break;
                 case NumberFormat::DATETIME:
@@ -548,13 +544,6 @@ void ODatabaseExport::SetColumnTypes(const TColumnVector* _pList,const OTypeInfo
 
         switch ( nType )
         {
-            case NumberFormat::ALL:
-                nDataType  = DataType::DOUBLE;
-                break;
-            case NumberFormat::DEFINED:
-                nDataType   = DataType::VARCHAR;
-                nLength     = ((m_vColumnSize[i] % 10 ) ? m_vColumnSize[i]/ 10 + 1: m_vColumnSize[i]/ 10) * 10;
-                break;
             case NumberFormat::DATE:
                 nDataType  = DataType::DATE;
                 break;
@@ -569,12 +558,14 @@ void ODatabaseExport::SetColumnTypes(const TColumnVector* _pList,const OTypeInfo
                 nScale      = 4;
                 nLength     = 19;
                 break;
+            case NumberFormat::ALL:
             case NumberFormat::NUMBER:
             case NumberFormat::SCIENTIFIC:
             case NumberFormat::FRACTION:
             case NumberFormat::PERCENT:
                 nDataType  = DataType::DOUBLE;
                 break;
+            case NumberFormat::DEFINED:
             case NumberFormat::TEXT:
             case NumberFormat::UNDEFINED:
             case NumberFormat::LOGICAL:
@@ -774,7 +765,7 @@ void ODatabaseExport::ensureFormatter()
         auto pSupplierImpl = comphelper::getFromUnoTunnel<SvNumberFormatsSupplierObj>(xSupplier);
         m_pFormatter = pSupplierImpl ? pSupplierImpl->GetNumberFormatter() : nullptr;
         Reference<XPropertySet> xNumberFormatSettings = xSupplier->getNumberFormatSettings();
-        xNumberFormatSettings->getPropertyValue("NullDate") >>= m_aNullDate;
+        xNumberFormatSettings->getPropertyValue(u"NullDate"_ustr) >>= m_aNullDate;
     }
 }
 
@@ -803,19 +794,17 @@ Reference< XPreparedStatement > ODatabaseExport::createPreparedStatement( const 
     {
         return Reference< XPreparedStatement > ();
     }
-    const OUString* pIter = aDestColumnNames.getConstArray();
-    std::vector< OUString> aInsertList;
-    aInsertList.resize(aDestColumnNames.getLength()+1);
-    for(size_t j=0; j < aInsertList.size(); ++j)
+
+    std::vector<OUString> aInsertList;
+    auto sortedColumns = _rvColumns;
+    std::sort(sortedColumns.begin(), sortedColumns.end());
+    aInsertList.reserve(_rvColumns.size());
+    for (const auto& [nSrc, nDest] : sortedColumns)
     {
-        ODatabaseExport::TPositions::const_iterator aFind = std::find_if(_rvColumns.begin(),_rvColumns.end(),
-            [j] (const ODatabaseExport::TPositions::value_type& tPos)
-                { return tPos.second == static_cast<sal_Int32>(j+1); });
-        if ( _rvColumns.end() != aFind && aFind->second != COLUMN_POSITION_NOT_FOUND && aFind->first != COLUMN_POSITION_NOT_FOUND )
-        {
-            OSL_ENSURE((aFind->first) < static_cast<sal_Int32>(aInsertList.size()),"aInsertList: Illegal index for vector");
-            aInsertList[aFind->first] = ::dbtools::quoteName( aQuote,*(pIter+j));
-        }
+        if (nSrc == COLUMN_POSITION_NOT_FOUND || nDest == COLUMN_POSITION_NOT_FOUND)
+            continue;
+        assert(nDest > 0 && nDest <= aDestColumnNames.getLength());
+        aInsertList.push_back(dbtools::quoteName(aQuote, aDestColumnNames[nDest - 1]));
     }
 
     // create the sql string

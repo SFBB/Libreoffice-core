@@ -392,6 +392,8 @@ namespace emfio
         vcl::Font    aFont;
 
         explicit WinMtfFontStyle(LOGFONTW const & rLogFont);
+
+        ~WinMtfFontStyle() override;
     };
 
     enum class WinMtfFillStyleType
@@ -441,8 +443,8 @@ namespace emfio
             : aPaletteColors(std::vector< Color >{})
         {}
 
-        WinMtfPalette(const std::vector< Color > rPaletteColors)
-            : aPaletteColors(rPaletteColors)
+        WinMtfPalette(std::vector<Color> paletteColors)
+            : aPaletteColors(std::move(paletteColors))
         {}
 
     };

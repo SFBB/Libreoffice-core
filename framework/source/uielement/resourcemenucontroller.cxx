@@ -354,14 +354,14 @@ void ResourceMenuController::disposing(std::unique_lock<std::mutex>& rGuard)
 OUString ResourceMenuController::getImplementationName()
 {
     if ( m_bToolbarContainer )
-        return "com.sun.star.comp.framework.ToolbarAsMenuController";
+        return u"com.sun.star.comp.framework.ToolbarAsMenuController"_ustr;
 
-    return "com.sun.star.comp.framework.ResourceMenuController";
+    return u"com.sun.star.comp.framework.ResourceMenuController"_ustr;
 }
 
 css::uno::Sequence< OUString > ResourceMenuController::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.PopupMenuController" };
+    return { u"com.sun.star.frame.PopupMenuController"_ustr };
 }
 
 class SaveAsMenuController : public ResourceMenuController
@@ -374,7 +374,7 @@ public:
     virtual OUString SAL_CALL getImplementationName() override;
 
 private:
-    virtual void impl_setPopupMenu() override;
+    virtual void impl_setPopupMenu(std::unique_lock<std::mutex>& rGuard) override;
 };
 
 SaveAsMenuController::SaveAsMenuController( const css::uno::Reference< css::uno::XComponentContext >& rContext,
@@ -391,21 +391,21 @@ void InsertItem(const css::uno::Reference<css::awt::XPopupMenu>& rPopupMenu,
     rPopupMenu->setCommand(nItemId, rCommand);
 }
 
-void SaveAsMenuController::impl_setPopupMenu()
+void SaveAsMenuController::impl_setPopupMenu(std::unique_lock<std::mutex>& /*rGuard*/)
 {
     SolarMutexGuard aGuard;
 
-    InsertItem(m_xPopupMenu, ".uno:SaveAs");
-    InsertItem(m_xPopupMenu, ".uno:ExportTo");
-    InsertItem(m_xPopupMenu, ".uno:SaveACopy");
-    InsertItem(m_xPopupMenu, ".uno:SaveAsTemplate");
+    InsertItem(m_xPopupMenu, u".uno:SaveAs"_ustr);
+    InsertItem(m_xPopupMenu, u".uno:ExportTo"_ustr);
+    InsertItem(m_xPopupMenu, u".uno:SaveACopy"_ustr);
+    InsertItem(m_xPopupMenu, u".uno:SaveAsTemplate"_ustr);
     m_xPopupMenu->insertSeparator(-1);
-    InsertItem(m_xPopupMenu, ".uno:SaveAsRemote");
+    InsertItem(m_xPopupMenu, u".uno:SaveAsRemote"_ustr);
 }
 
 OUString SaveAsMenuController::getImplementationName()
 {
-    return "com.sun.star.comp.framework.SaveAsMenuController";
+    return u"com.sun.star.comp.framework.SaveAsMenuController"_ustr;
 }
 
 class WindowListMenuController : public ResourceMenuController
@@ -423,7 +423,7 @@ public:
     OUString SAL_CALL getImplementationName() override;
 
 private:
-    void impl_setPopupMenu() override;
+    void impl_setPopupMenu(std::unique_lock<std::mutex>& /*rGuard*/) override;
 };
 
 constexpr sal_uInt16 START_ITEMID_WINDOWLIST    = 4600;
@@ -531,7 +531,7 @@ void WindowListMenuController::itemSelected( const css::awt::MenuEvent& rEvent )
     }
 }
 
-void WindowListMenuController::impl_setPopupMenu()
+void WindowListMenuController::impl_setPopupMenu(std::unique_lock<std::mutex>& /*rGuard*/)
 {
     // Make this controller work also with initially empty
     // menu, which PopupMenu::ImplExecute doesn't allow.
@@ -541,7 +541,7 @@ void WindowListMenuController::impl_setPopupMenu()
 
 OUString WindowListMenuController::getImplementationName()
 {
-    return "com.sun.star.comp.framework.WindowListMenuController";
+    return u"com.sun.star.comp.framework.WindowListMenuController"_ustr;
 }
 
 }

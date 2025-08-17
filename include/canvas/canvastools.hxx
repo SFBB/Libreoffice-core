@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_CANVAS_CANVASTOOLS_HXX
-#define INCLUDED_CANVAS_CANVASTOOLS_HXX
+#pragma once
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
-#include <osl/diagnose.h>
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
 
@@ -131,17 +129,15 @@ namespace canvas
         CANVASTOOLS_DLLPUBLIC css::rendering::ViewState&
             initViewState( css::rendering::ViewState&                          viewState );
 
-        CANVASTOOLS_DLLPUBLIC ::basegfx::B2DHomMatrix&
-            getViewStateTransform( ::basegfx::B2DHomMatrix&                    transform,
-                                   const css::rendering::ViewState&            viewState );
+        CANVASTOOLS_DLLPUBLIC ::basegfx::B2DHomMatrix
+            getViewStateTransform( const css::rendering::ViewState&            viewState );
 
         CANVASTOOLS_DLLPUBLIC css::rendering::ViewState&
             setViewStateTransform( css::rendering::ViewState&                  viewState,
                                    const ::basegfx::B2DHomMatrix&              transform );
 
-        CANVASTOOLS_DLLPUBLIC ::basegfx::B2DHomMatrix&
-            getRenderStateTransform( ::basegfx::B2DHomMatrix&                  transform,
-                                     const css::rendering::RenderState&        renderState );
+        CANVASTOOLS_DLLPUBLIC ::basegfx::B2DHomMatrix
+            getRenderStateTransform( const css::rendering::RenderState&        renderState );
 
         CANVASTOOLS_DLLPUBLIC css::rendering::RenderState&
             setRenderStateTransform( css::rendering::RenderState&              renderState,
@@ -180,18 +176,15 @@ namespace canvas
             specified input rectangle, and returns the bounding box of
             the resulting output area.
 
-            @param o_Rect
-            Output rectangle
-
             @param i_Rect
             Input rectangle
 
             @param i_Transformation
             Transformation to apply to the input rectangle
 
-            @return a reference to the resulting rectangle
+            @return the resulting rectangle
          */
-        CANVASTOOLS_DLLPUBLIC ::basegfx::B2DRange& calcTransformedRectBounds( ::basegfx::B2DRange&          o_Rect,
+        CANVASTOOLS_DLLPUBLIC ::basegfx::B2DRange calcTransformedRectBounds(
                                                         const ::basegfx::B2DRange&      i_Rect,
                                                         const ::basegfx::B2DHomMatrix&  i_Transformation );
 
@@ -203,10 +196,6 @@ namespace canvas
             the upper, left corner to the origin, and leaving the size
             untouched.
 
-            @param o_transform
-            Output parameter, to receive the resulting transformation
-            matrix.
-
             @param i_srcRect
             Input parameter, specifies the original source
             rectangle. The resulting transformation will exactly map
@@ -217,12 +206,12 @@ namespace canvas
             translations (if necessary), to exactly map the source
             rectangle to the origin.
 
-            @return a reference to the resulting transformation matrix
+            @return the resulting transformation matrix
 
             @see calcRectToRectTransform()
             @see calcTransformedRectBounds()
         */
-        CANVASTOOLS_DLLPUBLIC ::basegfx::B2DHomMatrix& calcRectToOriginTransform( ::basegfx::B2DHomMatrix&      o_transform,
+        CANVASTOOLS_DLLPUBLIC ::basegfx::B2DHomMatrix calcRectToOriginTransform(
                                                             const ::basegfx::B2DRange&      i_srcRect,
                                                             const ::basegfx::B2DHomMatrix&  i_transformation );
 
@@ -378,7 +367,7 @@ namespace canvas
                 SAL_WARN("canvas", "numeric_cast detected data loss");
 #endif
                 throw css::uno::RuntimeException(
-                    "numeric_cast detected data loss",
+                    u"numeric_cast detected data loss"_ustr,
                     nullptr );
             }
 
@@ -471,7 +460,7 @@ namespace canvas
                     {
                         SAL_WARN("canvas", "ValueMap::ValueMap(): Map is not sorted, keys are wrong, "
                                   << pMap[0].maKey << " and " << pMap[1].maKey);
-                        OSL_FAIL( "ValueMap::ValueMap(): Map is not sorted" );
+                        SAL_WARN("canvas", "ValueMap::ValueMap(): Map is not sorted" );
                     }
 
                     const OString aStr2( pMap[1].maKey );
@@ -554,7 +543,5 @@ namespace canvas
                         sal_uInt32& rEmphasisMark);
     }
 }
-
-#endif /* INCLUDED_CANVAS_CANVASTOOLS_HXX */
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

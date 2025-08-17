@@ -127,7 +127,7 @@ SlideShowView::SlideShowView( ShowWindow&     rOutputWindow,
         {
             Reference< beans::XPropertySet > xCanvasProps( getCanvas(),
                                                            uno::UNO_QUERY_THROW );
-            xCanvasProps->setPropertyValue("UnsafeScrolling",
+            xCanvasProps->setPropertyValue(u"UnsafeScrolling"_ustr,
                 uno::Any( true ) );
         }
         catch( uno::Exception& )
@@ -187,21 +187,16 @@ void SlideShowView::disposingImpl(std::unique_lock<std::mutex>& rGuard)
         }
         rGuard.lock();
     }
+    assert(rGuard.owns_lock());
     if (maPaintListeners.getLength(rGuard))
-    {
         maPaintListeners.disposeAndClear( rGuard, evt );
-        rGuard.lock();
-    }
+    assert(rGuard.owns_lock());
     if (maMouseListeners.getLength(rGuard))
-    {
         maMouseListeners.disposeAndClear( rGuard, evt );
-        rGuard.lock();
-    }
+    assert(rGuard.owns_lock());
     if (maMouseMotionListeners.getLength(rGuard))
-    {
         maMouseMotionListeners.disposeAndClear( rGuard, evt );
-        rGuard.lock();
-    }
+    assert(rGuard.owns_lock());
 }
 
 void SlideShowView::paint( const awt::PaintEvent& e )
@@ -269,9 +264,9 @@ geometry::AffineMatrix2D SAL_CALL SlideShowView::getTransformation(  )
     std::unique_lock aGuard( m_aMutex );
     SolarMutexGuard aSolarGuard;
 
-    const Size& rTmpSize( mrOutputWindow.GetSizePixel() );
+    const Size aTmpSize( mrOutputWindow.GetSizePixel() );
 
-    if (rTmpSize.IsEmpty())
+    if (aTmpSize.IsEmpty())
     {
         return geometry::AffineMatrix2D (1,0,0,0,1,0);
     }
@@ -550,6 +545,12 @@ void SAL_CALL SlideShowView::mouseReleased( const awt::MouseEvent& e )
         maMouseListeners.notify( aGuard, aEvent );
         updateimpl( aGuard, mpSlideShow ); // warning: clears guard!
     }
+}
+
+void SlideShowView::ignoreNextMouseReleased()
+{
+    std::unique_lock aGuard( m_aMutex );
+    mbMousePressedEaten = true;
 }
 
 void SAL_CALL SlideShowView::mouseEntered( const awt::MouseEvent& e )

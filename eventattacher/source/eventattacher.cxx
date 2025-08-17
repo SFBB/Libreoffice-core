@@ -45,13 +45,11 @@
 namespace com::sun::star::lang { class XMultiServiceFactory; }
 
 using namespace com::sun::star::uno;
-using namespace com::sun::star::registry;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::script;
 using namespace com::sun::star::reflection;
 using namespace cppu;
-using namespace osl;
 
 
 namespace comp_EventAttacher {
@@ -280,7 +278,7 @@ EventAttacherImpl::EventAttacherImpl( const Reference< XComponentContext >& rxCo
 /// @throws Exception
 OUString SAL_CALL EventAttacherImpl::getImplementationName(  )
 {
-    return "com.sun.star.comp.EventAttacher";
+    return u"com.sun.star.comp.EventAttacher"_ustr;
 }
 
 sal_Bool SAL_CALL EventAttacherImpl::supportsService( const OUString& ServiceName )
@@ -290,7 +288,7 @@ sal_Bool SAL_CALL EventAttacherImpl::supportsService( const OUString& ServiceNam
 
 Sequence<OUString> SAL_CALL EventAttacherImpl::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.script.EventAttacher" };
+    return { u"com.sun.star.script.EventAttacher"_ustr };
 }
 
 void SAL_CALL EventAttacherImpl::initialize(const Sequence< Any >& Arguments)
@@ -298,7 +296,7 @@ void SAL_CALL EventAttacherImpl::initialize(const Sequence< Any >& Arguments)
     // get services from the argument list
     for( const Any& arg : Arguments )
     {
-        if( arg.getValueType().getTypeClass() != TypeClass_INTERFACE )
+        if( arg.getValueTypeClass() != TypeClass_INTERFACE )
             throw IllegalArgumentException();
 
         // InvocationAdapter service ?
@@ -437,7 +435,7 @@ void SAL_CALL FilterAllListenerImpl::firing(const AllEventObject& Event)
 void FilterAllListenerImpl::convertToEventReturn( Any & rRet, const Type & rRetType )
 {
     // no return value? Set to the specified values
-    if( rRet.getValueType().getTypeClass() == TypeClass_VOID )
+    if( rRet.getValueTypeClass() == TypeClass_VOID )
     {
         switch( rRetType.getTypeClass()  )
         {

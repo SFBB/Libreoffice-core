@@ -168,7 +168,7 @@ bool ONDXPage::Find(const ONDXKey& rKey)
     else if (i == nCount)
     {
         rIndex.m_aCurLeaf = this;
-        rIndex.m_nCurNode = i - 1;
+        rIndex.m_nCurNode = sal_uInt16(i - 1);
         bResult = false;
     }
     else
@@ -207,8 +207,13 @@ bool ONDXPage::Insert(ONDXNode& rNode, sal_uInt32 nRowsLeft)
                 }
                 else  // position unknown
                 {
-                    sal_uInt16 nPos = NODE_NOTFOUND;
-                    while (++nPos < nCount && rNode.GetKey() > ((*this)[nPos]).GetKey()) ;
+                    sal_uInt16 nPos = 0;
+                    while (nPos < nCount)
+                    {
+                        if (rNode.GetKey() <= ((*this)[nPos]).GetKey())
+                            break;
+                        ++nPos;
+                    }
 
                     --nCount;   // (otherwise we might get Assertions and GPFs - 60593)
                     bResult = Insert(nPos, rNode);
@@ -235,7 +240,7 @@ bool ONDXPage::Insert(ONDXNode& rNode, sal_uInt32 nRowsLeft)
             ONDXPagePtr aNewRoot = rIndex.CreatePage(nNewPagePos + 1);
             aNewRoot->SetChild(this);
 
-            rIndex.m_aRoot = aNewRoot;
+            rIndex.m_aRoot = std::move(aNewRoot);
             rIndex.SetRootPos(nNewPagePos + 1);
             rIndex.SetPageCount(++nNewPageCount);
         }
@@ -269,7 +274,7 @@ bool ONDXPage::Insert(ONDXNode& rNode, sal_uInt32 nRowsLeft)
         ONDXPagePtr aTempParent = aParent;
         if (IsLeaf())
         {
-            rIndex.m_aCurLeaf = aNewPage;
+            rIndex.m_aCurLeaf = std::move(aNewPage);
             rIndex.m_nCurNode = rIndex.m_aCurLeaf->Count() - 1;
 
             // free not needed pages, there are no references to those on the page
@@ -411,8 +416,8 @@ void ONDXPage::Delete(sal_uInt16 nNodePos)
         else
         {
             // merge with right neighbour
-            Merge(nParentNodePos + 1,((*aParent)[nParentNodePos + 1].GetChild(&rIndex,aParent)));
-            nParentNodePos++;
+            nParentNodePos = o3tl::sanitizing_inc(nParentNodePos);
+            Merge(nParentNodePos,((*aParent)[nParentNodePos].GetChild(&rIndex,aParent)));
         }
         if (HasParent() && !(*aParent)[nParentNodePos].HasChild())
             aParent->Delete(nParentNodePos);
@@ -969,28 +974,28 @@ bool ONDXPage::IsFull() const
     return Count() == rIndex.getHeader().db_maxkeys;
 }
 
-
 sal_uInt16 ONDXPage::Search(const ONDXKey& rSearch)
 {
     // binary search later
-    sal_uInt16 i = NODE_NOTFOUND;
-    while (++i < Count())
-        if ((*this)[i].GetKey() == rSearch)
-            break;
+    for (sal_uInt16 i = 0, nSize = Count(); i < nSize; ++i)
+    {
+        if (((*this)[i]).GetKey() == rSearch)
+            return i;
+    }
 
-    return (i < Count()) ? i : NODE_NOTFOUND;
+    return NODE_NOTFOUND;
 }
-
 
 sal_uInt16 ONDXPage::Search(const ONDXPage* pPage)
 {
-    sal_uInt16 i = NODE_NOTFOUND;
-    while (++i < Count())
+    for (sal_uInt16 i = 0, nSize = Count(); i < nSize; ++i)
+    {
         if (((*this)[i]).GetChild() == pPage)
-            break;
+            return i;
+    }
 
     // if not found, then we assume, that the page itself points to the page
-    return (i < Count()) ? i : NODE_NOTFOUND;
+    return NODE_NOTFOUND;
 }
 
 // runs recursively

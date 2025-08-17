@@ -28,7 +28,6 @@
 #include <com/sun/star/awt/XLayoutConstrains.hpp>
 #include <com/sun/star/awt/XView.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
-#include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/awt/XDockableWindow.hpp>
 #include <com/sun/star/awt/XStyleSettingsSupplier.hpp>
 
@@ -42,17 +41,11 @@
 #include <functional>
 
 template <class ListenerT> class ListenerMultiplexerBase;
-namespace com::sun::star::accessibility { class XAccessibleContext; }
 namespace com::sun::star::awt { class XTopWindowListener; }
 namespace com::sun::star::awt { class XVclContainerListener; }
 namespace vcl { class Window; }
 
 class VclWindowEvent;
-
-namespace toolkit
-{
-    class IAccessibleFactory;
-}
 
 
 class UnoPropertyArrayHelper;
@@ -63,8 +56,6 @@ typedef cppu::ImplInheritanceHelper< VCLXDevice,
                                      css::awt::XLayoutConstrains,
                                      css::awt::XView,
                                      css::awt::XDockableWindow,
-                                     css::accessibility::XAccessible,
-                                     css::lang::XEventListener,
                                      css::beans::XPropertySetInfo,
                                      css::awt::XStyleSettingsSupplier
                                    > VCLXWindow_Base;
@@ -81,15 +72,11 @@ protected:
     DECL_DLLPRIVATE_LINK(WindowEventListener, VclWindowEvent&, void );
 
     virtual void    ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent );
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext >
-                    CreateAccessibleContext();
 
     void            SetSynthesizingVCLEvent( bool b );
     bool            IsSynthesizingVCLEvent() const;
 
     void        SetSystemParent_Impl( const css::uno::Any& rHandle );
-
-    ::toolkit::IAccessibleFactory&  getAccessibleFactory();
 
     // helper ...
     static void     PushPropertyIds( std::vector< sal_uInt16 > &aIds, int nFirstId, ...);
@@ -139,9 +126,6 @@ public:
     void    notifyWindowRemoved( vcl::Window const & _rWindow );
 
     bool IsDisposed() const;
-
-    // css::lang::XEventListener
-    virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
     // css::lang::XComponent
     void SAL_CALL dispose(  ) override;
@@ -196,9 +180,6 @@ public:
     css::awt::Size SAL_CALL getSize(  ) override;
     void SAL_CALL draw( sal_Int32 nX, sal_Int32 nY ) override;
     void SAL_CALL setZoom( float fZoomX, float fZoomY ) override;
-
-    // css::accessibility::XAccessible
-    css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override;
 
     // css::awt::XDockableWindow
     void SAL_CALL addDockableWindowListener( const css::uno::Reference< css::awt::XDockableWindowListener >& xListener ) override;

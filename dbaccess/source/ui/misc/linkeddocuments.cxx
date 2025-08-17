@@ -52,13 +52,10 @@ namespace dbaui
     using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::frame;
-    using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::util;
     using namespace ::com::sun::star::ucb;
     using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::sdb::application;
     using namespace ::com::sun::star::task;
-    using namespace ::svt;
 
     namespace
     {
@@ -123,7 +120,7 @@ namespace dbaui
                 break;
 
             case ElementOpenMode::Mail:
-                aArguments.put( "Hidden", true );
+                aArguments.put( u"Hidden"_ustr, true );
                 [[fallthrough]];
 
             case ElementOpenMode::Design:
@@ -134,7 +131,7 @@ namespace dbaui
                 OSL_FAIL( "OLinkedDocumentsAccess::implOpen: invalid open mode!" );
                 break;
         }
-        aArguments.put( "OpenMode", sOpenMode );
+        aArguments.put( u"OpenMode"_ustr, sOpenMode );
 
         aArguments.put( PROPERTY_ACTIVE_CONNECTION, m_xConnection );
 
@@ -150,36 +147,35 @@ namespace dbaui
 
         return xRet;
     }
-    void OLinkedDocumentsAccess::impl_newWithPilot( const char* _pWizardService,
-        const sal_Int32 _nCommandType, const OUString& _rObjectName )
+    void OLinkedDocumentsAccess::impl_newWithPilot(const OUString& rWizardService,
+                                                   const sal_Int32 _nCommandType,
+                                                   const OUString& _rObjectName)
     {
         try
         {
             ::comphelper::NamedValueCollection aArgs;
-            aArgs.put( "DataSourceName", m_sDataSourceName );
+            aArgs.put( u"DataSourceName"_ustr, m_sDataSourceName );
 
             if ( m_xConnection.is() )
-                aArgs.put( "ActiveConnection", m_xConnection );
+                aArgs.put( u"ActiveConnection"_ustr, m_xConnection );
 
             if ( !_rObjectName.isEmpty() && ( _nCommandType != -1 ) )
             {
-                aArgs.put( "CommandType", _nCommandType );
-                aArgs.put( "Command", _rObjectName );
+                aArgs.put( u"CommandType"_ustr, _nCommandType );
+                aArgs.put( u"Command"_ustr, _rObjectName );
             }
 
-            aArgs.put( "DocumentUI", m_xDocumentUI );
+            aArgs.put( u"DocumentUI"_ustr, m_xDocumentUI );
 
             Reference< XJobExecutor > xWizard;
             {
                 weld::WaitObject aWaitCursor(m_pDialogParent);
-                xWizard.set( m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                    OUString::createFromAscii( _pWizardService ),
-                    aArgs.getWrappedPropertyValues(),
-                    m_xContext
-                    ), UNO_QUERY_THROW );
+                xWizard.set(m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
+                                rWizardService, aArgs.getWrappedPropertyValues(), m_xContext),
+                            UNO_QUERY_THROW);
             }
 
-            xWizard->trigger( "start" );
+            xWizard->trigger( u"start"_ustr );
             ::comphelper::disposeComponent( xWizard );
         }
         catch(const Exception&)
@@ -189,20 +185,22 @@ namespace dbaui
     }
     void OLinkedDocumentsAccess::newFormWithPilot( const sal_Int32 _nCommandType,const OUString& _rObjectName )
     {
-        impl_newWithPilot( "com.sun.star.wizards.form.CallFormWizard", _nCommandType, _rObjectName );
+        impl_newWithPilot(u"com.sun.star.wizards.form.CallFormWizard"_ustr, _nCommandType,
+                          _rObjectName);
     }
 
     void OLinkedDocumentsAccess::newReportWithPilot( const sal_Int32 _nCommandType, const OUString& _rObjectName )
     {
-        impl_newWithPilot( "com.sun.star.wizards.report.CallReportWizard", _nCommandType, _rObjectName );
+        impl_newWithPilot(u"com.sun.star.wizards.report.CallReportWizard"_ustr, _nCommandType,
+                          _rObjectName);
     }
     void OLinkedDocumentsAccess::newTableWithPilot()
     {
-        impl_newWithPilot( "com.sun.star.wizards.table.CallTableWizard", -1, OUString() );
+        impl_newWithPilot(u"com.sun.star.wizards.table.CallTableWizard"_ustr, -1, OUString());
     }
     void OLinkedDocumentsAccess::newQueryWithPilot()
     {
-        impl_newWithPilot( "com.sun.star.wizards.query.CallQueryWizard", -1, OUString() );
+        impl_newWithPilot(u"com.sun.star.wizards.query.CallQueryWizard"_ustr, -1, OUString());
     }
     Reference< XComponent > OLinkedDocumentsAccess::newDocument( sal_Int32 i_nActionID,
         const ::comphelper::NamedValueCollection& i_rCreationArgs, Reference< XComponent >& o_rDefinition )
@@ -210,9 +208,9 @@ namespace dbaui
         OSL_ENSURE(m_xDocumentContainer.is(), "OLinkedDocumentsAccess::newDocument: invalid document container!");
         // determine the class ID to use for the new document
         Sequence<sal_Int8> aClassId;
-        if  (   !i_rCreationArgs.has( "ClassID" )
-            &&  !i_rCreationArgs.has( "MediaType" )
-            &&  !i_rCreationArgs.has( "DocumentServiceName" )
+        if  (   !i_rCreationArgs.has( u"ClassID"_ustr )
+            &&  !i_rCreationArgs.has( u"MediaType"_ustr )
+            &&  !i_rCreationArgs.has( u"DocumentServiceName"_ustr )
             )
         {
             switch ( i_nActionID )
@@ -251,15 +249,15 @@ namespace dbaui
             {
                 ::comphelper::NamedValueCollection aCreationArgs( i_rCreationArgs );
                 if ( aClassId.hasElements() )
-                    aCreationArgs.put( "ClassID", aClassId );
+                    aCreationArgs.put( u"ClassID"_ustr, aClassId );
                 aCreationArgs.put( PROPERTY_ACTIVE_CONNECTION, m_xConnection );
 
                 // separate values which are real creation args from args relevant for opening the doc
                 ::comphelper::NamedValueCollection aCommandArgs;
-                if ( aCreationArgs.has( "Hidden" ) )
+                if ( aCreationArgs.has( u"Hidden"_ustr ) )
                 {
-                    aCommandArgs.put( "Hidden", aCreationArgs.get( "Hidden" ) );
-                    aCreationArgs.remove( "Hidden" );
+                    aCommandArgs.put( u"Hidden"_ustr, aCreationArgs.get( u"Hidden"_ustr ) );
+                    aCreationArgs.remove( u"Hidden"_ustr );
                 }
 
                 Reference< XCommandProcessor > xContent( xORB->createInstanceWithArguments(
@@ -273,7 +271,7 @@ namespace dbaui
                 // put the OpenMode into the OpenArgs
                 OpenCommandArgument aOpenModeArg;
                 aOpenModeArg.Mode = OpenMode::DOCUMENT;
-                aCommandArgs.put( "OpenMode", aOpenModeArg );
+                aCommandArgs.put( u"OpenMode"_ustr, aOpenModeArg );
 
                 Command aCommand;
                 aCommand.Name = "openDesign";
@@ -331,7 +329,7 @@ namespace dbaui
                 aInfo = dbtools::SQLExceptionInfo(aSQLException);
 
                 // more like a hack, insert an empty message
-                aInfo.prepend(" \n");
+                aInfo.prepend(u" \n"_ustr);
 
                 OUString sMessage = DBA_RES(STR_COULDNOTOPEN_LINKEDDOC);
                 sMessage = sMessage.replaceFirst("$file$",_rLinkName);

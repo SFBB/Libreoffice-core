@@ -25,6 +25,7 @@
 #include <bastypes.hxx>
 #include <com/sun/star/script/XLibraryContainer.hpp>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
+#include <basctl/basctldllpublic.hxx>
 #include <string_view>
 #include <osl/diagnose.h>
 #include <tools/debug.hxx>
@@ -248,7 +249,7 @@ EntryDescriptor SbTreeListBox::GetEntryDescriptor(const weld::TreeIter* pEntry)
     EntryType eType = OBJ_TYPE_UNKNOWN;
 
     if ( !pEntry )
-        return EntryDescriptor( aDocument, eLocation, aLibName, aLibSubName, aName, aMethodName, eType );
+        return EntryDescriptor(std::move(aDocument), eLocation, aLibName, aLibSubName, aName, aMethodName, eType);
 
     std::vector<std::pair<Entry*, OUString>> aEntries;
 
@@ -299,6 +300,7 @@ EntryDescriptor SbTreeListBox::GetEntryDescriptor(const weld::TreeIter* pEntry)
                 }
                 break;
                 case OBJ_TYPE_MODULE:
+                case OBJ_TYPE_DIALOG:
                 {
                     aName = pair.second;
                     eType = pBE->GetType();
@@ -307,12 +309,6 @@ EntryDescriptor SbTreeListBox::GetEntryDescriptor(const weld::TreeIter* pEntry)
                 case OBJ_TYPE_METHOD:
                 {
                     aMethodName = pair.second;
-                    eType = pBE->GetType();
-                }
-                break;
-                case OBJ_TYPE_DIALOG:
-                {
-                    aName = pair.second;
                     eType = pBE->GetType();
                 }
                 break;
@@ -338,20 +334,21 @@ EntryDescriptor SbTreeListBox::GetEntryDescriptor(const weld::TreeIter* pEntry)
         }
     }
 
-    return EntryDescriptor( aDocument, eLocation, aLibName, aLibSubName, aName, aMethodName, eType );
+    return EntryDescriptor(std::move(aDocument), eLocation, aLibName,
+                           aLibSubName, aName, aMethodName, eType);
 }
 
-ItemType SbTreeListBox::ConvertType (EntryType eType)
+SbxItemType SbTreeListBox::ConvertType (EntryType eType)
 {
     switch (eType)
     {
-        case OBJ_TYPE_DOCUMENT:  return TYPE_SHELL;
-        case OBJ_TYPE_LIBRARY:   return TYPE_LIBRARY;
-        case OBJ_TYPE_MODULE:    return TYPE_MODULE;
-        case OBJ_TYPE_DIALOG:    return TYPE_DIALOG;
-        case OBJ_TYPE_METHOD:    return TYPE_METHOD;
+        case OBJ_TYPE_DOCUMENT:  return SBX_TYPE_SHELL;
+        case OBJ_TYPE_LIBRARY:   return SBX_TYPE_LIBRARY;
+        case OBJ_TYPE_MODULE:    return SBX_TYPE_MODULE;
+        case OBJ_TYPE_DIALOG:    return SBX_TYPE_DIALOG;
+        case OBJ_TYPE_METHOD:    return SBX_TYPE_METHOD;
         default:
-            return static_cast<ItemType>(OBJ_TYPE_UNKNOWN);
+            return static_cast<SbxItemType>(OBJ_TYPE_UNKNOWN);
     }
 }
 

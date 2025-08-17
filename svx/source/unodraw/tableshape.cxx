@@ -19,7 +19,7 @@
 
 #include <sal/config.h>
 
-#include "UnoGraphicExporter.hxx"
+#include <UnoGraphicExporter.hxx>
 #include "shapeimpl.hxx"
 #include <svx/unodraw/SvxTableShape.hxx>
 #include <svx/unoshprp.hxx>
@@ -27,19 +27,16 @@
 #include <svx/svdpool.hxx>
 
 
-using namespace ::osl;
-using namespace ::cppu;
 using namespace sdr::table;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::beans;
 
 SvxTableShape::SvxTableShape(SdrObject* pObj)
 :   SvxShape( pObj, getSvxMapProvider().GetMap(SVXMAP_TABLE), getSvxMapProvider().GetPropertySet(SVXMAP_TABLE, SdrObject::GetGlobalDrawObjectItemPool()) )
 {
-    SetShapeType( "com.sun.star.drawing.TableShape" );
+    SetShapeType( u"com.sun.star.drawing.TableShape"_ustr );
 }
 
 SvxTableShape::~SvxTableShape() noexcept

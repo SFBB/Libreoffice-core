@@ -26,20 +26,19 @@ class Test : public test::BootstrapFixture, public unotest::MacrosTest
 CPPUNIT_TEST_FIXTURE(Test, testBibliographyLoader)
 {
     // Given a bibliography provider:
-    uno::Reference<container::XNameAccess> xBibAccess
-        = frame::Bibliography::create(mxComponentContext);
+    uno::Reference<container::XNameAccess> xBibAccess = frame::Bibliography::create(m_xContext);
     uno::Reference<beans::XPropertySet> xPropSet(xBibAccess, uno::UNO_QUERY);
     uno::Sequence<beans::PropertyValue> aSeq;
 
     // When getting the column names:
-    xPropSet->getPropertyValue("BibliographyDataFieldNames") >>= aSeq;
+    xPropSet->getPropertyValue(u"BibliographyDataFieldNames"_ustr) >>= aSeq;
 
     // Then make sure we have columns and all have non-empty names:
     CPPUNIT_ASSERT(aSeq.hasElements());
 
     // Without the accompanying fix in place, this test would have failed, as the last column
     // (LOCAL_URL) had an empty field name:
-    for (const auto& rPair : std::as_const(aSeq))
+    for (const auto& rPair : aSeq)
     {
         CPPUNIT_ASSERT(!rPair.Name.isEmpty());
     }

@@ -76,11 +76,13 @@ class ScXMLDatabaseRangeContext : public ScXMLImportContext
     bool            bSubTotalsBindFormatsToContent;
     bool            bSubTotalsIsCaseSensitive;
     bool            bSubTotalsInsertPageBreaks;
+    bool            bSubTotalsSummaryBelow;
     bool            bSubTotalsSortGroups;
     bool            bSubTotalsEnabledUserList;
     bool            bSubTotalsAscending;
     bool            bFilterConditionSourceRange;
     bool            bHasHeader;
+    bool            bHasFooter; // UNO TotalsRow, ODF contains-footer
     bool            bByRow;
     ScDBCollection::RangeType meRangeType;
 
@@ -106,6 +108,7 @@ public:
     void SetSubTotalsBindFormatsToContent(const bool bTemp ) { bSubTotalsBindFormatsToContent = bTemp; }
     void SetSubTotalsIsCaseSensitive(const bool bTemp) { bSubTotalsIsCaseSensitive = bTemp; }
     void SetSubTotalsInsertPageBreaks(const bool bTemp) { bSubTotalsInsertPageBreaks = bTemp; }
+    void SetSubTotalsSummaryBelow(const bool bTemp) { bSubTotalsSummaryBelow = bTemp; }
     void SetSubTotalsEnabledUserList(const bool bTemp) { bSubTotalsEnabledUserList = bTemp; }
     void SetSubTotalsUserListIndex(const sal_Int16 nTemp) { nSubTotalsUserListIndex = nTemp; }
     void SetSubTotalsAscending(const bool bTemp) { bSubTotalsAscending = bTemp; }

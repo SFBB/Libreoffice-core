@@ -52,12 +52,12 @@ public class Finalizer
         String reslblHowGoOn;
         this.m_queryWizard = i_queryWizard;
         this.CurDBMetaData = _CurDBMetaData;
-        reslblQueryTitle = m_queryWizard.m_oResource.getResText("RID_QUERY_5");
-        resoptDisplayQuery = m_queryWizard.m_oResource.getResText("RID_QUERY_6");
-        resoptModifyQuery = m_queryWizard.m_oResource.getResText("RID_QUERY_7");
-        resflnSummary = m_queryWizard.m_oResource.getResText("RID_QUERY_87");
-        reslblHowGoOn = m_queryWizard.m_oResource.getResText("RID_QUERY_8");
-        resQuery = m_queryWizard.m_oResource.getResText("RID_QUERY_1");
+        reslblQueryTitle = m_queryWizard.getResource().getResText("RID_QUERY_5");
+        resoptDisplayQuery = m_queryWizard.getResource().getResText("RID_QUERY_6");
+        resoptModifyQuery = m_queryWizard.getResource().getResText("RID_QUERY_7");
+        resflnSummary = m_queryWizard.getResource().getResText("RID_QUERY_87");
+        reslblHowGoOn = m_queryWizard.getResource().getResText("RID_QUERY_8");
+        resQuery = m_queryWizard.getResource().getResText("RID_QUERY_1");
         int curHelpIndex = 40955;
 
         m_queryWizard.insertLabel("lblQueryTitle", new String[]
@@ -172,7 +172,7 @@ public class Finalizer
     public String finish()
     {
         String queryName = getTitle();
-        if  (   CurDBMetaData.getSQLQueryComposer().setQueryCommand( m_queryWizard.xWindow, true, true )
+        if  (   CurDBMetaData.getSQLQueryComposer().setQueryCommand( m_queryWizard.getWindow(), true, true )
             &&  CurDBMetaData.createQuery( CurDBMetaData.getSQLQueryComposer(), queryName )
             )
             return queryName;

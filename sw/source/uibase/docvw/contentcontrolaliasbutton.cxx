@@ -31,10 +31,11 @@
 #define BUTTON_WIDTH 12
 
 SwContentControlAliasButton::SwContentControlAliasButton(SwEditWin* pEditWin,
-                                                         SwContentControl* pContentControl)
-    : SwFrameMenuButtonBase(pEditWin, nullptr, "modules/swriter/ui/contentcontrolaliasbutton.ui",
-                            "ContentControlAliasButton")
-    , m_xPushButton(m_xBuilder->weld_button("button"))
+                                                         const SwContentControl* pContentControl)
+    : SwFrameMenuButtonBase(pEditWin, nullptr,
+                            u"modules/swriter/ui/contentcontrolaliasbutton.ui"_ustr,
+                            u"ContentControlAliasButton"_ustr)
+    , m_xPushButton(m_xBuilder->weld_button(u"button"_ustr))
     , m_sLabel(pContentControl->GetAlias())
 {
     m_xPushButton->set_accessible_name(m_sLabel);
@@ -118,10 +119,9 @@ void SwContentControlAliasButton::PaintButton()
         aFontSize.getX(), aFontSize.getY(), static_cast<double>(aTextPos.X()),
         static_cast<double>(aTextPos.Y()));
 
-    aSeq.push_back(drawinglayer::primitive2d::Primitive2DReference(
-        new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
-            aTextMatrix, m_sLabel, 0, m_sLabel.getLength(), std::vector<double>(), {},
-            std::move(aFontAttr), css::lang::Locale(), aLineColor)));
+    aSeq.push_back(new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
+        aTextMatrix, m_sLabel, 0, m_sLabel.getLength(), std::vector<double>(), {},
+        std::move(aFontAttr), css::lang::Locale(), aLineColor));
 
     // Create the processor and process the primitives
     drawinglayer::geometry::ViewInformation2D aViewInfo;
@@ -143,7 +143,7 @@ bool SwContentControlAliasButton::Contains(const Point& rDocPt) const
 
 void SwContentControlAliasButton::SetReadonly(bool bReadonly) { m_bReadOnly = bReadonly; }
 
-void SwContentControlAliasButton::SetContentControl(SwContentControl* pContentControl)
+void SwContentControlAliasButton::SetContentControl(const SwContentControl* pContentControl)
 {
     m_sLabel = pContentControl->GetAlias();
 }

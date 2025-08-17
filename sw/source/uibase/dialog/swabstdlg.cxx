@@ -18,38 +18,17 @@
  */
 
 #include <swabstdlg.hxx>
-
-#include <osl/module.hxx>
-
-typedef SwAbstractDialogFactory* (*SwFuncPtrCreateDialogFactory)();
-
-#ifndef DISABLE_DYNLOADING
-
-extern "C" { static void thisModule() {} }
-
-#else
-
-extern "C" SwAbstractDialogFactory* SwCreateDialogFactory();
-
-#endif
+#include <comphelper/processfactory.hxx>
+#include <com/sun/star/text/DialogFactoryService.hpp>
 
 SwAbstractDialogFactory* SwAbstractDialogFactory::Create()
 {
-    SwFuncPtrCreateDialogFactory fp = nullptr;
-#ifndef DISABLE_DYNLOADING
-    static ::osl::Module aDialogLibrary;
-    static constexpr OUStringLiteral sLibName(u"" SWUI_DLL_NAME);
-    if ( aDialogLibrary.is() || aDialogLibrary.loadRelative( &thisModule, sLibName,
-                                                             SAL_LOADMODULE_GLOBAL | SAL_LOADMODULE_LAZY ) )
-        fp = reinterpret_cast<SwAbstractDialogFactory* (SAL_CALL*)()>(
-            aDialogLibrary.getFunctionSymbol( "SwCreateDialogFactory" ));
-#else
-    fp = SwCreateDialogFactory;
-#endif
-
-    if ( fp )
-        return fp();
-    return nullptr;
+    auto xService = css::text::DialogFactoryService::create(comphelper::getProcessComponentContext());
+    assert(xService);
+    // get a factory instance
+    SwAbstractDialogFactory* pFactory = reinterpret_cast<SwAbstractDialogFactory*>(xService->getSomething({}));
+    assert(pFactory);
+    return pFactory;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

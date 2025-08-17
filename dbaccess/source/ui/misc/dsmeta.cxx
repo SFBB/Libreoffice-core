@@ -21,6 +21,7 @@
 #include <connectivity/DriversConfig.hxx>
 #include <dsntypes.hxx>
 #include <comphelper/processfactory.hxx>
+#include <osl/diagnose.h>
 
 #include <map>
 #include <utility>
@@ -28,7 +29,6 @@
 namespace dbaui
 {
 
-    using namespace dbaccess;
     using namespace ::com::sun::star;
 
     namespace {
@@ -57,28 +57,28 @@ namespace dbaui
     };
 
     // global tables
-    const FeatureMapping s_aMappings[] = {
-        { DSID_AUTORETRIEVEENABLED,     "GeneratedValues" },
-        { DSID_AUTOINCREMENTVALUE,      "GeneratedValues" },
-        { DSID_AUTORETRIEVEVALUE,       "GeneratedValues" },
-        { DSID_SQL92CHECK,              "UseSQL92NamingConstraints" },
-        { DSID_APPEND_TABLE_ALIAS,      "AppendTableAliasInSelect" },
-        { DSID_AS_BEFORE_CORRNAME,      "UseKeywordAsBeforeAlias" },
-        { DSID_ENABLEOUTERJOIN,         "UseBracketedOuterJoinSyntax" },
-        { DSID_IGNOREDRIVER_PRIV,       "IgnoreDriverPrivileges" },
-        { DSID_PARAMETERNAMESUBST,      "ParameterNameSubstitution" },
-        { DSID_SUPPRESSVERSIONCL,       "DisplayVersionColumns" },
-        { DSID_CATALOG,                 "UseCatalogInSelect" },
-        { DSID_SCHEMA,                  "UseSchemaInSelect" },
-        { DSID_INDEXAPPENDIX,           "UseIndexDirectionKeyword" },
-        { DSID_DOSLINEENDS,             "UseDOSLineEnds" },
-        { DSID_BOOLEANCOMPARISON,       "BooleanComparisonMode" },
-        { DSID_CHECK_REQUIRED_FIELDS,   "FormsCheckRequiredFields" },
-        { DSID_IGNORECURRENCY,          "IgnoreCurrency" },
-        { DSID_ESCAPE_DATETIME,         "EscapeDateTime" },
-        { DSID_PRIMARY_KEY_SUPPORT,     "PrimaryKeySupport" },
-        { DSID_RESPECTRESULTSETTYPE,    "RespectDriverResultSetType" },
-        { DSID_MAX_ROW_SCAN,            "MaxRowScan" },
+    constexpr FeatureMapping s_aMappings[] = {
+        { DSID_AUTORETRIEVEENABLED,     u"GeneratedValues"_ustr },
+        { DSID_AUTOINCREMENTVALUE,      u"GeneratedValues"_ustr },
+        { DSID_AUTORETRIEVEVALUE,       u"GeneratedValues"_ustr },
+        { DSID_SQL92CHECK,              u"UseSQL92NamingConstraints"_ustr },
+        { DSID_APPEND_TABLE_ALIAS,      u"AppendTableAliasInSelect"_ustr },
+        { DSID_AS_BEFORE_CORRNAME,      u"UseKeywordAsBeforeAlias"_ustr },
+        { DSID_ENABLEOUTERJOIN,         u"UseBracketedOuterJoinSyntax"_ustr },
+        { DSID_IGNOREDRIVER_PRIV,       u"IgnoreDriverPrivileges"_ustr },
+        { DSID_PARAMETERNAMESUBST,      u"ParameterNameSubstitution"_ustr },
+        { DSID_SUPPRESSVERSIONCL,       u"DisplayVersionColumns"_ustr },
+        { DSID_CATALOG,                 u"UseCatalogInSelect"_ustr },
+        { DSID_SCHEMA,                  u"UseSchemaInSelect"_ustr },
+        { DSID_INDEXAPPENDIX,           u"UseIndexDirectionKeyword"_ustr },
+        { DSID_DOSLINEENDS,             u"UseDOSLineEnds"_ustr },
+        { DSID_BOOLEANCOMPARISON,       u"BooleanComparisonMode"_ustr },
+        { DSID_CHECK_REQUIRED_FIELDS,   u"FormsCheckRequiredFields"_ustr },
+        { DSID_IGNORECURRENCY,          u"IgnoreCurrency"_ustr },
+        { DSID_ESCAPE_DATETIME,         u"EscapeDateTime"_ustr },
+        { DSID_PRIMARY_KEY_SUPPORT,     u"PrimaryKeySupport"_ustr },
+        { DSID_RESPECTRESULTSETTYPE,    u"RespectDriverResultSetType"_ustr },
+        { DSID_MAX_ROW_SCAN,            u"MaxRowScan"_ustr },
     };
     }
 
@@ -101,7 +101,7 @@ namespace dbaui
                         aCurrentSet.put( rFeatureMapping.nItemID );
                 }
 
-                tmp[ pattern ] = aCurrentSet;
+                tmp[pattern] = std::move(aCurrentSet);
             }
             return tmp;
         }();
@@ -116,23 +116,20 @@ namespace dbaui
         {
             std::map< OUString, FeatureSupport > tmp;
             ::connectivity::DriversConfig aDriverConfig(::comphelper::getProcessComponentContext());
-            const uno::Sequence< OUString > aURLs = aDriverConfig.getURLs();
-            const OUString* pIter = aURLs.getConstArray();
-            const OUString* pEnd = pIter + aURLs.getLength();
-            for(;pIter != pEnd;++pIter)
+            for (auto& url : aDriverConfig.getURLs())
             {
                 FeatureSupport aInit( AuthNone );
-                const ::comphelper::NamedValueCollection& aMetaData = aDriverConfig.getMetaData(*pIter);
-                if ( aMetaData.has("Authentication") )
+                const ::comphelper::NamedValueCollection& aMetaData = aDriverConfig.getMetaData(url);
+                if ( aMetaData.has(u"Authentication"_ustr) )
                 {
                     OUString sAuth;
-                    aMetaData.get("Authentication") >>= sAuth;
+                    aMetaData.get(u"Authentication"_ustr) >>= sAuth;
                     if ( sAuth == "UserPassword" )
                         aInit = FeatureSupport(AuthUserPwd);
                     else if ( sAuth == "Password" )
                         aInit = FeatureSupport(AuthPwd);
                 }
-                tmp.insert(std::make_pair(*pIter,aInit));
+                tmp.insert(std::make_pair(url, aInit));
             }
             return tmp;
         }();

@@ -36,52 +36,77 @@ XColorEntry::XColorEntry(const Color& rColor, const OUString& rName)
 {
 }
 
+std::unique_ptr<XPropertyEntry> XColorEntry::Clone() const
+{
+    return std::make_unique<XColorEntry>(m_aColor, GetName());
+}
+
 XLineEndEntry::XLineEndEntry(basegfx::B2DPolyPolygon _aB2DPolyPolygon, const OUString& rName)
 :   XPropertyEntry(rName),
-    aB2DPolyPolygon(std::move(_aB2DPolyPolygon))
+    m_aB2DPolyPolygon(std::move(_aB2DPolyPolygon))
 {
 }
 
 XLineEndEntry::XLineEndEntry(const XLineEndEntry& rOther)
 :   XPropertyEntry(rOther),
-    aB2DPolyPolygon(rOther.aB2DPolyPolygon)
+    m_aB2DPolyPolygon(rOther.m_aB2DPolyPolygon)
 {
+}
+
+std::unique_ptr<XPropertyEntry> XLineEndEntry::Clone() const
+{
+    return std::make_unique<XLineEndEntry>(*this);
 }
 
 XDashEntry::XDashEntry(const XDash& rDash, const OUString& rName)
 :   XPropertyEntry(rName),
-    aDash(rDash)
+    m_aDash(rDash)
 {
 }
 
 XDashEntry::XDashEntry(const XDashEntry& rOther)
 :   XPropertyEntry(rOther),
-aDash(rOther.aDash)
+m_aDash(rOther.m_aDash)
 {
+}
+
+std::unique_ptr<XPropertyEntry> XDashEntry::Clone() const
+{
+    return std::make_unique<XDashEntry>(*this);
 }
 
 XHatchEntry::XHatchEntry(const XHatch& rHatch, const OUString& rName)
 :   XPropertyEntry(rName),
-    aHatch(rHatch)
+    m_aHatch(rHatch)
 {
 }
 
 XHatchEntry::XHatchEntry(const XHatchEntry& rOther)
 :   XPropertyEntry(rOther),
-    aHatch(rOther.aHatch)
+    m_aHatch(rOther.m_aHatch)
 {
+}
+
+std::unique_ptr<XPropertyEntry> XHatchEntry::Clone() const
+{
+    return std::make_unique<XHatchEntry>(*this);
 }
 
 XGradientEntry::XGradientEntry(const basegfx::BGradient& rGradient, const OUString& rName)
 :   XPropertyEntry(rName),
-    aGradient(rGradient)
+    m_aGradient(rGradient)
 {
 }
 
 XGradientEntry::XGradientEntry(const XGradientEntry& rOther)
 :   XPropertyEntry(rOther),
-    aGradient(rOther.aGradient)
+    m_aGradient(rOther.m_aGradient)
 {
+}
+
+std::unique_ptr<XPropertyEntry> XGradientEntry::Clone() const
+{
+    return std::make_unique<XGradientEntry>(*this);
 }
 
 XBitmapEntry::XBitmapEntry(const GraphicObject& rGraphicObject, const OUString& rName)
@@ -96,15 +121,21 @@ XBitmapEntry::XBitmapEntry(const XBitmapEntry& rOther)
 {
 }
 
+std::unique_ptr<XPropertyEntry> XBitmapEntry::Clone() const
+{
+    return std::make_unique<XBitmapEntry>(*this);
+}
+
 XPropertyList::XPropertyList(
     XPropertyListType type,
     OUString aPath, OUString aReferer
 ) : meType           ( type ),
-    maName           ( "standard" ),
+    maName           ( u"standard"_ustr ),
     maPath           (std::move( aPath )),
     maReferer        (std::move( aReferer )),
     mbListDirty      ( true ),
     mbEmbedInDocument( false )
+    , mbNeedsExportableList(false)
 {
 //    fprintf (stderr, "Create type %d count %d\n", (int)meType, count++);
 }
@@ -158,9 +189,9 @@ tools::Long XPropertyList::GetIndex(std::u16string_view rName) const
     return -1;
 }
 
-BitmapEx XPropertyList::GetUiBitmap( tools::Long nIndex ) const
+Bitmap XPropertyList::GetUiBitmap( tools::Long nIndex ) const
 {
-    BitmapEx aRetval;
+    Bitmap aRetval;
     if (!isValidIdx(nIndex))
         return aRetval;
 
@@ -182,6 +213,9 @@ void XPropertyList::Insert(std::unique_ptr<XPropertyEntry> pEntry, tools::Long n
         assert(!"empty XPropertyEntry not allowed in XPropertyList");
         return;
     }
+
+    if (!pEntry->GetSavingAllowed())
+        mbNeedsExportableList = true;
 
     if (isValidIdx(nIndex)) {
         maList.insert( maList.begin()+nIndex, std::move(pEntry) );
@@ -302,8 +336,27 @@ bool XPropertyList::Save()
     if( aURL.getExtension().isEmpty() )
         aURL.setExtension( GetDefaultExt() );
 
+    XPropertyListRef rExportableList = CreatePropertyList(meType, maPath, "");
+    if (mbNeedsExportableList)
+    {
+        rExportableList->SetName(maName);
+        rExportableList->SetDirty(mbListDirty);
+        bool bHasUnsaveableEntry = false;
+        for (const std::unique_ptr<XPropertyEntry>& rEntry : maList)
+        {
+            if (rEntry->GetSavingAllowed())
+                rExportableList->Insert(rEntry->Clone());
+            else
+                bHasUnsaveableEntry = true;
+        }
+        if (!bHasUnsaveableEntry)
+            mbNeedsExportableList = false;
+    }
+    css::uno::Reference<css::container::XNameContainer> xExportableNameContainer
+        = mbNeedsExportableList ? rExportableList->createInstance() : createInstance();
+
     return SvxXMLXTableExportComponent::save( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ),
-                                              createInstance(),
+                                              xExportableNameContainer,
                                               uno::Reference< embed::XStorage >(), nullptr );
 }
 
@@ -361,7 +414,7 @@ XPropertyList::CreatePropertyListFromURL( XPropertyListType t,
     aPathURL.removeFinalSlash();
 
     XPropertyListRef pList = XPropertyList::CreatePropertyList(
-        t, aPathURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), "" );
+        t, aPathURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), u""_ustr );
     pList->SetName( aURL.getName() );
 
     return pList;
@@ -369,15 +422,15 @@ XPropertyList::CreatePropertyListFromURL( XPropertyListType t,
 
 struct {
     XPropertyListType t;
-    const char *pExt;
-} const pExtnMap[] = {
-    { XPropertyListType::Color,    "soc" },
-    { XPropertyListType::LineEnd, "soe" },
-    { XPropertyListType::Dash,     "sod" },
-    { XPropertyListType::Hatch,    "soh" },
-    { XPropertyListType::Gradient, "sog" },
-    { XPropertyListType::Bitmap,   "sob" },
-    { XPropertyListType::Pattern,  "sop"}
+    OUString aExt;
+} constexpr pExtnMap[] = {
+    { XPropertyListType::Color,    u"soc"_ustr },
+    { XPropertyListType::LineEnd, u"soe"_ustr },
+    { XPropertyListType::Dash,     u"sod"_ustr },
+    { XPropertyListType::Hatch,    u"soh"_ustr },
+    { XPropertyListType::Gradient, u"sog"_ustr },
+    { XPropertyListType::Bitmap,   u"sob"_ustr },
+    { XPropertyListType::Pattern,  u"sop"_ustr}
 };
 
 OUString XPropertyList::GetDefaultExt( XPropertyListType t )
@@ -385,7 +438,7 @@ OUString XPropertyList::GetDefaultExt( XPropertyListType t )
     for (const auto & i : pExtnMap)
     {
         if( i.t == t )
-            return OUString::createFromAscii( i.pExt );
+            return i.aExt;
     }
     return OUString();
 }

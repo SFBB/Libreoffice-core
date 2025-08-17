@@ -19,6 +19,7 @@
 
 #include <sal/config.h>
 
+#include <comphelper/configuration.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <unotools/eventcfg.hxx>
 #include <unotools/configmgr.hxx>
@@ -37,7 +38,6 @@
 #include <unordered_map>
 
 using namespace ::utl;
-using namespace ::osl;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 
@@ -45,36 +45,36 @@ using namespace ::com::sun::star;
 #define SETNODE_BINDINGS "Bindings"
 #define PROPERTYNAME_BINDINGURL "BindingURL"
 
-static o3tl::enumarray<GlobalEventId, const char*> pEventAsciiNames =
+constexpr o3tl::enumarray<GlobalEventId, OUString> pEventAsciiNames =
 {
-"OnStartApp",
-"OnCloseApp",
-"OnCreate",
-"OnNew",
-"OnLoadFinished",
-"OnLoad",
-"OnPrepareUnload",
-"OnUnload",
-"OnSave",
-"OnSaveDone",
-"OnSaveFailed",
-"OnSaveAs",
-"OnSaveAsDone",
-"OnSaveAsFailed",
-"OnCopyTo",
-"OnCopyToDone",
-"OnCopyToFailed",
-"OnFocus",
-"OnUnfocus",
-"OnPrint",
-"OnViewCreated",
-"OnPrepareViewClosing",
-"OnViewClosed",
-"OnModifyChanged",
-"OnTitleChanged",
-"OnVisAreaChanged",
-"OnModeChanged",
-"OnStorageChanged"
+u"OnStartApp"_ustr,
+u"OnCloseApp"_ustr,
+u"OnCreate"_ustr,
+u"OnNew"_ustr,
+u"OnLoadFinished"_ustr,
+u"OnLoad"_ustr,
+u"OnPrepareUnload"_ustr,
+u"OnUnload"_ustr,
+u"OnSave"_ustr,
+u"OnSaveDone"_ustr,
+u"OnSaveFailed"_ustr,
+u"OnSaveAs"_ustr,
+u"OnSaveAsDone"_ustr,
+u"OnSaveAsFailed"_ustr,
+u"OnCopyTo"_ustr,
+u"OnCopyToDone"_ustr,
+u"OnCopyToFailed"_ustr,
+u"OnFocus"_ustr,
+u"OnUnfocus"_ustr,
+u"OnPrint"_ustr,
+u"OnViewCreated"_ustr,
+u"OnPrepareViewClosing"_ustr,
+u"OnViewClosed"_ustr,
+u"OnModifyChanged"_ustr,
+u"OnTitleChanged"_ustr,
+u"OnVisAreaChanged"_ustr,
+u"OnModeChanged"_ustr,
+u"OnStorageChanged"_ustr
 };
 
 typedef std::unordered_map< OUString, OUString > EventBindingHash;
@@ -124,18 +124,18 @@ public:
 
 
 GlobalEventConfig_Impl::GlobalEventConfig_Impl()
-    :   ConfigItem( "Office.Events/ApplicationEvents", ConfigItemMode::NONE )
+    :   ConfigItem( u"Office.Events/ApplicationEvents"_ustr, ConfigItemMode::NONE )
 {
     // the supported event names
     for (const GlobalEventId id : o3tl::enumrange<GlobalEventId>())
-        m_supportedEvents[id] = OUString::createFromAscii( pEventAsciiNames[id] );
+        m_supportedEvents[id] = pEventAsciiNames[id];
 
     initBindingInfo();
 
 /*TODO: Not used in the moment! see Notify() ...
     // Enable notification mechanism of our baseclass.
     // We need it to get information about changes outside these class on our used configuration keys! */
-    Sequence<OUString> aNotifySeq { "Events" };
+    Sequence<OUString> aNotifySeq { u"Events"_ustr };
     EnableNotification( aNotifySeq, true );
 }
 
@@ -167,7 +167,7 @@ void GlobalEventConfig_Impl::ImplCommit()
     //DF need to check it this is correct??
     SAL_INFO("unotools", "In GlobalEventConfig_Impl::ImplCommit");
     // clear the existing nodes
-    ClearNodeSet( SETNODE_BINDINGS );
+    ClearNodeSet( u"" SETNODE_BINDINGS ""_ustr );
     OUString sNode;
     //step through the list of events
     for(const auto& rEntry : m_eventBindingHash)
@@ -180,7 +180,7 @@ void GlobalEventConfig_Impl::ImplCommit()
                 "']" PATHDELIMITER PROPERTYNAME_BINDINGURL;
         SAL_INFO("unotools", "writing binding for: " << sNode);
         //write the data to the registry
-        SetSetProperties(SETNODE_BINDINGS,{ comphelper::makePropertyValue(sNode, rEntry.second) });
+        SetSetProperties(u"" SETNODE_BINDINGS ""_ustr,{ comphelper::makePropertyValue(sNode, rEntry.second) });
     }
 }
 
@@ -189,10 +189,10 @@ void GlobalEventConfig_Impl::ImplCommit()
 void GlobalEventConfig_Impl::initBindingInfo()
 {
     // Get ALL names of current existing list items in configuration!
-    const Sequence< OUString > lEventNames = GetNodeNames( SETNODE_BINDINGS, utl::ConfigNameFormat::LocalPath );
+    const Sequence< OUString > lEventNames = GetNodeNames( u"" SETNODE_BINDINGS ""_ustr, utl::ConfigNameFormat::LocalPath );
 
-    OUString aSetNode = SETNODE_BINDINGS PATHDELIMITER;
-    OUString aCommandKey = PATHDELIMITER PROPERTYNAME_BINDINGURL;
+    OUString aSetNode = u"" SETNODE_BINDINGS PATHDELIMITER ""_ustr;
+    OUString aCommandKey = u"" PATHDELIMITER PROPERTYNAME_BINDINGURL ""_ustr;
 
     // Expand all keys
     Sequence< OUString > lMacros(1);
@@ -228,7 +228,7 @@ void GlobalEventConfig_Impl::replaceByName( const OUString& aName, const Any& aE
                 Reference< XInterface > (), 2);
     }
     OUString macroURL;
-    for( const auto& rProp : std::as_const(props) )
+    for (const auto& rProp : props)
     {
         if ( rProp.Name == "Script" )
             rProp.Value >>= macroURL;
@@ -369,10 +369,10 @@ sal_Bool SAL_CALL GlobalEventConfig::hasElements(  )
     return m_pImpl->hasElements( );
 }
 
-OUString GlobalEventConfig::GetEventName( GlobalEventId nIndex )
+const OUString & GlobalEventConfig::GetEventName( GlobalEventId nIndex )
 {
-    if (utl::ConfigManager::IsFuzzing())
-        return OUString();
+    if (comphelper::IsFuzzing())
+        return EMPTY_OUSTRING;
     static rtl::Reference<GlobalEventConfig> createImpl(new GlobalEventConfig);
     return GlobalEventConfig::m_pImpl->GetEventName( nIndex );
 }

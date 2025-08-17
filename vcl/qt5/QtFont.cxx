@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -20,13 +20,14 @@
 #include <sal/config.h>
 
 #include <QtFont.hxx>
-#include <QtTools.hxx>
+
+#include <vcl/qt/QtUtils.hxx>
 
 #include <QtGui/QFont>
 #include <QtGui/QRawFont>
 #include <QtGui/QPainterPath>
 
-static inline void applyWeight(QtFont& rFont, FontWeight eWeight)
+void QtFont::applyWeight(QFont& rFont, FontWeight eWeight)
 {
     switch (eWeight)
     {
@@ -64,7 +65,7 @@ static inline void applyWeight(QtFont& rFont, FontWeight eWeight)
     }
 }
 
-static inline void applyStretch(QtFont& rFont, FontWidth eWidthType)
+void QtFont::applyStretch(QFont& rFont, FontWidth eWidthType)
 {
     switch (eWidthType)
     {
@@ -103,7 +104,7 @@ static inline void applyStretch(QtFont& rFont, FontWidth eWidthType)
     }
 }
 
-static inline void applyStyle(QtFont& rFont, FontItalic eItalic)
+void QtFont::applyStyle(QFont& rFont, FontItalic eItalic)
 {
     switch (eItalic)
     {
@@ -187,4 +188,4 @@ bool QtFont::GetGlyphOutline(sal_GlyphId nId, basegfx::B2DPolyPolygon& rB2DPolyP
     return true;
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

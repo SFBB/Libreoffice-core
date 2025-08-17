@@ -33,16 +33,17 @@ private:
     attribute::SdrLineFillEffectsTextAttribute maSdrLFSTAttribute;
     GraphicObject maGraphicObject;
     GraphicAttr maGraphicAttr;
+    bool mbPlaceholderImage = false;
 
     // local decomposition.
-    virtual void
-    create2DDecomposition(Primitive2DContainer& rContainer,
-                          const geometry::ViewInformation2D& aViewInformation) const override;
+    virtual Primitive2DReference
+    create2DDecomposition(const geometry::ViewInformation2D& aViewInformation) const override;
 
 public:
     SdrGrafPrimitive2D(::basegfx::B2DHomMatrix aTransform,
                        const attribute::SdrLineFillEffectsTextAttribute& rSdrLFSTAttribute,
-                       const GraphicObject& rGraphicObject, const GraphicAttr& rGraphicAttr);
+                       const GraphicObject& rGraphicObject, const GraphicAttr& rGraphicAttr,
+                       bool bPlaceholderImage = false);
 
     // data access
     const ::basegfx::B2DHomMatrix& getTransform() const { return maTransform; }

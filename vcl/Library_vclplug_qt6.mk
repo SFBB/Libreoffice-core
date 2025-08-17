@@ -51,6 +51,7 @@ $(eval $(call gb_Library_use_libraries,vclplug_qt6,\
     cppu \
     sal \
     salhelper \
+    xmlreader \
 ))
 
 $(eval $(call gb_Library_use_externals,vclplug_qt6,\
@@ -78,19 +79,66 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_qt6,\
     vcl/qt6/QtAccessibleRegistry \
     vcl/qt6/QtAccessibleWidget \
     vcl/qt6/QtBitmap \
+    vcl/qt6/QtBuilder \
     vcl/qt6/QtClipboard \
+    vcl/qt6/QtCustomStyle \
     vcl/qt6/QtData \
+    vcl/qt6/QtDoubleSpinBox \
     vcl/qt6/QtDragAndDrop \
+    vcl/qt6/QtExpander \
     vcl/qt6/QtFilePicker \
     vcl/qt6/QtFont \
     vcl/qt6/QtFontFace \
     vcl/qt6/QtFrame \
     vcl/qt6/QtGraphics \
+    vcl/qt6/QtGraphicsBase \
     vcl/qt6/QtGraphics_Controls \
     vcl/qt6/QtGraphics_GDI \
     vcl/qt6/QtGraphics_Text \
+    vcl/qt6/QtHyperlinkLabel \
     vcl/qt6/QtInstance \
     vcl/qt6/QtInstance_Print \
+    vcl/qt6/QtInstanceAssistant \
+    vcl/qt6/QtInstanceBox \
+    vcl/qt6/QtInstanceBuilder \
+    vcl/qt6/QtInstanceButton \
+    vcl/qt6/QtInstanceCalendar \
+    vcl/qt6/QtInstanceCheckButton \
+    vcl/qt6/QtInstanceColorChooserDialog \
+    vcl/qt6/QtInstanceComboBox \
+    vcl/qt6/QtInstanceContainer \
+    vcl/qt6/QtInstanceDialog \
+    vcl/qt6/QtInstanceDrawingArea \
+    vcl/qt6/QtInstanceEntry \
+    vcl/qt6/QtInstanceEntryTreeView \
+    vcl/qt6/QtInstanceExpander \
+    vcl/qt6/QtInstanceFormattedSpinButton \
+    vcl/qt6/QtInstanceFrame \
+    vcl/qt6/QtInstanceGrid \
+    vcl/qt6/QtInstanceIconView \
+    vcl/qt6/QtInstanceImage \
+    vcl/qt6/QtInstanceLabel \
+    vcl/qt6/QtInstanceLevelBar \
+    vcl/qt6/QtInstanceLinkButton \
+    vcl/qt6/QtInstanceMenu \
+    vcl/qt6/QtInstanceMenuButton \
+    vcl/qt6/QtInstanceMessageDialog \
+    vcl/qt6/QtInstanceNotebook \
+    vcl/qt6/QtInstancePopover \
+    vcl/qt6/QtInstanceProgressBar \
+    vcl/qt6/QtInstanceRadioButton \
+    vcl/qt6/QtInstanceScale \
+    vcl/qt6/QtInstanceScrollbar \
+    vcl/qt6/QtInstanceScrolledWindow \
+    vcl/qt6/QtInstanceSpinButton \
+    vcl/qt6/QtInstanceSpinner \
+    vcl/qt6/QtInstanceTextView \
+    vcl/qt6/QtInstanceToggleButton \
+    vcl/qt6/QtInstanceToolbar \
+    vcl/qt6/QtInstanceTreeIter \
+    vcl/qt6/QtInstanceTreeView \
+    vcl/qt6/QtInstanceWidget \
+    vcl/qt6/QtInstanceWindow \
     vcl/qt6/QtMainWindow \
     vcl/qt6/QtMenu \
     vcl/qt6/QtObject \
@@ -106,6 +154,7 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_qt6,\
     vcl/qt6/QtVirtualDevice \
     vcl/qt6/QtWidget \
     vcl/qt6/QtXAccessible \
+    vcl/qt6/QtXWindow \
     $(if $(USING_X11), \
         vcl/qt6/QtX11Support \
     ) \

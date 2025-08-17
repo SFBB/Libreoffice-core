@@ -16,12 +16,6 @@
 #include "ChartSidebarSelectionListener.hxx"
 #include "ChartColorWrapper.hxx"
 
-class XLineCapItem;
-class XLineDashItem;
-class XLineEndItem;
-class XLineJointItem;
-class XLineStartItem;
-class XLineStyleItem;
 class XLineTransparenceItem;
 class XLineWidthItem;
 
@@ -62,8 +56,6 @@ public:
 protected:
 
     virtual void setLineTransparency(const XLineTransparenceItem& rItem) override;
-    virtual void setLineJoint(const XLineJointItem* pItem) override;
-    virtual void setLineCap(const XLineCapItem* pItem) override;
 
     virtual void updateLineWidth(bool bDisabled, bool bSetOrDefault, const SfxPoolItem* pItem) override;
 

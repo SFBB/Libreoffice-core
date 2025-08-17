@@ -93,7 +93,7 @@ Sequence< InputSource > lclGetCoreStreams(const Reference< XStorage >& rxSource)
         aCoreStreams = lclGetRelatedStreams(rxSource, CREATE_OFFICEDOC_RELATION_TYPE_STRICT("metadata/core-properties"));
     // MS Office seems to have a bug, so we have to do similar handling
     if (!aCoreStreams.hasElements())
-        aCoreStreams = lclGetRelatedStreams(rxSource, "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties");
+        aCoreStreams = lclGetRelatedStreams(rxSource, u"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"_ustr);
 
     return aCoreStreams;
 }
@@ -129,7 +129,7 @@ DocumentPropertiesImport::DocumentPropertiesImport( const Reference< XComponentC
 // XServiceInfo
 OUString SAL_CALL DocumentPropertiesImport::getImplementationName()
 {
-    return "com.sun.star.comp.oox.docprop.DocumentPropertiesImporter";
+    return u"com.sun.star.comp.oox.docprop.DocumentPropertiesImporter"_ustr;
 }
 
 sal_Bool SAL_CALL DocumentPropertiesImport::supportsService( const OUString& rServiceName )
@@ -139,7 +139,7 @@ sal_Bool SAL_CALL DocumentPropertiesImport::supportsService( const OUString& rSe
 
 Sequence< OUString > SAL_CALL DocumentPropertiesImport::getSupportedServiceNames()
 {
-    Sequence<OUString> aServices { "com.sun.star.document.OOXMLDocumentPropertiesImporter" };
+    Sequence<OUString> aServices { u"com.sun.star.document.OOXMLDocumentPropertiesImporter"_ustr };
     return aServices;
 }
 
@@ -163,7 +163,7 @@ void SAL_CALL DocumentPropertiesImport::importProperties(
         return;
 
     if( aCoreStreams.getLength() > 1 )
-        throw IOException( "Unexpected core properties stream!" );
+        throw IOException( u"Unexpected core properties stream!"_ustr );
 
     ::oox::core::FastParser aParser;
     aParser.registerNamespace( NMSP_packageMetaCorePr );
@@ -176,13 +176,13 @@ void SAL_CALL DocumentPropertiesImport::importProperties(
 
     if( aCoreStreams.hasElements() )
         aParser.parseStream( aCoreStreams[ 0 ], true );
-    for( const auto& rExtStream : std::as_const(aExtStreams) )
+    for (const auto& rExtStream : aExtStreams)
         aParser.parseStream( rExtStream, true );
-    for( const auto& rCustomStream : std::as_const(aCustomStreams) )
+    for (const auto& rCustomStream : aCustomStreams)
         aParser.parseStream( rCustomStream, true );
 }
 
-Reference < com::sun::star::io::XInputStream > SAL_CALL DocumentPropertiesImport::getCorePropertiesStream(
+Reference < css::io::XInputStream > SAL_CALL DocumentPropertiesImport::getCorePropertiesStream(
     const Reference< XStorage >& rxSource)
 {
     Sequence< InputSource > aCoreStreams = lclGetCoreStreams(rxSource);
@@ -192,7 +192,7 @@ Reference < com::sun::star::io::XInputStream > SAL_CALL DocumentPropertiesImport
     return aCoreStreams[0].aInputStream;
 }
 
-Reference < com::sun::star::io::XInputStream > SAL_CALL DocumentPropertiesImport::getExtendedPropertiesStream(
+Reference < css::io::XInputStream > SAL_CALL DocumentPropertiesImport::getExtendedPropertiesStream(
     const Reference< XStorage >& rxSource)
 {
     Sequence< InputSource > aExtStreams = lclGetExtStreams(rxSource);
@@ -202,7 +202,7 @@ Reference < com::sun::star::io::XInputStream > SAL_CALL DocumentPropertiesImport
     return aExtStreams[0].aInputStream;
 }
 
-css::uno::Sequence< css::uno::Reference< com::sun::star::io::XInputStream > > SAL_CALL DocumentPropertiesImport::getCustomPropertiesStreams(
+css::uno::Sequence< css::uno::Reference< css::io::XInputStream > > SAL_CALL DocumentPropertiesImport::getCustomPropertiesStreams(
     const Reference< XStorage >& rxSource)
 {
     Sequence <InputSource> aExtStreams = lclGetCustomStreams(rxSource);

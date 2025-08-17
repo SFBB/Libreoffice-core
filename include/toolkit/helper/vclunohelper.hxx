@@ -24,6 +24,7 @@
 #include <com/sun/star/uno/Reference.h>
 
 #include <com/sun/star/awt/MouseEvent.hpp>
+#include <com/sun/star/awt/Rectangle.hpp>
 
 #include <vcl/bitmapex.hxx>
 #include <vcl/font.hxx>
@@ -31,7 +32,8 @@
 #include <tools/mapunit.hxx>
 #include <tools/fldunit.hxx>
 #include <tools/poly.hxx>
-
+#include <toolkit/controls/unocontrolcontainer.hxx>
+#include <rtl/ref.hxx>
 
 namespace com::sun::star::uno { template <typename > class Sequence; }
 
@@ -50,8 +52,6 @@ namespace com::sun::star::awt {
     class XToolkit;
     class XFont;
     class XControlContainer;
-    struct Size;
-    struct Point;
     struct SimpleFontMetric;
     struct FontDescriptor;
     struct Rectangle;
@@ -73,12 +73,11 @@ public:
     static css::uno::Reference< css::awt::XToolkit>   CreateToolkit();
 
     // Bitmap
-    static BitmapEx                                                         GetBitmap( const css::uno::Reference< css::awt::XBitmap>& rxBitmap );
-    static css::uno::Reference< css::awt::XBitmap>    CreateBitmap( const BitmapEx& rBitmap );
+    static Bitmap                                     GetBitmap( const css::uno::Reference< css::awt::XBitmap>& rxBitmap );
+    static css::uno::Reference< css::awt::XBitmap>    CreateBitmap( const Bitmap& rBitmap );
 
     // Window
     static vcl::Window*                               GetWindow( const css::uno::Reference< css::awt::XWindow>& rxWindow );
-    static vcl::Window*                               GetWindow( const css::uno::Reference< css::awt::XWindow2>& rxWindow2 );
     static vcl::Window*                               GetWindow( const css::uno::Reference< css::awt::XWindowPeer>& rxWindowPeer );
     static css::uno::Reference< css::awt::XWindow>    GetInterface( vcl::Window* pWindow );
 
@@ -104,7 +103,7 @@ public:
     // Rectangle
     static bool                                     IsZero(const css::awt::Rectangle& rRect);
 
-    static css::uno::Reference< css::awt::XControlContainer>  CreateControlContainer( vcl::Window* pWindow );
+    static rtl::Reference< UnoControlContainer>  CreateControlContainer( vcl::Window* pWindow );
 
     // MapUnits
     static MapUnit                                  UnoEmbed2VCLMapUnit( sal_Int32 nUnoEmbedMapUnit );
@@ -121,15 +120,6 @@ public:
 
     /// @throws css::lang::IllegalArgumentException
     static MapUnit /* MapModeUnit */ ConvertToMapModeUnit(sal_Int16 /* com.sun.star.util.MeasureUnit.* */ _nMeasureUnit);
-
-    static ::Size /* VCLSize */ ConvertToVCLSize(css::awt::Size const& _aSize);
-    static css::awt::Size ConvertToAWTSize(::Size /* VCLSize */ const& _aSize);
-
-    static ::Point /* VCLPoint */ ConvertToVCLPoint(css::awt::Point const& _aPoint);
-    static css::awt::Point ConvertToAWTPoint(::Point /* VCLPoint */ const& _aPoint);
-
-    static ::tools::Rectangle ConvertToVCLRect( css::awt::Rectangle const & _rRect );
-    static css::awt::Rectangle ConvertToAWTRect( ::tools::Rectangle const & _rRect );
 
     static css::awt::MouseEvent
         createMouseEvent(

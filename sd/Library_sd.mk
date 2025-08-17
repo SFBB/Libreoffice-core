@@ -86,6 +86,7 @@ $(eval $(call gb_Library_use_libraries,sd,\
 	sal \
 	salhelper \
 	sax \
+	xo \
 	sb \
 	sfx \
 	sot \
@@ -93,6 +94,7 @@ $(eval $(call gb_Library_use_libraries,sd,\
 	svt \
 	svxcore \
 	svx \
+	textconversiondlgs \
 	tk \
 	tl \
 	ucbhelper \
@@ -153,12 +155,12 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/core/CustomAnimationEffect \
 	sd/source/core/CustomAnimationPreset \
 	sd/source/core/EffectMigration \
+	sd/source/core/ModelTraverser \
 	sd/source/core/PageListWatcher \
 	sd/source/core/TransitionPreset \
 	sd/source/core/ThemeColorChanger \
 	sd/source/core/anminfo \
 	sd/source/core/annotations/Annotation \
-	sd/source/core/annotations/AnnotationEnumeration \
 	sd/source/core/cusshow \
 	sd/source/core/drawdoc \
 	sd/source/core/drawdoc2 \
@@ -166,7 +168,6 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/core/drawdoc4 \
 	sd/source/core/drawdoc_animations \
 	sd/source/core/pglink \
-	sd/source/core/sdiocmpt \
 	sd/source/core/sdpage \
 	sd/source/core/sdpage2 \
 	sd/source/core/sdpage_animations \
@@ -174,7 +175,6 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/core/stlfamily \
 	sd/source/core/stlpool \
 	sd/source/core/stlsheet \
-	sd/source/core/text/textapi \
 	sd/source/core/typemap \
 	sd/source/core/undo/undofactory \
 	sd/source/core/undo/undomanager \
@@ -215,7 +215,7 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/animations/SlideTransitionPane \
 	sd/source/ui/animations/motionpathtag \
 	sd/source/ui/annotations/annotationmanager \
-	sd/source/ui/annotations/annotationtag \
+	sd/source/ui/annotations/AnnotationPopup \
 	sd/source/ui/annotations/annotationwindow \
 	sd/source/ui/app/optsitem \
 	sd/source/ui/app/sddll \
@@ -244,6 +244,7 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/dlg/navigatr \
 	sd/source/ui/dlg/sdabstdlg \
 	sd/source/ui/dlg/sdtreelb \
+	sd/source/ui/dlg/SelectLayerDlg \
 	sd/source/ui/dlg/titledockwin \
 	sd/source/ui/dlg/unchss \
 	sd/source/ui/dlg/UndoThemeChange \
@@ -279,6 +280,7 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/framework/module/DrawModule \
 	sd/source/ui/framework/module/ImpressModule \
 	sd/source/ui/framework/module/ModuleController \
+	sd/source/ui/framework/module/NotesPaneModule \
 	sd/source/ui/framework/module/PresentationModule \
 	sd/source/ui/framework/module/ShellStackGuard \
 	sd/source/ui/framework/module/SlideSorterModule \
@@ -362,7 +364,6 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/sidebar/MasterPagesSelector \
 	sd/source/ui/sidebar/NavigatorWrapper \
 	sd/source/ui/sidebar/PanelFactory \
-	sd/source/ui/sidebar/PreviewValueSet \
 	sd/source/ui/sidebar/RecentlyUsedMasterPages \
 	sd/source/ui/sidebar/RecentMasterPagesSelector \
 	sd/source/ui/sidebar/SlideBackground \
@@ -376,7 +377,6 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/slidesorter/cache/SlsBitmapCompressor \
 	sd/source/ui/slidesorter/cache/SlsBitmapFactory \
 	sd/source/ui/slidesorter/cache/SlsCacheCompactor \
-	sd/source/ui/slidesorter/cache/SlsCacheConfiguration \
 	sd/source/ui/slidesorter/cache/SlsGenericPageCache \
 	sd/source/ui/slidesorter/cache/SlsPageCache \
 	sd/source/ui/slidesorter/cache/SlsPageCacheManager \
@@ -430,6 +430,7 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/tools/IdleDetection \
 	sd/source/ui/tools/PreviewRenderer \
 	sd/source/ui/tools/SdGlobalResourceContainer \
+	sd/source/ui/tools/SlideshowLayerRenderer \
 	sd/source/ui/tools/SlotStateListener \
 	sd/source/ui/tools/TimerBasedTaskExecution \
 	sd/source/ui/uitest/uiobject \
@@ -515,6 +516,8 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/view/viewshe3 \
 	sd/source/ui/view/viewshel \
 	sd/source/ui/view/zoomlist \
+	sd/source/ui/view/NotesPanelView \
+	sd/source/ui/view/NotesPanelViewShell \
 ))
 
 ifeq ($(ENABLE_SDREMOTE),TRUE)

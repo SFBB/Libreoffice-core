@@ -61,7 +61,7 @@ public:
     SAL_DLLPRIVATE void             ImplSetSeparatorX( tools::Long nX );
 
 protected:
-    explicit            Button( WindowType nType );
+    SAL_DLLPRIVATE explicit Button( WindowType eType );
 
     // for drawing RadioButton or CheckButton that has Text and/or Image
     SAL_DLLPRIVATE void ImplDrawRadioCheck(OutputDevice* pDev, WinBits nWinStyle, SystemTextColorFlags nSystemTextColorFlags,
@@ -80,24 +80,24 @@ public:
     const Link<Button*,void>& GetClickHdl() const { return maClickHdl; }
 
     /// Setup handler for UNO commands so that commands like .uno:Something are handled automagically by this button.
-    void                SetCommandHandler(const OUString& aCommand, const css::uno::Reference<css::frame::XFrame>& rFrame);
+    SAL_DLLPRIVATE void SetCommandHandler(const OUString& aCommand, const css::uno::Reference<css::frame::XFrame>& rFrame);
     OUString const &    GetCommand() const { return maCommand; }
 
     void                SetModeImage( const Image& rImage );
-    Image const &       GetModeImage( ) const;
-    bool                HasImage() const;
+    SAL_DLLPRIVATE Image const & GetModeImage( ) const;
+    SAL_DLLPRIVATE bool HasImage() const;
     void                SetImageAlign( ImageAlign eAlign );
     ImageAlign          GetImageAlign() const;
-    DrawButtonFlags     GetButtonState() const;
-    DrawButtonFlags&    GetButtonState();
+    SAL_DLLPRIVATE DrawButtonFlags  GetButtonState() const;
+    SAL_DLLPRIVATE DrawButtonFlags& GetButtonState();
 
     /// Set an image to use as the complete render view of a custom button,
     /// instead of the usual contents of a button
-    void                SetCustomButtonImage( const Image& rImage );
-    Image const &       GetCustomButtonImage() const;
+    SAL_DLLPRIVATE void SetCustomButtonImage( const Image& rImage );
+    SAL_DLLPRIVATE Image const & GetCustomButtonImage() const;
 
-    bool                IsSmallSymbol() const;
-    void                SetSmallSymbol();
+    SAL_DLLPRIVATE bool IsSmallSymbol() const;
+    SAL_DLLPRIVATE void SetSmallSymbol();
     virtual bool        set_property(const OUString &rKey, const OUString &rValue) override;
 
     /// Sets the button state according to the FeatureStateEvent emitted by a Uno state change.
@@ -130,6 +130,8 @@ public:
 
     explicit        PushButton( vcl::Window* pParent, WinBits nStyle = 0 );
 
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
+
     virtual void    MouseButtonDown( const MouseEvent& rMEvt ) override;
     virtual void    Tracking( const TrackingEvent& rTEvt ) override;
     virtual void    KeyInput( const KeyEvent& rKEvt ) override;
@@ -145,11 +147,11 @@ public:
 
     void            Toggle();
 
-    void            SetSymbol( SymbolType eSymbol );
+    SAL_DLLPRIVATE void            SetSymbol( SymbolType eSymbol );
     SymbolType      GetSymbol() const { return meSymbol; }
-    void            SetSymbolAlign( SymbolAlign eAlign );
+    SAL_DLLPRIVATE void            SetSymbolAlign( SymbolAlign eAlign );
 
-    void            SetDropDown( PushButtonDropdownStyle nStyle );
+    SAL_DLLPRIVATE void            SetDropDown( PushButtonDropdownStyle nStyle );
 
     void            SetState( TriState eState );
     TriState        GetState() const { return meState; }
@@ -161,7 +163,7 @@ public:
     void            SetPressed( bool bPressed );
     bool            IsPressed() const { return mbPressed; }
 
-    void            EndSelection();
+    SAL_DLLPRIVATE void            EndSelection();
 
     Size            CalcMinimumSize() const;
     virtual Size    GetOptimalSize() const override;
@@ -208,7 +210,7 @@ protected:
     using Control::ImplInitSettings;
     using Window::ImplInit;
 
-    explicit        PushButton( WindowType nType );
+    SAL_DLLPRIVATE explicit        PushButton( WindowType nType );
 
     virtual void    FillLayoutData() const override;
     virtual const vcl::Font&
@@ -328,6 +330,8 @@ public:
 public:
     explicit        CheckBox( vcl::Window* pParent, WinBits nStyle = 0 );
 
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
+
     virtual void    MouseButtonDown( const MouseEvent& rMEvt ) override;
     virtual void    Tracking( const TrackingEvent& rTEvt ) override;
     virtual void    KeyInput( const KeyEvent& rKEvt ) override;
@@ -432,6 +436,8 @@ public:
     virtual         ~RadioButton() override;
     virtual void    dispose() override;
 
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
+
     virtual void    MouseButtonDown( const MouseEvent& rMEvt ) override;
     virtual void    Tracking( const TrackingEvent& rTEvt ) override;
     virtual void    KeyInput( const KeyEvent& rKEvt ) override;
@@ -445,20 +451,20 @@ public:
     virtual void    DataChanged( const DataChangedEvent& rDCEvt ) override;
     virtual bool    PreNotify( NotifyEvent& rNEvt ) override;
 
-    void            Toggle();
+    SAL_DLLPRIVATE void            Toggle();
 
     bool            IsStateChanged() const { return mbStateChanged; }
 
     void            EnableRadioCheck( bool bRadioCheck ) { mbRadioCheck = bRadioCheck; }
     bool            IsRadioCheckEnabled() const { return mbRadioCheck; }
 
-    void            SetModeRadioImage( const Image& rImage );
+    SAL_DLLPRIVATE void            SetModeRadioImage( const Image& rImage );
 
     void            SetState( bool bCheck );
     void            Check( bool bCheck = true );
     bool            IsChecked() const { return mbChecked; }
 
-    static Image    GetRadioImage( const AllSettings& rSettings, DrawButtonFlags nFlags );
+    SAL_DLLPRIVATE static Image    GetRadioImage( const AllSettings& rSettings, DrawButtonFlags nFlags );
 
     Size            CalcMinimumSize( tools::Long nMaxWidth = 0 ) const;
     virtual Size    GetOptimalSize() const override;
@@ -485,7 +491,7 @@ public:
     /*
      * Group this RadioButton with another
      */
-    void group(RadioButton &rOther);
+    SAL_DLLPRIVATE void group(RadioButton &rOther);
     virtual void ShowFocus(const tools::Rectangle& rRect) override;
 
     /// Button has additional stuff that we need to dump too.
@@ -494,7 +500,7 @@ public:
     virtual FactoryFunction GetUITestFactory() const override;
 };
 
-class VCL_DLLPUBLIC ImageButton final : public PushButton
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) ImageButton final : public PushButton
 {
 private:
     using PushButton::ImplInitStyle;

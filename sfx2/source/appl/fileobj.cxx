@@ -174,7 +174,7 @@ bool SvFileObject::LoadFile_Impl()
 
         bClearMedium = !xMed.is();
         if( bClearMedium )
-            xMed = xTmpMed;  // If already finished in Download
+            xMed = std::move(xTmpMed);  // If already finished in Download
         return bDataReady;
     }
 
@@ -207,7 +207,7 @@ static OUString impl_getFilter( const OUString& _rURL )
     try
     {
         css::uno::Reference< css::document::XTypeDetection > xTypeDetection(
-            ::comphelper::getProcessServiceFactory()->createInstance( "com.sun.star.document.TypeDetection" ),
+            ::comphelper::getProcessServiceFactory()->createInstance( u"com.sun.star.document.TypeDetection"_ustr ),
             css::uno::UNO_QUERY );
         if ( xTypeDetection.is() )
         {
@@ -219,7 +219,7 @@ static OUString impl_getFilter( const OUString& _rURL )
             if ( !sType.isEmpty() )
             {
                 // Honor a selected/detected filter.
-                for (const auto& rDescr : std::as_const(aDescrList))
+                for (const auto& rDescr : aDescrList)
                 {
                     if (rDescr.Name == "FilterName")
                     {
@@ -238,7 +238,7 @@ static OUString impl_getFilter( const OUString& _rURL )
                          * property value (since? expected?) */
                         ::comphelper::SequenceAsHashMap lTypeProps( xTypeCont->getByName( sType ) );
                         sFilter = lTypeProps.getUnpackedValueOrDefault(
-                                "PreferredFilter", OUString() );
+                                u"PreferredFilter"_ustr, OUString() );
                     }
                 }
             }

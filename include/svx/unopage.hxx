@@ -28,13 +28,14 @@
 #include <com/sun/star/drawing/XShapeGrouper.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/form/XFormsSupplier2.hpp>
-#include <cppuhelper/basemutex.hxx>
 #include <svx/svxdllapi.h>
 #include <svx/svdobjkind.hxx>
 #include <rtl/ref.hxx>
 
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/servicehelper.hxx>
+#include <comphelper/compbase.hxx>
+#include <comphelper/interfacecontainer4.hxx>
 
 #include <memory>
 
@@ -44,12 +45,10 @@ class SdrView;
 class SdrPageView;
 class SdrObject;
 class SvxShape;
-class SvxShapeGroup;
-class SvxShapeConnector;
 enum class SdrInventor : sal_uInt32;
 
-class SVXCORE_DLLPUBLIC SvxDrawPage : protected cppu::BaseMutex,
-                                    public ::cppu::WeakImplHelper< css::drawing::XDrawPage,
+class SVXCORE_DLLPUBLIC SvxDrawPage :
+                                    public ::comphelper::WeakImplHelper< css::drawing::XDrawPage,
                                                css::drawing::XShapeGrouper,
                                                css::drawing::XShapes2,
                                                css::drawing::XShapes3,
@@ -60,8 +59,7 @@ class SVXCORE_DLLPUBLIC SvxDrawPage : protected cppu::BaseMutex,
 
 {
  protected:
-    cppu::OBroadcastHelper mrBHelper;
-
+    comphelper::OInterfaceContainerHelper4<css::lang::XEventListener> maEventListeners;
     SdrPage*        mpPage;     // TTTT should be reference
     SdrModel*       mpModel;    // TTTT probably not needed -> use from SdrPage
     std::unique_ptr<SdrView> mpView;
@@ -85,7 +83,7 @@ class SVXCORE_DLLPUBLIC SvxDrawPage : protected cppu::BaseMutex,
     static void GetTypeAndInventor( SdrObjKind& rType, SdrInventor& rInventor, const OUString& aName ) noexcept;
 
     // Creating a SdrObject using it's Description.
-    // Can be used by derived classes to support their owen Shapes (e.g. Controls).
+    // Can be used by derived classes to support their own Shapes (e.g. Controls).
     /// @throws css::uno::RuntimeException
     virtual rtl::Reference<SdrObject> CreateSdrObject_( const css::uno::Reference< css::drawing::XShape >& xShape );
 

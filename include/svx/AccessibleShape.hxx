@@ -39,7 +39,6 @@
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <comphelper/servicehelper.hxx>
 #include <editeng/AccessibleContextBase.hxx>
-#include <editeng/AccessibleComponentBase.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <svx/AccessibleShapeTreeInfo.hxx>
@@ -48,14 +47,7 @@
 #include <memory>
 
 namespace com::sun::star {
-    namespace accessibility { class XAccessible; }
-    namespace accessibility { class XAccessibleEventListener; }
-    namespace accessibility { class XAccessibleHyperlink; }
-    namespace accessibility { class XAccessibleRelationSet; }
-    namespace beans { struct PropertyValue; }
-    namespace document { struct EventObject; }
     namespace drawing { class XShape; }
-    namespace uno { class XInterface; }
 }
 
 class SdrObject;
@@ -93,7 +85,6 @@ class IAccessibleParent;
 */
 class SVX_DLLPUBLIC AccessibleShape
     :   public AccessibleContextBase,
-        public AccessibleComponentBase,
         public css::accessibility::XAccessibleSelection,
         public css::accessibility::XAccessibleExtendedAttributes,
         public css::accessibility::XAccessibleGroupPosition,
@@ -103,8 +94,6 @@ class SVX_DLLPUBLIC AccessibleShape
         public css::lang::XUnoTunnel
 {
 public:
-    //=====  internal  ========================================================
-
     /** Create a new accessible object that makes the given shape accessible.
         @param rShapeInfo
             This object contains all information specific to the new
@@ -148,7 +137,7 @@ public:
         sal_Int64 nSelectedChildIndex ) override;
 
     // ====== XAccessibleExtendedAttributes =====================================
-    virtual css::uno::Any SAL_CALL getExtendedAttributes() override ;
+    virtual OUString SAL_CALL getExtendedAttributes() override;
     /// Return this object's role.
     virtual sal_Int16 SAL_CALL getAccessibleRole() override;
     //=====  XAccessibleGroupPosition  =========================================
@@ -235,19 +224,14 @@ public:
     virtual sal_Int64 SAL_CALL
         getAccessibleIndexInParent() override;
 
+    // OAccessible
+    virtual css::awt::Rectangle implGetBounds() override;
+
     //=====  XAccessibleComponent  ============================================
 
     virtual css::uno::Reference<
         css::accessibility::XAccessible > SAL_CALL
         getAccessibleAtPoint (const css::awt::Point& aPoint) override;
-
-    virtual css::awt::Rectangle SAL_CALL getBounds() override;
-
-    virtual css::awt::Point SAL_CALL getLocation() override;
-
-    virtual css::awt::Point SAL_CALL getLocationOnScreen() override;
-
-    virtual css::awt::Size SAL_CALL getSize() override;
 
     virtual sal_Int32 SAL_CALL getForeground() override;
 
@@ -420,7 +404,7 @@ private:
     AccessibleShape (const AccessibleShape&) = delete;
     AccessibleShape& operator= (const AccessibleShape&) = delete;
     //Old accessible name
-    OUString aAccName;
+    OUString m_aAccName;
 
     /** Call this method when the title, name, or description of the mxShape
         member (may) have been changed.

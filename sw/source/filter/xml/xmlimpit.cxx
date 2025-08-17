@@ -101,7 +101,7 @@ void SvXMLImportItemMapper::importXML( SfxItemSet& rSet,
 
         if( pEntry )
         {
-            // we have a valid map entry here, so lets use it...
+            // we have a valid map entry here, so let's use it...
             if( 0 == (pEntry->nMemberId & (MID_SW_FLAG_NO_ITEM_IMPORT|
                                        MID_SW_FLAG_ELEMENT_ITEM_IMPORT)) )
             {
@@ -112,7 +112,7 @@ void SvXMLImportItemMapper::importXML( SfxItemSet& rSet,
 
                 // if it's not set, try the pool
                 if (SfxItemState::SET != eState && SfxItemPool::IsWhich(pEntry->nWhichId))
-                    pItem = &rSet.GetPool()->GetDefaultItem(pEntry->nWhichId);
+                    pItem = &rSet.GetPool()->GetUserOrPoolDefaultItem(pEntry->nWhichId);
 
                 // do we have an item?
                 if(eState >= SfxItemState::DEFAULT && pItem)
@@ -168,15 +168,15 @@ void SvXMLImportItemMapper::importXML( SfxItemSet& rSet,
                     pUnknownItem->AddAttr( SvXMLImport::getNameFromToken( nToken ), sValue );
                 else
                 {
-                    const OUString& rAttrNamespacePrefix = SvXMLImport::getNamespacePrefixFromToken(nToken, &rNamespaceMap);
+                    const OUString aAttrNamespacePrefix = SvXMLImport::getNamespacePrefixFromToken(nToken, &rNamespaceMap);
                     OUString sAttrName = SvXMLImport::getNameFromToken( nToken );
-                    if ( !rAttrNamespacePrefix.isEmpty() )
-                        sAttrName = rAttrNamespacePrefix + SvXMLImport::aNamespaceSeparator + sAttrName;
+                    if ( !aAttrNamespacePrefix.isEmpty() )
+                        sAttrName = aAttrNamespacePrefix + SvXMLImport::aNamespaceSeparator + sAttrName;
                     OUString aLocalName, aPrefix, aNamespace;
                     rNamespaceMap.GetKeyByAttrName( sAttrName, &aPrefix, &aLocalName,
                                                         &aNamespace );
-                    if ( !rAttrNamespacePrefix.isEmpty() )
-                        pUnknownItem->AddAttr( rAttrNamespacePrefix, aNamespace, aLocalName,
+                    if ( !aAttrNamespacePrefix.isEmpty() )
+                        pUnknownItem->AddAttr( aAttrNamespacePrefix, aNamespace, aLocalName,
                                                sValue );
                     else
                         pUnknownItem->AddAttr( aLocalName, sValue );
@@ -227,7 +227,7 @@ void SvXMLImportItemMapper::importXMLUnknownAttributes( SfxItemSet& rSet,
                 int i = sName.indexOf(':');
                 if (i != -1)
                 {
-                    sPrefix = sName.copy(0, i-1);
+                    sPrefix = sName.copy(0, i);
                     sName = sName.copy(i+1);
                 }
                 // the sax parser doesn't reject these, strangely
@@ -345,10 +345,12 @@ bool SvXMLImportItemMapper::PutXMLValue(
                         switch( nMemberId )
                         {
                             case MID_L_MARGIN:
-                                rLRSpace.SetTextLeft( nAbs, o3tl::narrowing<sal_uInt16>(nProp) );
+                                rLRSpace.SetTextLeft(SvxIndentValue::twips(nAbs),
+                                                     o3tl::narrowing<sal_uInt16>(nProp));
                                 break;
                             case MID_R_MARGIN:
-                                rLRSpace.SetRight( nAbs, o3tl::narrowing<sal_uInt16>(nProp) );
+                                rLRSpace.SetRight(SvxIndentValue::twips(nAbs),
+                                                  o3tl::narrowing<sal_uInt16>(nProp));
                                 break;
                         }
                     }
@@ -367,7 +369,8 @@ bool SvXMLImportItemMapper::PutXMLValue(
                         bOk = rUnitConverter.convertMeasureToCore(nAbs, rValue,
                                                              -0x7fff, 0x7fff );
 
-                    rLRSpace.SetTextFirstLineOffset( static_cast<short>(nAbs), o3tl::narrowing<sal_uInt16>(nProp) );
+                    rLRSpace.SetTextFirstLineOffset(SvxIndentValue::twips(nAbs),
+                                                    o3tl::narrowing<sal_uInt16>(nProp));
                 }
                 break;
 

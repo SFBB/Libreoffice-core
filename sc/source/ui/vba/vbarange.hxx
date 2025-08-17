@@ -24,7 +24,7 @@
 #include <com/sun/star/sheet/FillDateMode.hpp>
 #include <com/sun/star/sheet/FillMode.hpp>
 #include <com/sun/star/sheet/FillDirection.hpp>
-
+#include <rtl/ref.hxx>
 #include "vbaformat.hxx"
 #include <address.hxx>
 #include <formula/grammar.hxx>
@@ -33,17 +33,15 @@ namespace com::sun::star::sheet { class XSheetCellRangeContainer; }
 namespace com::sun::star::table { class XCell; }
 namespace com::sun::star::table { class XCellRange; }
 namespace com::sun::star::table { struct CellRangeAddress; }
-namespace com::sun::star::lang { class XServiceInfo; }
 namespace ooo::vba { class XCollection; }
-namespace ooo::vba::excel { class XComment; }
-namespace ooo::vba::excel { class XFont; }
 
 class SfxItemSet;
-class ScCellRangesBase;
 class ScCellRangeObj;
 class ScDocShell;
 class ScDocument;
 class ScRangeList;
+class ScVbaRangeAreas;
+class ScVbaValidation;
 
 class ArrayVisitor
 {
@@ -73,13 +71,13 @@ enum class RangeValueType { value, value2 };
 
 class ScVbaRange : public ScVbaRange_BASE
 {
-    css::uno::Reference< ov::XCollection > m_Areas;
+    rtl::Reference< ScVbaRangeAreas > m_Areas;
     css::uno::Reference< ov::XCollection > m_Borders;
     css::uno::Reference< css::table::XCellRange > mxRange;
     css::uno::Reference< css::sheet::XSheetCellRangeContainer > mxRanges;
     bool mbIsRows;
     bool mbIsColumns;
-    css::uno::Reference< ov::excel::XValidation > m_xValidation;
+    rtl::Reference< ScVbaValidation > m_xValidation;
     /// @throws css::uno::RuntimeException
     double getCalcColWidth(const css::table::CellRangeAddress&);
     /// @throws css::uno::RuntimeException
@@ -306,7 +304,7 @@ public:
     // XDefaultMethod
     OUString SAL_CALL getDefaultMethodName(  ) override;
         // XDefaultProperty
-        OUString SAL_CALL getDefaultPropertyName(  ) override { return "Value"; }
+        OUString SAL_CALL getDefaultPropertyName(  ) override { return u"Value"_ustr; }
 
 // #TODO completely rewrite ScVbaRange, it's become a hackfest
 // it needs to be closer to ScCellRangeBase in that the underlying

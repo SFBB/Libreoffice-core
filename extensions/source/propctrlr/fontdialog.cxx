@@ -199,11 +199,11 @@ namespace pcr
 
     //= ControlCharacterDialog
     ControlCharacterDialog::ControlCharacterDialog(weld::Window* pParent, const SfxItemSet& _rCoreSet)
-        : SfxTabDialogController(pParent, "modules/spropctrlr/ui/controlfontdialog.ui", "ControlFontDialog", &_rCoreSet)
+        : SfxTabDialogController(pParent, u"modules/spropctrlr/ui/controlfontdialog.ui"_ustr, u"ControlFontDialog"_ustr, &_rCoreSet)
     {
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        AddTabPage("font", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_NAME), nullptr );
-        AddTabPage("fonteffects", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_EFFECTS), nullptr );
+        AddTabPage(u"font"_ustr, pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_NAME), nullptr );
+        AddTabPage(u"fonteffects"_ustr, pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_EFFECTS), nullptr );
     }
 
     ControlCharacterDialog::~ControlCharacterDialog()
@@ -221,7 +221,23 @@ namespace pcr
             OFontPropertyExtractor aPropExtractor(_rxModel);
 
             // some items, which may be in default state, have to be filled with non-void information
-            vcl::Font aDefaultVCLFont = Application::GetDefaultDevice()->GetSettings().GetStyleSettings().GetAppFont();
+            StyleSettings aStyleSettings
+                = Application::GetDefaultDevice()->GetSettings().GetStyleSettings();
+
+            // if PROPERTY_STANDARD_THEME is set, use style settings independent of platform (theme)
+            // KEEP IN SYNC WITH UnoControl::createPeer
+            css::uno::Reference<css::beans::XPropertySetInfo> xPropSetInfo
+                = _rxModel->getPropertySetInfo();
+            if (xPropSetInfo.is() && xPropSetInfo->hasPropertyByName(PROPERTY_STANDARD_THEME))
+            {
+                bool bStandardTheme = false;
+                css::uno::Any aAnyStandardTheme
+                    = _rxModel->getPropertyValue(PROPERTY_STANDARD_THEME);
+                if ((aAnyStandardTheme >>= bStandardTheme) && bStandardTheme)
+                    aStyleSettings.SetStandardStyles();
+            }
+
+            const vcl::Font aDefaultVCLFont = aStyleSettings.GetAppFont();
             css::awt::FontDescriptor aDefaultFont = VCLUnoHelper::CreateFontDescriptor(aDefaultVCLFont);
 
             // get the current properties
@@ -492,96 +508,81 @@ namespace pcr
         }
     }
 
-    void ControlCharacterDialog::createItemSet(std::unique_ptr<SfxItemSet>& _rpSet, rtl::Reference<SfxItemPool>& _rpPool, std::vector<SfxPoolItem*>*& _rpDefaults)
+    static ItemInfoPackage& getItemInfoPackageCntChrDlg()
+    {
+        class ItemInfoPackageCntChrDlg : public ItemInfoPackage
+        {
+            vcl::Font maDefaultVCLFont{Application::GetDefaultDevice()->GetSettings().GetStyleSettings().GetAppFont()};
+            typedef std::array<ItemInfoStatic, FontItemIds::CFID_LAST_ITEM_ID - FontItemIds::CFID_FIRST_ITEM_ID + 1> ItemInfoArrayCntChrDlg;
+            ItemInfoArrayCntChrDlg maItemInfos {{
+                // m_nWhich, m_pItem, m_nSlotID, m_nItemInfoFlags
+                { FontItemIds::CFID_FONT, new SvxFontItem(maDefaultVCLFont.GetFamilyTypeMaybeAskConfig(), maDefaultVCLFont.GetFamilyName(), maDefaultVCLFont.GetStyleName(), maDefaultVCLFont.GetPitchMaybeAskConfig(), maDefaultVCLFont.GetCharSet(), FontItemIds::CFID_FONT), SID_ATTR_CHAR_FONT, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_HEIGHT, new SvxFontHeightItem(maDefaultVCLFont.GetFontHeight(), 100, FontItemIds::CFID_HEIGHT), SID_ATTR_CHAR_FONTHEIGHT, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_WEIGHT, new SvxWeightItem(maDefaultVCLFont.GetWeightMaybeAskConfig(), FontItemIds::CFID_WEIGHT), SID_ATTR_CHAR_WEIGHT, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_POSTURE, new SvxPostureItem(maDefaultVCLFont.GetItalicMaybeAskConfig(), FontItemIds::CFID_POSTURE), SID_ATTR_CHAR_POSTURE, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_LANGUAGE, new SvxLanguageItem(Application::GetSettings().GetUILanguageTag().getLanguageType(), FontItemIds::CFID_LANGUAGE), SID_ATTR_CHAR_LANGUAGE, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_UNDERLINE, new SvxUnderlineItem(maDefaultVCLFont.GetUnderline(), FontItemIds::CFID_UNDERLINE), SID_ATTR_CHAR_UNDERLINE, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_STRIKEOUT, new SvxCrossedOutItem(maDefaultVCLFont.GetStrikeout(), FontItemIds::CFID_STRIKEOUT), SID_ATTR_CHAR_STRIKEOUT, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_WORDLINEMODE, new SvxWordLineModeItem(maDefaultVCLFont.IsWordLineMode(), FontItemIds::CFID_WORDLINEMODE), SID_ATTR_CHAR_WORDLINEMODE, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_CHARCOLOR, new SvxColorItem(maDefaultVCLFont.GetColor(), FontItemIds::CFID_CHARCOLOR), SID_ATTR_CHAR_COLOR, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_RELIEF, new SvxCharReliefItem(maDefaultVCLFont.GetRelief(), FontItemIds::CFID_RELIEF), SID_ATTR_CHAR_RELIEF, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_EMPHASIS, new SvxEmphasisMarkItem(maDefaultVCLFont.GetEmphasisMark(), FontItemIds::CFID_EMPHASIS), SID_ATTR_CHAR_EMPHASISMARK, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_CJK_FONT, new SvxFontItem(maDefaultVCLFont.GetFamilyTypeMaybeAskConfig(), maDefaultVCLFont.GetFamilyName(), maDefaultVCLFont.GetStyleName(), maDefaultVCLFont.GetPitchMaybeAskConfig(), maDefaultVCLFont.GetCharSet(), FontItemIds::CFID_CJK_FONT), 0, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_CJK_HEIGHT, new SvxFontHeightItem(maDefaultVCLFont.GetFontHeight(), 100, FontItemIds::CFID_CJK_HEIGHT), 0, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_CJK_WEIGHT, new SvxWeightItem(maDefaultVCLFont.GetWeightMaybeAskConfig(), FontItemIds::CFID_CJK_WEIGHT), 0, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_CJK_POSTURE, new SvxPostureItem(maDefaultVCLFont.GetItalicMaybeAskConfig(), FontItemIds::CFID_CJK_POSTURE), 0, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_CJK_LANGUAGE, new SvxLanguageItem(Application::GetSettings().GetUILanguageTag().getLanguageType(), FontItemIds::CFID_CJK_LANGUAGE), 0, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_CASEMAP, new SvxCaseMapItem(SvxCaseMap::NotMapped, FontItemIds::CFID_CASEMAP), 0, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_CONTOUR, new SvxContourItem(false, FontItemIds::CFID_CONTOUR), 0, SFX_ITEMINFOFLAG_NONE },
+                { FontItemIds::CFID_SHADOWED, new SvxShadowedItem(false, FontItemIds::CFID_SHADOWED), 0, SFX_ITEMINFOFLAG_NONE },
+
+                // SvxFontListItem has to be DynamicDefault. It is pool-dependent in the sense
+                // that it cannot/should not exist. Additionally SvxFontListItem has NO destructor
+                // and does not delete the contained/set FontList - this is done 'by hand' in
+                // ControlCharacterDialog::destroyItemSet, see below...
+                { FontItemIds::CFID_FONTLIST, nullptr, SID_ATTR_CHAR_FONTLIST, SFX_ITEMINFOFLAG_NONE }
+            }};
+
+            virtual const ItemInfoStatic& getItemInfoStatic(size_t nIndex) const override { return maItemInfos[nIndex]; }
+
+        public:
+            virtual size_t size() const override { return maItemInfos.size(); }
+            virtual const ItemInfo& getItemInfo(size_t nIndex, SfxItemPool& /*rPool*/) override { return maItemInfos[nIndex]; }
+        };
+
+        static std::unique_ptr<ItemInfoPackageCntChrDlg> g_aItemInfoPackageCntChrDlg;
+        if (!g_aItemInfoPackageCntChrDlg)
+            g_aItemInfoPackageCntChrDlg.reset(new ItemInfoPackageCntChrDlg);
+        return *g_aItemInfoPackageCntChrDlg;
+    }
+
+    void ControlCharacterDialog::createItemSet(std::unique_ptr<SfxItemSet>& _rpSet, rtl::Reference<SfxItemPool>& _rpPool, FontList& rFontList)
     {
         // just to be sure...
         _rpSet = nullptr;
         _rpPool = nullptr;
-        _rpDefaults = nullptr;
-
-        // create and initialize the defaults
-        _rpDefaults = new std::vector<SfxPoolItem*>(FontItemIds::CFID_LAST_ITEM_ID - FontItemIds::CFID_FIRST_ITEM_ID + 1);
-
-        vcl::Font aDefaultVCLFont = Application::GetDefaultDevice()->GetSettings().GetStyleSettings().GetAppFont();
-
-        SfxPoolItem** pCounter = _rpDefaults->data();  // want to modify this without affecting the out param _rppDefaults
-        *pCounter++ = new SvxFontItem(aDefaultVCLFont.GetFamilyType(), aDefaultVCLFont.GetFamilyName(), aDefaultVCLFont.GetStyleName(), aDefaultVCLFont.GetPitch(), aDefaultVCLFont.GetCharSet(), FontItemIds::CFID_FONT);
-        *pCounter++ = new SvxFontHeightItem(aDefaultVCLFont.GetFontHeight(), 100, FontItemIds::CFID_HEIGHT);
-        *pCounter++ = new SvxWeightItem(aDefaultVCLFont.GetWeight(), FontItemIds::CFID_WEIGHT);
-        *pCounter++ = new SvxPostureItem(aDefaultVCLFont.GetItalic(), FontItemIds::CFID_POSTURE);
-        *pCounter++ = new SvxLanguageItem(Application::GetSettings().GetUILanguageTag().getLanguageType(), FontItemIds::CFID_LANGUAGE);
-        *pCounter++ = new SvxUnderlineItem(aDefaultVCLFont.GetUnderline(), FontItemIds::CFID_UNDERLINE);
-        *pCounter++ = new SvxCrossedOutItem(aDefaultVCLFont.GetStrikeout(), FontItemIds::CFID_STRIKEOUT);
-        *pCounter++ = new SvxWordLineModeItem(aDefaultVCLFont.IsWordLineMode(), FontItemIds::CFID_WORDLINEMODE);
-        *pCounter++ = new SvxColorItem(aDefaultVCLFont.GetColor(), FontItemIds::CFID_CHARCOLOR);
-        *pCounter++ = new SvxCharReliefItem(aDefaultVCLFont.GetRelief(), FontItemIds::CFID_RELIEF);
-        *pCounter++ = new SvxEmphasisMarkItem(aDefaultVCLFont.GetEmphasisMark(), FontItemIds::CFID_EMPHASIS);
-
-        *pCounter++ = new SvxFontItem(aDefaultVCLFont.GetFamilyType(), aDefaultVCLFont.GetFamilyName(), aDefaultVCLFont.GetStyleName(), aDefaultVCLFont.GetPitch(), aDefaultVCLFont.GetCharSet(), FontItemIds::CFID_CJK_FONT);
-        *pCounter++ = new SvxFontHeightItem(aDefaultVCLFont.GetFontHeight(), 100, FontItemIds::CFID_CJK_HEIGHT);
-        *pCounter++ = new SvxWeightItem(aDefaultVCLFont.GetWeight(), FontItemIds::CFID_CJK_WEIGHT);
-        *pCounter++ = new SvxPostureItem(aDefaultVCLFont.GetItalic(), FontItemIds::CFID_CJK_POSTURE);
-        *pCounter++ = new SvxLanguageItem(Application::GetSettings().GetUILanguageTag().getLanguageType(), FontItemIds::CFID_CJK_LANGUAGE);
-
-        *pCounter++ = new SvxCaseMapItem(SvxCaseMap::NotMapped, FontItemIds::CFID_CASEMAP);
-        *pCounter++ = new SvxContourItem(false, FontItemIds::CFID_CONTOUR);
-        *pCounter++ = new SvxShadowedItem(false, FontItemIds::CFID_SHADOWED);
-
-        *pCounter++ = new SvxFontListItem (new FontList(Application::GetDefaultDevice()), FontItemIds::CFID_FONTLIST);
-
-        // create the pool
-        static SfxItemInfo const aItemInfos[FontItemIds::CFID_LAST_ITEM_ID - FontItemIds::CFID_FIRST_ITEM_ID + 1] =
-        {
-            // _nSID, _bNeedsPoolRegistration, _bShareable
-            { SID_ATTR_CHAR_FONT,               false, false },
-            { SID_ATTR_CHAR_FONTHEIGHT,         false, false },
-            { SID_ATTR_CHAR_WEIGHT,             false, false },
-            { SID_ATTR_CHAR_POSTURE,            false, false },
-            { SID_ATTR_CHAR_LANGUAGE,           false, false },
-            { SID_ATTR_CHAR_UNDERLINE,          false, false },
-            { SID_ATTR_CHAR_STRIKEOUT,          false, false },
-            { SID_ATTR_CHAR_WORDLINEMODE,       false, false },
-            { SID_ATTR_CHAR_COLOR,              false, false },
-            { SID_ATTR_CHAR_RELIEF,             false, false },
-            { SID_ATTR_CHAR_EMPHASISMARK,       false, false },
-            { 0,                                false, false },
-            { 0,                                false, false },
-            { 0,                                false, false },
-            { 0,                                false, false },
-            { 0,                                false, false },
-            { 0,                                false, false },
-            { 0,                                false, false },
-            { 0,                                false, false },
-            { SID_ATTR_CHAR_FONTLIST,           false, false }
-        };
-
-        _rpPool = new SfxItemPool("PCRControlFontItemPool", FontItemIds::CFID_FIRST_ITEM_ID, FontItemIds::CFID_LAST_ITEM_ID,
-            aItemInfos, _rpDefaults);
-        _rpPool->FreezeIdRanges();
+        _rpPool = new SfxItemPool(u"PCRControlFontItemPool"_ustr);
+        _rpPool->registerItemInfoPackage(
+            getItemInfoPackageCntChrDlg(),
+            [&rFontList](sal_uInt16 nWhich)
+            {
+                SfxPoolItem* pRetval(nullptr);
+                if (FontItemIds::CFID_FONTLIST == nWhich)
+                    pRetval = new SvxFontListItem(&rFontList, FontItemIds::CFID_FONTLIST);
+                return pRetval;
+            });
 
         // and, finally, the set
         _rpSet.reset(new SfxItemSet(*_rpPool));
     }
 
-    void ControlCharacterDialog::destroyItemSet(std::unique_ptr<SfxItemSet>& _rpSet, rtl::Reference<SfxItemPool>& _rpPool, std::vector<SfxPoolItem*>*& _rpDefaults)
+    void ControlCharacterDialog::destroyItemSet(std::unique_ptr<SfxItemSet>& _rpSet, rtl::Reference<SfxItemPool>& _rpPool)
     {
-        // from the pool, get and remember the font list (needs to be deleted)
-        const SvxFontListItem& rFontListItem = static_cast<const SvxFontListItem&>(_rpPool->GetDefaultItem(FontItemIds::CFID_FONTLIST));
-        const FontList* pFontList = rFontListItem.GetFontList();
-
         // _first_ delete the set (referring the pool)
         _rpSet.reset();
 
         // delete the pool
-        _rpPool->ReleaseDefaults(true);
-            // the "true" means delete the items, too
         _rpPool = nullptr;
-
-        // reset the defaults ptr
-        _rpDefaults = nullptr;
-            // no need to explicitly delete the defaults, this has been done by the ReleaseDefaults
-
-        delete pFontList;
     }
 
     void ControlCharacterDialog::PageCreated(const OUString& rId, SfxTabPage& rPage)

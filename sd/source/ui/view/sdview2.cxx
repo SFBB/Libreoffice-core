@@ -83,7 +83,7 @@ css::uno::Reference< css::datatransfer::XTransferable > View::CreateClipboardDat
     // dynamically created object is destroyed automatically
     rtl::Reference<SdTransferable> pTransferable = new SdTransferable( &mrDoc, nullptr, false );
 
-    SD_MOD()->pTransferClip = pTransferable.get();
+    SdModule::get()->pTransferClip = pTransferable.get();
 
     mrDoc.CreatingDataObj( pTransferable.get() );
     pTransferable->SetWorkDocument( static_cast<SdDrawDocument*>(CreateMarkedObjModel().release()) );
@@ -92,6 +92,8 @@ css::uno::Reference< css::datatransfer::XTransferable > View::CreateClipboardDat
     // #112978# need to use GetAllMarkedBoundRect instead of GetAllMarkedRect to get
     // fat lines correctly
     const ::tools::Rectangle                 aMarkRect( GetAllMarkedBoundRect() );
+    // tdf#118171 - snap rectangles of objects without line width
+    const ::tools::Rectangle aMarkBoundRect(GetAllMarkedRect());
     std::unique_ptr<TransferableObjectDescriptor> pObjDesc(new TransferableObjectDescriptor);
     SdrOle2Obj*                     pSdrOleObj = nullptr;
     SdrPageView*                    pPgView = GetSdrPageView();
@@ -104,9 +106,10 @@ css::uno::Reference< css::datatransfer::XTransferable > View::CreateClipboardDat
         pNewPage->SetLayoutName( pOldPage->GetLayoutName() );
     }
 
-    if( GetMarkedObjectCount() == 1 )
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if( rMarkList.GetMarkCount() == 1 )
     {
-        SdrObject* pObj = GetMarkedObjectByIndex(0);
+        SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
 
         if( auto pOle2Obj = dynamic_cast<SdrOle2Obj *>( pObj ) )
             if( pOle2Obj->GetObjRef() )
@@ -134,6 +137,7 @@ css::uno::Reference< css::datatransfer::XTransferable > View::CreateClipboardDat
     pObjDesc->maSize = aMarkRect.GetSize();
 
     pTransferable->SetStartPos( aMarkRect.TopLeft() );
+    pTransferable->SetBoundStartPos(aMarkBoundRect.TopLeft());
     pTransferable->SetObjectDescriptor( std::move(pObjDesc) );
     pTransferable->CopyToClipboard( mpViewSh->GetActiveWindow() );
 
@@ -144,15 +148,16 @@ css::uno::Reference< css::datatransfer::XTransferable > View::CreateDragDataObje
 {
     rtl::Reference<SdTransferable> pTransferable = new SdTransferable( &mrDoc, pWorkView, false );
 
-    SD_MOD()->pTransferDrag = pTransferable.get();
+    SdModule::get()->pTransferDrag = pTransferable.get();
 
     std::unique_ptr<TransferableObjectDescriptor> pObjDesc(new TransferableObjectDescriptor);
     OUString                        aDisplayName;
     SdrOle2Obj*                     pSdrOleObj = nullptr;
 
-    if( GetMarkedObjectCount() == 1 )
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if( rMarkList.GetMarkCount() == 1 )
     {
-        SdrObject* pObj = GetMarkedObjectByIndex( 0 );
+        SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
 
         if( auto pOle2Obj = dynamic_cast<SdrOle2Obj *>( pObj ) )
             if( pOle2Obj->GetObjRef() )
@@ -194,7 +199,7 @@ css::uno::Reference< css::datatransfer::XTransferable > View::CreateSelectionDat
     std::unique_ptr<TransferableObjectDescriptor> pObjDesc(new TransferableObjectDescriptor);
     const ::tools::Rectangle                 aMarkRect( GetAllMarkedRect() );
 
-    SD_MOD()->pTransferSelection = pTransferable.get();
+    SdModule::get()->pTransferSelection = pTransferable.get();
 
     if( mpDocSh )
     {
@@ -217,7 +222,8 @@ void View::UpdateSelectionClipboard() // false case
         return;
     if (!mpViewSh->GetActiveWindow())
         return;
-    if (GetMarkedObjectList().GetMarkCount())
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (rMarkList.GetMarkCount())
         CreateSelectionDataObject( this );
     else
         ClearSelectionClipboard();
@@ -229,10 +235,11 @@ void View::ClearSelectionClipboard() // true case
         return;
     if (!mpViewSh->GetActiveWindow())
         return;
-    if (SD_MOD()->pTransferSelection && SD_MOD()->pTransferSelection->GetView() == this)
+    SdModule* mod = SdModule::get();
+    if (mod->pTransferSelection && mod->pTransferSelection->GetView() == this)
     {
         TransferableHelper::ClearPrimarySelection();
-        SD_MOD()->pTransferSelection = nullptr;
+        mod->pTransferSelection = nullptr;
     }
 }
 
@@ -240,33 +247,35 @@ void View::DoCut()
 {
     const OutlinerView* pOLV = GetTextEditOutlinerView();
 
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
     if( pOLV )
         const_cast<OutlinerView*>(pOLV)->Cut();
-    else if( AreObjectsMarked() )
+    else if( rMarkList.GetMarkCount() != 0 )
     {
         OUString aStr(SdResId(STR_UNDO_CUT));
 
         DoCopy();
-        BegUndo(aStr + " " + GetDescriptionOfMarkedObjects());
+        BegUndo(aStr + " " + rMarkList.GetMarkDescription());
         DeleteMarked();
         EndUndo();
     }
 }
 
-void View::DoCopy()
+void View::DoCopy(bool /*bMergeMasterPagesOnly*/)
 {
     const OutlinerView* pOLV = GetTextEditOutlinerView();
 
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
     if( pOLV )
         const_cast<OutlinerView*>(pOLV)->Copy();
-    else if( AreObjectsMarked() )
+    else if( rMarkList.GetMarkCount() != 0 )
     {
         BrkAction();
         CreateClipboardDataObject();
     }
 }
 
-void View::DoPaste (::sd::Window* pWindow)
+void View::DoPaste (::sd::Window* pWindow,bool /*bMergeMasterPagesOnly*/)
 {
     TransferableDataHelper aDataHelper( TransferableDataHelper::CreateFromSystemClipboard( mpViewSh->GetActiveWindow() ) );
     if( !aDataHelper.GetTransferable().is() )
@@ -280,37 +289,33 @@ void View::DoPaste (::sd::Window* pWindow)
 
         SdrObject*  pObj = GetTextEditObject();
         SdPage*     pPage = static_cast<SdPage*>( pObj ? pObj->getSdrPageFromSdrObject() : nullptr );
-        ::Outliner* pOutliner = pOLV->GetOutliner();
+        ::Outliner& rOutliner = pOLV->GetOutliner();
 
-        if( pOutliner)
+        if( pObj && pPage && pPage->GetPresObjKind(pObj) == PresObjKind::Title )
         {
-            if( pObj && pPage && pPage->GetPresObjKind(pObj) == PresObjKind::Title )
+            // remove all hard linebreaks from the title
+            if (rOutliner.GetParagraphCount() > 1)
             {
-                // remove all hard linebreaks from the title
-                if (pOutliner->GetParagraphCount() > 1)
+                bool bOldUpdateMode = rOutliner.SetUpdateLayout( false );
+
+                const EditEngine& rEdit = rOutliner.GetEditEngine();
+                const sal_Int32 nParaCount = rEdit.GetParagraphCount();
+
+                for( sal_Int32 nPara = nParaCount - 2; nPara >= 0; nPara-- )
                 {
-                    bool bOldUpdateMode = pOutliner->SetUpdateLayout( false );
-
-                    const EditEngine& rEdit = pOutliner->GetEditEngine();
-                    const sal_Int32 nParaCount = rEdit.GetParagraphCount();
-
-                    for( sal_Int32 nPara = nParaCount - 2; nPara >= 0; nPara-- )
-                    {
-                        const sal_Int32 nParaLen = rEdit.GetTextLen( nPara );
-                        pOutliner->QuickDelete( ESelection( nPara, nParaLen, nPara+1, 0 ) );
-                        pOutliner->QuickInsertLineBreak( ESelection( nPara, nParaLen, nPara, nParaLen ) );
-                    }
-
-                    DBG_ASSERT( rEdit.GetParagraphCount() <= 1, "Titleobject contains hard line breaks" );
-                    pOutliner->SetUpdateLayout(bOldUpdateMode);
+                    const sal_Int32 nParaLen = rEdit.GetTextLen( nPara );
+                    rOutliner.QuickInsertLineBreak(ESelection(nPara, nParaLen, nPara + 1, 0));
                 }
-            }
 
-            if( !mrDoc.IsChanged() )
-            {
-                if (pOutliner->IsModified())
-                    mrDoc.SetChanged();
+                DBG_ASSERT( rEdit.GetParagraphCount() <= 1, "Titleobject contains hard line breaks" );
+                rOutliner.SetUpdateLayout(bOldUpdateMode);
             }
+        }
+
+        if( !mrDoc.IsChanged() )
+        {
+            if (rOutliner.IsModified())
+                mrDoc.SetChanged();
         }
     }
     else
@@ -323,7 +328,7 @@ void View::DoPaste (::sd::Window* pWindow)
             sal_Int8    nDnDAction = DND_ACTION_COPY;
             if( !InsertData( aDataHelper, aPos, nDnDAction, false ) )
             {
-                INetBookmark    aINetBookmark( "", "" );
+                INetBookmark    aINetBookmark( u""_ustr, u""_ustr );
 
                 if( ( aDataHelper.HasFormat( SotClipboardFormatId::NETSCAPE_BOOKMARK ) &&
                       aDataHelper.GetINetBookmark( SotClipboardFormatId::NETSCAPE_BOOKMARK, aINetBookmark ) ) ||
@@ -332,7 +337,7 @@ void View::DoPaste (::sd::Window* pWindow)
                     ( aDataHelper.HasFormat( SotClipboardFormatId::UNIFORMRESOURCELOCATOR ) &&
                       aDataHelper.GetINetBookmark( SotClipboardFormatId::UNIFORMRESOURCELOCATOR, aINetBookmark ) ) )
                 {
-                    pDrViewSh->InsertURLField( aINetBookmark.GetURL(), aINetBookmark.GetDescription(), "" );
+                    pDrViewSh->InsertURLField(aINetBookmark.GetURL(), aINetBookmark.GetDescription(), u""_ustr, u""_ustr);
                 }
             }
         }
@@ -341,7 +346,8 @@ void View::DoPaste (::sd::Window* pWindow)
 
 void View::StartDrag( const Point& rStartPos, vcl::Window* pWindow )
 {
-    if (!AreObjectsMarked() || !IsAction() || !mpViewSh || !pWindow)
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (rMarkList.GetMarkCount() == 0 || !IsAction() || !mpViewSh || !pWindow)
         return;
 
     BrkAction();
@@ -372,7 +378,7 @@ void View::DragFinished( sal_Int8 nDropAction )
         BegUndo(aStr + " " + mpDragSrcMarkList->GetMarkDescription());
     }
 
-    SdTransferable* pDragTransferable = SD_MOD()->pTransferDrag;
+    SdTransferable* pDragTransferable = SdModule::get()->pTransferDrag;
 
     if( pDragTransferable )
         pDragTransferable->SetView( nullptr );
@@ -451,9 +457,10 @@ sal_Int8 View::AcceptDrop( const AcceptDropEvent& rEvt, DropTargetHelper& rTarge
         {
             ::tools::Rectangle aRect( pOLV->GetOutputArea() );
 
-            if (GetMarkedObjectCount() == 1)
+            const SdrMarkList& rMarkList = GetMarkedObjectList();
+            if (rMarkList.GetMarkCount() == 1)
             {
-                SdrMark* pMark = GetSdrMarkByIndex(0);
+                SdrMark* pMark = rMarkList.GetMark(0);
                 SdrObject* pObj = pMark->GetMarkedSdrObj();
                 aRect.Union( pObj->GetLogicRect() );
             }
@@ -466,7 +473,7 @@ sal_Int8 View::AcceptDrop( const AcceptDropEvent& rEvt, DropTargetHelper& rTarge
 
         if( !bIsInsideOutlinerView )
         {
-            SdTransferable* pDragTransferable = SD_MOD()->pTransferDrag;
+            SdTransferable* pDragTransferable = SdModule::get()->pTransferDrag;
 
             if(pDragTransferable && (nDropAction & DND_ACTION_LINK))
             {
@@ -577,7 +584,9 @@ sal_Int8 View::AcceptDrop( const AcceptDropEvent& rEvt, DropTargetHelper& rTarge
                         mpDropMarkerObj = nullptr;
                     }
 
-                    if( bBookmark && bFile && ( nDropAction & DND_ACTION_MOVE ) && mpViewSh && SlideShow::IsRunning(mpViewSh->GetViewShellBase()) )
+                    if( bBookmark && bFile && ( nDropAction & DND_ACTION_MOVE ) && mpViewSh
+                        && ( SlideShow::IsRunning(mpViewSh->GetViewShellBase())
+                        && !SlideShow::IsInteractiveSlideshow(&mpViewSh->GetViewShellBase()) )) // IASS
                         bBookmark = false;
 
                     if( bDrawing || bGraphic || bMtf || bBitmap || bBookmark || bFile || bFileList || bXFillExchange || bSBAFormat || bEditEngineODF || bString || bRTF )
@@ -630,9 +639,10 @@ sal_Int8 View::ExecuteDrop( const ExecuteDropEvent& rEvt,
         {
             ::tools::Rectangle aRect( pOLV->GetOutputArea() );
 
-            if( GetMarkedObjectCount() == 1 )
+            const SdrMarkList& rMarkList = GetMarkedObjectList();
+            if( rMarkList.GetMarkCount() == 1 )
             {
-                SdrMark* pMark = GetSdrMarkByIndex(0);
+                SdrMark* pMark = rMarkList.GetMark(0);
                 SdrObject* pObj = pMark->GetMarkedSdrObj();
                 aRect.Union( pObj->GetLogicRect() );
             }
@@ -668,13 +678,13 @@ sal_Int8 View::ExecuteDrop( const ExecuteDropEvent& rEvt,
                     {
                         if(pIAOHandle->getOverlayObjectList().isHitPixel(rEvt.maPosPixel))
                         {
-                            uno::Any const data(aDataHelper.GetAny(SotClipboardFormatId::XFA, ""));
+                            uno::Any const data(aDataHelper.GetAny(SotClipboardFormatId::XFA, u""_ustr));
                             uno::Sequence<beans::NamedValue> props;
                             if (data >>= props)
                             {
                                 ::comphelper::SequenceAsHashMap const map(props);
                                 Color aColor(COL_BLACK);
-                                auto const it = map.find("FillColor");
+                                auto const it = map.find(u"FillColor"_ustr);
                                 if (it != map.end())
                                 {
                                     XFillColorItem color;
@@ -750,7 +760,7 @@ sal_Int8 View::ExecuteDrop( const ExecuteDropEvent& rEvt,
                                 }
 
                                 // create undo action with old and new sizes
-                                std::unique_ptr<SdAnimationPrmsUndoAction> pAction(new SdAnimationPrmsUndoAction(&mrDoc, pPickObj, bCreated));
+                                std::unique_ptr<SdAnimationPrmsUndoAction> pAction(new SdAnimationPrmsUndoAction(mrDoc, pPickObj, bCreated));
                                 pAction->SetActive(pInfo->mbActive, pInfo->mbActive);
                                 pAction->SetEffect(pInfo->meEffect, pInfo->meEffect);
                                 pAction->SetTextEffect(pInfo->meTextEffect, pInfo->meTextEffect);
@@ -882,7 +892,7 @@ bool View::GetExchangeList (std::vector<OUString> &rExchangeList,
 
                 while( !bNameOK && pDlg->Execute() == RET_OK )
                 {
-                    pDlg->GetName( aNewName );
+                    aNewName = pDlg->GetName();
 
                     if( !mrDoc.GetObj( aNewName ) )
                         bNameOK = true;

@@ -25,14 +25,12 @@
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlerror.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/namespacemap.hxx>
 
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/xforms/XModel2.hpp>
 
-#include <osl/diagnose.h>
 #include <sal/log.hxx>
 
 using com::sun::star::uno::Reference;
@@ -64,28 +62,28 @@ void XFormsBindContext::HandleAttribute( const sax_fastparser::FastAttributeList
     switch( aIter.getToken() & TOKEN_MASK )
     {
     case XML_NODESET:
-        xforms_setValue( mxBinding, "BindingExpression", aIter.toString() );
+        xforms_setValue( mxBinding, u"BindingExpression"_ustr, aIter.toString() );
         break;
     case XML_ID:
-        xforms_setValue( mxBinding, "BindingID", aIter.toString() );
+        xforms_setValue( mxBinding, u"BindingID"_ustr, aIter.toString() );
         break;
     case XML_READONLY:
-        xforms_setValue( mxBinding, "ReadonlyExpression", aIter.toString() );
+        xforms_setValue( mxBinding, u"ReadonlyExpression"_ustr, aIter.toString() );
         break;
     case XML_RELEVANT:
-        xforms_setValue( mxBinding, "RelevantExpression", aIter.toString() );
+        xforms_setValue( mxBinding, u"RelevantExpression"_ustr, aIter.toString() );
         break;
     case XML_REQUIRED:
-        xforms_setValue( mxBinding, "RequiredExpression", aIter.toString() );
+        xforms_setValue( mxBinding, u"RequiredExpression"_ustr, aIter.toString() );
         break;
     case XML_CONSTRAINT:
-        xforms_setValue( mxBinding, "ConstraintExpression", aIter.toString() );
+        xforms_setValue( mxBinding, u"ConstraintExpression"_ustr, aIter.toString() );
         break;
     case XML_CALCULATE:
-        xforms_setValue( mxBinding, "CalculateExpression", aIter.toString() );
+        xforms_setValue( mxBinding, u"CalculateExpression"_ustr, aIter.toString() );
         break;
     case XML_TYPE:
-        xforms_setValue( mxBinding, "Type",
+        xforms_setValue( mxBinding, u"Type"_ustr,
                          xforms_getTypeName( mxModel->getDataTypeRepository(),
                                        GetImport().GetNamespaceMap(),
                                        aIter.toString() ) );
@@ -102,7 +100,7 @@ void XFormsBindContext::startFastElement(
 {
     // we need to register the namespaces
     Reference<XNameContainer> xContainer(
-        mxBinding->getPropertyValue( "BindingNamespaces" ),
+        mxBinding->getPropertyValue( u"BindingNamespaces"_ustr ),
         UNO_QUERY );
 
     SAL_WARN_IF( !xContainer.is(), "xmloff", "binding should have a namespace container" );

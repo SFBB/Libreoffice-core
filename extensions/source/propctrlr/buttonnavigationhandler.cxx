@@ -29,10 +29,7 @@ namespace pcr
 
 
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::script;
-    using namespace ::com::sun::star::frame;
     using namespace ::com::sun::star::inspection;
 
     ButtonNavigationHandler::ButtonNavigationHandler( const Reference< XComponentContext >& _rxContext )
@@ -50,13 +47,13 @@ namespace pcr
 
     OUString ButtonNavigationHandler::getImplementationName(  )
     {
-        return "com.sun.star.comp.extensions.ButtonNavigationHandler";
+        return u"com.sun.star.comp.extensions.ButtonNavigationHandler"_ustr;
     }
 
 
     Sequence< OUString > ButtonNavigationHandler::getSupportedServiceNames(  )
     {
-        return { "com.sun.star.form.inspection.ButtonNavigationHandler" };
+        return { u"com.sun.star.form.inspection.ButtonNavigationHandler"_ustr };
     }
 
 

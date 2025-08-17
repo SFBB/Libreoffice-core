@@ -19,8 +19,8 @@
 
 #pragma once
 
+#include <comphelper/OAccessible.hxx>
 #include <rtl/ref.hxx>
-
 #include <sfx2/viewsh.hxx>
 #include <svl/typedwhich.hxx>
 #include <svtools/scrolladaptor.hxx>
@@ -100,7 +100,8 @@ public:
         ST_OUTLINE,
         ST_SLIDE_SORTER,
         ST_PRESENTATION,
-        ST_SIDEBAR
+        ST_SIDEBAR,
+        ST_NOTESPANEL
     };
     static const int MAX_HSPLIT_CNT = 1;
     static const int MAX_VSPLIT_CNT = 1;
@@ -147,7 +148,7 @@ public:
 
     SdDrawDocument*  GetDoc() const;
 
-    SD_DLLPUBLIC SfxViewFrame* GetViewFrame() const;
+    SAL_RET_MAYBENULL SD_DLLPUBLIC SfxViewFrame* GetViewFrame() const;
 
     /** The active window is usually the mpContentWindow.  When there is a
         show running then the active window is a ShowWindow.
@@ -292,8 +293,8 @@ public:
         @return
             This default implementation returns an empty reference.
     */
-    virtual css::uno::Reference<css::accessibility::XAccessible>
-        CreateAccessibleDocumentView (::sd::Window* pWindow);
+    virtual rtl::Reference<comphelper::OAccessible>
+    CreateAccessibleDocumentView(::sd::Window* pWindow);
 
     virtual void SwitchViewFireFocus( const css::uno::Reference< css::accessibility::XAccessible >& xAcc );
     void SwitchActiveViewFireFocus( );
@@ -381,6 +382,7 @@ public:
     */
     virtual void ShowUIControls (bool bVisible);
     bool IsPageFlipMode() const;
+    bool CanPanAcrossPages() const;
 
     /** Set the given window as new parent window.  This is not possible for
         all views, so the return value tells the caller if the relocation
@@ -410,6 +412,20 @@ public:
         PageKind ePageKind,
         SdPage* pPage,
         const sal_Int32 nInsertPosition = -1);
+
+    /** Called by sd::Window::LoseFocus to enable sd::ViewShell to take action
+        when focus is lost.
+
+        e.g. overridden by NotesPanelViewShell
+     */
+    virtual void onLoseFocus(){};
+
+    /** Called by sd::Window::GrabFocus to enable sd::ViewShell to take action
+        when focus is grabbed.
+
+        e.g. overridden by NotesPanelViewShell
+     */
+    virtual void onGrabFocus(){};
 
     /// Allows adjusting the point or mark of the selection to a document coordinate.
     void SetCursorMm100Position(const Point& rPosition, bool bPoint, bool bClearMark);
@@ -506,6 +522,7 @@ protected:
 
     virtual void Activate(bool IsMDIActivate) override;
     virtual void Deactivate(bool IsMDIActivate) override;
+    virtual void BroadcastContextForActivation (const bool bIsActivated) override;
 
     virtual void SetZoomFactor( const Fraction &rZoomX,
                                 const Fraction &rZoomY );
@@ -539,14 +556,12 @@ private:
     */
     ::std::unique_ptr< ::sd::WindowUpdater> mpWindowUpdater;
 
-    /** Code common to all constructors.  It generally is a bad idea
-        to call this function from outside a constructor.
-    */
-    void construct();
-
     /** Create the rulers.
     */
     void SetupRulers();
+
+    // IASS: Check if commands should be used for SlideShow
+    bool useInputForSlideShow() const;
 };
 
 SdrView* ViewShell::GetDrawView() const

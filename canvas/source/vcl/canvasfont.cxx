@@ -41,10 +41,9 @@ namespace vclcanvas
                             const geometry::Matrix2D&                       rFontMatrix,
                             rendering::XGraphicDevice&                      rDevice,
                             const OutDevProviderSharedPtr&                  rOutDevProvider ) :
-        CanvasFont_Base( m_aMutex ),
         maFont( vcl::Font( rFontRequest.FontDescription.FamilyName,
                       rFontRequest.FontDescription.StyleName,
-                      Size( 0, ::basegfx::fround(rFontRequest.CellSize) ) ) ),
+                      Size( 0, ::basegfx::fround<::tools::Long>(rFontRequest.CellSize) ) ) ),
         maFontRequest( rFontRequest ),
         mpRefDevice( &rDevice ),
         mpOutDevProvider( rOutDevProvider ),
@@ -74,12 +73,16 @@ namespace vclcanvas
             maFont->SetEmphasisMark(FontEmphasisMark(nEmphasisMark));
     }
 
-    void SAL_CALL CanvasFont::disposing()
+    void CanvasFont::disposing(std::unique_lock<std::mutex>& rGuard)
     {
-        SolarMutexGuard aGuard;
+        rGuard.unlock();
+        {
+            SolarMutexGuard aGuard;
 
-        mpOutDevProvider.reset();
-        mpRefDevice.clear();
+            mpOutDevProvider.reset();
+            mpRefDevice.clear();
+        }
+        rGuard.lock();
     }
 
     uno::Reference< rendering::XTextLayout > SAL_CALL  CanvasFont::createTextLayout( const rendering::StringContext& aText, sal_Int8 nDirection, sal_Int64 )
@@ -108,7 +111,7 @@ namespace vclcanvas
         OutputDevice& rOutDev = mpOutDevProvider->getOutDev();
         ScopedVclPtrInstance< VirtualDevice > pVDev( rOutDev );
         pVDev->SetFont(getVCLFont());
-        const ::FontMetric& aMetric( pVDev->GetFontMetric() );
+        const ::FontMetric aMetric( pVDev->GetFontMetric() );
 
         return rendering::FontMetrics(
             aMetric.GetAscent(),
@@ -134,7 +137,7 @@ namespace vclcanvas
 
     OUString SAL_CALL CanvasFont::getImplementationName()
     {
-        return "VCLCanvas::CanvasFont";
+        return u"VCLCanvas::CanvasFont"_ustr;
     }
 
     sal_Bool SAL_CALL CanvasFont::supportsService( const OUString& ServiceName )
@@ -144,7 +147,7 @@ namespace vclcanvas
 
     uno::Sequence< OUString > SAL_CALL CanvasFont::getSupportedServiceNames()
     {
-        return { "com.sun.star.rendering.CanvasFont" };
+        return { u"com.sun.star.rendering.CanvasFont"_ustr };
     }
 
     vcl::Font const & CanvasFont::getVCLFont() const

@@ -64,7 +64,7 @@ class Trace:
         self.clock = Trace.clock
 
 def addTrace(traces, lines):
-    if not(traces is None) and len(lines) > 0:
+    if traces is not None and len(lines) > 0:
         traces.append(Trace(lines))
 
 def readGdbLog(infile):
@@ -95,7 +95,7 @@ def getFunction(frame):
     start = frame.index(" in ") + len(" in ")
     try:
         end = frame.index(" at ", start)
-    except ValueError as e:
+    except ValueError:
         # argh... stack frames may be split across multiple lines if
         # a parameter has a fancy pretty printer
         return frame[start:]

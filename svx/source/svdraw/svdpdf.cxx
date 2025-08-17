@@ -23,7 +23,6 @@
 #include <vcl/graph.hxx>
 #include <vcl/vectorgraphicdata.hxx>
 
-#include <math.h>
 #include <editeng/eeitem.hxx>
 #include <editeng/fhgtitem.hxx>
 #include <editeng/wghtitem.hxx>
@@ -102,12 +101,12 @@ ImpSdrPdfImport::ImpSdrPdfImport(SdrModel& rModel, SdrLayerID nLay, const tools:
     mpVD->SetLineColor();
     mpVD->SetFillColor();
     maOldLineColor.SetRed(mpVD->GetLineColor().GetRed() + 1);
-    mpLineAttr = std::make_unique<SfxItemSetFixed<XATTR_LINE_FIRST, XATTR_LINE_LAST>>(
-        rModel.GetItemPool());
-    mpFillAttr = std::make_unique<SfxItemSetFixed<XATTR_FILL_FIRST, XATTR_FILL_LAST>>(
-        rModel.GetItemPool());
-    mpTextAttr
-        = std::make_unique<SfxItemSetFixed<EE_ITEMS_START, EE_ITEMS_END>>(rModel.GetItemPool());
+    mpLineAttr = std::make_unique<SfxItemSet>(
+        SfxItemSet::makeFixedSfxItemSet<XATTR_LINE_FIRST, XATTR_LINE_LAST>(rModel.GetItemPool()));
+    mpFillAttr = std::make_unique<SfxItemSet>(
+        SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(rModel.GetItemPool()));
+    mpTextAttr = std::make_unique<SfxItemSet>(
+        SfxItemSet::makeFixedSfxItemSet<EE_ITEMS_START, EE_ITEMS_END>(rModel.GetItemPool()));
 
     checkClip();
 
@@ -342,16 +341,20 @@ void ImpSdrPdfImport::SetAttributes(SdrObject* pObj, bool bForceTextAttr)
     if (bText && mbFntDirty)
     {
         vcl::Font aFnt(mpVD->GetFont());
-        const sal_uInt32 nHeight(FRound(aFnt.GetFontSize().Height() * mfScaleY));
+        const sal_uInt32 nHeight(
+            basegfx::fround<sal_uInt32>(aFnt.GetFontSize().Height() * mfScaleY));
 
-        mpTextAttr->Put(SvxFontItem(aFnt.GetFamilyType(), aFnt.GetFamilyName(), aFnt.GetStyleName(),
-                                    aFnt.GetPitch(), aFnt.GetCharSet(), EE_CHAR_FONTINFO));
-        mpTextAttr->Put(SvxFontItem(aFnt.GetFamilyType(), aFnt.GetFamilyName(), aFnt.GetStyleName(),
-                                    aFnt.GetPitch(), aFnt.GetCharSet(), EE_CHAR_FONTINFO_CJK));
-        mpTextAttr->Put(SvxFontItem(aFnt.GetFamilyType(), aFnt.GetFamilyName(), aFnt.GetStyleName(),
-                                    aFnt.GetPitch(), aFnt.GetCharSet(), EE_CHAR_FONTINFO_CTL));
-        mpTextAttr->Put(SvxPostureItem(aFnt.GetItalic(), EE_CHAR_ITALIC));
-        mpTextAttr->Put(SvxWeightItem(aFnt.GetWeight(), EE_CHAR_WEIGHT));
+        mpTextAttr->Put(SvxFontItem(aFnt.GetFamilyTypeMaybeAskConfig(), aFnt.GetFamilyName(),
+                                    aFnt.GetStyleName(), aFnt.GetPitchMaybeAskConfig(),
+                                    aFnt.GetCharSet(), EE_CHAR_FONTINFO));
+        mpTextAttr->Put(SvxFontItem(aFnt.GetFamilyTypeMaybeAskConfig(), aFnt.GetFamilyName(),
+                                    aFnt.GetStyleName(), aFnt.GetPitchMaybeAskConfig(),
+                                    aFnt.GetCharSet(), EE_CHAR_FONTINFO_CJK));
+        mpTextAttr->Put(SvxFontItem(aFnt.GetFamilyTypeMaybeAskConfig(), aFnt.GetFamilyName(),
+                                    aFnt.GetStyleName(), aFnt.GetPitchMaybeAskConfig(),
+                                    aFnt.GetCharSet(), EE_CHAR_FONTINFO_CTL));
+        mpTextAttr->Put(SvxPostureItem(aFnt.GetItalicMaybeAskConfig(), EE_CHAR_ITALIC));
+        mpTextAttr->Put(SvxWeightItem(aFnt.GetWeightMaybeAskConfig(), EE_CHAR_WEIGHT));
         mpTextAttr->Put(SvxFontHeightItem(nHeight, 100, EE_CHAR_FONTHEIGHT));
         mpTextAttr->Put(SvxFontHeightItem(nHeight, 100, EE_CHAR_FONTHEIGHT_CJK));
         mpTextAttr->Put(SvxFontHeightItem(nHeight, 100, EE_CHAR_FONTHEIGHT_CTL));
@@ -522,12 +525,12 @@ void ImpSdrPdfImport::InsertObj(SdrObject* pObj1, bool bScale)
 
                         const Size aOrigSizePixel(aBitmapEx.GetSizePixel());
                         const Point aClipTopLeft(
-                            basegfx::fround(floor(std::max(0.0, aPixel.getMinX()))),
-                            basegfx::fround(floor(std::max(0.0, aPixel.getMinY()))));
+                            basegfx::fround<tools::Long>(floor(std::max(0.0, aPixel.getMinX()))),
+                            basegfx::fround<tools::Long>(floor(std::max(0.0, aPixel.getMinY()))));
                         const Size aClipSize(
-                            basegfx::fround(ceil(std::min(
+                            basegfx::fround<tools::Long>(ceil(std::min(
                                 static_cast<double>(aOrigSizePixel.Width()), aPixel.getWidth()))),
-                            basegfx::fround(
+                            basegfx::fround<tools::Long>(
                                 ceil(std::min(static_cast<double>(aOrigSizePixel.Height()),
                                               aPixel.getHeight()))));
                         const BitmapEx aClippedBitmap(aBitmapEx, aClipTopLeft, aClipSize);
@@ -782,17 +785,18 @@ void ImpSdrPdfImport::InsertTextObject(const Point& rPos, const Size& rSize, con
     // sal_Int32 nTextWidth = static_cast<sal_Int32>(mpVD->GetTextWidth(rStr) * mfScaleX);
     sal_Int32 nTextHeight = static_cast<sal_Int32>(mpVD->GetTextHeight() * mfScaleY);
 
-    Point aPosition(FRound(rPos.X() * mfScaleX + maOfs.X()),
-                    FRound(rPos.Y() * mfScaleY + maOfs.Y()));
-    Size aSize(FRound(rSize.Width() * mfScaleX), FRound(rSize.Height() * mfScaleY));
+    Point aPosition(basegfx::fround<tools::Long>(rPos.X() * mfScaleX + maOfs.X()),
+                    basegfx::fround<tools::Long>(rPos.Y() * mfScaleY + maOfs.Y()));
+    Size aSize(basegfx::fround<tools::Long>(rSize.Width() * mfScaleX),
+               basegfx::fround<tools::Long>(rSize.Height() * mfScaleY));
 
     if (eAlignment == ALIGN_BASELINE)
-        aPosition.AdjustY(-FRound(aFontMetric.GetAscent() * mfScaleY));
+        aPosition.AdjustY(basegfx::fround<tools::Long>(aFontMetric.GetAscent() * -mfScaleY));
     else if (eAlignment == ALIGN_BOTTOM)
         aPosition.AdjustY(-nTextHeight);
 
     tools::Rectangle aTextRect(aPosition, aSize);
-    rtl::Reference<SdrRectObj> pText = new SdrRectObj(*mpModel, SdrObjKind::Text, aTextRect);
+    rtl::Reference<SdrRectObj> pText = new SdrRectObj(*mpModel, aTextRect, SdrObjKind::Text);
 
     pText->SetMergedItem(makeSdrTextUpperDistItem(0));
     pText->SetMergedItem(makeSdrTextLowerDistItem(0));
@@ -818,7 +822,8 @@ void ImpSdrPdfImport::InsertTextObject(const Point& rPos, const Size& rSize, con
 
     if (!aFont.IsTransparent())
     {
-        SfxItemSetFixed<XATTR_FILL_FIRST, XATTR_FILL_LAST> aAttr(*mpFillAttr->GetPool());
+        SfxItemSet aAttr(SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(
+            *mpFillAttr->GetPool()));
         aAttr.Put(XFillStyleItem(drawing::FillStyle_SOLID));
         aAttr.Put(XFillColorItem(OUString(), aFont.GetFillColor()));
         pText->SetMergedItemSet(aAttr);
@@ -878,7 +883,7 @@ void ImpSdrPdfImport::ImportImage(std::unique_ptr<vcl::pdf::PDFiumPageObject> co
             ReadRawDIB(aBitmap, pBuf, ScanlineFormat::N24BitTcBgr, nHeight, nStride);
             break;
         case vcl::pdf::PDFBitmapType::BGRx:
-            ReadRawDIB(aBitmap, pBuf, ScanlineFormat::N32BitTcRgba, nHeight, nStride);
+            ReadRawDIB(aBitmap, pBuf, ScanlineFormat::N32BitTcBgra, nHeight, nStride);
             break;
         case vcl::pdf::PDFBitmapType::BGRA:
             ReadRawDIB(aBitmap, pBuf, ScanlineFormat::N32BitTcBgra, nHeight, nStride);

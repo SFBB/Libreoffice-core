@@ -30,9 +30,13 @@
 #include <svl/itemset.hxx>
 #include <tools/link.hxx>
 #include <tools/stream.hxx>
+
+#include <com/sun/star/uno/Sequence.hxx>
+
 #include <mutex>
 
 namespace com::sun::star::beans { struct PropertyValue; }
+namespace com::sun::star::beans { struct StringPair; }
 namespace com::sun::star::embed { class XStorage; }
 namespace com::sun::star::graphic { class XGraphic; }
 namespace com::sun::star::io { class XInputStream; }
@@ -47,12 +51,14 @@ namespace com::sun::star::frame
 class XModel;
 }
 namespace ucbhelper { class Content; }
+namespace svl::crypto { class SigningContext; }
 
 class SvKeyValueIterator;
 class SfxFilter;
 class SfxMedium_Impl;
 class INetURLObject;
 class SfxFrame;
+class SfxViewShell;
 class DateTime;
 struct ImplSVEvent;
 
@@ -98,6 +104,9 @@ public:
     DECL_DLLPRIVATE_STATIC_LINK(SfxMedium, ShowReloadEditableDialog, void*, void);
     bool CheckCanGetLockfile() const;
     void SetOriginallyReadOnly(bool val);
+    void AddEmbeddedFonts(const css::uno::Sequence<css::beans::StringPair>& fonts);
+    // Transfers the embedded font list to another medium (passing ownership)
+    void TransferEmbeddedFontsTo(SfxMedium& target);
     void AddToCheckEditableWorkerList();
     void SetWorkerReloadEvent(ImplSVEvent* pEvent);
     ImplSVEvent* GetWorkerReloadEvent() const;
@@ -149,7 +158,7 @@ public:
     ErrCodeMsg const &  GetWarningError() const;
     ErrCodeMsg const &  GetLastStorageCreationState() const;
 
-    void                SetError(ErrCodeMsg nError);
+    void                SetError(const ErrCodeMsg& rError);
     void                SetWarningError(const ErrCodeMsg& nWarningError);
 
     void                CloseInStream();
@@ -200,6 +209,17 @@ public:
     // independent of later changes via SetOpenMode; used for SID_RELOAD:
     [[nodiscard]] bool IsOriginallyLoadedReadOnly() const;
 
+    // Whether the medium has embedded fonts that disallow editing of the document,
+    // meaning that it can't be switched to editing mode at all, without reloading
+    // and discarding these fonts:
+    [[nodiscard]] bool HasRestrictedFonts() const;
+
+    // Activates collected embedded fonts. Here it may ask user to approve use of restricted fonts,
+    // and switch to read-only mode.
+    void activateEmbeddedFonts();
+
+    [[nodiscard]] bool IsRepairPackage() const;
+
     css::uno::Reference< css::io::XInputStream > const &  GetInputStream();
 
     void                CreateTempFile( bool bReplace = true );
@@ -218,14 +238,14 @@ public:
     SAL_DLLPRIVATE OUString const & GetBackup_Impl();
 
     SAL_DLLPRIVATE css::uno::Reference< css::embed::XStorage > const & GetZipStorageToSign_Impl( bool bReadOnly = true );
-    SAL_DLLPRIVATE css::uno::Reference<css::embed::XStorage> GetScriptingStorageToSign_Impl();
+    SAL_DLLPRIVATE const css::uno::Reference<css::embed::XStorage> & GetScriptingStorageToSign_Impl();
     SAL_DLLPRIVATE void CloseZipStorage_Impl();
 
     // the storage that will be returned by the medium on GetStorage request
     SAL_DLLPRIVATE void SetStorage_Impl( const css::uno::Reference< css::embed::XStorage >& xNewStorage );
     SAL_DLLPRIVATE void SetInnerStorage_Impl(const css::uno::Reference<css::embed::XStorage>& xStorage);
     SAL_DLLPRIVATE css::uno::Reference<css::embed::XStorage>
-        TryEncryptedInnerPackage(css::uno::Reference<css::embed::XStorage> xStorage);
+        TryEncryptedInnerPackage(const css::uno::Reference<css::embed::XStorage> & xStorage);
 
     SAL_DLLPRIVATE void CloseAndReleaseStreams_Impl();
     SAL_DLLPRIVATE void AddVersion_Impl( css::util::RevisionTag& rVersion );
@@ -270,9 +290,11 @@ public:
                              const INetURLObject& aDest,
                              const css::uno::Reference< css::ucb::XCommandEnvironment >& xComEnv );
 
-    SAL_DLLPRIVATE bool
+    SAL_DLLPRIVATE void
     SignContents_Impl(weld::Window* pDialogParent,
                       bool bSignScriptingContent, bool bHasValidDocumentSignature,
+                      SfxViewShell* pViewShell,
+                      const std::function<void(bool)>& rCallback,
                       const OUString& aSignatureLineId = OUString(),
                       const css::uno::Reference<css::security::XCertificate>& xCert
                       = css::uno::Reference<css::security::XCertificate>(),
@@ -284,7 +306,7 @@ public:
 
     SAL_DLLPRIVATE bool SignDocumentContentUsingCertificate(
         const css::uno::Reference<css::frame::XModel>& xModel, bool bHasValidDocumentSignature,
-        const css::uno::Reference<css::security::XCertificate>& xCertificate);
+        svl::crypto::SigningContext& rSigningContext);
 
     // the following two methods must be used and make sense only during saving currently
     // TODO/LATER: in future the signature state should be controlled by the medium not by the document
@@ -308,6 +330,7 @@ private:
                                             bool bIsLoading, bool bOwnLock, bool bHandleSysLocked);
     enum class MessageDlg { LockFileIgnore, LockFileCorrupt };
     bool                ShowLockFileProblemDialog(MessageDlg nWhichDlg);
+    void ReleaseEmbeddedFonts();
 };
 
 #endif

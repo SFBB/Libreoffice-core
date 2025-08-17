@@ -36,10 +36,10 @@
 
 using namespace com::sun::star;
 
-SwFormat::SwFormat( SwAttrPool& rPool, const char* pFormatNm,
+SwFormat::SwFormat( SwAttrPool& rPool, const UIName& rFormatNm,
               const WhichRangesContainer& pWhichRanges, SwFormat *pDrvdFrame,
               sal_uInt16 nFormatWhich ) :
-    m_aFormatName( OUString::createFromAscii(pFormatNm) ),
+    m_aFormatName( rFormatNm ),
     m_aSet( rPool, pWhichRanges ),
     m_nWhichId( nFormatWhich ),
     m_nPoolFormatId( USHRT_MAX ),
@@ -52,28 +52,7 @@ SwFormat::SwFormat( SwAttrPool& rPool, const char* pFormatNm,
 
     if( pDrvdFrame )
     {
-        pDrvdFrame->Add(this);
-        m_aSet.SetParent( &pDrvdFrame->m_aSet );
-    }
-}
-
-SwFormat::SwFormat( SwAttrPool& rPool, OUString aFormatNm,
-              const WhichRangesContainer& pWhichRanges, SwFormat* pDrvdFrame,
-              sal_uInt16 nFormatWhich ) :
-    m_aFormatName( std::move(aFormatNm) ),
-    m_aSet( rPool, pWhichRanges ),
-    m_nWhichId( nFormatWhich ),
-    m_nPoolFormatId( USHRT_MAX ),
-    m_nPoolHelpId( USHRT_MAX ),
-    m_nPoolHlpFileId( UCHAR_MAX )
-{
-    m_bAutoUpdateOnDirectFormat = false; // LAYER_IMPL
-    m_bAutoFormat = true;
-    m_bFormatInDTOR = m_bHidden = false;
-
-    if( pDrvdFrame )
-    {
-        pDrvdFrame->Add(this);
+        pDrvdFrame->Add(*this);
         m_aSet.SetParent( &pDrvdFrame->m_aSet );
     }
 }
@@ -94,7 +73,7 @@ SwFormat::SwFormat( const SwFormat& rFormat ) :
 
     if( auto pDerived = rFormat.DerivedFrom() )
     {
-        pDerived->Add(this);
+        pDerived->Add(*this);
         m_aSet.SetParent( &pDerived->m_aSet );
     }
     // a few special treatments for attributes
@@ -111,7 +90,7 @@ SwFormat &SwFormat::operator=(const SwFormat& rFormat)
     m_nPoolHelpId = rFormat.GetPoolHelpId();
     m_nPoolHlpFileId = rFormat.GetPoolHlpFileId();
 
-    InvalidateInSwCache(RES_OBJECTDYING);
+    InvalidateInSwCache();
 
     // copy only array with attributes delta
     SwAttrSet aOld( *m_aSet.GetPool(), m_aSet.GetRanges() ),
@@ -142,7 +121,7 @@ SwFormat &SwFormat::operator=(const SwFormat& rFormat)
     return *this;
 }
 
-void SwFormat::SetFormatName( const OUString& rNewName, bool bBroadcast )
+void SwFormat::SetFormatName( const UIName& rNewName, bool bBroadcast )
 {
     OSL_ENSURE( !IsDefault(), "SetName: Defaultformat" );
     if( bBroadcast )
@@ -171,8 +150,8 @@ void SwFormat::SetFormatName( const OUString& rNewName, bool bBroadcast )
 void SwFormat::CopyAttrs( const SwFormat& rFormat )
 {
     // copy only array with attributes delta
-    InvalidateInSwCache(RES_ATTRSET_CHG);
-    InvalidateInSwFntCache(RES_ATTRSET_CHG);
+    InvalidateInSwCache();
+    InvalidateInSwFntCache();
 
     // special treatments for some attributes
     SwAttrSet* pChgSet = const_cast<SwAttrSet*>(&rFormat.m_aSet);
@@ -192,7 +171,7 @@ void SwFormat::CopyAttrs( const SwFormat& rFormat )
 
             SwAttrSetChg aChgOld( m_aSet, aOld );
             SwAttrSetChg aChgNew( m_aSet, aNew );
-            SwClientNotify(*this, sw::LegacyModifyHint(&aChgOld, &aChgNew)); // send all modified ones
+            SwClientNotify(*this, sw::AttrSetChangeHint(&aChgOld, &aChgNew)); // send all modified ones
         }
     }
 
@@ -200,113 +179,134 @@ void SwFormat::CopyAttrs( const SwFormat& rFormat )
         delete pChgSet;
 }
 
-SwFormat::~SwFormat()
+void SwFormat::Destr()
 {
     // This happens at an ObjectDying message. Thus put all dependent
     // ones on DerivedFrom.
-    if(!HasWriterListeners())
+    if (!HasWriterListeners())
         return;
 
     m_bFormatInDTOR = true;
 
-    if(!DerivedFrom())
+    if (!DerivedFrom())
     {
         SwFormat::ResetFormatAttr(RES_PAGEDESC);
-        SAL_WARN("sw.core", "~SwFormat: format still has clients on death, but parent format is missing: " << GetName());
+        SAL_WARN("sw.core",
+                 "~SwFormat: format still has clients on death, but parent format is missing: "
+                     << GetName().toString());
         return;
     }
-    SwIterator<SwClient,SwFormat> aIter(*this);
-    for(SwClient* pClient = aIter.First(); pClient; pClient = aIter.Next())
-        pClient->CheckRegistrationFormat(*this);
+    PrepareFormatDeath(SwFormatChangeHint(this, DerivedFrom()));
     assert(!HasWriterListeners());
+}
+
+SwFormat::~SwFormat()
+{
+    Destr();
 }
 
 void SwFormat::SwClientNotify(const SwModify&, const SfxHint& rHint)
 {
+    if (rHint.GetId() == SfxHintId::SwRemoveUnoObject
+        || rHint.GetId() == SfxHintId::SwUpdateAttr)
+    {
+        SwModify::SwClientNotify(*this, rHint);
+        return;
+    }
+    if (rHint.GetId() == SfxHintId::SwFormatChange)
+    {
+        auto pChangeHint = static_cast<const SwFormatChangeHint*>(&rHint);
+
+        InvalidateInSwCache();
+
+        // if the format parent will be moved so register my attribute set at
+        // the new one
+
+        // skip my own Modify
+        // NB: this still notifies depends even if this condition is not met, which seems non-obvious
+        if(pChangeHint->m_pOldFormat != this && pChangeHint->m_pNewFormat == GetRegisteredIn())
+        {
+            // attach Set to new parent
+            m_aSet.SetParent(DerivedFrom() ? &DerivedFrom()->m_aSet : nullptr);
+        }
+        InvalidateInSwFntCache();
+        SwModify::SwClientNotify(*this, rHint);
+        return;
+    }
+    if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+        std::optional<SwAttrSetChg> oOldClientChg, oNewClientChg;
+        std::optional<sw::AttrSetChangeHint> oDependsHint(std::in_place, pChangeHint->m_pOld, pChangeHint->m_pNew);
+        InvalidateInSwCache();
+        // NB: this still notifies depends even if this condition is not met, which seems non-obvious
+        auto pOldAttrSetChg = pChangeHint->m_pOld;
+        auto pNewAttrSetChg = pChangeHint->m_pNew;
+        if (pOldAttrSetChg && pNewAttrSetChg && pOldAttrSetChg->GetTheChgdSet() != &m_aSet)
+        {
+            // pass only those that are not set...
+            oNewClientChg.emplace(*pNewAttrSetChg);
+            oNewClientChg->GetChgSet()->Differentiate(m_aSet);
+            if(oNewClientChg->Count()) // ... if any
+            {
+                oOldClientChg.emplace(*pOldAttrSetChg);
+                oOldClientChg->GetChgSet()->Differentiate(m_aSet);
+                oDependsHint.emplace(&*oOldClientChg, &*oNewClientChg);
+            }
+            else
+                oDependsHint.reset();
+        }
+        if(oDependsHint)
+        {
+            InvalidateInSwFntCache();
+            SwModify::SwClientNotify(*this, *oDependsHint);
+        }
+        return;
+    }
+    if (rHint.GetId() == SfxHintId::SwObjectDying)
+    {
+        auto pDyingHint = static_cast<const sw::ObjectDyingHint*>(&rHint);
+        InvalidateInSwCache();
+        // If the dying object is the parent format of this format so
+        // attach this to the parent of the parent
+
+        // do not move if this is the topmost format
+        if(GetRegisteredIn() && GetRegisteredIn() == pDyingHint->m_pDying)
+        {
+            if(pDyingHint->m_pDying->GetRegisteredIn())
+            {
+                SwFormat* pFormat = static_cast<SwFormat*>(pDyingHint->m_pDying);
+                // if parent so register in new parent
+                pFormat->DerivedFrom()->Add(*this);
+                m_aSet.SetParent(&DerivedFrom()->m_aSet);
+            }
+            else
+            {
+                // otherwise de-register at least from dying one
+                EndListeningAll();
+                m_aSet.SetParent(nullptr);
+            }
+        }
+        InvalidateInSwFntCache();
+        SwModify::SwClientNotify(*this, rHint);
+        return;
+    }
     if (rHint.GetId() != SfxHintId::SwLegacyModify)
         return;
     auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
 
-    std::optional<SwAttrSetChg> oOldClientChg, oNewClientChg;
     std::optional<sw::LegacyModifyHint> oDependsHint(std::in_place, pLegacy->m_pOld, pLegacy->m_pNew);
     const sal_uInt16 nWhich = pLegacy->GetWhich();
     InvalidateInSwCache(nWhich);
-    switch(nWhich)
+    if(nWhich != 0)
     {
-        case 0:
-            break;
-        case RES_OBJECTDYING:
+        // attribute is defined in this format
+        if(SfxItemState::SET == m_aSet.GetItemState(nWhich, false))
         {
-            // NB: this still notifies depends even if pLegacy->m_pNew is nullptr, which seems non-obvious
-            if(!pLegacy->m_pNew)
-                break;
-            // If the dying object is the parent format of this format so
-            // attach this to the parent of the parent
-            SwFormat* pFormat = static_cast<SwFormat*>(pLegacy->m_pNew->StaticWhichCast(RES_OBJECTDYING).pObject);
-
-            // do not move if this is the topmost format
-            if(GetRegisteredIn() && GetRegisteredIn() == pFormat)
-            {
-                if(pFormat->GetRegisteredIn())
-                {
-                    // if parent so register in new parent
-                    pFormat->DerivedFrom()->Add(this);
-                    m_aSet.SetParent(&DerivedFrom()->m_aSet);
-                }
-                else
-                {
-                    // otherwise de-register at least from dying one
-                    EndListeningAll();
-                    m_aSet.SetParent(nullptr);
-                }
-            }
-            break;
+            // DropCaps might come into this block
+            SAL_WARN_IF(RES_PARATR_DROP != nWhich, "sw.core", "Hint was sent without sender");
+            oDependsHint.reset();
         }
-        case RES_ATTRSET_CHG:
-        {
-            // NB: this still notifies depends even if this condition is not met, which seems non-obvious
-            auto pOldAttrSetChg = static_cast<const SwAttrSetChg*>(pLegacy->m_pOld);
-            auto pNewAttrSetChg = static_cast<const SwAttrSetChg*>(pLegacy->m_pNew);
-            if (pOldAttrSetChg && pNewAttrSetChg && pOldAttrSetChg->GetTheChgdSet() != &m_aSet)
-            {
-                // pass only those that are not set...
-                oNewClientChg.emplace(*pNewAttrSetChg);
-                oNewClientChg->GetChgSet()->Differentiate(m_aSet);
-                if(oNewClientChg->Count()) // ... if any
-                {
-                    oOldClientChg.emplace(*pOldAttrSetChg);
-                    oOldClientChg->GetChgSet()->Differentiate(m_aSet);
-                    oDependsHint.emplace(&*oOldClientChg, &*oNewClientChg);
-                }
-                else
-                    oDependsHint.reset();
-            }
-            break;
-        }
-        case RES_FMT_CHG:
-        {
-            // if the format parent will be moved so register my attribute set at
-            // the new one
-
-            // skip my own Modify
-            // NB: this still notifies depends even if this condition is not met, which seems non-obvious
-            auto pOldFormatChg = static_cast<const SwFormatChg*>(pLegacy->m_pOld);
-            auto pNewFormatChg = static_cast<const SwFormatChg*>(pLegacy->m_pNew);
-            if(pOldFormatChg && pNewFormatChg && pOldFormatChg->pChangedFormat != this && pNewFormatChg->pChangedFormat == GetRegisteredIn())
-            {
-                // attach Set to new parent
-                m_aSet.SetParent(DerivedFrom() ? &DerivedFrom()->m_aSet : nullptr);
-            }
-            break;
-        }
-        default:
-            // attribute is defined in this format
-            if(SfxItemState::SET == m_aSet.GetItemState(nWhich, false))
-            {
-                // DropCaps might come into this block
-                SAL_WARN_IF(RES_PARATR_DROP != nWhich, "sw.core", "Hint was sent without sender");
-                oDependsHint.reset();
-            }
     }
     if(oDependsHint)
     {
@@ -344,15 +344,13 @@ bool SwFormat::SetDerivedFrom(SwFormat *pDerFrom)
             || (Which()==RES_FLYFRMFMT && pDerFrom->Which()==RES_FRMFMT)
             );
 
-    InvalidateInSwCache(RES_ATTRSET_CHG);
-    InvalidateInSwFntCache(RES_ATTRSET_CHG);
+    InvalidateInSwCache();
+    InvalidateInSwFntCache();
 
-    pDerFrom->Add( this );
+    pDerFrom->Add(*this);
     m_aSet.SetParent( &pDerFrom->m_aSet );
 
-    SwFormatChg aOldFormat( this );
-    SwFormatChg aNewFormat( this );
-    const sw::LegacyModifyHint aHint(&aOldFormat, &aNewFormat);
+    const SwFormatChangeHint aHint(this, this);
     SwClientNotify(*this, aHint);
 
     return true;
@@ -528,8 +526,8 @@ bool SwFormat::SetFormatAttr( const SfxItemSet& rSet )
     if( !rSet.Count() )
         return false;
 
-    InvalidateInSwCache(RES_ATTRSET_CHG);
-    InvalidateInSwFntCache(RES_ATTRSET_CHG);
+    InvalidateInSwCache();
+    InvalidateInSwFntCache();
 
     bool bRet = false;
 
@@ -540,10 +538,7 @@ bool SwFormat::SetFormatAttr( const SfxItemSet& rSet )
     // Need to check for unique item for DrawingLayer items of type NameOrIndex
     // and evtl. correct that item to ensure unique names for that type. This call may
     // modify/correct entries inside of the given SfxItemSet
-    if(GetDoc())
-    {
-        GetDoc()->CheckForUniqueItemForLineFillNameOrIndex(aTempSet);
-    }
+    GetDoc().CheckForUniqueItemForLineFillNameOrIndex(aTempSet);
 
     if (supportsFullDrawingLayerFillAttributeSet())
     {
@@ -648,8 +643,8 @@ sal_uInt16 SwFormat::ResetAllFormatAttr()
     if( !m_aSet.Count() )
         return 0;
 
-    InvalidateInSwCache(RES_ATTRSET_CHG);
-    InvalidateInSwFntCache(RES_ATTRSET_CHG);
+    InvalidateInSwCache();
+    InvalidateInSwFntCache();
 
     // if Modify is locked then no modifications will be sent
     if( IsModifyLocked() )
@@ -668,8 +663,8 @@ void SwFormat::DelDiffs( const SfxItemSet& rSet )
     if( !m_aSet.Count() )
         return;
 
-    InvalidateInSwCache(RES_ATTRSET_CHG);
-    InvalidateInSwFntCache(RES_ATTRSET_CHG);
+    InvalidateInSwCache();
+    InvalidateInSwFntCache();
 
     // if Modify is locked then no modifications will be sent
     if( IsModifyLocked() )
@@ -688,7 +683,8 @@ void SwFormat::DelDiffs( const SfxItemSet& rSet )
 void SwFormat::SetPageFormatToDefault()
 {
     const sal_Int32 nSize = o3tl::convert(2, o3tl::Length::cm, o3tl::Length::twip);
-    SetFormatAttr(SvxLRSpaceItem(nSize, nSize, 0, RES_LR_SPACE));
+    SetFormatAttr(SvxLRSpaceItem(SvxIndentValue::twips(nSize), SvxIndentValue::twips(nSize),
+                                 SvxIndentValue::zero(), RES_LR_SPACE));
     SetFormatAttr(SvxULSpaceItem(nSize, nSize, RES_UL_SPACE));
 }
 
@@ -708,14 +704,14 @@ bool SwFormat::IsBackgroundTransparent() const
 /*
  * Document Interface Access
  */
-const IDocumentSettingAccess& SwFormat::getIDocumentSettingAccess() const { return GetDoc()->GetDocumentSettingManager(); }
-const IDocumentDrawModelAccess& SwFormat::getIDocumentDrawModelAccess() const { return GetDoc()->getIDocumentDrawModelAccess(); }
-IDocumentDrawModelAccess& SwFormat::getIDocumentDrawModelAccess() { return GetDoc()->getIDocumentDrawModelAccess(); }
-const IDocumentLayoutAccess& SwFormat::getIDocumentLayoutAccess() const { return GetDoc()->getIDocumentLayoutAccess(); }
-IDocumentLayoutAccess& SwFormat::getIDocumentLayoutAccess() { return GetDoc()->getIDocumentLayoutAccess(); }
-IDocumentTimerAccess& SwFormat::getIDocumentTimerAccess() { return GetDoc()->getIDocumentTimerAccess(); }
-IDocumentFieldsAccess& SwFormat::getIDocumentFieldsAccess() { return GetDoc()->getIDocumentFieldsAccess(); }
-IDocumentChartDataProviderAccess& SwFormat::getIDocumentChartDataProviderAccess() { return GetDoc()->getIDocumentChartDataProviderAccess(); }
+const IDocumentSettingAccess& SwFormat::getIDocumentSettingAccess() const { return GetDoc().GetDocumentSettingManager(); }
+const IDocumentDrawModelAccess& SwFormat::getIDocumentDrawModelAccess() const { return GetDoc().getIDocumentDrawModelAccess(); }
+IDocumentDrawModelAccess& SwFormat::getIDocumentDrawModelAccess() { return GetDoc().getIDocumentDrawModelAccess(); }
+const IDocumentLayoutAccess& SwFormat::getIDocumentLayoutAccess() const { return GetDoc().getIDocumentLayoutAccess(); }
+IDocumentLayoutAccess& SwFormat::getIDocumentLayoutAccess() { return GetDoc().getIDocumentLayoutAccess(); }
+IDocumentTimerAccess& SwFormat::getIDocumentTimerAccess() { return GetDoc().getIDocumentTimerAccess(); }
+IDocumentFieldsAccess& SwFormat::getIDocumentFieldsAccess() { return GetDoc().getIDocumentFieldsAccess(); }
+IDocumentChartDataProviderAccess& SwFormat::getIDocumentChartDataProviderAccess() { return GetDoc().getIDocumentChartDataProviderAccess(); }
 
 void SwFormat::GetGrabBagItem(uno::Any& rVal) const
 {
@@ -756,31 +752,44 @@ drawinglayer::attribute::SdrAllFillAttributesHelperPtr SwFormat::getSdrAllFillAt
 
 void SwFormat::RemoveAllUnos()
 {
-    SwPtrMsgPoolItem aMsgHint(RES_REMOVE_UNO_OBJECT, this);
-    SwClientNotify(*this, sw::LegacyModifyHint(&aMsgHint, &aMsgHint));
+    sw::RemoveUnoObjectHint aMsgHint(this);
+    SwClientNotify(*this, aMsgHint);
 }
 
 bool SwFormat::IsUsed() const
 {
-    auto pDoc = GetDoc();
-    if(!pDoc)
-        return false;
     bool isUsed = false;
-    sw::AutoFormatUsedHint aHint(isUsed, pDoc->GetNodes());
+    sw::AutoFormatUsedHint aHint(isUsed, GetDoc().GetNodes());
     CallSwClientNotify(aHint);
     return isUsed;
+}
+
+void SwFormat::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwFormat"));
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("symbol"), "%s", BAD_CAST(typeid(*this).name()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("name"),
+                                      BAD_CAST(m_aFormatName.toString().toUtf8().getStr()));
+    if (SwFormat* pDerivedFrom = DerivedFrom())
+    {
+        (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("derived-from"),
+                                          BAD_CAST(pDerivedFrom->GetName().toString().toUtf8().getStr()));
+    }
+    m_aSet.dumpAsXml(pWriter);
+    (void)xmlTextWriterEndElement(pWriter);
 }
 
 SwFormatsBase::~SwFormatsBase()
 {}
 
-SwFormat* SwFormatsBase::FindFormatByName( const OUString& rName ) const
+SwFormat* SwFormatsBase::FindFormatByName( const UIName& rName ) const
 {
     SwFormat* pFnd = nullptr;
     for( size_t n = 0; n < GetFormatCount(); ++n )
     {
         // Does the Doc already contain the template?
-        if( GetFormat(n)->HasName( rName ) )
+        if( GetFormat(n)->HasName( rName.toString() ) )
         {
             pFnd = GetFormat(n);
             break;

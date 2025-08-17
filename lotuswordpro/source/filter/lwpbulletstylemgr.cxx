@@ -163,12 +163,12 @@ OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, const LwpBulletO
             if (pIndent->GetMRest() > 0) /* note: used to be 0.001, no idea why */
             {
                 pListStyle->SetListPosition(nC, 0.0,
-                    LwpTools::ConvertToMetric(LwpTools::ConvertFromUnits(pIndent->GetMRest())), 0.0, eAlign);
+                    LwpTools::ConvertFromUnits(pIndent->GetMRest()), 0.0, eAlign);
             }
             else
             {
                 pListStyle->SetListPosition(nC, 0.0,
-                    0.0, LwpTools::ConvertToMetric(LwpTools::ConvertFromUnits(pIndent->GetMFirst())), eAlign);
+                    0.0, LwpTools::ConvertFromUnits(pIndent->GetMFirst()), eAlign);
             }
         }
 
@@ -223,7 +223,7 @@ OUString LwpBulletStyleMgr::RegisterBulletStyle(LwpPara* pPara, const LwpBulletO
                     }
 
                     pListStyle->SetListBullet(nPos, LwpSilverBullet::GetNumCharByStyleID(pParaNumber),
-                        "Times New Roman", aPrefix, aSuffix);
+                        u"Times New Roman"_ustr, aPrefix, aSuffix);
                 }
 
                 pListStyle->SetListPosition(nPos, 0.0, 0.635, 0.0);
@@ -300,7 +300,7 @@ rtl::Reference<XFContentContainer> LwpBulletStyleMgr::AddBulletList(
         {
             theItem->Add(prevList.get());
         }
-        prevList = theList;
+        prevList = std::move(theList);
     }
     return InnerItem;
 }

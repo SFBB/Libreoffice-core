@@ -46,7 +46,7 @@
 #include <tools/stream.hxx>
 #include <tools/debug.hxx>
 #include <tools/GenericTypeSerializer.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <libxml/xmlwriter.h>
 #include <editeng/unonrule.hxx>
 #include <sal/log.hxx>
@@ -75,7 +75,7 @@ static void lcl_getFormatter(css::uno::Reference<css::text::XNumberingFormatter>
 
     try
     {
-        Reference<XComponentContext>         xContext( ::comphelper::getProcessComponentContext() );
+        const Reference<XComponentContext>&         xContext( ::comphelper::getProcessComponentContext() );
         Reference<XDefaultNumberingProvider> xRet = text::DefaultNumberingProvider::create(xContext);
         _xFormatter.set(xRet, UNO_QUERY);
     }
@@ -107,8 +107,8 @@ SvxNumberType::~SvxNumberType()
 
 OUString SvxNumberType::GetNumStr( sal_Int32 nNo ) const
 {
-    LanguageTag aLang = utl::ConfigManager::IsFuzzing() ?
-        LanguageTag("en-US") :
+    LanguageTag aLang = comphelper::IsFuzzing() ?
+        LanguageTag(u"en-US"_ustr) :
         Application::GetSettings().GetLanguageTag();
     return GetNumStr( nNo, aLang.getLocale() );
 }
@@ -305,7 +305,7 @@ void SvxNumberFormat::Store(SvStream &rStream, FontToSubsFontConverter pConverte
         // are present, so Brush save is forced
         if(!pGraphicBrush->GetGraphicLink().isEmpty() && pGraphicBrush->GetGraphic())
         {
-            pGraphicBrush->SetGraphicLink("");
+            pGraphicBrush->SetGraphicLink(u""_ustr);
         }
 
         legacy::SvxBrush::Store(*pGraphicBrush, rStream, BRUSH_GRAPHIC_VERSION);
@@ -449,7 +449,7 @@ void SvxNumberFormat::SetGraphic( const OUString& rName )
     if( pGraphicBrush && pGraphicBrush->GetGraphicLink() == rName )
         return ;
 
-    pGraphicBrush.reset( new SvxBrushItem( rName, "", GPOS_AREA, 0 ) );
+    pGraphicBrush.reset( new SvxBrushItem( rName, u""_ustr, GPOS_AREA, 0 ) );
     if( eVertOrient == text::VertOrientation::NONE )
         eVertOrient = text::VertOrientation::TOP;
 
@@ -502,11 +502,11 @@ OUString SvxNumberFormat::GetLabelFollowedByAsString() const
     switch (meLabelFollowedBy)
     {
         case LISTTAB:
-            return "\t";
+            return u"\t"_ustr;
         case SPACE:
-            return " ";
+            return u" "_ustr;
         case NEWLINE:
-            return "\n";
+            return u"\n"_ustr;
         case NOTHING:
             // intentionally left blank.
             return OUString();
@@ -533,18 +533,18 @@ void SvxNumberFormat::SetIndentAt( const tools::Long nIndentAt )
 Size SvxNumberFormat::GetGraphicSizeMM100(const Graphic* pGraphic)
 {
     const MapMode aMapMM100( MapUnit::Map100thMM );
-    const Size& rSize = pGraphic->GetPrefSize();
+    const Size aSize = pGraphic->GetPrefSize();
     Size aRetSize;
     if ( pGraphic->GetPrefMapMode().GetMapUnit() == MapUnit::MapPixel )
     {
         OutputDevice* pOutDev = Application::GetDefaultDevice();
         MapMode aOldMap( pOutDev->GetMapMode() );
         pOutDev->SetMapMode( aMapMM100 );
-        aRetSize = pOutDev->PixelToLogic( rSize );
+        aRetSize = pOutDev->PixelToLogic( aSize );
         pOutDev->SetMapMode( aOldMap );
     }
     else
-        aRetSize = OutputDevice::LogicToLogic( rSize, pGraphic->GetPrefMapMode(), aMapMM100 );
+        aRetSize = OutputDevice::LogicToLogic( aSize, pGraphic->GetPrefMapMode(), aMapMM100 );
     return aRetSize;
 }
 
@@ -552,8 +552,8 @@ OUString SvxNumberFormat::CreateRomanString( sal_Int32 nNo, bool bUpper )
 {
     OUStringBuffer sRet;
 
-    constexpr char romans[][13] = {"M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"};
-    constexpr sal_Int32 values[] = {1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1};
+    static constexpr char romans[][13] = {"M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"};
+    static constexpr sal_Int32 values[] = {1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1};
 
     for (size_t i = 0; i < std::size(romans); ++i)
     {
@@ -568,10 +568,25 @@ OUString SvxNumberFormat::CreateRomanString( sal_Int32 nNo, bool bUpper )
                   : sRet.makeStringAndClear().toAsciiLowerCase();
 }
 
+void SvxNumberFormat::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SvxNumberFormat"));
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
+
+    SvxNumberType::dumpAsXml(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bullet"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                      BAD_CAST(OUString(&cBullet, 1).toUtf8().getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterEndElement(pWriter);
+}
+
 void SvxNumberFormat::SetPrefix(const OUString& rSet)
 {
     // ListFormat manages the prefix. If badly changed via this function, sListFormat is invalidated
-    if (sListFormat && rSet.getLength() != sPrefix.getLength())
+    if (sListFormat)
         sListFormat.reset();
 
     sPrefix = rSet;
@@ -580,7 +595,7 @@ void SvxNumberFormat::SetPrefix(const OUString& rSet)
 void SvxNumberFormat::SetSuffix(const OUString& rSet)
 {
     // ListFormat manages the suffix. If badly changed via this function, sListFormat is invalidated
-    if (sListFormat && rSet.getLength() != sSuffix.getLength())
+    if (sListFormat)
         sListFormat.reset();
 
     sSuffix = rSet;
@@ -626,17 +641,39 @@ void SvxNumberFormat::SetListFormat(std::optional<OUString> oSet)
     // For backward compatibility and UI we should create something looking like
     // a prefix, suffix and included levels also. This is not possible in general case
     // since level format string is much more flexible. But for most cases is okay
+
+    // If properly formatted, sListFormat should look something like "%1%…%10%"
+    // with an optional prefix or suffix (which could theoretically include a percent symbol)
+    const sal_Int32 nLen = sListFormat->getLength();
     sal_Int32 nFirstReplacement = sListFormat->indexOf('%');
-    sal_Int32 nLastReplacement = sListFormat->lastIndexOf('%') + 1;
+    while (nFirstReplacement > -1 && nFirstReplacement < nLen - 1
+           && ((*sListFormat)[nFirstReplacement + 1] < '1'
+               || (*sListFormat)[nFirstReplacement + 1] > '9'))
+    {
+        nFirstReplacement = sListFormat->indexOf('%', nFirstReplacement + 1);
+    }
+
+    sal_Int32 nLastReplacement = nFirstReplacement == -1 ? -1 : sListFormat->lastIndexOf('%');
+    while (nLastReplacement > 0
+           && ((*sListFormat)[nLastReplacement - 1] < '0'
+               || (*sListFormat)[nLastReplacement - 1] > '9'))
+    {
+        nLastReplacement = sListFormat->lastIndexOf('%', nLastReplacement);
+    }
+    if (nLastReplacement < nFirstReplacement)
+        nLastReplacement = nFirstReplacement;
+    else
+        ++nLastReplacement;
+
     if (nFirstReplacement > 0)
         // Everything before first '%' will be prefix
         sPrefix = sListFormat->copy(0, nFirstReplacement);
-    if (nLastReplacement >= 0 && nLastReplacement < sListFormat->getLength())
+    if (nLastReplacement >= 0 && nLastReplacement < nLen)
         // Everything beyond last '%' is a suffix
         sSuffix = sListFormat->copy(nLastReplacement);
 
     sal_uInt8 nPercents = 0;
-    for (sal_Int32 i = 0; i < sListFormat->getLength(); i++)
+    for (sal_Int32 i = nFirstReplacement > 0 ? nFirstReplacement : 0; i < nLastReplacement; i++)
     {
         if ((*sListFormat)[i] == '%')
             nPercents++;
@@ -1047,7 +1084,7 @@ void SvxNumRule::UnLinkGraphics()
                 if (pGraphic)
                 {
                     SvxBrushItem aTempItem(*pBrush);
-                    aTempItem.SetGraphicLink("");
+                    aTempItem.SetGraphicLink(u""_ustr);
                     aTempItem.SetGraphic(*pGraphic);
                     sal_Int16    eOrient = aFmt.GetVertOrient();
                     aFmt.SetGraphicBrush( &aTempItem, &aFmt.GetGraphicSize(), &eOrient );

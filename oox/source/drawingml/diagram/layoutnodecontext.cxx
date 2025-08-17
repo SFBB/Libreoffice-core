@@ -27,11 +27,10 @@
 #include <oox/token/namespaces.hxx>
 #include <oox/token/tokens.hxx>
 #include <sal/log.hxx>
+#include <sax/fastattribs.hxx>
 #include <utility>
 
 using namespace ::oox::core;
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::xml::sax;
 
 namespace oox::drawingml {
 
@@ -246,7 +245,7 @@ LayoutNodeContext::onCreateContext( ::sal_Int32 aElement,
 
         ShapeAtomPtr pAtom = std::make_shared<ShapeAtom>(mpNode->getLayoutNode(), pShape);
         LayoutAtom::connect(mpNode, pAtom);
-        return new ShapeContext( *this, ShapePtr(), pShape );
+        return new ShapeContext( *this, ShapePtr(), std::move(pShape) );
     }
     case DGM_TOKEN( extLst ):
         return nullptr;
@@ -262,7 +261,7 @@ LayoutNodeContext::onCreateContext( ::sal_Int32 aElement,
         // CT_Choose
         LayoutAtomPtr pAtom = std::make_shared<ChooseAtom>(mpNode->getLayoutNode());
         LayoutAtom::connect(mpNode, pAtom);
-        return new ChooseContext( *this, rAttribs, pAtom );
+        return new ChooseContext( *this, rAttribs, std::move(pAtom) );
     }
     case DGM_TOKEN( forEach ):
     {

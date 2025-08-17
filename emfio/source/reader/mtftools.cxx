@@ -35,7 +35,7 @@
 #include <osl/diagnose.h>
 #include <vcl/virdev.hxx>
 #include <o3tl/safeint.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/defaultencoding.hxx>
 #include <unotools/wincodepage.hxx>
 
@@ -62,6 +62,16 @@ namespace emfio
             rInStream.ReadFloat(rXForm.eM22);
             rInStream.ReadFloat(rXForm.eDx);
             rInStream.ReadFloat(rXForm.eDy);
+            if (std::isnan(rXForm.eM11) ||
+                std::isnan(rXForm.eM12) ||
+                std::isnan(rXForm.eM21) ||
+                std::isnan(rXForm.eM22) ||
+                std::isnan(rXForm.eDx) ||
+                std::isnan(rXForm.eDy))
+            {
+                SAL_WARN("emfio", "XForm member isnan, ignoring");
+                rXForm = XForm();
+            }
         }
         return rInStream;
     }
@@ -297,6 +307,8 @@ namespace emfio
         }
 #endif
     };
+
+    WinMtfFontStyle::~WinMtfFontStyle() = default;
 
     // tdf#127471
     ScaledFontDetectCorrectHelper::ScaledFontDetectCorrectHelper()
@@ -588,7 +600,7 @@ namespace emfio
                 fX2 -= mrclFrame.Left();
                 fY2 -= mrclFrame.Top();
             }
-            return Point(basegfx::fround(fX2), basegfx::fround(fY2));
+            return Point(basegfx::fround<tools::Long>(fX2), basegfx::fround<tools::Long>(fY2));
         }
         else
             return Point();
@@ -677,7 +689,7 @@ namespace emfio
                     break;
                 }
             }
-            return Size(basegfx::fround(fWidth), basegfx::fround(fHeight));
+            return Size(basegfx::fround<tools::Long>(fWidth), basegfx::fround<tools::Long>(fHeight));
         }
         else
             return Size();
@@ -975,10 +987,18 @@ namespace emfio
                 if ( pLineStyle->aLineInfo.GetStyle() == LineStyle::Dash )
                 {
                     aSize.AdjustWidth(1 );
-                    tools::Long nDotLen = ImplMap( aSize ).Width();
-                    pLineStyle->aLineInfo.SetDistance( nDotLen );
-                    pLineStyle->aLineInfo.SetDotLen( nDotLen );
-                    pLineStyle->aLineInfo.SetDashLen( nDotLen * 3 );
+                    tools::Long nDashLen, nDotLen = ImplMap( aSize ).Width();
+                    const bool bFail = o3tl::checked_multiply<tools::Long>(nDotLen, 3, nDashLen);
+                    if (!bFail)
+                    {
+                        pLineStyle->aLineInfo.SetDistance( nDotLen );
+                        pLineStyle->aLineInfo.SetDotLen( nDotLen );
+                        pLineStyle->aLineInfo.SetDashLen( nDotLen * 3 );
+                    }
+                    else
+                    {
+                        SAL_WARN("emfio", "DotLen too long: " << nDotLen);
+                    }
                 }
             }
         }
@@ -1006,7 +1026,7 @@ namespace emfio
 
     void MtfTools::IntersectClipRect( const tools::Rectangle& rRect )
     {
-        if (utl::ConfigManager::IsFuzzing())
+        if (comphelper::IsFuzzing())
             return;
         mbClipNeedsUpdate=true;
         if ((rRect.Left()-rRect.Right()==0) && (rRect.Top()-rRect.Bottom()==0))
@@ -1020,7 +1040,7 @@ namespace emfio
 
     void MtfTools::ExcludeClipRect( const tools::Rectangle& rRect )
     {
-        if (utl::ConfigManager::IsFuzzing())
+        if (comphelper::IsFuzzing())
             return;
         mbClipNeedsUpdate=true;
         tools::Polygon aPoly( rRect );
@@ -1030,7 +1050,7 @@ namespace emfio
 
     void MtfTools::MoveClipRegion( const Size& rSize )
     {
-        if (utl::ConfigManager::IsFuzzing())
+        if (comphelper::IsFuzzing())
             return;
         mbClipNeedsUpdate=true;
         maClipPath.moveClipRegion( ImplMap( rSize ) );
@@ -1038,7 +1058,7 @@ namespace emfio
 
     void MtfTools::SetClipPath( const tools::PolyPolygon& rPolyPolygon, RegionMode eClippingMode, bool bIsMapped )
     {
-        if (utl::ConfigManager::IsFuzzing())
+        if (comphelper::IsFuzzing())
             return;
         mbClipNeedsUpdate = true;
         tools::PolyPolygon aPolyPolygon(rPolyPolygon);
@@ -1112,7 +1132,7 @@ namespace emfio
                                                                                  // this is necessary to be able to support
                                                                                  // SetClipRgn( NULL ) and similar ClipRgn actions (SJ)
 
-        maFont.SetFamilyName( "Arial" );                                         // sj: #i57205#, we do have some scaling problems if using
+        maFont.SetFamilyName( u"Arial"_ustr );                                         // sj: #i57205#, we do have some scaling problems if using
         maFont.SetCharSet( RTL_TEXTENCODING_MS_1252 );                           // the default font then most times a x11 font is used, we
         maFont.SetFontHeight( 423 );                                      // will prevent this defining a font
 
@@ -1322,7 +1342,7 @@ namespace emfio
     void MtfTools::DrawRectWithBGColor(const tools::Rectangle& rRect)
     {
         WinMtfFillStyle aFillStyleBackup = maFillStyle;
-        bool            aTransparentBackup = maLineStyle.bTransparent;
+        bool            bTransparentBackup = maLineStyle.bTransparent;
         BackgroundMode  mnBkModeBackup = mnBkMode;
 
         const tools::Polygon aPoly( rRect );
@@ -1332,8 +1352,8 @@ namespace emfio
         ImplSetNonPersistentLineColorTransparenz();
         DrawPolygon(aPoly, false);
         mnBkMode = mnBkModeBackup; // The rectangle needs to be always drawned even if mode is transparent
-        maFillStyle = aFillStyleBackup;
-        maLineStyle.bTransparent = aTransparentBackup;
+        maFillStyle = std::move(aFillStyleBackup);
+        maLineStyle.bTransparent = bTransparentBackup;
     }
 
     void MtfTools::DrawRect( const tools::Rectangle& rRect, bool bEdge )
@@ -1519,14 +1539,14 @@ namespace emfio
                     ImplSetNonPersistentLineColorTransparenz();
                     mpGDIMetaFile->AddAction( new MetaPolygonAction( rPolygon ) );
                     UpdateLineStyle();
-                    mpGDIMetaFile->AddAction( new MetaPolyLineAction( rPolygon, maLineStyle.aLineInfo ) );
+                    mpGDIMetaFile->AddAction( new MetaPolyLineAction( std::move(rPolygon), maLineStyle.aLineInfo ) );
                 }
                 else
                 {
                     UpdateLineStyle();
 
                     if (maLatestFillStyle.aType != WinMtfFillStyleType::Pattern)
-                        mpGDIMetaFile->AddAction( new MetaPolygonAction( rPolygon ) );
+                        mpGDIMetaFile->AddAction( new MetaPolygonAction( std::move(rPolygon) ) );
                     else {
                         SvtGraphicFill aFill( tools::PolyPolygon( rPolygon ),
                                               Color(),
@@ -1614,6 +1634,25 @@ namespace emfio
         }
     }
 
+    static bool AllowDim(tools::Long nDim)
+    {
+        static bool bFuzzing = comphelper::IsFuzzing();
+        if (bFuzzing)
+        {
+            if (nDim > 0x20000000 || nDim < -0x20000000)
+            {
+                SAL_WARN("vcl", "skipping huge dimension: " << nDim);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static bool AllowPoint(const Point& rPoint)
+    {
+        return AllowDim(rPoint.X()) && AllowDim(rPoint.Y());
+    }
+
     void MtfTools::DrawPolyBezier( tools::Polygon rPolygon, bool bTo, bool bRecordPath )
     {
         sal_uInt16 nPoints = rPolygon.GetSize();
@@ -1663,7 +1702,7 @@ namespace emfio
                 // #i121382# Map DXArray using WorldTransform
                 const Size aSizeX(ImplMap(Size(nSumX, 0)));
                 const basegfx::B2DVector aVectorX(aSizeX.Width(), aSizeX.Height());
-                pDXArry->set(i, basegfx::fround(aVectorX.getLength()) * (nSumX >= 0 ? 1 : -1));
+                (*pDXArry)[i] = aVectorX.getLength() * (nSumX >= 0 ? 1 : -1);
 
                 if (pDYArry)
                 {
@@ -1672,7 +1711,7 @@ namespace emfio
                     const Size aSizeY(ImplMap(Size(0, nSumY)));
                     const basegfx::B2DVector aVectorY(aSizeY.Width(), aSizeY.Height());
                     // Reverse Y
-                    pDYArry[i] = basegfx::fround(aVectorY.getLength());
+                    pDYArry[i] = basegfx::fround<tools::Long>(aVectorY.getLength());
                     pDYArry[i] *= (nSumY >= 0 ? -1 : 1);
                 }
             }
@@ -1694,6 +1733,19 @@ namespace emfio
         if ( mnLatestTextAlign != mnTextAlign )
         {
             bChangeFont = true;
+
+            if ((mnLatestTextAlign & TA_RTLREADING) != (mnTextAlign & TA_RTLREADING))
+            {
+                auto nFlags = vcl::text::ComplexTextLayoutFlags::Default;
+                if (mnTextAlign & TA_RTLREADING)
+                {
+                    nFlags = vcl::text::ComplexTextLayoutFlags::BiDiRtl
+                             | vcl::text::ComplexTextLayoutFlags::TextOriginLeft;
+                }
+
+                mpGDIMetaFile->AddAction(new MetaLayoutModeAction(nFlags));
+            }
+
             mnLatestTextAlign = mnTextAlign;
             mpGDIMetaFile->AddAction( new MetaTextAlignAction( eTextAlign ) );
         }
@@ -1735,8 +1787,8 @@ namespace emfio
             // check whether there is a font rotation applied via transformation
             Point aP1( ImplMap( Point() ) );
             Point aP2( ImplMap( Point( 0, 100 ) ) );
-            aP2.AdjustX( -(aP1.X()) );
-            aP2.AdjustY( -(aP1.Y()) );
+            aP2.setX(o3tl::saturating_sub(aP2.X(), aP1.X()));
+            aP2.setY(o3tl::saturating_sub(aP2.Y(), aP1.Y()));
             double fX = aP2.X();
             double fY = aP2.Y();
             if ( fX )
@@ -1828,8 +1880,11 @@ namespace emfio
                 for (sal_Int32 i = 0; i < rText.getLength(); ++i)
                 {
                     Point aCharDisplacement( i ? (*pDXArry)[i-1] : 0, i ? pDYArry[i-1] : 0 );
-                    Point().RotateAround(aCharDisplacement, maFont.GetOrientation());
-                    mpGDIMetaFile->AddAction( new MetaTextArrayAction( rPosition + aCharDisplacement, OUString( rText[i] ), KernArraySpan(), {}, 0, 1 ) );
+                    if (AllowPoint(aCharDisplacement))
+                    {
+                        Point().RotateAround(aCharDisplacement, maFont.GetOrientation());
+                        mpGDIMetaFile->AddAction( new MetaTextArrayAction( rPosition + aCharDisplacement, OUString( rText[i] ), KernArraySpan(), {}, 0, 1 ) );
+                    }
                 }
             }
             else
@@ -2407,7 +2462,7 @@ namespace emfio
         SAL_INFO("emfio", "\t\t DevOrg: " << mnDevOrgX << ", " << mnDevOrgY);
         SAL_INFO("emfio", "\t\t DevWidth/Height: " << mnDevWidth << " x " << mnDevHeight);
         SAL_INFO("emfio", "\t\t LineStyle: " << maLineStyle.aLineColor << " FillStyle: " << maFillStyle.aFillColor );
-        mvSaveStack.push_back( pSave );
+        mvSaveStack.push_back(std::move(pSave));
     }
 
     void MtfTools::Pop( const sal_Int32 nSavedDC )

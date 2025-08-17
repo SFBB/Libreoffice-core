@@ -25,14 +25,15 @@
 #include "sdtreelb.hxx"
 #include <pres.hxx>
 
+#include <sfx2/sidebar/IContextChangeReceiver.hxx>
+#include <vcl/EnumContext.hxx>
+
 // forward
 namespace vcl { class Window; }
 
 namespace sd {
 class DrawDocShell;
-class SdNavigatorFloat;
 }
-class Menu;
 class SdNavigatorControllerItem;
 class SdPageNameControllerItem;
 
@@ -89,7 +90,6 @@ public:
     SdNavigatorFloat(SfxBindings* _pBindings, SfxChildWindow* pMgr,
                      vcl::Window* pParent, SfxChildWinInfo* pInfo);
     void InitTreeLB(const SdDrawDocument* pDoc);
-    void FreshTree(const SdDrawDocument* pDoc);
     virtual void Activate() override;
     virtual void dispose() override;
     virtual ~SdNavigatorFloat() override;
@@ -97,7 +97,7 @@ public:
 
 }
 
-class SD_DLLPUBLIC SdNavigatorWin : public PanelLayout
+class SAL_DLLPUBLIC_RTTI SdNavigatorWin : public PanelLayout, public sfx2::sidebar::IContextChangeReceiver
 {
 public:
     typedef ::std::function<void ()> UpdateRequestFunctor;
@@ -109,18 +109,20 @@ public:
             update is necessary.  When <FALSE/> the navigator will
             rely on others to trigger updates.
     */
-    SdNavigatorWin(weld::Widget* pParent, SfxBindings* pBindings, SfxNavigator* pNavigatorDlg);
+    SD_DLLPUBLIC SdNavigatorWin(weld::Widget* pParent, SfxBindings* pBindings, SfxNavigator* pNavigatorDlg);
     void SetUpdateRequestFunctor(const UpdateRequestFunctor& rUpdateRequest);
     virtual ~SdNavigatorWin() override;
 
-    void                        InitTreeLB( const SdDrawDocument* pDoc );
+    SD_DLLPUBLIC void           InitTreeLB( const SdDrawDocument* pDoc );
     void                        RefreshDocumentLB( const OUString* pDocName = nullptr );
     void                        FirstFocus();
 
     bool                        InsertFile(const OUString& rFileName);
 
     NavigatorDragType           GetNavigatorDragType();
-    SdPageObjsTLV&              GetObjects();
+    SD_DLLPUBLIC SdPageObjsTLV& GetObjects();
+
+    virtual void HandleContextChange(const vcl::EnumContext& eContext) override;
 
 private:
     friend class SdNavigatorFloat;
@@ -148,7 +150,7 @@ private:
     */
     //    bool                        mbShowAllShapes;
 
-    static OUString             GetDragTypeSdBmpId(NavigatorDragType eDT);
+    static const OUString &     GetDragTypeSdBmpId(NavigatorDragType eDT);
     NavDocInfo*                 GetDocInfo();
 
                                 DECL_DLLPRIVATE_LINK( SelectToolboxHdl, const OUString&, void );
@@ -166,9 +168,6 @@ private:
     void ExecuteContextMenuAction(std::u16string_view rSelectedPopupEntry);
 
 public:
-    //when object is marked , fresh the corresponding entry tree .
-    void                        FreshTree ( const  SdDrawDocument* pDoc );
-
     virtual weld::Window* GetFrameWeld() const override;
 };
 

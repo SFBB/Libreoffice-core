@@ -21,12 +21,11 @@
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERHELPVIEW_HXX
 
 #include "PresenterController.hxx"
-#include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <com/sun/star/awt/XPaintListener.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
+#include <framework/AbstractView.hxx>
+#include <ResourceId.hxx>
 #include <com/sun/star/frame/XController.hpp>
 #include <memory>
 
@@ -34,8 +33,8 @@ namespace sdext::presenter {
 
 class PresenterButton;
 
-typedef cppu::WeakComponentImplHelper<
-    css::drawing::framework::XView,
+typedef cppu::ImplInheritanceHelper<
+    sd::framework::AbstractView,
     css::awt::XWindowListener,
     css::awt::XPaintListener
     > PresenterHelpViewInterfaceBase;
@@ -43,21 +42,21 @@ typedef cppu::WeakComponentImplHelper<
 /** Show help text that describes the defined keys.
 */
 class PresenterHelpView
-    : private ::cppu::BaseMutex,
-      public PresenterHelpViewInterfaceBase
+    : public PresenterHelpViewInterfaceBase
 {
 public:
     explicit PresenterHelpView (
         const css::uno::Reference<css::uno::XComponentContext>& rxContext,
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
         const rtl::Reference<::sd::DrawController>& rxController,
         ::rtl::Reference<PresenterController> xPresenterController);
     virtual ~PresenterHelpView() override;
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     // lang::XEventListener
 
+    using WeakComponentImplHelperBase::disposing;
     virtual void SAL_CALL
         disposing (const css::lang::EventObject& rEventObject) override;
 
@@ -75,18 +74,18 @@ public:
 
     virtual void SAL_CALL windowPaint (const css::awt::PaintEvent& rEvent) override;
 
-    // XResourceId
+    // AbstractResource
 
-    virtual css::uno::Reference<css::drawing::framework::XResourceId> SAL_CALL getResourceId() override;
+    virtual rtl::Reference<sd::framework::ResourceId> getResourceId() override;
 
-    virtual sal_Bool SAL_CALL isAnchorOnly() override;
+    virtual bool isAnchorOnly() override;
 
 private:
     class TextContainer;
 
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
-    css::uno::Reference<css::drawing::framework::XResourceId> mxViewId;
-    css::uno::Reference<css::drawing::framework::XPane> mxPane;
+    rtl::Reference<sd::framework::ResourceId> mxViewId;
+    rtl::Reference<sd::framework::AbstractPane> mxPane;
     css::uno::Reference<css::awt::XWindow> mxWindow;
     css::uno::Reference<css::rendering::XCanvas> mxCanvas;
     ::rtl::Reference<PresenterController> mpPresenterController;
@@ -107,11 +106,6 @@ private:
         time.
     */
     void CheckFontSize();
-
-    /** @throws css::lang::DisposedException when the object has already been
-        disposed.
-    */
-    void ThrowIfDisposed();
 };
 
 } // end of namespace ::sdext::presenter

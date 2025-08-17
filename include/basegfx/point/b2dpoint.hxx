@@ -20,6 +20,7 @@
 #pragma once
 
 #include <ostream>
+#include <tuple>
 
 #include <basegfx/tuple/b2dtuple.hxx>
 #include <basegfx/point/b2ipoint.hxx>
@@ -104,7 +105,7 @@ namespace basegfx
         /** assignment operator to allow assigning the results
             of B2DTuple calculations
         */
-        BASEGFX_DLLPUBLIC B2DPoint& operator=(Tuple2D<double>& rPoint)
+        BASEGFX_DLLPUBLIC B2DPoint& operator=(const Tuple2D<double>& rPoint)
         {
             mnX = rPoint.getX();
             mnY = rPoint.getY();
@@ -121,6 +122,11 @@ namespace basegfx
         static const B2DPoint& getEmptyPoint()
         {
             return static_cast<const B2DPoint&>( ::basegfx::B2DTuple::getEmptyTuple() );
+        }
+
+        friend auto operator <=>(B2DPoint const & a, B2DPoint const & b)
+        {
+            return std::tie(a.mnX, a.mnY) <=> std::tie(b.mnX, b.mnY);
         }
     };
 

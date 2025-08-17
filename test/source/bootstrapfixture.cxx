@@ -73,13 +73,13 @@ static void test_init_impl(bool bAssertOnDialog, bool bNeedUCB,
     if (bNeedUCB)
     {
         // initialise unconfigured UCB:
-        uno::Reference<ucb::XUniversalContentBroker> xUcb(pSFactory->createInstance("com.sun.star.ucb.UniversalContentBroker"), uno::UNO_QUERY_THROW);
-        uno::Reference<ucb::XContentProvider> xFileProvider(pSFactory->createInstance("com.sun.star.ucb.FileContentProvider"), uno::UNO_QUERY_THROW);
-        xUcb->registerContentProvider(xFileProvider, "file", true);
-        uno::Reference<ucb::XContentProvider> xTdocProvider(pSFactory->createInstance("com.sun.star.ucb.TransientDocumentsContentProvider"), uno::UNO_QUERY);
+        uno::Reference<ucb::XUniversalContentBroker> xUcb(pSFactory->createInstance(u"com.sun.star.ucb.UniversalContentBroker"_ustr), uno::UNO_QUERY_THROW);
+        uno::Reference<ucb::XContentProvider> xFileProvider(pSFactory->createInstance(u"com.sun.star.ucb.FileContentProvider"_ustr), uno::UNO_QUERY_THROW);
+        xUcb->registerContentProvider(xFileProvider, u"file"_ustr, true);
+        uno::Reference<ucb::XContentProvider> xTdocProvider(pSFactory->createInstance(u"com.sun.star.ucb.TransientDocumentsContentProvider"_ustr), uno::UNO_QUERY);
         if (xTdocProvider.is())
         {
-            xUcb->registerContentProvider(xTdocProvider, "vnd.sun.star.tdoc", true);
+            xUcb->registerContentProvider(xTdocProvider, u"vnd.sun.star.tdoc"_ustr, true);
         }
     }
 }
@@ -113,8 +113,6 @@ void test::BootstrapFixture::setUp()
 #if OSL_DEBUG_LEVEL > 0
     Scheduler::ProcessEventsToIdle();
 #endif
-
-    mxComponentContext.set(comphelper::getComponentContext(getMultiServiceFactory()));
 }
 
 test::BootstrapFixture::~BootstrapFixture()
@@ -140,11 +138,106 @@ OString loadFile(const OUString& rURL)
     return aContent;
 }
 
+constexpr std::u16string_view grand_total = u"Grand total of errors in submitted package: ";
+
+OUString filterOut(const OUString& s, std::u16string_view excludedSubstr)
+{
+    OUString result = s;
+    for (;;)
+    {
+        sal_Int32 pos = result.indexOf(excludedSubstr);
+        if (pos < 0)
+            break;
+        sal_Int32 start = result.lastIndexOf('\n', pos);
+        if (!result.match("ERROR", start + 1))
+            return s; // unexpected string format
+        sal_Int32 end = result.indexOf('\n', pos);
+        result = result.replaceAt(start, end - start, u""_ustr);
+        pos = result.lastIndexOf(grand_total);
+        if (pos < 0)
+            return s; // unexpected string format
+        start = end = pos + grand_total.size();
+        while (end < result.getLength() && rtl::isAsciiDigit(result[end]))
+            ++end;
+        std::u16string_view aNumber = result.subView(start, end - start);
+        sal_Int32 nErrors = o3tl::toInt32(aNumber) - 1;
+        result = result.replaceAt(start, end - start, OUString::number(nErrors));
+    }
+    return result;
+}
+
+OUString filterValidationResults(const OUString& s, std::u16string_view rFilter)
+{
+    OUString result = s;
+    // In ECMA-376-1 Second Edition, 2008, there is the following restriction for oleObj:
+    //
+    // <xsd:choice minOccurs="1" maxOccurs="1">
+    //  <xsd:element name="embed" type="CT_OleObjectEmbed"/>
+    //  <xsd:element name="link" type="CT_OleObjectLink"/>
+    //  <xsd:element name="pic" type="CT_Picture"/>
+    // </xsd:choice>
+    //
+    // This makes simultaneous use of embed (or link) and pic impossible. This was obviously a
+    // mistake; and the following editions of standard fixed it: e.g., in ECMA-376-1:2016, that
+    // rule is
+    //
+    // <xsd:choice minOccurs="1" maxOccurs="1">
+    //  <xsd:element name="embed" type="CT_OleObjectEmbed"/>
+    //  <xsd:element name="link" type="CT_OleObjectLink"/>
+    // </xsd:choice>
+    // <xsd:element name="pic" type="CT_Picture" minOccurs="1" maxOccurs="1"/>
+    //
+    // But officeotron only knows the old version...
+    result = filterOut(result, u"Invalid content was found starting with element 'p:pic'. No child element is expected at this point.");
+
+    if (rFilter == u"Office Open XML Text")
+    {
+        /* While the spec says the core-properties relationship must be
+         *     officedocument/2006/relationships/metadata/core-properties
+         * MS Word actually just writes the ECMA-376-1ST EDITION version
+         * for both ECMA_Transitional and ISO_Transitional formats.
+         *
+         * officeotron doesn't care that clause 15.2.12.1 fails on all MSWord-produced output.
+         */
+        result = filterOut(result, u"Entry with MIME type \"application/vnd.openxmlformats-package.core-properties+xml\" has unrecognized relationship type \"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" (see ISO/IEC 29500-1:2008, Clause 15.2.12.1)");
+    }
+
+    return result;
+}
 }
 #endif
 
-void test::BootstrapFixture::validate(const OUString& rPath, test::ValidationFormat eFormat) const
+void test::BootstrapFixture::validate(const OUString& rPath, std::u16string_view rFilter) const
 {
+    test::ValidationFormat eFormat = test::ODF;
+    if (rFilter == u"Calc Office Open XML")
+        eFormat = test::OOXML;
+    else if (rFilter == u"Office Open XML Text")
+        eFormat = test::OOXML;
+    else if (rFilter == u"Impress Office Open XML")
+        eFormat = test::OOXML;
+    else if (rFilter == u"writer8")
+        eFormat = test::ODF;
+    else if (rFilter == u"calc8")
+        eFormat = test::ODF;
+    else if (rFilter == u"impress8")
+        eFormat = test::ODF;
+    else if (rFilter == u"draw8")
+        eFormat = test::ODF;
+    else if (rFilter == u"OpenDocument Text Flat XML")
+        eFormat = test::ODF;
+    else if (rFilter == u"MS Word 97")
+        eFormat = test::MSBINARY;
+    else if (rFilter == u"MS Excel 97")
+        eFormat = test::MSBINARY;
+    else if (rFilter == u"MS PowerPoint 97")
+        eFormat = test::MSBINARY;
+    else
+    {
+        SAL_INFO("test", "BootstrapFixture::validate: unknown filter");
+        return;
+    }
+
 #if HAVE_EXPORT_VALIDATION
     OUString var;
     if( eFormat == test::OOXML )
@@ -178,11 +271,11 @@ void test::BootstrapFixture::validate(const OUString& rPath, test::ValidationFor
         // invoke without -e so that we know when something new is written
         // in loext namespace that isn't yet in the custom schema
         aValidator += " -M "
-            + m_directories.getPathFromSrc(u"/schema/libreoffice/OpenDocument-v1.3+libreoffice-manifest-schema.rng")
+            + m_directories.getPathFromSrc(u"/schema/libreoffice/OpenDocument-v1.4+libreoffice-manifest-schema.rng")
             + " -D "
-            + m_directories.getPathFromSrc(u"/schema/libreoffice/OpenDocument-v1.3+libreoffice-dsig-schema.rng")
+            + m_directories.getPathFromSrc(u"/schema/libreoffice/OpenDocument-v1.4+libreoffice-dsig-schema.rng")
             + " -O "
-            + m_directories.getPathFromSrc(u"/schema/libreoffice/OpenDocument-v1.3+libreoffice-schema.rng")
+            + m_directories.getPathFromSrc(u"/schema/libreoffice/OpenDocument-v1.4+libreoffice-schema.rng")
             + " -m "
             + m_directories.getPathFromSrc(u"/schema/mathml2/mathml2.xsd");
     }
@@ -215,15 +308,16 @@ void test::BootstrapFixture::validate(const OUString& rPath, test::ValidationFor
 
     if( eFormat == test::OOXML && !aContentOUString.isEmpty() )
     {
+        aContentOUString = filterValidationResults(aContentOUString, rFilter);
         // check for validation errors here
-        sal_Int32 nIndex = aContentOUString.lastIndexOf("Grand total of errors in submitted package: ");
+        sal_Int32 nIndex = aContentOUString.lastIndexOf(grand_total);
         if(nIndex == -1)
         {
             SAL_WARN("test", "no summary line");
         }
         else
         {
-            sal_Int32 nStartOfNumber = nIndex + std::strlen("Grand total of errors in submitted package: ");
+            sal_Int32 nStartOfNumber = nIndex + grand_total.size();
             std::u16string_view aNumber = aContentOUString.subView(nStartOfNumber);
             sal_Int32 nErrors = o3tl::toInt32(aNumber);
             OString aMsg = "validation error in OOXML export: Errors: " + OString::number(nErrors);

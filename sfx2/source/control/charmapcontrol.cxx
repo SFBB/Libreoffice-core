@@ -92,8 +92,8 @@ SfxCharmapContainer::SfxCharmapContainer(weld::Builder& rBuilder, const VclPtr<V
                      std::make_unique<weld::CustomWeld>(rBuilder, "favchar14", m_aFavCharView[13]),
                      std::make_unique<weld::CustomWeld>(rBuilder, "favchar15", m_aFavCharView[14]),
                      std::make_unique<weld::CustomWeld>(rBuilder, "favchar16", m_aFavCharView[15])}
-    , m_xRecentGrid(rBuilder.weld_widget("viewgrid"))
-    , m_xFavGrid(rBuilder.weld_widget("favgrid"))
+    , m_xRecentGrid(rBuilder.weld_widget(u"viewgrid"_ustr))
+    , m_xFavGrid(rBuilder.weld_widget(u"favgrid"_ustr))
 {
     if (bLockGridSizes)
     {
@@ -132,13 +132,13 @@ void SfxCharmapContainer::init(bool bHasInsert, const Link<SvxCharView*,void> &r
 }
 
 SfxCharmapCtrl::SfxCharmapCtrl(CharmapPopup* pControl, weld::Widget* pParent)
-    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "sfx/ui/charmapcontrol.ui", "charmapctrl")
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"sfx/ui/charmapcontrol.ui"_ustr, u"charmapctrl"_ustr)
     , m_xControl(pControl)
     , m_xVirDev(VclPtr<VirtualDevice>::Create())
     , m_aCharmapContents(*m_xBuilder, m_xVirDev, false)
-    , m_xRecentLabel(m_xBuilder->weld_label("label2"))
-    , m_xDlgBtn(m_xBuilder->weld_button("specialchardlg"))
-    , m_xCharInfoLabel(m_xBuilder->weld_label("charinfolabel"))
+    , m_xRecentLabel(m_xBuilder->weld_label(u"label2"_ustr))
+    , m_xDlgBtn(m_xBuilder->weld_button(u"specialchardlg"_ustr))
+    , m_xCharInfoLabel(m_xBuilder->weld_label(u"charinfolabel"_ustr))
 {
     m_xCharInfoLabel->set_size_request(-1, m_xCharInfoLabel->get_text_height() * 2);
 
@@ -236,13 +236,13 @@ IMPL_LINK_NOARG(SfxCharmapCtrl, OpenDlgHdl, weld::Button&, void)
     if (SfxViewFrame* pViewFrm = SfxViewFrame::Current())
     {
         uno::Reference<frame::XFrame> xFrame = pViewFrm->GetFrame().GetFrameInterface();
-        comphelper::dispatchCommand(".uno:InsertSymbol", xFrame, {});
+        comphelper::dispatchCommand(u".uno:InsertSymbol"_ustr, xFrame, {});
     }
 }
 
 IMPL_LINK_NOARG(SfxCharmapCtrl, DlgBtnFocusInHdl, weld::Widget&, void)
 {
-    m_xCharInfoLabel->set_label("");
+    m_xCharInfoLabel->set_label(u""_ustr);
 }
 
 void SfxCharmapCtrl::GrabFocus()
@@ -311,7 +311,7 @@ void SfxCharmapContainer::updateRecentCharControl()
 void SfxCharmapContainer::updateRecentCharacterList(const OUString& sTitle, const OUString& rFont)
 {
     // if recent char to be added is already in list, remove it
-    if( const auto& [itChar, itChar2] = getRecentChar(sTitle, rFont);
+    if( const auto [itChar, itChar2] = getRecentChar(sTitle, rFont);
         itChar != m_aRecentCharList.end() &&  itChar2 != m_aRecentCharFontList.end() )
     {
         m_aRecentCharList.erase( itChar );
@@ -349,7 +349,7 @@ void SfxCharmapContainer::updateRecentCharacterList(const OUString& sTitle, cons
 void SfxCharmapContainer::updateFavCharacterList(const OUString& sTitle, const OUString& rFont)
 {
     // if Fav char to be added is already in list, remove it
-    if( const auto& [itChar, itChar2] = getFavChar(sTitle, rFont);
+    if( const auto [itChar, itChar2] = getFavChar(sTitle, rFont);
         itChar != m_aFavCharList.end() &&  itChar2 != m_aFavCharFontList.end() )
     {
         m_aFavCharList.erase( itChar );
@@ -385,7 +385,7 @@ void SfxCharmapContainer::updateFavCharacterList(const OUString& sTitle, const O
 void SfxCharmapContainer::deleteFavCharacterFromList(std::u16string_view sTitle, std::u16string_view rFont)
 {
     // if Fav char is found, remove it
-    if( const auto& [itChar, itChar2] = getFavChar(sTitle, rFont);
+    if( const auto [itChar, itChar2] = getFavChar(sTitle, rFont);
         itChar != m_aFavCharList.end() &&  itChar2 != m_aFavCharFontList.end() )
     {
         m_aFavCharList.erase( itChar );
@@ -411,7 +411,7 @@ void SfxCharmapContainer::deleteFavCharacterFromList(std::u16string_view sTitle,
 
 bool SfxCharmapContainer::isFavChar(std::u16string_view sTitle, std::u16string_view rFont)
 {
-    const auto& [itChar, itFont] = getFavChar(sTitle, rFont);
+    const auto [itChar, itFont] = getFavChar(sTitle, rFont);
     return itChar != m_aFavCharList.end() && itFont != m_aFavCharFontList.end();
 }
 
@@ -421,7 +421,7 @@ IMPL_LINK(SfxCharmapContainer, RecentClearClickHdl, SvxCharView*, rView, void)
     OUString sFont = rView->GetFont().GetFamilyName();
 
     // if recent char to be added is already in list, remove it
-    if( const auto& [itChar, itChar2] = getRecentChar(sTitle, sFont);
+    if( const auto [itChar, itChar2] = getRecentChar(sTitle, sFont);
         itChar != m_aRecentCharList.end() &&  itChar2 != m_aRecentCharFontList.end() )
     {
         m_aRecentCharList.erase( itChar );

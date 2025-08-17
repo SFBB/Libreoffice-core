@@ -23,15 +23,12 @@
 #include <sal/config.h>
 
 #include <com/sun/star/uno/Reference.hxx>
+#include <comphelper/OAccessible.hxx>
 #include <rtl/ref.hxx>
 #include <svx/svxdllapi.h>
 
 namespace com::sun::star
 {
-namespace accessibility
-{
-class XAccessible;
-}
 namespace drawing
 {
 class XShape;
@@ -105,7 +102,7 @@ public:
             for new and deleted children, i.e. that holds a list of
             listeners to be informed.
     */
-    ChildrenManager(const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
+    ChildrenManager(const rtl::Reference<comphelper::OAccessible>& rpParent,
                     const css::uno::Reference<css::drawing::XShapes>& rxShapeList,
                     const AccessibleShapeTreeInfo& rShapeTreeInfo, AccessibleContextBase& rContext);
 
@@ -133,7 +130,7 @@ public:
         @throws
             Throws an IndexOutOfBoundsException if the index is not valid.
     */
-    css::uno::Reference<css::accessibility::XAccessible> GetChild(sal_Int64 nIndex);
+    rtl::Reference<comphelper::OAccessible> GetChild(sal_Int64 nIndex);
     /// @throws css::lang::IndexOutOfBoundsException
     /// @throws css::uno::RuntimeException
     const css::uno::Reference<css::drawing::XShape>& GetChildShape(sal_Int64 nIndex);

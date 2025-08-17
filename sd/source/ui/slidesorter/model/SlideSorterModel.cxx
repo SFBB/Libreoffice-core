@@ -194,7 +194,7 @@ sal_Int32 SlideSorterModel::GetIndex (const Reference<drawing::XDrawPage>& rxSli
     {
         try
         {
-            const Any aNumber (xSet->getPropertyValue("Number"));
+            const Any aNumber (xSet->getPropertyValue(u"Number"_ustr));
             sal_Int16 nNumber (-1);
             aNumber >>= nNumber;
             nNumber -= 1;
@@ -389,7 +389,7 @@ void SlideSorterModel::SetDocumentSlides (
     ClearDescriptorList ();
 
     // Reset the current page to cause everybody to release references to it.
-    mrSlideSorter.GetController().GetCurrentSlideManager()->NotifyCurrentSlideChange(-1);
+    mrSlideSorter.GetController().GetCurrentSlideManager().NotifyCurrentSlideChange(-1);
 
     // Set the new set of pages.
     mxSlides = rxSlides;
@@ -402,36 +402,33 @@ void SlideSorterModel::SetDocumentSlides (
     if (aSelectedPages.HasMoreElements())
     {
         SharedPageDescriptor pDescriptor (aSelectedPages.GetNextElement());
-        mrSlideSorter.GetController().GetCurrentSlideManager()->NotifyCurrentSlideChange(
+        mrSlideSorter.GetController().GetCurrentSlideManager().NotifyCurrentSlideChange(
             pDescriptor->GetPage());
     }
 
-    ViewShell* pViewShell = mrSlideSorter.GetViewShell();
-    if (pViewShell != nullptr)
+    ViewShell& rViewShell = mrSlideSorter.GetViewShell();
+    SdPage* pPage = rViewShell.getCurrentPage();
+    if (pPage != nullptr)
+        mrSlideSorter.GetController().GetCurrentSlideManager().NotifyCurrentSlideChange(
+            pPage);
+    else
     {
-        SdPage* pPage = pViewShell->getCurrentPage();
-        if (pPage != nullptr)
-            mrSlideSorter.GetController().GetCurrentSlideManager()->NotifyCurrentSlideChange(
-                pPage);
+        // No current page.  This can only be when the slide sorter is
+        // the main view shell.  Get current slide form frame view.
+        const FrameView* pFrameView = rViewShell.GetFrameView();
+        if (pFrameView != nullptr)
+            mrSlideSorter.GetController().GetCurrentSlideManager().NotifyCurrentSlideChange(
+                pFrameView->GetSelectedPage());
         else
         {
-            // No current page.  This can only be when the slide sorter is
-            // the main view shell.  Get current slide form frame view.
-            const FrameView* pFrameView = pViewShell->GetFrameView();
-            if (pFrameView != nullptr)
-                mrSlideSorter.GetController().GetCurrentSlideManager()->NotifyCurrentSlideChange(
-                    pFrameView->GetSelectedPage());
-            else
-            {
-                // No frame view.  As a last resort use the first slide as
-                // current slide.
-                mrSlideSorter.GetController().GetCurrentSlideManager()->NotifyCurrentSlideChange(
-                    sal_Int32(0));
-            }
+            // No frame view.  As a last resort use the first slide as
+            // current slide.
+            mrSlideSorter.GetController().GetCurrentSlideManager().NotifyCurrentSlideChange(
+                sal_Int32(0));
         }
     }
 
-    mrSlideSorter.GetController().GetSlotManager()->NotifyEditModeChange();
+    mrSlideSorter.GetController().GetSlotManager().NotifyEditModeChange();
 }
 
 Reference<container::XIndexAccess> SlideSorterModel::GetDocumentSlides() const
@@ -628,7 +625,7 @@ bool SlideSorterModel::DeleteSlide (const SdPage* pPage)
         maPageDescriptors.erase(iter);
         UpdateIndices(nIndex);
 
-        collectUIInformation(OUString::number(nIndex + 1), "Delete_Slide_or_Page");
+        collectUIInformation(OUString::number(nIndex + 1), u"Delete_Slide_or_Page"_ustr);
     }
     return bMarkedSelected;
 }

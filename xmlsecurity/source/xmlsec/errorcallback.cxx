@@ -18,12 +18,13 @@
  */
 
 #include <sal/config.h>
-#include <xmlsec-wrapper.h>
 
 #include <xmlsec/errorcallback.hxx>
 
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
+#include <xmlsec/xmlsec.h>
+#include <xmlsec/errors.h>
 
 #ifdef _WIN32
 #include <prewin.h>
@@ -47,7 +48,7 @@ static void errorCallback(const char* file,
     OUString systemErrorString;
 
 #ifdef _WIN32
-    systemErrorString = " " + WindowsErrorString(GetLastError());
+    systemErrorString = " " + comphelper::WindowsErrorString(GetLastError());
 #endif
 
     SAL_WARN("xmlsecurity.xmlsec", file << ":" << line << ": " << func << "() '" << pErrorObject << "' '" << pErrorSubject << "' " << reason << " '" << pMsg << "'" << systemErrorString);

@@ -154,6 +154,7 @@
 #define XML_TYPE_DOUBLE_PERCENT     0x00002024          //  50% (source is a double from 0.0 to 1.0)
 #define XML_TYPE_HEX                0x00002025          // 00544F1B
 #define XML_TYPE_PERCENT100 0x00002026 // 100th percent
+#define XML_TYPE_UNIT_MEASURE       0x00002027          // Source is a double paired with a unit
 
 // special basic types
 #define XML_TYPE_RECTANGLE_LEFT     0x00000100          // the Left member of an awt::Rectangle as a measure
@@ -296,6 +297,11 @@
 #define XML_SW_TYPE_PRESPAGE_BACKSIZE   (XML_TEXT_TYPES_START + 128)
 #define XML_SW_TYPE_RTLGUTTER           (XML_TEXT_TYPES_START + 129)
 #define XML_TYPE_COMPLEX_COLOR          (XML_TEXT_TYPES_START + 130)
+#define XML_TYPE_HYPHENATION_KEEP       (XML_TEXT_TYPES_START + 131)
+#define XML_TYPE_HYPHENATION_KEEP_TYPE  (XML_TEXT_TYPES_START + 132)
+#define XML_TYPE_HYPHENATION_KEEP_LINE  (XML_TEXT_TYPES_START + 133)
+
+#define XML_TYPE_TEXT_SCRIPT_TYPE       (XML_TEXT_TYPES_START + 134)
 
 #endif // INCLUDED_XMLOFF_XMLTYPES_HXX
 

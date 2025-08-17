@@ -23,7 +23,6 @@
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlnamespace.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/XMLBase64ImportContext.hxx>
 #include <XMLReplacementImageContext.hxx>
 #include <sal/log.hxx>
@@ -72,9 +71,9 @@ void XMLReplacementImageContext::endFastElement(sal_Int32 )
 
     Reference < XPropertySetInfo > xPropSetInfo = m_xPropSet->getPropertySetInfo();
 
-    if (xGraphic.is() && xPropSetInfo->hasPropertyByName("Graphic"))
+    if (xGraphic.is() && xPropSetInfo->hasPropertyByName(u"Graphic"_ustr))
     {
-        m_xPropSet->setPropertyValue("Graphic", uno::Any(xGraphic));
+        m_xPropSet->setPropertyValue(u"Graphic"_ustr, uno::Any(xGraphic));
     }
 }
 

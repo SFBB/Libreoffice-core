@@ -22,6 +22,8 @@
 #include <editeng/borderline.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 #include <svx/svxids.hrc>
 #include <vcl/settings.hxx>
 #include <editeng/lineitem.hxx>
@@ -40,13 +42,13 @@ namespace sc::sidebar {
 #define FRM_VALID_ALL       0xff
 
 CellBorderStylePopup::CellBorderStylePopup(weld::Toolbar* pParent, const OUString& rId, SfxDispatcher* pDispatcher)
-    : WeldToolbarPopup(nullptr, pParent, "modules/scalc/ui/floatingborderstyle.ui", "FloatingBorderStyle")
+    : WeldToolbarPopup(nullptr, pParent, u"modules/scalc/ui/floatingborderstyle.ui"_ustr, u"FloatingBorderStyle"_ustr)
     , maToolButton(pParent, rId)
     , mpDispatcher(pDispatcher)
-    , mxTBBorder1(m_xBuilder->weld_toolbar("border1"))
-    , mxTBBorder2(m_xBuilder->weld_toolbar("border2"))
-    , mxTBBorder3(m_xBuilder->weld_toolbar("border3"))
-    , mxTBBorder4(m_xBuilder->weld_toolbar("border4"))
+    , mxTBBorder1(m_xBuilder->weld_toolbar(u"border1"_ustr))
+    , mxTBBorder2(m_xBuilder->weld_toolbar(u"border2"_ustr))
+    , mxTBBorder3(m_xBuilder->weld_toolbar(u"border3"_ustr))
+    , mxTBBorder4(m_xBuilder->weld_toolbar(u"border4"_ustr))
 {
     Initialize();
 }
@@ -63,11 +65,44 @@ CellBorderStylePopup::~CellBorderStylePopup()
 void CellBorderStylePopup::Initialize()
 {
     mxTBBorder1->connect_clicked ( LINK(this, CellBorderStylePopup, TB1SelectHdl) );
+    mxTBBorder1->set_item_tooltip_text(0, SvxResId(RID_SVXSTR_TABLE_PRESET_NONE));
+    mxTBBorder1->set_item_accessible_name(0, SvxResId(RID_SVXSTR_TABLE_PRESET_NONE));
+    mxTBBorder1->set_item_tooltip_text(1, SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERALL));
+    mxTBBorder1->set_item_accessible_name(1, SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERALL));
+    mxTBBorder1->set_item_tooltip_text(2, SvxResId(RID_SVXSTR_TABLE_PRESET_OUTER));
+    mxTBBorder1->set_item_accessible_name(2, SvxResId(RID_SVXSTR_TABLE_PRESET_OUTER));
+    mxTBBorder1->set_item_tooltip_text(3, SvxResId(RID_SVXSTR_TABLE_PRESET_THICK));
+    mxTBBorder1->set_item_accessible_name(3, SvxResId(RID_SVXSTR_TABLE_PRESET_THICK));
 
     mxTBBorder2->connect_clicked ( LINK(this, CellBorderStylePopup, TB2and3SelectHdl) );
+    mxTBBorder2->set_item_tooltip_text(0, SvxResId(RID_SVXSTR_PARA_PRESET_ONLYLEFT));
+    mxTBBorder2->set_item_accessible_name(0, SvxResId(RID_SVXSTR_PARA_PRESET_ONLYLEFT));
+    mxTBBorder2->set_item_tooltip_text(1, SvxResId(RID_SVXSTR_PARA_PRESET_ONLYRIGHT));
+    mxTBBorder2->set_item_accessible_name(1, SvxResId(RID_SVXSTR_PARA_PRESET_ONLYRIGHT));
+    mxTBBorder2->set_item_tooltip_text(2, SvxResId(RID_SVXSTR_PARA_PRESET_ONLYTOP));
+    mxTBBorder2->set_item_accessible_name(2, SvxResId(RID_SVXSTR_PARA_PRESET_ONLYTOP));
+    mxTBBorder2->set_item_tooltip_text(3, SvxResId(RID_SVXSTR_PARA_PRESET_ONLYBOTTOM));
+    mxTBBorder2->set_item_accessible_name(3, SvxResId(RID_SVXSTR_PARA_PRESET_ONLYBOTTOM));
+
     mxTBBorder3->connect_clicked ( LINK(this, CellBorderStylePopup, TB2and3SelectHdl) );
+    mxTBBorder3->set_item_tooltip_text(0, SvxResId(RID_SVXSTR_PARA_PRESET_DIAGONALUP));
+    mxTBBorder3->set_item_accessible_name(0, SvxResId(RID_SVXSTR_PARA_PRESET_DIAGONALUP));
+    mxTBBorder3->set_item_tooltip_text(1, SvxResId(RID_SVXSTR_PARA_PRESET_DIAGONALDOWN));
+    mxTBBorder3->set_item_accessible_name(1, SvxResId(RID_SVXSTR_PARA_PRESET_DIAGONALDOWN));
+    mxTBBorder3->set_item_tooltip_text(2, SvxResId(RID_SVXSTR_PARA_PRESET_TOPBOTTOM));
+    mxTBBorder3->set_item_accessible_name(2, SvxResId(RID_SVXSTR_PARA_PRESET_TOPBOTTOM));
+    mxTBBorder3->set_item_tooltip_text(3, SvxResId(RID_SVXSTR_PARA_PRESET_LEFTRIGHT));
+    mxTBBorder3->set_item_accessible_name(3, SvxResId(RID_SVXSTR_PARA_PRESET_LEFTRIGHT));
 
     mxTBBorder4->connect_clicked ( LINK(this, CellBorderStylePopup, TB4SelectHdl) );
+    mxTBBorder4->set_item_tooltip_text(0, SvxResId(RID_SVXSTR_TABLE_PRESET_THICKBOTTOM));
+    mxTBBorder4->set_item_accessible_name(0, SvxResId(RID_SVXSTR_TABLE_PRESET_THICKBOTTOM));
+    mxTBBorder4->set_item_tooltip_text(1, SvxResId(RID_SVXSTR_TABLE_PRESET_DOUBLEBOTTOM));
+    mxTBBorder4->set_item_accessible_name(1, SvxResId(RID_SVXSTR_TABLE_PRESET_DOUBLEBOTTOM));
+    mxTBBorder4->set_item_tooltip_text(2, SvxResId(RID_SVXSTR_TABLE_PRESET_TOPTHICKBOTTOM));
+    mxTBBorder4->set_item_accessible_name(2, SvxResId(RID_SVXSTR_TABLE_PRESET_TOPTHICKBOTTOM));
+    mxTBBorder4->set_item_tooltip_text(3, SvxResId(RID_SVXSTR_TABLE_PRESET_TOPDOUBLEBOTTOM));
+    mxTBBorder4->set_item_accessible_name(3, SvxResId(RID_SVXSTR_TABLE_PRESET_TOPDOUBLEBOTTOM));
 }
 
 IMPL_LINK(CellBorderStylePopup, TB1SelectHdl, const OUString&, rId, void)

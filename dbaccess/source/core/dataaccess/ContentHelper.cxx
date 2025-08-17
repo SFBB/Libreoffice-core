@@ -48,8 +48,6 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::embed;
 using namespace ::com::sun::star::container;
 using namespace ::cppu;
 
@@ -88,7 +86,7 @@ void SAL_CALL OContentHelper::disposing()
 
 OUString SAL_CALL OContentHelper::getImplementationName()
     {
-        return "com.sun.star.comp.sdb.Content";
+        return u"com.sun.star.comp.sdb.Content"_ustr;
     }
 sal_Bool SAL_CALL OContentHelper::supportsService(const OUString& _rServiceName)
     {
@@ -101,7 +99,7 @@ sal_Bool SAL_CALL OContentHelper::supportsService(const OUString& _rServiceName)
     }
 css::uno::Sequence< OUString > SAL_CALL OContentHelper::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.Content" };
+    return { u"com.sun.star.ucb.Content"_ustr };
 }
 
 
@@ -262,44 +260,32 @@ void SAL_CALL OContentHelper::abort( sal_Int32 /*CommandId*/ )
 void SAL_CALL OContentHelper::addPropertiesChangeListener( const Sequence< OUString >& PropertyNames, const Reference< XPropertiesChangeListener >& Listener )
 {
     ::osl::MutexGuard aGuard(m_aMutex);
-    sal_Int32 nCount = PropertyNames.getLength();
-    if ( !nCount )
+    if (!PropertyNames.hasElements())
     {
         // Note: An empty sequence means a listener for "all" properties.
         m_aPropertyChangeListeners.addInterface(OUString(), Listener );
     }
     else
     {
-        const OUString* pSeq = PropertyNames.getConstArray();
-
-        for ( sal_Int32 n = 0; n < nCount; ++n )
-        {
-            const OUString& rName = pSeq[ n ];
+        for (auto& rName : PropertyNames)
             if ( !rName.isEmpty() )
                 m_aPropertyChangeListeners.addInterface(rName, Listener );
-        }
     }
 }
 
 void SAL_CALL OContentHelper::removePropertiesChangeListener( const Sequence< OUString >& PropertyNames, const Reference< XPropertiesChangeListener >& Listener )
 {
     ::osl::MutexGuard aGuard(m_aMutex);
-    sal_Int32 nCount = PropertyNames.getLength();
-    if ( !nCount )
+    if (!PropertyNames.hasElements())
     {
         // Note: An empty sequence means a listener for "all" properties.
         m_aPropertyChangeListeners.removeInterface( OUString(), Listener );
     }
     else
     {
-        const OUString* pSeq = PropertyNames.getConstArray();
-
-        for ( sal_Int32 n = 0; n < nCount; ++n )
-        {
-            const OUString& rName = pSeq[ n ];
+        for (auto& rName : PropertyNames)
             if ( !rName.isEmpty() )
                 m_aPropertyChangeListeners.removeInterface( rName, Listener );
-        }
     }
 }
 
@@ -317,12 +303,10 @@ void SAL_CALL OContentHelper::removeProperty( const OUString& /*Name*/ )
 // XInitialization
 void SAL_CALL OContentHelper::initialize( const Sequence< Any >& _aArguments )
 {
-    const Any* pBegin = _aArguments.getConstArray();
-    const Any* pEnd = pBegin + _aArguments.getLength();
-    PropertyValue aValue;
-    for(;pBegin != pEnd;++pBegin)
+    for (auto& arg : _aArguments)
     {
-        *pBegin >>= aValue;
+        PropertyValue aValue;
+        arg >>= aValue;
         if ( aValue.Name == "Parent" )
         {
             m_xParentContainer.set(aValue.Value,UNO_QUERY);
@@ -352,17 +336,14 @@ Sequence< Any > OContentHelper::setPropertyValues(const Sequence< PropertyValue 
     aEvent.Further        = false;
     aEvent.PropertyHandle = -1;
 
-    const PropertyValue* pValues = rValues.getConstArray();
-    sal_Int32 nCount = rValues.getLength();
-
-    for ( sal_Int32 n = 0; n < nCount; ++n )
+    for (sal_Int32 n = 0; n < rValues.getLength(); ++n)
     {
-        const PropertyValue& rValue = pValues[ n ];
+        const PropertyValue& rValue = rValues[n];
 
         if ( rValue.Name == "ContentType" || rValue.Name == "IsDocument" || rValue.Name == "IsFolder" )
         {
             // Read-only property!
-            aRetRange[ n ] <<= IllegalAccessException("Property is read-only!",
+            aRetRange[ n ] <<= IllegalAccessException(u"Property is read-only!"_ustr,
                             static_cast< cppu::OWeakObject * >( this ) );
         }
         else if ( rValue.Name == "Title" )
@@ -396,14 +377,14 @@ Sequence< Any > OContentHelper::setPropertyValues(const Sequence< PropertyValue 
             }
             else
             {
-                aRetRange[ n ] <<= IllegalTypeException("Property value has wrong type!",
+                aRetRange[ n ] <<= IllegalTypeException(u"Property value has wrong type!"_ustr,
                                 static_cast< cppu::OWeakObject * >( this ) );
             }
         }
 
         else
         {
-            aRetRange[ n ] <<= Exception("No property set for storing the value!",
+            aRetRange[ n ] <<= Exception(u"No property set for storing the value!"_ustr,
                             static_cast< cppu::OWeakObject * >( this ) );
         }
     }
@@ -426,14 +407,10 @@ Reference< XRow > OContentHelper::getPropertyValues( const Sequence< Property >&
 
     rtl::Reference< ::ucbhelper::PropertyValueSet > xRow = new ::ucbhelper::PropertyValueSet( m_aContext );
 
-    sal_Int32 nCount = rProperties.getLength();
-    if ( nCount )
+    if (rProperties.hasElements())
     {
-        const Property* pProps = rProperties.getConstArray();
-        for ( sal_Int32 n = 0; n < nCount; ++n )
+        for (auto& rProp : rProperties)
         {
-            const Property& rProp = pProps[ n ];
-
             // Process Core properties.
 
             if ( rProp.Name == "ContentType" )
@@ -460,24 +437,24 @@ Reference< XRow > OContentHelper::getPropertyValues( const Sequence< Property >&
     {
         // Append all Core Properties.
         xRow->appendString (
-            Property( "ContentType", -1,
+            Property( u"ContentType"_ustr, -1,
                       cppu::UnoType<OUString>::get(),
                       PropertyAttribute::BOUND
                         | PropertyAttribute::READONLY ),
             getContentType() );
         xRow->appendString (
-            Property( "Title", -1,
+            Property( u"Title"_ustr, -1,
                       cppu::UnoType<OUString>::get(),
                       PropertyAttribute::BOUND ),
             m_pImpl->m_aProps.aTitle );
         xRow->appendBoolean(
-            Property( "IsDocument", -1,
+            Property( u"IsDocument"_ustr, -1,
                       cppu::UnoType<bool>::get(),
                       PropertyAttribute::BOUND
                         | PropertyAttribute::READONLY ),
             m_pImpl->m_aProps.bIsDocument );
         xRow->appendBoolean(
-            Property( "IsFolder", -1,
+            Property( u"IsFolder"_ustr, -1,
                       cppu::UnoType<bool>::get(),
                       PropertyAttribute::BOUND
                         | PropertyAttribute::READONLY ),
@@ -504,11 +481,9 @@ void OContentHelper::notifyPropertiesChange( const Sequence< PropertyChangeEvent
     typedef std::map< XPropertiesChangeListener*, Sequence< PropertyChangeEvent > > PropertiesEventListenerMap;
     PropertiesEventListenerMap aListeners;
 
-    const PropertyChangeEvent* propertyChangeEvent = evt.getConstArray();
-
-    for ( sal_Int32 n = 0; n < nCount; ++n, ++propertyChangeEvent )
+    for (sal_Int32 n = 0; n < nCount; ++n)
     {
-        const PropertyChangeEvent& rEvent = *propertyChangeEvent;
+        const PropertyChangeEvent& rEvent = evt[n];
         const OUString& rName = rEvent.PropertyName;
 
         comphelper::OInterfaceContainerHelper3<XPropertiesChangeListener>* pPropsContainer = m_aPropertyChangeListeners.getContainer( rName );
@@ -530,7 +505,7 @@ void OContentHelper::notifyPropertiesChange( const Sequence< PropertyChangeEvent
                 else
                     propertyEvents = &(*it).second;
 
-                propertyEvents->getArray()[n] = rEvent;
+                asNonConstRange(*propertyEvents)[n] = rEvent;
             }
         }
     }

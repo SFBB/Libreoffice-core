@@ -26,6 +26,8 @@
 #include <editeng/editstat.hxx>
 #include <svl/itempool.hxx>
 #include <editeng/editview.hxx>
+#include <editeng/editeng.hxx>
+#include <drawinglayer/primitive2d/textlayoutdevice.hxx>
 
 
 SdrOutliner::SdrOutliner( SfxItemPool* pItemPool, OutlinerMode nMode )
@@ -50,7 +52,7 @@ void SdrOutliner::SetTextObj( const SdrTextObj* pObj )
             nOutlinerMode2 = OutlinerMode::TextObject;
         Init( nOutlinerMode2 );
 
-        setGlobalScale(100.0, 100.0, 100.0, 100.0);
+        resetScalingParameters();
 
         EEControlBits nStat = GetControlWord();
         nStat &= ~EEControlBits( EEControlBits::STRETCHING | EEControlBits::AUTOPAGESIZE );
@@ -62,6 +64,9 @@ void SdrOutliner::SetTextObj( const SdrTextObj* pObj )
         SetPaperSize( aMaxSize );
         SetTextColumns(pObj->GetTextColumnsNumber(), pObj->GetTextColumnsSpacing());
         ClearPolygon();
+
+        if (pObj->GetTextEditOutliner())
+            SetBackgroundColor(pObj->GetTextEditOutliner()->GetEditEngine().GetBackgroundColor());
     }
 
     mxWeakTextObj = const_cast< SdrTextObj* >(pObj);
@@ -115,6 +120,85 @@ std::optional<bool> SdrOutliner::GetCompatFlag(SdrCompatibilityFlag eFlag) const
         return {mpVisualizedPage->getSdrModelFromSdrPage().GetCompatibilityFlag(eFlag)};
     }
     return {};
+}
+
+void TextHierarchyBreakupBlockText::processDrawPortionInfo(const DrawPortionInfo& rDrawPortionInfo)
+{
+    // Is clipping wanted? This is text clipping; only accept a portion
+    // if it's completely in the range
+    if(!mrClipRange.isEmpty())
+    {
+        // Test start position first; this allows to not get the text range at
+        // all if text is far outside
+        const basegfx::B2DPoint aStartPosition(rDrawPortionInfo.mrStartPos.X(), rDrawPortionInfo.mrStartPos.Y());
+
+        if(!mrClipRange.isInside(aStartPosition))
+        {
+            return;
+        }
+
+        // Start position is inside. Get TextBoundRect and TopLeft next
+        drawinglayer::primitive2d::TextLayouterDevice aTextLayouterDevice;
+        aTextLayouterDevice.setFont(rDrawPortionInfo.mrFont);
+
+        const basegfx::B2DRange aTextBoundRect(
+            aTextLayouterDevice.getTextBoundRect(
+                rDrawPortionInfo.maText, rDrawPortionInfo.mnTextStart, rDrawPortionInfo.mnTextLen));
+        const basegfx::B2DPoint aTopLeft(aTextBoundRect.getMinimum() + aStartPosition);
+
+        if(!mrClipRange.isInside(aTopLeft))
+        {
+            return;
+        }
+
+        // TopLeft is inside. Get BottomRight and check
+        const basegfx::B2DPoint aBottomRight(aTextBoundRect.getMaximum() + aStartPosition);
+
+        if(!mrClipRange.isInside(aBottomRight))
+        {
+            return;
+        }
+
+        // all inside, clip was successful
+    }
+
+    TextHierarchyBreakupOutliner::processDrawPortionInfo(rDrawPortionInfo);
+}
+
+TextHierarchyBreakupBlockText::TextHierarchyBreakupBlockText(
+    SdrOutliner& rOutliner,
+    const basegfx::B2DHomMatrix& rNewTransformA,
+    const basegfx::B2DHomMatrix& rNewTransformB,
+    const basegfx::B2DRange& rClipRange)
+: TextHierarchyBreakupOutliner(
+    rOutliner,
+    rNewTransformA,
+    rNewTransformB)
+, mrClipRange(rClipRange)
+{
+}
+
+void TextHierarchyBreakupContourText::processDrawPortionInfo(const DrawPortionInfo& rDrawPortionInfo)
+    {
+        // for contour text, ignore (clip away) all portions which are below
+        // the visible area given by maScale
+        if(static_cast<double>(rDrawPortionInfo.mrStartPos.Y()) < maScale.getY())
+        {
+            TextHierarchyBreakupOutliner::processDrawPortionInfo(rDrawPortionInfo);
+        }
+    }
+
+TextHierarchyBreakupContourText::TextHierarchyBreakupContourText(
+    SdrOutliner& rOutliner,
+    const basegfx::B2DHomMatrix& rNewTransformA,
+    const basegfx::B2DHomMatrix& rNewTransformB,
+    const basegfx::B2DVector& rScale)
+: TextHierarchyBreakupOutliner(
+    rOutliner,
+    rNewTransformA,
+    rNewTransformB)
+, maScale(rScale)
+{
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

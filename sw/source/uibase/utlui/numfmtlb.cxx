@@ -36,9 +36,6 @@
 #include <swabstdlg.hxx>
 #include <memory>
 
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
-
 /**
  *  Description:
  *     nFormatType: Display the formats of this Type
@@ -160,7 +157,7 @@ void SwNumFormatTreeView::Init()
 {
     SwNumFormatBase::Init();
 
-    mxControl->connect_changed(LINK(this, SwNumFormatTreeView, SelectHdl));
+    mxControl->connect_selection_changed(LINK(this, SwNumFormatTreeView, SelectHdl));
 }
 
 void SwNumFormatBase::SetFormatType(const SvNumFormatType nFormatType)
@@ -242,7 +239,6 @@ void SwNumFormatBase::SetFormatType(const SvNumFormatType nFormatType)
         break;
     }
 
-    const SvNumberformat* pFormat;
     sal_Int32 i = 0;
     const Color* pCol;
     double fVal = SwNumFormatBase::GetDefValue(nFormatType);
@@ -255,22 +251,23 @@ void SwNumFormatBase::SetFormatType(const SvNumFormatType nFormatType)
     const sal_uInt32 nSysLongDateFormat = pFormatter->GetFormatIndex(
                                     NF_DATE_SYSTEM_LONG, m_eCurLanguage );
 
-    for( tools::Long nIndex = eOffsetStart; nIndex <= eOffsetEnd; ++nIndex )
+    for (int nIndex = eOffsetStart; nIndex <= eOffsetEnd; ++nIndex)
     {
         const sal_uInt32 nFormat = pFormatter->GetFormatIndex(
                         static_cast<NfIndexTableOffset>(nIndex), m_eCurLanguage );
-        pFormat = pFormatter->GetEntry( nFormat );
+        const SvNumberformat* pFormat = pFormatter->GetEntry(nFormat);
+        assert(pFormat && "will exist");
 
         if( nFormat == pFormatter->GetFormatIndex( NF_NUMBER_STANDARD,
                                                     m_eCurLanguage )
-            || const_cast<SvNumberformat*>(pFormat)->GetOutputString( fVal, sValue, &pCol )
+            || pFormat->GetOutputString( fVal, sValue, &pCol, pFormatter->GetNatNum(), pFormatter->GetROLanguageData() )
             || nFormatType == SvNumFormatType::UNDEFINED )
         {
             sValue = pFormat->GetFormatstring();
         }
         else if( nFormatType == SvNumFormatType::TEXT )
         {
-            pFormatter->GetOutputString( "\"ABC\"", nFormat, sValue, &pCol);
+            pFormatter->GetOutputString( u"\"ABC\""_ustr, nFormat, sValue, &pCol);
         }
 
         if (nFormat != nSysNumFormat       &&
@@ -332,7 +329,7 @@ void SwNumFormatBase::SetDefFormat(const sal_uInt32 nDefaultFormat)
 
     if (nType == SvNumFormatType::TEXT)
     {
-        pFormatter->GetOutputString("\"ABC\"", nDefaultFormat, sValue, &pCol);
+        pFormatter->GetOutputString(u"\"ABC\""_ustr, nDefaultFormat, sValue, &pCol);
     }
     else
     {

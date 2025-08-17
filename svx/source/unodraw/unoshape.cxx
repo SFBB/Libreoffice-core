@@ -29,7 +29,6 @@
 #include <editeng/unotext.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdoole2.hxx>
-#include <comphelper/interfacecontainer3.hxx>
 #include <comphelper/scopeguard.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <comphelper/multiinterfacecontainer4.hxx>
@@ -39,6 +38,7 @@
 #include <svx/sdangitm.hxx>
 #include <svx/svdlayer.hxx>
 #include <svx/svdopage.hxx>
+#include <svx/svx3ditems.hxx>
 #include <svx/xflbstit.hxx>
 #include <svx/xflbmtit.hxx>
 #include <svx/xlnstit.hxx>
@@ -78,8 +78,6 @@
 #include "shapeimpl.hxx"
 #include <sal/log.hxx>
 
-#include <svx/lathe3d.hxx>
-#include <extrud3d.hxx>
 #include <svx/sdr/contact/viewcontact.hxx>
 #include <drawinglayer/converters.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
@@ -100,7 +98,6 @@
 
 #include <bitmaps.hlst>
 
-using namespace ::osl;
 using namespace ::cppu;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -139,22 +136,22 @@ namespace {
 
 
 /// Calculates what scaling factor will be used for autofit text scaling of this shape.
-double GetTextFitToSizeScale(SdrObject* pObject)
+SdrTextObj* getTextObjectWithFitToSize(SdrObject* pObject)
 {
     SdrTextObj* pTextObj = DynCastSdrTextObj(pObject);
     if (!pTextObj)
     {
-        return 0;
+        return nullptr;
     }
 
     const SfxItemSet& rTextObjSet = pTextObj->GetMergedItemSet();
     if (rTextObjSet.GetItem<SdrTextFitToSizeTypeItem>(SDRATTR_TEXT_FITTOSIZE)->GetValue()
         != drawing::TextFitToSizeType_AUTOFIT)
     {
-        return 0;
+        return nullptr;
     }
 
-    return pTextObj->GetFontScale();
+    return pTextObj;
 }
 }
 
@@ -195,7 +192,7 @@ SvxShape::~SvxShape() noexcept
 
     if ( mxSdrObject )
     {
-        EndListening(mxSdrObject->getSdrModelFromSdrObject());
+        mxSdrObject->RemoveListener(*this);
         mxSdrObject->setUnoShape(nullptr);
         mxSdrObject.clear();
     }
@@ -208,7 +205,7 @@ void SvxShape::InvalidateSdrObject()
 {
     if(mxSdrObject)
     {
-        EndListening(mxSdrObject->getSdrModelFromSdrObject());
+        mxSdrObject->RemoveListener(*this);
         mxSdrObject.clear();
     }
 };
@@ -288,7 +285,7 @@ void SvxShape::impl_construct()
 {
     if ( HasSdrObject() )
     {
-        StartListening(GetSdrObject()->getSdrModelFromSdrObject());
+        GetSdrObject()->AddListener(*this);
         impl_initFromSdrObject();
     }
 }
@@ -358,14 +355,14 @@ void SvxShape::Create( SdrObject* pNewObj, SvxDrawPage* /*pNewPage*/ )
 
     if( HasSdrObject() )
     {
-        EndListening( GetSdrObject()->getSdrModelFromSdrObject() );
+        GetSdrObject()->RemoveListener( *this );
     }
 
     mxSdrObject = pNewObj;
 
     if( HasSdrObject() )
     {
-        StartListening( GetSdrObject()->getSdrModelFromSdrObject() );
+        GetSdrObject()->AddListener( *this );
     }
 
     OSL_ENSURE( !mbIsMultiPropertyCall, "SvxShape::Create: hmm?" );
@@ -532,7 +529,7 @@ static void SvxItemPropertySet_ObtainSettingsFromPropertySet(const SvxItemProper
         if(SfxItemPool::IsWhich(nWID)
                 && (nWID < OWN_ATTR_VALUE_START || nWID > OWN_ATTR_VALUE_END)
                 && rAnys.GetUsrAnyForID(*pSrcProp))
-            rSet.Put(rSet.GetPool()->GetDefaultItem(nWID));
+            rSet.Put(rSet.GetPool()->GetUserOrPoolDefaultItem(nWID));
     }
 
     for(const SfxItemPropertyMapEntry* pSrcProp : rSrc.getPropertyEntries())
@@ -680,10 +677,9 @@ uno::Any SvxShape::GetBitmap( bool bMetaFile /* = false */ ) const
 
                     // Embed primitives to get them in 100th mm
                     xPrimitives = drawinglayer::primitive2d::Primitive2DContainer {
-                        drawinglayer::primitive2d::Primitive2DReference(
                             new drawinglayer::primitive2d::TransformPrimitive2D(
                                 aMapTransform,
-                                std::move(xPrimitives)))
+                                std::move(xPrimitives))
                     };
 
                     // Update basegfx::B2DRange aRange, too. Here we have the
@@ -692,8 +688,8 @@ uno::Any SvxShape::GetBitmap( bool bMetaFile /* = false */ ) const
                     aRange.transform(aMapTransform);
                 }
 
-                const BitmapEx aBmp(
-                    drawinglayer::convertPrimitive2DContainerToBitmapEx(
+                const Bitmap aBmp(
+                    drawinglayer::convertPrimitive2DContainerToBitmap(
                         std::move(xPrimitives),
                         aRange));
 
@@ -933,8 +929,7 @@ void SvxShape::Notify( SfxBroadcaster&, const SfxHint& rHint ) noexcept
         return;
     const SdrHint* pSdrHint = static_cast<const SdrHint*>(&rHint);
     // #i55919# SdrHintKind::ObjectChange is only interesting if it's for this object
-    if ((pSdrHint->GetKind() != SdrHintKind::ModelCleared) &&
-         (pSdrHint->GetKind() != SdrHintKind::ObjectChange || pSdrHint->GetObject() != mxSdrObject.get() ))
+    if (pSdrHint->GetKind() != SdrHintKind::ObjectChange || pSdrHint->GetObject() != mxSdrObject.get())
         return;
 
     // prevent object being deleted from under us
@@ -942,24 +937,12 @@ void SvxShape::Notify( SfxBroadcaster&, const SfxHint& rHint ) noexcept
     uno::Reference< uno::XInterface > xSelf( mxSdrObject->getWeakUnoShape() );
     if( !xSelf.is() )
     {
-        EndListening(mxSdrObject->getSdrModelFromSdrObject());
+        mxSdrObject->RemoveListener(*this);
         mxSdrObject.clear();
         return;
     }
 
-    if (pSdrHint->GetKind() == SdrHintKind::ObjectChange)
-    {
-        updateShapeKind();
-    }
-    else // (pSdrHint->GetKind() == SdrHintKind::ModelCleared)
-    {
-        EndListening(mxSdrObject->getSdrModelFromSdrObject());
-        mxSdrObject->setUnoShape(nullptr);
-        mxSdrObject.clear();
-
-        if(!mpImpl->mbDisposing)
-            dispose();
-    }
+    updateShapeKind();
 }
 
 // XShape
@@ -1194,7 +1177,7 @@ void SAL_CALL SvxShape::dispose()
     if (!pObject)
         return;
 
-    EndListening( pObject->getSdrModelFromSdrObject() );
+    pObject->RemoveListener( *this );
 
     if ( pObject->IsInserted() && pObject->getSdrPageFromSdrObject() )
     {
@@ -1245,7 +1228,7 @@ Reference< beans::XPropertySetInfo > SAL_CALL
     }
 }
 
-Reference< beans::XPropertySetInfo > const &
+rtl::Reference< SfxItemPropertySetInfo > const &
     SvxShape::_getPropertySetInfo()
 {
     return mpPropSet->getPropertySetInfo();
@@ -1422,9 +1405,9 @@ bool SvxShape::SetFillAttribute( sal_uInt16 nWID, const OUString& rName, SfxItem
             {
                 const basegfx::B2DPolyPolygon aEmptyPoly;
                 if( nWID == sal_uInt16(XATTR_LINEEND) )
-                    rSet.Put( XLineEndItem( "", aEmptyPoly ) );
+                    rSet.Put( XLineEndItem( u""_ustr, aEmptyPoly ) );
                 else
-                    rSet.Put( XLineStartItem( "", aEmptyPoly ) );
+                    rSet.Put( XLineStartItem( u""_ustr, aEmptyPoly ) );
 
                 return true;
             }
@@ -1440,7 +1423,19 @@ bool SvxShape::SetFillAttribute( sal_uInt16 nWID, const OUString& rName, SfxItem
         return false;
     }
 
-    for (const SfxPoolItem* p : rSet.GetPool()->GetItemSurrogates(nWID))
+    SfxItemType eItemType;
+    switch (nWID)
+    {
+        case XATTR_FILLBITMAP: eItemType = SfxItemType::XFillBitmapItemType; break;
+        case XATTR_FILLGRADIENT: eItemType = SfxItemType::XFillGradientItemType; break;
+        case XATTR_FILLHATCH: eItemType = SfxItemType::XFillHatchItemType; break;
+        case XATTR_FILLFLOATTRANSPARENCE: eItemType = SfxItemType::XFillFloatTransparenceItemType; break;
+        case XATTR_LINEEND: eItemType = SfxItemType::XLineEndItemType; break;
+        case XATTR_LINESTART: eItemType = SfxItemType::XLineStartItemType; break;
+        case XATTR_LINEDASH: eItemType = SfxItemType::XLineDashItemType; break;
+        default: assert(false); abort();
+    }
+    for (const SfxPoolItem* p : rSet.GetPool()->GetItemSurrogatesForItem(eItemType))
     {
         const NameOrIndex* pItem = static_cast<const NameOrIndex*>(p);
         if( pItem->GetName() == aName )
@@ -1505,8 +1500,28 @@ void SvxShape::_setPropertyValue( const OUString& rPropertyName, const uno::Any&
         return;
     }
 
+    // A hack to avoid taking incomplete OLE object's size into account when loading
+    // see SdXMLObjectShapeContext::createFastChildContext
+    if (rPropertyName == "IgnoreOLEObjectScale")
+    {
+        if (auto pOleObj = DynCastSdrOle2Obj(GetSdrObject()))
+            if (bool bVal; rVal >>= bVal)
+                pOleObj->SetIgnoreOLEObjectScale(bVal);
+        return;
+    }
+
     if (!pMap)
+    {
+        // The oox layer sets these properties willy-nilly on objects, even if the objects do not support them.
+        // And then it ignores the resulting exceptions, but exception throwing and catching becomes expensive
+        // with complex spreadsheets. So just ignore it here, in absence of a better fix.
+        if (rPropertyName == "FromWordArt" || rPropertyName == "GraphicColorMode" || rPropertyName == "Representation")
+        {
+            SAL_WARN("svx", "Ignoring property " << rPropertyName);
+            return;
+        }
         throw beans::UnknownPropertyException( rPropertyName, getXWeak());
+    }
 
     if ((pMap->nFlags & beans::PropertyAttribute::READONLY) != 0)
         throw beans::PropertyVetoException(
@@ -1564,7 +1579,7 @@ void SvxShape::_setPropertyValue( const OUString& rPropertyName, const uno::Any&
         {
             // get default from ItemPool
             if(SfxItemPool::IsWhich(pMap->nWID))
-                pSet->Put(GetSdrObject()->getSdrModelFromSdrObject().GetItemPool().GetDefaultItem(pMap->nWID));
+                pSet->Put(GetSdrObject()->getSdrModelFromSdrObject().GetItemPool().GetUserOrPoolDefaultItem(pMap->nWID));
         }
 
         if( pSet->GetItemState( pMap->nWID ) == SfxItemState::SET )
@@ -1633,7 +1648,7 @@ uno::Any SvxShape::_getPropertyValue( const OUString& PropertyName )
             {
                 // get default from ItemPool
                 if(SfxItemPool::IsWhich(pMap->nWID))
-                    aSet.Put(GetSdrObject()->getSdrModelFromSdrObject().GetItemPool().GetDefaultItem(pMap->nWID));
+                    aSet.Put(GetSdrObject()->getSdrModelFromSdrObject().GetItemPool().GetUserOrPoolDefaultItem(pMap->nWID));
             }
 
             if(aSet.Count())
@@ -1661,7 +1676,7 @@ void SAL_CALL SvxShape::setPropertyValues( const css::uno::Sequence< OUString >&
 
     const sal_Int32 nCount = aPropertyNames.getLength();
     if (nCount != aValues.getLength())
-        throw css::lang::IllegalArgumentException("lengths do not match",
+        throw css::lang::IllegalArgumentException(u"lengths do not match"_ustr,
                                                   getXWeak(), -1);
 
     const OUString* pNames = aPropertyNames.getConstArray();
@@ -1683,7 +1698,7 @@ void SAL_CALL SvxShape::setPropertyValues( const css::uno::Sequence< OUString >&
             }
             catch (beans::UnknownPropertyException&)
             {
-                // ignore, various code likes to opportunisticly set properties on objects that don't support those properties
+                // ignore, various code likes to opportunistically set properties on objects that don't support those properties
             }
             catch (uno::Exception&)
             {
@@ -1839,21 +1854,14 @@ uno::Any SvxShape::GetAnyForItem( SfxItemSet const & aSet, const SfxItemProperty
         // get value from ItemSet
         aAny = SvxItemPropertySet_getPropertyValue( pMap, aSet );
 
-        if( pMap->aType != aAny.getValueType() )
-        {
-            // since the sfx uint16 item now exports a sal_Int32, we may have to fix this here
-            if( ( pMap->aType == ::cppu::UnoType<sal_Int16>::get()) && aAny.getValueType() == ::cppu::UnoType<sal_Int32>::get() )
-            {
-                sal_Int32 nValue = 0;
-                aAny >>= nValue;
-                aAny <<= static_cast<sal_Int16>(nValue);
-            }
-            else
-            {
-                SAL_WARN("svx", "SvxShape::GetAnyForItem() Return value has wrong Type, " << pMap->aType << " != " << aAny.getValueType());
-            }
-        }
-
+        SAL_WARN_IF(!pMap->aType.isAssignableFrom(aAny.getValueType())
+                        && aAny.getValueType() != cppu::UnoType<void>::get()
+                        && !(pMap->nWID == XATTR_FILLBITMAP && pMap->nMemberId == MID_BITMAP
+                             && aAny.getValueType() == cppu::UnoType<css::awt::XBitmap>::get()),
+                    "svx",
+                    "SvxShape::GetAnyForItem() Return value for property "
+                        << pMap->aName << " has wrong Type, " << pMap->aType
+                        << " != " << aAny.getValueType());
     }
     }
 
@@ -2017,8 +2025,8 @@ bool SvxShape::setPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
             basegfx::B2DHomMatrix aNewHomogenMatrix;
             pSdrObject->TRGetBaseGeometry(aNewHomogenMatrix, aNewPolyPolygon);
 
-            aVclPoint.AdjustX(basegfx::fround(aNewHomogenMatrix.get(0, 2)) );
-            aVclPoint.AdjustY(basegfx::fround(aNewHomogenMatrix.get(1, 2)) );
+            aVclPoint.AdjustX(basegfx::fround<tools::Long>(aNewHomogenMatrix.get(0, 2)) );
+            aVclPoint.AdjustY(basegfx::fround<tools::Long>(aNewHomogenMatrix.get(1, 2)) );
 
             // #88491# position relative to anchor
             if( pSdrObject->getSdrModelFromSdrObject().IsWriter() )
@@ -2190,7 +2198,7 @@ bool SvxShape::setPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
                         if( pSdrObject->getSdrModelFromSdrObject().IsWriter() )
                         {
                             Point aPoint( pSdrObject->GetAnchorPos() );
-                            aNewPolyPolygon.transform(basegfx::utils::createTranslateB2DHomMatrix(aPoint.X(), aPoint.Y()));
+                            aNewPolyPolygon.translate(aPoint.X(), aPoint.Y());
                         }
                         pEdgeObj->SetEdgeTrackPath( aNewPolyPolygon );
                         return true;
@@ -2332,13 +2340,26 @@ bool SvxShape::setPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
         break;
     }
 
-    case OWN_ATTR_TEXTFITTOSIZESCALE:
+    case OWN_ATTR_TEXTFITTOSIZE_FONT_SCALE:
     {
-        double nMaxScale = 0.0;
-        if (rValue >>= nMaxScale)
+        double fScale = 0.0;
+        if (rValue >>= fScale)
         {
             SdrTextFitToSizeTypeItem aItem(pSdrObject->GetMergedItem(SDRATTR_TEXT_FITTOSIZE));
-            aItem.SetMaxScale(nMaxScale);
+            aItem.setFontScale(fScale / 100.0);
+            pSdrObject->SetMergedItem(aItem);
+            return true;
+        }
+        break;
+    }
+
+    case OWN_ATTR_TEXTFITTOSIZE_SPACING_SCALE:
+    {
+        double fScale = 0.0;
+        if (rValue >>= fScale)
+        {
+            SdrTextFitToSizeTypeItem aItem(pSdrObject->GetMergedItem(SDRATTR_TEXT_FITTOSIZE));
+            aItem.setSpacingScale(fScale / 100.0);
             pSdrObject->SetMergedItem(aItem);
             return true;
         }
@@ -2466,7 +2487,7 @@ bool SvxShape::setPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
                 if (css::uno::Reference<css::beans::XPropertySet> xPropSet{ xTextColumns,
                                                                             css::uno::UNO_QUERY })
                 {
-                    auto aVal = xPropSet->getPropertyValue("AutomaticDistance");
+                    auto aVal = xPropSet->getPropertyValue(u"AutomaticDistance"_ustr);
                     if (sal_Int32 nSpacing; aVal >>= nSpacing)
                         pTextObj->SetTextColumnsSpacing(nSpacing);
                 }
@@ -2506,7 +2527,7 @@ bool SvxShape::setPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
         " Property Type: "
         + pProperty->aType.getTypeName() + " Property Name: " + pProperty->aName
         + " Property nWID: " + OUString::number(pProperty->nWID)
-        + " Value Type: " + (rValue.hasValue() ? rValue.getValueTypeName() : "void (no value)"));
+        + " Value Type: " + (rValue.hasValue() ? rValue.getValueTypeName() : u"void (no value)"_ustr));
 
     throw lang::IllegalArgumentException(sExceptionMessage, nullptr, 1);
 }
@@ -2531,8 +2552,8 @@ bool SvxShape::getPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
         basegfx::B2DHomMatrix aNewHomogenMatrix;
         GetSdrObject()->TRGetBaseGeometry(aNewHomogenMatrix, aNewPolyPolygon);
 
-        aVclPoint.AdjustX( -(basegfx::fround(aNewHomogenMatrix.get(0, 2))) );
-        aVclPoint.AdjustY( -(basegfx::fround(aNewHomogenMatrix.get(1, 2))) );
+        aVclPoint.AdjustX( -(basegfx::fround<tools::Long>(aNewHomogenMatrix.get(0, 2))) );
+        aVclPoint.AdjustY( -(basegfx::fround<tools::Long>(aNewHomogenMatrix.get(1, 2))) );
 
         // tdf#117145 metric of SdrModel is app-specific, metric of UNO API is 100thmm
         // Need to adapt aVclPoint from app-specific to 100thmm
@@ -2644,7 +2665,7 @@ bool SvxShape::getPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
             sId = RID_UNODRAW_OBJECTS;
         }
 
-        BitmapEx aBmp(sId);
+        Bitmap aBmp(sId);
         Reference<awt::XBitmap> xBmp(VCLUnoHelper::CreateBitmap(aBmp));
 
         rValue <<= xBmp;
@@ -2714,7 +2735,7 @@ bool SvxShape::getPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
                     if( GetSdrObject()->getSdrModelFromSdrObject().IsWriter() )
                     {
                         Point aPoint( GetSdrObject()->GetAnchorPos() );
-                        aPolyPoly.transform(basegfx::utils::createTranslateB2DHomMatrix(-aPoint.X(), -aPoint.Y()));
+                        aPolyPoly.translate(-aPoint.X(), -aPoint.Y());
                     }
                     // Reintroduction of fix for issue #i59051# (#i108851#)
                     ForceMetricTo100th_mm( aPolyPoly );
@@ -2859,10 +2880,23 @@ bool SvxShape::getPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
         break;
     }
 
-    case OWN_ATTR_TEXTFITTOSIZESCALE:
+    case OWN_ATTR_TEXTFITTOSIZE_FONT_SCALE:
     {
-        double nScale = GetTextFitToSizeScale(GetSdrObject());
-        rValue <<= nScale;
+        auto* pTextObject = getTextObjectWithFitToSize(GetSdrObject());
+        if (pTextObject)
+        {
+            rValue <<= pTextObject->GetFontScale() * 100.0;
+        }
+        break;
+    }
+
+    case OWN_ATTR_TEXTFITTOSIZE_SPACING_SCALE:
+    {
+        auto* pTextObject = getTextObjectWithFitToSize(GetSdrObject());
+        if (pTextObject)
+        {
+            rValue <<= pTextObject->GetSpacingScale() * 100.0;
+        }
         break;
     }
 
@@ -2893,7 +2927,7 @@ bool SvxShape::getPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
                 if ( !bIsWMF )
                 {
                     // #119735# just use GetGDIMetaFile, it will create a buffered version of contained bitmap now automatically
-                    GDIMetaFile aMtf(pObj->GetGraphic()->GetGDIMetaFile());
+                    GDIMetaFile aMtf(pGraphic->GetGDIMetaFile());
                     SvMemoryStream aDestStrm( 65535, 65535 );
                     ConvertGDIMetaFileToWMF( aMtf, aDestStrm, nullptr, false );
                     const uno::Sequence<sal_Int8> aSeq(
@@ -2920,7 +2954,7 @@ bool SvxShape::getPropertyValueImpl( const OUString&, const SfxItemPropertyMapEn
                 css::uno::Reference<css::text::XTextColumns> xCols(xIf, css::uno::UNO_QUERY_THROW);
                 xCols->setColumnCount(pTextObj->GetTextColumnsNumber());
                 css::uno::Reference<css::beans::XPropertySet> xProp(xIf, css::uno::UNO_QUERY_THROW);
-                xProp->setPropertyValue("AutomaticDistance",
+                xProp->setPropertyValue(u"AutomaticDistance"_ustr,
                                         css::uno::Any(pTextObj->GetTextColumnsSpacing()));
                 rValue <<= xIf;
             }
@@ -3065,7 +3099,7 @@ uno::Any SvxShape::_getPropertyDefault( const OUString& aPropertyName )
         throw beans::UnknownPropertyException( "No WhichID " + OUString::number(pMap->nWID) + " for " + aPropertyName, getXWeak());
 
     SfxItemSet aSet( GetSdrObject()->getSdrModelFromSdrObject().GetItemPool(), pMap->nWID, pMap->nWID );
-    aSet.Put(GetSdrObject()->getSdrModelFromSdrObject().GetItemPool().GetDefaultItem(pMap->nWID));
+    aSet.Put(GetSdrObject()->getSdrModelFromSdrObject().GetItemPool().GetUserOrPoolDefaultItem(pMap->nWID));
 
     return GetAnyForItem( aSet, pMap );
 }
@@ -3123,7 +3157,7 @@ uno::Sequence<uno::Any> SvxShape::getPropertyDefaults(
 
 OUString SAL_CALL SvxShape::getImplementationName()
 {
-    return "SvxShape";
+    return u"SvxShape"_ustr;
 }
 
 constexpr OUString sUNO_service_style_ParagraphProperties = u"com.sun.star.style.ParagraphProperties"_ustr;
@@ -3160,6 +3194,7 @@ constexpr OUString sUNO_service_drawing_PolyLineShape     = u"com.sun.star.drawi
 constexpr OUString sUNO_service_drawing_OpenBezierShape   = u"com.sun.star.drawing.OpenBezierShape"_ustr;
 constexpr OUString sUNO_service_drawing_ClosedBezierShape = u"com.sun.star.drawing.ClosedBezierShape"_ustr;
 constexpr OUString sUNO_service_drawing_TextShape         = u"com.sun.star.drawing.TextShape"_ustr;
+constexpr OUString sUNO_service_drawing_AnnotationShape   = u"com.sun.star.drawing.AnnotationShape"_ustr;
 constexpr OUString sUNO_service_drawing_GraphicObjectShape = u"com.sun.star.drawing.GraphicObjectShape"_ustr;
 constexpr OUString sUNO_service_drawing_OLE2Shape         = u"com.sun.star.drawing.OLE2Shape"_ustr;
 constexpr OUString sUNO_service_drawing_PageShape         = u"com.sun.star.drawing.PageShape"_ustr;
@@ -3418,6 +3453,29 @@ uno::Sequence< OUString > SvxShape::_getSupportedServiceNames()
                             sUNO_service_drawing_RotationDescriptor };
                 return aSvxShape_TextServices;
             }
+        case SdrObjKind::Annotation:
+            {
+                static const uno::Sequence<OUString> aSvxShape_AnnotationServices = {
+                            sUNO_service_drawing_AnnotationShape,
+
+                            sUNO_service_drawing_Shape,
+                            sUNO_service_drawing_FillProperties,
+                            sUNO_service_drawing_LineProperties,
+
+                            sUNO_service_drawing_Text,
+                            sUNO_service_drawing_TextProperties,
+                            sUNO_service_style_ParagraphProperties,
+                            sUNO_service_style_ParagraphPropertiesComplex,
+                            sUNO_service_style_ParagraphPropertiesAsian,
+                            sUNO_service_style_CharacterProperties,
+                            sUNO_service_style_CharacterPropertiesComplex,
+                            sUNO_service_style_CharacterPropertiesAsian,
+
+                            sUNO_service_drawing_ShadowProperties,
+                            sUNO_service_drawing_RotationDescriptor
+                };
+                return aSvxShape_AnnotationServices;
+            }
 
         case SdrObjKind::Graphic:
             {
@@ -3595,8 +3653,8 @@ uno::Reference< container::XIndexContainer > SAL_CALL SvxShape::getGluePoints()
 
     if( HasSdrObject() && !xGluePoints.is() )
     {
-        uno::Reference< container::XIndexContainer > xNew( SvxUnoGluePointAccess_createInstance( GetSdrObject() ), uno::UNO_QUERY );
-        mxGluePoints = xGluePoints = xNew;
+        xGluePoints.set(SvxUnoGluePointAccess_createInstance(GetSdrObject()), uno::UNO_QUERY);
+        mxGluePoints = xGluePoints;
     }
 
     return xGluePoints;
@@ -3813,7 +3871,7 @@ uno::Any SAL_CALL SvxShapeText::queryAggregation( const uno::Type & rType )
 
 OUString SAL_CALL SvxShapeText::getImplementationName()
 {
-    return "SvxShapeText";
+    return u"SvxShapeText"_ustr;
 }
 
 

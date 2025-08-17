@@ -23,13 +23,14 @@ class ScNameDefDlg : public ScAnyRefDlgController
 private:
     bool mbUndo; //if true we need to add an undo action after creating a range name
     ScDocument& mrDoc;
-    ScDocShell* mpDocShell;
+    ScDocShell& mrDocShell;
 
     ScAddress maCursorPos;
     OUString maStrInfoDefault;
     const OUString maGlobalNameStr;
     const OUString maErrInvalidNameStr;
     const OUString maErrInvalidNameCellRefStr;
+    const OUString maErrInvalidSheetReference;
     const OUString maErrNameInUse;
 
     //hack to call this dialog from Manage Names
@@ -53,6 +54,7 @@ private:
     std::unique_ptr<weld::Button> m_xBtnAdd;
     std::unique_ptr<weld::Button> m_xBtnCancel;
     std::unique_ptr<weld::Label> m_xFtInfo;
+    std::unique_ptr<weld::Expander> m_xExpander;
     std::unique_ptr<weld::Label> m_xFtRange;
 
     void CancelPushed();
@@ -65,6 +67,8 @@ private:
     DECL_LINK(AddBtnHdl, weld::Button&, void);
     DECL_LINK(NameModifyHdl, weld::Entry&, void);
     DECL_LINK(AssignGetFocusHdl, formula::RefEdit&, void);
+    DECL_LINK(EdModifyCheckBoxHdl, weld::Toggleable&, void);
+    DECL_LINK(RefEdModifyHdl, formula::RefEdit&, void);
 
 protected:
     virtual void RefInputDone(bool bForced = false) override;

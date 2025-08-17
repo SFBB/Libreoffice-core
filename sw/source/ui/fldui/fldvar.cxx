@@ -40,24 +40,24 @@
 #define USER_DATA_VERSION USER_DATA_VERSION_1
 
 SwFieldVarPage::SwFieldVarPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *const pCoreSet )
-    : SwFieldPage(pPage, pController, "modules/swriter/ui/fldvarpage.ui", "FieldVarPage", pCoreSet)
-    , m_xTypeLB(m_xBuilder->weld_tree_view("type"))
-    , m_xSelection(m_xBuilder->weld_widget("selectframe"))
-    , m_xSelectionLB(m_xBuilder->weld_tree_view("select"))
-    , m_xNameFT(m_xBuilder->weld_label("nameft"))
-    , m_xNameED(m_xBuilder->weld_entry("name"))
-    , m_xValueFT(m_xBuilder->weld_label("valueft"))
-    , m_xValueED(new ConditionEdit(m_xBuilder->weld_entry("value")))
-    , m_xFormat(m_xBuilder->weld_widget("formatframe"))
-    , m_xNumFormatLB(new SwNumFormatTreeView(m_xBuilder->weld_tree_view("numformat")))
-    , m_xFormatLB(m_xBuilder->weld_tree_view("format"))
-    , m_xChapterFrame(m_xBuilder->weld_widget("chapterframe"))
-    , m_xChapterLevelLB(m_xBuilder->weld_combo_box("level"))
-    , m_xInvisibleCB(m_xBuilder->weld_check_button("invisible"))
-    , m_xSeparatorFT(m_xBuilder->weld_label("separatorft"))
-    , m_xSeparatorED(m_xBuilder->weld_entry("separator"))
-    , m_xNewPB(m_xBuilder->weld_button("apply"))
-    , m_xDelPB(m_xBuilder->weld_button("delete"))
+    : SwFieldPage(pPage, pController, u"modules/swriter/ui/fldvarpage.ui"_ustr, u"FieldVarPage"_ustr, pCoreSet)
+    , m_xTypeLB(m_xBuilder->weld_tree_view(u"type"_ustr))
+    , m_xSelection(m_xBuilder->weld_widget(u"selectframe"_ustr))
+    , m_xSelectionLB(m_xBuilder->weld_tree_view(u"select"_ustr))
+    , m_xNameFT(m_xBuilder->weld_label(u"nameft"_ustr))
+    , m_xNameED(m_xBuilder->weld_entry(u"name"_ustr))
+    , m_xValueFT(m_xBuilder->weld_label(u"valueft"_ustr))
+    , m_xValueED(new ConditionEdit<weld::TextView>(m_xBuilder->weld_text_view(u"value"_ustr)))
+    , m_xFormat(m_xBuilder->weld_widget(u"formatframe"_ustr))
+    , m_xNumFormatLB(new SwNumFormatTreeView(m_xBuilder->weld_tree_view(u"numformat"_ustr)))
+    , m_xFormatLB(m_xBuilder->weld_tree_view(u"format"_ustr))
+    , m_xChapterFrame(m_xBuilder->weld_widget(u"chapterframe"_ustr))
+    , m_xChapterLevelLB(m_xBuilder->weld_combo_box(u"level"_ustr))
+    , m_xInvisibleCB(m_xBuilder->weld_check_button(u"invisible"_ustr))
+    , m_xSeparatorFT(m_xBuilder->weld_label(u"separatorft"_ustr))
+    , m_xSeparatorED(m_xBuilder->weld_entry(u"separator"_ustr))
+    , m_xNewPB(m_xBuilder->weld_button(u"apply"_ustr))
+    , m_xDelPB(m_xBuilder->weld_button(u"delete"_ustr))
     , m_nOldFormat(0)
     , m_bInit(true)
 {
@@ -70,6 +70,10 @@ SwFieldVarPage::SwFieldVarPage(weld::Container* pPage, weld::DialogController* p
     m_xTypeLB->set_size_request(nWidth, nHeight);
     m_xSelectionLB->set_size_request(nWidth, nHeight);
     m_xFormatLB->set_size_request(nWidth, nHeight/2);
+    m_xNumFormatLB->get_widget().set_size_request(nWidth, nHeight/2);
+
+    m_xValueED->get_widget().set_size_request(m_xValueED->get_widget().get_preferred_size().Width(),
+                                   m_xValueED->get_widget().get_height_rows(6));
 
     m_sOldValueFT = m_xValueFT->get_label();
     m_sOldNameFT = m_xNameFT->get_label();
@@ -118,6 +122,14 @@ void SwFieldVarPage::Reset(const SfxItemSet* )
     }
     else
     {
+        auto nWidth = m_xTypeLB->get_approximate_digit_width() * FIELD_COLUMN_WIDTH;
+        auto nHeight = m_xTypeLB->get_height_rows(8);
+        m_xTypeLB->set_size_request(nWidth, nHeight);
+        m_xSelectionLB->set_size_request(nWidth, nHeight);
+        m_xFormatLB->set_size_request(nWidth, nHeight/2);
+        auto size = m_xValueED->get_widget().get_size_request();
+        m_xValueED->get_widget().set_size_request(size.getWidth(),
+                                                  m_xValueED->get_widget().get_height_rows(6));
         const SwField* pCurField = GetCurField();
         assert(pCurField && "<SwFieldVarPage::Reset(..)> - <SwField> instance missing!");
         nTypeId = pCurField->GetTypeId();
@@ -130,7 +142,7 @@ void SwFieldVarPage::Reset(const SfxItemSet* )
             pSh = ::GetActiveWrtShell();
         if(pSh)
         {
-            const SvNumberformat* pFormat = pSh->GetNumberFormatter()->GetEntry(pCurField->GetFormat());
+            const SvNumberformat* pFormat = pSh->GetNumberFormatter()->GetEntry(pCurField->GetUntypedFormat());
             if(pFormat)
                 m_xNumFormatLB->SetLanguage(pFormat->GetLanguage());
         }
@@ -142,13 +154,13 @@ void SwFieldVarPage::Reset(const SfxItemSet* )
     RestorePos(*m_xTypeLB);
 
     m_xTypeLB->connect_row_activated(LINK(this, SwFieldVarPage, TreeViewInsertHdl));
-    m_xTypeLB->connect_changed(LINK(this, SwFieldVarPage, TypeHdl));
-    m_xSelectionLB->connect_changed(LINK(this, SwFieldVarPage, SubTypeListBoxHdl));
+    m_xTypeLB->connect_selection_changed(LINK(this, SwFieldVarPage, TypeHdl));
+    m_xSelectionLB->connect_selection_changed(LINK(this, SwFieldVarPage, SubTypeListBoxHdl));
     m_xSelectionLB->connect_row_activated(LINK(this, SwFieldVarPage, SubTypeInsertHdl));
     m_xFormatLB->connect_row_activated(LINK(this, SwFieldVarPage, TreeViewInsertHdl));
     m_xNumFormatLB->connect_row_activated(LINK(this, SwFieldVarPage, TreeViewInsertHdl));
     m_xNameED->connect_changed(LINK(this, SwFieldVarPage, ModifyHdl));
-    m_xValueED->connect_changed(LINK(this, SwFieldVarPage, ModifyHdl));
+    m_xValueED->connect_changed(LINK(this, SwFieldVarPage, ModifyValueHdl));
     m_xNewPB->connect_clicked(LINK(this, SwFieldVarPage, TBClickHdl));
     m_xDelPB->connect_clicked(LINK(this, SwFieldVarPage, TBClickHdl));
     m_xChapterLevelLB->connect_changed(LINK(this, SwFieldVarPage, ChapterHdl));
@@ -282,9 +294,9 @@ void SwFieldVarPage::SubTypeHdl(const weld::TreeView* pBox)
                 {
                     if (pBox || (m_bInit && !IsRefresh()))    // only when interacting via mouse
                     {
-                        m_xNameED->set_text(pType->GetName());
+                        m_xNameED->set_text(pType->GetName().toString());
 
-                        if (pType->GetType() == UF_STRING)
+                        if (pType->GetType() == SwUserType::String)
                         {
                             m_xValueED->set_text(pType->GetContent());
                             m_xNumFormatLB->select(0);
@@ -349,7 +361,7 @@ void SwFieldVarPage::SubTypeHdl(const weld::TreeView* pBox)
                             SwSetExpFieldType* pSetTyp = static_cast<SwSetExpFieldType*>(
                                     pSh->GetFieldType(SwFieldIds::SetExp, sName));
 
-                            if (pSetTyp && pSetTyp->GetType() == nsSwGetSetExpType::GSE_STRING)
+                            if (pSetTyp && pSetTyp->GetType() == SwGetSetExpType::String)
                                 m_xNumFormatLB->select(0); // textual
                         }
                     }
@@ -396,7 +408,7 @@ void SwFieldVarPage::SubTypeHdl(const weld::TreeView* pBox)
 
                         if(pSetTyp)
                         {
-                            if (pSetTyp->GetType() & nsSwGetSetExpType::GSE_STRING)    // textual?
+                            if (pSetTyp->GetType() & SwGetSetExpType::String)    // textual?
                                 bFormat = true;
                             else                    // numeric
                                 bNumFormat = true;
@@ -406,7 +418,7 @@ void SwFieldVarPage::SubTypeHdl(const weld::TreeView* pBox)
                 else
                     bFormat = false;
 
-                EnableInsert(bFormat || bNumFormat);
+                EnableInsert(bFormat || bNumFormat, IsCurrentPage());
             }
             break;
 
@@ -429,7 +441,7 @@ void SwFieldVarPage::SubTypeHdl(const weld::TreeView* pBox)
 
                     if(pSetTyp)
                     {
-                        if (pSetTyp->GetType() == nsSwGetSetExpType::GSE_STRING)    // textual?
+                        if (pSetTyp->GetType() == SwGetSetExpType::String)    // textual?
                         {
                             m_xNumFormatLB->clear();
                             m_xNumFormatLB->append(OUString::number(NUMBERFORMAT_ENTRY_NOT_FOUND), SwResId(FMT_USERVAR_TEXT));
@@ -456,7 +468,7 @@ void SwFieldVarPage::SubTypeHdl(const weld::TreeView* pBox)
 
                     if(pType)
                     {
-                        m_xNameED->set_text(pType->GetName());
+                        m_xNameED->set_text(pType->GetName().toString());
 
                         //JP 28.08.95: DDE-Topics/-Items can have blanks in their names!
                         //              That's not considered here yet
@@ -621,11 +633,18 @@ void SwFieldVarPage::UpdateSubType()
                         break;
 
                     case SwFieldTypesEnum::Set:
+                        if (GetCurField() && aList[i] == GetCurField()->GetTyp()->GetName())
+                        {
+                            bInsert = true;
+                            if (static_cast<SwSetExpField*>(GetCurField())->GetSubType() & SwGetSetExpType::Invisible)
+                                m_xInvisibleCB->set_active(true);
+                        }
+                        break;
                     case SwFieldTypesEnum::User:
                         if (GetCurField() && aList[i] == GetCurField()->GetTyp()->GetName())
                         {
                             bInsert = true;
-                            if (GetCurField()->GetSubType() & nsSwExtendedSubType::SUB_INVISIBLE)
+                            if (static_cast<SwUserField*>(GetCurField())->GetSubType() & SwUserType::Invisible)
                                 m_xInvisibleCB->set_active(true);
                         }
                         break;
@@ -710,11 +729,11 @@ void SwFieldVarPage::FillFormatLB(SwFieldTypesEnum nTypeId)
     {
         if (GetCurField() != nullptr && IsFieldEdit())
         {
-            bSpecialFormat = GetCurField()->GetFormat() == NUMBERFORMAT_ENTRY_NOT_FOUND;
+            bSpecialFormat = GetCurField()->GetUntypedFormat() == NUMBERFORMAT_ENTRY_NOT_FOUND;
 
             if (!bSpecialFormat)
             {
-                m_xNumFormatLB->SetDefFormat(GetCurField()->GetFormat());
+                m_xNumFormatLB->SetDefFormat(GetCurField()->GetUntypedFormat());
                 sOldNumSel.clear();
             }
             else if (nTypeId == SwFieldTypesEnum::Get || nTypeId == SwFieldTypesEnum::Formel)
@@ -761,15 +780,6 @@ void SwFieldVarPage::FillFormatLB(SwFieldTypesEnum nTypeId)
         break;
 
         case SwFieldTypesEnum::Formel:
-        {
-            OUString sId(OUString::number(NUMBERFORMAT_ENTRY_NOT_FOUND));
-            int nOldIndex = rWidget.get_selected_index();
-            rWidget.insert(0, SwResId(FMT_GETVAR_NAME), &sId, nullptr, nullptr);
-            if (nOldIndex != -1)
-                rWidget.select(nOldIndex + 1);
-        }
-        break;
-
         case SwFieldTypesEnum::Get:
         {
             OUString sId(OUString::number(NUMBERFORMAT_ENTRY_NOT_FOUND));
@@ -785,7 +795,7 @@ void SwFieldVarPage::FillFormatLB(SwFieldTypesEnum nTypeId)
 
     if (IsFieldEdit() && bSpecialFormat)
     {
-        if (nTypeId == SwFieldTypesEnum::User && (GetCurField()->GetSubType() & nsSwExtendedSubType::SUB_CMD))
+        if (nTypeId == SwFieldTypesEnum::User && (static_cast<SwUserField*>(GetCurField())->GetSubType() & SwUserType::ShowCommand))
             rWidget.select(1);
         else
             rWidget.select(0);
@@ -807,7 +817,7 @@ void SwFieldVarPage::FillFormatLB(SwFieldTypesEnum nTypeId)
         const sal_uInt16 nFieldId = GetFieldMgr().GetFormatId( nTypeId, i );
         OUString sId(OUString::number(nFieldId));
         m_xFormatLB->append(sId, GetFieldMgr().GetFormatStr(nTypeId, i));
-        if (IsFieldEdit() && GetCurField() && nFieldId == GetCurField()->GetFormat())
+        if (IsFieldEdit() && GetCurField() && nFieldId == GetCurField()->GetUntypedFormat())
             sSelectId = sId;
     }
 
@@ -829,6 +839,11 @@ void SwFieldVarPage::FillFormatLB(SwFieldTypesEnum nTypeId)
 }
 
 // Modify
+IMPL_LINK_NOARG(SwFieldVarPage, ModifyValueHdl, weld::TextView&, void)
+{
+    ModifyHdl(*m_xNameED);    // apply/insert/delete status update
+}
+
 IMPL_LINK_NOARG(SwFieldVarPage, ModifyHdl, weld::Entry&, void)
 {
     OUString sValue(m_xValueED->get_text());
@@ -928,10 +943,10 @@ IMPL_LINK_NOARG(SwFieldVarPage, ModifyHdl, weld::Entry&, void)
                     if (i >= INIT_FLDTYPES && !pSh->IsUsed(*pFieldType))
                         bDelete = true;
 
-                    if (nTypeId == SwFieldTypesEnum::Sequence && !(pFieldType->GetType() & nsSwGetSetExpType::GSE_SEQ))
+                    if (nTypeId == SwFieldTypesEnum::Sequence && !(pFieldType->GetType() & SwGetSetExpType::Sequence))
                         bInsert = false;
 
-                    if (nTypeId == SwFieldTypesEnum::Set && (pFieldType->GetType() & nsSwGetSetExpType::GSE_SEQ))
+                    if (nTypeId == SwFieldTypesEnum::Set && (pFieldType->GetType() & SwGetSetExpType::Sequence))
                         bInsert = false;
                 }
             }
@@ -951,7 +966,7 @@ IMPL_LINK_NOARG(SwFieldVarPage, ModifyHdl, weld::Entry&, void)
 
     m_xNewPB->set_sensitive(bApply);
     m_xDelPB->set_sensitive(bDelete);
-    EnableInsert(bInsert);
+    EnableInsert(bInsert, IsCurrentPage());
 }
 
 IMPL_LINK(SwFieldVarPage, TBClickHdl, weld::Button&, rBox, void)
@@ -1036,7 +1051,7 @@ IMPL_LINK(SwFieldVarPage, TBClickHdl, weld::Button&, rBox, void)
                         }
                         static_cast<SwUserFieldType*>(pType)->SetContent(m_xValueED->get_text(), nNumberFormat);
                         static_cast<SwUserFieldType*>(pType)->SetType(
-                                bText ? nsSwGetSetExpType::GSE_STRING : nsSwGetSetExpType::GSE_EXPR );
+                                bText ? SwUserType::String : SwUserType::Expr );
                     }
                 }
                 else
@@ -1066,7 +1081,7 @@ IMPL_LINK(SwFieldVarPage, TBClickHdl, weld::Button&, rBox, void)
                     pSh = ::GetActiveWrtShell();
                 if(pSh)
                 {
-                    SwUserFieldType aType( pSh->GetDoc(), sName );
+                    SwUserFieldType aType( pSh->GetDoc(), UIName(sName) );
 
                     if (nNumFormatPos != -1)
                     {
@@ -1076,7 +1091,7 @@ IMPL_LINK(SwFieldVarPage, TBClickHdl, weld::Button&, rBox, void)
                         // selected that may claim the top position :-/
                         bool bText = false;
                         sal_uInt32 nNumberFormat = lcl_getUsedNumFormat( *m_xNumFormatLB, bText);
-                        aType.SetType(bText ? nsSwGetSetExpType::GSE_STRING : nsSwGetSetExpType::GSE_EXPR);
+                        aType.SetType(bText ? SwUserType::String : SwUserType::Expr);
                         aType.SetContent( sValue, nNumberFormat );
                         m_xSelectionLB->append_text(sName);
                         m_xSelectionLB->select_text(sName);
@@ -1094,7 +1109,7 @@ IMPL_LINK(SwFieldVarPage, TBClickHdl, weld::Button&, rBox, void)
                     sValue = sValue.replaceFirst( " ", OUStringChar(sfx2::cTokenSeparator), &nTmpPos );
                     sValue = sValue.replaceFirst( " ", OUStringChar(sfx2::cTokenSeparator), &nTmpPos );
 
-                    SwDDEFieldType aType(sName, sValue, static_cast<SfxLinkUpdateMode>(nFormat));
+                    SwDDEFieldType aType(UIName(sName), sValue, static_cast<SfxLinkUpdateMode>(nFormat));
                     m_xSelectionLB->append_text(sName);
                     m_xSelectionLB->select_text(sName);
                     GetFieldMgr().InsertFieldType(aType);   // DDE-Field new
@@ -1121,7 +1136,7 @@ IMPL_LINK_NOARG(SwFieldVarPage, SeparatorHdl, weld::Entry&, void)
 {
     bool bEnable = !m_xSeparatorED->get_text().isEmpty() ||
                     m_xChapterLevelLB->get_active() == 0;
-    EnableInsert(bEnable);
+    EnableInsert(bEnable, IsCurrentPage());
 }
 
 bool SwFieldVarPage::FillItemSet(SfxItemSet* )
@@ -1168,48 +1183,49 @@ bool SwFieldVarPage::FillItemSet(SfxItemSet* )
     {
         case SwFieldTypesEnum::User:
         {
-            nSubType = (nFormat == NUMBERFORMAT_ENTRY_NOT_FOUND) ? nsSwGetSetExpType::GSE_STRING : nsSwGetSetExpType::GSE_EXPR;
+            SwGetSetExpType nUserSubType = (nFormat == NUMBERFORMAT_ENTRY_NOT_FOUND) ? SwGetSetExpType::String : SwGetSetExpType::Expr;
 
             if (nFormat == NUMBERFORMAT_ENTRY_NOT_FOUND && m_xNumFormatLB->get_selected_text() == SwResId(FMT_USERVAR_CMD))
-                nSubType |= nsSwExtendedSubType::SUB_CMD;
+                nUserSubType |= SwGetSetExpType::Command;
 
             if (m_xInvisibleCB->get_active())
-                nSubType |= nsSwExtendedSubType::SUB_INVISIBLE;
+                nUserSubType |= SwGetSetExpType::Invisible;
+            nSubType = static_cast<sal_uInt16>(nUserSubType);
             break;
         }
         case SwFieldTypesEnum::Formel:
         {
-            nSubType = nsSwGetSetExpType::GSE_FORMULA;
+            SwGetSetExpType nFormSubType = SwGetSetExpType::Formula;
             if (m_xNumFormatLB->get_visible() && nFormat == NUMBERFORMAT_ENTRY_NOT_FOUND)
-                nSubType |= nsSwExtendedSubType::SUB_CMD;
+                nFormSubType |= SwGetSetExpType::Command;
+            nSubType = static_cast<sal_uInt16>(nFormSubType);
             break;
         }
         case SwFieldTypesEnum::Get:
         {
             nSubType &= 0xff00;
             if (m_xNumFormatLB->get_visible() && nFormat == NUMBERFORMAT_ENTRY_NOT_FOUND)
-                nSubType |= nsSwExtendedSubType::SUB_CMD;
+                nSubType |= static_cast<sal_uInt16>(SwGetSetExpType::Command);
             break;
         }
         case SwFieldTypesEnum::Input:
         {
             SwFieldType* pType = GetFieldMgr().GetFieldType(SwFieldIds::User, aName);
-            nSubType = static_cast< sal_uInt16 >((nSubType & 0xff00) | (pType ? INP_USR : INP_VAR));
+            nSubType = static_cast< sal_uInt16 >((nSubType & 0xff00) | static_cast<sal_uInt16>(pType ? SwInputFieldSubType::User : SwInputFieldSubType::Var));
             break;
         }
 
         case SwFieldTypesEnum::Set:
         {
+            SwGetSetExpType nSetSubType = SwGetSetExpType::None;
             if (IsFieldDlgHtmlMode())
-            {
-                nSubType = 0x0100;
-                nSubType = (nSubType & 0xff00) | nsSwGetSetExpType::GSE_STRING;
-            }
+                nSetSubType = SwGetSetExpType::Command | SwGetSetExpType::String;
             else
-                nSubType = (nSubType & 0xff00) | ((nFormat == NUMBERFORMAT_ENTRY_NOT_FOUND) ? nsSwGetSetExpType::GSE_STRING : nsSwGetSetExpType::GSE_EXPR);
+                nSetSubType = ((nFormat == NUMBERFORMAT_ENTRY_NOT_FOUND) ? SwGetSetExpType::String : SwGetSetExpType::Expr);
 
             if (m_xInvisibleCB->get_active())
-                nSubType |= nsSwExtendedSubType::SUB_INVISIBLE;
+                nSetSubType |= SwGetSetExpType::Invisible;
+            nSubType = static_cast<sal_uInt16>(nSetSubType);
             break;
         }
         case SwFieldTypesEnum::Sequence:
@@ -1264,7 +1280,7 @@ sal_uInt16 SwFieldVarPage::GetGroup()
 
 void SwFieldVarPage::FillUserData()
 {
-    OUString sData = USER_DATA_VERSION ";";
+    OUString sData = u"" USER_DATA_VERSION ";"_ustr;
     sal_Int32 nTypeSel = m_xTypeLB->get_selected_index();
     if( -1 == nTypeSel )
         nTypeSel = USHRT_MAX;

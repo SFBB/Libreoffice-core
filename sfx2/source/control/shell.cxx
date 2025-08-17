@@ -19,6 +19,7 @@
 
 #include <com/sun/star/embed/VerbDescriptor.hpp>
 #include <com/sun/star/embed/VerbAttributes.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <officecfg/Office/Common.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
@@ -30,6 +31,7 @@
 #include <svtools/asynclink.hxx>
 #include <unotools/configmgr.hxx>
 #include <comphelper/lok.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <sfx2/shell.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
@@ -42,6 +44,7 @@
 #include <statcach.hxx>
 #include <sidebar/ContextChangeBroadcaster.hxx>
 #include <com/sun/star/ui/dialogs/XSLTFilterDialog.hpp>
+#include <toolkit/helper/vclunohelper.hxx>
 #include <tools/debug.hxx>
 
 #include <memory>
@@ -214,7 +217,7 @@ void SfxShell::SetUndoManager( SfxUndoManager *pNewUndoMgr )
     // a supported scenario (/me thinks it is not), then we would need to notify all such clients instances.
 
     pUndoMgr = pNewUndoMgr;
-    if (pUndoMgr && !utl::ConfigManager::IsFuzzing())
+    if (pUndoMgr && !comphelper::IsFuzzing())
     {
         pUndoMgr->SetMaxUndoActionCount(
             officecfg::Office::Common::Undo::Steps::get());
@@ -281,7 +284,23 @@ void SfxShell::HandleOpenXmlFilterSettings(SfxRequest & rReq)
     try
     {
         uno::Reference < ui::dialogs::XExecutableDialog > xDialog = ui::dialogs::XSLTFilterDialog::create( ::comphelper::getProcessComponentContext() );
-        xDialog->execute();
+
+        // set dialog parent
+        css::uno::Reference<com::sun::star::lang::XInitialization> xInit(xDialog,
+                                                                         css::uno::UNO_QUERY);
+        if (xInit.is())
+        {
+            if (SfxViewShell* pViewShell = GetViewShell())
+            {
+                css::uno::Reference<css::awt::XWindow> xDialogParent
+                    = VCLUnoHelper::GetInterface(pViewShell->GetWindow());
+                css::uno::Sequence<css::uno::Any> aSeq(comphelper::InitAnyPropertySequence(
+                    { { "ParentWindow", uno::Any(xDialogParent) } }));
+                xInit->initialize(aSeq);
+            }
+        }
+
+        (void)xDialog->execute();
     }
     catch (const uno::Exception&)
     {
@@ -429,7 +448,7 @@ void SfxShell::ExecuteSlot( SfxRequest& rReq, bool bAsync )
     {
         if( !pImpl->pExecuter )
             pImpl->pExecuter.reset( new svtools::AsynchronLink(
-                Link<void*,void>( this, ShellCall_Impl ) ) );
+                LINK_NONMEMBER( this, ShellCall_Impl ) ) );
         pImpl->pExecuter->Call( new SfxRequest( rReq ) );
     }
 }
@@ -449,7 +468,7 @@ const SfxPoolItemHolder& SfxShell::ExecuteSlot
         pSlot = GetVerbSlot_Impl(nSlot);
     if ( !pSlot )
         pSlot = pIF->GetSlot(nSlot);
-    DBG_ASSERT( pSlot, "slot not supported" );
+    assert(pSlot && "slot not supported");
 
     SfxExecFunc pFunc = pSlot->GetExecFnc();
     if ( pFunc )
@@ -497,9 +516,9 @@ SfxPoolItemHolder SfxShell::GetSlotState
         if ( eState == SfxItemState::DEFAULT )
         {
             if ( SfxItemPool::IsWhich(nSlotId) )
-                pItem = &rPool.GetDefaultItem(nSlotId);
+                pItem = &rPool.GetUserOrPoolDefaultItem(nSlotId);
             else
-                eState = SfxItemState::DONTCARE;
+                eState = SfxItemState::INVALID;
         }
     }
 
@@ -511,11 +530,11 @@ SfxPoolItemHolder SfxShell::GetSlotState
         return SfxPoolItemHolder();
     }
 
-    if ( bItemStateSet && eState == SfxItemState::DONTCARE )
+    if ( bItemStateSet && eState == SfxItemState::INVALID )
     {
         if ( pStateSet )
             pStateSet->ClearItem(nSlotId);
-        return SfxPoolItemHolder(rPool, new SfxVoidItem(0), true);
+        return SfxPoolItemHolder(rPool, DISABLED_POOL_ITEM);
     }
 
     // bItemStateSet && eState >= SfxItemState::DEFAULT
@@ -562,7 +581,7 @@ void SfxShell::SetVerbs(const css::uno::Sequence < css::embed::VerbDescriptor >&
         if (nSlotId > SID_VERB_END)
             break;
 
-        SfxSlot* pNewSlot = new SfxSlot(
+        SfxSlot* pNewSlot = new SfxSlot{
             nSlotId, SfxGroupId::NONE,
             // Verb slots must be executed asynchronously, so that they can be
             // destroyed while executing.
@@ -570,7 +589,7 @@ void SfxShell::SetVerbs(const css::uno::Sequence < css::embed::VerbDescriptor >&
             0, 0,
             SFX_STUB_PTR(SfxShell, VerbExec), SFX_STUB_PTR(SfxShell, VerbState),
             nullptr, // HACK(SFX_TYPE(SfxVoidItem)) ???
-            nullptr, nullptr, 0, SfxDisableFlags::NONE, "");
+            nullptr, nullptr, 0, SfxDisableFlags::NONE, u""_ustr};
 
         if (!pImpl->aSlotArr.empty())
         {
@@ -672,7 +691,7 @@ void SfxShell::UIFeatureChanged()
         // something may get stuck in the bunkered tools. Asynchronous call to
         // prevent recursion.
         if ( !pImpl->pUpdater )
-            pImpl->pUpdater.reset( new svtools::AsynchronLink( Link<void*,void>( this, DispatcherUpdate_Impl ) ) );
+            pImpl->pUpdater.reset( new svtools::AsynchronLink( LINK_NONMEMBER( this, DispatcherUpdate_Impl ) ) );
 
         // Multiple views allowed
         pImpl->pUpdater->Call( pFrame->GetDispatcher(), true );

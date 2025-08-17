@@ -128,14 +128,13 @@ void OutputDevice::DrawTransparent(
         const basegfx::B2DHomMatrix aFullTransform(ImplGetDeviceTransformation() * rObjectTransform);
         // TODO: this must not drop transparency for mpAlphaVDev case, but instead use premultiplied
         // alpha... but that requires using premultiplied alpha also for already drawn data
-        const double fAdjustedTransparency = mpAlphaVDev ? 0 : fTransparency;
 
         if (IsFillColor())
         {
             mpGraphics->DrawPolyPolygon(
                 aFullTransform,
                 aB2DPolyPolygon,
-                fAdjustedTransparency,
+                fTransparency,
                 *this);
         }
 
@@ -148,7 +147,7 @@ void OutputDevice::DrawTransparent(
                 mpGraphics->DrawPolyLine(
                     aFullTransform,
                     rPolygon,
-                    fAdjustedTransparency,
+                    fTransparency,
                     0.0, // tdf#124848 hairline
                     nullptr, // MM01
                     basegfx::B2DLineJoin::NONE,
@@ -169,9 +168,6 @@ void OutputDevice::DrawTransparent(
                     tools::PolyPolygon(aB2DPolyPoly),
                     static_cast< sal_uInt16 >(fTransparency * 100.0)));
         }
-
-        if (mpAlphaVDev)
-            mpAlphaVDev->DrawTransparent(rObjectTransform, rB2DPolyPoly, fTransparency);
 
         return;
     }
@@ -273,13 +269,6 @@ bool OutputDevice::DrawTransparentNatively ( const tools::PolyPolygon& rPolyPoly
 void OutputDevice::EmulateDrawTransparent ( const tools::PolyPolygon& rPolyPoly,
                                             sal_uInt16 nTransparencePercent )
 {
-    // #110958# Disable alpha VDev, we perform the necessary
-    VirtualDevice* pOldAlphaVDev = mpAlphaVDev;
-
-    // operation explicitly further below.
-    if( mpAlphaVDev )
-        mpAlphaVDev = nullptr;
-
     GDIMetaFile* pOldMetaFile = mpMetaFile;
     mpMetaFile = nullptr;
 
@@ -297,9 +286,7 @@ void OutputDevice::EmulateDrawTransparent ( const tools::PolyPolygon& rPolyPoly,
 
         // #i66849# Added fast path for exactly rectangular
         // polygons
-        // #i83087# Naturally, system alpha blending cannot
-        // work with separate alpha VDev
-        if( !mpAlphaVDev && aPolyPoly.IsRect() )
+        if( aPolyPoly.IsRect() )
         {
             // setup Graphics only here (other cases delegate
             // to basic OutDev methods)
@@ -336,7 +323,7 @@ void OutputDevice::EmulateDrawTransparent ( const tools::PolyPolygon& rPolyPoly,
         {
             ScopedVclPtrInstance< VirtualDevice > aVDev(*this);
             const Size aDstSz( aDstRect.GetSize() );
-            const sal_uInt8 cTrans = FRound( std::clamp( nTransparencePercent * 2.55, 0.0, 255.0 ) );
+            const sal_uInt8 cTrans = basegfx::fround<sal_uInt8>(nTransparencePercent * 2.55);
 
             if( aDstRect.Left() || aDstRect.Top() )
                 aPolyPoly.Move( -aDstRect.Left(), -aDstRect.Top() );
@@ -485,10 +472,9 @@ void OutputDevice::EmulateDrawTransparent ( const tools::PolyPolygon& rPolyPoly,
 
                     if( mbLineColor )
                     {
-                        Push( vcl::PushFlags::FILLCOLOR );
+                        auto popIt = ScopedPush(vcl::PushFlags::FILLCOLOR);
                         SetFillColor();
                         DrawPolyPolygon( rPolyPoly );
-                        Pop();
                     }
                 }
             }
@@ -500,9 +486,6 @@ void OutputDevice::EmulateDrawTransparent ( const tools::PolyPolygon& rPolyPoly,
     }
 
     mpMetaFile = pOldMetaFile;
-
-    // #110958# Restore disabled alpha VDev
-    mpAlphaVDev = pOldAlphaVDev;
 }
 
 void OutputDevice::DrawTransparent( const tools::PolyPolygon& rPolyPoly,
@@ -539,18 +522,6 @@ void OutputDevice::DrawTransparent( const tools::PolyPolygon& rPolyPoly,
 
     if (!bDrawn)
         EmulateDrawTransparent( rPolyPoly, nTransparencePercent );
-
-    // #110958# Apply alpha value also to VDev alpha channel
-    if( mpAlphaVDev )
-    {
-        const Color aFillCol( mpAlphaVDev->GetFillColor() );
-        sal_uInt8 nAlpha = 255 - sal::static_int_cast<sal_uInt8>(255*nTransparencePercent/100);
-        mpAlphaVDev->SetFillColor( Color(nAlpha, nAlpha, nAlpha) );
-
-        mpAlphaVDev->DrawTransparent( rPolyPoly, nTransparencePercent );
-
-        mpAlphaVDev->SetFillColor( aFillCol );
-    }
 }
 
 void OutputDevice::DrawTransparent( const GDIMetaFile& rMtf, const Point& rPos,
@@ -648,7 +619,7 @@ void OutputDevice::DrawTransparent( const GDIMetaFile& rMtf, const Point& rPos, 
                     // get content bitmap from buffer
                     xVDev->EnableMapMode(false);
 
-                    const BitmapEx aPaint(xVDev->GetBitmapEx(aPoint, xVDev->GetOutputSizePixel()));
+                    const BitmapEx aPaint(xVDev->GetBitmap(aPoint, xVDev->GetOutputSizePixel()));
 
                     // create alpha mask from gradient and get as Bitmap
                     xVDev->EnableMapMode(bBufferMapModeEnabled);
@@ -663,7 +634,7 @@ void OutputDevice::DrawTransparent( const GDIMetaFile& rMtf, const Point& rPos, 
                     xVDev->EnableMapMode(false);
 
                     AlphaMask aAlpha(xVDev->GetBitmap(aPoint, xVDev->GetOutputSizePixel()));
-                    AlphaMask aPaintAlpha(aPaint.GetAlphaMask());
+                    const AlphaMask& aPaintAlpha(aPaint.GetAlphaMask());
                     // The alpha mask is inverted from what
                     // is expected so invert it again
                     aAlpha.Invert(); // convert to alpha
@@ -690,7 +661,7 @@ void OutputDevice::DrawTransparent( const GDIMetaFile& rMtf, const Point& rPos, 
                     const_cast<GDIMetaFile&>(rMtf).Play(*xVDev, rMtfPos, rMtfSize);
                     const_cast<GDIMetaFile&>(rMtf).WindStart();
                     xVDev->EnableMapMode( false );
-                    BitmapEx aPaint = xVDev->GetBitmapEx(Point(), xVDev->GetOutputSizePixel());
+                    BitmapEx aPaint(xVDev->GetBitmap(Point(), xVDev->GetOutputSizePixel()));
                     xVDev->EnableMapMode( bVDevOldMap ); // #i35331#: MUST NOT use EnableMapMode( sal_True ) here!
 
                     // create alpha mask from gradient
@@ -700,7 +671,7 @@ void OutputDevice::DrawTransparent( const GDIMetaFile& rMtf, const Point& rPos, 
                     xVDev->EnableMapMode( false );
 
                     AlphaMask aAlpha(xVDev->GetBitmap(Point(), xVDev->GetOutputSizePixel()));
-                    AlphaMask aPaintAlpha(aPaint.GetAlphaMask());
+                    const AlphaMask& aPaintAlpha(aPaint.GetAlphaMask());
                     // The alpha mask is inverted from what
                     // is expected so invert it again
                     aAlpha.Invert(); // convert to alpha
@@ -853,9 +824,6 @@ void ImplConvertTransparentAction( GDIMetaFile&        o_rMtf,
                 break;
 
             case MetaActionType::BMPEXSCALE:
-                aBmpEx = static_cast<const MetaBmpExScaleAction&>(rAct).GetBitmapEx();
-                break;
-
             case MetaActionType::BMPEXSCALEPART:
                 aBmpEx = static_cast<const MetaBmpExScaleAction&>(rAct).GetBitmapEx();
                 break;
@@ -915,11 +883,8 @@ bool ImplIsNotTransparent( const MetaAction& rAct, const OutputDevice& rOut )
     switch( rAct.GetType() )
     {
         case MetaActionType::POINT:
-            if( !bLineTransparency )
-                bRet = true;
-            break;
-
         case MetaActionType::LINE:
+        case MetaActionType::POLYLINE:
             if( !bLineTransparency )
                 bRet = true;
             break;
@@ -951,11 +916,6 @@ bool ImplIsNotTransparent( const MetaAction& rAct, const OutputDevice& rOut )
 
         case MetaActionType::CHORD:
             if( !bLineTransparency || !bFillTransparency )
-                bRet = true;
-            break;
-
-        case MetaActionType::POLYLINE:
-            if( !bLineTransparency )
                 bRet = true;
             break;
 
@@ -1212,9 +1172,26 @@ tools::Rectangle ImplCalcActionBounds( const MetaAction& rAct, const OutputDevic
             if( !aString.isEmpty() )
             {
                 // #105987# ImplLayout takes everything in logical coordinates
-                std::unique_ptr<SalLayout> pSalLayout = rOut.ImplLayout( rTextAct.GetText(), rTextAct.GetIndex(),
-                                                         rTextAct.GetLen(), rTextAct.GetPoint(),
-                                                         0, rTextAct.GetDXArray(), rTextAct.GetKashidaArray() );
+                std::unique_ptr<SalLayout> pSalLayout;
+                if (rTextAct.GetLayoutContextIndex() >= 0)
+                {
+                    pSalLayout = rOut.ImplLayout(
+                        rTextAct.GetText(), rTextAct.GetLayoutContextIndex(),
+                        rTextAct.GetLayoutContextLen(), rTextAct.GetPoint(), 0,
+                        rTextAct.GetDXArray(), rTextAct.GetKashidaArray(), SalLayoutFlags::NONE,
+                        /*pTextLayoutCache=*/nullptr,
+                        /*pGlyphs=*/nullptr,
+                        /*nDrawOriginCluster=*/rTextAct.GetIndex(),
+                        /*nDrawMinCharPos=*/rTextAct.GetIndex(),
+                        /*nDrawEndCharPos=*/rTextAct.GetIndex() + rTextAct.GetLen());
+                }
+                else
+                {
+                    pSalLayout = rOut.ImplLayout(rTextAct.GetText(), rTextAct.GetIndex(),
+                                                 rTextAct.GetLen(), rTextAct.GetPoint(), 0,
+                                                 rTextAct.GetDXArray(), rTextAct.GetKashidaArray());
+                }
+
                 if( pSalLayout )
                 {
                     tools::Rectangle aBoundRect( rOut.ImplGetTextBoundRect( *pSalLayout ) );
@@ -1290,7 +1267,16 @@ bool OutputDevice::RemoveTransparenciesFromMetaFile( const GDIMetaFile& rInMtf, 
 
     rOutMtf.Clear();
 
+#ifdef MACOSX
+    // tdf#164354 skip unnecessary transparency removal
+    // On macOS, there are no known problems drawing semi-transparent
+    // shapes, fill, text, and bitmaps so only do this sometimes very
+    // expensive step when both reduce transparency and no
+    // transparency are true.
+    if(bReduceTransparency && !bTransparencyAutoMode)
+#else
     if(!bReduceTransparency || bTransparencyAutoMode)
+#endif
         bTransparent = rInMtf.HasTransparentActions();
 
     // #i10613# Determine set of connected components containing transparent objects. These are
@@ -1660,7 +1646,7 @@ bool OutputDevice::RemoveTransparenciesFromMetaFile( const GDIMetaFile& rInMtf, 
                     pCurrAct, nActionNum );
 
             // add aTotalComponents as a new entry to aCCList
-            aCCList.push_back( aTotalComponents );
+            aCCList.push_back(std::move(aTotalComponents));
 
             SAL_WARN_IF( aTotalComponents.aComponentList.empty(), "vcl",
                         "Printer::GetPreparedMetaFile empty component" );
@@ -1778,8 +1764,8 @@ bool OutputDevice::RemoveTransparenciesFromMetaFile( const GDIMetaFile& rInMtf, 
                                 if( !tools::Rectangle( aDstPtPix, aDstSzPix ).Intersection( aBoundRect ).IsEmpty() &&
                                     aPaintVDev->SetOutputSizePixel( aDstSzPix ) )
                                 {
-                                    aPaintVDev->Push();
-                                    aMapVDev->Push();
+                                    auto popIt1 = aPaintVDev->ScopedPush();
+                                    auto popIt2 = aMapVDev->ScopedPush();
 
                                     aMapVDev->mnDPIX = aPaintVDev->mnDPIX = mnDPIX;
                                     aMapVDev->mnDPIY = aPaintVDev->mnDPIY = mnDPIY;
@@ -1850,8 +1836,6 @@ bool OutputDevice::RemoveTransparenciesFromMetaFile( const GDIMetaFile& rInMtf, 
 
                                     aPaintVDev->mbMap = true;
                                     mbMap = bOldMap;
-                                    aMapVDev->Pop();
-                                    aPaintVDev->Pop();
                                 }
 
                                 // overlapping bands to avoid missing lines (e.g. PostScript)

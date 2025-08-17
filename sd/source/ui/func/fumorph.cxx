@@ -49,24 +49,24 @@ using namespace com::sun::star;
 namespace sd {
 
 FuMorph::FuMorph (
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window* pWin,
     ::sd::View* pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest& rReq )
-    :   FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+    :   FuPoor(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
 rtl::Reference<FuPoor> FuMorph::Create(
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window* pWin,
     ::sd::View* pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest& rReq
 )
 {
-    rtl::Reference<FuPoor> xFunc( new FuMorph( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuMorph( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
@@ -162,7 +162,7 @@ void FuMorph::DoExecute( SfxRequest& )
 
             ImpMorphPolygons(aPolyPoly1, aPolyPoly2, pDlg->GetFadeSteps(), aPolyPolyList);
 
-            OUString aString = mpView->GetDescriptionOfMarkedObjects() +
+            OUString aString = rMarkList.GetMarkDescription() +
                 " " + SdResId(STR_UNDO_MORPHING);
 
             mpView->BegUndo(aString);
@@ -256,7 +256,7 @@ void FuMorph::ImpEqualizePolyPointCount(
     }
 
     aPoly2.setClosed(rBig.isClosed());
-    rSmall = aPoly2;
+    rSmall = std::move(aPoly2);
 }
 
 sal_uInt32 FuMorph::ImpGetNearestIndex(
@@ -373,7 +373,7 @@ void FuMorph::ImpInsertPolygons(
     if ( !pPageView )
         return;
 
-    SfxItemSet      aSet( aSet1 );
+    SfxItemSet      aSet( std::move(aSet1) );
     rtl::Reference<SdrObjGroup> xObjGroup(new SdrObjGroup(mpView->getSdrModelFromSdrView()));
     SdrObjList*     pObjList = xObjGroup->GetSubList();
     const size_t    nCount = rPolyPolyList3D.size();
@@ -396,7 +396,7 @@ void FuMorph::ImpInsertPolygons(
         if ( bLineColor )
         {
             const basegfx::BColor aLineColor(basegfx::interpolate(aStartLineCol.getBColor(), aEndLineCol.getBColor(), fFactor));
-            aSet.Put( XLineColorItem( "", Color(aLineColor)));
+            aSet.Put( XLineColorItem( u""_ustr, Color(aLineColor)));
         }
         else if ( bIgnoreLine )
             aSet.Put( XLineStyleItem( drawing::LineStyle_NONE ) );
@@ -405,7 +405,7 @@ void FuMorph::ImpInsertPolygons(
         if ( bFillColor )
         {
             const basegfx::BColor aFillColor(basegfx::interpolate(aStartFillCol.getBColor(), aEndFillCol.getBColor(), fFactor));
-            aSet.Put( XFillColorItem( "", Color(aFillColor)));
+            aSet.Put( XFillColorItem( u""_ustr, Color(aFillColor)));
         }
         else if ( bIgnoreFill )
             aSet.Put( XFillStyleItem( drawing::FillStyle_NONE ) );
@@ -496,7 +496,7 @@ void FuMorph::ImpMorphPolygons(
         const ::basegfx::B2DPoint aRealS(aStartCenter + (aDelta * fValue));
         const ::basegfx::B2DPoint aDiff(aRealS - aNewS);
 
-        aNewPolyPoly2D.transform(basegfx::utils::createTranslateB2DHomMatrix(aDiff));
+        aNewPolyPoly2D.translate(aDiff);
         rPolyPolyList3D.push_back( std::move(aNewPolyPoly2D) );
     }
 }

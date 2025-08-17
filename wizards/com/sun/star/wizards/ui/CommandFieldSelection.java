@@ -137,7 +137,7 @@ public class CommandFieldSelection extends FieldSelection implements Comparator<
     {
         if (sQueryPrefix == null)
         {
-            sQueryPrefix = CurUnoDialog.m_oResource.getResText("RID_QUERY_22");
+            sQueryPrefix = CurUnoDialog.getResource().getResText("RID_QUERY_22");
         }
         return sQueryPrefix;
     }
@@ -165,7 +165,7 @@ public class CommandFieldSelection extends FieldSelection implements Comparator<
     {
         if (sTablePrefix == null)
         {
-            sTablePrefix = CurUnoDialog.m_oResource.getResText("RID_QUERY_21");
+            sTablePrefix = CurUnoDialog.getResource().getResText("RID_QUERY_21");
         }
         return sTablePrefix;
     }
@@ -223,11 +223,12 @@ public class CommandFieldSelection extends FieldSelection implements Comparator<
             if (binitialize)
             {
                 CurDBMetaData.setCommandName(curCommandName);
-                if (CurDBMetaData.m_aAllFieldNames != null)
+                String[] allFieldNames = CurDBMetaData.getAllFieldNames();
+                if (allFieldNames != null)
                 {
-                    if (CurDBMetaData.m_aAllFieldNames.length > 0)
+                    if (allFieldNames.length > 0)
                     {
-                        initialize(CurDBMetaData.m_aAllFieldNames, AppendMode, CurDBMetaData.getMaxColumnsInSelect());
+                        initialize(allFieldNames, AppendMode, CurDBMetaData.getMaxColumnsInSelect());
                         return;
                     }
                 }
@@ -289,7 +290,7 @@ public class CommandFieldSelection extends FieldSelection implements Comparator<
     {
         if (this.aCollator == null)
         {
-            com.sun.star.lang.Locale aOfficeLocale = Configuration.getLocale(this.CurDBMetaData.xMSF);
+            com.sun.star.lang.Locale aOfficeLocale = Configuration.getLocale(this.CurDBMetaData.getMSF());
             java.util.Locale aJavaLocale = new java.util.Locale(aOfficeLocale.Language, aOfficeLocale.Country, aOfficeLocale.Variant);
             //Get the Collator for US English and set its strength to PRIMARY
             this.aCollator = Collator.getInstance(aJavaLocale);

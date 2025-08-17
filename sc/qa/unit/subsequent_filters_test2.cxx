@@ -9,8 +9,6 @@
 
 #include <sal/config.h>
 
-#include <memory>
-
 #include <osl/thread.h>
 #include <svl/numformat.hxx>
 #include <svl/zformat.hxx>
@@ -28,7 +26,6 @@
 #include <editeng/lineitem.hxx>
 #include <editeng/colritem.hxx>
 #include <cellvalue.hxx>
-#include <docpool.hxx>
 #include <dbdata.hxx>
 #include <validat.hxx>
 #include <formulacell.hxx>
@@ -47,10 +44,8 @@
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 
-#include <comphelper/propertysequence.hxx>
 #include <comphelper/scopeguard.hxx>
 #include <tools/UnitConversion.hxx>
-#include <vcl/scheduler.hxx>
 #include "helper/qahelper.hxx"
 
 using namespace ::com::sun::star;
@@ -63,7 +58,7 @@ public:
 };
 
 ScFiltersTest2::ScFiltersTest2()
-    : ScModelTestBase("sc/qa/unit/data")
+    : ScModelTestBase(u"sc/qa/unit/data"_ustr)
 {
 }
 
@@ -159,6 +154,17 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf123026_optimalRowHeight)
     CPPUNIT_ASSERT_GREATER(2000, nHeight);
 }
 
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf159581_optimalRowHeight)
+{
+    createScDoc("xlsx/tdf159581_optimalRowHeight.xlsx");
+    SCTAB nTab = 1;
+    SCROW nRow = 0; // row 1
+    int nHeight = convertTwipToMm100(getScDoc()->GetRowHeight(nRow, nTab, false));
+
+    // Without the fix, this was 2027. It should be 450.
+    CPPUNIT_ASSERT_LESS(500, nHeight);
+}
+
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testCustomNumFormatHybridCellODS)
 {
     createScDoc("ods/custom-numfmt-hybrid-cell.ods");
@@ -180,7 +186,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testCustomNumFormatHybridCellODS)
     pDoc->SetValue(ScAddress(1, 15, 0), 1.0);
 
     OUString aStr = pDoc->GetString(ScAddress(1, 17, 0));
-    CPPUNIT_ASSERT_EQUAL(OUString("1"), aStr);
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, aStr);
 
     // Make sure the cell doesn't have an error value.
     ScFormulaCell* pFC = pDoc->GetFormulaCell(ScAddress(1, 17, 0));
@@ -239,8 +245,21 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf153767)
     // Without the fix in place, this test would have failed with
     // - Expected: TRUE
     // - Actual  : 0
-    CPPUNIT_ASSERT_EQUAL(OUString("TRUE"), pDoc->GetString(ScAddress(7, 1, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("FALSE"), pDoc->GetString(ScAddress(7, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"TRUE"_ustr, pDoc->GetString(ScAddress(7, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"FALSE"_ustr, pDoc->GetString(ScAddress(7, 2, 0)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf161301)
+{
+    createScDoc("xlsx/tdf161301.xlsx");
+
+    ScDocument* pDoc = getScDoc();
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: CE784年2月20日
+    // - Actual  : 45440
+    CPPUNIT_ASSERT_EQUAL(u"CE784年2月20日"_ustr, pDoc->GetString(ScAddress(1, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"CE784年2月20日"_ustr, pDoc->GetString(ScAddress(1, 1, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf124454)
@@ -249,11 +268,11 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf124454)
 
     ScDocument* pDoc = getScDoc();
 
-    CPPUNIT_ASSERT_EQUAL(OUString("1"), pDoc->GetString(ScAddress(1, 0, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("1"), pDoc->GetString(ScAddress(2, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, pDoc->GetString(ScAddress(1, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, pDoc->GetString(ScAddress(2, 0, 0)));
     // Without the fix in place, double negation with text in array
     // would have returned -1
-    CPPUNIT_ASSERT_EQUAL(OUString("1"), pDoc->GetString(ScAddress(3, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, pDoc->GetString(ScAddress(3, 0, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testPrintRangeODS)
@@ -349,6 +368,22 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testColumnStyleAutoFilterXLSX)
     CPPUNIT_ASSERT(!rAttr.HasAutoFilter());
 }
 
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf154311)
+{
+    createScDoc("xml/tdf154311.xml");
+    ScDocument* pDoc = getScDoc();
+
+    // From Column A to Y
+    for (SCCOL nCol = 0; nCol <= 24; ++nCol)
+    {
+        const ScPatternAttr* pPattern = pDoc->GetPattern(nCol, 10, 0);
+        CPPUNIT_ASSERT(pPattern);
+
+        const ScMergeFlagAttr& rAttr = pPattern->GetItem(ATTR_MERGE_FLAG);
+        CPPUNIT_ASSERT(rAttr.HasAutoFilter());
+    }
+}
+
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testSharedFormulaHorizontalXLS)
 {
     createScDoc("xls/shared-formula/horizontal.xls");
@@ -386,7 +421,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testSharedFormulaHorizontalXLS)
 
     // J2 has a string of "MW".
     aPos.SetCol(9);
-    CPPUNIT_ASSERT_EQUAL(OUString("MW"), pDoc->GetString(aPos));
+    CPPUNIT_ASSERT_EQUAL(u"MW"_ustr, pDoc->GetString(aPos));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testSharedFormulaWrappedRefsXLS)
@@ -483,10 +518,10 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testSharedFormulaXLS)
             CPPUNIT_ASSERT_EQUAL(static_cast<SCROW>(10), pFC->GetSharedLength());
 
             OUString aFormula = pDoc->GetFormula(2, 1, 0);
-            CPPUNIT_ASSERT_EQUAL(OUString("=SUM(B9:D9)"), aFormula);
+            CPPUNIT_ASSERT_EQUAL(u"=SUM(B9:D9)"_ustr, aFormula);
 
             aFormula = pDoc->GetFormula(2, 10, 0);
-            CPPUNIT_ASSERT_EQUAL(OUString("=SUM(B18:D18)"), aFormula);
+            CPPUNIT_ASSERT_EQUAL(u"=SUM(B18:D18)"_ustr, aFormula);
         }
 
         {
@@ -501,10 +536,10 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testSharedFormulaXLS)
             CPPUNIT_ASSERT_EQUAL(static_cast<SCROW>(10), pFC->GetSharedLength());
 
             OUString aFormula = pDoc->GetFormula(4, 8, 0);
-            CPPUNIT_ASSERT_EQUAL(OUString("=SUM(G9:EY9)"), aFormula);
+            CPPUNIT_ASSERT_EQUAL(u"=SUM(G9:EY9)"_ustr, aFormula);
 
             aFormula = pDoc->GetFormula(4, 17, 0);
-            CPPUNIT_ASSERT_EQUAL(OUString("=SUM(G18:EY18)"), aFormula);
+            CPPUNIT_ASSERT_EQUAL(u"=SUM(G18:EY18)"_ustr, aFormula);
         }
 
         {
@@ -519,10 +554,10 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testSharedFormulaXLS)
             CPPUNIT_ASSERT_EQUAL(static_cast<SCROW>(10), pFC->GetSharedLength());
 
             OUString aFormula = pDoc->GetFormula(6, 15, 0);
-            CPPUNIT_ASSERT_EQUAL(OUString("=SUM(A16:A40000)"), aFormula);
+            CPPUNIT_ASSERT_EQUAL(u"=SUM(A16:A40000)"_ustr, aFormula);
 
             aFormula = pDoc->GetFormula(6, 24, 0);
-            CPPUNIT_ASSERT_EQUAL(OUString("=SUM(A25:A40009)"), aFormula);
+            CPPUNIT_ASSERT_EQUAL(u"=SUM(A25:A40009)"_ustr, aFormula);
         }
     }
 }
@@ -594,10 +629,10 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testExternalRefCacheXLSX)
     ScDocument* pDoc = getScDoc();
 
     // These string values are cached external cell values.
-    CPPUNIT_ASSERT_EQUAL(OUString("Name"), pDoc->GetString(ScAddress(0, 0, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("Andy"), pDoc->GetString(ScAddress(0, 1, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("Bruce"), pDoc->GetString(ScAddress(0, 2, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("Charlie"), pDoc->GetString(ScAddress(0, 3, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"Name"_ustr, pDoc->GetString(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"Andy"_ustr, pDoc->GetString(ScAddress(0, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"Bruce"_ustr, pDoc->GetString(ScAddress(0, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"Charlie"_ustr, pDoc->GetString(ScAddress(0, 3, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testExternalRefCacheODS)
@@ -607,9 +642,9 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testExternalRefCacheODS)
     ScDocument* pDoc = getScDoc();
 
     // Cells B2:B4 have VLOOKUP with external references which should all show "text".
-    CPPUNIT_ASSERT_EQUAL(OUString("text"), pDoc->GetString(ScAddress(1, 1, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("text"), pDoc->GetString(ScAddress(1, 2, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("text"), pDoc->GetString(ScAddress(1, 3, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"text"_ustr, pDoc->GetString(ScAddress(1, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"text"_ustr, pDoc->GetString(ScAddress(1, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"text"_ustr, pDoc->GetString(ScAddress(1, 3, 0)));
 
     // Both cells A6 and A7 should be registered with scExternalRefManager properly
     CPPUNIT_ASSERT_EQUAL(
@@ -639,7 +674,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testCopyMergedNumberFormats)
     OUString aStrD1 = pDoc->GetString(ScAddress(3, 0, 0));
 
     ScDocument aCopyDoc;
-    aCopyDoc.InsertTab(0, "CopyHere");
+    aCopyDoc.InsertTab(0, u"CopyHere"_ustr);
     pDoc->CopyStaticToDocument(ScRange(1, 0, 0, 3, 0, 0), 0, aCopyDoc);
 
     // Make sure the date formats are copied to the new document.
@@ -660,7 +695,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testVBAUserFunctionXLSM)
     sc::CompileFormulaContext aCxt(*pDoc);
     OUString aFormula = pFC->GetFormula(aCxt);
 
-    CPPUNIT_ASSERT_EQUAL(OUString("=MYFUNC()"), aFormula);
+    CPPUNIT_ASSERT_EQUAL(u"=MYFUNC()"_ustr, aFormula);
 
     // Check the formula state after the load.
     FormulaError nErrCode = pFC->GetErrCode();
@@ -700,15 +735,28 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testErrorOnExternalReferences)
     ScDocument* pDoc = getScDoc();
 
     // Test tdf#89330
-    pDoc->SetString(ScAddress(0, 0, 0), "='file:///Path/To/FileA.ods'#$Sheet1.A1A");
+    pDoc->SetString(ScAddress(0, 0, 0), u"='file:///Path/To/FileA.ods'#$Sheet1.A1A"_ustr);
 
     ScFormulaCell* pFC = pDoc->GetFormulaCell(ScAddress(0, 0, 0));
     CPPUNIT_ASSERT(pFC);
     CPPUNIT_ASSERT_EQUAL(int(FormulaError::NoName), static_cast<int>(pFC->GetErrCode()));
 
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Formula changed",
-                                 OUString("='file:///Path/To/FileA.ods'#$Sheet1.A1A"),
+                                 u"='file:///Path/To/FileA.ods'#$Sheet1.A1A"_ustr,
                                  pDoc->GetFormula(0, 0, 0));
+}
+
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf160371)
+{
+    createScDoc("xlsx/tdf160371.xlsx");
+
+    ScDocument* pDoc = getScDoc();
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: =INDIRECT(B2)!INDIRECT(B3)
+    // - Actual  : =INDIRECT(B2) INDIRECT(B3)
+    CPPUNIT_ASSERT_EQUAL(u"=INDIRECT(B2)!INDIRECT(B3)"_ustr, pDoc->GetFormula(1, 3, 0));
+    CPPUNIT_ASSERT_EQUAL(1.0, pDoc->GetValue(ScAddress(1, 3, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf145054)
@@ -723,7 +771,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf145054)
 
     // Make sure named DB was copied
     ScDBData* pDBData
-        = pDoc->GetDBCollection()->getNamedDBs().findByName("__Anonymous_Sheet_DB__1");
+        = pDoc->GetDBCollection()->getNamedDBs().findByName(u"__Anonymous_Sheet_DB__1"_ustr);
     CPPUNIT_ASSERT(pDBData);
 }
 
@@ -733,10 +781,10 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf84762)
 
     ScDocument* pDoc = getScDoc();
 
-    pDoc->SetString(ScAddress(0, 0, 0), "=RAND()");
-    pDoc->SetString(ScAddress(0, 1, 0), "=RAND()");
-    pDoc->SetString(ScAddress(1, 0, 0), "=RAND()*A1");
-    pDoc->SetString(ScAddress(1, 1, 0), "=RAND()*B1");
+    pDoc->SetString(ScAddress(0, 0, 0), u"=RAND()"_ustr);
+    pDoc->SetString(ScAddress(0, 1, 0), u"=RAND()"_ustr);
+    pDoc->SetString(ScAddress(1, 0, 0), u"=RAND()*A1"_ustr);
+    pDoc->SetString(ScAddress(1, 1, 0), u"=RAND()*B1"_ustr);
 
     double nValA1, nValB1, nValA2, nValB2;
 
@@ -766,7 +814,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf44076)
 
     ScDocument* pDoc = getScDoc();
 
-    pDoc->SetString(ScAddress(0, 0, 0), "=(-8)^(1/3)");
+    pDoc->SetString(ScAddress(0, 0, 0), u"=(-8)^(1/3)"_ustr);
 
     CPPUNIT_ASSERT_EQUAL(-2.0, pDoc->GetValue(ScAddress(0, 0, 0)));
 }
@@ -780,7 +828,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testEditEngStrikeThroughXLSX)
     const EditTextObject* pObj = pDoc->GetEditText(ScAddress(0, 0, 0));
     CPPUNIT_ASSERT(pObj);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1), pObj->GetParagraphCount());
-    CPPUNIT_ASSERT_EQUAL(OUString("this is strike through  this not"), pObj->GetText(0));
+    CPPUNIT_ASSERT_EQUAL(u"this is strike through  this not"_ustr, pObj->GetText(0));
 
     std::vector<EECharAttrib> aAttribs;
     pObj->GetCharAttribs(0, aAttribs);
@@ -826,8 +874,44 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf130132)
         const SvxBrushItem& rBackground = static_cast<const SvxBrushItem&>(rItem);
         const Color& rColor = rBackground.GetColor();
         // background colour is yellow
-        CPPUNIT_ASSERT_EQUAL(Color(255, 255, 0), rColor);
+        CPPUNIT_ASSERT_EQUAL(COL_YELLOW, rColor);
     }
+}
+
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf166445)
+{
+    createScDoc("xls/tdf166445.xls");
+
+    ScDocument* pDoc = getScDoc();
+
+    const ScPatternAttr* pAttr = pDoc->GetPattern(0, 0, 0);
+
+    const SfxPoolItem& rItem = pAttr->GetItem(ATTR_BACKGROUND);
+    const SvxBrushItem& rBackground = static_cast<const SvxBrushItem&>(rItem);
+    const Color& rColor = rBackground.GetColor();
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: rgba[ffff00ff]
+    // - Actual  : rgba[ffffff00]
+    CPPUNIT_ASSERT_EQUAL(COL_YELLOW, rColor);
+}
+
+CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf165080)
+{
+    createScDoc("xls/tdf165080.xls");
+
+    ScDocument* pDoc = getScDoc();
+
+    const ScPatternAttr* pAttr = pDoc->GetPattern(0, 0, 0);
+
+    const SfxPoolItem& rItem = pAttr->GetItem(ATTR_BACKGROUND);
+    const SvxBrushItem& rBackground = static_cast<const SvxBrushItem&>(rItem);
+    const Color& rColor = rBackground.GetColor();
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: rgba[c0c0c0ff]
+    // - Actual  : rgba[ffffff00]
+    CPPUNIT_ASSERT_EQUAL(COL_LIGHTGRAY, rColor);
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf133327)
@@ -845,7 +929,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf133327)
     // Without the fix in place, this test would have failed with
     // - Expected: Color: R:255 G:255 B: 0
     // - Actual  : Color: R:255 G:255 B: 255
-    CPPUNIT_ASSERT_EQUAL(Color(255, 255, 0), rColor);
+    CPPUNIT_ASSERT_EQUAL(COL_YELLOW, rColor);
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testColumnStyle2XLSX)
@@ -879,7 +963,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testColumnStyle2XLSX)
         const SfxPoolItem& rItem = pAttr->GetItem(ATTR_FONT);
         const SvxFontItem& rFont = static_cast<const SvxFontItem&>(rItem);
         OUString aName = rFont.GetFamilyName();
-        CPPUNIT_ASSERT_EQUAL(OUString("Linux Biolinum G"), aName);
+        CPPUNIT_ASSERT_EQUAL(u"Linux Biolinum G"_ustr, aName);
     }
 }
 
@@ -894,7 +978,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf110440XLSX)
     xIA.set(xDrawPageSupplier->getDrawPage(), uno::UNO_QUERY_THROW);
     uno::Reference<beans::XPropertySet> xShape(xIA->getByIndex(0), uno::UNO_QUERY_THROW);
     bool bVisible = true;
-    xShape->getPropertyValue("Visible") >>= bVisible;
+    xShape->getPropertyValue(u"Visible"_ustr) >>= bVisible;
     // This failed: group shape's hidden property was lost on import.
     CPPUNIT_ASSERT(!bVisible);
 }
@@ -967,8 +1051,8 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testRelFormulaValidationXLS)
 
     ScDocument* pDoc = getScDoc();
 
-    checkValidationFormula(ScAddress(3, 4, 0), *pDoc, "C5");
-    checkValidationFormula(ScAddress(5, 8, 0), *pDoc, "D7");
+    checkValidationFormula(ScAddress(3, 4, 0), *pDoc, u"C5"_ustr);
+    checkValidationFormula(ScAddress(5, 8, 0), *pDoc, u"D7"_ustr);
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf136364)
@@ -981,13 +1065,13 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf136364)
     // - Expected: =SUM((B2:B3~C4:C5~D6:D7))
     // - Actual  : =SUM((B2:B3~C4:C5,D6:D7))
     OUString aFormula = pDoc->GetFormula(4, 0, 0);
-    CPPUNIT_ASSERT_EQUAL(OUString("=SUM((B2:B3~C4:C5~D6:D7))"), aFormula);
+    CPPUNIT_ASSERT_EQUAL(u"=SUM((B2:B3~C4:C5~D6:D7))"_ustr, aFormula);
     CPPUNIT_ASSERT_EQUAL(27.0, pDoc->GetValue(ScAddress(4, 0, 0)));
 
     // - Expected: =SUM((B2~C4~D6))
     // - Actual  : =SUM((B2~C4,D6))
     aFormula = pDoc->GetFormula(4, 1, 0);
-    CPPUNIT_ASSERT_EQUAL(OUString("=SUM((B2~C4~D6))"), aFormula);
+    CPPUNIT_ASSERT_EQUAL(u"=SUM((B2~C4~D6))"_ustr, aFormula);
     CPPUNIT_ASSERT_EQUAL(12.0, pDoc->GetValue(ScAddress(4, 1, 0)));
 }
 
@@ -997,7 +1081,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf103734)
     ScDocument* pDoc = getScDoc();
 
     // Without the fix in place, MAX() would have returned -1.8E+308
-    CPPUNIT_ASSERT_EQUAL(OUString("#N/A"), pDoc->GetString(ScAddress(2, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"#N/A"_ustr, pDoc->GetString(ScAddress(2, 0, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf126116)
@@ -1005,9 +1089,9 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf126116)
     createScDoc("fods/tdf126116.fods");
     ScDocument* pDoc = getScDoc();
 
-    CPPUNIT_ASSERT_EQUAL(OUString("02/02/21"), pDoc->GetString(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"02/02/21"_ustr, pDoc->GetString(ScAddress(0, 0, 0)));
 
-    pDoc->SetString(ScAddress(0, 0, 0), "03/03");
+    pDoc->SetString(ScAddress(0, 0, 0), u"03/03"_ustr);
 
     sal_uInt32 nNumberFormat = pDoc->GetNumberFormat(0, 0, 0);
     const SvNumberformat* pNumberFormat = pDoc->GetFormatTable()->GetEntry(nNumberFormat);
@@ -1016,7 +1100,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf126116)
     // Without the fix in place, this test would have failed with
     // - Expected: MM/DD/YY
     // - Actual  : MM/DD/YYYY
-    CPPUNIT_ASSERT_EQUAL(OUString("MM/DD/YY"), rFormatStr);
+    CPPUNIT_ASSERT_EQUAL(u"MM/DD/YY"_ustr, rFormatStr);
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf144209)
@@ -1024,7 +1108,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf144209)
     createScDoc("ods/tdf144209.ods");
     ScDocument* pDoc = getScDoc();
 
-    CPPUNIT_ASSERT_EQUAL(OUString("AA 0"), pDoc->GetString(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"AA 0"_ustr, pDoc->GetString(ScAddress(0, 0, 0)));
 
     ScDocShell* pDocSh = getScDocShell();
     pDocSh->DoHardRecalc();
@@ -1032,7 +1116,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf144209)
     // Without the fix in place, this test would have failed with
     // - Expected: AA 33263342642.5385
     // - Actual  : AA 0
-    CPPUNIT_ASSERT_EQUAL(OUString("AA 33263342642.5385"), pDoc->GetString(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"AA 33263342642.5385"_ustr, pDoc->GetString(ScAddress(0, 0, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf98844)
@@ -1069,12 +1153,12 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf118561)
     //Without the fix in place, it would have failed with
     //- Expected: apple
     //- Actual  : Err:502
-    CPPUNIT_ASSERT_EQUAL(OUString("apple"), pDoc->GetString(ScAddress(1, 1, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("apple"), pDoc->GetString(ScAddress(2, 1, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("TRUE"), pDoc->GetString(ScAddress(3, 1, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("fruits"), pDoc->GetString(ScAddress(4, 1, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("apple"), pDoc->GetString(ScAddress(5, 1, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("hat"), pDoc->GetString(ScAddress(6, 1, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"apple"_ustr, pDoc->GetString(ScAddress(1, 1, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"apple"_ustr, pDoc->GetString(ScAddress(2, 1, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"TRUE"_ustr, pDoc->GetString(ScAddress(3, 1, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"fruits"_ustr, pDoc->GetString(ScAddress(4, 1, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"apple"_ustr, pDoc->GetString(ScAddress(5, 1, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"hat"_ustr, pDoc->GetString(ScAddress(6, 1, 1)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf125099)
@@ -1082,18 +1166,18 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf125099)
     createScDoc("ods/tdf125099.ods");
     ScDocument* pDoc = getScDoc();
 
-    CPPUNIT_ASSERT_EQUAL(OUString("03:53:46"), pDoc->GetString(ScAddress(0, 0, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("03:23:59"), pDoc->GetString(ScAddress(0, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"03:53:46"_ustr, pDoc->GetString(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"03:23:59"_ustr, pDoc->GetString(ScAddress(0, 1, 0)));
 
     ScDocShell* pDocSh = getScDocShell();
     pDocSh->DoHardRecalc();
 
-    CPPUNIT_ASSERT_EQUAL(OUString("03:53:46"), pDoc->GetString(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"03:53:46"_ustr, pDoc->GetString(ScAddress(0, 0, 0)));
 
     // Without the fix in place, this would have failed with
     // - Expected: 03:24:00
     // - Actual  : 03:23:59
-    CPPUNIT_ASSERT_EQUAL(OUString("03:24:00"), pDoc->GetString(ScAddress(0, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"03:24:00"_ustr, pDoc->GetString(ScAddress(0, 1, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf134455)
@@ -1101,14 +1185,14 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf134455)
     createScDoc("xlsx/tdf134455.xlsx");
     ScDocument* pDoc = getScDoc();
 
-    CPPUNIT_ASSERT_EQUAL(OUString("00:05"), pDoc->GetString(ScAddress(3, 4, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("00:10"), pDoc->GetString(ScAddress(3, 5, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("00:59"), pDoc->GetString(ScAddress(3, 6, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"00:05"_ustr, pDoc->GetString(ScAddress(3, 4, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"00:10"_ustr, pDoc->GetString(ScAddress(3, 5, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"00:59"_ustr, pDoc->GetString(ScAddress(3, 6, 0)));
 
     // Without the fix in place, TIMEVALUE would have returned Err:502 for values
     // greater than 59
-    CPPUNIT_ASSERT_EQUAL(OUString("01:05"), pDoc->GetString(ScAddress(3, 7, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("04:00"), pDoc->GetString(ScAddress(3, 8, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"01:05"_ustr, pDoc->GetString(ScAddress(3, 7, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"04:00"_ustr, pDoc->GetString(ScAddress(3, 8, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf119533)
@@ -1119,12 +1203,12 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf119533)
     // Without fix in place, this test would have failed with
     // - Expected: 0.5
     // - Actual  : 0.483333333333333
-    CPPUNIT_ASSERT_EQUAL(OUString("0.5"), pDoc->GetString(ScAddress(4, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"0.5"_ustr, pDoc->GetString(ScAddress(4, 0, 0)));
 
     // Without fix in place, this test would have failed with
     // - Expected: 9.5
     // - Actual  : 9.51666666666667
-    CPPUNIT_ASSERT_EQUAL(OUString("9.5"), pDoc->GetString(ScAddress(5, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"9.5"_ustr, pDoc->GetString(ScAddress(5, 0, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf127982)
@@ -1133,18 +1217,18 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf127982)
     ScDocument* pDoc = getScDoc();
 
     // Without the fix in place, these cells would be empty
-    CPPUNIT_ASSERT_EQUAL(OUString("R1"), pDoc->GetString(ScAddress(3, 5, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("R6"), pDoc->GetString(ScAddress(3, 6, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("R7"), pDoc->GetString(ScAddress(3, 7, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"R1"_ustr, pDoc->GetString(ScAddress(3, 5, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"R6"_ustr, pDoc->GetString(ScAddress(3, 6, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"R7"_ustr, pDoc->GetString(ScAddress(3, 7, 0)));
 
-    CPPUNIT_ASSERT_EQUAL(OUString("R1"), pDoc->GetString(ScAddress(4, 5, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("R6"), pDoc->GetString(ScAddress(4, 6, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("R7"), pDoc->GetString(ScAddress(4, 7, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"R1"_ustr, pDoc->GetString(ScAddress(4, 5, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"R6"_ustr, pDoc->GetString(ScAddress(4, 6, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"R7"_ustr, pDoc->GetString(ScAddress(4, 7, 0)));
 
     // Without the fix in place, these cells would be empty
-    CPPUNIT_ASSERT_EQUAL(OUString("R1"), pDoc->GetString(ScAddress(4, 5, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("R6"), pDoc->GetString(ScAddress(4, 6, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("R7"), pDoc->GetString(ScAddress(4, 7, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"R1"_ustr, pDoc->GetString(ScAddress(4, 5, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"R6"_ustr, pDoc->GetString(ScAddress(4, 6, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"R7"_ustr, pDoc->GetString(ScAddress(4, 7, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf109409)
@@ -1153,24 +1237,24 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf109409)
     ScDocument* pDoc = getScDoc();
 
     // TEXTJOIN
-    CPPUNIT_ASSERT_EQUAL(OUString("A1;B1;A2;B2;A3;B3"), pDoc->GetString(ScAddress(3, 1, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("A1;B1;A2;B2;A3;B3"), pDoc->GetString(ScAddress(3, 2, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("A1;A2;A3;B1;B2;B3"), pDoc->GetString(ScAddress(3, 4, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"A1;B1;A2;B2;A3;B3"_ustr, pDoc->GetString(ScAddress(3, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"A1;B1;A2;B2;A3;B3"_ustr, pDoc->GetString(ScAddress(3, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"A1;A2;A3;B1;B2;B3"_ustr, pDoc->GetString(ScAddress(3, 4, 0)));
 
     // Without the fix in place, it would have failed with
     //- Expected: A1;B1;A2;B2;A3;B3
     //- Actual  : A1;A2;A3;B1;B2;B3
-    CPPUNIT_ASSERT_EQUAL(OUString("A1;B1;A2;B2;A3;B3"), pDoc->GetString(ScAddress(3, 5, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"A1;B1;A2;B2;A3;B3"_ustr, pDoc->GetString(ScAddress(3, 5, 0)));
 
     // CONCAT
-    CPPUNIT_ASSERT_EQUAL(OUString("A1B1A2B2A3B3"), pDoc->GetString(ScAddress(6, 1, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("A1B1A2B2A3B3"), pDoc->GetString(ScAddress(6, 2, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("A1A2A3B1B2B3"), pDoc->GetString(ScAddress(6, 4, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"A1B1A2B2A3B3"_ustr, pDoc->GetString(ScAddress(6, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"A1B1A2B2A3B3"_ustr, pDoc->GetString(ScAddress(6, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"A1A2A3B1B2B3"_ustr, pDoc->GetString(ScAddress(6, 4, 0)));
 
     // Without the fix in place, it would have failed with
     //- Expected: A1B1A2B2A3B3
     //- Actual  : A1A2A3B1B2B3
-    CPPUNIT_ASSERT_EQUAL(OUString("A1B1A2B2A3B3"), pDoc->GetString(ScAddress(6, 5, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"A1B1A2B2A3B3"_ustr, pDoc->GetString(ScAddress(6, 5, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf132105)
@@ -1179,23 +1263,23 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf132105)
     ScDocument* pDoc = getScDoc();
 
     // MATCH
-    CPPUNIT_ASSERT_EQUAL(OUString("5"), pDoc->GetString(ScAddress(0, 1, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("5"), pDoc->GetString(ScAddress(1, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"5"_ustr, pDoc->GetString(ScAddress(0, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"5"_ustr, pDoc->GetString(ScAddress(1, 1, 0)));
 
     // COUNT
-    CPPUNIT_ASSERT_EQUAL(OUString("0"), pDoc->GetString(ScAddress(0, 2, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("20"), pDoc->GetString(ScAddress(1, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"0"_ustr, pDoc->GetString(ScAddress(0, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"20"_ustr, pDoc->GetString(ScAddress(1, 2, 0)));
 
     // COUNTA
-    CPPUNIT_ASSERT_EQUAL(OUString("20"), pDoc->GetString(ScAddress(0, 3, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("20"), pDoc->GetString(ScAddress(1, 3, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"20"_ustr, pDoc->GetString(ScAddress(0, 3, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"20"_ustr, pDoc->GetString(ScAddress(1, 3, 0)));
 
     // COUNTBLANK
     // Without the fix in place, it would have failed with
     // - Expected: 0
     //- Actual  : Err:504
-    CPPUNIT_ASSERT_EQUAL(OUString("0"), pDoc->GetString(ScAddress(0, 4, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("0"), pDoc->GetString(ScAddress(1, 4, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"0"_ustr, pDoc->GetString(ScAddress(0, 4, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"0"_ustr, pDoc->GetString(ScAddress(1, 4, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf131424)
@@ -1215,9 +1299,9 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf100709XLSX)
     createScDoc("xlsx/tdf100709.xlsx");
 
     ScDocument* pDoc = getScDoc();
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Cell B52 should not be formatted with a $", OUString("218"),
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Cell B52 should not be formatted with a $", u"218"_ustr,
                                  pDoc->GetString(1, 51, 0));
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("Cell A75 should not be formatted as a date", OUString("218"),
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("Cell A75 should not be formatted as a date", u"218"_ustr,
                                  pDoc->GetString(0, 74, 0));
 }
 
@@ -1227,7 +1311,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf97598XLSX)
 
     ScDocument* pDoc = getScDoc();
     OUString aStr = pDoc->GetString(0, 0, 0); // A1
-    CPPUNIT_ASSERT_EQUAL(OUString("Cell A1"), aStr);
+    CPPUNIT_ASSERT_EQUAL(u"Cell A1"_ustr, aStr);
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf83672XLSX)
@@ -1239,7 +1323,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf83672XLSX)
     uno::Reference<drawing::XShape> xShape(xPage->getByIndex(0), uno::UNO_QUERY_THROW);
     uno::Reference<beans::XPropertySet> xShapeProperties(xShape, uno::UNO_QUERY);
     sal_Int32 nRotate = 0;
-    xShapeProperties->getPropertyValue("RotateAngle") >>= nRotate;
+    xShapeProperties->getPropertyValue(u"RotateAngle"_ustr) >>= nRotate;
     CPPUNIT_ASSERT(nRotate != 0);
 }
 
@@ -1253,7 +1337,7 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testUnicodeFileNameGnumeric)
     {
         return;
     }
-    loadFromURL(u"gnumeric/t\u00E4\u00DFt.gnumeric");
+    loadFromFile(u"gnumeric/t\u00E4\u00DFt.gnumeric");
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testMergedCellsXLSXML)
@@ -1300,17 +1384,17 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testBackgroundColorStandardXLSXML)
     };
 
     const std::vector<Check> aChecks = {
-        { OUString("Background Color"), COL_BLACK, COL_TRANSPARENT },
-        { OUString("Dark Red"), COL_WHITE, Color(192, 0, 0) },
-        { OUString("Red"), COL_WHITE, Color(255, 0, 0) },
-        { OUString("Orange"), COL_WHITE, Color(255, 192, 0) },
-        { OUString("Yellow"), COL_WHITE, Color(255, 255, 0) },
-        { OUString("Light Green"), COL_WHITE, Color(146, 208, 80) },
-        { OUString("Green"), COL_WHITE, Color(0, 176, 80) },
-        { OUString("Light Blue"), COL_WHITE, Color(0, 176, 240) },
-        { OUString("Blue"), COL_WHITE, Color(0, 112, 192) },
-        { OUString("Dark Blue"), COL_WHITE, Color(0, 32, 96) },
-        { OUString("Purple"), COL_WHITE, Color(112, 48, 160) },
+        { u"Background Color"_ustr, COL_BLACK, COL_TRANSPARENT },
+        { u"Dark Red"_ustr, COL_WHITE, Color(192, 0, 0) },
+        { u"Red"_ustr, COL_WHITE, COL_LIGHTRED },
+        { u"Orange"_ustr, COL_WHITE, Color(255, 192, 0) },
+        { u"Yellow"_ustr, COL_WHITE, COL_YELLOW },
+        { u"Light Green"_ustr, COL_WHITE, Color(146, 208, 80) },
+        { u"Green"_ustr, COL_WHITE, Color(0, 176, 80) },
+        { u"Light Blue"_ustr, COL_WHITE, Color(0, 176, 240) },
+        { u"Blue"_ustr, COL_WHITE, Color(0, 112, 192) },
+        { u"Dark Blue"_ustr, COL_WHITE, Color(0, 32, 96) },
+        { u"Purple"_ustr, COL_WHITE, Color(112, 48, 160) },
     };
 
     for (size_t nRow = 0; nRow < aChecks.size(); ++nRow)
@@ -1337,19 +1421,17 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf131536)
 
     CPPUNIT_ASSERT_EQUAL(1.0, pDoc->GetValue(3, 9, 0));
     CPPUNIT_ASSERT_EQUAL(
-        OUString(
-            "=IF(D$4=\"-\",\"-\",MID(TEXT(INDEX($Comparison.$I:$J,$Comparison.$A5,$Comparison.D$2),"
-            "\"\")"
-            ",2,4)"
-            "=RIGHT(TEXT(INDEX($Comparison.$L:$Z,$Comparison.$A5,$Comparison.D$4),\"\"),4))"),
+        u"=IF(D$4=\"-\",\"-\",MID(TEXT(INDEX($Comparison.$I:$J,$Comparison.$A5,$Comparison.D$2),"
+        "\"\")"
+        ",2,4)"
+        "=RIGHT(TEXT(INDEX($Comparison.$L:$Z,$Comparison.$A5,$Comparison.D$4),\"\"),4))"_ustr,
         pDoc->GetFormula(3, 9, 0));
 
     CPPUNIT_ASSERT_EQUAL(1.0, pDoc->GetValue(4, 9, 0));
     CPPUNIT_ASSERT_EQUAL(
-        OUString(
-            "=IF(D$4=\"-\",\"-\",MID(TEXT(INDEX($Comparison.$I:$J,$Comparison.$A5,$Comparison.D$2),"
-            "\"0\"),2,4)"
-            "=RIGHT(TEXT(INDEX($Comparison.$L:$Z,$Comparison.$A5,$Comparison.D$4),\"0\"),4))"),
+        u"=IF(D$4=\"-\",\"-\",MID(TEXT(INDEX($Comparison.$I:$J,$Comparison.$A5,$Comparison.D$2),"
+        "\"0\"),2,4)"
+        "=RIGHT(TEXT(INDEX($Comparison.$L:$Z,$Comparison.$A5,$Comparison.D$4),\"0\"),4))"_ustr,
         pDoc->GetFormula(4, 9, 0));
 }
 
@@ -1358,18 +1440,18 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf130583)
     createScDoc("ods/tdf130583.ods");
     ScDocument* pDoc = getScDoc();
 
-    CPPUNIT_ASSERT_EQUAL(OUString("b"), pDoc->GetString(ScAddress(1, 0, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("c"), pDoc->GetString(ScAddress(1, 1, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("a"), pDoc->GetString(ScAddress(1, 2, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("d"), pDoc->GetString(ScAddress(1, 3, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("#N/A"), pDoc->GetString(ScAddress(1, 4, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"b"_ustr, pDoc->GetString(ScAddress(1, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"c"_ustr, pDoc->GetString(ScAddress(1, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"a"_ustr, pDoc->GetString(ScAddress(1, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"d"_ustr, pDoc->GetString(ScAddress(1, 3, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"#N/A"_ustr, pDoc->GetString(ScAddress(1, 4, 0)));
 
     // Without the fix in place, SWITCH would have returned #VALUE!
-    CPPUNIT_ASSERT_EQUAL(OUString("b"), pDoc->GetString(ScAddress(4, 0, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("c"), pDoc->GetString(ScAddress(4, 1, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("a"), pDoc->GetString(ScAddress(4, 2, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("d"), pDoc->GetString(ScAddress(4, 3, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("#N/A"), pDoc->GetString(ScAddress(4, 4, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"b"_ustr, pDoc->GetString(ScAddress(4, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"c"_ustr, pDoc->GetString(ScAddress(4, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"a"_ustr, pDoc->GetString(ScAddress(4, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"d"_ustr, pDoc->GetString(ScAddress(4, 3, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"#N/A"_ustr, pDoc->GetString(ScAddress(4, 4, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf85617)
@@ -1400,13 +1482,13 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testTdf42481)
     createScDoc("ods/tdf42481.ods");
     ScDocument* pDoc = getScDoc();
 
-    CPPUNIT_ASSERT_EQUAL(OUString("#VALUE!"), pDoc->GetString(ScAddress(3, 9, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"#VALUE!"_ustr, pDoc->GetString(ScAddress(3, 9, 0)));
 
     // Without the fix in place, this test would have failed with
     // - Expected: #VALUE!
     // - Actual  : 14
-    CPPUNIT_ASSERT_EQUAL(OUString("#VALUE!"), pDoc->GetString(ScAddress(3, 10, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("14"), pDoc->GetString(ScAddress(3, 11, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"#VALUE!"_ustr, pDoc->GetString(ScAddress(3, 10, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"14"_ustr, pDoc->GetString(ScAddress(3, 11, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testNamedExpressionsXLSXML)
@@ -1420,18 +1502,18 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testNamedExpressionsXLSXML)
         // A7
         ScAddress aPos(0, 6, 0);
         CPPUNIT_ASSERT_EQUAL(15.0, pDoc->GetValue(aPos));
-        CPPUNIT_ASSERT_EQUAL(OUString("=SUM(MyRange)"),
+        CPPUNIT_ASSERT_EQUAL(u"=SUM(MyRange)"_ustr,
                              pDoc->GetFormula(aPos.Col(), aPos.Row(), aPos.Tab()));
 
         // B7
         aPos.IncCol();
         CPPUNIT_ASSERT_EQUAL(55.0, pDoc->GetValue(aPos));
-        CPPUNIT_ASSERT_EQUAL(OUString("=SUM(MyRange2)"),
+        CPPUNIT_ASSERT_EQUAL(u"=SUM(MyRange2)"_ustr,
                              pDoc->GetFormula(aPos.Col(), aPos.Row(), aPos.Tab()));
 
-        const ScRangeData* pRD = pDoc->GetRangeName()->findByUpperName("MYRANGE");
+        const ScRangeData* pRD = pDoc->GetRangeName()->findByUpperName(u"MYRANGE"_ustr);
         CPPUNIT_ASSERT(pRD);
-        pRD = pDoc->GetRangeName()->findByUpperName("MYRANGE2");
+        pRD = pDoc->GetRangeName()->findByUpperName(u"MYRANGE2"_ustr);
         CPPUNIT_ASSERT(pRD);
     }
 
@@ -1444,22 +1526,22 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testNamedExpressionsXLSXML)
         // A7 on Sheet1
         ScAddress aPos(0, 6, 0);
         CPPUNIT_ASSERT_EQUAL(27.0, pDoc->GetValue(aPos));
-        CPPUNIT_ASSERT_EQUAL(OUString("=SUM(MyRange)"),
+        CPPUNIT_ASSERT_EQUAL(u"=SUM(MyRange)"_ustr,
                              pDoc->GetFormula(aPos.Col(), aPos.Row(), aPos.Tab()));
 
         // A7 on Sheet2
         aPos.IncTab();
         CPPUNIT_ASSERT_EQUAL(74.0, pDoc->GetValue(aPos));
-        CPPUNIT_ASSERT_EQUAL(OUString("=SUM(MyRange)"),
+        CPPUNIT_ASSERT_EQUAL(u"=SUM(MyRange)"_ustr,
                              pDoc->GetFormula(aPos.Col(), aPos.Row(), aPos.Tab()));
 
         const ScRangeName* pRN = pDoc->GetRangeName(0);
         CPPUNIT_ASSERT(pRN);
-        const ScRangeData* pRD = pRN->findByUpperName("MYRANGE");
+        const ScRangeData* pRD = pRN->findByUpperName(u"MYRANGE"_ustr);
         CPPUNIT_ASSERT(pRD);
         pRN = pDoc->GetRangeName(1);
         CPPUNIT_ASSERT(pRN);
-        pRD = pRN->findByUpperName("MYRANGE");
+        pRD = pRN->findByUpperName(u"MYRANGE"_ustr);
         CPPUNIT_ASSERT(pRD);
     }
 }
@@ -1484,15 +1566,14 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testEmptyRowsXLSXML)
         };
 
         ScRange aDataRange;
-        aDataRange.Parse("A1:B9", *pDoc);
+        aDataRange.Parse(u"A1:B9"_ustr, *pDoc);
         bool bSuccess = checkOutput(pDoc, aDataRange, aOutputCheck, "Expected output");
         CPPUNIT_ASSERT_MESSAGE("Table output check failed", bSuccess);
     }
 
     ScAddress aPos;
-    aPos.Parse("B9", *pDoc);
-    CPPUNIT_ASSERT_EQUAL(OUString("=SUM(B4:B8)"),
-                         pDoc->GetFormula(aPos.Col(), aPos.Row(), aPos.Tab()));
+    aPos.Parse(u"B9"_ustr, *pDoc);
+    CPPUNIT_ASSERT_EQUAL(u"=SUM(B4:B8)"_ustr, pDoc->GetFormula(aPos.Col(), aPos.Row(), aPos.Tab()));
 }
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testBorderDirectionsXLSXML)
@@ -1637,11 +1718,11 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest2, testBackColorFilter)
     createScDoc();
     ScDocument* pDoc = getScDoc();
 
-    ScPatternAttr aPattern1(pDoc->GetPool());
-    aPattern1.GetItemSet().Put(SvxBrushItem(aBackColor1, ATTR_BACKGROUND));
+    ScPatternAttr aPattern1(pDoc->getCellAttributeHelper());
+    aPattern1.ItemSetPut(SvxBrushItem(aBackColor1, ATTR_BACKGROUND));
 
-    ScPatternAttr aPattern2(pDoc->GetPool());
-    aPattern2.GetItemSet().Put(SvxBrushItem(aBackColor2, ATTR_BACKGROUND));
+    ScPatternAttr aPattern2(pDoc->getCellAttributeHelper());
+    aPattern2.ItemSetPut(SvxBrushItem(aBackColor2, ATTR_BACKGROUND));
 
     // Apply the pattern to cell A1:A2
     pDoc->ApplyPatternAreaTab(0, 0, 0, 1, 0, aPattern1);

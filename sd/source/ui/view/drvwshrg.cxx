@@ -40,6 +40,7 @@
 #include <SpellDialogChildWindow.hxx>
 #include <GraphicViewShell.hxx>
 #include <AnimationChildWindow.hxx>
+#include <PaneChildWindows.hxx>
 
 using namespace sd;
 #define ShellClass_DrawViewShell
@@ -57,7 +58,7 @@ SFX_IMPL_INTERFACE(DrawViewShell, SfxShell)
 
 void DrawViewShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("drawtext");
+    GetStaticInterface()->RegisterPopupMenu(u"drawtext"_ustr);
 
     GetStaticInterface()->RegisterChildWindow(SID_NAVIGATOR, true);
 
@@ -77,6 +78,7 @@ void DrawViewShell::InitInterface_Impl()
     GetStaticInterface()->RegisterChildWindow(
         sfx2::sidebar::SidebarChildWindow::GetChildWindowId());
     GetStaticInterface()->RegisterChildWindow(DevelopmentToolChildWindow::GetChildWindowId());
+    GetStaticInterface()->RegisterChildWindow(BottomPaneImpressChildWindow::GetChildWindowId());
 }
 
 // SdGraphicViewShell
@@ -84,7 +86,7 @@ SFX_IMPL_INTERFACE(GraphicViewShell, SfxShell)
 
 void GraphicViewShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("drawtext");
+    GetStaticInterface()->RegisterPopupMenu(u"drawtext"_ustr);
 
     GetStaticInterface()->RegisterChildWindow(SID_NAVIGATOR, true);
 

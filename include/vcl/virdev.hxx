@@ -55,19 +55,10 @@ private:
     bool                mbForceZeroExtleadBug;
 
     SAL_DLLPRIVATE void ImplInitVirDev( const OutputDevice* pOutDev, tools::Long nDX, tools::Long nDY, const SystemGraphicsData *pData = nullptr );
-    SAL_DLLPRIVATE bool InnerImplSetOutputSizePixel( const Size& rNewSize, bool bErase,
-                                                     sal_uInt8* pBuffer );
-    SAL_DLLPRIVATE bool ImplSetOutputSizePixel( const Size& rNewSize, bool bErase,
-                                                sal_uInt8* pBuffer, bool bAlphaMaskTransparent = false );
+    SAL_DLLPRIVATE bool InnerImplSetOutputSizePixel( const Size& rNewSize, bool bErase, bool bAlphaMaskTransparent );
 
     VirtualDevice (const VirtualDevice &) = delete;
     VirtualDevice & operator= (const VirtualDevice &) = delete;
-
-    /** Used for alpha VDev, to set areas to opaque
-
-        @since \#i32109#
-     */
-    SAL_DLLPRIVATE void ImplFillOpaqueRectangle( const tools::Rectangle& rRect );
 
 protected:
     virtual bool AcquireGraphics() const override;
@@ -122,6 +113,8 @@ public:
 
     bool                CanEnableNativeWidget() const override;
 
+    bool                CanAnimate() const override { return false; }
+
     virtual void        EnableRTL( bool bEnable = true ) override;
 
     bool                SetOutputSizePixel( const Size& rNewSize, bool bErase = true, bool bAlphaMaskTransparent = false );
@@ -144,6 +137,10 @@ public:
     bool IsVirtual() const override;
 
     bool                IsScreenComp() const override { return mbScreenComp; }
+
+    bool IsWithoutAlpha() const { return meFormatAndAlpha == DeviceFormat::WITHOUT_ALPHA; }
+
+    virtual bool HasAlpha() const override { return meFormatAndAlpha != DeviceFormat::WITHOUT_ALPHA; }
 
 private:
     SAL_DLLPRIVATE void ImplSetReferenceDevice( RefDevMode, sal_Int32 i_nDPIX, sal_Int32 i_nDPIY );

@@ -29,13 +29,16 @@
 
 #include <svx/svdview.hxx>
 #include <flyfrm.hxx>
+#include <fmturl.hxx>
+#include <unotextrange.hxx>
 #include <txatbase.hxx>
 #include <txtfrm.hxx>
 
 namespace sw
 {
-AccessibilityIssue::AccessibilityIssue(sfx::AccessibilityIssueID eIssueID)
-    : sfx::AccessibilityIssue(eIssueID)
+AccessibilityIssue::AccessibilityIssue(sfx::AccessibilityIssueID eIssueID,
+                                       sfx::AccessibilityIssueLevel eIssueLvl)
+    : sfx::AccessibilityIssue(eIssueID, eIssueLvl)
     , m_eIssueObject(IssueObject::UNKNOWN)
     , m_pDoc(nullptr)
     , m_pNode(nullptr)
@@ -81,14 +84,16 @@ void AccessibilityIssue::gotoIssue() const
         case IssueObject::GRAPHIC:
         case IssueObject::OLE:
         case IssueObject::TEXTFRAME:
+        case IssueObject::HYPERLINKFLY:
         {
-            bool bSelected = pWrtShell->GotoFly(TempIssueObject.m_sObjectID, FLYCNTTYPE_ALL, true);
+            bool bSelected
+                = pWrtShell->GotoFly(UIName(TempIssueObject.m_sObjectID), FLYCNTTYPE_ALL, true);
 
             // bring issue to attention
             if (bSelected)
             {
                 if (const SwFlyFrameFormat* pFlyFormat
-                    = m_pDoc->FindFlyByName(TempIssueObject.m_sObjectID, SwNodeType::NONE))
+                    = m_pDoc->FindFlyByName(UIName(TempIssueObject.m_sObjectID), SwNodeType::NONE))
                 {
                     if (SwFlyFrame* pFlyFrame
                         = SwIterator<SwFlyFrame, SwFormat>(*pFlyFormat).First())
@@ -168,11 +173,12 @@ void AccessibilityIssue::gotoIssue() const
         break;
         case IssueObject::TABLE:
         {
-            pWrtShell->GotoTable(TempIssueObject.m_sObjectID);
+            pWrtShell->GotoTable(UIName(TempIssueObject.m_sObjectID));
 
             // bring issue to attention
-            if (SwTable* pTmpTable = SwTable::FindTable(
-                    TempIssueObject.m_pDoc->FindTableFormatByName(TempIssueObject.m_sObjectID)))
+            if (SwTable* pTmpTable
+                = SwTable::FindTable(TempIssueObject.m_pDoc->FindTableFormatByName(
+                    UIName(TempIssueObject.m_sObjectID))))
             {
                 if (SwTableNode* pTableNode = pTmpTable->GetTableNode())
                 {
@@ -185,15 +191,16 @@ void AccessibilityIssue::gotoIssue() const
         }
         break;
         case IssueObject::TEXT:
+        case IssueObject::HYPERLINKTEXT:
         {
             SwContentNode* pContentNode = TempIssueObject.m_pNode->GetContentNode();
-            SwPosition aPoint(*pContentNode, TempIssueObject.m_nStart);
-            SwPosition aMark(*pContentNode, TempIssueObject.m_nEnd);
+            SwPosition aStart(*pContentNode, TempIssueObject.m_nStart);
+            SwPosition aEnd(*pContentNode, TempIssueObject.m_nEnd);
             pWrtShell->StartAllAction();
             SwPaM* pPaM = pWrtShell->GetCursor();
-            *pPaM->GetPoint() = aPoint;
+            *pPaM->GetPoint() = std::move(aEnd);
             pPaM->SetMark();
-            *pPaM->GetMark() = aMark;
+            *pPaM->GetMark() = std::move(aStart);
             pWrtShell->EndAllAction();
 
             // bring issue to attention
@@ -241,7 +248,9 @@ bool AccessibilityIssue::canQuickFixIssue() const
            || m_eIssueObject == IssueObject::SHAPE || m_eIssueObject == IssueObject::FORM
            || m_eIssueObject == IssueObject::DOCUMENT_TITLE
            || m_eIssueObject == IssueObject::DOCUMENT_BACKGROUND
-           || m_eIssueObject == IssueObject::LANGUAGE_NOT_SET;
+           || m_eIssueObject == IssueObject::LANGUAGE_NOT_SET
+           || m_eIssueObject == IssueObject::HYPERLINKFLY
+           || m_eIssueObject == IssueObject::HYPERLINKTEXT;
 }
 
 void AccessibilityIssue::quickFixIssue() const
@@ -249,8 +258,14 @@ void AccessibilityIssue::quickFixIssue() const
     if (!m_pDoc)
         return;
 
+    SwDocShell* pShell = m_pDoc->GetDocShell();
+    if (!pShell)
+        return;
+
     if (canGotoIssue())
         gotoIssue();
+
+    bool bResetAndQueue = true;
 
     switch (m_eIssueObject)
     {
@@ -258,38 +273,40 @@ void AccessibilityIssue::quickFixIssue() const
         case IssueObject::OLE:
         {
             SwFlyFrameFormat* pFlyFormat
-                = const_cast<SwFlyFrameFormat*>(m_pDoc->FindFlyByName(m_sObjectID));
+                = const_cast<SwFlyFrameFormat*>(m_pDoc->FindFlyByName(UIName(m_sObjectID)));
             if (pFlyFormat)
             {
                 OUString aDescription(pFlyFormat->GetObjDescription());
                 OUString aTitle(pFlyFormat->GetObjTitle());
                 bool isDecorative(pFlyFormat->IsDecorative());
 
-                SwWrtShell* pWrtShell = m_pDoc->GetDocShell()->GetWrtShell();
+                SwWrtShell* pWrtShell = pShell->GetWrtShell();
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                ScopedVclPtr<AbstractSvxObjectTitleDescDialog> pDlg(
-                    pFact->CreateSvxObjectTitleDescDialog(pWrtShell->GetView().GetFrameWeld(),
-                                                          aTitle, aDescription, isDecorative));
+                VclPtr<AbstractSvxObjectTitleDescDialog> pDlg(pFact->CreateSvxObjectTitleDescDialog(
+                    pWrtShell->GetView().GetFrameWeld(), aTitle, aDescription, isDecorative));
 
-                if (pDlg->Execute() == RET_OK)
-                {
-                    pDlg->GetTitle(aTitle);
-                    pDlg->GetDescription(aDescription);
-                    pDlg->IsDecorative(isDecorative);
+                bResetAndQueue = false;
+                pDlg->StartExecuteAsync(
+                    [this, pDlg, pFlyFormat, pWrtShell](sal_Int32 nResult) -> void {
+                        if (nResult == RET_OK)
+                        {
+                            m_pDoc->SetFlyFrameTitle(*pFlyFormat, pDlg->GetTitle());
+                            m_pDoc->SetFlyFrameDescription(*pFlyFormat, pDlg->GetDescription());
+                            m_pDoc->SetFlyFrameDecorative(*pFlyFormat, pDlg->IsDecorative());
 
-                    m_pDoc->SetFlyFrameTitle(*pFlyFormat, aTitle);
-                    m_pDoc->SetFlyFrameDescription(*pFlyFormat, aDescription);
-                    m_pDoc->SetFlyFrameDecorative(*pFlyFormat, isDecorative);
-
-                    pWrtShell->SetModified();
-                }
+                            pWrtShell->SetModified();
+                        }
+                        pDlg->disposeOnce();
+                        if (m_pNode)
+                            m_pDoc->getOnlineAccessibilityCheck()->resetAndQueue(m_pNode);
+                    });
             }
         }
         break;
         case IssueObject::SHAPE:
         case IssueObject::FORM:
         {
-            SwWrtShell* pWrtShell = m_pDoc->GetDocShell()->GetWrtShell();
+            SwWrtShell* pWrtShell = pShell->GetWrtShell();
             auto pPage = pWrtShell->getIDocumentDrawModelAccess().GetDrawModel()->GetPage(0);
             SdrObject* pObj = pPage->GetObjByName(m_sObjectID);
             if (pObj)
@@ -299,45 +316,81 @@ void AccessibilityIssue::quickFixIssue() const
                 bool isDecorative(pObj->IsDecorative());
 
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                ScopedVclPtr<AbstractSvxObjectTitleDescDialog> pDlg(
-                    pFact->CreateSvxObjectTitleDescDialog(pWrtShell->GetView().GetFrameWeld(),
-                                                          aTitle, aDescription, isDecorative));
+                VclPtr<AbstractSvxObjectTitleDescDialog> pDlg(pFact->CreateSvxObjectTitleDescDialog(
+                    pWrtShell->GetView().GetFrameWeld(), aTitle, aDescription, isDecorative));
 
-                if (RET_OK == pDlg->Execute())
+                bResetAndQueue = false;
+                pDlg->StartExecuteAsync([this, pDlg, pObj, pWrtShell](sal_Int32 nResult) -> void {
+                    if (nResult == RET_OK)
+                    {
+                        pObj->SetTitle(pDlg->GetTitle());
+                        pObj->SetDescription(pDlg->GetDescription());
+                        pObj->SetDecorative(pDlg->IsDecorative());
+
+                        pWrtShell->SetModified();
+                    }
+                    pDlg->disposeOnce();
+                    if (m_pNode)
+                        m_pDoc->getOnlineAccessibilityCheck()->resetAndQueue(m_pNode);
+                });
+            }
+        }
+        break;
+        case IssueObject::HYPERLINKTEXT:
+        case IssueObject::HYPERLINKFLY:
+        {
+            SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
+            SwWrtShell* pWrtShell = pShell->GetWrtShell();
+            ScopedVclPtr<AbstractSvxNameDialog> aNameDialog(pFact->CreateSvxNameDialog(
+                pWrtShell->GetView().GetFrameWeld(), OUString(), SwResId(STR_HYPERLINK_NO_NAME_DLG),
+                SwResId(STR_HYPERLINK_NO_NAME_DLG)));
+            if (aNameDialog->Execute() == RET_OK)
+            {
+                if (m_eIssueObject == IssueObject::HYPERLINKTEXT)
                 {
-                    pDlg->GetTitle(aTitle);
-                    pDlg->GetDescription(aDescription);
-                    pDlg->IsDecorative(isDecorative);
-
-                    pObj->SetTitle(aTitle);
-                    pObj->SetDescription(aDescription);
-                    pObj->SetDecorative(isDecorative);
-
-                    pWrtShell->SetModified();
+                    SwContentNode* pContentNode = m_pNode->GetContentNode();
+                    SwPosition aStart(*pContentNode, m_nStart);
+                    SwPosition aEnd(*pContentNode, m_nEnd);
+                    rtl::Reference<SwXTextRange> xRun
+                        = SwXTextRange::CreateXTextRange(*m_pDoc, aStart, &aEnd);
+                    if (xRun.is()
+                        && xRun->getPropertySetInfo()->hasPropertyByName(u"HyperLinkName"_ustr))
+                    {
+                        xRun->setPropertyValue(u"HyperLinkName"_ustr,
+                                               uno::Any(aNameDialog->GetName()));
+                    }
                 }
+                else
+                {
+                    SwFlyFrameFormat* const pFlyFormat{ const_cast<SwFlyFrameFormat*>(
+                        m_pDoc->FindFlyByName(UIName(m_sObjectID))) };
+                    if (pFlyFormat)
+                    {
+                        SwFormatURL item{ pFlyFormat->GetURL() };
+                        item.SetName(aNameDialog->GetName());
+                        SwAttrSet set{ m_pDoc->GetAttrPool(), svl::Items<RES_URL, RES_URL> };
+                        set.Put(item);
+                        m_pDoc->SetFlyFrameAttr(*pFlyFormat, set);
+                    }
+                }
+                pWrtShell->SetModified();
             }
         }
         break;
         case IssueObject::DOCUMENT_TITLE:
         {
             SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-            SwWrtShell* pWrtShell = m_pDoc->GetDocShell()->GetWrtShell();
+            SwWrtShell* pWrtShell = pShell->GetWrtShell();
             ScopedVclPtr<AbstractSvxNameDialog> aNameDialog(pFact->CreateSvxNameDialog(
                 pWrtShell->GetView().GetFrameWeld(), OUString(),
                 SwResId(STR_DOCUMENT_TITLE_DLG_DESC), SwResId(STR_DOCUMENT_TITLE_DLG_TITLE)));
             if (aNameDialog->Execute() == RET_OK)
             {
-                SwDocShell* pShell = m_pDoc->GetDocShell();
-                if (!pShell)
-                    return;
-
                 const uno::Reference<document::XDocumentPropertiesSupplier> xDPS(
                     pShell->GetModel(), uno::UNO_QUERY_THROW);
                 const uno::Reference<document::XDocumentProperties> xDocumentProperties(
                     xDPS->getDocumentProperties());
-                OUString sName;
-                aNameDialog->GetName(sName);
-                xDocumentProperties->setTitle(sName);
+                xDocumentProperties->setTitle(aNameDialog->GetName());
 
                 m_pDoc->getOnlineAccessibilityCheck()->resetAndQueueDocumentLevel();
             }
@@ -345,35 +398,33 @@ void AccessibilityIssue::quickFixIssue() const
         break;
         case IssueObject::DOCUMENT_BACKGROUND:
         {
-            uno::Reference<frame::XModel> xModel(m_pDoc->GetDocShell()->GetModel(),
-                                                 uno::UNO_QUERY_THROW);
+            uno::Reference<frame::XModel> xModel(pShell->GetModel(), uno::UNO_QUERY_THROW);
 
-            comphelper::dispatchCommand(".uno:PageAreaDialog",
+            comphelper::dispatchCommand(u".uno:PageAreaDialog"_ustr,
                                         xModel->getCurrentController()->getFrame(), {});
         }
         break;
         case IssueObject::LANGUAGE_NOT_SET:
         {
-            uno::Reference<frame::XModel> xModel(m_pDoc->GetDocShell()->GetModel(),
-                                                 uno::UNO_QUERY_THROW);
+            uno::Reference<frame::XModel> xModel(pShell->GetModel(), uno::UNO_QUERY_THROW);
 
             if (m_sObjectID.isEmpty())
             {
                 // open the dialog "Tools/Options/Languages and Locales - General"
                 uno::Sequence<beans::PropertyValue> aArgs{ comphelper::makePropertyValue(
-                    "Language", OUString("*")) };
+                    u"Language"_ustr, u"*"_ustr) };
 
-                comphelper::dispatchCommand(".uno:LanguageStatus",
+                comphelper::dispatchCommand(u".uno:LanguageStatus"_ustr,
                                             xModel->getCurrentController()->getFrame(), aArgs);
             }
             else
             {
                 uno::Sequence<beans::PropertyValue> aArgs{
-                    comphelper::makePropertyValue("Param", m_sObjectID),
-                    comphelper::makePropertyValue("Family", sal_Int16(SfxStyleFamily::Para))
+                    comphelper::makePropertyValue(u"Param"_ustr, m_sObjectID),
+                    comphelper::makePropertyValue(u"Family"_ustr, sal_Int16(SfxStyleFamily::Para))
                 };
 
-                comphelper::dispatchCommand(".uno:EditStyleFont",
+                comphelper::dispatchCommand(u".uno:EditStyleFont"_ustr,
                                             xModel->getCurrentController()->getFrame(), aArgs);
             }
         }
@@ -381,7 +432,7 @@ void AccessibilityIssue::quickFixIssue() const
         default:
             break;
     }
-    if (m_pNode)
+    if (bResetAndQueue && m_pNode)
         m_pDoc->getOnlineAccessibilityCheck()->resetAndQueue(m_pNode);
 }
 

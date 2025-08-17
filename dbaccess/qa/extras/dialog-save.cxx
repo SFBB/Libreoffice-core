@@ -29,25 +29,22 @@ public:
     void test();
 
     CPPUNIT_TEST_SUITE(DialogSaveTest);
-// Should we disable this test on MOX and WNT?
-// #if !defined(MACOSX) && !defined(_WIN32)
     CPPUNIT_TEST(test);
-// #endif
     CPPUNIT_TEST_SUITE_END();
 
 };
 
 
 DialogSaveTest::DialogSaveTest()
-      : UnoApiTest("/dbaccess/qa/extras/testdocuments")
+      : UnoApiTest(u"/dbaccess/qa/extras/testdocuments"_ustr)
 {
 }
 
 void DialogSaveTest::test()
 {
-    const OUString aFileName(m_directories.getURLFromWorkdir(u"CppunitTest/testDialogSave.odb"));
+    createTempCopy(u"testDialogSave.odb");
     {
-        mxComponent = loadFromDesktop(aFileName);
+        loadFromURL(maTempFile.GetURL());
         uno::Reference< frame::XStorable > xDocStorable(mxComponent, UNO_QUERY_THROW);
         uno::Reference< document::XEmbeddedScripts > xDocScr(mxComponent, UNO_QUERY_THROW);
         uno::Reference< script::XStorageBasedLibraryContainer > xStorBasLib(xDocScr->getBasicLibraries());
@@ -78,11 +75,11 @@ void DialogSaveTest::test()
         // All our uno::References are (should?) be invalid now -> let them go out of scope
     }
     {
-        uno::Sequence<uno::Any> args{ uno::Any(aFileName) };
-        Reference<container::XHierarchicalNameAccess> xHNA(getMultiServiceFactory()->createInstanceWithArguments("com.sun.star.packages.Package", args), UNO_QUERY_THROW);
-        Reference< beans::XPropertySet > xPS(xHNA->getByHierarchicalName("Dialogs/Standard/Dialog1.xml"), UNO_QUERY_THROW);
+        uno::Sequence<uno::Any> args{ uno::Any(maTempFile.GetURL()) };
+        Reference<container::XHierarchicalNameAccess> xHNA(getMultiServiceFactory()->createInstanceWithArguments(u"com.sun.star.packages.Package"_ustr, args), UNO_QUERY_THROW);
+        Reference< beans::XPropertySet > xPS(xHNA->getByHierarchicalName(u"Dialogs/Standard/Dialog1.xml"_ustr), UNO_QUERY_THROW);
         sal_Int64 nSize = 0;
-        CPPUNIT_ASSERT(xPS->getPropertyValue("Size") >>= nSize);
+        CPPUNIT_ASSERT(xPS->getPropertyValue(u"Size"_ustr) >>= nSize);
         CPPUNIT_ASSERT(nSize != 0);
     }
 }

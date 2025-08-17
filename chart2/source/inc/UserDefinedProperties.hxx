@@ -18,12 +18,13 @@
  */
 #pragma once
 
+#include <config_options.h>
 #include "FastPropertyIdRanges.hxx"
-#include "charttoolsdllapi.hxx"
 
 #include <vector>
 
 namespace com::sun::star::beans { struct Property; }
+namespace css = ::com::sun::star;
 
 namespace chart
 {
@@ -45,7 +46,7 @@ namespace UserDefinedProperties
         PROP_XML_USERDEF
     };
 
-    OOO_DLLPUBLIC_CHARTTOOLS void AddPropertiesToVector(
+    void AddPropertiesToVector(
         std::vector< css::beans::Property > & rOutProperties );
 }
 

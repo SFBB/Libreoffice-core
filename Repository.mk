@@ -33,6 +33,7 @@ $(eval $(call gb_Helper_register_executables,NONE, \
 	concat-deps \
 	cpp \
 	cppunittester \
+	$(if $(or $(filter EMSCRIPTEN,$(BUILD_TYPE_FOR_HOST)),$(filter EMSCRIPTEN,$(OS))),embindmaker wasmbridgegen) \
 	gbuildtojson \
 	$(if $(filter MSC,$(COM)), \
 		gcc-wrapper \
@@ -40,7 +41,6 @@ $(eval $(call gb_Helper_register_executables,NONE, \
 	) \
 	gencoll_rule \
 	genconv_dict \
-	gendict \
 	genindex_data \
 	helpex \
 	idxdict \
@@ -76,6 +76,7 @@ $(eval $(call gb_Helper_register_executables,NONE, \
 	vcldemo \
 	svdemo \
 	minvcl \
+	minweld \
 	svptest \
 	tiledrendering \
 	mtfdemo \
@@ -84,13 +85,17 @@ $(eval $(call gb_Helper_register_executables,NONE, \
 	listglyphs \
 	$(if $(and $(ENABLE_GTK3), $(filter LINUX %BSD SOLARIS,$(OS))), gtktiledviewer) \
 	$(if $(and $(ENABLE_GTKTILEDVIEWER), $(filter WNT,$(OS))), gtktiledviewer) \
-    $(if $(filter EMSCRIPTEN,$(OS)),wasm-qt5-mandelbrot) \
+	$(if $(filter MACOSX,$(OS)),QuickLookPreview) \
+	$(if $(filter MACOSX,$(OS)),QuickLookThumbnail) \
 ))
 
 $(eval $(call gb_Helper_register_executables_for_install,SDK,sdk, \
-	$(if $(filter MSC,$(COM)),$(if $(filter-out AARCH64_TRUE,$(CPUNAME)_$(CROSS_COMPILING)),climaker)) \
+	$(if $(ENABLE_CLI),\
+		$(if $(filter MSC,$(COM)),$(if $(filter-out AARCH64_TRUE,$(CPUNAME)_$(CROSS_COMPILING)),climaker)) \
+	) \
 	cppumaker \
 	javamaker \
+	netmaker \
     $(call gb_CondExeSp2bv,sp2bv) \
 	$(if $(filter ODK,$(BUILD_TYPE)),unoapploader) \
 	unoidl-read \
@@ -137,6 +142,7 @@ $(eval $(call gb_Helper_register_executables_for_install,OOO,brand, \
 	$(call gb_Helper_optional,FUZZERS,olefuzzer) \
 	$(call gb_Helper_optional,FUZZERS,pptfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,rtffuzzer) \
+	$(call gb_Helper_optional,FUZZERS,rtf2pdffuzzer) \
 	$(call gb_Helper_optional,FUZZERS,cgmfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,ww2fuzzer) \
 	$(call gb_Helper_optional,FUZZERS,ww6fuzzer) \
@@ -145,9 +151,11 @@ $(eval $(call gb_Helper_register_executables_for_install,OOO,brand, \
 	$(call gb_Helper_optional,FUZZERS,slkfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,fodtfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,fodt2pdffuzzer) \
+	$(call gb_Helper_optional,FUZZERS,fods2xlsfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,fodsfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,fodpfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,xlsfuzzer) \
+	$(call gb_Helper_optional,FUZZERS,schtmlfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,scrtffuzzer) \
 	$(call gb_Helper_optional,FUZZERS,wksfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,diffuzzer) \
@@ -158,6 +166,7 @@ $(eval $(call gb_Helper_register_executables_for_install,OOO,brand, \
 	$(call gb_Helper_optional,FUZZERS,mtpfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,htmlfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,sftfuzzer) \
+	$(call gb_Helper_optional,FUZZERS,eotfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,dbffuzzer) \
 	$(call gb_Helper_optional,FUZZERS,webpfuzzer) \
 	$(call gb_Helper_optional,FUZZERS,zipfuzzer) \
@@ -388,8 +397,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
 	) \
 	basegfx \
 	bib \
-	chartcore \
-	chartcontroller \
+	chart2 \
 	$(call gb_Helper_optional,OPENCL,clew) \
 	$(if $(filter $(OS),WNT),,cmdmail) \
 	configmgr \
@@ -407,6 +415,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
 	drawinglayercore \
 	drawinglayer \
 	editeng \
+	$(if $(ENABLE_EMBINDTEST_UNO),embindtest) \
 	$(if $(filter WNT,$(OS)),emser) \
 	evtatt \
 	$(call gb_Helper_optional,DBCONNECTIVITY, \
@@ -511,10 +520,8 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
 ))
 
 $(eval $(call gb_Helper_register_plugins_for_install,OOOLIBS,ooo, \
-    acc \
     $(if $(ENABLE_CUSTOMTARGET_COMPONENTS),components) \
     cui \
-    $(if $(USING_X11),desktop_detector) \
     icg \
     sdui \
     $(if $(ENABLE_GEN),vclplug_gen) \
@@ -550,7 +557,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,python, \
 $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,reportbuilder, \
 	rpt \
 	rptui \
-	rptxml \
 ))
 
 $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,writer, \
@@ -561,7 +567,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,writer, \
 	t602filter \
 	$(call gb_Helper_optional,SCRIPTING,vbaswobj) \
 	wpftwriter \
-	writerfilter \
+	sw_writerfilter \
 	$(call gb_Helper_optional,DBCONNECTIVITY,writer) \
 ))
 
@@ -585,17 +591,24 @@ $(eval $(call gb_Helper_register_libraries,PLAINLIBS_NONE, \
 	vclbootstrapprotector \
 	scqahelper \
 	swqahelper \
+	sdqahelper \
 	wpftqahelper \
 	precompiled_system \
-	$(if $(filter MSC,$(COM)),cli_cppuhelper) \
+	$(if $(ENABLE_CLI),$(if $(filter MSC,$(COM)),cli_cppuhelper)) \
 	$(if $(filter $(OS),ANDROID),lo-bootstrap) \
 	$(if $(filter $(OS),MACOSX),OOoSpotlightImporter) \
 ))
 
 $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_URE,ure, \
 	affine_uno_uno \
-	$(if $(filter MSC,$(COM)),$(if $(filter-out AARCH64_TRUE,$(CPUNAME)_$(CROSS_COMPILING)),cli_uno)) \
+	$(if $(ENABLE_CLI),\
+		$(if $(filter MSC,$(COM)),$(if $(filter-out AARCH64_TRUE,$(CPUNAME)_$(CROSS_COMPILING)),cli_uno)) \
+	) \
 	i18nlangtag \
+	$(if $(ENABLE_DOTNET), \
+		net_bootstrap \
+		net_uno \
+	) \
 	$(if $(ENABLE_JAVA), \
 		java_uno \
 		jpipe \
@@ -653,6 +666,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,ooo, \
     $(call gb_Helper_optional,AVMEDIA, \
         $(if $(ENABLE_GSTREAMER_1_0),avmediagst) \
         $(if $(ENABLE_GTK4),avmediagtk) \
+        $(if $(ENABLE_QT6_MULTIMEDIA),avmediaqt6) \
         $(if $(filter WNT,$(OS)),avmediawin) \
     ) \
 	cached1 \
@@ -698,15 +712,10 @@ $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,ooo, \
 ))
 
 $(eval $(call gb_Helper_register_plugins_for_install,PLAINLIBS_OOO,ooo, \
-    collator_data \
-    dict_ja \
-    dict_zh \
-    index_data \
     localedata_en \
     localedata_es \
     localedata_euro \
     localedata_others \
-    textconv_dict \
 ))
 
 ifeq ($(OS),WNT)
@@ -717,12 +726,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,activexbina
 $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,activex, \
 	so_activex \
 ))
-
-ifneq ($(BUILD_X64),)
-$(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,activexwin64, \
-	so_activex_x64 \
-))
-endif
 
 $(eval $(call gb_Helper_register_executables_for_install,OOO,spsuppfiles, \
 	spsupp_helper \
@@ -736,7 +739,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,spsuppfiles
 $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_OOO,ooobinarytable, \
 	$(if $(WINDOWS_SDK_HOME),\
 		instooofiltmsi \
-		inst_msu_msi \
 		qslnkmsi \
 		reg_dlls \
 		reg4allmsdoc \
@@ -756,18 +758,6 @@ $(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_SHLXTHDL,winexp
 	propertyhdl \
 	shlxthdl \
 ))
-
-ifneq ($(BUILD_X64),)
-$(eval $(call gb_Helper_register_packages_for_install,winexplorerextwin64, \
-	$(if $(filter MSC,$(COM)),msvc_dlls) \
-))
-
-$(eval $(call gb_Helper_register_libraries_for_install,PLAINLIBS_SHLXTHDL,winexplorerextwin64, \
-	ooofilt_x64 \
-	propertyhdl_x64 \
-	shlxthdl_x64 \
-))
-endif # BUILD_X64
 
 endif # WNT
 
@@ -801,7 +791,6 @@ $(eval $(call gb_Helper_register_jars_for_install,URE,ure, \
 $(eval $(call gb_Helper_register_jars_for_install,OOO,ooo, \
 	ScriptFramework \
 	ScriptProviderForJava \
-	XMergeBridge \
 	commonwizards \
 	form \
 	$(if $(filter-out MACOSX,$(OS)),officebean) \
@@ -811,7 +800,6 @@ $(eval $(call gb_Helper_register_jars_for_install,OOO,ooo, \
 	smoketest \
 	table \
 	unoil \
-	xmerge \
 ))
 
 $(eval $(call gb_Helper_register_jars_for_install,OOO,reportbuilder, \
@@ -828,12 +816,6 @@ endif
 ifneq ($(ENABLE_SCRIPTING_JAVASCRIPT),)
 $(eval $(call gb_Helper_register_jars_for_install,OOO,extensions_rhino, \
 	ScriptProviderForJavaScript \
-))
-endif
-
-ifeq (NUMBERTEXT,$(filter NUMBERTEXT,$(BUILD_TYPE)))
-$(eval $(call gb_Helper_register_packages_for_install,extensions_numbertext,\
-	numbertext \
 ))
 endif
 
@@ -862,7 +844,7 @@ endif
 # Other packages could be potentially autoinstalled.
 $(eval $(call gb_Helper_register_packages, \
 	test_unittest \
-	cli_basetypes_copy \
+	$(if $(ENABLE_CLI),cli_basetypes_copy) \
 	extras_wordbook \
 	instsetoo_native_setup \
 	$(if $(ENABLE_OOENV),instsetoo_native_ooenv) \
@@ -890,6 +872,14 @@ $(eval $(call gb_Helper_register_packages_for_install,ure,\
 	instsetoo_native_setup_ure \
     $(call gb_CondExeUno,uno_sh) \
 	ure_install \
+	$(if $(ENABLE_DOTNET),\
+		net_basetypes \
+		net_uretypes \
+		net_oootypes \
+		net_bridge \
+		net_nuget_pkg \
+		net_nuget_config \
+	) \
 	$(if $(ENABLE_JAVA),\
 		jvmfwk_jvmfwk3_ini \
 		jvmfwk_javavendors \
@@ -905,7 +895,9 @@ $(eval $(call gb_Helper_register_packages_for_install,postgresqlsdbc,\
 $(eval $(call gb_Helper_register_packages_for_install,sdk,\
 	odk_share_readme \
 	odk_share_readme_generated \
-	$(if $(filter WNT,$(OS)),$(if $(filter-out AARCH64_TRUE,$(CPUNAME)_$(CROSS_COMPILING)),odk_cli)) \
+	$(if $(ENABLE_CLI),\
+		$(if $(filter WNT,$(OS)),$(if $(filter-out AARCH64_TRUE,$(CPUNAME)_$(CROSS_COMPILING)),odk_cli)) \
+	) \
 	odk_config \
 	$(if $(filter WNT,$(OS)),odk_config_win) \
 	odk_docs \
@@ -920,6 +912,7 @@ $(eval $(call gb_Helper_register_packages_for_install,sdk,\
 		odk_javadoc \
 		odk_uno_loader_classes \
 	) \
+	odk_scripts \
 ))
 
 ifneq ($(ENABLE_WASM_STRIP_PINGUSER),TRUE)
@@ -940,8 +933,13 @@ $(eval $(call gb_Helper_register_packages_for_install,ooo,\
 	$(if $(filter $(OS),MACOSX), \
 		extensions_mdibundle \
 		extensions_OOoSpotlightImporter \
+		extensions_quicklookpreviewappex \
+		extensions_QuickLookPreview \
+		extensions_quicklookthumbnailappex \
+		extensions_QuickLookThumbnail \
 	) \
 	extras_autocorr \
+	extras_autotext \
 	extras_autotextuser \
 	extras_cfgsrvnolang \
 	extras_cfgusr \
@@ -963,10 +961,10 @@ $(eval $(call gb_Helper_register_packages_for_install,ooo,\
 	extras_persona_pink \
 	extras_persona_sand \
 	extras_persona_white \
+	extras_tplpresnt \
 	extras_tplwizdesktop \
 	$(if $(WITH_TEMPLATES),\
 		extras_templates \
-		extras_tplpresnt \
 		extras_tplwizbitmap \
 		extras_tplwizard \
 	) \
@@ -994,7 +992,6 @@ $(eval $(call gb_Helper_register_packages_for_install,ooo,\
 	wizards_basicshare \
 	wizards_basicsrvaccess2base \
 	wizards_basicsrvdepot \
-	wizards_basicsrveuro \
 	wizards_basicsrvgimmicks \
 	wizards_basicsrvimport \
 	wizards_basicsrvform \
@@ -1026,6 +1023,7 @@ $(eval $(call gb_Helper_register_packages_for_install,ooo,\
 		Pyuno/mailmerge \
 	) \
 	sfx2_classification \
+	svx_document_themes \
     $(if $(filter OPENCL,$(BUILD_TYPE)),sc_opencl_runtimetest) \
 	$(if $(ENABLE_HTMLHELP),\
 		helpcontent2_html_dynamic \
@@ -1035,6 +1033,10 @@ $(eval $(call gb_Helper_register_packages_for_install,ooo,\
 	) \
 	resource_fonts \
 	cui \
+	$(if $(filter EMSCRIPTEN,$(OS)), \
+	    favicon \
+	    unoembind \
+	) \
 ))
 
 $(eval $(call gb_Helper_register_packages_for_install,ooo_fonts,\
@@ -1053,9 +1055,29 @@ $(eval $(call gb_Helper_register_packages_for_install,ooo_fonts,\
 		fonts_liberation_narrow \
 		fonts_libertineg \
 		fonts_libre_hebrew \
-		fonts_noto \
+		fonts_noto_kufi_arabic \
+		fonts_noto_naskh_arabic \
+		fonts_noto_sans \
+		fonts_noto_sans_arabic \
+		fonts_noto_sans_armenian \
+		fonts_noto_sans_georgian \
+		fonts_noto_sans_hebrew \
+		fonts_noto_sans_lao \
+		fonts_noto_sans_lisu \
+		fonts_noto_serif \
+		fonts_noto_serif_armenian \
+		fonts_noto_serif_georgian \
+		fonts_noto_serif_hebrew \
+		fonts_noto_serif_lao \
 		fonts_reem \
 		fonts_scheherazade \
+		$(if $(WITH_DOCREPAIR_FONTS),fonts_agdasima,) \
+		$(if $(WITH_DOCREPAIR_FONTS),fonts_bacasime_antique,) \
+		$(if $(WITH_DOCREPAIR_FONTS),fonts_belanosima,) \
+		$(if $(WITH_DOCREPAIR_FONTS),fonts_caprasimo,) \
+		$(if $(WITH_DOCREPAIR_FONTS),fonts_lugrasimo,) \
+		$(if $(WITH_DOCREPAIR_FONTS),fonts_lumanosimo,) \
+		$(if $(WITH_DOCREPAIR_FONTS),fonts_lunasima,) \
 	) \
 ))
 
@@ -1097,7 +1119,10 @@ $(eval $(call gb_Helper_register_packages_for_install,brand,\
 	readlicense_oo_files \
 	readlicense_oo_license \
 	$(call gb_Helper_optional,DESKTOP,setup_native_packinfo) \
-	$(if $(ENABLE_ONLINE_UPDATE_MAR),updater_ini) \
+	$(if $(ENABLE_ONLINE_UPDATE_MAR), \
+	    update-settings_ini \
+	    updater_ini \
+	) \
 ))
 
 ifeq ($(USING_X11), TRUE)
@@ -1163,7 +1188,6 @@ $(eval $(call gb_ExternalExecutable_register_executables,\
 
 # Resources
 $(eval $(call gb_Helper_register_mos,\
-	acc \
     $(call gb_Helper_optional,AVMEDIA,avmedia) \
 	$(call gb_Helper_optional,SCRIPTING,basctl) \
 	chart \

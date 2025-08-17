@@ -16,8 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_VCL_HYPERLABEL_HXX
-#define INCLUDED_VCL_HYPERLABEL_HXX
+
+#pragma once
 
 #include <vcl/toolkit/fixed.hxx>
 
@@ -31,8 +31,6 @@ namespace vcl
         virtual void        MouseButtonDown( const MouseEvent& rMEvt ) override;
         virtual void        GetFocus() override;
         virtual void        LoseFocus() override;
-
-        void                implInit();
 
         using FixedText::CalcMinimumSize;
 
@@ -65,7 +63,5 @@ namespace vcl
         bool                m_bHyperMode;
     };
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

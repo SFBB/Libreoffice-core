@@ -64,28 +64,28 @@ SvxMeasureDialog::SvxMeasureDialog(weld::Window* pParent, const SfxItemSet& rInA
 \************************************************************************/
 
 SvxMeasurePage::SvxMeasurePage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SvxTabPage(pPage, pController, "cui/ui/dimensionlinestabpage.ui", "DimensionLinesTabPage", rInAttrs)
+    : SvxTabPage(pPage, pController, u"cui/ui/dimensionlinestabpage.ui"_ustr, u"DimensionLinesTabPage"_ustr, rInAttrs)
     , rOutAttrs(rInAttrs)
     , aAttrSet(*rInAttrs.GetPool())
     , pView(nullptr)
     , eUnit(MapUnit::Map100thMM)
     , bPositionModified(false)
     , m_aCtlPosition(this)
-    , m_xMtrFldLineDist(m_xBuilder->weld_metric_spin_button("MTR_LINE_DIST", FieldUnit::MM))
-    , m_xMtrFldHelplineOverhang(m_xBuilder->weld_metric_spin_button("MTR_FLD_HELPLINE_OVERHANG", FieldUnit::MM))
-    , m_xMtrFldHelplineDist(m_xBuilder->weld_metric_spin_button("MTR_FLD_HELPLINE_DIST", FieldUnit::MM))
-    , m_xMtrFldHelpline1Len(m_xBuilder->weld_metric_spin_button("MTR_FLD_HELPLINE1_LEN", FieldUnit::MM))
-    , m_xMtrFldHelpline2Len(m_xBuilder->weld_metric_spin_button("MTR_FLD_HELPLINE2_LEN", FieldUnit::MM))
-    , m_xTsbBelowRefEdge(m_xBuilder->weld_check_button("TSB_BELOW_REF_EDGE"))
-    , m_xMtrFldDecimalPlaces(m_xBuilder->weld_spin_button("MTR_FLD_DECIMALPLACES"))
-    , m_xTsbAutoPosV(m_xBuilder->weld_check_button("TSB_AUTOPOSV"))
-    , m_xTsbAutoPosH(m_xBuilder->weld_check_button("TSB_AUTOPOSH"))
-    , m_xTsbShowUnit(m_xBuilder->weld_check_button("TSB_SHOW_UNIT"))
-    , m_xLbUnit(m_xBuilder->weld_combo_box("LB_UNIT"))
-    , m_xTsbParallel(m_xBuilder->weld_check_button("TSB_PARALLEL"))
-    , m_xFtAutomatic(m_xBuilder->weld_label("STR_MEASURE_AUTOMATIC"))
-    , m_xCtlPosition(new weld::CustomWeld(*m_xBuilder, "CTL_POSITION", m_aCtlPosition))
-    , m_xCtlPreview(new weld::CustomWeld(*m_xBuilder, "CTL_PREVIEW", m_aCtlPreview))
+    , m_xMtrFldLineDist(m_xBuilder->weld_metric_spin_button(u"MTR_LINE_DIST"_ustr, FieldUnit::MM))
+    , m_xMtrFldHelplineOverhang(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_HELPLINE_OVERHANG"_ustr, FieldUnit::MM))
+    , m_xMtrFldHelplineDist(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_HELPLINE_DIST"_ustr, FieldUnit::MM))
+    , m_xMtrFldHelpline1Len(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_HELPLINE1_LEN"_ustr, FieldUnit::MM))
+    , m_xMtrFldHelpline2Len(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_HELPLINE2_LEN"_ustr, FieldUnit::MM))
+    , m_xTsbBelowRefEdge(m_xBuilder->weld_check_button(u"TSB_BELOW_REF_EDGE"_ustr))
+    , m_xMtrFldDecimalPlaces(m_xBuilder->weld_spin_button(u"MTR_FLD_DECIMALPLACES"_ustr))
+    , m_xTsbAutoPosV(m_xBuilder->weld_check_button(u"TSB_AUTOPOSV"_ustr))
+    , m_xTsbAutoPosH(m_xBuilder->weld_check_button(u"TSB_AUTOPOSH"_ustr))
+    , m_xTsbShowUnit(m_xBuilder->weld_check_button(u"TSB_SHOW_UNIT"_ustr))
+    , m_xLbUnit(m_xBuilder->weld_combo_box(u"LB_UNIT"_ustr))
+    , m_xTsbParallel(m_xBuilder->weld_check_button(u"TSB_PARALLEL"_ustr))
+    , m_xFtAutomatic(m_xBuilder->weld_label(u"STR_MEASURE_AUTOMATIC"_ustr))
+    , m_xCtlPosition(new weld::CustomWeld(*m_xBuilder, u"CTL_POSITION"_ustr, m_aCtlPosition))
+    , m_xCtlPreview(new weld::CustomWeld(*m_xBuilder, u"CTL_PREVIEW"_ustr, m_aCtlPreview))
 {
     m_aCtlPreview.SetAttributes(rInAttrs);
 
@@ -149,14 +149,14 @@ void SvxMeasurePage::Reset( const SfxItemSet* rAttrs )
 
     // SdrMeasureLineDistItem
     if( pItem == nullptr )
-        pItem = &pPool->GetDefaultItem( SDRATTR_MEASURELINEDIST );
+        pItem = &pPool->GetUserOrPoolDefaultItem( SDRATTR_MEASURELINEDIST );
     SetMetricValue(*m_xMtrFldLineDist, static_cast<const SdrMetricItem*>(pItem)->GetValue(), eUnit);
     m_xMtrFldLineDist->save_value();
 
     // SdrMeasureHelplineOverhangItem
     pItem = GetItem( *rAttrs, SDRATTR_MEASUREHELPLINEOVERHANG );
     if( pItem == nullptr )
-        pItem = &pPool->GetDefaultItem( SDRATTR_MEASUREHELPLINEOVERHANG );
+        pItem = &pPool->GetUserOrPoolDefaultItem( SDRATTR_MEASUREHELPLINEOVERHANG );
     SetMetricValue(*m_xMtrFldHelplineOverhang, static_cast<const SdrMetricItem*>(pItem)->GetValue(),
                    eUnit);
     m_xMtrFldHelplineOverhang->save_value();
@@ -164,7 +164,7 @@ void SvxMeasurePage::Reset( const SfxItemSet* rAttrs )
     // SdrMeasureHelplineDistItem
     pItem = GetItem( *rAttrs, SDRATTR_MEASUREHELPLINEDIST );
     if( pItem == nullptr )
-        pItem = &pPool->GetDefaultItem( SDRATTR_MEASUREHELPLINEDIST );
+        pItem = &pPool->GetUserOrPoolDefaultItem( SDRATTR_MEASUREHELPLINEDIST );
     SetMetricValue(*m_xMtrFldHelplineDist, static_cast<const SdrMetricItem*>(pItem)->GetValue(),
                    eUnit);
     m_xMtrFldHelplineDist->save_value();
@@ -172,7 +172,7 @@ void SvxMeasurePage::Reset( const SfxItemSet* rAttrs )
     // SdrMeasureHelpline1LenItem
     pItem = GetItem( *rAttrs, SDRATTR_MEASUREHELPLINE1LEN );
     if( pItem == nullptr )
-        pItem = &pPool->GetDefaultItem( SDRATTR_MEASUREHELPLINE1LEN );
+        pItem = &pPool->GetUserOrPoolDefaultItem( SDRATTR_MEASUREHELPLINE1LEN );
     SetMetricValue(*m_xMtrFldHelpline1Len, static_cast<const SdrMetricItem*>(pItem)->GetValue(),
                    eUnit);
     m_xMtrFldHelpline1Len->save_value();
@@ -180,13 +180,13 @@ void SvxMeasurePage::Reset( const SfxItemSet* rAttrs )
     // SdrMeasureHelpline2LenItem
     pItem = GetItem( *rAttrs, SDRATTR_MEASUREHELPLINE2LEN );
     if( pItem == nullptr )
-        pItem = &pPool->GetDefaultItem( SDRATTR_MEASUREHELPLINE2LEN );
+        pItem = &pPool->GetUserOrPoolDefaultItem( SDRATTR_MEASUREHELPLINE2LEN );
     SetMetricValue(*m_xMtrFldHelpline2Len, static_cast<const SdrMetricItem*>(pItem)->GetValue(),
                    eUnit);
     m_xMtrFldHelpline2Len->save_value();
 
     // SdrMeasureBelowRefEdgeItem
-    if( rAttrs->GetItemState( SDRATTR_MEASUREBELOWREFEDGE ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( SDRATTR_MEASUREBELOWREFEDGE ) != SfxItemState::INVALID )
     {
         m_xTsbBelowRefEdge->set_state( rAttrs->Get( SDRATTR_MEASUREBELOWREFEDGE ).
                         GetValue() ? TRISTATE_TRUE : TRISTATE_FALSE );
@@ -200,14 +200,14 @@ void SvxMeasurePage::Reset( const SfxItemSet* rAttrs )
     // SdrMeasureDecimalPlacesItem
     pItem = GetItem( *rAttrs, SDRATTR_MEASUREDECIMALPLACES );
     if( pItem == nullptr )
-        pItem = &pPool->GetDefaultItem( SDRATTR_MEASUREDECIMALPLACES );
+        pItem = &pPool->GetUserOrPoolDefaultItem( SDRATTR_MEASUREDECIMALPLACES );
     m_xMtrFldDecimalPlaces->set_value(
       static_cast<const SdrMeasureDecimalPlacesItem*>(pItem)->GetValue());
     m_xMtrFldDecimalPlaces->save_value();
 
     // SdrMeasureTextRota90Item
     // Attention: negate !
-    if( rAttrs->GetItemState( SDRATTR_MEASURETEXTROTA90 ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( SDRATTR_MEASURETEXTROTA90 ) != SfxItemState::INVALID )
     {
         m_xTsbParallel->set_state( rAttrs->Get( SDRATTR_MEASURETEXTROTA90 ).
                         GetValue() ? TRISTATE_FALSE : TRISTATE_TRUE );
@@ -219,7 +219,7 @@ void SvxMeasurePage::Reset( const SfxItemSet* rAttrs )
     m_xTsbParallel->save_state();
 
     // SdrMeasureShowUnitItem
-    if( rAttrs->GetItemState( SDRATTR_MEASURESHOWUNIT ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( SDRATTR_MEASURESHOWUNIT ) != SfxItemState::INVALID )
     {
         m_xTsbShowUnit->set_state( rAttrs->Get( SDRATTR_MEASURESHOWUNIT ).
                         GetValue() ? TRISTATE_TRUE : TRISTATE_FALSE );
@@ -231,7 +231,7 @@ void SvxMeasurePage::Reset( const SfxItemSet* rAttrs )
     m_xTsbShowUnit->save_state();
 
     // SdrMeasureUnitItem
-    if( rAttrs->GetItemState( SDRATTR_MEASUREUNIT ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( SDRATTR_MEASUREUNIT ) != SfxItemState::INVALID )
     {
         tools::Long nFieldUnit = static_cast<tools::Long>(rAttrs->Get( SDRATTR_MEASUREUNIT ).GetValue());
 
@@ -251,78 +251,67 @@ void SvxMeasurePage::Reset( const SfxItemSet* rAttrs )
     m_xLbUnit->save_value();
 
     // Position
-    if ( rAttrs->GetItemState( SDRATTR_MEASURETEXTVPOS ) != SfxItemState::DONTCARE )
+    if ( rAttrs->GetItemState( SDRATTR_MEASURETEXTVPOS ) != SfxItemState::INVALID )
     {
         css::drawing::MeasureTextVertPos eVPos =
                     rAttrs->Get( SDRATTR_MEASURETEXTVPOS ).GetValue();
+        if ( rAttrs->GetItemState( SDRATTR_MEASURETEXTHPOS ) != SfxItemState::INVALID )
         {
-            if ( rAttrs->GetItemState( SDRATTR_MEASURETEXTHPOS ) != SfxItemState::DONTCARE )
+            css::drawing::MeasureTextHorzPos eHPos =
+                        rAttrs->Get( SDRATTR_MEASURETEXTHPOS ).GetValue();
+            RectPoint eRP = RectPoint::MM;
+            switch( eVPos )
             {
-                css::drawing::MeasureTextHorzPos eHPos =
-                            rAttrs->Get( SDRATTR_MEASURETEXTHPOS ).GetValue();
-                RectPoint eRP = RectPoint::MM;
-                switch( eVPos )
+            case css::drawing::MeasureTextVertPos_EAST:
+                switch( eHPos )
                 {
-                case css::drawing::MeasureTextVertPos_EAST:
-                    switch( eHPos )
-                    {
-                    case css::drawing::MeasureTextHorzPos_LEFTOUTSIDE:    eRP = RectPoint::LT; break;
-                    case css::drawing::MeasureTextHorzPos_INSIDE:         eRP = RectPoint::MT; break;
-                    case css::drawing::MeasureTextHorzPos_RIGHTOUTSIDE:   eRP = RectPoint::RT; break;
-                    case css::drawing::MeasureTextHorzPos_AUTO:          eRP = RectPoint::MT; break;
-                    default: break;
-                    }
-                    break;
-                case css::drawing::MeasureTextVertPos_CENTERED:
-                    switch( eHPos )
-                    {
-                    case css::drawing::MeasureTextHorzPos_LEFTOUTSIDE:    eRP = RectPoint::LM; break;
-                    case css::drawing::MeasureTextHorzPos_INSIDE:         eRP = RectPoint::MM; break;
-                    case css::drawing::MeasureTextHorzPos_RIGHTOUTSIDE:   eRP = RectPoint::RM; break;
-                    case css::drawing::MeasureTextHorzPos_AUTO:          eRP = RectPoint::MM; break;
-                    default: break;
-                    }
-                    break;
-                case css::drawing::MeasureTextVertPos_WEST:
-                    switch( eHPos )
-                    {
-                    case css::drawing::MeasureTextHorzPos_LEFTOUTSIDE:    eRP = RectPoint::LB; break;
-                    case css::drawing::MeasureTextHorzPos_INSIDE:         eRP = RectPoint::MB; break;
-                    case css::drawing::MeasureTextHorzPos_RIGHTOUTSIDE:   eRP = RectPoint::RB; break;
-                    case css::drawing::MeasureTextHorzPos_AUTO:          eRP = RectPoint::MB; break;
-                    default: break;
-                    }
-                    break;
-                case css::drawing::MeasureTextVertPos_AUTO:
-                    switch( eHPos )
-                    {
-                    case css::drawing::MeasureTextHorzPos_LEFTOUTSIDE:    eRP = RectPoint::LM; break;
-                    case css::drawing::MeasureTextHorzPos_INSIDE:         eRP = RectPoint::MM; break;
-                    case css::drawing::MeasureTextHorzPos_RIGHTOUTSIDE:   eRP = RectPoint::RM; break;
-                    case css::drawing::MeasureTextHorzPos_AUTO:          eRP = RectPoint::MM; break;
-                    default: break;
-                    }
-                    break;
-                 default: ;//prevent warning
+                case css::drawing::MeasureTextHorzPos_LEFTOUTSIDE:    eRP = RectPoint::LT; break;
+                case css::drawing::MeasureTextHorzPos_INSIDE:         eRP = RectPoint::MT; break;
+                case css::drawing::MeasureTextHorzPos_RIGHTOUTSIDE:   eRP = RectPoint::RT; break;
+                case css::drawing::MeasureTextHorzPos_AUTO:          eRP = RectPoint::MT; break;
+                default: break;
                 }
-
-                CTL_STATE nState = CTL_STATE::NONE;
-
-                if (eHPos == css::drawing::MeasureTextHorzPos_AUTO)
+                break;
+            case css::drawing::MeasureTextVertPos_CENTERED:
+            case css::drawing::MeasureTextVertPos_AUTO:
+                switch( eHPos )
                 {
-                    m_xTsbAutoPosH->set_state( TRISTATE_TRUE );
-                    nState = CTL_STATE::NOHORZ;
+                case css::drawing::MeasureTextHorzPos_LEFTOUTSIDE:    eRP = RectPoint::LM; break;
+                case css::drawing::MeasureTextHorzPos_INSIDE:         eRP = RectPoint::MM; break;
+                case css::drawing::MeasureTextHorzPos_RIGHTOUTSIDE:   eRP = RectPoint::RM; break;
+                case css::drawing::MeasureTextHorzPos_AUTO:          eRP = RectPoint::MM; break;
+                default: break;
                 }
-
-                if (eVPos == css::drawing::MeasureTextVertPos_AUTO)
+                break;
+            case css::drawing::MeasureTextVertPos_WEST:
+                switch( eHPos )
                 {
-                    m_xTsbAutoPosV->set_state( TRISTATE_TRUE );
-                    nState |= CTL_STATE::NOVERT;
+                case css::drawing::MeasureTextHorzPos_LEFTOUTSIDE:    eRP = RectPoint::LB; break;
+                case css::drawing::MeasureTextHorzPos_INSIDE:         eRP = RectPoint::MB; break;
+                case css::drawing::MeasureTextHorzPos_RIGHTOUTSIDE:   eRP = RectPoint::RB; break;
+                case css::drawing::MeasureTextHorzPos_AUTO:          eRP = RectPoint::MB; break;
+                default: break;
                 }
-
-                m_aCtlPosition.SetState(nState);
-                m_aCtlPosition.SetActualRP(eRP);
+                break;
+             default: ;//prevent warning
             }
+
+            CTL_STATE nState = CTL_STATE::NONE;
+
+            if (eHPos == css::drawing::MeasureTextHorzPos_AUTO)
+            {
+                m_xTsbAutoPosH->set_state( TRISTATE_TRUE );
+                nState = CTL_STATE::NOHORZ;
+            }
+
+            if (eVPos == css::drawing::MeasureTextVertPos_AUTO)
+            {
+                m_xTsbAutoPosV->set_state( TRISTATE_TRUE );
+                nState |= CTL_STATE::NOVERT;
+            }
+
+            m_aCtlPosition.SetState(nState);
+            m_aCtlPosition.SetActualRP(eRP);
         }
     }
     else
@@ -465,7 +454,7 @@ bool SvxMeasurePage::FillItemSet( SfxItemSet* rAttrs)
         if (m_xTsbAutoPosV->get_state() == TRISTATE_TRUE)
             eVPos = css::drawing::MeasureTextVertPos_AUTO;
 
-        if ( rAttrs->GetItemState( SDRATTR_MEASURETEXTVPOS ) != SfxItemState::DONTCARE )
+        if ( rAttrs->GetItemState( SDRATTR_MEASURETEXTVPOS ) != SfxItemState::INVALID )
         {
             css::drawing::MeasureTextVertPos eOldVPos = rOutAttrs.Get(SDRATTR_MEASURETEXTVPOS).GetValue();
             if( eOldVPos != eVPos )
@@ -480,7 +469,7 @@ bool SvxMeasurePage::FillItemSet( SfxItemSet* rAttrs)
             bModified = true;
         }
 
-        if ( rAttrs->GetItemState( SDRATTR_MEASURETEXTHPOS ) != SfxItemState::DONTCARE )
+        if ( rAttrs->GetItemState( SDRATTR_MEASURETEXTHPOS ) != SfxItemState::INVALID )
         {
             css::drawing::MeasureTextHorzPos eOldHPos = rOutAttrs.Get( SDRATTR_MEASURETEXTHPOS ).GetValue();
             if( eOldHPos != eHPos )

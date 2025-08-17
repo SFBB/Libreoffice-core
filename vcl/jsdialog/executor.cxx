@@ -7,13 +7,69 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <boost/property_tree/json_parser.hpp>
+#include <frozen/bits/defines.h>
+#include <frozen/bits/elsa_std.h>
+#include <frozen/unordered_map.h>
 #include <jsdialog/jsdialogbuilder.hxx>
 #include <o3tl/string_view.hxx>
-#include <vcl/weld.hxx>
-#include <vcl/jsdialog/executor.hxx>
-#include <sal/log.hxx>
 #include <rtl/uri.hxx>
-#include <boost/property_tree/json_parser.hpp>
+#include <sal/log.hxx>
+#include <string_view>
+#include <vcl/jsdialog/executor.hxx>
+
+/// returns true if execution was successful
+using JSWidgetExecutor = bool (*)(weld::Widget&, const StringMap&);
+
+namespace
+{
+bool EmptyExecutor(weld::Widget&, const StringMap&) { return false; };
+
+bool FocusExecutor(weld::Widget& rWidget, const StringMap&)
+{
+    rWidget.grab_focus();
+    return true;
+};
+
+bool CustomRendererExecutor(weld::Widget& rWidget, const StringMap& rData)
+{
+    auto pRenderer = dynamic_cast<OnDemandRenderingHandler*>(&rWidget);
+    if (!pRenderer)
+        return false;
+
+    // pos;dpix;dpiy
+    const OUString& sParams = rData.at(u"data"_ustr);
+    const OUString aPos = sParams.getToken(0, ';');
+    const OUString aDpiScaleX = sParams.getToken(1, ';');
+    const OUString aDpiScaleY = sParams.getToken(2, ';');
+
+    pRenderer->render_entry(o3tl::toInt32(aPos), o3tl::toInt32(aDpiScaleX),
+                            o3tl::toInt32(aDpiScaleY));
+
+    return true;
+};
+
+constexpr auto ActionExecutors
+    = frozen::make_unordered_map<std::u16string_view, const JSWidgetExecutor>({
+        { u"grab_focus", FocusExecutor },
+        { u"render_entry", CustomRendererExecutor },
+    });
+
+} // end of namespace
+
+namespace JSWidgetExecutorSelector
+{
+static JSWidgetExecutor get(const std::u16string_view& /*sControlType*/,
+                            const std::u16string_view& sAction)
+{
+    auto aFound = ActionExecutors.find(sAction);
+    if (aFound != ActionExecutors.end())
+        return aFound->second;
+
+    return EmptyExecutor;
+}
+
+} // end of namespace JSWidgetExecutorSelector
 
 namespace jsdialog
 {
@@ -35,9 +91,20 @@ StringMap jsonToStringMap(const char* pJSON)
     return aArgs;
 }
 
+void SendNavigatorForView(const sal_uInt64 nShellId)
+{
+    jsdialog::SendFullUpdate(OUString::number(nShellId) + "navigator", "NavigatorPanel");
+}
+
+void SendSidebarForView(const sal_uInt64 nShellId)
+{
+    jsdialog::SendFullUpdate(OUString::number(nShellId) + "sidebar", "Panel");
+}
+
 void SendFullUpdate(const OUString& nWindowId, const OUString& rWidget)
 {
-    weld::Widget* pWidget = JSInstanceBuilder::FindWeldWidgetsMap(nWindowId, rWidget);
+    auto aWidgetMap = JSInstanceBuilder::Widgets().Find(nWindowId);
+    weld::Widget* pWidget = aWidgetMap ? aWidgetMap->Find(rWidget) : nullptr;
     if (auto pJSWidget = dynamic_cast<BaseJSWidget*>(pWidget))
         pJSWidget->sendFullUpdate();
 }
@@ -45,17 +112,19 @@ void SendFullUpdate(const OUString& nWindowId, const OUString& rWidget)
 void SendAction(const OUString& nWindowId, const OUString& rWidget,
                 std::unique_ptr<ActionDataMap> pData)
 {
-    weld::Widget* pWidget = JSInstanceBuilder::FindWeldWidgetsMap(nWindowId, rWidget);
+    auto aWidgetMap = JSInstanceBuilder::Widgets().Find(nWindowId);
+    weld::Widget* pWidget = aWidgetMap ? aWidgetMap->Find(rWidget) : nullptr;
     if (auto pJSWidget = dynamic_cast<BaseJSWidget*>(pWidget))
         pJSWidget->sendAction(std::move(pData));
 }
 
-bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap& rData)
+bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, const StringMap& rData)
 {
-    weld::Widget* pWidget = JSInstanceBuilder::FindWeldWidgetsMap(nWindowId, rWidget);
+    auto aWidgetMap = JSInstanceBuilder::Widgets().Find(nWindowId);
+    weld::Widget* pWidget = aWidgetMap ? aWidgetMap->Find(rWidget) : nullptr;
 
-    OUString sControlType = rData["type"];
-    OUString sAction = rData["cmd"];
+    OUString sControlType = rData.at(u"type"_ustr);
+    OUString sAction = rData.at(u"cmd"_ustr);
 
     if (sControlType == "responsebutton")
     {
@@ -63,7 +132,8 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
         if (pWidget == nullptr || (pButton && !pButton->is_custom_handler_set()))
         {
             // welded wrapper not found - use response code instead
-            pWidget = JSInstanceBuilder::FindWeldWidgetsMap(nWindowId, "__DIALOG__");
+            auto aWindowMap = JSInstanceBuilder::Widgets().Find(nWindowId);
+            pWidget = aWindowMap ? aWindowMap->Find(u"__DIALOG__"_ustr) : nullptr;
             sControlType = "dialog";
             sAction = "response";
         }
@@ -74,13 +144,30 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
         }
     }
 
-    if (pWidget != nullptr)
+    if (pWidget == nullptr)
     {
-        if (sAction == "grab_focus")
+        // weld::Menu doesn't have base of weld::Widget
+        if (rWidget == "__MENU__")
         {
-            pWidget->grab_focus();
-            return true;
+            weld::Menu* pMenu = JSInstanceBuilder::Menus().Find(nWindowId);
+            if (pMenu && sAction == "select")
+            {
+                LOKTrigger::trigger_activated(*pMenu, rData.at("data"));
+                return true;
+            }
         }
+        return false;
+    }
+    else
+    {
+        assert(pWidget);
+
+        const JSWidgetExecutor rExecutor = JSWidgetExecutorSelector::get(sControlType, sAction);
+        if (rExecutor(*pWidget, rData))
+            return true;
+
+        // TODO: convert to executors like above
+        // depends on type
 
         if (sControlType == "tabcontrol")
         {
@@ -89,7 +176,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             {
                 if (sAction == "selecttab")
                 {
-                    sal_Int32 page = o3tl::toInt32(rData["data"]);
+                    sal_Int32 page = o3tl::toInt32(rData.at(u"data"_ustr));
 
                     OUString aCurrentPage = pNotebook->get_current_page_ident();
                     LOKTrigger::leave_page(*pNotebook, aCurrentPage);
@@ -107,7 +194,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             {
                 if (sAction == "selected")
                 {
-                    OUString sSelectedData = rData["data"];
+                    OUString sSelectedData = rData.at(u"data"_ustr);
                     int separatorPos = sSelectedData.indexOf(';');
                     if (separatorPos > 0)
                     {
@@ -123,26 +210,10 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                     // it might be other class than JSComboBox
                     auto pJSCombobox = dynamic_cast<JSComboBox*>(pWidget);
                     if (pJSCombobox)
-                        pJSCombobox->set_entry_text_without_notify(rData["data"]);
+                        pJSCombobox->set_entry_text_without_notify(rData.at(u"data"_ustr));
                     else
-                        pCombobox->set_entry_text(rData["data"]);
+                        pCombobox->set_entry_text(rData.at(u"data"_ustr));
                     LOKTrigger::trigger_changed(*pCombobox);
-                    return true;
-                }
-                else if (sAction == "render_entry")
-                {
-                    auto pJSCombobox = dynamic_cast<JSComboBox*>(pWidget);
-                    if (pJSCombobox)
-                    {
-                        // pos;dpix;dpiy
-                        const OUString& sParams = rData["data"];
-                        const OUString aPos = sParams.getToken(0, ';');
-                        const OUString aDpiScaleX = sParams.getToken(1, ';');
-                        const OUString aDpiScaleY = sParams.getToken(2, ';');
-
-                        pJSCombobox->render_entry(o3tl::toInt32(aPos), o3tl::toInt32(aDpiScaleX),
-                                                  o3tl::toInt32(aDpiScaleY));
-                    }
                     return true;
                 }
             }
@@ -160,6 +231,18 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 else if (sAction == "toggle")
                 {
                     LOKTrigger::trigger_toggled(dynamic_cast<weld::Toggleable&>(*pWidget));
+                    return true;
+                }
+            }
+        }
+        else if (sControlType == "linkbutton")
+        {
+            auto pButton = dynamic_cast<weld::LinkButton*>(pWidget);
+            if (pButton)
+            {
+                if (sAction == "click")
+                {
+                    LOKTrigger::activate_link(*pButton);
                     return true;
                 }
             }
@@ -184,7 +267,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 }
                 else if (sAction == "select")
                 {
-                    LOKTrigger::trigger_selected(*pButton, rData["data"]);
+                    LOKTrigger::trigger_selected(*pButton, rData.at(u"data"_ustr));
                     return true;
                 }
             }
@@ -196,7 +279,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             {
                 if (sAction == "change")
                 {
-                    bool bChecked = rData["data"] == "true";
+                    bool bChecked = rData.at(u"data"_ustr) == "true";
                     pCheckButton->set_state(bChecked ? TRISTATE_TRUE : TRISTATE_FALSE);
                     LOKTrigger::trigger_toggled(*static_cast<weld::Toggleable*>(pCheckButton));
                     return true;
@@ -211,7 +294,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 if (sAction == "click" || sAction == "dblclick" || sAction == "mousemove"
                     || sAction == "mousedown" || sAction == "mouseup")
                 {
-                    OUString sClickData = rData["data"];
+                    OUString sClickData = rData.at(u"data"_ustr);
                     int nSeparatorPos = sClickData.indexOf(';');
                     if (nSeparatorPos > 0)
                     {
@@ -248,14 +331,14 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 }
                 else if (sAction == "keypress")
                 {
-                    sal_uInt32 nKeyNo = rData["data"].toUInt32();
+                    sal_uInt32 nKeyNo = rData.at(u"data"_ustr).toUInt32();
                     LOKTrigger::trigger_key_press(*pArea, KeyEvent(nKeyNo, vcl::KeyCode(nKeyNo)));
                     LOKTrigger::trigger_key_release(*pArea, KeyEvent(nKeyNo, vcl::KeyCode(nKeyNo)));
                     return true;
                 }
                 else if (sAction == "textselection")
                 {
-                    OUString sTextData = rData["data"];
+                    OUString sTextData = rData.at(u"data"_ustr);
                     int nSeparatorPos = sTextData.indexOf(';');
                     if (nSeparatorPos <= 0)
                         return true;
@@ -323,14 +406,14 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             {
                 if (sAction == "change" || sAction == "value")
                 {
-                    if (rData["data"] == "undefined")
+                    if (rData.at(u"data"_ustr) == "undefined")
                         return true;
 
                     // The Document will not scroll if that is in focus
                     // maybe we could send a message with: sAction == "grab_focus"
                     pWidget->grab_focus();
 
-                    double nValue = o3tl::toDouble(rData["data"]);
+                    double nValue = o3tl::toDouble(rData.at(u"data"_ustr));
                     pSpinField->set_value(nValue
                                           * weld::SpinButton::Power10(pSpinField->get_digits()));
                     LOKTrigger::trigger_value_changed(*pSpinField);
@@ -355,7 +438,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             {
                 if (sAction == "change")
                 {
-                    pFormattedField->set_text(rData["data"]);
+                    pFormattedField->set_text(rData.at(u"data"_ustr));
                     LOKTrigger::trigger_changed(*pFormattedField);
                     LOKTrigger::trigger_value_changed(*pFormattedField);
                     return true;
@@ -369,24 +452,24 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             {
                 if (sAction == "click")
                 {
-                    LOKTrigger::trigger_clicked(*pToolbar, rData["data"]);
+                    LOKTrigger::trigger_clicked(*pToolbar, rData.at(u"data"_ustr));
                     return true;
                 }
                 else if (sAction == "togglemenu")
                 {
-                    const OUString& sId = rData["data"];
+                    const OUString& sId = rData.at(u"data"_ustr);
                     bool bIsActive = pToolbar->get_menu_item_active(sId);
                     pToolbar->set_menu_item_active(sId, !bIsActive);
                     return true;
                 }
                 else if (sAction == "closemenu")
                 {
-                    pToolbar->set_menu_item_active(rData["data"], false);
+                    pToolbar->set_menu_item_active(rData.at(u"data"_ustr), false);
                     return true;
                 }
                 else if (sAction == "openmenu")
                 {
-                    pToolbar->set_menu_item_active(rData["data"], true);
+                    pToolbar->set_menu_item_active(rData.at(u"data"_ustr), true);
                     return true;
                 }
             }
@@ -398,7 +481,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             {
                 if (sAction == "change")
                 {
-                    pEdit->set_text_without_notify(rData["data"]);
+                    pEdit->set_text_without_notify(rData.at(u"data"_ustr));
                     LOKTrigger::trigger_changed(*pEdit);
                     return true;
                 }
@@ -411,7 +494,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 {
                     int rStartPos, rEndPos;
                     pTextView->get_selection_bounds(rStartPos, rEndPos);
-                    pTextView->set_text_without_notify(rData["data"]);
+                    pTextView->set_text_without_notify(rData.at(u"data"_ustr));
                     pTextView->select_region(rStartPos, rEndPos);
                     LOKTrigger::trigger_changed(*pTextView);
                     return true;
@@ -419,7 +502,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 else if (sAction == "textselection")
                 {
                     // start;end
-                    OUString sTextData = rData["data"];
+                    OUString sTextData = rData.at(u"data"_ustr);
                     int nSeparatorPos = sTextData.indexOf(';');
                     if (nSeparatorPos <= 0)
                         return true;
@@ -448,13 +531,13 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 if (sAction == "change")
                 {
                     OUString sDataJSON = rtl::Uri::decode(
-                        rData["data"], rtl_UriDecodeMechanism::rtl_UriDecodeWithCharset,
+                        rData.at(u"data"_ustr), rtl_UriDecodeMechanism::rtl_UriDecodeWithCharset,
                         RTL_TEXTENCODING_UTF8);
                     StringMap aMap(jsonToStringMap(
                         OUStringToOString(sDataJSON, RTL_TEXTENCODING_ASCII_US).getStr()));
 
-                    sal_Int32 nRow = o3tl::toInt32(aMap["row"]);
-                    bool bValue = aMap["value"] == "true";
+                    sal_Int32 nRow = o3tl::toInt32(aMap[u"row"_ustr]);
+                    bool bValue = aMap[u"value"_ustr] == "true";
 
                     pTreeView->set_toggle(nRow, bValue ? TRISTATE_TRUE : TRISTATE_FALSE);
 
@@ -462,7 +545,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 }
                 else if (sAction == "select")
                 {
-                    sal_Int32 nAbsPos = o3tl::toInt32(rData["data"]);
+                    sal_Int32 nAbsPos = o3tl::toInt32(rData.at(u"data"_ustr));
 
                     pTreeView->unselect_all();
 
@@ -481,7 +564,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 }
                 else if (sAction == "activate")
                 {
-                    sal_Int32 nRow = o3tl::toInt32(rData["data"]);
+                    sal_Int32 nRow = o3tl::toInt32(rData.at(u"data"_ustr));
 
                     pTreeView->unselect_all();
                     std::unique_ptr<weld::TreeIter> itEntry(pTreeView->make_iterator());
@@ -500,7 +583,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 }
                 else if (sAction == "expand")
                 {
-                    sal_Int32 nAbsPos = o3tl::toInt32(rData["data"]);
+                    sal_Int32 nAbsPos = o3tl::toInt32(rData.at(u"data"_ustr));
                     std::unique_ptr<weld::TreeIter> itEntry(pTreeView->make_iterator());
                     if (pTreeView->get_iter_abs_pos(*itEntry, nAbsPos))
                     {
@@ -515,7 +598,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 }
                 else if (sAction == "collapse")
                 {
-                    sal_Int32 nAbsPos = o3tl::toInt32(rData["data"]);
+                    sal_Int32 nAbsPos = o3tl::toInt32(rData.at(u"data"_ustr));
                     std::unique_ptr<weld::TreeIter> itEntry(pTreeView->make_iterator());
                     if (pTreeView->get_iter_abs_pos(*itEntry, nAbsPos))
                     {
@@ -530,7 +613,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 }
                 else if (sAction == "dragstart")
                 {
-                    sal_Int32 nRow = o3tl::toInt32(rData["data"]);
+                    sal_Int32 nRow = o3tl::toInt32(rData.at(u"data"_ustr));
 
                     pTreeView->select(nRow);
                     pTreeView->drag_start();
@@ -542,6 +625,29 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                     pTreeView->drag_end();
                     return true;
                 }
+                else if (sAction == "contextmenu")
+                {
+                    sal_Int32 nEntryAbsPos = o3tl::toInt32(rData.at(u"data"_ustr));
+
+                    std::unique_ptr<weld::TreeIter> itEntry(pTreeView->make_iterator());
+                    if (pTreeView->get_iter_abs_pos(*itEntry, nEntryAbsPos))
+                    {
+                        // avoid negative coordinates and crash
+                        pTreeView->scroll_to_row(*itEntry);
+
+                        tools::Rectangle aRect = pTreeView->get_row_area(*itEntry);
+                        Point aPoint = aRect.Center();
+                        assert(aPoint.getX() >= 0 && aPoint.getY() >= 0);
+
+                        CommandEvent aCommand(aPoint, CommandEventId::ContextMenu);
+
+                        LOKTrigger::trigger_popup_menu(*pTreeView, aCommand);
+                    }
+                    else
+                        SAL_WARN("vcl", "No absolute position found for " << nEntryAbsPos
+                                                                          << " in treeview");
+                    return true;
+                }
             }
         }
         else if (sControlType == "iconview")
@@ -551,7 +657,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             {
                 if (sAction == "select")
                 {
-                    sal_Int32 nPos = o3tl::toInt32(rData["data"]);
+                    sal_Int32 nPos = o3tl::toInt32(rData.at(u"data"_ustr));
 
                     pIconView->select(nPos);
                     LOKTrigger::trigger_changed(*pIconView);
@@ -560,11 +666,25 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 }
                 else if (sAction == "activate")
                 {
-                    sal_Int32 nPos = o3tl::toInt32(rData["data"]);
+                    sal_Int32 nPos = o3tl::toInt32(rData.at(u"data"_ustr));
 
                     pIconView->select(nPos);
                     LOKTrigger::trigger_changed(*pIconView);
                     LOKTrigger::trigger_item_activated(*pIconView);
+
+                    return true;
+                }
+                else if (sAction == "contextmenu")
+                {
+                    sal_Int32 nPos = o3tl::toInt32(rData.at(u"data"_ustr));
+
+                    tools::Rectangle aRect = pIconView->get_rect(nPos);
+                    Point aPoint = aRect.Center();
+                    assert(aPoint.getX() >= 0 && aPoint.getY() >= 0);
+
+                    MouseEvent aMouseEvent(aPoint, 1, MouseEventModifiers::NONE, MOUSE_RIGHT, 0);
+
+                    LOKTrigger::trigger_mouse_press(*pIconView, aMouseEvent);
 
                     return true;
                 }
@@ -594,7 +714,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
                 }
                 else if (sAction == "response")
                 {
-                    sal_Int32 nResponse = o3tl::toInt32(rData["data"]);
+                    sal_Int32 nResponse = o3tl::toInt32(rData.at(u"data"_ustr));
                     pDialog->response(nResponse);
                     return true;
                 }
@@ -619,8 +739,8 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             {
                 if (sAction == "change")
                 {
-                    bool bChecked = rData["data"] == "true";
-                    pRadioButton->set_state(bChecked ? TRISTATE_TRUE : TRISTATE_FALSE);
+                    bool bChecked = rData.at(u"data"_ustr) == "true";
+                    pRadioButton->set_active(bChecked);
                     LOKTrigger::trigger_toggled(*static_cast<weld::Toggleable*>(pRadioButton));
                     return true;
                 }
@@ -633,14 +753,14 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             {
                 if (sAction == "scrollv")
                 {
-                    sal_Int32 nValue = o3tl::toInt32(rData["data"]);
+                    sal_Int32 nValue = o3tl::toInt32(rData.at(u"data"_ustr));
                     pScrolledWindow->vadjustment_set_value_no_notification(nValue);
                     LOKTrigger::trigger_scrollv(*pScrolledWindow);
                     return true;
                 }
                 else if (sAction == "scrollh")
                 {
-                    sal_Int32 nValue = o3tl::toInt32(rData["data"]);
+                    sal_Int32 nValue = o3tl::toInt32(rData.at(u"data"_ustr));
                     pScrolledWindow->hadjustment_set_value_no_notification(nValue);
                     LOKTrigger::trigger_scrollh(*pScrolledWindow);
                     return true;
@@ -653,7 +773,7 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, StringMap
             if (pCalendar && sAction == "selectdate")
             {
                 // MM/DD/YYYY
-                OUString aDate = rData["data"];
+                OUString aDate = rData.at(u"data"_ustr);
 
                 if (aDate.getLength() < 10)
                     return false;

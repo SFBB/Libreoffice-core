@@ -25,8 +25,10 @@
 
 #include <osl/thread.hxx>
 #include <osl/conditn.hxx>
+#include <vcl/svapp.hxx>
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -51,7 +53,7 @@ public:
     TimeValue maDueTime;
     const sal_Int64 mnRepeatInterval;
     const sal_Int32 mnTaskId;
-    bool mbIsCanceled;
+    std::atomic<bool> mbIsCanceled;
 };
 
 typedef std::shared_ptr<TimerTask> SharedTimerTask;
@@ -96,7 +98,11 @@ public:
 
     static void NotifyTermination();
 #if !defined NDEBUG
-    static bool HasInstance() { return mpInstance != nullptr; }
+    static bool HasInstance()
+    {
+        std::scoped_lock aGuard (maInstanceMutex);
+        return mpInstance != nullptr;
+    }
 #endif
 
 private:
@@ -256,11 +262,14 @@ void TimerScheduler::CancelTask (const sal_Int32 nTaskId)
 
 void TimerScheduler::NotifyTermination()
 {
-    std::shared_ptr<TimerScheduler> const pInstance(TimerScheduler::mpInstance);
-    if (!pInstance)
+    std::shared_ptr<TimerScheduler> pInstance;
     {
-        return;
+        std::scoped_lock aGuard (maInstanceMutex);
+        pInstance = TimerScheduler::mpInstance;
     }
+
+    if (!pInstance)
+        return;
 
     {
         std::scoped_lock aGuard(pInstance->maTaskContainerMutex);
@@ -270,9 +279,7 @@ void TimerScheduler::NotifyTermination()
     {
         std::scoped_lock aGuard(pInstance->maCurrentTaskMutex);
         if (pInstance->mpCurrentTask)
-        {
             pInstance->mpCurrentTask->mbIsCanceled = true;
-        }
     }
 
     pInstance->m_Shutdown.set();
@@ -442,14 +449,6 @@ PresenterClockTimer::PresenterClockTimer (const Reference<XComponentContext>& rx
       m_xContext(rxContext)
 {
     assert(m_xContext.is());
-    Reference<lang::XMultiComponentFactory> xFactory =
-        rxContext->getServiceManager();
-    if (xFactory.is())
-        mxRequestCallback.set(
-            xFactory->createInstanceWithContext(
-                "com.sun.star.awt.AsyncCallback",
-                rxContext),
-            UNO_QUERY_THROW);
 }
 
 PresenterClockTimer::~PresenterClockTimer()
@@ -460,10 +459,8 @@ PresenterClockTimer::~PresenterClockTimer()
         mnTimerTaskId = PresenterTimer::NotAValidTaskId;
     }
 
-    Reference<lang::XComponent> xComponent (mxRequestCallback, UNO_QUERY);
-    if (xComponent.is())
-        xComponent->dispose();
-    mxRequestCallback = nullptr;
+    if (mpRequestCallbackId)
+        Application::RemoveUserEvent(mpRequestCallbackId);
 }
 
 void PresenterClockTimer::AddListener (const SharedListener& rListener)
@@ -516,8 +513,7 @@ oslDateTime PresenterClockTimer::GetCurrentTime()
 
 void PresenterClockTimer::CheckCurrentTime (const TimeValue& rCurrentTime)
 {
-    css::uno::Reference<css::awt::XRequestCallback> xRequestCallback;
-    css::uno::Reference<css::awt::XCallback> xCallback;
+    bool bAddCallback = false;
     {
         std::unique_lock aGuard (maMutex);
 
@@ -534,23 +530,23 @@ void PresenterClockTimer::CheckCurrentTime (const TimeValue& rCurrentTime)
                 maDateTime = aDateTime;
 
                 // Schedule notification of listeners.
-                if (mxRequestCallback.is() && ! mbIsCallbackPending)
+                if (! mbIsCallbackPending)
                 {
                     mbIsCallbackPending = true;
-                    xRequestCallback = mxRequestCallback;
-                    xCallback = this;
+                    bAddCallback = true;
                 }
             }
         }
     }
-    if (xRequestCallback.is() && xCallback.is())
-        xRequestCallback->addCallback(xCallback, Any());
+    if (bAddCallback)
+        mpRequestCallbackId = Application::PostUserEvent(LINK(this, PresenterClockTimer, HandleCall_PostUserEvent));
 }
 
-//----- XCallback -------------------------------------------------------------
 
-void SAL_CALL PresenterClockTimer::notify (const css::uno::Any&)
+IMPL_LINK_NOARG( PresenterClockTimer, HandleCall_PostUserEvent, void*, void )
 {
+    mpRequestCallbackId = nullptr;
+
     ListenerContainer aListenerCopy;
 
     {

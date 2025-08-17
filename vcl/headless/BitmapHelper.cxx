@@ -18,7 +18,9 @@
  */
 
 #include <headless/BitmapHelper.hxx>
-#include <svdata.hxx>
+#include <vcl/cairo.hxx>
+#include <vcl/CairoFormats.hxx>
+#include <vcl/svapp.hxx>
 #include <utility>
 
 BitmapHelper::BitmapHelper(const SalBitmap& rSourceBitmap, const bool bForceARGB32)
@@ -39,9 +41,10 @@ BitmapHelper::BitmapHelper(const SalBitmap& rSourceBitmap, const bool bForceARGB
         const SalTwoRect aTwoRect
             = { 0, 0, pSrc->mnWidth, pSrc->mnHeight, 0, 0, pSrc->mnWidth, pSrc->mnHeight };
         std::optional<BitmapBuffer> pTmp
-            = (pSrc->mnFormat == SVP_24BIT_FORMAT
-                   ? FastConvert24BitRgbTo32BitCairo(pSrc)
-                   : StretchAndConvert(*pSrc, aTwoRect, SVP_CAIRO_FORMAT));
+            = (pSrc->meFormat == SVP_24BIT_FORMAT
+               && pSrc->meDirection == ScanlineDirection::TopDown)
+                  ? FastConvert24BitRgbTo32BitCairo(pSrc)
+                  : StretchAndConvert(*pSrc, aTwoRect, SVP_CAIRO_FORMAT);
         aTmpBmp.Create(std::move(pTmp));
 
         assert(aTmpBmp.GetBitCount() == 32);
@@ -127,7 +130,8 @@ sal_Int64 estimateUsageInBytesForSurfaceHelper(const SurfaceHelper* pHelper)
 
 SystemDependentData_BitmapHelper::SystemDependentData_BitmapHelper(
     std::shared_ptr<BitmapHelper> xBitmapHelper)
-    : basegfx::SystemDependentData(Application::GetSystemDependentDataManager())
+    : basegfx::SystemDependentData(Application::GetSystemDependentDataManager(),
+                                   basegfx::SDD_Type::SDDType_BitmapHelper)
     , maBitmapHelper(std::move(xBitmapHelper))
 {
 }
@@ -139,7 +143,8 @@ sal_Int64 SystemDependentData_BitmapHelper::estimateUsageInBytes() const
 
 SystemDependentData_MaskHelper::SystemDependentData_MaskHelper(
     std::shared_ptr<MaskHelper> xMaskHelper)
-    : basegfx::SystemDependentData(Application::GetSystemDependentDataManager())
+    : basegfx::SystemDependentData(Application::GetSystemDependentDataManager(),
+                                   basegfx::SDD_Type::SDDType_MaskHelper)
     , maMaskHelper(std::move(xMaskHelper))
 {
 }
@@ -168,7 +173,8 @@ void tryToUseSourceBuffer(const SalBitmap& rSourceBitmap, std::shared_ptr<Bitmap
     if (bBufferSource)
     {
         pSystemDependentData_BitmapHelper
-            = rSourceBitmap.getSystemDependentData<SystemDependentData_BitmapHelper>();
+            = rSourceBitmap.getSystemDependentData<SystemDependentData_BitmapHelper>(
+                basegfx::SDD_Type::SDDType_BitmapHelper);
 
         if (pSystemDependentData_BitmapHelper)
         {
@@ -201,7 +207,8 @@ void tryToUseMaskBuffer(const SalBitmap& rMaskBitmap, std::shared_ptr<MaskHelper
     if (bBufferMask)
     {
         pSystemDependentData_MaskHelper
-            = rMaskBitmap.getSystemDependentData<SystemDependentData_MaskHelper>();
+            = rMaskBitmap.getSystemDependentData<SystemDependentData_MaskHelper>(
+                basegfx::SDD_Type::SDDType_MaskHelper);
 
         if (pSystemDependentData_MaskHelper)
         {

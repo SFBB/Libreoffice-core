@@ -90,7 +90,6 @@ using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::xforms;
 using namespace ::xmloff::token;
@@ -122,13 +121,13 @@ SwXMLBodyContext_Impl::SwXMLBodyContext_Impl( SwXMLImport& rImport ) :
     OUString const sDefault(SwResId(STR_POOLCHR_STANDARD));
     uno::Reference<container::XNameContainer> const& xStyles(
             rImport.GetTextImport()->GetTextStyles());
-    if (!xStyles->hasByName("Default"))
+    if (!xStyles->hasByName(u"Default"_ustr))
     {   // this old name was used before LO 4.0
-        rImport.AddStyleDisplayName(XmlStyleFamily::TEXT_TEXT, "Default", sDefault);
+        rImport.AddStyleDisplayName(XmlStyleFamily::TEXT_TEXT, u"Default"_ustr, sDefault);
     }
-    if (!xStyles->hasByName("Default_20_Style"))
+    if (!xStyles->hasByName(u"Default_20_Style"_ustr))
     {   // this new name contains a space which is converted to _20_ on export
-        rImport.AddStyleDisplayName(XmlStyleFamily::TEXT_TEXT, "Default_20_Style", sDefault);
+        rImport.AddStyleDisplayName(XmlStyleFamily::TEXT_TEXT, u"Default_20_Style"_ustr, sDefault);
     }
     bool isEncoded(false);
     OUString const defaultEncoded(
@@ -394,7 +393,7 @@ void SwXMLImport::startDocument()
     {
         Any aAny;
         // insert style mode?
-        OUString sStyleInsertModeFamilies("StyleInsertModeFamilies");
+        OUString sStyleInsertModeFamilies(u"StyleInsertModeFamilies"_ustr);
         if( xPropertySetInfo->hasPropertyByName(sStyleInsertModeFamilies) )
         {
             aAny = xImportInfo->getPropertyValue(sStyleInsertModeFamilies);
@@ -402,7 +401,7 @@ void SwXMLImport::startDocument()
             if( aAny >>= aFamiliesSeq )
             {
                 SfxStyleFamily nFamilyMask = SfxStyleFamily::None;
-                for( const OUString& rFamily : std::as_const(aFamiliesSeq) )
+                for (const OUString& rFamily : aFamiliesSeq)
                 {
                     if( rFamily=="FrameStyles" )
                         nFamilyMask |= SfxStyleFamily::Frame;
@@ -476,12 +475,12 @@ void SwXMLImport::startDocument()
             {
                 Reference<lang::XMultiServiceFactory> xFac(GetModel(), UNO_QUERY);
                 Reference<XPropertySet> xProps(
-                    xFac->createInstance("com.sun.star.document.Settings"), UNO_QUERY);
+                    xFac->createInstance(u"com.sun.star.document.Settings"_ustr), UNO_QUERY);
                 Reference<XPropertySetInfo> xInfo(xProps->getPropertySetInfo());
 
                 if (xProps.is() && xInfo.is())
                 {
-                    for (const auto& rProp : std::as_const(aProps))
+                    for (const auto& rProp : aProps)
                     {
                         if (xInfo->hasPropertyByName(rProp.Name))
                         {
@@ -632,6 +631,275 @@ void SwXMLImport::endDocument()
     if( HasShapeImport() )
         ClearShapeImport();
 
+    SwDoc *pDoc = endDocAdjustNodes();
+
+    /* Was called too early. Moved from SwXMLBodyContext_Impl::EndElement */
+
+    GetTextImport()->RedlineAdjustStartNodeCursor();
+
+    if( (getImportFlags() & SvXMLImportFlags::CONTENT) ||
+        ((getImportFlags() & SvXMLImportFlags::MASTERSTYLES) && IsStylesOnlyMode()) )
+    {
+        // pDoc might be 0. In this case UpdateTextCollCondition is looking
+        // for it itself.
+        UpdateTextCollConditions( pDoc );
+    }
+
+    GetTextImport()->ResetCursor();
+
+    m_oSttNdIdx.reset();
+
+    // tdf#150753: pDoc may be null e.g. when the package lacks content.xml;
+    // we should not forget to tidy up here, including unlocking draw model
+    if (!pDoc)
+        pDoc = getDoc();
+    assert(pDoc);
+    // SJ: #i49801# -> now permitting repaints
+    if (getImportFlags() == SvXMLImportFlags::ALL)
+    {
+        // Notify math objects. If we are in the package filter this will
+        // be done by the filter object itself
+        if (IsInsertMode())
+            pDoc->PrtOLENotify(false);
+        else if (pDoc->IsOLEPrtNotifyPending())
+            pDoc->PrtOLENotify(true);
+
+        assert(pDoc->IsInReading());
+        assert(pDoc->IsInXMLImport());
+        pDoc->SetInReading(false);
+        pDoc->SetInXMLImport(false);
+        pDoc->SetInXMLImport242(false);
+    }
+
+    SwDrawModel* pDrawModel = pDoc->getIDocumentDrawModelAccess().GetDrawModel();
+    if (pDrawModel)
+        pDrawModel->setLock(false);
+
+    // #i90243#
+    if ( m_bInititedXForms )
+    {
+        Reference< xforms::XFormsSupplier > xFormsSupp( GetModel(), UNO_QUERY );
+        Reference< XNameAccess > xXForms;
+        if ( xFormsSupp.is() )
+            xXForms = xFormsSupp->getXForms().get();
+
+        if ( xXForms.is() )
+        {
+            try
+            {
+                Sequence< beans::PropertyValue > aXFormsSettings;
+
+                const OUString& sXFormsSettingsName( GetXMLToken( XML_XFORM_MODEL_SETTINGS ) );
+                if ( m_xLateInitSettings.is() && m_xLateInitSettings->hasByName( sXFormsSettingsName ) )
+                {
+                    OSL_VERIFY( m_xLateInitSettings->getByName( sXFormsSettingsName ) >>= aXFormsSettings );
+                    applyXFormsSettings( xXForms, aXFormsSettings );
+                }
+            }
+            catch( const Exception& )
+            {
+            }
+        }
+    }
+
+    for (SwNodeOffset i(0); i < pDoc->GetNodes().Count(); ++i)
+    {
+        if (SwTableNode *const pTableNode = pDoc->GetNodes()[i]->GetTableNode())
+        {
+            if (!pTableNode->GetTable().IsNewModel()
+                && pTableNode->GetTable().CanConvertSubtables())
+            {
+                pTableNode->GetTable().ConvertSubtables();
+            }
+        }
+        // don't skip to the end; nested tables could have subtables too...
+    }
+
+    // delegate to parent: takes care of error handling
+    SvXMLImport::endDocument();
+    ClearTextImport();
+}
+
+// tdf#113877
+// when we insert one document with list inside into another one with list at the insert position,
+// the resulting numbering in these lists is not consequent.
+//
+// CASE-1: Main document:
+//  1. One
+//  2. Two
+//  3. Three
+//  4.                      <-- insert position
+//
+// Inserted document:
+//  1. One
+//  2. Two
+//  3. Three
+//  4.
+//
+// Expected result
+//  1. One
+//  2. Two
+//  3. Three
+//  4. One
+//  5. Two
+//  6. Three
+//  7.
+//
+// CASE-2: Main document:
+//  1. One
+//  2. Two
+//  3. Three
+//  4.                      <-- insert position
+//
+// Inserted document:
+//  A) One
+//  B) Two
+//  C) Three
+//  D)
+//
+// Expected result
+//  1. One
+//  2. Two
+//  3. Three
+//  4. One
+//  A) Two
+//  B) Three
+//  5.
+//
+void SwXMLImport::MergeListsAtDocumentInsertPosition(SwDoc *pDoc)
+{
+    // 1. check environment
+    if (! pDoc)
+        return;
+
+    if (! IsInsertMode() || ! m_oSttNdIdx->GetIndex())
+        return;
+
+    SwNodeOffset index(1);
+
+    // the last node of the main document where we have inserted a document
+    SwNode* const node1 = pDoc->GetNodes()[m_oSttNdIdx->GetIndex() + 0];
+
+    // the first node of the inserted document
+    SwNode* node2 = pDoc->GetNodes()[m_oSttNdIdx->GetIndex() + index];
+
+    if (! (node1 && node2
+        && (node1->GetNodeType() == node2->GetNodeType())
+        && (node1->IsTextNode() == node2->IsTextNode())
+        ))
+    {
+        // not a text node at insert position
+        return;
+    }
+
+    // 2. get the first node of the inserted document,
+    // which will be used to detect if inside inserted document a new list was started after the first list
+    const SfxPoolItem* pListId2Initial = nullptr;
+    {
+        SwContentNode* contentNode1 = static_cast<SwContentNode *>(node1);
+        SwContentNode* contentNode2 = static_cast<SwContentNode *>(node2);
+
+        // check if both lists have the same list properties
+        const SfxPoolItem* pListId1 = contentNode1->GetNoCondAttr( RES_PARATR_LIST_ID, false );
+        const SfxPoolItem* pListId2 = contentNode2->GetNoCondAttr( RES_PARATR_LIST_ID, false );
+
+        if (! pListId1)
+            return;
+        if (! pListId2)
+            return;
+
+        auto pStringListId1 = dynamic_cast<const SfxStringItem*>(pListId1);
+        assert(pStringListId1);
+        const OUString& sListId1 = pStringListId1->GetValue();
+        auto pStringListId2 = dynamic_cast<const SfxStringItem*>(pListId2);
+        assert(pStringListId2);
+        const OUString& sListId2 = pStringListId2->GetValue();
+
+        const SwList* pList1 = pDoc->getIDocumentListsAccess().getListByName( sListId1 );
+        const SwList* pList2 = pDoc->getIDocumentListsAccess().getListByName( sListId2 );
+
+        if (! pList1)
+            return;
+        if (! pList2)
+            return;
+
+        const UIName& sDefaultListStyleName1 = pList1->GetDefaultListStyleName();
+        const UIName& sDefaultListStyleName2 = pList2->GetDefaultListStyleName();
+
+        if (sDefaultListStyleName1 != sDefaultListStyleName2)
+        {
+            const SwNumRule* pNumRule1 = pDoc->FindNumRulePtr( sDefaultListStyleName1 );
+            const SwNumRule* pNumRule2 = pDoc->FindNumRulePtr( sDefaultListStyleName2 );
+
+            if (pNumRule1 && pNumRule2)
+            {
+                // check style of the each list level
+                for( sal_uInt8 n = 0; n < MAXLEVEL; ++n )
+                {
+                    if( pNumRule1->Get( n ) != pNumRule2->Get( n ) )
+                    {
+                        return;
+                    }
+                }
+
+                // our list should be merged
+                pListId2Initial = pListId2;
+            }
+        }
+        else
+        {
+            // our list should be merged
+            pListId2Initial = pListId2;
+        }
+    }
+
+    if (! pListId2Initial)
+    {
+        // two lists have different styles => they should not be merged
+        return;
+    }
+
+    // 3. merge two lists
+    while (
+        node1 && node2
+        && (node1->GetNodeType() == node2->GetNodeType())
+        && (node1->IsTextNode() == node2->IsTextNode())
+        )
+    {
+        SwContentNode* contentNode1 = static_cast<SwContentNode *>( node1 );
+        SwContentNode* contentNode2 = static_cast<SwContentNode *>( node2 );
+
+        const SfxPoolItem* pListId1 = contentNode1->GetNoCondAttr( RES_PARATR_LIST_ID, false );
+        const SfxPoolItem* pListId2 = contentNode2->GetNoCondAttr( RES_PARATR_LIST_ID, false );
+
+        if (! pListId1)
+            return;
+        if (! pListId2)
+            return;
+
+        if (*pListId2Initial != *pListId2)
+        {
+            // no more list items of the first list inside inserted document
+            return;
+        }
+
+        // set list style to this list element
+        contentNode2->SetAttr(*pListId1);
+
+        // get next item
+        index++;
+        if (index >= pDoc->GetNodes().Count())
+        {
+            // no more items
+            return;
+        }
+
+        node2 = pDoc->GetNodes()[m_oSttNdIdx->GetIndex() + index];
+    }
+}
+
+SwDoc* SwXMLImport::endDocAdjustNodes()
+{
     SwDoc *pDoc = nullptr;
     if( (getImportFlags() & SvXMLImportFlags::CONTENT) && !IsStylesOnlyMode() )
     {
@@ -639,8 +907,17 @@ void SwXMLImport::endDocument()
                                               UNO_QUERY);
         assert(xCursorTunnel.is() && "missing XUnoTunnel for Cursor");
         OTextCursorHelper* pTextCursor = dynamic_cast<OTextCursorHelper*>(xCursorTunnel.get());
-        assert(pTextCursor && "SwXTextCursor missing");
+        if (!pTextCursor)
+        {
+            SAL_WARN("sw", "SwXMLImport::endDocAdjustNodes: SwXTextCursor missing");
+            return nullptr;
+        }
         SwPaM *pPaM = pTextCursor->GetPaM();
+        if (!pPaM)
+        {
+            SAL_WARN("sw", "SwXMLImport::endDocAdjustNodes: PaM missing");
+            return nullptr;
+        }
         if( IsInsertMode() && m_oSttNdIdx->GetIndex() )
         {
             // If we are in insert mode, join the split node that is in front
@@ -805,269 +1082,7 @@ void SwXMLImport::endDocument()
             MergeListsAtDocumentInsertPosition(pDoc);
         }
     }
-
-    /* Was called too early. Moved from SwXMLBodyContext_Impl::EndElement */
-
-    GetTextImport()->RedlineAdjustStartNodeCursor();
-
-    if( (getImportFlags() & SvXMLImportFlags::CONTENT) ||
-        ((getImportFlags() & SvXMLImportFlags::MASTERSTYLES) && IsStylesOnlyMode()) )
-    {
-        // pDoc might be 0. In this case UpdateTextCollCondition is looking
-        // for it itself.
-        UpdateTextCollConditions( pDoc );
-    }
-
-    GetTextImport()->ResetCursor();
-
-    m_oSttNdIdx.reset();
-
-    // tdf#150753: pDoc may be null e.g. when the package lacks content.xml;
-    // we should not forget to tidy up here, including unlocking draw model
-    if (!pDoc)
-        pDoc = getDoc();
-    assert(pDoc);
-    // SJ: #i49801# -> now permitting repaints
-    if (getImportFlags() == SvXMLImportFlags::ALL)
-    {
-        // Notify math objects. If we are in the package filter this will
-        // be done by the filter object itself
-        if (IsInsertMode())
-            pDoc->PrtOLENotify(false);
-        else if (pDoc->IsOLEPrtNotifyPending())
-            pDoc->PrtOLENotify(true);
-
-        assert(pDoc->IsInReading());
-        assert(pDoc->IsInXMLImport());
-        pDoc->SetInReading(false);
-        pDoc->SetInXMLImport(false);
-    }
-
-    SwDrawModel* pDrawModel = pDoc->getIDocumentDrawModelAccess().GetDrawModel();
-    if (pDrawModel)
-        pDrawModel->setLock(false);
-
-    // #i90243#
-    if ( m_bInititedXForms )
-    {
-        Reference< xforms::XFormsSupplier > xFormsSupp( GetModel(), UNO_QUERY );
-        Reference< XNameAccess > xXForms;
-        if ( xFormsSupp.is() )
-            xXForms = xFormsSupp->getXForms().get();
-
-        if ( xXForms.is() )
-        {
-            try
-            {
-                Sequence< beans::PropertyValue > aXFormsSettings;
-
-                const OUString& sXFormsSettingsName( GetXMLToken( XML_XFORM_MODEL_SETTINGS ) );
-                if ( m_xLateInitSettings.is() && m_xLateInitSettings->hasByName( sXFormsSettingsName ) )
-                {
-                    OSL_VERIFY( m_xLateInitSettings->getByName( sXFormsSettingsName ) >>= aXFormsSettings );
-                    applyXFormsSettings( xXForms, aXFormsSettings );
-                }
-            }
-            catch( const Exception& )
-            {
-            }
-        }
-    }
-
-    for (SwNodeOffset i(0); i < pDoc->GetNodes().Count(); ++i)
-    {
-        if (SwTableNode *const pTableNode = pDoc->GetNodes()[i]->GetTableNode())
-        {
-            if (!pTableNode->GetTable().IsNewModel()
-                && pTableNode->GetTable().CanConvertSubtables())
-            {
-                pTableNode->GetTable().ConvertSubtables();
-            }
-        }
-        // don't skip to the end; nested tables could have subtables too...
-    }
-
-    // delegate to parent: takes care of error handling
-    SvXMLImport::endDocument();
-    ClearTextImport();
-}
-
-// tdf#113877
-// when we insert one document with list inside into another one with list at the insert position,
-// the resulting numbering in these lists is not consequent.
-//
-// CASE-1: Main document:
-//  1. One
-//  2. Two
-//  3. Three
-//  4.                      <-- insert position
-//
-// Inserted document:
-//  1. One
-//  2. Two
-//  3. Three
-//  4.
-//
-// Expected result
-//  1. One
-//  2. Two
-//  3. Three
-//  4. One
-//  5. Two
-//  6. Three
-//  7.
-//
-// CASE-2: Main document:
-//  1. One
-//  2. Two
-//  3. Three
-//  4.                      <-- insert position
-//
-// Inserted document:
-//  A) One
-//  B) Two
-//  C) Three
-//  D)
-//
-// Expected result
-//  1. One
-//  2. Two
-//  3. Three
-//  4. One
-//  A) Two
-//  B) Three
-//  5.
-//
-void SwXMLImport::MergeListsAtDocumentInsertPosition(SwDoc *pDoc)
-{
-    // 1. check environment
-    if (! pDoc)
-        return;
-
-    if (! IsInsertMode() || ! m_oSttNdIdx->GetIndex())
-        return;
-
-    SwNodeOffset index(1);
-
-    // the last node of the main document where we have inserted a document
-    SwNode* const node1 = pDoc->GetNodes()[m_oSttNdIdx->GetIndex() + 0];
-
-    // the first node of the inserted document
-    SwNode* node2 = pDoc->GetNodes()[m_oSttNdIdx->GetIndex() + index];
-
-    if (! (node1 && node2
-        && (node1->GetNodeType() == node2->GetNodeType())
-        && (node1->IsTextNode() == node2->IsTextNode())
-        ))
-    {
-        // not a text node at insert position
-        return;
-    }
-
-    // 2. get the first node of the inserted document,
-    // which will be used to detect if inside inserted document a new list was started after the first list
-    const SfxPoolItem* pListId2Initial = nullptr;
-    {
-        SwContentNode* contentNode1 = static_cast<SwContentNode *>(node1);
-        SwContentNode* contentNode2 = static_cast<SwContentNode *>(node2);
-
-        // check if both lists have the same list properties
-        const SfxPoolItem* pListId1 = contentNode1->GetNoCondAttr( RES_PARATR_LIST_ID, false );
-        const SfxPoolItem* pListId2 = contentNode2->GetNoCondAttr( RES_PARATR_LIST_ID, false );
-
-        if (! pListId1)
-            return;
-        if (! pListId2)
-            return;
-
-        auto pStringListId1 = dynamic_cast<const SfxStringItem*>(pListId1);
-        assert(pStringListId1);
-        const OUString& sListId1 = pStringListId1->GetValue();
-        auto pStringListId2 = dynamic_cast<const SfxStringItem*>(pListId2);
-        assert(pStringListId2);
-        const OUString& sListId2 = pStringListId2->GetValue();
-
-        const SwList* pList1 = pDoc->getIDocumentListsAccess().getListByName( sListId1 );
-        const SwList* pList2 = pDoc->getIDocumentListsAccess().getListByName( sListId2 );
-
-        if (! pList1)
-            return;
-        if (! pList2)
-            return;
-
-        const OUString& sDefaultListStyleName1 = pList1->GetDefaultListStyleName();
-        const OUString& sDefaultListStyleName2 = pList2->GetDefaultListStyleName();
-
-        if (sDefaultListStyleName1 != sDefaultListStyleName2)
-        {
-            const SwNumRule* pNumRule1 = pDoc->FindNumRulePtr( sDefaultListStyleName1 );
-            const SwNumRule* pNumRule2 = pDoc->FindNumRulePtr( sDefaultListStyleName2 );
-
-            if (pNumRule1 && pNumRule2)
-            {
-                // check style of the each list level
-                for( sal_uInt8 n = 0; n < MAXLEVEL; ++n )
-                {
-                    if( pNumRule1->Get( n ) != pNumRule2->Get( n ) )
-                    {
-                        return;
-                    }
-                }
-
-                // our list should be merged
-                pListId2Initial = pListId2;
-            }
-        }
-        else
-        {
-            // our list should be merged
-            pListId2Initial = pListId2;
-        }
-    }
-
-    if (! pListId2Initial)
-    {
-        // two lists have different styles => they should not be merged
-        return;
-    }
-
-    // 3. merge two lists
-    while (
-        node1 && node2
-        && (node1->GetNodeType() == node2->GetNodeType())
-        && (node1->IsTextNode() == node2->IsTextNode())
-        )
-    {
-        SwContentNode* contentNode1 = static_cast<SwContentNode *>( node1 );
-        SwContentNode* contentNode2 = static_cast<SwContentNode *>( node2 );
-
-        const SfxPoolItem* pListId1 = contentNode1->GetNoCondAttr( RES_PARATR_LIST_ID, false );
-        const SfxPoolItem* pListId2 = contentNode2->GetNoCondAttr( RES_PARATR_LIST_ID, false );
-
-        if (! pListId1)
-            return;
-        if (! pListId2)
-            return;
-
-        if (*pListId2Initial != *pListId2)
-        {
-            // no more list items of the first list inside inserted document
-            return;
-        }
-
-        // set list style to this list element
-        contentNode2->SetAttr(*pListId1);
-
-        // get next item
-        index++;
-        if (index >= pDoc->GetNodes().Count())
-        {
-            // no more items
-            return;
-        }
-
-        node2 = pDoc->GetNodes()[m_oSttNdIdx->GetIndex() + index];
-    }
+    return pDoc;
 }
 
 namespace {
@@ -1148,23 +1163,26 @@ void SwXMLImport::SetViewSettings(const Sequence < PropertyValue > & aViewProps)
     if (IsInsertMode() || IsStylesOnlyMode() || IsBlockMode() || m_bOrganizerMode || !GetModel().is() )
         return;
 
+    SwDoc *pDoc = getDoc();
+    SwDocShell* pShell = pDoc->GetDocShell();
+    if (!pShell)
+        return;
+
     // this method will modify the document directly -> lock SolarMutex
     SolarMutexGuard aGuard;
 
-    SwDoc *pDoc = getDoc();
     tools::Rectangle aRect;
-    if( pDoc->GetDocShell() )
-        aRect = pDoc->GetDocShell()->GetVisArea( ASPECT_CONTENT );
-        //TODO/LATER: why that cast?!
-        //aRect = ((SfxInPlaceObject *)pDoc->GetDocShell())->GetVisArea();
+    aRect = pShell->GetVisArea( ASPECT_CONTENT );
+    //TODO/LATER: why that cast?!
+    //aRect = ((SfxInPlaceObject *)pShell)->GetVisArea();
 
     sal_Int64 nTmp = 0;
     bool bShowRedlineChanges = false, bBrowseMode = false;
     bool bChangeShowRedline = false, bChangeBrowseMode = false;
 
     //TODO/LATER: why that cast?!
-    bool bTwip = pDoc->GetDocShell()->GetMapUnit ( ) == MapUnit::MapTwip;
-    //sal_Bool bTwip = pDoc->GetDocShell()->SfxInPlaceObject::GetMapUnit ( ) == MapUnit::MapTwip;
+    bool bTwip = pShell->GetMapUnit ( ) == MapUnit::MapTwip;
+    //sal_Bool bTwip = pShell->SfxInPlaceObject::GetMapUnit ( ) == MapUnit::MapTwip;
 
     for (const PropertyValue& rValue : aViewProps)
     {
@@ -1204,8 +1222,7 @@ void SwXMLImport::SetViewSettings(const Sequence < PropertyValue > & aViewProps)
             bChangeBrowseMode = true;
         }
     }
-    if( pDoc->GetDocShell() )
-        pDoc->GetDocShell()->SetVisArea ( aRect );
+    pShell->SetVisArea ( aRect );
 
     if (bChangeBrowseMode)
         pDoc->getIDocumentSettingAccess().set(DocumentSettingId::BROWSE_MODE, bBrowseMode );
@@ -1226,7 +1243,7 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
     if( !xFac.is() )
         return;
 
-    Reference< XPropertySet > xProps( xFac->createInstance("com.sun.star.document.Settings"), UNO_QUERY );
+    Reference< XPropertySet > xProps( xFac->createInstance(u"com.sun.star.document.Settings"_ustr), UNO_QUERY );
     if( !xProps.is() )
         return;
 
@@ -1235,38 +1252,38 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
         return;
 
     std::unordered_set< OUString > aExcludeAlways;
-    aExcludeAlways.insert("LinkUpdateMode");
+    aExcludeAlways.insert(u"LinkUpdateMode"_ustr);
     // this should contain things that are actually user-settable, via Tools->Options
     std::unordered_set< OUString > aExcludeWhenNotLoadingUserSettings {
-        "ForbiddenCharacters",
-        "IsKernAsianPunctuation",
-        "CharacterCompressionType",
-        "FieldAutoUpdate",
-        "ChartAutoUpdate",
-        "AddParaTableSpacing",
-        "AddParaTableSpacingAtStart",
-        "PrintAnnotationMode",
-        "PrintBlackFonts",
-        "PrintControls",
-        "PrintGraphics",
-        "PrintHiddenText",
-        "PrintLeftPages",
-        "PrintPageBackground",
-        "PrintProspect",
-        "PrintRightPages",
-        "PrintFaxName",
-        "PrintPaperFromSetup",
-        "PrintTextPlaceholder",
-        "UpdateFromTemplate",
-        "PrinterIndependentLayout",
-        "PrintEmptyPages",
-        "ConsiderTextWrapOnObjPos",
-        "DoNotJustifyLinesWithManualBreak",
-        "ProtectForm",
-        "MsWordCompTrailingBlanks",
-        "SubtractFlysAnchoredAtFlys",
-        "EmptyDbFieldHidesPara",
-        "UseVariableWidthNBSP",
+        u"ForbiddenCharacters"_ustr,
+        u"IsKernAsianPunctuation"_ustr,
+        u"CharacterCompressionType"_ustr,
+        u"FieldAutoUpdate"_ustr,
+        u"ChartAutoUpdate"_ustr,
+        u"AddParaTableSpacing"_ustr,
+        u"AddParaTableSpacingAtStart"_ustr,
+        u"PrintAnnotationMode"_ustr,
+        u"PrintBlackFonts"_ustr,
+        u"PrintControls"_ustr,
+        u"PrintGraphics"_ustr,
+        u"PrintHiddenText"_ustr,
+        u"PrintLeftPages"_ustr,
+        u"PrintPageBackground"_ustr,
+        u"PrintProspect"_ustr,
+        u"PrintRightPages"_ustr,
+        u"PrintFaxName"_ustr,
+        u"PrintPaperFromSetup"_ustr,
+        u"PrintTextPlaceholder"_ustr,
+        u"UpdateFromTemplate"_ustr,
+        u"PrinterIndependentLayout"_ustr,
+        u"PrintEmptyPages"_ustr,
+        u"ConsiderTextWrapOnObjPos"_ustr,
+        u"DoNotJustifyLinesWithManualBreak"_ustr,
+        u"ProtectForm"_ustr,
+        u"MsWordCompTrailingBlanks"_ustr,
+        u"SubtractFlysAnchoredAtFlys"_ustr,
+        u"EmptyDbFieldHidesPara"_ustr,
+        u"UseVariableWidthNBSP"_ustr,
     };
 
     bool bAreUserSettingsFromDocument = officecfg::Office::Common::Load::UserDefinedSettings::get();
@@ -1301,6 +1318,8 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
     bool bDoNotBreakWrappedTables = false;
     bool bAllowTextAfterFloatingTableBreak = false;
     bool bDropCapPunctuation = false;
+    bool bDoNotMirrorRtlDrawObjs = false;
+    bool bIgnoreHiddenCharsForLineCalculation = false;
 
     const PropertyValue* currentDatabaseDataSource = nullptr;
     const PropertyValue* currentDatabaseCommand = nullptr;
@@ -1408,6 +1427,14 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
                 }
                 else if ( rValue.Name == "DropCapPunctuation" )
                     bDropCapPunctuation = true;
+                else if (rValue.Name == "DoNotMirrorRtlDrawObjs")
+                {
+                    rValue.Value >>= bDoNotMirrorRtlDrawObjs;
+                }
+                else if (rValue.Name == "IgnoreHiddenCharsForLineCalculation")
+                {
+                    bIgnoreHiddenCharsForLineCalculation = true;
+                }
             }
             catch( Exception& )
             {
@@ -1440,47 +1467,47 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
     // (Obviously the setting doesn't exist if we are explicitly ignoring it, so then stick with program/user defaults)
     if(!bPrinterIndependentLayout && bAreUserSettingsFromDocument)
     {
-        xProps->setPropertyValue( "PrinterIndependentLayout", Any(sal_Int16(document::PrinterIndependentLayout::DISABLED)) );
+        xProps->setPropertyValue( u"PrinterIndependentLayout"_ustr, Any(sal_Int16(document::PrinterIndependentLayout::DISABLED)) );
     }
 
     if( ! bAddExternalLeading )
     {
-        xProps->setPropertyValue( "AddExternalLeading", Any( false ) );
+        xProps->setPropertyValue( u"AddExternalLeading"_ustr, Any( false ) );
     }
 
     if( ! bUseFormerLineSpacing )
     {
-        xProps->setPropertyValue( "UseFormerLineSpacing", Any( true ) );
+        xProps->setPropertyValue( u"UseFormerLineSpacing"_ustr, Any( true ) );
     }
 
     if( !bUseFormerObjectPositioning )
     {
-        xProps->setPropertyValue( "UseFormerObjectPositioning", Any( true ) );
+        xProps->setPropertyValue( u"UseFormerObjectPositioning"_ustr, Any( true ) );
     }
 
     if( !bUseOldNumbering )
     {
-        xProps->setPropertyValue( "UseOldNumbering", Any(true) );
+        xProps->setPropertyValue( u"UseOldNumbering"_ustr, Any(true) );
     }
 
     if( !bAddParaSpacingToTableCells )
     {
-        xProps->setPropertyValue( "AddParaSpacingToTableCells",
+        xProps->setPropertyValue( u"AddParaSpacingToTableCells"_ustr,
             Any( false ) );
     }
     if (!bAddParaLineSpacingToTableCells)
     {
-        xProps->setPropertyValue("AddParaLineSpacingToTableCells", Any(false));
+        xProps->setPropertyValue(u"AddParaLineSpacingToTableCells"_ustr, Any(false));
     }
 
     if( !bUseFormerTextWrapping )
     {
-        xProps->setPropertyValue( "UseFormerTextWrapping", Any( true ) );
+        xProps->setPropertyValue( u"UseFormerTextWrapping"_ustr, Any( true ) );
     }
 
     if (!bConsiderWrapOnObjPos && bAreUserSettingsFromDocument)
     {
-        xProps->setPropertyValue( "ConsiderTextWrapOnObjPos", Any( false ) );
+        xProps->setPropertyValue( u"ConsiderTextWrapOnObjPos"_ustr, Any( false ) );
     }
 
     // #i47448#
@@ -1496,41 +1523,41 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
     // therefore the correct condition to set this flag is this:
     if( !bIgnoreFirstLineIndentInNumbering && bDocumentPriorSO8 )
     {
-        xProps->setPropertyValue( "IgnoreFirstLineIndentInNumbering",
+        xProps->setPropertyValue( u"IgnoreFirstLineIndentInNumbering"_ustr,
             Any( true ) );
     }
 
     // This flag has to be set for all documents < SO8
     if ( !bDoNotJustifyLinesWithManualBreak && bDocumentPriorSO8 )
     {
-        xProps->setPropertyValue( "DoNotJustifyLinesWithManualBreak",
+        xProps->setPropertyValue( u"DoNotJustifyLinesWithManualBreak"_ustr,
             Any( true ) );
     }
 
     // This flag has to be set for all documents < SO8
     if ( !bDoNotResetParaAttrsForNumFont && bDocumentPriorSO8 )
     {
-        xProps->setPropertyValue( "DoNotResetParaAttrsForNumFont",
+        xProps->setPropertyValue( u"DoNotResetParaAttrsForNumFont"_ustr,
             Any( true ) );
     }
 
     // This flag has to be set for all documents < SO8
     if ( !bDoNotCaptureDrawObjsOnPage && bDocumentPriorSO8 )
     {
-        xProps->setPropertyValue( "DoNotCaptureDrawObjsOnPage",
+        xProps->setPropertyValue( u"DoNotCaptureDrawObjsOnPage"_ustr,
             Any( true ) );
     }
 
     // This flag has to be set for all documents < SO8
     if ( !bClipAsCharacterAnchoredWriterFlyFrames && bDocumentPriorSO8 )
     {
-        xProps->setPropertyValue( "ClipAsCharacterAnchoredWriterFlyFrames",
+        xProps->setPropertyValue( u"ClipAsCharacterAnchoredWriterFlyFrames"_ustr,
             Any( true ) );
     }
 
     if ( !bUnixForceZeroExtLeading )
     {
-        xProps->setPropertyValue( "UnxForceZeroExtLeading", Any( true ) );
+        xProps->setPropertyValue( u"UnxForceZeroExtLeading"_ustr, Any( true ) );
     }
 
     // Old LO versions had 66 as the value for small caps percentage, later changed to 80.
@@ -1539,12 +1566,12 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
     // are considered to be old files, so set the compatibility option too.
     if ( !bSmallCapsPercentage66 )
     {
-        xProps->setPropertyValue( "SmallCapsPercentage66", Any( true ) );
+        xProps->setPropertyValue( u"SmallCapsPercentage66"_ustr, Any( true ) );
     }
 
     if ( !bTabOverflow )
     {
-        xProps->setPropertyValue( "TabOverflow", Any( false ) );
+        xProps->setPropertyValue( u"TabOverflow"_ustr, Any( false ) );
     }
 
     if (bTabOverMarginValue)
@@ -1552,37 +1579,47 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
         // PrinterIndependentLayout, knowing the first is set by Word import
         // filters and Word defaults to our new default as well.
         xProps->setPropertyValue(
-            "PrinterIndependentLayout",
+            u"PrinterIndependentLayout"_ustr,
             uno::Any(document::PrinterIndependentLayout::HIGH_RESOLUTION));
 
     if (!bPropLineSpacingShrinksFirstLine)
-        xProps->setPropertyValue("PropLineSpacingShrinksFirstLine", Any(false));
+        xProps->setPropertyValue(u"PropLineSpacingShrinksFirstLine"_ustr, Any(false));
 
     if (!bSubtractFlysAnchoredAtFlys && bAreUserSettingsFromDocument)
-        xProps->setPropertyValue("SubtractFlysAnchoredAtFlys", Any(true));
+        xProps->setPropertyValue(u"SubtractFlysAnchoredAtFlys"_ustr, Any(true));
 
     if (!bEmptyDbFieldHidesPara && bAreUserSettingsFromDocument)
-        xProps->setPropertyValue("EmptyDbFieldHidesPara", Any(false));
+        xProps->setPropertyValue(u"EmptyDbFieldHidesPara"_ustr, Any(false));
 
     if (!bCollapseEmptyCellPara)
-        xProps->setPropertyValue("CollapseEmptyCellPara", Any(false));
+        xProps->setPropertyValue(u"CollapseEmptyCellPara"_ustr, Any(false));
 
     if (!bAutoFirstLineIndentDisregardLineSpace)
-        xProps->setPropertyValue("AutoFirstLineIndentDisregardLineSpace", Any(false));
+        xProps->setPropertyValue(u"AutoFirstLineIndentDisregardLineSpace"_ustr, Any(false));
 
     if (!bHyphenateURLs)
     {
-        xProps->setPropertyValue("HyphenateURLs", Any(true));
+        xProps->setPropertyValue(u"HyphenateURLs"_ustr, Any(true));
+    }
+
+    if (!bIgnoreHiddenCharsForLineCalculation)
+    {
+        xProps->setPropertyValue(u"IgnoreHiddenCharsForLineCalculation"_ustr, Any(false));
+    }
+
+    if (bDoNotMirrorRtlDrawObjs)
+    {
+        xProps->setPropertyValue(u"DoNotMirrorRtlDrawObjs"_ustr, Any(true));
     }
 
     if (bDoNotBreakWrappedTables)
     {
-        xProps->setPropertyValue("DoNotBreakWrappedTables", Any(true));
+        xProps->setPropertyValue(u"DoNotBreakWrappedTables"_ustr, Any(true));
     }
 
     if (bAllowTextAfterFloatingTableBreak)
     {
-        xProps->setPropertyValue("AllowTextAfterFloatingTableBreak", Any(true));
+        xProps->setPropertyValue(u"AllowTextAfterFloatingTableBreak"_ustr, Any(true));
     }
 
     // LO 7.4 and previous versions had different drop cap punctuation: very long dashes.
@@ -1591,7 +1628,7 @@ void SwXMLImport::SetConfigurationSettings(const Sequence < PropertyValue > & aC
     // are considered to be old files, so set the compatibility option too.
     if ( !bDropCapPunctuation )
     {
-        xProps->setPropertyValue( "DropCapPunctuation", Any( false ) );
+        xProps->setPropertyValue( u"DropCapPunctuation"_ustr, Any( false ) );
     }
 
     SwDoc *pDoc = getDoc();
@@ -1695,7 +1732,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisImporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new SwXMLImport(context, "com.sun.star.comp.Writer.XMLOasisImporter",
+    return cppu::acquire(new SwXMLImport(context, u"com.sun.star.comp.Writer.XMLOasisImporter"_ustr,
                 SvXMLImportFlags::ALL));
 }
 
@@ -1704,7 +1741,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisStylesImporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new SwXMLImport(context, "com.sun.star.comp.Writer.XMLOasisStylesImporter",
+    return cppu::acquire(new SwXMLImport(context, u"com.sun.star.comp.Writer.XMLOasisStylesImporter"_ustr,
                 SvXMLImportFlags::STYLES | SvXMLImportFlags::MASTERSTYLES | SvXMLImportFlags::AUTOSTYLES |
                 SvXMLImportFlags::FONTDECLS));
 }
@@ -1714,7 +1751,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisContentImporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new SwXMLImport(context, "com.sun.star.comp.Writer.XMLOasisContentImporter",
+    return cppu::acquire(new SwXMLImport(context, u"com.sun.star.comp.Writer.XMLOasisContentImporter"_ustr,
                 SvXMLImportFlags::CONTENT | SvXMLImportFlags::SCRIPTS | SvXMLImportFlags::AUTOSTYLES |
                 SvXMLImportFlags::FONTDECLS));
 }
@@ -1723,7 +1760,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisMetaImporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new SwXMLImport(context, "com.sun.star.comp.Writer.XMLOasisMetaImporter",
+    return cppu::acquire(new SwXMLImport(context, u"com.sun.star.comp.Writer.XMLOasisMetaImporter"_ustr,
                 SvXMLImportFlags::META));
 }
 
@@ -1732,7 +1769,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_comp_Writer_XMLOasisSettingsImporter_get_implementation(css::uno::XComponentContext* context,
         css::uno::Sequence<css::uno::Any> const &)
 {
-    return cppu::acquire(new SwXMLImport(context, "com.sun.star.comp.Writer.XMLOasisSettingsImporter",
+    return cppu::acquire(new SwXMLImport(context, u"com.sun.star.comp.Writer.XMLOasisSettingsImporter"_ustr,
                 SvXMLImportFlags::SETTINGS));
 }
 
@@ -1746,17 +1783,17 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportFODT(SvStream &rStream)
 
     uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
     uno::Reference<io::XInputStream> xStream(new utl::OSeekableInputStreamWrapper(rStream));
-    uno::Reference<uno::XInterface> xInterface(xMultiServiceFactory->createInstance("com.sun.star.comp.Writer.XmlFilterAdaptor"), uno::UNO_SET_THROW);
+    uno::Reference<uno::XInterface> xInterface(xMultiServiceFactory->createInstance(u"com.sun.star.comp.Writer.XmlFilterAdaptor"_ustr), uno::UNO_SET_THROW);
 
     css::uno::Sequence<OUString> aUserData
     {
-        "com.sun.star.comp.filter.OdfFlatXml",
-        "",
-        "com.sun.star.comp.Writer.XMLOasisImporter",
-        "com.sun.star.comp.Writer.XMLOasisExporter",
-        "",
-        "",
-        "true"
+        u"com.sun.star.comp.filter.OdfFlatXml"_ustr,
+        u""_ustr,
+        u"com.sun.star.comp.Writer.XMLOasisImporter"_ustr,
+        u"com.sun.star.comp.Writer.XMLOasisExporter"_ustr,
+        u""_ustr,
+        u""_ustr,
+        u"true"_ustr
     };
     uno::Sequence<beans::PropertyValue> aAdaptorArgs(comphelper::InitPropertySequence(
     {
@@ -1771,7 +1808,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportFODT(SvStream &rStream)
     uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
     {
         { "InputStream", uno::Any(xStream) },
-        { "URL", uno::Any(OUString("private:stream")) },
+        { "URL", uno::Any(u"private:stream"_ustr) },
     }));
     xImporter->setTargetDocument(xModel);
 
@@ -1799,29 +1836,29 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestPDFExportFODT(SvStream &rStream)
     if (!resultString.startsWith("<?xml") || resultString.indexOf("office:mimetype=\"application/vnd.oasis.opendocument.text\"") == -1)
         return false;
 
-    Reference<css::frame::XDesktop2> xDesktop = css::frame::Desktop::create(comphelper::getProcessComponentContext());
-    Reference<css::frame::XFrame> xTargetFrame = xDesktop->findFrame("_blank", 0);
+    uno::Reference<css::frame::XDesktop2> xDesktop = css::frame::Desktop::create(comphelper::getProcessComponentContext());
+    uno::Reference<css::frame::XFrame> xTargetFrame = xDesktop->findFrame(u"_blank"_ustr, 0);
 
-    Reference<uno::XComponentContext> xContext(comphelper::getProcessComponentContext());
-    Reference<css::frame::XModel2> xModel(xContext->getServiceManager()->createInstanceWithContext(
-                "com.sun.star.text.TextDocument", xContext), UNO_QUERY_THROW);
+    const uno::Reference<uno::XComponentContext>& xContext(comphelper::getProcessComponentContext());
+    uno::Reference<css::frame::XModel2> xModel(xContext->getServiceManager()->createInstanceWithContext(
+                u"com.sun.star.text.TextDocument"_ustr, xContext), uno::UNO_QUERY_THROW);
 
-    Reference<css::frame::XLoadable> xModelLoad(xModel, UNO_QUERY_THROW);
+    uno::Reference<css::frame::XLoadable> xModelLoad(xModel, uno::UNO_QUERY_THROW);
     xModelLoad->initNew();
 
     uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
     uno::Reference<io::XInputStream> xStream(new utl::OSeekableInputStreamWrapper(rStream));
-    uno::Reference<uno::XInterface> xInterface(xMultiServiceFactory->createInstance("com.sun.star.comp.Writer.XmlFilterAdaptor"), uno::UNO_SET_THROW);
+    uno::Reference<uno::XInterface> xInterface(xMultiServiceFactory->createInstance(u"com.sun.star.comp.Writer.XmlFilterAdaptor"_ustr), uno::UNO_SET_THROW);
 
     css::uno::Sequence<OUString> aUserData
     {
-        "com.sun.star.comp.filter.OdfFlatXml",
-        "",
-        "com.sun.star.comp.Writer.XMLOasisImporter",
-        "com.sun.star.comp.Writer.XMLOasisExporter",
-        "",
-        "",
-        "true"
+        u"com.sun.star.comp.filter.OdfFlatXml"_ustr,
+        u""_ustr,
+        u"com.sun.star.comp.Writer.XMLOasisImporter"_ustr,
+        u"com.sun.star.comp.Writer.XMLOasisExporter"_ustr,
+        u""_ustr,
+        u""_ustr,
+        u"true"_ustr
     };
     uno::Sequence<beans::PropertyValue> aAdaptorArgs(comphelper::InitPropertySequence(
     {
@@ -1836,22 +1873,52 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestPDFExportFODT(SvStream &rStream)
     uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
     {
         { "InputStream", uno::Any(xStream) },
-        { "URL", uno::Any(OUString("private:stream")) },
+        { "URL", uno::Any(u"private:stream"_ustr) },
     }));
     xImporter->setTargetDocument(xModel);
 
     uno::Reference<document::XFilter> xFODTFilter(xInterface, uno::UNO_QUERY_THROW);
+
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(xModel.get());
+    SfxObjectShell* pObjSh = pTextDoc ? pTextDoc->GetDocShell() : nullptr;
+
+    //SetLoading hack because the document properties will be re-initted
+    //by the xml filter and during the init, while it's considered uninitialized,
+    //setting a property will inform the document it's modified, which attempts
+    //to update the properties, which throws cause the properties are uninitialized
+    if (pObjSh)
+        pObjSh->SetLoading(SfxLoadedFlags::NONE);
     bool ret = xFODTFilter->filter(aArgs);
+    if (pObjSh)
+        pObjSh->SetLoading(SfxLoadedFlags::ALL);
 
     if (ret)
     {
-        css::uno::Reference<css::frame::XController2> xController(xModel->createDefaultViewController(xTargetFrame), UNO_SET_THROW);
+        uno::Reference<text::XTextDocument> xTextDocument(xModel, uno::UNO_QUERY);
+        uno::Reference<text::XText> xText(xTextDocument->getText());
+        uno::Reference<container::XEnumerationAccess> xParaAccess(xText, uno::UNO_QUERY);
+        uno::Reference<container::XEnumeration> xParaEnum(xParaAccess->createEnumeration());
+        while (xParaEnum->hasMoreElements())
+        {
+            uno::Reference<text::XTextRange> xPara(xParaEnum->nextElement(), uno::UNO_QUERY);
+            // discourage very long paragraphs for fuzzing performance
+            if (xPara && xPara->getString().getLength() > 15000)
+            {
+                ret = false;
+                break;
+            }
+        }
+    }
+
+    if (ret)
+    {
+        css::uno::Reference<css::frame::XController2> xController(xModel->createDefaultViewController(xTargetFrame), uno::UNO_SET_THROW);
         utl::ConnectFrameControllerModel(xTargetFrame, xController, xModel);
 
         utl::TempFileFast aTempFile;
 
         uno::Reference<document::XFilter> xPDFFilter(
-            xMultiServiceFactory->createInstance("com.sun.star.document.PDFFilter"), uno::UNO_QUERY);
+            xMultiServiceFactory->createInstance(u"com.sun.star.document.PDFFilter"_ustr), uno::UNO_QUERY);
         uno::Reference<document::XExporter> xExporter(xPDFFilter, uno::UNO_QUERY);
         xExporter->setSourceDocument(xModel);
 
@@ -1860,10 +1927,10 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestPDFExportFODT(SvStream &rStream)
         // ofz#60533 fuzzer learned to use fo:font-size="842pt" which generate timeouts trying
         // to export thousands of pages from minimal input size
         uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence({
-            { "PageRange", uno::Any(OUString("1-100")) }
+            { "PageRange", uno::Any(u"1-100"_ustr) }
         }));
         uno::Sequence<beans::PropertyValue> aDescriptor(comphelper::InitPropertySequence({
-            { "FilterName", uno::Any(OUString("writer_pdf_Export")) },
+            { "FilterName", uno::Any(u"writer_pdf_Export"_ustr) },
             { "OutputStream", uno::Any(xOutputStream) },
             { "FilterData", uno::Any(aFilterData) }
         }));
@@ -1887,7 +1954,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportDOCX(SvStream &rStream)
     uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
     uno::Reference<io::XInputStream> xStream(new utl::OSeekableInputStreamWrapper(rStream));
 
-    uno::Reference<document::XFilter> xFilter(xMultiServiceFactory->createInstance("com.sun.star.comp.Writer.WriterFilter"), uno::UNO_QUERY_THROW);
+    uno::Reference<document::XFilter> xFilter(xMultiServiceFactory->createInstance(u"com.sun.star.comp.Writer.WriterFilter"_ustr), uno::UNO_QUERY_THROW);
 
     uno::Reference<document::XImporter> xImporter(xFilter, uno::UNO_QUERY_THROW);
     uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(

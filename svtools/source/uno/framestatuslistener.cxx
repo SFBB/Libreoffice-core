@@ -28,7 +28,6 @@ using namespace ::cppu;
 using namespace css::awt;
 using namespace css::uno;
 using namespace css::util;
-using namespace css::beans;
 using namespace css::lang;
 using namespace css::frame;
 
@@ -241,7 +240,7 @@ void FrameStatusListener::bindListener()
                 }
                 listener.second = xDispatch;
 
-                aDispatchVector.push_back( Listener( std::move(aTargetURL), xDispatch ) );
+                aDispatchVector.emplace_back(std::move(aTargetURL), xDispatch);
             }
         }
     }

@@ -86,7 +86,7 @@ public:
     virtual SotClipboardFormatId         GetFormat() = 0;
     virtual OUString            GetUserName() = 0;
     virtual void                FillInfoList( SvStorageInfoList* ) const = 0;
-    virtual bool                CopyTo( BaseStorage* pDestStg ) const = 0;
+    virtual bool                CopyTo( BaseStorage& rDestStg ) const = 0;
     virtual bool                Commit() = 0;
     virtual bool                Revert() = 0;
     virtual BaseStorageStream*  OpenStream( const OUString & rEleName,
@@ -173,7 +173,7 @@ public:
     virtual SotClipboardFormatId         GetFormat() override;
     virtual OUString            GetUserName() override;
     virtual void                FillInfoList( SvStorageInfoList* ) const override;
-    virtual bool                CopyTo( BaseStorage* pDestStg ) const override;
+    virtual bool                CopyTo( BaseStorage& rDestStg ) const override;
     virtual bool                Commit() final override;
     virtual bool                Revert() override;
     virtual BaseStorageStream*  OpenStream( const OUString & rEleName,
@@ -236,15 +236,15 @@ namespace ucbhelper
 
 class UCBStorage_Impl;
 struct UCBStorageElement_Impl;
-class SOT_DLLPUBLIC UCBStorage final : public BaseStorage
+class UCBStorage final : public BaseStorage
 {
     UCBStorage_Impl*            pImp;
 
                                 virtual ~UCBStorage() override;
 public:
-    static bool                 IsStorageFile( SvStream* );
+    SOT_DLLPUBLIC static bool   IsStorageFile( SvStream* );
 
-                                UCBStorage( const ::ucbhelper::Content& rContent,
+    SOT_DLLPUBLIC               UCBStorage( const ::ucbhelper::Content& rContent,
                                             const OUString& rName,
                                             StreamMode nMode,
                                             bool bDirect,
@@ -279,7 +279,7 @@ public:
     virtual SotClipboardFormatId         GetFormat() override;
     virtual OUString            GetUserName() override;
     virtual void                FillInfoList( SvStorageInfoList* ) const override;
-    virtual bool                CopyTo( BaseStorage* pDestStg ) const override;
+    virtual bool                CopyTo( BaseStorage& rDestStg ) const override;
     virtual bool                Commit() final override;
     virtual bool                Revert() override;
     virtual BaseStorageStream*  OpenStream( const OUString & rEleName,

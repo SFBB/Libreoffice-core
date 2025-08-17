@@ -24,7 +24,7 @@
 #include <tools/debug.hxx>
 #include <i18nlangtag/mslangid.hxx>
 #include <i18nlangtag/lang.h>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <vcl/event.hxx>
 #include <vcl/fontcharmap.hxx>
@@ -82,21 +82,6 @@ void OutputDevice::SetFont( const vcl::Font& rNewFont )
     }
     maFont      = aFont;
     mbNewFont   = true;
-
-    if( !mpAlphaVDev )
-        return;
-
-    // #i30463#
-    // Since SetFont might change the text color, apply that only
-    // selectively to alpha vdev (which normally paints opaque text
-    // with COL_BLACK)
-    if( aFont.GetColor() != COL_TRANSPARENT )
-    {
-        mpAlphaVDev->SetTextColor( COL_ALPHA_OPAQUE  );
-        aFont.SetColor( COL_TRANSPARENT );
-    }
-
-    mpAlphaVDev->SetFont( aFont );
 }
 
 FontMetric OutputDevice::GetFontMetricFromCollection(int nDevFontIndex) const
@@ -148,10 +133,16 @@ bool OutputDevice::AddTempDevFont( const OUString& rFileURL, const OUString& rFo
     if( !bRC )
         return false;
 
-    if( mpAlphaVDev )
-        mpAlphaVDev->AddTempDevFont( rFileURL, rFontName );
-
     return true;
+}
+
+bool OutputDevice::RemoveTempDevFont(const OUString& rFileURL, const OUString& rFontName)
+{
+    if( !mpGraphics && !AcquireGraphics() )
+        return true; // No graphics -> no fonts used
+    assert(mpGraphics);
+
+    return mpGraphics->RemoveTempDevFont(rFileURL, rFontName);
 }
 
 bool OutputDevice::GetFontFeatures(std::vector<vcl::font::Feature>& rFontFeatures) const
@@ -211,12 +202,14 @@ FontMetric OutputDevice::GetFontMetric() const
     aMetric.SetSlant( ImplDevicePixelToLogicHeight( xFontMetric->GetSlant() ) );
     aMetric.SetHangingBaseline( ImplDevicePixelToLogicHeight( xFontMetric->GetHangingBaseline() ) );
 
+    aMetric.SetUnitEm(ImplDevicePixelToLogicWidth(xFontMetric->GetUnitEm()));
+    aMetric.SetHorCJKAdvance(ImplDevicePixelToLogicWidth(xFontMetric->GetHorCJKAdvance()));
+    aMetric.SetVertCJKAdvance(ImplDevicePixelToLogicHeight(xFontMetric->GetVertCJKAdvance()));
+
     // get miscellaneous data
     aMetric.SetQuality( xFontMetric->GetQuality() );
 
     SAL_INFO("vcl.gdi.fontmetric", "OutputDevice::GetFontMetric:" << aMetric);
-
-    xFontMetric = nullptr;
 
     return aMetric;
 }
@@ -240,7 +233,7 @@ bool OutputDevice::GetFontCharMap( FontCharMapRef& rxFontCharMap ) const
     if (!xFontCharMap.is())
         rxFontCharMap = FontCharMapRef(new FontCharMap());
     else
-        rxFontCharMap = xFontCharMap;
+        rxFontCharMap = std::move(xFontCharMap);
 
     return !rxFontCharMap->IsDefaultMap();
 }
@@ -316,14 +309,14 @@ void OutputDevice::ImplClearAllFontData(bool bNewFontLists)
 
     pSVData->maGDIData.mxScreenFontList->Clear();
     vcl::Window * pFrame = pSVData->maFrameData.mpFirstFrame;
-    if ( pFrame )
+    if (!pFrame)
+        return;
+
+    if ( pFrame->GetOutDev()->AcquireGraphics() )
     {
-        if ( pFrame->GetOutDev()->AcquireGraphics() )
-        {
-            OutputDevice *pDevice = pFrame->GetOutDev();
-            pDevice->mpGraphics->ClearDevFontCache();
-            pDevice->mpGraphics->GetDevFontList(pFrame->mpWindowImpl->mpFrameData->mxFontCollection.get());
-        }
+        OutputDevice *pDevice = pFrame->GetOutDev();
+        pDevice->mpGraphics->ClearDevFontCache();
+        pDevice->mpGraphics->GetDevFontList(pFrame->mpWindowImpl->mpFrameData->mxFontCollection.get());
     }
 }
 
@@ -417,7 +410,7 @@ void OutputDevice::RemoveFontsSubstitute()
 vcl::Font OutputDevice::GetDefaultFont( DefaultFontType nType, LanguageType eLang,
                                         GetDefaultFontFlags nFlags, const OutputDevice* pOutDev )
 {
-    static bool bFuzzing = utl::ConfigManager::IsFuzzing();
+    static bool bFuzzing = comphelper::IsFuzzing();
     static bool bAbortOnFontSubstitute = [] {
         const char* pEnv = getenv("SAL_NON_APPLICATION_FONT_USE");
         return pEnv && strcmp(pEnv, "abort") == 0;
@@ -462,9 +455,6 @@ vcl::Font OutputDevice::GetDefaultFont( DefaultFontType nType, LanguageType eLan
     {
         case DefaultFontType::SANS_UNICODE:
         case DefaultFontType::UI_SANS:
-            aFont.SetFamily( FAMILY_SWISS );
-            break;
-
         case DefaultFontType::SANS:
         case DefaultFontType::LATIN_HEADING:
         case DefaultFontType::LATIN_SPREADSHEET:
@@ -494,9 +484,6 @@ vcl::Font OutputDevice::GetDefaultFont( DefaultFontType nType, LanguageType eLan
         case DefaultFontType::CJK_SPREADSHEET:
         case DefaultFontType::CJK_HEADING:
         case DefaultFontType::CJK_DISPLAY:
-            aFont.SetFamily( FAMILY_SYSTEM ); // don't care, but don't use font subst config later...
-            break;
-
         case DefaultFontType::CTL_TEXT:
         case DefaultFontType::CTL_PRESENTATION:
         case DefaultFontType::CTL_SPREADSHEET:
@@ -544,7 +531,7 @@ vcl::Font OutputDevice::GetDefaultFont( DefaultFontType nType, LanguageType eLan
             {
                 if( !pOutDev )
                 {
-                    SAL_WARN_IF(!utl::ConfigManager::IsFuzzing(), "vcl.gdi", "No default window has been set for the application - we really shouldn't be able to get here");
+                    SAL_WARN_IF(!comphelper::IsFuzzing(), "vcl.gdi", "No default window has been set for the application - we really shouldn't be able to get here");
                     aFont.SetFamilyName( aSearch.getToken( 0, ';' ) );
                 }
                 else
@@ -642,7 +629,7 @@ void OutputDevice::ImplInitFontList() const
     // There is absolutely no way there should be no fonts available on the device
     if( !mxFontCollection->Count() )
     {
-        OUString aError( "Application error: no fonts and no vcl resource found on your system" );
+        OUString aError( u"Application error: no fonts and no vcl resource found on your system"_ustr );
         OUString aResStr(VclResId(SV_ACCESSERROR_NO_FONTS));
         if (!aResStr.isEmpty())
             aError = aResStr;
@@ -716,7 +703,7 @@ bool OutputDevice::ImplNewFont() const
 
     // decide if antialiasing is appropriate
     bool bNonAntialiased(GetAntialiasing() & AntialiasingFlags::DisableText);
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
         bNonAntialiased |= bool(rStyleSettings.GetDisplayOptions() & DisplayOptions::AADisable);
@@ -825,9 +812,9 @@ bool OutputDevice::AttemptOLEFontScaleFix(vcl::Font& rFont, tools::Long nHeight)
     if (fDenominator == 0.0)
         return false;
     const float fNumerator = static_cast<float>(maMapRes.mnMapScNumX) * maMapRes.mnMapScDenomY;
-    float fStretch = fNumerator / fDenominator;
-    int nOrigWidth = mpFontInstance->mxFontMetric->GetWidth();
-    int nNewWidth = static_cast<int>(nOrigWidth * fStretch + 0.5);
+    const float fStretch = fNumerator / fDenominator;
+    const int nOrigWidth = mpFontInstance->mxFontMetric->GetWidth();
+    const int nNewWidth = static_cast<int>(nOrigWidth * fStretch + 0.5);
     bool bRet = true;
     if (nNewWidth != nOrigWidth && nNewWidth != 0)
     {
@@ -899,9 +886,7 @@ void OutputDevice::ImplDrawEmphasisMark( tools::Long nBaseX, tools::Long nX, too
 
 void OutputDevice::ImplDrawEmphasisMarks( SalLayout& rSalLayout )
 {
-    Color               aOldLineColor   = GetLineColor();
-    Color               aOldFillColor   = GetFillColor();
-    bool                bOldMap         = mbMap;
+    auto popIt = ScopedPush(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR | vcl::PushFlags::MAPMODE);
     GDIMetaFile*        pOldMetaFile    = mpMetaFile;
     mpMetaFile = nullptr;
     EnableMapMode( false );
@@ -948,7 +933,7 @@ void OutputDevice::ImplDrawEmphasisMarks( SalLayout& rSalLayout )
     aOffset += Point( nEmphasisWidth2, nEmphasisHeight2 );
 
     basegfx::B2DPoint aOutPoint;
-    tools::Rectangle aRectangle;
+    basegfx::B2DRectangle aRectangle;
     const GlyphItem* pGlyph;
     const LogicalFontInstance* pGlyphFont;
     int nStart = 0;
@@ -968,7 +953,7 @@ void OutputDevice::ImplDrawEmphasisMarks( SalLayout& rSalLayout )
             else
             {
                 aAdjPoint = aOffset;
-                aAdjPoint.AdjustX(aRectangle.Left() + (aRectangle.GetWidth() - aEmphasisMark.GetWidth()) / 2 );
+                aAdjPoint.AdjustX(aRectangle.getMinX() + (aRectangle.getWidth() - aEmphasisMark.GetWidth()) / 2 );
             }
 
             if ( mpFontInstance->mnOrientation )
@@ -985,9 +970,6 @@ void OutputDevice::ImplDrawEmphasisMarks( SalLayout& rSalLayout )
         }
     }
 
-    SetLineColor( aOldLineColor );
-    SetFillColor( aOldFillColor );
-    EnableMapMode( bOldMap );
     mpMetaFile = pOldMetaFile;
 }
 
@@ -1150,8 +1132,7 @@ std::unique_ptr<SalLayout> OutputDevice::ImplGlyphFallbackLayout( std::unique_pt
     }
 
     // restore orig font settings
-    pSalLayout->InitFont();
-    rLayoutArgs.maRuns = aLayoutRuns;
+    rLayoutArgs.maRuns = std::move(aLayoutRuns);
 
     return pSalLayout;
 }
@@ -1168,40 +1149,37 @@ tools::Long OutputDevice::GetMinKashida() const
     return ImplDevicePixelToLogicWidth(nKashidaWidth);
 }
 
-sal_Int32 OutputDevice::ValidateKashidas ( const OUString& rTxt,
-                                            sal_Int32 nIdx, sal_Int32 nLen,
-                                            sal_Int32 nKashCount,
-                                            const sal_Int32* pKashidaPos,
-                                            sal_Int32* pKashidaPosDropped ) const
+// tdf#163105: Get map of valid kashida positions for a single word
+void OutputDevice::GetWordKashidaPositions(const OUString& rText,
+                                           std::vector<bool>* pOutMap) const
 {
-   // do layout
-    std::unique_ptr<SalLayout> pSalLayout = ImplLayout( rTxt, nIdx, nLen );
-    if( !pSalLayout )
-        return 0;
+    pOutMap->clear();
 
-    auto nEnd = nIdx + nLen - 1;
-    sal_Int32 nDropped = 0;
-    for( int i = 0; i < nKashCount; ++i )
+    auto nEnd = rText.getLength();
+
+    // do layout
+    std::unique_ptr<SalLayout> pSalLayout = ImplLayout(rText, 0, nEnd);
+    if (!pSalLayout)
+        return;
+
+    // tdf#163215: VCL cannot suggest valid kashida positions for certain fonts (e.g. AAT).
+    if (!pSalLayout->HasFontKashidaPositions())
+        return;
+
+    pOutMap->resize(nEnd, false);
+    for (sal_Int32 i = 0; i < nEnd; ++i)
     {
-        auto nPos = pKashidaPos[i];
-        auto nNextPos = nPos + 1;
+        auto nNextPos = i + 1;
 
         // Skip combining marks to find the next character after this position.
-        while (nNextPos <= nEnd &&
-               u_getIntPropertyValue(rTxt[nNextPos], UCHAR_JOINING_TYPE) == U_JT_TRANSPARENT)
-            nNextPos++;
+        while (nNextPos < nEnd
+               && u_getIntPropertyValue(rText[nNextPos], UCHAR_JOINING_TYPE) == U_JT_TRANSPARENT)
+        {
+            ++nNextPos;
+        }
 
-        // The next position is past end of the layout, it would happen if we
-        // changed the text styling in the middle of a word. Since we don’t do
-        // apply OpenType features across different layouts, this can’t be an
-        // invalid place to insert Kashida.
-        if (nNextPos > nEnd)
-            continue;
-
-        if (!pSalLayout->IsKashidaPosValid(nPos, nNextPos))
-            pKashidaPosDropped[nDropped++] = nPos;
+        pOutMap->at(i) = pSalLayout->IsKashidaPosValid(i, nNextPos);
     }
-    return nDropped;
 }
 
 bool OutputDevice::GetGlyphBoundRects( const Point& rOrigin, const OUString& rStr,

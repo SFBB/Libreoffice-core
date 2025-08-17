@@ -51,7 +51,6 @@ constexpr OUString SMGR_SINGLETON = u"/singletons/com.sun.star.lang.theServiceMa
 constexpr OUStringLiteral TDMGR_SINGLETON = u"/singletons/com.sun.star.reflection.theTypeDescriptionManager";
 constexpr OUStringLiteral AC_SINGLETON = u"/singletons/com.sun.star.security.theAccessController";
 
-using namespace ::osl;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 
@@ -247,7 +246,7 @@ Sequence<OUString> ComponentContext::getElementNames()
 sal_Bool ComponentContext::hasByName( OUString const & name )
 {
     std::unique_lock guard( m_aMutex );
-    return m_map.find( name ) != m_map.end();
+    return m_map.contains( name );
 }
 
 // XElementAccess
@@ -381,7 +380,7 @@ Reference< lang::XMultiComponentFactory > ComponentContext::getServiceManager()
     if ( !m_xSMgr.is() )
     {
         throw DeploymentException(
-            "null component context service manager",
+            u"null component context service manager"_ustr,
             static_cast<OWeakObject *>(this) );
     }
     return m_xSMgr;
@@ -400,13 +399,9 @@ void ComponentContext::disposing(std::unique_lock<std::mutex>& rGuard)
         {
             if (rEntry.lateInit)
             {
-                // late init
-                if (rEntry.lateInit)
-                {
-                    rEntry.value.clear(); // release factory
-                    rEntry.lateInit = false;
-                    continue;
-                }
+                rEntry.value.clear(); // release factory
+                rEntry.lateInit = false;
+                continue;
             }
 
             Reference< lang::XComponent > xComp;
@@ -415,11 +410,11 @@ void ComponentContext::disposing(std::unique_lock<std::mutex>& rGuard)
             {
                 if ( rName == TDMGR_SINGLETON )
                 {
-                    xTDMgr = xComp;
+                    xTDMgr = std::move(xComp);
                 }
                 else if ( rName == AC_SINGLETON )
                 {
-                    xAC = xComp;
+                    xAC = std::move(xComp);
                 }
                 else // dispose immediately
                 {
@@ -447,7 +442,7 @@ void ComponentContext::disposing(std::unique_lock<std::mutex>& rGuard)
     uno_Environment ** envs;
     sal_Int32 envCount;
     uno_getRegisteredEnvironments(
-        &envs, &envCount, &rtl_allocateMemory, OUString("java").pData);
+        &envs, &envCount, &rtl_allocateMemory, u"java"_ustr.pData);
     assert(envCount >= 0);
     assert(envCount == 0 || envs != nullptr);
     if (envs) {
@@ -469,23 +464,23 @@ ComponentContext::ComponentContext(
     {
         ContextEntry_Init const & rEntry = pEntries[ nPos ];
 
-        if ( rEntry.name == SMGR_SINGLETON )
+        if ( rEntry.m_sName == SMGR_SINGLETON )
         {
-            rEntry.value >>= m_xSMgr;
+            rEntry.m_aValue >>= m_xSMgr;
         }
 
-        if (rEntry.bLateInitService)
+        if (rEntry.m_bLateInitService)
         {
             // singleton entry
-            m_map.emplace( rEntry.name, ContextEntry( Any(), true ) );
+            m_map.emplace( rEntry.m_sName, ContextEntry( Any(), true ) );
             // service
-            m_map.emplace( rEntry.name + "/service", ContextEntry( rEntry.value, false ) );
+            m_map.emplace( rEntry.m_sName + "/service", ContextEntry( rEntry.m_aValue, false ) );
             // initial-arguments are provided as optional context entry
         }
         else
         {
             // only value, no late init factory nor string
-            m_map.emplace( rEntry.name, ContextEntry( rEntry.value, false ) );
+            m_map.emplace( rEntry.m_sName, ContextEntry( rEntry.m_aValue, false ) );
         }
     }
 
@@ -503,7 +498,7 @@ ComponentContext::ComponentContext(
         // create new smgr based on delegate's one
         m_xSMgr.set(
             xMgr->createInstanceWithContext(
-                "com.sun.star.comp.stoc.OServiceManagerWrapper", xDelegate ),
+                u"com.sun.star.comp.stoc.OServiceManagerWrapper"_ustr, xDelegate ),
             UNO_QUERY );
         // patch DefaultContext property of new one
         Reference< beans::XPropertySet > xProps( m_xSMgr, UNO_QUERY );
@@ -511,7 +506,7 @@ ComponentContext::ComponentContext(
         if (xProps.is())
         {
             Reference< XComponentContext > xThis( this );
-            xProps->setPropertyValue( "DefaultContext", Any( xThis ) );
+            xProps->setPropertyValue( u"DefaultContext"_ustr, Any( xThis ) );
         }
     }
     catch (...)
@@ -552,7 +547,7 @@ extern "C" { static void s_createComponentContext_v(va_list * pParam)
     }
     else
     {
-        xContext = xDelegate;
+        xContext = std::move(xDelegate);
     }
 
     *ppContext = pTarget2curr->mapInterface(xContext.get(), cppu::UnoType<decltype(xContext)>::get());
@@ -571,12 +566,12 @@ Reference< XComponentContext > SAL_CALL createComponentContext(
     std::unique_ptr<ContextEntry_Init[]> mapped_entries(new ContextEntry_Init[nEntries]);
     for (sal_Int32 nPos = 0; nPos < nEntries; ++ nPos)
     {
-        mapped_entries[nPos].bLateInitService = pEntries[nPos].bLateInitService;
-        mapped_entries[nPos].name             = pEntries[nPos].name;
+        mapped_entries[nPos].m_bLateInitService = pEntries[nPos].m_bLateInitService;
+        mapped_entries[nPos].m_sName            = pEntries[nPos].m_sName;
 
-        uno_type_any_constructAndConvert(&mapped_entries[nPos].value,
-                                         const_cast<void *>(pEntries[nPos].value.getValue()),
-                                         pEntries[nPos].value.getValueTypeRef(),
+        uno_type_any_constructAndConvert(&mapped_entries[nPos].m_aValue,
+                                         const_cast<void *>(pEntries[nPos].m_aValue.getValue()),
+                                         pEntries[nPos].m_aValue.getValueTypeRef(),
                                          curr2source.get());
     }
 

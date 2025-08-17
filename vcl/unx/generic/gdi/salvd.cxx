@@ -35,25 +35,45 @@
 #include <cairo-xlib.h>
 
 std::unique_ptr<SalVirtualDevice> X11SalInstance::CreateX11VirtualDevice(const SalGraphics& rGraphics,
-        tools::Long &nDX, tools::Long &nDY, DeviceFormat eFormat, const SystemGraphicsData *pData,
+        tools::Long nDX, tools::Long nDY, DeviceFormat eFormat,
+        std::unique_ptr<X11SalGraphics> pNewGraphics, bool bAlphaMaskTransparent)
+{
+    assert(!bAlphaMaskTransparent && "TODO"); (void)bAlphaMaskTransparent;
+    assert(pNewGraphics);
+#if HAVE_FEATURE_SKIA
+    if (SkiaHelper::isVCLSkiaEnabled())
+        return std::unique_ptr<SalVirtualDevice>(new X11SkiaSalVirtualDevice(rGraphics, nDX, nDY, std::move(pNewGraphics)));
+    else
+#endif
+        return std::unique_ptr<SalVirtualDevice>(new X11SalVirtualDevice(rGraphics, nDX, nDY, eFormat, std::move(pNewGraphics)));
+}
+
+std::unique_ptr<SalVirtualDevice> X11SalInstance::CreateX11VirtualDevice(const SalGraphics& rGraphics,
+        tools::Long &nDX, tools::Long &nDY, DeviceFormat eFormat, const SystemGraphicsData& rData,
         std::unique_ptr<X11SalGraphics> pNewGraphics)
 {
     assert(pNewGraphics);
 #if HAVE_FEATURE_SKIA
     if (SkiaHelper::isVCLSkiaEnabled())
-        return std::unique_ptr<SalVirtualDevice>(new X11SkiaSalVirtualDevice(rGraphics, nDX, nDY, pData, std::move(pNewGraphics)));
+        return std::unique_ptr<SalVirtualDevice>(new X11SkiaSalVirtualDevice(rGraphics, nDX, nDY, rData, std::move(pNewGraphics)));
     else
 #endif
-        return std::unique_ptr<SalVirtualDevice>(new X11SalVirtualDevice(rGraphics, nDX, nDY, eFormat, pData, std::move(pNewGraphics)));
+        return std::unique_ptr<SalVirtualDevice>(new X11SalVirtualDevice(rGraphics, nDX, nDY, eFormat, rData, std::move(pNewGraphics)));
 }
 
 std::unique_ptr<SalVirtualDevice> X11SalInstance::CreateVirtualDevice(SalGraphics& rGraphics,
-        tools::Long &nDX, tools::Long &nDY, DeviceFormat eFormat, const SystemGraphicsData *pData)
+        tools::Long nDX, tools::Long nDY, DeviceFormat eFormat, bool bAlphaMaskTransparent)
 {
-    return CreateX11VirtualDevice(rGraphics, nDX, nDY, eFormat, pData, std::make_unique<X11SalGraphics>());
+    return CreateX11VirtualDevice(rGraphics, nDX, nDY, eFormat, std::make_unique<X11SalGraphics>(), bAlphaMaskTransparent);
 }
 
-void X11SalGraphics::Init(X11SalVirtualDevice *pDevice, SalColormap* pColormap, bool bDeleteColormap)
+std::unique_ptr<SalVirtualDevice> X11SalInstance::CreateVirtualDevice(SalGraphics& rGraphics,
+        tools::Long &nDX, tools::Long &nDY, DeviceFormat eFormat, const SystemGraphicsData& rData)
+{
+    return CreateX11VirtualDevice(rGraphics, nDX, nDY, eFormat, rData, std::make_unique<X11SalGraphics>());
+}
+
+void X11SalGraphics::Init(X11SalVirtualDevice *pDevice, SalColormap* pColormap, bool bDeleteColormap, bool bAlphaMaskTransparent)
 {
     SalDisplay *pDisplay  = pDevice->GetDisplay();
     m_nXScreen = pDevice->GetXScreenNumber();
@@ -79,11 +99,17 @@ void X11SalGraphics::Init(X11SalVirtualDevice *pDevice, SalColormap* pColormap, 
     m_pFrame     = nullptr;
 
     SetDrawable(pDevice->GetDrawable(), pDevice->GetSurface(), m_nXScreen);
-    mxImpl->Init();
+    mxImpl->UpdateX11GeometryProvider();
+
+    if (bAlphaMaskTransparent)
+    {
+        mxImpl->SetFillColor(COL_TRANSPARENT);
+        mxImpl->drawRect(0, 0, pDevice->GetWidth(), pDevice->GetHeight());
+    }
 }
 
-X11SalVirtualDevice::X11SalVirtualDevice(const SalGraphics& rGraphics, tools::Long &nDX, tools::Long &nDY,
-                                         DeviceFormat /*eFormat*/, const SystemGraphicsData *pData,
+X11SalVirtualDevice::X11SalVirtualDevice(const SalGraphics& rGraphics, tools::Long nDX, tools::Long nDY,
+                                         DeviceFormat /*eFormat*/,
                                          std::unique_ptr<X11SalGraphics> pNewGraphics) :
     pGraphics_(std::move(pNewGraphics)),
     m_nXScreen(0),
@@ -96,40 +122,14 @@ X11SalVirtualDevice::X11SalVirtualDevice(const SalGraphics& rGraphics, tools::Lo
     pDisplay_               = vcl_sal::getSalDisplay(GetGenericUnixSalData());
     nDepth_                 = nBitCount;
 
-    if( pData && pData->hDrawable != None )
-    {
-        ::Window aRoot;
-        int x, y;
-        unsigned int w = 0, h = 0, bw, d;
-        Display* pDisp = pDisplay_->GetDisplay();
-        XGetGeometry( pDisp, pData->hDrawable,
-                      &aRoot, &x, &y, &w, &h, &bw, &d );
-        int nScreen = 0;
-        while( nScreen < ScreenCount( pDisp ) )
-        {
-            if( RootWindow( pDisp, nScreen ) == aRoot )
-                break;
-            nScreen++;
-        }
-        nDX_ = static_cast<tools::Long>(w);
-        nDY_ = static_cast<tools::Long>(h);
-        nDX = nDX_;
-        nDY = nDY_;
-        m_nXScreen = SalX11Screen( nScreen );
-        hDrawable_ = pData->hDrawable;
-        bExternPixmap_ = true;
-    }
-    else
-    {
-        nDX_ = nDX;
-        nDY_ = nDY;
-        m_nXScreen = static_cast<const X11SalGraphics&>(rGraphics).GetScreenNumber();
-        hDrawable_ = limitXCreatePixmap( GetXDisplay(),
-                                         pDisplay_->GetDrawable( m_nXScreen ),
-                                         nDX_, nDY_,
-                                         GetDepth() );
-        bExternPixmap_ = false;
-    }
+    nDX_ = nDX;
+    nDY_ = nDY;
+    m_nXScreen = static_cast<const X11SalGraphics&>(rGraphics).GetScreenNumber();
+    hDrawable_ = limitXCreatePixmap( GetXDisplay(),
+                                     pDisplay_->GetDrawable( m_nXScreen ),
+                                     nDX_, nDY_,
+                                     GetDepth() );
+    bExternPixmap_ = false;
 
     if( nBitCount != pDisplay_->GetVisual( m_nXScreen ).GetDepth() )
     {
@@ -140,7 +140,61 @@ X11SalVirtualDevice::X11SalVirtualDevice(const SalGraphics& rGraphics, tools::Lo
     pGraphics_->SetLayout( SalLayoutFlags::NONE ); // by default no! mirroring for VirtualDevices, can be enabled with EnableRTL()
 
     // tdf#127529 see SvpSalInstance::CreateVirtualDevice for the rare case of a non-null pPreExistingTarget
-    cairo_surface_t* pPreExistingTarget = pData ? static_cast<cairo_surface_t*>(pData->pSurface) : nullptr;
+    m_bOwnsSurface = true;
+    m_pSurface = cairo_xlib_surface_create(GetXDisplay(), hDrawable_,
+                                           pDisplay_->GetColormap(m_nXScreen).GetVisual().visual,
+                                           nDX_, nDY_);
+
+    pGraphics_->Init(this, pColormap, bDeleteColormap);
+}
+
+X11SalVirtualDevice::X11SalVirtualDevice(const SalGraphics& rGraphics, tools::Long &nDX, tools::Long &nDY,
+                                         DeviceFormat /*eFormat*/, const SystemGraphicsData& rData,
+                                         std::unique_ptr<X11SalGraphics> pNewGraphics) :
+    pGraphics_(std::move(pNewGraphics)),
+    m_nXScreen(0),
+    bGraphics_(false)
+{
+    SalColormap* pColormap = nullptr;
+    bool bDeleteColormap = false;
+
+    sal_uInt16 nBitCount = rGraphics.GetBitCount();
+    pDisplay_               = vcl_sal::getSalDisplay(GetGenericUnixSalData());
+    nDepth_                 = nBitCount;
+
+    assert(rData.hDrawable != None);
+
+    ::Window aRoot;
+    int x, y;
+    unsigned int w = 0, h = 0, bw, d;
+    Display* pDisp = pDisplay_->GetDisplay();
+    XGetGeometry( pDisp, rData.hDrawable,
+                  &aRoot, &x, &y, &w, &h, &bw, &d );
+    int nScreen = 0;
+    while( nScreen < ScreenCount( pDisp ) )
+    {
+        if( RootWindow( pDisp, nScreen ) == aRoot )
+            break;
+        nScreen++;
+    }
+    nDX_ = static_cast<tools::Long>(w);
+    nDY_ = static_cast<tools::Long>(h);
+    nDX = nDX_;
+    nDY = nDY_;
+    m_nXScreen = SalX11Screen( nScreen );
+    hDrawable_ = rData.hDrawable;
+    bExternPixmap_ = true;
+
+    if( nBitCount != pDisplay_->GetVisual( m_nXScreen ).GetDepth() )
+    {
+        pColormap = new SalColormap( nBitCount );
+        bDeleteColormap = true;
+    }
+
+    pGraphics_->SetLayout( SalLayoutFlags::NONE ); // by default no! mirroring for VirtualDevices, can be enabled with EnableRTL()
+
+    // tdf#127529 see SvpSalInstance::CreateVirtualDevice for the rare case of a non-null pPreExistingTarget
+    cairo_surface_t* pPreExistingTarget = static_cast<cairo_surface_t*>(rData.pSurface);
     if (pPreExistingTarget)
     {
         m_bOwnsSurface = false;
@@ -182,7 +236,7 @@ SalGraphics* X11SalVirtualDevice::AcquireGraphics()
 void X11SalVirtualDevice::ReleaseGraphics( SalGraphics* )
 { bGraphics_ = false; }
 
-bool X11SalVirtualDevice::SetSize( tools::Long nDX, tools::Long nDY )
+bool X11SalVirtualDevice::SetSize( tools::Long nDX, tools::Long nDY, bool bAlphaMaskTransparent )
 {
     if( bExternPixmap_ )
         return false;
@@ -233,7 +287,7 @@ bool X11SalVirtualDevice::SetSize( tools::Long nDX, tools::Long nDY )
     }
 
     if( pGraphics_ )
-        pGraphics_->Init( this );
+        pGraphics_->Init( this, nullptr, false, bAlphaMaskTransparent );
 
     return true;
 }

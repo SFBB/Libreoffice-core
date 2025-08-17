@@ -28,7 +28,6 @@
 
 class SvxNumberFormatShell;
 class SvxNumberInfoItem;
-class vector;
 
 
 class SvxNumberPreview : public weld::CustomWidgetController
@@ -64,7 +63,7 @@ public:
                                     const SfxItemSet* rAttrSet );
     virtual ~SvxNumberFormatTabPage() override;
     // Returns area information.
-    static WhichRangesContainer GetRanges() { return pRanges; }
+    static const WhichRangesContainer & GetRanges() { return pRanges; }
 
     virtual bool            FillItemSet( SfxItemSet* rSet ) override;
     virtual void            Reset( const SfxItemSet* rSet ) override;
@@ -93,7 +92,7 @@ private:
     std::unique_ptr<weld::Label> m_xFtFormat;
     std::unique_ptr<weld::ComboBox> m_xLbCurrency;
     std::unique_ptr<weld::TreeView> m_xLbFormat;
-    std::unique_ptr<weld::Label> m_xFtLanguage;
+    std::unique_ptr<weld::Label> m_xFtLocale;
     std::unique_ptr<weld::CheckButton> m_xCbSourceFormat;
     std::unique_ptr<weld::Label> m_xFtOptions;
     std::unique_ptr<weld::Label> m_xFtDecimals;
@@ -112,7 +111,7 @@ private:
     std::unique_ptr<weld::Button> m_xIbRemove;
     std::unique_ptr<weld::Label> m_xFtComment;
     std::unique_ptr<weld::Entry> m_xEdComment;
-    std::unique_ptr<SvxLanguageBox> m_xLbLanguage;
+    std::unique_ptr<SvxLanguageBox> m_xLbLocale;
     std::unique_ptr<weld::CustomWeld> m_xWndPreview;
 
     void    Init_Impl();

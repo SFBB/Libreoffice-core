@@ -60,6 +60,7 @@
 #include <unx/sm.hxx>
 #include <unx/wmadaptor.hxx>
 #include <unx/glyphcache.hxx>
+#include <o3tl/string_view.hxx>
 
 #include <poll.h>
 #include <memory>
@@ -503,8 +504,7 @@ void SalDisplay::Init()
     const char* pValStr = XGetDefault( pDisp_, "Xft", "dpi" );
     if( pValStr != nullptr )
     {
-        const OString aValStr( pValStr );
-        const tools::Long nDPI = static_cast<tools::Long>(aValStr.toDouble());
+        const tools::Long nDPI = static_cast<tools::Long>(o3tl::toDouble(std::string_view(pValStr)));
         // guard against insane resolution
         if( sal_ValidDPI(nDPI) )
         {
@@ -1447,8 +1447,8 @@ KeySym SalDisplay::GetKeySym( XKeyEvent        *pEvent,
 }
 
 // Pointer
-static unsigned char nullmask_bits[] = { 0x00, 0x00, 0x00, 0x00 };
-static unsigned char nullcurs_bits[] = { 0x00, 0x00, 0x00, 0x00 };
+const unsigned char nullmask_bits[] = { 0x00, 0x00, 0x00, 0x00 };
+const unsigned char nullcurs_bits[] = { 0x00, 0x00, 0x00, 0x00 };
 
 #define MAKE_BITMAP( name ) \
     XCreateBitmapFromData( pDisp_, \
@@ -1820,11 +1820,11 @@ int SalDisplay::CaptureMouse( SalFrame *pCapture )
     m_pCapture = nullptr;
 
     // FIXME: get rid of X11SalFrame
-    const SystemEnvData* pEnvData = pCapture->GetSystemData();
+    const SystemEnvData& rEnvData = pCapture->GetSystemData();
     if( !pEnv || !*pEnv )
     {
         int ret = XGrabPointer( GetDisplay(),
-                                static_cast<::Window>(pEnvData->GetWindowHandle(pCapture)),
+                                static_cast<::Window>(rEnvData.GetWindowHandle(pCapture)),
                                 False,
                                 PointerMotionMask| ButtonPressMask|ButtonReleaseMask,
                                 GrabModeAsync,
@@ -1906,7 +1906,7 @@ void SalX11Display::Dispatch( XEvent *pEvent )
     }
 
     SalInstance* pInstance = GetSalInstance();
-    pInstance->CallEventCallback( pEvent, sizeof( XEvent ) );
+    pInstance->CallEventCallback(pEvent);
 
     switch( pEvent->type )
     {

@@ -32,7 +32,7 @@
           <desc>Contains an initialization vector for the password encryption.</desc>
         </info>
       </prop>
-      <prop oor:name="Password" oor:type="xs:string" oor:localized="false">
+      <prop oor:name="Password" oor:type="xs:string">
         <info>
           <desc>Contains a password encoded with the master password.</desc>
         </info>
@@ -585,7 +585,7 @@
         <desc>specifies, on a per-application-type basis, certain defaults for
         layouting form controls</desc>
       </info>
-      <prop oor:name="VisualEffect" oor:type="xs:string" oor:nillable="true">
+      <prop oor:name="VisualEffect" oor:type="xs:string">
         <info>
           <desc>specifies the default visual effect for form controls</desc>
         </info>
@@ -679,13 +679,9 @@
       </prop>
       <prop oor:name="AnimationsEnabled" oor:type="xs:boolean" oor:nillable="false">
         <info>
-          <desc>Defines if the user interface animations (like "walking ant"
-          animation when copying a cell in Calc) is enabled or disabled.
-          Disabling animations makes a lot of sense on remote connections
-          (VNC), where animations increase the (always limited) amount of
-          bandwidth needed.
-          </desc>
-          <label>Defines if the user interface animations are disabled.</label>
+          <deprecated>Not used anymore</deprecated>
+          <desc>__Obsolete__:  Please use the setting "Allow other animations" found in Menu: Tools --> Options --> Accessibility.</desc>
+          <label>__Obsolete__:  Please use the setting "Allow other animations" found in Menu: Tools --> Options --> Accessibility.</label>
         </info>
         <value>true</value>
       </prop>
@@ -705,6 +701,24 @@
         </info>
         <value>15</value>
       </prop>
+      <group oor:name="macOS">
+        <prop oor:name="EnableNativeFullScreenWindows" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+             <desc>Specifies if clicking the green button in a window's
+             titlebar causes the window to switch to native full screen
+             mode.</desc>
+          </info>
+          <value>true</value>
+        </prop>
+        <prop oor:name="IgnoreKeysWhenScrollingWithTrackpadOrMagicMouse" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+             <desc>Specifies if the Command, Option, Control, and Shift keys
+             should be ignored or not when scrolling on a trackpad or a
+             Magic Mouse.</desc>
+          </info>
+          <value>true</value>
+        </prop>
+      </group>
     </group>
     <group oor:name="Passwords">
       <info>
@@ -1381,6 +1395,7 @@
           </info>
           <value>
             <it>$(insturl)/@LIBO_SHARE_FOLDER@/autotext/$(vlang)</it>
+            <it>$(insturl)/@LIBO_SHARE_FOLDER@/autotext/common</it>
             <it>$(userurl)/autotext</it>
           </value>
         </prop>
@@ -1585,6 +1600,12 @@
             can be used for the menu and toolbar icons, are located.</desc>
           </info>
           <value>$(insturl)/@LIBO_SHARE_FOLDER@/config/symbol</value>
+        </prop>
+        <prop oor:name="DocumentTheme" oor:type="xs:string" oor:nillable="false">
+          <info>
+            <desc>Specifies the default directory where the document themes files.</desc>
+          </info>
+          <value>$(insturl)/@LIBO_SHARE_FOLDER@/themes</value>
         </prop>
         <prop oor:name="Config" oor:type="xs:string" oor:nillable="false">
           <info>
@@ -1953,7 +1974,7 @@
           <desc>The entry specifies if the recent document list should show only
           files that can be handled by the current module.</desc>
         </info>
-        <value>false</value>
+        <value>true</value>
       </prop>
       <set oor:name="HelpBookmarks" oor:node-type="HistoryType">
         <info>
@@ -2239,6 +2260,16 @@
                 <desc>ODFVER_013</desc>
               </info>
             </enumeration>
+            <enumeration oor:value="11">
+              <info>
+                <desc>ODFVER_013_EXTENDED</desc>
+              </info>
+            </enumeration>
+            <enumeration oor:value="12">
+              <info>
+                <desc>ODFVER_014</desc>
+              </info>
+            </enumeration>
             <enumeration oor:value="3">
               <info>
                 <desc>ODFVER_LATEST</desc>
@@ -2362,6 +2393,13 @@
           </info>
           <value>true</value>
         </prop>
+        <prop oor:name="ImplicitScriptSign" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Specifies whether to implicitly sign macros when adding the first signature
+            to an ODF document with macros.</desc>
+          </info>
+          <value>false</value>
+        </prop>
         <prop oor:name="CertDir" oor:type="xs:string">
           <info>
             <desc>Contains the path to the users NSS certificate directory.</desc>
@@ -2371,6 +2409,7 @@
           <info>
             <desc>Contains the last path manually selected by the user for the CertDir property.</desc>
           </info>
+          <value></value>
         </prop>
         <prop oor:name="CertMgrPath" oor:type="xs:string" oor:nillable="false">
           <info>
@@ -2394,6 +2433,12 @@
           <info>
             <desc>Specifies whether to warn when creating PDF documents with
             personal/hidden data.</desc>
+          </info>
+          <value>false</value>
+        </prop>
+        <prop oor:name="RemoveEditingTimeOnSaving" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Specifies whether to remove editing duration on saving.</desc>
           </info>
           <value>false</value>
         </prop>
@@ -2436,6 +2481,14 @@
             <desc>
               Specifies whether to keep document version information on
               saving if RemovePersonalInfoOnSaving is true.
+            </desc>
+          </info>
+          <value>false</value>
+        </prop>
+        <prop oor:name="KeepDocPrinterSettingsOnSaving" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>
+              Specifies whether to keep printer settings on saving if RemovePersonalInfoOnSaving is true.
             </desc>
           </info>
           <value>false</value>
@@ -2513,6 +2566,21 @@
           <info>
             <desc>Specifies whether or not to disable active content. Right now
             only disables active embedded content (OLE) and DDE.</desc>
+          </info>
+          <value>false</value>
+        </prop>
+        <prop oor:name="DisablePythonRuntime" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Specifies whether or not to disable Python Runtime Environment.
+            Extensions and macros that utilize Python will not function when disabled.
+            </desc>
+          </info>
+          <value>false</value>
+        </prop>
+        <prop oor:name="DisableOLEAutomation" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Specifies whether or not to disable OLE Automation interface.
+            </desc>
           </info>
           <value>false</value>
         </prop>
@@ -3229,7 +3297,7 @@
         <info>
           <desc>Name of selected palette</desc>
         </info>
-        <value>standard</value>
+        <value>Standard</value>
       </prop>
       <prop oor:name="CustomColor" oor:type="oor:int-list" oor:nillable="false">
         <info>
@@ -3301,6 +3369,45 @@
           <it>Liberation Serif</it>
           <it>Liberation Serif</it>
           <it>Liberation Serif</it>
+        </value>
+      </prop>
+    </group>
+    <group oor:name="BulletsNumbering">
+      <info>
+        <desc>Contains Favorite characters</desc>
+      </info>
+      <prop oor:name="DefaultBullets" oor:type="oor:string-list" oor:nillable="false">
+        <info>
+          <desc>List of default bullets</desc>
+        </info>
+        <value>
+          <it>•</it>
+          <it>◦</it>
+          <it>▪</it>
+          <it>•</it>
+          <it>◦</it>
+          <it>▪</it>
+          <it>•</it>
+          <it>◦</it>
+          <it>▪</it>
+          <it>•</it>
+        </value>
+      </prop>
+      <prop oor:name="DefaultBulletsFonts" oor:type="oor:string-list" oor:nillable="false">
+        <info>
+          <desc>List of default bullet fonts. Matching font for `DefaultBullets`.</desc>
+        </info>
+        <value>
+          <it>OpenSymbol</it>
+          <it>OpenSymbol</it>
+          <it>OpenSymbol</it>
+          <it>OpenSymbol</it>
+          <it>OpenSymbol</it>
+          <it>OpenSymbol</it>
+          <it>OpenSymbol</it>
+          <it>OpenSymbol</it>
+          <it>OpenSymbol</it>
+          <it>OpenSymbol</it>
         </value>
       </prop>
     </group>
@@ -4664,7 +4771,7 @@
               <desc>Specifies whether form fields are exported as widgets or
               only their fixed print representation is exported.</desc>
             </info>
-            <value>true</value>
+            <value>false</value>
           </prop>
           <prop oor:name="FormsType" oor:type="xs:int" oor:nillable="false">
             <info>
@@ -4986,6 +5093,11 @@
                   <desc>PDF 1.7</desc>
                 </info>
               </enumeration>
+              <enumeration oor:value="20">
+                <info>
+                  <desc>PDF 2.0</desc>
+                </info>
+              </enumeration>
               <enumeration oor:value="1">
                 <info>
                   <desc>PDF/A-1 (ISO 19005-1:2005)</desc>
@@ -4994,6 +5106,16 @@
               <enumeration oor:value="2">
                 <info>
                   <desc>PDF/A-2 (ISO 19005-2:2011)</desc>
+                </info>
+              </enumeration>
+              <enumeration oor:value="3">
+                <info>
+                  <desc>PDF/A-3 (ISO 19005-3:2012)</desc>
+                </info>
+              </enumeration>
+              <enumeration oor:value="4">
+                <info>
+                  <desc>PDF/A-4 (ISO 19005-4)</desc>
                 </info>
               </enumeration>
             </constraints>
@@ -5071,37 +5193,35 @@
         </group>
       </group>
     </group>
-    <group oor:name="Misc">
+    <group oor:name="Appearance">
       <info>
-        <desc>Determines the miscellaneous entries for the common group.</desc>
+        <desc>Specifies appearance settings for the application.</desc>
       </info>
-      <prop oor:name="Appearance" oor:type="xs:short" oor:nillable="false">
-        <!-- UIHints: Tools  Options - General  View  [Section] Appearance -->
+      <prop oor:name="LibreOfficeTheme" oor:type="xs:short" oor:nillable="false">
         <info>
-          <desc>Specifies the appearance of the user interface.</desc>
-          <label>Appearance</label>
+          <desc>Specifies LibreOfficeTheme state.</desc>
+          <label>LibreOffice Theme</label>
         </info>
         <constraints>
           <enumeration oor:value="0">
             <info>
-              <desc>Automatic, from system settings</desc>
+              <desc>Disabled</desc>
             </info>
           </enumeration>
           <enumeration oor:value="1">
             <info>
-              <desc>Light</desc>
+              <desc>Enabled</desc>
             </info>
           </enumeration>
           <enumeration oor:value="2">
             <info>
-              <desc>Dark</desc>
+              <desc>Reset</desc>
             </info>
           </enumeration>
         </constraints>
         <value>0</value>
       </prop>
       <prop oor:name="ApplicationAppearance" oor:type="xs:short" oor:nillable="false">
-        <!-- UIHints: Tools  Options - General  View  [Section] Appearance -->
         <info>
           <desc>Specifies the application colors.</desc>
           <label>Application Colors</label>
@@ -5123,8 +5243,42 @@
             </info>
           </enumeration>
         </constraints>
-        <value>1</value>
+        <value>0</value>
       </prop>
+      <prop oor:name="UseOnlyWhiteDocBackground" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Use only white colors for document background and don't let
+          the theme change it.</desc>
+          <label>Use white document background</label>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="UseBmpForAppBack" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Determines whether to use bitmap or color for application background.</desc>
+          <label>Use bitmap for application background</label>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="AppBackBmpFileName" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Determines the bitmap file name for application background.</desc>
+          <label>Application background bitmap file name</label>
+        </info>
+        <value>maple-leaves.jpg</value>
+      </prop>
+      <prop oor:name="AppBackBmpDrawType" oor:type="xs:string" oor:nillable="false">
+        <info>
+          <desc>Determines the draw type for application background bitmap.</desc>
+          <label>Application background bitmap draw type</label>
+        </info>
+        <value>Tiled</value>
+      </prop>
+    </group>
+    <group oor:name="Misc">
+      <info>
+        <desc>Determines the miscellaneous entries for the common group.</desc>
+      </info>
       <prop oor:name="MaxOpenDocuments" oor:type="xs:int">
         <info>
           <desc>Determines the maximum count of documents, which are allowed to
@@ -5144,8 +5298,8 @@
           <!-- DIN Light (ttf version) has odd metrics. The otf version works fine. -->
           <it>DIN Light,1509,-503,1509,-483,1997,483</it>
           <!-- tdf#155297 -->
-	  <it>B Nazanin,1343,-705,1990,-1045,1990,1045</it> <!-- Regular -->
-	  <it>B Nazanin,1341,-707,2126,-1120,2126,1120</it> <!-- Bold -->
+          <it>B Nazanin,1343,-705,1990,-1045,1990,1045</it> <!-- Regular -->
+          <it>B Nazanin,1341,-707,2126,-1120,2126,1120</it> <!-- Bold -->
         </value>
       </prop>
       <prop oor:name="FontsDontUseUnderlineMetrics" oor:type="oor:string-list" oor:nillable="false">
@@ -5192,6 +5346,15 @@
           on WebDAV shares. It is not recommended to set this option to 'false' in
           scenarios where multi-user, concurrent read/write access to WebDAV share
           is required</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="TempFileNextToLocalFile" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Determines if temp files are placed next to the local file when a file is saved.
+          If this is false, the temp file will be placed in the default temp directory.
+          Placing the temp file next to the local file will increase performance, but it might lead
+          to permission issues such as described in this bug: https://bugs.documentfoundation.org/show_bug.cgi?id=158975</desc>
         </info>
         <value>true</value>
       </prop>
@@ -5287,11 +5450,22 @@
           <value>-1</value>
       </prop>
       <prop oor:name="QuerySetInsMode" oor:type="xs:boolean" oor:nillable="false">
-        <!-- UIHints: Tools - Options - General -->
         <info>
           <desc>Determines whether to query when switching into the overwrite mode.</desc>
         </info>
         <value>true</value>
+      </prop>
+      <prop oor:name="QueryShowFieldName" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Determines whether to show the field name when entering the field mode.</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="QueryDeleteAllComments" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Determines whether to confirm delete all comments or all by user.</desc>
+        </info>
+        <value>false</value>
       </prop>
       <prop oor:name="PerformFileExtCheck" oor:type="xs:boolean" oor:nillable="false">
         <!-- UIHints: Tools - Options - General -->
@@ -5299,6 +5473,12 @@
           <desc>Determines whether the default file extension check is performed on startup.</desc>
         </info>
         <value>false</value>
+      </prop>
+      <prop oor:name="ShowDonation" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Determines whether to show a donation button in the start center or extension.</desc>
+        </info>
+        <value>true</value>
       </prop>
       <prop oor:name="UseOpenCL" oor:type="xs:boolean" oor:nillable="false">
         <info>
@@ -5319,7 +5499,7 @@
         <info>
           <desc>Like OpenCLDenyList, but for combinations known to be good.</desc>
         </info>
-        <value oor:separator=";">Linux//Advanced Micro Devices, Inc\.//1445\.5 \(sse2,avx\);//Advanced Micro Devices, Inc\.//;//Intel\(R\) Corporation//;//NVIDIA Corporation//</value>
+        <value oor:separator=";">Linux//Advanced Micro Devices, Inc\.//1445\.5 \(sse2,avx\);//Advanced Micro Devices, Inc\.//;//Intel\(R\) Corporation//;//NVIDIA Corporation//;Linux//Mesa%2FX.org//</value>
       </prop>
       <prop oor:name="SelectedOpenCLDeviceIdentifier" oor:type="xs:string" oor:nillable="false">
         <info>
@@ -5420,40 +5600,6 @@
         </info>
         <value>auto</value>
       </prop>
-      <prop oor:name="Persona" oor:type="xs:string" oor:nillable="false">
-        <!-- UIHints: Tools  Options General Personalization -->
-        <info>
-          <desc>Specifies whether we should use a Firefox Persona, ie. a
-            picture under the menu, toolbar, and status bar.</desc>
-        </info>
-        <constraints>
-          <enumeration oor:value="no">
-            <info>
-              <desc>No - the user wants just the themed look, no Persona.</desc>
-            </info>
-          </enumeration>
-          <enumeration oor:value="default">
-            <info>
-              <desc>Default - the LibreOffice default Persona.</desc>
-            </info>
-          </enumeration>
-          <enumeration oor:value="own">
-            <info>
-              <desc>The user installed an own Persona, and wants to use that.</desc>
-            </info>
-          </enumeration>
-        </constraints>
-        <value>default</value>
-      </prop>
-      <prop oor:name="PersonaSettings" oor:type="xs:string" oor:nillable="false">
-        <!-- UIHints: Tools  Options General Personalization -->
-        <info>
-          <desc>Names of the header and footer images, and colors for text and
-            accent.  When set, the value has form
-            "header.jpg;footer.jpg;#RGBTXT;#RGBACC".</desc>
-        </info>
-        <value/>
-      </prop>
       <prop oor:name="FormControlPilotsEnabled" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Enables/Disables the usage of AutoPilots for form
@@ -5513,6 +5659,32 @@
       <prop oor:name="AllowEditReadonlyDocs" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Allow the user to edit read-only docs (via menu or Infobar)</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="ViewerAppMode" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Open all files in read-only mode</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="OfferSafeMode" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Offer Safe Mode to the user.</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="FreehandThresholdPixels" oor:type="xs:int" oor:nillable="false">
+        <info>
+          <desc>Defines number of pixels the cursor can move before a new bezier point will be added when using Freehand tool.</desc>
+          <label>Freehand Tool Pixel Threshold</label>
+        </info>
+        <value>10</value>
+      </prop>
+      <prop oor:name="UseVerticalNotebookbar" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Defines whether to show tabs vertically or horizontallyin a notebookbar.</desc>
+          <label>Vertical tabs in dialogs</label>
         </info>
         <value>true</value>
       </prop>
@@ -5954,7 +6126,8 @@
         </constraints>
         <value>4</value>
       </prop>
-      <prop oor:name="IsAllowAnimatedGraphics" oor:type="xs:boolean" oor:nillable="false">
+      <prop oor:name="AllowAnimatedGraphic" oor:type="xs:short" oor:nillable="false">
+        <!-- UIHints: Tools - Options - Accessibility Options -->
         <info>
           <desc>Indicates whether to allow the graphical animation in all SO/OO
           applications (i.e. animated GIFs and objects in Impress during
@@ -5962,13 +6135,94 @@
           Insert-Image, Animation Tool in Impress.)</desc>
           <label>Allow animated images</label>
         </info>
-        <value>true</value>
+        <constraints>
+          <enumeration oor:value="0">
+            <info>
+              <desc>Use the OS setting for allowing animations.</desc>
+            </info>
+          </enumeration>
+          <enumeration oor:value="1">
+            <info>
+              <desc>No</desc>
+            </info>
+          </enumeration>
+          <enumeration oor:value="2">
+            <info>
+              <desc>Yes</desc>
+            </info>
+          </enumeration>
+        </constraints>
+        <value>0</value>
       </prop>
-      <prop oor:name="IsAllowAnimatedText" oor:type="xs:boolean" oor:nillable="false">
+      <prop oor:name="AllowAnimatedText" oor:type="xs:short" oor:nillable="false">
+        <!-- UIHints: Tools - Options - Accessibility Options -->
         <info>
           <desc>Indicates whether to allow all textual animation like blinking
           and scrolling in all SO/OO applications.</desc>
           <label>Allow animated text</label>
+        </info>
+        <constraints>
+          <enumeration oor:value="0">
+            <info>
+              <desc>Use the OS setting for allowing animations.</desc>
+            </info>
+          </enumeration>
+          <enumeration oor:value="1">
+            <info>
+              <desc>No</desc>
+            </info>
+          </enumeration>
+          <enumeration oor:value="2">
+            <info>
+              <desc>Yes</desc>
+            </info>
+          </enumeration>
+        </constraints>
+        <value>0</value>
+      </prop>
+      <prop oor:name="AllowAnimatedOthers" oor:type="xs:short" oor:nillable="false">
+        <!-- UIHints: Tools - Options - Accessibility Options -->
+        <info>
+          <desc>Indicates whether to allow certain others animations
+          (like "marching ants" animation when copying a cell in Calc)
+          in all SO/OO applications.
+          Disabling animations makes a lot of sense on remote connections
+          (VNC), where animations increase the (always limited) amount of
+          bandwidth needed.</desc>
+          <label>Allow other animations</label>
+        </info>
+        <constraints>
+          <enumeration oor:value="0">
+            <info>
+              <desc>Use the OS setting for allowing animations.</desc>
+            </info>
+          </enumeration>
+          <enumeration oor:value="1">
+            <info>
+              <desc>No</desc>
+            </info>
+          </enumeration>
+          <enumeration oor:value="2">
+            <info>
+              <desc>Yes</desc>
+            </info>
+          </enumeration>
+        </constraints>
+        <value>0</value>
+      </prop>
+      <prop oor:name="IsAllowAnimatedGraphics" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <deprecated>Not used anymore</deprecated>
+          <desc>__Obsolete__:  Please use the setting "Allow animated images" found in Menu: Tools --> Options --> Accessibility.</desc>
+          <label>__Obsolete__:  Please use the setting "Allow animated images" found in Menu: Tools --> Options --> Accessibility.</label>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="IsAllowAnimatedText" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <deprecated>Not used anymore</deprecated>
+          <desc>__Obsolete__:  Please use the setting "Allow animated text" found in Menu: Tools --> Options --> Accessibility.</desc>
+          <label>__Obsolete__:  Please use the setting "Allow animated text" found in Menu: Tools --> Options --> Accessibility.</label>
         </info>
         <value>true</value>
       </prop>
@@ -6042,12 +6296,357 @@
        <prop oor:name="OnlineAccessibilityCheck" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>
-            Enables online accessibility check, which checks for accessibility issues inside the document structure
+            Enables accessibility check, which checks for accessibility issues inside the document structure
             while the user edits the document.
           </desc>
-          <label>Enable/Disable online accessibility check.</label>
+          <label>Enable/Disable accessibility check.</label>
          </info>
          <value>false</value>
+       </prop>
+    </group>
+    <group oor:name="AccessibilityIssues">
+      <info>
+        <desc>Specifies settings for the accessibility options.</desc>
+      </info>
+      <prop oor:name="DocumentTitle" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Document Title, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Document Title accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="DocumentLanguage" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Document Language, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Document Language accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="DocumentBackground" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Document Background, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Document Background accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="DocumentStyleLanguage" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Document Style Language, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Document Style Language accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="LinkedGraphic" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Linked Graphic objects, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Linked Graphic objects accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="NoAltOleObj" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Alternative Text of OLE_Objects, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Alternative Text of OLE_Objects accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="NoAltGraphicObj" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Alternative Text of Graphic Objects, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Alternative Text of Graphic Objects accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="NoAltShapeObj" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Alternative Text of Shape Objects, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Alternative Text of Shape Objects accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="TableMergeSplit" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of merges or splits in Tables, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable merges or splits in Tables accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="TextNewLines" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of empty new line text formattings, inside the document
+            structure while the user edits the document.
+          </desc>
+          <label>Enable/Disable empty new line Text formattings accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="TextSpaces" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of extra spaces for formattings, inside the document
+            structure while the user edits the document.
+          </desc>
+          <label>Enable/Disable extra spaces for Text formattings accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="TextTabs" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of extra tabs for formattings, inside the document
+            structure while the user edits the document.
+          </desc>
+          <label>Enable/Disable extra tabs for Text formattings accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="TextEmptyNums" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of empty new line between numberings, inside the document
+            structure while the user edits the document.
+          </desc>
+          <label>Enable/Disable empty new line between numberings accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="DirectFormattings" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Direct formattings, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Direct formattings accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="TableFormattings" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Table formattings, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Text formattings accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="HyperlinkText" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Hyperlink texts, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable hyperlink texts accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="HyperlinkShort" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of short hyperlinks, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable short hyperlinks accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="HyperlinkNoName" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of missing hyperlink name, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable missing hyperlink name accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+      <prop oor:name="LinkInHeaderOrFooter" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of links and reference fields are used in the
+            header or footer.
+          </desc>
+          <label>Enable/Disable not nested link structure elements accessibility check.</label>
+        </info>
+        <value>true</value>
+      </prop>
+       <prop oor:name="FakeFootnotes" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of simulated footnotes, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable simulated footnotes accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="FakeCaptions" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of simulated captions, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable simulated captions accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="ManualNumbering" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of simulated numbering, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable simulated numbering accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="TextContrast" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check texts contrast is too low, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable texts contrast is too low accessibility check.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="TextBlinking" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of blinking texts, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable blinking texts accessibility issues.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="HeadingNotInOrder" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of outline levels of headings not in sequential order,
+            inside the document structure while the user edits the document.
+          </desc>
+          <label>Enable/Disable outline levels of headings not in sequential order accessibility issues.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="NonInteractiveForms" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of non interactive input fields, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable accessibility check of non interactive input fields accessibility issues.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="Floatingtext" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of Frames/Text boxes anchored “As Character“, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable Frames, Text boxes anchored “As Character“ accessibility issues.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="HeadingTable" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of tables contain headings, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable tables contain headings accessibility issues.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="HeadingStart" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of heading order start with level 1, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable heading order start with level 1 accessibility issues.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="HeadingOrder" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of heading order is correct, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable heading order is correct accessibility issues.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="ContentControl" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of content controls in header or footer, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable document contains content controls in header or footer accessibility issues.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="AvoidFootnotes" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of footnotes, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable document contains footnotes accessibility issues.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="AvoidEndnotes" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of endnotes, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable document contains endnotes accessibility issues.</label>
+         </info>
+         <value>true</value>
+       </prop>
+       <prop oor:name="FontWorks" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>
+            Enables accessibility check of fontwork objects, inside the document structure
+            while the user edits the document.
+          </desc>
+          <label>Enable/Disable document contains fontwork objects accessibility issues.</label>
+         </info>
+         <value>true</value>
        </prop>
     </group>
     <group oor:name="ExternalMailer">
@@ -6146,6 +6745,14 @@
           <info>
             <desc>Specifies whether CTL font settings are available (true) or
             not (false).</desc>
+          </info>
+          <value>false</value>
+        </prop>
+        <prop oor:name="CTLVerticalText" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints: setup -->
+          <info>
+            <desc>Specifies whether vertical text settings are available (true)
+            or not (false).</desc>
           </info>
           <value>false</value>
         </prop>

@@ -37,6 +37,7 @@
 #include <unotools/ucbhelper.hxx>
 #include <unotools/pathoptions.hxx>
 #include <unotools/viewoptions.hxx>
+#include <svtools/ehdl.hxx>
 #include <svtools/sfxecode.hxx>
 
 #include <fpicker/strings.hrc>
@@ -70,6 +71,7 @@
 #include <com/sun/star/ucb/InteractiveAugmentedIOException.hpp>
 #include "fpinteraction.hxx"
 #include <osl/process.h>
+#include <o3tl/deleter.hxx>
 #include <o3tl/string_view.hxx>
 
 #include <officecfg/Office/Common.hxx>
@@ -81,7 +83,6 @@
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::ui::dialogs;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::ucb;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::task;
@@ -259,30 +260,18 @@ namespace
         aWorkPathObj.setFinalSlash();
         return  aWorkPathObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
     }
-
-
-    /** retrieves the value of an environment variable
-        @return <TRUE/> if and only if the retrieved string value is not empty
-    */
-    bool getEnvironmentValue( const char* _pAsciiEnvName, OUString& _rValue )
-    {
-        _rValue.clear();
-        OUString sEnvName = OUString::createFromAscii( _pAsciiEnvName );
-        osl_getEnvironment( sEnvName.pData, &_rValue.pData );
-        return !_rValue.isEmpty();
-    }
 }
 
 // SvtFileDialog
 SvtFileDialog::SvtFileDialog(weld::Window* pParent, PickerFlags nStyle)
-    : SvtFileDialog_Base(pParent, "fps/ui/explorerfiledialog.ui", "ExplorerFileDialog")
-    , m_xCbReadOnly(m_xBuilder->weld_check_button("readonly"))
-    , m_xCbLinkBox(m_xBuilder->weld_check_button("link"))
-    , m_xCbPreviewBox(m_xBuilder->weld_check_button("cb_preview"))
-    , m_xCbSelection(m_xBuilder->weld_check_button("selection"))
-    , m_xPbPlay(m_xBuilder->weld_button("play"))
-    , m_xPreviewFrame(m_xBuilder->weld_widget("previewframe"))
-    , m_xPrevBmp(m_xBuilder->weld_image("preview"))
+    : SvtFileDialog_Base(pParent, u"fps/ui/explorerfiledialog.ui"_ustr, u"ExplorerFileDialog"_ustr)
+    , m_xCbReadOnly(m_xBuilder->weld_check_button(u"readonly"_ustr))
+    , m_xCbLinkBox(m_xBuilder->weld_check_button(u"link"_ustr))
+    , m_xCbPreviewBox(m_xBuilder->weld_check_button(u"cb_preview"_ustr))
+    , m_xCbSelection(m_xBuilder->weld_check_button(u"selection"_ustr))
+    , m_xPbPlay(m_xBuilder->weld_button(u"play"_ustr))
+    , m_xPreviewFrame(m_xBuilder->weld_widget(u"previewframe"_ustr))
+    , m_xPrevBmp(m_xBuilder->weld_image(u"preview"_ustr))
     , m_pFileNotifier(nullptr)
     , m_xImpl(new SvtExpFileDlg_Impl)
     , m_nPickerFlags(nStyle)
@@ -290,22 +279,23 @@ SvtFileDialog::SvtFileDialog(weld::Window* pParent, PickerFlags nStyle)
     , m_bInExecuteAsync(false)
     , m_bHasFilename(false)
 {
-    m_xImpl->m_xCbOptions = m_xBuilder->weld_check_button("options");
-    m_xImpl->m_xFtFileName = m_xBuilder->weld_label("file_name_label");
-    m_xImpl->m_xEdFileName.reset(new SvtURLBox(m_xBuilder->weld_combo_box("file_name")));
-    m_xImpl->m_xFtFileType = m_xBuilder->weld_label("file_type_label");
-    m_xImpl->m_xLbFilter = m_xBuilder->weld_combo_box("file_type");
-    m_xImpl->m_xEdCurrentPath.reset(new SvtURLBox(m_xBuilder->weld_combo_box("current_path")));
-    m_xImpl->m_xBtnFileOpen = m_xBuilder->weld_button("open");
-    m_xImpl->m_xBtnCancel = m_xBuilder->weld_button("cancel");
-    m_xImpl->m_xBtnHelp = m_xBuilder->weld_button("help");
-    m_xImpl->m_xBtnConnectToServer = m_xBuilder->weld_button("connect_to_server");
-    m_xImpl->m_xBtnNewFolder = m_xBuilder->weld_button("new_folder");
-    m_xImpl->m_xCbPassword = m_xBuilder->weld_check_button("password");
-    m_xImpl->m_xCbGPGEncrypt = m_xBuilder->weld_check_button("gpgencrypt");
-    m_xImpl->m_xCbAutoExtension = m_xBuilder->weld_check_button("extension");
-    m_xImpl->m_xSharedLabel = m_xBuilder->weld_label("shared_label");
-    m_xImpl->m_xSharedListBox = m_xBuilder->weld_combo_box("shared");
+    m_xImpl->m_xCbOptions = m_xBuilder->weld_check_button(u"options"_ustr);
+    m_xImpl->m_xFtFileName = m_xBuilder->weld_label(u"file_name_label"_ustr);
+    m_xImpl->m_xEdFileName.reset(new SvtURLBox(m_xBuilder->weld_combo_box(u"file_name"_ustr)));
+    m_xImpl->m_xFtFileType = m_xBuilder->weld_label(u"file_type_label"_ustr);
+    m_xImpl->m_xLbFilter = m_xBuilder->weld_combo_box(u"file_type"_ustr);
+    m_xImpl->m_xEdCurrentPath.reset(new SvtURLBox(m_xBuilder->weld_combo_box(u"current_path"_ustr)));
+    m_xImpl->m_xBtnFileOpen = m_xBuilder->weld_button(u"open"_ustr);
+    m_xImpl->m_xBtnCancel = m_xBuilder->weld_button(u"cancel"_ustr);
+    m_xImpl->m_xBtnHelp = m_xBuilder->weld_button(u"help"_ustr);
+    m_xImpl->m_xBtnConnectToServer = m_xBuilder->weld_button(u"connect_to_server"_ustr);
+    m_xImpl->m_xBtnNewFolder = m_xBuilder->weld_button(u"new_folder"_ustr);
+    m_xImpl->m_xCbPassword = m_xBuilder->weld_check_button(u"password"_ustr);
+    m_xImpl->m_xCbGPGEncrypt = m_xBuilder->weld_check_button(u"gpgencrypt"_ustr);
+    m_xImpl->m_xCbGPGSign = m_xBuilder->weld_check_button(u"gpgsign"_ustr);
+    m_xImpl->m_xCbAutoExtension = m_xBuilder->weld_check_button(u"extension"_ustr);
+    m_xImpl->m_xSharedLabel = m_xBuilder->weld_label(u"shared_label"_ustr);
+    m_xImpl->m_xSharedListBox = m_xBuilder->weld_combo_box(u"shared"_ustr);
 
     // because the "<All Formats> (*.bmp,*...)" entry is too wide,
     // we need to disable the auto width feature of the filter box
@@ -313,8 +303,8 @@ SvtFileDialog::SvtFileDialog(weld::Window* pParent, PickerFlags nStyle)
     m_xImpl->m_xSharedListBox->set_size_request(nWidth, -1);
     m_xImpl->m_xLbFilter->set_size_request(nWidth, -1);
 
-    m_xImpl->m_xBtnUp.reset(new SvtUpButton_Impl(m_xBuilder->weld_toolbar("up_bar"),
-                                                 m_xBuilder->weld_menu("up_menu"),
+    m_xImpl->m_xBtnUp.reset(new SvtUpButton_Impl(m_xBuilder->weld_toolbar(u"up_bar"_ustr),
+                                                 m_xBuilder->weld_menu(u"up_menu"_ustr),
                                                  this));
     m_xImpl->m_xBtnUp->set_help_id(HID_FILEOPEN_LEVELUP);
     m_xImpl->m_xBtnUp->show();
@@ -325,10 +315,6 @@ SvtFileDialog::SvtFileDialog(weld::Window* pParent, PickerFlags nStyle)
 
     if (nStyle & PickerFlags::PathDialog)
         m_xImpl->m_eDlgType = FILEDLG_TYPE_PATHDLG;
-
-    // Set the directory for the "back to the default dir" button
-    INetURLObject aStdDirObj( SvtPathOptions().GetWorkPath() );
-    SetStandardDir( aStdDirObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
 
     // Create control element, the order defines the tab control.
     m_xImpl->m_xEdFileName->connect_changed( LINK( this, SvtFileDialog, EntrySelectHdl_Impl ) );
@@ -345,12 +331,12 @@ SvtFileDialog::SvtFileDialog(weld::Window* pParent, PickerFlags nStyle)
     if (nStyle & PickerFlags::MultiSelection)
         m_xImpl->m_bMultiSelection = true;
 
-    m_xContainer = m_xBuilder->weld_container("container");
+    m_xContainer = m_xBuilder->weld_container(u"container"_ustr);
     m_xContainer->set_size_request(m_xContainer->get_approximate_digit_width() * 95, -1);
 
     m_xFileView.reset(new SvtFileView(m_xDialog.get(),
-                                      m_xBuilder->weld_tree_view("fileview"),
-                                      m_xBuilder->weld_icon_view("iconview"),
+                                      m_xBuilder->weld_tree_view(u"fileview"_ustr),
+                                      m_xBuilder->weld_icon_view(u"iconview"_ustr),
                                       FILEDLG_TYPE_PATHDLG == m_xImpl->m_eDlgType,
                                       m_xImpl->m_bMultiSelection));
     m_xFileView->set_help_id( HID_FILEDLG_STANDARD );
@@ -368,8 +354,12 @@ SvtFileDialog::SvtFileDialog(weld::Window* pParent, PickerFlags nStyle)
         m_xImpl->m_xCbPassword->set_label( FpsResId( STR_SVT_FILEPICKER_PASSWORD ) );
         m_xImpl->m_xCbPassword->connect_toggled( LINK( this, SvtFileDialog, ClickHdl_Impl ) );
         m_xImpl->m_xCbPassword->show();
+
         m_xImpl->m_xCbGPGEncrypt->connect_toggled( LINK( this, SvtFileDialog, ClickHdl_Impl ) );
         m_xImpl->m_xCbGPGEncrypt->show();
+
+        m_xImpl->m_xCbGPGSign->connect_toggled( LINK( this, SvtFileDialog, ClickHdl_Impl ) );
+        m_xImpl->m_xCbGPGSign->show();
     }
 
     // set the ini file for extracting the size
@@ -452,7 +442,7 @@ SvtFileDialog::SvtFileDialog(weld::Window* pParent, PickerFlags nStyle)
     /// read our settings from the configuration
     m_aConfiguration = OConfigurationTreeRoot::createWithComponentContext(
         ::comphelper::getProcessComponentContext(),
-        "/org.openoffice.Office.UI/FilePicker"
+        u"/org.openoffice.Office.UI/FilePicker"_ustr
     );
 
     m_xDialog->connect_size_allocate(LINK(this, SvtFileDialog, SizeAllocHdl));
@@ -461,7 +451,7 @@ SvtFileDialog::SvtFileDialog(weld::Window* pParent, PickerFlags nStyle)
     m_xImpl->m_xEdFileName->grab_focus();
 }
 
-SvtFileDialog::~SvtFileDialog()
+void SvtFileDialog::ImplDestroy()
 {
     if (!m_xImpl->m_aIniKey.isEmpty())
     {
@@ -469,7 +459,7 @@ SvtFileDialog::~SvtFileDialog()
         SvtViewOptions aDlgOpt( EViewType::Dialog, m_xImpl->m_aIniKey );
         aDlgOpt.SetWindowState(m_xDialog->get_window_state(vcl::WindowDataMask::All));
         OUString sUserData = m_xFileView->GetConfigString();
-        aDlgOpt.SetUserItem( "UserData",
+        aDlgOpt.SetUserItem( u"UserData"_ustr,
                              Any( sUserData ) );
     }
 
@@ -498,6 +488,11 @@ SvtFileDialog::~SvtFileDialog()
     officecfg::Office::Common::Misc::FilePickerPlacesUrls::set(placesUrlsList, batch);
     officecfg::Office::Common::Misc::FilePickerPlacesNames::set(placesNamesList, batch);
     batch->commit();
+}
+
+SvtFileDialog::~SvtFileDialog()
+{
+    suppress_fun_call_w_exception(ImplDestroy());
 }
 
 IMPL_LINK_NOARG(SvtFileDialog, NewFolderHdl_Impl, weld::Button&, void)
@@ -829,7 +824,18 @@ void SvtFileDialog::OpenHdl_Impl(void const * pVoid)
     {
         case FILEDLG_MODE_SAVE:
         {
-            if ( ::utl::UCBContentHelper::Exists( aFileObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ) ) )
+            bool exists;
+            try
+            {
+                exists = utl::UCBContentHelper::Exists( aFileObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
+            }
+            catch (const Exception&)
+            {
+                DBG_UNHANDLED_EXCEPTION("fpicker.office");
+                ErrorHandler::HandleError(ERRCODE_IO_GENERAL);
+                return;
+            }
+            if (exists)
             {
                 OUString aMsg = FpsResId(STR_SVT_ALREADYEXISTOVERWRITE);
                 aMsg = aMsg.replaceFirst(
@@ -856,6 +862,13 @@ void SvtFileDialog::OpenHdl_Impl(void const * pVoid)
                         return;
                     }
                 }
+                else if (aFileObj.GetProtocol() == INetProtocol::File)
+                {
+                    // The protocol is 'file', but getSystemPathFromFileURL failed -> invalid
+                    // file name (e.g., '|' in the name)
+                    ErrorHandler::HandleError(ERRCODE_IO_INVALIDCHAR);
+                    return;
+                }
             }
         }
         break;
@@ -870,21 +883,14 @@ void SvtFileDialog::OpenHdl_Impl(void const * pVoid)
 
                 if ( !bExists )
                 {
-                    OUString sError(FpsResId(RID_FILEOPEN_NOTEXISTENTFILE));
-
                     OUString sInvalidFile( aFileObj.GetMainURL( INetURLObject::DecodeMechanism::ToIUri ) );
-                    if ( INetProtocol::File == aFileObj.GetProtocol() )
-                    {   // if it's a file URL, transform the URL into system notation
-                        OUString sURL( sInvalidFile );
-                        OUString sSystem;
-                        osl_getSystemPathFromFileURL( sURL.pData, &sSystem.pData );
-                        sInvalidFile = sSystem;
-                    }
-                    sError = sError.replaceFirst( "$name$", sInvalidFile );
-
-                    std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(),
-                                                              VclMessageType::Warning, VclButtonsType::Ok, sError));
-                    xBox->run();
+                    // transform the URL into system notation
+                    osl_getSystemPathFromFileURL(sInvalidFile.pData, &sInvalidFile.pData);
+                    static constexpr ErrMsgCode ids[]
+                        = { { RID_FILEOPEN_NOTEXISTENTFILE, ERRCODE_IO_NOTEXISTS }, { {}, {} } };
+                    SfxErrorHandler handler(ids, ErrCodeArea::Io, ErrCodeArea::Io, FpsResLocale());
+                    ErrorHandler::HandleError({ ERRCODE_IO_NOTEXISTS, sInvalidFile },
+                                              m_xDialog.get());
                     return;
                 }
             }
@@ -1241,6 +1247,8 @@ IMPL_LINK( SvtFileDialog, ClickHdl_Impl, weld::Toggleable&, rCheckBox, void )
         nId = CHECKBOX_PASSWORD;
     else if ( &rCheckBox == m_xImpl->m_xCbGPGEncrypt.get() )
         nId = CHECKBOX_GPGENCRYPTION;
+    else if ( &rCheckBox == m_xImpl->m_xCbGPGSign.get() )
+        nId = CHECKBOX_GPGSIGN;
     else if ( &rCheckBox == m_xCbLinkBox.get() )
         nId = CHECKBOX_LINK;
     else if ( &rCheckBox == m_xCbPreviewBox.get() )
@@ -1298,7 +1306,7 @@ OUString SvtFileDialog::implGetInitialURL( const OUString& _rPath, std::u16strin
         bIsInvalid = implIsInvalid( aFallback.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
 
         if ( !bIsInvalid )
-            aURLParser = aFallback;
+            aURLParser = std::move(aFallback);
     }
 
     if ( bIsInvalid )
@@ -1311,7 +1319,7 @@ OUString SvtFileDialog::implGetInitialURL( const OUString& _rPath, std::u16strin
         }
 
         if ( !bIsInvalid )
-            aURLParser = aParent;
+            aURLParser = std::move(aParent);
     }
 
     if ( !bIsInvalid && bIsFolder )
@@ -1393,7 +1401,7 @@ void SvtFileDialog::displayIOException( const OUString& _rURL, IOErrorCode _eCod
         aException.Arguments =
         { css::uno::Any(sDisplayPath),
           css::uno::Any(PropertyValue(
-            "Uri",
+            u"Uri"_ustr,
             -1, aException.Arguments[ 0 ], PropertyState_DIRECT_VALUE
           )) };
             // (formerly, it was sufficient to put the URL first parameter. Nowadays,
@@ -1454,37 +1462,6 @@ bool SvtFileDialog::PrepareExecute()
     if (comphelper::LibreOfficeKit::isActive())
         return false;
 
-    OUString aEnvValue;
-    if ( getEnvironmentValue( "WorkDirMustContainRemovableMedia", aEnvValue ) && aEnvValue == "1" )
-    {
-        try
-        {
-            INetURLObject aStdDir( GetStandardDir() );
-            ::ucbhelper::Content aCnt( aStdDir.GetMainURL(
-                                                    INetURLObject::DecodeMechanism::NONE ),
-                                 Reference< XCommandEnvironment >(),
-                                 comphelper::getProcessComponentContext() );
-            Sequence< OUString > aProps { "IsVolume", "IsRemoveable" };
-
-            Reference< XResultSet > xResultSet
-                = aCnt.createCursor( aProps, ::ucbhelper::INCLUDE_FOLDERS_ONLY );
-            if ( xResultSet.is() && !xResultSet->next() )
-            {
-                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(),
-                                                          VclMessageType::Warning, VclButtonsType::Ok,
-                                                          FpsResId(STR_SVT_NOREMOVABLEDEVICE)));
-                xBox->run();
-                return false;
-            }
-        }
-        catch ( ContentCreationException const & )
-        {
-        }
-        catch ( CommandAbortedException const & )
-        {
-        }
-    }
-
     if ( ( m_xImpl->m_nStyle & PickerFlags::SaveAs ) && m_bHasFilename )
         // when doing a save-as, we do not want the handler to handle "this file does not exist" messages
         // - finally we're going to save that file, aren't we?
@@ -1502,20 +1479,16 @@ bool SvtFileDialog::PrepareExecute()
         aFileNameOnly = m_aPath;
         m_aPath.clear();
     }
-
     // no starting path specified?
     if ( m_aPath.isEmpty() )
     {
         // then use the standard directory
-        m_aPath = lcl_ensureFinalSlash( m_xImpl->GetStandardDir() );
-
+        m_aPath = lcl_ensureFinalSlash( SvtPathOptions().GetWorkPath() );
         // attach given filename to path
         if ( !aFileNameOnly.isEmpty() )
             m_aPath += aFileNameOnly;
     }
-
-
-    m_aPath = implGetInitialURL( m_aPath, GetStandardDir() );
+    m_aPath = implGetInitialURL( m_aPath, SvtPathOptions().GetWorkPath() );
 
     if ( m_xImpl->m_nStyle & PickerFlags::SaveAs && !m_bHasFilename )
         // when doing a save-as, we do not want the handler to handle "this file does not exist" messages
@@ -1539,8 +1512,9 @@ bool SvtFileDialog::PrepareExecute()
             if ( 2 == nFilterCount && bHasAll )
             {
                 nPos = nFilterCount;
-                while ( nPos-- )
+                while (nPos)
                 {
+                    --nPos;
                     if ( aAll != GetFilterName( nPos ) )
                         break;
                 }
@@ -1593,7 +1567,7 @@ bool SvtFileDialog::PrepareExecute()
         aFolderURL.removeSegment();
     }
 
-    INetURLObject aObj = aFolderURL;
+    INetURLObject aObj = std::move(aFolderURL);
     if ( aObj.GetProtocol() == INetProtocol::File )
     {
         // set folder as current directory
@@ -1621,12 +1595,12 @@ void SvtFileDialog::executeAsync( ::svt::AsyncPickerAction::Action eAction,
     m_pCurrentAsyncAction = new AsyncPickerAction( this, m_xFileView.get(), eAction );
 
     bool bReallyAsync = true;
-    m_aConfiguration.getNodeValue( OUString( "FillAsynchronously" ) ) >>= bReallyAsync;
+    m_aConfiguration.getNodeValue( u"FillAsynchronously"_ustr ) >>= bReallyAsync;
 
     sal_Int32 nMinTimeout = 0;
-    m_aConfiguration.getNodeValue( OUString( "Timeout/Min" ) ) >>= nMinTimeout;
+    m_aConfiguration.getNodeValue( u"Timeout/Min"_ustr ) >>= nMinTimeout;
     sal_Int32 nMaxTimeout = 0;
-    m_aConfiguration.getNodeValue( OUString( "Timeout/Max" ) ) >>= nMaxTimeout;
+    m_aConfiguration.getNodeValue( u"Timeout/Max"_ustr ) >>= nMaxTimeout;
 
     m_bInExecuteAsync = true;
     m_pCurrentAsyncAction->execute(rURL, rFilter, bReallyAsync ? nMinTimeout : -1, nMaxTimeout, GetDenyList());
@@ -1649,18 +1623,6 @@ void SvtFileDialog::FilterSelect()
 }
 
 
-/*  [Description]
-
-   This method sets the path for the default button.
-*/
-void SvtFileDialog::SetStandardDir( const OUString& rStdDir )
-{
-    INetURLObject aObj( rStdDir );
-    SAL_WARN_IF( aObj.GetProtocol() == INetProtocol::NotValid, "fpicker.office", "Invalid protocol!" );
-    aObj.setFinalSlash();
-    m_xImpl->SetStandardDir( aObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
-}
-
 void SvtFileDialog::SetDenyList( const css::uno::Sequence< OUString >& rDenyList )
 {
     m_xImpl->SetDenyList( rDenyList );
@@ -1671,17 +1633,6 @@ const css::uno::Sequence< OUString >& SvtFileDialog::GetDenyList() const
 {
     return m_xImpl->GetDenyList();
 }
-
-
-/*  [Description]
-
-    This method returns the standard path.
-*/
-const OUString& SvtFileDialog::GetStandardDir() const
-{
-    return m_xImpl->GetStandardDir();
-}
-
 
 void SvtFileDialog::PrevLevel_Impl()
 {
@@ -1785,7 +1736,7 @@ void SvtFileDialog::InitSize()
     {
         m_xDialog->set_window_state(aDlgOpt.GetWindowState());
 
-        Any aUserData = aDlgOpt.GetUserItem( "UserData");
+        Any aUserData = aDlgOpt.GetUserItem( u"UserData"_ustr);
         OUString sCfgStr;
         if ( aUserData >>= sCfgStr )
             m_xFileView->SetConfigString( sCfgStr );
@@ -1917,6 +1868,10 @@ weld::Widget* SvtFileDialog::getControl( sal_Int16 nControlId, bool bLabelContro
 
         case CHECKBOX_GPGENCRYPTION:
             pReturn = m_xImpl->m_xCbGPGEncrypt.get();
+            break;
+
+        case CHECKBOX_GPGSIGN:
+            pReturn = m_xImpl->m_xCbGPGSign.get();
             break;
 
         case CHECKBOX_FILTEROPTIONS:
@@ -2131,11 +2086,11 @@ void SvtFileDialog::AddControls_Impl( )
         m_xImpl->m_xSharedListBox->show();
     }
 
-    m_xImpl->m_xPlaces.reset(new PlacesListBox(m_xBuilder->weld_tree_view("places"),
-                                               m_xBuilder->weld_button("add"),
-                                               m_xBuilder->weld_button("del"),
+    m_xImpl->m_xPlaces.reset(new PlacesListBox(m_xBuilder->weld_tree_view(u"places"_ustr),
+                                               m_xBuilder->weld_button(u"add"_ustr),
+                                               m_xBuilder->weld_button(u"del"_ustr),
                                                this));
-    m_xImpl->m_xPlaces->set_help_id("SVT_HID_FILESAVE_PLACES_LISTBOX");
+    m_xImpl->m_xPlaces->set_help_id(u"SVT_HID_FILESAVE_PLACES_LISTBOX"_ustr);
     m_xImpl->m_xPlaces->SetAddHdl( LINK ( this, SvtFileDialog, AddPlacePressed_Hdl ) );
     m_xImpl->m_xPlaces->SetDelHdl( LINK ( this, SvtFileDialog, RemovePlacePressed_Hdl ) );
 
@@ -2280,9 +2235,6 @@ void SvtFileDialog::appendDefaultExtension(OUString& rFileName,
 
 void SvtFileDialog::initDefaultPlaces( )
 {
-    PlacePtr pRootPlace = std::make_shared<Place>( FpsResId(STR_DEFAULT_DIRECTORY), GetStandardDir() );
-    m_xImpl->m_xPlaces->AppendPlace( pRootPlace );
-
     // Load from user settings
     Sequence< OUString > placesUrlsList(officecfg::Office::Common::Misc::FilePickerPlacesUrls::get());
     Sequence< OUString > placesNamesList(officecfg::Office::Common::Misc::FilePickerPlacesNames::get());
@@ -2299,9 +2251,9 @@ void SvtFileDialog::initDefaultPlaces( )
 
 QueryFolderNameDialog::QueryFolderNameDialog(weld::Window* _pParent,
     const OUString& rTitle, const OUString& rDefaultText)
-    : GenericDialogController(_pParent, "fps/ui/foldernamedialog.ui", "FolderNameDialog")
-    , m_xNameEdit(m_xBuilder->weld_entry("entry"))
-    , m_xOKBtn(m_xBuilder->weld_button("ok"))
+    : GenericDialogController(_pParent, u"fps/ui/foldernamedialog.ui"_ustr, u"FolderNameDialog"_ustr)
+    , m_xNameEdit(m_xBuilder->weld_entry(u"entry"_ustr))
+    , m_xOKBtn(m_xBuilder->weld_button(u"ok"_ustr))
 {
     m_xDialog->set_title(rTitle);
     m_xNameEdit->set_text(rDefaultText);

@@ -168,13 +168,11 @@ namespace cairocanvas
                 compositingMode = CAIRO_OPERATOR_SOURCE;
                 break;
             case rendering::CompositeOperation::DESTINATION:
+            case rendering::CompositeOperation::UNDER:
                 compositingMode = CAIRO_OPERATOR_DEST;
                 break;
             case rendering::CompositeOperation::OVER:
                 compositingMode = CAIRO_OPERATOR_OVER;
-                break;
-            case rendering::CompositeOperation::UNDER:
-                compositingMode = CAIRO_OPERATOR_DEST;
                 break;
             case rendering::CompositeOperation::INSIDE:
                 compositingMode = CAIRO_OPERATOR_IN;
@@ -305,20 +303,20 @@ constexpr OUStringLiteral PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME = u"Canvas::
         return SurfaceSharedPtr();
     }
 
-    static ::BitmapEx bitmapExFromXBitmap( const uno::Reference< rendering::XBitmap >& xBitmap )
+    static ::Bitmap bitmapFromXBitmap( const uno::Reference< rendering::XBitmap >& xBitmap )
     {
         // TODO(F1): Add support for floating point bitmap formats
         uno::Reference<rendering::XIntegerReadOnlyBitmap> xIntBmp(xBitmap,
                                                                   uno::UNO_QUERY_THROW);
-        ::BitmapEx aBmpEx = vcl::unotools::bitmapExFromXBitmap(xIntBmp);
-        if( !aBmpEx.IsEmpty() )
-            return aBmpEx;
+        ::Bitmap aBmp = vcl::unotools::bitmapFromXBitmap(xIntBmp);
+        if( !aBmp.IsEmpty() )
+            return aBmp;
 
         // TODO(F1): extract pixel from XBitmap interface
         ENSURE_OR_THROW( false,
-                         "bitmapExFromXBitmap(): could not extract BitmapEx" );
+                         "bitmapFromXBitmap(): could not extract BitmapEx" );
 
-        return ::BitmapEx();
+        return ::Bitmap();
     }
 
     /** surfaceFromXBitmap Create a surface from XBitmap
@@ -340,13 +338,12 @@ constexpr OUStringLiteral PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME = u"Canvas::
             data = nullptr;
         else
         {
-            ::BitmapEx aBmpEx = bitmapExFromXBitmap(xBitmap);
-            ::Bitmap aBitmap = aBmpEx.GetBitmap();
+            ::Bitmap aBitmap = bitmapFromXBitmap(xBitmap);
 
             // there's no pixmap for alpha bitmap. we might still
             // use rgb pixmap and only access alpha pixels the
             // slow way. now we just speedup rgb bitmaps
-            if( !aBmpEx.IsAlpha() )
+            if( !aBitmap.HasAlpha() )
             {
                 pSurface = rSurfaceProvider->createSurface( aBitmap );
                 data = nullptr;
@@ -357,7 +354,7 @@ constexpr OUStringLiteral PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME = u"Canvas::
             {
                 tools::Long nWidth;
                 tools::Long nHeight;
-                vcl::bitmap::CanvasCairoExtractBitmapData(aBmpEx, aBitmap, data, bHasAlpha, nWidth, nHeight);
+                vcl::bitmap::CanvasCairoExtractBitmapData(aBitmap, data, bHasAlpha, nWidth, nHeight);
 
                 pSurface = rSurfaceProvider->getOutputDevice()->CreateSurface(
                     CairoSurfaceSharedPtr(
@@ -423,7 +420,7 @@ constexpr OUStringLiteral PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME = u"Canvas::
     static cairo_pattern_t* patternFromParametricPolyPolygon( ::canvas::ParametricPolyPolygon const & rPolygon )
     {
         cairo_pattern_t* pPattern = nullptr;
-        const ::canvas::ParametricPolyPolygon::Values aValues = rPolygon.getValues();
+        const ::canvas::ParametricPolyPolygon::Values& aValues = rPolygon.getValues();
         double x0, x1, y0, y1, cx, cy, r0, r1;
 
         switch( aValues.meType )
@@ -488,7 +485,7 @@ constexpr OUStringLiteral PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME = u"Canvas::
                             geometry::IntegerSize2D aSize = aTexture.Bitmap->getSize();
 
                             cairo_matrix_init_scale( &aScaleMatrix, 1.0/aSize.Width, 1.0/aSize.Height );
-                            cairo_matrix_multiply( &aScaledTextureMatrix, &aTextureMatrix, &aScaleMatrix );
+                            cairo_matrix_multiply( &aScaledTextureMatrix, &aScaleMatrix, &aTextureMatrix );
                             cairo_matrix_invert( &aScaledTextureMatrix );
 
                             // we don't care about repeat mode yet, so the workaround is disabled for now
@@ -813,7 +810,7 @@ constexpr OUStringLiteral PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME = u"Canvas::
                         bool bNoLineJoin,
                         const uno::Sequence< rendering::Texture >* pTextures ) const
     {
-        const ::basegfx::B2DPolyPolygon& rPolyPoly(
+        const ::basegfx::B2DPolyPolygon aPolyPoly(
             ::basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(xPolyPolygon) );
 
         cairo_t* pCairo = mpCairo.get();
@@ -821,9 +818,9 @@ constexpr OUStringLiteral PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME = u"Canvas::
         if(bNoLineJoin && aOperation == Stroke)
         {
             // emulate rendering::PathJoinType::NONE by painting single edges
-            for(sal_uInt32 a(0); a < rPolyPoly.count(); a++)
+            for(sal_uInt32 a(0); a < aPolyPoly.count(); a++)
             {
-                const basegfx::B2DPolygon& aCandidate(rPolyPoly.getB2DPolygon(a));
+                const basegfx::B2DPolygon& aCandidate(aPolyPoly.getB2DPolygon(a));
                 const sal_uInt32 nPointCount(aCandidate.count());
 
                 if(nPointCount)
@@ -854,7 +851,7 @@ constexpr OUStringLiteral PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME = u"Canvas::
         }
         else
         {
-            doPolyPolygonImplementation( rPolyPoly, aOperation,
+            doPolyPolygonImplementation( aPolyPoly, aOperation,
                                          pCairo, pTextures,
                                          mpSurfaceProvider,
                                          xPolyPolygon->getFillRule() );
@@ -1120,7 +1117,7 @@ constexpr OUStringLiteral PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME = u"Canvas::
                 cairo_set_source_surface( pCairo.get(), pSurface->getCairoSurface().get(), 0, 0 );
                 cairo_paint( pCairo.get() );
 
-                pSurface = pScaledSurface;
+                pSurface = std::move(pScaledSurface);
 
                 aMatrix.xx = aMatrix.yy = 1;
                 cairo_set_matrix( mpCairo.get(), &aMatrix );

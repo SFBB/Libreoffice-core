@@ -52,18 +52,18 @@ static tools::Long lUserW = 5669; // 10 cm
 static tools::Long lUserH = 5669; // 10 cm
 
 SwEnvFormatPage::SwEnvFormatPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/envformatpage.ui", "EnvFormatPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/envformatpage.ui"_ustr, u"EnvFormatPage"_ustr, &rSet)
     , m_pDialog(nullptr)
-    , m_xAddrLeftField(m_xBuilder->weld_metric_spin_button("leftaddr", FieldUnit::CM))
-    , m_xAddrTopField(m_xBuilder->weld_metric_spin_button("topaddr", FieldUnit::CM))
-    , m_xAddrEditButton(m_xBuilder->weld_menu_button("addredit"))
-    , m_xSendLeftField(m_xBuilder->weld_metric_spin_button("leftsender", FieldUnit::CM))
-    , m_xSendTopField(m_xBuilder->weld_metric_spin_button("topsender", FieldUnit::CM))
-    , m_xSendEditButton(m_xBuilder->weld_menu_button("senderedit"))
-    , m_xSizeFormatBox(m_xBuilder->weld_combo_box("format"))
-    , m_xSizeWidthField(m_xBuilder->weld_metric_spin_button("width", FieldUnit::CM))
-    , m_xSizeHeightField(m_xBuilder->weld_metric_spin_button("height", FieldUnit::CM))
-    , m_xPreview(new weld::CustomWeld(*m_xBuilder, "preview", m_aPreview))
+    , m_xAddrLeftField(m_xBuilder->weld_metric_spin_button(u"leftaddr"_ustr, FieldUnit::CM))
+    , m_xAddrTopField(m_xBuilder->weld_metric_spin_button(u"topaddr"_ustr, FieldUnit::CM))
+    , m_xAddrEditButton(m_xBuilder->weld_menu_button(u"addredit"_ustr))
+    , m_xSendLeftField(m_xBuilder->weld_metric_spin_button(u"leftsender"_ustr, FieldUnit::CM))
+    , m_xSendTopField(m_xBuilder->weld_metric_spin_button(u"topsender"_ustr, FieldUnit::CM))
+    , m_xSendEditButton(m_xBuilder->weld_menu_button(u"senderedit"_ustr))
+    , m_xSizeFormatBox(m_xBuilder->weld_combo_box(u"format"_ustr))
+    , m_xSizeWidthField(m_xBuilder->weld_metric_spin_button(u"width"_ustr, FieldUnit::CM))
+    , m_xSizeHeightField(m_xBuilder->weld_metric_spin_button(u"height"_ustr, FieldUnit::CM))
+    , m_xPreview(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, m_aPreview))
 {
     SetExchangeSupport();
 
@@ -172,30 +172,36 @@ IMPL_LINK(SwEnvFormatPage, SendEditHdl, const OUString&, rIdent, void)
 void SwEnvFormatPage::Edit(std::u16string_view rIdent, bool bSender)
 {
     SwWrtShell* pSh = GetParentSwEnvDlg()->m_pSh;
-    OSL_ENSURE(pSh, "Shell missing");
+    assert(pSh && "Shell missing");
 
     SwTextFormatColl* pColl = pSh->GetTextCollFromPool( static_cast< sal_uInt16 >(
         bSender ? RES_POOLCOLL_SEND_ADDRESS : RES_POOLCOLL_ENVELOPE_ADDRESS));
-    OSL_ENSURE(pColl, "Text collection missing");
+    assert(pColl && "Text collection missing");
 
     if (o3tl::starts_with(rIdent, u"character"))
     {
         SfxItemSet *pCollSet = GetCollItemSet(pColl, bSender);
 
         // In order for the background color not to get ironed over:
-        SfxAllItemSet aTmpSet(*pCollSet);
-        ::ConvertAttrCharToGen(aTmpSet);
+        auto xTmpSet = std::make_shared<SfxAllItemSet>(*pCollSet);
+        ::ConvertAttrCharToGen(*xTmpSet);
 
         SwAbstractDialogFactory& rFact = swui::GetFactory();
 
-        const OUString sFormatStr = pColl->GetName();
-        ScopedVclPtr<SfxAbstractTabDialog> pDlg(rFact.CreateSwCharDlg(GetFrameWeld(), pSh->GetView(), aTmpSet, SwCharDlgMode::Env, &sFormatStr));
-        if (pDlg->Execute() == RET_OK)
-        {
-            SfxItemSet aOutputSet( *pDlg->GetOutputItemSet() );
-            ::ConvertAttrGenToChar(aOutputSet, aTmpSet);
-            pCollSet->Put(aOutputSet);
-        }
+        const OUString sFormatStr( pColl->GetName().toString() );
+        VclPtr<SfxAbstractTabDialog> pDlg(rFact.CreateSwCharDlg(GetFrameWeld(), pSh->GetView(), *xTmpSet, SwCharDlgMode::Env, &sFormatStr));
+        pDlg->StartExecuteAsync(
+            [pDlg, xTmpSet=std::move(xTmpSet), pCollSet] (sal_Int32 nResult)->void
+            {
+                if (nResult == RET_OK)
+                {
+                    SfxItemSet aOutputSet( *pDlg->GetOutputItemSet() );
+                    ::ConvertAttrGenToChar(aOutputSet, *xTmpSet);
+                    pCollSet->Put(aOutputSet);
+                }
+                pDlg->disposeOnce();
+            }
+        );
     }
     else if (o3tl::starts_with(rIdent, u"paragraph"))
     {
@@ -206,7 +212,7 @@ void SwEnvFormatPage::Edit(std::u16string_view rIdent, bool bSender)
 
         // Insert tabs, default tabs into ItemSet
         const SvxTabStopItem& rDefTabs =
-            pSh->GetView().GetCurShell()->GetPool().GetDefaultItem(RES_PARATR_TABSTOP);
+            pSh->GetView().GetCurShell()->GetPool().GetUserOrPoolDefaultItem(RES_PARATR_TABSTOP);
 
         const sal_uInt16 nDefDist = o3tl::narrowing<sal_uInt16>(::GetTabDist( rDefTabs ));
         SfxUInt16Item aDefDistItem( SID_ATTR_TABSTOP_DEFAULTS, nDefDist );
@@ -217,7 +223,7 @@ void SwEnvFormatPage::Edit(std::u16string_view rIdent, bool bSender)
         aTmpSet.Put( aTabPos );
 
         // left border as offset
-        const tools::Long nOff = aTmpSet.Get(RES_MARGIN_TEXTLEFT).GetTextLeft();
+        const tools::Long nOff = aTmpSet.Get(RES_MARGIN_TEXTLEFT).ResolveTextLeft({});
         SfxInt32Item aOff( SID_ATTR_TABSTOP_OFFSET, nOff );
         aTmpSet.Put( aOff );
 
@@ -231,7 +237,7 @@ void SwEnvFormatPage::Edit(std::u16string_view rIdent, bool bSender)
         aTmpSet.Put(SvxBitmapListItem(pDrawModel->GetBitmapList(), SID_BITMAP_LIST));
         aTmpSet.Put(SvxPatternListItem(pDrawModel->GetPatternList(), SID_PATTERN_LIST));
 
-        const OUString sFormatStr = pColl->GetName();
+        const OUString sFormatStr( pColl->GetName().toString() );
         SwParaDlg aDlg(GetFrameWeld(), pSh->GetView(), aTmpSet, DLG_ENVELOP, &sFormatStr);
 
         if (aDlg.run() == RET_OK)

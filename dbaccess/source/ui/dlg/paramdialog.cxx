@@ -33,12 +33,10 @@ namespace dbaui
 {
 
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::util;
-    using namespace ::connectivity;
 
     // OParameterDialog
 
@@ -46,16 +44,16 @@ namespace dbaui
     OParameterDialog::OParameterDialog(
             weld::Window* pParent, const Reference< XIndexAccess > & rParamContainer,
             const Reference< XConnection > & _rxConnection, const Reference< XComponentContext >& rxContext)
-        : GenericDialogController(pParent, "dbaccess/ui/parametersdialog.ui", "Parameters")
+        : GenericDialogController(pParent, u"dbaccess/ui/parametersdialog.ui"_ustr, u"Parameters"_ustr)
         , m_nCurrentlySelected(-1)
         , m_xConnection(_rxConnection)
         , m_aPredicateInput( rxContext, _rxConnection, getParseContext() )
         , m_aResetVisitFlag("dbaccess OParameterDialog m_aResetVisitFlag")
-        , m_xAllParams(m_xBuilder->weld_tree_view("allParamTreeview"))
-        , m_xParam(m_xBuilder->weld_entry("paramEntry"))
-        , m_xTravelNext(m_xBuilder->weld_button("next"))
-        , m_xOKBtn(m_xBuilder->weld_button("ok"))
-        , m_xCancelBtn(m_xBuilder->weld_button("cancel"))
+        , m_xAllParams(m_xBuilder->weld_tree_view(u"allParamTreeview"_ustr))
+        , m_xParam(m_xBuilder->weld_entry(u"paramEntry"_ustr))
+        , m_xTravelNext(m_xBuilder->weld_button(u"next"_ustr))
+        , m_xOKBtn(m_xBuilder->weld_button(u"ok"_ustr))
+        , m_xCancelBtn(m_xBuilder->weld_button(u"cancel"_ustr))
     {
         m_xAllParams->set_size_request(-1, m_xAllParams->get_height_rows(10));
 
@@ -111,7 +109,8 @@ namespace dbaui
 
     void OParameterDialog::Construct()
     {
-        m_xAllParams->connect_changed(LINK(this, OParameterDialog, OnEntryListBoxSelected));
+        m_xAllParams->connect_selection_changed(
+            LINK(this, OParameterDialog, OnEntryListBoxSelected));
         m_xParam->connect_focus_out(LINK(this, OParameterDialog, OnValueLoseFocusHdl));
         m_xParam->connect_changed(LINK(this, OParameterDialog, OnValueModified));
         m_xTravelNext->connect_clicked(LINK(this, OParameterDialog, OnButtonClicked));
@@ -127,7 +126,7 @@ namespace dbaui
                 m_xTravelNext->set_sensitive(false);
 
             if (m_xAllParams->n_children() > 1)
-                m_xDialog->change_default_widget(m_xOKBtn.get(), m_xTravelNext.get());
+                m_xDialog->change_default_button(m_xOKBtn.get(), m_xTravelNext.get());
         }
 
         m_xParam->grab_focus();
@@ -317,7 +316,7 @@ namespace dbaui
         if (!bVisited)
         {
             // yes, there isn't another one -> change the "default button"
-            m_xDialog->change_default_widget(m_xTravelNext.get(), m_xOKBtn.get());
+            m_xDialog->change_default_button(m_xTravelNext.get(), m_xOKBtn.get());
         }
     }
 

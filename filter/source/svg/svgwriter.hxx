@@ -47,7 +47,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::text;
-using namespace ::com::sun::star::style;
 using namespace ::com::sun::star::svg;
 using namespace ::com::sun::star::xml::sax;
 
@@ -182,11 +181,6 @@ struct SVGShapeDescriptor
 };
 
 
-class SVGAttributeWriter;
-class SVGExport;
-class GDIMetaFile;
-
-
 struct BulletListItemInfo
 {
     vcl::Font aFont;
@@ -259,14 +253,15 @@ class SVGTextWriter final
     void startTextPosition( bool bExportX = true, bool bExportY = true);
     void endTextPosition();
     bool hasTextOpacity() const;
+    OUString& getTextOpacity();
     void implExportHyperlinkIds();
     void implWriteBulletChars();
     template< typename MetaBitmapActionType >
     void writeBitmapPlaceholder( const MetaBitmapActionType* pAction );
     void implWriteEmbeddedBitmaps();
-    void writeTextPortion( const Point& rPos, const OUString& rText );
+    void writeTextPortion(const Point& rPos, const OUString& rText, tools::Long nWidth = 0);
     void implWriteTextPortion( const Point& rPos, const OUString& rText,
-                               Color aTextColor );
+                               Color aTextColor, tools::Long nWidth );
 
     void setVirtualDevice( VirtualDevice* pVDev, MapMode& rTargetMapMode )
     {
@@ -316,7 +311,6 @@ private:
     SVGTextWriter                               maTextWriter;
     VclPtr<VirtualDevice>                       mpVDev;
     MapMode                                     maTargetMapMode;
-    bool                                        mbClipAttrChanged;
     bool                                        mbIsPlaceholderShape;
     const MetaBitmapActionMap*                  mpEmbeddedBitmapsMap;
     bool                                        mbIsPreview;
@@ -371,7 +365,7 @@ public:
                                            const Size& rSize100thmm,
                                            const GDIMetaFile& rMtf,
                                            sal_uInt32 nWriteFlags,
-                                           const OUString& aElementId = "",
+                                           const OUString& aElementId = u""_ustr,
                                            const Reference< css::drawing::XShape >* pXShape = nullptr,
                                            const GDIMetaFile* pTextEmbeddedBitmapMtf = nullptr );
 

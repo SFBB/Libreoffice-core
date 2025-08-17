@@ -21,9 +21,12 @@
 #define INCLUDED_SVX_FLOAT3D_HXX
 
 #include <memory>
+#include <editeng/colritem.hxx>
 #include <sfx2/ctrlitem.hxx>
 #include <sfx2/dockwin.hxx>
 #include <vcl/weld.hxx>
+#include <svl/eitem.hxx>
+#include <svx/e3ditem.hxx>
 #include <svx/svxdllapi.h>
 
 #include <svx/dlgctl3d.hxx>
@@ -45,19 +48,19 @@ class ColorListBox;
 
 struct Svx3DWinImpl;
 
-class SVX_DLLPUBLIC LightButton final
+class UNLESS_MERGELIBS(SVX_DLLPUBLIC) TriStateToggleButton
 {
 public:
-    explicit LightButton(std::unique_ptr<weld::ToggleButton> xButton);
+    explicit TriStateToggleButton(std::unique_ptr<weld::ToggleButton> xButton);
+    bool get_active() const { return m_xButton->get_active(); };
+    void set_active(bool bActive)
+    {
+        m_bIndeterminate = false;
+        m_xButton->set_active(bActive);
+    }
 
-    void switchLightOn(bool bOn);
-    bool isLightOn() const { return m_bLightOn;}
-
-    bool get_active() const { return m_xButton->get_active(); }
-    void set_active(bool bActive) { m_xButton->set_active(bActive); }
-
-    TriState get_state() const { return m_xButton->get_state(); }
-    void set_state(TriState eState) { m_xButton->set_state(eState); }
+    bool is_indeterminate() { return m_bIndeterminate; };
+    void set_indeterminate() { m_bIndeterminate = true; };
 
     weld::ToggleButton* get_widget() const { return m_xButton.get(); }
 
@@ -66,11 +69,23 @@ public:
         m_xButton->connect_clicked(rLink);
     }
 
+private:
+    std::unique_ptr<weld::ToggleButton> m_xButton;
+    bool m_bIndeterminate = false;
+};
+
+class UNLESS_MERGELIBS(SVX_DLLPUBLIC) LightButton final : public TriStateToggleButton
+{
+public:
+    explicit LightButton(std::unique_ptr<weld::ToggleButton> xButton);
+
+    void switchLightOn(bool bOn);
+    bool isLightOn() const { return m_bLightOn;}
+
     bool get_prev_active() const { return m_bButtonPrevActive; }
     void set_prev_active(bool bPrevActive) { m_bButtonPrevActive = bPrevActive; }
 
 private:
-    std::unique_ptr<weld::ToggleButton> m_xButton;
     bool m_bLightOn;
     bool m_bButtonPrevActive;
 };
@@ -108,16 +123,16 @@ private:
     std::unique_ptr<weld::ToggleButton> m_xBtnNormalsObj;
     std::unique_ptr<weld::ToggleButton> m_xBtnNormalsFlat;
     std::unique_ptr<weld::ToggleButton> m_xBtnNormalsSphere;
-    std::unique_ptr<weld::ToggleButton> m_xBtnNormalsInvert;
-    std::unique_ptr<weld::ToggleButton> m_xBtnTwoSidedLighting;
-    std::unique_ptr<weld::ToggleButton> m_xBtnDoubleSided;
+    std::unique_ptr<TriStateToggleButton> m_xBtnNormalsInvert;
+    std::unique_ptr<TriStateToggleButton> m_xBtnTwoSidedLighting;
+    std::unique_ptr<TriStateToggleButton> m_xBtnDoubleSided;
 
 // presentation
     std::unique_ptr<weld::Container> m_xFLRepresentation;
     std::unique_ptr<weld::ComboBox> m_xLbShademode;
 
     std::unique_ptr<weld::Container> m_xFLShadow;
-    std::unique_ptr<weld::ToggleButton> m_xBtnShadow3d;
+    std::unique_ptr<TriStateToggleButton> m_xBtnShadow3d;
     std::unique_ptr<weld::Label> m_xFtSlant;
     std::unique_ptr<weld::MetricSpinButton> m_xMtrSlant;
 
@@ -159,7 +174,7 @@ private:
     std::unique_ptr<weld::ToggleButton> m_xBtnTexObjectY;
     std::unique_ptr<weld::ToggleButton> m_xBtnTexParallelY;
     std::unique_ptr<weld::ToggleButton> m_xBtnTexCircleY;
-    std::unique_ptr<weld::ToggleButton> m_xBtnTexFilter;
+    std::unique_ptr<TriStateToggleButton> m_xBtnTexFilter;
 
 // material
 // material editor
@@ -189,7 +204,7 @@ private:
 // bottom part
     std::unique_ptr<weld::Button> m_xBtnConvertTo3D;
     std::unique_ptr<weld::Button> m_xBtnLatheObject;
-    std::unique_ptr<weld::ToggleButton> m_xBtnPerspective;
+    std::unique_ptr<TriStateToggleButton> m_xBtnPerspective;
 
 // the rest ...
     bool                bUpdate;
@@ -227,7 +242,7 @@ private:
     SVX_DLLPRIVATE void         Construct();
     SVX_DLLPRIVATE void         Reset();
 
-    SVX_DLLPRIVATE static void  LBSelectColor( ColorListBox* pLb, const Color& rColor );
+    SVX_DLLPRIVATE static void LBSelectColor(ColorListBox& rLb, const Color& rColor);
     SVX_DLLPRIVATE sal_uInt16   GetLightSource( const LightButton* pBtn ) const;
     SVX_DLLPRIVATE ColorListBox* GetCLbByButton( const LightButton* pBtn = nullptr );
     SVX_DLLPRIVATE LightButton* GetLbByButton( const weld::Button* pBtn );
@@ -248,6 +263,14 @@ public:
 
     void UpdatePreview(); // upward (private)
     void DocumentReload();
+
+private:
+    void UpdateLight(const SfxItemSet& rAttrs, TypedWhichId<SvxColorItem> nWhichLightColor,
+                     ColorListBox& rColorListBox, TypedWhichId<SfxBoolItem> nWhichLightOn,
+                     LightButton& rLightButton,
+                     TypedWhichId<SvxB3DVectorItem> nWhichLightDirection);
+    void UpdateToggleButton(const SfxItemSet& rAttrs, TypedWhichId<SfxBoolItem> nWhich,
+                            TriStateToggleButton& rButton);
 };
 
 /*************************************************************************

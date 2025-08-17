@@ -17,7 +17,6 @@
 #include <cppu/unotype.hxx>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheets.hpp>
@@ -86,11 +85,11 @@ public:
 };
 
 ScTableColumnsObj::ScTableColumnsObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
     , XElementAccess(cppu::UnoType<table::XCellRange>::get())
     , XIndexAccess(ScSheetLimits::CreateDefault().GetMaxColCount())
-    , XNameAccess("ABC")
-    , XServiceInfo("ScTableColumnsObj", "com.sun.star.table.TableColumns")
+    , XNameAccess(u"ABC"_ustr)
+    , XServiceInfo(u"ScTableColumnsObj"_ustr, u"com.sun.star.table.TableColumns"_ustr)
 {
 }
 
@@ -116,9 +115,9 @@ uno::Reference<uno::XInterface> ScTableColumnsObj::init()
     for (auto i = 3; i < xTC->getCount() - 1 && i < 10; ++i)
     {
         uno::Reference<text::XSimpleText> xST0(xCR->getCellByPosition(i, 0), uno::UNO_QUERY_THROW);
-        xST0->setString("");
+        xST0->setString(u""_ustr);
         uno::Reference<text::XSimpleText> xST1(xCR->getCellByPosition(i, 1), uno::UNO_QUERY_THROW);
-        xST1->setString("");
+        xST1->setString(u""_ustr);
     }
     return xTC;
 }
@@ -127,7 +126,7 @@ void ScTableColumnsObj::setUp()
 {
     UnoApiTest::setUp();
     // create calc document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScTableColumnsObj);

@@ -28,9 +28,7 @@
 
 namespace com::sun::star::datatransfer::dnd {
     struct DragGestureEvent;
-    struct DragSourceDragEvent;
     struct DragSourceDropEvent;
-    struct DragSourceEvent;
     struct DropTargetDragEvent;
     struct DropTargetDragEnterEvent;
     struct DropTargetDropEvent;
@@ -47,24 +45,24 @@ public:
 
     // css::datatransfer::dnd::XDragGestureListener
     /// @throws css::uno::RuntimeException
-    virtual void dragGestureRecognized( const css::datatransfer::dnd::DragGestureEvent& dge );
+    SAL_DLLPRIVATE virtual void dragGestureRecognized( const css::datatransfer::dnd::DragGestureEvent& dge );
 
     // css::datatransfer::dnd::XDragSourceListener
     /// @throws css::uno::RuntimeException
-    virtual void dragDropEnd(const css::datatransfer::dnd::DragSourceDropEvent& dsde );
+    SAL_DLLPRIVATE virtual void dragDropEnd(const css::datatransfer::dnd::DragSourceDropEvent& dsde );
 
     // css::datatransfer::dnd::XDropTargetListener
     /// @throws css::uno::RuntimeException
-    virtual void drop( const css::datatransfer::dnd::DropTargetDropEvent& dtde );
+    SAL_DLLPRIVATE virtual void drop( const css::datatransfer::dnd::DropTargetDropEvent& dtde );
     /// @throws css::uno::RuntimeException
-    virtual void dragEnter( const css::datatransfer::dnd::DropTargetDragEnterEvent& dtdee );
+    SAL_DLLPRIVATE virtual void dragEnter( const css::datatransfer::dnd::DropTargetDragEnterEvent& dtdee );
     /// @throws css::uno::RuntimeException
-    virtual void dragExit( const css::datatransfer::dnd::DropTargetEvent& dte );
+    SAL_DLLPRIVATE virtual void dragExit( const css::datatransfer::dnd::DropTargetEvent& dte );
     /// @throws css::uno::RuntimeException
-    virtual void dragOver( const css::datatransfer::dnd::DropTargetDragEvent& dtde );
+    SAL_DLLPRIVATE virtual void dragOver( const css::datatransfer::dnd::DropTargetDragEvent& dtde );
 };
 
-class DragAndDropWrapper final :
+class SAL_DLLPUBLIC_RTTI DragAndDropWrapper final :
                             public css::datatransfer::dnd::XDragGestureListener,
                             public css::datatransfer::dnd::XDragSourceListener,
                             public css::datatransfer::dnd::XDropTargetListener,
@@ -83,7 +81,7 @@ public:
     void          SAL_CALL release() noexcept override  { OWeakObject::release(); }
 
     // css::lang::XEventListener
-    void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
+    VCL_DLLPUBLIC void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
     // css::datatransfer::dnd::XDragGestureListener
     void SAL_CALL dragGestureRecognized( const css::datatransfer::dnd::DragGestureEvent& dge ) override;

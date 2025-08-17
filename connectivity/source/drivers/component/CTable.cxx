@@ -25,15 +25,12 @@ using namespace connectivity;
 using namespace connectivity::component;
 using namespace connectivity::file;
 using namespace ::cppu;
-using namespace ::dbtools;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::sheet;
-using namespace ::com::sun::star::util;
 
 
 OComponentTable::OComponentTable(sdbcx::OCollection* _pTables,file::OConnection* _pConnection,

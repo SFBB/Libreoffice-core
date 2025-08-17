@@ -71,7 +71,8 @@ void SvxAsianConfig::Commit() {
     impl_->batch->commit();
 }
 
-bool SvxAsianConfig::IsKerningWesternTextOnly() const {
+// static
+bool SvxAsianConfig::IsKerningWesternTextOnly() {
     return
         officecfg::Office::Common::AsianLayout::IsKerningWesternTextOnly::get();
 }
@@ -81,7 +82,8 @@ void SvxAsianConfig::SetKerningWesternTextOnly(bool value) {
         value, impl_->batch);
 }
 
-CharCompressType SvxAsianConfig::GetCharDistanceCompression() const {
+// static
+CharCompressType SvxAsianConfig::GetCharDistanceCompression() {
     return static_cast<CharCompressType>(officecfg::Office::Common::AsianLayout::CompressCharacterDistance::get());
 }
 
@@ -90,8 +92,8 @@ void SvxAsianConfig::SetCharDistanceCompression(CharCompressType value) {
         static_cast<sal_uInt16>(value), impl_->batch);
 }
 
+// static
 css::uno::Sequence< css::lang::Locale > SvxAsianConfig::GetStartEndCharLocales()
-    const
 {
     const css::uno::Sequence< OUString > ns(
         officecfg::Office::Common::AsianLayout::StartEndCharacters::get()->
@@ -103,9 +105,10 @@ css::uno::Sequence< css::lang::Locale > SvxAsianConfig::GetStartEndCharLocales()
     return ls;
 }
 
+// static
 bool SvxAsianConfig::GetStartEndChars(
     css::lang::Locale const & locale, OUString & startChars,
-    OUString & endChars) const
+    OUString & endChars)
 {
     css::uno::Reference< css::container::XNameAccess > set(
         officecfg::Office::Common::AsianLayout::StartEndCharacters::get());
@@ -118,8 +121,8 @@ bool SvxAsianConfig::GetStartEndChars(
     css::uno::Reference< css::beans::XPropertySet > el(
         v.get< css::uno::Reference< css::beans::XPropertySet > >(),
         css::uno::UNO_SET_THROW);
-    startChars = el->getPropertyValue("StartCharacters").get< OUString >();
-    endChars = el->getPropertyValue("EndCharacters").get< OUString >();
+    startChars = el->getPropertyValue(u"StartCharacters"_ustr).get< OUString >();
+    endChars = el->getPropertyValue(u"EndCharacters"_ustr).get< OUString >();
     return true;
 }
 
@@ -149,16 +152,16 @@ void SvxAsianConfig::SetStartEndChars(
             css::uno::Reference< css::beans::XPropertySet > el(
                 v.get< css::uno::Reference< css::beans::XPropertySet > >(),
                 css::uno::UNO_SET_THROW);
-            el->setPropertyValue("StartCharacters", css::uno::Any(*startChars));
-            el->setPropertyValue("EndCharacters", css::uno::Any(*endChars));
+            el->setPropertyValue(u"StartCharacters"_ustr, css::uno::Any(*startChars));
+            el->setPropertyValue(u"EndCharacters"_ustr, css::uno::Any(*endChars));
         } else {
             css::uno::Reference< css::beans::XPropertySet > el(
                 (css::uno::Reference< css::lang::XSingleServiceFactory >(
                     set, css::uno::UNO_QUERY_THROW)->
                  createInstance()),
                 css::uno::UNO_QUERY_THROW);
-            el->setPropertyValue("StartCharacters", css::uno::Any(*startChars));
-            el->setPropertyValue("EndCharacters", css::uno::Any(*endChars));
+            el->setPropertyValue(u"StartCharacters"_ustr, css::uno::Any(*startChars));
+            el->setPropertyValue(u"EndCharacters"_ustr, css::uno::Any(*endChars));
             css::uno::Any v2(el);
             try {
                 set->insertByName(name, v2);

@@ -30,7 +30,7 @@ public:
                                               const SfxItemSet* rAttrSet);
     virtual ~ScTabPageProtection() override;
 
-    static WhichRangesContainer GetRanges () { return pProtectionRanges; }
+    static const WhichRangesContainer & GetRanges () { return pProtectionRanges; }
     virtual bool        FillItemSet     ( SfxItemSet* rCoreAttrs ) override;
     virtual void        Reset           ( const SfxItemSet* ) override;
 
@@ -61,7 +61,7 @@ private:
     DECL_LINK(HideCellClickHdl, weld::Toggleable&, void);
     DECL_LINK(HideFormulaClickHdl, weld::Toggleable&, void);
     DECL_LINK(HidePrintClickHdl, weld::Toggleable&, void);
-    void ButtonClick(const weld::Toggleable& rBox);
+    void ButtonClick(const weld::CheckButton& rBox);
     void UpdateButtons();
 };
 

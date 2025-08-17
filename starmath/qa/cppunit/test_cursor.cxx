@@ -21,9 +21,7 @@
 
 #include <memory>
 
-typedef tools::SvRef<SmDocShell> SmDocShellRef;
-
-using namespace ::com::sun::star;
+typedef rtl::Reference<SmDocShell> SmDocShellRef;
 
 namespace
 {
@@ -72,7 +70,7 @@ void Test::tearDown()
 
 void Test::testCopyPaste()
 {
-    auto xTree = SmParser5().Parse("a * b + c");
+    auto xTree = SmParser5().Parse(u"a * b + c"_ustr);
     xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef, 0);
 
     SmCursor aCursor(xTree.get(), xDocShRef.get());
@@ -90,13 +88,13 @@ void Test::testCopyPaste()
     aCursor.Paste();
 
 #ifndef _WIN32 // FIXME: on Windows clipboard does not work in tests for some reason
-    CPPUNIT_ASSERT_EQUAL(OUString("{ { a * b } + { c * b } }"), xDocShRef->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"{ { a * b } + { c * b } }"_ustr, xDocShRef->GetText());
 #endif
 }
 
 void Test::testCopySelectPaste()
 {
-    auto xTree = SmParser5().Parse("a * b + c");
+    auto xTree = SmParser5().Parse(u"a * b + c"_ustr);
     xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef, 0);
 
     SmCursor aCursor(xTree.get(), xDocShRef.get());
@@ -118,13 +116,13 @@ void Test::testCopySelectPaste()
     aCursor.Paste();
 
 #ifndef _WIN32 // FIXME: on Windows clipboard does not work in tests for some reason
-    CPPUNIT_ASSERT_EQUAL(OUString("{ { b + { c * b } } + c }"), xDocShRef->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"{ { b + { c * b } } + c }"_ustr, xDocShRef->GetText());
 #endif
 }
 
 void Test::testCutPaste()
 {
-    auto xTree = SmParser5().Parse("a * b + c");
+    auto xTree = SmParser5().Parse(u"a * b + c"_ustr);
     xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef, 0);
 
     SmCursor aCursor(xTree.get(), xDocShRef.get());
@@ -142,13 +140,13 @@ void Test::testCutPaste()
     aCursor.Paste();
 
 #ifndef _WIN32 // FIXME: on Windows clipboard does not work in tests for some reason
-    CPPUNIT_ASSERT_EQUAL(OUString("{ a + { c * b } }"), xDocShRef->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"{ a + { c * b } }"_ustr, xDocShRef->GetText());
 #endif
 }
 
 void Test::testCutSelectPaste()
 {
-    auto xTree = SmParser5().Parse("a * b + c");
+    auto xTree = SmParser5().Parse(u"a * b + c"_ustr);
     xTree->Prepare(xDocShRef->GetFormat(), *xDocShRef, 0);
 
     SmCursor aCursor(xTree.get(), xDocShRef.get());
@@ -170,7 +168,7 @@ void Test::testCutSelectPaste()
     aCursor.Paste();
 
 #ifndef _WIN32 // FIXME: on Windows clipboard does not work in tests for some reason
-    CPPUNIT_ASSERT_EQUAL(OUString("{ b + { c * {} } }"), xDocShRef->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"{ b + { c * {} } }"_ustr, xDocShRef->GetText());
 #endif
 }
 

@@ -31,6 +31,8 @@ void SwInsTableDlg::GetValues( OUString& rName, sal_uInt16& rRow, sal_uInt16& rC
                                 std::unique_ptr<SwTableAutoFormat>& prTAFormat )
 {
     SwInsertTableFlags nInsMode = SwInsertTableFlags::NONE;
+    if (comphelper::LibreOfficeKit::isActive())
+        nInsMode = SwInsertTableFlags::DefaultBorder;
     rName = m_xNameEdit->get_text();
     rRow = m_xRowSpinButton->get_value();
     rCol = m_xColSpinButton->get_value();
@@ -43,10 +45,10 @@ void SwInsTableDlg::GetValues( OUString& rName, sal_uInt16& rRow, sal_uInt16& rC
         rInsTableOpts.mnRowsToRepeat = 0;
     if (!m_xDontSplitCB->get_active())
         nInsMode |= SwInsertTableFlags::SplitLayout;
-    if( m_xTAutoFormat )
+    if (m_xTAutoFormat && !comphelper::LibreOfficeKit::isActive())
     {
         prTAFormat.reset(new SwTableAutoFormat( *m_xTAutoFormat ));
-        rAutoName = prTAFormat->GetName();
+        rAutoName = prTAFormat->GetName().toString();
     }
 
     rInsTableOpts.mnInsMode = nInsMode;
@@ -59,23 +61,23 @@ IMPL_LINK(SwInsTableDlg, TextFilterHdl, OUString&, rTest, bool)
 }
 
 SwInsTableDlg::SwInsTableDlg(SwView& rView)
-    : SfxDialogController(rView.GetFrameWeld(), "modules/swriter/ui/inserttable.ui", "InsertTableDialog")
-    , m_aTextFilter(" .<>")
+    : SfxDialogController(rView.GetFrameWeld(), u"modules/swriter/ui/inserttable.ui"_ustr, u"InsertTableDialog"_ustr)
+    , m_aTextFilter(u" .<>"_ustr)
     , m_pShell(&rView.GetWrtShell())
     , m_nEnteredValRepeatHeaderNF(-1)
-    , m_xNameEdit(m_xBuilder->weld_entry("nameedit"))
-    , m_xWarning(m_xBuilder->weld_label("lbwarning"))
-    , m_xColSpinButton(m_xBuilder->weld_spin_button("colspin"))
-    , m_xRowSpinButton(m_xBuilder->weld_spin_button("rowspin"))
-    , m_xHeaderCB(m_xBuilder->weld_check_button("headercb"))
-    , m_xRepeatHeaderCB(m_xBuilder->weld_check_button("repeatcb"))
-    , m_xRepeatHeaderNF(m_xBuilder->weld_spin_button("repeatheaderspin"))
-    , m_xRepeatGroup(m_xBuilder->weld_widget("repeatgroup"))
-    , m_xDontSplitCB(m_xBuilder->weld_check_button("dontsplitcb"))
-    , m_xInsertBtn(m_xBuilder->weld_button("ok"))
-    , m_xLbFormat(m_xBuilder->weld_tree_view("formatlbinstable"))
-    , m_xWndPreview(new weld::CustomWeld(*m_xBuilder, "previewinstable", m_aWndPreview))
-    , m_xStyleFrame(m_xBuilder->weld_frame("stylesframe"))
+    , m_xNameEdit(m_xBuilder->weld_entry(u"nameedit"_ustr))
+    , m_xWarning(m_xBuilder->weld_label(u"lbwarning"_ustr))
+    , m_xColSpinButton(m_xBuilder->weld_spin_button(u"colspin"_ustr))
+    , m_xRowSpinButton(m_xBuilder->weld_spin_button(u"rowspin"_ustr))
+    , m_xHeaderCB(m_xBuilder->weld_check_button(u"headercb"_ustr))
+    , m_xRepeatHeaderCB(m_xBuilder->weld_check_button(u"repeatcb"_ustr))
+    , m_xRepeatHeaderNF(m_xBuilder->weld_spin_button(u"repeatheaderspin"_ustr))
+    , m_xRepeatGroup(m_xBuilder->weld_widget(u"repeatgroup"_ustr))
+    , m_xDontSplitCB(m_xBuilder->weld_check_button(u"dontsplitcb"_ustr))
+    , m_xInsertBtn(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xLbFormat(m_xBuilder->weld_tree_view(u"formatlbinstable"_ustr))
+    , m_xWndPreview(new weld::CustomWeld(*m_xBuilder, u"previewinstable"_ustr, m_aWndPreview))
+    , m_xStyleFrame(m_xBuilder->weld_frame(u"stylesframe"_ustr))
 {
     if (comphelper::LibreOfficeKit::isActive())
         m_xStyleFrame->hide();
@@ -86,7 +88,7 @@ SwInsTableDlg::SwInsTableDlg(SwView& rView)
     m_xWndPreview->set_size_request(nWidth, nHeight);
 
     m_xNameEdit->connect_insert_text(LINK(this, SwInsTableDlg, TextFilterHdl));
-    m_xNameEdit->set_text(m_pShell->GetUniqueTableName());
+    m_xNameEdit->set_text(m_pShell->GetUniqueTableName().toString());
     m_xNameEdit->connect_changed(LINK(this, SwInsTableDlg, ModifyName));
     m_xRowSpinButton->connect_changed(LINK(this, SwInsTableDlg, ModifyRowCol));
     m_xColSpinButton->connect_changed(LINK(this, SwInsTableDlg, ModifyRowCol));
@@ -94,7 +96,7 @@ SwInsTableDlg::SwInsTableDlg(SwView& rView)
     m_xInsertBtn->connect_clicked(LINK(this, SwInsTableDlg, OKHdl));
 
     bool bHTMLMode = 0 != (::GetHtmlMode(rView.GetDocShell())&HTMLMODE_ON);
-    const SwModuleOptions* pModOpt = SW_MOD()->GetModuleConfig();
+    const SwModuleOptions* pModOpt = SwModule::get()->GetModuleConfig();
 
     SwInsertTableOptions aInsOpts = pModOpt->GetInsTableFlags(bHTMLMode);
     SwInsertTableFlags nInsTableFlags = aInsOpts.mnInsMode;
@@ -127,10 +129,9 @@ void SwInsTableDlg::InitAutoTableFormat()
 {
     m_aWndPreview.DetectRTL(m_pShell);
 
-    m_xLbFormat->connect_changed(LINK(this, SwInsTableDlg, SelFormatHdl));
+    m_xLbFormat->connect_selection_changed(LINK(this, SwInsTableDlg, SelFormatHdl));
 
-    m_xTableTable.reset(new SwTableAutoFormatTable);
-    m_xTableTable->Load();
+    m_xTableTable.reset(new SwTableAutoFormatTable(SwModule::get()->GetAutoFormatTable()));
 
     // Add "- none -" style autoformat table.
     m_xLbFormat->append_text(SwViewShell::GetShellRes()->aStrNone); // Insert to listbox
@@ -140,7 +141,7 @@ void SwInsTableDlg::InitAutoTableFormat()
             i < nCount; i++)
     {
         SwTableAutoFormat const& rFormat = (*m_xTableTable)[ i ];
-        m_xLbFormat->append_text(rFormat.GetName());
+        m_xLbFormat->append_text(rFormat.GetName().toString());
         if (m_xTAutoFormat && rFormat.GetName() == m_xTAutoFormat->GetName())
             m_lbIndex = i;
     }
@@ -151,8 +152,8 @@ void SwInsTableDlg::InitAutoTableFormat()
     // 1 means default table style
     // unfortunately when the table has a style sw/qa/uitest/writer_tests4/tdf115573.py fails
     // because tables that have pre-applied style resets the style of the elements in their cells
-    // when a new row is inserted and the ui test above relies on that. For now this is LOK only
-    m_lbIndex = comphelper::LibreOfficeKit::isActive() ? 1 : 0;
+    // when a new row is inserted and the ui test above relies on that.
+    m_lbIndex = 0;
     m_xLbFormat->select(m_lbIndex);
     m_tbIndex = lbIndexToTableIndex(m_lbIndex);
 
@@ -171,16 +172,6 @@ sal_uInt8 SwInsTableDlg::lbIndexToTableIndex( const sal_uInt8 listboxIndex )
     return 255;
 }
 
-static void lcl_SetProperties( SwTableAutoFormat* pTableAutoFormat, bool bVal )
-{
-    pTableAutoFormat->SetFont( bVal );
-    pTableAutoFormat->SetJustify( bVal );
-    pTableAutoFormat->SetFrame( bVal );
-    pTableAutoFormat->SetBackground( bVal );
-    pTableAutoFormat->SetValueFormat( bVal );
-    pTableAutoFormat->SetWidthHeight( bVal );
-}
-
 IMPL_LINK_NOARG(SwInsTableDlg, SelFormatHdl, weld::TreeView&, void)
 {
     // Get index of selected item from the listbox
@@ -193,8 +184,8 @@ IMPL_LINK_NOARG(SwInsTableDlg, SelFormatHdl, weld::TreeView&, void)
         m_aWndPreview.NotifyChange( (*m_xTableTable)[m_tbIndex] );
     else
     {
-        SwTableAutoFormat aTmp( SwViewShell::GetShellRes()->aStrNone );
-        lcl_SetProperties( &aTmp, false );
+        SwTableAutoFormat aTmp( TableStyleName(SwViewShell::GetShellRes()->aStrNone) );
+        aTmp.DisableAll();
 
         m_aWndPreview.NotifyChange( aTmp );
     }
@@ -214,8 +205,8 @@ IMPL_LINK_NOARG(SwInsTableDlg, OKHdl, weld::Button&, void)
     }
     else
     {
-        m_xTAutoFormat.reset(new SwTableAutoFormat( SwViewShell::GetShellRes()->aStrNone ));
-        lcl_SetProperties( m_xTAutoFormat.get(), false );
+        m_xTAutoFormat.reset(new SwTableAutoFormat( TableStyleName(SwViewShell::GetShellRes()->aStrNone) ));
+        m_xTAutoFormat->DisableAll();
     }
 
     m_xDialog->response(RET_OK);
@@ -224,7 +215,7 @@ IMPL_LINK_NOARG(SwInsTableDlg, OKHdl, weld::Button&, void)
 IMPL_LINK( SwInsTableDlg, ModifyName, weld::Entry&, rEdit, void )
 {
     OUString sTableName = rEdit.get_text();
-    m_xInsertBtn->set_sensitive(m_pShell->GetTableStyle(sTableName) == nullptr);
+    m_xInsertBtn->set_sensitive(m_pShell->GetTableStyle(UIName(sTableName)) == nullptr);
 }
 
 // We use weld::Entry's "changed" notification here, not weld::SpinButton's "value_changed", because

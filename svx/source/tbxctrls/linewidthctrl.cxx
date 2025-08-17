@@ -26,11 +26,6 @@
 #include <svx/linectrl.hxx>
 #include "linemetricbox.hxx"
 
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star;
 
 SFX_IMPL_TOOLBOX_CONTROL( SvxLineWidthToolBoxControl, XLineWidthItem );
@@ -39,7 +34,7 @@ SvxLineWidthToolBoxControl::SvxLineWidthToolBoxControl(
     sal_uInt16 nSlotId, ToolBoxItemId nId, ToolBox& rTbx ) :
     SfxToolBoxControl( nSlotId, nId, rTbx )
 {
-    addStatusListener( ".uno:MetricUnit");
+    addStatusListener( u".uno:MetricUnit"_ustr);
 }
 
 
@@ -86,7 +81,7 @@ MapUnit SvxLineWidthToolBoxControl::GetCoreMetric()
 {
     SfxObjectShell* pSh = SfxObjectShell::Current();
     SfxItemPool& rPool = pSh ? pSh->GetPool() : SfxGetpApp()->GetPool();
-    sal_uInt16 nWhich = rPool.GetWhich(SID_ATTR_LINE_WIDTH);
+    sal_uInt16 nWhich = rPool.GetWhichIDFromSlotID(SID_ATTR_LINE_WIDTH);
     return rPool.GetMetric(nWhich);
 }
 

@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <hintids.hxx>
+#include <comphelper/configuration.hxx>
 #include <comphelper/flagguard.hxx>
 #include <utility>
 #include <vcl/svapp.hxx>
@@ -69,6 +70,7 @@
 #include <tblafmt.hxx>
 #include <SwStyleNameMapper.hxx>
 #include <frameformats.hxx>
+#include <names.hxx>
 
 #define NETSCAPE_DFLT_BORDER 1
 #define NETSCAPE_DFLT_CELLSPACING 2
@@ -774,8 +776,8 @@ std::unique_ptr<SwHTMLTableLayoutCell> HTMLTableCell::CreateLayoutInfo()
     std::shared_ptr<SwHTMLTableLayoutCnts> xCntInfo;
     if (m_xContents)
         xCntInfo = m_xContents->CreateLayoutInfo();
-    return std::unique_ptr<SwHTMLTableLayoutCell>(new SwHTMLTableLayoutCell(xCntInfo, m_nRowSpan, m_nColSpan, m_nWidth,
-                                      m_bRelWidth, m_bNoWrap));
+    return std::unique_ptr<SwHTMLTableLayoutCell>(new SwHTMLTableLayoutCell(std::move(xCntInfo),
+                                      m_nRowSpan, m_nColSpan, m_nWidth, m_bRelWidth, m_bNoWrap));
 }
 
 HTMLTableRow::HTMLTableRow(sal_uInt16 const nCells)
@@ -1420,7 +1422,7 @@ void HTMLTable::FixFrameFormat( SwTableBox *pBox,
             // Only set format if there's a value or the box is empty
             if( bHasNumFormat && (bHasValue || pBox->IsEmpty()) )
             {
-                bool bLock = pFrameFormat->GetDoc()->GetNumberFormatter()
+                bool bLock = pFrameFormat->GetDoc().GetNumberFormatter()
                                      ->IsTextFormat( nNumFormat );
                 SfxItemSetFixed<RES_BOXATR_FORMAT, RES_BOXATR_VALUE>
                     aItemSet( *pFrameFormat->GetAttrSet().GetPool() );
@@ -1483,7 +1485,7 @@ void HTMLTable::FixFrameFormat( SwTableBox *pBox,
             // the same.
             SwTableAutoFormatTable& rTable = m_pParser->GetDoc()->GetTableStyles();
             SwTableAutoFormat* pTableFormat = rTable.FindAutoFormat(
-                SwStyleNameMapper::GetUIName(RES_POOLTABLESTYLE_DEFAULT, OUString()));
+                TableStyleName(SwStyleNameMapper::GetUIName(RES_POOLTABLESTYLE_DEFAULT, ProgName()).toString()));
             if (pTableFormat)
             {
                 sal_uInt8 nPos = SwTableAutoFormat::CountPos(nCol, m_nCols, nRow, m_nRows);
@@ -1491,14 +1493,17 @@ void HTMLTable::FixFrameFormat( SwTableBox *pBox,
                 std::unique_ptr<SvxBoxItem> pOldBoxItem;
                 if (const SvxBoxItem* pBoxItem2 = rAttrSet.GetItemIfSet(RES_BOX))
                     pOldBoxItem.reset(pBoxItem2->Clone());
-                pTableFormat->UpdateToSet(nPos, m_nRows==1, m_nCols==1,
+
+                bool bSpansToEndV = m_nRows == 1 || (nRowSpan > 1 && nRow + nRowSpan == m_nRows);
+                bool bSpansToEndH = m_nCols == 1 || (nColSpan > 1 && nCol + nColSpan == m_nCols);
+                pTableFormat->UpdateToSet(nPos, bSpansToEndV, bSpansToEndH,
                                           const_cast<SfxItemSet&>(rAttrSet),
                                           SwTableAutoFormatUpdateFlags::Box,
-                                          pFrameFormat->GetDoc()->GetNumberFormatter());
+                                          pFrameFormat->GetDoc().GetNumberFormatter());
                 if (pOldBoxItem)
                 {
-                    // There was an old item, so it's guaranteed that there's a new item
                     const SvxBoxItem* pBoxItem2(rAttrSet.GetItem(RES_BOX));
+                    assert(pBoxItem2 && "There was an old item, so it's guaranteed that there's a new item");
                     if (*pBoxItem2 != *pOldBoxItem)
                     {
                         std::unique_ptr<SvxBoxItem> pNewBoxItem(pBoxItem2->Clone());
@@ -1579,7 +1584,7 @@ SwTableLine *HTMLTable::MakeTableLine( SwTableBox *pUpper,
     }
     if( nTopRow==nBottomRow-1 && (nRowHeight || pBGBrushItem) )
     {
-        SwTableLineFormat *pFrameFormat = static_cast<SwTableLineFormat*>(pLine->ClaimFrameFormat());
+        SwTableLineFormat *pFrameFormat = pLine->ClaimFrameFormat();
         ResetLineFrameFormatAttrs( pFrameFormat );
 
         if( nRowHeight )
@@ -1601,7 +1606,7 @@ SwTableLine *HTMLTable::MakeTableLine( SwTableBox *pUpper,
     else if( !m_pLineFrameFormatNoHeight )
     {
         // else, we'll have to remove the height from the attribute and remember the format
-        m_pLineFrameFormatNoHeight = static_cast<SwTableLineFormat*>(pLine->ClaimFrameFormat());
+        m_pLineFrameFormatNoHeight = pLine->ClaimFrameFormat();
 
         ResetLineFrameFormatAttrs( m_pLineFrameFormatNoHeight );
     }
@@ -1738,7 +1743,7 @@ SwTableBox *HTMLTable::MakeTableBox( SwTableLine *pUpper,
                 if( !m_pLineFrameFormatNoHeight )
                 {
                     // If there's no line format without height yet, we can use that one
-                    m_pLineFrameFormatNoHeight = static_cast<SwTableLineFormat*>(pLine->ClaimFrameFormat());
+                    m_pLineFrameFormatNoHeight = pLine->ClaimFrameFormat();
 
                     ResetLineFrameFormatAttrs( m_pLineFrameFormatNoHeight );
                 }
@@ -2312,7 +2317,7 @@ void HTMLTable::MakeTable( SwTableBox *pBox, sal_uInt16 nAbsAvail,
     // Step 1: needed layout structures are created (including tables in tables)
     CreateLayoutInfo();
 
-    if (!utl::ConfigManager::IsFuzzing()) // skip slow path for fuzzing
+    if (!comphelper::IsFuzzing()) // skip slow path for fuzzing
     {
         // Step 2: the minimal and maximal column width is calculated
         // (including tables in tables). Since we don't have boxes yet,
@@ -2370,8 +2375,8 @@ void HTMLTable::MakeTable( SwTableBox *pBox, sal_uInt16 nAbsAvail,
 
         // The right margin will be ignored anyway.
         SvxLRSpaceItem aLRItem( m_pSwTable->GetFrameFormat()->GetLRSpace() );
-        aLRItem.SetLeft( m_nLeftMargin );
-        aLRItem.SetRight( m_nRightMargin );
+        aLRItem.SetLeft(SvxIndentValue::twips(m_nLeftMargin));
+        aLRItem.SetRight(SvxIndentValue::twips(m_nRightMargin));
         pFrameFormat->SetFormatAttr( aLRItem );
     }
 
@@ -2390,8 +2395,8 @@ void HTMLTable::MakeTable( SwTableBox *pBox, sal_uInt16 nAbsAvail,
     m_xBox1.reset((pLine1->GetTabBoxes())[0]);
     pLine1->GetTabBoxes().erase(pLine1->GetTabBoxes().begin());
 
-    m_pLineFormat = static_cast<SwTableLineFormat*>(pLine1->GetFrameFormat());
-    m_pBoxFormat = static_cast<SwTableBoxFormat*>(m_xBox1->GetFrameFormat());
+    m_pLineFormat = pLine1->GetFrameFormat();
+    m_pBoxFormat = m_xBox1->GetFrameFormat();
 
     MakeTable_( pBox );
 
@@ -2934,7 +2939,7 @@ CellSaveStruct::CellSaveStruct( SwHTMLParser& rParser, HTMLTable const *pCurTabl
                 break;
             case HtmlOptionId::ROWSPAN:
                 m_nRowSpan = o3tl::narrowing<sal_uInt16>(rOption.GetNumber());
-                if (m_nRowSpan > 8192 || (m_nRowSpan > 256 && utl::ConfigManager::IsFuzzing()))
+                if (m_nRowSpan > 8192 || (m_nRowSpan > 256 && comphelper::IsFuzzing()))
                 {
                     SAL_INFO("sw.html", "ignoring huge ROWSPAN " << m_nRowSpan);
                     m_nRowSpan = 1;
@@ -3457,8 +3462,10 @@ void SwHTMLParser::BuildTableCell( HTMLTable *pCurTable, bool bReadOptions,
                     aFrameSet.Put( aFrameSize );
 
                     sal_uInt16 nSpace = pCurTable->GetHSpace();
-                    if( nSpace )
-                        aFrameSet.Put( SvxLRSpaceItem(nSpace, nSpace, 0, RES_LR_SPACE) );
+                    if (nSpace)
+                        aFrameSet.Put(SvxLRSpaceItem(SvxIndentValue::twips(nSpace),
+                                                     SvxIndentValue::twips(nSpace),
+                                                     SvxIndentValue::zero(), RES_LR_SPACE));
                     nSpace = pCurTable->GetVSpace();
                     if( nSpace )
                         aFrameSet.Put( SvxULSpaceItem(nSpace,nSpace, RES_UL_SPACE) );
@@ -3472,7 +3479,7 @@ void SwHTMLParser::BuildTableCell( HTMLTable *pCurTable, bool bReadOptions,
                     pTCntxt->SetFrameFormat( pFrameFormat );
                     const SwFormatContent& rFlyContent = pFrameFormat->GetContent();
                     m_pPam->GetPoint()->Assign( *rFlyContent.GetContentIdx() );
-                    m_xDoc->GetNodes().GoNext( m_pPam->GetPoint() );
+                    SwNodes::GoNext(m_pPam->GetPoint());
                 }
 
                 // create a SwTable with a box and set the PaM to the content of
@@ -4726,7 +4733,7 @@ void TableSaveStruct::MakeTable( sal_uInt16 nWidth, SwPosition& rPos, SwDoc *pDo
     m_xCurrentTable->MakeTable(nullptr, nWidth);
 
     HTMLTableContext *pTCntxt = m_xCurrentTable->GetContext();
-    OSL_ENSURE( pTCntxt, "Where is the table context" );
+    assert(pTCntxt && "Where is the table context");
 
     SwTableNode *pTableNd = pTCntxt->GetTableNode();
     OSL_ENSURE( pTableNd, "Where is the table node" );
@@ -4976,7 +4983,7 @@ std::shared_ptr<HTMLTable> SwHTMLParser::BuildTable(SvxAdjust eParentAdjust,
                                               aTableOptions));
         m_xTable = xCurTable;
 
-        xSaveStruct.reset(new TableSaveStruct(xCurTable));
+        xSaveStruct.reset(new TableSaveStruct(std::move(xCurTable)));
 
         // Is pending on the first GetNextToken, needs to be re-read on each construction
         SaveState( HtmlTokenId::NONE );

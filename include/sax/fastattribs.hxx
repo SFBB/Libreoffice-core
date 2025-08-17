@@ -33,7 +33,6 @@
 
 namespace com::sun::star::xml::sax { class XFastTokenHandler; }
 namespace com::sun::star::xml { struct Attribute; }
-namespace com::sun::star::xml { struct FastAttribute; }
 
 namespace sax_fastparser
 {
@@ -56,7 +55,7 @@ class SAX_DLLPUBLIC FastTokenHandlerBase :
 {
  public:
     virtual ~FastTokenHandlerBase();
-    virtual sal_Int32 getTokenDirect( const char *pToken, sal_Int32 nLength ) const = 0;
+    virtual sal_Int32 getTokenDirect(std::string_view token) const = 0;
 
     /**
      * Client method to attempt the use of this interface if possible.
@@ -122,6 +121,7 @@ public:
     {
         return OStringToOUString(getAsViewByIndex(nTokenIndex), RTL_TEXTENCODING_UTF8);
     }
+    sal_Int32 getValueTokenByIndex(sal_Int32 nTokenIndex) const;
 
     // XFastAttributeList
     virtual sal_Bool SAL_CALL hasAttribute( ::sal_Int32 Token ) override;

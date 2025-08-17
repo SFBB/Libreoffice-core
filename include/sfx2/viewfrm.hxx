@@ -60,13 +60,14 @@ class SFX2_DLLPUBLIC SfxViewFrame final : public SfxShell, public SfxListener
     std::unique_ptr<CommandPopupHandler> m_pCommandPopupHandler;
 
     SAL_DLLPRIVATE void Construct_Impl( SfxObjectShell *pObjSh );
-    virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
+    SAL_DLLPRIVATE virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
     DECL_DLLPRIVATE_LINK(GetInvolvedHandler, weld::Button&, void);
     DECL_DLLPRIVATE_LINK(DonationHandler, weld::Button&, void);
     DECL_DLLPRIVATE_LINK(WhatsNewHandler, weld::Button&, void);
     DECL_DLLPRIVATE_LINK(MacroButtonHandler, weld::Button&, void);
     DECL_DLLPRIVATE_LINK(SecurityButtonHandler, weld::Button&, void);
     DECL_DLLPRIVATE_LINK(EventButtonHandler, weld::Button&, void);
+    DECL_DLLPRIVATE_LINK(ViewSignaturesButtonHandler, weld::Button&, void);
     DECL_DLLPRIVATE_LINK(SwitchReadOnlyHandler, weld::Button&, void);
     DECL_DLLPRIVATE_LINK(SignDocumentHandler, weld::Button&, void);
     DECL_DLLPRIVATE_LINK(HiddenTrackChangesHandler, weld::Button&, void);
@@ -75,21 +76,21 @@ class SFX2_DLLPUBLIC SfxViewFrame final : public SfxShell, public SfxListener
     DECL_DLLPRIVATE_STATIC_LINK(SfxViewFrame, HelpMasterPasswordHdl, weld::Button&, void);
     SAL_DLLPRIVATE void KillDispatcher_Impl();
 
-    virtual                 ~SfxViewFrame() override;
+    SAL_DLLPRIVATE virtual  ~SfxViewFrame() override;
 
 public:
-                            SfxViewFrame( SfxFrame& rFrame, SfxObjectShell *pDoc );
+    SAL_DLLPRIVATE          SfxViewFrame( SfxFrame& rFrame, SfxObjectShell *pDoc );
 
                             SFX_DECL_INTERFACE(SFX_INTERFACE_SFXVIEWFRM)
 
 private:
     /// SfxInterface initializer.
-    static void InitInterface_Impl();
+    SAL_DLLPRIVATE static void InitInterface_Impl();
 
-    void AppendContainsMacrosInfobar();
+    SAL_DLLPRIVATE void AppendContainsMacrosInfobar();
 public:
 
-    static void             SetViewFrame( SfxViewFrame* );
+    SAL_DLLPRIVATE static void SetViewFrame( SfxViewFrame* );
 
     static SfxViewFrame*    LoadHiddenDocument( SfxObjectShell const & i_rDoc, SfxInterfaceId i_nViewId );
     static SfxViewFrame*    LoadDocument( SfxObjectShell const & i_rDoc, SfxInterfaceId i_nViewId );
@@ -97,40 +98,40 @@ public:
     static SfxViewFrame*    LoadDocumentIntoFrame( SfxObjectShell const & i_rDoc, const css::uno::Reference< css::frame::XFrame >& i_rFrameItem );
     static SfxViewFrame*    DisplayNewDocument( SfxObjectShell const & i_rDoc, const SfxRequest& i_rCreateDocRequest );
 
-    SAL_WARN_UNUSED_RESULT static SfxViewFrame* Current();
-    SAL_WARN_UNUSED_RESULT static SfxViewFrame* GetFirst( const SfxObjectShell* pDoc = nullptr, bool bOnlyVisible = true );
-    SAL_WARN_UNUSED_RESULT static SfxViewFrame* GetNext( const SfxViewFrame& rPrev, const SfxObjectShell* pDoc = nullptr, bool bOnlyVisible = true );
+    SAL_RET_MAYBENULL static SfxViewFrame* Current();
+    SAL_RET_MAYBENULL static SfxViewFrame* GetFirst( const SfxObjectShell* pDoc = nullptr, bool bOnlyVisible = true );
+    SAL_RET_MAYBENULL static SfxViewFrame* GetNext( const SfxViewFrame& rPrev, const SfxObjectShell* pDoc = nullptr, bool bOnlyVisible = true );
 
-    SAL_WARN_UNUSED_RESULT static SfxViewFrame* Get( const css::uno::Reference< css::frame::XController>& i_rController, const SfxObjectShell* i_pDoc );
+    SAL_RET_MAYBENULL SAL_DLLPRIVATE static SfxViewFrame* Get( const css::uno::Reference< css::frame::XController>& i_rController, const SfxObjectShell* i_pDoc );
 
-            void            DoActivate(bool bMDI);
-            void            DoDeactivate(bool bMDI, SfxViewFrame const *pOld);
+    SAL_DLLPRIVATE void     DoActivate(bool bMDI);
+    SAL_DLLPRIVATE void     DoDeactivate(bool bMDI, SfxViewFrame const *pOld);
 
     using SfxShell::GetDispatcher;
     SfxDispatcher*          GetDispatcher() { return m_pDispatcher.get(); }
     SfxBindings&            GetBindings() { return *m_pBindings; }
     const SfxBindings&      GetBindings() const  { return *m_pBindings; }
     vcl::Window&            GetWindow() const;
-    weld::Window*           GetFrameWeld() const;
+    SAL_RET_MAYBENULL weld::Window* GetFrameWeld() const;
 
-    SfxProgress*            GetProgress() const;
+    SAL_DLLPRIVATE SfxProgress* GetProgress() const;
 
     void                    LockAdjustPosSizePixel()
                             { m_nAdjustPosPixelLock++; }
     void                    UnlockAdjustPosSizePixel()
                             { m_nAdjustPosPixelLock--; }
-    void                    DoAdjustPosSizePixel( SfxViewShell * pSh,
+    SAL_DLLPRIVATE void     DoAdjustPosSizePixel( SfxViewShell * pSh,
                                         const Point &rPos, const Size &rSize,
                                         bool inplaceEditModeChange );
     void                    Show();
     bool                    IsVisible() const;
     void                    ToTop();
     void                    Enable( bool bEnable );
-    void                    Close();
-    virtual void            Activate( bool bUI ) override;
-    virtual void            Deactivate( bool bUI ) override;
+    SAL_DLLPRIVATE void     Close();
+    SAL_DLLPRIVATE virtual void Activate( bool bUI ) override;
+    SAL_DLLPRIVATE virtual void Deactivate( bool bUI ) override;
 
-    void                    UpdateTitle();
+    SAL_DLLPRIVATE void UpdateTitle();
 
     // interne Handler
     SAL_DLLPRIVATE void SetBorderPixelImpl( const SfxViewShell *pSh, const SvBorder &rBorder );
@@ -146,7 +147,7 @@ public:
     static void             GetTargetList( TargetList& rList )
                             { SfxFrame::GetDefaultTargetList( rList ); }
 
-    void                    SetModalMode( bool );
+    SAL_DLLPRIVATE void     SetModalMode( bool );
     bool                    IsInModalMode() const;
     void                    Resize(bool bForce=false);
 
@@ -157,7 +158,7 @@ public:
     void                    ShowChildWindow(sal_uInt16,bool bVisible=true);
     SfxChildWindow*         GetChildWindow(sal_uInt16);
     void                    ChildWindowExecute(SfxRequest&);
-    void                    ChildWindowState(SfxItemSet&);
+    SAL_DLLPRIVATE void     ChildWindowState(SfxItemSet&);
 
     /** Append a new InfoBar (see https://wiki.documentfoundation.org/Design/Whiteboards/Infobar).
 
@@ -170,12 +171,12 @@ public:
                                     InfobarType aInfobarType,
                                     bool bShowCloseButton=true);
     void              RemoveInfoBar(std::u16string_view sId);
-    void              UpdateInfoBar(std::u16string_view sId, const OUString& sPrimaryMessage,
+    SAL_DLLPRIVATE void UpdateInfoBar(std::u16string_view sId, const OUString& sPrimaryMessage,
                                     const OUString& sSecondaryMessage,
                                     InfobarType eType);
     bool              HasInfoBarWithID(std::u16string_view sId);
     void AppendReadOnlyInfobar();
-    void HandleSecurityInfobar(const OUString& sSecondaryMessage);
+    SAL_DLLPRIVATE void HandleSecurityInfobar(const OUString& sSecondaryMessage);
 
     SAL_DLLPRIVATE void GetDocNumber_Impl();
     SAL_DLLPRIVATE void SetViewShell_Impl( SfxViewShell *pVSh );
@@ -195,7 +196,7 @@ public:
 
     SAL_DLLPRIVATE void MakeActive_Impl( bool bActivate );
     SAL_DLLPRIVATE const Size& GetMargin_Impl() const;
-    SAL_DLLPRIVATE OUString GetActualPresentationURL_Impl() const;
+    SAL_DLLPRIVATE const OUString & GetActualPresentationURL_Impl() const;
     SAL_DLLPRIVATE void MiscExec_Impl(SfxRequest &);
     SAL_DLLPRIVATE void MiscState_Impl(SfxItemSet &);
     SAL_DLLPRIVATE SfxWorkWindow* GetWorkWindow_Impl();
@@ -266,6 +267,7 @@ class SFX2_DLLPUBLIC SfxViewFrameItem final : public SfxPoolItem
     SfxViewFrame*           pFrame;
 
 public:
+                            DECLARE_ITEM_TYPE_FUNCTION(SfxViewFrameItem)
                             SfxViewFrameItem( SfxViewFrame *pViewFrame ):
                                 SfxPoolItem( 0 ),
                                 pFrame( pViewFrame)

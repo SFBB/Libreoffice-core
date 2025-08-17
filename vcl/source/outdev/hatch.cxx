@@ -20,7 +20,7 @@
 #include <osl/diagnose.h>
 #include <tools/line.hxx>
 #include <tools/helpers.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <vcl/hatch.hxx>
 #include <vcl/metaact.hxx>
@@ -92,9 +92,6 @@ void OutputDevice::DrawHatch( const tools::PolyPolygon& rPolyPoly, const Hatch& 
         EnableMapMode( bOldMap );
         mpMetaFile = pOldMetaFile;
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawHatch( rPolyPoly, rHatch );
 }
 
 void OutputDevice::AddHatchActions( const tools::PolyPolygon& rPolyPoly, const Hatch& rHatch,
@@ -171,66 +168,66 @@ void OutputDevice::DrawHatch( const tools::PolyPolygon& rPolyPoly, const Hatch& 
 
         rPolyPoly.AdaptiveSubdivide(aPolyPoly);
         DrawHatch(aPolyPoly, rHatch, bMtf);
+
+        return;
     }
+
+    tools::Rectangle   aRect( rPolyPoly.GetBoundRect() );
+    const tools::Long  nLogPixelWidth = ImplDevicePixelToLogicWidth( 1 );
+    const tools::Long  nWidth = ImplDevicePixelToLogicWidth( std::max( ImplLogicWidthToDevicePixel( rHatch.GetDistance() ), tools::Long(3) ) );
+    std::unique_ptr<Point[]> pPtBuffer(new Point[ HATCH_MAXPOINTS ]);
+    Point       aPt1, aPt2, aEndPt1;
+    Size        aInc;
+
+    // Single hatch
+    aRect.AdjustLeft( -nLogPixelWidth ); aRect.AdjustTop( -nLogPixelWidth ); aRect.AdjustRight(nLogPixelWidth ); aRect.AdjustBottom(nLogPixelWidth );
+    CalcHatchValues( aRect, nWidth, rHatch.GetAngle(), aPt1, aPt2, aInc, aEndPt1 );
+    if (comphelper::IsFuzzing() && !HasSaneNSteps(aPt1, aEndPt1, aInc))
+        return;
+
+    if (aInc.Width() <= 0 && aInc.Height() <= 0)
+        SAL_WARN("vcl.gdi", "invalid increment");
     else
     {
-        tools::Rectangle   aRect( rPolyPoly.GetBoundRect() );
-        const tools::Long  nLogPixelWidth = ImplDevicePixelToLogicWidth( 1 );
-        const tools::Long  nWidth = ImplDevicePixelToLogicWidth( std::max( ImplLogicWidthToDevicePixel( rHatch.GetDistance() ), tools::Long(3) ) );
-        std::unique_ptr<Point[]> pPtBuffer(new Point[ HATCH_MAXPOINTS ]);
-        Point       aPt1, aPt2, aEndPt1;
-        Size        aInc;
+        do
+        {
+            DrawHatchLine( tools::Line( aPt1, aPt2 ), rPolyPoly, pPtBuffer.get(), bMtf );
+            aPt1.AdjustX(aInc.Width() ); aPt1.AdjustY(aInc.Height() );
+            aPt2.AdjustX(aInc.Width() ); aPt2.AdjustY(aInc.Height() );
+        }
+        while( ( aPt1.X() <= aEndPt1.X() ) && ( aPt1.Y() <= aEndPt1.Y() ) );
+    }
 
-        // Single hatch
-        aRect.AdjustLeft( -nLogPixelWidth ); aRect.AdjustTop( -nLogPixelWidth ); aRect.AdjustRight(nLogPixelWidth ); aRect.AdjustBottom(nLogPixelWidth );
-        CalcHatchValues( aRect, nWidth, rHatch.GetAngle(), aPt1, aPt2, aInc, aEndPt1 );
-        if (utl::ConfigManager::IsFuzzing() && !HasSaneNSteps(aPt1, aEndPt1, aInc))
+    if (rHatch.GetStyle() != HatchStyle::Double && rHatch.GetStyle() != HatchStyle::Triple)
+        return;
+
+    // Double hatch
+    CalcHatchValues( aRect, nWidth, rHatch.GetAngle() + 900_deg10, aPt1, aPt2, aInc, aEndPt1 );
+    if (comphelper::IsFuzzing() && !HasSaneNSteps(aPt1, aEndPt1, aInc))
+        return;
+
+    do
+    {
+        DrawHatchLine( tools::Line( aPt1, aPt2 ), rPolyPoly, pPtBuffer.get(), bMtf );
+        aPt1.AdjustX(aInc.Width() ); aPt1.AdjustY(aInc.Height() );
+        aPt2.AdjustX(aInc.Width() ); aPt2.AdjustY(aInc.Height() );
+    }
+    while( ( aPt1.X() <= aEndPt1.X() ) && ( aPt1.Y() <= aEndPt1.Y() ) );
+
+    if( rHatch.GetStyle() == HatchStyle::Triple )
+    {
+        // Triple hatch
+        CalcHatchValues( aRect, nWidth, rHatch.GetAngle() + 450_deg10, aPt1, aPt2, aInc, aEndPt1 );
+        if (comphelper::IsFuzzing() && !HasSaneNSteps(aPt1, aEndPt1, aInc))
             return;
 
-        if (aInc.Width() <= 0 && aInc.Height() <= 0)
-            SAL_WARN("vcl.gdi", "invalid increment");
-        else
+        do
         {
-            do
-            {
-                DrawHatchLine( tools::Line( aPt1, aPt2 ), rPolyPoly, pPtBuffer.get(), bMtf );
-                aPt1.AdjustX(aInc.Width() ); aPt1.AdjustY(aInc.Height() );
-                aPt2.AdjustX(aInc.Width() ); aPt2.AdjustY(aInc.Height() );
-            }
-            while( ( aPt1.X() <= aEndPt1.X() ) && ( aPt1.Y() <= aEndPt1.Y() ) );
+            DrawHatchLine( tools::Line( aPt1, aPt2 ), rPolyPoly, pPtBuffer.get(), bMtf );
+            aPt1.AdjustX(aInc.Width() ); aPt1.AdjustY(aInc.Height() );
+            aPt2.AdjustX(aInc.Width() ); aPt2.AdjustY(aInc.Height() );
         }
-
-        if( ( rHatch.GetStyle() == HatchStyle::Double ) || ( rHatch.GetStyle() == HatchStyle::Triple ) )
-        {
-            // Double hatch
-            CalcHatchValues( aRect, nWidth, rHatch.GetAngle() + 900_deg10, aPt1, aPt2, aInc, aEndPt1 );
-            if (utl::ConfigManager::IsFuzzing() && !HasSaneNSteps(aPt1, aEndPt1, aInc))
-                return;
-
-            do
-            {
-                DrawHatchLine( tools::Line( aPt1, aPt2 ), rPolyPoly, pPtBuffer.get(), bMtf );
-                aPt1.AdjustX(aInc.Width() ); aPt1.AdjustY(aInc.Height() );
-                aPt2.AdjustX(aInc.Width() ); aPt2.AdjustY(aInc.Height() );
-            }
-            while( ( aPt1.X() <= aEndPt1.X() ) && ( aPt1.Y() <= aEndPt1.Y() ) );
-
-            if( rHatch.GetStyle() == HatchStyle::Triple )
-            {
-                // Triple hatch
-                CalcHatchValues( aRect, nWidth, rHatch.GetAngle() + 450_deg10, aPt1, aPt2, aInc, aEndPt1 );
-                if (utl::ConfigManager::IsFuzzing() && !HasSaneNSteps(aPt1, aEndPt1, aInc))
-                    return;
-
-                do
-                {
-                    DrawHatchLine( tools::Line( aPt1, aPt2 ), rPolyPoly, pPtBuffer.get(), bMtf );
-                    aPt1.AdjustX(aInc.Width() ); aPt1.AdjustY(aInc.Height() );
-                    aPt2.AdjustX(aInc.Width() ); aPt2.AdjustY(aInc.Height() );
-                }
-                while( ( aPt1.X() <= aEndPt1.X() ) && ( aPt1.Y() <= aEndPt1.Y() ) );
-            }
-        }
+        while( ( aPt1.X() <= aEndPt1.X() ) && ( aPt1.Y() <= aEndPt1.Y() ) );
     }
 }
 
@@ -280,10 +277,10 @@ void OutputDevice::CalcHatchValues( const tools::Rectangle& rRect, tools::Long n
     {
         const double    fAngle = std::abs( toRadians(nAngle) );
         const double    fTan = tan( fAngle );
-        const tools::Long      nYOff = FRound( ( rRect.Right() - rRect.Left() ) * fTan );
+        const tools::Long      nYOff = basegfx::fround<tools::Long>( ( rRect.Right() - rRect.Left() ) * fTan );
         tools::Long            nPY;
 
-        nDist = FRound( nDist / cos( fAngle ) );
+        nDist = basegfx::fround<tools::Long>(nDist / cos(fAngle));
         rInc = Size( 0, nDist );
 
         if( nAngle > 0_deg10 )
@@ -291,14 +288,14 @@ void OutputDevice::CalcHatchValues( const tools::Rectangle& rRect, tools::Long n
             rPt1 = rRect.TopLeft();
             rPt2 = Point( rRect.Right(), rRect.Top() - nYOff );
             rEndPt1 = Point( rRect.Left(), rRect.Bottom() + nYOff );
-            nPY = FRound( aRef.Y() - ( ( rPt1.X() - aRef.X() ) * fTan ) );
+            nPY = basegfx::fround<tools::Long>(aRef.Y() - ((rPt1.X() - aRef.X()) * fTan));
         }
         else
         {
             rPt1 = rRect.TopRight();
             rPt2 = Point( rRect.Left(), rRect.Top() - nYOff );
             rEndPt1 = Point( rRect.Right(), rRect.Bottom() + nYOff );
-            nPY = FRound( aRef.Y() + ( ( rPt1.X() - aRef.X() ) * fTan ) );
+            nPY = basegfx::fround<tools::Long>(aRef.Y() + ((rPt1.X() - aRef.X()) * fTan));
         }
 
         if( nPY <= rPt1.Y() )
@@ -313,10 +310,10 @@ void OutputDevice::CalcHatchValues( const tools::Rectangle& rRect, tools::Long n
     {
         const double fAngle = std::abs( toRadians(nAngle) );
         const double fTan = tan( fAngle );
-        const tools::Long   nXOff = FRound( (static_cast<double>(rRect.Bottom()) - rRect.Top()) / fTan );
+        const tools::Long   nXOff = basegfx::fround<tools::Long>( (static_cast<double>(rRect.Bottom()) - rRect.Top()) / fTan );
         tools::Long         nPX;
 
-        nDist = FRound( nDist / sin( fAngle ) );
+        nDist = basegfx::fround<tools::Long>(nDist / sin(fAngle));
         rInc = Size( nDist, 0 );
 
         if( nAngle > 0_deg10 )
@@ -324,14 +321,14 @@ void OutputDevice::CalcHatchValues( const tools::Rectangle& rRect, tools::Long n
             rPt1 = rRect.TopLeft();
             rPt2 = Point( rRect.Left() - nXOff, rRect.Bottom() );
             rEndPt1 = Point( rRect.Right() + nXOff, rRect.Top() );
-            nPX = FRound( aRef.X() - ( (static_cast<double>(rPt1.Y()) - aRef.Y()) / fTan ) );
+            nPX = basegfx::fround<tools::Long>( aRef.X() - ( (static_cast<double>(rPt1.Y()) - aRef.Y()) / fTan ) );
         }
         else
         {
             rPt1 = rRect.BottomLeft();
             rPt2 = Point( rRect.Left() - nXOff, rRect.Top() );
             rEndPt1 = Point( rRect.Right() + nXOff, rRect.Bottom() );
-            nPX = FRound( aRef.X() + ( (static_cast<double>(rPt1.Y()) - aRef.Y()) / fTan ) );
+            nPX = basegfx::fround<tools::Long>( aRef.X() + ( (static_cast<double>(rPt1.Y()) - aRef.Y()) / fTan ) );
         }
 
         if( nPX <= rPt1.X() )
@@ -401,7 +398,8 @@ void OutputDevice::DrawHatchLine( const tools::Line& rLine, const tools::PolyPol
                             SAL_WARN("vcl.gdi", "too many hatch points");
                             return;
                         }
-                        pPtBuffer[ nPCounter++ ] = Point( FRound( fX ), FRound( fY ) );
+                        pPtBuffer[nPCounter++] = Point(basegfx::fround<tools::Long>(fX),
+                                                       basegfx::fround<tools::Long>(fY));
                     }
                 }
 

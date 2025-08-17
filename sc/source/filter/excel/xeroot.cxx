@@ -55,7 +55,7 @@ using namespace ::com::sun::star;
 // Global data ================================================================
 
 XclExpRootData::XclExpRootData( XclBiff eBiff, SfxMedium& rMedium,
-        const tools::SvRef<SotStorage>& xRootStrg, ScDocument& rDoc, rtl_TextEncoding eTextEnc ) :
+        const rtl::Reference<SotStorage>& xRootStrg, ScDocument& rDoc, rtl_TextEncoding eTextEnc ) :
     XclRootData( eBiff, rMedium, xRootStrg, rDoc, eTextEnc, true )
 {
     mbRelUrl = mrMedium.IsRemote()
@@ -315,11 +315,11 @@ uno::Sequence< beans::NamedValue > XclExpRoot::GenerateEncryptionData( std::u16s
 
     if ( !aPass.empty() && aPass.size() < 16 )
     {
-        rtlRandomPool aRandomPool = rtl_random_createPool ();
         sal_uInt8 pnDocId[16];
-        rtl_random_getBytes( aRandomPool, pnDocId, 16 );
-
-        rtl_random_destroyPool( aRandomPool );
+        if (rtl_random_getBytes(nullptr, pnDocId, 16) != rtl_Random_E_None)
+        {
+            throw uno::RuntimeException(u"rtl_random_getBytes failed"_ustr);
+        }
 
         sal_uInt16 pnPasswd[16] = {};
         for( size_t nChar = 0; nChar < aPass.size(); ++nChar )

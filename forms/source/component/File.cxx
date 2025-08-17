@@ -39,9 +39,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
-using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
@@ -50,7 +48,7 @@ using namespace ::com::sun::star::util;
 Sequence<Type> OFileControlModel::_getTypes()
 {
     static Sequence<Type> const aTypes =
-        concatSequences(OControlModel::_getTypes(), Sequence<Type>{ cppu::UnoType<XReset>::get() });
+        concatSequences(OControlModel::_getTypes(), std::initializer_list<Type>{ cppu::UnoType<XReset>::get() });
     return aTypes;
 }
 
@@ -153,7 +151,7 @@ void OFileControlModel::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle, cons
     switch (nHandle)
     {
         case PROPERTY_ID_DEFAULT_TEXT :
-            DBG_ASSERT(rValue.getValueType().getTypeClass() == TypeClass_STRING, "OFileControlModel::setFastPropertyValue_NoBroadcast : invalid type !" );
+            DBG_ASSERT(rValue.getValueTypeClass() == TypeClass_STRING, "OFileControlModel::setFastPropertyValue_NoBroadcast : invalid type !" );
             rValue >>= m_sDefaultValue;
             break;
         default:

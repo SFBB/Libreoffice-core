@@ -27,8 +27,6 @@
 #include <vcl/customweld.hxx>
 #include "AccessibleCsvControl.hxx"
 
-namespace com::sun::star::accessibility { class XAccessible; }
-
 /** Minimum character count for a column in separators mode. */
 const sal_Int32 CSV_MINCOLWIDTH         = 8;
 /** Maximum length of a cell string. */
@@ -219,7 +217,7 @@ inline void ScCsvCmd::Set( ScCsvCmdType eType, sal_Int32 nParam1, sal_Int32 nPar
 }
 
 /** Base class for the CSV ruler and the data grid control. Implements command handling. */
-class SC_DLLPUBLIC ScCsvControl : public weld::CustomWidgetController
+class SAL_DLLPUBLIC_RTTI ScCsvControl : public weld::CustomWidgetController
 {
 private:
     Link<ScCsvControl&,void>    maCmdHdl;           /// External command handler.
@@ -255,7 +253,7 @@ public:
     /** Sends a table model changed event for a removed column to the accessibility object. */
     void                        AccSendRemoveColumnEvent( sal_uInt32 nFirstColumn, sal_uInt32 nLastColumn );
 
-    ScAccessibleCsvControl*     GetAccessible() { return mxAccessible.get(); }
+    rtl::Reference<ScAccessibleCsvControl> GetAccessible() { return mxAccessible; }
 
     // repaint helpers --------------------------------------------------------
 
@@ -284,7 +282,7 @@ public:
     const ScCsvCmd&      GetCmd() const { return maCmd; }
 
     /** Executes a command by calling command handler. */
-    void                        Execute(
+    SC_DLLPUBLIC void    Execute(
                                     ScCsvCmdType eType,
                                     sal_Int32 nParam1 = CSV_POS_INVALID,
                                     sal_Int32 nParam2 = CSV_POS_INVALID );
@@ -330,7 +328,7 @@ public:
     /** Returns the number of data lines. */
     sal_Int32            GetLineCount() const { return mrData.mnLineCount; }
     /** Returns the number of visible lines (including partly visible bottom line). */
-    sal_Int32                   GetVisLineCount() const;
+    SC_DLLPUBLIC sal_Int32      GetVisLineCount() const;
     /** Returns index of first visible line. */
     sal_Int32            GetFirstVisLine() const { return mrData.mnLineOffset; }
     /** Returns index of last visible line. */

@@ -25,21 +25,17 @@ using namespace connectivity::dbase;
 using namespace connectivity;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::sdbcx;
-using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
 
-sdbcx::ObjectType ODbaseColumns::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > ODbaseColumns::createObject(const OUString& _rName)
 {
     ODbaseTable* pTable = static_cast<ODbaseTable*>(m_pTable);
 
     const ::rtl::Reference<OSQLColumns>& aCols = pTable->getTableColumns();
     OSQLColumns::const_iterator aIter = find(aCols->begin(),aCols->end(),_rName,::comphelper::UStringMixEqual(isCaseSensitive()));
 
-    sdbcx::ObjectType xRet;
+    css::uno::Reference< css::beans::XPropertySet > xRet;
     if(aIter != aCols->end())
-        xRet = sdbcx::ObjectType(*aIter,UNO_QUERY);
+        xRet = *aIter;
     return xRet;
 }
 
@@ -56,7 +52,7 @@ Reference< XPropertySet > ODbaseColumns::createDescriptor()
 
 
 // XAppend
-sdbcx::ObjectType ODbaseColumns::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > ODbaseColumns::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     if ( m_pTable->isNew() )
         return cloneDescriptor( descriptor );

@@ -57,7 +57,6 @@ using ::com::sun::star::uno::Reference;
 
 namespace accessibility {
 
-//=====  internal  ============================================================
 AccessibleDocumentViewBase::AccessibleDocumentViewBase (
     ::sd::Window* pSdWindow,
     ::sd::ViewShell* pViewShell,
@@ -120,7 +119,7 @@ void AccessibleDocumentViewBase::Init()
     uno::Reference<beans::XPropertySet> xSet (mxController, uno::UNO_QUERY);
     if (xSet.is())
         xSet->addPropertyChangeListener (
-            "",
+            u""_ustr,
             static_cast<beans::XPropertyChangeListener*>(this));
 
     // Register this object as dispose event listener at the controller.
@@ -220,7 +219,7 @@ void AccessibleDocumentViewBase::ViewForwarderChanged()
 Reference<XAccessible> SAL_CALL
        AccessibleDocumentViewBase::getAccessibleParent()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     return AccessibleContextBase::getAccessibleParent();
 }
@@ -228,7 +227,7 @@ Reference<XAccessible> SAL_CALL
 sal_Int64 SAL_CALL
     AccessibleDocumentViewBase::getAccessibleChildCount()
 {
-    ThrowIfDisposed ();
+    ensureAlive ();
 
     if (mxAccessibleOLEObject.is())
         return 1;
@@ -239,7 +238,7 @@ sal_Int64 SAL_CALL
 Reference<XAccessible> SAL_CALL
     AccessibleDocumentViewBase::getAccessibleChild (sal_Int64 nIndex)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     ::osl::MutexGuard aGuard (m_aMutex);
     if (mxAccessibleOLEObject.is())
@@ -259,7 +258,7 @@ uno::Reference<XAccessible > SAL_CALL
     AccessibleDocumentViewBase::getAccessibleAtPoint (
         const awt::Point& aPoint)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     ::osl::MutexGuard aGuard (m_aMutex);
     uno::Reference<XAccessible> xChildAtPosition;
@@ -280,7 +279,7 @@ uno::Reference<XAccessible > SAL_CALL
                     && (aPoint.X < aBBox.X+aBBox.Width)
                     && (aPoint.Y < aBBox.Y+aBBox.Height) )
                 {
-                    xChildAtPosition = xChild;
+                    xChildAtPosition = std::move(xChild);
                     break;
                 }
             }
@@ -292,11 +291,8 @@ uno::Reference<XAccessible > SAL_CALL
     return xChildAtPosition;
 }
 
-awt::Rectangle SAL_CALL
-    AccessibleDocumentViewBase::getBounds()
+awt::Rectangle AccessibleDocumentViewBase::implGetBounds()
 {
-    ThrowIfDisposed ();
-
     // Transform visible area into screen coordinates.
     ::tools::Rectangle aVisibleArea (
         maShapeTreeInfo.GetViewForwarder()->GetVisibleArea());
@@ -325,42 +321,6 @@ awt::Rectangle SAL_CALL
         aPixelTopLeft.Y() - aParentPosition.Y,
         aPixelSize.X(),
         aPixelSize.Y());
-}
-
-awt::Point SAL_CALL
-    AccessibleDocumentViewBase::getLocation()
-{
-    ThrowIfDisposed ();
-    awt::Rectangle aBoundingBox (getBounds());
-    return awt::Point (aBoundingBox.X, aBoundingBox.Y);
-}
-
-awt::Point SAL_CALL
-    AccessibleDocumentViewBase::getLocationOnScreen()
-{
-    ThrowIfDisposed ();
-    ::Point aLogicalPoint (maShapeTreeInfo.GetViewForwarder()->GetVisibleArea().TopLeft());
-    ::Point aPixelPoint (maShapeTreeInfo.GetViewForwarder()->LogicToPixel (aLogicalPoint));
-    return awt::Point (aPixelPoint.X(), aPixelPoint.Y());
-}
-
-awt::Size SAL_CALL
-    AccessibleDocumentViewBase::getSize()
-{
-    ThrowIfDisposed ();
-
-    // Transform visible area into screen coordinates.
-    ::tools::Rectangle aVisibleArea (
-        maShapeTreeInfo.GetViewForwarder()->GetVisibleArea());
-    ::Point aPixelTopLeft (
-        maShapeTreeInfo.GetViewForwarder()->LogicToPixel (
-            aVisibleArea.TopLeft()));
-    ::Point aPixelSize (
-        maShapeTreeInfo.GetViewForwarder()->LogicToPixel (
-            aVisibleArea.BottomRight())
-        - aPixelTopLeft);
-
-    return awt::Size (aPixelSize.X(), aPixelSize.Y());
 }
 
 //=====  XInterface  ==========================================================
@@ -402,35 +362,14 @@ void SAL_CALL
 OUString SAL_CALL
     AccessibleDocumentViewBase::getImplementationName()
 {
-    return "AccessibleDocumentViewBase";
+    return u"AccessibleDocumentViewBase"_ustr;
 }
 
 css::uno::Sequence< OUString> SAL_CALL
     AccessibleDocumentViewBase::getSupportedServiceNames()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     return AccessibleContextBase::getSupportedServiceNames ();
-}
-
-//=====  XTypeProvider  =======================================================
-
-css::uno::Sequence< css::uno::Type> SAL_CALL
-    AccessibleDocumentViewBase::getTypes()
-{
-    ThrowIfDisposed ();
-
-    return comphelper::concatSequences(
-        // Get list of types from the context base implementation, ...
-        AccessibleContextBase::getTypes(),
-        // ... get list of types from component base implementation, ...
-        AccessibleComponentBase::getTypes(),
-        // ...and add the additional type for the component, ...
-        css::uno::Sequence {
-         cppu::UnoType<lang::XEventListener>::get(),
-         cppu::UnoType<beans::XPropertyChangeListener>::get(),
-         cppu::UnoType<awt::XWindowListener>::get(),
-         cppu::UnoType<awt::XFocusListener>::get(),
-         cppu::UnoType<XAccessibleEventBroadcaster>::get() });
 }
 
 void AccessibleDocumentViewBase::impl_dispose()
@@ -466,7 +405,7 @@ void AccessibleDocumentViewBase::impl_dispose()
     {
         uno::Reference<beans::XPropertySet> xSet (mxController, uno::UNO_QUERY);
         if (xSet.is())
-            xSet->removePropertyChangeListener ("", static_cast<beans::XPropertyChangeListener*>(this));
+            xSet->removePropertyChangeListener (u""_ustr, static_cast<beans::XPropertyChangeListener*>(this));
 
         mxController->removeEventListener (
             static_cast<awt::XWindowListener*>(this));
@@ -490,7 +429,7 @@ void AccessibleDocumentViewBase::impl_dispose()
 void SAL_CALL
     AccessibleDocumentViewBase::disposing (const lang::EventObject& rEventObject)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     // Register this object as dispose event and document::XEventListener
     // listener at the model.
@@ -517,7 +456,7 @@ void SAL_CALL AccessibleDocumentViewBase::propertyChange (const beans::PropertyC
 void SAL_CALL
     AccessibleDocumentViewBase::windowResized (const css::awt::WindowEvent& )
 {
-    if( IsDisposed() )
+    if (!isAlive())
         return;
 
     ViewForwarderChanged();
@@ -526,7 +465,7 @@ void SAL_CALL
 void SAL_CALL
     AccessibleDocumentViewBase::windowMoved (const css::awt::WindowEvent& )
 {
-    if( IsDisposed() )
+    if (!isAlive())
         return;
 
     ViewForwarderChanged();
@@ -535,7 +474,7 @@ void SAL_CALL
 void SAL_CALL
     AccessibleDocumentViewBase::windowShown (const css::lang::EventObject& )
 {
-    if( IsDisposed() )
+    if (!isAlive())
         return;
 
     ViewForwarderChanged();
@@ -544,7 +483,7 @@ void SAL_CALL
 void SAL_CALL
     AccessibleDocumentViewBase::windowHidden (const css::lang::EventObject& )
 {
-    if( IsDisposed() )
+    if (!isAlive())
         return;
 
     ViewForwarderChanged();
@@ -554,14 +493,14 @@ void SAL_CALL
 
 void AccessibleDocumentViewBase::focusGained (const css::awt::FocusEvent& e)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     if (e.Source == mxWindow)
         Activated ();
 }
 
 void AccessibleDocumentViewBase::focusLost (const css::awt::FocusEvent& e)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     if (e.Source == mxWindow)
         Deactivated ();
 }
@@ -580,7 +519,7 @@ void SAL_CALL AccessibleDocumentViewBase::disposing()
 OUString
     AccessibleDocumentViewBase::CreateAccessibleName()
 {
-    return "AccessibleDocumentViewBase";
+    return u"AccessibleDocumentViewBase"_ustr;
 }
 
 void AccessibleDocumentViewBase::Activated()
@@ -648,16 +587,15 @@ void
 {
 }
 
-uno::Any SAL_CALL AccessibleDocumentViewBase::getExtendedAttributes()
+OUString SAL_CALL AccessibleDocumentViewBase::getExtendedAttributes()
 {
     ::osl::MutexGuard aGuard (m_aMutex);
 
-    uno::Any anyAttribute;
     OUStringBuffer sValue;
     if (auto pDrViewSh = dynamic_cast<::sd::DrawViewShell* > (mpViewShell))
     {
         OUString sDisplay;
-        OUString sName = "page-name:";
+        OUString sName = u"page-name:"_ustr;
         // MT IA2: Not used...
         // SdPage*  pCurrPge = pDrViewSh->getCurrentPage();
         SdDrawDocument* pDoc = pDrViewSh->GetDoc();
@@ -756,9 +694,8 @@ uno::Any SAL_CALL AccessibleDocumentViewBase::getExtendedAttributes()
                 + ";";
         }
     }
-    if (sValue.getLength())
-        anyAttribute <<= sValue.makeStringAndClear();
-    return anyAttribute;
+
+    return sValue.makeStringAndClear();
 }
 
 sal_Int32 SAL_CALL AccessibleDocumentViewBase::getForeground(  )
@@ -768,7 +705,7 @@ sal_Int32 SAL_CALL AccessibleDocumentViewBase::getForeground(  )
 
 sal_Int32 SAL_CALL AccessibleDocumentViewBase::getBackground(  )
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     ::osl::MutexGuard aGuard (m_aMutex);
     return sal_Int32(mpViewShell->GetView()->getColorConfig().GetColorValue( ::svtools::DOCCOLOR ).nColor);
 }

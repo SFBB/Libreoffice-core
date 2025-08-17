@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <hintids.hxx>
+#include <comphelper/lok.hxx>
 #include <comphelper/string.hxx>
 #include <comphelper/documentinfo.hxx>
 #include <vcl/svapp.hxx>
@@ -34,6 +35,7 @@
 #include <editeng/langitem.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/event.hxx>
+#include <sfx2/lokhelper.hxx>
 #include <vcl/imap.hxx>
 #include <svtools/htmltokn.h>
 #include <svtools/htmlkywd.hxx>
@@ -69,8 +71,10 @@
 
 #include <vcl/graphicfilter.hxx>
 #include <tools/UnitConversion.hxx>
+#include <tools/hostfilter.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/securityoptions.hxx>
+#include <unotxdoc.hxx>
 
 using namespace ::com::sun::star;
 
@@ -480,7 +484,7 @@ IMAGE_SETEVENT:
             // It's necessary to invalidate the rule, because between the reading
             // of LI and the graphic an EndAction could be called.
             if( GetNumInfo().GetNumRule() )
-                GetNumInfo().GetNumRule()->SetInvalidRule( true );
+                GetNumInfo().GetNumRule()->Invalidate();
 
             // Set the style again, so that indent of the first line is correct.
             SetTextCollAttrs();
@@ -509,6 +513,9 @@ IMAGE_SETEVENT:
     }
     else if (m_sBaseURL.isEmpty() || !aGraphicData.isEmpty())
     {
+        if (comphelper::LibreOfficeKit::isActive() && HostFilter::isForbidden(aGraphicURL.GetHost()))
+            SfxLokHelper::sendNetworkAccessError("paste");
+
         // sBaseURL is empty if the source is clipboard
         // aGraphicData is non-empty for <object data="..."> -> not a linked graphic.
         if (ERRCODE_NONE == GraphicFilter::GetGraphicFilter().ImportGraphic(aGraphic, aGraphicURL))
@@ -557,7 +564,7 @@ IMAGE_SETEVENT:
     SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
     SvxCSS1PropertyInfo aPropInfo;
     if( HasStyleOptions( aStyle, aId, aClass ) )
-        ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo );
+        (void)ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo );
 
     SfxItemSetFixed<RES_FRMATR_BEGIN, RES_FRMATR_END-1> aFrameSet( m_xDoc->GetAttrPool() );
     if( !IsNewDoc() )
@@ -673,7 +680,8 @@ IMAGE_SETEVENT:
     bool bNeedWidth = (!bPercentWidth && !nWidth) || bRelWidthScale;
     bool bRelHeightScale = bPercentHeight && nHeight == SwFormatFrameSize::SYNCED;
     bool bNeedHeight = (!bPercentHeight && !nHeight) || bRelHeightScale;
-    if ((bNeedWidth || bNeedHeight) && !bFuzzing && allowAccessLink(*m_xDoc))
+    if ((bNeedWidth || bNeedHeight) && !bFuzzing && allowAccessLink(*m_xDoc) &&
+        !aGraphicURL.IsExoticProtocol())
     {
         GraphicDescriptor aDescriptor(aGraphicURL);
         if (aDescriptor.Detect(/*bExtendedInfo=*/true))
@@ -821,6 +829,8 @@ IMAGE_SETEVENT:
     if (eNodeType != SwNodeType::Text && eNodeType != SwNodeType::Table)
         return;
 
+    SanitizeAnchor(aFrameSet);
+
     // passing empty sGrfNm here, means we don't want the graphic to be linked
     SwFrameFormat *const pFlyFormat =
         m_xDoc->getIDocumentContentOperations().InsertGraphic(
@@ -831,7 +841,7 @@ IMAGE_SETEVENT:
 
     if( !sHTMLGrfName.isEmpty() )
     {
-        pFlyFormat->SetFormatName( sHTMLGrfName );
+        pFlyFormat->SetFormatName( UIName(sHTMLGrfName) );
 
         // maybe jump to graphic
         if( JumpToMarks::Graphic == m_eJumpTo && sHTMLGrfName == m_sJmpMark )
@@ -1087,7 +1097,7 @@ void SwHTMLParser::InsertBodyOptions()
         SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
         SvxCSS1PropertyInfo aPropInfo;
         OUString aDummy;
-        ParseStyleOptions( aStyle, aDummy, aDummy, aItemSet, aPropInfo, nullptr, &aDir );
+        (void)ParseStyleOptions( aStyle, aDummy, aDummy, aItemSet, aPropInfo, nullptr, &aDir );
 
         // Some attributes have to set on the page style, in fact the ones
         // which aren't inherited
@@ -1424,11 +1434,11 @@ bool SwHTMLParser::HasCurrentParaBookmarks( bool bIgnoreStack ) const
     {
         // second step: when we didn't find a bookmark, check if there is one set already
         IDocumentMarkAccess* const pMarkAccess = m_xDoc->getIDocumentMarkAccess();
-        for(IDocumentMarkAccess::const_iterator_t ppMark = pMarkAccess->getAllMarksBegin();
+        for(auto ppMark = pMarkAccess->getAllMarksBegin();
             ppMark != pMarkAccess->getAllMarksEnd();
             ++ppMark)
         {
-            const ::sw::mark::IMark* pBookmark = *ppMark;
+            const ::sw::mark::MarkBase* pBookmark = *ppMark;
 
             const SwNodeOffset nBookNdIdx = pBookmark->GetMarkPos().GetNodeIndex();
             if( nBookNdIdx==nNodeIdx )
@@ -1488,11 +1498,11 @@ void SwHTMLParser::StripTrailingPara()
 
             // now we have to move maybe existing bookmarks
             IDocumentMarkAccess* const pMarkAccess = m_xDoc->getIDocumentMarkAccess();
-            for(IDocumentMarkAccess::const_iterator_t ppMark = pMarkAccess->getAllMarksBegin();
+            for(auto ppMark = pMarkAccess->getAllMarksBegin();
                 ppMark != pMarkAccess->getAllMarksEnd();
                 ++ppMark)
             {
-                ::sw::mark::IMark* pMark = *ppMark;
+                ::sw::mark::MarkBase* pMark = *ppMark;
 
                 SwNodeOffset nBookNdIdx = pMark->GetMarkPos().GetNodeIndex();
                 if(nBookNdIdx==nNodeIdx)
@@ -1566,8 +1576,7 @@ void SwHTMLParser::NotifyMacroEventRead()
     SwDocShell *pDocSh = m_xDoc->GetDocShell();
     if (!pDocSh)
         return;
-    uno::Reference<frame::XModel> const xModel(pDocSh->GetBaseModel());
-    comphelper::DocumentInfo::notifyMacroEventRead(xModel);
+    comphelper::DocumentInfo::notifyMacroEventRead(pDocSh->GetModel());
     m_bNotifyMacroEventRead = true;
 }
 

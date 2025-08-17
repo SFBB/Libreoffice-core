@@ -22,14 +22,15 @@
 
 ScCsvTableBox::ScCsvTableBox(weld::Builder& rBuilder)
     : mxRuler(new ScCsvRuler(maData, this))
-    , mxGrid(new ScCsvGrid(maData, rBuilder.weld_menu("popup"), this))
-    , mxScroll(rBuilder.weld_scrolled_window("scrolledwindow", true))
-    , mxRulerWeld(new weld::CustomWeld(rBuilder, "csvruler", *mxRuler))
-    , mxGridWeld(new weld::CustomWeld(rBuilder, "csvgrid", *mxGrid))
+    , mxGrid(new ScCsvGrid(maData, rBuilder.weld_menu(u"popup"_ustr), this))
+    , mxScroll(rBuilder.weld_scrolled_window(u"scrolledwindow"_ustr, true))
+    , mxRulerWeld(new weld::CustomWeld(rBuilder, u"csvruler"_ustr, *mxRuler))
+    , mxGridWeld(new weld::CustomWeld(rBuilder, u"csvgrid"_ustr, *mxGrid))
     , maEndScrollIdle("ScCsvTableBox maEndScrollIdle")
 {
-    Size aSize(mxScroll->get_approximate_digit_width() * 67,
-               mxScroll->get_text_height() * 10);
+    const OutputDevice& rRefDev = mxGrid->GetDrawingArea()->get_ref_device();
+    Size aSize(rRefDev.approximate_digit_width() * 67,
+               rRefDev.GetTextHeight() * 10);
     // this needs to be larger than the ScCsvGrid initial size to get it
     // to stretch to fit, see ScCsvGrid::SetDrawingArea
     mxScroll->set_size_request(aSize.Width(), aSize.Height());
@@ -41,8 +42,8 @@ ScCsvTableBox::ScCsvTableBox(weld::Builder& rBuilder)
     mxRuler->SetCmdHdl( aLink );
     mxGrid->SetCmdHdl( aLink );
 
-    mxScroll->connect_hadjustment_changed(LINK(this, ScCsvTableBox, HScrollHdl));
-    mxScroll->connect_vadjustment_changed(LINK(this, ScCsvTableBox, VScrollHdl));
+    mxScroll->connect_hadjustment_value_changed(LINK(this, ScCsvTableBox, HScrollHdl));
+    mxScroll->connect_vadjustment_value_changed(LINK(this, ScCsvTableBox, VScrollHdl));
 
     maEndScrollIdle.SetPriority(TaskPriority::LOWEST);
     maEndScrollIdle.SetInvokeHandler(LINK(this,ScCsvTableBox,ScrollEndHdl));
@@ -56,6 +57,26 @@ ScCsvTableBox::~ScCsvTableBox()
 
 // common table box handling --------------------------------------------------
 
+void ScCsvTableBox::Refresh()
+{
+    mxGrid->DisableRepaint();
+    mxGrid->Execute( CSVCMD_SETLINEOFFSET, 0 );
+    if (mbFixedMode)
+    {
+        mxGrid->Execute( CSVCMD_SETPOSCOUNT, mnFixedWidth );
+        mxGrid->SetSplits( mxRuler->GetSplits() );
+        mxGrid->SetColumnStates( std::vector(maFixColStates) );
+    }
+    else
+    {
+        mxGrid->Execute( CSVCMD_SETPOSCOUNT, 1 );
+        mxGrid->Execute( CSVCMD_NEWCELLTEXTS );
+        mxGrid->SetColumnStates( std::vector(maSepColStates) );
+    }
+    InitControls();
+    mxGrid->EnableRepaint();
+}
+
 void ScCsvTableBox::SetSeparatorsMode()
 {
     if( !mbFixedMode )
@@ -67,13 +88,7 @@ void ScCsvTableBox::SetSeparatorsMode()
     // switch to separators mode
     mbFixedMode = false;
     // reset and reinitialize controls
-    mxGrid->DisableRepaint();
-    mxGrid->Execute( CSVCMD_SETLINEOFFSET, 0 );
-    mxGrid->Execute( CSVCMD_SETPOSCOUNT, 1 );
-    mxGrid->Execute( CSVCMD_NEWCELLTEXTS );
-    mxGrid->SetColumnStates( std::vector(maSepColStates) );
-    InitControls();
-    mxGrid->EnableRepaint();
+    Refresh();
 }
 
 void ScCsvTableBox::SetFixedWidthMode()
@@ -86,13 +101,7 @@ void ScCsvTableBox::SetFixedWidthMode()
     // switch to fixed width mode
     mbFixedMode = true;
     // reset and reinitialize controls
-    mxGrid->DisableRepaint();
-    mxGrid->Execute( CSVCMD_SETLINEOFFSET, 0 );
-    mxGrid->Execute( CSVCMD_SETPOSCOUNT, mnFixedWidth );
-    mxGrid->SetSplits( mxRuler->GetSplits() );
-    mxGrid->SetColumnStates( std::vector(maFixColStates) );
-    InitControls();
-    mxGrid->EnableRepaint();
+    Refresh();
 }
 
 void ScCsvTableBox::Init()
@@ -127,25 +136,21 @@ void ScCsvTableBox::InitControls()
 
 void ScCsvTableBox::InitHScrollBar()
 {
-    int nLower = 0;
     int nValue = mxGrid->GetFirstVisPos();
     int nUpper = mxGrid->GetPosCount() + 2;
     int nPageSize = mxGrid->GetVisPosCount();
 
     // Undo scrollbar RTL
     if (AllSettings::GetLayoutRTL())
-        nValue = nUpper - (nValue - nLower + nPageSize);
+        nValue = nUpper - (nValue + nPageSize);
 
-    mxScroll->hadjustment_configure(nValue, nLower, nUpper,
-                                    1, mxGrid->GetVisPosCount() * 3 / 4,
-                                    nPageSize);
+    mxScroll->hadjustment_configure(nValue, nUpper, 1, mxGrid->GetVisPosCount() * 3 / 4, nPageSize);
 }
 
 void ScCsvTableBox::InitVScrollBar()
 {
-    mxScroll->vadjustment_configure(mxGrid->GetFirstVisLine(), 0, mxGrid->GetLineCount() + 1,
-                                    1, mxGrid->GetVisLineCount() - 2,
-                                    mxGrid->GetVisLineCount());
+    mxScroll->vadjustment_configure(mxGrid->GetFirstVisLine(), mxGrid->GetLineCount() + 1, 1,
+                                    mxGrid->GetVisLineCount() - 2, mxGrid->GetVisLineCount());
 }
 
 void ScCsvTableBox::MakePosVisible( sal_Int32 nPos )

@@ -19,25 +19,18 @@
 
 #pragma once
 
-#include <com/sun/star/drawing/framework/XPane.hpp>
-#include <com/sun/star/drawing/framework/XPane2.hpp>
-#include <cppuhelper/basemutex.hxx>
-#include <cppuhelper/compbase.hxx>
+#include <sddllapi.h>
+#include <framework/AbstractPane.hxx>
 #include <vcl/vclptr.hxx>
 #include <vcl/window.hxx>
 
 namespace sd::framework {
 
-typedef ::cppu::WeakComponentImplHelper <
-      css::drawing::framework::XPane,
-      css::drawing::framework::XPane2
-    > PaneInterfaceBase;
-
 /** A pane is a wrapper for a window and possibly for a tab bar (for view
     switching).  Panes are unique resources.
 
     This class has two responsibilities:
-    1. It implements the XPane interface.  This is the most important
+    1. It implements the AbstractPane interface.  This is the most important
     interface of this class for API based views (of which there not that
     many yet) because it gives access to the XWindow.
     2. It gives access to the underlying VCL Window.
@@ -45,9 +38,8 @@ typedef ::cppu::WeakComponentImplHelper <
     foreseeable future because many parts of the Draw and Impress views rely
     on direct access on the Window class.
 */
-class Pane
-    : protected cppu::BaseMutex,
-      public PaneInterfaceBase
+class SD_DLLPUBLIC Pane
+    : public sd::framework::AbstractPane
 {
 public:
     /** Create a new Pane object that wraps the given window.
@@ -60,53 +52,48 @@ public:
             NULL.
     */
     Pane (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId,
+        const rtl::Reference<sd::framework::ResourceId>& rxPaneId,
         vcl::Window* pWindow)
         noexcept;
     virtual ~Pane() override;
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     /** This method is typically used to obtain
-        a Window pointer from an XPane object.
+        a Window pointer from an AbstractPane object.
     */
     virtual vcl::Window* GetWindow();
 
-    //----- XPane -------------------------------------------------------------
+    //----- AbstractPane -------------------------------------------------------------
 
     /** For a UNO API based implementation of a view this may the most
         important method of this class because the view is only interested
         in the window of the pane.
     */
-    virtual css::uno::Reference<css::awt::XWindow>
-        SAL_CALL getWindow() override;
+    virtual css::uno::Reference<css::awt::XWindow> getWindow() override;
 
-    virtual css::uno::Reference<css::rendering::XCanvas>
-        SAL_CALL getCanvas() override;
+    virtual css::uno::Reference<css::rendering::XCanvas> getCanvas() override;
 
-    //----- XPane2 -------------------------------------------------------------
-
-    virtual sal_Bool SAL_CALL isVisible() override;
-
-    virtual void SAL_CALL setVisible (sal_Bool bIsVisible) override;
-
-    virtual css::uno::Reference<css::accessibility::XAccessible> SAL_CALL getAccessible() override;
-
-    virtual void SAL_CALL setAccessible (
-        const css::uno::Reference<css::accessibility::XAccessible>& rxAccessible) override;
+    /** Hide or show the pane.  If there is more than one window used to
+        implement the pane then it is left to the implementation if one,
+        some, or all windows are hidden or shown as long as the pane becomes
+        hidden or visible.
+        @param bIsVisible
+            When `TRUE` then show the pane.  Hide it otherwise.
+    */
+    virtual void setVisible (bool bIsVisible);
 
     //----- XResource ---------------------------------------------------------
 
-    virtual css::uno::Reference<css::drawing::framework::XResourceId>
-        SAL_CALL getResourceId() override;
+    virtual rtl::Reference<sd::framework::ResourceId> getResourceId() override;
 
     /** For the typical pane it makes no sense to be displayed without a
         view.  Therefore this default implementation returns always <TRUE/>.
     */
-    virtual sal_Bool SAL_CALL isAnchorOnly() override;
+    virtual bool isAnchorOnly() override;
 
 protected:
-    css::uno::Reference<css::drawing::framework::XResourceId> mxPaneId;
+    rtl::Reference<sd::framework::ResourceId> mxPaneId;
     VclPtr<vcl::Window> mpWindow;
     css::uno::Reference<css::awt::XWindow> mxWindow;
     css::uno::Reference<css::rendering::XCanvas> mxCanvas;
@@ -119,13 +106,6 @@ protected:
     virtual css::uno::Reference<css::rendering::XCanvas>
         CreateCanvas();
 
-    /** Throw DisposedException when the object has already been disposed or
-        is currently being disposed.  Otherwise this method returns
-        normally.
-
-        @throws css::lang::DisposedException
-    */
-    void ThrowIfDisposed() const;
 };
 
 } // end of namespace sd::framework

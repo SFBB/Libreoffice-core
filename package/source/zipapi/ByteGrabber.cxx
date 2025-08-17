@@ -41,7 +41,9 @@ ByteGrabber::ByteGrabber(uno::Reference  < io::XInputStream > const & xIstream)
 , xSeek (xIstream, uno::UNO_QUERY )
 , aSequence ( 4 )
 {
-    pSequence = aSequence.getArray();
+    // The input stream here could be from a remote UNO connection, in which
+    // case it will not implement comphelper::ByteReader.
+    mpByteReader = dynamic_cast<comphelper::ByteReader*>(xStream.get());
 }
 
 ByteGrabber::~ByteGrabber()
@@ -50,23 +52,27 @@ ByteGrabber::~ByteGrabber()
 
 void ByteGrabber::setInputStream (const uno::Reference < io::XInputStream >& xNewStream)
 {
-    std::scoped_lock aGuard( m_aMutex );
     xStream = xNewStream;
     xSeek.set(xNewStream, uno::UNO_QUERY);
+    mpByteReader = dynamic_cast<comphelper::ByteReader*>(xStream.get());
 }
 
-// XInputStream chained
-sal_Int32 ByteGrabber::readBytes( uno::Sequence< sal_Int8 >& aData,
+sal_Int32 ByteGrabber::readBytes( sal_Int8* aData,
                                         sal_Int32 nBytesToRead )
 {
-    std::scoped_lock aGuard( m_aMutex );
-    return xStream->readBytes(aData, nBytesToRead );
+    if (mpByteReader)
+        return mpByteReader->readSomeBytes(aData, nBytesToRead );
+    else
+    {
+        sal_Int32 nBytesActuallyRead = xStream->readSomeBytes(aSequence, nBytesToRead);
+        memcpy(aData, aSequence.getConstArray(), nBytesActuallyRead);
+        return nBytesActuallyRead;
+    }
 }
 
 // XSeekable chained...
 void ByteGrabber::seek( sal_Int64 location )
 {
-    std::scoped_lock aGuard( m_aMutex );
     if (!xSeek.is() )
         throw io::IOException(THROW_WHERE );
 
@@ -75,7 +81,6 @@ void ByteGrabber::seek( sal_Int64 location )
 
 sal_Int64 ByteGrabber::getPosition(  )
 {
-    std::scoped_lock aGuard( m_aMutex );
     if (!xSeek.is() )
         throw io::IOException(THROW_WHERE );
 
@@ -84,7 +89,6 @@ sal_Int64 ByteGrabber::getPosition(  )
 
 sal_Int64 ByteGrabber::getLength(  )
 {
-    std::scoped_lock aGuard( m_aMutex );
     if (!xSeek.is() )
         throw io::IOException(THROW_WHERE );
 
@@ -93,30 +97,85 @@ sal_Int64 ByteGrabber::getLength(  )
 
 sal_uInt16 ByteGrabber::ReadUInt16()
 {
-    std::scoped_lock aGuard( m_aMutex );
+    if (mpByteReader)
+    {
+        if (mpByteReader->readSomeBytes(maBuffer.data(), 2) != 2)
+            return 0;
 
-    if (xStream->readBytes(aSequence, 2) != 2)
-        return 0;
+        return static_cast <sal_uInt16>
+               ( (maBuffer[0] & 0xFF)
+                 | (maBuffer[1] & 0xFF) << 8);
+    }
+    else
+    {
+        if (xStream->readBytes(aSequence, 2) != 2)
+            return 0;
 
-    pSequence = aSequence.getConstArray();
-    return static_cast <sal_uInt16>
-           ( (pSequence[0] & 0xFF)
-          | (pSequence[1] & 0xFF) << 8);
+        const sal_Int8 *pSequence = aSequence.getConstArray();
+        return static_cast <sal_uInt16>
+               ( (pSequence[0] & 0xFF)
+                 | (pSequence[1] & 0xFF) << 8);
+    }
 }
 
 sal_uInt32 ByteGrabber::ReadUInt32()
 {
-    std::scoped_lock aGuard( m_aMutex );
+    if (mpByteReader)
+    {
+        if (mpByteReader->readSomeBytes(maBuffer.data(), 4) != 4)
+            return 0;
 
-    if (xStream->readBytes(aSequence, 4) != 4)
-        return 0;
+        return static_cast < sal_uInt32 >
+                ( (maBuffer[0] & 0xFF)
+              | ( maBuffer[1] & 0xFF ) << 8
+              | ( maBuffer[2] & 0xFF ) << 16
+              | ( maBuffer[3] & 0xFF ) << 24 );
+    }
+    else
+    {
+        if (xStream->readBytes(aSequence, 4) != 4)
+            return 0;
 
-    pSequence = aSequence.getConstArray();
-    return static_cast < sal_uInt32 >
-            ( (pSequence[0] & 0xFF)
-          | ( pSequence[1] & 0xFF ) << 8
-          | ( pSequence[2] & 0xFF ) << 16
-          | ( pSequence[3] & 0xFF ) << 24 );
+        const sal_Int8 *pSequence = aSequence.getConstArray();
+        return static_cast < sal_uInt32 >
+                ( (pSequence[0] & 0xFF)
+              | ( pSequence[1] & 0xFF ) << 8
+              | ( pSequence[2] & 0xFF ) << 16
+              | ( pSequence[3] & 0xFF ) << 24 );
+    }
+}
+
+sal_uInt64 ByteGrabber::ReadUInt64()
+{
+    if (mpByteReader)
+    {
+        if (mpByteReader->readSomeBytes(maBuffer.data(), 8) != 8)
+            return 0;
+
+        return  static_cast<sal_uInt64>(maBuffer[0] & 0xFF)
+              | static_cast<sal_uInt64>(maBuffer[1] & 0xFF) << 8
+              | static_cast<sal_uInt64>(maBuffer[2] & 0xFF) << 16
+              | static_cast<sal_uInt64>(maBuffer[3] & 0xFF) << 24
+              | static_cast<sal_uInt64>(maBuffer[4] & 0xFF) << 32
+              | static_cast<sal_uInt64>(maBuffer[5] & 0xFF) << 40
+              | static_cast<sal_uInt64>(maBuffer[6] & 0xFF) << 48
+              | static_cast<sal_uInt64>(maBuffer[7] & 0xFF) << 56;
+    }
+    else
+    {
+        if (xStream->readBytes(aSequence, 8) != 8)
+            return 0;
+
+        const sal_Int8 *pSequence = aSequence.getConstArray();
+        return  static_cast<sal_uInt64>(pSequence[0] & 0xFF)
+              | static_cast<sal_uInt64>(pSequence[1] & 0xFF) << 8
+              | static_cast<sal_uInt64>(pSequence[2] & 0xFF) << 16
+              | static_cast<sal_uInt64>(pSequence[3] & 0xFF) << 24
+              | static_cast<sal_uInt64>(pSequence[4] & 0xFF) << 32
+              | static_cast<sal_uInt64>(pSequence[5] & 0xFF) << 40
+              | static_cast<sal_uInt64>(pSequence[6] & 0xFF) << 48
+              | static_cast<sal_uInt64>(pSequence[7] & 0xFF) << 56;
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -205,7 +205,7 @@ typedef ::cppu::ImplHelper10<   css::form::XBoundComponent,
                             >   FmXGridControl_BASE;
 
 class FmXGridPeer;
-class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC FmXGridControl  :public UnoControl
+class SAL_WARN_UNUSED UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) FmXGridControl  :public UnoControl
                         ,public FmXGridControl_BASE
 {
     FmXModifyMultiplexer        m_aModifyListeners;
@@ -316,7 +316,7 @@ protected:
 
 // FmXGridPeer -> Peer for the Gridcontrol
 class FmGridControl;
-class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC FmXGridPeer:
+class SAL_WARN_UNUSED UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) FmXGridPeer:
     public cppu::ImplInheritanceHelper<
         VCLXWindow,
         css::form::XGridPeer,
@@ -426,8 +426,6 @@ public:
 // VCLXWindow
     virtual void SAL_CALL setProperty( const OUString& PropertyName, const css::uno::Any& Value ) override;
     virtual css::uno::Any SAL_CALL getProperty( const OUString& PropertyName ) override;
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext >
-                    CreateAccessibleContext() override;
 
 // css::form::XGridControl
     virtual void SAL_CALL addGridControlListener( const css::uno::Reference< css::form::XGridControlListener >& _listener ) override;

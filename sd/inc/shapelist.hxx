@@ -23,6 +23,7 @@
 #include <svx/sdrobjectuser.hxx>
 
 #include <list>
+#include <unordered_set>
 
 namespace sd
 {
@@ -30,7 +31,7 @@ namespace sd
     {
     public:
         ShapeList();
-        virtual ~ShapeList();
+        ~ShapeList();
 
         /** adds the given shape to this list */
         void addShape( SdrObject& rObject );
@@ -65,6 +66,7 @@ namespace sd
         typedef std::list< SdrObject* > ListImpl;
         ListImpl maShapeList;
         ListImpl::iterator maIter;
+        std::unordered_set<const SdrObject*> maShapeSet;
     };
 }
 

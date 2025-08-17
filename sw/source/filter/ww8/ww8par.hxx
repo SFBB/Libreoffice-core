@@ -137,7 +137,7 @@ class WW8Reader : public StgReader
 {
     std::shared_ptr<SvStream> mDecodedStream;
     virtual ErrCodeMsg Read(SwDoc &, const OUString& rBaseURL, SwPaM &, const OUString &) override;
-    ErrCode OpenMainStream( tools::SvRef<SotStorageStream>& rRef, sal_uInt16& rBuffSize );
+    ErrCode OpenMainStream(rtl::Reference<SotStorageStream>& rRef, sal_uInt16& rBuffSize);
     ErrCode DecryptDRMPackage();
 public:
     WW8Reader() {}
@@ -558,10 +558,10 @@ namespace sw
 class WW8FieldEntry
 {
     private:
-        OUString msBookmarkName;
+        SwMarkName msBookmarkName;
         OUString msMarkType;
         OUString msMarkCode;
-        ::sw::mark::IFieldmark::parameter_map_t maParams;
+        ::sw::mark::Fieldmark::parameter_map_t maParams;
 
     public:
         sw::hack::Position maStartPos;
@@ -575,12 +575,12 @@ class WW8FieldEntry
         const SwNodeIndex& GetPtNode() const { return maStartPos.GetPtNode(); };
         sal_Int32 GetPtContent() const { return maStartPos.GetPtContent(); };
 
-        const OUString& GetBookmarkName() const { return msBookmarkName;}
+        const SwMarkName& GetBookmarkName() const { return msBookmarkName;}
         const OUString& GetBookmarkCode() const { return msMarkCode;}
-        void SetBookmarkName(const OUString& bookmarkName);
+        void SetBookmarkName(const SwMarkName& bookmarkName);
         void SetBookmarkType(const OUString& bookmarkType);
         void SetBookmarkCode(const OUString& bookmarkCode);
-        ::sw::mark::IFieldmark::parameter_map_t& getParameters() { return maParams;}
+        ::sw::mark::Fieldmark::parameter_map_t& getParameters() { return maParams;}
 };
 
 //    mini marker for some flags
@@ -739,7 +739,7 @@ public:
         const css::awt::Size& rSize,
         css::uno::Reference<  css::drawing::XShape > *pShape, bool bFloatingCtrl) override;
     void ExportControl(WW8Export &rWrt, const SdrUnoObj& rFormObj);
-    bool ReadOCXStream( tools::SvRef<SotStorage> const & rSrc1,
+    bool ReadOCXStream(rtl::Reference<SotStorage> const& rSrc1,
         css::uno::Reference< css::drawing::XShape > *pShapeRef,
         bool bFloatingCtrl=false );
 private:
@@ -755,7 +755,7 @@ private:
     std::unordered_map<sal_uInt32, Graphic> m_aOldEscherBlipCache;
 
     virtual bool GetOLEStorageName( sal_uInt32 nOLEId, OUString& rStorageName,
-        tools::SvRef<SotStorage>& rSrcStorage, css::uno::Reference < css::embed::XStorage >& rDestStorage ) const override;
+        rtl::Reference<SotStorage>& rSrcStorage, css::uno::Reference < css::embed::XStorage >& rDestStorage ) const override;
     virtual bool ShapeHasText( sal_uLong nShapeId, sal_uLong nFilePos ) const override;
     // #i32596# - new parameter <_nCalledByGroup>, which
     // indicates, if the OLE object is imported inside a group object
@@ -1307,8 +1307,9 @@ private:
     sal_uInt32 m_nIniFlags;            // flags from writer.ini
     sal_uInt32 m_nIniFlags1;           // ditto ( additional flags )
     sal_uInt32 m_nFieldFlags;          // ditto for fields
-    sal_uInt32 m_nFieldTagAlways[3];   // ditto for tagging of fields
-    sal_uInt32 m_nFieldTagBad[3];      // ditto for tagging of fields that can't be imported
+    static constexpr size_t FieldTagSize = 3;
+    sal_uInt32 m_nFieldTagAlways[FieldTagSize]; // ditto for tagging of fields
+    sal_uInt32 m_nFieldTagBad[FieldTagSize]; // ditto for tagging of fields that can't be imported
     bool m_bRegardHindiDigits;  // import digits in CTL scripts as Hindi numbers
 
     bool m_bDrawCpOValid;
@@ -1421,7 +1422,7 @@ private:
 
     bool StyleExists(unsigned int nColl) const { return (nColl < m_vColl.size()); }
     SwWW8StyInf *GetStyle(sal_uInt16 nColl) const;
-    void AppendTextNode(SwPosition& rPos);
+    void FinalizeTextNode(SwPosition& rPos, bool bAddNew = true);
 
     void Read_HdFt(int nSect, const SwPageDesc *pPrev,
         const wwSection &rSection);
@@ -1452,7 +1453,6 @@ private:
     {
         DeleteStack(std::move(m_xAnchorStck));
     }
-    void emulateMSWordAddTextToParagraph(const OUString& rAddString);
     void simpleAddTextToParagraph(std::u16string_view aAddString);
     bool HandlePageBreakChar();
     bool ReadChar(tools::Long nPosCp, tools::Long nCpOfs);
@@ -1586,7 +1586,7 @@ private:
     void ImportDopTypography(const WW8DopTypography &rTypo);
 
     ErrCode LoadThroughDecryption(WW8Glossary *pGloss);
-    ErrCode SetSubStreams(tools::SvRef<SotStorageStream> &rTableStream, tools::SvRef<SotStorageStream> &rDataStream);
+    ErrCode SetSubStreams(rtl::Reference<SotStorageStream> &rTableStream, rtl::Reference<SotStorageStream> &rDataStream);
     ErrCode CoreLoad(WW8Glossary const *pGloss);
 
     void ReadDocVars();
@@ -1628,7 +1628,7 @@ private:
     rtl::Reference<SdrObject> ReadEllipse(WW8_DPHEAD const * pHd, SfxAllItemSet &rSet);
     rtl::Reference<SdrObject> ReadArc(WW8_DPHEAD const * pHd, SfxAllItemSet &rSet);
     rtl::Reference<SdrObject> ReadPolyLine(WW8_DPHEAD const * pHd, SfxAllItemSet &rSet);
-    void InsertTxbxStyAttrs( SfxItemSet& rS, sal_uInt16 nColl );
+    void InsertTxbxStyAttrs(SfxItemSet& rS, sal_uInt16 nColl, ManTypes eType);
     void InsertAttrsAsDrawingAttrs(WW8_CP nStartCp, WW8_CP nEndCp, ManTypes eType, bool bONLYnPicLocFc=false);
 
     bool GetTxbxTextSttEndCp(WW8_CP& rStartCp, WW8_CP& rEndCp, sal_uInt16 nTxBxS,
@@ -1932,7 +1932,7 @@ public:     // really private, but can only be done public
 
     static bool GetPictGrafFromStream(Graphic& rGraphic, SvStream& rSrc);
     SAL_WARN_UNUSED_RESULT static bool PicRead(SvStream *pDataStream, WW8_PIC *pPic, bool bVer67);
-    static bool ImportOleWMF(const tools::SvRef<SotStorage>& xSrc1, GDIMetaFile& rWMF, tools::Long& rX,
+    static bool ImportOleWMF(const rtl::Reference<SotStorage>& xSrc1, GDIMetaFile& rWMF, tools::Long& rX,
                              tools::Long& rY);
     static Color GetCol(sal_uInt8 nIco);
 

@@ -17,19 +17,24 @@
         if 0;
 
 use strict;
-use Cwd ('cwd', 'realpath');
+# use Cwd's chdir to also set PWD environment variable
+use Cwd ('chdir', 'getcwd', 'realpath');
 use File::Basename;
 
 my $src_path=dirname(realpath($0));
-my $build_path=realpath(cwd());
+my $build_path=realpath(getcwd());
+
+# workaround for case-preserving filesystems to get the canonical name
+# otherwise the src_path may be different from the build_path by case only
+# and mess up the builddir != srcdir handling
+chdir($src_path);
+$src_path=getcwd();
+
 # since this looks crazy, if you have a symlink on a path up to and including
 # the current directory, we need our configure to run in the realpath of that
 # such that compiled (realpath'd) dependency filenames match the filenames
 # used in our makefiles - ie. this gets dependencies right via SRC_ROOT
 chdir ($build_path);
-# more amazingly, if you don't clobber 'PWD' shells will re-assert their
-# old path from the environment, not cwd.
-$ENV{PWD} = $build_path;
 
 my $aclocal;
 my $autoconf;
@@ -45,7 +50,10 @@ sub sanity_checks($)
        $autoconf    => "autoconf is required",
        $aclocal     => "$aclocal is required",
       );
-
+    if ($ENV{WSL_DISTRO_NAME} && $ENV{PATH} =~ /mingw64/) {
+        # for wsl-as-helper build we only need the m4 macros like for macOS
+        delete $required{'pkg-config'};
+    }
     for my $elem (@path) {
         for my $app (keys %required) {
             if (-f "$elem/$app") {
@@ -160,7 +168,8 @@ if (defined $ENV{LODE_HOME})
 my $aclocal_flags = $ENV{ACLOCAL_FLAGS};
 
 $aclocal_flags .= " -I $src_path/m4";
-$aclocal_flags .= " -I $src_path/m4/mac" if ($system eq 'Darwin');
+# the m4/mac directory provides the pkg-config macros used in configure
+$aclocal_flags .= " -I $src_path/m4/mac" if ($system eq 'Darwin' || ($ENV{WSL_DISTRO_NAME} && $ENV{PATH} =~ /mingw64/));
 
 $ENV{AUTOMAKE_EXTRA_FLAGS} = '--warnings=no-portability' if (!($system eq 'Darwin'));
 
@@ -171,6 +180,12 @@ if ($src_path ne $build_path)
     my $src_path_win=$src_path;
     if ($system =~ /CYGWIN.*/) {
         $src_path_win=`cygpath -m $src_path`;
+        chomp $src_path_win;
+    }
+    # wsl-as-helper method: autogen.sh/configure runs within a wsl-container (WSL_DISTRO_NAME)
+    # and build is run from within git-bash (that adds .../Git/mingw64/bin to PATH)
+    if ($ENV{WSL_DISTRO_NAME} && $ENV{PATH} =~ /mingw64/) {
+        $src_path_win=`wslpath -m $src_path`;
         chomp $src_path_win;
     }
     my @modules = <$src_path/*/Makefile>;
@@ -201,6 +216,8 @@ die "Failed to generate the configure script" if (! -f "configure");
 for my $arg (@ARGV) {
     if ($arg =~ /^(--help|-h|-\?)$/) {
         print STDOUT "autogen.sh - libreoffice configuration helper\n";
+        print STDOUT "When called without arguments, arguments from autogen.input are used.\n";
+        print STDOUT "\nArguments processed in the helper:\n";
         print STDOUT "   --with-distro  use a config from distro-configs/\n";
         print STDOUT "                  the name needs to be passed without extension\n";
         print STDOUT "   --best-effort  don't fail on un-known configure with/enable options\n";
@@ -320,6 +337,8 @@ if (defined $ENV{NOCONFIGURE}) {
 
     system (@args) && die "Error running configure";
 }
+
+# cspell:ignore Distros PROGRAMFILESX WSLENV emconfigure realpath wslsys
 
 # Local Variables:
 # mode: perl

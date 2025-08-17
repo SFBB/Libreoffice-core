@@ -78,12 +78,16 @@ struct ObjAnchorOrder
                      const SwAnchoredObject* _pNewAnchoredObj )
     {
         // get attributes of listed object
-        const SwFrameFormat& rFormatListed = _pListedAnchoredObj->GetFrameFormat();
-        const SwFormatAnchor* pAnchorListed = &(rFormatListed.GetAnchor());
+        const SwFrameFormat* pFormatListed = _pListedAnchoredObj->GetFrameFormat();
+        if (!pFormatListed)
+            return false;
+        const SwFormatAnchor* pAnchorListed = &(pFormatListed->GetAnchor());
 
         // get attributes of new object
-        const SwFrameFormat& rFormatNew = _pNewAnchoredObj->GetFrameFormat();
-        const SwFormatAnchor* pAnchorNew = &(rFormatNew.GetAnchor());
+        const SwFrameFormat* pFormatNew = _pNewAnchoredObj->GetFrameFormat();
+        if (!pFormatNew)
+            return false;
+        const SwFormatAnchor* pAnchorNew = &(pFormatNew->GetAnchor());
 
         // check for to-page anchored objects
         if ((pAnchorListed->GetAnchorId() == RndStdIds::FLY_AT_PAGE) &&
@@ -156,15 +160,15 @@ struct ObjAnchorOrder
         // objects anchored at the same content and at the same content anchor
         // node position with the same anchor type
         // Thus, compare its wrapping style including its layer
-        const IDocumentDrawModelAccess& rIDDMA = rFormatListed.getIDocumentDrawModelAccess();
+        const IDocumentDrawModelAccess& rIDDMA = pFormatListed->getIDocumentDrawModelAccess();
         const SdrLayerID nHellId = rIDDMA.GetHellId();
         const SdrLayerID nInvisibleHellId = rIDDMA.GetInvisibleHellId();
         const bool bWrapThroughOrHellListed =
-                    rFormatListed.GetSurround().GetSurround() == css::text::WrapTextMode_THROUGH ||
+                    pFormatListed->GetSurround().GetSurround() == css::text::WrapTextMode_THROUGH ||
                     _pListedAnchoredObj->GetDrawObj()->GetLayer() == nHellId ||
                     _pListedAnchoredObj->GetDrawObj()->GetLayer() == nInvisibleHellId;
         const bool bWrapThroughOrHellNew =
-                    rFormatNew.GetSurround().GetSurround() == css::text::WrapTextMode_THROUGH ||
+                    pFormatNew->GetSurround().GetSurround() == css::text::WrapTextMode_THROUGH ||
                     _pNewAnchoredObj->GetDrawObj()->GetLayer() == nHellId ||
                     _pNewAnchoredObj->GetDrawObj()->GetLayer() == nInvisibleHellId;
         if ( bWrapThroughOrHellListed != bWrapThroughOrHellNew )
@@ -179,9 +183,9 @@ struct ObjAnchorOrder
         // objects anchored at the same content with a set text wrapping
         // Thus, compare wrap influences on object position
         const SwFormatWrapInfluenceOnObjPos* pWrapInfluenceOnObjPosListed =
-                                        &(rFormatListed.GetWrapInfluenceOnObjPos());
+                                        &(pFormatListed->GetWrapInfluenceOnObjPos());
         const SwFormatWrapInfluenceOnObjPos* pWrapInfluenceOnObjPosNew =
-                                        &(rFormatNew.GetWrapInfluenceOnObjPos());
+                                        &(pFormatNew->GetWrapInfluenceOnObjPos());
         // #i35017# - handle ITERATIVE as ONCE_SUCCESSIVE
         if ( pWrapInfluenceOnObjPosListed->GetWrapInfluenceOnObjPos( true ) !=
                 pWrapInfluenceOnObjPosNew->GetWrapInfluenceOnObjPos( true ) )
@@ -256,7 +260,7 @@ bool SwSortedObjs::Contains( const SwAnchoredObject& _rAnchoredObj ) const
     return aIter != maSortedObjLst.end();
 }
 
-void SwSortedObjs::Update( SwAnchoredObject& _rAnchoredObj )
+void SwSortedObjs::Update( const SwAnchoredObject& _rAnchoredObj )
 {
     if ( !Contains( _rAnchoredObj ) )
     {
@@ -271,8 +275,10 @@ void SwSortedObjs::Update( SwAnchoredObject& _rAnchoredObj )
         return;
     }
 
-    Remove( _rAnchoredObj );
-    Insert( _rAnchoredObj );
+    if (is_sorted())
+        return;
+
+    UpdateAll();
 }
 
 void SwSortedObjs::UpdateAll()

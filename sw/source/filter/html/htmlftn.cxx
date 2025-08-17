@@ -205,7 +205,7 @@ void SwHTMLParser::FinishFootEndNote()
             m_pPam->GetPoint()->GetContentIndex() - 1, RES_TXTATR_FTN ) );
     // In header and footer no footnotes can be inserted.
     if (pTextFootnote)
-        m_pFootEndNoteImpl->aTextFootnotes.push_back(SwHTMLTextFootnote(m_pFootEndNoteImpl->sName,pTextFootnote));
+        m_pFootEndNoteImpl->aTextFootnotes.emplace_back(m_pFootEndNoteImpl->sName,pTextFootnote);
     m_pFootEndNoteImpl->sName.clear();
     m_pFootEndNoteImpl->sContent.clear();
     m_pFootEndNoteImpl->bFixed = false;
@@ -249,7 +249,7 @@ SwHTMLWriter& OutHTML_SwFormatLineBreak(SwHTMLWriter& rWrt, const SfxPoolItem& r
 {
     const auto& rLineBreak = static_cast<const SwFormatLineBreak&>(rHt);
 
-    HtmlWriter aWriter(rWrt.Strm(), rWrt.maNamespace);
+    HtmlWriter aWriter(rWrt.Strm(), rWrt.GetNamespace());
     aWriter.start(OOO_STRING_SVTOOLS_HTML_linebreak ""_ostr);
     switch (rLineBreak.GetValue())
     {
@@ -367,7 +367,7 @@ void SwHTMLWriter::OutFootEndNotes()
         SetLFPossible(true);
         IncIndentLevel();   // indent content of <DIV>
 
-        OSL_ENSURE( pTextFootnote, "SwHTMLWriter::OutFootEndNotes: SwTextFootnote is missing" );
+        assert(pTextFootnote && "SwHTMLWriter::OutFootEndNotes: SwTextFootnote is missing");
         const SwNodeIndex *pSttNdIdx = pTextFootnote->GetStartNode();
         OSL_ENSURE( pSttNdIdx,
                 "SwHTMLWriter::OutFootEndNotes: StartNode-Index is missing" );
@@ -426,7 +426,7 @@ OUString SwHTMLWriter::GetFootEndNoteSym( const SwFormatFootnote& rFormatFootnot
 }
 
 void SwHTMLWriter::OutFootEndNoteSym( const SwFormatFootnote& rFormatFootnote,
-                                         const OUString& rNum,
+                                         std::u16string_view rNum,
                                          sal_uInt16 nScript )
 {
     const SwEndNoteInfo *pInfo;

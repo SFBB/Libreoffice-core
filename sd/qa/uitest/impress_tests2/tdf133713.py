@@ -46,12 +46,12 @@ class Tdf133713(UITestCase):
                 self.assertEqual("0", get_state_as_dict(xIndent)["Value"])
                 self.assertEqual("45%", get_state_as_dict(xRelSize)["Text"])
 
-            drawPage = document.getDrawPages().getByIndex(0)
-            shape = drawPage.getByIndex(1)
+            drawPage = document.getDrawPages()[0]
+            shape = drawPage[1]
             xEnumeration = shape.Text.createEnumeration()
 
             # Without the fix in place, this test would have failed with
-            # AssertionError: 0 != None
+            # AssertionError: 0 is not None
             for i in range(3):
                 self.assertEqual(0, xEnumeration.nextElement().NumberingLevel)
 

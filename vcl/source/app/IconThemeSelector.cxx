@@ -56,9 +56,9 @@ IconThemeSelector::GetIconThemeForDesktopEnvironment(const OUString& desktopEnvi
     if (comphelper::LibreOfficeKit::isActive())
     {
         if (!bPreferDarkIconTheme)
-            return "colibre";
+            return u"colibre"_ustr;
         else
-            return "colibre_dark";
+            return u"colibre_dark"_ustr;
     }
 
 #ifdef _WIN32
@@ -79,9 +79,9 @@ IconThemeSelector::GetIconThemeForDesktopEnvironment(const OUString& desktopEnvi
     }
     else if ( desktopEnvironment.equalsIgnoreAsciiCase("macosx") ) {
         if (!bPreferDarkIconTheme)
-            r = "sukapura";
+            r = "sukapura_svg";
         else
-            r = "sukapura_dark";
+            r = "sukapura_dark_svg";
     }
     else if ( desktopEnvironment.equalsIgnoreAsciiCase("gnome") ||
          desktopEnvironment.equalsIgnoreAsciiCase("mate") ||
@@ -161,30 +161,6 @@ IconThemeSelector::SetPreferredIconTheme(const OUString& theme, bool bDarkIconTh
         mPreferDarkIconTheme = bDarkIconTheme;
     }
     return bChanged;
-}
-
-bool
-IconThemeSelector::operator==(const vcl::IconThemeSelector& other) const
-{
-    if (this == &other) {
-        return true;
-    }
-    if (mPreferredIconTheme != other.mPreferredIconTheme) {
-        return false;
-    }
-    if (mPreferDarkIconTheme != other.mPreferDarkIconTheme) {
-        return false;
-    }
-    if (mUseHighContrastTheme != other.mUseHighContrastTheme) {
-        return false;
-    }
-    return true;
-}
-
-bool
-IconThemeSelector::operator!=(const vcl::IconThemeSelector& other) const
-{
-    return !(*this == other);
 }
 
 /*static*/ OUString

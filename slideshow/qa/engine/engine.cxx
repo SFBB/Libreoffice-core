@@ -24,7 +24,7 @@ class Test : public UnoApiTest
 {
 public:
     Test()
-        : UnoApiTest("slideshow/qa/engine/data/")
+        : UnoApiTest(u"slideshow/qa/engine/data/"_ustr)
     {
     }
 };
@@ -56,7 +56,7 @@ CPPUNIT_TEST_FIXTURE(Test, testLoopingFromAnimation)
 {
     // Given a document with a looping video, the looping is defined as part of its auto-play
     // animation (and not on the media shape):
-    loadFromURL(u"video-loop.pptx");
+    loadFromFile(u"video-loop.pptx");
     uno::Reference<drawing::XDrawPagesSupplier> xDoc(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xPage(xDoc->getDrawPages()->getByIndex(0), uno::UNO_QUERY);
     uno::Reference<animations::XCommand> xCommandNode = GetFirstCommandNodeOfPage(xPage);

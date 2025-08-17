@@ -28,6 +28,7 @@ $(eval $(call gb_Module_add_l10n_targets,sd,\
 
 ifeq ($(filter DRAGONFLY FREEBSD,$(OS)),)
 $(eval $(call gb_Module_add_slowcheck_targets,sd,\
+	Library_sdqahelper \
 	$(if $(and $(filter $(COM),MSC),$(MERGELIBS)),, \
 		CppunitTest_sd_uimpress) \
     CppunitTest_sd_import_tests \
@@ -40,6 +41,7 @@ $(eval $(call gb_Module_add_slowcheck_targets,sd,\
     CppunitTest_sd_export_tests-ooxml4 \
     CppunitTest_sd_export_tests \
     CppunitTest_sd_filters_test \
+    CppunitTest_sd_font_embedding_tests \
     CppunitTest_sd_layout_tests \
     CppunitTest_sd_misc_tests \
     CppunitTest_sd_uiimpress \
@@ -52,6 +54,7 @@ $(eval $(call gb_Module_add_slowcheck_targets,sd,\
     CppunitTest_sd_a11y \
     CppunitTest_sd_textfitting_tests \
     CppunitTest_sd_theme_tests \
+    CppunitTest_sd_annotation_tests \
 ))
 endif
 
@@ -60,6 +63,8 @@ ifeq ($(OS),LINUX)
 $(eval $(call gb_Module_add_slowcheck_targets,sd,\
     CppunitTest_sd_svg_export_tests \
     CppunitTest_sd_tiledrendering \
+    CppunitTest_sd_tiledrendering2 \
+    CppunitTest_sd_lokit_search \
 ))
 endif
 endif

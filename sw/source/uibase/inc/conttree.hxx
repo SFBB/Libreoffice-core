@@ -40,9 +40,6 @@ class SwWrtShell;
 class SwContentType;
 class SwNavigationPI;
 class SwNavigationConfig;
-class Menu;
-class ToolBox;
-class SwGlblDocContents;
 class SfxObjectShell;
 class SdrObject;
 
@@ -50,10 +47,9 @@ enum class EditEntryMode
 {
     EDIT          = 0,
     UPD_IDX       = 1,
-    RMV_IDX       = 2,
-    UNPROTECT_TABLE    = 3,
-    DELETE        = 4,
-    RENAME        = 5,
+    UNPROTECT_TABLE    = 2,
+    DELETE        = 3,
+    RENAME        = 4,
 };
 
 // Flags for PopupMenu-enable/disable
@@ -89,6 +85,8 @@ public:
 /** TreeListBox for content indicator */
 class SwContentTree final : public SfxListener
 {
+    friend class SwNavigationPI;
+
     std::unique_ptr<weld::TreeView> m_xTreeView;
     SwContentTreeDropTarget m_aDropTargetHelper;
     SwNavigationPI*     m_pDialog;
@@ -132,13 +130,15 @@ class SwContentTree final : public SfxListener
     bool                m_bViewHasChanged     :1;
 
     // outline root mode drag & drop
-    std::vector<std::unique_ptr<weld::TreeIter>> m_aDndOutlinesSelected;
+    std::vector<SwOutlineNodes::size_type> m_aDndOutlinesSelected;
 
     bool m_bDocHasChanged = true;
     bool m_bIgnoreDocChange = false; // used to prevent tracking update
 
     ImplSVEvent* m_nRowActivateEventId = nullptr;
     bool m_bSelectTo = false;
+
+    bool m_bEditing = false;
 
     std::unique_ptr<weld::TreeIter> m_xOverlayCompareEntry;
     std::unique_ptr<sdr::overlay::OverlayObject> m_xOverlayObject;
@@ -147,7 +147,7 @@ class SwContentTree final : public SfxListener
 
     void BringEntryToAttention(const weld::TreeIter& rEntry);
     void BringFramesToAttention(const std::vector<const SwFrameFormat*>& rFrameFormats);
-    void BringBookmarksToAttention(const std::vector<OUString>& rNames);
+    void BringBookmarksToAttention(const std::vector<SwMarkName>& rNames);
     void BringURLFieldsToAttention(const SwGetINetAttrs& rINetAttrsArr);
     void BringReferencesToAttention(std::vector<const SwTextAttr*>& rTextAttrsArr);
     void BringPostItFieldsToAttention(std::vector<const SwTextAttr*>& rTextAttrsArr);
@@ -172,8 +172,7 @@ class SwContentTree final : public SfxListener
 
     SwNavigationPI* GetParentWindow();
 
-    bool        FillTransferData( TransferDataContainer& rTransfer,
-                                            sal_Int8& rDragMode );
+    bool FillTransferData(TransferDataContainer& rTransfer);
 
     /** Check if the displayed content is valid. */
     bool            HasContentChanged();
@@ -201,6 +200,12 @@ class SwContentTree final : public SfxListener
 
     void UpdateLastSelType();
 
+    bool IsDeletable(const weld::TreeIter& rEntry);
+    bool IsDeletable(const SwContent* pContent);
+    void DeleteAllContentOfEntryContentType(const weld::TreeIter& rEntry);
+
+    bool IsSelectedEntryCurrentDocCursorPosition(const weld::TreeIter& rEntry);
+
     /** Expand - Remember the state for content types */
     DECL_LINK(ExpandHdl, const weld::TreeIter&, bool);
     /** Collapse - Remember the state for content types. */
@@ -217,6 +222,10 @@ class SwContentTree final : public SfxListener
     DECL_LINK(OverlayObjectDelayTimerHdl, Timer *, void);
     DECL_LINK(MouseMoveHdl, const MouseEvent&, bool);
     DECL_LINK(MousePressHdl, const MouseEvent&, bool);
+
+    DECL_LINK(EditingEntryHdl, const weld::TreeIter&, bool);
+    typedef std::pair<const weld::TreeIter&, OUString> IterString;
+    DECL_LINK(EditedEntryHdl, const IterString&, bool);
 
 public:
     SwContentTree(std::unique_ptr<weld::TreeView> xTreeView, SwNavigationPI* pDialog);
@@ -268,11 +277,12 @@ public:
     const SwWrtShell*   GetActiveWrtShell() const {return m_pActiveShell;}
     SwWrtShell*         GetHiddenWrtShell() {return m_pHiddenShell;}
 
-    void Select();
+    void UpdateContentFunctionsToolbar();
 
     void UpdateTracking();
     void SelectOutlinesWithSelection();
     void SelectContentType(std::u16string_view rContentTypeName);
+    void BringCommentToAttention(sal_uInt16 nCommentId);
 
     // return true if it has any children
     bool RequestingChildren(const weld::TreeIter& rParent);

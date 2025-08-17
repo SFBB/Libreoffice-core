@@ -23,10 +23,14 @@
 #include <sfx2/basedlgs.hxx>
 #include <svx/swframetypes.hxx>
 
-class SfxItemSet;
 class SwWrtShell;
 
-class SwWrapDlg final : public SfxSingleTabDialogController
+struct SwWrapDlgBase
+{
+    SfxItemSet maInputSet;
+};
+
+class SwWrapDlg final : private SwWrapDlgBase, public SfxSingleTabDialogController
 {
 public:
     SwWrapDlg(weld::Window* pParent, const SfxItemSet& rSet, SwWrtShell* pSh, bool bDrawMode);
@@ -91,7 +95,7 @@ public:
     virtual bool    FillItemSet(SfxItemSet *rSet) override;
     virtual void    Reset(const SfxItemSet *rSet) override;
 
-    static WhichRangesContainer GetRanges() { return s_aWrapPageRg; }
+    static const WhichRangesContainer & GetRanges() { return s_aWrapPageRg; }
     void     SetNewFrame(bool bNewFrame) { m_bNew = bNewFrame; }
     void     SetFormatUsed(bool bFormat, bool bDrawMode) { m_bFormat = bFormat; m_bDrawMode = bDrawMode; }
     void     SetShell(SwWrtShell* pSh) { m_pWrtSh = pSh; }

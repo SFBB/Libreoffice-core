@@ -19,13 +19,13 @@ typedef InheritedHelperInterfaceWeakImpl<ooo::vba::word::XDropDown> SwVbaFormFie
 class SwVbaFormFieldDropDown : public SwVbaFormFieldDropDown_BASE
 {
 private:
-    sw::mark::IDropdownFieldmark* m_pDropDown;
+    sw::mark::DropDownFieldmark* m_pDropDown;
 
 public:
     /// @throws css::uno::RuntimeException
     SwVbaFormFieldDropDown(const css::uno::Reference<ooo::vba::XHelperInterface>& rParent,
                            const css::uno::Reference<css::uno::XComponentContext>& rContext,
-                           sw::mark::IFieldmark& rFormField);
+                           sw::mark::Fieldmark& rFormField);
     ~SwVbaFormFieldDropDown() override;
 
     // XDropDown

@@ -16,8 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-
 #include <pdf/pdfwriter_impl.hxx>
+#include <pdf/EncryptionHashTransporter.hxx>
 
 #include <vcl/pdfextoutdevdata.hxx>
 #include <vcl/virdev.hxx>
@@ -25,6 +25,7 @@
 #include <vcl/metaact.hxx>
 #include <vcl/BitmapReadAccess.hxx>
 #include <vcl/graph.hxx>
+#include <pdf/IPDFEncryptor.hxx>
 
 #include <unotools/streamwrap.hxx>
 
@@ -33,7 +34,6 @@
 #include <tools/stream.hxx>
 
 #include <comphelper/fileformat.h>
-#include <comphelper/hash.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
 
@@ -43,8 +43,8 @@
 #include <com/sun/star/graphic/XGraphicProvider.hpp>
 #include <com/sun/star/beans/XMaterialHolder.hpp>
 
-#include <cppuhelper/implbase.hxx>
 #include <o3tl/unit_conversion.hxx>
+#include <osl/diagnose.h>
 #include <vcl/skia/SkiaHelper.hxx>
 
 #include <sal/log.hxx>
@@ -139,13 +139,13 @@ void PDFWriterImpl::implWriteBitmapEx( const Point& i_rPoint, const Size& i_rSiz
 
             if( fBmpWH < fMaxWH )
             {
-                aNewBmpSize.setWidth( FRound( fMaxPixelY * fBmpWH ) );
-                aNewBmpSize.setHeight( FRound( fMaxPixelY ) );
+                aNewBmpSize.setWidth(basegfx::fround<tools::Long>(fMaxPixelY * fBmpWH));
+                aNewBmpSize.setHeight(basegfx::fround<tools::Long>(fMaxPixelY));
             }
             else if( fBmpWH > 0.0 )
             {
-                aNewBmpSize.setWidth( FRound( fMaxPixelX ) );
-                aNewBmpSize.setHeight( FRound( fMaxPixelX / fBmpWH) );
+                aNewBmpSize.setWidth(basegfx::fround<tools::Long>(fMaxPixelX));
+                aNewBmpSize.setHeight(basegfx::fround<tools::Long>(fMaxPixelX / fBmpWH));
             }
 
             if( aNewBmpSize.Width() && aNewBmpSize.Height() )
@@ -180,11 +180,11 @@ void PDFWriterImpl::implWriteBitmapEx( const Point& i_rPoint, const Size& i_rSiz
         // from trying conversion & stores before...
         if ( !aBitmapEx.IsAlpha() )
         {
-            const auto& rCacheEntry=m_aPDFBmpCache.find(
+            const auto aCacheEntry=m_aPDFBmpCache.find(
                 aBitmapEx.GetChecksum());
-            if ( rCacheEntry != m_aPDFBmpCache.end() )
+            if ( aCacheEntry != m_aPDFBmpCache.end() )
             {
-                m_rOuterFace.DrawJPGBitmap( *rCacheEntry->second, true, aSizePixel,
+                m_rOuterFace.DrawJPGBitmap( *aCacheEntry->second, true, aSizePixel,
                                             tools::Rectangle( aPoint, aSize ), aAlphaMask, i_Graphic );
                 return;
             }
@@ -203,22 +203,22 @@ void PDFWriterImpl::implWriteBitmapEx( const Point& i_rPoint, const Size& i_rSiz
         Graphic aGraphic(BitmapEx(aBitmapEx.GetBitmap()));
 
         Sequence< PropertyValue > aFilterData{
-            comphelper::makePropertyValue("Quality", sal_Int32(i_rContext.m_nJPEGQuality)),
-            comphelper::makePropertyValue("ColorMode", sal_Int32(0))
+            comphelper::makePropertyValue(u"Quality"_ustr, sal_Int32(i_rContext.m_nJPEGQuality)),
+            comphelper::makePropertyValue(u"ColorMode"_ustr, sal_Int32(0))
         };
 
         try
         {
             uno::Reference < io::XStream > xStream = new utl::OStreamWrapper( *pStrm );
             uno::Reference< io::XSeekable > xSeekable( xStream, UNO_QUERY_THROW );
-            uno::Reference< uno::XComponentContext > xContext( comphelper::getProcessComponentContext() );
+            const uno::Reference< uno::XComponentContext >& xContext( comphelper::getProcessComponentContext() );
             uno::Reference< graphic::XGraphicProvider > xGraphicProvider( graphic::GraphicProvider::create(xContext) );
             uno::Reference< graphic::XGraphic > xGraphic( aGraphic.GetXGraphic() );
             uno::Reference < io::XOutputStream > xOut( xStream->getOutputStream() );
             uno::Sequence< beans::PropertyValue > aOutMediaProperties{
-                comphelper::makePropertyValue("OutputStream", xOut),
-                comphelper::makePropertyValue("MimeType", OUString("image/jpeg")),
-                comphelper::makePropertyValue("FilterData", aFilterData)
+                comphelper::makePropertyValue(u"OutputStream"_ustr, xOut),
+                comphelper::makePropertyValue(u"MimeType"_ustr, u"image/jpeg"_ustr),
+                comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData)
             };
             xGraphicProvider->storeGraphic( xGraphic, aOutMediaProperties );
             xOut->flush();
@@ -231,13 +231,13 @@ void PDFWriterImpl::implWriteBitmapEx( const Point& i_rPoint, const Size& i_rSiz
                 pStrm->Seek( STREAM_SEEK_TO_END );
 
                 xSeekable->seek( 0 );
-                Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue("InputStream",
+                Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue(u"InputStream"_ustr,
                                                                                xStream) };
                 uno::Reference< XPropertySet > xPropSet( xGraphicProvider->queryGraphicDescriptor( aArgs ) );
                 if ( xPropSet.is() )
                 {
                     sal_Int16 nBitsPerPixel = 24;
-                    if ( xPropSet->getPropertyValue("BitsPerPixel") >>= nBitsPerPixel )
+                    if ( xPropSet->getPropertyValue(u"BitsPerPixel"_ustr) >>= nBitsPerPixel )
                     {
                         bTrueColorJPG = nBitsPerPixel != 8;
                     }
@@ -260,7 +260,7 @@ void PDFWriterImpl::implWriteBitmapEx( const Point& i_rPoint, const Size& i_rSiz
         }
     }
     else if ( aBitmapEx.IsAlpha() )
-        m_rOuterFace.DrawBitmapEx( aPoint, aSize, aBitmapEx );
+        m_rOuterFace.DrawBitmapEx( aPoint, aSize, Bitmap(aBitmapEx) );
     else
         m_rOuterFace.DrawBitmap( aPoint, aSize, aBitmapEx.GetBitmap(), i_Graphic );
 
@@ -488,7 +488,7 @@ void PDFWriterImpl::playMetafile( const GDIMetaFile& i_rMtf, vcl::PDFExtOutDevDa
                                 aTmpMtf.Play(*xVDev, aPoint, aDstSize);
                                 aTmpMtf.WindStart();
                                 xVDev->EnableMapMode( false );
-                                BitmapEx aPaint = xVDev->GetBitmapEx(aPoint, xVDev->GetOutputSizePixel());
+                                BitmapEx aPaint(xVDev->GetBitmap(aPoint, xVDev->GetOutputSizePixel()));
                                 xVDev->EnableMapMode( bVDevOldMap ); // #i35331#: MUST NOT use EnableMapMode( sal_True ) here!
 
                                 // create alpha mask from gradient
@@ -498,16 +498,6 @@ void PDFWriterImpl::playMetafile( const GDIMetaFile& i_rMtf, vcl::PDFExtOutDevDa
                                 xVDev->EnableMapMode( false );
 
                                 AlphaMask aAlpha(xVDev->GetBitmap(Point(), xVDev->GetOutputSizePixel()));
-                                AlphaMask aPaintAlpha(aPaint.GetAlphaMask());
-                                // The alpha mask is inverted from what is
-                                // expected so invert it again. To test this
-                                // code, export to PDF the transparent shapes,
-                                // gradients, and images in the documents
-                                // attached to the following bug reports:
-                                //   https://bugs.documentfoundation.org/show_bug.cgi?id=155912
-                                //   https://bugs.documentfoundation.org/show_bug.cgi?id=156630
-                                aAlpha.Invert(); // convert to alpha
-                                aAlpha.BlendWith(aPaintAlpha);
 #if HAVE_FEATURE_SKIA
 #if OSL_DEBUG_LEVEL > 0
                                 // In release builds, we always invert
@@ -525,6 +515,7 @@ void PDFWriterImpl::playMetafile( const GDIMetaFile& i_rMtf, vcl::PDFExtOutDevDa
                                     //   https://bugs.documentfoundation.org/attachment.cgi?id=188084
                                     aAlpha.Invert(); // convert to alpha
                                 }
+                                aAlpha.BlendWith(aPaint.GetAlphaMask());
 
                                 xVDev.disposeAndClear();
 
@@ -650,7 +641,7 @@ void PDFWriterImpl::playMetafile( const GDIMetaFile& i_rMtf, vcl::PDFExtOutDevDa
                                             aInfo.m_fMiterLimit = 0.0;
                                             break;
                                     }
-                                    aInfo.m_aDashArray = aDashArray;
+                                    aInfo.m_aDashArray = std::move(aDashArray);
 
                                     if(SvtGraphicStroke::joinNone == aStroke.getJoinType()
                                         && fStrokeWidth > 0.0)
@@ -773,22 +764,7 @@ void PDFWriterImpl::playMetafile( const GDIMetaFile& i_rMtf, vcl::PDFExtOutDevDa
                 case MetaActionType::BMPEX:
                 {
                     const MetaBmpExAction*  pA = static_cast<const MetaBmpExAction*>(pAction);
-
-                    // The alpha mask is inverted from what is
-                    // expected so invert it again. To test this
-                    // code, export to PDF the transparent shapes,
-                    // gradients, and images in the documents
-                    // attached to the following bug reports:
-                    //   https://bugs.documentfoundation.org/show_bug.cgi?id=155912
-                    //   https://bugs.documentfoundation.org/show_bug.cgi?id=156630
                     BitmapEx aBitmapEx( pA->GetBitmapEx() );
-                    if ( aBitmapEx.IsAlpha())
-                    {
-                        AlphaMask aAlpha = aBitmapEx.GetAlphaMask();
-                        aAlpha.Invert();
-                        aBitmapEx = BitmapEx(aBitmapEx.GetBitmap(), aAlpha);
-                    }
-
                     Size aSize( OutputDevice::LogicToLogic( aBitmapEx.GetPrefSize(),
                             aBitmapEx.GetPrefMapMode(), pDummyVDev->GetMapMode() ) );
                     Graphic aGraphic = i_pOutDevData ? i_pOutDevData->GetCurrentGraphic() : Graphic();
@@ -799,22 +775,7 @@ void PDFWriterImpl::playMetafile( const GDIMetaFile& i_rMtf, vcl::PDFExtOutDevDa
                 case MetaActionType::BMPEXSCALE:
                 {
                     const MetaBmpExScaleAction* pA = static_cast<const MetaBmpExScaleAction*>(pAction);
-
-                    // The alpha mask is inverted from what is
-                    // expected so invert it again. To test this
-                    // code, export to PDF the transparent shapes,
-                    // gradients, and images in the documents
-                    // attached to the following bug reports:
-                    //   https://bugs.documentfoundation.org/show_bug.cgi?id=155912
-                    //   https://bugs.documentfoundation.org/show_bug.cgi?id=156630
                     BitmapEx aBitmapEx( pA->GetBitmapEx() );
-                    if ( aBitmapEx.IsAlpha())
-                    {
-                        AlphaMask aAlpha = aBitmapEx.GetAlphaMask();
-                        aAlpha.Invert();
-                        aBitmapEx = BitmapEx(aBitmapEx.GetBitmap(), aAlpha);
-                    }
-
                     Graphic aGraphic = i_pOutDevData ? i_pOutDevData->GetCurrentGraphic() : Graphic();
                     implWriteBitmapEx( pA->GetPoint(), pA->GetSize(), aBitmapEx, aGraphic, pDummyVDev, i_rContext );
                 }
@@ -824,21 +785,7 @@ void PDFWriterImpl::playMetafile( const GDIMetaFile& i_rMtf, vcl::PDFExtOutDevDa
                 {
                     const MetaBmpExScalePartAction* pA = static_cast<const MetaBmpExScalePartAction*>(pAction);
 
-                    // The alpha mask is inverted from what is
-                    // expected so invert it again. To test this
-                    // code, export to PDF the transparent shapes,
-                    // gradients, and images in the documents
-                    // attached to the following bug reports:
-                    //   https://bugs.documentfoundation.org/show_bug.cgi?id=155912
-                    //   https://bugs.documentfoundation.org/show_bug.cgi?id=156630
                     BitmapEx aBitmapEx( pA->GetBitmapEx() );
-                    if ( aBitmapEx.IsAlpha())
-                    {
-                        AlphaMask aAlpha = aBitmapEx.GetAlphaMask();
-                        aAlpha.Invert();
-                        aBitmapEx = BitmapEx(aBitmapEx.GetBitmap(), aAlpha);
-                    }
-
                     aBitmapEx.Crop( tools::Rectangle( pA->GetSrcPoint(), pA->GetSrcSize() ) );
                     Graphic aGraphic = i_pOutDevData ? i_pOutDevData->GetCurrentGraphic() : Graphic();
                     implWriteBitmapEx( pA->GetDestPoint(), pA->GetDestSize(), aBitmapEx, aGraphic, pDummyVDev, i_rContext );
@@ -870,7 +817,10 @@ void PDFWriterImpl::playMetafile( const GDIMetaFile& i_rMtf, vcl::PDFExtOutDevDa
                 case MetaActionType::TEXTARRAY:
                 {
                     const MetaTextArrayAction* pA = static_cast<const MetaTextArrayAction*>(pAction);
-                    m_rOuterFace.DrawTextArray( pA->GetPoint(), pA->GetText(), pA->GetDXArray(), pA->GetKashidaArray(), pA->GetIndex(), pA->GetLen() );
+                    m_rOuterFace.DrawTextArray(pA->GetPoint(), pA->GetText(), pA->GetDXArray(),
+                                               pA->GetKashidaArray(), pA->GetIndex(), pA->GetLen(),
+                                               pA->GetLayoutContextIndex(),
+                                               pA->GetLayoutContextLen());
                 }
                 break;
 
@@ -1051,11 +1001,6 @@ void PDFWriterImpl::playMetafile( const GDIMetaFile& i_rMtf, vcl::PDFExtOutDevDa
                 break;
 
                 case MetaActionType::RASTEROP:
-                {
-                    // !!! >>> we don't want to support this actions
-                }
-                break;
-
                 case MetaActionType::REFPOINT:
                 {
                     // !!! >>> we don't want to support this actions
@@ -1080,427 +1025,28 @@ void PDFWriterImpl::playMetafile( const GDIMetaFile& i_rMtf, vcl::PDFExtOutDevDa
 
 // Encryption methods
 
-/* a crutch to transport a ::comphelper::Hash safely though UNO API
-   this is needed for the PDF export dialog, which otherwise would have to pass
-   clear text passwords down till they can be used in PDFWriter. Unfortunately
-   the MD5 sum of the password (which is needed to create the PDF encryption key)
-   is not sufficient, since an MD5 digest cannot be created in an arbitrary state
-   which would be needed in PDFWriterImpl::computeEncryptionKey.
-*/
-class EncHashTransporter : public cppu::WeakImplHelper < css::beans::XMaterialHolder >
+void PDFWriterImpl::checkAndEnableStreamEncryption(sal_Int32 nObject)
 {
-    ::std::unique_ptr<::comphelper::Hash> m_pDigest;
-    sal_IntPtr                  maID;
-    std::vector< sal_uInt8 >    maOValue;
-
-    static std::map< sal_IntPtr, EncHashTransporter* >      sTransporters;
-public:
-    EncHashTransporter()
-        : m_pDigest(new ::comphelper::Hash(::comphelper::HashType::MD5))
-    {
-        maID = reinterpret_cast< sal_IntPtr >(this);
-        while( sTransporters.find( maID ) != sTransporters.end() ) // paranoia mode
-            maID++;
-        sTransporters[ maID ] = this;
-    }
-
-    virtual ~EncHashTransporter() override
-    {
-        sTransporters.erase( maID );
-        SAL_INFO( "vcl", "EncHashTransporter freed" );
-    }
-
-    ::comphelper::Hash* getUDigest() { return m_pDigest.get(); };
-    std::vector< sal_uInt8 >& getOValue() { return maOValue; }
-    void invalidate()
-    {
-        m_pDigest.reset();
-    }
-
-    // XMaterialHolder
-    virtual uno::Any SAL_CALL getMaterial() override
-    {
-        return uno::Any( sal_Int64(maID) );
-    }
-
-    static EncHashTransporter* getEncHashTransporter( const uno::Reference< beans::XMaterialHolder >& );
-
-};
-
-std::map< sal_IntPtr, EncHashTransporter* > EncHashTransporter::sTransporters;
-
-EncHashTransporter* EncHashTransporter::getEncHashTransporter( const uno::Reference< beans::XMaterialHolder >& xRef )
-{
-    EncHashTransporter* pResult = nullptr;
-    if( xRef.is() )
-    {
-        uno::Any aMat( xRef->getMaterial() );
-        sal_Int64 nMat = 0;
-        if( aMat >>= nMat )
-        {
-            std::map< sal_IntPtr, EncHashTransporter* >::iterator it = sTransporters.find( static_cast<sal_IntPtr>(nMat) );
-            if( it != sTransporters.end() )
-                pResult = it->second;
-        }
-    }
-    return pResult;
-}
-
-void PDFWriterImpl::checkAndEnableStreamEncryption( sal_Int32 nObject )
-{
-    if( !m_aContext.Encryption.Encrypt() )
+    if (!m_aContext.Encryption.canEncrypt() || !m_pPDFEncryptor)
         return;
 
-    m_bEncryptThisStream = true;
-    sal_Int32 i = m_nKeyLength;
-    m_aContext.Encryption.EncryptionKey[i++] = static_cast<sal_uInt8>(nObject);
-    m_aContext.Encryption.EncryptionKey[i++] = static_cast<sal_uInt8>( nObject >> 8 );
-    m_aContext.Encryption.EncryptionKey[i++] = static_cast<sal_uInt8>( nObject >> 16 );
-    // the other location of m_nEncryptionKey is already set to 0, our fixed generation number
-    // do the MD5 hash
-    ::std::vector<unsigned char> const nMD5Sum(::comphelper::Hash::calculateHash(
-        m_aContext.Encryption.EncryptionKey.data(), i+2, ::comphelper::HashType::MD5));
-    // the i+2 to take into account the generation number, always zero
-    // initialize the RC4 with the key
-    // key length: see algorithm 3.1, step 4: (N+5) max 16
-    rtl_cipher_initARCFOUR( m_aCipher, rtl_Cipher_DirectionEncode, nMD5Sum.data(), m_nRC4KeyLength, nullptr, 0 );
+    m_pPDFEncryptor->enableStreamEncryption();
+    m_pPDFEncryptor->setupEncryption(m_aContext.Encryption.EncryptionKey, nObject);
 }
 
-void PDFWriterImpl::enableStringEncryption( sal_Int32 nObject )
+void PDFWriterImpl::disableStreamEncryption()
 {
-    if( !m_aContext.Encryption.Encrypt() )
+    if (m_pPDFEncryptor)
+        m_pPDFEncryptor->disableStreamEncryption();
+}
+
+void PDFWriterImpl::enableStringEncryption(sal_Int32 nObject)
+{
+    if (!m_aContext.Encryption.canEncrypt() || !m_pPDFEncryptor)
         return;
 
-    sal_Int32 i = m_nKeyLength;
-    m_aContext.Encryption.EncryptionKey[i++] = static_cast<sal_uInt8>(nObject);
-    m_aContext.Encryption.EncryptionKey[i++] = static_cast<sal_uInt8>( nObject >> 8 );
-    m_aContext.Encryption.EncryptionKey[i++] = static_cast<sal_uInt8>( nObject >> 16 );
-    // the other location of m_nEncryptionKey is already set to 0, our fixed generation number
-    // do the MD5 hash
-    // the i+2 to take into account the generation number, always zero
-    ::std::vector<unsigned char> const nMD5Sum(::comphelper::Hash::calculateHash(
-        m_aContext.Encryption.EncryptionKey.data(), i+2, ::comphelper::HashType::MD5));
-    // initialize the RC4 with the key
-    // key length: see algorithm 3.1, step 4: (N+5) max 16
-    rtl_cipher_initARCFOUR( m_aCipher, rtl_Cipher_DirectionEncode, nMD5Sum.data(), m_nRC4KeyLength, nullptr, 0 );
+    m_pPDFEncryptor->setupEncryption(m_aContext.Encryption.EncryptionKey, nObject);
 }
-
-/* init the encryption engine
-1. init the document id, used both for building the document id and for building the encryption key(s)
-2. build the encryption key following algorithms described in the PDF specification
- */
-uno::Reference< beans::XMaterialHolder > PDFWriterImpl::initEncryption( const OUString& i_rOwnerPassword,
-                                                                        const OUString& i_rUserPassword
-                                                                        )
-{
-    uno::Reference< beans::XMaterialHolder > xResult;
-    if( !i_rOwnerPassword.isEmpty() || !i_rUserPassword.isEmpty() )
-    {
-        rtl::Reference<EncHashTransporter> pTransporter = new EncHashTransporter;
-        xResult = pTransporter;
-
-        // get padded passwords
-        sal_uInt8 aPadUPW[ENCRYPTED_PWD_SIZE], aPadOPW[ENCRYPTED_PWD_SIZE];
-        padPassword( i_rOwnerPassword.isEmpty() ? i_rUserPassword : i_rOwnerPassword, aPadOPW );
-        padPassword( i_rUserPassword, aPadUPW );
-
-        if( computeODictionaryValue( aPadOPW, aPadUPW, pTransporter->getOValue(), SECUR_128BIT_KEY ) )
-        {
-            pTransporter->getUDigest()->update(aPadUPW, ENCRYPTED_PWD_SIZE);
-        }
-        else
-            xResult.clear();
-
-        // trash temporary padded cleartext PWDs
-        rtl_secureZeroMemory (aPadOPW, sizeof(aPadOPW));
-        rtl_secureZeroMemory (aPadUPW, sizeof(aPadUPW));
-    }
-    return xResult;
-}
-
-bool PDFWriterImpl::prepareEncryption( const uno::Reference< beans::XMaterialHolder >& xEnc )
-{
-    bool bSuccess = false;
-    EncHashTransporter* pTransporter = EncHashTransporter::getEncHashTransporter( xEnc );
-    if( pTransporter )
-    {
-        sal_Int32 nKeyLength = 0, nRC4KeyLength = 0;
-        sal_Int32 nAccessPermissions = computeAccessPermissions( m_aContext.Encryption, nKeyLength, nRC4KeyLength );
-        m_aContext.Encryption.OValue = pTransporter->getOValue();
-        bSuccess = computeUDictionaryValue( pTransporter, m_aContext.Encryption, nKeyLength, nAccessPermissions );
-    }
-    if( ! bSuccess )
-    {
-        m_aContext.Encryption.OValue.clear();
-        m_aContext.Encryption.UValue.clear();
-        m_aContext.Encryption.EncryptionKey.clear();
-    }
-    return bSuccess;
-}
-
-sal_Int32 PDFWriterImpl::computeAccessPermissions( const vcl::PDFWriter::PDFEncryptionProperties& i_rProperties,
-                                                   sal_Int32& o_rKeyLength, sal_Int32& o_rRC4KeyLength )
-{
-    /*
-    2) compute the access permissions, in numerical form
-
-    the default value depends on the revision 2 (40 bit) or 3 (128 bit security):
-    - for 40 bit security the unused bit must be set to 1, since they are not used
-    - for 128 bit security the same bit must be preset to 0 and set later if needed
-    according to the table 3.15, pdf v 1.4 */
-    sal_Int32 nAccessPermissions = 0xfffff0c0;
-
-    o_rKeyLength = SECUR_128BIT_KEY;
-    o_rRC4KeyLength = 16; // for this value see PDF spec v 1.4, algorithm 3.1 step 4, where n is 16,
-                          // thus maximum permitted value is 16
-
-    nAccessPermissions |= ( i_rProperties.CanPrintTheDocument ) ?  1 << 2 : 0;
-    nAccessPermissions |= ( i_rProperties.CanModifyTheContent ) ? 1 << 3 : 0;
-    nAccessPermissions |= ( i_rProperties.CanCopyOrExtract ) ?   1 << 4 : 0;
-    nAccessPermissions |= ( i_rProperties.CanAddOrModify ) ? 1 << 5 : 0;
-    nAccessPermissions |= ( i_rProperties.CanFillInteractive ) ?         1 << 8 : 0;
-    nAccessPermissions |= ( i_rProperties.CanExtractForAccessibility ) ? 1 << 9 : 0;
-    nAccessPermissions |= ( i_rProperties.CanAssemble ) ?                1 << 10 : 0;
-    nAccessPermissions |= ( i_rProperties.CanPrintFull ) ?               1 << 11 : 0;
-    return nAccessPermissions;
-}
-
-/*************************************************************
-begin i12626 methods
-
-Implements Algorithm 3.2, step 1 only
-*/
-void PDFWriterImpl::padPassword( std::u16string_view i_rPassword, sal_uInt8* o_pPaddedPW )
-{
-    // get ansi-1252 version of the password string CHECKIT ! i12626
-    OString aString( OUStringToOString( i_rPassword, RTL_TEXTENCODING_MS_1252 ) );
-
-    //copy the string to the target
-    sal_Int32 nToCopy = ( aString.getLength() < ENCRYPTED_PWD_SIZE ) ? aString.getLength() : ENCRYPTED_PWD_SIZE;
-    sal_Int32 nCurrentChar;
-
-    for( nCurrentChar = 0; nCurrentChar < nToCopy; nCurrentChar++ )
-        o_pPaddedPW[nCurrentChar] = static_cast<sal_uInt8>( aString[nCurrentChar] );
-
-    //pad it with standard byte string
-    sal_Int32 i,y;
-    for( i = nCurrentChar, y = 0 ; i < ENCRYPTED_PWD_SIZE; i++, y++ )
-        o_pPaddedPW[i] = s_nPadString[y];
-}
-
-/**********************************
-Algorithm 3.2  Compute the encryption key used
-
-step 1 should already be done before calling, the paThePaddedPassword parameter should contain
-the padded password and must be 32 byte long, the encryption key is returned into the paEncryptionKey parameter,
-it will be 16 byte long for 128 bit security; for 40 bit security only the first 5 bytes are used
-
-TODO: in pdf ver 1.5 and 1.6 the step 6 is different, should be implemented. See spec.
-
-*/
-bool PDFWriterImpl::computeEncryptionKey( EncHashTransporter* i_pTransporter, vcl::PDFWriter::PDFEncryptionProperties& io_rProperties, sal_Int32 i_nAccessPermissions )
-{
-    bool bSuccess = true;
-    ::std::vector<unsigned char> nMD5Sum;
-
-    // transporter contains an MD5 digest with the padded user password already
-    ::comphelper::Hash *const pDigest = i_pTransporter->getUDigest();
-    if (pDigest)
-    {
-        //step 3
-        if( ! io_rProperties.OValue.empty() )
-            pDigest->update(io_rProperties.OValue.data(), io_rProperties.OValue.size());
-        else
-            bSuccess = false;
-        //Step 4
-        sal_uInt8 nPerm[4];
-
-        nPerm[0] = static_cast<sal_uInt8>(i_nAccessPermissions);
-        nPerm[1] = static_cast<sal_uInt8>( i_nAccessPermissions >> 8 );
-        nPerm[2] = static_cast<sal_uInt8>( i_nAccessPermissions >> 16 );
-        nPerm[3] = static_cast<sal_uInt8>( i_nAccessPermissions >> 24 );
-
-        pDigest->update(nPerm, sizeof(nPerm));
-
-        //step 5, get the document ID, binary form
-        pDigest->update(io_rProperties.DocumentIdentifier.data(), io_rProperties.DocumentIdentifier.size());
-        //get the digest
-        nMD5Sum = pDigest->finalize();
-
-        //step 6, only if 128 bit
-        for (sal_Int32 i = 0; i < 50; i++)
-        {
-            nMD5Sum = ::comphelper::Hash::calculateHash(nMD5Sum.data(), nMD5Sum.size(), ::comphelper::HashType::MD5);
-        }
-    }
-    else
-        bSuccess = false;
-
-    i_pTransporter->invalidate();
-
-    //Step 7
-    if( bSuccess )
-    {
-        io_rProperties.EncryptionKey.resize( MAXIMUM_RC4_KEY_LENGTH );
-        for( sal_Int32 i = 0; i < MD5_DIGEST_SIZE; i++ )
-            io_rProperties.EncryptionKey[i] = nMD5Sum[i];
-    }
-    else
-        io_rProperties.EncryptionKey.clear();
-
-    return bSuccess;
-}
-
-/**********************************
-Algorithm 3.3  Compute the encryption dictionary /O value, save into the class data member
-the step numbers down here correspond to the ones in PDF v.1.4 specification
-*/
-bool PDFWriterImpl::computeODictionaryValue( const sal_uInt8* i_pPaddedOwnerPassword,
-                                             const sal_uInt8* i_pPaddedUserPassword,
-                                             std::vector< sal_uInt8 >& io_rOValue,
-                                             sal_Int32 i_nKeyLength
-                                             )
-{
-    bool bSuccess = true;
-
-    io_rOValue.resize( ENCRYPTED_PWD_SIZE );
-
-    rtlCipher aCipher = rtl_cipher_createARCFOUR( rtl_Cipher_ModeStream );
-    if (aCipher)
-    {
-        //step 1 already done, data is in i_pPaddedOwnerPassword
-        //step 2
-
-        ::std::vector<unsigned char> nMD5Sum(::comphelper::Hash::calculateHash(
-            i_pPaddedOwnerPassword, ENCRYPTED_PWD_SIZE, ::comphelper::HashType::MD5));
-        //step 3, only if 128 bit
-        if (i_nKeyLength == SECUR_128BIT_KEY)
-        {
-            sal_Int32 i;
-            for (i = 0; i < 50; i++)
-            {
-                nMD5Sum = ::comphelper::Hash::calculateHash(nMD5Sum.data(), nMD5Sum.size(), ::comphelper::HashType::MD5);
-            }
-        }
-        //Step 4, the key is in nMD5Sum
-        //step 5 already done, data is in i_pPaddedUserPassword
-        //step 6
-        if (rtl_cipher_initARCFOUR( aCipher, rtl_Cipher_DirectionEncode,
-                                    nMD5Sum.data(), i_nKeyLength , nullptr, 0 )
-            == rtl_Cipher_E_None)
-        {
-            // encrypt the user password using the key set above
-            rtl_cipher_encodeARCFOUR( aCipher, i_pPaddedUserPassword, ENCRYPTED_PWD_SIZE, // the data to be encrypted
-                                      io_rOValue.data(), sal_Int32(io_rOValue.size()) ); //encrypted data
-            //Step 7, only if 128 bit
-            if( i_nKeyLength == SECUR_128BIT_KEY )
-            {
-                sal_uInt32 i;
-                size_t y;
-                sal_uInt8 nLocalKey[ SECUR_128BIT_KEY ]; // 16 = 128 bit key
-
-                for( i = 1; i <= 19; i++ ) // do it 19 times, start with 1
-                {
-                    for( y = 0; y < sizeof( nLocalKey ); y++ )
-                        nLocalKey[y] = static_cast<sal_uInt8>( nMD5Sum[y] ^ i );
-
-                    if (rtl_cipher_initARCFOUR( aCipher, rtl_Cipher_DirectionEncode,
-                                                nLocalKey, SECUR_128BIT_KEY, nullptr, 0 ) //destination data area, on init can be NULL
-                        != rtl_Cipher_E_None)
-                    {
-                        bSuccess = false;
-                        break;
-                    }
-                    rtl_cipher_encodeARCFOUR( aCipher, io_rOValue.data(), sal_Int32(io_rOValue.size()), // the data to be encrypted
-                                              io_rOValue.data(), sal_Int32(io_rOValue.size()) ); // encrypted data, can be the same as the input, encrypt "in place"
-                    //step 8, store in class data member
-                }
-            }
-        }
-        else
-            bSuccess = false;
-    }
-    else
-        bSuccess = false;
-
-    if( aCipher )
-        rtl_cipher_destroyARCFOUR( aCipher );
-
-    if( ! bSuccess )
-        io_rOValue.clear();
-    return bSuccess;
-}
-
-/**********************************
-Algorithms 3.4 and 3.5  Compute the encryption dictionary /U value, save into the class data member, revision 2 (40 bit) or 3 (128 bit)
-*/
-bool PDFWriterImpl::computeUDictionaryValue( EncHashTransporter* i_pTransporter,
-                                             vcl::PDFWriter::PDFEncryptionProperties& io_rProperties,
-                                             sal_Int32 i_nKeyLength,
-                                             sal_Int32 i_nAccessPermissions
-                                             )
-{
-    bool bSuccess = true;
-
-    io_rProperties.UValue.resize( ENCRYPTED_PWD_SIZE );
-
-    ::comphelper::Hash aDigest(::comphelper::HashType::MD5);
-    rtlCipher aCipher = rtl_cipher_createARCFOUR( rtl_Cipher_ModeStream );
-    if (aCipher)
-    {
-        //step 1, common to both 3.4 and 3.5
-        if( computeEncryptionKey( i_pTransporter, io_rProperties, i_nAccessPermissions ) )
-        {
-            // prepare encryption key for object
-            for( sal_Int32 i = i_nKeyLength, y = 0; y < 5 ; y++ )
-                io_rProperties.EncryptionKey[i++] = 0;
-
-            //or 3.5, for 128 bit security
-            //step6, initialize the last 16 bytes of the encrypted user password to 0
-            for(sal_uInt32 i = MD5_DIGEST_SIZE; i < sal_uInt32(io_rProperties.UValue.size()); i++)
-                io_rProperties.UValue[i] = 0;
-            //steps 2 and 3
-            aDigest.update(s_nPadString, sizeof(s_nPadString));
-            aDigest.update(io_rProperties.DocumentIdentifier.data(), io_rProperties.DocumentIdentifier.size());
-
-            ::std::vector<unsigned char> const nMD5Sum(aDigest.finalize());
-            //Step 4
-            rtl_cipher_initARCFOUR( aCipher, rtl_Cipher_DirectionEncode,
-                                    io_rProperties.EncryptionKey.data(), SECUR_128BIT_KEY, nullptr, 0 ); //destination data area
-            rtl_cipher_encodeARCFOUR( aCipher, nMD5Sum.data(), nMD5Sum.size(), // the data to be encrypted
-                                      io_rProperties.UValue.data(), SECUR_128BIT_KEY ); //encrypted data, stored in class data member
-            //step 5
-            sal_uInt32 i;
-            size_t y;
-            sal_uInt8 nLocalKey[SECUR_128BIT_KEY];
-
-            for( i = 1; i <= 19; i++ ) // do it 19 times, start with 1
-            {
-                for( y = 0; y < sizeof( nLocalKey ) ; y++ )
-                    nLocalKey[y] = static_cast<sal_uInt8>( io_rProperties.EncryptionKey[y] ^ i );
-
-                rtl_cipher_initARCFOUR( aCipher, rtl_Cipher_DirectionEncode,
-                                        nLocalKey, SECUR_128BIT_KEY, // key and key length
-                                        nullptr, 0 ); //destination data area, on init can be NULL
-                rtl_cipher_encodeARCFOUR( aCipher, io_rProperties.UValue.data(), SECUR_128BIT_KEY, // the data to be encrypted
-                                          io_rProperties.UValue.data(), SECUR_128BIT_KEY ); // encrypted data, can be the same as the input, encrypt "in place"
-            }
-        }
-        else
-            bSuccess = false;
-    }
-    else
-        bSuccess = false;
-
-    if( aCipher )
-        rtl_cipher_destroyARCFOUR( aCipher );
-
-    if( ! bSuccess )
-        io_rProperties.UValue.clear();
-    return bSuccess;
-}
-
-/* end i12626 methods */
 
 const tools::Long unsetRun[256] =
 {
@@ -1649,7 +1195,7 @@ void PDFWriterImpl::putG4Bits( sal_uInt32 i_nLength, sal_uInt32 i_nCode, BitStre
     {
         io_rState.mnBuffer |= static_cast<sal_uInt8>( i_nCode >> (i_nLength - io_rState.mnNextBitPos) );
         i_nLength -= io_rState.mnNextBitPos;
-        writeBufferBytes( &io_rState.getByte(), 1 );
+        (void)writeBufferBytes( &io_rState.getByte(), 1 );
         io_rState.flush();
     }
     assert(i_nLength < 9);
@@ -1658,7 +1204,7 @@ void PDFWriterImpl::putG4Bits( sal_uInt32 i_nLength, sal_uInt32 i_nCode, BitStre
     io_rState.mnNextBitPos -= i_nLength;
     if( io_rState.mnNextBitPos == 0 )
     {
-        writeBufferBytes( &io_rState.getByte(), 1 );
+        (void)writeBufferBytes( &io_rState.getByte(), 1 );
         io_rState.flush();
     }
 }
@@ -1995,7 +1541,7 @@ void PDFWriterImpl::writeG4Stream( BitmapReadAccess const * i_pBitmap )
     putG4Bits( 12, 1, aBitState );
     if( aBitState.mnNextBitPos != 8 )
     {
-        writeBufferBytes( &aBitState.getByte(), 1 );
+        (void)writeBufferBytes( &aBitState.getByte(), 1 );
         aBitState.flush();
     }
 }

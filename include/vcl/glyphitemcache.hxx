@@ -25,6 +25,7 @@
 
 #include <o3tl/lru_map.hxx>
 #include <vcl/glyphitem.hxx>
+#include <vcl/dropcache.hxx>
 #include <vcl/metric.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/vclptr.hxx>
@@ -38,19 +39,24 @@ Allows caching for OutputDevice::DrawText() and similar calls. Pass the text and
 for the call to OutputDevice::ImplLayout(). Items are cached per output device and its font.
 If something more changes, call clear().
 */
-class VCL_DLLPUBLIC SalLayoutGlyphsCache final
+class VCL_DLLPUBLIC SalLayoutGlyphsCache final : public CacheOwner
 {
 public:
     // NOTE: The lifetime of the returned value is guaranteed only until the next call
     // to any function in this class.
-    const SalLayoutGlyphs* GetLayoutGlyphs(VclPtr<const OutputDevice> outputDevice,
+    const SalLayoutGlyphs* GetLayoutGlyphs(const VclPtr<const OutputDevice>& outputDevice,
                                            const OUString& text,
                                            const vcl::text::TextLayoutCache* layoutCache = nullptr)
     {
         return GetLayoutGlyphs(outputDevice, text, 0, text.getLength(), 0, layoutCache);
     }
-    const SalLayoutGlyphs* GetLayoutGlyphs(VclPtr<const OutputDevice> outputDevice,
+    const SalLayoutGlyphs* GetLayoutGlyphs(const VclPtr<const OutputDevice>& outputDevice,
                                            const OUString& text, sal_Int32 nIndex, sal_Int32 nLen,
+                                           tools::Long nLogicWidth = 0,
+                                           const vcl::text::TextLayoutCache* layoutCache = nullptr);
+    const SalLayoutGlyphs* GetLayoutGlyphs(const VclPtr<const OutputDevice>& outputDevice,
+                                           const OUString& text, sal_Int32 nIndex, sal_Int32 nLen,
+                                           sal_Int32 nDrawMinCharPos, sal_Int32 nDrawEndCharPos,
                                            tools::Long nLogicWidth = 0,
                                            const vcl::text::TextLayoutCache* layoutCache = nullptr);
     void clear();
@@ -62,12 +68,15 @@ public:
     void SetCacheGlyphsWhenDoingFallbackFonts(bool bOK);
 
     static SalLayoutGlyphsCache* self();
-    SalLayoutGlyphsCache(int size) // needs to be public for vcl::DeleteOnDeinit
+    SalLayoutGlyphsCache(int size) // needs to be public for tools::DeleteOnDeinit
+#if defined __cpp_lib_memory_resource
+        : mCachedGlyphs(size, &GetMemoryResource())
+#else
         : mCachedGlyphs(size)
+#endif
     {
     }
 
-private:
     struct CachedGlyphsKey
     {
         OUString text;
@@ -89,11 +98,17 @@ private:
                         tools::Long w);
         bool operator==(const CachedGlyphsKey& other) const;
     };
+
+private:
+    virtual OUString getCacheName() const override;
+    virtual bool dropCaches() override;
+    virtual void dumpState(rtl::OStringBuffer& rState) override;
+
     struct CachedGlyphsHash
     {
         size_t operator()(const CachedGlyphsKey& key) const { return key.hashValue; }
     };
-    struct GlyphsCost
+    struct SAL_DLLPRIVATE GlyphsCost
     {
         size_t operator()(const SalLayoutGlyphs&) const;
     };

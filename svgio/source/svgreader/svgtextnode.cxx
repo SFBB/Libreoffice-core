@@ -190,9 +190,11 @@ namespace svgio::svgreader
 
                     break;
                 }
+                case SVGToken::Desc:
+                    break;
                 default:
                 {
-                    OSL_ENSURE(false, "Unexpected node in text token (!)");
+                    SAL_WARN("svgio", "Unexpected child node in SvgTextNode, SVGToken=" << static_cast<int>(rCandidate.getType()));
                     break;
                 }
             }
@@ -229,7 +231,7 @@ namespace svgio::svgreader
                 drawinglayer::primitive2d::Primitive2DContainer aNewTarget2;
 
                 addTextPrimitives(*this, aNewTarget2, std::move(aNewTarget));
-                aNewTarget = aNewTarget2;
+                aNewTarget = std::move(aNewTarget2);
             }
 
             if(!aNewTarget.empty())

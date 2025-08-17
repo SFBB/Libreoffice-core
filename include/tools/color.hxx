@@ -177,7 +177,7 @@ public:
      */
     bool IsFullyTransparent() const
     {
-        return T == 255;
+        return GetAlpha() == 0;
     }
 
     /** Sets the red value.
@@ -217,7 +217,7 @@ public:
       */
     Color GetRGBColor() const
     {
-        return {R, G, B};
+        return { GetRed(), GetGreen(), GetBlue() };
     }
 
     /* Comparison and operators */
@@ -258,15 +258,6 @@ public:
         return mValue == rColor.mValue;
     }
 
-    /** Check if the color value is unequal than rColor.
-      * @param rColor
-      * @return is unequal
-      */
-    bool operator!=(const Color& rColor) const
-    {
-        return mValue != rColor.mValue;
-    }
-
     /** Gets the color error compared to another.
       * It describes how different they are.
       * It takes the abs of differences in parameters.
@@ -288,8 +279,13 @@ public:
       */
     sal_uInt8 GetLuminance() const
     {
-        return sal_uInt8((B * 29UL + G * 151UL + R * 76UL) >> 8);
+        return sal_uInt8((GetBlue() * 29UL + GetGreen() * 151UL + GetRed() * 76UL) >> 8);
     }
+
+    /** Gets the color luminance following WCAG 2.1.
+      * @return luminance
+      */
+    sal_uInt8 GetWCAGLuminance() const;
 
     /** Increases the color luminance by cLumInc.
       * @param cLumInc
@@ -309,22 +305,12 @@ public:
     /** Comparison with luminance thresholds.
       * @return is dark
       */
-    bool IsDark() const
-    {
-        // tdf#156182, and band aid for follow-up issues
-        if (mValue == 0x729fcf) // COL_DEFAULT_SHAPE_FILLING
-            return GetLuminance() <= 62;
-        else
-            return GetLuminance() <= 156;
-    }
+    bool IsDark() const;
 
     /** Comparison with luminance thresholds.
       * @return is dark
       */
-    bool IsBright() const
-    {
-        return GetLuminance() >= 245;
-    }
+    bool IsBright() const;
 
     /* Color filters */
 
@@ -352,9 +338,9 @@ public:
       */
     void Invert()
     {
-        R = ~R;
-        G = ~G;
-        B = ~B;
+        SetRed(~GetRed());
+        SetGreen(~GetGreen());
+        SetBlue(~GetBlue());
     }
 
     /** Merges color with rMergeColor.
@@ -364,9 +350,9 @@ public:
       */
     void Merge(const Color& rMergeColor, sal_uInt8 cTransparency)
     {
-        R = color::ColorChannelMerge(R, rMergeColor.R, cTransparency);
-        G = color::ColorChannelMerge(G, rMergeColor.G, cTransparency);
-        B = color::ColorChannelMerge(B, rMergeColor.B, cTransparency);
+        SetRed(color::ColorChannelMerge(GetRed(), rMergeColor.GetRed(), cTransparency));
+        SetGreen(color::ColorChannelMerge(GetGreen(), rMergeColor.GetGreen(), cTransparency));
+        SetBlue(color::ColorChannelMerge(GetBlue(), rMergeColor.GetBlue(), cTransparency));
     }
 
     /* Change of format */
@@ -420,7 +406,10 @@ public:
      */
     basegfx::BColor getBColor() const
     {
-        return basegfx::BColor(R / 255.0, G / 255.0, B / 255.0);
+        basegfx::BColor aColor(GetRed() / 255.0, GetGreen() / 255.0, GetBlue() / 255.0);
+        if (mValue == Color(ColorTransparency, 0xFF, 0xFF, 0xFF, 0xFF).mValue)
+            aColor.setAutomatic(true);
+        return aColor;
     }
 };
 
@@ -475,33 +464,6 @@ inline constexpr ::Color COL_LIGHTMAGENTA            ( 0xFF, 0x00, 0xFF );
 inline constexpr ::Color COL_LIGHTGRAYBLUE           ( 0xE0, 0xE0, 0xFF );
 inline constexpr ::Color COL_YELLOW                  ( 0xFF, 0xFF, 0x00 );
 inline constexpr ::Color COL_WHITE                   ( 0xFF, 0xFF, 0xFF );
-inline constexpr ::Color COL_AUTHOR1_DARK            ( 0xC6, 0x92, 0x00 );
-inline constexpr ::Color COL_AUTHOR1_NORMAL          ( 0xFF, 0xFF, 0x9E );
-inline constexpr ::Color COL_AUTHOR1_LIGHT           ( 0xFF, 0xFF, 0xC3 );
-inline constexpr ::Color COL_AUTHOR2_DARK            ( 0x06, 0x46, 0xA2 );
-inline constexpr ::Color COL_AUTHOR2_NORMAL          ( 0xD8, 0xE8, 0xFF );
-inline constexpr ::Color COL_AUTHOR2_LIGHT           ( 0xE9, 0xF2, 0xFF );
-inline constexpr ::Color COL_AUTHOR3_DARK            ( 0x57, 0x9D, 0x1C );
-inline constexpr ::Color COL_AUTHOR3_NORMAL          ( 0xDA, 0xF8, 0xC1 );
-inline constexpr ::Color COL_AUTHOR3_LIGHT           ( 0xE2, 0xFA, 0xCF );
-inline constexpr ::Color COL_AUTHOR4_DARK            ( 0x69, 0x2B, 0x9D );
-inline constexpr ::Color COL_AUTHOR4_NORMAL          ( 0xE4, 0xD2, 0xF5 );
-inline constexpr ::Color COL_AUTHOR4_LIGHT           ( 0xEF, 0xE4, 0xF8 );
-inline constexpr ::Color COL_AUTHOR5_DARK            ( 0xC5, 0x00, 0x0B );
-inline constexpr ::Color COL_AUTHOR5_NORMAL          ( 0xFE, 0xCD, 0xD0 );
-inline constexpr ::Color COL_AUTHOR5_LIGHT           ( 0xFF, 0xE3, 0xE5 );
-inline constexpr ::Color COL_AUTHOR6_DARK            ( 0x00, 0x80, 0x80 );
-inline constexpr ::Color COL_AUTHOR6_NORMAL          ( 0xD2, 0xF6, 0xF6 );
-inline constexpr ::Color COL_AUTHOR6_LIGHT           ( 0xE6, 0xFA, 0xFA );
-inline constexpr ::Color COL_AUTHOR7_DARK            ( 0x8C, 0x84, 0x00 );
-inline constexpr ::Color COL_AUTHOR7_NORMAL          ( 0xED, 0xFC, 0xA3 );
-inline constexpr ::Color COL_AUTHOR7_LIGHT           ( 0xF2, 0xFE, 0xB5 );
-inline constexpr ::Color COL_AUTHOR8_DARK            ( 0x35, 0x55, 0x6B );
-inline constexpr ::Color COL_AUTHOR8_NORMAL          ( 0xD3, 0xDE, 0xE8 );
-inline constexpr ::Color COL_AUTHOR8_LIGHT           ( 0xE2, 0xEA, 0xF1 );
-inline constexpr ::Color COL_AUTHOR9_DARK            ( 0xD1, 0x76, 0x00 );
-inline constexpr ::Color COL_AUTHOR9_NORMAL          ( 0xFF, 0xE2, 0xB9 );
-inline constexpr ::Color COL_AUTHOR9_LIGHT           ( 0xFF, 0xE7, 0xC7 );
 inline constexpr ::Color COL_AUTHOR_TABLE_INS        ( 0xE1, 0xF2, 0xFA );
 inline constexpr ::Color COL_AUTHOR_TABLE_DEL        ( 0xFC, 0xE6, 0xF4 );
 
@@ -516,6 +478,11 @@ inline std::basic_ostream<charT, traits>& operator <<(std::basic_ostream<charT, 
             << std::setw(2) << static_cast<int>(rColor.GetAlpha()) << "]";
     rStream.setf(nOrigFlags);
     return rStream;
+}
+
+namespace color
+{
+TOOLS_DLLPUBLIC bool createFromString(OString const& rString, Color& rColor);
 }
 
 #endif

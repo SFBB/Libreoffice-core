@@ -42,8 +42,8 @@ void ButtonDialog::ImplInitButtonDialogData()
     mbFormat                = true;
 }
 
-ButtonDialog::ButtonDialog( WindowType nType ) :
-    Dialog( nType )
+ButtonDialog::ButtonDialog( WindowType eType ) :
+    Dialog( eType )
 {
     ImplInitButtonDialogData();
 }
@@ -293,7 +293,7 @@ void ButtonDialog::RemoveButton( sal_uInt16 nId )
         if ((*it)->mbOwnButton)
             (*it)->mpPushButton.disposeAndClear();
         else
-            (*it)->mpPushButton.clear();
+            (*it)->mpPushButton.reset();
         m_ItemList.erase(it);
         return;
     }

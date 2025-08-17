@@ -45,8 +45,8 @@ with io.open("workdir/loplugin.unusedenumconstants.log", "r", buffering=1024*102
 def startswith_one_of( srcLoc, fileSet ):
     for f in fileSet:
         if srcLoc.startswith(f):
-            return True;
-    return False;
+            return True
+    return False
 
 def is_ignore(srcLoc):
     if startswith_one_of(srcLoc,
@@ -79,7 +79,7 @@ def is_ignore(srcLoc):
          "include/registry/version.h",
          "include/svtools/rtftoken.h",
          "sc/source/filter/inc/xltracer.hxx",
-         "writerfilter/source/dmapper/FieldTypes.hxx",
+         "sw/source/writerfilter/dmapper/FieldTypes.hxx",
          "vcl/source/fontsubset/cff.cxx",
          "vcl/source/filter/wmf/winmtf.hxx",
          "vcl/source/filter/sgvmain.hxx",
@@ -188,7 +188,7 @@ def is_ignore(srcLoc):
          "include/i18nlangtag/applelangid.hxx", # AppleLanguageId
          "connectivity/source/drivers/firebird/Util.hxx", # firebird::BlobSubtype
          "include/xmloff/xmltoken.hxx",
-         "writerfilter/source/rtftok/rtfcontrolwords.hxx",
+         "sw/source/writerfilter/rtftok/rtfcontrolwords.hxx",
          ]):
          return True
     if d[1] == "UNKNOWN" or d[1] == "LAST" or d[1].endswith("NONE") or d[1].endswith("None") or d[1].endswith("EQUAL_SIZE"):
@@ -200,7 +200,7 @@ untouchedSet = set()
 for d in definitionSet:
     if d in readSet or d in writeSet:
         continue
-    srcLoc = definitionToSourceLocationMap[d];
+    srcLoc = definitionToSourceLocationMap[d]
     if (is_ignore(srcLoc)):
         continue
 
@@ -213,7 +213,7 @@ for d in writeSet:
     # can happen with stuff in workdir or external
     if d not in definitionSet:
         continue
-    srcLoc = definitionToSourceLocationMap[d];
+    srcLoc = definitionToSourceLocationMap[d]
     if (is_ignore(srcLoc)):
         continue
     writeonlySet.add((d[0] + " " + d[1], srcLoc))
@@ -225,7 +225,7 @@ for d in readSet:
     # can happen with stuff in workdir or external
     if d not in definitionSet:
         continue
-    srcLoc = definitionToSourceLocationMap[d];
+    srcLoc = definitionToSourceLocationMap[d]
     if (is_ignore(srcLoc)):
         continue
     readonlySet.add((d[0] + " " + d[1], srcLoc))

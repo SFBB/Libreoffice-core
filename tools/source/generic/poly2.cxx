@@ -126,7 +126,7 @@ void PolyPolygon::Optimize( PolyOptimizeFlags nOptimizeFlags )
 
         AdaptiveSubdivide(aPolyPoly);
         aPolyPoly.Optimize(nOptimizeFlags);
-        *this = aPolyPoly;
+        *this = std::move(aPolyPoly);
     }
     else
     {
@@ -493,6 +493,26 @@ basegfx::B2DPolyPolygon PolyPolygon::getB2DPolyPolygon() const
 PolyPolygon::PolyPolygon(const basegfx::B2DPolyPolygon& rPolyPolygon)
     : mpImplPolyPolygon(rPolyPolygon)
 {
+}
+
+PolyPolygon::iterator PolyPolygon::begin()
+{
+    return mpImplPolyPolygon->begin();
+}
+
+PolyPolygon::iterator PolyPolygon::end()
+{
+    return mpImplPolyPolygon->end();
+}
+
+PolyPolygon::const_iterator PolyPolygon::begin() const
+{
+    return mpImplPolyPolygon->begin();
+}
+
+PolyPolygon::const_iterator PolyPolygon::end() const
+{
+    return mpImplPolyPolygon->end();
 }
 
 } /* namespace tools */

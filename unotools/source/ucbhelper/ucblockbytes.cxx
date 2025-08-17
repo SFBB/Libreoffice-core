@@ -605,7 +605,7 @@ void SAL_CALL Moderator::run()
     {
         salhelper::ConditionModifier aMod(m_aRes);
         m_aResultType = aResultType;
-        m_aResult = aResult;
+        m_aResult = std::move(aResult);
         m_nIOErrorCode = nIOErrorCode;
     }
 }
@@ -661,7 +661,7 @@ static bool UCBOpenContentSync(
          !aScheme.equalsIgnoreAsciiCase( "https" ) )
         xLockBytes->SetStreamValid();
 
-    Reference< XPropertiesChangeListener > xListener;
+    rtl::Reference< UcbPropertiesChangeListener_Impl > xListener;
     Reference< XPropertiesChangeNotifier > xProps(xContent,UNO_QUERY);
     if(xProps.is()) {
         xListener =
@@ -733,7 +733,7 @@ static bool UCBOpenContentSync(
                         xContId->getContentIdentifier() :
                         OUString() );
                     InteractiveNetworkConnectException aExcep(
-                        "server not responding after five seconds", {},
+                        u"server not responding after five seconds"_ustr, {},
                         InteractionClassification_ERROR, aURL.GetHost());
                     Any request;
                     request <<= aExcep;
@@ -750,8 +750,7 @@ static bool UCBOpenContentSync(
                     rtl::Reference< ucbhelper::InteractionContinuation > ref
                         = xIR->getSelection();
                     if(ref.is()) {
-                        Reference<XInterface> xInt(ref);
-                        xRet.set(xInt,UNO_QUERY);
+                        xRet.set(ref->getXWeak(), UNO_QUERY);
                     }
                 }
 
@@ -776,11 +775,6 @@ static bool UCBOpenContentSync(
                 break;
             }
         case Moderator::ResultType::COMMANDABORTED:
-            {
-                bAborted = true;
-                xLockBytes->SetError( ERRCODE_ABORT );
-                break;
-            }
         case Moderator::ResultType::COMMANDFAILED:
             {
                 bAborted = true;
@@ -998,10 +992,10 @@ void UcbLockBytes::setStream( const Reference<XStream>& aStream )
     }
 }
 
-bool UcbLockBytes::setInputStream( const Reference<XInputStream> &rxInputStream, bool bSetXSeekable )
+bool UcbLockBytes::setInputStream( const Reference<XInputStream> &rxInputStream )
 {
     std::unique_lock aGuard( m_aMutex );
-    return setInputStreamImpl(aGuard, rxInputStream, bSetXSeekable);
+    return setInputStreamImpl(aGuard, rxInputStream, /*bSetXSeekable*/true);
 }
 
 bool UcbLockBytes::setInputStreamImpl( std::unique_lock<std::mutex>& /*rGuard*/, const Reference<XInputStream> &rxInputStream, bool bSetXSeekable )
@@ -1020,9 +1014,7 @@ bool UcbLockBytes::setInputStreamImpl( std::unique_lock<std::mutex>& /*rGuard*/,
             m_xSeekable.set( rxInputStream, UNO_QUERY );
             if( !m_xSeekable.is() && rxInputStream.is() )
             {
-                Reference < XComponentContext > xContext = ::comphelper::getProcessComponentContext();
                 rtl::Reference< utl::TempFileFastService > rxTempOut( new utl::TempFileFastService );
-
                 ::comphelper::OStorageHelper::CopyInputToOutput( rxInputStream, rxTempOut );
                 m_xInputStream.set( rxTempOut );
                 m_xSeekable.set( rxTempOut );
@@ -1252,7 +1244,7 @@ ErrCode UcbLockBytes::Stat( SvLockBytesStat *pStat ) const
 
     try
     {
-        pStat->nSize = sal_uLong(xSeekable->getLength());
+        pStat->nSize = xSeekable->getLength();
     }
     catch (const IOException&)
     {

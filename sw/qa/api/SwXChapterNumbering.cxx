@@ -35,22 +35,15 @@ class SwXChapterNumbering final : public UnoApiTest,
 {
 public:
     SwXChapterNumbering()
-        : UnoApiTest("")
+        : UnoApiTest(u""_ustr)
         , XElementAccess(cppu::UnoType<Sequence<beans::PropertyValue>>::get())
         , XIndexAccess(10)
     {
     }
 
-    virtual void setUp() override
-    {
-        UnoApiTest::setUp();
-        mxDesktop.set(frame::Desktop::create(mxComponentContext));
-        mxComponent = loadFromDesktop("private:factory/swriter");
-        CPPUNIT_ASSERT(mxComponent.is());
-    }
-
     Reference<XInterface> init() override
     {
+        loadFromURL(u"private:factory/swriter"_ustr);
         Reference<text::XTextDocument> xTextDocument(mxComponent, UNO_QUERY_THROW);
 
         Reference<text::XChapterNumberingSupplier> xCNSupplier(xTextDocument, UNO_QUERY_THROW);

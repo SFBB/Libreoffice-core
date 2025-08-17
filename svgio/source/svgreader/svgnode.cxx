@@ -271,7 +271,7 @@ namespace {
             // - inherited attributes (up the hierarchy)
             // The first four will be collected in maCssStyleVector for the current element
             // (once, this will not change) and be linked in the needed order using the
-            // get/setCssStyleParent at the SvgStyleAttributes which will be used preferred in
+            // get/setCssStyle at the SvgStyleAttributes which will be used preferred in
             // member evaluation over the existing parent hierarchy
 
             // check for local CssStyle with highest priority
@@ -295,7 +295,7 @@ namespace {
             if(pParent && pParent->getType() == SVGToken::Svg)
             {
                 // #i125329# find Css selector '*', add as last element if found
-                const SvgStyleAttributes* pNew = getDocument().findGlobalCssStyleAttributes("*");
+                const SvgStyleAttributes* pNew = getDocument().findGlobalCssStyleAttributes(u"*"_ustr);
 
                 if(pNew)
                 {
@@ -348,7 +348,7 @@ namespace {
                 {
                     SvgStyleAttributes* pNext = const_cast< SvgStyleAttributes* >(maCssStyleVector[a]);
 
-                    pCurrent->setCssStyleParent(pNext);
+                    pCurrent->setCssStyle(pNext);
                     pCurrent = pNext;
                 }
 
@@ -367,17 +367,13 @@ namespace {
             mpParent(pParent),
             mpAlternativeParent(nullptr),
             maXmlSpace(XmlSpace::NotSet),
-            maDisplay(Display::Inline),
+            maDisplay(maType == SVGToken::Unknown ? Display::None : Display::Inline), // tdf#150124: do not display unknown nodes
             mbDecomposing(false),
             mbCssStyleVectorBuilt(false)
         {
             if (pParent)
             {
-                // tdf#150124 ignore when parent is unknown
-                if (pParent->getType() != SVGToken::Unknown)
-                    pParent->maChildren.emplace_back(this);
-                else
-                    mrDocument.addOrphanNode(this);
+                pParent->maChildren.emplace_back(this);
             }
         }
 
@@ -527,6 +523,14 @@ namespace {
                     }
                     break;
                 }
+                case SVGToken::SystemLanguage:
+                {
+                    SvgStringVector aSvgStringVector;
+
+                    if (readSvgStringVector(aContent, aSvgStringVector, ','))
+                        maSystemLanguage = std::move(aSvgStringVector);
+                    break;
+                }
                 case SVGToken::XmlSpace:
                 {
                     if(!aContent.isEmpty())
@@ -662,12 +666,11 @@ namespace {
 
                         rTarget = drawinglayer::primitive2d::Primitive2DContainer {
                             // pack in ObjectInfoPrimitive2D group
-                            drawinglayer::primitive2d::Primitive2DReference(
                                 new drawinglayer::primitive2d::ObjectInfoPrimitive2D(
                                     std::move(rTarget),
                                     aObjectName,
                                     rTitle,
-                                    rDesc))
+                                    rDesc)
                         };
                     }
                 }
@@ -687,45 +690,23 @@ namespace {
             }
         }
 
-        double SvgNode::getCurrentFontSizeInherited() const
-        {
-            if(getParent())
-            {
-                return getParent()->getCurrentFontSize();
-            }
-            else
-            {
-                return 0.0;
-            }
-        }
-
         double SvgNode::getCurrentFontSize() const
         {
             if(getSvgStyleAttributes())
                 return getSvgStyleAttributes()->getFontSizeNumber().solve(*this, NumberType::xcoordinate);
 
-            return getCurrentFontSizeInherited();
-        }
-
-        double SvgNode::getCurrentXHeightInherited() const
-        {
             if(getParent())
-            {
-                return getParent()->getCurrentXHeight();
-            }
-            else
-            {
-                return 0.0;
-            }
+                return getParent()->getCurrentFontSize();
+
+            return 0.0;
         }
 
         double SvgNode::getCurrentXHeight() const
         {
-            if(getSvgStyleAttributes())
-                // for XHeight, use FontSize currently
-                return getSvgStyleAttributes()->getFontSizeNumber().solve(*this, NumberType::ycoordinate);
-
-            return getCurrentXHeightInherited();
+            // https://drafts.csswg.org/css-values-4/#ex
+            // for XHeight, use 0.5em fallback currently
+            // FIXME: use "x-height of the first available font"
+            return getCurrentFontSize() * 0.5;
         }
 
         void SvgNode::setId(OUString const & rId)

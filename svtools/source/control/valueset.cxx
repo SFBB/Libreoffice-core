@@ -29,8 +29,10 @@
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/virdev.hxx>
+#include <vcl/lineinfo.hxx>
 
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
+#include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
@@ -43,7 +45,6 @@
 #include <vcl/uitest/eventdescription.hxx>
 
 using namespace css::uno;
-using namespace css::lang;
 using namespace css::accessibility;
 
 namespace
@@ -72,7 +73,7 @@ enum
 }
 
 ValueSet::ValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow)
-    : maVirDev( VclPtr<VirtualDevice>::Create())
+    : maVirDev( VclPtr<VirtualDevice>::Create(DeviceFormat::WITH_ALPHA))
     , mxScrolledWindow(std::move(pScrolledWindow))
     , mnHighItemId(0)
     , maColor(COL_TRANSPARENT)
@@ -95,6 +96,7 @@ ValueSet::ValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow)
     mnUserCols          = 0;
     mnUserVisLines      = 0;
     mnSpacing           = 0;
+    mnMargin            = 0;
     mnFrameStyle        = DrawFrameStyle::NONE;
     mbNoSelection       = true;
     mbDoubleSel         = false;
@@ -104,7 +106,7 @@ ValueSet::ValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow)
     mbHasVisibleItems   = false;
 
     if (mxScrolledWindow)
-        mxScrolledWindow->connect_vadjustment_changed(LINK(this, ValueSet, ImplScrollHdl));
+        mxScrolledWindow->connect_vadjustment_value_changed(LINK(this, ValueSet, ImplScrollHdl));
 }
 
 void ValueSet::SetDrawingArea(weld::DrawingArea* pDrawingArea)
@@ -114,7 +116,7 @@ void ValueSet::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     maVirDev->EnableRTL(pDrawingArea->get_direction());
 }
 
-Reference<XAccessible> ValueSet::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> ValueSet::CreateAccessible()
 {
     if (!mxAccessible)
         mxAccessible.set(new ValueSetAcc(this));
@@ -123,10 +125,10 @@ Reference<XAccessible> ValueSet::CreateAccessible()
 
 ValueSet::~ValueSet()
 {
+    ImplDeleteItems();
+
     if (mxAccessible)
         mxAccessible->Invalidate();
-
-    ImplDeleteItems();
 }
 
 void ValueSet::ImplDeleteItems()
@@ -135,14 +137,18 @@ void ValueSet::ImplDeleteItems()
 
     for ( size_t i = 0; i < n; ++i )
     {
-        ValueSetItem* pItem = mItemList[i].get();
-        if ( pItem->mbVisible && ImplHasAccessibleListeners() )
+        if (ValueSetItem* pItem = mItemList[i].get())
         {
-            Any aOldAny;
-            Any aNewAny;
+            rtl::Reference<ValueItemAcc> xItemAcc = pItem->GetAccessible(false);
+            if (xItemAcc.is())
+            {
+                Any aOldAny;
+                Any aNewAny;
+                aOldAny <<= Reference<XAccessible>(xItemAcc);
+                ImplFireAccessibleEvent(AccessibleEventId::CHILD, aOldAny, aNewAny);
 
-            aOldAny <<= pItem->GetAccessible( false/*bIsTransientChildrenDisabled*/ );
-            ImplFireAccessibleEvent(AccessibleEventId::CHILD, aOldAny, aNewAny);
+                xItemAcc->dispose();
+            }
         }
 
         mItemList[i].reset();
@@ -489,6 +495,15 @@ bool ValueSet::MouseButtonUp( const MouseEvent& rMouseEvent )
 {
     if (rMouseEvent.IsLeft() && !rMouseEvent.IsMod2())
     {
+        // tdf#165881 MouseUp may be seen without previous MouseDown.  Select
+        // what's under the mouse on mouse release when in menu-alike modes.
+        const bool bMenuAlike = GetStyle() & WB_MENUSTYLEVALUESET || GetStyle() & WB_FLATVALUESET;
+        if (bMenuAlike)
+        {
+            if (ValueSetItem* pItem = ImplGetItem(ImplGetItem(rMouseEvent.GetPosPixel())))
+                SelectItem(pItem->mnId);
+        }
+
         // tdf#142150 MouseUp seen without previous MouseDown
         if (mnSelItemId)
             Select();
@@ -522,9 +537,7 @@ void ValueSet::RemoveItem( sal_uInt16 nItemId )
     if ( nPos == VALUESET_ITEM_NOTFOUND )
         return;
 
-    if ( nPos < mItemList.size() ) {
-        mItemList.erase( mItemList.begin() + nPos );
-    }
+    mItemList.erase( mItemList.begin() + nPos );
 
     // reset variables
     if (mnHighItemId == nItemId || mnSelItemId == nItemId)
@@ -698,24 +711,6 @@ void ValueSet::ImplDraw(vcl::RenderContext& rRenderContext)
     ImplDrawSelect(rRenderContext);
 }
 
-/**
- * An inelegant method; sets the item width & height such that
- * all of the included items and their labels fit; if we can
- * calculate that.
- */
-void ValueSet::RecalculateItemSizes()
-{
-    Size aLargestItem = GetLargestItemSize();
-
-    if ( mnUserItemWidth != aLargestItem.Width() ||
-         mnUserItemHeight != aLargestItem.Height() )
-    {
-        mnUserItemWidth = aLargestItem.Width();
-        mnUserItemHeight = aLargestItem.Height();
-        QueueReformat();
-    }
-}
-
 void ValueSet::SetFirstLine(sal_uInt16 nNewFirstLine)
 {
     if (nNewFirstLine != mnFirstLine)
@@ -791,38 +786,42 @@ void ValueSet::SelectItem( sal_uInt16 nItemId )
 
         if( nPos != VALUESET_ITEM_NOTFOUND )
         {
-            ValueItemAcc* pItemAcc = ValueItemAcc::getImplementation(
-                mItemList[nPos]->GetAccessible( false/*bIsTransientChildrenDisabled*/ ) );
+            rtl::Reference<ValueItemAcc> pItemAcc =
+                mItemList[nPos]->GetAccessible();
 
             if( pItemAcc )
             {
                 Any aOldAny;
                 Any aNewAny;
-                aOldAny <<= Reference(getXWeak(pItemAcc));
+                aOldAny <<= Reference(getXWeak(pItemAcc.get()));
                 ImplFireAccessibleEvent(AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aOldAny, aNewAny );
             }
         }
     }
 
-    // focus event (select)
-    const size_t nPos = GetItemPos( mnSelItemId );
-
-    ValueSetItem* pItem;
-    if( nPos != VALUESET_ITEM_NOTFOUND )
-        pItem = mItemList[nPos].get();
-    else
-        pItem = mpNoneItem.get();
-
-    ValueItemAcc* pItemAcc = nullptr;
-    if (pItem != nullptr)
-        pItemAcc = ValueItemAcc::getImplementation( pItem->GetAccessible( false/*bIsTransientChildrenDisabled*/ ) );
-
-    if( pItemAcc )
+    if (mxAccessible->getAccessibleStateSet() & css::accessibility::AccessibleStateType::FOCUSED)
     {
-        Any aOldAny;
-        Any aNewAny;
-        aNewAny <<= Reference(getXWeak(pItemAcc));
-        ImplFireAccessibleEvent(AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aOldAny, aNewAny);
+        // focus event (select)
+        const size_t nPos = GetItemPos(mnSelItemId);
+
+        ValueSetItem* pItem;
+        if (nPos != VALUESET_ITEM_NOTFOUND)
+            pItem = mItemList[nPos].get();
+        else
+            pItem = mpNoneItem.get();
+
+        ValueItemAcc* pItemAcc = nullptr;
+        if (pItem != nullptr)
+            pItemAcc =
+                pItem->GetAccessible().get();
+
+        if (pItemAcc)
+        {
+            Any aOldAny;
+            Any aNewAny;
+            aNewAny <<= Reference(getXWeak(pItemAcc));
+            ImplFireAccessibleEvent(AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, aOldAny, aNewAny);
+        }
     }
 
     // selection event
@@ -874,6 +873,12 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
     else
         nOff = 0;
 
+    if ( mnMargin )
+    {
+        aWinSize.AdjustWidth(-mnMargin * 2);
+        aWinSize.AdjustHeight(-mnMargin * 2);
+    }
+
     // consider size, if NameField does exist
     if (nStyle & WB_NAMEFIELD)
     {
@@ -888,6 +893,8 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
     }
     else
         mnTextOffset = 0;
+
+    mnTextOffset += mnMargin;
 
     // consider offset and size, if NoneField does exist
     if (nStyle & WB_NONEFIELD)
@@ -1051,6 +1058,9 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
             nStartY = 0;
         }
 
+        nStartX += mnMargin;
+        nStartY += mnMargin;
+
         // calculate and draw items
         maVirDev->SetLineColor();
         tools::Long x = nStartX;
@@ -1104,7 +1114,7 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
                     Any aOldAny;
                     Any aNewAny;
 
-                    aNewAny <<= pItem->GetAccessible(false/*bIsTransientChildrenDisabled*/);
+                    aNewAny <<= Reference<XAccessible>(pItem->GetAccessible());
                     ImplFireAccessibleEvent(AccessibleEventId::CHILD, aOldAny, aNewAny);
                 }
 
@@ -1126,7 +1136,7 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
                     Any aOldAny;
                     Any aNewAny;
 
-                    aOldAny <<= pItem->GetAccessible(false/*bIsTransientChildrenDisabled*/);
+                    aOldAny <<= Reference<XAccessible>(pItem->GetAccessible());
                     ImplFireAccessibleEvent(AccessibleEventId::CHILD, aOldAny, aNewAny);
                 }
 
@@ -1143,8 +1153,8 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
                 tools::Long nPageSize = mnVisLines;
                 if (nPageSize < 1)
                     nPageSize = 1;
-                mxScrolledWindow->vadjustment_configure(mnFirstLine, 0, mnLines, 1,
-                                                        mnVisLines, nPageSize);
+                mxScrolledWindow->vadjustment_configure(mnFirstLine, mnLines, 1, mnVisLines,
+                                                        nPageSize);
             }
 
             if (bTurnScrollbarOn)
@@ -1256,9 +1266,15 @@ void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext,
         if (bDrawSel)
         {
             rRenderContext.SetLineColor(aDoubleColor);
-            tools::PolyPolygon aPolyPoly(1);
-            aPolyPoly.Insert(tools::Polygon(aRect));
-            rRenderContext.DrawTransparent(aPolyPoly, nTransparencePercent);
+            aRect.AdjustLeft( -1 );
+            aRect.AdjustTop( -1 );
+            aRect.AdjustRight( -2 );
+            aRect.AdjustBottom( -2 );
+
+            const tools::Polygon aPoly(aRect);
+            LineInfo aLineInfo;
+            aLineInfo.SetWidth(3);
+            rRenderContext.DrawPolyLine(aPoly, aLineInfo); // tdf#136917
         }
     }
     else
@@ -1344,6 +1360,7 @@ void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext,
                     rRenderContext.SetLineColor(aSingleColor);
                 else
                     rRenderContext.SetLineColor(COL_LIGHTGRAY);
+
                 rRenderContext.DrawRect(aFocusRect);
             }
         }
@@ -1481,8 +1498,8 @@ void ValueSet::ImplFormatItem(vcl::RenderContext const & rRenderContext, ValueSe
     {
         const Color& rTopLeft(rStyleSettings.GetEdgeBlendingTopLeftColor());
         const Color& rBottomRight(rStyleSettings.GetEdgeBlendingBottomRightColor());
-        const sal_uInt8 nAlpha((nEdgeBlendingPercent * 255) / 100);
-        const BitmapEx aBlendFrame(createBlendFrame(aRect.GetSize(), nAlpha, rTopLeft, rBottomRight));
+        const sal_uInt8 nAlpha(255 - ((nEdgeBlendingPercent * 255) / 100));
+        const BitmapEx aBlendFrame(createAlphaBlendFrame(aRect.GetSize(), nAlpha, rTopLeft, rBottomRight));
 
         if (!aBlendFrame.IsEmpty())
         {
@@ -1654,6 +1671,12 @@ Size ValueSet::CalcWindowSizePixel( const Size& rItemSize, sal_uInt16 nDesireCol
         aSize.AdjustHeight(nTxtHeight + n + mnSpacing );
     }
 
+    if ( mnMargin )
+    {
+        aSize.AdjustWidth(mnMargin * 2);
+        aSize.AdjustHeight(mnMargin * 2);
+    }
+
     return aSize;
 }
 
@@ -1807,14 +1830,14 @@ OUString ValueSet::RequestHelp(tools::Rectangle& rHelpRect)
     return sRet;
 }
 
-OUString ValueSet::GetItemText(sal_uInt16 nItemId) const
+const OUString & ValueSet::GetItemText(sal_uInt16 nItemId) const
 {
     const size_t nPos = GetItemPos(nItemId);
 
     if ( nPos != VALUESET_ITEM_NOTFOUND )
         return mItemList[nPos]->maText;
 
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 void ValueSet::SetExtraSpacing( sal_uInt16 nNewSpacing )
@@ -1824,6 +1847,12 @@ void ValueSet::SetExtraSpacing( sal_uInt16 nNewSpacing )
         mnSpacing = nNewSpacing;
         QueueReformat();
     }
+}
+
+void ValueSet::SetMargin( sal_uInt16 nNewMargin )
+{
+    mnMargin = nNewMargin;
+    QueueReformat();
 }
 
 void ValueSet::SetFormat()
@@ -1895,9 +1924,8 @@ void ValueSet::SetItemText(sal_uInt16 nItemId, const OUString& rText)
 
     if (ImplHasAccessibleListeners())
     {
-        Reference<XAccessible> xAccessible(pItem->GetAccessible( false/*bIsTransientChildrenDisabled*/));
-        ValueItemAcc* pValueItemAcc = static_cast<ValueItemAcc*>(xAccessible.get());
-        pValueItemAcc->FireAccessibleEvent(AccessibleEventId::NAME_CHANGED, aOldName, aNewName);
+        rtl::Reference<ValueItemAcc> xAccessible(pItem->GetAccessible());
+        xAccessible->FireAccessibleEvent(AccessibleEventId::NAME_CHANGED, aOldName, aNewName);
     }
 }
 

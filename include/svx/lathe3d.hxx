@@ -39,7 +39,7 @@ class E3dDefaultAttributes;
 |*
 \************************************************************************/
 
-class SVXCORE_DLLPUBLIC E3dLatheObj final : public E3dCompoundObject
+class E3dLatheObj final : public E3dCompoundObject
 {
     basegfx::B2DPolyPolygon maPolyPoly2D;
 
@@ -52,7 +52,7 @@ private:
     virtual ~E3dLatheObj() override;
 
 public:
-    E3dLatheObj(
+    SVXCORE_DLLPUBLIC E3dLatheObj(
         SdrModel& rSdrModel,
         const E3dDefaultAttributes& rDefault,
         basegfx::B2DPolyPolygon aPoly2D);
@@ -76,7 +76,7 @@ public:
         { return GetObjectItemSet().Get(SDRATTR_3DOBJ_BACKSCALE).GetValue(); }
 
     // EndAngle: 0..10000
-    sal_uInt32 GetEndAngle() const
+    sal_uInt16 GetEndAngle() const
         { return GetObjectItemSet().Get(SDRATTR_3DOBJ_END_ANGLE).GetValue(); }
 
     // #107245# GetSmoothNormals() for bLatheSmoothed

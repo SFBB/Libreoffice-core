@@ -34,12 +34,8 @@
 #include <sal/types.h>
 
 namespace com::sun::star {
-    namespace beans { struct PropertyValue; }
     namespace io { class XInputStream; }
     namespace uno { class XComponentContext; }
-    namespace xml::sax { class XFastAttributeList; }
-    namespace xml::sax { class XFastContextHandler; }
-    namespace xml::sax { class XLocator; }
 }
 
 namespace utl { class MediaDescriptor; }
@@ -82,6 +78,7 @@ public:
     virtual void SAL_CALL characters( const OUString& aChars ) override;
 
 private:
+    void parseSettings(const AttributeList& rAttribs);
     void                parseRelationship( const AttributeList& rAttribs );
 
     OUString            getFilterNameFromContentType( std::u16string_view rContentType, std::u16string_view rFileName );

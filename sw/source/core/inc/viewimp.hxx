@@ -16,11 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_CORE_INC_VIEWIMP_HXX
-#define INCLUDED_SW_SOURCE_CORE_INC_VIEWIMP_HXX
+
+#pragma once
 
 #include <tools/color.hxx>
 #include <svx/svdtypes.hxx>
+#include <svx/sdr/contact/viewobjectcontactredirector.hxx>
 #include <swrect.hxx>
 #include <swregion.hxx>
 #include <memory>
@@ -45,8 +46,24 @@ class SwPagePreviewLayout;
 struct PreviewPage;
 class SwTextFrame;
 // --> OD #i76669#
-namespace sdr::contact { class ViewObjectContactRedirector; }
+//namespace sdr::contact { class ViewObjectContactRedirector; }
 // <--
+class SwViewObjectContactRedirector final : public sdr::contact::ViewObjectContactRedirector
+{
+    private:
+        const SwViewShell& mrViewShell;
+
+    public:
+        explicit SwViewObjectContactRedirector( const SwViewShell& rSh )
+            : mrViewShell( rSh )
+        {};
+
+        virtual void createRedirectedPrimitive2DSequence(
+                                const sdr::contact::ViewObjectContact& rOriginal,
+                                const sdr::contact::DisplayInfo& rDisplayInfo,
+                                drawinglayer::primitive2d::Primitive2DDecompositionVisitor& rVisitor) override;
+};
+
 
 class SwViewShellImp
 {
@@ -58,7 +75,7 @@ class SwViewShellImp
     // for paint of page preview
     friend class SwPagePreviewLayout;
 
-    SwViewShell *m_pShell;           // If someone passes an Imp, but needs a SwViewShell, we
+    SwViewShell& m_rShell;      // If someone passes an Imp, but needs a SwViewShell, we
                                 // keep a backlink here
 
     std::unique_ptr<SwDrawView> m_pDrawView; // Our DrawView
@@ -134,12 +151,12 @@ private:
     void InvalidateAccessibleParaAttrs_( const SwTextFrame& rTextFrame );
 
 public:
-    SwViewShellImp( SwViewShell * );
+    SwViewShellImp( SwViewShell& );
     ~SwViewShellImp();
     void Init( const SwViewOption * ); /// Only for SwViewShell::Init()
 
-    const SwViewShell *GetShell() const { return m_pShell; }
-          SwViewShell *GetShell()       { return m_pShell; }
+    const SwViewShell& GetShell() const { return m_rShell; }
+    SwViewShell& GetShell() { return m_rShell; }
 
     Color GetRetoucheColor() const;
 
@@ -259,8 +276,7 @@ public:
                                                const SwFrame *pFrame=nullptr );
 
     /// Invalidate frame's relation set (for chained frames)
-    void InvalidateAccessibleRelationSet( const SwFlyFrame *pMaster,
-                                          const SwFlyFrame *pFollow );
+    void InvalidateAccessibleRelationSet(const SwFlyFrame& rMaster, const SwFlyFrame& rFollow);
 
     /// update data for accessible preview
     /// change method signature due to new page preview functionality
@@ -311,6 +327,5 @@ inline void SwViewShellImp::AddAccessibleObj( const SdrObject *pObj )
     SwRect aEmptyRect;
     MoveAccessible( nullptr, pObj, aEmptyRect );
 }
-#endif // INCLUDED_SW_SOURCE_CORE_INC_VIEWIMP_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

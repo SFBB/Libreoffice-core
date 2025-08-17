@@ -47,7 +47,9 @@ public:
                 { return bool( nControlBits & EEControlBits::UNDOATTRIBS ); }
 
     bool    OneCharPerLine() const
-                { return bool( nControlBits & EEControlBits::ONECHARPERLINE ); }
+    {
+        return bool(nControlBits & (EEControlBits::ONECHARPERLINE | EEControlBits::STACKED));
+    }
 
     bool    IsOutliner() const
                 { return bool( nControlBits & EEControlBits::OUTLINER ); }
@@ -85,9 +87,6 @@ public:
 
     bool    DoAutoComplete() const
                 { return bool( nControlBits & EEControlBits::AUTOCOMPLETE ); }
-
-    bool    DoFormat100() const
-                { return bool( nControlBits & EEControlBits::FORMAT100 ); }
 
     bool    ULSpaceSummation() const
                 { return bool( nControlBits & EEControlBits::ULSPACESUMMATION ); }

@@ -71,7 +71,6 @@ namespace xmloff
 
     OFormLayerXMLExport_Impl::OFormLayerXMLExport_Impl(SvXMLExport& _rContext)
         :m_rContext(_rContext)
-        ,m_pControlNumberStyles(nullptr)
     {
         initializePropertyMaps();
 
@@ -114,7 +113,7 @@ namespace xmloff
         if (!xSI.is())
             return false;
 
-        if (!xSI->supportsService("com.sun.star.form.Forms"))
+        if (!xSI->supportsService(u"com.sun.star.form.Forms"_ustr))
         {
             OSL_FAIL("OFormLayerXMLExport_Impl::impl_isFormPageContainingForms: invalid collection (is no com.sun.star.form.Forms)!");
             // nothing to do
@@ -425,7 +424,7 @@ namespace xmloff
                     aContainerHistory.push(xLoop);
                     aIndexHistory.push(nChildPos);
 
-                    xLoop = xNextContainer;
+                    xLoop = std::move(xNextContainer);
                     nChildPos = -1; // will be incremented below
                 }
                 ++nChildPos;
@@ -464,7 +463,7 @@ namespace xmloff
 
         OUString lcl_findFreeControlId( const MapPropertySet2Map& _rAllPagesControlIds )
         {
-            OUString sControlId = "control";
+            OUString sControlId = u"control"_ustr;
 
             size_t nKnownControlCount = ::std::accumulate( _rAllPagesControlIds.begin(), _rAllPagesControlIds.end(), size_t(0), AccumulateSize() );
             sControlId += OUString::number( static_cast<sal_Int32>(nKnownControlCount) + 1 );
@@ -524,6 +523,20 @@ namespace xmloff
             Reference< XText > xControlText( _rxObject, UNO_QUERY );
             if ( xControlText.is() )
             {
+                try
+                {
+                    // tdf#120397: similar to the fix of tdf#153161 where
+                    // XTextRange::getText() --> ::GetSelection() flushes the changes
+                    // for some Shape objects we also need to set the end cursor pos
+                    // to the end of the form text objects, otherwise fail to get
+                    // exported correctly. Maybe at some point it would make sense
+                    // to find a better place for more targeted flush.
+                    xControlText = xControlText->getText();
+                }
+                catch (css::uno::RuntimeException const&)
+                {
+                    // just in case if we would hit something here
+                }
                 m_rContext.GetTextParagraphExport()->collectTextAutoStyles( xControlText );
             }
 
@@ -691,7 +704,7 @@ namespace xmloff
         {
             // create it for en-US (does not really matter, as we will specify a locale for every
             // concrete language to use)
-            Locale aLocale (  "en", "US", OUString() );
+            Locale aLocale (  u"en"_ustr, u"US"_ustr, OUString() );
             xFormatsSupplier = NumberFormatsSupplier::createWithLocale( m_rContext.getComponentContext(), aLocale );
             m_xControlNumberFormats = xFormatsSupplier->getNumberFormats();
         }
@@ -702,13 +715,13 @@ namespace xmloff
         OSL_ENSURE(m_xControlNumberFormats.is(), "OFormLayerXMLExport_Impl::getControlNumberStyleExport: could not obtain my default number formats!");
 
         // create the exporter
-        m_pControlNumberStyles = new SvXMLNumFmtExport(m_rContext, xFormatsSupplier, getControlNumberStyleNamePrefix());
+        m_pControlNumberStyles = std::make_unique<SvXMLNumFmtExport>(m_rContext, xFormatsSupplier, getControlNumberStyleNamePrefix());
     }
 
     SvXMLNumFmtExport* OFormLayerXMLExport_Impl::getControlNumberStyleExport()
     {
         ensureControlNumberStyleExport();
-        return m_pControlNumberStyles;
+        return m_pControlNumberStyles.get();
     }
 
     void OFormLayerXMLExport_Impl::excludeFromExport( const Reference< XControlModel >& _rxControl )

@@ -34,15 +34,14 @@ using namespace oox::core;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::xml::sax;
 
 namespace oox::drawingml {
 
 // CT_ShapeProperties
-ShapePropertiesContext::ShapePropertiesContext( ContextHandler2Helper const & rParent, Shape& rShape )
+ShapePropertiesContext::ShapePropertiesContext( ContextHandler2Helper const & rParent, Shape& rShape, bool bForChart )
 : ContextHandler2( rParent )
 , mrShape( rShape )
+, mbForChart(bForChart)
 {
 }
 
@@ -64,7 +63,7 @@ ContextHandlerRef ShapePropertiesContext::onCreateContext( sal_Int32 aElementTok
             // TODO: Move the following checks to a separate place or as a separate function
             if (nToken == XML_line && !mrShape.isConnectorShape())
             {
-                mrShape.getServiceName() = "com.sun.star.drawing.LineShape";
+                mrShape.setServiceName(u"com.sun.star.drawing.LineShape"_ustr);
             }
 
             // We got a preset geometry, forget the geometry inherited from the placeholder shape.
@@ -78,7 +77,7 @@ ContextHandlerRef ShapePropertiesContext::onCreateContext( sal_Int32 aElementTok
 
     // CT_LineProperties
     case A_TOKEN( ln ):
-        return new LinePropertiesContext( *this, rAttribs, mrShape.getLineProperties() );
+        return new LinePropertiesContext( *this, rAttribs, mrShape.getLineProperties(), nullptr, mbForChart );
 
     // EffectPropertiesGroup
     // todo not supported by core

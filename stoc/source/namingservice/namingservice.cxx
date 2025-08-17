@@ -29,7 +29,6 @@
 #include <unordered_map>
 
 using namespace cppu;
-using namespace osl;
 
 using namespace css::uno;
 using namespace css::lang;
@@ -70,7 +69,7 @@ NamingService_Impl::NamingService_Impl() {}
 // XServiceInfo
 OUString NamingService_Impl::getImplementationName()
 {
-    return "com.sun.star.comp.stoc.NamingService";
+    return u"com.sun.star.comp.stoc.NamingService"_ustr;
 }
 
 // XServiceInfo
@@ -82,7 +81,7 @@ sal_Bool NamingService_Impl::supportsService( const OUString & rServiceName )
 // XServiceInfo
 Sequence< OUString > NamingService_Impl::getSupportedServiceNames()
 {
-    return { "com.sun.star.uno.NamingService" };
+    return { u"com.sun.star.uno.NamingService"_ustr };
 }
 
 // XServiceInfo

@@ -30,7 +30,7 @@
 #include <svl/numformat.hxx>
 #include <sal/log.hxx>
 #include <sot/storage.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <document.hxx>
 #include <formulacell.hxx>
@@ -353,16 +353,16 @@ void XclImpPCField::ReadItem( XclImpStream& rStrm )
     {
         // there are 3 items after SXNUMGROUP that contain grouping limits and step count
         if( maNumGroupItems.size() < 3 )
-            maNumGroupItems.push_back( xItem );
+            maNumGroupItems.push_back(std::move(xItem));
         else
-            maOrigItems.push_back( xItem );
+            maOrigItems.push_back(std::move(xItem));
     }
     else if( HasInlineItems() || HasPostponedItems() )
     {
         maItems.push_back( xItem );
         // visible item is original item in standard fields
         if( IsStandardField() )
-            maOrigItems.push_back( xItem );
+            maOrigItems.push_back(std::move(xItem));
     }
 }
 
@@ -714,8 +714,8 @@ void XclImpPivotCache::ReadPivotCacheStream( const XclImpStream& rStrm )
     }
 
     // open pivot cache storage stream
-    tools::SvRef<SotStorage> xSvStrg = OpenStorage( EXC_STORAGE_PTCACHE );
-    tools::SvRef<SotStorageStream> xSvStrm = OpenStream( xSvStrg, ScfTools::GetHexStr( mnStrmId ) );
+    rtl::Reference<SotStorage> xSvStrg = OpenStorage(EXC_STORAGE_PTCACHE);
+    rtl::Reference<SotStorageStream> xSvStrm = OpenStream(xSvStrg, ScfTools::GetHexStr(mnStrmId));
     if( !xSvStrm.is() )
         return;
 
@@ -1110,15 +1110,15 @@ static OUString lcl_convertExcelSubtotalName(const OUString& rName)
 
 void XclImpPTField::ConvertRCPField( ScDPSaveData& rSaveData ) const
 {
-    const OUString& rFieldName = GetFieldName();
-    if( rFieldName.isEmpty() )
+    const OUString aFieldName = GetFieldName();
+    if( aFieldName.isEmpty() )
         return;
 
     const XclImpPCField* pCacheField = GetCacheField();
     if( !pCacheField || !pCacheField->IsSupportedField() )
         return;
 
-    ScDPSaveDimension* pTest = rSaveData.GetNewDimensionByName(rFieldName);
+    ScDPSaveDimension* pTest = rSaveData.GetNewDimensionByName(aFieldName);
     if (!pTest)
         return;
 
@@ -1172,15 +1172,15 @@ void XclImpPTField::ConvertRCPField( ScDPSaveData& rSaveData ) const
 
 void XclImpPTField::ConvertFieldInfo( const ScDPSaveData& rSaveData, ScDPObject* pObj, const XclImpRoot& rRoot, bool bPageField ) const
 {
-    const OUString& rFieldName = GetFieldName();
-    if( rFieldName.isEmpty() )
+    const OUString aFieldName = GetFieldName();
+    if( aFieldName.isEmpty() )
         return;
 
     const XclImpPCField* pCacheField = GetCacheField();
     if( !pCacheField || !pCacheField->IsSupportedField() )
         return;
 
-    ScDPSaveDimension* pSaveDim = rSaveData.GetExistingDimensionByName(rFieldName);
+    ScDPSaveDimension* pSaveDim = rSaveData.GetExistingDimensionByName(aFieldName);
     if (!pSaveDim)
         return;
 
@@ -1411,7 +1411,7 @@ void XclImpPivotTable::Convert()
     if( !mxPCache || !mxPCache->IsValid() )
         return;
 
-    if (utl::ConfigManager::IsFuzzing()) //just too slow
+    if (comphelper::IsFuzzing()) //just too slow
         return;
 
     ScDPSaveData aSaveData;

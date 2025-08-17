@@ -30,6 +30,7 @@
 #include <helpids.h>
 
 #include <svx/ctredlin.hxx>
+#include <o3tl/unreachable.hxx>
 
 #define WRITER_DATE     2
 #define CALC_DATE       3
@@ -47,12 +48,14 @@ RedlinData::~RedlinData()
 }
 
 SvxRedlinTable::SvxRedlinTable(std::unique_ptr<weld::TreeView> xWriterControl,
-                               std::unique_ptr<weld::TreeView> xCalcControl)
+                               std::unique_ptr<weld::TreeView> xCalcControl,
+                               weld::ComboBox* pSortByControl)
     : xSorter(new comphelper::string::NaturalStringSorter(::comphelper::getProcessComponentContext(),
         Application::GetSettings().GetUILanguageTag().getLocale()))
     , xWriterTreeView(std::move(xWriterControl))
     , xCalcTreeView(std::move(xCalcControl))
     , pTreeView(nullptr)
+    , m_pSortByComboBox(pSortByControl)
     , nDatePos(WRITER_DATE)
     , bAuthor(false)
     , bDate(false)
@@ -90,7 +93,12 @@ SvxRedlinTable::~SvxRedlinTable()
 
 IMPL_LINK(SvxRedlinTable, HeaderBarClick, int, nColumn, void)
 {
-    if (!bSorted)
+    if (nColumn == -1)
+    {
+        pTreeView->make_unsorted();
+        bSorted = false;
+    }
+    else if (!bSorted)
     {
         pTreeView->make_sorted();
         bSorted = true;
@@ -99,7 +107,7 @@ IMPL_LINK(SvxRedlinTable, HeaderBarClick, int, nColumn, void)
     bool bSortAtoZ = pTreeView->get_sort_order();
 
     //set new arrow positions in headerbar
-    if (nColumn == pTreeView->get_sort_column())
+    if (nColumn != -1 && nColumn == pTreeView->get_sort_column())
     {
         bSortAtoZ = !bSortAtoZ;
         pTreeView->set_sort_order(bSortAtoZ);
@@ -116,6 +124,8 @@ IMPL_LINK(SvxRedlinTable, HeaderBarClick, int, nColumn, void)
     {
         //sort lists
         pTreeView->set_sort_indicator(bSortAtoZ ? TRISTATE_TRUE : TRISTATE_FALSE, nColumn);
+        if (m_pSortByComboBox)
+            m_pSortByComboBox->set_active(nColumn);
     }
 }
 
@@ -164,7 +174,7 @@ void SvxRedlinTable::UpdateFilterTest()
     Date aDateMax( Date::SYSTEM );
     aDateMax.AddYears(100);
     Date aDateMin(1,1,1989);
-    tools::Time aTMin(0);
+    tools::Time aTMin(tools::Time::EMPTY);
     tools::Time aTMax(23,59,59);
 
     DateTime aDTMin(aDateMin);
@@ -182,11 +192,6 @@ void SvxRedlinTable::UpdateFilterTest()
                                 aDaTiFilterLast=aDTMax;
                                 break;
         case SvxRedlinDateMode::EQUAL:
-                                aDaTiFilterFirst=aDaTiFirst;
-                                aDaTiFilterLast=aDaTiFirst;
-                                aDaTiFilterFirst.SetTime(aTMin.GetTime());
-                                aDaTiFilterLast.SetTime(aTMax.GetTime());
-                                break;
         case SvxRedlinDateMode::NOTEQUAL:
                                 aDaTiFilterFirst=aDaTiFirst;
                                 aDaTiFilterLast=aDaTiFirst;
@@ -293,7 +298,7 @@ void SvxTPage::ActivatePage()
 }
 
 SvxTPView::SvxTPView(weld::Container* pParent)
-    : SvxTPage(pParent, "svx/ui/redlineviewpage.ui", "RedlineViewPage")
+    : SvxTPage(pParent, u"svx/ui/redlineviewpage.ui"_ustr, u"RedlineViewPage"_ustr)
     , bEnableAccept(true)
     , bEnableAcceptAll(true)
     , bEnableReject(true)
@@ -301,14 +306,18 @@ SvxTPView::SvxTPView(weld::Container* pParent)
     , bEnableUndo(true)
     , bEnableClearFormat(false)
     , bEnableClearFormatAll(false)
-    , m_xAccept(m_xBuilder->weld_button("accept"))
-    , m_xReject(m_xBuilder->weld_button("reject"))
-    , m_xAcceptAll(m_xBuilder->weld_button("acceptall"))
-    , m_xRejectAll(m_xBuilder->weld_button("rejectall"))
-    , m_xUndo(m_xBuilder->weld_button("undo"))
-    , m_xViewData(new SvxRedlinTable(m_xBuilder->weld_tree_view("writerchanges"),
-                                     m_xBuilder->weld_tree_view("calcchanges")))
+    , m_xAccept(m_xBuilder->weld_button(u"accept"_ustr))
+    , m_xReject(m_xBuilder->weld_button(u"reject"_ustr))
+    , m_xAcceptAll(m_xBuilder->weld_button(u"acceptall"_ustr))
+    , m_xRejectAll(m_xBuilder->weld_button(u"rejectall"_ustr))
+    , m_xUndo(m_xBuilder->weld_button(u"undo"_ustr))
+    , m_xSortByComboBox(m_xBuilder->weld_combo_box(u"sortbycombobox"_ustr))
+    , m_xViewData(new SvxRedlinTable(m_xBuilder->weld_tree_view(u"writerchanges"_ustr),
+                                     m_xBuilder->weld_tree_view(u"calcchanges"_ustr),
+                                     m_xSortByComboBox.get()))
 {
+    m_xSortByComboBox->connect_changed(LINK(this, SvxTPView, SortByComboBoxChangedHdl));
+
     Link<weld::Button&,void> aLink=LINK( this, SvxTPView, PbClickHdl);
 
     m_xAccept->connect_clicked(aLink);
@@ -346,6 +355,8 @@ void SvxRedlinTable::SetWriterView()
     if (xCalcTreeView)
         xCalcTreeView->hide();
     xWriterTreeView->show();
+    if (m_pSortByComboBox)
+        m_pSortByComboBox->weld_parent()->show();
     pTreeView = xWriterTreeView.get();
 
     auto nDigitWidth = pTreeView->get_approximate_digit_width();
@@ -363,6 +374,8 @@ void SvxRedlinTable::SetCalcView()
     nDatePos = CALC_DATE;
     if (xWriterTreeView)
         xWriterTreeView->hide();
+    if (m_pSortByComboBox)
+        m_pSortByComboBox->weld_parent()->hide();
     xCalcTreeView->show();
     pTreeView = xCalcTreeView.get();
 
@@ -426,6 +439,12 @@ void SvxTPView::EnableUndo(bool bFlag)
     m_xUndo->set_sensitive(bFlag);
 }
 
+IMPL_LINK_NOARG(SvxTPView, SortByComboBoxChangedHdl, weld::ComboBox&, void)
+{
+    if (SortByComboBoxChangedLk.IsSet())
+        SortByComboBoxChangedLk.Call(this);
+}
+
 IMPL_LINK( SvxTPView, PbClickHdl, weld::Button&, rPushB, void)
 {
     if (&rPushB == m_xAccept.get())
@@ -457,29 +476,29 @@ SvxTPage::SvxTPage(weld::Container* pParent, const OUString& rUIXMLDescription, 
 }
 
 SvxTPFilter::SvxTPFilter(weld::Container* pParent)
-    : SvxTPage(pParent, "svx/ui/redlinefilterpage.ui", "RedlineFilterPage")
+    : SvxTPage(pParent, u"svx/ui/redlinefilterpage.ui"_ustr, u"RedlineFilterPage"_ustr)
     , bModified(false)
     , m_pRedlinTable(nullptr)
-    , m_xCbDate(m_xBuilder->weld_check_button("date"))
-    , m_xLbDate(m_xBuilder->weld_combo_box("datecond"))
-    , m_xDfDate(new SvtCalendarBox(m_xBuilder->weld_menu_button("startdate")))
-    , m_xTfDate(m_xBuilder->weld_formatted_spin_button("starttime"))
+    , m_xCbDate(m_xBuilder->weld_check_button(u"date"_ustr))
+    , m_xLbDate(m_xBuilder->weld_combo_box(u"datecond"_ustr))
+    , m_xDfDate(new SvtCalendarBox(m_xBuilder->weld_menu_button(u"startdate"_ustr)))
+    , m_xTfDate(m_xBuilder->weld_formatted_spin_button(u"starttime"_ustr))
     , m_xTfDateFormatter(new weld::TimeFormatter(*m_xTfDate))
-    , m_xIbClock(m_xBuilder->weld_button("startclock"))
-    , m_xFtDate2(m_xBuilder->weld_label("and"))
-    , m_xDfDate2(new SvtCalendarBox(m_xBuilder->weld_menu_button("enddate")))
-    , m_xTfDate2(m_xBuilder->weld_formatted_spin_button("endtime"))
+    , m_xIbClock(m_xBuilder->weld_button(u"startclock"_ustr))
+    , m_xFtDate2(m_xBuilder->weld_label(u"and"_ustr))
+    , m_xDfDate2(new SvtCalendarBox(m_xBuilder->weld_menu_button(u"enddate"_ustr)))
+    , m_xTfDate2(m_xBuilder->weld_formatted_spin_button(u"endtime"_ustr))
     , m_xTfDate2Formatter(new weld::TimeFormatter(*m_xTfDate2))
-    , m_xIbClock2(m_xBuilder->weld_button("endclock"))
-    , m_xCbAuthor(m_xBuilder->weld_check_button("author"))
-    , m_xLbAuthor(m_xBuilder->weld_combo_box("authorlist"))
-    , m_xCbRange(m_xBuilder->weld_check_button("range"))
-    , m_xEdRange(m_xBuilder->weld_entry("rangeedit"))
-    , m_xBtnRange(m_xBuilder->weld_button("dotdotdot"))
-    , m_xCbAction(m_xBuilder->weld_check_button("action"))
-    , m_xLbAction(m_xBuilder->weld_combo_box("actionlist"))
-    , m_xCbComment(m_xBuilder->weld_check_button("comment"))
-    , m_xEdComment(m_xBuilder->weld_entry("commentedit"))
+    , m_xIbClock2(m_xBuilder->weld_button(u"endclock"_ustr))
+    , m_xCbAuthor(m_xBuilder->weld_check_button(u"author"_ustr))
+    , m_xLbAuthor(m_xBuilder->weld_combo_box(u"authorlist"_ustr))
+    , m_xCbRange(m_xBuilder->weld_check_button(u"range"_ustr))
+    , m_xEdRange(m_xBuilder->weld_entry(u"rangeedit"_ustr))
+    , m_xBtnRange(m_xBuilder->weld_button(u"dotdotdot"_ustr))
+    , m_xCbAction(m_xBuilder->weld_check_button(u"action"_ustr))
+    , m_xLbAction(m_xBuilder->weld_combo_box(u"actionlist"_ustr))
+    , m_xCbComment(m_xBuilder->weld_check_button(u"comment"_ustr))
+    , m_xEdComment(m_xBuilder->weld_entry(u"commentedit"_ustr))
 {
     m_xTfDateFormatter->EnableEmptyField(false);
     m_xTfDate2Formatter->EnableEmptyField(false);
@@ -770,19 +789,11 @@ IMPL_LINK_NOARG(SvxTPFilter, SelDateHdl, weld::ComboBox&, void)
     switch(nKind)
     {
         case SvxRedlinDateMode::BEFORE:
-            EnableDateLine1(true);
-            EnableDateLine2(false);
-            break;
         case SvxRedlinDateMode::SINCE:
             EnableDateLine1(true);
             EnableDateLine2(false);
             break;
         case SvxRedlinDateMode::EQUAL:
-            EnableDateLine1(true);
-            m_xTfDate->set_sensitive(false);
-            m_xTfDate->set_text(OUString());
-            EnableDateLine2(false);
-            break;
         case SvxRedlinDateMode::NOTEQUAL:
             EnableDateLine1(true);
             m_xTfDate->set_sensitive(false);
@@ -924,7 +935,7 @@ IMPL_LINK(SvxTPFilter, ModifyDate, SvtCalendarBox&, rTF, void)
 
 IMPL_LINK(SvxTPFilter, ModifyTime, weld::FormattedSpinButton&, rTF, void)
 {
-    tools::Time aTime(0);
+    tools::Time aTime(tools::Time::EMPTY);
     if (m_xTfDate.get() == &rTF)
     {
         if (m_xTfDate->get_text().isEmpty())
@@ -951,16 +962,16 @@ IMPL_LINK_NOARG(SvxTPFilter, RefHandle, weld::Button&, void)
 }
 
 SvxAcceptChgCtr::SvxAcceptChgCtr(weld::Container* pParent)
-    : m_xBuilder(Application::CreateBuilder(pParent, "svx/ui/redlinecontrol.ui"))
-    , m_xTabCtrl(m_xBuilder->weld_notebook("tabcontrol"))
+    : m_xBuilder(Application::CreateBuilder(pParent, u"svx/ui/redlinecontrol.ui"_ustr))
+    , m_xTabCtrl(m_xBuilder->weld_notebook(u"tabcontrol"_ustr))
 {
     m_xTabCtrl->connect_enter_page(LINK(this, SvxAcceptChgCtr, ActivatePageHdl));
     m_xTabCtrl->connect_leave_page(LINK(this, SvxAcceptChgCtr, DeactivatePageHdl));
 
-    m_xTPFilter.reset(new SvxTPFilter(m_xTabCtrl->get_page("filter")));
-    m_xTPView.reset(new SvxTPView(m_xTabCtrl->get_page("view")));
+    m_xTPFilter.reset(new SvxTPFilter(m_xTabCtrl->get_page(u"filter"_ustr)));
+    m_xTPView.reset(new SvxTPView(m_xTabCtrl->get_page(u"view"_ustr)));
     m_xTPFilter->SetRedlinTable(m_xTPView->GetTableControl());
-    m_xTabCtrl->set_current_page("view");
+    m_xTabCtrl->set_current_page(u"view"_ustr);
     m_xTabCtrl->set_help_id(HID_REDLINE_CTRL_VIEW);
     m_xTabCtrl->show();
 }
@@ -973,7 +984,7 @@ SvxAcceptChgCtr::~SvxAcceptChgCtr()
 
 void SvxAcceptChgCtr::ShowFilterPage()
 {
-    m_xTabCtrl->set_current_page("filter");
+    m_xTabCtrl->set_current_page(u"filter"_ustr);
 }
 
 IMPL_LINK(SvxAcceptChgCtr, ActivatePageHdl, const OUString&, rPage, void)
@@ -997,6 +1008,39 @@ IMPL_LINK(SvxAcceptChgCtr, DeactivatePageHdl, const OUString&, rPage, bool)
     else if (rPage == "view")
         m_xTPView->DeactivatePage();
     return true;
+}
+
+std::ostream& operator<<(std::ostream& rStream, const RedlineType& eType)
+{
+    switch (eType)
+    {
+        case RedlineType::Insert:
+            return rStream << "RedlineType::Insert";
+        case RedlineType::Delete:
+            return rStream << "RedlineType::Delete";
+        case RedlineType::Format:
+            return rStream << "RedlineType::Format";
+        case RedlineType::Table:
+            return rStream << "RedlineType::Table";
+        case RedlineType::FmtColl:
+            return rStream << "RedlineType::FmtColl";
+        case RedlineType::ParagraphFormat:
+            return rStream << "RedlineType::ParagraphFormat";
+        case RedlineType::TableRowInsert:
+            return rStream << "RedlineType::TableRowInsert";
+        case RedlineType::TableRowDelete:
+            return rStream << "RedlineType::TableRowDelete";
+        case RedlineType::TableCellInsert:
+            return rStream << "RedlineType::TableCellInsert";
+        case RedlineType::TableCellDelete:
+            return rStream << "RedlineType::TableCellDelete";
+        case RedlineType::None:
+            return rStream << "RedlineType::None";
+        case RedlineType::Any:
+            return rStream << "RedlineType::Any";
+        default:
+            O3TL_UNREACHABLE;
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

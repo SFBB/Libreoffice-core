@@ -43,7 +43,7 @@
 #include <svx/svdotext.hxx>
 #include <svx/svdview.hxx>
 #include <svl/srchitem.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
 
@@ -56,6 +56,7 @@ DocumentDrawModelManager::DocumentDrawModelManager(SwDoc& i_rSwdoc)
     : m_rDoc(i_rSwdoc)
     , mnHeaven(0)
     , mnHell(0)
+    , mnHeaderFooterHell(0)
     , mnControls(0)
     , mnInvisibleHeaven(0)
     , mnInvisibleHell(0)
@@ -74,7 +75,7 @@ void DocumentDrawModelManager::InitDrawModel()
         ReleaseDrawModel();
 
     // set FontHeight pool defaults without changing static SdrEngineDefaults
-    m_rDoc.GetAttrPool().SetPoolDefaultItem(SvxFontHeightItem( 240, 100, EE_CHAR_FONTHEIGHT ));
+    m_rDoc.GetAttrPool().SetUserDefaultItem(SvxFontHeightItem( 240, 100, EE_CHAR_FONTHEIGHT ));
 
     SAL_INFO( "sw.doc", "before create DrawDocument" );
     // The document owns the SwDrawModel. We always have two layers and one page.
@@ -85,6 +86,9 @@ void DocumentDrawModelManager::InitDrawModel()
     OUString sLayerNm;
     sLayerNm = "Hell";
     mnHell   = mpDrawModel->GetLayerAdmin().NewLayer( sLayerNm )->GetID();
+
+    sLayerNm = "HeaderFooterHell";
+    mnHeaderFooterHell = mpDrawModel->GetLayerAdmin().NewLayer( sLayerNm )->GetID();
 
     sLayerNm = "Heaven";
     mnHeaven = mpDrawModel->GetLayerAdmin().NewLayer( sLayerNm )->GetID();
@@ -109,7 +113,7 @@ void DocumentDrawModelManager::InitDrawModel()
     mpDrawModel->InsertPage( pMasterPage.get() );
     SAL_INFO( "sw.doc", "after create DrawDocument" );
     SdrOutliner& rOutliner = mpDrawModel->GetDrawOutliner();
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         SAL_INFO( "sw.doc", "before create Spellchecker/Hyphenator" );
         css::uno::Reference< css::linguistic2::XSpellChecker1 > xSpell = ::GetSpellChecker();
@@ -130,7 +134,9 @@ void DocumentDrawModelManager::InitDrawModel()
     if ( pRefDev )
         mpDrawModel->SetRefDevice( pRefDev );
 
-    mpDrawModel->SetNotifyUndoActionHdl( std::bind( &SwDoc::AddDrawUndo, &m_rDoc, std::placeholders::_1 ));
+    mpDrawModel->SetNotifyUndoActionHdl([&rDoc = m_rDoc](std::unique_ptr<SdrUndoAction> pAction) {
+        rDoc.AddDrawUndo(std::move(pAction));
+    });
     SwViewShell* const pSh = m_rDoc.getIDocumentLayoutAccess().GetCurrentViewShell();
     if ( !pSh )
         return;
@@ -169,7 +175,7 @@ SwDrawModel* DocumentDrawModelManager::GetDrawModel()
     return mpDrawModel.get();
 }
 
-SwDrawModel* DocumentDrawModelManager::MakeDrawModel_()
+SwDrawModel& DocumentDrawModelManager::MakeDrawModel_()
 {
     OSL_ENSURE( !mpDrawModel, "MakeDrawModel_: Why?" );
     InitDrawModel();
@@ -186,12 +192,12 @@ SwDrawModel* DocumentDrawModelManager::MakeDrawModel_()
             m_rDoc.GetDocShell()->Broadcast( aHint );
         }
     }
-    return mpDrawModel.get();
+    return *mpDrawModel;
 }
 
-SwDrawModel* DocumentDrawModelManager::GetOrCreateDrawModel()
+SwDrawModel& DocumentDrawModelManager::GetOrCreateDrawModel()
 {
-    return GetDrawModel() ? GetDrawModel() : MakeDrawModel_();
+    return GetDrawModel() ? *GetDrawModel() : MakeDrawModel_();
 }
 
 SdrLayerID DocumentDrawModelManager::GetHeavenId() const
@@ -202,6 +208,11 @@ SdrLayerID DocumentDrawModelManager::GetHeavenId() const
 SdrLayerID DocumentDrawModelManager::GetHellId() const
 {
     return mnHell;
+}
+
+SdrLayerID DocumentDrawModelManager::GetHeaderFooterHellId() const
+{
+    return mnHeaderFooterHell;
 }
 
 SdrLayerID DocumentDrawModelManager::GetControlsId() const
@@ -242,6 +253,7 @@ bool DocumentDrawModelManager::IsVisibleLayerId( SdrLayerID _nLayerId ) const
     bool bRetVal;
 
     if ( _nLayerId == GetHeavenId() ||
+         _nLayerId == GetHeaderFooterHellId() ||
          _nLayerId == GetHellId() ||
          _nLayerId == GetControlsId() )
     {
@@ -270,7 +282,8 @@ SdrLayerID DocumentDrawModelManager::GetInvisibleLayerIdByVisibleOne( SdrLayerID
     {
         nInvisibleLayerId = GetInvisibleHeavenId();
     }
-    else if ( _nVisibleLayerId == GetHellId() )
+    //TODO: do we need an InvisbleHeaderFooterHell?
+    else if ( _nVisibleLayerId == GetHellId() || _nVisibleLayerId == GetHeaderFooterHellId())
     {
         nInvisibleLayerId = GetInvisibleHellId();
     }
@@ -337,9 +350,9 @@ bool DocumentDrawModelManager::Search(const SwPaM& rPaM, const SvxSearchItem& rS
             return false;
         OutlinerView* pOutlinerView = pSdrView->GetTextEditOutlinerView();
         if (!rSearchItem.GetBackward())
-            pOutlinerView->SetSelection(ESelection(0, 0, 0, 0));
+            pOutlinerView->SetSelection(ESelection(0, 0));
         else
-            pOutlinerView->SetSelection(ESelection(EE_PARA_MAX_COUNT, EE_TEXTPOS_MAX_COUNT, EE_PARA_MAX_COUNT, EE_TEXTPOS_MAX_COUNT));
+            pOutlinerView->SetSelection(ESelection::AtEnd());
         pOutlinerView->StartSearchAndReplace(rSearchItem);
         return true;
     }

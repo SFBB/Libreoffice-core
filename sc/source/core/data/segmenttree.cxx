@@ -25,6 +25,7 @@
 #include <limits>
 #include <string_view>
 #include <global.hxx>
+#include <rtl/strbuf.hxx>
 
 using ::std::numeric_limits;
 
@@ -133,7 +134,7 @@ typename ScFlatSegmentsImpl<ValueType_, ExtValueType_>::ValueType ScFlatSegments
         return nValue;
     }
 
-    if (!maSegments.is_tree_valid())
+    if (!maSegments.valid_tree())
     {
         assert(!ScGlobal::bThreadedGroupCalcInProgress);
         maSegments.build_tree();
@@ -149,7 +150,7 @@ sal_uInt64 ScFlatSegmentsImpl<ValueType_, ExtValueType_>::getSumValue(SCCOLROW n
     if (mbTreeSearchEnabled)
     {
 
-        if (!maSegments.is_tree_valid())
+        if (!maSegments.valid_tree())
         {
             assert(!ScGlobal::bThreadedGroupCalcInProgress);
             maSegments.build_tree();
@@ -241,7 +242,7 @@ bool ScFlatSegmentsImpl<ValueType_, ExtValueType_>::getRangeData(SCCOLROW nPos, 
     if (!mbTreeSearchEnabled)
         return getRangeDataLeaf(nPos, rData);
 
-    if (!maSegments.is_tree_valid())
+    if (!maSegments.valid_tree())
     {
         assert(!ScGlobal::bThreadedGroupCalcInProgress);
         maSegments.build_tree();
@@ -250,7 +251,7 @@ bool ScFlatSegmentsImpl<ValueType_, ExtValueType_>::getRangeData(SCCOLROW nPos, 
     auto [it,found] = maSegments.search_tree(nPos, rData.mnValue, &rData.mnPos1, &rData.mnPos2);
     if (!found)
         return false;
-    maItr = it; // cache the iterator to speed up ForwardIterator.
+    maItr = std::move(it); // cache the iterator to speed up ForwardIterator.
     rData.mnPos2 = rData.mnPos2-1; // end point is not inclusive.
     return true;
 }
@@ -332,7 +333,7 @@ template<typename ValueType_, typename ExtValueType_>
 void ScFlatSegmentsImpl<ValueType_, ExtValueType_>::makeReady()
 {
     assert(!ScGlobal::bThreadedGroupCalcInProgress);
-    if (!maSegments.is_tree_valid())
+    if (!maSegments.valid_tree())
         maSegments.build_tree();
 }
 
@@ -492,23 +493,19 @@ void ScFlatBoolRowSegments::makeReady()
 
 OString ScFlatBoolRowSegments::dumpAsString()
 {
-    OString aOutput;
-    OString aSegment;
+    OStringBuffer aOutput(4096);
     RangeData aRange;
     SCROW nRow = 0;
     while (getRangeData(nRow, aRange))
     {
         if (!nRow)
-            aSegment = (aRange.mbValue ? std::string_view("1") : std::string_view("0")) + OString::Concat(":");
-        else
-            aSegment.clear();
+            aOutput.append(aRange.mbValue ? '1' : '0').append(':');
 
-        aSegment += OString::number(aRange.mnRow2) + " ";
-        aOutput += aSegment;
+        aOutput.append(OString::number(aRange.mnRow2) + " ");
         nRow = aRange.mnRow2 + 1;
     }
 
-    return aOutput;
+    return aOutput.makeStringAndClear();
 }
 
 ScFlatBoolColSegments::ScFlatBoolColSegments(SCCOL nMaxCol) :
@@ -564,23 +561,19 @@ void ScFlatBoolColSegments::makeReady()
 
 OString ScFlatBoolColSegments::dumpAsString()
 {
-    OString aOutput;
-    OString aSegment;
+    OStringBuffer aOutput(4096);
     RangeData aRange;
     SCCOL nCol = 0;
     while (getRangeData(nCol, aRange))
     {
         if (!nCol)
-            aSegment = (aRange.mbValue ? OString::Concat("1") : OString::Concat("0")) + OString::Concat(":");
-        else
-            aSegment.clear();
+            aOutput.append(aRange.mbValue ? '1' : '0').append(':');
 
-        aSegment += OString::number(aRange.mnCol2) + " ";
-        aOutput += aSegment;
+        aOutput.append(OString::number(aRange.mnCol2) + " ");
         nCol = aRange.mnCol2 + 1;
     }
 
-    return aOutput;
+    return aOutput.makeStringAndClear();
 }
 
 ScFlatUInt16RowSegments::ForwardIterator::ForwardIterator(ScFlatUInt16RowSegments& rSegs) :
@@ -693,19 +686,16 @@ void ScFlatUInt16RowSegments::makeReady()
 
 OString ScFlatUInt16RowSegments::dumpAsString()
 {
-    OString aOutput;
-    OString aSegment;
+    OStringBuffer aOutput(4096);
     RangeData aRange;
     SCROW nRow = 0;
     while (getRangeData(nRow, aRange))
     {
-        aSegment = OString::number(aRange.mnValue) + ":" +
-            OString::number(aRange.mnRow2) + " ";
-        aOutput += aSegment;
+        aOutput.append(OString::number(aRange.mnValue) + ":" + OString::number(aRange.mnRow2) + " ");
         nRow = aRange.mnRow2 + 1;
     }
 
-    return aOutput;
+    return aOutput.makeStringAndClear();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

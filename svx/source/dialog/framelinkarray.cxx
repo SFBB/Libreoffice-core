@@ -21,7 +21,6 @@
 
 #include <math.h>
 #include <vector>
-#include <set>
 #include <unordered_set>
 #include <algorithm>
 #include <o3tl/hash_combine.hxx>
@@ -286,7 +285,7 @@ namespace
 {
 struct RegisteredCellHash
 {
-    size_t operator()(Cell* const pCell) const
+    size_t operator()(const Cell* pCell) const
     {
         return pCell->hashCode();
     }
@@ -294,7 +293,7 @@ struct RegisteredCellHash
 
 struct RegisteredCellEquals
 {
-    bool operator()(Cell* const pCell1, Cell* const pCell2) const
+    bool operator()(const Cell* pCell1, const Cell* pCell2) const
     {
         return *pCell1 == *pCell2;
     }
@@ -318,6 +317,7 @@ struct ArrayImpl
     mutable bool        mbXCoordsDirty;
     mutable bool        mbYCoordsDirty;
     bool                mbMayHaveCellRotation;
+    bool mbXMirrored = false;
 
     explicit            ArrayImpl( sal_Int32 nWidth, sal_Int32 nHeight );
     ~ArrayImpl();
@@ -335,8 +335,7 @@ struct ArrayImpl
     sal_Int32              GetMergedLastCol( sal_Int32 nCol, sal_Int32 nRow ) const;
     sal_Int32              GetMergedLastRow( sal_Int32 nCol, sal_Int32 nRow ) const;
 
-    const Cell*         GetMergedOriginCell( sal_Int32 nCol, sal_Int32 nRow ) const;
-    const Cell*         GetMergedLastCell( sal_Int32 nCol, sal_Int32 nRow ) const;
+    const Cell* GetMergedStyleSourceCell(sal_Int32 nCol, sal_Int32 nRow) const;
 
     bool                IsMergedOverlappedLeft( sal_Int32 nCol, sal_Int32 nRow ) const;
     bool                IsMergedOverlappedRight( sal_Int32 nCol, sal_Int32 nRow ) const;
@@ -455,14 +454,14 @@ sal_Int32 ArrayImpl::GetMergedLastRow( sal_Int32 nCol, sal_Int32 nRow ) const
     return nLastRow - 1;
 }
 
-const Cell* ArrayImpl::GetMergedOriginCell( sal_Int32 nCol, sal_Int32 nRow ) const
+const Cell* ArrayImpl::GetMergedStyleSourceCell(sal_Int32 nCol, sal_Int32 nRow) const
 {
-    return GetCell( GetMergedFirstCol( nCol, nRow ), GetMergedFirstRow( nCol, nRow ) );
-}
+    if (mbXMirrored)
+    {
+        return GetCell(GetMergedLastCol(nCol, nRow), GetMergedFirstRow(nCol, nRow));
+    }
 
-const Cell* ArrayImpl::GetMergedLastCell( sal_Int32 nCol, sal_Int32 nRow ) const
-{
-    return GetCell( GetMergedLastCol( nCol, nRow ), GetMergedLastRow( nCol, nRow ) );
+    return GetCell(GetMergedFirstCol(nCol, nRow), GetMergedFirstRow(nCol, nRow));
 }
 
 bool ArrayImpl::IsMergedOverlappedLeft( sal_Int32 nCol, sal_Int32 nRow ) const
@@ -784,15 +783,16 @@ const Style& Array::GetCellStyleLeft( sal_Int32 nCol, sal_Int32 nRow ) const
         return OBJ_STYLE_NONE;
     // left clipping border: always own left style
     if( nCol == mxImpl->mnFirstClipCol )
-        return mxImpl->GetMergedOriginCell( nCol, nRow )->GetStyleLeft();
+        return mxImpl->GetMergedStyleSourceCell(nCol, nRow)->GetStyleLeft();
     // right clipping border: always right style of left neighbor cell
     if( nCol == mxImpl->mnLastClipCol + 1 )
-        return mxImpl->GetMergedOriginCell( nCol - 1, nRow )->GetStyleRight();
+        return mxImpl->GetMergedStyleSourceCell(nCol - 1, nRow)->GetStyleRight();
     // outside clipping columns: invisible
     if( !mxImpl->IsColInClipRange( nCol ) )
         return OBJ_STYLE_NONE;
     // inside clipping range: maximum of own left style and right style of left neighbor cell
-    return std::max( mxImpl->GetMergedOriginCell( nCol, nRow )->GetStyleLeft(), mxImpl->GetMergedOriginCell( nCol - 1, nRow )->GetStyleRight() );
+    return std::max(mxImpl->GetMergedStyleSourceCell(nCol, nRow)->GetStyleLeft(),
+                    mxImpl->GetMergedStyleSourceCell(nCol - 1, nRow)->GetStyleRight());
 }
 
 const Style& Array::GetCellStyleRight( sal_Int32 nCol, sal_Int32 nRow ) const
@@ -802,15 +802,16 @@ const Style& Array::GetCellStyleRight( sal_Int32 nCol, sal_Int32 nRow ) const
         return OBJ_STYLE_NONE;
     // left clipping border: always left style of right neighbor cell
     if( nCol + 1 == mxImpl->mnFirstClipCol )
-        return mxImpl->GetMergedOriginCell( nCol + 1, nRow )->GetStyleLeft();
+        return mxImpl->GetMergedStyleSourceCell(nCol + 1, nRow)->GetStyleLeft();
     // right clipping border: always own right style
     if( nCol == mxImpl->mnLastClipCol )
-        return mxImpl->GetMergedLastCell( nCol, nRow )->GetStyleRight();
+        return mxImpl->GetMergedStyleSourceCell(nCol, nRow)->GetStyleRight();
     // outside clipping columns: invisible
     if( !mxImpl->IsColInClipRange( nCol ) )
         return OBJ_STYLE_NONE;
     // inside clipping range: maximum of own right style and left style of right neighbor cell
-    return std::max( mxImpl->GetMergedOriginCell( nCol, nRow )->GetStyleRight(), mxImpl->GetMergedOriginCell( nCol + 1, nRow )->GetStyleLeft() );
+    return std::max(mxImpl->GetMergedStyleSourceCell(nCol, nRow)->GetStyleRight(),
+                    mxImpl->GetMergedStyleSourceCell(nCol + 1, nRow)->GetStyleLeft());
 }
 
 const Style& Array::GetCellStyleTop( sal_Int32 nCol, sal_Int32 nRow ) const
@@ -820,15 +821,16 @@ const Style& Array::GetCellStyleTop( sal_Int32 nCol, sal_Int32 nRow ) const
         return OBJ_STYLE_NONE;
     // top clipping border: always own top style
     if( nRow == mxImpl->mnFirstClipRow )
-        return mxImpl->GetMergedOriginCell( nCol, nRow )->GetStyleTop();
+        return mxImpl->GetMergedStyleSourceCell(nCol, nRow)->GetStyleTop();
     // bottom clipping border: always bottom style of top neighbor cell
     if( nRow == mxImpl->mnLastClipRow + 1 )
-        return mxImpl->GetMergedOriginCell( nCol, nRow - 1 )->GetStyleBottom();
+        return mxImpl->GetMergedStyleSourceCell(nCol, nRow - 1)->GetStyleBottom();
     // outside clipping rows: invisible
     if( !mxImpl->IsRowInClipRange( nRow ) )
         return OBJ_STYLE_NONE;
     // inside clipping range: maximum of own top style and bottom style of top neighbor cell
-    return std::max( mxImpl->GetMergedOriginCell( nCol, nRow )->GetStyleTop(), mxImpl->GetMergedOriginCell( nCol, nRow - 1 )->GetStyleBottom() );
+    return std::max(mxImpl->GetMergedStyleSourceCell(nCol, nRow)->GetStyleTop(),
+                    mxImpl->GetMergedStyleSourceCell(nCol, nRow - 1)->GetStyleBottom());
 }
 
 const Style& Array::GetCellStyleBottom( sal_Int32 nCol, sal_Int32 nRow ) const
@@ -838,15 +840,16 @@ const Style& Array::GetCellStyleBottom( sal_Int32 nCol, sal_Int32 nRow ) const
         return OBJ_STYLE_NONE;
     // top clipping border: always top style of bottom neighbor cell
     if( nRow + 1 == mxImpl->mnFirstClipRow )
-        return mxImpl->GetMergedOriginCell( nCol, nRow + 1 )->GetStyleTop();
+        return mxImpl->GetMergedStyleSourceCell(nCol, nRow + 1)->GetStyleTop();
     // bottom clipping border: always own bottom style
     if( nRow == mxImpl->mnLastClipRow )
-        return mxImpl->GetMergedLastCell( nCol, nRow )->GetStyleBottom();
+        return mxImpl->GetMergedStyleSourceCell(nCol, nRow)->GetStyleBottom();
     // outside clipping rows: invisible
     if( !mxImpl->IsRowInClipRange( nRow ) )
         return OBJ_STYLE_NONE;
     // inside clipping range: maximum of own bottom style and top style of bottom neighbor cell
-    return std::max( mxImpl->GetMergedOriginCell( nCol, nRow )->GetStyleBottom(), mxImpl->GetMergedOriginCell( nCol, nRow + 1 )->GetStyleTop() );
+    return std::max(mxImpl->GetMergedStyleSourceCell(nCol, nRow)->GetStyleBottom(),
+                    mxImpl->GetMergedStyleSourceCell(nCol, nRow + 1)->GetStyleTop());
 }
 
 const Style& Array::GetCellStyleTLBR( sal_Int32 nCol, sal_Int32 nRow ) const
@@ -936,7 +939,7 @@ void Array::SetAddMergedLeftSize( sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nAdd
             return;
         Cell aTempCell(*pTempCell);
         aTempCell.mnAddLeft = nAddSize;
-        mxImpl->PutCell( nCol, nRow, aTempCell );
+        mxImpl->PutCell( aIt.Col(), aIt.Row(), aTempCell );
     }
 }
 
@@ -951,7 +954,7 @@ void Array::SetAddMergedRightSize( sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nAd
             return;
         Cell aTempCell(*pTempCell);
         aTempCell.mnAddRight = nAddSize;
-        mxImpl->PutCell( nCol, nRow, aTempCell );
+        mxImpl->PutCell( aIt.Col(), aIt.Row(), aTempCell );
     }
 }
 
@@ -966,7 +969,7 @@ void Array::SetAddMergedTopSize( sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nAddS
             return;
         Cell aTempCell(*pTempCell);
         aTempCell.mnAddTop = nAddSize;
-        mxImpl->PutCell( nCol, nRow, aTempCell );
+        mxImpl->PutCell( aIt.Col(), aIt.Row(), aTempCell );
     }
 }
 
@@ -981,7 +984,7 @@ void Array::SetAddMergedBottomSize( sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nA
             return;
         Cell aTempCell(*pTempCell);
         aTempCell.mnAddBottom = nAddSize;
-        mxImpl->PutCell( nCol, nRow, aTempCell );
+        mxImpl->PutCell( aIt.Col(), aIt.Row(), aTempCell );
     }
 }
 
@@ -1166,6 +1169,7 @@ void Array::MirrorSelfX()
 
     std::reverse( mxImpl->maWidths.begin(), mxImpl->maWidths.end() );
     mxImpl->mbXCoordsDirty = true;
+    mxImpl->mbXMirrored = !mxImpl->mbXMirrored;
 }
 
 // drawing
@@ -1278,7 +1282,7 @@ static void HelperClipLine(
 
     if(aResultPP.count() > 0)
     {
-        const basegfx::B2DPolygon aResultP(aResultPP.getB2DPolygon(0));
+        const basegfx::B2DPolygon& aResultP(aResultPP.getB2DPolygon(0));
 
         if(aResultP.count() > 0)
         {
@@ -1653,10 +1657,9 @@ drawinglayer::primitive2d::Primitive2DContainer Array::CreateB2DPrimitiveRange(
     if(!aData.empty())
     {
         aSequence.append(
-            drawinglayer::primitive2d::Primitive2DReference(
                 new drawinglayer::primitive2d::SdrFrameBorderPrimitive2D(
                     std::move(aData),
-                    true)));    // force visualization to minimal one discrete unit (pixel)
+                    true));    // force visualization to minimal one discrete unit (pixel)
     }
 
 #ifdef OPTICAL_CHECK_CLIPRANGE_FOR_MERGED_CELL
@@ -1664,10 +1667,9 @@ drawinglayer::primitive2d::Primitive2DContainer Array::CreateB2DPrimitiveRange(
     {
         // draw ClipRange in yellow to allow simple interactive optical control in office
         aSequence.append(
-            drawinglayer::primitive2d::Primitive2DReference(
                 new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(
                     basegfx::utils::createPolygonFromRect(rClipRange),
-                    basegfx::BColor(1.0, 1.0, 0.0))));
+                    basegfx::BColor(1.0, 1.0, 0.0)));
     }
 #endif
 

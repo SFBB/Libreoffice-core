@@ -34,17 +34,6 @@
 using namespace ::com::sun::star;
 using ::com::sun::star::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_AUTOEXTENSION;
 
-namespace
-{
-uno::Sequence<OUString> FilePicker_getSupportedServiceNames()
-{
-    return { "com.sun.star.ui.dialogs.FilePicker", "com.sun.star.ui.dialogs.SystemFilePicker",
-             "com.sun.star.ui.dialogs.KFFilePicker", "com.sun.star.ui.dialogs.KFFolderPicker" };
-}
-}
-
-// KFFilePicker
-
 KFFilePicker::KFFilePicker(css::uno::Reference<css::uno::XComponentContext> const& context,
                            QFileDialog::FileMode eMode)
     // Native KF5/KF6 filepicker does not add file extension automatically
@@ -83,12 +72,11 @@ void SAL_CALL KFFilePicker::setValue(sal_Int16 controlId, sal_Int16 nControlActi
 uno::Any SAL_CALL KFFilePicker::getValue(sal_Int16 controlId, sal_Int16 nControlAction)
 {
     SolarMutexGuard g;
-    auto* pSalInst(GetQtInstance());
-    assert(pSalInst);
-    if (!pSalInst->IsMainThread())
+    QtInstance& rQtInstance = GetQtInstance();
+    if (!rQtInstance.IsMainThread())
     {
         uno::Any ret;
-        pSalInst->RunInMainThread([&ret, this, controlId, nControlAction]() {
+        rQtInstance.RunInMainThread([&ret, this, controlId, nControlAction]() {
             ret = getValue(controlId, nControlAction);
         });
         return ret;
@@ -127,7 +115,7 @@ OUString SAL_CALL KFFilePicker::getLabel(sal_Int16 controlId)
 {
     // We ignore this one and rely on QFileDialog to provide the functionality
     if (CHECKBOX_AUTOEXTENSION == controlId)
-        return "";
+        return u""_ustr;
 
     return QtFilePicker::getLabel(controlId);
 }
@@ -145,7 +133,7 @@ void KFFilePicker::addCustomControl(sal_Int16 controlId)
 // XServiceInfo
 OUString SAL_CALL KFFilePicker::getImplementationName()
 {
-    return "com.sun.star.ui.dialogs.KFFilePicker";
+    return u"com.sun.star.ui.dialogs.KFFilePicker"_ustr;
 }
 
 sal_Bool SAL_CALL KFFilePicker::supportsService(const OUString& ServiceName)
@@ -155,7 +143,10 @@ sal_Bool SAL_CALL KFFilePicker::supportsService(const OUString& ServiceName)
 
 uno::Sequence<OUString> SAL_CALL KFFilePicker::getSupportedServiceNames()
 {
-    return FilePicker_getSupportedServiceNames();
+    return { u"com.sun.star.ui.dialogs.FilePicker"_ustr,
+             u"com.sun.star.ui.dialogs.SystemFilePicker"_ustr,
+             u"com.sun.star.ui.dialogs.KFFilePicker"_ustr,
+             u"com.sun.star.ui.dialogs.KFFolderPicker"_ustr };
 }
 
 bool KFFilePicker::eventFilter(QObject* o, QEvent* e)

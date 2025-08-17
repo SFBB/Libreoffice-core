@@ -80,8 +80,8 @@ static const SvxItemPropertySet * lcl_GetHdFtPropertySet()
     return &aHdFtPropertySet_Impl;
 }
 
-SC_SIMPLE_SERVICE_INFO( ScHeaderFooterContentObj, "ScHeaderFooterContentObj", "com.sun.star.sheet.HeaderFooterContent" )
-SC_SIMPLE_SERVICE_INFO( ScHeaderFooterTextObj, "ScHeaderFooterTextObj", "stardiv.one.Text.Text" )
+SC_SIMPLE_SERVICE_INFO( ScHeaderFooterContentObj, u"ScHeaderFooterContentObj"_ustr, u"com.sun.star.sheet.HeaderFooterContent"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScHeaderFooterTextObj, u"ScHeaderFooterTextObj"_ustr, u"stardiv.one.Text.Text"_ustr )
 
 ScHeaderFooterContentObj::ScHeaderFooterContentObj()
 {
@@ -137,14 +137,13 @@ void ScHeaderFooterContentObj::Init( const EditTextObject* pLeft,
                                                     const EditTextObject* pCenter,
                                                     const EditTextObject* pRight )
 {
-    uno::Reference<css::sheet::XHeaderFooterContent> xThis(this);
-    mxLeftText = rtl::Reference<ScHeaderFooterTextObj>(new ScHeaderFooterTextObj(xThis, ScHeaderFooterPart::LEFT, pLeft));
-    mxCenterText = rtl::Reference<ScHeaderFooterTextObj>(new ScHeaderFooterTextObj(xThis, ScHeaderFooterPart::CENTER, pCenter));
-    mxRightText = rtl::Reference<ScHeaderFooterTextObj>(new ScHeaderFooterTextObj(xThis, ScHeaderFooterPart::RIGHT, pRight));
+    mxLeftText = rtl::Reference<ScHeaderFooterTextObj>(new ScHeaderFooterTextObj(this, ScHeaderFooterPart::LEFT, pLeft));
+    mxCenterText = rtl::Reference<ScHeaderFooterTextObj>(new ScHeaderFooterTextObj(this, ScHeaderFooterPart::CENTER, pCenter));
+    mxRightText = rtl::Reference<ScHeaderFooterTextObj>(new ScHeaderFooterTextObj(this, ScHeaderFooterPart::RIGHT, pRight));
 }
 
 ScHeaderFooterTextData::ScHeaderFooterTextData(
-    uno::WeakReference<sheet::XHeaderFooterContent> xContent, ScHeaderFooterPart nP, const EditTextObject* pTextObj) :
+    unotools::WeakReference<ScHeaderFooterContentObj> xContent, ScHeaderFooterPart nP, const EditTextObject* pTextObj) :
     mpTextObj(pTextObj ? pTextObj->Clone() : nullptr),
     xContentObj(std::move( xContent )),
     nPart( nP ),
@@ -165,24 +164,40 @@ SvxTextForwarder* ScHeaderFooterTextData::GetTextForwarder()
     if (!pEditEngine)
     {
         rtl::Reference<SfxItemPool> pEnginePool = EditEngine::CreatePool();
-        pEnginePool->FreezeIdRanges();
         std::unique_ptr<ScHeaderEditEngine> pHdrEngine(new ScHeaderEditEngine( pEnginePool.get() ));
 
         pHdrEngine->EnableUndo( false );
         pHdrEngine->SetRefMapMode(MapMode(MapUnit::MapTwip));
 
         //  default font must be set, independently of document
-        //  -> use global pool from module
+        ScDocShell* pDocSh(dynamic_cast<ScDocShell*>(SfxObjectShell::Current()));
+        std::unique_ptr<CellAttributeHelper> pTmp;
+        const ScPatternAttr* pCellAttributeDefault(nullptr);
 
-        SfxItemSet aDefaults( pHdrEngine->GetEmptyItemSet() );
-        const ScPatternAttr& rPattern = SC_MOD()->GetPool().GetDefaultItem(ATTR_PATTERN);
-        rPattern.FillEditItemSet( &aDefaults );
+        if (nullptr != pDocSh)
+        {
+            // we can use default CellAttribute from ScDocument
+            pCellAttributeDefault = &pDocSh->GetDocument().getCellAttributeHelper().getDefaultCellAttribute();
+        }
+        else
+        {
+            // no access to ScDocument, use temporary default CellAttributeHelper
+            // was: "use global pool from module" which is usually ScMessagePool
+            // and gets set in ScTabViewObj::SelectionChanged() by
+            // ScFormatShell::ScFormatShell which  calls
+            //    SetPool( &pTabViewShell->GetPool() );
+            pTmp.reset(new CellAttributeHelper(ScModule::get()->GetPool()));
+            pCellAttributeDefault = &pTmp->getDefaultCellAttribute();
+        }
+
+        SfxItemSet aDefaults(pHdrEngine->GetEmptyItemSet());
+        pCellAttributeDefault->FillEditItemSet(&aDefaults);
         //  FillEditItemSet adjusts font height to 1/100th mm,
         //  but for header/footer twips is needed, as in the PatternAttr:
-        aDefaults.Put( rPattern.GetItem(ATTR_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT) );
-        aDefaults.Put( rPattern.GetItem(ATTR_CJK_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CJK) ) ;
-        aDefaults.Put( rPattern.GetItem(ATTR_CTL_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CTL) );
-        pHdrEngine->SetDefaults( aDefaults );
+        aDefaults.Put( pCellAttributeDefault->GetItem(ATTR_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT) );
+        aDefaults.Put( pCellAttributeDefault->GetItem(ATTR_CJK_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CJK) ) ;
+        aDefaults.Put( pCellAttributeDefault->GetItem(ATTR_CTL_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CTL) );
+        pHdrEngine->SetDefaults(std::move(aDefaults));
 
         ScHeaderFieldData aData;
         ScHeaderFooterTextObj::FillDummyFieldData( aData );
@@ -217,7 +232,7 @@ void ScHeaderFooterTextData::UpdateData(EditEngine& rEditEngine)
 }
 
 ScHeaderFooterTextObj::ScHeaderFooterTextObj(
-    const uno::WeakReference<sheet::XHeaderFooterContent>& xContent, ScHeaderFooterPart nP, const EditTextObject* pTextObj) :
+    const unotools::WeakReference<ScHeaderFooterContentObj>& xContent, ScHeaderFooterPart nP, const EditTextObject* pTextObj) :
     aTextData(xContent, nP, pTextObj)
 {
     //  ScHeaderFooterTextData acquires rContent
@@ -268,7 +283,7 @@ uno::Reference<text::XTextCursor> SAL_CALL ScHeaderFooterTextObj::createTextCurs
 
 void ScHeaderFooterTextObj::FillDummyFieldData( ScHeaderFieldData& rData )
 {
-    OUString aDummy("???");
+    OUString aDummy(u"???"_ustr);
     rData.aTitle        = aDummy;
     rData.aLongDocName  = aDummy;
     rData.aShortDocName = aDummy;
@@ -283,23 +298,21 @@ OUString SAL_CALL ScHeaderFooterTextObj::getString()
     OUString aRet;
     const EditTextObject* pData;
 
-    uno::Reference<css::sheet::XHeaderFooterContent> xContentObj = aTextData.GetContentObj();
+    rtl::Reference<ScHeaderFooterContentObj> xContentObj = aTextData.GetContentObj();
     if (!xContentObj.is())
         throw css::uno::RuntimeException(
-            "ScHeaderFooterTextObj::getString: no ContentObj");
-
-    rtl::Reference<ScHeaderFooterContentObj> pObj = ScHeaderFooterContentObj::getImplementation(xContentObj);
+            u"ScHeaderFooterTextObj::getString: no ContentObj"_ustr);
 
     switch ( aTextData.GetPart() )
     {
         case ScHeaderFooterPart::LEFT:
-            pData = pObj->GetLeftEditObject();
+            pData = xContentObj->GetLeftEditObject();
         break;
         case ScHeaderFooterPart::CENTER:
-            pData = pObj->GetCenterEditObject();
+            pData = xContentObj->GetCenterEditObject();
         break;
         case ScHeaderFooterPart::RIGHT:
-            pData = pObj->GetRightEditObject();
+            pData = xContentObj->GetRightEditObject();
         break;
         default:
             SAL_WARN("sc.ui","unexpected enum value of ScHeaderFooterPart");
@@ -372,8 +385,7 @@ void SAL_CALL ScHeaderFooterTextObj::insertTextContent(
             {
                 //  don't replace -> append at end
                 aSelection.Adjust();
-                aSelection.nStartPara = aSelection.nEndPara;
-                aSelection.nStartPos  = aSelection.nEndPos;
+                aSelection.CollapseToEnd();
             }
 
             SvxFieldItem aItem(pHeaderField->CreateFieldItem());
@@ -384,8 +396,8 @@ void SAL_CALL ScHeaderFooterTextObj::insertTextContent(
 
             //  new selection: a digit
             aSelection.Adjust();
-            aSelection.nEndPara = aSelection.nStartPara;
-            aSelection.nEndPos = aSelection.nStartPos + 1;
+            aSelection.end.nPara = aSelection.start.nPara;
+            aSelection.end.nIndex = aSelection.start.nIndex + 1;
 
             uno::Reference<text::XTextRange> xTextRange;
             switch ( aTextData.GetPart() )
@@ -406,7 +418,7 @@ void SAL_CALL ScHeaderFooterTextObj::insertTextContent(
             //  for bAbsorb=FALSE, the new selection must be behind the inserted content
             //  (the xml filter relies on this)
             if (!bAbsorb)
-                aSelection.nStartPos = aSelection.nEndPos;
+                aSelection.start.nIndex = aSelection.end.nIndex;
 
             pTextRange->SetSelection( aSelection );
 
@@ -543,8 +555,7 @@ uno::Reference<text::XTextRange> SAL_CALL ScCellTextCursor::getStart()
     rtl::Reference<ScCellTextCursor> pNew = new ScCellTextCursor( *this );
 
     ESelection aNewSel(GetSelection());
-    aNewSel.nEndPara = aNewSel.nStartPara;
-    aNewSel.nEndPos  = aNewSel.nStartPos;
+    aNewSel.CollapseToStart();
     pNew->SetSelection( aNewSel );
 
     return static_cast<SvxUnoTextRangeBase*>(pNew.get());
@@ -559,8 +570,7 @@ uno::Reference<text::XTextRange> SAL_CALL ScCellTextCursor::getEnd()
     rtl::Reference<ScCellTextCursor> pNew = new ScCellTextCursor( *this );
 
     ESelection aNewSel(GetSelection());
-    aNewSel.nStartPara = aNewSel.nEndPara;
-    aNewSel.nStartPos  = aNewSel.nEndPos;
+    aNewSel.CollapseToEnd();
     pNew->SetSelection( aNewSel );
 
     return static_cast<SvxUnoTextRangeBase*>(pNew.get());
@@ -594,8 +604,7 @@ uno::Reference<text::XTextRange> SAL_CALL ScHeaderFooterTextCursor::getStart()
     rtl::Reference<ScHeaderFooterTextCursor> pNew = new ScHeaderFooterTextCursor( *this );
 
     ESelection aNewSel(GetSelection());
-    aNewSel.nEndPara = aNewSel.nStartPara;
-    aNewSel.nEndPos  = aNewSel.nStartPos;
+    aNewSel.CollapseToStart();
     pNew->SetSelection( aNewSel );
 
     return static_cast<SvxUnoTextRangeBase*>(pNew.get());
@@ -610,8 +619,7 @@ uno::Reference<text::XTextRange> SAL_CALL ScHeaderFooterTextCursor::getEnd()
     rtl::Reference<ScHeaderFooterTextCursor> pNew = new ScHeaderFooterTextCursor( *this );
 
     ESelection aNewSel(GetSelection());
-    aNewSel.nStartPara = aNewSel.nEndPara;
-    aNewSel.nStartPos  = aNewSel.nEndPos;
+    aNewSel.CollapseToEnd();
     pNew->SetSelection( aNewSel );
 
     return static_cast<SvxUnoTextRangeBase*>(pNew.get());
@@ -650,8 +658,7 @@ uno::Reference<text::XTextRange> SAL_CALL ScDrawTextCursor::getStart()
     rtl::Reference<ScDrawTextCursor> pNew = new ScDrawTextCursor( *this );
 
     ESelection aNewSel(GetSelection());
-    aNewSel.nEndPara = aNewSel.nStartPara;
-    aNewSel.nEndPos  = aNewSel.nStartPos;
+    aNewSel.CollapseToStart();
     pNew->SetSelection( aNewSel );
 
     return static_cast<SvxUnoTextRangeBase*>(pNew.get());
@@ -666,8 +673,7 @@ uno::Reference<text::XTextRange> SAL_CALL ScDrawTextCursor::getEnd()
     rtl::Reference<ScDrawTextCursor> pNew = new ScDrawTextCursor( *this );
 
     ESelection aNewSel(GetSelection());
-    aNewSel.nStartPara = aNewSel.nEndPara;
-    aNewSel.nStartPos  = aNewSel.nEndPos;
+    aNewSel.CollapseToEnd();
     pNew->SetSelection( aNewSel );
 
     return static_cast<SvxUnoTextRangeBase*>(pNew.get());
@@ -677,13 +683,11 @@ uno::Reference<text::XTextRange> SAL_CALL ScDrawTextCursor::getEnd()
 
 UNO3_GETIMPLEMENTATION2_IMPL(ScDrawTextCursor, SvxUnoTextCursor);
 
-ScSimpleEditSourceHelper::ScSimpleEditSourceHelper()
+ScSimpleEditSourceHelper::ScSimpleEditSourceHelper(SfxItemPool* pEditEnginePool)
 {
-    rtl::Reference<SfxItemPool> pEnginePool = EditEngine::CreatePool();
-    pEnginePool->SetDefaultMetric( MapUnit::Map100thMM );
-    pEnginePool->FreezeIdRanges();
-
-    pEditEngine.reset( new ScFieldEditEngine(nullptr, pEnginePool.get(), nullptr, true) );     // TRUE: become owner of pool
+//    rtl::Reference<SfxItemPool> pEnginePool = EditEngine::CreatePool();
+//    pEnginePool->SetDefaultMetric( MapUnit::Map100thMM );
+    pEditEngine.reset( new ScFieldEditEngine(nullptr, pEditEnginePool, false) );     // TRUE: become owner of pool
     pForwarder.reset( new SvxEditEngineForwarder( *pEditEngine ) );
     pOriginalSource.reset( new ScSimpleEditSource( pForwarder.get() ) );
 }
@@ -697,7 +701,8 @@ ScSimpleEditSourceHelper::~ScSimpleEditSourceHelper()
     pEditEngine.reset();
 }
 
-ScEditEngineTextObj::ScEditEngineTextObj() :
+ScEditEngineTextObj::ScEditEngineTextObj(SfxItemPool* pEditEnginePool) :
+    ScSimpleEditSourceHelper(pEditEnginePool),
     SvxUnoText( GetOriginalSource(), ScCellObj::GetEditPropertySet(), uno::Reference<text::XText>() )
 {
 }
@@ -768,8 +773,7 @@ SvxTextForwarder* ScCellTextData::GetTextForwarder()
         else
         {
             rtl::Reference<SfxItemPool> pEnginePool = EditEngine::CreatePool();
-            pEnginePool->FreezeIdRanges();
-            pEditEngine.reset( new ScFieldEditEngine(nullptr, pEnginePool.get(), nullptr, true) );
+            pEditEngine.reset( new ScFieldEditEngine(nullptr, pEnginePool.get(), true) );
         }
         //  currently, GetPortions doesn't work if UpdateMode is sal_False,
         //  this will be fixed (in EditEngine) by src600
@@ -789,28 +793,36 @@ SvxTextForwarder* ScCellTextData::GetTextForwarder()
     {
         ScDocument& rDoc = pDocShell->GetDocument();
 
-        SfxItemSet aDefaults( pEditEngine->GetEmptyItemSet() );
+        SfxItemSet aDefaults(pEditEngine->GetEmptyItemSet());
         if( const ScPatternAttr* pPattern =
                 rDoc.GetPattern( aCellPos.Col(), aCellPos.Row(), aCellPos.Tab() ) )
         {
-            pPattern->FillEditItemSet( &aDefaults );
-            pPattern->FillEditParaItems( &aDefaults );  // including alignment etc. (for reading)
+            pPattern->FillEditItemSet(&aDefaults);
+            pPattern->FillEditParaItems(&aDefaults); // including alignment etc. (for reading)
         }
 
         ScRefCellValue aCell(rDoc, aCellPos);
         if (aCell.getType() == CELLTYPE_EDIT)
         {
             const EditTextObject* pObj = aCell.getEditText();
-            pEditEngine->SetTextNewDefaults(*pObj, aDefaults);
+            pEditEngine->SetTextNewDefaults(*pObj, std::move(aDefaults));
         }
         else
         {
-            sal_uInt32 nFormat = rDoc.GetNumberFormat(aCellPos);
-            OUString aText = ScCellFormat::GetInputString(aCell, nFormat, *rDoc.GetFormatTable(), rDoc);
-            if (!aText.isEmpty())
-                pEditEngine->SetTextNewDefaults(aText, aDefaults);
+            sal_uInt32 nFormat = rDoc.GetNumberFormat(ScRange(aCellPos));
+            OUString aText = ScCellFormat::GetInputString(aCell, nFormat, nullptr, rDoc);
+            // tdf#157568 check if edit engine already has text
+            // If the input string is empty but the edit engine's existing
+            // text is not empty, force update of the edit engine's text.
+            // Otherwise, the edit engine will still to be set to its
+            // existing text.
+            // Note: CppunitTest_sc_macros_test testTdf116127 will fail if
+            // pEditEngine->SetTextNewDefaults() is passed an empty string
+            // and pEditEngine->GetText() is empty string.
+            if (!aText.isEmpty() || pEditEngine->HasText())
+                pEditEngine->SetTextNewDefaults(aText, std::move(aDefaults));
             else
-                pEditEngine->SetDefaults(aDefaults);
+                pEditEngine->SetDefaults(std::move(aDefaults));
         }
     }
 

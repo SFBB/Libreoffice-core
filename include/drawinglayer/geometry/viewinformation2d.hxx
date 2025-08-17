@@ -23,6 +23,7 @@
 
 #include <sal/config.h>
 #include <o3tl/cow_wrapper.hxx>
+#include <tools/color.hxx>
 
 // predefines
 
@@ -52,6 +53,8 @@ namespace com::sun::star::uno
 template <class interface_type> class Reference;
 template <typename> class Sequence;
 }
+
+enum class DrawModeFlags : sal_uInt32;
 
 namespace drawinglayer::geometry
 {
@@ -159,9 +162,22 @@ public:
     bool getPixelSnapHairline() const;
     void setPixelSnapHairline(bool bNew);
 
+    Color getAutoColor() const;
+    void setAutoColor(Color aNew);
+
+    DrawModeFlags getDrawModeFlags() const;
+    void setDrawModeFlags(DrawModeFlags aNew);
+
+    /// claim that in the view processed a TextEdit is active
+    bool getTextEditActive() const;
+    void setTextEditActive(bool bNew);
+
+    /// claim that the view processed is an EditView visualization
+    bool getEditViewActive() const;
+    void setEditViewActive(bool bNew);
+
     static void setGlobalAntiAliasing(bool bAntiAliasing, bool bTemporary);
     static bool getGlobalAntiAliasing();
-    static void forwardPixelSnapHairline(bool bPixelSnapHairline);
 };
 
 DRAWINGLAYERCORE_DLLPUBLIC ViewInformation2D

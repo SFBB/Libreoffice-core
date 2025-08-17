@@ -987,6 +987,19 @@
       </object>
     </child>
     <child>
+      <object class="GtkMenuItem" id="MenuFile-Reload">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="action_name">.uno:Reload</property>
+      </object>
+    </child>
+    <child>
+      <object class="GtkSeparatorMenuItem" id="MenuFile-separator2">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+      </object>
+    </child>
+    <child>
       <object class="GtkMenuItem" id="MenuFile-ExportTo">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
@@ -1008,7 +1021,7 @@
       </object>
     </child>
     <child>
-      <object class="GtkSeparatorMenuItem" id="MenuFile-separator2">
+      <object class="GtkSeparatorMenuItem" id="MenuFile-separator3">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
       </object>
@@ -1035,7 +1048,7 @@
       </object>
     </child>
     <child>
-      <object class="GtkSeparatorMenuItem" id="MenuFile-separator3">
+      <object class="GtkSeparatorMenuItem" id="MenuFile-separator4">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
       </object>
@@ -1069,7 +1082,7 @@
       </object>
     </child>
     <child>
-      <object class="GtkSeparatorMenuItem" id="MenuFile-separator4">
+      <object class="GtkSeparatorMenuItem" id="MenuFile-separator5">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
       </object>
@@ -1657,21 +1670,7 @@
       <object class="GtkMenuItem" id="MenuGrid-ViewBounds">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="action_name">.uno:ViewBounds</property>
-      </object>
-    </child>
-    <child>
-      <object class="GtkMenuItem" id="MenuGrid-TableBoundaries">
-        <property name="visible">True</property>
-        <property name="can_focus">False</property>
-        <property name="action_name">.uno:TableBoundaries</property>
-      </object>
-    </child>
-    <child>
-      <object class="GtkMenuItem" id="MenuGrid-SectionBoundaries">
-        <property name="visible">True</property>
-        <property name="can_focus">False</property>
-        <property name="action_name">.uno:SectionBoundaries</property>
+        <property name="action_name">.uno:ShowBoundaries</property>
       </object>
     </child>
     <child>
@@ -2625,6 +2624,50 @@
       </object>
     </child>
     <child>
+      <object class="GtkMenuItem" id="MenuReview-AutoCorrect">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="label">AutoCorrect</property>
+        <child>
+          <object class="GtkMenu" id="MenuReview-Popup">
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkCheckMenuItem" id="MenuReview-OnlineAutoFormat">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label">While Typing</property>
+                <property name="action_name">.uno:OnlineAutoFormat</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuItem" id="MenuReview-AutoFormatApply">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label">Apply</property>
+                <property name="action_name">.uno:AutoFormatApply</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuItem" id="MenuReview-AutoFormatRedlineApply">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label">Apply and Edit Changes</property>
+                <property name="action_name">.uno:AutoFormatRedlineApply</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkMenuItem" id="MenuReview-AutoCorrectDlg">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label">AutoCorrect Options...</property>
+                <property name="action_name">.uno:AutoCorrectDlg</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
       <object class="GtkMenuItem" id="MenuReview-ThesaurusDialog">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
@@ -2857,10 +2900,10 @@
       </object>
     </child>
     <child>
-      <object class="GtkMenuItem" id="MenuSettings-ToolbarModeUI">
+      <object class="GtkMenuItem" id="MenuSettings-UIPicker">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="action_name">.uno:ToolbarModeUI</property>
+        <property name="action_name">.uno:UIPicker</property>
       </object>
     </child>
     <child>
@@ -3393,21 +3436,7 @@
       <object class="GtkMenuItem" id="MenuView-ViewBounds">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="action_name">.uno:ViewBounds</property>
-      </object>
-    </child>
-    <child>
-      <object class="GtkMenuItem" id="MenuView-TableBoundaries">
-        <property name="visible">True</property>
-        <property name="can_focus">False</property>
-        <property name="action_name">.uno:TableBoundaries</property>
-      </object>
-    </child>
-    <child>
-      <object class="GtkMenuItem" id="MenuView-SectionBoundaries">
-        <property name="visible">True</property>
-        <property name="can_focus">False</property>
-        <property name="action_name">.uno:SectionBoundaries</property>
+        <property name="action_name">.uno:ShowBoundaries</property>
       </object>
     </child>
     <child>

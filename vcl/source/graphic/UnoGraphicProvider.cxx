@@ -18,12 +18,14 @@
  */
 
 #include <o3tl/string_view.hxx>
+#include <o3tl/temporary.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/image.hxx>
 #include <vcl/metaact.hxx>
 #include <imagerepository.hxx>
 #include <tools/fract.hxx>
 #include <unotools/ucbstreamhelper.hxx>
+#include <vcl/graphic/BitmapHelper.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <vcl/stdtext.hxx>
 #include <vcl/wmfexternal.hxx>
@@ -51,6 +53,59 @@
 #include <vcl/TypeSerializer.hxx>
 
 using namespace com::sun::star;
+
+namespace
+{
+SvMemoryStream AsStream(const css::uno::Sequence<sal_Int8>& s)
+{
+    return SvMemoryStream(const_cast<sal_Int8*>(s.getConstArray()), s.getLength(),
+                          StreamMode::READ);
+}
+
+Bitmap BitmapFromDIB(const css::uno::Sequence<sal_Int8>& dib)
+{
+    Bitmap bmp;
+    if (dib.hasElements())
+        ReadDIB(bmp, o3tl::temporary(AsStream(dib)), true);
+    return bmp;
+}
+}
+
+namespace vcl
+{
+BitmapEx GetBitmap(const css::uno::Reference<css::awt::XBitmap>& xBitmap)
+{
+    if (!xBitmap)
+        return {};
+
+    if (auto xGraphic = xBitmap.query<css::graphic::XGraphic>())
+        return Graphic(xGraphic).GetBitmapEx();
+
+    // This is an unknown implementation of a XBitmap interface
+    if (Bitmap aMask = BitmapFromDIB(xBitmap->getMaskDIB()); !aMask.IsEmpty())
+    {
+        aMask.Invert(); // Convert from transparency to alpha
+        return BitmapEx(BitmapFromDIB(xBitmap->getDIB()), aMask);
+    }
+
+    BitmapEx aBmp;
+    ReadDIBBitmapEx(aBmp, o3tl::temporary(AsStream(xBitmap->getDIB())), true);
+    return aBmp;
+}
+
+css::uno::Reference<css::graphic::XGraphic> GetGraphic(const css::uno::Any& any)
+{
+    if (auto xRet = any.query<css::graphic::XGraphic>())
+        return xRet;
+
+    if (BitmapEx aBmpEx = GetBitmap(any.query<css::awt::XBitmap>()); !aBmpEx.IsEmpty())
+    {
+        return Graphic(aBmpEx).GetXGraphic();
+    }
+
+    return {};
+}
+}
 
 namespace {
 
@@ -84,7 +139,6 @@ private:
 
     static css::uno::Reference< css::graphic::XGraphic > implLoadMemory( std::u16string_view rResourceURL );
     static css::uno::Reference< css::graphic::XGraphic > implLoadRepositoryImage( std::u16string_view rResourceURL );
-    static css::uno::Reference< css::graphic::XGraphic > implLoadBitmap( const css::uno::Reference< css::awt::XBitmap >& rBitmap );
     static css::uno::Reference< css::graphic::XGraphic > implLoadStandardImage( std::u16string_view rResourceURL );
 };
 
@@ -94,7 +148,7 @@ GraphicProvider::GraphicProvider()
 
 OUString SAL_CALL GraphicProvider::getImplementationName()
 {
-    return "com.sun.star.comp.graphic.GraphicProvider";
+    return u"com.sun.star.comp.graphic.GraphicProvider"_ustr;
 }
 
 sal_Bool SAL_CALL GraphicProvider::supportsService( const OUString& ServiceName )
@@ -104,7 +158,7 @@ sal_Bool SAL_CALL GraphicProvider::supportsService( const OUString& ServiceName 
 
 uno::Sequence< OUString > SAL_CALL GraphicProvider::getSupportedServiceNames()
 {
-    return { "com.sun.star.graphic.GraphicProvider" };
+    return { u"com.sun.star.graphic.GraphicProvider"_ustr };
 }
 
 uno::Sequence< uno::Type > SAL_CALL GraphicProvider::getTypes()
@@ -124,23 +178,19 @@ uno::Sequence< sal_Int8 > SAL_CALL GraphicProvider::getImplementationId()
 
 uno::Reference< ::graphic::XGraphic > GraphicProvider::implLoadMemory( std::u16string_view rResourceURL )
 {
-    uno::Reference< ::graphic::XGraphic >   xRet;
     sal_Int32                               nIndex = 0;
 
-    if( o3tl::getToken(rResourceURL, 0, '/', nIndex ) == u"private:memorygraphic" )
-    {
-        sal_Int64 nGraphicAddress = o3tl::toInt64(o3tl::getToken(rResourceURL, 0, '/', nIndex ));
+    if( o3tl::getToken(rResourceURL, 0, '/', nIndex ) != u"private:memorygraphic" )
+        return nullptr;
 
-        if( nGraphicAddress )
-        {
-            rtl::Reference<::unographic::Graphic> pUnoGraphic = new ::unographic::Graphic;
+    sal_Int64 nGraphicAddress = o3tl::toInt64(o3tl::getToken(rResourceURL, 0, '/', nIndex ));
+    if( nGraphicAddress == 0 )
+        return nullptr;
 
-            pUnoGraphic->init( *reinterpret_cast< ::Graphic* >( nGraphicAddress ) );
-            xRet = pUnoGraphic;
-        }
-    }
+    rtl::Reference<::unographic::Graphic> pUnoGraphic = new ::unographic::Graphic;
 
-    return xRet;
+    pUnoGraphic->init( *reinterpret_cast< ::Graphic* >( nGraphicAddress ) );
+    return pUnoGraphic;
 }
 
 uno::Reference< ::graphic::XGraphic > GraphicProvider::implLoadRepositoryImage( std::u16string_view rResourceURL )
@@ -150,7 +200,7 @@ uno::Reference< ::graphic::XGraphic > GraphicProvider::implLoadRepositoryImage( 
     std::u16string_view sPathName;
     if( o3tl::starts_with(rResourceURL, u"private:graphicrepository/", &sPathName) )
     {
-        BitmapEx aBitmap;
+        Bitmap aBitmap;
         if ( vcl::ImageRepository::loadImage( OUString(sPathName), aBitmap ) )
         {
             Graphic aGraphic(aBitmap);
@@ -170,70 +220,33 @@ uno::Reference< ::graphic::XGraphic > GraphicProvider::implLoadStandardImage( st
     {
         if ( sImageName == u"info" )
         {
-            xRet = Graphic(GetStandardInfoBoxImage().GetBitmapEx()).GetXGraphic();
+            xRet = Graphic(GetStandardInfoBoxImage().GetBitmap()).GetXGraphic();
         }
         else if ( sImageName == u"warning" )
         {
-            xRet = Graphic(GetStandardWarningBoxImage().GetBitmapEx()).GetXGraphic();
+            xRet = Graphic(GetStandardWarningBoxImage().GetBitmap()).GetXGraphic();
         }
         else if ( sImageName == u"error" )
         {
-            xRet = Graphic(GetStandardErrorBoxImage().GetBitmapEx()).GetXGraphic();
+            xRet = Graphic(GetStandardErrorBoxImage().GetBitmap()).GetXGraphic();
         }
         else if ( sImageName == u"query" )
         {
-            xRet = Graphic(GetStandardQueryBoxImage().GetBitmapEx()).GetXGraphic();
+            xRet = Graphic(GetStandardQueryBoxImage().GetBitmap()).GetXGraphic();
         }
     }
     return xRet;
 }
 
 
-uno::Reference< ::graphic::XGraphic > GraphicProvider::implLoadBitmap( const uno::Reference< awt::XBitmap >& xBtm )
-{
-    uno::Reference< ::graphic::XGraphic > xRet;
-    uno::Sequence< sal_Int8 > aBmpSeq( xBtm->getDIB() );
-    uno::Sequence< sal_Int8 > aMaskSeq( xBtm->getMaskDIB() );
-    SvMemoryStream aBmpStream( aBmpSeq.getArray(), aBmpSeq.getLength(), StreamMode::READ );
-    Bitmap aBmp;
-    BitmapEx aBmpEx;
-
-    ReadDIB(aBmp, aBmpStream, true);
-
-    if( aMaskSeq.hasElements() )
-    {
-        SvMemoryStream aMaskStream( aMaskSeq.getArray(), aMaskSeq.getLength(), StreamMode::READ );
-        Bitmap aMask;
-
-        ReadDIB(aMask, aMaskStream, true);
-        aBmpEx = BitmapEx( aBmp, aMask );
-    }
-    else
-        aBmpEx = BitmapEx( aBmp );
-
-    if( !aBmpEx.IsEmpty() )
-    {
-        rtl::Reference<::unographic::Graphic> pUnoGraphic = new ::unographic::Graphic;
-
-        pUnoGraphic->init( aBmpEx );
-        xRet = pUnoGraphic;
-    }
-    return xRet;
-}
-
 uno::Reference< beans::XPropertySet > SAL_CALL GraphicProvider::queryGraphicDescriptor( const uno::Sequence< beans::PropertyValue >& rMediaProperties )
 {
-    uno::Reference< beans::XPropertySet > xRet;
-
     OUString aURL;
     uno::Reference< io::XInputStream > xIStm;
-    uno::Reference< awt::XBitmap >xBtm;
+    uno::Any aBtm;
 
     for( const auto& rMediaProperty : rMediaProperties )
     {
-        if (xRet.is())
-            break;
-
         const OUString   aName( rMediaProperty.Name );
         const uno::Any          aValue( rMediaProperty.Value );
 
@@ -247,12 +260,13 @@ uno::Reference< beans::XPropertySet > SAL_CALL GraphicProvider::queryGraphicDesc
         }
         else if (aName == "Bitmap")
         {
-            aValue >>= xBtm;
+            aBtm = aValue;
         }
     }
 
     SolarMutexGuard g;
 
+    uno::Reference<beans::XPropertySet> xRet;
     if( xIStm.is() )
     {
         rtl::Reference<unographic::GraphicDescriptor> pDescriptor = new unographic::GraphicDescriptor;
@@ -280,11 +294,9 @@ uno::Reference< beans::XPropertySet > SAL_CALL GraphicProvider::queryGraphicDesc
             xRet = pDescriptor;
         }
     }
-    else if( xBtm.is() )
+    else if (aBtm.hasValue())
     {
-        uno::Reference< ::graphic::XGraphic > xGraphic( implLoadBitmap( xBtm ) );
-        if( xGraphic.is() )
-            xRet.set( xGraphic, uno::UNO_QUERY );
+        xRet.set(vcl::GetGraphic(aBtm), uno::UNO_QUERY);
     }
 
     return xRet;
@@ -293,11 +305,10 @@ uno::Reference< beans::XPropertySet > SAL_CALL GraphicProvider::queryGraphicDesc
 
 uno::Reference< ::graphic::XGraphic > SAL_CALL GraphicProvider::queryGraphic( const uno::Sequence< ::beans::PropertyValue >& rMediaProperties )
 {
-    uno::Reference< ::graphic::XGraphic >   xRet;
     OUString                                aPath;
 
     uno::Reference< io::XInputStream > xIStm;
-    uno::Reference< awt::XBitmap >xBtm;
+    uno::Any aBtm;
 
     uno::Sequence< ::beans::PropertyValue > aFilterData;
 
@@ -306,17 +317,12 @@ uno::Reference< ::graphic::XGraphic > SAL_CALL GraphicProvider::queryGraphic( co
 
     for (const auto& rMediaProperty : rMediaProperties)
     {
-        if (xRet.is())
-            break;
-
         const OUString   aName( rMediaProperty.Name );
         const uno::Any          aValue( rMediaProperty.Value );
 
         if (aName == "URL")
         {
-            OUString aURL;
-            aValue >>= aURL;
-            aPath = aURL;
+            aValue >>= aPath;
         }
         else if (aName == "InputStream")
         {
@@ -324,7 +330,7 @@ uno::Reference< ::graphic::XGraphic > SAL_CALL GraphicProvider::queryGraphic( co
         }
         else if (aName == "Bitmap")
         {
-            aValue >>= xBtm;
+            aBtm = aValue;
         }
         else if (aName == "FilterData")
         {
@@ -340,24 +346,13 @@ uno::Reference< ::graphic::XGraphic > SAL_CALL GraphicProvider::queryGraphic( co
         }
     }
 
-    // Check for the goal width and height if they are defined
-    sal_uInt16 nExtWidth = 0;
-    sal_uInt16 nExtHeight = 0;
     sal_uInt16 nExtMapMode = 0;
-    for( const auto& rProp : std::as_const(aFilterData) )
+    for (const auto& rProp : aFilterData)
     {
         const OUString   aName( rProp.Name );
         const uno::Any          aValue( rProp.Value );
 
-        if (aName == "ExternalWidth")
-        {
-            aValue >>= nExtWidth;
-        }
-        else if (aName == "ExternalHeight")
-        {
-            aValue >>= nExtHeight;
-        }
-        else if (aName == "ExternalMapMode")
+        if (aName == "ExternalMapMode")
         {
             aValue >>= nExtMapMode;
         }
@@ -365,6 +360,7 @@ uno::Reference< ::graphic::XGraphic > SAL_CALL GraphicProvider::queryGraphic( co
 
     SolarMutexGuard g;
 
+    uno::Reference<::graphic::XGraphic> xRet;
     std::unique_ptr<SvStream> pIStm;
 
     if( xIStm.is() )
@@ -384,52 +380,41 @@ uno::Reference< ::graphic::XGraphic > SAL_CALL GraphicProvider::queryGraphic( co
         if( !xRet.is() )
             pIStm = ::utl::UcbStreamHelper::CreateStream( aPath, StreamMode::READ );
     }
-    else if( xBtm.is() )
+    else if (aBtm.hasValue())
     {
-        xRet = implLoadBitmap( xBtm );
+        xRet = vcl::GetGraphic(aBtm);
     }
 
     if( pIStm )
     {
         ::GraphicFilter& rFilter = ::GraphicFilter::GetGraphicFilter();
 
+        if ( nExtMapMode > 0 )
         {
-            Graphic aVCLGraphic;
+            bLazyRead = false;
+        }
 
-            // Define APM Header if goal height and width are defined
-            WmfExternal aExtHeader;
-            aExtHeader.xExt = nExtWidth;
-            aExtHeader.yExt = nExtHeight;
-            aExtHeader.mapMode = nExtMapMode;
-            if ( nExtMapMode > 0 )
-            {
-                bLazyRead = false;
-            }
+        Graphic aVCLGraphic;
+        ErrCode error = ERRCODE_NONE;
+        if (bLazyRead)
+        {
+            aVCLGraphic = rFilter.ImportUnloadedGraphic(*pIStm);
+        }
+        if (aVCLGraphic.IsNone())
+            error = rFilter.ImportGraphic(aVCLGraphic, aPath, *pIStm, GRFILTER_FORMAT_DONTKNOW, nullptr, GraphicFilterImportFlags::NONE);
 
-            ErrCode error = ERRCODE_NONE;
-            if (bLazyRead)
-            {
-                Graphic aGraphic = rFilter.ImportUnloadedGraphic(*pIStm);
-                if (!aGraphic.IsNone())
-                    aVCLGraphic = aGraphic;
-            }
-            if (aVCLGraphic.IsNone())
-                error = rFilter.ImportGraphic(aVCLGraphic, aPath, *pIStm, GRFILTER_FORMAT_DONTKNOW, nullptr, GraphicFilterImportFlags::NONE);
+        if (error == ERRCODE_NONE && !aVCLGraphic.IsNone())
+        {
+            if (!aPath.isEmpty() && bLoadAsLink)
+                aVCLGraphic.setOriginURL(aPath);
 
-            if( (error == ERRCODE_NONE ) &&
-                ( aVCLGraphic.GetType() != GraphicType::NONE ) )
-            {
-                if (!aPath.isEmpty() && bLoadAsLink)
-                    aVCLGraphic.setOriginURL(aPath);
+            rtl::Reference<::unographic::Graphic> pUnoGraphic = new ::unographic::Graphic;
 
-                rtl::Reference<::unographic::Graphic> pUnoGraphic = new ::unographic::Graphic;
-
-                pUnoGraphic->init( aVCLGraphic );
-                xRet = pUnoGraphic;
-            }
-            else{
-                SAL_WARN("svtools", "Could not create graphic for:" << aPath << " error: " << error);
-            }
+            pUnoGraphic->init( aVCLGraphic );
+            xRet = pUnoGraphic;
+        }
+        else{
+            SAL_WARN("svtools", "Could not create graphic for:" << aPath << " error: " << error);
         }
     }
 

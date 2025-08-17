@@ -25,15 +25,10 @@
 namespace dbaccess
 {
     using namespace dbtools;
-    using namespace comphelper;
     using namespace connectivity;
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::sdb;
-    using namespace ::com::sun::star::sdbcx;
-    using namespace ::com::sun::star::container;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::script;
     using namespace ::cppu;
     using namespace ::osl;
@@ -43,7 +38,7 @@ namespace dbaccess
     {
         ::rtl::Reference< ::connectivity::OSQLColumns>  m_aColumns;
     protected:
-        virtual connectivity::sdbcx::ObjectType createObject(const OUString& _rName) override;
+        virtual css::uno::Reference< css::beans::XPropertySet > createObject(const OUString& _rName) override;
         virtual void impl_refresh() override {}
         virtual Reference< XPropertySet > createDescriptor() override
         {
@@ -76,7 +71,7 @@ namespace dbaccess
     {
         OSQLTables  m_aTables;
     protected:
-        virtual connectivity::sdbcx::ObjectType createObject(const OUString& _rName) override;
+        virtual css::uno::Reference< css::beans::XPropertySet > createObject(const OUString& _rName) override;
         virtual void impl_refresh() override {}
         virtual Reference< XPropertySet > createDescriptor() override
         {

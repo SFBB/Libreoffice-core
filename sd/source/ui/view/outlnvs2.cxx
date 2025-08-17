@@ -56,9 +56,6 @@
 #include <slideshow.hxx>
 #include <memory>
 
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
-
 namespace sd {
 
 /************************************************************************/
@@ -98,7 +95,7 @@ void OutlineViewShell::FuTemporary(SfxRequest &rReq)
             else
             {
                 // open the zoom dialog here
-                SetCurrentFunction( FuScale::Create( this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq ) );
+                SetCurrentFunction( FuScale::Create( *this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq ) );
             }
             Cancel();
         }
@@ -204,8 +201,8 @@ void OutlineViewShell::FuTemporary(SfxRequest &rReq)
 
         case SID_OUTLINE_FORMAT:
         {
-            ::Outliner* pOutl = pOutlinerView->GetOutliner();
-            pOutl->SetFlatMode( !pOutl->IsFlatMode() );
+            ::Outliner& rOutl = pOutlinerView->GetOutliner();
+            rOutl.SetFlatMode( !rOutl.IsFlatMode() );
             Invalidate( SID_COLORVIEW );
             Cancel();
             rReq.Done();
@@ -237,18 +234,18 @@ void OutlineViewShell::FuTemporary(SfxRequest &rReq)
 
         case SID_COLORVIEW:
         {
-            ::Outliner* pOutl = pOutlinerView->GetOutliner();
-            EEControlBits nCntrl = pOutl->GetControlWord();
+            ::Outliner& rOutl = pOutlinerView->GetOutliner();
+            EEControlBits nCntrl = rOutl.GetControlWord();
 
             if ( !(nCntrl & EEControlBits::NOCOLORS) )
             {
                 // color view is enabled: disable
-                pOutl->SetControlWord(nCntrl | EEControlBits::NOCOLORS);
+                rOutl.SetControlWord(nCntrl | EEControlBits::NOCOLORS);
             }
             else
             {
                 // color view is disabled: enable
-                pOutl->SetControlWord(nCntrl & ~EEControlBits::NOCOLORS);
+                rOutl.SetControlWord(nCntrl & ~EEControlBits::NOCOLORS);
             }
 
             InvalidateWindows();
@@ -263,7 +260,7 @@ void OutlineViewShell::FuTemporary(SfxRequest &rReq)
         {
             if( rReq.GetArgs() )
             {
-                SetCurrentFunction( FuTemplate::Create( this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq ) );
+                SetCurrentFunction( FuTemplate::Create( *this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq ) );
                 Cancel();
             }
 
@@ -273,7 +270,7 @@ void OutlineViewShell::FuTemporary(SfxRequest &rReq)
 
         case SID_PRESENTATION_DLG:
         {
-            SetCurrentFunction( FuSlideShowDlg::Create( this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuSlideShowDlg::Create( *this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
@@ -290,7 +287,7 @@ void OutlineViewShell::FuTemporary(SfxRequest &rReq)
 
         case SID_CUSTOMSHOW_DLG:
         {
-            SetCurrentFunction( FuCustomShowDlg::Create( this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuCustomShowDlg::Create( *this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
@@ -301,7 +298,7 @@ void OutlineViewShell::FuTemporary(SfxRequest &rReq)
             vcl::Window* pWin = GetActiveWindow();
             ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSdPhotoAlbumDialog(
                 pWin ? pWin->GetFrameWeld() : nullptr,
-                GetDoc()));
+                *GetDoc()));
 
             pDlg->Execute();
 
@@ -362,10 +359,10 @@ void OutlineViewShell::FuTemporaryModify(SfxRequest &rReq)
                                                   SvxURLFormat::Repr), EE_FEATURE_FIELD);
                 ESelection aSel( pOutlinerView->GetSelection() );
                 pOutlinerView->InsertField(aURLItem);
-                if ( aSel.nStartPos <= aSel.nEndPos )
-                    aSel.nEndPos = aSel.nStartPos + 1;
+                if (aSel.start.nIndex <= aSel.end.nIndex)
+                    aSel.end.nIndex = aSel.start.nIndex + 1;
                 else
-                    aSel.nStartPos = aSel.nEndPos + 1;
+                    aSel.start.nIndex = aSel.end.nIndex + 1;
                 pOutlinerView->SetSelection( aSel );
             }
 
@@ -384,7 +381,7 @@ void OutlineViewShell::FuTemporaryModify(SfxRequest &rReq)
         case SID_INSERT_ZWSP:
         case SID_CHARMAP:
         {
-            SetCurrentFunction( FuBullet::Create( this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuBullet::Create( *this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
@@ -393,14 +390,14 @@ void OutlineViewShell::FuTemporaryModify(SfxRequest &rReq)
         case FN_SVX_SET_BULLET:
         case FN_SVX_SET_NUMBER:
         {
-            SetCurrentFunction( FuBulletAndPosition::Create( this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuBulletAndPosition::Create( *this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
 
         case SID_THESAURUS:
         {
-            SetCurrentFunction( FuThesaurus::Create( this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuThesaurus::Create( *this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq ) );
             Cancel();
             rReq.Ignore ();
         }
@@ -409,21 +406,21 @@ void OutlineViewShell::FuTemporaryModify(SfxRequest &rReq)
         case SID_CHAR_DLG_EFFECT:
         case SID_CHAR_DLG:
         {
-            SetCurrentFunction( FuChar::Create( this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuChar::Create( *this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq ) );
             Cancel();
         }
         break;
 
         case SID_INSERTFILE:
         {
-            SetCurrentFunction( FuInsertFile::Create(this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq) );
+            SetCurrentFunction( FuInsertFile::Create(*this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq) );
             Cancel();
         }
         break;
 
         case SID_PRESENTATIONOBJECT:
         {
-            SetCurrentFunction( FuPresentationObjects::Create(this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq) );
+            SetCurrentFunction( FuPresentationObjects::Create(*this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq) );
             Cancel();
         }
         break;
@@ -439,7 +436,7 @@ void OutlineViewShell::FuTemporaryModify(SfxRequest &rReq)
         case SID_SUMMARY_PAGE:
         {
             pOlView->SetSelectedPages();
-            SetCurrentFunction( FuSummaryPage::Create( this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuSummaryPage::Create( *this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq ) );
             pOlView->GetOutliner().Clear();
             pOlView->FillOutliner();
             pOlView->GetActualPage();
@@ -450,7 +447,7 @@ void OutlineViewShell::FuTemporaryModify(SfxRequest &rReq)
         case SID_EXPAND_PAGE:
         {
             pOlView->SetSelectedPages();
-            SetCurrentFunction( FuExpandPage::Create( this, GetActiveWindow(), pOlView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuExpandPage::Create( *this, GetActiveWindow(), pOlView.get(), *GetDoc(), rReq ) );
             pOlView->GetOutliner().Clear();
             pOlView->FillOutliner();
             pOlView->GetActualPage();
@@ -537,8 +534,8 @@ void OutlineViewShell::FuTemporaryModify(SfxRequest &rReq)
             {
                 // select field, so it gets deleted on Insert
                 ESelection aSel = pOutlinerView->GetSelection();
-                if( aSel.nStartPos == aSel.nEndPos )
-                    aSel.nEndPos++;
+                if (aSel.start.nIndex == aSel.end.nIndex)
+                    aSel.end.nIndex++;
                 pOutlinerView->SetSelection( aSel );
             }
 
@@ -575,10 +572,10 @@ void OutlineViewShell::FuTemporaryModify(SfxRequest &rReq)
                         // select field, so it gets deleted on Insert
                         ESelection aSel = pOutlinerView->GetSelection();
                         bool bSel = true;
-                        if( aSel.nStartPos == aSel.nEndPos )
+                        if (aSel.start.nIndex == aSel.end.nIndex)
                         {
                             bSel = false;
-                            aSel.nEndPos++;
+                            aSel.end.nIndex++;
                         }
                         pOutlinerView->SetSelection( aSel );
 
@@ -586,7 +583,7 @@ void OutlineViewShell::FuTemporaryModify(SfxRequest &rReq)
 
                         // reset selection to original state
                         if( !bSel )
-                            aSel.nEndPos--;
+                            aSel.end.nIndex--;
                         pOutlinerView->SetSelection( aSel );
 
                         pField.reset();
@@ -597,9 +594,8 @@ void OutlineViewShell::FuTemporaryModify(SfxRequest &rReq)
                     {
                         pOutlinerView->SetAttribs( aSet );
 
-                        ::Outliner* pOutliner = pOutlinerView->GetOutliner();
-                        if( pOutliner )
-                            pOutliner->UpdateFields();
+                        ::Outliner& rOutliner = pOutlinerView->GetOutliner();
+                        rOutliner.UpdateFields();
                     }
                 }
             }

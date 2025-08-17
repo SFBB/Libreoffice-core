@@ -54,8 +54,7 @@ private:
 public:
     // rTopLevelParentFunction will be used to get parent for any color picker dialog created
     ColorListBox(std::unique_ptr<weld::MenuButton> pControl,
-                 TopLevelParentFunction aTopLevelParentFunction,
-                 const ColorListBox* pCache = nullptr);
+                 TopLevelParentFunction aTopLevelParentFunction);
     ~ColorListBox();
 
     void SetSelectHdl(const Link<ColorListBox&, void>& rLink) { m_aSelectedLink = rLink; }
@@ -63,7 +62,7 @@ public:
     void SetSlotId(sal_uInt16 nSlotId, bool bShowNoneButton = false);
 
     Color const& GetSelectEntryColor() const { return m_aSelectedColor.m_aColor; }
-    NamedColor GetSelectedEntry() const { return m_aSelectedColor; }
+    const NamedColor& GetSelectedEntry() const { return m_aSelectedColor; }
     const NamedColor& GetSelectedEntryThemedColor() const { return m_aSelectedColor; }
 
     void SelectEntry(const NamedColor& rColor);
@@ -86,6 +85,7 @@ public:
     void hide() { m_xButton->hide(); }
     void set_visible(bool bShow) { m_xButton->set_visible(bShow); }
     void set_help_id(const OUString& rHelpId) { m_xButton->set_help_id(rHelpId); }
+    void set_accessible_name(const OUString& rName) { m_xButton->set_accessible_name(rName); };
     void connect_focus_in(const Link<weld::Widget&, void>& rLink)
     {
         m_xButton->connect_focus_in(rLink);

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRPATHPRIMITIVE2D_HXX
-#define INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRPATHPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/primitive2d/BufferedDecompositionPrimitive2D.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
@@ -50,7 +49,7 @@ namespace drawinglayer::primitive2d
             basegfx::B2DPolyPolygon                     maUnitDefinitionPolyPolygon;
 
             // local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
             // OperationSmiley: Extended to UnitDefinitionPolyPolygon, but when needed
@@ -75,8 +74,5 @@ namespace drawinglayer::primitive2d
             virtual sal_uInt32 getPrimitive2DID() const override;
         };
 } // end of namespace drawinglayer::primitive2d
-
-
-#endif // INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRPATHPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -30,10 +30,11 @@
 #include <tools/fract.hxx>
 #include <tools/helpers.hxx>
 #include <tools/GenericTypeSerializer.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/bitmapex.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
+#include <vcl/ColorMask.hxx>
 #include <memory>
 
 #define DIBCOREHEADERSIZE       ( 12UL )
@@ -135,11 +136,6 @@ vcl::PixelFormat convertToBPP(sal_uInt16 nCount)
 {
     return (nCount <= 8) ? vcl::PixelFormat::N8_BPP :
                            vcl::PixelFormat::N24_BPP;
-}
-
-bool isBitfieldCompression( ScanlineFormat nScanlineFormat )
-{
-    return ScanlineFormat::N32BitTcMask == nScanlineFormat;
 }
 
 bool ImplReadDIBInfoHeader(SvStream& rIStm, DIBV5Header& rHeader, bool& bTopDown, bool bMSOFormat)
@@ -330,7 +326,7 @@ bool ImplReadDIBPalette(SvStream& rIStm, BitmapPalette& rPal, bool bQuad)
     return rIStm.GetError() == ERRCODE_NONE;
 }
 
-BitmapColor SanitizePaletteIndex(sal_uInt8 nIndex, BitmapPalette& rPalette)
+BitmapColor SanitizePaletteIndex(sal_uInt8 nIndex, const BitmapPalette& rPalette)
 {
     const sal_uInt16 nPaletteEntryCount = rPalette.GetEntryCount();
     if (nPaletteEntryCount && nIndex >= nPaletteEntryCount)
@@ -344,7 +340,7 @@ BitmapColor SanitizePaletteIndex(sal_uInt8 nIndex, BitmapPalette& rPalette)
     return BitmapColor(nIndex);
 }
 
-bool ImplDecodeRLE(sal_uInt8* pBuffer, DIBV5Header const & rHeader, BitmapWriteAccess& rAcc, BitmapPalette& rPalette, bool bRLE4)
+bool ImplDecodeRLE(sal_uInt8* pBuffer, DIBV5Header const & rHeader, BitmapWriteAccess& rAcc, const BitmapPalette& rPalette, bool bRLE4)
 {
     Scanline pRLE = pBuffer;
     Scanline pEndRLE = pBuffer + rHeader.nSizeImage;
@@ -481,7 +477,7 @@ bool ImplDecodeRLE(sal_uInt8* pBuffer, DIBV5Header const & rHeader, BitmapWriteA
     return true;
 }
 
-bool ImplReadDIBBits(SvStream& rIStm, DIBV5Header& rHeader, BitmapWriteAccess& rAcc, BitmapPalette& rPalette, BitmapWriteAccess* pAccAlpha,
+bool ImplReadDIBBits(SvStream& rIStm, DIBV5Header& rHeader, BitmapWriteAccess& rAcc, const BitmapPalette& rPalette, BitmapWriteAccess* pAccAlpha,
                      bool bTopDown, bool& rAlphaUsed, const sal_uInt64 nAlignedWidth)
 {
     sal_uInt32 nRMask(( rHeader.nBitCount == 16 ) ? 0x00007c00UL : 0x00ff0000UL);
@@ -535,7 +531,7 @@ bool ImplReadDIBBits(SvStream& rIStm, DIBV5Header& rHeader, BitmapWriteAccess& r
         const tools::Long nWidth(rHeader.nWidth);
         const tools::Long nHeight(rHeader.nHeight);
         tools::Long nResult = 0;
-        if (utl::ConfigManager::IsFuzzing() && (o3tl::checked_multiply(nWidth, nHeight, nResult) || nResult > 4000000))
+        if (comphelper::IsFuzzing() && (o3tl::checked_multiply(nWidth, nHeight, nResult) || nResult > 4000000))
             return false;
 
         if (bRLE)
@@ -944,7 +940,7 @@ bool ImplReadDIBBody(SvStream& rIStm, Bitmap& rBmp, AlphaMask* pBmpAlpha, sal_uI
             // tdf#122958 invalid compression value used
             if (aHeader.nCompression & 0x000F)
             {
-                // lets assume that there was an error in the generating application
+                // let's assume that there was an error in the generating application
                 // and allow through as COMPRESS_NONE if the bottom byte is 0
                 SAL_WARN( "vcl", "bad bmp compression scheme: " << aHeader.nCompression << ", rejecting bmp");
                 return false;
@@ -1036,11 +1032,11 @@ bool ImplReadDIBBody(SvStream& rIStm, Bitmap& rBmp, AlphaMask* pBmpAlpha, sal_uI
 
     if (bRet)
     {
-        rBmp = aNewBmp;
+        rBmp = std::move(aNewBmp);
 
         if(bAlphaPossible)
         {
-            *pBmpAlpha = aNewBmpAlpha;
+            *pBmpAlpha = std::move(aNewBmpAlpha);
         }
     }
 
@@ -1065,15 +1061,25 @@ bool ImplReadDIBFileHeader( SvStream& rIStm, sal_uLong& rOffset )
             rIStm.ReadUInt16( nTmp16 );
             rIStm.SeekRel( 8 );
             rIStm.ReadUInt32( nTmp32 );
-            rOffset = nTmp32 - 28;
-            bRet = ( 0x4D42 == nTmp16 );
+            if (nTmp32 < 28)
+                rIStm.SetError(SVSTREAM_FILEFORMAT_ERROR);
+            else
+            {
+                rOffset = nTmp32 - 28;
+                bRet = ( 0x4D42 == nTmp16 );
+            }
         }
         else // 0x4D42 == nTmp16, 'MB' from BITMAPFILEHEADER
         {
             rIStm.SeekRel( 8 );        // we are on bfSize member of BITMAPFILEHEADER, forward to bfOffBits
             rIStm.ReadUInt32( nTmp32 );            // read bfOffBits
-            rOffset = nTmp32 - 14;    // adapt offset by sizeof(BITMAPFILEHEADER)
-            bRet = rIStm.GetError() == ERRCODE_NONE;
+            if (nTmp32 < 14)
+                rIStm.SetError(SVSTREAM_FILEFORMAT_ERROR);
+            else
+            {
+                rOffset = nTmp32 - 14;    // adapt offset by sizeof(BITMAPFILEHEADER)
+                bRet = rIStm.GetError() == ERRCODE_NONE;
+            }
         }
 
         if ( rOffset >= nStreamLength )
@@ -1232,7 +1238,7 @@ bool ImplWriteDIBBits(SvStream& rOStm, BitmapReadAccess const & rAcc, sal_uLong 
 {
     if(BITFIELDS == nCompression)
     {
-        const ColorMask&    rMask = rAcc.GetColorMask();
+        ColorMask rMask;
         SVBT32              aVal32;
 
         UInt32ToSVBT32( rMask.GetRedMask(), aVal32 );
@@ -1375,32 +1381,23 @@ bool ImplWriteDIBBody(const Bitmap& rBitmap, SvStream& rOStm, BitmapReadAccess c
     aHeader.nHeight = rAcc.Height();
     aHeader.nPlanes = 1;
 
-    if(isBitfieldCompression(rAcc.GetScanlineFormat()))
-    {
-        aHeader.nBitCount = 32;
-        aHeader.nSizeImage = rAcc.Height() * rAcc.GetScanlineSize();
-        nCompression = BITFIELDS;
-    }
-    else
-    {
-        // #i5xxx# Limit bitcount to 24bit, the 32 bit cases are
-        // not handled properly below (would have to set color
-        // masks, and nCompression=BITFIELDS - but color mask is
-        // not set for formats != *_TC_*). Note that this very
-        // problem might cause trouble at other places - the
-        // introduction of 32 bit RGBA bitmaps is relatively
-        // recent.
-        // #i59239# discretize bitcount to 1,8,24 (other cases
-        // are not written below)
-        const auto ePixelFormat(convertToBPP(rAcc.GetBitCount()));
-        aHeader.nBitCount = sal_uInt16(ePixelFormat);
-        aHeader.nSizeImage = rAcc.Height() * AlignedWidth4Bytes(rAcc.Width() * aHeader.nBitCount);
+    // #i5xxx# Limit bitcount to 24bit, the 32 bit cases are
+    // not handled properly below (would have to set color
+    // masks, and nCompression=BITFIELDS - but color mask is
+    // not set for formats != *_TC_*). Note that this very
+    // problem might cause trouble at other places - the
+    // introduction of 32 bit RGBA bitmaps is relatively
+    // recent.
+    // #i59239# discretize bitcount to 1,8,24 (other cases
+    // are not written below)
+    const auto ePixelFormat(convertToBPP(rAcc.GetBitCount()));
+    aHeader.nBitCount = sal_uInt16(ePixelFormat);
+    aHeader.nSizeImage = rAcc.Height() * AlignedWidth4Bytes(rAcc.Width() * aHeader.nBitCount);
 
-        if (bCompressed)
-        {
-            if (ePixelFormat == vcl::PixelFormat::N8_BPP)
-                nCompression = RLE_8;
-        }
+    if (bCompressed)
+    {
+        if (ePixelFormat == vcl::PixelFormat::N8_BPP)
+            nCompression = RLE_8;
     }
 
     if((rOStm.GetCompressMode() & SvStreamCompressFlags::ZBITMAP) && (rOStm.GetVersion() >= SOFFICE_FILEFORMAT_40))
@@ -1510,7 +1507,7 @@ bool ImplWriteDIBBody(const Bitmap& rBitmap, SvStream& rOStm, BitmapReadAccess c
 
 bool ImplWriteDIBFileHeader(SvStream& rOStm, BitmapReadAccess const & rAcc)
 {
-    const sal_uInt32 nPalCount((rAcc.HasPalette() ? rAcc.GetPaletteEntryCount() : isBitfieldCompression(rAcc.GetScanlineFormat()) ? 3UL : 0UL));
+    const sal_uInt32 nPalCount((rAcc.HasPalette() ? rAcc.GetPaletteEntryCount() : 0UL));
     const sal_uInt32 nOffset(14 + DIBINFOHEADERSIZE + nPalCount * 4UL);
 
     rOStm.WriteUInt16( 0x4D42 ); // 'MB' from BITMAPFILEHEADER
@@ -1694,6 +1691,78 @@ bool ReadDIBBitmapEx(
     return bRetval;
 }
 
+bool ReadDIBBitmapEx(
+    Bitmap& rTarget,
+    SvStream& rIStm,
+    bool bFileHeader,
+    bool bMSOFormat)
+{
+    Bitmap aBmp;
+    if (!ImplReadDIB(aBmp, nullptr, rIStm, bFileHeader, bMSOFormat) && !rIStm.GetError())
+        return false;
+
+    // base bitmap was read, set as return value and try to read alpha extra-data
+    const sal_uInt64 nStmPos(rIStm.Tell());
+    sal_uInt32 nMagic1(0);
+    sal_uInt32 nMagic2(0);
+
+    rTarget = aBmp;
+    if (rIStm.remainingSize() >= 4)
+        rIStm.ReadUInt32( nMagic1 ).ReadUInt32( nMagic2 );
+    bool bRetval = (0x25091962 == nMagic1) && (0xACB20201 == nMagic2) && !rIStm.GetError();
+
+    if(bRetval)
+    {
+        sal_uInt8 tmp = 0;
+        rIStm.ReadUChar( tmp );
+        bRetval = !rIStm.GetError();
+
+        if(bRetval)
+        {
+            switch (tmp)
+            {
+            case 2: // TransparentType::Bitmap
+                {
+                    Bitmap aMask;
+
+                    bRetval = ImplReadDIB(aMask, nullptr, rIStm, true);
+
+                    if(bRetval && !aMask.IsEmpty())
+                        rTarget = Bitmap(BitmapEx(aBmp, aMask));
+
+                    break;
+                }
+            case 1: // backwards compat for old option TransparentType::Color
+                {
+                    Color aTransparentColor;
+
+                    tools::GenericTypeSerializer aSerializer(rIStm);
+                    aSerializer.readColor(aTransparentColor);
+
+                    bRetval = rIStm.good();
+
+                    if(bRetval)
+                    {
+                        rTarget = Bitmap(BitmapEx(aBmp, aTransparentColor));
+                    }
+                    break;
+                }
+            default: break;
+            }
+        }
+    }
+
+    if(!bRetval)
+    {
+        // alpha extra data could not be read; reset, but use base bitmap as result
+        rIStm.ResetError();
+        rIStm.Seek(nStmPos);
+        bRetval = true;
+    }
+
+    return bRetval;
+}
+
 bool ReadDIBV5(
     Bitmap& rTarget,
     AlphaMask& rTargetAlpha,
@@ -1722,6 +1791,20 @@ bool ReadRawDIB(
     return true;
 }
 
+bool ReadRawDIB(
+    Bitmap& rTarget,
+    const unsigned char* pBuf,
+    const ScanlineFormat nFormat,
+    const int nHeight,
+    const int nStride)
+{
+    BitmapEx aTmp;
+    bool bRet = ReadRawDIB(aTmp, pBuf, nFormat, nHeight, nStride);
+    if (bRet)
+        rTarget = Bitmap(aTmp);
+    return bRet;
+}
+
 bool WriteDIB(
     const Bitmap& rSource,
     SvStream& rOStm,
@@ -1737,6 +1820,14 @@ bool WriteDIB(
     bool bCompressed)
 {
     return ImplWriteDIB(rSource.GetBitmap(), rOStm, bCompressed, /*bFileHeader*/true);
+}
+
+bool WriteDIB(
+    const Bitmap& rSource,
+    SvStream& rOStm,
+    bool bCompressed)
+{
+    return ImplWriteDIB(rSource.CreateColorBitmap(), rOStm, bCompressed, /*bFileHeader*/true);
 }
 
 bool WriteDIBBitmapEx(
@@ -1759,6 +1850,13 @@ bool WriteDIBBitmapEx(
     }
 
     return false;
+}
+
+bool WriteDIBBitmapEx(
+    const Bitmap& rSource,
+    SvStream& rOStm)
+{
+    return WriteDIBBitmapEx(BitmapEx(rSource), rOStm);
 }
 
 sal_uInt32 getDIBV5HeaderSize()

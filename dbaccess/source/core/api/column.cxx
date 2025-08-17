@@ -39,15 +39,11 @@
 
 using namespace dbaccess;
 using namespace connectivity;
-using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::awt;
-using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::util;
 using namespace ::osl;
 using namespace ::comphelper;
 using namespace ::cppu;
@@ -82,7 +78,7 @@ IMPLEMENT_FORWARD_XINTERFACE2( OColumn, OColumnBase, ::comphelper::OPropertyCont
 // css::lang::XServiceInfo
 OUString OColumn::getImplementationName(  )
 {
-    return "com.sun.star.sdb.OColumn";
+    return u"com.sun.star.sdb.OColumn"_ustr;
 }
 
 sal_Bool OColumn::supportsService( const OUString& _rServiceName )
@@ -173,7 +169,7 @@ OColumns::~OColumns()
 // XServiceInfo
 OUString OColumns::getImplementationName(  )
 {
-    return "com.sun.star.sdb.OColumns";
+    return u"com.sun.star.sdb.OColumns"_ustr;
 }
 
 sal_Bool OColumns::supportsService( const OUString& _rServiceName )
@@ -190,7 +186,7 @@ void OColumns::append( const OUString& _rName, OColumn* _pColumn )
 {
     MutexGuard aGuard(m_rMutex);
 
-    OSL_ENSURE( _pColumn, "OColumns::append: invalid column!" );
+    assert(_pColumn && "OColumns::append: invalid column!");
     OSL_ENSURE( !m_pElements->exists( _rName ),"OColumns::append: Column already exists");
 
     _pColumn->m_sName = _rName;
@@ -220,22 +216,21 @@ void OColumns::impl_refresh()
         m_pRefreshColumns->refreshColumns();
 }
 
-connectivity::sdbcx::ObjectType OColumns::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OColumns::createObject(const OUString& _rName)
 {
     OSL_ENSURE(m_pColFactoryImpl, "OColumns::createObject: no column factory!");
 
-    connectivity::sdbcx::ObjectType xRet;
+    rtl::Reference< OColumn > xRet;
     if ( m_pColFactoryImpl )
     {
         xRet = m_pColFactoryImpl->createColumn(_rName);
-        Reference<XChild> xChild(xRet,UNO_QUERY);
+        Reference<XChild> xChild(cppu::getXWeak(xRet.get()),UNO_QUERY);
         if ( xChild.is() )
             xChild->setParent(static_cast<XChild*>(static_cast<TXChild*>(this)));
     }
 
-    Reference<XPropertySet> xDest(xRet,UNO_QUERY);
-    if ( m_pMediator && xDest.is() )
-        m_pMediator->notifyElementCreated(_rName,xDest);
+    if ( m_pMediator && xRet.is() )
+        m_pMediator->notifyElementCreated(_rName, Reference<XPropertySet>(xRet));
 
     return xRet;
 }
@@ -284,21 +279,18 @@ Sequence< Type > SAL_CALL OColumns::getTypes(  )
 {
     bool bAppendFound = false,bDropFound = false;
 
-    sal_Int32 nSize = 0;
+    sal_Int32 nSize;
     Type aAppendType = cppu::UnoType<XAppend>::get();
     Type aDropType   = cppu::UnoType<XDrop>::get();
     if(m_xDrvColumns.is())
     {
         Reference<XTypeProvider> xTypes(m_xDrvColumns,UNO_QUERY);
-        Sequence< Type > aTypes(xTypes->getTypes());
 
-        const Type* pBegin = aTypes.getConstArray();
-        const Type* pEnd = pBegin + aTypes.getLength();
-        for (;pBegin != pEnd ; ++pBegin)
+        for (auto& type : xTypes->getTypes())
         {
-            if(aAppendType == *pBegin)
+            if (aAppendType == type)
                 bAppendFound = true;
-            else if(aDropType == *pBegin)
+            else if (aDropType == type)
                 bDropFound = true;
         }
         nSize = (bDropFound ? (bAppendFound ? 0 : 1) : (bAppendFound ? 1 : 2));
@@ -316,25 +308,25 @@ Sequence< Type > SAL_CALL OColumns::getTypes(  )
     }
     Sequence< Type > aTypes(::comphelper::concatSequences(OColumns_BASE::getTypes(),TXChild::getTypes()));
     Sequence< Type > aRet(aTypes.getLength() - nSize);
+    auto* pRet = aRet.getArray();
 
-    const Type* pBegin = aTypes.getConstArray();
-    const Type* pEnd = pBegin + aTypes.getLength();
-    for(sal_Int32 i=0;pBegin != pEnd ;++pBegin)
+    sal_Int32 i = 0;
+    for (auto& type : aTypes)
     {
-        if(*pBegin != aAppendType && *pBegin != aDropType)
-            aRet.getArray()[i++] = *pBegin;
-        else if(bDropFound && *pBegin == aDropType)
-            aRet.getArray()[i++] = *pBegin;
-        else if(bAppendFound && *pBegin == aAppendType)
-            aRet.getArray()[i++] = *pBegin;
+        if (type != aAppendType && type != aDropType)
+            pRet[i++] = type;
+        else if (bDropFound && type == aDropType)
+            pRet[i++] = type;
+        else if (bAppendFound && type == aAppendType)
+            pRet[i++] = type;
     }
     return aRet;
 }
 
 // XAppend
-sdbcx::ObjectType OColumns::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > OColumns::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
-    sdbcx::ObjectType xReturn;
+    css::uno::Reference< css::beans::XPropertySet > xReturn;
 
     Reference< XAppend > xAppend( m_xDrvColumns, UNO_QUERY );
     if ( xAppend.is() )

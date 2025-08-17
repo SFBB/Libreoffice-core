@@ -27,7 +27,6 @@
 
 namespace com::sun::star {
     namespace sheet { class XDatabaseRange; }
-    namespace sheet { class XSheetFilterDescriptor3; }
 }
 
 namespace oox { class AttributeList; }
@@ -243,6 +242,8 @@ public:
     /** Applies the filter to the passed filter descriptor. */
     void                finalizeImport( const css::uno::Reference< css::sheet::XDatabaseRange >& rxDatabaseRange,
                                         sal_Int16 nSheet );
+
+    css::uno::Reference< css::sheet::XDatabaseRange > createDatabaseObject(sal_Int16 nSheet);
 
 private:
     typedef RefVector< FilterColumn > FilterColumnVector;

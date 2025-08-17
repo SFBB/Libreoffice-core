@@ -72,9 +72,9 @@ protected:
                              std::list< sw::access::SwAccessibleChild >& rChildren,
                              bool bInPagePreview );
 
-    bool IsEditable( SwViewShell const *pVSh ) const;
+    bool IsEditable(const SwViewShell& rViewShell) const;
 
-    bool IsOpaque( SwViewShell const *pVSh ) const;
+    bool IsOpaque(const SwViewShell& rViewShell) const;
 
 public:
     bool IsShowing( const SwAccessibleMap& rAccMap,
@@ -124,8 +124,7 @@ protected:
                                             sal_Int32 nPos ) const;
     sw::access::SwAccessibleChild GetChildAtPixel( const Point& rPos,
                                                    SwAccessibleMap& rAccMap ) const;
-    void GetChildren( SwAccessibleMap& rAccMap,
-                      std::list< sw::access::SwAccessibleChild >& rChildren ) const;
+    std::list<sw::access::SwAccessibleChild> GetChildren(SwAccessibleMap& rAccMap) const;
 
     void SetVisArea( const SwRect& rNewVisArea )
     {

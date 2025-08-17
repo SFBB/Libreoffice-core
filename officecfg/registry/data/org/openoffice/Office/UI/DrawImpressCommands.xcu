@@ -24,6 +24,14 @@
           <value xml:lang="en-US">S~lide</value>
         </prop>
       </node>
+      <node oor:name=".uno:BottomPaneImpress" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Notes ~Pane</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
       <node oor:name=".uno:PageMenu" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">~Page</value>
@@ -229,6 +237,17 @@
       <node oor:name=".uno:GlueInsertPoint" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Insert Gluepoint</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:GlueDeletePoint" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Delete Gluepoint</value>
+        </prop>
+        <prop oor:name="TargetURL" oor:type="xs:string">
+          <value>.uno:Delete</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -899,7 +918,7 @@
       </node>
       <node oor:name=".uno:Forward" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Bring ~Forward</value>
+          <value xml:lang="en-US">Forward One</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -907,7 +926,7 @@
       </node>
       <node oor:name=".uno:Backward" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Send Back~ward</value>
+          <value xml:lang="en-US">Backward One</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -1009,6 +1028,20 @@
         </prop>
         <prop oor:name="PopupLabel" oor:type="xs:string">
           <value xml:lang="en-US">~Hide Layer (Shift+Click)</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:SetLayer" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Set Layer</value>
+        </prop>
+        <prop oor:name="ContextLabel" oor:type="xs:string">
+          <value xml:lang="en-US">~Move to Layer...</value>
+        </prop>
+        <prop oor:name="TooltipLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Open a dialog to change the layer of the object</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -1695,14 +1728,6 @@
           <value xml:lang="en-US">E~dit Style...</value>
         </prop>
       </node>
-      <node oor:name=".uno:ClickChangeRotation" oor:op="replace">
-        <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Rotation Mode after Clicking Object</value>
-        </prop>
-        <prop oor:name="Properties" oor:type="xs:int">
-          <value>1</value>
-        </prop>
-      </node>
       <node oor:name=".uno:Mirror" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Flip</value>
@@ -1764,6 +1789,28 @@
           <value>1</value>
         </prop>
       </node>
+      <node oor:name=".uno:AlignOnPage" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">~Center on Page</value>
+        </prop>
+        <prop oor:name="TooltipLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Center object vertically and horizontally</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:AlignOnSlide" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">~Center on Slide</value>
+        </prop>
+        <prop oor:name="TooltipLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Center object vertically and horizontally</value>
+        </prop>
+        <prop oor:name="TargetURL" oor:type="xs:string">
+          <value>.uno:AlignOnPage</value>
+        </prop>
+      </node>
     </node>
     <node oor:name="Popups">
       <node oor:name=".uno:ModifyMenu" oor:op="replace">
@@ -1818,11 +1865,6 @@
       <node oor:name=".uno:SlideShowMenu" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">~Slide Show</value>
-        </prop>
-      </node>
-      <node oor:name=".uno:GroupMenu" oor:op="replace">
-        <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">~Group</value>
         </prop>
       </node>
       <node oor:name=".uno:SendMenu" oor:op="replace">
@@ -2281,6 +2323,25 @@
           <value>1</value>
         </prop>
       </node>
+      <node oor:name=".uno:GotoPage" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Go t~o Page...</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:GotoSlide" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Go t~o Slide...</value>
+        </prop>
+        <prop oor:name="TargetURL" oor:type="xs:string">
+          <value>.uno:GotoPage</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
       <node oor:name=".uno:MovePageFirst" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Move Page to Start</value>
@@ -2393,12 +2454,12 @@
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=0" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Title Slide</value>
+          <value xml:lang="en-US">Title and Subtitle</value>
         </prop>
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=1" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Title, Content</value>
+          <value xml:lang="en-US">One Box</value>
         </prop>
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=32" oor:op="replace">
@@ -2408,37 +2469,37 @@
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=3" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Title and 2 Content</value>
+          <value xml:lang="en-US">Two Boxes</value>
         </prop>
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=12" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Title, Content and 2 Content</value>
+          <value xml:lang="en-US">Three Boxes (1 Left, 2 Right)</value>
         </prop>
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=15" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Title, 2 Content and Content</value>
+          <value xml:lang="en-US">Three Boxes (2 Left, 1 Right)</value>
         </prop>
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=14" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Title, Content over Content</value>
+          <value xml:lang="en-US">Two Boxes (1 over 1)</value>
         </prop>
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=16" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Title, 2 Content over Content</value>
+          <value xml:lang="en-US">Three Boxes (2 on Top over 1)</value>
         </prop>
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=18" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Title, 4 Content</value>
+          <value xml:lang="en-US">Four Boxes</value>
         </prop>
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=34" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Title, 6 Content</value>
+          <value xml:lang="en-US">Six Boxes</value>
         </prop>
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=28" oor:op="replace">
@@ -2458,7 +2519,7 @@
       </node>
       <node oor:name=".uno:AssignLayout?WhatLayout:long=30" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Title, 2 Vertical Text, Clipart</value>
+          <value xml:lang="en-US">Title, Two Vertical Boxes</value>
         </prop>
       </node>
       <node oor:name=".uno:SlideLayoutMenu" oor:op="replace">

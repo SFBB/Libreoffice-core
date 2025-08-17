@@ -46,11 +46,9 @@ namespace cppcanvas::internal
             SAL_INFO( "cppcanvas.emf", "::cppcanvas::internal::CachedPrimitiveBase::render()" );
             SAL_INFO( "cppcanvas.emf", "::cppcanvas::internal::CachedPrimitiveBase: 0x" << std::hex << this );
 
-            const rendering::ViewState& rViewState( mpCanvas->getViewState() );
-            ::basegfx::B2DHomMatrix     aTotalTransform;
-
-            ::canvas::tools::getViewStateTransform( aTotalTransform,
-                                                    rViewState );
+            const rendering::ViewState  aViewState( mpCanvas->getViewState() );
+            ::basegfx::B2DHomMatrix     aTotalTransform = ::canvas::tools::getViewStateTransform(
+                                                    aViewState );
             aTotalTransform *= rTransformation;
 
             // can we use the cached primitive? For that, it must be
@@ -61,7 +59,7 @@ namespace cppcanvas::internal
                 (!mbOnlyRedrawWithSameTransform ||
                  maLastTransformation == aTotalTransform) )
             {
-                if( mxCachedPrimitive->redraw( rViewState ) ==
+                if( mxCachedPrimitive->redraw( aViewState ) ==
                     rendering::RepaintResult::REDRAWN )
                 {
                     // cached repaint succeeded, done.

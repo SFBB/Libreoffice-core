@@ -7,14 +7,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <test/bootstrapfixture.hxx>
+#include <test/unoapi_test.hxx>
 #include <test/container/xelementaccess.hxx>
 #include <test/text/xsimpletext.hxx>
 #include <test/text/xtextrange.hxx>
 #include <test/text/xtext.hxx>
 #include <test/container/xenumerationaccess.hxx>
 #include <test/text/xtextrangecompare.hxx>
-#include <unotest/macros_test.hxx>
 
 #include <com/sun/star/frame/Desktop.hpp>
 
@@ -35,8 +34,7 @@ namespace
 /**
  * Initial tests for SwXFootnoteText.
  */
-class SwXFootnoteText final : public test::BootstrapFixture,
-                              public unotest::MacrosTest,
+class SwXFootnoteText final : public UnoApiTest,
                               public apitest::XElementAccess,
                               public apitest::XSimpleText,
                               public apitest::XTextRange,
@@ -46,8 +44,6 @@ class SwXFootnoteText final : public test::BootstrapFixture,
 {
 public:
     SwXFootnoteText();
-    virtual void setUp() override;
-    void tearDown() override;
 
     Reference<XInterface> init() override;
     Reference<text::XTextContent> getTextContent() override { return mxTextContent; };
@@ -70,37 +66,22 @@ public:
     CPPUNIT_TEST_SUITE_END();
 
 private:
-    Reference<lang::XComponent> component_;
     Reference<text::XTextContent> mxTextContent;
 };
 
 SwXFootnoteText::SwXFootnoteText()
-    : XElementAccess(cppu::UnoType<text::XTextRange>::get())
+    : UnoApiTest(u""_ustr)
+    , XElementAccess(cppu::UnoType<text::XTextRange>::get())
 {
-}
-
-void SwXFootnoteText::setUp()
-{
-    test::BootstrapFixture::setUp();
-    mxDesktop.set(
-        frame::Desktop::create(comphelper::getComponentContext(getMultiServiceFactory())));
-}
-
-void SwXFootnoteText::tearDown()
-{
-    if (component_.is())
-        component_->dispose();
-
-    test::BootstrapFixture::tearDown();
 }
 
 Reference<XInterface> SwXFootnoteText::init()
 {
-    component_ = loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument");
-    Reference<text::XTextDocument> xTextDocument(component_, UNO_QUERY_THROW);
-    Reference<lang::XMultiServiceFactory> xMSF(component_, UNO_QUERY_THROW);
+    loadFromURL(u"private:factory/swriter"_ustr);
+    Reference<text::XTextDocument> xTextDocument(mxComponent, UNO_QUERY_THROW);
+    Reference<lang::XMultiServiceFactory> xMSF(mxComponent, UNO_QUERY_THROW);
 
-    Reference<text::XFootnote> xFootnote(xMSF->createInstance("com.sun.star.text.Footnote"),
+    Reference<text::XFootnote> xFootnote(xMSF->createInstance(u"com.sun.star.text.Footnote"_ustr),
                                          UNO_QUERY_THROW);
 
     Reference<text::XText> xText = xTextDocument->getText();
@@ -109,9 +90,9 @@ Reference<XInterface> SwXFootnoteText::init()
     xText->insertTextContent(xCursor, xFootnote, false);
 
     Reference<text::XSimpleText> xFootText(xFootnote, UNO_QUERY_THROW);
-    xFootText->setString("SwXFootnoteText");
+    xFootText->setString(u"SwXFootnoteText"_ustr);
     mxTextContent = Reference<text::XTextContent>(
-        xMSF->createInstance("com.sun.star.text.Footnote"), UNO_QUERY_THROW);
+        xMSF->createInstance(u"com.sun.star.text.Footnote"_ustr), UNO_QUERY_THROW);
 
     return Reference<XInterface>(xFootText->getText(), UNO_QUERY_THROW);
 }

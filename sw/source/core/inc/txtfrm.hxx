@@ -20,6 +20,7 @@
 #define INCLUDED_SW_SOURCE_CORE_INC_TXTFRM_HXX
 
 #include <com/sun/star/uno/Sequence.hxx>
+#include <svl/ctloptions.hxx>
 #include "cntfrm.hxx"
 #include "TextFrameIndex.hxx"
 #include <nodeoffset.hxx>
@@ -31,7 +32,8 @@
 
 namespace com::sun::star::linguistic2 { class XHyphenatedWord; }
 
-namespace sw::mark { class IMark; }
+namespace sw::mark { class MarkBase; }
+namespace sw { enum class ParagraphBreakMode; }
 class SwCharRange;
 class SwTextNode;
 class SwTextAttrEnd;
@@ -42,7 +44,6 @@ class WidowsAndOrphans;
 class SwTextFootnote;
 class SwInterHyphInfo;      // Hyphenate()
 class SwCache;
-class SwBorderAttrs;
 class SwFrameFormat;
 struct SwCursorMoveState;
 struct SwFillData;
@@ -52,9 +53,8 @@ enum class ExpandMode;
 class SwTextAttr;
 class SwWrtShell;
 class SwNode;
+class SwNodeIndex;
 class SwFlyAtContentFrame;
-
-#define NON_PRINTING_CHARACTER_COLOR Color(0x26, 0x8b, 0xd2)
 
 /// a clone of SwInterHyphInfo, but with TextFrameIndex instead of node index
 class SwInterHyphInfoTextFrame
@@ -106,6 +106,10 @@ class InsertText;
 std::pair<SwTextNode*, sal_Int32> MapViewToModel(MergedPara const&, TextFrameIndex nIndex);
 TextFrameIndex MapModelToView(MergedPara const&, SwTextNode const* pNode, sal_Int32 nIndex);
 
+bool IsShowHiddenChars(SwViewShell const*const pViewShell);
+void FindParaPropsNodeIgnoreHidden(MergedPara & rMerged,
+        sw::ParagraphBreakMode const eMode, SwScriptInfo * pScriptInfo);
+
 // warning: Existing must be used only once; a second use would delete the frame created by the first one...
 enum class FrameMode { New, Existing };
 std::unique_ptr<sw::MergedPara> CheckParaRedlineMerge(SwTextFrame & rFrame, SwTextNode & rTextNode, FrameMode eMode);
@@ -125,6 +129,7 @@ void GotoPrevLayoutTextFrame(SwNodeIndex & rIndex, SwRootFrame const* pLayout);
 void GotoNextLayoutTextFrame(SwNodeIndex & rIndex, SwRootFrame const* pLayout);
 
 TextFrameIndex UpdateMergedParaForDelete(MergedPara & rMerged,
+        sw::ParagraphBreakMode eMode, SwScriptInfo * pScriptInfo,
         bool isRealDelete,
         SwTextNode const& rNode, sal_Int32 nIndex, sal_Int32 nLen);
 
@@ -146,7 +151,7 @@ OUString GetExpandTextMerged(SwRootFrame const* pLayout,
         SwTextNode const& rNode, bool bWithNumber,
         bool bWithSpacesForLevel, ExpandMode i_mode);
 
-bool IsMarkHidden(SwRootFrame const& rLayout, ::sw::mark::IMark const& rMark);
+bool IsMarkHidden(SwRootFrame const& rLayout, ::sw::mark::MarkBase const& rMark);
 bool IsMarkHintHidden(SwRootFrame const& rLayout,
         SwTextNode const& rNode, SwTextAttrEnd const& rHint);
 
@@ -178,8 +183,6 @@ class SW_DLLPUBLIC SwTextFrame final : public SwContentFrame
     /// will still be set; GetFormatted() is the function that forces
     /// recreation of the SwLineLayout by Format() if necessary.
     static SwCache *s_pTextCache;
-    static constexpr tools::Long nMinPrtLine = 0;    // This Line must not be underrun when printing
-                                // Hack for table cells stretching multiple pages
 
     sal_Int32  mnAllLines        :24; // Line count for the Paint (including nThisLines)
     sal_Int32  mnThisLines       :8; // Count of Lines of the Frame
@@ -205,12 +208,14 @@ class SW_DLLPUBLIC SwTextFrame final : public SwContentFrame
     std::unique_ptr<sw::MergedPara> m_pMergedPara;
 
     TextFrameIndex mnOffset; // Is the offset in the Content (character count)
+    TextFrameIndex mnNoHyphOffset; // Is the offset of the last line with disabled or limited hyphenation
+    sal_Int16 mnNoHyphEndZone;     // size of end zone (-1 means disabled hyphenation)
 
     sal_uInt16 mnCacheIndex; // Index into the cache, USHRT_MAX if there's definitely no fitting object in the cache
 
     // Separates the Master and creates a Follow or adjusts the data in the Follow
     void AdjustFollow_( SwTextFormatter &rLine, TextFrameIndex nOffset,
-                               TextFrameIndex nStrEnd, const sal_uInt8 nMode );
+                               TextFrameIndex nStrEnd, bool bDontJoin );
 
     // Iterates all Lines and sets the line spacing using the attribute
     void CalcLineSpace();
@@ -295,7 +300,8 @@ class SW_DLLPUBLIC SwTextFrame final : public SwContentFrame
 
     bool GetDropRect_( SwRect &rRect ) const;
 
-    void SetPara( SwParaPortion *pNew, bool bDelete = true );
+    // returns the old SwParaPortion, if present
+    std::unique_ptr<SwParaPortion> SetPara(std::unique_ptr<SwParaPortion> xNew);
 
     bool IsFootnoteNumFrame_() const;
 
@@ -353,7 +359,7 @@ public:
      */
     void Init();
 
-    /// Is called by DoIdleJob_(), ExecSpellPopup() and UpDown()
+    /// Is called by DoIdleJob_() and ExecSpellPopup()
     SwRect AutoSpell_(SwTextNode &, sal_Int32);
 
     /// Is called by DoIdleJob_()
@@ -419,7 +425,7 @@ public:
 
     void   PaintExtraData( const SwRect & rRect ) const; /// Page number etc.
     SwRect GetPaintSwRect();
-    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const& ) const override;
+    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const&, PaintFrameMode mode = PAINT_ALL ) const override;
 
     /**
      * Layout oriented cursor travelling:
@@ -451,6 +457,10 @@ public:
     TextFrameIndex GetOffset() const { return mnOffset; }
            void        SetOffset_(TextFrameIndex nNewOfst);
     inline void        SetOffset (TextFrameIndex nNewOfst);
+    TextFrameIndex GetNoHyphOffset() const { return mnNoHyphOffset; }
+    void SetNoHyphOffset(TextFrameIndex const nNewOfst) { mnNoHyphOffset = nNewOfst; }
+    sal_Int16 GetNoHyphEndZone() const { return mnNoHyphEndZone; }
+    void SetNoHyphEndZone(sal_Int16 nNewType) { mnNoHyphEndZone = nNewType; }
     void ManipOfst(TextFrameIndex const nNewOfst) { mnOffset = nNewOfst; }
            SwTextFrame   *GetFrameAtPos ( const SwPosition &rPos);
     inline const SwTextFrame *GetFrameAtPos ( const SwPosition &rPos) const;
@@ -507,9 +517,11 @@ public:
      * @return found
      */
     bool Hyphenate(SwInterHyphInfoTextFrame & rInf);
+    /// Is a hyphenated word? At selection, Point can be at the end of the word
+    bool IsInHyphenatedWord(SwPaM *, bool bSelection) const;
 
     /// Test grow
-    inline SwTwips GrowTst( const SwTwips nGrow );
+    inline SwTwips GrowTst( const SwTwips nGrow, SwResizeLimitReason& );
 
     SwParaPortion *GetPara();
     inline const SwParaPortion *GetPara() const;
@@ -558,7 +570,8 @@ public:
 #endif
 
     /// Hidden
-    bool IsHiddenNow() const;       // bHidden && pOut == pPrt
+    virtual bool IsHiddenNow() const override;
+    bool IsHiddenNowImpl() const;
     void HideHidden();              // Remove appendage if Hidden
     void HideFootnotes(TextFrameIndex nStart, TextFrameIndex nEnd);
 
@@ -567,7 +580,7 @@ public:
      * at/as a character of the paragraph, corresponding to the paragraph and
      * paragraph portion visibility.
      */
-    void HideAndShowObjects();
+    void HideAndShowObjects() override;
 
     /// Footnote
     void RemoveFootnote(TextFrameIndex nStart,
@@ -587,7 +600,7 @@ public:
     TextFrameIndex GetDropLen(TextFrameIndex nWishLen) const;
 
     LanguageType GetLangOfChar(TextFrameIndex nIndex, sal_uInt16 nScript,
-            bool bNoChar = false) const;
+            bool bNoChar = false, bool bNoneIfNoHyphenation = false ) const;
 
     virtual void Format( vcl::RenderContext* pRenderContext, const SwBorderAttrs *pAttrs = nullptr ) override;
     virtual void CheckDirection( bool bVert ) override;
@@ -623,8 +636,6 @@ public:
 
     static SwCache *GetTextCache() { return s_pTextCache; }
     static void     SetTextCache( SwCache *pNew ) { s_pTextCache = pNew; }
-
-    static tools::Long GetMinPrtLine() { return nMinPrtLine; }
 
     sal_uInt16 GetCacheIdx() const { return mnCacheIndex; }
     void   SetCacheIdx( const sal_uInt16 nNew ) { mnCacheIndex = nNew; }
@@ -665,7 +676,7 @@ public:
     tools::Long GetLineSpace( const bool _bNoPropLineSpacing = false ) const;
 
     /// Returns the first line height
-    sal_uInt16 FirstLineHeight() const;
+    SwTwips FirstLineHeight() const;
 
     /// Rewires FlyInContentFrame, if nEnd > Index >= nStart
     void MoveFlyInCnt(SwTextFrame *pNew, TextFrameIndex nStart, TextFrameIndex nEnd);
@@ -692,6 +703,7 @@ public:
 
     /// Returns the script info stored at the paraportion
     const SwScriptInfo* GetScriptInfo() const;
+    SwScriptInfo* GetScriptInfo();
 
     /// Swaps width and height of the text frame
     void SwapWidthAndHeight();
@@ -805,6 +817,8 @@ public:
     /// with a negative vertical offset. Such frames may need explicit splitting.
     bool IsEmptyWithSplitFly() const;
 
+    bool HasSplitFlyDrawObjs() const;
+
     static SwView* GetView();
 
     void dumpAsXml(xmlTextWriterPtr writer = nullptr) const override;
@@ -852,9 +866,9 @@ inline bool SwTextFrame::HasPara() const
     return mnCacheIndex!=USHRT_MAX && HasPara_();
 }
 
-inline SwTwips SwTextFrame::GrowTst( const SwTwips nGrow )
+inline SwTwips SwTextFrame::GrowTst(const SwTwips nGrow, SwResizeLimitReason& reason)
 {
-    return Grow( nGrow, true );
+    return Grow(nGrow, reason, true, false);
 }
 
 inline bool SwTextFrame::IsInside(TextFrameIndex const nPos) const
@@ -974,7 +988,7 @@ class SwDigitModeModifier
     const OutputDevice& rOut;
     LanguageType nOldLanguageType;
 public:
-    SwDigitModeModifier( const OutputDevice& rOutp, LanguageType eCurLang );
+    SwDigitModeModifier( const OutputDevice& rOutp, LanguageType eCurLang, SvtCTLOptions::TextNumerals eCTlTextNumerals );
     ~SwDigitModeModifier();
 };
 
@@ -999,12 +1013,11 @@ struct MergedPara
     SwTextNode const* pLastNode;
     MergedPara(SwTextFrame & rFrame, std::vector<Extent>&& rExtents,
             OUString aText,
-            SwTextNode *const pProps, SwTextNode *const pFirst,
+            SwTextNode *const pFirst,
             SwTextNode const*const pLast)
         : listener(rFrame), extents(std::move(rExtents)), mergedText(std::move(aText))
-        , pParaPropsNode(pProps), pFirstNode(pFirst), pLastNode(pLast)
+        , pParaPropsNode(nullptr), pFirstNode(pFirst), pLastNode(pLast)
     {
-        assert(pParaPropsNode);
         assert(pFirstNode);
         assert(pLastNode);
     }

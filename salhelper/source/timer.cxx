@@ -20,23 +20,22 @@
 
 #include <osl/thread.hxx>
 
-#include <condition_variable>
 #include <mutex>
+#include <condition_variable>
 
 using namespace salhelper;
 
 class salhelper::TimerManager final : public osl::Thread
 {
 public:
-    TimerManager();
-
+    TimerManager(salhelper::Timer* &pHead, std::mutex &Lock);
     ~TimerManager();
 
     /// register timer
     void registerTimer(salhelper::Timer* pTimer);
 
     /// unregister timer
-    void unregisterTimer(salhelper::Timer const * pTimer);
+    void unregisterTimer(salhelper::Timer * pTimer);
 
     /// lookup timer
     bool lookupTimer(const salhelper::Timer* pTimer);
@@ -48,24 +47,69 @@ protected:
     /// Checking and triggering of a timer event
     void checkForTimeout();
 
-    /// sorted-queue data
-    salhelper::Timer*       m_pHead;
+    salhelper::Timer*           &m_pHead;
     bool m_terminate;
     /// List Protection
-    std::mutex                  m_Lock;
+    std::mutex                  &m_Lock;
     /// Signal the insertion of a timer
     std::condition_variable     m_notEmpty;
 
     /// "Singleton Pattern"
     //static salhelper::TimerManager* m_pManager;
-
 };
 
-namespace
+namespace {
+class TimerManagerImpl final
 {
-    salhelper::TimerManager& getTimerManager()
+    std::mutex m_Lock; // shared lock with each impl. thread
+    salhelper::Timer* m_pHead; // the underlying shared queue
+
+    std::mutex m_implLock;
+    std::shared_ptr<TimerManager> m_pImpl;
+
+public:
+    TimerManagerImpl() : m_pHead(nullptr) { }
+
+    void joinThread()
     {
-        static salhelper::TimerManager aManager;
+        std::scoped_lock g(m_implLock);
+        m_pImpl.reset();
+    }
+
+    void startThread()
+    {
+        std::lock_guard Guard(m_Lock);
+        if (m_pHead)
+            ensureThread();
+    }
+
+    TimerManager& ensureThread()
+    {
+        std::scoped_lock g(m_implLock);
+        if (!m_pImpl)
+            m_pImpl.reset(new TimerManager(m_pHead, m_Lock));
+        return *m_pImpl;
+    }
+
+    void registerTimer(salhelper::Timer* pTimer)
+    {
+        ensureThread().registerTimer(pTimer);
+    }
+
+    void unregisterTimer(salhelper::Timer * pTimer)
+    {
+        ensureThread().unregisterTimer(pTimer);
+    }
+
+    bool lookupTimer(const salhelper::Timer* pTimer)
+    {
+        return ensureThread().lookupTimer(pTimer);
+    }
+};
+
+    TimerManagerImpl& getTimerManager()
+    {
+        static TimerManagerImpl aManager;
         return aManager;
     }
 }
@@ -195,6 +239,16 @@ TTimeValue Timer::getRemainingTime() const
     return TTimeValue(secs, nsecs);
 }
 
+void Timer::joinThread()
+{
+    getTimerManager().joinThread();
+}
+
+void Timer::startThread()
+{
+    getTimerManager().startThread();
+}
+
 /** The timer manager cleanup has been removed (no thread is killed anymore),
     so the thread leaks.
 
@@ -205,8 +259,8 @@ TTimeValue Timer::getRemainingTime() const
             when there are no timers anymore !
 **/
 
-TimerManager::TimerManager() :
-    m_pHead(nullptr), m_terminate(false)
+TimerManager::TimerManager(salhelper::Timer* &pHead, std::mutex &Lock) :
+    m_pHead(pHead), m_terminate(false), m_Lock(Lock)
 {
     // start thread
     create();
@@ -215,6 +269,10 @@ TimerManager::TimerManager() :
 TimerManager::~TimerManager() {
     {
         std::scoped_lock g(m_Lock);
+        // Sometimes, the TimerManager thread gets killed before the static's destruction;
+        // in that case, notify_all could hang in unit tests
+        if (!isRunning())
+            return;
         m_terminate = true;
     }
     m_notEmpty.notify_all();
@@ -225,6 +283,8 @@ void TimerManager::registerTimer(Timer* pTimer)
 {
     if (!pTimer)
         return;
+
+    pTimer->acquire();
 
     bool notify = false;
     {
@@ -263,25 +323,33 @@ void TimerManager::registerTimer(Timer* pTimer)
     }
 }
 
-void TimerManager::unregisterTimer(Timer const * pTimer)
+void TimerManager::unregisterTimer(Timer * pTimer)
 {
     if (!pTimer)
         return;
 
-    // lock access
-    std::lock_guard Guard(m_Lock);
-
-    Timer** ppIter = &m_pHead;
-
-    while (*ppIter)
+    auto found = false;
     {
-        if (pTimer == (*ppIter))
+        // lock access
+        std::lock_guard Guard(m_Lock);
+
+        Timer** ppIter = &m_pHead;
+
+        while (*ppIter)
         {
-            // remove timer from list
-            *ppIter = (*ppIter)->m_pNext;
-            return;
+            if (pTimer == (*ppIter))
+            {
+                // remove timer from list
+                *ppIter = (*ppIter)->m_pNext;
+                found = true;
+                break;
+            }
+            ppIter= &((*ppIter)->m_pNext);
         }
-        ppIter= &((*ppIter)->m_pNext);
+    }
+
+    if (found) {
+        pTimer->release();
     }
 }
 
@@ -319,8 +387,6 @@ void TimerManager::checkForTimeout()
 
     // remove expired timer
     m_pHead = pTimer->m_pNext;
-
-    pTimer->acquire();
 
     aLock.unlock();
 
@@ -375,7 +441,6 @@ void TimerManager::run()
 
         checkForTimeout();
     }
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

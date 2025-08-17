@@ -24,7 +24,6 @@
 
 class ScViewData;
 class ScDocument;
-class ScRangeUtil;
 class ScAreaData;
 
 class ScConsolidateDlg : public ScAnyRefDlgController
@@ -66,6 +65,7 @@ private:
     std::unique_ptr<formula::RefEdit> m_xEdDestArea;
     std::unique_ptr<formula::RefButton> m_xRbDestArea;
 
+    std::unique_ptr<weld::Expander> m_xExpander;
     std::unique_ptr<weld::CheckButton> m_xBtnByRow;
     std::unique_ptr<weld::CheckButton> m_xBtnByCol;
 

@@ -19,20 +19,10 @@
 
 #include <headless/SvpGraphicsBackend.hxx>
 
-#include <sal/log.hxx>
-#include <basegfx/matrix/b2dhommatrixtools.hxx>
-#include <basegfx/polygon/b2dpolygontools.hxx>
-#include <vcl/BitmapTools.hxx>
-#include <headless/BitmapHelper.hxx>
-
 SvpGraphicsBackend::SvpGraphicsBackend(CairoCommon& rCairoCommon)
     : m_rCairoCommon(rCairoCommon)
 {
 }
-
-void SvpGraphicsBackend::Init() {}
-
-void SvpGraphicsBackend::freeResources() {}
 
 void SvpGraphicsBackend::setClipRegion(const vcl::Region& i_rClip)
 {
@@ -192,9 +182,10 @@ void SvpGraphicsBackend::drawMask(const SalTwoRect& rTR, const SalBitmap& rSalBi
 }
 
 std::shared_ptr<SalBitmap> SvpGraphicsBackend::getBitmap(tools::Long nX, tools::Long nY,
-                                                         tools::Long nWidth, tools::Long nHeight)
+                                                         tools::Long nWidth, tools::Long nHeight,
+                                                         bool bWithoutAlpha)
 {
-    return m_rCairoCommon.getBitmap(nX, nY, nWidth, nHeight);
+    return m_rCairoCommon.getBitmap(nX, nY, nWidth, nHeight, bWithoutAlpha);
 }
 
 void SvpGraphicsBackend::drawBitmapBuffer(const SalTwoRect& rTR, const BitmapBuffer* pBuffer,
@@ -221,25 +212,6 @@ void SvpGraphicsBackend::invert(sal_uInt32 nPoints, const Point* pPtAry, SalInve
     m_rCairoCommon.invert(nPoints, pPtAry, nFlags, getAntiAlias());
 }
 
-bool SvpGraphicsBackend::drawEPS(tools::Long /*nX*/, tools::Long /*nY*/, tools::Long /*nWidth*/,
-                                 tools::Long /*nHeight*/, void* /*pPtr*/, sal_uInt32 /*nSize*/)
-{
-    return false;
-}
-
-bool SvpGraphicsBackend::blendBitmap(const SalTwoRect& /*rPosAry*/, const SalBitmap& /*rBitmap*/)
-{
-    return false;
-}
-
-bool SvpGraphicsBackend::blendAlphaBitmap(const SalTwoRect& /*rPosAry*/,
-                                          const SalBitmap& /*rSrcBitmap*/,
-                                          const SalBitmap& /*rMaskBitmap*/,
-                                          const SalBitmap& /*rAlphaBitmap*/)
-{
-    return false;
-}
-
 bool SvpGraphicsBackend::drawAlphaBitmap(const SalTwoRect& rTR, const SalBitmap& rSourceBitmap,
                                          const SalBitmap& rAlphaBitmap)
 {
@@ -254,11 +226,6 @@ bool SvpGraphicsBackend::drawTransformedBitmap(const basegfx::B2DPoint& rNull,
 {
     return m_rCairoCommon.drawTransformedBitmap(rNull, rX, rY, rSourceBitmap, pAlphaBitmap, fAlpha,
                                                 getAntiAlias());
-}
-
-bool SvpGraphicsBackend::hasFastDrawTransformedBitmap() const
-{
-    return CairoCommon::hasFastDrawTransformedBitmap();
 }
 
 bool SvpGraphicsBackend::drawAlphaRect(tools::Long nX, tools::Long nY, tools::Long nWidth,

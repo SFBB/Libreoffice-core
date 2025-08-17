@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/types.h>
 #include <com/sun/star/script/vba/XVBAEventProcessor.hpp>
 #include <com/sun/star/sheet/TableValidationVisibility.hpp>
 #include <scitems.hxx>
@@ -24,7 +25,6 @@
 #include <svl/srchitem.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <sfx2/bindings.hxx>
-#include <sfx2/objsh.hxx>
 #include <sfx2/viewsh.hxx>
 #include <vcl/svapp.hxx>
 #include <osl/thread.hxx>
@@ -55,6 +55,8 @@
 #include <inputopt.hxx>
 #include <chartlis.hxx>
 #include <sc.hrc>
+#include <globstr.hrc>
+#include <scresid.hxx>
 #include <hints.hxx>
 #include <dpobject.hxx>
 #include <drwlayer.hxx>
@@ -70,7 +72,7 @@
 #include <scopetools.hxx>
 #include <filterentries.hxx>
 #include <queryparam.hxx>
-
+#include <progress.hxx>
 #include <globalnames.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <comphelper/lok.hxx>
@@ -89,6 +91,7 @@ void sortAndRemoveDuplicates(std::vector<ScTypedStrData>& rStrings, bool bCaseSe
         std::vector<ScTypedStrData>::iterator it =
             std::unique(rStrings.begin(), rStrings.end(), ScTypedStrData::EqualCaseSensitive());
         rStrings.erase(it, rStrings.end());
+        std::stable_sort(rStrings.begin(), rStrings.end(), ScTypedStrData::LessSortCaseSensitive());
     }
     else
     {
@@ -96,6 +99,7 @@ void sortAndRemoveDuplicates(std::vector<ScTypedStrData>& rStrings, bool bCaseSe
         std::vector<ScTypedStrData>::iterator it =
             std::unique(rStrings.begin(), rStrings.end(), ScTypedStrData::EqualCaseInsensitive());
         rStrings.erase(it, rStrings.end());
+        std::stable_sort(rStrings.begin(), rStrings.end(), ScTypedStrData::LessSortCaseInsensitive());
     }
     if (std::any_of(rStrings.begin(), rStrings.end(),
         [](ScTypedStrData& rString) { return rString.IsHiddenByFilter(); })) {
@@ -535,7 +539,7 @@ OUString ScDocument::GetLinkTab( SCTAB nTab ) const
     return OUString();
 }
 
-sal_uLong ScDocument::GetLinkRefreshDelay( SCTAB nTab ) const
+sal_Int32 ScDocument::GetLinkRefreshDelay( SCTAB nTab ) const
 {
     if (const ScTable* pTable = FetchTable(nTab))
         return pTable->GetLinkRefreshDelay();
@@ -544,7 +548,7 @@ sal_uLong ScDocument::GetLinkRefreshDelay( SCTAB nTab ) const
 
 void ScDocument::SetLink( SCTAB nTab, ScLinkMode nMode, const OUString& rDoc,
                             const OUString& rFilter, const OUString& rOptions,
-                            const OUString& rTabName, sal_uLong nRefreshDelay )
+                            const OUString& rTabName, sal_Int32 nRefreshDelay )
 {
     if (ScTable* pTable = FetchTable(nTab))
         pTable->SetLink(nMode, rDoc, rFilter, rOptions, rTabName, nRefreshDelay);
@@ -603,13 +607,13 @@ bool ScDocument::LinkExternalTab( SCTAB& rTab, const OUString& aDocTab,
     else
         return false;
 
-    sal_uLong nRefreshDelay = 0;
+    sal_Int32 nRefreshDelay = 0;
 
     bool bWasThere = HasLink( aFileName, aFilterName, aOptions );
     SetLink( rTab, ScLinkMode::VALUE, aFileName, aFilterName, aOptions, aTabName, nRefreshDelay );
     if ( !bWasThere ) // Add link only once per source document
     {
-        ScTableLink* pLink = new ScTableLink( mpShell, aFileName, aFilterName, aOptions, nRefreshDelay );
+        ScTableLink* pLink = new ScTableLink( *mpShell, aFileName, aFilterName, aOptions, nRefreshDelay );
         pLink->SetInCreate( true );
         OUString aFilName = aFilterName;
         GetLinkManager()->InsertFileLink( *pLink, sfx2::SvBaseLinkObjectType::ClientFile, aFileName, &aFilName );
@@ -1018,7 +1022,7 @@ void ScDocument::UpdateReference(
 
     std::unique_ptr<sc::ExpandRefsSwitch> pExpandRefsSwitch;
     if (rCxt.isInserted())
-        pExpandRefsSwitch.reset(new sc::ExpandRefsSwitch(*this, SC_MOD()->GetInputOptions().GetExpandRefs()));
+        pExpandRefsSwitch.reset(new sc::ExpandRefsSwitch(*this, ScModule::get()->GetInputOptions().GetExpandRefs()));
 
     size_t nFirstTab, nLastTab;
     if (rCxt.meMode == URM_COPY)
@@ -1038,8 +1042,8 @@ void ScDocument::UpdateReference(
         SCROW nRow1 = rCxt.maRange.aStart.Row(), nRow2 = rCxt.maRange.aEnd.Row();
         SCTAB nTab1 = rCxt.maRange.aStart.Tab(), nTab2 = rCxt.maRange.aEnd.Tab();
 
-        xColNameRanges->UpdateReference( eUpdateRefMode, this, aRange, nDx, nDy, nDz );
-        xRowNameRanges->UpdateReference( eUpdateRefMode, this, aRange, nDx, nDy, nDz );
+        xColNameRanges->UpdateReference( eUpdateRefMode, *this, aRange, nDx, nDy, nDz );
+        xRowNameRanges->UpdateReference( eUpdateRefMode, *this, aRange, nDx, nDy, nDz );
         pDBCollection->UpdateReference( eUpdateRefMode, nCol1, nRow1, nTab1, nCol2, nRow2, nTab2, nDx, nDy, nDz );
         if (pRangeName)
             pRangeName->UpdateReference(rCxt);
@@ -1053,7 +1057,7 @@ void ScDocument::UpdateReference(
             pValidationList->UpdateReference(rCxt);
         }
         if ( pDetOpList )
-            pDetOpList->UpdateReference( this, eUpdateRefMode, aRange, nDx, nDy, nDz );
+            pDetOpList->UpdateReference( *this, eUpdateRefMode, aRange, nDx, nDy, nDz );
         if ( pUnoBroadcaster )
             pUnoBroadcaster->Broadcast( ScUpdateRefHint(
                                 eUpdateRefMode, aRange, nDx, nDy, nDz ) );
@@ -1094,7 +1098,7 @@ void ScDocument::UpdateReference(
         SCROW nRow1 = rCxt.maRange.aStart.Row(), nRow2 = rCxt.maRange.aEnd.Row();
         SCTAB nTab1 = rCxt.maRange.aStart.Tab(), nTab2 = rCxt.maRange.aEnd.Tab();
 
-        if ( ScRefUpdate::Update( this, eUpdateRefMode, nCol1,nRow1,nTab1, nCol2,nRow2,nTab2,
+        if ( ScRefUpdate::Update( *this, eUpdateRefMode, nCol1,nRow1,nTab1, nCol2,nRow2,nTab2,
                                     nDx,nDy,nDz, theCol1,theRow1,theTab1, theCol2,theRow2,theTab2 ) )
         {
             aEmbedRange = ScRange( theCol1,theRow1,theTab1, theCol2,theRow2,theTab2 );
@@ -1188,6 +1192,7 @@ OUString ScDocument::GetAutoFillPreview( const ScRange& rSource, SCCOL nEndX, SC
 void ScDocument::AutoFormat( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow,
                                     sal_uInt16 nFormatNo, const ScMarkData& rMark )
 {
+    ScProgress aProgress(GetDocumentShell(), ScResId(STR_UNDO_AUTOFORMAT), nEndCol - nStartCol + 1, true);
     PutInOrder( nStartCol, nEndCol );
     PutInOrder( nStartRow, nEndRow );
     SCTAB nMax = maTabs.size();
@@ -1196,7 +1201,7 @@ void ScDocument::AutoFormat( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SC
         if (rTab >= nMax)
             break;
         if (maTabs[rTab])
-            maTabs[rTab]->AutoFormat( nStartCol, nStartRow, nEndCol, nEndRow, nFormatNo );
+            maTabs[rTab]->AutoFormat( nStartCol, nStartRow, nEndCol, nEndRow, nFormatNo, &aProgress );
     }
 }
 
@@ -1564,6 +1569,7 @@ void ScDocument::GetFilterEntries(
     if (!pDBData)
         return;
 
+    pDBData->ExtendBackColorArea(*this);
     pDBData->ExtendDataArea(*this);
     SCTAB nAreaTab;
     SCCOL nStartCol;
@@ -1976,9 +1982,9 @@ void ScDocument::SetLanguage( LanguageType eLatin, LanguageType eCjk, LanguageTy
     if ( mxPoolHelper.is() )
     {
         ScDocumentPool* pPool = mxPoolHelper->GetDocPool();
-        pPool->SetPoolDefaultItem( SvxLanguageItem( eLanguage, ATTR_FONT_LANGUAGE ) );
-        pPool->SetPoolDefaultItem( SvxLanguageItem( eCjkLanguage, ATTR_CJK_FONT_LANGUAGE ) );
-        pPool->SetPoolDefaultItem( SvxLanguageItem( eCtlLanguage, ATTR_CTL_FONT_LANGUAGE ) );
+        pPool->SetUserDefaultItem( SvxLanguageItem( eLanguage, ATTR_FONT_LANGUAGE ) );
+        pPool->SetUserDefaultItem( SvxLanguageItem( eCjkLanguage, ATTR_CJK_FONT_LANGUAGE ) );
+        pPool->SetUserDefaultItem( SvxLanguageItem( eCtlLanguage, ATTR_CTL_FONT_LANGUAGE ) );
     }
 
     UpdateDrawLanguages(); // Set edit engine defaults in drawing layer pool
@@ -2046,7 +2052,7 @@ void ScDocument::DoMergeContents( SCCOL nStartCol, SCROW nStartRow,
                     aCell = ScRefCellValue(*this, aPos);
             }
             if (nCol != nStartCol || nRow != nStartRow)
-                SetString(nCol,nRow,nTab,"");
+                SetString(nCol,nRow,nTab,u""_ustr);
         }
 
     if (aCell.isEmpty() || !GetString(nStartCol, nStartRow, nTab).isEmpty())
@@ -2064,7 +2070,7 @@ void ScDocument::DoEmptyBlock( SCCOL nStartCol, SCROW nStartRow,
         for (nCol=nStartCol; nCol<=nEndCol; nCol++)
         {  // empty block except first cell
             if (nCol != nStartCol || nRow != nStartRow)
-                SetString(nCol,nRow,nTab,"");
+                SetString(nCol,nRow,nTab,u""_ustr);
         }
 }
 
@@ -2097,7 +2103,7 @@ void ScDocument::RemoveMerge( SCCOL nCol, SCROW nRow, SCTAB nTab )
 
     RemoveFlagsTab( nCol, nRow, nEndCol, nEndRow, nTab, ScMF::Hor | ScMF::Ver );
 
-    const ScMergeAttr* pDefAttr = &mxPoolHelper->GetDocPool()->GetDefaultItem( ATTR_MERGE );
+    const ScMergeAttr* pDefAttr = &mxPoolHelper->GetDocPool()->GetUserOrPoolDefaultItem( ATTR_MERGE );
     ApplyAttr( nCol, nRow, nTab, *pDefAttr );
 }
 

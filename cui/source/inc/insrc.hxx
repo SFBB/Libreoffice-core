@@ -18,11 +18,11 @@
  */
 #pragma once
 
-#include <rtl/string.hxx>
-#include <svx/svxdlg.hxx>
+#include <sal/config.h>
+
 #include <vcl/weld.hxx>
 
-class SvxInsRowColDlg : public SvxAbstractInsRowColDlg, public weld::GenericDialogController
+class SvxInsRowColDlg : public weld::GenericDialogController
 {
 private:
     std::unique_ptr<weld::SpinButton> m_xCountEdit;
@@ -32,10 +32,8 @@ private:
 public:
     SvxInsRowColDlg(weld::Window* pParent, bool bCol, const OUString& rHelpId);
 
-    virtual short Execute() override;
-
-    virtual bool isInsertBefore() const override;
-    virtual sal_uInt16 getInsertCount() const override;
+    bool isInsertBefore() const;
+    sal_uInt16 getInsertCount() const;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

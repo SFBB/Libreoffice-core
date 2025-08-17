@@ -35,19 +35,26 @@ $(eval $(call gb_Package_add_files_with_dir,odk_examples,$(SDKDIRNAME)/examples,
     DevelopersGuide/BasicAndDialogs/ToolkitControls/ToolkitControls/ScrollBarDlg.xdl \
     DevelopersGuide/BasicAndDialogs/ToolkitControls/ToolkitControls/dialog.xlb \
     DevelopersGuide/BasicAndDialogs/ToolkitControls/ToolkitControls/script.xlb \
-    DevelopersGuide/Charts/AddInChart.ods \
-    DevelopersGuide/Charts/CalcHelper.java \
-    DevelopersGuide/Charts/ChartHelper.java \
-    DevelopersGuide/Charts/ChartInCalc.java \
-    DevelopersGuide/Charts/ChartInDraw.java \
-    DevelopersGuide/Charts/ChartInWriter.java \
-    DevelopersGuide/Charts/Helper.java \
-    DevelopersGuide/Charts/JavaSampleChartAddIn.components \
-    DevelopersGuide/Charts/JavaSampleChartAddIn.java \
-    DevelopersGuide/Charts/ListenAtCalcRangeInDraw.java \
-    DevelopersGuide/Charts/Makefile \
-    DevelopersGuide/Charts/SelectionChangeListener.java \
-    DevelopersGuide/Charts/bullet.gif \
+    DevelopersGuide/Charts/java/AddInChart.ods \
+    DevelopersGuide/Charts/java/CalcHelper.java \
+    DevelopersGuide/Charts/java/ChartHelper.java \
+    DevelopersGuide/Charts/java/ChartInCalc.java \
+    DevelopersGuide/Charts/java/ChartInDraw.java \
+    DevelopersGuide/Charts/java/ChartInWriter.java \
+    DevelopersGuide/Charts/java/Helper.java \
+    DevelopersGuide/Charts/java/JavaSampleChartAddIn.components \
+    DevelopersGuide/Charts/java/JavaSampleChartAddIn.java \
+    DevelopersGuide/Charts/java/ListenAtCalcRangeInDraw.java \
+    DevelopersGuide/Charts/java/Makefile \
+    DevelopersGuide/Charts/java/SelectionChangeListener.java \
+    DevelopersGuide/Charts/java/bullet.gif \
+    DevelopersGuide/Charts/python/CalcHelper.py \
+    DevelopersGuide/Charts/python/ChartHelper.py \
+    DevelopersGuide/Charts/python/ChartInCalc.py \
+    DevelopersGuide/Charts/python/ChartInDraw.py \
+    DevelopersGuide/Charts/python/ChartInWriter.py \
+    DevelopersGuide/Charts/python/Helper.py \
+    DevelopersGuide/Charts/python/bullet.gif \
     DevelopersGuide/Components/Addons/JobsAddon/Addons.xcu \
     DevelopersGuide/Components/Addons/JobsAddon/AsyncJob.components \
     DevelopersGuide/Components/Addons/JobsAddon/AsyncJob.java \
@@ -173,6 +180,8 @@ $(eval $(call gb_Package_add_files_with_dir,odk_examples,$(SDKDIRNAME)/examples,
     DevelopersGuide/Extensions/DialogWithHelp/help/en/com.foocorp.foo-ext/subfolder/anotherpage.xhp \
     DevelopersGuide/FirstSteps/FirstUnoContact/cxx/FirstUnoContact.cxx \
     DevelopersGuide/FirstSteps/FirstUnoContact/cxx/Makefile \
+    DevelopersGuide/FirstSteps/FirstUnoContact/csharp/FirstUnoContact.cs \
+    DevelopersGuide/FirstSteps/FirstUnoContact/csharp/Makefile \
     DevelopersGuide/FirstSteps/FirstUnoContact/java/FirstUnoContact.java \
     DevelopersGuide/FirstSteps/FirstUnoContact/java/Makefile \
     DevelopersGuide/FirstSteps/FirstUnoContact/java/build.xml \
@@ -180,10 +189,17 @@ $(eval $(call gb_Package_add_files_with_dir,odk_examples,$(SDKDIRNAME)/examples,
     DevelopersGuide/FirstSteps/FirstUnoContact/python/FirstUnoContact.py \
     DevelopersGuide/FirstSteps/FirstLoadComponent/cxx/FirstLoadComponent.cxx \
     DevelopersGuide/FirstSteps/FirstLoadComponent/cxx/Makefile \
+    DevelopersGuide/FirstSteps/FirstLoadComponent/csharp/FirstLoadComponent.cs \
+    DevelopersGuide/FirstSteps/FirstLoadComponent/csharp/Makefile \
     DevelopersGuide/FirstSteps/FirstLoadComponent/java/FirstLoadComponent.java \
     DevelopersGuide/FirstSteps/FirstLoadComponent/java/Makefile \
     DevelopersGuide/FirstSteps/FirstLoadComponent/basic/FirstLoadComponent.bas \
     DevelopersGuide/FirstSteps/FirstLoadComponent/python/FirstLoadComponent.py \
+    DevelopersGuide/FirstSteps/FirstLoadComponent/python/DualComponentLoader.py \
+    DevelopersGuide/FirstSteps/HelloTextTableShape/cxx/HelloTextTableShape.cxx \
+    DevelopersGuide/FirstSteps/HelloTextTableShape/cxx/Makefile \
+    DevelopersGuide/FirstSteps/HelloTextTableShape/csharp/HelloTextTableShape.cs \
+    DevelopersGuide/FirstSteps/HelloTextTableShape/csharp/Makefile \
     DevelopersGuide/FirstSteps/HelloTextTableShape/java/HelloTextTableShape.java \
     DevelopersGuide/FirstSteps/HelloTextTableShape/java/Makefile \
     DevelopersGuide/FirstSteps/HelloTextTableShape/basic/HelloTextTableShape.bas \
@@ -240,11 +256,15 @@ $(eval $(call gb_Package_add_files_with_dir,odk_examples,$(SDKDIRNAME)/examples,
     DevelopersGuide/OfficeBean/OfficeIconColor32.jpg \
     DevelopersGuide/OfficeBean/OfficeIconMono16.jpg \
     DevelopersGuide/OfficeBean/OfficeIconMono32.jpg \
-    DevelopersGuide/OfficeDev/Clipboard/Clipboard.java \
-    DevelopersGuide/OfficeDev/Clipboard/ClipboardListener.java \
-    DevelopersGuide/OfficeDev/Clipboard/ClipboardOwner.java \
-    DevelopersGuide/OfficeDev/Clipboard/Makefile \
-    DevelopersGuide/OfficeDev/Clipboard/TextTransferable.java \
+    DevelopersGuide/OfficeDev/Clipboard/java/Clipboard.java \
+    DevelopersGuide/OfficeDev/Clipboard/java/ClipboardListener.java \
+    DevelopersGuide/OfficeDev/Clipboard/java/ClipboardOwner.java \
+    DevelopersGuide/OfficeDev/Clipboard/java/Makefile \
+    DevelopersGuide/OfficeDev/Clipboard/java/TextTransferable.java \
+    DevelopersGuide/OfficeDev/Clipboard/python/clipboard.py \
+    DevelopersGuide/OfficeDev/Clipboard/python/clipboard_listener.py \
+    DevelopersGuide/OfficeDev/Clipboard/python/clipboard_owner.py \
+    DevelopersGuide/OfficeDev/Clipboard/python/text_transferable.py \
     DevelopersGuide/OfficeDev/ContextMenuInterceptor.java \
     DevelopersGuide/OfficeDev/DesktopEnvironment/CustomizeView.java \
     DevelopersGuide/OfficeDev/DesktopEnvironment/Desk.java \
@@ -308,13 +328,23 @@ $(eval $(call gb_Package_add_files_with_dir,odk_examples,$(SDKDIRNAME)/examples,
     DevelopersGuide/OfficeDev/MenuElement.java \
     DevelopersGuide/OfficeDev/Number_Formats.java \
     DevelopersGuide/OfficeDev/OfficeConnect.java \
-    DevelopersGuide/OfficeDev/PathSettings/Makefile \
-    DevelopersGuide/OfficeDev/PathSettings/PathSettingsTest.java \
-    DevelopersGuide/OfficeDev/PathSubstitution/Makefile \
-    DevelopersGuide/OfficeDev/PathSubstitution/PathSubstitutionTest.java \
-    DevelopersGuide/OfficeDev/TerminationTest/Makefile \
-    DevelopersGuide/OfficeDev/TerminationTest/TerminateListener.java \
-    DevelopersGuide/OfficeDev/TerminationTest/TerminationTest.java \
+    DevelopersGuide/OfficeDev/PathSettings/csharp/Makefile \
+    DevelopersGuide/OfficeDev/PathSettings/csharp/PathSettingsTest.cs \
+    DevelopersGuide/OfficeDev/PathSettings/java/Makefile \
+    DevelopersGuide/OfficeDev/PathSettings/java/PathSettingsTest.java \
+    DevelopersGuide/OfficeDev/PathSubstitution/csharp/Makefile \
+    DevelopersGuide/OfficeDev/PathSubstitution/csharp/PathSubstitutionTest.cs \
+    DevelopersGuide/OfficeDev/PathSubstitution/java/Makefile \
+    DevelopersGuide/OfficeDev/PathSubstitution/java/PathSubstitutionTest.java \
+    DevelopersGuide/OfficeDev/PathSubstitution/python/path_substitution_test.py \
+    DevelopersGuide/OfficeDev/TerminationTest/cxx/Makefile \
+    DevelopersGuide/OfficeDev/TerminationTest/cxx/TerminationTest.cxx \
+    DevelopersGuide/OfficeDev/TerminationTest/csharp/Makefile \
+    DevelopersGuide/OfficeDev/TerminationTest/csharp/TerminateListener.cs \
+    DevelopersGuide/OfficeDev/TerminationTest/csharp/TerminationTest.cs \
+    DevelopersGuide/OfficeDev/TerminationTest/java/Makefile \
+    DevelopersGuide/OfficeDev/TerminationTest/java/TerminateListener.java \
+    DevelopersGuide/OfficeDev/TerminationTest/java/TerminationTest.java \
     DevelopersGuide/ProfUNO/CppBinding/Makefile \
     DevelopersGuide/ProfUNO/CppBinding/office_connect.cxx \
     DevelopersGuide/ProfUNO/CppBinding/string_samples.cxx \
@@ -410,6 +440,12 @@ $(eval $(call gb_Package_add_files_with_dir,odk_examples,$(SDKDIRNAME)/examples,
     basic/text/modifying_text_automatically/using_regular_expressions.odt \
     cpp/Convertor/Convertor.cxx \
     cpp/Convertor/Makefile \
+    cpp/Convertor/test.odt \
+    $(if $(filter-out $(OS),MACOSX), \
+        cpp/lokconvert/lokconvert.cxx \
+        cpp/lokconvert/Makefile \
+        cpp/lokconvert/test.odt \
+    ) \
     cpp/Draw/Draw.cxx \
     cpp/Draw/Makefile \
     cpp/DocumentLoader/DocumentLoader.cxx \
@@ -441,6 +477,12 @@ $(eval $(call gb_Package_add_files_with_dir,odk_examples,$(SDKDIRNAME)/examples,
     cpp/counter/countermain.cxx \
     cpp/remoteclient/Makefile \
     cpp/remoteclient/remoteclient.cxx \
+    dotnet/WriterDemo/csharp/Makefile \
+    dotnet/WriterDemo/csharp/WriterDemo.cs \
+    dotnet/WriterDemo/fsharp/Makefile \
+    dotnet/WriterDemo/fsharp/WriterDemo.fs \
+    dotnet/WriterDemo/vbasic/Makefile \
+    dotnet/WriterDemo/vbasic/WriterDemo.vb \
     java/DocumentHandling/DocumentConverter.java \
     java/DocumentHandling/DocumentLoader.java \
     java/DocumentHandling/DocumentPrinter.java \
@@ -551,12 +593,31 @@ $(eval $(call gb_Package_add_files_with_dir,odk_examples,$(SDKDIRNAME)/examples,
     python/toolpanel/toolpanel.component \
     python/toolpanel/toolpanel.py \
     python/toolpanel/toolpanels/poc.xdl \
+    python/minimal-extension/Makefile \
+    python/minimal-extension/main.py \
+    python/minimal-extension/description.xml \
+    python/minimal-extension/Addons.xcu \
+    python/minimal-extension/registration/license.txt \
+    python/minimal-extension/pkg-description/pkg-description.en \
+    python/minimal-extension/META-INF/manifest.xml \
     python/DocumentHandling/DocumentConverter.py \
     python/DocumentHandling/DocumentLoader.py \
     python/DocumentHandling/DocumentPrinter.py \
     python/DocumentHandling/DocumentSaver.py \
     python/DocumentHandling/README.md \
     python/DocumentHandling/tests/hello.odt \
+    python/Text/BookmarkInsertion.py \
+    python/Text/GraphicsInserter.py \
+    python/Text/HardFormatting.py \
+    python/Text/StyleCreation.py \
+    python/Text/StyleInitialization.py \
+    python/Text/SWriter.py \
+    python/Text/TextDocumentStructure.py \
+    python/Text/TextReplace.py \
+    python/Text/WriterSelector.py \
+    python/Spreadsheet/ChartTypeChange.py \
+    python/Spreadsheet/EuroAdaption.py \
+    python/Spreadsheet/SCalc.py \
     python/Drawing/SDraw.py \
 ))
 

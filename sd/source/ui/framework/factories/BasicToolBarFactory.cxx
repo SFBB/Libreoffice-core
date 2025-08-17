@@ -18,16 +18,16 @@
  */
 
 #include <framework/factories/BasicToolBarFactory.hxx>
+#include <framework/ConfigurationController.hxx>
 
 #include <ViewTabBar.hxx>
 #include <framework/FrameworkHelper.hxx>
+#include <ResourceId.hxx>
 #include <DrawController.hxx>
 #include <unotools/mediadescriptor.hxx>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
 #include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -55,11 +55,8 @@ BasicToolBarFactory::BasicToolBarFactory(const rtl::Reference<::sd::DrawControll
             {
                 mxConfigurationController->addResourceFactory(
                     FrameworkHelper::msViewTabBarURL, this);
+                mxConfigurationController->addEventListener(static_cast<lang::XEventListener*>(this));
             }
-
-            Reference<lang::XComponent> xComponent (mxConfigurationController, UNO_QUERY);
-            if (xComponent.is())
-                xComponent->addEventListener(static_cast<lang::XEventListener*>(this));
         }
         else
         {
@@ -87,11 +84,9 @@ void BasicToolBarFactory::disposing(std::unique_lock<std::mutex>&)
 
 void BasicToolBarFactory::Shutdown()
 {
-    Reference<lang::XComponent> xComponent (mxConfigurationController, UNO_QUERY);
-    if (xComponent.is())
-        xComponent->removeEventListener(static_cast<lang::XEventListener*>(this));
     if (mxConfigurationController.is())
     {
+        mxConfigurationController->removeEventListener(static_cast<lang::XEventListener*>(this));
         mxConfigurationController->removeResourceFactoryForReference(this);
         mxConfigurationController = nullptr;
     }
@@ -102,39 +97,38 @@ void BasicToolBarFactory::Shutdown()
 void SAL_CALL BasicToolBarFactory::disposing (
     const lang::EventObject& rEventObject)
 {
-    if (rEventObject.Source == mxConfigurationController)
+    if (rEventObject.Source == cppu::getXWeak(mxConfigurationController.get()))
         mxConfigurationController = nullptr;
 }
 
-//===== XPaneFactory ==========================================================
+//===== AbstractPaneFactory ==========================================================
 
-Reference<XResource> SAL_CALL BasicToolBarFactory::createResource (
-    const Reference<XResourceId>& rxToolBarId)
+rtl::Reference<AbstractResource> BasicToolBarFactory::createResource (
+    const rtl::Reference<ResourceId>& rxToolBarId)
 {
     ThrowIfDisposed();
 
     if (rxToolBarId->getResourceURL() != FrameworkHelper::msViewTabBarURL)
         throw lang::IllegalArgumentException();
 
-    Reference<XResource> xToolBar = new ViewTabBar(rxToolBarId, mxController);
+    rtl::Reference<AbstractResource> xToolBar = new ViewTabBar(rxToolBarId, mxController);
     return xToolBar;
 }
 
-void SAL_CALL BasicToolBarFactory::releaseResource (
-    const Reference<XResource>& rxToolBar)
+void BasicToolBarFactory::releaseResource (
+    const rtl::Reference<AbstractResource>& rxToolBar)
 {
     ThrowIfDisposed();
 
-    Reference<XComponent> xComponent (rxToolBar, UNO_QUERY);
-    if (xComponent.is())
-        xComponent->dispose();
+    if (rxToolBar.is())
+        rxToolBar->dispose();
 }
 
 void BasicToolBarFactory::ThrowIfDisposed() const
 {
     if (m_bDisposed)
     {
-        throw lang::DisposedException ("BasicToolBarFactory object has already been disposed",
+        throw lang::DisposedException (u"BasicToolBarFactory object has already been disposed"_ustr,
             const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
     }
 }

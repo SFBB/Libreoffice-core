@@ -61,7 +61,6 @@ use installer::windows::file;
 use installer::windows::font;
 use installer::windows::icon;
 use installer::windows::idtglobal;
-use installer::windows::inifile;
 use installer::windows::media;
 use installer::windows::mergemodule;
 use installer::windows::msiglobal;
@@ -574,14 +573,7 @@ sub run {
 
         my $filesinproductlanguageresolvedarrayref = installer::scriptitems::resolving_all_languages_in_productlists($filesinproductarrayref, $languagesarrayref);
 
-        if ( ! $installer::globals::set_office_start_language )
-        {
-            $filesinproductlanguageresolvedarrayref = installer::scriptitems::remove_office_start_language_files($filesinproductlanguageresolvedarrayref);
-        }
-
         installer::scriptitems::changing_name_of_language_dependent_keys($filesinproductlanguageresolvedarrayref);
-
-        if ( $installer::globals::iswin and $^O =~ /MSWin/i ) { installer::converter::convert_slash_to_backslash($filesinproductlanguageresolvedarrayref); }
 
         $filesinproductlanguageresolvedarrayref = installer::scriptitems::remove_non_existent_languages_in_productlists($filesinproductlanguageresolvedarrayref, $languagestringref, "Name", "file");
 
@@ -1320,12 +1312,8 @@ sub run {
             @installer::globals::binarytableonlyfiles = ();
             $filesinproductlanguageresolvedarrayref = installer::worker::remove_all_items_with_special_flag($filesinproductlanguageresolvedarrayref ,"BINARYTABLE_ONLY");
 
-            # Collecting all profileitems with flag "INIFILETABLE" for table "IniFile"
-            my $inifiletableentries = installer::worker::collect_all_items_with_special_flag($profileitemsinproductlanguageresolvedarrayref ,"INIFILETABLE");
-
             # Creating the important dynamic idt files
             installer::windows::msiglobal::set_msiproductversion($allvariableshashref);
-            installer::windows::msiglobal::put_msiproductversion_into_bootstrapfile($filesinproductlanguageresolvedarrayref);
 
             # Add cabinet assignments to files
             installer::windows::file::assign_cab_to_files($filesinproductlanguageresolvedarrayref);
@@ -1361,8 +1349,6 @@ sub run {
             my @iconfilecollector = ();
 
             installer::windows::shortcut::create_shortcut_table($filesinproductlanguageresolvedarrayref, $linksinproductlanguageresolvedarrayref, $folderinproductlanguageresolvedarrayref, $folderitemsinproductlanguageresolvedarrayref, $directoriesforepmarrayref, $newidtdir, \@setuplanguagesarray, $includepatharrayref, \@iconfilecollector);
-
-            installer::windows::inifile::create_inifile_table($inifiletableentries, $filesinproductlanguageresolvedarrayref, $newidtdir);
 
             installer::windows::icon::create_icon_table(\@iconfilecollector, $newidtdir);    # creating the icon table with all iconfiles used as shortcuts (FolderItems)
 

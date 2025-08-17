@@ -27,13 +27,12 @@
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/ui/dialogs/XFilePickerListener.hpp>
 #include <com/sun/star/ui/dialogs/XDialogClosedListener.hpp>
+#include <unotools/saveopt.hxx>
 #include <sfx2/fcontnr.hxx>
 #include <sfx2/filedlghelper.hxx>
 
 class SfxFilterMatcher;
 class GraphicFilter;
-class FileDialogHelper;
-struct ImplSVEvent;
 
 namespace sfx2
 {
@@ -54,13 +53,12 @@ namespace sfx2
         FileDialogHelper*           mpAntiImpl;
         weld::Window*               mpFrameWeld;
 
-        ::std::vector< OUString > mlLastURLs;
-
         OUString             maPath;
         OUString             maFileName;
         OUString             maCurFilter;
         OUString             maSelectFilter;
         OUString             maButtonLabel;
+        OUString             msPreselectedDir;
 
         Idle                        maPreviewIdle;
         Graphic                     maGraphic;
@@ -70,12 +68,11 @@ namespace sfx2
         SfxFilterFlags              m_nMustFlags;
         SfxFilterFlags              m_nDontFlags;
 
-        ImplSVEvent *               mnPostUserEventId;
-
         FileDialogHelper::Context   meContext;
 
-        bool                    mbHasPassword           : 1;
-        bool                    mbIsPwdEnabled          : 1;
+        bool                    mbHasPassword           : 1;  // checkbox is visible
+        bool                    mbIsPwdEnabled          : 1;  // password checkbox is not grayed out
+        bool                    mbIsGpgEncrEnabled      : 1;  // GPG checkbox is not grayed out
         bool                    m_bHaveFilterOptions    : 1;
         bool                    mbHasVersions           : 1;
         bool                    mbHasAutoExt            : 1;
@@ -89,10 +86,12 @@ namespace sfx2
         bool                    mbSystemPicker          : 1;
         bool                    mbAsyncPicker           : 1;
         bool                    mbPwdCheckBoxState      : 1;
+        bool                    mbGpgCheckBoxState      : 1;
         bool                    mbSelection             : 1;
         bool                    mbSelectionEnabled      : 1;
         bool                    mbHasSelectionBox       : 1;
         bool                    mbSelectionFltrEnabled  : 1;
+        bool                    mbHasSignByDefault      : 1;
 
     private:
         void                    addFilters( const OUString& rFactory,
@@ -102,9 +101,11 @@ namespace sfx2
                                            const OUString& rExtension );
         void                    addGraphicFilter();
         void                    enablePasswordBox( bool bInit );
+        void                    enableGpgEncrBox( bool bInit );
         void                    updateFilterOptionsBox();
         void                    updateExportButton();
         void                    updateSelectionBox();
+        void                    updateSignByDefault();
         void                    updateVersions();
         void                    updatePreviewState( bool _bUpdatePreviewWindow );
         void                    dispose();
@@ -115,7 +116,7 @@ namespace sfx2
         std::shared_ptr<const SfxFilter>        getCurrentSfxFilter();
         bool                updateExtendedControl( sal_Int16 _nExtendedControlId, bool _bEnable );
 
-        ErrCode                 getGraphic( const OUString& rURL, Graphic& rGraphic ) const;
+        ErrCode                 getGraphic( const OUString& rURL, Graphic& rGraphic );
         void                    setDefaultValues();
 
         void                    preExecute();
@@ -137,11 +138,7 @@ namespace sfx2
 
         void                    verifyPath( );
 
-        void                    implGetAndCacheFiles( const css::uno::Reference< XInterface >& xPicker  ,
-                                                      std::vector<OUString>&                   rpURLList );
-
         DECL_LINK( TimeOutHdl_Impl, Timer *, void);
-        DECL_LINK( InitControls, void*, void );
 
     public:
         // XFilePickerListener methods
@@ -171,14 +168,15 @@ namespace sfx2
                                     FileDialogFlags nFlags,
                                     sal_Int16 nDialog,
                                     weld::Window* pFrameWeld,
-                                    const OUString& sStandardDir = OUString(),
+                                    const OUString& sPreselectedDir = OUString(),
                                     const css::uno::Sequence< OUString >&   rDenyList = css::uno::Sequence< OUString >()
                                 );
         virtual                 ~FileDialogHelper_Impl() override;
 
-        ErrCode                 execute( std::vector<OUString>& rpURLList,
+        ErrCode                 execute( css::uno::Sequence<OUString>& rpURLList,
                                          std::optional<SfxAllItemSet>& rpSet,
-                                         OUString&       rFilter );
+                                         OUString&       rFilter,
+                                         SignatureState nScriptingSignatureState);
         ErrCode                 execute();
 
         void                    setFilter( const OUString& rFilter );
@@ -195,7 +193,7 @@ namespace sfx2
         OUString                getFilter() const;
         void                    getRealFilter( OUString& _rFilter ) const;
 
-        ErrCode                 getGraphic( Graphic& rGraphic ) const;
+        ErrCode                 getGraphic( Graphic& rGraphic );
         void                    createMatcher( const OUString& rFactory );
 
         bool                    isShowFilterExtensionEnabled() const;
@@ -212,7 +210,6 @@ namespace sfx2
 
         css::uno::Reference<css::awt::XWindow> GetFrameInterface();
     };
-
 }   // end of namespace sfx2
 
 #endif // INCLUDED_SFX2_SOURCE_DIALOG_FILEDLGIMPL_HXX

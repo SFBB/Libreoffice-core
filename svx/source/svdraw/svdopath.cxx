@@ -324,18 +324,18 @@ void ImpPathCreateUser::CalcCircle(const Point& rP1, const Point& rP2, const Poi
     if (bRet) {
         double cs = cos(toRadians(nTmpAngle));
         double nR=static_cast<double>(GetLen(Point(dx,dy)))/cs/2;
-        nRad=std::abs(FRound(nR));
+        nRad = std::abs(basegfx::fround<tools::Long>(nR));
     }
     if (dAngle<18000_deg100) {
         nCircStAngle=NormAngle36000(nTangAngle-9000_deg100);
         nCircRelAngle=NormAngle36000(2_deg100*dAngle);
-        aCircCenter.AdjustX(FRound(nRad * cos(toRadians(nTangAngle + 9000_deg100))));
-        aCircCenter.AdjustY(-(FRound(nRad * sin(toRadians(nTangAngle + 9000_deg100)))));
+        aCircCenter.AdjustX(basegfx::fround<tools::Long>(nRad * cos(toRadians(nTangAngle + 9000_deg100))));
+        aCircCenter.AdjustY(basegfx::fround<tools::Long>(nRad * -sin(toRadians(nTangAngle + 9000_deg100))));
     } else {
         nCircStAngle=NormAngle36000(nTangAngle+9000_deg100);
         nCircRelAngle=-NormAngle36000(36000_deg100-2_deg100*dAngle);
-        aCircCenter.AdjustX(FRound(nRad * cos(toRadians(nTangAngle - 9000_deg100))));
-        aCircCenter.AdjustY(-(FRound(nRad * sin(toRadians(nTangAngle - 9000_deg100)))));
+        aCircCenter.AdjustX(basegfx::fround<tools::Long>(nRad * cos(toRadians(nTangAngle - 9000_deg100))));
+        aCircCenter.AdjustY(basegfx::fround<tools::Long>(nRad * -sin(toRadians(nTangAngle - 9000_deg100))));
     }
     bAngleSnap=pView!=nullptr && pView->IsAngleSnapEnabled();
     if (bAngleSnap) {
@@ -389,16 +389,14 @@ Point ImpPathCreateUser::CalcLine(const Point& aCsr, tools::Long nDirX, tools::L
     if (bHLin) y=0;
     else if (bVLin) x=0;
     else {
-        tools::Long x1=BigMulDiv(y,nDirX,nDirY);
-        tools::Long y1=y;
-        tools::Long x2=x;
+        tools::Long x2=BigMulDiv(y,nDirX,nDirY);
         tools::Long y2=BigMulDiv(x,nDirY,nDirX);
-        tools::Long l1=std::abs(x1)+std::abs(y1);
-        tools::Long l2=std::abs(x2)+std::abs(y2);
+        tools::Long l1=std::abs(x2)+std::abs(y);
+        tools::Long l2=std::abs(x)+std::abs(y2);
         if ((l1<=l2) != (pView!=nullptr && pView->IsBigOrtho())) {
-            x=x1; y=y1;
+            x = x2;
         } else {
-            x=x2; y=y2;
+            y = y2;
         }
     }
     return Point(x,y);
@@ -457,8 +455,8 @@ void ImpPathCreateUser::CalcRect(const Point& rP1, const Point& rP2, const Point
         double sn=sin(a);
         double cs=cos(a);
         double nGKathLen=nHypLen*sn;
-        y+=FRound(nGKathLen*sn);
-        x+=FRound(nGKathLen*cs);
+        y += basegfx::fround<tools::Long>(nGKathLen * sn);
+        x += basegfx::fround<tools::Long>(nGKathLen * cs);
     }
     aRectP2.AdjustX(x );
     aRectP2.AdjustY(y );
@@ -1659,8 +1657,8 @@ static tools::Rectangle lcl_ImpGetBoundRect(const basegfx::B2DPolyPolygon& rPoly
         return tools::Rectangle();
 
     return tools::Rectangle(
-        FRound(aRange.getMinX()), FRound(aRange.getMinY()),
-        FRound(aRange.getMaxX()), FRound(aRange.getMaxY()));
+        basegfx::fround<tools::Long>(aRange.getMinX()), basegfx::fround<tools::Long>(aRange.getMinY()),
+        basegfx::fround<tools::Long>(aRange.getMaxX()), basegfx::fround<tools::Long>(aRange.getMaxY()));
 }
 
 void SdrPathObj::ImpForceLineAngle()
@@ -1671,10 +1669,13 @@ void SdrPathObj::ImpForceLineAngle()
     const basegfx::B2DPolygon aPoly(GetPathPoly().getB2DPolygon(0));
     const basegfx::B2DPoint aB2DPoint0(aPoly.getB2DPoint(0));
     const basegfx::B2DPoint aB2DPoint1(aPoly.getB2DPoint(1));
-    const Point aPoint0(FRound(aB2DPoint0.getX()), FRound(aB2DPoint0.getY()));
-    const Point aPoint1(FRound(aB2DPoint1.getX()), FRound(aB2DPoint1.getY()));
+    const Point aPoint0(basegfx::fround<tools::Long>(aB2DPoint0.getX()),
+                        basegfx::fround<tools::Long>(aB2DPoint0.getY()));
+    const Point aPoint1(basegfx::fround<tools::Long>(aB2DPoint1.getX()),
+                        basegfx::fround<tools::Long>(aB2DPoint1.getY()));
     const basegfx::B2DPoint aB2DDelt(aB2DPoint1 - aB2DPoint0);
-    const Point aDelt(FRound(aB2DDelt.getX()), FRound(aB2DDelt.getY()));
+    const Point aDelt(basegfx::fround<tools::Long>(aB2DDelt.getX()),
+                      basegfx::fround<tools::Long>(aB2DDelt.getY()));
 
     maGeo.m_nRotationAngle=GetAngle(aDelt);
     maGeo.m_nShearAngle=0_deg100;
@@ -2261,7 +2262,7 @@ PointerStyle SdrPathObj::GetCreatePointer() const
 
 void SdrPathObj::NbcMove(const Size& rSiz)
 {
-    maPathPolygon.transform(basegfx::utils::createTranslateB2DHomMatrix(rSiz.Width(), rSiz.Height()));
+    maPathPolygon.translate(rSiz.Width(), rSiz.Height());
 
     // #i19871# first modify locally, then call parent (to get correct SnapRect with GluePoints)
     SdrTextObj::NbcMove(rSiz);
@@ -2414,7 +2415,8 @@ Point SdrPathObj::GetSnapPoint(sal_uInt32 nSnapPnt) const
     }
 
     const basegfx::B2DPoint aB2DPoint(GetPathPoly().getB2DPolygon(nPoly).getB2DPoint(nPnt));
-    return Point(FRound(aB2DPoint.getX()), FRound(aB2DPoint.getY()));
+    return Point(basegfx::fround<tools::Long>(aB2DPoint.getX()),
+                 basegfx::fround<tools::Long>(aB2DPoint.getY()));
 }
 
 bool SdrPathObj::IsPolyObj() const
@@ -2443,7 +2445,8 @@ Point SdrPathObj::GetPoint(sal_uInt32 nHdlNum) const
     {
         const basegfx::B2DPolygon aPoly(GetPathPoly().getB2DPolygon(nPoly));
         const basegfx::B2DPoint aPoint(aPoly.getB2DPoint(nPnt));
-        aRetval = Point(FRound(aPoint.getX()), FRound(aPoint.getY()));
+        aRetval = Point(basegfx::fround<tools::Long>(aPoint.getX()),
+                        basegfx::fround<tools::Long>(aPoint.getY()));
     }
 
     return aRetval;
@@ -2845,11 +2848,14 @@ bool SdrPathObj::TRGetBaseGeometry(basegfx::B2DHomMatrix& rMatrix, basegfx::B2DP
                 // itself, else this method will no longer return the full polygon information (curve will
                 // be lost)
                 const basegfx::B2DRange aPolyRangeNoCurve(basegfx::utils::getRange(rPolyPolygon));
-                aScale = aPolyRangeNoCurve.getRange();
-                aTranslate = aPolyRangeNoCurve.getMinimum();
+                if (!aPolyRangeNoCurve.isEmpty())
+                {
+                    aScale = aPolyRangeNoCurve.getRange();
+                    aTranslate = aPolyRangeNoCurve.getMinimum();
 
-                // define matrix for move polygon to zero point
-                aMoveToZeroMatrix.translate(-aTranslate.getX(), -aTranslate.getY());
+                    // define matrix for move polygon to zero point
+                    aMoveToZeroMatrix.translate(-aTranslate.getX(), -aTranslate.getY());
+                }
             }
         }
 
@@ -2870,7 +2876,7 @@ bool SdrPathObj::TRGetBaseGeometry(basegfx::B2DHomMatrix& rMatrix, basegfx::B2DP
     rMatrix = basegfx::utils::createScaleShearXRotateTranslateB2DHomMatrix(
         aScale,
         basegfx::fTools::equalZero(fShearX) ? 0.0 : tan(fShearX),
-        basegfx::fTools::equalZero(fRotate) ? 0.0 : -fRotate,
+        -fRotate,
         aTranslate);
 
     return true;
@@ -2894,7 +2900,7 @@ void SdrPathObj::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, const b
 
     // #i75086# Old DrawingLayer (GeoStat and geometry) does not support holding negative scalings
     // in X and Y which equal a 180 degree rotation. Recognize it and react accordingly
-    if(basegfx::fTools::less(aScale.getX(), 0.0) && basegfx::fTools::less(aScale.getY(), 0.0))
+    if(aScale.getX() < 0.0 && aScale.getY() < 0.0)
     {
         aScale.setX(fabs(aScale.getX()));
         aScale.setY(fabs(aScale.getY()));
@@ -2925,8 +2931,8 @@ void SdrPathObj::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, const b
     // #i75086#
     // Given polygon is already scaled (for historical reasons), but not mirrored yet.
     // Thus, when scale is negative in X or Y, apply the needed mirroring accordingly.
-    double fScaleX(basegfx::fTools::less(aScale.getX(), 0.0) ? -1.0 : 1.0);
-    double fScaleY(basegfx::fTools::less(aScale.getY(), 0.0) ? -1.0 : 1.0);
+    double fScaleX(aScale.getX() < 0.0 ? -1.0 : 1.0);
+    double fScaleY(aScale.getY() < 0.0 ? -1.0 : 1.0);
 
     // tdf#98565, tdf#98584. While loading a shape, svg:width and svg:height is used to scale
     // the polygon. But draw:transform might introduce additional scaling factors, which need to
@@ -2953,7 +2959,7 @@ void SdrPathObj::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, const b
     if(!basegfx::fTools::equalZero(fShearX))
     {
         aTransform.shearX(tan(-atan(fShearX)));
-        maGeo.m_nShearAngle = Degree100(FRound(basegfx::rad2deg<100>(atan(fShearX))));
+        maGeo.m_nShearAngle = Degree100(basegfx::fround(basegfx::rad2deg<100>(atan(fShearX))));
         maGeo.RecalcTan();
     }
 
@@ -2967,7 +2973,7 @@ void SdrPathObj::TRSetBaseGeometry(const basegfx::B2DHomMatrix& rMatrix, const b
         // #i78696#
         // fRotate is mathematically correct, but aGeoStat.nRotationAngle is
         // mirrored -> mirror value here
-        maGeo.m_nRotationAngle = NormAngle36000(Degree100(FRound(-basegfx::rad2deg<100>(fRotate))));
+        maGeo.m_nRotationAngle = NormAngle36000(Degree100(basegfx::fround(-basegfx::rad2deg<100>(fRotate))));
         maGeo.RecalcSinCos();
     }
 

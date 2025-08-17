@@ -29,7 +29,7 @@
 #include <editeng/eeitem.hxx>
 #include <svx/sdtfchim.hxx>
 #include <textchain.hxx>
-
+#include <svx/annotation/ObjectAnnotationData.hxx>
 
 bool SdrTextObj::HasTextEdit() const
 {
@@ -75,8 +75,8 @@ bool SdrTextObj::BegTextEdit(SdrOutliner& rOutl)
     OutlinerParaObject* pOutlinerParaObject = GetOutlinerParaObject();
     if(pOutlinerParaObject!=nullptr)
     {
-        rOutl.SetText(*GetOutlinerParaObject());
         rOutl.SetFixedCellHeight(GetMergedItem(SDRATTR_TEXT_USEFIXEDCELLHEIGHT).GetValue());
+        rOutl.SetText(*GetOutlinerParaObject());
     }
 
     // if necessary, set frame attributes for the first (new) paragraph of the
@@ -85,7 +85,7 @@ bool SdrTextObj::BegTextEdit(SdrOutliner& rOutl)
     {
         // Outliner has no text so we must set some
         // empty text so the outliner initialise itself
-        rOutl.SetText( "", rOutl.GetParagraph( 0 ) );
+        rOutl.SetText( u""_ustr, rOutl.GetParagraph( 0 ) );
 
         if(GetStyleSheet())
             rOutl.SetStyleSheet( 0, GetStyleSheet());
@@ -95,7 +95,7 @@ bool SdrTextObj::BegTextEdit(SdrOutliner& rOutl)
         // at SetParaAttribs(), all attributes contained in the parent become
         // attributed hard to the paragraph.
         const SfxItemSet& rSet = GetObjectItemSet();
-        SfxItemSetFixed<EE_ITEMS_START, EE_ITEMS_END> aFilteredSet(*rSet.GetPool());
+        SfxItemSet aFilteredSet(SfxItemSet::makeFixedSfxItemSet<EE_ITEMS_START, EE_ITEMS_END>(*rSet.GetPool()));
         aFilteredSet.Put(rSet);
         rOutl.SetParaAttribs(0, aFilteredSet);
     }
@@ -110,7 +110,7 @@ bool SdrTextObj::BegTextEdit(SdrOutliner& rOutl)
     }
     else if (IsAutoFit())
     {
-        ImpAutoFitText(rOutl);
+        setupAutoFitText(rOutl);
     }
 
     if(pOutlinerParaObject)
@@ -285,6 +285,13 @@ void SdrTextObj::EndTextEdit(SdrOutliner& rOutl)
             }
         } else { // If we are not doing in-chaining switching just set the ParaObject
             SetOutlinerParaObject(std::move(pNewText));
+        }
+
+        if (isAnnotationObject())
+        {
+            auto xTextAPI(getAnnotationData()->mxAnnotation->getTextApiObject());
+            std::optional<OutlinerParaObject> pAnnotationText = rOutl.CreateParaObject(0, rOutl.GetParagraphCount());
+            xTextAPI->SetText(*pAnnotationText);
         }
     }
 

@@ -22,7 +22,7 @@ class Chart2XShapeTest : public ChartTest
 {
 public:
     Chart2XShapeTest()
-        : ChartTest("/chart2/qa/extras/xshape/data/")
+        : ChartTest(u"/chart2/qa/extras/xshape/data/"_ustr)
     {
     }
 
@@ -65,7 +65,8 @@ namespace
 {
 OUString getShapeDump(css::uno::Reference<css::chart::XChartDocument> const& doc)
 {
-    return css::uno::Reference<css::qa::XDumper>(doc, css::uno::UNO_QUERY_THROW)->dump("shapes");
+    return css::uno::Reference<css::qa::XDumper>(doc, css::uno::UNO_QUERY_THROW)
+        ->dump(u"shapes"_ustr);
 }
 
 bool checkDumpAgainstFile(std::u16string_view rDump, std::u16string_view aFilePath,
@@ -83,8 +84,7 @@ bool checkDumpAgainstFile(std::u16string_view rDump, std::u16string_view aFilePa
 
 OUString Chart2XShapeTest::getXShapeDumpString()
 {
-    uno::Reference<chart::XChartDocument> xChartDoc(getChartCompFromSheet(0, 0, mxComponent),
-                                                    UNO_QUERY_THROW);
+    uno::Reference<chart::XChartDocument> xChartDoc(getChartCompFromSheet(0, 0), UNO_QUERY_THROW);
     return getShapeDump(xChartDoc);
 }
 
@@ -118,7 +118,7 @@ void Chart2XShapeTest::testTdf150832()
     // Without the fix in place, this test would have failed with
     // - Expected: 319
     // - Actual  : 0
-    loadFromURL(u"xls/tdf150832.xls");
+    loadFromFile(u"xls/tdf150832.xls");
     compareAgainstReference(getXShapeDumpString(), u"tdf150832.xml");
 }
 
@@ -134,7 +134,7 @@ void Chart2XShapeTest::testTdf149204()
     // - Actual  : 12940
     // - Node: /XShapes/XShape[2]
     // - Attr: sizeX
-    loadFromURL(u"pptx/tdf149204.pptx");
+    loadFromFile(u"pptx/tdf149204.pptx");
     uno::Reference<chart::XChartDocument> xChartDoc = getChartDocFromDrawImpress(0, 0);
     compareAgainstReference(getShapeDump(xChartDoc), u"tdf149204.xml");
 }
@@ -151,7 +151,7 @@ void Chart2XShapeTest::testTdf151424()
     // - Actual  : 3530
     // - Node: /XShapes/XShape[2]/XShapes/XShape[1]
     // - Attr: positionX
-    loadFromURL(u"ods/tdf151424.ods");
+    loadFromFile(u"ods/tdf151424.ods");
     compareAgainstReference(getXShapeDumpString(), u"tdf151424.xml");
 }
 
@@ -162,7 +162,7 @@ void Chart2XShapeTest::testFdo75075()
     if (!IsDefaultDPI())
         return;
 
-    loadFromURL(u"ods/fdo75075.ods");
+    loadFromFile(u"ods/fdo75075.ods");
     compareAgainstReference(getXShapeDumpString(), u"fdo75075.xml");
 }
 
@@ -173,7 +173,7 @@ void Chart2XShapeTest::testPropertyMappingBarChart()
     if (!IsDefaultDPI())
         return;
 
-    loadFromURL(u"ods/property-mapping-bar.ods");
+    loadFromFile(u"ods/property-mapping-bar.ods");
     compareAgainstReference(getXShapeDumpString(), u"property-mapping-bar.xml");
 }
 
@@ -185,7 +185,7 @@ void Chart2XShapeTest::testPieChartLabels1()
         return;
 
     // inside placement for the best fit case
-    loadFromURL(u"xlsx/tdf90839-1.xlsx");
+    loadFromFile(u"xlsx/tdf90839-1.xlsx");
     compareAgainstReference(getXShapeDumpString(), u"tdf90839-1.xml");
 }
 
@@ -196,8 +196,8 @@ void Chart2XShapeTest::testPieChartLabels2()
     if (!IsDefaultDPI())
         return;
 
-    // text wrap: wrap all text labels except one
-    loadFromURL(u"xlsx/tdf90839-2.xlsx");
+    // text wrap: wrap all text labels except Yellow one
+    loadFromFile(u"xlsx/tdf90839-2.xlsx");
     compareAgainstReference(getXShapeDumpString(), u"tdf90839-2.xml");
 }
 
@@ -208,8 +208,8 @@ void Chart2XShapeTest::testPieChartLabels3()
     if (!IsDefaultDPI())
         return;
 
-    // text wrap: wrap no text label except one
-    loadFromURL(u"xlsx/tdf90839-3.xlsx");
+    // text wrap: wrap no text label except Yellow one
+    loadFromFile(u"xlsx/tdf90839-3.xlsx");
     compareAgainstReference(getXShapeDumpString(), u"tdf90839-3.xml");
 }
 
@@ -221,7 +221,7 @@ void Chart2XShapeTest::testPieChartLabels4()
         return;
 
     // data value and percent value are centered horizontally
-    loadFromURL(u"ods/tdf90839-4.ods");
+    loadFromFile(u"ods/tdf90839-4.ods");
     compareAgainstReference(getXShapeDumpString(), u"tdf90839-4.xml");
 }
 
@@ -232,7 +232,7 @@ void Chart2XShapeTest::testChart()
     if (!IsDefaultDPI())
         return;
 
-    loadFromURL(u"ods/testChart.ods");
+    loadFromFile(u"ods/testChart.ods");
     compareAgainstReference(getXShapeDumpString(), u"testChart.xml");
 }
 
@@ -241,18 +241,18 @@ void Chart2XShapeTest::testTdf76649TrendLineBug()
     // This bug prevents that the trendline (regression curve) is drawn
     // if the first cell is empty. See tdf#76649 for details.
 
-    loadFromURL(u"ods/tdf76649_TrendLineBug.ods");
+    loadFromFile(u"ods/tdf76649_TrendLineBug.ods");
 
     xmlDocUniquePtr pXmlDoc = getXShapeDumpXmlDoc();
 
     // Check if the regression curve exists (which means a XShape with a certain
     // name should exist in the dump)
-    assertXPath(pXmlDoc, "//XShape[@name='CID/D=0:CS=0:CT=0:Series=0:Curve=0']"_ostr, 1);
+    assertXPath(pXmlDoc, "//XShape[@name='CID/D=0:CS=0:CT=0:Series=0:Curve=0']", 1);
 }
 
 void Chart2XShapeTest::testTdf88154LabelRotatedLayout()
 {
-    loadFromURL(u"pptx/tdf88154_LabelRotatedLayout.pptx");
+    loadFromFile(u"pptx/tdf88154_LabelRotatedLayout.pptx");
     uno::Reference<chart::XChartDocument> xChartDoc = getChartDocFromDrawImpress(0, 5);
     OUString rDump = getShapeDump(xChartDoc);
     OString aXmlDump = OUStringToOString(rDump, RTL_TEXTENCODING_UTF8);
@@ -261,10 +261,10 @@ void Chart2XShapeTest::testTdf88154LabelRotatedLayout()
     {
         OString aPath("//XShape[@text='Oct-12']/Transformation"_ostr);
         assertXPath(pXmlDoc, aPath, 1);
-        double fT11 = getXPath(pXmlDoc, aPath + "/Line1", "column1"_ostr).toDouble();
-        double fT12 = getXPath(pXmlDoc, aPath + "/Line1", "column2"_ostr).toDouble();
-        double fT21 = getXPath(pXmlDoc, aPath + "/Line2", "column1"_ostr).toDouble();
-        double fT22 = getXPath(pXmlDoc, aPath + "/Line2", "column2"_ostr).toDouble();
+        double fT11 = getXPath(pXmlDoc, aPath + "/Line1", "column1").toDouble();
+        double fT12 = getXPath(pXmlDoc, aPath + "/Line1", "column2").toDouble();
+        double fT21 = getXPath(pXmlDoc, aPath + "/Line2", "column1").toDouble();
+        double fT22 = getXPath(pXmlDoc, aPath + "/Line2", "column2").toDouble();
 
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fT11, -fT21, 1e-8);
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fT12, fT22, 1e-8);
@@ -272,10 +272,10 @@ void Chart2XShapeTest::testTdf88154LabelRotatedLayout()
     {
         OString aPath("//XShape[@text='Nov-12']/Transformation"_ostr);
         assertXPath(pXmlDoc, aPath, 1);
-        double fT11 = getXPath(pXmlDoc, aPath + "/Line1", "column1"_ostr).toDouble();
-        double fT12 = getXPath(pXmlDoc, aPath + "/Line1", "column2"_ostr).toDouble();
-        double fT21 = getXPath(pXmlDoc, aPath + "/Line2", "column1"_ostr).toDouble();
-        double fT22 = getXPath(pXmlDoc, aPath + "/Line2", "column2"_ostr).toDouble();
+        double fT11 = getXPath(pXmlDoc, aPath + "/Line1", "column1").toDouble();
+        double fT12 = getXPath(pXmlDoc, aPath + "/Line1", "column2").toDouble();
+        double fT21 = getXPath(pXmlDoc, aPath + "/Line2", "column1").toDouble();
+        double fT22 = getXPath(pXmlDoc, aPath + "/Line2", "column2").toDouble();
 
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fT11, -fT21, 1e-8);
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fT12, fT22, 1e-8);
@@ -283,10 +283,10 @@ void Chart2XShapeTest::testTdf88154LabelRotatedLayout()
     {
         OString aPath("//XShape[@text='Dec-12']/Transformation"_ostr);
         assertXPath(pXmlDoc, aPath, 1);
-        double fT11 = getXPath(pXmlDoc, aPath + "/Line1", "column1"_ostr).toDouble();
-        double fT12 = getXPath(pXmlDoc, aPath + "/Line1", "column2"_ostr).toDouble();
-        double fT21 = getXPath(pXmlDoc, aPath + "/Line2", "column1"_ostr).toDouble();
-        double fT22 = getXPath(pXmlDoc, aPath + "/Line2", "column2"_ostr).toDouble();
+        double fT11 = getXPath(pXmlDoc, aPath + "/Line1", "column1").toDouble();
+        double fT12 = getXPath(pXmlDoc, aPath + "/Line1", "column2").toDouble();
+        double fT21 = getXPath(pXmlDoc, aPath + "/Line2", "column1").toDouble();
+        double fT22 = getXPath(pXmlDoc, aPath + "/Line2", "column2").toDouble();
 
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fT11, -fT21, 1e-8);
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fT12, fT22, 1e-8);
@@ -294,10 +294,10 @@ void Chart2XShapeTest::testTdf88154LabelRotatedLayout()
     {
         OString aPath("//XShape[@text='May-13']/Transformation"_ostr);
         assertXPath(pXmlDoc, aPath, 1);
-        double fT11 = getXPath(pXmlDoc, aPath + "/Line1", "column1"_ostr).toDouble();
-        double fT12 = getXPath(pXmlDoc, aPath + "/Line1", "column2"_ostr).toDouble();
-        double fT21 = getXPath(pXmlDoc, aPath + "/Line2", "column1"_ostr).toDouble();
-        double fT22 = getXPath(pXmlDoc, aPath + "/Line2", "column2"_ostr).toDouble();
+        double fT11 = getXPath(pXmlDoc, aPath + "/Line1", "column1").toDouble();
+        double fT12 = getXPath(pXmlDoc, aPath + "/Line1", "column2").toDouble();
+        double fT21 = getXPath(pXmlDoc, aPath + "/Line2", "column1").toDouble();
+        double fT22 = getXPath(pXmlDoc, aPath + "/Line2", "column2").toDouble();
 
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fT11, -fT21, 1e-8);
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fT12, fT22, 1e-8);
@@ -305,10 +305,10 @@ void Chart2XShapeTest::testTdf88154LabelRotatedLayout()
     {
         OString aPath("//XShape[@text='Jan-14']/Transformation"_ostr);
         assertXPath(pXmlDoc, aPath, 1);
-        double fT11 = getXPath(pXmlDoc, aPath + "/Line1", "column1"_ostr).toDouble();
-        double fT12 = getXPath(pXmlDoc, aPath + "/Line1", "column2"_ostr).toDouble();
-        double fT21 = getXPath(pXmlDoc, aPath + "/Line2", "column1"_ostr).toDouble();
-        double fT22 = getXPath(pXmlDoc, aPath + "/Line2", "column2"_ostr).toDouble();
+        double fT11 = getXPath(pXmlDoc, aPath + "/Line1", "column1").toDouble();
+        double fT12 = getXPath(pXmlDoc, aPath + "/Line1", "column2").toDouble();
+        double fT21 = getXPath(pXmlDoc, aPath + "/Line2", "column1").toDouble();
+        double fT22 = getXPath(pXmlDoc, aPath + "/Line2", "column2").toDouble();
 
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fT11, -fT21, 1e-8);
         CPPUNIT_ASSERT_DOUBLES_EQUAL(fT12, fT22, 1e-8);

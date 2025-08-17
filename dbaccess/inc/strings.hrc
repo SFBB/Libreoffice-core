@@ -22,6 +22,7 @@
 #include <unotools/resmgr.hxx>
 
 #define NC_(Context, String) TranslateId(Context, u8##String)
+#define NNC_(Context, StringSingular, StringPlural) TranslateNId(Context, reinterpret_cast<char const *>(u8##StringSingular), reinterpret_cast<char const *>(u8##StringPlural))
 
 #define RID_STR_CONNECTION_INVALID                  NC_("RID_STR_CONNECTION_INVALID", "No connection could be established.")
 #define RID_STR_TABLE_IS_FILTERED                   NC_("RID_STR_TABLE_IS_FILTERED", "The table $name$ already exists. It is not visible because it has been filtered out.")
@@ -293,7 +294,6 @@
 #define STR_JDBCDRIVER_SUCCESS                      NC_("STR_JDBCDRIVER_SUCCESS", "The JDBC driver was loaded successfully.")
 #define STR_JDBCDRIVER_NO_SUCCESS                   NC_("STR_JDBCDRIVER_NO_SUCCESS", "The JDBC driver could not be loaded.")
 #define STR_MSACCESS_FILTERNAME                     NC_("STR_MSACCESS_FILTERNAME", "MS Access file")
-#define STR_MSACCESS_2007_FILTERNAME                NC_("STR_MSACCESS_2007_FILTERNAME", "MS Access 2007 file")
 #define STR_FIREBIRD_FILTERNAME                     NC_("STR_FIREBIRD_FILTERNAME", "Firebird Database")
 
 #define STR_RSC_CHARSETS                            NC_("STR_RSC_CHARSETS", "System")
@@ -399,6 +399,8 @@
 #define STR_SPREADSHEETPATH                         NC_("STR_SPREADSHEETPATH", "~Location and file name" )
 
 #define STR_COMMAND_EXECUTED_SUCCESSFULLY           NC_("STR_COMMAND_EXECUTED_SUCCESSFULLY", "Command successfully executed." )
+#define STR_COMMAND_NROWS                           NNC_("STR_COMMAND_NROWS", "%1 row in set", "%1 rows in set" )
+
 #define STR_DIRECTSQL_CONNECTIONLOST                NC_("STR_DIRECTSQL_CONNECTIONLOST", "The connection to the database has been lost. This dialog will be closed.")
 
 #define STR_TAB_INDEX_SORTORDER                     NC_("STR_TAB_INDEX_SORTORDER", "Sort order" )

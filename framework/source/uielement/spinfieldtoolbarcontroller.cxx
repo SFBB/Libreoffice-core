@@ -37,9 +37,7 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::util;
 
 namespace framework
 {
@@ -63,8 +61,8 @@ public:
     OUString get_entry_text() const { return m_xWidget->get_text(); }
 
     DECL_LINK(ValueChangedHdl, weld::FormattedSpinButton&, void);
-    DECL_LINK(FormatOutputHdl, LinkParamNone*, bool);
-    DECL_LINK(ParseInputHdl, sal_Int64*, TriState);
+    DECL_LINK(FormatOutputHdl, double, std::optional<OUString>);
+    DECL_STATIC_LINK(SpinfieldControl, ParseInputHdl, const OUString&, Formatter::ParseResult);
     DECL_LINK(ModifyHdl, weld::Entry&, void);
     DECL_LINK(ActivateHdl, weld::Entry&, bool);
     DECL_LINK(FocusInHdl, weld::Widget&, void);
@@ -77,8 +75,8 @@ private:
 };
 
 SpinfieldControl::SpinfieldControl(vcl::Window* pParent, SpinfieldToolbarController* pSpinfieldToolbarController)
-    : InterimItemWindow(pParent, "svt/ui/spinfieldcontrol.ui", "SpinFieldControl")
-    , m_xWidget(m_xBuilder->weld_formatted_spin_button("spinbutton"))
+    : InterimItemWindow(pParent, u"svt/ui/spinfieldcontrol.ui"_ustr, u"SpinFieldControl"_ustr)
+    , m_xWidget(m_xBuilder->weld_formatted_spin_button(u"spinbutton"_ustr))
     , m_pSpinfieldToolbarController(pSpinfieldToolbarController)
 {
     InitControlBase(m_xWidget.get());
@@ -86,8 +84,8 @@ SpinfieldControl::SpinfieldControl(vcl::Window* pParent, SpinfieldToolbarControl
     m_xWidget->connect_focus_in(LINK(this, SpinfieldControl, FocusInHdl));
     m_xWidget->connect_focus_out(LINK(this, SpinfieldControl, FocusOutHdl));
     Formatter& rFormatter = m_xWidget->GetFormatter();
-    rFormatter.SetOutputHdl(LINK(this, SpinfieldControl, FormatOutputHdl));
-    rFormatter.SetInputHdl(LINK(this, SpinfieldControl, ParseInputHdl));
+    rFormatter.SetFormatValueHdl(LINK(this, SpinfieldControl, FormatOutputHdl));
+    rFormatter.SetParseTextHdl(LINK(this, SpinfieldControl, ParseInputHdl));
     m_xWidget->connect_value_changed(LINK(this, SpinfieldControl, ValueChangedHdl));
     m_xWidget->connect_changed(LINK(this, SpinfieldControl, ModifyHdl));
     m_xWidget->connect_activate(LINK(this, SpinfieldControl, ActivateHdl));
@@ -105,10 +103,10 @@ IMPL_LINK(SpinfieldControl, KeyInputHdl, const ::KeyEvent&, rKEvt, bool)
     return ChildKeyInput(rKEvt);
 }
 
-IMPL_LINK(SpinfieldControl, ParseInputHdl, sal_Int64*, result, TriState)
+IMPL_STATIC_LINK(SpinfieldControl, ParseInputHdl, const OUString&, rText, Formatter::ParseResult)
 {
-    *result = m_xWidget->get_text().toDouble() * weld::SpinButton::Power10(m_xWidget->GetFormatter().GetDecimalDigits());
-    return TRISTATE_TRUE;
+    const double fValue = rText.toDouble();
+    return Formatter::ParseResult(TRISTATE_TRUE, fValue);
 }
 
 SpinfieldControl::~SpinfieldControl()
@@ -158,11 +156,9 @@ IMPL_LINK_NOARG(SpinfieldControl, ActivateHdl, weld::Entry&, bool)
     return bConsumed;
 }
 
-IMPL_LINK_NOARG(SpinfieldControl, FormatOutputHdl, LinkParamNone*, bool)
+IMPL_LINK(SpinfieldControl, FormatOutputHdl, double, fValue, std::optional<OUString>)
 {
-    OUString aText = m_pSpinfieldToolbarController->FormatOutputString(m_xWidget->GetFormatter().GetValue());
-    m_xWidget->set_text(aText);
-    return true;
+    return std::optional<OUString>(m_pSpinfieldToolbarController->FormatOutputString(fValue));
 }
 
 SpinfieldToolbarController::SpinfieldToolbarController(
@@ -210,10 +206,11 @@ Sequence<PropertyValue> SpinfieldToolbarController::getExecuteArgs(sal_Int16 Key
     OUString aSpinfieldText = m_pSpinfieldControl->get_entry_text();
 
     // Add key modifier to argument list
-    auto aArgs0 = comphelper::makePropertyValue("KeyModifier", KeyModifier);
-    auto aArgs1 = comphelper::makePropertyValue("Value", m_bFloat ? Any(aSpinfieldText.toDouble())
-                                                                  : Any(aSpinfieldText.toInt32()));
-    return { aArgs0, aArgs1 };
+    return {
+        comphelper::makePropertyValue(u"KeyModifier"_ustr, KeyModifier),
+        comphelper::makePropertyValue(u"Value"_ustr, m_bFloat ? Any(aSpinfieldText.toDouble())
+                                                        : Any(aSpinfieldText.toInt32()))
+    };
 }
 
 void SpinfieldToolbarController::Modify()
@@ -385,6 +382,7 @@ void SpinfieldToolbarController::executeControlCommand( const css::frame::Contro
     }
 }
 
+// static
 bool SpinfieldToolbarController::impl_getValue(
     const Any& rAny, sal_Int32& nValue, double& fValue, bool& bFloat )
 {

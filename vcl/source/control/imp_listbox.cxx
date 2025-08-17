@@ -84,7 +84,7 @@ void ImplEntryList::Clear()
 void ImplEntryList::dispose()
 {
     Clear();
-    mpWindow.clear();
+    mpWindow.reset();
 }
 
 void ImplEntryList::SelectEntry( sal_Int32 nPos, bool bSelect )
@@ -603,6 +603,8 @@ SalLayoutGlyphs* ImplEntryType::GetTextGlyphs(const OutputDevice* pOutputDevice)
 
 void ImplListBoxWindow::ImplUpdateEntryMetrics( ImplEntryType& rEntry )
 {
+    const bool bIsUserDrawEnabled = IsUserDrawEnabled();
+
     ImplEntryMetrics aMetrics;
     aMetrics.bText = !rEntry.maStr.isEmpty();
     aMetrics.bImage = !!rEntry.maImage;
@@ -612,7 +614,7 @@ void ImplListBoxWindow::ImplUpdateEntryMetrics( ImplEntryType& rEntry )
     aMetrics.nImgWidth = 0;
     aMetrics.nImgHeight = 0;
 
-    if ( aMetrics.bText )
+    if (aMetrics.bText && !bIsUserDrawEnabled)
     {
         if( rEntry.mnFlags & ListBoxEntryFlags::MultiLine )
         {
@@ -657,7 +659,6 @@ void ImplListBoxWindow::ImplUpdateEntryMetrics( ImplEntryType& rEntry )
 
     }
 
-    bool bIsUserDrawEnabled = IsUserDrawEnabled();
     if (bIsUserDrawEnabled || aMetrics.bImage)
     {
         aMetrics.nEntryWidth = std::max( aMetrics.nImgWidth, maUserItemSize.Width() );
@@ -883,6 +884,15 @@ void ImplListBoxWindow::MouseMove( const MouseEvent& rMEvt )
 
     tools::Rectangle aRect( Point(), GetOutputSizePixel() );
     if( !aRect.Contains( rMEvt.GetPosPixel() ) )
+        return;
+
+    // prevent initial mouse move event from selecting an entry when the listbox is started
+    if (mnLastPosPixel == Point())
+    {
+        mnLastPosPixel = rMEvt.GetPosPixel();
+        return;
+    }
+    if (mnLastPosPixel == rMEvt.GetPosPixel())
         return;
 
     if ( IsMouseMoveSelect() )
@@ -1552,7 +1562,7 @@ namespace
 
         // vcl::StringEntryIdentifier does not allow for 0 values, but our position is 0-based
         // => normalize
-        return reinterpret_cast< vcl::StringEntryIdentifier >( _nPos + 1 );
+        return reinterpret_cast< vcl::StringEntryIdentifier >( _nPos + sal_IntPtr(1) );
     }
 
     sal_Int32 lcl_getEntryPos( vcl::StringEntryIdentifier _entry )
@@ -1691,8 +1701,8 @@ void ImplListBoxWindow::DrawEntry(vcl::RenderContext& rRenderContext, sal_Int32 
             {
                 const Color& rTopLeft(rStyleSettings.GetEdgeBlendingTopLeftColor());
                 const Color& rBottomRight(rStyleSettings.GetEdgeBlendingBottomRightColor());
-                const sal_uInt8 nAlpha((nEdgeBlendingPercent * 255) / 100);
-                const BitmapEx aBlendFrame(createBlendFrame(aImgSz, nAlpha, rTopLeft, rBottomRight));
+                const sal_uInt8 nAlpha(255 - ((nEdgeBlendingPercent * 255) / 100));
+                const BitmapEx aBlendFrame(createAlphaBlendFrame(aImgSz, nAlpha, rTopLeft, rBottomRight));
 
                 if (!aBlendFrame.IsEmpty())
                 {
@@ -2709,8 +2719,8 @@ void ImplWin::DrawEntry(vcl::RenderContext& rRenderContext, bool bLayout)
         {
             const Color& rTopLeft(rStyleSettings.GetEdgeBlendingTopLeftColor());
             const Color& rBottomRight(rStyleSettings.GetEdgeBlendingBottomRightColor());
-            const sal_uInt8 nAlpha((nEdgeBlendingPercent * 255) / 100);
-            const BitmapEx aBlendFrame(createBlendFrame(aImgSz, nAlpha, rTopLeft, rBottomRight));
+            const sal_uInt8 nAlpha(255 - ((nEdgeBlendingPercent * 255) / 100));
+            const BitmapEx aBlendFrame(createAlphaBlendFrame(aImgSz, nAlpha, rTopLeft, rBottomRight));
 
             if(!aBlendFrame.IsEmpty())
             {
@@ -2844,7 +2854,7 @@ ImplListBoxFloatingWindow::~ImplListBoxFloatingWindow()
 
 void ImplListBoxFloatingWindow::dispose()
 {
-    mpImplLB.clear();
+    mpImplLB.reset();
     FloatingWindow::dispose();
 }
 
@@ -2900,7 +2910,7 @@ void ImplListBoxFloatingWindow::Resize()
     FloatingWindow::Resize();
 }
 
-Size ImplListBoxFloatingWindow::CalcFloatSize() const
+Size ImplListBoxFloatingWindow::CalcFloatSize(const tools::Rectangle& rParentRect) const
 {
     Size aFloatSz( maPrefSz );
 
@@ -2917,6 +2927,8 @@ Size ImplListBoxFloatingWindow::CalcFloatSize() const
     if ( mnDDLineCount )
         aFloatSz.setHeight( nMaxHeight );
 
+    AbsoluteScreenPixelRectangle aDesktopRect(GetDesktopRectPixel());
+
     if( mbAutoWidth )
     {
         // AutoSize first only for width...
@@ -2931,14 +2943,34 @@ Size ImplListBoxFloatingWindow::CalcFloatSize() const
             aFloatSz.AdjustWidth(nSBWidth );
         }
 
-        tools::Long nDesktopWidth = GetDesktopRectPixel().getOpenWidth();
+        tools::Long nDesktopWidth = aDesktopRect.getOpenWidth();
         if (aFloatSz.Width() > nDesktopWidth)
             // Don't exceed the desktop width.
             aFloatSz.setWidth( nDesktopWidth );
     }
 
-    if ( aFloatSz.Height() > nMaxHeight )
-        aFloatSz.setHeight( nMaxHeight );
+    tools::Long nDesktopHeight = aDesktopRect.getOpenHeight();
+
+    //tdf#136943. If the popup won't fit either above/below then force the menu
+    //to scroll if it won't fit
+    {
+        const vcl::Window* pRef = this;
+        if ( pRef->GetParent() )
+            pRef = pRef->GetParent();
+
+        tools::Rectangle normRect( rParentRect );  // rRect is already relative to top-level window
+        normRect.SetPos( pRef->ScreenToOutputPixel( normRect.TopLeft() ) );
+
+        AbsoluteScreenPixelRectangle devRect(pRef->OutputToAbsoluteScreenPixel(normRect.TopLeft()),
+                                             pRef->OutputToAbsoluteScreenPixel(normRect.BottomRight()));
+
+        tools::Long nHeightAbove = devRect.Top() - aDesktopRect.Top();
+        tools::Long nHeightBelow = aDesktopRect.Bottom() - devRect.Bottom();
+        nDesktopHeight = std::min(nDesktopHeight, std::max(nHeightAbove, nHeightBelow));
+    }
+
+    if (aFloatSz.Height() > nDesktopHeight)
+        aFloatSz.setHeight(nDesktopHeight);
 
     // Minimal height, in case height is not set to Float height.
     // The parent of FloatWin must be DropDown-Combo/Listbox.
@@ -2956,7 +2988,6 @@ Size ImplListBoxFloatingWindow::CalcFloatSize() const
     if ( nInnerHeight % nEntryHeight )
     {
         nInnerHeight /= nEntryHeight;
-        nInnerHeight++;
         nInnerHeight *= nEntryHeight;
         aFloatSz.setHeight( nInnerHeight + nTop + nBottom );
     }
@@ -2972,19 +3003,9 @@ Size ImplListBoxFloatingWindow::CalcFloatSize() const
     return aFloatSz;
 }
 
-void ImplListBoxFloatingWindow::StartFloat( bool bStartTracking )
+tools::Rectangle ImplListBoxFloatingWindow::GetParentRect() const
 {
-    if( IsInPopupMode() )
-        return;
-
-    Size aFloatSz = CalcFloatSize();
-
-    SetSizePixel( aFloatSz );
-    mpImplLB->SetSizePixel( GetOutputSizePixel() );
-
-    sal_Int32 nPos = mpImplLB->GetEntryList().GetSelectedEntryPos( 0 );
-    mnPopupModeStartSaveSelection = nPos;
-
+    // Get Rectangle at which popup will appear
     Size aSz = GetParent()->GetSizePixel();
     Point aPos = GetParent()->GetPosPixel();
     aPos = GetParent()->GetParent()->OutputToScreenPixel( aPos );
@@ -3010,20 +3031,37 @@ void ImplListBoxFloatingWindow::StartFloat( bool bStartTracking )
     if( pGrandparent->GetOutDev()->ImplIsAntiparallel() )
         pGrandparentOutDev->ReMirror( aRect );
 
+    return aRect;
+}
+
+void ImplListBoxFloatingWindow::StartFloat( bool bStartTracking )
+{
+    if( IsInPopupMode() )
+        return;
+
+    tools::Rectangle aRect = GetParentRect();
+
+    Size aFloatSz = CalcFloatSize(aRect);
+
+    SetSizePixel( aFloatSz );
+    mpImplLB->SetSizePixel( GetOutputSizePixel() );
+
+    sal_Int32 nPos = mpImplLB->GetEntryList().GetSelectedEntryPos( 0 );
+    mnPopupModeStartSaveSelection = nPos;
+
+    mpImplLB->GetMainWindow()->ResetLastPosPixel();
     // mouse-button right: close the List-Box-Float-win and don't stop the handling fdo#84795
     StartPopupMode( aRect, LISTBOX_FLOATWINPOPUPFLAGS );
 
     if( nPos != LISTBOX_ENTRY_NOTFOUND )
         mpImplLB->ShowProminentEntry( nPos );
 
-    if( bStartTracking )
-        mpImplLB->GetMainWindow()->EnableMouseMoveSelect( true );
+    mpImplLB->GetMainWindow()->EnableMouseMoveSelect(bStartTracking);
 
     if ( mpImplLB->GetMainWindow()->IsGrabFocusAllowed() )
         mpImplLB->GetMainWindow()->GrabFocus();
 
     mpImplLB->GetMainWindow()->ImplClearLayoutData();
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

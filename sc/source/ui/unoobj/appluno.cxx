@@ -82,9 +82,9 @@ constexpr OUString SCFUNCTIONLISTOBJ_SERVICE = u"com.sun.star.sheet.FunctionDesc
 constexpr OUString SCRECENTFUNCTIONSOBJ_SERVICE = u"com.sun.star.sheet.RecentFunctions"_ustr;
 constexpr OUString SCSPREADSHEETSETTINGS_SERVICE = u"com.sun.star.sheet.GlobalSheetSettings"_ustr;
 
-SC_SIMPLE_SERVICE_INFO( ScFunctionListObj, "stardiv.StarCalc.ScFunctionListObj", SCFUNCTIONLISTOBJ_SERVICE )
-SC_SIMPLE_SERVICE_INFO( ScRecentFunctionsObj, "stardiv.StarCalc.ScRecentFunctionsObj", SCRECENTFUNCTIONSOBJ_SERVICE )
-SC_SIMPLE_SERVICE_INFO( ScSpreadsheetSettings, "stardiv.StarCalc.ScSpreadsheetSettings", SCSPREADSHEETSETTINGS_SERVICE )
+SC_SIMPLE_SERVICE_INFO( ScFunctionListObj, u"stardiv.StarCalc.ScFunctionListObj"_ustr, SCFUNCTIONLISTOBJ_SERVICE )
+SC_SIMPLE_SERVICE_INFO( ScRecentFunctionsObj, u"stardiv.StarCalc.ScRecentFunctionsObj"_ustr, SCRECENTFUNCTIONSOBJ_SERVICE )
+SC_SIMPLE_SERVICE_INFO( ScSpreadsheetSettings, u"stardiv.StarCalc.ScSpreadsheetSettings"_ustr, SCSPREADSHEETSETTINGS_SERVICE )
 
 
 ScSpreadsheetSettings::ScSpreadsheetSettings() :
@@ -137,7 +137,7 @@ void SAL_CALL ScSpreadsheetSettings::setPropertyValue(
 {
     SolarMutexGuard aGuard;
 
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     ScAppOptions   aAppOpt(pScMod->GetAppOptions());
     ScInputOptions aInpOpt(pScMod->GetInputOptions());
     bool bSaveApp = false;
@@ -173,8 +173,8 @@ void SAL_CALL ScSpreadsheetSettings::setPropertyValue(
         if (!(aValue >>= n) || n < 0 || n >= ScLkUpdMode::LM_UNKNOWN)
         {
             throw css::lang::IllegalArgumentException(
-                ("LinkUpdateMode property value must be a SHORT with a value in the range of 0--2"
-                 " as documented for css::sheet::XGlobalSheetSettings attribute LinkUpdateMode"),
+                (u"LinkUpdateMode property value must be a SHORT with a value in the range of 0--2"
+                 " as documented for css::sheet::XGlobalSheetSettings attribute LinkUpdateMode"_ustr),
                 css::uno::Reference<css::uno::XInterface>(), -1);
         }
         aAppOpt.SetLinkMode( static_cast<ScLkUpdMode>(n) );
@@ -248,17 +248,17 @@ void SAL_CALL ScSpreadsheetSettings::setPropertyValue(
     }
     else if (aPropertyName == SC_UNONAME_ULISTS)
     {
-        ScUserList* pUserList = ScGlobal::GetUserList();
+        ScUserList& rUserList = ScGlobal::GetUserList();
         uno::Sequence<OUString> aSeq;
-        if ( pUserList && ( aValue >>= aSeq ) )
+        if (aValue >>= aSeq)
         {
             //  directly change the active list
             //  ScGlobal::SetUseTabCol does not do much else
 
-            pUserList->clear();
-            for (const OUString& aEntry : std::as_const(aSeq))
+            rUserList.clear();
+            for (const OUString& aEntry : aSeq)
             {
-                pUserList->emplace_back(aEntry);
+                rUserList.emplace_back(aEntry);
             }
             bSaveApp = true;    // List with App-Options are saved
         }
@@ -288,7 +288,7 @@ uno::Any SAL_CALL ScSpreadsheetSettings::getPropertyValue( const OUString& aProp
     SolarMutexGuard aGuard;
     uno::Any aRet;
 
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     ScAppOptions   aAppOpt = pScMod->GetAppOptions();
     const ScInputOptions& aInpOpt = pScMod->GetInputOptions();
     // print options aren't loaded until needed
@@ -325,16 +325,13 @@ uno::Any SAL_CALL ScSpreadsheetSettings::getPropertyValue( const OUString& aProp
     }
     else if (aPropertyName == SC_UNONAME_ULISTS )
     {
-        ScUserList* pUserList = ScGlobal::GetUserList();
-        if (pUserList)
-        {
-            size_t nCount = pUserList->size();
-            uno::Sequence<OUString> aSeq(nCount);
-            OUString* pAry = aSeq.getArray();
-            for (size_t i=0; i<nCount; ++i)
-                pAry[i] = (*pUserList)[i].GetString();
-            aRet <<= aSeq;
-        }
+        const ScUserList& rUserList = ScGlobal::GetUserList();
+        size_t nCount = rUserList.size();
+        uno::Sequence<OUString> aSeq(nCount);
+        OUString* pAry = aSeq.getArray();
+        for (size_t i=0; i<nCount; ++i)
+            pAry[i] = rUserList[i].GetString();
+        aRet <<= aSeq;
     }
     else if (aPropertyName == SC_UNONAME_PRALLSH )
         aRet <<= pScMod->GetPrintOptions().GetAllSheets();
@@ -367,7 +364,7 @@ ScRecentFunctionsObj_get_implementation(css::uno::XComponentContext*, css::uno::
 uno::Sequence<sal_Int32> SAL_CALL ScRecentFunctionsObj::getRecentFunctionIds()
 {
     SolarMutexGuard aGuard;
-    const ScAppOptions& rOpt = SC_MOD()->GetAppOptions();
+    const ScAppOptions& rOpt = ScModule::get()->GetAppOptions();
     sal_uInt16 nCount = rOpt.GetLRUFuncListCount();
     const sal_uInt16* pFuncs = rOpt.GetLRUFuncList();
     if (pFuncs)
@@ -392,7 +389,7 @@ void SAL_CALL ScRecentFunctionsObj::setRecentFunctionIds(
     for (sal_uInt16 i=0; i<nCount; i++)
         pFuncs[i] = static_cast<sal_uInt16>(pAry[i]);        //! check for valid values?
 
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     ScAppOptions aNewOpts(pScMod->GetAppOptions());
     aNewOpts.SetLRUFuncList(pFuncs.get(), nCount);
     pScMod->SetAppOptions(aNewOpts);
@@ -467,7 +464,7 @@ static void lcl_FillSequence( uno::Sequence<beans::PropertyValue>& rSequence, co
         aArgument.Name        = rDesc.maDefArgNames[i];
         aArgument.Description = rDesc.maDefArgDescs[i];
         aArgument.IsOptional  = rDesc.pDefArgFlags[i].bOptional;
-        pArgAry[j++] = aArgument;
+        pArgAry[j++] = std::move(aArgument);
     }
     pArray[4].Value <<= aArgSeq;
 }
@@ -559,7 +556,7 @@ uno::Any SAL_CALL ScFunctionListObj::getByIndex( sal_Int32 nIndex )
 uno::Reference<container::XEnumeration> SAL_CALL ScFunctionListObj::createEnumeration()
 {
     SolarMutexGuard aGuard;
-    return new ScIndexEnumeration(this, "com.sun.star.sheet.FunctionDescriptionEnumeration");
+    return new ScIndexEnumeration(this, u"com.sun.star.sheet.FunctionDescriptionEnumeration"_ustr);
 }
 
 // XElementAccess

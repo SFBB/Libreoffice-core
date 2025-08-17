@@ -87,6 +87,7 @@
 #include <comphelper/windowserrorstring.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
 #include <o3tl/safeint.hxx>
+#include <systools/win32/oleauto.hxx>
 
 #include "comifaces.hxx"
 #include "jscriptclasses.hxx"
@@ -119,7 +120,7 @@ static void writeExcepinfo(EXCEPINFO * pInfo, const OUString& message)
     {
         pInfo->wCode = UNO_2_OLE_EXCEPTIONCODE;
         pInfo->bstrSource = SysAllocString(L"[automation bridge] ");
-        pInfo->bstrDescription = SysAllocString(o3tl::toW(message.getStr()));
+        pInfo->bstrDescription = sal::systools::BStr::newBSTR(message);
     }
 }
 
@@ -811,7 +812,7 @@ HRESULT STDMETHODCALLTYPE CXTypeInfo::GetNames(MEMBERID memid,
         return E_INVALIDARG;
 
     SAL_INFO("extensions.olebridge", "..." << this << "@CXTypeInfo::GetNames(" << memid << "): " << aMethods[memid + 2]->getName());
-    rgBstrNames[0] = SysAllocString(reinterpret_cast<LPOLESTR>(aMethods[memid + 2]->getName().pData->buffer));
+    rgBstrNames[0] = sal::systools::BStr::newBSTR(aMethods[memid + 2]->getName());
     *pcNames = 1;
 
     return S_OK;
@@ -887,7 +888,7 @@ HRESULT STDMETHODCALLTYPE CXTypeInfo::GetDocumentation(MEMBERID memid,
     {
         if (memid == MEMBERID_NIL)
         {
-            *pBstrName = SysAllocString(o3tl::toW(msImplementationName.getStr()));
+            *pBstrName = sal::systools::BStr::newBSTR(msImplementationName);
         }
         else if (memid == DISPID_VALUE)
         {
@@ -897,7 +898,7 @@ HRESULT STDMETHODCALLTYPE CXTypeInfo::GetDocumentation(MEMBERID memid,
         else
         {
             // FIXME: Shouldn't we be able to know the names of the members of UNO interfaces?
-            *pBstrName = SysAllocString(o3tl::toW(OUString("UnknownNameOfMember#" + OUString::number(memid)).getStr()));
+            *pBstrName = sal::systools::BStr::newBSTR(Concat2View("UnknownNameOfMember#" + OUString::number(memid)));
         }
     }
     if (pBstrDocString)
@@ -1278,7 +1279,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP InterfaceOleWrapper::GetIDsOfNames(REFIID /*ri
 void InterfaceOleWrapper::convertDispparamsArgs(DISPID id,
     unsigned short /*wFlags*/, DISPPARAMS* pdispparams, Sequence<Any>& rSeq)
 {
-    // Parameters come in in reverse order in pdispparams. There might be less parameters than
+    // Parameters come in reverse order in pdispparams. There might be less parameters than
     // expected. In that case, assume they are "optional" (but can't be marked as such in UNO IDL),
     // and fill in the rest with empty Anys. There might also be more than expected. In that case,
     // assume the oovbaapi UNO IDL hasn't kept up with added optional parameters in MSO, and just
@@ -2034,7 +2035,7 @@ HRESULT InterfaceOleWrapper::doInvoke( DISPPARAMS * pdispparams, VARIANT * pvarR
         Exception excTarget;
         org >>= excTarget;
         OUString message=
-            org.getValueType().getTypeName() + ": " + excTarget.Message;
+            org.getValueTypeName() + ": " + excTarget.Message;
         writeExcepinfo(pexcepinfo, message);
         ret = DISP_E_EXCEPTION;
     }
@@ -2125,7 +2126,7 @@ HRESULT InterfaceOleWrapper::doSetProperty( DISPPARAMS * /*pdispparams*/, VARIAN
             pexcepinfo->wCode = UNO_2_OLE_EXCEPTIONCODE;
             pexcepinfo->bstrSource = SysAllocString(L"any ONE component");
             pexcepinfo->bstrDescription = SysAllocString(
-                o3tl::toW(org.getValueType().getTypeName().getStr()));
+                o3tl::toW(org.getValueTypeName().getStr()));
         }
         ret = DISP_E_EXCEPTION;
     }
@@ -2310,7 +2311,7 @@ Sink::Call( const OUString& Method, Sequence< Any >& Arguments )
     HRESULT nResult = mpUnkSink->QueryInterface(IID_IDispatch, reinterpret_cast<void **>(&pDispatch));
     if (!SUCCEEDED(nResult))
     {
-        SAL_WARN("extensions.olebridge", "Sink::Call: Not IDispatch: " << WindowsErrorStringFromHRESULT(nResult));
+        SAL_WARN("extensions.olebridge", "Sink::Call: Not IDispatch: " << comphelper::WindowsErrorStringFromHRESULT(nResult));
         return;
     }
 
@@ -2403,7 +2404,7 @@ Sink::Call( const OUString& Method, Sequence< Any >& Arguments )
             nResult = pDispatch->Invoke(nMemId, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_METHOD, &aDispParams, &aVarResult, nullptr, &uArgErr);
             SAL_INFO("extensions.olebridge", "Sink::Call(" << Method << "): Invoke() returned");
 
-            SAL_WARN_IF(!SUCCEEDED(nResult), "extensions.olebridge", "Call to " << Method << " failed: " << WindowsErrorStringFromHRESULT(nResult));
+            SAL_WARN_IF(!SUCCEEDED(nResult), "extensions.olebridge", "Call to " << Method << " failed: " << comphelper::WindowsErrorStringFromHRESULT(nResult));
 
             // Undo VT_BYREF magic done above. Copy out parameters back to the Anys in Arguments
             for (unsigned j = 0; j < aDispParams.cArgs; j++)
@@ -2707,7 +2708,7 @@ public:
         nResult = CComObject<CXEnumConnections>::CreateInstance(&pEnumConnections);
         if (FAILED(nResult))
         {
-            SAL_INFO("extensions.olebridge", "..." << this << "@CXConnectionPoint::EnumConnections: " << WindowsErrorStringFromHRESULT(nResult));
+            SAL_INFO("extensions.olebridge", "..." << this << "@CXConnectionPoint::EnumConnections: " << comphelper::WindowsErrorStringFromHRESULT(nResult));
             return nResult;
         }
 

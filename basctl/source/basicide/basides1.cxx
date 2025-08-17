@@ -31,7 +31,9 @@
 #include "iderdll2.hxx"
 #include <localizationmgr.hxx>
 #include <managelang.hxx>
+#include <ColorSchemeDialog.hxx>
 
+#include <basctl/basctldllpublic.hxx>
 #include <basic/basmgr.hxx>
 #include <com/sun/star/script/ModuleType.hpp>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
@@ -56,9 +58,9 @@
 #include <vcl/textview.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
-#include <svx/zoomsliderctrl.hxx>
 #include <svx/zoomslideritem.hxx>
 #include <basegfx/utils/zoomtools.hxx>
+#include <officecfg/Office/BasicIDE.hxx>
 
 constexpr sal_Int32 TAB_HEIGHT_MARGIN = 10;
 
@@ -421,14 +423,21 @@ void Shell::ExecuteGlobal( SfxRequest& rReq )
         break;
 
         case SID_BASICIDE_OBJCAT:
-            // toggling object catalog
-            aObjectCatalog->Show(!aObjectCatalog->IsVisible());
+        {
+            // Toggle the visibility of the object catalog
+            bool bVisible = aObjectCatalog->IsVisible();
+            aObjectCatalog->Show(!bVisible);
             if (pLayout)
                 pLayout->ArrangeWindows();
             // refresh the button state
             if (SfxBindings* pBindings = GetBindingsPtr())
                 pBindings->Invalidate(SID_BASICIDE_OBJCAT);
-            break;
+
+            std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
+            officecfg::Office::BasicIDE::EditorSettings::ObjectCatalog::set(!bVisible, batch);
+            batch->commit();
+        }
+        break;
 
         case SID_BASICIDE_WATCH:
         {
@@ -436,9 +445,14 @@ void Shell::ExecuteGlobal( SfxRequest& rReq )
             if (!dynamic_cast<ModulWindowLayout*>(pLayout.get()))
                 return;
 
-            pModulLayout->ShowWatchWindow(!pModulLayout->IsWatchWindowVisible());
+            bool bVisible = pModulLayout->IsWatchWindowVisible();
+            pModulLayout->ShowWatchWindow(!bVisible);
             if (SfxBindings* pBindings = GetBindingsPtr())
                 pBindings->Invalidate(SID_BASICIDE_WATCH);
+
+            std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
+            officecfg::Office::BasicIDE::EditorSettings::WatchWindow::set(!bVisible, batch);
+            batch->commit();
         }
         break;
 
@@ -448,9 +462,14 @@ void Shell::ExecuteGlobal( SfxRequest& rReq )
             if (!dynamic_cast<ModulWindowLayout*>(pLayout.get()))
                 return;
 
-            pModulLayout->ShowStackWindow(!pModulLayout->IsStackWindowVisible());
+            bool bVisible = pModulLayout->IsStackWindowVisible();
+            pModulLayout->ShowStackWindow(!bVisible);
             if (SfxBindings* pBindings = GetBindingsPtr())
                 pBindings->Invalidate(SID_BASICIDE_STACK);
+
+            std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
+            officecfg::Office::BasicIDE::EditorSettings::StackWindow::set(!bVisible, batch);
+            batch->commit();
         }
         break;
 
@@ -627,9 +646,9 @@ void Shell::ExecuteGlobal( SfxRequest& rReq )
             const OUString& aName( rSbxItem.GetName() );
             if ( m_aCurLibName.isEmpty() || ( aDocument == m_aCurDocument && aLibName == m_aCurLibName ) )
             {
-                if ( rSbxItem.GetType() == TYPE_MODULE )
+                if ( rSbxItem.GetSbxType() == SBX_TYPE_MODULE )
                     FindBasWin( aDocument, aLibName, aName, true );
-                else if ( rSbxItem.GetType() == TYPE_DIALOG )
+                else if ( rSbxItem.GetSbxType() == SBX_TYPE_DIALOG )
                     FindDlgWin( aDocument, aLibName, aName, true );
             }
         }
@@ -639,7 +658,7 @@ void Shell::ExecuteGlobal( SfxRequest& rReq )
             DBG_ASSERT( rReq.GetArgs(), "arguments expected" );
             const SbxItem& rSbxItem = rReq.GetArgs()->Get(SID_BASICIDE_ARG_SBX );
             const ScriptDocument& aDocument( rSbxItem.GetDocument() );
-            VclPtr<BaseWindow> pWin = FindWindow( aDocument, rSbxItem.GetLibName(), rSbxItem.GetName(), rSbxItem.GetType(), true );
+            VclPtr<BaseWindow> pWin = FindWindow( aDocument, rSbxItem.GetLibName(), rSbxItem.GetName(), rSbxItem.GetSbxType(), true );
             if ( pWin )
                 RemoveWindow( pWin, true );
         }
@@ -653,15 +672,15 @@ void Shell::ExecuteGlobal( SfxRequest& rReq )
             const OUString& aName( rSbxItem.GetName() );
             SetCurLib( aDocument, aLibName );
             BaseWindow* pWin = nullptr;
-            if ( rSbxItem.GetType() == TYPE_DIALOG )
+            if ( rSbxItem.GetSbxType() == SBX_TYPE_DIALOG )
             {
                 pWin = FindDlgWin( aDocument, aLibName, aName, true );
             }
-            else if ( rSbxItem.GetType() == TYPE_MODULE )
+            else if ( rSbxItem.GetSbxType() == SBX_TYPE_MODULE )
             {
                 pWin = FindBasWin( aDocument, aLibName, aName, true );
             }
-            else if ( rSbxItem.GetType() == TYPE_METHOD )
+            else if ( rSbxItem.GetSbxType() == SBX_TYPE_METHOD )
             {
                 pWin = FindBasWin( aDocument, aLibName, aName, true );
                 static_cast<ModulWindow*>(pWin)->EditMacro( rSbxItem.GetMethodName() );
@@ -705,7 +724,7 @@ void Shell::ExecuteGlobal( SfxRequest& rReq )
             if ( pNameItem )
             {
                 const OUString& aName( pNameItem->GetValue() );
-                OUString aModType( "Module" );
+                OUString aModType( u"Module"_ustr );
                 OUString aType( aModType );
                 const SfxStringItem* pTypeItem = rReq.GetArg<SfxStringItem>(SID_BASICIDE_ARG_TYPE);
                 if ( pTypeItem )
@@ -789,13 +808,57 @@ void Shell::ExecuteGlobal( SfxRequest& rReq )
         }
         break;
 
+        case SID_BASICIDE_COLOR_SCHEME_DLG:
+        {
+            ModulWindowLayout* pMyLayout = dynamic_cast<ModulWindowLayout*>(pLayout.get());
+            if (!pMyLayout)
+                return;
+
+            OUString curScheme = pMyLayout->GetActiveColorSchemeId();
+            auto xDlg = std::make_shared<ColorSchemeDialog>(pCurWin ? pCurWin->GetFrameWeld() : nullptr,
+                                                            pMyLayout);
+            weld::DialogController::runAsync(xDlg, [xDlg, pMyLayout, curScheme](sal_Int32 nResult){
+                OUString sNewScheme(xDlg->GetColorSchemeId());
+                // If the user canceled the dialog, restores the original color scheme
+                if (nResult != RET_OK)
+                {
+                    if (curScheme != sNewScheme)
+                        pMyLayout->ApplyColorSchemeToCurrentWindow(curScheme);
+                }
+
+                // If the user selects OK, apply the color scheme to all open ModulWindow
+                if (nResult == RET_OK)
+                {
+                    // Set the global color scheme in ModulWindowLayout and update definitions in SyntaxColors
+                    pMyLayout->ApplyColorSchemeToCurrentWindow(sNewScheme);
+
+                    // Update color scheme for all windows
+                    for (auto const& window : GetShell()->GetWindowTable())
+                    {
+                        ModulWindow* pModuleWindow = dynamic_cast<ModulWindow*>(window.second.get());
+                        if (pModuleWindow)
+                        {
+                            // We need to set the current scheme for each window
+                            pModuleWindow->SetEditorColorScheme(sNewScheme);
+                        }
+                    }
+
+                    // Update registry with the new color scheme ID
+                    std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
+                    officecfg::Office::BasicIDE::EditorSettings::ColorScheme::set(sNewScheme, batch);
+                    batch->commit();
+                }
+            });
+        }
+        break;
+
         case SID_BASICIDE_MANAGE_LANG:
         {
-            auto pRequest = std::make_shared<SfxRequest>(rReq);
+            auto xRequest = std::make_shared<SfxRequest>(rReq);
             rReq.Ignore(); // the 'old' request is not relevant any more
             auto xDlg = std::make_shared<ManageLanguageDialog>(pCurWin ? pCurWin->GetFrameWeld() : nullptr, m_pCurLocalizationMgr);
-            weld::DialogController::runAsync(xDlg, [pRequest](sal_Int32 /*nResult*/){
-                    pRequest->Done();
+            weld::DialogController::runAsync(xDlg, [xRequest=std::move(xRequest)](sal_Int32 /*nResult*/){
+                    xRequest->Done();
                 });
         }
         break;
@@ -850,6 +913,8 @@ void Shell::GetState(SfxItemSet &rSet)
             }
             break;
             case SID_DOCINFO:
+            case SID_NEWWINDOW:
+            case SID_SAVEASDOC:
             {
                 rSet.DisableItem( nWh );
             }
@@ -874,12 +939,6 @@ void Shell::GetState(SfxItemSet &rSet)
 
                 if ( bDisable )
                     rSet.DisableItem( nWh );
-            }
-            break;
-            case SID_NEWWINDOW:
-            case SID_SAVEASDOC:
-            {
-                rSet.DisableItem( nWh );
             }
             break;
             case SID_SIGNATURE:
@@ -1074,7 +1133,7 @@ void Shell::GetState(SfxItemSet &rSet)
             break;
             case SID_BASICIDE_STAT_DATE:
             {
-                SfxStringItem aItem( SID_BASICIDE_STAT_DATE, "Datum?!" );
+                SfxStringItem aItem( SID_BASICIDE_STAT_DATE, u"Datum?!"_ustr );
                 rSet.Put( aItem );
             }
             break;
@@ -1144,7 +1203,6 @@ void Shell::GetState(SfxItemSet &rSet)
                     if ( pCurMgr->isLibraryLocalized() )
                     {
                         Sequence< lang::Locale > aLocaleSeq = pCurMgr->getStringResourceManager()->getLocales();
-                        const lang::Locale* pLocale = aLocaleSeq.getConstArray();
                         sal_Int32 i, nCount = aLocaleSeq.getLength();
 
                         // Force different results for any combination of locales and default locale
@@ -1153,7 +1211,7 @@ void Shell::GetState(SfxItemSet &rSet)
                         {
                             lang::Locale aLocale;
                             if( i < nCount )
-                                aLocale = pLocale[i];
+                                aLocale = aLocaleSeq[i];
                             else
                                 aLocale = pCurMgr->getStringResourceManager()->getDefaultLocale();
 
@@ -1170,6 +1228,13 @@ void Shell::GetState(SfxItemSet &rSet)
             {
                 if( (pCurWin && pCurWin->IsReadOnly()) || GetCurLibName().isEmpty() )
                     rSet.DisableItem( nWh );
+            }
+            break;
+            case SID_TOGGLE_COMMENT:
+            {
+                // Only available in a ModulWindow if the document can be edited
+                if (pCurWin && (!dynamic_cast<ModulWindow*>(pCurWin.get()) || pCurWin->IsReadOnly()))
+                    rSet.DisableItem(nWh);
             }
             break;
             case SID_GOTOLINE:
@@ -1213,8 +1278,8 @@ void Shell::GetState(SfxItemSet &rSet)
             case SID_BASICIDE_NEWMODULE:
             case SID_BASICIDE_NEWDIALOG:
             {
-                Reference< script::XLibraryContainer2 > xModLibContainer( m_aCurDocument.getLibraryContainer( E_SCRIPTS ), UNO_QUERY );
-                Reference< script::XLibraryContainer2 > xDlgLibContainer( m_aCurDocument.getLibraryContainer( E_DIALOGS ), UNO_QUERY );
+                Reference< script::XLibraryContainer2 > xModLibContainer( m_aCurDocument.getLibraryContainer( E_SCRIPTS ) );
+                Reference< script::XLibraryContainer2 > xDlgLibContainer( m_aCurDocument.getLibraryContainer( E_DIALOGS ) );
                 if ( ( xModLibContainer.is() && xModLibContainer->hasByName( m_aCurLibName ) && xModLibContainer->isLibraryReadOnly( m_aCurLibName ) ) ||
                      ( xDlgLibContainer.is() && xDlgLibContainer->hasByName( m_aCurLibName ) && xDlgLibContainer->isLibraryReadOnly( m_aCurLibName ) ) )
                     rSet.DisableItem(nWh);
@@ -1227,6 +1292,13 @@ void Shell::GetState(SfxItemSet &rSet)
                 const sal_uInt16 nCurrentZoom = GetCurrentZoomSliderValue();
                 if ((nWh == SID_ZOOM_IN && nCurrentZoom >= GetMaxZoom()) ||
                     (nWh == SID_ZOOM_OUT && nCurrentZoom <= GetMinZoom()))
+                    rSet.DisableItem(nWh);
+            }
+            break;
+
+            case SID_BASICIDE_COLOR_SCHEME_DLG:
+            {
+                if (!dynamic_cast<ModulWindowLayout*>(pLayout.get()))
                     rSet.DisableItem(nWh);
             }
             break;
@@ -1278,7 +1350,7 @@ void Shell::SetCurWindow( BaseWindow* pNewWin, bool bUpdateTabBar, bool bRemembe
         pLayout->Deactivating();
     if (pCurWin)
     {
-        if (pCurWin->GetType() == TYPE_MODULE)
+        if (pCurWin->GetSbxType() == SBX_TYPE_MODULE)
             pLayout = pModulLayout.get();
         else
             pLayout = pDialogLayout.get();
@@ -1358,7 +1430,7 @@ void Shell::ManageToolbars()
         return;
 
     Reference< css::frame::XLayoutManager > xLayoutManager;
-    uno::Any a = xFrameProps->getPropertyValue( "LayoutManager" );
+    uno::Any a = xFrameProps->getPropertyValue( u"LayoutManager"_ustr );
     a >>= xLayoutManager;
     if ( !xLayoutManager.is() )
         return;
@@ -1385,19 +1457,19 @@ void Shell::ManageToolbars()
 
 VclPtr<BaseWindow> Shell::FindApplicationWindow()
 {
-    return FindWindow( ScriptDocument::getApplicationScriptDocument(), u"", u"", TYPE_UNKNOWN );
+    return FindWindow( ScriptDocument::getApplicationScriptDocument(), u"", u"", SBX_TYPE_UNKNOWN );
 }
 
 VclPtr<BaseWindow> Shell::FindWindow(
     ScriptDocument const& rDocument,
     std::u16string_view rLibName, std::u16string_view rName,
-    ItemType eType, bool bFindSuspended
+    SbxItemType eSbxItemType, bool bFindSuspended
 )
 {
     for (auto const& window : aWindowTable)
     {
         BaseWindow* const pWin = window.second;
-        if (pWin->Is(rDocument, rLibName, rName, eType, bFindSuspended))
+        if (pWin->Is(rDocument, rLibName, rName, eSbxItemType, bFindSuspended))
             return pWin;
     }
     return nullptr;
@@ -1447,7 +1519,7 @@ VclPtr<ModulWindow> Shell::ShowActiveModuleWindow( StarBASIC const * pBasic )
 
     SbModule* pActiveModule = StarBASIC::GetActiveModule();
     if (SbClassModuleObject* pCMO = dynamic_cast<SbClassModuleObject*>(pActiveModule))
-        pActiveModule = pCMO->getClassModule();
+        pActiveModule = &pCMO->getClassModule();
 
     DBG_ASSERT( pActiveModule, "No active module in ErrorHdl!?" );
     if ( pActiveModule )

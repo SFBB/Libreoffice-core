@@ -43,7 +43,7 @@ namespace {
 
 typedef struct FT_FaceRec_* FT_Face;
 
-class CairoFontsCache
+class CairoFontsCache : public CacheOwner
 {
 public:
     struct CacheId
@@ -62,32 +62,65 @@ public:
     };
 
 private:
-    typedef         std::deque< std::pair<cairo_font_face_t*, CacheId> > LRUFonts;
-    static LRUFonts maLRUFonts;
-public:
-                                CairoFontsCache() = delete;
+#if defined __cpp_lib_memory_resource
+    typedef std::pmr::vector< std::pair<cairo_font_face_t*, CacheId> > LRUFonts;
+#else
+    typedef std::vector< std::pair<cairo_font_face_t*, CacheId> > LRUFonts;
+#endif
+    LRUFonts maLRUFonts;
 
-    static void                 CacheFont(cairo_font_face_t* pFont, const CacheId &rId);
-    static cairo_font_face_t*   FindCachedFont(const CacheId &rId);
+    virtual OUString getCacheName() const override
+    {
+        return "CairoFontsCache";
+    }
+
+    virtual bool dropCaches() override
+    {
+        LRUFonts(maLRUFonts.get_allocator()).swap(maLRUFonts);
+        return true;
+    }
+
+    virtual void dumpState(rtl::OStringBuffer& rState) override
+    {
+        rState.append("\nCairoFontsCache:\t");
+        rState.append(static_cast<sal_Int32>(maLRUFonts.size()));
+    }
+
+public:
+    CairoFontsCache()
+#if defined __cpp_lib_memory_resource
+        : maLRUFonts(&CacheOwner::GetMemoryResource())
+#else
+        : maLRUFonts()
+#endif
+    {
+    }
+
+    void               CacheFont(cairo_font_face_t* pFont, const CacheId &rId);
+    cairo_font_face_t* FindCachedFont(const CacheId &rId);
 };
 
-CairoFontsCache::LRUFonts CairoFontsCache::maLRUFonts;
+CairoFontsCache& getCairoFontsCache()
+{
+    static CairoFontsCache aCache;
+    return aCache;
+}
 
 void CairoFontsCache::CacheFont(cairo_font_face_t* pFont, const CairoFontsCache::CacheId &rId)
 {
-    maLRUFonts.push_front( std::pair<cairo_font_face_t*, CairoFontsCache::CacheId>(pFont, rId) );
+    maLRUFonts.push_back( std::pair<cairo_font_face_t*, CairoFontsCache::CacheId>(pFont, rId) );
     if (maLRUFonts.size() > 8)
     {
-        cairo_font_face_destroy(maLRUFonts.back().first);
-        maLRUFonts.pop_back();
+        cairo_font_face_destroy(maLRUFonts.front().first);
+        maLRUFonts.erase(maLRUFonts.begin());
     }
 }
 
 cairo_font_face_t* CairoFontsCache::FindCachedFont(const CairoFontsCache::CacheId &rId)
 {
-    auto aI = std::find_if(maLRUFonts.begin(), maLRUFonts.end(),
+    auto aI = std::find_if(maLRUFonts.rbegin(), maLRUFonts.rend(),
         [&rId](const LRUFonts::value_type& rFont) { return rFont.second == rId; });
-    if (aI != maLRUFonts.end())
+    if (aI != maLRUFonts.rend())
         return aI->first;
     return nullptr;
 }
@@ -188,13 +221,14 @@ CairoTextRender::~CairoTextRender()
 static void ApplyFont(cairo_t* cr, const CairoFontsCache::CacheId& rId, double nWidth, double nHeight, int nGlyphRotation,
                       const GenericSalLayout& rLayout)
 {
-    cairo_font_face_t* font_face = CairoFontsCache::FindCachedFont(rId);
+    CairoFontsCache& rCache = getCairoFontsCache();
+    cairo_font_face_t* font_face = rCache.FindCachedFont(rId);
     if (!font_face)
     {
         const FontConfigFontOptions *pOptions = rId.mpOptions;
         FcPattern *pPattern = pOptions->GetPattern();
         font_face = cairo_ft_font_face_create_for_pattern(pPattern);
-        CairoFontsCache::CacheFont(font_face, rId);
+        rCache.CacheFont(font_face, rId);
     }
     cairo_set_font_face(cr, font_face);
 
@@ -240,10 +274,6 @@ static CairoFontsCache::CacheId makeCacheId(const GenericSalLayout& rLayout)
 
 void CairoTextRender::DrawTextLayout(const GenericSalLayout& rLayout, const SalGraphics& rGraphics)
 {
-    const LogicalFontInstance& rInstance = rLayout.GetFont();
-
-    const bool bSubpixelPositioning = rLayout.GetSubpixelPositioning();
-
     /*
      * It might be ideal to cache surface and cairo context between calls and
      * only destroy it when the drawable changes, but to do that we need to at
@@ -257,6 +287,15 @@ void CairoTextRender::DrawTextLayout(const GenericSalLayout& rLayout, const SalG
         return;
     }
     comphelper::ScopeGuard releaseContext([this, cr]() { releaseCairoContext(cr); });
+
+    // void CairoCommon::clipRegion(cairo_t* cr) { CairoCommon::clipRegion(cr, m_aClipRegion); }
+    ImplDrawTextLayout(cr, mnTextColor, rLayout, &mrCairoCommon, rGraphics.getAntiAlias());
+}
+
+void CairoTextRender::ImplDrawTextLayout(cairo_t* cr, const Color& rTextColor, const GenericSalLayout& rLayout, CairoCommon* pCairoCommon, bool bAntiAlias)
+{
+    const LogicalFontInstance& rInstance = rLayout.GetFont();
+    const bool bSubpixelPositioning = rLayout.GetSubpixelPositioning();
 
     std::vector<cairo_glyph_t> cairo_glyphs;
     std::vector<int> glyph_extrarotation;
@@ -329,7 +368,7 @@ void CairoTextRender::DrawTextLayout(const GenericSalLayout& rLayout, const SalG
     }
 
 #if defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION)
-    if (nHeight > 8000)
+    if (nHeight > 7000)
     {
         SAL_WARN("vcl", "rendering text would use > 2G Memory: " << nHeight);
         return;
@@ -342,13 +381,14 @@ void CairoTextRender::DrawTextLayout(const GenericSalLayout& rLayout, const SalG
     }
 #endif
 
-    clipRegion(cr);
+    if (nullptr != pCairoCommon)
+        pCairoCommon->clipRegion(cr);
 
     cairo_set_source_rgba(cr,
-        mnTextColor.GetRed()/255.0,
-        mnTextColor.GetGreen()/255.0,
-        mnTextColor.GetBlue()/255.0,
-        mnTextColor.GetAlpha()/255.0);
+        rTextColor.GetRed()/255.0,
+        rTextColor.GetGreen()/255.0,
+        rTextColor.GetBlue()/255.0,
+        rTextColor.GetAlpha()/255.0);
 
     int nRatio = nWidth * 10 / nHeight;
 
@@ -381,9 +421,9 @@ void CairoTextRender::DrawTextLayout(const GenericSalLayout& rLayout, const SalG
         ApplyFont(temp_cr, aId, nHeight, nHeight, 0, rLayout);
 
         cairo_set_source_rgb(temp_cr,
-            mnTextColor.GetRed()/255.0,
-            mnTextColor.GetGreen()/255.0,
-            mnTextColor.GetBlue()/255.0);
+            rTextColor.GetRed()/255.0,
+            rTextColor.GetGreen()/255.0,
+            rTextColor.GetBlue()/255.0);
 
         cairo_show_glyphs(temp_cr, &glyph, 1);
         cairo_destroy(temp_cr);
@@ -417,7 +457,7 @@ void CairoTextRender::DrawTextLayout(const GenericSalLayout& rLayout, const SalG
 #endif
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-    const bool bDisableAA = !rStyleSettings.GetUseFontAAFromSystem() && !rGraphics.getAntiAlias();
+    const bool bDisableAA = !rStyleSettings.GetUseFontAAFromSystem() && !bAntiAlias;
     static bool bAllowDefaultHinting = getenv("SAL_ALLOW_DEFAULT_HINTING") != nullptr;
 
     const cairo_font_options_t* pFontOptions = GetSalInstance()->GetCairoFontOptions();
@@ -503,11 +543,6 @@ cairo_t* CairoTextRender::getCairoContext()
     // Note that cairo_set_antialias (bAntiAlias property) doesn't affect cairo
     // text rendering.  That's affected by cairo_font_options_set_antialias instead.
     return mrCairoCommon.getCairoContext(/*bXorModeAllowed*/false, /*bAntiAlias*/true);
-}
-
-void CairoTextRender::clipRegion(cairo_t* cr)
-{
-    mrCairoCommon.clipRegion(cr);
 }
 
 void CairoTextRender::releaseCairoContext(cairo_t* cr)

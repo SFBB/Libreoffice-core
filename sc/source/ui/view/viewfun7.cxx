@@ -56,7 +56,7 @@ using namespace com::sun::star;
 static void lcl_AdjustInsertPos( ScViewData& rData, Point& rPos, const Size& rSize )
 {
     SdrPage* pPage = rData.GetScDrawView()->GetModel().GetPage( static_cast<sal_uInt16>(rData.GetTabNo()) );
-    OSL_ENSURE(pPage,"pPage ???");
+    assert(pPage && "pPage ???");
     Size aPgSize( pPage->GetSize() );
     if (aPgSize.Width() < 0)
         aPgSize.setWidth( -aPgSize.Width() );
@@ -92,9 +92,8 @@ void ScViewFunc::PasteDraw( const Point& rLogicPos, SdrModel* pModel,
     bool bNegativePage = GetViewData().GetDocument().IsNegativePage( GetViewData().GetTabNo() );
 
     SdrView* pDragEditView = nullptr;
-    ScModule* pScMod = SC_MOD();
-    const ScDragData& rData = pScMod->GetDragData();
-    ScDrawTransferObj* pDrawTrans = rData.pDrawTransfer;
+    const ScDragData* pData = ScModule::get()->GetDragData();
+    ScDrawTransferObj* pDrawTrans = pData ? pData->pDrawTransfer : nullptr;
     if (pDrawTrans)
     {
         pDragEditView = pDrawTrans->GetDragSourceView();
@@ -146,11 +145,11 @@ void ScViewFunc::PasteDraw( const Point& rLogicPos, SdrModel* pModel,
                 ScChartHelper::GetChartNames( aExcludedChartNames, pDestPage );
             }
 
-            SdrMarkList aMark = pDragEditView->GetMarkedObjectList();
-            aMark.ForceSort();
-            const size_t nMarkCnt=aMark.GetMarkCount();
+            const SdrMarkList& rMarkList = pDragEditView->GetMarkedObjectList();
+            rMarkList.ForceSort();
+            const size_t nMarkCnt=rMarkList.GetMarkCount();
             for (size_t nm=0; nm<nMarkCnt; ++nm) {
-                const SdrMark* pM=aMark.GetMark(nm);
+                const SdrMark* pM=rMarkList.GetMark(nm);
                 const SdrObject* pObj=pM->GetMarkedSdrObj();
 
                 // Directly Clone to target SdrModel
@@ -178,8 +177,8 @@ void ScViewFunc::PasteDraw( const Point& rLogicPos, SdrModel* pModel,
                 pDragEditView->DeleteMarked();
 
             ScDocument& rDocument = GetViewData().GetDocument();
-            ScDocShell* pDocShell = GetViewData().GetDocShell();
-            ScModelObj* pModelObj = ( pDocShell ? pDocShell->GetModel() : nullptr );
+            ScDocShell& rDocShell = GetViewData().GetDocShell();
+            ScModelObj* pModelObj = rDocShell.GetModel();
             if ( pDestPage && pModelObj && pDrawTrans )
             {
                 const ScRangeListVector& rProtectedChartRangesVector( pDrawTrans->GetProtectedChartRangesVector() );
@@ -252,8 +251,8 @@ void ScViewFunc::PasteDraw( const Point& rLogicPos, SdrModel* pModel,
         GetViewData().GetDocument().EnsureGraphicNames();
 
         ScDocument& rDocument = GetViewData().GetDocument();
-        ScDocShell* pDocShell = GetViewData().GetDocShell();
-        ScModelObj* pModelObj = ( pDocShell ? pDocShell->GetModel() : nullptr );
+        ScDocShell& rDocShell = GetViewData().GetDocShell();
+        ScModelObj* pModelObj = rDocShell.GetModel();
         const ScDrawTransferObj* pTransferObj = ScDrawTransferObj::GetOwnClipboard(ScTabViewShell::GetClipData(GetViewData().GetActiveWin()));
         if ( pPage && pModelObj && ( pTransferObj || pDrawTrans ) )
         {
@@ -372,13 +371,13 @@ bool ScViewFunc::PasteObject( const Point& rPos, const uno::Reference < embed::X
 bool ScViewFunc::PasteBitmapEx( const Point& rPos, const BitmapEx& rBmpEx )
 {
     Graphic aGraphic(rBmpEx);
-    return PasteGraphic( rPos, aGraphic, "" );
+    return PasteGraphic( rPos, aGraphic, u""_ustr );
 }
 
 bool ScViewFunc::PasteMetaFile( const Point& rPos, const GDIMetaFile& rMtf )
 {
     Graphic aGraphic(rMtf);
-    return PasteGraphic( rPos, aGraphic, "" );
+    return PasteGraphic( rPos, aGraphic, u""_ustr );
 }
 
 bool ScViewFunc::PasteGraphic( const Point& rPos, const Graphic& rGraphic,

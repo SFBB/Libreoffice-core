@@ -28,8 +28,6 @@
 #include "format.hxx"
 #include <svl/poolitem.hxx>
 
-class IntlWrapper;
-
 /// Defines the vertical position of a fly frame.
 ///
 /// For example: from top (orientation), by 1cm (relative position), to the entire page (relation).
@@ -39,12 +37,14 @@ class SW_DLLPUBLIC SwFormatVertOrient final : public SfxPoolItem
     sal_Int16       m_eOrient;
     sal_Int16       m_eRelation;
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatVertOrient)
     SwFormatVertOrient( SwTwips nY = 0, sal_Int16 eVert = css::text::VertOrientation::NONE,
                      sal_Int16 eRel = css::text::RelOrientation::PRINT_AREA );
     SwFormatVertOrient(SwFormatVertOrient const &) = default; // SfxPoolItem copy function dichotomy
 
     /// "Pure virtual methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
+    virtual size_t          hashCode() const override;
     virtual SwFormatVertOrient* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
@@ -56,13 +56,19 @@ public:
 
     sal_Int16 GetVertOrient() const { return m_eOrient; }
     sal_Int16 GetRelationOrient() const { return m_eRelation; }
-    void   SetVertOrient( sal_Int16 eNew ) { m_eOrient = eNew; }
-    void   SetRelationOrient( sal_Int16 eNew ) { m_eRelation = eNew; }
+    void   SetVertOrient( sal_Int16 eNew )
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_eOrient = eNew; }
+    void   SetRelationOrient( sal_Int16 eNew )
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_eRelation = eNew; }
 
     SwTwips GetPos() const { return m_nYPos; }
-    void    SetPos( SwTwips nNew ) { m_nYPos = nNew; }
+    void    SetPos( SwTwips nNew )
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nYPos = nNew; }
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
 };
 
 /// Defines the horizontal position of a fly frame.
@@ -76,12 +82,14 @@ class SW_DLLPUBLIC SwFormatHoriOrient final : public SfxPoolItem
     sal_Int16       m_eRelation;
     bool            m_bPosToggle : 1; ///< Flip position on even pages.
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatHoriOrient)
     SwFormatHoriOrient( SwTwips nX = 0, sal_Int16 eHori = css::text::HoriOrientation::NONE,
         sal_Int16 eRel = css::text::RelOrientation::PRINT_AREA, bool bPos = false );
     SwFormatHoriOrient(SwFormatHoriOrient const &) = default; // SfxPoolItem copy function dichotomy
 
     /// "Pure virtual methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
+    virtual size_t          hashCode() const override;
     virtual SwFormatHoriOrient* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
@@ -93,16 +101,19 @@ public:
 
     sal_Int16 GetHoriOrient() const { return m_eOrient; }
     sal_Int16 GetRelationOrient() const { return m_eRelation; }
-    void SetHoriOrient( sal_Int16 eNew ) { m_eOrient = eNew; }
-    void SetRelationOrient( sal_Int16 eNew ) { m_eRelation = eNew; }
+    void SetHoriOrient( sal_Int16 eNew ) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_eOrient = eNew; }
+    void SetRelationOrient( sal_Int16 eNew ) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_eRelation = eNew; }
 
     SwTwips GetPos() const { return m_nXPos; }
-    void    SetPos( SwTwips nNew ) { m_nXPos = nNew; }
+    void    SetPos( SwTwips nNew ) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nXPos = nNew; }
 
     bool IsPosToggle() const { return m_bPosToggle; }
-    void SetPosToggle( bool bNew ) { m_bPosToggle = bNew; }
+    void SetPosToggle( bool bNew ) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_bPosToggle = bNew; }
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
 };
 
 inline const SwFormatVertOrient &SwAttrSet::GetVertOrient(bool bInP) const

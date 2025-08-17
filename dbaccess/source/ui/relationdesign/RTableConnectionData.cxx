@@ -145,15 +145,13 @@ bool ORelationTableConnectionData::checkPrimaryKey(const Reference< XPropertySet
     if ( xKeyColumns.is() )
     {
         Sequence< OUString> aKeyColumns = xKeyColumns->getElementNames();
-        const OUString* pKeyIter = aKeyColumns.getConstArray();
-        const OUString* pKeyEnd  = pKeyIter + aKeyColumns.getLength();
 
-        for(;pKeyIter != pKeyEnd;++pKeyIter)
+        for (auto& keyColumn : aKeyColumns)
         {
             for (auto const& elem : m_vConnLineData)
             {
                 ++nValidLinesCount;
-                if ( elem->GetFieldName(_eEConnectionSide) == *pKeyIter )
+                if (elem->GetFieldName(_eEConnectionSide) == keyColumn)
                 {
                     ++nPrimKeysCount;
                     break;
@@ -256,7 +254,8 @@ bool ORelationTableConnectionData::Update()
 
         xKey->setPropertyValue(PROPERTY_NAME,Any(sKeyName));
         xKey->setPropertyValue(PROPERTY_TYPE,Any(KeyType::FOREIGN));
-        xKey->setPropertyValue(PROPERTY_REFERENCEDTABLE,Any(getReferencedTable()->GetTableName()));
+        // get the full name of the tables to ensure uniqueness across catalogs and schema
+        xKey->setPropertyValue(PROPERTY_REFERENCEDTABLE,Any(getReferencedTable()->GetComposedName()));
         xKey->setPropertyValue(PROPERTY_UPDATERULE, Any(GetUpdateRules()));
         xKey->setPropertyValue(PROPERTY_DELETERULE, Any(GetDeleteRules()));
     }
@@ -301,35 +300,28 @@ bool ORelationTableConnectionData::Update()
         {
             OUString sReferencedTable;
             xKey->getPropertyValue(PROPERTY_REFERENCEDTABLE) >>= sReferencedTable;
-            if ( sReferencedTable == getReferencedTable()->GetTableName() )
+            if ( sReferencedTable == getReferencedTable()->GetComposedName() )
             {
                 xColSup.set(xKey,UNO_QUERY_THROW);
                 try
                 {
                     Reference<XNameAccess> xColumns = xColSup->getColumns();
                     Sequence< OUString> aNames = xColumns->getElementNames();
-                    const OUString* pIter = aNames.getConstArray();
-                    const OUString* pEnd = pIter + aNames.getLength();
+                    const OUString* pIter = aNames.begin();
+                    const OUString* pEnd = aNames.end();
 
-                    Reference<XPropertySet> xColumn;
                     OUString sName,sRelatedColumn;
                     for ( ; pIter != pEnd ; ++pIter )
                     {
-                        xColumn.set(xColumns->getByName(*pIter),UNO_QUERY_THROW);
+                        Reference<XPropertySet> xColumn(xColumns->getByName(*pIter),UNO_QUERY_THROW);
                         xColumn->getPropertyValue(PROPERTY_NAME)            >>= sName;
                         xColumn->getPropertyValue(PROPERTY_RELATEDCOLUMN)   >>= sRelatedColumn;
 
-                        bool bFoundElem = false;
-                        for (auto const& elem : m_vConnLineData)
-                        {
-                            if(    elem->GetSourceFieldName() == sName
-                                && elem->GetDestFieldName() == sRelatedColumn )
-                            {
-                                bFoundElem = true;
-                                break;
-                            }
-                        }
-                        if (!bFoundElem)
+                        if (std::none_of(m_vConnLineData.begin(), m_vConnLineData.end(),
+                                         [&sName, &sRelatedColumn](auto& elem) {
+                                             return elem->GetSourceFieldName() == sName
+                                                    && elem->GetDestFieldName() == sRelatedColumn;
+                                         }))
                             break;
                     }
                     if ( pIter == pEnd )
@@ -362,16 +354,14 @@ bool ORelationTableConnectionData::Update()
         OConnectionLineDataVec().swap(m_vConnLineData);
         Reference<XNameAccess> xColumns = xColSup->getColumns();
         Sequence< OUString> aNames = xColumns->getElementNames();
-        const OUString* pIter = aNames.getConstArray();
-        const OUString* pEnd = pIter + aNames.getLength();
 
         m_vConnLineData.reserve( aNames.getLength() );
         Reference<XPropertySet> xColumn;
         OUString sName,sRelatedColumn;
 
-        for(;pIter != pEnd;++pIter)
+        for (auto& colName : aNames)
         {
-            xColumns->getByName(*pIter) >>= xColumn;
+            xColumns->getByName(colName) >>= xColumn;
             if ( xColumn.is() )
             {
                 OConnectionLineDataRef pNewData = new OConnectionLineData();

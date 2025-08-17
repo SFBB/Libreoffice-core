@@ -38,10 +38,6 @@
 using namespace oox::core;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::text;
-using namespace ::com::sun::star::xml::sax;
 
 namespace oox::drawingml {
 
@@ -80,6 +76,7 @@ ContextHandlerRef ShapeContext::onCreateContext( sal_Int32 aElementToken, const 
         mpShapePtr->setId( rAttribs.getStringDefaulted( XML_id ) );
         mpShapePtr->setName( rAttribs.getStringDefaulted( XML_name ) );
         mpShapePtr->setDescription( rAttribs.getStringDefaulted( XML_descr ) );
+        mpShapePtr->setTitle(rAttribs.getStringDefaulted(XML_title));
         break;
     }
     case XML_hlinkMouseOver:
@@ -89,6 +86,8 @@ ContextHandlerRef ShapeContext::onCreateContext( sal_Int32 aElementToken, const 
         mpShapePtr->setSubType( rAttribs.getToken( XML_type, XML_obj ) );
         if( rAttribs.hasAttribute( XML_idx ) )
             mpShapePtr->setSubTypeIndex( rAttribs.getInteger( XML_idx, 0 ) );
+        if( rAttribs.hasAttribute( XML_hasCustomPrompt ) )
+            mpShapePtr->setCustomPrompt( rAttribs.getBool( XML_hasCustomPrompt, false ) );
         break;
     // nvSpPr CT_ShapeNonVisual end
 

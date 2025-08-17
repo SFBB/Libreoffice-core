@@ -80,7 +80,7 @@ static bool IsMarkInSameSection( SwWrtShell& rWrtSh, const SwSection* pSect )
 }
 
 SwColumnDlg::SwColumnDlg(weld::Window* pParent, SwWrtShell& rSh)
-    : SfxDialogController(pParent, "modules/swriter/ui/columndialog.ui", "ColumnDialog")
+    : SfxDialogController(pParent, u"modules/swriter/ui/columndialog.ui"_ustr, u"ColumnDialog"_ustr)
     , m_rWrtShell(rSh)
     , m_pFrameSet(nullptr)
     , m_nOldSelection(0)
@@ -89,8 +89,8 @@ SwColumnDlg::SwColumnDlg(weld::Window* pParent, SwWrtShell& rSh)
     , m_bSectionChanged(false)
     , m_bSelSectionChanged(false)
     , m_bFrameChanged(false)
-    , m_xContentArea(m_xBuilder->weld_container("content"))
-    , m_xOkButton(m_xBuilder->weld_button("ok"))
+    , m_xContentArea(m_xBuilder->weld_container(u"content"_ustr))
+    , m_xOkButton(m_xBuilder->weld_button(u"ok"_ustr))
 {
     SwRect aRect;
     m_rWrtShell.CalcBoundRect(aRect, RndStdIds::FLY_AS_CHAR);
@@ -144,7 +144,8 @@ SwColumnDlg::SwColumnDlg(weld::Window* pParent, SwWrtShell& rSh)
 
         const SvxLRSpaceItem& rLRSpace = rFormat.GetLRSpace();
         const SvxBoxItem& rBox = rFormat.GetBox();
-        m_nPageWidth -= rLRSpace.GetLeft() + rLRSpace.GetRight() + rBox.GetSmallestDistance();
+        m_nPageWidth
+            -= rLRSpace.ResolveLeft({}) + rLRSpace.ResolveRight({}) + rBox.GetSmallestDistance();
 
         m_pPageSet->Put(rFormat.GetCol());
         m_pPageSet->Put(rFormat.GetLRSpace());
@@ -180,7 +181,7 @@ SwColumnDlg::SwColumnDlg(weld::Window* pParent, SwWrtShell& rSh)
     const int nPagePos = pApplyToLB->find_id(OUString::number(LISTBOX_PAGE));
     if (m_pPageSet && pPageDesc)
     {
-        const OUString sPageStr = pApplyToLB->get_text(nPagePos) + pPageDesc->GetName();
+        const OUString sPageStr = pApplyToLB->get_text(nPagePos) + pPageDesc->GetName().toString();
         pApplyToLB->remove(nPagePos);
         OUString sId(OUString::number(LISTBOX_PAGE));
         pApplyToLB->insert(nPagePos, sPageStr, &sId, nullptr, nullptr);
@@ -367,44 +368,45 @@ constexpr sal_uInt16 g_nMinWidth(MINLAY);
 
 // Now as TabPage
 SwColumnPage::SwColumnPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/columnpage.ui", "ColumnPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/columnpage.ui"_ustr, u"ColumnPage"_ustr, &rSet)
     , m_nFirstVis(0)
+    , m_nCols(0)
     , m_pModifiedField(nullptr)
     , m_bFormat(false)
     , m_bFrame(false)
     , m_bHtmlMode(false)
     , m_bLockUpdate(false)
-    , m_xCLNrEdt(m_xBuilder->weld_spin_button("colsnf"))
-    , m_xBalanceColsCB(m_xBuilder->weld_check_button("balance"))
-    , m_xBtnBack(m_xBuilder->weld_button("back"))
-    , m_xLbl1(m_xBuilder->weld_label("1"))
-    , m_xLbl2(m_xBuilder->weld_label("2"))
-    , m_xLbl3(m_xBuilder->weld_label("3"))
-    , m_xBtnNext(m_xBuilder->weld_button("next"))
-    , m_xAutoWidthBox(m_xBuilder->weld_check_button("autowidth"))
-    , m_xLineTypeLbl(m_xBuilder->weld_label("linestyleft"))
-    , m_xLineWidthLbl(m_xBuilder->weld_label("linewidthft"))
-    , m_xLineWidthEdit(m_xBuilder->weld_metric_spin_button("linewidthmf", FieldUnit::POINT))
-    , m_xLineColorLbl(m_xBuilder->weld_label("linecolorft"))
-    , m_xLineHeightLbl(m_xBuilder->weld_label("lineheightft"))
-    , m_xLineHeightEdit(m_xBuilder->weld_metric_spin_button("lineheightmf", FieldUnit::PERCENT))
-    , m_xLinePosLbl(m_xBuilder->weld_label("lineposft"))
-    , m_xLinePosDLB(m_xBuilder->weld_combo_box("lineposlb"))
-    , m_xTextDirectionFT(m_xBuilder->weld_label("textdirectionft"))
-    , m_xTextDirectionLB(new svx::FrameDirectionListBox(m_xBuilder->weld_combo_box("textdirectionlb")))
-    , m_xLineColorDLB(new ColorListBox(m_xBuilder->weld_menu_button("colorlb"),
+    , m_xCLNrEdt(m_xBuilder->weld_spin_button(u"colsnf"_ustr))
+    , m_xBalanceColsCB(m_xBuilder->weld_check_button(u"balance"_ustr))
+    , m_xBtnBack(m_xBuilder->weld_button(u"back"_ustr))
+    , m_xLbl1(m_xBuilder->weld_label(u"1"_ustr))
+    , m_xLbl2(m_xBuilder->weld_label(u"2"_ustr))
+    , m_xLbl3(m_xBuilder->weld_label(u"3"_ustr))
+    , m_xBtnNext(m_xBuilder->weld_button(u"next"_ustr))
+    , m_xAutoWidthBox(m_xBuilder->weld_check_button(u"autowidth"_ustr))
+    , m_xLineTypeLbl(m_xBuilder->weld_label(u"linestyleft"_ustr))
+    , m_xLineWidthLbl(m_xBuilder->weld_label(u"linewidthft"_ustr))
+    , m_xLineWidthEdit(m_xBuilder->weld_metric_spin_button(u"linewidthmf"_ustr, FieldUnit::POINT))
+    , m_xLineColorLbl(m_xBuilder->weld_label(u"linecolorft"_ustr))
+    , m_xLineHeightLbl(m_xBuilder->weld_label(u"lineheightft"_ustr))
+    , m_xLineHeightEdit(m_xBuilder->weld_metric_spin_button(u"lineheightmf"_ustr, FieldUnit::PERCENT))
+    , m_xLinePosLbl(m_xBuilder->weld_label(u"lineposft"_ustr))
+    , m_xLinePosDLB(m_xBuilder->weld_combo_box(u"lineposlb"_ustr))
+    , m_xTextDirectionFT(m_xBuilder->weld_label(u"textdirectionft"_ustr))
+    , m_xTextDirectionLB(new svx::FrameDirectionListBox(m_xBuilder->weld_combo_box(u"textdirectionlb"_ustr)))
+    , m_xLineColorDLB(new ColorListBox(m_xBuilder->weld_menu_button(u"colorlb"_ustr),
                 [this]{ return GetFrameWeld(); }))
-    , m_xLineTypeDLB(new SvtLineListBox(m_xBuilder->weld_menu_button("linestylelb")))
-    , m_xEd1(new SwPercentField(m_xBuilder->weld_metric_spin_button("width1mf", FieldUnit::CM)))
-    , m_xEd2(new SwPercentField(m_xBuilder->weld_metric_spin_button("width2mf", FieldUnit::CM)))
-    , m_xEd3(new SwPercentField(m_xBuilder->weld_metric_spin_button("width3mf", FieldUnit::CM)))
-    , m_xDistEd1(new SwPercentField(m_xBuilder->weld_metric_spin_button("spacing1mf", FieldUnit::CM)))
-    , m_xDistEd2(new SwPercentField(m_xBuilder->weld_metric_spin_button("spacing2mf", FieldUnit::CM)))
-    , m_xDefaultVS(new weld::CustomWeld(*m_xBuilder, "valueset", m_aDefaultVS))
-    , m_xPgeExampleWN(new weld::CustomWeld(*m_xBuilder, "pageexample", m_aPgeExampleWN))
-    , m_xFrameExampleWN(new weld::CustomWeld(*m_xBuilder, "frameexample", m_aFrameExampleWN))
-    , m_xApplyToFT(m_xBuilder->weld_label("applytoft"))
-    , m_xApplyToLB(m_xBuilder->weld_combo_box("applytolb"))
+    , m_xLineTypeDLB(new SvtLineListBox(m_xBuilder->weld_menu_button(u"linestylelb"_ustr)))
+    , m_xEd1(new SwPercentField(m_xBuilder->weld_metric_spin_button(u"width1mf"_ustr, FieldUnit::CM)))
+    , m_xEd2(new SwPercentField(m_xBuilder->weld_metric_spin_button(u"width2mf"_ustr, FieldUnit::CM)))
+    , m_xEd3(new SwPercentField(m_xBuilder->weld_metric_spin_button(u"width3mf"_ustr, FieldUnit::CM)))
+    , m_xDistEd1(new SwPercentField(m_xBuilder->weld_metric_spin_button(u"spacing1mf"_ustr, FieldUnit::CM)))
+    , m_xDistEd2(new SwPercentField(m_xBuilder->weld_metric_spin_button(u"spacing2mf"_ustr, FieldUnit::CM)))
+    , m_xDefaultVS(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, m_aDefaultVS))
+    , m_xPgeExampleWN(new weld::CustomWeld(*m_xBuilder, u"pageexample"_ustr, m_aPgeExampleWN))
+    , m_xFrameExampleWN(new weld::CustomWeld(*m_xBuilder, u"frameexample"_ustr, m_aFrameExampleWN))
+    , m_xApplyToFT(m_xBuilder->weld_label(u"applytoft"_ustr))
+    , m_xApplyToLB(m_xBuilder->weld_combo_box(u"applytolb"_ustr))
 {
     connectPercentField(*m_xEd1);
     connectPercentField(*m_xEd2);
@@ -704,9 +706,8 @@ IMPL_LINK_NOARG( SwColumnPage, UpdateColMgr, weld::MetricSpinButton&, void )
         //them to avoid the listbox selection resetting
         if (nLineWidth != m_xLineTypeDLB->GetWidth())
             m_xLineTypeDLB->SetWidth(nLineWidth);
-        Color aColor(m_xLineColorDLB->GetSelectEntryColor());
-        if (aColor != m_xLineTypeDLB->GetColor())
-            m_xLineTypeDLB->SetColor(aColor);
+        const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
+        m_xLineTypeDLB->SetColor(rStyleSettings.GetDialogTextColor());
     }
     else
     {
@@ -724,6 +725,7 @@ IMPL_LINK_NOARG( SwColumnPage, UpdateColMgr, weld::MetricSpinButton&, void )
         if(m_bFrame)
         {
             m_aFrameExampleWN.SetColumns(m_xColMgr->GetColumns());
+            m_aFrameExampleWN.SetLineColor(m_xColMgr->GetLineColor());
             m_aFrameExampleWN.Invalidate();
         }
         else
@@ -1170,8 +1172,8 @@ void SwColumnPage::ActivatePage(const SfxItemSet& rSet)
             {
                 const SvxLRSpaceItem& rLRSpace = rSet.Get(RES_LR_SPACE);
                 const SvxBoxItem& rBox = rSet.Get(RES_BOX);
-                nActWidth = rSize.GetSize().Width()
-                                - rLRSpace.GetLeft() - rLRSpace.GetRight() - rBox.GetSmallestDistance();
+                nActWidth = rSize.GetSize().Width() - rLRSpace.ResolveLeft({})
+                            - rLRSpace.ResolveRight({}) - rBox.GetSmallestDistance();
             }
             else
             {
@@ -1316,8 +1318,7 @@ void ColumnValueSet::UserDraw(const UserDrawEvent& rUDEvt)
     tools::Long nRectHeight = aRect.GetHeight();
 
     Point aBLPos = aRect.TopLeft();
-    Color aFillColor(pDev->GetFillColor());
-    Color aLineColor(pDev->GetLineColor());
+    pDev->Push(vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR);
     pDev->SetFillColor(rStyleSettings.GetFieldColor());
     pDev->SetLineColor(rStyleSettings.GetFieldTextColor());
 
@@ -1367,8 +1368,7 @@ void ColumnValueSet::UserDraw(const UserDrawEvent& rUDEvt)
             pDev->DrawLine(aStart, aEnd);
         }
     }
-    pDev->SetFillColor(aFillColor);
-    pDev->SetLineColor(aLineColor);
+    pDev->Pop();
 }
 
 void ColumnValueSet::StyleUpdated()

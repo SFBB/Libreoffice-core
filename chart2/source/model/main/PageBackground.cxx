@@ -18,6 +18,7 @@
  */
 
 #include "PageBackground.hxx"
+#include <comphelper/lok.hxx>
 #include <LinePropertiesHelper.hxx>
 #include <FillProperties.hxx>
 #include <UserDefinedProperties.hxx>
@@ -51,10 +52,14 @@ const ::chart::tPropertyValueMap& StaticPageBackgroundDefaults()
 
             // override other defaults
             Color aDocColor = COL_WHITE;
-            if (SfxViewShell::Current()) {
-                aDocColor = SfxViewShell::Current()->GetColorConfigColor(svtools::DOCCOLOR);
+            if (comphelper::LibreOfficeKit::isActive()) {
+                aDocColor = COL_AUTO;
             } else {
-                SAL_WARN("chart2", "SfxViewShell::Current() returned nullptr");
+                if (SfxViewShell* pCurrentSh = SfxViewShell::Current()) {
+                    aDocColor = pCurrentSh->GetColorConfigColor(svtools::DOCCOLOR);
+                } else {
+                    aDocColor = svtools::ColorConfig().GetColorValue(svtools::DOCCOLOR).nColor;
+                }
             }
             ::chart::PropertyHelper::setPropertyValue( aTmp, ::chart::FillProperties::PROP_FILL_COLOR, aDocColor );
             ::chart::PropertyHelper::setPropertyValue( aTmp, ::chart::LinePropertiesHelper::PROP_LINE_STYLE, drawing::LineStyle_NONE );
@@ -167,7 +172,7 @@ void PageBackground::firePropertyChangeEvent()
 
 OUString SAL_CALL PageBackground::getImplementationName()
 {
-    return "com.sun.star.comp.chart2.PageBackground";
+    return u"com.sun.star.comp.chart2.PageBackground"_ustr;
 }
 
 sal_Bool SAL_CALL PageBackground::supportsService( const OUString& rServiceName )
@@ -178,8 +183,8 @@ sal_Bool SAL_CALL PageBackground::supportsService( const OUString& rServiceName 
 css::uno::Sequence< OUString > SAL_CALL PageBackground::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.chart2.PageBackground",
-        "com.sun.star.beans.PropertySet" };
+        u"com.sun.star.chart2.PageBackground"_ustr,
+        u"com.sun.star.beans.PropertySet"_ustr };
 }
 
 using impl::PageBackground_Base;

@@ -107,6 +107,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		$(foreach object,$(OBJCXXOBJECTS),$(call gb_ObjCxxObject_get_target,$(object))) \
 		$(foreach object,$(GENCOBJECTS),$(call gb_GenCObject_get_target,$(object))) \
 		$(foreach object,$(GENCXXOBJECTS),$(call gb_GenCxxObject_get_target,$(object))) \
+		$(foreach object,$(GENASMOBJECTS),$(call gb_GenAsmObject_get_target,$(object))) \
 		$(foreach object,$(GENNASMOBJECTS),$(call gb_GenNasmObject_get_target,$(object))) \
 		$(foreach object,$(GENOBJCOBJECTS),$(call gb_GenObjCObject_get_target,$(object))) \
 		$(foreach object,$(GENOBJCXXOBJECTS),$(call gb_GenObjCxxObject_get_target,$(object))) \
@@ -152,6 +153,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		$(foreach object,$(OBJCXXOBJECTS),$(call gb_ObjCxxObject_get_target,$(object))) \
 		$(foreach object,$(GENCOBJECTS),$(call gb_GenCObject_get_target,$(object))) \
 		$(foreach object,$(GENCXXOBJECTS),$(call gb_GenCxxObject_get_target,$(object))) \
+		$(foreach object,$(GENASMOBJECTS),$(call gb_GenAsmObject_get_target,$(object))) \
 		$(foreach object,$(GENNASMOBJECTS),$(call gb_GenNasmObject_get_target,$(object))) \
 		$(foreach object,$(GENOBJCOBJECTS),$(call gb_GenObjCObject_get_target,$(object))) \
 		$(foreach object,$(GENOBJCXXOBJECTS),$(call gb_GenObjCxxObject_get_target,$(object))) \
@@ -225,7 +227,7 @@ endef
 
 gb_Library__set_soversion_script_platform = $(gb_Library__set_soversion_script)
 
-gb_Library_get_sdk_link_dir = $(WORKDIR)/LinkTarget/Library
+gb_Library_get_sdk_link_dir := $(gb_Library_DLLDIR)
 
 gb_Library_get_sdk_link_lib = $(gb_Library_get_versionlink_target)
 
@@ -344,14 +346,6 @@ gb_Extension_LICENSEFILE_DEFAULT := $(INSTROOT)/Resources/LICENSE
 # UnpackedTarget class
 
 gb_UnpackedTarget_TARFILE_LOCATION := $(TARFILE_LOCATION)
-
-# UnoApiHeadersTarget class
-
-ifeq ($(DISABLE_DYNLOADING),TRUE)
-gb_UnoApiHeadersTarget_select_variant = $(if $(filter udkapi,$(1)),comprehensive,$(2))
-else
-gb_UnoApiHeadersTarget_select_variant = $(2)
-endif
 
 # UIMenubarTarget class
 

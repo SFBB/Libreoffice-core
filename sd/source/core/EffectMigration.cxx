@@ -657,7 +657,7 @@ void EffectMigration::SetTextAnimationEffect( SvxShape* pShape, AnimationEffect 
             }
             else
             {
-                Reference< XAnimationNode > xNode( pPreset->create( "" ) );
+                Reference< XAnimationNode > xNode( pPreset->create( u""_ustr ) );
                 DBG_ASSERT( xNode.is(), "EffectMigration::SetTextAnimationEffect(), could not create preset!" );
                 if( xNode.is() )
                 {
@@ -832,7 +832,7 @@ void EffectMigration::SetAnimationSpeed( SvxShape* pShape, AnimationSpeed eSpeed
 
     for( aIter = pMainSequence->getBegin(); aIter != pMainSequence->getEnd(); ++aIter )
     {
-        CustomAnimationEffectPtr pEffect( *aIter );
+        const CustomAnimationEffectPtr& pEffect( *aIter );
         if( pEffect->getTargetShape() == xShape )
         {
             if( pEffect->getDuration() != 0.1 )
@@ -861,7 +861,7 @@ AnimationSpeed EffectMigration::GetAnimationSpeed( SvxShape* pShape )
         });
     if (aIter != pMainSequence->getEnd())
     {
-        CustomAnimationEffectPtr pEffect( *aIter );
+        const CustomAnimationEffectPtr& pEffect( *aIter );
         fDuration = pEffect->getDuration();
     }
 
@@ -902,7 +902,7 @@ void EffectMigration::SetDimColor( SvxShape* pShape, sal_Int32 nColor )
 
     for( aIter = pMainSequence->getBegin(); aIter != pMainSequence->getEnd(); ++aIter )
     {
-        CustomAnimationEffectPtr pEffect( *aIter );
+        const CustomAnimationEffectPtr& pEffect( *aIter );
         if( pEffect->getTargetShape() == xShape )
         {
             pEffect->setHasAfterEffect( true );
@@ -935,7 +935,7 @@ sal_Int32 EffectMigration::GetDimColor( SvxShape* pShape )
                 });
             if (aIter != pMainSequence->getEnd())
             {
-                CustomAnimationEffectPtr pEffect( *aIter );
+                const CustomAnimationEffectPtr& pEffect( *aIter );
                 pEffect->getDimColor() >>= nColor;
             }
         }
@@ -964,7 +964,7 @@ void EffectMigration::SetDimHide( SvxShape* pShape, bool bDimHide )
 
     for( aIter = pMainSequence->getBegin(); aIter != pMainSequence->getEnd(); ++aIter )
     {
-        CustomAnimationEffectPtr pEffect( *aIter );
+        const CustomAnimationEffectPtr& pEffect( *aIter );
         if( pEffect->getTargetShape() == xShape )
         {
             pEffect->setHasAfterEffect( bDimHide );
@@ -997,7 +997,7 @@ bool EffectMigration::GetDimHide( SvxShape* pShape )
                 [&xShape](const CustomAnimationEffectPtr& pEffect) { return pEffect->getTargetShape() == xShape; });
             if (aIter != pMainSequence->getEnd())
             {
-                CustomAnimationEffectPtr pEffect( *aIter );
+                const CustomAnimationEffectPtr& pEffect( *aIter );
                 bRet = pEffect->hasAfterEffect() &&
                         !pEffect->getDimColor().hasValue() &&
                         (!pEffect->IsAfterEffectOnNext());
@@ -1033,7 +1033,7 @@ void EffectMigration::SetDimPrevious( SvxShape* pShape, bool bDimPrevious )
 
     for( aIter = pMainSequence->getBegin(); aIter != pMainSequence->getEnd(); ++aIter )
     {
-        CustomAnimationEffectPtr pEffect( *aIter );
+        const CustomAnimationEffectPtr& pEffect( *aIter );
         if( pEffect->getTargetShape() == xShape )
         {
             pEffect->setHasAfterEffect( bDimPrevious );
@@ -1064,7 +1064,7 @@ bool EffectMigration::GetDimPrevious( SvxShape* pShape )
                 [&xShape](const CustomAnimationEffectPtr& pEffect) { return pEffect->getTargetShape() == xShape; });
             if (aIter != pMainSequence->getEnd())
             {
-                CustomAnimationEffectPtr pEffect( *aIter );
+                const CustomAnimationEffectPtr& pEffect( *aIter );
                 bRet = pEffect->hasAfterEffect() &&
                         pEffect->getDimColor().hasValue() &&
                         pEffect->IsAfterEffectOnNext();
@@ -1097,7 +1097,7 @@ void EffectMigration::SetPresentationOrder( SvxShape* pShape, sal_Int32 nNewPos 
         EffectSequence::iterator aEnd( rSequence.end() );
         for( nPos = 0; aIter != aEnd; ++aIter )
         {
-            CustomAnimationEffectPtr pEffect = *aIter;
+            const CustomAnimationEffectPtr& pEffect = *aIter;
 
             if( !xCurrent.is() )
             {
@@ -1210,7 +1210,7 @@ void EffectMigration::UpdateSoundEffect( SvxShape* pShape, SdAnimationInfo const
 
     for( aIter = pMainSequence->getBegin(); aIter != pMainSequence->getEnd(); ++aIter )
     {
-        CustomAnimationEffectPtr pEffect( *aIter );
+        const CustomAnimationEffectPtr& pEffect( *aIter );
         if( pEffect->getTargetShape() == xShape )
         {
             if( !aSoundFile.isEmpty() )
@@ -1248,7 +1248,7 @@ OUString EffectMigration::GetSoundFile( SvxShape* pShape )
                     (aSoundFile.isEmpty()) && (aIter != pMainSequence->getEnd());
                     ++aIter )
             {
-                CustomAnimationEffectPtr pEffect( *aIter );
+                const CustomAnimationEffectPtr& pEffect( *aIter );
                 if( pEffect->getTargetShape() == xShape )
                 {
                     if( pEffect->getAudio().is() )
@@ -1280,7 +1280,7 @@ void EffectMigration::SetAnimationPath( SvxShape* pShape, SdrPathObj const * pPa
         {
             std::shared_ptr< sd::MainSequence > pMainSequence( pPage->getMainSequence() );
             if( pMainSequence )
-                pMainSequence->append( *pPathObj, Any( xShape ), -1.0, "" );
+                pMainSequence->append( *pPathObj, Any( xShape ), -1.0, u""_ustr );
         }
     }
 }
@@ -1291,7 +1291,7 @@ static void createVisibilityOnOffNode(Reference< XTimeContainer > const & rxPare
     Reference< XMultiServiceFactory > xMsf(::comphelper::getProcessServiceFactory());
 
     // create par container node
-    Reference< XAnimationNode > xOuterSeqTimeContainer(xMsf->createInstance("com.sun.star.animations.ParallelTimeContainer"), UNO_QUERY_THROW);
+    Reference< XAnimationNode > xOuterSeqTimeContainer(xMsf->createInstance(u"com.sun.star.animations.ParallelTimeContainer"_ustr), UNO_QUERY_THROW);
 
     // set begin
     xOuterSeqTimeContainer->setBegin(Any(0.0));
@@ -1301,14 +1301,14 @@ static void createVisibilityOnOffNode(Reference< XTimeContainer > const & rxPare
 
     // set named values
     Sequence< NamedValue > aUserDataSequence{
-        { /* Name  */ "node-type",
+        { /* Name  */ u"node-type"_ustr,
           /* Value */ Any(bOnClick ? EffectNodeType::ON_CLICK : EffectNodeType::AFTER_PREVIOUS) }
     };
 
     xOuterSeqTimeContainer->setUserData(aUserDataSequence);
 
     // create animate set to change visibility for rCandidate
-    Reference< XAnimationNode > xAnimateSetForLast(xMsf->createInstance("com.sun.star.animations.AnimateSet"), UNO_QUERY_THROW);
+    Reference< XAnimationNode > xAnimateSetForLast(xMsf->createInstance(u"com.sun.star.animations.AnimateSet"_ustr), UNO_QUERY_THROW);
 
     // set begin
     xAnimateSetForLast->setBegin(Any(0.0));
@@ -1325,7 +1325,7 @@ static void createVisibilityOnOffNode(Reference< XTimeContainer > const & rxPare
     xAnimate->setTarget(Any(xTargetShape));
 
     // set AttributeName
-    xAnimate->setAttributeName("Visibility");
+    xAnimate->setAttributeName(u"Visibility"_ustr);
 
     // set attribute value
     xAnimate->setTo(Any(bVisible));
@@ -1370,7 +1370,7 @@ void EffectMigration::CreateAnimatedGroup(SdrObjGroup const & rGroupObj, SdPage&
 
     // create main node
     Reference< XMultiServiceFactory > xMsf(::comphelper::getProcessServiceFactory());
-    Reference< XAnimationNode > xOuterSeqTimeContainer(xMsf->createInstance("com.sun.star.animations.ParallelTimeContainer"), UNO_QUERY_THROW);
+    Reference< XAnimationNode > xOuterSeqTimeContainer(xMsf->createInstance(u"com.sun.star.animations.ParallelTimeContainer"_ustr), UNO_QUERY_THROW);
 
     // set begin
     xOuterSeqTimeContainer->setBegin(Any(0.0));

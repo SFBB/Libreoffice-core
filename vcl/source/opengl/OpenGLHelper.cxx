@@ -27,6 +27,7 @@
 
 #include <stdarg.h>
 #include <string_view>
+#include <atomic>
 #include <vector>
 #include <unordered_map>
 
@@ -45,7 +46,7 @@
 #include <opengl/win/WinDeviceInfo.hxx>
 #endif
 
-static bool volatile gbInShaderCompile = false;
+static std::atomic<bool> gbInShaderCompile = false;
 
 namespace {
 
@@ -53,7 +54,7 @@ using namespace rtl;
 
 OUString getShaderFolder()
 {
-    OUString aUrl("$BRAND_BASE_DIR/" LIBO_ETC_FOLDER);
+    OUString aUrl(u"$BRAND_BASE_DIR/" LIBO_ETC_FOLDER ""_ustr);
     rtl::Bootstrap::expandMacros(aUrl);
 
     return aUrl + "/opengl/";
@@ -229,7 +230,7 @@ namespace
 
     OString getCacheFolder()
     {
-        OUString url("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache/");
+        OUString url(u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache/"_ustr);
         rtl::Bootstrap::expandMacros(url);
 
         osl::Directory::create(url);
@@ -425,7 +426,7 @@ GLint OpenGLHelper::LoadShaders(const OUString& rVertexShaderName,
     // Check Vertex Shader
     glGetShaderiv(VertexShaderID, GL_COMPILE_STATUS, &Result);
     if (!Result)
-        return LogCompilerError(VertexShaderID, "vertex",
+        return LogCompilerError(VertexShaderID, u"vertex"_ustr,
                                 rVertexShaderName, true);
 
     // Compile Fragment Shader
@@ -438,7 +439,7 @@ GLint OpenGLHelper::LoadShaders(const OUString& rVertexShaderName,
     // Check Fragment Shader
     glGetShaderiv(FragmentShaderID, GL_COMPILE_STATUS, &Result);
     if (!Result)
-        return LogCompilerError(FragmentShaderID, "fragment",
+        return LogCompilerError(FragmentShaderID, u"fragment"_ustr,
                                 rFragmentShaderName, true);
 
     if (bHasGeometryShader)
@@ -453,7 +454,7 @@ GLint OpenGLHelper::LoadShaders(const OUString& rVertexShaderName,
         // Check Geometry Shader
         glGetShaderiv(GeometryShaderID, GL_COMPILE_STATUS, &Result);
         if (!Result)
-            return LogCompilerError(GeometryShaderID, "geometry",
+            return LogCompilerError(GeometryShaderID, u"geometry"_ustr,
                                     rGeometryShaderName, true);
     }
 
@@ -471,7 +472,7 @@ GLint OpenGLHelper::LoadShaders(const OUString& rVertexShaderName,
         if (!Result)
         {
             SAL_WARN("vcl.opengl", "linking failed: " << Result );
-            return LogCompilerError(ProgramID, "program", "<both>", false);
+            return LogCompilerError(ProgramID, u"program"_ustr, u"<both>"_ustr, false);
         }
         OString aFileName =
                 createFileName(rVertexShaderName, rFragmentShaderName, rGeometryShaderName, rDigest);
@@ -490,7 +491,7 @@ GLint OpenGLHelper::LoadShaders(const OUString& rVertexShaderName,
     // Check the program
     glGetProgramiv(ProgramID, GL_LINK_STATUS, &Result);
     if (!Result)
-        return LogCompilerError(ProgramID, "program", "<both>", false);
+        return LogCompilerError(ProgramID, u"program"_ustr, u"<both>"_ustr, false);
 
     CHECK_GL_ERROR();
 
@@ -528,7 +529,7 @@ void OpenGLHelper::renderToFile(tools::Long nWidth, tools::Long nHeight, const O
 
     std::unique_ptr<sal_uInt8[]> pBuffer(new sal_uInt8[nWidth*nHeight*4]);
     glReadPixels(0, 0, nWidth, nHeight, OptimalBufferFormat(), GL_UNSIGNED_BYTE, pBuffer.get());
-    BitmapEx aBitmap = ConvertBufferToBitmapEx(pBuffer.get(), nWidth, nHeight);
+    Bitmap aBitmap = ConvertBufferToBitmap(pBuffer.get(), nWidth, nHeight);
     try {
         SvFileStream sOutput( rFileName, StreamMode::WRITE );
         vcl::PngImageWriter aWriter( sOutput );
@@ -550,48 +551,41 @@ GLenum OpenGLHelper::OptimalBufferFormat()
 #endif
 }
 
-BitmapEx OpenGLHelper::ConvertBufferToBitmapEx(const sal_uInt8* const pBuffer, tools::Long nWidth, tools::Long nHeight)
+Bitmap OpenGLHelper::ConvertBufferToBitmap(const sal_uInt8* const pBuffer, tools::Long nWidth, tools::Long nHeight)
 {
     assert(pBuffer);
-    Bitmap aBitmap(Size(nWidth, nHeight), vcl::PixelFormat::N24_BPP);
-    AlphaMask aAlpha(Size(nWidth, nHeight));
+    Bitmap aBitmap(Size(nWidth, nHeight), vcl::PixelFormat::N32_BPP);
 
     {
         BitmapScopedWriteAccess pWriteAccess( aBitmap );
-        BitmapScopedWriteAccess pAlphaWriteAccess( aAlpha );
 #ifdef _WIN32
-        assert(pWriteAccess->GetScanlineFormat() == ScanlineFormat::N24BitTcBgr);
+        assert(pWriteAccess->GetScanlineFormat() == ScanlineFormat::N32BitTcBgra);
         assert(pWriteAccess->IsTopDown());
-        assert(pAlphaWriteAccess->IsTopDown());
 #else
-        assert(pWriteAccess->GetScanlineFormat() == ScanlineFormat::N24BitTcRgb);
+        assert(pWriteAccess->GetScanlineFormat() == ScanlineFormat::N32BitTcRgba);
         assert(!pWriteAccess->IsTopDown());
-        assert(!pAlphaWriteAccess->IsTopDown());
 #endif
-        assert(pAlphaWriteAccess->GetScanlineFormat() == ScanlineFormat::N8BitPal);
 
         size_t nCurPos = 0;
         for( tools::Long y = 0; y < nHeight; ++y)
         {
 #ifdef _WIN32
             Scanline pScan = pWriteAccess->GetScanline(y);
-            Scanline pAlphaScan = pAlphaWriteAccess->GetScanline(y);
 #else
             Scanline pScan = pWriteAccess->GetScanline(nHeight-1-y);
-            Scanline pAlphaScan = pAlphaWriteAccess->GetScanline(nHeight-1-y);
 #endif
             for( tools::Long x = 0; x < nWidth; ++x )
             {
                 *pScan++ = pBuffer[nCurPos];
                 *pScan++ = pBuffer[nCurPos+1];
                 *pScan++ = pBuffer[nCurPos+2];
+                *pScan++ = pBuffer[nCurPos+3];
 
-                nCurPos += 3;
-                *pAlphaScan++ = pBuffer[nCurPos++];
+                nCurPos += 4;
             }
         }
     }
-    return BitmapEx(aBitmap, aAlpha);
+    return aBitmap;
 }
 
 const char* OpenGLHelper::GLErrorString(GLenum errorCode)

@@ -33,7 +33,6 @@ class SwFormat;
 class SwFrameFormat;
 class SvXMLUnitConverter;
 class SvXMLExportItemMapper;
-class SvXMLAutoStylePoolP;
 class SwTableLine;
 class SwTableLines;
 class SwTableBox;
@@ -43,8 +42,6 @@ class SwXMLTableColumnsSortByWidth_Impl;
 class SwXMLTableFrameFormatsSort_Impl;
 class SwXMLTableInfo_Impl;
 class SwTableNode;
-class XMLPropertySetMapper;
-class SwXMLTableLines_Impl;
 
 typedef std::vector< SwXMLTableLines_Impl* > SwXMLTableLinesCache_Impl;
 
@@ -112,6 +109,11 @@ protected:
     virtual XMLPageExport* CreatePageExport() override;
     virtual XMLShapeExport* CreateShapeExport() override;
     virtual XMLFontAutoStylePool* CreateFontAutoStylePool() override;
+    virtual bool getEmbedFonts() override;
+    virtual bool getEmbedOnlyUsedFonts() override;
+    virtual bool getEmbedLatinScript() override;
+    virtual bool getEmbedAsianScript() override;
+    virtual bool getEmbedComplexScript() override;
 
 public:
     SwXMLExport(

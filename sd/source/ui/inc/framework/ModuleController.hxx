@@ -19,23 +19,26 @@
 
 #pragma once
 
-#include <com/sun/star/drawing/framework/XModuleController.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <comphelper/compbase.hxx>
-#include <cppuhelper/weakref.hxx>
+#include <unotools/weakref.hxx>
 #include <rtl/ref.hxx>
 
 #include <unordered_map>
 
-namespace com::sun::star::frame { class XController; }
-namespace com::sun::star::uno { class XComponentContext; }
 namespace sd { class DrawController; }
 
 namespace sd::framework {
+class ResourceFactory;
 
-typedef comphelper::WeakComponentImplHelper <
-    css::drawing::framework::XModuleController
-    > ModuleControllerInterfaceBase;
+enum class ResourceFactoryId
+{
+    BasicPaneFactory,
+    BasicViewFactory,
+    BasicToolBarFactory
+};
+
+typedef comphelper::WeakComponentImplHelper <> ModuleControllerInterfaceBase;
 
 /** The ModuleController has two tasks:
 
@@ -63,22 +66,23 @@ public:
 
     virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    // XModuleController
-
-    virtual void SAL_CALL requestResource(const OUString& rsResourceURL) override;
+    /** When the specified resource is requested for the first time then
+        create a new instance of the associated factory service.
+    */
+    void requestResource(const OUString& rsResourceURL);
 
 private:
     rtl::Reference<::sd::DrawController> mxController;
 
-    std::unordered_map<OUString, OUString> maResourceToFactoryMap;
-    std::unordered_map<OUString, css::uno::WeakReference<css::uno::XInterface>> maLoadedFactories;
+    std::unordered_map<OUString, ResourceFactoryId> maResourceToFactoryMap;
+    std::unordered_map<ResourceFactoryId, unotools::WeakReference<sd::framework::ResourceFactory>> maLoadedFactories;
 
     ModuleController (const ModuleController&) = delete;
     virtual ~ModuleController() noexcept override;
 
     /** Called for every entry in the ResourceFactories configuration entry.
     */
-    void ProcessFactory (const OUString& ServiceName, ::std::vector<OUString> aURLs);
+    void ProcessFactory (ResourceFactoryId ServiceName, ::std::vector<OUString> aURLs);
 
     /** Instantiate startup services.  This method is called once when a new
         ModuleController object is created.

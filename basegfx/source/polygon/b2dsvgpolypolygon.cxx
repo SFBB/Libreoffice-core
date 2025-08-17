@@ -265,15 +265,18 @@ namespace basegfx::utils
                             }
 
                             // ensure existence of start point
-                            if(!aCurrPoly.count())
+                            sal_uInt32 nCurrPolyCount = aCurrPoly.count();
+                            if (nCurrPolyCount == 0)
                             {
                                 aCurrPoly.append(B2DPoint(nLastX, nLastY));
+                                nCurrPolyCount = 1;
                             }
+                            assert(nCurrPolyCount > 0 && "coverity 2023.12.2");
 
                             // get first control point. It's the reflection of the PrevControlPoint
                             // of the last point. If not existent, use current point (see SVG)
                             B2DPoint aPrevControl(nLastX, nLastY);
-                            const sal_uInt32 nIndex(aCurrPoly.count() - 1);
+                            const sal_uInt32 nIndex(nCurrPolyCount - 1);
 
                             if(aCurrPoly.areControlPointsUsed() && aCurrPoly.isPrevControlPointUsed(nIndex))
                             {
@@ -414,15 +417,18 @@ namespace basegfx::utils
                             }
 
                             // ensure existence of start point
-                            if(!aCurrPoly.count())
+                            sal_uInt32 nCurrPolyCount = aCurrPoly.count();
+                            if (nCurrPolyCount == 0)
                             {
                                 aCurrPoly.append(B2DPoint(nLastX, nLastY));
+                                nCurrPolyCount = 1;
                             }
+                            assert(nCurrPolyCount > 0 && "coverity 2023.12.2");
 
                             // get first control point. It's the reflection of the PrevControlPoint
                             // of the last point. If not existent, use current point (see SVG)
                             B2DPoint aPrevControl(nLastX, nLastY);
-                            const sal_uInt32 nIndex(aCurrPoly.count() - 1);
+                            const sal_uInt32 nIndex(nCurrPolyCount - 1);
                             const B2DPoint aPrevPoint(aCurrPoly.getB2DPoint(nIndex));
 
                             if(aCurrPoly.areControlPointsUsed() && aCurrPoly.isPrevControlPointUsed(nIndex))
@@ -537,20 +543,7 @@ namespace basegfx::utils
                                     // of radicant solved for fRY,
                                     // with s=fRX/fRY)
                                     const double fRatio(fRX/fRY);
-                                    const double fRadicant2(
-                                        p1_prime.getY()*p1_prime.getY() +
-                                        p1_prime.getX()*p1_prime.getX()/(fRatio*fRatio));
-                                    if( fRadicant2 < 0.0 )
-                                    {
-                                        // only trivial solution, one
-                                        // of the axes 0 -> straight
-                                        // line segment according to
-                                        // SVG spec
-                                        aCurrPoly.append(B2DPoint(nX, nY));
-                                        continue;
-                                    }
-
-                                    fRY=sqrt(fRadicant2);
+                                    fRY=std::hypot(p1_prime.getY(), p1_prime.getX()/fRatio);
                                     fRX=fRatio*fRY;
 
                                     // keep center_prime forced to (0,0)

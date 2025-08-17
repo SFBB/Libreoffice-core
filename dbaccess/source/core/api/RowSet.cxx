@@ -72,7 +72,6 @@
 #include <unotools/syslocale.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
-using namespace utl;
 using namespace dbaccess;
 using namespace connectivity;
 using namespace comphelper;
@@ -259,7 +258,7 @@ void SAL_CALL ORowSet::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,const 
             break;
         case PROPERTY_ID_FETCHDIRECTION:
             if( m_nResultSetType == ResultSetType::FORWARD_ONLY)
-                throw Exception("resultsettype is FORWARD_ONLY", nullptr);
+                throw Exception(u"resultsettype is FORWARD_ONLY"_ustr, nullptr);
             [[fallthrough]];
         default:
             OPropertyStateContainer::setFastPropertyValue_NoBroadcast(nHandle,rValue);
@@ -431,7 +430,7 @@ Any SAL_CALL ORowSet::queryAggregation( const Type& rType )
 // css::XServiceInfo
 OUString SAL_CALL ORowSet::getImplementationName()
 {
-    return "com.sun.star.comp.dba.ORowSet";
+    return u"com.sun.star.comp.dba.ORowSet"_ustr;
 }
 
 sal_Bool SAL_CALL ORowSet::supportsService( const OUString& _rServiceName )
@@ -462,11 +461,7 @@ void SAL_CALL ORowSet::disposing()
     // remove myself as dispose listener
     Reference< XComponent >  xComponent(m_xActiveConnection, UNO_QUERY);
     if (xComponent.is())
-    {
-        Reference<XEventListener> xEvt;
-        query_aggregation(this,xEvt);
-        xComponent->removeEventListener(xEvt);
-    }
+        xComponent->removeEventListener(query_aggregation<XEventListener>(this));
 
     m_aActiveConnection = Any(); // the any contains a reference too
     if(m_bOwnConnection)
@@ -484,7 +479,7 @@ void ORowSet::freeResources( bool _bComplete )
     // free all clones
     for (auto const& clone : m_aClones)
     {
-        Reference< XComponent > xComp(clone.get(), UNO_QUERY);
+        rtl::Reference< ORowSetClone > xComp(clone);
         if (xComp.is())
             xComp->dispose();
     }
@@ -547,11 +542,7 @@ void ORowSet::setActiveConnection( Reference< XConnection > const & _rxNewConn, 
     // remove the event listener for the old connection
     Reference< XComponent >  xComponent(m_xActiveConnection, UNO_QUERY);
     if (xComponent.is())
-    {
-        Reference<XEventListener> xListener;
-        query_aggregation(this, xListener);
-        xComponent->removeEventListener(xListener);
-    }
+        xComponent->removeEventListener(query_aggregation<XEventListener>(this));
 
     // if we owned the connection, remember it for later disposing
     if(m_bOwnConnection)
@@ -576,11 +567,7 @@ void ORowSet::setActiveConnection( Reference< XConnection > const & _rxNewConn, 
     // register as event listener for the new connection
     xComponent.set(m_xActiveConnection,UNO_QUERY);
     if (xComponent.is())
-    {
-        Reference<XEventListener> xListener;
-        query_aggregation(this, xListener);
-        xComponent->addEventListener(xListener);
-    }
+        xComponent->addEventListener(query_aggregation<XEventListener>(this));
 }
 
 // css::XEventListener
@@ -1221,7 +1208,7 @@ void ORowSet::impl_setDataColumnsWriteable_throw()
 
 void ORowSet::impl_restoreDataColumnsWriteable_throw()
 {
-    assert(m_aDataColumns.size() == m_aReadOnlyDataColumns.size() || m_aReadOnlyDataColumns.size() == 0 );
+    assert(m_aDataColumns.size() == m_aReadOnlyDataColumns.size() || m_aReadOnlyDataColumns.empty());
     TDataColumns::const_iterator aIter = m_aDataColumns.begin();
     for (bool readOnlyDataColumn : m_aReadOnlyDataColumns)
     {
@@ -1566,7 +1553,7 @@ void ORowSet::setStatementResultSetType( const Reference< XPropertySet >& _rxSta
     // #i15113#
     bool bRespectDriverRST = false;
     Any aSetting;
-    if ( getDataSourceSetting( ::dbaccess::getDataSource( m_xActiveConnection ), "RespectDriverResultSetType", aSetting ) )
+    if (getDataSourceSetting(::dbaccess::getDataSource(m_xActiveConnection), u"RespectDriverResultSetType"_ustr, aSetting))
     {
         OSL_VERIFY( aSetting >>= bRespectDriverRST );
     }
@@ -1834,11 +1821,11 @@ void ORowSet::execute_NoApprove_NoNewConn(ResettableMutexGuard& _rClearForNotifi
                         // retrieve the name of the column
                         OUString sName = xMetaData->getColumnName(i + 1);
                         // check for duplicate entries
-                        if(aColumnMap.find(sName) != aColumnMap.end())
+                        if(aColumnMap.contains(sName))
                         {
                             OUString sAlias(sName);
                             sal_Int32 searchIndex=1;
-                            while(aColumnMap.find(sAlias) != aColumnMap.end())
+                            while(aColumnMap.contains(sAlias))
                             {
                                 sAlias = sName + OUString::number(searchIndex++);
                             }
@@ -1928,7 +1915,7 @@ void ORowSet::execute_NoApprove_NoNewConn(ResettableMutexGuard& _rClearForNotifi
                             Sequence< OUString> aSeq = m_xColumns->getElementNames();
                             if( i <= aSeq.getLength())
                             {
-                                m_xColumns->getByName(aSeq.getConstArray()[i-1]) >>= xColumn;
+                                m_xColumns->getByName(aSeq[i-1]) >>= xColumn;
                             }
                         }
                     }
@@ -2058,7 +2045,7 @@ Reference< XResultSet > SAL_CALL ORowSet::createResultSet(  )
     if(m_xStatement.is())
     {
         rtl::Reference<ORowSetClone> pClone = new ORowSetClone( m_aContext, *this, m_pMutex );
-        m_aClones.emplace_back(css::uno::Reference< css::uno::XWeak >(pClone));
+        m_aClones.emplace_back(pClone);
         return pClone;
     }
     return Reference< XResultSet >();
@@ -2086,25 +2073,23 @@ Sequence< sal_Int32 > SAL_CALL ORowSet::deleteRows( const Sequence< Any >& rows 
     notifyAllListenersRowBeforeChange(aGuard,aEvt);
 
     Sequence< sal_Int32 > aResults( rows.getLength() );
-    const Any* row = rows.getConstArray();
-    const Any* rowEnd = rows.getConstArray() + rows.getLength();
     sal_Int32* result = aResults.getArray();
-    for ( ; row != rowEnd; ++row, ++result )
+    for (sal_Int32 i = 0; i < rows.getLength(); ++i)
     {
-        *result = 0;
-        if ( !m_pCache->moveToBookmark( *row ) )
+        result[i] = 0;
+        if (!m_pCache->moveToBookmark(rows[i]))
             continue;
         sal_Int32 nDeletePosition = m_pCache->getRow();
 
         // first notify the clones so that they can save their position
-        notifyRowSetAndClonesRowDelete( *row );
+        notifyRowSetAndClonesRowDelete(rows[i]);
 
         // now delete the row
         if ( !m_pCache->deleteRow() )
             continue;
-        *result = 1;
+        result[i] = 1;
         // now notify that we have deleted
-        notifyRowSetAndClonesRowDeleted( *row, nDeletePosition );
+        notifyRowSetAndClonesRowDeleted(rows[i], nDeletePosition);
     }
     aEvt.Rows = aResults.getLength();
 
@@ -2132,7 +2117,7 @@ void ORowSet::notifyRowSetAndClonesRowDelete( const Any& _rBookmark )
     // notify the clones
     for (auto const& elem : m_aClones)
     {
-        rtl::Reference<ORowSetClone> pClone = dynamic_cast<ORowSetClone*>(elem.get().get());
+        rtl::Reference<ORowSetClone> pClone = elem.get();
         if(pClone)
             pClone->onDeleteRow( _rBookmark );
     }
@@ -2145,7 +2130,7 @@ void ORowSet::notifyRowSetAndClonesRowDeleted( const Any& _rBookmark, sal_Int32 
     // notify the clones
     for (auto const& clone : m_aClones)
     {
-        rtl::Reference<ORowSetClone> pClone = dynamic_cast<ORowSetClone*>(clone.get().get());
+        rtl::Reference<ORowSetClone> pClone = clone.get();
         if(pClone)
             pClone->onDeletedRow( _rBookmark, _nPos );
     }
@@ -2183,7 +2168,7 @@ Reference< XConnection >  ORowSet::calcConnection(const Reference< XInteractionH
             {
                 Any aError = ::cppu::getCaughtException();
                 OUString sMessage = ResourceManager::loadString( RID_NO_SUCH_DATA_SOURCE,
-                    "$name$", m_aDataSourceName, "$error$", extractExceptionMessage( m_aContext, aError ) );
+                    u"$name$", m_aDataSourceName, u"$error$", extractExceptionMessage( m_aContext, aError ) );
                 ::dbtools::throwGenericSQLException( sMessage, *this, aError );
             }
         }
@@ -2224,7 +2209,7 @@ Reference< XNameAccess > ORowSet::impl_getTables_throw()
 
         m_xTables.reset(new OTableContainer(*this,m_aMutex,m_xActiveConnection,bCase,nullptr,nullptr,m_nInAppend));
         xTables = m_xTables.get();
-        Sequence<OUString> aTableFilter { "%" };
+        Sequence<OUString> aTableFilter { u"%"_ustr };
         m_xTables->construct(aTableFilter,Sequence< OUString>());
     }
 
@@ -2281,7 +2266,7 @@ void ORowSet::impl_initComposer_throw( OUString& _out_rCommandToExecute )
         // don't simply overwrite an existent filter, this would lead to problems if this existent
         // filter contains parameters (since a keyset may add parameters itself)
         m_xComposer->setElementaryQuery( m_xComposer->getQuery( ) );
-        m_xComposer->setFilter( "0 = 1" );
+        m_xComposer->setFilter( u"0 = 1"_ustr );
     }
 
     m_xComposer->setOrder( m_aOrder );
@@ -2547,7 +2532,7 @@ void SAL_CALL ORowSet::setBinaryStream( sal_Int32 parameterIndex, const Referenc
     catch( Exception const & )
     {
         css::uno::Any anyEx = cppu::getCaughtException();
-        throw SQLException("ORowSet::setBinaryStream", *this, "S1000", 0,anyEx);
+        throw SQLException(u"ORowSet::setBinaryStream"_ustr, *this, u"S1000"_ustr, 0,anyEx);
     }
 }
 
@@ -2571,7 +2556,7 @@ void SAL_CALL ORowSet::setCharacterStream( sal_Int32 parameterIndex, const Refer
     catch( Exception const & )
     {
         css::uno::Any anyEx = cppu::getCaughtException();
-        throw SQLException("ORowSet::setCharacterStream", *this, "S1000", 0, anyEx);
+        throw SQLException(u"ORowSet::setCharacterStream"_ustr, *this, u"S1000"_ustr, 0, anyEx);
     }
 }
 
@@ -2594,22 +2579,22 @@ void SAL_CALL ORowSet::setObjectWithInfo( sal_Int32 parameterIndex, const Any& x
 
 void SAL_CALL ORowSet::setRef( sal_Int32 /*parameterIndex*/, const Reference< XRef >& /*x*/ )
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XParameters::setRef", *this );
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XParameters::setRef"_ustr, *this );
 }
 
 void SAL_CALL ORowSet::setBlob( sal_Int32 /*parameterIndex*/, const Reference< XBlob >& /*x*/ )
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XParameters::setBlob", *this );
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XParameters::setBlob"_ustr, *this );
 }
 
 void SAL_CALL ORowSet::setClob( sal_Int32 /*parameterIndex*/, const Reference< XClob >& /*x*/ )
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XParameters::setClob", *this );
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XParameters::setClob"_ustr, *this );
 }
 
 void SAL_CALL ORowSet::setArray( sal_Int32 /*parameterIndex*/, const Reference< XArray >& /*x*/ )
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XParameters::setArray", *this );
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XParameters::setArray"_ustr, *this );
 }
 
 void SAL_CALL ORowSet::clearParameters(  )
@@ -2723,9 +2708,9 @@ void ORowSet::impl_rebuild_throw(::osl::ResettableMutexGuard& _rGuard)
 // ***********************************************************
 
 ORowSetClone::ORowSetClone( const Reference<XComponentContext>& _rContext, ORowSet& rParent, ::osl::Mutex* _pMutex )
-             :OSubComponent(m_aMutex, rParent)
+             : ::cppu::WeakComponentImplHelper<>(m_aMutex)
              ,ORowSetBase( _rContext, WeakComponentImplHelper::rBHelper, _pMutex )
-             ,m_pParent(&rParent)
+             ,m_xParent(&rParent)
              ,m_nFetchDirection(rParent.m_nFetchDirection)
              ,m_nFetchSize(rParent.m_nFetchSize)
              ,m_bIsBookmarkable(true)
@@ -2753,13 +2738,13 @@ ORowSetClone::ORowSetClone( const Reference<XComponentContext>& _rContext, ORowS
     if ( rParent.m_pColumns )
     {
         Sequence< OUString> aSeq = rParent.m_pColumns->getElementNames();
-        const OUString* pIter    = aSeq.getConstArray();
-        const OUString* pEnd     = pIter + aSeq.getLength();
         aColumns->reserve(aSeq.getLength()+1);
-        for(sal_Int32 i=1;pIter != pEnd ;++pIter,++i)
+        sal_Int32 i = 0;
+        for (auto& columnName : aSeq)
         {
+            ++i;
             Reference<XPropertySet> xColumn;
-            rParent.m_pColumns->getByName(*pIter) >>= xColumn;
+            rParent.m_pColumns->getByName(columnName) >>= xColumn;
             if(xColumn->getPropertySetInfo()->hasPropertyByName(PROPERTY_DESCRIPTION))
                 aDescription = comphelper::getString(xColumn->getPropertyValue(PROPERTY_DESCRIPTION));
 
@@ -2775,8 +2760,8 @@ ORowSetClone::ORowSetClone( const Reference<XComponentContext>& _rContext, ORowS
                     return this->getValue(column);
                 });
             aColumns->emplace_back(pColumn);
-            pColumn->setName(*pIter);
-            aNames.push_back(*pIter);
+            pColumn->setName(columnName);
+            aNames.push_back(columnName);
             m_aDataColumns.push_back(pColumn.get());
 
             pColumn->setFastPropertyValue_NoBroadcast(PROPERTY_ID_ALIGN,xColumn->getPropertyValue(PROPERTY_ALIGN));
@@ -2816,7 +2801,7 @@ ORowSetClone::~ORowSetClone()
 // css::XTypeProvider
 Sequence< Type > ORowSetClone::getTypes()
 {
-    return ::comphelper::concatSequences(OSubComponent::getTypes(),ORowSetBase::getTypes());
+    return ::comphelper::concatSequences(::cppu::WeakComponentImplHelper<>::getTypes(),ORowSetBase::getTypes());
 }
 
 // css::XInterface
@@ -2824,24 +2809,24 @@ Any ORowSetClone::queryInterface( const Type & rType )
 {
     Any aRet = ORowSetBase::queryInterface(rType);
     if(!aRet.hasValue())
-        aRet = OSubComponent::queryInterface(rType);
+        aRet = ::cppu::WeakComponentImplHelper<>::queryInterface(rType);
     return aRet;
 }
 
 void ORowSetClone::acquire() noexcept
 {
-    OSubComponent::acquire();
+    ::cppu::WeakComponentImplHelper<>::acquire();
 }
 
 void ORowSetClone::release() noexcept
 {
-    OSubComponent::release();
+    ::cppu::WeakComponentImplHelper<>::release();
 }
 
 // XServiceInfo
 OUString ORowSetClone::getImplementationName(  )
 {
-    return "com.sun.star.sdb.ORowSetClone";
+    return u"com.sun.star.sdb.ORowSetClone"_ustr;
 }
 
 sal_Bool ORowSetClone::supportsService( const OUString& _rServiceName )
@@ -2860,9 +2845,9 @@ void ORowSetClone::disposing()
     MutexGuard aGuard( m_aMutex );
     ORowSetBase::disposing();
 
-    m_pParent   = nullptr;
+    m_xParent   = nullptr;
     m_pMutex    = &m_aMutex; // this must be done here because someone could hold a ref to us and try to do something
-    OSubComponent::disposing();
+    ::cppu::WeakComponentImplHelper<>::disposing();
 }
 
 // XCloseable
@@ -2894,8 +2879,8 @@ void SAL_CALL ORowSetClone::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle,c
 {
     if ( nHandle == PROPERTY_ID_FETCHSIZE )
     {
-        if ( m_pParent )
-            m_pParent->setFastPropertyValue_NoBroadcast( nHandle, rValue );
+        if ( auto xParent = m_xParent.get() )
+            xParent->setFastPropertyValue_NoBroadcast( nHandle, rValue );
     }
 
     OPropertyStateContainer::setFastPropertyValue_NoBroadcast(nHandle,rValue);
@@ -2922,17 +2907,17 @@ bool ORowSetClone::isNew( )
 
 void SAL_CALL ORowSetClone::execute(  )
 {
-    throwFunctionNotSupportedSQLException( "RowSetClone::XRowSet::execute", *this );
+    throwFunctionNotSupportedSQLException( u"RowSetClone::XRowSet::execute"_ustr, *this );
 }
 
 void SAL_CALL ORowSetClone::addRowSetListener( const Reference< XRowSetListener >& )
 {
-    throwFunctionNotSupportedRuntimeException( "RowSetClone::XRowSet", *this );
+    throwFunctionNotSupportedRuntimeException( u"RowSetClone::XRowSet"_ustr, *this );
 }
 
 void SAL_CALL ORowSetClone::removeRowSetListener( const Reference< XRowSetListener >& )
 {
-    throwFunctionNotSupportedRuntimeException( "RowSetClone::XRowSet", *this );
+    throwFunctionNotSupportedRuntimeException( u"RowSetClone::XRowSet"_ustr, *this );
 }
 
 } // dbaccess

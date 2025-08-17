@@ -34,8 +34,8 @@ namespace writerperfect
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::io;
 
-namespace container = com::sun::star::container;
-namespace packages = com::sun::star::packages;
+namespace container = css::container;
+namespace packages = css::packages;
 
 namespace
 {
@@ -96,7 +96,7 @@ struct OLEStreamData
     {
     }
 
-    tools::SvRef<SotStorageStream> stream;
+    rtl::Reference<SotStorageStream> stream;
 
     /** Name of the stream.
       *
@@ -114,7 +114,7 @@ struct OLEStreamData
 } // anonymous namespace
 
 typedef std::unordered_map<OUString, std::size_t> NameMap_t;
-typedef std::unordered_map<OUString, tools::SvRef<SotStorage>> OLEStorageMap_t;
+typedef std::unordered_map<OUString, rtl::Reference<SotStorage>> OLEStorageMap_t;
 
 /** Representation of an OLE2 storage.
   *
@@ -138,16 +138,16 @@ struct OLEStorageImpl
 
     void initialize(std::unique_ptr<SvStream> pStream);
 
-    tools::SvRef<SotStorageStream> getStream(const OUString& rPath);
-    tools::SvRef<SotStorageStream> const& getStream(std::size_t nId);
+    rtl::Reference<SotStorageStream> getStream(const OUString& rPath);
+    rtl::Reference<SotStorageStream> const& getStream(std::size_t nId);
 
 private:
-    void traverse(const tools::SvRef<SotStorage>& rStorage, std::u16string_view rPath);
+    void traverse(const rtl::Reference<SotStorage>& rStorage, std::u16string_view rPath);
 
-    tools::SvRef<SotStorageStream> createStream(const OUString& rPath);
+    rtl::Reference<SotStorageStream> createStream(const OUString& rPath);
 
 public:
-    tools::SvRef<SotStorage> mxRootStorage; //< root storage of the OLE2
+    rtl::Reference<SotStorage> mxRootStorage; //< root storage of the OLE2
     OLEStorageMap_t maStorageMap; //< map of all sub storages by name
     ::std::vector<OLEStreamData> maStreams; //< list of streams and their names
     NameMap_t maNameMap; //< map of stream names to indexes (into @c maStreams)
@@ -171,7 +171,7 @@ void OLEStorageImpl::initialize(std::unique_ptr<SvStream> pStream)
     mbInitialized = true;
 }
 
-tools::SvRef<SotStorageStream> OLEStorageImpl::getStream(const OUString& rPath)
+rtl::Reference<SotStorageStream> OLEStorageImpl::getStream(const OUString& rPath)
 {
     const OUString aPath(lcl_normalizeSubStreamPath(rPath));
     NameMap_t::iterator aIt = maNameMap.find(aPath);
@@ -180,7 +180,7 @@ tools::SvRef<SotStorageStream> OLEStorageImpl::getStream(const OUString& rPath)
     // Later, given how libcdr's zip stream implementation behaves,
     // return the first stream in the storage if there is one.
     if (maNameMap.end() == aIt)
-        return tools::SvRef<SotStorageStream>();
+        return rtl::Reference<SotStorageStream>();
 
     if (!maStreams[aIt->second].stream.is())
         maStreams[aIt->second].stream
@@ -189,7 +189,7 @@ tools::SvRef<SotStorageStream> OLEStorageImpl::getStream(const OUString& rPath)
     return maStreams[aIt->second].stream;
 }
 
-tools::SvRef<SotStorageStream> const& OLEStorageImpl::getStream(const std::size_t nId)
+rtl::Reference<SotStorageStream> const& OLEStorageImpl::getStream(const std::size_t nId)
 {
     if (!maStreams[nId].stream.is())
         maStreams[nId].stream
@@ -198,7 +198,7 @@ tools::SvRef<SotStorageStream> const& OLEStorageImpl::getStream(const std::size_
     return maStreams[nId].stream;
 }
 
-void OLEStorageImpl::traverse(const tools::SvRef<SotStorage>& rStorage, std::u16string_view rPath)
+void OLEStorageImpl::traverse(const rtl::Reference<SotStorage>& rStorage, std::u16string_view rPath)
 {
     SvStorageInfoList infos;
 
@@ -220,7 +220,7 @@ void OLEStorageImpl::traverse(const tools::SvRef<SotStorage>& rStorage, std::u16
         else if (info.IsStorage())
         {
             const OUString aPath = concatPath(rPath, info.GetName());
-            tools::SvRef<SotStorage> aStorage
+            rtl::Reference<SotStorage> aStorage
                 = rStorage->OpenSotStorage(info.GetName(), StreamMode::STD_READ);
             maStorageMap[aPath] = aStorage;
 
@@ -235,7 +235,7 @@ void OLEStorageImpl::traverse(const tools::SvRef<SotStorage>& rStorage, std::u16
     }
 }
 
-tools::SvRef<SotStorageStream> OLEStorageImpl::createStream(const OUString& rPath)
+rtl::Reference<SotStorageStream> OLEStorageImpl::createStream(const OUString& rPath)
 {
     const sal_Int32 nDelim = rPath.lastIndexOf(u'/');
 
@@ -369,7 +369,9 @@ Reference<XInputStream> ZipStorageImpl::createStream(const OUString& rPath)
 
     try
     {
-        const Reference<XInputStream> xInputStream(mxContainer->getByName(rPath), UNO_QUERY_THROW);
+        const Reference<XInputStream> xInputStream(mxContainer->getByName(rPath), UNO_QUERY);
+        if (!xInputStream)
+            return xStream;
         const Reference<XSeekable> xSeekable(xInputStream, UNO_QUERY);
 
         if (xSeekable.is())
@@ -563,7 +565,7 @@ bool WPXSvInputStream::existsSubStream(const char* const name)
     if (isOLE())
     {
         ensureOLEIsInitialized();
-        return mpOLEStorage->maNameMap.end() != mpOLEStorage->maNameMap.find(aName);
+        return mpOLEStorage->maNameMap.contains(aName);
     }
 
     mxSeekable->seek(0);
@@ -571,7 +573,7 @@ bool WPXSvInputStream::existsSubStream(const char* const name)
     if (isZip())
     {
         ensureZipIsInitialized();
-        return mpZipStorage->maNameMap.end() != mpZipStorage->maNameMap.find(aName);
+        return mpZipStorage->maNameMap.contains(aName);
     }
 
     return false;
@@ -655,7 +657,7 @@ librevenge::RVNGInputStream* WPXSvInputStream::getSubStreamById(const unsigned i
 }
 
 librevenge::RVNGInputStream*
-WPXSvInputStream::createWPXStream(const tools::SvRef<SotStorageStream>& rxStorage)
+WPXSvInputStream::createWPXStream(const rtl::Reference<SotStorageStream>& rxStorage)
 {
     if (rxStorage.is())
     {
@@ -702,7 +704,7 @@ bool WPXSvInputStream::isZip()
                                                         UNO_SET_THROW);
             const Reference<packages::zip::XZipFileAccess2> xZip(
                 xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                    "com.sun.star.packages.zip.ZipFileAccess", { Any(mxStream) }, xContext),
+                    u"com.sun.star.packages.zip.ZipFileAccess"_ustr, { Any(mxStream) }, xContext),
                 UNO_QUERY_THROW);
             mpZipStorage.reset(new ZipStorageImpl(xZip));
         }
@@ -737,7 +739,10 @@ WPXSvInputStream::~WPXSvInputStream() {}
 
 long WPXSvInputStream::tell()
 {
+    // coverity[tainted_data_return : FALSE] retVal is considered safe now
     tools::Long retVal = tellImpl();
+    if (retVal < 0)
+        return -1;
     return retVal + static_cast<tools::Long>(mnReadBufferPos);
 }
 

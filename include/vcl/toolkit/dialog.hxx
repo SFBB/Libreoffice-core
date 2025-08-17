@@ -79,19 +79,19 @@ private:
 
 protected:
     void    ImplInitDialog( vcl::Window* pParent, WinBits nStyle, InitFlag eFlag = InitFlag::Default );
+    virtual void ImplDeferredInit(vcl::Window* pParent, WinBits nBits) override;
 
     /// Find and set the LOK notifier according to the pParent.
     void ImplLOKNotifier(vcl::Window* pParent);
 
 public:
     SAL_DLLPRIVATE bool    IsInClose() const { return mbInClose; }
-    virtual        void    doDeferredInit(WinBits nBits) override;
     SAL_DLLPRIVATE void    disposeOwnedButtons();
 
     SAL_DLLPRIVATE static vcl::Window* GetDefDialogParent();
 
 protected:
-    explicit        Dialog( WindowType nType );
+    explicit        Dialog( WindowType eType );
     explicit        Dialog( vcl::Window* pParent, const OUString& rID, const OUString& rUIXMLDescription);
     virtual void    Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorFlags nFlags ) override;
     virtual void    settingOptimalLayoutSize(Window *pBox) override;
@@ -129,7 +129,7 @@ public:
     virtual FactoryFunction GetUITestFactory() const override;
 
 private:
-    bool            ImplStartExecute();
+    bool            ImplStartExecute(bool async);
     static void     ImplEndExecuteModal();
     void            ImplSetModalInputMode(bool bModal);
 

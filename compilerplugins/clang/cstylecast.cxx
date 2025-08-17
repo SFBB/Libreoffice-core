@@ -42,8 +42,8 @@ bool areSimilar(QualType type1, QualType type2) {
             }
             auto t1a = t1->getAs<MemberPointerType>();
             auto t2a = t2->getAs<MemberPointerType>();
-            if (t1a->getClass()->getCanonicalTypeInternal()
-                != t2a->getClass()->getCanonicalTypeInternal())
+            if (compat::getClass(t1a)->getCanonicalTypeInternal()
+                != compat::getClass(t2a)->getCanonicalTypeInternal())
             {
                 return false;
             }
@@ -139,7 +139,7 @@ bool isLiteralLike(Expr const * expr) {
 }
 
 bool canBeUsedForFunctionalCast(TypeSourceInfo const * info) {
-    // Must be <simple-type-specifier> or <typename-specifier>, lets approximate that here:
+    // Must be <simple-type-specifier> or <typename-specifier>, let's approximate that here:
     assert(info != nullptr);
     auto const type = info->getType();
     if (type.hasLocalQualifiers()) {

@@ -271,6 +271,7 @@ public:
                 token as well.
      */
     FormulaToken*           ReplaceToken( sal_uInt16 nOffset, FormulaToken*, ReplaceMode eMode );
+    FormulaToken*           ReplaceRPNToken( sal_uInt16 nOffset, FormulaToken* );
 
     /** Remove a sequence of tokens from pCode array, and pRPN array if the
         tokens are referenced there.
@@ -480,6 +481,7 @@ public:
     FormulaToken* AddToken( const FormulaToken& );
 
     FormulaToken* AddString( const svl::SharedString& rStr );
+    FormulaToken* AddStringName( const svl::SharedString& rStr );
     FormulaToken* AddDouble( double fVal );
     void          AddExternal( const sal_Unicode* pStr );
     /** Xcl import may play dirty tricks with OpCode!=ocExternal.
@@ -487,6 +489,7 @@ public:
     FormulaToken* AddExternal( const OUString& rStr, OpCode eOp = ocExternal );
     FormulaToken* AddBad( const OUString& rStr );          /// ocBad with OUString
     FormulaToken* AddStringXML( const OUString& rStr );    /// ocStringXML with OUString, temporary during import
+    FormulaToken* AddStringName( const OUString& rStr );   /// ocStringName with OUString - Lambda functions
 
     virtual FormulaToken* MergeArray( );
 
@@ -539,8 +542,9 @@ class FORMULA_DLLPUBLIC FormulaTokenIterator
         const FormulaTokenArray* pArr;
         short nPC;
         short nStop;
+        bool bLambda;
 
-        Item(const FormulaTokenArray* arr, short pc, short stop);
+        Item(const FormulaTokenArray* arr, short pc, short stop, bool lambda);
     };
 
     std::vector<Item> maStack;
@@ -571,13 +575,15 @@ public:
     void Jump( short nStart, short nNext, short nStop = SHRT_MAX );
     void Push( const FormulaTokenArray* );
     void Pop();
+    void FrontPop();
+    void Lambda( bool bOpt );
 
     /** Reconstruct the iterator afresh from a token array
     */
     void ReInit( const FormulaTokenArray& );
 
 private:
-    const FormulaToken* GetNonEndOfPathToken( short nIdx ) const;
+    SAL_DLLPRIVATE const FormulaToken* GetNonEndOfPathToken( short nIdx ) const;
 };
 
 // For use in SAL_INFO, SAL_WARN etc
@@ -639,6 +645,7 @@ public:
     FormulaToken* Next();
     FormulaToken* NextNoSpaces();
     FormulaToken* GetNextName();
+    FormulaToken* GetNextStringName();
     FormulaToken* GetNextReference();
     FormulaToken* GetNextReferenceRPN();
     FormulaToken* GetNextReferenceOrName();

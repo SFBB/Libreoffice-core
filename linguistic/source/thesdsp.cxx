@@ -144,7 +144,7 @@ Sequence< Reference< XMeaning > > SAL_CALL
             const OUString *pImplNames = pEntry->aSvcImplNames.getConstArray();
             Reference< XThesaurus > *pRef = pEntry->aSvcRefs.getArray();
 
-            Reference< XComponentContext > xContext(
+            const Reference< XComponentContext >& xContext(
                 comphelper::getProcessComponentContext() );
 
             // build service initialization argument
@@ -213,7 +213,7 @@ void ThesaurusDispatcher::SetServiceList( const Locale &rLocale,
         {
             auto pTmpEntry = std::make_shared<LangSvcEntries_Thes>( rSvcImplNames );
             pTmpEntry->aSvcRefs = Sequence< Reference < XThesaurus > >( nLen );
-            aSvcMap[ nLanguage ] = pTmpEntry;
+            aSvcMap[ nLanguage ] = std::move(pTmpEntry);
         }
     }
 }

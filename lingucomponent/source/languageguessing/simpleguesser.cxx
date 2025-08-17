@@ -129,10 +129,7 @@ std::vector<Guess> SimpleGuesser::GuessLanguage(const char* text)
             current_pointer++;
         if(guess_list[current_pointer] != '\0')
         {
-            Guess g(guess_list + current_pointer);
-
-            guesses.push_back(g);
-
+            guesses.emplace_back(guess_list + current_pointer);
             current_pointer++;
         }
     }
@@ -164,8 +161,7 @@ std::vector<Guess> SimpleGuesser::GetManagedLanguages(const char mask)
         {
             std::string langStr = "[";
             langStr += fp_Name(tables->fprint[i]);
-            Guess g(langStr.c_str());
-            lang.push_back(g);
+            lang.emplace_back(langStr.c_str());
         }
     }
 

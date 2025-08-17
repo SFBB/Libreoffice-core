@@ -239,7 +239,7 @@ bool loadClass(
 }
 
 
-IMPLEMENT_SERVICE_INFO(java_sql_Connection,"com.sun.star.sdbcx.JConnection","com.sun.star.sdbc.Connection");
+IMPLEMENT_SERVICE_INFO(java_sql_Connection,u"com.sun.star.sdbcx.JConnection"_ustr,u"com.sun.star.sdbc.Connection"_ustr);
 
 
 //************ Class: java.sql.Connection
@@ -406,7 +406,7 @@ void SAL_CALL java_sql_Connection::setTypeMap( const Reference< css::container::
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(java_sql_Connection_BASE::rBHelper.bDisposed);
 
-    ::dbtools::throwFeatureNotImplementedSQLException( "XConnection::setTypeMap", *this );
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XConnection::setTypeMap"_ustr, *this );
 }
 
 
@@ -436,11 +436,10 @@ Reference< XStatement > SAL_CALL java_sql_Connection::createStatement(  )
 
     SDBThreadAttach t;
     rtl::Reference<java_sql_Statement> pStatement = new java_sql_Statement( t.pEnv, *this );
-    Reference< XStatement > xStmt = pStatement;
-    m_aStatements.emplace_back(xStmt);
+    m_aStatements.emplace_back(Reference< XStatement >(pStatement));
 
     m_aLogger.log( LogLevel::FINE, STR_LOG_CREATED_STATEMENT_ID, pStatement->getStatementObjectID() );
-    return xStmt;
+    return pStatement;
 }
 
 Reference< XPreparedStatement > SAL_CALL java_sql_Connection::prepareStatement( const OUString& sql )
@@ -452,11 +451,10 @@ Reference< XPreparedStatement > SAL_CALL java_sql_Connection::prepareStatement( 
     SDBThreadAttach t;
 
     rtl::Reference<java_sql_PreparedStatement> pStatement = new java_sql_PreparedStatement( t.pEnv, *this, sql );
-    Reference< XPreparedStatement > xReturn( pStatement );
-    m_aStatements.emplace_back(xReturn);
+    m_aStatements.emplace_back(Reference< XPreparedStatement >( pStatement ));
 
     m_aLogger.log( LogLevel::FINE, STR_LOG_PREPARED_STATEMENT_ID, pStatement->getStatementObjectID() );
-    return xReturn;
+    return pStatement;
 }
 
 Reference< XPreparedStatement > SAL_CALL java_sql_Connection::prepareCall( const OUString& sql )
@@ -468,11 +466,10 @@ Reference< XPreparedStatement > SAL_CALL java_sql_Connection::prepareCall( const
     SDBThreadAttach t;
 
     rtl::Reference<java_sql_CallableStatement> pStatement = new java_sql_CallableStatement( t.pEnv, *this, sql );
-    Reference< XPreparedStatement > xStmt( pStatement );
-    m_aStatements.emplace_back(xStmt);
+    m_aStatements.emplace_back(Reference< XPreparedStatement >( pStatement ));
 
     m_aLogger.log( LogLevel::FINE, STR_LOG_PREPARED_CALL_ID, pStatement->getStatementObjectID() );
-    return xStmt;
+    return pStatement;
 }
 
 OUString SAL_CALL java_sql_Connection::nativeSQL( const OUString& sql )
@@ -702,7 +699,7 @@ OUString java_sql_Connection::impl_getJavaDriverClassPath_nothrow(const OUString
     if ( aNamesRoot.isValid() && aNamesRoot.hasByName( _sDriverClass ) )
     {
         ::utl::OConfigurationNode aRegisterObj = aNamesRoot.openNode( _sDriverClass );
-        OSL_VERIFY( aRegisterObj.getNodeValue( "Path" ) >>= sURL );
+        OSL_VERIFY( aRegisterObj.getNodeValue( u"Path"_ustr ) >>= sURL );
     }
     return sURL;
 }
@@ -726,17 +723,17 @@ bool java_sql_Connection::construct(const OUString& url,
     Sequence< NamedValue > aSystemProperties;
 
     ::comphelper::NamedValueCollection aSettings( info );
-    sDriverClass = aSettings.getOrDefault( "JavaDriverClass", sDriverClass );
-    sDriverClassPath = aSettings.getOrDefault( "JavaDriverClassPath", sDriverClassPath);
+    sDriverClass = aSettings.getOrDefault( u"JavaDriverClass"_ustr, sDriverClass );
+    sDriverClassPath = aSettings.getOrDefault( u"JavaDriverClassPath"_ustr, sDriverClassPath);
     if ( sDriverClassPath.isEmpty() )
         sDriverClassPath = impl_getJavaDriverClassPath_nothrow(sDriverClass);
-    bAutoRetrievingEnabled = aSettings.getOrDefault( "IsAutoRetrievingEnabled", bAutoRetrievingEnabled );
-    sGeneratedValueStatement = aSettings.getOrDefault( "AutoRetrievingStatement", sGeneratedValueStatement );
-    m_bIgnoreDriverPrivileges = aSettings.getOrDefault( "IgnoreDriverPrivileges", m_bIgnoreDriverPrivileges );
-    m_bIgnoreCurrency = aSettings.getOrDefault( "IgnoreCurrency", m_bIgnoreCurrency );
-    aSystemProperties = aSettings.getOrDefault( "SystemProperties", aSystemProperties );
-    m_aCatalogRestriction = aSettings.getOrDefault( "ImplicitCatalogRestriction", Any() );
-    m_aSchemaRestriction = aSettings.getOrDefault( "ImplicitSchemaRestriction", Any() );
+    bAutoRetrievingEnabled = aSettings.getOrDefault( u"IsAutoRetrievingEnabled"_ustr, bAutoRetrievingEnabled );
+    sGeneratedValueStatement = aSettings.getOrDefault( u"AutoRetrievingStatement"_ustr, sGeneratedValueStatement );
+    m_bIgnoreDriverPrivileges = aSettings.getOrDefault( u"IgnoreDriverPrivileges"_ustr, m_bIgnoreDriverPrivileges );
+    m_bIgnoreCurrency = aSettings.getOrDefault( u"IgnoreCurrency"_ustr, m_bIgnoreCurrency );
+    aSystemProperties = aSettings.getOrDefault( u"SystemProperties"_ustr, aSystemProperties );
+    m_aCatalogRestriction = aSettings.getOrDefault( u"ImplicitCatalogRestriction"_ustr, Any() );
+    m_aSchemaRestriction = aSettings.getOrDefault( u"ImplicitSchemaRestriction"_ustr, Any() );
 
     loadDriverFromProperties( sDriverClass, sDriverClassPath, aSystemProperties );
 

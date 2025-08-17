@@ -28,6 +28,8 @@
 #include <com/sun/star/io/XSeekableInputStream.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/frame/DoubleInitializationException.hpp>
+#include <comphelper/bytereader.hxx>
+#include <rtl/ref.hxx>
 #include <mutex>
 
 namespace com::sun::star::uno { class XComponentContext; }
@@ -40,7 +42,8 @@ class SequenceInputStreamService:
     public ::cppu::WeakImplHelper<
         lang::XServiceInfo,
         io::XSeekableInputStream,
-        lang::XInitialization>
+        lang::XInitialization>,
+    public comphelper::ByteReader
 {
 public:
     explicit SequenceInputStreamService();
@@ -69,14 +72,16 @@ public:
     // css::lang::XInitialization:
     virtual void SAL_CALL initialize( const uno::Sequence< css::uno::Any > & aArguments ) override;
 
+    // comphelper::ByteReader
+    virtual sal_Int32 readSomeBytes(sal_Int8* aData, sal_Int32 nBytesToRead) override;
+
 private:
     virtual ~SequenceInputStreamService() override {}
 
 
     std::mutex m_aMutex;
     bool m_bInitialized;
-    uno::Reference< io::XInputStream > m_xInputStream;
-    uno::Reference< io::XSeekable > m_xSeekable;
+    rtl::Reference< comphelper::SequenceInputStream > m_xInputStream;
 };
 
 SequenceInputStreamService::SequenceInputStreamService()
@@ -86,7 +91,7 @@ SequenceInputStreamService::SequenceInputStreamService()
 // com.sun.star.uno.XServiceInfo:
 OUString SAL_CALL SequenceInputStreamService::getImplementationName()
 {
-    return "com.sun.star.comp.SequenceInputStreamService";
+    return u"com.sun.star.comp.SequenceInputStreamService"_ustr;
 }
 
 sal_Bool SAL_CALL SequenceInputStreamService::supportsService( OUString const & serviceName )
@@ -96,7 +101,7 @@ sal_Bool SAL_CALL SequenceInputStreamService::supportsService( OUString const & 
 
 uno::Sequence< OUString > SAL_CALL SequenceInputStreamService::getSupportedServiceNames()
 {
-    return { "com.sun.star.io.SequenceInputStream" };
+    return { u"com.sun.star.io.SequenceInputStream"_ustr };
 }
 
 // css::io::XInputStream:
@@ -110,6 +115,15 @@ uno::Sequence< OUString > SAL_CALL SequenceInputStreamService::getSupportedServi
 }
 
 ::sal_Int32 SAL_CALL SequenceInputStreamService::readSomeBytes( uno::Sequence< ::sal_Int8 > & aData, ::sal_Int32 nMaxBytesToRead )
+{
+    std::scoped_lock aGuard( m_aMutex );
+    if ( !m_xInputStream.is() )
+        throw io::NotConnectedException();
+
+    return m_xInputStream->readSomeBytes( aData, nMaxBytesToRead );
+}
+
+::sal_Int32 SequenceInputStreamService::readSomeBytes( sal_Int8* aData, sal_Int32 nMaxBytesToRead )
 {
     std::scoped_lock aGuard( m_aMutex );
     if ( !m_xInputStream.is() )
@@ -144,35 +158,34 @@ void SAL_CALL SequenceInputStreamService::closeInput()
 
     m_xInputStream->closeInput();
     m_xInputStream.clear();
-    m_xSeekable.clear();
 }
 
 // css::io::XSeekable:
 void SAL_CALL SequenceInputStreamService::seek( ::sal_Int64 location )
 {
     std::scoped_lock aGuard( m_aMutex );
-    if ( !m_xSeekable.is() )
+    if ( !m_xInputStream.is() )
         throw io::NotConnectedException();
 
-    m_xSeekable->seek( location );
+    m_xInputStream->seek( location );
 }
 
 ::sal_Int64 SAL_CALL SequenceInputStreamService::getPosition()
 {
     std::scoped_lock aGuard( m_aMutex );
-    if ( !m_xSeekable.is() )
+    if ( !m_xInputStream.is() )
         throw io::NotConnectedException();
 
-    return m_xSeekable->getPosition();
+    return m_xInputStream->getPosition();
 }
 
 ::sal_Int64 SAL_CALL SequenceInputStreamService::getLength()
 {
     std::scoped_lock aGuard( m_aMutex );
-    if ( !m_xSeekable.is() )
+    if ( !m_xInputStream.is() )
         throw io::NotConnectedException();
 
-    return m_xSeekable->getLength();
+    return m_xInputStream->getLength();
 }
 
 // css::lang::XInitialization:
@@ -183,22 +196,17 @@ void SAL_CALL SequenceInputStreamService::initialize( const uno::Sequence< css::
         throw frame::DoubleInitializationException();
 
     if ( aArguments.getLength() != 1 )
-        throw lang::IllegalArgumentException( "Wrong number of arguments!",
+        throw lang::IllegalArgumentException( u"Wrong number of arguments!"_ustr,
                                             static_cast< ::cppu::OWeakObject* >(this),
                                             1 );
 
     uno::Sequence< sal_Int8 > aSeq;
     if ( !(aArguments[0] >>= aSeq) )
-        throw lang::IllegalArgumentException( "Unexpected type of argument!",
+        throw lang::IllegalArgumentException( u"Unexpected type of argument!"_ustr,
                                             static_cast< ::cppu::OWeakObject* >(this),
                                             1 );
 
-    uno::Reference< io::XInputStream > xInputStream(
-                    static_cast< ::cppu::OWeakObject* >( new ::comphelper::SequenceInputStream( aSeq ) ),
-                    uno::UNO_QUERY_THROW );
-    uno::Reference< io::XSeekable > xSeekable( xInputStream, uno::UNO_QUERY_THROW );
-    m_xInputStream = xInputStream;
-    m_xSeekable = xSeekable;
+    m_xInputStream = new ::comphelper::SequenceInputStream( aSeq );
     m_bInitialized = true;
 }
 

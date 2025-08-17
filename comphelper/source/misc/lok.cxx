@@ -8,16 +8,23 @@
  */
 
 #include <comphelper/lok.hxx>
+
+#include <com/sun/star/awt/Rectangle.hpp>
+
 #include <osl/process.h>
 #include <i18nlangtag/languagetag.hxx>
 #include <sal/log.hxx>
 
 #include <iostream>
 
+using namespace com::sun::star;
+
 namespace comphelper::LibreOfficeKit
 {
 
 static bool g_bActive(false);
+
+static bool g_bForkedChild(false);
 
 static bool g_bPartInInvalidation(false);
 
@@ -33,7 +40,19 @@ static bool g_bViewIdForVisCursorInvalidation(false);
 
 static bool g_bLocalRendering(false);
 
+static bool g_bSlideshowRendering(false);
+
 static Compat g_eCompatFlags(Compat::none);
+
+static std::function<bool(void*, int)> g_pAnyInputCallback;
+static void* g_pAnyInputCallbackData;
+static std::function<int()> g_pMostUrgentPriorityGetter;
+
+static std::function<void(int)> g_pViewSetter;
+static std::function<int()> g_pViewGetter;
+
+/// Visible area of the first view during document load.
+static awt::Rectangle g_aInitialClientVisibleArea;
 
 namespace
 {
@@ -96,6 +115,16 @@ void setActive(bool bActive)
 bool isActive()
 {
     return g_bActive;
+}
+
+void setForkedChild(bool bIsChild)
+{
+    g_bForkedChild = bIsChild;
+}
+
+bool isForkedChild()
+{
+    return g_bForkedChild;
 }
 
 void setPartInInvalidation(bool bPartInInvalidation)
@@ -176,6 +205,16 @@ void setLocalRendering(bool bLocalRendering)
 bool isLocalRendering()
 {
     return g_bLocalRendering;
+}
+
+void setSlideshowRendering(bool bSlideshowRendering)
+{
+    g_bSlideshowRendering = bSlideshowRendering;
+}
+
+bool isSlideshowRendering()
+{
+    return g_bSlideshowRendering;
 }
 
 void setCompatFlag(Compat flag) { g_eCompatFlags = static_cast<Compat>(g_eCompatFlags | flag); }
@@ -263,13 +302,13 @@ void setTimezone(bool isSet, const OUString& rTimezone)
     if (isSet)
     {
         // Set the given timezone, even if empty.
-        osl_setEnvironment(OUString("TZ").pData, rTimezone.pData);
+        osl_setEnvironment(u"TZ"_ustr.pData, rTimezone.pData);
     }
     else
     {
         // Unset and empty aren't the same.
         // When unset, it means default to the system configured timezone.
-        osl_clearEnvironment(OUString("TZ").pData);
+        osl_clearEnvironment(u"TZ"_ustr.pData);
     }
 
     // Update the timezone data.
@@ -302,6 +341,65 @@ void statusIndicatorFinish()
     if (pStatusIndicatorCallback)
         pStatusIndicatorCallback(pStatusIndicatorCallbackData, statusIndicatorCallbackType::Finish, 0, nullptr);
 }
+
+void setAnyInputCallback(const std::function<bool(void*, int)>& pAnyInputCallback, void* pData,
+                         const std::function<int()>& pMostUrgentPriorityGetter)
+{
+    g_pAnyInputCallback = pAnyInputCallback;
+    g_pAnyInputCallbackData = pData;
+    g_pMostUrgentPriorityGetter = pMostUrgentPriorityGetter;
+}
+
+bool anyInput()
+{
+    bool bRet = false;
+
+    // Ignore input events during background save.
+    if (!g_bForkedChild && g_pAnyInputCallback && g_pAnyInputCallbackData)
+    {
+        int nMostUrgentPriority = g_pMostUrgentPriorityGetter();
+        bRet = g_pAnyInputCallback(g_pAnyInputCallbackData, nMostUrgentPriority);
+    }
+
+    return bRet;
+}
+
+void setViewSetter(const std::function<void(int)>& pViewSetter)
+{
+    g_pViewSetter = pViewSetter;
+}
+
+void setView(int nView)
+{
+    if (!g_pViewSetter)
+    {
+        return;
+    }
+
+    g_pViewSetter(nView);
+}
+
+void setViewGetter(const std::function<int()>& pViewGetter)
+{
+    g_pViewGetter = pViewGetter;
+}
+
+int getView()
+{
+    if (!g_pViewGetter)
+    {
+        return -1;
+    }
+
+    return g_pViewGetter();
+}
+
+void setInitialClientVisibleArea(const awt::Rectangle& rClientVisibleArea)
+{
+    g_aInitialClientVisibleArea = rClientVisibleArea;
+}
+
+awt::Rectangle getInitialClientVisibleArea() { return g_aInitialClientVisibleArea; }
 
 } // namespace
 

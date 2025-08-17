@@ -103,7 +103,7 @@ static Reference< XLayoutManager > getLayoutManagerFromFrame( const Reference< X
 
     try
     {
-        xPropSet->getPropertyValue("LayoutManager") >>= xLayoutManager;
+        xPropSet->getPropertyValue(u"LayoutManager"_ustr) >>= xLayoutManager;
     }
     catch ( const UnknownPropertyException& )
     {
@@ -126,7 +126,7 @@ struct ToolBarInfo
 
 OUString SAL_CALL ToolbarsMenuController::getImplementationName()
 {
-    return "com.sun.star.comp.framework.ToolBarsMenuController";
+    return u"com.sun.star.comp.framework.ToolBarsMenuController"_ustr;
 }
 
 sal_Bool SAL_CALL ToolbarsMenuController::supportsService( const OUString& sServiceName )
@@ -235,6 +235,7 @@ static void fillHashMap( const Sequence< Sequence< css::beans::PropertyValue > >
 }
 
 // private function
+// static
 Sequence< Sequence< css::beans::PropertyValue > > ToolbarsMenuController::getLayoutManagerToolbars( const Reference< css::frame::XLayoutManager >& rLayoutManager )
 {
     std::vector< ToolBarInfo > aToolBarArray;
@@ -248,8 +249,8 @@ Sequence< Sequence< css::beans::PropertyValue > > ToolbarsMenuController::getLay
             {
                 OUString   aResName;
                 sal_Int16       nType( -1 );
-                xPropSet->getPropertyValue("Type") >>= nType;
-                xPropSet->getPropertyValue("ResourceURL") >>= aResName;
+                xPropSet->getPropertyValue(u"Type"_ustr) >>= nType;
+                xPropSet->getPropertyValue(u"ResourceURL"_ustr) >>= aResName;
 
                 if (( nType == css::ui::UIElementType::TOOLBAR ) &&
                     !aResName.isEmpty() )
@@ -278,11 +279,10 @@ Sequence< Sequence< css::beans::PropertyValue > > ToolbarsMenuController::getLay
     const sal_uInt32 nCount = aToolBarArray.size();
     for ( sal_uInt32 i = 0; i < nCount; i++ )
     {
-        Sequence< css::beans::PropertyValue > aTbSeq{
+        pSeq[i] = Sequence<css::beans::PropertyValue>{
             comphelper::makePropertyValue(g_aPropUIName, aToolBarArray[i].aToolBarUIName),
             comphelper::makePropertyValue(g_aPropResourceURL, aToolBarArray[i].aToolBarResName)
         };
-        pSeq[i] = aTbSeq;
     }
 
     return aSeq;
@@ -345,7 +345,7 @@ void ToolbarsMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu > co
 
                 if ( a >>= aWindowState )
                 {
-                    for ( PropertyValue const & prop : std::as_const(aWindowState) )
+                    for (PropertyValue const& prop : aWindowState)
                     {
                         if ( prop.Name == WINDOWSTATE_PROPERTY_UINAME )
                             prop.Value >>= aUIName;
@@ -410,7 +410,7 @@ void ToolbarsMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu > co
     bool          bAddCommand( true );
     SvtCommandOptions aCmdOptions;
 
-    if ( aCmdOptions.HasEntriesDisabled() && aCmdOptions.LookupDisabled("ConfigureDialog"))
+    if ( aCmdOptions.HasEntriesDisabled() && aCmdOptions.LookupDisabled(u"ConfigureDialog"_ustr))
         bAddCommand = false;
 
     if ( bAddCommand )
@@ -422,7 +422,7 @@ void ToolbarsMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu > co
             m_xPopupMenu->insertSeparator( nItemCount+1 );
         }
 
-        addCommand( m_xPopupMenu, ".uno:ConfigureDialog", "" );
+        addCommand( m_xPopupMenu, u".uno:ConfigureDialog"_ustr, u""_ustr );
     }
 
     // Add separator if no configure has been added
@@ -466,7 +466,7 @@ void SAL_CALL ToolbarsMenuController::statusChanged( const FeatureStateEvent& Ev
 
     // All other status events will be processed here
     std::unique_lock aLock( m_aMutex );
-    Reference< css::awt::XPopupMenu > xPopupMenu( m_xPopupMenu );
+    rtl::Reference< VCLXPopupMenu > xPopupMenu( m_xPopupMenu );
     aLock.unlock();
 
     if ( !xPopupMenu.is() )
@@ -508,7 +508,7 @@ void SAL_CALL ToolbarsMenuController::statusChanged( const FeatureStateEvent& Ev
 // XMenuListener
 void SAL_CALL ToolbarsMenuController::itemSelected( const css::awt::MenuEvent& rEvent )
 {
-    Reference< css::awt::XPopupMenu >   xPopupMenu;
+    rtl::Reference< VCLXPopupMenu >     xPopupMenu;
     Reference< XComponentContext >      xContext;
     Reference< XURLTransformer >        xURLTransformer;
     Reference< XFrame >                 xFrame;
@@ -545,7 +545,7 @@ void SAL_CALL ToolbarsMenuController::itemSelected( const css::awt::MenuEvent& r
                 {
                     try
                     {
-                        OUString aElementName = aElementNames[i];
+                        const OUString& aElementName = aElementNames[i];
                         Sequence< PropertyValue > aWindowState;
 
                         if ( xPersistentWindowState->getByName( aElementName ) >>= aWindowState )
@@ -588,7 +588,7 @@ void SAL_CALL ToolbarsMenuController::itemSelected( const css::awt::MenuEvent& r
                         {
                             try
                             {
-                                xPropSet->setPropertyValue("RefreshContextToolbarVisibility", Any( true ));
+                                xPropSet->setPropertyValue(u"RefreshContextToolbarVisibility"_ustr, Any( true ));
                             }
                             catch ( const RuntimeException& )
                             {
@@ -613,7 +613,6 @@ void SAL_CALL ToolbarsMenuController::itemSelected( const css::awt::MenuEvent& r
     else if ( aCmd.indexOf( STATIC_CMD_PART ) < 0 )
     {
         URL                     aTargetURL;
-        Sequence<PropertyValue> aArgs;
 
         aTargetURL.Complete = aCmd;
         xURLTransformer->parseStrict( aTargetURL );
@@ -622,8 +621,7 @@ void SAL_CALL ToolbarsMenuController::itemSelected( const css::awt::MenuEvent& r
         {
             ExecuteInfo* pExecuteInfo = new ExecuteInfo;
             pExecuteInfo->xDispatch = xDispatchProvider->queryDispatch(aTargetURL, OUString(), 0);
-            pExecuteInfo->aTargetURL = aTargetURL;
-            pExecuteInfo->aArgs = aArgs;
+            pExecuteInfo->aTargetURL = std::move(aTargetURL);
             Application::PostUserEvent( LINK(nullptr, ToolbarsMenuController, ExecuteHdl_Impl), pExecuteInfo );
         }
     }
@@ -766,7 +764,7 @@ IMPL_STATIC_LINK( ToolbarsMenuController, ExecuteHdl_Impl, void*, p, void )
         // elements if a component gets detached from its frame!
         if ( pExecuteInfo->xDispatch.is() )
         {
-            pExecuteInfo->xDispatch->dispatch( pExecuteInfo->aTargetURL, pExecuteInfo->aArgs );
+            pExecuteInfo->xDispatch->dispatch(pExecuteInfo->aTargetURL, Sequence<PropertyValue>());
         }
     }
     catch ( const Exception& )

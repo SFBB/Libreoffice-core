@@ -112,7 +112,7 @@ Columns::Columns(
         ConnectionSettings *pSettings,
         OUString schemaName,
         OUString tableName)
-    : Container( refMutex, origin, pSettings,  "COLUMN" ),
+    : Container( refMutex, origin, pSettings,  u"COLUMN"_ustr ),
       m_schemaName(std::move( schemaName )),
       m_tableName(std::move( tableName ))
 {}
@@ -303,7 +303,6 @@ void Columns::refresh()
         {
             rtl::Reference<Column> pColumn =
                 new Column( m_xMutex, m_origin, m_pSettings );
-            Reference< css::beans::XPropertySet > prop = pColumn;
 
             OUString name = columnMetaData2SDBCX( pColumn.get(), xRow );
 //             pColumn->addPropertyChangeListener(
@@ -317,7 +316,7 @@ void Columns::refresh()
 //                     name ) );
 
             {
-                m_values.emplace_back(prop);
+                m_values.emplace_back(Reference< css::beans::XPropertySet >(pColumn));
                 map[ name ] = columnIndex;
                 ++columnIndex;
             }
@@ -382,7 +381,7 @@ void alterColumnByDescriptor(
         if( pastTypeName != futureTypeName )
         {
             throw RuntimeException(
-                "Can't modify column types, drop the column and create a new one" );
+                u"Can't modify column types, drop the column and create a new one"_ustr );
         }
 
         if( pastColumnName != futureColumnName )
@@ -546,7 +545,7 @@ ColumnDescriptors::ColumnDescriptors(
         const ::rtl::Reference< comphelper::RefCountedMutex > & refMutex,
         const css::uno::Reference< css::sdbc::XConnection >  & origin,
         ConnectionSettings *pSettings )
-    : Container( refMutex, origin, pSettings,  "COLUMN-DESCRIPTOR" )
+    : Container( refMutex, origin, pSettings,  u"COLUMN-DESCRIPTOR"_ustr )
 {}
 
 

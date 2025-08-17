@@ -58,23 +58,25 @@ void StylesPreviewToolBoxControl::InitializeStyles(
         css::uno::Reference<css::style::XStyleFamiliesSupplier> xStylesSupplier(
             xModel, css::uno::UNO_QUERY_THROW);
         css::uno::Reference<css::lang::XServiceInfo> xServices(xModel, css::uno::UNO_QUERY_THROW);
-        if (xServices->supportsService("com.sun.star.text.TextDocument"))
+        if (xServices->supportsService(u"com.sun.star.text.TextDocument"_ustr))
         {
             css::uno::Reference<css::container::XNameAccess> xParaStyles;
-            xStylesSupplier->getStyleFamilies()->getByName("ParagraphStyles") >>= xParaStyles;
-            static const std::vector<OUString> aWriterStyles
-                = { "Standard",  "Text body", "Heading 1", "Heading 2",  "Heading 3",
-                    "Heading 4", "Title",     "Subtitle",  "Quotations", "Preformatted Text" };
-            for (const OUString& aStyle : aWriterStyles)
+            xStylesSupplier->getStyleFamilies()->getByName(u"ParagraphStyles"_ustr) >>= xParaStyles;
+            static constexpr OUString aWriterStyles[]{
+                u"Standard"_ustr,   u"Text body"_ustr,        u"Heading 1"_ustr, u"Heading 2"_ustr,
+                u"Heading 3"_ustr,  u"Heading 4"_ustr,        u"Title"_ustr,     u"Subtitle"_ustr,
+                u"Quotations"_ustr, u"Preformatted Text"_ustr
+            };
+            for (const OUString& rStyle : aWriterStyles)
             {
                 try
                 {
                     css::uno::Reference<css::beans::XPropertySet> xStyle;
-                    xParaStyles->getByName(aStyle) >>= xStyle;
+                    xParaStyles->getByName(rStyle) >>= xStyle;
                     OUString sName;
-                    xStyle->getPropertyValue("DisplayName") >>= sName;
+                    xStyle->getPropertyValue(u"DisplayName"_ustr) >>= sName;
                     if (!sName.isEmpty())
-                        m_aDefaultStyles.push_back(std::pair<OUString, OUString>(aStyle, sName));
+                        m_aDefaultStyles.push_back(std::pair<OUString, OUString>(rStyle, sName));
                 }
                 catch (const css::container::NoSuchElementException&)
                 {
@@ -84,27 +86,31 @@ void StylesPreviewToolBoxControl::InitializeStyles(
                 }
             }
         }
-        else if (xServices->supportsService("com.sun.star.sheet.SpreadsheetDocument"))
+        else if (xServices->supportsService(u"com.sun.star.sheet.SpreadsheetDocument"_ustr))
         {
-            static const char* aCalcStyles[] = { "Default",   "Accent 1",  "Accent 2", "Accent 3",
-                                                 "Heading 1", "Heading 2", "Result" };
+            static constexpr OUString aCalcStyles[]{ u"Default"_ustr,   u"Accent 1"_ustr,
+                                                     u"Accent 2"_ustr,  u"Accent 3"_ustr,
+                                                     u"Heading 1"_ustr, u"Heading 2"_ustr,
+                                                     u"Result"_ustr };
             css::uno::Reference<css::container::XNameAccess> xCellStyles;
-            xStylesSupplier->getStyleFamilies()->getByName("CellStyles") >>= xCellStyles;
-            for (const char* pCalcStyle : aCalcStyles)
+            xStylesSupplier->getStyleFamilies()->getByName(u"CellStyles"_ustr) >>= xCellStyles;
+            for (const OUString& sStyleName : aCalcStyles)
             {
                 try
                 {
-                    const OUString sStyleName(OUString::createFromAscii(pCalcStyle));
                     if (xCellStyles->hasByName(sStyleName))
                     {
                         css::uno::Reference<css::beans::XPropertySet> xStyle(
-                            xCellStyles->getByName(sStyleName), css::uno::UNO_QUERY_THROW);
-                        OUString sName;
-                        xStyle->getPropertyValue("DisplayName") >>= sName;
-                        if (!sName.isEmpty())
+                            xCellStyles->getByName(sStyleName), css::uno::UNO_QUERY);
+                        if (xStyle)
                         {
-                            m_aDefaultStyles.push_back(
-                                std::pair<OUString, OUString>(sStyleName, sName));
+                            OUString sName;
+                            xStyle->getPropertyValue(u"DisplayName"_ustr) >>= sName;
+                            if (!sName.isEmpty())
+                            {
+                                m_aDefaultStyles.push_back(
+                                    std::pair<OUString, OUString>(sStyleName, sName));
+                            }
                         }
                     }
                 }
@@ -161,7 +167,7 @@ StylesPreviewToolBoxControl::createItemWindow(const css::uno::Reference<css::awt
 
 OUString StylesPreviewToolBoxControl::getImplementationName()
 {
-    return "com.sun.star.comp.svx.StylesPreviewToolBoxControl";
+    return u"com.sun.star.comp.svx.StylesPreviewToolBoxControl"_ustr;
 }
 
 sal_Bool StylesPreviewToolBoxControl::supportsService(const OUString& rServiceName)
@@ -171,7 +177,7 @@ sal_Bool StylesPreviewToolBoxControl::supportsService(const OUString& rServiceNa
 
 css::uno::Sequence<OUString> StylesPreviewToolBoxControl::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.ToolbarController" };
+    return { u"com.sun.star.frame.ToolbarController"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

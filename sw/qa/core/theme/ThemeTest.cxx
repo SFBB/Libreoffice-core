@@ -9,17 +9,25 @@
 
 #include <swmodeltestbase.hxx>
 
+#include <com/sun/star/datatransfer/XTransferableSupplier.hpp>
+#include <com/sun/star/ucb/SimpleFileAccess.hpp>
+
 #include <memory>
 #include <docsh.hxx>
 #include <unotxdoc.hxx>
 #include <wrtsh.hxx>
 #include <drawdoc.hxx>
 #include <IDocumentDrawModelAccess.hxx>
+
+#include <comphelper/classids.hxx>
+#include <comphelper/processfactory.hxx>
 #include <svx/svdpage.hxx>
 #include <docmodel/uno/UnoComplexColor.hxx>
 #include <docmodel/theme/Theme.hxx>
 #include <ThemeColorChanger.hxx>
+#include <sot/exchange.hxx>
 #include <svx/ColorSets.hxx>
+#include <vcl/transfer.hxx>
 
 using namespace css;
 
@@ -29,7 +37,7 @@ class SwCoreThemeTest : public SwModelTestBase
 {
 public:
     SwCoreThemeTest()
-        : SwModelTestBase("/sw/qa/core/theme/data/")
+        : SwModelTestBase(u"/sw/qa/core/theme/data/"_ustr)
     {
     }
 };
@@ -37,11 +45,9 @@ public:
 CPPUNIT_TEST_FIXTURE(SwCoreThemeTest, testThemeColorInHeading)
 {
     createSwDoc("ThemeColorInHeading.docx");
-    SwDoc* pDoc = getSwDoc();
-    CPPUNIT_ASSERT(pDoc);
 
-    auto xComplexColor
-        = getProperty<uno::Reference<util::XComplexColor>>(getParagraph(1), "CharComplexColor");
+    auto xComplexColor = getProperty<uno::Reference<util::XComplexColor>>(getParagraph(1),
+                                                                          u"CharComplexColor"_ustr);
     auto aComplexColor = model::color::getFromXComplexColor(xComplexColor);
     CPPUNIT_ASSERT_EQUAL(model::ThemeColorType::Accent1, aComplexColor.getThemeColorType());
 }
@@ -49,11 +55,9 @@ CPPUNIT_TEST_FIXTURE(SwCoreThemeTest, testThemeColorInHeading)
 CPPUNIT_TEST_FIXTURE(SwCoreThemeTest, testThemeColorInHeadingODT)
 {
     createSwDoc("ThemeColorInHeading.fodt");
-    SwDoc* pDoc = getSwDoc();
-    CPPUNIT_ASSERT(pDoc);
 
-    auto xComplexColor
-        = getProperty<uno::Reference<util::XComplexColor>>(getParagraph(1), "CharComplexColor");
+    auto xComplexColor = getProperty<uno::Reference<util::XComplexColor>>(getParagraph(1),
+                                                                          u"CharComplexColor"_ustr);
     auto aComplexColor = model::color::getFromXComplexColor(xComplexColor);
     CPPUNIT_ASSERT_EQUAL(model::ThemeColorType::Accent1, aComplexColor.getThemeColorType());
 }
@@ -333,7 +337,6 @@ CPPUNIT_TEST_FIXTURE(SwCoreThemeTest, testDrawPageThemeExistsDOCX)
 {
     createSwDoc("ThemeColorInHeading.docx");
     SwDoc* pDoc = getSwDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     SdrModel* pModel = pDoc->getIDocumentDrawModelAccess().GetDrawModel();
     CPPUNIT_ASSERT(pModel);
@@ -379,7 +382,6 @@ CPPUNIT_TEST_FIXTURE(SwCoreThemeTest, testDrawPageThemeExistsODT)
 {
     createSwDoc("ThemeColorInHeading.fodt");
     SwDoc* pDoc = getSwDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     SdrModel* pModel = pDoc->getIDocumentDrawModelAccess().GetDrawModel();
     CPPUNIT_ASSERT(pModel);
@@ -407,8 +409,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreThemeTest, testThemeChanging)
 {
     createSwDoc("ThemeColorInHeading.docx");
     SwDoc* pDoc = getSwDoc();
-    CPPUNIT_ASSERT(pDoc);
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     CPPUNIT_ASSERT(pWrtShell);
     SdrModel* pModel = pDoc->getIDocumentDrawModelAccess().GetDrawModel();
     CPPUNIT_ASSERT(pModel);
@@ -428,11 +429,12 @@ CPPUNIT_TEST_FIXTURE(SwCoreThemeTest, testThemeChanging)
     // Change theme colors
     {
         auto const& rColorSets = svx::ColorSets::get();
-        auto pNewColorSet = std::make_shared<model::ColorSet>(rColorSets.getColorSet(0));
+        auto pNewColorSet
+            = std::make_shared<model::ColorSet>(*rColorSets.getColorSet(u"LibreOffice"));
         // check that the theme colors are as expected
         CPPUNIT_ASSERT_EQUAL(u"LibreOffice"_ustr, pNewColorSet->getName());
 
-        sw::ThemeColorChanger aChanger(pDoc->GetDocShell());
+        sw::ThemeColorChanger aChanger(getSwDocShell());
         aChanger.apply(pNewColorSet);
     }
 
@@ -479,7 +481,185 @@ CPPUNIT_TEST_FIXTURE(SwCoreThemeTest, testThemeChanging)
     }
 }
 
-} // end anonymous namnespace
+// A simple transferable, that provides only EMBED_SOURCE and OBJECTDESCRIPTOR flavors, taking
+// data from an ODT file. This makes the transferable behave just like clipboard content created
+// by Writer in a different instance, taking SwTransferable::PasteOLE path.
+class TestSimpleFileTransferable : public cppu::WeakImplHelper<css::datatransfer::XTransferable>
+{
+public:
+    TestSimpleFileTransferable(const OUString& fileURL);
+    css::uno::Any SAL_CALL getTransferData(const css::datatransfer::DataFlavor& flavor) override;
+    css::uno::Sequence<css::datatransfer::DataFlavor> SAL_CALL getTransferDataFlavors() override;
+    sal_Bool SAL_CALL isDataFlavorSupported(const css::datatransfer::DataFlavor& flavor) override;
+
+private:
+    OUString m_fileURL;
+};
+
+TestSimpleFileTransferable::TestSimpleFileTransferable(const OUString& fileURL)
+    : m_fileURL(fileURL)
+{
+}
+
+css::uno::Any
+TestSimpleFileTransferable::getTransferData(const css::datatransfer::DataFlavor& flavor)
+{
+    if (flavor.MimeType == SotExchange::GetFormatMimeType(SotClipboardFormatId::EMBED_SOURCE))
+    {
+        auto xSFA(ucb::SimpleFileAccess::create(comphelper::getProcessComponentContext()));
+        auto xInputStream = xSFA->openFileRead(m_fileURL);
+        sal_Int32 bytes = xInputStream->available();
+        css::uno::Sequence<sal_Int8> data;
+        CPPUNIT_ASSERT_EQUAL(bytes, xInputStream->readBytes(data, bytes));
+        return css::uno::Any(data);
+    }
+    if (flavor.MimeType == SotExchange::GetFormatMimeType(SotClipboardFormatId::OBJECTDESCRIPTOR))
+    {
+        TransferableObjectDescriptor aDesc;
+        aDesc.maClassName = SvGlobalName(SO3_SW_CLASSID);
+        SvMemoryStream aMemStm(1024, 1024);
+        WriteTransferableObjectDescriptor(aMemStm, aDesc);
+        css::uno::Sequence<sal_Int8> data(static_cast<const sal_Int8*>(aMemStm.GetData()),
+                                          aMemStm.GetSize());
+        return css::uno::Any(data);
+    }
+    return {};
+}
+
+css::uno::Sequence<css::datatransfer::DataFlavor>
+TestSimpleFileTransferable::getTransferDataFlavors()
+{
+    css::datatransfer::DataFlavor embed_source;
+    SotExchange::GetFormatDataFlavor(SotClipboardFormatId::EMBED_SOURCE, embed_source);
+    css::datatransfer::DataFlavor objectdescriptor;
+    SotExchange::GetFormatDataFlavor(SotClipboardFormatId::OBJECTDESCRIPTOR, objectdescriptor);
+    return { embed_source, objectdescriptor };
+}
+
+sal_Bool
+TestSimpleFileTransferable::isDataFlavorSupported(const css::datatransfer::DataFlavor& flavor)
+{
+    if (flavor.MimeType == SotExchange::GetFormatMimeType(SotClipboardFormatId::EMBED_SOURCE))
+        return true;
+    if (flavor.MimeType == SotExchange::GetFormatMimeType(SotClipboardFormatId::OBJECTDESCRIPTOR))
+        return true;
+    return false;
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreThemeTest, testTdf162715_customTransferable)
+{
+    // Given a document with a custom theme:
+    createSwDoc("theme_foo.fodt");
+
+    auto pDoc = getSwDoc();
+
+    auto pModel = pDoc->getIDocumentDrawModelAccess().GetDrawModel();
+    CPPUNIT_ASSERT(pModel);
+    auto pTheme = pModel->getTheme().get();
+    CPPUNIT_ASSERT(pTheme);
+    CPPUNIT_ASSERT_EQUAL(u"foo"_ustr, pTheme->GetName());
+    CPPUNIT_ASSERT_EQUAL(u"colors_foo"_ustr, pTheme->getColorSet()->getName());
+    CPPUNIT_ASSERT_EQUAL(Color(0x000080), pTheme->GetColor(model::ThemeColorType::Dark1));
+    CPPUNIT_ASSERT_EQUAL(Color(0x008000), pTheme->GetColor(model::ThemeColorType::Dark2));
+
+    // Select all and check the original text in the document:
+    auto pWrtShell = getSwDocShell()->GetWrtShell();
+    pWrtShell->SelAll();
+    CPPUNIT_ASSERT_EQUAL(u"Theme foo"_ustr, pWrtShell->GetSelText());
+
+    // Create a transferable from another document with another custom theme,
+    // and insert (paste) its content over the selection:
+    css::uno::Reference<css::datatransfer::XTransferable> xTransferable(
+        new TestSimpleFileTransferable(createFileURL(u"theme_bar.odt")));
+    css::uno::Reference<css::frame::XModel> xModel(mxComponent, css::uno::UNO_QUERY_THROW);
+    css::uno::Reference<css::datatransfer::XTransferableSupplier> xTS(
+        xModel->getCurrentController(), css::uno::UNO_QUERY_THROW);
+    xTS->insertTransferable(xTransferable);
+
+    // Check that the paste is successful (the text has been replaced):
+    pWrtShell->SelAll();
+    CPPUNIT_ASSERT_EQUAL(u"Theme bar"_ustr, pWrtShell->GetSelText());
+
+    // The original theme must not be replaced.
+    pTheme = pModel->getTheme().get();
+    CPPUNIT_ASSERT(pTheme);
+    // Without the fix, this would fail, because the name was "bar":
+    CPPUNIT_ASSERT_EQUAL(u"foo"_ustr, pTheme->GetName());
+    CPPUNIT_ASSERT_EQUAL(u"colors_foo"_ustr, pTheme->getColorSet()->getName());
+    CPPUNIT_ASSERT_EQUAL(Color(0x000080), pTheme->GetColor(model::ThemeColorType::Dark1));
+    CPPUNIT_ASSERT_EQUAL(Color(0x008000), pTheme->GetColor(model::ThemeColorType::Dark2));
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreThemeTest, testTdf162715_ownTransferable)
+{
+    css::uno::Reference<css::datatransfer::XTransferable> xTransferable;
+    {
+        // Given a document with a custom theme:
+        createSwDoc("theme_bar.odt");
+
+        auto pDoc = getSwDoc();
+
+        auto pModel = pDoc->getIDocumentDrawModelAccess().GetDrawModel();
+        CPPUNIT_ASSERT(pModel);
+        auto pTheme = pModel->getTheme().get();
+        CPPUNIT_ASSERT(pTheme);
+        CPPUNIT_ASSERT_EQUAL(u"bar"_ustr, pTheme->GetName());
+        CPPUNIT_ASSERT_EQUAL(u"colors_bar"_ustr, pTheme->getColorSet()->getName());
+        CPPUNIT_ASSERT_EQUAL(Color(0x606000), pTheme->GetColor(model::ThemeColorType::Dark1));
+        CPPUNIT_ASSERT_EQUAL(Color(0x800000), pTheme->GetColor(model::ThemeColorType::Dark2));
+
+        // Select all and check the original text in the document:
+        auto pWrtShell = getSwDocShell()->GetWrtShell();
+        pWrtShell->SelAll();
+        CPPUNIT_ASSERT_EQUAL(u"Theme bar"_ustr, pWrtShell->GetSelText());
+
+        // Create a normal Writer's transferable out of the selection:
+        css::uno::Reference<css::frame::XModel> xModel(mxComponent, css::uno::UNO_QUERY_THROW);
+        css::uno::Reference<css::datatransfer::XTransferableSupplier> xTS(
+            xModel->getCurrentController(), css::uno::UNO_QUERY_THROW);
+        xTransferable = xTS->getTransferable();
+    }
+    {
+        // Open another document with another custom theme:
+        createSwDoc("theme_foo.fodt");
+
+        auto pDoc = getSwDoc();
+
+        auto pModel = pDoc->getIDocumentDrawModelAccess().GetDrawModel();
+        CPPUNIT_ASSERT(pModel);
+        auto pTheme = pModel->getTheme().get();
+        CPPUNIT_ASSERT(pTheme);
+        CPPUNIT_ASSERT_EQUAL(u"foo"_ustr, pTheme->GetName());
+        CPPUNIT_ASSERT_EQUAL(u"colors_foo"_ustr, pTheme->getColorSet()->getName());
+        CPPUNIT_ASSERT_EQUAL(Color(0x000080), pTheme->GetColor(model::ThemeColorType::Dark1));
+        CPPUNIT_ASSERT_EQUAL(Color(0x008000), pTheme->GetColor(model::ThemeColorType::Dark2));
+
+        // Select all and check the original text in the second document:
+        auto pWrtShell = getSwDocShell()->GetWrtShell();
+        pWrtShell->SelAll();
+        CPPUNIT_ASSERT_EQUAL(u"Theme foo"_ustr, pWrtShell->GetSelText());
+
+        // Insert (paste) the previously created transferable's content over the selection:
+        css::uno::Reference<css::frame::XModel> xModel(mxComponent, css::uno::UNO_QUERY_THROW);
+        css::uno::Reference<css::datatransfer::XTransferableSupplier> xTS(
+            xModel->getCurrentController(), css::uno::UNO_QUERY_THROW);
+        xTS->insertTransferable(xTransferable);
+
+        // Check that the paste is successful (the text has been replaced):
+        pWrtShell->SelAll();
+        CPPUNIT_ASSERT_EQUAL(u"Theme bar"_ustr, pWrtShell->GetSelText());
+
+        // The original theme must not be replaced.
+        pTheme = pModel->getTheme().get();
+        CPPUNIT_ASSERT(pTheme);
+        CPPUNIT_ASSERT_EQUAL(u"foo"_ustr, pTheme->GetName());
+        CPPUNIT_ASSERT_EQUAL(u"colors_foo"_ustr, pTheme->getColorSet()->getName());
+        CPPUNIT_ASSERT_EQUAL(Color(0x000080), pTheme->GetColor(model::ThemeColorType::Dark1));
+        CPPUNIT_ASSERT_EQUAL(Color(0x008000), pTheme->GetColor(model::ThemeColorType::Dark2));
+    }
+}
+
+} // end anonymous namespace
 
 CPPUNIT_PLUGIN_IMPLEMENT();
 

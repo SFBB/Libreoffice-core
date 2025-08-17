@@ -33,6 +33,7 @@
 #include <svx/sdr/contact/viewcontactofe3dscene.hxx>
 #include <drawinglayer/geometry/viewinformation3d.hxx>
 #include <svx/e3dsceneupdater.hxx>
+#include <svx/view3d.hxx>
 #include <vcl/ptrstyle.hxx>
 #include <comphelper/lok.hxx>
 
@@ -213,7 +214,7 @@ void E3dDragMethod::MoveSdrDrag(const Point& /*rPnt*/)
 // for migration from XOR to overlay
 void E3dDragMethod::CreateOverlayGeometry(
     sdr::overlay::OverlayManager& rOverlayManager,
-    const sdr::contact::ObjectContact& rObjectContact)
+    const sdr::contact::ObjectContact& rObjectContact, bool /* bIsGeometrySizeValid */)
 {
     // We do client-side object manipulation with the Kit API
     if (comphelper::LibreOfficeKit::isActive())
@@ -702,7 +703,7 @@ void E3dDragMove::MoveSdrDrag(const Point& rPnt)
                 aNewTrans *= rCandidate.maInvDisplayTransform;
 
                 // ...and apply
-                rCandidate.maTransform = aNewTrans;
+                rCandidate.maTransform = std::move(aNewTrans);
 
                 if(mbMoveFull)
                 {

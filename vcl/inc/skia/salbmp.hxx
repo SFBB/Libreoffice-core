@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_SKIA_SALBMP_H
-#define INCLUDED_VCL_INC_SKIA_SALBMP_H
+#pragma once
 
 #include <salbmp.hxx>
 #include <vcl/bitmap.hxx>
@@ -33,7 +32,7 @@ class VCL_PLUGIN_PUBLIC SkiaSalBitmap final : public SalBitmap
 {
 public:
     SkiaSalBitmap();
-    SkiaSalBitmap(const sk_sp<SkImage>& image);
+    SkiaSalBitmap(const sk_sp<SkImage>& image, bool bWithoutAlpha);
     virtual ~SkiaSalBitmap() override;
 
     // SalBitmap methods
@@ -43,7 +42,7 @@ public:
     virtual bool Create(const SalBitmap& rSalBmp, SalGraphics* pGraphics) override;
     virtual bool Create(const SalBitmap& rSalBmp, vcl::PixelFormat eNewPixelFormat) override;
     virtual bool Create(const css::uno::Reference<css::rendering::XBitmapCanvas>& rBitmapCanvas,
-                        Size& rSize, bool bMask = false) override;
+                        Size& rSize) override;
 
     virtual void Destroy() final override;
 
@@ -65,6 +64,7 @@ public:
     virtual bool Erase(const Color& color) override;
     virtual bool AlphaBlendWith(const SalBitmap& rSalBmp) override;
     virtual bool Invert() override;
+
 #if defined MACOSX || defined IOS
     virtual CGImageRef CreateWithMask(const SalBitmap& rMask, int nX, int nY, int nWidth,
                                       int nHeight) const override;
@@ -143,10 +143,6 @@ private:
     void EraseInternal(const Color& color);
     // Sets pixels to the erase color.
     void PerformErase();
-    // Try to find out if the content is completely black. Used for optimizations,
-    // not guaranteed to always return true for such bitmaps.
-    bool IsAllBlack() const;
-    void ReleaseBuffer(BitmapBuffer* pBuffer, BitmapAccessMode nMode, bool dontChangeToErase);
     SkBitmap GetAsSkBitmap() const;
     bool ConserveMemory() const;
     void verify() const
@@ -199,6 +195,7 @@ private:
 
     BitmapPalette mPalette;
     int mBitCount = 0; // bpp
+    bool m_bWithoutAlpha = false;
     Size mSize;
     // The contents of the bitmap may be stored in several different ways:
     // As mBuffer buffer, which normally stores pixels in the given format.
@@ -225,7 +222,5 @@ private:
     int mWriteAccessCount = 0; // number of write AcquireAccess() that have not been released
 #endif
 };
-
-#endif // INCLUDED_VCL_INC_SKIA_SALBMP_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

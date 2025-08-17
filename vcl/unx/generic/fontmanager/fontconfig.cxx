@@ -19,6 +19,7 @@
 
 #include <sal/config.h>
 
+#include <iostream>
 #include <memory>
 #include <string_view>
 
@@ -26,6 +27,7 @@
 #include <unx/fontmanager.hxx>
 #include <unx/helper.hxx>
 #include <comphelper/sequence.hxx>
+#include <vcl/dropcache.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/vclenum.hxx>
 #include <font/FontSelectPattern.hxx>
@@ -50,11 +52,11 @@
 #include <osl/process.h>
 
 #include <o3tl/hash_combine.hxx>
+#include <set>
 #include <utility>
 #include <algorithm>
 
 using namespace psp;
-using namespace osl;
 
 namespace
 {
@@ -113,14 +115,19 @@ struct FcPatternDeleter
 
 typedef std::unique_ptr<FcPattern, FcPatternDeleter> FcPatternUniquePtr;
 
-class CachedFontConfigFontOptions
+class CachedFontConfigFontOptions : public CacheOwner
 {
 private:
     o3tl::lru_map<FontOptionsKey, FcPatternUniquePtr> lru_options_cache;
 
 public:
     CachedFontConfigFontOptions()
-        : lru_options_cache(10) // arbitrary cache size of 10
+        // arbitrary cache size of 10
+#if defined __cpp_lib_memory_resource
+        : lru_options_cache(10, &CacheOwner::GetMemoryResource())
+#else
+        : lru_options_cache(10)
+#endif
     {
     }
 
@@ -137,6 +144,23 @@ public:
         lru_options_cache.insert(std::make_pair(rKey, FcPatternUniquePtr(FcPatternDuplicate(pPattern))));
     }
 
+private:
+    virtual OUString getCacheName() const override
+    {
+        return "CachedFontConfigFontOptions";
+    }
+
+    virtual bool dropCaches() override
+    {
+        lru_options_cache.clear();
+        return true;
+    }
+
+    virtual void dumpState(rtl::OStringBuffer& rState) override
+    {
+        rState.append("\nCachedFontConfigFontOptions:\t");
+        rState.append(static_cast<sal_Int32>(lru_options_cache.size()));
+    }
 };
 
 typedef std::pair<FcChar8*, FcChar8*> lang_and_element;
@@ -144,6 +168,7 @@ typedef std::pair<FcChar8*, FcChar8*> lang_and_element;
 class FontCfgWrapper
 {
     FcFontSet* m_pFontSet;
+    bool m_bRestrictFontSetToApplicationFonts;
 
     FontCfgWrapper();
     ~FontCfgWrapper();
@@ -158,6 +183,11 @@ public:
     void replaceFontSet(FcFontSet* pFilteredFontSet);
 
     void clear();
+
+    bool isRestrictingFontSetForTesting() const
+    {
+        return m_bRestrictFontSetToApplicationFonts;
+    }
 
 public:
     FcResult LocalizedElementFromPattern(FcPattern const * pPattern, FcChar8 **family,
@@ -175,7 +205,8 @@ private:
 }
 
 FontCfgWrapper::FontCfgWrapper()
-    : m_pFontSet( nullptr )
+    : m_pFontSet(nullptr)
+    , m_bRestrictFontSetToApplicationFonts(false)
 {
     FcInit();
 }
@@ -265,7 +296,7 @@ namespace
 
     //See if this font is a duplicate with equal attributes which has already been
     //inserted, or if it an older version of an inserted fonts. Depends on FcFontSet
-    //on being sorted with SortFont
+    //being sorted with SortFont
     bool isPreviouslyDuplicateOrObsoleted(FcFontSet const *pFSet, int i)
     {
         const FcPattern *a = pFSet->fonts[i];
@@ -275,7 +306,9 @@ namespace
         FcPatternDel(pTestPatternA, FC_CHARSET);
         FcPatternDel(pTestPatternA, FC_CAPABILITY);
         FcPatternDel(pTestPatternA, FC_FONTVERSION);
+        FcPatternDel(pTestPatternA, FC_INDEX);
         FcPatternDel(pTestPatternA, FC_LANG);
+        FcPatternDel(pTestPatternA, FC_POSTSCRIPT_NAME);
 
         bool bIsDup(false);
 
@@ -292,7 +325,9 @@ namespace
             FcPatternDel(pTestPatternB, FC_CHARSET);
             FcPatternDel(pTestPatternB, FC_CAPABILITY);
             FcPatternDel(pTestPatternB, FC_FONTVERSION);
+            FcPatternDel(pTestPatternB, FC_INDEX);
             FcPatternDel(pTestPatternB, FC_LANG);
+            FcPatternDel(pTestPatternB, FC_POSTSCRIPT_NAME);
 
             bIsDup = FcPatternEqual(pTestPatternA, pTestPatternB);
 
@@ -310,9 +345,8 @@ FcFontSet* FontCfgWrapper::getFontSet()
     if( !m_pFontSet )
     {
         m_pFontSet = FcFontSetCreate();
-        bool bRestrictFontSetToApplicationFonts = false;
 #if HAVE_MORE_FONTS
-        bRestrictFontSetToApplicationFonts = [] {
+        m_bRestrictFontSetToApplicationFonts = [] {
             return getenv("SAL_NON_APPLICATION_FONT_USE") != nullptr;
         }();
 #endif
@@ -323,7 +357,7 @@ FcFontSet* FontCfgWrapper::getFontSet()
         // prefer via stable-sort the first one we see. Load application fonts
         // first to prefer the one we bundle in the application in that case.
         addFontSet( FcSetApplication );
-        if (!bRestrictFontSetToApplicationFonts)
+        if (!m_bRestrictFontSetToApplicationFonts)
             addFontSet( FcSetSystem );
 
         std::stable_sort(m_pFontSet->fonts,m_pFontSet->fonts+m_pFontSet->nfont,SortFont());
@@ -588,7 +622,7 @@ void PrintFontManager::countFontconfigFonts()
     FontCfgWrapper& rWrapper = FontCfgWrapper::get();
 
     FcFontSet* pFSet = rWrapper.getFontSet();
-    const bool bMinimalFontset = utl::ConfigManager::IsFuzzing();
+    const bool bMinimalFontset = comphelper::IsFuzzing();
     if( pFSet )
     {
         SAL_INFO("vcl.fonts", "found " << pFSet->nfont << " entries in fontconfig fontset");
@@ -758,6 +792,39 @@ void PrintFontManager::addFontconfigFile( const OString& rFileName )
     rWrapper.addFontSet( FcSetApplication );
 }
 
+void PrintFontManager::removeFontconfigFile(std::string_view aFileName)
+{
+    FcFontSet* pOrig = FcConfigGetFonts(FcConfigGetCurrent(), FcSetApplication);
+    if (!pOrig)
+        return;
+
+    std::set<OString> restoreList;
+
+    // filter the font sets to remove the file
+    for (int i = 0; i < pOrig->nfont; ++i)
+    {
+        FcChar8* file = nullptr;
+        FcResult eFileRes = FcPatternGetString(pOrig->fonts[i], FC_FILE, 0, &file);
+        if (eFileRes == FcResultMatch)
+        {
+            if (std::string_view curFile(reinterpret_cast<char*>(file)); aFileName != curFile)
+                restoreList.emplace(curFile);
+        }
+    }
+
+    FcConfigAppFontClear(FcConfigGetCurrent());
+
+    // Re-add the rest of files
+    for (const OString& thisFilename : restoreList)
+    {
+        FcConfigAppFontAddFile(FcConfigGetCurrent(),
+                               reinterpret_cast<FcChar8 const*>(thisFilename.getStr()));
+    }
+
+    FontCfgWrapper& rWrapper = FontCfgWrapper::get();
+    rWrapper.addFontSet( FcSetApplication );
+}
+
 static void addtopattern(FcPattern *pPattern,
     FontItalic eItalic, FontWeight eWeight, FontWidth eWidth, FontPitch ePitch)
 {
@@ -883,7 +950,7 @@ namespace
     //returns true if the given code-point couldn't possibly be in rLangTag.
     bool isImpossibleCodePointForLang(const LanguageTag &rLangTag, sal_uInt32 currentChar)
     {
-        //a non-default script is set, lets believe it
+        //a non-default script is set, let's believe it
         if (rLangTag.hasScript())
             return false;
 
@@ -929,7 +996,7 @@ namespace
     OUString getExemplarLangTagForCodePoint(sal_uInt32 currentChar)
     {
         if (isEmoji(currentChar))
-            return "und-zsye";
+            return u"und-zsye"_ustr;
         int32_t script = u_getIntPropertyValue(currentChar, UCHAR_SCRIPT);
         UScriptCode eScript = static_cast<UScriptCode>(script);
         OStringBuffer aBuf(unicode::getExemplarLanguageForUScriptCode(eScript));
@@ -945,7 +1012,7 @@ IMPL_LINK_NOARG(PrintFontManager, autoInstallFontLangSupport, Timer *, void)
     {
         using namespace org::freedesktop::PackageKit;
         css::uno::Reference<XSyncDbusSessionHelper> xSyncDbusSessionHelper(SyncDbusSessionHelper::create(comphelper::getProcessComponentContext()));
-        xSyncDbusSessionHelper->InstallFontconfigResources(comphelper::containerToSequence(m_aCurrentRequests), "hide-finished");
+        xSyncDbusSessionHelper->InstallFontconfigResources(comphelper::containerToSequence(m_aCurrentRequests), u"hide-finished"_ustr);
     }
     catch (const css::uno::Exception&)
     {
@@ -973,6 +1040,22 @@ void PrintFontManager::Substitute(vcl::font::FontSelectPattern &rPattern, OUStri
     const OString aTargetName = OUStringToOString( rPattern.maTargetName, RTL_TEXTENCODING_UTF8 );
     const FcChar8* pTargetNameUtf8 = reinterpret_cast<FcChar8 const *>(aTargetName.getStr());
     FcPatternAddString(pPattern, FC_FAMILY, pTargetNameUtf8);
+
+    // Try to map tools FontFamily to fontconfig FC_FAMILY. Note that FcPatternAddString() appends
+    // to a list, so it won't overwrite the previous FcPatternAddString(FC_FAMILY), this way we can
+    // express that we wanted a certain font, and otherwise a given family style.
+    FontFamily eFamilyType = rPattern.GetFamilyType();
+    switch (eFamilyType)
+    {
+        case FAMILY_ROMAN:
+            FcPatternAddString(pPattern, FC_FAMILY, reinterpret_cast<const FcChar8*>("serif"));
+            break;
+        case FAMILY_SWISS:
+            FcPatternAddString(pPattern, FC_FAMILY, reinterpret_cast<const FcChar8*>("sans"));
+            break;
+        default:
+            break;
+    }
 
     LanguageTag aLangTag(rPattern.meLanguage);
     OString aLangAttrib = mapToFontConfigLangTag(aLangTag);
@@ -1006,6 +1089,19 @@ void PrintFontManager::Substitute(vcl::font::FontSelectPattern &rPattern, OUStri
 
     if (!aLangAttrib.isEmpty())
         FcPatternAddString(pPattern, FC_LANG, reinterpret_cast<FcChar8 const *>(aLangAttrib.getStr()));
+
+    // bodge: testTdf153440 wants a fallback to an emoji font it adds as a temp
+    // testing font which has the required glyphs, but that emoji font is not
+    // seen as a "color" font, while it is possible that OpenDyslexic can be
+    // bundled, which *is* a "color" font. The default rules (See in Fedora 38
+    // at least) then prefer a color font *without* the glyphs over a non-color
+    // font *with* the glyphs, which seems like a bug to me.
+    // Maybe this is an attempt to prefer color emoji fonts over non-color emoji
+    // containing fonts like Symbola which has gone awry?
+    // For testing purposes (isRestrictingFontSetForTesting is true) force a
+    // preference for non-color fonts.
+    if (rWrapper.isRestrictingFontSetForTesting())
+        FcPatternAddBool(pPattern, FC_COLOR, FcFalse);
 
     addtopattern(pPattern, rPattern.GetItalic(), rPattern.GetWeight(),
         rPattern.GetWidthType(), rPattern.GetPitch());
@@ -1171,6 +1267,7 @@ void PrintFontManager::Substitute(vcl::font::FontSelectPattern &rPattern, OUStri
             return;
         SAL_WARN("vcl.fonts", "PrintFontManager::Substitute: missing font: '" << rPattern.maTargetName <<
                               "' try: " << rPattern.maSearchName << " instead");
+        std::cerr << "terminating test due to missing font: " << rPattern.maTargetName << std::endl;
         std::abort();
     }
 }

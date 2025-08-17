@@ -31,8 +31,6 @@
 class SvxShape;
 class SdrObject;
 class SdrPage;
-class SvxNumBulletItem;
-class SfxItemPool;
 enum class SdrInventor : sal_uInt32;
 enum class SdrObjKind  : sal_uInt16;
 
@@ -52,6 +50,12 @@ SVXCORE_DLLPUBLIC css::uno::Reference< css::drawing::XDrawPage > GetXDrawPageFor
 
 /** Returns the SdrPage from the given StarOffice API wrapper */
 SVXCORE_DLLPUBLIC SdrPage* GetSdrPageFromXDrawPage( const css::uno::Reference< css::drawing::XDrawPage >& xDrawPage ) noexcept ;
+
+// helper that returns true if the given XShape is member of the given
+// XDrawPage or it's MasterPage (aka associated)
+SVXCORE_DLLPUBLIC bool IsXShapeAssociatedWithXDrawPage(
+    const css::uno::Reference<css::drawing::XShape>& rxShape,
+    const css::uno::Reference< css::drawing::XDrawPage >& rxDrawPage) noexcept;
 
 /**
  * Maps the vcl MapUnit enum to an API constant MeasureUnit.

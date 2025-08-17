@@ -21,7 +21,6 @@
 #include <vcl/BitmapAccessMode.hxx>
 #include <vcl/BitmapBuffer.hxx>
 #include <vcl/BitmapPalette.hxx>
-#include <vcl/ColorMask.hxx>
 #include <vcl/Scanline.hxx>
 #include <com/sun/star/beans/XFastPropertySet.hpp>
 #include <win/wincomp.hxx>
@@ -46,9 +45,8 @@
 
 WinSalBitmap::WinSalBitmap()
 :   SalBitmap(),
-    basegfx::SystemDependentDataHolder(),
     maSize(),
-    mhDIB(nullptr),
+    mpDIB(nullptr),
     mhDDB(nullptr),
     mnBitCount(0)
 {
@@ -61,8 +59,8 @@ WinSalBitmap::~WinSalBitmap()
 
 void WinSalBitmap::Destroy()
 {
-    if( mhDIB )
-        GlobalFree( mhDIB );
+    if( mpDIB )
+        free( mpDIB );
     else if( mhDDB )
         DeleteObject( mhDDB );
 
@@ -94,7 +92,9 @@ public:
 SystemDependentData_GdiPlusBitmap::SystemDependentData_GdiPlusBitmap(
     const std::shared_ptr<Gdiplus::Bitmap>& rGdiPlusBitmap,
     const WinSalBitmap* pAssociatedAlpha)
-:   basegfx::SystemDependentData(Application::GetSystemDependentDataManager()),
+:   basegfx::SystemDependentData(
+        Application::GetSystemDependentDataManager(),
+        basegfx::SDD_Type::SDDType_GdiPlusBitmap),
     mpGdiPlusBitmap(rGdiPlusBitmap),
     mpAssociatedAlpha(pAssociatedAlpha)
 {
@@ -102,52 +102,50 @@ SystemDependentData_GdiPlusBitmap::SystemDependentData_GdiPlusBitmap(
 
 sal_Int64 SystemDependentData_GdiPlusBitmap::estimateUsageInBytes() const
 {
-    sal_Int64 nRetval(0);
+    if(!mpGdiPlusBitmap)
+        return 0;
 
-    if(mpGdiPlusBitmap)
+    const UINT nWidth(mpGdiPlusBitmap->GetWidth());
+    const UINT nHeight(mpGdiPlusBitmap->GetHeight());
+
+    if(0 == nWidth || 0 == nHeight)
+        return 0;
+
+    sal_Int64 nRetval = nWidth * nHeight;
+
+    switch(mpGdiPlusBitmap->GetPixelFormat())
     {
-        const UINT nWidth(mpGdiPlusBitmap->GetWidth());
-        const UINT nHeight(mpGdiPlusBitmap->GetHeight());
-
-        if(0 != nWidth && 0 != nHeight)
-        {
-            nRetval = nWidth * nHeight;
-
-            switch(mpGdiPlusBitmap->GetPixelFormat())
-            {
-                case PixelFormat1bppIndexed:
-                    nRetval /= 8;
-                    break;
-                case PixelFormat4bppIndexed:
-                    nRetval /= 4;
-                    break;
-                case PixelFormat16bppGrayScale:
-                case PixelFormat16bppRGB555:
-                case PixelFormat16bppRGB565:
-                case PixelFormat16bppARGB1555:
-                    nRetval *= 2;
-                    break;
-                case PixelFormat24bppRGB:
-                    nRetval *= 3;
-                    break;
-                case PixelFormat32bppRGB:
-                case PixelFormat32bppARGB:
-                case PixelFormat32bppPARGB:
-                case PixelFormat32bppCMYK:
-                    nRetval *= 4;
-                    break;
-                case PixelFormat48bppRGB:
-                    nRetval *= 6;
-                    break;
-                case PixelFormat64bppARGB:
-                case PixelFormat64bppPARGB:
-                    nRetval *= 8;
-                    break;
-                default:
-                case PixelFormat8bppIndexed:
-                    break;
-            }
-        }
+        case PixelFormat1bppIndexed:
+            nRetval /= 8;
+            break;
+        case PixelFormat4bppIndexed:
+            nRetval /= 4;
+            break;
+        case PixelFormat16bppGrayScale:
+        case PixelFormat16bppRGB555:
+        case PixelFormat16bppRGB565:
+        case PixelFormat16bppARGB1555:
+            nRetval *= 2;
+            break;
+        case PixelFormat24bppRGB:
+            nRetval *= 3;
+            break;
+        case PixelFormat32bppRGB:
+        case PixelFormat32bppARGB:
+        case PixelFormat32bppPARGB:
+        case PixelFormat32bppCMYK:
+            nRetval *= 4;
+            break;
+        case PixelFormat48bppRGB:
+            nRetval *= 6;
+            break;
+        case PixelFormat64bppARGB:
+        case PixelFormat64bppPARGB:
+            nRetval *= 8;
+            break;
+        default:
+        case PixelFormat8bppIndexed:
+            break;
     }
 
     return nRetval;
@@ -159,7 +157,7 @@ std::shared_ptr< Gdiplus::Bitmap > WinSalBitmap::ImplGetGdiPlusBitmap(const WinS
 
     // try to access buffered data
     std::shared_ptr<SystemDependentData_GdiPlusBitmap> pSystemDependentData_GdiPlusBitmap(
-        getSystemDependentData<SystemDependentData_GdiPlusBitmap>());
+        getSystemDependentData<SystemDependentData_GdiPlusBitmap>(basegfx::SDD_Type::SDDType_GdiPlusBitmap));
 
     if(pSystemDependentData_GdiPlusBitmap)
     {
@@ -222,7 +220,7 @@ std::shared_ptr<Gdiplus::Bitmap> WinSalBitmap::ImplCreateGdiPlusBitmap()
     BitmapBuffer* pRGB = pSalRGB->AcquireBuffer(BitmapAccessMode::Read);
     std::optional<BitmapBuffer> pExtraRGB;
 
-    if(pRGB && ScanlineFormat::N24BitTcBgr != RemoveScanline(pRGB->mnFormat))
+    if (pRGB && ScanlineFormat::N24BitTcBgr != pRGB->meFormat)
     {
         // convert source bitmap to BMP_FORMAT_24BIT_TC_BGR format if not yet in that format
         SalTwoRect aSalTwoRect(0, 0, pRGB->mnWidth, pRGB->mnHeight, 0, 0, pRGB->mnWidth, pRGB->mnHeight);
@@ -235,10 +233,10 @@ std::shared_ptr<Gdiplus::Bitmap> WinSalBitmap::ImplCreateGdiPlusBitmap()
         pRGB = pExtraRGB ? &*pExtraRGB : nullptr;
     }
 
-    if(pRGB
+    if (pRGB
         && pRGB->mnWidth > 0
         && pRGB->mnHeight > 0
-        && ScanlineFormat::N24BitTcBgr == RemoveScanline(pRGB->mnFormat))
+        && ScanlineFormat::N24BitTcBgr == pRGB->meFormat)
     {
         const sal_uInt32 nW(pRGB->mnWidth);
         const sal_uInt32 nH(pRGB->mnHeight);
@@ -249,7 +247,7 @@ std::shared_ptr<Gdiplus::Bitmap> WinSalBitmap::ImplCreateGdiPlusBitmap()
         {
             sal_uInt8* pSrcRGB(pRGB->mpBits);
             const sal_uInt32 nExtraRGB(pRGB->mnScanlineSize - (nW * 3));
-            const bool bTopDown(pRGB->mnFormat & ScanlineFormat::TopDown);
+            const bool bTopDown(pRGB->meDirection == ScanlineDirection::TopDown);
             const Gdiplus::Rect aAllRect(0, 0, nW, nH);
             Gdiplus::BitmapData aGdiPlusBitmapData;
             pRetval->LockBits(&aAllRect, Gdiplus::ImageLockModeWrite, PixelFormat24bppRGB, &aGdiPlusBitmapData);
@@ -304,7 +302,7 @@ std::shared_ptr<Gdiplus::Bitmap> WinSalBitmap::ImplCreateGdiPlusBitmap(const Win
     BitmapBuffer* pRGB = pSalRGB->AcquireBuffer(BitmapAccessMode::Read);
     std::optional<BitmapBuffer> pExtraRGB;
 
-    if(pRGB && ScanlineFormat::N24BitTcBgr != RemoveScanline(pRGB->mnFormat))
+    if (pRGB && ScanlineFormat::N24BitTcBgr != pRGB->meFormat)
     {
         // convert source bitmap to canlineFormat::N24BitTcBgr format if not yet in that format
         SalTwoRect aSalTwoRect(0, 0, pRGB->mnWidth, pRGB->mnHeight, 0, 0, pRGB->mnWidth, pRGB->mnHeight);
@@ -331,17 +329,15 @@ std::shared_ptr<Gdiplus::Bitmap> WinSalBitmap::ImplCreateGdiPlusBitmap(const Win
     BitmapBuffer* pA = pSalA->AcquireBuffer(BitmapAccessMode::Read);
     std::optional<BitmapBuffer> pExtraA;
 
-    if(pA && ScanlineFormat::N8BitPal != RemoveScanline(pA->mnFormat))
+    if (pA && ScanlineFormat::N8BitPal != pA->meFormat)
     {
         // convert alpha bitmap to ScanlineFormat::N8BitPal format if not yet in that format
         SalTwoRect aSalTwoRect(0, 0, pA->mnWidth, pA->mnHeight, 0, 0, pA->mnWidth, pA->mnHeight);
-        const BitmapPalette& rTargetPalette = Bitmap::GetGreyPalette(256);
 
         pExtraA = StretchAndConvert(
             *pA,
             aSalTwoRect,
-            ScanlineFormat::N8BitPal,
-            rTargetPalette);
+            ScanlineFormat::N8BitPal);
 
         pSalA->ReleaseBuffer(pA, BitmapAccessMode::Read);
         pA = pExtraA ? &*pExtraA : nullptr;
@@ -353,8 +349,8 @@ std::shared_ptr<Gdiplus::Bitmap> WinSalBitmap::ImplCreateGdiPlusBitmap(const Win
         && pRGB->mnHeight > 0
         && pRGB->mnWidth == pA->mnWidth
         && pRGB->mnHeight == pA->mnHeight
-        && ScanlineFormat::N24BitTcBgr == RemoveScanline(pRGB->mnFormat)
-        && ScanlineFormat::N8BitPal == RemoveScanline(pA->mnFormat))
+        && ScanlineFormat::N24BitTcBgr == pRGB->meFormat
+        && ScanlineFormat::N8BitPal == pA->meFormat)
     {
         // we have alpha and bitmap in known formats, create GdiPlus Bitmap as 32bit ARGB
         const sal_uInt32 nW(pRGB->mnWidth);
@@ -368,7 +364,7 @@ std::shared_ptr<Gdiplus::Bitmap> WinSalBitmap::ImplCreateGdiPlusBitmap(const Win
             sal_uInt8* pSrcA(pA->mpBits);
             const sal_uInt32 nExtraRGB(pRGB->mnScanlineSize - (nW * 3));
             const sal_uInt32 nExtraA(pA->mnScanlineSize - nW);
-            const bool bTopDown(pRGB->mnFormat & ScanlineFormat::TopDown);
+            const bool bTopDown(pRGB->meDirection == ScanlineDirection::TopDown);
             const Gdiplus::Rect aAllRect(0, 0, nW, nH);
             Gdiplus::BitmapData aGdiPlusBitmapData;
             pRetval->LockBits(&aAllRect, Gdiplus::ImageLockModeWrite, PixelFormat32bppARGB, &aGdiPlusBitmapData);
@@ -403,7 +399,7 @@ std::shared_ptr<Gdiplus::Bitmap> WinSalBitmap::ImplCreateGdiPlusBitmap(const Win
     if(pExtraA)
     {
         // #i123478# shockingly, BitmapBuffer does not free the memory it is controlling
-        // in its destructor, this *has to be done handish*. Doing it here now
+        // in its destructor, this *has to be done by hand*. Doing it here now
         delete[] pExtraA->mpBits;
         pExtraA.reset();
     }
@@ -431,240 +427,214 @@ std::shared_ptr<Gdiplus::Bitmap> WinSalBitmap::ImplCreateGdiPlusBitmap(const Win
     return pRetval;
 }
 
-bool WinSalBitmap::Create( HANDLE hBitmap )
+bool WinSalBitmap::Create( HBITMAP hBitmap )
 {
-    bool bRet = true;
+    assert(hBitmap);
+    assert(!mpDIB && "already created");
+    assert(!mhDDB && "already created");
 
-    mhDDB = static_cast<HBITMAP>( hBitmap );
+    BITMAP  aDDBInfo;
+    if( !GetObjectW( hBitmap, sizeof( aDDBInfo ), &aDDBInfo ) )
+        return false;
 
-    if( mhDIB )
-    {
-        PBITMAPINFOHEADER pBIH = static_cast<PBITMAPINFOHEADER>(GlobalLock( mhDIB ));
+    mhDDB = hBitmap;
+    maSize = Size( aDDBInfo.bmWidth, aDDBInfo.bmHeight );
+    mnBitCount = aDDBInfo.bmPlanes * aDDBInfo.bmBitsPixel;
 
-        maSize = Size( pBIH->biWidth, pBIH->biHeight );
-        mnBitCount = pBIH->biBitCount;
-
-        if( mnBitCount )
-            mnBitCount = ( mnBitCount <= 1 ) ? 1 : ( mnBitCount <= 4 ) ? 4 : ( mnBitCount <= 8 ) ? 8 : 24;
-
-        GlobalUnlock( mhDIB );
-    }
-    else if( mhDDB )
-    {
-        BITMAP  aDDBInfo;
-
-        if( GetObjectW( mhDDB, sizeof( aDDBInfo ), &aDDBInfo ) )
-        {
-            maSize = Size( aDDBInfo.bmWidth, aDDBInfo.bmHeight );
-            mnBitCount = aDDBInfo.bmPlanes * aDDBInfo.bmBitsPixel;
-
-            if( mnBitCount )
-            {
-                mnBitCount = ( mnBitCount <= 1 ) ? 1 :
-                             ( mnBitCount <= 4 ) ? 4 :
-                             ( mnBitCount <= 8 ) ? 8 : 24;
-            }
-        }
-        else
-        {
-            mhDDB = nullptr;
-            bRet = false;
-        }
-    }
-    else
-        bRet = false;
-
-    return bRet;
+    return true;
 }
 
 bool WinSalBitmap::Create(const Size& rSize, vcl::PixelFormat ePixelFormat, const BitmapPalette& rPal)
 {
-    bool bRet = false;
+    assert(!mpDIB && "already created");
+    assert(!mhDDB && "already created");
 
-    mhDIB = ImplCreateDIB(rSize, ePixelFormat, rPal);
+    void* pDIB = nullptr;
+    sal_Int32 nDIBSize = 0;
+    ImplCreateDIB(rSize, ePixelFormat, rPal, pDIB, nDIBSize);
 
-    if( mhDIB )
-    {
-        maSize = rSize;
-        mnBitCount = vcl::pixelFormatBitCount(ePixelFormat);
-        bRet = true;
-    }
+    if( !pDIB )
+        return false;
 
-    return bRet;
+    mpDIB = pDIB;
+    mnDIBSize = nDIBSize;
+    maSize = rSize;
+    mnBitCount = vcl::pixelFormatBitCount(ePixelFormat);
+
+    return true;
 }
 
 bool WinSalBitmap::Create( const SalBitmap& rSSalBitmap )
 {
-    bool bRet = false;
+    assert(!mpDIB && "already created");
+    assert(!mhDDB && "already created");
+
     const WinSalBitmap& rSalBitmap = static_cast<const WinSalBitmap&>(rSSalBitmap);
 
-    if ( rSalBitmap.mhDIB || rSalBitmap.mhDDB )
+    if (rSalBitmap.mpDIB)
     {
-        HANDLE hNewHdl = ImplCopyDIBOrDDB( rSalBitmap.mhDIB ? rSalBitmap.mhDIB : rSalBitmap.mhDDB,
-                                           rSalBitmap.mhDIB != nullptr );
+        void* pNew = ImplCopyDIB( rSalBitmap.mpDIB, rSalBitmap.mnDIBSize );
+        if ( !pNew )
+            return false;
 
-        if ( hNewHdl )
-        {
-            if( rSalBitmap.mhDIB )
-                mhDIB = static_cast<HGLOBAL>(hNewHdl);
-            else if( rSalBitmap.mhDDB )
-                mhDDB = static_cast<HBITMAP>(hNewHdl);
+        mpDIB = pNew;
+        mnDIBSize = rSalBitmap.mnDIBSize;
+        maSize = rSalBitmap.maSize;
+        mnBitCount = rSalBitmap.mnBitCount;
 
-            maSize = rSalBitmap.maSize;
-            mnBitCount = rSalBitmap.mnBitCount;
-
-            bRet = true;
-        }
+        return true;
     }
+    else if (rSalBitmap.mhDDB)
+    {
+        HBITMAP hNewHdl = ImplCopyDDB( rSalBitmap.mhDDB );
+        if ( !hNewHdl )
+            return false;
 
-    return bRet;
+        mhDDB = hNewHdl;
+        maSize = rSalBitmap.maSize;
+        mnBitCount = rSalBitmap.mnBitCount;
+
+        return true;
+    }
+    else
+        return false;
 }
 
 bool WinSalBitmap::Create( const SalBitmap& rSSalBmp, SalGraphics* pSGraphics )
 {
-    bool bRet = false;
+    assert(!mpDIB && "already created");
+    assert(!mhDDB && "already created");
 
     const WinSalBitmap& rSalBmp = static_cast<const WinSalBitmap&>(rSSalBmp);
+    if(!rSalBmp.mpDIB)
+        return false;
+
+    PBITMAPINFO pBI = static_cast<PBITMAPINFO>(mpDIB);
+    if (!pBI)
+        return false;
+
+    bool bRet = false;
     WinSalGraphics* pGraphics = static_cast<WinSalGraphics*>(pSGraphics);
 
-    if( rSalBmp.mhDIB )
+    HDC                 hDC  = pGraphics->getHDC();
+    BITMAP              aDDBInfo;
+    PBYTE               pBits = reinterpret_cast<PBYTE>(pBI) + pBI->bmiHeader.biSize +
+                                ImplGetDIBColorCount( rSalBmp.mpDIB ) * sizeof( RGBQUAD );
+    HBITMAP hNewDDB = CreateDIBitmap( hDC, &pBI->bmiHeader, CBM_INIT, pBits, pBI, DIB_RGB_COLORS );
+
+    if( hNewDDB && GetObjectW( hNewDDB, sizeof( aDDBInfo ), &aDDBInfo ) )
     {
-        PBITMAPINFO         pBI = static_cast<PBITMAPINFO>(GlobalLock( rSalBmp.mhDIB ));
-        HDC                 hDC  = pGraphics->getHDC();
-        HBITMAP             hNewDDB;
-        BITMAP              aDDBInfo;
-        PBYTE               pBits = reinterpret_cast<PBYTE>(pBI) + pBI->bmiHeader.biSize +
-                            ImplGetDIBColorCount( rSalBmp.mhDIB ) * sizeof( RGBQUAD );
+        mhDDB = hNewDDB;
+        maSize = Size( aDDBInfo.bmWidth, aDDBInfo.bmHeight );
+        mnBitCount = aDDBInfo.bmPlanes * aDDBInfo.bmBitsPixel;
 
-        if( pBI->bmiHeader.biBitCount == 1 )
-        {
-            hNewDDB = CreateBitmap( pBI->bmiHeader.biWidth, pBI->bmiHeader.biHeight, 1, 1, nullptr );
-
-            if( hNewDDB )
-                SetDIBits( hDC, hNewDDB, 0, pBI->bmiHeader.biHeight, pBits, pBI, DIB_RGB_COLORS );
-        }
-        else
-            hNewDDB = CreateDIBitmap( hDC, &pBI->bmiHeader, CBM_INIT, pBits, pBI, DIB_RGB_COLORS );
-
-        GlobalUnlock( rSalBmp.mhDIB );
-
-        if( hNewDDB && GetObjectW( hNewDDB, sizeof( aDDBInfo ), &aDDBInfo ) )
-        {
-            mhDDB = hNewDDB;
-            maSize = Size( aDDBInfo.bmWidth, aDDBInfo.bmHeight );
-            mnBitCount = aDDBInfo.bmPlanes * aDDBInfo.bmBitsPixel;
-
-            bRet = true;
-        }
-        else if( hNewDDB )
-            DeleteObject( hNewDDB );
+        bRet = true;
     }
+    else if( hNewDDB )
+        DeleteObject( hNewDDB );
 
     return bRet;
 }
 
 bool WinSalBitmap::Create(const SalBitmap& rSSalBmp, vcl::PixelFormat eNewPixelFormat)
 {
-    bool bRet = false;
+    assert(!mpDIB && "already created");
+    assert(!mhDDB && "already created");
 
     const WinSalBitmap& rSalBmp = static_cast<const WinSalBitmap&>(rSSalBmp);
 
-    if( rSalBmp.mhDDB )
+    assert( rSalBmp.mhDDB && "why copy an empty WinSalBitmap");
+
+    if( !rSalBmp.mhDDB )
+        return false;
+
+    ImplCreateDIB( rSalBmp.maSize, eNewPixelFormat, BitmapPalette(), mpDIB, mnDIBSize );
+
+    if( !mpDIB )
+        return false;
+
+    PBITMAPINFO pBI = static_cast<PBITMAPINFO>(mpDIB);
+    if (!pBI)
+        return false;
+
+    bool bRet = false;
+    const int   nLines = static_cast<int>(rSalBmp.maSize.Height());
+    HDC         hDC = GetDC( nullptr );
+    PBYTE       pBits = reinterpret_cast<PBYTE>(pBI) + pBI->bmiHeader.biSize +
+                        ImplGetDIBColorCount( mpDIB ) * sizeof( RGBQUAD );
+
+    if( GetDIBits( hDC, rSalBmp.mhDDB, 0, nLines, pBits, pBI, DIB_RGB_COLORS ) == nLines )
     {
-        mhDIB = ImplCreateDIB( rSalBmp.maSize, eNewPixelFormat, BitmapPalette() );
-
-        if( mhDIB )
-        {
-            PBITMAPINFO pBI = static_cast<PBITMAPINFO>(GlobalLock( mhDIB ));
-            const int   nLines = static_cast<int>(rSalBmp.maSize.Height());
-            HDC         hDC = GetDC( nullptr );
-            PBYTE       pBits = reinterpret_cast<PBYTE>(pBI) + pBI->bmiHeader.biSize +
-                                ImplGetDIBColorCount( mhDIB ) * sizeof( RGBQUAD );
-            SalData*    pSalData = GetSalData();
-            HPALETTE    hOldPal = nullptr;
-
-            if ( pSalData->mhDitherPal )
-            {
-                hOldPal = SelectPalette( hDC, pSalData->mhDitherPal, TRUE );
-                RealizePalette( hDC );
-            }
-
-            if( GetDIBits( hDC, rSalBmp.mhDDB, 0, nLines, pBits, pBI, DIB_RGB_COLORS ) == nLines )
-            {
-                GlobalUnlock( mhDIB );
-                maSize = rSalBmp.maSize;
-                mnBitCount = vcl::pixelFormatBitCount(eNewPixelFormat);
-                bRet = true;
-            }
-            else
-            {
-                GlobalUnlock( mhDIB );
-                GlobalFree( mhDIB );
-                mhDIB = nullptr;
-            }
-
-            if( hOldPal )
-                SelectPalette( hDC, hOldPal, TRUE );
-
-            ReleaseDC( nullptr, hDC );
-        }
+        maSize = rSalBmp.maSize;
+        mnBitCount = vcl::pixelFormatBitCount(eNewPixelFormat);
+        bRet = true;
     }
+    else
+    {
+        free( mpDIB );
+        mpDIB = nullptr;
+    }
+
+    ReleaseDC( nullptr, hDC );
 
     return bRet;
 }
 
-bool WinSalBitmap::Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& rBitmapCanvas, Size& /*rSize*/, bool bMask )
+bool WinSalBitmap::Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& rBitmapCanvas, Size& /*rSize*/ )
 {
     css::uno::Reference< css::beans::XFastPropertySet >
         xFastPropertySet( rBitmapCanvas, css::uno::UNO_QUERY );
 
-    if( xFastPropertySet ) {
-        css::uno::Sequence< css::uno::Any > args;
+    assert( xFastPropertySet && "creating without an xFastPropertySet?");
+    if( !xFastPropertySet )
+        return false;
 
-        if( xFastPropertySet->getFastPropertyValue(bMask ? 2 : 1) >>= args ) {
-            sal_Int64 aHBmp64;
+    css::uno::Sequence< css::uno::Any > args;
+    if( !(xFastPropertySet->getFastPropertyValue(1) >>= args) )
+        return false;
 
-            if( args[0] >>= aHBmp64 ) {
-                return Create( reinterpret_cast<HANDLE>(aHBmp64) );
-            }
-        }
-    }
-    return false;
+    sal_Int64 aHBmp64;
+    if( !(args[0] >>= aHBmp64) )
+        return false;
+
+    return Create( reinterpret_cast<HBITMAP>(aHBmp64) );
 }
 
 sal_uInt16 WinSalBitmap::ImplGetDIBColorCount( HGLOBAL hDIB )
 {
+    if (!hDIB)
+        return 0;
+
+    PBITMAPINFO  pBI = static_cast<PBITMAPINFO>(GlobalLock( hDIB ));
+    if (!pBI)
+        return 0;
+
     sal_uInt16 nColors = 0;
-
-    if( hDIB )
+    if ( pBI->bmiHeader.biSize != sizeof( BITMAPCOREHEADER ) )
     {
-        PBITMAPINFO         pBI = static_cast<PBITMAPINFO>(GlobalLock( hDIB ));
-
-        if ( pBI->bmiHeader.biSize != sizeof( BITMAPCOREHEADER ) )
+        if( pBI->bmiHeader.biBitCount <= 8 )
         {
-            if( pBI->bmiHeader.biBitCount <= 8 )
-            {
-                if ( pBI->bmiHeader.biClrUsed )
-                    nColors = static_cast<sal_uInt16>(pBI->bmiHeader.biClrUsed);
-                else
-                    nColors = 1 << pBI->bmiHeader.biBitCount;
-            }
+            if ( pBI->bmiHeader.biClrUsed )
+                nColors = static_cast<sal_uInt16>(pBI->bmiHeader.biClrUsed);
+            else
+                nColors = 1 << pBI->bmiHeader.biBitCount;
         }
-        else if( reinterpret_cast<PBITMAPCOREHEADER>(pBI)->bcBitCount <= 8 )
-            nColors = 1 << reinterpret_cast<PBITMAPCOREHEADER>(pBI)->bcBitCount;
-
-        GlobalUnlock( hDIB );
     }
+    else if( reinterpret_cast<PBITMAPCOREHEADER>(pBI)->bcBitCount <= 8 )
+        nColors = 1 << reinterpret_cast<PBITMAPCOREHEADER>(pBI)->bcBitCount;
+
+    GlobalUnlock( hDIB );
 
     return nColors;
 }
 
-HGLOBAL WinSalBitmap::ImplCreateDIB(const Size& rSize, vcl::PixelFormat ePixelFormat, const BitmapPalette& rPal)
+void WinSalBitmap::ImplCreateDIB(const Size& rSize, vcl::PixelFormat ePixelFormat, const BitmapPalette& rPal,
+                                    void*& rpDIB, sal_Int32 &rnDIBSize)
 {
-    HGLOBAL hDIB = nullptr;
+    rpDIB = nullptr;
 
     if( rSize.IsEmpty() )
-        return hDIB;
+        return;
 
     const auto nBits = vcl::pixelFormatBitCount(ePixelFormat);
 
@@ -673,7 +643,7 @@ HGLOBAL WinSalBitmap::ImplCreateDIB(const Size& rSize, vcl::PixelFormat ePixelFo
     const sal_uLong nImageSize = nAlignedWidth4Bytes * rSize.Height();
     bool bOverflow = (nImageSize / nAlignedWidth4Bytes) != static_cast<sal_uLong>(rSize.Height());
     if( bOverflow )
-        return hDIB;
+        return;
 
     // allocate bitmap memory including header and palette
     sal_uInt16 nColors = 0;
@@ -683,13 +653,14 @@ HGLOBAL WinSalBitmap::ImplCreateDIB(const Size& rSize, vcl::PixelFormat ePixelFo
     const sal_uLong nHeaderSize = sizeof( BITMAPINFOHEADER ) + nColors * sizeof( RGBQUAD );
     bOverflow = (nHeaderSize + nImageSize) < nImageSize;
     if( bOverflow )
-        return hDIB;
+        return;
 
-    hDIB = GlobalAlloc( GHND, nHeaderSize + nImageSize );
-    if( !hDIB )
-        return hDIB;
+    rpDIB = malloc( nHeaderSize + nImageSize );
+    if( !rpDIB )
+        return;
+    rnDIBSize = nHeaderSize + nImageSize;
 
-    PBITMAPINFO pBI = static_cast<PBITMAPINFO>( GlobalLock( hDIB ) );
+    PBITMAPINFO pBI = static_cast<PBITMAPINFO>( rpDIB );
     PBITMAPINFOHEADER pBIH = reinterpret_cast<PBITMAPINFOHEADER>( pBI );
 
     pBIH->biSize = sizeof( BITMAPINFOHEADER );
@@ -711,29 +682,13 @@ HGLOBAL WinSalBitmap::ImplCreateDIB(const Size& rSize, vcl::PixelFormat ePixelFo
         if( nMinCount )
             memcpy( pBI->bmiColors, rPal.ImplGetColorBuffer(), nMinCount * sizeof(RGBQUAD) );
     }
-
-    GlobalUnlock( hDIB );
-
-    return hDIB;
 }
 
-HANDLE WinSalBitmap::ImplCopyDIBOrDDB( HANDLE hHdl, bool bDIB )
+HBITMAP WinSalBitmap::ImplCopyDDB( HBITMAP hHdl )
 {
-    HANDLE  hCopy = nullptr;
+    HBITMAP  hCopy = nullptr;
 
-    if ( bDIB && hHdl )
-    {
-        const sal_uLong nSize = GlobalSize( hHdl );
-
-        if ( (hCopy = GlobalAlloc( GHND, nSize  )) != nullptr )
-        {
-            memcpy( GlobalLock( hCopy ), GlobalLock( hHdl ), nSize );
-
-            GlobalUnlock( hCopy );
-            GlobalUnlock( hHdl );
-        }
-    }
-    else if ( hHdl )
+    if ( hHdl )
     {
         BITMAP aBmp;
 
@@ -761,89 +716,64 @@ HANDLE WinSalBitmap::ImplCopyDIBOrDDB( HANDLE hHdl, bool bDIB )
     return hCopy;
 }
 
+void* WinSalBitmap::ImplCopyDIB( void* pDIB, sal_Int32 nSize )
+{
+    void*  pCopy = nullptr;
+
+    if ( pDIB )
+    {
+        pCopy = malloc(nSize);
+        if ( pCopy )
+            memcpy( pCopy, pDIB, nSize );
+    }
+
+    return pCopy;
+}
+
 BitmapBuffer* WinSalBitmap::AcquireBuffer( BitmapAccessMode /*nMode*/ )
 {
+    if (!mpDIB)
+        return nullptr;
+
+    PBITMAPINFO pBI = static_cast<PBITMAPINFO>(mpDIB);
+    if (!pBI)
+        return nullptr;
+
     std::unique_ptr<BitmapBuffer> pBuffer;
+    PBITMAPINFOHEADER   pBIH = &pBI->bmiHeader;
 
-    if( mhDIB )
+    if( pBIH->biPlanes == 1 )
     {
-        PBITMAPINFO         pBI = static_cast<PBITMAPINFO>(GlobalLock( mhDIB ));
-        PBITMAPINFOHEADER   pBIH = &pBI->bmiHeader;
+        pBuffer.reset(new BitmapBuffer);
 
-        if( pBIH->biPlanes == 1 )
+        pBuffer->meFormat = pBIH->biBitCount == 8 ? ScanlineFormat::N8BitPal :
+                            pBIH->biBitCount == 24 ? ScanlineFormat::N24BitTcBgr :
+                            pBIH->biBitCount == 32 ? ScanlineFormat::N32BitTcBgra :
+                            ScanlineFormat::NONE;
+        assert (pBuffer->meFormat != ScanlineFormat::NONE);
+
+        if (pBuffer->meFormat != ScanlineFormat::NONE)
         {
-            pBuffer.reset(new BitmapBuffer);
+            pBuffer->mnWidth = maSize.Width();
+            pBuffer->mnHeight = maSize.Height();
+            pBuffer->mnScanlineSize = AlignedWidth4Bytes( maSize.Width() * pBIH->biBitCount );
+            pBuffer->mnBitCount = static_cast<sal_uInt16>(pBIH->biBitCount);
 
-            pBuffer->mnFormat = pBIH->biBitCount == 1 ? ScanlineFormat::N1BitMsbPal :
-                                pBIH->biBitCount == 8 ? ScanlineFormat::N8BitPal :
-                                pBIH->biBitCount == 24 ? ScanlineFormat::N24BitTcBgr :
-                                pBIH->biBitCount == 32 ? ScanlineFormat::N32BitTcMask :
-                                ScanlineFormat::NONE;
-
-            if( RemoveScanline( pBuffer->mnFormat ) != ScanlineFormat::NONE )
+            if( pBuffer->mnBitCount <= 8 )
             {
-                pBuffer->mnWidth = maSize.Width();
-                pBuffer->mnHeight = maSize.Height();
-                pBuffer->mnScanlineSize = AlignedWidth4Bytes( maSize.Width() * pBIH->biBitCount );
-                pBuffer->mnBitCount = static_cast<sal_uInt16>(pBIH->biBitCount);
+                const sal_uInt16 nPalCount = ImplGetDIBColorCount( mpDIB );
 
-                if( pBuffer->mnBitCount <= 8 )
-                {
-                    const sal_uInt16 nPalCount = ImplGetDIBColorCount( mhDIB );
-
-                    pBuffer->maPalette.SetEntryCount( nPalCount );
-                    memcpy( pBuffer->maPalette.ImplGetColorBuffer(), pBI->bmiColors, nPalCount * sizeof( RGBQUAD ) );
-                    pBuffer->mpBits = reinterpret_cast<PBYTE>(pBI) + pBI->bmiHeader.biSize + nPalCount * sizeof( RGBQUAD );
-                }
-                else if( ( pBIH->biBitCount == 16 ) || ( pBIH->biBitCount == 32 ) )
-                {
-                    sal_uLong nOffset = 0;
-
-                    if( pBIH->biCompression == BI_BITFIELDS )
-                    {
-                        nOffset = 3 * sizeof( RGBQUAD );
-                        ColorMaskElement aRedMask(*reinterpret_cast<UINT32*>(&pBI->bmiColors[ 0 ]));
-                        aRedMask.CalcMaskShift();
-                        ColorMaskElement aGreenMask(*reinterpret_cast<UINT32*>(&pBI->bmiColors[ 1 ]));
-                        aGreenMask.CalcMaskShift();
-                        ColorMaskElement aBlueMask(*reinterpret_cast<UINT32*>(&pBI->bmiColors[ 2 ]));
-                        aBlueMask.CalcMaskShift();
-                        pBuffer->maColorMask = ColorMask(aRedMask, aGreenMask, aBlueMask);
-                    }
-                    else if( pBIH->biBitCount == 16 )
-                    {
-                        ColorMaskElement aRedMask(0x00007c00UL);
-                        aRedMask.CalcMaskShift();
-                        ColorMaskElement aGreenMask(0x000003e0UL);
-                        aGreenMask.CalcMaskShift();
-                        ColorMaskElement aBlueMask(0x0000001fUL);
-                        aBlueMask.CalcMaskShift();
-                        pBuffer->maColorMask = ColorMask(aRedMask, aGreenMask, aBlueMask);
-                    }
-                    else
-                    {
-                        ColorMaskElement aRedMask(0x00ff0000UL);
-                        aRedMask.CalcMaskShift();
-                        ColorMaskElement aGreenMask(0x0000ff00UL);
-                        aGreenMask.CalcMaskShift();
-                        ColorMaskElement aBlueMask(0x000000ffUL);
-                        aBlueMask.CalcMaskShift();
-                        pBuffer->maColorMask = ColorMask(aRedMask, aGreenMask, aBlueMask);
-                    }
-
-                    pBuffer->mpBits = reinterpret_cast<PBYTE>(pBI) + pBI->bmiHeader.biSize + nOffset;
-                }
-                else
-                    pBuffer->mpBits = reinterpret_cast<PBYTE>(pBI) + pBI->bmiHeader.biSize;
+                pBuffer->maPalette.SetEntryCount( nPalCount );
+                memcpy( pBuffer->maPalette.ImplGetColorBuffer(), pBI->bmiColors, nPalCount * sizeof( RGBQUAD ) );
+                pBuffer->mpBits = reinterpret_cast<PBYTE>(pBI) + pBI->bmiHeader.biSize + nPalCount * sizeof( RGBQUAD );
             }
             else
-            {
-                GlobalUnlock( mhDIB );
-                pBuffer.reset();
-            }
+                pBuffer->mpBits = reinterpret_cast<PBYTE>(pBI) + pBI->bmiHeader.biSize;
         }
         else
-            GlobalUnlock( mhDIB );
+        {
+            pBuffer.reset();
+        }
     }
 
     return pBuffer.release();
@@ -853,18 +783,17 @@ void WinSalBitmap::ReleaseBuffer( BitmapBuffer* pBuffer, BitmapAccessMode nMode 
 {
     if( pBuffer )
     {
-        if( mhDIB )
+        if( mpDIB )
         {
             if( nMode == BitmapAccessMode::Write && !!pBuffer->maPalette )
             {
-                PBITMAPINFO     pBI = static_cast<PBITMAPINFO>(GlobalLock( mhDIB ));
-                const sal_uInt16    nCount = pBuffer->maPalette.GetEntryCount();
-                const sal_uInt16    nDIBColorCount = ImplGetDIBColorCount( mhDIB );
-                memcpy( pBI->bmiColors, pBuffer->maPalette.ImplGetColorBuffer(), std::min( nDIBColorCount, nCount ) * sizeof( RGBQUAD ) );
-                GlobalUnlock( mhDIB );
+                if (PBITMAPINFO pBI = static_cast<PBITMAPINFO>(mpDIB))
+                {
+                    const sal_uInt16    nCount = pBuffer->maPalette.GetEntryCount();
+                    const sal_uInt16    nDIBColorCount = ImplGetDIBColorCount( mpDIB );
+                    memcpy( pBI->bmiColors, pBuffer->maPalette.ImplGetColorBuffer(), std::min( nDIBColorCount, nCount ) * sizeof( RGBQUAD ) );
+                }
             }
-
-            GlobalUnlock( mhDIB );
         }
 
         delete pBuffer;
@@ -876,10 +805,10 @@ void WinSalBitmap::ReleaseBuffer( BitmapBuffer* pBuffer, BitmapAccessMode nMode 
 bool WinSalBitmap::GetSystemData( BitmapSystemData& rData )
 {
     bool bRet = false;
-    if( mhDIB || mhDDB )
+    if( mpDIB || mhDDB )
     {
         bRet = true;
-        rData.pDIB = mhDIB;
+        rData.pDIB = mpDIB;
         const Size& rSize = GetSize ();
         rData.mnWidth = rSize.Width();
         rData.mnHeight = rSize.Height();
@@ -900,11 +829,6 @@ bool WinSalBitmap::Scale( const double& /*rScaleX*/, const double& /*rScaleY*/, 
 bool WinSalBitmap::Replace( const Color& /*rSearchColor*/, const Color& /*rReplaceColor*/, sal_uInt8 /*nTol*/ )
 {
     return false;
-}
-
-const basegfx::SystemDependentDataHolder* WinSalBitmap::accessSystemDependentDataHolder() const
-{
-    return this;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

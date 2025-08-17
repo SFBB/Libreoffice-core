@@ -19,13 +19,14 @@
 #pragma once
 #include <filter/msfilter/escherex.hxx>
 #include <o3tl/any.hxx>
-
+#include <rtl/ref.hxx>
 
 // fractions of Draw PPTWriter etc.
 
 class ImplEESdrWriter;
 class SdrObject;
 class SdrPage;
+class SvxDrawPage;
 
 class ImplEESdrObject
 {
@@ -87,11 +88,7 @@ public:
 class EscherEx;
 namespace com::sun::star {
     namespace drawing {
-        class XDrawPage;
         class XShape;
-    }
-    namespace task {
-        class XStatusIndicator;
     }
 }
 class EscherExHostAppData;
@@ -99,16 +96,14 @@ class EscherExHostAppData;
 class ImplEESdrWriter
 {
     EscherEx*           mpEscherEx;
-    css::uno::Reference< css::drawing::XDrawPage >        mXDrawPage;
+    rtl::Reference< SvxDrawPage >        mXDrawPage;
     css::uno::Reference< css::drawing::XShapes >          mXShapes;
     SvStream*           mpPicStrm;
     // own extensions
     EscherExHostAppData*    mpHostAppData;
-    bool                    mbIsTitlePossible;
     const SdrPage*          mpSdrPage;
     std::unique_ptr<EscherSolverContainer> mpSolverContainer;
 
-    void                ImplInitPageValues();
     void                ImplWritePage( EscherSolverContainer& rSolver, bool ooxmlExport );
     sal_uInt32          ImplWriteShape( ImplEESdrObject& rObj,
                             EscherSolverContainer& rSolver,

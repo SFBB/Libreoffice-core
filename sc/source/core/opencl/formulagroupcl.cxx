@@ -2684,7 +2684,7 @@ void DynamicKernel::CreateKernel()
         }
         lastSecondKernelHash = lastOneKernelHash;
         lastSecondProgram = lastOneProgram;
-        lastOneKernelHash = KernelHash;
+        lastOneKernelHash = std::move(KernelHash);
         lastOneProgram = mpProgram;
     }
     mpKernel = clCreateKernel(mpProgram, kname.c_str(), &err);
@@ -2789,11 +2789,11 @@ std::shared_ptr<DynamicKernel> DynamicKernel::create( const ScCalcConfig& rConfi
                 {
                     FormulaTreeNodeRef pChildTreeNode =
                         std::make_shared<FormulaTreeNode>(pTempFormula);
-                    pCurNode->Children.push_back(pChildTreeNode);
+                    pCurNode->Children.push_back(std::move(pChildTreeNode));
                 }
             }
             std::reverse(pCurNode->Children.begin(), pCurNode->Children.end());
-            aHashMap[pCur] = pCurNode;
+            aHashMap[pCur] = std::move(pCurNode);
         }
         aTokenVector.push_back(pCur);
     }

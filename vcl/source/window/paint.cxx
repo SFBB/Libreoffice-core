@@ -86,7 +86,10 @@ PaintBufferGuard::PaintBufferGuard(ImplFrameData* pFrameData, vcl::Window* pWind
     pFrameData->mpBuffer->SetClipRegion(rDev.GetClipRegion());
     pFrameData->mpBuffer->SetFillColor(rDev.GetFillColor());
     pFrameData->mpBuffer->SetFont(pWindow->GetFont());
-    pFrameData->mpBuffer->SetLineColor(rDev.GetLineColor());
+    if (!rDev.HasAlpha() && rDev.GetLineColor() == COL_TRANSPARENT)
+        pFrameData->mpBuffer->SetLineColor();
+    else
+        pFrameData->mpBuffer->SetLineColor(rDev.GetLineColor());
     pFrameData->mpBuffer->SetMapMode(pWindow->GetMapMode());
     pFrameData->mpBuffer->SetRefPoint(rDev.GetRefPoint());
     pFrameData->mpBuffer->SetSettings(pWindow->GetSettings());
@@ -370,7 +373,7 @@ void RenderTools::DrawSelectionBackground(vcl::RenderContext& rRenderContext, vc
         aRect.AdjustRight(1 );
         aRect.AdjustBottom(1 );
     }
-    rRenderContext.Push(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR);
+    auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR);
 
     if (bDrawBorder)
         rRenderContext.SetLineColor(bDark ? COL_WHITE : (bBright ? COL_BLACK : aSelectionBorderColor));
@@ -469,8 +472,6 @@ void RenderTools::DrawSelectionBackground(vcl::RenderContext& rRenderContext, vc
             rRenderContext.DrawTransparent(aPolyPoly, nPercent);
         }
     }
-
-    rRenderContext.Pop(); // LINECOLOR | FILLCOLOR
 }
 
 void Window::PushPaintHelper(PaintHelper *pHelper, vcl::RenderContext& rRenderContext)
@@ -1198,6 +1199,11 @@ void Window::LogicInvalidate(const tools::Rectangle* pRectangle)
         PixelInvalidate(nullptr);
 }
 
+bool Window::InvalidateByForeignEditView(EditView* )
+{
+    return false;
+}
+
 void Window::PixelInvalidate(const tools::Rectangle* pRectangle)
 {
     if (comphelper::LibreOfficeKit::isDialogPainting() || !comphelper::LibreOfficeKit::isActive())
@@ -1220,7 +1226,7 @@ void Window::PixelInvalidate(const tools::Rectangle* pRectangle)
 
         aPayload.emplace_back("rectangle", aRect.toString());
 
-        pNotifier->notifyWindow(GetLOKWindowId(), "invalidate", aPayload);
+        pNotifier->notifyWindow(GetLOKWindowId(), u"invalidate"_ustr, aPayload);
     }
     // Added for dialog items. Pass invalidation to the parent window.
     else if (VclPtr<vcl::Window> pParent = GetParentWithLOKNotifier())
@@ -1523,11 +1529,11 @@ void Window::ImplPaintToDevice( OutputDevice* i_pTargetOutDev, const Point& i_rP
     VclPtrInstance<VirtualDevice> pMaskedDevice(*i_pTargetOutDev,
                                                 DeviceFormat::WITH_ALPHA);
 
-    pMaskedDevice->SetOutputSizePixel( GetOutputSizePixel() );
+    pMaskedDevice->SetOutputSizePixel( GetOutputSizePixel(), true, true );
     pMaskedDevice->EnableRTL( IsRTLEnabled() );
     aMtf.WindStart();
     aMtf.Play(*pMaskedDevice);
-    BitmapEx aBmpEx( pMaskedDevice->GetBitmapEx( Point( 0, 0 ), aPaintRect.GetSize() ) );
+    Bitmap aBmpEx( pMaskedDevice->GetBitmap( Point( 0, 0 ), aPaintRect.GetSize() ) );
     i_pTargetOutDev->DrawBitmapEx( i_rPos, aBmpEx );
     // get rid of virtual device now so they don't pile up during recursive calls
     pMaskedDevice.disposeAndClear();
@@ -1542,7 +1548,11 @@ void Window::ImplPaintToDevice( OutputDevice* i_pTargetOutDev, const Point& i_rP
                 nDeltaX = GetOutDev()->mnOutWidth - nDeltaX - pChild->GetOutDev()->mnOutWidth;
             tools::Long nDeltaY = pChild->GetOutOffYPixel() - GetOutOffYPixel();
             Point aPos( i_rPos );
-            Point aDelta( nDeltaX, nDeltaY );
+            // tdf#165706 those delta values are in pixels, but aPos copied from
+            // i_rPos *may* be in logical coordinates if a MapMode is set at
+            // i_pTargetOutDev. To not mix values of different coordinate systems
+            // it *needs* to be converted (which does nothing if no MapMode)
+            Point aDelta( i_pTargetOutDev->PixelToLogic( Point( nDeltaX, nDeltaY )) );
             aPos += aDelta;
             pChild->ImplPaintToDevice( i_pTargetOutDev, aPos );
         }
@@ -1627,9 +1637,6 @@ void Window::Erase(vcl::RenderContext& rRenderContext)
         if (eRasterOp != RasterOp::OverPaint)
             rRenderContext.SetRasterOp(eRasterOp);
     }
-
-    if (GetOutDev()->mpAlphaVDev)
-        GetOutDev()->mpAlphaVDev->Erase();
 }
 
 void Window::ImplScroll( const tools::Rectangle& rRect,

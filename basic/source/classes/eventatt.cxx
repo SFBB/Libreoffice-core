@@ -58,7 +58,6 @@ using namespace ::com::sun::star::script;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::reflection;
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
 using namespace ::cppu;
@@ -80,13 +79,13 @@ void SFURL_firing_impl( const ScriptEvent& aScriptEvent, Any* pRet, const Refere
             }
             else
             {
-                Reference< XComponentContext > xContext(
+                const Reference< XComponentContext >& xContext(
                     comphelper::getProcessComponentContext() );
                 Reference< provider::XScriptProviderFactory > xFactory =
                     provider::theMasterScriptProviderFactory::get( xContext );
 
                 Any aCtx;
-                aCtx <<= OUString("user");
+                aCtx <<= u"user"_ustr;
                 xScriptProvider = xFactory->createScriptProvider( aCtx );
             }
 
@@ -113,7 +112,7 @@ void SFURL_firing_impl( const ScriptEvent& aScriptEvent, Any* pRet, const Refere
             Any result = xScript->invoke( inArgs, outIndex, outArgs );
             if ( pRet )
             {
-                *pRet = result;
+                *pRet = std::move(result);
             }
         }
         catch ( const RuntimeException& )
@@ -227,11 +226,11 @@ void BasicScriptListener_Impl::firing_impl( const ScriptEvent& aScriptEvent, Any
         StarBASICRef xLibSearchBasic;
         if( aLocation == "application" )
         {
-            xLibSearchBasic = xAppStandardBasic;
+            xLibSearchBasic = std::move(xAppStandardBasic);
         }
         else if( aLocation == "document" )
         {
-            xLibSearchBasic = xDocStandardBasic;
+            xLibSearchBasic = std::move(xDocStandardBasic);
         }
         else
         {
@@ -319,7 +318,7 @@ css::uno::Reference< css::container::XNameContainer > implFindDialogLibForDialog
 {
     css::uno::Reference< css::container::XNameContainer > aRetDlgLib;
 
-    SbxVariable* pDlgLibContVar = pBasic->Find("DialogLibraries", SbxClassType::Object);
+    SbxVariable* pDlgLibContVar = pBasic->Find(u"DialogLibraries"_ustr, SbxClassType::Object);
     if( auto pDlgLibContUnoObj = dynamic_cast<SbUnoObject*>( pDlgLibContVar) )
     {
         Any aDlgLibContAny = pDlgLibContUnoObj->getUnoAny();
@@ -406,7 +405,7 @@ css::uno::Reference< css::container::XNameContainer > implFindDialogLibForDialog
 
 void RTL_Impl_CreateUnoDialog( SbxArray& rPar )
 {
-    Reference< XComponentContext > xContext( comphelper::getProcessComponentContext() );
+    const Reference< XComponentContext >& xContext( comphelper::getProcessComponentContext() );
 
     // We need at least 1 parameter
     if (rPar.Count() < 2)
@@ -424,7 +423,7 @@ void RTL_Impl_CreateUnoDialog( SbxArray& rPar )
         return;
     }
     Any aAnyISP = pUnoObj->getUnoAny();
-    TypeClass eType = aAnyISP.getValueType().getTypeClass();
+    TypeClass eType = aAnyISP.getValueTypeClass();
 
     if( eType != TypeClass_INTERFACE )
     {
@@ -434,7 +433,7 @@ void RTL_Impl_CreateUnoDialog( SbxArray& rPar )
 
     // Create new uno dialog
     Reference< XNameContainer > xDialogModel( xContext->getServiceManager()->createInstanceWithContext(
-                      "com.sun.star.awt.UnoControlDialogModel", xContext), UNO_QUERY );
+                      u"com.sun.star.awt.UnoControlDialogModel"_ustr, xContext), UNO_QUERY );
     if( !xDialogModel.is() )
     {
         return;
@@ -456,13 +455,13 @@ void RTL_Impl_CreateUnoDialog( SbxArray& rPar )
         try
         {
             bool bDecoration = true;
-            OUString aDecorationPropName("Decoration");
+            OUString aDecorationPropName(u"Decoration"_ustr);
             Any aDecorationAny = xDlgModPropSet->getPropertyValue( aDecorationPropName );
             aDecorationAny >>= bDecoration;
             if( !bDecoration )
             {
                 xDlgModPropSet->setPropertyValue( aDecorationPropName, Any( true ) );
-                xDlgModPropSet->setPropertyValue( "Title", Any( OUString() ) );
+                xDlgModPropSet->setPropertyValue( u"Title"_ustr, Any( OUString() ) );
             }
         }
         catch(const UnknownPropertyException& )
@@ -500,7 +499,7 @@ void RTL_Impl_CreateUnoDialog( SbxArray& rPar )
                     if ( aDlgLib.is() )
                     {
                         bDocDialog = true;
-                        xModel = xNextModel;
+                        xModel = std::move(xNextModel);
                         break;
                     }
                 }

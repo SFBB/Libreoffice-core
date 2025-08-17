@@ -36,7 +36,7 @@
 #include <cmdid.h>
 #include <anchoredobject.hxx>
 
-#include <cppuhelper/bootstrap.hxx>
+#include <comphelper/processfactory.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Size.hpp>
@@ -148,7 +148,7 @@ SwInsertChart::SwInsertChart( const Link<css::ui::dialogs::DialogClosedEvent*, v
         if( ! rWrtShell.IsTableComplexForChart())
         {
             SwFrameFormat* pTableFormat = rWrtShell.GetTableFormat();
-            aRangeString = pTableFormat->GetName() + "." + rWrtShell.GetBoxNms();
+            aRangeString = pTableFormat->GetName().toString() + "." + rWrtShell.GetBoxNms();
 
             // get table data provider
             xDataProvider.set( pView->GetDocShell()->getIDocumentChartDataProviderAccess().GetChartDataProvider( true ) );
@@ -159,9 +159,7 @@ SwInsertChart::SwInsertChart( const Link<css::ui::dialogs::DialogClosedEvent*, v
     xChartModel.set( SwTableFUNC( &rWrtShell ).InsertChart( xDataProvider, xDataProvider.is(), aRangeString, &pFlyFrameFormat ));
 
     //open wizard
-    //@todo get context from writer if that has one
-    uno::Reference< uno::XComponentContext > xContext(
-        ::cppu::defaultBootstrap_InitialComponentContext() );
+    uno::Reference< uno::XComponentContext > xContext(::comphelper::getProcessComponentContext());
     if( !(xContext.is() && xChartModel.is() && xDataProvider.is()))
         return;
 
@@ -171,7 +169,7 @@ SwInsertChart::SwInsertChart( const Link<css::ui::dialogs::DialogClosedEvent*, v
 
     uno::Reference< ui::dialogs::XAsynchronousExecutableDialog > xDialog(
         xMCF->createInstanceWithContext(
-            "com.sun.star.comp.chart2.WizardDialog", xContext),
+            u"com.sun.star.comp.chart2.WizardDialog"_ustr, xContext),
         uno::UNO_QUERY);
     uno::Reference< lang::XInitialization > xInit( xDialog, uno::UNO_QUERY );
     if( xInit.is() )
@@ -192,7 +190,7 @@ SwInsertChart::SwInsertChart( const Link<css::ui::dialogs::DialogClosedEvent*, v
             {
                 //get dialog size:
                 awt::Size aDialogAWTSize;
-                if( xDialogProps->getPropertyValue("Size")
+                if( xDialogProps->getPropertyValue(u"Size"_ustr)
                     >>= aDialogAWTSize )
                 {
                     Size aDialogSize( aDialogAWTSize.Width, aDialogAWTSize.Height );
@@ -204,7 +202,7 @@ SwInsertChart::SwInsertChart( const Link<css::ui::dialogs::DialogClosedEvent*, v
                             aSwRect = pFlyFrameFormat->GetAnchoredObj()->GetObjRectWithSpaces();
                         tools::Rectangle aRect( aSwRect.SVRect() );
                         Point aDialogPos = SwGetChartDialogPos( &rWrtShell.GetView().GetEditWin(), aDialogSize, aRect );
-                        xDialogProps->setPropertyValue("Position",
+                        xDialogProps->setPropertyValue(u"Position"_ustr,
                             uno::Any( awt::Point(aDialogPos.getX(),aDialogPos.getY()) ) );
                     }
                 }

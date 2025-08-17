@@ -80,17 +80,17 @@ import com.sun.star.wizards.common.SystemDialog;
 public class DBMetaData
 {
     private XNameAccess xQueryNames;
-    public XDatabaseMetaData xDBMetaData;
+    private XDatabaseMetaData xDBMetaData;
     private XDataSource m_dataSource;
     private XPropertySet m_dataSourceSettings;
     private XOfficeDatabaseDocument xModel;
     private XPropertySet xDataSourcePropertySet;
     private java.util.ArrayList<CommandObject> CommandObjects = new ArrayList<CommandObject>(1);
     private Locale aLocale;
-    public String DataSourceName;
-    public com.sun.star.sdbc.XConnection DBConnection;
+    private String DataSourceName;
+    private com.sun.star.sdbc.XConnection DBConnection;
     private com.sun.star.sdb.tools.XConnectionTools m_connectionTools;
-    public com.sun.star.lang.XMultiServiceFactory xMSF;
+    protected com.sun.star.lang.XMultiServiceFactory xMSF;
     private XComponent xConnectionComponent;
 
     private XNameAccess xNameAccess;
@@ -132,10 +132,25 @@ public class DBMetaData
     private boolean bPasswordIsRequired;
     private static final int NOLIMIT = 9999999;
     private static final int INVALID = 9999999;
-    public TypeInspector oTypeInspector;
+    protected TypeInspector oTypeInspector;
     private NumberFormatter oNumberFormatter = null;
     private long lDateCorrection = INVALID;
     private boolean bdisposeConnection = false;
+
+    public com.sun.star.lang.XMultiServiceFactory getMSF()
+    {
+        return xMSF;
+    }
+
+    public XDatabaseMetaData getDBMetaData()
+    {
+        return xDBMetaData;
+    }
+
+    public com.sun.star.sdbc.XConnection getDBConnection()
+    {
+        return DBConnection;
+    }
 
     public XPropertySet getDataSourcePropertySet()
     {
@@ -196,7 +211,10 @@ public class DBMetaData
         }
     }
 
-
+    public String getDataSourceName()
+    {
+        return DataSourceName;
+    }
 
     public boolean hasTableByName(String _stablename)
     {
@@ -701,7 +719,7 @@ public class DBMetaData
         try
         {
             ensureDataSourceSettings();
-            Any primaryKeySupport = (Any)m_dataSourceSettings.getPropertyValue( "PrimaryKeySupport" );
+            Object primaryKeySupport = m_dataSourceSettings.getPropertyValue( "PrimaryKeySupport" );
             if ( AnyConverter.isVoid( primaryKeySupport ) )
                 supportsPrimaryKeys = supportsCoreSQLGrammar();
             else
@@ -750,7 +768,7 @@ public class DBMetaData
             Object oQuery = xSSFQueryDefs.createInstance(); //"com.sun.star.sdb.QueryDefinition"
             XPropertySet xPSet = UnoRuntime.queryInterface( XPropertySet.class, oQuery );
 
-            String s = _oSQLQueryComposer.m_xQueryAnalyzer.getQuery();
+            String s = _oSQLQueryComposer.getQuery();
             xPSet.setPropertyValue(PropertyNames.COMMAND, s);
 
             XNameContainer xNameCont = UnoRuntime.queryInterface( XNameContainer.class, xQueryDefs );

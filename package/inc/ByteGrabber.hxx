@@ -21,20 +21,19 @@
 
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/uno/Reference.h>
-
-#include <mutex>
+#include <comphelper/bytereader.hxx>
+#include <array>
 
 namespace com::sun::star {
     namespace io { class XSeekable; class XInputStream; }
 }
 class ByteGrabber final
 {
-    std::mutex m_aMutex;
-
     css::uno::Reference < css::io::XInputStream > xStream;
     css::uno::Reference < css::io::XSeekable > xSeek;
+    comphelper::ByteReader* mpByteReader;
+    std::array<sal_Int8, 8> maBuffer;
     css::uno::Sequence < sal_Int8 > aSequence;
-    const sal_Int8 *pSequence;
 
 public:
     ByteGrabber (css::uno::Reference < css::io::XInputStream > const & xIstream);
@@ -46,7 +45,7 @@ public:
     /// @throws css::io::BufferSizeExceededException
     /// @throws css::io::IOException
     /// @throws css::uno::RuntimeException
-    sal_Int32 readBytes( css::uno::Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead );
+    sal_Int32 readBytes( sal_Int8* aData, sal_Int32 nBytesToRead );
     // XSeekable
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::io::IOException
@@ -61,6 +60,7 @@ public:
 
     sal_uInt16 ReadUInt16();
     sal_uInt32 ReadUInt32();
+    sal_uInt64 ReadUInt64();
     sal_Int16 ReadInt16()
     {
         return static_cast<sal_Int16>(ReadUInt16());

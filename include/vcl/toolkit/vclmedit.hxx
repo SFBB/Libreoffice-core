@@ -23,6 +23,7 @@
 #error "don't use this in new code"
 #endif
 
+#include <config_options.h>
 #include <tools/lineend.hxx>
 #include <vcl/wintypes.hxx>
 #include <vcl/toolkit/edit.hxx>
@@ -32,6 +33,7 @@
 
 class ImpVclMEdit;
 class ExtTextEngine;
+class ScrollBar;
 class TextView;
 
 class TextWindow final : public vcl::Window
@@ -75,7 +77,7 @@ public:
     void            DisableSelectionOnFocus() { mbSelectOnTab = false; }
 };
 
-class VCL_DLLPUBLIC VclMultiLineEdit : public Edit
+class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) VclMultiLineEdit : public Edit
 {
     friend class VCLXAccessibleEdit;
 

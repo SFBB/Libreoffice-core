@@ -17,7 +17,7 @@
  */
 
 /*
- * See https://wiki.openoffice.org/wiki/Framework/Article/Implementation_of_the_Dispatch_API_In_SFX2#Slot_definitions
+ * See https://wiki.documentfoundation.org/Framework/Article/Implementation_of_the_Dispatch_API_In_SFX2#Slot_definitions
  * for details on what these mean, and what values to use.
  * Likely many of the existing ones are not defined correctly.
  *
@@ -4465,6 +4465,7 @@ SfxVoidItem ExternalEdit SID_EXTERNAL_EDIT
     AutoUpdate = FALSE,
     FastCall = FALSE,
     ReadOnlyDoc = TRUE,
+    ViewerApp = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -4564,7 +4565,7 @@ SfxVoidItem ChangePicture SID_CHANGE_PICTURE
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -4598,7 +4599,7 @@ SfxVoidItem CompressGraphic SID_COMPRESS_GRAPHIC
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -4684,7 +4685,10 @@ SfxVoidItem InPlaceObjectResize SID_OBJECTRESIZE
 
 
 SfxVoidItem InsertAnnotation SID_INSERT_POSTIT
-(SvxPostItAuthorItem Author SID_ATTR_POSTIT_AUTHOR,SvxPostItDateItem Date SID_ATTR_POSTIT_DATE,SvxPostItTextItem Text SID_ATTR_POSTIT_TEXT)
+(SvxPostItAuthorItem Author SID_ATTR_POSTIT_AUTHOR,
+ SvxPostItDateItem Date SID_ATTR_POSTIT_DATE,
+ SvxPostItTextItem Text SID_ATTR_POSTIT_TEXT,
+ SvxPostItTextItem Html SID_ATTR_POSTIT_HTML)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -4705,6 +4709,7 @@ SfxVoidItem EditAnnotation SID_EDIT_POSTIT
  SvxPostItAuthorItem Author SID_ATTR_POSTIT_AUTHOR,
  SvxPostItDateItem Date SID_ATTR_POSTIT_DATE,
  SvxPostItTextItem Text SID_ATTR_POSTIT_TEXT,
+ SvxPostItTextItem Html SID_ATTR_POSTIT_HTML,
  SfxInt32Item PositionX SID_ATTR_POSTIT_POSITION_X
  SfxInt32Item PositionY SID_ATTR_POSTIT_POSITION_Y)
 [
@@ -4758,7 +4763,9 @@ SfxVoidItem ShowResolvedAnnotations SID_TOGGLE_RESOLVED_NOTES
 
 
 SfxVoidItem ReplyToAnnotation SID_REPLYTO_POSTIT
-(SvxPostItIdItem Id SID_ATTR_POSTIT_ID,SvxPostItTextItem Text SID_ATTR_POSTIT_TEXT)
+(SvxPostItIdItem Id SID_ATTR_POSTIT_ID,
+ SvxPostItTextItem Text SID_ATTR_POSTIT_TEXT,
+ SvxPostItTextItem Html SID_ATTR_POSTIT_HTML)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -4991,6 +4998,21 @@ SfxUInt16Item CurrentNumListType FN_NUM_NUM_RULE_INDEX
     GroupId = SfxGroupId::Enumeration;
 ]
 
+SfxStringListItem DocumentBulletList FN_BUL_GET_DOC_BULLETS
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = TRUE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Enumeration;
+]
 
 SfxVoidItem InsertObject SID_INSERT_OBJECT
 ( SfxGlobalNameItem ClassId SID_INSERT_OBJECT )
@@ -5821,7 +5843,7 @@ SvxULSpaceItem BelowSpacing SID_ATTR_PARA_BELOWSPACE
 
 
 SvxLineItem LineStyle SID_FRAME_LINESTYLE
-
+(SfxInt16Item LineStyle FN_PARAM_1, SfxInt16Item InnerLineWidth FN_PARAM_2, SfxInt16Item OuterLineWidth FN_PARAM_3, SfxInt16Item LineDistance FN_PARAM_4)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -6050,6 +6072,7 @@ SfxBoolItem OpenReadOnly SID_FM_OPEN_READONLY
     AutoUpdate = TRUE,
     FastCall = FALSE,
     ReadOnlyDoc = TRUE,
+    ViewerApp = FALSE,
     Toggle = TRUE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -6137,6 +6160,9 @@ SfxUInt16Item SetNumber FN_SVX_SET_NUMBER
 
 
 SfxUInt16Item SetBullet FN_SVX_SET_BULLET
+(SfxStringItem BulletChar SID_ATTR_BULLET_CHAR,
+ SfxStringItem BulletFont SID_ATTR_BULLET_FONT,
+ SfxUInt16Item BulletIndex SID_ATTR_BULLET_INDEX)
 [
     AutoUpdate = TRUE,
     FastCall = FALSE,
@@ -6432,7 +6458,7 @@ SvxPageItem AttributePage SID_ATTR_PAGE
 
 
 SvxPageItem Orientation SID_ATTR_PAGE_ORIENTATION
-
+(SfxBoolItem isLandscape SID_ATTR_PAGE_ORIENTATION)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -7472,7 +7498,7 @@ SfxVoidItem TableChangeCurrentBorderPosition SID_TABLE_CHANGE_CURRENT_BORDER_POS
 [
     AutoUpdate = FALSE,
     FastCall = TRUE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -8487,6 +8513,23 @@ SfxBoolItem SuperScript SID_SET_SUPER_SCRIPT
     GroupId = SfxGroupId::Format;
 ]
 
+SfxBoolItem SmallCaps SID_SET_SMALL_CAPS
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Format;
+]
 
 SfxVoidItem SwEditOptions SID_SW_EDITOPTIONS
 ()
@@ -9669,8 +9712,25 @@ SfxVoidItem OpenHyperlinkOnCursor SID_OPEN_HYPERLINK
         GroupId = SfxGroupId::Edit;
 ]
 
-SfxVoidItem EditHyperlink SID_EDIT_HYPERLINK
+SfxVoidItem InsertHyperlink SID_INSERT_HYPERLINK
 ()
+[
+        AutoUpdate = FALSE,
+        FastCall = FALSE,
+        ReadOnlyDoc = TRUE,
+        Toggle = FALSE,
+        Container = FALSE,
+        RecordAbsolute = FALSE,
+        RecordPerSet;
+
+        AccelConfig = TRUE,
+        MenuConfig = TRUE,
+        ToolBoxConfig = TRUE,
+        GroupId = SfxGroupId::Insert;
+]
+
+SfxVoidItem EditHyperlink SID_EDIT_HYPERLINK
+(SfxInt32Item PositionX FN_PARAM_1, SfxInt32Item PositionY FN_PARAM_2)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -11197,6 +11257,23 @@ SfxVoidItem InsertNarrowNobreakSpace FN_INSERT_NNBSP
     GroupId = SfxGroupId::Insert;
 ]
 
+SfxVoidItem BasicColorSchemeDialog SID_BASICIDE_COLOR_SCHEME_DLG
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = TRUE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Controls;
+]
+
 SfxVoidItem ManageLanguage SID_BASICIDE_MANAGE_LANG
 ()
 [
@@ -12356,7 +12433,7 @@ SfxVoidItem AnchorMenu SID_ANCHOR_MENU
 ]
 
 SfxVoidItem InsertSignatureLine SID_INSERT_SIGNATURELINE
-()
+(SfxStringItem SignatureCert FN_PARAM_1, SfxStringItem SignatureKey FN_PARAM_2, SfxBoolItem External FN_PARAM_3)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -12407,7 +12484,7 @@ SfxVoidItem SignSignatureLine SID_SIGN_SIGNATURELINE
 ]
 
 SfxVoidItem RemoveHyperlink SID_REMOVE_HYPERLINK
-()
+(SfxInt32Item PositionX FN_PARAM_1, SfxInt32Item PositionY FN_PARAM_2)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -12424,6 +12501,7 @@ SfxVoidItem RemoveHyperlink SID_REMOVE_HYPERLINK
 ]
 
 SfxVoidItem CopyHyperlinkLocation SID_COPY_HYPERLINK_LOCATION
+(SfxInt32Item PositionX FN_PARAM_1, SfxInt32Item PositionY FN_PARAM_2)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -12474,6 +12552,23 @@ SfxVoidItem EditQrCode SID_EDIT_QRCODE
     GroupId = SfxGroupId::Edit;
 ]
 
+SfxVoidItem GotoPage SID_GO_TO_PAGE
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = TRUE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Navigator;
+]
+
 SfxVoidItem SpellCheckIgnore SID_SPELLCHECK_IGNORE
 (SfxStringItem Type FN_PARAM_1)
 [
@@ -12493,6 +12588,23 @@ SfxVoidItem SpellCheckIgnore SID_SPELLCHECK_IGNORE
 
 SfxVoidItem SpellCheckIgnoreAll SID_SPELLCHECK_IGNORE_ALL
 (SfxStringItem Type FN_PARAM_1)
+[
+    AutoUpdate = FALSE,
+    FastCall = TRUE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Format;
+]
+
+SfxVoidItem AddToWordbook SID_ADD_TO_WORDBOOK
+(SfxStringItem Wordbook FN_PARAM_1)
 [
     AutoUpdate = FALSE,
     FastCall = TRUE,
@@ -12547,7 +12659,7 @@ SfxVoidItem ThemeDialog SID_THEME_DIALOG
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -12612,6 +12724,57 @@ SdrMetricItem GlowRadius SID_ATTR_GLOW_RADIUS
 ]
 
 SdrPercentItem GlowTransparency SID_ATTR_GLOW_TRANSPARENCY
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Document;
+]
+
+XColorItem GlowTextColor SID_ATTR_GLOW_TEXT_COLOR
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Document;
+]
+
+SdrMetricItem GlowTextRadius SID_ATTR_GLOW_TEXT_RADIUS
+
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Document;
+]
+
+SdrPercentItem GlowTextTransparency SID_ATTR_GLOW_TEXT_TRANSPARENCY
 
 [
     AutoUpdate = TRUE,
@@ -12694,4 +12857,52 @@ SdrMetricItem TextColumnsSpacing SID_ATTR_TEXTCOLUMNS_SPACING
     MenuConfig = FALSE,
     ToolBoxConfig = FALSE,
     GroupId = SfxGroupId::Format;
+]
+
+SfxBoolItem ClickChangeRotation SID_CLICK_CHANGE_ROTATION
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Options;
+]
+
+SfxBoolItem ProtectSize SID_PROTECTSIZE
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Modify;
+]
+
+SfxBoolItem ProtectPos SID_PROTECTPOS
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Modify;
 ]

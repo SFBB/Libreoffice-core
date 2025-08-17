@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -25,8 +25,9 @@
 #include <QtWidgets/QApplication>
 #include <QtCore/QThread>
 
+#include <config_emscripten.h>
+#include <config_vclplug.h>
 #include <vcl/svapp.hxx>
-#include <sal/log.hxx>
 
 #include <svdata.hxx>
 
@@ -34,15 +35,20 @@ QtTimer::QtTimer()
 {
     m_aTimer.setSingleShot(true);
     m_aTimer.setTimerType(Qt::PreciseTimer);
-    connect(&m_aTimer, SIGNAL(timeout()), this, SLOT(timeoutActivated()));
-    connect(this, SIGNAL(startTimerSignal(int)), this, SLOT(startTimer(int)));
-    connect(this, SIGNAL(stopTimerSignal()), this, SLOT(stopTimer()));
+    connect(&m_aTimer, &QTimer::timeout, this, &QtTimer::timeoutActivated);
+    connect(this, &QtTimer::startTimerSignal, this, &QtTimer::startTimer);
+    connect(this, &QtTimer::stopTimerSignal, this, &QtTimer::stopTimer);
 }
 
 void QtTimer::timeoutActivated()
 {
+#if !(defined EMSCRIPTEN && ENABLE_QT6 && HAVE_EMSCRIPTEN_JSPI && !HAVE_EMSCRIPTEN_PROXY_TO_PTHREAD)
+    //TODO: While the special Emscripten Qt6 JSPI/non-PROXY_TO_PTHREAD mode doesn't lock the
+    // SolarMutex here, but only when calling pTask->Invoke() in Scheduler::CallbackTaskScheduling,
+    // that looks too brittle in general, so treat that special mode specially here.
     SolarMutexGuard aGuard;
-    if (Application::IsOnSystemEventLoop())
+#endif
+    if (Application::IsUseSystemEventLoop())
     {
         const ImplSVData* pSVData = ImplGetSVData();
         assert(pSVData && pSVData->mpDefInst);
@@ -59,4 +65,4 @@ void QtTimer::stopTimer() { m_aTimer.stop(); }
 
 void QtTimer::Stop() { Q_EMIT stopTimerSignal(); }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

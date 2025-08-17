@@ -23,8 +23,8 @@ struct StringWithHash
     OUString str;
     sal_Int32 hashCode;
     StringWithHash(OUString s)
-        : str(s)
-        , hashCode(s.hashCode())
+        : str(std::move(s))
+        , hashCode(str.hashCode())
     {
     }
 

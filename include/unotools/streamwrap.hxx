@@ -59,11 +59,11 @@ public:
     virtual ~OInputStreamWrapper() override;
 
 // css::io::XInputStream
-    virtual sal_Int32   SAL_CALL    readBytes(css::uno::Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead) override;
-    virtual sal_Int32   SAL_CALL    readSomeBytes(css::uno::Sequence< sal_Int8 >& aData, sal_Int32 nMaxBytesToRead) override;
-    virtual void        SAL_CALL    skipBytes(sal_Int32 nBytesToSkip) override;
-    virtual sal_Int32   SAL_CALL    available() override;
-    virtual void        SAL_CALL    closeInput() override;
+    virtual sal_Int32   SAL_CALL    readBytes(css::uno::Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead) override final;
+    virtual sal_Int32   SAL_CALL    readSomeBytes(css::uno::Sequence< sal_Int8 >& aData, sal_Int32 nMaxBytesToRead) override final;
+    virtual void        SAL_CALL    skipBytes(sal_Int32 nBytesToSkip) override final;
+    virtual sal_Int32   SAL_CALL    available() override final;
+    virtual void        SAL_CALL    closeInput() override final;
 
 // utl::ByteReader
     virtual sal_Int32 readSomeBytes( sal_Int8* aData, sal_Int32 nMaxBytesToRead ) final override;
@@ -92,25 +92,25 @@ public:
     OSeekableInputStreamWrapper(SvStream* _pStream, bool _bOwner = false);
 
     // XSeekable
-    virtual void SAL_CALL seek( sal_Int64 _nLocation ) override;
-    virtual sal_Int64 SAL_CALL getPosition(  ) override;
-    virtual sal_Int64 SAL_CALL getLength(  ) override;
+    virtual void SAL_CALL seek( sal_Int64 _nLocation ) override final;
+    virtual sal_Int64 SAL_CALL getPosition(  ) override final;
+    virtual sal_Int64 SAL_CALL getLength(  ) override final;
 };
 
 //= OOutputStreamWrapper
 
-class OOutputStreamWrapper : public cppu::WeakImplHelper<css::io::XOutputStream>
+class UNOTOOLS_DLLPUBLIC OOutputStreamWrapper : public cppu::WeakImplHelper<css::io::XOutputStream>
 {
 public:
-    UNOTOOLS_DLLPUBLIC OOutputStreamWrapper(SvStream& _rStream);
+    OOutputStreamWrapper(SvStream& _rStream);
+
+// css::io::XOutputStream
+    virtual void SAL_CALL writeBytes(const css::uno::Sequence< sal_Int8 >& aData) override final;
+    virtual void SAL_CALL flush() override final;
+    virtual void SAL_CALL closeOutput() override final;
 
 protected:
     virtual ~OOutputStreamWrapper() override;
-
-// css::io::XOutputStream
-    virtual void SAL_CALL writeBytes(const css::uno::Sequence< sal_Int8 >& aData) override;
-    virtual void SAL_CALL flush() override;
-    virtual void SAL_CALL closeOutput() override;
 
     /// throws an exception according to the error flag of m_pSvStream
     void checkError() const;

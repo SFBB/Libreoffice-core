@@ -28,6 +28,8 @@
 
 #include <shlwapi.h> // declaration of DllInstall
 
+#include <systools/win32/extended_max_path.hxx>
+
 namespace
 {
 HANDLE g_hModule;
@@ -40,8 +42,8 @@ ITypeLib* GetTypeLib()
     typedef std::unique_ptr<ITypeLib, void(*)(IUnknown* p)> ITypeLibGuard;
     static ITypeLibGuard s_aITypeLibGuard = [] {
         ITypeLibGuard aITypeLibGuard(nullptr, [](IUnknown* p) { if (p) p->Release(); });
-        wchar_t szFile[MAX_PATH];
-        if (GetModuleFileNameW(GetHModule(), szFile, MAX_PATH) == 0)
+        wchar_t szFile[EXTENDED_MAX_PATH];
+        if (GetModuleFileNameW(GetHModule(), szFile, std::size(szFile)) == 0)
             return aITypeLibGuard;
         ITypeLib* pTypeLib;
         if (FAILED(LoadTypeLib(szFile, &pTypeLib)))
@@ -55,8 +57,8 @@ ITypeLib* GetTypeLib()
 const wchar_t* GetHelperExe()
 {
     static wchar_t* s_sPath = []() -> wchar_t* {
-        static wchar_t sPath[MAX_PATH];
-        if (GetModuleFileNameW(GetHModule(), sPath, MAX_PATH) == 0)
+        static wchar_t sPath[EXTENDED_MAX_PATH];
+        if (GetModuleFileNameW(GetHModule(), sPath, std::size(sPath)) == 0)
             return nullptr;
         wchar_t* pSlashPos = wcsrchr(sPath, L'\\');
         if (pSlashPos == nullptr)
@@ -120,8 +122,8 @@ STDAPI DllRegisterServer(void)
     if (!pTypeLib)
         return ResultFromScode(SELFREG_E_TYPELIB);
 
-    wchar_t szFile[MAX_PATH];
-    if (GetModuleFileNameW(GetHModule(), szFile, MAX_PATH) == 0)
+    wchar_t szFile[EXTENDED_MAX_PATH];
+    if (GetModuleFileNameW(GetHModule(), szFile, std::size(szFile)) == 0)
         return HRESULT_FROM_WIN32(GetLastError());
 
     HRESULT hr = RegisterTypeLib(pTypeLib, szFile, nullptr);

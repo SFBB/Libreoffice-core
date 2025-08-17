@@ -336,6 +336,10 @@ interface BaseText
         ExecMethod = ExecInsert ;
         StateMethod = GetState ;
     ]
+    FN_TRANSFORM_DOCUMENT_STRUCTURE
+    [
+        ExecMethod = Execute ;
+    ]
     FN_INSERT_COLUMN_BREAK // status(final|play)
     [
         ExecMethod = ExecInsert ;
@@ -393,16 +397,16 @@ interface BaseText
     [
         StateMethod = StateInsert ;
     ]
-    FN_INSERT_HYPERLINK // status()
-    [
-        ExecMethod = Execute ;
-        StateMethod = GetState;
-        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
-    ]
     SID_HYPERLINK_DIALOG
     [
         ExecMethod = Execute ;
         StateMethod = GetState;
+    ]
+    SID_INSERT_HYPERLINK
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
     SID_RUBY_DIALOG
     [
@@ -810,6 +814,11 @@ interface BaseText
         StateMethod = GetState ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
+    FN_BUL_GET_DOC_BULLETS // status(final|play)
+    [
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
     FN_NUMBER_BULLETS // status(final|play)
     [
         ExecMethod = ExecEnterNum ;
@@ -957,6 +966,14 @@ interface BaseText
         ReadOnlyDoc = FALSE ;
     ]
 
+    FN_INSERT_FLD_RANGE_PGCOUNT
+    [
+        ExecMethod = ExecField ;
+        StateMethod = StateField ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+        ReadOnlyDoc = FALSE ;
+    ]
+
     FN_INSERT_FLD_TITLE
     [
         ExecMethod = ExecField ;
@@ -1024,7 +1041,18 @@ interface BaseText
         StateMethod = StateField ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
+    FN_COPY_FIELD // status()
+    [
+        ExecMethod = ExecField;
+        StateMethod = StateField;
+    ]
     FN_UPDATE_SEL_FIELD
+    [
+        ExecMethod = ExecField ;
+        StateMethod = StateField ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+    FN_CONVERT_SEL_FIELD
     [
         ExecMethod = ExecField ;
         StateMethod = StateField ;
@@ -1102,6 +1130,11 @@ interface BaseText
         StateMethod = StateField;
     ]
     FN_HIDE_ALL_NOTES
+    [
+        ExecMethod = ExecField ;
+        StateMethod = StateField;
+    ]
+    FN_PROMOTE_COMMENT
     [
         ExecMethod = ExecField ;
         StateMethod = StateField;
@@ -1403,8 +1436,14 @@ interface BaseText
     ]
     SID_ATTR_PARA_HYPHENZONE // status(final|play)
     [
-        ExecMethod = ExecTextCtrl;
-        StateMethod = GetTextCtrlState;
+        ExecMethod = ExecParaAttr ;
+        StateMethod = GetAttrState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+    FN_NO_BREAK // status(final|play)
+    [
+        ExecMethod = ExecCharAttr;
+        StateMethod = GetAttrState ;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
     SID_ATTR_CHAR_RELIEF
@@ -1871,6 +1910,12 @@ interface BaseText
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
+    FN_DELETE_CONTENT_CONTROL
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
+    ]
+
     FN_DELETE_FIELDS
     [
         ExecMethod = Execute ;
@@ -1890,6 +1935,12 @@ interface BaseText
     ]
 
     SID_SPELLCHECK_IGNORE_ALL
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
+    ]
+
+    SID_ADD_TO_WORDBOOK
     [
         ExecMethod = Execute ;
         StateMethod = GetState ;

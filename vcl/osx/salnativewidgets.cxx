@@ -25,6 +25,7 @@
 #include <vcl/threadex.hxx>
 #include <vcl/timer.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/themecolors.hxx>
 
 #include <quartz/salgdi.h>
 #include <osx/salnativewidgets.h>
@@ -34,6 +35,12 @@
 #include <premac.h>
 #include <Carbon/Carbon.h>
 #include <postmac.h>
+
+#include <scrollbarvalue.hxx>
+
+#if HAVE_FEATURE_SKIA
+#include <vcl/skia/SkiaHelper.hxx>
+#endif
 
 #include "cuidraw.hxx"
 
@@ -251,7 +258,32 @@ bool AquaSalGraphics::drawNativeControl(ControlType nType,
                                         const OUString &,
                                         const Color&)
 {
-    return mpBackend->drawNativeControl(nType, nPart, rControlRegion, nState, aValue);
+    // tdf#165266 Force native controls to use current effective appearance
+    // +[NSAppearance setCurrentAppearance:] is deprecated and calling
+    // that appears to do less and less with each new version of macos
+    // and/or Xcode so run all drawing of native controls in a block passed
+    // to -[NSAppearance performAsCurrentDrawingAppearance:].
+    __block bool bRet = false;
+    if (@available(macOS 11, *))
+    {
+        [[NSApp effectiveAppearance] performAsCurrentDrawingAppearance:^() {
+            bRet = mpBackend->drawNativeControl(nType, nPart, rControlRegion, nState, aValue);
+        }];
+    }
+    else
+    {
+        bRet = mpBackend->drawNativeControl(nType, nPart, rControlRegion, nState, aValue);
+    }
+
+    return bRet;
+}
+
+static NSColor* colorFromRGB(const Color& rColor)
+{
+    return [NSColor colorWithSRGBRed:(rColor.GetRed() / 255.0f)
+                               green:(rColor.GetGreen() / 255.0f)
+                                blue:(rColor.GetBlue() / 255.0f)
+                               alpha:(rColor.GetAlpha() / 255.0f)];
 }
 
 static void paintCell(NSCell* pBtn, const NSRect& bounds, bool bShowsFirstResponder, CGContextRef context, NSView* pView)
@@ -380,6 +412,8 @@ bool AquaGraphicsBackend::drawNativeControl(ControlType nType,
 
 static void drawBox(CGContextRef context, const NSRect& rc, NSColor* pColor)
 {
+    assert(pColor);
+
     CGContextSaveGState(context);
     CGContextTranslateCTM(context, rc.origin.x, rc.origin.y + rc.size.height);
     CGContextScaleCTM(context, 1, -1);
@@ -388,12 +422,13 @@ static void drawBox(CGContextRef context, const NSRect& rc, NSColor* pColor)
 
     NSRect rect = { NSZeroPoint, NSMakeSize(rc.size.width, rc.size.height) };
     NSBox* pBox = [[NSBox alloc] initWithFrame: rect];
-
     [pBox setBoxType: NSBoxCustom];
     [pBox setFillColor: pColor];
-    SAL_WNODEPRECATED_DECLARATIONS_PUSH // setBorderType first deprecated in macOS 10.15
-    [pBox setBorderType: NSNoBorder];
-    SAL_WNODEPRECATED_DECLARATIONS_POP
+
+    // -[NSBox setBorderType: NSNoBorder] is deprecated so hide the border
+    // by setting the border color to transparent
+    [pBox setBorderColor: [NSColor clearColor]];
+    [pBox setTitlePosition: NSNoTitle];
 
     [pBox displayRectIgnoringOpacity: rect inContext: graphicsContext];
 
@@ -407,7 +442,10 @@ static void drawBox(CGContextRef context, const NSRect& rc, NSColor* pColor)
 static void drawEditableBackground(CGContextRef context, const NSRect& rc)
 {
     CGContextSaveGState(context);
-    CGContextSetFillColorWithColor(context, [NSColor controlBackgroundColor].CGColor);
+    if (ThemeColors::VclPluginCanUseThemeColors())
+        CGContextSetFillColorWithColor(context, colorFromRGB(ThemeColors::GetThemeColors().GetBaseColor()).CGColor);
+    else
+        CGContextSetFillColorWithColor(context, [NSColor controlBackgroundColor].CGColor);
     CGContextFillRect(context, rc);
     CGContextRestoreGState(context);
 }
@@ -424,19 +462,26 @@ bool AquaGraphicsBackendBase::performDrawNativeControl(ControlType nType,
                                 AquaSalFrame* mpFrame)
 {
     bool bOK = false;
+    bool bCanUseThemeColors(ThemeColors::VclPluginCanUseThemeColors());
     AquaSalInstance* pInst = GetSalData()->mpInstance;
     HIRect rc = ImplGetHIRectFromRectangle(rControlRegion);
     switch (nType)
     {
         case ControlType::Toolbar:
             {
-                drawBox(context, rc, NSColor.windowBackgroundColor);
+                if (bCanUseThemeColors)
+                    drawBox(context, rc, colorFromRGB(ThemeColors::GetThemeColors().GetWindowColor()));
+                else
+                    drawBox(context, rc, NSColor.windowBackgroundColor);
                 bOK = true;
             }
             break;
         case ControlType::WindowBackground:
             {
-                drawBox(context, rc, NSColor.windowBackgroundColor);
+                if (bCanUseThemeColors)
+                    drawBox(context, rc, colorFromRGB(ThemeColors::GetThemeColors().GetWindowColor()));
+                else
+                    drawBox(context, rc, NSColor.windowBackgroundColor);
                 bOK = true;
             }
             break;
@@ -444,7 +489,10 @@ bool AquaGraphicsBackendBase::performDrawNativeControl(ControlType nType,
             {
                 rc.size.width += 2;
                 rc.size.height += 2;
-                drawBox(context, rc, NSColor.controlBackgroundColor);
+                if (bCanUseThemeColors)
+                    drawBox(context, rc, colorFromRGB(ThemeColors::GetThemeColors().GetBaseColor()));
+                else
+                    drawBox(context, rc, NSColor.controlBackgroundColor);
                 bOK = true;
             }
             break;
@@ -513,7 +561,7 @@ bool AquaGraphicsBackendBase::performDrawNativeControl(ControlType nType,
         case ControlType::Pushbutton:
             {
                 NSControlSize eSizeKind = NSControlSizeRegular;
-                NSBezelStyle eBezelStyle = NSBezelStyleRounded;
+                NSBezelStyle eBezelStyle = NSBezelStylePush;
 
                 PushButtonValue const *pPBVal = aValue.getType() == ControlType::Pushbutton ?
                                                 static_cast<PushButtonValue const *>(&aValue) : nullptr;
@@ -527,6 +575,12 @@ bool AquaGraphicsBackendBase::performDrawNativeControl(ControlType nType,
                 else if ((pPBVal && pPBVal->mbSingleLine) || rc.size.height < PUSH_BUTTON_NORMAL_HEIGHT * 3 / 2)
                 {
                     GetThemeMetric(kThemeMetricPushButtonHeight, &nPaintHeight);
+                }
+                else if (pPBVal && !pPBVal->mbSingleLine)
+                {
+                    // If not a single line button, allow the button to expand
+                    // its height
+                    eBezelStyle = NSBezelStyleFlexiblePush;
                 }
                 else
                 {
@@ -554,7 +608,7 @@ bool AquaGraphicsBackendBase::performDrawNativeControl(ControlType nType,
                 else
                     [pBtn setKeyEquivalent: @""];
 
-                if (eBezelStyle == NSBezelStyleRounded)
+                if (eBezelStyle == NSBezelStylePush || eBezelStyle == NSBezelStyleFlexiblePush)
                 {
                     int nMargin = RoundedMargin[eSizeKind];
                     rc.origin.x -= nMargin;
@@ -669,6 +723,11 @@ bool AquaGraphicsBackendBase::performDrawNativeControl(ControlType nType,
 
                 [pBox release];
 
+                // tdf#164428 Skia/Metal needs flush after drawing progress bar
+                assert(SkiaHelper::isVCLSkiaEnabled() && "macos requires skia");
+                if (SkiaHelper::renderMethodToUse() != SkiaHelper::RenderRaster)
+                    mpFrame->mbForceFlushProgressBar = true;
+
                 bOK = true;
             }
             break;
@@ -703,7 +762,10 @@ bool AquaGraphicsBackendBase::performDrawNativeControl(ControlType nType,
                                                     ? static_cast<const ScrollbarValue *>(&aValue) : nullptr;
                 if (nPart == ControlPart::DrawBackgroundVert || nPart == ControlPart::DrawBackgroundHorz)
                 {
-                    drawBox(context, rc, NSColor.controlBackgroundColor);
+                    if (bCanUseThemeColors)
+                        drawBox(context, rc, colorFromRGB(ThemeColors::GetThemeColors().GetBaseColor()));
+                    else
+                        drawBox(context, rc, NSColor.controlBackgroundColor);
 
                     NSRect rect = { NSZeroPoint, NSMakeSize(rc.size.width, rc.size.height) };
                     NSScroller* pBar = [[NSScroller alloc] initWithFrame: rect];
@@ -1065,11 +1127,11 @@ bool AquaGraphicsBackendBase::performDrawNativeControl(ControlType nType,
                         // strange effects start to happen when HIThemeDrawFrame meets the border of the window.
                         // These can be avoided by clipping to the boundary of the frame (see issue 84756)
 
-                        if (rc.origin.y + rc.size.height >= mpFrame->maGeometry.height() - 3)
+                        if (rc.origin.y + rc.size.height >= mpFrame->GetHeight() - 3)
                         {
                             CGMutablePathRef rPath = CGPathCreateMutable();
                             CGPathAddRect(rPath, nullptr,
-                                          CGRectMake(0, 0, mpFrame->maGeometry.width() - 1, mpFrame->maGeometry.height() - 1));
+                                          CGRectMake(0, 0, mpFrame->GetWidth() - 1, mpFrame->GetHeight() - 1));
                             CGContextBeginPath(context);
                             CGContextAddPath(context, rPath);
                             CGContextClip(context);

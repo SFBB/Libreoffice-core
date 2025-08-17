@@ -40,7 +40,6 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <sfx2/sfxsids.hrc>
 #include <sfx2/docfilt.hxx>
-#include <unotools/optionsdlg.hxx>
 #include <osl/diagnose.h>
 #include <comphelper/diagnose_ex.hxx>
 #include <officecfg/Office/Recovery.hxx>
@@ -49,13 +48,10 @@
 #include <sfx2/fcontnr.hxx>
 
 using namespace com::sun::star::uno;
-using namespace com::sun::star::util;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::container;
 using namespace comphelper;
-
-#define CFG_PAGE_AND_GROUP          u"General", u"LoadSave"
 
 
 struct SvxSaveTabPage_Impl
@@ -78,40 +74,40 @@ SvxSaveTabPage_Impl::SvxSaveTabPage_Impl() : bInitialized( false )
 // class SvxSaveTabPage --------------------------------------------------
 
 SvxSaveTabPage::SvxSaveTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreSet)
-    : SfxTabPage( pPage, pController, "cui/ui/optsavepage.ui", "OptSavePage", &rCoreSet )
+    : SfxTabPage( pPage, pController, u"cui/ui/optsavepage.ui"_ustr, u"OptSavePage"_ustr, &rCoreSet )
     , pImpl(new SvxSaveTabPage_Impl)
-    , m_xLoadViewPosAnyUserCB(m_xBuilder->weld_check_button("load_anyuser"))
-    , m_xLoadViewPosAnyUserImg(m_xBuilder->weld_widget("lockload_anyuser"))
-    , m_xLoadUserSettingsCB(m_xBuilder->weld_check_button("load_settings"))
-    , m_xLoadUserSettingsImg(m_xBuilder->weld_widget("lockload_settings"))
-    , m_xLoadDocPrinterCB(m_xBuilder->weld_check_button("load_docprinter"))
-    , m_xLoadDocPrinterImg(m_xBuilder->weld_widget("lockload_docprinter"))
-    , m_xDocInfoCB(m_xBuilder->weld_check_button("docinfo"))
-    , m_xDocInfoImg(m_xBuilder->weld_widget("lockdocinfo"))
-    , m_xBackupCB(m_xBuilder->weld_check_button("backup"))
-    , m_xBackupImg(m_xBuilder->weld_widget("lockbackup"))
-    , m_xBackupIntoDocumentFolderCB(m_xBuilder->weld_check_button("backupintodocumentfolder"))
-    , m_xBackupIntoDocumentFolderImg(m_xBuilder->weld_widget("lockbackupintodoc"))
-    , m_xAutoSaveCB(m_xBuilder->weld_check_button("autosave"))
-    , m_xAutoSaveImg(m_xBuilder->weld_widget("lockautosave"))
-    , m_xAutoSaveEdit(m_xBuilder->weld_spin_button("autosave_spin"))
-    , m_xMinuteFT(m_xBuilder->weld_label("autosave_mins"))
-    , m_xUserAutoSaveCB(m_xBuilder->weld_check_button("userautosave"))
-    , m_xUserAutoSaveImg(m_xBuilder->weld_widget("lockuserautosave"))
-    , m_xRelativeFsysCB(m_xBuilder->weld_check_button("relative_fsys"))
-    , m_xRelativeFsysImg(m_xBuilder->weld_widget("lockrelative_fsys"))
-    , m_xRelativeInetCB(m_xBuilder->weld_check_button("relative_inet"))
-    , m_xRelativeInetImg(m_xBuilder->weld_widget("lockrelative_inet"))
-    , m_xODFVersionLB(m_xBuilder->weld_combo_box("odfversion"))
-    , m_xODFVersionFT(m_xBuilder->weld_label("label5"))
-    , m_xODFVersionImg(m_xBuilder->weld_widget("lockodfversion"))
-    , m_xWarnAlienFormatCB(m_xBuilder->weld_check_button("warnalienformat"))
-    , m_xWarnAlienFormatImg(m_xBuilder->weld_widget("lockwarnalienformat"))
-    , m_xDocTypeLB(m_xBuilder->weld_combo_box("doctype"))
-    , m_xSaveAsFT(m_xBuilder->weld_label("saveas_label"))
-    , m_xSaveAsLB(m_xBuilder->weld_combo_box("saveas"))
-    , m_xODFWarningFI(m_xBuilder->weld_widget("odfwarning_image"))
-    , m_xODFWarningFT(m_xBuilder->weld_label("odfwarning_label"))
+    , m_xLoadViewPosAnyUserCB(m_xBuilder->weld_check_button(u"load_anyuser"_ustr))
+    , m_xLoadViewPosAnyUserImg(m_xBuilder->weld_widget(u"lockload_anyuser"_ustr))
+    , m_xLoadUserSettingsCB(m_xBuilder->weld_check_button(u"load_settings"_ustr))
+    , m_xLoadUserSettingsImg(m_xBuilder->weld_widget(u"lockload_settings"_ustr))
+    , m_xLoadDocPrinterCB(m_xBuilder->weld_check_button(u"load_docprinter"_ustr))
+    , m_xLoadDocPrinterImg(m_xBuilder->weld_widget(u"lockload_docprinter"_ustr))
+    , m_xDocInfoCB(m_xBuilder->weld_check_button(u"docinfo"_ustr))
+    , m_xDocInfoImg(m_xBuilder->weld_widget(u"lockdocinfo"_ustr))
+    , m_xBackupCB(m_xBuilder->weld_check_button(u"backup"_ustr))
+    , m_xBackupImg(m_xBuilder->weld_widget(u"lockbackup"_ustr))
+    , m_xBackupIntoDocumentFolderCB(m_xBuilder->weld_check_button(u"backupintodocumentfolder"_ustr))
+    , m_xBackupIntoDocumentFolderImg(m_xBuilder->weld_widget(u"lockbackupintodoc"_ustr))
+    , m_xAutoSaveCB(m_xBuilder->weld_check_button(u"autosave"_ustr))
+    , m_xAutoSaveImg(m_xBuilder->weld_widget(u"lockautosave"_ustr))
+    , m_xAutoSaveEdit(m_xBuilder->weld_spin_button(u"autosave_spin"_ustr))
+    , m_xMinuteFT(m_xBuilder->weld_label(u"autosave_mins"_ustr))
+    , m_xUserAutoSaveCB(m_xBuilder->weld_check_button(u"userautosave"_ustr))
+    , m_xUserAutoSaveImg(m_xBuilder->weld_widget(u"lockuserautosave"_ustr))
+    , m_xRelativeFsysCB(m_xBuilder->weld_check_button(u"relative_fsys"_ustr))
+    , m_xRelativeFsysImg(m_xBuilder->weld_widget(u"lockrelative_fsys"_ustr))
+    , m_xRelativeInetCB(m_xBuilder->weld_check_button(u"relative_inet"_ustr))
+    , m_xRelativeInetImg(m_xBuilder->weld_widget(u"lockrelative_inet"_ustr))
+    , m_xODFVersionLB(m_xBuilder->weld_combo_box(u"odfversion"_ustr))
+    , m_xODFVersionFT(m_xBuilder->weld_label(u"label5"_ustr))
+    , m_xODFVersionImg(m_xBuilder->weld_widget(u"lockodfversion"_ustr))
+    , m_xWarnAlienFormatCB(m_xBuilder->weld_check_button(u"warnalienformat"_ustr))
+    , m_xWarnAlienFormatImg(m_xBuilder->weld_widget(u"lockwarnalienformat"_ustr))
+    , m_xDocTypeLB(m_xBuilder->weld_combo_box(u"doctype"_ustr))
+    , m_xSaveAsFT(m_xBuilder->weld_label(u"saveas_label"_ustr))
+    , m_xSaveAsLB(m_xBuilder->weld_combo_box(u"saveas"_ustr))
+    , m_xODFWarningFI(m_xBuilder->weld_widget(u"odfwarning_image"_ustr))
+    , m_xODFWarningFT(m_xBuilder->weld_label(u"odfwarning_label"_ustr))
 {
     m_xAutoSaveEdit->set_max_length(2);
     m_xBackupIntoDocumentFolderCB->set_accessible_description(CuiResId(RID_CUISTR_A11Y_DESC_BACKUP));
@@ -121,28 +117,30 @@ SvxSaveTabPage::SvxSaveTabPage(weld::Container* pPage, weld::DialogController* p
     m_xODFVersionLB->set_id(2, OUString::number(SvtSaveOptions::ODFVER_012_EXT_COMPAT)); // 1.2 Extended (compatibility mode)
     m_xODFVersionLB->set_id(3, OUString::number(SvtSaveOptions::ODFVER_012_EXTENDED)); // 1.2 Extended
     m_xODFVersionLB->set_id(4, OUString::number(SvtSaveOptions::ODFVER_013)); // 1.3
-    m_xODFVersionLB->set_id(5, OUString::number(SvtSaveOptions::ODFVER_LATEST)); // 1.3 Extended (recommended)
+    m_xODFVersionLB->set_id(5, OUString::number(SvtSaveOptions::ODFVER_013_EXTENDED)); // 1.3 Extended
+    m_xODFVersionLB->set_id(6, OUString::number(SvtSaveOptions::ODFVER_014)); // 1.4
+    m_xODFVersionLB->set_id(7, OUString::number(SvtSaveOptions::ODFVER_LATEST)); // 1.4 Extended (recommended)
 
     auto aFilterClassesNode = utl::OConfigurationTreeRoot::createWithComponentContext(
             comphelper::getProcessComponentContext(),
-            "org.openoffice.Office.UI/FilterClassification/GlobalFilters/Classes",
+            u"org.openoffice.Office.UI/FilterClassification/GlobalFilters/Classes"_ustr,
             -1,
             utl::OConfigurationTreeRoot::CM_READONLY
         );
 
-    m_xDocTypeLB->append(OUString::number(APP_WRITER), aFilterClassesNode.getNodeValue("com.sun.star.text.TextDocument/DisplayName").get<OUString>());
-    m_xDocTypeLB->append(OUString::number(APP_WRITER_WEB), aFilterClassesNode.getNodeValue("com.sun.star.text.WebDocument/DisplayName").get<OUString>());
-    m_xDocTypeLB->append(OUString::number(APP_WRITER_GLOBAL), aFilterClassesNode.getNodeValue("com.sun.star.text.GlobalDocument/DisplayName").get<OUString>());
-    m_xDocTypeLB->append(OUString::number(APP_CALC), aFilterClassesNode.getNodeValue("com.sun.star.sheet.SpreadsheetDocument/DisplayName").get<OUString>());
-    m_xDocTypeLB->append(OUString::number(APP_IMPRESS), aFilterClassesNode.getNodeValue("com.sun.star.presentation.PresentationDocument/DisplayName").get<OUString>());
-    m_xDocTypeLB->append(OUString::number(APP_DRAW), aFilterClassesNode.getNodeValue("com.sun.star.drawing.DrawingDocument/DisplayName").get<OUString>());
-    m_xDocTypeLB->append(OUString::number(APP_MATH), aFilterClassesNode.getNodeValue("com.sun.star.formula.FormulaProperties/DisplayName").get<OUString>());
+    m_xDocTypeLB->append(OUString::number(APP_WRITER), aFilterClassesNode.getNodeValue(u"com.sun.star.text.TextDocument/DisplayName"_ustr).get<OUString>());
+    m_xDocTypeLB->append(OUString::number(APP_WRITER_WEB), aFilterClassesNode.getNodeValue(u"com.sun.star.text.WebDocument/DisplayName"_ustr).get<OUString>());
+    m_xDocTypeLB->append(OUString::number(APP_WRITER_GLOBAL), aFilterClassesNode.getNodeValue(u"com.sun.star.text.GlobalDocument/DisplayName"_ustr).get<OUString>());
+    m_xDocTypeLB->append(OUString::number(APP_CALC), aFilterClassesNode.getNodeValue(u"com.sun.star.sheet.SpreadsheetDocument/DisplayName"_ustr).get<OUString>());
+    m_xDocTypeLB->append(OUString::number(APP_IMPRESS), aFilterClassesNode.getNodeValue(u"com.sun.star.presentation.PresentationDocument/DisplayName"_ustr).get<OUString>());
+    m_xDocTypeLB->append(OUString::number(APP_DRAW), aFilterClassesNode.getNodeValue(u"com.sun.star.drawing.DrawingDocument/DisplayName"_ustr).get<OUString>());
+    m_xDocTypeLB->append(OUString::number(APP_MATH), aFilterClassesNode.getNodeValue(u"com.sun.star.formula.FormulaProperties/DisplayName"_ustr).get<OUString>());
 
     m_xAutoSaveCB->connect_toggled( LINK( this, SvxSaveTabPage, AutoClickHdl_Impl ) );
     m_xBackupCB->connect_toggled(LINK(this, SvxSaveTabPage, BackupClickHdl_Impl));
 
     SvtModuleOptions aModuleOpt;
-    if ( !aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::MATH ) )
+    if (!aModuleOpt.IsMathInstalled())
     {
         m_xSaveAsLB->remove_id(OUString::number(APP_MATH));
         m_xDocTypeLB->remove_id(OUString::number(APP_MATH));
@@ -153,7 +151,7 @@ SvxSaveTabPage::SvxSaveTabPage(weld::Container* pPage, weld::DialogController* p
         pImpl->aDefaultReadonlyArr[APP_MATH] = aModuleOpt.IsDefaultFilterReadonly(SvtModuleOptions::EFactory::MATH);
     }
 
-    if ( !aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::DRAW ) )
+    if (!aModuleOpt.IsDrawInstalled())
     {
         m_xSaveAsLB->remove_id(OUString::number(APP_DRAW));
         m_xDocTypeLB->remove_id(OUString::number(APP_DRAW));
@@ -164,7 +162,7 @@ SvxSaveTabPage::SvxSaveTabPage(weld::Container* pPage, weld::DialogController* p
         pImpl->aDefaultReadonlyArr[APP_DRAW] = aModuleOpt.IsDefaultFilterReadonly(SvtModuleOptions::EFactory::DRAW);
     }
 
-    if ( !aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::IMPRESS ) )
+    if (!aModuleOpt.IsImpressInstalled())
     {
         m_xSaveAsLB->remove_id(OUString::number(APP_IMPRESS));
         m_xDocTypeLB->remove_id(OUString::number(APP_IMPRESS));
@@ -175,7 +173,7 @@ SvxSaveTabPage::SvxSaveTabPage(weld::Container* pPage, weld::DialogController* p
         pImpl->aDefaultReadonlyArr[APP_IMPRESS] = aModuleOpt.IsDefaultFilterReadonly(SvtModuleOptions::EFactory::IMPRESS);
     }
 
-    if ( !aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::CALC ) )
+    if (!aModuleOpt.IsCalcInstalled())
     {
         m_xSaveAsLB->remove_id(OUString::number(APP_CALC));
         m_xDocTypeLB->remove_id(OUString::number(APP_CALC));
@@ -186,7 +184,7 @@ SvxSaveTabPage::SvxSaveTabPage(weld::Container* pPage, weld::DialogController* p
         pImpl->aDefaultReadonlyArr[APP_CALC] = aModuleOpt.IsDefaultFilterReadonly(SvtModuleOptions::EFactory::CALC);
     }
 
-    if ( !aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
+    if (!aModuleOpt.IsWriterInstalled())
     {
         m_xSaveAsLB->remove_id(OUString::number(APP_WRITER));
         m_xSaveAsLB->remove_id(OUString::number(APP_WRITER_WEB));
@@ -210,8 +208,6 @@ SvxSaveTabPage::SvxSaveTabPage(weld::Container* pPage, weld::DialogController* p
     aLink = LINK( this, SvxSaveTabPage, FilterHdl_Impl );
     m_xDocTypeLB->connect_changed( aLink );
     m_xSaveAsLB->connect_changed( aLink );
-
-    DetectHiddenControls();
 }
 
 SvxSaveTabPage::~SvxSaveTabPage()
@@ -224,53 +220,26 @@ std::unique_ptr<SfxTabPage> SvxSaveTabPage::Create(weld::Container* pPage, weld:
     return std::make_unique<SvxSaveTabPage>(pPage, pController, *rAttrSet);
 }
 
-void SvxSaveTabPage::DetectHiddenControls()
-{
-    SvtOptionsDialogOptions aOptionsDlgOpt;
-
-    if ( aOptionsDlgOpt.IsOptionHidden( u"Backup", CFG_PAGE_AND_GROUP ) )
-    {
-        // hide controls of "Backup"
-        m_xBackupCB->hide();
-        m_xBackupIntoDocumentFolderCB->hide();
-    }
-
-    if ( aOptionsDlgOpt.IsOptionHidden( u"AutoSave", CFG_PAGE_AND_GROUP ) )
-    {
-        // hide controls of "AutoSave"
-        m_xAutoSaveCB->hide();
-        m_xAutoSaveEdit->hide();
-        m_xMinuteFT->hide();
-    }
-
-    if ( aOptionsDlgOpt.IsOptionHidden( u"UserAutoSave", CFG_PAGE_AND_GROUP ) )
-    {
-        // hide controls of "UserAutoSave"
-        m_xUserAutoSaveCB->hide();
-    }
-
-}
-
 OUString SvxSaveTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label1", "label2", "autosave_mins", "label3",
-                          "label5", "label6", "saveas_label",  "odfwarning_label" };
+    OUString labels[] = { u"label1"_ustr, u"label2"_ustr, u"autosave_mins"_ustr, u"label3"_ustr,
+                          u"label5"_ustr, u"label6"_ustr, u"saveas_label"_ustr,  u"odfwarning_label"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
     OUString checkButton[]
-        = { "load_settings", "load_docprinter", "load_anyuser",   "autosave",
-            "userautosave",  "docinfo",         "backup",         "backupintodocumentfolder",
-            "relative_fsys", "relative_inet",   "warnalienformat" };
+        = { u"load_settings"_ustr, u"load_docprinter"_ustr, u"load_anyuser"_ustr,   u"autosave"_ustr,
+            u"userautosave"_ustr,  u"docinfo"_ustr,         u"backup"_ustr,         u"backupintodocumentfolder"_ustr,
+            u"relative_fsys"_ustr, u"relative_inet"_ustr,   u"warnalienformat"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -394,7 +363,7 @@ bool SvxSaveTabPage::FillItemSet( SfxItemSet* rSet )
 
 static bool isODFFormat( std::u16string_view sFilter )
 {
-    static const char* aODFFormats[] =
+    static const char* const aODFFormats[] =
     {
         "writer8",
         "writer8_template",
@@ -448,7 +417,7 @@ void SvxSaveTabPage::Reset( const SfxItemSet* )
         try
         {
             Reference< XMultiServiceFactory > xMSF = comphelper::getProcessServiceFactory();
-            pImpl->xFact.set(xMSF->createInstance("com.sun.star.document.FilterFactory"), UNO_QUERY);
+            pImpl->xFact.set(xMSF->createInstance(u"com.sun.star.document.FilterFactory"_ustr), UNO_QUERY);
 
             DBG_ASSERT(pImpl->xFact.is(), "service com.sun.star.document.FilterFactory unavailable");
             Reference< XContainerQuery > xQuery(pImpl->xFact, UNO_QUERY);
@@ -480,15 +449,15 @@ void SvxSaveTabPage::Reset( const SfxItemSet* )
                     while(xList->hasMoreElements())
                     {
                         SequenceAsHashMap aFilter(xList->nextElement());
-                        OUString sFilter = aFilter.getUnpackedValueOrDefault("Name",OUString());
+                        OUString sFilter = aFilter.getUnpackedValueOrDefault(u"Name"_ustr,OUString());
                         if (!sFilter.isEmpty())
                         {
                             lList.push_back(sFilter);
                             lODFList.push_back( isODFFormat( sFilter ) );
                         }
                     }
-                    pImpl->aFilterArr[nData] = lList;
-                    pImpl->aODFArr[nData] = lODFList;
+                    pImpl->aFilterArr[nData] = std::move(lList);
+                    pImpl->aODFArr[nData] = std::move(lODFList);
                 }
             }
             OUString sModule = OfaTreeOptionsDialog::getCurrentFactory_Impl(GetFrame());
@@ -609,29 +578,22 @@ IMPL_LINK_NOARG(SvxSaveTabPage, BackupClickHdl_Impl, weld::Toggleable&, void)
 static OUString lcl_ExtracUIName(const Sequence<PropertyValue> &rProperties, std::u16string_view rExtension)
 {
     OUString sName;
-    const PropertyValue* pPropVal = rProperties.getConstArray();
-    const PropertyValue* const pEnd = pPropVal + rProperties.getLength();
-    for( ; pPropVal != pEnd; pPropVal++ )
+    for (auto& propVal : rProperties)
     {
-        const OUString &rName = pPropVal->Name;
+        const OUString &rName = propVal.Name;
         if (rName == "UIName")
         {
             OUString sUIName;
-            if ( ( pPropVal->Value >>= sUIName ) && sUIName.getLength() )
+            if ((propVal.Value >>= sUIName) && sUIName.getLength())
             {
                 if (!rExtension.empty())
-                {
-                    return sUIName + " (" + rExtension + ")";
-                }
-                else
-                {
-                    return sUIName;
-                }
+                    sUIName += OUString::Concat(" (") + rExtension + ")";
+                return sUIName;
             }
         }
         else if (rName == "Name")
         {
-            pPropVal->Value >>= sName;
+            propVal.Value >>= sName;
         }
     }
 

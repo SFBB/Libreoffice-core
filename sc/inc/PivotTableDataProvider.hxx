@@ -24,7 +24,6 @@
 #include <vector>
 #include <unordered_map>
 
-namespace com::sun::star::chart2::data { class XDataSequence; }
 namespace com::sun::star::chart2::data { class XDataSource; }
 namespace com::sun::star::chart2::data { class XLabeledDataSequence; }
 namespace com::sun::star::uno { class XComponentContext; }
@@ -35,6 +34,7 @@ namespace sc
 {
 
 struct ValueAndFormat;
+class PivotTableDataSequence;
 
 typedef cppu::WeakImplHelper<css::chart2::data::XDataProvider,
                              css::chart2::data::XPivotTableDataProvider,
@@ -147,11 +147,11 @@ private:
 
     css::uno::Reference<css::chart2::data::XLabeledDataSequence> newLabeledDataSequence();
 
-    css::uno::Reference<css::chart2::data::XDataSequence> assignLabelsToDataSequence(size_t nIndex);
+    rtl::Reference<PivotTableDataSequence> assignLabelsToDataSequence(size_t nIndex);
 
-    css::uno::Reference<css::chart2::data::XDataSequence> assignValuesToDataSequence(size_t nIndex);
+    rtl::Reference<PivotTableDataSequence> assignValuesToDataSequence(size_t nIndex);
 
-    css::uno::Reference<css::chart2::data::XDataSequence> assignFirstCategoriesToDataSequence();
+    rtl::Reference<PivotTableDataSequence> assignFirstCategoriesToDataSequence();
 
     void collectPivotTableData();
 

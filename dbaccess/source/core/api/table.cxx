@@ -40,7 +40,6 @@
 using namespace dbaccess;
 using namespace connectivity;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
@@ -93,7 +92,7 @@ rtl::Reference<OColumn> ODBTable::createColumn(const OUString& _rName) const
     else
     {
         OColumns* pColumns = static_cast<OColumns*>(m_xColumns.get());
-        xProp.set(pColumns->createBaseObject(_rName),UNO_QUERY);
+        xProp = pColumns->createBaseObject(_rName);
     }
 
     Reference<XPropertySet> xColumnDefinition;
@@ -234,7 +233,7 @@ void ODBTable::construct()
 // XServiceInfo
 OUString SAL_CALL ODBTable::getImplementationName()
     {
-        return "com.sun.star.sdb.dbaccess.ODBTable";
+        return u"com.sun.star.sdb.dbaccess.ODBTable"_ustr;
     }
 sal_Bool SAL_CALL ODBTable::supportsService(const OUString& _rServiceName)
     {
@@ -269,12 +268,10 @@ Sequence< Type > SAL_CALL ODBTable::getTypes(  )
     std::vector<Type> aOwnTypes;
     aOwnTypes.reserve(aTypes.getLength());
 
-    const Type* pIter = aTypes.getConstArray();
-    const Type* pEnd = pIter + aTypes.getLength();
-    for(;pIter != pEnd ;++pIter)
+    for (auto& type : aTypes)
     {
-        if( (*pIter != aRenameType || getRenameService().is()) && (*pIter != aAlterType || getAlterService().is()))
-            aOwnTypes.push_back(*pIter);
+        if( (type != aRenameType || getRenameService().is()) && (type != aAlterType || getAlterService().is()))
+            aOwnTypes.push_back(type);
     }
 
     return Sequence< Type >(aOwnTypes.data(), aOwnTypes.size());

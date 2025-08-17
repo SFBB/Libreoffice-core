@@ -104,12 +104,12 @@ SvxViewChangedHint::SvxViewChangedHint() : SfxHint(SfxHintId::SvxViewChanged)
 }
 
 
-BitmapEx convertMetafileToBitmapEx(
+Bitmap convertMetafileToBitmap(
     const GDIMetaFile& rMtf,
     const basegfx::B2DRange& rTargetRange,
     const sal_uInt32 nMaximumQuadraticPixels)
 {
-    BitmapEx aBitmapEx;
+    Bitmap aBitmap;
 
     if(rMtf.GetActionSize())
     {
@@ -119,13 +119,13 @@ BitmapEx convertMetafileToBitmapEx(
                     rTargetRange.getRange(),
                     rTargetRange.getMinimum()),
                 rMtf));
-        aBitmapEx = drawinglayer::convertPrimitive2DContainerToBitmapEx(
+        aBitmap = drawinglayer::convertPrimitive2DContainerToBitmap(
             drawinglayer::primitive2d::Primitive2DContainer { aMtf },
             rTargetRange,
             nMaximumQuadraticPixels);
     }
 
-    return aBitmapEx;
+    return aBitmap;
 }
 
 SdrPaintView::SdrPaintView(SdrModel& rSdrModel, OutputDevice* pOut)
@@ -165,6 +165,7 @@ SdrPaintView::SdrPaintView(SdrModel& rSdrModel, OutputDevice* pOut)
     , mbHideChart(false)
     , mbHideDraw(false)
     , mbHideFormControl(false)
+    , mbHideBackground(false)
     , mbPaintTextEdit(true)
     , maGridColor(COL_BLACK)
 {
@@ -213,6 +214,16 @@ void SdrPaintView::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
         if (bObjChg)
         {
             mbSomeObjChgdFlag=true;
+            const SdrModel& rModel = GetModel();
+            if (rModel.IsWriterIdle())
+            {
+                // We're inside Writer idle layout: don't pick a high priority.
+                maComeBackIdle.SetPriority(TaskPriority::DEFAULT_IDLE);
+            }
+            else
+            {
+                maComeBackIdle.SetPriority(TaskPriority::REPAINT);
+            }
             maComeBackIdle.Start();
         }
     }
@@ -334,8 +345,16 @@ sal_uInt16 SdrPaintView::ImpGetHitTolLogic(short nHitTol, const OutputDevice* pO
 void SdrPaintView::TheresNewMapMode()
 {
     if (mpActualOutDev) {
-        mnHitTolLog=static_cast<sal_uInt16>(mpActualOutDev->PixelToLogic(Size(mnHitTolPix,0)).Width());
-        mnMinMovLog=static_cast<sal_uInt16>(mpActualOutDev->PixelToLogic(Size(mnMinMovPix,0)).Width());
+        if (comphelper::LibreOfficeKit::isActive())
+        {
+            mnHitTolLog=static_cast<sal_uInt16>(OutputDevice::LogicToLogic(Size(mnHitTolPix,0), MapMode(MapUnit::MapPixel), mpActualOutDev->GetMapMode()).Width());
+            mnMinMovLog=static_cast<sal_uInt16>(OutputDevice::LogicToLogic(Size(mnMinMovPix,0), MapMode(MapUnit::MapPixel), mpActualOutDev->GetMapMode()).Width());
+        }
+        else
+        {
+            mnHitTolLog=static_cast<sal_uInt16>(mpActualOutDev->PixelToLogic(Size(mnHitTolPix,0)).Width());
+            mnMinMovLog=static_cast<sal_uInt16>(mpActualOutDev->PixelToLogic(Size(mnMinMovPix,0)).Width());
+        }
     }
 }
 
@@ -414,22 +433,15 @@ void SdrPaintView::DeleteDeviceFromPaintView(OutputDevice& rOldDev)
 
 void SdrPaintView::SetLayerVisible(const OUString& rName, bool bShow)
 {
-    if(mpPageView)
-    {
-        mpPageView->SetLayerVisible(rName, bShow);
-    }
-
+    const bool bChanged = mpPageView && mpPageView->SetLayerVisible(rName, bShow);
+    if (!bChanged)
+        return;
     InvalidateAllWin();
 }
 
 bool SdrPaintView::IsLayerVisible(const OUString& rName) const
 {
-    if(mpPageView)
-    {
-        return mpPageView->IsLayerVisible(rName);
-    }
-
-    return false;
+    return mpPageView && mpPageView->IsLayerVisible(rName);
 }
 
 void SdrPaintView::SetLayerLocked(const OUString& rName, bool bLock)
@@ -520,7 +532,7 @@ void SdrPaintView::CompleteRedraw(OutputDevice* pOut, const vcl::Region& rReg, s
     }
 
     SdrPaintWindow* pPaintWindow = BeginCompleteRedraw(pOut);
-    OSL_ENSURE(pPaintWindow, "SdrPaintView::CompleteRedraw: No OutDev (!)");
+    assert(pPaintWindow && "SdrPaintView::CompleteRedraw: No OutDev (!)");
 
     DoCompleteRedraw(*pPaintWindow, aOptimizedRepaintRegion, pRedirector);
     EndCompleteRedraw(*pPaintWindow, true);
@@ -583,7 +595,7 @@ void SdrPaintView::CompleteRedraw(OutputDevice* pOut, const vcl::Region& rReg, s
 
 SdrPaintWindow* SdrPaintView::BeginCompleteRedraw(OutputDevice* pOut)
 {
-    OSL_ENSURE(pOut, "SdrPaintView::BeginCompleteRedraw: No OutDev (!)");
+    assert(pOut && "SdrPaintView::BeginCompleteRedraw: No OutDev (!)");
     SdrPaintWindow* pPaintWindow = FindPaintWindow(*pOut);
 
     if(pPaintWindow)
@@ -613,7 +625,8 @@ void SdrPaintView::DoCompleteRedraw(SdrPaintWindow& rPaintWindow, const vcl::Reg
     }
 }
 
-void SdrPaintView::EndCompleteRedraw(SdrPaintWindow& rPaintWindow, bool bPaintFormLayer)
+void SdrPaintView::EndCompleteRedraw(SdrPaintWindow& rPaintWindow, bool bPaintFormLayer,
+        sdr::contact::ViewObjectContactRedirector* pRedirector)
 {
     std::unique_ptr<SdrPaintWindow> pPaintWindow;
     if (comphelper::LibreOfficeKit::isActive() && rPaintWindow.getTemporaryTarget())
@@ -633,9 +646,11 @@ void SdrPaintView::EndCompleteRedraw(SdrPaintWindow& rPaintWindow, bool bPaintFo
         // draw postprocessing, only for known devices
         // it is necessary to always paint FormLayer
         // In the LOK case control rendering is performed through LokControlHandler
-        if(!comphelper::LibreOfficeKit::isActive() && bPaintFormLayer)
+        // except when the document is exported to PDF or printed,
+        // so we use isTiledPainting() in place of the more generic isActive()
+        if(!comphelper::LibreOfficeKit::isTiledPainting() && bPaintFormLayer)
         {
-            ImpFormLayerDrawing(rPaintWindow);
+            ImpFormLayerDrawing(rPaintWindow, pRedirector);
         }
 
         // look for active TextEdit. As long as this cannot be painted to a VDev,
@@ -679,12 +694,11 @@ void SdrPaintView::EndCompleteRedraw(SdrPaintWindow& rPaintWindow, bool bPaintFo
     }
 }
 
-
 SdrPaintWindow* SdrPaintView::BeginDrawLayers(OutputDevice* pOut, const vcl::Region& rReg, bool bDisableIntersect)
 {
     // #i74769# use BeginCompleteRedraw() as common base
     SdrPaintWindow* pPaintWindow = BeginCompleteRedraw(pOut);
-    OSL_ENSURE(pPaintWindow, "SdrPaintView::BeginDrawLayers: No SdrPaintWindow (!)");
+    assert(pPaintWindow && "SdrPaintView::BeginDrawLayers: No SdrPaintWindow (!)");
 
     if(mpPageView)
     {
@@ -705,10 +719,11 @@ SdrPaintWindow* SdrPaintView::BeginDrawLayers(OutputDevice* pOut, const vcl::Reg
     return pPaintWindow;
 }
 
-void SdrPaintView::EndDrawLayers(SdrPaintWindow& rPaintWindow, bool bPaintFormLayer)
+void SdrPaintView::EndDrawLayers(SdrPaintWindow& rPaintWindow, bool bPaintFormLayer,
+    sdr::contact::ViewObjectContactRedirector* pRedirector)
 {
     // #i74769# use EndCompleteRedraw() as common base
-    EndCompleteRedraw(rPaintWindow, bPaintFormLayer);
+    EndCompleteRedraw(rPaintWindow, bPaintFormLayer, pRedirector);
 
     if(mpPageView)
     {
@@ -720,7 +735,7 @@ void SdrPaintView::EndDrawLayers(SdrPaintWindow& rPaintWindow, bool bPaintFormLa
 void SdrPaintView::UpdateDrawLayersRegion(const OutputDevice* pOut, const vcl::Region& rReg)
 {
     SdrPaintWindow* pPaintWindow = FindPaintWindow(*pOut);
-    OSL_ENSURE(pPaintWindow, "SdrPaintView::UpdateDrawLayersRegion: No SdrPaintWindow (!)");
+    assert(pPaintWindow && "SdrPaintView::UpdateDrawLayersRegion: No SdrPaintWindow (!)");
 
     if(mpPageView)
     {
@@ -763,7 +778,8 @@ vcl::Region SdrPaintView::OptimizeDrawLayersRegion(const OutputDevice* pOut, con
 }
 
 
-void SdrPaintView::ImpFormLayerDrawing( SdrPaintWindow& rPaintWindow )
+void SdrPaintView::ImpFormLayerDrawing( SdrPaintWindow& rPaintWindow,
+        sdr::contact::ViewObjectContactRedirector* pRedirector )
 {
     if(!mpPageView)
         return;
@@ -779,7 +795,8 @@ void SdrPaintView::ImpFormLayerDrawing( SdrPaintWindow& rPaintWindow )
         // BUFFERED use GetTargetOutputDevice() now, it may be targeted to VDevs, too
         // need to set PreparedPageWindow to make DrawLayer use the correct ObjectContact
         mpPageView->setPreparedPageWindow(pKnownTarget);
-        mpPageView->DrawLayer(nControlLayerId, &rPaintWindow.GetTargetOutputDevice());
+        mpPageView->DrawLayer(nControlLayerId, &rPaintWindow.GetTargetOutputDevice(),
+        pRedirector);
         mpPageView->setPreparedPageWindow(nullptr);
     }
 }
@@ -865,7 +882,12 @@ void SdrPaintView::InvalidateAllWin(const tools::Rectangle& rRect)
 void SdrPaintView::InvalidateOneWin(OutputDevice& rDevice)
 {
     // do not erase background, that causes flicker (!)
-    rDevice.GetOwnerWindow()->Invalidate(InvalidateFlags::NoErase);
+    // tdf#160444 check device's owner window is a nullptr
+    // Since commit 563f7077f1dbce31ff95ee8d2e8d17b629693db1, the
+    // device's owner window gets deleted before this object is
+    // deleted.
+    if (rDevice.GetOwnerWindow())
+        rDevice.GetOwnerWindow()->Invalidate(InvalidateFlags::NoErase);
 }
 
 void SdrPaintView::InvalidateOneWin(OutputDevice& rDevice, const tools::Rectangle& rRect)
@@ -952,7 +974,7 @@ void SdrPaintView::SetDefaultAttr(const SfxItemSet& rAttr, bool bReplaceAll)
         {
             std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(nullptr,
                                                           VclMessageType::Info, VclButtonsType::Ok,
-                                                          "SdrPaintView::SetDefaultAttr(): Setting EE_FEATURE items at the SdrView does not make sense! It only leads to overhead and unreadable documents."));
+                                                          u"SdrPaintView::SetDefaultAttr(): Setting EE_FEATURE items at the SdrView does not make sense! It only leads to overhead and unreadable documents."_ustr));
             xInfoBox->run();
         }
     }

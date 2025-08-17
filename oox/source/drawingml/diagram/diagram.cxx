@@ -104,7 +104,7 @@ static void removeUnneededGroupShapes(const ShapePtr& pShape)
 }
 
 
-void Diagram::addTo( const ShapePtr & pParentShape )
+void Diagram::addTo( const ShapePtr & pParentShape, bool bCreate )
 {
     if (pParentShape->getSize().Width == 0 || pParentShape->getSize().Height == 0)
         SAL_WARN("oox.drawingml", "Diagram cannot be correctly laid out. Size: "
@@ -113,7 +113,7 @@ void Diagram::addTo( const ShapePtr & pParentShape )
     pParentShape->setChildSize(pParentShape->getSize());
 
     const svx::diagram::Point* pRootPoint = mpData->getRootPoint();
-    if (mpLayout->getNode() && pRootPoint)
+    if (bCreate && mpLayout->getNode() && pRootPoint)
     {
         // create Shape hierarchy
         ShapeCreationVisitor aCreationVisitor(*this, pRootPoint, pParentShape);
@@ -185,30 +185,37 @@ void Diagram::syncDiagramFontHeights()
     {
         // Find out the minimum scale within this group.
         const ShapePairs& rShapePairs = rNameAndPairs.second;
-        double nMinScale = 100.0;
+        double fMinFontScale = 100.0;
+        double fMinSpacingScale = 100.0;
         for (const auto& rShapePair : rShapePairs)
         {
             uno::Reference<beans::XPropertySet> xPropertySet(rShapePair.second, uno::UNO_QUERY);
             if (xPropertySet.is())
             {
-                double nTextFitToSizeScale = 0.0;
-                xPropertySet->getPropertyValue("TextFitToSizeScale") >>= nTextFitToSizeScale;
-                if (nTextFitToSizeScale > 0 && nTextFitToSizeScale < nMinScale)
+                double fFontScale = 0.0;
+                double fSpacingScale = 0.0;
+                xPropertySet->getPropertyValue(u"TextFitToSizeFontScale"_ustr) >>= fFontScale;
+                xPropertySet->getPropertyValue(u"TextFitToSizeSpacingScale"_ustr) >>= fSpacingScale;
+
+                if (fFontScale > 0 && fSpacingScale > 0
+                    && (fFontScale < fMinFontScale || (fFontScale == fMinFontScale && fSpacingScale < fMinSpacingScale)))
                 {
-                    nMinScale = nTextFitToSizeScale;
+                    fMinFontScale = fFontScale;
+                    fMinSpacingScale = fSpacingScale;
                 }
             }
         }
 
         // Set that minimum scale for all members of the group.
-        if (nMinScale < 100.0)
+        if (fMinFontScale < 100.0 || fMinSpacingScale < 100.0)
         {
             for (const auto& rShapePair : rShapePairs)
             {
                 uno::Reference<beans::XPropertySet> xPropertySet(rShapePair.second, uno::UNO_QUERY);
                 if (xPropertySet.is())
                 {
-                    xPropertySet->setPropertyValue("TextFitToSizeScale", uno::Any(nMinScale));
+                    xPropertySet->setPropertyValue(u"TextFitToSizeFontScale"_ustr, uno::Any(fMinFontScale));
+                    xPropertySet->setPropertyValue(u"TextFitToSizeSpacingScale"_ustr, uno::Any(fMinSpacingScale));
                 }
             }
         }
@@ -310,61 +317,69 @@ void loadDiagram( ShapePtr const & pShape,
     DiagramLayoutPtr pLayout = std::make_shared<DiagramLayout>(*pDiagram);
     pDiagram->setLayout( pLayout );
 
-    // set DiagramFontHeights at filter
-    rFilter.setDiagramFontHeights(&pDiagram->getDiagramFontHeights());
-
-    // data
-    if( !rDataModelPath.isEmpty() )
+    try
     {
-        rtl::Reference< core::FragmentHandler > xRefDataModel(
-                new DiagramDataFragmentHandler( rFilter, rDataModelPath, pData ));
+        // set DiagramFontHeights at filter
+        rFilter.setDiagramFontHeights(&pDiagram->getDiagramFontHeights());
 
-        importFragment(rFilter,
-                       loadFragment(rFilter,xRefDataModel),
-                       "OOXData",
-                       pDiagram,
-                       xRefDataModel);
-
-        pDiagram->getDataRelsMap() = pShape->resolveRelationshipsOfTypeFromOfficeDoc( rFilter,
-                xRefDataModel->getFragmentPath(), u"image" );
-
-        // Pass the info to pShape
-        for (auto const& extDrawing : pData->getExtDrawings())
+        // data
+        if( !rDataModelPath.isEmpty() )
         {
-            OUString aFragmentPath = rRelations.getFragmentPathFromRelId(extDrawing);
-            // Ignore RelIds which don't resolve to a fragment path.
-            if (aFragmentPath.isEmpty())
-                continue;
+            rtl::Reference< core::FragmentHandler > xRefDataModel(
+                    new DiagramDataFragmentHandler( rFilter, rDataModelPath, pData ));
 
-            sal_Int32 nCounter = 0;
-            rtl::Reference<core::FragmentHandler> xCounter(
-                new DiagramShapeCounter(rFilter, aFragmentPath, nCounter));
-            rFilter.importFragment(xCounter);
-            // Ignore ext drawings which don't actually have any shapes.
-            if (nCounter == 0)
-                continue;
+            importFragment(rFilter,
+                           loadFragment(rFilter,xRefDataModel),
+                           u"OOXData"_ustr,
+                           pDiagram,
+                           xRefDataModel);
 
-            pShape->addExtDrawingRelId(extDrawing);
+            pDiagram->getDataRelsMap() = pShape->resolveRelationshipsOfTypeFromOfficeDoc( rFilter,
+                    xRefDataModel->getFragmentPath(), u"image" );
+
+            // Pass the info to pShape
+            for (auto const& extDrawing : pData->getExtDrawings())
+            {
+                OUString aFragmentPath = rRelations.getFragmentPathFromRelId(extDrawing);
+                // Ignore RelIds which don't resolve to a fragment path.
+                if (aFragmentPath.isEmpty())
+                    continue;
+
+                sal_Int32 nCounter = 0;
+                rtl::Reference<core::FragmentHandler> xCounter(
+                    new DiagramShapeCounter(rFilter, aFragmentPath, nCounter));
+                rFilter.importFragment(xCounter);
+                // Ignore ext drawings which don't actually have any shapes.
+                if (nCounter == 0)
+                    continue;
+
+                pShape->addExtDrawingRelId(extDrawing);
+            }
         }
-    }
 
-    // extLst is present, lets bet on that and ignore the rest of the data from here
-    if( pShape->getExtDrawings().empty() )
-    {
-        // layout
-        if( !rLayoutPath.isEmpty() )
+        // Layout: always import to allow editing in the future. It's needed for
+        // AdvancedDiagramHelper::reLayout to re-create the oox::Shape(s) for the
+        // model. Without importing these the diagram model will be not complete.
+        // NOTE: This also adds the DomMaps to rMainDomMap, so the lines
+        //     DiagramDomMap& rMainDomMap = pDiagram->getDomMap();
+        //     rMainDomMap[u"OOXLayout"_ustr] = loadFragment(rFilter,rLayoutPath);
+        //     rMainDomMap[u"OOXStyle"_ustr] = loadFragment(rFilter,rQStylePath);
+        // which were used before if !pShape->getExtDrawings().empty() are not
+        // needed
+        if (!rLayoutPath.isEmpty())
         {
             rtl::Reference< core::FragmentHandler > xRefLayout(
-                    new DiagramLayoutFragmentHandler( rFilter, rLayoutPath, pLayout ));
+                    new DiagramLayoutFragmentHandler( rFilter, rLayoutPath,
+                                                      std::move(pLayout) ));
 
             importFragment(rFilter,
                     loadFragment(rFilter,xRefLayout),
-                    "OOXLayout",
+                    u"OOXLayout"_ustr,
                     pDiagram,
                     xRefLayout);
         }
 
-        // style
+        // Style: same as for Layout (above)
         if( !rQStylePath.isEmpty() )
         {
             rtl::Reference< core::FragmentHandler > xRefQStyle(
@@ -372,59 +387,67 @@ void loadDiagram( ShapePtr const & pShape,
 
             importFragment(rFilter,
                     loadFragment(rFilter,xRefQStyle),
-                    "OOXStyle",
+                    u"OOXStyle"_ustr,
                     pDiagram,
                     xRefQStyle);
         }
-    }
-    else
-    {
-        // We still want to add the XDocuments to the DiagramDomMap
-        DiagramDomMap& rMainDomMap = pDiagram->getDomMap();
-        rMainDomMap[OUString("OOXLayout")] = loadFragment(rFilter,rLayoutPath);
-        rMainDomMap[OUString("OOXStyle")] = loadFragment(rFilter,rQStylePath);
-    }
 
-    // colors
-    if( !rColorStylePath.isEmpty() )
-    {
-        rtl::Reference< core::FragmentHandler > xRefColorStyle(
-            new ColorFragmentHandler( rFilter, rColorStylePath, pDiagram->getColors() ));
-
-        importFragment(rFilter,
-            loadFragment(rFilter,xRefColorStyle),
-            "OOXColor",
-            pDiagram,
-            xRefColorStyle);
-    }
-
-    if( !pData->getExtDrawings().empty() )
-    {
-        const DiagramColorMap::const_iterator aColor = pDiagram->getColors().find("node0");
-        if( aColor != pDiagram->getColors().end() && !aColor->second.maTextFillColors.empty())
+        // colors
+        if( !rColorStylePath.isEmpty() )
         {
-            // TODO(F1): well, actually, there might be *several* color
-            // definitions in it, after all it's called list.
-            pShape->setFontRefColorForNodes(DiagramColor::getColorByIndex(aColor->second.maTextFillColors, -1));
+            rtl::Reference< core::FragmentHandler > xRefColorStyle(
+                new ColorFragmentHandler( rFilter, rColorStylePath, pDiagram->getColors() ));
+
+            importFragment(rFilter,
+                loadFragment(rFilter,xRefColorStyle),
+                u"OOXColor"_ustr,
+                pDiagram,
+                xRefColorStyle);
         }
+
+        if( !pData->getExtDrawings().empty() )
+        {
+            const DiagramColorMap::const_iterator aColor = pDiagram->getColors().find(u"node0"_ustr);
+            if( aColor != pDiagram->getColors().end() && !aColor->second.maTextFillColors.empty())
+            {
+                // TODO(F1): well, actually, there might be *several* color
+                // definitions in it, after all it's called list.
+                pShape->setFontRefColorForNodes(DiagramColor::getColorByIndex(aColor->second.maTextFillColors, -1));
+            }
+        }
+
+        // collect data, init maps
+        // for Diagram import, do - for now - NOT clear all oox::drawingml::Shape
+        pData->buildDiagramDataModel(false);
+
+        // diagram loaded. now lump together & attach to shape
+        // create own geometry if extLst is not present (no geometric
+        // representation is available in file). This will - if false -
+        // just create the BackgroundShape.
+        // NOTE: Need to use pShape->getExtDrawings() here, this is the
+        // already *filtered* version, see usage of DiagramShapeCounter
+        // above. Moving to local bool, there might more conditions show
+        // up
+        const bool bCreate(pShape->getExtDrawings().empty());
+        pDiagram->addTo(pShape, bCreate);
+        pShape->setDiagramDoms(pDiagram->getDomsAsPropertyValues());
+
+        // Get the oox::Theme definition and - if available - move/secure the
+        // original ImportData directly to the Diagram ModelData
+        std::shared_ptr<::oox::drawingml::Theme> aTheme(rFilter.getCurrentThemePtr());
+        if(aTheme)
+            pData->setThemeDocument(aTheme->getFragment()); //getTempFile());
+
+        // Prepare support for the advanced DiagramHelper using Diagram & Theme data
+        pShape->prepareDiagramHelper(pDiagram, rFilter.getCurrentThemePtr(), bCreate);
     }
-
-    // collect data, init maps
-    // for Diagram import, do - for now - NOT clear all oox::drawingml::Shape
-    pData->buildDiagramDataModel(false);
-
-    // diagram loaded. now lump together & attach to shape
-    pDiagram->addTo(pShape);
-    pShape->setDiagramDoms(pDiagram->getDomsAsPropertyValues());
-
-    // Get the oox::Theme definition and - if available - move/secure the
-    // original ImportData directly to the Diagram ModelData
-    std::shared_ptr<::oox::drawingml::Theme> aTheme(rFilter.getCurrentThemePtr());
-    if(aTheme)
-        pData->setThemeDocument(aTheme->getFragment()); //getTempFile());
-
-    // Prepare support for the advanced DiagramHelper using Diagram & Theme data
-    pShape->prepareDiagramHelper(pDiagram, rFilter.getCurrentThemePtr());
+    catch (...)
+    {
+        // unset DiagramFontHeights at filter if there was a failure
+        // to avoid dangling pointer
+        rFilter.setDiagramFontHeights(nullptr);
+        throw;
+    }
 }
 
 const oox::drawingml::Color&

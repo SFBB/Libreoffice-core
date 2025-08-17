@@ -36,7 +36,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::view;
 
 
 void VCLXTabPageContainer::GetPropertyIds( std::vector< sal_uInt16 > &rIds )
@@ -148,7 +147,7 @@ void VCLXTabPageContainer::ProcessWindowEvent( const VclWindowEvent& _rVclWindow
     {
         case VclEventId::TabpageActivate:
         {
-            sal_uLong page = reinterpret_cast<sal_uLong>(_rVclWindowEvent.GetData());
+            sal_uInt16 page = static_cast<sal_uInt16>(reinterpret_cast<sal_uIntPtr>(_rVclWindowEvent.GetData()));
             awt::tab::TabPageActivatedEvent aEvent(nullptr,page);
             m_aTabPageListeners.tabPageActivated(aEvent);
             break;
@@ -175,7 +174,7 @@ void SAL_CALL VCLXTabPageContainer::elementInserted( const css::container::Conta
     sal_Int16 nPageID = xP->getTabPageID();
 
     if (!xControl->getPeer().is())
-        throw RuntimeException("No peer for tabpage container!");
+        throw RuntimeException(u"No peer for tabpage container!"_ustr);
     VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow(xControl->getPeer());
     TabPage* pPage = static_cast<TabPage*>(pWindow.get());
     pTabCtrl->InsertPage(nPageID,pPage->GetText());

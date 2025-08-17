@@ -31,7 +31,9 @@
 class SVXCORE_DLLPUBLIC SdrPercentItem : public SfxUInt16Item
 {
 public:
-    SdrPercentItem(TypedWhichId<SdrPercentItem> nId, sal_uInt16 nVal): SfxUInt16Item(nId,nVal) {}
+    DECLARE_ITEM_TYPE_FUNCTION(SdrPercentItem)
+    SdrPercentItem(TypedWhichId<SdrPercentItem> nId, sal_uInt16 nVal)
+        : SfxUInt16Item(nId, nVal) {}
     virtual SdrPercentItem* Clone(SfxItemPool* pPool=nullptr) const override;
 
     virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper&) const override;
@@ -47,7 +49,9 @@ public:
 class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SdrSignedPercentItem : public SfxInt16Item
 {
 public:
-    SdrSignedPercentItem( sal_uInt16 nId, sal_Int16 nVal ) : SfxInt16Item( nId,nVal ) {}
+    DECLARE_ITEM_TYPE_FUNCTION(SdrSignedPercentItem)
+    SdrSignedPercentItem( sal_uInt16 nId, sal_Int16 nVal )
+        : SfxInt16Item( nId, nVal ) {}
     virtual SdrSignedPercentItem* Clone( SfxItemPool* pPool = nullptr ) const override;
 
     virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper&) const override;

@@ -22,8 +22,12 @@
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
+#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <primitive2d/texteffectprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
+#include <vcl/vcllayout.hxx>
+#include <vcl/rendercontext/State.hxx>
+#include <vcl/kernarray.hxx>
 #include <utility>
 #include <osl/diagnose.h>
 
@@ -52,7 +56,7 @@ basegfx::B2DVector getCorrectedScaleAndFontScale(basegfx::B2DVector& rScale)
         rScale.setY(1.0 / fDefaultFontScale);
         aFontScale.setY(fDefaultFontScale);
     }
-    else if (basegfx::fTools::less(aFontScale.getY(), 0.0))
+    else if (aFontScale.getY() < 0.0)
     {
         // negative font height; invert and adapt scale to get back to original scaling
         aFontScale.setY(-aFontScale.getY());
@@ -100,7 +104,7 @@ void TextSimplePortionPrimitive2D::getTextOutlinesAndTransformation(
 
     // handle special case: If scale is negative in (x,y) (3rd quadrant), it can
     // be expressed as rotation by PI
-    if (basegfx::fTools::less(aScale.getX(), 0.0) && basegfx::fTools::less(aScale.getY(), 0.0))
+    if (aScale.getX() < 0.0 && aScale.getY() < 0.0)
     {
         aScale = basegfx::absolute(aScale);
         fRotate += M_PI;
@@ -152,13 +156,12 @@ void TextSimplePortionPrimitive2D::getTextOutlinesAndTransformation(
     }
 }
 
-void TextSimplePortionPrimitive2D::create2DDecomposition(
-    Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
+Primitive2DReference TextSimplePortionPrimitive2D::create2DDecomposition(
+    const geometry::ViewInformation2D& /*rViewInformation*/) const
 {
     if (!getTextLength())
-        return;
+        return nullptr;
 
-    Primitive2DContainer aRetval;
     basegfx::B2DPolyPolygonVector aB2DPolyPolyVector;
     basegfx::B2DHomMatrix aPolygonTransform;
 
@@ -169,9 +172,10 @@ void TextSimplePortionPrimitive2D::create2DDecomposition(
     const sal_uInt32 nCount(aB2DPolyPolyVector.size());
 
     if (!nCount)
-        return;
+        return nullptr;
 
     // alloc space for the primitives
+    Primitive2DContainer aRetval;
     aRetval.resize(nCount);
 
     // color-filled polypolygons
@@ -191,19 +195,18 @@ void TextSimplePortionPrimitive2D::create2DDecomposition(
         aPolygonTransform.decompose(aScale, aTranslate, fRotate, fShearX);
 
         // create outline text effect with current content and replace
-        aRetval = Primitive2DContainer{ Primitive2DReference(new TextEffectPrimitive2D(
-            std::move(aRetval), aTranslate, fRotate, TextEffectStyle2D::Outline)) };
+        return new TextEffectPrimitive2D(std::move(aRetval), aTranslate, fRotate,
+                                         TextEffectStyle2D::Outline);
     }
 
-    rContainer.append(std::move(aRetval));
+    return new GroupPrimitive2D(std::move(aRetval));
 }
 
 TextSimplePortionPrimitive2D::TextSimplePortionPrimitive2D(
     basegfx::B2DHomMatrix rNewTransform, OUString rText, sal_Int32 nTextPosition,
     sal_Int32 nTextLength, std::vector<double>&& rDXArray, std::vector<sal_Bool>&& rKashidaArray,
     attribute::FontAttribute aFontAttribute, css::lang::Locale aLocale,
-    const basegfx::BColor& rFontColor, bool bFilled, tools::Long nWidthToFill,
-    const Color& rTextFillColor)
+    const basegfx::BColor& rFontColor, const Color& rTextFillColor)
     : maTextTransform(std::move(rNewTransform))
     , maText(std::move(rText))
     , mnTextPosition(nTextPosition)
@@ -213,8 +216,6 @@ TextSimplePortionPrimitive2D::TextSimplePortionPrimitive2D(
     , maFontAttribute(std::move(aFontAttribute))
     , maLocale(std::move(aLocale))
     , maFontColor(rFontColor)
-    , mbFilled(bFilled)
-    , mnWidthToFill(nWidthToFill)
     , maTextFillColor(rTextFillColor)
 {
 #if OSL_DEBUG_LEVEL > 0
@@ -228,6 +229,30 @@ TextSimplePortionPrimitive2D::TextSimplePortionPrimitive2D(
 bool LocalesAreEqual(const css::lang::Locale& rA, const css::lang::Locale& rB)
 {
     return (rA.Language == rB.Language && rA.Country == rB.Country && rA.Variant == rB.Variant);
+}
+
+bool TextSimplePortionPrimitive2D::hasTextRelief() const
+{
+    // not possible for TextSimplePortionPrimitive2D
+    return false;
+}
+
+bool TextSimplePortionPrimitive2D::hasShadow() const
+{
+    // not possible for TextSimplePortionPrimitive2D
+    return false;
+}
+
+bool TextSimplePortionPrimitive2D::hasTextDecoration() const
+{
+    // not possible for TextSimplePortionPrimitive2D
+    return false;
+}
+
+bool TextSimplePortionPrimitive2D::hasOutline() const
+{
+    // not allowed with TextRelief, else defined in FontAttributes
+    return !hasTextRelief() && getFontAttribute().getOutline();
 }
 
 bool TextSimplePortionPrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
@@ -244,8 +269,7 @@ bool TextSimplePortionPrimitive2D::operator==(const BasePrimitive2D& rPrimitive)
                 && getKashidaArray() == rCompare.getKashidaArray()
                 && getFontAttribute() == rCompare.getFontAttribute()
                 && LocalesAreEqual(getLocale(), rCompare.getLocale())
-                && getFontColor() == rCompare.getFontColor() && mbFilled == rCompare.mbFilled
-                && mnWidthToFill == rCompare.mnWidthToFill
+                && getFontColor() == rCompare.getFontColor()
                 && maTextFillColor == rCompare.maTextFillColor);
     }
 
@@ -297,6 +321,46 @@ basegfx::B2DRange TextSimplePortionPrimitive2D::getB2DRange(
     }
 
     return maB2DRange;
+}
+
+void TextSimplePortionPrimitive2D::createTextLayouter(TextLayouterDevice& rTextLayouter) const
+{
+    // decompose primitive-local matrix to get local font scaling
+    const basegfx::utils::B2DHomMatrixBufferedOnDemandDecompose aDecTrans(getTextTransform());
+
+    // create a TextLayouter to access encapsulated VCL Text/Font related tooling
+    rTextLayouter.setFontAttribute(getFontAttribute(), aDecTrans.getScale().getX(),
+                                   aDecTrans.getScale().getY(), getLocale());
+
+    if (getFontAttribute().getRTL())
+    {
+        vcl::text::ComplexTextLayoutFlags nRTLLayoutMode(
+            rTextLayouter.getLayoutMode() & ~vcl::text::ComplexTextLayoutFlags::BiDiStrong);
+        nRTLLayoutMode |= vcl::text::ComplexTextLayoutFlags::BiDiRtl
+                          | vcl::text::ComplexTextLayoutFlags::TextOriginLeft;
+        rTextLayouter.setLayoutMode(nRTLLayoutMode);
+    }
+    else
+    {
+        // tdf#101686: This is LTR text, but the output device may have RTL state.
+        vcl::text::ComplexTextLayoutFlags nLTRLayoutMode(rTextLayouter.getLayoutMode());
+        nLTRLayoutMode = nLTRLayoutMode & ~vcl::text::ComplexTextLayoutFlags::BiDiRtl;
+        nLTRLayoutMode = nLTRLayoutMode & ~vcl::text::ComplexTextLayoutFlags::BiDiStrong;
+        rTextLayouter.setLayoutMode(nLTRLayoutMode);
+    }
+}
+
+std::unique_ptr<SalLayout>
+TextSimplePortionPrimitive2D::createSalLayout(const TextLayouterDevice& rTextLayouter) const
+{
+    // As mentioned above we can act in the
+    // Text's local coordinate system without transformation at all
+    const ::std::vector<double>& rDXArray(getDXArray());
+
+    // create SalLayout. No need for a position, as mentioned text can work
+    // without transformations, so start point is always 0,0
+    return rTextLayouter.getSalLayout(getText(), getTextPosition(), getTextLength(),
+                                      basegfx::B2DPoint(0.0, 0.0), rDXArray, getKashidaArray());
 }
 
 // provide unique ID

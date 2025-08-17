@@ -168,7 +168,7 @@ namespace drawinglayer::primitive2d
 
         protected:
             /// method which is to be used to implement the local decomposition of a 2D primitive
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
             SwVirtFlyDrawObjPrimitive(
@@ -199,10 +199,10 @@ namespace drawinglayer::primitive2d
 
 namespace drawinglayer::primitive2d
 {
-        void SwVirtFlyDrawObjPrimitive::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
+        Primitive2DReference SwVirtFlyDrawObjPrimitive::create2DDecomposition(const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
             if(getOuterRange().isEmpty())
-                return;
+                return nullptr;
 
             // currently this SW object has no primitive representation. As long as this is the case,
             // create invisible geometry to allow correct HitTest and BoundRect calculations for the
@@ -210,10 +210,10 @@ namespace drawinglayer::primitive2d
             // the old SwVirtFlyDrawObj::CheckHit implementation are handled now in SwDrawView::PickObj;
             // this removed the 'hack' to get a view from inside model data or to react on null-tolerance
             // as it was done in the old implementation
-            rContainer.push_back(
+            return
                 createHiddenGeometryPrimitives2D(
                     true,
-                    getOuterRange()));
+                    getOuterRange());
         }
 
         bool SwVirtFlyDrawObjPrimitive::operator==(const BasePrimitive2D& rPrimitive) const
@@ -370,10 +370,11 @@ bool SwVirtFlyDrawObj::ContainsSwGrfNode() const
 {
     // RotGrfFlyFrame: Check if this is a SwGrfNode
     const SwFlyFrame* pFlyFrame(GetFlyFrame());
+    const SwFrame* pLower = pFlyFrame ? pFlyFrame->Lower() : nullptr;
 
-    if(nullptr != pFlyFrame && pFlyFrame->Lower() && pFlyFrame->Lower()->IsNoTextFrame())
+    if(pLower && pLower->IsNoTextFrame())
     {
-        const SwNoTextFrame *const pNTF(static_cast<const SwNoTextFrame*>(pFlyFrame->Lower()));
+        const SwNoTextFrame *const pNTF(static_cast<const SwNoTextFrame*>(pLower));
 
         const SwGrfNode *const pGrfNd(pNTF->GetNode()->GetGrfNode());
 
@@ -509,12 +510,12 @@ void SwVirtFlyDrawObj::wrap_DoPaintObject(
     // but no paints. IsPaintInProgress() depends on SW repaint, so, as long
     // as SW paints self and calls DrawLayer() for Heaven and Hell, this will
     // be correct
-    if ( !(pShell && pShell->IsDrawingLayerPaintInProgress()) )
+    if (!pShell || !pShell->IsDrawingLayerPaintInProgress())
         return;
 
     bool bDrawObject(true);
 
-    if ( !SwFlyFrame::IsPaint( const_cast<SwVirtFlyDrawObj*>(this), pShell ) )
+    if ( !SwFlyFrame::IsPaint( const_cast<SwVirtFlyDrawObj*>(this), *pShell ) )
     {
         bDrawObject = false;
     }
@@ -624,7 +625,7 @@ void SwVirtFlyDrawObj::SetLogicRect(const tools::Rectangle& )
         m_pUserCall->Changed(*this, SdrUserCallType::Resize, aTmp);
 }
 
-void SwVirtFlyDrawObj::NbcSetLogicRect(const tools::Rectangle& )
+void SwVirtFlyDrawObj::NbcSetLogicRect(const tools::Rectangle&, bool /*bAdaptTextMinSize*/ )
 {
     SetRect();
 }
@@ -719,14 +720,14 @@ void SwVirtFlyDrawObj::NbcMove(const Size& rSiz)
         GetFlyFrame()->ChgRelPos( aTmp );
     }
 
-    SwAttrSet aSet( pFormat->GetDoc()->GetAttrPool(),
+    SwAttrSet aSet( pFormat->GetDoc().GetAttrPool(),
                                             RES_VERT_ORIENT, RES_HORI_ORIENT );
     SwFormatHoriOrient aHori( pFormat->GetHoriOrient() );
     SwFormatVertOrient aVert( pFormat->GetVertOrient() );
     bool bPut = false;
 
     if( !GetFlyFrame()->IsFlyLayFrame() &&
-        ::GetHtmlMode(pFormat->GetDoc()->GetDocShell()) )
+        ::GetHtmlMode(pFormat->GetDoc().GetDocShell()) )
     {
         //In HTML-Mode only automatic aligns are allowed.
         //Only we can try a snap to left/right respectively left-/right border
@@ -866,8 +867,8 @@ void SwVirtFlyDrawObj::NbcCrop(const basegfx::B2DPoint& rRef, double fxFact, dou
     // rRef is relative to the Crop-Action, si in X/Y-Ranges of [0.0 .. 1.0],
     // to get the correct absolute position, transform using the old Rect
     const Point aRef(
-        aOldRect.Left() + basegfx::fround(aOldRect.GetWidth() * rRef.getX()),
-        aOldRect.Top() + basegfx::fround(aOldRect.GetHeight() * rRef.getY()));
+        aOldRect.Left() + basegfx::fround<tools::Long>(aOldRect.GetWidth() * rRef.getX()),
+        aOldRect.Top() + basegfx::fround<tools::Long>(aOldRect.GetHeight() * rRef.getY()));
 
     // apply transformation, use old ResizeRect for now
     tools::Rectangle aNewRect( aOldRect );
@@ -921,7 +922,7 @@ void SwVirtFlyDrawObj::NbcCrop(const basegfx::B2DPoint& rRef, double fxFact, dou
     const tools::Long aNewHeight(aNewRect.GetHeight() + (getOutRectangle().GetHeight() - aOldRect.GetHeight()));
     aSz.SetWidth(aNewWidth);
     aSz.SetHeight(aNewHeight);
-    pFormat->GetDoc()->SetAttr( aSz, *pFormat );
+    pFormat->GetDoc().SetAttr( aSz, *pFormat );
 
     // add move - to make result look better. Fill with defaults
     // for the untransformed case
@@ -956,8 +957,8 @@ void SwVirtFlyDrawObj::NbcCrop(const basegfx::B2DPoint& rRef, double fxFact, dou
         // Create the new TopLeft of the unrotated, cropped object by creating
         // as if re-creating the unrotated geometry
         aNewTopLeft = Point(
-            basegfx::fround(aRotNewCenter.getX() - (0.5 * aNewRect.getOpenWidth())),
-            basegfx::fround(aRotNewCenter.getY() - (0.5 * aNewRect.getOpenHeight())));
+            basegfx::fround<tools::Long>(aRotNewCenter.getX() - (0.5 * aNewRect.getOpenWidth())),
+            basegfx::fround<tools::Long>(aRotNewCenter.getY() - (0.5 * aNewRect.getOpenHeight())));
     }
 
     // check if we have movement and execute if yes
@@ -972,6 +973,13 @@ void SwVirtFlyDrawObj::NbcCrop(const basegfx::B2DPoint& rRef, double fxFact, dou
 
     // pSh->EndUndo(SwUndoId::END);
     pSh->EndAllAction();
+}
+
+bool SwVirtFlyDrawObj::IsSizeValid(Size aTargetSize)
+{
+    SwBorderAttrAccess aAccess( SwFrame::GetCache(), GetFlyFrame() );
+    const SwBorderAttrs &rAttrs = *aAccess.Get();
+    return GetFlyFrame()->IsResizeValid(&rAttrs, aTargetSize);
 }
 
 void SwVirtFlyDrawObj::NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact)
@@ -1018,10 +1026,10 @@ void SwVirtFlyDrawObj::NbcResize(const Point& rRef, const Fraction& xFact, const
 
         // create new modified, but untransformed OutRect
         setOutRectangle(tools::Rectangle(
-            basegfx::fround(aCenter.getX() - (0.5 * aAbsScale.getX())),
-            basegfx::fround(aCenter.getY() - (0.5 * aAbsScale.getY())),
-            basegfx::fround(aCenter.getX() + (0.5 * aAbsScale.getX())),
-            basegfx::fround(aCenter.getY() + (0.5 * aAbsScale.getY()))));
+            basegfx::fround<tools::Long>(aCenter.getX() - (0.5 * aAbsScale.getX())),
+            basegfx::fround<tools::Long>(aCenter.getY() - (0.5 * aAbsScale.getY())),
+            basegfx::fround<tools::Long>(aCenter.getX() + (0.5 * aAbsScale.getX())),
+            basegfx::fround<tools::Long>(aCenter.getY() + (0.5 * aAbsScale.getY()))));
 
         // restore FrameAreas so that actions below not adapted to new
         // full transformations take the correct actions
@@ -1047,7 +1055,8 @@ void SwVirtFlyDrawObj::NbcResize(const Point& rRef, const Fraction& xFact, const
     if( aSz != GetFlyFrame()->getFrameArea().SSize() )
     {
         //The width of the columns should not be too narrow
-        if ( GetFlyFrame()->Lower() && GetFlyFrame()->Lower()->IsColumnFrame() )
+        SwFrame* pLower = GetFlyFrame()->Lower();
+        if ( pLower && pLower->IsColumnFrame() )
         {
             SwBorderAttrAccess aAccess( SwFrame::GetCache(), GetFlyFrame() );
             const SwBorderAttrs &rAttrs = *aAccess.Get();
@@ -1104,7 +1113,7 @@ void SwVirtFlyDrawObj::NbcResize(const Point& rRef, const Fraction& xFact, const
                 aFrameSz.SetHeightPercent( sal_uInt8(aSz.Height() * 100.0 / nRelHeight + 0.5) );
             }
 
-            pFormat->GetDoc()->SetAttr( aFrameSz, *pFormat );
+            pFormat->GetDoc().SetAttr( aFrameSz, *pFormat );
         }
     }
 
@@ -1145,7 +1154,7 @@ void SwVirtFlyDrawObj::Move(const Size& rSiz)
 {
     NbcMove( rSiz );
     SetChanged();
-    GetFormat()->GetDoc()->GetIDocumentUndoRedo().DoDrawUndo(false);
+    GetFormat()->GetDoc().GetIDocumentUndoRedo().DoDrawUndo(false);
 }
 
 void SwVirtFlyDrawObj::Resize(const Point& rRef,
@@ -1153,14 +1162,14 @@ void SwVirtFlyDrawObj::Resize(const Point& rRef,
 {
     NbcResize( rRef, xFact, yFact );
     SetChanged();
-    GetFormat()->GetDoc()->GetIDocumentUndoRedo().DoDrawUndo(false);
+    GetFormat()->GetDoc().GetIDocumentUndoRedo().DoDrawUndo(false);
 }
 
 void SwVirtFlyDrawObj::Crop(const basegfx::B2DPoint& rRef, double fxFact, double fyFact)
 {
     NbcCrop( rRef, fxFact, fyFact );
     SetChanged();
-    GetFormat()->GetDoc()->GetIDocumentUndoRedo().DoDrawUndo(false);
+    GetFormat()->GetDoc().GetIDocumentUndoRedo().DoDrawUndo(false);
 }
 
 // RotGrfFlyFrame: Helper to access possible rotation of Graphic contained in FlyFrame
@@ -1242,21 +1251,21 @@ void SwVirtFlyDrawObj::addCropHandles(SdrHdlList& rTarget) const
     basegfx::B2DPoint aPos;
 
     aPos = aTargetTransform * basegfx::B2DPoint(0.0, 0.0);
-    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround(aPos.getX()), basegfx::fround(aPos.getY())), SdrHdlKind::UpperLeft, fShearX, fRotate));
+    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround<tools::Long>(aPos.getX()), basegfx::fround<tools::Long>(aPos.getY())), SdrHdlKind::UpperLeft, fShearX, fRotate));
     aPos = aTargetTransform * basegfx::B2DPoint(0.5, 0.0);
-    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround(aPos.getX()), basegfx::fround(aPos.getY())), SdrHdlKind::Upper, fShearX, fRotate));
+    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround<tools::Long>(aPos.getX()), basegfx::fround<tools::Long>(aPos.getY())), SdrHdlKind::Upper, fShearX, fRotate));
     aPos = aTargetTransform * basegfx::B2DPoint(1.0, 0.0);
-    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround(aPos.getX()), basegfx::fround(aPos.getY())), SdrHdlKind::UpperRight, fShearX, fRotate));
+    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround<tools::Long>(aPos.getX()), basegfx::fround<tools::Long>(aPos.getY())), SdrHdlKind::UpperRight, fShearX, fRotate));
     aPos = aTargetTransform * basegfx::B2DPoint(0.0, 0.5);
-    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround(aPos.getX()), basegfx::fround(aPos.getY())), SdrHdlKind::Left , fShearX, fRotate));
+    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround<tools::Long>(aPos.getX()), basegfx::fround<tools::Long>(aPos.getY())), SdrHdlKind::Left , fShearX, fRotate));
     aPos = aTargetTransform * basegfx::B2DPoint(1.0, 0.5);
-    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround(aPos.getX()), basegfx::fround(aPos.getY())), SdrHdlKind::Right, fShearX, fRotate));
+    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround<tools::Long>(aPos.getX()), basegfx::fround<tools::Long>(aPos.getY())), SdrHdlKind::Right, fShearX, fRotate));
     aPos = aTargetTransform * basegfx::B2DPoint(0.0, 1.0);
-    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround(aPos.getX()), basegfx::fround(aPos.getY())), SdrHdlKind::LowerLeft, fShearX, fRotate));
+    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround<tools::Long>(aPos.getX()), basegfx::fround<tools::Long>(aPos.getY())), SdrHdlKind::LowerLeft, fShearX, fRotate));
     aPos = aTargetTransform * basegfx::B2DPoint(0.5, 1.0);
-    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround(aPos.getX()), basegfx::fround(aPos.getY())), SdrHdlKind::Lower, fShearX, fRotate));
+    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround<tools::Long>(aPos.getX()), basegfx::fround<tools::Long>(aPos.getY())), SdrHdlKind::Lower, fShearX, fRotate));
     aPos = aTargetTransform * basegfx::B2DPoint(1.0, 1.0);
-    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround(aPos.getX()), basegfx::fround(aPos.getY())), SdrHdlKind::LowerRight, fShearX, fRotate));
+    rTarget.AddHdl(std::make_unique<SdrCropHdl>(Point(basegfx::fround<tools::Long>(aPos.getX()), basegfx::fround<tools::Long>(aPos.getY())), SdrHdlKind::LowerRight, fShearX, fRotate));
 }
 
 // Macro
@@ -1279,7 +1288,8 @@ SdrObject* SwVirtFlyDrawObj::CheckMacroHit( const SdrObjMacroHitRec& rRec ) cons
     if( rURL.GetMap() || !rURL.GetURL().isEmpty() )
     {
         SwRect aRect;
-        if ( m_pFlyFrame->Lower() && m_pFlyFrame->Lower()->IsNoTextFrame() )
+        SwFrame* pLower = m_pFlyFrame->Lower();
+        if ( pLower && pLower->IsNoTextFrame() )
         {
             aRect = m_pFlyFrame->getFramePrintArea();
             aRect += m_pFlyFrame->getFrameArea().Pos();

@@ -15,14 +15,13 @@
 
 #include <Sparkline.hxx>
 #include <SparklineGroup.hxx>
-#include <SparklineAttributes.hxx>
 #include <utility>
 
 namespace sc
 {
-UndoGroupSparklines::UndoGroupSparklines(ScDocShell& rDocShell, ScRange const& rRange,
+UndoGroupSparklines::UndoGroupSparklines(ScDocShell& rShell, ScRange const& rRange,
                                          std::shared_ptr<sc::SparklineGroup> pSparklineGroup)
-    : ScSimpleUndo(&rDocShell)
+    : ScSimpleUndo(rShell)
     , m_aRange(rRange)
     , m_pSparklineGroup(std::move(pSparklineGroup))
 {
@@ -34,7 +33,7 @@ void UndoGroupSparklines::Undo()
 {
     BeginUndo();
 
-    ScDocument& rDocument = pDocShell->GetDocument();
+    ScDocument& rDocument = rDocShell.GetDocument();
 
     for (auto& rUndoData : m_aUndoData)
     {
@@ -46,7 +45,7 @@ void UndoGroupSparklines::Undo()
 
     m_aUndoData.clear();
 
-    pDocShell->PostPaint(m_aRange, PaintPartFlags::All);
+    rDocShell.PostPaint(m_aRange, PaintPartFlags::All);
 
     EndUndo();
 }
@@ -55,7 +54,7 @@ void UndoGroupSparklines::Redo()
 {
     BeginRedo();
 
-    ScDocument& rDocument = pDocShell->GetDocument();
+    ScDocument& rDocument = rDocShell.GetDocument();
 
     for (ScAddress aAddress = m_aRange.aStart; aAddress.Col() <= m_aRange.aEnd.Col();
          aAddress.IncCol())
@@ -75,7 +74,7 @@ void UndoGroupSparklines::Redo()
         }
     }
 
-    pDocShell->PostPaint(m_aRange, PaintPartFlags::All);
+    rDocShell.PostPaint(m_aRange, PaintPartFlags::All);
 
     EndRedo();
 }

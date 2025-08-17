@@ -19,12 +19,9 @@
 
 #pragma once
 
+#include <config_options.h>
 #include <com/sun/star/drawing/CameraGeometry.hpp>
 #include <rtl/ref.hxx>
-#include "charttoolsdllapi.hxx"
-
-namespace com::sun::star::beans { class XPropertySet; }
-namespace com::sun::star::chart2 { class XDiagram; }
 
 namespace chart
 {
@@ -47,7 +44,7 @@ enum CuboidPlanePosition
     CuboidPlanePosition_Back
 };
 
-class OOO_DLLPUBLIC_CHARTTOOLS ThreeDHelper
+class ThreeDHelper
 {
 public:
 
@@ -69,12 +66,12 @@ public:
         sal_Int32 nElevationDeg, sal_Int32 nRotationDeg
         , double& rfXAngleRad, double& rfYAngleRad, double& rfZAngleRad );
 
-    SAL_DLLPRIVATE static void convertXYZAngleRadToElevationRotationDeg(
+    static void convertXYZAngleRadToElevationRotationDeg(
         sal_Int32& rnElevationDeg, sal_Int32& rnRotationDeg
         , double fXRad, double fYRad, double fZRad );
 
-    SAL_DLLPRIVATE static void ensureCameraDistanceRange( double& rfCameraDistance );
-    SAL_DLLPRIVATE static void getCameraDistanceRange( double& rfMinimumDistance, double& rfMaximumDistance );
+    static void ensureCameraDistanceRange( double& rfCameraDistance );
+    static void getCameraDistanceRange( double& rfMinimumDistance, double& rfMaximumDistance );
 
     static double CameraDistanceToPerspective( double fCameraDistance );
     static double PerspectiveToCameraDistance( double fPerspective );

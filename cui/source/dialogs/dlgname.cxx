@@ -29,10 +29,11 @@
 
 SvxNameDialog::SvxNameDialog(weld::Window* pParent, const OUString& rName, const OUString& rDesc,
                              const OUString& rTitle)
-    : GenericDialogController(pParent, "cui/ui/namedialog.ui", "NameDialog")
-    , m_xEdtName(m_xBuilder->weld_entry("name_entry"))
-    , m_xFtDescription(m_xBuilder->weld_label("description_label"))
-    , m_xBtnOK(m_xBuilder->weld_button("ok"))
+    : GenericDialogController(pParent, u"cui/ui/namedialog.ui"_ustr, u"NameDialog"_ustr)
+    , m_xEdtName(m_xBuilder->weld_entry(u"name_entry"_ustr))
+    , m_xFtDescription(m_xBuilder->weld_label(u"description_label"_ustr))
+    , m_xBtnOK(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_aCheckName(nullptr)
 {
     m_xFtDescription->set_label(rDesc);
     m_xEdtName->set_text(rName);
@@ -49,13 +50,15 @@ IMPL_LINK_NOARG(SvxNameDialog, ModifyHdl, weld::Entry&, void)
     bool bEnable;
     if (m_aCheckNameHdl.IsSet())
         bEnable = m_aCheckNameHdl.Call(*this);
+    else if (m_aCheckName)
+        bEnable = m_aCheckName(m_xEdtName->get_text());
     else
         bEnable = !m_xEdtName->get_text().isEmpty();
     m_xBtnOK->set_sensitive(bEnable);
     // tdf#129032: feedback on reason to disabled controls
     m_xEdtName->set_message_type(bEnable ? weld::EntryMessageType::Normal
                                          : weld::EntryMessageType::Error);
-    OUString rTip = "";
+    OUString rTip = u""_ustr;
     if (!bEnable && m_aCheckNameTooltipHdl.IsSet())
         rTip = m_aCheckNameTooltipHdl.Call(*this);
     m_xBtnOK->set_tooltip_text(rTip);
@@ -64,11 +67,12 @@ IMPL_LINK_NOARG(SvxNameDialog, ModifyHdl, weld::Entry&, void)
 
 SvxNumberDialog::SvxNumberDialog(weld::Window* pParent, const OUString& rDesc, sal_Int64 nValue,
                                  sal_Int64 nMin, sal_Int64 nMax)
-    : GenericDialogController(pParent, "cui/ui/numberdialog.ui", "NumberDialog")
-    , m_xEdtNumber(m_xBuilder->weld_spin_button("number_spinbtn"))
-    , m_xFtDescription(m_xBuilder->weld_label("description_label"))
+    : GenericDialogController(pParent, u"cui/ui/numberdialog.ui"_ustr, u"NumberDialog"_ustr)
+    , m_xEdtNumber(m_xBuilder->weld_spin_button(u"number_spinbtn"_ustr))
+    , m_xFtDescription(m_xBuilder->weld_label(u"description_label"_ustr))
 {
     m_xFtDescription->set_label(rDesc);
+    m_xEdtNumber->set_digits(0);
     m_xEdtNumber->set_min(nMin);
     m_xEdtNumber->set_max(nMax);
     m_xEdtNumber->set_value(nValue);
@@ -76,9 +80,9 @@ SvxNumberDialog::SvxNumberDialog(weld::Window* pParent, const OUString& rDesc, s
 
 SvxDecimalNumberDialog::SvxDecimalNumberDialog(weld::Window* pParent, const OUString& rDesc,
                                                double fValue)
-    : GenericDialogController(pParent, "cui/ui/numberdialog.ui", "NumberDialog")
-    , m_xEdtNumber(m_xBuilder->weld_formatted_spin_button("number_spinbtn"))
-    , m_xFtDescription(m_xBuilder->weld_label("description_label"))
+    : GenericDialogController(pParent, u"cui/ui/numberdialog.ui"_ustr, u"NumberDialog"_ustr)
+    , m_xEdtNumber(m_xBuilder->weld_formatted_spin_button(u"number_spinbtn"_ustr))
+    , m_xFtDescription(m_xBuilder->weld_label(u"description_label"_ustr))
 {
     m_xFtDescription->set_label(rDesc);
     m_xEdtNumber->GetFormatter().SetValue(fValue);
@@ -89,9 +93,9 @@ SvxDecimalNumberDialog::SvxDecimalNumberDialog(weld::Window* pParent, const OUSt
 // plus uniqueness-callback-linkHandler
 
 SvxObjectNameDialog::SvxObjectNameDialog(weld::Window* pParent, const OUString& rName)
-    : GenericDialogController(pParent, "cui/ui/objectnamedialog.ui", "ObjectNameDialog")
-    , m_xEdtName(m_xBuilder->weld_entry("object_name_entry"))
-    , m_xBtnOK(m_xBuilder->weld_button("ok"))
+    : GenericDialogController(pParent, u"cui/ui/objectnamedialog.ui"_ustr, u"ObjectNameDialog"_ustr)
+    , m_xEdtName(m_xBuilder->weld_entry(u"object_name_entry"_ustr))
+    , m_xBtnOK(m_xBuilder->weld_button(u"ok"_ustr))
 {
     // set name
     m_xEdtName->set_text(rName);
@@ -116,12 +120,13 @@ IMPL_LINK_NOARG(SvxObjectNameDialog, ModifyHdl, weld::Entry&, void)
 SvxObjectTitleDescDialog::SvxObjectTitleDescDialog(weld::Window* pParent, const OUString& rTitle,
                                                    const OUString& rDescription,
                                                    bool const isDecorative)
-    : GenericDialogController(pParent, "cui/ui/objecttitledescdialog.ui", "ObjectTitleDescDialog")
-    , m_xTitleFT(m_xBuilder->weld_label("object_title_label"))
-    , m_xEdtTitle(m_xBuilder->weld_entry("object_title_entry"))
-    , m_xDescriptionFT(m_xBuilder->weld_label("desc_label"))
-    , m_xEdtDescription(m_xBuilder->weld_text_view("desc_entry"))
-    , m_xDecorativeCB(m_xBuilder->weld_check_button("decorative"))
+    : GenericDialogController(pParent, u"cui/ui/objecttitledescdialog.ui"_ustr,
+                              u"ObjectTitleDescDialog"_ustr)
+    , m_xTitleFT(m_xBuilder->weld_label(u"object_title_label"_ustr))
+    , m_xEdtTitle(m_xBuilder->weld_entry(u"object_title_entry"_ustr))
+    , m_xDescriptionFT(m_xBuilder->weld_label(u"desc_label"_ustr))
+    , m_xEdtDescription(m_xBuilder->weld_text_view(u"desc_entry"_ustr))
+    , m_xDecorativeCB(m_xBuilder->weld_check_button(u"decorative"_ustr))
 {
     //lock height to initial height
     m_xEdtDescription->set_size_request(-1, m_xEdtDescription->get_text_height() * 5);
@@ -147,19 +152,19 @@ IMPL_LINK_NOARG(SvxObjectTitleDescDialog, DecorativeHdl, weld::Toggleable&, void
 }
 
 SvxListDialog::SvxListDialog(weld::Window* pParent)
-    : GenericDialogController(pParent, "cui/ui/listdialog.ui", "ListDialog")
+    : GenericDialogController(pParent, u"cui/ui/listdialog.ui"_ustr, u"ListDialog"_ustr)
     , m_aMode(ListMode::String)
-    , m_xList(m_xBuilder->weld_tree_view("assignlist"))
-    , m_xAddBtn(m_xBuilder->weld_button("addbtn"))
-    , m_xRemoveBtn(m_xBuilder->weld_button("removebtn"))
-    , m_xEditBtn(m_xBuilder->weld_button("editbtn"))
+    , m_xList(m_xBuilder->weld_tree_view(u"assignlist"_ustr))
+    , m_xAddBtn(m_xBuilder->weld_button(u"addbtn"_ustr))
+    , m_xRemoveBtn(m_xBuilder->weld_button(u"removebtn"_ustr))
+    , m_xEditBtn(m_xBuilder->weld_button(u"editbtn"_ustr))
 {
     m_xList->set_size_request(m_xList->get_approximate_digit_width() * 54,
                               m_xList->get_height_rows(6));
     m_xAddBtn->connect_clicked(LINK(this, SvxListDialog, AddHdl_Impl));
     m_xRemoveBtn->connect_clicked(LINK(this, SvxListDialog, RemoveHdl_Impl));
     m_xEditBtn->connect_clicked(LINK(this, SvxListDialog, EditHdl_Impl));
-    m_xList->connect_changed(LINK(this, SvxListDialog, SelectHdl_Impl));
+    m_xList->connect_selection_changed(LINK(this, SvxListDialog, SelectHdl_Impl));
     m_xList->connect_row_activated(LINK(this, SvxListDialog, DblClickHdl_Impl));
 
     SelectionChanged();
@@ -169,7 +174,7 @@ SvxListDialog::~SvxListDialog() {}
 
 IMPL_LINK_NOARG(SvxListDialog, AddHdl_Impl, weld::Button&, void)
 {
-    SvxNameDialog aNameDlg(m_xDialog.get(), "", "");
+    SvxNameDialog aNameDlg(m_xDialog.get(), u""_ustr, u""_ustr);
 
     if (!aNameDlg.run())
         return;
@@ -245,7 +250,7 @@ void SvxListDialog::EditEntry()
 
     if (m_aMode == ListMode::String)
     {
-        SvxNameDialog aNameDlg(m_xDialog.get(), sOldText, "");
+        SvxNameDialog aNameDlg(m_xDialog.get(), sOldText, u""_ustr);
         if (!aNameDlg.run())
             return;
         sNewText = comphelper::string::strip(aNameDlg.GetName(), ' ');
@@ -258,14 +263,14 @@ void SvxListDialog::EditEntry()
         sal_Int64 nMax = m_aMode == ListMode::Int16
                              ? SAL_MAX_INT16
                              : m_aMode == ListMode::Int32 ? SAL_MAX_INT32 : SAL_MAX_INT64;
-        SvxNumberDialog aNumberDlg(m_xDialog.get(), "", sOldText.toInt64(), nMin, nMax);
+        SvxNumberDialog aNumberDlg(m_xDialog.get(), u""_ustr, sOldText.toInt64(), nMin, nMax);
         if (!aNumberDlg.run())
             return;
         sNewText = OUString::number(aNumberDlg.GetNumber());
     }
     else if (m_aMode == ListMode::Double)
     {
-        SvxDecimalNumberDialog aNumberDlg(m_xDialog.get(), "", sOldText.toDouble());
+        SvxDecimalNumberDialog aNumberDlg(m_xDialog.get(), u""_ustr, sOldText.toDouble());
         if (!aNumberDlg.run())
             return;
         sNewText = OUString::number(aNumberDlg.GetNumber());

@@ -43,12 +43,15 @@
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
 
-VbaDocumentBase::VbaDocumentBase( const uno::Reference< ov::XHelperInterface >& xParent, const uno::Reference< uno::XComponentContext >& xContext, uno::Reference< frame::XModel >  xModel ) : VbaDocumentBase_BASE( xParent, xContext ),  mxModel(std::move( xModel ))
+VbaDocumentBase::VbaDocumentBase( const uno::Reference< ov::XHelperInterface >& xParent,
+                                  const uno::Reference< uno::XComponentContext >& xContext )
+: VbaDocumentBase_BASE( xParent, xContext )
 {
 }
 
 VbaDocumentBase::VbaDocumentBase( uno::Sequence< uno::Any> const & args,
-    uno::Reference< uno::XComponentContext> const & xContext ) : VbaDocumentBase_BASE( getXSomethingFromArgs< XHelperInterface >( args, 0 ), xContext ),  mxModel( getXSomethingFromArgs< frame::XModel >( args, 1 ) )
+                                  uno::Reference< uno::XComponentContext> const & xContext )
+: VbaDocumentBase_BASE( getXSomethingFromArgs< XHelperInterface >( args, 0 ), xContext )
 {
 }
 
@@ -130,7 +133,7 @@ VbaDocumentBase::Close( const uno::Any &rSaveArg, const uno::Any &rFileArg,
     {
         if( xStorable->isReadonly() )
         {
-            throw uno::RuntimeException("Unable to save to a read only file " );
+            throw uno::RuntimeException(u"Unable to save to a read only file "_ustr );
         }
         if( bFileName )
             xStorable->storeAsURL( aFileName, uno::Sequence< beans::PropertyValue >(0) );
@@ -141,31 +144,34 @@ VbaDocumentBase::Close( const uno::Any &rSaveArg, const uno::Any &rFileArg,
         xModifiable->setModified( false );
 
     // first try to close the document using UI dispatch functionality
-    bool bUIClose = false;
     try
     {
-        uno::Reference< frame::XController > xController( getModel()->getCurrentController(), uno::UNO_SET_THROW );
-        uno::Reference< frame::XDispatchProvider > xDispatchProvider( xController->getFrame(), uno::UNO_QUERY_THROW );
+        uno::Reference< frame::XController > xController( getModel()->getCurrentController() );
+        if (xController)
+        {
+            uno::Reference< frame::XDispatchProvider > xDispatchProvider( xController->getFrame(), uno::UNO_QUERY );
+            uno::Reference< lang::XMultiComponentFactory > xServiceManager( mxContext->getServiceManager() );
+            if (xDispatchProvider && xServiceManager)
+            {
+                uno::Reference< util::XURLTransformer > xURLTransformer( util::URLTransformer::create(mxContext) );
 
-        uno::Reference< lang::XMultiComponentFactory > xServiceManager( mxContext->getServiceManager(), uno::UNO_SET_THROW );
-        uno::Reference< util::XURLTransformer > xURLTransformer( util::URLTransformer::create(mxContext) );
+                util::URL aURL;
+                aURL.Complete = ".uno:CloseDoc";
+                xURLTransformer->parseStrict( aURL );
 
-        util::URL aURL;
-        aURL.Complete = ".uno:CloseDoc";
-        xURLTransformer->parseStrict( aURL );
-
-        uno::Reference< css::frame::XDispatch > xDispatch(
-                xDispatchProvider->queryDispatch( aURL, "_self" , 0 ),
-                uno::UNO_SET_THROW );
-        xDispatch->dispatch( aURL, uno::Sequence< beans::PropertyValue >() );
-        bUIClose = true;
+                uno::Reference< css::frame::XDispatch > xDispatch(
+                        xDispatchProvider->queryDispatch( aURL, u"_self"_ustr , 0 ) );
+                if (xDispatch)
+                {
+                    xDispatch->dispatch( aURL, uno::Sequence< beans::PropertyValue >() );
+                    return;
+                }
+            }
+        }
     }
     catch(const uno::Exception&)
     {
     }
-
-    if ( bUIClose )
-        return;
 
     // if it is not possible to use UI dispatch, try to close the model directly
     bool bCloseable = false;
@@ -196,8 +202,8 @@ VbaDocumentBase::Close( const uno::Any &rSaveArg, const uno::Any &rFileArg,
         // If close is not supported by this model - try to dispose it.
         // But if the model disagree with a reset request for the modify state
         // we shouldn't do so. Otherwise some strange things can happen.
-        uno::Reference< lang::XComponent > xDisposable ( xModel, uno::UNO_QUERY_THROW );
-        xDisposable->dispose();
+        if (xModel)
+            xModel->dispose();
     }
     catch(const uno::Exception&)
     {
@@ -222,7 +228,7 @@ VbaDocumentBase::Unprotect( const uno::Any &aPassword )
     OUString rPassword;
     uno::Reference< util::XProtectable > xProt( getModel(), uno::UNO_QUERY_THROW );
     if( !xProt->isProtected() )
-        throw uno::RuntimeException("File is already unprotected" );
+        throw uno::RuntimeException(u"File is already unprotected"_ustr );
     if( aPassword >>= rPassword )
         xProt->unprotect( rPassword );
     else
@@ -245,7 +251,7 @@ VbaDocumentBase::setSaved( sal_Bool bSave )
     {
         uno::Any aCaught( ::cppu::getCaughtException() );
         throw lang::WrappedTargetRuntimeException(
-                "Can't change modified state of model!",
+                u"Can't change modified state of model!"_ustr,
                 uno::Reference< uno::XInterface >(),
                 aCaught );
     }
@@ -262,7 +268,7 @@ void
 VbaDocumentBase::Save()
 {
     uno::Reference< frame::XModel > xModel = getModel();
-    dispatchRequests(xModel,".uno:Save");
+    dispatchRequests(xModel,u".uno:Save"_ustr);
 }
 
 void
@@ -277,13 +283,20 @@ VbaDocumentBase::getVBProject()
 {
     if( !mxVBProject.is() ) try
     {
-        uno::Reference< XApplicationBase > xApp( Application(), uno::UNO_QUERY_THROW );
-        uno::Reference< XInterface > xVBE( xApp->getVBE(), uno::UNO_QUERY_THROW );
-        uno::Sequence< uno::Any > aArgs{ uno::Any(xVBE), // the VBE
-                                         uno::Any(getModel()) }; // document model for script container access
-        uno::Reference< lang::XMultiComponentFactory > xServiceManager( mxContext->getServiceManager(), uno::UNO_SET_THROW );
-        mxVBProject = xServiceManager->createInstanceWithArgumentsAndContext(
-            "ooo.vba.vbide.VBProject", aArgs, mxContext );
+        uno::Reference< XApplicationBase > xApp( Application(), uno::UNO_QUERY );
+        if (xApp)
+        {
+            uno::Reference< XInterface > xVBE( xApp->getVBE(), uno::UNO_QUERY );
+            if (xVBE)
+            {
+                uno::Sequence< uno::Any > aArgs{ uno::Any(xVBE), // the VBE
+                                                 uno::Any(getModel()) }; // document model for script container access
+                uno::Reference< lang::XMultiComponentFactory > xServiceManager( mxContext->getServiceManager() );
+                if (xServiceManager)
+                    mxVBProject = xServiceManager->createInstanceWithArgumentsAndContext(
+                        u"ooo.vba.vbide.VBProject"_ustr, aArgs, mxContext );
+            }
+        }
     }
     catch(const uno::Exception&)
     {
@@ -294,7 +307,7 @@ VbaDocumentBase::getVBProject()
 OUString
 VbaDocumentBase::getServiceImplName()
 {
-    return "VbaDocumentBase";
+    return u"VbaDocumentBase"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -302,7 +315,7 @@ VbaDocumentBase::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.VbaDocumentBase"
+        u"ooo.vba.VbaDocumentBase"_ustr
     };
     return aServiceNames;
 }

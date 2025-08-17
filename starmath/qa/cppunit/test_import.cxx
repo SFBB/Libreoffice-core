@@ -23,7 +23,7 @@ class Test : public UnoApiTest
 {
 public:
     Test()
-        : UnoApiTest("starmath/qa/cppunit/data/")
+        : UnoApiTest(u"starmath/qa/cppunit/data/"_ustr)
     {
     }
 
@@ -37,7 +37,7 @@ public:
 void Test::testFontStyles()
 {
     // tdf#143213
-    loadFromURL(u"font-styles.odf");
+    loadFromFile(u"font-styles.odf");
     SfxBaseModel* pModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
     SmDocShell* pDocShell = static_cast<SmDocShell*>(pModel->GetObjectShell());
 

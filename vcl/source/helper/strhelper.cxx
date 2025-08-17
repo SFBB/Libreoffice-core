@@ -146,6 +146,7 @@ OUString GetCommandLineToken( int nToken, const OUString& rLine )
         nActualToken++;
     }
 
+    assert(pLeap && "otherwise would early return");
     *pLeap = 0;
 
     return OUString(pBuffer);
@@ -196,6 +197,7 @@ OString GetCommandLineToken(int nToken, const OString& rLine)
         nActualToken++;
     }
 
+    assert(pLeap && "otherwise would early return");
     *pLeap = 0;
 
     return pBuffer;
@@ -251,7 +253,7 @@ int GetCommandLineTokenCount(const OUString& rLine)
     return nTokenCount;
 }
 
-OUString WhitespaceToSpace( std::u16string_view rLine, bool bProtect )
+OUString WhitespaceToSpace( std::u16string_view rLine )
 {
     size_t nLen = rLine.size();
     if( ! nLen )
@@ -264,7 +266,7 @@ OUString WhitespaceToSpace( std::u16string_view rLine, bool bProtect )
 
     while( pRun != pEnd )
     {
-        if( pRun != pEnd && isSpace( *pRun ) )
+        if( isSpace( *pRun ) )
         {
             *pLeap = ' ';
             pLeap++;
@@ -283,11 +285,11 @@ OUString WhitespaceToSpace( std::u16string_view rLine, bool bProtect )
                 if( pRun != pEnd )
                     pRun++;
             }
-            else if( bProtect && *pRun == '`' )
+            else if( *pRun == '`' )
                 CopyUntil( pLeap, pRun, '`', true );
-            else if( bProtect && *pRun == '\'' )
+            else if( *pRun == '\'' )
                 CopyUntil( pLeap, pRun, '\'', true );
-            else if( bProtect && *pRun == '"' )
+            else if( *pRun == '"' )
                 CopyUntil( pLeap, pRun, '"', true );
             else
             {
@@ -324,7 +326,7 @@ OString WhitespaceToSpace(std::string_view rLine)
 
     while( pRun != pEnd )
     {
-        if( pRun != pEnd && isSpace( *pRun ) )
+        if( isSpace( *pRun ) )
         {
             *pLeap = ' ';
             pLeap++;
@@ -363,13 +365,13 @@ OString WhitespaceToSpace(std::string_view rLine)
     // there might be a space at beginning or end
     assert(pLeap > pBuffer);
     pLeap--;
-#if defined(__GNUC__) && (__GNUC__ == 12 || __GNUC__ == 13)
+#if defined(__GNUC__) && __GNUC__ >= 12 && __GNUC__ <= 15
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #endif
     if( *pLeap == ' ' )
         *pLeap = 0;
-#if defined(__GNUC__) && (__GNUC__ == 12 || __GNUC__ == 13)
+#if defined(__GNUC__) && __GNUC__ >= 12 && __GNUC__ <= 15
 #pragma GCC diagnostic pop
 #endif
     return *pBuffer == ' ' ? pBuffer+1 : pBuffer;

@@ -22,9 +22,6 @@
 #include <utility>
 
 
-using namespace com::sun::star;
-
-
 namespace drawinglayer::primitive3d
 {
         GroupPrimitive3D::GroupPrimitive3D( Primitive3DContainer aChildren )
@@ -32,7 +29,7 @@ namespace drawinglayer::primitive3d
         {
         }
 
-        /** The compare opertator uses the Sequence::==operator, so only checking if
+        /** The compare operator uses the Sequence::==operator, so only checking if
             the references are equal. All non-equal references are interpreted as
             non-equal.
          */

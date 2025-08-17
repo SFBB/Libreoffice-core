@@ -51,7 +51,6 @@ using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::util;
 using namespace ::osl;
 using namespace ::comphelper;
 using namespace ::cppu;
@@ -64,22 +63,20 @@ namespace
         Reference<XPropertyState> xState(_xProp,UNO_QUERY);
         if ( !xState )
             return false;
-        const OUString* pIter = _aNames.getConstArray();
-        const OUString* pEnd   = pIter + _aNames.getLength();
-        for(;pIter != pEnd;++pIter)
+        for (auto& name : _aNames)
         {
             try
             {
-                PropertyState aState = xState->getPropertyState(*pIter);
+                PropertyState aState = xState->getPropertyState(name);
                 if ( aState != PropertyState_DEFAULT_VALUE )
-                    break;
+                    return false;
             }
             catch(const Exception&)
             {
                 TOOLS_WARN_EXCEPTION("dbaccess", "" );
             }
         }
-        return ( pIter == pEnd );
+        return true;
     }
 }
 
@@ -123,7 +120,7 @@ OUString OTableContainer::getTableTypeRestriction() const
 // XServiceInfo
 OUString SAL_CALL OTableContainer::getImplementationName()
     {
-        return "com.sun.star.sdb.dbaccess.OTableContainer";
+        return u"com.sun.star.sdb.dbaccess.OTableContainer"_ustr;
     }
 sal_Bool SAL_CALL OTableContainer::supportsService(const OUString& _rServiceName)
     {
@@ -165,13 +162,13 @@ void lcl_createDefinitionObject(const OUString& _rName
 
 }
 
-connectivity::sdbcx::ObjectType OTableContainer::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OTableContainer::createObject(const OUString& _rName)
 {
     Reference<XColumnsSupplier > xSup;
     if(m_xMasterContainer.is() && m_xMasterContainer->hasByName(_rName))
         xSup.set(m_xMasterContainer->getByName(_rName),UNO_QUERY);
 
-    connectivity::sdbcx::ObjectType xRet;
+    css::uno::Reference< css::beans::XPropertySet > xRet;
     if ( m_xMetaData.is() )
     {
         Reference<XPropertySet> xTableDefinition;
@@ -224,7 +221,7 @@ connectivity::sdbcx::ObjectType OTableContainer::createObject(const OUString& _r
             xRet = pTable;
             pTable->construct();
         }
-        Reference<XPropertySet> xDest(xRet,UNO_QUERY);
+        Reference<XPropertySet> xDest(xRet);
         if ( xTableDefinition.is() )
             ::comphelper::copyProperties(xTableDefinition,xDest);
 
@@ -263,7 +260,7 @@ Reference< XPropertySet > OTableContainer::createDescriptor()
 }
 
 // XAppend
-ObjectType OTableContainer::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > OTableContainer::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     // append the new table with a create stmt
     OUString aName = getString(descriptor->getPropertyValue(PROPERTY_NAME));
@@ -313,14 +310,11 @@ ObjectType OTableContainer::appendObject( const OUString& _rForName, const Refer
         if ( xNames.is() )
         {
             Reference<XPropertySet> xProp = xFac->createDataDescriptor();
-            Sequence< OUString> aSeq = xNames->getElementNames();
-            const OUString* pIter = aSeq.getConstArray();
-            const OUString* pEnd   = pIter + aSeq.getLength();
-            for(;pIter != pEnd;++pIter)
+            for (auto& name : xNames->getElementNames())
             {
-                if ( !xColumnDefinitions->hasByName(*pIter) )
+                if (!xColumnDefinitions->hasByName(name))
                 {
-                    Reference<XPropertySet> xColumn(xNames->getByName(*pIter),UNO_QUERY);
+                    Reference<XPropertySet> xColumn(xNames->getByName(name), UNO_QUERY);
                     if ( !OColumnSettings::hasDefaultSettings( xColumn ) )
                     {
                         ::comphelper::copyProperties( xColumn, xProp );
@@ -352,7 +346,7 @@ void OTableContainer::dropObject(sal_Int32 _nPos, const OUString& _sElementName)
         OUString sComposedName;
 
         bool bIsView = false;
-        Reference<XPropertySet> xTable(getObject(_nPos),UNO_QUERY);
+        Reference<XPropertySet> xTable(getObject(_nPos));
         if ( xTable.is() && m_xMetaData.is() )
         {
             OUString sSchema,sCatalog,sTable;
@@ -372,7 +366,7 @@ void OTableContainer::dropObject(sal_Int32 _nPos, const OUString& _sElementName)
         if(sComposedName.isEmpty())
             ::dbtools::throwFunctionSequenceException(static_cast<XTypeProvider*>(static_cast<OFilteredContainer*>(this)));
 
-        OUString aSql("DROP ");
+        OUString aSql(u"DROP "_ustr);
 
         if ( bIsView ) // here we have a view
             aSql += "VIEW ";
@@ -405,7 +399,7 @@ void SAL_CALL OTableContainer::elementInserted( const ContainerEvent& Event )
     {
         if(!m_xMasterContainer.is() || m_xMasterContainer->hasByName(sName))
         {
-            ObjectType xName = createObject(sName);
+            css::uno::Reference< css::beans::XPropertySet > xName = createObject(sName);
             insertElement(sName,xName);
             // and notify our listeners
             ContainerEvent aEvent(static_cast<XContainer*>(this), Any(sName), Any(xName), Any());

@@ -40,18 +40,6 @@
 // ScFilterTools::ReadLongDouble()
 
 void ScfTools::ReadLongDouble(SvStream& rStrm, double& fResult)
-
-#ifdef __SIMPLE_FUNC                // for <=VC 1.5
-{
-    long double fRet;
-    bool bOk = 10 == rStrm.Read(&fRet, 10);
-    if (!bOk)
-        return;
-    fResult = static_cast<double>(fRet);
-}
-#undef __SIMPLE_FUNC
-
-#else                               // detailed for all others
 {
 
 /*
@@ -109,7 +97,6 @@ SEEEEEEE EEEEEEEE IMMMMMMM MMMMMMMM MMMMMMMM MMMMMMMM MMMMMMMM MMMMMMMM MMMMMMMM
 
     fResult = static_cast<double>(lfDouble);
 }
-#endif
 
 // *** common methods *** -----------------------------------------------------
 
@@ -162,34 +149,34 @@ OUString ScfTools::ConvertToScDefinedName(const OUString& rName )
 
 // *** streams and storages *** -----------------------------------------------
 
-tools::SvRef<SotStorage> ScfTools::OpenStorageRead( tools::SvRef<SotStorage> const & xStrg, const OUString& rStrgName )
+rtl::Reference<SotStorage> ScfTools::OpenStorageRead( rtl::Reference<SotStorage> const & xStrg, const OUString& rStrgName )
 {
-    tools::SvRef<SotStorage> xSubStrg;
+    rtl::Reference<SotStorage> xSubStrg;
     if( xStrg.is() && xStrg->IsContained( rStrgName ) )
         xSubStrg = xStrg->OpenSotStorage( rStrgName, StreamMode::STD_READ );
     return xSubStrg;
 }
 
-tools::SvRef<SotStorage> ScfTools::OpenStorageWrite( tools::SvRef<SotStorage> const & xStrg, const OUString& rStrgName )
+rtl::Reference<SotStorage> ScfTools::OpenStorageWrite( rtl::Reference<SotStorage> const & xStrg, const OUString& rStrgName )
 {
-    tools::SvRef<SotStorage> xSubStrg;
+    rtl::Reference<SotStorage> xSubStrg;
     if( xStrg.is() )
         xSubStrg = xStrg->OpenSotStorage( rStrgName, StreamMode::STD_WRITE );
     return xSubStrg;
 }
 
-tools::SvRef<SotStorageStream> ScfTools::OpenStorageStreamRead( tools::SvRef<SotStorage> const & xStrg, const OUString& rStrmName )
+rtl::Reference<SotStorageStream> ScfTools::OpenStorageStreamRead( rtl::Reference<SotStorage> const & xStrg, const OUString& rStrmName )
 {
-    tools::SvRef<SotStorageStream> xStrm;
+    rtl::Reference<SotStorageStream> xStrm;
     if( xStrg.is() && xStrg->IsContained( rStrmName ) && xStrg->IsStream( rStrmName ) )
         xStrm = xStrg->OpenSotStream( rStrmName, StreamMode::STD_READ );
     return xStrm;
 }
 
-tools::SvRef<SotStorageStream> ScfTools::OpenStorageStreamWrite( tools::SvRef<SotStorage> const & xStrg, const OUString& rStrmName )
+rtl::Reference<SotStorageStream> ScfTools::OpenStorageStreamWrite( rtl::Reference<SotStorage> const & xStrg, const OUString& rStrmName )
 {
     OSL_ENSURE( !xStrg.is() || !xStrg->IsContained( rStrmName ), "ScfTools::OpenStorageStreamWrite - stream exists already" );
-    tools::SvRef<SotStorageStream> xStrm;
+    rtl::Reference<SotStorageStream> xStrm;
     if( xStrg.is() )
         xStrm = xStrg->OpenSotStream( rStrmName, StreamMode::STD_WRITE | StreamMode::TRUNC );
     return xStrm;
@@ -213,7 +200,7 @@ bool ScfTools::CheckItems( const SfxItemSet& rItemSet, const sal_uInt16* pnWhich
 
 void ScfTools::PutItem( SfxItemSet& rItemSet, const SfxPoolItem& rItem, sal_uInt16 nWhichId, bool bSkipPoolDef )
 {
-    if( !bSkipPoolDef || (rItem != rItemSet.GetPool()->GetDefaultItem( nWhichId )) )
+    if( !bSkipPoolDef || (rItem != rItemSet.GetPool()->GetUserOrPoolDefaultItem( nWhichId )) )
     {
         rItemSet.Put( rItem.CloneSetWhich(nWhichId) );
     }
@@ -244,7 +231,7 @@ ScStyleSheet& lclMakeStyleSheet( ScStyleSheetPool& rPool, const OUString& rStyle
     // rename existing style
     if( pOldStyleSheet && bForceName )
     {
-        pOldStyleSheet->SetName( aNewName );
+        rPool.Rename(*pOldStyleSheet, aNewName, eFamily);
         aNewName = rStyleName;
     }
 

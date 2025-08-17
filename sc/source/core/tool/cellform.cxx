@@ -18,9 +18,11 @@
  */
 
 #include <cellform.hxx>
+#include <cellformtmpl.hxx>
 
 #include <svl/numformat.hxx>
 #include <svl/sharedstring.hxx>
+#include <svl/sharedstringpool.hxx>
 
 #include <formulacell.hxx>
 #include <document.hxx>
@@ -29,23 +31,25 @@
 #include <editutil.hxx>
 
 OUString ScCellFormat::GetString( const ScRefCellValue& rCell, sal_uInt32 nFormat,
-                              const Color** ppColor, SvNumberFormatter& rFormatter, const ScDocument& rDoc,
+                              const Color** ppColor, ScInterpreterContext* pContext, const ScDocument& rDoc,
                               bool bNullVals, bool bFormula, bool bUseStarFormat )
 {
     *ppColor = nullptr;
+
+    ScInterpreterContext& rContext = pContext ? *pContext : rDoc.GetNonThreadedContext();
 
     switch (rCell.getType())
     {
         case CELLTYPE_STRING:
         {
             OUString str;
-            rFormatter.GetOutputString(rCell.getSharedString()->getString(), nFormat, str, ppColor, bUseStarFormat);
+            rContext.NFGetOutputString(rCell.getSharedString()->getString(), nFormat, str, ppColor, bUseStarFormat);
             return str;
         }
         case CELLTYPE_EDIT:
         {
             OUString str;
-            rFormatter.GetOutputString(rCell.getString(&rDoc), nFormat, str, ppColor );
+            rContext.NFGetOutputString(rCell.getString(rDoc), nFormat, str, ppColor );
             return str;
         }
         case CELLTYPE_VALUE:
@@ -56,7 +60,7 @@ OUString ScCellFormat::GetString( const ScRefCellValue& rCell, sal_uInt32 nForma
             else
             {
                 OUString str;
-                rFormatter.GetOutputString( nValue, nFormat, str, ppColor, bUseStarFormat );
+                rContext.NFGetOutputString( nValue, nFormat, str, ppColor, bUseStarFormat );
                 return str;
             }
         }
@@ -79,7 +83,7 @@ OUString ScCellFormat::GetString( const ScRefCellValue& rCell, sal_uInt32 nForma
                         (!pFCell->GetDocument().GetMacroInterpretLevel()
                         || pFCell->IsRunning()) )
                 {
-                    return "...";
+                    return u"..."_ustr;
                 }
                 else
                 {
@@ -97,14 +101,14 @@ OUString ScCellFormat::GetString( const ScRefCellValue& rCell, sal_uInt32 nForma
                         else
                         {
                             OUString str;
-                            rFormatter.GetOutputString( fValue, nFormat, str, ppColor, bUseStarFormat );
+                            rContext.NFGetOutputString( fValue, nFormat, str, ppColor, bUseStarFormat );
                             return str;
                         }
                     }
                     else
                     {
                         OUString str;
-                        rFormatter.GetOutputString( pFCell->GetString().getString(),
+                        rContext.NFGetOutputString( pFCell->GetString().getString(),
                                                     nFormat, str, ppColor, bUseStarFormat );
                         return str;
                     }
@@ -118,31 +122,27 @@ OUString ScCellFormat::GetString( const ScRefCellValue& rCell, sal_uInt32 nForma
 
 OUString ScCellFormat::GetString(
     ScDocument& rDoc, const ScAddress& rPos, sal_uInt32 nFormat, const Color** ppColor,
-    SvNumberFormatter& rFormatter, bool bNullVals, bool bFormula )
+    ScInterpreterContext* pContext, bool bNullVals, bool bFormula )
 {
     *ppColor = nullptr;
 
     ScRefCellValue aCell(rDoc, rPos);
-    return GetString(aCell, nFormat, ppColor, rFormatter, rDoc, bNullVals, bFormula);
+    return GetString(aCell, nFormat, ppColor, pContext, rDoc, bNullVals, bFormula);
 }
 
 OUString ScCellFormat::GetInputString(
-    const ScRefCellValue& rCell, sal_uInt32 nFormat, SvNumberFormatter& rFormatter, const ScDocument& rDoc,
-    const svl::SharedString** pShared, bool bFiltering, bool bForceSystemLocale )
+    const ScRefCellValue& rCell, sal_uInt32 nFormat, ScInterpreterContext* pContext, const ScDocument& rDoc,
+    bool bFiltering, bool bForceSystemLocale )
 {
-    if(pShared != nullptr)
-        *pShared = nullptr;
+    ScInterpreterContext& rContext = pContext ? *pContext : rDoc.GetNonThreadedContext();
+
     switch (rCell.getType())
     {
         case CELLTYPE_STRING:
         case CELLTYPE_EDIT:
-            return rCell.getString(&rDoc);
+            return rCell.getString(rDoc);
         case CELLTYPE_VALUE:
-        {
-            OUString str;
-            rFormatter.GetInputLineString(rCell.getDouble(), nFormat, str, bFiltering, bForceSystemLocale);
-            return str;
-        }
+            return rContext.NFGetInputLineString(rCell.getDouble(), nFormat, bFiltering, bForceSystemLocale);
         break;
         case CELLTYPE_FORMULA:
         {
@@ -151,34 +151,17 @@ OUString ScCellFormat::GetInputString(
             if (pFC->IsEmptyDisplayedAsString())
                 ; // empty
             else if (pFC->IsValue())
-            {
-                str.emplace();
-                rFormatter.GetInputLineString(pFC->GetValue(), nFormat, *str, bFiltering, bForceSystemLocale);
-            }
+                str = rContext.NFGetInputLineString(pFC->GetValue(), nFormat, bFiltering, bForceSystemLocale);
             else
-            {
-                const svl::SharedString& shared = pFC->GetString();
-                // Allow callers to optimize by avoiding converting later back to OUString.
-                // To avoid refcounting that won't be needed, do not even return the OUString.
-                if( pShared != nullptr )
-                    *pShared = &shared;
-                else
-                    str = shared.getString();
-            }
+                str = pFC->GetString().getString();
 
             const FormulaError nErrCode = pFC->GetErrCode();
             if (nErrCode != FormulaError::NONE)
-            {
                 str.reset();
-                if( pShared != nullptr )
-                    *pShared = nullptr;
-            }
 
             return str ? std::move(*str) : svl::SharedString::EMPTY_STRING;
         }
         case CELLTYPE_NONE:
-            if( pShared != nullptr )
-                *pShared = &svl::SharedString::getEmptyString();
             return svl::SharedString::EMPTY_STRING;
         default:
             return svl::SharedString::EMPTY_STRING;
@@ -209,8 +192,8 @@ OUString ScCellFormat::GetOutputString( ScDocument& rDoc, const ScAddress& rPos,
     {
         //  like in GetString for document (column)
         const Color* pColor;
-        sal_uInt32 nNumFmt = rDoc.GetNumberFormat(rPos);
-        return GetString(rCell, nNumFmt, &pColor, *rDoc.GetFormatTable(), rDoc);
+        sal_uInt32 nNumFmt = rDoc.GetNumberFormat(ScRange(rPos));
+        return GetString(rCell, nNumFmt, &pColor, nullptr, rDoc);
     }
 }
 

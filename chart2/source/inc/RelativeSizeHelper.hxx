@@ -18,17 +18,18 @@
  */
 #pragma once
 
-#include "charttoolsdllapi.hxx"
+#include <config_options.h>
 
 namespace com::sun::star::awt { struct Size; }
 namespace com::sun::star::beans { class XPropertySet; }
 namespace com::sun::star::uno { template <class interface_type> class Reference; }
+namespace css = ::com::sun::star;
 class SvxShapeText;
 
 namespace chart
 {
 
-class OOO_DLLPUBLIC_CHARTTOOLS RelativeSizeHelper
+class RelativeSizeHelper
 {
 public:
     static double calculate(

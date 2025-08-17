@@ -22,7 +22,7 @@
 #include <com/sun/star/i18n/KParseType.hpp>
 #include <i18nlangtag/lang.h>
 #include <tools/lineend.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/syslocale.hxx>
 #include <osl/diagnose.h>
 #include <rtl/character.hxx>
@@ -34,11 +34,12 @@
 #include <starmathdatabase.hxx>
 
 #include <stack>
+#include <unordered_set>
 
 using namespace ::com::sun::star::i18n;
 
 //Definition of math keywords
-const SmTokenTableEntry aTokenTable[]
+constexpr SmTokenTableEntry aTokenTable[]
     = { { u"abs"_ustr, TABS, '\0', TG::UnOper, 13 },
         { u"acute"_ustr, TACUTE, MS_ACUTE, TG::Attribute, 5 },
         { u"aleph"_ustr, TALEPH, MS_ALEPH, TG::Standalone, 5 },
@@ -323,7 +324,7 @@ static inline bool findCompare(const SmTokenTableEntry& lhs, const OUString& s)
 }
 
 //Returns the SmTokenTableEntry for a keyword
-static const SmTokenTableEntry* GetTokenTableEntry(const OUString& rName)
+const SmTokenTableEntry* GetTokenTableEntry(const OUString& rName)
 {
     if (rName.isEmpty())
         return nullptr; //avoid null pointer exceptions
@@ -335,6 +336,42 @@ static const SmTokenTableEntry* GetTokenTableEntry(const OUString& rName)
     return nullptr; //not found
 }
 
+OUString encloseOrEscapeLiteral(const OUString& string, bool force)
+{
+    if (force)
+        return "\"" + string + "\"";
+    OUStringBuffer result;
+    const std::unordered_set<sal_Unicode> DelimiterTable1{
+        //keeping " as first entry is important to not get into recursive replacement
+        ' ', '\t', '\n', '\r', '+', '-', '*', '/', '=', '^',
+        '_', '#',  '%',  '>',  '<', '&', '|', '~', '`'
+    };
+    const std::unordered_set<sal_Unicode> DelimiterTable2{
+        //keeping " as first entry is important to not get into recursive replacement
+        '{', '}', '(', ')', '[', ']',
+    };
+    for (sal_Int32 i = 0; i < string.getLength(); i++)
+    {
+        if (string[i] == '"')
+            result.append("\"\\\"\"");
+        else if (DelimiterTable1.find(string[i]) != DelimiterTable1.end())
+            result.append("\"" + OUStringChar(string[i]) + "\"");
+        else if (DelimiterTable2.find(string[i]) != DelimiterTable2.end())
+            result.append("\\" + OUStringChar(string[i]));
+        else
+            result.append(string[i]);
+    }
+
+    OUString resultString = result.makeStringAndClear();
+    const SmTokenTableEntry* tkn = GetTokenTableEntry(resultString);
+    // excluding function and operator as they take arguments and can't treat them as literal or else arguments are not displayed correctly
+    if (tkn && tkn->nGroup != TG::Function && tkn->nGroup != TG::Oper)
+    {
+        resultString = "\"" + resultString + "\"";
+    }
+    return resultString;
+}
+
 static bool IsDelimiter(const OUString& rTxt, sal_Int32 nPos)
 { // returns 'true' iff cChar is '\0' or a delimiter
 
@@ -344,7 +381,7 @@ static bool IsDelimiter(const OUString& rTxt, sal_Int32 nPos)
     sal_Unicode cChar = rTxt[nPos];
 
     // check if 'cChar' is in the delimiter table
-    static const sal_Unicode aDelimiterTable[] = {
+    static constexpr sal_Unicode aDelimiterTable[] = {
         ' ', '{', '}', '(', ')', '\t', '\n', '\r', '+', '-',  '*', '/', '=', '[',
         ']', '^', '_', '#', '%', '>',  '<',  '&',  '|', '\\', '"', '~', '`'
     }; //reordered by usage (by eye) for nanoseconds saving.
@@ -357,7 +394,7 @@ static bool IsDelimiter(const OUString& rTxt, sal_Int32 nPos)
     }
 
     //special chars support
-    sal_Int16 nTypJp = SM_MOD()->GetSysLocale().GetCharClass().getType(rTxt, nPos);
+    sal_Int16 nTypJp = SmModule::get()->GetSysLocale().GetCharClass().getType(rTxt, nPos);
     return (nTypJp == css::i18n::UnicodeType::SPACE_SEPARATOR
             || nTypJp == css::i18n::UnicodeType::CONTROL);
 }
@@ -432,13 +469,13 @@ void SmParser5::NextToken() //Central part of the parser
         // See https://bz.apache.org/ooo/show_bug.cgi?id=45779
         aRes
             = m_aNumCC.parsePredefinedToken(KParseType::ASC_NUMBER, m_aBufferString, m_nBufferIndex,
-                                            coNumStartFlags, "", coNumContFlags, "");
+                                            coNumStartFlags, u""_ustr, coNumContFlags, u""_ustr);
 
         if (aRes.TokenType == 0)
         {
             // Try again with the default token parsing.
-            aRes = m_pSysCC->parseAnyToken(m_aBufferString, m_nBufferIndex, coStartFlags, "",
-                                           coContFlags, "");
+            aRes = m_pSysCC->parseAnyToken(m_aBufferString, m_nBufferIndex, coStartFlags, u""_ustr,
+                                           coContFlags, u""_ustr);
         }
 
         nRealStart = m_nBufferIndex + aRes.LeadingWhiteSpace;
@@ -668,9 +705,9 @@ void SmParser5::NextToken() //Central part of the parser
                                "unexpected comment start");
 
                     // get identifier of user-defined character
-                    ParseResult aTmpRes = m_pSysCC->parseAnyToken(m_aBufferString, rnEndPos,
-                                                                  KParseTokens::ANY_LETTER, "",
-                                                                  coUserDefinedCharContFlags, "");
+                    ParseResult aTmpRes = m_pSysCC->parseAnyToken(
+                        m_aBufferString, rnEndPos, KParseTokens::ANY_LETTER, u""_ustr,
+                        coUserDefinedCharContFlags, u""_ustr);
 
                     sal_Int32 nTmpStart = rnEndPos + aTmpRes.LeadingWhiteSpace;
 
@@ -984,8 +1021,8 @@ void SmParser5::NextTokenColor(SmTokenType dvipload)
         while (UnicodeType::SPACE_SEPARATOR == m_pSysCC->getType(m_aBufferString, m_nBufferIndex))
             ++m_nBufferIndex;
         //parse, there are few options, so less strict.
-        aRes = m_pSysCC->parseAnyToken(m_aBufferString, m_nBufferIndex, coStartFlags, "",
-                                       coContFlags, "");
+        aRes = m_pSysCC->parseAnyToken(m_aBufferString, m_nBufferIndex, coStartFlags, u""_ustr,
+                                       coContFlags, u""_ustr);
         nRealStart = m_nBufferIndex + aRes.LeadingWhiteSpace;
         m_nBufferIndex = nRealStart;
         bCont = false;
@@ -1066,13 +1103,13 @@ void SmParser5::NextTokenFontSize()
         while (UnicodeType::SPACE_SEPARATOR == m_pSysCC->getType(m_aBufferString, m_nBufferIndex))
             ++m_nBufferIndex;
         //hexadecimal parser
-        aRes = m_pSysCC->parseAnyToken(m_aBufferString, m_nBufferIndex, coNum16StartFlags, ".",
-                                       coNum16ContFlags, ".,");
+        aRes = m_pSysCC->parseAnyToken(m_aBufferString, m_nBufferIndex, coNum16StartFlags,
+                                       u"."_ustr, coNum16ContFlags, u".,"_ustr);
         if (aRes.TokenType == 0)
         {
             // Try again with the default token parsing.
-            aRes = m_pSysCC->parseAnyToken(m_aBufferString, m_nBufferIndex, coStartFlags, "",
-                                           coContFlags, "");
+            aRes = m_pSysCC->parseAnyToken(m_aBufferString, m_nBufferIndex, coStartFlags, u""_ustr,
+                                           coContFlags, u""_ustr);
         }
         else
             hex = true;
@@ -1594,8 +1631,8 @@ std::unique_ptr<SmBlankNode> SmParser5::DoBlank()
 
     // Ignore trailing spaces, if corresponding option is set
     if (m_aCurToken.eType == TNEWLINE
-        || (m_aCurToken.eType == TEND && !utl::ConfigManager::IsFuzzing()
-            && SM_MOD()->GetConfig()->IsIgnoreSpacesRight()))
+        || (m_aCurToken.eType == TEND && !comphelper::IsFuzzing()
+            && SmModule::get()->GetConfig()->IsIgnoreSpacesRight()))
     {
         pBlankNode->Clear();
     }
@@ -2495,12 +2532,12 @@ std::unique_ptr<SmNode> SmParser5::DoEvaluate()
     // Create node
     std::unique_ptr<SmStructureNode> xSNode(new SmBraceNode(m_aCurToken));
     xSNode->SetSelection(m_aCurESelection);
-    SmToken aToken(TRLINE, MS_VERTLINE, "evaluate", TG::RBrace, 5);
+    SmToken aToken(TRLINE, MS_VERTLINE, u"evaluate"_ustr, TG::RBrace, 5);
 
     // Parse body && left none
     NextToken();
     std::unique_ptr<SmNode> pBody = DoPower();
-    SmToken bToken(TNONE, '\0', "", TG::LBrace, 5);
+    SmToken bToken(TNONE, '\0', u""_ustr, TG::LBrace, 5);
     std::unique_ptr<SmNode> pLeft;
     pLeft.reset(new SmMathSymbolNode(bToken));
 
@@ -2665,7 +2702,7 @@ std::unique_ptr<SmSpecialNode> SmParser5::DoSpecial()
         if (IsImportSymbolNames())
         {
             const SmSym* pSym
-                = SM_MOD()->GetSymbolManager().GetSymbolByExportName(rName.subView(1));
+                = SmModule::get()->GetSymbolManager().GetSymbolByExportName(rName.subView(1));
             if (pSym)
             {
                 aNewName = pSym->GetUiName();
@@ -2674,7 +2711,8 @@ std::unique_ptr<SmSpecialNode> SmParser5::DoSpecial()
         }
         else if (IsExportSymbolNames())
         {
-            const SmSym* pSym = SM_MOD()->GetSymbolManager().GetSymbolByUiName(rName.subView(1));
+            const SmSym* pSym
+                = SmModule::get()->GetSymbolManager().GetSymbolByUiName(rName.subView(1));
             if (pSym)
             {
                 aNewName = pSym->GetExportName();
@@ -2745,7 +2783,7 @@ SmParser5::SmParser5()
     , m_bExportSymNames(false)
     , m_nParseDepth(0)
     , m_aNumCC(LanguageTag(LANGUAGE_ENGLISH_US))
-    , m_pSysCC(&SM_MOD()->GetSysLocale().GetCharClass())
+    , m_pSysCC(&SmModule::get()->GetSysLocale().GetCharClass())
 {
 }
 

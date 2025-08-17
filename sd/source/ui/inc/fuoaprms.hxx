@@ -19,7 +19,10 @@
 
 #pragma once
 
+#include <sfx2/sfxdlg.hxx>
+
 #include "fupoor.hxx"
+#include "tpaction.hxx"
 
 namespace sd {
 
@@ -28,16 +31,17 @@ class FuObjectAnimationParameters final
 {
 public:
 
-    static rtl::Reference<FuPoor> Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq );
+    static rtl::Reference<FuPoor> Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq );
     virtual void DoExecute( SfxRequest& rReq ) override;
 
+    void Finish( const std::shared_ptr<SfxRequest>& rReq, const VclPtr<SfxAbstractDialog>& pDlg );
 private:
 
     FuObjectAnimationParameters (
-        ViewShell* pViewSh,
+        ViewShell& rViewSh,
         ::sd::Window* pWin,
         ::sd::View* pView,
-        SdDrawDocument* pDoc,
+        SdDrawDocument& rDoc,
         SfxRequest& rReq);
 };
 

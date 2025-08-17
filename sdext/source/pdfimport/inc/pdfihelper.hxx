@@ -27,8 +27,8 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
+#include <basegfx/vector/b2enums.hxx>
 #include <com/sun/star/rendering/PathCapType.hpp>
-#include <com/sun/star/rendering/PathJoinType.hpp>
 
 #include <unordered_map>
 #include <vector>
@@ -98,7 +98,7 @@ namespace pdfi
     {
         css::rendering::ARGBColor     LineColor;
         css::rendering::ARGBColor     FillColor;
-        sal_Int8                                   LineJoin;
+        basegfx::B2DLineJoin                       LineJoin;
         sal_Int8                                   LineCap;
         sal_Int8                                   BlendMode;
         double                                     Flatness;
@@ -113,7 +113,7 @@ namespace pdfi
         GraphicsContext() :
             LineColor(),
             FillColor(),
-            LineJoin(0),
+            LineJoin(basegfx::B2DLineJoin::NONE),
             LineCap(0),
             BlendMode(0),
             Flatness(0.0),
@@ -154,12 +154,12 @@ namespace pdfi
             switch (LineJoin)
             {
             default:
-            case css::rendering::PathJoinType::MITER:
-                return "miter";
-            case css::rendering::PathJoinType::ROUND:
-                return "round";
-            case css::rendering::PathJoinType::BEVEL:
-                return "bevel";
+            case basegfx::B2DLineJoin::Miter:
+                return u"miter"_ustr;
+            case basegfx::B2DLineJoin::Round:
+                return u"round"_ustr;
+            case basegfx::B2DLineJoin::Bevel:
+                return u"bevel"_ustr;
             }
         }
 
@@ -169,11 +169,11 @@ namespace pdfi
             {
             default:
             case css::rendering::PathCapType::BUTT:
-                return "butt";
+                return u"butt"_ustr;
             case css::rendering::PathCapType::ROUND:
-                return "round";
+                return u"round"_ustr;
             case css::rendering::PathCapType::SQUARE:
-                return "square";
+                return u"square"_ustr;
             }
         }
 
@@ -214,19 +214,6 @@ namespace pdfi
             return seed;
         }
     };
-
-    /** retrieve password from user
-     */
-    bool getPassword( const css::uno::Reference<
-                            css::task::XInteractionHandler >& xHandler,
-                      OUString&                                       rOutPwd,
-                      bool                                                 bFirstTry,
-                      const OUString&                                 rDocName
-                      );
-
-    void reportUnsupportedEncryptionFormat(
-        css::uno::Reference<
-            css::task::XInteractionHandler > const & handler);
 }
 
 #endif

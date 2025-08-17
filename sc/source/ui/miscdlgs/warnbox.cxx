@@ -23,11 +23,11 @@
 #include <inputopt.hxx>
 
 ScReplaceWarnBox::ScReplaceWarnBox(weld::Window* pParent)
-    : MessageDialogController(pParent, "modules/scalc/ui/checkwarningdialog.ui",
-                              "CheckWarningDialog", "ask")
+    : MessageDialogController(pParent, u"modules/scalc/ui/checkwarningdialog.ui"_ustr,
+                              u"CheckWarningDialog"_ustr, u"ask"_ustr)
     // By default, the check box is ON, and the user needs to un-check it to
     // disable all future warnings.
-    , m_xWarningOnBox(m_xBuilder->weld_check_button("ask"))
+    , m_xWarningOnBox(m_xBuilder->weld_check_button(u"ask"_ustr))
 {
     m_xDialog->set_default_response(RET_YES);
 }
@@ -35,12 +35,12 @@ ScReplaceWarnBox::ScReplaceWarnBox(weld::Window* pParent)
 short ScReplaceWarnBox::run()
 {
     short nRet = RET_YES;
-    if (SC_MOD()->GetInputOptions().GetReplaceCellsWarn())
+    ScModule* pScMod = ScModule::get();
+    if (pScMod->GetInputOptions().GetReplaceCellsWarn())
     {
         nRet = MessageDialogController::run();
         if (!m_xWarningOnBox->get_active())
         {
-            ScModule* pScMod = SC_MOD();
             ScInputOptions aInputOpt(pScMod->GetInputOptions());
             aInputOpt.SetReplaceCellsWarn(false);
             pScMod->SetInputOptions(aInputOpt);

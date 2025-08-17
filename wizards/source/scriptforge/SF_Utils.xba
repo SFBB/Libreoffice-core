@@ -21,7 +21,7 @@ REM ===================================================================== GLOBAL
 Global _SF_		As Variant		&apos;	SF_Root (Basic) object)
 
 &apos;&apos;&apos;	ScriptForge version
-Const SF_Version = &quot;24.2&quot;
+Const SF_Version = &quot;26.2&quot;
 
 &apos;&apos;&apos;	Standard symbolic names for VarTypes
 &apos;				V_EMPTY			= 0
@@ -153,7 +153,10 @@ Finally:
 End Function	&apos;	ScriptForge.SF_Utils._CStrToDate
 
 REM -----------------------------------------------------------------------------
-Public Function _EnterFunction(ByVal psSub As String, Optional ByVal psArgs As String) As Boolean
+Public Function _EnterFunction(ByVal psSub As String _
+								, Optional ByVal psArgs As String _
+								, Optional ByVal pbReinitRC As Variant _
+								) As Boolean
 &apos;&apos;&apos;	Called on top of each public function
 &apos;&apos;&apos;	Used to trace routine in/outs (debug mode)
 &apos;&apos;&apos;		and to allow the explicit mention of the user call which caused an error
@@ -164,11 +167,17 @@ Public Function _EnterFunction(ByVal psSub As String, Optional ByVal psArgs As S
 
 		If IsEmpty(_SF_) Or IsNull(_SF_) Then SF_Utils._InitializeRoot()	&apos;	First use of ScriptForge during current LibO session
 		If IsMissing(psArgs) Then psArgs = &quot;&quot;
+		If IsMissing(pbReinitRC) Then pbReinitRC = True
 		With _SF_
 			If .StackLevel = 0 Then
 				.MainFunction = psSub
 				.MainFunctionArgs = psArgs
 				_EnterFunction = True
+				If pbReinitRC Then
+					&apos;	Reinitialize return code status
+					.ReturnCode = &quot;&quot;
+					.ReturnCodeDescription = &quot;&quot;
+				End If
 			Else
 				_EnterFunction = False
 			End If
@@ -369,19 +378,11 @@ Dim oDefaultContext As Object
 					Set .FileAccess = CreateUnoService(&quot;com.sun.star.ucb.SimpleFileAccess&quot;)
 				End If
 				Set _GetUNOService = .FileAccess
-			Case &quot;FilePicker&quot;
-				Set .FilePicker = CreateUnoService(&quot;com.sun.star.ui.dialogs.FilePicker&quot;)	&apos;	Do not reuse an existing FilePicker: TDF#154462
-				Set _GetUNOService = .FilePicker
 			Case &quot;FilterFactory&quot;
 				If IsEmpty(.FilterFactory) Or IsNull(.FilterFactory) Then
 					Set .FilterFactory = CreateUnoService(&quot;com.sun.star.document.FilterFactory&quot;)
 				End If
 				Set _GetUNOService = .FilterFactory
-			Case &quot;FolderPicker&quot;
-				If IsEmpty(.FolderPicker) Or IsNull(.FolderPicker) Then
-					Set .FolderPicker = CreateUnoService(&quot;com.sun.star.ui.dialogs.FolderPicker&quot;)
-				End If
-				Set _GetUNOService = .FolderPicker
 			Case &quot;FormatLocale&quot;
 				If IsEmpty(.FormatLocale) Or IsNull(.FormatLocale) Then
 					.FormatLocale = CreateUnoStruct(&quot;com.sun.star.lang.Locale&quot;)
@@ -728,7 +729,7 @@ Public Function _Validate(Optional ByRef pvArgument As Variant _
 							, ByVal psName As String _
 							, Optional ByVal pvTypes As Variant _
 							, Optional ByVal pvValues As Variant _
-							, Optional ByVal pvRegex As Variant _
+							, Optional ByVal pvCaseSensitive As Variant _
 							, Optional ByVal pvObjectType As Variant _
 							) As Boolean
 &apos;&apos;&apos;	Validate the arguments set by user scripts
@@ -739,7 +740,7 @@ Public Function _Validate(Optional ByRef pvArgument As Variant _
 &apos;&apos;&apos;		psName: the documented name of the argument (can be inserted in an error message)
 &apos;&apos;&apos;		pvTypes: array of allowed VarTypes
 &apos;&apos;&apos;		pvValues: array of allowed values
-&apos;&apos;&apos;		pvRegex: regular expression to comply with
+&apos;&apos;&apos;		pvCaseSensitive: when True the comparison between strings is done case-sensitively
 &apos;&apos;&apos;		pvObjectType: mandatory Basic class
 &apos;&apos;&apos;	Return: True if validation OK
 &apos;&apos;&apos;			Otherwise an error is raised
@@ -759,7 +760,7 @@ Const cstMaxValues = 10		&apos;	Maximum number of allowed items to list in an er
 Try:
 	bValid = True
 	If IsMissing(pvArgument) Then GoTo CatchMissing
-	If IsMissing(pvRegex) Or IsEmpty(pvRegex) Then pvRegex = &quot;&quot;
+	If IsMissing(pvCaseSensitive) Or IsEmpty(pvCaseSensitive) Then pvCaseSensitive = False
 	If IsMissing(pvObjectType) Or IsEmpty(pvObjectType) Then pvObjectType = &quot;&quot;
 	iVarType = SF_Utils._VarTypeExt(pvArgument)
 
@@ -776,11 +777,7 @@ Try:
 		&apos;	Check if argument&apos;s value is valid
 		If bValid And Not IsMissing(pvValues) Then
 			If Not IsArray(pvValues) Then pvValues = Array(pvValues)
-			bValid = SF_Array.Contains(pvValues, pvArgument, CaseSensitive := False)
-		End If
-		&apos;	Check regular expression
-		If bValid And Len(pvRegex) &gt; 0 And iVarType = V_STRING Then
-			If Len(pvArgument) &gt; 0 Then bValid = SF_String.IsRegex(pvArgument, pvRegex, CaseSensitive := False)
+			bValid = SF_Array.Contains(pvValues, pvArgument, CaseSensitive := pvCaseSensitive)
 		End If
 		&apos;	Check instance types
 		If bValid And Len(pvObjectType) &gt; 0 And iVarType = V_OBJECT Then
@@ -802,7 +799,7 @@ Try:
 		&apos;&apos;&apos;		Actual value:	&quot;Ascending&quot;
 		SF_Exception.RaiseFatal(ARGUMENTERROR _
 				, SF_Utils._Repr(pvArgument, cstMaxLength), psName, SF_Utils._TypeNames(pvTypes) _
-				, SF_Utils._ReprValues(pvValues, cstMaxValues), pvRegex, pvObjectType _
+				, SF_Utils._ReprValues(pvValues, cstMaxValues), pvCaseSensitive, pvObjectType _
 				)
 	End If
 

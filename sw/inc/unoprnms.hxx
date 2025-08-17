@@ -59,23 +59,35 @@ inline constexpr OUString UNO_NAME_PARA_LEFT_MARGIN = u"ParaLeftMargin"_ustr;
 inline constexpr OUString UNO_NAME_PARA_RIGHT_MARGIN = u"ParaRightMargin"_ustr;
 inline constexpr OUString UNO_NAME_PARA_LEFT_MARGIN_RELATIVE = u"ParaLeftMarginRelative"_ustr;
 inline constexpr OUString UNO_NAME_PARA_RIGHT_MARGIN_RELATIVE = u"ParaRightMarginRelative"_ustr;
+inline constexpr OUString UNO_NAME_PARA_LEFT_MARGIN_UNIT = u"ParaLeftMarginUnit"_ustr;
+inline constexpr OUString UNO_NAME_PARA_RIGHT_MARGIN_UNIT = u"ParaRightMarginUnit"_ustr;
 inline constexpr OUString UNO_NAME_PARA_IS_AUTO_FIRST_LINE_INDENT
     = u"ParaIsAutoFirstLineIndent"_ustr;
 inline constexpr OUString UNO_NAME_PARA_FIRST_LINE_INDENT = u"ParaFirstLineIndent"_ustr;
 inline constexpr OUString UNO_NAME_PARA_FIRST_LINE_INDENT_RELATIVE
     = u"ParaFirstLineIndentRelative"_ustr;
+inline constexpr OUString UNO_NAME_PARA_FIRST_LINE_INDENT_UNIT = u"ParaFirstLineIndentUnit"_ustr;
 inline constexpr OUString UNO_NAME_PARA_IS_HYPHENATION = u"ParaIsHyphenation"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_MAX_LEADING_CHARS
     = u"ParaHyphenationMaxLeadingChars"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_MAX_TRAILING_CHARS
     = u"ParaHyphenationMaxTrailingChars"_ustr;
+inline constexpr OUString UNO_NAME_PARA_HYPHENATION_COMPOUND_MIN_LEADING_CHARS
+    = u"ParaHyphenationCompoundMinLeadingChars"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_MAX_HYPHENS = u"ParaHyphenationMaxHyphens"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_MIN_WORD_LENGTH
     = u"ParaHyphenationMinWordLength"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_ZONE = u"ParaHyphenationZone"_ustr;
+inline constexpr OUString UNO_NAME_PARA_HYPHENATION_ZONE_ALWAYS = u"ParaHyphenationZoneAlways"_ustr;
+inline constexpr OUString UNO_NAME_PARA_HYPHENATION_ZONE_COLUMN = u"ParaHyphenationZoneColumn"_ustr;
+inline constexpr OUString UNO_NAME_PARA_HYPHENATION_ZONE_PAGE = u"ParaHyphenationZonePage"_ustr;
+inline constexpr OUString UNO_NAME_PARA_HYPHENATION_ZONE_SPREAD = u"ParaHyphenationZoneSpread"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_NO_CAPS = u"ParaHyphenationNoCaps"_ustr;
 inline constexpr OUString UNO_NAME_PARA_HYPHENATION_NO_LAST_WORD
     = u"ParaHyphenationNoLastWord"_ustr;
+inline constexpr OUString UNO_NAME_PARA_HYPHENATION_KEEP = u"ParaHyphenationKeep"_ustr;
+inline constexpr OUString UNO_NAME_PARA_HYPHENATION_KEEP_TYPE = u"ParaHyphenationKeepType"_ustr;
+inline constexpr OUString UNO_NAME_PARA_HYPHENATION_KEEP_LINE = u"ParaHyphenationKeepLine"_ustr;
 inline constexpr OUString UNO_NAME_LEFT_MARGIN = u"LeftMargin"_ustr;
 inline constexpr OUString UNO_NAME_RIGHT_MARGIN = u"RightMargin"_ustr;
 inline constexpr OUString UNO_NAME_GUTTER_MARGIN = u"GutterMargin"_ustr;
@@ -124,6 +136,7 @@ inline constexpr OUString UNO_NAME_CHAR_UNDERLINE_COMPLEX_COLOR = u"CharUnderlin
 inline constexpr OUString UNO_NAME_CHAR_UNDERLINE_HAS_COLOR = u"CharUnderlineHasColor"_ustr;
 inline constexpr OUString UNO_NAME_CHAR_ESCAPEMENT = u"CharEscapement"_ustr;
 inline constexpr OUString UNO_NAME_CHAR_CASE_MAP = u"CharCaseMap"_ustr;
+inline constexpr OUString UNO_NAME_CHAR_SCRIPT_HINT = u"CharScriptHint"_ustr;
 inline constexpr OUString UNO_NAME_CHAR_STRIKEOUT = u"CharStrikeout"_ustr;
 inline constexpr OUString UNO_NAME_CHAR_CROSSED_OUT = u"CharCrossedOut"_ustr;
 inline constexpr OUString UNO_NAME_CHAR_NO_HYPHENATION = u"CharNoHyphenation"_ustr;
@@ -190,6 +203,11 @@ inline constexpr OUString UNO_NAME_PARA_ADJUST = u"ParaAdjust"_ustr;
 inline constexpr OUString UNO_NAME_PARA_REGISTER_MODE_ACTIVE = u"ParaRegisterModeActive"_ustr;
 inline constexpr OUString UNO_NAME_PARA_STYLE_NAME = u"ParaStyleName"_ustr;
 inline constexpr OUString UNO_NAME_PARA_LAST_LINE_ADJUST = u"ParaLastLineAdjust"_ustr;
+inline constexpr OUString UNO_NAME_PARA_WORD_SPACING = u"ParaWordSpacing"_ustr;
+inline constexpr OUString UNO_NAME_PARA_WORD_SPACING_MIN = u"ParaWordSpacingMinimum"_ustr;
+inline constexpr OUString UNO_NAME_PARA_WORD_SPACING_MAX = u"ParaWordSpacingMaximum"_ustr;
+inline constexpr OUString UNO_NAME_PARA_LETTER_SPACING_MIN = u"ParaLetterSpacingMinimum"_ustr;
+inline constexpr OUString UNO_NAME_PARA_LETTER_SPACING_MAX = u"ParaLetterSpacingMaximum"_ustr;
 inline constexpr OUString UNO_NAME_PARA_LINE_NUMBER_COUNT = u"ParaLineNumberCount"_ustr;
 inline constexpr OUString UNO_NAME_PARA_LINE_NUMBER_START_VALUE = u"ParaLineNumberStartValue"_ustr;
 inline constexpr OUString UNO_NAME_BACK_COLOR = u"BackColor"_ustr;
@@ -205,6 +223,7 @@ inline constexpr OUString UNO_NAME_POSITION_PROTECTED = u"PositionProtected"_ust
 inline constexpr OUString UNO_NAME_ALTERNATIVE_TEXT = u"AlternativeText"_ustr;
 inline constexpr OUString UNO_NAME_PRIMARY_KEY = u"PrimaryKey"_ustr;
 inline constexpr OUString UNO_NAME_PRINTER_PAPER_TRAY = u"PrinterPaperTray"_ustr;
+inline constexpr OUString UNO_NAME_PRINTER_PAPER_TRAY_INDEX = u"PrinterPaperTrayIndex"_ustr;
 inline constexpr OUString UNO_NAME_RELATIVE_WIDTH = u"RelativeWidth"_ustr;
 inline constexpr OUString UNO_NAME_RELATIVE_WIDTH_RELATION = u"RelativeWidthRelation"_ustr;
 inline constexpr OUString UNO_NAME_RELATIVE_HEIGHT = u"RelativeHeight"_ustr;
@@ -301,6 +320,7 @@ inline constexpr OUString UNO_NAME_NUMBERING_TYPE = u"NumberingType"_ustr;
 inline constexpr OUString UNO_NAME_OFFSET = u"Offset"_ustr;
 inline constexpr OUString UNO_NAME_ON = u"On"_ustr;
 inline constexpr OUString UNO_NAME_OPAQUE = u"Opaque"_ustr;
+inline constexpr OUString UNO_NAME_PAGE_COUNT_RANGE = u"PageCountRange"_ustr;
 inline constexpr OUString UNO_NAME_PAGE_TOGGLE = u"PageToggle"_ustr;
 inline constexpr OUString UNO_NAME_PAGE_DESC_NAME = u"PageDescName"_ustr;
 inline constexpr OUString UNO_NAME_PAGE_NUMBER_OFFSET = u"PageNumberOffset"_ustr;
@@ -587,6 +607,7 @@ inline constexpr OUString UNO_NAME_REDLINE_DESCRIPTION = u"RedlineDescription"_u
 inline constexpr OUString UNO_NAME_REDLINE_TYPE = u"RedlineType"_ustr;
 inline constexpr OUString UNO_NAME_REDLINE_SUCCESSOR_DATA = u"RedlineSuccessorData"_ustr;
 inline constexpr OUString UNO_NAME_REDLINE_IDENTIFIER = u"RedlineIdentifier"_ustr;
+inline constexpr OUString UNO_NAME_REDLINE_AUTO_FORMAT = u"RedlineAutoFormat"_ustr;
 inline constexpr OUString UNO_NAME_IS_IN_HEADER_FOOTER = u"IsInHeaderFooter"_ustr;
 inline constexpr OUString UNO_NAME_START_REDLINE = u"StartRedline"_ustr;
 inline constexpr OUString UNO_NAME_END_REDLINE = u"EndRedline"_ustr;
@@ -933,6 +954,8 @@ inline constexpr OUString UNO_NAME_MULTILINE = u"MultiLine"_ustr;
 inline constexpr OUString UNO_NAME_DATE_STRING = u"DateString"_ustr;
 inline constexpr OUString UNO_NAME_PARA_ID = u"ParaId"_ustr;
 inline constexpr OUString UNO_NAME_PARA_ID_PARENT = u"ParaIdParent"_ustr;
+inline constexpr OUString UNO_NAME_CONTENT_CONTROL_TYPE = u"ContentControlType"_ustr;
+inline constexpr OUString UNO_NAME_IS_CONTENT_EMPTY = u"IsContentEmpty"_ustr;
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

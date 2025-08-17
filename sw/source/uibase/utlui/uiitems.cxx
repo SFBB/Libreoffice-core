@@ -212,7 +212,8 @@ bool SwPtrItem::operator==( const SfxPoolItem& rAttr ) const
 // SwUINumRuleItem for the NumTabPages of the FormatNumRule/Styleists
 
 SwUINumRuleItem::SwUINumRuleItem( const SwNumRule& rRul )
-    : SfxPoolItem( FN_PARAM_ACT_NUMBER ), m_pRule( new SwNumRule( rRul ) )
+    : SfxPoolItem( FN_PARAM_ACT_NUMBER )
+    , m_pRule( new SwNumRule( rRul ) )
 {
 }
 

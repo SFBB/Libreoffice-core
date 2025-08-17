@@ -59,10 +59,8 @@
 
 #include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
-#include <com/sun/star/uno/Sequence.hxx>
 
 #include <vcl/commandevent.hxx>
-#include <tools/json_writer.hxx>
 
 namespace
 {
@@ -82,20 +80,17 @@ private:
         virtual void Invoke() override { StylePreviewCache::gJsonStylePreviewCache.clear(); }
     };
 
-    static std::map<OUString, VclPtr<VirtualDevice>> gStylePreviewCache;
+    static std::map<OUString, Bitmap> gStylePreviewCache;
     static std::map<OUString, OString> gJsonStylePreviewCache;
     static int gStylePreviewCacheClients;
     static JsonStylePreviewCacheClear gJsonIdleClear;
 
 public:
-    static std::map<OUString, VclPtr<VirtualDevice>>& Get() { return gStylePreviewCache; }
+    static std::map<OUString, Bitmap>& Get() { return gStylePreviewCache; }
     static std::map<OUString, OString>& GetJson() { return gJsonStylePreviewCache; }
 
     static void ClearCache(bool bHard)
     {
-        for (auto& aPreview : gStylePreviewCache)
-            aPreview.second.disposeAndClear();
-
         gStylePreviewCache.clear();
         if (bHard)
         {
@@ -124,7 +119,7 @@ public:
     }
 };
 
-std::map<OUString, VclPtr<VirtualDevice>> StylePreviewCache::gStylePreviewCache;
+std::map<OUString, Bitmap> StylePreviewCache::gStylePreviewCache;
 std::map<OUString, OString> StylePreviewCache::gJsonStylePreviewCache;
 int StylePreviewCache::gStylePreviewCacheClients;
 StylePreviewCache::JsonStylePreviewCacheClear StylePreviewCache::gJsonIdleClear;
@@ -133,7 +128,7 @@ StylePreviewCache::JsonStylePreviewCacheClear StylePreviewCache::gJsonIdleClear;
 StyleStatusListener::StyleStatusListener(
     StylesPreviewWindow_Base* pPreviewControl,
     const css::uno::Reference<css::frame::XDispatchProvider>& xDispatchProvider)
-    : SfxStatusListener(xDispatchProvider, SID_STYLE_FAMILY2, ".uno:ParaStyle")
+    : SfxStatusListener(xDispatchProvider, SID_STYLE_FAMILY2, u".uno:ParaStyle"_ustr)
     , m_pPreviewControl(pPreviewControl)
 {
     ReBind();
@@ -173,7 +168,8 @@ StylePoolChangeListener::~StylePoolChangeListener()
 
 void StylePoolChangeListener::Notify(SfxBroadcaster& /*rBC*/, const SfxHint& rHint)
 {
-    if (rHint.GetId() == SfxHintId::StyleSheetModified)
+    if (rHint.GetId() == SfxHintId::StyleSheetModified
+        || rHint.GetId() == SfxHintId::StyleSheetModifiedExtended)
         StylePreviewCache::ClearCache(true);
     m_pPreviewControl->RequestStylesListUpdate();
 }
@@ -200,8 +196,8 @@ bool StylesPreviewWindow_Base::Command(const CommandEvent& rEvent)
         return false;
 
     std::unique_ptr<weld::Builder> xBuilder(
-        Application::CreateBuilder(m_xStylesView.get(), "svx/ui/stylemenu.ui"));
-    std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu("menu"));
+        Application::CreateBuilder(m_xStylesView.get(), u"svx/ui/stylemenu.ui"_ustr));
+    std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu(u"menu"_ustr));
     OUString rIdent = xMenu->popup_at_rect(m_xStylesView.get(),
                                            tools::Rectangle(rEvent.GetMousePosPixel(), Size(1, 1)));
     if (rIdent == "update" || rIdent == "edit")
@@ -210,10 +206,9 @@ bool StylesPreviewWindow_Base::Command(const CommandEvent& rEvent)
 
         const css::uno::Reference<css::frame::XDispatchProvider> xProvider(m_xFrame,
                                                                            css::uno::UNO_QUERY);
-        SfxToolBoxControl::Dispatch(xProvider,
-                                    rIdent == "update" ? OUString(".uno:StyleUpdateByExample")
-                                                       : OUString(".uno:EditStyle"),
-                                    aArgs);
+        SfxToolBoxControl::Dispatch(
+            xProvider,
+            rIdent == "update" ? u".uno:StyleUpdateByExample"_ustr : u".uno:EditStyle"_ustr, aArgs);
 
         return true;
     }
@@ -399,12 +394,12 @@ void StyleItemController::DrawEntry(vcl::RenderContext& rRenderContext)
 }
 
 void StyleItemController::DrawContentBackground(vcl::RenderContext& rRenderContext,
-                                                const tools::Rectangle& aContentRect,
-                                                const Color& aColor)
+                                                const tools::Rectangle& rContentRect,
+                                                const Color& rColor)
 {
-    rRenderContext.SetLineColor(aColor);
-    rRenderContext.SetFillColor(aColor);
-    rRenderContext.DrawRect(aContentRect);
+    rRenderContext.SetLineColor(rColor);
+    rRenderContext.SetFillColor(rColor);
+    rRenderContext.DrawRect(rContentRect);
 }
 
 void StyleItemController::DrawHighlight(vcl::RenderContext& rRenderContext, Color aFontBack)
@@ -443,20 +438,19 @@ void StyleItemController::DrawText(vcl::RenderContext& rRenderContext)
 }
 
 StylesPreviewWindow_Base::StylesPreviewWindow_Base(
-    weld::Builder& xBuilder, std::vector<std::pair<OUString, OUString>>&& aDefaultStyles,
+    weld::Builder& xBuilder, std::vector<std::pair<OUString, OUString>>&& rDefaultStyles,
     const css::uno::Reference<css::frame::XFrame>& xFrame)
     : m_xFrame(xFrame)
-    , m_xStylesView(xBuilder.weld_icon_view("stylesview"))
+    , m_xStylesView(xBuilder.weld_icon_view(u"stylesview"_ustr))
     , m_aUpdateTask(*this)
-    , m_aDefaultStyles(std::move(aDefaultStyles))
+    , m_aDefaultStyles(std::move(rDefaultStyles))
 {
     StylePreviewCache::RegisterClient();
 
     m_xStylesView->connect_selection_changed(LINK(this, StylesPreviewWindow_Base, Selected));
     m_xStylesView->connect_item_activated(LINK(this, StylesPreviewWindow_Base, DoubleClick));
     m_xStylesView->connect_command(LINK(this, StylesPreviewWindow_Base, DoCommand));
-    m_xStylesView->connect_get_property_tree_elem(
-        LINK(this, StylesPreviewWindow_Base, DoJsonProperty));
+    m_xStylesView->connect_get_image(LINK(this, StylesPreviewWindow_Base, GetPreviewImage));
 
     const css::uno::Reference<css::frame::XDispatchProvider> xProvider(m_xFrame,
                                                                        css::uno::UNO_QUERY);
@@ -472,12 +466,12 @@ IMPL_LINK(StylesPreviewWindow_Base, Selected, weld::IconView&, rIconView, void)
     OUString sStyleName = rIconView.get_selected_text();
 
     css::uno::Sequence<css::beans::PropertyValue> aArgs{
-        comphelper::makePropertyValue("Template", sStyleName),
-        comphelper::makePropertyValue("Family", sal_Int16(SfxStyleFamily::Para))
+        comphelper::makePropertyValue(u"Template"_ustr, sStyleName),
+        comphelper::makePropertyValue(u"Family"_ustr, sal_Int16(SfxStyleFamily::Para))
     };
     const css::uno::Reference<css::frame::XDispatchProvider> xProvider(m_xFrame,
                                                                        css::uno::UNO_QUERY);
-    SfxToolBoxControl::Dispatch(xProvider, ".uno:StyleApply", aArgs);
+    SfxToolBoxControl::Dispatch(xProvider, u".uno:StyleApply"_ustr, aArgs);
 }
 
 IMPL_LINK(StylesPreviewWindow_Base, DoubleClick, weld::IconView&, rIconView, bool)
@@ -485,12 +479,12 @@ IMPL_LINK(StylesPreviewWindow_Base, DoubleClick, weld::IconView&, rIconView, boo
     OUString sStyleName = rIconView.get_selected_text();
 
     css::uno::Sequence<css::beans::PropertyValue> aArgs{
-        comphelper::makePropertyValue("Param", sStyleName),
-        comphelper::makePropertyValue("Family", sal_Int16(SfxStyleFamily::Para))
+        comphelper::makePropertyValue(u"Param"_ustr, sStyleName),
+        comphelper::makePropertyValue(u"Family"_ustr, sal_Int16(SfxStyleFamily::Para))
     };
     const css::uno::Reference<css::frame::XDispatchProvider> xProvider(m_xFrame,
                                                                        css::uno::UNO_QUERY);
-    SfxToolBoxControl::Dispatch(xProvider, ".uno:EditStyle", aArgs);
+    SfxToolBoxControl::Dispatch(xProvider, u".uno:EditStyle"_ustr, aArgs);
 
     return true;
 }
@@ -546,12 +540,12 @@ void StylesListUpdateTask::Invoke()
     m_rStylesList.UpdateSelection();
 }
 
-static OString extractPngString(const BitmapEx& rBitmap)
+static OString extractPngString(const Bitmap& rBitmap)
 {
     SvMemoryStream aOStm(65535, 65535);
     // Use fastest compression "1"
     css::uno::Sequence<css::beans::PropertyValue> aFilterData{
-        comphelper::makePropertyValue("Compression", sal_Int32(1)),
+        comphelper::makePropertyValue(u"Compression"_ustr, sal_Int32(1)),
     };
     vcl::PngImageWriter aPNGWriter(aOStm);
     aPNGWriter.setParameters(aFilterData);
@@ -567,12 +561,9 @@ static OString extractPngString(const BitmapEx& rBitmap)
     return ""_ostr;
 }
 
-// 0: json writer, 1: TreeIter, 2: property. returns true if supported
-IMPL_LINK(StylesPreviewWindow_Base, DoJsonProperty, const weld::json_prop_query&, rQuery, bool)
+// 0: OUString, 1: TreeIter, returns true if supported
+IMPL_LINK(StylesPreviewWindow_Base, GetPreviewImage, const weld::encoded_image_query&, rQuery, bool)
 {
-    if (std::get<2>(rQuery) != "image")
-        return false;
-
     const weld::TreeIter& rIter = std::get<1>(rQuery);
     OUString sStyleId(m_xStylesView->get_id(rIter));
     OUString sStyleName(m_xStylesView->get_text(rIter));
@@ -580,29 +571,29 @@ IMPL_LINK(StylesPreviewWindow_Base, DoJsonProperty, const weld::json_prop_query&
     if (sBase64Png.isEmpty())
         return false;
 
-    tools::JsonWriter& rJsonWriter = std::get<0>(rQuery);
-    rJsonWriter.put("image", sBase64Png);
+    OUString& rResult = std::get<0>(rQuery);
+    rResult = OStringToOUString(sBase64Png, RTL_TEXTENCODING_ASCII_US);
 
     return true;
 }
 
-VclPtr<VirtualDevice>
-StylesPreviewWindow_Base::GetCachedPreview(const std::pair<OUString, OUString>& rStyle)
+Bitmap StylesPreviewWindow_Base::GetCachedPreview(const std::pair<OUString, OUString>& rStyle)
 {
     auto aFound = StylePreviewCache::Get().find(rStyle.second);
     if (aFound != StylePreviewCache::Get().end())
         return StylePreviewCache::Get()[rStyle.second];
     else
     {
-        VclPtr<VirtualDevice> pImg = VclPtr<VirtualDevice>::Create();
+        ScopedVclPtrInstance<VirtualDevice> pImg;
         const Size aSize(100, 30);
         pImg->SetOutputSizePixel(aSize);
 
         StyleItemController aStyleController(rStyle);
         aStyleController.Paint(*pImg);
-        StylePreviewCache::Get()[rStyle.second] = pImg;
+        Bitmap aBitmap(pImg->GetBitmap(Point(0, 0), aSize));
+        StylePreviewCache::Get()[rStyle.second] = aBitmap;
 
-        return pImg;
+        return aBitmap;
     }
 }
 
@@ -612,8 +603,7 @@ OString StylesPreviewWindow_Base::GetCachedPreviewJson(const std::pair<OUString,
     if (aJsonFound != StylePreviewCache::GetJson().end())
         return StylePreviewCache::GetJson()[rStyle.second];
 
-    VclPtr<VirtualDevice> xDev = GetCachedPreview(rStyle);
-    BitmapEx aBitmap(xDev->GetBitmapEx(Point(0, 0), xDev->GetOutputSize()));
+    Bitmap aBitmap = GetCachedPreview(rStyle);
     OString sResult = extractPngString(aBitmap);
     StylePreviewCache::GetJson()[rStyle.second] = sResult;
     return sResult;
@@ -651,18 +641,23 @@ void StylesPreviewWindow_Base::UpdateStylesList()
     const bool bNeedInsertPreview = !comphelper::LibreOfficeKit::isActive();
     for (const auto& rStyle : m_aAllStyles)
     {
-        VclPtr<VirtualDevice> pImg = bNeedInsertPreview ? GetCachedPreview(rStyle) : nullptr;
-        m_xStylesView->append(rStyle.first, rStyle.second, pImg);
+        if (bNeedInsertPreview)
+        {
+            Bitmap aPreview = GetCachedPreview(rStyle);
+            m_xStylesView->append(rStyle.first, rStyle.second, &aPreview);
+        }
+        else
+            m_xStylesView->append(rStyle.first, rStyle.second, nullptr);
     }
     m_xStylesView->thaw();
 }
 
 StylesPreviewWindow_Impl::StylesPreviewWindow_Impl(
-    vcl::Window* pParent, std::vector<std::pair<OUString, OUString>>&& aDefaultStyles,
+    vcl::Window* pParent, std::vector<std::pair<OUString, OUString>>&& rDefaultStyles,
     const css::uno::Reference<css::frame::XFrame>& xFrame)
-    : InterimItemWindow(pParent, "svx/ui/stylespreview.ui", "ApplyStyleBox", true,
+    : InterimItemWindow(pParent, u"svx/ui/stylespreview.ui"_ustr, u"ApplyStyleBox"_ustr, true,
                         reinterpret_cast<sal_uInt64>(SfxViewShell::Current()))
-    , StylesPreviewWindow_Base(*m_xBuilder, std::move(aDefaultStyles), xFrame)
+    , StylesPreviewWindow_Base(*m_xBuilder, std::move(rDefaultStyles), xFrame)
 {
     SetOptimalSize();
 }

@@ -32,6 +32,7 @@
 #include <vcl/uitest/eventdescription.hxx>
 
 #include <svl/undo.hxx>
+#include <svtools/svparser.hxx>
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/syslocale.hxx>
 #include <svl/languageoptions.hxx>
@@ -60,6 +61,9 @@
 #include <docsh.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
+#if ENABLE_YRS
+#include <IDocumentState.hxx>
+#endif
 #include <SwUndoField.hxx>
 #include <edtwin.hxx>
 #include "ShadowOverlayObject.hxx"
@@ -85,14 +89,31 @@ void collectUIInformation( const OUString& aevent , const OUString& aID )
 
 }
 
+namespace SwPostItHelper {
+
+void ImportHTML(Outliner& rOutliner, const OUString& rHtml)
+{
+    OString sHtmlContent(rHtml.toUtf8());
+    SvMemoryStream aHTMLStream(const_cast<char*>(sHtmlContent.getStr()),
+                               sHtmlContent.getLength(), StreamMode::READ);
+    SvKeyValueIteratorRef xValues(new SvKeyValueIterator);
+    // Insert newlines for divs, not normally done, so to keep things simple
+    // only enable that for this case.
+    xValues->Append(SvKeyValue("newline-on-div", "true"));
+    xValues->Append(SvKeyValue("content-type", "text/html;charset=utf-8"));
+    rOutliner.Read(aHTMLStream, "", EETextFormat::Html, xValues.get());
+}
+
+}
+
 namespace sw::annotation {
 
 // see AnnotationContents in sd for something similar
 SwAnnotationWin::SwAnnotationWin( SwEditWin& rEditWin,
                                   SwPostItMgr& aMgr,
-                                  SwSidebarItem& rSidebarItem,
+                                  SwAnnotationItem& rSidebarItem,
                                   SwFormatField* aField )
-    : InterimItemWindow(&rEditWin, "modules/swriter/ui/annotation.ui", "Annotation")
+    : InterimItemWindow(&rEditWin, u"modules/swriter/ui/annotation.ui"_ustr, u"Annotation"_ustr)
     , mrMgr(aMgr)
     , mrView(rEditWin.GetView())
     , mnDeleteEventId(nullptr)
@@ -104,7 +125,7 @@ SwAnnotationWin::SwAnnotationWin( SwEditWin& rEditWin,
     , mLayoutStatus(SwPostItHelper::INVISIBLE)
     , mbReadonly(false)
     , mbIsFollow(false)
-    , mrSidebarItem(rSidebarItem)
+    , mpSidebarItem(&rSidebarItem)
     , mpAnchorFrame(rSidebarItem.maLayoutInfo.mpAnchorFrame)
     , mpFormatField(aField)
     , mpField( static_cast<SwPostItField*>(aField->GetField()))
@@ -120,9 +141,12 @@ SwAnnotationWin::SwAnnotationWin( SwEditWin& rEditWin,
     }
 
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
-    mrMgr.ConnectSidebarWinToFrame( *(mrSidebarItem.maLayoutInfo.mpAnchorFrame),
-                                  mrSidebarItem.GetFormatField(),
-                                  *this );
+    if (rSidebarItem.maLayoutInfo.mpAnchorFrame)
+    {
+        mrMgr.ConnectSidebarWinToFrame( *(rSidebarItem.maLayoutInfo.mpAnchorFrame),
+                                      mpSidebarItem->GetFormatField(),
+                                      *this );
+    }
 #endif
 
     if (SupportsDoubleBuffering())
@@ -139,7 +163,7 @@ SwAnnotationWin::~SwAnnotationWin()
 void SwAnnotationWin::dispose()
 {
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
-    mrMgr.DisconnectSidebarWinFromFrame( *(mrSidebarItem.maLayoutInfo.mpAnchorFrame),
+    mrMgr.DisconnectSidebarWinFromFrame( *(mpSidebarItem->maLayoutInfo.mpAnchorFrame),
                                        *this );
 #endif
     Disable();
@@ -185,6 +209,9 @@ void SwAnnotationWin::SetPostItText()
     // get text from SwPostItField and insert into our textview
     mpOutliner->SetModifyHdl( Link<LinkParamNone*,void>() );
     mpOutliner->EnableUndo( false );
+#if ENABLE_YRS
+    auto const mode = mrView.GetDocShell()->GetDoc()->getIDocumentState().SetYrsMode(IYrsTransactionSupplier::Mode::Replay);
+#endif
     if( mpField->GetTextObject() )
         mpOutliner->SetText( *mpField->GetTextObject() );
     else
@@ -193,6 +220,9 @@ void SwAnnotationWin::SetPostItText()
         GetOutlinerView()->SetStyleSheet(SwResId(STR_POOLCOLL_COMMENT));
         GetOutlinerView()->InsertText(sNewText);
     }
+#if ENABLE_YRS
+    mrView.GetDocShell()->GetDoc()->getIDocumentState().SetYrsMode(mode);
+#endif
 
     mpOutliner->ClearModifyFlag();
     mpOutliner->GetUndoManager().Clear();
@@ -220,7 +250,7 @@ void SwAnnotationWin::SetResolved(bool resolved)
     if (SwWrtShell* pWrtShell = mrView.GetWrtShellPtr())
     {
         const SwViewOption* pVOpt = pWrtShell->GetViewOptions();
-        mrSidebarItem.mbShow = !IsResolved() || (pVOpt->IsResolvedPostIts());
+        mpSidebarItem->mbShow = !IsResolved() || (pVOpt->IsResolvedPostIts());
     }
 
     mpTextRangeOverlay.reset();
@@ -231,10 +261,18 @@ void SwAnnotationWin::SetResolved(bool resolved)
         mxMetadataResolved->hide();
 
     if(IsResolved() != oldState)
+    {
         mbResolvedStateUpdated = true;
+#if ENABLE_YRS
+        // for undo, before UpdateData()
+        mrView.GetDocShell()->GetDoc()->getIDocumentState().YrsNotifySetResolved(
+            GetOutlinerView()->GetEditView().GetYrsCommentId(),
+            *static_cast<SwPostItField const*>(mpFormatField->GetField()));
+#endif
+    }
     UpdateData();
     Invalidate();
-    collectUIInformation("SETRESOLVED",get_id());
+    collectUIInformation(u"SETRESOLVED"_ustr,get_id());
 }
 
 void SwAnnotationWin::ToggleResolved()
@@ -304,6 +342,24 @@ bool SwAnnotationWin::IsThreadResolved()
     }
 }
 
+bool SwAnnotationWin::IsRootNote() const
+{
+    return static_cast<SwPostItField*>(mpFormatField->GetField())->GetParentPostItId() == 0;
+}
+
+void SwAnnotationWin::SetAsRoot()
+{
+    if (!IsRootNote())
+    {
+        SwPostItField* pPostIt = static_cast<SwPostItField*>(mpFormatField->GetField());
+        pPostIt->SetParentId(0);
+        pPostIt->SetParentPostItId(0);
+        pPostIt->SetParentName(SwMarkName());
+        mrMgr.MoveSubthreadToRoot(this);
+        mpFormatField->Broadcast(SwFormatFieldHint(nullptr, SwFormatFieldHintWhich::CHANGED));
+    }
+}
+
 void SwAnnotationWin::UpdateData()
 {
     if ( mpOutliner->IsModified() || mbResolvedStateUpdated )
@@ -323,6 +379,9 @@ void SwAnnotationWin::UpdateData()
             SwPosition aPosition( pTextField->GetTextNode(), pTextField->GetStart() );
             rUndoRedo.AppendUndo(
                 std::make_unique<SwUndoFieldFromDoc>(aPosition, *pOldField, *mpField, true));
+#if ENABLE_YRS
+            mrView.GetDocShell()->GetDoc()->getIDocumentState().YrsEndUndo();
+#endif
         }
         // so we get a new layout of notes (anchor position is still the same and we would otherwise not get one)
         mrMgr.SetLayout();
@@ -340,7 +399,7 @@ void SwAnnotationWin::UpdateData()
 
 void SwAnnotationWin::Delete()
 {
-    collectUIInformation("DELETE",get_id());
+    collectUIInformation(u"DELETE"_ustr,get_id());
     SwWrtShell* pWrtShell = mrView.GetWrtShellPtr();
     if (!(pWrtShell && pWrtShell->GotoField(*mpFormatField)))
         return;
@@ -417,22 +476,22 @@ void SwAnnotationWin::InitAnswer(OutlinerParaObject const & rText)
 
     // insert old, selected text or "..."
     // TODO: iterate over all paragraphs, not only first one to find out if it is empty
-    if (!rText.GetTextObject().GetText(0).isEmpty())
+    if (rText.GetTextObject().HasText(0))
         GetOutlinerView()->GetEditView().InsertText(rText.GetTextObject());
     else
-        GetOutlinerView()->InsertText("...");
-    GetOutlinerView()->InsertText("\"\n");
+        GetOutlinerView()->InsertText(u"..."_ustr);
+    GetOutlinerView()->InsertText(u"\"\n"_ustr);
 
-    GetOutlinerView()->SetSelection(ESelection(0,0,EE_PARA_ALL,EE_TEXTPOS_ALL));
+    GetOutlinerView()->SetSelection(ESelection::All());
     SfxItemSet aAnswerSet( mrView.GetDocShell()->GetPool() );
     aAnswerSet.Put(SvxFontHeightItem(200,80,EE_CHAR_FONTHEIGHT));
     aAnswerSet.Put(SvxPostureItem(ITALIC_NORMAL,EE_CHAR_ITALIC));
     GetOutlinerView()->SetAttribs(aAnswerSet);
-    GetOutlinerView()->SetSelection(ESelection(EE_PARA_MAX_COUNT,EE_TEXTPOS_MAX_COUNT,EE_PARA_MAX_COUNT,EE_TEXTPOS_MAX_COUNT));
+    GetOutlinerView()->SetSelection(ESelection::AtEnd());
 
     //remove all attributes and reset our standard ones
     GetOutlinerView()->GetEditView().RemoveAttribsKeepLanguages(true);
-    // lets insert an undo step so the initial text can be easily deleted
+    // let's insert an undo step so the initial text can be easily deleted
     // but do not use UpdateData() directly, would set modified state again and reentrance into Mgr
     mpOutliner->SetModifyHdl( Link<LinkParamNone*,void>() );
     IDocumentUndoRedo & rUndoRedo(
@@ -450,6 +509,9 @@ void SwAnnotationWin::InitAnswer(OutlinerParaObject const & rText)
         SwPosition aPosition( pTextField->GetTextNode(), pTextField->GetStart() );
         rUndoRedo.AppendUndo(
             std::make_unique<SwUndoFieldFromDoc>(aPosition, *pOldField, *mpField, true));
+#if ENABLE_YRS
+// no! there is a StartUndo wrapping this        mrView.GetDocShell()->GetDoc()->getIDocumentState().YrsEndUndo();
+#endif
     }
     mpOutliner->SetModifyHdl( LINK( this, SwAnnotationWin, ModifyHdl ) );
     mpOutliner->ClearModifyFlag();
@@ -463,9 +525,26 @@ void SwAnnotationWin::UpdateText(const OUString& aText)
     UpdateData();
 }
 
+void SwAnnotationWin::UpdateHTML(const OUString& rHtml)
+{
+    mpOutliner->Clear();
+    SwPostItHelper::ImportHTML(*mpOutliner, rHtml);
+    UpdateData();
+}
+
+OString SwAnnotationWin::GetSimpleHtml() const
+{
+    return GetOutlinerView()->GetEditView().GetSimpleHtml();
+}
+
+bool SwAnnotationWin::IsReadOnly() const
+{
+    return mbReadonly;
+}
+
 bool SwAnnotationWin::IsReadOnlyOrProtected() const
 {
-    return mbReadonly ||
+    return IsReadOnly() ||
            GetLayoutStatus() == SwPostItHelper::DELETED ||
            ( mpFormatField && mpFormatField->IsProtect() );
 }

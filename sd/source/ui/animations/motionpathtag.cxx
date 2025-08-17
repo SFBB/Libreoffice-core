@@ -186,7 +186,7 @@ bool PathDragResize::EndSdrDrag(bool /*bCopy*/)
         {
             const Point aRef( DragStat().GetRef1() );
             basegfx::B2DHomMatrix aTrans(basegfx::utils::createTranslateB2DHomMatrix(-aRef.X(), -aRef.Y()));
-            aTrans.scale(double(aXFact), double(aYFact));
+            aTrans.scale(double(m_aXFact), double(m_aYFact));
             aTrans.translate(aRef.X(), aRef.Y());
             basegfx::B2DPolyPolygon aDragPoly(pPathObj->GetPathPoly());
             aDragPoly.transform(aTrans);
@@ -334,7 +334,7 @@ MotionPathTag::MotionPathTag( CustomAnimationPane& rPane, ::sd::View& rView, con
         maOriginPos = mxOrigin->getPosition();
 
     XDash aDash( css::drawing::DashStyle_RECT, 1, 80, 1, 80, 80);
-    OUString aEmpty( "?" );
+    OUString aEmpty( u"?"_ustr );
     mpPathObj->SetMergedItem( XLineDashItem( aEmpty, aDash ) );
     mpPathObj->SetMergedItem( XLineStyleItem( drawing::LineStyle_DASH ) );
     mpPathObj->SetMergedItem( XLineColorItem(aEmpty, COL_GRAY) );
@@ -386,7 +386,7 @@ void MotionPathTag::updatePathAttributes()
         aEndArrow.append(::basegfx::B2DPoint(0.0, 30.0));
         aEndArrow.append(::basegfx::B2DPoint(20.0, 30.0));
         aEndArrow.setClosed(true);
-        mpPathObj->SetMergedItem(XLineEndItem("?",::basegfx::B2DPolyPolygon(aEndArrow)));
+        mpPathObj->SetMergedItem(XLineEndItem(u"?"_ustr,::basegfx::B2DPolyPolygon(aEndArrow)));
         mpPathObj->SetMergedItem(XLineEndWidthItem(400));
         mpPathObj->SetMergedItem(XLineEndCenterItem(true));
     }
@@ -527,12 +527,12 @@ bool MotionPathTag::MouseButtonDown( const MouseEvent& rMEvt, SmartHdl& rHdl )
 
                     if( (pHdl->GetKind() == SdrHdlKind::Move) || (pHdl->GetKind() == SdrHdlKind::SmartTag) )
                     {
-                        pDragMethod = new PathDragMove( mrView, xTag, aDragPoly );
+                        pDragMethod = new PathDragMove( mrView, xTag, std::move(aDragPoly) );
                         pHdl->SetPos( aMDPos );
                     }
                     else if( pHdl->GetKind() == SdrHdlKind::Poly )
                     {
-                        pDragMethod = new PathDragObjOwn( mrView, aDragPoly );
+                        pDragMethod = new PathDragObjOwn( mrView, std::move(aDragPoly) );
                     }
                     else
                     {
@@ -879,9 +879,7 @@ void MotionPathTag::addCustomHandles( SdrHdlList& rHandlerList )
         aPos = mxOrigin->getPosition();
     if( (aPos.X != maOriginPos.X) || (aPos.Y != maOriginPos.Y) )
     {
-        const basegfx::B2DHomMatrix aTransform(basegfx::utils::createTranslateB2DHomMatrix(
-            aPos.X - maOriginPos.X, aPos.Y - maOriginPos.Y));
-        mxPolyPoly.transform( aTransform );
+        mxPolyPoly.translate(aPos.X - maOriginPos.X, aPos.Y - maOriginPos.Y);
         mpPathObj->SetPathPoly( mxPolyPoly );
         maOriginPos = aPos;
     }

@@ -76,7 +76,7 @@ OString ExportPaMToHTML(SwPaM* pCursor)
     return {};
 }
 
-void PasteHTMLToPaM(SwWrtShell& rWrtSh, SwPaM* pCursor, const OString& rData)
+void PasteHTMLToPaM(SwWrtShell& rWrtSh, const SwPaM* pCursor, const OString& rData)
 {
     SolarMutexGuard gMutex;
     rtl::Reference<vcl::unohelper::HtmlTransferable> pHtmlTransferable
@@ -94,7 +94,7 @@ void PasteHTMLToPaM(SwWrtShell& rWrtSh, SwPaM* pCursor, const OString& rData)
     }
 }
 
-#if HAVE_FEATURE_CURL && !ENABLE_WASM_STRIP_EXTRA
+#if HAVE_FEATURE_CURL
 void TranslateDocument(SwWrtShell& rWrtSh, const TranslateAPIConfig& rConfig)
 {
     bool bCancel = false;
@@ -102,7 +102,7 @@ void TranslateDocument(SwWrtShell& rWrtSh, const TranslateAPIConfig& rConfig)
 }
 
 void TranslateDocumentCancellable(SwWrtShell& rWrtSh, const TranslateAPIConfig& rConfig,
-                                  bool& rCancelTranslation)
+                                  const bool& rCancelTranslation)
 {
     auto m_pCurrentPam = rWrtSh.GetCursor();
     bool bHasSelection = rWrtSh.HasSelection();
@@ -212,5 +212,5 @@ void TranslateDocumentCancellable(SwWrtShell& rWrtSh, const TranslateAPIConfig& 
     if (xStatusIndicator.is())
         xStatusIndicator->end();
 }
-#endif // HAVE_FEATURE_CURL && !ENABLE_WASM_STRIP_EXTRA
+#endif // HAVE_FEATURE_CURL
 }

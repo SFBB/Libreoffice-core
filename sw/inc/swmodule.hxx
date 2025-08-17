@@ -25,6 +25,7 @@
 
 #include <o3tl/deleter.hxx>
 #include <tools/fldunit.hxx>
+#include <svl/ctloptions.hxx>
 #include <svl/lstner.hxx>
 #include <unotools/options.hxx>
 #include <sfx2/module.hxx>
@@ -50,10 +51,7 @@ class SwStdFontConfig;
 class SwNavigationConfig;
 class SwTransferable;
 class SwToolbarConfigItem;
-class SwAttrPool;
 namespace svtools{ class ColorConfig;}
-class SvtAccessibilityOptions;
-class SvtCTLOptions;
 class SvtUserOptions;
 enum class SwCompareMode;
 struct SwDBData;
@@ -68,10 +66,11 @@ enum class SvViewOpt {
 
 namespace com::sun::star::scanner { class XScannerManager2; }
 namespace com::sun::star::linguistic2 { class XLanguageGuessing; }
-namespace com::sun::star::linguistic2 { class XLinguServiceEventListener; }
 namespace ooo::vba { class XSinkCaller; }
+class SwLinguServiceEventListener;
+class SwTableAutoFormatTable;
 
-class SW_DLLPUBLIC SwModule final : public SfxModule, public SfxListener, public utl::ConfigurationListener
+class SAL_DLLPUBLIC_RTTI SwModule final : public SfxModule, public SfxListener, public utl::ConfigurationListener
 {
     OUString            m_sActAuthor;
 
@@ -88,13 +87,13 @@ class SW_DLLPUBLIC SwModule final : public SfxModule, public SfxListener, public
     std::unique_ptr<SwToolbarConfigItem> m_pWebToolbarConfig;
     std::unique_ptr<SwDBConfig>          m_pDBConfig;
     std::unique_ptr<svtools::ColorConfig>   m_pColorConfig;
-    std::unique_ptr<SvtAccessibilityOptions> m_pAccessibilityOptions;
     std::unique_ptr<SvtCTLOptions>       m_pCTLOptions;
     std::unique_ptr<SvtUserOptions>      m_pUserOptions;
 
     std::unique_ptr<SfxErrorHandler> m_pErrorHandler;
 
-    rtl::Reference<SwAttrPool> m_pAttrPool;
+    std::unique_ptr<SwTableAutoFormatTable> m_xTableAutoFormatTable;
+
 
     // Current view is held here in order to avoid one's being forced
     // to work via GetActiveView.
@@ -105,9 +104,11 @@ class SW_DLLPUBLIC SwModule final : public SfxModule, public SfxListener, public
     std::vector<OUString> m_pAuthorNames;
 
     // DictionaryList listener to trigger spellchecking or hyphenation
-    css::uno::Reference< css::linguistic2::XLinguServiceEventListener > m_xLinguServiceEventListener;
+    rtl::Reference< SwLinguServiceEventListener > m_xLinguServiceEventListener;
     css::uno::Reference< css::scanner::XScannerManager2 >    m_xScannerManager;
     css::uno::Reference< css::linguistic2::XLanguageGuessing >  m_xLanguageGuesser;
+
+    SvtCTLOptions::TextNumerals m_eCTLTextNumerals;
 
     bool                m_bAuthorInitialised : 1;
     bool                m_bEmbeddedLoadSave : 1;
@@ -148,41 +149,43 @@ public:
     // Handler for slots.
     void                StateOther(SfxItemSet &);
 
-    void                ExecOther(SfxRequest &);    // Fields, formula...
+    SW_DLLPUBLIC void ExecOther(SfxRequest &);    // Fields, formula...
 
     // Modify user settings.
-    const SwMasterUsrPref *GetUsrPref(bool bWeb) const;
+    SW_DLLPUBLIC const SwMasterUsrPref *GetUsrPref(bool bWeb) const;
     const SwViewOption* GetViewOption(bool bWeb);
-    void                ApplyUsrPref(const SwViewOption &, SwView*,
+    SW_DLLPUBLIC void ApplyUsrPref(const SwViewOption &, SwView*,
                                      SvViewOpt nDest = SvViewOpt::DestView );
     void ApplyUserMetric( FieldUnit eMetric, bool bWeb );
     void ApplyRulerMetric( FieldUnit eMetric, bool bHorizontal, bool bWeb );
-    void ApplyFieldUpdateFlags(SwFieldUpdateFlags eFieldFlags);
-    void ApplyLinkMode(sal_Int32 nNewLinkMode);
+    SW_DLLPUBLIC void ApplyFieldUpdateFlags(SwFieldUpdateFlags eFieldFlags);
+    SW_DLLPUBLIC void ApplyLinkMode(sal_Int32 nNewLinkMode);
 
     // Default page mode for text grid.
-    void ApplyDefaultPageMode(bool bIsSquaredPageMode);
+    SW_DLLPUBLIC void ApplyDefaultPageMode(bool bIsSquaredPageMode);
 
     void ApplyUserCharUnit(bool bApplyChar, bool bWeb);  // apply_char_unit
 
     // Create ConfigItems.
     SwModuleOptions*    GetModuleConfig()       { return m_pModuleConfig.get();}
     SwPrintOptions*     GetPrtOptions(bool bWeb);
-    SwChapterNumRules*  GetChapterNumRules();
+    SW_DLLPUBLIC SwChapterNumRules*  GetChapterNumRules();
     SwStdFontConfig*    GetStdFontConfig()      { return m_pStdFontConfig.get(); }
     SwNavigationConfig* GetNavigationConfig();
     SwToolbarConfigItem*GetToolbarConfig()      { return m_pToolbarConfig.get();    }
     SwToolbarConfigItem*GetWebToolbarConfig()   { return m_pWebToolbarConfig.get(); }
-    SwDBConfig*         GetDBConfig();
-    svtools::ColorConfig&   GetColorConfig();
+    SW_DLLPUBLIC SwDBConfig* GetDBConfig();
+    SW_DLLPUBLIC svtools::ColorConfig& GetColorConfig();
     SvtUserOptions&     GetUserOptions();
 
     // Iterate over views.
-    static SwView*      GetFirstView();
-    static SwView*      GetNextView(SwView const *);
+    SAL_RET_MAYBENULL static SwView*      GetFirstView();
+    SAL_RET_MAYBENULL static SwView*      GetNextView(SwView const *);
 
     bool IsEmbeddedLoadSave() const         { return m_bEmbeddedLoadSave; }
     void SetEmbeddedLoadSave( bool bFlag )  { m_bEmbeddedLoadSave = bFlag; }
+
+    SvtCTLOptions::TextNumerals GetCTLTextNumerals() const { return m_eCTLTextNumerals; }
 
     static void ShowDBObj( SwView const & rView, const SwDBData& rData);
 
@@ -195,12 +198,12 @@ public:
 
     // Redlining.
     std::size_t         GetRedlineAuthor();
-    OUString const &    GetRedlineAuthor(std::size_t nPos);
-    void ClearRedlineAuthors();
+    SW_DLLPUBLIC OUString const & GetRedlineAuthor(std::size_t nPos);
+    SW_DLLPUBLIC void ClearRedlineAuthors();
     /// See SwXTextDocument::getTrackedChangeAuthors().
     void                GetRedlineAuthorInfo(tools::JsonWriter& rJsonWriter);
     std::size_t         InsertRedlineAuthor(const OUString& rAuthor);
-    void                SetRedlineAuthor(const OUString& rAuthor); // for unit tests
+    SW_DLLPUBLIC void   SetRedlineAuthor(const OUString& rAuthor); // for unit tests
 
     void                GetInsertAuthorAttr(std::size_t nAuthor, SfxItemSet &rSet);
     void                GetDeletedAuthorAttr(std::size_t nAuthor, SfxItemSet &rSet);
@@ -228,12 +231,7 @@ public:
     virtual std::optional<SfxItemSet> CreateItemSet( sal_uInt16 nId ) override;
     virtual void         ApplyItemSet( sal_uInt16 nId, const SfxItemSet& rSet ) override;
     virtual std::unique_ptr<SfxTabPage> CreateTabPage( sal_uInt16 nId, weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet ) override;
-    virtual std::optional<SfxStyleFamilies> CreateStyleFamilies() override;
-
-    // Pool is created here and set at SfxShell.
-    void    InitAttrPool();
-    // Delete pool before it is too late.
-    void    RemoveAttrPool();
+    SW_DLLPUBLIC virtual SfxStyleFamilies CreateStyleFamilies() override;
 
     // Invalidates online spell-wrong-lists if necessary.
     static void  CheckSpellChanges( bool bOnlineSpelling,
@@ -245,16 +243,20 @@ public:
     css::uno::Reference< css::linguistic2::XLanguageGuessing > const &
             GetLanguageGuesser();
 
-    void RegisterAutomationApplicationEventsCaller(css::uno::Reference< ooo::vba::XSinkCaller > const& xCaller);
+    SW_DLLPUBLIC void RegisterAutomationApplicationEventsCaller(css::uno::Reference< ooo::vba::XSinkCaller > const& xCaller);
     void CallAutomationApplicationEventSinks(const OUString& Method, css::uno::Sequence< css::uno::Any >& Arguments);
+
+    SW_DLLPUBLIC const SwTableAutoFormatTable& GetAutoFormatTable();
+    void InvalidateAutoFormatTable();;
+
+//    Access to SwModule
+    static auto get() { return static_cast<SwModule*>(SfxApplication::GetModule(SfxToolsModule::Writer)); }
 };
 
-//    Access to SwModule, the View and the shell.
+//    Access to the View and the shell.
 
-#define SW_MOD() ( static_cast<SwModule*>(SfxApplication::GetModule(SfxToolsModule::Writer)))
-
-SW_DLLPUBLIC SwView*    GetActiveView();
-SW_DLLPUBLIC SwWrtShell* GetActiveWrtShell();
+SAL_RET_MAYBENULL SW_DLLPUBLIC SwView*    GetActiveView();
+SAL_RET_MAYBENULL SW_DLLPUBLIC SwWrtShell* GetActiveWrtShell();
 
 namespace sw
 {

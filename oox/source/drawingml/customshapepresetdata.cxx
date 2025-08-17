@@ -35,20 +35,20 @@ void lcl_parseAdjustmentValue(
     drawing::EnhancedCustomShapeAdjustmentValue aAdjustmentValue;
     do
     {
-        OString aToken(o3tl::trim(o3tl::getToken(rValue, 0, ',', nIndex)));
+        std::string_view aToken(o3tl::trim(o3tl::getToken(rValue, 0, ',', nIndex)));
         static const char aNamePrefix[] = "Name = \"";
         static const char aValuePrefix[] = "Value = (any) { (long) ";
         if (o3tl::starts_with(aToken, aNamePrefix))
         {
-            OString aName = aToken.copy(strlen(aNamePrefix),
-                                        aToken.getLength() - strlen(aNamePrefix) - strlen("\""));
+            std::string_view aName = aToken.substr(
+                strlen(aNamePrefix), aToken.size() - strlen(aNamePrefix) - strlen("\""));
             aAdjustmentValue.Name = OUString::fromUtf8(aName);
         }
         else if (o3tl::starts_with(aToken, aValuePrefix))
         {
-            OString aValue = aToken.copy(strlen(aValuePrefix),
-                                         aToken.getLength() - strlen(aValuePrefix) - strlen(" }"));
-            aAdjustmentValue.Value <<= aValue.toInt32();
+            std::string_view aValue = aToken.substr(
+                strlen(aValuePrefix), aToken.size() - strlen(aValuePrefix) - strlen(" }"));
+            aAdjustmentValue.Value <<= o3tl::toInt32(aValue);
         }
         else if (!o3tl::starts_with(aToken, "State = "))
             SAL_WARN("oox", "lcl_parseAdjustmentValue: unexpected prefix: " << aToken);
@@ -160,6 +160,18 @@ awt::Rectangle lcl_parseRectangle(std::string_view rValue)
     aRectangle.Height = o3tl::toInt32(rValue.substr(nIndex));
 
     return aRectangle;
+}
+
+sal_Int32 lcl_parseDirection(std::string_view rValue)
+{
+    sal_Int32 aDirection;
+    // We expect the following here: Direction
+    static const char aExpectedWidthPrefix[] = "Dir = (long) ";
+    assert(o3tl::starts_with(rValue, aExpectedWidthPrefix));
+    sal_Int32 nIndex = strlen(aExpectedWidthPrefix);
+    aDirection = o3tl::toInt32(rValue.substr(nIndex));
+
+    return aDirection;
 }
 
 awt::Size lcl_parseSize(std::string_view rValue)
@@ -375,25 +387,25 @@ uno::Sequence<beans::PropertyValue> lcl_parseHandle(std::string_view rValue)
                 if (o3tl::starts_with(aToken, "Name = \"Position\""))
                     lcl_parseHandlePosition(aRet, aToken);
                 else if (o3tl::starts_with(aToken, "Name = \"RangeXMaximum\""))
-                    lcl_parseHandleRange(aRet, aToken, "RangeXMaximum");
+                    lcl_parseHandleRange(aRet, aToken, u"RangeXMaximum"_ustr);
                 else if (o3tl::starts_with(aToken, "Name = \"RangeXMinimum\""))
-                    lcl_parseHandleRange(aRet, aToken, "RangeXMinimum");
+                    lcl_parseHandleRange(aRet, aToken, u"RangeXMinimum"_ustr);
                 else if (o3tl::starts_with(aToken, "Name = \"RangeYMaximum\""))
-                    lcl_parseHandleRange(aRet, aToken, "RangeYMaximum");
+                    lcl_parseHandleRange(aRet, aToken, u"RangeYMaximum"_ustr);
                 else if (o3tl::starts_with(aToken, "Name = \"RangeYMinimum\""))
-                    lcl_parseHandleRange(aRet, aToken, "RangeYMinimum");
+                    lcl_parseHandleRange(aRet, aToken, u"RangeYMinimum"_ustr);
                 else if (o3tl::starts_with(aToken, "Name = \"RadiusRangeMaximum\""))
-                    lcl_parseHandleRange(aRet, aToken, "RadiusRangeMaximum");
+                    lcl_parseHandleRange(aRet, aToken, u"RadiusRangeMaximum"_ustr);
                 else if (o3tl::starts_with(aToken, "Name = \"RadiusRangeMinimum\""))
-                    lcl_parseHandleRange(aRet, aToken, "RadiusRangeMinimum");
+                    lcl_parseHandleRange(aRet, aToken, u"RadiusRangeMinimum"_ustr);
                 else if (o3tl::starts_with(aToken, "Name = \"RefX\""))
-                    lcl_parseHandleRef(aRet, aToken, "RefX");
+                    lcl_parseHandleRef(aRet, aToken, u"RefX"_ustr);
                 else if (o3tl::starts_with(aToken, "Name = \"RefY\""))
-                    lcl_parseHandleRef(aRet, aToken, "RefY");
+                    lcl_parseHandleRef(aRet, aToken, u"RefY"_ustr);
                 else if (o3tl::starts_with(aToken, "Name = \"RefR\""))
-                    lcl_parseHandleRef(aRet, aToken, "RefR");
+                    lcl_parseHandleRef(aRet, aToken, u"RefR"_ustr);
                 else if (o3tl::starts_with(aToken, "Name = \"RefAngle\""))
-                    lcl_parseHandleRef(aRet, aToken, "RefAngle");
+                    lcl_parseHandleRef(aRet, aToken, u"RefAngle"_ustr);
                 else
                     SAL_WARN("oox", "lcl_parseHandle: unexpected token: " << aToken);
             }
@@ -577,6 +589,73 @@ void lcl_parsePathGluePoints(std::vector<beans::PropertyValue>& rPath, std::stri
             }
             else if (!o3tl::starts_with(aToken, "Name =") && !o3tl::starts_with(aToken, "Handle ="))
                 SAL_WARN("oox", "lcl_parsePathGluePoints: unexpected token: " << aToken);
+            nStart = i + strlen(", ");
+        }
+    }
+}
+
+void lcl_parsePathGluePointLeavingDirectionsValues(std::vector<beans::PropertyValue>& rPath,
+                                                   std::string_view rValue)
+{
+    std::vector<double> aDirection;
+    sal_Int32 nLevel = 0;
+    sal_Int32 nStart = 0;
+    for (size_t i = 0; i < rValue.size(); ++i)
+    {
+        if (rValue[i] == '{')
+        {
+            if (!nLevel)
+                nStart = i;
+            nLevel++;
+        }
+        else if (rValue[i] == '}')
+        {
+            nLevel--;
+            if (!nLevel)
+                aDirection.push_back(lcl_parseDirection(
+                    rValue.substr(nStart + strlen("{ "), i - nStart - strlen(" },"))));
+        }
+    }
+
+    beans::PropertyValue aPropertyValue;
+    aPropertyValue.Name = "GluePointLeavingDirections";
+    aPropertyValue.Value <<= comphelper::containerToSequence(aDirection);
+    rPath.push_back(aPropertyValue);
+}
+
+void lcl_parsePathGluePointLeavingDirections(std::vector<beans::PropertyValue>& rPath,
+                                             std::string_view rValue)
+{
+    sal_Int32 nLevel = 0;
+    bool bIgnore = false;
+    sal_Int32 nStart = 0;
+    for (size_t i = 0; i < rValue.size(); ++i)
+    {
+        if (rValue[i] == '{')
+        {
+            if (!nLevel)
+                bIgnore = true;
+            nLevel++;
+        }
+        else if (rValue[i] == '}')
+        {
+            nLevel--;
+            if (!nLevel)
+                bIgnore = false;
+        }
+        else if (rValue[i] == ',' && !bIgnore)
+        {
+            std::string_view aToken = rValue.substr(nStart, i - nStart);
+            static const char aExpectedPrefix[] = "Value = (any) { ([]long) { ";
+            if (o3tl::starts_with(aToken, aExpectedPrefix))
+            {
+                aToken = aToken.substr(strlen(aExpectedPrefix),
+                                       aToken.size() - strlen(aExpectedPrefix) - strlen(" } }"));
+                lcl_parsePathGluePointLeavingDirectionsValues(rPath, aToken);
+            }
+            else if (!o3tl::starts_with(aToken, "Name =") && !o3tl::starts_with(aToken, "Handle ="))
+                SAL_WARN("oox",
+                         "lcl_parsePathGluePointLeavingDirections: unexpected token: " << aToken);
             nStart = i + strlen(", ");
         }
     }
@@ -804,6 +883,8 @@ void lcl_parsePath(std::vector<beans::PropertyValue>& rPath, std::string_view rV
                     lcl_parsePathCoordinates(rPath, aToken);
                 else if (o3tl::starts_with(aToken, "Name = \"GluePoints\""))
                     lcl_parsePathGluePoints(rPath, aToken);
+                else if (o3tl::starts_with(aToken, "Name = \"GluePointLeavingDirections\""))
+                    lcl_parsePathGluePointLeavingDirections(rPath, aToken);
                 else if (o3tl::starts_with(aToken, "Name = \"Segments\""))
                     lcl_parsePathSegments(rPath, aToken);
                 else if (o3tl::starts_with(aToken, "Name = \"TextFrames\""))
@@ -822,7 +903,7 @@ namespace oox::drawingml
 {
 void CustomShapeProperties::initializePresetDataMap()
 {
-    OUString aPath("$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/filter/oox-drawingml-cs-presets");
+    OUString aPath(u"$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/filter/oox-drawingml-cs-presets"_ustr);
     rtl::Bootstrap::expandMacros(aPath);
     SvFileStream aStream(aPath, StreamMode::READ);
     if (aStream.GetError() != ERRCODE_NONE)
@@ -967,7 +1048,7 @@ void CustomShapeProperties::initializePresetDataMap()
         }
         bNotDone = aStream.ReadLine(aLine);
     }
-    maPresetDataMap[TokenMap::getTokenFromUnicode(aName)] = aPropertyMap;
+    maPresetDataMap[TokenMap::getTokenFromUnicode(aName)] = std::move(aPropertyMap);
 }
 }
 

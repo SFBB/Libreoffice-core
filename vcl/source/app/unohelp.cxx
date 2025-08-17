@@ -29,14 +29,12 @@
 #include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/awt/FontWidth.hpp>
 #include <com/sun/star/awt/XExtendedToolkit.hpp>
-#include <com/sun/star/accessibility/AccessibleEventObject.hpp>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
 
 using namespace ::com::sun::star;
 
 uno::Reference < i18n::XBreakIterator > vcl::unohelper::CreateBreakIterator()
 {
-    uno::Reference< uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const uno::Reference< uno::XComponentContext >& xContext = comphelper::getProcessComponentContext();
     return i18n::BreakIterator::create(xContext);
 }
 
@@ -111,8 +109,10 @@ float vcl::unohelper::ConvertFontWeight( FontWeight eWeight )
         return css::awt::FontWeight::LIGHT;
     else if( eWeight == WEIGHT_SEMILIGHT )
         return css::awt::FontWeight::SEMILIGHT;
-    else if( ( eWeight == WEIGHT_NORMAL ) || ( eWeight == WEIGHT_MEDIUM ) )
+    else if( eWeight == WEIGHT_NORMAL )
         return css::awt::FontWeight::NORMAL;
+    else if( eWeight == WEIGHT_MEDIUM )
+        return css::awt::FontWeight::MEDIUM;
     else if( eWeight == WEIGHT_SEMIBOLD )
         return css::awt::FontWeight::SEMIBOLD;
     else if( eWeight == WEIGHT_BOLD )
@@ -140,6 +140,8 @@ FontWeight vcl::unohelper::ConvertFontWeight( float f )
         return WEIGHT_SEMILIGHT;
     else if( f <= css::awt::FontWeight::NORMAL )
         return WEIGHT_NORMAL;
+    else if( f <= css::awt::FontWeight::MEDIUM )
+        return WEIGHT_MEDIUM;
     else if( f <= css::awt::FontWeight::SEMIBOLD )
         return WEIGHT_SEMIBOLD;
     else if( f <= css::awt::FontWeight::BOLD )
@@ -209,5 +211,36 @@ FontItalic vcl::unohelper::ConvertFontSlant(css::awt::FontSlant eSlant)
     return eRet;
 }
 
+Size vcl::unohelper::ConvertToVCLSize(const css::awt::Size& rAWTSize)
+{
+    return Size(rAWTSize.Width, rAWTSize.Height);
+}
+
+css::awt::Size vcl::unohelper::ConvertToAWTSize(const Size& rVCLSize)
+{
+    return css::awt::Size(rVCLSize.Width(), rVCLSize.Height());
+}
+
+Point vcl::unohelper::ConvertToVCLPoint(const css::awt::Point& rAWTPoint)
+{
+    return Point(rAWTPoint.X, rAWTPoint.Y);
+}
+
+css::awt::Point vcl::unohelper::ConvertToAWTPoint(const PointTemplateBase& rVCLPoint)
+{
+    return css::awt::Point(rVCLPoint.X(), rVCLPoint.Y());
+}
+
+tools::Rectangle vcl::unohelper::ConvertToVCLRect(const css::awt::Rectangle& rAWTRect)
+{
+    return ::tools::Rectangle(Point(rAWTRect.X, rAWTRect.Y),
+                              Size(rAWTRect.Width, rAWTRect.Height));
+}
+
+css::awt::Rectangle vcl::unohelper::ConvertToAWTRect(const RectangleTemplateBase& rVCLRect)
+{
+    return css::awt::Rectangle(rVCLRect.Left(), rVCLRect.Top(), rVCLRect.GetWidth(),
+                               rVCLRect.GetHeight());
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

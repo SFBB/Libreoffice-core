@@ -59,7 +59,6 @@
 namespace svt
 {
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::ui::dialogs;
     using namespace ::com::sun::star::util;
@@ -250,10 +249,9 @@ namespace svt
     protected:
         css::uno::Any   getProperty(const OUString& _rLocalName) const;
 
-        OUString        getStringProperty(const char* _pLocalName) const;
         OUString        getStringProperty(const OUString& _rLocalName) const;
 
-        void            setStringProperty(const char* _pLocalName, const OUString& _rValue);
+        void            setStringProperty(const OUString& _pLocalName, const OUString& _rValue);
 
     public:
         AssignmentPersistentData();
@@ -288,9 +286,9 @@ void AssignmentPersistentData::ImplCommit()
 
 
     AssignmentPersistentData::AssignmentPersistentData()
-        :ConfigItem("Office.DataAccess/AddressBook")
+        :ConfigItem(u"Office.DataAccess/AddressBook"_ustr)
     {
-        const Sequence< OUString > aStoredNames = GetNodeNames("Fields");
+        const Sequence< OUString > aStoredNames = GetNodeNames(u"Fields"_ustr);
         m_aStoredFields.insert(aStoredNames.begin(), aStoredNames.end());
     }
 
@@ -329,17 +327,9 @@ void AssignmentPersistentData::ImplCommit()
     }
 
 
-    OUString AssignmentPersistentData::getStringProperty(const char* _pLocalName) const
+    void AssignmentPersistentData::setStringProperty(const OUString& _pLocalName, const OUString& _rValue)
     {
-        OUString sReturn;
-        getProperty(OUString::createFromAscii(_pLocalName)) >>= sReturn;
-        return sReturn;
-    }
-
-
-    void AssignmentPersistentData::setStringProperty(const char* _pLocalName, const OUString& _rValue)
-    {
-        Sequence< OUString > aNames { OUString::createFromAscii(_pLocalName) };
+        Sequence< OUString > aNames { _pLocalName };
         Sequence< Any > aValues{ Any(_rValue) };
         PutProperties(aNames, aValues);
     }
@@ -358,7 +348,7 @@ void AssignmentPersistentData::ImplCommit()
         }
 
         // Fields
-        OUString sDescriptionNodePath("Fields");
+        OUString sDescriptionNodePath(u"Fields"_ustr);
 
         // Fields/<field>
         OUString sFieldElementNodePath = sDescriptionNodePath + "/" + _rLogicalName;
@@ -386,31 +376,31 @@ void AssignmentPersistentData::ImplCommit()
             return;
 
         Sequence< OUString > aNames(&_rLogicalName, 1);
-        ClearNodeElements("Fields", aNames);
+        ClearNodeElements(u"Fields"_ustr, aNames);
     }
 
 
     OUString AssignmentPersistentData::getDatasourceName() const
     {
-        return getStringProperty( "DataSourceName" );
+        return getStringProperty( u"DataSourceName"_ustr );
     }
 
 
     OUString AssignmentPersistentData::getCommand() const
     {
-        return getStringProperty( "Command" );
+        return getStringProperty( u"Command"_ustr );
     }
 
 
     void AssignmentPersistentData::setDatasourceName(const OUString& _rName)
     {
-        setStringProperty( "DataSourceName", _rName );
+        setStringProperty( u"DataSourceName"_ustr, _rName );
     }
 
 
     void AssignmentPersistentData::setCommand(const OUString& _rCommand)
     {
-        setStringProperty( "Command", _rCommand );
+        setStringProperty( u"Command"_ustr, _rCommand );
     }
 
 
@@ -471,7 +461,7 @@ void AssignmentPersistentData::ImplCommit()
     // = AddressBookSourceDialog
     AddressBookSourceDialog::AddressBookSourceDialog(weld::Window* pParent,
             const Reference< XComponentContext >& _rxORB )
-        : GenericDialogController(pParent, "svt/ui/addresstemplatedialog.ui", "AddressTemplateDialog")
+        : GenericDialogController(pParent, u"svt/ui/addresstemplatedialog.ui"_ustr, u"AddressTemplateDialog"_ustr)
         , m_sNoFieldSelection(SvtResId(STR_NO_FIELD_SELECTION))
         , m_xORB(_rxORB)
         , m_pImpl( new AddressBookSourceDialogData )
@@ -482,7 +472,7 @@ void AssignmentPersistentData::ImplCommit()
     AddressBookSourceDialog::AddressBookSourceDialog(weld::Window* pParent, const Reference< XComponentContext >& _rxORB,
         const Reference< XDataSource >& _rxTransientDS, const OUString& _rDataSourceName,
         const OUString& _rTable, const Sequence< AliasProgrammaticPair >& _rMapping )
-        : GenericDialogController(pParent, "svt/ui/addresstemplatedialog.ui", "AddressTemplateDialog")
+        : GenericDialogController(pParent, u"svt/ui/addresstemplatedialog.ui"_ustr, u"AddressTemplateDialog"_ustr)
         , m_sNoFieldSelection(SvtResId(STR_NO_FIELD_SELECTION))
         , m_xORB(_rxORB)
         , m_pImpl( new AddressBookSourceDialogData( _rxTransientDS, _rDataSourceName, _rTable, _rMapping ) )
@@ -492,12 +482,12 @@ void AssignmentPersistentData::ImplCommit()
 
     void AddressBookSourceDialog::implConstruct()
     {
-        m_xOKButton = m_xBuilder->weld_button("ok");
-        m_xDatasource = m_xBuilder->weld_combo_box("datasource");
-        m_xAdministrateDatasources = m_xBuilder->weld_button("admin");
-        m_xTable = m_xBuilder->weld_combo_box("datatable");
-        m_xFieldScroller = m_xBuilder->weld_scrolled_window("scrollwindow", true);
-        m_xGrid = m_xBuilder->weld_widget("grid");
+        m_xOKButton = m_xBuilder->weld_button(u"ok"_ustr);
+        m_xDatasource = m_xBuilder->weld_combo_box(u"datasource"_ustr);
+        m_xAdministrateDatasources = m_xBuilder->weld_button(u"admin"_ustr);
+        m_xTable = m_xBuilder->weld_combo_box(u"datatable"_ustr);
+        m_xFieldScroller = m_xBuilder->weld_scrolled_window(u"scrollwindow"_ustr, true);
+        m_xGrid = m_xBuilder->weld_widget(u"grid"_ustr);
 
         for (sal_Int32 row=0; row<FIELD_PAIRS_VISIBLE; ++row)
         {
@@ -521,37 +511,39 @@ void AssignmentPersistentData::ImplCommit()
         // should be adjustable with a rather small effort.)
 
         // initialize the strings for the field labels
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_FIRSTNAME ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_LASTNAME ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_COMPANY));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_DEPARTMENT ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_STREET ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_ZIPCODE ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_CITY ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_STATE));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_COUNTRY ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_HOMETEL ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_WORKTEL ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_OFFICETEL));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_MOBILE));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_TELOTHER));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_PAGER));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_FAX ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_EMAIL ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_URL ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_TITLE ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_POSITION ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_INITIALS ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_ADDRFORM ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_SALUTATION ));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_ID));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_CALENDAR));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_INVITE));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_NOTE));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_USER1));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_USER2));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_USER3));
-        m_pImpl->aFieldLabels.push_back( SvtResId( STR_FIELD_USER4));
+        m_pImpl->aFieldLabels = {
+            SvtResId(STR_FIELD_FIRSTNAME),
+            SvtResId(STR_FIELD_LASTNAME),
+            SvtResId(STR_FIELD_COMPANY),
+            SvtResId(STR_FIELD_DEPARTMENT),
+            SvtResId(STR_FIELD_STREET),
+            SvtResId(STR_FIELD_ZIPCODE),
+            SvtResId(STR_FIELD_CITY),
+            SvtResId(STR_FIELD_STATE),
+            SvtResId(STR_FIELD_COUNTRY),
+            SvtResId(STR_FIELD_HOMETEL),
+            SvtResId(STR_FIELD_WORKTEL),
+            SvtResId(STR_FIELD_OFFICETEL),
+            SvtResId(STR_FIELD_MOBILE),
+            SvtResId(STR_FIELD_TELOTHER),
+            SvtResId(STR_FIELD_PAGER),
+            SvtResId(STR_FIELD_FAX),
+            SvtResId(STR_FIELD_EMAIL),
+            SvtResId(STR_FIELD_URL),
+            SvtResId(STR_FIELD_TITLE ),
+            SvtResId(STR_FIELD_POSITION),
+            SvtResId(STR_FIELD_INITIALS),
+            SvtResId(STR_FIELD_ADDRFORM),
+            SvtResId(STR_FIELD_SALUTATION),
+            SvtResId(STR_FIELD_ID),
+            SvtResId(STR_FIELD_CALENDAR),
+            SvtResId(STR_FIELD_INVITE),
+            SvtResId(STR_FIELD_NOTE),
+            SvtResId(STR_FIELD_USER1),
+            SvtResId(STR_FIELD_USER2),
+            SvtResId(STR_FIELD_USER3),
+            SvtResId(STR_FIELD_USER4)
+        };
 
         tools::Long nLabelWidth = 0;
         tools::Long nListBoxWidth = m_pImpl->pFields[0]->get_approximate_digit_width() * 18;
@@ -576,15 +568,15 @@ void AssignmentPersistentData::ImplCommit()
 
         // limit the scrollbar range accordingly
         sal_Int32 nOverallFieldPairs = m_pImpl->aFieldLabels.size() / 2;
-        m_xFieldScroller->vadjustment_configure(0, 0, nOverallFieldPairs,
-                                                1, FIELD_PAIRS_VISIBLE - 1, FIELD_PAIRS_VISIBLE);
+        m_xFieldScroller->vadjustment_configure(0, nOverallFieldPairs, 1, FIELD_PAIRS_VISIBLE - 1,
+                                                FIELD_PAIRS_VISIBLE);
 
         // reset the current field assignments
         m_pImpl->aFieldAssignments.resize(m_pImpl->aFieldLabels.size());
         // (empty strings mean "no assignment")
 
         // some knittings
-        m_xFieldScroller->connect_vadjustment_changed(LINK(this, AddressBookSourceDialog, OnFieldScroll));
+        m_xFieldScroller->connect_vadjustment_value_changed(LINK(this, AddressBookSourceDialog, OnFieldScroll));
         m_xAdministrateDatasources->connect_clicked(LINK(this, AddressBookSourceDialog, OnAdministrateDatasources));
         m_xDatasource->set_entry_completion(true);
         m_xTable->set_entry_completion(true);
@@ -614,10 +606,14 @@ void AssignmentPersistentData::ImplCommit()
         for (sal_Int32 i = 0; i<nAdjustedTokenCount; ++i)
             m_pImpl->aLogicalFieldNames.push_back(sLogicalFieldNames.getToken(0, ';', nIdx));
 
-        Application::PostUserEvent(LINK(this, AddressBookSourceDialog, OnDelayedInitialize), nullptr, false);
+        // load the initial data from the configuration
+        loadConfiguration();
+        resetTables();
+            // will reset the tables/fields implicitly
 
-        // so the dialog will at least show up before we do the loading of the
-        // configuration data and the (maybe time consuming) analysis of the data source/table to select
+        if ( !m_pImpl->bWorkingPersistent )
+            if ( m_pImpl->pFields[0] )
+                m_pImpl->pFields[0]->grab_focus();
 
         if (m_pImpl->bWorkingPersistent)
             return;
@@ -800,7 +796,7 @@ void AssignmentPersistentData::ImplCommit()
 
         bool bKnowOldTable = false;
         // fill the table list
-        for (const OUString& rTableName : std::as_const(aTableNames))
+        for (const OUString& rTableName : aTableNames)
         {
             m_xTable->append_text(rTableName);
             if (rTableName == sOldTable)
@@ -866,7 +862,7 @@ void AssignmentPersistentData::ImplCommit()
             pListbox->set_id(0, OUString::number(i));
 
             // the field names
-            for (const OUString& rColumnName : std::as_const(aColumnNames))
+            for (const OUString& rColumnName : aColumnNames)
                 pListbox->append_text(rColumnName);
 
             if (!aInitialSelection->isEmpty() && (aColumnNameSet.end() != aColumnNameSet.find(*aInitialSelection)))
@@ -1006,18 +1002,6 @@ void AssignmentPersistentData::ImplCommit()
             pBox->set_active(0);
     }
 
-    IMPL_LINK_NOARG(AddressBookSourceDialog, OnDelayedInitialize, void*, void)
-    {
-        // load the initial data from the configuration
-        loadConfiguration();
-        resetTables();
-            // will reset the tables/fields implicitly
-
-        if ( !m_pImpl->bWorkingPersistent )
-            if ( m_pImpl->pFields[0] )
-                m_pImpl->pFields[0]->grab_focus();
-    }
-
     IMPL_LINK(AddressBookSourceDialog, OnComboSelect, weld::ComboBox&, rBox, void)
     {
         if (&rBox == m_xDatasource.get())
@@ -1090,7 +1074,7 @@ void AssignmentPersistentData::ImplCommit()
                 if ( xProp.is() )
                 {
                     OUString sName;
-                    xProp->getPropertyValue("DataSourceName") >>= sName;
+                    xProp->getPropertyValue(u"DataSourceName"_ustr) >>= sName;
 
                     INetURLObject aURL( sName );
                     if( aURL.GetProtocol() != INetProtocol::NotValid )

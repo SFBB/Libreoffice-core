@@ -41,16 +41,22 @@ ifeq ($(strip $(gb_COMPILEROPTFLAGS)),)
 gb_COMPILEROPTFLAGS := -O2
 endif
 
+gb_COMPILEROPTFLAGS += $(if $(ENABLE_HARDENING_FLAGS),$(HARDENING_OPT_CFLAGS))
+
 gb_AFLAGS := $(AFLAGS)
 
 gb_COMPILERDEFS := \
-	-DBOOST_ERROR_CODE_HEADER_ONLY \
 	-DBOOST_SYSTEM_NO_DEPRECATED \
 	-DCPPU_ENV=$(CPPU_ENV) \
 	$(if $(filter EMSCRIPTEN,$(OS)),-U_FORTIFY_SOURCE) \
 
+# FIXME: better to change the code to use explicit types in our code
+ifeq ($(PLATFORMID),linux_aarch64)
+gb_COMPILERDEFS += -fsigned-char
+endif
+
 # enable debug STL
-ifeq ($(gb_ENABLE_DBGUTIL),$(true))
+ifeq ($(ENABLE_DBGUTIL),TRUE)
 ifneq ($(HAVE_LIBSTDCPP),)
 gb_COMPILERDEFS_STDLIB_DEBUG = -D_GLIBCXX_DEBUG
 else
@@ -75,6 +81,7 @@ gb_CFLAGS_COMMON := \
 	-fmessage-length=0 \
 	-fno-common \
 	-pipe \
+	$(if $(ENABLE_HARDENING_FLAGS),$(HARDENING_CFLAGS)) \
 	$(if $(filter EMSCRIPTEN,$(OS)),-fno-stack-protector,-fstack-protector-strong) \
 
 gb_CXXFLAGS_COMMON := \
@@ -91,6 +98,7 @@ gb_CXXFLAGS_COMMON := \
 	-fmessage-length=0 \
 	-fno-common \
 	-pipe \
+	$(if $(ENABLE_HARDENING_FLAGS),$(HARDENING_CFLAGS)) \
 	$(if $(filter EMSCRIPTEN,$(OS)),-fno-stack-protector,-fstack-protector-strong) \
 
 ifeq ($(HAVE_WDEPRECATED_COPY_DTOR),TRUE)
@@ -111,11 +119,11 @@ gb_CXXFLAGS_Wundef = -Wno-undef
 
 gb_CXXFLAGS_include := -include$(gb_SPACE)
 
-ifeq ($(strip $(gb_GCOV)),YES)
+ifeq ($(ENABLE_GCOV),TRUE)
+gb_GCOV_LDFLAGS := -fprofile-arcs -lgcov
 gb_CFLAGS_COMMON += -fprofile-arcs -ftest-coverage
 gb_CXXFLAGS_COMMON += -fprofile-arcs -ftest-coverage
-gb_LinkTarget_LDFLAGS += -fprofile-arcs -lgcov
-gb_COMPILEROPTFLAGS := -O0
+gb_LinkTarget_LDFLAGS += $(gb_GCOV_LDFLAGS)
 endif
 
 ifeq ($(DISABLE_DYNLOADING),TRUE)
@@ -141,13 +149,6 @@ gb_CXXFLAGS_COMMON += \
     -Wlogical-op \
     -Wshift-overflow=2 \
     -Wunused-const-variable=1
-endif
-
-# GCC 8 -Wcast-function-type (included in -Wextra) unhelpfully even warns on reinterpret_cast
-# between incompatible function types:
-ifeq ($(shell expr '$(GCC_VERSION)' '>=' 800),1)
-gb_CXXFLAGS_COMMON += \
-    -Wno-cast-function-type
 endif
 
 # If CC or CXX already include -fvisibility=hidden, don't duplicate it
@@ -203,7 +204,7 @@ endif
 gb_LinkTarget_EXCEPTIONFLAGS := \
 	-fexceptions
 
-ifeq ($(gb_ENABLE_DBGUTIL),$(false))
+ifeq ($(ENABLE_DBGUTIL),)
 # Clang doesn't have this option
 ifeq ($(HAVE_GCC_FNO_ENFORCE_EH_SPECS),TRUE)
 gb_LinkTarget_EXCEPTIONFLAGS += \
@@ -220,7 +221,7 @@ gb_PrecompiledHeader_EXCEPTIONFLAGS := $(gb_LinkTarget_EXCEPTIONFLAGS)
 gb_PrecompiledHeader_ignore_flags_for_flags_file := -Wunused-macros
 
 # optimization level
-gb_COMPILERNOOPTFLAGS := -O0 -fstrict-aliasing -fstrict-overflow
+gb_COMPILERNOOPTFLAGS := -O0 -Wp,-U_FORTIFY_SOURCE -fstrict-aliasing -fstrict-overflow
 gb_COMPILERDEBUGOPTFLAGS := -Og
 
 ifeq ($(OS),ANDROID)

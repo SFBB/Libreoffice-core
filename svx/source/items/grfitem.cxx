@@ -22,18 +22,19 @@
 #include <com/sun/star/text/GraphicCrop.hpp>
 #include <tools/mapunit.hxx>
 #include <tools/UnitConversion.hxx>
+#include <o3tl/hash_combine.hxx>
 
 using namespace ::com::sun::star;
 
 SvxGrfCrop::SvxGrfCrop( TypedWhichId<SvxGrfCrop> nItemId )
     : SfxPoolItem( nItemId ),
-    nLeft( 0 ), nRight( 0 ), nTop( 0 ), nBottom( 0 )
+    m_nLeft( 0 ), m_nRight( 0 ), m_nTop( 0 ), m_nBottom( 0 )
 {}
 
 SvxGrfCrop::SvxGrfCrop( sal_Int32 nL, sal_Int32 nR,
-                        sal_Int32 nT, sal_Int32 nB, TypedWhichId<SvxGrfCrop> nItemId )
+                        sal_Int32 nT, sal_Int32 nB, TypedWhichId<SvxGrfCrop> nItemId)
     : SfxPoolItem( nItemId ),
-    nLeft( nL ), nRight( nR ), nTop( nT ), nBottom( nB )
+    m_nLeft( nL ), m_nRight( nR ), m_nTop( nT ), m_nBottom( nB )
 {}
 
 SvxGrfCrop::~SvxGrfCrop()
@@ -45,21 +46,30 @@ bool SvxGrfCrop::operator==( const SfxPoolItem& rAttr ) const
     assert(SfxPoolItem::operator==(rAttr));
 
     const SvxGrfCrop& rCrop = static_cast<const SvxGrfCrop&>(rAttr);
-    return nLeft    == rCrop.GetLeft() &&
-           nRight   == rCrop.GetRight() &&
-           nTop     == rCrop.GetTop() &&
-           nBottom  == rCrop.GetBottom();
+    return m_nLeft    == rCrop.GetLeft() &&
+           m_nRight   == rCrop.GetRight() &&
+           m_nTop     == rCrop.GetTop() &&
+           m_nBottom  == rCrop.GetBottom();
 }
 
+size_t SvxGrfCrop::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, m_nLeft);
+    o3tl::hash_combine(seed, m_nRight);
+    o3tl::hash_combine(seed, m_nTop);
+    o3tl::hash_combine(seed, m_nBottom);
+    return seed;
+}
 
 bool SvxGrfCrop::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 {
     bool bConvert = 0!=(nMemberId&CONVERT_TWIPS);
     text::GraphicCrop aRet;
-    aRet.Left   = nLeft;
-    aRet.Right  = nRight;
-    aRet.Top    = nTop;
-    aRet.Bottom = nBottom;
+    aRet.Left   = m_nLeft;
+    aRet.Right  = m_nRight;
+    aRet.Top    = m_nTop;
+    aRet.Bottom = m_nBottom;
 
     if( bConvert )
     {
@@ -76,6 +86,7 @@ bool SvxGrfCrop::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 
 bool SvxGrfCrop::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     bool bConvert = 0!=(nMemberId&CONVERT_TWIPS);
     text::GraphicCrop aVal;
 
@@ -89,10 +100,10 @@ bool SvxGrfCrop::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
        aVal.Bottom  = o3tl::toTwips(aVal.Bottom, o3tl::Length::mm100);
     }
 
-    nLeft   = aVal.Left  ;
-    nRight  = aVal.Right ;
-    nTop    = aVal.Top   ;
-    nBottom = aVal.Bottom;
+    m_nLeft   = aVal.Left  ;
+    m_nRight  = aVal.Right ;
+    m_nTop    = aVal.Top   ;
+    m_nBottom = aVal.Bottom;
     return  true;
 }
 

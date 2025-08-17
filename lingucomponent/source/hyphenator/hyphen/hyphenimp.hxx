@@ -116,9 +116,8 @@ public:
     virtual Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
 private:
-        static OUString makeLowerCase(const OUString&, CharClass const *);
-        static OUString makeUpperCase(const OUString&, CharClass const *);
-        static OUString makeInitCap(const OUString&, CharClass const *);
+    void ensureLocales();
+    const HDInfo* getMatchingDict(const css::lang::Locale& aLocale);
 };
 
 #endif

@@ -224,10 +224,10 @@ class AddonsOptions_Impl : public ConfigItem
         const Sequence< Sequence< PropertyValue > >&    GetAddonsMenuBarPart () const { return m_aCachedMenuBarPartProperties;}
         const Sequence< Sequence< PropertyValue > >&    GetAddonsToolBarPart ( sal_uInt32 nIndex ) const;
         const Sequence< Sequence< PropertyValue > >&    GetAddonsNotebookBarPart ( sal_uInt32 nIndex ) const;
-        OUString                                        GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const;
-        OUString                                        GetAddonsNotebookBarResourceName( sal_uInt32 nIndex ) const;
+        const OUString &                                GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const;
+        const OUString &                                GetAddonsNotebookBarResourceName( sal_uInt32 nIndex ) const;
         const Sequence< Sequence< PropertyValue > >&    GetAddonsHelpMenu    () const { return m_aCachedHelpMenuProperties;}
-        BitmapEx                                        GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale );
+        Bitmap                                          GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale );
         const MergeMenuInstructionContainer&            GetMergeMenuInstructions() const { return m_aCachedMergeMenuInsContainer;}
         bool                                            GetMergeToolbarInstructions( const OUString& rToolbarName, MergeToolbarInstructionContainer& rToolbarInstructions ) const;
         bool                                            GetMergeNotebookBarInstructions( const OUString& rNotebookBarName, MergeNotebookBarInstructionContainer& rNotebookBarInstructions ) const;
@@ -243,8 +243,8 @@ class AddonsOptions_Impl : public ConfigItem
 
         struct OneImageEntry
         {
-            BitmapEx aScaled;   ///< cached scaled image
-            BitmapEx aImage;    ///< original un-scaled image
+            Bitmap aScaled;   ///< cached scaled image
+            Bitmap aImage;    ///< original un-scaled image
             OUString aURL;      ///< URL in case it is not loaded yet
         };
 
@@ -256,7 +256,7 @@ class AddonsOptions_Impl : public ConfigItem
             // accessed in this order
             OneImageEntry aSizeEntry[2];
             ImageEntry() {}
-            void addImage(ImageSize eSize, const BitmapEx &rImage);
+            void addImage(ImageSize eSize, const Bitmap &rImage);
             void addImage(ImageSize eSize, const OUString &rURL);
         };
 
@@ -295,16 +295,16 @@ class AddonsOptions_Impl : public ConfigItem
         void                 ReadMergeStatusbarData( std::u16string_view aMergeAddonInstructionBase, Sequence< Sequence< PropertyValue > >& rMergeStatusbar );
         bool                 ReadMenuItem( std::u16string_view aMenuItemNodeName, Sequence< PropertyValue >& aMenuItem, bool bIgnoreSubMenu = false );
         bool                 ReadPopupMenu( std::u16string_view aPopupMenuNodeName, Sequence< PropertyValue >& aPopupMenu );
-        void                 AppendPopupMenu( Sequence< PropertyValue >& aTargetPopupMenu, const Sequence< PropertyValue >& rSourcePopupMenu );
+        static void          AppendPopupMenu( Sequence< PropertyValue >& aTargetPopupMenu, const Sequence< PropertyValue >& rSourcePopupMenu );
         bool                 ReadToolBarItem( std::u16string_view aToolBarItemNodeName, Sequence< PropertyValue >& aToolBarItem );
         bool                 ReadNotebookBarItem( std::u16string_view aNotebookBarItemNodeName, Sequence< PropertyValue >& aNotebookBarItem );
 
         bool                 ReadStatusBarItem( std::u16string_view aStatusbarItemNodeName, Sequence< PropertyValue >& aStatusbarItem );
         std::unique_ptr<ImageEntry> ReadImageData( std::u16string_view aImagesNodeName );
         void                 ReadAndAssociateImages( const OUString& aURL, const OUString& aImageId );
-        BitmapEx             ReadImageFromURL( const OUString& aURL );
+        static Bitmap        ReadImageFromURL( const OUString& aURL );
         bool                 HasAssociatedImages( const OUString& aURL );
-        void                 SubstituteVariables( OUString& aURL );
+        static void          SubstituteVariables( OUString& aURL );
 
         void                 ReadSubMenuEntries( const Sequence< OUString >& aSubMenuNodeNames, Sequence< Sequence< PropertyValue > >& rSubMenu );
         OUString             GeneratePrefixURL();
@@ -319,7 +319,7 @@ class AddonsOptions_Impl : public ConfigItem
 
         Sequence< OUString > GetPropertyNamesStatusbarItem( std::u16string_view aPropertyRootNode ) const;
         Sequence< OUString > GetPropertyNamesImages( std::u16string_view aPropertyRootNode ) const;
-        bool                 CreateImageFromSequence( BitmapEx& rImage, Sequence< sal_Int8 >& rBitmapDataSeq ) const;
+        static bool CreateImageFromSequence( BitmapEx& rImage, Sequence< sal_Int8 >& rBitmapDataSeq );
 
         DECL_LINK(NotifyEvent, void*, void);
 
@@ -353,7 +353,7 @@ class AddonsOptions_Impl : public ConfigItem
         MergeStatusbarInstructionContainer                m_aCachedStatusbarMergingInstructions;
 };
 
-void AddonsOptions_Impl::ImageEntry::addImage(ImageSize eSize, const BitmapEx& rImage)
+void AddonsOptions_Impl::ImageEntry::addImage(ImageSize eSize, const Bitmap& rImage)
 {
     aSizeEntry[static_cast<int>(eSize)].aImage = rImage;
 }
@@ -432,7 +432,7 @@ AddonsOptions_Impl::AddonsOptions_Impl()
 
     // Enable notification mechanism of our baseclass.
     // We need it to get information about changes outside these class on our used configuration keys!
-    Sequence<OUString> aNotifySeq { "AddonUI" };
+    Sequence<OUString> aNotifySeq { u"AddonUI"_ustr };
     EnableNotification( aNotifySeq );
 }
 
@@ -531,22 +531,22 @@ const Sequence< Sequence< PropertyValue > >& AddonsOptions_Impl::GetAddonsNotebo
 
 //  public method
 
-OUString AddonsOptions_Impl::GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const
+const OUString & AddonsOptions_Impl::GetAddonsToolbarResourceName( sal_uInt32 nIndex ) const
 {
     if ( nIndex < m_aCachedToolBarPartResourceNames.size() )
         return m_aCachedToolBarPartResourceNames[nIndex];
     else
-        return OUString();
+        return EMPTY_OUSTRING;
 }
 
 //  public method
 
-OUString AddonsOptions_Impl::GetAddonsNotebookBarResourceName( sal_uInt32 nIndex ) const
+const OUString & AddonsOptions_Impl::GetAddonsNotebookBarResourceName( sal_uInt32 nIndex ) const
 {
     if ( nIndex < m_aCachedNotebookBarPartResourceNames.size() )
         return m_aCachedNotebookBarPartResourceNames[nIndex];
     else
-        return OUString();
+        return EMPTY_OUSTRING;
 }
 
 //  public method
@@ -583,19 +583,19 @@ bool AddonsOptions_Impl::GetMergeNotebookBarInstructions(
 
 //  public method
 
-static BitmapEx ScaleImage( const BitmapEx &rImage, bool bBig )
+static Bitmap ScaleImage( const Bitmap &rImage, bool bBig )
 {
     Size aSize = ToolBox::GetDefaultImageSize(bBig ? ToolBoxButtonSize::Large : ToolBoxButtonSize::Small);
-    BitmapEx aScaleBmp(rImage);
+    Bitmap aScaleBmp(rImage);
     SAL_INFO("fwk", "Addons: expensive scale image from "
              << aScaleBmp.GetSizePixel() << " to " << aSize);
     aScaleBmp.Scale(aSize, BmpScaleFlag::BestQuality);
     return aScaleBmp;
 }
 
-BitmapEx AddonsOptions_Impl::GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale )
+Bitmap AddonsOptions_Impl::GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale )
 {
-    BitmapEx aImage;
+    Bitmap aImage;
 
     SAL_INFO("fwk", "Expensive: Addons GetImageFromURL " << aURL <<
              " big " << (bBig?"big":"little") <<
@@ -647,7 +647,7 @@ BitmapEx AddonsOptions_Impl::GetImageFromURL( const OUString& aURL, bool bBig, b
 void AddonsOptions_Impl::ReadAddonMenuSet( Sequence< Sequence< PropertyValue > >& rAddonMenuSeq )
 {
     // Read the AddonMenu set and fill property sequences
-    OUString             aAddonMenuNodeName( "AddonUI/AddonMenu" );
+    OUString             aAddonMenuNodeName( u"AddonUI/AddonMenu"_ustr );
     Sequence< OUString > aAddonMenuNodeSeq = GetNodeNames( aAddonMenuNodeName );
     OUString             aAddonMenuItemNode( aAddonMenuNodeName + m_aPathDelimiter );
 
@@ -681,7 +681,7 @@ void AddonsOptions_Impl::ReadAddonMenuSet( Sequence< Sequence< PropertyValue > >
 void AddonsOptions_Impl::ReadOfficeHelpSet( Sequence< Sequence< PropertyValue > >& rAddonOfficeHelpMenuSeq )
 {
     // Read the AddonMenu set and fill property sequences
-    OUString             aAddonHelpMenuNodeName( "AddonUI/OfficeHelp" );
+    OUString             aAddonHelpMenuNodeName( u"AddonUI/OfficeHelp"_ustr );
     Sequence< OUString > aAddonHelpMenuNodeSeq = GetNodeNames( aAddonHelpMenuNodeName );
     OUString             aAddonHelpMenuItemNode( aAddonHelpMenuNodeName + m_aPathDelimiter );
 
@@ -715,7 +715,7 @@ void AddonsOptions_Impl::ReadOfficeHelpSet( Sequence< Sequence< PropertyValue > 
 void AddonsOptions_Impl::ReadOfficeMenuBarSet( Sequence< Sequence< PropertyValue > >& rAddonOfficeMenuBarSeq )
 {
     // Read the OfficeMenuBar set and fill property sequences
-    OUString             aAddonMenuBarNodeName( "AddonUI/OfficeMenuBar" );
+    OUString             aAddonMenuBarNodeName( u"AddonUI/OfficeMenuBar"_ustr );
     Sequence< OUString > aAddonMenuBarNodeSeq = GetNodeNames( aAddonMenuBarNodeName );
     OUString             aAddonMenuBarNode( aAddonMenuBarNodeName + m_aPathDelimiter );
 
@@ -767,7 +767,7 @@ void AddonsOptions_Impl::ReadOfficeMenuBarSet( Sequence< Sequence< PropertyValue
 void AddonsOptions_Impl::ReadOfficeToolBarSet( AddonToolBars& rAddonOfficeToolBars, std::vector< OUString >& rAddonOfficeToolBarResNames )
 {
     // Read the OfficeToolBar set and fill property sequences
-    OUString             aAddonToolBarNodeName( "AddonUI/OfficeToolBar" );
+    OUString             aAddonToolBarNodeName( u"AddonUI/OfficeToolBar"_ustr );
     Sequence< OUString > aAddonToolBarNodeSeq = GetNodeNames( aAddonToolBarNodeName );
     OUString             aAddonToolBarNode( aAddonToolBarNodeName + m_aPathDelimiter );
 
@@ -821,7 +821,7 @@ void AddonsOptions_Impl::ReadOfficeNotebookBarSet(
     std::vector<OUString>& rAddonOfficeNotebookBarResNames)
 {
     // Read the OfficeToolBar set and fill property sequences
-    OUString aAddonNotebookBarNodeName("AddonUI/OfficeNotebookBar");
+    OUString aAddonNotebookBarNodeName(u"AddonUI/OfficeNotebookBar"_ustr);
     Sequence<OUString> aAddonNotebookBarNodeSeq = GetNodeNames(aAddonNotebookBarNodeName);
     OUString aAddonNotebookBarNode(aAddonNotebookBarNodeName + m_aPathDelimiter);
 
@@ -878,7 +878,7 @@ bool AddonsOptions_Impl::ReadNotebookBarItemSet(
 void AddonsOptions_Impl::ReadImages( ImageManager& aImageManager )
 {
     // Read the user-defined Images set and fill image manager
-    OUString                aAddonImagesNodeName( "AddonUI/Images" );
+    OUString                aAddonImagesNodeName( u"AddonUI/Images"_ustr );
     Sequence< OUString > aAddonImagesNodeSeq = GetNodeNames( aAddonImagesNodeName );
     OUString                aAddonImagesNode( aAddonImagesNodeName + m_aPathDelimiter );
 
@@ -979,7 +979,7 @@ void AddonsOptions_Impl::ReadMenuMergeInstructions( MergeMenuInstructionContaine
 
             ReadMergeMenuData( aMergeAddonInstructionBase, aMergeMenuInstruction.aMergeMenu );
 
-            aContainer.push_back( aMergeMenuInstruction );
+            aContainer.push_back(std::move(aMergeMenuInstruction));
         }
     }
 }
@@ -1056,7 +1056,7 @@ void AddonsOptions_Impl::ReadToolbarMergeInstructions( ToolbarMergingInstruction
                                   aMergeToolbarInstruction.aMergeToolbarItems );
 
             MergeToolbarInstructionContainer& rVector = rCachedToolbarMergingInstructions[ aMergeToolbarInstruction.aMergeToolbar ];
-            rVector.push_back( aMergeToolbarInstruction );
+            rVector.push_back(std::move(aMergeToolbarInstruction));
         }
     }
 }
@@ -1130,7 +1130,7 @@ void AddonsOptions_Impl::ReadNotebookBarMergeInstructions(
             MergeNotebookBarInstructionContainer& rVector
                 = rCachedNotebookBarMergingInstructions[aMergeNotebookBarInstruction
                                                             .aMergeNotebookBar];
-            rVector.push_back(aMergeNotebookBarInstruction);
+            rVector.push_back(std::move(aMergeNotebookBarInstruction));
         }
     }
 }
@@ -1197,7 +1197,7 @@ void AddonsOptions_Impl::ReadStatusbarMergeInstructions( MergeStatusbarInstructi
             ReadMergeStatusbarData( aMergeAddonInstructionBase,
                                     aMergeStatusbarInstruction.aMergeStatusbarItems );
 
-            aContainer.push_back( aMergeStatusbarInstruction );
+            aContainer.push_back(std::move(aMergeStatusbarInstruction));
         }
     }
 }
@@ -1381,6 +1381,7 @@ bool AddonsOptions_Impl::ReadPopupMenu( std::u16string_view aPopupMenuNodeName, 
     return bResult;
 }
 
+// static
 void AddonsOptions_Impl::AppendPopupMenu( Sequence< PropertyValue >& rTargetPopupMenu, const Sequence< PropertyValue >& rSourcePopupMenu )
 {
     Sequence< Sequence< PropertyValue > > aTargetSubMenuSeq;
@@ -1392,7 +1393,7 @@ void AddonsOptions_Impl::AppendPopupMenu( Sequence< PropertyValue >& rTargetPopu
         sal_uInt32 nIndex = aTargetSubMenuSeq.getLength();
         aTargetSubMenuSeq.realloc( nIndex + aSourceSubMenuSeq.getLength() );
         auto pTargetSubMenuSeq = aTargetSubMenuSeq.getArray();
-        for ( Sequence<PropertyValue> const & rSeq : std::as_const(aSourceSubMenuSeq) )
+        for (Sequence<PropertyValue> const& rSeq : aSourceSubMenuSeq)
             pTargetSubMenuSeq[nIndex++] = rSeq;
         rTargetPopupMenu.getArray()[ OFFSET_POPUPMENU_SUBMENU ].Value <<= aTargetSubMenuSeq;
     }
@@ -1547,15 +1548,17 @@ bool AddonsOptions_Impl::HasAssociatedImages( const OUString& aURL )
     return ( pIter != m_aImageManager.end() );
 }
 
+// static
 void AddonsOptions_Impl::SubstituteVariables( OUString& aURL )
 {
     aURL = comphelper::getExpandedUri(
         comphelper::getProcessComponentContext(), aURL);
 }
 
-BitmapEx AddonsOptions_Impl::ReadImageFromURL(const OUString& aImageURL)
+// static
+Bitmap AddonsOptions_Impl::ReadImageFromURL(const OUString& aImageURL)
 {
-    BitmapEx aImage;
+    Bitmap aImage;
 
     std::unique_ptr<SvStream> pStream = UcbStreamHelper::CreateStream( aImageURL, StreamMode::STD_READ );
     if ( pStream && ( pStream->GetErrorCode() == ERRCODE_NONE ))
@@ -1575,7 +1578,7 @@ BitmapEx AddonsOptions_Impl::ReadImageFromURL(const OUString& aImageURL)
             if( !aBitmapEx.IsAlpha() )
                 aBitmapEx = BitmapEx( aBitmapEx.GetBitmap(), COL_LIGHTMAGENTA );
 
-            aImage = aBitmapEx;
+            aImage = Bitmap(aBitmapEx);
         }
     }
 
@@ -1593,7 +1596,7 @@ void AddonsOptions_Impl::ReadAndAssociateImages( const OUString& aURL, const OUS
     SubstituteVariables( aImageURL );
 
     // Loop to create the two possible image names and try to read the bitmap files
-    static const char* aExtArray[] = { "_16", "_26" };
+    static const char* const aExtArray[] = { "_16", "_26" };
     for ( size_t i = 0; i < std::size(aExtArray); i++ )
     {
         OUStringBuffer aFileURL( aImageURL );
@@ -1630,7 +1633,7 @@ std::unique_ptr<AddonsOptions_Impl::ImageEntry> AddonsOptions_Impl::ReadImageDat
             {
                 if ( !pEntry )
                     pEntry.reset(new ImageEntry);
-                pEntry->addImage(i == OFFSET_IMAGES_SMALL ? IMGSIZE_SMALL : IMGSIZE_BIG, aImage);
+                pEntry->addImage(i == OFFSET_IMAGES_SMALL ? IMGSIZE_SMALL : IMGSIZE_BIG, Bitmap(aImage));
             }
         }
         else if ( i == OFFSET_IMAGES_SMALL_URL || i == OFFSET_IMAGES_BIG_URL )
@@ -1651,7 +1654,8 @@ std::unique_ptr<AddonsOptions_Impl::ImageEntry> AddonsOptions_Impl::ReadImageDat
     return pEntry;
 }
 
-bool AddonsOptions_Impl::CreateImageFromSequence( BitmapEx& rImage, Sequence< sal_Int8 >& rBitmapDataSeq ) const
+// static
+bool AddonsOptions_Impl::CreateImageFromSequence( BitmapEx& rImage, Sequence< sal_Int8 >& rBitmapDataSeq )
 {
     bool bResult = false;
 
@@ -1920,7 +1924,7 @@ const MergeStatusbarInstructionContainer& AddonsOptions::GetMergeStatusbarInstru
 
 //  public method
 
-BitmapEx AddonsOptions::GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale ) const
+Bitmap AddonsOptions::GetImageFromURL( const OUString& aURL, bool bBig, bool bNoScale ) const
 {
     MutexGuard aGuard( GetOwnStaticMutex() );
     return m_pImpl->GetImageFromURL( aURL, bBig, bNoScale );
@@ -1928,7 +1932,7 @@ BitmapEx AddonsOptions::GetImageFromURL( const OUString& aURL, bool bBig, bool b
 
 //  public method
 
-BitmapEx AddonsOptions::GetImageFromURL( const OUString& aURL, bool bBig ) const
+Bitmap AddonsOptions::GetImageFromURL( const OUString& aURL, bool bBig ) const
 {
     return GetImageFromURL( aURL, bBig, false );
 }

@@ -147,7 +147,7 @@ void SwFlyFrameAttrMgr::UpdateAttrMgr()
 void SwFlyFrameAttrMgr::UpdateFlyFrame_()
 {
     if (const SfxStringItem* pItem = m_aSet.GetItemIfSet(FN_SET_FRM_NAME, false))
-        m_pOwnSh->SetFlyName(pItem->GetValue());
+        m_pOwnSh->SetFlyName(UIName(pItem->GetValue()));
 
     m_pOwnSh->SetModified();
 
@@ -171,7 +171,7 @@ void SwFlyFrameAttrMgr::UpdateFlyFrame()
     const SwFormatAnchor *pGItem, *pItem;
     if( (pItem = m_aSet.GetItemIfSet( RES_ANCHOR, false )) )
     {
-        SfxItemSetFixed<RES_ANCHOR, RES_ANCHOR> aGetSet( *m_aSet.GetPool() );
+        SfxItemSet aGetSet(SfxItemSet::makeFixedSfxItemSet<RES_ANCHOR, RES_ANCHOR>(*m_aSet.GetPool()));
         if( m_pOwnSh->GetFlyFrameAttr( aGetSet ) && 1 == aGetSet.Count() &&
             (pGItem = aGetSet.GetItemIfSet( RES_ANCHOR, false ))
             && pGItem->GetAnchorId() == pItem->GetAnchorId() )
@@ -543,10 +543,10 @@ void SwFlyFrameAttrMgr::SetLRSpace( tools::Long nLeft, tools::Long nRight )
     OSL_ENSURE( LONG_MAX != nLeft && LONG_MAX != nRight, "Which border to set?" );
 
     SvxLRSpaceItem aTmp( m_aSet.Get( RES_LR_SPACE ) );
-    if( LONG_MAX != nLeft )
-        aTmp.SetLeft( sal_uInt16(nLeft) );
-    if( LONG_MAX != nRight )
-        aTmp.SetRight( sal_uInt16(nRight) );
+    if (LONG_MAX != nLeft)
+        aTmp.SetLeft(SvxIndentValue::twips(nLeft));
+    if (LONG_MAX != nRight)
+        aTmp.SetRight(SvxIndentValue::twips(nRight));
     m_aSet.Put( aTmp );
 }
 
@@ -625,7 +625,7 @@ void SwFlyFrameAttrMgr::SetAttrSet(const SfxItemSet& rSet)
     m_aSet.Put( rSet );
 }
 
-const SwTableFormat* SwFlyFrameAttrMgr::SingleTableSelected(SwWrtShell& rWrtShell)
+const SwTableFormat* SwFlyFrameAttrMgr::SingleTableSelected(const SwWrtShell& rWrtShell)
 {
     if (!rWrtShell.IsTableMode())
     {

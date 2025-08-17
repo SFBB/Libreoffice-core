@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <accessibility/vclxaccessiblefixedhyperlink.hxx>
+
 #include <vcl/event.hxx>
 #include <vcl/toolkit/fixedhyper.hxx>
 #include <vcl/settings.hxx>
@@ -34,7 +36,7 @@
 using namespace css;
 
 FixedHyperlink::FixedHyperlink(vcl::Window* pParent, WinBits nWinStyle)
-    : FixedText(pParent, nWinStyle)
+    : FixedText(pParent, nWinStyle, WindowType::LINK_BUTTON)
     , m_nTextLen(0)
     , m_aOldPointer(PointerStyle::Arrow)
 {
@@ -79,6 +81,11 @@ bool FixedHyperlink::ImplIsOverText(Point aPosition) const
     }
 
     return bIsOver;
+}
+
+rtl::Reference<comphelper::OAccessible> FixedHyperlink::CreateAccessible()
+{
+    return new VCLXAccessibleFixedHyperlink(this);
 }
 
 void FixedHyperlink::MouseMove( const MouseEvent& rMEvt )

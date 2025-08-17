@@ -25,17 +25,16 @@
 #include <sal/types.h>
 #include "swtypes.hxx"
 #include "nodeoffset.hxx"
+#include "names.hxx"
 #include <unordered_map>
 
 class SwFieldTypes;
 class SwFieldType;
-class SfxPoolItem;
 struct SwPosition;
 class SwDocUpdateField;
 class SwCalc;
 class SwTextField;
 class SwField;
-class SwMsgPoolItem;
 class DateTime;
 class SetGetExpField;
 class SwNode;
@@ -59,9 +58,15 @@ namespace com::sun::star::uno { class Any; }
 
     virtual SwFieldType* GetFieldType(SwFieldIds nResId, const OUString& rName, bool bDbFieldMatching) const = 0;
 
+    // convenience methods
+    SwFieldType* GetFieldType(SwFieldIds nResId, const UIName& rName, bool bDbFieldMatching) const
+    { return GetFieldType(nResId, rName.toString(), bDbFieldMatching); }
+    SwFieldType* GetFieldType(SwFieldIds nResId, const SwMarkName& rName, bool bDbFieldMatching) const
+    { return GetFieldType(nResId, rName.toString(), bDbFieldMatching); }
+
     virtual void RemoveFieldType(size_t nField) = 0;
 
-    virtual void UpdateFields(bool bCloseDB) = 0;
+    virtual void UpdateFields(bool bCloseDB, bool bSetModified = true) = 0;
 
     virtual void InsDeletedFieldType(SwFieldType &) = 0;
 

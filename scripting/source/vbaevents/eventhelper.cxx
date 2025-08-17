@@ -21,8 +21,9 @@
 #include <sal/log.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/uno3.hxx>
+#include <comphelper/compbase.hxx>
 #include <comphelper/proparrhlp.hxx>
-#include <comphelper/propertycontainer.hxx>
+#include <comphelper/propertycontainer2.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
 #include <ooo/vba/XVBAToOOEventDescGen.hpp>
@@ -199,51 +200,51 @@ TypeList const comboBoxList = {&typeXComboBox, 1};
 TypeList const listBoxList = {&typeXListBox, 1};
 
 //this array stores the OO event to VBA event translation info
-static TranslatePropMap aTranslatePropMap_Impl[] =
+constexpr TranslatePropMap aTranslatePropMap_Impl[] =
 {
-    { OUString("actionPerformed"), { OUString("_Change"), nullptr, DenyType, static_cast<void const *>(&radioButtonList) } },
+    { u"actionPerformed"_ustr, { u"_Change"_ustr, nullptr, DenyType, static_cast<void const *>(&radioButtonList) } },
     // actionPerformed ooo event
-    { OUString("actionPerformed"), { OUString("_Click"), nullptr, ApproveAll, nullptr } },
-    { OUString("itemStateChanged"), { OUString("_Change"), nullptr, ApproveType, static_cast<void const *>(&radioButtonList) } },
+    { u"actionPerformed"_ustr, { u"_Click"_ustr, nullptr, ApproveAll, nullptr } },
+    { u"itemStateChanged"_ustr, { u"_Change"_ustr, nullptr, ApproveType, static_cast<void const *>(&radioButtonList) } },
     // itemStateChanged ooo event
-    { OUString("itemStateChanged"), { OUString("_Click"), nullptr, ApproveType, static_cast<void const *>(&comboBoxList) } },
+    { u"itemStateChanged"_ustr, { u"_Click"_ustr, nullptr, ApproveType, static_cast<void const *>(&comboBoxList) } },
 
-    { OUString("itemStateChanged"), { OUString("_Click"), nullptr, ApproveType, static_cast<void const *>(&listBoxList) } },
+    { u"itemStateChanged"_ustr, { u"_Click"_ustr, nullptr, ApproveType, static_cast<void const *>(&listBoxList) } },
     // changed ooo event
-    { OUString("changed"), { OUString("_Change"), nullptr, ApproveAll, nullptr } },
+    { u"changed"_ustr, { u"_Change"_ustr, nullptr, ApproveAll, nullptr } },
 
     // focusGained ooo event
-    { OUString("focusGained"), { OUString("_GotFocus"), nullptr, ApproveAll, nullptr } },
+    { u"focusGained"_ustr, { u"_GotFocus"_ustr, nullptr, ApproveAll, nullptr } },
 
     // focusLost ooo event
-    { OUString("focusLost"), { OUString("_LostFocus"), nullptr, ApproveAll, nullptr } },
-    { OUString("focusLost"), { OUString("_Exit"), nullptr, ApproveType, static_cast<void const *>(&textCompList) } }, // support VBA TextBox_Exit event
+    { u"focusLost"_ustr, { u"_LostFocus"_ustr, nullptr, ApproveAll, nullptr } },
+    { u"focusLost"_ustr, { u"_Exit"_ustr, nullptr, ApproveType, static_cast<void const *>(&textCompList) } }, // support VBA TextBox_Exit event
 
     // adjustmentValueChanged ooo event
-    { OUString("adjustmentValueChanged"), { OUString("_Scroll"), nullptr, ApproveAll, nullptr } },
-    { OUString("adjustmentValueChanged"), { OUString("_Change"), nullptr, ApproveAll, nullptr } },
+    { u"adjustmentValueChanged"_ustr, { u"_Scroll"_ustr, nullptr, ApproveAll, nullptr } },
+    { u"adjustmentValueChanged"_ustr, { u"_Change"_ustr, nullptr, ApproveAll, nullptr } },
 
     // textChanged ooo event
-    { OUString("textChanged"), { OUString("_Change"), nullptr, ApproveAll, nullptr } },
+    { u"textChanged"_ustr, { u"_Change"_ustr, nullptr, ApproveAll, nullptr } },
 
     // keyReleased ooo event
-    { OUString("keyReleased"), { OUString("_KeyUp"), ooKeyPressedToVBAKeyUpDown, ApproveAll, nullptr } },
+    { u"keyReleased"_ustr, { u"_KeyUp"_ustr, ooKeyPressedToVBAKeyUpDown, ApproveAll, nullptr } },
 
     // mouseReleased ooo event
-    { OUString("mouseReleased"), { OUString("_Click"), ooMouseEvtToVBAMouseEvt, ApproveType, static_cast<void const *>(&fixedTextList) } },
-    { OUString("mouseReleased"), { OUString("_MouseUp"), ooMouseEvtToVBAMouseEvt, ApproveAll, nullptr } },
+    { u"mouseReleased"_ustr, { u"_Click"_ustr, ooMouseEvtToVBAMouseEvt, ApproveType, static_cast<void const *>(&fixedTextList) } },
+    { u"mouseReleased"_ustr, { u"_MouseUp"_ustr, ooMouseEvtToVBAMouseEvt, ApproveAll, nullptr } },
 
     // mousePressed ooo event
-    { OUString("mousePressed"), { OUString("_MouseDown"), ooMouseEvtToVBAMouseEvt, ApproveAll, nullptr } },
-    { OUString("mousePressed"), { OUString("_DblClick"), ooMouseEvtToVBADblClick, ApproveAll, nullptr } },
+    { u"mousePressed"_ustr, { u"_MouseDown"_ustr, ooMouseEvtToVBAMouseEvt, ApproveAll, nullptr } },
+    { u"mousePressed"_ustr, { u"_DblClick"_ustr, ooMouseEvtToVBADblClick, ApproveAll, nullptr } },
 
     // mouseMoved ooo event
-    { OUString("mouseMoved"), { OUString("_MouseMove"), ooMouseEvtToVBAMouseEvt, ApproveAll, nullptr } },
-    { OUString("mouseDragged"), { OUString("_MouseMove"), ooMouseEvtToVBAMouseEvt, DenyMouseDrag, nullptr } },
+    { u"mouseMoved"_ustr, { u"_MouseMove"_ustr, ooMouseEvtToVBAMouseEvt, ApproveAll, nullptr } },
+    { u"mouseDragged"_ustr, { u"_MouseMove"_ustr, ooMouseEvtToVBAMouseEvt, DenyMouseDrag, nullptr } },
 
     // keyPressed ooo event
-    { OUString("keyPressed"), { OUString("_KeyDown"), ooKeyPressedToVBAKeyUpDown, ApproveAll, nullptr } },
-    { OUString("keyPressed"), { OUString("_KeyPress"), ooKeyPressedToVBAKeyPressed, ApproveAll, nullptr } }
+    { u"keyPressed"_ustr, { u"_KeyDown"_ustr, ooKeyPressedToVBAKeyUpDown, ApproveAll, nullptr } },
+    { u"keyPressed"_ustr, { u"_KeyPress"_ustr, ooKeyPressedToVBAKeyPressed, ApproveAll, nullptr } }
 };
 
 static EventInfoHash& getEventTransInfo()
@@ -252,7 +253,7 @@ static EventInfoHash& getEventTransInfo()
     {
         EventInfoHash tmp;
         OUString sEventInfo;
-        TranslatePropMap* pTransProp = aTranslatePropMap_Impl;
+        const TranslatePropMap* pTransProp = aTranslatePropMap_Impl;
         int nCount = SAL_N_ELEMENTS(aTranslatePropMap_Impl);
 
         int i = 0;
@@ -410,7 +411,7 @@ ScriptEventHelper::createEvents( const OUString& sCodeName )
             ++nEvts;
             if ( nEvts > aDest.getLength() )
                 aDest.realloc( nEvts );// should never happen
-            aDest.getArray()[ dIndex ] = evtDesc;
+            aDest.getArray()[ dIndex ] = std::move(evtDesc);
         }
     }
     aDest.realloc( nEvts );
@@ -431,18 +432,18 @@ public:
 
     virtual void SAL_CALL insertByName( const OUString&, const Any& ) override
     {
-        throw RuntimeException("ReadOnly container" );
+        throw RuntimeException(u"ReadOnly container"_ustr );
 
     }
     virtual void SAL_CALL removeByName( const OUString& ) override
     {
-        throw RuntimeException("ReadOnly container" );
+        throw RuntimeException(u"ReadOnly container"_ustr );
     }
 
     // XNameReplace
     virtual void SAL_CALL replaceByName( const OUString&, const Any& ) override
     {
-        throw RuntimeException("ReadOnly container" );
+        throw RuntimeException(u"ReadOnly container"_ustr );
 
     }
 
@@ -474,7 +475,7 @@ ReadOnlyEventsNameContainer::ReadOnlyEventsNameContainer( const Sequence< OUStri
         if (  eventMethodToDescriptor( rSrc, evtDesc, sCodeName ) )
         {
             aDesc <<= evtDesc;
-            m_hEvents[ rSrc ] = aDesc;
+            m_hEvents[ rSrc ] = std::move(aDesc);
         }
     }
 }
@@ -513,12 +514,12 @@ public:
     // XScriptEventSupplier
     virtual Reference< container::XNameContainer > SAL_CALL getEvents(  ) override { return m_xNameContainer; }
 private:
-    Reference< container::XNameContainer > m_xNameContainer;
+    rtl::Reference< ReadOnlyEventsNameContainer > m_xNameContainer;
 };
 
 }
 
-typedef ::cppu::WeakImplHelper< XScriptListener, util::XCloseListener, lang::XInitialization, css::lang::XServiceInfo > EventListener_BASE;
+typedef ::comphelper::WeakImplHelper< XScriptListener, util::XCloseListener, lang::XInitialization, css::lang::XServiceInfo > EventListener_BASE;
 
 #define EVENTLSTNR_PROPERTY_ID_MODEL         1
 constexpr OUStringLiteral EVENTLSTNR_PROPERTY_MODEL = u"Model";
@@ -526,8 +527,7 @@ constexpr OUStringLiteral EVENTLSTNR_PROPERTY_MODEL = u"Model";
 namespace {
 
 class EventListener : public EventListener_BASE
-    ,public ::comphelper::OMutexAndBroadcastHelper
-    ,public ::comphelper::OPropertyContainer
+    ,public ::comphelper::OPropertyContainer2
     ,public ::comphelper::OPropertyArrayUsageHelper< EventListener >
 {
 
@@ -535,7 +535,7 @@ public:
     EventListener();
     // XEventListener
     virtual void SAL_CALL disposing(const lang::EventObject& Source) override;
-    using cppu::OPropertySetHelper::disposing;
+    using comphelper::OPropertySetHelper::disposing;
 
     // XScriptListener
     virtual void SAL_CALL firing(const ScriptEvent& evt) override;
@@ -552,7 +552,7 @@ public:
 
     // XTypeProvider
     DECLARE_XTYPEPROVIDER()
-    virtual void SAL_CALL setFastPropertyValue( sal_Int32 nHandle, const css::uno::Any& rValue ) override
+    virtual void setFastPropertyValueImpl( std::unique_lock<std::mutex>& rGuard, sal_Int32 nHandle, const css::uno::Any& rValue ) override
     {
         if ( nHandle == EVENTLSTNR_PROPERTY_ID_MODEL )
         {
@@ -573,14 +573,14 @@ public:
                 }
             }
         }
-        OPropertyContainer::setFastPropertyValue( nHandle, rValue );
+        OPropertyContainer2::setFastPropertyValueImpl( rGuard, nHandle, rValue );
         if ( nHandle == EVENTLSTNR_PROPERTY_ID_MODEL )
             setShellFromModel();
     }
 
     OUString SAL_CALL getImplementationName() override
     {
-        return "ooo.vba.EventListener";
+        return u"ooo.vba.EventListener"_ustr;
     }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -595,7 +595,7 @@ public:
 
 protected:
     // OPropertySetHelper
-    virtual ::cppu::IPropertyArrayHelper& SAL_CALL getInfoHelper(  ) override;
+    virtual ::cppu::IPropertyArrayHelper& getInfoHelper(  ) override;
 
     // OPropertyArrayUsageHelper
     virtual ::cppu::IPropertyArrayHelper* createArrayHelper(  ) const override;
@@ -613,7 +613,7 @@ private:
 }
 
 EventListener::EventListener() :
-OPropertyContainer(GetBroadcastHelper()), m_bDocClosed(false), mpShell( nullptr )
+m_bDocClosed(false), mpShell( nullptr )
 {
     registerProperty( EVENTLSTNR_PROPERTY_MODEL, EVENTLSTNR_PROPERTY_ID_MODEL,
         beans::PropertyAttribute::TRANSIENT, &m_xModel, cppu::UnoType<decltype(m_xModel)>::get() );
@@ -689,11 +689,11 @@ EventListener::initialize( const Sequence< Any >& aArguments )
 
 // XInterface
 
-IMPLEMENT_FORWARD_XINTERFACE2( EventListener, EventListener_BASE, OPropertyContainer )
+IMPLEMENT_FORWARD_XINTERFACE2( EventListener, EventListener_BASE, comphelper::OPropertyContainer2 )
 
 // XTypeProvider
 
-IMPLEMENT_FORWARD_XTYPEPROVIDER2( EventListener, EventListener_BASE, OPropertyContainer )
+IMPLEMENT_FORWARD_XTYPEPROVIDER2( EventListener, EventListener_BASE, comphelper::OPropertyContainer2 )
 
 // OPropertySetHelper
 
@@ -784,7 +784,7 @@ EventListener::firing_Impl(const ScriptEvent& evt, Any* pRet )
         return;
     lang::EventObject aEvent;
     evt.Arguments[ 0 ] >>= aEvent;
-    OUString sName = "UserForm";
+    OUString sName = u"UserForm"_ustr;
 
     uno::Reference< awt::XDialog > xDlg( aEvent.Source, uno::UNO_QUERY );
     if ( !xDlg.is() )
@@ -811,7 +811,7 @@ EventListener::firing_Impl(const ScriptEvent& evt, Any* pRet )
             // Userform control ( fired from the api or from event manager )
             uno::Reference< beans::XPropertySet > xProps;
             xProps.set( xControl->getModel(), uno::UNO_QUERY_THROW );
-            xProps->getPropertyValue("Name") >>= sName;
+            xProps->getPropertyValue(u"Name"_ustr) >>= sName;
         }
     }
     //dumpEvent( evt );
@@ -895,7 +895,7 @@ EventListener::firing_Impl(const ScriptEvent& evt, Any* pRet )
                 OUString url = aMacroResolvedInfo.msResolvedMacro;
                 try
                 {
-                    uno::Any aDummyCaller( OUString("Error") );
+                    uno::Any aDummyCaller( u"Error"_ustr );
                     if ( pRet )
                     {
                         ooo::vba::executeMacro( mpShell, url, aArguments, *pRet, aDummyCaller );
@@ -928,7 +928,7 @@ public:
 
     OUString SAL_CALL getImplementationName() override
     {
-        return "ooo.vba.VBAToOOEventDesc";
+        return u"ooo.vba.VBAToOOEventDesc"_ustr;
     }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override

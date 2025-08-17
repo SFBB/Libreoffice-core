@@ -34,8 +34,10 @@ Private ErrorHandler		As Boolean	&apos; True = error handling active, False = in
 Private ConsoleLines()		As Variant	&apos; Array of messages displayable in console
 Private ConsoleDialog		As Object	&apos; SFDialogs.Dialog object
 Private ConsoleControl		As Object	&apos; SFDialogs.DialogControl object
-Private DisplayEnabled		As Boolean	&apos; When True, display of console or error messages is allowed
+Private ReportScriptErrors	As Boolean	&apos; When True, error messages are displayed to the user
 Private StopWhenError		As Boolean	&apos; When True, process stops after error &gt; &quot;WARNING&quot;
+Private ReturnCode			As String	&apos; The short error code
+Private ReturnCodeDescription As String	&apos;	The long and localized error message
 Private TriggeredByPython	As Boolean	&apos; When True, the actual user script is a Python script
 Private DebugMode			As Boolean	&apos; When True, log enter/exit each official Sub
 
@@ -68,8 +70,6 @@ Private PrinterServer		As Object	&apos; com.sun.star.awt.PrinterServer
 Private CharacterClass		As Object	&apos; com.sun.star.i18n.CharacterClassification
 Private FileAccess			As Object	&apos; com.sun.star.ucb.SimpleFileAccess
 Private FilterFactory		As Object	&apos; com.sun.star.document.FilterFactory
-Private FolderPicker		As Object	&apos; com.sun.star.ui.dialogs.FolderPicker
-Private FilePicker			As Object	&apos; com.sun.star.ui.dialogs.FilePicker
 Private URLTransformer		As Object	&apos; com.sun.star.util.URLTransformer
 Private Introspection		As Object	&apos; com.sun.star.beans.Introspection
 Private BrowseNodeFactory	As Object	&apos; com.sun.star.script.browse.BrowseNodeFactory
@@ -109,8 +109,10 @@ Private Sub Class_Initialize()
 	ConsoleLines = Array()
 	Set ConsoleDialog = Nothing
 	Set ConsoleControl = Nothing
-	DisplayEnabled = True
+	ReportScriptErrors = True
 	StopWhenError = True
+	ReturnCode = &quot;&quot;
+	ReturnCodeDescription = &quot;&quot;
 	TriggeredByPython = False
 	DebugMode = False
 	Set ProgressBarDialog = Nothing
@@ -137,8 +139,6 @@ Private Sub Class_Initialize()
 	Set CharacterClass = Nothing
 	Set FileAccess = Nothing
 	Set FilterFactory = Nothing
-	Set FolderPicker = Nothing
-	Set FilePicker = Nothing
 	Set URLTransformer = Nothing
 	Set Introspection = Nothing
 	FileSystemNaming = &quot;ANY&quot;
@@ -395,12 +395,6 @@ Try:
 						, Comment :=	&quot;SF_Utils._Validate error message\n&quot; _
 									&amp;	&quot;%1: Wrong argument name\n&quot; _
 									&amp;	&quot;%2: Comma separated list of allowed values&quot; _
-					)
-			.AddText(	Context := &quot;VALIDATEREGEX&quot; _
-						, MsgId := &quot;\t\t« %1 » must match next regular expression : %2&quot; _
-						, Comment :=	&quot;SF_Utils._Validate error message\n&quot; _
-									&amp;	&quot;%1: Wrong argument name\n&quot; _
-									&amp;	&quot;%2: A regular expression&quot; _
 					)
 			.AddText(	Context := &quot;VALIDATECLASS&quot; _
 						, MsgId := &quot;\t\t« %1 » must be a Basic object of class : %2&quot; _
@@ -962,6 +956,17 @@ Try:
 									&amp;	&quot;%2: An identifier\n&quot; _
 									&amp;	&quot;%3: A string\n&quot; _
 									&amp;	&quot;%4: An identifier&quot; _
+					)
+	&apos;	SF_Writer._ParseRange (textrange)
+			.AddText(	Context := &quot;WRITERRANGE&quot; _
+						, MsgId := &quot;The given text range does not correspond with a valid position in the text.\n\n&quot; _
+									&amp; &quot;« %1 » = %2\n&quot; _
+									&amp; &quot;« %3 » = %4&quot; _
+						, Comment :=	&quot;SF_Writer._ParseRange (textrange)\n&quot; _
+									&amp;	&quot;%1: An identifier\n&quot; _
+									&amp;	&quot;%2: A string\n&quot; _
+									&amp;	&quot;%3: An identifier\n&quot; _
+									&amp;	&quot;%4: A file name&quot; _
 					)
 	&apos;	SF_Dialog._NewDialog
 			.AddText(	Context := &quot;DIALOGNOTFOUND&quot; _

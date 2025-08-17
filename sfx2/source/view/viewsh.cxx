@@ -30,6 +30,7 @@
 #include <vcl/toolbox.hxx>
 #include <vcl/weld.hxx>
 #include <svl/intitem.hxx>
+#include <svtools/colorcfg.hxx>
 #include <svtools/langhelp.hxx>
 #include <com/sun/star/awt/XPopupMenu.hpp>
 #include <com/sun/star/frame/XLayoutManager.hpp>
@@ -46,6 +47,7 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/datatransfer/clipboard/XClipboardListener.hpp>
 #include <com/sun/star/datatransfer/clipboard/XClipboardNotifier.hpp>
+#include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/view/XRenderable.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
@@ -66,6 +68,7 @@
 #include <com/sun/star/accessibility/AccessibleTextType.hpp>
 #include <com/sun/star/awt/FontSlant.hpp>
 
+#include <comphelper/OAccessible.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <editeng/unoprnms.hxx>
 #include <tools/urlobj.hxx>
@@ -120,7 +123,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::util;
 using namespace ::cppu;
 
 class SfxClipboardChangeListener : public ::cppu::WeakImplHelper<
@@ -310,13 +312,13 @@ OUString selectionEventTypeToString(sal_Int16 nEventId)
     switch(nEventId)
     {
         case AccessibleEventId::SELECTION_CHANGED:
-            return "create";
+            return u"create"_ustr;
         case AccessibleEventId::SELECTION_CHANGED_ADD:
-            return "add";
+            return u"add"_ustr;
         case AccessibleEventId::SELECTION_CHANGED_REMOVE:
-            return "remove";
+            return u"remove"_ustr;
         default:
-            return "";
+            return u""_ustr;
     }
 }
 
@@ -420,15 +422,15 @@ void lookForParentTable(const uno::Reference<accessibility::XAccessibleContext>&
     }
 }
 
-OUString truncateText(OUString& sText, sal_Int32 nNewLength)
+OUString truncateText(std::u16string_view sText, sal_Int32 nNewLength)
 {
     // truncate test to given length
-    OUString sNewText = sText.copy(0, nNewLength);
+    std::u16string_view sNewText = sText.substr(0, nNewLength);
     // try to truncate at a word
-    nNewLength = sNewText.lastIndexOf(" ");
-    if (nNewLength > 0)
-        sNewText = sNewText.copy(0, nNewLength);
-    return sNewText;
+    size_t nLastPos = sNewText.rfind(u" ");
+    if (nLastPos != 0 && nLastPos != std::u16string_view::npos)
+        sNewText = sNewText.substr(0, nLastPos);
+    return OUString(sNewText);
 }
 
 std::string stateSetToString(::sal_Int64 stateSet)
@@ -621,7 +623,7 @@ void aboutTextFormatting(std::string msg, const uno::Reference<css::accessibilit
         if (nSize)
         {
             OUString sValue;
-            OUString sAttributes = "{ ";
+            OUString sAttributes = u"{ "_ustr;
             for (const auto& attribute: aRunAttributeList)
             {
                 if (attribute.Name.isEmpty())
@@ -688,7 +690,7 @@ void aboutTextFormatting(std::string msg, const uno::Reference<css::accessibilit
     }
 }
 
-void aboutParagraph(std::string msg, const OUString& rsParagraphContent, sal_Int32 nCaretPosition,
+void aboutParagraph(const std::string& msg, const OUString& rsParagraphContent, sal_Int32 nCaretPosition,
                     sal_Int32 nSelectionStart, sal_Int32 nSelectionEnd, sal_Int32 nListPrefixLength,
                     bool force = false)
 {
@@ -701,7 +703,7 @@ void aboutParagraph(std::string msg, const OUString& rsParagraphContent, sal_Int
             );
 }
 
-void aboutParagraph(std::string msg, const uno::Reference<css::accessibility::XAccessibleText>& xAccText,
+void aboutParagraph(const std::string& msg, const uno::Reference<css::accessibility::XAccessibleText>& xAccText,
                     bool force = false)
 {
     if (!xAccText.is())
@@ -828,12 +830,12 @@ private:
     void paragraphPropertiesToTree(boost::property_tree::ptree& aPayloadTree, bool force = false) const;
     void paragraphPropertiesToJson(std::string& aPayload, bool force = false) const;
     bool updateParagraphInfo(const uno::Reference<css::accessibility::XAccessibleText>& xAccText,
-                             bool force, std::string msg = "");
+                             bool force, const std::string& msg = "");
     void updateAndNotifyParagraph(const uno::Reference<css::accessibility::XAccessibleText>& xAccText,
-                                  bool force, std::string msg = "");
+                                  bool force, const std::string& msg = "");
     void resetParagraphInfo();
     void onFocusedParagraphInWriterTable(const uno::Reference<accessibility::XAccessibleTable>& xTable,
-                                         sal_Int64& nChildIndex,
+                                         sal_Int64 nChildIndex,
                                          const uno::Reference<accessibility::XAccessibleText>& xAccText);
     uno::Reference< accessibility::XAccessible >
     getSelectedObject(const accessibility::AccessibleEventObject& aEvent) const;
@@ -1163,7 +1165,7 @@ void LOKDocumentFocusListener::disposing( const lang::EventObject& aEvent )
 }
 
 bool LOKDocumentFocusListener::updateParagraphInfo(const uno::Reference<css::accessibility::XAccessibleText>& xAccText,
-                                                   bool force, std::string msg)
+                                                   bool force, const std::string& msg)
 {
     if (!xAccText.is())
         return false;
@@ -1218,7 +1220,7 @@ bool LOKDocumentFocusListener::updateParagraphInfo(const uno::Reference<css::acc
 
 void LOKDocumentFocusListener::updateAndNotifyParagraph(
         const uno::Reference<css::accessibility::XAccessibleText>& xAccText,
-        bool force, std::string msg)
+        bool force, const std::string& msg)
 {
     if (updateParagraphInfo(xAccText, force, msg))
         notifyFocusedParagraphChanged(force);
@@ -1269,7 +1271,7 @@ void LOKDocumentFocusListener::onShapeSelectionChanged(
 
 void LOKDocumentFocusListener::onFocusedParagraphInWriterTable(
     const uno::Reference<accessibility::XAccessibleTable>& xTable,
-    sal_Int64& nChildIndex,
+    sal_Int64 nChildIndex,
     const uno::Reference<accessibility::XAccessibleText>& xAccText
 )
 {
@@ -1398,7 +1400,7 @@ void LOKDocumentFocusListener::notifyEvent(const accessibility::AccessibleEventO
                                 // check if we are inside a table: in case notify table and current cell info
                                 bool isInsideTable = false;
                                 uno::Reference<XAccessibleTable> xTable;
-                                sal_Int64 nChildIndex;
+                                sal_Int64 nChildIndex = 0;
                                 lookForParentTable(xContext, xTable, nChildIndex);
                                 if (xTable.is())
                                 {
@@ -1766,7 +1768,7 @@ void LOKDocumentFocusListener::attachRecursive(
                 selectionHasToBeNotified(xContext))
             {
                 uno::Reference< accessibility::XAccessible > xAccObj(xContext, uno::UNO_QUERY);
-                onShapeSelectionChanged(xAccObj, "create");
+                onShapeSelectionChanged(xAccObj, u"create"_ustr);
             }
 
             sal_Int64 nmax = xContext->getAccessibleChildCount();
@@ -1873,7 +1875,7 @@ void LOKDocumentFocusListener::detachRecursive(
             selectionHasToBeNotified(xContext))
         {
             uno::Reference< accessibility::XAccessible > xAccObj(xContext, uno::UNO_QUERY);
-            onShapeSelectionChanged(xAccObj, "delete");
+            onShapeSelectionChanged(xAccObj, u"delete"_ustr);
         }
 
         if (bForce || !(nStateSet & accessibility::AccessibleStateType::MANAGES_DESCENDANTS))
@@ -1930,8 +1932,8 @@ static OUString impl_retrieveFilterNameFromTypeAndModule(
 {
     // Retrieve filter from type
     css::uno::Sequence< css::beans::NamedValue > aQuery {
-        { "Type", css::uno::Any( rType ) },
-        { "DocumentService", css::uno::Any( rModuleIdentifier ) }
+        { u"Type"_ustr, css::uno::Any( rType ) },
+        { u"DocumentService"_ustr, css::uno::Any( rModuleIdentifier ) }
     };
 
     css::uno::Reference< css::container::XEnumeration > xEnumeration =
@@ -1941,17 +1943,13 @@ static OUString impl_retrieveFilterNameFromTypeAndModule(
     while ( xEnumeration->hasMoreElements() )
     {
         ::comphelper::SequenceAsHashMap aFilterPropsHM( xEnumeration->nextElement() );
-        OUString aFilterName = aFilterPropsHM.getUnpackedValueOrDefault(
-            "Name",
-            OUString() );
-
         sal_Int32 nFilterFlags = aFilterPropsHM.getUnpackedValueOrDefault(
-            "Flags",
+            u"Flags"_ustr,
             sal_Int32( 0 ) );
 
         if ( nFilterFlags & nFlags )
         {
-            aFoundFilterName = aFilterName;
+            aFoundFilterName = aFilterPropsHM.getUnpackedValueOrDefault(u"Name"_ustr, OUString());
             break;
         }
     }
@@ -1977,7 +1975,7 @@ static OUString impl_searchFormatTypeForApp(const css::uno::Reference< css::fram
 {
     try
     {
-        css::uno::Reference< css::uno::XComponentContext >  xContext      (::comphelper::getProcessComponentContext());
+        const css::uno::Reference< css::uno::XComponentContext >&  xContext      (::comphelper::getProcessComponentContext());
         css::uno::Reference< css::frame::XModuleManager2 >  xModuleManager(css::frame::ModuleManager::create(xContext));
 
         OUString sModule = xModuleManager->identify(xFrame);
@@ -2068,18 +2066,18 @@ void SfxViewShell::ExecMisc_Impl( SfxRequest &rReq )
             {
                 try
                 {
-                    Any aValue = xPropSet->getPropertyValue("LayoutManager");
+                    Any aValue = xPropSet->getPropertyValue(u"LayoutManager"_ustr);
                     aValue >>= xLayoutManager;
                     if ( xLayoutManager.is() )
                     {
-                        uno::Reference< ui::XUIElement > xElement = xLayoutManager->getElement( "private:resource/toolbar/textobjectbar" );
+                        uno::Reference< ui::XUIElement > xElement = xLayoutManager->getElement( u"private:resource/toolbar/textobjectbar"_ustr );
                         if(!xElement.is())
                         {
-                            xElement = xLayoutManager->getElement( "private:resource/toolbar/frameobjectbar" );
+                            xElement = xLayoutManager->getElement( u"private:resource/toolbar/frameobjectbar"_ustr );
                         }
                         if(!xElement.is())
                         {
-                            xElement = xLayoutManager->getElement( "private:resource/toolbar/oleobjectbar" );
+                            xElement = xLayoutManager->getElement( u"private:resource/toolbar/oleobjectbar"_ustr );
                         }
                         if(xElement.is())
                         {
@@ -2092,8 +2090,8 @@ void SfxViewShell::ExecMisc_Impl( SfxRequest &rReq )
                                 for( ToolBox::ImplToolItems::size_type nItem = 0; nItem < nItemCount; ++nItem )
                                 {
                                     ToolBoxItemId nItemId = pTextToolbox->GetItemId( nItem );
-                                    const OUString& rCommand = pTextToolbox->GetItemCommand( nItemId );
-                                    if (rCommand == ".uno:StyleApply")
+                                    const OUString aCommand = pTextToolbox->GetItemCommand( nItemId );
+                                    if (aCommand == ".uno:StyleApply")
                                     {
                                         vcl::Window* pItemWin = pTextToolbox->GetItemWindow( nItemId );
                                         if( pItemWin )
@@ -2130,7 +2128,7 @@ void SfxViewShell::ExecMisc_Impl( SfxRequest &rReq )
             if ( pMailRecipient )
             {
                 OUString aRecipient( pMailRecipient->GetValue() );
-                OUString aMailToStr("mailto:");
+                OUString aMailToStr(u"mailto:"_ustr);
 
                 if ( aRecipient.startsWith( aMailToStr ) )
                     aRecipient = aRecipient.copy( aMailToStr.getLength() );
@@ -2146,7 +2144,7 @@ void SfxViewShell::ExecMisc_Impl( SfxRequest &rReq )
             if ( nId == SID_MAIL_SENDDOC )
                 eResult = aModel.SaveAndSend( xFrame, OUString() );
             else if ( nId == SID_MAIL_SENDDOCASPDF )
-                eResult = aModel.SaveAndSend( xFrame, "pdf_Portable_Document_Format");
+                eResult = aModel.SaveAndSend( xFrame, u"pdf_Portable_Document_Format"_ustr);
             else if ( nId == SID_MAIL_SENDDOCASMS )
             {
                 aDocType = impl_searchFormatTypeForApp(xFrame, E_MS_DOC);
@@ -2232,7 +2230,7 @@ void SfxViewShell::ExecMisc_Impl( SfxRequest &rReq )
             if ( xModel.is() && xStorable.is() )
             {
                 OUString aFilterName;
-                OUString aTypeName( "generic_HTML" );
+                OUString aTypeName( u"generic_HTML"_ustr );
                 OUString aFileName;
 
                 OUString aLocation = xStorable->getLocation();
@@ -2242,7 +2240,7 @@ void SfxViewShell::ExecMisc_Impl( SfxRequest &rReq )
                 bool bHasLocation = !aLocation.isEmpty() && !bPrivateProtocol;
 
                 css::uno::Reference< css::container::XContainerQuery > xContainerQuery(
-                    xSMGR->createInstance( "com.sun.star.document.FilterFactory" ),
+                    xSMGR->createInstance( u"com.sun.star.document.FilterFactory"_ustr ),
                     css::uno::UNO_QUERY_THROW );
 
                 // Retrieve filter from type
@@ -2253,7 +2251,7 @@ void SfxViewShell::ExecMisc_Impl( SfxRequest &rReq )
                 {
                     // Draw/Impress uses a different type. 2nd chance try to use alternative type name
                     aFilterName = impl_retrieveFilterNameFromTypeAndModule(
-                        xContainerQuery, "graphic_HTML", aModule, nFilterFlags );
+                        xContainerQuery, u"graphic_HTML"_ustr, aModule, nFilterFlags );
                 }
 
                 // No filter found => error
@@ -2296,7 +2294,7 @@ void SfxViewShell::ExecMisc_Impl( SfxRequest &rReq )
                 OUString aFileURL = aFilePathObj.GetMainURL( INetURLObject::DecodeMechanism::NONE );
 
                 css::uno::Sequence< css::beans::PropertyValue > aArgs{
-                    comphelper::makePropertyValue("FilterName", aFilterName)
+                    comphelper::makePropertyValue(u"FilterName"_ustr, aFilterName)
                 };
 
                 // Store document in the html format
@@ -2396,7 +2394,7 @@ void SfxViewShell::GetState_Impl( SfxItemSet &rSet )
                     {
                         uno::Reference < frame::XFrame > xFrame( rFrame.GetFrame().GetFrameInterface() );
 
-                        auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(".uno:PrintDefault",
+                        auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(u".uno:PrintDefault"_ustr,
                             vcl::CommandInfoProvider::GetModuleIdentifier(xFrame));
                         OUString val = vcl::CommandInfoProvider::GetLabelForCommand(aProperties) +
                                         " (" + aPrinterName + ")";
@@ -2441,7 +2439,10 @@ ErrCode SfxViewShell::DoVerb(sal_Int32 /*nVerb*/)
 void SfxViewShell::OutplaceActivated( bool bActive )
 {
     if ( !bActive )
-        GetFrame()->GetFrame().Appear();
+    {
+        if (SfxViewFrame* pFrame = GetFrame())
+            pFrame->GetFrame().Appear();
+    }
 }
 
 void SfxViewShell::UIActivating( SfxInPlaceClient* /*pClient*/ )
@@ -2808,6 +2809,97 @@ int SfxViewShell::getA11yCaretPosition() const
     return rDocFocusListener.getCaretPosition();
 }
 
+void SfxViewShell::SetSigningCertificate(const svl::crypto::CertificateOrName& rCertificate)
+{
+    pImpl->m_aSigningCertificate = rCertificate;
+}
+
+svl::crypto::CertificateOrName SfxViewShell::GetSigningCertificate() const
+{
+    return pImpl->m_aSigningCertificate;
+}
+
+namespace
+{
+uno::Reference<beans::XPropertySet>
+GetSelectedShapeOfView(const uno::Reference<frame::XController>& xController)
+{
+    uno::Reference<view::XSelectionSupplier> xSelectionSupplier(xController, uno::UNO_QUERY);
+    if (!xSelectionSupplier)
+    {
+        return {};
+    }
+    uno::Reference<drawing::XShapes> xShapes(xSelectionSupplier->getSelection(), uno::UNO_QUERY);
+    if (!xShapes.is() || xShapes->getCount() != 1)
+    {
+        return {};
+    }
+
+    return uno::Reference<beans::XPropertySet>(xShapes->getByIndex(0), uno::UNO_QUERY);
+}
+}
+
+void SfxViewShell::SetSignPDFCertificate(const svl::crypto::CertificateOrName& rCertificateOrName)
+{
+    uno::Reference<beans::XPropertySet> xShape = GetSelectedShapeOfView(GetController());
+    if (!xShape.is() || !xShape->getPropertySetInfo()->hasPropertyByName("InteropGrabBag"))
+    {
+        return;
+    }
+
+    comphelper::SequenceAsHashMap aMap(xShape->getPropertyValue("InteropGrabBag"));
+
+    auto it = aMap.find("SignatureCertificate");
+    if (rCertificateOrName.Is())
+    {
+        if (rCertificateOrName.m_xCertificate.is())
+        {
+            aMap["SignatureCertificate"] <<= rCertificateOrName.m_xCertificate;
+        }
+        else
+        {
+            aMap["SignatureCertificate"] <<= rCertificateOrName.m_aName;
+        }
+    }
+    else if (it != aMap.end())
+    {
+        aMap.erase(it);
+    }
+    xShape->setPropertyValue("InteropGrabBag", uno::Any(aMap.getAsConstPropertyValueList()));
+    if (!rCertificateOrName.Is())
+    {
+        // The shape's property is now reset, so the doc model is no longer modified.
+        GetObjectShell()->SetModified(false);
+    }
+}
+
+svl::crypto::CertificateOrName SfxViewShell::GetSignPDFCertificate() const
+{
+    uno::Reference<beans::XPropertySet> xShape = GetSelectedShapeOfView(GetController());
+    if (!xShape.is() || !xShape->getPropertySetInfo()->hasPropertyByName("InteropGrabBag"))
+    {
+        return {};
+    }
+
+    comphelper::SequenceAsHashMap aMap(xShape->getPropertyValue("InteropGrabBag"));
+    auto it = aMap.find("SignatureCertificate");
+    if (it == aMap.end())
+    {
+        return {};
+    }
+
+    svl::crypto::CertificateOrName aCertificateOrName;
+    if (it->second.has<uno::Reference<security::XCertificate>>())
+    {
+        it->second >>= aCertificateOrName.m_xCertificate;
+    }
+    else
+    {
+        it->second >>= aCertificateOrName.m_aName;
+    }
+    return aCertificateOrName;
+}
+
 bool SfxViewShell::PrepareClose
 (
     bool bUI     // TRUE: Allow Dialog and so on, FALSE: silent-mode
@@ -2839,13 +2931,19 @@ bool SfxViewShell::PrepareClose
     return true;
 }
 
-
 SfxViewShell* SfxViewShell::Current()
 {
     SfxViewFrame *pCurrent = SfxViewFrame::Current();
     return pCurrent ? pCurrent->GetViewShell() : nullptr;
 }
 
+bool SfxViewShell::IsCurrentLokViewReadOnly()
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return false;
+    SfxViewShell* pCurrent = Current();
+    return pCurrent && pCurrent->IsLokReadOnlyView();
+}
 
 SfxViewShell* SfxViewShell::Get( const Reference< XController>& i_rController )
 {
@@ -2862,7 +2960,6 @@ SfxViewShell* SfxViewShell::Get( const Reference< XController>& i_rController )
     }
     return nullptr;
 }
-
 
 SdrView* SfxViewShell::GetDrawView() const
 
@@ -3011,7 +3108,7 @@ void SfxViewShell::WriteUserDataSequence ( uno::Sequence < beans::PropertyValue 
 SfxViewShell* SfxViewShell::GetFirst
 (
     bool          bOnlyVisible,
-    const std::function< bool ( const SfxViewShell* ) >& isViewShell
+    const std::function< bool ( const SfxViewShell& ) >& isViewShell
 )
 {
     // search for a SfxViewShell of the specified type
@@ -3028,7 +3125,7 @@ SfxViewShell* SfxViewShell::GetFirst
             // That doesn't seem to be needed anymore, but keep an assert, just in case.
             assert(std::find(SfxGetpApp()->GetViewFrames_Impl().begin(), SfxGetpApp()->GetViewFrames_Impl().end(),
                 &pShell->GetViewFrame()) != SfxGetpApp()->GetViewFrames_Impl().end());
-            if ( ( !bOnlyVisible || pShell->GetViewFrame().IsVisible() ) && (!isViewShell || isViewShell(pShell)))
+            if ( ( !bOnlyVisible || pShell->GetViewFrame().IsVisible() ) && (!isViewShell || isViewShell(*pShell)))
                 return pShell;
         }
     }
@@ -3041,7 +3138,7 @@ SfxViewShell* SfxViewShell::GetNext
 (
     const SfxViewShell& rPrev,
     bool                bOnlyVisible,
-    const std::function<bool ( const SfxViewShell* )>& isViewShell
+    const std::function<bool ( const SfxViewShell& )>& isViewShell
 )
 {
     std::vector<SfxViewShell*> &rShells = SfxGetpApp()->GetViewShells_Impl();
@@ -3057,14 +3154,13 @@ SfxViewShell* SfxViewShell::GetNext
         {
             assert(std::find(SfxGetpApp()->GetViewFrames_Impl().begin(), SfxGetpApp()->GetViewFrames_Impl().end(),
                 &pShell->GetViewFrame()) != SfxGetpApp()->GetViewFrames_Impl().end());
-            if ( ( !bOnlyVisible || pShell->GetViewFrame().IsVisible() ) && (!isViewShell || isViewShell(pShell)) )
+            if ( ( !bOnlyVisible || pShell->GetViewFrame().IsVisible() ) && (!isViewShell || isViewShell(*pShell)) )
                 return pShell;
         }
     }
 
     return nullptr;
 }
-
 
 void SfxViewShell::Notify( SfxBroadcaster& rBC,
                             const SfxHint& rHint )
@@ -3110,7 +3206,7 @@ bool SfxViewShell::ExecKey_Impl(const KeyEvent& aKey)
     if (comphelper::LibreOfficeKit::isActive())
     {
         // Get the module name.
-        css::uno::Reference< css::uno::XComponentContext >  xContext      (::comphelper::getProcessComponentContext());
+        const css::uno::Reference< css::uno::XComponentContext >&  xContext      (::comphelper::getProcessComponentContext());
         css::uno::Reference< css::frame::XModuleManager2 >  xModuleManager(css::frame::ModuleManager::create(xContext));
         OUString sModule = xModuleManager->identify(rFrame.GetFrame().GetFrameInterface());
 
@@ -3121,7 +3217,7 @@ bool SfxViewShell::ExecKey_Impl(const KeyEvent& aKey)
         OUString key = sModule + viewLang;
 
         // Check it in configurations map. Create a configuration manager if there isn't one for the key.
-        std::unordered_map<OUString, css::uno::Reference<com::sun::star::ui::XAcceleratorConfiguration>>& acceleratorConfs = SfxApplication::Get()->GetAcceleratorConfs_Impl();
+        std::unordered_map<OUString, css::uno::Reference<css::ui::XAcceleratorConfiguration>>& acceleratorConfs = SfxApplication::Get()->GetAcceleratorConfs_Impl();
         if (acceleratorConfs.find(key) == acceleratorConfs.end())
         {
             // Create a new configuration manager for the module.
@@ -3173,6 +3269,20 @@ SfxLokCallbackInterface* SfxViewShell::getLibreOfficeKitViewCallback() const
 
 void SfxViewShell::dumpLibreOfficeKitViewState(rtl::OStringBuffer &rState)
 {
+    rState.append("\n    SfxViewShell: ");
+    rState.append(OString::number(reinterpret_cast<sal_uInt64>(this), 16));
+    rState.append("\n\tDocId:\t");
+    auto nDocId = static_cast<int>(GetDocId());
+    rState.append(static_cast<sal_Int32>(nDocId));
+    rState.append("\n\tViewId:\t");
+    rState.append(static_cast<sal_Int32>(GetViewShellId()));
+    rState.append("\n\tPart:\t");
+    rState.append(static_cast<sal_Int32>(getPart()));
+    rState.append("\n\tLang:\t");
+    rState.append(OUStringToOString(GetLOKLanguageTag().getBcp47(), RTL_TEXTENCODING_UTF8));
+    rState.append("\n\tA11y:\t");
+    rState.append(GetLOKAccessibilityState() ? "enabled" : "disabled");
+
     if (pImpl->m_pLibreOfficeKitViewCallback)
         pImpl->m_pLibreOfficeKitViewCallback->dumpState(rState);
 }
@@ -3189,6 +3299,7 @@ static bool ignoreLibreOfficeKitViewCallback(int nType, const SfxViewShell_Impl*
         case LOK_CALLBACK_FORM_FIELD_BUTTON:
         case LOK_CALLBACK_TEXT_SELECTION:
         case LOK_CALLBACK_COMMENT:
+        case LOK_CALLBACK_DOCUMENT_SIZE_CHANGED:
             break;
         default:
             // Reject e.g. invalidate during paint.
@@ -3320,10 +3431,11 @@ vcl::Window* SfxViewShell::GetEditWindowForActiveOLEObj() const
     return pEditWin;
 }
 
-::Color SfxViewShell::GetColorConfigColor(svtools::ColorConfigEntry) const
+::Color SfxViewShell::GetColorConfigColor(svtools::ColorConfigEntry eEntry) const
 {
     SAL_WARN("sfx.view", "SfxViewShell::GetColorConfigColor not overridden!");
-    return {};
+    svtools::ColorConfig aColorConfig;
+    return aColorConfig.GetColorValue(eEntry).nColor;
 }
 
 void SfxViewShell::SetLOKLanguageTag(const OUString& rBcp47LanguageTag)
@@ -3334,11 +3446,11 @@ void SfxViewShell::SetLOKLanguageTag(const OUString& rBcp47LanguageTag)
     LanguageTag aFallbackTag = LanguageTag(getInstalledLocaleForSystemUILanguage(inst, /* bRequestInstallIfMissing */ false, rBcp47LanguageTag), true).makeFallback();
 
     // If we want de-CH, and the de localisation is available, we don't want to use de-DE as then
-    // the magic in Translate::get() won't turn ess-zet into double s. Possibly other similar cases?
-    if (comphelper::LibreOfficeKit::isActive() && aTag.getLanguage() == aFallbackTag.getLanguage())
-        maLOKLanguageTag = aTag;
+    // the magic in Translate::get() won't turn ess-zet into double s.
+    if (rBcp47LanguageTag == "de-CH")
+        maLOKLanguageTag = std::move(aTag);
     else
-        maLOKLanguageTag = aFallbackTag;
+        maLOKLanguageTag = std::move(aFallbackTag);
 }
 
 LOKDocumentFocusListener& SfxViewShell::GetLOKDocumentFocusListener()
@@ -3399,6 +3511,12 @@ void SfxViewShell::SetLOKAccessibilityState(bool bEnabled)
 void SfxViewShell::SetLOKLocale(const OUString& rBcp47LanguageTag)
 {
     maLOKLocale = LanguageTag(rBcp47LanguageTag, true).makeFallback();
+    if (this == Current())
+    {
+        // update the current LOK language and locale for the dialog tunneling
+        comphelper::LibreOfficeKit::setLanguageTag(GetLOKLanguageTag());
+        comphelper::LibreOfficeKit::setLocale(GetLOKLocale());
+    }
 }
 
 void SfxViewShell::NotifyCursor(SfxViewShell* /*pViewShell*/) const
@@ -3452,7 +3570,7 @@ void SfxViewShell::NotifyOtherView(OutlinerViewShell* pOther, int nType, const O
     if (!pOtherShell)
         return;
 
-    SfxLokHelper::notifyOtherView(this, pOtherShell, nType, rKey, rPayload);
+    SfxLokHelper::notifyOtherView(*this, pOtherShell, nType, rKey, rPayload);
 }
 
 void SfxViewShell::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -3835,7 +3953,7 @@ bool SfxViewShell::HasMouseClickListeners_Impl() const
 
 bool SfxViewShell::Escape()
 {
-    return GetViewFrame().GetBindings().Execute(SID_TERMINATE_INPLACEACTIVATION);
+    return GetViewFrame().GetBindings().Execute(SID_TERMINATE_INPLACEACTIVATION).is();
 }
 
 Reference< view::XRenderable > SfxViewShell::GetRenderable()
@@ -3854,6 +3972,15 @@ Reference< view::XRenderable > SfxViewShell::GetRenderable()
 void SfxViewShell::notifyWindow(vcl::LOKWindowId nDialogId, const OUString& rAction, const std::vector<vcl::LOKPayloadItem>& rPayload) const
 {
     SfxLokHelper::notifyWindow(this, nDialogId, rAction, rPayload);
+}
+
+OString SfxViewShell::dumpNotifyState() const
+{
+    return OString("sfxviewsh: " +
+                   OString::number(reinterpret_cast<sal_uInt64>(this), 16) +
+                   " doc: " + OString::number(static_cast<sal_Int32>(static_cast<int>(GetDocId()))) +
+                   " view: " +
+                   OString::number(static_cast<sal_Int32>(GetViewShellId())));
 }
 
 uno::Reference< datatransfer::clipboard::XClipboardNotifier > SfxViewShell::GetClipboardNotifier() const
@@ -3904,7 +4031,7 @@ void SfxViewShell::setBlockedCommandList(const char* blockedCommandList)
     }
 }
 
-bool SfxViewShell::isBlockedCommand(OUString command)
+bool SfxViewShell::isBlockedCommand(const OUString & command) const
 {
     return mvLOKBlockedCommandList.find(command) != mvLOKBlockedCommandList.end();
 }

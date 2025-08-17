@@ -124,10 +124,7 @@ static bool is_plasma6_desktop()
     return pFullVersion && pSessionVersion && (0 == strcmp(pSessionVersion, "6"));
 }
 
-extern "C"
-{
-
-DESKTOP_DETECTOR_PUBLIC DesktopType get_desktop_environment()
+DesktopType get_desktop_environment()
 {
     static const char *pOverride = getenv( "OOO_FORCE_DESKTOP" );
 
@@ -156,7 +153,7 @@ DESKTOP_DETECTOR_PUBLIC DesktopType get_desktop_environment()
     }
 
     OUString plugin;
-    rtl::Bootstrap::get("SAL_USE_VCLPLUGIN", plugin);
+    rtl::Bootstrap::get(u"SAL_USE_VCLPLUGIN"_ustr, plugin);
 
     if (plugin == "svp")
         return DESKTOP_NONE;
@@ -257,8 +254,6 @@ DESKTOP_DETECTOR_PUBLIC DesktopType get_desktop_environment()
     XCloseDisplay( pDisplay );
 
     return ret;
-}
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

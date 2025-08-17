@@ -30,6 +30,7 @@ private:
 
     ScRecalcOptions meOOXMLRecalc;
     ScRecalcOptions meODFRecalc;
+    ScRecalcOptions meReCalcOptiRowHeights;
 
 public:
     ScFormulaOptions();
@@ -64,6 +65,9 @@ public:
     void SetODFRecalcOptions( ScRecalcOptions eOpt ) { meODFRecalc = eOpt; }
     ScRecalcOptions GetODFRecalcOptions() const { return meODFRecalc; }
 
+    void SetReCalcOptiRowHeights( ScRecalcOptions eOpt ) { meReCalcOptiRowHeights = eOpt; }
+    ScRecalcOptions GetReCalcOptiRowHeights() const { return meReCalcOptiRowHeights; }
+
     void ResetFormulaSeparators();
 
     static void GetDefaultFormulaSeparators(OUString& rSepArg, OUString& rSepArrayCol, OUString& rSepArrayRow);
@@ -77,6 +81,7 @@ public:
 class SC_DLLPUBLIC ScTpFormulaItem final : public SfxPoolItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(ScTpFormulaItem)
     ScTpFormulaItem( ScFormulaOptions aOpt );
     virtual ~ScTpFormulaItem() override;
 

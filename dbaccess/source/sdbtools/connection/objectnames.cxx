@@ -313,9 +313,9 @@ namespace sdbtools
         if ( aMeta.supportsSubqueriesInFrom() )
             pReturn = std::make_shared<CombinedNameCheck>( pTableCheck, pQueryCheck );
         else if ( _nCommandType == CommandType::TABLE )
-            pReturn = pTableCheck;
+            pReturn = std::move(pTableCheck);
         else
-            pReturn = pQueryCheck;
+            pReturn = std::move(pQueryCheck);
         return pReturn;
     }
 
@@ -331,7 +331,7 @@ namespace sdbtools
         catch( const Exception& )
         {
             throw IllegalArgumentException(
-                "The connection could not provide its database's meta data.",
+                u"The connection could not provide its database's meta data."_ustr,
                 nullptr,
                 0
             );

@@ -110,7 +110,7 @@ void Outliner::SetModifyHdl( const Link<LinkParamNone*,void>& rLink )
 
 void Outliner::SetNotifyHdl( const Link<EENotify&,void>& rLink )
 {
-    pEditEngine->aOutlinerNotifyHdl = rLink;
+    aOutlinerNotifyHdl = rLink;
 
     if ( rLink.IsSet() )
         pEditEngine->SetNotifyHdl( LINK( this, Outliner, EditEngineNotifyHdl ) );
@@ -158,19 +158,19 @@ OUString const & Outliner::GetWordDelimiters() const
     return pEditEngine->GetWordDelimiters();
 }
 
-OUString Outliner::GetWord( sal_Int32 nPara, sal_Int32 nIndex )
+OUString Outliner::GetWord(const EPaM& rPos)
 {
-    return pEditEngine->GetWord( nPara, nIndex );
+    return pEditEngine->GetWord(rPos);
 }
 
-void Outliner::Draw( OutputDevice& rOutDev, const tools::Rectangle& rOutRect )
+void Outliner::DrawText_ToRectangle( OutputDevice& rOutDev, const tools::Rectangle& rOutRect )
 {
-    pEditEngine->Draw( rOutDev, rOutRect );
+    pEditEngine->DrawText_ToRectangle( rOutDev, rOutRect, Point( 0, 0 ), true );
 }
 
-void Outliner::Draw( OutputDevice& rOutDev, const Point& rStartPos )
+void Outliner::DrawText_ToPosition( OutputDevice& rOutDev, const Point& rStartPos )
 {
-    pEditEngine->Draw( rOutDev, rStartPos );
+    pEditEngine->DrawText_ToPosition( rOutDev, rStartPos );
 }
 
 void Outliner::SetPaperSize( const Size& rSize )
@@ -243,11 +243,6 @@ Size Outliner::CalcTextSize()
     return Size(pEditEngine->CalcTextWidth(),pEditEngine->GetTextHeight());
 }
 
-Size Outliner::CalcTextSizeNTP()
-{
-    return Size(pEditEngine->CalcTextWidth(),pEditEngine->GetTextHeightNTP());
-}
-
 void Outliner::SetStyleSheetPool( SfxStyleSheetPool* pSPool )
 {
     pEditEngine->SetStyleSheetPool( pSPool );
@@ -313,7 +308,7 @@ bool Outliner::IsInUndo() const
     return pEditEngine->IsInUndo();
 }
 
-sal_uInt32 Outliner::GetLineCount( sal_Int32 nParagraph ) const
+sal_Int32 Outliner::GetLineCount( sal_Int32 nParagraph ) const
 {
     return pEditEngine->GetLineCount( nParagraph );
 }
@@ -323,9 +318,9 @@ sal_Int32 Outliner::GetLineLen( sal_Int32 nParagraph, sal_Int32 nLine ) const
     return pEditEngine->GetLineLen( nParagraph, nLine );
 }
 
-sal_uInt32 Outliner::GetLineHeight( sal_Int32 nParagraph )
+sal_uInt32 Outliner::GetLineHeight( sal_Int32 nParagraph, sal_Int32 nLine )
 {
-    return pEditEngine->GetLineHeight( nParagraph );
+    return pEditEngine->GetLineHeight( nParagraph, nLine );
 }
 
 void Outliner::RemoveCharAttribs( sal_Int32 nPara, sal_uInt16 nWhich )
@@ -363,14 +358,14 @@ bool Outliner::HasText( const SvxSearchItem& rSearchItem )
     return pEditEngine->HasText( rSearchItem );
 }
 
-void Outliner::SetEditTextObjectPool( SfxItemPool* pPool )
+void Outliner::SetEditEnginePool( SfxItemPool* pPool )
 {
-    pEditEngine->SetEditTextObjectPool( pPool );
+    pEditEngine->SetItemPool( pPool );
 }
 
-SfxItemPool* Outliner::GetEditTextObjectPool() const
+SfxItemPool* Outliner::GetEditEnginePool() const
 {
-    return pEditEngine->GetEditTextObjectPool();
+    return pEditEngine->GetItemPool();
 }
 
 bool Outliner::SpellNextDocument()
@@ -428,7 +423,7 @@ bool Outliner::IsTextPos( const Point& rPaperPos, sal_uInt16 nBorder, bool* pbBu
     {
         Point aDocPos = GetDocPos( rPaperPos );
         sal_Int32 nPara = pEditEngine->FindParagraph( aDocPos.Y() );
-        if ( ( nPara != EE_PARA_NOT_FOUND ) && ImplHasNumberFormat( nPara ) )
+        if ((nPara != EE_PARA_MAX) && ImplHasNumberFormat(nPara))
         {
             tools::Rectangle aBulArea = ImpCalcBulletArea( nPara, true, true );
             if ( aBulArea.Contains( rPaperPos ) )
@@ -477,7 +472,12 @@ void Outliner::QuickFormatDoc()
     pEditEngine->QuickFormatDoc();
 }
 
-void Outliner::setGlobalScale(double rFontX, double rFontY, double rSpacingX, double rSpacingY)
+const ScalingParameters & Outliner::getScalingParameters() const
+{
+    return pEditEngine->getScalingParameters();
+}
+
+void Outliner::setScalingParameters(ScalingParameters const& rScalingParameters)
 {
     // reset bullet size
     sal_Int32 nParagraphs = pParaList->GetParagraphCount();
@@ -488,13 +488,7 @@ void Outliner::setGlobalScale(double rFontX, double rFontY, double rSpacingX, do
             pPara->aBulSize.setWidth( -1 );
     }
 
-    pEditEngine->setGlobalScale(rFontX, rFontY, rSpacingX, rSpacingY);
-}
-
-void Outliner::getGlobalScale(double& rFontX, double& rFontY, double& rSpacingX, double& rSpacingY) const
-{
-    pEditEngine->getGlobalFontScale(rFontX, rFontY);
-    pEditEngine->getGlobalSpacingScale(rSpacingX, rSpacingY);
+    pEditEngine->setScalingParameters(rScalingParameters);
 }
 
 void Outliner::setRoundFontSizeToPt(bool bRound) const

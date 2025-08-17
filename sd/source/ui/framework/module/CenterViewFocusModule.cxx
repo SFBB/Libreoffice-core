@@ -19,14 +19,14 @@
 
 #include "CenterViewFocusModule.hxx"
 
+#include <framework/ConfigurationController.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
 #include <framework/FrameworkHelper.hxx>
 #include <framework/ViewShellWrapper.hxx>
 
 #include <DrawController.hxx>
 #include <ViewShellBase.hxx>
 #include <ViewShellManager.hxx>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
 #include <comphelper/servicehelper.hxx>
 
 using namespace ::com::sun::star;
@@ -63,12 +63,10 @@ CenterViewFocusModule::CenterViewFocusModule (rtl::Reference<sd::DrawController>
     {
         mxConfigurationController->addConfigurationChangeListener(
             this,
-            FrameworkHelper::msConfigurationUpdateEndEvent,
-            Any());
+            ConfigurationChangeEventType::ConfigurationUpdateEnd);
         mxConfigurationController->addConfigurationChangeListener(
             this,
-            FrameworkHelper::msResourceActivationEvent,
-            Any());
+            ConfigurationChangeEventType::ResourceActivation);
     }
 }
 
@@ -86,16 +84,16 @@ void CenterViewFocusModule::disposing(std::unique_lock<std::mutex>&)
     mpBase = nullptr;
 }
 
-void SAL_CALL CenterViewFocusModule::notifyConfigurationChange (
+void CenterViewFocusModule::notifyConfigurationChange (
     const ConfigurationChangeEvent& rEvent)
 {
     if (mbValid)
     {
-        if (rEvent.Type == FrameworkHelper::msConfigurationUpdateEndEvent)
+        if (rEvent.Type == ConfigurationChangeEventType::ConfigurationUpdateEnd)
         {
             HandleNewView(rEvent.Configuration);
         }
-        else if (rEvent.Type == FrameworkHelper::msResourceActivationEvent)
+        else if (rEvent.Type == ConfigurationChangeEventType::ResourceActivation)
         {
             if (rEvent.ResourceId->getResourceURL().match(FrameworkHelper::msViewURLPrefix))
                 mbNewViewCreated = true;
@@ -104,7 +102,7 @@ void SAL_CALL CenterViewFocusModule::notifyConfigurationChange (
 }
 
 void CenterViewFocusModule::HandleNewView (
-    const Reference<XConfiguration>& rxConfiguration)
+    const rtl::Reference<Configuration>& rxConfiguration)
 {
     if (!mbNewViewCreated)
         return;
@@ -113,13 +111,13 @@ void CenterViewFocusModule::HandleNewView (
     // Make the center pane the active one.  Tunnel through the
     // controller to obtain a ViewShell pointer.
 
-    Sequence<Reference<XResourceId> > xViewIds (rxConfiguration->getResources(
-        FrameworkHelper::CreateResourceId(FrameworkHelper::msCenterPaneURL),
+    std::vector<rtl::Reference<ResourceId> > xViewIds (rxConfiguration->getResources(
+        new ::sd::framework::ResourceId(FrameworkHelper::msCenterPaneURL),
         FrameworkHelper::msViewURLPrefix,
         AnchorBindingMode_DIRECT));
-    Reference<XView> xView;
-    if (xViewIds.hasElements())
-        xView.set( mxConfigurationController->getResource(xViewIds[0]),UNO_QUERY);
+    rtl::Reference<AbstractView> xView;
+    if (!xViewIds.empty())
+        xView = dynamic_cast<AbstractView*>( mxConfigurationController->getResource(xViewIds[0]).get() );
     if (mpBase!=nullptr)
     {
         auto pViewShellWrapper = dynamic_cast<ViewShellWrapper*>(xView.get());
@@ -136,7 +134,7 @@ void SAL_CALL CenterViewFocusModule::disposing (
     const lang::EventObject& rEvent)
 {
     if (mxConfigurationController.is())
-        if (rEvent.Source == mxConfigurationController)
+        if (rEvent.Source == cppu::getXWeak(mxConfigurationController.get()))
         {
             mbValid = false;
             mxConfigurationController = nullptr;

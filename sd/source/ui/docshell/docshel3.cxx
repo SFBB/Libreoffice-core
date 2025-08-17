@@ -49,8 +49,6 @@
 #include <memory>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::uno;
 
 namespace sd {
 
@@ -129,7 +127,8 @@ static void lcl_setLanguage( const SdDrawDocument *pDoc, std::u16string_view rLa
  */
 void DrawDocShell::Execute( SfxRequest& rReq )
 {
-    if(mpViewShell && SlideShow::IsRunning( mpViewShell->GetViewShellBase() ))
+    if(mpViewShell && SlideShow::IsRunning( mpViewShell->GetViewShellBase() )
+        && !SlideShow::IsInteractiveSlideshow( &mpViewShell->GetViewShellBase() ) ) // IASS
     {
         // during a running presentation no slot will be executed
         return;
@@ -145,7 +144,7 @@ void DrawDocShell::Execute( SfxRequest& rReq )
             {
                 const SvxSearchItem & rSearchItem = pReqArgs->Get(SID_SEARCH_ITEM);
 
-                SD_MOD()->SetSearchItem(std::unique_ptr<SvxSearchItem>(rSearchItem.Clone()));
+                SdModule::get()->SetSearchItem(std::unique_ptr<SvxSearchItem>(rSearchItem.Clone()));
             }
 
             rReq.Done();
@@ -210,9 +209,9 @@ void DrawDocShell::Execute( SfxRequest& rReq )
                     if (!xFuSearch.is())
                     {
                         xFuSearch = rtl::Reference<FuSearch>(
-                            FuSearch::createPtr(mpViewShell,
+                            FuSearch::createPtr(*mpViewShell,
                                                 mpViewShell->GetActiveWindow(),
-                                                pView, mpDoc, rReq));
+                                                pView, *mpDoc, rReq));
 
                         pView->getSearchContext().setSearchFunction(xFuSearch);
                     }
@@ -221,7 +220,7 @@ void DrawDocShell::Execute( SfxRequest& rReq )
                     {
                         const SvxSearchItem& rSearchItem = pReqArgs->Get(SID_SEARCH_ITEM);
 
-                        SD_MOD()->SetSearchItem(std::unique_ptr<SvxSearchItem>(rSearchItem.Clone()));
+                        SdModule::get()->SetSearchItem(std::unique_ptr<SvxSearchItem>(rSearchItem.Clone()));
                         xFuSearch->SearchAndReplace(&rSearchItem);
                     }
                 }
@@ -231,6 +230,28 @@ void DrawDocShell::Execute( SfxRequest& rReq )
         }
         break;
 
+        case SID_SAVEDOC:
+        case SID_SAVEASDOC:
+        {
+            const SfxPoolItem* pItem = nullptr;
+            bool bCommitChanges = false;
+            const SfxItemSet* pReqArgs = rReq.GetArgs();
+            bool bHasDontTerminateEdit = pReqArgs && pReqArgs->HasItem(FN_PARAM_1, &pItem);
+            if (bHasDontTerminateEdit && pItem)
+                bCommitChanges = !static_cast<const SfxBoolItem*>(pItem)->GetValue();
+
+            if (mpViewShell && bCommitChanges)
+            {
+                SdrView* pView = mpViewShell->GetView();
+                if (pView)
+                    pView->SdrEndTextEdit();
+            }
+
+            ExecuteSlot( rReq, SfxObjectShell::GetStaticInterface() );
+        }
+        break;
+
+        case SID_VERSION:
         case SID_CLOSEDOC:
         {
             ExecuteSlot(rReq, SfxObjectShell::GetStaticInterface());
@@ -245,17 +266,11 @@ void DrawDocShell::Execute( SfxRequest& rReq )
         }
         break;
 
-        case SID_VERSION:
-        {
-            ExecuteSlot( rReq, SfxObjectShell::GetStaticInterface() );
-        }
-        break;
-
         case SID_HANGUL_HANJA_CONVERSION:
         {
             if( mpViewShell )
             {
-                rtl::Reference<FuPoor> aFunc( FuHangulHanjaConversion::Create( mpViewShell, mpViewShell->GetActiveWindow(), mpViewShell->GetView(), mpDoc, rReq ) );
+                rtl::Reference<FuPoor> aFunc( FuHangulHanjaConversion::Create(*mpViewShell, mpViewShell->GetActiveWindow(), mpViewShell->GetView(), *mpDoc, rReq ) );
                 static_cast< FuHangulHanjaConversion* >( aFunc.get() )->StartConversion( LANGUAGE_KOREAN, LANGUAGE_KOREAN, nullptr, i18n::TextConversionOption::CHARACTER_BY_CHARACTER, true );
             }
         }
@@ -265,7 +280,7 @@ void DrawDocShell::Execute( SfxRequest& rReq )
         {
             if( mpViewShell )
             {
-                rtl::Reference<FuPoor> aFunc( FuHangulHanjaConversion::Create( mpViewShell, mpViewShell->GetActiveWindow(), mpViewShell->GetView(), mpDoc, rReq ) );
+                rtl::Reference<FuPoor> aFunc( FuHangulHanjaConversion::Create(*mpViewShell, mpViewShell->GetActiveWindow(), mpViewShell->GetView(), *mpDoc, rReq ) );
                 static_cast< FuHangulHanjaConversion* >( aFunc.get() )->StartChineseConversion();
             }
         }
@@ -335,7 +350,7 @@ void DrawDocShell::Execute( SfxRequest& rReq )
                             const LanguageType nLangToUse = SvtLanguageTable::GetLanguageType( aNewLangTxt );
                             SvtScriptType nScriptType = SvtLanguageOptions::GetScriptTypeOfLanguage( nLangToUse );
 
-                            SfxItemSet aAttrs = rEditView.GetEditEngine()->GetEmptyItemSet();
+                            SfxItemSet aAttrs = rEditView.getEditEngine().GetEmptyItemSet();
                             if (nScriptType == SvtScriptType::LATIN)
                                 aAttrs.Put( SvxLanguageItem( nLangToUse, EE_CHAR_LANGUAGE ) );
                             if (nScriptType == SvtScriptType::COMPLEX)
@@ -347,8 +362,8 @@ void DrawDocShell::Execute( SfxRequest& rReq )
                             {
                                 ESelection aSel = rEditView.GetSelection();
                                 aOldSel = aSel;
-                                aSel.nStartPos = 0;
-                                aSel.nEndPos = EE_TEXTPOS_ALL;
+                                aSel.start.nIndex = 0;
+                                aSel.end.nIndex = EE_TEXTPOS_MAX;
                                 rEditView.SetSelection( aSel );
                             }
 
@@ -422,7 +437,7 @@ void DrawDocShell::Execute( SfxRequest& rReq )
                 SfxBindings& rBindings( mpViewShell->GetFrame()->GetBindings() );
 
                 if ( sfx2::SfxNotebookBar::IsActive() )
-                    sfx2::SfxNotebookBar::ExecMethod( rBindings, pFile ? pFile->GetValue() : "" );
+                    sfx2::SfxNotebookBar::ExecMethod( rBindings, pFile ? pFile->GetValue() : u""_ustr );
                 else
                     sfx2::SfxNotebookBar::CloseMethod( rBindings );
             }

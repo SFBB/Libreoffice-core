@@ -34,8 +34,10 @@
 #include <com/sun/star/registry/XRegistryKey.hpp>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/shlib.hxx>
+#include <o3tl/environment.hxx>
 #include <o3tl/string_view.hxx>
 #include <osl/module.hxx>
+#include <osl/process.h>
 #include <sal/log.hxx>
 #include <uno/environment.hxx>
 #include <uno/mapping.hxx>
@@ -51,13 +53,11 @@ css::uno::Environment cppuhelper::detail::getEnvironment(
 {
     OUString n(name);
     if (!implementation.empty()) {
-        static char const * log = std::getenv("UNO_ENV_LOG");
-        if (log != nullptr && *log != 0) {
-            OString imps(log);
+        OUString imps = o3tl::getEnvironment(u"UNO_ENV_LOG"_ustr);
+        if (!imps.isEmpty()) {
             for (sal_Int32 i = 0; i != -1;) {
-                std::string_view imp(o3tl::getToken(imps, 0, ';', i));
-                //TODO: this assumes UNO_ENV_LOG only contains ASCII characters:
-                if (o3tl::equalsAscii(implementation, imp))
+                std::u16string_view imp(o3tl::getToken(imps, 0, ';', i));
+                if (implementation == imp)
                 {
                     n += ":log";
                     break;
@@ -126,7 +126,7 @@ css::uno::Reference<css::uno::XInterface> invokeComponentFactory(
 {
     if (!(source.is() && target.is())) {
         throw css::loader::CannotActivateFactoryException(
-            "cannot get environments",
+            u"cannot get environments"_ustr,
             css::uno::Reference<css::uno::XInterface>());
     }
     OString impl(
@@ -141,7 +141,7 @@ css::uno::Reference<css::uno::XInterface> invokeComponentFactory(
     css::uno::Mapping mapFrom(target, source);
     if (!(mapTo.is() && mapFrom.is())) {
         throw css::loader::CannotActivateFactoryException(
-            "cannot get mappings",
+            u"cannot get mappings"_ustr,
             css::uno::Reference<css::uno::XInterface>());
     }
     void * smgr = mapTo.mapInterface(
@@ -189,7 +189,7 @@ cppuhelper::WrapperConstructorFn mapConstructorFn(
 {
     if (!(source.is() && target.is())) {
         throw css::loader::CannotActivateFactoryException(
-            "cannot get environments",
+            u"cannot get environments"_ustr,
             css::uno::Reference<css::uno::XInterface>());
     }
     if (source.get() == target.get()) {
@@ -202,10 +202,10 @@ cppuhelper::WrapperConstructorFn mapConstructorFn(
     css::uno::Mapping mapFrom(target, source);
     if (!(mapTo.is() && mapFrom.is())) {
         throw css::loader::CannotActivateFactoryException(
-            "cannot get mappings",
+            u"cannot get mappings"_ustr,
             css::uno::Reference<css::uno::XInterface>());
     }
-    return [mapFrom, mapTo, target, constructorFunction]
+    return [mapFrom=std::move(mapFrom), mapTo=std::move(mapTo), target, constructorFunction]
         (css::uno::XComponentContext *const context, css::uno::Sequence<css::uno::Any> const& args)
         {
             void *const ctxt = mapTo.mapInterface(
@@ -248,7 +248,7 @@ void cppuhelper::detail::loadSharedLibComponentFactory(
     assert(constructor.isEmpty() || !environment.isEmpty());
     assert(
         (constructorFunction == nullptr && constructor.isEmpty())
-        || !*constructorFunction);
+        || (constructorFunction && !*constructorFunction));
     assert(factory != nullptr && !factory->is());
 #if defined DISABLE_DYNLOADING
     assert(!environment.isEmpty());
@@ -365,7 +365,7 @@ css::uno::Reference<css::uno::XInterface> cppu::loadSharedLibComponentFactory(
     assert(!xKey.is()); (void) xKey;
     css::uno::Reference<css::uno::XInterface> fac;
     cppuhelper::detail::loadSharedLibComponentFactory(
-        uri, "", "", rImplName, "", xMgr, nullptr, &fac);
+        uri, u""_ustr, u""_ustr, rImplName, u""_ustr, xMgr, nullptr, &fac);
     return fac;
 }
 
@@ -403,16 +403,16 @@ void cppu::writeSharedLibComponentInfo(
             css::uno::Reference<css::uno::XInterface>());
     }
     css::uno::Environment curEnv(css::uno::Environment::getCurrent());
-    css::uno::Environment env(getEnvironmentFromModule(mod, curEnv, u"", ""));
+    css::uno::Environment env(getEnvironmentFromModule(mod, curEnv, u"", u""_ustr));
     if (!(curEnv.is() && env.is())) {
         throw css::registry::CannotRegisterImplementationException(
-            "cannot get environments",
+            u"cannot get environments"_ustr,
             css::uno::Reference<css::uno::XInterface>());
     }
     css::uno::Mapping map(curEnv, env);
     if (!map.is()) {
         throw css::registry::CannotRegisterImplementationException(
-            "cannot get mapping", css::uno::Reference<css::uno::XInterface>());
+            u"cannot get mapping"_ustr, css::uno::Reference<css::uno::XInterface>());
     }
     void * smgr = map.mapInterface(
         xMgr.get(), cppu::UnoType<css::lang::XMultiServiceFactory>::get());

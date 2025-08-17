@@ -57,6 +57,8 @@ css::uno::Reference<css::ui::test::XUIObject> SAL_CALL UIObjectUnoObj::getChild(
     SolarMutexGuard aGuard;
     std::unique_ptr<UIObject> pObj = mpObj->get_child(rID);
     SAL_WARN_IF(!pObj, "vcl", "child " << rID << " of parent " << mpObj->dumpState() << " does not exist");
+    if (!pObj)
+        throw css::uno::RuntimeException("getChild with id " + rID + " did not find a child");
     return new UIObjectUnoObj(std::move(pObj));
 }
 
@@ -187,7 +189,7 @@ OUString SAL_CALL UIObjectUnoObj::getType()
 
 OUString SAL_CALL UIObjectUnoObj::getImplementationName()
 {
-    return "org.libreoffice.uitest.UIObject";
+    return u"org.libreoffice.uitest.UIObject"_ustr;
 }
 
 sal_Bool UIObjectUnoObj::supportsService(OUString const & ServiceName)
@@ -197,13 +199,18 @@ sal_Bool UIObjectUnoObj::supportsService(OUString const & ServiceName)
 
 css::uno::Sequence<OUString> UIObjectUnoObj::getSupportedServiceNames()
 {
-    return { "com.sun.star.ui.test.UIObject" };
+    return { u"com.sun.star.ui.test.UIObject"_ustr };
 }
 
 OUString SAL_CALL UIObjectUnoObj::getHierarchy()
 {
     SolarMutexGuard aGuard;
     return mpObj->dumpHierarchy();
+}
+
+sal_Bool SAL_CALL UIObjectUnoObj::equals(const css::uno::Reference<css::ui::test::XUIObject>& rOther)
+{
+    return mpObj->equals(*static_cast<UIObjectUnoObj&>(*rOther).mpObj);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

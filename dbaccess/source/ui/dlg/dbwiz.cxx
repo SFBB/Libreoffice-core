@@ -35,7 +35,6 @@ namespace dbaui
 {
 using namespace com::sun::star::uno;
 using namespace com::sun::star::sdbc;
-using namespace com::sun::star::lang;
 using namespace com::sun::star::util;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::container;
@@ -138,7 +137,6 @@ WizardState ODbTypeWizDialog::determineNextState( WizardState _nCurrentState ) c
                 case  ::dbaccess::DST_KAB:
                 case  ::dbaccess::DST_MACAB:
                 case  ::dbaccess::DST_MSACCESS:
-                case  ::dbaccess::DST_MSACCESS_2007:
                 case  ::dbaccess::DST_JDBC:
                 case  ::dbaccess::DST_CALC:
                 case  ::dbaccess::DST_WRITER:

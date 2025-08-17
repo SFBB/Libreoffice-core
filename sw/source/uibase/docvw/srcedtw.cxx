@@ -252,7 +252,7 @@ SwSrcEditWindow::SwSrcEditWindow( vcl::Window* pParent, SwSrcView* pParentView )
         std::unique_lock g(mutex_);
         m_xNotifier = n;
     }
-    n->addPropertiesChangeListener({ "FontHeight", "FontName" }, m_xListener);
+    n->addPropertiesChangeListener({ u"FontHeight"_ustr, u"FontName"_ustr }, m_xListener);
 }
 
 SwSrcEditWindow::~SwSrcEditWindow()
@@ -700,18 +700,14 @@ void SwSrcEditWindow::ImpDoHighlight( std::u16string_view aSource, sal_uInt16 nL
             r.eType != svtools::HTMLKEYWORD &&
             r.eType != svtools::HTMLUNKNOWN)
                 r.eType = svtools::HTMLUNKNOWN;
-        Color aColor(SW_MOD()->GetColorConfig().GetColorValue(r.eType).nColor);
+        Color aColor(SwModule::get()->GetColorConfig().GetColorValue(r.eType).nColor);
         m_pTextEngine->SetAttrib( TextAttribFontColor( aColor ), nLineOff, r.nStart, r.nEnd+1 );
     }
 }
 
 void SwSrcEditWindow::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
 {
-    const TextHint* pTextHint = dynamic_cast<const TextHint*>(&rHint);
-    if (!pTextHint)
-        return;
-
-    switch (pTextHint->GetId())
+    switch (rHint.GetId())
     {
         case SfxHintId::TextViewScrolled:
             m_pHScrollbar->SetThumbPos( m_pTextView->GetStartDocPos().X() );
@@ -729,6 +725,7 @@ void SwSrcEditWindow::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
         case SfxHintId::TextParaContentChanged:
             if ( !m_bHighlighting )
             {
+                auto pTextHint = static_cast<const TextHint*>(&rHint);
                 m_aSyntaxLineTable.insert( o3tl::narrowing<sal_uInt16>(pTextHint->GetValue()) );
                 m_aSyntaxIdle.Start();
             }

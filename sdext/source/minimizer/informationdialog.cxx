@@ -29,13 +29,10 @@
 #include <vcl/svapp.hxx>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::ui;
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 
 static OUString ImpValueOfInMB( sal_Int64 rVal )
 {
@@ -95,8 +92,8 @@ void InformationDialog::InitDialog()
     OUString sSecondary( getString( eInfoString ) );
     static constexpr OUString aOldSizePlaceholder( u"%OLDFILESIZE"_ustr  );
     static constexpr OUString aNewSizePlaceholder( u"%NEWFILESIZE"_ustr  );
-    const OUString aTitlePlaceholder( !aTitle.isEmpty() ? OUString("%TITLE"  )
-                                                         : OUString("'%TITLE'") );
+    const OUString aTitlePlaceholder( !aTitle.isEmpty() ? u"%TITLE"_ustr
+                                                         : u"'%TITLE'"_ustr );
 
     sal_Int32 i = sSecondary.indexOf( aOldSizePlaceholder );
     if ( i >= 0 )
@@ -119,9 +116,9 @@ void InformationDialog::InitDialog()
 InformationDialog::InformationDialog(const Reference< XComponentContext > &rxContext, const Reference<XWindow>& rxDialogParent,
                                      const OUString& rSaveAsURL, bool& rbOpenNewDocument,
                                      sal_Int64 rSourceSize, sal_Int64 rDestSize, sal_Int64 rApproxSize)
-    : MessageDialogController(Application::GetFrameWeld(rxDialogParent), "modules/simpress/ui/pminfodialog.ui", "PMInfoDialog", "ask")
+    : MessageDialogController(Application::GetFrameWeld(rxDialogParent), u"modules/simpress/ui/pminfodialog.ui"_ustr, u"PMInfoDialog"_ustr, u"ask"_ustr)
     , ConfigurationAccess(rxContext)
-    , mxCheckBox(m_xBuilder->weld_check_button("ask"))
+    , mxCheckBox(m_xBuilder->weld_check_button(u"ask"_ustr))
     , mnSourceSize(rSourceSize)
     , mnDestSize(rDestSize)
     , mnApproxSize(rApproxSize)

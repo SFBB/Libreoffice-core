@@ -19,6 +19,7 @@
 
 #include <rtl/ref.hxx>
 #include <sal/log.hxx>
+#include <comphelper/OAccessible.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/implementationentry.hxx>
@@ -109,7 +110,7 @@ void MSAAServiceImpl::handleWindowOpened(sal_Int64 nAcc)
     if (m_pTopWindowListener.is() && nAcc)
     {
         m_pTopWindowListener->HandleWindowOpened(
-            static_cast<css::accessibility::XAccessible*>(
+            static_cast<vcl::Window*>(
                 reinterpret_cast<void*>(nAcc)));
     }
 }
@@ -139,92 +140,18 @@ Sequence< OUString > MSAAServiceImpl::getSupportedServiceNames()
    return { "com.sun.star.accessibility.MSAAService" };
 }
 
-static void AccessBridgeHandleExistingWindow(const Reference< XMSAAService > &xAccMgr,
-                                             vcl::Window *pWindow, bool bShow)
-{
-    if ( pWindow )
-    {
-        css::uno::Reference< css::accessibility::XAccessible > xAccessible;
-
-        SAL_INFO( "iacc2", "Decide whether to register existing window with IAccessible2" );
-
-        // Test for combo box - drop down floating windows first
-        vcl::Window * pParentWindow = pWindow->GetParent();
-
-        if ( pParentWindow )
-        {
-            try
-            {
-                // The parent window of a combo box floating window should have the role COMBO_BOX
-                css::uno::Reference< css::accessibility::XAccessible > xParentAccessible(pParentWindow->GetAccessible());
-                if ( xParentAccessible.is() )
-                {
-                    css::uno::Reference< css::accessibility::XAccessibleContext > xParentAC( xParentAccessible->getAccessibleContext() );
-                    if ( xParentAC.is() && (css::accessibility::AccessibleRole::COMBO_BOX == xParentAC->getAccessibleRole()) )
-                    {
-                        // O.k. - this is a combo box floating window corresponding to the child of role LIST of the parent.
-                        // Let's not rely on a specific child order, just search for the child with the role LIST
-                        sal_Int64 nCount = xParentAC->getAccessibleChildCount();
-                        for (sal_Int64 n = 0; (n < nCount) && !xAccessible.is(); n++)
-                        {
-                            css::uno::Reference< css::accessibility::XAccessible > xChild = xParentAC->getAccessibleChild(n);
-                            if ( xChild.is() )
-                            {
-                                css::uno::Reference< css::accessibility::XAccessibleContext > xChildAC = xChild->getAccessibleContext();
-                                if ( xChildAC.is() && (css::accessibility::AccessibleRole::LIST == xChildAC->getAccessibleRole()) )
-                                {
-                                    xAccessible = xChild;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch (css::uno::RuntimeException const&)
-            {
-                // Ignore show events that throw DisposedExceptions in getAccessibleContext(),
-                // but keep revoking these windows in hide(s).
-                if (bShow)
-                    return;
-            }
-        }
-
-        // We have to rely on the fact that Window::GetAccessible()->getAccessibleContext() returns a valid XAccessibleContext
-        // also for other menus than menubar or toplevel popup window. Otherwise we had to traverse the hierarchy to find the
-        // context object to this menu floater. This makes the call to Window->IsMenuFloatingWindow() obsolete.
-        if ( ! xAccessible.is() )
-            xAccessible = pWindow->GetAccessible();
-
-        assert( xAccMgr.is() );
-        if ( xAccessible.is() )
-        {
-            xAccMgr->handleWindowOpened(
-                    reinterpret_cast<sal_Int64>(xAccessible.get()));
-            SAL_INFO( "iacc2", "Decide whether to register existing window with IAccessible2" );
-        }
-    }
-}
-
 /*
  * Setup and notify the OS of Accessible peers for all existing windows.
  */
 static void AccessBridgeUpdateOldTopWindows( const Reference< XMSAAService > &xAccMgr )
 {
-    sal_uInt16 nTopWindowCount = static_cast<sal_uInt16>(Application::GetTopWindowCount());
-
-    for ( sal_uInt16 i = 0; i < nTopWindowCount; i++ )
+    tools::Long nTopWindowCount = Application::GetTopWindowCount();
+    for (tools::Long i = 0; i < nTopWindowCount; i++)
     {
         vcl::Window* pTopWindow = Application::GetTopWindow( i );
-        css::uno::Reference< css::accessibility::XAccessible > xAccessible = pTopWindow->GetAccessible();
-        if ( xAccessible.is() )
-        {
-            css::uno::Reference< css::accessibility::XAccessibleContext > xAC( xAccessible->getAccessibleContext() );
-            if ( xAC.is())
-            {
-                if ( !xAC->getAccessibleName().isEmpty() )
-                    AccessBridgeHandleExistingWindow( xAccMgr, pTopWindow, true );
-            }
-        }
+        rtl::Reference<comphelper::OAccessible> pAccessible = pTopWindow->GetAccessible();
+        if (pAccessible.is() && !pAccessible->getAccessibleName().isEmpty())
+            xAccMgr->handleWindowOpened(reinterpret_cast<sal_Int64>(pTopWindow));
     }
 }
 

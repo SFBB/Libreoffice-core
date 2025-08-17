@@ -14,8 +14,8 @@ $(eval $(call gb_StaticLibrary_use_unpacked,graphite,graphite))
 $(eval $(call gb_StaticLibrary_set_warnings_disabled,graphite))
 
 $(eval $(call gb_StaticLibrary_set_include,graphite,\
-	-I$(call gb_UnpackedTarball_get_dir,graphite/include) \
-	-I$(call gb_UnpackedTarball_get_dir,graphite/src) \
+	-I$(gb_UnpackedTarball_workdir)/graphite/include \
+	-I$(gb_UnpackedTarball_workdir)/graphite/src \
 	$$(INCLUDE) \
 ))
 
@@ -75,5 +75,7 @@ $(eval $(call gb_StaticLibrary_add_generated_exception_objects,graphite,\
 	UnpackedTarball/graphite/src/TtfUtil \
 	UnpackedTarball/graphite/src/UtfCodec \
 ))
+
+$(call gb_StaticLibrary_get_target,graphite): $(gb_UnpackedTarball_workdir)/graphite/graphite2-uninstalled.pc
 
 # vim: set noet sw=4 ts=4:

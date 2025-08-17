@@ -38,6 +38,7 @@
 #include <rtl/ref.hxx>
 #include <unordered_map>
 
+class PropertySetRegistry;
 
 using UcbStore_Base = comphelper::WeakComponentImplHelper <
                         css::lang::XServiceInfo,
@@ -48,7 +49,7 @@ class UcbStore : public UcbStore_Base
 {
     css::uno::Reference< css::uno::XComponentContext >    m_xContext;
     css::uno::Sequence< css::uno::Any >                   m_aInitArgs;
-    css::uno::Reference< css::ucb::XPropertySetRegistry > m_xTheRegistry;
+    rtl::Reference< PropertySetRegistry >                 m_xTheRegistry;
 
 public:
     explicit UcbStore( const css::uno::Reference< css::uno::XComponentContext >& xContext );
@@ -92,7 +93,7 @@ class PropertySetRegistry : public cppu::WeakImplHelper <
     bool                              m_bTriedToGetRootWriteAccess;
 
 private:
-    css::uno::Reference< css::lang::XMultiServiceFactory >
+    const css::uno::Reference< css::lang::XMultiServiceFactory > &
     getConfigProvider(std::unique_lock<std::mutex>& l);
 
     void add   ( std::unique_lock<std::mutex>& rCreatorGuard, PersistentPropertySet* pSet );

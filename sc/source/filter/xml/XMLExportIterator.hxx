@@ -172,11 +172,9 @@ private:
 protected:
     virtual bool                GetFirstAddress( ScAddress& rCellAddress ) override;
 public:
-                                ScMyAreaLinksContainer();
+                                ScMyAreaLinksContainer() = default;
+    explicit                    ScMyAreaLinksContainer(ScMyAreaLinkList&& list);
     virtual                     ~ScMyAreaLinksContainer() override;
-
-    void                 AddNewAreaLink( const ScMyAreaLink& rAreaLink )
-                                    { aAreaLinkList.push_back( rAreaLink ); }
 
                                 using ScMyIteratorBase::UpdateAddress;
     virtual void                SetCellData( ScMyCell& rMyCell ) override;
@@ -262,10 +260,9 @@ private:
 protected:
     virtual bool                GetFirstAddress( ScAddress& rCellAddress ) override;
 public:
-                                ScMyDetectiveOpContainer();
+                                ScMyDetectiveOpContainer() = default;
+    explicit                    ScMyDetectiveOpContainer(ScMyDetectiveOpList&& list);
     virtual                     ~ScMyDetectiveOpContainer() override;
-
-    void                        AddOperation( ScDetOpType eOpType, const ScAddress& rPosition, sal_uInt32 nIndex );
 
                                 using ScMyIteratorBase::UpdateAddress;
     virtual void                SetCellData( ScMyCell& rMyCell ) override;
@@ -338,9 +335,9 @@ class ScMyNotEmptyCellsIterator
     SCTAB                       nCurrentTable;
 
     void                        UpdateAddress( ScAddress& rAddress );
-    void SetCellData( ScMyCell& rMyCell, const ScAddress& rAddress );
+    void SetCellData(ScDocument& rDoc, ScMyCell& rMyCell, const ScAddress& rAddress);
 
-    void                        HasAnnotation( ScMyCell& aCell );
+    static void                 HasAnnotation(ScDocument& rDoc, ScMyCell& aCell);
 public:
     explicit                    ScMyNotEmptyCellsIterator(ScXMLExport& rExport);
                                 ~ScMyNotEmptyCellsIterator();
@@ -362,11 +359,11 @@ public:
     void                 SetDetectiveOp(ScMyDetectiveOpContainer* pNewDetectiveOp)
                                     { pDetectiveOp = pNewDetectiveOp; }
 
-    void                        SetCurrentTable(const SCTAB nTable,
+    void                        SetCurrentTable(ScDocument& rDoc, const SCTAB nTable,
                                     const css::uno::Reference<css::sheet::XSpreadsheet>& rxTable);
     void                        SkipTable(SCTAB nSkip);
 
-    bool                        GetNext(ScMyCell& aCell, ScFormatRangeStyles* pCellStyles);
+    bool                        GetNext(ScDocument& rDoc, ScMyCell& aCell, ScFormatRangeStyles* pCellStyles);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

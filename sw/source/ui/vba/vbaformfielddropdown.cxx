@@ -24,15 +24,15 @@ using namespace ::com::sun::star;
  */
 SwVbaFormFieldDropDown::SwVbaFormFieldDropDown(
     const uno::Reference<ooo::vba::XHelperInterface>& rParent,
-    const uno::Reference<uno::XComponentContext>& rContext, ::sw::mark::IFieldmark& rFormField)
+    const uno::Reference<uno::XComponentContext>& rContext, ::sw::mark::Fieldmark& rFormField)
     : SwVbaFormFieldDropDown_BASE(rParent, rContext)
-    , m_pDropDown(dynamic_cast<sw::mark::IDropdownFieldmark*>(&rFormField))
+    , m_pDropDown(dynamic_cast<sw::mark::DropDownFieldmark*>(&rFormField))
 {
 }
 
 SwVbaFormFieldDropDown::~SwVbaFormFieldDropDown() {}
 
-OUString SwVbaFormFieldDropDown::getDefaultPropertyName() { return "Valid"; }
+OUString SwVbaFormFieldDropDown::getDefaultPropertyName() { return u"Valid"_ustr; }
 
 sal_Bool SwVbaFormFieldDropDown::getValid()
 {
@@ -88,11 +88,11 @@ uno::Any SwVbaFormFieldDropDown::ListEntries(const uno::Any& rIndex)
     return uno::Any(xCol);
 }
 
-OUString SwVbaFormFieldDropDown::getServiceImplName() { return "SwVbaFormFieldDropDown"; }
+OUString SwVbaFormFieldDropDown::getServiceImplName() { return u"SwVbaFormFieldDropDown"_ustr; }
 
 uno::Sequence<OUString> SwVbaFormFieldDropDown::getServiceNames()
 {
-    static uno::Sequence<OUString> const aServiceNames{ "ooo.vba.word.DropDown" };
+    static uno::Sequence<OUString> const aServiceNames{ u"ooo.vba.word.DropDown"_ustr };
     return aServiceNames;
 }
 

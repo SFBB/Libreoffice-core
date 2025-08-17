@@ -61,7 +61,7 @@ private:
 protected:
     std::unique_ptr<weld::ComboBox> mxLbType;
 
-    ScDocument* mpDoc;
+    ScDocument& mrDoc;
     ScAddress maPos;
 
     virtual void Select();
@@ -70,12 +70,12 @@ protected:
     virtual OUString GetExpressionString() = 0;
 
 public:
-    ScCondFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScAddress& rPos);
+    ScCondFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScAddress& rPos);
     virtual ~ScCondFrmtEntry();
 
     void Show() { mxGrid->show(); }
 
-    void set_grid_top_attach(int nAttach) { mxBorder->set_grid_top_attach(nAttach); }
+    void set_grid_top_attach(int nAttach);
     int get_preferred_height() const { return mxBorder->get_preferred_size().Height(); }
 
     void SetPos(const ScAddress& rPos) { maPos = rPos; };
@@ -127,7 +127,7 @@ protected:
     virtual void Deselect() override;
 
 public:
-    ScConditionFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, ScCondFormatDlg* pDialogParent,
+    ScConditionFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, ScCondFormatDlg* pDialogParent,
             const ScAddress& rPos, const ScCondFormatEntry* pFormatEntry = nullptr);
     virtual ~ScConditionFrmtEntry() override;
 
@@ -156,7 +156,7 @@ class ScFormulaFrmtEntry : public ScCondFrmtEntry
     DECL_LINK(StyleSelectHdl, weld::ComboBox&, void);
 
 public:
-    ScFormulaFrmtEntry(ScCondFormatList* pParent, ScDocument* PDoc, ScCondFormatDlg* pDialogParent, const ScAddress& rPos, const ScCondFormatEntry* pFormatEntry = nullptr);
+    ScFormulaFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, ScCondFormatDlg* pDialogParent, const ScAddress& rPos, const ScCondFormatEntry* pFormatEntry = nullptr);
     virtual ~ScFormulaFrmtEntry() override;
 
     virtual ScFormatEntry* GetEntry() const override;
@@ -191,7 +191,7 @@ class ScColorScale2FrmtEntry : public ScCondFrmtEntry
 
     DECL_LINK( EntryTypeHdl, weld::ComboBox&, void );
 public:
-    ScColorScale2FrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScAddress& rPos, const ScColorScaleFormat* pFormat = nullptr);
+    ScColorScale2FrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScAddress& rPos, const ScColorScaleFormat* pFormat = nullptr);
     virtual ~ScColorScale2FrmtEntry() override;
     virtual ScFormatEntry* GetEntry() const override;
     virtual void SetActive() override;
@@ -228,7 +228,7 @@ class ScColorScale3FrmtEntry : public ScCondFrmtEntry
 
     DECL_LINK( EntryTypeHdl, weld::ComboBox&, void );
 public:
-    ScColorScale3FrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScAddress& rPos, const ScColorScaleFormat* pFormat = nullptr);
+    ScColorScale3FrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScAddress& rPos, const ScColorScaleFormat* pFormat = nullptr);
     virtual ~ScColorScale3FrmtEntry() override;
     virtual ScFormatEntry* GetEntry() const override;
     virtual void SetActive() override;
@@ -261,7 +261,7 @@ class ScDataBarFrmtEntry : public ScCondFrmtEntry
     DECL_LINK( OptionBtnHdl, weld::Button&, void );
     DECL_LINK( DataBarTypeSelectHdl, weld::ComboBox&, void );
 public:
-    ScDataBarFrmtEntry(ScCondFormatList* pParemt, ScDocument* pDoc, const ScAddress& rPos, const ScDataBarFormat* pFormat = nullptr);
+    ScDataBarFrmtEntry(ScCondFormatList* pParemt, ScDocument& rDoc, const ScAddress& rPos, const ScDataBarFormat* pFormat = nullptr);
     virtual ~ScDataBarFrmtEntry() override;
     virtual ScFormatEntry* GetEntry() const override;
     virtual void SetActive() override;
@@ -273,7 +273,7 @@ public:
 class ScDateFrmtEntry : public ScCondFrmtEntry, public SfxListener
 {
 public:
-    ScDateFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScCondDateFormatEntry* pFormat = nullptr);
+    ScDateFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScCondDateFormatEntry* pFormat = nullptr);
     virtual ~ScDateFrmtEntry() override;
     virtual ScFormatEntry* GetEntry() const override;
     virtual void SetActive() override;
@@ -308,7 +308,7 @@ class ScIconSetFrmtEntry : public ScCondFrmtEntry
     // icon set ui elements
     std::unique_ptr<weld::ComboBox> mxLbIconSetType;
 
-    std::unique_ptr<weld::Container> mxIconParent;
+    std::unique_ptr<weld::Grid> mxIconParent;
 
     typedef std::vector<std::unique_ptr<ScIconSetFrmtDataEntry>> ScIconSetFrmtDataEntriesType;
     ScIconSetFrmtDataEntriesType maEntries;
@@ -320,7 +320,7 @@ class ScIconSetFrmtEntry : public ScCondFrmtEntry
     DECL_LINK(IconSetTypeHdl, weld::ComboBox&, void);
 
 public:
-    ScIconSetFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScAddress& rPos, const ScIconSetFormat* pFormat = nullptr);
+    ScIconSetFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScAddress& rPos, const ScIconSetFormat* pFormat = nullptr);
     virtual ~ScIconSetFrmtEntry() override;
     virtual ScFormatEntry* GetEntry() const override;
     virtual void SetActive() override;

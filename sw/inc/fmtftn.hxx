@@ -28,10 +28,6 @@
 #include "swdllapi.h"
 #include "calbck.hxx"
 
-namespace com::sun::star::text {
-    class XTextRange;
-}
-
 class SwDoc;
 class SwTextFootnote;
 class SwRootFrame;
@@ -44,7 +40,7 @@ class SwXTextRange;
 /// for the footnote content is defined by m_pTextAttr.
 class SW_DLLPUBLIC SwFormatFootnote final
     : public SfxPoolItem
-    , public sw::BroadcastingModify
+    , public sw::BroadcasterMixin
 {
     friend class SwTextFootnote;
     SwTextFootnote* m_pTextAttr;   ///< My TextAttribute.
@@ -59,14 +55,13 @@ class SW_DLLPUBLIC SwFormatFootnote final
     SwFormatFootnote( const SwFormatFootnote& ) = delete;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatFootnote)
     SwFormatFootnote( bool bEndNote = false );
     virtual ~SwFormatFootnote() override;
 
     /// "Pure virtual methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual SwFormatFootnote* Clone( SfxItemPool* pPool = nullptr ) const override;
-
-    virtual void SwClientNotify(const SwModify&, const SfxHint&) override;
 
     void InvalidateFootnote();
 

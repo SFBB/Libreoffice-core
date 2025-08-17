@@ -20,7 +20,7 @@
 #include <scextopt.hxx>
 #include <autonamecache.hxx>
 
-#include <o3tl/safeint.hxx>
+#include <o3tl/test_info.hxx>
 #include <osl/thread.h>
 #include <svx/xtable.hxx>
 #include <sfx2/bindings.hxx>
@@ -36,7 +36,7 @@
 #include <comphelper/threadpool.hxx>
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <scmod.hxx>
 #include <document.hxx>
@@ -89,7 +89,7 @@
 #include <datamapper.hxx>
 #include <drwlayer.hxx>
 #include <sharedstringpoolpurge.hxx>
-#include <dociter.hxx>
+#include <docpool.hxx>
 #include <config_features.h>
 
 using namespace com::sun::star;
@@ -100,10 +100,10 @@ ScSheetLimits ScSheetLimits::CreateDefault()
 {
 #if HAVE_FEATURE_JUMBO_SHEETS
     bool jumboSheets = false;
-    if( SC_MOD())
-        jumboSheets = SC_MOD()->GetDefaultsOptions().GetInitJumboSheets();
+    if (ScModule* mod = ScModule::get())
+        jumboSheets = mod->GetDefaultsOptions().GetInitJumboSheets();
     else
-        assert( getenv("LO_TESTNAME") != nullptr ); // in unittests
+        assert(o3tl::IsRunningUnitTest());
     if (jumboSheets)
         return ScSheetLimits(MAXCOL_JUMBO, MAXROW_JUMBO);
     else
@@ -111,7 +111,21 @@ ScSheetLimits ScSheetLimits::CreateDefault()
         return ScSheetLimits(MAXCOL, MAXROW);
 }
 
+CellAttributeHelper& ScDocument::getCellAttributeHelper() const
+{
+    if (!mpCellAttributeHelper)
+    {
+        assert(!IsClipOrUndo() && "CellAttributeHelper needs to be shared using SharePooledResources, not created (!)");
+        SfxItemPool* pPool(const_cast<ScDocument*>(this)->GetPool());
+        assert(nullptr != pPool && "No SfxItemPool for this ScDocument (!)");
+        mpCellAttributeHelper.reset(new CellAttributeHelper(*pPool));
+    }
+
+    return *mpCellAttributeHelper;
+}
+
 ScDocument::ScDocument( ScDocumentMode eMode, ScDocShell* pDocShell ) :
+        mpCellAttributeHelper(),
         mpCellStringPool(std::make_shared<svl::SharedStringPool>(ScGlobal::getCharClass())),
         mpDocLinkMgr(new sc::DocumentLinkManager(pDocShell)),
         mbFormulaGroupCxtBlockDiscard(false),
@@ -157,6 +171,7 @@ ScDocument::ScDocument( ScDocumentMode eMode, ScDocShell* pDocShell ) :
         bInsertingFromOtherDoc( false ),
         bLoadingMedium( false ),
         bImportingXML( false ),
+        mbImportingXLSX( false ),
         bCalcingAfterLoad( false ),
         bNoListening( false ),
         mbIdleEnabled(true),
@@ -207,8 +222,8 @@ ScDocument::ScDocument( ScDocumentMode eMode, ScDocShell* pDocShell ) :
     if ( eMode == SCDOCMODE_DOCUMENT || eMode == SCDOCMODE_FUNCTIONACCESS )
     {
         mxPoolHelper = new ScPoolHelper( *this );
-        if (!utl::ConfigManager::IsFuzzing()) //just too slow
-            pBASM.reset( new ScBroadcastAreaSlotMachine( this ) );
+        if (!comphelper::IsFuzzing()) //just too slow
+            pBASM.reset( new ScBroadcastAreaSlotMachine( *this ) );
         pChartListenerCollection.reset( new ScChartListenerCollection( *this ) );
         pRefreshTimerControl.reset( new ScRefreshTimerControl );
     }
@@ -216,6 +231,7 @@ ScDocument::ScDocument( ScDocumentMode eMode, ScDocShell* pDocShell ) :
     {
         pChartListenerCollection = nullptr;
     }
+
     pDBCollection.reset( new ScDBCollection(*this) );
     pSelectionAttr = nullptr;
     apTemporaryChartLock.reset( new ScTemporaryChartLock(this) );
@@ -470,21 +486,16 @@ SvNumberFormatter* ScDocument::GetFormatTable() const
     return mxPoolHelper->GetFormTable();
 }
 
-SfxItemPool* ScDocument::GetEditPool() const
+SfxItemPool* ScDocument::GetEditEnginePool() const
 {
-    return mxPoolHelper->GetEditPool();
-}
-
-SfxItemPool* ScDocument::GetEnginePool() const
-{
-    return mxPoolHelper->GetEnginePool();
+    return mxPoolHelper->GetEditEnginePool();
 }
 
 ScFieldEditEngine& ScDocument::GetEditEngine()
 {
     if ( !mpEditEngine )
     {
-        mpEditEngine.reset( new ScFieldEditEngine(this, GetEnginePool(), GetEditPool()) );
+        mpEditEngine.reset( new ScFieldEditEngine(this, GetEditEnginePool()) );
         mpEditEngine->SetUpdateLayout( false );
         mpEditEngine->EnableUndo( false );
         mpEditEngine->SetRefMapMode(MapMode(MapUnit::Map100thMM));
@@ -498,15 +509,15 @@ ScNoteEditEngine& ScDocument::GetNoteEngine()
     if ( !mpNoteEngine )
     {
         ScMutationGuard aGuard(*this, ScMutationGuardFlags::CORE);
-        mpNoteEngine.reset( new ScNoteEditEngine( GetEnginePool(), GetEditPool() ) );
+        mpNoteEngine.reset( new ScNoteEditEngine( GetEditEnginePool() ) );
         mpNoteEngine->SetUpdateLayout( false );
         mpNoteEngine->EnableUndo( false );
         mpNoteEngine->SetRefMapMode(MapMode(MapUnit::Map100thMM));
         ApplyAsianEditSettings( *mpNoteEngine );
-        const SfxItemSet& rItemSet = GetDefPattern()->GetItemSet();
-        SfxItemSet aEEItemSet( mpNoteEngine->GetEmptyItemSet() );
-        ScPatternAttr::FillToEditItemSet( aEEItemSet, rItemSet );
-        mpNoteEngine->SetDefaults( std::move(aEEItemSet) );      // edit engine takes ownership
+        const SfxItemSet& rItemSet(getCellAttributeHelper().getDefaultCellAttribute().GetItemSet());
+        SfxItemSet aEEItemSet(mpNoteEngine->GetEmptyItemSet());
+        ScPatternAttr::FillToEditItemSet(aEEItemSet, rItemSet);
+        mpNoteEngine->SetDefaults(std::move(aEEItemSet)); // edit engine takes ownership
     }
     return *mpNoteEngine;
 }
@@ -564,7 +575,7 @@ void ScDocument::ResetClip( ScDocument* pSourceDoc, SCTAB nTab )
         {
             maTabs.resize(nTab+1);
         }
-        maTabs[nTab].reset( new ScTable(*this, nTab, "baeh") );
+        maTabs[nTab].reset( new ScTable(*this, nTab, u"baeh"_ustr) );
         if (nTab < pSourceDoc->GetTableCount() && pSourceDoc->maTabs[nTab])
             maTabs[nTab]->SetLayoutRTL( pSourceDoc->maTabs[nTab]->IsLayoutRTL() );
     }
@@ -581,7 +592,7 @@ void ScDocument::EnsureTable( SCTAB nTab )
         maTabs.resize(nTab+1);
 
     if (!maTabs[nTab])
-        maTabs[nTab].reset( new ScTable(*this, nTab, "temp", bExtras, bExtras) );
+        maTabs[nTab].reset( new ScTable(*this, nTab, u"temp"_ustr, bExtras, bExtras) );
 }
 
 ScRefCellValue ScDocument::GetRefCellValue( const ScAddress& rPos )
@@ -762,12 +773,12 @@ bool ScDocument::MoveTab( SCTAB nOldPos, SCTAB nNewPos, ScProgress* pProgress )
                 pRangeName->UpdateMoveTab(aCxt);
 
             pDBCollection->UpdateMoveTab( nOldPos, nNewPos );
-            xColNameRanges->UpdateReference( URM_REORDER, this, aSourceRange, 0,0,nDz );
-            xRowNameRanges->UpdateReference( URM_REORDER, this, aSourceRange, 0,0,nDz );
+            xColNameRanges->UpdateReference( URM_REORDER, *this, aSourceRange, 0,0,nDz );
+            xRowNameRanges->UpdateReference( URM_REORDER, *this, aSourceRange, 0,0,nDz );
             if (pDPCollection)
                 pDPCollection->UpdateReference( URM_REORDER, aSourceRange, 0,0,nDz );
             if (pDetOpList)
-                pDetOpList->UpdateReference( this, URM_REORDER, aSourceRange, 0,0,nDz );
+                pDetOpList->UpdateReference( *this, URM_REORDER, aSourceRange, 0,0,nDz );
             UpdateChartRef( URM_REORDER,
                     0,0,nOldPos, MaxCol(),MaxRow(),nOldPos, 0,0,nDz );
             UpdateRefAreaLinks( URM_REORDER, aSourceRange, 0,0,nDz );
@@ -838,8 +849,8 @@ bool ScDocument::CopyTab( SCTAB nOldPos, SCTAB nNewPos, const ScMarkData* pOnlyM
                 SetNoListening( true );
 
                 ScRange aRange( 0,0,nNewPos, MaxCol(),MaxRow(),MAXTAB );
-                xColNameRanges->UpdateReference( URM_INSDEL, this, aRange, 0,0,1 );
-                xRowNameRanges->UpdateReference( URM_INSDEL, this, aRange, 0,0,1 );
+                xColNameRanges->UpdateReference( URM_INSDEL, *this, aRange, 0,0,1 );
+                xRowNameRanges->UpdateReference( URM_INSDEL, *this, aRange, 0,0,1 );
                 if (pRangeName)
                     pRangeName->UpdateInsertTab(aCxt);
 
@@ -848,27 +859,33 @@ bool ScDocument::CopyTab( SCTAB nOldPos, SCTAB nNewPos, const ScMarkData* pOnlyM
                 if (pDPCollection)
                     pDPCollection->UpdateReference( URM_INSDEL, aRange, 0,0,1 );
                 if (pDetOpList)
-                    pDetOpList->UpdateReference( this, URM_INSDEL, aRange, 0,0,1 );
+                    pDetOpList->UpdateReference( *this, URM_INSDEL, aRange, 0,0,1 );
                 UpdateChartRef( URM_INSDEL, 0,0,nNewPos, MaxCol(),MaxRow(),MAXTAB, 0,0,1 );
                 UpdateRefAreaLinks( URM_INSDEL, aRange, 0,0,1 );
                 if ( pUnoBroadcaster )
                     pUnoBroadcaster->Broadcast( ScUpdateRefHint( URM_INSDEL, aRange, 0,0,1 ) );
 
-                for (TableContainer::iterator it = maTabs.begin(); it != maTabs.end(); ++it)
+                for (auto it = maTabs.begin(); it != maTabs.end(); ++it)
+                {
                     if (*it && it != (maTabs.begin() + nOldPos))
                         (*it)->UpdateInsertTab(aCxt);
+                }
                 if (nNewPos <= nOldPos)
                     nOldPos++;
                 maTabs.emplace(maTabs.begin() + nNewPos, new ScTable(*this, nNewPos, aName));
                 bValid = true;
-                for (TableContainer::iterator it = maTabs.begin(); it != maTabs.end(); ++it)
+                for (auto it = maTabs.begin(); it != maTabs.end(); ++it)
+                {
                     if (*it && it != maTabs.begin()+nOldPos && it != maTabs.begin() + nNewPos)
                         (*it)->UpdateCompile();
+                }
                 SetNoListening( false );
                 sc::StartListeningContext aSLCxt(*this);
-                for (TableContainer::iterator it = maTabs.begin(); it != maTabs.end(); ++it)
+                for (auto it = maTabs.begin(); it != maTabs.end(); ++it)
+                {
                     if (*it && it != maTabs.begin()+nOldPos && it != maTabs.begin()+nNewPos)
                         (*it)->StartListeners(aSLCxt, true);
+                }
 
                 if (pValidationList)
                     pValidationList->UpdateInsertTab(aCxt);
@@ -943,13 +960,11 @@ bool ScDocument::CopyTab( SCTAB nOldPos, SCTAB nNewPos, const ScMarkData* pOnlyM
     return bValid;
 }
 
-sal_uLong ScDocument::TransferTab( ScDocument& rSrcDoc, SCTAB nSrcPos,
+bool ScDocument::TransferTab( ScDocument& rSrcDoc, SCTAB nSrcPos,
                                 SCTAB nDestPos, bool bInsertNew,
                                 bool bResultsOnly )
 {
-    sal_uLong nRetVal = 1;                  // 0 => error 1 = ok
-                                            // 3 => NameBox
-                                            // 4 => both
+    bool bRetVal = true;
 
     if (rSrcDoc.mpShell->GetMedium())
     {
@@ -1026,14 +1041,14 @@ sal_uLong ScDocument::TransferTab( ScDocument& rSrcDoc, SCTAB nSrcPos,
         {
             aRepeatColRange->aStart.SetTab(nDestPos);
             aRepeatColRange->aEnd.SetTab(nDestPos);
-            maTabs[nDestPos]->SetRepeatColRange(aRepeatColRange);
+            maTabs[nDestPos]->SetRepeatColRange(std::move(aRepeatColRange));
         }
 
         if (auto aRepeatRowRange = rSrcDoc.maTabs[nSrcPos]->GetRepeatRowRange())
         {
             aRepeatRowRange->aStart.SetTab(nDestPos);
             aRepeatRowRange->aEnd.SetTab(nDestPos);
-            maTabs[nDestPos]->SetRepeatRowRange(aRepeatRowRange);
+            maTabs[nDestPos]->SetRepeatRowRange(std::move(aRepeatRowRange));
         }
 
         if (rSrcDoc.IsPrintEntireSheet(nSrcPos))
@@ -1087,7 +1102,7 @@ sal_uLong ScDocument::TransferTab( ScDocument& rSrcDoc, SCTAB nSrcPos,
         maTabs[nDestPos]->SetPendingRowHeights( rSrcDoc.maTabs[nSrcPos]->IsPendingRowHeights() );
     }
     if (!bValid)
-        nRetVal = 0;
+        bRetVal = false;
     bool bVbaEnabled = IsInVBAMode();
 
     if ( bVbaEnabled  )
@@ -1095,7 +1110,7 @@ sal_uLong ScDocument::TransferTab( ScDocument& rSrcDoc, SCTAB nSrcPos,
         ScDocShell* pSrcShell = rSrcDoc.GetDocumentShell();
         if ( pSrcShell )
         {
-            OUString aLibName("Standard");
+            OUString aLibName(u"Standard"_ustr);
 #if HAVE_FEATURE_SCRIPTING
             const BasicManager *pBasicManager = pSrcShell->GetBasicManager();
             if (pBasicManager && !pBasicManager->GetName().isEmpty())
@@ -1125,7 +1140,7 @@ sal_uLong ScDocument::TransferTab( ScDocument& rSrcDoc, SCTAB nSrcPos,
         }
     }
 
-    return nRetVal;
+    return bRetVal;
 }
 
 void ScDocument::SetError( SCCOL nCol, SCROW nRow, SCTAB nTab, const FormulaError nError)
@@ -1191,7 +1206,7 @@ std::unique_ptr<ScFieldEditEngine> ScDocument::CreateFieldEditEngine()
     if (!pCacheFieldEditEngine)
     {
         pNewEditEngine.reset( new ScFieldEditEngine(
-            this, GetEnginePool(), GetEditPool(), false) );
+            this, GetEditEnginePool(), false) );
     }
     else
     {
@@ -1242,7 +1257,8 @@ ScLookupCache & ScDocument::GetLookupCache( const ScRange & rRange, ScInterprete
 }
 
 ScSortedRangeCache& ScDocument::GetSortedRangeCache( const ScRange & rRange, const ScQueryParam& param,
-                                                     ScInterpreterContext* pContext )
+                                                     ScInterpreterContext* pContext, bool bNewSearchFunction,
+                                                     sal_uInt8 nSortedBinarySearch )
 {
     assert(mxScSortedRangeCache);
     ScSortedRangeCache::HashKey key = ScSortedRangeCache::makeHashKey(rRange, param);
@@ -1269,7 +1285,7 @@ ScSortedRangeCache& ScDocument::GetSortedRangeCache( const ScRange & rRange, con
     auto [findIt, bInserted] = mxScSortedRangeCache->aCacheMap.emplace(key, nullptr);
     if (bInserted)
     {
-        findIt->second = std::make_unique<ScSortedRangeCache>(this, rRange, param, pContext, invalid);
+        findIt->second = std::make_unique<ScSortedRangeCache>(*this, rRange, param, pContext, invalid, bNewSearchFunction, nSortedBinarySearch);
         StartListeningArea(rRange, false, findIt->second.get());
     }
     return *findIt->second;

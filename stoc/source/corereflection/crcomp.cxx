@@ -136,7 +136,7 @@ Any IdlCompFieldImpl::get( const Any & rObj )
         TYPELIB_DANGER_RELEASE( pObjTD );
     }
     throw IllegalArgumentException(
-        "expected struct or exception, got " + rObj.getValueType().getTypeName(),
+        "expected struct or exception, got " + rObj.getValueTypeName(),
         getXWeak(), 0 );
 }
 
@@ -160,7 +160,7 @@ void IdlCompFieldImpl::set( const Any & rObj, const Any & rValue )
             if (!coerce_assign( const_cast<char *>(static_cast<char const *>(rObj.getValue()) + _nOffset), getTypeDescr(), rValue, getReflection() ))
             {
                 throw IllegalArgumentException(
-                    "cannot assign value to destination",
+                    u"cannot assign value to destination"_ustr,
                     getXWeak(), 1 );
             }
             return;
@@ -168,7 +168,7 @@ void IdlCompFieldImpl::set( const Any & rObj, const Any & rValue )
         TYPELIB_DANGER_RELEASE( pObjTD );
     }
     throw IllegalArgumentException(
-        "expected struct or exception, got " + rObj.getValueType().getTypeName(),
+        "expected struct or exception, got " + rObj.getValueTypeName(),
         getXWeak(), 0 );
 }
 
@@ -193,7 +193,7 @@ void IdlCompFieldImpl::set( Any & rObj, const Any & rValue )
             if (!coerce_assign( const_cast<char *>(static_cast<char const *>(rObj.getValue()) + _nOffset), getTypeDescr(), rValue, getReflection() ))
             {
                 throw IllegalArgumentException(
-                    "cannot assign to destination",
+                    u"cannot assign to destination"_ustr,
                     getXWeak(), 1 );
             }
             return;
@@ -201,7 +201,7 @@ void IdlCompFieldImpl::set( Any & rObj, const Any & rValue )
         TYPELIB_DANGER_RELEASE( pObjTD );
     }
     throw IllegalArgumentException(
-        "expected struct or exception, got " + rObj.getValueType().getTypeName(),
+        "expected struct or exception, got " + rObj.getValueTypeName(),
         getXWeak(), 0 );
 }
 
@@ -222,11 +222,11 @@ sal_Bool CompoundIdlClassImpl::isAssignableFrom( const Reference< XIdlClass > & 
                 return true;
             else
             {
-                const Sequence< Reference< XIdlClass > > & rSeq = xType->getSuperclasses();
-                if (rSeq.hasElements())
+                const Sequence< Reference< XIdlClass > > aSeq = xType->getSuperclasses();
+                if (aSeq.hasElements())
                 {
-                    OSL_ENSURE( rSeq.getLength() == 1, "### unexpected len of super classes!" );
-                    return isAssignableFrom( rSeq[0] );
+                    OSL_ENSURE( aSeq.getLength() == 1, "### unexpected len of super classes!" );
+                    return isAssignableFrom( aSeq[0] );
                 }
             }
         }

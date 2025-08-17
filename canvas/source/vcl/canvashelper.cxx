@@ -40,7 +40,7 @@
 #include <vcl/bitmapex.hxx>
 #include <vcl/BitmapReadAccess.hxx>
 #include <vcl/canvastools.hxx>
-#include <vcl/BitmapAlphaClampFilter.hxx>
+#include <vcl/bitmap/BitmapAlphaClampFilter.hxx>
 #include <vcl/skia/SkiaHelper.hxx>
 
 #include <canvas/canvastools.hxx>
@@ -219,26 +219,26 @@ namespace vclcanvas
         tools::OutDevStateKeeper aStateKeeper( mpProtectedOutDevProvider );
         setupOutDevState( viewState, renderState, LINE_COLOR );
 
-        const Point& rStartPoint( tools::mapRealPoint2D( geometry::RealPoint2D(aBezierSegment.Px,
+        const Point aStartPoint( tools::mapRealPoint2D( geometry::RealPoint2D(aBezierSegment.Px,
                                                                                aBezierSegment.Py),
                                                         viewState, renderState ) );
-        const Point& rCtrlPoint1( tools::mapRealPoint2D( geometry::RealPoint2D(aBezierSegment.C1x,
+        const Point aCtrlPoint1( tools::mapRealPoint2D( geometry::RealPoint2D(aBezierSegment.C1x,
                                                                                aBezierSegment.C1y),
                                                         viewState, renderState ) );
-        const Point& rCtrlPoint2( tools::mapRealPoint2D( geometry::RealPoint2D(aBezierSegment.C2x,
+        const Point aCtrlPoint2( tools::mapRealPoint2D( geometry::RealPoint2D(aBezierSegment.C2x,
                                                                                aBezierSegment.C2y),
                                                          viewState, renderState ) );
-        const Point& rEndPoint( tools::mapRealPoint2D( _aEndPoint,
+        const Point aEndPoint( tools::mapRealPoint2D( _aEndPoint,
                                                        viewState, renderState ) );
 
         ::tools::Polygon aPoly(4);
-        aPoly.SetPoint( rStartPoint, 0 );
+        aPoly.SetPoint( aStartPoint, 0 );
         aPoly.SetFlags( 0, PolyFlags::Normal );
-        aPoly.SetPoint( rCtrlPoint1, 1 );
+        aPoly.SetPoint( aCtrlPoint1, 1 );
         aPoly.SetFlags( 1, PolyFlags::Control );
-        aPoly.SetPoint( rCtrlPoint2, 2 );
+        aPoly.SetPoint( aCtrlPoint2, 2 );
         aPoly.SetFlags( 2, PolyFlags::Control );
-        aPoly.SetPoint( rEndPoint, 3 );
+        aPoly.SetPoint( aEndPoint, 3 );
         aPoly.SetFlags( 3, PolyFlags::Normal );
 
         // TODO(F2): alpha
@@ -260,11 +260,11 @@ namespace vclcanvas
             tools::OutDevStateKeeper aStateKeeper( mpProtectedOutDevProvider );
             setupOutDevState( viewState, renderState, LINE_COLOR );
 
-            const ::basegfx::B2DPolyPolygon& rPolyPoly(
+            const ::basegfx::B2DPolyPolygon aBasegfxPolyPoly(
                 ::basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(xPolyPolygon) );
-            const ::tools::PolyPolygon aPolyPoly( tools::mapPolyPolygon( rPolyPoly, viewState, renderState ) );
+            const ::tools::PolyPolygon aPolyPoly( tools::mapPolyPolygon( aBasegfxPolyPoly, viewState, renderState ) );
 
-            if( rPolyPoly.isClosed() )
+            if( aBasegfxPolyPoly.isClosed() )
             {
                 mpOutDevProvider->getOutDev().DrawPolyPolygon( aPolyPoly );
 
@@ -315,31 +315,12 @@ namespace vclcanvas
             ::basegfx::B2DPolyPolygon aPolyPoly(
                 ::basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(xPolyPolygon) );
 
-            std::vector<double> aDashArray;
-            if( strokeAttributes.DashArray.hasElements() )
-                aDashArray = ::comphelper::sequenceToContainer< std::vector<double> >(strokeAttributes.DashArray);
-
-            // First try to draw directly using VCL.
-            bool directFailed = false;
-            setupOutDevState( viewState, renderState, LINE_COLOR );
-            for( sal_uInt32 i=0; i<aPolyPoly.count(); ++i )
-            {
-                if( !mpOutDevProvider->getOutDev().DrawPolyLineDirect( aMatrix, aPolyPoly.getB2DPolygon(i),
-                    strokeAttributes.StrokeWidth, 0, !aDashArray.empty() ? &aDashArray : nullptr,
-                    b2DJoineFromJoin(strokeAttributes.JoinType), unoCapeFromCap(strokeAttributes.StartCapType)))
-                {
-                    directFailed = true;
-                    break;
-                }
-            }
-            if(!directFailed)
-                return uno::Reference< rendering::XCachedPrimitive >(nullptr);
-
-            // Do it all manually.
-
             // apply dashing, if any
             if( strokeAttributes.DashArray.hasElements() )
             {
+                const std::vector<double> aDashArray(
+                    ::comphelper::sequenceToContainer< std::vector<double> >(strokeAttributes.DashArray) );
+
                 ::basegfx::B2DPolyPolygon aDashedPolyPoly;
 
                 for( sal_uInt32 i=0; i<aPolyPoly.count(); ++i )
@@ -351,7 +332,7 @@ namespace vclcanvas
                     //                                        aDashArray ) );
                 }
 
-                aPolyPoly = aDashedPolyPoly;
+                aPolyPoly = std::move(aDashedPolyPoly);
             }
 
             ::basegfx::B2DSize aLinePixelSize(strokeAttributes.StrokeWidth,
@@ -364,7 +345,7 @@ namespace vclcanvas
                 // simple hairline poly-polygon
                 setupOutDevState( viewState, renderState, LINE_COLOR );
 
-                aStrokedPolyPoly = aPolyPoly;
+                aStrokedPolyPoly = std::move(aPolyPoly);
             }
             else
             {
@@ -672,7 +653,7 @@ namespace vclcanvas
             ::basegfx::B2DPoint aOutputPos( 0.0, 0.0 );
             aOutputPos *= aMatrix;
 
-            BitmapEx aBmpEx( tools::bitmapExFromXBitmap(xBitmap) );
+            ::Bitmap aBmp( tools::bitmapFromXBitmap(xBitmap) );
 
             // TODO(F2): Implement modulation again for other color
             // channels (currently, works only for alpha). Note: this
@@ -700,7 +681,7 @@ namespace vclcanvas
                 // optimized case: identity matrix, or only
                 // translational components.
                 mpOutDevProvider->getOutDev().DrawBitmapEx( vcl::unotools::pointFromB2DPoint( aOutputPos ),
-                                                    aBmpEx );
+                                                    aBmp );
 
                 if( mp2ndOutDevProvider )
                 {
@@ -708,13 +689,13 @@ namespace vclcanvas
                     // actually what mp2ndOutDev is...  well, here we do &
                     // assume a 1bpp target - everything beyond 97%
                     // transparency is fully transparent
-                    if( aBmpEx.IsAlpha() && !SkiaHelper::isVCLSkiaEnabled())
+                    if( aBmp.HasAlpha() && !SkiaHelper::isVCLSkiaEnabled())
                     {
-                        BitmapFilter::Filter(aBmpEx, BitmapAlphaClampFilter(253));
+                        BitmapFilter::Filter(aBmp, BitmapAlphaClampFilter(253));
                     }
 
                     mp2ndOutDevProvider->getOutDev().DrawBitmapEx( vcl::unotools::pointFromB2DPoint( aOutputPos ),
-                                                           aBmpEx );
+                                                           aBmp );
                 }
 
                 // Returning a cache object is not useful, the XBitmap
@@ -724,23 +705,23 @@ namespace vclcanvas
             else if( mpOutDevProvider->getOutDev().HasFastDrawTransformedBitmap())
             {
                 ::basegfx::B2DHomMatrix aSizeTransform;
-                aSizeTransform.scale( aBmpEx.GetSizePixel().Width(), aBmpEx.GetSizePixel().Height() );
+                aSizeTransform.scale( aBmp.GetSizePixel().Width(), aBmp.GetSizePixel().Height() );
                 aMatrix = aMatrix * aSizeTransform;
                 const double fAlpha = bModulateColors ? renderState.DeviceColor[3] : 1.0;
 
-                mpOutDevProvider->getOutDev().DrawTransformedBitmapEx( aMatrix, aBmpEx, fAlpha );
+                mpOutDevProvider->getOutDev().DrawTransformedBitmapEx( aMatrix, aBmp, fAlpha );
                 if( mp2ndOutDevProvider )
                 {
-                    if( aBmpEx.IsAlpha() )
+                    if( aBmp.HasAlpha() )
                     {
                         // tdf#157790 invert alpha mask
                         // Due to commit 81994cb2b8b32453a92bcb011830fcb884f22ff3,
                         // the alpha mask needs to be inverted. Note: when
                         // testing tdf#157790, this code only gets executed
                         // when Skia is enabled.
-                        AlphaMask aAlpha( aBmpEx.GetAlphaMask() );
+                        AlphaMask aAlpha( aBmp.CreateAlphaMask() );
                         aAlpha.Invert();
-                        aBmpEx = BitmapEx( aBmpEx.GetBitmap(), aAlpha );
+                        aBmp = Bitmap(BitmapEx( aBmp.CreateColorBitmap(), aAlpha ));
 
                         // HACK. Normally, CanvasHelper does not care about
                         // actually what mp2ndOutDev is...  well, here we do &
@@ -748,11 +729,11 @@ namespace vclcanvas
                         // transparency is fully transparent
                         if( !SkiaHelper::isVCLSkiaEnabled())
                         {
-                            BitmapFilter::Filter(aBmpEx, BitmapAlphaClampFilter(253));
+                            BitmapFilter::Filter(aBmp, BitmapAlphaClampFilter(253));
                         }
                     }
 
-                    mp2ndOutDevProvider->getOutDev().DrawTransformedBitmapEx( aMatrix, aBmpEx );
+                    mp2ndOutDevProvider->getOutDev().DrawTransformedBitmapEx( aMatrix, aBmp );
                 }
                 return uno::Reference< rendering::XCachedPrimitive >(nullptr);
             }
@@ -769,7 +750,7 @@ namespace vclcanvas
                 GraphicAttr             aGrfAttr;
                 GraphicObjectSharedPtr  pGrfObj;
 
-                ::Size aBmpSize( aBmpEx.GetSizePixel() );
+                ::Size aBmpSize( aBmp.GetSizePixel() );
 
                 // setup alpha modulation
                 if( bModulateColors )
@@ -807,15 +788,14 @@ namespace vclcanvas
                     const double nAngleInTenthOfDegrees (3600.0 - basegfx::rad2deg<10>(nRotate));
                     aGrfAttr.SetRotation( Degree10(::basegfx::fround(nAngleInTenthOfDegrees)) );
 
-                    pGrfObj = std::make_shared<GraphicObject>( aBmpEx );
+                    pGrfObj = std::make_shared<GraphicObject>( aBmp );
                 }
                 else
                 {
                     // modify output position, to account for the fact
                     // that transformBitmap() always normalizes its output
                     // bitmap into the smallest enclosing box.
-                    ::basegfx::B2DRectangle aDestRect;
-                    ::canvas::tools::calcTransformedRectBounds( aDestRect,
+                    ::basegfx::B2DRectangle aDestRect = ::canvas::tools::calcTransformedRectBounds(
                                                                 ::basegfx::B2DRectangle(0,
                                                                                         0,
                                                                                         aBmpSize.Width(),
@@ -827,23 +807,22 @@ namespace vclcanvas
 
                     // complex transformation, use generic affine bitmap
                     // transformation
-                    aBmpEx = tools::transformBitmap( aBmpEx,
-                                                     aMatrix );
+                    aBmp = tools::transformBitmap( aBmp, aMatrix );
 
-                    pGrfObj = std::make_shared<GraphicObject>( aBmpEx );
+                    pGrfObj = std::make_shared<GraphicObject>( aBmp );
 
                     // clear scale values, generated bitmap already
                     // contains scaling
                     aScale.setX( 1.0 ); aScale.setY( 1.0 );
 
                     // update bitmap size, bitmap has changed above.
-                    aBmpSize = aBmpEx.GetSizePixel();
+                    aBmpSize = aBmp.GetSizePixel();
                 }
 
                 // output GraphicObject
                 const ::Point aPt( vcl::unotools::pointFromB2DPoint( aOutputPos ) );
-                const ::Size  aSz( ::basegfx::fround( aScale.getX() * aBmpSize.Width() ),
-                                   ::basegfx::fround( aScale.getY() * aBmpSize.Height() ) );
+                const ::Size  aSz( ::basegfx::fround<::tools::Long>( aScale.getX() * aBmpSize.Width() ),
+                                   ::basegfx::fround<::tools::Long>( aScale.getY() * aBmpSize.Height() ) );
 
                 pGrfObj->Draw(mpOutDevProvider->getOutDev(),
                               aPt,
@@ -853,16 +832,16 @@ namespace vclcanvas
                 if( mp2ndOutDevProvider )
                 {
                     GraphicObjectSharedPtr p2ndGrfObj = pGrfObj;
-                    if( aBmpEx.IsAlpha() )
+                    if( aBmp.HasAlpha() )
                     {
                         // tdf#157790 invert alpha mask
                         // Due to commit 81994cb2b8b32453a92bcb011830fcb884f22ff3,
                         // the alpha mask needs to be inverted. Note: when
                         // testing tdf#157790, this code only gets executed
                         // when Skia is disabled.
-                        AlphaMask aAlpha( aBmpEx.GetAlphaMask() );
+                        AlphaMask aAlpha( aBmp.CreateAlphaMask() );
                         aAlpha.Invert();
-                        BitmapEx a2ndBmpEx( aBmpEx.GetBitmap(), aAlpha );
+                        BitmapEx a2ndBmpEx( aBmp.CreateColorBitmap(), aAlpha );
                         p2ndGrfObj = std::make_shared<GraphicObject>( a2ndBmpEx );
                     }
 
@@ -876,7 +855,7 @@ namespace vclcanvas
                 // display bitmap - return cache object, to retain
                 // that information.
                 return uno::Reference< rendering::XCachedPrimitive >(
-                    new CachedBitmap( pGrfObj,
+                    new CachedBitmap( std::move(pGrfObj),
                                       aPt,
                                       aSz,
                                       aGrfAttr,
@@ -942,7 +921,7 @@ namespace vclcanvas
         const Point aEmptyPoint(0,0);
         const Size  aBmpSize( rOutDev.GetOutputSizePixel() );
 
-        BitmapEx aBitmap( rOutDev.GetBitmapEx(aEmptyPoint, aBmpSize) );
+        ::Bitmap aBitmap( rOutDev.GetBitmap(aEmptyPoint, aBmpSize) );
 
         aBitmap.Scale( vcl::unotools::sizeFromRealSize2D(newSize),
                        beFast ? BmpScaleFlag::Default : BmpScaleFlag::BestQuality );
@@ -968,8 +947,8 @@ namespace vclcanvas
         rOutDev.EnableMapMode( false );
         rOutDev.SetAntialiasing( AntialiasingFlags::Enable );
 
-        Bitmap aBitmap( rOutDev.GetBitmapEx(aRect.TopLeft(),
-                                          aRect.GetSize()).GetBitmap() );
+        Bitmap aBitmap( BitmapEx(rOutDev.GetBitmap(aRect.TopLeft(),
+                                          aRect.GetSize())).GetBitmap() );
 
         BitmapScopedReadAccess pReadAccess( aBitmap );
 

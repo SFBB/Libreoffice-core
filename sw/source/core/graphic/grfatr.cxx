@@ -34,11 +34,6 @@ SwMirrorGrf* SwMirrorGrf::Clone( SfxItemPool* ) const
     return new SwMirrorGrf( *this );
 }
 
-sal_uInt16 SwMirrorGrf::GetValueCount() const
-{
-    return 4;
-}
-
 bool SwMirrorGrf::operator==( const SfxPoolItem& rItem) const
 {
     return SfxEnumItem::operator==(rItem) &&
@@ -255,6 +250,7 @@ bool SwGammaGrf::QueryValue( uno::Any& rVal, sal_uInt8 ) const
 
 bool SwGammaGrf::PutValue( const uno::Any& rVal, sal_uInt8 )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     return rVal >>= m_nValue;
 }
 
@@ -308,15 +304,10 @@ SwDrawModeGrf* SwDrawModeGrf::Clone( SfxItemPool * ) const
 
 // SwDrawModeGrf
 
-sal_uInt16 SwDrawModeGrf::GetValueCount() const
-{
-    return sal_uInt16(GraphicDrawMode::Watermark) + 1;
-}
-
 bool SwDrawModeGrf::QueryValue( uno::Any& rVal,
                                 sal_uInt8 ) const
 {
-    drawing::ColorMode eRet = static_cast<drawing::ColorMode>(GetEnumValue());
+    drawing::ColorMode eRet = static_cast<drawing::ColorMode>(GetValue());
     rVal <<= eRet;
     return true;
 }

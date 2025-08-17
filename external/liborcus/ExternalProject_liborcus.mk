@@ -61,9 +61,8 @@ endif
 liborcus_CPPFLAGS+=$(gb_COMPILERDEFS_STDLIB_DEBUG)
 
 liborcus_CXXFLAGS=$(CXXFLAGS) $(gb_VISIBILITY_FLAGS) $(gb_VISIBILITY_FLAGS_CXX) $(CXXFLAGS_CXX11) -DBOOST_SYSTEM_NO_DEPRECATED
-liborcus_LDFLAGS=$(LDFLAGS) $(gb_LTOFLAGS)
+liborcus_LDFLAGS=$(call gb_ExternalProject_get_link_flags,liborcus) $(gb_LTOFLAGS)
 liborcus_CXXFLAGS+=$(call gb_ExternalProject_get_build_flags,liborcus)
-liborcus_LDFLAGS+=$(call gb_ExternalProject_get_link_flags,liborcus)
 ifeq ($(COM),MSC)
 liborcus_CXXFLAGS+=$(BOOST_CXXFLAGS)
 endif
@@ -115,8 +114,8 @@ $(call gb_ExternalProject_get_state_target,liborcus,build) :
 		   $(MAKE) \
 		$(if $(filter MACOSX,$(OS)),\
 			&& $(PERL) $(SRCDIR)/solenv/bin/macosx-change-install-names.pl shl OOO \
-				$(EXTERNAL_WORKDIR)/src/liborcus/.libs/liborcus-0.18.0.dylib \
-				$(EXTERNAL_WORKDIR)/src/parser/.libs/liborcus-parser-0.18.0.dylib \
+				$(EXTERNAL_WORKDIR)/src/liborcus/.libs/liborcus-0.20.0.dylib \
+				$(EXTERNAL_WORKDIR)/src/parser/.libs/liborcus-parser-0.20.0.dylib \
 		) \
 	)
 	$(call gb_Trace_EndRange,liborcus,EXTERNAL)

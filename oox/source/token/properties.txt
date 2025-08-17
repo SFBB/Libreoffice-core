@@ -38,6 +38,7 @@ BottomBorder
 BottomBorderComplexColor
 BottomBorderDistance
 BottomMargin
+Brightness
 BuiltInUnit
 BulletChar
 BulletColor
@@ -123,6 +124,8 @@ CursorPositionY
 CurveName
 CurveStyle
 CustomLabelPosition
+CustomLabelSize
+CustomPromptText
 CustomShapeGeometry
 D3DSceneAmbientColor
 D3DSceneLightColor2
@@ -140,9 +143,11 @@ DefaultState
 DefaultText
 DefaultValue
 DeletedLegendEntries
+Depth
 DiagonalBLTR
 DiagonalTLBR
 DialogLibraries
+Diffusion
 DisableComplexChartTypes
 DisableDataTableDialog
 DisplayLabels
@@ -154,6 +159,7 @@ EchoChar
 EnableVisible
 Enabled
 EndPosition
+EndSnd
 Equations
 ErrorAlertStyle
 ErrorBarStyle
@@ -167,6 +173,7 @@ ExternalDocLinks
 ExternalLinks
 ExtrapolateBackward
 ExtrapolateForward
+Extrusion
 FileFormat
 FillBackground
 FillBitmapMode
@@ -178,6 +185,7 @@ FillBitmapSizeX
 FillBitmapSizeY
 FillBitmap
 FillColor
+FillColor2
 FillColorTheme
 FillColorLumMod
 FillColorLumOff
@@ -194,6 +202,9 @@ FillUseSlideBackground
 Filter
 FilterCriteriaSource
 FilterOptions
+FirstLightDirection
+FirstLightHarsh
+FirstLightLevel
 FirstLineOffset
 FirstPageFooterContent
 FirstPageHeaderContent
@@ -260,6 +271,8 @@ HeaderIsShared
 Height
 HelpText
 HideInactiveSelection
+HighlightClick
+History
 HoriJustify
 HoriJustifyMethod
 HoriOrient
@@ -277,6 +290,8 @@ IncludeHiddenCells
 InputMessage
 InputTitle
 InterceptValue
+InvalidUrl
+InvertNegative
 IsActive
 IsAdjustHeightEnabled
 IsCaseSensitive
@@ -320,6 +335,7 @@ LeftMargin
 LeftPageFooterContent
 LeftPageHeaderContent
 LegacyFragment
+LightFace
 LineCap
 LineColor
 LineComplexColor
@@ -347,6 +363,8 @@ MaxFieldCount
 MaxTextLen
 MediaType
 MediaURL
+Metal
+MetalType
 MinorTickmarks
 MirroredX
 MirroredY
@@ -364,14 +382,17 @@ NamedRanges
 NegativeError
 NullDate
 NumberFormat
+NumberFormatKey
 NumberingIsNumber
 NumberingLevel
 NumberingRules
 NumberingType
+NumberOfLineSegments
 Offset
 OpCodeMap
 Opaque
 Orientation
+Origin
 OutputPosition
 Outline
 OverlapSequence
@@ -421,6 +442,7 @@ PrivateStream
 PrivateTempFileURL
 ProgressValueMax
 ProgressValueMin
+ProjectionMode
 Protected
 RadiusRangeMaximum
 RadiusRangeMinimum
@@ -458,6 +480,7 @@ RightPageHeaderContent
 Role
 RotateAngle
 RotateReference
+RotationCenter
 RotationHorizontal
 RotationVertical
 RowGrand
@@ -474,9 +497,13 @@ ScrollValue
 ScrollValueMax
 ScrollValueMin
 ScrollWidth
+SecondLightDirection
+SecondLightHarsh
+SecondLightLevel
 Segments
 SelectedItems
 SelectedPage
+ShadeMode
 Shadow
 ShadowAlignment
 ShadowColor
@@ -487,6 +514,7 @@ ShadowTransparence
 ShadowBlur
 ShadowXDistance
 ShadowYDistance
+Shininess
 Show
 ShowBorder
 ShowCharts
@@ -516,16 +544,19 @@ Size100thMM
 SizePixel
 SizeProtect
 SizeType
+Skew
 SkipDuplicates
 SortInfo
 Sound
 SoundOn
+Specularity
 Speed
 Spin
 SpinIncrement
 SpinValue
 SpinValueMax
 SpinValueMin
+SplitPos
 StackCharacters
 StackingDirection
 StartPosition
@@ -533,6 +564,8 @@ StartWith
 StartingAngle
 State
 StringItemList
+StyleIndex
+SubPieType
 SubViewSize
 Subtotals
 Suffix
@@ -560,6 +593,8 @@ TextColor
 TextColumns
 TextContourFrame
 TextFitToSize
+TextFitToSizeFontScale
+TextFitToSizeSpacingScale
 TextFrames
 TextHorizontalAdjust
 TextLeftDistance
@@ -581,6 +616,7 @@ TopBorderComplexColor
 TopBorderDistance
 TopMargin
 TotalsRow
+TotalsRowBelow
 Transformation
 TransitionDirection
 TransitionDuration
@@ -611,6 +647,7 @@ VerticalAlign
 VerticalSplitMode
 VerticalSplitPositionTwips
 ViewBox
+ViewPoint
 Visible
 VisibleFlag
 VisibleSize

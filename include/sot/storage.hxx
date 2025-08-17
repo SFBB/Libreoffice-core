@@ -35,15 +35,9 @@ enum class SotClipboardFormatId : sal_uInt32;
 
 class BaseStorageStream;
 
-class SOT_DLLPUBLIC SotTempStream final : virtual public SvRefBase, public SvStream
+namespace SotTempStream
 {
-friend class SotStorage;
-
-    virtual ~SotTempStream() override;
-public:
-    SotTempStream(OUString const & rString, StreamMode = StreamMode::STD_READWRITE);
-
-    void CopyTo(SotTempStream * pDestStm);
+    SOT_DLLPUBLIC std::unique_ptr<SvStream> Create(OUString const & rString, StreamMode = StreamMode::STD_READWRITE);
 };
 
 class SOT_DLLPUBLIC SotStorageStream final : virtual public SotObject, public SvStream
@@ -142,9 +136,9 @@ public:
 
     // create stream with connection to Storage,
     // more or less a Parent-Child relationship
-    tools::SvRef<SotStorageStream> OpenSotStream(const OUString & rEleName,
+    rtl::Reference<SotStorageStream> OpenSotStream(const OUString & rEleName,
                                      StreamMode = StreamMode::STD_READWRITE);
-    SotStorage* OpenSotStorage(const OUString & rEleName,
+    rtl::Reference<SotStorage> OpenSotStorage(const OUString & rEleName,
                                StreamMode = StreamMode::STD_READWRITE,
                                bool transacted = true);
 
@@ -161,7 +155,7 @@ public:
     static bool IsOLEStorage(const OUString & rFileName);
     static bool IsOLEStorage(SvStream* pStream);
 
-    static SotStorage* OpenOLEStorage(css::uno::Reference<css::embed::XStorage> const & xStorage,
+    static rtl::Reference<SotStorage> OpenOLEStorage(css::uno::Reference<css::embed::XStorage> const & xStorage,
                                       OUString const & rEleName, StreamMode = StreamMode::STD_READWRITE);
     static SotClipboardFormatId GetFormatID(css::uno::Reference<css::embed::XStorage> const & xStorage);
     static sal_Int32 GetVersion(css::uno::Reference<css::embed::XStorage> const & xStorage);

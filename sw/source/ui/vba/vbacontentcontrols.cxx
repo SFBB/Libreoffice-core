@@ -17,6 +17,7 @@
 #include "vbacontentcontrol.hxx"
 #include "vbacontentcontrols.hxx"
 #include "wordvbahelper.hxx"
+#include <unotxdoc.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
@@ -29,10 +30,10 @@ using namespace ::com::sun::star;
 static std::shared_ptr<SwContentControl>
 lcl_getContentControl(std::u16string_view sName, std::u16string_view sTag,
                       std::u16string_view sTitle, sal_Int32& rIndex,
-                      const uno::Reference<text::XTextDocument>& xTextDocument,
+                      const rtl::Reference<SwXTextDocument>& xTextDocument,
                       uno::Sequence<OUString>* pElementNames = nullptr)
 {
-    SwDoc* pDoc = word::getDocShell(xTextDocument)->GetDoc();
+    SwDoc* pDoc = xTextDocument->GetDocShell()->GetDoc();
     if (!pDoc)
         return nullptr;
 
@@ -126,7 +127,7 @@ class ContentControlCollectionHelper
 private:
     uno::Reference<XHelperInterface> mxParent;
     uno::Reference<uno::XComponentContext> mxContext;
-    uno::Reference<text::XTextDocument> mxTextDocument;
+    rtl::Reference<SwXTextDocument> mxTextDocument;
     const OUString m_sTag;
     const OUString m_sTitle;
     std::shared_ptr<SwContentControl> m_pCache;
@@ -135,7 +136,7 @@ public:
     /// @throws css::uno::RuntimeException
     ContentControlCollectionHelper(uno::Reference<ov::XHelperInterface> xParent,
                                    uno::Reference<uno::XComponentContext> xContext,
-                                   uno::Reference<text::XTextDocument> xTextDocument,
+                                   rtl::Reference<SwXTextDocument> xTextDocument,
                                    const OUString& rTag, const OUString& rTitle)
 
         : mxParent(std::move(xParent))
@@ -217,7 +218,7 @@ public:
  */
 SwVbaContentControls::SwVbaContentControls(const uno::Reference<XHelperInterface>& xParent,
                                            const uno::Reference<uno::XComponentContext>& xContext,
-                                           const uno::Reference<text::XTextDocument>& xTextDocument,
+                                           const rtl::Reference<SwXTextDocument>& xTextDocument,
                                            const OUString& rTag, const OUString& rTitle)
     : SwVbaContentControls_BASE(
           xParent, xContext,
@@ -229,7 +230,7 @@ SwVbaContentControls::SwVbaContentControls(const uno::Reference<XHelperInterface
 // uno::Reference<ooo::vba::word::XContentControl> SwVbaContentControls::Add(const uno::Any& Range,
 //                                                                 sal_Int32 Type)
 // {
-//     sw::mark::IFieldmark* pFieldmark = nullptr;
+//     sw::mark::Fieldmark* pFieldmark = nullptr;
 //     switch (Type)
 //     {
 //         case ooo::vba::word::WdFieldType::wdFieldFormCheckBox:
@@ -257,11 +258,11 @@ uno::Reference<container::XEnumeration> SwVbaContentControls::createEnumeration(
 
 uno::Any SwVbaContentControls::createCollectionObject(const uno::Any& aSource) { return aSource; }
 
-OUString SwVbaContentControls::getServiceImplName() { return "SwVbaContentControls"; }
+OUString SwVbaContentControls::getServiceImplName() { return u"SwVbaContentControls"_ustr; }
 
 uno::Sequence<OUString> SwVbaContentControls::getServiceNames()
 {
-    static uno::Sequence<OUString> const sNames{ "ooo.vba.word.ContentControls" };
+    static uno::Sequence<OUString> const sNames{ u"ooo.vba.word.ContentControls"_ustr };
     return sNames;
 }
 

@@ -180,7 +180,7 @@ short SvImpLBox::UpdateContextBmpWidthVector( SvTreeListEntry const * pEntry, sh
 
 void SvImpLBox::UpdateContextBmpWidthVectorFromMovedEntry( SvTreeListEntry* pEntry )
 {
-    DBG_ASSERT( pEntry, "Moved Entry is invalid!" );
+    assert(pEntry && "Moved Entry is invalid!");
 
     SvLBoxContextBmp* pBmpItem = static_cast< SvLBoxContextBmp* >( pEntry->GetFirstItem(SvLBoxItemType::ContextBmp) );
     short nExpWidth = static_cast<short>(pBmpItem->GetBitmap1().GetSizePixel().Width());
@@ -387,6 +387,7 @@ void SvImpLBox::PageDown( sal_uInt16 nDelta )
     ShowCursor( false );
 
     m_nFlags &= ~LBoxFlags::Filling;
+    m_pView->PaintImmediately();
     m_pStartEntry = pNext;
 
     if( nRealDelta >= m_nVisibleCount )
@@ -424,6 +425,7 @@ void SvImpLBox::PageUp( sal_uInt16 nDelta )
     m_nFlags &= ~LBoxFlags::Filling;
     ShowCursor( false );
 
+    m_pView->PaintImmediately();
     m_pStartEntry = pPrev;
     if( nRealDelta >= m_nVisibleCount )
     {
@@ -1015,7 +1017,7 @@ void SvImpLBox::DrawNet(vcl::RenderContext& rRenderContext)
 
     DBG_ASSERT(pFirstDynamicTab,"No Tree!");
 
-    rRenderContext.Push(vcl::PushFlags::LINECOLOR);
+    auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::LINECOLOR);
 
     const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
 
@@ -1060,8 +1062,6 @@ void SvImpLBox::DrawNet(vcl::RenderContext& rRenderContext)
         nY += nEntryHeight;
         pEntry = m_pView->NextVisible(pEntry);
     }
-
-    rRenderContext.Pop();
 }
 
 void SvImpLBox::PositionScrollBars( Size& rSize, sal_uInt16 nMask )
@@ -1936,7 +1936,11 @@ void SvImpLBox::MouseButtonDown( const MouseEvent& rMEvt )
     SvTreeListEntry* pEntry = GetEntry(aPos);
     // the entry can still be invalid!
     if( !pEntry || !m_pView->GetViewData( pEntry ))
+    {
+        if (!rMEvt.GetModifier() && rMEvt.IsLeft())
+            SelAllDestrAnch(false); // deselect all
         return;
+    }
 
     tools::Long nY = GetEntryLine( pEntry );
     // Node-Button?
@@ -2394,6 +2398,7 @@ bool SvImpLBox::KeyInput( const KeyEvent& rKEvt)
                 ExpandAll();
             break;
 
+        case KEY_DIVIDE :
         case KEY_A:
             if( bMod1 )
                 SelAllDestrAnch( true );
@@ -2427,13 +2432,6 @@ bool SvImpLBox::KeyInput( const KeyEvent& rKEvt)
                         CollapseTo(m_pCursor);
                 }
             }
-            else
-                bKeyUsed = false;
-            break;
-
-        case KEY_DIVIDE :
-            if( bMod1 )
-                SelAllDestrAnch( true );
             else
                 bKeyUsed = false;
             break;
@@ -2833,14 +2831,16 @@ void SvImpLBox::PaintDDCursor(SvTreeListEntry* pEntry, bool bShow)
     if (pEntry)
     {
 
-        SvViewDataEntry* pViewData = m_pView->GetViewData(pEntry);
-        pViewData->SetDragTarget(bShow);
+        if (SvViewDataEntry* pViewData = m_pView->GetViewData(pEntry))
+        {
+            pViewData->SetDragTarget(bShow);
 #ifdef MACOSX
-        // in MacOS we need to draw directly (as we are synchronous) or no invalidation happens
-        m_pView->PaintEntry1(*pEntry, GetEntryLine(pEntry), *m_pView->GetOutDev());
+            // in MacOS we need to draw directly (as we are synchronous) or no invalidation happens
+            m_pView->PaintEntry1(*pEntry, GetEntryLine(pEntry), *m_pView->GetOutDev());
 #else
-        InvalidateEntry(pEntry);
+            InvalidateEntry(pEntry);
 #endif
+        }
     }
 }
 

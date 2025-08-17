@@ -60,13 +60,13 @@ namespace
         ObjectMap                               m_aNameMap;         // hold the elements and a name
     public:
         OHardRefMap(bool _bCase)
-            : m_aNameMap(_bCase)
+            : m_aNameMap(::comphelper::UStringMixLess(_bCase))
         {
         }
 
         virtual bool exists(const OUString& _sName ) override
         {
-            return m_aNameMap.find(_sName) != m_aNameMap.end();
+            return m_aNameMap.contains(_sName);
         }
 
         virtual bool empty() override
@@ -99,7 +99,7 @@ namespace
             m_aNameMap.clear();
         }
 
-        virtual void insert(const OUString& _sName,const ObjectType& _xObject) override
+        virtual void insert(const OUString& _sName,const css::uno::Reference< css::beans::XPropertySet >& _xObject) override
         {
             m_aElements.push_back(m_aNameMap.insert(m_aNameMap.begin(), ObjectEntry(_sName,_xObject)));
         }
@@ -110,7 +110,7 @@ namespace
             m_aElements.reserve(_rVector.size());
 
             for (auto const& elem : _rVector)
-                m_aElements.push_back(m_aNameMap.insert(m_aNameMap.begin(), ObjectEntry(elem,ObjectType())));
+                m_aElements.push_back(m_aNameMap.insert(m_aNameMap.begin(), ObjectEntry(elem,nullptr)));
         }
 
         virtual bool rename(const OUString& _sOldName, const OUString& _sNewName) override
@@ -189,18 +189,18 @@ namespace
             return m_aElements.size() - (m_aElements.end() - std::find(m_aElements.begin(),m_aElements.end(),aIter));
         }
 
-        virtual ObjectType getObject(sal_Int32 _nIndex) override
+        virtual css::uno::Reference< css::beans::XPropertySet > getObject(sal_Int32 _nIndex) override
         {
             OSL_ENSURE(_nIndex >= 0 && _nIndex < static_cast<sal_Int32>(m_aElements.size()),"Illegal argument!");
             return m_aElements[_nIndex]->second;
         }
 
-        virtual ObjectType getObject(const OUString& columnName) override
+        virtual css::uno::Reference< css::beans::XPropertySet > getObject(const OUString& columnName) override
         {
             return m_aNameMap.find(columnName)->second;
         }
 
-        virtual void setObject(sal_Int32 _nIndex,const ObjectType& _xObject) override
+        virtual void setObject(sal_Int32 _nIndex,const css::uno::Reference< css::beans::XPropertySet >& _xObject) override
         {
             OSL_ENSURE(_nIndex >= 0 && _nIndex < static_cast<sal_Int32>(m_aElements.size()),"Illegal argument!");
             m_aElements[_nIndex]->second = _xObject;
@@ -216,7 +216,7 @@ namespace
 
 IObjectCollection::~IObjectCollection() {}
 
-IMPLEMENT_SERVICE_INFO(OCollection,"com.sun.star.sdbcx.VContainer" , "com.sun.star.sdbcx.Container")
+IMPLEMENT_SERVICE_INFO(OCollection,u"com.sun.star.sdbcx.VContainer"_ustr , u"com.sun.star.sdbcx.Container"_ustr)
 
 OCollection::OCollection(::cppu::OWeakObject& _rParent
                          , bool _bCase
@@ -232,7 +232,7 @@ OCollection::OCollection(::cppu::OWeakObject& _rParent
 {
     if ( _bUseHardRef )
     {
-        m_pElements.reset(new OHardRefMap< ObjectType >(_bCase));
+        m_pElements.reset(new OHardRefMap< css::uno::Reference< css::beans::XPropertySet > >(_bCase));
     }
     else
     {
@@ -352,7 +352,7 @@ Reference< XPropertySet > SAL_CALL OCollection::createDataDescriptor(  )
     return createDescriptor();
 }
 
-OUString OCollection::getNameForObject(const ObjectType& _xObject)
+OUString OCollection::getNameForObject(const css::uno::Reference< css::beans::XPropertySet >& _xObject)
 {
     OSL_ENSURE(_xObject.is(),"OCollection::getNameForObject: Object is NULL!");
     OUString sName;
@@ -370,7 +370,7 @@ void SAL_CALL OCollection::appendByDescriptor( const Reference< XPropertySet >& 
     if ( m_pElements->exists(sName) )
         throw ElementExistException(sName,static_cast<XTypeProvider*>(this));
 
-    ObjectType xNewlyCreated = appendObject( sName, descriptor );
+    css::uno::Reference< css::beans::XPropertySet > xNewlyCreated = appendObject( sName, descriptor );
     if ( !xNewlyCreated.is() )
         throw RuntimeException();
 
@@ -433,10 +433,7 @@ void OCollection::notifyElementRemoved(const OUString& _sName)
 sal_Int32 SAL_CALL OCollection::findColumn( const OUString& columnName )
 {
     if ( !m_pElements->exists(columnName) )
-    {
         ::dbtools::throwInvalidColumnException( columnName, static_cast< XIndexAccess*>(this) );
-        O3TL_UNREACHABLE;
-    }
 
     return m_pElements->findColumn(columnName) + 1; // because columns start at one
 }
@@ -501,7 +498,7 @@ void SAL_CALL OCollection::removeRefreshListener( const Reference< XRefreshListe
     m_aRefreshListeners.removeInterface(l);
 }
 
-void OCollection::insertElement(const OUString& _sElementName,const ObjectType& _xElement)
+void OCollection::insertElement(const OUString& _sElementName,const css::uno::Reference< css::beans::XPropertySet >& _xElement)
 {
     OSL_ENSURE(!m_pElements->exists(_sElementName),"Element already exists");
     if ( !m_pElements->exists(_sElementName) )
@@ -525,9 +522,9 @@ void OCollection::renameObject(const OUString& _sOldName, const OUString& _sNewN
     }
 }
 
-ObjectType OCollection::getObject(sal_Int32 _nIndex)
+css::uno::Reference< css::beans::XPropertySet > OCollection::getObject(sal_Int32 _nIndex)
 {
-    ObjectType xName = m_pElements->getObject(_nIndex);
+    css::uno::Reference< css::beans::XPropertySet > xName = m_pElements->getObject(_nIndex);
     if ( !xName.is() )
     {
         try
@@ -562,14 +559,14 @@ Reference< XPropertySet > OCollection::createDescriptor()
     throw SQLException();
 }
 
-ObjectType OCollection::cloneDescriptor( const ObjectType& _descriptor )
+css::uno::Reference< css::beans::XPropertySet > OCollection::cloneDescriptor( const css::uno::Reference< css::beans::XPropertySet >& _descriptor )
 {
-    ObjectType xNewDescriptor( createDescriptor() );
+    css::uno::Reference< css::beans::XPropertySet > xNewDescriptor( createDescriptor() );
     ::comphelper::copyProperties( _descriptor, xNewDescriptor );
     return xNewDescriptor;
 }
 
-ObjectType OCollection::appendObject( const OUString& /*_rForName*/, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > OCollection::appendObject( const OUString& /*_rForName*/, const Reference< XPropertySet >& descriptor )
 {
     return cloneDescriptor( descriptor );
 }

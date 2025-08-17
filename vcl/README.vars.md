@@ -7,7 +7,7 @@ These are the general environment variables used in the VCL:
 * `SAL_USE_VCLPLUGIN` - use a VCL plugin
 * `SAL_RTL_ENABLED` - Enable RTL UI
 * `SAL_NO_NWF` - disable native widgets
-* `SAL_FORCEDPI` - force a specific DPI (gtk3 & qt5/kf5 plugins only)
+* `SAL_FORCEDPI` - force a specific DPI (gen, gtk3/gtk4, qt5/qt6/kf5/kf6 plugins only)
 * `SAL_FORCE_HC` - force high-contrast mode
 * `SAL_USE_SYSTEM_LOOP` - calls std::abort on nested event loop calls. Currently just for Qt with many crashes. WIP.
 
@@ -65,9 +65,12 @@ will be used to write the log under `instdir/uitest/`.
 ## Qt
 
 * `QT_SCALE_FACTOR=2` - for HiDPI testing (also supports float)
-* `SAL_VCL_QT5_NO_FONTCONFIG` - ignore fontconfig provided font substitutions
-* `SAL_VCL_QT5_NO_NATIVE` - disable `QStyle`'d controls
+* `SAL_VCL_QT_NO_FONTCONFIG` - ignore fontconfig provided font substitutions
+* `SAL_VCL_QT_NO_NATIVE` - disable `QStyle`'d controls
 * `SAL_VCL_QT_USE_QFONT` - use `QFont` for text layout and rendering (default is to use cairo)
+* `SAL_VCL_QT_USE_WELDED_WIDGETS` - enable use of welded Qt widgets also for dialogs created from .ui files
+* `SAL_VCL_QT_NO_WELDED_WIDGETS` - disable the use of welded Qt widgets completely (also for simple message
+  dialogs), reverts to previous VCL widget behavior
 
 ## Mac
 

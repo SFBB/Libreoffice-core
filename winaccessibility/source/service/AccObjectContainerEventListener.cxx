@@ -23,7 +23,6 @@
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 
 #include <AccObjectContainerEventListener.hxx>
 #include <AccObjectWinManager.hxx>
@@ -39,23 +38,6 @@ AccObjectContainerEventListener::AccObjectContainerEventListener(
 }
 AccObjectContainerEventListener::~AccObjectContainerEventListener() {}
 
-/**
- *  handle the STATE_CHANGED event
- */
-void AccObjectContainerEventListener::HandleStateChangedEvent(Any oldValue, Any newValue)
-{
-    //set the accessible name before process for there is no NAME_CHANGED event when change
-    //the text in drawing objects.
-    sal_Int64 newV;
-    if (newValue >>= newV)
-    {
-        if (newV == AccessibleStateType::FOCUSED)
-        {
-            m_rObjManager.UpdateAccName(m_xAccessible.get());
-        }
-    }
-    AccContainerEventListener::HandleStateChangedEvent(oldValue, newValue);
-}
 /**
  *  handle the VISIBLE_DATA_CHANGED event
  *  For SHAPES, the visible_data_changed event should be mapped to LOCATION_CHANGED event

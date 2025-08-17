@@ -39,23 +39,25 @@
 
 namespace com::sun::star::beans { struct PropertyValue; }
 namespace com::sun::star::container { class XIndexAccess; }
-namespace com::sun::star::i18n { struct Currency; }
-namespace com::sun::star::i18n { struct Currency2; }
-namespace com::sun::star::i18n { struct FormatElement; }
-namespace com::sun::star::lang { struct Locale; }
-
-struct LocaleDataLookupTableItem;
 
 namespace i18npool {
 
+enum class DataLocaleLibrary {
+    EN,
+    ES,
+    EURO,
+    OTHERS
+};
+
+
 struct LocaleDataLookupTableItem
 {
-    const char* dllName;
+    DataLocaleLibrary dllName;
     osl::Module *module;
     const char* localeName;
     css::lang::Locale aLocale;
 
-    LocaleDataLookupTableItem(const char *name, osl::Module* m, const char* lname) : dllName(name), module(m), localeName(lname)
+    LocaleDataLookupTableItem(DataLocaleLibrary name, osl::Module* m, const char* lname) : dllName(std::move(name)), module(m), localeName(lname)
     {
     }
     bool equals(const css::lang::Locale& rLocale) const

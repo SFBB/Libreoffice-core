@@ -20,14 +20,12 @@
 #include <scitems.hxx>
 #include <comphelper/fileformat.h>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <tools/urlobj.hxx>
 #include <editeng/frmdiritem.hxx>
 #include <editeng/langitem.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <sfx2/bindings.hxx>
-#include <sfx2/objsh.hxx>
 #include <sfx2/printer.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/viewsh.hxx>
@@ -114,15 +112,13 @@ void ScDocument::ImplDeleteOptions()
 
 SfxPrinter* ScDocument::GetPrinter(bool bCreateIfNotExist)
 {
-    if ( !mpPrinter && bCreateIfNotExist )
+    if (!mpPrinter && bCreateIfNotExist && mxPoolHelper)
     {
-        auto pSet =
-            std::make_unique<SfxItemSetFixed
-                            <SID_PRINTER_NOTFOUND_WARN,  SID_PRINTER_NOTFOUND_WARN,
-                            SID_PRINTER_CHANGESTODOC,   SID_PRINTER_CHANGESTODOC,
-                            SID_PRINT_SELECTEDSHEET,    SID_PRINT_SELECTEDSHEET,
-                            SID_SCPRINTOPTIONS,         SID_SCPRINTOPTIONS>>(*mxPoolHelper->GetDocPool());
-
+        auto pSet = std::make_unique<SfxItemSet>(
+            SfxItemSet::makeFixedSfxItemSet<SID_PRINTER_NOTFOUND_WARN, SID_PRINTER_NOTFOUND_WARN,
+                                            SID_PRINTER_CHANGESTODOC, SID_PRINTER_CHANGESTODOC,
+                                            SID_PRINT_SELECTEDSHEET, SID_PRINT_SELECTEDSHEET,
+                                            SID_SCPRINTOPTIONS, SID_SCPRINTOPTIONS>(*mxPoolHelper->GetDocPool()));
         SfxPrinterChangeFlags nFlags = SfxPrinterChangeFlags::NONE;
         if (officecfg::Office::Common::Print::Warning::PaperOrientation::get())
             nFlags |= SfxPrinterChangeFlags::CHG_ORIENTATION;
@@ -201,9 +197,12 @@ OutputDevice* ScDocument::GetRefDevice(bool bForceVirtDev)
 {
     // Create printer like ref device, see Writer...
     OutputDevice* pRefDevice = nullptr;
-    if ( !bForceVirtDev && SC_MOD()->GetInputOptions().GetTextWysiwyg() )
+    if (!bForceVirtDev && ScModule::get()->GetInputOptions().GetTextWysiwyg())
+    {
         pRefDevice = GetPrinter();
-    else
+        SAL_WARN_IF(!pRefDevice, "sc", "unable to get a printer, fallback to virdev");
+    }
+    if (!pRefDevice)
         pRefDevice = GetVirtualDevice_100th_mm();
     return pRefDevice;
 }
@@ -245,9 +244,9 @@ void ScDocument::ModifyStyleSheet( SfxStyleSheetBase& rStyleSheet,
                     if (maTabs[nTab])
                         maTabs[nTab]->SetStreamValid( false );
 
-                sal_uLong nOldFormat =
+                sal_uInt32 nOldFormat =
                     rSet.Get( ATTR_VALUE_FORMAT ).GetValue();
-                sal_uLong nNewFormat =
+                sal_uInt32 nNewFormat =
                     rChanges.Get( ATTR_VALUE_FORMAT ).GetValue();
                 LanguageType eNewLang, eOldLang;
                 eNewLang = eOldLang = LANGUAGE_DONTKNOW;
@@ -269,7 +268,7 @@ void ScDocument::ModifyStyleSheet( SfxStyleSheetBase& rStyleSheet,
                     SfxItemState eState = rChanges.GetItemState( nWhich, false, &pItem );
                     if ( eState == SfxItemState::SET )
                         rSet.Put( *pItem );
-                    else if ( eState == SfxItemState::DONTCARE )
+                    else if ( eState == SfxItemState::INVALID )
                         rSet.ClearItem( nWhich );
                     // when Default nothing
                 }
@@ -592,6 +591,7 @@ bool ScDocument::IdleCalcTextWidth()            // true = try next again
                 if (!pDev)
                 {
                     pDev = GetPrinter();
+                    assert(pDev);
                     aScope.setOldMapMode(pDev->GetMapMode());
                     pDev->SetMapMode(MapMode(MapUnit::MapPixel)); // Important for GetNeededSize
 
@@ -1049,9 +1049,10 @@ void ScDocument::UpdateAreaLinks()
         return;
 
     const ::sfx2::SvBaseLinks& rLinks = pMgr->GetLinks();
-    for (const auto & rLink : rLinks)
+    // Note: SvBaseLink::Update can remove entries after the current one
+    for (size_t i = 0; i < rLinks.size(); ++i)
     {
-        ::sfx2::SvBaseLink* pBase = rLink.get();
+        ::sfx2::SvBaseLink* pBase = rLinks[i].get();
         if (dynamic_cast<const ScAreaLink*>( pBase) !=  nullptr)
             pBase->Update();
     }
@@ -1102,7 +1103,7 @@ void ScDocument::UpdateRefAreaLinks( UpdateRefMode eUpdateRefMode,
             SCTAB nTab2 = aOutRange.aEnd.Tab();
 
             ScRefUpdateRes eRes =
-                ScRefUpdate::Update( this, eUpdateRefMode,
+                ScRefUpdate::Update( *this, eUpdateRefMode,
                     rRange.aStart.Col(), rRange.aStart.Row(), rRange.aStart.Tab(),
                     rRange.aEnd.Col(), rRange.aEnd.Row(), rRange.aEnd.Tab(), nDx, nDy, nDz,
                     nCol1, nRow1, nTab1, nCol2, nRow2, nTab2 );
@@ -1240,7 +1241,7 @@ void ScDocument::TransliterateText( const ScMarkData& rMultiMark, Transliteratio
                      ( nType == TransliterationFlags::SENTENCE_CASE || nType == TransliterationFlags::TITLE_CASE)))
                 {
                     if (!pEngine)
-                        pEngine.reset(new ScFieldEditEngine(this, GetEnginePool(), GetEditPool()));
+                        pEngine.reset(new ScFieldEditEngine(this, GetEditEnginePool()));
 
                     // defaults from cell attributes must be set so right language is used
                     const ScPatternAttr* pPattern = GetPattern( nCol, nRow, nTab );
@@ -1249,14 +1250,14 @@ void ScDocument::TransliterateText( const ScMarkData& rMultiMark, Transliteratio
                     {
                         ScPatternAttr aPreviewPattern( *pPattern );
                         aPreviewPattern.SetStyleSheet(pPreviewStyle);
-                        aPreviewPattern.FillEditItemSet( &aDefaults );
+                        aPreviewPattern.FillEditItemSet(&aDefaults);
                     }
                     else
                     {
                         SfxItemSet* pFontSet = GetPreviewFont( nCol, nRow, nTab );
-                        pPattern->FillEditItemSet( &aDefaults, pFontSet );
+                        pPattern->FillEditItemSet(&aDefaults, pFontSet);
                     }
-                    pEngine->SetDefaults( std::move(aDefaults) );
+                    pEngine->SetDefaults(std::move(aDefaults));
                     if (aCell.getType() == CELLTYPE_STRING)
                         pEngine->SetTextCurrentDefaults(aCell.getSharedString()->getString());
                     else if (aCell.getEditText())
@@ -1278,7 +1279,7 @@ void ScDocument::TransliterateText( const ScMarkData& rMultiMark, Transliteratio
                         if ( aTester.NeedsObject() )
                         {
                             // remove defaults (paragraph attributes) before creating text object
-                            pEngine->SetDefaults( std::make_unique<SfxItemSet>( pEngine->GetEmptyItemSet() ) );
+                            pEngine->SetDefaults(pEngine->GetEmptyItemSet());
 
                             // The cell will take ownership of the text object instance.
                             SetEditText(ScAddress(nCol,nRow,nTab), pEngine->CreateTextObject());

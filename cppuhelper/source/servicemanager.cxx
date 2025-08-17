@@ -17,6 +17,8 @@
 #include <utility>
 #include <vector>
 
+#include <config_fuzzers.h>
+
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/container/ElementExistException.hpp>
@@ -37,9 +39,11 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/factory.hxx>
+#include <o3tl/environment.hxx>
 #include <o3tl/safeint.hxx>
 #include <osl/file.hxx>
 #include <osl/module.hxx>
+#include <osl/process.h>
 #include <rtl/ref.hxx>
 #include <rtl/uri.hxx>
 #include <rtl/ustring.hxx>
@@ -66,10 +70,7 @@ void insertImplementationMap(
     assert(destination != nullptr);
     for (const auto& [rName, rImpls] : source)
     {
-        std::vector<
-            std::shared_ptr<
-                cppuhelper::ServiceManager::Data::Implementation > > & impls
-            = (*destination)[rName];
+        auto & impls = (*destination)[rName];
         impls.insert(impls.end(), rImpls.begin(), rImpls.end());
     }
 }
@@ -85,13 +86,9 @@ void removeFromImplementationMap(
     assert(map != nullptr);
     for (const auto& rElement : elements)
     {
-        cppuhelper::ServiceManager::Data::ImplementationMap::iterator j(
-            map->find(rElement));
+        auto j(map->find(rElement));
         assert(j != map->end());
-        std::vector<
-            std::shared_ptr<
-                cppuhelper::ServiceManager::Data::Implementation > >::iterator
-            k(std::find(j->second.begin(), j->second.end(), implementation));
+        auto k(std::find(j->second.begin(), j->second.end(), implementation));
         assert(k != j->second.end());
         j->second.erase(k);
         if (j->second.empty()) {
@@ -482,7 +479,7 @@ css::uno::Any ContentEnumeration::nextElement()
     std::scoped_lock g(mutex_);
     if (iterator_ == factories_.end()) {
         throw css::container::NoSuchElementException(
-            "Bootstrap service manager service enumerator has no more elements",
+            u"Bootstrap service manager service enumerator has no more elements"_ustr,
             static_cast< cppu::OWeakObject * >(this));
     }
     return *iterator_++;
@@ -490,7 +487,7 @@ css::uno::Any ContentEnumeration::nextElement()
 
 css::beans::Property getDefaultContextProperty() {
     return css::beans::Property(
-        "DefaultContext", -1,
+        u"DefaultContext"_ustr, -1,
         cppu::UnoType< css::uno::XComponentContext >::get(),
         css::beans::PropertyAttribute::READONLY);
 }
@@ -761,7 +758,7 @@ void cppuhelper::ServiceManager::Data::Implementation::updateDisposeInstance(
         if (comp.is()) {
             std::unique_lock g(mutex);
             if (dispose) {
-                disposeInstance = comp;
+                disposeInstance = std::move(comp);
             }
         }
     }
@@ -876,9 +873,9 @@ void cppuhelper::ServiceManager::loadImplementation(
           || implementation->status == Data::Implementation::STATUS_LOADED))
     {
         implementation->status = Data::Implementation::STATUS_LOADED;
-        implementation->constructorFn = ctor;
-        implementation->factory1 = f1;
-        implementation->factory2 = f2;
+        implementation->constructorFn = std::move(ctor);
+        implementation->factory1 = std::move(f1);
+        implementation->factory2 = std::move(f2);
     }
 }
 
@@ -939,7 +936,7 @@ void cppuhelper::ServiceManager::initialize(
         || arg != "preload")
     {
         throw css::lang::IllegalArgumentException(
-            "invalid ServiceManager::initialize argument",
+            u"invalid ServiceManager::initialize argument"_ustr,
             css::uno::Reference<css::uno::XInterface>(), 0);
     }
     preloadImplementations();
@@ -948,7 +945,7 @@ void cppuhelper::ServiceManager::initialize(
 OUString cppuhelper::ServiceManager::getImplementationName()
 {
     return
-        "com.sun.star.comp.cppuhelper.bootstrap.ServiceManager";
+        u"com.sun.star.comp.cppuhelper.bootstrap.ServiceManager"_ustr;
 }
 
 sal_Bool cppuhelper::ServiceManager::supportsService(
@@ -960,7 +957,7 @@ sal_Bool cppuhelper::ServiceManager::supportsService(
 css::uno::Sequence< OUString >
 cppuhelper::ServiceManager::getSupportedServiceNames()
 {
-    return { "com.sun.star.lang.MultiServiceFactory", "com.sun.star.lang.ServiceManager" };
+    return { u"com.sun.star.lang.MultiServiceFactory"_ustr, u"com.sun.star.lang.ServiceManager"_ustr };
 }
 
 css::uno::Reference< css::uno::XInterface >
@@ -990,7 +987,7 @@ cppuhelper::ServiceManager::getAvailableServiceNames()
     }
     if (data_.services.size() > o3tl::make_unsigned(SAL_MAX_INT32)) {
         throw css::uno::RuntimeException(
-            "getAvailableServiceNames: too many services",
+            u"getAvailableServiceNames: too many services"_ustr,
             static_cast< cppu::OWeakObject * >(this));
     }
     return comphelper::mapKeysToSequence(data_.services);
@@ -1036,14 +1033,14 @@ css::uno::Reference< css::container::XEnumeration >
 cppuhelper::ServiceManager::createEnumeration()
 {
     throw css::uno::RuntimeException(
-        "ServiceManager createEnumeration: method not supported",
+        u"ServiceManager createEnumeration: method not supported"_ustr,
         static_cast< cppu::OWeakObject * >(this));
 }
 
 sal_Bool cppuhelper::ServiceManager::has(css::uno::Any const &)
 {
     throw css::uno::RuntimeException(
-        "ServiceManager has: method not supported",
+        u"ServiceManager has: method not supported"_ustr,
         static_cast< cppu::OWeakObject * >(this));
 }
 
@@ -1053,24 +1050,24 @@ void cppuhelper::ServiceManager::insert(css::uno::Any const & aElement)
     if (aElement >>= args) {
         std::vector< OUString > uris;
         css::uno::Reference< css::uno::XComponentContext > alienContext;
-        for (const auto & arg : std::as_const(args)) {
+        for (const auto & arg : args) {
             if (arg.Name == "uri") {
                 OUString uri;
                 if (!(arg.Value >>= uri)) {
                     throw css::lang::IllegalArgumentException(
-                        "Bad uri argument",
+                        u"Bad uri argument"_ustr,
                         static_cast< cppu::OWeakObject * >(this), 0);
                 }
                 uris.push_back(uri);
             } else if (arg.Name == "component-context") {
                 if (alienContext.is()) {
                     throw css::lang::IllegalArgumentException(
-                        "Multiple component-context arguments",
+                        u"Multiple component-context arguments"_ustr,
                         static_cast< cppu::OWeakObject * >(this), 0);
                 }
                 if (!(arg.Value >>= alienContext) || !alienContext.is()) {
                     throw css::lang::IllegalArgumentException(
-                        "Bad component-context argument",
+                        u"Bad component-context argument"_ustr,
                         static_cast< cppu::OWeakObject * >(this), 0);
                 }
             } else {
@@ -1089,7 +1086,7 @@ void cppuhelper::ServiceManager::insert(css::uno::Any const & aElement)
     }
 
     throw css::lang::IllegalArgumentException(
-        "Bad insert element", static_cast< cppu::OWeakObject * >(this), 0);
+        u"Bad insert element"_ustr, static_cast< cppu::OWeakObject * >(this), 0);
 }
 
 void cppuhelper::ServiceManager::remove(css::uno::Any const & aElement)
@@ -1097,7 +1094,7 @@ void cppuhelper::ServiceManager::remove(css::uno::Any const & aElement)
     css::uno::Sequence< css::beans::NamedValue > args;
     if (aElement >>= args) {
         std::vector< OUString > uris;
-        for (const auto & i : std::as_const(args)) {
+        for (const auto & i : args) {
             if (i.Name != "uri") {
                 throw css::lang::IllegalArgumentException(
                     "Bad argument " + i.Name,
@@ -1106,7 +1103,7 @@ void cppuhelper::ServiceManager::remove(css::uno::Any const & aElement)
             OUString uri;
             if (!(i.Value >>= uri)) {
                 throw css::lang::IllegalArgumentException(
-                    "Bad uri argument",
+                    u"Bad uri argument"_ustr,
                     static_cast< cppu::OWeakObject * >(this), 0);
             }
             uris.push_back(uri);
@@ -1118,7 +1115,7 @@ void cppuhelper::ServiceManager::remove(css::uno::Any const & aElement)
     if ((aElement >>= info) && info.is()) {
         if (!removeLegacyFactory(info, true)) {
             throw css::container::NoSuchElementException(
-                "Remove non-inserted factory object",
+                u"Remove non-inserted factory object"_ustr,
                 static_cast< cppu::OWeakObject * >(this));
         }
         return;
@@ -1130,14 +1127,14 @@ void cppuhelper::ServiceManager::remove(css::uno::Any const & aElement)
         return;
     }
     throw css::lang::IllegalArgumentException(
-        "Bad remove element", static_cast< cppu::OWeakObject * >(this), 0);
+        u"Bad remove element"_ustr, static_cast< cppu::OWeakObject * >(this), 0);
 }
 
 css::uno::Reference< css::container::XEnumeration >
 cppuhelper::ServiceManager::createContentEnumeration(
     OUString const & aServiceName)
 {
-    std::vector< std::shared_ptr< Data::Implementation > > impls;
+    boost::container::small_vector< std::shared_ptr< Data::Implementation >, 2 > impls;
     {
         std::unique_lock g(m_aMutex);
         Data::ImplementationMap::const_iterator i(
@@ -1364,7 +1361,9 @@ void cppuhelper::ServiceManager::readRdbFile(
                 static_cast< cppu::OWeakObject * >(this));
         }
         SAL_INFO("cppuhelper", "Ignored optional " << uri);
-    } catch (css::registry::InvalidRegistryException & e) {
+    }
+#if !ENABLE_FUZZERS
+    catch (css::registry::InvalidRegistryException & e) {
         if (!readLegacyRdbFile(uri)) {
             throw css::uno::DeploymentException(
                 "InvalidRegistryException: " + e.Message,
@@ -1375,8 +1374,10 @@ void cppuhelper::ServiceManager::readRdbFile(
             throw;
         }
     }
+#endif
 }
 
+#if !ENABLE_FUZZERS
 bool cppuhelper::ServiceManager::readLegacyRdbFile(OUString const & uri) {
     Registry reg;
     switch (reg.open(uri, RegAccessMode::READONLY)) {
@@ -1409,7 +1410,7 @@ bool cppuhelper::ServiceManager::readLegacyRdbFile(OUString const & uri) {
             static_cast< cppu::OWeakObject * >(this));
     }
     RegistryKeyArray impls;
-    switch (rootKey.openSubKeys("IMPLEMENTATIONS", impls)) {
+    switch (rootKey.openSubKeys(u"IMPLEMENTATIONS"_ustr, impls)) {
     case RegError::NO_ERROR:
         break;
     case RegError::KEY_NOT_EXISTS:
@@ -1426,8 +1427,8 @@ bool cppuhelper::ServiceManager::readLegacyRdbFile(OUString const & uri) {
             implKey.getName().copy(RTL_CONSTASCII_LENGTH("/IMPLEMENTATIONS/")));
         std::shared_ptr< Data::Implementation > impl =
             std::make_shared<Data::Implementation>(
-                name, readLegacyRdbString(uri, implKey, "UNO/ACTIVATOR"),
-                readLegacyRdbString(uri, implKey, "UNO/LOCATION"), "", "", "", false,
+                name, readLegacyRdbString(uri, implKey, u"UNO/ACTIVATOR"_ustr),
+                readLegacyRdbString(uri, implKey, u"UNO/LOCATION"_ustr), "", "", "", false,
                 css::uno::Reference< css::uno::XComponentContext >(), uri);
         if (!data_.namedImplementations.emplace(name, impl).second)
         {
@@ -1435,13 +1436,13 @@ bool cppuhelper::ServiceManager::readLegacyRdbFile(OUString const & uri) {
                 uri + ": duplicate <implementation name=\"" + name + "\">");
         }
         readLegacyRdbStrings(
-            uri, implKey, "UNO/SERVICES", &impl->services);
+            uri, implKey, u"UNO/SERVICES"_ustr, &impl->services);
         for (const auto& rService : impl->services)
         {
             data_.services[rService].push_back(impl);
         }
         readLegacyRdbStrings(
-            uri, implKey, "UNO/SINGLETONS", &impl->singletons);
+            uri, implKey, u"UNO/SINGLETONS"_ustr, &impl->singletons);
         for (const auto& rSingleton : impl->singletons)
         {
             data_.singletons[rSingleton].push_back(impl);
@@ -1467,6 +1468,7 @@ OUString cppuhelper::ServiceManager::readLegacyRdbString(
     }
     OUString val;
     std::vector< char > v(s); // assuming sal_uInt32 fits into vector::size_type
+    assert(s > 0 && "throw above otherwise");
     if (subkey.getValue(OUString(), v.data()) != RegError::NO_ERROR
         || v.back() != '\0'
         || !rtl_convertStringToUString(
@@ -1511,6 +1513,7 @@ void cppuhelper::ServiceManager::readLegacyRdbStrings(
         strings->push_back(names.getElement(i).copy(prefix.getLength()));
     }
 }
+#endif
 
 void cppuhelper::ServiceManager::insertRdbFiles(
     std::vector< OUString > const & uris,
@@ -1546,8 +1549,8 @@ void cppuhelper::ServiceManager::insertLegacyFactory(
         f2.set(factoryInfo, css::uno::UNO_QUERY);
         if (!f2.is()) {
             throw css::lang::IllegalArgumentException(
-                ("Bad XServiceInfo argument implements neither"
-                 " XSingleComponentFactory nor XSingleServiceFactory"),
+                (u"Bad XServiceInfo argument implements neither"
+                 " XSingleComponentFactory nor XSingleServiceFactory"_ustr),
                 static_cast< cppu::OWeakObject * >(this), 0);
         }
     }
@@ -1592,7 +1595,7 @@ bool cppuhelper::ServiceManager::insertExtraData(Data const & extra) {
         if (bDuplicate)
         {
             throw css::lang::IllegalArgumentException(
-                "Insert duplicate factory object",
+                u"Insert duplicate factory object"_ustr,
                 static_cast< cppu::OWeakObject * >(this), 0);
         }
         //TODO: The below leaves data_ in an inconsistent state upon exceptions:
@@ -1825,10 +1828,8 @@ void cppuhelper::ServiceManager::preloadImplementations() {
     OUStringBuffer aMissingMsg;
 
     /// Allow external callers & testers to disable certain components
-    const char *pDisable = getenv("UNODISABLELIBRARY");
-    if (pDisable)
+    if (OUString aDisable = o3tl::getEnvironment(u"UNODISABLELIBRARY"_ustr); !aDisable.isEmpty())
     {
-        OUString aDisable(pDisable, strlen(pDisable), RTL_TEXTENCODING_UTF8);
         for (sal_Int32 i = 0; i >= 0; )
         {
             OUString tok( aDisable.getToken(0, ' ', i) );
@@ -1960,8 +1961,8 @@ void cppuhelper::ServiceManager::preloadImplementations() {
             if (!rEntry.second->constructorName.isEmpty() && fpFactory)
                 rEntry.second->constructorFn = WrapperConstructorFn(reinterpret_cast<ImplementationConstructorFn *>(fpFactory));
 
-            rEntry.second->factory1 = xSCFactory;
-            rEntry.second->factory2 = xSSFactory;
+            rEntry.second->factory1 = std::move(xSCFactory);
+            rEntry.second->factory2 = std::move(xSSFactory);
             rEntry.second->status = Data::Implementation::STATUS_LOADED;
 
         }
@@ -1974,7 +1975,10 @@ void cppuhelper::ServiceManager::preloadImplementations() {
             if (std::find(aPreloaded.begin(), aPreloaded.end(), fpPreload) == aPreloaded.end())
             {
                 aPreloaded.push_back(fpPreload);
+                // unlock because we may be instantiating some services here
+                g.unlock();
                 fpPreload();
+                g.lock();
             }
         }
 
@@ -1997,21 +2001,18 @@ void cppuhelper::ServiceManager::preloadImplementations() {
 
     // Various rather important uno mappings.
     static struct {
-        const char *mpFrom;
-        const char *mpTo;
-        const char *mpPurpose;
-    } const aMappingLoad[] = {
-        { "gcc3", "uno",  "" },
-        { "uno",  "gcc3", "" },
+        OUString maFrom;
+        OUString maTo;
+        OUString maPurpose;
+    } constexpr aMappingLoad[] = {
+        { u"gcc3"_ustr, u"uno"_ustr,  u""_ustr },
+        { u"uno"_ustr,  u"gcc3"_ustr, u""_ustr },
     };
 
     static std::vector<css::uno::Mapping> maMaps;
     for (auto &it : aMappingLoad)
     {
-        maMaps.push_back(css::uno::Mapping(
-                             OUString::createFromAscii(it.mpFrom),
-                             OUString::createFromAscii(it.mpTo),
-                             OUString::createFromAscii(it.mpPurpose)));
+        maMaps.push_back(css::uno::Mapping(it.maFrom, it.maTo, it.maPurpose));
     }
 #endif
 }

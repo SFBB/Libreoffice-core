@@ -47,6 +47,7 @@ namespace com::sun::star::uno { template <typename > class Reference; }
 namespace com::sun::star::uno { class XComponentContext; }
 namespace weld { class Window; }
 
+enum class SignatureState;
 class Graphic;
 class SfxFilter;
 class SfxItemSet;
@@ -127,7 +128,6 @@ public:
         WriterInsertScript,
         WriterExport,
         WriterImportAutotext,
-        WriterInsertHyperlink,
         WriterLoadTemplate,
         WriterMailMerge,
         WriterMailMergeSaveAs,
@@ -164,7 +164,7 @@ public:
                                              sal_Int16 nDialog,
                                              SfxFilterFlags nMust,
                                              SfxFilterFlags nDont,
-                                             const OUString& rStandardDir,
+                                             const OUString& rPreselectedDir,
                                              const css::uno::Sequence< OUString >& rDenyList,
                                              weld::Window* pPreferredParent);
 
@@ -172,7 +172,7 @@ public:
                                              FileDialogFlags nFlags,
                                              const OUString& aFilterUIName,
                                              std::u16string_view aExtName,
-                                             const OUString& rStandardDir,
+                                             const OUString& rPreselectedDir,
                                              const css::uno::Sequence< OUString >& rDenyList,
                                              weld::Window* pPreferredParent);
 
@@ -187,16 +187,10 @@ public:
     sal_Int16               GetDialogType() const;
     bool                    IsPasswordEnabled() const;
     OUString                GetRealFilter() const;
+    bool                    CheckCurrentFilterOptionsCapability() const;
 
     void                    SetTitle( const OUString&  rNewTitle );
     OUString                GetPath() const;
-
-    /** @deprecated: Don't use this method to retrieve the selected files
-        There are file picker which can provide multiple selected file which belong
-        to different folders. As this method always provides the root folder for all selected
-        files this cannot work.
-    */
-    css::uno::Sequence< OUString > GetMPath() const;
 
     /** Provides the selected files with full path information */
     css::uno::Sequence< OUString > GetSelectedFiles() const;
@@ -278,12 +272,13 @@ public:
 
    DECL_DLLPRIVATE_LINK( ExecuteSystemFilePicker, void*, void );
 
-   ErrCode                  Execute( std::vector<OUString>& rpURLList,
+   ErrCode                  Execute( css::uno::Sequence<OUString>& rpURLList,
                                      std::optional<SfxAllItemSet>& rpSet,
                                      OUString&         rFilter,
                                      const OUString&   rDirPath );
    ErrCode                  Execute( std::optional<SfxAllItemSet>& rpSet,
-                                     OUString&         rFilter );
+                                     OUString&         rFilter,
+                                     SignatureState nScriptingSignatureState);
 };
 
 #define SFX2_IMPL_DIALOG_CONFIG 0
@@ -294,13 +289,13 @@ public:
 ErrCode FileOpenDialog_Impl( weld::Window* pParent,
                              sal_Int16 nDialogType,
                              FileDialogFlags nFlags,
-                             std::vector<OUString>& rpURLList,
+                             css::uno::Sequence<OUString>& rpURLList,
                              OUString& rFilter,
                              std::optional<SfxAllItemSet>& rpSet,
                              const OUString* pPath,
                              sal_Int16 nDialog,
-                             const OUString& rStandardDir,
-                             const css::uno::Sequence< OUString >& rDenyList = css::uno::Sequence< OUString >());
+                             const css::uno::Sequence< OUString >& rDenyList,
+                             std::optional<bool>& rShowFilterDialog );
 
 css::uno::Reference<css::ui::dialogs::XFolderPicker2> SFX2_DLLPUBLIC createFolderPicker(const css::uno::Reference<css::uno::XComponentContext>& rContext, weld::Window* pPreferredParent);
 

@@ -28,6 +28,8 @@
 #include <ViewShellBase.hxx>
 #include <ViewShell.hxx>
 #include <DrawViewShell.hxx>
+#include <DrawController.hxx>
+#include <drawdoc.hxx>
 #include <sdpage.hxx>
 #include <FrameView.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -127,11 +129,11 @@ void CurrentSlideManager::SwitchCurrentSlide (
     ReleaseCurrentSlide();
     AcquireCurrentSlide((rpDescriptor->GetPage()->GetPageNum()-1)/2);
 
-    ViewShell* pViewShell = mrSlideSorter.GetViewShell();
-    if (pViewShell != nullptr && pViewShell->IsMainViewShell())
+    ViewShell& rViewShell = mrSlideSorter.GetViewShell();
+    if (rViewShell.IsMainViewShell())
     {
         // The slide sorter is the main view.
-        FrameView* pFrameView = pViewShell->GetFrameView();
+        FrameView* pFrameView = rViewShell.GetFrameView();
         if (pFrameView != nullptr)
             pFrameView->SetSelectedPage(sal::static_int_cast<sal_uInt16>(mnCurrentSlideIndex));
         mrSlideSorter.GetController().GetPageSelector().SetCoreSelection();
@@ -166,7 +168,29 @@ void CurrentSlideManager::SetCurrentSlideAtViewShellBase (const SharedPageDescri
     OSL_ASSERT(rpDescriptor);
 
     ViewShellBase* pBase = mrSlideSorter.GetViewShellBase();
-    if (pBase != nullptr)
+    if(!pBase)
+        return;
+
+    if (mrSlideSorter.GetViewShell().IsMainViewShell())
+    {
+        SdDrawDocument* pDoc = pBase->GetDocument();
+        if (!pDoc)
+            return;
+
+        // deselect all pages
+        for (sal_uInt16 i = 0; i < pDoc->GetSdPageCount(PageKind::Standard); i++)
+            pDoc->SetSelected(pDoc->GetSdPage(i, PageKind::Standard), false);
+
+        // select the given page
+        pDoc->SetSelected(rpDescriptor->GetPage(), true);
+        DrawController* pDrawController = pBase->GetDrawController();
+        if (!pDrawController)
+            return;
+
+        pDrawController->FireSelectionChangeListener();
+        pDrawController->FireSwitchCurrentPage(rpDescriptor->GetPage());
+    }
+    else
     {
         DrawViewShell* pDrawViewShell = dynamic_cast<DrawViewShell*>(
             pBase->GetMainViewShell().get());
@@ -209,7 +233,7 @@ void CurrentSlideManager::SetCurrentSlideAtXController (const SharedPageDescript
         {
             Any aPage;
             aPage <<= rpDescriptor->GetPage()->getUnoPage();
-            xSet->setPropertyValue( "CurrentPage", aPage );
+            xSet->setPropertyValue( u"CurrentPage"_ustr, aPage );
         }
     }
     catch (const Exception&)
@@ -244,9 +268,7 @@ IMPL_LINK_NOARG(CurrentSlideManager, SwitchPageCallback, Timer *, void)
         // it does not work always correctly (after some kinds of model
         // changes).  Therefore, we call DrawViewShell::SwitchPage(),
         // too.
-        ViewShell* pViewShell = mrSlideSorter.GetViewShell();
-        if (pViewShell==nullptr || ! pViewShell->IsMainViewShell())
-            SetCurrentSlideAtViewShellBase(mpCurrentSlide);
+        SetCurrentSlideAtViewShellBase(mpCurrentSlide);
         SetCurrentSlideAtXController(mpCurrentSlide);
     }
 }

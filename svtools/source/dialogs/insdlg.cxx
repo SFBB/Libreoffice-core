@@ -31,6 +31,7 @@
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <com/sun/star/container/XNameAccess.hpp>
+#include <officecfg/Office/Embedding.hxx>
 
 #if defined _WIN32
 #include <prewin.h>
@@ -108,47 +109,33 @@ void SvObjectServerList::FillInsertObjects()
 */
 {
     try{
-        uno::Reference< uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
+        uno::Reference< container::XNameAccess > xNameAccess = officecfg::Office::Embedding::ObjectNames::get();
 
-        uno::Reference< lang::XMultiServiceFactory > sProviderMSFactory =
-            configuration::theDefaultProvider::get(xContext);
+        const uno::Sequence< OUString > seqNames= xNameAccess->getElementNames();
 
-        uno::Sequence<uno::Any> aArguments(comphelper::InitAnyPropertySequence(
+        for( const auto& rName : seqNames )
         {
-            {"nodepath", uno::Any(OUString( "/org.openoffice.Office.Embedding/ObjectNames" ))}
-        }));
-        uno::Reference< container::XNameAccess > xNameAccess(
-            sProviderMSFactory->createInstanceWithArguments( "com.sun.star.configuration.ConfigurationAccess", aArguments ),
-            uno::UNO_QUERY );
-
-        if( xNameAccess.is())
-        {
-            const uno::Sequence< OUString > seqNames= xNameAccess->getElementNames();
-
-            for( const auto& rName : seqNames )
+            uno::Reference< container::XNameAccess > xEntry ;
+            xNameAccess->getByName( rName ) >>= xEntry;
+            if ( xEntry.is() )
             {
-                uno::Reference< container::XNameAccess > xEntry ;
-                xNameAccess->getByName( rName ) >>= xEntry;
-                if ( xEntry.is() )
+                OUString aUIName;
+                OUString aClassID;
+                xEntry->getByName(u"ObjectUIName"_ustr) >>= aUIName;
+                xEntry->getByName(u"ClassID"_ustr) >>= aClassID;
+
+                if ( !aUIName.isEmpty() )
                 {
-                    OUString aUIName;
-                    OUString aClassID;
-                    xEntry->getByName("ObjectUIName") >>= aUIName;
-                    xEntry->getByName("ClassID") >>= aClassID;
+                    aUIName = aUIName.replaceAll("%PRODUCTNAME", utl::ConfigManager::getProductName());
+                    aUIName = aUIName.replaceAll("%PRODUCTVERSION", utl::ConfigManager::getProductVersion());
+                }
 
-                    if ( !aUIName.isEmpty() )
-                    {
-                        aUIName = aUIName.replaceAll("%PRODUCTNAME", utl::ConfigManager::getProductName());
-                        aUIName = aUIName.replaceAll("%PRODUCTVERSION", utl::ConfigManager::getProductVersion());
-                    }
-
-                    SvGlobalName aClassName;
-                    if( aClassName.MakeId( aClassID) )
-                    {
-                        if( !Get( aClassName ) )
-                            // not entered yet
-                            aObjectServerList.emplace_back( aClassName, aUIName );
-                    }
+                SvGlobalName aClassName;
+                if( aClassName.MakeId( aClassID) )
+                {
+                    if( !Get( aClassName ) )
+                        // not entered yet
+                        aObjectServerList.emplace_back( aClassName, aUIName );
                 }
             }
         }
@@ -249,6 +236,7 @@ OUString SvPasteObjectHelper::GetSotFormatUIName( SotClipboardFormatId nId )
         { SotClipboardFormatId::RICHTEXT,            STR_FORMAT_ID_RICHTEXT },
         { SotClipboardFormatId::STRING_TSVC,         STR_FORMAT_ID_STRING_TSVC },
         { SotClipboardFormatId::PNG,                 STR_FORMAT_ID_PNG_BITMAP },
+        { SotClipboardFormatId::MARKDOWN,            STR_FORMAT_ID_MARKDOWN},
     };
 
     TranslateId pResId;

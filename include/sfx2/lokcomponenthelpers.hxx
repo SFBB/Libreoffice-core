@@ -7,8 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_SFX2_LOKCHARTHELPER_HXX
-#define INCLUDED_SFX2_LOKCHARTHELPER_HXX
+#pragma once
 
 #include <sfx2/dllapi.h>
 #include <tools/gen.hxx>
@@ -17,7 +16,6 @@
 
 namespace com::sun::star::beans { struct PropertyValue; }
 namespace com::sun::star::frame { class XController; }
-namespace com::sun::star::frame { class XDispatch; }
 namespace com::sun::star::frame { class XFrame; }
 namespace com::sun::star::uno { template<class E> class Sequence; }
 
@@ -30,8 +28,7 @@ class SFX2_DLLPUBLIC LokChartHelper
 {
 private:
     SfxViewShell* mpViewShell;
-    css::uno::Reference<css::frame::XController> mxController;
-    css::uno::Reference<css::frame::XDispatch> mxDispatcher;
+    mutable css::uno::Reference<css::frame::XController> mxController;
     VclPtr<vcl::Window> mpWindow;
     bool mbNegativeX;
 
@@ -42,11 +39,12 @@ public:
         , mbNegativeX(bNegativeX)
     {}
 
-    css::uno::Reference<css::frame::XController>& GetXController();
-    css::uno::Reference<css::frame::XDispatch>& GetXDispatcher();
+    css::uno::Reference<css::frame::XController>& GetXController() const;
     vcl::Window* GetWindow();
     tools::Rectangle GetChartBoundingBox();
     void Invalidate();
+
+    void Dispatch(const OUString& cmd, const css::uno::Sequence<css::beans::PropertyValue>& rArguments) const;
 
     bool Hit(const Point& aPos);
     static bool HitAny(const Point& aPos, bool bNegativeX = false);
@@ -93,7 +91,5 @@ private:
     VclPtr<vcl::Window> mpGraphicWindow;
     VclPtr<vcl::Window> mpWidgetWindow;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

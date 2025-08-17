@@ -41,7 +41,7 @@
 #include <comphelper/servicehelper.hxx>
 #include <o3tl/string_view.hxx>
 #include <comphelper/string.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/tempfile.hxx>
 #include <unotools/ucbhelper.hxx>
 #include <comphelper/types.hxx>
@@ -739,14 +739,12 @@ Sequence< Type > SAL_CALL ODbaseTable::getTypes(  )
     std::vector<Type> aOwnTypes;
     aOwnTypes.reserve(aTypes.getLength());
 
-    const Type* pBegin = aTypes.getConstArray();
-    const Type* pEnd = pBegin + aTypes.getLength();
-    for(;pBegin != pEnd;++pBegin)
+    for (auto& type : aTypes)
     {
-        if(*pBegin != cppu::UnoType<XKeysSupplier>::get() &&
-           *pBegin != cppu::UnoType<XDataDescriptorFactory>::get())
+        if(type != cppu::UnoType<XKeysSupplier>::get() &&
+           type != cppu::UnoType<XDataDescriptorFactory>::get())
         {
-            aOwnTypes.push_back(*pBegin);
+            aOwnTypes.push_back(type);
         }
     }
     aOwnTypes.push_back(cppu::UnoType<css::lang::XUnoTunnel>::get());
@@ -1054,7 +1052,7 @@ bool ODbaseTable::CreateImpl()
         try
         {
             Content aContent(aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE),Reference<XCommandEnvironment>(), comphelper::getProcessComponentContext());
-            aContent.executeCommand( "delete", css::uno::Any( true ) );
+            aContent.executeCommand( u"delete"_ustr, css::uno::Any( true ) );
         }
         catch(const Exception&) // an exception is thrown when no file exists
         {
@@ -1082,7 +1080,7 @@ bool ODbaseTable::CreateImpl()
             try
             {
                 Content aMemoContent(aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE),Reference<XCommandEnvironment>(), comphelper::getProcessComponentContext());
-                aMemoContent.executeCommand( "delete", css::uno::Any( true ) );
+                aMemoContent.executeCommand( u"delete"_ustr, css::uno::Any( true ) );
             }
             catch(const Exception&)
             {
@@ -1100,7 +1098,7 @@ bool ODbaseTable::CreateImpl()
             try
             {
                 Content aMemoContent(aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE),Reference<XCommandEnvironment>(), comphelper::getProcessComponentContext());
-                aMemoContent.executeCommand( "delete", css::uno::Any( true ) );
+                aMemoContent.executeCommand( u"delete"_ustr, css::uno::Any( true ) );
             }
             catch(const ContentCreationException&)
             {
@@ -1383,7 +1381,7 @@ bool ODbaseTable::CreateFile(const INetURLObject& aFile, bool& bCreateMemo)
 
 bool ODbaseTable::HasMemoFields() const
 {
-    return m_aHeader.type > dBaseIV && !utl::ConfigManager::IsFuzzing();
+    return m_aHeader.type > dBaseIV && !comphelper::IsFuzzing();
 }
 
 // creates in principle dBase III file format
@@ -1441,7 +1439,7 @@ bool ODbaseTable::Drop_Static(std::u16string_view _sUrl, bool _bHasMemoFields, O
             try
             {
                 ::ucbhelper::Content aDeleteContent( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), Reference< XCommandEnvironment >(), comphelper::getProcessComponentContext() );
-                aDeleteContent.executeCommand( "delete", Any( true ) );
+                aDeleteContent.executeCommand( u"delete"_ustr, Any( true ) );
             }
             catch(const Exception&)
             {
@@ -2172,7 +2170,6 @@ void ODbaseTable::alterColumn(sal_Int32 index,
         OUString sTempName = createTempFile();
 
         rtl::Reference<ODbaseTable> pNewTable = new ODbaseTable(m_pTables,static_cast<ODbaseConnection*>(m_pConnection));
-        Reference<XPropertySet> xHoldTable = pNewTable;
         pNewTable->setPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_NAME),Any(sTempName));
         Reference<XAppend> xAppend(pNewTable->getColumns(),UNO_QUERY);
         OSL_ENSURE(xAppend.is(),"ODbaseTable::alterColumn: No XAppend interface!");
@@ -2241,8 +2238,8 @@ void ODbaseTable::alterColumn(sal_Int32 index,
                 ::dbtools::throwGenericSQLException( sError, *this );
             }
             // release the temp file
+            ::comphelper::disposeComponent(pNewTable);
             pNewTable = nullptr;
-            ::comphelper::disposeComponent(xHoldTable);
         }
         else
         {
@@ -2310,14 +2307,14 @@ namespace
         {
             Content aContent(aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE),Reference<XCommandEnvironment>(), comphelper::getProcessComponentContext());
 
-            Sequence< PropertyValue > aProps{ { "Title",
+            Sequence< PropertyValue > aProps{ { u"Title"_ustr,
                                                 -1, // n/a
                                                 Any(sNewName),
                                                 css::beans::PropertyState_DIRECT_VALUE } };
             Sequence< Any > aValues;
-            aContent.executeCommand( "setPropertyValues",Any(aProps) ) >>= aValues;
+            aContent.executeCommand( u"setPropertyValues"_ustr,Any(aProps) ) >>= aValues;
             if(aValues.hasElements() && aValues[0].hasValue())
-                throw Exception("setPropertyValues returned non-zero", nullptr);
+                throw Exception(u"setPropertyValues returned non-zero"_ustr, nullptr);
         }
         catch(const Exception&)
         {
@@ -2685,7 +2682,14 @@ bool ODbaseTable::ReadMemo(std::size_t nBlockNo, ORowSetValue& aVariable)
             (*m_pMemoStream).ReadUInt32( nLength );
 
             if (m_aMemoHeader.db_typ == MemodBaseIV)
+            {
+                if (nLength < 8)
+                {
+                    SAL_WARN("connectivity.drivers", "Size too small");
+                    return false;
+                }
                 nLength -= 8;
+            }
 
             if ( nLength )
             {

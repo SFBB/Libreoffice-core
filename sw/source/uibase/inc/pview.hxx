@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_UIBASE_INC_PVIEW_HXX
-#define INCLUDED_SW_SOURCE_UIBASE_INC_PVIEW_HXX
+#pragma once
 
 #include <tools/link.hxx>
 #include <tools/fract.hxx>
@@ -29,17 +28,12 @@
 #include <swdllapi.h>
 #include <shellid.hxx>
 
-class SwViewOption;
 class SwDocShell;
 class SwScrollbar;
 class SwViewShell;
 class SwPagePreview;
-class ImageButton;
-class Button;
 class SwRect;
-class DataChangedEvent;
 class CommandEvent;
-class SvtAccessibilityOptions;
 class SwPagePreviewLayout;
 
 /// Provides the VCL widget that is used for the main area of the File -> Print Preview window.
@@ -152,7 +146,9 @@ public:
     */
     bool SetBookPreviewMode( const bool _bBookPreview );
 
-    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
+
+    void ReInit();
 };
 
 /**
@@ -194,8 +190,8 @@ class SW_DLLPUBLIC SwPagePreview final : public SfxViewShell
     SAL_DLLPRIVATE void CreateScrollbar( bool bHori);
     DECL_DLLPRIVATE_LINK(HoriScrollHdl, weld::Scrollbar&, void);
     DECL_DLLPRIVATE_LINK(VertScrollHdl, weld::Scrollbar&, void);
-    SAL_DLLPRIVATE void ScrollHdl(weld::Scrollbar&, bool bHorizontal);
-    SAL_DLLPRIVATE void EndScrollHdl(weld::Scrollbar&, bool bHorizontal);
+    SAL_DLLPRIVATE void ScrollHdl(const weld::Scrollbar&, bool bHorizontal);
+    SAL_DLLPRIVATE void EndScrollHdl(const weld::Scrollbar&, bool bHorizontal);
     SAL_DLLPRIVATE bool ChgPage( int eMvMode, bool bUpdateScrollbar = true );
 
     SAL_DLLPRIVATE virtual SfxPrinter*     GetPrinter( bool bCreate = false ) override;
@@ -267,9 +263,6 @@ public:
 
     SwDocShell* GetDocShell();
 
-    // apply Accessibility options
-    void ApplyAccessibilityOptions();
-
     // Inline method to request values of new members
     // <mbResetFormDesignMode> and <mbFormDesignModeToReset>
     bool ResetFormDesignMode() const
@@ -293,11 +286,10 @@ public:
     */
     void SetVScrollbarThumbPos( const sal_uInt16 _nNewThumbPos );
 
+    void PrintSettingsChanged();
+
     SwPagePreview(SfxViewFrame& rFrame, SfxViewShell*);
     virtual ~SwPagePreview() override;
 };
-
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

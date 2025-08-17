@@ -32,6 +32,9 @@
 #include <layfrm.hxx>
 #include <SwPortionHandler.hxx>
 #include <EnhancedPDFExportHelper.hxx>
+#include <com/sun/star/i18n/BreakType.hpp>
+#include <com/sun/star/i18n/XBreakIterator.hpp>
+#include <breakit.hxx>
 #include "pormulti.hxx"
 #include "inftxt.hxx"
 #include "itrpaint.hxx"
@@ -221,6 +224,7 @@ SwBidiPortion::SwBidiPortion(TextFrameIndex const nEnd, sal_uInt8 nLv)
 
 SwTwips SwBidiPortion::CalcSpacing( tools::Long nSpaceAdd, const SwTextSizeInfo& rInf ) const
 {
+    nSpaceAdd = nSpaceAdd > LONG_MAX/2 ? LONG_MAX/2 - nSpaceAdd : nSpaceAdd;
     return HasTabulator() ? 0 : sal_Int32(GetSpaceCnt(rInf)) * nSpaceAdd / SPACING_PRECISION_FACTOR;
 }
 
@@ -421,7 +425,7 @@ void SwDoubleLinePortion::FormatBrackets( SwTextFormatInfo &rInf, SwTwips& nMaxW
         if( SW_SCRIPTS > m_pBracket->nPreScript )
             aTmpFnt.SetActual( m_pBracket->nPreScript );
         SwFontSave aSave( rInf, &aTmpFnt );
-        SwPosSize aSize = rInf.GetTextSize( aStr );
+        SwPositiveSize aSize = rInf.GetTextSize( aStr );
         m_pBracket->nAscent = rInf.GetAscent();
         m_pBracket->nHeight = aSize.Height();
         aTmpFnt.SetActual( nActualScr );
@@ -445,7 +449,7 @@ void SwDoubleLinePortion::FormatBrackets( SwTextFormatInfo &rInf, SwTwips& nMaxW
         if( SW_SCRIPTS > m_pBracket->nPostScript )
             aTmpFnt.SetActual( m_pBracket->nPostScript );
         SwFontSave aSave( rInf, &aTmpFnt );
-        SwPosSize aSize = rInf.GetTextSize( aStr );
+        SwPositiveSize aSize = rInf.GetTextSize( aStr );
         const sal_uInt16 nTmpAsc = rInf.GetAscent();
         if( nTmpAsc > m_pBracket->nAscent )
         {
@@ -507,6 +511,7 @@ void SwDoubleLinePortion::CalcBlanks( SwTextFormatInfo &rInf )
 
 SwTwips SwDoubleLinePortion::CalcSpacing( tools::Long nSpaceAdd, const SwTextSizeInfo & ) const
 {
+    nSpaceAdd = nSpaceAdd > LONG_MAX/2 ? LONG_MAX/2 - nSpaceAdd : nSpaceAdd;
     return HasTabulator() ? 0 : sal_Int32(GetSpaceCnt()) * nSpaceAdd / SPACING_PRECISION_FACTOR;
 }
 
@@ -618,7 +623,7 @@ SwRubyPortion::SwRubyPortion( const SwMultiCreator& rCreate, const SwFont& rFnt,
     }
 
     OUString aStr = rRuby.GetText().copy( sal_Int32(nOffs) );
-    SwFieldPortion *pField = new SwFieldPortion( aStr, std::move(pRubyFont) );
+    SwFieldPortion *pField = new SwFieldPortion( std::move(aStr), std::move(pRubyFont) );
     pField->SetNextOffset( nOffs );
     pField->SetFollow( true );
 
@@ -1032,35 +1037,33 @@ std::optional<SwMultiCreator> SwTextSizeInfo::GetMultiCreator(TextFrameIndex &rP
                 }
             }
         }
-        else if (pNode) // !pAttr && pNode means the node changed
+        // !pAttr && pNode means the node changed
+        if (startPos.first->GetIndex() < pNode->GetIndex())
         {
-            if (startPos.first->GetIndex() < pNode->GetIndex())
+            break; // only one node initially
+        }
+        if (startPos.first->GetIndex() == pNode->GetIndex())
+        {
+            iterAtStartOfNode.Assign(iter);
+            if (SfxItemState::SET == pNode->GetSwAttrSet().GetItemState(
+                        RES_CHRATR_ROTATE, true, &pNodeRotateItem) &&
+                pNodeRotateItem->GetValue())
             {
-                break; // only one node initially
+                pActiveRotateItem = pNodeRotateItem;
             }
-            if (startPos.first->GetIndex() == pNode->GetIndex())
+            else
             {
-                iterAtStartOfNode.Assign(iter);
-                if (SfxItemState::SET == pNode->GetSwAttrSet().GetItemState(
-                            RES_CHRATR_ROTATE, true, &pNodeRotateItem) &&
-                    pNodeRotateItem->GetValue())
-                {
-                    pActiveRotateItem = pNodeRotateItem;
-                }
-                else
-                {
-                    pNodeRotateItem = nullptr;
-                }
-                if (SfxItemState::SET == startPos.first->GetSwAttrSet().GetItemState(
-                            RES_CHRATR_TWO_LINES, true, &pNodeTwoLinesItem) &&
-                    pNodeTwoLinesItem->GetValue())
-                {
-                    pActiveTwoLinesItem = pNodeTwoLinesItem;
-                }
-                else
-                {
-                    pNodeTwoLinesItem = nullptr;
-                }
+                pNodeRotateItem = nullptr;
+            }
+            if (SfxItemState::SET == startPos.first->GetSwAttrSet().GetItemState(
+                        RES_CHRATR_TWO_LINES, true, &pNodeTwoLinesItem) &&
+                pNodeTwoLinesItem->GetValue())
+            {
+                pActiveTwoLinesItem = pNodeTwoLinesItem;
+            }
+            else
+            {
+                pNodeTwoLinesItem = nullptr;
             }
         }
     }
@@ -1722,8 +1725,10 @@ void SwTextPainter::PaintMultiPortion( const SwRect &rPaint,
             // Draw the ruby text on top of the preserved space.
             GetInfo().X( GetInfo().X() - pPor->Height() );
         }
-        else
-            GetInfo().Y( nOfst + AdjustBaseLine( *pLay, pPor ) );
+        else if (!rMulti.IsBidi())
+        {
+            GetInfo().Y(nOfst + AdjustBaseLine(*pLay, pPor));
+        }
 
         bool bSeeked = true;
         GetInfo().SetLen( pPor->GetLen() );
@@ -1784,6 +1789,9 @@ void SwTextPainter::PaintMultiPortion( const SwRect &rPaint,
 
             pPor->Paint( GetInfo() );
         }
+
+        if (GetFnt()->IsURL() && pPor->InTextGrp())
+            GetInfo().NotifyURL(*pPor);
 
         bFirst &= !pPor->GetLen();
         if( pNext || !pPor->IsMarginPortion() )
@@ -1915,11 +1923,63 @@ static bool lcl_ExtractFieldFollow( SwLineLayout* pLine, SwLinePortion* &rpField
     return bRet;
 }
 
+// Determines if any part of the bidi portion fits on the current line
+namespace
+{
+enum class BidiTruncationType
+{
+    None,
+    Truncate,
+    Underflow
+};
+
+BidiTruncationType lcl_BidiPortionNeedsTruncation(const SwMultiPortion& rMulti,
+                                                  const SwTextFormatInfo& rExternalInf,
+                                                  const SwTextFormatInfo& rLocalInf,
+                                                  TextFrameIndex const nStartIdx)
+{
+    if (!rLocalInf.IsUnderflow())
+    {
+        // Some amount of text fits in the bidi portion without triggering underflow,
+        // so the portion should not be truncated.
+        return BidiTruncationType::None;
+    }
+
+    auto nCurrLen = rMulti.GetLen();
+
+    css::i18n::LineBreakHyphenationOptions aHyphOptions;
+    css::i18n::LineBreakUserOptions aUserOptions;
+    css::lang::Locale aLocale;
+    auto aResult = g_pBreakIt->GetBreakIter()->getLineBreak(
+        rExternalInf.GetText(), sal_Int32(nStartIdx + nCurrLen), aLocale,
+        sal_Int32(rExternalInf.GetLineStart()), aHyphOptions, aUserOptions);
+
+    if (aResult.breakIndex < sal_Int32(nStartIdx))
+    {
+        // The bidi portion doesn't fit on the line, and the first break opportunity
+        // is before the bidi portion. Underflow to the preceding text.
+        return BidiTruncationType::Underflow;
+    }
+
+    if (aResult.breakIndex > sal_Int32(nStartIdx)
+        && aResult.breakIndex <= sal_Int32(nStartIdx + nCurrLen))
+    {
+        // The bidi portion fits on this line, but ended with underflow.
+        return BidiTruncationType::None;
+    }
+
+    // The bidi portion doesn't fit on the line, but a break position exists between the bidi
+    // portion and the preceding text. Truncating is sufficient.
+    return BidiTruncationType::Truncate;
+}
+}
+
 // If a multi portion completely has to go to the
 // next line, this function is called to truncate
 // the rest of the remaining multi portion
-static void lcl_TruncateMultiPortion( SwMultiPortion& rMulti, SwTextFormatInfo& rInf,
-           TextFrameIndex const nStartIdx)
+static void lcl_TruncateMultiPortion(SwMultiPortion& rMulti, SwTextFormatInfo& rInf,
+                                     TextFrameIndex const nStartIdx,
+                                     BidiTruncationType nBidiTruncType = BidiTruncationType::None)
 {
     rMulti.GetRoot().Truncate();
     rMulti.GetRoot().SetLen(TextFrameIndex(0));
@@ -1934,6 +1994,18 @@ static void lcl_TruncateMultiPortion( SwMultiPortion& rMulti, SwTextFormatInfo& 
     rMulti.Width( 0 );
     rMulti.SetLen(TextFrameIndex(0));
     rInf.SetIdx( nStartIdx );
+
+    if (rMulti.IsBidi())
+    {
+        // The truncated portion is a bidi portion. Bidi portions contain ordinary text, and may
+        // potentially underflow in the case that none of the text fits on the current line.
+        if (nBidiTruncType == BidiTruncationType::Underflow)
+        {
+            // The start of the bidi portion is not a valid break. Instead, a break should be
+            // inserted into a previous text portion on this line.
+            rInf.SetUnderflow(&rMulti);
+        }
+    }
 }
 
 // Manages the formatting of a SwMultiPortion. External, for the calling
@@ -2011,7 +2083,9 @@ bool SwTextFormatter::BuildMultiPortion( SwTextFormatInfo &rInf,
                     ( rInf.GetTextFrame()->IsVertical() ?
                       pUpperFrame->getFramePrintArea().Width() :
                       pUpperFrame->getFramePrintArea().Height() ) :
-                    USHRT_MAX;
+                    std::numeric_limits<SwTwips>::max();
+        if (nMaxWidth < 0)
+            nMaxWidth = 0;
     }
     else
         nTmpX = rInf.X();
@@ -2069,7 +2143,7 @@ bool SwTextFormatter::BuildMultiPortion( SwTextFormatInfo &rInf,
     bool bRet = false;
 
     SwTextGridItem const*const pGrid(GetGridItem(m_pFrame->FindPageFrame()));
-    const bool bHasGrid = pGrid && GRID_LINES_CHARS == pGrid->GetGridType();
+    const bool bHasGrid = pGrid && SwTextGrid::LinesAndChars == pGrid->GetGridType();
 
     bool bRubyTop = false;
 
@@ -2083,11 +2157,20 @@ bool SwTextFormatter::BuildMultiPortion( SwTextFormatInfo &rInf,
         bRet = false;
         FormatReset( aInf );
         aInf.X( nTmpX );
-        aInf.Width( sal_uInt16(nActWidth) );
-        aInf.RealWidth( sal_uInt16(nActWidth) );
+        aInf.Width(nActWidth);
+        aInf.RealWidth(nActWidth);
         aInf.SetFirstMulti( bFirstMulti );
         aInf.SetNumDone( rInf.IsNumDone() );
         aInf.SetFootnoteDone( rInf.IsFootnoteDone() );
+
+        // tdf#157829: Bidi portions contain text; word wrapping should underflow.
+        // By default, the SwTextFormatInfo constructor assumes the current index is the start of
+        // a new line. As a result, Writer cut breaks MultiPortions as if they were wider than the
+        // entire document. This is incorrect behavior for bidi portions.
+        if (rMulti.IsBidi())
+        {
+            aInf.SetLineStart(rInf.GetLineStart());
+        }
 
         // if there's a bookmark at the start of the MultiPortion, it will be
         // painted with the rotation etc. of the MultiPortion; move it *inside*
@@ -2342,7 +2425,7 @@ bool SwTextFormatter::BuildMultiPortion( SwTextFormatInfo &rInf,
             else
             {
                 // we try to keep our ruby portion together
-                lcl_TruncateMultiPortion( rMulti, rInf, nStartIdx );
+                lcl_TruncateMultiPortion(rMulti, rInf, nStartIdx);
                 pTmp = nullptr;
                 // A follow field portion may still be waiting. If nobody wants
                 // it, we delete it.
@@ -2352,7 +2435,7 @@ bool SwTextFormatter::BuildMultiPortion( SwTextFormatInfo &rInf,
         else if( rMulti.HasRotation() )
         {
             // we try to keep our rotated portion together
-            lcl_TruncateMultiPortion( rMulti, rInf, nStartIdx );
+            lcl_TruncateMultiPortion(rMulti, rInf, nStartIdx);
             pTmp = new SwRotatedPortion( nMultiLen + rInf.GetIdx(),
                                          rMulti.GetDirection() );
         }
@@ -2360,8 +2443,11 @@ bool SwTextFormatter::BuildMultiPortion( SwTextFormatInfo &rInf,
         // a new SwBidiPortion, this would cause a memory leak
         else if( rMulti.IsBidi() && ! m_pMulti )
         {
-            if ( ! rMulti.GetLen() )
-                lcl_TruncateMultiPortion( rMulti, rInf, nStartIdx );
+            auto nTruncType = lcl_BidiPortionNeedsTruncation(rMulti, rInf, aInf, nStartIdx);
+            if (nTruncType != BidiTruncationType::None)
+            {
+                lcl_TruncateMultiPortion(rMulti, rInf, nStartIdx, nTruncType);
+            }
 
             // If there is a HolePortion at the end of the bidi portion,
             // it has to be moved behind the bidi portion. Otherwise

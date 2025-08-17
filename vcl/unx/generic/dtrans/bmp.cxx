@@ -23,7 +23,7 @@
 #include <vcl/svapp.hxx>
 #include <vcl/bitmap.hxx>
 #include <vcl/bitmapex.hxx>
-#include <vcl/BitmapSimpleColorQuantizationFilter.hxx>
+#include <vcl/bitmap/BitmapSimpleColorQuantizationFilter.hxx>
 
 #include <sal/log.hxx>
 #include <unx/x11/xlimits.hxx>
@@ -215,7 +215,7 @@ static void getShift( unsigned long nMask, int& rShift, int& rSigBits, int& rShi
             nMask <<= 1;
         }
 
-    int nRotate = sizeof(unsigned long)*8 - rShift;
+    int nRotate = int(sizeof(unsigned long)*8) - rShift;
     rSigBits = 0;
     nMask = doRightShift( nUseMask, rShift) ;
     while( nRotate-- )
@@ -757,21 +757,11 @@ css::uno::Sequence<sal_Int8> x11::convertBitmapDepth(
             bm.Convert(BmpConversion::N1BitThreshold);
             break;
         case 4:
-        {
-            BitmapEx aBmpEx(bm);
-            BitmapFilter::Filter(aBmpEx, BitmapSimpleColorQuantizationFilter(1<<4));
-            bm = aBmpEx.GetBitmap();
-        }
-        break;
-
+            BitmapFilter::Filter(bm, BitmapSimpleColorQuantizationFilter(1<<4));
+            break;
         case 8:
-        {
-            BitmapEx aBmpEx(bm);
-            BitmapFilter::Filter(aBmpEx, BitmapSimpleColorQuantizationFilter(1<<8));
-            bm = aBmpEx.GetBitmap();
-        }
-        break;
-
+            BitmapFilter::Filter(bm, BitmapSimpleColorQuantizationFilter(1<<8));
+            break;
         case 24:
             bm.Convert(BmpConversion::N24Bit);
             break;

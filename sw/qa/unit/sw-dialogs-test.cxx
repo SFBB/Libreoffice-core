@@ -10,9 +10,10 @@
 #include <sal/config.h>
 #include <test/screenshot_test.hxx>
 #include <rtl/bootstrap.hxx>
-#include <osl/module.hxx>
 #include <tools/svlibrary.h>
 #include <vcl/abstdlg.hxx>
+#include <comphelper/processfactory.hxx>
+#include <com/sun/star/text/DialogFactoryService.hpp>
 
 class SwAbstractDialogFactory;
 
@@ -26,7 +27,6 @@ class SwDialogsTest : public ScreenshotTest
 {
 private:
     css::uno::Reference<css::lang::XComponent> component_;
-    osl::Module libSwui_;
 
     /// helper method to populate KnownDialogs, called in setUp(). Needs to be
     /// written and has to add entries to KnownDialogs
@@ -62,16 +62,11 @@ void SwDialogsTest::setUp()
     component_ = loadFromDesktop(
         "private:factory/swriter", "com.sun.star.text.TextDocument");
     // Make sure the swui library's global pSwResMgr is initialized
-    // (alternatively to dynamically loading the library, SwCreateDialogFactory
-    // could be declared in an include file and this CppunitTest link against
-    // the swui library):
-    OUString url("${LO_LIB_DIR}/" SVLIBRARY("swui"));
-    rtl::Bootstrap::expandMacros(url); //TODO: detect failure
-    CPPUNIT_ASSERT(libSwui_.load(url, SAL_LOADMODULE_GLOBAL));
-    auto fn = reinterpret_cast<Fn>(
-        libSwui_.getFunctionSymbol("SwCreateDialogFactory"));
-    CPPUNIT_ASSERT(fn != nullptr);
-    (*fn)();
+    auto xService = css::text::DialogFactoryService::create(comphelper::getProcessComponentContext());
+    CPPUNIT_ASSERT(xService.is());
+    // get a factory instance
+    SwAbstractDialogFactory* pFactory = reinterpret_cast<SwAbstractDialogFactory*>(xService->getSomething({}));
+    CPPUNIT_ASSERT(pFactory != nullptr);
 }
 
 void SwDialogsTest::tearDown()

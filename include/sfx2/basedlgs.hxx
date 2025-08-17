@@ -29,7 +29,7 @@ class SfxBindings;
 class SfxChildWindow;
 struct SfxChildWinInfo;
 class SfxItemSet;
-struct WhichRangesContainer;
+class WhichRangesContainer;
 
 class SFX2_DLLPUBLIC SfxDialogController : public weld::GenericDialogController
 {
@@ -82,7 +82,7 @@ public:
     SfxBindings&            GetBindings() const { return *m_pBindings; }
 };
 
-typedef WhichRangesContainer (*GetTabPageRanges)(); // provides international Which values
+typedef const WhichRangesContainer & (*GetTabPageRanges)(); // provides international Which values
 
 class SFX2_DLLPUBLIC SfxOkDialogController : public SfxDialogController
 {
@@ -105,8 +105,8 @@ private:
 
 public:
     SfxSingleTabDialogController(weld::Widget* pParent, const SfxItemSet* pOptionsSet,
-        const OUString& rUIXMLDescription = OUString("sfx/ui/singletabdialog.ui"),
-        const OUString& rID = OUString("SingleTabDialog"));
+        const OUString& rUIXMLDescription = u"sfx/ui/singletabdialog.ui"_ustr,
+        const OUString& rID = u"SingleTabDialog"_ustr);
 
     SfxSingleTabDialogController(weld::Widget* pParent, const SfxItemSet* pOptionsSet,
         const OUString& rContainerId, const OUString& rUIXMLDescription,
@@ -129,7 +129,6 @@ protected:
     std::unique_ptr<SfxTabPage> m_xSfxPage;
     std::unique_ptr<weld::Container> m_xContainer;
     std::unique_ptr<weld::Button> m_xOKBtn;
-    std::unique_ptr<weld::Button> m_xHelpBtn;
 
     void                CreateOutputItemSet(const SfxItemSet& rInput);
     void                SetInputSet(const SfxItemSet* pInSet) { m_pInputSet = pInSet; }

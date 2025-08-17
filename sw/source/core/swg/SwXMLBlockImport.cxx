@@ -23,17 +23,20 @@
 #include <unotools/charclass.hxx>
 #include <swtypes.hxx>
 
+#if defined __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #if defined __clang__
 #if __has_warning("-Wdeprecated-register")
-#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-register"
 #endif
 #endif
-#include <tokens.cxx>
-#if defined __clang__
-#if __has_warning("-Wdeprecated-register")
-#pragma GCC diagnostic pop
 #endif
+
+#include <tokens.cxx>
+
+#if defined __GNUC__
+#pragma GCC diagnostic pop
 #endif
 
 using namespace ::com::sun::star::uno;
@@ -127,7 +130,7 @@ SwXMLTextBlockTokenHandler::~SwXMLTextBlockTokenHandler()
 
 sal_Int32 SAL_CALL SwXMLTextBlockTokenHandler::getTokenFromUTF8( const Sequence< sal_Int8 >& Identifier )
 {
-    return getTokenDirect( reinterpret_cast< const char* >( Identifier.getConstArray() ), Identifier.getLength() );
+    return getTokenDirect( std::string_view(reinterpret_cast< const char* >( Identifier.getConstArray() ), Identifier.getLength()) );
 }
 
 Sequence< sal_Int8 > SAL_CALL SwXMLTextBlockTokenHandler::getUTF8Identifier( sal_Int32 )
@@ -135,11 +138,9 @@ Sequence< sal_Int8 > SAL_CALL SwXMLTextBlockTokenHandler::getUTF8Identifier( sal
     return Sequence< sal_Int8 >();
 }
 
-sal_Int32 SwXMLTextBlockTokenHandler::getTokenDirect( const char *pTag, sal_Int32 nLength ) const
+sal_Int32 SwXMLTextBlockTokenHandler::getTokenDirect(std::string_view token) const
 {
-    if( !nLength )
-        nLength = strlen( pTag );
-    const struct xmltoken* pToken = TextBlockTokens::in_word_set( pTag, nLength );
+    const struct xmltoken* pToken = TextBlockTokens::in_word_set(token.data(), token.size());
     return pToken ? pToken->nToken : XML_TOKEN_INVALID;
 }
 
@@ -153,7 +154,7 @@ SwXMLBlockListTokenHandler::~SwXMLBlockListTokenHandler()
 
 sal_Int32 SAL_CALL SwXMLBlockListTokenHandler::getTokenFromUTF8( const Sequence< sal_Int8 >& Identifier )
 {
-    return getTokenDirect( reinterpret_cast< const char* >( Identifier.getConstArray() ), Identifier.getLength() );
+    return getTokenDirect( std::string_view(reinterpret_cast< const char* >( Identifier.getConstArray() ), Identifier.getLength()) );
 }
 
 Sequence< sal_Int8 > SAL_CALL SwXMLBlockListTokenHandler::getUTF8Identifier( sal_Int32 )
@@ -161,11 +162,9 @@ Sequence< sal_Int8 > SAL_CALL SwXMLBlockListTokenHandler::getUTF8Identifier( sal
     return Sequence< sal_Int8 >();
 }
 
-sal_Int32 SwXMLBlockListTokenHandler::getTokenDirect( const char *pTag, sal_Int32 nLength ) const
+sal_Int32 SwXMLBlockListTokenHandler::getTokenDirect(std::string_view token) const
 {
-    if( !nLength )
-        nLength = strlen( pTag );
-    const struct xmltoken* pToken = BlockListTokens::in_word_set( pTag, nLength );
+    const struct xmltoken* pToken = BlockListTokens::in_word_set(token.data(), token.size());
     return pToken ? pToken->nToken : XML_TOKEN_INVALID;
 }
 
@@ -288,7 +287,7 @@ SwXMLTextBlockParContext::~SwXMLTextBlockParContext()
 SwXMLBlockListImport::SwXMLBlockListImport(
     const uno::Reference< uno::XComponentContext >& rContext,
     SwXMLTextBlocks &rBlocks )
-:   SvXMLImport( rContext, "", SvXMLImportFlags::NONE ),
+:   SvXMLImport( rContext, u""_ustr, SvXMLImportFlags::NONE ),
     m_rBlockList (rBlocks)
 {
 }
@@ -310,7 +309,7 @@ SwXMLTextBlockImport::SwXMLTextBlockImport(
     const uno::Reference< uno::XComponentContext >& rContext,
     OUString & rNewText,
     bool bNewTextOnly )
-:   SvXMLImport(rContext, "", SvXMLImportFlags::ALL ),
+:   SvXMLImport(rContext, u""_ustr, SvXMLImportFlags::ALL ),
     m_bTextOnly ( bNewTextOnly ),
     m_rText ( rNewText )
 {

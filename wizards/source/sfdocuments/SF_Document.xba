@@ -86,6 +86,9 @@ Private _CustomProperties		As Object		&apos;	Dictionary of custom properties
 &apos;	Cache for static toolbar descriptions
 Private _Toolbars				As Object		&apos;	SF_Dictionary instance to hold toolbars stored in application or in document
 
+&apos;	List of standard context menus
+Private _ContextMenus			As Variant		&apos;	Array of ResourceURL strings
+
 &apos;	Style descriptor
 Type StyleDescriptor
 	Family						As Object
@@ -123,6 +126,7 @@ Private Sub Class_Initialize()
 	Set _DocumentProperties = Nothing
 	Set _CustomProperties = Nothing
 	Set _Toolbars = Nothing
+	_ContextMenus = Array()
 	_StyleFamilies = Array()
 End Sub		&apos;	SFDocuments.SF_Document Constructor
 
@@ -290,6 +294,11 @@ Property Get ImportFilters() As Variant
 End Property	&apos;	SFDocuments.SF_Document.ImportFilters
 
 REM -----------------------------------------------------------------------------
+Property Get IsAlive() As Boolean
+	IsAlive = _PropertyGet(&quot;IsAlive&quot;)
+End Property	&apos;	SFDocuments.SF_Document.IsAlive
+
+REM -----------------------------------------------------------------------------
 Property Get IsBase() As Boolean
 	IsBase = _PropertyGet(&quot;IsBase&quot;)
 End Property	&apos;	SFDocuments.SF_Document.IsBase
@@ -354,6 +363,12 @@ Finally:
 	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
 	Exit Property
 End Property	&apos;	SFDocuments.SF_Document.Keywords
+
+REM -----------------------------------------------------------------------------
+Property Get MenuHeaders() As Variant
+&apos;&apos;&apos;	Returns the list, as an array of strings, of the menu headers present in the menubar
+	MenuHeaders = _PropertyGet(&quot;MenuHeaders&quot;)
+End Property	&apos;	SFDocuments.SF_Document.MenuHeaders
 
 REM -----------------------------------------------------------------------------
 Property Get Readonly() As Boolean
@@ -531,6 +546,57 @@ Catch:
 End Function   &apos;   SFDocuments.SF_Document.CloseDocument
 
 REM -----------------------------------------------------------------------------
+Public Function ContextMenus(Optional ByVal ContextMenuName As Variant _
+								, Optional ByVal SubmenuChar As Variant _
+								) As Variant
+&apos;&apos;&apos;	Returns either a list of the available ContextMenu names in the actual document
+&apos;&apos;&apos;	or a SFWidgets.ContextMenu object instance.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		ContextMenuName: the usual name of one of the available ContextMenus
+&apos;&apos;&apos;		SubmenuChar: Delimiter used in menu trees
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		A zero-based array of ContextMenu names when there is no argument,
+&apos;&apos;&apos;		or a new ContextMenu object instance from the SFWidgets library.
+
+Const cstThisSub = &quot;SFDocuments.Document.ContextMenus&quot;
+Const cstSubArgs = &quot;[ContextMenuName=&quot;&quot;&quot;&quot;], [SubmenuChar=&quot;&quot;&gt;&quot;&quot;]&quot;
+
+	If ScriptForge.SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+
+Check:
+	If IsMissing(ContextMenuName) Or IsEmpty(ContextMenuName) Then ContextMenuName = &quot;&quot;
+	If IsMissing(SubmenuChar) Or IsEmpty(SubmenuChar) Then SubmenuChar = &quot;&gt;&quot;
+	If UBound(_ContextMenus) &lt; 0 Then _ContextMenus = _ListContextMenus()
+	If ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not _IsStillAlive() Then GoTo Finally
+		If VarType(ContextMenuName) = V_STRING Then
+			If Len(ContextMenuName) &gt; 0 Then
+				If Not ScriptForge.SF_Utils._Validate(ContextMenuName, &quot;ContextMenuName&quot;, V_STRING, _ContextMenus) Then GoTo Finally
+			End If
+		Else
+			If Not ScriptForge.SF_Utils._Validate(ContextMenuName, &quot;ContextMenuName&quot;, V_STRING) Then GoTo Finally	&apos;	Manage here the VarType error
+		End If
+		If Not ScriptForge.SF_Utils._Validate(SubmenuChar, &quot;SubmenuChar&quot;, V_STRING) Then GoTo Finally
+	End If
+
+Try:
+	If Len(ContextMenuName) = 0 Then
+		ContextMenus = _ContextMenus
+	Else
+		ContextMenus = CreateScriptService(&quot;SFWidgets.ContextMenu&quot; _
+						, _Component _
+						, &quot;private:resource/popupmenu/&quot; &amp; LCase(ContextMenuName) _
+						, SubmenuChar)
+	End If
+
+Finally:
+	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+End Function	&apos;	SFDocuments.SF_Document.ContextMenus
+
+REM -----------------------------------------------------------------------------
 Public Function CreateMenu(Optional ByVal MenuHeader As Variant _
 								, Optional ByVal Before As Variant _
 								, Optional ByVal SubmenuChar As Variant _
@@ -572,7 +638,7 @@ Check:
 	If ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
 		If Not _IsStillAlive() Then GoTo Finally
 		If Not ScriptForge.SF_Utils._Validate(MenuHeader, &quot;MenuHeader&quot;, V_STRING) Then GoTo Finally
-		If Not ScriptForge.SF_Utils._Validate(Before, &quot;Before&quot;, V_STRING) Then GoTo Finally
+		If Not ScriptForge.SF_Utils._Validate(Before, &quot;Before&quot;, Array(V_STRING, ScriptForge.V_NUMERIC)) Then GoTo Finally
 		If Not ScriptForge.SF_Utils._Validate(SubmenuChar, &quot;SubmenuChar&quot;, V_STRING) Then GoTo Finally
 	End If
 
@@ -855,6 +921,7 @@ Public Function Methods() As Variant
 	Methods = Array( _
 					&quot;Activate&quot; _
 					, &quot;CloseDocument&quot; _
+					, &quot;ContextMenus&quot; _
 					, &quot;CreateMenu&quot; _
 					, &quot;Echo&quot; _
 					, &quot;DeleteStyles&quot; _
@@ -941,6 +1008,7 @@ Public Function Properties() As Variant
 					, &quot;ExportFilters&quot; _
 					, &quot;FileSystem&quot; _
 					, &quot;ImportFilters&quot; _
+					, &quot;IsAlive&quot; _
 					, &quot;IsBase&quot; _
 					, &quot;IsCalc&quot; _
 					, &quot;IsDraw&quot; _
@@ -949,6 +1017,7 @@ Public Function Properties() As Variant
 					, &quot;IsMath&quot; _
 					, &quot;IsWriter&quot; _
 					, &quot;Keywords&quot; _
+					, &quot;MenuHeaders&quot; _
 					, &quot;Readonly&quot; _
 					, &quot;StyleFamilies&quot; _
 					, &quot;Subject&quot; _
@@ -1376,7 +1445,7 @@ Check:
 	If VarType(Printer) = V_STRING Then
 		vPrinters = ScriptForge.SF_Platform.Printers
 		If Len(Printer) &gt; 0 Then
-			If Not ScriptForge.SF_Utils._Validate(Printer, &quot;Printer&quot;, V_STRING, vPrinters) Then GoTo Finally
+			If Not ScriptForge.SF_Utils._Validate(Printer, &quot;Printer&quot;, V_STRING, vPrinters, True) Then GoTo Finally
 		End If
 	Else
 		If Not ScriptForge.SF_Utils._Validate(Printer, &quot;Printer&quot;, V_STRING) Then GoTo Finally	&apos;	Manage here the VarType error
@@ -1550,10 +1619,10 @@ Try:
 		vStyles = oFamily.getElementNames()
 		&apos;	Scan the list and retain those passing the filter
 		For i = 0 To UBound(vStyles)
-			With oStyle
-				sStyle = vStyles(i)
-				Set oStyle = _GetStyle(oFamily, sStyle)
-				If Not IsNull(oStyle) Then
+			sStyle = vStyles(i)
+			Set oStyle = _GetStyle(oFamily, sStyle)
+			If Not IsNull(oStyle) Then
+				With oStyle
 					&apos;	Pattern ?
 					bValid = ( Len(NamePattern) = 0 )
 					If Not bValid Then bValid = ScriptForge.SF_String.IsLike(.DisplayName, NamePattern, CaseSensitive := True)
@@ -1570,10 +1639,10 @@ Try:
 					&apos;	Category ?
 					If bValid And Len(Category) &gt; 0 Then bValid = ( UCase(Category) = .Category )
 					If bValid Then vStyles(i) = .DisplayName Else vStyles(i) = &quot;&quot;
-				Else
-					vStyles(i) = &quot;&quot;
-				End If
-			End With
+				End With
+			Else
+				vStyles(i) = &quot;&quot;
+			End If
 		Next i
 		&apos;	Reject when not valid
 		vStyles = ScriptForge.SF_Array.TrimArray(vStyles)
@@ -2001,17 +2070,56 @@ CatchReadonly:
 End Function	&apos;	SFDocuments.SF_Document._IsStillAlive
 
 REM -----------------------------------------------------------------------------
+Private Function _ListContextMenus() As Variant
+&apos;&apos;&apos;	Returns an array of the usual names of the context menus available in the current document
+
+Dim vMenus As Variant			&apos;	Return value
+Dim vMenusObj As Variant		&apos;	Array of arrays of property values
+Dim oSupplier As Object			&apos;	/singletons/com.sun.star.ui.theModuleUIConfigurationManagerSupplier
+Dim sComponentType As String	&apos;	Argument to determine the system config manager, ex. &quot;com.sun.star.text.TextDocument&quot;
+Dim oUIConf As Object			&apos;	com.sun.star.ui.XUIConfigurationManager
+Dim i As Long
+
+	On Local Error GoTo Catch
+	vMenus = Array()
+
+Try:
+	Set oSupplier = ScriptForge.SF_Utils._GetUNOService(&quot;ModuleUIConfigurationManagerSupplier&quot;)
+	sComponentType = ScriptForge.SF_UI._GetConfigurationManager(_Component)
+	Set oUIConf = oSupplier.getUIConfigurationManager(sComponentType)
+
+	&apos;	Discard menubar, statusbar, ...
+	vMenusObj = oUIConf.getUIElementsInfo(com.sun.star.ui.UIElementType.POPUPMENU)
+
+	&apos;	Extract and sort the names
+	ReDim vMenus(0 To UBound(vMenusObj))
+	For i = 0 To UBound(vMenusObj)
+		vMenus(i) = Mid(vMenusObj(i)(0).Value, Len(&quot;private:resource/popupmenu/&quot;) + 1)
+	Next i
+	vMenus = ScriptForge.SF_Array.Unique(vMenus, CaseSensitive := True)
+
+Finally:
+	_ListContextMenus = vMenus
+	Exit Function
+Catch:
+	On Local Error GoTo 0
+	GoTo Finally
+End Function	&apos;	SFDocuments.SF_Document._ListContextMenus
+
+REM -----------------------------------------------------------------------------
 Private Sub _LoadDocumentProperties()
-&apos;&apos;&apos;	Create dictionary with document properties as entries/ Custom properties are excluded
+&apos;&apos;&apos;	Create dictionary with document properties as entries / Custom properties are excluded
 &apos;&apos;&apos;	Document is presumed still alive
 &apos;&apos;&apos;	Special values:
 &apos;&apos;&apos;		Only valid dates are taken
 &apos;&apos;&apos;		Statistics are exploded in subitems. Subitems are specific to document type
-&apos;&apos;&apos;		Keywords are joined
+&apos;&apos;&apos;		Arrays of strings are joined
 &apos;&apos;&apos;		Language is aligned on L10N convention la-CO
 
 Dim oProperties As Object			&apos;	Document properties
 Dim vNamedValue As Variant			&apos;	com.sun.star.beans.NamedValue
+
+Const cstJoin = &quot;, &quot;
 
 			If IsNull(_DocumentProperties) Then
 				Set oProperties = _Component.getDocumentProperties
@@ -2021,20 +2129,29 @@ Dim vNamedValue As Variant			&apos;	com.sun.star.beans.NamedValue
 					.Add(&quot;AutoloadSecs&quot;, oProperties.AutoloadSecs)
 					.Add(&quot;AutoloadURL&quot;, oProperties.AutoloadURL)
 					If oProperties.CreationDate.Year &gt; 0 Then .Add(&quot;CreationDate&quot;, CDateFromUnoDateTime(oProperties.CreationDate))
+					.Add(&quot;Contributor&quot;, Join(oProperties.Contributor, cstJoin))
+					.Add(&quot;Coverage&quot;, oProperties.Coverage)
 					.Add(&quot;DefaultTarget&quot;, oProperties.DefaultTarget)
 					.Add(&quot;Description&quot;, oProperties.Description)	&apos;	The description can be multiline
 					&apos;	DocumentStatistics : number and names of statistics depend on document type
 					For Each vNamedValue In oProperties.DocumentStatistics
 						.Add(vNamedValue.Name, vNamedValue.Value)
 					Next vNamedValue
+					.Add(&quot;EditingCycles&quot;, oProperties.EditingCycles)
 					.Add(&quot;EditingDuration&quot;, oProperties.EditingDuration)
 					.Add(&quot;Generator&quot;, oProperties.Generator)
-					.Add(&quot;Keywords&quot;, Join(oProperties.Keywords, &quot;, &quot;))
+					.Add(&quot;Identifier&quot;, oProperties.Identifier)
+					.Add(&quot;Keywords&quot;, Join(oProperties.Keywords, cstJoin))
 					.Add(&quot;Language&quot;, oProperties.Language.Language &amp; Iif(Len(oProperties.Language.Country) &gt; 0, &quot;-&quot; &amp; oProperties.Language.Country, &quot;&quot;))
 					If oProperties.ModificationDate.Year &gt; 0 Then .Add(&quot;ModificationDate&quot;, CDateFromUnoDateTime(oProperties.ModificationDate))
 					If oProperties.PrintDate.Year &gt; 0 Then .Add(&quot;PrintDate&quot;, CDateFromUnoDateTime(oProperties.PrintDate))
 					.Add(&quot;PrintedBy&quot;, oProperties.PrintedBy)
+					.Add(&quot;Publisher&quot;, Join(oProperties.Publisher, cstJoin))
+					.Add(&quot;Relation&quot;, Join(oProperties.Relation, cstJoin))
+					.Add(&quot;Rights&quot;, oProperties.Rights)
+					.Add(&quot;Source&quot;, oProperties.Source)
 					.Add(&quot;Subject&quot;, oProperties.Subject)
+					.Add(&quot;Type&quot;, oProperties.Type)
 					If oProperties.TemplateDate.Year &gt; 0 Then .Add(&quot;TemplateDate&quot;, CDateFromUnoDateTime(oProperties.TemplateDate))
 					.Add(&quot;TemplateName&quot;, oProperties.TemplateName)
 					.Add(&quot;TemplateURL&quot;, oProperties.TemplateURL)
@@ -2053,57 +2170,78 @@ Private Function _PropertyGet(Optional ByVal psProperty As String) As Variant
 Dim oProperties As Object			&apos;	Document or Custom properties
 Dim oTransient As Object			&apos;	com.sun.star.frame.TransientDocumentsDocumentContentFactory
 Dim oContent As Object				&apos;	com.sun.star.comp.ucb.TransientDocumentsContent
+Dim oMenuBar As Object				&apos;	com.sun.star.awt.XMenuBar
+Dim sMenus As String				&apos;	List of menus in the menubar
+Dim i As Long, j As Long
 Dim cstThisSub As String
 Const cstSubArgs = &quot;&quot;
 
 	_PropertyGet = False
 
 	Select Case _DocumentType
-		Case &quot;Calc&quot;		:	cstThisSub = &quot;SFDocuments.SF_&quot; &amp; _DocumentType &amp; &quot;.get&quot; &amp; psProperty
+		Case &quot;Base&quot;, &quot;Calc&quot;, &quot;FormDocument&quot;, &quot;Writer&quot;
+			cstThisSub = &quot;SFDocuments.SF_&quot; &amp; _DocumentType &amp; &quot;.get&quot; &amp; psProperty
 		Case Else		:	cstThisSub = &quot;SFDocuments.SF_Document.get&quot; &amp; psProperty
 	End Select
 	ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs)
-	If Not _IsStillAlive() Then GoTo Finally
+	If psProperty &lt;&gt; &quot;IsAlive&quot; Then
+		If Not _IsStillAlive() Then GoTo Finally
+	End If
 
-	Select Case psProperty
-		Case &quot;CustomProperties&quot;
-			_CustomProperties = CreateScriptService(&quot;Dictionary&quot;)	&apos;	Always reload as updates could have been done manually by user
+	Select Case UCase(psProperty)
+		Case UCase(&quot;CustomProperties&quot;)
+			_CustomProperties = CreateScriptService(&quot;Dictionary&quot;, True)	&apos;	Always reload as updates could have been done manually by user
+																		&apos;	(with case-sensitive comparison of keys)
 			_CustomProperties.ImportFromPropertyValues(_Component.getDocumentProperties().UserDefinedProperties.getPropertyValues)
 			_PropertyGet = _CustomProperties
-		Case &quot;Description&quot;
+		Case UCase(&quot;Description&quot;)
 			_PropertyGet = _Component.DocumentProperties.Description
-		Case &quot;DocumentProperties&quot;
+		Case UCase(&quot;DocumentProperties&quot;)
 			_LoadDocumentProperties()	&apos;	Always reload as updates could have been done manually by user
 			Set _PropertyGet = _DocumentProperties
-		Case &quot;DocumentType&quot;
+		Case UCase(&quot;DocumentType&quot;)
 			_PropertyGet = _DocumentType
-		Case &quot;ExportFilters&quot;
+		Case UCase(&quot;ExportFilters&quot;)
 			_PropertyGet = _GetFilterNames(True)
-		Case &quot;FileSystem&quot;
+		Case UCase(&quot;FileSystem&quot;)
 			&apos;	Natural choice would have been to use the component.RunTimeUID property
 			&apos;	However it is optional in the OfficeDocument service and not available for Base documents
 			&apos;	Below a more generic alternative derived from the get_document_uri() method found in apso.py
 			Set oTransient = ScriptForge.SF_Utils._GetUnoService(&quot;TransientDocumentFactory&quot;)
 			Set oContent = oTransient.createDocumentContent(_Component)
 			_PropertyGet = oContent.getIdentifier().ContentIdentifier &amp; &quot;/&quot;
-		Case &quot;ImportFilters&quot;
+		Case UCase(&quot;ImportFilters&quot;)
 			_PropertyGet = _GetFilterNames(False)
-		Case &quot;IsBase&quot;, &quot;IsCalc&quot;, &quot;IsDraw&quot;, &quot;IsFormDocument&quot;, &quot;IsImpress&quot;, &quot;IsMath&quot;, &quot;IsWriter&quot;
+		Case UCase(&quot;IsAlive&quot;)
+			_PropertyGet = _IsStillAlive(False, False)
+		Case UCase(&quot;IsBase&quot;), UCase(&quot;IsCalc&quot;), UCase(&quot;IsDraw&quot;), UCase(&quot;IsFormDocument&quot;), UCase(&quot;IsImpress&quot;), UCase(&quot;IsMath&quot;), UCase(&quot;IsWriter&quot;)
 			_PropertyGet = ( Mid(psProperty, 3) = _DocumentType )
-		Case &quot;Keywords&quot;
+		Case UCase(&quot;Keywords&quot;)
 			_PropertyGet = Join(_Component.DocumentProperties.Keywords, &quot;, &quot;)
-		Case &quot;Readonly&quot;
+		Case UCase(&quot;MenuHeaders&quot;)
+			Set oMenuBar = _Component.CurrentController.Frame.LayoutManager.getElement(&quot;private:resource/menubar/menubar&quot;).XMenuBar
+			&apos;	Join all menu headers, then split the whole string
+			sMenus = &quot;&quot;
+			With oMenuBar
+				For i = 0 To .ItemCount - 1
+					j = .getItemId(i)
+					sMenus = sMenus &amp; .getItemText(j) &amp; &quot;,&quot;
+				Next i
+			End With
+			If Len(sMenus) &gt; 0 Then sMenus = Left(sMenus, Len(sMenus) - 1)		&apos;	Suppress final comma
+			_PropertyGet = Split(Replace(sMenus, &quot;~&quot;, &quot;&quot;), &quot;,&quot;)
+		Case UCase(&quot;Readonly&quot;)
 			_PropertyGet = _Component.isReadonly()
-		Case &quot;StyleFamilies&quot;
+		Case UCase(&quot;StyleFamilies&quot;)
 			If UBound(_StyleFamilies) &lt; 0 Then _StyleFamilies = _Component.getStyleFamilies().getElementNames()
 			_PropertyGet = _StyleFamilies
-		Case &quot;Subject&quot;
+		Case UCase(&quot;Subject&quot;)
 			_PropertyGet = _Component.DocumentProperties.Subject
-		Case &quot;Title&quot;
+		Case UCase(&quot;Title&quot;)
 			_PropertyGet = _Component.DocumentProperties.Title
-		Case &quot;XComponent&quot;
+		Case UCase(&quot;XComponent&quot;)
 			Set _PropertyGet = _Component
-		Case &quot;XDocumentSettings&quot;
+		Case UCase(&quot;XDocumentSettings&quot;)
 			With _Component
 				If IsNull(_DocumentSettings) Then
 					Select Case _DocumentType

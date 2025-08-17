@@ -23,6 +23,7 @@
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequence.hxx>
 #include <o3tl/safeint.hxx>
+#include <officecfg/VCL.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <tools/debug.hxx>
 #include <tools/urlobj.hxx>
@@ -34,7 +35,6 @@
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
 
-#include <configsettings.hxx>
 #include <printdlg.hxx>
 #include <salinst.hxx>
 #include <salprn.hxx>
@@ -47,9 +47,15 @@
 #include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
 #include <com/sun/star/view/DuplexMode.hpp>
+#include <com/sun/star/view/PaperOrientation.hpp>
 
 #include <unordered_map>
 #include <unordered_set>
+
+#ifdef MACOSX
+#include <com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp>
+#include <com/sun/star/ui/dialogs/XFilePickerControlAccess.hpp>
+#endif
 
 using namespace vcl;
 
@@ -252,15 +258,36 @@ PrinterController::PrinterController(const VclPtr<Printer>& i_xPrinter, weld::Wi
     mpImplData->mpWindow = i_pWindow;
 }
 
-static OUString queryFile( Printer const * pPrinter )
+static OUString queryFile( Printer const * pPrinter, const OUString & rJobName )
 {
     OUString aResult;
 
-    css::uno::Reference< css::uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const css::uno::Reference< css::uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
     css::uno::Reference< css::ui::dialogs::XFilePicker3 > xFilePicker = css::ui::dialogs::FilePicker::createWithMode(xContext, css::ui::dialogs::TemplateDescription::FILESAVE_AUTOEXTENSION);
 
     try
     {
+#ifdef MACOSX
+        // Try to mimic the save dialog behavior when using the native
+        // print dialog to save to PDF.
+        if( pPrinter )
+        {
+            // Set the suggested file name if possible
+            if( !rJobName.isEmpty() )
+                xFilePicker->setDefaultName( rJobName );
+
+            // macOS normally saves only to PDF
+            if( pPrinter->GetCapabilities( PrinterCapType::PDF ) )
+            {
+                xFilePicker->appendFilter( u"Portable Document Format"_ustr, u"*.pdf"_ustr );
+
+                css::uno::Reference< css::ui::dialogs::XFilePickerControlAccess > xControlAccess( xFilePicker, css::uno::UNO_QUERY );
+                if( xControlAccess.is() )
+                    xControlAccess->setValue( css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_AUTOEXTENSION, 0, css::uno::Any( true ) );
+            }
+        }
+#else
+        (void)rJobName;
 #ifdef UNX
         // add PostScript and PDF
         bool bPS = true, bPDF = true;
@@ -272,15 +299,16 @@ static OUString queryFile( Printer const * pPrinter )
                 bPDF = false;
         }
         if( bPS )
-            xFilePicker->appendFilter( "PostScript", "*.ps" );
+            xFilePicker->appendFilter( u"PostScript"_ustr, u"*.ps"_ustr );
         if( bPDF )
-            xFilePicker->appendFilter( "Portable Document Format", "*.pdf" );
+            xFilePicker->appendFilter( u"Portable Document Format"_ustr, u"*.pdf"_ustr );
 #elif defined _WIN32
         (void)pPrinter;
         xFilePicker->appendFilter( "*.PRN", "*.prn" );
 #endif
         // add arbitrary files
-        xFilePicker->appendFilter(VclResId(SV_STDTEXT_ALLFILETYPES), "*.*");
+        xFilePicker->appendFilter(VclResId(SV_STDTEXT_ALLFILETYPES), u"*.*"_ustr);
+#endif
     }
     catch (const css::lang::IllegalArgumentException&)
     {
@@ -325,7 +353,7 @@ void Printer::PrintJob(const std::shared_ptr<PrinterController>& i_xController,
                        const JobSetup& i_rInitSetup)
 {
     bool bSynchronous = false;
-    css::beans::PropertyValue* pVal = i_xController->getValue( "Wait" );
+    css::beans::PropertyValue* pVal = i_xController->getValue( u"Wait"_ustr );
     if( pVal )
         pVal->Value >>= bSynchronous;
 
@@ -341,16 +369,18 @@ void Printer::PrintJob(const std::shared_ptr<PrinterController>& i_xController,
 bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
                            const JobSetup& i_rInitSetup)
 {
+    Printer::updatePrinters();
+
     // check if there is a default printer; if not, show an error box (if appropriate)
     if( GetDefaultPrinterName().isEmpty() )
     {
         if (xController->isShowDialogs())
         {
-            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(xController->getWindow(), "vcl/ui/errornoprinterdialog.ui"));
-            std::unique_ptr<weld::MessageDialog> xBox(xBuilder->weld_message_dialog("ErrorNoPrinterDialog"));
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(xController->getWindow(), u"vcl/ui/errornoprinterdialog.ui"_ustr));
+            std::unique_ptr<weld::MessageDialog> xBox(xBuilder->weld_message_dialog(u"ErrorNoPrinterDialog"_ustr));
             xBox->run();
         }
-        xController->setValue( "IsDirect",
+        xController->setValue( u"IsDirect"_ustr,
                                css::uno::Any( false ) );
     }
 
@@ -380,12 +410,12 @@ bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
     // "Pages" attribute from API is now equivalent to "PageRange"
     // AND "PrintContent" = 1 except calc where it is "PrintRange" = 1
     // Argh ! That sure needs cleaning up
-    css::beans::PropertyValue* pContentVal = xController->getValue("PrintRange");
+    css::beans::PropertyValue* pContentVal = xController->getValue(u"PrintRange"_ustr);
     if( ! pContentVal )
-        pContentVal = xController->getValue("PrintContent");
+        pContentVal = xController->getValue(u"PrintContent"_ustr);
 
     // case 1: UNO API has set "Pages"
-    css::beans::PropertyValue* pPagesVal = xController->getValue("Pages");
+    css::beans::PropertyValue* pPagesVal = xController->getValue(u"Pages"_ustr);
     if( pPagesVal )
     {
         OUString aPagesVal;
@@ -398,7 +428,7 @@ bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
             if( pContentVal )
             {
                 pContentVal->Value <<= sal_Int32( 1 );
-                xController->setValue("PageRange", pPagesVal->Value);
+                xController->setValue(u"PageRange"_ustr, pPagesVal->Value);
             }
         }
     }
@@ -411,7 +441,7 @@ bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
             if( nContent == 0 )
             {
                 // do not overwrite PageRange if it is already set
-                css::beans::PropertyValue* pRangeVal = xController->getValue("PageRange");
+                css::beans::PropertyValue* pRangeVal = xController->getValue(u"PageRange"_ustr);
                 OUString aRange;
                 if( pRangeVal )
                     pRangeVal->Value >>= aRange;
@@ -426,14 +456,14 @@ bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
                         {
                             aBuf.append( "-" + OUString::number( nPages ) );
                         }
-                        xController->setValue("PageRange", css::uno::Any(aBuf.makeStringAndClear()));
+                        xController->setValue(u"PageRange"_ustr, css::uno::Any(aBuf.makeStringAndClear()));
                     }
                 }
             }
         }
     }
 
-    css::beans::PropertyValue* pReverseVal = xController->getValue("PrintReverse");
+    css::beans::PropertyValue* pReverseVal = xController->getValue(u"PrintReverse"_ustr);
     if( pReverseVal )
     {
         bool bReverse = false;
@@ -441,7 +471,7 @@ bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
         xController->setReversePrint( bReverse );
     }
 
-    css::beans::PropertyValue* pPapersizeFromSetupVal = xController->getValue("PapersizeFromSetup");
+    css::beans::PropertyValue* pPapersizeFromSetupVal = xController->getValue(u"PapersizeFromSetup"_ustr);
     if( pPapersizeFromSetupVal )
     {
         bool bPapersizeFromSetup = false;
@@ -450,35 +480,35 @@ bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
     }
 
     // setup NUp printing from properties
-    sal_Int32 nRows = xController->getIntProperty("NUpRows", 1);
-    sal_Int32 nCols = xController->getIntProperty("NUpColumns", 1);
+    sal_Int32 nRows = xController->getIntProperty(u"NUpRows"_ustr, 1);
+    sal_Int32 nCols = xController->getIntProperty(u"NUpColumns"_ustr, 1);
     if( nRows > 1 || nCols > 1 )
     {
         PrinterController::MultiPageSetup aMPS;
         aMPS.nRows         = std::max<sal_Int32>(nRows, 1);
         aMPS.nColumns      = std::max<sal_Int32>(nCols, 1);
-        sal_Int32 nValue = xController->getIntProperty("NUpPageMarginLeft", aMPS.nLeftMargin);
+        sal_Int32 nValue = xController->getIntProperty(u"NUpPageMarginLeft"_ustr, aMPS.nLeftMargin);
         if( nValue >= 0 )
             aMPS.nLeftMargin = nValue;
-        nValue = xController->getIntProperty("NUpPageMarginRight", aMPS.nRightMargin);
+        nValue = xController->getIntProperty(u"NUpPageMarginRight"_ustr, aMPS.nRightMargin);
         if( nValue >= 0 )
             aMPS.nRightMargin = nValue;
-        nValue = xController->getIntProperty( "NUpPageMarginTop", aMPS.nTopMargin );
+        nValue = xController->getIntProperty( u"NUpPageMarginTop"_ustr, aMPS.nTopMargin );
         if( nValue >= 0 )
             aMPS.nTopMargin = nValue;
-        nValue = xController->getIntProperty( "NUpPageMarginBottom", aMPS.nBottomMargin );
+        nValue = xController->getIntProperty( u"NUpPageMarginBottom"_ustr, aMPS.nBottomMargin );
         if( nValue >= 0 )
             aMPS.nBottomMargin = nValue;
-        nValue = xController->getIntProperty( "NUpHorizontalSpacing", aMPS.nHorizontalSpacing );
+        nValue = xController->getIntProperty( u"NUpHorizontalSpacing"_ustr, aMPS.nHorizontalSpacing );
         if( nValue >= 0 )
             aMPS.nHorizontalSpacing = nValue;
-        nValue = xController->getIntProperty( "NUpVerticalSpacing", aMPS.nVerticalSpacing );
+        nValue = xController->getIntProperty( u"NUpVerticalSpacing"_ustr, aMPS.nVerticalSpacing );
         if( nValue >= 0 )
             aMPS.nVerticalSpacing = nValue;
-        aMPS.bDrawBorder = xController->getBoolProperty( "NUpDrawBorder", aMPS.bDrawBorder );
-        aMPS.nOrder = static_cast<NupOrderType>(xController->getIntProperty( "NUpSubPageOrder", static_cast<sal_Int32>(aMPS.nOrder) ));
+        aMPS.bDrawBorder = xController->getBoolProperty( u"NUpDrawBorder"_ustr, aMPS.bDrawBorder );
+        aMPS.nOrder = static_cast<NupOrderType>(xController->getIntProperty( u"NUpSubPageOrder"_ustr, static_cast<sal_Int32>(aMPS.nOrder) ));
         aMPS.aPaperSize = xController->getPrinter()->PixelToLogic( xController->getPrinter()->GetPaperSizePixel(), MapMode( MapUnit::Map100thMM ) );
-        css::beans::PropertyValue* pPgSizeVal = xController->getValue( "NUpPaperSize" );
+        css::beans::PropertyValue* pPgSizeVal = xController->getValue( u"NUpPaperSize"_ustr );
         css::awt::Size aSizeVal;
         if( pPgSizeVal && (pPgSizeVal->Value >>= aSizeVal) )
         {
@@ -495,8 +525,8 @@ bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
     {
         if( xController->getFilteredPageCount() == 0 )
         {
-            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(xController->getWindow(), "vcl/ui/errornocontentdialog.ui"));
-            std::unique_ptr<weld::MessageDialog> xBox(xBuilder->weld_message_dialog("ErrorNoContentDialog"));
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(xController->getWindow(), u"vcl/ui/errornocontentdialog.ui"_ustr));
+            std::unique_ptr<weld::MessageDialog> xBox(xBuilder->weld_message_dialog(u"ErrorNoContentDialog"_ustr));
             xBox->run();
             return false;
         }
@@ -519,13 +549,17 @@ bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
             }
             if (aDlg.isPrintToFile())
             {
-                OUString aFile = queryFile( xController->getPrinter().get() );
+                OUString aJobName;
+                css::beans::PropertyValue* pJobNameVal = xController->getValue( u"JobName"_ustr );
+                if( pJobNameVal )
+                    pJobNameVal->Value >>= aJobName;
+                OUString aFile = queryFile( xController->getPrinter().get(), aJobName );
                 if( aFile.isEmpty() )
                 {
                     xController->abortJob();
                     return false;
                 }
-                xController->setValue( "LocalFileName",
+                xController->setValue( u"LocalFileName"_ustr,
                                        css::uno::Any( aFile ) );
             }
             else if (aDlg.isSingleJobs())
@@ -537,16 +571,6 @@ bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
         {
         }
     }
-#ifdef MACOSX
-    else
-    {
-        // The PrintDialog updates the printer list in its constructor so do
-        // the same for printers that bring up their own dialog since. Not
-        // sure if this is needed or not on Windows or X11, so limit only to
-        // macOS for now.
-        Printer::updatePrinters();
-    }
-#endif
 
     xController->pushPropertiesToPrinter();
     return true;
@@ -555,7 +579,7 @@ bool Printer::PreparePrintJob(std::shared_ptr<PrinterController> xController,
 bool Printer::ExecutePrintJob(const std::shared_ptr<PrinterController>& xController)
 {
     OUString aJobName;
-    css::beans::PropertyValue* pJobNameVal = xController->getValue( "JobName" );
+    css::beans::PropertyValue* pJobNameVal = xController->getValue( u"JobName"_ustr );
     if( pJobNameVal )
         pJobNameVal->Value >>= aJobName;
 
@@ -617,7 +641,7 @@ bool Printer::StartJob( const OUString& i_rJobName, std::shared_ptr<vcl::Printer
 
     bool bSinglePrintJobs = i_xController->getPrinter()->IsSinglePrintJobs();
 
-    css::beans::PropertyValue* pFileValue = i_xController->getValue("LocalFileName");
+    css::beans::PropertyValue* pFileValue = i_xController->getValue(u"LocalFileName"_ustr);
     if( pFileValue )
     {
         OUString aFile;
@@ -776,11 +800,9 @@ bool Printer::StartJob( const OUString& i_rJobName, std::shared_ptr<vcl::Printer
     // make last used printer persistent for UI jobs
     if (i_xController->isShowDialogs() && !i_xController->isDirectPrint())
     {
-        SettingsConfigItem* pItem = SettingsConfigItem::get();
-        pItem->setValue( "PrintDialog",
-                         "LastPrinterUsed",
-                         GetName()
-                         );
+        std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
+        officecfg::VCL::VCLSettings::PrintDialog::LastPrinter::set( GetName(), batch );
+        batch->commit();
     }
 
     return true;
@@ -838,10 +860,10 @@ void PrinterController::setPrinter( const VclPtr<Printer>& i_rPrinter )
     }
 
     mpImplData->mxPrinter = i_rPrinter;
-    setValue( "Name",
+    setValue( u"Name"_ustr,
               css::uno::Any( i_rPrinter->GetName() ) );
     mpImplData->mnDefaultPaperBin = mpImplData->mxPrinter->GetPaperBin();
-    mpImplData->mxPrinter->Push();
+    auto popIt = mpImplData->mxPrinter->ScopedPush();
     mpImplData->mxPrinter->SetMapMode(MapMode(MapUnit::Map100thMM));
     mpImplData->maDefaultPageSize = mpImplData->mxPrinter->GetPaperSize();
 
@@ -853,7 +875,6 @@ void PrinterController::setPrinter( const VclPtr<Printer>& i_rPrinter )
 
     mpImplData->mbPapersizeFromUser = false;
     mpImplData->mbOrientationFromUser = false;
-    mpImplData->mxPrinter->Pop();
     mpImplData->mnFixedPaperBin = -1;
 }
 
@@ -862,6 +883,11 @@ void PrinterController::resetPrinterOptions( bool i_bFileOutput )
     vcl::printer::Options aOpt;
     aOpt.ReadFromConfig( i_bFileOutput );
     mpImplData->mxPrinter->SetPrinterOptions( aOpt );
+}
+
+void PrinterController::invalidatePageCache()
+{
+    mpImplData->maPageCache.invalidate();
 }
 
 void PrinterController::setupPrinter( weld::Window* i_pParent )
@@ -874,7 +900,7 @@ void PrinterController::setupPrinter( weld::Window* i_pParent )
     if( !xPrinter )
         return;
 
-    xPrinter->Push();
+    auto popIt = xPrinter->ScopedPush();
     xPrinter->SetMapMode(MapMode(MapUnit::Map100thMM));
 
     // get current data
@@ -920,9 +946,7 @@ void PrinterController::setupPrinter( weld::Window* i_pParent )
         }
 
         if (bInvalidateCache)
-        {
-            mpImplData->maPageCache.invalidate();
-        }
+            invalidatePageCache();
     }
     else
     {
@@ -931,7 +955,6 @@ void PrinterController::setupPrinter( weld::Window* i_pParent )
         if (aPaperSize != aNewPaperSize)
             xPrinter->SetPaperSizeUser(aPaperSize);
     }
-    xPrinter->Pop();
 }
 
 PrinterController::PageSize vcl::ImplPrinterControllerData::modifyJobSetup( const css::uno::Sequence< css::beans::PropertyValue >& i_rProps )
@@ -962,6 +985,12 @@ PrinterController::PageSize vcl::ImplPrinterControllerData::modifyJobSetup( cons
             rProp.Value >>= nBin;
             if( nBin >= 0 && o3tl::make_unsigned(nBin) < mxPrinter->GetPaperBinCount() )
                 nPaperBin = nBin;
+        }
+        else if ( rProp.Name == "PaperOrientation" )
+        {
+            css::view::PaperOrientation nOrientation = css::view::PaperOrientation::PaperOrientation_PORTRAIT;
+            rProp.Value >>= nOrientation;
+            mxPrinter->SetOrientation( nOrientation == css::view::PaperOrientation::PaperOrientation_LANDSCAPE ? Orientation::Landscape : Orientation::Portrait );
         }
     }
 
@@ -1006,34 +1035,29 @@ PrinterController::PageSize vcl::ImplPrinterControllerData::modifyJobSetup( cons
 //print dialog
 void vcl::ImplPrinterControllerData::resetPaperToLastConfigured()
 {
-    mxPrinter->Push();
+    auto popIt = mxPrinter->ScopedPush();
     mxPrinter->SetMapMode(MapMode(MapUnit::Map100thMM));
     Size aCurSize(mxPrinter->GetPaperSize());
     if (aCurSize != maDefaultPageSize)
         mxPrinter->SetPaperSizeUser(maDefaultPageSize);
-    mxPrinter->Pop();
 }
 
 int PrinterController::getPageCountProtected() const
 {
     const MapMode aMapMode( MapUnit::Map100thMM );
 
-    mpImplData->mxPrinter->Push();
+    auto popIt = mpImplData->mxPrinter->ScopedPush();
     mpImplData->mxPrinter->SetMapMode( aMapMode );
-    int nPages = getPageCount();
-    mpImplData->mxPrinter->Pop();
-    return nPages;
+    return getPageCount();
 }
 
 css::uno::Sequence< css::beans::PropertyValue > PrinterController::getPageParametersProtected( int i_nPage ) const
 {
     const MapMode aMapMode( MapUnit::Map100thMM );
 
-    mpImplData->mxPrinter->Push();
+    auto popIt = mpImplData->mxPrinter->ScopedPush();
     mpImplData->mxPrinter->SetMapMode( aMapMode );
-    css::uno::Sequence< css::beans::PropertyValue > aResult( getPageParameters( i_nPage ) );
-    mpImplData->mxPrinter->Pop();
-    return aResult;
+    return getPageParameters(i_nPage);
 }
 
 PrinterController::PageSize PrinterController::getPageFile( int i_nUnfilteredPage, GDIMetaFile& o_rMtf, bool i_bMayUseCache )
@@ -1057,7 +1081,7 @@ PrinterController::PageSize PrinterController::getPageFile( int i_nUnfilteredPag
         }
     }
     else
-        mpImplData->maPageCache.invalidate();
+        invalidatePageCache();
 
     o_rMtf.Clear();
 
@@ -1489,28 +1513,28 @@ css::uno::Sequence< css::beans::PropertyValue > PrinterController::getJobPropert
             pResult[nCur++] = rPropVal;
     }
     // append IsFirstPage
-    if( aMergeSet.find( "IsFirstPage" ) == aMergeSet.end() )
+    if( aMergeSet.find( u"IsFirstPage"_ustr ) == aMergeSet.end() )
     {
         css::beans::PropertyValue aVal;
         aVal.Name = "IsFirstPage";
         aVal.Value <<= mpImplData->mbFirstPage;
-        pResult[nCur++] = aVal;
+        pResult[nCur++] = std::move(aVal);
     }
     // append IsLastPage
-    if( aMergeSet.find( "IsLastPage" ) == aMergeSet.end() )
+    if( aMergeSet.find( u"IsLastPage"_ustr ) == aMergeSet.end() )
     {
         css::beans::PropertyValue aVal;
         aVal.Name = "IsLastPage";
         aVal.Value <<= mpImplData->mbLastPage;
-        pResult[nCur++] = aVal;
+        pResult[nCur++] = std::move(aVal);
     }
     // append IsPrinter
-    if( aMergeSet.find( "IsPrinter" ) == aMergeSet.end() )
+    if( aMergeSet.find( u"IsPrinter"_ustr ) == aMergeSet.end() )
     {
         css::beans::PropertyValue aVal;
         aVal.Name = "IsPrinter";
         aVal.Value <<= true;
-        pResult[nCur++] = aVal;
+        pResult[nCur++] = std::move(aVal);
     }
     aResult.realloc( nCur );
     return aResult;
@@ -1574,7 +1598,7 @@ void PrinterController::setUIOptions( const css::uno::Sequence< css::beans::Prop
         OUString aPropName;
         vcl::ImplPrinterControllerData::ControlDependency aDep;
         css::uno::Sequence< sal_Bool > aChoicesDisabled;
-        for( const css::beans::PropertyValue& rEntry : std::as_const(aOptProp) )
+        for (const css::beans::PropertyValue& rEntry : aOptProp)
         {
             if ( rEntry.Name == "Property" )
             {
@@ -1615,9 +1639,9 @@ void PrinterController::setUIOptions( const css::uno::Sequence< css::beans::Prop
                 mpImplData->maUIPropertyEnabled[ it->second ] = bIsEnabled;
             }
             if( !aDep.maDependsOnName.isEmpty() )
-                mpImplData->maControlDependencies[ aPropName ] = aDep;
+                mpImplData->maControlDependencies[ aPropName ] = std::move(aDep);
             if( aChoicesDisabled.hasElements() )
-                mpImplData->maChoiceDisableMap[ aPropName ] = aChoicesDisabled;
+                mpImplData->maChoiceDisableMap[ aPropName ] = std::move(aChoicesDisabled);
         }
     }
 }
@@ -1674,6 +1698,11 @@ bool PrinterController::isUIOptionEnabled( const OUString& i_rProperty ) const
         }
     }
     return bEnabled;
+}
+
+void PrinterController::setUIChoicesDisabled(const OUString& rPropName, css::uno::Sequence<sal_Bool>& rChoicesDisabled)
+{
+    mpImplData->maChoiceDisableMap[rPropName] = std::move(rChoicesDisabled);
 }
 
 bool PrinterController::isUIChoiceEnabled( const OUString& i_rProperty, sal_Int32 i_nValue ) const
@@ -1735,12 +1764,12 @@ void PrinterController::createProgressDialog()
     if (!mpImplData->mxProgress)
     {
         bool bShow = true;
-        css::beans::PropertyValue* pMonitor = getValue( "MonitorVisible" );
+        css::beans::PropertyValue* pMonitor = getValue( u"MonitorVisible"_ustr );
         if( pMonitor )
             pMonitor->Value >>= bShow;
         else
         {
-            const css::beans::PropertyValue* pVal = getValue( "IsApi" );
+            const css::beans::PropertyValue* pVal = getValue( u"IsApi"_ustr );
             if( pVal )
             {
                 bool bApi = false;
@@ -1786,23 +1815,23 @@ void PrinterController::pushPropertiesToPrinter()
 {
     sal_Int32 nCopyCount = 1;
     // set copycount and collate
-    const css::beans::PropertyValue* pVal = getValue( "CopyCount" );
+    const css::beans::PropertyValue* pVal = getValue( u"CopyCount"_ustr );
     if( pVal )
         pVal->Value >>= nCopyCount;
     bool bCollate = false;
-    pVal = getValue( "Collate" );
+    pVal = getValue( u"Collate"_ustr );
     if( pVal )
         pVal->Value >>= bCollate;
     mpImplData->mxPrinter->SetCopyCount( static_cast<sal_uInt16>(nCopyCount), bCollate );
 
-    pVal = getValue("SinglePrintJobs");
+    pVal = getValue(u"SinglePrintJobs"_ustr);
     bool bSinglePrintJobs = false;
     if (pVal)
         pVal->Value >>= bSinglePrintJobs;
     mpImplData->mxPrinter->SetSinglePrintJobs(bSinglePrintJobs);
 
     // duplex mode
-    pVal = getValue( "DuplexMode" );
+    pVal = getValue( u"DuplexMode"_ustr );
     if( pVal )
     {
         sal_Int16 nDuplex = css::view::DuplexMode::UNKNOWN;
@@ -1818,13 +1847,13 @@ void PrinterController::pushPropertiesToPrinter()
 
 bool PrinterController::isShowDialogs() const
 {
-    bool bApi = getBoolProperty( "IsApi", false );
+    bool bApi = getBoolProperty( u"IsApi"_ustr, false );
     return ! bApi && ! Application::IsHeadlessModeEnabled();
 }
 
 bool PrinterController::isDirectPrint() const
 {
-    bool bDirect = getBoolProperty( "IsDirect", false );
+    bool bDirect = getBoolProperty( u"IsDirect"_ustr, false );
     return bDirect;
 }
 
@@ -1906,7 +1935,7 @@ void PrinterOptionsHelper::appendPrintUIOptions( css::uno::Sequence< css::beans:
         sal_Int32 nIndex = io_rProps.getLength();
         io_rProps.realloc( nIndex+1 );
         io_rProps.getArray()[ nIndex ] = comphelper::makePropertyValue(
-            "ExtraPrintUIOptions", comphelper::containerToSequence(m_aUIProperties));
+            u"ExtraPrintUIOptions"_ustr, comphelper::containerToSequence(m_aUIProperties));
     }
 }
 
@@ -2009,7 +2038,7 @@ css::uno::Any PrinterOptionsHelper::setGroupControlOpt(const OUString& i_rID,
         *aHelpId.getArray() = i_rHelpId;
     }
     css::uno::Sequence< OUString > aIds { i_rID };
-    return setUIControlOpt(aIds, i_rTitle, aHelpId, "Group");
+    return setUIControlOpt(aIds, i_rTitle, aHelpId, u"Group"_ustr);
 }
 
 css::uno::Any PrinterOptionsHelper::setSubgroupControlOpt(const OUString& i_rID,
@@ -2024,7 +2053,7 @@ css::uno::Any PrinterOptionsHelper::setSubgroupControlOpt(const OUString& i_rID,
         *aHelpId.getArray() = i_rHelpId;
     }
     css::uno::Sequence< OUString > aIds { i_rID };
-    return setUIControlOpt(aIds, i_rTitle, aHelpId, "Subgroup", nullptr, i_rControlOptions);
+    return setUIControlOpt(aIds, i_rTitle, aHelpId, u"Subgroup"_ustr, nullptr, i_rControlOptions);
 }
 
 css::uno::Any PrinterOptionsHelper::setBoolControlOpt(const OUString& i_rID,
@@ -2044,7 +2073,7 @@ css::uno::Any PrinterOptionsHelper::setBoolControlOpt(const OUString& i_rID,
     aVal.Name = i_rProperty;
     aVal.Value <<= i_bValue;
     css::uno::Sequence< OUString > aIds { i_rID };
-    return setUIControlOpt(aIds, i_rTitle, aHelpId, "Bool", &aVal, i_rControlOptions);
+    return setUIControlOpt(aIds, i_rTitle, aHelpId, u"Bool"_ustr, &aVal, i_rControlOptions);
 }
 
 css::uno::Any PrinterOptionsHelper::setChoiceRadiosControlOpt(const css::uno::Sequence< OUString >& i_rIDs,
@@ -2070,7 +2099,7 @@ css::uno::Any PrinterOptionsHelper::setChoiceRadiosControlOpt(const css::uno::Se
     css::beans::PropertyValue aVal;
     aVal.Name = i_rProperty;
     aVal.Value <<= i_nValue;
-    return setUIControlOpt(i_rIDs, i_rTitle, i_rHelpId, "Radio", &aVal, aOpt);
+    return setUIControlOpt(i_rIDs, i_rTitle, i_rHelpId, u"Radio"_ustr, &aVal, aOpt);
 }
 
 css::uno::Any PrinterOptionsHelper::setChoiceListControlOpt(const OUString& i_rID,
@@ -2097,7 +2126,7 @@ css::uno::Any PrinterOptionsHelper::setChoiceListControlOpt(const OUString& i_rI
     aVal.Name = i_rProperty;
     aVal.Value <<= i_nValue;
     css::uno::Sequence< OUString > aIds { i_rID };
-    return setUIControlOpt(aIds, i_rTitle, i_rHelpId, "List", &aVal, aOpt);
+    return setUIControlOpt(aIds, i_rTitle, i_rHelpId, u"List"_ustr, &aVal, aOpt);
 }
 
 css::uno::Any PrinterOptionsHelper::setRangeControlOpt(const OUString& i_rID,
@@ -2130,7 +2159,7 @@ css::uno::Any PrinterOptionsHelper::setRangeControlOpt(const OUString& i_rID,
     aVal.Name = i_rProperty;
     aVal.Value <<= i_nValue;
     css::uno::Sequence< OUString > aIds { i_rID };
-    return setUIControlOpt(aIds, i_rTitle, aHelpId, "Range", &aVal, aOpt);
+    return setUIControlOpt(aIds, i_rTitle, aHelpId, u"Range"_ustr, &aVal, aOpt);
 }
 
 css::uno::Any PrinterOptionsHelper::setEditControlOpt(const OUString& i_rID,
@@ -2150,7 +2179,7 @@ css::uno::Any PrinterOptionsHelper::setEditControlOpt(const OUString& i_rID,
     aVal.Name = i_rProperty;
     aVal.Value <<= i_rValue;
     css::uno::Sequence< OUString > aIds { i_rID };
-    return setUIControlOpt(aIds, i_rTitle, aHelpId, "Edit", &aVal, i_rControlOptions);
+    return setUIControlOpt(aIds, i_rTitle, aHelpId, u"Edit"_ustr, &aVal, i_rControlOptions);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

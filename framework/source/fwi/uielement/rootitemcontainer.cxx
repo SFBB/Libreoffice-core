@@ -59,7 +59,7 @@ RootItemContainer::RootItemContainer( const Reference< XIndexAccess >& rSourceCo
         Reference< XPropertySet > xPropSet( rSourceContainer, UNO_QUERY );
         if ( xPropSet.is() )
         {
-            xPropSet->getPropertyValue("UIName") >>= m_aUIName;
+            xPropSet->getPropertyValue(u"UIName"_ustr) >>= m_aUIName;
         }
     }
     catch ( const Exception& )
@@ -90,7 +90,7 @@ RootItemContainer::RootItemContainer( const Reference< XIndexAccess >& rSourceCo
                 }
 
                 if ( xIndexAccess.is() && nContainerIndex >= 0 )
-                    aPropSeq.getArray()[nContainerIndex].Value <<= deepCopyContainer( xIndexAccess );
+                    aPropSeq.getArray()[nContainerIndex].Value <<= Reference<XIndexAccess>(deepCopyContainer( xIndexAccess ));
 
                 m_aItemVector.push_back( aPropSeq );
             }
@@ -121,18 +121,16 @@ Sequence< Type > SAL_CALL RootItemContainer::getTypes(  )
     );
 }
 
-Reference< XIndexAccess > RootItemContainer::deepCopyContainer( const Reference< XIndexAccess >& rSubContainer )
+rtl::Reference< ItemContainer > RootItemContainer::deepCopyContainer( const Reference< XIndexAccess >& rSubContainer )
 {
-    Reference< XIndexAccess > xReturn;
+    rtl::Reference< ItemContainer > xReturn;
     if ( rSubContainer.is() )
     {
         ConstItemContainer* pSource = dynamic_cast<ConstItemContainer*>( rSubContainer.get() );
-        rtl::Reference<ItemContainer> pSubContainer;
         if ( pSource )
-            pSubContainer = new ItemContainer( *pSource, m_aShareMutex );
+            xReturn = new ItemContainer( *pSource, m_aShareMutex );
         else
-            pSubContainer = new ItemContainer( rSubContainer, m_aShareMutex );
-        xReturn = pSubContainer;
+            xReturn = new ItemContainer( rSubContainer, m_aShareMutex );
     }
 
     return xReturn;
@@ -200,7 +198,7 @@ void SAL_CALL RootItemContainer::replaceByIndex( sal_Int32 Index, const Any& aIt
     if ( sal_Int32( m_aItemVector.size()) <= Index )
         throw IndexOutOfBoundsException( OUString(), static_cast<OWeakObject *>(this) );
 
-    m_aItemVector[Index] = aSeq;
+    m_aItemVector[Index] = std::move(aSeq);
 }
 
 Reference< XInterface > SAL_CALL RootItemContainer::createInstanceWithContext( const Reference< XComponentContext >& )

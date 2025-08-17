@@ -44,7 +44,6 @@
 #include <oox/drawingml/chart/modelbase.hxx>
 namespace oox::drawingml::chart {
 
-using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::chart2;
 using namespace ::com::sun::star::chart2::data;
 using namespace ::com::sun::star::drawing;
@@ -76,6 +75,7 @@ Sequence< Reference< XFormattedString > > TextConverter::createStringSequence(
 {
     OSL_ENSURE( !mrModel.mxDataSeq || !mrModel.mxTextBody, "TextConverter::createStringSequence - linked string and rich text found" );
     ::std::vector< Reference< XFormattedString > > aStringVec;
+    bool bTextFound = false;
     if( mrModel.mxTextBody.is() )
     {
         // rich-formatted text objects can be created, but currently Chart2 is not able to show them
@@ -90,13 +90,56 @@ Sequence< Reference< XFormattedString > > TextConverter::createStringSequence(
                 bool bAddNewLine = ((aRIt + 1 == aREnd) && (aPIt + 1 != aPEnd)) || rTextRun.isLineBreak();
                 Reference< XFormattedString > xFmtStr = appendFormattedString( aStringVec, rTextRun.getText(), bAddNewLine );
                 PropertySet aPropSet( xFmtStr );
-                TextCharacterProperties aRunProps( rParaProps );
+                TextCharacterProperties aRunProps;
+                if (rParaProps.mbHasEmptyParaProperties && rxTextProp.is() && rxTextProp->hasParagraphProperties())
+                {
+                    const TextParagraphVector rDefTextParas = rxTextProp->getParagraphs();
+                    TextParagraphVector::const_iterator aDefPIt = rDefTextParas.begin();
+                    const TextParagraph& rDefTextPara = **aDefPIt;
+                    aRunProps = rDefTextPara.getProperties().getTextCharacterProperties();
+                }
+                else
+                    aRunProps = rParaProps;
                 aRunProps.assignUsed( rTextRun.getTextCharacterProperties() );
                 getFormatter().convertTextFormatting( aPropSet, aRunProps, eObjType );
+
+                bTextFound = true;
             }
         }
     }
-    else
+    else if (rxTextProp.is() && !rxTextProp->getParagraphs().empty()) {
+        // <c:txPr> or <cx:txPr> can contain <a:p>. Which seems odd, but handle
+        // it here.
+        const TextParagraphVector& rTextParas = rxTextProp->getParagraphs();
+        for( TextParagraphVector::const_iterator aPIt = rTextParas.begin(), aPEnd = rTextParas.end(); aPIt != aPEnd; ++aPIt )
+        {
+            const TextParagraph& rTextPara = **aPIt;
+            const TextCharacterProperties& rParaProps = rTextPara.getProperties().getTextCharacterProperties();
+            for( TextRunVector::const_iterator aRIt = rTextPara.getRuns().begin(), aREnd = rTextPara.getRuns().end(); aRIt != aREnd; ++aRIt )
+            {
+                const TextRun& rTextRun = **aRIt;
+                bool bAddNewLine = ((aRIt + 1 == aREnd) && (aPIt + 1 != aPEnd)) || rTextRun.isLineBreak();
+                Reference< XFormattedString > xFmtStr = appendFormattedString( aStringVec, rTextRun.getText(), bAddNewLine );
+                PropertySet aPropSet( xFmtStr );
+                TextCharacterProperties aRunProps;
+                if (rParaProps.mbHasEmptyParaProperties && rxTextProp->hasParagraphProperties())
+                {
+                    const TextParagraphVector rDefTextParas = rxTextProp->getParagraphs();
+                    TextParagraphVector::const_iterator aDefPIt = rDefTextParas.begin();
+                    const TextParagraph& rDefTextPara = **aDefPIt;
+                    aRunProps = rDefTextPara.getProperties().getTextCharacterProperties();
+                }
+                else
+                    aRunProps = rParaProps;
+                aRunProps.assignUsed( rTextRun.getTextCharacterProperties() );
+                getFormatter().convertTextFormatting( aPropSet, aRunProps, eObjType );
+
+                bTextFound = true;
+            }
+        }
+    }
+
+    if (!bTextFound)
     {
         OUString aString;
         // try to create string from linked data
@@ -158,7 +201,7 @@ void TitleConverter::convertFromModel( const Reference< XTitled >& rxTitled, con
     try
     {
         // create the title object and set the string data
-        Reference< XTitle > xTitle( createInstance( "com.sun.star.chart2.Title" ), UNO_QUERY_THROW );
+        Reference< XTitle > xTitle( createInstance( u"com.sun.star.chart2.Title"_ustr ), UNO_QUERY_THROW );
         xTitle->setText( aStringSeq );
         rxTitled->setTitleObject( xTitle );
 
@@ -195,11 +238,11 @@ void LegendConverter::convertFromModel( const Reference< XDiagram >& rxDiagram )
 
     try
     {
-        namespace cssc = ::com::sun::star::chart;
-        namespace cssc2 = ::com::sun::star::chart2;
+        namespace cssc = css::chart;
+        namespace cssc2 = css::chart2;
 
         // create the legend
-        Reference< XLegend > xLegend( createInstance( "com.sun.star.chart2.Legend" ), UNO_QUERY_THROW );
+        Reference< XLegend > xLegend( createInstance( u"com.sun.star.chart2.Legend"_ustr ), UNO_QUERY_THROW );
         rxDiagram->setLegend( xLegend );
         PropertySet aPropSet( xLegend );
         aPropSet.setProperty( PROP_Show, true );

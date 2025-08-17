@@ -202,11 +202,11 @@ static void applyTableStylePart( const ::oox::core::XmlFilterBase& rFilterBase,
     {
         if (nCol == 0)
             applyBorder( rFilterBase, rTableStylePart, XML_left, rLeftBorder );
-        if (nCol == nMaxCol)
+        if (nCol >= nMaxCol)
             applyBorder( rFilterBase, rTableStylePart, XML_right, rRightBorder );
         if (nRow == 0)
             applyBorder( rFilterBase, rTableStylePart, XML_top, rTopBorder );
-        if (nRow == nMaxRow)
+        if (nRow >= nMaxRow)
             applyBorder( rFilterBase, rTableStylePart, XML_bottom, rBottomBorder );
 
         applyBorder( rFilterBase, rTableStylePart, XML_insideH, rInsideHBorder );
@@ -244,10 +244,10 @@ static void applyTableStylePart( const ::oox::core::XmlFilterBase& rFilterBase,
 static void applyTableCellProperties( const Reference < css::table::XCell >& rxCell, const TableCell& rTableCell )
 {
     Reference< XPropertySet > xPropSet( rxCell, UNO_QUERY_THROW );
-    xPropSet->setPropertyValue( "TextUpperDistance", Any( static_cast< sal_Int32 >( rTableCell.getTopMargin() / 360 ) ) );
-    xPropSet->setPropertyValue( "TextRightDistance", Any( static_cast< sal_Int32 >( rTableCell.getRightMargin() / 360 ) ) );
-    xPropSet->setPropertyValue( "TextLeftDistance", Any( static_cast< sal_Int32 >( rTableCell.getLeftMargin() / 360 ) ) );
-    xPropSet->setPropertyValue( "TextLowerDistance", Any( static_cast< sal_Int32 >( rTableCell.getBottomMargin() / 360 ) ) );
+    xPropSet->setPropertyValue( u"TextUpperDistance"_ustr, Any( static_cast< sal_Int32 >( rTableCell.getTopMargin() / 360 ) ) );
+    xPropSet->setPropertyValue( u"TextRightDistance"_ustr, Any( static_cast< sal_Int32 >( rTableCell.getRightMargin() / 360 ) ) );
+    xPropSet->setPropertyValue( u"TextLeftDistance"_ustr, Any( static_cast< sal_Int32 >( rTableCell.getLeftMargin() / 360 ) ) );
+    xPropSet->setPropertyValue( u"TextLowerDistance"_ustr, Any( static_cast< sal_Int32 >( rTableCell.getBottomMargin() / 360 ) ) );
 
     drawing::TextVerticalAdjust eVA;
     switch( rTableCell.getAnchorToken() )
@@ -259,7 +259,7 @@ static void applyTableCellProperties( const Reference < css::table::XCell >& rxC
         default:
         case XML_t:     eVA = drawing::TextVerticalAdjust_TOP; break;
     }
-    xPropSet->setPropertyValue( "TextVerticalAdjust", Any( eVA ) );
+    xPropSet->setPropertyValue( u"TextVerticalAdjust"_ustr, Any( eVA ) );
 }
 
 void TableCell::pushToXCell( const ::oox::core::XmlFilterBase& rFilterBase, const ::oox::drawingml::TextListStylePtr& pMasterTextListStyle,
@@ -273,11 +273,20 @@ void TableCell::pushToXCell( const ::oox::core::XmlFilterBase& rFilterBase, cons
     Reference< text::XTextCursor > xAt = xText->createTextCursor();
 
     applyTableCellProperties( rxCell, *this );
+
+    Reference<XPropertySet> xPropSet(rxCell, UNO_QUERY_THROW);
+
+    PropertyMap& rTextBodyPropertyMap = getTextBody()->getTextProperties().maPropertyMap;
+    if (rTextBodyPropertyMap.hasProperty(PROP_FontIndependentLineSpacing))
+    {
+        if (rTextBodyPropertyMap.getProperty(PROP_FontIndependentLineSpacing).get<bool>())
+            xPropSet->setPropertyValue(u"FontIndependentLineSpacing"_ustr, Any(true));
+    }
+
     TextCharacterProperties aTextStyleProps;
     xAt->gotoStart( true );
     xAt->gotoEnd( true );
 
-    Reference< XPropertySet > xPropSet( rxCell, UNO_QUERY_THROW );
     oox::drawingml::FillProperties aFillProperties;
     oox::drawingml::LineProperties aLinePropertiesLeft;
     oox::drawingml::LineProperties aLinePropertiesRight;
@@ -358,10 +367,18 @@ void TableCell::pushToXCell( const ::oox::core::XmlFilterBase& rFilterBase, cons
     }
     if ( rProperties.isBandRow() )
     {
+        bool bHasFirstColFillColor
+            = (rProperties.isFirstCol() && rTable.getFirstCol().getFillProperties()
+               && rTable.getFirstCol().getFillProperties()->maFillColor.isUsed());
+
+        bool bHasLastColFillColor
+            = (rProperties.isLastCol() && rTable.getLastCol().getFillProperties()
+               && rTable.getLastCol().getFillProperties()->maFillColor.isUsed());
+
         if ( ( !rProperties.isFirstRow() || ( nRow != 0 ) ) &&
             ( !rProperties.isLastRow() || ( nRow != nMaxRow ) ) &&
-            ( !rProperties.isFirstCol() || ( nColumn != 0 ) ) &&
-            ( !rProperties.isLastCol() || ( nColumn != nMaxColumn ) ) )
+            ( !rProperties.isFirstCol() || ( nColumn != 0 ) || !bHasFirstColFillColor ) &&
+            ( !rProperties.isLastCol() || ( nColumn != nMaxColumn ) || !bHasLastColFillColor ) )
         {
             sal_Int32 nBand = nRow;
             if ( rProperties.isFirstRow() )
@@ -548,10 +565,10 @@ void TableCell::pushToXCell( const ::oox::core::XmlFilterBase& rFilterBase, cons
     }
     if (aBgColor.isUsed())
     {
-        const Color& rCellColor = aFillProperties.getBestSolidColor();
-        const double fTransparency = rCellColor.isUsed() ? 0.01 * rCellColor.getTransparency() : 1.0;
+        const Color aCellColor = aFillProperties.getBestSolidColor();
+        const double fTransparency = aCellColor.isUsed() ? 0.01 * aCellColor.getTransparency() : 1.0;
         ::Color nBgColor( aBgColor.getColor(rFilterBase.getGraphicHelper(), nPhClr) );
-        ::Color nCellColor( rCellColor.getColor(rFilterBase.getGraphicHelper()) );
+        ::Color nCellColor( aCellColor.getColor(rFilterBase.getGraphicHelper()) );
         ::Color aResult( basegfx::interpolate(nBgColor.getBColor(), nCellColor.getBColor(), 1.0 - fTransparency) );
         aFillProperties.maFillColor.clearTransformations();
         aFillProperties.maFillColor.setSrgbClr(sal_Int32(aResult.GetRGBColor()));
@@ -567,7 +584,7 @@ void TableCell::pushToXCell( const ::oox::core::XmlFilterBase& rFilterBase, cons
 
     if ( getVertToken() == XML_eaVert )
     {
-        xPropSet->setPropertyValue("TextWritingMode", Any(css::text::WritingMode_TB_RL));
+        xPropSet->setPropertyValue(u"TextWritingMode"_ustr, Any(css::text::WritingMode_TB_RL));
     }
 
     getTextBody()->insertAt( rFilterBase, xText, xAt, aTextStyleProps, pMasterTextListStyle );
@@ -588,30 +605,30 @@ void TableCell::pushToXCell( const ::oox::core::XmlFilterBase& rFilterBase, cons
 
     if ( getVertToken() == XML_vert )
     {
-        xPropSet->setPropertyValue("RotateAngle", Any(short(27000)));
+        xPropSet->setPropertyValue(u"RotateAngle"_ustr, Any(short(27000)));
     }
     else if ( getVertToken() == XML_vert270 )
     {
-        xPropSet->setPropertyValue("RotateAngle", Any(short(9000)));
+        xPropSet->setPropertyValue(u"RotateAngle"_ustr, Any(short(9000)));
     }
     else if ( getVertToken() != XML_horz && getVertToken() != XML_eaVert )
     {
         // put the vert value in the grab bag for roundtrip
-        const OUString aTokenName(StaticTokenMap().getUnicodeTokenName(getVertToken()));
+        const OUString aTokenName(TokenMap::getUnicodeTokenName(getVertToken()));
         Sequence<PropertyValue> aGrabBag;
-        xPropSet->getPropertyValue("CellInteropGrabBag") >>= aGrabBag;
-        PropertyValue aPropertyValue = comphelper::makePropertyValue("mso-tcPr-vert-value", aTokenName);
+        xPropSet->getPropertyValue(u"CellInteropGrabBag"_ustr) >>= aGrabBag;
+        PropertyValue aPropertyValue = comphelper::makePropertyValue(u"mso-tcPr-vert-value"_ustr, aTokenName);
         if (aGrabBag.hasElements())
         {
             sal_Int32 nLength = aGrabBag.getLength();
             aGrabBag.realloc(nLength + 1);
-            aGrabBag.getArray()[nLength] = aPropertyValue;
+            aGrabBag.getArray()[nLength] = std::move(aPropertyValue);
         }
         else
         {
-            aGrabBag = { aPropertyValue };
+            aGrabBag = { std::move(aPropertyValue) };
         }
-        xPropSet->setPropertyValue("CellInteropGrabBag", Any(aGrabBag));
+        xPropSet->setPropertyValue(u"CellInteropGrabBag"_ustr, Any(aGrabBag));
     }
 }
 

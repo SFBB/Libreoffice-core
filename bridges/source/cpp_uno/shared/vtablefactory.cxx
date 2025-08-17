@@ -25,12 +25,10 @@
 #include <osl/thread.h>
 #include <osl/security.hxx>
 #include <osl/file.hxx>
-#include <osl/mutex.hxx>
 #include <rtl/alloc.h>
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
 #include <sal/types.h>
-#include <typelib/typedescription.hxx>
 
 #include <memory>
 #include <new>
@@ -274,7 +272,6 @@ bool VtableFactory::createBlock(Block &block, sal_Int32 slotCount) const
         OString aTmpName = OUStringToOString(strDirectory, osl_getThreadTextEncoding());
         std::unique_ptr<char[]> tmpfname(new char[aTmpName.getLength()+1]);
         strncpy(tmpfname.get(), aTmpName.getStr(), aTmpName.getLength()+1);
-        // coverity[secure_temp] - https://communities.coverity.com/thread/3179
         if ((block.fd = mkstemp(tmpfname.get())) == -1)
             fprintf(stderr, "mkstemp(\"%s\") failed: %s\n", tmpfname.get(), strerror(errno));
         if (block.fd == -1)
@@ -283,18 +280,25 @@ bool VtableFactory::createBlock(Block &block, sal_Int32 slotCount) const
         }
         unlink(tmpfname.get());
         tmpfname.reset();
+
+        int err;
 #if defined(HAVE_POSIX_FALLOCATE)
-        int err = posix_fallocate(block.fd, 0, block.size);
-#else
-        int err = ftruncate(block.fd, block.size);
+        /*
+         * configure may have detected posix_fallocate() is available,
+         * while the underlying filesystem does not implement it. In
+         * this case, posix_fallocate() will fail with EOPNOTSUPP
+         * (at least on NetBSD), and we must fallback to ftruncate().
+         */
+        err = posix_fallocate(block.fd, 0, block.size);
+        if (err == EOPNOTSUPP)
 #endif
+        {
+            err = ftruncate(block.fd, block.size);
+        }
+
         if (err != 0)
         {
-#if defined(HAVE_POSIX_FALLOCATE)
-            SAL_WARN("bridges", "posix_fallocate failed with code " << err);
-#else
             SAL_WARN("bridges", "truncation of executable memory area failed with code " << err);
-#endif
             close(block.fd);
             block.fd = -1;
             break;

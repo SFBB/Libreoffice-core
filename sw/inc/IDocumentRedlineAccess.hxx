@@ -28,6 +28,7 @@
 #include <com/sun/star/uno/Sequence.h>
 #include <o3tl/typed_flags_set.hxx>
 #include <svx/ctredlin.hxx>
+#include <sfx2/redlinerecordingmode.hxx>
 
 #include "docary.hxx"
 
@@ -38,12 +39,18 @@ class SwPaM;
 struct SwPosition;
 class SwStartNode;
 class SwNode;
+class SwViewShell;
 
+/// Sets per-document flags for track change recording and show/hiding. The later is read by the
+/// layout, which is shared between views.
+///
+/// Note that RedlineFlags::On has a per-view version at SwViewOption::IsRedlineRecordingOn(), and
+/// that is used when the document has at least one view.
 enum class RedlineFlags
 {
     NONE                 = 0x000, ///< no RedlineFlags
     On                   = 0x001, ///< RedlineFlags on
-    Ignore               = 0x002, ///< ignore Redlines
+    Ignore               = 0x002, ///< ignore Redlines (only set from code, temporarily)
     ShowInsert           = 0x010, ///< show all inserts
     ShowDelete           = 0x020, ///< show all deletes
     ShowMask             = ShowInsert | ShowDelete,
@@ -76,6 +83,9 @@ inline OUString SwRedlineTypeToOUString(RedlineType eType)
     return sRet;
 };
 
+/// This interface is implemented by DocumentRedlineManager: most clients only have to interact with
+/// this interface and not the underlying manager implementation. Also, the UI/filter code has no
+/// access to the manager, just to this interface.
 class IDocumentRedlineAccess
 {
      // Static helper functions
@@ -99,21 +109,21 @@ public:
         @returns
         the currently set redline mode
     */
-     virtual RedlineFlags GetRedlineFlags() const = 0;
+     virtual RedlineFlags GetRedlineFlags(const SwViewShell* pViewShell = nullptr) const = 0;
 
     /** Set a new redline mode.
 
         @param eMode
         [in] the new redline mode.
     */
-    virtual void SetRedlineFlags_intern(/*[in]*/RedlineFlags eMode) = 0;
+    virtual void SetRedlineFlags_intern(/*[in]*/RedlineFlags eMode, SfxRedlineRecordingMode eRedlineRecordingMode = SfxRedlineRecordingMode::ViewAgnostic, bool bRecordModeChange = false) = 0;
 
     /** Set a new redline mode.
 
         @param eMode
         [in] the new redline mode.
     */
-    virtual void SetRedlineFlags(/*[in]*/RedlineFlags eMode) = 0;
+    virtual void SetRedlineFlags(/*[in]*/RedlineFlags eMode, SfxRedlineRecordingMode eRedlineRecordingMode = SfxRedlineRecordingMode::ViewAgnostic, bool bRecordModeChange = false) = 0;
 
     /** Query if redlining is on.
 
@@ -234,6 +244,8 @@ public:
 
     virtual void UpdateRedlineContentNode(/*[in]*/ SwRedlineTable::size_type nStartPos,
                                           /*[in]*/ SwRedlineTable::size_type nEndPos) const = 0;
+
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const = 0;
 
 
 protected:

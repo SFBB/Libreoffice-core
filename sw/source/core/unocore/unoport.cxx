@@ -36,6 +36,7 @@
 #include <ndtxt.hxx>
 #include <doc.hxx>
 #include <frmfmt.hxx>
+#include <editeng/memberids.h>
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/SetPropertyTolerantFailed.hpp>
@@ -52,7 +53,7 @@ using namespace ::com::sun::star;
 
 void SwXTextPortion::init(const SwUnoCursor* pPortionCursor)
 {
-    m_pUnoCursor = pPortionCursor->GetDoc().CreateUnoCursor(*pPortionCursor->GetPoint());
+    m_pUnoCursor.reset(pPortionCursor->GetDoc().CreateUnoCursor(*pPortionCursor->GetPoint()));
     if (pPortionCursor->HasMark())
     {
         m_pUnoCursor->SetMark();
@@ -62,7 +63,7 @@ void SwXTextPortion::init(const SwUnoCursor* pPortionCursor)
 
 SwXTextPortion::SwXTextPortion(
     const SwUnoCursor* pPortionCursor,
-        uno::Reference< text::XText > xParent,
+        uno::Reference< SwXText > xParent,
         SwTextPortionType eType)
     : m_pPropSet(aSwMapProvider.GetPropertySet(
         (PORTION_REDLINE_START == eType ||
@@ -84,7 +85,7 @@ SwXTextPortion::SwXTextPortion(
 
 SwXTextPortion::SwXTextPortion(
     const SwUnoCursor* pPortionCursor,
-    uno::Reference< text::XText > xParent,
+    uno::Reference< SwXText > xParent,
     SwFrameFormat& rFormat )
     : m_pPropSet(aSwMapProvider.GetPropertySet(
                     PROPERTY_MAP_TEXTPORTION_EXTENSIONS))
@@ -101,7 +102,7 @@ SwXTextPortion::SwXTextPortion(
 SwXTextPortion::SwXTextPortion(
     const SwUnoCursor* pPortionCursor,
     SwTextRuby const& rAttr,
-    uno::Reference< text::XText >  xParent,
+    uno::Reference< SwXText >  xParent,
     bool bIsEnd )
     : m_pPropSet(aSwMapProvider.GetPropertySet(
                     PROPERTY_MAP_TEXTPORTION_EXTENSIONS))
@@ -147,25 +148,21 @@ uno::Reference< text::XText >  SwXTextPortion::getText()
 uno::Reference< text::XTextRange >  SwXTextPortion::getStart()
 {
     SolarMutexGuard aGuard;
-    uno::Reference< text::XTextRange >  xRet;
     SwUnoCursor& rUnoCursor = GetCursor();
 
     SwPaM aPam(*rUnoCursor.Start());
     uno::Reference< text::XText > xParent = getText();
-    xRet = new SwXTextRange(aPam, xParent);
-    return xRet;
+    return new SwXTextRange(aPam, xParent);
 }
 
 uno::Reference< text::XTextRange >  SwXTextPortion::getEnd()
 {
     SolarMutexGuard aGuard;
-    uno::Reference< text::XTextRange >  xRet;
     SwUnoCursor& rUnoCursor = GetCursor();
 
     SwPaM aPam(*rUnoCursor.End());
     uno::Reference< text::XText > xParent = getText();
-    xRet = new SwXTextRange(aPam, xParent);
-    return xRet;
+    return new SwXTextRange(aPam, xParent);
 }
 
 OUString SwXTextPortion::getString()
@@ -284,28 +281,28 @@ void SwXTextPortion::GetPropertyValue(
         case FN_UNO_CONTROL_CHARACTER: // obsolete!
         break;
         case FN_UNO_DOCUMENT_INDEX_MARK:
-            rVal <<= m_xTOXMark;
+            rVal <<= uno::Reference<css::text::XTextContent>(m_xTOXMark);
         break;
         case FN_UNO_REFERENCE_MARK:
-            rVal <<= m_xRefMark;
+            rVal <<= uno::Reference<css::text::XTextContent>(m_xRefMark);
         break;
         case FN_UNO_BOOKMARK:
-            rVal <<= m_xBookmark;
+            rVal <<= uno::Reference<css::text::XTextContent>(m_xBookmark);
         break;
         case FN_UNO_FOOTNOTE:
-            rVal <<= m_xFootnote;
+            rVal <<= uno::Reference<css::text::XFootnote>(m_xFootnote);
         break;
         case FN_UNO_TEXT_FIELD:
             rVal <<= m_xTextField;
         break;
         case FN_UNO_META:
-            rVal <<= m_xMeta;
+            rVal <<= uno::Reference<css::text::XTextContent>(m_xMeta);
         break;
         case FN_UNO_LINEBREAK:
-            rVal <<= m_xLineBreak;
+            rVal <<= uno::Reference<css::text::XTextContent>(m_xLineBreak);
             break;
         case FN_UNO_CONTENT_CONTROL:
-            rVal <<= m_xContentControl;
+            rVal <<= uno::Reference<css::text::XTextContent>(m_xContentControl);
             break;
         case FN_UNO_IS_COLLAPSED:
         {
@@ -385,7 +382,7 @@ void SwXTextPortion::GetPropertyValue(
                     = pTextNode->GetAttr(RES_PARATR_LIST_AUTOFMT).GetStyleHandle();
                 if (pListSet)
                 {
-                    m_pPropSet->getPropertyValue(rEntry, *pListSet, rVal);
+                    SfxItemPropertySet::getPropertyValue(rEntry, *pListSet, rVal);
                     bDone = true;
                 }
             }
@@ -404,7 +401,7 @@ void SwXTextPortion::GetPropertyValue(
                                 RES_UNKNOWNATR_CONTAINER>>(pUnoCursor->GetDoc().GetAttrPool());
                     SwUnoCursorHelper::GetCursorAttr(*pUnoCursor, *pSet);
                 }
-                m_pPropSet->getPropertyValue(rEntry, *pSet, rVal);
+                SfxItemPropertySet::getPropertyValue(rEntry, *pSet, rVal);
             }
     }
 }
@@ -447,7 +444,7 @@ void SwXTextPortion::SetPropertyValues_Impl(
     const uno::Sequence< uno::Any >& rValues )
 {
     if (rPropertyNames.getLength() != rValues.getLength())
-        throw lang::IllegalArgumentException("lengths do not match",
+        throw lang::IllegalArgumentException(u"lengths do not match"_ustr,
                                              getXWeak(), -1);
 
     SwUnoCursor& rUnoCursor = GetCursor();
@@ -508,13 +505,13 @@ uno::Sequence< uno::Any > SwXTextPortion::getPropertyValues(
     catch (beans::UnknownPropertyException &)
     {
         css::uno::Any anyEx = cppu::getCaughtException();
-        throw lang::WrappedTargetRuntimeException("Unknown property exception caught",
+        throw lang::WrappedTargetRuntimeException(u"Unknown property exception caught"_ustr,
                 getXWeak(), anyEx );
     }
     catch (lang::WrappedTargetException &)
     {
         css::uno::Any anyEx = cppu::getCaughtException();
-        throw lang::WrappedTargetRuntimeException("WrappedTargetException caught",
+        throw lang::WrappedTargetRuntimeException(u"WrappedTargetException caught"_ustr,
                 getXWeak(), anyEx );
     }
 
@@ -838,12 +835,12 @@ uno::Reference< container::XEnumeration >  SwXTextPortion::createContentEnumerat
 
 uno::Sequence< OUString > SwXTextPortion::getAvailableServiceNames()
 {
-    return { "com.sun.star.text.TextContent" };
+    return { u"com.sun.star.text.TextContent"_ustr };
 }
 
 OUString SwXTextPortion::getImplementationName()
 {
-    return { "SwXTextPortion" };
+    return { u"SwXTextPortion"_ustr };
 }
 
 sal_Bool SwXTextPortion::supportsService(const OUString& rServiceName)
@@ -853,13 +850,13 @@ sal_Bool SwXTextPortion::supportsService(const OUString& rServiceName)
 
 uno::Sequence< OUString > SwXTextPortion::getSupportedServiceNames()
 {
-    return { "com.sun.star.text.TextPortion",
-            "com.sun.star.style.CharacterProperties",
-            "com.sun.star.style.CharacterPropertiesAsian",
-            "com.sun.star.style.CharacterPropertiesComplex",
-            "com.sun.star.style.ParagraphProperties",
-            "com.sun.star.style.ParagraphPropertiesAsian",
-            "com.sun.star.style.ParagraphPropertiesComplex" };
+    return { u"com.sun.star.text.TextPortion"_ustr,
+            u"com.sun.star.style.CharacterProperties"_ustr,
+            u"com.sun.star.style.CharacterPropertiesAsian"_ustr,
+            u"com.sun.star.style.CharacterPropertiesComplex"_ustr,
+            u"com.sun.star.style.ParagraphProperties"_ustr,
+            u"com.sun.star.style.ParagraphPropertiesAsian"_ustr,
+            u"com.sun.star.style.ParagraphPropertiesComplex"_ustr };
 }
 
 void SwXTextPortion::Notify(const SfxHint& rHint)

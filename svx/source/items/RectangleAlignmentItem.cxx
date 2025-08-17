@@ -7,7 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <svx/RectangleAlignmentItem.hxx>
+#include <RectangleAlignmentItem.hxx>
 #include <docmodel/theme/FormatScheme.hxx>
 
 SvxRectangleAlignmentItem::SvxRectangleAlignmentItem(sal_uInt16 nWhich,
@@ -21,11 +21,6 @@ SvxRectangleAlignmentItem::~SvxRectangleAlignmentItem() {}
 SvxRectangleAlignmentItem* SvxRectangleAlignmentItem::Clone(SfxItemPool*) const
 {
     return new SvxRectangleAlignmentItem(*this);
-}
-
-sal_uInt16 SvxRectangleAlignmentItem::GetValueCount() const
-{
-    return model::RECTANGLE_ALIGNMENT_COUNT;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

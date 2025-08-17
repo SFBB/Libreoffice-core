@@ -47,7 +47,7 @@
 #include <comphelper/processfactory.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/helpers.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include "bitmap.hxx"
 #include "elements.hxx"
@@ -110,7 +110,7 @@ bool CGMImpressOutAct::ImplInitPage()
 
 bool CGMImpressOutAct::ImplCreateShape( const OUString& rType )
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return false;
     uno::Reference< uno::XInterface > xNewShape( maXMultiServiceFactory->createInstance( rType ) );
     maXShape.set( xNewShape, uno::UNO_QUERY );
@@ -131,9 +131,9 @@ bool CGMImpressOutAct::ImplCreateShape( const OUString& rType )
 
 void CGMImpressOutAct::ImplSetOrientation( FloatPoint const & rRefPoint, double rOrientation )
 {
-    maXPropSet->setPropertyValue( "RotationPointX", uno::Any(static_cast<sal_Int32>(rRefPoint.X)) );
-    maXPropSet->setPropertyValue( "RotationPointY", uno::Any(static_cast<sal_Int32>(rRefPoint.Y)) );
-    maXPropSet->setPropertyValue( "RotateAngle", uno::Any(static_cast<sal_Int32>( rOrientation * 100.0 )) );
+    maXPropSet->setPropertyValue( u"RotationPointX"_ustr, uno::Any(static_cast<sal_Int32>(rRefPoint.X)) );
+    maXPropSet->setPropertyValue( u"RotationPointY"_ustr, uno::Any(static_cast<sal_Int32>(rRefPoint.Y)) );
+    maXPropSet->setPropertyValue( u"RotateAngle"_ustr, uno::Any(static_cast<sal_Int32>( rOrientation * 100.0 )) );
 }
 
 
@@ -158,9 +158,9 @@ void CGMImpressOutAct::ImplSetLineBundle()
     else
         fLineWidth = mpCGM->pElement->aLineBundle.nLineWidth;
 
-    maXPropSet->setPropertyValue( "LineColor", uno::Any(static_cast<sal_Int32>(nLineColor)) );
+    maXPropSet->setPropertyValue( u"LineColor"_ustr, uno::Any(static_cast<sal_Int32>(nLineColor)) );
 
-    maXPropSet->setPropertyValue( "LineWidth", uno::Any(static_cast<sal_Int32>(fLineWidth)) );
+    maXPropSet->setPropertyValue( u"LineWidth"_ustr, uno::Any(static_cast<sal_Int32>(fLineWidth)) );
 
     switch( eLineType )
     {
@@ -180,11 +180,11 @@ void CGMImpressOutAct::ImplSetLineBundle()
             eLS = drawing::LineStyle_SOLID;
         break;
     }
-    maXPropSet->setPropertyValue( "LineStyle", uno::Any(eLS) );
+    maXPropSet->setPropertyValue( u"LineStyle"_ustr, uno::Any(eLS) );
     if ( eLS == drawing::LineStyle_DASH )
     {
         drawing::LineDash aLineDash( drawing::DashStyle_RECTRELATIVE, 1, 50, 3, 33, 100 );
-        maXPropSet->setPropertyValue( "LineDash", uno::Any(aLineDash) );
+        maXPropSet->setPropertyValue( u"LineDash"_ustr, uno::Any(aLineDash) );
     }
 }
 
@@ -232,7 +232,7 @@ void CGMImpressOutAct::ImplSetFillBundle()
     else
         nHatchIndex = static_cast<sal_uInt32>(mpCGM->pElement->aFillBundle.nFillHatchIndex);
 
-    maXPropSet->setPropertyValue( "FillColor", uno::Any(static_cast<sal_Int32>(nFillColor)) );
+    maXPropSet->setPropertyValue( u"FillColor"_ustr, uno::Any(static_cast<sal_Int32>(nFillColor)) );
 
     switch ( eFillStyle )
     {
@@ -279,22 +279,22 @@ void CGMImpressOutAct::ImplSetFillBundle()
 
     if ( eFS == drawing::FillStyle_GRADIENT )
     {
-        maXPropSet->setPropertyValue( "FillGradient", uno::Any(*mpGradient) );
+        maXPropSet->setPropertyValue( u"FillGradient"_ustr, uno::Any(*mpGradient) );
     }
-    maXPropSet->setPropertyValue( "FillStyle", uno::Any(eFS) );
+    maXPropSet->setPropertyValue( u"FillStyle"_ustr, uno::Any(eFS) );
 
     eLS = drawing::LineStyle_NONE;
     if ( eFillStyle == FIS_HOLLOW )
     {
         eLS = drawing::LineStyle_SOLID;
-        maXPropSet->setPropertyValue( "LineColor", uno::Any(static_cast<sal_Int32>(nFillColor)) );
-        maXPropSet->setPropertyValue( "LineWidth", uno::Any(sal_Int32(0)) );
+        maXPropSet->setPropertyValue( u"LineColor"_ustr, uno::Any(static_cast<sal_Int32>(nFillColor)) );
+        maXPropSet->setPropertyValue( u"LineWidth"_ustr, uno::Any(sal_Int32(0)) );
     }
     else if ( eEdgeType != ET_NONE )
     {
-        maXPropSet->setPropertyValue( "LineColor", uno::Any(static_cast<sal_Int32>(nEdgeColor)) );
+        maXPropSet->setPropertyValue( u"LineColor"_ustr, uno::Any(static_cast<sal_Int32>(nEdgeColor)) );
 
-        maXPropSet->setPropertyValue( "LineWidth", uno::Any(static_cast<sal_Int32>(fEdgeWidth)) );
+        maXPropSet->setPropertyValue( u"LineWidth"_ustr, uno::Any(static_cast<sal_Int32>(fEdgeWidth)) );
 
         switch( eEdgeType )
         {
@@ -313,7 +313,7 @@ void CGMImpressOutAct::ImplSetFillBundle()
         }
     }
 
-    maXPropSet->setPropertyValue( "LineStyle", uno::Any(eLS) );
+    maXPropSet->setPropertyValue( u"LineStyle"_ustr, uno::Any(eLS) );
 
     if ( eFS != drawing::FillStyle_HATCH )
         return;
@@ -321,7 +321,7 @@ void CGMImpressOutAct::ImplSetFillBundle()
     drawing::Hatch aHatch;
 
     aHatch.Color = nFillColor;
-    if ( mpCGM->pElement->maHatchMap.find( nHatchIndex ) !=  mpCGM->pElement->maHatchMap.end() )
+    if ( mpCGM->pElement->maHatchMap.contains( nHatchIndex ) )
     {
         HatchEntry& rHatchEntry = mpCGM->pElement->maHatchMap[ nHatchIndex ];
         switch ( rHatchEntry.HatchStyle )
@@ -339,7 +339,7 @@ void CGMImpressOutAct::ImplSetFillBundle()
         aHatch.Distance = 10 * ( nHatchIndex & 0x1f ) | 100;
         aHatch.Angle = 15 * ( ( nHatchIndex & 0x1f ) - 5 );
     }
-    maXPropSet->setPropertyValue( "FillHatch", uno::Any(aHatch) );
+    maXPropSet->setPropertyValue( u"FillHatch"_ustr, uno::Any(aHatch) );
 }
 
 void CGMImpressOutAct::ImplSetTextBundle( const uno::Reference< beans::XPropertySet > & rProperty )
@@ -356,7 +356,7 @@ void CGMImpressOutAct::ImplSetTextBundle( const uno::Reference< beans::XProperty
     else
         nTextColor = mpCGM->pElement->aTextBundle.GetColor();
 
-    rProperty->setPropertyValue( "CharColor", uno::Any(static_cast<sal_Int32>(nTextColor)) );
+    rProperty->setPropertyValue( u"CharColor"_ustr, uno::Any(static_cast<sal_Int32>(nTextColor)) );
 
     sal_uInt32 nFontType = 0;
     awt::FontDescriptor aFontDescriptor;
@@ -380,18 +380,17 @@ void CGMImpressOutAct::ImplSetTextBundle( const uno::Reference< beans::XProperty
     {
         aFontDescriptor.Underline = awt::FontUnderline::SINGLE;
     }
-    rProperty->setPropertyValue( "FontDescriptor", uno::Any(aFontDescriptor) );
+    rProperty->setPropertyValue( u"FontDescriptor"_ustr, uno::Any(aFontDescriptor) );
 }
 
 void CGMImpressOutAct::InsertPage()
 {
     if ( mnCurrentPage )    // one side is always existing, therefore the first side will be left out
     {
-        uno::Reference< drawing::XDrawPage > xPage = maXDrawPages->insertNewByIndex( 0xffff );
-        maXDrawPage = xPage;
+        maXDrawPage = maXDrawPages->insertNewByIndex(0xffff);
         if ( !ImplInitPage() )
             mpCGM->mbStatus = false;
-        if (mnCurrentPage > MAX_PAGES_FOR_FUZZING && utl::ConfigManager::IsFuzzing())
+        if (mnCurrentPage > MAX_PAGES_FOR_FUZZING && comphelper::IsFuzzing())
         {
             // ofz#21753 that's enough pages for fuzzing, we're not doing anything productive now
             mpCGM->mbStatus = false;
@@ -476,7 +475,7 @@ void CGMImpressOutAct::DrawRectangle( FloatRect const & rFloatRect )
         SAL_WARN("filter.icgm", "bad height: " << fHeight);
         return;
     }
-    if (!ImplCreateShape( "com.sun.star.drawing.RectangleShape"))
+    if (!ImplCreateShape( u"com.sun.star.drawing.RectangleShape"_ustr))
         return;
     maXShape->setSize(awt::Size(fWidth, fHeight));
     maXShape->setPosition(awt::Point(rFloatRect.Left, rFloatRect.Top));
@@ -485,12 +484,12 @@ void CGMImpressOutAct::DrawRectangle( FloatRect const & rFloatRect )
 
 void CGMImpressOutAct::DrawEllipse( FloatPoint const & rCenter, FloatPoint const & rSize, double& rOrientation )
 {
-    if ( !ImplCreateShape( "com.sun.star.drawing.EllipseShape" ) )
+    if ( !ImplCreateShape( u"com.sun.star.drawing.EllipseShape"_ustr ) )
         return;
 
     drawing::CircleKind eCircleKind = drawing::CircleKind_FULL;
     uno::Any aAny( &eCircleKind, ::cppu::UnoType<drawing::CircleKind>::get() );
-    maXPropSet->setPropertyValue( "CircleKind", aAny );
+    maXPropSet->setPropertyValue( u"CircleKind"_ustr, aAny );
 
     tools::Long nXSize = static_cast<tools::Long>( rSize.X * 2.0 );      // strange behaviour with an awt::Size of 0
     tools::Long nYSize = static_cast<tools::Long>( rSize.Y * 2.0 );
@@ -511,7 +510,7 @@ void CGMImpressOutAct::DrawEllipse( FloatPoint const & rCenter, FloatPoint const
 void CGMImpressOutAct::DrawEllipticalArc( FloatPoint const & rCenter, FloatPoint const & rSize, double& rOrientation,
             sal_uInt32 nType, double& fStartAngle, double& fEndAngle )
 {
-    if ( !ImplCreateShape( "com.sun.star.drawing.EllipseShape" ) )
+    if ( !ImplCreateShape( u"com.sun.star.drawing.EllipseShape"_ustr ) )
         return;
 
     uno::Any aAny;
@@ -542,13 +541,13 @@ void CGMImpressOutAct::DrawEllipticalArc( FloatPoint const & rCenter, FloatPoint
     if ( static_cast<tools::Long>(fStartAngle) == static_cast<tools::Long>(fEndAngle) )
     {
         eCircleKind = drawing::CircleKind_FULL;
-        maXPropSet->setPropertyValue( "CircleKind", uno::Any(eCircleKind) );
+        maXPropSet->setPropertyValue( u"CircleKind"_ustr, uno::Any(eCircleKind) );
     }
     else
     {
-        maXPropSet->setPropertyValue( "CircleKind", uno::Any(eCircleKind) );
-        maXPropSet->setPropertyValue( "CircleStartAngle", uno::Any(static_cast<sal_Int32>( fStartAngle * 100 )) );
-        maXPropSet->setPropertyValue( "CircleEndAngle", uno::Any(static_cast<sal_Int32>( fEndAngle * 100 )) );
+        maXPropSet->setPropertyValue( u"CircleKind"_ustr, uno::Any(eCircleKind) );
+        maXPropSet->setPropertyValue( u"CircleStartAngle"_ustr, uno::Any(static_cast<sal_Int32>( fStartAngle * 100 )) );
+        maXPropSet->setPropertyValue( u"CircleEndAngle"_ustr, uno::Any(static_cast<sal_Int32>( fEndAngle * 100 )) );
     }
     maXShape->setPosition( awt::Point( static_cast<tools::Long>( rCenter.X - rSize.X ), static_cast<tools::Long>( rCenter.Y - rSize.Y ) ) );
     if ( rOrientation != 0 )
@@ -566,7 +565,7 @@ void CGMImpressOutAct::DrawEllipticalArc( FloatPoint const & rCenter, FloatPoint
         {
             ImplSetLineBundle();
             aAny <<= drawing::FillStyle_NONE;
-            maXPropSet->setPropertyValue( "FillStyle", aAny );
+            maXPropSet->setPropertyValue( u"FillStyle"_ustr, aAny );
         }
     }
 }
@@ -590,7 +589,7 @@ void CGMImpressOutAct::DrawBitmap( CGMBitmapDescriptor* pBmpDesc )
     mpCGM->ImplMapX( fdx );
     mpCGM->ImplMapY( fdy );
 
-    if ( !ImplCreateShape( "com.sun.star.drawing.GraphicObjectShape" ) )
+    if ( !ImplCreateShape( u"com.sun.star.drawing.GraphicObjectShape"_ustr ) )
         return;
 
     maXShape->setSize( awt::Size( static_cast<tools::Long>(fdx), static_cast<tools::Long>(fdy) ) );
@@ -602,14 +601,14 @@ void CGMImpressOutAct::DrawBitmap( CGMBitmapDescriptor* pBmpDesc )
     }
 
     uno::Reference< awt::XBitmap > xBitmap( VCLUnoHelper::CreateBitmap( pBmpDesc->mxBitmap ) );
-    maXPropSet->setPropertyValue( "GraphicObjectFillBitmap", uno::Any(xBitmap) );
+    maXPropSet->setPropertyValue( u"GraphicObjectFillBitmap"_ustr, uno::Any(xBitmap) );
 }
 
 void CGMImpressOutAct::DrawPolygon( tools::Polygon& rPoly )
 {
     sal_uInt16 nPoints = rPoly.GetSize();
 
-    if ( !(( nPoints > 1 ) && ImplCreateShape( "com.sun.star.drawing.PolyPolygonShape" )) )
+    if ( !(( nPoints > 1 ) && ImplCreateShape( u"com.sun.star.drawing.PolyPolygonShape"_ustr )) )
         return;
 
     drawing::PointSequenceSequence aRetval;
@@ -631,7 +630,7 @@ void CGMImpressOutAct::DrawPolygon( tools::Polygon& rPoly )
 
     uno::Any aParam;
     aParam <<= aRetval;
-    maXPropSet->setPropertyValue( "PolyPolygon", aParam );
+    maXPropSet->setPropertyValue( u"PolyPolygon"_ustr, aParam );
     ImplSetFillBundle();
 }
 
@@ -639,7 +638,7 @@ void CGMImpressOutAct::DrawPolyLine( tools::Polygon& rPoly )
 {
     sal_uInt16 nPoints = rPoly.GetSize();
 
-    if ( !(( nPoints > 1 ) && ImplCreateShape( "com.sun.star.drawing.PolyLineShape" )) )
+    if ( !(( nPoints > 1 ) && ImplCreateShape( u"com.sun.star.drawing.PolyLineShape"_ustr )) )
         return;
 
     drawing::PointSequenceSequence aRetval;
@@ -661,14 +660,14 @@ void CGMImpressOutAct::DrawPolyLine( tools::Polygon& rPoly )
 
     uno::Any aParam;
     aParam <<= aRetval;
-    maXPropSet->setPropertyValue( "PolyPolygon", aParam );
+    maXPropSet->setPropertyValue( u"PolyPolygon"_ustr, aParam );
     ImplSetLineBundle();
 }
 
 void CGMImpressOutAct::DrawPolybezier( tools::Polygon& rPolygon )
 {
     sal_uInt16 nPoints = rPolygon.GetSize();
-    if ( !(( nPoints > 1 ) && ImplCreateShape( "com.sun.star.drawing.OpenBezierShape" )) )
+    if ( !(( nPoints > 1 ) && ImplCreateShape( u"com.sun.star.drawing.OpenBezierShape"_ustr )) )
         return;
 
     drawing::PolyPolygonBezierCoords aRetval;
@@ -694,14 +693,14 @@ void CGMImpressOutAct::DrawPolybezier( tools::Polygon& rPolygon )
     }
     uno::Any aParam;
     aParam <<= aRetval;
-    maXPropSet->setPropertyValue( "PolyPolygonBezier", aParam );
+    maXPropSet->setPropertyValue( u"PolyPolygonBezier"_ustr, aParam );
     ImplSetLineBundle();
 }
 
 void CGMImpressOutAct::DrawPolyPolygon( tools::PolyPolygon const & rPolyPolygon )
 {
     sal_uInt32 nNumPolys = rPolyPolygon.Count();
-    if ( !(nNumPolys && ImplCreateShape( "com.sun.star.drawing.ClosedBezierShape" )) )
+    if ( !(nNumPolys && ImplCreateShape( u"com.sun.star.drawing.ClosedBezierShape"_ustr )) )
         return;
 
     drawing::PolyPolygonBezierCoords aRetval;
@@ -737,13 +736,13 @@ void CGMImpressOutAct::DrawPolyPolygon( tools::PolyPolygon const & rPolyPolygon 
     }
     uno::Any aParam;
     aParam <<= aRetval;
-    maXPropSet->setPropertyValue( "PolyPolygonBezier", aParam);
+    maXPropSet->setPropertyValue( u"PolyPolygonBezier"_ustr, aParam);
     ImplSetFillBundle();
 }
 
 void CGMImpressOutAct::DrawText(awt::Point const & rTextPos, awt::Size const & rTextSize, const OUString& rString, FinalFlag eFlag)
 {
-    if ( !ImplCreateShape( "com.sun.star.drawing.TextShape" ) )
+    if ( !ImplCreateShape( u"com.sun.star.drawing.TextShape"_ustr ) )
         return;
 
     uno::Any    aAny;
@@ -798,14 +797,14 @@ void CGMImpressOutAct::DrawText(awt::Point const & rTextPos, awt::Size const & r
 
     if ( nOrientation )
     {
-        maXPropSet->setPropertyValue( "RotationPointX", uno::Any(aTextPos.X) );
-        maXPropSet->setPropertyValue( "RotationPointY", uno::Any(static_cast<sal_Int32>( aTextPos.Y + nHeight )) );
-        maXPropSet->setPropertyValue( "RotateAngle", uno::Any(static_cast<sal_Int32>( nOrientation * 100 )) );
+        maXPropSet->setPropertyValue( u"RotationPointX"_ustr, uno::Any(aTextPos.X) );
+        maXPropSet->setPropertyValue( u"RotationPointY"_ustr, uno::Any(static_cast<sal_Int32>( aTextPos.Y + nHeight )) );
+        maXPropSet->setPropertyValue( u"RotateAngle"_ustr, uno::Any(static_cast<sal_Int32>( nOrientation * 100 )) );
     }
     if ( nWidth == -1 )
     {
         aAny <<= true;
-        maXPropSet->setPropertyValue( "TextAutoGrowWidth", aAny );
+        maXPropSet->setPropertyValue( u"TextAutoGrowWidth"_ustr, aAny );
 
         drawing::TextAdjust eTextAdjust;
         switch ( mpCGM->pElement->eTextAlignmentH )
@@ -822,11 +821,11 @@ void CGMImpressOutAct::DrawText(awt::Point const & rTextPos, awt::Size const & r
                 eTextAdjust = drawing::TextAdjust_CENTER;
             break;
         }
-        maXPropSet->setPropertyValue( "TextHorizontalAdjust", uno::Any(eTextAdjust) );
+        maXPropSet->setPropertyValue( u"TextHorizontalAdjust"_ustr, uno::Any(eTextAdjust) );
     }
     if ( nHeight == -1 )
     {
-        maXPropSet->setPropertyValue( "TextAutoGrowHeight", uno::Any(true) );
+        maXPropSet->setPropertyValue( u"TextAutoGrowHeight"_ustr, uno::Any(true) );
     }
     uno::Reference< text::XText >  xText;
     uno::Any aFirstQuery( maXShape->queryInterface( cppu::UnoType<text::XText>::get()));
@@ -860,12 +859,12 @@ void CGMImpressOutAct::DrawText(awt::Point const & rTextPos, awt::Size const & r
                                 aAny <<= sal_Int16(style::HorizontalAlignment_CENTER);
                             break;
                         }
-                        aCursorPropSet->setPropertyValue( "ParaAdjust", aAny );
+                        aCursorPropSet->setPropertyValue( u"ParaAdjust"_ustr, aAny );
                     }
                     if ( nWidth > 0 && nHeight > 0 )    // restricted text
                     {
                         aAny <<= true;
-                        maXPropSet->setPropertyValue( "TextFitToSize", aAny );
+                        maXPropSet->setPropertyValue( u"TextFitToSize"_ustr, aAny );
                     }
                     aCursorText->setString(rString);
                     aXTextCursor->gotoEnd( true );

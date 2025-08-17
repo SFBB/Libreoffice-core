@@ -16,19 +16,17 @@ $(eval $(call gb_Library_set_include,sax,\
 	$$(INCLUDE) \
 ))
 
-$(eval $(call gb_Library_use_external,sax,boost_headers))
-
 $(eval $(call gb_Library_use_common_precompiled_header,sax))
 
 $(eval $(call gb_Library_use_sdk_api,sax))
 
 $(eval $(call gb_Library_use_externals,sax,\
-	boost_headers \
 	libxml2 \
 	expat \
 ))
 
 $(eval $(call gb_Library_use_libraries,sax,\
+    basegfx \
 	comphelper \
 	cppu \
 	cppuhelper \

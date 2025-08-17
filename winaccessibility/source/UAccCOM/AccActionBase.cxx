@@ -24,17 +24,15 @@
 
 #include "AccActionBase.h"
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 
 #include <vcl/svapp.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
 #include <comphelper/AccessibleImplementationHelper.hxx>
+#include <systools/win32/oleauto.hxx>
 
 #include "acccommon.h"
 
-using namespace com::sun::star::accessibility::AccessibleRole;
 using namespace com::sun::star::accessibility;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::awt;
@@ -58,15 +56,18 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccActionBase::nActions(/*[out,retval]*/long*
 {
     SolarMutexGuard g;
 
+    if (!nActions)
+        return E_INVALIDARG;
+
     try {
 
-    if( pRXAct.is() && nActions != nullptr )
+    if (pRXAct.is())
     {
         *nActions = pRXAct->getAccessibleActionCount();
         return S_OK;
     }
-    *nActions = 0;
 
+    *nActions = 0;
     return S_OK;
 
     } catch(...) { return E_FAIL; }
@@ -113,7 +114,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccActionBase::get_description(long actionInd
     OUString ouStr = pRXAct->getAccessibleActionDescription(actionIndex);
 
     SysFreeString(*description);
-    *description = SysAllocString(o3tl::toW(ouStr.getStr()));
+    *description = sal::systools::BStr::newBSTR(ouStr);
 
     return S_OK;
 
@@ -173,7 +174,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccActionBase::get_keyBinding(
         auto const wString = comphelper::GetkeyBindingStrByXkeyBinding(
             binding->getAccessibleKeyBinding(index));
 
-        (*keyBinding)[index] = SysAllocString(o3tl::toW(wString.getStr()));
+        (*keyBinding)[index] = sal::systools::BStr::newBSTR(wString);
     }
 
     *nBinding = nCount;
@@ -195,9 +196,9 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccActionBase::put_XInterface(hyper pXInterfa
 
     CUNOXWrapper::put_XInterface(pXInterface);
 
-    //special query.
     if(pUNOInterface == nullptr)
         return E_FAIL;
+
     Reference<XAccessibleContext> pRContext = pUNOInterface->getAccessibleContext();
     if( !pRContext.is() )
         return E_FAIL;

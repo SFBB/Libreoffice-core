@@ -26,6 +26,7 @@
 
 #include "file_error_transl.hxx"
 #include "file_url.hxx"
+#include "file_impl.hxx"
 #include "system.hxx"
 
 #include <errno.h>
@@ -193,6 +194,9 @@ static oslFileError osl_psz_getVolumeInformation (
     if (!pInfo)
         return osl_File_E_INVAL;
 
+    if (isForbidden(pszDirectory, osl_File_OpenFlag_Read))
+        return osl_File_E_ACCES;
+
     pInfo->uValidFields = 0;
     pInfo->uAttributes  = 0;
     pInfo->uTotalSpace = 0;
@@ -208,7 +212,6 @@ static oslFileError osl_psz_getVolumeInformation (
     {
         OSL_detail_STATFS_STRUCT sfs;
         OSL_detail_STATFS_INIT(sfs);
-        // coverity[fs_check_call : FALSE]
         if ((OSL_detail_STATFS(pszDirectory, &sfs)) < (0))
         {
             oslFileError result = oslTranslateFileError(errno);

@@ -51,12 +51,6 @@ namespace com::sun::star::frame {
     class XFrame;
 }
 
-enum class SdOptionStreamMode
-{
-    Load = 0,
-    Store = 1
-};
-
 struct SdExtPropertySetInfoCacheCompare
 {
     bool operator()(const std::span<SfxItemPropertyMapEntry const>& lhs, const std::span<SfxItemPropertyMapEntry const>& rhs) const
@@ -104,7 +98,6 @@ public:
     void                    GetState(SfxItemSet&);
 
     SdOptions*              GetSdOptions(DocumentType eDocType);
-    SD_DLLPUBLIC tools::SvRef<SotStorageStream>     GetOptionStream( std::u16string_view rOptionName, SdOptionStreamMode eMode );
 
     bool                    GetWaterCan() const { return bWaterCan; }
     void                    SetWaterCan( bool bWC ) { bWaterCan = bWC; }
@@ -126,7 +119,7 @@ public:
     virtual std::optional<SfxItemSet> CreateItemSet( sal_uInt16 nId ) override;
     virtual void         ApplyItemSet( sal_uInt16 nId, const SfxItemSet& rSet ) override;
     virtual std::unique_ptr<SfxTabPage> CreateTabPage( sal_uInt16 nId, weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet ) override;
-    virtual std::optional<SfxStyleFamilies> CreateStyleFamilies() override;
+    virtual SfxStyleFamilies CreateStyleFamilies() override;
 
     SdExtPropertySetInfoCache gImplImpressPropertySetInfoCache;
     SdExtPropertySetInfoCache gImplDrawPropertySetInfoCache;
@@ -134,13 +127,14 @@ public:
 
     svtools::ColorConfig& GetColorConfig();
 
+    static auto get() { return static_cast<SdModule*>(SfxApplication::GetModule(SfxToolsModule::Draw)); }
+
 private:
 
     SdOptions*              pImpressOptions;
     SdOptions*              pDrawOptions;
     std::unique_ptr<SvxSearchItem>      pSearchItem;
     std::unique_ptr<SvNumberFormatter>  pNumberFormatter;
-    tools::SvRef<SotStorage>            xOptionStorage;
     bool                    bWaterCan;
     std::unique_ptr<SfxErrorHandler> mpErrorHdl;
     /** This device is used for printer independent layout.  It is virtual
@@ -180,7 +174,5 @@ private:
 
     std::unique_ptr<svtools::ColorConfig> mpColorConfig;
 };
-
-#define SD_MOD() ( static_cast<SdModule*>(SfxApplication::GetModule(SfxToolsModule::Draw)) )
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

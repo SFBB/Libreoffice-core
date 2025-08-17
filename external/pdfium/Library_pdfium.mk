@@ -13,13 +13,23 @@ $(eval $(call gb_Library_use_unpacked,pdfium,pdfium))
 
 $(eval $(call gb_Library_set_warnings_disabled,pdfium))
 
-$(eval $(call gb_Library_set_precompiled_header,pdfium,external/pdfium/inc/pch/precompiled_pdfium))
+$(eval $(call gb_Library_use_clang,pdfium))
+#This currently results in all sorts of compile complaints
+#$(eval $(call gb_Library_set_precompiled_header,pdfium,external/pdfium/inc/pch/precompiled_pdfium))
+# The clang-cl provided with at least VS 2019 16.11.28 is known-broken with -std:c++20:
+ifneq ($(filter -std:c++20,$(CXXFLAGS_CXX11)),)
+ifeq ($(LO_CLANG_VERSION),120000)
+$(eval $(call gb_Library_add_cxxflags,pdfium, \
+    -std:c++17 \
+))
+endif
+endif
 
 $(eval $(call gb_Library_set_include,pdfium,\
-    -I$(call gb_UnpackedTarball_get_dir,pdfium) \
-    -I$(call gb_UnpackedTarball_get_dir,pdfium)/third_party \
-    -I$(call gb_UnpackedTarball_get_dir,pdfium)/third_party/agg23 \
-    $(if $(filter TRUE,$(SYSTEM_ABSEIL)),$(ABSEIL_CFLAGS),-I$(call gb_UnpackedTarball_get_dir,pdfium)/third_party/abseil-cpp) \
+    -I$(gb_UnpackedTarball_workdir)/pdfium \
+    -I$(gb_UnpackedTarball_workdir)/pdfium/third_party \
+    -I$(gb_UnpackedTarball_workdir)/pdfium/third_party/agg23 \
+    $(if $(filter TRUE,$(SYSTEM_ABSEIL)),$(ABSEIL_CFLAGS),-I$(gb_UnpackedTarball_workdir)/pdfium/third_party/abseil-cpp) \
     $(if $(filter TRUE,$(SYSTEM_OPENJPEG2)),$(OPENJPEG2_CFLAGS)) \
     $$(INCLUDE) \
 ))
@@ -182,6 +192,9 @@ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
     UnpackedTarball/pdfium/core/fpdfapi/cmaps/Korea1/cmaps_korea1 \
     UnpackedTarball/pdfium/core/fpdfapi/cmaps/fpdf_cmaps \
     UnpackedTarball/pdfium/core/fpdfapi/edit/cpdf_pagecontentgenerator \
+    UnpackedTarball/pdfium/core/fpdfapi/edit/cpdf_npagetooneexporter \
+    UnpackedTarball/pdfium/core/fpdfapi/edit/cpdf_pageexporter \
+    UnpackedTarball/pdfium/core/fpdfapi/edit/cpdf_pageorganizer \
     UnpackedTarball/pdfium/core/fpdfapi/font/cpdf_cidfont \
     UnpackedTarball/pdfium/core/fpdfapi/font/cpdf_font \
     UnpackedTarball/pdfium/core/fpdfapi/font/cpdf_fontencoding \
@@ -376,6 +389,10 @@ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
     UnpackedTarball/pdfium/core/fxcodec/flate/flatemodule \
     UnpackedTarball/pdfium/core/fxcodec/icc/icc_transform \
     UnpackedTarball/pdfium/core/fxcodec/jbig2/jbig2_decoder \
+    UnpackedTarball/pdfium/core/fxcodec/data_and_bytes_consumed \
+))
+
+$(eval $(call gb_Library_add_generated_cobjects,pdfium,\
     UnpackedTarball/pdfium/core/fxcodec/jpeg/jpeg_common \
 ))
 
@@ -433,15 +450,15 @@ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
     UnpackedTarball/pdfium/core/fxcrt/cfx_read_only_vector_stream \
     UnpackedTarball/pdfium/core/fxcrt/fx_memory_malloc \
     UnpackedTarball/pdfium/core/fxcrt/widetext_buffer \
+    UnpackedTarball/pdfium/core/fxcrt/debug/alias \
+    UnpackedTarball/pdfium/core/fxcrt/string_template \
 ))
 
 # fxge
 $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
-    UnpackedTarball/pdfium/core/fxge/dib/cfx_bitmapcomposer \
     UnpackedTarball/pdfium/core/fxge/dib/cfx_bitmapstorer \
     UnpackedTarball/pdfium/core/fxge/dib/cfx_dibitmap \
     UnpackedTarball/pdfium/core/fxge/cfx_drawutils \
-    UnpackedTarball/pdfium/core/fxge/dib/cfx_imagerenderer \
     UnpackedTarball/pdfium/core/fxge/dib/cfx_imagestretcher \
     UnpackedTarball/pdfium/core/fxge/dib/cfx_imagetransformer \
     UnpackedTarball/pdfium/core/fxge/dib/cfx_scanlinecompositor \
@@ -466,8 +483,10 @@ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
     UnpackedTarball/pdfium/core/fxge/fontdata/chromefontdata/FoxitSymbol \
     UnpackedTarball/pdfium/core/fxge/freetype/fx_freetype \
     UnpackedTarball/pdfium/core/fxge/renderdevicedriver_iface \
-    UnpackedTarball/pdfium/core/fxge/agg/fx_agg_driver \
-    UnpackedTarball/pdfium/core/fxge/cfx_cliprgn \
+    UnpackedTarball/pdfium/core/fxge/agg/cfx_agg_bitmapcomposer \
+    UnpackedTarball/pdfium/core/fxge/agg/cfx_agg_devicedriver \
+    UnpackedTarball/pdfium/core/fxge/agg/cfx_agg_imagerenderer \
+    UnpackedTarball/pdfium/core/fxge/agg/cfx_agg_cliprgn \
     UnpackedTarball/pdfium/core/fxge/cfx_color \
     UnpackedTarball/pdfium/core/fxge/cfx_glyphcache \
     UnpackedTarball/pdfium/core/fxge/cfx_folderfontinfo \
@@ -568,12 +587,6 @@ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
 ))
 endif
 
-# pdfium_base
-$(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
-    UnpackedTarball/pdfium/third_party/base/debug/alias \
-    UnpackedTarball/pdfium/third_party/base/memory/aligned_memory \
-))
-
 $(eval $(call gb_Library_use_externals,pdfium,\
     libjpeg \
     lcms2 \
@@ -607,8 +620,8 @@ $(eval $(call gb_Library_add_defs,pdfium,\
 
 else
 $(eval $(call gb_Library_set_include,pdfium,\
-    -I$(call gb_UnpackedTarball_get_dir,pdfium)/third_party/freetype/include/ \
-    -I$(call gb_UnpackedTarball_get_dir,pdfium)/third_party/freetype/src/include/ \
+    -I$(gb_UnpackedTarball_workdir)/pdfium/third_party/freetype/include/ \
+    -I$(gb_UnpackedTarball_workdir)/pdfium/third_party/freetype/src/include/ \
     $$(INCLUDE) \
 ))
 
@@ -664,7 +677,8 @@ $(eval $(call gb_Library_add_generated_exception_objects,pdfium,\
     UnpackedTarball/pdfium/core/fxge/cfx_windowsrenderdevice \
     UnpackedTarball/pdfium/core/fxcrt/cfx_fileaccess_windows \
     UnpackedTarball/pdfium/core/fxcrt/fx_folder_windows \
-    UnpackedTarball/pdfium/third_party/base/win/win_util \
+    UnpackedTarball/pdfium/core/fxcrt/win/win_util \
+    UnpackedTarball/pdfium/core/fxcrt/code_point_view \
     UnpackedTarball/pdfium/core/fpdfapi/render/cpdf_windowsrenderdevice \
 ))
 

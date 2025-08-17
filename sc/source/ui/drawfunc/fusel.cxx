@@ -21,7 +21,6 @@
 #include <editeng/flditem.hxx>
 #include <svx/svddrgmt.hxx>
 #include <svx/svdoole2.hxx>
-#include <svx/svdotext.hxx>
 #include <sfx2/dispatch.hxx>
 #include <vcl/imapobj.hxx>
 #include <svx/svdouno.hxx>
@@ -57,8 +56,8 @@
 using namespace com::sun::star;
 
 FuSelection::FuSelection(ScTabViewShell& rViewSh, vcl::Window* pWin, ScDrawView* pViewP,
-                         SdrModel* pDoc, const SfxRequest& rReq)
-    : FuDraw(rViewSh, pWin, pViewP, pDoc, rReq)
+                         SdrModel& rDoc, const SfxRequest& rReq)
+    : FuDraw(rViewSh, pWin, pViewP, rDoc, rReq)
 {
 }
 
@@ -192,7 +191,7 @@ bool FuSelection::MouseButtonDown(const MouseEvent& rMEvt)
                            {
                                try
                                {
-                                   aCaller = xProps->getPropertyValue("Name");
+                                   aCaller = xProps->getPropertyValue(u"Name"_ustr);
                                }
                                catch( uno::Exception& ) {}
                            }
@@ -377,11 +376,11 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
                 }
                 if ( pView )
                 {
-                    const SdrMarkList& rSdrMarkList = pView->GetMarkedObjectList();
-                    const size_t nMarkCount = rSdrMarkList.GetMarkCount();
+                    const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+                    const size_t nMarkCount = rMarkList.GetMarkCount();
                     for ( size_t i = 0; i < nMarkCount; ++i )
                     {
-                        SdrMark* pMark = rSdrMarkList.GetMark( i );
+                        SdrMark* pMark = rMarkList.GetMark( i );
                         pObj = ( pMark ? pMark->GetMarkedSdrObj() : nullptr );
                         if ( pObj )
                         {
@@ -417,13 +416,13 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
             // unlock internal layer to include note captions
             pView->UnlockInternalLayer();
             pView->EndAction();
-            if ( pView->AreObjectsMarked() )
+            const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+            if ( rMarkList.GetMarkCount() != 0 )
             {
                 bReturn = true;
 
                 /*  if multi-selection contains a note caption object, remove
                     all other objects from selection. */
-                const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
                 const size_t nCount = rMarkList.GetMarkCount();
                 if( nCount > 1 )
                 {
@@ -442,7 +441,7 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
             }
         }
 
-        if (SC_MOD()->GetIsWaterCan())
+        if (ScModule::get()->GetIsWaterCan())
         {
             auto pStyleSheet = rViewData.GetDocument().GetStyleSheetPool()->GetActualStyleSheet();
             if (pStyleSheet && pStyleSheet->GetFamily() == SfxStyleFamily::Frame)
@@ -455,7 +454,7 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
 
     if (pIPClient)
     {
-        ScModule* pScMod = SC_MOD();
+        ScModule* pScMod = ScModule::get();
         bool bUnoRefDialog = pScMod->IsRefDialogOpen() && pScMod->GetCurRefDlgId() == WID_SIMPLE_REF;
 
         if ( pIPClient->IsObjectInPlaceActive() && !bUnoRefDialog )
@@ -465,9 +464,9 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
     sal_uInt16 nClicks = rMEvt.GetClicks();
     if (pView && nClicks == 2 && rMEvt.IsLeft())
     {
-        if ( pView->AreObjectsMarked() )
+        const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+        if ( rMarkList.GetMarkCount() != 0 )
         {
-            const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
             if (rMarkList.GetMarkCount() == 1)
             {
                 SdrMark* pMark = rMarkList.GetMark(0);
@@ -479,6 +478,8 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
                 SdrHitKind eHit = pView->PickAnything( rMEvt, SdrMouseEventKind::BUTTONDOWN, aVEvt );
                 if (eHit != SdrHitKind::NONE && aVEvt.mpObj == pObj)
                 {
+                    assert(pObj);
+
                     SdrObjKind nSdrObjKind = pObj->GetObjIdentifier();
 
                     //  OLE: activate
@@ -542,8 +543,8 @@ bool FuSelection::MouseButtonUp(const MouseEvent& rMEvt)
 
     if ( bCopy && pPage )
     {
-        ScDocShell* pDocShell = rViewData.GetDocShell();
-        ScModelObj* pModelObj = ( pDocShell ? pDocShell->GetModel() : nullptr );
+        ScDocShell& rDocShell = rViewData.GetDocShell();
+        ScModelObj* pModelObj = rDocShell.GetModel();
         if ( pModelObj )
         {
             SCTAB nTab = rViewData.GetTabNo();

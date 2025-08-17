@@ -54,9 +54,13 @@ class EDITENG_DLLPUBLIC SvxBrushItem final : public SfxPoolItem
 
     void        ApplyGraphicTransparency_Impl();
 
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
+
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxBrushItem)
     explicit SvxBrushItem( sal_uInt16 nWhich );
     SvxBrushItem(Color const& rColor, sal_uInt16 nWhich);
     SvxBrushItem(Color const& rColor, model::ComplexColor const& rComplexColor, sal_uInt16 nWhich);
@@ -82,6 +86,8 @@ public:
                                   OUString &rText, const IntlWrapper& ) const override;
 
     virtual bool             operator==( const SfxPoolItem& ) const override;
+    virtual bool             supportsHashCode() const override { return true; }
+    virtual size_t           hashCode() const override;
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
@@ -89,7 +95,11 @@ public:
 
     const Color&    GetColor() const                { return aColor; }
     Color&          GetColor()                      { return aColor; }
-    void            SetColor( const Color& rCol)    { aColor = rCol; }
+    void            SetColor( const Color& rCol)
+    {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
+        aColor = rCol;
+    }
 
     const model::ComplexColor& getComplexColor() const
     {
@@ -100,11 +110,16 @@ public:
 
     void setComplexColor(model::ComplexColor const& rComplexColor)
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         maComplexColor = rComplexColor;
     }
 
     const Color&    GetFiltColor() const             { return aFilterColor; }
-    void            SetFiltColor( const Color& rCol) { aFilterColor = rCol; }
+    void            SetFiltColor( const Color& rCol)
+    {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
+        aFilterColor = rCol;
+    }
 
     SvxGraphicPosition  GetGraphicPos() const       { return eGraphicPos; }
 

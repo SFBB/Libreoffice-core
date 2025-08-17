@@ -58,11 +58,8 @@
 #include <com/sun/star/beans/XMaterialHolder.hpp>
 
 using namespace vcl;
-using namespace utl;
 using namespace psp;
-using namespace osl;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::lang;
 
 /*
@@ -138,6 +135,21 @@ int PrintFontManager::getDirectoryAtom( const OString& rDirectory )
     return nAtom;
 }
 
+std::vector<fontID> PrintFontManager::findFontFileIDs( std::u16string_view rFileUrl ) const
+{
+    rtl_TextEncoding aEncoding = osl_getThreadTextEncoding();
+    INetURLObject aPath( rFileUrl );
+    OString aName(OUStringToOString(aPath.GetLastName(INetURLObject::DecodeMechanism::WithCharset, aEncoding), aEncoding));
+    OString aDir( OUStringToOString(
+        INetURLObject::decode( aPath.GetPath(), INetURLObject::DecodeMechanism::WithCharset, aEncoding ), aEncoding ) );
+
+    auto dirIt = m_aDirToAtom.find(aDir);
+    if (dirIt == m_aDirToAtom.end())
+        return {};
+
+    return findFontFileIDs(dirIt->second, aName);
+}
+
 std::vector<fontID> PrintFontManager::addFontFile( std::u16string_view rFileUrl )
 {
     rtl_TextEncoding aEncoding = osl_getThreadTextEncoding();
@@ -164,7 +176,26 @@ std::vector<fontID> PrintFontManager::addFontFile( std::u16string_view rFileUrl 
     return aFontIds;
 }
 
-std::vector<PrintFontManager::PrintFont> PrintFontManager::analyzeFontFile( int nDirID, const OString& rFontFile, const char *pFormat ) const
+void PrintFontManager::removeFontFile(std::u16string_view rFileUrl)
+{
+    INetURLObject aPath(rFileUrl);
+    rtl_TextEncoding aEncoding = osl_getThreadTextEncoding();
+    if (auto ids = findFontFileIDs(rFileUrl); !ids.empty())
+    {
+        OString aName(OUStringToOString(
+            aPath.GetLastName(INetURLObject::DecodeMechanism::WithCharset, aEncoding), aEncoding));
+
+        for (auto nFontID : ids)
+        {
+            m_aFonts.erase(nFontID);
+            m_aFontFileToFontID[aName].erase(nFontID);
+        }
+    }
+
+    removeFontconfigFile(OUStringToOString(aPath.GetFull(), aEncoding));
+}
+
+std::vector<PrintFontManager::PrintFont> PrintFontManager::analyzeFontFile( int nDirID, const OString& rFontFile) const
 {
     std::vector<PrintFontManager::PrintFont> aNewFonts;
 
@@ -187,21 +218,12 @@ std::vector<PrintFontManager::PrintFont> PrintFontManager::analyzeFontFile( int 
             return aNewFonts;
 
         bSupported = false;
-        if (pFormat)
-        {
-            if (!strcmp(pFormat, "TrueType") ||
-                !strcmp(pFormat, "CFF"))
-                bSupported = true;
-        }
-        if (!bSupported)
-        {
-            OString aExt( rFontFile.copy( rFontFile.lastIndexOf( '.' )+1 ) );
-            if( aExt.equalsIgnoreAsciiCase("ttf")
-                 ||  aExt.equalsIgnoreAsciiCase("ttc")
-                 ||  aExt.equalsIgnoreAsciiCase("tte")   // #i33947# for Gaiji support
-                 ||  aExt.equalsIgnoreAsciiCase("otf") ) // check for TTF- and PS-OpenType too
-                bSupported = true;
-        }
+        OString aExt( rFontFile.copy( rFontFile.lastIndexOf( '.' )+1 ) );
+        if( aExt.equalsIgnoreAsciiCase("ttf")
+             ||  aExt.equalsIgnoreAsciiCase("ttc")
+             ||  aExt.equalsIgnoreAsciiCase("tte")   // #i33947# for Gaiji support
+             ||  aExt.equalsIgnoreAsciiCase("otf") ) // check for TTF- and PS-OpenType too
+            bSupported = true;
     }
 
     if (bSupported)
@@ -458,7 +480,7 @@ OUString analyzeSfntFamilyName(void const * pTTFont)
                     nMatch = 1000;
             }
             OUString aName = convertSfntName( aNameRecords[i] );
-            if (!(aName.isEmpty()) && nMatch > nLastMatch)
+            if (!(aName.isEmpty()) && nMatch >= nLastMatch)
             {
                 nLastMatch = nMatch;
                 aFamily = aName;

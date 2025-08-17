@@ -48,6 +48,7 @@
 #include <fmtornt.hxx>
 #include <fmtfsize.hxx>
 #include <editeng/boxitem.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <vcl/settings.hxx>
 #include <unoprnms.hxx>
@@ -55,12 +56,10 @@
 #include <dbui.hrc>
 
 using namespace osl;
-using namespace svt;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::view;
 
 constexpr tools::Long DEFAULT_LEFT_DISTANCE = o3tl::toTwips(25, o3tl::Length::mm); // 2,5 cm
@@ -70,24 +69,24 @@ constexpr tools::Long DEFAULT_ADDRESS_WIDTH = o3tl::toTwips(75, o3tl::Length::mm
 constexpr tools::Long DEFAULT_ADDRESS_HEIGHT = o3tl::toTwips(35, o3tl::Length::mm); // 3,5cm
 
 SwMailMergeLayoutPage::SwMailMergeLayoutPage(weld::Container* pPage, SwMailMergeWizard* pWizard)
-    : vcl::OWizardPage(pPage, pWizard, "modules/swriter/ui/mmlayoutpage.ui", "MMLayoutPage")
+    : vcl::OWizardPage(pPage, pWizard, u"modules/swriter/ui/mmlayoutpage.ui"_ustr, u"MMLayoutPage"_ustr)
     , m_pExampleWrtShell(nullptr)
     , m_pAddressBlockFormat(nullptr)
     , m_bIsGreetingInserted(false)
     , m_pWizard(pWizard)
-    , m_xPosition(m_xBuilder->weld_container("addresspos"))
-    , m_xAlignToBodyCB(m_xBuilder->weld_check_button("align"))
-    , m_xLeftFT(m_xBuilder->weld_label("leftft"))
-    , m_xLeftMF(m_xBuilder->weld_metric_spin_button("left", FieldUnit::CM))
-    , m_xTopMF(m_xBuilder->weld_metric_spin_button("top", FieldUnit::CM))
-    , m_xGreetingLine(m_xBuilder->weld_container("greetingspos"))
-    , m_xUpPB(m_xBuilder->weld_button("up"))
-    , m_xDownPB(m_xBuilder->weld_button("down"))
-    , m_xZoomLB(m_xBuilder->weld_combo_box("zoom"))
+    , m_xPosition(m_xBuilder->weld_container(u"addresspos"_ustr))
+    , m_xAlignToBodyCB(m_xBuilder->weld_check_button(u"align"_ustr))
+    , m_xLeftFT(m_xBuilder->weld_label(u"leftft"_ustr))
+    , m_xLeftMF(m_xBuilder->weld_metric_spin_button(u"left"_ustr, FieldUnit::CM))
+    , m_xTopMF(m_xBuilder->weld_metric_spin_button(u"top"_ustr, FieldUnit::CM))
+    , m_xGreetingLine(m_xBuilder->weld_container(u"greetingspos"_ustr))
+    , m_xUpPB(m_xBuilder->weld_button(u"up"_ustr))
+    , m_xDownPB(m_xBuilder->weld_button(u"down"_ustr))
+    , m_xZoomLB(m_xBuilder->weld_combo_box(u"zoom"_ustr))
 {
     std::shared_ptr<const SfxFilter> pSfxFlt =
             SwDocShell::Factory().GetFilterContainer()->
-            GetFilter4FilterName("writer8", SfxFilterFlags::EXPORT);
+            GetFilter4FilterName(u"writer8"_ustr, SfxFilterFlags::EXPORT);
 
     //save the current document into a temporary file
     {
@@ -99,20 +98,20 @@ SwMailMergeLayoutPage::SwMailMergeLayoutPage(weld::Container* pPage, SwMailMerge
         aTempFile.EnableKillingFile();
         m_sExampleURL = aTempFile.GetURL();
     }
-    SwView* pView = m_pWizard->GetSwView();
+    SwView& rView = m_pWizard->GetSwView();
     // Don't save embedded data set! It would steal it from current document.
     uno::Sequence< beans::PropertyValue > aValues =
     {
-        comphelper::makePropertyValue("FilterName", pSfxFlt->GetFilterName()),
-        comphelper::makePropertyValue("NoEmbDataSet", true)
+        comphelper::makePropertyValue(u"FilterName"_ustr, pSfxFlt->GetFilterName()),
+        comphelper::makePropertyValue(u"NoEmbDataSet"_ustr, true)
     };
 
-    uno::Reference< frame::XStorable > xStore( pView->GetDocShell()->GetModel(), uno::UNO_QUERY);
+    uno::Reference< frame::XStorable > xStore( rView.GetDocShell()->GetModel(), uno::UNO_QUERY);
     xStore->storeToURL( m_sExampleURL, aValues   );
 
     Link<SwOneExampleFrame&,void> aLink(LINK(this, SwMailMergeLayoutPage, PreviewLoadedHdl_Impl));
     m_xExampleFrame.reset(new SwOneExampleFrame(EX_SHOW_DEFAULT_PAGE, &aLink, &m_sExampleURL));
-    m_xExampleContainerWIN.reset(new weld::CustomWeld(*m_xBuilder, "example", *m_xExampleFrame));
+    m_xExampleContainerWIN.reset(new weld::CustomWeld(*m_xBuilder, u"example"_ustr, *m_xExampleFrame));
 
     Size aSize = m_xExampleFrame->GetDrawingArea()->get_ref_device().LogicToPixel(
             Size(124, 159), MapMode(MapUnit::MapAppFont));
@@ -220,20 +219,20 @@ bool SwMailMergeLayoutPage::commitPage(::vcl::WizardTypes::CommitPageReason eRea
     return true;
 }
 
-SwFrameFormat*  SwMailMergeLayoutPage::InsertAddressAndGreeting(SwView const * pView,
+SwFrameFormat*  SwMailMergeLayoutPage::InsertAddressAndGreeting(SwView& rView,
         SwMailMergeConfigItem& rConfigItem,
         const Point& rAddressPosition,
         bool bAlignToBody)
 {
     SwFrameFormat* pAddressBlockFormat = nullptr;
-    pView->GetWrtShell().StartUndo(SwUndoId::INSERT);
+    rView.GetWrtShell().StartUndo(SwUndoId::INSERT);
     if(rConfigItem.IsAddressBlock() && !rConfigItem.IsAddressInserted())
     {
         //insert the frame
         Point aAddressPosition(DEFAULT_LEFT_DISTANCE, DEFAULT_TOP_DISTANCE);
         if(rAddressPosition.X() > 0 && rAddressPosition.Y() > 0)
             aAddressPosition = rAddressPosition;
-        pAddressBlockFormat = InsertAddressFrame( pView->GetWrtShell(),
+        pAddressBlockFormat = InsertAddressFrame( rView.GetWrtShell(),
                                         rConfigItem,
                                         aAddressPosition, bAlignToBody, false);
         rConfigItem.SetAddressInserted();
@@ -241,10 +240,10 @@ SwFrameFormat*  SwMailMergeLayoutPage::InsertAddressAndGreeting(SwView const * p
     //now the greeting
     if(rConfigItem.IsGreetingLine(false) && !rConfigItem.IsGreetingInserted())
     {
-        InsertGreeting( pView->GetWrtShell(), rConfigItem, false);
+        InsertGreeting( rView.GetWrtShell(), rConfigItem, false);
         rConfigItem.SetGreetingInserted();
     }
-    pView->GetWrtShell().EndUndo(SwUndoId::INSERT);
+    rView.GetWrtShell().EndUndo(SwUndoId::INSERT);
     return pAddressBlockFormat;
 }
 
@@ -299,7 +298,7 @@ SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
 
         bool bIncludeCountry = rConfigItem.IsIncludeCountry();
         bool bHideEmptyParagraphs = rConfigItem.IsHideEmptyParagraphs();
-        const OUString rExcludeCountry = rConfigItem.GetExcludeCountry();
+        const OUString& rExcludeCountry = rConfigItem.GetExcludeCountry();
         bool bSpecialReplacementForCountry = (!bIncludeCountry || !rExcludeCountry.isEmpty());
 
         const std::vector<std::pair<OUString, int>>& rHeaders = rConfigItem.GetDefaultAddressHeaders();
@@ -350,7 +349,7 @@ SwFrameFormat* SwMailMergeLayoutPage::InsertAddressFrame(
                     }
                     else
                     {
-                        SwInsertField_Data aData(SwFieldTypesEnum::HiddenParagraph, 0, "", "", 0, &rShell );
+                        SwInsertField_Data aData(SwFieldTypesEnum::HiddenParagraph, 0, u""_ustr, u""_ustr, 0, &rShell );
                         aFieldMgr.InsertField( aData );
                     }
                 }
@@ -496,7 +495,7 @@ void SwMailMergeLayoutPage::InsertGreeting(SwWrtShell& rShell, SwMailMergeConfig
                 sal_Int32 nCurrent = rConfigItem.GetCurrentGreeting(static_cast<SwMailMergeConfigItem::Gender>(eGender));
                 if( nCurrent >= 0 && nCurrent < aEntries.getLength())
                 {
-                    const OUString sGreeting = aEntries[nCurrent];
+                    const OUString& sGreeting = aEntries[nCurrent];
                     OUString sCondition;
                     OUString sHideParagraphsExpression;
                     switch(eGender)
@@ -592,12 +591,11 @@ IMPL_LINK_NOARG(SwMailMergeLayoutPage, PreviewLoadedHdl_Impl, SwOneExampleFrame&
 {
     m_xExampleContainerWIN->show();
 
-    Reference< XModel > & xModel = m_xExampleFrame->GetModel();
+    rtl::Reference< SwXTextDocument > & xModel = m_xExampleFrame->GetModel();
     //now the ViewOptions should be set properly
     Reference< XViewSettingsSupplier >  xSettings(xModel->getCurrentController(), UNO_QUERY);
     m_xViewProperties = xSettings->getViewSettings();
-    auto pXDoc = comphelper::getFromUnoTunnel<SwXTextDocument>(xModel);
-    SwDocShell* pDocShell = pXDoc->GetDocShell();
+    SwDocShell* pDocShell = xModel->GetDocShell();
     m_pExampleWrtShell = pDocShell->GetWrtShell();
     OSL_ENSURE(m_pExampleWrtShell, "No SwWrtShell found!");
     if(!m_pExampleWrtShell)

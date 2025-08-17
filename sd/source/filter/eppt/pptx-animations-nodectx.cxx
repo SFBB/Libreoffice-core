@@ -69,7 +69,7 @@ bool initCondList(const Any& rAny, std::vector<Cond>& rList, bool bIsMainSeqChil
     Sequence<Any> aCondSeq;
     if (rAny >>= aCondSeq)
     {
-        for (const auto& rCond : std::as_const(aCondSeq))
+        for (const auto& rCond : aCondSeq)
         {
             Cond aCond(rCond, bIsMainSeqChild);
             if (aCond.isValid())
@@ -177,8 +177,8 @@ void NodeContext::initValid(bool bHasValidChild, bool bIsIterateChild)
             {
                 Reference<XPropertySet> xShapeProps(xShape, UNO_QUERY);
                 bool bHasMediaURL
-                    = xShapeProps->getPropertySetInfo()->hasPropertyByName("MediaURL");
-                if (bHasMediaURL && (xShapeProps->getPropertyValue("MediaURL") >>= sURL))
+                    = xShapeProps->getPropertySetInfo()->hasPropertyByName(u"MediaURL"_ustr);
+                if (bHasMediaURL && (xShapeProps->getPropertyValue(u"MediaURL"_ustr) >>= sURL))
                 {
                     mbValid = IsAudioURL(sURL) || IsVideoURL(sURL);
                 }

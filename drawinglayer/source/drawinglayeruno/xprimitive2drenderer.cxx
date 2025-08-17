@@ -83,7 +83,7 @@ namespace drawinglayer::unorenderer
         {
             o3tl::Length eRangeUnit = o3tl::Length::mm100;
             comphelper::SequenceAsHashMap aViewInformationMap(aViewInformationSequence);
-            auto it = aViewInformationMap.find("RangeUnit");
+            auto it = aViewInformationMap.find(u"RangeUnit"_ustr);
             if (it != aViewInformationMap.end())
             {
                 sal_Int32 nVal{};
@@ -99,7 +99,7 @@ namespace drawinglayer::unorenderer
                 const double fWidth(aRange.getWidth());
                 const double fHeight(aRange.getHeight());
 
-                if(basegfx::fTools::more(fWidth, 0.0) && basegfx::fTools::more(fHeight, 0.0))
+                if(fWidth > 0.0 && fHeight > 0.0)
                 {
                     if(0 == DPI_X)
                     {
@@ -143,19 +143,19 @@ namespace drawinglayer::unorenderer
                             aPrimitive2DSequence));
                     primitive2d::Primitive2DContainer xEmbedSeq { xEmbedRef };
 
-                    BitmapEx aBitmapEx(
-                        convertToBitmapEx(
+                    Bitmap aBitmap(
+                        convertToBitmap(
                             std::move(xEmbedSeq),
                             aViewInformation2D,
                             nDiscreteWidth,
                             nDiscreteHeight,
                             MaximumQuadraticPixels));
 
-                    if(!aBitmapEx.IsEmpty())
+                    if(!aBitmap.IsEmpty())
                     {
-                        aBitmapEx.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
-                        aBitmapEx.SetPrefSize(Size(basegfx::fround(fWidth), basegfx::fround(fHeight)));
-                        XBitmap = vcl::unotools::xBitmapFromBitmapEx(aBitmapEx);
+                        aBitmap.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
+                        aBitmap.SetPrefSize(Size(basegfx::fround<tools::Long>(fWidth), basegfx::fround<tools::Long>(fHeight)));
+                        XBitmap = vcl::unotools::xBitmapFromBitmap(aBitmap);
                     }
                 }
             }
@@ -165,7 +165,7 @@ namespace drawinglayer::unorenderer
 
         OUString SAL_CALL XPrimitive2DRenderer::getImplementationName()
         {
-            return "drawinglayer::unorenderer::XPrimitive2DRenderer";
+            return u"drawinglayer::unorenderer::XPrimitive2DRenderer"_ustr;
         }
 
         sal_Bool SAL_CALL XPrimitive2DRenderer::supportsService(const OUString& rServiceName)
@@ -175,7 +175,7 @@ namespace drawinglayer::unorenderer
 
         uno::Sequence< OUString > SAL_CALL XPrimitive2DRenderer::getSupportedServiceNames()
         {
-            return { "com.sun.star.graphic.Primitive2DTools" };
+            return { u"com.sun.star.graphic.Primitive2DTools"_ustr };
         }
 
 } // end of namespace

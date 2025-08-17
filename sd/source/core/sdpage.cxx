@@ -22,6 +22,8 @@
 
 #include <comphelper/classids.hxx>
 #include <comphelper/embeddedobjectcontainer.hxx>
+#include <comphelper/lok.hxx>
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
 #include <sfx2/viewsh.hxx>
 #include <vcl/svapp.hxx>
@@ -282,7 +284,7 @@ void SdPage::EnsureMasterPageDefaultBackground()
 
 /** creates a presentation object with the given PresObjKind on this page. A user call will be set
 */
-SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::tools::Rectangle& rRect )
+SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::tools::Rectangle& rRect, const OUString& rCustomPrompt)
 {
     SfxUndoManager* pUndoManager(static_cast< SdDrawDocument& >(getSdrModelFromSdrPage()).GetUndoManager());
     const bool bUndo = pUndoManager && pUndoManager->IsInListAction() && IsInserted();
@@ -296,7 +298,7 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
     {
         case PresObjKind::Title:
         {
-            pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), SdrObjKind::TitleText);
+            pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), ::tools::Rectangle(), SdrObjKind::TitleText);
 
             if (mbMaster)
             {
@@ -307,7 +309,7 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
 
         case PresObjKind::Outline:
         {
-            pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), SdrObjKind::OutlineText);
+            pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), ::tools::Rectangle(), SdrObjKind::OutlineText);
 
             if (mbMaster)
             {
@@ -318,7 +320,7 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
 
         case PresObjKind::Notes:
         {
-            pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), SdrObjKind::Text);
+            pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), ::tools::Rectangle(), SdrObjKind::Text);
 
             if (mbMaster)
             {
@@ -329,14 +331,14 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
 
         case PresObjKind::Text:
         {
-            pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), SdrObjKind::Text);
+            pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), ::tools::Rectangle(), SdrObjKind::Text);
         }
         break;
 
         case PresObjKind::Graphic:
         {
-            BitmapEx aBmpEx(BMP_PRESOBJ_GRAPHIC);
-            Graphic  aGraphic( aBmpEx );
+            Bitmap aBmp(BMP_PRESOBJ_GRAPHIC);
+            Graphic  aGraphic( aBmp );
             OutputDevice &aOutDev = *Application::GetDefaultDevice();
             aOutDev.Push();
 
@@ -356,8 +358,8 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
         case PresObjKind::Object:
         {
             pSdrObj = new SdrOle2Obj(getSdrModelFromSdrPage());
-            BitmapEx aBmpEx(BMP_PRESOBJ_OBJECT);
-            Graphic aGraphic( aBmpEx );
+            Bitmap aBmp(BMP_PRESOBJ_OBJECT);
+            Graphic aGraphic( aBmp );
             static_cast<SdrOle2Obj*>(pSdrObj.get())->SetGraphic(aGraphic);
         }
         break;
@@ -365,9 +367,9 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
         case PresObjKind::Chart:
         {
             pSdrObj = new SdrOle2Obj(getSdrModelFromSdrPage());
-            static_cast<SdrOle2Obj*>(pSdrObj.get())->SetProgName( "StarChart" );
-            BitmapEx aBmpEx(BMP_PRESOBJ_CHART);
-            Graphic aGraphic( aBmpEx );
+            static_cast<SdrOle2Obj*>(pSdrObj.get())->SetProgName( u"StarChart"_ustr );
+            Bitmap aBmp(BMP_PRESOBJ_CHART);
+            Graphic aGraphic( aBmp );
             static_cast<SdrOle2Obj*>(pSdrObj.get())->SetGraphic(aGraphic);
         }
         break;
@@ -375,9 +377,9 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
         case PresObjKind::OrgChart:
         {
             pSdrObj = new SdrOle2Obj(getSdrModelFromSdrPage());
-            static_cast<SdrOle2Obj*>(pSdrObj.get())->SetProgName( "StarOrg" );
-            BitmapEx aBmpEx(BMP_PRESOBJ_ORGCHART);
-            Graphic aGraphic( aBmpEx );
+            static_cast<SdrOle2Obj*>(pSdrObj.get())->SetProgName( u"StarOrg"_ustr );
+            Bitmap aBmp(BMP_PRESOBJ_ORGCHART);
+            Graphic aGraphic( aBmp );
             static_cast<SdrOle2Obj*>(pSdrObj.get())->SetGraphic(aGraphic);
         }
         break;
@@ -386,9 +388,9 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
         case PresObjKind::Calc:
         {
             pSdrObj = new SdrOle2Obj(getSdrModelFromSdrPage());
-            static_cast<SdrOle2Obj*>(pSdrObj.get())->SetProgName( "StarCalc" );
-            BitmapEx aBmpEx(BMP_PRESOBJ_TABLE);
-            Graphic aGraphic( aBmpEx );
+            static_cast<SdrOle2Obj*>(pSdrObj.get())->SetProgName( u"StarCalc"_ustr );
+            Bitmap aBmp(BMP_PRESOBJ_TABLE);
+            Graphic aGraphic( aBmp );
             static_cast<SdrOle2Obj*>(pSdrObj.get())->SetGraphic(aGraphic);
         }
         break;
@@ -431,7 +433,7 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
         case PresObjKind::DateTime:
         case PresObjKind::SlideNumber:
         {
-            pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), SdrObjKind::Text);
+            pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), ::tools::Rectangle(), SdrObjKind::Text);
             bEmptyPresObj = false;
             bForceText = true;
         }
@@ -459,6 +461,9 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
                 aTempAttr.Put( makeSdrTextMinFrameWidthItem( rRect.GetSize().Width() ) );
             else
                 aTempAttr.Put( makeSdrTextMinFrameHeightItem( rRect.GetSize().Height() ) );
+
+            if (eObjKind == PresObjKind::Notes)
+                aTempAttr.Put(makeSdrTextAutoGrowHeightItem(false));
 
             if (mbMaster)
             {
@@ -493,7 +498,15 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
             pSdrObj->SetLogicRect(rRect);
         }
 
-        OUString aString = GetPresObjText(eObjKind);
+        OUString aString;
+        if (!rCustomPrompt.isEmpty())
+        {
+            pSdrObj->SetCustomPromptText(rCustomPrompt);
+            aString = rCustomPrompt;
+        }
+        else
+            aString = GetPresObjText(eObjKind);
+
         if(!aString.isEmpty() || bForceText)
             if (auto pTextObj = DynCastSdrTextObj( pSdrObj.get() ) )
             {
@@ -837,7 +850,9 @@ void SdPage::CreateTitleAndLayout(bool bInit, bool bCreate )
         }
 
         std::vector< ::tools::Rectangle > aAreas;
-        CalculateHandoutAreas( static_cast< SdDrawDocument& >(getSdrModelFromSdrPage()), pMasterPage->GetAutoLayout(), false, aAreas );
+        CalculateHandoutAreas(static_cast<SdDrawDocument&>(getSdrModelFromSdrPage()),
+                              pMasterPage->GetAutoLayout(), false, aAreas,
+                              pMasterPage->GetOrientation());
 
         const bool bSkip = pMasterPage->GetAutoLayout() == AUTOLAYOUT_HANDOUT3;
         std::vector< ::tools::Rectangle >::iterator iter( aAreas.begin() );
@@ -916,7 +931,7 @@ void getPresObjProp( const SdPage& rPage, const char* sObjKind, const char* sPag
         if(bNoObjectFound)
         {
             Reference<XNamedNodeMap> objectattrlist = objectNode->getAttributes();
-            Reference<XNode> objectattr = objectattrlist->getNamedItem("type");
+            Reference<XNode> objectattr = objectattrlist->getNamedItem(u"type"_ustr);
             OUString sObjType = objectattr->getNodeValue();
 
             if (sObjType.equalsAscii(sObjKind))
@@ -933,24 +948,24 @@ void getPresObjProp( const SdPage& rPage, const char* sObjKind, const char* sPag
                     if(nodename == "object-prop")
                     {
                         Reference<XNamedNodeMap> ObjAttributes = obj->getAttributes();
-                        Reference<XNode> ObjPageKind = ObjAttributes->getNamedItem("pagekind");
+                        Reference<XNode> ObjPageKind = ObjAttributes->getNamedItem(u"pagekind"_ustr);
                         OUString sObjPageKind = ObjPageKind->getNodeValue();
 
                         if (sObjPageKind.equalsAscii(sPageKind))
                         {
-                            Reference<XNode> ObjSizeHeight = ObjAttributes->getNamedItem("relative-height");
+                            Reference<XNode> ObjSizeHeight = ObjAttributes->getNamedItem(u"relative-height"_ustr);
                             OUString sValue = ObjSizeHeight->getNodeValue();
                             presObjPropValue[0] = sValue.toDouble();
 
-                            Reference<XNode> ObjSizeWidth = ObjAttributes->getNamedItem("relative-width");
+                            Reference<XNode> ObjSizeWidth = ObjAttributes->getNamedItem(u"relative-width"_ustr);
                             sValue = ObjSizeWidth->getNodeValue();
                             presObjPropValue[1] = sValue.toDouble();
 
-                            Reference<XNode> ObjPosX = ObjAttributes->getNamedItem("relative-posX");
+                            Reference<XNode> ObjPosX = ObjAttributes->getNamedItem(u"relative-posX"_ustr);
                             sValue = ObjPosX->getNodeValue();
                             presObjPropValue[2] = sValue.toDouble();
 
-                            Reference<XNode> ObjPosY = ObjAttributes->getNamedItem("relative-posY");
+                            Reference<XNode> ObjPosY = ObjAttributes->getNamedItem(u"relative-posY"_ustr);
                             sValue = ObjPosY->getNodeValue();
                             presObjPropValue[3] = sValue.toDouble();
 
@@ -1346,6 +1361,28 @@ static OUString enumtoString(AutoLayout aut)
     return retstr;
 }
 
+AutoLayout SdPage::stringToAutoLayout(std::u16string_view rLayoutName)
+{
+    for (int i = AUTOLAYOUT_START; i < AUTOLAYOUT_END; i++)
+    {
+        AutoLayout nLId = static_cast<AutoLayout>(i);
+        if (autoLayoutToString(nLId) == rLayoutName)
+        {
+            return nLId;
+        }
+    }
+    return AUTOLAYOUT_END;
+}
+
+OUString SdPage::autoLayoutToString(AutoLayout nLayoutId)
+{
+    if (nLayoutId == AUTOLAYOUT_TITLE)
+    {
+        return "AUTOLAYOUT_TITLE";
+    }
+    return enumtoString(nLayoutId);
+}
+
 static void CalcAutoLayoutRectangles( SdPage const & rPage,::tools::Rectangle* rRectangle ,const OUString& sLayoutType )
 {
     ::tools::Rectangle aTitleRect;
@@ -1387,14 +1424,14 @@ static void CalcAutoLayoutRectangles( SdPage const & rPage,::tools::Rectangle* r
             Reference<XNamedNodeMap> layoutAttrList = layoutNode->getAttributes();
 
             // get the attribute value of layout (i.e it's type)
-            OUString sLayoutAttName = layoutAttrList->getNamedItem("type")->getNodeValue();
+            OUString sLayoutAttName = layoutAttrList->getNamedItem(u"type"_ustr)->getNodeValue();
             return sLayoutAttName == sLayoutType;
         });
     if (aIter == layoutInfo.end())
         return;
 
     int count=0;
-    Reference<XNode> layoutNode = *aIter;
+    const Reference<XNode>& layoutNode = *aIter;
     Reference<XNodeList> layoutChildren = layoutNode->getChildNodes();
     const int presobjsize = layoutChildren->getLength();
     for( int j=0; j< presobjsize ; j++)
@@ -1411,41 +1448,67 @@ static void CalcAutoLayoutRectangles( SdPage const & rPage,::tools::Rectangle* r
 
             Reference<XNamedNodeMap> presObjAttributes = presobj->getAttributes();
 
-            Reference<XNode> presObjSizeHeight = presObjAttributes->getNamedItem("relative-height");
+            Reference<XNode> presObjSizeHeight = presObjAttributes->getNamedItem(u"relative-height"_ustr);
             OUString sValue = presObjSizeHeight->getNodeValue();
             propvalue[0] = sValue.toDouble();
 
-            Reference<XNode> presObjSizeWidth = presObjAttributes->getNamedItem("relative-width");
+            Reference<XNode> presObjSizeWidth = presObjAttributes->getNamedItem(u"relative-width"_ustr);
             sValue = presObjSizeWidth->getNodeValue();
             propvalue[1] = sValue.toDouble();
 
-            Reference<XNode> presObjPosX = presObjAttributes->getNamedItem("relative-posX");
+            Reference<XNode> presObjPosX = presObjAttributes->getNamedItem(u"relative-posX"_ustr);
             sValue = presObjPosX->getNodeValue();
             propvalue[2] = sValue.toDouble();
 
-            Reference<XNode> presObjPosY = presObjAttributes->getNamedItem("relative-posY");
+            Reference<XNode> presObjPosY = presObjAttributes->getNamedItem(u"relative-posY"_ustr);
             sValue = presObjPosY->getNodeValue();
             propvalue[3] = sValue.toDouble();
 
             if(count == 0)
             {
                 Size aSize ( aTitleRect.GetSize() );
-                aSize.setHeight( basegfx::fround(aSize.Height() * propvalue[0]) );
-                aSize.setWidth( basegfx::fround(aSize.Width() * propvalue[1]) );
-                Point aPos( basegfx::fround(aTitlePos.X() +(aSize.Width() * propvalue[2])),
-                            basegfx::fround(aTitlePos.Y() + (aSize.Height() * propvalue[3])) );
+                aSize.setHeight( basegfx::fround<::tools::Long>(aSize.Height() * propvalue[0]) );
+                aSize.setWidth( basegfx::fround<::tools::Long>(aSize.Width() * propvalue[1]) );
+                Point aPos( basegfx::fround<::tools::Long>(aTitlePos.X() +(aSize.Width() * propvalue[2])),
+                            basegfx::fround<::tools::Long>(aTitlePos.Y() + (aSize.Height() * propvalue[3])) );
                 rRectangle[count] = ::tools::Rectangle(aPos, aSize);
                 count = count+1;
             }
             else
             {
-                Size aSize( basegfx::fround(aLayoutSize.Width() * propvalue[1]),
-                            basegfx::fround(aLayoutSize.Height() * propvalue[0]) );
-                Point aPos( basegfx::fround(aLayoutPos.X() +(aSize.Width() * propvalue[2])),
-                            basegfx::fround(aLayoutPos.Y() + (aSize.Height() * propvalue[3])) );
+                Size aSize( basegfx::fround<::tools::Long>(aLayoutSize.Width() * propvalue[1]),
+                            basegfx::fround<::tools::Long>(aLayoutSize.Height() * propvalue[0]) );
+                Point aPos( basegfx::fround<::tools::Long>(aLayoutPos.X() +(aSize.Width() * propvalue[2])),
+                            basegfx::fround<::tools::Long>(aLayoutPos.Y() + (aSize.Height() * propvalue[3])) );
                 rRectangle[count] = ::tools::Rectangle (aPos, aSize);
                 count = count+1;
             }
+        }
+    }
+}
+
+static void GetAutoLayoutCustomPromptTexts( SdPage& rPage, const LayoutDescriptor& rDescriptor, std::array<OUString, MAX_PRESOBJS>& rCustomPrompts )
+{
+    // init layout shapes with their corresponding prompt text (if they have)
+    // for each presentation shape kind
+    if (rPage.GetPageKind() == PageKind::Handout || !rPage.TRG_HasMasterPage())
+        return;
+
+    SdPage& rMasterPage = static_cast<SdPage&>(rPage.TRG_GetMasterPage());
+
+    o3tl::enumarray<PresObjKind,int> PresObjIndex;
+    PresObjIndex.fill(1);
+
+    // for each entry in the layoutdescriptor, arrange a presentation shape
+    for (int i = 0; (i < MAX_PRESOBJS) && (rDescriptor.meKind[i] != PresObjKind::NONE); i++)
+    {
+        PresObjKind eKind = rDescriptor.meKind[i];
+        SdrObject* pObj = nullptr;
+        while( (pObj = rMasterPage.GetPresObj( eKind, PresObjIndex[eKind], true )) != nullptr )
+        {
+            PresObjIndex[eKind]++; // on next search for eKind, find next shape with same eKind
+            rCustomPrompts[i] = pObj->GetCustomPromptText();
+            break;
         }
     }
 }
@@ -1633,6 +1696,9 @@ void SdPage::SetAutoLayout(AutoLayout eLayout, bool bInit, bool bCreate )
     OUString sLayoutName( enumtoString(meAutoLayout) );
     CalcAutoLayoutRectangles( *this, aRectangle, sLayoutName);
 
+    std::array<OUString, MAX_PRESOBJS > aCustomPromptTexts;
+    GetAutoLayoutCustomPromptTexts( *this, aDescriptor, aCustomPromptTexts );
+
     o3tl::sorted_vector< SdrObject* > aUsedPresentationObjects;
 
     std::array<SdrObject*, MAX_PRESOBJS > aLayoutShapes;
@@ -1643,7 +1709,7 @@ void SdPage::SetAutoLayout(AutoLayout eLayout, bool bInit, bool bCreate )
     for (int i = 0; (i < MAX_PRESOBJS) && (aDescriptor.meKind[i] != PresObjKind::NONE); i++)
     {
         PresObjKind eKind = aDescriptor.meKind[i];
-        SdrObject* pObj = InsertAutoLayoutShape( aLayoutShapes[i], eKind, aDescriptor.mbVertical[i], aRectangle[i], bInit );
+        SdrObject* pObj = InsertAutoLayoutShape( aLayoutShapes[i], eKind, aDescriptor.mbVertical[i], aRectangle[i], aCustomPromptTexts[i], bInit );
         if( pObj )
             aUsedPresentationObjects.insert(pObj); // remember that we used this empty shape
     }
@@ -1744,6 +1810,35 @@ void SdPage::onRemoveObject( SdrObject* pObject )
     }
 }
 
+void SdPage::GetPageInfo(::tools::JsonWriter& jsonWriter)
+{
+    jsonWriter.put("visible", static_cast<unsigned int>(!this->IsExcluded()));
+    jsonWriter.put("selected", static_cast<unsigned int>(this->IsSelected()));
+    jsonWriter.put("width", GetWidth());
+    jsonWriter.put("height", GetHeight());
+    jsonWriter.put("leftBorder", GetLeftBorder());
+    jsonWriter.put("rightBorder", GetRightBorder());
+    jsonWriter.put("upperBorder", GetUpperBorder());
+    jsonWriter.put("lowerBorder", GetLowerBorder());
+    jsonWriter.put("name", GetName());
+    jsonWriter.put("hash", GetUniqueID());
+}
+
+void SdPage::NotifyPagePropertyChanges()
+{
+    // Send the new size info to views, snapping to grid feature uses this info (maybe some others in the future).
+    ::tools::JsonWriter jsonWriter;
+    jsonWriter.put("commandName", ".uno:PageSetup");
+    GetPageInfo(jsonWriter);
+
+    OString out = jsonWriter.finishAndGetAsOString();
+    if (SfxViewShell* pViewShell = SfxViewShell::Current())
+    {
+        pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED, out);
+        pViewShell->NotifyOtherViews(LOK_CALLBACK_STATE_CHANGED, ".uno:PageSetup"_ostr, out);
+    }
+}
+
 void SdPage::SetSize(const Size& aSize)
 {
     Size aOldSize = GetSize();
@@ -1751,6 +1846,9 @@ void SdPage::SetSize(const Size& aSize)
     if (aSize != aOldSize)
     {
         FmFormPage::SetSize(aSize);
+
+        if (comphelper::LibreOfficeKit::isActive() && SfxViewShell::Current())
+            NotifyPagePropertyChanges();
     }
 }
 
@@ -1760,6 +1858,9 @@ void SdPage::SetBorder(sal_Int32 nLft, sal_Int32 nUpp, sal_Int32 nRgt, sal_Int32
         nRgt != GetRightBorder() || nLwr != GetLowerBorder() )
     {
         FmFormPage::SetBorder(nLft, nUpp, nRgt, nLwr);
+
+        if (comphelper::LibreOfficeKit::isActive() && SfxViewShell::Current())
+            NotifyPagePropertyChanges();
     }
 }
 
@@ -2010,10 +2111,10 @@ void SdPage::ScaleObjects(const Size& rNewPageSize, const ::tools::Rectangle& rN
                             }
                         }
                     }
-                    else if ( eObjKind != SdrObjKind::TitleText   &&
-                              eObjKind != SdrObjKind::OutlineText &&
-                              DynCastSdrTextObj( pObj.get() ) !=  nullptr       &&
-                              pObj->GetOutlinerParaObject() )
+                    else if (eObjKind != SdrObjKind::TitleText
+                             && eObjKind != SdrObjKind::OutlineText && mePageKind != PageKind::Notes
+                             && DynCastSdrTextObj(pObj.get()) != nullptr
+                             && pObj->GetOutlinerParaObject())
                     {
                         /******************************************************
                         * normal text object: adjust text height
@@ -2144,7 +2245,7 @@ static rtl::Reference<SdrObject> convertPresentationObjectImpl(SdPage& rPage, Sd
 
             const SvxLRSpaceItem& rLRItem = aSet.Get(EE_PARA_LRSPACE);
             SvxLRSpaceItem aNewLRItem(rLRItem);
-            aNewLRItem.SetTextLeft(0);
+            aNewLRItem.SetTextLeft(SvxIndentValue::zero());
             aSet.Put(aNewLRItem);
 
             pNewObj->SetMergedItemSet(aSet);
@@ -2186,12 +2287,14 @@ static rtl::Reference<SdrObject> convertPresentationObjectImpl(SdPage& rPage, Sd
         If true, the shape is created vertical if bInit is true
     @param  rRect
         The rectangle that should be used to transform the shape
+    @param  rCustomPrompt
+        The custom prompt text for placeholder text in presObj's, if it's empty the default is used
     @param  bInit
         If true the shape is created if not found
     @returns
         A presentation shape that was either found or created with the given parameters
 */
-SdrObject* SdPage::InsertAutoLayoutShape(SdrObject* pObj1, PresObjKind eObjKind, bool bVertical, const ::tools::Rectangle& rRect, bool bInit)
+SdrObject* SdPage::InsertAutoLayoutShape(SdrObject* pObj1, PresObjKind eObjKind, bool bVertical, const ::tools::Rectangle& rRect, const OUString& rCustomPrompt, bool bInit)
 {
     rtl::Reference<SdrObject> pObj = pObj1;
     SfxUndoManager* pUndoManager(static_cast< SdDrawDocument& >(getSdrModelFromSdrPage()).GetUndoManager());
@@ -2199,7 +2302,7 @@ SdrObject* SdPage::InsertAutoLayoutShape(SdrObject* pObj1, PresObjKind eObjKind,
 
     if (!pObj && bInit)
     {
-        pObj = CreatePresObj(eObjKind, bVertical, rRect);
+        pObj = CreatePresObj(eObjKind, bVertical, rRect, rCustomPrompt);
     }
     else if ( pObj && (pObj->GetUserCall() || bInit) )
     {
@@ -2365,8 +2468,8 @@ void SdPage::SetObjText(SdrTextObj* pObj, SdrOutliner* pOutliner, PresObjKind eO
     {
         SfxItemPool* pPool(static_cast< SdDrawDocument& >(getSdrModelFromSdrPage()).GetDrawOutliner().GetEmptyItemSet().GetPool());
         pOutl = new ::Outliner( pPool, OutlinerMode::OutlineObject );
-        pOutl->SetRefDevice( SD_MOD()->GetVirtualRefDevice() );
-        pOutl->SetEditTextObjectPool(pPool);
+        pOutl->SetRefDevice(SdModule::get()->GetVirtualRefDevice());
+        pOutl->SetEditEnginePool(pPool);
         pOutl->SetStyleSheetPool(static_cast<SfxStyleSheetPool*>(getSdrModelFromSdrPage().GetStyleSheetPool()));
         pOutl->EnableUndo(false);
         pOutl->SetUpdateLayout( false );
@@ -2512,9 +2615,10 @@ const OUString& SdPage::GetName() const
             // default name for handout pages
             sal_uInt16  nNum = (GetPageNum() + 1) / 2;
 
-            aCreatedPageName = SdResId(STR_PAGE) + " ";
             if (static_cast<SdDrawDocument&>(getSdrModelFromSdrPage()).GetDocumentType() == DocumentType::Draw )
                  aCreatedPageName = SdResId(STR_PAGE_NAME) + " ";
+            else
+                aCreatedPageName = SdResId(STR_PAGE) + " ";
 
             if( getSdrModelFromSdrPage().GetPageNumType() == css::style::NumberingType::NUMBER_NONE )
             {
@@ -2695,16 +2799,12 @@ SdPage* SdPage::getImplementation( const css::uno::Reference< css::drawing::XDra
     return nullptr;
 }
 
-sal_Int64 SdPage::GetHashCode() const
-{
-    return sal::static_int_cast<sal_Int64>(reinterpret_cast<sal_IntPtr>(this));
-}
-
-void SdPage::SetName (const OUString& rName)
+void SdPage::SetName (const OUString& rName, bool bUpdatePageRelativeURLs)
 {
     OUString aOldName( GetName() );
     FmFormPage::SetName (rName);
-    static_cast< SdDrawDocument& >(getSdrModelFromSdrPage()).UpdatePageRelativeURLs(aOldName, rName);
+    if (bUpdatePageRelativeURLs)
+        static_cast< SdDrawDocument& >(getSdrModelFromSdrPage()).UpdatePageRelativeURLs(aOldName, rName);
     ActionChanged();
 }
 
@@ -2801,9 +2901,10 @@ bool SdPage::checkVisibility(
     const bool bIsInsidePageObj(pPageView && pPageView->GetPage() != pVisualizedPage);
 
     // empty presentation objects only visible during edit mode
-    if( (bIsPrinting || !bEdit || bIsInsidePageObj ) && pObj->IsEmptyPresObj() )
+    if( (bIsPrinting || !bEdit || bIsInsidePageObj ) && pObj->IsEmptyPresObj() && !(pObj->HasFillStyle() || pObj->HasLineStyle()) )
     {
-        if( (pObj->GetObjInventor() != SdrInventor::Default) || ( (pObj->GetObjIdentifier() != SdrObjKind::Rectangle) && (pObj->GetObjIdentifier() != SdrObjKind::Page) ) )
+        if( (pObj->GetObjInventor() != SdrInventor::Default) || ( (pObj->GetObjIdentifier() != SdrObjKind::Rectangle) &&
+            (pObj->GetObjIdentifier() != SdrObjKind::Page) ) )
             return false;
     }
 
@@ -2863,7 +2964,7 @@ bool SdPage::checkVisibility(
     return true;
 }
 
-bool SdPage::RestoreDefaultText( SdrObject* pObj )
+bool SdPage::RestoreDefaultText( SdrObject* pObj, const OUString& rStr )
 {
     bool bRet = false;
 
@@ -2878,7 +2979,9 @@ bool SdPage::RestoreDefaultText( SdrObject* pObj )
             ePresObjKind == PresObjKind::Notes   ||
             ePresObjKind == PresObjKind::Text)
         {
-            OUString aString( GetPresObjText(ePresObjKind) );
+            sd::ModifyGuard aGuard(static_cast<SdDrawDocument*>(&getSdrModelFromSdrPage()));
+
+            OUString aString = rStr.isEmpty() ? GetPresObjText(ePresObjKind) : rStr;
 
             if (!aString.isEmpty())
             {
@@ -2914,7 +3017,8 @@ bool SdPage::RestoreDefaultText( SdrObject* pObj )
     return bRet;
 }
 
-void SdPage::CalculateHandoutAreas( SdDrawDocument& rModel, AutoLayout eLayout, bool bHorizontal, std::vector< ::tools::Rectangle >& rAreas )
+void SdPage::CalculateHandoutAreas(SdDrawDocument& rModel, AutoLayout eLayout, bool bHorizontal,
+                                   std::vector<::tools::Rectangle>& rAreas, Orientation eOrient)
 {
     SdPage& rHandoutMaster = *rModel.GetMasterSdPage( 0, PageKind::Handout );
 
@@ -2930,182 +3034,145 @@ void SdPage::CalculateHandoutAreas( SdDrawDocument& rModel, AutoLayout eLayout, 
     const sal_uInt16* pOffsets = aOffsets[0];
 
     Size aArea = rHandoutMaster.GetSize();
-    const bool bLandscape = aArea.Width() > aArea.Height();
+    const bool bLandscape = aArea.Width() > aArea.Height() || eOrient == Orientation::Landscape;
 
-    if( eLayout == AUTOLAYOUT_NONE )
+    if ((eOrient == Orientation::Landscape && aArea.Width() < aArea.Height())
+        || (eOrient == Orientation::Portrait && aArea.Width() > aArea.Height()))
     {
-        // use layout from handout master
-        SdrObjListIter aShapeIter(&rHandoutMaster);
-
-        std::vector< ::tools::Rectangle > vSlidesAreas;
-        while ( aShapeIter.IsMore() )
-        {
-            SdrPageObj* pPageObj = dynamic_cast<SdrPageObj*>( aShapeIter.Next() );
-            // get slide rectangles
-            if (pPageObj)
-                vSlidesAreas.push_back( pPageObj->GetCurrentBoundRect() );
-        }
-
-        if ( !bHorizontal || vSlidesAreas.size() < 4 )
-        { // top to bottom, then right
-            rAreas.swap( vSlidesAreas );
-        }
-        else
-        { // left to right, then down
-            switch ( vSlidesAreas.size() )
-            {
-                case 4:
-                    pOffsets = aOffsets[2];
-                    break;
-
-                default:
-                    [[fallthrough]];
-                case 6:
-                    pOffsets = aOffsets[ bLandscape ? 3 : 1 ];
-                    break;
-
-                case 9:
-                    pOffsets = aOffsets[4];
-                    break;
-            }
-
-            rAreas.resize( static_cast<size_t>(vSlidesAreas.size()) );
-
-            for( const ::tools::Rectangle& rRect : vSlidesAreas )
-            {
-                rAreas[*pOffsets++] = rRect;
-            }
-        }
+        ::tools::Long nTmp = aArea.Width();
+        aArea.setWidth(aArea.Height());
+        aArea.setHeight(nTmp);
     }
-    else
+
+    if (eLayout == AUTOLAYOUT_NONE)
+        eLayout = rHandoutMaster.GetAutoLayout();
+
+    const ::tools::Long nGapW = 1000; // gap is 1cm
+    const ::tools::Long nGapH = 1000;
+
+    ::tools::Long nLeftBorder = rHandoutMaster.GetLeftBorder();
+    ::tools::Long nRightBorder = rHandoutMaster.GetRightBorder();
+    ::tools::Long nTopBorder = rHandoutMaster.GetUpperBorder();
+    ::tools::Long nBottomBorder = rHandoutMaster.GetLowerBorder();
+
+    const ::tools::Long nHeaderFooterHeight = static_cast< ::tools::Long >( (aArea.Height() - nTopBorder - nLeftBorder) * 0.05  );
+
+    nTopBorder += nHeaderFooterHeight;
+    nBottomBorder += nHeaderFooterHeight;
+
+    ::tools::Long nX = nGapW + nLeftBorder;
+    ::tools::Long nY = nGapH + nTopBorder;
+
+    aArea.AdjustWidth( -(nGapW * 2 + nLeftBorder + nRightBorder) );
+    aArea.AdjustHeight( -(nGapH * 2 + nTopBorder + nBottomBorder) );
+
+    sal_uInt16  nColCnt = 0, nRowCnt = 0;
+    switch ( eLayout )
     {
-        const ::tools::Long nGapW = 1000; // gap is 1cm
-        const ::tools::Long nGapH = 1000;
+        case AUTOLAYOUT_HANDOUT1:
+            nColCnt = 1; nRowCnt = 1;
+            break;
 
-        ::tools::Long nLeftBorder = rHandoutMaster.GetLeftBorder();
-        ::tools::Long nRightBorder = rHandoutMaster.GetRightBorder();
-        ::tools::Long nTopBorder = rHandoutMaster.GetUpperBorder();
-        ::tools::Long nBottomBorder = rHandoutMaster.GetLowerBorder();
-
-        const ::tools::Long nHeaderFooterHeight = static_cast< ::tools::Long >( (aArea.Height() - nTopBorder - nLeftBorder) * 0.05  );
-
-        nTopBorder += nHeaderFooterHeight;
-        nBottomBorder += nHeaderFooterHeight;
-
-        ::tools::Long nX = nGapW + nLeftBorder;
-        ::tools::Long nY = nGapH + nTopBorder;
-
-        aArea.AdjustWidth( -(nGapW * 2 + nLeftBorder + nRightBorder) );
-        aArea.AdjustHeight( -(nGapH * 2 + nTopBorder + nBottomBorder) );
-
-        sal_uInt16  nColCnt = 0, nRowCnt = 0;
-        switch ( eLayout )
-        {
-            case AUTOLAYOUT_HANDOUT1:
-                nColCnt = 1; nRowCnt = 1;
-                break;
-
-            case AUTOLAYOUT_HANDOUT2:
-                if( bLandscape )
-                {
-                    nColCnt = 2; nRowCnt = 1;
-                }
-                else
-                {
-                    nColCnt = 1; nRowCnt = 2;
-                }
-                break;
-
-            case AUTOLAYOUT_HANDOUT3:
-                if( bLandscape )
-                {
-                    nColCnt = 3; nRowCnt = 2;
-                }
-                else
-                {
-                    nColCnt = 2; nRowCnt = 3;
-                }
-                pOffsets = aOffsets[ bLandscape ? 1 : 0 ];
-                break;
-
-            case AUTOLAYOUT_HANDOUT4:
-                nColCnt = 2; nRowCnt = 2;
-                pOffsets = aOffsets[ bHorizontal ? 0 : 2 ];
-                break;
-
-            case AUTOLAYOUT_HANDOUT6:
-                if( bLandscape )
-                {
-                    nColCnt = 3; nRowCnt = 2;
-                }
-                else
-                {
-                    nColCnt = 2; nRowCnt = 3;
-                }
-                if( !bHorizontal )
-                    pOffsets = aOffsets[ bLandscape ? 1 : 3 ];
-                break;
-
-            default:
-            case AUTOLAYOUT_HANDOUT9:
-                nColCnt = 3; nRowCnt = 3;
-
-                if( !bHorizontal )
-                    pOffsets = aOffsets[4];
-                break;
-        }
-
-        rAreas.resize(static_cast<size_t>(nColCnt) * nRowCnt);
-
-        Size aPartArea, aSize;
-        aPartArea.setWidth( (aArea.Width()  - ((nColCnt-1) * nGapW) ) / nColCnt );
-        aPartArea.setHeight( (aArea.Height() - ((nRowCnt-1) * nGapH) ) / nRowCnt );
-
-        SdrPage* pFirstPage = rModel.GetMasterSdPage(0, PageKind::Standard);
-        if (pFirstPage && pFirstPage->GetWidth() && pFirstPage->GetHeight())
-        {
-            // scale actual size into handout rect
-            double fScale = static_cast<double>(aPartArea.Width()) / static_cast<double>(pFirstPage->GetWidth());
-
-            aSize.setHeight( static_cast<::tools::Long>(fScale * pFirstPage->GetHeight() ) );
-            if( aSize.Height() > aPartArea.Height() )
+        case AUTOLAYOUT_HANDOUT2:
+            if( bLandscape )
             {
-                fScale = static_cast<double>(aPartArea.Height()) / static_cast<double>(pFirstPage->GetHeight());
-                aSize.setHeight( aPartArea.Height() );
-                aSize.setWidth( static_cast<::tools::Long>(fScale * pFirstPage->GetWidth()) );
+                nColCnt = 2; nRowCnt = 1;
             }
             else
             {
-                aSize.setWidth( aPartArea.Width() );
+                nColCnt = 1; nRowCnt = 2;
             }
+            break;
 
-            nX += (aPartArea.Width() - aSize.Width()) / 2;
-            nY += (aPartArea.Height()- aSize.Height())/ 2;
-        }
-        else
-        {
-            aSize = aPartArea;
-        }
-
-        Point aPos( nX, nY );
-
-        const bool bRTL = rModel.GetDefaultWritingMode() == css::text::WritingMode_RL_TB;
-
-        const ::tools::Long nOffsetX = (aPartArea.Width() + nGapW) * (bRTL ? -1 : 1);
-        const ::tools::Long nOffsetY = aPartArea.Height() + nGapH;
-        const ::tools::Long nStartX = bRTL ? nOffsetX*(1 - nColCnt) + nX : nX;
-
-        for(sal_uInt16 nRow = 0; nRow < nRowCnt; nRow++)
-        {
-            aPos.setX( nStartX );
-            for(sal_uInt16 nCol = 0; nCol < nColCnt; nCol++)
+        case AUTOLAYOUT_HANDOUT3:
+            if( bLandscape )
             {
-                rAreas[*pOffsets++] = ::tools::Rectangle(aPos, aSize);
-                aPos.AdjustX(nOffsetX );
+                nColCnt = 3; nRowCnt = 2;
             }
+            else
+            {
+                nColCnt = 2; nRowCnt = 3;
+            }
+            pOffsets = aOffsets[ bLandscape ? 1 : 0 ];
+            break;
 
-            aPos.AdjustY(nOffsetY );
+        case AUTOLAYOUT_HANDOUT4:
+            nColCnt = 2; nRowCnt = 2;
+            pOffsets = aOffsets[ bHorizontal ? 0 : 2 ];
+            break;
+
+        case AUTOLAYOUT_HANDOUT6:
+            if( bLandscape )
+            {
+                nColCnt = 3; nRowCnt = 2;
+            }
+            else
+            {
+                nColCnt = 2; nRowCnt = 3;
+            }
+            if( !bHorizontal )
+                pOffsets = aOffsets[ bLandscape ? 1 : 3 ];
+            break;
+
+        default:
+        case AUTOLAYOUT_HANDOUT9:
+            nColCnt = 3; nRowCnt = 3;
+
+            if( !bHorizontal )
+                pOffsets = aOffsets[4];
+            break;
+    }
+
+    rAreas.resize(static_cast<size_t>(nColCnt) * nRowCnt);
+
+    Size aPartArea, aSize;
+    aPartArea.setWidth( (aArea.Width()  - ((nColCnt-1) * nGapW) ) / nColCnt );
+    aPartArea.setHeight( (aArea.Height() - ((nRowCnt-1) * nGapH) ) / nRowCnt );
+
+    SdrPage* pFirstPage = rModel.GetMasterSdPage(0, PageKind::Standard);
+    if (pFirstPage && pFirstPage->GetWidth() && pFirstPage->GetHeight())
+    {
+       // scale actual size into handout rect
+       double fScale = static_cast<double>(aPartArea.Width()) / static_cast<double>(pFirstPage->GetWidth());
+
+       aSize.setHeight( static_cast<::tools::Long>(fScale * pFirstPage->GetHeight() ) );
+       if( aSize.Height() > aPartArea.Height() )
+       {
+           fScale = static_cast<double>(aPartArea.Height()) / static_cast<double>(pFirstPage->GetHeight());
+           aSize.setHeight( aPartArea.Height() );
+           aSize.setWidth( static_cast<::tools::Long>(fScale * pFirstPage->GetWidth()) );
+       }
+       else
+       {
+           aSize.setWidth( aPartArea.Width() );
+       }
+
+       nX += (aPartArea.Width() - aSize.Width()) / 2;
+       nY += (aPartArea.Height()- aSize.Height())/ 2;
+    }
+    else
+    {
+        aSize = aPartArea;
+    }
+
+    Point aPos( nX, nY );
+
+    const bool bRTL = rModel.GetDefaultWritingMode() == css::text::WritingMode_RL_TB;
+
+    const ::tools::Long nOffsetX = (aPartArea.Width() + nGapW) * (bRTL ? -1 : 1);
+    const ::tools::Long nOffsetY = aPartArea.Height() + nGapH;
+    const ::tools::Long nStartX = bRTL ? nOffsetX*(1 - nColCnt) + nX : nX;
+
+    for(sal_uInt16 nRow = 0; nRow < nRowCnt; nRow++)
+    {
+        aPos.setX( nStartX );
+        for(sal_uInt16 nCol = 0; nCol < nColCnt; nCol++)
+        {
+            rAreas[*pOffsets++] = ::tools::Rectangle(aPos, aSize);
+            aPos.AdjustX(nOffsetX );
         }
+
+        aPos.AdjustY(nOffsetY );
     }
 }
 

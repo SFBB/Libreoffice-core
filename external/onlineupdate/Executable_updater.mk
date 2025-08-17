@@ -12,18 +12,18 @@ $(eval $(call gb_Executable_Executable,updater))
 $(eval $(call gb_Executable_use_unpacked,updater,onlineupdate))
 
 $(eval $(call gb_Executable_set_include,updater,\
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/onlineupdate/inc \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/onlineupdate/source/update/common \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/onlineupdate/source/update/updater/xpcom/glue \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/onlineupdate/source/service \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/include/onlineupdate \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/include \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/modules/xz-embedded/src \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/toolkit/mozapps/update/common \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/toolkit/mozapps/update/updater \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/toolkit/xre \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/xpcom/base \
-	-I$(call gb_UnpackedTarball_get_dir,onlineupdate)/xpcom/string \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/onlineupdate/inc \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/onlineupdate/source/update/common \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/onlineupdate/source/update/updater/xpcom/glue \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/onlineupdate/source/service \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/include/onlineupdate \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/include \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/modules/xz-embedded/src \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/toolkit/mozapps/update/common \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/toolkit/mozapps/update/updater \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/toolkit/xre \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/xpcom/base \
+	-I$(gb_UnpackedTarball_workdir)/onlineupdate/xpcom/string \
 	$$(INCLUDE) \
 	$(if $(filter-out WNT,$(OS)),$$(GTK3_CFLAGS) ) \
 ))
@@ -64,7 +64,8 @@ $(eval $(call gb_Executable_add_ldflags,updater,\
 ))
 
 $(eval $(call gb_Executable_add_defs,updater,\
-	-DVERIFY_MAR_SIGNATURE \
+	-DMOZ_APP_VERSION=\"$(LIBO_VERSION_MAJOR).$(LIBO_VERSION_MINOR).$(LIBO_VERSION_MICRO).$(LIBO_VERSION_PATCH)\" \
+	-DMOZ_VERIFY_MAR_SIGNATURE \
 	-DNS_NO_XPCOM \
 	-DMOZ_MAINTENANCE_SERVICE \
 	-DXP_WIN \
@@ -84,7 +85,8 @@ $(eval $(call gb_Executable_add_defs,updater,\
 else
 
 $(eval $(call gb_Executable_add_defs,updater,\
-	-DVERIFY_MAR_SIGNATURE \
+	-DMOZ_APP_VERSION=\"$(LIBO_VERSION_MAJOR).$(LIBO_VERSION_MINOR).$(LIBO_VERSION_MICRO).$(LIBO_VERSION_PATCH)\" \
+	-DMOZ_VERIFY_MAR_SIGNATURE \
 	-DNSS3 \
 	-DNS_NO_XPCOM \
 	-DXP_UNIX \

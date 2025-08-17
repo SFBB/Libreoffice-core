@@ -40,7 +40,6 @@ namespace sw {
 class SwDoc;
 class SwFormatColl;
 class SwTextAttr;
-class SfxPoolItem;
 class SwUndoSaveSection;
 class SwTextFootnote;
 class SwUndoDelLayFormat;
@@ -85,7 +84,7 @@ class SwHistoryHint
 public:
     SwHistoryHint( HISTORY_HINT eWhich ) : m_eWhichId( eWhich ) {}
     virtual ~SwHistoryHint() {}
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) = 0;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) = 0;
     HISTORY_HINT Which() const                     { return m_eWhichId; }
     virtual OUString GetDescription() const;
     virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
@@ -99,7 +98,7 @@ class SwHistorySetFormat final : public SwHistoryHint
 public:
     SwHistorySetFormat( const SfxPoolItem* pFormatHt, SwNodeOffset nNode );
     virtual ~SwHistorySetFormat() override;
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
     virtual OUString GetDescription() const override;
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
@@ -112,7 +111,7 @@ class SwHistoryResetFormat final : public SwHistoryHint
 
 public:
     SwHistoryResetFormat( const SfxPoolItem* pFormatHt, SwNodeOffset nNodeIdx );
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
 
 };
 
@@ -128,8 +127,9 @@ class SwHistorySetText final : public SwHistoryHint
 public:
     SwHistorySetText( SwTextAttr* pTextHt, SwNodeOffset nNode );
     virtual ~SwHistorySetText() override;
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
 
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 class SwHistorySetTextField final : public SwHistoryHint
@@ -146,7 +146,7 @@ class SwHistorySetTextField final : public SwHistoryHint
 public:
     SwHistorySetTextField( const SwTextField* pTextField, SwNodeOffset nNode );
     virtual ~SwHistorySetTextField() override;
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
 
     virtual OUString GetDescription() const override;
 
@@ -154,15 +154,15 @@ public:
 
 class SwHistorySetRefMark final : public SwHistoryHint
 {
-    const OUString m_RefName;
+    const SwMarkName m_RefName;
     const SwNodeOffset m_nNodeIndex;
     const sal_Int32 m_nStart;
     const sal_Int32 m_nEnd;
 
 public:
     SwHistorySetRefMark( const SwTextRefMark* pTextHt, SwNodeOffset nNode );
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
-    const OUString& GetRefName() {return m_RefName;}
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
+    const SwMarkName& GetRefName() {return m_RefName;}
 };
 
 class SwHistorySetTOXMark final : public SwHistoryHint
@@ -176,7 +176,7 @@ class SwHistorySetTOXMark final : public SwHistoryHint
 
 public:
     SwHistorySetTOXMark( const SwTextTOXMark* pTextHt, SwNodeOffset nNode );
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
     bool IsEqual( const SwTOXMark& rCmp ) const;
 
     static SwTOXType* GetSwTOXType(SwDoc& rDoc, TOXTypes eTOXTypes, const OUString& rTOXName);
@@ -192,7 +192,7 @@ class SwHistoryResetText final : public SwHistoryHint
 public:
     SwHistoryResetText( sal_uInt16 nWhich, sal_Int32 nStt, sal_Int32 nEnd,
                        SwNodeOffset nNode );
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
 
     sal_uInt16 GetWhich() const         { return m_nAttr; }
     SwNodeOffset GetNode() const     { return m_nNodeIndex; }
@@ -212,7 +212,7 @@ public:
     SwHistorySetFootnote( SwTextFootnote* pTextFootnote, SwNodeOffset nNode );
     SwHistorySetFootnote( const SwTextFootnote& );
     virtual ~SwHistorySetFootnote() override;
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
 
     virtual OUString GetDescription() const override;
 
@@ -226,7 +226,7 @@ class SwHistoryChangeFormatColl final : public SwHistoryHint
 
 public:
     SwHistoryChangeFormatColl( SwFormatColl* pColl, SwNodeOffset nNode, SwNodeType nNodeWhich );
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
 
 };
 
@@ -237,7 +237,7 @@ class SwHistoryTextFlyCnt final : public SwHistoryHint
 public:
     SwHistoryTextFlyCnt( SwFrameFormat* const pFlyFormat );
     virtual ~SwHistoryTextFlyCnt() override;
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
     SwUndoDelLayFormat* GetUDelLFormat() { return m_pUndo.get(); }
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
@@ -246,15 +246,15 @@ public:
 class SwHistoryBookmark final : public SwHistoryHint
 {
     public:
-        SwHistoryBookmark(const ::sw::mark::IMark& rBkmk,
+        SwHistoryBookmark(const ::sw::mark::MarkBase& rBkmk,
                         bool bSavePos, bool bSaveOtherPos);
-        virtual void SetInDoc(SwDoc * pDoc, bool) override;
+        virtual void SetInDoc(SwDoc& rDoc, bool) override;
 
-        bool IsEqualBookmark(const ::sw::mark::IMark& rBkmk);
-        const OUString& GetName() const { return m_aName;}
+        bool IsEqualBookmark(const ::sw::mark::MarkBase& rBkmk);
+        const SwMarkName& GetName() const { return m_aName;}
 
     private:
-        const OUString m_aName;
+        const SwMarkName m_aName;
         OUString m_aShortName;
         bool m_bHidden;
         OUString m_aHideCondition;
@@ -275,8 +275,8 @@ class SwHistoryBookmark final : public SwHistoryHint
 class SwHistoryNoTextFieldmark final : public SwHistoryHint
 {
     public:
-        SwHistoryNoTextFieldmark(const ::sw::mark::IFieldmark& rFieldMark);
-        virtual void SetInDoc(SwDoc* pDoc, bool) override;
+        SwHistoryNoTextFieldmark(const ::sw::mark::Fieldmark& rFieldMark);
+        virtual void SetInDoc(SwDoc& rDoc, bool) override;
         void ResetInDoc(SwDoc& rDoc);
 
     private:
@@ -290,12 +290,12 @@ class SwHistoryNoTextFieldmark final : public SwHistoryHint
 class SwHistoryTextFieldmark final : public SwHistoryHint
 {
     public:
-        SwHistoryTextFieldmark(const ::sw::mark::IFieldmark& rFieldMark);
-        virtual void SetInDoc(SwDoc* pDoc, bool) override;
+        SwHistoryTextFieldmark(const ::sw::mark::Fieldmark& rFieldMark);
+        virtual void SetInDoc(SwDoc& rDoc, bool) override;
         void ResetInDoc(SwDoc& rDoc);
 
     private:
-        const OUString m_sName;
+        const SwMarkName m_sName;
         const OUString m_sType;
         const SwNodeOffset m_nStartNode;
         const sal_Int32 m_nStartContent;
@@ -314,7 +314,7 @@ class SwHistorySetAttrSet final : public SwHistoryHint
 public:
     SwHistorySetAttrSet( const SfxItemSet& rSet, SwNodeOffset nNode,
                          const o3tl::sorted_vector<sal_uInt16> &rSetArr );
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
 
 };
 
@@ -326,7 +326,7 @@ class SwHistoryChangeFlyAnchor final : public SwHistoryHint
 
 public:
     SwHistoryChangeFlyAnchor(sw::SpzFrameFormat& rFormat);
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
 };
 
 class SwHistoryChangeFlyChain final : public SwHistoryHint
@@ -337,17 +337,17 @@ class SwHistoryChangeFlyChain final : public SwHistoryHint
 
 public:
     SwHistoryChangeFlyChain( SwFlyFrameFormat& rFormat, const SwFormatChain& rAttr );
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
 };
 
 class SwHistoryChangeCharFormat final : public SwHistoryHint
 {
     const SfxItemSet m_OldSet;
-    const OUString m_Format;
+    const UIName m_Format;
 
 public:
-    SwHistoryChangeCharFormat( SfxItemSet aSet, OUString  sFormat);
-    virtual void SetInDoc( SwDoc* pDoc, bool bTmpSet ) override;
+    SwHistoryChangeCharFormat( SfxItemSet aSet, UIName  sFormat);
+    virtual void SetInDoc( SwDoc& rDoc, bool bTmpSet ) override;
 
 };
 
@@ -364,15 +364,15 @@ public:
     ~SwHistory();
 
     // call and delete all objects between nStart and array end
-    bool Rollback( SwDoc* pDoc, sal_uInt16 nStart = 0 );
+    bool Rollback( SwDoc& rDoc, sal_uInt16 nStart = 0 );
     // call all objects between nStart and TmpEnd; store nStart as TmpEnd
-    bool TmpRollback( SwDoc* pDoc, sal_uInt16 nStart, bool ToFirst = true );
+    bool TmpRollback( SwDoc& rDoc, sal_uInt16 nStart, bool ToFirst = true );
 
     void AddPoolItem(const SfxPoolItem* pOldValue, const SfxPoolItem* pNewValue,
               SwNodeOffset nNodeIdx );
     void AddTextAttr(SwTextAttr* pTextHt, SwNodeOffset nNodeIdx, bool bNewAttr);
     void AddColl(SwFormatColl*, SwNodeOffset nNodeIdx, SwNodeType nWhichNd);
-    void AddIMark(const ::sw::mark::IMark&, bool bSavePos, bool bSaveOtherPos);
+    void AddIMark(const ::sw::mark::MarkBase&, bool bSavePos, bool bSaveOtherPos);
     void AddChangeFlyAnchor(sw::SpzFrameFormat& rFormat);
     void AddDeleteFly( SwFrameFormat&, sal_uInt16& rSetPos );
     void AddFootnote( const SwTextFootnote& );

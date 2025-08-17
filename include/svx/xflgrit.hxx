@@ -30,15 +30,22 @@ class SdrModel;
 
 class SVXCORE_DLLPUBLIC XFillGradientItem : public NameOrIndex
 {
-    basegfx::BGradient   aGradient;
+    basegfx::BGradient   m_aGradient;
 
 public:
-            static SfxPoolItem* CreateDefault();
-            XFillGradientItem() : NameOrIndex(XATTR_FILLGRADIENT, -1) {}
-            XFillGradientItem(sal_Int32 nIndex, const basegfx::BGradient& rTheGradient);
-            XFillGradientItem(const OUString& rName, const basegfx::BGradient& rTheGradient, TypedWhichId<XFillGradientItem> nWhich = XATTR_FILLGRADIENT);
-            XFillGradientItem(const basegfx::BGradient& rTheGradient);
-            XFillGradientItem(const XFillGradientItem& rItem);
+    static SfxPoolItem* CreateDefault();
+    DECLARE_ITEM_TYPE_FUNCTION(XFillGradientItem)
+    XFillGradientItem(TypedWhichId<XFillGradientItem> nWhich = XATTR_FILLGRADIENT)
+        : NameOrIndex(nWhich, -1) {}
+    XFillGradientItem(sal_Int32 nIndex,
+            const basegfx::BGradient& rTheGradient,
+            TypedWhichId<XFillGradientItem> nWhich = XATTR_FILLGRADIENT);
+    XFillGradientItem(const OUString& rName,
+            const basegfx::BGradient& rTheGradient,
+            TypedWhichId<XFillGradientItem> nWhich = XATTR_FILLGRADIENT);
+    XFillGradientItem(const basegfx::BGradient& rTheGradient,
+            TypedWhichId<XFillGradientItem> nWhich = XATTR_FILLGRADIENT);
+    XFillGradientItem(const XFillGradientItem& rItem);
 
     virtual bool            operator==(const SfxPoolItem& rItem) const override;
     virtual XFillGradientItem* Clone(SfxItemPool* pPool = nullptr) const override;
@@ -50,10 +57,10 @@ public:
                                   MapUnit ePresMetric,
                                   OUString &rText, const IntlWrapper& ) const override;
     const basegfx::BGradient&        GetGradientValue() const; // GetValue -> GetGradientValue
-    void                    SetGradientValue(const basegfx::BGradient& rNew) { aGradient = rNew; Detach(); } // SetValue -> SetGradientValue
+    void                    SetGradientValue(const basegfx::BGradient& rNew) { m_aGradient = rNew; Detach(); } // SetValue -> SetGradientValue
 
     static bool CompareValueFunc( const NameOrIndex* p1, const NameOrIndex* p2 );
-    std::unique_ptr<XFillGradientItem> checkForUniqueItem( SdrModel* pModel ) const;
+    std::unique_ptr<XFillGradientItem> checkForUniqueItem( SdrModel& rModel ) const;
 
     virtual boost::property_tree::ptree dumpAsJSON() const override;
 };

@@ -56,9 +56,13 @@ ErrCodeMsg SwDOCXReader::Read(SwDoc& rDoc, const OUString& /* rBaseURL */, SwPaM
     rDoc.SetTextFormatColl(rPam, rDoc.getIDocumentStylePoolAccess().GetTextCollFromPool(RES_POOLCOLL_STANDARD, false));
 
     uno::Reference<lang::XMultiServiceFactory> xMultiServiceFactory(comphelper::getProcessServiceFactory());
-    uno::Reference<uno::XInterface> xInterface(xMultiServiceFactory->createInstance("com.sun.star.comp.Writer.WriterFilter"), uno::UNO_SET_THROW);
+    uno::Reference<uno::XInterface> xInterface(xMultiServiceFactory->createInstance(u"com.sun.star.comp.Writer.WriterFilter"_ustr), uno::UNO_SET_THROW);
 
+    ErrCode ret = ERRCODE_NONE;
     SwDocShell* pDocShell(rDoc.GetDocShell());
+    if (!pDocShell)
+        return ret;
+
     uno::Reference<lang::XComponent> xDstDoc(pDocShell->GetModel(), uno::UNO_QUERY_THROW);
     uno::Reference<document::XImporter> xImporter(xInterface, uno::UNO_QUERY_THROW);
     xImporter->setTargetDocument(xDstDoc);
@@ -79,7 +83,6 @@ ErrCodeMsg SwDOCXReader::Read(SwDoc& rDoc, const OUString& /* rBaseURL */, SwPaM
         { "TextInsertModeRange", uno::Any(uno::Reference<text::XTextRange>(xInsertTextRange)) }
     }));
 
-    ErrCode ret = ERRCODE_NONE;
     uno::Reference<document::XFilter> xFilter(xInterface, uno::UNO_QUERY_THROW);
     try
     {
@@ -112,7 +115,7 @@ bool SwDOCXReader::ReadGlossaries( SwTextBlocks& rBlocks, bool /* bSaveRelFiles 
                 comphelper::getProcessServiceFactory() );
 
     uno::Reference<uno::XInterface> xInterface(
-                xMultiServiceFactory->createInstance( "com.sun.star.comp.Writer.WriterFilter" ),
+                xMultiServiceFactory->createInstance( u"com.sun.star.comp.Writer.WriterFilter"_ustr ),
                 uno::UNO_SET_THROW );
 
     uno::Reference<document::XFilter> xFilter( xInterface, uno::UNO_QUERY_THROW );

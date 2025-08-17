@@ -40,8 +40,6 @@
 using namespace ::dbaui;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::ucb;
 using namespace ::com::sun::star::graphic;
 using namespace ::com::sun::star::ui;
@@ -50,8 +48,8 @@ using namespace ::com::sun::star::beans;
 using ::com::sun::star::util::URL;
 using ::com::sun::star::sdb::application::NamedDatabaseObject;
 
-TaskEntry::TaskEntry( const char* _pAsciiUNOCommand, TranslateId _pHelpID, TranslateId pTitleResourceID, bool _bHideWhenDisabled )
-    :sUNOCommand( OUString::createFromAscii( _pAsciiUNOCommand ) )
+TaskEntry::TaskEntry( const OUString& _rAsciiUNOCommand, TranslateId _pHelpID, TranslateId pTitleResourceID, bool _bHideWhenDisabled )
+    :sUNOCommand( _rAsciiUNOCommand )
     ,pHelpID( _pHelpID )
     ,sTitle( DBA_RES(pTitleResourceID) )
     ,bHideWhenDisabled( _bHideWhenDisabled )
@@ -109,10 +107,10 @@ IMPL_LINK_NOARG(OTasksWindow, OnEntrySelectHdl, weld::TreeView&, void)
 }
 
 OTasksWindow::OTasksWindow(weld::Container* pParent, OApplicationDetailView* pDetailView)
-    : OChildWindow(pParent, "dbaccess/ui/taskwindow.ui", "TaskWindow")
-    , m_xTreeView(m_xBuilder->weld_tree_view("treeview"))
-    , m_xDescription(m_xBuilder->weld_label("description"))
-    , m_xHelpText(m_xBuilder->weld_text_view("helptext"))
+    : OChildWindow(pParent, u"dbaccess/ui/taskwindow.ui"_ustr, u"TaskWindow"_ustr)
+    , m_xTreeView(m_xBuilder->weld_tree_view(u"treeview"_ustr))
+    , m_xDescription(m_xBuilder->weld_label(u"description"_ustr))
+    , m_xHelpText(m_xBuilder->weld_text_view(u"helptext"_ustr))
     , m_pDetailView(pDetailView)
     , m_nCursorIndex(-1)
 {
@@ -120,7 +118,7 @@ OTasksWindow::OTasksWindow(weld::Container* pParent, OApplicationDetailView* pDe
 
     m_xTreeView->set_help_id(HID_APP_CREATION_LIST);
     m_xTreeView->connect_row_activated(LINK(this, OTasksWindow, onSelected));
-    m_xTreeView->connect_changed(LINK(this, OTasksWindow, OnEntrySelectHdl));
+    m_xTreeView->connect_selection_changed(LINK(this, OTasksWindow, OnEntrySelectHdl));
     m_xTreeView->connect_focus_in(LINK(this, OTasksWindow, FocusInHdl));
     m_xTreeView->connect_focus_out(LINK(this, OTasksWindow, FocusOutHdl));
     // an arbitrary small size it's allowed to shrink to
@@ -152,32 +150,26 @@ void OTasksWindow::fillTaskEntryList( const TaskEntryList& _rList )
         Reference< XModuleUIConfigurationManagerSupplier > xModuleCfgMgrSupplier =
             theModuleUIConfigurationManagerSupplier::get( getDetailView()->getBorderWin().getView()->getORB() );
         Reference< XUIConfigurationManager > xUIConfigMgr = xModuleCfgMgrSupplier->getUIConfigurationManager(
-            "com.sun.star.sdb.OfficeDatabaseDocument"
+            u"com.sun.star.sdb.OfficeDatabaseDocument"_ustr
         );
         Reference< XImageManager > xImageMgr( xUIConfigMgr->getImageManager(), UNO_QUERY );
 
         // copy the commands so we can use them with the config managers
         Sequence< OUString > aCommands( _rList.size() );
-        OUString* pCommands = aCommands.getArray();
-        for (auto const& copyTask : _rList)
-        {
-            *pCommands = copyTask.sUNOCommand;
-            ++pCommands;
-        }
+        std::transform(_rList.begin(), _rList.end(), aCommands.getArray(),
+                       [](auto& copyTask) { return copyTask.sUNOCommand; });
 
         Sequence< Reference< XGraphic> > aImages = xImageMgr->getImages(
             ImageType::SIZE_DEFAULT | ImageType::COLOR_NORMAL ,
             aCommands
         );
+        assert(aImages.size() == _rList.size());
 
-        const Reference< XGraphic >* pImages( aImages.getConstArray() );
-
-        size_t nIndex = 0;
-        for (auto const& task : _rList)
+        for (size_t nIndex = 0; nIndex < _rList.size(); ++nIndex)
         {
-            OUString sId = weld::toId(new TaskEntry(task));
-            m_xTreeView->append(sId, task.sTitle);
-            m_xTreeView->set_image(nIndex++, *pImages++);
+            OUString sId = weld::toId(new TaskEntry(_rList[nIndex]));
+            m_xTreeView->append(sId, _rList[nIndex].sTitle);
+            m_xTreeView->set_image(nIndex, aImages[nIndex]);
         }
     }
     catch(Exception&)
@@ -202,11 +194,11 @@ void OTasksWindow::Clear()
 
 OApplicationDetailView::OApplicationDetailView(weld::Container* pParent, OAppBorderWindow& rBorder,
                                                PreviewMode ePreviewMode)
-    : m_xBuilder(Application::CreateBuilder(pParent, "dbaccess/ui/appdetailwindow.ui"))
-    , m_xContainer(m_xBuilder->weld_container("AppDetailWindow"))
-    , m_xHorzSplitter(m_xBuilder->weld_paned("splitter"))
-    , m_xTasksParent(m_xBuilder->weld_container("tasks"))
-    , m_xContainerParent(m_xBuilder->weld_container("container"))
+    : m_xBuilder(Application::CreateBuilder(pParent, u"dbaccess/ui/appdetailwindow.ui"_ustr))
+    , m_xContainer(m_xBuilder->weld_container(u"AppDetailWindow"_ustr))
+    , m_xHorzSplitter(m_xBuilder->weld_paned(u"splitter"_ustr))
+    , m_xTasksParent(m_xBuilder->weld_container(u"tasks"_ustr))
+    , m_xContainerParent(m_xBuilder->weld_container(u"container"_ustr))
     , m_xTasks(new dbaui::OTitleWindow(m_xTasksParent.get(), STR_TASKS))
     , m_xTitleContainer(new dbaui::OTitleWindow(m_xContainerParent.get(), TranslateId()))
     , m_rBorderWin(rBorder)
@@ -267,28 +259,28 @@ void OApplicationDetailView::impl_fillTaskPaneData(ElementType _eType, TaskPaneD
     switch ( _eType )
     {
     case E_TABLE:
-        rList.emplace_back( ".uno:DBNewTable", RID_STR_TABLES_HELP_TEXT_DESIGN, RID_STR_NEW_TABLE );
-        rList.emplace_back( ".uno:DBNewTableAutoPilot", RID_STR_TABLES_HELP_TEXT_WIZARD, RID_STR_NEW_TABLE_AUTO );
-        rList.emplace_back( ".uno:DBNewView", RID_STR_VIEWS_HELP_TEXT_DESIGN, RID_STR_NEW_VIEW, true );
+        rList.emplace_back( u".uno:DBNewTable"_ustr, RID_STR_TABLES_HELP_TEXT_DESIGN, RID_STR_NEW_TABLE );
+        rList.emplace_back( u".uno:DBNewTableAutoPilot"_ustr, RID_STR_TABLES_HELP_TEXT_WIZARD, RID_STR_NEW_TABLE_AUTO );
+        rList.emplace_back( u".uno:DBNewView"_ustr, RID_STR_VIEWS_HELP_TEXT_DESIGN, RID_STR_NEW_VIEW, true );
         _rData.pTitleId = RID_STR_TABLES_CONTAINER;
         break;
 
     case E_FORM:
-        rList.emplace_back( ".uno:DBNewForm", RID_STR_FORMS_HELP_TEXT, RID_STR_NEW_FORM );
-        rList.emplace_back( ".uno:DBNewFormAutoPilot", RID_STR_FORMS_HELP_TEXT_WIZARD, RID_STR_NEW_FORM_AUTO );
+        rList.emplace_back( u".uno:DBNewForm"_ustr, RID_STR_FORMS_HELP_TEXT, RID_STR_NEW_FORM );
+        rList.emplace_back( u".uno:DBNewFormAutoPilot"_ustr, RID_STR_FORMS_HELP_TEXT_WIZARD, RID_STR_NEW_FORM_AUTO );
         _rData.pTitleId = RID_STR_FORMS_CONTAINER;
         break;
 
     case E_REPORT:
-        rList.emplace_back( ".uno:DBNewReport", RID_STR_REPORT_HELP_TEXT, RID_STR_NEW_REPORT, true );
-        rList.emplace_back( ".uno:DBNewReportAutoPilot", RID_STR_REPORTS_HELP_TEXT_WIZARD, RID_STR_NEW_REPORT_AUTO );
+        rList.emplace_back( u".uno:DBNewReport"_ustr, RID_STR_REPORT_HELP_TEXT, RID_STR_NEW_REPORT, true );
+        rList.emplace_back( u".uno:DBNewReportAutoPilot"_ustr, RID_STR_REPORTS_HELP_TEXT_WIZARD, RID_STR_NEW_REPORT_AUTO );
         _rData.pTitleId = RID_STR_REPORTS_CONTAINER;
         break;
 
     case E_QUERY:
-        rList.emplace_back( ".uno:DBNewQuery", RID_STR_QUERIES_HELP_TEXT, RID_STR_NEW_QUERY );
-        rList.emplace_back( ".uno:DBNewQueryAutoPilot", RID_STR_QUERIES_HELP_TEXT_WIZARD, RID_STR_NEW_QUERY_AUTO );
-        rList.emplace_back( ".uno:DBNewQuerySql", RID_STR_QUERIES_HELP_TEXT_SQL, RID_STR_NEW_QUERY_SQL );
+        rList.emplace_back( u".uno:DBNewQuery"_ustr, RID_STR_QUERIES_HELP_TEXT, RID_STR_NEW_QUERY );
+        rList.emplace_back( u".uno:DBNewQueryAutoPilot"_ustr, RID_STR_QUERIES_HELP_TEXT_WIZARD, RID_STR_NEW_QUERY_AUTO );
+        rList.emplace_back( u".uno:DBNewQuerySql"_ustr, RID_STR_QUERIES_HELP_TEXT_SQL, RID_STR_NEW_QUERY_SQL );
         _rData.pTitleId = RID_STR_QUERIES_CONTAINER;
         break;
 

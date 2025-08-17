@@ -53,13 +53,12 @@
 #include "updateprotocol.hxx"
 #include "updatecheckconfig.hxx"
 
-namespace beans = com::sun::star::beans ;
-namespace deployment = com::sun::star::deployment ;
-namespace frame = com::sun::star::frame ;
-namespace lang = com::sun::star::lang ;
-namespace c3s = com::sun::star::system ;
-namespace task = com::sun::star::task ;
-namespace uno = com::sun::star::uno ;
+namespace beans = css::beans ;
+namespace deployment = css::deployment ;
+namespace lang = css::lang ;
+namespace c3s = css::system ;
+namespace task = css::task ;
+namespace uno = css::uno ;
 
 constexpr OUStringLiteral PROPERTY_TITLE = u"BubbleHeading";
 constexpr OUStringLiteral PROPERTY_TEXT = u"BubbleText";
@@ -90,7 +89,7 @@ namespace
 
 OUString getBuildId()
 {
-    OUString aPathVal("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("version") ":buildid}");
+    OUString aPathVal(u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("version") ":buildid}"_ustr);
     rtl::Bootstrap::expandMacros(aPathVal);
     return aPathVal;
 }
@@ -185,15 +184,15 @@ uno::Reference< beans::XPropertySet > createMenuBarUI(
 {
     if( !xContext.is() )
         throw uno::RuntimeException(
-            "UpdateCheckJob: empty component context", uno::Reference< uno::XInterface > () );
+            u"UpdateCheckJob: empty component context"_ustr, uno::Reference< uno::XInterface > () );
 
     uno::Reference< lang::XMultiComponentFactory > xServiceManager(xContext->getServiceManager());
     if( !xServiceManager.is() )
         throw uno::RuntimeException(
-            "UpdateCheckJob: unable to obtain service manager from component context", uno::Reference< uno::XInterface > () );
+            u"UpdateCheckJob: unable to obtain service manager from component context"_ustr, uno::Reference< uno::XInterface > () );
 
     uno::Reference< beans::XPropertySet > xMenuBarUI(
-            xServiceManager->createInstanceWithContext( "com.sun.star.setup.UpdateCheckUI", xContext ),
+            xServiceManager->createInstanceWithContext( u"com.sun.star.setup.UpdateCheckUI"_ustr, xContext ),
             uno::UNO_QUERY_THROW);
 
     xMenuBarUI->setPropertyValue( PROPERTY_CLICK_HDL, uno::Any( xJob ) );
@@ -1183,7 +1182,6 @@ UpdateCheck::showDialog(bool forceCheck)
     }
 }
 
-
 void
 UpdateCheck::setUpdateInfo(const UpdateInfo& aInfo)
 {
@@ -1254,6 +1252,11 @@ UpdateCheck::setUpdateInfo(const UpdateInfo& aInfo)
     setUIState(eUIState, bSuppressBubble);
 }
 
+bool UpdateCheck::hasOfficeUpdate() const
+{
+    std::unique_lock aGuard(m_aMutex);
+    return m_aUpdateInfo.BuildId.getLength() > 0;
+}
 
 void
 UpdateCheck::setCheckFailedState()
@@ -1431,17 +1434,17 @@ void UpdateCheck::showExtensionDialog()
 
     if( ! m_xContext.is() )
         throw uno::RuntimeException(
-            "UpdateCheck::showExtensionDialog(): empty component context", uno::Reference< uno::XInterface > () );
+            u"UpdateCheck::showExtensionDialog(): empty component context"_ustr, uno::Reference< uno::XInterface > () );
 
     uno::Reference< lang::XMultiComponentFactory > xServiceManager( m_xContext->getServiceManager() );
     if( !xServiceManager.is() )
         throw uno::RuntimeException(
-            "UpdateCheck::showExtensionDialog(): unable to obtain service manager from component context", uno::Reference< uno::XInterface > () );
+            u"UpdateCheck::showExtensionDialog(): unable to obtain service manager from component context"_ustr, uno::Reference< uno::XInterface > () );
 
-    xService = xServiceManager->createInstanceWithContext( "com.sun.star.deployment.ui.PackageManagerDialog", m_xContext );
+    xService = xServiceManager->createInstanceWithContext( u"com.sun.star.deployment.ui.PackageManagerDialog"_ustr, m_xContext );
     uno::Reference< task::XJobExecutor > xExecutable( xService, uno::UNO_QUERY );
     if ( xExecutable.is() )
-        xExecutable->trigger( "SHOW_UPDATE_DIALOG" );
+        xExecutable->trigger( u"SHOW_UPDATE_DIALOG"_ustr );
 }
 
 

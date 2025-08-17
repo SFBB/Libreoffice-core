@@ -70,7 +70,6 @@
 #include <sal/log.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <memory>
-#include <string_view>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::view;
@@ -307,7 +306,7 @@ sal_Int8 FmGridHeader::ExecuteDrop( const ExecuteDropEvent& _rEvt )
                     // not interested in any results
 
                     Reference< XPropertySet > xStatProps(xStatement,UNO_QUERY);
-                    xStatProps->setPropertyValue("MaxRows", Any(sal_Int32(0)));
+                    xStatProps->setPropertyValue(u"MaxRows"_ustr, Any(sal_Int32(0)));
 
                     xResultSet = xStatement->executeQuery();
                     Reference< XColumnsSupplier >  xSupplyCols(xResultSet, UNO_QUERY);
@@ -328,7 +327,7 @@ sal_Int8 FmGridHeader::ExecuteDrop( const ExecuteDropEvent& _rEvt )
 
         // do the drop asynchronously
         // (85957 - UI actions within the drop are not allowed, but we want to open a popup menu)
-        m_pImpl->aDropData = aColumn;
+        m_pImpl->aDropData = std::move(aColumn);
         m_pImpl->aDropData[DataAccessDescriptorProperty::Connection] <<= xConnection;
         m_pImpl->aDropData[DataAccessDescriptorProperty::ColumnObject] <<= xField;
 
@@ -488,7 +487,7 @@ IMPL_LINK_NOARG( FmGridHeader, OnAsyncExecuteDrop, void*, void )
             if  (   ::comphelper::hasProperty(FM_PROP_ISCURRENCY, xField)
                 &&  ::comphelper::getBOOL(xField->getPropertyValue(FM_PROP_ISCURRENCY)))
             {
-                aPossibleTypes.insert(aPossibleTypes.begin(), FM_COL_CURRENCYFIELD);
+                aPossibleTypes.insert(aPossibleTypes.begin(), u"" FM_COL_CURRENCYFIELD ""_ustr);
                 aImgResId.insert(aImgResId.begin(), RID_SVXBMP_CURRENCYFIELD);
                 aStrResId.insert(aStrResId.begin(), RID_STR_PROPTITLE_CURRENCYFIELD);
             }
@@ -506,8 +505,8 @@ IMPL_LINK_NOARG( FmGridHeader, OnAsyncExecuteDrop, void*, void )
             OUString sPreferredType = aPossibleTypes[0];
             if ((m_pImpl->nDropAction == DND_ACTION_LINK) && (aPossibleTypes.size() > 1))
             {
-                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "svx/ui/colsmenu.ui"));
-                std::unique_ptr<weld::Menu> xTypeMenu(xBuilder->weld_menu("insertmenu"));
+                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, u"svx/ui/colsmenu.ui"_ustr));
+                std::unique_ptr<weld::Menu> xTypeMenu(xBuilder->weld_menu(u"insertmenu"_ustr));
 
                 int nMenuPos = 0;
                 std::vector<OUString>::const_iterator iter;
@@ -539,9 +538,9 @@ IMPL_LINK_NOARG( FmGridHeader, OnAsyncExecuteDrop, void*, void )
                 if ( !sFieldService.isEmpty() )
                     xThisRoundCol = xFactory->createColumn(sFieldService);
                 if (nColCount)
-                    xSecondCol = xThisRoundCol;
+                    xSecondCol = std::move(xThisRoundCol);
                 else
-                    xCol = xThisRoundCol;
+                    xCol = std::move(xThisRoundCol);
             }
         }
 
@@ -679,16 +678,16 @@ void FmGridHeader::PreExecuteColumnContextMenu(sal_uInt16 nColId, weld::Menu& rM
     if (bDesignMode)
     {
         int nMenuPos = 0;
-        InsertMenuItem(rInsertMenu, nMenuPos++, FM_COL_TEXTFIELD, SvxResId(RID_STR_PROPTITLE_EDIT), RID_SVXBMP_EDITBOX);
-        InsertMenuItem(rInsertMenu, nMenuPos++, FM_COL_CHECKBOX, SvxResId(RID_STR_PROPTITLE_CHECKBOX), RID_SVXBMP_CHECKBOX);
-        InsertMenuItem(rInsertMenu, nMenuPos++, FM_COL_COMBOBOX, SvxResId(RID_STR_PROPTITLE_COMBOBOX), RID_SVXBMP_COMBOBOX);
-        InsertMenuItem(rInsertMenu, nMenuPos++, FM_COL_LISTBOX, SvxResId(RID_STR_PROPTITLE_LISTBOX), RID_SVXBMP_LISTBOX);
-        InsertMenuItem(rInsertMenu, nMenuPos++, FM_COL_DATEFIELD, SvxResId(RID_STR_PROPTITLE_DATEFIELD), RID_SVXBMP_DATEFIELD);
-        InsertMenuItem(rInsertMenu, nMenuPos++, FM_COL_TIMEFIELD, SvxResId(RID_STR_PROPTITLE_TIMEFIELD), RID_SVXBMP_TIMEFIELD);
-        InsertMenuItem(rInsertMenu, nMenuPos++, FM_COL_NUMERICFIELD, SvxResId(RID_STR_PROPTITLE_NUMERICFIELD), RID_SVXBMP_NUMERICFIELD);
-        InsertMenuItem(rInsertMenu, nMenuPos++, FM_COL_CURRENCYFIELD, SvxResId(RID_STR_PROPTITLE_CURRENCYFIELD), RID_SVXBMP_CURRENCYFIELD);
-        InsertMenuItem(rInsertMenu, nMenuPos++, FM_COL_PATTERNFIELD, SvxResId(RID_STR_PROPTITLE_PATTERNFIELD), RID_SVXBMP_PATTERNFIELD);
-        InsertMenuItem(rInsertMenu, nMenuPos++, FM_COL_FORMATTEDFIELD, SvxResId(RID_STR_PROPTITLE_FORMATTED), RID_SVXBMP_FORMATTEDFIELD);
+        InsertMenuItem(rInsertMenu, nMenuPos++, u"" FM_COL_TEXTFIELD ""_ustr, SvxResId(RID_STR_PROPTITLE_EDIT), RID_SVXBMP_EDITBOX);
+        InsertMenuItem(rInsertMenu, nMenuPos++, u"" FM_COL_CHECKBOX ""_ustr, SvxResId(RID_STR_PROPTITLE_CHECKBOX), RID_SVXBMP_CHECKBOX);
+        InsertMenuItem(rInsertMenu, nMenuPos++, u"" FM_COL_COMBOBOX ""_ustr, SvxResId(RID_STR_PROPTITLE_COMBOBOX), RID_SVXBMP_COMBOBOX);
+        InsertMenuItem(rInsertMenu, nMenuPos++, u"" FM_COL_LISTBOX ""_ustr, SvxResId(RID_STR_PROPTITLE_LISTBOX), RID_SVXBMP_LISTBOX);
+        InsertMenuItem(rInsertMenu, nMenuPos++, u"" FM_COL_DATEFIELD ""_ustr, SvxResId(RID_STR_PROPTITLE_DATEFIELD), RID_SVXBMP_DATEFIELD);
+        InsertMenuItem(rInsertMenu, nMenuPos++, u"" FM_COL_TIMEFIELD ""_ustr, SvxResId(RID_STR_PROPTITLE_TIMEFIELD), RID_SVXBMP_TIMEFIELD);
+        InsertMenuItem(rInsertMenu, nMenuPos++, u"" FM_COL_NUMERICFIELD ""_ustr, SvxResId(RID_STR_PROPTITLE_NUMERICFIELD), RID_SVXBMP_NUMERICFIELD);
+        InsertMenuItem(rInsertMenu, nMenuPos++, u"" FM_COL_CURRENCYFIELD ""_ustr, SvxResId(RID_STR_PROPTITLE_CURRENCYFIELD), RID_SVXBMP_CURRENCYFIELD);
+        InsertMenuItem(rInsertMenu, nMenuPos++, u"" FM_COL_PATTERNFIELD ""_ustr, SvxResId(RID_STR_PROPTITLE_PATTERNFIELD), RID_SVXBMP_PATTERNFIELD);
+        InsertMenuItem(rInsertMenu, nMenuPos++, u"" FM_COL_FORMATTEDFIELD ""_ustr, SvxResId(RID_STR_PROPTITLE_FORMATTED), RID_SVXBMP_FORMATTEDFIELD);
     }
 
     if (xCols.is() && nColId)
@@ -713,43 +712,43 @@ void FmGridHeader::PreExecuteColumnContextMenu(sal_uInt16 nColId, weld::Menu& rM
         {
             int nMenuPos = 0;
             if (nColType != TYPE_TEXTFIELD)
-                InsertMenuItem(rChangeMenu, nMenuPos++, FM_COL_TEXTFIELD"1", SvxResId(RID_STR_PROPTITLE_EDIT), RID_SVXBMP_EDITBOX);
+                InsertMenuItem(rChangeMenu, nMenuPos++, u"" FM_COL_TEXTFIELD"1"_ustr, SvxResId(RID_STR_PROPTITLE_EDIT), RID_SVXBMP_EDITBOX);
             if (nColType != TYPE_CHECKBOX)
-                InsertMenuItem(rChangeMenu, nMenuPos++, FM_COL_CHECKBOX"1", SvxResId(RID_STR_PROPTITLE_CHECKBOX), RID_SVXBMP_CHECKBOX);
+                InsertMenuItem(rChangeMenu, nMenuPos++, u"" FM_COL_CHECKBOX"1"_ustr, SvxResId(RID_STR_PROPTITLE_CHECKBOX), RID_SVXBMP_CHECKBOX);
             if (nColType != TYPE_COMBOBOX)
-                InsertMenuItem(rChangeMenu, nMenuPos++, FM_COL_COMBOBOX"1", SvxResId(RID_STR_PROPTITLE_COMBOBOX), RID_SVXBMP_COMBOBOX);
+                InsertMenuItem(rChangeMenu, nMenuPos++, u"" FM_COL_COMBOBOX"1"_ustr, SvxResId(RID_STR_PROPTITLE_COMBOBOX), RID_SVXBMP_COMBOBOX);
             if (nColType != TYPE_LISTBOX)
-                InsertMenuItem(rChangeMenu, nMenuPos++, FM_COL_LISTBOX"1", SvxResId(RID_STR_PROPTITLE_LISTBOX), RID_SVXBMP_LISTBOX);
+                InsertMenuItem(rChangeMenu, nMenuPos++, u"" FM_COL_LISTBOX"1"_ustr, SvxResId(RID_STR_PROPTITLE_LISTBOX), RID_SVXBMP_LISTBOX);
             if (nColType != TYPE_DATEFIELD)
-                InsertMenuItem(rChangeMenu, nMenuPos++, FM_COL_DATEFIELD"1", SvxResId(RID_STR_PROPTITLE_DATEFIELD), RID_SVXBMP_DATEFIELD);
+                InsertMenuItem(rChangeMenu, nMenuPos++, u"" FM_COL_DATEFIELD"1"_ustr, SvxResId(RID_STR_PROPTITLE_DATEFIELD), RID_SVXBMP_DATEFIELD);
             if (nColType != TYPE_TIMEFIELD)
-                InsertMenuItem(rChangeMenu, nMenuPos++, FM_COL_TIMEFIELD"1", SvxResId(RID_STR_PROPTITLE_TIMEFIELD), RID_SVXBMP_TIMEFIELD);
+                InsertMenuItem(rChangeMenu, nMenuPos++, u"" FM_COL_TIMEFIELD"1"_ustr, SvxResId(RID_STR_PROPTITLE_TIMEFIELD), RID_SVXBMP_TIMEFIELD);
             if (nColType != TYPE_NUMERICFIELD)
-                InsertMenuItem(rChangeMenu, nMenuPos++, FM_COL_NUMERICFIELD"1", SvxResId(RID_STR_PROPTITLE_NUMERICFIELD), RID_SVXBMP_NUMERICFIELD);
+                InsertMenuItem(rChangeMenu, nMenuPos++, u"" FM_COL_NUMERICFIELD"1"_ustr, SvxResId(RID_STR_PROPTITLE_NUMERICFIELD), RID_SVXBMP_NUMERICFIELD);
             if (nColType != TYPE_CURRENCYFIELD)
-                InsertMenuItem(rChangeMenu, nMenuPos++, FM_COL_CURRENCYFIELD"1", SvxResId(RID_STR_PROPTITLE_CURRENCYFIELD), RID_SVXBMP_CURRENCYFIELD);
+                InsertMenuItem(rChangeMenu, nMenuPos++, u"" FM_COL_CURRENCYFIELD"1"_ustr, SvxResId(RID_STR_PROPTITLE_CURRENCYFIELD), RID_SVXBMP_CURRENCYFIELD);
             if (nColType != TYPE_PATTERNFIELD)
-                InsertMenuItem(rChangeMenu, nMenuPos++, FM_COL_PATTERNFIELD"1", SvxResId(RID_STR_PROPTITLE_PATTERNFIELD), RID_SVXBMP_PATTERNFIELD);
+                InsertMenuItem(rChangeMenu, nMenuPos++, u"" FM_COL_PATTERNFIELD"1"_ustr, SvxResId(RID_STR_PROPTITLE_PATTERNFIELD), RID_SVXBMP_PATTERNFIELD);
             if (nColType != TYPE_FORMATTEDFIELD)
-                InsertMenuItem(rChangeMenu, nMenuPos++, FM_COL_FORMATTEDFIELD"1", SvxResId(RID_STR_PROPTITLE_FORMATTED), RID_SVXBMP_FORMATTEDFIELD);
+                InsertMenuItem(rChangeMenu, nMenuPos++, u"" FM_COL_FORMATTEDFIELD"1"_ustr, SvxResId(RID_STR_PROPTITLE_FORMATTED), RID_SVXBMP_FORMATTEDFIELD);
         }
 
 
-        rMenu.set_visible("change", bDesignMode && bMarked && xCols.is());
-        rMenu.set_sensitive("change", bDesignMode && bMarked && xCols.is());
+        rMenu.set_visible(u"change"_ustr, bDesignMode && bMarked && xCols.is());
+        rMenu.set_sensitive(u"change"_ustr, bDesignMode && bMarked && xCols.is());
     }
     else
     {
-        rMenu.set_visible("change", false);
-        rMenu.set_sensitive("change", false);
+        rMenu.set_visible(u"change"_ustr, false);
+        rMenu.set_sensitive(u"change"_ustr, false);
     }
 
-    rMenu.set_visible("insert", bDesignMode && xCols.is());
-    rMenu.set_sensitive("insert", bDesignMode && xCols.is());
-    rMenu.set_visible("delete", bDesignMode && bMarked && xCols.is());
-    rMenu.set_sensitive("delete", bDesignMode && bMarked && xCols.is());
-    rMenu.set_visible("column", bDesignMode && bMarked && xCols.is());
-    rMenu.set_sensitive("column", bDesignMode && bMarked && xCols.is());
+    rMenu.set_visible(u"insert"_ustr, bDesignMode && xCols.is());
+    rMenu.set_sensitive(u"insert"_ustr, bDesignMode && xCols.is());
+    rMenu.set_visible(u"delete"_ustr, bDesignMode && bMarked && xCols.is());
+    rMenu.set_sensitive(u"delete"_ustr, bDesignMode && bMarked && xCols.is());
+    rMenu.set_visible(u"column"_ustr, bDesignMode && bMarked && xCols.is());
+    rMenu.set_sensitive(u"column"_ustr, bDesignMode && bMarked && xCols.is());
 
     sal_uInt16 nHiddenCols = 0;
     if (xCols.is())
@@ -762,7 +761,7 @@ void FmGridHeader::PreExecuteColumnContextMenu(sal_uInt16 nColId, weld::Menu& rM
             xCurCol.set(xCols->getByIndex(i), css::uno::UNO_QUERY);
             DBG_ASSERT(xCurCol.is(), "FmGridHeader::PreExecuteColumnContextMenu : the Peer has invalid columns !");
             aHidden = xCurCol->getPropertyValue(FM_PROP_HIDDEN);
-            DBG_ASSERT(aHidden.getValueType().getTypeClass() == TypeClass_BOOLEAN,
+            DBG_ASSERT(aHidden.getValueTypeClass() == TypeClass_BOOLEAN,
                 "FmGridHeader::PreExecuteColumnContextMenu : the property 'hidden' should be boolean !");
             if (::comphelper::getBOOL(aHidden))
             {
@@ -779,17 +778,17 @@ void FmGridHeader::PreExecuteColumnContextMenu(sal_uInt16 nColId, weld::Menu& rM
             }
         }
     }
-    rShowMenu.set_visible("more", xCols.is() && (nHiddenCols > 16));
-    rMenu.set_visible("show", xCols.is() && (nHiddenCols > 0));
-    rMenu.set_sensitive("show", xCols.is() && (nHiddenCols > 0));
+    rShowMenu.set_visible(u"more"_ustr, xCols.is() && (nHiddenCols > 16));
+    rMenu.set_visible(u"show"_ustr, xCols.is() && (nHiddenCols > 0));
+    rMenu.set_sensitive(u"show"_ustr, xCols.is() && (nHiddenCols > 0));
 
     // allow the 'hide column' item ?
     bool bAllowHide = bMarked;                                          // a column is marked
     bAllowHide = bAllowHide || (!bDesignMode && (nPos != sal_uInt16(-1)));  // OR we are in alive mode and have hit a column
     bAllowHide = bAllowHide && xCols.is();                              // AND we have a column container
     bAllowHide = bAllowHide && (xCols->getCount()-nHiddenCols > 1);     // AND there are at least two visible columns
-    rMenu.set_visible("hide", bAllowHide);
-    rMenu.set_sensitive("hide", bAllowHide);
+    rMenu.set_visible(u"hide"_ustr, bAllowHide);
+    rMenu.set_sensitive(u"hide"_ustr, bAllowHide);
 
     if (!bMarked)
         return;
@@ -801,10 +800,9 @@ void FmGridHeader::PreExecuteColumnContextMenu(sal_uInt16 nColId, weld::Menu& rM
         std::unique_ptr<SfxBoolItem> pItem;
         SfxItemState eState = pCurrentFrame->GetBindings().QueryState(SID_FM_CTL_PROPERTIES, pItem);
 
-        if (eState >= SfxItemState::DEFAULT && pItem != nullptr)
+        if (eState >= SfxItemState::DEFAULT && pItem)
         {
-            bool bChecked = pItem && pItem->GetValue();
-            rMenu.set_active("column", bChecked);
+            rMenu.set_active(u"column"_ustr, pItem->GetValue());
         }
     }
 }
@@ -838,7 +836,7 @@ void FmGridHeader::PostExecuteColumnContextMenu(sal_uInt16 nColId, const weld::M
     }
     else if (rExecutionResult == "column")
     {
-        eInspectorAction = rMenu.get_active("column") ? eOpenInspector : eCloseInspector;
+        eInspectorAction = rMenu.get_active(u"column"_ustr) ? eOpenInspector : eCloseInspector;
     }
     else if (rExecutionResult.startsWith(FM_COL_TEXTFIELD))
     {
@@ -1008,11 +1006,11 @@ void FmGridHeader::triggerColumnContextMenu( const ::Point& _rPreferredPos )
     sal_uInt16 nColId = GetItemId( _rPreferredPos );
 
     // the menu
-    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "svx/ui/colsmenu.ui"));
-    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
-    std::unique_ptr<weld::Menu> xInsertMenu(xBuilder->weld_menu("insertmenu"));
-    std::unique_ptr<weld::Menu> xChangeMenu(xBuilder->weld_menu("changemenu"));
-    std::unique_ptr<weld::Menu> xShowMenu(xBuilder->weld_menu("showmenu"));
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, u"svx/ui/colsmenu.ui"_ustr));
+    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
+    std::unique_ptr<weld::Menu> xInsertMenu(xBuilder->weld_menu(u"insertmenu"_ustr));
+    std::unique_ptr<weld::Menu> xChangeMenu(xBuilder->weld_menu(u"changemenu"_ustr));
+    std::unique_ptr<weld::Menu> xShowMenu(xBuilder->weld_menu(u"showmenu"_ustr));
 
     // let derivatives modify the menu
     PreExecuteColumnContextMenu(nColId, *xContextMenu, *xInsertMenu, *xChangeMenu, *xShowMenu);
@@ -1142,7 +1140,7 @@ void FmGridControl::SetDesignMode(bool bMode)
         {
             Any aSelection = xSelSupplier->getSelection();
             Reference< css::beans::XPropertySet >  xColumn;
-            if (aSelection.getValueType().getTypeClass() == TypeClass_INTERFACE)
+            if (aSelection.getValueTypeClass() == TypeClass_INTERFACE)
                 xColumn.set(aSelection, css::uno::UNO_QUERY);
             Reference< XInterface >  xCurrent;
             for (sal_Int32 i=0; i<xColumns->getCount(); ++i)
@@ -1380,7 +1378,7 @@ void FmGridControl::DeleteSelectedRows()
                 else
                 {
                     // select the remaining rows
-                    for (const sal_Int32 nSuccess : std::as_const(aDeletedRows))
+                    for (const sal_Int32 nSuccess : aDeletedRows)
                     {
                         try
                         {
@@ -1761,7 +1759,7 @@ void FmGridControl::HideColumn(sal_uInt16 nId)
 
 bool FmGridControl::isColumnSelected(DbGridColumn const * _pColumn) const
 {
-    OSL_ENSURE(_pColumn,"Column can not be null!");
+    assert(_pColumn && "Column can not be null!");
     bool bSelected = false;
     // if the column which is shown here is selected ...
     Reference< css::view::XSelectionSupplier >  xSelSupplier(GetPeer()->getColumns(), UNO_QUERY);

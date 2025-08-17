@@ -60,9 +60,7 @@ using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace ::cppu;
-using namespace ::osl;
 
 // This class calls m_pCacheSet->FOO_checked(..., sal_False)
 // (where FOO is absolute, last, previous)
@@ -110,6 +108,7 @@ ORowSetCache::ORowSetCache(const Reference< XResultSet >& _xRs,
         if ( bBookmarkable )
         {
             xUp->moveToInsertRow();
+            xUp->moveToCurrentRow();
             xUp->cancelRowUpdates();
             _xRs->beforeFirst();
             m_nPrivileges = Privilege::SELECT|Privilege::DELETE|Privilege::INSERT|Privilege::UPDATE;
@@ -205,7 +204,7 @@ ORowSetCache::ORowSetCache(const Reference< XResultSet >& _xRs,
                         {
                             Reference<XNameAccess> xSelColumns = xColSup->getColumns();
                             Reference<XDatabaseMetaData> xMeta = xConnection->getMetaData();
-                            SelectColumnsMetaData aColumnNames(xMeta.is() && xMeta->supportsMixedCaseQuotedIdentifiers());
+                            SelectColumnsMetaData aColumnNames(comphelper::UStringMixLess(xMeta.is() && xMeta->supportsMixedCaseQuotedIdentifiers()));
                             ::dbaccess::getColumnPositions(xSelColumns,xPrimaryKeyColumns->getElementNames(),aUpdateTableName,aColumnNames);
                             bAllKeysFound = !aColumnNames.empty() && aColumnNames.size() == o3tl::make_unsigned(xPrimaryKeyColumns->getElementNames().getLength());
                         }
@@ -271,7 +270,7 @@ ORowSetCache::ORowSetCache(const Reference< XResultSet >& _xRs,
         else
         {
             Reference<XDatabaseMetaData> xMeta = xConnection->getMetaData();
-            SelectColumnsMetaData aColumnNames(xMeta.is() && xMeta->supportsMixedCaseQuotedIdentifiers());
+            SelectColumnsMetaData aColumnNames(comphelper::UStringMixLess(xMeta.is() && xMeta->supportsMixedCaseQuotedIdentifiers()));
             Reference<XColumnsSupplier> xColSup(_xAnalyzer,UNO_QUERY);
             Reference<XNameAccess> xSelColumns  = xColSup->getColumns();
             Reference<XNameAccess> xColumns     = m_aUpdateTable->getColumns();
@@ -281,18 +280,15 @@ ORowSetCache::ORowSetCache(const Reference< XResultSet >& _xRs,
             m_nPrivileges = Privilege::SELECT;
             bool bNoInsert = false;
 
-            Sequence< OUString> aNames(xColumns->getElementNames());
-            const OUString* pIter    = aNames.getConstArray();
-            const OUString* pEnd     = pIter + aNames.getLength();
-            for(;pIter != pEnd;++pIter)
+            for (auto& columnName : xColumns->getElementNames())
             {
-                Reference<XPropertySet> xColumn(xColumns->getByName(*pIter),UNO_QUERY);
+                Reference<XPropertySet> xColumn(xColumns->getByName(columnName), UNO_QUERY);
                 OSL_ENSURE(xColumn.is(),"Column in table is null!");
                 if(xColumn.is())
                 {
                     sal_Int32 nNullable = 0;
                     xColumn->getPropertyValue(PROPERTY_ISNULLABLE) >>= nNullable;
-                    if(nNullable == ColumnValue::NO_NULLS && aColumnNames.find(*pIter) == aColumnNames.end())
+                    if(nNullable == ColumnValue::NO_NULLS && aColumnNames.find(columnName) == aColumnNames.end())
                     { // we found a column where null is not allowed so we can't insert new values
                         bNoInsert = true;
                         break; // one column is enough
@@ -610,7 +606,7 @@ void ORowSetCache::updateObject( sal_Int32 columnIndex, const Any& x
     if ( rInsert[columnIndex] != aTemp )
     {
         rInsert[columnIndex].setBound(true);
-        rInsert[columnIndex] = aTemp;
+        rInsert[columnIndex] = std::move(aTemp);
         rInsert[columnIndex].setModified(true);
         io_aRow[columnIndex] = rInsert[columnIndex];
 
@@ -632,7 +628,7 @@ void ORowSetCache::updateNumericObject( sal_Int32 columnIndex, const Any& x
     if ( rInsert[columnIndex] != aTemp )
     {
         rInsert[columnIndex].setBound(true);
-        rInsert[columnIndex] = aTemp;
+        rInsert[columnIndex] = std::move(aTemp);
         rInsert[columnIndex].setModified(true);
         io_aRow[columnIndex] = rInsert[columnIndex];
 

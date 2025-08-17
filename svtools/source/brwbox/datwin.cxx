@@ -55,6 +55,7 @@ void ButtonFrame::Draw( OutputDevice& rDev )
 
     if ( !aText.isEmpty() )
     {
+        // coverity[ tainted_data_return : FALSE ] version 2023.12.2
         OUString aVal = rDev.GetEllipsisString(aText,aInnerRect.GetWidth() - 2*MIN_COLUMNWIDTH);
 
         vcl::Font aFont( rDev.GetFont() );
@@ -132,7 +133,7 @@ void BrowserColumn::Draw( BrowseBox const & rBox, OutputDevice& rDev, const Poin
     {
         // paint handle column
         ButtonFrame( rPos, Size( Width()-1, rBox.GetDataRowHeight()-1 ),
-                     "", false ).Draw( rDev );
+                     u""_ustr, false ).Draw( rDev );
         Color aOldLineColor = rDev.GetLineColor();
         rDev.SetLineColor( COL_BLACK );
         rDev.DrawLine(
@@ -211,7 +212,7 @@ void BrowserDataWin::dispose()
     bInDtor = true;
 
     aInvalidRegion.clear();
-    pHeaderBar.clear();
+    pHeaderBar.reset();
     DragSourceHelper::dispose();
     DropTargetHelper::dispose();
     Control::dispose();

@@ -45,7 +45,7 @@
 
 class SwDoc;
 struct SwPosition;
-class SwUnoCursor;
+class SwXTextRange;
 class SfxItemPropertySet;
 
 typedef ::cppu::WeakImplHelper
@@ -65,7 +65,7 @@ typedef ::cppu::WeakImplHelper
 ,   css::text::XMarkingAccess
 > SwXTextCursor_Base;
 
-class SwXTextCursor final
+class SW_DLLPUBLIC SwXTextCursor final
     : public SwXTextCursor_Base
     , public OTextCursorHelper
 {
@@ -80,7 +80,7 @@ private:
 
     SwUnoCursor& GetCursorOrThrow() {
         if(!m_pUnoCursor)
-            throw css::uno::RuntimeException("SwXTextCursor: disposed or invalid", nullptr);
+            throw css::uno::RuntimeException(u"SwXTextCursor: disposed or invalid"_ustr, nullptr);
         return *m_pUnoCursor;
     }
 
@@ -257,6 +257,11 @@ public:
     //XMarkingAccess
     virtual void SAL_CALL invalidateMarkings(::sal_Int32 nType) override;
 
+private:
+    void gotoRangeImpl(
+            const SwXTextRange* pRange,
+            OTextCursorHelper* pCursor,
+            bool bExpand);
 };
 
 #endif // INCLUDED_SW_INC_UNOTEXTCURSOR_HXX

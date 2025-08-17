@@ -184,6 +184,7 @@ protected:
     virtual             ~AbstractScInsertCellDlg() override = default;
 public:
     virtual InsCellCmd GetInsCellCmd() const = 0;
+    virtual size_t GetCount() const = 0;
 };
 
 class AbstractScInsertContentsDlg : public VclAbstractDialog
@@ -395,7 +396,6 @@ public:
     virtual LanguageType GetLanguageType() const = 0;
     virtual bool IsDateConversionSet() const = 0;
     virtual bool IsScientificConversionSet() const = 0;
-    virtual bool IsKeepAskingSet() const = 0;
 };
 
 class AbstractScGoToTabDlg : public VclAbstractDialog
@@ -462,6 +462,7 @@ public:
     virtual VclPtr<AbstractScGroupDlg> CreateAbstractScGroupDlg(weld::Window* pParent, bool bUnGroup = false) = 0;
 
     virtual VclPtr<AbstractScInsertCellDlg> CreateScInsertCellDlg(weld::Window* pParent,
+                                                             ScViewData& rViewData,
                                                              bool bDisallowCellMove) = 0;
 
     virtual VclPtr<AbstractScInsertContentsDlg> CreateScInsertContentsDlg(weld::Window* pParent,
@@ -470,7 +471,7 @@ public:
     virtual VclPtr<AbstractScInsertTableDlg> CreateScInsertTableDlg(weld::Window* pParent, ScViewData& rViewData,
         SCTAB nTabCount, bool bFromFile) = 0;
 
-    virtual VclPtr<AbstractScSelEntryDlg > CreateScSelEntryDlg(weld::Window* pParent, const std::vector<OUString> &rEntryList) = 0;
+    virtual VclPtr<AbstractScSelEntryDlg> CreateScSelEntryDlg(weld::Window* pParent, const std::vector<OUString> &rEntryList) = 0;
     virtual VclPtr<AbstractScLinkedAreaDlg> CreateScLinkedAreaDlg(weld::Widget* pParent) = 0;
 
     virtual VclPtr<AbstractScMetricInputDlg> CreateScMetricInputDlg(weld::Window* pParent,
@@ -492,6 +493,7 @@ public:
 
     virtual VclPtr<AbstractScPivotFilterDlg> CreateScPivotFilterDlg(weld::Window* pParent,
                                                                     const SfxItemSet& rArgSet,
+                                                                    ScViewData& rViewData,
                                                                     sal_uInt16 nSourceTab) = 0;
 
     virtual VclPtr<AbstractScDPFunctionDlg> CreateScDPFunctionDlg(weld::Widget* pParent,

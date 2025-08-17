@@ -69,13 +69,13 @@ FormulaGrammarSwitch::~FormulaGrammarSwitch()
 // calc data structure pretty printer
 std::ostream& operator<<(std::ostream& rStrm, const ScAddress& rAddr)
 {
-    rStrm << "Col: " << rAddr.Col() << " Row: " << rAddr.Row() << " Tab: " << rAddr.Tab() << "\n";
+    rStrm << "(Col: " << rAddr.Col() << "; Row: " << rAddr.Row() << "; Tab: " << rAddr.Tab() << ")";
     return rStrm;
 }
 
 std::ostream& operator<<(std::ostream& rStrm, const ScRange& rRange)
 {
-    rStrm << "ScRange: " << rRange.aStart << rRange.aEnd << "\n";
+    rStrm << rRange.aStart << "-" << rRange.aEnd;
     return rStrm;
 }
 
@@ -91,6 +91,16 @@ std::ostream& operator<<(std::ostream& rStrm, const OpCode& rCode)
 {
     rStrm << static_cast<sal_uInt16>(rCode);
     return rStrm;
+}
+
+namespace svl {
+
+std::ostream& operator<<(std::ostream& rStrm, const SharedString& rStr)
+{
+    rStrm << "(s='" << rStr.getString() << "'; ics='" << rStr.getIgnoreCaseString() << "')";
+    return rStrm;
+}
+
 }
 
 void ScModelTestBase::loadFile(const OUString& aFileName, std::string& aContent)
@@ -188,10 +198,10 @@ void ScModelTestBase::testFormats(ScDocument* pDoc,std::u16string_view sFormat)
     CPPUNIT_ASSERT_EQUAL_MESSAGE("font size should be 12", tools::Long(240), aFont.GetFontSize().getHeight());
     pPattern = pDoc->GetPattern(0,2,1);
     pPattern->fillFontOnly(aFont);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("font should be italic", ITALIC_NORMAL, aFont.GetItalic());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("font should be italic", ITALIC_NORMAL, aFont.GetItalicMaybeAskConfig());
     pPattern = pDoc->GetPattern(0,4,1);
     pPattern->fillFontOnly(aFont);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE("font should be bold", WEIGHT_BOLD, aFont.GetWeight());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("font should be bold", WEIGHT_BOLD, aFont.GetWeightMaybeAskConfig());
     pPattern = pDoc->GetPattern(1,0,1);
     pPattern->fillFontOnly(aFont);
     pPattern->fillColor(aComplexColor, ScAutoFontColorMode::Raw);
@@ -219,7 +229,7 @@ void ScModelTestBase::testFormats(ScDocument* pDoc,std::u16string_view sFormat)
         CPPUNIT_ASSERT_EQUAL( static_cast<sal_uInt16>(4153), pDoc->GetColWidth(6,1) ); //2.8839in
         //test case for i53253 where a cell has text with different styles and space between the text.
         OUString aTestStr = pDoc->GetString(3,0,1);
-        OUString aKnownGoodStr("text14 space");
+        OUString aKnownGoodStr(u"text14 space"_ustr);
         CPPUNIT_ASSERT_EQUAL( aKnownGoodStr, aTestStr );
         //test case for cell text with line breaks.
         aTestStr = pDoc->GetString(3,5,1);
@@ -251,7 +261,7 @@ void ScModelTestBase::testFormats(ScDocument* pDoc,std::u16string_view sFormat)
             pPattern = pDoc->GetPattern(1,1,3);
             ScStyleSheet* pStyleSheet = const_cast<ScStyleSheet*>(pPattern->GetStyleSheet());
             // check parent style name
-            OUString sExpected("Excel Built-in Date");
+            OUString sExpected(u"Excel Built-in Date"_ustr);
             OUString sResult = pStyleSheet->GetName();
             CPPUNIT_ASSERT_EQUAL_MESSAGE("parent style for Sheet4.B2 is 'Excel Built-in Date'", sExpected, sResult);
             // check  align of style
@@ -287,10 +297,10 @@ void ScModelTestBase::goToCell(const OUString& rCell)
 {
     uno::Sequence<beans::PropertyValue> aArgs
         = comphelper::InitPropertySequence({ { "ToPoint", uno::Any(rCell) } });
-    dispatchCommand(mxComponent, ".uno:GoToCell", aArgs);
+    dispatchCommand(mxComponent, u".uno:GoToCell"_ustr, aArgs);
 }
 
-void ScModelTestBase::typeString(const std::u16string_view& rStr)
+void ScModelTestBase::typeString(std::u16string_view rStr)
 {
     ScModelObj* pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
     for (const char16_t c : rStr)
@@ -301,7 +311,7 @@ void ScModelTestBase::typeString(const std::u16string_view& rStr)
     }
 }
 
-void ScModelTestBase::insertStringToCell(const OUString& rCell, const std::u16string_view& rStr)
+void ScModelTestBase::insertStringToCell(const OUString& rCell, std::u16string_view rStr)
 {
     goToCell(rCell);
 
@@ -313,7 +323,7 @@ void ScModelTestBase::insertStringToCell(const OUString& rCell, const std::u16st
     Scheduler::ProcessEventsToIdle();
 }
 
-void ScModelTestBase::insertArrayToCell(const OUString& rCell, const std::u16string_view& rStr)
+void ScModelTestBase::insertArrayToCell(const OUString& rCell, std::u16string_view rStr)
 {
     goToCell(rCell);
 
@@ -327,18 +337,18 @@ void ScModelTestBase::insertArrayToCell(const OUString& rCell, const std::u16str
 
 void ScModelTestBase::insertNewSheet(ScDocument& rDoc)
 {
-    sal_Int32 nTabs = static_cast<sal_Int32>(rDoc.GetTableCount());
+    sal_Int16 nTabs = rDoc.GetTableCount();
 
     uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
-        { { "Name", uno::Any(OUString("NewTab")) }, { "Index", uno::Any(nTabs + 1) } }));
-    dispatchCommand(mxComponent, ".uno:Insert", aArgs);
+        { { "Name", uno::Any(u"NewTab"_ustr) }, { "Index", uno::Any(sal_Int16(nTabs + 1)) } }));
+    dispatchCommand(mxComponent, u".uno:Insert"_ustr, aArgs);
 
     CPPUNIT_ASSERT_EQUAL(static_cast<SCTAB>(nTabs + 1), rDoc.GetTableCount());
 }
 
 void ScModelTestBase::executeAutoSum()
 {
-    dispatchCommand(mxComponent, ".uno:AutoSum", {});
+    dispatchCommand(mxComponent, u".uno:AutoSum"_ustr, {});
 
     // Use RETURN key to exit autosum edit view
     ScModelObj* pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
@@ -465,7 +475,7 @@ ScRangeList ScModelTestBase::getChartRanges(ScDocument& rDoc, const SdrOle2Obj& 
             ScAddress aAddr;
             nRes = aAddr.Parse(aRangeReps[i], rDoc, rDoc.GetAddressConvention());
             CPPUNIT_ASSERT_MESSAGE("Failed to parse a range representation.", (nRes & ScRefFlags::VALID));
-            aRanges.push_back(aAddr);
+            aRanges.push_back(ScRange(aAddr));
         }
     }
 
@@ -572,12 +582,12 @@ void ScUcalcTestBase::tearDown()
 void ScModelTestBase::createScDoc(const char* pName, const char* pPassword, bool bCheckWarningError)
 {
     if (!pName)
-        load("private:factory/scalc");
+        loadFromURL(u"private:factory/scalc"_ustr);
     else
-        loadFromURL(OUString::createFromAscii(pName), pPassword);
+        loadFromFile(OUString::createFromAscii(pName), pPassword);
 
     uno::Reference<lang::XServiceInfo> xServiceInfo(mxComponent, uno::UNO_QUERY_THROW);
-    CPPUNIT_ASSERT(xServiceInfo->supportsService("com.sun.star.sheet.SpreadsheetDocument"));
+    CPPUNIT_ASSERT(xServiceInfo->supportsService(u"com.sun.star.sheet.SpreadsheetDocument"_ustr));
 
     if (bCheckWarningError)
         CPPUNIT_ASSERT(!getScDocShell()->GetMedium()->GetWarningError());
@@ -620,7 +630,7 @@ void ScModelTestBase::miscRowHeightsTest( TestParam const * aTestValues, unsigne
     {
         const std::u16string_view sFileName = aTestValues[ index ].sTestDoc;
         const OUString sExportType =  aTestValues[ index ].sExportType;
-        loadFromURL(sFileName);
+        loadFromFile(sFileName);
 
         if ( !sExportType.isEmpty() )
             saveAndReload(sExportType);
@@ -634,7 +644,7 @@ void ScModelTestBase::miscRowHeightsTest( TestParam const * aTestValues, unsigne
             SCTAB nTab = aTestValues[ index ].pData[ i ].nTab;
             int nExpectedHeight = aTestValues[ index ].pData[ i ].nExpectedHeight;
             if ( nExpectedHeight == -1 )
-                nExpectedHeight = convertTwipToMm100(ScGlobal::GetStandardRowHeight());
+                nExpectedHeight = convertTwipToMm100(ScGlobal::nStdRowHeight);
             bool bCheckOpt = ( ( aTestValues[ index ].pData[ i ].nCheck & CHECK_OPTIMAL ) == CHECK_OPTIMAL );
             for ( ; nRow <= nEndRow; ++nRow )
             {
@@ -683,7 +693,7 @@ void ScModelTestBase::initTestEnv(std::u16string_view fileName)
 
     // Open the document with OpenCL disabled
     mxComponent = mxDesktop->loadComponentFromURL(
-        createFileURL(fileName), "_default", 0, comphelper::containerToSequence(args));
+        createFileURL(fileName), u"_default"_ustr, 0, comphelper::containerToSequence(args));
 
     enableOpenCL();
     CPPUNIT_ASSERT(ScCalcConfig::isOpenCLEnabled());
@@ -693,7 +703,7 @@ void ScModelTestBase::initTestEnv(std::u16string_view fileName)
 
     // Open the document with OpenCL enabled
     mxComponent2 = mxDesktop->loadComponentFromURL(
-        maTempFile.GetURL(), "_default", 0, comphelper::containerToSequence(args));
+        maTempFile.GetURL(), u"_default"_ustr, 0, comphelper::containerToSequence(args));
 
     // Check there are 2 documents
     uno::Reference<frame::XFrames> xFrames = mxDesktop->getFrames();
@@ -776,7 +786,7 @@ ScUndoCut* ScUcalcTestBase::cutToClip(ScDocShell& rDocSh, const ScRange& rRange,
     aMark.MarkToSimple();
 
     if (pUndoDoc)
-        return new ScUndoCut( &rDocSh, rRange, rRange.aEnd, aMark, std::move(pUndoDoc) );
+        return new ScUndoCut( rDocSh, rRange, rRange.aEnd, aMark, std::move(pUndoDoc) );
 
     return nullptr;
 }
@@ -801,10 +811,10 @@ ScUndoPaste* ScUcalcTestBase::createUndoPaste(ScDocShell& rDocSh, const ScRange&
     ScDocument& rDoc = rDocSh.GetDocument();
     ScMarkData aMarkData(rDoc.GetSheetLimits());
     aMarkData.SetMarkArea(rRange);
-    std::unique_ptr<ScRefUndoData> pRefUndoData(new ScRefUndoData(&rDoc));
+    std::unique_ptr<ScRefUndoData> pRefUndoData(new ScRefUndoData(rDoc));
 
     return new ScUndoPaste(
-        &rDocSh, rRange, aMarkData, std::move(pUndoDoc), nullptr, InsertDeleteFlags::ALL, std::move(pRefUndoData), false);
+        rDocSh, rRange, aMarkData, std::move(pUndoDoc), nullptr, InsertDeleteFlags::ALL, std::move(pRefUndoData), false);
 }
 
 void ScUcalcTestBase::pasteOneCellFromClip(ScDocument* pDestDoc, const ScRange& rDestRange, ScDocument* pClipDoc, InsertDeleteFlags eFlags)

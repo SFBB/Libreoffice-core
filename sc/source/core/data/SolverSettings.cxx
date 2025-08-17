@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -9,8 +9,11 @@
  */
 
 #include <global.hxx>
+#include <compiler.hxx>
 #include <table.hxx>
 #include <docsh.hxx>
+#include <rtl/math.hxx>
+#include <o3tl/string_view.hxx>
 #include <solverutil.hxx>
 #include <unotools/charclass.hxx>
 #include <SolverSettings.hxx>
@@ -73,6 +76,28 @@ void SolverSettings::Initialize()
     ReadParamValue(SP_LIMIT_BBDEPTH, m_sLimitBBDepth);
     ReadParamValue(SP_TIMEOUT, m_sTimeout);
     ReadParamValue(SP_ALGORITHM, m_sAlgorithm);
+    // Engine options common for DEPS and SCO
+    ReadParamValue(SP_SWARM_SIZE, m_sSwarmSize);
+    ReadParamValue(SP_LEARNING_CYCLES, m_sLearningCycles);
+    ReadParamValue(SP_GUESS_VARIABLE_RANGE, m_sGuessVariableRange);
+    ReadDoubleParamValue(SP_VARIABLE_RANGE_THRESHOLD, m_sVariableRangeThreshold);
+    ReadParamValue(SP_ACR_COMPARATOR, m_sUseACRComparator);
+    ReadParamValue(SP_RND_STARTING_POINT, m_sUseRandomStartingPoint);
+    ReadParamValue(SP_STRONGER_PRNG, m_sUseStrongerPRNG);
+    ReadParamValue(SP_STAGNATION_LIMIT, m_sStagnationLimit);
+    ReadDoubleParamValue(SP_STAGNATION_TOLERANCE, m_sTolerance);
+    ReadParamValue(SP_ENHANCED_STATUS, m_sEnhancedSolverStatus);
+    // DEPS Options
+    ReadDoubleParamValue(SP_AGENT_SWITCH_RATE, m_sAgentSwitchRate);
+    ReadDoubleParamValue(SP_SCALING_MIN, m_sScalingFactorMin);
+    ReadDoubleParamValue(SP_SCALING_MAX, m_sScalingFactorMax);
+    ReadDoubleParamValue(SP_CROSSOVER_PROB, m_sCrossoverProbability);
+    ReadDoubleParamValue(SP_COGNITIVE_CONST, m_sCognitiveConstant);
+    ReadDoubleParamValue(SP_SOCIAL_CONST, m_sSocialConstant);
+    ReadDoubleParamValue(SP_CONSTRICTION_COEFF, m_sConstrictionCoeff);
+    ReadDoubleParamValue(SP_MUTATION_PROB, m_sMutationProbability);
+    // SCO Options
+    ReadParamValue(SP_LIBRARY_SIZE, m_sLibrarySize);
 }
 
 // Returns the current value of the parameter in the object as a string
@@ -119,13 +144,70 @@ OUString SolverSettings::GetParameter(SolverParameter eParam)
         case SP_ALGORITHM:
             return m_sAlgorithm;
             break;
+        case SP_SWARM_SIZE:
+            return m_sSwarmSize;
+            break;
+        case SP_LEARNING_CYCLES:
+            return m_sLearningCycles;
+            break;
+        case SP_GUESS_VARIABLE_RANGE:
+            return m_sGuessVariableRange;
+            break;
+        case SP_VARIABLE_RANGE_THRESHOLD:
+            return m_sVariableRangeThreshold;
+            break;
+        case SP_ACR_COMPARATOR:
+            return m_sUseACRComparator;
+            break;
+        case SP_RND_STARTING_POINT:
+            return m_sUseRandomStartingPoint;
+            break;
+        case SP_STRONGER_PRNG:
+            return m_sUseStrongerPRNG;
+            break;
+        case SP_STAGNATION_LIMIT:
+            return m_sStagnationLimit;
+            break;
+        case SP_STAGNATION_TOLERANCE:
+            return m_sTolerance;
+            break;
+        case SP_ENHANCED_STATUS:
+            return m_sEnhancedSolverStatus;
+            break;
+        case SP_AGENT_SWITCH_RATE:
+            return m_sAgentSwitchRate;
+            break;
+        case SP_SCALING_MIN:
+            return m_sScalingFactorMin;
+            break;
+        case SP_SCALING_MAX:
+            return m_sScalingFactorMax;
+            break;
+        case SP_CROSSOVER_PROB:
+            return m_sCrossoverProbability;
+            break;
+        case SP_COGNITIVE_CONST:
+            return m_sCognitiveConstant;
+            break;
+        case SP_SOCIAL_CONST:
+            return m_sSocialConstant;
+            break;
+        case SP_CONSTRICTION_COEFF:
+            return m_sConstrictionCoeff;
+            break;
+        case SP_MUTATION_PROB:
+            return m_sMutationProbability;
+            break;
+        case SP_LIBRARY_SIZE:
+            return m_sLibrarySize;
+            break;
         default:
-            return "";
+            return u""_ustr;
     }
 }
 
 // Sets the value of a single solver parameter in the object
-void SolverSettings::SetParameter(SolverParameter eParam, OUString sValue)
+void SolverSettings::SetParameter(SolverParameter eParam, const OUString& sValue)
 {
     switch (eParam)
     {
@@ -188,6 +270,75 @@ void SolverSettings::SetParameter(SolverParameter eParam, OUString sValue)
                 m_sAlgorithm = sValue;
         }
         break;
+        case SP_SWARM_SIZE:
+            m_sSwarmSize = sValue;
+            break;
+        case SP_LEARNING_CYCLES:
+            m_sLearningCycles = sValue;
+            break;
+        case SP_GUESS_VARIABLE_RANGE:
+            m_sGuessVariableRange = sValue;
+            break;
+        case SP_VARIABLE_RANGE_THRESHOLD:
+            m_sVariableRangeThreshold = sValue;
+            break;
+        case SP_ACR_COMPARATOR:
+        {
+            if (sValue == "0" || sValue == "1")
+                m_sUseACRComparator = sValue;
+        }
+        break;
+        case SP_RND_STARTING_POINT:
+        {
+            if (sValue == "0" || sValue == "1")
+                m_sUseRandomStartingPoint = sValue;
+        }
+        break;
+        case SP_STRONGER_PRNG:
+        {
+            if (sValue == "0" || sValue == "1")
+                m_sUseStrongerPRNG = sValue;
+        }
+        break;
+        case SP_STAGNATION_LIMIT:
+            m_sStagnationLimit = sValue;
+            break;
+        case SP_STAGNATION_TOLERANCE:
+            m_sTolerance = sValue;
+            break;
+        case SP_ENHANCED_STATUS:
+        {
+            if (sValue == "0" || sValue == "1")
+                m_sEnhancedSolverStatus = sValue;
+        }
+        break;
+        case SP_AGENT_SWITCH_RATE:
+            m_sAgentSwitchRate = sValue;
+            break;
+        case SP_SCALING_MIN:
+            m_sScalingFactorMin = sValue;
+            break;
+        case SP_SCALING_MAX:
+            m_sScalingFactorMax = sValue;
+            break;
+        case SP_CROSSOVER_PROB:
+            m_sCrossoverProbability = sValue;
+            break;
+        case SP_COGNITIVE_CONST:
+            m_sCognitiveConstant = sValue;
+            break;
+        case SP_SOCIAL_CONST:
+            m_sSocialConstant = sValue;
+            break;
+        case SP_CONSTRICTION_COEFF:
+            m_sConstrictionCoeff = sValue;
+            break;
+        case SP_MUTATION_PROB:
+            m_sMutationProbability = sValue;
+            break;
+        case SP_LIBRARY_SIZE:
+            m_sLibrarySize = sValue;
+            break;
         default:
             break;
     }
@@ -242,7 +393,8 @@ void SolverSettings::WriteConstraints()
 }
 
 // Write a single constraint part to the file
-void SolverSettings::WriteConstraintPart(ConstraintPart ePart, tools::Long nIndex, OUString sValue)
+void SolverSettings::WriteConstraintPart(ConstraintPart ePart, tools::Long nIndex,
+                                         const OUString& sValue)
 {
     // Empty named ranges cannot be written to the file (this corrupts MS files)
     if (sValue.isEmpty())
@@ -250,6 +402,7 @@ void SolverSettings::WriteConstraintPart(ConstraintPart ePart, tools::Long nInde
 
     OUString sRange = m_aConstraintParts[ePart] + OUString::number(nIndex);
     ScRangeData* pNewEntry = new ScRangeData(m_rDoc, sRange, sValue);
+    pNewEntry->AddType(ScRangeData::Type::Hidden);
     m_pRangeName->insert(pNewEntry);
 }
 
@@ -263,6 +416,12 @@ bool SolverSettings::ReadConstraintPart(ConstraintPart ePart, tools::Long nIndex
     if (pRangeData)
     {
         rValue = pRangeData->GetSymbol();
+        // tdf#156814 Remove sheet name if it is a range that refers to the same sheet
+        ScRange aRange;
+        ScRefFlags nFlags = aRange.ParseAny(rValue, m_rDoc);
+        bool bIsValidRange = (nFlags & ScRefFlags::VALID) == ScRefFlags::VALID;
+        if (bIsValidRange && m_rTable.GetTab() == aRange.aStart.Tab())
+            rValue = aRange.Format(m_rDoc, ScRefFlags::RANGE_ABS);
         return true;
     }
     return false;
@@ -321,12 +480,35 @@ void SolverSettings::SaveSolverSettings()
     sal_Int32 nConstrCount = m_aConstraints.size();
     WriteParamValue(SP_CONSTR_COUNT, OUString::number(nConstrCount));
 
+    // Solver engine options
     WriteParamValue(SP_INTEGER, m_sInteger);
     WriteParamValue(SP_NON_NEGATIVE, m_sNonNegative);
     WriteParamValue(SP_EPSILON_LEVEL, m_sEpsilonLevel);
     WriteParamValue(SP_LIMIT_BBDEPTH, m_sLimitBBDepth);
     WriteParamValue(SP_TIMEOUT, m_sTimeout);
     WriteParamValue(SP_ALGORITHM, m_sAlgorithm);
+    // Engine options common for DEPS and SCO
+    WriteParamValue(SP_SWARM_SIZE, m_sSwarmSize);
+    WriteParamValue(SP_LEARNING_CYCLES, m_sLearningCycles);
+    WriteParamValue(SP_GUESS_VARIABLE_RANGE, m_sGuessVariableRange);
+    WriteDoubleParamValue(SP_VARIABLE_RANGE_THRESHOLD, m_sVariableRangeThreshold);
+    WriteParamValue(SP_ACR_COMPARATOR, m_sUseACRComparator);
+    WriteParamValue(SP_RND_STARTING_POINT, m_sUseRandomStartingPoint);
+    WriteParamValue(SP_STRONGER_PRNG, m_sUseStrongerPRNG);
+    WriteParamValue(SP_STAGNATION_LIMIT, m_sStagnationLimit);
+    WriteDoubleParamValue(SP_STAGNATION_TOLERANCE, m_sTolerance);
+    WriteParamValue(SP_ENHANCED_STATUS, m_sEnhancedSolverStatus);
+    // DEPS Options
+    WriteDoubleParamValue(SP_AGENT_SWITCH_RATE, m_sAgentSwitchRate);
+    WriteDoubleParamValue(SP_SCALING_MIN, m_sScalingFactorMin);
+    WriteDoubleParamValue(SP_SCALING_MAX, m_sScalingFactorMax);
+    WriteDoubleParamValue(SP_CROSSOVER_PROB, m_sCrossoverProbability);
+    WriteDoubleParamValue(SP_COGNITIVE_CONST, m_sCognitiveConstant);
+    WriteDoubleParamValue(SP_SOCIAL_CONST, m_sSocialConstant);
+    WriteDoubleParamValue(SP_CONSTRICTION_COEFF, m_sConstrictionCoeff);
+    WriteDoubleParamValue(SP_MUTATION_PROB, m_sMutationProbability);
+    // SCO Options
+    WriteParamValue(SP_LIBRARY_SIZE, m_sLibrarySize);
 
     if (m_pDocShell)
         m_pDocShell->SetDocumentModified();
@@ -349,6 +531,69 @@ bool SolverSettings::ReadParamValue(SolverParameter eParam, OUString& rValue, bo
         rValue = pRangeData->GetSymbol();
         if (bRemoveQuotes)
             ScGlobal::EraseQuotes(rValue, '"');
+
+        // tdf#156814 Remove sheet name from the objective cell and value if they refer to the same sheet
+        if (eParam == SP_OBJ_CELL || eParam == SP_OBJ_VAL)
+        {
+            ScRange aRange;
+            ScRefFlags nFlags = aRange.ParseAny(rValue, m_rDoc);
+            bool bIsValidRange = ((nFlags & ScRefFlags::VALID) == ScRefFlags::VALID);
+
+            if (bIsValidRange && m_rTable.GetTab() == aRange.aStart.Tab())
+                rValue = aRange.Format(m_rDoc, ScRefFlags::RANGE_ABS);
+        }
+        else if (eParam == SP_VAR_CELLS)
+        {
+            // Variable cells may contain multiple ranges separated by ';'
+            sal_Int32 nIdx = 0;
+            OUString sNewValue;
+            bool bFirst = true;
+            // Delimiter character to separate ranges
+            sal_Unicode cDelimiter = ScCompiler::GetNativeSymbolChar(OpCode::ocSep);
+
+            do
+            {
+                OUString aRangeStr(o3tl::getToken(rValue, 0, cDelimiter, nIdx));
+                ScRange aRange;
+                ScRefFlags nFlags = aRange.ParseAny(aRangeStr, m_rDoc);
+                bool bIsValidRange = (nFlags & ScRefFlags::VALID) == ScRefFlags::VALID;
+
+                if (bIsValidRange && m_rTable.GetTab() == aRange.aStart.Tab())
+                    aRangeStr = aRange.Format(m_rDoc, ScRefFlags::RANGE_ABS);
+
+                if (bFirst)
+                {
+                    sNewValue = aRangeStr;
+                    bFirst = false;
+                }
+                else
+                {
+                    sNewValue += OUStringChar(cDelimiter) + aRangeStr;
+                }
+            } while (nIdx > 0);
+
+            rValue = sNewValue;
+        }
+        return true;
+    }
+    return false;
+}
+
+// Reads a parameter value of type 'double' from the named range and into rValue
+bool SolverSettings::ReadDoubleParamValue(SolverParameter eParam, OUString& rValue)
+{
+    const auto iter = m_mNamedRanges.find(eParam);
+    assert(iter != m_mNamedRanges.end());
+    OUString sRange = iter->second;
+    ScRangeData* pRangeData
+        = m_pRangeName->findByUpperName(ScGlobal::getCharClass().uppercase(sRange));
+    if (pRangeData)
+    {
+        OUString sLocalizedValue = pRangeData->GetSymbol();
+        double fValue = rtl::math::stringToDouble(sLocalizedValue,
+                                                  ScGlobal::getLocaleData().getNumDecimalSep()[0],
+                                                  ScGlobal::getLocaleData().getNumThousandSep()[0]);
+        rValue = OUString::number(fValue);
         return true;
     }
     return false;
@@ -372,6 +617,24 @@ void SolverSettings::WriteParamValue(SolverParameter eParam, OUString sValue, bo
     assert(iter != m_mNamedRanges.end());
     OUString sRange = iter->second;
     ScRangeData* pNewEntry = new ScRangeData(m_rDoc, sRange, sValue);
+    pNewEntry->AddType(ScRangeData::Type::Hidden);
+    m_pRangeName->insert(pNewEntry);
+}
+
+// Writes a parameter value of type 'double' to the file as a named range
+// The argument 'sValue' uses dot as decimal separator and needs to be localized before
+// being written to the file
+void SolverSettings::WriteDoubleParamValue(SolverParameter eParam, std::u16string_view sValue)
+{
+    const auto iter = m_mNamedRanges.find(eParam);
+    assert(iter != m_mNamedRanges.end());
+    OUString sRange = iter->second;
+    double fValue = rtl::math::stringToDouble(sValue, '.', ',');
+    OUString sLocalizedValue = rtl::math::doubleToUString(
+        fValue, rtl_math_StringFormat_Automatic, rtl_math_DecimalPlaces_Max,
+        ScGlobal::getLocaleData().getNumDecimalSep()[0], true);
+    ScRangeData* pNewEntry = new ScRangeData(m_rDoc, sRange, sLocalizedValue);
+    pNewEntry->AddType(ScRangeData::Type::Hidden);
     m_pRangeName->insert(pNewEntry);
 }
 
@@ -382,7 +645,7 @@ void SolverSettings::GetEngineOptions(css::uno::Sequence<css::beans::PropertyVal
 
     for (auto i = 0; i < nOptionsSize; i++)
     {
-        css::beans::PropertyValue aProp = aOptions[i];
+        const css::beans::PropertyValue& aProp = aOptions[i];
         OUString sLOParamName = aProp.Name;
         // Only try to get the parameter value if it is an expected parameter name
         if (SolverParamNames.count(sLOParamName))
@@ -396,6 +659,12 @@ void SolverSettings::GetEngineOptions(css::uno::Sequence<css::beans::PropertyVal
             {
                 css::uno::Any nValue(sParamValue.toInt32());
                 pParamValues[i] = css::beans::PropertyValue(sLOParamName, -1, nValue,
+                                                            css::beans::PropertyState_DIRECT_VALUE);
+            }
+            if (sParamType == "double")
+            {
+                css::uno::Any fValue(sParamValue.toDouble());
+                pParamValues[i] = css::beans::PropertyValue(sLOParamName, -1, fValue,
                                                             css::beans::PropertyState_DIRECT_VALUE);
             }
             if (sParamType == "bool")
@@ -417,13 +686,13 @@ void SolverSettings::GetEngineOptions(css::uno::Sequence<css::beans::PropertyVal
 }
 
 // Updates the object members related to solver engine options using aOptions info
-void SolverSettings::SetEngineOptions(css::uno::Sequence<css::beans::PropertyValue>& aOptions)
+void SolverSettings::SetEngineOptions(const css::uno::Sequence<css::beans::PropertyValue>& aOptions)
 {
     sal_Int32 nOptionsSize = aOptions.getLength();
 
     for (auto i = 0; i < nOptionsSize; i++)
     {
-        css::beans::PropertyValue aProp = aOptions[i];
+        const css::beans::PropertyValue& aProp = aOptions[i];
         OUString sLOParamName = aProp.Name;
         // Only try to set the parameter value if it is an expected parameter name
         if (SolverParamNames.count(sLOParamName))
@@ -437,6 +706,12 @@ void SolverSettings::SetEngineOptions(css::uno::Sequence<css::beans::PropertyVal
                 sal_Int32 nValue = 0;
                 aProp.Value >>= nValue;
                 SetParameter(eParamId, OUString::number(nValue));
+            }
+            if (sParamType == "double")
+            {
+                double fValue = 0;
+                aProp.Value >>= fValue;
+                SetParameter(eParamId, OUString::number(fValue));
             }
             if (sParamType == "bool")
             {
@@ -489,20 +764,45 @@ void SolverSettings::ResetToDefaults()
     m_sVariableCells = "";
     m_sMSEngineId = "1";
 
-    // The default solver engine is the first implementation available
     css::uno::Sequence<OUString> aEngineNames;
     css::uno::Sequence<OUString> aDescriptions;
     ScSolverUtil::GetImplementations(aEngineNames, aDescriptions);
+
+    // tdf#162760 Set the parameters of all available solver engines to the default values
+    for (const auto& sEngine : aEngineNames)
+    {
+        css::uno::Sequence<css::beans::PropertyValue> aEngineProps
+            = ScSolverUtil::GetDefaults(sEngine);
+        SetEngineOptions(aEngineProps);
+    }
+
+    // The default solver engine is the first implementation available
     m_sLOEngineName = aEngineNames[0];
-
-    // Default engine options
-    m_aEngineOptions = ScSolverUtil::GetDefaults(m_sLOEngineName);
-
-    // Default solver engine options
-    SetEngineOptions(m_aEngineOptions);
 
     // Clear all constraints
     m_aConstraints.clear();
 }
 
+/* Returns true if the current sheet already has a solver model.
+   This is determined by checking if the current tab has the SP_OBJ_CELL named range
+   which is associated with solver models.
+   Note that the named ranges are only created after SaveSolverSettings is called,
+   so before it is called, no solver-related named ranges exist.
+*/
+bool SolverSettings::TabHasSolverModel()
+{
+    // Check if the named range for the objective value exists in the sheet
+    const auto iter = m_mNamedRanges.find(SP_OBJ_CELL);
+    if (iter == m_mNamedRanges.end())
+        return false;
+    OUString sRange = iter->second;
+    ScRangeData* pRangeData
+        = m_pRangeName->findByUpperName(ScGlobal::getCharClass().uppercase(sRange));
+    if (pRangeData)
+        return true;
+    return false;
+}
+
 } // namespace sc
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

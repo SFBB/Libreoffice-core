@@ -39,7 +39,9 @@ HelpCompiler::HelpCompiler(StreamTable &in_streamTable, fs::path in_inputFile,
     src(std::move(in_src)), zipdir(std::move(in_zipdir)), module(std::move(in_module)), lang(std::move(in_lang)), resCompactStylesheet(std::move(in_resCompactStylesheet)),
     resEmbStylesheet(std::move(in_resEmbStylesheet)), bExtensionMode( in_bExtensionMode )
 {
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
     xmlKeepBlanksDefaultValue = 0;
+SAL_WNODEPRECATED_DECLARATIONS_POP
     char* os = getenv("OS");
     if (os)
     {
@@ -85,7 +87,7 @@ void HelpCompiler::saveXhpForJar( xmlDocPtr doc, const fs::path &filePath )
 #else
     std::string pathSep = "/";
 #endif
-    const std::string& sourceXhpPath = filePath.native_file_string();
+    const std::string sourceXhpPath = filePath.native_file_string();
     std::string zipdirPath = zipdir.native_file_string();
     const std::string srcdirPath( src.native_file_string() );
     // srcdirPath contains trailing /, but we want the file path with / at the beginning
@@ -339,7 +341,7 @@ void myparser::traverse( xmlNodePtr parentNode )
                         documentId = hid;
                     extendedHelpText.push_back(hid);
                     HCDBG(std::cerr << "hid pushback" << (anchor.empty() ? hid : hid + "#" + anchor) << std::endl);
-                    hidlist->push_back( anchor.empty() ? hid : hid + "#" + anchor);
+                    hidlist->push_back( anchor.empty() ? std::move(hid) : hid + "#" + anchor);
                 }
                 else
                     continue;
@@ -379,10 +381,10 @@ void myparser::traverse( xmlNodePtr parentNode )
                         trim(tmppos);
                         keyword = tmppre + ";" + tmppos;
                     }
-                    ll.push_back(keyword);
+                    ll.push_back(std::move(keyword));
                 }
                 if (!ll.empty())
-                    (*keywords)[anchor] = ll;
+                    (*keywords)[anchor] = std::move(ll);
             }
             else if (branch.compare("contents") == 0)
             {
@@ -408,7 +410,7 @@ void myparser::traverse( xmlNodePtr parentNode )
             if (hidstr != "." && !hidstr.empty())  //simple case of explicitly named target
             {
                 assert(!hidstr.empty());
-                (*helptexts)[hidstr] = text;
+                (*helptexts)[hidstr] = std::move(text);
             }
             else //apply to list of "current" hids determined by recent bookmarks that have hid in their branch
             {
@@ -472,7 +474,7 @@ void HelpCompiler::compile()
     streamTable.appl_keywords = std::move(aparser.keywords);
 
     streamTable.document_path = fileName;
-    streamTable.document_title = title;
+    streamTable.document_title = std::move(title);
     std::string actMod = module;
 
     if ( !bExtensionMode && !fileName.empty())
@@ -483,7 +485,7 @@ void HelpCompiler::compile()
             actMod = actMod.substr(0, actMod.find('/'));
         }
     }
-    streamTable.document_module = actMod;
+    streamTable.document_module = std::move(actMod);
     xmlFreeDoc(docResolvedOrg);
 }
 

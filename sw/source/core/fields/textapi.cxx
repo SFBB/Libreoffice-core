@@ -32,6 +32,7 @@
 #include <editeng/unoprnms.hxx>
 #include <editeng/unoforou.hxx>
 #include <editeng/unoipset.hxx>
+#include <names.hxx>
 
 #include <com/sun/star/text/XTextField.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
@@ -93,12 +94,12 @@ public:
     using SvxOutlinerForwarder::SvxOutlinerForwarder;
     OUString GetStyleSheet(sal_Int32 nPara) const override
     {
-        return SwStyleNameMapper::GetProgName(SvxOutlinerForwarder::GetStyleSheet(nPara), SwGetPoolIdFromName::TxtColl);
+        return SwStyleNameMapper::GetProgName(UIName(SvxOutlinerForwarder::GetStyleSheet(nPara)), SwGetPoolIdFromName::TxtColl).toString();
     }
 
     void SetStyleSheet(sal_Int32 nPara, const OUString& rStyleName) override
     {
-        SvxOutlinerForwarder::SetStyleSheet(nPara, SwStyleNameMapper::GetUIName(rStyleName, SwGetPoolIdFromName::TxtColl));
+        SvxOutlinerForwarder::SetStyleSheet(nPara, SwStyleNameMapper::GetUIName(ProgName(rStyleName), SwGetPoolIdFromName::TxtColl).toString());
     }
 };
 
@@ -125,9 +126,12 @@ void SwTextAPIEditSource::UpdateData()
 SwTextAPIEditSource::SwTextAPIEditSource(SwDoc* pDoc)
 : m_pImpl(new SwTextAPIEditSource_Impl)
 {
-    m_pImpl->mpPool = &pDoc->GetDocShell()->GetPool();
-    m_pImpl->mpDoc = pDoc;
-    m_pImpl->mnRef = 1;
+    if (SwDocShell* pShell = pDoc->GetDocShell())
+    {
+        m_pImpl->mpPool = &pShell->GetPool();
+        m_pImpl->mpDoc = pDoc;
+        m_pImpl->mnRef = 1;
+    }
 }
 
 SwTextAPIEditSource::~SwTextAPIEditSource()
@@ -148,12 +152,15 @@ void SwTextAPIEditSource::EnsureOutliner()
 {
     if( !m_pImpl->mpOutliner )
     {
-        //init draw model first
-        m_pImpl->mpDoc->getIDocumentDrawModelAccess().GetOrCreateDrawModel();
-        m_pImpl->mpOutliner.reset(new Outliner(m_pImpl->mpPool, OutlinerMode::TextObject));
-        m_pImpl->mpOutliner->SetStyleSheetPool(
-            static_cast<SwDocStyleSheetPool*>(m_pImpl->mpDoc->GetDocShell()->GetStyleSheetPool())->GetEEStyleSheetPool());
-        m_pImpl->mpDoc->SetCalcFieldValueHdl(m_pImpl->mpOutliner.get());
+        if (SwDocShell* pShell = m_pImpl->mpDoc->GetDocShell())
+        {
+            //init draw model first
+            m_pImpl->mpDoc->getIDocumentDrawModelAccess().GetOrCreateDrawModel();
+            m_pImpl->mpOutliner.reset(new Outliner(m_pImpl->mpPool, OutlinerMode::TextObject));
+            m_pImpl->mpOutliner->SetStyleSheetPool(
+                static_cast<SwDocStyleSheetPool*>(pShell->GetStyleSheetPool())->GetEEStyleSheetPool());
+            m_pImpl->mpDoc->SetCalcFieldValueHdl(m_pImpl->mpOutliner.get());
+        }
     }
 }
 

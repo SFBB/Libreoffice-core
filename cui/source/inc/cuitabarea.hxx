@@ -28,52 +28,60 @@
 #include <svx/PaletteManager.hxx>
 #include <svx/svdview.hxx>
 
-#define NO_BUTTON_SELECTED -1
-
 class ColorListBox;
 class SdrModel;
 class SvxBitmapCtl;
 
-/************************************************************************/
+enum class FillType
+{
+    TRANSPARENT,
+    SOLID,
+    GRADIENT,
+    HATCH,
+    BITMAP,
+    PATTERN,
+    USE_BACKGROUND_FILL,
+    // fallback value if no fill type has been set
+    INVALID,
+};
+
 class ButtonBox
 {
     private:
-        sal_Int32 mnCurrentButton;
-        std::vector<weld::Toggleable*> maButtonList;
-        std::map<weld::Toggleable*, sal_Int32 > maButtonToPos;
-        void SelectButtonImpl( sal_Int32 nPos )
-        {
-            if(mnCurrentButton != NO_BUTTON_SELECTED)
-            {
-                maButtonList[mnCurrentButton]->set_active(false);
-            }
-            mnCurrentButton = nPos;
-            maButtonList[mnCurrentButton]->set_active(true);
-        };
+        weld::Toggleable* mpCurrentButton;
+        std::map<weld::Toggleable*, FillType > maButtonToFillType;
     public:
         ButtonBox()
+            : mpCurrentButton(nullptr) {};
+
+        void AddButton(weld::ToggleButton* pButton, FillType eFillType)
         {
-            mnCurrentButton = NO_BUTTON_SELECTED;
-        };
-        void AddButton(weld::Toggleable* pButton)
-        {
-            maButtonList.push_back(pButton);
-            maButtonToPos.insert( std::make_pair(pButton, maButtonList.size() - 1) );
+            maButtonToFillType.insert( std::make_pair(pButton, eFillType) );
         }
-        sal_Int32 GetCurrentButtonPos() const { return mnCurrentButton; }
-        sal_Int32 GetButtonPos(weld::Toggleable* pButton)
+
+        FillType GetCurrentFillType() const
         {
-            std::map<weld::Toggleable*, sal_Int32>::const_iterator aBtnPos = maButtonToPos.find(pButton);
-            if(aBtnPos != maButtonToPos.end())
-                return aBtnPos->second;
-            else
-                return -1;
+            if (mpCurrentButton)
+                return GetFillType(*mpCurrentButton);
+            return FillType::INVALID;
         }
-        void SelectButton(weld::Toggleable* pButton)
+
+        FillType GetFillType(weld::Toggleable& rButton) const
         {
-            sal_Int32 nPos = GetButtonPos(pButton);
-            if(nPos != -1)
-                SelectButtonImpl(nPos);
+            auto aIt = maButtonToFillType.find(&rButton);
+            assert(aIt != maButtonToFillType.end() && "Unknown button");
+            return aIt->second;
+        }
+
+        void SelectButton(weld::Toggleable& rButton)
+        {
+            weld::Toggleable* pPreviousButton = mpCurrentButton;
+
+            mpCurrentButton = &rButton;
+            rButton.set_active(true);
+
+            if (pPreviousButton)
+                pPreviousButton->set_active(false);
         }
 };
 
@@ -85,6 +93,12 @@ enum class PageType
     Bitmap,
     Shadow,
     Transparence,
+};
+
+class AreaTabHelper
+{
+public:
+    static OUString GetPalettePath();
 };
 
 class SvxAreaTabDialog final : public SfxTabDialogController
@@ -103,10 +117,6 @@ class SvxAreaTabDialog final : public SfxTabDialogController
     XPatternListRef       mpNewPatternList;
 
     ChangeType          mnColorListState;
-    ChangeType          mnBitmapListState;
-    ChangeType          mnPatternListState;
-    ChangeType          mnGradientListState;
-    ChangeType          mnHatchingListState;
 
     virtual void        PageCreated(const OUString& rId, SfxTabPage &rPage) override;
 
@@ -195,7 +205,7 @@ public:
     virtual ~SvxTransparenceTabPage() override;
 
     static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet*);
-    static WhichRangesContainer GetRanges() { return pTransparenceRanges; }
+    static const WhichRangesContainer & GetRanges() { return pTransparenceRanges; }
 
     virtual bool FillItemSet(SfxItemSet*) override;
     virtual void Reset(const SfxItemSet*) override;
@@ -230,10 +240,6 @@ private:
     ChangeType          maFixed_ChangeType;
 
     ChangeType*         m_pnColorListState;
-    ChangeType*         m_pnBitmapListState;
-    ChangeType*         m_pnPatternListState;
-    ChangeType*         m_pnGradientListState;
-    ChangeType*         m_pnHatchingListState;
 
     XFillAttrSetItem    m_aXFillAttr;
     SfxItemSet&         m_rXFSet;
@@ -242,13 +248,13 @@ private:
 
 protected:
     std::unique_ptr<weld::Container> m_xFillTab;
-    std::unique_ptr<weld::Toggleable> m_xBtnNone;
-    std::unique_ptr<weld::Toggleable> m_xBtnColor;
-    std::unique_ptr<weld::Toggleable> m_xBtnGradient;
-    std::unique_ptr<weld::Toggleable> m_xBtnHatch;
-    std::unique_ptr<weld::Toggleable> m_xBtnBitmap;
-    std::unique_ptr<weld::Toggleable> m_xBtnPattern;
-    std::unique_ptr<weld::Toggleable> m_xBtnUseBackground;
+    std::unique_ptr<weld::ToggleButton> m_xBtnNone;
+    std::unique_ptr<weld::ToggleButton> m_xBtnColor;
+    std::unique_ptr<weld::ToggleButton> m_xBtnGradient;
+    std::unique_ptr<weld::ToggleButton> m_xBtnHatch;
+    std::unique_ptr<weld::ToggleButton> m_xBtnBitmap;
+    std::unique_ptr<weld::ToggleButton> m_xBtnPattern;
+    std::unique_ptr<weld::ToggleButton> m_xBtnUseBackground;
 
     void SetOptimalSize(weld::DialogController* pController);
 
@@ -266,6 +272,9 @@ private:
     template< typename TabPage >
     DeactivateRC DeactivatePage_Impl( SfxItemSet* pSet );
 
+    std::unique_ptr<SfxTabPage> CreateFillStyleTabPage(FillType eFillType);
+    std::unique_ptr<SfxTabPage> CreatePage(FillType eFillType);
+
 public:
     SvxAreaTabPage(weld::Container* pPage, weld::DialogController* pController,
                    const SfxItemSet& rInAttrs, bool bSlideBackground = false);
@@ -275,7 +284,7 @@ public:
     static std::unique_ptr<SfxTabPage>
     CreateWithSlideBackground(weld::Container* pPage, weld::DialogController* pController,
                               const SfxItemSet*);
-    static WhichRangesContainer GetRanges() { return pAreaRanges; }
+    static const WhichRangesContainer & GetRanges() { return pAreaRanges; }
 
     virtual OUString GetAllStrings() override;
 
@@ -292,12 +301,7 @@ public:
     void    SetBitmapList( XBitmapListRef const & pBmpLst) { m_pBitmapList = pBmpLst; }
     void    SetPatternList( XPatternListRef const &pPtrnLst ) { m_pPatternList = pPtrnLst; }
     virtual void PageCreated(const SfxAllItemSet& aSet) override;
-    void    CreatePage(sal_Int32 nId, SfxTabPage& rTab);
     void    SetColorChgd( ChangeType* pIn ) { m_pnColorListState = pIn; }
-    void    SetGrdChgd( ChangeType* pIn ) { m_pnGradientListState = pIn; }
-    void    SetHtchChgd( ChangeType* pIn ) { m_pnHatchingListState = pIn; }
-    void    SetBmpChgd( ChangeType* pIn ) { m_pnBitmapListState = pIn; }
-    void    SetPtrnChgd( ChangeType* pIn ) { m_pnPatternListState = pIn; }
 };
 
 
@@ -337,7 +341,7 @@ public:
     virtual ~SvxShadowTabPage() override;
 
     static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
-    static WhichRangesContainer GetRanges() { return pShadowRanges; }
+    static const WhichRangesContainer & GetRanges() { return pShadowRanges; }
 
     virtual bool FillItemSet( SfxItemSet* ) override;
     virtual void Reset( const SfxItemSet * ) override;
@@ -362,7 +366,7 @@ private:
     XColorListRef         m_pColorList;
     XGradientListRef      m_pGradientList;
 
-    ChangeType*         m_pnGradientListState;
+    ChangeType m_nGradientListState;
     ChangeType*         m_pnColorListState;
 
     XFillAttrSetItem    m_aXFillAttr;
@@ -429,7 +433,6 @@ public:
     void    SetColorList( XColorListRef const & pColorList ) { m_pColorList = pColorList; }
     void    SetGradientList( XGradientListRef const & pGrdLst)
                 { m_pGradientList = pGrdLst; }
-    void    SetGrdChgd( ChangeType* pIn ) { m_pnGradientListState = pIn; }
     void    SetColorChgd( ChangeType* pIn ) { m_pnColorListState = pIn; }
 };
 
@@ -443,7 +446,7 @@ private:
     XColorListRef         m_pColorList;
     XHatchListRef         m_pHatchingList;
 
-    ChangeType*         m_pnHatchingListState;
+    ChangeType m_nHatchingListState;
     ChangeType*         m_pnColorListState;
 
     XFillAttrSetItem    m_aXFillAttr;
@@ -498,7 +501,6 @@ public:
     void    SetHatchingList( XHatchListRef const & pHtchLst)
                 { m_pHatchingList = pHtchLst; }
 
-    void    SetHtchChgd( ChangeType* pIn ) { m_pnHatchingListState = pIn; }
     void    SetColorChgd( ChangeType* pIn ) { m_pnColorListState = pIn; }
 };
 
@@ -506,12 +508,30 @@ public:
 
 class SvxBitmapTabPage : public SfxTabPage
 {
+
+public:
+
+    class SvxPresetListBoxValueSet : public SvxPresetListBox
+    {
+    public:
+        SvxPresetListBoxValueSet(std::unique_ptr<weld::ScrolledWindow> pWindow);
+        virtual bool KeyInput(const KeyEvent& rKEvt) override;
+
+        void SetDialog(SvxBitmapTabPage* pSvxBitmapTabPage)
+        {
+            m_pSvxBitmapTabPage = pSvxBitmapTabPage;
+        }
+
+    private:
+        SvxBitmapTabPage* m_pSvxBitmapTabPage;
+    };
+
 private:
 
     const SfxItemSet&          m_rOutAttrs;
 
     XBitmapListRef             m_pBitmapList;
-    ChangeType*                m_pnBitmapListState;
+    ChangeType m_nBitmapListState;
 
     double                     m_fObjectWidth;
     double                     m_fObjectHeight;
@@ -527,7 +547,7 @@ private:
     Size                       rZoomedSize;
 
     SvxXRectPreview m_aCtlBitmapPreview;
-    std::unique_ptr<SvxPresetListBox>   m_xBitmapLB;
+    std::unique_ptr<SvxPresetListBoxValueSet>   m_xBitmapLB;
     std::unique_ptr<weld::ComboBox> m_xBitmapStyleLB;
     std::unique_ptr<weld::Container> m_xSizeBox;
     std::unique_ptr<weld::CheckButton> m_xTsbScale;
@@ -557,8 +577,11 @@ private:
     DECL_LINK( ClickImportHdl, weld::Button&, void );
     void ClickBitmapHdl_Impl();
     void CalculateBitmapPresetSize();
+    void DeleteBitmapHdl_Impl(const sal_uInt16 nId);
     sal_Int32 SearchBitmapList(std::u16string_view rBitmapName);
     sal_Int32 SearchBitmapList(const GraphicObject& rGraphicObject);
+    tools::Long AddBitmap(const GraphicObject& rGraphicObject, const OUString& rName,
+                          bool bOnlyForThisDocument = false);
 
 public:
     SvxBitmapTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs);
@@ -574,7 +597,6 @@ public:
     virtual DeactivateRC DeactivatePage( SfxItemSet* pSet ) override;
 
     void    SetBitmapList( const XBitmapListRef& pBmpLst) { m_pBitmapList = pBmpLst; }
-    void    SetBmpChgd( ChangeType* pIn ) { m_pnBitmapListState = pIn; }
 };
 
 /************************************************************************/
@@ -587,7 +609,7 @@ private:
     XColorListRef         m_pColorList;
     XPatternListRef       m_pPatternList;
 
-    ChangeType*         m_pnPatternListState;
+    ChangeType m_nPatternListState;
     ChangeType*         m_pnColorListState;
 
     XFillAttrSetItem    m_aXFillAttr;
@@ -631,7 +653,6 @@ public:
 
     void    SetColorList( XColorListRef const & pColorList ) { m_pColorList = pColorList; }
     void    SetPatternList( XPatternListRef const & pPatternList) { m_pPatternList = pPatternList; }
-    void    SetPtrnChgd( ChangeType* pIn ) { m_pnPatternListState = pIn; }
     void    SetColorChgd( ChangeType* pIn ) { m_pnColorListState = pIn; }
     void    ChangeColor_Impl();
 };
@@ -647,16 +668,16 @@ enum class ColorModel
 class SvxColorTabPage : public SfxTabPage
 {
 private:
-    const SfxItemSet&   rOutAttrs;
+    const SfxItemSet& m_rOutAttrs;
 
-    XColorListRef         pColorList;
+    XColorListRef m_pColorList;
 
-    ChangeType*         pnColorListState;
+    ChangeType* m_pnColorListState;
 
-    XFillAttrSetItem    aXFillAttr;
-    SfxItemSet&         rXFSet;
+    XFillAttrSetItem m_aXFillAttr;
+    SfxItemSet& m_rXFSet;
 
-    ColorModel          eCM;
+    ColorModel m_eCM;
 
     Color m_aPreviousColor;
     NamedColor m_aCurrentColor;
@@ -744,8 +765,7 @@ public:
     void    SetPropertyList( XPropertyListType t, const XPropertyListRef &xRef );
     void    SetColorList( const XColorListRef& pColList );
 
-
-    void    SetColorChgd( ChangeType* pIn ) { pnColorListState = pIn; }
+    void SetColorChgd(ChangeType* pIn) { m_pnColorListState = pIn; }
 
     virtual void FillUserData() override;
 };

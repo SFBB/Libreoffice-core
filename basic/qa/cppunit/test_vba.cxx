@@ -87,10 +87,13 @@ void VBATest::testMiscVBAFunctions()
         "Err.Raise.vb",
         "exp.vb",
         "fix.vb",
+        "gosub_goto.vb",
         "hex.vb",
         "hour.vb",
+        "for.vb",
         "formatnumber.vb",
         "formatpercent.vb",
+        "if.vb",
         "iif.vb",
         "instr.vb",
         "instrrev.vb",
@@ -164,14 +167,14 @@ void VBATest::testMiscVBAFunctions()
                            + OUString::createFromAscii( macroSource[ i ] );
 
         MacroSnippet myMacro;
-        myMacro.LoadSourceFromFile("TestUtil", sMacroUtilsURL);
-        myMacro.LoadSourceFromFile("TestModule", sMacroURL);
+        myMacro.LoadSourceFromFile(u"TestUtil"_ustr, sMacroUtilsURL);
+        myMacro.LoadSourceFromFile(u"TestModule"_ustr, sMacroURL);
         SbxVariableRef pReturn = myMacro.Run();
         CPPUNIT_ASSERT_MESSAGE("No return variable huh?", pReturn.is());
         fprintf(stderr, "macro result for %s\n", macroSource[i]);
         fprintf(stderr, "macro returned:\n%s\n",
                 OUStringToOString(pReturn->GetOUString(), RTL_TEXTENCODING_UTF8).getStr());
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Result not as expected", OUString("OK"),
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Result not as expected", u"OK"_ustr,
                                      pReturn->GetOUString());
     }
 }
@@ -185,7 +188,11 @@ void VBATest::testMiscOLEStuff()
 // Since some time, on a properly updated Windows 10, this works
 // only with a 64-bit LibreOffice
 
-#if defined(_WIN64)
+#if defined _WIN32 && defined _ARM64_
+    // skip for windows arm64 build
+    // Avoid "this method is empty and should be removed" warning
+    (void) 42;
+#elif defined(_WIN64)
     // test if we have the necessary runtime environment
     // to run the OLE tests.
     uno::Reference< lang::XMultiServiceFactory > xOLEFactory;

@@ -21,7 +21,11 @@
 # include <stdint.h>
 #endif
 
-#include <LibreOfficeKit/LibreOfficeKitTypes.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
+#include "LibreOfficeKitTypes.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -140,6 +144,27 @@ struct _LibreOfficeKitClass
 
     /// @see lok::Office::stopURP
     void (*stopURP)(LibreOfficeKit* pThis, void* pSendURPToLOContext);
+
+    /// @see lok::Office::joinThreads
+    int (*joinThreads)(LibreOfficeKit* pThis);
+
+    /// @see lok::Office::startThreads
+    void (*startThreads)(LibreOfficeKit* pThis);
+
+    /// @see lok::Office::setForkedChild
+    void (*setForkedChild)(LibreOfficeKit* pThis, bool bIsChild);
+
+    /** @see lok::Office::extractDocumentStructureRequest.
+     */
+    char* (*extractDocumentStructureRequest)(LibreOfficeKit* pThis, const char* pFilePath,
+                                             const char* pFilter);
+
+    /// @see lok::Office::registerAnyInputCallback()
+    void (*registerAnyInputCallback)(LibreOfficeKit* pThis,
+                                     LibreOfficeKitAnyInputCallback pCallback, void* pData);
+
+    /// @see lok::Office::getDocsCount().
+    int (*getDocsCount) (LibreOfficeKit* pThis);
 };
 
 #define LIBREOFFICEKIT_DOCUMENT_HAS(pDoc,member) LIBREOFFICEKIT_HAS_MEMBER(LibreOfficeKitDocumentClass,member,(pDoc)->pClass->nSize)
@@ -510,6 +535,35 @@ struct _LibreOfficeKitDocumentClass
 
     /// @see lok::Document::getA11yCaretPosition.
     int (*getA11yCaretPosition) (LibreOfficeKitDocument* pThis);
+
+    /// @see lok::Document::setViewReadOnly().
+    void (*setViewReadOnly) (LibreOfficeKitDocument* pThis, int nId, const bool readOnly);
+
+    /// @see lok::Document::setAllowChangeComments().
+    void (*setAllowChangeComments) (LibreOfficeKitDocument* pThis, int nId, const bool allow);
+
+    /// @see lok::Document::getPresentationInfo
+    char* (*getPresentationInfo) (LibreOfficeKitDocument* pThis);
+
+    /// @see lok::Document::createSlideRenderer
+    bool (*createSlideRenderer) (
+        LibreOfficeKitDocument* pThis,
+        const char* pSlideHash,
+        int nSlideNumber, unsigned* nViewWidth, unsigned* nViewHeight,
+        bool bRenderBackground, bool bRenderMasterPage);
+
+    /// @see lok::Document::postSlideshowCleanup
+    void (*postSlideshowCleanup)(LibreOfficeKitDocument* pThis);
+
+    /// @see lok::Document::renderNextSlideLayer
+    bool (*renderNextSlideLayer)(
+        LibreOfficeKitDocument* pThis, unsigned char* pBuffer, bool* bIsBitmapLayer, double* pScale, char** pJsonMessage);
+
+    /// @see lok::Document::setViewOption
+    void (*setViewOption)(LibreOfficeKitDocument* pThis, const char* pOption, const char* pValue);
+
+    /// @see lok::Document::setAllowManageRedlines().
+    void (*setAllowManageRedlines)(LibreOfficeKitDocument* pThis, int nId, bool allow);
 
 #endif // defined LOK_USE_UNSTABLE_API || defined LIBO_INTERNAL_ONLY
 };

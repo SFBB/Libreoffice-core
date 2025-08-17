@@ -19,21 +19,22 @@
 #pragma once
 
 #include "TableWindow.hxx"
+#include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/accessibility/XAccessibleRelationSet.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <toolkit/awt/vclxaccessiblecomponent.hxx>
+#include <vcl/accessibility/vclxaccessiblecomponent.hxx>
 #include <vcl/vclptr.hxx>
+
+using css::accessibility::AccessibleRelationType;
 
 namespace dbaui
 {
-    class OTableWindow;
     /** the class OTableWindowAccess represents the accessible object for table windows
         like they are used in the QueryDesign and the RelationDesign
     */
-    class OTableWindowAccess    :   public cppu::ImplInheritanceHelper<
+    class OTableWindowAccess : public cppu::ImplInheritanceHelper<
                                         VCLXAccessibleComponent,
-                                        css::accessibility::XAccessibleRelationSet,
-                                        css::accessibility::XAccessible>
+                                        css::accessibility::XAccessibleRelationSet>
     {
         VclPtr<OTableWindow>   m_pTable; // the window which I should give accessibility to
 
@@ -50,9 +51,6 @@ namespace dbaui
         // XServiceInfo
         virtual OUString SAL_CALL getImplementationName() override;
         virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-        // XAccessible
-        virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override;
 
         // XAccessibleContext
         virtual sal_Int64 SAL_CALL getAccessibleChildCount(  ) override;
@@ -71,8 +69,8 @@ namespace dbaui
         // XAccessibleRelationSet
         virtual sal_Int32 SAL_CALL getRelationCount(  ) override;
         virtual css::accessibility::AccessibleRelation SAL_CALL getRelation( sal_Int32 nIndex ) override;
-        virtual sal_Bool SAL_CALL containsRelation( sal_Int16 aRelationType ) override;
-        virtual css::accessibility::AccessibleRelation SAL_CALL getRelationByType( sal_Int16 aRelationType ) override;
+        virtual sal_Bool SAL_CALL containsRelation(AccessibleRelationType eRelationType) override;
+        virtual css::accessibility::AccessibleRelation SAL_CALL getRelationByType(AccessibleRelationType eRelationType) override;
     };
 }
 

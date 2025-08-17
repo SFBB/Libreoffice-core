@@ -19,10 +19,12 @@
 
 #include <GraphicPropertyItemConverter.hxx>
 #include "SchWhichPairs.hxx"
+#include <ChartModel.hxx>
 #include <ItemPropertyMap.hxx>
 #include <PropertyHelper.hxx>
 #include <CommonConverters.hxx>
 #include <editeng/memberids.h>
+#include <svx/chrtitem.hxx>
 #include <svx/unomid.hxx>
 #include <svx/xflbmtit.hxx>
 #include <svx/xflbstit.hxx>
@@ -138,13 +140,14 @@ GraphicPropertyItemConverter::GraphicPropertyItemConverter(
     beans::XPropertySet > & rPropertySet,
     SfxItemPool& rItemPool,
     SdrModel& rDrawModel,
-    uno::Reference< lang::XMultiServiceFactory > xNamedPropertyContainerFactory,
+    rtl::Reference< ChartModel > xChartModel,
     GraphicObjectType eObjectType /* = FILL_PROPERTIES */ ) :
         ItemConverter( rPropertySet, rItemPool ),
         m_GraphicObjectType( eObjectType ),
         m_rDrawModel( rDrawModel ),
-        m_xNamedPropertyTableFactory(std::move( xNamedPropertyContainerFactory ))
-{}
+        m_xChartModel(std::move( xChartModel ))
+{
+}
 
 GraphicPropertyItemConverter::~GraphicPropertyItemConverter()
 {}
@@ -168,6 +171,11 @@ const WhichRangesContainer& GraphicPropertyItemConverter::GetWhichPairs() const
 
 bool GraphicPropertyItemConverter::GetItemProperty( tWhichIdType nWhichId, tPropertyNameWithMemberId & rOutProperty ) const
 {
+    if (nWhichId == SCHATTR_COLOR_PALETTE)
+    {
+        return false;
+    }
+
     ItemPropertyMapType::const_iterator aEndIt;
     ItemPropertyMapType::const_iterator aIt;
 
@@ -217,7 +225,7 @@ void GraphicPropertyItemConverter::FillSpecialItem(
         case XATTR_FILLBMP_STRETCH:
         {
             drawing::BitmapMode aMode = drawing::BitmapMode_REPEAT;
-            if( GetPropertySet()->getPropertyValue( "FillBitmapMode" ) >>= aMode )
+            if( GetPropertySet()->getPropertyValue( u"FillBitmapMode"_ustr ) >>= aMode )
             {
                 rOutItemSet.Put( XFillBmpTileItem( aMode == drawing::BitmapMode_REPEAT ));
                 rOutItemSet.Put( XFillBmpStretchItem( aMode == drawing::BitmapMode_STRETCH ));
@@ -232,8 +240,8 @@ void GraphicPropertyItemConverter::FillSpecialItem(
                 {
                     OUString aPropName =
                           (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                          ? OUString( "TransparencyGradientName" )
-                          : OUString( "FillTransparenceGradientName" );
+                          ? u"TransparencyGradientName"_ustr
+                          : u"FillTransparenceGradientName"_ustr;
 
                     uno::Any aValue( GetPropertySet()->getPropertyValue( aPropName ));
                     if( aValue.hasValue())
@@ -242,7 +250,7 @@ void GraphicPropertyItemConverter::FillSpecialItem(
                         aItem.PutValue( aValue, MID_NAME );
 
                         lcl_SetContentForNamedProperty(
-                            m_xNamedPropertyTableFactory, "com.sun.star.drawing.TransparencyGradientTable" ,
+                            m_xChartModel, u"com.sun.star.drawing.TransparencyGradientTable"_ustr ,
                             aItem, MID_FILLGRADIENT );
 
                         // this is important to enable the item
@@ -267,8 +275,8 @@ void GraphicPropertyItemConverter::FillSpecialItem(
             {
                 OUString aPropName =
                     (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                    ? OUString( "GradientStepCount" )
-                    : OUString( "FillGradientStepCount" );
+                    ? u"GradientStepCount"_ustr
+                    : u"FillGradientStepCount"_ustr;
 
                 uno::Any aValue( GetPropertySet()->getPropertyValue( aPropName ) );
                 if( hasLongOrShortValue(aValue) )
@@ -283,19 +291,19 @@ void GraphicPropertyItemConverter::FillSpecialItem(
         {
             OUString aPropName =
                 (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                 ? OUString( "BorderDashName" )
-                 : OUString( "LineDashName" );
+                 ? u"BorderDashName"_ustr
+                 : u"LineDashName"_ustr;
 
             XLineDashItem aItem;
             aItem.PutValue( GetPropertySet()->getPropertyValue( aPropName ), MID_NAME );
 
             lcl_SetContentForNamedProperty(
-                m_xNamedPropertyTableFactory, "com.sun.star.drawing.DashTable" ,
+                m_xChartModel, u"com.sun.star.drawing.DashTable"_ustr ,
                 aItem, MID_LINEDASH );
 
             // translate model name to UI-name for predefined entries, so
             // that the correct entry is chosen in the list of UI-names
-            std::unique_ptr<XLineDashItem> pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
+            std::unique_ptr<XLineDashItem> pItemToPut = aItem.checkForUniqueItem( m_rDrawModel );
 
             if(pItemToPut)
                  rOutItemSet.Put( std::move(pItemToPut) );
@@ -309,19 +317,19 @@ void GraphicPropertyItemConverter::FillSpecialItem(
             {
                 OUString aPropName =
                     (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                    ? OUString( "GradientName" )
-                    : OUString( "FillGradientName" );
+                    ? u"GradientName"_ustr
+                    : u"FillGradientName"_ustr;
 
                 XFillGradientItem aItem;
                 aItem.PutValue( GetPropertySet()->getPropertyValue( aPropName ), MID_NAME );
 
                 lcl_SetContentForNamedProperty(
-                    m_xNamedPropertyTableFactory, "com.sun.star.drawing.GradientTable" ,
+                    m_xChartModel, u"com.sun.star.drawing.GradientTable"_ustr ,
                     aItem, MID_FILLGRADIENT );
 
                 // translate model name to UI-name for predefined entries, so
                 // that the correct entry is chosen in the list of UI-names
-                std::unique_ptr<XFillGradientItem> pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
+                std::unique_ptr<XFillGradientItem> pItemToPut = aItem.checkForUniqueItem( m_rDrawModel );
 
                 if(pItemToPut)
                     rOutItemSet.Put(std::move(pItemToPut) );
@@ -335,19 +343,19 @@ void GraphicPropertyItemConverter::FillSpecialItem(
             {
                 OUString aPropName =
                     (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                    ? OUString( "HatchName" )
-                    : OUString( "FillHatchName" );
+                    ? u"HatchName"_ustr
+                    : u"FillHatchName"_ustr;
 
                 XFillHatchItem aItem;
                 aItem.PutValue( GetPropertySet()->getPropertyValue( aPropName ), MID_NAME );
 
                 lcl_SetContentForNamedProperty(
-                    m_xNamedPropertyTableFactory, "com.sun.star.drawing.HatchTable" ,
+                    m_xChartModel, u"com.sun.star.drawing.HatchTable"_ustr ,
                     aItem, MID_FILLHATCH );
 
                 // translate model name to UI-name for predefined entries, so
                 // that the correct entry is chosen in the list of UI-names
-                std::unique_ptr<XFillHatchItem> pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
+                std::unique_ptr<XFillHatchItem> pItemToPut = aItem.checkForUniqueItem( m_rDrawModel );
 
                 if(pItemToPut)
                     rOutItemSet.Put( std::move(pItemToPut) );
@@ -360,15 +368,15 @@ void GraphicPropertyItemConverter::FillSpecialItem(
             if( lcl_supportsFillProperties( m_GraphicObjectType ))
             {
                 XFillBitmapItem aItem;
-                aItem.PutValue( GetPropertySet()->getPropertyValue( "FillBitmapName" ), MID_NAME );
+                aItem.PutValue( GetPropertySet()->getPropertyValue( u"FillBitmapName"_ustr ), MID_NAME );
 
                 lcl_SetContentForNamedProperty(
-                    m_xNamedPropertyTableFactory, "com.sun.star.drawing.BitmapTable" ,
+                    m_xChartModel, u"com.sun.star.drawing.BitmapTable"_ustr ,
                     aItem, MID_BITMAP );
 
                 // translate model name to UI-name for predefined entries, so
                 // that the correct entry is chosen in the list of UI-names
-                std::unique_ptr<XFillBitmapItem> pItemToPut = aItem.checkForUniqueItem( & m_rDrawModel );
+                std::unique_ptr<XFillBitmapItem> pItemToPut = aItem.checkForUniqueItem( m_rDrawModel );
 
                 if(pItemToPut)
                     rOutItemSet.Put( std::move(pItemToPut) );
@@ -383,10 +391,10 @@ void GraphicPropertyItemConverter::FillSpecialItem(
         {
             OUString aPropName =
                   (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                  ? OUString( "BorderTransparency" )
+                  ? u"BorderTransparency"_ustr
                   : (m_GraphicObjectType == GraphicObjectType::LineDataPoint)
-                  ? OUString( "Transparency" )
-                  : OUString( "LineTransparence" );
+                  ? u"Transparency"_ustr
+                  : u"LineTransparence"_ustr;
 
             XLineTransparenceItem aItem;
             aItem.PutValue( GetPropertySet()->getPropertyValue( aPropName ), 0 );
@@ -402,8 +410,8 @@ void GraphicPropertyItemConverter::FillSpecialItem(
             {
                 OUString aPropName =
                       (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                      ? OUString( "Transparency" )
-                      : OUString( "FillTransparence" );
+                      ? u"Transparency"_ustr
+                      : u"FillTransparence"_ustr;
 
                 XFillTransparenceItem aItem;
                 aItem.PutValue( GetPropertySet()->getPropertyValue( aPropName ), 0 );
@@ -469,8 +477,8 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                 {
                     OUString aPropName =
                           (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                          ? OUString( "TransparencyGradientName" )
-                          : OUString( "FillTransparenceGradientName" );
+                          ? u"TransparencyGradientName"_ustr
+                          : u"FillTransparenceGradientName"_ustr;
 
                     const XFillFloatTransparenceItem & rItem =
                         static_cast< const XFillFloatTransparenceItem & >(
@@ -486,7 +494,7 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                         OUString aPreferredName;
                         aValue >>= aPreferredName;
                         aValue <<= PropertyHelper::addTransparencyGradientUniqueNameToTable(
-                            aGradient, m_xNamedPropertyTableFactory, aPreferredName );
+                            aGradient, m_xChartModel, aPreferredName );
 
                         if( aValue != GetPropertySet()->getPropertyValue( aPropName ))
                         {
@@ -520,8 +528,8 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
             {
                 OUString aPropName =
                     (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                    ? OUString( "GradientStepCount" )
-                    : OUString( "FillGradientStepCount" );
+                    ? u"GradientStepCount"_ustr
+                    : u"FillGradientStepCount"_ustr;
 
                 sal_Int16 nStepCount = static_cast< const XGradientStepCountItem & >(
                             rItemSet.Get( nWhichId )).GetValue();
@@ -540,8 +548,8 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
         {
             OUString aPropName =
                 (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                ? OUString( "BorderDashName" )
-                : OUString( "LineDashName" );
+                ? u"BorderDashName"_ustr
+                : u"LineDashName"_ustr;
 
             const XLineDashItem & rItem =
                 static_cast< const XLineDashItem & >(
@@ -557,7 +565,7 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                     OUString aPreferredName;
                     aValue >>= aPreferredName;
                     aValue <<= PropertyHelper::addLineDashUniqueNameToTable(
-                        aLineDash, m_xNamedPropertyTableFactory, aPreferredName );
+                        aLineDash, m_xChartModel, aPreferredName );
 
                     GetPropertySet()->setPropertyValue( aPropName, aValue );
                     bChanged = true;
@@ -572,8 +580,8 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
             {
                 OUString aPropName =
                     (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                    ? OUString( "GradientName" )
-                    : OUString( "FillGradientName" );
+                    ? u"GradientName"_ustr
+                    : u"FillGradientName"_ustr;
 
                 const XFillGradientItem & rItem =
                     static_cast< const XFillGradientItem & >(
@@ -589,7 +597,7 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                         OUString aPreferredName;
                         aValue >>= aPreferredName;
                         aValue <<= PropertyHelper::addGradientUniqueNameToTable(
-                            aGradient, m_xNamedPropertyTableFactory, aPreferredName );
+                            aGradient, m_xChartModel, aPreferredName );
 
                         GetPropertySet()->setPropertyValue( aPropName, aValue );
                         bChanged = true;
@@ -605,8 +613,8 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
             {
                 OUString aPropName =
                     (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                    ? OUString( "HatchName" )
-                    : OUString( "FillHatchName" );
+                    ? u"HatchName"_ustr
+                    : u"FillHatchName"_ustr;
 
                 const XFillHatchItem & rItem =
                     static_cast< const XFillHatchItem & >(
@@ -622,7 +630,7 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                         OUString aPreferredName;
                         aValue >>= aPreferredName;
                         aValue <<= PropertyHelper::addHatchUniqueNameToTable(
-                            aHatch, m_xNamedPropertyTableFactory, aPreferredName );
+                            aHatch, m_xChartModel, aPreferredName );
 
                         GetPropertySet()->setPropertyValue( aPropName, aValue );
                         bChanged = true;
@@ -642,7 +650,7 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
 
                 if( rItem.QueryValue( aValue, MID_NAME ))
                 {
-                    if( aValue != GetPropertySet()->getPropertyValue( "FillBitmapName" ))
+                    if( aValue != GetPropertySet()->getPropertyValue( u"FillBitmapName"_ustr ))
                     {
                         // add Bitmap to list
                         uno::Any aBitmap;
@@ -650,9 +658,9 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                         OUString aPreferredName;
                         aValue >>= aPreferredName;
                         aValue <<= PropertyHelper::addBitmapUniqueNameToTable(
-                            aBitmap, m_xNamedPropertyTableFactory, aPreferredName );
+                            aBitmap, m_xChartModel, aPreferredName );
 
-                        GetPropertySet()->setPropertyValue( "FillBitmapName" , aValue );
+                        GetPropertySet()->setPropertyValue( u"FillBitmapName"_ustr , aValue );
                         bChanged = true;
                     }
                 }
@@ -666,10 +674,10 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
         {
             OUString aPropName =
                   (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                  ? OUString( "BorderTransparency" )
+                  ? u"BorderTransparency"_ustr
                   : (m_GraphicObjectType == GraphicObjectType::LineDataPoint)
-                  ? OUString( "Transparency" )
-                  : OUString( "LineTransparence" );
+                  ? u"Transparency"_ustr
+                  : u"LineTransparence"_ustr;
 
             const XLineTransparenceItem & rItem =
                 static_cast< const XLineTransparenceItem & >(
@@ -705,8 +713,8 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
             {
                 OUString aPropName =
                       (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                      ? OUString( "Transparency" )
-                      : OUString( "FillTransparence" );
+                      ? u"Transparency"_ustr
+                      : u"FillTransparence"_ustr;
 
                 const XFillTransparenceItem & rItem =
                     static_cast< const XFillTransparenceItem & >(
@@ -728,8 +736,8 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                         // if linear or no transparence is set, delete the gradient
                         OUString aTransGradPropName =
                               (m_GraphicObjectType == GraphicObjectType::FilledDataPoint)
-                              ? OUString( "TransparencyGradientName" )
-                              : OUString( "FillTransparenceGradientName" );
+                              ? u"TransparencyGradientName"_ustr
+                              : u"FillTransparenceGradientName"_ustr;
                         GetPropertySet()->setPropertyValue(
                             aTransGradPropName, uno::Any( OUString() ));
 
@@ -742,6 +750,15 @@ bool GraphicPropertyItemConverter::ApplySpecialItem(
                 }
             }
             break;
+        case SCHATTR_COLOR_PALETTE:
+        {
+            const auto& rItem = static_cast<const SvxChartColorPaletteItem&>(rItemSet.Get(nWhichId));
+            m_xChartModel->setColorPalette(rItem.GetType(), rItem.GetIndex());
+            const auto oColorPalette = m_xChartModel->getCurrentColorPalette();
+            if (oColorPalette)
+                m_xChartModel->applyColorPaletteToDataSeries(*oColorPalette);
+        }
+        break;
     }
 
     return bChanged;

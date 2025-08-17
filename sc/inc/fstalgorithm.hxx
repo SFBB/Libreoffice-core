@@ -64,7 +64,7 @@ void buildSpanWithValue(
         }
 
         nLastPos = nThisPos;
-        nLastVal = nThisVal;
+        nLastVal = std::move(nThisVal);
     }
 }
 
@@ -91,12 +91,9 @@ std::vector<Span> toSpanArray( const mdds::flat_segment_tree<Key,bool>& rTree )
 template<typename Key, typename Val, typename Span>
 std::vector<Span> toSpanArrayWithValue( const mdds::flat_segment_tree<Key,Val>& rTree )
 {
-    typedef mdds::flat_segment_tree<Key,Val> FstType;
-
     std::vector<Span> aSpans;
 
-    typename FstType::const_iterator it = rTree.begin(), itEnd = rTree.end();
-    buildSpanWithValue<Key,Val,Span>(aSpans, it, itEnd);
+    buildSpanWithValue<Key,Val,Span>(aSpans, rTree.begin(), rTree.end());
     return aSpans;
 }
 
@@ -106,7 +103,7 @@ std::vector<Span> toSpanArray( const mdds::flat_segment_tree<Key,bool>& rTree, K
     typedef mdds::flat_segment_tree<Key,bool> FstType;
 
     std::vector<Span> aSpans;
-    if (!rTree.is_tree_valid())
+    if (!rTree.valid_tree())
         return aSpans;
 
     bool bThisVal = false;
@@ -117,8 +114,7 @@ std::vector<Span> toSpanArray( const mdds::flat_segment_tree<Key,bool>& rTree, K
         // Tree search failed.
         return aSpans;
 
-    typename FstType::const_iterator it = r.first, itEnd = rTree.end();
-    buildSpan<Key,Span>(aSpans, it, itEnd, &nStartPos);
+    buildSpan<Key,Span>(aSpans, r.first, rTree.end(), &nStartPos);
     return aSpans;
 }
 

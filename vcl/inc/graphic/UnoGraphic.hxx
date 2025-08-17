@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_SOURCE_GRAPHIC_GRAPHIC_HXX
-#define INCLUDED_VCL_SOURCE_GRAPHIC_GRAPHIC_HXX
+#pragma once
 
 #include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/awt/XBitmap.hpp>
@@ -56,7 +55,6 @@ private:
 
     // XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
 
     // XGraphic
     virtual ::sal_Int8 SAL_CALL getType(  ) override;
@@ -83,7 +81,5 @@ private:
 };
 
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

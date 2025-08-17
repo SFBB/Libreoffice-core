@@ -39,7 +39,6 @@ namespace comphelper
     using namespace ::com::sun::star;
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::lang;
-    using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::accessibility;
 
 
@@ -60,7 +59,7 @@ namespace comphelper
     {
         if ( !m_xBreakIter.is() )
         {
-            Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+            const Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
             m_xBreakIter = i18n::BreakIterator::create(xContext);
         }
 

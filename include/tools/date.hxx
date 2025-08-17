@@ -25,6 +25,8 @@
 
 #include <com/sun/star/util/Date.hpp>
 
+#include <compare>
+
 namespace com::sun::star::util { struct DateTime; }
 
 enum DayOfWeek { MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY,
@@ -77,11 +79,11 @@ public:
                     Date( sal_uInt16 nDay, sal_uInt16 nMonth, sal_Int16 nYear )
                         { setDateFromDMY(nDay, nMonth, nYear); }
 
-                    Date( const css::util::Date& rUDate )
+                    explicit Date( const css::util::Date& rUDate )
                     {
                         setDateFromDMY(rUDate.Day, rUDate.Month, rUDate.Year);
                     }
-                    Date( const css::util::DateTime& _rDateTime );
+                    explicit Date( const css::util::DateTime& _rDateTime );
 
     bool            IsEmpty() const { return mnDate == 0; }
 
@@ -207,18 +209,7 @@ public:
                         { return ((mnDate >= rFrom.mnDate) &&
                                  (mnDate <= rTo.mnDate)); }
 
-    bool            operator ==( const Date& rDate ) const
-                        { return (mnDate == rDate.mnDate); }
-    bool            operator !=( const Date& rDate ) const
-                        { return (mnDate != rDate.mnDate); }
-    bool            operator  >( const Date& rDate ) const
-                        { return (mnDate > rDate.mnDate); }
-    bool            operator  <( const Date& rDate ) const
-                        { return (mnDate < rDate.mnDate); }
-    bool            operator >=( const Date& rDate ) const
-                        { return (mnDate >= rDate.mnDate); }
-    bool            operator <=( const Date& rDate ) const
-                        { return (mnDate <= rDate.mnDate); }
+    auto            operator <=> ( const Date& rDate ) const = default;
 
     Date&           operator =( const Date& rDate )
                         { mnDate = rDate.mnDate; return *this; }
@@ -247,7 +238,6 @@ public:
     /// Semantically identical to Normalize() member method.
     static bool Normalize( sal_uInt16 & rDay, sal_uInt16 & rMonth, sal_Int16 & rYear );
 
- private:
     /// An accelerated form of DateToDays on this date
     sal_Int32 GetAsNormalizedDays() const;
 };

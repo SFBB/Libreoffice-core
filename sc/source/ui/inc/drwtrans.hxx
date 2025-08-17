@@ -40,7 +40,7 @@ private:
     std::unique_ptr<SdrModel>       m_pModel;
     TransferableDataHelper          m_aOleData;
     TransferableObjectDescriptor    m_aObjDesc;
-    SfxObjectShellRef               m_aDocShellRef;
+    rtl::Reference<ScDocShell>      m_aDocShellRef;
     SfxObjectShellRef               m_aDrawPersistRef;
 
                                     // extracted from model in ctor:
@@ -65,13 +65,13 @@ private:
     void CreateOLEData();
 
 public:
-            ScDrawTransferObj( std::unique_ptr<SdrModel> pClipModel, ScDocShell* pContainerShell,
+            ScDrawTransferObj( std::unique_ptr<SdrModel> pClipModel, ScDocShell& rContainerShell,
                                 TransferableObjectDescriptor aDesc );
     virtual ~ScDrawTransferObj() override;
 
     virtual void        AddSupportedFormats() override;
     virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
-    virtual bool        WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId,
+    virtual bool        WriteObject( SvStream& rOStm, void* pUserObject, sal_uInt32 nUserObjectId,
                                         const css::datatransfer::DataFlavor& rFlavor ) override;
     virtual void        DragFinished( sal_Int8 nDropAction ) override;
 

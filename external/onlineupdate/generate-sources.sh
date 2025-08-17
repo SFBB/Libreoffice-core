@@ -1,4 +1,14 @@
 #!/bin/sh
+#
+# This file is part of the LibreOffice project.
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+
+# Generate an external tarball from upstream git repo $1 (optionally using $2 in the tarball name):
+
 set -ex
 
 source=${1?}
@@ -185,6 +195,9 @@ copyto toolkit/mozapps/update/common/updateutils_win.cpp toolkit/mozapps/update/
 copyto toolkit/mozapps/update/common/updateutils_win.h toolkit/mozapps/update/common/updateutils_win.h
 copyto toolkit/mozapps/update/updater/crctable.h toolkit/mozapps/update/updater/crctable.h
 copyto toolkit/xre/nsWindowsRestart.cpp toolkit/xre/nsWindowsRestart.cpp
+copyto tools/update-packaging/common.sh tools/update-packaging/common.sh
+copyto tools/update-packaging/make_full_update.sh tools/update-packaging/make_full_update.sh
+copyto tools/update-packaging/make_incremental_update.sh tools/update-packaging/make_incremental_update.sh
 copyto xpcom/base/nsAlgorithm.h xpcom/base/nsAlgorithm.h
 copyto xpcom/base/nsAutoRef.h xpcom/base/nsAutoRef.h
 copyto xpcom/base/nsWindowsHelpers.h xpcom/base/nsWindowsHelpers.h

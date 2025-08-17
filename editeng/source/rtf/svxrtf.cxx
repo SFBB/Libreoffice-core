@@ -27,7 +27,7 @@
 #include <svl/itempool.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <tools/debug.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <comphelper/string.hxx>
 
@@ -598,7 +598,7 @@ const vcl::Font& SvxRTFParser::GetFont( sal_uInt16 nId )
         return it->second;
     }
     const SvxFontItem& rDfltFont =
-        pAttrPool->GetDefaultItem(aPlainMap[SID_ATTR_CHAR_FONT]);
+        pAttrPool->GetUserOrPoolDefaultItem(aPlainMap[SID_ATTR_CHAR_FONT]);
     pDfltFont->SetFamilyName( rDfltFont.GetStyleName() );
     pDfltFont->SetFamily( rDfltFont.GetFamily() );
     return *pDfltFont;
@@ -629,7 +629,7 @@ SvxRTFItemStackType* SvxRTFParser::GetAttrSet_()
 
     aAttrStack.push_back( std::move(xNew) );
 
-    if (aAttrStack.size() > 96 && utl::ConfigManager::IsFuzzing())
+    if (aAttrStack.size() > 96 && comphelper::IsFuzzing())
         throw std::range_error("ecStackOverflow");
 
     bNewGroup = false;
@@ -653,7 +653,7 @@ void SvxRTFParser::ClearStyleAttr_( SvxRTFItemStackType& rStkType )
         {
             if (SfxItemPool::IsWhich(nWhich) &&
                 SfxItemState::SET == aIter.GetItemState( false, &pItem ) &&
-                     rPool.GetDefaultItem( nWhich ) == *pItem )
+                     rPool.GetUserOrPoolDefaultItem( nWhich ) == *pItem )
                 aIter.ClearItem();       // delete
         }
     }
@@ -674,7 +674,7 @@ void SvxRTFParser::ClearStyleAttr_( SvxRTFItemStackType& rStkType )
             }
             else if (SfxItemPool::IsWhich(nWhich) &&
                     SfxItemState::SET == aIter.GetItemState( false, &pItem ) &&
-                     rPool.GetDefaultItem( nWhich ) == *pItem )
+                     rPool.GetUserOrPoolDefaultItem( nWhich ) == *pItem )
                 rSet.ClearItem( nWhich );       // delete
         }
     }
@@ -700,17 +700,22 @@ void SvxRTFParser::AttrGroupEnd()   // process the current, delete from Stack
         // set only the attributes that are different from the parent
         if( pCurrent && pOld->aAttrSet.Count() )
         {
-            SfxItemIter aIter( pOld->aAttrSet );
-            const SfxPoolItem* pItem = aIter.GetCurItem(), *pGet;
-            do
-            {
-                if( SfxItemState::SET == pCurrent->aAttrSet.GetItemState(
-                    pItem->Which(), false, &pGet ) &&
-                    *pItem == *pGet )
-                    aIter.ClearItem();
+            // ITEM: SfxItemIter and removing SfxPoolItems:
+            // iterating and clearing Items on the same incarnation is in
+            // general a bad idea, it invalidates iterators. Work around
+            // this by remembering the WhichIDs of Items to delete
+            std::vector<sal_uInt16> aDeleteWhichIDs;
 
-                pItem = aIter.NextItem();
-            } while (pItem);
+            for (SfxItemIter aIter(pOld->aAttrSet); !aIter.IsAtEnd(); aIter.NextItem())
+            {
+                const SfxPoolItem* pGet(nullptr);
+                if (SfxItemState::SET == pCurrent->aAttrSet.GetItemState(aIter.GetCurWhich(), false, &pGet)
+                    && *aIter.GetCurItem() == *pGet)
+                    aDeleteWhichIDs.push_back(aIter.GetCurWhich());
+            }
+
+            for (auto nDelWhich : aDeleteWhichIDs)
+                pOld->aAttrSet.ClearItem(nDelWhich);
 
             if (!pOld->aAttrSet.Count() && pOld->maChildList.empty() &&
                 !pOld->nStyleNo )
@@ -917,7 +922,7 @@ void SvxRTFParser::BuildWhichTable()
          };
     for (sal_uInt16 nWid : WIDS1)
     {
-        sal_uInt16 nTrueWid = pAttrPool->GetTrueWhich(nWid, false);
+        sal_uInt16 nTrueWid = pAttrPool->GetTrueWhichIDFromSlotID(nWid, false);
         aPardMap.data[nWid] = nTrueWid;
         if (nTrueWid == 0)
             continue;
@@ -942,7 +947,7 @@ void SvxRTFParser::BuildWhichTable()
          };
     for (sal_uInt16 nWid : WIDS)
     {
-        sal_uInt16 nTrueWid = pAttrPool->GetTrueWhich(nWid, false);
+        sal_uInt16 nTrueWid = pAttrPool->GetTrueWhichIDFromSlotID(nWid, false);
         aPlainMap.data[nWid] = nTrueWid;
         if (nTrueWid == 0)
             continue;
@@ -959,7 +964,7 @@ const SfxItemSet& SvxRTFParser::GetRTFDefaults()
         {
             SvxScriptSpaceItem aItem( false, nId );
             if( bNewDoc )
-                pAttrPool->SetPoolDefaultItem( aItem );
+                pAttrPool->SetUserDefaultItem( aItem );
             else
                 pRTFDefaults->Put( aItem );
         }
@@ -980,10 +985,7 @@ SvxRTFItemStackType::SvxRTFItemStackType(
         const EditPosition& rPos )
     : aAttrSet( rPool, pWhichRange )
     , mxStartNodeIdx(rPos.MakeNodeIdx())
-#if !defined(__COVERITY__)
-    // coverity 2020 has difficulty wrt std::optional leading to bogus 'Uninitialized scalar variable'
     , mxEndNodeIdx(mxStartNodeIdx)
-#endif
     , nSttCnt(rPos.GetCntIdx())
     , nEndCnt(nSttCnt)
     , nStyleNo(0)
@@ -996,10 +998,7 @@ SvxRTFItemStackType::SvxRTFItemStackType(
         bool const bCopyAttr )
     : aAttrSet( *rCpy.aAttrSet.GetPool(), rCpy.aAttrSet.GetRanges() )
     , mxStartNodeIdx(rPos.MakeNodeIdx())
-#if !defined(__COVERITY__)
-    // coverity 2020 has difficulty wrt std::optional leading to bogus 'Uninitialized scalar variable'
     , mxEndNodeIdx(mxStartNodeIdx)
-#endif
     , nSttCnt(rPos.GetCntIdx())
     , nEndCnt(nSttCnt)
     , nStyleNo(rCpy.nStyleNo)
@@ -1085,7 +1084,7 @@ void SvxRTFItemStackType::Compress( const SvxRTFParser& rParser )
             pTmp->Compress( rParser );
 
         if( !pTmp->nSttCnt
-            ? (aLastNd.GetIdx()+1 != pTmp->mxStartNodeIdx->GetIdx() ||
+            ? (aLastNd.GetIdx() != pTmp->mxStartNodeIdx->GetIdx() - 1 ||
                !rParser.IsEndPara( &aLastNd, nLastCnt ) )
             : ( pTmp->nSttCnt != nLastCnt ||
                 aLastNd.GetIdx() != pTmp->mxStartNodeIdx->GetIdx() ))
@@ -1102,17 +1101,19 @@ void SvxRTFItemStackType::Compress( const SvxRTFParser& rParser )
         if( n )
         {
             // Search for all which are set over the whole area
-            SfxItemIter aIter( aMrgSet );
-            const SfxPoolItem* pItem;
-            const SfxPoolItem* pIterItem = aIter.GetCurItem();
-            do {
-                sal_uInt16 nWhich = pIterItem->Which();
-                if( SfxItemState::SET != pTmp->aAttrSet.GetItemState( nWhich,
-                      false, &pItem ) || *pItem != *pIterItem)
-                    aIter.ClearItem();
+            // ITEM: SfxItemIter and removing SfxPoolItems:
+            std::vector<sal_uInt16> aDeleteWhichIDs;
 
-                pIterItem = aIter.NextItem();
-            } while(pIterItem);
+            for (SfxItemIter aIter(aMrgSet); !aIter.IsAtEnd(); aIter.NextItem())
+            {
+                const SfxPoolItem* pGet(nullptr);
+                if (SfxItemState::SET != pTmp->aAttrSet.GetItemState(aIter.GetCurWhich(), false, &pGet)
+                    || *aIter.GetCurItem() != *pGet)
+                    aDeleteWhichIDs.push_back(aIter.GetCurWhich());
+            }
+
+            for (auto nDelWhich : aDeleteWhichIDs)
+                aMrgSet.ClearItem(nDelWhich);
 
             if( !aMrgSet.Count() )
                 return;

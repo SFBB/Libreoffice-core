@@ -8,20 +8,15 @@
  */
 
 #include <osl/file.hxx>
-#include <osl/process.h>
-#include <rtl/textenc.h>
 #include <sal/main.h>
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/bootstrap.hxx>
 #include <comphelper/diagnose_ex.hxx>
-#include <tools/degree.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <i18nlangtag/mslangid.hxx>
 
-#include <vcl/font/Feature.hxx>
 #include <vcl/metric.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/vclmain.hxx>
 #include <vcl/wrkwin.hxx>
 
 #include <font/LogicalFontInstance.hxx>
@@ -120,7 +115,7 @@ int ListGlyphs::Main()
              nChar = pCharMap->GetNextChar(nChar))
         {
             auto nGlyphIndex = pFontInstance->GetGlyphIndex(nChar);
-            tools::Rectangle aGlyphBounds;
+            basegfx::B2DRectangle aGlyphBounds;
             pFontInstance->GetGlyphBoundRect(nGlyphIndex, aGlyphBounds, false);
             std::cout << "Codepoint: " << pFontFace->GetGlyphName(nGlyphIndex)
                       << "; glyph bounds: " << aGlyphBounds << "\n";
@@ -202,7 +197,7 @@ void ListGlyphs::Init()
     xServiceManager.set(xContext->getServiceManager(), css::uno::UNO_QUERY);
 
     if (!xServiceManager.is())
-        Application::Abort("Bootstrap failure - no service manager");
+        Application::Abort(u"Bootstrap failure - no service manager"_ustr);
 
     comphelper::setProcessServiceFactory(xServiceManager);
 

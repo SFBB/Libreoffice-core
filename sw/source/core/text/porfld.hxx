@@ -30,10 +30,12 @@
 
 class SvxBrushItem;
 class SwFormatVertOrient;
+enum class SwJumpEditFormat;
 
 class SwFieldPortion : public SwExpandPortion
 {
     friend class SwTextFormatter;
+
 protected:
     OUString  m_aExpand;          // The expanded field
     std::unique_ptr<SwFont> m_pFont;  // For multi-line fields
@@ -41,7 +43,7 @@ protected:
     TextFrameIndex m_nNextScriptChg;
     TextFrameIndex m_nFieldLen; //< Length of field text, 1 for normal fields, any number for input fields
     // TODO ^ do we need this as member or is base class len enough?
-    sal_uInt16  m_nViewWidth;     // Screen width for empty fields
+    SwTwips m_nViewWidth; // Screen width for empty fields
     bool m_bFollow : 1;           // 2nd or later part of a field
     bool m_bLeft : 1;             // Used by SwNumberPortion
     bool m_bHide : 1;             // Used by SwNumberPortion
@@ -76,7 +78,7 @@ public:
     // Empty fields are also allowed
     virtual SwLinePortion *Compress() override;
 
-    virtual sal_uInt16 GetViewWidth( const SwTextSizeInfo &rInf ) const override;
+    virtual SwTwips GetViewWidth(const SwTextSizeInfo& rInf) const override;
 
     bool IsFollow() const { return m_bFollow; }
     void SetFollow( bool bNew ) { m_bFollow = bNew; }
@@ -102,7 +104,7 @@ public:
     virtual SwFieldPortion *Clone( const OUString &rExpand ) const;
 
     // Extra GetTextSize because of pFnt
-    virtual SwPosSize GetTextSize( const SwTextSizeInfo &rInfo ) const override;
+    virtual SwPositiveSize GetTextSize( const SwTextSizeInfo &rInfo ) const override;
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;
@@ -132,19 +134,18 @@ public:
 class SwNumberPortion : public SwFieldPortion
 {
 protected:
-    sal_uInt16  m_nFixWidth;      // See Glues
-    sal_uInt16  m_nMinDist;       // Minimal distance to the text
+    SwTwips m_nFixWidth; // See Glues
+    SwTwips m_nMinDist; // Minimal distance to the text
     bool    mbLabelAlignmentPosAndSpaceModeActive;
 
 public:
     SwNumberPortion( const OUString &rExpand,
                      std::unique_ptr<SwFont> pFnt,
                      const bool bLeft,
-                     const bool bCenter,
-                     const sal_uInt16 nMinDst,
+                     const bool bCenter, const SwTwips nMinDst,
                      const bool bLabelAlignmentPosAndSpaceModeActive );
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
-    virtual TextFrameIndex GetModelPositionForViewPoint(sal_uInt16 nOfst) const override;
+    virtual TextFrameIndex GetModelPositionForViewPoint(SwTwips nOfst) const override;
     virtual bool Format( SwTextFormatInfo &rInf ) override;
 
     // Field cloner for SplitGlue
@@ -160,7 +161,7 @@ public:
                      std::unique_ptr<SwFont> pFnt,
                      const bool bLeft,
                      const bool bCenter,
-                     const sal_uInt16 nMinDst,
+                     const SwTwips nMinDst,
                      const bool bLabelAlignmentPosAndSpaceModeActive );
 };
 
@@ -179,7 +180,7 @@ public:
                      const Size& rGrfSize,
                      const bool bLeft,
                      const bool bCenter,
-                     const sal_uInt16 nMinDst,
+                     const SwTwips nMinDst,
                      const bool bLabelAlignmentPosAndSpaceModeActive );
     virtual ~SwGrfNumPortion() override;
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
@@ -198,6 +199,8 @@ public:
     SwTwips GetRelPos() const { return m_nYPos; }
     SwTwips GetGrfHeight() const { return m_nGrfHeight; }
     sal_Int16 GetOrient() const { return m_eOrient; }
+private:
+    void ImplDestroy();
 };
 
 /**
@@ -210,25 +213,25 @@ public:
  */
 class SwCombinedPortion : public SwFieldPortion
 {
-    sal_uInt16 m_aPos[6];     // up to six X positions
-    o3tl::enumarray<SwFontScript,sal_uInt16> m_aWidth; // one width for every scripttype
+    SwTwips m_aPos[6]; // up to six X positions
+    o3tl::enumarray<SwFontScript, SwTwips> m_aWidth; // one width for every scripttype
     SwFontScript m_aScrType[6];  // scripttype of every character
-    sal_uInt16 m_nUpPos;      // the Y position of the upper baseline
-    sal_uInt16 m_nLowPos;     // the Y position of the lower baseline
+    SwTwips m_nUpPos; // the Y position of the upper baseline
+    SwTwips m_nLowPos; // the Y position of the lower baseline
     sal_uInt8 m_nProportion;  // relative font height
 public:
     explicit SwCombinedPortion( const OUString &rExpand );
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
     virtual bool Format( SwTextFormatInfo &rInf ) override;
-    virtual sal_uInt16 GetViewWidth( const SwTextSizeInfo &rInf ) const override;
+    virtual SwTwips GetViewWidth(const SwTextSizeInfo& rInf) const override;
 };
 
-namespace sw::mark { class IFieldmark; }
+namespace sw::mark { class Fieldmark; }
 
 class SwFieldFormDropDownPortion : public SwFieldPortion
 {
 public:
-    explicit SwFieldFormDropDownPortion(sw::mark::IFieldmark *pFieldMark, const OUString &rExpand)
+    explicit SwFieldFormDropDownPortion(sw::mark::Fieldmark *pFieldMark, const OUString &rExpand)
         : SwFieldPortion(rExpand)
         , m_pFieldMark(pFieldMark)
     {
@@ -239,14 +242,14 @@ public:
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
 
 private:
-    sw::mark::IFieldmark* m_pFieldMark;
+    sw::mark::Fieldmark* m_pFieldMark;
 };
 
 class SwFieldFormDatePortion : public SwFieldPortion
 {
 public:
-    explicit SwFieldFormDatePortion(sw::mark::IFieldmark *pFieldMark, bool bStart)
-        : SwFieldPortion("")
+    explicit SwFieldFormDatePortion(sw::mark::Fieldmark *pFieldMark, bool bStart)
+        : SwFieldPortion(u""_ustr)
         , m_pFieldMark(pFieldMark)
         , m_bStart(bStart)
     {
@@ -257,7 +260,7 @@ public:
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
 
 private:
-    sw::mark::IFieldmark* m_pFieldMark;
+    sw::mark::Fieldmark* m_pFieldMark;
     bool m_bStart;
 };
 
@@ -265,7 +268,7 @@ class SwJumpFieldPortion final : public SwFieldPortion
 {
 public:
     explicit SwJumpFieldPortion(OUString aExpand, OUString aHelp, std::unique_ptr<SwFont> pFont,
-                                sal_uInt32 nFormat)
+                                SwJumpEditFormat nFormat)
         : SwFieldPortion(std::move(aExpand), std::move(pFont))
         , m_nFormat(nFormat)
         , m_sHelp(std::move(aHelp))
@@ -276,7 +279,7 @@ public:
     virtual void Paint(const SwTextPaintInfo& rInf) const override;
 
 private:
-    sal_uInt32 m_nFormat; // SwJumpEditFormat from SwField::GetFormat()
+    SwJumpEditFormat m_nFormat; // SwJumpEditFormat from SwField::GetFormat()
     OUString m_sHelp;
 
     bool DescribePDFControl(const SwTextPaintInfo& rInf) const;

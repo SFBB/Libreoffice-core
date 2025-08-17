@@ -126,6 +126,8 @@ public:
                 {
 #if 0 //TODO: friend function definitions are not marked as referenced even if used?
                     if (!d3->isThisDeclarationADefinition()) //TODO: do this check for all kinds?
+#else
+                    (void)d3;
 #endif
                     {
                         continue;
@@ -153,7 +155,7 @@ public:
             }
             if (auto const d1 = dyn_cast<FieldDecl>(d))
             {
-                if (d1->isUnnamedBitfield())
+                if (compat::isUnnamedBitField(d1))
                 {
                     continue;
                 }

@@ -29,10 +29,12 @@
 #include <svtools/imagemgr.hxx>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
 #include <com/sun/star/frame/ModuleManager.hpp>
+#include <basctl/basctldllpublic.hxx>
 #include <comphelper/processfactory.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <svl/itemset.hxx>
+#include <vcl/svapp.hxx>
 
 #include <initializer_list>
 #include <memory>
@@ -60,7 +62,7 @@ void ModuleInfoHelper::getObjectName( const uno::Reference< container::XNameCont
             script::ModuleInfo aModuleInfo = xVBAModuleInfo->getModuleInfo( rModName );
             uno::Any aObject( aModuleInfo.ModuleObject );
             uno::Reference< lang::XServiceInfo > xServiceInfo( aObject, uno::UNO_QUERY );
-            if( xServiceInfo.is() && xServiceInfo->supportsService( "ooo.vba.excel.Worksheet" ) )
+            if( xServiceInfo.is() && xServiceInfo->supportsService( u"ooo.vba.excel.Worksheet"_ustr ) )
             {
                 uno::Reference< container::XNamed > xNamed( aObject, uno::UNO_QUERY );
                 if( xNamed.is() )
@@ -168,6 +170,7 @@ SbTreeListBox::SbTreeListBox(std::unique_ptr<weld::TreeView> xControl, weld::Win
 {
     m_xControl->connect_row_activated(LINK(this, SbTreeListBox, OpenCurrentHdl));
     m_xControl->connect_expanding(LINK(this, SbTreeListBox, RequestingChildrenHdl));
+    m_xControl->connect_popup_menu(LINK(this, SbTreeListBox, ContextMenuHdl));
     nMode = BrowseMode::All;   // everything
 }
 
@@ -208,14 +211,8 @@ void SbTreeListBox::ScanEntry( const ScriptDocument& rDocument, LibraryLocation 
 void SbTreeListBox::ImpCreateLibEntries(const weld::TreeIter& rIter, const ScriptDocument& rDocument, LibraryLocation eLocation)
 {
     // get a sorted list of library names
-    Sequence< OUString > aLibNames( rDocument.getLibraryNames() );
-    sal_Int32 nLibCount = aLibNames.getLength();
-    const OUString* pLibNames = aLibNames.getConstArray();
-
-    for ( sal_Int32 i = 0 ; i < nLibCount ; i++ )
+    for (auto& aLibName : rDocument.getLibraryNames())
     {
-        OUString aLibName = pLibNames[ i ];
-
         if ( eLocation == rDocument.getLibraryLocation( aLibName ) )
         {
             // check, if the module library is loaded
@@ -284,15 +281,10 @@ void SbTreeListBox::ImpCreateLibSubEntries(const weld::TreeIter& rLibRootEntry, 
                 else
                 {
                     // get a sorted list of module names
-                    Sequence< OUString > aModNames = rDocument.getObjectNames( E_SCRIPTS, rLibName );
-                    sal_Int32 nModCount = aModNames.getLength();
-                    const OUString* pModNames = aModNames.getConstArray();
-
                     auto xTreeIter = m_xControl->make_iterator();
 
-                    for ( sal_Int32 i = 0 ; i < nModCount ; i++ )
+                    for (auto& aModName : rDocument.getObjectNames(E_SCRIPTS, rLibName))
                     {
-                        OUString aModName = pModNames[ i ];
                         m_xControl->copy_iterator(rLibRootEntry, *xTreeIter);
                         bool bModuleEntry = FindEntry(aModName, OBJ_TYPE_MODULE, *xTreeIter);
                         if (!bModuleEntry)
@@ -303,15 +295,10 @@ void SbTreeListBox::ImpCreateLibSubEntries(const weld::TreeIter& rLibRootEntry, 
                         // methods
                         if ( nMode & BrowseMode::Subs )
                         {
-                            Sequence< OUString > aNames = GetMethodNames( rDocument, rLibName, aModName );
-                            sal_Int32 nCount = aNames.getLength();
-                            const OUString* pNames = aNames.getConstArray();
-
                             auto xSubTreeIter = m_xControl->make_iterator();
 
-                            for ( sal_Int32 j = 0 ; j < nCount ; j++ )
+                            for (auto& aName : GetMethodNames(rDocument, rLibName, aModName))
                             {
-                                OUString aName = pNames[ j ];
                                 m_xControl->copy_iterator(*xTreeIter, *xSubTreeIter);
                                 bool bEntry = FindEntry(aName, OBJ_TYPE_METHOD, *xSubTreeIter);
                                 if (!bEntry)
@@ -342,15 +329,10 @@ void SbTreeListBox::ImpCreateLibSubEntries(const weld::TreeIter& rLibRootEntry, 
     try
     {
         // get a sorted list of dialog names
-        Sequence< OUString > aDlgNames( rDocument.getObjectNames( E_DIALOGS, rLibName ) );
-        sal_Int32 nDlgCount = aDlgNames.getLength();
-        const OUString* pDlgNames = aDlgNames.getConstArray();
-
         auto xTreeIter = m_xControl->make_iterator();
 
-        for ( sal_Int32 i = 0 ; i < nDlgCount ; i++ )
+        for (auto& aDlgName : rDocument.getObjectNames(E_DIALOGS, rLibName))
         {
-            OUString aDlgName = pDlgNames[ i ];
             m_xControl->copy_iterator(rLibRootEntry, *xTreeIter);
             bool bDialogEntry = FindEntry(aDlgName, OBJ_TYPE_DIALOG, *xTreeIter);
             if (!bDialogEntry)
@@ -401,16 +383,11 @@ void SbTreeListBox::ImpCreateLibSubSubEntriesInVBAMode(const weld::TreeIter& rLi
     try
     {
         // get a sorted list of module names
-        Sequence< OUString > aModNames = rDocument.getObjectNames( E_SCRIPTS, rLibName );
-        sal_Int32 nModCount = aModNames.getLength();
-        const OUString* pModNames = aModNames.getConstArray();
-
         EntryDescriptor aDesc(GetEntryDescriptor(&rLibSubRootEntry));
         EntryType eCurrentType(aDesc.GetType());
 
-        for ( sal_Int32 i = 0 ; i < nModCount ; i++ )
+        for (auto& aModName : rDocument.getObjectNames(E_SCRIPTS, rLibName))
         {
-            OUString aModName = pModNames[ i ];
             EntryType eType = OBJ_TYPE_UNKNOWN;
             switch( ModuleInfoHelper::getModuleType( xLib, aModName ) )
             {
@@ -454,13 +431,8 @@ void SbTreeListBox::ImpCreateLibSubSubEntriesInVBAMode(const weld::TreeIter& rLi
             // methods
             if ( nMode & BrowseMode::Subs )
             {
-                Sequence< OUString > aNames = GetMethodNames( rDocument, rLibName, aModName );
-                sal_Int32 nCount = aNames.getLength();
-                const OUString* pNames = aNames.getConstArray();
-
-                for ( sal_Int32 j = 0 ; j < nCount ; j++ )
+                for (auto& aName : GetMethodNames(rDocument, rLibName, aModName))
                 {
-                    OUString aName = pNames[ j ];
                     std::unique_ptr<weld::TreeIter> xEntry(m_xControl->make_iterator(xModuleEntry.get()));
                     bool bEntry = FindEntry(aName, OBJ_TYPE_METHOD, *xEntry);
                     if (!bEntry)
@@ -474,6 +446,97 @@ void SbTreeListBox::ImpCreateLibSubSubEntriesInVBAMode(const weld::TreeIter& rLi
     catch ( const container::NoSuchElementException& )
     {
         DBG_UNHANDLED_EXCEPTION("basctl.basicide");
+    }
+}
+
+IMPL_LINK(SbTreeListBox, ContextMenuHdl, const CommandEvent&, rCEvt, bool)
+{
+    weld::TreeView& rTreeView = get_widget();
+
+    if (rCEvt.GetCommand() != CommandEventId::ContextMenu || !rTreeView.n_children())
+        return false;
+
+    // Build popup menu
+    std::unique_ptr<weld::Builder> xBuilder(
+        Application::CreateBuilder(&rTreeView, u"modules/BasicIDE/ui/sortmenu.ui"_ustr));
+    std::unique_ptr<weld::Menu> xPopup(xBuilder->weld_menu(u"sortmenu"_ustr));
+    std::unique_ptr<weld::Menu> xDropMenu(xBuilder->weld_menu(u"sortsubmenu"_ustr));
+
+    // Check the currently selected sort mode
+    bool bAlphabetical = rTreeView.get_sort_order();
+    xDropMenu->set_active(u"alphabetically"_ustr, bAlphabetical);
+    xDropMenu->set_active(u"properorder"_ustr, !bAlphabetical);
+
+    // Display completed popup menu at user mouse location
+    OUString sCommand(
+        xPopup->popup_at_rect(&rTreeView, tools::Rectangle(rCEvt.GetMousePosPixel(), Size(1, 1))));
+
+    // Return early if user cancels action
+    if (sCommand.isEmpty())
+        return true;
+
+    assert((sCommand == u"alphabetically" || sCommand == u"properorder") && "Unknown context menu action!");
+
+    bool bValidIter = m_xControl->get_selected(m_xScratchIter.get());
+    EntryDescriptor aCurDesc(GetEntryDescriptor(bValidIter ? m_xScratchIter.get() : nullptr));
+
+    if (sCommand == u"alphabetically")
+    {
+        rTreeView.make_sorted();
+    }
+    else if (sCommand == u"properorder")
+    {
+        rTreeView.make_unsorted();
+
+        // make_unsorted() does not reorder; macros must be reloaded for changes to take effect
+        ReloadAllEntries();
+    }
+
+    // Set the entry so that selected module is in window after sort
+    SetCurrentEntry(aCurDesc);
+
+    return true;
+}
+
+void SbTreeListBox::ReloadAllEntries()
+{
+    // List of modules to expand; stored as an OUString signature
+    std::unordered_set<EntryDescriptor> aExpandedRows;
+
+    // Find all instances of expanded rows in tree so they can be re-expanded later
+    bool bValidIter = m_xControl->get_iter_first(*m_xScratchIter);
+    while (bValidIter)
+    {
+        if (m_xControl->get_row_expanded(*m_xScratchIter)) {
+            aExpandedRows.insert(GetEntryDescriptor(m_xScratchIter.get()));
+        }
+
+        bValidIter = m_xControl->iter_next(*m_xScratchIter);
+    }
+
+    // Remove all entries in treelist
+    bValidIter = m_xControl->get_iter_first(*m_xScratchIter);
+    while (bValidIter)
+    {
+        RemoveEntry(*m_xScratchIter);
+
+        bValidIter = m_xControl->get_iter_first(*m_xScratchIter);
+    }
+
+    // Load in all macros in unsorted order
+    UpdateEntries();
+
+    // Re-expand previously expanded items
+    bValidIter = m_xControl->get_iter_first(*m_xScratchIter);
+    while (bValidIter)
+    {
+        EntryDescriptor aDesc = GetEntryDescriptor(m_xScratchIter.get());
+
+        if (aExpandedRows.contains(aDesc)) {
+            m_xControl->expand_row(*m_xScratchIter);
+        }
+
+        bValidIter = m_xControl->iter_next(*m_xScratchIter);
     }
 }
 
@@ -690,20 +753,18 @@ OUString SbTreeListBox::GetRootEntryBitmaps(const ScriptDocument& rDocument)
     if ( rDocument.isDocument() )
     {
         OUString sFactoryURL;
-        Reference<uno::XComponentContext> xContext( ::comphelper::getProcessComponentContext() );
+        const Reference<uno::XComponentContext>& xContext( ::comphelper::getProcessComponentContext() );
         Reference< frame::XModuleManager2 > xModuleManager( frame::ModuleManager::create(xContext) );
         try
         {
             OUString sModule( xModuleManager->identify( rDocument.getDocument() ) );
             Sequence< beans::PropertyValue > aModuleDescr;
             xModuleManager->getByName( sModule ) >>= aModuleDescr;
-            sal_Int32 nCount = aModuleDescr.getLength();
-            const beans::PropertyValue* pModuleDescr = aModuleDescr.getConstArray();
-            for ( sal_Int32 i = 0; i < nCount; ++i )
+            for (auto& rModuleDescr : aModuleDescr)
             {
-                if ( pModuleDescr[ i ].Name == "ooSetupFactoryEmptyDocumentURL" )
+                if (rModuleDescr.Name == "ooSetupFactoryEmptyDocumentURL")
                 {
-                    pModuleDescr[ i ].Value >>= sFactoryURL;
+                    rModuleDescr.Value >>= sFactoryURL;
                     break;
                 }
             }
@@ -735,8 +796,8 @@ void SbTreeListBox::SetCurrentEntry (EntryDescriptor const & rDesc)
     {
         aDesc = EntryDescriptor(
             ScriptDocument::getApplicationScriptDocument(),
-            LIBRARY_LOCATION_USER, "Standard",
-            OUString(), ".", OBJ_TYPE_UNKNOWN
+            LIBRARY_LOCATION_USER, u"Standard"_ustr,
+            OUString(), u"."_ustr, OBJ_TYPE_UNKNOWN
         );
     }
     ScriptDocument aDocument = aDesc.GetDocument();

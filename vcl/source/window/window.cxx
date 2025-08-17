@@ -24,9 +24,9 @@
 
 #include <sal/types.h>
 #include <comphelper/diagnose_ex.hxx>
+#include <vcl/dndlistenercontainer.hxx>
 #include <vcl/salgtype.hxx>
 #include <vcl/event.hxx>
-#include <vcl/help.hxx>
 #include <vcl/cursor.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/transfer.hxx>
@@ -39,7 +39,7 @@
 #include <vcl/toolkit/button.hxx>
 #include <vcl/taskpanelist.hxx>
 #include <vcl/toolkit/unowrap.hxx>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/sysdata.hxx>
@@ -59,6 +59,7 @@
 #include <toolbox.h>
 #include <brdwin.hxx>
 #include <helpwin.hxx>
+#include <dndeventdispatcher.hxx>
 
 #include <com/sun/star/accessibility/AccessibleRelation.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
@@ -69,9 +70,9 @@
 #include <com/sun/star/datatransfer/dnd/XDropTarget.hpp>
 #include <com/sun/star/rendering/CanvasFactory.hpp>
 #include <com/sun/star/rendering/XSpriteCanvas.hpp>
+#include <comphelper/configuration.hxx>
 #include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
-#include <unotools/configmgr.hxx>
 #include <osl/diagnose.h>
 #include <tools/debug.hxx>
 #include <tools/json_writer.hxx>
@@ -93,8 +94,8 @@ using namespace ::com::sun::star::datatransfer::dnd;
 
 namespace vcl {
 
-Window::Window( WindowType nType )
-    : mpWindowImpl(new WindowImpl( *this, nType ))
+Window::Window( WindowType eType )
+    : mpWindowImpl(new WindowImpl( *this, eType ))
 {
     // true: this outdev will be mirrored if RTL window layout (UI mirroring) is globally active
     mpWindowImpl->mxOutDev->mbEnableRTL = AllSettings::GetLayoutRTL();
@@ -175,10 +176,8 @@ void Window::dispose()
     }
 
     // shutdown drag and drop
-    Reference < XComponent > xDnDComponent( mpWindowImpl->mxDNDListenerContainer, UNO_QUERY );
-
-    if( xDnDComponent.is() )
-        xDnDComponent->dispose();
+    if( mpWindowImpl->mxDNDListenerContainer.is() )
+        mpWindowImpl->mxDNDListenerContainer->dispose();
 
     if( mpWindowImpl->mbFrame && mpWindowImpl->mpFrameData )
     {
@@ -190,8 +189,7 @@ void Window::dispose()
                 Reference< XDragGestureRecognizer > xDragGestureRecognizer(mpWindowImpl->mpFrameData->mxDragSource, UNO_QUERY);
                 if( xDragGestureRecognizer.is() )
                 {
-                    xDragGestureRecognizer->removeDragGestureListener(
-                        Reference< XDragGestureListener > (mpWindowImpl->mpFrameData->mxDropTargetListener, UNO_QUERY));
+                    xDragGestureRecognizer->removeDragGestureListener(mpWindowImpl->mpFrameData->mxDropTargetListener);
                 }
 
                 mpWindowImpl->mpFrameData->mxDropTarget->removeDropTargetListener( mpWindowImpl->mpFrameData->mxDropTargetListener );
@@ -216,15 +214,14 @@ void Window::dispose()
     if ( pWrapper )
         pWrapper->WindowDestroyed( this );
 
-    // MT: Must be called after WindowDestroyed!
-    // Otherwise, if the accessible is a VCLXWindow, it will try to destroy this window again!
-    // But accessibility implementations from applications need this dispose.
-    if ( mpWindowImpl->mxAccessible.is() )
+    if (mpWindowImpl->mpAccessible.is())
     {
-        Reference< XComponent> xC( mpWindowImpl->mxAccessible, UNO_QUERY );
-        if ( xC.is() )
-            xC->dispose();
+        mpWindowImpl->mpAccessible->dispose();
+        mpWindowImpl->mpAccessible.clear();
     }
+
+    if (mpWindowImpl->mpAccessibleInfos)
+        mpWindowImpl->mpAccessibleInfos->pAccessibleParent.clear();
 
     ImplSVData* pSVData = ImplGetSVData();
 
@@ -587,7 +584,7 @@ bool WindowOutputDevice::CanEnableNativeWidget() const
 
 } /* namespace vcl */
 
-WindowImpl::WindowImpl( vcl::Window& rWindow, WindowType nType )
+WindowImpl::WindowImpl( vcl::Window& rWindow, WindowType eType )
 {
     mxOutDev = VclPtr<vcl::WindowOutputDevice>::Create(rWindow);
     maZoom                              = Fraction( 1, 1 );
@@ -622,10 +619,10 @@ WindowImpl::WindowImpl( vcl::Window& rWindow, WindowType nType )
     mpAccessibleInfos                   = nullptr;
     maControlForeground                 = COL_TRANSPARENT;  // no foreground set
     maControlBackground                 = COL_TRANSPARENT;  // no background set
-    mnLeftBorder                        = 0;                         // left border
-    mnTopBorder                         = 0;                         // top border
-    mnRightBorder                       = 0;                         // right border
-    mnBottomBorder                      = 0;                         // bottom border
+    mnLeftBorder                        = 0;                         // width of left border
+    mnTopBorder                         = 0;                         // width of top border
+    mnRightBorder                       = 0;                         // width of right border
+    mnBottomBorder                      = 0;                         // width of bottom border
     mnWidthRequest                      = -1;                        // width request
     mnHeightRequest                     = -1;                        // height request
     mnOptimalWidthCache                 = -1;                        // optimal width cache
@@ -638,7 +635,7 @@ WindowImpl::WindowImpl( vcl::Window& rWindow, WindowType nType )
     mnStyle                             = 0;                         // style (init in ImplInitWindow)
     mnPrevStyle                         = 0;                         // prevstyle (set in SetStyle)
     mnExtendedStyle                     = WindowExtendedStyle::NONE; // extended style (init in ImplInitWindow)
-    mnType                              = nType;                     // type
+    meType                              = eType;                     // type
     mnGetFocusFlags                     = GetFocusFlags::NONE;       // Flags for GetFocus()-Call
     mnWaitCount                         = 0;                         // Wait-Count (>1 == "wait" mouse pointer)
     mnPaintFlags                        = ImplPaintFlags::NONE;      // Flags for ImplCallPaint
@@ -669,7 +666,6 @@ WindowImpl::WindowImpl( vcl::Window& rWindow, WindowType nType )
     mbPushButton                        = false;                     // true: PushButton is the base class
     mbToolBox                           = false;                     // true: ToolBox is the base class
     mbMenuFloatingWindow                = false;                     // true: MenuFloatingWindow is the base class
-    mbToolbarFloatingWindow             = false;                     // true: ImplPopupFloatWin is the base class, used for subtoolbars
     mbSplitter                          = false;                     // true: Splitter is the base class
     mbVisible                           = false;                     // true: Show( true ) called
     mbOverlapVisible                    = false;                     // true: Hide called for visible window from ImplHideAllOverlapWindow()
@@ -779,14 +775,14 @@ ImplFrameData::ImplFrameData( vcl::Window *pWindow )
     mxFontCache        = pSVData->maGDIData.mxScreenFontCache;
     mnFocusId          = nullptr;
     mnMouseMoveId      = nullptr;
-    mnLastMouseX       = -1;
-    mnLastMouseY       = -1;
-    mnBeforeLastMouseX = -1;
-    mnBeforeLastMouseY = -1;
-    mnFirstMouseX      = -1;
-    mnFirstMouseY      = -1;
-    mnLastMouseWinX    = -1;
-    mnLastMouseWinY    = -1;
+    mnLastMouseX       = -32767;
+    mnLastMouseY       = -32767;
+    mnBeforeLastMouseX = -32767;
+    mnBeforeLastMouseY = -32767;
+    mnFirstMouseX      = -32767;
+    mnFirstMouseY      = -32767;
+    mnLastMouseWinX    = -32767;
+    mnLastMouseWinY    = -32767;
     mnModalMode        = 0;
     mnMouseDownTime    = 0;
     mnClickCount       = 0;
@@ -812,7 +808,8 @@ ImplFrameData::ImplFrameData( vcl::Window *pWindow )
     mbInBufferedPaint = false;
     mnDPIX = 96;
     mnDPIY = 96;
-    mnTouchPanPosition = -1;
+    mnTouchPanPositionX = -1;
+    mnTouchPanPositionY = -1;
 }
 
 namespace vcl {
@@ -1023,7 +1020,7 @@ void Window::ImplInit( vcl::Window* pParent, WinBits nStyle, SystemParentData* p
         if( nStyle & WB_SYSTEMCHILDWINDOW )
             nFrameStyle |= SalFrameStyleFlags::SYSTEMCHILD;
 
-        switch (mpWindowImpl->mnType)
+        switch (mpWindowImpl->meType)
         {
             case WindowType::DIALOG:
             case WindowType::TABDIALOG:
@@ -1058,7 +1055,7 @@ void Window::ImplInit( vcl::Window* pParent, WinBits nStyle, SystemParentData* p
         {
             // do not abort but throw an exception, may be the current thread terminates anyway (plugin-scenario)
             throw RuntimeException(
-                "Could not create system window!",
+                u"Could not create system window!"_ustr,
                 Reference< XInterface >() );
         }
 
@@ -1096,10 +1093,10 @@ void Window::ImplInit( vcl::Window* pParent, WinBits nStyle, SystemParentData* p
         }
         else
         {
-            OutputDevice *pOutDev = GetOutDev();
-            if ( pOutDev->AcquireGraphics() )
+            if (auto* pGraphics = GetOutDev()->GetGraphics())
             {
-                mpWindowImpl->mxOutDev->mpGraphics->GetResolution( mpWindowImpl->mpFrameData->mnDPIX, mpWindowImpl->mpFrameData->mnDPIY );
+                pGraphics->GetResolution(mpWindowImpl->mpFrameData->mnDPIX,
+                                         mpWindowImpl->mpFrameData->mnDPIY);
             }
         }
 
@@ -1137,7 +1134,7 @@ void Window::ImplInit( vcl::Window* pParent, WinBits nStyle, SystemParentData* p
                 mpWindowImpl->meAlwaysInputMode   = pParent->mpWindowImpl->meAlwaysInputMode;
             }
 
-            if (!utl::ConfigManager::IsFuzzing())
+            if (!comphelper::IsFuzzing())
             {
                 // we don't want to call the WindowOutputDevice override of this because
                 // it calls back into us.
@@ -1152,7 +1149,7 @@ void Window::ImplInit( vcl::Window* pParent, WinBits nStyle, SystemParentData* p
     mpWindowImpl->mxOutDev->mnDPIX = mpWindowImpl->mpFrameData->mnDPIX;
     mpWindowImpl->mxOutDev->mnDPIY = mpWindowImpl->mpFrameData->mnDPIY;
 
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         const StyleSettings& rStyleSettings = mpWindowImpl->mxOutDev->moSettings->GetStyleSettings();
         mpWindowImpl->mxOutDev->maFont = rStyleSettings.GetAppFont();
@@ -1758,8 +1755,6 @@ void Window::ImplNewInputContext()
     SalInputContext         aNewContext;
     const vcl::Font&        rFont = rInputContext.GetFont();
     const OUString&         rFontName = rFont.GetFamilyName();
-    rtl::Reference<LogicalFontInstance> pFontInstance;
-    aNewContext.mpFont = nullptr;
     if (!rFontName.isEmpty())
     {
         OutputDevice *pFocusWinOutDev = pFocusWin->GetOutDev();
@@ -1773,11 +1768,10 @@ void Window::ImplNewInputContext()
             else
                 aSize.setHeight( (12*pFocusWin->GetOutDev()->mnDPIY)/72 );
         }
-        pFontInstance = pFocusWin->GetOutDev()->mxFontCache->GetFontInstance(
+        aNewContext.mpFont =
+                        pFocusWin->GetOutDev()->mxFontCache->GetFontInstance(
                             pFocusWin->GetOutDev()->mxFontCollection.get(),
                             rFont, aSize, static_cast<float>(aSize.Height()) );
-        if ( pFontInstance )
-            aNewContext.mpFont = pFontInstance;
     }
     aNewContext.mnOptions   = rInputContext.GetOptions();
     pFocusWin->ImplGetFrame()->SetInputContext( &aNewContext );
@@ -1808,15 +1802,17 @@ void Window::SimulateKeyPress( sal_uInt16 nKeyCode ) const
 
 void Window::KeyInput( const KeyEvent& rKEvt )
 {
+#ifndef _WIN32 // On Windows, dialogs react to accelerators  without Alt (tdf#157649)
     KeyCode cod = rKEvt.GetKeyCode ();
-    bool autoacc = ImplGetSVData()->maNWFData.mbAutoAccel;
 
     // do not respond to accelerators unless Alt or Ctrl is held
     if (cod.GetCode () >= 0x200 && cod.GetCode () <= 0x219)
     {
+        bool autoacc = ImplGetSVData()->maNWFData.mbAutoAccel;
         if (autoacc && cod.GetModifier () != KEY_MOD2 && !(cod.GetModifier() & KEY_MOD1))
             return;
     }
+#endif
 
     NotifyEvent aNEvt( NotifyEventType::KEYINPUT, this, &rKEvt );
     if ( !CompatNotify( aNEvt ) )
@@ -1918,7 +1914,7 @@ void Window::RequestHelp( const HelpEvent& rHEvt )
                 if( !aStrHelpId.isEmpty() )
                     pHelp->Start( aStrHelpId, this );
                 else
-                    pHelp->Start( OOO_HELP_INDEX, this );
+                    pHelp->Start( u"" OOO_HELP_INDEX ""_ustr, this );
             }
         }
     }
@@ -2313,10 +2309,20 @@ void Window::Show(bool bVisible, ShowFlags nFlags)
 
             // If it is a SystemWindow it automatically pops up on top of
             // all other windows if needed.
-            if ( ImplIsOverlapWindow() && !(nFlags & ShowFlags::NoActivate) )
+            if (ImplIsOverlapWindow())
             {
-                ImplStartToTop(( nFlags & ShowFlags::ForegroundTask ) ? ToTopFlags::ForegroundTask : ToTopFlags::NONE );
-                ImplFocusToTop( ToTopFlags::NONE, false );
+                if (!(nFlags & ShowFlags::NoActivate))
+                {
+                    ImplStartToTop((nFlags & ShowFlags::ForegroundTask) ? ToTopFlags::ForegroundTask
+                                                                        : ToTopFlags::NONE);
+                    ImplFocusToTop(ToTopFlags::NONE, false);
+
+                    if (!(nFlags & ShowFlags::ForegroundTask))
+                    {
+                        // Inform user about window if we did not popup it at foreground
+                        FlashWindow();
+                    }
+                }
             }
 
             // adjust mpWindowImpl->mbReallyVisible
@@ -2718,7 +2724,7 @@ void Window::setPosSizePixel( tools::Long nX, tools::Long nY,
         }
         if( !comphelper::LibreOfficeKit::isActive() &&
             !(nFlags & PosSizeFlags::X) && bHasValidSize &&
-            pWindow->mpWindowImpl->mpFrame->maGeometry.width() )
+            pWindow->mpWindowImpl->mpFrame->GetWidth())
         {
             // RTL: make sure the old right aligned position is not changed
             // system windows will always grow to the right
@@ -2727,8 +2733,8 @@ void Window::setPosSizePixel( tools::Long nX, tools::Long nY,
                 OutputDevice *pParentOutDev = pWinParent->GetOutDev();
                 if( pParentOutDev->HasMirroredGraphics() )
                 {
-                    const SalFrameGeometry& aSysGeometry = mpWindowImpl->mpFrame->GetUnmirroredGeometry();
-                    const SalFrameGeometry& aParentSysGeometry =
+                    const SalFrameGeometry aSysGeometry = mpWindowImpl->mpFrame->GetUnmirroredGeometry();
+                    const SalFrameGeometry aParentSysGeometry =
                         pWinParent->mpWindowImpl->mpFrame->GetUnmirroredGeometry();
                     tools::Long myWidth = nOldWidth;
                     if( !myWidth )
@@ -3092,27 +3098,15 @@ const Wallpaper& Window::GetDisplayBackground() const
 
 const OUString& Window::GetHelpText() const
 {
-    OUString aStrHelpId( GetHelpId() );
-    bool bStrHelpId = !aStrHelpId.isEmpty();
+    const OUString& rStrHelpId(GetHelpId());
+    const bool bStrHelpId = !rStrHelpId.isEmpty();
 
-    if ( !mpWindowImpl->maHelpText.getLength() && bStrHelpId )
-    {
-        if ( !IsDialog() && (mpWindowImpl->mnType != WindowType::TABPAGE) && (mpWindowImpl->mnType != WindowType::FLOATINGWINDOW) )
-        {
-            Help* pHelp = Application::GetHelp();
-            if ( pHelp )
-            {
-                mpWindowImpl->maHelpText = pHelp->GetHelpText(aStrHelpId, this);
-                mpWindowImpl->mbHelpTextDynamic = false;
-            }
-        }
-    }
-    else if( mpWindowImpl->mbHelpTextDynamic && bStrHelpId )
+    if (mpWindowImpl->mbHelpTextDynamic && bStrHelpId)
     {
         static const char* pEnv = getenv( "HELP_DEBUG" );
         if( pEnv && *pEnv )
         {
-            mpWindowImpl->maHelpText = mpWindowImpl->maHelpText + "\n------------------\n" + aStrHelpId;
+            mpWindowImpl->maHelpText = mpWindowImpl->maHelpText + "\n------------------\n" + rStrHelpId;
         }
         mpWindowImpl->mbHelpTextDynamic = false;
     }
@@ -3344,6 +3338,8 @@ std::string_view windowTypeName(WindowType nWindowType)
         case WindowType::RULER:                     return "ruler";
         case WindowType::HEADERBAR:                 return "headerbar";
         case WindowType::VERTICALTABCONTROL:        return "verticaltabcontrol";
+        case WindowType::PROGRESSBAR:               return "progressbar";
+        case WindowType::LINK_BUTTON:               return "linkbutton";
 
         // nothing to do here, but for completeness
         case WindowType::TOOLKIT_FRAMEWINDOW:       return "toolkit_framewindow";
@@ -3355,13 +3351,17 @@ std::string_view windowTypeName(WindowType nWindowType)
 
 }
 
+std::string_view Window::GetTypeName() const
+{
+    return windowTypeName(GetType());
+}
 void Window::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
 {
     if (!mpWindowImpl)
         return;
 
     rJsonWriter.put("id", get_id());  // TODO could be missing - sort out
-    rJsonWriter.put("type", windowTypeName(GetType()));
+    rJsonWriter.put("type", GetTypeName());
     rJsonWriter.put("text", GetText());
     rJsonWriter.put("enabled", IsEnabled());
     if (!IsVisible())
@@ -3398,6 +3398,21 @@ void Window::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
     vcl::Window* pAccLabelledBy = GetAccessibleRelationLabeledBy();
     if (pAccLabelledBy)
         rJsonWriter.put("labelledBy", pAccLabelledBy->get_id());
+
+    if(!pAccLabelFor && !pAccLabelledBy)
+    {
+        OUString sAccName = GetAccessibleName();
+        OUString sAccDesc = GetAccessibleDescription();
+
+        if (!sAccName.isEmpty() || !sAccDesc.isEmpty())
+        {
+            auto aAria = rJsonWriter.startNode("aria");
+            if (!sAccName.isEmpty())
+                rJsonWriter.put("label", sAccName);
+            if (!sAccDesc.isEmpty())
+                rJsonWriter.put("description", sAccDesc);
+        }
+    }
 
     mpWindowImpl->maDumpAsPropertyTreeHdl.Call(rJsonWriter);
 }
@@ -3497,8 +3512,7 @@ void Window::DrawSelectionBackground( const tools::Rectangle& rRect,
     }
 
     tools::Rectangle aRect( rRect );
-    Color oldFillCol = GetOutDev()->GetFillColor();
-    Color oldLineCol = GetOutDev()->GetLineColor();
+    auto popIt = GetOutDev()->ScopedPush(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR);
 
     if( bDrawBorder )
         GetOutDev()->SetLineColor( bDark ? COL_WHITE : ( bBright ? COL_BLACK : aSelectionBorderCol ) );
@@ -3571,9 +3585,6 @@ void Window::DrawSelectionBackground( const tools::Rectangle& rRect,
         tools::PolyPolygon aPolyPoly( aPoly );
         GetOutDev()->DrawTransparent( aPolyPoly, nPercent );
     }
-
-    GetOutDev()->SetFillColor( oldFillCol );
-    GetOutDev()->SetLineColor( oldLineCol );
 }
 
 bool Window::IsScrollable() const
@@ -3592,7 +3603,7 @@ bool Window::IsScrollable() const
 
 void Window::ImplMirrorFramePos( Point &pt ) const
 {
-    pt.setX( mpWindowImpl->mpFrame->maGeometry.width()-1-pt.X() );
+    pt.setX(mpWindowImpl->mpFrame->GetWidth() - 1 - pt.X());
 }
 
 // frame based modal counter (dialogs are not modal to the whole application anymore)
@@ -3729,11 +3740,11 @@ Reference< css::rendering::XCanvas > WindowOutputDevice::ImplGetCanvas( bool bSp
         GetSystemGfxDataAny()
     };
 
-    Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
 
     // Create canvas instance with window handle
 
-    static vcl::DeleteUnoReferenceOnDeinit<XMultiComponentFactory> xStaticCanvasFactory(
+    static tools::DeleteUnoReferenceOnDeinit<XMultiComponentFactory> xStaticCanvasFactory(
         css::rendering::CanvasFactory::create( xContext ) );
     Reference<XMultiComponentFactory> xCanvasFactory(xStaticCanvasFactory.get());
     Reference< css::rendering::XCanvas > xCanvas;
@@ -3763,8 +3774,8 @@ Reference< css::rendering::XCanvas > WindowOutputDevice::ImplGetCanvas( bool bSp
         {
             xCanvas.set( xCanvasFactory->createInstanceWithArgumentsAndContext(
                              bSpriteCanvas ?
-                             OUString( "com.sun.star.rendering.SpriteCanvas" ) :
-                             OUString( "com.sun.star.rendering.Canvas" ),
+                             u"com.sun.star.rendering.SpriteCanvas"_ustr :
+                             u"com.sun.star.rendering.Canvas"_ustr,
                              aArg,
                              xContext ),
                          UNO_QUERY );
@@ -3795,9 +3806,9 @@ namespace
         uno::Reference<accessibility::XAccessibleEditableText> xText;
         try
         {
-            uno::Reference< accessibility::XAccessible > xAccessible( pFocusWin->GetAccessible() );
-            if (xAccessible.is())
-                xText = FindFocusedEditableText(xAccessible->getAccessibleContext());
+            rtl::Reference<comphelper::OAccessible> pAccessible = pFocusWin->GetAccessible();
+            if (pAccessible.is())
+                xText = FindFocusedEditableText(pAccessible);
         }
         catch(const uno::Exception&)
         {
@@ -3856,7 +3867,7 @@ void Window::ApplySettings(vcl::RenderContext& /*rRenderContext*/)
 const SystemEnvData* Window::GetSystemData() const
 {
 
-    return mpWindowImpl->mpFrame ? mpWindowImpl->mpFrame->GetSystemData() : nullptr;
+    return mpWindowImpl->mpFrame ? &mpWindowImpl->mpFrame->GetSystemData() : nullptr;
 }
 
 bool Window::SupportsDoubleBuffering() const
@@ -3963,7 +3974,7 @@ void WindowOutputDevice::dispose()
     ::OutputDevice::dispose();
     // need to do this after OutputDevice::dispose so that the call to WindowOutputDevice::ReleaseGraphics
     // can release the graphics properly
-    mxOwnerWindow.clear();
+    mxOwnerWindow.reset();
 }
 
 css::awt::DeviceInfo WindowOutputDevice::GetDeviceInfo() const

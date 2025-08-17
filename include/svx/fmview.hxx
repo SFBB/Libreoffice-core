@@ -32,6 +32,8 @@ namespace com::sun::star {
     }
 }
 
+namespace com::sun::star::awt { class XControlContainer; };
+
 class OutputDevice;
 class FmFormObj;
 class FmFormPage;
@@ -53,8 +55,8 @@ namespace com::sun::star::form {
 
 class SVXCORE_DLLPUBLIC FmFormView : public E3dView
 {
-    rtl::Reference<FmXFormView> pImpl;
-    FmFormShell*    pFormShell;
+    rtl::Reference<FmXFormView> m_pImpl;
+    FmFormShell*    m_pFormShell;
 
     void Init();
 
@@ -128,11 +130,11 @@ public:
 
     SVX_DLLPRIVATE void ChangeDesignMode(bool bDesign);
 
-    SVX_DLLPRIVATE FmXFormView* GetImpl() const { return pImpl.get(); }
-    SVX_DLLPRIVATE FmFormShell* GetFormShell() const { return pFormShell; }
+    SVX_DLLPRIVATE FmXFormView* GetImpl() const { return m_pImpl.get(); }
+    SVX_DLLPRIVATE FmFormShell* GetFormShell() const { return m_pFormShell; }
 
     struct FormShellAccess { friend class FmFormShell; private: FormShellAccess() { } };
-     void SetFormShell( FmFormShell* pShell, FormShellAccess ) { pFormShell = pShell; }
+     void SetFormShell( FmFormShell* pShell, FormShellAccess ) { m_pFormShell = pShell; }
 
     struct ImplAccess { friend class FmXFormView; private: ImplAccess() { } };
     void SetMoveOutside( bool _bMoveOutside, ImplAccess ) { E3dView::SetMoveOutside( _bMoveOutside ); }
@@ -140,7 +142,8 @@ public:
      void RemoveControlContainer(const css::uno::Reference< css::awt::XControlContainer >& xCC);
 
     virtual SdrPaintWindow* BeginCompleteRedraw(OutputDevice* pOut) override;
-    virtual void EndCompleteRedraw(SdrPaintWindow& rPaintWindow, bool bPaintFormLayer) override;
+    virtual void EndCompleteRedraw(SdrPaintWindow& rPaintWindow, bool bPaintFormLayer,
+        sdr::contact::ViewObjectContactRedirector* pRedirector = nullptr) override;
 
     SVX_DLLPRIVATE const OutputDevice* GetActualOutDev() const {return mpActualOutDev;}
     SVX_DLLPRIVATE bool checkUnMarkAll(const css::uno::Reference< css::uno::XInterface >& _xSource);

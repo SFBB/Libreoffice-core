@@ -16,7 +16,7 @@ endef
 
 else
 define fetch_Download__wget_command
-&& echo fetching $2 && bash -c '$(CURL) -L -O $1/$2 2>&1 | tee -a $(fetch_LOGFILE) && [ $$PIPESTATUS -eq 0 ]'
+&& echo fetching $2 && bash -c '$(CURL) -f -L -O $1/$2 2>&1 | tee -a $(fetch_LOGFILE) && [ $$PIPESTATUS -eq 0 ]'
 endef
 
 endif
@@ -126,7 +126,7 @@ $(WORKDIR)/download: $(BUILDDIR)/config_$(gb_Side).mk $(SRCDIR)/download.lst $(S
 		$(call fetch_Optional,FONTCONFIG,FONTCONFIG_TARBALL) \
 		$(call fetch_Optional,FREEHAND,FREEHAND_TARBALL) \
 		$(call fetch_Optional,FREETYPE,FREETYPE_TARBALL) \
-		FROZEN_TARBALL \
+		$(call fetch_Optional,FROZEN,FROZEN_TARBALL) \
 		$(call fetch_Optional,EPOXY,EPOXY_TARBALL) \
 		$(call fetch_Optional,GLM,GLM_TARBALL) \
 		$(call fetch_Optional,GPGMEPP,GPGME_TARBALL) \
@@ -171,8 +171,9 @@ $(WORKDIR)/download: $(BUILDDIR)/config_$(gb_Side).mk $(SRCDIR)/download.lst $(S
 		$(call fetch_Optional,LPSOLVE,LPSOLVE_TARBALL) \
 		$(call fetch_Optional,LXML,LXML_TARBALL) \
 		$(call fetch_Optional,MARIADB_CONNECTOR_C,MARIADB_CONNECTOR_C_TARBALL) \
+		$(call fetch_Optional,MD4C,MD4C_TARBALL) \
 		$(call fetch_Optional,MDDS,MDDS_TARBALL) \
-		ZXCVBN_C_TARBALL \
+		$(call fetch_Optional,ZXCVBN,ZXCVBN_C_TARBALL) \
 		$(call fetch_Optional,ZXING,ZXING_TARBALL) \
 		$(call fetch_Optional,MDNSRESPONDER,MDNSRESPONDER_TARBALL) \
 		$(call fetch_Optional,MORE_FONTS,FONT_CALADEA_TARBALL) \
@@ -202,11 +203,18 @@ $(WORKDIR)/download: $(BUILDDIR)/config_$(gb_Side).mk $(SRCDIR)/download.lst $(S
 		$(call fetch_Optional,MORE_FONTS,FONT_AMIRI_TARBALL) \
 		$(call fetch_Optional,MORE_FONTS,FONT_REEM_TARBALL) \
 		$(call fetch_Optional,MORE_FONTS,FONT_SCHEHERAZADE_TARBALL) \
+		$(call fetch_Optional,MORE_FONTS,FONT_AGDASIMA_TARBALL) \
+		$(call fetch_Optional,MORE_FONTS,FONT_BACASIME_ANTIQUE_TARBALL) \
+		$(call fetch_Optional,MORE_FONTS,FONT_BELANOSIMA_TARBALL) \
+		$(call fetch_Optional,MORE_FONTS,FONT_CAPRASIMO_TARBALL) \
+		$(call fetch_Optional,MORE_FONTS,FONT_LUGRASIMO_TARBALL) \
+		$(call fetch_Optional,MORE_FONTS,FONT_LUMANOSIMO_TARBALL) \
+		$(call fetch_Optional,MORE_FONTS,FONT_LUNASIMA_TARBALL) \
+		$(call fetch_Optional,MESON,MESON_TARBALL) \
 		$(call fetch_Optional,MSPUB,MSPUB_TARBALL) \
 		$(call fetch_Optional,MWAW,MWAW_TARBALL) \
 		$(call fetch_Optional,MYTHES,MYTHES_TARBALL) \
 		$(call fetch_Optional,NSS,NSS_TARBALL) \
-		$(call fetch_Optional_pack,NUMBERTEXT_EXTENSION_PACK) \
 		$(call fetch_Optional,ODFGEN,ODFGEN_TARBALL) \
 		$(call fetch_Optional,ONLINEUPDATE,ONLINEUPDATE_TARBALL) \
 		$(call fetch_Optional,OPENLDAP,OPENLDAP_TARBALL) \
@@ -218,13 +226,13 @@ $(WORKDIR)/download: $(BUILDDIR)/config_$(gb_Side).mk $(SRCDIR)/download.lst $(S
 		$(call fetch_Optional,POPPLER,POPPLER_DATA_TARBALL) \
 		$(call fetch_Optional,POSTGRESQL,POSTGRESQL_TARBALL) \
 		$(call fetch_Optional,PYTHON,PYTHON_TARBALL) \
+		$(if $(filter WNT,$(OS)),PYTHON_BOOTSTRAP_TARBALL) \
 		$(call fetch_Optional,QXP,QXP_TARBALL) \
 		$(call fetch_Optional,REDLAND,RAPTOR_TARBALL) \
 		$(call fetch_Optional,REDLAND,RASQAL_TARBALL) \
 		$(call fetch_Optional,REDLAND,REDLAND_TARBALL) \
 		$(call fetch_Optional,REVENGE,REVENGE_TARBALL) \
 		$(call fetch_Optional,RHINO,RHINO_TARBALL) \
-		$(call fetch_Optional,RHINO,SWING_TARBALL) \
 		$(call fetch_Optional,SKIA,SKIA_TARBALL) \
 		$(call fetch_Optional,STAROFFICE,STAROFFICE_TARBALL) \
 		$(if $(filter WNT,$(OS)),TWAIN_DSM_TARBALL) \
@@ -233,7 +241,9 @@ $(WORKDIR)/download: $(BUILDDIR)/config_$(gb_Side).mk $(SRCDIR)/download.lst $(S
 		$(call fetch_Optional,WPG,WPG_TARBALL) \
 		$(call fetch_Optional,WPS,WPS_TARBALL) \
 		$(call fetch_Optional,XSLTML,XSLTML_TARBALL) \
+		$(call fetch_Optional,YRS,YRS_TARBALL) \
 		$(call fetch_Optional,ZLIB,ZLIB_TARBALL) \
+		$(call fetch_Optional,ZSTD,ZSTD_TARBALL) \
 		$(call fetch_Optional,ZMF,ZMF_TARBALL) \
 	,$(call fetch_Download_item,https://dev-www.libreoffice.org/src,$(item)))
 	$(foreach item, \
@@ -241,6 +251,9 @@ $(WORKDIR)/download: $(BUILDDIR)/config_$(gb_Side).mk $(SRCDIR)/download.lst $(S
 		$(call fetch_Optional,ODFVALIDATOR,ODFVALIDATOR_JAR) \
 		$(call fetch_Optional,OFFICEOTRON,OFFICEOTRON_JAR) \
 	,$(call fetch_Download_item,https://dev-www.libreoffice.org/extern,$(item)))
+	-@mkdir -p $(TARFILE_LOCATION)/cargo
+	$(if $(call fetch_Optional,YRS,1),\
+		CARGO_HOME=$(TARFILE_LOCATION)/cargo cargo fetch $(if $(verbose),--verbose,) --locked --manifest-path $(SRCDIR)/external/y-crdt/Cargo.toml)
 	@mkdir -p $(dir $@) && touch $@
 	@mkdir -p $(dir $@)/Executable
 

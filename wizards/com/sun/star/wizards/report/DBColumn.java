@@ -46,18 +46,18 @@ public class DBColumn
     private XCell xValCell;
     private XTextRange xValTextCell;
     private XTextCursor xValCellCursor;
-    public XCell xNameCell;
+    private XCell xNameCell;
     private XTextRange xNameTextCell;
     private boolean bAlignLeft;
     private String CharFontName;
     private PropertyState PropertyState;
-    public int ValColumn = 1;
+    private int ValColumn = 1;
     private int ValRow = 0;
-    public FieldColumn CurDBField;
+    private FieldColumn CurDBField;
     private XTextTable xTextTable;
     private XTableColumns xTableColumns;
     private XCellRange xCellRange;
-    public XNamed xTableName;
+    private XNamed xTableName;
     private boolean bIsGroupColumn;
     private RecordParser CurDBMetaData;
     private RecordTable CurRecordTable;
@@ -79,9 +79,9 @@ public class DBColumn
         this.CurDBMetaData = _CurDBMetaData;
         this.CurRecordTable = _CurRecordTable;
         bIsGroupColumn = false;
-        if (CurDBMetaData.RecordFieldColumns != null)
+        if (CurDBMetaData.getRecordFieldColumns() != null)
         {
-            CurDBField = CurDBMetaData.getFieldColumnByFieldName(CurDBMetaData.RecordFieldColumns[i].getFieldName());
+            CurDBField = CurDBMetaData.getFieldColumnByFieldName(CurDBMetaData.getRecordFieldColumns()[i].getFieldName());
         }
         else
         {
@@ -183,6 +183,11 @@ public class DBColumn
         }
     }
 
+    public XCell getNameCell()
+    {
+        return xNameCell;
+    }
+
     private void getTableColumns(String TableName)
     {
         try
@@ -233,7 +238,10 @@ public class DBColumn
         oTextFieldHandler.insertUserField(xTextCursor, CurDBField.getFieldName(), CurDBField.getFieldTitle());
     }
 
-
+    public XNamed getTableName()
+    {
+        return xTableName;
+    }
 
     public void formatValueCell()
     {
@@ -441,5 +449,20 @@ public class DBColumn
             exception.printStackTrace(System.err);
             return true;    //most probably this is really the Namecell!!!!
         }
+    }
+
+    public int getValColumn()
+    {
+        return ValColumn;
+    }
+
+    public FieldColumn getCurDBField()
+    {
+        return CurDBField;
+    }
+
+    public void setCurDBField(FieldColumn _curDBField)
+    {
+        CurDBField = _curDBField;;
     }
 }

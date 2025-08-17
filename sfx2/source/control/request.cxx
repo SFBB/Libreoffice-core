@@ -109,7 +109,12 @@ void SfxRequest_Impl::SetPool( SfxItemPool *pNewPool )
     {
         if ( pPool )
             EndListening( pPool->BC() );
+
+        // tdf#159719 reset SfxPoolItemHolder
+        aRetVal = SfxPoolItemHolder();
+
         pPool = pNewPool;
+
         if ( pNewPool )
             StartListening( pNewPool->BC() );
     }
@@ -402,7 +407,7 @@ void SfxRequest::AppendItem(const SfxPoolItem &rItem)
 {
     if(!pArgs)
         pArgs.reset( new SfxAllItemSet(*pImpl->pPool) );
-    pArgs->Put(rItem, rItem.Which());
+    pArgs->Put(rItem);
 }
 
 
@@ -418,7 +423,6 @@ void SfxRequest::RemoveItem( sal_uInt16 nID )
 
 void SfxRequest::SetReturnValue(const SfxPoolItem &rItem)
 {
-    DBG_ASSERT(nullptr == pImpl->aRetVal.getItem(), "Set Return value multiple times?");
     DBG_ASSERT(nullptr != pImpl->pPool, "Missing SfxItemPool (!)");
     if (nullptr != pImpl->pPool)
         pImpl->aRetVal = SfxPoolItemHolder(*pImpl->pPool, &rItem);
@@ -474,7 +478,7 @@ void SfxRequest::Done
         for (const SfxPoolItem* pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem())
         {
             if(!IsInvalidItem(pItem))
-                pArgs->Put(*pItem,pItem->Which());
+                pArgs->Put(*pItem);
         }
     }
 }
@@ -572,10 +576,10 @@ void SfxRequest::Done_Impl
 
     // recordable?
     // new Recording uses UnoName!
-    SAL_WARN_IF( pImpl->pSlot->pUnoName.isEmpty(), "sfx", "Recording not exported slot: "
+    SAL_WARN_IF( pImpl->pSlot->aUnoName.isEmpty(), "sfx", "Recording not exported slot: "
                     << pImpl->pSlot->GetSlotId() );
 
-    if ( pImpl->pSlot->pUnoName.isEmpty() ) // playing it safe
+    if ( pImpl->pSlot->aUnoName.isEmpty() ) // playing it safe
         return;
 
     // often required values
@@ -586,7 +590,7 @@ void SfxRequest::Done_Impl
     {
         // get the property as SfxPoolItem
         const SfxPoolItem *pItem(nullptr);
-        const sal_uInt16 nWhich(rPool.GetWhich(pImpl->pSlot->GetSlotId()));
+        const sal_uInt16 nWhich(rPool.GetWhichIDFromSlotID(pImpl->pSlot->GetSlotId()));
         const bool bItemStateSet(nullptr != pSet);
         const SfxItemState eState(bItemStateSet ? pSet->GetItemState( nWhich, false, &pItem ) : SfxItemState::DEFAULT);
         SAL_WARN_IF( !bItemStateSet || SfxItemState::SET != eState, "sfx", "Recording property not available: "
@@ -686,7 +690,7 @@ css::uno::Reference< css::frame::XDispatchRecorder > SfxRequest::GetMacroRecorde
 
     if(xSet.is())
     {
-        css::uno::Any aProp = xSet->getPropertyValue("DispatchRecorderSupplier");
+        css::uno::Any aProp = xSet->getPropertyValue(u"DispatchRecorderSupplier"_ustr);
         css::uno::Reference< css::frame::XDispatchRecorderSupplier > xSupplier;
         aProp >>= xSupplier;
         if(xSupplier.is())

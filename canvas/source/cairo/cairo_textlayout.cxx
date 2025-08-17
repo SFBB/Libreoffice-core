@@ -125,7 +125,7 @@ namespace cairocanvas
         if( aAdvancements.getLength() != maText.Length )
         {
             SAL_WARN("canvas.cairo", "TextLayout::applyLogicalAdvancements(): mismatching number of advancements" );
-            throw lang::IllegalArgumentException("mismatching number of advancements", getXWeak(), 1);
+            throw lang::IllegalArgumentException(u"mismatching number of advancements"_ustr, getXWeak(), 1);
         }
 
         maLogicalAdvancements = aAdvancements;
@@ -145,7 +145,7 @@ namespace cairocanvas
         if( aPositions.hasElements() && aPositions.getLength() != maText.Length )
         {
             SAL_WARN("canvas.cairo", "TextLayout::applyKashidaPositions(): mismatching number of positions" );
-            throw lang::IllegalArgumentException("mismatching number of positions", getXWeak(), 1);
+            throw lang::IllegalArgumentException(u"mismatching number of positions"_ustr, getXWeak(), 1);
         }
 
         maKashidaPositions = aPositions;
@@ -164,7 +164,7 @@ namespace cairocanvas
 
         // need metrics for Y offset, the XCanvas always renders
         // relative to baseline
-        const ::FontMetric& aMetric( pVDev->GetFontMetric() );
+        const ::FontMetric aMetric( pVDev->GetFontMetric() );
 
         setupLayoutMode( *pVDev, mnTextDirection );
 
@@ -346,7 +346,7 @@ namespace cairocanvas
 
     OUString SAL_CALL TextLayout::getImplementationName()
     {
-        return "CairoCanvas::TextLayout";
+        return u"CairoCanvas::TextLayout"_ustr;
     }
 
     sal_Bool SAL_CALL TextLayout::supportsService( const OUString& ServiceName )
@@ -356,7 +356,7 @@ namespace cairocanvas
 
     uno::Sequence< OUString > SAL_CALL TextLayout::getSupportedServiceNames()
     {
-        return { "com.sun.star.rendering.TextLayout" };
+        return { u"com.sun.star.rendering.TextLayout"_ustr };
     }
 }
 

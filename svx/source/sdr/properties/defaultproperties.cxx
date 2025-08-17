@@ -25,8 +25,6 @@
 #include <svl/whiter.hxx>
 #include <vector>
 #include <svx/svdobj.hxx>
-#include <svx/svddef.hxx>
-#include <editeng/eeitem.hxx>
 #include <libxml/xmlwriter.h>
 #include <svx/svdmodel.hxx>
 #include <svx/svdtrans.hxx>
@@ -152,7 +150,7 @@ namespace sdr::properties
             }
         }
 
-        void DefaultProperties::SetObjectItemSet(const SfxItemSet& rSet)
+        void DefaultProperties::SetObjectItemSet(const SfxItemSet& rSet, bool bAdjustTextFrameWidthAndHeight)
         {
             if (rSet.HasItem(XATTR_FILLBITMAP))
             {
@@ -197,11 +195,11 @@ namespace sdr::properties
                     PostItemChange(rItem->Which());
                 }
 
-                ItemSetChanged(aPostItemChangeList, 0);
+                ItemSetChanged(aPostItemChangeList, 0, bAdjustTextFrameWidthAndHeight);
             }
         }
 
-        void DefaultProperties::ItemSetChanged(std::span< const SfxPoolItem* const > /*aChangedItems*/, sal_uInt16 /*nDeletedWhich*/)
+        void DefaultProperties::ItemSetChanged(std::span< const SfxPoolItem* const > /*aChangedItems*/, sal_uInt16 /*nDeletedWhich*/, bool /*bAdjustTextFrameWidthAndHeight*/)
         {
         }
 
@@ -221,7 +219,7 @@ namespace sdr::properties
         }
 
         void DefaultProperties::SetStyleSheet(SfxStyleSheet* /*pNewStyleSheet*/, bool /*bDontRemoveHardAttr*/,
-                bool /*bBroadcast*/)
+                bool /*bBroadcast*/, bool /*bAdjustTextFrameWidthAndHeight*/)
         {
             // no StyleSheet in DefaultProperties
         }

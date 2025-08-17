@@ -28,17 +28,18 @@
 #include <memory>
 #include <mutex>
 
-namespace com::sun::star::drawing::framework { class XConfigurationController; }
-namespace com::sun::star::drawing::framework { class XResourceId; }
-namespace com::sun::star::drawing::framework { class XView; }
-namespace com::sun::star::drawing::framework { struct ConfigurationChangeEvent; }
-
 namespace sd {
 class ViewShellBase;
 }
 
 
 namespace sd::framework {
+class CallbackCaller;
+struct ConfigurationChangeEvent;
+class ConfigurationController;
+class AbstractView;
+class ResourceId;
+enum class ConfigurationChangeEventType;
 
 /** The FrameworkHelper is a convenience class that simplifies the
     access to the drawing framework.
@@ -60,6 +61,7 @@ public:
     static const OUString msCenterPaneURL;
     static const OUString msFullScreenPaneURL;
     static const OUString msLeftImpressPaneURL;
+    static const OUString msBottomImpressPaneURL;
     static const OUString msLeftDrawPaneURL;
 
     // URLs of frequently used views.
@@ -72,21 +74,11 @@ public:
     static const OUString msSlideSorterURL;
     static const OUString msPresentationViewURL;
     static const OUString msSidebarViewURL;
+    static const OUString msNotesPanelViewURL;
 
     // URLs of frequently used tool bars.
     static constexpr OUString msToolBarURLPrefix = u"private:resource/toolbar/"_ustr;
     static const OUString msViewTabBarURL;
-
-    // Names of frequently used events.
-    static constexpr OUString msResourceActivationRequestEvent
-        = u"ResourceActivationRequested"_ustr;
-    static constexpr OUString msResourceDeactivationRequestEvent
-        = u"ResourceDeactivationRequest"_ustr;
-    static constexpr OUString msResourceActivationEvent = u"ResourceActivation"_ustr;
-    static constexpr OUString msResourceDeactivationEvent = u"ResourceDeactivation"_ustr;
-    static constexpr OUString msResourceDeactivationEndEvent = u"ResourceDeactivationEnd"_ustr;
-    static constexpr OUString msConfigurationUpdateStartEvent = u"ConfigurationUpdateStart"_ustr;
-    static constexpr OUString msConfigurationUpdateEndEvent = u"ConfigurationUpdateEnd"_ustr;
 
     /** Return the FrameworkHelper object that is associated with the given
         ViewShellBase.  If such an object does not yet exist, a new one is
@@ -119,7 +111,7 @@ public:
     /** Return a view URL for the given identifier.  See GetViewId() for a
         mapping in the opposite direction.
     */
-    static OUString GetViewURL (ViewShell::ShellType eType);
+    static const OUString & GetViewURL (ViewShell::ShellType eType);
 
     /** Return a ViewShell pointer for the given XView reference.  This
         assumes that the given reference is implemented by the
@@ -129,15 +121,14 @@ public:
             reference then an empty pointer is returned.
     */
     static ::std::shared_ptr<ViewShell> GetViewShell (
-        const css::uno::Reference<css::drawing::framework::XView>& rxView);
+        const rtl::Reference<sd::framework::AbstractView>& rxView);
 
-    typedef ::std::function<bool (const css::drawing::framework::ConfigurationChangeEvent&)>
+    typedef ::std::function<bool (const sd::framework::ConfigurationChangeEvent&)>
         ConfigurationChangeEventFilter;
     typedef ::std::function<void (bool bEventSeen)> Callback;
     typedef ::std::function<
         void (
-            const css::uno::Reference<
-                css::drawing::framework::XResourceId>&)
+            const rtl::Reference<ResourceId>&)
         > ResourceFunctor;
 
     /** Test whether the called FrameworkHelper object is valid.
@@ -170,8 +161,8 @@ public:
             of the involved objects does not support XTunnel (where
             necessary).
     */
-    css::uno::Reference<css::drawing::framework::XView> GetView (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneOrViewId);
+    rtl::Reference<sd::framework::AbstractView> GetView (
+        const rtl::Reference<sd::framework::ResourceId>& rxPaneOrViewId);
 
     /** Request the specified view to be displayed in the specified pane.
         When the pane is not visible its creation is also requested.  The
@@ -185,7 +176,7 @@ public:
             the caller can, for example, call RunOnResourceActivation() to
             do some initialization after the requested view becomes active.
     */
-    css::uno::Reference<css::drawing::framework::XResourceId> RequestView (
+    rtl::Reference<sd::framework::ResourceId> RequestView (
         const OUString& rsResourceURL,
         const OUString& rsAnchorURL);
 
@@ -203,7 +194,7 @@ public:
         the event it waits for has been sent.
     */
     void RunOnConfigurationEvent(
-        const OUString& rsEventType,
+        ConfigurationChangeEventType rsEventType,
         const Callback& rCallback);
 
     /** Run the given callback when the specified resource has been
@@ -217,7 +208,7 @@ public:
 
     */
     void RunOnResourceActivation(
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxResourceId,
+        const rtl::Reference<sd::framework::ResourceId>& rxResourceId,
         const Callback& rCallback);
 
     /** Normally the requested changes of the configuration are executed
@@ -235,7 +226,7 @@ public:
         controller.  When the configuration controller is not processing any
         requests the method returns immediately.
     */
-    void WaitForEvent (const OUString& rsEventName) const;
+    void WaitForEvent (ConfigurationChangeEventType rsEventName) const;
 
     /** This is a short cut for WaitForEvent(msConfigurationUpdateEndEvent).
         Call this method to execute the pending requests.
@@ -250,38 +241,12 @@ public:
     */
     void UpdateConfiguration();
 
-    /** Return a string representation of the given XResourceId object.
+    /** Return a string representation of the given ResourceId object.
     */
     static OUString ResourceIdToString (
-        const css::uno::Reference<
-            css::drawing::framework::XResourceId>& rxResourceId);
+        const rtl::Reference<ResourceId>& rxResourceId);
 
-    /** Create a new XResourceId object for the given resource URL.
-    */
-    static css::uno::Reference<
-        css::drawing::framework::XResourceId>
-            CreateResourceId (
-                const OUString& rsResourceURL);
-
-    /** Create a new XResourceId object for the given resource URL and a
-        single anchor URL.
-    */
-    static css::uno::Reference<
-        css::drawing::framework::XResourceId>
-            CreateResourceId (
-                const OUString& rsResourceURL,
-                const OUString& rsAnchorURL);
-
-    /** Create a new XResourceId object for the given resource URL.
-    */
-    static css::uno::Reference<
-        css::drawing::framework::XResourceId>
-            CreateResourceId (
-                const OUString& rsResourceURL,
-                const css::uno::Reference<
-                    css::drawing::framework::XResourceId>& rxAnchor);
-
-    const css::uno::Reference<css::drawing::framework::XConfigurationController>&
+    const rtl::Reference<ConfigurationController>&
         GetConfigurationController() const { return mxConfigurationController;}
 
 private:
@@ -297,13 +262,11 @@ private:
     static std::mutex maInstanceMapMutex;
 
     ViewShellBase& mrBase;
-    css::uno::Reference<css::drawing::framework::XConfigurationController>
-        mxConfigurationController;
+    rtl::Reference<ConfigurationController> mxConfigurationController;
 
     class DisposeListener;
     friend class DisposeListener;
-    css::uno::Reference<css::lang::XComponent>
-        mxDisposeListener;
+    rtl::Reference<DisposeListener> mxDisposeListener;
 
     FrameworkHelper (ViewShellBase& rBase);
     FrameworkHelper (const FrameworkHelper& rHelper) = delete;
@@ -326,8 +289,8 @@ private:
         @param rCallback
             The callback functor to be called.
     */
-    void RunOnEvent(
-        const OUString& rsEventType,
+    rtl::Reference<CallbackCaller> RunOnEvent(
+        ConfigurationChangeEventType rsEventType,
         const ConfigurationChangeEventFilter& rFilter,
         const Callback& rCallback) const;
 

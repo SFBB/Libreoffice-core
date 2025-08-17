@@ -42,17 +42,17 @@ Point ScOutputData::PrePrintDrawingLayer(tools::Long nLogStX, tools::Long nLogSt
     tools::Rectangle aRect;
     SCCOL nCol;
     Point aOffset;
-    tools::Long nLayoutSign(bLayoutRTL ? -1 : 1);
+    tools::Long nLayoutSign(mbLayoutRTL ? -1 : 1);
 
-    for (nCol=0; nCol<nX1; nCol++)
-        aOffset.AdjustX( -(mpDoc->GetColWidth( nCol, nTab ) * nLayoutSign) );
-    aOffset.AdjustY( -sal_Int32(mpDoc->GetRowHeight( 0, nY1-1, nTab )) );
+    for (nCol=0; nCol<mnX1; nCol++)
+        aOffset.AdjustX( -(mpDoc->GetColWidth( nCol, mnTab ) * nLayoutSign) );
+    aOffset.AdjustY( -sal_Int32(mpDoc->GetRowHeight( 0, mnY1-1, mnTab )) );
 
     tools::Long nDataWidth = 0;
-    for (nCol=nX1; nCol<=nX2; nCol++)
-        nDataWidth += mpDoc->GetColWidth( nCol, nTab );
+    for (nCol=mnX1; nCol<=mnX2; nCol++)
+        nDataWidth += mpDoc->GetColWidth( nCol, mnTab );
 
-    if ( bLayoutRTL )
+    if ( mbLayoutRTL )
         aOffset.AdjustX(nDataWidth );
 
     aRect.SetLeft( -aOffset.X() );
@@ -64,27 +64,27 @@ Point ScOutputData::PrePrintDrawingLayer(tools::Long nLogStX, tools::Long nLogSt
     aMMOffset.setX(o3tl::convert(aMMOffset.X(), o3tl::Length::twip, o3tl::Length::mm100));
     aMMOffset.setY(o3tl::convert(aMMOffset.Y(), o3tl::Length::twip, o3tl::Length::mm100));
 
-    if (!bMetaFile)
+    if (!mbMetaFile)
         aMMOffset += Point( nLogStX, nLogStY );
 
-    for (nCol=nX1; nCol<=nX2; nCol++)
-        aRect.AdjustRight(mpDoc->GetColWidth( nCol, nTab ) );
-    aRect.AdjustBottom(mpDoc->GetRowHeight( nY1, nY2, nTab ) );
+    for (nCol=mnX1; nCol<=mnX2; nCol++)
+        aRect.AdjustRight(mpDoc->GetColWidth( nCol, mnTab ) );
+    aRect.AdjustBottom(mpDoc->GetRowHeight( mnY1, mnY2, mnTab ) );
 
     aRect.SetLeft(o3tl::convert(aRect.Left(), o3tl::Length::twip, o3tl::Length::mm100));
     aRect.SetTop(o3tl::convert(aRect.Top(), o3tl::Length::twip, o3tl::Length::mm100));
     aRect.SetRight(o3tl::convert(aRect.Right(), o3tl::Length::twip, o3tl::Length::mm100));
     aRect.SetBottom(o3tl::convert(aRect.Bottom(), o3tl::Length::twip, o3tl::Length::mm100));
 
-    if(pViewShell || pDrawView)
+    if(mpViewShell || mpDrawView)
     {
-        SdrView* pLocalDrawView = pDrawView ? pDrawView : pViewShell->GetScDrawView();
+        SdrView* pLocalDrawView = mpDrawView ? mpDrawView : mpViewShell->GetScDrawView();
 
         if(pLocalDrawView)
         {
             // #i76114# MapMode has to be set because BeginDrawLayers uses GetPaintRegion
             MapMode aOldMode = mpDev->GetMapMode();
-            if (!bMetaFile)
+            if (!mbMetaFile)
                 mpDev->SetMapMode( MapMode( MapUnit::Map100thMM, aMMOffset, aOldMode.GetScaleX(), aOldMode.GetScaleY() ) );
 
             // #i74769# work with SdrPaintWindow directly
@@ -94,7 +94,7 @@ Point ScOutputData::PrePrintDrawingLayer(tools::Long nLogStX, tools::Long nLogSt
             mpTargetPaintWindow = pLocalDrawView->BeginDrawLayers(mpDev, aRectRegion, true);
             OSL_ENSURE(mpTargetPaintWindow, "BeginDrawLayers: Got no SdrPaintWindow (!)");
 
-            if (!bMetaFile)
+            if (!mbMetaFile)
                 mpDev->SetMapMode( aOldMode );
         }
     }
@@ -109,14 +109,14 @@ void ScOutputData::PostPrintDrawingLayer(const Point& rMMOffset) // #i74768#
     // painted with offset
     MapMode aOldMode = mpDev->GetMapMode();
 
-    if (!bMetaFile)
+    if (!mbMetaFile)
     {
         mpDev->SetMapMode( MapMode( MapUnit::Map100thMM, rMMOffset, aOldMode.GetScaleX(), aOldMode.GetScaleY() ) );
     }
 
-    if(pViewShell || pDrawView)
+    if(mpViewShell || mpDrawView)
     {
-        SdrView* pLocalDrawView = pDrawView ? pDrawView : pViewShell->GetScDrawView();
+        SdrView* pLocalDrawView = mpDrawView ? mpDrawView : mpViewShell->GetScDrawView();
 
         if(pLocalDrawView)
         {
@@ -127,7 +127,7 @@ void ScOutputData::PostPrintDrawingLayer(const Point& rMMOffset) // #i74768#
     }
 
     // #i74768#
-    if (!bMetaFile)
+    if (!mbMetaFile)
     {
         mpDev->SetMapMode( aOldMode );
     }
@@ -138,9 +138,9 @@ void ScOutputData::PrintDrawingLayer(SdrLayerID nLayer, const Point& rMMOffset)
 {
     bool bHideAllDrawingLayer(false);
 
-    if(pViewShell || pDrawView)
+    if(mpViewShell || mpDrawView)
     {
-        SdrView* pLocalDrawView = pDrawView ? pDrawView : pViewShell->GetScDrawView();
+        SdrView* pLocalDrawView = mpDrawView ? mpDrawView : mpViewShell->GetScDrawView();
 
         if(pLocalDrawView)
         {
@@ -156,14 +156,14 @@ void ScOutputData::PrintDrawingLayer(SdrLayerID nLayer, const Point& rMMOffset)
 
     MapMode aOldMode = mpDev->GetMapMode();
 
-    if (!bMetaFile)
+    if (!mbMetaFile)
     {
         mpDev->SetMapMode( MapMode( MapUnit::Map100thMM, rMMOffset, aOldMode.GetScaleX(), aOldMode.GetScaleY() ) );
     }
 
     DrawSelectiveObjects( nLayer );
 
-    if (!bMetaFile)
+    if (!mbMetaFile)
     {
         mpDev->SetMapMode( aOldMode );
     }
@@ -181,7 +181,19 @@ void ScOutputData::DrawSelectiveObjects(SdrLayerID nLayer)
     SdrOutliner& rOutl = pModel->GetDrawOutliner();
     rOutl.EnableAutoColor( mbUseStyleColor );
     rOutl.SetDefaultHorizontalTextDirection(
-                mpDoc->GetEditTextDirection( nTab ) );
+                mpDoc->GetEditTextDirection( mnTab ) );
+    Color aOldOutlinerBackgroundColor = rOutl.GetBackgroundColor();
+    const ScTabViewShell* pTabViewShellBg = mbUseStyleColor ? ScTabViewShell::GetActiveViewShell() : nullptr;
+    if (pTabViewShellBg)
+    {
+        // Similar to writer's SwViewShellImp::PaintLayer set the default
+        // background of the Outliner for the AutoColor cases where there is no
+        // explicit background known.  But like elsewhere in calc, take
+        // mbUseStyleColor of false as ScAutoFontColorMode::Print for print
+        // output, so don't set a default outliner background then.
+        const ScViewRenderingOptions& rViewRenderingOptions = pTabViewShellBg->GetViewRenderingData();
+        rOutl.SetBackgroundColor(rViewRenderingOptions.GetDocColor());
+    }
 
     //  #i69767# The hyphenator must be set (used to be before drawing a text shape with hyphenation).
     //  LinguMgr::GetHyphenator (EditEngine) uses a wrapper now that creates the real hyphenator on demand,
@@ -196,9 +208,9 @@ void ScOutputData::DrawSelectiveObjects(SdrLayerID nLayer)
                             DrawModeFlags::SettingsText | DrawModeFlags::SettingsGradient );
     }
 
-    if(pViewShell || pDrawView)
+    if(mpViewShell || mpDrawView)
     {
-        SdrView* pLocalDrawView = pDrawView ? pDrawView : pViewShell->GetScDrawView();
+        SdrView* pLocalDrawView = mpDrawView ? mpDrawView : mpViewShell->GetScDrawView();
 
         if(pLocalDrawView)
         {
@@ -206,7 +218,13 @@ void ScOutputData::DrawSelectiveObjects(SdrLayerID nLayer)
 
             if(pPageView)
             {
-                if (nullptr != pPageView->FindPageWindow(*mpDev))
+                // tdf#160589 need to check for registered PaintWindow using the
+                // 'original' TargetDevice, mpDev might have been changed by a
+                // call to ::SetContentDevice. That again might patch in a
+                // pre-render device fetched from SdrPaintWindow::GetTargetOutputDevice
+                // and thus the test if target is a registered PageWindow would fail
+                assert(nullptr != mpOriginalTargetDevice && "mpOriginalTargetDevice *must* be set when constructing ScOutputData (!)");
+                if (nullptr != pPageView->FindPageWindow(*mpOriginalTargetDevice))
                 {
                     // Target OutputDevice is registered for this view
                     // (as it should be), we can just render
@@ -260,6 +278,9 @@ void ScOutputData::DrawSelectiveObjects(SdrLayerID nLayer)
             }
         }
     }
+
+    if (pTabViewShellBg)
+        rOutl.SetBackgroundColor(aOldOutlinerBackgroundColor);
 
     mpDev->SetDrawMode(nOldDrawMode);
 }

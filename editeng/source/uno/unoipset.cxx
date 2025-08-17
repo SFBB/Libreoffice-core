@@ -63,7 +63,7 @@ uno::Any SvxItemPropertySet::getPropertyValue( const SfxItemPropertyMapEntry* pM
     SfxItemPool* pPool = rSet.GetPool();
     (void)rSet.GetItemState( pMap->nWID, bSearchInParent, &pItem );
     if( nullptr == pItem && pPool )
-        pItem = &(pPool->GetDefaultItem( pMap->nWID ));
+        pItem = &(pPool->GetUserOrPoolDefaultItem( pMap->nWID ));
 
     const MapUnit eMapUnit = pPool ? pPool->GetMetric(pMap->nWID) : MapUnit::Map100thMM;
     sal_uInt8 nMemberId = pMap->nMemberId;
@@ -72,22 +72,21 @@ uno::Any SvxItemPropertySet::getPropertyValue( const SfxItemPropertyMapEntry* pM
 
     if(pItem)
     {
-        pItem->QueryValue( aVal, nMemberId );
+        auto bQuerySucceeded = pItem->QueryValue(aVal, nMemberId);
         if( pMap->nMoreFlags & PropertyMoreFlags::METRIC_ITEM )
         {
-            if( eMapUnit != MapUnit::Map100thMM )
+            if (bQuerySucceeded && eMapUnit != MapUnit::Map100thMM)
             {
                 if ( !bDontConvertNegativeValues || SvxUnoCheckForPositiveValue( aVal ) )
                     SvxUnoConvertToMM( eMapUnit, aVal );
             }
         }
-        else if ( pMap->aType.getTypeClass() == uno::TypeClass_ENUM &&
-              aVal.getValueType() == ::cppu::UnoType<sal_Int32>::get() )
+        else if (pMap->aType.getTypeClass() == uno::TypeClass_ENUM
+                 && pMap->aType.getTypeClass() != aVal.getValueTypeClass())
         {
             // convert typeless SfxEnumItem to enum type
-            sal_Int32 nEnum;
-            aVal >>= nEnum;
-            aVal.setValue( &nEnum, pMap->aType );
+            if (sal_Int32 nEnum; aVal >>= nEnum)
+                aVal.setValue( &nEnum, pMap->aType );
         }
     }
     else
@@ -118,7 +117,7 @@ void SvxItemPropertySet::setPropertyValue( const SfxItemPropertyMapEntry* pMap, 
             return;
         }
 
-        pItem = &pPool->GetDefaultItem( pMap->nWID );
+        pItem = &pPool->GetUserOrPoolDefaultItem( pMap->nWID );
     }
 
     uno::Any aValue(rVal);
@@ -166,7 +165,7 @@ uno::Any SvxItemPropertySet::getPropertyValue( const SfxItemPropertyMapEntry* pM
     {
         // Get Default from ItemPool
         if(SfxItemPool::IsWhich(pMap->nWID))
-            aSet.Put(mrItemPool.GetDefaultItem(pMap->nWID));
+            aSet.Put(mrItemPool.GetUserOrPoolDefaultItem(pMap->nWID));
     }
 
     if(aSet.Count())
@@ -215,7 +214,7 @@ const SfxItemPropertyMapEntry* SvxItemPropertySet::getPropertyMapEntry(std::u16s
  }
 
 
-uno::Reference< beans::XPropertySetInfo > const &  SvxItemPropertySet::getPropertySetInfo() const
+rtl::Reference< SfxItemPropertySetInfo > const &  SvxItemPropertySet::getPropertySetInfo() const
 {
     if( !m_xInfo.is() )
         m_xInfo = new SfxItemPropertySetInfo( m_aPropertyMap );

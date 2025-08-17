@@ -30,12 +30,11 @@ namespace dbaui
 {
     using namespace ::com::sun::star::accessibility;
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star;
 
     OTableWindowAccess::OTableWindowAccess(OTableWindow* _pTable)
-        :ImplInheritanceHelper(_pTable->GetComponentInterface().is() ? _pTable->GetWindowPeer() : nullptr)
+        :ImplInheritanceHelper(_pTable)
         ,m_pTable(_pTable)
     {
     }
@@ -56,12 +55,11 @@ namespace dbaui
     }
     OUString SAL_CALL OTableWindowAccess::getImplementationName()
     {
-        return "org.openoffice.comp.dbu.TableWindowAccessibility";
+        return u"org.openoffice.comp.dbu.TableWindowAccessibility"_ustr;
     }
     Sequence< OUString > SAL_CALL OTableWindowAccess::getSupportedServiceNames()
     {
-        return { "com.sun.star.accessibility.Accessible",
-                 "com.sun.star.accessibility.AccessibleContext" };
+        return { u"com.sun.star.accessibility.AccessibleContext"_ustr };
     }
     // XAccessibleContext
     sal_Int64 SAL_CALL OTableWindowAccess::getAccessibleChildCount(  )
@@ -79,7 +77,7 @@ namespace dbaui
     Reference< XAccessible > SAL_CALL OTableWindowAccess::getAccessibleChild( sal_Int64 i )
     {
         ::osl::MutexGuard aGuard( m_aMutex );
-        Reference< XAccessible > aRet;
+        rtl::Reference<comphelper::OAccessible> pRet;
         if (m_pTable && !m_pTable->isDisposed())
         {
             switch(i)
@@ -88,21 +86,21 @@ namespace dbaui
                 {
                     VclPtr<OTableWindowTitle> xCtrl(m_pTable->GetTitleCtrl());
                     if (xCtrl)
-                        aRet = xCtrl->GetAccessible();
+                        pRet = xCtrl->GetAccessible();
                     break;
                 }
                 case 1:
                 {
                     VclPtr<OTableWindowListBox> xCtrl(m_pTable->GetListBox());
                     if (xCtrl)
-                        aRet = xCtrl->GetAccessible();
+                        pRet = xCtrl->GetAccessible();
                     break;
                 }
                 default:
                     throw IndexOutOfBoundsException();
             }
         }
-        return aRet;
+        return pRet;
     }
     sal_Int64 SAL_CALL OTableWindowAccess::getAccessibleIndexInParent(  )
     {
@@ -138,17 +136,17 @@ namespace dbaui
     Reference< XAccessible > SAL_CALL OTableWindowAccess::getAccessibleAtPoint( const awt::Point& _aPoint )
     {
         ::osl::MutexGuard aGuard( m_aMutex  );
-        Reference< XAccessible > aRet;
+        rtl::Reference<comphelper::OAccessible> pRet;
         if(m_pTable && !m_pTable->isDisposed())
         {
             AbsoluteScreenPixelPoint aPoint(_aPoint.X,_aPoint.Y);
             AbsoluteScreenPixelRectangle aRect(m_pTable->GetDesktopRectPixel());
             if( aRect.Contains(aPoint) )
-                aRet = this;
+                pRet = this;
             else if( m_pTable->GetListBox()->GetDesktopRectPixel().Contains(aPoint))
-                aRet = m_pTable->GetListBox()->GetAccessible();
+                pRet = m_pTable->GetListBox()->GetAccessible();
         }
-        return aRet;
+        return pRet;
     }
     Reference< XAccessible > OTableWindowAccess::getParentChild(sal_Int64 _nIndex)
     {
@@ -182,39 +180,39 @@ namespace dbaui
             OJoinTableView* pView = m_pTable->getTableView();
             auto aIter = pView->getTableConnections(m_pTable) + nIndex;
             aRet.TargetSet = { getParentChild(aIter - pView->getTableConnections().begin()) };
-            aRet.RelationType = AccessibleRelationType::CONTROLLER_FOR;
+            aRet.RelationType = AccessibleRelationType_CONTROLLER_FOR;
         }
         return aRet;
     }
-    sal_Bool SAL_CALL OTableWindowAccess::containsRelation( sal_Int16 aRelationType )
+    sal_Bool SAL_CALL OTableWindowAccess::containsRelation(AccessibleRelationType eRelationType)
     {
         ::osl::MutexGuard aGuard( m_aMutex  );
-        return      AccessibleRelationType::CONTROLLER_FOR == aRelationType
+        return AccessibleRelationType_CONTROLLER_FOR == eRelationType
                 &&  m_pTable && m_pTable->getTableView()->ExistsAConn(m_pTable);
     }
-    AccessibleRelation SAL_CALL OTableWindowAccess::getRelationByType( sal_Int16 aRelationType )
+    AccessibleRelation SAL_CALL OTableWindowAccess::getRelationByType(AccessibleRelationType eRelationType)
     {
         ::osl::MutexGuard aGuard( m_aMutex  );
-        if( AccessibleRelationType::CONTROLLER_FOR == aRelationType && m_pTable)
+        if (AccessibleRelationType_CONTROLLER_FOR == eRelationType && m_pTable)
         {
             OJoinTableView* pView = m_pTable->getTableView();
             const auto& rConnectionList = pView->getTableConnections();
 
             auto aIter = pView->getTableConnections(m_pTable);
             auto aEnd = rConnectionList.end();
-            std::vector< Reference<XInterface> > aRelations;
+            std::vector< Reference<css::accessibility::XAccessible> > aRelations;
             aRelations.reserve(5); // just guessing
             // TODO JNA aIter comes from pView->getTableConnections(m_pTable)
             // and aEnd comes from pView->getTableConnections().end()
             for (; aIter != aEnd ; ++aIter )
             {
-                uno::Reference<uno::XInterface> xInterface(
+                uno::Reference<css::accessibility::XAccessible> xAccessible(
                     getParentChild(aIter - rConnectionList.begin()));
-                aRelations.push_back(xInterface);
+                aRelations.push_back(xAccessible);
             }
 
-            Sequence< Reference<XInterface> > aSeq(aRelations.data(), aRelations.size());
-            return AccessibleRelation(AccessibleRelationType::CONTROLLER_FOR,aSeq);
+            Sequence<Reference<css::accessibility::XAccessible>> aSeq(aRelations.data(), aRelations.size());
+            return AccessibleRelation(AccessibleRelationType_CONTROLLER_FOR, aSeq);
         }
         return AccessibleRelation();
     }
@@ -230,11 +228,6 @@ namespace dbaui
             sAccessibleName = m_pTable->getTitle();
         return sAccessibleName;
     }
-    Reference< XAccessibleContext > SAL_CALL OTableWindowAccess::getAccessibleContext(  )
-    {
-        return this;
-    }
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

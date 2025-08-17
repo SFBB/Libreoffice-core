@@ -404,7 +404,7 @@ bool SvxColumnItem::operator==(const SfxPoolItem& rCmp) const
 }
 
 SvxColumnItem::SvxColumnItem( sal_uInt16 nAct ) :
-    SfxPoolItem (SID_RULER_BORDERS),
+    SfxPoolItem (SID_RULER_BORDERS ),
     nLeft       (0),
     nRight      (0),
     nActColumn  (nAct),

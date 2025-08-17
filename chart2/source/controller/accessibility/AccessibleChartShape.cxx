@@ -35,7 +35,7 @@ namespace chart
 
 AccessibleChartShape::AccessibleChartShape(
         const AccessibleElementInfo& rAccInfo )
-    :impl::AccessibleChartShape_Base( rAccInfo, true/*bMayHaveChildren*/, false/*bAlwaysTransparent*/ )
+    :AccessibleBase(rAccInfo, true/*bMayHaveChildren*/, false/*bAlwaysTransparent*/)
 {
     if ( !rAccInfo.m_aOID.isAdditionalShape() )
         return;
@@ -50,7 +50,7 @@ AccessibleChartShape::AccessibleChartShape(
 
     m_aShapeTreeInfo.SetSdrView( rAccInfo.m_pSdrView );
     m_aShapeTreeInfo.SetController( nullptr );
-    m_aShapeTreeInfo.SetWindow( VCLUnoHelper::GetWindow( rAccInfo.m_xWindow ) );
+    m_aShapeTreeInfo.SetWindow(rAccInfo.m_pWindow);
     m_aShapeTreeInfo.SetViewForwarder( rAccInfo.m_pViewForwarder );
 
     ::accessibility::ShapeTypeHandler& rShapeHandler = ::accessibility::ShapeTypeHandler::Instance();
@@ -63,18 +63,12 @@ AccessibleChartShape::AccessibleChartShape(
 
 AccessibleChartShape::~AccessibleChartShape()
 {
-    OSL_ASSERT( CheckDisposeState( false /* don't throw exceptions */ ) );
+    OSL_ASSERT(!isAlive());
 
     if ( m_pAccShape.is() )
     {
         m_pAccShape->dispose();
     }
-}
-
-// ________ XServiceInfo ________
-OUString AccessibleChartShape::getImplementationName()
-{
-    return "AccessibleChartShape";
 }
 
 // ________ XAccessibleContext ________
@@ -129,15 +123,6 @@ OUString AccessibleChartShape::getAccessibleName()
 }
 
 // ________ XAccessibleComponent ________
-sal_Bool AccessibleChartShape::containsPoint( const awt::Point& aPoint )
-{
-    bool bReturn = false;
-    if ( m_pAccShape.is() )
-    {
-        bReturn = m_pAccShape->containsPoint( aPoint );
-    }
-    return bReturn;
-}
 
 Reference< XAccessible > AccessibleChartShape::getAccessibleAtPoint( const awt::Point& aPoint )
 {
@@ -149,7 +134,7 @@ Reference< XAccessible > AccessibleChartShape::getAccessibleAtPoint( const awt::
     return xResult;
 }
 
-awt::Rectangle AccessibleChartShape::getBounds()
+awt::Rectangle AccessibleChartShape::implGetBounds()
 {
     awt::Rectangle aBounds;
     if ( m_pAccShape.is() )
@@ -157,41 +142,6 @@ awt::Rectangle AccessibleChartShape::getBounds()
         aBounds = m_pAccShape->getBounds();
     }
     return aBounds;
-}
-
-awt::Point AccessibleChartShape::getLocation()
-{
-    awt::Point aLocation;
-    if ( m_pAccShape.is() )
-    {
-        aLocation = m_pAccShape->getLocation();
-    }
-    return aLocation;
-}
-
-awt::Point AccessibleChartShape::getLocationOnScreen()
-{
-    awt::Point aLocation;
-    if ( m_pAccShape.is() )
-    {
-        aLocation = m_pAccShape->getLocationOnScreen();
-    }
-    return aLocation;
-}
-
-awt::Size AccessibleChartShape::getSize()
-{
-    awt::Size aSize;
-    if ( m_pAccShape.is() )
-    {
-        aSize = m_pAccShape->getSize();
-    }
-    return aSize;
-}
-
-void AccessibleChartShape::grabFocus()
-{
-    return AccessibleBase::grabFocus();
 }
 
 sal_Int32 AccessibleChartShape::getForeground()
@@ -215,15 +165,6 @@ sal_Int32 AccessibleChartShape::getBackground()
 }
 
 // ________ XAccessibleExtendedComponent ________
-Reference< awt::XFont > AccessibleChartShape::getFont()
-{
-    Reference< awt::XFont > xFont;
-    if ( m_pAccShape.is() )
-    {
-        xFont.set( m_pAccShape->getFont() );
-    }
-    return xFont;
-}
 
 OUString AccessibleChartShape::getTitledBorderText()
 {

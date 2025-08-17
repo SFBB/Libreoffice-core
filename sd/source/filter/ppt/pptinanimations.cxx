@@ -211,7 +211,7 @@ Reference< XAnimationNode > AnimationImporter::createNode( const Atom* pAtom, co
     Reference< XAnimationNode > xNode;
     if( pServiceName )
     {
-        Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         const OUString aServiceName( OUString::createFromAscii(pServiceName) );
         Reference< XInterface > xFac( xContext->getServiceManager()->createInstanceWithContext(aServiceName, xContext) );
         xNode.set(xFac , UNO_QUERY );
@@ -557,7 +557,7 @@ bool AnimationImporter::convertAnimationNode( const Reference< XAnimationNode >&
 
     bool bAfterEffect = false;
     sal_Int32 nMasterRel = 0;
-    for( const NamedValue& rValue : std::as_const(aUserData) )
+    for (const NamedValue& rValue : aUserData)
     {
         if ( rValue.Name == "after-effect" )
         {
@@ -921,7 +921,7 @@ int AnimationImporter::importTimeContainer( const Atom* pAtom, const Reference< 
                 {
                     if( pChildAtom->hasChildAtom( DFF_msofbtAnimCommand ) )
                     {
-                        Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+                        const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
                         Reference< XAnimationNode > xChildNode( Command::create(xContext), UNO_QUERY_THROW );
                         nNodes += importAnimationNodeContainer( pChildAtom, xChildNode );
                         Reference< XTimeContainer > xParentContainer( xNode, UNO_QUERY );
@@ -2162,7 +2162,7 @@ void AnimationImporter::importAnimateKeyPoints( const Atom* pAtom, const Referen
                         if (importAttributeValue(pValue, aValue2) && aFormula.isEmpty())
                             aValue2 >>= aFormula;
                     }
-                    aValuesRange[nKeyTime] = aValue1;
+                    aValuesRange[nKeyTime] = std::move(aValue1);
                 }
             }
         }
@@ -2523,7 +2523,7 @@ void AnimationImporter::importTargetElementContainer( const Atom* pAtom, Any& rT
 
                     while( (nPara < nParaCount) && (begin > 0) )
                     {
-                        sal_Int32 nParaLength = rEditTextObject.GetText( nPara ).getLength() + 1;
+                        sal_Int32 nParaLength = rEditTextObject.GetTextLen( nPara ) + 1;
                         begin -= nParaLength;
                         end -= nParaLength;
                         nPara++;
@@ -2599,7 +2599,7 @@ void AnimationImporter::importPropertySetContainer( const Atom* pAtom, PropertyS
         {
             Any aAny;
             (void)importAttributeValue( pChildAtom, aAny );
-            rSet.maProperties[ pChildAtom->getInstance() ] = aAny;
+            rSet.maProperties[ pChildAtom->getInstance() ] = std::move(aAny);
         }
         else
         {
@@ -2894,7 +2894,7 @@ void AnimationImporter::dump( Any& rAny )
     {
         if( aEvent.Trigger != EventTrigger::NONE )
         {
-            static const char* triggers[] =
+            static const char* const triggers[] =
             {
                 "none","onbegin","onend","begin",
                 "end","onclick","ondoubleclick","onmouseenter",

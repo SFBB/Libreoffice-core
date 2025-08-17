@@ -27,28 +27,30 @@
 ScNameDefDlg::ScNameDefDlg( SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent,
         const ScViewData& rViewData, std::map<OUString, ScRangeName*>&& aRangeMap,
         const ScAddress& aCursorPos, const bool bUndo )
-    : ScAnyRefDlgController( pB, pCW, pParent, "modules/scalc/ui/definename.ui", "DefineNameDialog")
+    : ScAnyRefDlgController( pB, pCW, pParent, u"modules/scalc/ui/definename.ui"_ustr, u"DefineNameDialog"_ustr)
     , mbUndo( bUndo )
     , mrDoc(rViewData.GetDocument())
-    , mpDocShell ( rViewData.GetDocShell() )
+    , mrDocShell ( rViewData.GetDocShell() )
     , maCursorPos( aCursorPos )
     , maGlobalNameStr  ( ScResId(STR_GLOBAL_SCOPE) )
     , maErrInvalidNameStr( ScResId(STR_ERR_NAME_INVALID))
     , maErrInvalidNameCellRefStr( ScResId(STR_ERR_NAME_INVALID_CELL_REF))
+    , maErrInvalidSheetReference(ScResId(STR_INVALID_TABREF_PRINT_AREA))
     , maErrNameInUse   ( ScResId(STR_ERR_NAME_EXISTS))
     , maRangeMap( std::move(aRangeMap) )
-    , m_xEdName(m_xBuilder->weld_entry("edit"))
-    , m_xEdRange(new formula::RefEdit(m_xBuilder->weld_entry("range")))
-    , m_xRbRange(new formula::RefButton(m_xBuilder->weld_button("refbutton")))
-    , m_xLbScope(m_xBuilder->weld_combo_box("scope"))
-    , m_xBtnRowHeader(m_xBuilder->weld_check_button("rowheader"))
-    , m_xBtnColHeader(m_xBuilder->weld_check_button("colheader"))
-    , m_xBtnPrintArea(m_xBuilder->weld_check_button("printarea"))
-    , m_xBtnCriteria(m_xBuilder->weld_check_button("filter"))
-    , m_xBtnAdd(m_xBuilder->weld_button("add"))
-    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
-    , m_xFtInfo(m_xBuilder->weld_label("label"))
-    , m_xFtRange(m_xBuilder->weld_label("label3"))
+    , m_xEdName(m_xBuilder->weld_entry(u"edit"_ustr))
+    , m_xEdRange(new formula::RefEdit(m_xBuilder->weld_entry(u"range"_ustr)))
+    , m_xRbRange(new formula::RefButton(m_xBuilder->weld_button(u"refbutton"_ustr)))
+    , m_xLbScope(m_xBuilder->weld_combo_box(u"scope"_ustr))
+    , m_xBtnRowHeader(m_xBuilder->weld_check_button(u"rowheader"_ustr))
+    , m_xBtnColHeader(m_xBuilder->weld_check_button(u"colheader"_ustr))
+    , m_xBtnPrintArea(m_xBuilder->weld_check_button(u"printarea"_ustr))
+    , m_xBtnCriteria(m_xBuilder->weld_check_button(u"filter"_ustr))
+    , m_xBtnAdd(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xBtnCancel(m_xBuilder->weld_button(u"cancel"_ustr))
+    , m_xFtInfo(m_xBuilder->weld_label(u"label"_ustr))
+    , m_xExpander(m_xBuilder->weld_expander(u"more"_ustr))
+    , m_xFtRange(m_xBuilder->weld_label(u"label3"_ustr))
 {
     m_xEdRange->SetReferences(this, m_xFtRange.get());
     m_xRbRange->SetReferences(this, m_xEdRange.get());
@@ -69,6 +71,8 @@ ScNameDefDlg::ScNameDefDlg( SfxBindings* pB, SfxChildWindow* pCW, weld::Window* 
     m_xBtnAdd->connect_clicked( LINK( this, ScNameDefDlg, AddBtnHdl ));
     m_xEdName->connect_changed( LINK( this, ScNameDefDlg, NameModifyHdl ));
     m_xEdRange->SetGetFocusHdl( LINK( this, ScNameDefDlg, AssignGetFocusHdl ) );
+    m_xEdRange->SetModifyHdl( LINK( this, ScNameDefDlg, RefEdModifyHdl ) );
+    m_xBtnPrintArea->connect_toggled(LINK(this, ScNameDefDlg, EdModifyCheckBoxHdl));
 
     m_xBtnAdd->set_sensitive(false); // empty name is invalid
 
@@ -94,24 +98,45 @@ void ScNameDefDlg::CancelPushed()
         response(RET_CANCEL);
     else
     {
-        ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell();
-        pViewSh->SwitchBetweenRefDialogs(this);
+        if (ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell())
+            pViewSh->SwitchBetweenRefDialogs(this);
     }
 }
 
 bool ScNameDefDlg::IsFormulaValid()
 {
-    ScCompiler aComp(mrDoc, maCursorPos, mrDoc.GetGrammar());
-    std::unique_ptr<ScTokenArray> pCode = aComp.CompileString(m_xEdRange->GetText());
-    if (pCode->GetCodeError() != FormulaError::NONE)
+    const OUString aRangeOrFormulaExp = m_xEdRange->GetText();
+    // tdf#140394 - check if formula is a valid print range
+    if (m_xBtnPrintArea->get_active())
     {
-        //TODO: info message
-        return false;
+        const ScRefFlags nValidAddr  = ScRefFlags::VALID | ScRefFlags::ROW_VALID | ScRefFlags::COL_VALID;
+        const ScRefFlags nValidRange = nValidAddr | ScRefFlags::ROW2_VALID | ScRefFlags::COL2_VALID;
+        const formula::FormulaGrammar::AddressConvention eConv = mrDoc.GetAddressConvention();
+        const sal_Unicode sep = ScCompiler::GetNativeSymbolChar(ocSep);
+
+        ScAddress aAddr;
+        ScRange aRange;
+        for (sal_Int32 nIdx = 0; nIdx >= 0;)
+        {
+            const OUString aOne = aRangeOrFormulaExp.getToken(0, sep, nIdx);
+            ScRefFlags nResult = aRange.Parse(aOne, mrDoc, eConv);
+            if ((nResult & nValidRange) != nValidRange)
+            {
+                ScRefFlags nAddrResult = aAddr.Parse(aOne, mrDoc, eConv);
+                if ((nAddrResult & nValidAddr) != nValidAddr)
+                    return false;
+            }
+        }
     }
     else
     {
-        return true;
+        ScCompiler aComp(mrDoc, maCursorPos, mrDoc.GetGrammar());
+        std::unique_ptr<ScTokenArray> pCode = aComp.CompileString(m_xEdRange->GetText());
+        if (pCode->GetCodeError() != FormulaError::NONE)
+            return false;
     }
+
+    return true;
 }
 
 bool ScNameDefDlg::IsNameValid()
@@ -163,6 +188,9 @@ bool ScNameDefDlg::IsNameValid()
     if (!IsFormulaValid())
     {
         bIsNameValid = false;
+        if (m_xBtnPrintArea->get_active())
+            aHelpText = maErrInvalidSheetReference;
+        //TODO: info message for a non valid formula (print range not checked)
     }
 
     m_xEdName->set_tooltip_text(aHelpText);
@@ -239,23 +267,23 @@ void ScNameDefDlg::AddPushed()
 
                 assert( pNewEntry);     // undo of no insertion smells fishy
                 if (pNewEntry)
-                    mpDocShell->GetUndoManager()->AddUndoAction(
-                            std::make_unique<ScUndoAddRangeData>( mpDocShell, pNewEntry, nTab) );
+                    mrDocShell.GetUndoManager()->AddUndoAction(
+                            std::make_unique<ScUndoAddRangeData>( mrDocShell, pNewEntry, nTab) );
 
                 // set table stream invalid, otherwise RangeName won't be saved if no other
                 // call invalidates the stream
                 if (nTab != -1)
                     mrDoc.SetStreamValid(nTab, false);
                 SfxGetpApp()->Broadcast( SfxHint( SfxHintId::ScAreasChanged ) );
-                mpDocShell->SetDocumentModified();
+                mrDocShell.SetDocumentModified();
                 Close();
             }
             else
             {
                 maName = aName;
                 maScope = aScope;
-                ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell();
-                pViewSh->SwitchBetweenRefDialogs(this);
+                if (ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell())
+                    pViewSh->SwitchBetweenRefDialogs(this);
             }
         }
         else
@@ -323,6 +351,16 @@ IMPL_LINK_NOARG(ScNameDefDlg, NameModifyHdl, weld::Entry&, void)
 }
 
 IMPL_LINK_NOARG(ScNameDefDlg, AssignGetFocusHdl, formula::RefEdit&, void)
+{
+    IsNameValid();
+}
+
+IMPL_LINK_NOARG(ScNameDefDlg, EdModifyCheckBoxHdl, weld::Toggleable&, void)
+{
+    IsNameValid();
+}
+
+IMPL_LINK_NOARG(ScNameDefDlg, RefEdModifyHdl, formula::RefEdit&, void)
 {
     IsNameValid();
 }

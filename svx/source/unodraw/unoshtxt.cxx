@@ -47,7 +47,7 @@
 #include <comphelper/processfactory.hxx>
 #include <svx/svdotable.hxx>
 #include <cell.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 
 // SvxTextEditSourceImpl
@@ -175,11 +175,11 @@ SvxTextEditSourceImpl::SvxTextEditSourceImpl( SdrObject* pObject, SdrText* pText
             mpText = pTextObj->getText( 0 );
     }
 
-    if( mpModel )
-        StartListening( *mpModel );
-
     if( mpObject )
+    {
+        mpObject->AddListener( *this );
         mpObject->AddObjectUser( *this );
+    }
 }
 
 
@@ -206,7 +206,7 @@ SvxTextEditSourceImpl::SvxTextEditSourceImpl( SdrObject& rObject, SdrText* pText
             mpText = pTextObj->getText( 0 );
     }
 
-    StartListening( *mpModel );
+    rObject.AddListener( *this );
     StartListening( *mpView );
     mpObject->AddObjectUser( *this );
 
@@ -366,9 +366,6 @@ void SvxTextEditSourceImpl::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
                 }
                 break;
 
-            case SdrHintKind::ModelCleared:
-                dispose();
-                break;
             default:
                 break;
         }
@@ -407,10 +404,7 @@ void SvxTextEditSourceImpl::dispose()
     }
 
     if( mpModel )
-    {
-        EndListening( *mpModel );
         mpModel = nullptr;
-    }
 
     if( mpView )
     {
@@ -426,6 +420,7 @@ void SvxTextEditSourceImpl::dispose()
 
     if( mpObject )
     {
+        mpObject->RemoveListener( *this );
         mpObject->RemoveObjectUser( *this );
         mpObject = nullptr;
     }
@@ -508,11 +503,11 @@ SvxTextForwarder* SvxTextEditSourceImpl::GetBackgroundTextForwarder()
                 const_cast<EditEngine*>(&(mpOutliner->GetEditEngine()))->EnableUndo( false );
             }
 
-            if (!utl::ConfigManager::IsFuzzing())
+            if (!comphelper::IsFuzzing())
             {
                 if ( !m_xLinguServiceManager.is() )
                 {
-                    css::uno::Reference< css::uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+                    const css::uno::Reference< css::uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
                     m_xLinguServiceManager.set(css::linguistic2::LinguServiceManager::create(xContext));
                 }
 
@@ -554,7 +549,7 @@ SvxTextForwarder* SvxTextEditSourceImpl::GetBackgroundTextForwarder()
             if (mpText && bTextEditActive && mpObject->IsEmptyPresObj() && pTextObj && pTextObj->IsReallyEdited())
             {
                 mpObject->SetEmptyPresObj( false );
-                static_cast< SdrTextObj* >( mpObject)->NbcSetOutlinerParaObjectForText( pOutlinerParaObject, mpText );
+                static_cast<SdrTextObj*>(mpObject)->NbcSetOutlinerParaObjectForText(std::move(pOutlinerParaObject), mpText);
             }
         }
         else
@@ -586,7 +581,7 @@ SvxTextForwarder* SvxTextEditSourceImpl::GetBackgroundTextForwarder()
             if (aStr.isEmpty())
             {
                 // its empty, so we have to force the outliner to initialise itself
-                mpOutliner->SetText( "", mpOutliner->GetParagraph( 0 ) );
+                mpOutliner->SetText( u""_ustr, mpOutliner->GetParagraph( 0 ) );
 
                 auto pCell = dynamic_cast<sdr::table::Cell*>(mpText);
                 if (pCell && pCell->GetStyleSheet())
@@ -641,7 +636,13 @@ SvxTextForwarder* SvxTextEditSourceImpl::GetTextForwarder()
     // distinguish the cases
     // a) connected to view, maybe edit mode is active, can work directly on the EditOutliner
     // b) background Outliner, reflect changes into ParaOutlinerObject (this is exactly the old UNO code)
-    if( HasView() )
+
+    // IASS: testing for HasView() is *not* sufficient - there may be more views of one document
+    // open and TextEdit is only active in one of them, or - as with IASS - it may even be the view
+    // of the running SlideShow itself which also will have no active TextEdit and thus no Outliner.
+    // Thus, to identify the view which indeed does have an outliner (and is in TextEdit mode),
+    // also check if it has an active Outliner by using GetTextEditOutliner()
+    if( HasView() && nullptr != mpView->GetTextEditOutliner() )
     {
         if( IsEditMode() != mbForwarderIsEditMode )
         {

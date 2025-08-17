@@ -58,7 +58,7 @@ const OpTable aOpTable [] = {
     { CAT,  SbiOpcode::CAT_ },
     { LIKE, SbiOpcode::LIKE_ },
     { IS,   SbiOpcode::IS_ },
-    { NIL,  SbiOpcode::NOP_ }};
+};
 
 // Output of an element
 void SbiExprNode::Gen( SbiCodeGen& rGen, RecursiveMode eRecMode )
@@ -136,12 +136,12 @@ void SbiExprNode::Gen( SbiCodeGen& rGen, RecursiveMode eRecMode )
                 eOp = SbiOpcode::FIND_STATIC_;
             }
         }
+
+        if (pWithParent_ != nullptr)
+            pWithParent_->Gen(rGen);
+
         for( SbiExprNode* p = this; p; p = p->aVar.pNext )
         {
-            if( p == this && pWithParent_ != nullptr )
-            {
-                pWithParent_->Gen(rGen);
-            }
             p->GenElement( rGen, eOp );
             eOp = SbiOpcode::ELEM_;
         }
@@ -162,11 +162,12 @@ void SbiExprNode::Gen( SbiCodeGen& rGen, RecursiveMode eRecMode )
         {
             pRight->Gen(rGen);
         }
-        for( const OpTable* p = aOpTable; p->eTok != NIL; p++ )
+        for (const OpTable& op : aOpTable)
         {
-            if( p->eTok == eTok )
+            if (op.eTok == eTok)
             {
-                rGen.Gen( p->eOp ); break;
+                rGen.Gen(op.eOp);
+                break;
             }
         }
     }
@@ -178,7 +179,7 @@ void SbiExprNode::GenElement( SbiCodeGen& rGen, SbiOpcode eOp )
 {
 #ifdef DBG_UTIL
     if ((eOp < SbiOpcode::RTL_ || eOp > SbiOpcode::CALLC_) && eOp != SbiOpcode::FIND_G_ && eOp != SbiOpcode::FIND_CM_ && eOp != SbiOpcode::FIND_STATIC_)
-        rGen.GetParser()->Error( ERRCODE_BASIC_INTERNAL_ERROR, "Opcode" );
+        rGen.GetParser()->Error( ERRCODE_BASIC_INTERNAL_ERROR, u"Opcode"_ustr );
 #endif
     SbiSymDef* pDef = aVar.pDef;
     // The ID is either the position or the String-ID

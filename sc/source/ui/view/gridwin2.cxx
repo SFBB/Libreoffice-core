@@ -123,7 +123,7 @@ bool ScGridWindow::DoAutoFilterButton( SCCOL nCol, SCROW nRow, const MouseEvent&
     Size aScrSize(nSizeX-1, nSizeY-1);
 
     // Check if the mouse cursor is clicking on the popup arrow box.
-    mpFilterButton.reset(new ScDPFieldButton(GetOutDev(), &GetSettings().GetStyleSettings(), &mrViewData.GetZoomY(), &rDoc));
+    mpFilterButton.reset(new ScDPFieldButton(GetOutDev(), GetSettings().GetStyleSettings(), mrViewData.GetZoomY(), rDoc));
     mpFilterButton->setBoundingBox(aScrPos, aScrSize, bLayoutRTL && !bLOKActive);
     mpFilterButton->setPopupLeft(bLayoutRTL && bLOKActive ? false : bLayoutRTL);   // #i114944# AutoFilter button is left-aligned in RTL
     Point aPopupPos;
@@ -206,14 +206,14 @@ void ScGridWindow::DoPushPivotButton( SCCOL nCol, SCROW nRow, const MouseEvent& 
                 nSrcTab = pDesc->GetSourceRange().aStart.Tab();
             }
 
-            SfxItemSetFixed<SCITEM_QUERYDATA, SCITEM_QUERYDATA>  aArgSet( mrViewData.GetViewShell()->GetPool() );
-            aArgSet.Put( ScQueryItem( SCITEM_QUERYDATA, &mrViewData, &aQueryParam ) );
+            SfxItemSet aArgSet(SfxItemSet::makeFixedSfxItemSet<SCITEM_QUERYDATA, SCITEM_QUERYDATA>(mrViewData.GetViewShell()->GetPool()));
+            aArgSet.Put( ScQueryItem( SCITEM_QUERYDATA, &aQueryParam ) );
 
             ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
 
             ScopedVclPtr<AbstractScPivotFilterDlg> pDlg(
                 pFact->CreateScPivotFilterDlg(
-                    mrViewData.GetViewShell()->GetFrameWeld(), aArgSet, nSrcTab));
+                    mrViewData.GetViewShell()->GetFrameWeld(), aArgSet, mrViewData, nSrcTab));
             if ( pDlg->Execute() == RET_OK )
             {
                 ScSheetSourceDesc aNewDesc(&rDoc);
@@ -225,7 +225,7 @@ void ScGridWindow::DoPushPivotButton( SCCOL nCol, SCROW nRow, const MouseEvent& 
 
                 ScDPObject aNewObj( *pDPObj );
                 aNewObj.SetSheetDesc( aNewDesc );
-                ScDBDocFunc aFunc( *mrViewData.GetDocShell() );
+                ScDBDocFunc aFunc( mrViewData.GetDocShell() );
                 aFunc.DataPilotUpdate( pDPObj, &aNewObj, true, false );
                 mrViewData.GetView()->CursorPosChanged();       // shells may be switched
             }
@@ -262,7 +262,7 @@ void ScGridWindow::DoPushPivotToggle( SCCOL nCol, SCROW nRow, const MouseEvent& 
         nIndent = pIndentItem->GetValue();
 
     // Check if the mouse cursor is clicking on the toggle +/- box.
-    ScDPFieldButton aBtn(GetOutDev(), &GetSettings().GetStyleSettings(), &GetMapMode().GetScaleY());
+    ScDPFieldButton aBtn(GetOutDev(), GetSettings().GetStyleSettings(), GetMapMode().GetScaleY(), mrViewData.GetDocument());
     aBtn.setBoundingBox(aScrPos, aScrSize, bLayoutRTL);
     aBtn.setDrawToggleButton(true, true, nIndent);
     Point aPopupPos;
@@ -277,7 +277,7 @@ void ScGridWindow::DoPushPivotToggle( SCCOL nCol, SCROW nRow, const MouseEvent& 
         pDPObj->GetHeaderPositionData(aCellPos, aData);
         ScDPObject aNewObj(*pDPObj);
         pDPObj->ToggleDetails(aData, &aNewObj);
-        ScDBDocFunc aFunc(*mrViewData.GetDocShell());
+        ScDBDocFunc aFunc(mrViewData.GetDocShell());
         aFunc.DataPilotUpdate(pDPObj, &aNewObj, true, false);
     }
 }
@@ -381,7 +381,7 @@ void ScGridWindow::DPTestMouse( const MouseEvent& rMEvt, bool bMove )
 
             ScDPObject aNewObj( *pDragDPObj );
             aNewObj.SetSaveData( aSaveData );
-            ScDBDocFunc aFunc( *mrViewData.GetDocShell() );
+            ScDBDocFunc aFunc( mrViewData.GetDocShell() );
             // when dragging fields, allow re-positioning (bAllowMove)
             aFunc.DataPilotUpdate( pDragDPObj, &aNewObj, true, false, true );
             mrViewData.GetView()->CursorPosChanged();       // shells may be switched
@@ -407,7 +407,7 @@ bool ScGridWindow::DPTestFieldPopupArrow(
     Size aScrSize(nSizeX-1, nSizeY-1);
 
     // Check if the mouse cursor is clicking on the popup arrow box.
-    ScDPFieldButton aBtn(GetOutDev(), &GetSettings().GetStyleSettings(), &GetMapMode().GetScaleY());
+    ScDPFieldButton aBtn(GetOutDev(), GetSettings().GetStyleSettings(), GetMapMode().GetScaleY(), mrViewData.GetDocument());
     aBtn.setBoundingBox(aScrPos, aScrSize, bLayoutRTL);
     aBtn.setPopupLeft(false);   // DataPilot popup is always right-aligned for now
     Point aPopupPos;
@@ -437,7 +437,7 @@ bool ScGridWindow::DPTestMultiFieldPopupArrow(
     Size aScrSize(nSizeX - 1, nSizeY - 1);
 
     // Check if the mouse cursor is clicking on the popup arrow box.
-    ScDPFieldButton aBtn(GetOutDev(), &GetSettings().GetStyleSettings(), &GetMapMode().GetScaleY());
+    ScDPFieldButton aBtn(GetOutDev(), GetSettings().GetStyleSettings(), GetMapMode().GetScaleY(), mrViewData.GetDocument());
     aBtn.setBoundingBox(aScrPos, aScrSize, bLayoutRTL);
     aBtn.setPopupLeft(false);   // DataPilot popup is always right-aligned for now
     aBtn.setDrawPopupButtonMulti(true);
@@ -656,16 +656,13 @@ void ScGridWindow::DPSetupFieldPopup(std::unique_ptr<ScCheckListMenuControl::Ext
     if (bDimOrientNotPage)
     {
         vector<OUString> aUserSortNames;
-        ScUserList* pUserList = ScGlobal::GetUserList();
-        if (pUserList)
+        ScUserList& rUserList = ScGlobal::GetUserList();
+        size_t nUserListSize = rUserList.size();
+        aUserSortNames.reserve(nUserListSize);
+        for (size_t i = 0; i < nUserListSize; ++i)
         {
-            size_t n = pUserList->size();
-            aUserSortNames.reserve(n);
-            for (size_t i = 0; i < n; ++i)
-            {
-                const ScUserListData& rData = (*pUserList)[i];
-                aUserSortNames.push_back(rData.GetString());
-            }
+            const ScUserListData& rData = rUserList[i];
+            aUserSortNames.push_back(rData.GetString());
         }
 
         // Populate the menus.
@@ -816,7 +813,7 @@ void ScGridWindow::UpdateDPFromFieldPopupMenu()
     }
     pDim->UpdateMemberVisibility(aResult);
 
-    ScDBDocFunc aFunc(*mrViewData.GetDocShell());
+    ScDBDocFunc aFunc(mrViewData.GetDocShell());
     aFunc.UpdatePivotTable(*pDPObj, true, false);
 }
 
@@ -1182,8 +1179,8 @@ void ScGridWindow::PagebreakMove( const MouseEvent& rMEvt, bool bUp )
     if ( bUp )
     {
         ScViewFunc* pViewFunc = mrViewData.GetView();
-        ScDocShell* pDocSh = mrViewData.GetDocShell();
-        ScDocument& rDoc = pDocSh->GetDocument();
+        ScDocShell& rDocSh = mrViewData.GetDocShell();
+        ScDocument& rDoc = rDocSh.GetDocument();
         SCTAB nTab = mrViewData.GetTabNo();
         bool bUndo (rDoc.IsUndoEnabled());
 
@@ -1196,7 +1193,7 @@ void ScGridWindow::PagebreakMove( const MouseEvent& rMEvt, bool bUp )
                 if (bUndo)
                 {
                     OUString aUndo = ScResId( STR_UNDO_DRAG_BREAK );
-                    pDocSh->GetUndoManager()->EnterListAction( aUndo, aUndo, 0, mrViewData.GetViewShell()->GetViewShellId() );
+                    rDocSh.GetUndoManager()->EnterListAction( aUndo, aUndo, 0, mrViewData.GetViewShell()->GetViewShellId() );
                 }
 
                 bool bGrow = !bHide && nNew > nPagebreakBreak;
@@ -1222,7 +1219,7 @@ void ScGridWindow::PagebreakMove( const MouseEvent& rMEvt, bool bUp )
                             pViewFunc->InsertPageBreak( true, true, &aPrev, false );
                         }
 
-                        if (!pDocSh->AdjustPrintZoom( ScRange(
+                        if (!rDocSh.AdjustPrintZoom( ScRange(
                                       static_cast<SCCOL>(nPagebreakPrev),0,nTab, static_cast<SCCOL>(nNew-1),0,nTab ) ))
                             bGrow = false;
                     }
@@ -1249,7 +1246,7 @@ void ScGridWindow::PagebreakMove( const MouseEvent& rMEvt, bool bUp )
                             pViewFunc->InsertPageBreak( false, true, &aPrev, false );
                         }
 
-                        if (!pDocSh->AdjustPrintZoom( ScRange(
+                        if (!rDocSh.AdjustPrintZoom( ScRange(
                                       0,nPagebreakPrev,nTab, 0,nNew-1,nTab ) ))
                             bGrow = false;
                     }
@@ -1257,13 +1254,13 @@ void ScGridWindow::PagebreakMove( const MouseEvent& rMEvt, bool bUp )
 
                 if (bUndo)
                 {
-                    pDocSh->GetUndoManager()->LeaveListAction();
+                    rDocSh.GetUndoManager()->LeaveListAction();
                 }
 
                 if (!bGrow)     // otherwise has already happened in AdjustPrintZoom
                 {
                     pViewFunc->UpdatePageBreakData( true );
-                    pDocSh->SetDocumentModified();
+                    rDocSh.SetDocumentModified();
                 }
             }
         }

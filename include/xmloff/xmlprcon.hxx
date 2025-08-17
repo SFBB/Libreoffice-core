@@ -34,7 +34,7 @@ protected:
     sal_Int32 mnEndIdx;
     sal_uInt32 mnFamily;
     ::std::vector< XMLPropertyState > &mrProperties;
-    rtl::Reference < SvXMLImportPropertyMapper >   mxMapper;
+    SvXMLImportPropertyMapper* mpMapper;
 
 public:
 
@@ -43,7 +43,7 @@ public:
             const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList,
             sal_uInt32 nFamily,
             ::std::vector< XMLPropertyState > &rProps,
-            rtl::Reference < SvXMLImportPropertyMapper > xMap,
+            SvXMLImportPropertyMapper* pMap,
               sal_Int32 nStartIdx = -1, sal_Int32 nEndIdx = -1 );
     SvXMLPropertySetContext(const SvXMLPropertySetContext&) = delete;
     SvXMLPropertySetContext(SvXMLPropertySetContext&&) = delete;
@@ -54,7 +54,7 @@ public:
 
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
         sal_Int32 nElement,
-        const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override final;
 
     // This method is called from this instance implementation of
     // CreateChildContext if the element matches an entry in the

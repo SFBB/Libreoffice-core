@@ -19,9 +19,7 @@
 
 #include <SelectionHelper.hxx>
 #include <ObjectIdentifier.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartModel.hxx>
 
 #include <svx/svdpage.hxx>
@@ -219,10 +217,10 @@ void Selection::adaptSelectionToNewPos( const Point& rMousePos, DrawViewWrapper 
                 {
                     if( bAllowMultiClickSelectionChange )
                     {
-                        m_aSelectedOID = aLastChild;
+                        m_aSelectedOID = std::move(aLastChild);
                     }
                     else
-                        m_aSelectedOID_selectOnlyIfNoDoubleClickIsFollowing = aLastChild;
+                        m_aSelectedOID_selectOnlyIfNoDoubleClickIsFollowing = std::move(aLastChild);
                     break;
                 }
             }
@@ -312,6 +310,11 @@ bool Selection::isRotateableObjectSelected( const rtl::Reference<::chart::ChartM
 bool Selection::isDragableObjectSelected() const
 {
     return m_aSelectedOID.isDragableObject();
+}
+
+bool Selection::isTitleObjectSelected() const
+{
+    return m_aSelectedOID.getObjectType() == OBJECTTYPE_TITLE;
 }
 
 bool Selection::isAdditionalShapeSelected() const
@@ -595,7 +598,7 @@ bool SelectionHelper::getMarkHandles( SdrHdlList& rHdlList )
                 for( sal_uInt32 nM = 0; nM < aPolygon.count(); nM++)
                 {
                     const ::basegfx::B2DPoint aPoint(aPolygon.getB2DPoint(nM));
-                    rHdlList.AddHdl(std::make_unique<SdrHdl>(Point(basegfx::fround(aPoint.getX()), basegfx::fround(aPoint.getY())), SdrHdlKind::Poly));
+                    rHdlList.AddHdl(std::make_unique<SdrHdl>(Point(basegfx::fround<tools::Long>(aPoint.getX()), basegfx::fround<tools::Long>(aPoint.getY())), SdrHdlKind::Poly));
                 }
             }
             return true;

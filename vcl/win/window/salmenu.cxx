@@ -78,7 +78,7 @@ std::unique_ptr<SalMenuItem> WinSalInstance::CreateMenuItem( const SalItemParams
         // item
         pSalMenuItem->mText   = rItemData.aText;
         pSalMenuItem->mpMenu  = rItemData.pMenu;
-        pSalMenuItem->maBitmap= !!rItemData.aImage ? rItemData.aImage.GetBitmapEx().GetBitmap() : Bitmap();
+        pSalMenuItem->maBitmap= !!rItemData.aImage ? rItemData.aImage.GetBitmap() : Bitmap();
         pSalMenuItem->mnId    = rItemData.nId;
 
         // 'translate' mnemonics
@@ -248,7 +248,7 @@ void WinSalMenu::SetItemImage( unsigned /*nPos*/, SalMenuItem* pSalMenuItem, con
     {
         WinSalMenuItem* pWItem = static_cast<WinSalMenuItem*>(pSalMenuItem);
         if( !!rImage )
-            pWItem->maBitmap = rImage.GetBitmapEx().GetBitmap();
+            pWItem->maBitmap = rImage.GetBitmap();
         else
             pWItem->maBitmap = Bitmap();
     }
@@ -302,10 +302,9 @@ void WinSalMenu::SetAccelerator( unsigned nPos, SalMenuItem* pSalMenuItem, const
     }
 }
 
-void WinSalMenu::GetSystemMenuData( SystemMenuData* pData )
+void WinSalMenu::GetSystemMenuData(SystemMenuData& rData)
 {
-    if( pData )
-        pData->hMenu = mhMenu;
+    rData.hMenu = mhMenu;
 }
 
 /*

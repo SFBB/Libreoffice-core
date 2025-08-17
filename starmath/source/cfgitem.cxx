@@ -21,7 +21,7 @@
 #include <svl/intitem.hxx>
 #include <svl/eitem.hxx>
 #include <svl/languageoptions.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <utility>
 #include <vcl/outdev.hxx>
 #include <vcl/svapp.hxx>
@@ -44,45 +44,46 @@ using namespace com::sun::star::beans;
 
 constexpr OUString SYMBOL_LIST = u"SymbolList"_ustr;
 constexpr OUString FONT_FORMAT_LIST = u"FontFormatList"_ustr;
+constexpr OUString USER_DEFINED_LIST = u"User-Defined"_ustr;
 
 static Sequence< OUString > lcl_GetFontPropertyNames()
 {
     return Sequence< OUString > {
-                        "Name",
-                        "CharSet",
-                        "Family",
-                        "Pitch",
-                        "Weight",
-                        "Italic"
+                        u"Name"_ustr,
+                        u"CharSet"_ustr,
+                        u"Family"_ustr,
+                        u"Pitch"_ustr,
+                        u"Weight"_ustr,
+                        u"Italic"_ustr
                     };
 }
 
 static Sequence< OUString > lcl_GetSymbolPropertyNames()
 {
     return Sequence< OUString > {
-                        "Char",
-                        "Set",
-                        "Predefined",
-                        "FontFormatId"
+                        u"Char"_ustr,
+                        u"Set"_ustr,
+                        u"Predefined"_ustr,
+                        u"FontFormatId"_ustr
                     };
 }
 
 static Sequence<OUString> lcl_GetOtherPropertyNames()
 {
-    return Sequence<OUString>{ "LoadSave/IsSaveOnlyUsedSymbols",
-                               "Misc/AutoCloseBrackets",
-                               "Misc/DefaultSmSyntaxVersion",
-                               "Misc/IgnoreSpacesRight",
-                               "Misc/InlineEditEnable",
-                               "Misc/SmEditWindowZoomFactor",
-                               "Print/FormulaText",
-                               "Print/Frame",
-                               "Print/Size",
-                               "Print/Title",
-                               "Print/ZoomFactor",
-                               "View/AutoRedraw",
-                               "View/FormulaCursor",
-                               "View/ToolboxVisible" };
+    return Sequence<OUString>{ u"LoadSave/IsSaveOnlyUsedSymbols"_ustr,
+                               u"Misc/AutoCloseBrackets"_ustr,
+                               u"Misc/DefaultSmSyntaxVersion"_ustr,
+                               u"Misc/InlineEditEnable"_ustr,
+                               u"Misc/IgnoreSpacesRight"_ustr,
+                               u"Misc/SmEditWindowZoomFactor"_ustr,
+                               u"Print/FormulaText"_ustr,
+                               u"Print/Frame"_ustr,
+                               u"Print/Size"_ustr,
+                               u"Print/Title"_ustr,
+                               u"Print/ZoomFactor"_ustr,
+                               u"View/AutoRedraw"_ustr,
+                               u"View/FormulaCursor"_ustr,
+                               u"View/ToolboxVisible"_ustr };
 }
 
 static Sequence< OUString > lcl_GetFormatPropertyNames()
@@ -90,48 +91,48 @@ static Sequence< OUString > lcl_GetFormatPropertyNames()
     //! Beware of order according to *_BEGIN *_END defines in format.hxx !
     //! see respective load/save routines here
     return Sequence< OUString > {
-                        "StandardFormat/Textmode",
-                        "StandardFormat/RightToLeft",
-                        "StandardFormat/GreekCharStyle",
-                        "StandardFormat/ScaleNormalBracket",
-                        "StandardFormat/HorizontalAlignment",
-                        "StandardFormat/BaseSize",
-                        "StandardFormat/TextSize",
-                        "StandardFormat/IndexSize",
-                        "StandardFormat/FunctionSize",
-                        "StandardFormat/OperatorSize",
-                        "StandardFormat/LimitsSize",
-                        "StandardFormat/Distance/Horizontal",
-                        "StandardFormat/Distance/Vertical",
-                        "StandardFormat/Distance/Root",
-                        "StandardFormat/Distance/SuperScript",
-                        "StandardFormat/Distance/SubScript",
-                        "StandardFormat/Distance/Numerator",
-                        "StandardFormat/Distance/Denominator",
-                        "StandardFormat/Distance/Fraction",
-                        "StandardFormat/Distance/StrokeWidth",
-                        "StandardFormat/Distance/UpperLimit",
-                        "StandardFormat/Distance/LowerLimit",
-                        "StandardFormat/Distance/BracketSize",
-                        "StandardFormat/Distance/BracketSpace",
-                        "StandardFormat/Distance/MatrixRow",
-                        "StandardFormat/Distance/MatrixColumn",
-                        "StandardFormat/Distance/OrnamentSize",
-                        "StandardFormat/Distance/OrnamentSpace",
-                        "StandardFormat/Distance/OperatorSize",
-                        "StandardFormat/Distance/OperatorSpace",
-                        "StandardFormat/Distance/LeftSpace",
-                        "StandardFormat/Distance/RightSpace",
-                        "StandardFormat/Distance/TopSpace",
-                        "StandardFormat/Distance/BottomSpace",
-                        "StandardFormat/Distance/NormalBracketSize",
-                        "StandardFormat/VariableFont",
-                        "StandardFormat/FunctionFont",
-                        "StandardFormat/NumberFont",
-                        "StandardFormat/TextFont",
-                        "StandardFormat/SerifFont",
-                        "StandardFormat/SansFont",
-                        "StandardFormat/FixedFont"
+                        u"StandardFormat/Textmode"_ustr,
+                        u"StandardFormat/RightToLeft"_ustr,
+                        u"StandardFormat/GreekCharStyle"_ustr,
+                        u"StandardFormat/ScaleNormalBracket"_ustr,
+                        u"StandardFormat/HorizontalAlignment"_ustr,
+                        u"StandardFormat/BaseSize"_ustr,
+                        u"StandardFormat/TextSize"_ustr,
+                        u"StandardFormat/IndexSize"_ustr,
+                        u"StandardFormat/FunctionSize"_ustr,
+                        u"StandardFormat/OperatorSize"_ustr,
+                        u"StandardFormat/LimitsSize"_ustr,
+                        u"StandardFormat/Distance/Horizontal"_ustr,
+                        u"StandardFormat/Distance/Vertical"_ustr,
+                        u"StandardFormat/Distance/Root"_ustr,
+                        u"StandardFormat/Distance/SuperScript"_ustr,
+                        u"StandardFormat/Distance/SubScript"_ustr,
+                        u"StandardFormat/Distance/Numerator"_ustr,
+                        u"StandardFormat/Distance/Denominator"_ustr,
+                        u"StandardFormat/Distance/Fraction"_ustr,
+                        u"StandardFormat/Distance/StrokeWidth"_ustr,
+                        u"StandardFormat/Distance/UpperLimit"_ustr,
+                        u"StandardFormat/Distance/LowerLimit"_ustr,
+                        u"StandardFormat/Distance/BracketSize"_ustr,
+                        u"StandardFormat/Distance/BracketSpace"_ustr,
+                        u"StandardFormat/Distance/MatrixRow"_ustr,
+                        u"StandardFormat/Distance/MatrixColumn"_ustr,
+                        u"StandardFormat/Distance/OrnamentSize"_ustr,
+                        u"StandardFormat/Distance/OrnamentSpace"_ustr,
+                        u"StandardFormat/Distance/OperatorSize"_ustr,
+                        u"StandardFormat/Distance/OperatorSpace"_ustr,
+                        u"StandardFormat/Distance/LeftSpace"_ustr,
+                        u"StandardFormat/Distance/RightSpace"_ustr,
+                        u"StandardFormat/Distance/TopSpace"_ustr,
+                        u"StandardFormat/Distance/BottomSpace"_ustr,
+                        u"StandardFormat/Distance/NormalBracketSize"_ustr,
+                        u"StandardFormat/VariableFont"_ustr,
+                        u"StandardFormat/FunctionFont"_ustr,
+                        u"StandardFormat/NumberFont"_ustr,
+                        u"StandardFormat/TextFont"_ustr,
+                        u"StandardFormat/SerifFont"_ustr,
+                        u"StandardFormat/SansFont"_ustr,
+                        u"StandardFormat/FixedFont"_ustr
                     };
 }
 
@@ -168,7 +169,7 @@ SmCfgOther::SmCfgOther()
     , bPrintFrame(true)
     , bIsSaveOnlyUsedSymbols(true)
     , bIsAutoCloseBrackets(true)
-    , bInlineEditEnable(true)
+    , bInlineEditEnable(false)
     , bIgnoreSpacesRight(true)
     , bToolboxVisible(true)
     , bAutoRedraw(true)
@@ -359,7 +360,7 @@ OUString SmFontFormatList::GetNewFontFormatId() const
 
 
 SmMathConfig::SmMathConfig() :
-    ConfigItem("Office.Math")
+    ConfigItem(u"Office.Math"_ustr)
     , bIsOtherModified(false)
     , bIsFormatModified(false)
 {
@@ -392,7 +393,7 @@ void SmMathConfig::ReadSymbol( SmSym &rSymbol,
     Sequence< OUString > aNames = lcl_GetSymbolPropertyNames();
     sal_Int32 nProps = aNames.getLength();
 
-    OUString aDelim( "/" );
+    OUString aDelim( u"/"_ustr );
     for (auto& rName : asNonConstRange(aNames))
         rName = rBaseNode + aDelim + rSymbolName + aDelim + rName;
 
@@ -532,7 +533,7 @@ void SmMathConfig::SetSymbols( const std::vector< SmSym > &rNewSymbols )
     PropertyValue *pValues = aValues.getArray();
 
     PropertyValue *pVal = pValues;
-    OUString aDelim( "/" );
+    OUString aDelim( u"/"_ustr );
     for (const SmSym& rSymbol : rNewSymbols)
     {
         OUString  aNodeNameDelim = SYMBOL_LIST +
@@ -575,7 +576,6 @@ void SmMathConfig::SetSymbols( const std::vector< SmSym > &rNewSymbols )
     StripFontFormatList( rNewSymbols );
 }
 
-
 SmFontFormatList & SmMathConfig::GetFontFormatList()
 {
     if (!pFontFormatList)
@@ -584,7 +584,6 @@ SmFontFormatList & SmMathConfig::GetFontFormatList()
     }
     return *pFontFormatList;
 }
-
 
 void SmMathConfig::LoadFontFormatList()
 {
@@ -612,7 +611,7 @@ void SmMathConfig::ReadFontFormat( SmFontFormat &rFontFormat,
     Sequence< OUString > aNames = lcl_GetFontPropertyNames();
     sal_Int32 nProps = aNames.getLength();
 
-    OUString aDelim( "/" );
+    OUString aDelim( u"/"_ustr );
     for (auto& rName : asNonConstRange(aNames))
         rName = rBaseNode + aDelim + rSymbolName + aDelim + rName;
 
@@ -661,6 +660,47 @@ void SmMathConfig::ReadFontFormat( SmFontFormat &rFontFormat,
     OSL_ENSURE( bOK, "read FontFormat failed" );
 }
 
+css::uno::Sequence<OUString> SmMathConfig::LoadUserDefinedNames()
+{
+    m_sUserDefinedNames = GetNodeNames(USER_DEFINED_LIST);
+    return m_sUserDefinedNames;
+}
+
+void SmMathConfig::GetUserDefinedFormula(std::u16string_view sName, OUString &sFormula)
+{
+    css::uno::Sequence<OUString> aNames(1);
+    OUString* pName = aNames.getArray();
+    pName[0] = USER_DEFINED_LIST + "/" + sName + "/FormulaText";
+    const Sequence<Any> aValues(GetProperties(aNames));
+    const Any* pValues = aValues.getConstArray();
+    const Any* pVal = pValues;
+    *pVal >>= sFormula;
+}
+
+bool SmMathConfig::HasUserDefinedFormula(std::u16string_view sName)
+{
+    for (int i = 0; i < m_sUserDefinedNames.getLength(); i++)
+        if (m_sUserDefinedNames[i] == sName)
+            return true;
+    return false;
+}
+
+void SmMathConfig::SaveUserDefinedFormula(std::u16string_view sName, const OUString& sElement)
+{
+    Sequence<PropertyValue> pValues(1);
+    auto pArgs = pValues.getArray();
+
+    pArgs[0].Name = USER_DEFINED_LIST + "/" + sName + "/FormulaText";
+    pArgs[0].Value <<= sElement;
+
+    SetSetProperties( USER_DEFINED_LIST, pValues );
+}
+
+void SmMathConfig::DeleteUserDefinedFormula(std::u16string_view sName)
+{
+    Sequence<OUString> aElements { OUString(sName) };
+    ClearNodeElements(USER_DEFINED_LIST, aElements);
+}
 
 void SmMathConfig::SaveFontFormatList()
 {
@@ -678,7 +718,7 @@ void SmMathConfig::SaveFontFormatList()
     PropertyValue *pValues = aValues.getArray();
 
     PropertyValue *pVal = pValues;
-    OUString aDelim( "/" );
+    OUString aDelim( u"/"_ustr );
     for (size_t i = 0;  i < nCount;  ++i)
     {
         OUString aFntFmtId(rFntFmtList.GetFontFormatId(i));
@@ -1042,7 +1082,7 @@ void SmMathConfig::LoadFormat()
         ++pVal;
 
         aFnt.SetFontSize( pFormat->GetBaseSize() );
-        pFormat->SetFont( i, aFnt, bUseDefaultFont );
+        pFormat->SetFont( i, SmFace(aFnt), bUseDefaultFont );
     }
 
     OSL_ENSURE( pVal - pValues == nProps, "property mismatch" );
@@ -1257,7 +1297,7 @@ bool SmMathConfig::IsAutoCloseBrackets() const
 
 sal_Int16 SmMathConfig::GetDefaultSmSyntaxVersion() const
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return nDefaultSmSyntaxVersion;
     if (!pOther)
         const_cast<SmMathConfig*>(this)->LoadOther();
@@ -1309,7 +1349,7 @@ void SmMathConfig::SetDefaultSmSyntaxVersion( sal_Int16 nVal )
 
 bool SmMathConfig::IsInlineEditEnable() const
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return false;
     if (!pOther)
         const_cast<SmMathConfig*>(this)->LoadOther();
@@ -1330,7 +1370,7 @@ void SmMathConfig::SetInlineEditEnable( bool bVal )
 
 bool SmMathConfig::IsIgnoreSpacesRight() const
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return false;
     if (!pOther)
         const_cast<SmMathConfig*>(this)->LoadOther();
@@ -1424,8 +1464,8 @@ void SmMathConfig::ItemSetToConfig(const SfxItemSet &rSet)
     {   bVal = pRedrawItem->GetValue();
         SetAutoRedraw( bVal );
     }
-    if (const SfxBoolItem* pSpacesItem = rSet.GetItemIfSet(SID_INLINE_EDIT_ENABLE))
-    {   bVal = pSpacesItem->GetValue();
+    if (const SfxBoolItem* pInlineEditItem = rSet.GetItemIfSet(SID_INLINE_EDIT_ENABLE))
+    {   bVal = pInlineEditItem->GetValue();
         SetInlineEditEnable( bVal );
     }
     if (const SfxBoolItem* pSpacesItem = rSet.GetItemIfSet(SID_NO_RIGHT_SPACES))

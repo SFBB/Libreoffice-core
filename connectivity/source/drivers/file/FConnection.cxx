@@ -32,7 +32,7 @@
 #include <com/sun/star/ucb/XContentIdentifier.hpp>
 #include <tools/urlobj.hxx>
 #include <file/FCatalog.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/pathoptions.hxx>
 #include <ucbhelper/content.hxx>
 #include <connectivity/dbcharset.hxx>
@@ -132,7 +132,7 @@ void OConnection::construct(const OUString& url,const Sequence< PropertyValue >&
         OUString aFileName = aDSN;
         INetURLObject aURL;
         aURL.SetSmartProtocol(INetProtocol::File);
-        if (!utl::ConfigManager::IsFuzzing())
+        if (!comphelper::IsFuzzing())
         {
             SvtPathOptions aPathOptions;
             aFileName = aPathOptions.SubstituteVariable(aFileName);
@@ -166,7 +166,7 @@ void OConnection::construct(const OUString& url,const Sequence< PropertyValue >&
         }
 
         // set fields to fetch
-        Sequence< OUString > aProps { "Title" };
+        Sequence< OUString > aProps { u"Title"_ustr };
 
         try
         {
@@ -179,7 +179,7 @@ void OConnection::construct(const OUString& url,const Sequence< PropertyValue >&
             {
                 Reference<XContent> xParent(Reference<XChild>(aFile.get(),UNO_QUERY_THROW)->getParent(),UNO_QUERY_THROW);
                 Reference<XContentIdentifier> xIdent = xParent->getIdentifier();
-                m_xContent = xParent;
+                m_xContent = std::move(xParent);
 
                 ::ucbhelper::Content aParent(xIdent->getContentIdentifier(), Reference< XCommandEnvironment >(), comphelper::getProcessComponentContext());
                 m_xDir = aParent.createDynamicCursor(aProps, ::ucbhelper::INCLUDE_DOCUMENTS_ONLY );
@@ -210,7 +210,7 @@ void OConnection::construct(const OUString& url,const Sequence< PropertyValue >&
 }
 // XServiceInfo
 
-IMPLEMENT_SERVICE_INFO(OConnection, "com.sun.star.sdbc.drivers.file.Connection", "com.sun.star.sdbc.Connection")
+IMPLEMENT_SERVICE_INFO(OConnection, u"com.sun.star.sdbc.drivers.file.Connection"_ustr, u"com.sun.star.sdbc.Connection"_ustr)
 
 
 Reference< XStatement > SAL_CALL OConnection::createStatement(  )
@@ -238,8 +238,7 @@ Reference< XPreparedStatement > SAL_CALL OConnection::prepareStatement( const OU
 
 Reference< XPreparedStatement > SAL_CALL OConnection::prepareCall( const OUString& /*sql*/ )
 {
-    throwFeatureNotImplementedSQLException( "XConnection::prepareCall", *this );
-    return nullptr;
+    throwFeatureNotImplementedSQLException( u"XConnection::prepareCall"_ustr, *this );
 }
 
 OUString SAL_CALL OConnection::nativeSQL( const OUString& sql )
@@ -314,7 +313,7 @@ sal_Bool SAL_CALL OConnection::isReadOnly(  )
 
 void SAL_CALL OConnection::setCatalog( const OUString& /*catalog*/ )
 {
-    throwFeatureNotImplementedSQLException( "XConnection::setCatalog", *this );
+    throwFeatureNotImplementedSQLException( u"XConnection::setCatalog"_ustr, *this );
 }
 
 OUString SAL_CALL OConnection::getCatalog(  )
@@ -324,7 +323,7 @@ OUString SAL_CALL OConnection::getCatalog(  )
 
 void SAL_CALL OConnection::setTransactionIsolation( sal_Int32 /*level*/ )
 {
-    throwFeatureNotImplementedSQLException( "XConnection::setTransactionIsolation", *this );
+    throwFeatureNotImplementedSQLException( u"XConnection::setTransactionIsolation"_ustr, *this );
 }
 
 sal_Int32 SAL_CALL OConnection::getTransactionIsolation(  )
@@ -369,17 +368,17 @@ void OConnection::disposing()
 
     m_xDir.clear();
     m_xContent.clear();
-    m_xCatalog  = WeakReference< XTablesSupplier>();
+    m_xCatalog.clear();
 }
 
 Reference< XTablesSupplier > OConnection::createCatalog()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
-    Reference< XTablesSupplier > xTab = m_xCatalog;
+    rtl::Reference< connectivity::sdbcx::OCatalog > xTab = m_xCatalog.get();
     if(!xTab.is())
     {
         xTab = new OFileCatalog(this);
-        m_xCatalog = xTab;
+        m_xCatalog = xTab.get();
     }
     return xTab;
 }
@@ -387,7 +386,7 @@ Reference< XTablesSupplier > OConnection::createCatalog()
 Reference< XDynamicResultSet > OConnection::getDir() const
 {
     Reference<XDynamicResultSet> xContent;
-    Sequence< OUString > aProps { "Title" };
+    Sequence< OUString > aProps { u"Title"_ustr };
     try
     {
         Reference<XContentIdentifier> xIdent = getContent()->getIdentifier();
@@ -419,7 +418,7 @@ void OConnection::throwUrlNotValid(const OUString & _rsUrl,const OUString & _rsM
         next <<= SQLException(_rsMessage, context, OUString(), 0, Any());
     SQLException aError(
         getResources().getResourceStringWithSubstitution(STR_NO_VALID_FILE_URL, "$URL$", _rsUrl),
-        context, "S1000", 0, next);
+        context, u"S1000"_ustr, 0, next);
 
     throw aError;
 }

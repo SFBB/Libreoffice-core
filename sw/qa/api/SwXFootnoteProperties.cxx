@@ -7,10 +7,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <test/bootstrapfixture.hxx>
+#include <test/unoapi_test.hxx>
 #include <test/container/xelementaccess.hxx>
 #include <test/container/xindexaccess.hxx>
-#include <unotest/macros_test.hxx>
 
 #include <com/sun/star/frame/Desktop.hpp>
 
@@ -31,53 +30,33 @@ namespace
 /**
  * Initial tests for SwXFootnoteProperties.
  */
-class SwXFootnoteProperties final : public test::BootstrapFixture,
-                                    public unotest::MacrosTest,
+class SwXFootnoteProperties final : public UnoApiTest,
                                     public apitest::XElementAccess,
                                     public apitest::XIndexAccess
 {
 public:
     SwXFootnoteProperties();
-    virtual void setUp() override;
-    void tearDown() override;
 
     Reference<XInterface> init() override;
 
     CPPUNIT_TEST_SUITE(SwXFootnoteProperties);
     CPPUNIT_TEST_SUITE_END();
-
-private:
-    uno::Reference<lang::XComponent> component_;
 };
 
 SwXFootnoteProperties::SwXFootnoteProperties()
-    : XElementAccess(cppu::UnoType<text::XFootnote>::get())
+    : UnoApiTest(u""_ustr)
+    , XElementAccess(cppu::UnoType<text::XFootnote>::get())
     , XIndexAccess(3)
 {
 }
 
-void SwXFootnoteProperties::setUp()
-{
-    test::BootstrapFixture::setUp();
-    mxDesktop.set(
-        frame::Desktop::create(comphelper::getComponentContext(getMultiServiceFactory())));
-}
-
-void SwXFootnoteProperties::tearDown()
-{
-    if (component_.is())
-        component_->dispose();
-
-    test::BootstrapFixture::tearDown();
-}
-
 Reference<XInterface> SwXFootnoteProperties::init()
 {
-    component_ = loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument");
-    Reference<text::XTextDocument> xTextDocument(component_, UNO_QUERY_THROW);
-    Reference<lang::XMultiServiceFactory> xMSF(component_, UNO_QUERY_THROW);
+    loadFromURL(u"private:factory/swriter"_ustr);
+    Reference<text::XTextDocument> xTextDocument(mxComponent, UNO_QUERY_THROW);
+    Reference<lang::XMultiServiceFactory> xMSF(mxComponent, UNO_QUERY_THROW);
 
-    Reference<text::XFootnote> xFootnote(xMSF->createInstance("com.sun.star.text.Footnote"),
+    Reference<text::XFootnote> xFootnote(xMSF->createInstance(u"com.sun.star.text.Footnote"_ustr),
                                          UNO_QUERY_THROW);
 
     Reference<text::XText> xText = xTextDocument->getText();

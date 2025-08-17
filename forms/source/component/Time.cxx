@@ -37,12 +37,8 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::awt;
-using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::lang;
 
 
 //=
@@ -249,7 +245,7 @@ bool OTimeModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
             {
                 util::DateTime aDateTime = m_xColumn->getTimestamp();
                 if (aDateTime.Year == 0 && aDateTime.Month == 0 && aDateTime.Day == 0)
-                    aDateTime = ::com::sun::star::util::DateTime(0,0,0,0,30,12,1899, false);
+                    aDateTime = css::util::DateTime(0,0,0,0,30,12,1899, false);
                 aDateTime.NanoSeconds = aTime.NanoSeconds;
                 aDateTime.Seconds = aTime.Seconds;
                 aDateTime.Minutes = aTime.Minutes;
@@ -262,7 +258,7 @@ bool OTimeModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
             return false;
         }
     }
-    m_aSaveValue = aControlValue;
+    m_aSaveValue = std::move(aControlValue);
     return true;
 }
 

@@ -519,7 +519,7 @@ void DbGridColumn::ImplInitWindow( vcl::Window const & rParent, const InitWindow
 
 
 DbCellControl::DbCellControl( DbGridColumn& _rColumn )
-    :OPropertyChangeListener(m_aMutex)
+    :OPropertyChangeListener()
     ,m_bTransparent( false )
     ,m_bAlignedController( true )
     ,m_bAccessingValueProperty( false )
@@ -527,7 +527,7 @@ DbCellControl::DbCellControl( DbGridColumn& _rColumn )
     ,m_pPainter( nullptr )
     ,m_pWindow( nullptr )
 {
-    Reference< XPropertySet > xColModelProps = _rColumn.getModel();
+    const Reference< XPropertySet >& xColModelProps = _rColumn.getModel();
     if ( !xColModelProps.is() )
         return;
 
@@ -1281,7 +1281,7 @@ void DbFormattedField::Init( BrowserDataWin& rParent, const Reference< XRowSet >
             Any aFmtKey( xUnoModel->getPropertyValue(FM_PROP_FORMATKEY));
             if (aFmtKey.hasValue())
             {
-                DBG_ASSERT(aFmtKey.getValueType().getTypeClass() == TypeClass_LONG, "DbFormattedField::Init : invalid format key property (no sal_Int32) !");
+                DBG_ASSERT(aFmtKey.getValueTypeClass() == TypeClass_LONG, "DbFormattedField::Init : invalid format key property (no sal_Int32) !");
                 nFormatKey = ::comphelper::getINT32(aFmtKey);
             }
             else
@@ -1348,9 +1348,9 @@ void DbFormattedField::Init( BrowserDataWin& rParent, const Reference< XRowSet >
         if (::comphelper::hasProperty(FM_PROP_EFFECTIVE_MIN, xUnoModel))
         {
             Any aMin( xUnoModel->getPropertyValue(FM_PROP_EFFECTIVE_MIN));
-            if (aMin.getValueType().getTypeClass() != TypeClass_VOID)
+            if (aMin.getValueTypeClass() != TypeClass_VOID)
             {
-                DBG_ASSERT(aMin.getValueType().getTypeClass() == TypeClass_DOUBLE, "DbFormattedField::Init : the model has an invalid min value !");
+                DBG_ASSERT(aMin.getValueTypeClass() == TypeClass_DOUBLE, "DbFormattedField::Init : the model has an invalid min value !");
                 double dMin = ::comphelper::getDouble(aMin);
                 rControlFormatter.SetMinValue(dMin);
                 rPainterFormatter.SetMinValue(dMin);
@@ -1366,9 +1366,9 @@ void DbFormattedField::Init( BrowserDataWin& rParent, const Reference< XRowSet >
         if (::comphelper::hasProperty(FM_PROP_EFFECTIVE_MAX, xUnoModel))
         {
             Any aMax(xUnoModel->getPropertyValue(FM_PROP_EFFECTIVE_MAX));
-            if (aMax.getValueType().getTypeClass() != TypeClass_VOID)
+            if (aMax.getValueTypeClass() != TypeClass_VOID)
             {
-                DBG_ASSERT(aMax.getValueType().getTypeClass() == TypeClass_DOUBLE, "DbFormattedField::Init : the model has an invalid max value !");
+                DBG_ASSERT(aMax.getValueTypeClass() == TypeClass_DOUBLE, "DbFormattedField::Init : the model has an invalid max value !");
                 double dMax = ::comphelper::getDouble(aMax);
                 rControlFormatter.SetMaxValue(dMax);
                 rPainterFormatter.SetMaxValue(dMax);
@@ -1386,7 +1386,7 @@ void DbFormattedField::Init( BrowserDataWin& rParent, const Reference< XRowSet >
     Any aDefault( xUnoModel->getPropertyValue(FM_PROP_EFFECTIVE_DEFAULT));
     if (aDefault.hasValue())
     {   // the thing can be a double or a string
-        switch (aDefault.getValueType().getTypeClass())
+        switch (aDefault.getValueTypeClass())
         {
             case TypeClass_DOUBLE:
                 if (m_rColumn.IsNumeric())
@@ -2258,7 +2258,7 @@ void DbDateField::implAdjustGenericFieldSetting( const Reference< XPropertySet >
     weld::DateFormatter& rPainterFormatter = static_cast<weld::DateFormatter&>(pPainter->get_formatter());
 
     Any  aCentury = _rxModel->getPropertyValue( FM_PROP_DATE_SHOW_CENTURY );
-    if ( aCentury.getValueType().getTypeClass() != TypeClass_VOID )
+    if ( aCentury.getValueTypeClass() != TypeClass_VOID )
     {
         bool bShowDateCentury = getBOOL( aCentury );
 
@@ -2267,14 +2267,14 @@ void DbDateField::implAdjustGenericFieldSetting( const Reference< XPropertySet >
     }
 
     rControlFormatter.SetExtDateFormat( static_cast<ExtDateFieldFormat>(nFormat) );
-    rControlFormatter.SetMin( aMin );
-    rControlFormatter.SetMax( aMax );
+    rControlFormatter.SetMin( ::Date(aMin) );
+    rControlFormatter.SetMax( ::Date(aMax) );
     rControlFormatter.SetStrictFormat( bStrict );
     rControlFormatter.EnableEmptyField( true );
 
     rPainterFormatter.SetExtDateFormat( static_cast<ExtDateFieldFormat>(nFormat) );
-    rPainterFormatter.SetMin( aMin );
-    rPainterFormatter.SetMax( aMax );
+    rPainterFormatter.SetMin( ::Date(aMin) );
+    rPainterFormatter.SetMax( ::Date(aMax) );
     rPainterFormatter.SetStrictFormat( bStrict );
     rPainterFormatter.EnableEmptyField( true );
 }
@@ -2375,8 +2375,8 @@ void DbTimeField::implAdjustGenericFieldSetting( const Reference< XPropertySet >
     weld::TimeFormatter& rControlFormatter = static_cast<weld::TimeFormatter&>(pControl->get_formatter());
 
     rControlFormatter.SetExtFormat(static_cast<ExtTimeFieldFormat>(nFormat));
-    rControlFormatter.SetMin(aMin);
-    rControlFormatter.SetMax(aMax);
+    rControlFormatter.SetMin(tools::Time(aMin));
+    rControlFormatter.SetMax(tools::Time(aMax));
     rControlFormatter.SetStrictFormat(bStrict);
     rControlFormatter.EnableEmptyField(true);
 
@@ -2384,8 +2384,8 @@ void DbTimeField::implAdjustGenericFieldSetting( const Reference< XPropertySet >
     weld::TimeFormatter& rPainterFormatter = static_cast<weld::TimeFormatter&>(pPainter->get_formatter());
 
     rPainterFormatter.SetExtFormat(static_cast<ExtTimeFieldFormat>(nFormat));
-    rPainterFormatter.SetMin(aMin);
-    rPainterFormatter.SetMax(aMax);
+    rPainterFormatter.SetMin(tools::Time(aMin));
+    rPainterFormatter.SetMax(tools::Time(aMax));
     rPainterFormatter.SetStrictFormat(bStrict);
     rPainterFormatter.EnableEmptyField(true);
 }
@@ -2485,7 +2485,7 @@ void DbComboBox::SetList(const Any& rItems)
     css::uno::Sequence<OUString> aTest;
     if (rItems >>= aTest)
     {
-        for (const OUString& rString : std::as_const(aTest))
+        for (const OUString& rString : aTest)
              rComboBox.append_text(rString);
 
         // tell the grid control that this controller is invalid and has to be re-initialized
@@ -2604,7 +2604,7 @@ void DbListBox::SetList(const Any& rItems)
 
     if (aTest.hasElements())
     {
-        for (const OUString& rString : std::as_const(aTest))
+        for (const OUString& rString : aTest)
              rFieldList.append_text(rString);
 
         m_rColumn.getModel()->getPropertyValue(FM_PROP_VALUE_SEQ) >>= m_aValueList;
@@ -2629,9 +2629,16 @@ void DbListBox::Init(BrowserDataWin& rParent, const Reference< XRowSet >& xCurso
     DbCellControl::Init( rParent, xCursor );
 }
 
-void DbListBox::implAdjustGenericFieldSetting( const Reference< XPropertySet >& /*rxModel*/ )
+void DbListBox::implAdjustGenericFieldSetting(const Reference<XPropertySet>& _rxModel)
 {
-    // ignore FM_PROP_LINECOUNT
+    DBG_ASSERT( m_pWindow, "DbListBox::implAdjustGenericFieldSetting: not to be called without window!" );
+    DBG_ASSERT( _rxModel.is(), "DbListBox::implAdjustGenericFieldSetting: invalid model!" );
+    if ( m_pWindow && _rxModel.is() )
+    {
+        sal_Int16  nLines   = getINT16( _rxModel->getPropertyValue( FM_PROP_LINECOUNT ) );
+        weld::ComboBox& rComboBox = static_cast<ListBoxControl*>(m_pWindow.get())->get_widget();
+        rComboBox.set_max_drop_down_rows(nLines);
+    }
 }
 
 CellControllerRef DbListBox::CreateController() const
@@ -2768,14 +2775,14 @@ void DbFilterField::SetList(const Any& rItems, bool bComboBox)
     {
         ComboBoxControl* pField = static_cast<ComboBoxControl*>(m_pWindow.get());
         weld::ComboBox& rComboBox = pField->get_widget();
-        for (const OUString& rString : std::as_const(aTest))
+        for (const OUString& rString : aTest)
             rComboBox.append_text(rString);
     }
     else
     {
         ListBoxControl* pField = static_cast<ListBoxControl*>(m_pWindow.get());
         weld::ComboBox& rFieldBox = pField->get_widget();
-        for (const OUString& rString : std::as_const(aTest))
+        for (const OUString& rString : aTest)
             rFieldBox.append_text(rString);
 
         m_rColumn.getModel()->getPropertyValue(FM_PROP_VALUE_SEQ) >>= m_aValueList;
@@ -2964,7 +2971,7 @@ bool DbFilterField::commitControl()
                                                     m_rColumn.GetField(),
                                                     OUString(),
                                                     aAppLocale,
-                                                    ".",
+                                                    u"."_ustr,
                                                     getParseContext());
                 m_aText = aPreparedText;
             }
@@ -3052,7 +3059,7 @@ void DbFilterField::Update()
 
     Reference<XPropertySet> xFormProp(xForm,UNO_QUERY);
     Reference< XTablesSupplier > xSupTab;
-    xFormProp->getPropertyValue("SingleSelectQueryComposer") >>= xSupTab;
+    xFormProp->getPropertyValue(u"SingleSelectQueryComposer"_ustr) >>= xSupTab;
 
     Reference< XConnection >  xConnection(getConnection(xForm));
     if (!xSupTab.is())
@@ -4131,12 +4138,14 @@ sal_Int16 SAL_CALL FmXListBoxCell::getSelectedItemPos()
     {
         UpdateFromColumn();
         weld::ComboBox& rBox = m_pBox->get_widget();
-        sal_Int32 nPos = rBox.get_active();
+        int nPos = rBox.get_active();
+        if (nPos == -1)
+            return -1; // nothing selected
         if (nPos > SHRT_MAX || nPos < SHRT_MIN)
             throw std::out_of_range("awt::XListBox::getSelectedItemPos can only return a short");
         return nPos;
     }
-    return 0;
+    return -1; // nothing selected
 }
 
 Sequence< sal_Int16 > SAL_CALL FmXListBoxCell::getSelectedItemsPos()

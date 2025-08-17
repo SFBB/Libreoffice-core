@@ -111,7 +111,6 @@ void SwTextShell::ExecEnterNum(SfxRequest &rReq)
         SfxRequest aReq(GetView().GetViewFrame(), FN_NUM_BULLET_ON);
         aReq.AppendItem(SfxBoolItem(FN_PARAM_1, false));
         aReq.Done();
-        GetShell().NumOrBulletOff();
         GetShell().DelNumRules();
         GetShell().EndAllAction();
     }
@@ -197,17 +196,17 @@ void SwTextShell::ExecEnterNum(SfxRequest &rReq)
         if ( pPageItem )
             pDlg->SetCurPageId( pPageItem->GetValue() );
 
-        auto pRequest = std::make_shared<SfxRequest>(rReq);
+        auto xRequest = std::make_shared<SfxRequest>(rReq);
         rReq.Ignore(); // the 'old' request is not relevant any more
 
-        pDlg->StartExecuteAsync([pDlg, pNumRuleAtCurrentSelection, pRequest, this](sal_Int32 nResult){
+        pDlg->StartExecuteAsync([pDlg, pNumRuleAtCurrentSelection, xRequest=std::move(xRequest), this](sal_Int32 nResult){
             if (RET_OK == nResult)
             {
                 const SvxNumBulletItem* pBulletItem = pDlg->GetOutputItemSet()->GetItemIfSet(SID_ATTR_NUMBERING_RULE, false);
                 if (pBulletItem)
                 {
-                    pRequest->AppendItem(*pBulletItem);
-                    pRequest->Done();
+                    xRequest->AppendItem(*pBulletItem);
+                    xRequest->Done();
                     SvxNumRule& rSetRule = const_cast<SvxNumRule&>(pBulletItem->GetNumRule());
                     rSetRule.UnLinkGraphics();
                     SwNumRule aSetRule(pNumRuleAtCurrentSelection != nullptr
@@ -226,8 +225,8 @@ void SwTextShell::ExecEnterNum(SfxRequest &rReq)
                 else if (pNumRuleAtCurrentSelection == nullptr
                          && (pBulletItem = pDlg->GetInputItemSet()->GetItemIfSet(SID_ATTR_NUMBERING_RULE, false)))
                 {
-                    pRequest->AppendItem(*pBulletItem);
-                    pRequest->Done();
+                    xRequest->AppendItem(*pBulletItem);
+                    xRequest->Done();
                     const SvxNumRule& rSetRule = pBulletItem->GetNumRule();
                     SwNumRule aSetRule(
                         GetShell().GetUniqueNumRuleName(),
@@ -261,10 +260,22 @@ void SwTextShell::ExecSetNumber(SfxRequest const &rReq)
     case FN_SVX_SET_BULLET:
     case FN_SVX_SET_OUTLINE:
         {
-            const SfxUInt16Item* pItem = rReq.GetArg<SfxUInt16Item>(nSlot);
-            if ( pItem != nullptr )
+            const SfxUInt16Item* pIndexItem = nullptr;
+            const SfxStringItem* pCharItem = nullptr;
+            const SfxStringItem* pFontItem = nullptr;
+
+            // tdf#162264 check if rReq.GetArgs() is a nullptr
+            if ( rReq.GetArgs() )
             {
-                const sal_uInt16 nChosenItemIdx = pItem->GetValue();
+                pIndexItem = rReq.GetArgs()->GetItem( SID_ATTR_BULLET_INDEX );
+                if (!pIndexItem) // tdf#161653
+                    pIndexItem = rReq.GetArg<SfxUInt16Item>(nSlot);
+                pCharItem = rReq.GetArgs()->GetItem( SID_ATTR_BULLET_CHAR );
+                pFontItem = rReq.GetArgs()->GetItem( SID_ATTR_BULLET_FONT );
+            }
+
+            if ( pIndexItem != nullptr || ( pCharItem != nullptr && pFontItem != nullptr ) )
+            {
                 svx::sidebar::NBOType nNBOType = svx::sidebar::NBOType::Bullets;
                 if ( nSlot == FN_SVX_SET_NUMBER )
                     nNBOType = svx::sidebar::NBOType::Numbering;
@@ -292,17 +303,25 @@ void SwTextShell::ExecSetNumber(SfxRequest const &rReq)
                                                     ? pNumRuleAtCurrentSelection->MakeSvxNumRule()
                                                     : aNewNumRule.MakeSvxNumRule();
 
-                    OUString aNumCharFormat, aBulletCharFormat;
+                    UIName aNumCharFormat, aBulletCharFormat;
                     SwStyleNameMapper::FillUIName( RES_POOLCHR_NUM_LEVEL, aNumCharFormat );
                     SwStyleNameMapper::FillUIName( RES_POOLCHR_BULLET_LEVEL, aBulletCharFormat );
 
                     SfxAllItemSet aSet( GetPool() );
-                    aSet.Put( SfxStringItem( SID_NUM_CHAR_FMT, aNumCharFormat ) );
-                    aSet.Put( SfxStringItem( SID_BULLET_CHAR_FMT, aBulletCharFormat ) );
+                    aSet.Put( SfxStringItem( SID_NUM_CHAR_FMT, aNumCharFormat.toString() ) );
+                    aSet.Put( SfxStringItem( SID_BULLET_CHAR_FMT, aBulletCharFormat.toString() ) );
                     aSet.Put( SvxNumBulletItem( aNewSvxNumRule, SID_ATTR_NUMBERING_RULE ) );
 
                     pNBOTypeMgr->SetItems( &aSet );
-                    pNBOTypeMgr->ApplyNumRule( aNewSvxNumRule, nChosenItemIdx - 1, nActNumLvl );
+                    if (pIndexItem)
+                        pNBOTypeMgr->ApplyNumRule( aNewSvxNumRule, pIndexItem->GetValue() - 1, nActNumLvl );
+                    else
+                    {
+                        svx::sidebar::BulletsTypeMgr* pBulletsTypeMgr
+                            = dynamic_cast<svx::sidebar::BulletsTypeMgr*>(pNBOTypeMgr);
+                        pBulletsTypeMgr->ApplyCustomRule(aNewSvxNumRule, pCharItem->GetValue(),
+                                                         pFontItem->GetValue(), nActNumLvl);
+                    }
 
                     aNewNumRule.SetSvxRule( aNewSvxNumRule, GetShell().GetDoc() );
                     aNewNumRule.SetAutoRule( true );
@@ -314,7 +333,7 @@ void SwTextShell::ExecSetNumber(SfxRequest const &rReq)
             {
                 // no outline provided: launch dialog to request a specific outline
                 SfxBindings& rBindings = GetView().GetViewFrame().GetBindings();
-                const SfxStringItem aPage(FN_PARAM_1, "outlinenum");
+                const SfxStringItem aPage(FN_PARAM_1, u"outlinenum"_ustr);
                 const SfxPoolItem* aItems[] = { &aPage, nullptr };
                 rBindings.Execute(SID_OUTLINE_BULLET, aItems);
             }

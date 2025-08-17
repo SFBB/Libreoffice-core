@@ -7,8 +7,8 @@
 #  *** are part of the LibreOffice project.                          ***
 #  *********************************************************************
 #
-#  ScriptForge Release 24.2
-#  -----------------------
+#  ScriptForge Release 26.2
+#  ------------------------
 #
 msgid ""
 msgstr ""
@@ -128,14 +128,6 @@ msgstr ""
 msgctxt "VALIDATEVALUES"
 msgid "        « %1 » must contain one of next values : %2"
 msgstr "        « %1 » deve conter um dos seguintes valores : %2"
-
-#. SF_Utils._Validate error message
-#. %1: Wrong argument name
-#. %2: A regular expression
-#, kde-format
-msgctxt "VALIDATEREGEX"
-msgid "        « %1 » must match next regular expression : %2"
-msgstr "        « %1 » deve corresponder à seguinte expressão regular : %2"
 
 #. SF_Utils._Validate error message
 #. %1: Wrong argument name

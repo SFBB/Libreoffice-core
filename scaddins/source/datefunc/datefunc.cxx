@@ -82,7 +82,7 @@ sal_uInt16 ScaFuncData::GetStrIndex( sal_uInt16 nParam ) const
 static void InitScaFuncDataList(ScaFuncDataList& rList)
 {
     for (const auto & nIndex : pFuncDataArr)
-        rList.push_back(ScaFuncData(nIndex));
+        rList.emplace_back(nIndex);
 }
 
 //  entry points for service registration / instantiation
@@ -100,9 +100,9 @@ ScaDateAddIn::ScaDateAddIn()
 {
 }
 
-static const char*  pLang[] = { "de", "en" };
-static const char*  pCoun[] = { "DE", "US" };
-const sal_uInt32 nNumOfLoc = SAL_N_ELEMENTS( pLang );
+const char* const pLang[] = { "de", "en" };
+const char* const pCoun[] = { "DE", "US" };
+constexpr sal_uInt32 nNumOfLoc = std::size( pLang );
 
 void ScaDateAddIn::InitDefLocales()
 {
@@ -422,7 +422,7 @@ sal_Int32 GetNullDate( const uno::Reference< beans::XPropertySet >& xOptions )
     {
         try
         {
-            uno::Any aAny = xOptions->getPropertyValue( "NullDate" );
+            uno::Any aAny = xOptions->getPropertyValue( u"NullDate"_ustr );
             util::Date aDate;
             if ( aAny >>= aDate )
                 return DateToDays( aDate.Day, aDate.Month, aDate.Year );

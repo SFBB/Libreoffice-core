@@ -70,7 +70,6 @@ using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::document;
-using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::report;
 using namespace ::com::sun::star::xml::sax;
@@ -168,7 +167,7 @@ static ErrCode ReadThroughComponent(
 static ErrCode ReadThroughComponent(
     const uno::Reference< embed::XStorage >& xStorage,
     const uno::Reference<XComponent>& xModelComponent,
-    const char* pStreamName,
+    const OUString& rStreamName,
     const uno::Reference<XComponentContext> & rxContext,
     const Reference<document::XGraphicStorageHandler> & rxGraphicStorageHandler,
     const Reference<document::XEmbeddedObjectResolver>& _xEmbeddedObjectResolver,
@@ -176,7 +175,6 @@ static ErrCode ReadThroughComponent(
     ,const uno::Reference<beans::XPropertySet>& _xProp)
 {
     OSL_ENSURE( xStorage.is(), "Need storage!");
-    OSL_ENSURE(nullptr != pStreamName, "Please, please, give me a name!");
 
     if ( !xStorage )
         // TODO/LATER: better error handling
@@ -187,15 +185,14 @@ static ErrCode ReadThroughComponent(
     try
     {
         // open stream (and set parser input)
-        OUString sStreamName = OUString::createFromAscii(pStreamName);
-        if ( !xStorage->hasByName( sStreamName ) || !xStorage->isStreamElement( sStreamName ) )
+        if (!xStorage->hasByName(rStreamName) || !xStorage->isStreamElement(rStreamName))
         {
             // stream name not found! return immediately with OK signal
             return ERRCODE_NONE;
         }
 
         // get input stream
-        xDocStream = xStorage->openStreamElement( sStreamName, embed::ElementModes::READ );
+        xDocStream = xStorage->openStreamElement(rStreamName, embed::ElementModes::READ);
     }
     catch (const packages::WrongPasswordException&)
     {
@@ -297,11 +294,11 @@ ORptFilter::ORptFilter( const uno::Reference< XComponentContext >& _rxContext, O
 {
     GetMM100UnitConverter().SetCoreMeasureUnit(util::MeasureUnit::MM_100TH);
     GetMM100UnitConverter().SetXMLMeasureUnit(util::MeasureUnit::CM);
-    GetNamespaceMap().Add( "_report",
+    GetNamespaceMap().Add( u"_report"_ustr,
                         GetXMLToken(XML_N_RPT),
                         XML_NAMESPACE_REPORT );
 
-    GetNamespaceMap().Add( "__report",
+    GetNamespaceMap().Add( u"__report"_ustr,
                         GetXMLToken(XML_N_RPT_OASIS),
                         XML_NAMESPACE_REPORT );
 
@@ -321,7 +318,7 @@ reportdesign_OReportFilter_get_implementation(
     css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
     return cppu::acquire(new ORptFilter(context,
-        "com.sun.star.comp.report.OReportFilter",
+        u"com.sun.star.comp.report.OReportFilter"_ustr,
         SvXMLImportFlags::ALL ));
 }
 
@@ -408,29 +405,29 @@ bool ORptFilter::implImport( const Sequence< PropertyValue >& rDescriptor )
 
         uno::Sequence<uno::Any> aArgs{ uno::Any(xStorage) };
         xGraphicStorageHandler.set(
-                xContext->getServiceManager()->createInstanceWithArgumentsAndContext("com.sun.star.comp.Svx.GraphicImportHelper", aArgs, xContext),
+                xContext->getServiceManager()->createInstanceWithArgumentsAndContext(u"com.sun.star.comp.Svx.GraphicImportHelper"_ustr, aArgs, xContext),
                 uno::UNO_QUERY);
 
         uno::Reference< lang::XMultiServiceFactory > xReportServiceFactory( m_xReportDefinition, uno::UNO_QUERY);
-        aArgs.getArray()[0] <<= beans::NamedValue("Storage", uno::Any(xStorage));
-        xEmbeddedObjectResolver.set( xReportServiceFactory->createInstanceWithArguments("com.sun.star.document.ImportEmbeddedObjectResolver",aArgs) , uno::UNO_QUERY);
+        aArgs.getArray()[0] <<= beans::NamedValue(u"Storage"_ustr, uno::Any(xStorage));
+        xEmbeddedObjectResolver.set( xReportServiceFactory->createInstanceWithArguments(u"com.sun.star.document.ImportEmbeddedObjectResolver"_ustr,aArgs) , uno::UNO_QUERY);
 
         static constexpr OUString s_sOld = u"OldFormat"_ustr;
         static comphelper::PropertyMapEntry const pMap[] =
         {
-            { OUString("OldFormat") , 1,    cppu::UnoType<sal_Bool>::get(),                 beans::PropertyAttribute::BOUND,     0 },
-            { OUString("StreamName"), 0,    cppu::UnoType<OUString>::get(),             beans::PropertyAttribute::MAYBEVOID, 0 },
-            { OUString("PrivateData"),0,    cppu::UnoType<XInterface>::get(),  beans::PropertyAttribute::MAYBEVOID, 0 },
-            { OUString("BaseURI"),    0,    cppu::UnoType<OUString>::get(),             beans::PropertyAttribute::MAYBEVOID, 0 },
-            { OUString("StreamRelPath"), 0, cppu::UnoType<OUString>::get(),             beans::PropertyAttribute::MAYBEVOID, 0 },
+            { u"OldFormat"_ustr , 1,    cppu::UnoType<sal_Bool>::get(),                 beans::PropertyAttribute::BOUND,     0 },
+            { u"StreamName"_ustr, 0,    cppu::UnoType<OUString>::get(),             beans::PropertyAttribute::MAYBEVOID, 0 },
+            { u"PrivateData"_ustr,0,    cppu::UnoType<XInterface>::get(),  beans::PropertyAttribute::MAYBEVOID, 0 },
+            { u"BaseURI"_ustr,    0,    cppu::UnoType<OUString>::get(),             beans::PropertyAttribute::MAYBEVOID, 0 },
+            { u"StreamRelPath"_ustr, 0, cppu::UnoType<OUString>::get(),             beans::PropertyAttribute::MAYBEVOID, 0 },
         };
         utl::MediaDescriptor aDescriptor(rDescriptor);
         uno::Reference<beans::XPropertySet> xProp = comphelper::GenericPropertySet_CreateInstance(new comphelper::PropertySetInfo(pMap));
         const OUString sVal( aDescriptor.getUnpackedValueOrDefault(utl::MediaDescriptor::PROP_DOCUMENTBASEURL, OUString()) );
         assert(!sVal.isEmpty()); // needed for relative URLs
-        xProp->setPropertyValue("BaseURI", uno::Any(sVal));
-        const OUString sHierarchicalDocumentName( aDescriptor.getUnpackedValueOrDefault("HierarchicalDocumentName",OUString()) );
-        xProp->setPropertyValue("StreamRelPath", uno::Any(sHierarchicalDocumentName));
+        xProp->setPropertyValue(u"BaseURI"_ustr, uno::Any(sVal));
+        const OUString sHierarchicalDocumentName( aDescriptor.getUnpackedValueOrDefault(u"HierarchicalDocumentName"_ustr,OUString()) );
+        xProp->setPropertyValue(u"StreamRelPath"_ustr, uno::Any(sHierarchicalDocumentName));
 
         uno::Reference<XComponent> xModel = GetModel();
         static constexpr OUString s_sMeta = u"meta.xml"_ustr;
@@ -438,7 +435,7 @@ bool ORptFilter::implImport( const Sequence< PropertyValue >& rDescriptor )
         xProp->setPropertyValue(s_sStreamName, uno::Any(s_sMeta));
         ErrCode nRet = ReadThroughComponent( xStorage
                                     ,xModel
-                                    ,"meta.xml"
+                                    , u"meta.xml"_ustr
                                     ,GetComponentContext()
                                     ,xGraphicStorageHandler
                                     ,xEmbeddedObjectResolver
@@ -458,10 +455,10 @@ bool ORptFilter::implImport( const Sequence< PropertyValue >& rDescriptor )
 
         if ( nRet == ERRCODE_NONE )
         {
-            xProp->setPropertyValue(s_sStreamName, uno::Any(OUString("settings.xml")));
+            xProp->setPropertyValue(s_sStreamName, uno::Any(u"settings.xml"_ustr));
             nRet = ReadThroughComponent( xStorage
                                     ,xModel
-                                    ,"settings.xml"
+                                    , u"settings.xml"_ustr
                                     ,GetComponentContext()
                                     ,xGraphicStorageHandler
                                     ,xEmbeddedObjectResolver
@@ -471,10 +468,10 @@ bool ORptFilter::implImport( const Sequence< PropertyValue >& rDescriptor )
         }
         if ( nRet == ERRCODE_NONE )
         {
-            xProp->setPropertyValue(s_sStreamName, uno::Any(OUString("styles.xml")));
+            xProp->setPropertyValue(s_sStreamName, uno::Any(u"styles.xml"_ustr));
             nRet = ReadThroughComponent(xStorage
                                     ,xModel
-                                    ,"styles.xml"
+                                    , u"styles.xml"_ustr
                                     ,GetComponentContext()
                                     ,xGraphicStorageHandler
                                     ,xEmbeddedObjectResolver
@@ -484,10 +481,10 @@ bool ORptFilter::implImport( const Sequence< PropertyValue >& rDescriptor )
 
         if ( nRet == ERRCODE_NONE )
         {
-            xProp->setPropertyValue(s_sStreamName, uno::Any(OUString("content.xml")));
+            xProp->setPropertyValue(s_sStreamName, uno::Any(u"content.xml"_ustr));
             nRet = ReadThroughComponent( xStorage
                                     ,xModel
-                                    ,"content.xml"
+                                    , u"content.xml"_ustr
                                     ,GetComponentContext()
                                     ,xGraphicStorageHandler
                                     ,xEmbeddedObjectResolver
@@ -588,7 +585,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > RptXMLDocumentBodyCont
         const SvXMLStylesContext* pAutoStyles = rImport.GetAutoStyles();
         if (pAutoStyles)
         {
-            XMLPropStyleContext* pAutoStyle = const_cast<XMLPropStyleContext*>(dynamic_cast<const XMLPropStyleContext *>(pAutoStyles->FindStyleChildContext(XmlStyleFamily::PAGE_MASTER, "pm1")));
+            XMLPropStyleContext* pAutoStyle = const_cast<XMLPropStyleContext*>(dynamic_cast<const XMLPropStyleContext *>(pAutoStyles->FindStyleChildContext(XmlStyleFamily::PAGE_MASTER, u"pm1"_ustr)));
             if (pAutoStyle)
             {
                 pAutoStyle->FillPropertySet(rImport.getReportDefinition());

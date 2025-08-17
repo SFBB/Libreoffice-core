@@ -11,7 +11,8 @@
 #pragma once
 
 #include <tools/color.hxx>
-#include <vcl/BitmapFilter.hxx>
+
+#include <vcl/bitmap/BitmapFilter.hxx>
 
 class BitmapColorizeFilter final : public BitmapFilter
 {
@@ -21,7 +22,7 @@ public:
     {
     }
 
-    virtual BitmapEx execute(BitmapEx const& rBitmapEx) const override;
+    virtual Bitmap execute(Bitmap const& rBitmap) const override;
 
 private:
     Color maColor;

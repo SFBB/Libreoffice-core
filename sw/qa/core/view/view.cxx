@@ -31,7 +31,7 @@ class Test : public SwModelTestBase
 {
 public:
     Test()
-        : SwModelTestBase("/sw/qa/core/view/data/")
+        : SwModelTestBase(u"/sw/qa/core/view/data/"_ustr)
     {
     }
 };
@@ -42,7 +42,7 @@ CPPUNIT_TEST_FIXTURE(Test, testUpdateOleObjectPreviews)
     // Given a document with two embedded objects, both with broken native data:
     createSwDoc("update-ole-object-previews.odt");
     SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
 
     // When updating the previews of those embedded objects (right after document load, before
     // painting the OLE objects):
@@ -60,10 +60,11 @@ CPPUNIT_TEST_FIXTURE(Test, testUpdateOleObjectPreviews)
         SwOLENode* pOleNode = pNode->GetOLENode();
         CPPUNIT_ASSERT(pOleNode);
         SwOLEObj& rOleObj = pOleNode->GetOLEObj();
-        svt::EmbeddedObjectRef& rObject = rOleObj.GetObject();
+        const Graphic* pGraphic = rOleObj.GetObject().GetGraphic();
         // Without the accompanying fix in place, this test would have failed, the update broke the
         // preview of the second embedded object.
-        CPPUNIT_ASSERT(!rObject.GetGraphic()->IsNone());
+        CPPUNIT_ASSERT(pGraphic);
+        CPPUNIT_ASSERT(!pGraphic->IsNone());
     }
 }
 

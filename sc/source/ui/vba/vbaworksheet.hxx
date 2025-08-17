@@ -27,16 +27,14 @@
 namespace com::sun::star::frame { class XModel; }
 namespace com::sun::star::sheet { class XSpreadsheet; }
 namespace com::sun::star::uno { class XComponentContext; }
-namespace ooo::vba::excel { class XOutline; }
-namespace ooo::vba::excel { class XPageSetup; }
 namespace ooo::vba::excel { class XRange; }
 
 namespace ooo::vba::excel {
-    class XChartObjects;
     class XHyperlinks;
 }
 
 class ScVbaSheetObjectsBase;
+class ScVbaChartObjects;
 
 typedef InheritedHelperInterfaceWeakImpl< ov::excel::XWorksheet >  WorksheetImpl_BASE;
 
@@ -44,7 +42,7 @@ class ScVbaWorksheet : public WorksheetImpl_BASE
 {
     css::uno::Reference< css::sheet::XSpreadsheet > mxSheet;
     css::uno::Reference< css::frame::XModel > mxModel;
-    css::uno::Reference< ov::excel::XChartObjects > mxCharts;
+    rtl::Reference<ScVbaChartObjects> mxCharts;
     css::uno::Reference< ov::excel::XHyperlinks > mxHlinks;
     ::rtl::Reference< ScVbaSheetObjectsBase > mxButtons[2];
     bool mbVeryHidden;

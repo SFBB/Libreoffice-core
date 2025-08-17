@@ -47,26 +47,30 @@ public:
 
     virtual void Reject( SwPaM& rPam ) const;
     virtual bool operator == ( const SwRedlineExtraData& ) const;
+
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 class SW_DLLPUBLIC SwRedlineExtraData_FormatColl final : public SwRedlineExtraData
 {
-    OUString m_sFormatNm;
-    std::unique_ptr<SfxItemSet> m_pSet;
+    UIName m_sFormatNm;
+    std::shared_ptr<SfxItemSet> m_pSet;
     sal_uInt16 m_nPoolId;
     bool m_bFormatAll; // don't strip the last paragraph mark
 public:
-    SwRedlineExtraData_FormatColl( OUString aColl, sal_uInt16 nPoolFormatId,
-                                const SfxItemSet* pSet = nullptr, bool bFormatAll = true );
+    SwRedlineExtraData_FormatColl( UIName aColl, sal_uInt16 nPoolFormatId,
+                                const std::shared_ptr<SfxItemSet>& pSet = nullptr, bool bFormatAll = true );
     virtual ~SwRedlineExtraData_FormatColl() override;
     virtual SwRedlineExtraData* CreateNew() const override;
     virtual void Reject( SwPaM& rPam ) const override;
     virtual bool operator == ( const SwRedlineExtraData& ) const override;
 
-    const OUString& GetFormatName() const        { return m_sFormatNm; }
-    void SetItemSet( const SfxItemSet& rSet );
-    SfxItemSet* GetItemSet( ) const { return m_pSet.get(); }
+    const UIName& GetFormatName() const        { return m_sFormatNm; }
+    void SetItemSet( const std::shared_ptr<SfxItemSet>& pSet );
+    std::shared_ptr<SfxItemSet> GetItemSet( ) const { return m_pSet; }
     void SetFormatAll( bool bAll )               { m_bFormatAll = bAll; }
+
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 class SwRedlineExtraData_Format final : public SwRedlineExtraData
@@ -120,8 +124,6 @@ public:
                         ( m_pExtraData && rCmp.m_pExtraData &&
                             *m_pExtraData == *rCmp.m_pExtraData ));
         }
-    bool operator!=( const SwRedlineData& rCmp ) const
-        {   return !operator==( rCmp ); }
 
     RedlineType GetType() const { return m_eType; }
 
@@ -163,7 +165,7 @@ public:
     void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
-class SW_DLLPUBLIC SwRangeRedline final : public SwPaM
+class SAL_DLLPUBLIC_RTTI SwRangeRedline final : public SwPaM, public ISwContentIndexOwner
 {
     SwRedlineData* m_pRedlineData;
     std::optional<SwNodeIndex> m_oContentSect;
@@ -180,8 +182,8 @@ class SW_DLLPUBLIC SwRangeRedline final : public SwPaM
 public:
     static sal_uInt32 s_nLastId;
 
-    SwRangeRedline( RedlineType eType, const SwPaM& rPam, sal_uInt32 nMoveID = 0 );
-    SwRangeRedline( const SwRedlineData& rData, const SwPaM& rPam );
+    SW_DLLPUBLIC SwRangeRedline( RedlineType eType, const SwPaM& rPam, sal_uInt32 nMoveID = 0 );
+    SW_DLLPUBLIC SwRangeRedline( const SwRedlineData& rData, const SwPaM& rPam );
     SwRangeRedline( const SwRedlineData& rData, const SwPosition& rPos );
     // For sw3io: pData is taken over!
     SwRangeRedline(SwRedlineData* pData, const SwPosition& rPos,
@@ -189,11 +191,13 @@ public:
         SwPaM( rPos ), m_pRedlineData( pData ),
         m_nId( s_nLastId++ ), m_bDelLastPara( bDelLP ), m_bIsVisible( true )
     {
-        GetBound().SetRedline(this);
-        GetBound(false).SetRedline(this);
+        GetBound().SetOwner(this);
+        GetBound(false).SetOwner(this);
     }
     SwRangeRedline( const SwRangeRedline& );
     virtual ~SwRangeRedline() override;
+
+    virtual SwContentIndexOwnerType GetOwnerType() const override final { return SwContentIndexOwnerType::Redline; }
 
     sal_uInt32 GetId() const { return m_nId; }
     const SwNodeIndex* GetContentIdx() const { return m_oContentSect ? &*m_oContentSect : nullptr; }
@@ -210,18 +214,18 @@ public:
     /// Do we have a valid selection?
     bool HasValidRange() const;
 
-    const SwRedlineData& GetRedlineData(sal_uInt16 nPos = 0) const;
+    SW_DLLPUBLIC const SwRedlineData& GetRedlineData(sal_uInt16 nPos = 0) const;
     bool operator!=( const SwRedlineData& rCmp ) const
         { return *m_pRedlineData != rCmp; }
     void SetAutoFormat() { m_pRedlineData->SetAutoFormat(); }
     bool IsAutoFormat() const { return m_pRedlineData->IsAutoFormat(); }
 
     sal_uInt16 GetStackCount() const;
-    std::size_t GetAuthor( sal_uInt16 nPos = 0) const;
-    OUString const & GetAuthorString( sal_uInt16 nPos = 0 ) const;
+    SW_DLLPUBLIC std::size_t GetAuthor( sal_uInt16 nPos = 0) const;
+    SW_DLLPUBLIC OUString const & GetAuthorString( sal_uInt16 nPos = 0 ) const;
     sal_uInt32 GetMovedID(sal_uInt16 nPos = 0) const;
     const DateTime& GetTimeStamp(sal_uInt16 nPos = 0) const;
-    RedlineType GetType( sal_uInt16 nPos = 0 ) const;
+    SW_DLLPUBLIC RedlineType GetType( sal_uInt16 nPos = 0 ) const;
     // text content of the redline is only an annotation placeholder
     // (i.e. a comment, but don't confuse it with comment of the redline)
     bool IsAnnotation() const;
@@ -252,7 +256,8 @@ public:
     void ShowOriginal(sal_uInt16 nLoop, size_t nMyPos, bool bForced = false);
 
     /// Calculates the intersection with text node number nNdIdx.
-    void CalcStartEnd(SwNodeOffset nNdIdx, sal_Int32& rStart, sal_Int32& rEnd) const;
+    /// @return true if the entire redline precedes nNdIdx
+    bool CalcStartEnd(SwNodeOffset nNdIdx, sal_Int32& rStart, sal_Int32& rEnd) const;
 
     enum class Invalidation { Add, Remove };
     /// Initiate the layout.
@@ -277,7 +282,7 @@ public:
 
        bSimplified = simplified shortened text to show deletions on margin
      */
-    OUString GetDescr(bool bSimplified = false);
+    SW_DLLPUBLIC OUString GetDescr(bool bSimplified = false) const;
 
     bool operator<( const SwRangeRedline& ) const;
     void dumpAsXml(xmlTextWriterPtr pWriter) const;
@@ -343,11 +348,6 @@ public:
     const SwRedlineData& GetRedlineData() const
         { return m_aRedlineData; }
 };
-
-class SW_DLLPUBLIC SwRedlineHint final : public SfxHint
-{
-};
-
 
 namespace sw {
 

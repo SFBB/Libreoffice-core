@@ -27,6 +27,7 @@
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/xmlencode.hxx>
 #include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <sfx2/frmhtmlw.hxx>
@@ -60,9 +61,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::document;
 
 using namespace sdr::table;
@@ -138,7 +136,7 @@ OUString HtmlState::Flush()
                   + SetUnderline(false)
                   + SetStrikeout(false)
                   + SetColor(maDefColor)
-                  + SetLink("","");
+                  + SetLink(u""_ustr,u""_ustr);
 
     return aStr;
 }
@@ -272,7 +270,7 @@ namespace
 
 OUString getParagraphStyle( const SdrOutliner* pOutliner, sal_Int32 nPara )
 {
-    SfxItemSet aParaSet( pOutliner->GetParaAttribs( nPara ) );
+    const SfxItemSet& aParaSet( pOutliner->GetParaAttribs( nPara ) );
 
     OUString sStyle;
 
@@ -308,17 +306,14 @@ OUString TextAttribToHTMLString( SfxItemSet const * pSet, HtmlState* pState )
         return OUString();
 
     OUString aLink, aTarget;
-    if ( pSet->GetItemState( EE_FEATURE_FIELD ) == SfxItemState::SET )
+    const SvxFieldItem* pItem = nullptr;
+    if ( pSet->GetItemState( EE_FEATURE_FIELD, true, &pItem ) == SfxItemState::SET )
     {
-        const SvxFieldItem* pItem = pSet->GetItem<SvxFieldItem>( EE_FEATURE_FIELD );
-        if(pItem)
+        const SvxURLField* pURL = dynamic_cast<const SvxURLField*>( pItem->GetField() );
+        if(pURL)
         {
-            const SvxURLField* pURL = dynamic_cast<const SvxURLField*>( pItem->GetField() );
-            if(pURL)
-            {
-                aLink = pURL->GetURL();
-                aTarget = pURL->GetTargetFrame();
-            }
+            aLink = pURL->GetURL();
+            aTarget = pURL->GetTargetFrame();
         }
     }
 
@@ -374,13 +369,11 @@ OUString TextAttribToHTMLString( SfxItemSet const * pSet, HtmlState* pState )
 }
 
 // escapes a string for html
-OUString StringToHTMLString( const OUString& rString )
+OUString StringToHTMLString( std::u16string_view rString )
 {
     SvMemoryStream aMemStm;
     HTMLOutFuncs::Out_String( aMemStm, rString );
-    aMemStm.WriteChar( char(0) );
-    sal_Int32 nLength = strlen(static_cast<char const *>(aMemStm.GetData()));
-    return OUString( static_cast<char const *>(aMemStm.GetData()), nLength, RTL_TEXTENCODING_UTF8 );
+    return OUString( static_cast<char const *>(aMemStm.GetData()), aMemStm.GetSize(), RTL_TEXTENCODING_UTF8 );
 }
 
 // converts a paragraph of the outliner to html
@@ -449,7 +442,7 @@ void WriteOutlinerParagraph(OUStringBuffer& aStr, SdrOutliner* pOutliner,
 
         if (nDepth < 0)
         {
-            OUString aTag = bHeadLine ? OUString("h2") : OUString("p");
+            OUString aTag = bHeadLine ? u"h2"_ustr : u"p"_ustr;
             lclAppendStyle(aStr, aTag, getParagraphStyle(pOutliner, nIndex));
 
             aStr.append(aParaText);
@@ -636,24 +629,22 @@ constexpr OUStringLiteral gaHTMLHeader(
             "     \"http://www.w3.org/TR/html4/transitional.dtd\">\r\n"
             "<html>\r\n<head>\r\n" );
 
-constexpr OUStringLiteral gaHTMLExtension = u"" STR_HTMLEXP_DEFAULT_EXTENSION;
-
 // constructor for the html export helper classes
 HtmlExport::HtmlExport(
     OUString aPath,
-    SdDrawDocument* pExpDoc,
+    SdDrawDocument& rExpDoc,
     sd::DrawDocShell* pDocShell )
     :   maPath(std::move( aPath )),
-        mpDoc(pExpDoc),
+        mrDoc(rExpDoc),
         mpDocSh( pDocShell )
 {
-    bool bChange = mpDoc->IsChanged();
+    bool bChange = mrDoc.IsChanged();
 
     Init();
 
     ExportSingleDocument();
 
-    mpDoc->SetChanged(bChange);
+    mrDoc.SetChanged(bChange);
 }
 
 HtmlExport::~HtmlExport()
@@ -662,7 +653,7 @@ HtmlExport::~HtmlExport()
 
 void HtmlExport::Init()
 {
-    SdPage* pPage = mpDoc->GetSdPage(0, PageKind::Standard);
+    SdPage* pPage = mrDoc.GetSdPage(0, PageKind::Standard);
 
     // we come up with a destination...
     INetURLObject aINetURLObj( maPath );
@@ -671,10 +662,10 @@ void HtmlExport::Init()
     maExportPath = aINetURLObj.GetPartBeforeLastName(); // with trailing '/'
     maIndex = aINetURLObj.GetLastName();
 
-    mnSdPageCount = mpDoc->GetSdPageCount( PageKind::Standard );
+    mnSdPageCount = mrDoc.GetSdPageCount( PageKind::Standard );
     for( sal_uInt16 nPage = 0; nPage < mnSdPageCount; nPage++ )
     {
-        pPage = mpDoc->GetSdPage( nPage, PageKind::Standard );
+        pPage = mrDoc.GetSdPage( nPage, PageKind::Standard );
 
         maPages.push_back( pPage );
     }
@@ -685,7 +676,7 @@ void HtmlExport::Init()
 
 void HtmlExport::ExportSingleDocument()
 {
-    SdrOutliner* pOutliner = mpDoc->GetInternalOutliner();
+    SdrOutliner* pOutliner = mrDoc.GetInternalOutliner();
 
     mnPagesWritten = 0;
     InitProgress(mnSdPageCount);
@@ -723,7 +714,7 @@ void HtmlExport::ExportSingleDocument()
     // close page
     aStr.append("</body>\r\n</html>");
 
-    WriteHtml(maDocFileName, false, aStr);
+    WriteHtml(maDocFileName, aStr);
 
     pOutliner->Clear();
     ResetProgress();
@@ -763,17 +754,13 @@ OUString HtmlExport::DocumentMetadata() const
 
 /** exports the given html data into a non unicode file in the current export path with
     the given filename */
-bool HtmlExport::WriteHtml( const OUString& rFileName, bool bAddExtension, std::u16string_view rHtmlData )
+bool HtmlExport::WriteHtml( std::u16string_view rFileName, std::u16string_view rHtmlData )
 {
     ErrCode nErr = ERRCODE_NONE;
 
-    OUString aFileName( rFileName );
-    if( bAddExtension )
-        aFileName += gaHTMLExtension;
-
     EasyFile aFile;
     SvStream* pStr;
-    OUString aFull(maExportPath + aFileName);
+    OUString aFull(maExportPath + rFileName);
     nErr = aFile.createStream(aFull , pStr);
     if(nErr == ERRCODE_NONE)
     {

@@ -34,6 +34,7 @@ class SVXCORE_DLLPUBLIC XLineEndItem final : public NameOrIndex
 
 public:
             static SfxPoolItem* CreateDefault();
+            DECLARE_ITEM_TYPE_FUNCTION(XLineEndItem)
             XLineEndItem(sal_Int32 nIndex = -1);
             XLineEndItem(const OUString& rName, basegfx::B2DPolyPolygon aPolyPolygon);
             XLineEndItem(basegfx::B2DPolyPolygon aPolyPolygon);
@@ -53,7 +54,7 @@ public:
     const basegfx::B2DPolyPolygon& GetLineEndValue() const { return maPolyPolygon;}
     void SetLineEndValue(const basegfx::B2DPolyPolygon& rPolyPolygon) { maPolyPolygon = rPolyPolygon; Detach(); }
 
-    std::unique_ptr<XLineEndItem> checkForUniqueItem( SdrModel* pModel ) const;
+    std::unique_ptr<XLineEndItem> checkForUniqueItem( SdrModel& rModel ) const;
 };
 
 #endif

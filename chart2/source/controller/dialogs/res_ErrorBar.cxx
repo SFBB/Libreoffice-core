@@ -24,6 +24,7 @@
 #include <chartview/ChartSfxItemIds.hxx>
 #include <vcl/weld.hxx>
 #include <ChartModel.hxx>
+#include "DialogModel.hxx"
 
 #include <rtl/math.hxx>
 #include <comphelper/diagnose_ex.hxx>
@@ -39,12 +40,6 @@ using namespace ::com::sun::star;
 
 namespace
 {
-void lcl_enableRangeChoosing(bool bEnable, weld::DialogController* pController)
-{
-    weld::Window* pWeldDialog = pController->getDialog();
-    pWeldDialog->set_modal(!bEnable);
-    pWeldDialog->set_visible(!bEnable);
-}
 
 sal_uInt16 lcl_getLbEntryPosByErrorKind( SvxChartKindError eErrorKind )
 {
@@ -56,13 +51,11 @@ sal_uInt16 lcl_getLbEntryPosByErrorKind( SvxChartKindError eErrorKind )
         case SvxChartKindError::Percent:
         case SvxChartKindError::Const:
         case SvxChartKindError::Range:
+        case SvxChartKindError::Sigma:
             nResult = CHART_LB_FUNCTION_STD_DEV;
             break;
         case SvxChartKindError::Variant:
             nResult = CHART_LB_FUNCTION_VARIANCE;
-            break;
-        case SvxChartKindError::Sigma:
-            nResult = CHART_LB_FUNCTION_STD_DEV;
             break;
         case SvxChartKindError::BigError:
             nResult = CHART_LB_FUNCTION_ERROR_MARGIN;
@@ -96,31 +89,31 @@ ErrorBarResources::ErrorBarResources(weld::Builder* pParent, weld::DialogControl
     , m_pCurrentRangeChoosingField( nullptr )
     , m_bHasInternalDataProvider( true )
     , m_bEnableDataTableDialog( true )
-    , m_xRbNone(pParent->weld_radio_button("RB_NONE"))
-    , m_xRbConst(pParent->weld_radio_button("RB_CONST"))
-    , m_xRbPercent(pParent->weld_radio_button("RB_PERCENT"))
-    , m_xRbFunction(pParent->weld_radio_button("RB_FUNCTION"))
-    , m_xRbRange(pParent->weld_radio_button("RB_RANGE"))
-    , m_xLbFunction(pParent->weld_combo_box("LB_FUNCTION"))
-    , m_xFlParameters(pParent->weld_frame("framePARAMETERS"))
-    , m_xBxPositive(pParent->weld_widget("boxPOSITIVE"))
-    , m_xMfPositive(pParent->weld_metric_spin_button("MF_POSITIVE", FieldUnit::NONE))
-    , m_xEdRangePositive(pParent->weld_entry("ED_RANGE_POSITIVE"))
-    , m_xIbRangePositive(pParent->weld_button("IB_RANGE_POSITIVE"))
-    , m_xBxNegative(pParent->weld_widget("boxNEGATIVE"))
-    , m_xMfNegative(pParent->weld_metric_spin_button("MF_NEGATIVE", FieldUnit::NONE))
-    , m_xEdRangeNegative(pParent->weld_entry("ED_RANGE_NEGATIVE"))
-    , m_xIbRangeNegative(pParent->weld_button("IB_RANGE_NEGATIVE"))
-    , m_xCbSyncPosNeg(pParent->weld_check_button("CB_SYN_POS_NEG"))
-    , m_xRbBoth(pParent->weld_radio_button("RB_BOTH"))
-    , m_xRbPositive(pParent->weld_radio_button("RB_POSITIVE"))
-    , m_xRbNegative(pParent->weld_radio_button("RB_NEGATIVE"))
-    , m_xFiBoth(pParent->weld_image("FI_BOTH"))
-    , m_xFiPositive(pParent->weld_image("FI_POSITIVE"))
-    , m_xFiNegative(pParent->weld_image("FI_NEGATIVE"))
-    , m_xUIStringPos(pParent->weld_label("STR_DATA_SELECT_RANGE_FOR_POSITIVE_ERRORBARS"))
-    , m_xUIStringNeg(pParent->weld_label("STR_DATA_SELECT_RANGE_FOR_NEGATIVE_ERRORBARS"))
-    , m_xUIStringRbRange(pParent->weld_label("STR_CONTROLTEXT_ERROR_BARS_FROM_DATA"))
+    , m_xRbNone(pParent->weld_radio_button(u"RB_NONE"_ustr))
+    , m_xRbConst(pParent->weld_radio_button(u"RB_CONST"_ustr))
+    , m_xRbPercent(pParent->weld_radio_button(u"RB_PERCENT"_ustr))
+    , m_xRbFunction(pParent->weld_radio_button(u"RB_FUNCTION"_ustr))
+    , m_xRbRange(pParent->weld_radio_button(u"RB_RANGE"_ustr))
+    , m_xLbFunction(pParent->weld_combo_box(u"LB_FUNCTION"_ustr))
+    , m_xFlParameters(pParent->weld_frame(u"framePARAMETERS"_ustr))
+    , m_xBxPositive(pParent->weld_widget(u"boxPOSITIVE"_ustr))
+    , m_xMfPositive(pParent->weld_metric_spin_button(u"MF_POSITIVE"_ustr, FieldUnit::NONE))
+    , m_xEdRangePositive(pParent->weld_entry(u"ED_RANGE_POSITIVE"_ustr))
+    , m_xIbRangePositive(pParent->weld_button(u"IB_RANGE_POSITIVE"_ustr))
+    , m_xBxNegative(pParent->weld_widget(u"boxNEGATIVE"_ustr))
+    , m_xMfNegative(pParent->weld_metric_spin_button(u"MF_NEGATIVE"_ustr, FieldUnit::NONE))
+    , m_xEdRangeNegative(pParent->weld_entry(u"ED_RANGE_NEGATIVE"_ustr))
+    , m_xIbRangeNegative(pParent->weld_button(u"IB_RANGE_NEGATIVE"_ustr))
+    , m_xCbSyncPosNeg(pParent->weld_check_button(u"CB_SYN_POS_NEG"_ustr))
+    , m_xRbBoth(pParent->weld_radio_button(u"RB_BOTH"_ustr))
+    , m_xRbPositive(pParent->weld_radio_button(u"RB_POSITIVE"_ustr))
+    , m_xRbNegative(pParent->weld_radio_button(u"RB_NEGATIVE"_ustr))
+    , m_xFiBoth(pParent->weld_image(u"FI_BOTH"_ustr))
+    , m_xFiPositive(pParent->weld_image(u"FI_POSITIVE"_ustr))
+    , m_xFiNegative(pParent->weld_image(u"FI_NEGATIVE"_ustr))
+    , m_xUIStringPos(pParent->weld_label(u"STR_DATA_SELECT_RANGE_FOR_POSITIVE_ERRORBARS"_ustr))
+    , m_xUIStringNeg(pParent->weld_label(u"STR_DATA_SELECT_RANGE_FOR_NEGATIVE_ERRORBARS"_ustr))
+    , m_xUIStringRbRange(pParent->weld_label(u"STR_CONTROLTEXT_ERROR_BARS_FROM_DATA"_ustr))
 {
     if( bNoneAvailable )
         m_xRbNone->connect_toggled(LINK(this, ErrorBarResources, CategoryChosen));
@@ -175,7 +168,7 @@ void ErrorBarResources::SetChartDocumentForRangeChoosing(
         {
             try
             {
-                xProps->getPropertyValue("EnableDataTableDialog") >>= m_bEnableDataTableDialog;
+                xProps->getPropertyValue(u"EnableDataTableDialog"_ustr) >>= m_bEnableDataTableDialog;
             }
             catch( const uno::Exception& )
             {
@@ -447,7 +440,7 @@ IMPL_LINK(ErrorBarResources, ChooseRange, weld::Button&, rButton, void)
         aUIString = m_xUIStringNeg->get_label();
     }
 
-    lcl_enableRangeChoosing(true, m_pController);
+    enableRangeChoosing(true, m_pController);
     m_apRangeSelectionHelper->chooseRange(
         m_pCurrentRangeChoosingField->get_text(),
         aUIString, *this );
@@ -475,7 +468,7 @@ void ErrorBarResources::Reset(const SfxItemSet& rInAttrs)
     // category
     m_eErrorKind = SvxChartKindError::NONE;
     SfxItemState aState = rInAttrs.GetItemState( SCHATTR_STAT_KIND_ERROR, true, &pPoolItem );
-    m_bErrorKindUnique = ( aState != SfxItemState::DONTCARE );
+    m_bErrorKindUnique = ( aState != SfxItemState::INVALID );
 
     if( aState == SfxItemState::SET )
         m_eErrorKind = static_cast<const SvxChartKindErrorItem*>(pPoolItem)->GetValue();
@@ -531,7 +524,7 @@ void ErrorBarResources::Reset(const SfxItemSet& rInAttrs)
 
     // indicator
     aState = rInAttrs.GetItemState( SCHATTR_STAT_INDICATE, true, &pPoolItem );
-    m_bIndicatorUnique = ( aState != SfxItemState::DONTCARE );
+    m_bIndicatorUnique = ( aState != SfxItemState::INVALID );
     if( aState == SfxItemState::SET)
         m_eIndicate = static_cast<const SvxChartIndicateItem *>(pPoolItem)->GetValue();
 
@@ -560,7 +553,7 @@ void ErrorBarResources::Reset(const SfxItemSet& rInAttrs)
 
     // ranges
     aState = rInAttrs.GetItemState( SCHATTR_STAT_RANGE_POS, true, &pPoolItem );
-    m_bRangePosUnique = ( aState != SfxItemState::DONTCARE );
+    m_bRangePosUnique = ( aState != SfxItemState::INVALID );
     if( aState == SfxItemState::SET )
     {
         OUString sRangePositive = static_cast< const SfxStringItem * >( pPoolItem )->GetValue();
@@ -568,7 +561,7 @@ void ErrorBarResources::Reset(const SfxItemSet& rInAttrs)
     }
 
     aState = rInAttrs.GetItemState( SCHATTR_STAT_RANGE_NEG, true, &pPoolItem );
-    m_bRangeNegUnique = ( aState != SfxItemState::DONTCARE );
+    m_bRangeNegUnique = ( aState != SfxItemState::INVALID );
     if( aState == SfxItemState::SET )
     {
         OUString sRangeNegative = static_cast< const SfxStringItem * >( pPoolItem )->GetValue();
@@ -684,7 +677,7 @@ void ErrorBarResources::listeningFinished(
     m_pCurrentRangeChoosingField = nullptr;
 
     UpdateControlStates();
-    lcl_enableRangeChoosing(false, m_pController);
+    enableRangeChoosing(false, m_pController);
 }
 
 void ErrorBarResources::disposingRangeSelection()

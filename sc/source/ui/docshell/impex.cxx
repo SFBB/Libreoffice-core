@@ -58,7 +58,7 @@
 #include <scresid.hxx>
 #include <o3tl/safeint.hxx>
 #include <tools/svlibrary.h>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
 #include <editeng/editobj.hxx>
@@ -72,7 +72,7 @@
 
 #include <unicode/uchar.h>
 
-#include <osl/endian.h>
+#include <osl/file.hxx>
 
 // We don't want to end up with 2GB read in one line just because of malformed
 // multiline fields, so chop it _somewhere_, which is twice supported columns
@@ -102,7 +102,7 @@ enum class SylkVersion
 // Whole document without Undo
 ScImportExport::ScImportExport( ScDocument& r )
     : pDocSh( r.GetDocumentShell() ), rDoc( r ),
-      nSizeLimit( 0 ), nMaxImportRow(!utl::ConfigManager::IsFuzzing() ? rDoc.MaxRow() : SCROWS32K),
+      nSizeLimit( 0 ), nMaxImportRow(!comphelper::IsFuzzing() ? rDoc.MaxRow() : SCROWS32K),
       cSep( '\t' ), cStr( '"' ),
       bFormulas( false ), bIncludeFiltered( true ),
       bAll( true ), bSingle( true ), bUndo( false ),
@@ -117,7 +117,7 @@ ScImportExport::ScImportExport( ScDocument& r )
 ScImportExport::ScImportExport( ScDocument& r, const ScAddress& rPt )
     : pDocSh( r.GetDocumentShell() ), rDoc( r ),
       aRange( rPt ),
-      nSizeLimit( 0 ), nMaxImportRow(!utl::ConfigManager::IsFuzzing() ? rDoc.MaxRow() : SCROWS32K),
+      nSizeLimit( 0 ), nMaxImportRow(!comphelper::IsFuzzing() ? rDoc.MaxRow() : SCROWS32K),
       cSep( '\t' ), cStr( '"' ),
       bFormulas( false ), bIncludeFiltered( true ),
       bAll( false ), bSingle( true ), bUndo( pDocSh != nullptr ),
@@ -133,7 +133,7 @@ ScImportExport::ScImportExport( ScDocument& r, const ScAddress& rPt )
 ScImportExport::ScImportExport( ScDocument& r, const ScRange& rRange )
     : pDocSh( r.GetDocumentShell() ), rDoc( r ),
       aRange( rRange ),
-      nSizeLimit( 0 ), nMaxImportRow(!utl::ConfigManager::IsFuzzing() ? rDoc.MaxRow() : SCROWS32K),
+      nSizeLimit( 0 ), nMaxImportRow(!comphelper::IsFuzzing() ? rDoc.MaxRow() : SCROWS32K),
       cSep( '\t' ), cStr( '"' ),
       bFormulas( false ), bIncludeFiltered( true ),
       bAll( false ), bSingle( false ), bUndo( pDocSh != nullptr ),
@@ -150,7 +150,7 @@ ScImportExport::ScImportExport( ScDocument& r, const ScRange& rRange )
 // If a View exists, the TabNo of the view will be used.
 ScImportExport::ScImportExport( ScDocument& r, const OUString& rPos )
     : pDocSh( r.GetDocumentShell() ), rDoc( r ),
-      nSizeLimit( 0 ), nMaxImportRow(!utl::ConfigManager::IsFuzzing() ? rDoc.MaxRow() : SCROWS32K),
+      nSizeLimit( 0 ), nMaxImportRow(!comphelper::IsFuzzing() ? rDoc.MaxRow() : SCROWS32K),
       cSep( '\t' ), cStr( '"' ),
       bFormulas( false ), bIncludeFiltered( true ),
       bAll( false ), bSingle( true ), bUndo( pDocSh != nullptr ),
@@ -229,7 +229,7 @@ bool ScImportExport::StartPaste()
 {
     if ( !bAll )
     {
-        ScEditableTester aTester( rDoc, aRange );
+        ScEditableTester aTester( rDoc, aRange, sc::EditAction::Unknown );
         if ( !aTester.IsEditable() )
         {
             std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(ScDocShell::GetActiveDialogParent(),
@@ -262,7 +262,7 @@ void ScImportExport::EndPaste(bool bAutoRowHeight)
         ScMarkData aDestMark(pRedoDoc->GetSheetLimits());
         aDestMark.SetMarkArea(aRange);
         pDocSh->GetUndoManager()->AddUndoAction(
-            std::make_unique<ScUndoPaste>(pDocSh, aRange, aDestMark, std::move(pUndoDoc), std::move(pRedoDoc), InsertDeleteFlags::ALL, nullptr));
+            std::make_unique<ScUndoPaste>(*pDocSh, aRange, aDestMark, std::move(pUndoDoc), std::move(pRedoDoc), InsertDeleteFlags::ALL, nullptr));
     }
     pUndoDoc.reset();
     if( pDocSh )
@@ -322,7 +322,7 @@ bool ScImportExport::ImportString( const OUString& rText, SotClipboardFormatId n
             OString aTmp( rText.getStr(), rText.getLength(), eEnc );
             SvMemoryStream aStrm( const_cast<char *>(aTmp.getStr()), aTmp.getLength() * sizeof(char), StreamMode::READ );
             aStrm.SetStreamCharSet( eEnc );
-            SetNoEndianSwap( aStrm );       //! no swapping in memory
+            aStrm.ResetEndianSwap(); //! no swapping in memory
             return ImportStream( aStrm, OUString(), nFmt );
         }
     }
@@ -343,7 +343,7 @@ bool ScImportExport::ExportString( OUString& rText, SotClipboardFormatId nFmt )
 
     SvMemoryStream aStrm;
     aStrm.SetStreamCharSet( RTL_TEXTENCODING_UNICODE );
-    SetNoEndianSwap( aStrm );       //! no swapping in memory
+    aStrm.ResetEndianSwap(); //! no swapping in memory
     // mba: no BaseURL for data exc
     if( ExportStream( aStrm, OUString(), nFmt ) )
     {
@@ -368,7 +368,7 @@ bool ScImportExport::ExportByteString( OString& rText, rtl_TextEncoding eEnc, So
 
     SvMemoryStream aStrm;
     aStrm.SetStreamCharSet( eEnc );
-    SetNoEndianSwap( aStrm );       //! no swapping in memory
+    aStrm.ResetEndianSwap(); //! no swapping in memory
     // mba: no BaseURL for data exchange
     if( ExportStream( aStrm, OUString(), nFmt ) )
     {
@@ -470,12 +470,8 @@ bool ScImportExport::ExportStream( SvStream& rStrm, const OUString& rBaseURL, So
 
             // extra bits are used to tell the client to prefer external
             // reference link.
-
-            rStrm.WriteUnicodeOrByteText(aAppName, true);
-            rStrm.WriteUnicodeOrByteText(aDocName, true);
-            rStrm.WriteUnicodeOrByteText(aRefName, true);
-            rStrm.WriteUnicodeOrByteText(u"calc:extref", true);
-            return rStrm.WriteUnicodeOrByteText(u"", true); // One more trailing zero
+            return TransferableDataHelper::WriteDDELink(rStrm, aAppName, aDocName, aRefName,
+                                                        u"calc:extref");
         }
     }
     if( nFmt == SotClipboardFormatId::HTML )
@@ -494,12 +490,12 @@ bool ScImportExport::ExportStream( SvStream& rStrm, const OUString& rBaseURL, So
 
 // tdf#104927
 // http://www.unicode.org/reports/tr11/
-sal_Int32 ScImportExport::CountVisualWidth(const OUString& rStr, sal_Int32& nIdx, sal_Int32 nMaxWidth)
+sal_Int32 ScImportExport::CountVisualWidth(std::u16string_view rStr, sal_Int32& nIdx, sal_Int32 nMaxWidth)
 {
     sal_Int32 nWidth = 0;
-    while(nIdx < rStr.getLength() && nWidth < nMaxWidth)
+    while(nIdx < static_cast<sal_Int32>(rStr.size()) && nWidth < nMaxWidth)
     {
-        sal_uInt32 nCode = rStr.iterateCodePoints(&nIdx);
+        sal_uInt32 nCode = o3tl::iterateCodePoints(rStr, &nIdx);
 
         auto nEaWidth = u_getIntPropertyValue(nCode, UCHAR_EAST_ASIAN_WIDTH);
         if (nEaWidth == U_EA_FULLWIDTH || nEaWidth == U_EA_WIDE)
@@ -508,10 +504,10 @@ sal_Int32 ScImportExport::CountVisualWidth(const OUString& rStr, sal_Int32& nIdx
             nWidth += 1;
     }
 
-    if (nIdx < rStr.getLength())
+    if (nIdx < static_cast<sal_Int32>(rStr.size()))
     {
         sal_Int32 nTmpIdx = nIdx;
-        sal_uInt32 nCode = rStr.iterateCodePoints(&nTmpIdx);
+        sal_uInt32 nCode = o3tl::iterateCodePoints(rStr, &nTmpIdx);
 
         if (u_getIntPropertyValue(nCode, UCHAR_DEFAULT_IGNORABLE_CODE_POINT))
             nIdx = nTmpIdx;
@@ -519,19 +515,10 @@ sal_Int32 ScImportExport::CountVisualWidth(const OUString& rStr, sal_Int32& nIdx
     return nWidth;
 }
 
-sal_Int32 ScImportExport::CountVisualWidth(const OUString& rStr)
+sal_Int32 ScImportExport::CountVisualWidth(std::u16string_view rStr)
 {
     sal_Int32 nIdx = 0;
     return CountVisualWidth(rStr, nIdx, SAL_MAX_INT32);
-}
-
-void ScImportExport::SetNoEndianSwap( SvStream& rStrm )
-{
-#ifdef OSL_BIGENDIAN
-    rStrm.SetEndian( SvStreamEndian::BIG );
-#else
-    rStrm.SetEndian( SvStreamEndian::LITTLE );
-#endif
 }
 
 static inline bool lcl_isFieldEnd( sal_Unicode c, const sal_Unicode* pSeps )
@@ -583,7 +570,7 @@ static QuoteType lcl_isFieldEndQuote( const sal_Unicode* p, const sal_Unicode* p
     // to be checked.
     if (!rcDetectSep)
     {
-        constexpr sal_Unicode vSep[] = { ',', '\t', ';' };
+        static constexpr sal_Unicode vSep[] = { ',', '\t', ';' };
         for (const sal_Unicode c : vSep)
         {
             if (p[1] == c)
@@ -1038,9 +1025,8 @@ static bool lcl_PutString(
                 // This is only necessary for ScDocumentImport,
                 // ScDocument::SetTextCell() forces it by ScSetStringParam.
                 sal_uInt32 nFormat = rDoc.GetFormatTable()->GetStandardFormat(SvNumFormatType::TEXT);
-                ScPatternAttr aNewAttrs(rDoc.GetPool());
-                SfxItemSet& rSet = aNewAttrs.GetItemSet();
-                rSet.Put( SfxUInt32Item(ATTR_VALUE_FORMAT, nFormat) );
+                ScPatternAttr aNewAttrs(rDoc.getCellAttributeHelper());
+                aNewAttrs.ItemSetPut(SfxUInt32Item(ATTR_VALUE_FORMAT, nFormat));
                 rDoc.ApplyPattern(nCol, nRow, nTab, aNewAttrs);
             }
             if (ScStringUtil::isMultiline(rStr))
@@ -1263,7 +1249,7 @@ static bool lcl_PutString(
                     if ( rTransliteration.isEqual( aMStr, xMonths[i].FullName ) ||
                          rTransliteration.isEqual( aMStr, xMonths[i].AbbrevName ) )
                         nMonth = sal::static_int_cast<sal_Int16>( i+1 );
-                    else if ( i == 8 && rTransliteration.isEqual( "SEPT",
+                    else if ( i == 8 && rTransliteration.isEqual( u"SEPT"_ustr,
                                 xMonths[i].AbbrevName ) &&
                             rTransliteration.isEqual( aMStr, aSepShortened ) )
                     {   // correct English abbreviation is SEPT,
@@ -1346,13 +1332,13 @@ static bool lcl_PutString(
                         // strings.
                         if (nHour == 12 &&
                                 (rTransliteration.isEqual( aAmPm, pFormatter->GetLocaleData()->getTimeAM()) ||
-                                 (pSecondTransliteration && pSecondTransliteration->isEqual( aAmPm, "AM"))))
+                                 (pSecondTransliteration && pSecondTransliteration->isEqual( aAmPm, u"AM"_ustr))))
                         {
                             nHour = 0;
                         }
                         else if (nHour < 12 &&
                                 (rTransliteration.isEqual( aAmPm, pFormatter->GetLocaleData()->getTimePM()) ||
-                                 (pSecondTransliteration && pSecondTransliteration->isEqual( aAmPm, "PM"))))
+                                 (pSecondTransliteration && pSecondTransliteration->isEqual( aAmPm, u"PM"_ustr))))
                         {
                             nHour += 12;
                         }
@@ -1595,6 +1581,7 @@ bool ScImportExport::ExtText2Doc( SvStream& rStrm )
     ScDocumentImport aDocImport(rDoc);
     do
     {
+        const SCCOL nLastCol = nEndCol; // tdf#129701 preserve value of nEndCol
         for( ;; )
         {
             aLine = ReadCsvLine(rStrm, !bFixed, aSeps, cStr, cDetectSep);
@@ -1678,15 +1665,22 @@ bool ScImportExport::ExtText2Doc( SvStream& rStrm )
                 SCCOL nSourceCol = 0;
                 sal_uInt16 nInfoStart = 0;
                 const sal_Unicode* p = aLine.getStr();
+                // tdf#129701 if there is only one column, and user wants to treat empty cells,
+                // we need to detect *p = null
+                bool bIsLastColEmpty = !(*p) && !bSkipEmptyCells && !bDetermineRange;
                 // Yes, the check is nCol<=rDoc.MaxCol()+1, +1 because it is only an
                 // overflow if there is really data following to be put behind
                 // the last column, which doesn't happen if info is
                 // SC_COL_SKIP.
-                while (*p && nCol <= rDoc.MaxCol()+1)
+                while ( (*p || bIsLastColEmpty) && nCol <= rDoc.MaxCol()+1)
                 {
                     bool bIsQuoted = false;
                     p = ScImportExport::ScanNextFieldFromString( p, aCell,
                             cStr, pSeps, bMerge, bIsQuoted, bOverflowCell, bRemoveSpace );
+                    // some dodgy CSVs have a trailing linefeed in each token, which will
+                    // make the code think that we have a multi-line field, which will slow things down a lot.
+                    if (aCell.endsWith("\n"))
+                        aCell = aCell.copy(0, aCell.getLength()-1);
 
                     sal_uInt8 nFmt = SC_COL_STANDARD;
                     for ( i=nInfoStart; i<nInfoCount; i++ )
@@ -1714,8 +1708,17 @@ bool ScImportExport::ExtText2Doc( SvStream& rStrm )
                                 pEnglishTransliteration.get(), pEnglishCalendar.get());
                         }
                         ++nCol;
-                    }
+                        if (bIsLastColEmpty)
+                        {
+                            bIsLastColEmpty = false; // toggle to stop
+                        }
+                        else
+                        {
+                            // tdf#129701 detect if there is a last empty column when we need it
+                            bIsLastColEmpty = (nCol == nLastCol) && !(*p) && !bSkipEmptyCells && !bDetermineRange;
+                        }
 
+                    }
                     ++nSourceCol;
                 }
             }
@@ -1932,8 +1935,8 @@ bool ScImportExport::Doc2Text( SvStream& rStrm )
             for (nCol = nStartCol; nCol <= nEndCol; nCol++)
             {
                 ScAddress aPos(nCol, nRow, nStartTab);
-                sal_uInt32 nNumFmt = rDoc.GetNumberFormat(aPos);
-                SvNumberFormatter* pFormatter = rDoc.GetFormatTable();
+                sal_uInt32 nNumFmt = rDoc.GetNumberFormat(ScRange(aPos));
+                ScInterpreterContext& rContext = rDoc.GetNonThreadedContext();
 
                 ScRefCellValue aCell(rDoc, aPos, blockPos[ nCol - nStartCol ]);
                 switch (aCell.getType())
@@ -1951,7 +1954,7 @@ bool ScImportExport::Doc2Text( SvStream& rStrm )
                         else
                         {
                             const Color* pColor;
-                            aCellStr = ScCellFormat::GetString(aCell, nNumFmt, &pColor, *pFormatter, rDoc);
+                            aCellStr = ScCellFormat::GetString(aCell, nNumFmt, &pColor, &rContext, rDoc);
 
                             bool bMultiLineText = ( aCellStr.indexOf( '\n' ) != -1 );
                             if( bMultiLineText )
@@ -1975,7 +1978,7 @@ bool ScImportExport::Doc2Text( SvStream& rStrm )
                     case CELLTYPE_VALUE:
                     {
                         const Color* pColor;
-                        aCellStr = ScCellFormat::GetString(aCell, nNumFmt, &pColor, *pFormatter, rDoc);
+                        aCellStr = ScCellFormat::GetString(aCell, nNumFmt, &pColor, &rContext, rDoc);
                         rStrm.WriteUnicodeOrByteText(aCellStr);
                     }
                     break;
@@ -1984,7 +1987,7 @@ bool ScImportExport::Doc2Text( SvStream& rStrm )
                     default:
                     {
                         const Color* pColor;
-                        aCellStr = ScCellFormat::GetString(aCell, nNumFmt, &pColor, *pFormatter, rDoc);
+                        aCellStr = ScCellFormat::GetString(aCell, nNumFmt, &pColor, &rContext, rDoc);
 
                         bool bMultiLineText = ( aCellStr.indexOf( '\n' ) != -1 );
                         if( bMultiLineText )
@@ -2056,7 +2059,7 @@ bool ScImportExport::Sylk2Doc( SvStream& rStrm )
         for( ;; )
         {
             //! allow unicode
-            rStrm.ReadLine( aByteLine );
+            (void)rStrm.ReadLine( aByteLine );
             aLine = OStringToOUString(aByteLine, rStrm.GetStreamCharSet());
             if( rStrm.eof() )
                 break;
@@ -2304,7 +2307,7 @@ bool ScImportExport::Sylk2Doc( SvStream& rStrm )
                     sal_uInt32 nKey;
                     sal_Int32 nCheckPos;
 
-                    if (aCode.getLength() > 2048 && utl::ConfigManager::IsFuzzing())
+                    if (aCode.getLength() > 2048 && comphelper::IsFuzzing())
                     {
                         // consider an excessive length as a failure when fuzzing
                         nCheckPos = 1;
@@ -2492,8 +2495,17 @@ bool ScImportExport::Doc2Sylk( SvStream& rStrm )
     return rStrm.GetError() == ERRCODE_NONE;
 }
 
-bool ScImportExport::Doc2HTML( SvStream& rStrm, const OUString& rBaseURL )
+bool ScImportExport::Doc2HTML( SvStream& rStream, const OUString& rBaseURL )
 {
+    std::optional<SvFileStream> oStream;
+    char* pEnv = getenv("SC_DEBUG_HTML_COPY_TO");
+    if (pEnv)
+    {
+        OUString aURL;
+        osl::FileBase::getFileURLFromSystemPath(OUString::fromUtf8(pEnv), aURL);
+        oStream.emplace(aURL, StreamMode::WRITE);
+    }
+    SvStream& rStrm = pEnv ? *oStream : rStream;
     // rtl_TextEncoding is ignored in ScExportHTML, read from Load/Save HTML options
     ScFormatFilter::Get().ScExportHTML( rStrm, rBaseURL, &rDoc, aRange, RTL_TEXTENCODING_DONTKNOW, bAll,
         aStreamPath, aNonConvertibleChars, maFilterOptions );
@@ -2510,7 +2522,7 @@ bool ScImportExport::Doc2RTF( SvStream& rStrm )
 bool ScImportExport::Doc2Dif( SvStream& rStrm )
 {
     // for DIF in the clipboard, IBM_850 is always used
-    ScFormatFilter::Get().ScExportDif( rStrm, &rDoc, aRange, RTL_TEXTENCODING_IBM_850 );
+    ScFormatFilter::Get().ScExportDif( rStrm, rDoc, aRange, RTL_TEXTENCODING_IBM_850 );
     return true;
 }
 
@@ -2547,7 +2559,7 @@ bool ScImportExport::Dif2Doc( SvStream& rStrm )
 
 bool ScImportExport::RTF2Doc( SvStream& rStrm, const OUString& rBaseURL )
 {
-    std::unique_ptr<ScEEAbsImport> pImp = ScFormatFilter::Get().CreateRTFImport( &rDoc, aRange );
+    std::unique_ptr<ScEEAbsImport> pImp = ScFormatFilter::Get().CreateRTFImport( rDoc, aRange );
     if (!pImp)
         return false;
     pImp->Read( rStrm, rBaseURL );
@@ -2566,10 +2578,24 @@ bool ScImportExport::RTF2Doc( SvStream& rStrm, const OUString& rBaseURL )
 
 bool ScImportExport::HTML2Doc( SvStream& rStrm, const OUString& rBaseURL )
 {
-    std::unique_ptr<ScEEAbsImport> pImp = ScFormatFilter::Get().CreateHTMLImport( &rDoc, rBaseURL, aRange);
+    std::unique_ptr<ScEEAbsImport> pImp = ScFormatFilter::Get().CreateHTMLImport( rDoc, rBaseURL, aRange);
     if (!pImp)
         return false;
-    pImp->Read( rStrm, rBaseURL );
+
+    // If this is set, read from this file, instead of the real clipboard during paste.
+    char* pEnv = getenv("SC_DEBUG_HTML_PASTE_FROM");
+    if (pEnv)
+    {
+        OUString aURL;
+        osl::FileBase::getFileURLFromSystemPath(OUString::fromUtf8(pEnv), aURL);
+        SvFileStream aStream(aURL, StreamMode::READ);
+        pImp->Read( aStream, rBaseURL );
+    }
+    else
+    {
+        pImp->Read( rStrm, rBaseURL );
+    }
+
     aRange = pImp->GetRange();
 
     bool bOk = StartPaste();
@@ -2661,11 +2687,7 @@ ScImportStringStream::ScImportStringStream( const OUString& rStr )
             rStr.getLength() * sizeof(sal_Unicode), StreamMode::READ)
 {
     SetStreamCharSet( RTL_TEXTENCODING_UNICODE );
-#ifdef OSL_BIGENDIAN
-    SetEndian(SvStreamEndian::BIG);
-#else
-    SetEndian(SvStreamEndian::LITTLE);
-#endif
+    ResetEndianSwap();
 }
 
 OUString ReadCsvLine( SvStream &rStream, bool bEmbeddedLineBreak,

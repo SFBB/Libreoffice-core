@@ -25,6 +25,12 @@ $(eval $(call gb_Library_set_include,sb,\
 	-I$(SRCDIR)/basic/source/inc \
 ))
 
+$(eval $(call gb_Library_use_externals,sb,\
+	icu_headers \
+    icuuc \
+    icui18n \
+))
+
 $(eval $(call gb_Library_set_precompiled_header,sb,basic/inc/pch/precompiled_sb))
 
 $(eval $(call gb_Library_use_custom_headers,sb,\
@@ -93,39 +99,32 @@ $(eval $(call gb_Library_add_exception_objects,sb,\
 	basic/source/runtime/props \
 	basic/source/runtime/stdobj \
 	basic/source/runtime/stdobj1 \
-	basic/source/runtime/runtime \
 	basic/source/classes/errobject \
 ))
 endif
 
 $(eval $(call gb_Library_add_exception_objects,sb,\
-	basic/source/runtime/basrdll \
 	basic/source/classes/global \
-	basic/source/runtime/methods \
-	basic/source/runtime/methods1 \
 	basic/source/classes/sbintern \
 	basic/source/comp/basiccharclass \
+	basic/source/runtime/basrdll \
+	basic/source/runtime/methods \
+	basic/source/runtime/methods1 \
+	basic/source/runtime/runtime \
 	basic/source/sbx/sbxarray \
 	basic/source/sbx/sbxbool \
-	basic/source/sbx/sbxbyte \
-	basic/source/sbx/sbxchar \
 	basic/source/sbx/sbxcoll \
 	basic/source/sbx/sbxcurr \
 	basic/source/sbx/sbxbase \
 	basic/source/sbx/sbxdate \
-	basic/source/sbx/sbxdbl \
 	basic/source/sbx/sbxdec \
 	basic/source/sbx/sbxexec \
 	basic/source/sbx/sbxform \
 	basic/source/sbx/sbxint \
-	basic/source/sbx/sbxlng \
 	basic/source/sbx/sbxobj \
 	basic/source/sbx/sbxres \
 	basic/source/sbx/sbxscan \
-	basic/source/sbx/sbxsng \
 	basic/source/sbx/sbxstr \
-	basic/source/sbx/sbxuint \
-	basic/source/sbx/sbxulng \
 	basic/source/sbx/sbxvalue \
 	basic/source/sbx/sbxvar \
 ))
@@ -144,7 +143,7 @@ $(eval $(call gb_Library_add_asmobjects,sb,\
 	basic/source/runtime/wnt-x86 \
 ))
 else
-ifeq ($(OS)$(CPUNAME),WNTX86_64)
+ifeq ($(OS)$(filter-out AARCH64 X86_64,$(CPUNAME)),WNT)
 $(eval $(call gb_Library_add_exception_objects,sb,\
 	basic/source/runtime/dllmgr-x64 \
 ))

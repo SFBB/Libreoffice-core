@@ -17,8 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_HWPFILTER_SOURCE_HWPLIB_H
-#define INCLUDED_HWPFILTER_SOURCE_HWPLIB_H
+#pragma once
+
 #include "precompile.h"
 
 #include <limits>
@@ -91,10 +91,6 @@ typedef struct
     int   mulX, divX;
     int   mulY, divY;
 } ZZScaleXY;
-
-#if !defined(_WIN32) && !defined(MAX_PATH)
-#  define MAX_PATH  260
-#endif                                            /* MAX_PATH */
 
 #ifndef TRUE
 # define TRUE       1
@@ -221,6 +217,5 @@ enum DebugMask
 #  include <unistd.h>
 #  define DIRSEP '/'
 #endif
-#endif // INCLUDED_HWPFILTER_SOURCE_HWPLIB_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

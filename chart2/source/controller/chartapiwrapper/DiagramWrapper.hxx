@@ -33,16 +33,20 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/chart/XSecondAxisTitleSupplier.hpp>
-
 #include <com/sun/star/chart/X3DDefaultSetter.hpp>
+#include <rtl/ref.hxx>
 #include <memory>
 
 namespace com::sun::star::chart2 { class XDiagram; }
 namespace com::sun::star::lang { class XEventListener; }
+namespace chart { class Diagram; }
 
 namespace chart::wrapper
 {
-
+class AxisWrapper;
+class WallFloorWrapper;
+class MinMaxLineWrapper;
+class UpDownBarWrapper;
 class Chart2ModelContact;
 
 class DiagramWrapper : public cppu::ImplInheritanceHelper<
@@ -178,6 +182,8 @@ public:
     virtual css::uno::Reference< css::chart2::XDiagram > SAL_CALL getDiagram() override;
     virtual void SAL_CALL setDiagram( const css::uno::Reference< css::chart2::XDiagram >& xDiagram ) override;
 
+    rtl::Reference< ::chart::Diagram > getUnderlyingDiagram();
+
 protected:
     // ____ WrappedPropertySet ____
     virtual const css::uno::Sequence< css::beans::Property >& getPropertySequence() override;
@@ -188,28 +194,16 @@ private:
     std::shared_ptr< Chart2ModelContact >   m_spChart2ModelContact;
     ::comphelper::OInterfaceContainerHelper4<css::lang::XEventListener> m_aEventListenerContainer;
 
-    css::uno::Reference<
-        css::chart::XAxis >        m_xXAxis;
-    css::uno::Reference<
-        css::chart::XAxis >        m_xYAxis;
-    css::uno::Reference<
-        css::chart::XAxis >        m_xZAxis;
-    css::uno::Reference<
-        css::chart::XAxis >        m_xSecondXAxis;
-    css::uno::Reference<
-        css::chart::XAxis >        m_xSecondYAxis;
-
-    css::uno::Reference<
-        css::beans::XPropertySet > m_xWall;
-    css::uno::Reference<
-        css::beans::XPropertySet > m_xFloor;
-
-    css::uno::Reference<
-        css::beans::XPropertySet > m_xMinMaxLineWrapper;
-    css::uno::Reference<
-        css::beans::XPropertySet > m_xUpBarWrapper;
-    css::uno::Reference<
-        css::beans::XPropertySet > m_xDownBarWrapper;
+    rtl::Reference< AxisWrapper >        m_xXAxis;
+    rtl::Reference< AxisWrapper >        m_xYAxis;
+    rtl::Reference< AxisWrapper >        m_xZAxis;
+    rtl::Reference< AxisWrapper >        m_xSecondXAxis;
+    rtl::Reference< AxisWrapper >        m_xSecondYAxis;
+    rtl::Reference< WallFloorWrapper > m_xWall;
+    rtl::Reference< WallFloorWrapper > m_xFloor;
+    rtl::Reference< MinMaxLineWrapper > m_xMinMaxLineWrapper;
+    rtl::Reference< UpDownBarWrapper > m_xUpBarWrapper;
+    rtl::Reference< UpDownBarWrapper > m_xDownBarWrapper;
 };
 
 } //  namespace chart::wrapper

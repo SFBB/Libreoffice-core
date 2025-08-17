@@ -50,6 +50,7 @@
 #include <o3tl/string_view.hxx>
 #include <o3tl/temporary.hxx>
 #include <osl/diagnose.h>
+#include <editeng/StripPortionsHelper.hxx>
 
 #include <memory>
 using std::advance;
@@ -150,7 +151,7 @@ void Outliner::ParagraphInserted( sal_Int32 nPara )
 void Outliner::ParagraphDeleted( sal_Int32 nPara )
 {
 
-    if ( nBlockInsCallback || ( nPara == EE_PARA_ALL ) )
+    if (nBlockInsCallback || (nPara == EE_PARA_MAX))
         return;
 
     Paragraph* pPara = pParaList->GetParagraph( nPara );
@@ -396,7 +397,7 @@ void Outliner::SetToEmptyText()
 
 void Outliner::SetText( const OUString& rText, Paragraph* pPara )
 {
-    DBG_ASSERT(pPara,"SetText:No Para");
+    assert(pPara && "SetText:No Para");
 
     const sal_Int32 nPara = pParaList->GetAbsPos( pPara );
 
@@ -502,8 +503,8 @@ bool Outliner::ImpConvertEdtToOut( sal_Int32 nPara )
     SfxStyleSheet* pStyle= pEditEngine->GetStyleSheet( nPara );
     if( pStyle )
     {
-        OUString aHeading_US( "heading" );
-        OUString aNumber_US( "Numbering" );
+        OUString aHeading_US( u"heading"_ustr );
+        OUString aNumber_US( u"Numbering"_ustr );
         aName = pStyle->GetName();
         sal_Int32 nSearch;
         if ( ( nSearch = aName.indexOf( aHeading_US ) ) != -1 )
@@ -606,7 +607,7 @@ void Outliner::AddText( const OutlinerParaObject& rPObj, bool bAppend )
     else
     {
         nPara = pParaList->GetParagraphCount();
-        pEditEngine->InsertParagraph( EE_PARA_APPEND, rPObj.GetTextObject(), bAppend );
+        pEditEngine->InsertParagraph(EE_PARA_MAX, rPObj.GetTextObject(), bAppend);
     }
     bFirstParaIsEmpty = false;
 
@@ -810,12 +811,13 @@ bool Outliner::Collapse( Paragraph const * pPara )
 vcl::Font Outliner::ImpCalcBulletFont( sal_Int32 nPara ) const
 {
     const SvxNumberFormat* pFmt = GetNumberFormat( nPara );
-    DBG_ASSERT( pFmt && ( pFmt->GetNumberingType() != SVX_NUM_BITMAP ) && ( pFmt->GetNumberingType() != SVX_NUM_NUMBER_NONE ), "ImpCalcBulletFont: Missing or BitmapBullet!" );
+    assert(pFmt && "ImpCalcBulletFont: Missing!");
+    DBG_ASSERT(( pFmt->GetNumberingType() != SVX_NUM_BITMAP ) && ( pFmt->GetNumberingType() != SVX_NUM_NUMBER_NONE ), "ImpCalcBulletFont: BitmapBullet!" );
 
     vcl::Font aStdFont;
     if ( !pEditEngine->IsFlatMode() )
     {
-        ESelection aSel( nPara, 0, nPara, 0 );
+        ESelection aSel(nPara, 0);
         aStdFont = EditEngine::CreateFontFromItemSet( pEditEngine->GetAttribs( aSel ), pEditEngine->GetScriptType( aSel ) );
     }
     else
@@ -845,13 +847,9 @@ vcl::Font Outliner::ImpCalcBulletFont( sal_Int32 nPara ) const
     }
 
     // Use original scale...
-    double nStretchY = 100.0;
-    getGlobalScale(o3tl::temporary(double()), nStretchY, o3tl::temporary(double()), o3tl::temporary(double()));
 
-    double fScale = pFmt->GetBulletRelSize() * nStretchY / 100.0;
-    double fScaledLineHeight = aStdFont.GetFontSize().Height();
-    fScaledLineHeight *= fScale * 10;
-    fScaledLineHeight /= 1000.0;
+    double fFontScaleY = pFmt->GetBulletRelSize() / 100.0 * getScalingParameters().fFontY;
+    double fScaledLineHeight = aStdFont.GetFontSize().Height() * fFontScaleY;
 
     aBulletFont.SetAlignment( ALIGN_BOTTOM );
     aBulletFont.SetFontSize(Size(0, basegfx::fround(fScaledLineHeight)));
@@ -872,8 +870,8 @@ vcl::Font Outliner::ImpCalcBulletFont( sal_Int32 nPara ) const
     return aBulletFont;
 }
 
-void Outliner::PaintBullet(sal_Int32 nPara, const Point& rStartPos, const Point& rOrigin,
-                           Degree10 nOrientation, OutputDevice& rOutDev)
+void Outliner::StripBullet(
+    sal_Int32 nPara, const Point& rStartPos, OutputDevice& rOutDev, StripPortionsHelper& rStripPortionsHelper)
 {
 
     bool bDrawBullet = false;
@@ -893,12 +891,10 @@ void Outliner::PaintBullet(sal_Int32 nPara, const Point& rStartPos, const Point&
 
     tools::Rectangle aBulletArea( ImpCalcBulletArea( nPara, true, false ) );
 
-    double nStretchX = 100.0;
-    getGlobalScale(o3tl::temporary(double()), o3tl::temporary(double()),
-                   nStretchX, o3tl::temporary(double()));
+    double fSpacingFactorX = getScalingParameters().fSpacingX;
 
-    tools::Long nStretchBulletX = basegfx::fround(double(aBulletArea.Left()) * nStretchX / 100.0);
-    tools::Long nStretchBulletWidth = basegfx::fround(double(aBulletArea.GetWidth()) * nStretchX / 100.0);
+    tools::Long nStretchBulletX = basegfx::fround<tools::Long>(double(aBulletArea.Left()) * fSpacingFactorX);
+    tools::Long nStretchBulletWidth = basegfx::fround<tools::Long>(double(aBulletArea.GetWidth()) * fSpacingFactorX);
     aBulletArea = tools::Rectangle(Point(nStretchBulletX, aBulletArea.Top()),
                              Size(nStretchBulletWidth, aBulletArea.GetHeight()) );
 
@@ -941,17 +937,6 @@ void Outliner::PaintBullet(sal_Int32 nPara, const Point& rStartPos, const Point&
                 }
             }
 
-            if ( nOrientation )
-            {
-                // Both TopLeft and bottom left is not quite correct,
-                // since in EditEngine baseline ...
-                rOrigin.RotateAround(aTextPos, nOrientation);
-
-                vcl::Font aRotatedFont( aBulletFont );
-                aRotatedFont.SetOrientation( nOrientation );
-                rOutDev.SetFont( aRotatedFont );
-            }
-
             // VCL will take care of brackets and so on...
             vcl::text::ComplexTextLayoutFlags nLayoutMode = rOutDev.GetLayoutMode();
             nLayoutMode &= ~vcl::text::ComplexTextLayoutFlags(vcl::text::ComplexTextLayoutFlags::BiDiRtl|vcl::text::ComplexTextLayoutFlags::BiDiStrong);
@@ -959,27 +944,21 @@ void Outliner::PaintBullet(sal_Int32 nPara, const Point& rStartPos, const Point&
                 nLayoutMode |= vcl::text::ComplexTextLayoutFlags::BiDiRtl | vcl::text::ComplexTextLayoutFlags::TextOriginLeft | vcl::text::ComplexTextLayoutFlags::BiDiStrong;
             rOutDev.SetLayoutMode( nLayoutMode );
 
-            if(bStrippingPortions)
-            {
-                const vcl::Font& aSvxFont(rOutDev.GetFont());
-                KernArray aBuf;
-                rOutDev.GetTextArray( pPara->GetText(), &aBuf );
+            const SvxFont aSvxFont(rOutDev.GetFont());
+            KernArray aBuf;
+            rOutDev.GetTextArray( pPara->GetText(), &aBuf );
 
-                if(bSymbol)
-                {
-                    // aTextPos is Bottom, go to Baseline
-                    FontMetric aMetric(rOutDev.GetFontMetric());
-                    aTextPos.AdjustY( -(aMetric.GetDescent()) );
-                }
-
-                assert(aBuf.get_factor() == 1);
-                DrawingText(aTextPos, pPara->GetText(), 0, pPara->GetText().getLength(), aBuf.get_subunit_array(), {},
-                    aSvxFont, nPara, bRightToLeftPara ? 1 : 0, nullptr, nullptr, false, false, true, nullptr, Color(), Color());
-            }
-            else
+            if(bSymbol)
             {
-                rOutDev.DrawText( aTextPos, pPara->GetText() );
+                // aTextPos is Bottom, go to Baseline
+                FontMetric aMetric(rOutDev.GetFontMetric());
+                aTextPos.AdjustY( -(aMetric.GetDescent()) );
             }
+
+            const DrawPortionInfo aInfo(
+                aTextPos, pPara->GetText(), 0, pPara->GetText().getLength(), aBuf, {},
+                aSvxFont, nPara, bRightToLeftPara ? 1 : 0, nullptr, nullptr, false, false, true, nullptr, Color(), Color());
+            rStripPortionsHelper.processDrawPortionInfo(aInfo);
 
             rOutDev.SetFont( aOldFont );
         }
@@ -1010,60 +989,18 @@ void Outliner::PaintBullet(sal_Int32 nPara, const Point& rStartPos, const Point&
                     }
                 }
 
-                if(bStrippingPortions)
-                {
-                    if(aDrawBulletHdl.IsSet())
-                    {
-                        // call something analog to aDrawPortionHdl (if set) and feed it something
-                        // analog to DrawPortionInfo...
-                        // created aDrawBulletHdl, Set/GetDrawBulletHdl.
-                        // created DrawBulletInfo and added handling to sdrtextdecomposition.cxx
-                        DrawBulletInfo aDrawBulletInfo(
-                            *pFmt->GetBrush()->GetGraphicObject(),
-                            aBulletPos,
-                            pPara->aBulSize);
-
-                        aDrawBulletHdl.Call(&aDrawBulletInfo);
-                    }
-                }
-                else
-                {
-                    pFmt->GetBrush()->GetGraphicObject()->Draw(rOutDev, aBulletPos, pPara->aBulSize);
-                }
+                // call something analog to aDrawPortionHdl (if set) and feed it something
+                // analog to DrawPortionInfo...
+                // created aDrawBulletHdl, Set/GetDrawBulletHdl.
+                // created DrawBulletInfo and added handling to sdrtextdecomposition.cxx
+                DrawBulletInfo aDrawBulletInfo(
+                    *pFmt->GetBrush()->GetGraphicObject(),
+                    aBulletPos,
+                    pPara->aBulSize);
+                rStripPortionsHelper.processDrawBulletInfo(aDrawBulletInfo);
             }
         }
     }
-
-    // In case of collapsed subparagraphs paint a line before the text.
-    if( !pParaList->HasChildren(pPara) || pParaList->HasVisibleChildren(pPara) ||
-            bStrippingPortions || nOrientation )
-        return;
-
-    tools::Long nWidth = rOutDev.PixelToLogic( Size( 10, 0 ) ).Width();
-
-    Point aStartPos, aEndPos;
-    if ( !bVertical )
-    {
-        aStartPos.setY( rStartPos.Y() + aBulletArea.Bottom() );
-        if ( !bRightToLeftPara )
-            aStartPos.setX( rStartPos.X() + aBulletArea.Right() );
-        else
-            aStartPos.setX( rStartPos.X() + GetPaperSize().Width() - aBulletArea.Left() );
-        aEndPos = aStartPos;
-        aEndPos.AdjustX(nWidth );
-    }
-    else
-    {
-        aStartPos.setX( rStartPos.X() - aBulletArea.Bottom() );
-        aStartPos.setY( rStartPos.Y() + aBulletArea.Right() );
-        aEndPos = aStartPos;
-        aEndPos.AdjustY(nWidth );
-    }
-
-    const Color& rOldLineColor = rOutDev.GetLineColor();
-    rOutDev.SetLineColor( COL_BLACK );
-    rOutDev.DrawLine( aStartPos, aEndPos );
-    rOutDev.SetLineColor( rOldLineColor );
 }
 
 void Outliner::InvalidateBullet(sal_Int32 nPara)
@@ -1232,21 +1169,19 @@ bool Outliner::ImpCanDeleteSelectedPages( OutlinerView* pCurView )
 }
 
 Outliner::Outliner(SfxItemPool* pPool, OutlinerMode nMode)
-    : mnFirstSelPage(0)
+    : pEditEngine(new OutlinerEditEng(this, pPool))
+    , pParaList(new ParagraphList)
+    , mnFirstSelPage(0)
     , nDepthChangedHdlPrevDepth(0)
     , nMaxDepth(9)
     , bFirstParaIsEmpty(true)
     , nBlockInsCallback(0)
-    , bStrippingPortions(false)
     , bPasting(false)
 {
-
-    pParaList.reset( new ParagraphList );
     pParaList->SetVisibleStateChangedHdl( LINK( this, Outliner, ParaVisibleStateChangedHdl ) );
     std::unique_ptr<Paragraph> pPara(new Paragraph( 0 ));
     pParaList->Append(std::move(pPara));
 
-    pEditEngine.reset( new OutlinerEditEng( this, pPool ) );
     pEditEngine->SetBeginMovingParagraphsHdl( LINK( this, Outliner, BeginMovingParagraphsHdl ) );
     pEditEngine->SetEndMovingParagraphsHdl( LINK( this, Outliner, EndMovingParagraphsHdl ) );
     pEditEngine->SetBeginPasteOrDropHdl( LINK( this, Outliner, BeginPasteOrDropHdl ) );
@@ -1386,7 +1321,7 @@ Size Outliner::ImplGetBulletSize( sal_Int32 nPara )
     if( pPara->aBulSize.Width() == -1 )
     {
         const SvxNumberFormat* pFmt = GetNumberFormat( nPara );
-        DBG_ASSERT( pFmt, "ImplGetBulletSize - no Bullet!" );
+        assert(pFmt && "ImplGetBulletSize - no Bullet!");
 
         if ( pFmt->GetNumberingType() == SVX_NUM_NUMBER_NONE )
         {
@@ -1476,7 +1411,7 @@ void Outliner::StyleSheetChanged( SfxStyleSheet const * pStyle )
             ImplCalcBulletText( nPara, false, false );
             // EditEngine formats changed paragraphs before calling this method,
             // so they are not reformatted now and use wrong bullet indent
-            pEditEngine->QuickMarkInvalid( ESelection( nPara, 0, nPara, 0 ) );
+            pEditEngine->QuickMarkInvalid(ESelection(nPara, 0));
         }
     }
 }
@@ -1498,9 +1433,11 @@ tools::Rectangle Outliner::ImpCalcBulletArea( sal_Int32 nPara, bool bAdjust, boo
         const auto nSpaceBefore = pFmt->GetAbsLSpace() + pFmt->GetFirstLineOffset();
 
         const SvxLRSpaceItem& rLR = pEditEngine->GetParaAttrib( nPara, bOutlineMode ? EE_PARA_OUTLLRSPACE : EE_PARA_LRSPACE );
-        aTopLeft.setX( rLR.GetTextLeft() + rLR.GetTextFirstLineOffset() + nSpaceBefore );
+        aTopLeft.setX(rLR.ResolveTextLeft({}) + rLR.ResolveTextFirstLineOffset({}) + nSpaceBefore);
 
-        tools::Long nBulletWidth = std::max( static_cast<tools::Long>(-rLR.GetTextFirstLineOffset()), static_cast<tools::Long>((-pFmt->GetFirstLineOffset()) + pFmt->GetCharTextDistance()) );
+        tools::Long nBulletWidth = std::max(
+            static_cast<tools::Long>(-rLR.ResolveTextFirstLineOffset({})),
+            static_cast<tools::Long>((-pFmt->GetFirstLineOffset()) + pFmt->GetCharTextDistance()));
         if ( nBulletWidth < aBulletSize.Width() )   // The Bullet creates its space
             nBulletWidth = aBulletSize.Width();
 
@@ -1519,7 +1456,7 @@ tools::Rectangle Outliner::ImpCalcBulletArea( sal_Int32 nPara, bool bAdjust, boo
         ParagraphInfos aInfos = pEditEngine->GetParagraphInfos( nPara );
         if ( aInfos.bValid )
         {
-            aTopLeft.setY( /* aInfos.nFirstLineOffset + */ // nFirstLineOffset is already added to the StartPos (PaintBullet) from the EditEngine
+            aTopLeft.setY( /* aInfos.nFirstLineOffset + */ // nFirstLineOffset is already added to the StartPos (StripBullet) from the EditEngine
                             aInfos.nFirstLineHeight - aInfos.nFirstLineTextHeight
                             + aInfos.nFirstLineTextHeight / 2
                             - aBulletSize.Height() / 2 );
@@ -1641,46 +1578,9 @@ void Outliner::Remove( Paragraph const * pPara, sal_Int32 nParaCount )
     }
 }
 
-void Outliner::StripPortions()
+void Outliner::StripPortions(StripPortionsHelper& rStripPortionsHelper)
 {
-    bStrippingPortions = true;
-    pEditEngine->StripPortions();
-    bStrippingPortions = false;
-}
-
-void Outliner::DrawingText( const Point& rStartPos, const OUString& rText, sal_Int32 nTextStart,
-                            sal_Int32 nTextLen, std::span<const sal_Int32> pDXArray,
-                            std::span<const sal_Bool> pKashidaArray, const SvxFont& rFont,
-                            sal_Int32 nPara, sal_uInt8 nRightToLeft,
-                            const EEngineData::WrongSpellVector* pWrongSpellVector,
-                            const SvxFieldData* pFieldData,
-                            bool bEndOfLine,
-                            bool bEndOfParagraph,
-                            bool bEndOfBullet,
-                            const css::lang::Locale* pLocale,
-                            const Color& rOverlineColor,
-                            const Color& rTextLineColor)
-{
-    if(aDrawPortionHdl.IsSet())
-    {
-        DrawPortionInfo aInfo( rStartPos, rText, nTextStart, nTextLen, rFont, nPara, pDXArray, pKashidaArray, pWrongSpellVector,
-            pFieldData, pLocale, rOverlineColor, rTextLineColor, nRightToLeft, false, 0, bEndOfLine, bEndOfParagraph, bEndOfBullet);
-
-        aDrawPortionHdl.Call( &aInfo );
-    }
-}
-
-void Outliner::DrawingTab( const Point& rStartPos, tools::Long nWidth, const OUString& rChar, const SvxFont& rFont,
-    sal_Int32 nPara, sal_uInt8 nRightToLeft, bool bEndOfLine, bool bEndOfParagraph,
-    const Color& rOverlineColor, const Color& rTextLineColor)
-{
-    if(aDrawPortionHdl.IsSet())
-    {
-        DrawPortionInfo aInfo( rStartPos, rChar, 0, rChar.getLength(), rFont, nPara, {}, {}, nullptr,
-            nullptr, nullptr, rOverlineColor, rTextLineColor, nRightToLeft, true, nWidth, bEndOfLine, bEndOfParagraph, false);
-
-        aDrawPortionHdl.Call( &aInfo );
-    }
+    pEditEngine->StripPortions(rStripPortionsHelper);
 }
 
 bool Outliner::RemovingPagesHdl( OutlinerView* pView )
@@ -1919,12 +1819,12 @@ void Outliner::ImplBlockInsertionCallbacks( bool b )
         if ( !nBlockInsCallback )
         {
             // Call blocked notify events...
-            while(!pEditEngine->aNotifyCache.empty())
+            while(!aNotifyCache.empty())
             {
-                EENotify aNotify(pEditEngine->aNotifyCache.front());
+                EENotify aNotify(aNotifyCache.front());
                 // Remove from list before calling, maybe we enter LeaveBlockNotifications while calling the handler...
-                pEditEngine->aNotifyCache.erase(pEditEngine->aNotifyCache.begin());
-                pEditEngine->aOutlinerNotifyHdl.Call( aNotify );
+                aNotifyCache.erase(aNotifyCache.begin());
+                aOutlinerNotifyHdl.Call( aNotify );
             }
         }
     }
@@ -1933,9 +1833,9 @@ void Outliner::ImplBlockInsertionCallbacks( bool b )
 IMPL_LINK( Outliner, EditEngineNotifyHdl, EENotify&, rNotify, void )
 {
     if ( !nBlockInsCallback )
-        pEditEngine->aOutlinerNotifyHdl.Call( rNotify );
+        aOutlinerNotifyHdl.Call( rNotify );
     else
-        pEditEngine->aNotifyCache.push_back(rNotify);
+        aNotifyCache.push_back(rNotify);
 }
 
 /** sets a link that is called at the beginning of a drag operation at an edit view */
@@ -2045,7 +1945,7 @@ std::optional<NonOverflowingText> Outliner::GetNonOverflowingText() const
     bool bItAllOverflew = nCount == 0 && nOverflowLine == 0;
     if ( bItAllOverflew )
     {
-        ESelection aEmptySel(0,0,0,0);
+        ESelection aEmptySel;
         //EditTextObject *pTObj = pEditEngine->CreateTextObject(aEmptySel);
         bool const bLastParaInterrupted = true; // Last Para was interrupted since everything overflew
         return NonOverflowingText(aEmptySel, bLastParaInterrupted);

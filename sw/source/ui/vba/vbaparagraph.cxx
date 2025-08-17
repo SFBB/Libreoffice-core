@@ -21,11 +21,15 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <utility>
+#include <unotxdoc.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-SwVbaParagraph::SwVbaParagraph( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, uno::Reference< text::XTextDocument >  xDocument, uno::Reference< text::XTextRange >  xTextRange ) :
+SwVbaParagraph::SwVbaParagraph( const uno::Reference< ooo::vba::XHelperInterface >& rParent,
+                                const uno::Reference< uno::XComponentContext >& rContext,
+                                rtl::Reference< SwXTextDocument >  xDocument,
+                                uno::Reference< text::XTextRange >  xTextRange ) :
     SwVbaParagraph_BASE( rParent, rContext ), mxTextDocument(std::move( xDocument )), mxTextRange(std::move( xTextRange ))
 {
 }
@@ -57,7 +61,7 @@ SwVbaParagraph::setStyle( const uno::Any& style )
 OUString
 SwVbaParagraph::getServiceImplName()
 {
-    return "SwVbaParagraph";
+    return u"SwVbaParagraph"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -65,7 +69,7 @@ SwVbaParagraph::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.word.Paragraph"
+        u"ooo.vba.word.Paragraph"_ustr
     };
     return aServiceNames;
 }
@@ -101,7 +105,7 @@ public:
         while( xParEnum->hasMoreElements() )
         {
             uno::Reference< lang::XServiceInfo > xServiceInfo( xParEnum->nextElement(), uno::UNO_QUERY_THROW );
-            if( xServiceInfo->supportsService("com.sun.star.text.Paragraph") )
+            if( xServiceInfo->supportsService(u"com.sun.star.text.Paragraph"_ustr) )
             {
                 nCount++;
             }
@@ -117,7 +121,7 @@ public:
             while( xParEnum->hasMoreElements() )
             {
                 uno::Reference< lang::XServiceInfo > xServiceInfo( xParEnum->nextElement(), uno::UNO_QUERY_THROW );
-                if( xServiceInfo->supportsService("com.sun.star.text.Paragraph") )
+                if( xServiceInfo->supportsService(u"com.sun.star.text.Paragraph"_ustr) )
                 {
                     if( Index == nCount )
                         return uno::Any( xServiceInfo );
@@ -136,7 +140,10 @@ public:
 
 }
 
-SwVbaParagraphs::SwVbaParagraphs( const uno::Reference< XHelperInterface >& xParent, const uno::Reference< css::uno::XComponentContext > & xContext, const uno::Reference< text::XTextDocument >& xDocument ) : SwVbaParagraphs_BASE( xParent, xContext, new ParagraphCollectionHelper( xDocument ) ), mxTextDocument( xDocument )
+SwVbaParagraphs::SwVbaParagraphs( const uno::Reference< XHelperInterface >& xParent,
+                                const uno::Reference< css::uno::XComponentContext > & xContext,
+                                const rtl::Reference< SwXTextDocument >& xDocument )
+: SwVbaParagraphs_BASE( xParent, xContext, new ParagraphCollectionHelper( xDocument ) ), mxTextDocument( xDocument )
 {
 }
 
@@ -163,7 +170,7 @@ SwVbaParagraphs::createCollectionObject( const css::uno::Any& aSource )
 OUString
 SwVbaParagraphs::getServiceImplName()
 {
-    return "SwVbaParagraphs";
+    return u"SwVbaParagraphs"_ustr;
 }
 
 css::uno::Sequence<OUString>
@@ -171,7 +178,7 @@ SwVbaParagraphs::getServiceNames()
 {
     static uno::Sequence< OUString > const sNames
     {
-        "ooo.vba.word.Paragraphs"
+        u"ooo.vba.word.Paragraphs"_ustr
     };
     return sNames;
 }

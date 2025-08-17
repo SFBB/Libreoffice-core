@@ -39,7 +39,7 @@ namespace com::sun::star {
 class SwAccessiblePortionData : public SwPortionHandler
 {
     // the frame this portion is referring to
-    SwTextFrame const* m_pTextFrame;
+    const SwTextFrame& m_rTextFrame;
 
     // variables used while collecting the data
     OUStringBuffer m_aBuffer;
@@ -66,7 +66,7 @@ class SwAccessiblePortionData : public SwPortionHandler
 
     std::vector<sal_uInt8> m_aPortionAttrs;   /// additional portion attributes
 
-    std::unique_ptr<AccessiblePositions> m_pSentences; /// positions of sentence breaks
+    AccessiblePositions m_aSentences; /// positions of sentence breaks
 
     size_t m_nBeforePortions;     /// # of portions before first core character
     bool m_bFinished;
@@ -86,7 +86,7 @@ class SwAccessiblePortionData : public SwPortionHandler
                          TextFrameIndex& rCorePos, bool& bEdit) const;
 
 public:
-    SwAccessiblePortionData( const SwTextFrame* pTextFrame,
+    SwAccessiblePortionData(const SwTextFrame& rTextFrame,
                              const SwViewOption* pViewOpt );
     virtual ~SwAccessiblePortionData() override;
 

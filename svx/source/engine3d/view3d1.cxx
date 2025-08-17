@@ -36,9 +36,10 @@ void E3dView::ConvertMarkedToPolyObj()
 {
     rtl::Reference<SdrObject> pNewObj;
 
-    if (GetMarkedObjectCount() == 1)
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (rMarkList.GetMarkCount() == 1)
     {
-        SdrObject* pObj = GetMarkedObjectByIndex(0);
+        SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
 
         if (pObj)
         {
@@ -62,29 +63,29 @@ void E3dView::ConvertMarkedToPolyObj()
     }
 }
 
-static void Imp_E3dView_InorderRun3DObjects(const SdrObject* pObj, sal_uInt32& rMask)
+static void Imp_E3dView_InorderRun3DObjects(const SdrObject& rObj, sal_uInt32& rMask)
 {
-    if(dynamic_cast< const E3dLatheObj* >(pObj) !=  nullptr)
+    if(dynamic_cast< const E3dLatheObj* >(&rObj) !=  nullptr)
     {
         rMask |= 0x0001;
     }
-    else if(dynamic_cast< const E3dExtrudeObj* >(pObj) !=  nullptr)
+    else if(dynamic_cast< const E3dExtrudeObj* >(&rObj) !=  nullptr)
     {
         rMask |= 0x0002;
     }
-    else if(dynamic_cast< const E3dSphereObj* >(pObj) !=  nullptr)
+    else if(dynamic_cast< const E3dSphereObj* >(&rObj) !=  nullptr)
     {
         rMask |= 0x0004;
     }
-    else if(dynamic_cast< const E3dCubeObj* >(pObj) !=  nullptr)
+    else if(dynamic_cast< const E3dCubeObj* >(&rObj) !=  nullptr)
     {
         rMask |= 0x0008;
     }
-    else if(pObj->IsGroupObject())
+    else if (rObj.IsGroupObject())
     {
-        SdrObjList* pList = pObj->GetSubList();
+        SdrObjList* pList = rObj.GetSubList();
         for (const rtl::Reference<SdrObject>& pChildObj : *pList)
-            Imp_E3dView_InorderRun3DObjects(pChildObj.get(), rMask);
+            Imp_E3dView_InorderRun3DObjects(*pChildObj, rMask);
     }
 }
 
@@ -107,8 +108,8 @@ SfxItemSet E3dView::Get3DAttributes() const
 
     for(size_t a = 0; a < nMarkCnt; ++a)
     {
-        SdrObject* pObj = GetMarkedObjectByIndex(a);
-        Imp_E3dView_InorderRun3DObjects(pObj, nSelectedItems);
+        SdrObject* pObj = rMarkList.GetMark(a)->GetMarkedSdrObj();
+        Imp_E3dView_InorderRun3DObjects(*pObj, nSelectedItems);
     }
 
     // Set SID_ATTR_3D_INTERN on the status of the selected objects
@@ -150,8 +151,8 @@ void E3dView::Set3DAttributes( const SfxItemSet& rAttr)
 
     for(size_t a = 0; a < nMarkCnt; ++a)
     {
-        SdrObject* pObj = GetMarkedObjectByIndex(a);
-        Imp_E3dView_InorderRun3DObjects(pObj, nSelectedItems);
+        SdrObject* pObj = rMarkList.GetMark(a)->GetMarkedSdrObj();
+        Imp_E3dView_InorderRun3DObjects(*pObj, nSelectedItems);
     }
 
     // Maintain default values
@@ -166,12 +167,12 @@ void E3dView::Set3DAttributes( const SfxItemSet& rAttr)
 
 double E3dView::GetDefaultCamPosZ()
 {
-    return static_cast<double>(GetModel().GetItemPool().GetDefaultItem(SDRATTR_3DSCENE_DISTANCE).GetValue());
+    return static_cast<double>(GetModel().GetItemPool().GetUserOrPoolDefaultItem(SDRATTR_3DSCENE_DISTANCE).GetValue());
 }
 
 double E3dView::GetDefaultCamFocal()
 {
-    return static_cast<double>(GetModel().GetItemPool().GetDefaultItem(SDRATTR_3DSCENE_FOCAL_LENGTH).GetValue());
+    return static_cast<double>(GetModel().GetItemPool().GetUserOrPoolDefaultItem(SDRATTR_3DSCENE_FOCAL_LENGTH).GetValue());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

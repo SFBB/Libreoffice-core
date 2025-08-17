@@ -58,10 +58,13 @@ enum class DocumentSettingId
     DO_NOT_JUSTIFY_LINES_WITH_MANUAL_BREAK,
     TREAT_SINGLE_COLUMN_BREAK_AS_PAGE_BREAK,
     DO_NOT_RESET_PARA_ATTRS_FOR_NUM_FONT,
+    // tdf#159382: MS Word compatible handling of space between footnote number and text
+    NO_GAP_AFTER_NOTE_NUMBER,
 
     DO_NOT_CAPTURE_DRAW_OBJS_ON_PAGE,
     TABLE_ROW_KEEP,
     IGNORE_TABS_AND_BLANKS_FOR_LINE_CALCULATION,
+    IGNORE_HIDDEN_CHARS_FOR_LINE_CALCULATION,
     CLIP_AS_CHARACTER_ANCHORED_WRITER_FLY_FRAME,
 
     // tdf#104349 tdf#104668
@@ -96,6 +99,9 @@ enum class DocumentSettingId
     ALLOW_TEXT_AFTER_FLOATING_TABLE_BREAK,
     // tdf#119908 new paragraph justification
     JUSTIFY_LINES_WITH_SHRINKING,
+    APPLY_TEXT_ATTR_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH,
+    APPLY_PARAGRAPH_MARK_FORMAT_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH,
+    DO_NOT_MIRROR_RTL_DRAW_OBJS,
     // COMPATIBILITY FLAGS END
     BROWSE_MODE,
     HTML_MODE,
@@ -129,6 +135,20 @@ enum class DocumentSettingId
     DROP_CAP_PUNCTUATION,
     // render NBSP as standard-space-width (prettier when justified)
     USE_VARIABLE_WIDTH_NBSP,
+    // overlap background shapes if anchored in body
+    PAINT_HELL_OVER_HEADER_FOOTER,
+    // tdf#155229 calculate minimum row height including horizontal border width
+    MIN_ROW_HEIGHT_INCL_BORDER,
+    MS_WORD_COMP_GRID_METRICS,
+    // tdf#161233 pictures with wrap polygon should not be clipped
+    NO_CLIPPING_WITH_WRAP_POLYGON,
+    MS_WORD_UL_TRAIL_SPACE,
+    // tdf#88908 optionally adjust normal spaces in CJK context to halfwidth
+    BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES,
+    // tdf#37153 Word-compatibility: force top-alignment for cells containing a floating shape
+    FORCE_TOP_ALIGNMENT_IN_CELL_WITH_FLOATING_ANCHOR,
+    // tdf#167583 optionally apply text grid line height to table contents
+    ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT,
 };
 
 /** Provides access to settings of a document

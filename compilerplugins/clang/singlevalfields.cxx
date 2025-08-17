@@ -412,10 +412,12 @@ void SingleValFields::walkPotentialAssign( const DeclaratorDecl* fieldOrVarDecl,
                 || isa<UnresolvedMemberExpr>(parent)
                 || isa<MaterializeTemporaryExpr>(parent)  //???
                 || isa<InitListExpr>(parent)
+                || isa<DesignatedInitExpr>(parent)
                 || isa<CXXUnresolvedConstructExpr>(parent)
                 || isa<LambdaExpr>(parent)
                 || isa<PackExpansionExpr>(parent)
                 || isa<CXXPseudoDestructorExpr>(parent)
+                || isa<CXXDefaultInitExpr>(parent)
                 )
         {
             break;
@@ -423,6 +425,10 @@ void SingleValFields::walkPotentialAssign( const DeclaratorDecl* fieldOrVarDecl,
         else if ( isa<ArrayInitLoopExpr>(parent) || isa<AtomicExpr>(parent) || isa<GCCAsmStmt>(parent) || isa<VAArgExpr>(parent))
         {
             bPotentiallyAssignedTo = true;
+            break;
+        }
+        else if (isa<DeclRefExpr>(parent)) // things like o3tl::convertNarrowing pass members as template params
+        {
             break;
         }
         else {

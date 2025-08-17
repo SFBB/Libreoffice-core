@@ -31,13 +31,17 @@ postprocess_XCDS := \
 	main.xcd \
 	math.xcd \
 	writer.xcd \
+	$(if $(filter EMSCRIPTEN,$(OS)), \
+	    static.xcd \
+	) \
 	xsltfilter.xcd
 
 postprocess_DEPS_base := main
 postprocess_FILES_base := \
-	$(call gb_XcuFilterFiltersTarget_get_target,fcfg_database_filters.xcu) \
-	$(call gb_XcuFilterOthersTarget_get_target,fcfg_database_others.xcu) \
-	$(call gb_XcuFilterTypesTarget_get_target,fcfg_database_types.xcu) \
+	$(if $(ENABLE_WASM_STRIP_DBACCESS),, \
+	    $(call gb_XcuFilterFiltersTarget_get_target,fcfg_database_filters.xcu) \
+	    $(call gb_XcuFilterOthersTarget_get_target,fcfg_database_others.xcu) \
+	    $(call gb_XcuFilterTypesTarget_get_target,fcfg_database_types.xcu)) \
 	$(postprocess_MOD)/org/openoffice/Office/Common-base.xcu \
 	$(postprocess_MOD)/org/openoffice/Office/Embedding-base.xcu \
 	$(postprocess_MOD)/org/openoffice/Setup-base.xcu
@@ -66,9 +70,10 @@ postprocess_FILES_ctl := \
 postprocess_DEPS_draw := main
 postprocess_FILES_draw := \
 	$(postprocess_XCS)/Office/UI/DrawWindowState.xcs \
-	$(postprocess_XCU)/Office/UI/DrawWindowState.xcu \
-	$(call gb_XcuFilterFiltersTarget_get_target,fcfg_draw_filters.xcu) \
-	$(call gb_XcuFilterTypesTarget_get_target,fcfg_draw_types.xcu) \
+	$(if $(ENABLE_WASM_STRIP_BASIC_DRAW_MATH_IMPRESS),, \
+	    $(postprocess_XCU)/Office/UI/DrawWindowState.xcu \
+	    $(call gb_XcuFilterFiltersTarget_get_target,fcfg_draw_filters.xcu) \
+	    $(call gb_XcuFilterTypesTarget_get_target,fcfg_draw_types.xcu)) \
 	$(postprocess_MOD)/org/openoffice/Office/Common-draw.xcu \
 	$(postprocess_MOD)/org/openoffice/Office/Embedding-draw.xcu \
 	$(postprocess_MOD)/org/openoffice/Setup-draw.xcu
@@ -90,12 +95,13 @@ postprocess_FILES_impress := \
 	$(postprocess_XCS)/Office/PresenterScreen.xcs \
 	$(postprocess_XCS)/Office/UI/Effects.xcs \
 	$(postprocess_XCS)/Office/UI/ImpressWindowState.xcs \
-	$(postprocess_XCU)/Office/PresentationMinimizer.xcu \
-	$(postprocess_XCU)/Office/PresenterScreen.xcu \
-	$(postprocess_XCU)/Office/UI/Effects.xcu \
-	$(postprocess_XCU)/Office/UI/ImpressWindowState.xcu \
-	$(call gb_XcuFilterFiltersTarget_get_target,fcfg_impress_filters.xcu) \
-	$(call gb_XcuFilterTypesTarget_get_target,fcfg_impress_types.xcu) \
+	$(if $(ENABLE_WASM_STRIP_BASIC_DRAW_MATH_IMPRESS),, \
+	    $(postprocess_XCU)/Office/PresentationMinimizer.xcu \
+	    $(postprocess_XCU)/Office/PresenterScreen.xcu \
+	    $(postprocess_XCU)/Office/UI/Effects.xcu \
+	    $(postprocess_XCU)/Office/UI/ImpressWindowState.xcu \
+	    $(call gb_XcuFilterFiltersTarget_get_target,fcfg_impress_filters.xcu) \
+	    $(call gb_XcuFilterTypesTarget_get_target,fcfg_impress_types.xcu)) \
 	$(postprocess_MOD)/org/openoffice/Office/Common-impress.xcu \
 	$(postprocess_MOD)/org/openoffice/Office/Embedding-impress.xcu \
 	$(postprocess_MOD)/org/openoffice/Office/Jobs-impress.xcu \
@@ -290,6 +296,10 @@ postprocess_FILES_main += \
 	$(postprocess_MOD)/org/openoffice/VCL-unixdesktop.xcu
 		# Inet-unixdesktop.xcu must come after Inet.xcu
 		# VCL-unixdesktop.xcu must come after VCL.xcu
+else ifeq (LINUX,$(OS))
+postprocess_FILES_main += \
+	$(postprocess_MOD)/org/openoffice/Office/Accelerators-unxwnt.xcu
+	# This condition is for LOK case. When the windowing system is not X11, above condition is not met. So we add the required files here.
 else ifeq (WNT,$(OS))
 postprocess_FILES_main += \
 	$(postprocess_MOD)/org/openoffice/Inet-wnt.xcu \
@@ -306,6 +316,7 @@ endif
 
 ifneq ($(ENABLE_MACOSX_SANDBOX),)
 postprocess_FILES_main += $(postprocess_MOD)/org/openoffice/Office/UI/Infobar-macosxsandbox.xcu
+postprocess_FILES_main += $(postprocess_MOD)/org/openoffice/Office/Common-macosxsandbox.xcu
 endif
 
 ifneq (,$(SYSTEM_LIBEXTTEXTCAT_DATA))
@@ -329,10 +340,11 @@ postprocess_DEPS_math := main
 postprocess_FILES_math := \
 	$(postprocess_XCS)/Office/UI/MathCommands.xcs \
 	$(postprocess_XCS)/Office/UI/MathWindowState.xcs \
-	$(postprocess_XCU)/Office/UI/MathCommands.xcu \
-	$(postprocess_XCU)/Office/UI/MathWindowState.xcu \
-	$(call gb_XcuFilterFiltersTarget_get_target,fcfg_math_filters.xcu) \
-	$(call gb_XcuFilterTypesTarget_get_target,fcfg_math_types.xcu) \
+	$(if $(ENABLE_WASM_STRIP_BASIC_DRAW_MATH_IMPRESS),, \
+	    $(postprocess_XCU)/Office/UI/MathCommands.xcu \
+	    $(postprocess_XCU)/Office/UI/MathWindowState.xcu \
+	    $(call gb_XcuFilterFiltersTarget_get_target,fcfg_math_filters.xcu) \
+	    $(call gb_XcuFilterTypesTarget_get_target,fcfg_math_types.xcu)) \
 	$(postprocess_MOD)/org/openoffice/Office/Common-math.xcu \
 	$(postprocess_MOD)/org/openoffice/Office/Embedding-math.xcu \
 	$(postprocess_MOD)/org/openoffice/Setup-math.xcu
@@ -383,6 +395,12 @@ postprocess_FILES_writer := \
 	$(postprocess_MOD)/org/openoffice/Office/Embedding-writer.xcu \
 	$(postprocess_MOD)/org/openoffice/Setup-writer.xcu
 
+ifeq (EMSCRIPTEN,$(OS))
+postprocess_DEPS_static := main
+postprocess_FILES_static := \
+	$(SRCDIR)/static/config/wasm-accelerators.xcu
+endif
+
 postprocess_DEPS_xsltfilter := main
 postprocess_OPTDEPS_xsltfilter := calc writer
 postprocess_FILES_xsltfilter := \
@@ -403,12 +421,10 @@ postprocess_FILES_onlineupdate := \
 	$(call gb_XcuModuleTarget_get_target,extensions/source/update/check)/org/openoffice/Office/Jobs-onlineupdate.xcu
 endif
 
-ifeq ($(ENABLE_OPENGL_TRANSITIONS),TRUE)
 postprocess_XCDS += ogltrans.xcd
 postprocess_DEPS_ogltrans := main
 postprocess_FILES_ogltrans := \
 	$(postprocess_MOD)/org/openoffice/Office/Impress-ogltrans.xcu
-endif
 
 ifeq ($(ENABLE_PDFIMPORT),TRUE)
 postprocess_XCDS += pdfimport.xcd
@@ -420,13 +436,6 @@ postprocess_OPTDEPS_pdfimport := calc draw impress math writer
 postprocess_FILES_pdfimport := \
 	$(SRCDIR)/sdext/source/pdfimport/config/pdf_import_filter.xcu \
 	$(SRCDIR)/sdext/source/pdfimport/config/pdf_types.xcu
-endif
-
-ifeq (WNT,$(OS))
-postprocess_XCDS += forcedefault.xcd
-postprocess_DEPS_forcedefault := main
-postprocess_FILES_forcedefault := \
-	$(postprocess_MOD)/org/openoffice/Office/Linguistic-ForceDefaultLanguage.xcu
 endif
 
 #
@@ -520,42 +529,42 @@ $(call gb_CustomTarget_get_target,postprocess/registry) : \
 
 define postprocess_xcd_deps
 $(call gb_XcdTarget_get_target,$(1)).xcd : \
-	$(call gb_CustomTarget_get_workdir,postprocess/registry)/$(1).list
+	$(gb_CustomTarget_workdir)/postprocess/registry/$(1).list
 
-$(call gb_CustomTarget_get_workdir,postprocess/registry)/$(1).list : \
+$(gb_CustomTarget_workdir)/postprocess/registry/$(1).list : \
 	$(postprocess_FILES_$(1)) \
 	$(SRCDIR)/postprocess/CustomTarget_registry.mk \
-	| $(call gb_CustomTarget_get_workdir,postprocess/registry)/.dir
+	| $(gb_CustomTarget_workdir)/postprocess/registry/.dir
 
 endef
 $(foreach xcd,$(postprocess_XCDS),$(eval $(call postprocess_xcd_deps,$(basename $(xcd)))))
 
 define postprocess_lang_deps
 $(call gb_XcdTarget_get_target,Langpack-$(1).xcd) : \
-	$(call gb_CustomTarget_get_workdir,postprocess/registry)/Langpack-$(1).list
+	$(gb_CustomTarget_workdir)/postprocess/registry/Langpack-$(1).list
 
-$(call gb_CustomTarget_get_workdir,postprocess/registry)/Langpack-$(1).list : \
+$(gb_CustomTarget_workdir)/postprocess/registry/Langpack-$(1).list : \
 	$(call gb_XcuLangpackTarget_get_target,Langpack-$(1).xcu) \
-	| $(call gb_CustomTarget_get_workdir,postprocess/registry)/.dir
+	| $(gb_CustomTarget_workdir)/postprocess/registry/.dir
 
 $(call gb_XcdTarget_get_target,fcfg_langpack_$(1).xcd) : \
-	$(call gb_CustomTarget_get_workdir,postprocess/registry)/fcfg_langpack_$(1).list \
-	| $(call gb_CustomTarget_get_workdir,postprocess/registry)/.dir
+	$(gb_CustomTarget_workdir)/postprocess/registry/fcfg_langpack_$(1).list \
+	| $(gb_CustomTarget_workdir)/postprocess/registry/.dir
 
-$(call gb_CustomTarget_get_workdir,postprocess/registry)/fcfg_langpack_$(1).list : \
+$(gb_CustomTarget_workdir)/postprocess/registry/fcfg_langpack_$(1).list : \
 	$(call gb_Configuration_get_target,fcfg_langpack) \
-	| $(call gb_CustomTarget_get_workdir,postprocess/registry)/.dir
+	| $(gb_CustomTarget_workdir)/postprocess/registry/.dir
 
 $(call gb_XcdTarget_get_target,registry_$(1).xcd) : \
-	$(call gb_CustomTarget_get_workdir,postprocess/registry)/registry_$(1).list
+	$(gb_CustomTarget_workdir)/postprocess/registry/registry_$(1).list
 
-$(call gb_CustomTarget_get_workdir,postprocess/registry)/registry_$(1).list : \
+$(gb_CustomTarget_workdir)/postprocess/registry/registry_$(1).list : \
 	$(call gb_Configuration_get_target,registry) \
 	$(if $(filter DBCONNECTIVITY,$(BUILD_TYPE)),\
 		$(foreach driver,$(postprocess_DRIVERS),$(call gb_Configuration_get_target,$(driver))) \
 	) \
 	$(if $(filter TRUE,$(ENABLE_ONLINE_UPDATE)),$(call gb_Configuration_get_target,updchk)) \
-	| $(call gb_CustomTarget_get_workdir,postprocess/registry)/.dir
+	| $(gb_CustomTarget_workdir)/postprocess/registry/.dir
 
 endef
 $(foreach lang,$(gb_Configuration_LANGS),$(eval $(call postprocess_lang_deps,$(lang))))
@@ -585,7 +594,7 @@ $(call gb_XcdTarget_get_target,main.xcd) \
 		mkdir -p $(dir $@) && \
 		$(call gb_ExternalExecutable_get_command,xsltproc) --nonet \
 			$(SRCDIR)/solenv/bin/packregistry.xslt \
-			$(call gb_CustomTarget_get_workdir,postprocess/registry)/main.list \
+			$(gb_CustomTarget_workdir)/postprocess/registry/main.list \
 		|  sed $(postprocess_main_SED) > $@ \
 	)
 	$(call gb_Trace_EndRange,main,XCD)
@@ -603,7 +612,7 @@ $(call gb_XcdTarget_get_target,registry_%.xcd) : \
 			$(SRCDIR)/solenv/bin/removereportbuilder.xslt - ) \
 			> $@ \
 	)
-	$(call gb_Trace_EndRange,$*,XCD)
+	$(call gb_Trace_EndRange,registry_$*,XCD)
 
 $(call gb_XcdTarget_get_target,%.xcd) : \
         | $(call gb_ExternalExecutable_get_dependencies,xsltproc)
@@ -616,7 +625,7 @@ $(call gb_XcdTarget_get_target,%.xcd) : \
 	)
 	$(call gb_Trace_EndRange,$*,XCD)
 
-$(call gb_CustomTarget_get_workdir,postprocess/registry)/Langpack-%.list :
+$(gb_CustomTarget_workdir)/postprocess/registry/Langpack-%.list :
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),ECH,2)
 	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),ECH)
 	echo '<list><dependency file="main"/><filename>$(call gb_XcuLangpackTarget_get_target,Langpack-$*.xcu)</filename></list>' > $@
@@ -625,7 +634,7 @@ $(call gb_CustomTarget_get_workdir,postprocess/registry)/Langpack-%.list :
 # It can happen that localized fcfg_langpack_*.zip contains
 # zero-sized org/openoffice/TypeDetection/Filter.xcu; filter them out in the
 # find shell command below (see issue 110041):
-$(call gb_CustomTarget_get_workdir,postprocess/registry)/fcfg_langpack_%.list :
+$(gb_CustomTarget_workdir)/postprocess/registry/fcfg_langpack_%.list :
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),AWK,2)
 	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),AWK)
 	$(call gb_Helper_abbreviate_dirs,\
@@ -638,7 +647,7 @@ $(call gb_CustomTarget_get_workdir,postprocess/registry)/fcfg_langpack_%.list :
 	)
 	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),AWK)
 
-$(call gb_CustomTarget_get_workdir,postprocess/registry)/registry_%.list :
+$(gb_CustomTarget_workdir)/postprocess/registry/registry_%.list :
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),AWK,2)
 	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),AWK)
 	$(call gb_Helper_abbreviate_dirs,\
@@ -656,7 +665,7 @@ $(call gb_CustomTarget_get_workdir,postprocess/registry)/registry_%.list :
 	)
 	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),AWK)
 
-$(call gb_CustomTarget_get_workdir,postprocess/registry)/%.list :
+$(gb_CustomTarget_workdir)/postprocess/registry/%.list :
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),ECH,2)
 	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),ECH)
 	$(file >$@,<list> $(foreach i,$(postprocess_DEPS_$*), <dependency file='$i'/>) \

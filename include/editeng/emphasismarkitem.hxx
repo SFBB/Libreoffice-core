@@ -32,9 +32,12 @@
 
 class EDITENG_DLLPUBLIC SvxEmphasisMarkItem final : public SfxUInt16Item
 {
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
+
 public:
     static SfxPoolItem* CreateDefault();
-
+    DECLARE_ITEM_TYPE_FUNCTION(SvxEmphasisMarkItem)
     SvxEmphasisMarkItem(  const FontEmphasisMark eVal /*= FontEmphasisMark::NONE*/,
                           TypedWhichId<SvxEmphasisMarkItem> nId  );
 

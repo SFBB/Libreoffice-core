@@ -44,18 +44,18 @@ public:
 
 class SW_DLLPUBLIC SwDateTimeField final : public SwValueField
 {
-        sal_uInt16              m_nSubType;
+        SwDateTimeSubType          m_nSubType;
         tools::Long                m_nOffset;    // Offset in minutes.
 
         virtual OUString    ExpandImpl(SwRootFrame const* pLayout) const override;
         virtual std::unique_ptr<SwField> Copy() const override;
 
 public:
-        SwDateTimeField(SwDateTimeFieldType* pType, sal_uInt16 nSubType = DATEFLD,
+        SwDateTimeField(SwDateTimeFieldType* pType, SwDateTimeSubType nSubType = SwDateTimeSubType::Date,
                     sal_uLong nFormat = 0, LanguageType nLng = LANGUAGE_SYSTEM);
 
-        virtual sal_uInt16      GetSubType() const override;
-        virtual void            SetSubType(sal_uInt16 nSub) override;
+        SwDateTimeSubType       GetSubType() const;
+        void                    SetSubType(SwDateTimeSubType nSub);
 
         virtual double          GetValue() const override;
 

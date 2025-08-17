@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_SALGDIIMPL_HXX
-#define INCLUDED_VCL_INC_SALGDIIMPL_HXX
+#pragma once
 
 #include <vcl/dllapi.h>
 
@@ -33,9 +32,7 @@
 
 class SalGraphics;
 class SalBitmap;
-class SalFrame;
 class Gradient;
-class SalVirtualDevice;
 struct SalGradient;
 
 /**
@@ -72,11 +69,10 @@ public:
     // so see the SalGraphics class for documentation (both uppercase and lowercase
     // function variants).
 
-    virtual void Init() = 0;
+    /// Only used by the X11SkiaSalGraphicsImpl backend
+    virtual void UpdateX11GeometryProvider() {}
 
     virtual void DeInit() {}
-
-    virtual void freeResources() = 0;
 
     virtual OUString getRenderBackendName() const = 0;
 
@@ -167,7 +163,7 @@ public:
                 const SalBitmap& rSalBitmap,
                 Color nMaskColor ) = 0;
 
-    virtual std::shared_ptr<SalBitmap> getBitmap( tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight ) = 0;
+    virtual std::shared_ptr<SalBitmap> getBitmap( tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight, bool bWithoutAlpha ) = 0;
 
     virtual Color getPixel( tools::Long nX, tools::Long nY ) = 0;
 
@@ -178,21 +174,12 @@ public:
 
     virtual void invert( sal_uInt32 nPoints, const Point* pPtAry, SalInvert nFlags ) = 0;
 
+    /// Only implemented by the macOS Quartz backend and the MS-Windows GDI backend.
     virtual bool drawEPS(
-                tools::Long nX, tools::Long nY,
-                tools::Long nWidth, tools::Long nHeight,
-                void* pPtr,
-                sal_uInt32 nSize ) = 0;
-
-    virtual bool blendBitmap(
-                const SalTwoRect&,
-                const SalBitmap& rBitmap ) = 0;
-
-    virtual bool blendAlphaBitmap(
-                const SalTwoRect&,
-                const SalBitmap& rSrcBitmap,
-                const SalBitmap& rMaskBitmap,
-                const SalBitmap& rAlphaBitmap ) = 0;
+                tools::Long /*nX*/, tools::Long /*nY*/,
+                tools::Long /*nWidth*/, tools::Long /*nHeight*/,
+                void* /*pPtr*/,
+                sal_uInt32 /*nSize*/ ) { return false; }
 
     virtual bool drawAlphaBitmap(
                 const SalTwoRect&,
@@ -207,7 +194,8 @@ public:
                 const SalBitmap* pAlphaBitmap,
                 double fAlpha) = 0;
 
-    virtual bool hasFastDrawTransformedBitmap() const = 0;
+    /// Only currently true for SkiaSalGraphicsImpl
+    virtual bool hasFastDrawTransformedBitmap() const { return false; }
 
     virtual bool drawAlphaRect(
                     tools::Long nX, tools::Long nY,
@@ -219,7 +207,5 @@ public:
 
     virtual bool supportsOperation(OutDevSupportType eType) const = 0;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

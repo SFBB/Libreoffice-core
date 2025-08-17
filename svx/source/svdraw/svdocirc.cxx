@@ -57,7 +57,8 @@ static Point GetAnglePnt(const tools::Rectangle& rR, Degree100 nAngle)
     tools::Long nHgt=rR.Bottom()-rR.Top();
     tools::Long nMaxRad=(std::max(nWdt,nHgt)+1) /2;
     double a = toRadians(nAngle);
-    Point aRetval(FRound(cos(a)*nMaxRad),-FRound(sin(a)*nMaxRad));
+    Point aRetval(basegfx::fround<tools::Long>(cos(a) * nMaxRad),
+                  basegfx::fround<tools::Long>(-sin(a) * nMaxRad));
     if (nWdt==0) aRetval.setX(0 );
     if (nHgt==0) aRetval.setY(0 );
     if (nWdt!=nHgt) {
@@ -119,8 +120,8 @@ SdrCircObj::SdrCircObj(
     SdrCircKind eNewKind)
 :   SdrRectObj(rSdrModel)
 {
-    nStartAngle=0_deg100;
-    nEndAngle=36000_deg100;
+    m_nStartAngle=0_deg100;
+    m_nEndAngle=36000_deg100;
     meCircleKind=eNewKind;
     m_bClosedObj=eNewKind!=SdrCircKind::Arc;
 }
@@ -129,8 +130,8 @@ SdrCircObj::SdrCircObj(SdrModel& rSdrModel, SdrCircObj const & rSource)
 :   SdrRectObj(rSdrModel, rSource)
 {
     meCircleKind = rSource.meCircleKind;
-    nStartAngle = rSource.nStartAngle;
-    nEndAngle = rSource.nEndAngle;
+    m_nStartAngle = rSource.m_nStartAngle;
+    m_nEndAngle = rSource.m_nEndAngle;
     m_bClosedObj = rSource.m_bClosedObj;
 }
 
@@ -140,8 +141,8 @@ SdrCircObj::SdrCircObj(
     const tools::Rectangle& rRect)
 :   SdrRectObj(rSdrModel, rRect)
 {
-    nStartAngle=0_deg100;
-    nEndAngle=36000_deg100;
+    m_nStartAngle=0_deg100;
+    m_nEndAngle=36000_deg100;
     meCircleKind=eNewKind;
     m_bClosedObj=eNewKind!=SdrCircKind::Arc;
 }
@@ -155,9 +156,9 @@ SdrCircObj::SdrCircObj(
 :   SdrRectObj(rSdrModel, rRect)
 {
     Degree100 nAngleDif=nNewEndAngle-nNewStartAngle;
-    nStartAngle=NormAngle36000(nNewStartAngle);
-    nEndAngle=NormAngle36000(nNewEndAngle);
-    if (nAngleDif==36000_deg100) nEndAngle+=nAngleDif; // full circle
+    m_nStartAngle=NormAngle36000(nNewStartAngle);
+    m_nEndAngle=NormAngle36000(nNewEndAngle);
+    if (nAngleDif==36000_deg100) m_nEndAngle+=nAngleDif; // full circle
     meCircleKind=eNewKind;
     m_bClosedObj=eNewKind!=SdrCircKind::Arc;
 }
@@ -232,7 +233,7 @@ bool SdrCircObj::PaintNeedsXPolyCirc() const
         bNeed = eFill != drawing::FillStyle_NONE && eFill != drawing::FillStyle_SOLID;
     }
 
-    if(!bNeed && meCircleKind != SdrCircKind::Full && nStartAngle == nEndAngle)
+    if(!bNeed && meCircleKind != SdrCircKind::Full && m_nStartAngle == m_nEndAngle)
         bNeed = true; // otherwise we're drawing a full circle
 
     return bNeed;
@@ -281,7 +282,7 @@ basegfx::B2DPolygon SdrCircObj::ImpCalcXPolyCirc(const SdrCircKind eCircleKind, 
                 basegfx::B2DPolygon aSector;
                 aSector.append(aRange.getCenter());
                 aSector.append(aCircPolygon);
-                aCircPolygon = aSector;
+                aCircPolygon = std::move(aSector);
             }
 
             // close
@@ -312,7 +313,7 @@ basegfx::B2DPolygon SdrCircObj::ImpCalcXPolyCirc(const SdrCircKind eCircleKind, 
 
 void SdrCircObj::RecalcXPoly()
 {
-    basegfx::B2DPolygon aPolyCirc(ImpCalcXPolyCirc(meCircleKind, getRectangle(), nStartAngle, nEndAngle));
+    basegfx::B2DPolygon aPolyCirc(ImpCalcXPolyCirc(meCircleKind, getRectangle(), m_nStartAngle, m_nEndAngle));
     mpXPoly = XPolygon(aPolyCirc);
 }
 
@@ -376,7 +377,7 @@ rtl::Reference<SdrObject> SdrCircObj::CloneSdrObject(SdrModel& rTargetModel) con
 
 basegfx::B2DPolyPolygon SdrCircObj::TakeXorPoly() const
 {
-    const basegfx::B2DPolygon aCircPolygon(ImpCalcXPolyCirc(meCircleKind, getRectangle(), nStartAngle, nEndAngle));
+    const basegfx::B2DPolygon aCircPolygon(ImpCalcXPolyCirc(meCircleKind, getRectangle(), m_nStartAngle, m_nEndAngle));
     return basegfx::B2DPolyPolygon(aCircPolygon);
 }
 
@@ -427,12 +428,12 @@ void SdrCircObj::AddToHdlList(SdrHdlList& rHdlList) const
         switch (nHdlNum)
         {
             case 0:
-                aPnt = GetAnglePnt(aRectangle, nStartAngle);
+                aPnt = GetAnglePnt(aRectangle, m_nStartAngle);
                 eLocalKind = SdrHdlKind::Circle;
                 nPNum = 1;
                 break;
             case 1:
-                aPnt = GetAnglePnt(aRectangle, nEndAngle);
+                aPnt = GetAnglePnt(aRectangle, m_nEndAngle);
                 eLocalKind = SdrHdlKind::Circle;
                 nPNum = 2;
                 break;
@@ -556,11 +557,11 @@ bool SdrCircObj::applySpecialDrag(SdrDragStat& rDrag)
 
         if(1 == rDrag.GetHdl()->GetPointNum())
         {
-            nStartAngle = nAngle;
+            m_nStartAngle = nAngle;
         }
         else if(2 == rDrag.GetHdl()->GetPointNum())
         {
-            nEndAngle = nAngle;
+            m_nEndAngle = nAngle;
         }
 
         SetBoundAndSnapRectsDirty();
@@ -613,7 +614,7 @@ OUString SdrCircObj::getSpecialDragComment(const SdrDragStat& rDrag) const
 
         if(bAngle)
         {
-            const Degree100 nAngle(1 == rDrag.GetHdl()->GetPointNum() ? nStartAngle : nEndAngle);
+            const Degree100 nAngle(1 == rDrag.GetHdl()->GetPointNum() ? m_nStartAngle : m_nEndAngle);
 
             return ImpGetDescriptionStr(STR_DragCircAngle) +
                 " (" +
@@ -708,8 +709,8 @@ bool SdrCircObj::MovCreate(SdrDragStat& rStat)
     rStat.SetActionRect(pU->aR);
     setRectangle(pU->aR); // for ObjName
     ImpJustifyRect(maRectangle);
-    nStartAngle=pU->nStart;
-    nEndAngle=pU->nEnd;
+    m_nStartAngle=pU->nStart;
+    m_nEndAngle=pU->nEnd;
     SetBoundRectDirty();
     m_bSnapRectDirty=true;
     SetXPolyDirty();
@@ -745,8 +746,8 @@ bool SdrCircObj::EndCreate(SdrDragStat& rStat, SdrCreateCmd eCmd)
             tools::Rectangle aRectangle(pU->aR);
             ImpJustifyRect(aRectangle);
             setRectangle(aRectangle);
-            nStartAngle=pU->nStart;
-            nEndAngle=pU->nEnd;
+            m_nStartAngle=pU->nStart;
+            m_nEndAngle=pU->nEnd;
         }
     }
     m_bClosedObj=meCircleKind!=SdrCircKind::Arc;
@@ -832,8 +833,8 @@ void SdrCircObj::NbcResize(const Point& rRef, const Fraction& xFact, const Fract
             // That, however, is pretty bad (because of forced "hard" formatting).
             // Alternatively, we could implement a bMirrored flag (maybe even
             // a more general one, e. g. for mirrored text, ...).
-            Degree100 nS0=nStartAngle;
-            Degree100 nE0=nEndAngle;
+            Degree100 nS0=m_nStartAngle;
+            Degree100 nE0=m_nEndAngle;
             if (bNoShearRota) {
                 // the RectObj already mirrors at VMirror because of a 180deg rotation
                 if (! (bXMirr && bYMirr)) {
@@ -860,9 +861,9 @@ void SdrCircObj::NbcResize(const Point& rRef, const Fraction& xFact, const Fract
                 }
             }
             Degree100 nAngleDif=nE0-nS0;
-            nStartAngle=NormAngle36000(nS0);
-            nEndAngle  =NormAngle36000(nE0);
-            if (nAngleDif==36000_deg100) nEndAngle+=nAngleDif; // full circle
+            m_nStartAngle=NormAngle36000(nS0);
+            m_nEndAngle  =NormAngle36000(nE0);
+            if (nAngleDif==36000_deg100) m_nEndAngle+=nAngleDif; // full circle
         }
     }
     SetXPolyDirty();
@@ -887,14 +888,16 @@ void SdrCircObj::NbcMirror(const Point& rRef1, const Point& rRef2)
         tools::Long nHgt = getRectangle().GetHeight() - 1;
         tools::Long nMaxRad=(std::max(nWdt,nHgt)+1) /2;
         // starting point
-        double a = toRadians(nStartAngle);
-        aTmpPt1=Point(FRound(cos(a)*nMaxRad),-FRound(sin(a)*nMaxRad));
+        double a = toRadians(m_nStartAngle);
+        aTmpPt1 = Point(basegfx::fround<tools::Long>(cos(a) * nMaxRad),
+                        basegfx::fround<tools::Long>(-sin(a) * nMaxRad));
         if (nWdt==0) aTmpPt1.setX(0 );
         if (nHgt==0) aTmpPt1.setY(0 );
         aTmpPt1+=aCenter;
         // finishing point
-        a = toRadians(nEndAngle);
-        aTmpPt2=Point(FRound(cos(a)*nMaxRad),-FRound(sin(a)*nMaxRad));
+        a = toRadians(m_nEndAngle);
+        aTmpPt2 = Point(basegfx::fround<tools::Long>(cos(a) * nMaxRad),
+                        basegfx::fround<tools::Long>(-sin(a) * nMaxRad));
         if (nWdt==0) aTmpPt2.setX(0 );
         if (nHgt==0) aTmpPt2.setY(0 );
         aTmpPt2+=aCenter;
@@ -929,12 +932,12 @@ void SdrCircObj::NbcMirror(const Point& rRef1, const Point& rRef2)
         aTmpPt1-=aCenter;
         aTmpPt2-=aCenter;
         // because it's mirrored, the angles are swapped, too
-        nStartAngle=GetAngle(aTmpPt2);
-        nEndAngle  =GetAngle(aTmpPt1);
-        Degree100 nAngleDif=nEndAngle-nStartAngle;
-        nStartAngle=NormAngle36000(nStartAngle);
-        nEndAngle  =NormAngle36000(nEndAngle);
-        if (nAngleDif==36000_deg100) nEndAngle+=nAngleDif; // full circle
+        m_nStartAngle=GetAngle(aTmpPt2);
+        m_nEndAngle  =GetAngle(aTmpPt1);
+        Degree100 nAngleDif=m_nEndAngle-m_nStartAngle;
+        m_nStartAngle=NormAngle36000(m_nStartAngle);
+        m_nEndAngle  =NormAngle36000(m_nEndAngle);
+        if (nAngleDif==36000_deg100) m_nEndAngle+=nAngleDif; // full circle
     }
     SetXPolyDirty();
     ImpSetCircInfoToAttr();
@@ -949,16 +952,16 @@ void SdrCircObj::SaveGeoData(SdrObjGeoData& rGeo) const
 {
     SdrRectObj::SaveGeoData(rGeo);
     SdrCircObjGeoData& rCGeo=static_cast<SdrCircObjGeoData&>(rGeo);
-    rCGeo.nStartAngle=nStartAngle;
-    rCGeo.nEndAngle  =nEndAngle;
+    rCGeo.nStartAngle=m_nStartAngle;
+    rCGeo.nEndAngle  =m_nEndAngle;
 }
 
 void SdrCircObj::RestoreGeoData(const SdrObjGeoData& rGeo)
 {
     SdrRectObj::RestoreGeoData(rGeo);
     const SdrCircObjGeoData& rCGeo=static_cast<const SdrCircObjGeoData&>(rGeo);
-    nStartAngle=rCGeo.nStartAngle;
-    nEndAngle  =rCGeo.nEndAngle;
+    m_nStartAngle=rCGeo.nStartAngle;
+    m_nEndAngle  =rCGeo.nEndAngle;
     SetXPolyDirty();
     ImpSetCircInfoToAttr();
 }
@@ -975,10 +978,10 @@ void SdrCircObj::TakeUnrotatedSnapRect(tools::Rectangle& rRect) const
 {
     rRect = getRectangle();
     if (meCircleKind!=SdrCircKind::Full) {
-        const Point aPntStart(GetAnglePnt(getRectangle(), nStartAngle));
-        const Point aPntEnd(GetAnglePnt(getRectangle(), nEndAngle));
-        Degree100 a=nStartAngle;
-        Degree100 e=nEndAngle;
+        const Point aPntStart(GetAnglePnt(getRectangle(), m_nStartAngle));
+        const Point aPntEnd(GetAnglePnt(getRectangle(), m_nEndAngle));
+        Degree100 a=m_nStartAngle;
+        Degree100 e=m_nEndAngle;
         rRect.SetLeft(getRectangle().Right() );
         rRect.SetRight(getRectangle().Left() );
         rRect.SetTop(getRectangle().Bottom() );
@@ -1013,7 +1016,7 @@ void SdrCircObj::TakeUnrotatedSnapRect(tools::Rectangle& rRect) const
     if (maGeo.m_nShearAngle==0_deg100)
         return;
 
-    tools::Long nDst = FRound((rRect.Bottom() - rRect.Top()) * maGeo.mfTanShearAngle);
+    tools::Long nDst = basegfx::fround<tools::Long>((rRect.Bottom() - rRect.Top()) * maGeo.mfTanShearAngle);
     if (maGeo.m_nShearAngle > 0_deg100)
     {
         Point aRef(rRect.TopLeft());
@@ -1069,8 +1072,8 @@ Point SdrCircObj::GetSnapPoint(sal_uInt32 i) const
 {
     switch (i)
     {
-        case 1 : return GetAnglePnt(getRectangle(), nStartAngle);
-        case 2 : return GetAnglePnt(getRectangle(), nEndAngle);
+        case 1 : return GetAnglePnt(getRectangle(), m_nStartAngle);
+        case 2 : return GetAnglePnt(getRectangle(), m_nEndAngle);
         default: return getRectangle().Center();
     }
 }
@@ -1092,13 +1095,13 @@ void SdrCircObj::ImpSetAttrToCircInfo()
     Degree100 nNewEnd = rSet.Get(SDRATTR_CIRCENDANGLE).GetValue();
 
     bool bKindChg = meCircleKind != eNewKind;
-    bool bAngleChg = nNewStart != nStartAngle || nNewEnd != nEndAngle;
+    bool bAngleChg = nNewStart != m_nStartAngle || nNewEnd != m_nEndAngle;
 
     if(bKindChg || bAngleChg)
     {
         meCircleKind = eNewKind;
-        nStartAngle = nNewStart;
-        nEndAngle = nNewEnd;
+        m_nStartAngle = nNewStart;
+        m_nEndAngle = nNewEnd;
 
         if(bKindChg || (meCircleKind != SdrCircKind::Full && bAngleChg))
         {
@@ -1116,7 +1119,7 @@ void SdrCircObj::ImpSetCircInfoToAttr()
     Degree100 nOldStartAngle = rSet.Get(SDRATTR_CIRCSTARTANGLE).GetValue();
     Degree100 nOldEndAngle = rSet.Get(SDRATTR_CIRCENDANGLE).GetValue();
 
-    if(meCircleKind == eOldKindA && nStartAngle == nOldStartAngle && nEndAngle == nOldEndAngle)
+    if(meCircleKind == eOldKindA && m_nStartAngle == nOldStartAngle && m_nEndAngle == nOldEndAngle)
         return;
 
     // since SetItem() implicitly calls ImpSetAttrToCircInfo()
@@ -1126,14 +1129,14 @@ void SdrCircObj::ImpSetCircInfoToAttr()
         GetProperties().SetObjectItemDirect(SdrCircKindItem(meCircleKind));
     }
 
-    if(nStartAngle != nOldStartAngle)
+    if(m_nStartAngle != nOldStartAngle)
     {
-        GetProperties().SetObjectItemDirect(makeSdrCircStartAngleItem(nStartAngle));
+        GetProperties().SetObjectItemDirect(makeSdrCircStartAngleItem(m_nStartAngle));
     }
 
-    if(nEndAngle != nOldEndAngle)
+    if(m_nEndAngle != nOldEndAngle)
     {
-        GetProperties().SetObjectItemDirect(makeSdrCircEndAngleItem(nEndAngle));
+        GetProperties().SetObjectItemDirect(makeSdrCircEndAngleItem(m_nEndAngle));
     }
 
     SetXPolyDirty();
@@ -1143,7 +1146,7 @@ void SdrCircObj::ImpSetCircInfoToAttr()
 rtl::Reference<SdrObject> SdrCircObj::DoConvertToPolyObj(bool bBezier, bool bAddText) const
 {
     const bool bFill(meCircleKind != SdrCircKind::Arc);
-    const basegfx::B2DPolygon aCircPolygon(ImpCalcXPolyCirc(meCircleKind, getRectangle(), nStartAngle, nEndAngle));
+    const basegfx::B2DPolygon aCircPolygon(ImpCalcXPolyCirc(meCircleKind, getRectangle(), m_nStartAngle, m_nEndAngle));
     rtl::Reference<SdrObject> pRet = ImpConvertMakeObj(basegfx::B2DPolyPolygon(aCircPolygon), bFill, bBezier);
 
     if(bAddText)

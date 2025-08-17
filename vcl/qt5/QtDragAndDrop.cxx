@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -7,49 +7,123 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  *
  */
-
-#include <com/sun/star/awt/MouseButton.hpp>
-#include <com/sun/star/datatransfer/DataFlavor.hpp>
-#include <com/sun/star/datatransfer/dnd/DNDConstants.hpp>
-#include <cppuhelper/supportsservice.hxx>
-#include <sal/log.hxx>
-
 #include <QtDragAndDrop.hxx>
+#include <QtDragAndDrop.moc>
+
 #include <QtFrame.hxx>
 #include <QtTransferable.hxx>
-#include <QtWidget.hxx>
+
+#include <com/sun/star/datatransfer/dnd/DNDConstants.hpp>
+#include <cppuhelper/supportsservice.hxx>
 
 #include <QtGui/QDrag>
 
 using namespace com::sun::star;
 
-QtDragSource::~QtDragSource() {}
+namespace
+{
+/** QtMimeData subclass that ensures that at least one MIME type is
+ *  reported (using a dummy one if necessary), to prevent drag and drop
+ *  operations on Wayland from getting cancelled (see tdf#164380).
+ */
+class QtDragMimeData : public QtMimeData
+{
+public:
+    explicit QtDragMimeData(const css::uno::Reference<css::datatransfer::XTransferable>& rContents)
+        : QtMimeData(rContents)
+    {
+    }
 
-void QtDragSource::deinitialize() { m_pFrame = nullptr; }
+    QStringList formats() const override
+    {
+        QStringList aFormats = QtMimeData::formats();
+        if (!aFormats.empty())
+            return aFormats;
+
+        // report a dummy MIME type
+        return { "application/x.libreoffice-internal-drag-and-drop" };
+    }
+};
+
+Qt::DropAction lcl_getPreferredDropAction(sal_Int8 dragOperation)
+{
+    Qt::DropAction eAct = Qt::IgnoreAction;
+    if (dragOperation & css::datatransfer::dnd::DNDConstants::ACTION_MOVE)
+        eAct = Qt::MoveAction;
+    else if (dragOperation & css::datatransfer::dnd::DNDConstants::ACTION_COPY)
+        eAct = Qt::CopyAction;
+    else if (dragOperation & css::datatransfer::dnd::DNDConstants::ACTION_LINK)
+        eAct = Qt::LinkAction;
+    return eAct;
+}
+
+css::uno::Reference<css::datatransfer::XTransferable>
+lcl_getXTransferable(const QMimeData* pMimeData)
+{
+    css::uno::Reference<css::datatransfer::XTransferable> xTransferable;
+    const QtMimeData* pQtMimeData = qobject_cast<const QtMimeData*>(pMimeData);
+    if (!pQtMimeData)
+        xTransferable = new QtDnDTransferable(pMimeData);
+    else
+        xTransferable = pQtMimeData->xTransferable();
+    return xTransferable;
+}
+
+sal_Int8 lcl_getUserDropAction(const QDropEvent& rEvent, const sal_Int8 nSourceActions,
+                               const QMimeData* pMimeData)
+{
+// we completely ignore all proposals by the Qt event, as they don't
+// match at all with the preferred LO DnD actions.
+// check the key modifiers to detect a user-overridden DnD action
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    const Qt::KeyboardModifiers eKeyMod = rEvent.modifiers();
+#else
+    const Qt::KeyboardModifiers eKeyMod = rEvent.keyboardModifiers();
+#endif
+    sal_Int8 nUserDropAction = 0;
+    if ((eKeyMod & Qt::ShiftModifier) && !(eKeyMod & Qt::ControlModifier))
+        nUserDropAction = css::datatransfer::dnd::DNDConstants::ACTION_MOVE;
+    else if ((eKeyMod & Qt::ControlModifier) && !(eKeyMod & Qt::ShiftModifier))
+        nUserDropAction = css::datatransfer::dnd::DNDConstants::ACTION_COPY;
+    else if ((eKeyMod & Qt::ShiftModifier) && (eKeyMod & Qt::ControlModifier))
+        nUserDropAction = css::datatransfer::dnd::DNDConstants::ACTION_LINK;
+    nUserDropAction &= nSourceActions;
+
+    // select the default DnD action, if there isn't a user preference
+    if (0 == nUserDropAction)
+    {
+        // default LO internal action is move, but default external action is copy
+        nUserDropAction = qobject_cast<const QtMimeData*>(pMimeData)
+                              ? css::datatransfer::dnd::DNDConstants::ACTION_MOVE
+                              : css::datatransfer::dnd::DNDConstants::ACTION_COPY;
+        nUserDropAction &= nSourceActions;
+
+        // if the default doesn't match any allowed source action, fall back to the
+        // preferred of all allowed source actions
+        if (0 == nUserDropAction)
+            nUserDropAction = toVclDropAction(lcl_getPreferredDropAction(nSourceActions));
+
+        // this is "our" preference, but actually we would even prefer any default,
+        // if there is any
+        nUserDropAction |= css::datatransfer::dnd::DNDConstants::ACTION_DEFAULT;
+    }
+    return nUserDropAction;
+}
+}
+
+QtDragSource::QtDragSource(QtFrame* pFrame)
+    : WeakComponentImplHelper(m_aMutex)
+    , m_pFrame(pFrame)
+{
+    assert(m_pFrame && "missing SalFrame");
+    m_pFrame->registerDragSource(this);
+}
+
+QtDragSource::~QtDragSource() {}
 
 sal_Bool QtDragSource::isDragImageSupported() { return true; }
 
 sal_Int32 QtDragSource::getDefaultCursor(sal_Int8) { return 0; }
-
-void QtDragSource::initialize(const css::uno::Sequence<css::uno::Any>& rArguments)
-{
-    if (rArguments.getLength() < 2)
-    {
-        throw uno::RuntimeException("DragSource::initialize: Cannot install window event handler",
-                                    getXWeak());
-    }
-
-    sal_IntPtr nFrame = 0;
-    rArguments.getConstArray()[1] >>= nFrame;
-
-    if (!nFrame)
-    {
-        throw uno::RuntimeException("DragSource::initialize: missing SalFrame", getXWeak());
-    }
-
-    m_pFrame = reinterpret_cast<QtFrame*>(nFrame);
-    m_pFrame->registerDragSource(this);
-}
 
 void QtDragSource::startDrag(
     const datatransfer::dnd::DragGestureEvent& /*rEvent*/, sal_Int8 sourceActions,
@@ -61,11 +135,11 @@ void QtDragSource::startDrag(
 
     if (m_pFrame)
     {
-        QDrag* drag = new QDrag(m_pFrame->GetQWidget());
-        drag->setMimeData(new QtMimeData(rTrans));
+        QDrag* drag = new QDrag(&m_pFrame->GetQWidget());
+        drag->setMimeData(new QtDragMimeData(rTrans));
         // just a reminder that exec starts a nested event loop, so everything after
         // this call is just executed, after D'n'D has finished!
-        drag->exec(toQtDropActions(sourceActions), getPreferredDropAction(sourceActions));
+        drag->exec(toQtDropActions(sourceActions), lcl_getPreferredDropAction(sourceActions));
     }
 
     // the drop will eventually call fire_dragEnd, which will clear the listener.
@@ -91,7 +165,7 @@ void QtDragSource::fire_dragEnd(sal_Int8 nAction, bool bDropSuccessful)
 
 OUString SAL_CALL QtDragSource::getImplementationName()
 {
-    return "com.sun.star.datatransfer.dnd.VclQtDragSource";
+    return u"com.sun.star.datatransfer.dnd.VclQtDragSource"_ustr;
 }
 
 sal_Bool SAL_CALL QtDragSource::supportsService(OUString const& ServiceName)
@@ -101,20 +175,17 @@ sal_Bool SAL_CALL QtDragSource::supportsService(OUString const& ServiceName)
 
 css::uno::Sequence<OUString> SAL_CALL QtDragSource::getSupportedServiceNames()
 {
-    return { "com.sun.star.datatransfer.dnd.QtDragSource" };
+    return { u"com.sun.star.datatransfer.dnd.QtDragSource"_ustr };
 }
 
 QtDropTarget::QtDropTarget()
-    : WeakComponentImplHelper(m_aMutex)
-    , m_pFrame(nullptr)
-    , m_bActive(false)
-    , m_nDefaultActions(0)
+    : m_nDropAction(datatransfer::dnd::DNDConstants::ACTION_NONE)
 {
 }
 
 OUString SAL_CALL QtDropTarget::getImplementationName()
 {
-    return "com.sun.star.datatransfer.dnd.VclQtDropTarget";
+    return u"com.sun.star.datatransfer.dnd.VclQtDropTarget"_ustr;
 }
 
 sal_Bool SAL_CALL QtDropTarget::supportsService(OUString const& ServiceName)
@@ -124,113 +195,59 @@ sal_Bool SAL_CALL QtDropTarget::supportsService(OUString const& ServiceName)
 
 css::uno::Sequence<OUString> SAL_CALL QtDropTarget::getSupportedServiceNames()
 {
-    return { "com.sun.star.datatransfer.dnd.QtDropTarget" };
+    return { u"com.sun.star.datatransfer.dnd.QtDropTarget"_ustr };
 }
 
 QtDropTarget::~QtDropTarget() {}
 
-void QtDropTarget::deinitialize()
+void QtDropTarget::handleDragEnterEvent(QDragEnterEvent& rEvent, qreal fScaleFactor)
 {
-    m_pFrame = nullptr;
-    m_bActive = false;
+    css::datatransfer::dnd::DropTargetDragEnterEvent aEvent
+        = createDropTargetDragEnterEvent(rEvent, true, fScaleFactor);
+    dragEnter(aEvent);
+
+    if (qobject_cast<const QtMimeData*>(rEvent.mimeData()))
+        rEvent.accept();
+    else
+        rEvent.acceptProposedAction();
 }
 
-void QtDropTarget::initialize(const uno::Sequence<uno::Any>& rArguments)
+void QtDropTarget::handleDragMoveEvent(QDragMoveEvent& rEvent, qreal fScaleFactor)
 {
-    if (rArguments.getLength() < 2)
+    css::datatransfer::dnd::DropTargetDragEnterEvent aEvent
+        = createDropTargetDragEnterEvent(rEvent, false, fScaleFactor);
+    dragOver(aEvent);
+
+    // the drop target accepted our drop action => inform Qt
+    if (proposedDropAction() != 0)
     {
-        throw uno::RuntimeException("DropTarget::initialize: Cannot install window event handler",
-                                    getXWeak());
+        rEvent.setDropAction(lcl_getPreferredDropAction(proposedDropAction()));
+        rEvent.accept();
     }
-
-    sal_IntPtr nFrame = 0;
-    rArguments.getConstArray()[1] >>= nFrame;
-
-    if (!nFrame)
-    {
-        throw uno::RuntimeException("DropTarget::initialize: missing SalFrame", getXWeak());
-    }
-
-    m_nDropAction = datatransfer::dnd::DNDConstants::ACTION_NONE;
-
-    m_pFrame = reinterpret_cast<QtFrame*>(nFrame);
-    m_pFrame->registerDropTarget(this);
-    m_bActive = true;
+    else // or maybe someone else likes it?
+        rEvent.ignore();
 }
 
-void QtDropTarget::addDropTargetListener(
-    const uno::Reference<css::datatransfer::dnd::XDropTargetListener>& xListener)
-{
-    ::osl::Guard<::osl::Mutex> aGuard(m_aMutex);
-
-    m_aListeners.push_back(xListener);
-}
-
-void QtDropTarget::removeDropTargetListener(
-    const uno::Reference<css::datatransfer::dnd::XDropTargetListener>& xListener)
-{
-    ::osl::Guard<::osl::Mutex> aGuard(m_aMutex);
-
-    std::erase(m_aListeners, xListener);
-}
-
-sal_Bool QtDropTarget::isActive() { return m_bActive; }
-
-void QtDropTarget::setActive(sal_Bool bActive) { m_bActive = bActive; }
-
-sal_Int8 QtDropTarget::getDefaultActions() { return m_nDefaultActions; }
-
-void QtDropTarget::setDefaultActions(sal_Int8 nDefaultActions)
-{
-    m_nDefaultActions = nDefaultActions;
-}
-
-void QtDropTarget::fire_dragEnter(const css::datatransfer::dnd::DropTargetDragEnterEvent& dtde)
-{
-    osl::ClearableGuard<::osl::Mutex> aGuard(m_aMutex);
-    std::vector<css::uno::Reference<css::datatransfer::dnd::XDropTargetListener>> aListeners(
-        m_aListeners);
-    aGuard.clear();
-
-    for (auto const& listener : aListeners)
-    {
-        listener->dragEnter(dtde);
-    }
-}
-
-void QtDropTarget::fire_dragOver(const css::datatransfer::dnd::DropTargetDragEnterEvent& dtde)
-{
-    osl::ClearableGuard<::osl::Mutex> aGuard(m_aMutex);
-    std::vector<css::uno::Reference<css::datatransfer::dnd::XDropTargetListener>> aListeners(
-        m_aListeners);
-    aGuard.clear();
-
-    for (auto const& listener : aListeners)
-        listener->dragOver(dtde);
-}
-
-void QtDropTarget::fire_drop(const css::datatransfer::dnd::DropTargetDropEvent& dtde)
+void QtDropTarget::handleDropEvent(QDropEvent& rEvent, qreal fScaleFactor)
 {
     m_bDropSuccessful = true;
 
-    osl::ClearableGuard<osl::Mutex> aGuard(m_aMutex);
-    std::vector<css::uno::Reference<css::datatransfer::dnd::XDropTargetListener>> aListeners(
-        m_aListeners);
-    aGuard.clear();
+    // ask the drop target to accept our drop action
+    css::datatransfer::dnd::DropTargetDropEvent aEvent
+        = createDropTargetDropEvent(rEvent, fScaleFactor);
+    drop(aEvent);
 
-    for (auto const& listener : aListeners)
-        listener->drop(dtde);
-}
+    const bool bDropSuccessful = dropSuccessful();
+    const sal_Int8 nDropAction = proposedDropAction();
 
-void QtDropTarget::fire_dragExit(const css::datatransfer::dnd::DropTargetEvent& dte)
-{
-    osl::ClearableGuard<::osl::Mutex> aGuard(m_aMutex);
-    std::vector<css::uno::Reference<css::datatransfer::dnd::XDropTargetListener>> aListeners(
-        m_aListeners);
-    aGuard.clear();
-
-    for (auto const& listener : aListeners)
-        listener->dragExit(dte);
+    // the drop target accepted our drop action => inform Qt
+    if (bDropSuccessful)
+    {
+        rEvent.setDropAction(lcl_getPreferredDropAction(nDropAction));
+        rEvent.accept();
+    }
+    else // or maybe someone else likes it?
+        rEvent.ignore();
 }
 
 void QtDropTarget::acceptDrag(sal_Int8 dragOperation) { m_nDropAction = dragOperation; }
@@ -246,4 +263,59 @@ void QtDropTarget::dropComplete(sal_Bool success)
     m_bDropSuccessful = (m_bDropSuccessful && success);
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+css::datatransfer::dnd::DropTargetDragEnterEvent
+QtDropTarget::createDropTargetDragEnterEvent(const QDragMoveEvent& rEvent, bool bSetDataFlavors,
+                                             qreal fScaleFactor)
+{
+    // prepare our suggested drop action for the drop target
+    const sal_Int8 nSourceActions = toVclDropActions(rEvent.possibleActions());
+    const QMimeData* pMimeData = rEvent.mimeData();
+    const sal_Int8 nUserDropAction = lcl_getUserDropAction(rEvent, nSourceActions, pMimeData);
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    const QPoint aPos = rEvent.position().toPoint();
+#else
+    const QPoint aPos = rEvent.pos();
+#endif
+
+    css::datatransfer::dnd::DropTargetDragEnterEvent aEvent;
+    aEvent.Source = static_cast<css::datatransfer::dnd::XDropTarget*>(this);
+    aEvent.Context = this;
+    aEvent.LocationX = aPos.x() * fScaleFactor;
+    aEvent.LocationY = aPos.y() * fScaleFactor;
+    aEvent.DropAction = nUserDropAction;
+    aEvent.SourceActions = nSourceActions;
+
+    if (bSetDataFlavors)
+        aEvent.SupportedDataFlavors = lcl_getXTransferable(pMimeData)->getTransferDataFlavors();
+
+    return aEvent;
+}
+
+css::datatransfer::dnd::DropTargetDropEvent
+QtDropTarget::createDropTargetDropEvent(const QDropEvent& rEvent, qreal fScaleFactor)
+{
+    // prepare our suggested drop action for the drop target
+    const sal_Int8 nSourceActions = toVclDropActions(rEvent.possibleActions());
+    const sal_Int8 nUserDropAction
+        = lcl_getUserDropAction(rEvent, nSourceActions, rEvent.mimeData());
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    const QPoint aPos = rEvent.position().toPoint();
+#else
+    const QPoint aPos = rEvent.pos();
+#endif
+
+    css::datatransfer::dnd::DropTargetDropEvent aEvent;
+    aEvent.Source = static_cast<css::datatransfer::dnd::XDropTarget*>(this);
+    aEvent.Context = this;
+    aEvent.LocationX = aPos.x() * fScaleFactor;
+    aEvent.LocationY = aPos.y() * fScaleFactor;
+    aEvent.SourceActions = nSourceActions;
+    aEvent.DropAction = nUserDropAction;
+    aEvent.Transferable = lcl_getXTransferable(rEvent.mimeData());
+
+    return aEvent;
+}
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -34,8 +34,6 @@
 #include "tox.hxx"
 #include "ndhints.hxx"
 
-class SfxItemPool;
-
 /**
  * A wrapper around SfxPoolItem to store the start position of (usually) a text portion, with an
  * optional end.
@@ -44,7 +42,8 @@ class SW_DLLPUBLIC SwTextAttr
 {
 friend class SwpHints;
 private:
-    SfxPoolItem * const m_pAttr;
+    // use SfxPoolItemHolder for safe reference to 'const SfxPoolItem*'
+    SfxPoolItemHolder m_aAttr;
     sal_Int32 m_nStart;
     bool m_bDontExpand          : 1;
     bool m_bLockExpandFlag      : 1;
@@ -66,14 +65,12 @@ private:
 protected:
     SwpHints * m_pHints = nullptr;  // the SwpHints holds a pointer to this, and needs to be notified if the start/end changes
 
-    SwTextAttr( SfxPoolItem& rAttr, sal_Int32 nStart );
+    SwTextAttr(const SfxPoolItemHolder& rAttr, sal_Int32 nStart );
     virtual ~SwTextAttr() COVERITY_NOEXCEPT_FALSE;
 
-    void SetLockExpandFlag( bool bFlag )    { m_bLockExpandFlag = bFlag; }
     void SetDontMoveAttr( bool bFlag )      { m_bDontMoveAttr = bFlag; }
     void SetCharFormatAttr( bool bFlag )       { m_bCharFormatAttr = bFlag; }
     void SetOverlapAllowedAttr( bool bFlag ){ m_bOverlapAllowedAttr = bFlag; }
-    void SetDontExpandStartAttr(bool bFlag) { m_bDontExpandStart = bFlag; }
     void SetNesting(const bool bFlag)       { m_bNesting = bFlag; }
     void SetHasDummyChar(const bool bFlag)  { m_bHasDummyChar = bFlag; }
     void SetHasContent( const bool bFlag )  { m_bHasContent = bFlag; }
@@ -81,7 +78,7 @@ protected:
 public:
 
     /// destroy instance
-    static void Destroy( SwTextAttr * pToDestroy, SfxItemPool& rPool );
+    static void Destroy( SwTextAttr * pToDestroy );
 
     /// start position
     void SetStart(sal_Int32 n) { m_nStart = n; if (m_pHints) m_pHints->StartPosChanged(); }
@@ -110,6 +107,8 @@ public:
     void SetFormatIgnoreStart(bool bFlag)   { m_bFormatIgnoreStart = bFlag; }
     void SetFormatIgnoreEnd  (bool bFlag)   { m_bFormatIgnoreEnd   = bFlag; }
     bool HasContent() const                 { return m_bHasContent; }
+    void SetLockExpandFlag(bool bFlag)      { m_bLockExpandFlag = bFlag; }
+    void SetDontExpandStartAttr(bool bFlag) { m_bDontExpandStart = bFlag; }
 
     inline const SfxPoolItem& GetAttr() const;
     inline       SfxPoolItem& GetAttr();
@@ -138,7 +137,10 @@ protected:
     sal_Int32 m_nEnd;
 
 public:
-    SwTextAttrEnd( SfxPoolItem& rAttr, sal_Int32 nStart, sal_Int32 nEnd );
+    SwTextAttrEnd(
+        const SfxPoolItemHolder& rAttr,
+        sal_Int32 nStart,
+        sal_Int32 nEnd );
 
     virtual const sal_Int32* GetEnd() const override;
     virtual void SetEnd(sal_Int32) override;
@@ -148,8 +150,10 @@ public:
 class SAL_DLLPUBLIC_RTTI SwTextAttrNesting : public SwTextAttrEnd
 {
 protected:
-    SwTextAttrNesting( SfxPoolItem & i_rAttr,
-        const sal_Int32 i_nStart, const sal_Int32 i_nEnd );
+    SwTextAttrNesting(
+        const SfxPoolItemHolder& rAttr,
+        const sal_Int32 i_nStart,
+        const sal_Int32 i_nEnd );
     virtual ~SwTextAttrNesting() override;
 };
 
@@ -166,8 +170,8 @@ inline sal_Int32 SwTextAttr::GetAnyEnd() const
 
 inline const SfxPoolItem& SwTextAttr::GetAttr() const
 {
-    assert( m_pAttr );
-    return *m_pAttr;
+    assert( m_aAttr );
+    return *m_aAttr.getItem();
 }
 
 inline SfxPoolItem& SwTextAttr::GetAttr()
@@ -186,71 +190,71 @@ inline void SwTextAttr::SetDontExpand( bool bDontExpand )
 
 inline const SwFormatCharFormat& SwTextAttr::GetCharFormat() const
 {
-    assert( m_pAttr && m_pAttr->Which() == RES_TXTATR_CHARFMT );
-    return static_cast<const SwFormatCharFormat&>(*m_pAttr);
+    assert( m_aAttr && m_aAttr.Which() == RES_TXTATR_CHARFMT );
+    return static_cast<const SwFormatCharFormat&>(*m_aAttr.getItem());
 }
 
 inline const SwFormatAutoFormat& SwTextAttr::GetAutoFormat() const
 {
-    assert( m_pAttr && m_pAttr->Which() == RES_TXTATR_AUTOFMT );
-    return static_cast<const SwFormatAutoFormat&>(*m_pAttr);
+    assert( m_aAttr && m_aAttr.Which() == RES_TXTATR_AUTOFMT );
+    return static_cast<const SwFormatAutoFormat&>(*m_aAttr.getItem());
 }
 
 inline const SwFormatField& SwTextAttr::GetFormatField() const
 {
-    assert( m_pAttr
-            && ( m_pAttr->Which() == RES_TXTATR_FIELD
-                 || m_pAttr->Which() == RES_TXTATR_ANNOTATION
-                 || m_pAttr->Which() == RES_TXTATR_INPUTFIELD ));
-    return static_cast<const SwFormatField&>(*m_pAttr);
+    assert( m_aAttr
+            && ( m_aAttr.Which() == RES_TXTATR_FIELD
+                 || m_aAttr.Which() == RES_TXTATR_ANNOTATION
+                 || m_aAttr.Which() == RES_TXTATR_INPUTFIELD ));
+    return static_cast<const SwFormatField&>(*m_aAttr.getItem());
 }
 
 inline const SwFormatFootnote& SwTextAttr::GetFootnote() const
 {
-    assert( m_pAttr && m_pAttr->Which() == RES_TXTATR_FTN );
-    return static_cast<const SwFormatFootnote&>(*m_pAttr);
+    assert( m_aAttr && m_aAttr.Which() == RES_TXTATR_FTN );
+    return static_cast<const SwFormatFootnote&>(*m_aAttr.getItem());
 }
 
 inline const SwFormatLineBreak& SwTextAttr::GetLineBreak() const
 {
-    assert(m_pAttr && m_pAttr->Which() == RES_TXTATR_LINEBREAK);
-    return static_cast<const SwFormatLineBreak&>(*m_pAttr);
+    assert(m_aAttr && m_aAttr.Which() == RES_TXTATR_LINEBREAK);
+    return static_cast<const SwFormatLineBreak&>(*m_aAttr.getItem());
 }
 
 inline const SwFormatContentControl& SwTextAttr::GetContentControl() const
 {
-    assert(m_pAttr && m_pAttr->Which() == RES_TXTATR_CONTENTCONTROL);
-    return static_cast<const SwFormatContentControl&>(*m_pAttr);
+    assert(m_aAttr && m_aAttr.Which() == RES_TXTATR_CONTENTCONTROL);
+    return static_cast<const SwFormatContentControl&>(*m_aAttr.getItem());
 }
 
 inline const SwFormatFlyCnt& SwTextAttr::GetFlyCnt() const
 {
-    assert( m_pAttr && m_pAttr->Which() == RES_TXTATR_FLYCNT );
-    return static_cast<const SwFormatFlyCnt&>(*m_pAttr);
+    assert( m_aAttr && m_aAttr.Which() == RES_TXTATR_FLYCNT );
+    return static_cast<const SwFormatFlyCnt&>(*m_aAttr.getItem());
 }
 
 inline const SwTOXMark& SwTextAttr::GetTOXMark() const
 {
-    assert( m_pAttr && m_pAttr->Which() == RES_TXTATR_TOXMARK );
-    return static_cast<const SwTOXMark&>(*m_pAttr);
+    assert( m_aAttr && m_aAttr.Which() == RES_TXTATR_TOXMARK );
+    return static_cast<const SwTOXMark&>(*m_aAttr.getItem());
 }
 
 inline const SwFormatRefMark& SwTextAttr::GetRefMark() const
 {
-    assert( m_pAttr && m_pAttr->Which() == RES_TXTATR_REFMARK );
-    return static_cast<const SwFormatRefMark&>(*m_pAttr);
+    assert( m_aAttr && m_aAttr.Which() == RES_TXTATR_REFMARK );
+    return static_cast<const SwFormatRefMark&>(*m_aAttr.getItem());
 }
 
 inline const SwFormatINetFormat& SwTextAttr::GetINetFormat() const
 {
-    assert( m_pAttr && m_pAttr->Which() == RES_TXTATR_INETFMT );
-    return static_cast<const SwFormatINetFormat&>(*m_pAttr);
+    assert( m_aAttr && m_aAttr.Which() == RES_TXTATR_INETFMT );
+    return static_cast<const SwFormatINetFormat&>(*m_aAttr.getItem());
 }
 
 inline const SwFormatRuby& SwTextAttr::GetRuby() const
 {
-    assert( m_pAttr && m_pAttr->Which() == RES_TXTATR_CJK_RUBY );
-    return static_cast<const SwFormatRuby&>(*m_pAttr);
+    assert( m_aAttr && m_aAttr.Which() == RES_TXTATR_CJK_RUBY );
+    return static_cast<const SwFormatRuby&>(*m_aAttr.getItem());
 }
 
 // these should be static_casts but with virtual inheritance it's not possible

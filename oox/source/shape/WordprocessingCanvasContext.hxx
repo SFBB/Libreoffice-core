@@ -20,13 +20,13 @@ class WordprocessingCanvasContext final : public oox::core::FragmentHandler2
 public:
     // mpShapePtr points to the root of the group. rSize is the size of the background shape.
     explicit WordprocessingCanvasContext(oox::core::FragmentHandler2 const& rParent,
-                                         css::awt::Size& rSize);
+                                         const css::awt::Size& rSize);
     ~WordprocessingCanvasContext() override;
 
     oox::core::ContextHandlerRef onCreateContext(sal_Int32 nElementToken,
                                                  const ::oox::AttributeList& rAttribs) override;
 
-    oox::drawingml::ShapePtr getShape() { return mpShapePtr; }
+    const oox::drawingml::ShapePtr& getShape() { return mpShapePtr; }
     const bool& isFullWPGSupport() const { return m_bFullWPGSupport; };
     void setFullWPGSupport(bool bUse) { m_bFullWPGSupport = bUse; };
 

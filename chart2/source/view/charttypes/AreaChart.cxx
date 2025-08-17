@@ -59,7 +59,7 @@ AreaChart::AreaChart( const rtl::Reference<ChartType>& xChartTypeModel
         : VSeriesPlotter( xChartTypeModel, nDimensionCount, bCategoryXAxis )
         , m_bArea(!bNoArea)
         , m_bLine(bNoArea)
-        , m_bSymbol( ChartTypeHelper::isSupportingSymbolProperties(xChartTypeModel,nDimensionCount) )
+        , m_bSymbol(xChartTypeModel.is() ? xChartTypeModel->isSupportingSymbolProperties(nDimensionCount) : false)
         , m_eCurveStyle(CurveStyle_LINES)
         , m_nCurveResolution(20)
         , m_nSplineOrder(3)
@@ -394,7 +394,7 @@ bool AreaChart::impl_createLine( VDataSeries* pSeries
                 , pSeries->getPropertiesOfSeries()
                 , PropertyMapper::getPropertyNameMapForLineSeriesProperties() );
         //because of this name this line will be used for marking
-        ::chart::ShapeFactory::setShapeName(xShape, "MarkHandles");
+        ::chart::ShapeFactory::setShapeName(xShape, u"MarkHandles"_ustr);
     }
     return true;
 }
@@ -445,7 +445,7 @@ bool AreaChart::impl_createArea( VDataSeries* pSeries
         std::vector<std::vector<css::drawing::Position3D>> aClippedPoly;
         Clipping::clipPolygonAtRectangle( aPoly, pPosHelper->getScaledLogicClipDoubleRect(), aClippedPoly, false );
         ShapeFactory::closePolygon(aClippedPoly); //again necessary after clipping
-        aPoly = aClippedPoly;
+        aPoly = std::move(aClippedPoly);
     }
 
     if(!ShapeFactory::hasPolygonAnyLines(aPoly))
@@ -470,7 +470,7 @@ bool AreaChart::impl_createArea( VDataSeries* pSeries
                 , pSeries->getPropertiesOfSeries()
                 , PropertyMapper::getPropertyNameMapForFilledSeriesProperties() );
     //because of this name this line will be used for marking
-    ::chart::ShapeFactory::setShapeName(xShape, "MarkHandles");
+    ::chart::ShapeFactory::setShapeName(xShape, u"MarkHandles"_ustr);
     return true;
 }
 
@@ -604,7 +604,8 @@ void AreaChart::createShapes()
 
     bool bDateCategory = (m_pExplicitCategoriesProvider && m_pExplicitCategoriesProvider->isDateAxis());
 
-    std::vector<std::map< sal_Int32, double > > aLogicYSumMapByX(nEndIndex);//one for each different nAttachedAxisIndex
+    // indexed by {nIndex, nAttachedAxisIndex}
+    std::map< std::pair<sal_Int32, sal_Int32>, double > aLogicYSumMapByX;
     for( auto const& rZSlot : m_aZSlots )
     {
         //iterate through all x slots in this category to get 100percent sum
@@ -618,17 +619,12 @@ void AreaChart::createShapes()
                 if (bDateCategory)
                     pSeries->doSortByXValues();
 
+                sal_Int32 nAttachedAxisIndex = pSeries->getAttachedAxisIndex();
                 for( sal_Int32 nIndex = nStartIndex; nIndex < nEndIndex; nIndex++ )
                 {
-                    std::map< sal_Int32, double >& rLogicYSumMap = aLogicYSumMapByX[nIndex];
-                    sal_Int32 nAttachedAxisIndex = pSeries->getAttachedAxisIndex();
-                    rLogicYSumMap.insert({nAttachedAxisIndex, 0.0});
-
-                    m_pPosHelper = &getPlottingPositionHelper(nAttachedAxisIndex);
-
                     double fAdd = pSeries->getYValue( nIndex );
                     if( !std::isnan(fAdd) && !std::isinf(fAdd) )
-                        rLogicYSumMap[nAttachedAxisIndex] += fabs( fAdd );
+                        aLogicYSumMapByX[ {nIndex, nAttachedAxisIndex} ] += fabs( fAdd );
                 }
             }
         }
@@ -686,11 +682,12 @@ void AreaChart::createShapes()
                         fLogicY = fabs( fLogicY );
 
                     double fLogicValueForLabeDisplay = fLogicY;
-                    std::map< sal_Int32, double >& rLogicYSumMap = aLogicYSumMapByX[nIndex];
-                    if (rPosHelper.isPercentY() && rLogicYSumMap[nAttachedAxisIndex] != 0.0)
-                    {
-                        fLogicY = fabs( fLogicY )/rLogicYSumMap[nAttachedAxisIndex];
-                    }
+                    double fLogicSumForX = 0.0;
+                    auto it = aLogicYSumMapByX.find({nIndex, nAttachedAxisIndex});
+                    if (it != aLogicYSumMapByX.end())
+                        fLogicSumForX = it->second;
+                    if (rPosHelper.isPercentY() && fLogicSumForX != 0.0)
+                        fLogicY = fabs( fLogicY ) / fLogicSumForX;
 
                     if(    std::isnan(fLogicX) || std::isinf(fLogicX)
                             || std::isnan(fLogicY) || std::isinf(fLogicY)
@@ -771,8 +768,8 @@ void AreaChart::createShapes()
                         {
                             bool bShowPositive = false;
                             bool bShowNegative = false;
-                            xErrorBarProp->getPropertyValue("ShowPositiveError") >>= bShowPositive;
-                            xErrorBarProp->getPropertyValue("ShowNegativeError") >>= bShowNegative;
+                            xErrorBarProp->getPropertyValue(u"ShowPositiveError"_ustr) >>= bShowPositive;
+                            xErrorBarProp->getPropertyValue(u"ShowNegativeError"_ustr) >>= bShowNegative;
                             bCreateYErrorBar = bShowPositive || bShowNegative;
                         }
 
@@ -781,8 +778,8 @@ void AreaChart::createShapes()
                         {
                             bool bShowPositive = false;
                             bool bShowNegative = false;
-                            xErrorBarProp->getPropertyValue("ShowPositiveError") >>= bShowPositive;
-                            xErrorBarProp->getPropertyValue("ShowNegativeError") >>= bShowNegative;
+                            xErrorBarProp->getPropertyValue(u"ShowPositiveError"_ustr) >>= bShowPositive;
+                            xErrorBarProp->getPropertyValue(u"ShowNegativeError"_ustr) >>= bShowNegative;
                             bCreateXErrorBar = bShowPositive || bShowNegative;
                         }
                     }
@@ -915,7 +912,7 @@ void AreaChart::createShapes()
 
                             createDataLabel( m_xTextTarget, *pSeries, nIndex
                                     , fLogicValueForLabeDisplay
-                                    , rLogicYSumMap[nAttachedAxisIndex], aScreenPosition2D, eAlignment, nOffset );
+                                    , fLogicSumForX, aScreenPosition2D, eAlignment, nOffset );
                         }
                     }
                 }

@@ -30,9 +30,12 @@
 #include <token.hxx>
 #include <math.hxx>
 #include <kahan.hxx>
+#include <queryentry.hxx>
+#include <sortparam.hxx>
 #include "parclass.hxx"
+#include <lookupsearchmode.hxx>
 
-#include <map>
+#include <unordered_map>
 #include <memory>
 #include <vector>
 #include <limits>
@@ -46,7 +49,6 @@ class ScFormulaCell;
 class ScDBRangeBase;
 struct ScQueryParam;
 struct ScDBQueryParamBase;
-struct ScQueryEntry;
 
 struct ScSingleRefData;
 struct ScComplexRefData;
@@ -54,6 +56,59 @@ struct ScInterpreterContext;
 
 class ScJumpMatrix;
 struct ScRefCellValue;
+
+enum MatchMode{ exactorNA=0, exactorS=-1, exactorG=1, wildcard=2, regex=3 };
+// mode for the TOCOL and TOROW formula functions
+enum class IgnoreValues{ DEFAULT=0, BLANKS=1, ERRORS=2, ALL=3 };
+
+struct VectorSearchArguments
+{
+    // struct contains the contents of the function arguments
+    // OpCode of struct owner
+    sal_uInt16 nSearchOpCode = SC_OPCODE_NONE;
+
+    // match mode (common, enum values are from XLOOKUP)
+    // optional 5th argument to set match mode
+    //   0 - Exact match. If none found, return #N/A. (MATCH value 0)
+    //  -1 - Exact match. If none found, return the next smaller item. (MATCH value 1)
+    //   1 - Exact match. If none found, return the next larger item. (MATCH value -1)
+    //   2 - A wildcard match where *, ?, and ~ have special meaning. (XLOOKUP only)
+    // TODO : is this enum needed, or do we solely use rEntry.eOp ?
+    MatchMode eMatchMode = exactorG;
+
+    // value to be searched for (common)
+    SCCOL nCol1 = 0;
+    SCROW nRow1 = 0;
+    SCTAB nTab1 = 0;
+    SCCOL nCol2 = 0;
+    SCROW nRow2 = 0;
+    SCTAB nTab2 = 0;
+    ScMatrixRef pMatSrc;
+    bool isStringSearch = true;
+    bool isEmptySearch = false;
+    double fSearchVal;
+    svl::SharedString sSearchStr;
+    bool bVLookup;
+
+    // search mode (only XLOOKUP has all 4 options, MATCH only uses Forward)
+    // optional 6th argument to set search mode
+    //   1 - Perform a search starting at the first item. This is the default.
+    //  -1 - Perform a reverse search starting at the last item.
+    //   2 - Perform a binary search that relies on lookup_array being sorted in ascending order.
+    //       If not sorted, invalid results will be returned.
+    //  -2 - Perform a binary search that relies on lookup_array being sorted in descending order.
+    //       If not sorted, invalid results will be returned.
+    //
+    LookupSearchMode eSearchMode = LookupSearchMode::Forward;
+
+    // search variables
+    SCSIZE nHitIndex = 0;
+    SCSIZE nBestFit = SCSIZE_MAX;
+
+    // result
+    int nIndex = -1;
+    bool isResultNA = false;
+};
 
 namespace sc {
 
@@ -127,12 +182,17 @@ enum ScETSType
     etsStatMult
 };
 
-struct FormulaTokenRef_less
+struct FormulaTokenRef_hash
 {
-    bool operator () ( const formula::FormulaConstTokenRef& r1, const formula::FormulaConstTokenRef& r2 ) const
-        { return r1.get() < r2.get(); }
+    bool operator () ( const formula::FormulaConstTokenRef& r1 ) const
+        { return std::hash<const void*>()(static_cast<const void*>(r1.get())); }
+    // So we don't have to create a FormulaConstTokenRef to search by formula::FormulaToken*
+    using is_transparent = void;
+    bool operator () ( const formula::FormulaToken* p1 ) const
+        { return std::hash<const void *>()(static_cast<const void*>(p1)); }
 };
-typedef ::std::map< const formula::FormulaConstTokenRef, formula::FormulaConstTokenRef, FormulaTokenRef_less> ScTokenMatrixMap;
+typedef ::std::unordered_map< const formula::FormulaConstTokenRef, formula::FormulaConstTokenRef, FormulaTokenRef_hash> ScTokenMatrixMap;
+typedef ::std::unordered_map< OUString, const formula::FormulaConstTokenRef> ScResultTokenMap;
 
 class ScInterpreter
 {
@@ -189,8 +249,8 @@ private:
     formula::FormulaConstTokenRef  xResult;
     ScJumpMatrix*   pJumpMatrix;        // currently active array condition, if any
     ScTokenMatrixMap maTokenMatrixMap;  // map FormulaToken* to formula::FormulaTokenRef if in array condition
+    ScResultTokenMap maResultTokenMap;  // Result FormulaToken* to formula::FormulaTokenRef
     ScFormulaCell* pMyFormulaCell;      // the cell of this formula expression
-    SvNumberFormatter* pFormatter;
 
     const formula::FormulaToken* pCur;  // current token
     ScTokenStack* pStackObj;            // contains the stacks
@@ -212,6 +272,9 @@ private:
 
     VolatileType meVolatileType;
 
+    // sort parameters
+    ScSortParam aSortParam;
+
     void MakeMatNew(ScMatrixRef& rMat, SCSIZE nC, SCSIZE nR);
 
     /// Merge global and document specific settings.
@@ -232,18 +295,22 @@ private:
 
     void ReplaceCell( ScAddress& );     // for TableOp
     bool IsTableOpInRange( const ScRange& );
-    sal_uInt32 GetCellNumberFormat( const ScAddress& rPos, ScRefCellValue& rCell );
+    sal_uInt32 GetCellNumberFormat( const ScAddress& rPos, const ScRefCellValue& rCell );
     double ConvertStringToValue( const OUString& );
+    bool SearchVectorForValue( VectorSearchArguments& );
+    bool SearchMatrixForValue( VectorSearchArguments&, const ScQueryParam&, const ScQueryEntry&, const ScQueryEntry::Item& );
+    bool SearchRangeForValue( VectorSearchArguments&, ScQueryParam&, const ScQueryEntry& );
+
 public:
     static double ScGetGCD(double fx, double fy);
     /** For matrix back calls into the current interpreter.
         Uses rError instead of nGlobalError and rCurFmtType instead of nCurFmtType. */
     double ConvertStringToValue( const OUString&, FormulaError& rError, SvNumFormatType& rCurFmtType );
 private:
-    double GetCellValue( const ScAddress&, ScRefCellValue& rCell );
-    double GetCellValueOrZero( const ScAddress&, ScRefCellValue& rCell );
+    double GetCellValue( const ScAddress&, const ScRefCellValue& rCell );
+    double GetCellValueOrZero( const ScAddress&, const ScRefCellValue& rCell );
     double GetValueCellValue( const ScAddress&, double fOrig );
-    void GetCellString( svl::SharedString& rStr, ScRefCellValue& rCell );
+    void GetCellString( svl::SharedString& rStr, const ScRefCellValue& rCell );
     static FormulaError GetCellErrCode( const ScRefCellValue& rCell );
 
     bool CreateDoubleArr(SCCOL nCol1, SCROW nRow1, SCTAB nTab1,
@@ -422,6 +489,7 @@ private:
     double GetDouble();
     double GetDoubleWithDefault(double nDefault);
     bool IsMissing() const;
+    template <typename Int> requires std::is_integral_v<Int> Int double_to(double fVal);
     sal_Int32 double_to_int32(double fVal);
     /** if GetDouble() not within int32 limits sets nGlobalError and returns SAL_MAX_INT32 */
     sal_Int32 GetInt32();
@@ -431,9 +499,11 @@ private:
     sal_Int32 GetFloor32();
     /** if GetDouble() not within int16 limits sets nGlobalError and returns SAL_MAX_INT16 */
     sal_Int16 GetInt16();
+    sal_Int16 GetInt16WithDefault(sal_Int16 nDefault);
     /** if GetDouble() not within uint32 limits sets nGlobalError and returns SAL_MAX_UINT32 */
     sal_uInt32 GetUInt32();
     bool GetBool() { return GetDouble() != 0.0; }
+    bool GetBoolWithDefault(bool bDefault);
     /// returns TRUE if double (or error, check nGlobalError), else FALSE
     bool GetDoubleOrString( double& rValue, svl::SharedString& rString );
     svl::SharedString GetString();
@@ -448,6 +518,12 @@ private:
     ScMatrixRef GetMatrix();
     ScMatrixRef GetMatrix( short & rParam, size_t & rInRefList );
     sc::RangeMatrix GetRangeMatrix();
+
+    // Get tokens at specific parameters for LET (lambda) function
+    static void replaceNamesToResult( const std::unordered_map<OUString, formula::FormulaToken*>& rResultIndexes,
+        ScTokenArray& rTokens, short nStartPos, short nEndPos );
+    ScTokenArray checkPushTokens( const ScTokenArray& rTokens,
+        short nStartPos, short nEndPos );
 
     void ScTableOp();                                       // repeated operations
 
@@ -485,10 +561,11 @@ private:
     // Set error according to rVal, and set rVal to 0.0 if there was an error.
     inline void TreatDoubleError( double& rVal );
     // Lookup using ScLookupCache, @returns true if found and result address
-    bool LookupQueryWithCache( ScAddress & o_rResultPos,
-            const ScQueryParam & rParam, const ScComplexRefData* refData ) const;
+    bool LookupQueryWithCache( ScAddress & o_rResultPos, const ScQueryParam & rParam,
+            const ScComplexRefData* refData, LookupSearchMode nSearchMode, sal_uInt16 nOpCode ) const;
 
     void ScIfJump();
+    void ScIfJumpNotMatrix( const short* pJump, short nJumpCount );
     void ScIfError( bool bNAonly );
     void ScChooseJump();
 
@@ -496,6 +573,24 @@ private:
     // ScJumpMatrixToken, no further checks are applied!
     // Returns true if last jump was executed and result matrix pushed.
     bool JumpMatrix( short nStackLevel );
+
+    // Advance sort
+    static void DecoladeRow(ScSortInfoArray* pArray, SCROW nRow1, SCROW nRow2);
+
+    std::unique_ptr<ScSortInfoArray> CreateFastSortInfoArray(
+        const ScSortParam& rSortParam, bool bMatrix, SCCOLROW nInd1, SCCOLROW nInd2);
+    std::vector<SCCOLROW> GetSortOrder(const ScSortParam& rSortParam, const ScMatrixRef& pMatSrc);
+    ScMatrixRef CreateSortedMatrix(const ScSortParam& rSortParam, const ScMatrixRef& pMatSrc,
+        const ScRange& rSourceRange, const std::vector<SCCOLROW>& rSortArray, SCSIZE nsC, SCSIZE nsR);
+
+    void QuickSort(ScSortInfoArray* pArray, const ScMatrixRef& pMatSrc, SCCOLROW nLo, SCCOLROW nHi);
+
+    short Compare(ScSortInfoArray* pArray, const ScMatrixRef& pMatSrc, SCCOLROW nIndex1, SCCOLROW nIndex2) const;
+    short CompareCell( sal_uInt16 nSort,
+        ScRefCellValue& rCell1, ScRefCellValue& rCell2 ) const;
+    short CompareMatrixCell( const ScMatrixRef& pMatSrc, sal_uInt16 nSort, SCCOL nCell1Col, SCROW nCell1Row,
+        SCCOL nCell2Col, SCROW nCell2Row ) const;
+    // Advance sort end
 
     double Compare( ScQueryOp eOp );
     /** @param pOptions
@@ -521,6 +616,7 @@ private:
     void ScPi();
     void ScRandom();
     void ScRandbetween();
+    void ScRandArray();
     void ScRandomImpl( const std::function<double( double fFirst, double fLast )>& RandomFunc,
             double fFirst, double fLast );
     void ScTrue();
@@ -616,6 +712,7 @@ private:
     void ScRow();
     void ScSheet();
     void ScMatch();
+    void ScXMatch();
     void IterateParametersIf( ScIterFuncIf );
     void ScCountIf();
     void ScSumIf();
@@ -628,8 +725,37 @@ private:
     void ScLookup();
     void ScHLookup();
     void ScVLookup();
+    void ScXLookup();
+    void ScFilter();
+    void ScSort();
+    void ScSortBy();
+    void ScChooseCols();
+    void ScChooseRows();
+    void ScDrop();
+    void ScExpand();
+    void ScHStack();
+    void ScVStack();
+    void ScTake();
+    void ScTextAfter();
+    void ScTextBefore();
+    void ScTextSplit();
+    void ScToCol();
+    void ScToRow();
+    void ScUnique();
+    void ScLet();
     void ScSubTotal();
+    void ScWrapCols();
+    void ScWrapRows();
 
+private:
+    void ScTextBeforeOrAfter(bool bBefore);
+    void ScChooseColsOrRows(bool bCols);
+    void ScToColOrRow(bool bCol);
+    void ScWrapColsOrRows(bool bCols);
+    void ScTakeOrDrop(bool bTake);
+    void ScHorizontalOrVerticalStack(bool bHorizontal);
+
+public:
     // If upon call rMissingField==true then the database field parameter may be
     // missing (Xcl DCOUNT() syntax), or may be faked as missing by having the
     // value 0.0 or being exactly the entire database range reference (old SO
@@ -720,9 +846,9 @@ private:
     void ScGetIsoWeekOfYear();
     void ScWeeknumOOo();
     void ScEasterSunday();
-    FormulaError GetWeekendAndHolidayMasks( const sal_uInt8 nParamCount, const sal_uInt32 nNullDate,
+    FormulaError GetWeekendAndHolidayMasks( const sal_uInt8 nParamCount, const sal_Int32 nNullDate,
             ::std::vector<double>& rSortArray, bool bWeekendMask[ 7 ] );
-    FormulaError GetWeekendAndHolidayMasks_MS( const sal_uInt8 nParamCount, const sal_uInt32 nNullDate,
+    FormulaError GetWeekendAndHolidayMasks_MS( const sal_uInt8 nParamCount, const sal_Int32 nNullDate,
             ::std::vector<double>& rSortArray, bool bWeekendMask[ 7 ], bool bWorkdayFunction );
     static inline sal_Int16 GetDayOfWeek( sal_Int32 n );
     void ScNetWorkdays( bool bOOXML_Version );
@@ -820,6 +946,7 @@ private:
     void ScMatDet();
     void ScMatInv();
     void ScMatMult();
+    void ScMatSequence();
     void ScMatTrans();
     void ScEMat();
     void ScMatRef();
@@ -873,7 +1000,7 @@ private:
     double GetFDist(double x, double fF1, double fF2);
     double GetTDist( double T, double fDF, int nType );
     double Fakultaet(double x);
-    static double BinomKoeff(double n, double k);
+    static double BinomCoeff(double n, double k);
     double GetGamma(double x);
     static double GetLogGamma(double x);
     double GetBeta(double fAlpha, double fBeta);
@@ -1004,6 +1131,9 @@ public:
     // Resets the interpreter object, allowing reuse of interpreter object for each cell
     // in the group.
     void Init( ScFormulaCell* pCell, const ScAddress& rPos, ScTokenArray& rTokArray );
+    // Used only for threaded formula-groups.
+    // Drops any caches that contain Tokens
+    void DropTokenCaches();
 
     formula::StackVar Interpret();
 
@@ -1060,12 +1190,9 @@ inline bool ScInterpreter::MustHaveParamCount( short nAct, short nMust )
 
 inline bool ScInterpreter::MustHaveParamCount( short nAct, short nMust, short nMax )
 {
-    if ( nMust <= nAct && nAct <= nMax )
-        return true;
-    if ( nAct < nMust )
-        PushParameterExpected();
-    else
-        PushIllegalParameter();
+    if (nAct <= nMax)
+        return MustHaveParamCountMin(nAct, nMust);
+    PushIllegalParameter();
     return false;
 }
 

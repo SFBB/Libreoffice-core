@@ -39,7 +39,6 @@
 #include "tablecolumns.hxx"
 #include "tableundo.hxx"
 #include <o3tl/safeint.hxx>
-#include <sdr/properties/cellproperties.hxx>
 #include <svx/svdotable.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/strings.hrc>
@@ -95,8 +94,7 @@ template< class Vec, class Iter, class Entry > static sal_Int32 insert_range( Ve
 
 
 TableModel::TableModel( SdrTableObj* pTableObj )
-: TableModelBase( m_aMutex  )
-, mpTableObj( pTableObj )
+: mpTableObj( pTableObj )
 , mbModified( false )
 , mbNotifyPending( false )
 , mnNotifyLock( 0 )
@@ -104,8 +102,7 @@ TableModel::TableModel( SdrTableObj* pTableObj )
 }
 
 TableModel::TableModel( SdrTableObj* pTableObj, const TableModelRef& xSourceTable )
-: TableModelBase( m_aMutex  )
-, mpTableObj( pTableObj )
+: mpTableObj( pTableObj )
 , mbModified( false )
 , mbNotifyPending( false )
 , mnNotifyLock( 0 )
@@ -312,15 +309,6 @@ std::vector<sal_Int32> TableModel::getColumnWidths()
     return aRet;
 }
 
-// XComponent
-
-
-void TableModel::dispose()
-{
-    ::SolarMutexGuard aGuard;
-    TableModelBase::dispose();
-}
-
 
 // XModifiable
 
@@ -348,13 +336,15 @@ void SAL_CALL TableModel::setModified( sal_Bool bModified )
 
 void SAL_CALL TableModel::addModifyListener( const uno::Reference<util::XModifyListener>& xListener )
 {
-    rBHelper.addListener( cppu::UnoType<util::XModifyListener>::get() , xListener );
+    std::unique_lock aGuard(m_aMutex);
+    maModifyListeners.addInterface( aGuard, xListener );
 }
 
 
 void SAL_CALL TableModel::removeModifyListener( const uno::Reference<util::XModifyListener>& xListener )
 {
-    rBHelper.removeListener( cppu::UnoType<util::XModifyListener>::get() , xListener );
+    std::unique_lock aGuard(m_aMutex);
+    maModifyListeners.removeInterface( aGuard, xListener );
 }
 
 
@@ -388,11 +378,17 @@ uno::Reference<css::table::XCell> SAL_CALL TableModel::getCellByPosition( sal_In
 {
     ::SolarMutexGuard aGuard;
 
-    CellRef xCell( getCell( nColumn, nRow ) );
-    if( xCell.is() )
-        return xCell;
+    sal_Int32 nRowCount = getRowCountImpl();
+    if( nRow < 0 || nRow >= nRowCount )
+        throw lang::IndexOutOfBoundsException(OUString::Concat("row ") + OUString::number(nRow)
+                    + " out of range 0.." + OUString::number(nRowCount));
 
-    throw lang::IndexOutOfBoundsException();
+    sal_Int32 nColCount = getColumnCountImpl();
+    if( nColumn < 0 || nColumn >= nColCount )
+        throw lang::IndexOutOfBoundsException(OUString::Concat("col ") + OUString::number(nColumn)
+                    + " out of range 0.." + OUString::number(nColCount));
+
+    return maRows[nRow]->maCells[nColumn];
 }
 
 
@@ -487,8 +483,11 @@ sal_Int32 TableModel::getColumnCountImpl() const
 }
 
 
-void TableModel::disposing()
+void TableModel::disposing(std::unique_lock<std::mutex>& rGuard)
 {
+    rGuard.unlock(); // do not hold this while taking solar mutex
+    ::SolarMutexGuard aGuard;
+
     if( !maRows.empty() )
     {
         for( auto& rpRow : maRows )
@@ -516,6 +515,8 @@ void TableModel::disposing()
     }
 
     mpTableObj = nullptr;
+
+    rGuard.lock();
 }
 
 
@@ -544,18 +545,14 @@ void TableModel::unlockBroadcasts()
 
 void TableModel::notifyModification()
 {
-    ::osl::MutexGuard guard( m_aMutex );
     if( (mnNotifyLock == 0) && mpTableObj )
     {
         mbNotifyPending = false;
 
-        ::cppu::OInterfaceContainerHelper * pModifyListeners = rBHelper.getContainer( cppu::UnoType<util::XModifyListener>::get() );
-        if( pModifyListeners )
-        {
-            lang::EventObject aSource;
-            aSource.Source = getXWeak();
-            pModifyListeners->notifyEach(&util::XModifyListener::modified, aSource);
-        }
+        lang::EventObject aSource;
+        aSource.Source = getXWeak();
+        std::unique_lock aGuard(m_aMutex);
+        maModifyListeners.notifyEach(aGuard, &util::XModifyListener::modified, aSource);
     }
     else
     {
@@ -607,7 +604,7 @@ void TableModel::insertColumns( sal_Int32 nIndex, sal_Int32 nCount )
         {
             TableColumnRef xNewCol( new TableColumn( this, nIndex+nOffset ) );
             maColumns[nIndex+nOffset] = xNewCol;
-            aNewColumns[nOffset] = xNewCol;
+            aNewColumns[nOffset] = std::move(xNewCol);
         }
 
         const bool bUndo(mpTableObj->IsInserted() && rModel.IsUndoEnabled());
@@ -797,7 +794,7 @@ void TableModel::insertRows( sal_Int32 nIndex, sal_Int32 nCount )
         {
             TableRowRef xNewRow( new TableRow( this, nIndex+nOffset, nColCount ) );
             maRows[nIndex+nOffset] = xNewRow;
-            aNewRows[nOffset] = xNewRow;
+            aNewRows[nOffset] = std::move(xNewRow);
         }
 
         if( bUndo )
@@ -1059,7 +1056,7 @@ void TableModel::merge( sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nColSpan, sal_
     }
 
     // merge first cell
-    CellRef xOriginCell( dynamic_cast< Cell* >( getCellByPosition( nCol, nRow ).get() ) );
+    CellRef xOriginCell( getCell( nCol, nRow ) );
     if(!xOriginCell.is())
         return;
 
@@ -1074,7 +1071,7 @@ void TableModel::merge( sal_Int32 nCol, sal_Int32 nRow, sal_Int32 nColSpan, sal_
     {
         for( ; nTempCol < nLastCol; nTempCol++ )
         {
-            CellRef xCell( dynamic_cast< Cell* >( getCellByPosition( nTempCol, nRow ).get() ) );
+            CellRef xCell( getCell( nTempCol, nRow ) );
             if( xCell.is() && !xCell->isMerged() )
             {
                 if( bUndo )

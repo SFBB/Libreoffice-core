@@ -99,13 +99,12 @@ void lclAppendToParentEntry(const std::unique_ptr<weld::TreeView>& rTree,
 }
 
 // append a root entry to a input TreeView
-OUString lclAppend(const std::unique_ptr<weld::TreeView>& rTree, DocumentModelTreeEntry* pEntry)
+void lclAppend(const std::unique_ptr<weld::TreeView>& rTree, DocumentModelTreeEntry* pEntry)
 {
     OUString sId(weld::toId(pEntry));
     OUString const& rString = pEntry->getString();
     rTree->insert(nullptr, -1, &rString, &sId, nullptr, nullptr, pEntry->shouldShowExpander(),
                   nullptr);
-    return sId;
 }
 
 /** Entry that represents a object, which implements a XNameAccess */
@@ -799,14 +798,14 @@ void DocumentModelTreeHandler::inspectDocument()
 
     lclAppend(mpDocumentModelTree, new DocumentRootEntry(SfxResId(STR_DOCUMENT_ENTRY), mxDocument));
 
-    if (xDocumentServiceInfo->supportsService("com.sun.star.sheet.SpreadsheetDocument"))
+    if (xDocumentServiceInfo->supportsService(u"com.sun.star.sheet.SpreadsheetDocument"_ustr))
     {
         lclAppend(mpDocumentModelTree, new SheetsEntry(SfxResId(STR_SHEETS_ENTRY), mxDocument));
         lclAppend(mpDocumentModelTree,
                   new StylesFamiliesEntry(SfxResId(STR_STYLES_ENTRY), mxDocument));
     }
     else if (xDocumentServiceInfo->supportsService(
-                 "com.sun.star.presentation.PresentationDocument"))
+                 u"com.sun.star.presentation.PresentationDocument"_ustr))
     {
         lclAppend(mpDocumentModelTree, new SlidesEntry(SfxResId(STR_SLIDES_ENTRY), mxDocument));
         lclAppend(mpDocumentModelTree,
@@ -814,14 +813,14 @@ void DocumentModelTreeHandler::inspectDocument()
         lclAppend(mpDocumentModelTree,
                   new StylesFamiliesEntry(SfxResId(STR_STYLES_ENTRY), mxDocument));
     }
-    else if (xDocumentServiceInfo->supportsService("com.sun.star.drawing.DrawingDocument"))
+    else if (xDocumentServiceInfo->supportsService(u"com.sun.star.drawing.DrawingDocument"_ustr))
     {
         lclAppend(mpDocumentModelTree, new PagesEntry(SfxResId(STR_PAGES_ENTRY), mxDocument));
         lclAppend(mpDocumentModelTree,
                   new StylesFamiliesEntry(SfxResId(STR_STYLES_ENTRY), mxDocument));
     }
-    else if (xDocumentServiceInfo->supportsService("com.sun.star.text.TextDocument")
-             || xDocumentServiceInfo->supportsService("com.sun.star.text.WebDocument"))
+    else if (xDocumentServiceInfo->supportsService(u"com.sun.star.text.TextDocument"_ustr)
+             || xDocumentServiceInfo->supportsService(u"com.sun.star.text.WebDocument"_ustr))
     {
         lclAppend(mpDocumentModelTree,
                   new ParagraphsEntry(SfxResId(STR_PARAGRAPHS_ENTRY), mxDocument));

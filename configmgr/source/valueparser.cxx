@@ -25,6 +25,8 @@
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <comphelper/sequence.hxx>
+#include <o3tl/string_view.hxx>
+#include <o3tl/numeric.hxx>
 #include <rtl/math.h>
 #include <rtl/string.h>
 #include <rtl/string.hxx>
@@ -46,21 +48,14 @@ namespace configmgr {
 
 namespace {
 
-bool parseHexDigit(char c, int * value) {
+bool parseHexDigit(char c, int * value)
+{
     assert(value != nullptr);
-    if (c >= '0' && c <= '9') {
-        *value = c - '0';
-        return true;
-    }
-    if (c >= 'A' && c <= 'F') {
-        *value = c - 'A' + 10;
-        return true;
-    }
-    if (c >= 'a' && c <= 'f') {
-        *value = c - 'a' + 10;
-        return true;
-    }
-    return false;
+    int converted = o3tl::convertToHex<int>(c);
+    if (converted < 0)
+        return false;
+    *value = converted;
+    return true;
 }
 
 bool parseValue(xmlreader::Span const & text, sal_Bool * value) {
@@ -79,16 +74,21 @@ bool parseValue(xmlreader::Span const & text, sal_Bool * value) {
 bool parseValue(xmlreader::Span const & text, sal_Int16 * value) {
     assert(text.is() && value != nullptr);
     // For backwards compatibility, support hexadecimal values:
-    sal_Int32 n =
+    bool bStartWithHexPrefix =
         rtl_str_shortenedCompareIgnoreAsciiCase_WithLength(
             text.begin, text.length, RTL_CONSTASCII_STRINGPARAM("0X"),
-            RTL_CONSTASCII_LENGTH("0X")) == 0 ?
-        static_cast< sal_Int32 >(
-            OString(
+            RTL_CONSTASCII_LENGTH("0X")) == 0;
+    sal_Int32 n;
+    if (bStartWithHexPrefix)
+    {
+        std::string_view sView(
                 text.begin + RTL_CONSTASCII_LENGTH("0X"),
-                text.length - RTL_CONSTASCII_LENGTH("0X")).toUInt32(16)) :
-        OString(text.begin, text.length).toInt32();
-        //TODO: check valid lexical representation
+                text.length - RTL_CONSTASCII_LENGTH("0X"));
+        n = o3tl::toUInt32(sView, 16);
+    }
+    else
+        n = o3tl::toInt32(std::string_view(text.begin, text.length));
+    //TODO: check valid lexical representation
     if (n >= SAL_MIN_INT16 && n <= SAL_MAX_INT16) {
         *value = static_cast< sal_Int16 >(n);
         return true;
@@ -99,32 +99,41 @@ bool parseValue(xmlreader::Span const & text, sal_Int16 * value) {
 bool parseValue(xmlreader::Span const & text, sal_Int32 * value) {
     assert(text.is() && value != nullptr);
     // For backwards compatibility, support hexadecimal values:
-    *value =
-        rtl_str_shortenedCompareIgnoreAsciiCase_WithLength(
+    bool bStartWithHexPrefix = rtl_str_shortenedCompareIgnoreAsciiCase_WithLength(
             text.begin, text.length, RTL_CONSTASCII_STRINGPARAM("0X"),
-            RTL_CONSTASCII_LENGTH("0X")) == 0 ?
-        static_cast< sal_Int32 >(
-            OString(
-                text.begin + RTL_CONSTASCII_LENGTH("0X"),
-                text.length - RTL_CONSTASCII_LENGTH("0X")).toUInt32(16)) :
-        OString(text.begin, text.length).toInt32();
-        //TODO: check valid lexical representation
+            RTL_CONSTASCII_LENGTH("0X")) == 0;
+
+    if (bStartWithHexPrefix)
+    {
+        std::string_view sView(text.begin + RTL_CONSTASCII_LENGTH("0X"),
+                text.length - RTL_CONSTASCII_LENGTH("0X"));
+        *value = static_cast< sal_Int32 >(o3tl::toUInt32(sView, 16));
+    }
+    else
+    {
+        std::string_view sView(text.begin, text.length);
+        *value = o3tl::toInt32(sView);
+    }
+    //TODO: check valid lexical representation
     return true;
 }
 
 bool parseValue(xmlreader::Span const & text, sal_Int64 * value) {
     assert(text.is() && value != nullptr);
     // For backwards compatibility, support hexadecimal values:
-    *value =
+    bool bStartWithHexPrefix =
         rtl_str_shortenedCompareIgnoreAsciiCase_WithLength(
             text.begin, text.length, RTL_CONSTASCII_STRINGPARAM("0X"),
-            RTL_CONSTASCII_LENGTH("0X")) == 0 ?
-        static_cast< sal_Int64 >(
-            OString(
+            RTL_CONSTASCII_LENGTH("0X")) == 0;
+    if (bStartWithHexPrefix)
+    {
+        OString sSuffix(
                 text.begin + RTL_CONSTASCII_LENGTH("0X"),
-                text.length - RTL_CONSTASCII_LENGTH("0X")).toUInt64(16)) :
-        OString(text.begin, text.length).toInt64();
-        //TODO: check valid lexical representation
+                text.length - RTL_CONSTASCII_LENGTH("0X"));
+        *value = static_cast< sal_Int64 >(sSuffix.toUInt64(16));
+    }
+    else *value = o3tl::toInt64(std::string_view(text.begin, text.length));
+    //TODO: check valid lexical representation
     return true;
 }
 
@@ -169,7 +178,7 @@ template< typename T > css::uno::Any parseSingleValue(
 {
     T val;
     if (!parseValue(text, &val)) {
-        throw css::uno::RuntimeException("invalid value");
+        throw css::uno::RuntimeException(u"invalid value"_ustr);
     }
     return css::uno::Any(val);
 }
@@ -186,13 +195,14 @@ template< typename T > css::uno::Any parseListValue(
     }
     if (text.length != 0) {
         for (xmlreader::Span t(text);;) {
+            // coverity[ tainted_data_return : FALSE ] version 2023.12.2
             sal_Int32 i = rtl_str_indexOfStr_WithLength(
                 t.begin, t.length, sep.begin, sep.length);
             T val;
             if (!parseValue(
                     xmlreader::Span(t.begin, i == -1 ? t.length : i), &val))
             {
-                throw css::uno::RuntimeException("invalid value");
+                throw css::uno::RuntimeException(u"invalid value"_ustr);
             }
             seq.push_back(val);
             if (i < 0) {
@@ -210,7 +220,7 @@ css::uno::Any parseValue(
 {
     switch (type) {
     case TYPE_ANY:
-        throw css::uno::RuntimeException("invalid value of type any");
+        throw css::uno::RuntimeException(u"invalid value of type any"_ustr);
     case TYPE_BOOLEAN:
         return parseSingleValue< sal_Bool >(text);
     case TYPE_SHORT:
@@ -242,7 +252,7 @@ css::uno::Any parseValue(
             separator, text);
     default:
         assert(false);
-        throw css::uno::RuntimeException("this cannot happen");
+        throw css::uno::RuntimeException(u"this cannot happen"_ustr);
     }
 }
 

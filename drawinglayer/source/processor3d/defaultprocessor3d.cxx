@@ -154,13 +154,9 @@ namespace drawinglayer::processor3d
 
             // set created texture
             if(bTransparence)
-            {
-                mpTransparenceGeoTexSvx = pNewTex;
-            }
+                mpTransparenceGeoTexSvx = std::move(pNewTex);
             else
-            {
-                mpGeoTexSvx = pNewTex;
-            }
+                mpGeoTexSvx = std::move(pNewTex);
 
             // process sub-list
             process(rSubSequence);
@@ -172,11 +168,11 @@ namespace drawinglayer::processor3d
 
             if(bTransparence)
             {
-                mpTransparenceGeoTexSvx = pOldTex;
+                mpTransparenceGeoTexSvx = std::move(pOldTex);
             }
             else
             {
-                mpGeoTexSvx = pOldTex;
+                mpGeoTexSvx = std::move(pOldTex);
             }
         }
 
@@ -190,7 +186,7 @@ namespace drawinglayer::processor3d
             // rescue values
             const bool bOldModulate(getModulate()); mbModulate = rPrimitive.getModulate();
             const bool bOldFilter(getFilter()); mbFilter = rPrimitive.getFilter();
-            std::shared_ptr< texture::GeoTexSvx > pOldTex = mpGeoTexSvx;
+            std::shared_ptr<texture::GeoTexSvx> xOldTex(mpGeoTexSvx);
 
             // calculate logic pixel size in object coordinates. Create transformation view
             // to object by inverting ObjectToView
@@ -218,7 +214,7 @@ namespace drawinglayer::processor3d
             // restore values
             mbModulate = bOldModulate;
             mbFilter = bOldFilter;
-            mpGeoTexSvx = pOldTex;
+            mpGeoTexSvx = std::move(xOldTex);
         }
 
         void DefaultProcessor3D::impRenderBitmapTexturePrimitive3D(const primitive3d::BitmapTexturePrimitive3D& rPrimitive)
@@ -250,7 +246,7 @@ namespace drawinglayer::processor3d
             {
                 mpGeoTexSvx =
                     std::make_shared<texture::GeoTexSvxBitmapExTiled>(
-                        aBitmapEx,
+                        Bitmap(aBitmapEx),
                         aGraphicRange,
                         rFillGraphicAttribute.getOffsetX(),
                         rFillGraphicAttribute.getOffsetY());
@@ -259,7 +255,7 @@ namespace drawinglayer::processor3d
             {
                 mpGeoTexSvx =
                     std::make_shared<texture::GeoTexSvxBitmapEx>(
-                        aBitmapEx,
+                        Bitmap(aBitmapEx),
                         aGraphicRange);
             }
 
@@ -269,7 +265,7 @@ namespace drawinglayer::processor3d
             // restore values
             mbModulate = bOldModulate;
             mbFilter = bOldFilter;
-            mpGeoTexSvx = pOldTex;
+            mpGeoTexSvx = std::move(pOldTex);
         }
 
         void DefaultProcessor3D::impRenderModifiedColorPrimitive3D(const primitive3d::ModifiedColorPrimitive3D& rModifiedCandidate)
@@ -465,13 +461,13 @@ namespace drawinglayer::processor3d
                 aLastViewInformation3D.getDeviceToView(),
                 aLastViewInformation3D.getViewTime(),
                 aLastViewInformation3D.getExtendedInformationSequence());
-            updateViewInformation(aNewViewInformation3D);
+            setViewInformation3D(aNewViewInformation3D);
 
             // let break down recursively
             process(rTransformCandidate.getChildren());
 
             // restore transformations
-            updateViewInformation(aLastViewInformation3D);
+            setViewInformation3D(aLastViewInformation3D);
         }
 
         void DefaultProcessor3D::processBasePrimitive3D(const primitive3d::BasePrimitive3D& rBasePrimitive)

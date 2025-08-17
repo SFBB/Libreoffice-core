@@ -85,8 +85,24 @@
 #include <docmodel/theme/Theme.hxx>
 #include <svx/svdpage.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <fmtfsize.hxx>
+#include <names.hxx>
+#include <svl/ptitem.hxx>
+#include <editeng/sizeitem.hxx>
+#include <editeng/ulspitem.hxx>
 
 using namespace ::com::sun::star;
+
+static OutlinerView* lcl_GetPostItOutlinerView(SwWrtShell& rShell)
+{
+    SwPostItMgr* pPostItMgr = rShell.GetPostItMgr();
+    if (!pPostItMgr)
+        return nullptr;
+    sw::annotation::SwAnnotationWin* pWin = pPostItMgr->GetActiveSidebarWin();
+    if (!pWin)
+        return nullptr;
+    return pWin->GetOutlinerView();
+}
 
 void  SwDocShell::StateStyleSheet(SfxItemSet& rSet, SwWrtShell* pSh)
 {
@@ -118,8 +134,8 @@ void  SwDocShell::StateStyleSheet(SfxItemSet& rSet, SwWrtShell* pSh)
     while (nWhich)
     {
         // determine current template to every family
-        OUString aName;
-        SwTableAutoFormat aTableAutoFormat("dummy"); // needed to check if can take a table auto format at current cursor position
+        UIName aName;
+        SwTableAutoFormat aTableAutoFormat(TableStyleName(u"dummy"_ustr)); // needed to check if can take a table auto format at current cursor position
         switch (nWhich)
         {
             case SID_STYLE_APPLY:
@@ -133,9 +149,9 @@ void  SwDocShell::StateStyleSheet(SfxItemSet& rSet, SwWrtShell* pSh)
                 }
                 else if (pShell->GetSelectionType() == SelectionType::PostIt)
                 {
-                    auto pStyle = pShell->GetPostItMgr()->GetActiveSidebarWin()->GetOutlinerView()->GetStyleSheet();
-                    if (pStyle)
-                        aName = pStyle->GetName();
+                    OutlinerView *pOLV = lcl_GetPostItOutlinerView(*pShell);
+                    if (SfxStyleSheetBase* pStyle = pOLV ? pOLV->GetStyleSheet() : nullptr)
+                        aName = UIName(pStyle->GetName());
                 }
                 else
                 {
@@ -143,7 +159,7 @@ void  SwDocShell::StateStyleSheet(SfxItemSet& rSet, SwWrtShell* pSh)
                     if(pColl)
                         aName = pColl->GetName();
                 }
-                rSet.Put(SfxTemplateItem(nWhich, aName));
+                rSet.Put(SfxTemplateItem(nWhich, aName.toString()));
             }
             break;
             case SID_STYLE_FAMILY1:
@@ -153,20 +169,21 @@ void  SwDocShell::StateStyleSheet(SfxItemSet& rSet, SwWrtShell* pSh)
                     if(pFormat)
                         aName = pFormat->GetName();
                     else
-                        aName = SwResId(STR_POOLCHR_STANDARD);
-                    rSet.Put(SfxTemplateItem(nWhich, aName));
+                        aName = UIName(SwResId(STR_POOLCHR_STANDARD));
+                    rSet.Put(SfxTemplateItem(nWhich, aName.toString()));
                 }
                 break;
 
             case SID_STYLE_FAMILY2:
                 if(!pShell->IsFrameSelected())
                 {
-                    OUString aProgName;
+                    ProgName aProgName;
                     if (pShell->GetSelectionType() == SelectionType::PostIt)
                     {
-                        if (auto pStyle = pShell->GetPostItMgr()->GetActiveSidebarWin()->GetOutlinerView()->GetStyleSheet())
+                        OutlinerView *pOLV = lcl_GetPostItOutlinerView(*pShell);
+                        if (SfxStyleSheetBase* pStyle = pOLV ? pOLV->GetStyleSheet() : nullptr)
                         {
-                            aName = pStyle->GetName();
+                            aName = UIName(pStyle->GetName());
                             aProgName = SwStyleNameMapper::GetProgName(aName, SwGetPoolIdFromName::TxtColl);
                         }
                     }
@@ -177,7 +194,7 @@ void  SwDocShell::StateStyleSheet(SfxItemSet& rSet, SwWrtShell* pSh)
                         SwStyleNameMapper::FillProgName(nId, aProgName);
                     }
 
-                    SfxTemplateItem aItem(nWhich, aName, aProgName);
+                    SfxTemplateItem aItem(nWhich, aName.toString(), aProgName.toString());
 
                     SfxStyleSearchBits nMask = SfxStyleSearchBits::Auto;
                     if (m_xDoc->getIDocumentSettingAccess().get(DocumentSettingId::HTML_MODE))
@@ -214,7 +231,7 @@ void  SwDocShell::StateStyleSheet(SfxItemSet& rSet, SwWrtShell* pSh)
                     if(pFormat && pShell->IsFrameSelected())
                     {
                         aName = pFormat->GetName();
-                        rSet.Put(SfxTemplateItem(nWhich, aName));
+                        rSet.Put(SfxTemplateItem(nWhich, aName.toString()));
                     }
                 }
                 break;
@@ -229,7 +246,7 @@ void  SwDocShell::StateStyleSheet(SfxItemSet& rSet, SwWrtShell* pSh)
                     if( n < pShell->GetPageDescCnt() )
                         aName = pShell->GetPageDesc( n ).GetName();
 
-                    rSet.Put(SfxTemplateItem(nWhich, aName));
+                    rSet.Put(SfxTemplateItem(nWhich, aName.toString()));
                 }
             }
             break;
@@ -239,16 +256,16 @@ void  SwDocShell::StateStyleSheet(SfxItemSet& rSet, SwWrtShell* pSh)
                     if( pRule )
                         aName = pRule->GetName();
 
-                    rSet.Put(SfxTemplateItem(nWhich, aName));
+                    rSet.Put(SfxTemplateItem(nWhich, aName.toString()));
                 }
                 break;
             case SID_STYLE_FAMILY6:
                 {
                     const SwTableNode *pTableNd = pShell->IsCursorInTable();
                     if( pTableNd )
-                        aName = pTableNd->GetTable().GetTableStyleName();
+                        aName = UIName(pTableNd->GetTable().GetTableStyleName().toString());
 
-                    rSet.Put(SfxTemplateItem(nWhich, aName));
+                    rSet.Put(SfxTemplateItem(nWhich, aName.toString()));
                 }
                 break;
 
@@ -336,7 +353,7 @@ void SwDocShell::ExecStyleSheet( SfxRequest& rReq )
             if (sName.isEmpty() && m_xBasePool)
                 sName = SfxStyleDialogController::GenerateUnusedName(*m_xBasePool, nFamily);
 
-            Edit(rReq.GetFrameWeld(), sName, sParent, nFamily, nMask, true, {}, nullptr, &rReq, nSlot);
+            Edit(rReq.GetFrameWeld(), UIName(sName), UIName(sParent), nFamily, nMask, true, {}, nullptr, &rReq, nSlot);
         }
         break;
 
@@ -362,7 +379,7 @@ void SwDocShell::ExecStyleSheet( SfxRequest& rReq )
                         uno::Reference< beans::XPropertySet > xInfo;
                         xStyles->getByName( pNameItem->GetValue() ) >>= xInfo;
                         OUString aUIName;
-                        xInfo->getPropertyValue("DisplayName") >>= aUIName;
+                        xInfo->getPropertyValue(u"DisplayName"_ustr) >>= aUIName;
                         if ( !aUIName.isEmpty() )
                             rReq.AppendItem( SfxStringItem( SID_STYLE_APPLY, aUIName ) );
                     }
@@ -410,12 +427,12 @@ void SwDocShell::ExecStyleSheet( SfxRequest& rReq )
                     {
                         if (GetWrtShell()->GetSelectionType() == SelectionType::PostIt)
                         {
-                            auto pOLV = GetWrtShell()->GetPostItMgr()->GetActiveSidebarWin()->GetOutlinerView();
-                            if (auto pStyle = pOLV->GetStyleSheet())
+                            OutlinerView *pOLV = lcl_GetPostItOutlinerView(*GetWrtShell());
+                            if (SfxStyleSheetBase* pStyle = pOLV ? pOLV->GetStyleSheet() : nullptr)
                                 aParam = pStyle->GetName();
                         }
                         else if (auto pColl = GetWrtShell()->GetCurTextFormatColl())
-                            aParam = pColl->GetName();
+                            aParam = pColl->GetName().toString();
 
                         if (!aParam.isEmpty())
                             rReq.AppendItem(SfxStringItem(nSlot, aParam));
@@ -471,21 +488,21 @@ void SwDocShell::ExecStyleSheet( SfxRequest& rReq )
                         {
                             SwTextFormatColl* pColl = pShell->GetCurTextFormatColl();
                             if(pColl)
-                                aParam = pColl->GetName();
+                                aParam = pColl->GetName().toString();
                         }
                         break;
                         case SfxStyleFamily::Frame:
                         {
                             SwFrameFormat* pFrame = m_pWrtShell->GetSelectedFrameFormat();
                             if( pFrame )
-                                aParam = pFrame->GetName();
+                                aParam = pFrame->GetName().toString();
                         }
                         break;
                         case SfxStyleFamily::Char:
                         {
                             SwCharFormat* pChar = m_pWrtShell->GetCurCharFormat();
                             if( pChar )
-                                aParam = pChar->GetName();
+                                aParam = pChar->GetName().toString();
                         }
                         break;
                         case SfxStyleFamily::Pseudo:
@@ -514,7 +531,7 @@ void SwDocShell::ExecStyleSheet( SfxRequest& rReq )
                 {
                     case SID_STYLE_EDIT:
                     case SID_STYLE_FONT:
-                        Edit(rReq.GetFrameWeld(), aParam, {}, nFamily, nMask, false, (nSlot == SID_STYLE_FONT) ? "font" : OUString(), pActShell);
+                        Edit(rReq.GetFrameWeld(), UIName(aParam), {}, nFamily, nMask, false, (nSlot == SID_STYLE_FONT) ? u"font"_ustr : OUString(), pActShell);
                         break;
                     case SID_STYLE_DELETE:
                         Delete(aParam, nFamily);
@@ -533,10 +550,10 @@ void SwDocShell::ExecStyleSheet( SfxRequest& rReq )
                         bReturns = true;
                         break;
                     case SID_STYLE_UPDATE_BY_EXAMPLE:
-                        UpdateStyle(aParam, nFamily, pActShell);
+                        UpdateStyle(UIName(aParam), nFamily, pActShell);
                         break;
                     case SID_STYLE_NEW_BY_EXAMPLE:
-                        MakeByExample(aParam, nFamily, nMask, pActShell);
+                        MakeByExample(UIName(aParam), nFamily, nMask, pActShell);
                         break;
 
                     default:
@@ -645,7 +662,7 @@ IMPL_LINK_NOARG(ApplyStyle, ApplyHdl, LinkParamNone*, void)
         if( SfxStyleFamily::Page == m_nFamily && SvtCTLOptions::IsCTLFontEnabled() )
         {
             const SfxPoolItem *pItem = nullptr;
-            if( aTmpSet.GetItemState( m_rDocSh.GetPool().GetTrueWhich( SID_ATTR_FRAMEDIRECTION, false ) , true, &pItem ) == SfxItemState::SET )
+            if( aTmpSet.GetItemState( m_rDocSh.GetPool().GetTrueWhichIDFromSlotID( SID_ATTR_FRAMEDIRECTION, false ) , true, &pItem ) == SfxItemState::SET )
                 SwChartHelper::DoUpdateAllCharts( pDoc );
         }
 
@@ -654,7 +671,7 @@ IMPL_LINK_NOARG(ApplyStyle, ApplyHdl, LinkParamNone*, void)
             if (const SfxGrabBagItem* pGrabBagItem = aTmpSet.GetItemIfSet(SID_ATTR_CHAR_GRABBAG))
             {
                 bool bGutterAtTop{};
-                auto it = pGrabBagItem->GetGrabBag().find("GutterAtTop");
+                auto it = pGrabBagItem->GetGrabBag().find(u"GutterAtTop"_ustr);
                 if (it != pGrabBagItem->GetGrabBag().end())
                 {
                     it->second >>= bGutterAtTop;
@@ -679,7 +696,7 @@ IMPL_LINK_NOARG(ApplyStyle, ApplyHdl, LinkParamNone*, void)
                 aUsrPref.SetKeepRatio(pBoolItem->GetValue());
                 if (pBoolItem->GetValue() != pVOpt->IsKeepRatio())
                 {
-                    SW_MOD()->ApplyUsrPref(aUsrPref, &pWrtShell->GetView());
+                    SwModule::get()->ApplyUsrPref(aUsrPref, &pWrtShell->GetView());
                 }
             }
         }
@@ -700,9 +717,7 @@ IMPL_LINK_NOARG(ApplyStyle, ApplyHdl, LinkParamNone*, void)
     if(SfxStyleFamily::Page == m_nFamily)
         pView->InvalidateRulerPos();
 
-    if( m_bNew )
-        m_xBasePool->Broadcast(SfxStyleSheetHint(SfxHintId::StyleSheetCreated, *m_xTmp));
-    else
+    if( !m_bNew )
         m_xBasePool->Broadcast(SfxStyleSheetHint(SfxHintId::StyleSheetModified, *m_xTmp));
 
     pDoc->getIDocumentState().SetModified();
@@ -731,20 +746,20 @@ void syncEndnoteOrientation(const uno::Reference< style::XStyleFamiliesSupplier 
     if (!xStyleFamilies.is())
         return;
 
-    uno::Reference<container::XNameAccess> xPageStyles(xStyleFamilies->getByName("PageStyles"),
+    uno::Reference<container::XNameAccess> xPageStyles(xStyleFamilies->getByName(u"PageStyles"_ustr),
                                                        uno::UNO_QUERY);
 
     if (!xPageStyles.is())
         return;
 
-    uno::Reference<css::style::XStyle> xEndnotePageStyle(xPageStyles->getByName("Endnote"),
+    uno::Reference<css::style::XStyle> xEndnotePageStyle(xPageStyles->getByName(u"Endnote"_ustr),
                                                   uno::UNO_QUERY);
 
     if (!xEndnotePageStyle.is())
         return;
 
     // Language-independent name of the "Default Style" is "Standard"
-    uno::Reference<css::style::XStyle> xDefaultPageStyle(xPageStyles->getByName("Standard"),
+    uno::Reference<css::style::XStyle> xDefaultPageStyle(xPageStyles->getByName(u"Standard"_ustr),
                                                   uno::UNO_QUERY);
     if (!xDefaultPageStyle.is())
         return;
@@ -752,8 +767,8 @@ void syncEndnoteOrientation(const uno::Reference< style::XStyleFamiliesSupplier 
     if (xEndnotePageStyle->isUserDefined() || !xEndnotePageStyle->isInUse())
         return;
 
-    uno::Reference<beans::XPropertySet> xEndnotePagePropSet(xPageStyles->getByName("Endnote"), uno::UNO_QUERY);
-    uno::Reference<beans::XPropertySet> xDefaultPagePropSet(xPageStyles->getByName("Standard"), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xEndnotePagePropSet(xPageStyles->getByName(u"Endnote"_ustr), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xDefaultPagePropSet(xPageStyles->getByName(u"Standard"_ustr), uno::UNO_QUERY);
 
     if (!xEndnotePagePropSet.is() || !xDefaultPagePropSet.is())
     {
@@ -762,26 +777,26 @@ void syncEndnoteOrientation(const uno::Reference< style::XStyleFamiliesSupplier 
     }
 
     auto const bIsDefLandScape = *o3tl::doAccess<bool>(
-        xDefaultPagePropSet->getPropertyValue("IsLandscape"));
+        xDefaultPagePropSet->getPropertyValue(u"IsLandscape"_ustr));
     auto const bIsEndLandScape = *o3tl::doAccess<bool>(
-        xEndnotePagePropSet->getPropertyValue("IsLandscape"));
+        xEndnotePagePropSet->getPropertyValue(u"IsLandscape"_ustr));
 
     if (bIsDefLandScape == bIsEndLandScape)
         return;
 
-    auto const nWidth = xEndnotePagePropSet->getPropertyValue("Width");
-    auto const nHeight = xEndnotePagePropSet->getPropertyValue("Height");
+    auto const nWidth = xEndnotePagePropSet->getPropertyValue(u"Width"_ustr);
+    auto const nHeight = xEndnotePagePropSet->getPropertyValue(u"Height"_ustr);
 
-    xEndnotePagePropSet->setPropertyValue("IsLandscape", css::uno::toAny(bIsDefLandScape));
-    xEndnotePagePropSet->setPropertyValue("Width", nHeight);
-    xEndnotePagePropSet->setPropertyValue("Height", nWidth);
+    xEndnotePagePropSet->setPropertyValue(u"IsLandscape"_ustr, css::uno::toAny(bIsDefLandScape));
+    xEndnotePagePropSet->setPropertyValue(u"Width"_ustr, nHeight);
+    xEndnotePagePropSet->setPropertyValue(u"Height"_ustr, nWidth);
 }
 }
 
 void SwDocShell::Edit(
     weld::Window* pDialogParent,
-    const OUString &rName,
-    const OUString &rParent,
+    const UIName &rName,
+    const UIName &rParent,
     const SfxStyleFamily nFamily,
     SfxStyleSearchBits nMask,
     const bool bNew,
@@ -812,16 +827,16 @@ void SwDocShell::Edit(
         else
             nMask = SfxStyleSearchBits::UserDefined;
 
-        if ( nFamily == SfxStyleFamily::Para || nFamily == SfxStyleFamily::Char || nFamily == SfxStyleFamily::Frame )
+        if (nFamily == SfxStyleFamily::Para || nFamily == SfxStyleFamily::Char
+            || nFamily == SfxStyleFamily::Frame || nFamily == SfxStyleFamily::Pseudo)
         {
-            // Prevent undo append from being done during paragraph, character, and frame style Make
-            // Do it after ok return from style dialog when derived from style is known
+            // Do Make undo append after an OK return from the style dialog below
             ::sw::UndoGuard const undoGuard(GetDoc()->GetIDocumentUndoRedo());
-            pStyle = &m_xBasePool->Make( rName, nFamily, nMask );
+            pStyle = &m_xBasePool->Make( rName.toString(), nFamily, nMask );
         }
         else
         {
-            pStyle = &m_xBasePool->Make( rName, nFamily, nMask );
+            pStyle = &m_xBasePool->Make( rName.toString(), nFamily, nMask );
         }
 
         // set the current one as Parent
@@ -840,14 +855,14 @@ void SwDocShell::Edit(
                             pColl = m_pWrtShell->GetTextCollFromPool( nId );
                     }
                     pDStyle->GetCollection()->SetDerivedFrom( pColl );
-                    pDStyle->PresetParent( rParent );
+                    pDStyle->PresetParent( rParent.toString() );
                 }
                 else
                 {
                     SwTextFormatColl* pColl = m_pWrtShell->GetCurTextFormatColl();
                     pDStyle->GetCollection()->SetDerivedFrom( pColl );
                     if( pColl )
-                        pDStyle->PresetParent( pColl->GetName() );
+                        pDStyle->PresetParent( pColl->GetName().toString() );
                 }
             }
             break;
@@ -864,14 +879,14 @@ void SwDocShell::Edit(
                     }
 
                     pDStyle->GetCharFormat()->SetDerivedFrom( pCFormat );
-                    pDStyle->PresetParent( rParent );
+                    pDStyle->PresetParent( rParent.toString() );
                 }
                 else
                 {
                     SwCharFormat* pCFormat = m_pWrtShell->GetCurCharFormat();
                     pDStyle->GetCharFormat()->SetDerivedFrom( pCFormat );
                     if( pCFormat )
-                        pDStyle->PresetParent( pCFormat->GetName() );
+                        pDStyle->PresetParent( pCFormat->GetName().toString() );
                 }
             }
             break;
@@ -887,7 +902,7 @@ void SwDocShell::Edit(
                             pFFormat = m_pWrtShell->GetFrameFormatFromPool( nId );
                     }
                     pDStyle->GetFrameFormat()->SetDerivedFrom( pFFormat );
-                    pDStyle->PresetParent( rParent );
+                    pDStyle->PresetParent( rParent.toString() );
                 }
             }
             break;
@@ -903,7 +918,7 @@ void SwDocShell::Edit(
     }
     else
     {
-        pStyle = m_xBasePool->Find( rName, nFamily );
+        pStyle = m_xBasePool->Find( rName.toString(), nFamily );
         SAL_WARN_IF( !pStyle, "sw.ui", "Style not found" );
     }
 
@@ -939,19 +954,13 @@ void SwDocShell::Edit(
         rSet.Put(SvxBitmapListItem(pDrawModel->GetBitmapList(), SID_BITMAP_LIST));
         rSet.Put(SvxPatternListItem(pDrawModel->GetPatternList(), SID_PATTERN_LIST));
 
-        std::optional<SfxGrabBagItem> oGrabBag;
+        std::map<OUString, css::uno::Any> aGrabBagMap;
         if (SfxGrabBagItem const* pItem = rSet.GetItemIfSet(SID_ATTR_CHAR_GRABBAG))
-        {
-            oGrabBag.emplace(*pItem);
-        }
-        else
-        {
-            oGrabBag.emplace(SID_ATTR_CHAR_GRABBAG);
-        }
+            aGrabBagMap = pItem->GetGrabBag();
         bool bGutterAtTop
             = GetDoc()->getIDocumentSettingAccess().get(DocumentSettingId::GUTTER_AT_TOP);
-        oGrabBag->GetGrabBag()["GutterAtTop"] <<= bGutterAtTop;
-        rSet.Put(*oGrabBag);
+        aGrabBagMap[u"GutterAtTop"_ustr] <<= bGutterAtTop;
+        rSet.Put(SfxGrabBagItem(SID_ATTR_CHAR_GRABBAG, std::move(aGrabBagMap)));
     }
 
     SwWrtShell* pCurrShell = pActShell ? pActShell : m_pWrtShell;
@@ -976,7 +985,7 @@ void SwDocShell::Edit(
 
         PutItem(SfxUInt16Item(SID_HTML_MODE, nHtmlMode));
         FieldUnit eMetric = ::GetDfltMetric(0 != (HTMLMODE_ON&nHtmlMode));
-        SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)));
+        SwModule::get()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast<sal_uInt16>(eMetric)));
         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
         if (!pDialogParent)
         {
@@ -1000,7 +1009,9 @@ void SwDocShell::Edit(
                                     && pStyle->IsUsed()
                                     && !pStyle->IsUserDefined();
 
-        pDlg->StartExecuteAsync([bIsDefaultPage, bNew, nFamily, nSlot, nNewStyleUndoId, pApplyStyleHelper, pRequest, xTmp, this](sal_Int32 nResult){
+        pDlg->StartExecuteAsync([bIsDefaultPage, bNew, nFamily, nSlot, nNewStyleUndoId,
+                                 pApplyStyleHelper=std::move(pApplyStyleHelper),
+                                 pRequest=std::move(pRequest), xTmp, this](sal_Int32 nResult){
             if (RET_OK == nResult)
                 pApplyStyleHelper->apply();
 
@@ -1012,7 +1023,7 @@ void SwDocShell::Edit(
                     {
                         if(!xTmp->GetParent().isEmpty())
                         {
-                            SwTextFormatColl* pColl = m_pWrtShell->FindTextFormatCollByName(xTmp->GetParent());
+                            SwTextFormatColl* pColl = m_pWrtShell->FindTextFormatCollByName(UIName(xTmp->GetParent()));
                             if (GetDoc()->GetIDocumentUndoRedo().DoesUndo())
                             {
                                 GetDoc()->GetIDocumentUndoRedo().AppendUndo(
@@ -1025,7 +1036,7 @@ void SwDocShell::Edit(
                     {
                         if(!xTmp->GetParent().isEmpty())
                         {
-                            SwCharFormat* pCFormat = m_pWrtShell->FindCharFormatByName(xTmp->GetParent());
+                            SwCharFormat* pCFormat = m_pWrtShell->FindCharFormatByName(UIName(xTmp->GetParent()));
                             if (GetDoc()->GetIDocumentUndoRedo().DoesUndo())
                             {
                                 GetDoc()->GetIDocumentUndoRedo().AppendUndo(
@@ -1038,12 +1049,22 @@ void SwDocShell::Edit(
                     {
                         if(!xTmp->GetParent().isEmpty())
                         {
-                            SwFrameFormat* pFFormat = m_pWrtShell->GetDoc()->FindFrameFormatByName(xTmp->GetParent());
+                            SwFrameFormat* pFFormat = m_pWrtShell->GetDoc()->FindFrameFormatByName(UIName(xTmp->GetParent()));
                             if (GetDoc()->GetIDocumentUndoRedo().DoesUndo())
                             {
                                 GetDoc()->GetIDocumentUndoRedo().AppendUndo(
                                     std::make_unique<SwUndoFrameFormatCreate>(xTmp->GetFrameFormat(), pFFormat, *GetDoc()));
                             }
+                        }
+                    }
+                    break;
+                    case SfxStyleFamily::Pseudo:
+                    {
+                        if (GetDoc()->GetIDocumentUndoRedo().DoesUndo())
+                        {
+                            GetDoc()->GetIDocumentUndoRedo().AppendUndo(
+                                std::make_unique<SwUndoNumruleCreate>(xTmp->GetNumRule(),
+                                                                      *GetDoc()));
                         }
                     }
                     break;
@@ -1116,9 +1137,6 @@ void SwDocShell::Edit(
         if(SfxStyleFamily::Page == nFamily)
             m_pView->InvalidateRulerPos();
 
-        if( bNew )
-            m_xBasePool->Broadcast(SfxStyleSheetHint(SfxHintId::StyleSheetCreated, *xTmp));
-
         m_xDoc->getIDocumentState().SetModified();
         if( !bModified )        // Bug 57028
         {
@@ -1157,6 +1175,72 @@ void SwDocShell::Hide(const OUString &rName, SfxStyleFamily nFamily, bool bHidde
     }
 }
 
+#define MAX_CHAR_IN_INLINE_HEADING 120
+bool SwDocShell::MakeInlineHeading(SwWrtShell *pSh, SwTextFormatColl* pColl, const sal_uInt16 nMode)
+{
+    // insert an inline heading frame, if only MAX_CHAR_IN_INLINE_HEADING or less
+    // characters are selected beginning of a single paragraph, but not the full paragraph
+    // TODO extend it for multiple selections
+    if ( pSh->IsSelOnePara() && !pSh->IsSelFullPara() && pSh->IsSelStartPara() &&
+            GetView()->GetSelectionText().getLength() < MAX_CHAR_IN_INLINE_HEADING &&
+            0 < GetView()->GetSelectionText().getLength() )
+    {
+        SwTextFormatColl *pLocal = pColl? pColl: (*GetDoc()->GetTextFormatColls())[0];
+        // don't put inline heading in a frame (it would be enough to limit for inline heading
+        // frames, but the recent FN_INSERT_FRAME cannot handle the insertion inside a frame
+        // correctly)
+        // TODO: allow to insert inline headings in a (not an Inline Heading) text frame
+        if ( pSh->GetCursor()->GetPointNode() !=
+                *SwOutlineNodes::GetRootNode( &pSh->GetCursor()->GetPointNode(), /*bInlineHeading=*/false ) )
+        {
+            return false;
+        }
+
+        // put inside a single Undo
+        SwRewriter aRewriter;
+        aRewriter.AddRule(UndoArg1, pLocal->GetName());
+        GetWrtShell()->StartUndo(SwUndoId::SETFMTCOLL, &aRewriter);
+
+        // anchor as character
+        SfxUInt16Item aAnchor(FN_INSERT_FRAME, static_cast<sal_uInt16>(1));
+        SvxSizeItem aSizeItem(FN_PARAM_2, Size(1, 1));
+        GetView()->GetViewFrame().GetDispatcher()->ExecuteList(FN_INSERT_FRAME,
+                SfxCallMode::SYNCHRON|SfxCallMode::RECORD, { &aAnchor, &aSizeItem });
+        if ( pSh->IsFrameSelected() )
+        {
+            // use the associated borderless frame style "Inline Heading"
+            SwDocStyleSheet* pStyle2 = static_cast<SwDocStyleSheet*>(
+                            m_xBasePool->Find( "Inline Heading", SfxStyleFamily::Frame));
+            SAL_WARN_IF( !pStyle2, "sw.ui", "Style not found" );
+            if(pStyle2)
+                pSh->SetFrameFormat( pStyle2->GetFrameFormat() );
+
+            // select the text content of the frame, and apply the paragraph style
+            pSh->UnSelectFrame();
+            pSh->LeaveSelFrameMode();
+            pSh->MoveSection( GoCurrSection, fnSectionEnd );
+            pSh->SelAll();
+
+            pSh->SetTextFormatColl( pColl, true, (nMode & KEY_MOD1) ? SetAttrMode::REMOVE_ALL_ATTR : SetAttrMode::DEFAULT);
+
+            // zero the upper and lower margins of the paragraph (also an interoperability issue)
+            SfxItemSetFixed<RES_UL_SPACE, RES_UL_SPACE> aSet2(pSh->GetAttrPool());
+            pSh->GetCurAttr( aSet2 );
+            SvxULSpaceItem aUL( 0, 0, RES_UL_SPACE );
+            pSh->SetAttrItem( aUL );
+
+            // leave the inline heading frame
+            GetView()->GetViewFrame().GetDispatcher()->Execute(FN_ESCAPE, SfxCallMode::ASYNCHRON);
+            GetView()->GetViewFrame().GetDispatcher()->Execute(FN_ESCAPE, SfxCallMode::ASYNCHRON);
+            GetView()->GetViewFrame().GetDispatcher()->Execute(FN_ESCAPE, SfxCallMode::SYNCHRON);
+
+            GetWrtShell()->EndUndo();
+            return true;
+        }
+    }
+    return false;
+}
+
 // apply template
 SfxStyleFamily SwDocShell::ApplyStyles(const OUString &rName, SfxStyleFamily nFamily,
                                SwWrtShell* pShell, const sal_uInt16 nMode )
@@ -1179,16 +1263,18 @@ SfxStyleFamily SwDocShell::ApplyStyles(const OUString &rName, SfxStyleFamily nFa
         case SfxStyleFamily::Char:
         {
             SwFormatCharFormat aFormat(pStyle->GetCharFormat());
-            pSh->SetAttrItem( aFormat, (nMode & KEY_SHIFT) ?
-                SetAttrMode::DONTREPLACE : SetAttrMode::DEFAULT );
+            SetAttrMode nFlags = (nMode & KEY_SHIFT) ?
+                SetAttrMode::DONTREPLACE : SetAttrMode::DEFAULT;
+            if (nMode & KEY_MOD1)
+                nFlags |= SetAttrMode::REMOVE_ALL_ATTR;
+            pSh->SetAttrItem( aFormat, nFlags );
+
             break;
         }
         case SfxStyleFamily::Para:
         {
-            if (pSh->GetPostItMgr() && pSh->GetPostItMgr()->HasActiveSidebarWin())
-            {
-                pSh->GetPostItMgr()->GetActiveSidebarWin()->GetOutlinerView()->SetStyleSheet(rName);
-            }
+            if (OutlinerView *pOLV = lcl_GetPostItOutlinerView(*pSh))
+                pOLV->SetStyleSheet(rName);
             else
             {
                 // When outline-folding is enabled, MakeAllOutlineContentTemporarilyVisible makes
@@ -1196,10 +1282,17 @@ SfxStyleFamily SwDocShell::ApplyStyles(const OUString &rName, SfxStyleFamily nFa
                 // outline node become folded content of the previous outline node if the previous
                 // outline node's content is folded.
                 MakeAllOutlineContentTemporarilyVisible a(GetDoc());
+
+                // if the first 120 or less characters are selected, but not the full paragraph,
+                // create an inline heading from the selected text
+                SwTextFormatColl* pColl = pStyle->GetCollection();
+                if ( MakeInlineHeading( pSh, pColl, nMode ) )
+                    break;
+
                 // #i62675#
                 // clear also list attributes at affected text nodes, if paragraph
                 // style has the list style attribute set.
-                pSh->SetTextFormatColl( pStyle->GetCollection(), true );
+                pSh->SetTextFormatColl( pColl, true, (nMode & KEY_MOD1) ? SetAttrMode::REMOVE_ALL_ATTR : SetAttrMode::DEFAULT);
             }
             break;
         }
@@ -1231,7 +1324,7 @@ SfxStyleFamily SwDocShell::ApplyStyles(const OUString &rName, SfxStyleFamily nFa
         }
         case SfxStyleFamily::Table:
         {
-            pSh->SetTableStyle(pStyle->GetName());
+            pSh->SetTableStyle(TableStyleName(pStyle->GetName()));
             break;
         }
         default:
@@ -1297,13 +1390,13 @@ SfxStyleFamily SwDocShell::DoWaterCan(const OUString &rName, SfxStyleFamily nFam
 }
 
 // update template
-void SwDocShell::UpdateStyle(const OUString &rName, SfxStyleFamily nFamily, SwWrtShell* pShell)
+void SwDocShell::UpdateStyle(const UIName &rName, SfxStyleFamily nFamily, SwWrtShell* pShell)
 {
     SwWrtShell* pCurrWrtShell = pShell ? pShell : GetWrtShell();
     assert( pCurrWrtShell );
 
     SwDocStyleSheet* pStyle =
-        static_cast<SwDocStyleSheet*>( m_xBasePool->Find(rName, nFamily) );
+        static_cast<SwDocStyleSheet*>( m_xBasePool->Find(rName.toString(), nFamily) );
 
     if (!pStyle)
         return;
@@ -1386,11 +1479,11 @@ void SwDocShell::UpdateStyle(const OUString &rName, SfxStyleFamily nFamily, SwWr
                     pFEShell->TableCursorToCursor();
                 }
             }
-            SwTableAutoFormat aFormat(rName);
+            SwTableAutoFormat aFormat(TableStyleName(rName.toString()));
             if (pCurrWrtShell->GetTableAutoFormat(aFormat))
             {
                 pCurrWrtShell->StartAllAction();
-                pCurrWrtShell->GetDoc()->ChgTableStyle(rName, aFormat);
+                pCurrWrtShell->GetDoc()->ChgTableStyle(TableStyleName(rName.toString()), aFormat);
                 pCurrWrtShell->EndAllAction();
             }
 
@@ -1403,12 +1496,12 @@ void SwDocShell::UpdateStyle(const OUString &rName, SfxStyleFamily nFamily, SwWr
 }
 
 // NewByExample
-void SwDocShell::MakeByExample( const OUString &rName, SfxStyleFamily nFamily,
+void SwDocShell::MakeByExample( const UIName &rName, SfxStyleFamily nFamily,
                                     SfxStyleSearchBits nMask, SwWrtShell* pShell )
 {
     SwWrtShell* pCurrWrtShell = pShell ? pShell : GetWrtShell();
     SwDocStyleSheet* pStyle = static_cast<SwDocStyleSheet*>( m_xBasePool->Find(
-                                            rName, nFamily ) );
+                                            rName.toString(), nFamily ) );
     if(!pStyle)
     {
         // preserve the current mask of PI, then the new one is
@@ -1422,11 +1515,11 @@ void SwDocShell::MakeByExample( const OUString &rName, SfxStyleFamily nFamily,
         {
             // Prevent undo append from being done during paragraph, character, and frame style Make. Do it later
             ::sw::UndoGuard const undoGuard(GetDoc()->GetIDocumentUndoRedo());
-            pStyle = static_cast<SwDocStyleSheet*>(&m_xBasePool->Make(rName, nFamily, nMask));
+            pStyle = static_cast<SwDocStyleSheet*>(&m_xBasePool->Make(rName.toString(), nFamily, nMask));
         }
         else
         {
-            pStyle = static_cast<SwDocStyleSheet*>(&m_xBasePool->Make(rName, nFamily, nMask));
+            pStyle = static_cast<SwDocStyleSheet*>(&m_xBasePool->Make(rName.toString(), nFamily, nMask));
         }
     }
 
@@ -1564,7 +1657,7 @@ void SwDocShell::MakeByExample( const OUString &rName, SfxStyleFamily nFamily,
                 pCurrWrtShell->StartAllAction();
 
                 SwNumRule aRule( *pCurRule );
-                OUString sOrigRule( aRule.GetName() );
+                UIName sOrigRule( aRule.GetName() );
                 // #i91400#
                 aRule.SetName( pStyle->GetNumRule()->GetName(),
                                pCurrWrtShell->GetDoc()->getIDocumentListsAccess() );
@@ -1584,7 +1677,7 @@ void SwDocShell::MakeByExample( const OUString &rName, SfxStyleFamily nFamily,
             {
                 pCurrWrtShell->StartAllAction();
 
-                pCurrWrtShell->SetTableStyle(rName);
+                pCurrWrtShell->SetTableStyle(TableStyleName(rName.toString()));
 
                 pCurrWrtShell->EndAllAction();
             }
@@ -1593,8 +1686,6 @@ void SwDocShell::MakeByExample( const OUString &rName, SfxStyleFamily nFamily,
 
         default: break;
     }
-
-    m_xDoc->BroadcastStyleOperation(rName, nFamily, SfxHintId::StyleSheetCreated);
 }
 
 sfx::AccessibilityIssueCollection SwDocShell::runAccessibilityCheck()
@@ -1682,12 +1773,12 @@ void SwDocShell::LoadStyles_( SfxObjectShell& rSource, bool bPreserveCurrentDocu
 
 void SwDocShell::FormatPage(
     weld::Window* pDialogParent,
-    const OUString& rPage,
+    const UIName& rPage,
     const OUString& rPageId,
     SwWrtShell& rActShell,
     SfxRequest* pRequest)
 {
-    Edit(pDialogParent, rPage, OUString(), SfxStyleFamily::Page, SfxStyleSearchBits::Auto, false, rPageId, &rActShell, pRequest);
+    Edit(pDialogParent, rPage, UIName(), SfxStyleFamily::Page, SfxStyleSearchBits::Auto, false, rPageId, &rActShell, pRequest);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

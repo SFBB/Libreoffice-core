@@ -14,7 +14,6 @@
 
 #include <config_fonts.h>
 
-#include <com/sun/star/frame/XStorable.hpp>
 #include <com/sun/star/view/XPrintable.hpp>
 
 #include <comphelper/propertysequence.hxx>
@@ -39,30 +38,24 @@ protected:
 
 public:
     PdfExportTest()
-        : UnoApiTest("/vcl/qa/cppunit/pdfexport/data/")
+        : UnoApiTest(u"/vcl/qa/cppunit/pdfexport/data/"_ustr)
     {
     }
 
     void saveAsPDF(std::u16string_view rFile);
-    void load(std::u16string_view rFile, vcl::filter::PDFDocument& rDocument,
-              bool bUseTaggedPDF = true);
+    void load(std::u16string_view rFile, vcl::filter::PDFDocument& rDocument);
 };
 
 void PdfExportTest::saveAsPDF(std::u16string_view rFile)
 {
     // Import the bugdoc and export as PDF.
-    loadFromURL(rFile);
-    uno::Reference<frame::XStorable> xStorable(mxComponent, uno::UNO_QUERY);
-    xStorable->storeToURL(maTempFile.GetURL(), aMediaDescriptor.getAsConstPropertyValueList());
+    loadFromFile(rFile);
+    aMediaDescriptor[u"FilterName"_ustr] <<= u"writer_pdf_Export"_ustr;
+    saveWithParams(aMediaDescriptor.getAsConstPropertyValueList());
 }
 
-void PdfExportTest::load(std::u16string_view rFile, vcl::filter::PDFDocument& rDocument,
-                         bool bUseTaggedPDF)
+void PdfExportTest::load(std::u16string_view rFile, vcl::filter::PDFDocument& rDocument)
 {
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
-    uno::Sequence<beans::PropertyValue> aFilterData(
-        comphelper::InitPropertySequence({ { "UseTaggedPDF", uno::Any(bUseTaggedPDF) } }));
-    aMediaDescriptor["FilterData"] <<= aFilterData;
     saveAsPDF(rFile);
 
     // Parse the export result.
@@ -70,21 +63,190 @@ void PdfExportTest::load(std::u16string_view rFile, vcl::filter::PDFDocument& rD
     CPPUNIT_ASSERT(rDocument.Read(aStream));
 }
 
+CPPUNIT_TEST_FIXTURE(PdfExportTest, testPopupRectangleSize)
+{
+    // Enable Comment as PDF annotations
+    uno::Sequence<beans::PropertyValue> aFilterData(
+        comphelper::InitPropertySequence({ { "ExportNotes", uno::Any(true) } }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+    saveAsPDF(u"tdf162955_comment.odp");
+
+    // Parse the export result with pdfium.
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(0);
+    CPPUNIT_ASSERT(pPdfPage);
+
+    // Popup annotation
+    {
+        auto pAnnotation = pPdfPage->getAnnotation(1);
+        CPPUNIT_ASSERT(pAnnotation);
+        CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Popup, pAnnotation->getSubType());
+        CPPUNIT_ASSERT(!pAnnotation->getRectangle().isEmpty());
+        double nWidth = pAnnotation->getRectangle().getWidth();
+        double nHeight = pAnnotation->getRectangle().getHeight();
+        CPPUNIT_ASSERT(nWidth > 0);
+        CPPUNIT_ASSERT(nHeight > 0);
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf160051)
+{
+    // A tagged PDF file which containing artifacts was added to the sample file as an image.
+    // When the sample file exporting as a tagged PDF, these artifacts are placed into a structure
+    // element (e.g.:figure) which is not allowed.
+
+    uno::Sequence<beans::PropertyValue> aFilterData(
+        comphelper::InitPropertySequence({ { "PDFUACompliance", uno::Any(true) },
+                                           { "SelectPdfVersion", uno::Any(sal_Int32(17)) } }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+
+    vcl::filter::PDFDocument aDocument;
+    load(u"tdf160051.odt", aDocument);
+
+    std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aPages.size());
+
+    // Directly go to the inner XObject Im7.
+    auto pInnerIm = aDocument.LookupObject(7);
+    CPPUNIT_ASSERT(pInnerIm);
+
+    vcl::filter::PDFStreamElement* pStream = pInnerIm->GetStream();
+    CPPUNIT_ASSERT(pStream);
+    SvMemoryStream& rObjectStream = pStream->GetMemory();
+
+    // Uncompress it.
+    SvMemoryStream aUncompressed;
+    ZCodec aZCodec;
+    aZCodec.BeginCompression();
+    rObjectStream.Seek(0);
+    aZCodec.Decompress(rObjectStream, aUncompressed);
+    CPPUNIT_ASSERT(aZCodec.EndCompression());
+
+    auto pStart = static_cast<const char*>(aUncompressed.GetData());
+    const char* pEnd = pStart + aUncompressed.GetSize();
+    OString aStr("/Artifact"_ostr);
+    auto pArtifact = std::search(pStart, pEnd, aStr.getStr(), aStr.getStr() + aStr.getLength());
+
+    // Without the fix in place, this test would have failed with
+    // Expected: The content stream does not contain "/Artifact" element
+    // Actual:   The content stream contains "/Artifact" element
+    CPPUNIT_ASSERT_EQUAL(pArtifact, pEnd);
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest, testCommentAnnotation)
+{
+    // Enable PDF/UA and Comment as PDF annotations
+    uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence(
+        { { "PDFUACompliance", uno::Any(true) }, { "ExportNotes", uno::Any(true) } }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+
+    vcl::filter::PDFDocument aDocument;
+    load(u"tdf162359.odt", aDocument);
+
+    // The document has one page.
+    std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aPages.size());
+
+    vcl::filter::PDFObjectElement* pAnnot(nullptr);
+    for (const auto& aElement : aDocument.GetElements())
+    {
+        auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(aElement.get());
+        if (!pObject)
+            continue;
+        auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("Type"_ostr));
+        if (pType && pType->GetValue() == "StructElem")
+        {
+            auto pS = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("S"_ostr));
+            if (pS && pS->GetValue() == "Annot")
+            {
+                pAnnot = pObject;
+            }
+        }
+    }
+    CPPUNIT_ASSERT(pAnnot);
+    auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pAnnot->Lookup("K"_ostr));
+    CPPUNIT_ASSERT(pKids);
+    auto pObj = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pKids->GetElement(0));
+    CPPUNIT_ASSERT(pObj);
+    auto pOType = dynamic_cast<vcl::filter::PDFNameElement*>(pObj->LookupElement("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("OBJR"_ostr, pOType->GetValue());
+
+    // Parse the export result with pdfium.
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(/*nIndex=*/0);
+    CPPUNIT_ASSERT(pPdfPage);
+
+    // The page has two annotation.
+    CPPUNIT_ASSERT_EQUAL(2, pPdfPage->getAnnotationCount());
+    // Text annotation
+    {
+        auto pAnnotation = pPdfPage->getAnnotation(0);
+        CPPUNIT_ASSERT(pAnnotation);
+        CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Text, pAnnotation->getSubType());
+        CPPUNIT_ASSERT(pAnnotation->hasKey("StructParent"_ostr));
+    }
+
+    // Popup annotation
+    {
+        auto pAnnotation = pPdfPage->getAnnotation(1);
+        CPPUNIT_ASSERT(pAnnotation);
+        CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Popup, pAnnotation->getSubType());
+        CPPUNIT_ASSERT(!pAnnotation->getRectangle().isEmpty());
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest, testFigurePlacement)
+{
+    vcl::filter::PDFDocument aDocument;
+    load(u"tdf159900_figurePlacement.odt", aDocument);
+
+    // The document has one page.
+    std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aPages.size());
+
+    for (const auto& aElement : aDocument.GetElements())
+    {
+        auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(aElement.get());
+        if (!pObject)
+            continue;
+        auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("Type"_ostr));
+        if (pType && pType->GetValue() == "StructElem")
+        {
+            auto pS = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("S"_ostr));
+            if (pS && pS->GetValue() == "Figure")
+            {
+                auto pAttrDict
+                    = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pObject->Lookup("A"_ostr));
+                CPPUNIT_ASSERT(pAttrDict);
+                auto pOwner = dynamic_cast<vcl::filter::PDFNameElement*>(
+                    pAttrDict->LookupElement("O"_ostr));
+                CPPUNIT_ASSERT(pOwner);
+                if (pOwner->GetValue() == "Layout")
+                {
+                    auto pPlacement = dynamic_cast<vcl::filter::PDFNameElement*>(
+                        pAttrDict->LookupElement("Placement"_ostr));
+                    CPPUNIT_ASSERT(pPlacement);
+
+                    // Without the fix in place, this test would have failed with
+                    // Expected: Inline
+                    // Actual:   Block
+                    CPPUNIT_ASSERT_EQUAL("Inline"_ostr, pPlacement->GetValue());
+                }
+            }
+        }
+    }
+}
+
 /// Tests that a pdf image is roundtripped back to PDF as a vector format.
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf106059)
 {
-    // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     // Explicitly enable the usage of the reference XObject markup.
     uno::Sequence<beans::PropertyValue> aFilterData(
         comphelper::InitPropertySequence({ { "UseReferenceXObject", uno::Any(true) } }));
-    aMediaDescriptor["FilterData"] <<= aFilterData;
-    saveAsPDF(u"tdf106059.odt");
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
 
-    // Parse the export result.
     vcl::filter::PDFDocument aDocument;
-    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
-    CPPUNIT_ASSERT(aDocument.Read(aStream));
+    load(u"tdf106059.odt", aDocument);
 
     // Assert that the XObject in the page resources dictionary is a reference XObject.
     std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
@@ -155,7 +317,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf106693)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf105461)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf105461.odp");
 
     // Parse the export result with pdfium.
@@ -191,7 +352,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf107868)
 #if !defined MACOSX && !defined _WIN32
 
     // Import the bugdoc and print to PDF.
-    loadFromURL(u"tdf107868.odt");
+    loadFromFile(u"tdf107868.odt");
     uno::Reference<view::XPrintable> xPrintable(mxComponent, uno::UNO_QUERY);
     CPPUNIT_ASSERT(xPrintable.is());
     uno::Sequence<beans::PropertyValue> aOptions(comphelper::InitPropertySequence(
@@ -311,7 +472,10 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf106206)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf127217)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
+    uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence({
+        { "ExportFormFields", uno::Any(true) },
+    }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
     saveAsPDF(u"tdf127217.odt");
 
     // Parse the export result with pdfium.
@@ -328,6 +492,38 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf127217)
 
     // Without the fix in place, this test would have failed here
     CPPUNIT_ASSERT(!pAnnot->hasKey("DA"_ostr));
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf142741)
+{
+    // Import the doc and export as PDF.
+    uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence({
+        { "ExportFormFields", uno::Any(true) },
+    }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+    saveAsPDF(u"tdf142741.odt");
+
+    // Parse the export result with pdfium.
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+
+    CPPUNIT_ASSERT_EQUAL(2,
+                         pPdfDocument->getPageCount()); // To ensure that exported pdf has 2 pages
+
+    for (int pageNum = 0; pageNum < 2; ++pageNum)
+    {
+        std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(pageNum);
+        CPPUNIT_ASSERT(pPdfPage);
+
+        CPPUNIT_ASSERT_EQUAL(1,
+                             pPdfPage->getAnnotationCount()); // Expect only one annotation per page
+        std::unique_ptr<vcl::pdf::PDFiumAnnotation> pAnnotation = pPdfPage->getAnnotation(0);
+        CPPUNIT_ASSERT(pAnnotation);
+
+        // Check if annotation is a link and has the expected content, here "1" (both in first page content and footnote of second page)
+        CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Link, pAnnotation->getSubType());
+        OUString content = pAnnotation->getString(vcl::pdf::constDictionaryKeyContents);
+        CPPUNIT_ASSERT_EQUAL(u"1"_ustr, content);
+    }
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf109143)
@@ -431,7 +627,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testSofthyphenPos)
 #if !defined MACOSX && !defined _WIN32
 
     // Import the bugdoc and print to PDF.
-    loadFromURL(u"softhyphen_pdf.odt");
+    loadFromFile(u"softhyphen_pdf.odt");
     uno::Reference<view::XPrintable> xPrintable(mxComponent, uno::UNO_QUERY);
     CPPUNIT_ASSERT(xPrintable.is());
     uno::Sequence<beans::PropertyValue> aOptions(comphelper::InitPropertySequence(
@@ -549,7 +745,10 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf107018)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf148706)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
+    uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence({
+        { "ExportFormFields", uno::Any(true) },
+    }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
     saveAsPDF(u"tdf148706.odt");
 
     // Parse the export result with pdfium.
@@ -571,13 +770,13 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf148706)
     // Without the fix in place, this test would have failed with
     // - Expected: 1821.84
     // - Actual  :
-    CPPUNIT_ASSERT_EQUAL(OUString("1821.84"), aV);
+    CPPUNIT_ASSERT_EQUAL(u"1821.84"_ustr, aV);
 
     CPPUNIT_ASSERT(pAnnot->hasKey("DV"_ostr));
     CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFObjectType::String, pAnnot->getValueType("DV"_ostr));
     OUString aDV = pAnnot->getString("DV"_ostr);
 
-    CPPUNIT_ASSERT_EQUAL(OUString("1821.84"), aDV);
+    CPPUNIT_ASSERT_EQUAL(u"1821.84"_ustr, aDV);
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf107089)
@@ -714,7 +913,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf99680_2)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf108963)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf108963.odp");
 
     // Parse the export result with pdfium.
@@ -791,17 +989,8 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf108963)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testAlternativeText)
 {
-    aMediaDescriptor["FilterName"] <<= OUString("impress_pdf_Export");
-
-    uno::Sequence<beans::PropertyValue> aFilterData(
-        comphelper::InitPropertySequence({ { "UseTaggedPDF", uno::Any(true) } }));
-    aMediaDescriptor["FilterData"] <<= aFilterData;
-    saveAsPDF(u"alternativeText.fodp");
-
-    // Parse the export result.
     vcl::filter::PDFDocument aDocument;
-    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
-    CPPUNIT_ASSERT(aDocument.Read(aStream));
+    load(u"alternativeText.fodp", aDocument);
 
     // The document has one page.
     std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
@@ -839,9 +1028,12 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testAlternativeText)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf105972)
 {
+    uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence({
+        { "ExportFormFields", uno::Any(true) },
+    }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
     vcl::filter::PDFDocument aDocument;
-    // Loading fails with tagged PDF enabled
-    load(u"tdf105972.fodt", aDocument, false);
+    load(u"tdf105972.fodt", aDocument);
 
     // The document has one page.
     std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
@@ -904,9 +1096,13 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf105972)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf148442)
 {
+    uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence({
+        { "ExportFormFields", uno::Any(true) },
+    }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+
     vcl::filter::PDFDocument aDocument;
-    // Loading fails with tagged PDF enabled
-    load(u"tdf148442.odt", aDocument, false);
+    load(u"tdf148442.odt", aDocument);
 
     // The document has one page.
     std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
@@ -974,9 +1170,13 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf148442)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf118244_radioButtonGroup)
 {
+    uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence({
+        { "ExportFormFields", uno::Any(true) },
+    }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+
     vcl::filter::PDFDocument aDocument;
-    // Loading fails with tagged PDF enabled
-    load(u"tdf118244_radioButtonGroup.odt", aDocument, false);
+    load(u"tdf118244_radioButtonGroup.odt", aDocument);
 
     // The document has one page.
     std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
@@ -1136,7 +1336,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf115117_1a)
 {
 #if HAVE_MORE_FONTS
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf115117-1.odt");
 
     // Parse the export result with pdfium.
@@ -1160,7 +1359,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf115117_1a)
     for (int i = 0; i < nChars; i++)
         aChars[i] = pPdfTextPage->getUnicode(i);
     OUString aActualText(aChars.data(), aChars.size());
-    CPPUNIT_ASSERT_EQUAL(OUString("ti ti test ti\r\nti test fi fl ffi ffl test fi"), aActualText);
+    CPPUNIT_ASSERT_EQUAL(u"ti ti test ti\r\nti test fi fl ffi ffl test fi"_ustr, aActualText);
 #endif
 }
 
@@ -1171,7 +1370,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf115117_2a)
     // See the comments in testTdf115117_1a() for explanation.
 
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf115117-2.odt");
 
     // Parse the export result with pdfium.
@@ -1201,7 +1399,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf154549)
 {
 // FIXME: On Windows, the number of chars is 4 instead of 3
 #ifndef _WIN32
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf154549.odt");
 
     // Parse the export result with pdfium.
@@ -1234,7 +1431,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf150846)
 {
     // Without the fix in place, this test would have failed with
     // An uncaught exception of type com.sun.star.io.IOException
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf150846.txt");
 
     // Parse the export result with pdfium.
@@ -1258,10 +1454,40 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf150846)
     CPPUNIT_ASSERT_EQUAL(u"hello"_ustr, aActualText);
 }
 
+CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf160401)
+{
+    saveAsPDF(u"tdf160401.pptx");
+
+    // Parse the export result with pdfium.
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+
+    CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(/*nIndex=*/0);
+    CPPUNIT_ASSERT(pPdfPage);
+
+    std::unique_ptr<vcl::pdf::PDFiumTextPage> pPdfTextPage = pPdfPage->getTextPage();
+    CPPUNIT_ASSERT(pPdfTextPage);
+
+    int nChars = pPdfTextPage->countChars();
+
+    CPPUNIT_ASSERT_EQUAL(16, nChars);
+
+    std::vector<sal_uInt32> aChars(nChars);
+    for (int i = 0; i < nChars; i++)
+        aChars[i] = pPdfTextPage->getUnicode(i);
+    OUString aActualText(aChars.data(), aChars.size());
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: אאא בבב
+    // אאא בבב
+    // - Actual  : אאא בבב
+    // בבב אאא
+    CPPUNIT_ASSERT_EQUAL(u"אאא בבב\r\nאאא בבב"_ustr, aActualText);
+}
+
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf103492)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf103492.odt");
 
     // Parse the export result with pdfium.
@@ -1308,7 +1534,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf103492)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf145274)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf145274.docx");
 
     // Parse the export result with pdfium.
@@ -1343,7 +1568,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf145274)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf156685)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf156685.docx");
 
     // Parse the export result with pdfium.
@@ -1491,11 +1715,24 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf66597_2)
             auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("Type"_ostr));
             if (pType && pType->GetValue() == "Font")
             {
+                // Static font identified under "BaseFont"
                 auto pName
                     = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("BaseFont"_ostr));
-                auto aName = pName->GetValue().copy(7); // skip the subset id
+                OString fontName;
+                if (pName)
+                {
+                    fontName = pName->GetValue().copy(7); // skip the subset id
+                }
+                else // Variable font identified under "Name", try that
+                {
+                    pName
+                        = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("Name"_ostr));
+                    CPPUNIT_ASSERT_MESSAGE("No 'BaseFont' or 'Name' element found for font!",
+                                           pName);
+                    fontName = pName->GetValue();
+                }
                 CPPUNIT_ASSERT_EQUAL_MESSAGE("Unexpected font name", "ReemKufi-Regular"_ostr,
-                                             aName);
+                                             fontName);
 
                 auto pToUnicodeRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(
                     pObject->Lookup("ToUnicode"_ostr));
@@ -1666,11 +1903,10 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf66597_3)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf105954)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence(
         { { "ReduceImageResolution", uno::Any(true) },
           { "MaxImageResolution", uno::Any(static_cast<sal_Int32>(300)) } }));
-    aMediaDescriptor["FilterData"] <<= aFilterData;
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
     saveAsPDF(u"tdf105954.odt");
 
     // Parse the export result with pdfium.
@@ -1696,7 +1932,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf105954)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157679)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("impress_pdf_Export");
     saveAsPDF(u"tdf157679.pptx");
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
 
@@ -1724,7 +1959,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157679)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf128445)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("impress_pdf_Export");
     saveAsPDF(u"tdf128445.odp");
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
 
@@ -1748,7 +1982,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf128630)
         return;
 
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("impress_pdf_Export");
     saveAsPDF(u"tdf128630.odp");
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
 
@@ -1781,7 +2014,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf128630)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf106702)
 {
     // Import the bugdoc and export as PDF.
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf106702.odt");
 
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
@@ -1828,7 +2060,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf106702)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf113143)
 {
-    aMediaDescriptor["FilterName"] <<= OUString("impress_pdf_Export");
     uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence({
         { "ExportNotesPages", uno::Any(true) },
         // ReduceImageResolution is on by default and that hides the bug we
@@ -1837,7 +2068,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf113143)
         // Set a custom PDF version.
         { "SelectPdfVersion", uno::Any(static_cast<sal_Int32>(16)) },
     }));
-    aMediaDescriptor["FilterData"] <<= aFilterData;
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
     saveAsPDF(u"tdf113143.odp");
 
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
@@ -1888,34 +2119,36 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf113143)
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testForcePoint71)
 {
     // I just care it doesn't crash
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
-    saveAsPDF(u"forcepoint71.key");
+    // numerous Zip errors are detected now and libetonyek cannot RepairPackage
+    CPPUNIT_ASSERT_ASSERTION_FAIL(loadFromFile(u"forcepoint71.key"));
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testForcePoint80)
 {
     // printing asserted in SwCellFrame::FindStartEndOfRowSpanCell
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"forcepoint80-1.rtf");
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testForcePoint3)
 {
     // printing asserted in SwFrame::GetNextSctLeaf()
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"flowframe_null_ptr_deref.sample");
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf162586)
+{
+    // Without the fix in place, this test would have crashed
+    saveAsPDF(u"tdf162586.odt");
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf84283)
 {
     // Without the fix in place, this test would have crashed
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf84283.doc");
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf115262)
 {
-    aMediaDescriptor["FilterName"] <<= OUString("calc_pdf_Export");
     saveAsPDF(u"tdf115262.ods");
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
     CPPUNIT_ASSERT_EQUAL(8, pPdfDocument->getPageCount());
@@ -1954,7 +2187,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf115262)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf121962)
 {
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf121962.odt");
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
     CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
@@ -1978,7 +2210,6 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf121962)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf139065)
 {
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf139065.odt");
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
     CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
@@ -1993,17 +2224,13 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf139065)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
 {
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
-
     // Enable PDF/UA
     uno::Sequence<beans::PropertyValue> aFilterData(
         comphelper::InitPropertySequence({ { "PDFUACompliance", uno::Any(true) } }));
-    aMediaDescriptor["FilterData"] <<= aFilterData;
-    saveAsPDF(u"tdf157816.fodt");
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
 
     vcl::filter::PDFDocument aDocument;
-    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
-    CPPUNIT_ASSERT(aDocument.Read(aStream));
+    load(u"tdf157816.fodt", aDocument);
 
     // The document has one page.
     std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
@@ -2088,7 +2315,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
                 auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
                     pAnnot->Lookup("Contents"_ostr));
                 CPPUNIT_ASSERT_EQUAL(
-                    u"Error: Reference source not found"_ustr,
+                    u"__RefHeading___Toc1501_2152971747"_ustr,
                     ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
                 auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
                     pAnnot->Lookup("StructParent"_ostr));
@@ -2107,7 +2334,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
                 const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
                 CPPUNIT_ASSERT(pNumR);
                 // this changed to the end of the text, not the start of the fly
-                CPPUNIT_ASSERT_DOUBLES_EQUAL(187.207, pNumR->GetValue(), 1e-3);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(187.157, pNumR->GetValue(), 1e-3);
                 const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
                 CPPUNIT_ASSERT(pNumB);
                 CPPUNIT_ASSERT_DOUBLES_EQUAL(688.389, pNumB->GetValue(), 1e-3);
@@ -2155,7 +2382,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
                 auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
                     pAnnot->Lookup("Contents"_ostr));
                 CPPUNIT_ASSERT_EQUAL(
-                    u"Error: Reference source not found"_ustr,
+                    u"__RefHeading___Toc1501_2152971747"_ustr,
                     ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
                 auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
                     pAnnot->Lookup("StructParent"_ostr));
@@ -2173,7 +2400,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
                 CPPUNIT_ASSERT_DOUBLES_EQUAL(660.789, pNumT->GetValue(), 1e-3);
                 const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
                 CPPUNIT_ASSERT(pNumR);
-                CPPUNIT_ASSERT_DOUBLES_EQUAL(146.157, pNumR->GetValue(), 1e-3);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(146.107, pNumR->GetValue(), 1e-3);
                 const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
                 CPPUNIT_ASSERT(pNumB);
                 CPPUNIT_ASSERT_DOUBLES_EQUAL(674.589, pNumB->GetValue(), 1e-3);
@@ -2221,7 +2448,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
                 auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
                     pAnnot->Lookup("Contents"_ostr));
                 CPPUNIT_ASSERT_EQUAL(
-                    u"Error: Reference source not found"_ustr,
+                    u"__RefHeading___Toc1501_2152971747"_ustr,
                     ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
                 auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
                     pAnnot->Lookup("StructParent"_ostr));
@@ -2233,13 +2460,13 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
                 CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), rElements.size());
                 const auto* pNumL = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[0]);
                 CPPUNIT_ASSERT(pNumL);
-                CPPUNIT_ASSERT_DOUBLES_EQUAL(146.093, pNumL->GetValue(), 1e-3);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(146.043, pNumL->GetValue(), 1e-3);
                 const auto* pNumT = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[1]);
                 CPPUNIT_ASSERT(pNumT);
                 CPPUNIT_ASSERT_DOUBLES_EQUAL(660.789, pNumT->GetValue(), 1e-3);
                 const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
                 CPPUNIT_ASSERT(pNumR);
-                CPPUNIT_ASSERT_DOUBLES_EQUAL(179.457, pNumR->GetValue(), 1e-3);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(179.357, pNumR->GetValue(), 1e-3);
                 const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
                 CPPUNIT_ASSERT(pNumB);
                 CPPUNIT_ASSERT_DOUBLES_EQUAL(674.589, pNumB->GetValue(), 1e-3);
@@ -2287,7 +2514,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
                 auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
                     pAnnot->Lookup("Contents"_ostr));
                 CPPUNIT_ASSERT_EQUAL(
-                    u"Error: Reference source not found"_ustr,
+                    u"__RefHeading___Toc1501_2152971747"_ustr,
                     ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
                 auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
                     pAnnot->Lookup("StructParent"_ostr));
@@ -2353,7 +2580,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
                 auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
                     pAnnot->Lookup("Contents"_ostr));
                 CPPUNIT_ASSERT_EQUAL(
-                    u"Error: Reference source not found"_ustr,
+                    u"__RefHeading___Toc1501_2152971747"_ustr,
                     ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
                 auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
                     pAnnot->Lookup("StructParent"_ostr));
@@ -2371,7 +2598,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
                 CPPUNIT_ASSERT_DOUBLES_EQUAL(633.189, pNumT->GetValue(), 1e-3);
                 const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
                 CPPUNIT_ASSERT(pNumR);
-                CPPUNIT_ASSERT_DOUBLES_EQUAL(86.807, pNumR->GetValue(), 1e-3);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(86.757, pNumR->GetValue(), 1e-3);
                 const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
                 CPPUNIT_ASSERT(pNumB);
                 CPPUNIT_ASSERT_DOUBLES_EQUAL(646.989, pNumB->GetValue(), 1e-3);
@@ -2393,17 +2620,13 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816Link)
 {
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
-
     // Enable PDF/UA
     uno::Sequence<beans::PropertyValue> aFilterData(
         comphelper::InitPropertySequence({ { "PDFUACompliance", uno::Any(true) } }));
-    aMediaDescriptor["FilterData"] <<= aFilterData;
-    saveAsPDF(u"LinkWithFly.fodt");
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
 
     vcl::filter::PDFDocument aDocument;
-    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
-    CPPUNIT_ASSERT(aDocument.Read(aStream));
+    load(u"LinkWithFly.fodt", aDocument);
 
     // The document has one page.
     std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
@@ -2482,7 +2705,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816Link)
                 auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
                     pAnnot->Lookup("Contents"_ostr));
                 CPPUNIT_ASSERT_EQUAL(
-                    u"https://www.mozilla.org/en-US/firefox/119.0/releasenotes/"_ustr,
+                    u"Firefox119"_ustr,
                     ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
                 auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
                     pAnnot->Lookup("StructParent"_ostr));
@@ -2501,7 +2724,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816Link)
                 const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
                 CPPUNIT_ASSERT(pNumR);
                 // this changed to the end of the text, not the start of the fly
-                CPPUNIT_ASSERT_DOUBLES_EQUAL(191.707, pNumR->GetValue(), 1e-3);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(191.657, pNumR->GetValue(), 1e-3);
                 const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
                 CPPUNIT_ASSERT(pNumB);
                 CPPUNIT_ASSERT_DOUBLES_EQUAL(785.189, pNumB->GetValue(), 1e-3);
@@ -2549,7 +2772,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816Link)
                 auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
                     pAnnot->Lookup("Contents"_ostr));
                 CPPUNIT_ASSERT_EQUAL(
-                    u"https://www.mozilla.org/en-US/firefox/119.0/releasenotes/"_ustr,
+                    u"Firefox119"_ustr,
                     ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
                 auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
                     pAnnot->Lookup("StructParent"_ostr));
@@ -2638,7 +2861,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816Link)
                 auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
                     pAnnot->Lookup("Contents"_ostr));
                 CPPUNIT_ASSERT_EQUAL(
-                    u"https://www.mozilla.org/en-US/firefox/118.0/releasenotes/"_ustr,
+                    u"Firefox118"_ustr,
                     ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
                 auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
                     pAnnot->Lookup("StructParent"_ostr));
@@ -2657,7 +2880,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816Link)
                 const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
                 CPPUNIT_ASSERT(pNumR);
                 // this changed to the end of the text, not the start of the fly
-                CPPUNIT_ASSERT_DOUBLES_EQUAL(191.707, pNumR->GetValue(), 1e-3);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(191.657, pNumR->GetValue(), 1e-3);
                 const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
                 CPPUNIT_ASSERT(pNumB);
                 CPPUNIT_ASSERT_DOUBLES_EQUAL(771.389, pNumB->GetValue(), 1e-3);
@@ -2705,7 +2928,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816Link)
                 auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
                     pAnnot->Lookup("Contents"_ostr));
                 CPPUNIT_ASSERT_EQUAL(
-                    u"https://www.mozilla.org/en-US/firefox/118.0/releasenotes/"_ustr,
+                    u"Firefox118"_ustr,
                     ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
                 auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
                     pAnnot->Lookup("StructParent"_ostr));
@@ -2740,9 +2963,646 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf157816Link)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), pAnnots->GetElements().size());
 }
 
+CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf142133)
+{
+    vcl::filter::PDFDocument aDocument;
+    load(u"tdf142133.docx", aDocument);
+
+    // The document has one page.
+    std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aPages.size());
+
+    auto pAnnots = dynamic_cast<vcl::filter::PDFArrayElement*>(aPages[0]->Lookup("Annots"_ostr));
+    CPPUNIT_ASSERT(pAnnots);
+
+    // There should be one annotation
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pAnnots->GetElements().size());
+    auto pAnnotReference
+        = dynamic_cast<vcl::filter::PDFReferenceElement*>(pAnnots->GetElements()[0]);
+    CPPUNIT_ASSERT(pAnnotReference);
+    vcl::filter::PDFObjectElement* pAnnot = pAnnotReference->LookupObject();
+    CPPUNIT_ASSERT(pAnnot);
+    // We're expecting something like /Type /Annot /A << /Type /Action /S /URI /URI (path)
+    CPPUNIT_ASSERT_EQUAL(
+        "Annot"_ostr,
+        static_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Type"_ostr))->GetValue());
+    CPPUNIT_ASSERT_EQUAL(
+        "Link"_ostr,
+        static_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Subtype"_ostr))->GetValue());
+    auto pAction = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pAnnot->Lookup("A"_ostr));
+    CPPUNIT_ASSERT(pAction);
+    auto pURIElem
+        = dynamic_cast<vcl::filter::PDFLiteralStringElement*>(pAction->LookupElement("URI"_ostr));
+    CPPUNIT_ASSERT(pURIElem);
+    // Check it matches
+    CPPUNIT_ASSERT_EQUAL("https://google.com/"_ostr, pURIElem->GetValue());
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf142806)
+{
+    // Enable PDF/UA
+    uno::Sequence<beans::PropertyValue> aFilterData(
+        comphelper::InitPropertySequence({ { "PDFUACompliance", uno::Any(true) } }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+
+    vcl::filter::PDFDocument aDocument;
+    load(u"LinkPages.fodt", aDocument);
+
+    std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), aPages.size());
+
+    vcl::filter::PDFObjectElement* pDocument(nullptr);
+    for (const auto& rDocElement : aDocument.GetElements())
+    {
+        auto pObject1 = dynamic_cast<vcl::filter::PDFObjectElement*>(rDocElement.get());
+        if (!pObject1)
+            continue;
+        auto pType1 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject1->Lookup("Type"_ostr));
+        if (pType1 && pType1->GetValue() == "StructElem")
+        {
+            auto pS1 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject1->Lookup("S"_ostr));
+            if (pS1 && pS1->GetValue() == "Document")
+            {
+                pDocument = pObject1;
+            }
+        }
+    }
+    CPPUNIT_ASSERT(pDocument);
+
+    auto pKidsD = dynamic_cast<vcl::filter::PDFArrayElement*>(pDocument->Lookup("K"_ostr));
+    CPPUNIT_ASSERT(pKidsD);
+    // assume there are no MCID ref at this level
+    auto pKidsDv = pKidsD->GetElements();
+    auto pRefKidD0 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsDv[0]);
+    CPPUNIT_ASSERT(pRefKidD0);
+    auto pObjectD0 = pRefKidD0->LookupObject();
+    CPPUNIT_ASSERT(pObjectD0);
+    auto pTypeD0 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD0->Lookup("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeD0->GetValue());
+    auto pSD0 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD0->Lookup("S"_ostr));
+    CPPUNIT_ASSERT_EQUAL("H1"_ostr, pSD0->GetValue());
+
+    auto pKidsD0 = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectD0->Lookup("K"_ostr));
+    CPPUNIT_ASSERT(pKidsD0);
+    auto pKidsD0v = pKidsD0->GetElements();
+
+    auto pRefKidD00 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsD0v[0]);
+    CPPUNIT_ASSERT(pRefKidD00);
+    auto pObjectD00 = pRefKidD00->LookupObject();
+    CPPUNIT_ASSERT(pObjectD00);
+    auto pTypeD00 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD00->Lookup("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeD00->GetValue());
+    auto pSD00 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD00->Lookup("S"_ostr));
+    CPPUNIT_ASSERT_EQUAL("Link"_ostr, pSD00->GetValue());
+    {
+        auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectD00->Lookup("K"_ostr));
+        auto nMCID(0);
+        auto nRef(0);
+        for (size_t i = 0; i < pKids->GetElements().size(); ++i)
+        {
+            auto pNum = dynamic_cast<vcl::filter::PDFNumberElement*>(pKids->GetElement(i));
+            auto pObjR = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pKids->GetElement(i));
+            if (pNum)
+            {
+                ++nMCID;
+            }
+            if (pObjR)
+            {
+                ++nRef;
+                auto pOType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pObjR->LookupElement("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("OBJR"_ostr, pOType->GetValue());
+                auto pAnnotRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(
+                    pObjR->LookupElement("Obj"_ostr));
+                auto pAnnot = pAnnotRef->LookupObject();
+                auto pAType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Annot"_ostr, pAType->GetValue());
+                auto pASubtype
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Subtype"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Link"_ostr, pASubtype->GetValue());
+                auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
+                    pAnnot->Lookup("Contents"_ostr));
+                CPPUNIT_ASSERT_EQUAL(
+                    u"quadfoo"_ustr,
+                    ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
+                auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
+                    pAnnot->Lookup("StructParent"_ostr));
+                CPPUNIT_ASSERT(pStructParent); // every link must have it!
+                auto pARect
+                    = dynamic_cast<vcl::filter::PDFArrayElement*>(pAnnot->Lookup("Rect"_ostr));
+                CPPUNIT_ASSERT(pARect);
+                const auto& rElements = pARect->GetElements();
+                CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), rElements.size());
+                const auto* pNumL = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[0]);
+                CPPUNIT_ASSERT(pNumL);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(56.693, pNumL->GetValue(), 1e-3);
+                const auto* pNumT = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[1]);
+                CPPUNIT_ASSERT(pNumT);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(240.455, pNumT->GetValue(), 1e-3);
+                const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
+                CPPUNIT_ASSERT(pNumR);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(241.007, pNumR->GetValue(), 1e-3);
+                const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
+                CPPUNIT_ASSERT(pNumB);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(350.855, pNumB->GetValue(), 1e-3);
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nMCID)>(1), nMCID);
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nRef)>(1), nRef);
+    }
+
+    auto pRefKidD01 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsD0v[1]);
+    CPPUNIT_ASSERT(pRefKidD01);
+    auto pObjectD01 = pRefKidD01->LookupObject();
+    CPPUNIT_ASSERT(pObjectD01);
+    auto pTypeD01 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD01->Lookup("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeD01->GetValue());
+    auto pSD01 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD01->Lookup("S"_ostr));
+    CPPUNIT_ASSERT_EQUAL("Link"_ostr, pSD01->GetValue());
+    {
+        auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectD01->Lookup("K"_ostr));
+        auto nMCID(0);
+        auto nRef(0);
+        for (size_t i = 0; i < pKids->GetElements().size(); ++i)
+        {
+            auto pNum = dynamic_cast<vcl::filter::PDFNumberElement*>(pKids->GetElement(i));
+            auto pObjR = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pKids->GetElement(i));
+            if (pNum)
+            {
+                ++nMCID;
+            }
+            if (pObjR)
+            {
+                ++nRef;
+                auto pOType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pObjR->LookupElement("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("OBJR"_ostr, pOType->GetValue());
+                auto pAnnotRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(
+                    pObjR->LookupElement("Obj"_ostr));
+                auto pAnnot = pAnnotRef->LookupObject();
+                auto pAType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Annot"_ostr, pAType->GetValue());
+                auto pASubtype
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Subtype"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Link"_ostr, pASubtype->GetValue());
+                auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
+                    pAnnot->Lookup("Contents"_ostr));
+                CPPUNIT_ASSERT_EQUAL(
+                    u"quadfoo"_ustr,
+                    ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
+                auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
+                    pAnnot->Lookup("StructParent"_ostr));
+                CPPUNIT_ASSERT(pStructParent); // every link must have it!
+                auto pARect
+                    = dynamic_cast<vcl::filter::PDFArrayElement*>(pAnnot->Lookup("Rect"_ostr));
+                CPPUNIT_ASSERT(pARect);
+                const auto& rElements = pARect->GetElements();
+                CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), rElements.size());
+                const auto* pNumL = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[0]);
+                CPPUNIT_ASSERT(pNumL);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(56.643, pNumL->GetValue(), 1e-3);
+                const auto* pNumT = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[1]);
+                CPPUNIT_ASSERT(pNumT);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(130.055, pNumT->GetValue(), 1e-3);
+                const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
+                CPPUNIT_ASSERT(pNumR);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(241.007, pNumR->GetValue(), 1e-3);
+                const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
+                CPPUNIT_ASSERT(pNumB);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(240.455, pNumB->GetValue(), 1e-3);
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nMCID)>(1), nMCID);
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nRef)>(1), nRef);
+    }
+
+    auto pRefKidD02 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsD0v[2]);
+    CPPUNIT_ASSERT(pRefKidD02);
+    auto pObjectD02 = pRefKidD02->LookupObject();
+    CPPUNIT_ASSERT(pObjectD02);
+    auto pTypeD02 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD02->Lookup("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeD02->GetValue());
+    auto pSD02 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD02->Lookup("S"_ostr));
+    CPPUNIT_ASSERT_EQUAL("Link"_ostr, pSD02->GetValue());
+    {
+        auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectD02->Lookup("K"_ostr));
+        auto nMCID(0);
+        auto nRef(0);
+        for (size_t i = 0; i < pKids->GetElements().size(); ++i)
+        {
+            auto pNum = dynamic_cast<vcl::filter::PDFNumberElement*>(pKids->GetElement(i));
+            auto pObjR = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pKids->GetElement(i));
+            if (pNum)
+            {
+                ++nMCID;
+            }
+            if (pObjR)
+            {
+                ++nRef;
+                auto pOType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pObjR->LookupElement("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("OBJR"_ostr, pOType->GetValue());
+                auto pAnnotRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(
+                    pObjR->LookupElement("Obj"_ostr));
+                auto pAnnot = pAnnotRef->LookupObject();
+                auto pAType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Annot"_ostr, pAType->GetValue());
+                auto pASubtype
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Subtype"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Link"_ostr, pASubtype->GetValue());
+                auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
+                    pAnnot->Lookup("Contents"_ostr));
+                CPPUNIT_ASSERT_EQUAL(
+                    u"quadfoo"_ustr,
+                    ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
+                auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
+                    pAnnot->Lookup("StructParent"_ostr));
+                CPPUNIT_ASSERT(pStructParent); // every link must have it!
+                auto pARect
+                    = dynamic_cast<vcl::filter::PDFArrayElement*>(pAnnot->Lookup("Rect"_ostr));
+                CPPUNIT_ASSERT(pARect);
+                const auto& rElements = pARect->GetElements();
+                CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), rElements.size());
+                const auto* pNumL = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[0]);
+                CPPUNIT_ASSERT(pNumL);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(56.643, pNumL->GetValue(), 1e-3);
+                const auto* pNumT = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[1]);
+                CPPUNIT_ASSERT(pNumT);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(252.455, pNumT->GetValue(), 1e-3);
+                const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
+                CPPUNIT_ASSERT(pNumR);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(241.007, pNumR->GetValue(), 1e-3);
+                const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
+                CPPUNIT_ASSERT(pNumB);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(362.855, pNumB->GetValue(), 1e-3);
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nMCID)>(1), nMCID);
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nRef)>(1), nRef);
+    }
+
+    auto pRefKidD03 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsD0v[3]);
+    CPPUNIT_ASSERT(pRefKidD03);
+    auto pObjectD03 = pRefKidD03->LookupObject();
+    CPPUNIT_ASSERT(pObjectD03);
+    auto pTypeD03 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD03->Lookup("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeD03->GetValue());
+    auto pSD03 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD03->Lookup("S"_ostr));
+    CPPUNIT_ASSERT_EQUAL("Link"_ostr, pSD03->GetValue());
+    {
+        auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectD03->Lookup("K"_ostr));
+        auto nMCID(0);
+        auto nRef(0);
+        for (size_t i = 0; i < pKids->GetElements().size(); ++i)
+        {
+            auto pNum = dynamic_cast<vcl::filter::PDFNumberElement*>(pKids->GetElement(i));
+            auto pObjR = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pKids->GetElement(i));
+            if (pNum)
+            {
+                ++nMCID;
+            }
+            if (pObjR)
+            {
+                ++nRef;
+                auto pOType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pObjR->LookupElement("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("OBJR"_ostr, pOType->GetValue());
+                auto pAnnotRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(
+                    pObjR->LookupElement("Obj"_ostr));
+                auto pAnnot = pAnnotRef->LookupObject();
+                auto pAType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Annot"_ostr, pAType->GetValue());
+                auto pASubtype
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Subtype"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Link"_ostr, pASubtype->GetValue());
+                auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
+                    pAnnot->Lookup("Contents"_ostr));
+                CPPUNIT_ASSERT_EQUAL(
+                    u"quadfoo"_ustr,
+                    ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
+                auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
+                    pAnnot->Lookup("StructParent"_ostr));
+                CPPUNIT_ASSERT(pStructParent); // every link must have it!
+                auto pARect
+                    = dynamic_cast<vcl::filter::PDFArrayElement*>(pAnnot->Lookup("Rect"_ostr));
+                CPPUNIT_ASSERT(pARect);
+                const auto& rElements = pARect->GetElements();
+                CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), rElements.size());
+                const auto* pNumL = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[0]);
+                CPPUNIT_ASSERT(pNumL);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(56.643, pNumL->GetValue(), 1e-3);
+                const auto* pNumT = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[1]);
+                CPPUNIT_ASSERT(pNumT);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(142.055, pNumT->GetValue(), 1e-3);
+                const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
+                CPPUNIT_ASSERT(pNumR);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(206.007, pNumR->GetValue(), 1e-3);
+                const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
+                CPPUNIT_ASSERT(pNumB);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(252.455, pNumB->GetValue(), 1e-3);
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nMCID)>(1), nMCID);
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nRef)>(1), nRef);
+    }
+    auto pRefKidD1 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsDv[1]);
+    CPPUNIT_ASSERT(pRefKidD1);
+    auto pObjectD1 = pRefKidD1->LookupObject();
+    CPPUNIT_ASSERT(pObjectD1);
+    auto pTypeD1 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD1->Lookup("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeD1->GetValue());
+    auto pSD1 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD1->Lookup("S"_ostr));
+    CPPUNIT_ASSERT_EQUAL("Text#20body"_ostr, pSD1->GetValue());
+
+    auto pKidsD1 = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectD1->Lookup("K"_ostr));
+    CPPUNIT_ASSERT(pKidsD1);
+    auto pKidsD1v = pKidsD1->GetElements();
+
+    auto pRefKidD10 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsD1v[0]);
+    CPPUNIT_ASSERT(pRefKidD10);
+    auto pObjectD10 = pRefKidD10->LookupObject();
+    CPPUNIT_ASSERT(pObjectD10);
+    auto pTypeD10 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD10->Lookup("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeD10->GetValue());
+    auto pSD10 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD10->Lookup("S"_ostr));
+    CPPUNIT_ASSERT_EQUAL("Link"_ostr, pSD10->GetValue());
+    {
+        auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectD10->Lookup("K"_ostr));
+        auto nMCID(0);
+        auto nRef(0);
+        for (size_t i = 0; i < pKids->GetElements().size(); ++i)
+        {
+            auto pNum = dynamic_cast<vcl::filter::PDFNumberElement*>(pKids->GetElement(i));
+            auto pObjR = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pKids->GetElement(i));
+            if (pNum)
+            {
+                ++nMCID;
+            }
+            if (pObjR)
+            {
+                ++nRef;
+                auto pOType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pObjR->LookupElement("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("OBJR"_ostr, pOType->GetValue());
+                auto pAnnotRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(
+                    pObjR->LookupElement("Obj"_ostr));
+                auto pAnnot = pAnnotRef->LookupObject();
+                auto pAType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Annot"_ostr, pAType->GetValue());
+                auto pASubtype
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Subtype"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Link"_ostr, pASubtype->GetValue());
+                auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
+                    pAnnot->Lookup("Contents"_ostr));
+                CPPUNIT_ASSERT_EQUAL(
+                    u"__RefHeading___Toc17_3815242785"_ustr,
+                    ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
+                auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
+                    pAnnot->Lookup("StructParent"_ostr));
+                CPPUNIT_ASSERT(pStructParent); // every link must have it!
+                auto pARect
+                    = dynamic_cast<vcl::filter::PDFArrayElement*>(pAnnot->Lookup("Rect"_ostr));
+                CPPUNIT_ASSERT(pARect);
+                const auto& rElements = pARect->GetElements();
+                CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), rElements.size());
+                const auto* pNumL = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[0]);
+                CPPUNIT_ASSERT(pNumL);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(56.693, pNumL->GetValue(), 1e-3);
+                const auto* pNumT = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[1]);
+                CPPUNIT_ASSERT(pNumT);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(252.455, pNumT->GetValue(), 1e-3);
+                const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
+                CPPUNIT_ASSERT(pNumR);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(241.007, pNumR->GetValue(), 1e-3);
+                const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
+                CPPUNIT_ASSERT(pNumB);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(362.855, pNumB->GetValue(), 1e-3);
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nMCID)>(1), nMCID);
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nRef)>(1), nRef);
+    }
+
+    auto pRefKidD11 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsD1v[1]);
+    CPPUNIT_ASSERT(pRefKidD11);
+    auto pObjectD11 = pRefKidD11->LookupObject();
+    CPPUNIT_ASSERT(pObjectD11);
+    auto pTypeD11 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD11->Lookup("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeD11->GetValue());
+    auto pSD11 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD11->Lookup("S"_ostr));
+    CPPUNIT_ASSERT_EQUAL("Link"_ostr, pSD11->GetValue());
+    {
+        auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectD11->Lookup("K"_ostr));
+        auto nMCID(0);
+        auto nRef(0);
+        for (size_t i = 0; i < pKids->GetElements().size(); ++i)
+        {
+            auto pNum = dynamic_cast<vcl::filter::PDFNumberElement*>(pKids->GetElement(i));
+            auto pObjR = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pKids->GetElement(i));
+            if (pNum)
+            {
+                ++nMCID;
+            }
+            if (pObjR)
+            {
+                ++nRef;
+                auto pOType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pObjR->LookupElement("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("OBJR"_ostr, pOType->GetValue());
+                auto pAnnotRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(
+                    pObjR->LookupElement("Obj"_ostr));
+                auto pAnnot = pAnnotRef->LookupObject();
+                auto pAType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Annot"_ostr, pAType->GetValue());
+                auto pASubtype
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Subtype"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Link"_ostr, pASubtype->GetValue());
+                auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
+                    pAnnot->Lookup("Contents"_ostr));
+                CPPUNIT_ASSERT_EQUAL(
+                    u"__RefHeading___Toc17_3815242785"_ustr,
+                    ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
+                auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
+                    pAnnot->Lookup("StructParent"_ostr));
+                CPPUNIT_ASSERT(pStructParent); // every link must have it!
+                auto pARect
+                    = dynamic_cast<vcl::filter::PDFArrayElement*>(pAnnot->Lookup("Rect"_ostr));
+                CPPUNIT_ASSERT(pARect);
+                const auto& rElements = pARect->GetElements();
+                CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), rElements.size());
+                const auto* pNumL = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[0]);
+                CPPUNIT_ASSERT(pNumL);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(56.643, pNumL->GetValue(), 1e-3);
+                const auto* pNumT = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[1]);
+                CPPUNIT_ASSERT(pNumT);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(140.005, pNumT->GetValue(), 1e-3);
+                const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
+                CPPUNIT_ASSERT(pNumR);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(241.007, pNumR->GetValue(), 1e-3);
+                const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
+                CPPUNIT_ASSERT(pNumB);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(252.455, pNumB->GetValue(), 1e-3);
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nMCID)>(1), nMCID);
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nRef)>(1), nRef);
+    }
+
+    auto pRefKidD12 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsD1v[2]);
+    CPPUNIT_ASSERT(pRefKidD12);
+    auto pObjectD12 = pRefKidD12->LookupObject();
+    CPPUNIT_ASSERT(pObjectD12);
+    auto pTypeD12 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD12->Lookup("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeD12->GetValue());
+    auto pSD12 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD12->Lookup("S"_ostr));
+    CPPUNIT_ASSERT_EQUAL("Link"_ostr, pSD12->GetValue());
+    {
+        auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectD12->Lookup("K"_ostr));
+        auto nMCID(0);
+        auto nRef(0);
+        for (size_t i = 0; i < pKids->GetElements().size(); ++i)
+        {
+            auto pNum = dynamic_cast<vcl::filter::PDFNumberElement*>(pKids->GetElement(i));
+            auto pObjR = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pKids->GetElement(i));
+            if (pNum)
+            {
+                ++nMCID;
+            }
+            if (pObjR)
+            {
+                ++nRef;
+                auto pOType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pObjR->LookupElement("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("OBJR"_ostr, pOType->GetValue());
+                auto pAnnotRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(
+                    pObjR->LookupElement("Obj"_ostr));
+                auto pAnnot = pAnnotRef->LookupObject();
+                auto pAType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Annot"_ostr, pAType->GetValue());
+                auto pASubtype
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Subtype"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Link"_ostr, pASubtype->GetValue());
+                auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
+                    pAnnot->Lookup("Contents"_ostr));
+                CPPUNIT_ASSERT_EQUAL(
+                    u"__RefHeading___Toc17_3815242785"_ustr,
+                    ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
+                auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
+                    pAnnot->Lookup("StructParent"_ostr));
+                CPPUNIT_ASSERT(pStructParent); // every link must have it!
+                auto pARect
+                    = dynamic_cast<vcl::filter::PDFArrayElement*>(pAnnot->Lookup("Rect"_ostr));
+                CPPUNIT_ASSERT(pARect);
+                const auto& rElements = pARect->GetElements();
+                CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), rElements.size());
+                const auto* pNumL = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[0]);
+                CPPUNIT_ASSERT(pNumL);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(56.643, pNumL->GetValue(), 1e-3);
+                const auto* pNumT = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[1]);
+                CPPUNIT_ASSERT(pNumT);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(252.455, pNumT->GetValue(), 1e-3);
+                const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
+                CPPUNIT_ASSERT(pNumR);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(241.007, pNumR->GetValue(), 1e-3);
+                const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
+                CPPUNIT_ASSERT(pNumB);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(362.855, pNumB->GetValue(), 1e-3);
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nMCID)>(1), nMCID);
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nRef)>(1), nRef);
+    }
+
+    auto pRefKidD13 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsD1v[3]);
+    CPPUNIT_ASSERT(pRefKidD13);
+    auto pObjectD13 = pRefKidD13->LookupObject();
+    CPPUNIT_ASSERT(pObjectD13);
+    auto pTypeD13 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD13->Lookup("Type"_ostr));
+    CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeD13->GetValue());
+    auto pSD13 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectD13->Lookup("S"_ostr));
+    CPPUNIT_ASSERT_EQUAL("Link"_ostr, pSD13->GetValue());
+    {
+        auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectD13->Lookup("K"_ostr));
+        auto nMCID(0);
+        auto nRef(0);
+        for (size_t i = 0; i < pKids->GetElements().size(); ++i)
+        {
+            auto pNum = dynamic_cast<vcl::filter::PDFNumberElement*>(pKids->GetElement(i));
+            auto pObjR = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pKids->GetElement(i));
+            if (pNum)
+            {
+                ++nMCID;
+            }
+            if (pObjR)
+            {
+                ++nRef;
+                auto pOType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pObjR->LookupElement("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("OBJR"_ostr, pOType->GetValue());
+                auto pAnnotRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(
+                    pObjR->LookupElement("Obj"_ostr));
+                auto pAnnot = pAnnotRef->LookupObject();
+                auto pAType
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Type"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Annot"_ostr, pAType->GetValue());
+                auto pASubtype
+                    = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Subtype"_ostr));
+                CPPUNIT_ASSERT_EQUAL("Link"_ostr, pASubtype->GetValue());
+                auto pAContents = dynamic_cast<vcl::filter::PDFHexStringElement*>(
+                    pAnnot->Lookup("Contents"_ostr));
+                CPPUNIT_ASSERT_EQUAL(
+                    u"__RefHeading___Toc17_3815242785"_ustr,
+                    ::vcl::filter::PDFDocument::DecodeHexStringUTF16BE(*pAContents));
+                auto pStructParent = dynamic_cast<vcl::filter::PDFNumberElement*>(
+                    pAnnot->Lookup("StructParent"_ostr));
+                CPPUNIT_ASSERT(pStructParent); // every link must have it!
+                auto pARect
+                    = dynamic_cast<vcl::filter::PDFArrayElement*>(pAnnot->Lookup("Rect"_ostr));
+                CPPUNIT_ASSERT(pARect);
+                const auto& rElements = pARect->GetElements();
+                CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), rElements.size());
+                const auto* pNumL = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[0]);
+                CPPUNIT_ASSERT(pNumL);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(56.643, pNumL->GetValue(), 1e-3);
+                const auto* pNumT = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[1]);
+                CPPUNIT_ASSERT(pNumT);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(140.005, pNumT->GetValue(), 1e-3);
+                const auto* pNumR = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[2]);
+                CPPUNIT_ASSERT(pNumR);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(184.707, pNumR->GetValue(), 1e-3);
+                const auto* pNumB = dynamic_cast<vcl::filter::PDFNumberElement*>(rElements[3]);
+                CPPUNIT_ASSERT(pNumB);
+                CPPUNIT_ASSERT_DOUBLES_EQUAL(252.455, pNumB->GetValue(), 1e-3);
+            }
+        }
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nMCID)>(1), nMCID);
+        CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nRef)>(1), nRef);
+    }
+
+    // the problem was that the links in follow frames were all missing
+    auto pAnnots0 = dynamic_cast<vcl::filter::PDFArrayElement*>(aPages[0]->Lookup("Annots"_ostr));
+    CPPUNIT_ASSERT(pAnnots0);
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(2), pAnnots0->GetElements().size());
+    auto pAnnots1 = dynamic_cast<vcl::filter::PDFArrayElement*>(aPages[1]->Lookup("Annots"_ostr));
+    CPPUNIT_ASSERT(pAnnots1);
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(2), pAnnots1->GetElements().size());
+    auto pAnnots2 = dynamic_cast<vcl::filter::PDFArrayElement*>(aPages[2]->Lookup("Annots"_ostr));
+    CPPUNIT_ASSERT(pAnnots2);
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(2), pAnnots2->GetElements().size());
+    auto pAnnots3 = dynamic_cast<vcl::filter::PDFArrayElement*>(aPages[3]->Lookup("Annots"_ostr));
+    CPPUNIT_ASSERT(pAnnots3);
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(2), pAnnots3->GetElements().size());
+}
+
 CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf115967)
 {
-    aMediaDescriptor["FilterName"] <<= OUString("writer_pdf_Export");
     saveAsPDF(u"tdf115967.odt");
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
     CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
@@ -2764,7 +3624,31 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf115967)
         OUString sChar = pPageObject->getText(pTextPage);
         sText += o3tl::trim(sChar);
     }
-    CPPUNIT_ASSERT_EQUAL(OUString("m=750abc"), sText);
+    CPPUNIT_ASSERT_EQUAL(u"m=750abc"_ustr, sText);
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest, testTdf167659)
+{
+    // Don't export showing tracked changes to PDF
+    uno::Sequence<beans::PropertyValue> aFilterData(
+        comphelper::InitPropertySequence({ { "ExportTrackedChanges", uno::Any(false) } }));
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+    saveAsPDF(u"tdf167659.odt");
+
+    // Parse the export result with pdfium.
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(0);
+    CPPUNIT_ASSERT(pPdfPage);
+    std::unique_ptr<vcl::pdf::PDFiumTextPage> pPdfTextPage = pPdfPage->getTextPage();
+    CPPUNIT_ASSERT(pPdfTextPage);
+
+    const int nChars = pPdfTextPage->countChars();
+    std::vector<sal_uInt32> aChars(nChars);
+    for (int i = 0; i < nChars; i++)
+        aChars[i] = pPdfTextPage->getUnicode(i);
+    OUString aActualText(aChars.data(), aChars.size());
+    // Without the change, this also includes tracked deleted text from the document
+    CPPUNIT_ASSERT_EQUAL(u"normal text"_ustr, aActualText);
 }
 
 } // end anonymous namespace

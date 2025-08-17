@@ -58,7 +58,17 @@ bool SwFlyPortion::Format( SwTextFormatInfo &rInf )
         rInf.GetLastTab()->FormatEOL( rInf );
 
     rInf.GetLast()->FormatEOL( rInf );
-    PrtWidth( o3tl::narrowing<sal_uInt16>(GetFix() - rInf.X() + PrtWidth()) );
+
+    SetBlankWidth(0);
+    if (auto blankWidth = rInf.GetLast()->ExtraBlankWidth())
+    {
+        // Swallow previous blank width
+        SetBlankWidth(blankWidth);
+        rInf.GetLast()->ExtraBlankWidth(0);
+        rInf.X(rInf.X() - blankWidth); // Step back
+    }
+
+    PrtWidth(GetFix() - rInf.X() + PrtWidth());
     if( !Width() )
     {
         OSL_ENSURE( Width(), "+SwFlyPortion::Format: a fly is a fly is a fly" );
@@ -78,11 +88,11 @@ bool SwFlyPortion::Format( SwTextFormatInfo &rInf )
         && ' ' != rInf.GetChar(rInf.GetIdx() - TextFrameIndex(1))
         && ( !rInf.GetLast() || !rInf.GetLast()->IsBreakPortion() ) )
     {
-        SetBlankWidth( rInf.GetTextSize(OUString(' ')).Width() );
+        SetBlankWidth(GetBlankWidth() + rInf.GetTextSize(OUString(' ')).Width());
         SetLen(TextFrameIndex(1));
     }
 
-    const sal_uInt16 nNewWidth = o3tl::narrowing<sal_uInt16>(rInf.X() + PrtWidth());
+    const SwTwips nNewWidth = rInf.X() + PrtWidth();
     if( rInf.Width() <= nNewWidth )
     {
         Truncate();
@@ -154,11 +164,12 @@ void SwTextFrame::MoveFlyInCnt(SwTextFrame *pNew,
     if ( nullptr == pObjs )
         return;
 
-    for ( size_t i = 0; GetDrawObjs() && i < pObjs->size(); ++i )
+    size_t i = 0;
+    while (GetDrawObjs() && i < pObjs->size())
     {
         // Consider changed type of <SwSortedList> entries
         SwAnchoredObject* pAnchoredObj = (*pObjs)[i];
-        const SwFormatAnchor& rAnch = pAnchoredObj->GetFrameFormat().GetAnchor();
+        const SwFormatAnchor& rAnch = pAnchoredObj->GetFrameFormat()->GetAnchor();
         if (rAnch.GetAnchorId() == RndStdIds::FLY_AS_CHAR)
         {
             const SwPosition* pPos = rAnch.GetContentAnchor();
@@ -170,14 +181,15 @@ void SwTextFrame::MoveFlyInCnt(SwTextFrame *pNew,
                     RemoveFly( pFlyFrame );
                     pNew->AppendFly( pFlyFrame );
                 }
-                else if ( dynamic_cast< const SwAnchoredDrawObject *>( pAnchoredObj ) !=  nullptr )
+                else
                 {
                     RemoveDrawObj( *pAnchoredObj );
                     pNew->AppendDrawObj( *pAnchoredObj );
                 }
-                --i;
+                continue; // pObjs shrunk
             }
         }
+        ++i;
     }
 }
 
@@ -213,7 +225,7 @@ void sw::FlyContentPortion::Paint(const SwTextPaintInfo& rInf) const
 
     if(!((m_pFly->IsCompletePaint() ||
             m_pFly->getFrameArea().Overlaps(aRepaintRect)) &&
-            SwFlyFrame::IsPaint(m_pFly->GetVirtDrawObj(), m_pFly->getRootFrame()->GetCurrShell())))
+            SwFlyFrame::IsPaint(m_pFly->GetVirtDrawObj(), *m_pFly->getRootFrame()->GetCurrShell())))
         return;
 
     SwRect aRect(m_pFly->getFrameArea());
@@ -369,13 +381,13 @@ void SwFlyCntPortion::SetBase( const SwTextFrame& rFrame, const Point &rBase,
         {
             // TODO: Improve security with moving this sync call to other place,
             // where it works for typing but not during layout calc.
-            const bool bModified = pFormat->GetDoc()->getIDocumentState().IsEnableSetModified();
-            pFormat->GetDoc()->getIDocumentState().SetEnableSetModified(false);
+            const bool bModified = pFormat->GetDoc().getIDocumentState().IsEnableSetModified();
+            pFormat->GetDoc().getIDocumentState().SetEnableSetModified(false);
             SwTextBoxHelper::synchronizeGroupTextBoxProperty(SwTextBoxHelper::changeAnchor, pFormat,
                                                              pFormat->FindRealSdrObject());
             SwTextBoxHelper::synchronizeGroupTextBoxProperty(SwTextBoxHelper::syncTextBoxSize,
                                                              pFormat, pFormat->FindRealSdrObject());
-            pFormat->GetDoc()->getIDocumentState().SetEnableSetModified(bModified);
+            pFormat->GetDoc().getIDocumentState().SetEnableSetModified(bModified);
         }
     }
 
@@ -400,7 +412,7 @@ void SwFlyCntPortion::SetBase( const SwTextFrame& rFrame, const Point &rBase,
         else
         {
             mnAscent = 0;
-            Height( Height() + o3tl::narrowing<sal_uInt16>(nRelPos) );
+            Height(Height() + nRelPos);
         }
     }
     else

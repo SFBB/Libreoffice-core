@@ -32,7 +32,6 @@
 #include <strings.hrc>
 #include <connectivity/dbexception.hxx>
 
-using namespace ::comphelper;
 using namespace connectivity;
 using namespace connectivity::dbase;
 using namespace connectivity::file;
@@ -40,13 +39,12 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
 
-sdbcx::ObjectType ODbaseTables::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > ODbaseTables::createObject(const OUString& _rName)
 {
     rtl::Reference<ODbaseTable> pRet = new ODbaseTable(this, static_cast<ODbaseConnection*>(static_cast<OFileCatalog&>(m_rParent).getConnection()),
-                                        _rName,"TABLE");
+                                        _rName,u"TABLE"_ustr);
 
     pRet->construct();
     return pRet;
@@ -63,7 +61,7 @@ Reference< XPropertySet > ODbaseTables::createDescriptor()
 }
 
 // XAppend
-sdbcx::ObjectType ODbaseTables::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > ODbaseTables::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     auto pTable = dynamic_cast<ODbaseTable*>(descriptor.get());
     if(pTable)
@@ -81,7 +79,7 @@ sdbcx::ObjectType ODbaseTables::appendObject( const OUString& _rForName, const R
         catch(Exception& ex)
         {
             css::uno::Any anyEx = cppu::getCaughtException();
-            throw SQLException( ex.Message, nullptr, "", 0, anyEx );
+            throw SQLException( ex.Message, nullptr, u""_ustr, 0, anyEx );
         }
     }
     return createObject( _rForName );

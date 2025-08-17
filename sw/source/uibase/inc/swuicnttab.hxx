@@ -112,14 +112,14 @@ public:
     void                CreateOrUpdateExample(
                             TOXTypes nTOXIndex, sal_uInt16 nPage = 0, sal_uInt16 nCurLevel = USHRT_MAX);
 
-    static bool IsNoNum(SwWrtShell& rSh, const OUString& rName);
+    static bool IsNoNum(SwWrtShell& rSh, const UIName& rName);
 };
 
 class SwTOXSelectTabPage final : public SfxTabPage
 {
     std::unique_ptr<IndexEntryResource> m_pIndexRes;
 
-    OUString        m_aStyleArr[MAXLEVEL];
+    UIName          m_aStyleArr[MAXLEVEL];
     OUString        m_sAutoMarkURL;
     OUString        m_sAutoMarkType;
     OUString        m_sAddStyleUser;
@@ -133,6 +133,7 @@ class SwTOXSelectTabPage final : public SfxTabPage
     std::unique_ptr<weld::Label> m_xTypeFT;
     std::unique_ptr<weld::ComboBox> m_xTypeLB;
     std::unique_ptr<weld::CheckButton> m_xReadOnlyCB;
+    std::unique_ptr<weld::CheckButton> m_xTitleToggleCB;
 
     std::unique_ptr<weld::Widget> m_xAreaFrame;
     std::unique_ptr<weld::ComboBox> m_xAreaLB;
@@ -247,7 +248,7 @@ class SwTokenWindow
     std::unique_ptr<weld::Builder> m_xBuilder;
     std::unique_ptr<weld::Container> m_xContainer;
     std::unique_ptr<weld::Button> m_xLeftScrollWin;
-    std::unique_ptr<weld::Container> m_xCtrlParentWin;
+    std::unique_ptr<weld::Grid> m_xCtrlParentWin;
     std::unique_ptr<weld::ScrolledWindow> m_xScrollWin;
     std::unique_ptr<weld::Button> m_xRightScrollWin;
     std::vector<std::unique_ptr<SwTOXWidget>> m_aControlList;
@@ -261,7 +262,7 @@ class SwTokenWindow
     DECL_LINK(ScrollHdl, weld::ScrolledWindow&, void);
     DECL_LINK(AdjustPositionsHdl, const Size&, void);
 
-    void    SetActiveControl(SwTOXWidget* pSet);
+    void    SetActiveControl(SwTOXWidget* pSet, bool bGrabFocus = true);
 
     SwTOXWidget* InsertItem(const OUString& rText, const SwFormToken& aToken);
     void        AdjustPositions();
@@ -270,12 +271,12 @@ class SwTokenWindow
 
 public:
     SwTokenWindow(std::unique_ptr<weld::Container> xParent);
-    weld::Container* get_child_container() { return m_xCtrlParentWin.get(); }
+    weld::Grid* get_child_container() { return m_xCtrlParentWin.get(); }
     ~SwTokenWindow();
 
     void SetTabPage(SwTOXEntryTabPage *pParent) { m_pParent = pParent; }
 
-    void        SetForm(SwForm& rForm, sal_uInt16 nLevel);
+    void        SetForm(SwForm& rForm, sal_uInt16 nLevel, bool bGrabFocus = true);
     sal_uInt16  GetLastLevel()const {return m_nLevel;};
 
     bool        IsValid() const {return m_bValid;}
@@ -316,8 +317,7 @@ class SwTOXEntryTabPage final : public SfxTabPage
     CurTOXType      m_aLastTOXType;
     bool            m_bInLevelHdl;
 
-    std::unique_ptr<weld::Label> m_xTypeFT;
-    std::unique_ptr<weld::Label> m_xLevelFT;
+    std::unique_ptr<weld::Frame> m_xLevelFrame;
     std::unique_ptr<weld::TreeView> m_xLevelLB;
     std::unique_ptr<weld::Button> m_xAllLevelsPB;
     std::unique_ptr<weld::Button> m_xEntryNoPB;
@@ -388,6 +388,7 @@ class SwTOXEntryTabPage final : public SfxTabPage
     DECL_LINK(ModifyClickHdl, weld::Toggleable&, void);
 
     void ShowHideControls(int eType);
+    void LevelHdlImpl(weld::TreeView& rBox, bool bGrabFocus);
 
 public:
     SwTOXEntryTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rAttrSet);

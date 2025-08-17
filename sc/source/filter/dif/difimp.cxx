@@ -76,11 +76,6 @@ ErrCode ScFormatFilterPluginImpl::ScImportDif(SvStream& rIn, ScDocument* pDoc, c
             }
                 break;
             case T_VECTORS:
-            {
-                if( aDifParser.nVector != 0 )
-                    bSyntErrWarn = true;
-            }
-                break;
             case T_TUPLES:
             {
                 if( aDifParser.nVector != 0 )
@@ -629,8 +624,8 @@ void DifColumn::NewEntry( const SCROW nPos, const sal_uInt32 nNumFormat )
 
 void DifColumn::Apply( ScDocument& rDoc, const SCCOL nCol, const SCTAB nTab )
 {
-    ScPatternAttr aAttr( rDoc.GetPool() );
-    SfxItemSet &rItemSet = aAttr.GetItemSet();
+    ScPatternAttr aAttr(rDoc.getCellAttributeHelper());
+    SfxItemSet &rItemSet = aAttr.GetItemSetWritable();
 
     for (const auto& rEntry : maEntries)
     {

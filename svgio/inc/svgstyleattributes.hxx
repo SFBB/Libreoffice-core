@@ -166,7 +166,15 @@ namespace svgio::svgreader
         {
             Auto,
             Middle,
-            Hanging
+            Hanging,
+            Central
+        };
+
+        enum class Overflow
+        {
+            notset,
+            hidden,
+            visible
         };
 
         enum class Visibility
@@ -182,7 +190,7 @@ namespace svgio::svgreader
         {
         private:
             SvgNode&                    mrOwner;
-            const SvgStyleAttributes*   mpCssStyleParent;
+            const SvgStyleAttributes*   mpCssStyle;
             SvgPaint                    maFill;
             SvgPaint                    maStroke;
             SvgPaint                    maStopColor;
@@ -206,6 +214,7 @@ namespace svgio::svgreader
             TextAnchor                  maTextAnchor;
             SvgPaint                    maColor;
             SvgNumber                   maOpacity;
+            Overflow                    maOverflow;
             Visibility                  maVisibility;
             OUString               maTitle;
             OUString               maDesc;
@@ -234,13 +243,21 @@ namespace svgio::svgreader
 
             mutable std::vector<sal_uInt16> maResolvingParent;
 
-            // defines if this attributes are part of a ClipPath. If yes,
-            // rough geometry will be created on decomposition by patching
-            // values for fill, stroke, strokeWidth and others
-            bool                        mbIsClipPathContent : 1;
 
             // #121221# Defines if evtl. an empty array *is* set
             bool                        mbStrokeDasharraySet : 1;
+
+            // tdf#155651 Defines if 'context-fill' is used in fill
+            bool                        mbUseFillFromContextFill : 1;
+
+            // tdf#155651 Defines if 'context-stroke' is used in fill
+            bool                        mbUseFillFromContextStroke : 1;
+
+            // tdf#155651 Defines if 'context-fill' is used in stroke
+            bool                        mbUseStrokeFromContextFill : 1;
+
+            // tdf#155651 Defines if 'context-stroke' is used in stroke
+            bool                        mbUseStrokeFromContextStroke : 1;
 
             // tdf#94765 Check id references in gradient/pattern getters
             OUString                    maNodeFillURL;
@@ -298,16 +315,23 @@ namespace svgio::svgreader
                 drawinglayer::primitive2d::Primitive2DContainer&& rSource,
                 const std::optional<basegfx::B2DHomMatrix>& pTransform) const;
 
-            /// helper to set mpCssStyleParent temporarily for CSS style hierarchies
-            void setCssStyleParent(const SvgStyleAttributes* pNew) { mpCssStyleParent = pNew; }
-            const SvgStyleAttributes* getCssStyleParent() const { return mpCssStyleParent; }
+            /// helper to set mpCssStyle temporarily for CSS style hierarchies
+            void setCssStyle(const SvgStyleAttributes* pNew) { mpCssStyle = pNew; }
+            const SvgStyleAttributes* getCssStyle() const { return mpCssStyle; }
 
             /// scan helpers
             void readCssStyle(std::u16string_view rCandidate);
-            const SvgStyleAttributes* getParentStyle() const;
+            const SvgStyleAttributes* getCssStyleOrParentStyle() const;
+
+            const SvgMarkerNode* getMarkerParentNode() const;
 
             SvgStyleAttributes(SvgNode& rOwner);
             ~SvgStyleAttributes();
+
+            // Check if this attribute is part of a ClipPath.
+            // If so, rough geometry will be created on decomposition by patching
+            // values for fill, stroke, strokeWidth and others
+            bool isClipPathContent() const;
 
             /// fill content
             bool isFillSet() const; // #i125258# ask if fill is a direct hard attribute (no hierarchy)
@@ -316,6 +340,12 @@ namespace svgio::svgreader
 
             /// stroke content
             const basegfx::BColor* getStroke() const;
+
+            /// context fill content
+            const basegfx::BColor* getContextFill() const;
+
+            /// context stroke content
+            const basegfx::BColor* getContextStroke() const;
 
             /// stop color content
             const basegfx::BColor& getStopColor() const;
@@ -408,6 +438,10 @@ namespace svgio::svgreader
             /// Opacity content
             SvgNumber getOpacity() const;
             void setOpacity(const SvgNumber& rOpacity) { maOpacity = rOpacity; }
+
+            /// Overflow
+            Overflow getOverflow() const;
+            void setOverflow(const Overflow aOverflow) { maOverflow = aOverflow; }
 
             /// Visibility
             Visibility getVisibility() const;

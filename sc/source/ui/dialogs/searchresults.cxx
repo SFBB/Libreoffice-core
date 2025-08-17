@@ -23,14 +23,14 @@
 namespace sc {
 
 SearchResultsDlg::SearchResultsDlg(SfxBindings* _pBindings, weld::Window* pParent)
-    : SfxDialogController(pParent, "modules/scalc/ui/searchresults.ui", "SearchResultsDialog")
+    : SfxDialogController(pParent, u"modules/scalc/ui/searchresults.ui"_ustr, u"SearchResultsDialog"_ustr)
     , aSkipped(ScResId(SCSTR_SKIPPED))
     , mpBindings(_pBindings)
     , mpDoc(nullptr)
     , mbSorted(false)
-    , mxList(m_xBuilder->weld_tree_view("results"))
-    , mxSearchResults(m_xBuilder->weld_label("lbSearchResults"))
-    , mxShowDialog(m_xBuilder->weld_check_button("cbShow"))
+    , mxList(m_xBuilder->weld_tree_view(u"results"_ustr))
+    , mxSearchResults(m_xBuilder->weld_label(u"lbSearchResults"_ustr))
+    , mxShowDialog(m_xBuilder->weld_check_button(u"cbShow"_ustr))
 {
     mxList->set_size_request(mxList->get_approximate_digit_width() * 50, mxList->get_height_rows(15));
     mxShowDialog->connect_toggled(LINK(this, SearchResultsDlg, OnShowToggled));
@@ -40,7 +40,7 @@ SearchResultsDlg::SearchResultsDlg(SfxBindings* _pBindings, weld::Window* pParen
         o3tl::narrowing<int>(mxList->get_approximate_digit_width() * 10)
     };
     mxList->set_column_fixed_widths(aWidths);
-    mxList->connect_changed(LINK(this, SearchResultsDlg, ListSelectHdl));
+    mxList->connect_selection_changed(LINK(this, SearchResultsDlg, ListSelectHdl));
     mxList->connect_column_clicked(LINK(this, SearchResultsDlg, HeaderBarClick));
 }
 
@@ -65,11 +65,13 @@ namespace
 {
     class ListWrapper {
         weld::TreeView& mrList;
+        const ScDocument& mrDoc;
     public:
         size_t mnCount = 0;
         static const size_t mnMaximum = 1000;
-        ListWrapper(weld::TreeView& rList)
+        ListWrapper(weld::TreeView& rList, const ScDocument& rDoc)
             : mrList(rList)
+            , mrDoc(rDoc)
         {
             mrList.clear();
             mrList.freeze();
@@ -78,17 +80,16 @@ namespace
         {
             mrList.thaw();
         }
-        void Insert(const OUString &rTabName,
-                    const ScAddress &rPos,
-                    formula::FormulaGrammar::AddressConvention eConvention,
-                    const OUString &rText)
+        void Insert(const ScAddress &rPos, const OUString &rText)
         {
             if (mnCount++ < mnMaximum)
             {
-                mrList.append_text(rTabName);
+                OUString aTabName;
+                mrDoc.GetName(rPos.Tab(), aTabName);
+                mrList.append_text(aTabName);
                 int nPos = mrList.n_children() - 1;
                 mrList.set_text(nPos, rPos.Format(ScRefFlags::ADDR_ABS,
-                                      nullptr, eConvention), 1);
+                                      nullptr, mrDoc.GetAddressConvention()), 1);
                 mrList.set_text(nPos, rText, 2);
             }
         }
@@ -98,27 +99,17 @@ namespace
 void SearchResultsDlg::FillResults( ScDocument& rDoc, const ScRangeList &rMatchedRanges, bool bCellNotes,
         bool bEmptyCells, bool bMatchedRangesWereClamped )
 {
-    ListWrapper aList(*mxList);
-    std::vector<OUString> aTabNames = rDoc.GetAllTableNames();
-    SCTAB nTabCount = aTabNames.size();
+    ListWrapper aList(*mxList, rDoc);
 
-    // tdf#92160 - too many results blow the widget's mind
-    size_t nMatchMax = rMatchedRanges.size();
-    if (nMatchMax > ListWrapper::mnMaximum)
-        nMatchMax = ListWrapper::mnMaximum;
-
-    if (bCellNotes || bEmptyCells)
+    for (const auto& rRange : rMatchedRanges)
     {
-        for (size_t i = 0, n = nMatchMax; i < n; ++i)
+        if (bCellNotes || bEmptyCells)
         {
-            ScRange const & rRange( rMatchedRanges[i] );
             // Bear in mind that mostly the range is one address position
             // or a column or a row joined.
             ScAddress aPos( rRange.aStart );
             for ( ; aPos.Tab() <= rRange.aEnd.Tab(); aPos.IncTab())
             {
-                if (aPos.Tab() >= nTabCount)
-                    break;  // can this even happen? we just searched on existing sheets ...
                 for (aPos.SetCol( rRange.aStart.Col()); aPos.Col() <= rRange.aEnd.Col(); aPos.IncCol())
                 {
                     for (aPos.SetRow( rRange.aStart.Row()); aPos.Row() <= rRange.aEnd.Row(); aPos.IncRow())
@@ -127,36 +118,23 @@ void SearchResultsDlg::FillResults( ScDocument& rDoc, const ScRangeList &rMatche
                         {
                             const ScPostIt* pNote = rDoc.GetNote( aPos);
                             if (pNote)
-                                aList.Insert(aTabNames[aPos.Tab()], aPos,
-                                        rDoc.GetAddressConvention(),
-                                        pNote->GetText());
+                                aList.Insert(aPos, pNote->GetText());
                         }
                         else  // bEmptyCells
                         {
-                            aList.Insert(aTabNames[aPos.Tab()], aPos,
-                                    rDoc.GetAddressConvention(),
-                                    rDoc.GetString(aPos));
+                            aList.Insert(aPos, rDoc.GetString(aPos));
                         }
                     }
                 }
             }
         }
-    }
-    else
-    {
-        for (size_t i = 0, n = nMatchMax; i < n; ++i)
+        else
         {
-            ScCellIterator aIter(rDoc, rMatchedRanges[i]);
+            ScCellIterator aIter(rDoc, rRange);
             for (bool bHas = aIter.first(); bHas; bHas = aIter.next())
             {
                 const ScAddress& aPos = aIter.GetPos();
-                if (aPos.Tab() >= nTabCount)
-                    // Out-of-bound sheet index.
-                    continue;
-
-                aList.Insert(aTabNames[aPos.Tab()], aPos,
-                             rDoc.GetAddressConvention(),
-                             rDoc.GetString(aPos));
+                aList.Insert(aPos, rDoc.GetString(aPos));
             }
         }
     }
@@ -249,18 +227,22 @@ IMPL_LINK_NOARG( SearchResultsDlg, ListSelectHdl, weld::TreeView&, void )
         return;
 
     // Jump to the cell.
-    ScTabViewShell* pScViewShell = ScTabViewShell::GetActiveViewShell();
-    pScViewShell->SetTabNo(nTab);
-    pScViewShell->SetCursor(aPos.Col(), aPos.Row());
-    pScViewShell->AlignToCursor(aPos.Col(), aPos.Row(), SC_FOLLOW_JUMP);
+    if (ScTabViewShell* pScViewShell = ScTabViewShell::GetActiveViewShell())
+    {
+        pScViewShell->SetTabNo(nTab);
+        pScViewShell->SetCursor(aPos.Col(), aPos.Row());
+        pScViewShell->AlignToCursor(aPos.Col(), aPos.Row(), SC_FOLLOW_JUMP);
+    }
 }
 
 IMPL_STATIC_LINK( SearchResultsDlg, OnShowToggled, weld::Toggleable&, rButton, void )
 {
-    ScTabViewShell* pScViewShell = ScTabViewShell::GetActiveViewShell();
-    ScViewOptions aViewOpt( pScViewShell->GetViewData().GetOptions() );
-    aViewOpt.SetOption( VOPT_SUMMARY, rButton.get_active() );
-    pScViewShell->GetViewData().SetOptions( aViewOpt );
+    if (ScTabViewShell* pScViewShell = ScTabViewShell::GetActiveViewShell())
+    {
+        ScViewOptions aViewOpt( pScViewShell->GetViewData().GetOptions() );
+        aViewOpt.SetOption(sc::ViewOption::SUMMARY, rButton.get_active());
+        pScViewShell->GetViewData().SetOptions( aViewOpt );
+    }
 }
 
 SearchResultsDlgWrapper::SearchResultsDlgWrapper(

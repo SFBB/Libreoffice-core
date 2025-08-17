@@ -31,14 +31,9 @@
 namespace chart { struct ExplicitIncrementData; }
 namespace chart { struct ExplicitScaleData; }
 namespace com::sun::star::chart2 { class XAxis; }
-namespace com::sun::star::chart2 { class XChartDocument; }
 namespace com::sun::star::chart2 { class XDataSeries; }
-namespace com::sun::star::chart2 { class XDiagram; }
 namespace com::sun::star::chart2 { class XTitle; }
 namespace com::sun::star::container { class XNameContainer; }
-namespace com::sun::star::drawing { class XDrawPage; }
-namespace com::sun::star::frame { class XModel; }
-namespace com::sun::star::lang { class XUnoTunnel; }
 namespace com::sun::star::uno { class XComponentContext; }
 
 
@@ -76,9 +71,6 @@ public:
 
     sal_Int32 getExplicitNumberFormatKeyForAxis(
             const rtl::Reference< ::chart::Axis >& xAxis );
-
-    static sal_Int32 getExplicitNumberFormatKeyForSeries(
-            const css::uno::Reference< css::chart2::XDataSeries >& xSeries );
 
     /** Returns the size of the page in logic coordinates.  This value is used
         for setting an appropriate "ReferencePageSize" for FontHeights.
@@ -129,7 +121,6 @@ public:
     css::awt::Point GetAxisPosition( const css::uno::Reference< css::chart2::XAxis > & xAxis ) const;
 
 private: //methods
-    ExplicitValueProvider* getExplicitValueProvider() const;
     rtl::Reference< ChartView > const & getChartView() const;
 
 public: //member

@@ -301,7 +301,7 @@ sal_Int32 CustomAnimationEffect::getNumberOfSubitems( const Any& aTarget, sal_In
         if( xShape.is() )
         {
             // TODO/LATER: Optimize this, don't create a break iterator each time
-            Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+            const Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
             Reference < i18n::XBreakIterator > xBI = i18n::BreakIterator::create(xContext);
 
             Reference< XEnumerationAccess > xEA( xShape, UNO_QUERY_THROW );
@@ -580,7 +580,7 @@ bool CustomAnimationEffect::checkForText( const std::vector<sal_Int32>* paragrap
                             xEnumeration->nextElement() >>= xParaSet;
                             if( xParaSet.is() )
                             {
-                                xParaSet->getPropertyValue( "NumberingLevel" ) >>= nParaDepth;
+                                xParaSet->getPropertyValue( u"NumberingLevel"_ustr ) >>= nParaDepth;
                             }
                         }
                     }
@@ -944,7 +944,7 @@ Reference< XAnimationNode > CustomAnimationEffect::createAfterEffectNode() const
 {
     DBG_ASSERT( mbHasAfterEffect, "sd::CustomAnimationEffect::createAfterEffectNode(), this node has no after effect!" );
 
-    Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const Reference< XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
 
     Reference< XAnimate > xAnimate;
     if( maDimColor.hasValue() )
@@ -1005,7 +1005,7 @@ void CustomAnimationEffect::setIterateType( sal_Int16 nIterateType )
         {
             sal_Int16 nTargetSubItem = mnTargetSubItem;
 
-            Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+            const Reference< XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
             Reference< XTimeContainer > xNewContainer;
             if(nIterateType)
             {
@@ -1450,7 +1450,7 @@ void CustomAnimationEffect::createAudio( const css::uno::Any& rSource )
 
     try
     {
-        Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+        const Reference< XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
         Reference< XAudio > xAudio( Audio::create( xContext ) );
         xAudio->setSource( rSource );
         xAudio->setVolume( 1.0 );
@@ -1545,7 +1545,7 @@ void CustomAnimationEffect::setStopAudio()
         if( mxAudio.is() )
             removeAudio();
 
-        Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+        const Reference< XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
         Reference< XCommand > xCommand( Command::create( xContext ) );
 
         xCommand->setCommand( EffectCommands::STOPAUDIO );
@@ -1590,7 +1590,7 @@ void CustomAnimationEffect::updateSdrPathObjFromPath( SdrPathObj& rPathObj )
 
             const ::tools::Rectangle aBoundRect( pObj->GetCurrentBoundRect() );
             const Point aCenter( aBoundRect.Center() );
-            aPolyPoly.transform(basegfx::utils::createTranslateB2DHomMatrix(aCenter.X(), aCenter.Y()));
+            aPolyPoly.translate(aCenter.X(), aCenter.Y());
         }
     }
 
@@ -1620,7 +1620,7 @@ void CustomAnimationEffect::updatePathFromSdrPathObj( const SdrPathObj& rPathObj
 
         const Point aCenter( aBoundRect.Center() );
 
-        aPolyPoly.transform(basegfx::utils::createTranslateB2DHomMatrix(-aCenter.X(), -aCenter.Y()));
+        aPolyPoly.translate(-aCenter.X(), -aCenter.Y());
 
         SdrPage* pPage = pObj->getSdrPageFromSdrObject();
         if( pPage )
@@ -1678,7 +1678,7 @@ CustomAnimationEffectPtr EffectSequenceHelper::append( const CustomAnimationPres
 
     if( pPreset )
     {
-        Reference< XAnimationNode > xNode( pPreset->create( "" ) );
+        Reference< XAnimationNode > xNode( pPreset->create( u""_ustr ) );
         if( xNode.is() )
         {
             // first, filter all only ui relevant user data
@@ -1803,7 +1803,7 @@ void EffectSequenceHelper::replace( const CustomAnimationEffectPtr& pEffect, con
 
 void EffectSequenceHelper::replace( const CustomAnimationEffectPtr& pEffect, const CustomAnimationPresetPtr& pPreset, double fDuration /* = -1.0 */ )
 {
-    replace( pEffect, pPreset, "", fDuration );
+    replace( pEffect, pPreset, u""_ustr, fDuration );
 }
 
 void EffectSequenceHelper::remove( const CustomAnimationEffectPtr& pEffect )
@@ -2016,7 +2016,7 @@ void stl_process_after_effect_node_func(AfterEffectNode const & rNode)
             }
             else // nextClick
             {
-                Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+                const Reference< XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
                 // insert the aftereffect in the next group
 
                 Reference< XTimeContainer > xClickContainer( xContainer->getParent(), UNO_QUERY_THROW );
@@ -2190,7 +2190,7 @@ bool EffectSequenceHelper::getParagraphNumberingLevels( const Reference< XShape 
                     sal_Int32 nParaDepth = 0;
                     if( xParaSet.is() )
                     {
-                        xParaSet->getPropertyValue( "NumberingLevel" ) >>= nParaDepth;
+                        xParaSet->getPropertyValue( u"NumberingLevel"_ustr ) >>= nParaDepth;
                     }
 
                     rParagraphNumberingLevel.push_back( nParaDepth );
@@ -2542,7 +2542,7 @@ void EffectSequenceHelper::createTextGroupParagraphEffects( const CustomAnimatio
         }
 
         ParagraphTarget aTarget;
-        aTarget.Shape = xTarget;
+        aTarget.Shape = std::move(xTarget);
 
         for( const auto i : aParaList )
         {
@@ -2717,7 +2717,7 @@ void EffectSequenceHelper::setAnimateForm( const CustomAnimationTextGroupPtr& pT
 
         if( !bAnimateForm && (aEffects.size() == 1) )
         {
-            CustomAnimationEffectPtr pEffect( *aIter );
+            const CustomAnimationEffectPtr& pEffect( *aIter );
             pEffect->setTarget( Any( (*aIter)->getTargetShape() ) );
             pEffect->setTargetSubItem( ShapeAnimationSubType::ONLY_TEXT );
             pTextGroup->addEffect( pEffect );
@@ -2954,7 +2954,7 @@ void EffectSequenceHelper::createEffects( const Reference< XAnimationNode >& xNo
                     if( pEffect->mnNodeType != -1 )
                     {
                         pEffect->setEffectSequence( this );
-                        maEffects.push_back(pEffect);
+                        maEffects.push_back(std::move(pEffect));
                     }
                 }
                 break;
@@ -3062,7 +3062,7 @@ MainSequence::MainSequence()
     if( mxTimingRootNode.is() )
     {
         Sequence< css::beans::NamedValue > aUserData
-            { { "node-type", css::uno::Any(css::presentation::EffectNodeType::MAIN_SEQUENCE) } };
+            { { u"node-type"_ustr, css::uno::Any(css::presentation::EffectNodeType::MAIN_SEQUENCE) } };
         mxTimingRootNode->setUserData( aUserData );
     }
     init();
@@ -3140,7 +3140,7 @@ void MainSequence::createMainSequence()
                 Reference< XTimeContainer > xInteractiveRoot( xChildNode, UNO_QUERY_THROW );
                 InteractiveSequencePtr pIS = std::make_shared<InteractiveSequence>( xInteractiveRoot, this );
                 pIS->addListener( this );
-                maInteractiveSequenceVector.push_back( pIS );
+                maInteractiveSequenceVector.push_back(std::move(pIS));
             }
         }
 
@@ -3150,7 +3150,7 @@ void MainSequence::createMainSequence()
             mxSequenceRoot = SequenceTimeContainer::create( ::comphelper::getProcessComponentContext() );
 
             uno::Sequence< css::beans::NamedValue > aUserData
-                { { "node-type", css::uno::Any(css::presentation::EffectNodeType::MAIN_SEQUENCE) } };
+                { { u"node-type"_ustr, css::uno::Any(css::presentation::EffectNodeType::MAIN_SEQUENCE) } };
             mxSequenceRoot->setUserData( aUserData );
 
             // empty sequence until now, set duration to 0.0
@@ -3207,7 +3207,7 @@ InteractiveSequencePtr MainSequence::createInteractiveSequence( const css::uno::
     Reference< XTimeContainer > xISRoot = SequenceTimeContainer::create( ::comphelper::getProcessComponentContext() );
 
     uno::Sequence< css::beans::NamedValue > aUserData
-        { { "node-type", css::uno::Any(css::presentation::EffectNodeType::INTERACTIVE_SEQUENCE) } };
+        { { u"node-type"_ustr, css::uno::Any(css::presentation::EffectNodeType::INTERACTIVE_SEQUENCE) } };
     xISRoot->setUserData( aUserData );
     xISRoot->setRestart( css::animations::AnimationRestart::WHEN_NOT_ACTIVE );
 
@@ -3277,8 +3277,7 @@ CustomAnimationEffectPtr MainSequence::getEffectFromOffset( sal_Int32 nOffset ) 
             return (*aIter)->getEffectFromOffset( nOffset );
     }
 
-    CustomAnimationEffectPtr pEffect;
-    return pEffect;
+    return CustomAnimationEffectPtr();
 }
 
 bool MainSequence::disposeShape( const Reference< XShape >& xShape )

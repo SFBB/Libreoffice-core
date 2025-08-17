@@ -500,6 +500,8 @@ class SwHTMLParser : public SfxHTMLParser, public SvtListener
     /// This is the URL of the outer <object> data if it's not OLE2 or an image.
     OUString m_aEmbedURL;
 
+    std::unique_ptr<SfxItemSet> m_pTargetCharAttrs;
+
     void DeleteFormImpl();
 
     void DocumentDetected();
@@ -612,7 +614,7 @@ class SwHTMLParser : public SfxHTMLParser, public SvtListener
 
     // insert/close Fly-Frames
     void InsertFlyFrame( const SfxItemSet& rItemSet, HTMLAttrContext *pCntxt,
-                         const OUString& rId );
+                         const UIName& rId );
 
     void SaveDocContext( HTMLAttrContext *pCntxt, HtmlContextFlags nFlags,
                        const SwPosition *pNewPos );
@@ -954,6 +956,8 @@ public:
 
     /// Strips query and fragment from a URL path if base URL is a file:// one.
     static OUString StripQueryFromPath(std::u16string_view rBase, const OUString& rPath);
+
+    static void SanitizeAnchor(SfxItemSet& rFrameItemSet);
 };
 
 struct SwPendingData
@@ -1029,17 +1033,24 @@ inline bool SwHTMLParser::HasStyleOptions( std::u16string_view rStyle,
 
 class SwTextFootnote;
 
+
+namespace {
+    SwFormatFootnote* GetFormatFootnote(SwTextFootnote* pTextFootnote)
+    {
+        return pTextFootnote ? &static_cast<SwFormatFootnote&>(pTextFootnote->GetAttr()) : nullptr;
+    }
+}
 class SwHTMLTextFootnote
 {
 private:
     OUString m_sName;
     SwTextFootnote* m_pTextFootnote;
-    std::unique_ptr<SvtDeleteListener> m_xDeleteListener;
+    sw::WeakBroadcastingPtr<SwFormatFootnote> m_pFormatFootnote;
 public:
     SwHTMLTextFootnote(OUString rName, SwTextFootnote* pInTextFootnote)
         : m_sName(std::move(rName))
         , m_pTextFootnote(pInTextFootnote)
-        , m_xDeleteListener(new SvtDeleteListener(static_cast<SwFormatFootnote&>(pInTextFootnote->GetAttr()).GetNotifier()))
+        , m_pFormatFootnote(sw::WeakBroadcastingPtr<SwFormatFootnote>(GetFormatFootnote(pInTextFootnote)))
     {
     }
     const OUString& GetName() const
@@ -1048,7 +1059,7 @@ public:
     }
     const SwNodeIndex* GetStartNode() const
     {
-        if (m_xDeleteListener->WasDeleted())
+        if(!m_pFormatFootnote)
             return nullptr;
         return m_pTextFootnote->GetStartNode();
     }

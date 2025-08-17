@@ -134,7 +134,7 @@ void
 ScCsvGrid::Init()
 {
     OSL_PRECOND(!mpColorConfig, "the object has already been initialized");
-    mpColorConfig = &SC_MOD()->GetColorConfig();
+    mpColorConfig = &ScModule::get()->GetColorConfig();
     InitColors();
     mpColorConfig->AddListener(this);
 }
@@ -285,37 +285,37 @@ void ScCsvGrid::InitFonts()
     ::GetDefaultFonts( aLatinItem, aAsianItem, aComplexItem );
 
     // create item set for defaults
-    SfxItemSet aDefSet( mpEditEngine->GetEmptyItemSet() );
-    EditEngine::SetFontInfoInItemSet( aDefSet, maMonoFont );
-    aDefSet.Put( aAsianItem );
-    aDefSet.Put( aComplexItem );
+    SfxItemSet aDefSet(mpEditEngine->GetEmptyItemSet());
+    EditEngine::SetFontInfoInItemSet(aDefSet, maMonoFont);
+    aDefSet.Put(aAsianItem);
+    aDefSet.Put(aComplexItem);
 
     // set Asian/Complex font size to height of character in Latin font
     sal_uLong nFontHt = static_cast< sal_uLong >( maMonoFont.GetFontSize().Height() );
-    aDefSet.Put( SvxFontHeightItem( nFontHt, 100, EE_CHAR_FONTHEIGHT_CJK ) );
-    aDefSet.Put( SvxFontHeightItem( nFontHt, 100, EE_CHAR_FONTHEIGHT_CTL ) );
+    aDefSet.Put(SvxFontHeightItem(nFontHt, 100, EE_CHAR_FONTHEIGHT_CJK));
+    aDefSet.Put(SvxFontHeightItem(nFontHt, 100, EE_CHAR_FONTHEIGHT_CTL));
 
     // copy other items from default font
-    const SfxPoolItem& rWeightItem = aDefSet.Get( EE_CHAR_WEIGHT );
+    const SfxPoolItem& rWeightItem = aDefSet.Get(EE_CHAR_WEIGHT);
     std::unique_ptr<SfxPoolItem> pNewItem(rWeightItem.Clone());
     pNewItem->SetWhich(EE_CHAR_WEIGHT_CJK);
-    aDefSet.Put( *pNewItem );
+    aDefSet.Put(*pNewItem);
     pNewItem->SetWhich(EE_CHAR_WEIGHT_CTL);
-    aDefSet.Put( *pNewItem );
-    const SfxPoolItem& rItalicItem = aDefSet.Get( EE_CHAR_ITALIC );
+    aDefSet.Put(*pNewItem);
+    const SfxPoolItem& rItalicItem = aDefSet.Get(EE_CHAR_ITALIC);
     pNewItem.reset(rItalicItem.Clone());
     pNewItem->SetWhich(EE_CHAR_ITALIC_CJK);
-    aDefSet.Put( *pNewItem );
+    aDefSet.Put(*pNewItem);
     pNewItem->SetWhich(EE_CHAR_ITALIC_CTL);
-    aDefSet.Put( *pNewItem );
-    const SfxPoolItem& rLangItem = aDefSet.Get( EE_CHAR_LANGUAGE );
+    aDefSet.Put(*pNewItem);
+    const SfxPoolItem& rLangItem = aDefSet.Get(EE_CHAR_LANGUAGE);
     pNewItem.reset(rLangItem.Clone());
     pNewItem->SetWhich(EE_CHAR_LANGUAGE_CJK);
-    aDefSet.Put( *pNewItem );
+    aDefSet.Put(*pNewItem);
     pNewItem->SetWhich(EE_CHAR_LANGUAGE_CTL);
-    aDefSet.Put( *pNewItem );
+    aDefSet.Put(*pNewItem);
 
-    mpEditEngine->SetDefaults( aDefSet );
+    mpEditEngine->SetDefaults(std::move(aDefSet));
     InvalidateGfx();
 }
 
@@ -833,7 +833,7 @@ void ScCsvGrid::ImplSetTextLineSep(
     InvalidateGfx();
 }
 
-void ScCsvGrid::ImplSetTextLineFix( sal_Int32 nLine, const OUString& rTextLine )
+void ScCsvGrid::ImplSetTextLineFix( sal_Int32 nLine, std::u16string_view rTextLine )
 {
     if( nLine < GetFirstVisLine() ) return;
 
@@ -848,7 +848,7 @@ void ScCsvGrid::ImplSetTextLineFix( sal_Int32 nLine, const OUString& rTextLine )
     std::vector<OUString>& rStrVec = maTexts[ nLineIx ];
     rStrVec.clear();
     sal_uInt32 nColCount = GetColumnCount();
-    sal_Int32 nStrLen = rTextLine.getLength();
+    sal_Int32 nStrLen = rTextLine.size();
     sal_Int32 nStrIx = 0;
     for( sal_uInt32 nColIx = 0; (nColIx < nColCount) && (nStrIx < nStrLen); ++nColIx )
     {
@@ -856,7 +856,7 @@ void ScCsvGrid::ImplSetTextLineFix( sal_Int32 nLine, const OUString& rTextLine )
         sal_Int32 nLastIx = nStrIx;
         ScImportExport::CountVisualWidth( rTextLine, nLastIx, nColWidth );
         sal_Int32 nLen = std::min( CSV_MAXSTRLEN, nLastIx - nStrIx );
-        rStrVec.push_back( rTextLine.copy( nStrIx, nLen ) );
+        rStrVec.push_back( OUString(rTextLine.substr( nStrIx, nLen )) );
         nStrIx = nStrIx + nLen;
     }
     InvalidateGfx();
@@ -1131,7 +1131,7 @@ void ScCsvGrid::ImplDrawCellText( const Point& rPos, const OUString& rText )
     aPlainText = aPlainText.replaceAll( "\n", " " );
     mpEditEngine->SetPaperSize( maEdEngSize );
     mpEditEngine->SetTextCurrentDefaults(aPlainText);
-    mpEditEngine->Draw(*mpBackgrDev, rPos);
+    mpEditEngine->DrawText_ToPosition(*mpBackgrDev, rPos);
 
     sal_Int32 nCharIx = 0;
     while( (nCharIx = rText.indexOf( '\t', nCharIx )) != -1 )
@@ -1406,7 +1406,7 @@ tools::Rectangle ScCsvGrid::GetFocusRect()
 
 // accessibility ==============================================================
 
-css::uno::Reference<css::accessibility::XAccessible> ScCsvGrid::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> ScCsvGrid::CreateAccessible()
 {
     rtl::Reference<ScAccessibleCsvGrid> xRef(new ScAccessibleCsvGrid(*this));
     mxAccessible = xRef;

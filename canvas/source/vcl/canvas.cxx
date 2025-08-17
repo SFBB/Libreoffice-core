@@ -65,7 +65,7 @@ namespace vclcanvas
 
         OutputDevice* pOutDev = reinterpret_cast<OutputDevice*>(nPtr);
         if( !pOutDev )
-            throw lang::NoSupportException("Passed OutDev invalid!", nullptr);
+            throw lang::NoSupportException(u"Passed OutDev invalid!"_ustr, nullptr);
 
         OutDevProviderSharedPtr pOutdevProvider = std::make_shared<OutDevHolder>(*pOutDev);
 
@@ -94,11 +94,11 @@ namespace vclcanvas
 
     OUString SAL_CALL Canvas::getServiceName(  )
     {
-        return "com.sun.star.rendering.Canvas.VCL";
+        return u"com.sun.star.rendering.Canvas.VCL"_ustr;
     }
 
     OUString Canvas::getImplementationName() {
-        return "com.sun.star.comp.rendering.Canvas.VCL";
+        return u"com.sun.star.comp.rendering.Canvas.VCL"_ustr;
     }
 
     sal_Bool Canvas::supportsService(OUString const & ServiceName) {

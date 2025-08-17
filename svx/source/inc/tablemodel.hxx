@@ -23,9 +23,10 @@
 #include <sal/types.h>
 #include <com/sun/star/util/XBroadcaster.hpp>
 #include <com/sun/star/table/XTable.hpp>
-#include <cppuhelper/compbase.hxx>
-#include <cppuhelper/basemutex.hxx>
+#include <comphelper/compbase.hxx>
+#include <comphelper/interfacecontainer4.hxx>
 #include "celltypes.hxx"
+#include <svx/svxdllapi.h>
 
 struct _xmlTextWriter;
 typedef struct _xmlTextWriter* xmlTextWriterPtr;
@@ -33,6 +34,8 @@ typedef struct _xmlTextWriter* xmlTextWriterPtr;
 namespace sdr::table {
 
 class SdrTableObj;
+class TableRows;
+class TableColumns;
 
 /** base class for each object implementing an XCellRange */
 class SAL_LOPLUGIN_ANNOTATE("crosscast") ICellRange
@@ -48,9 +51,9 @@ protected:
     ~ICellRange() {}
 };
 
-typedef ::cppu::WeakComponentImplHelper< css::table::XTable, css::util::XBroadcaster > TableModelBase;
+typedef ::comphelper::WeakComponentImplHelper< css::table::XTable, css::util::XBroadcaster > TableModelBase;
 
-class TableModel final : public ::cppu::BaseMutex,
+class SVXCORE_DLLPUBLIC TableModel final :
                    public TableModelBase,
                    public ICellRange
 {
@@ -99,7 +102,7 @@ public:
     virtual ::sal_Int32 SAL_CALL getColumnCount() override;
 
     // XComponent
-    virtual void SAL_CALL dispose(  ) override;
+//    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     // XModifiable
     virtual sal_Bool SAL_CALL isModified(  ) override;
@@ -135,6 +138,8 @@ public:
     virtual void SAL_CALL lockBroadcasts() override;
     virtual void SAL_CALL unlockBroadcasts() override;
 
+    CellRef getCell( sal_Int32 nCol, sal_Int32 nRow ) const;
+
 private:
     void notifyModification();
 
@@ -147,7 +152,6 @@ private:
     sal_Int32 getColumnCountImpl() const;
 
     CellRef createCell();
-    CellRef getCell( ::sal_Int32 nCol, ::sal_Int32 nRow ) const;
 
     void UndoInsertRows( sal_Int32 nIndex, sal_Int32 nCount );
     void UndoRemoveRows( sal_Int32 nIndex, RowVector& aNewRows );
@@ -158,7 +162,7 @@ private:
 private:
     /** this function is called upon disposing the component
     */
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     /// @throws css::lang::IndexOutOfBoundsException
     TableRowRef const & getRow( sal_Int32 nRow ) const;
@@ -180,6 +184,8 @@ private:
     bool mbNotifyPending;
 
     sal_Int32 mnNotifyLock;
+
+    comphelper::OInterfaceContainerHelper4<css::util::XModifyListener> maModifyListeners;
 };
 
 class TableModelNotifyGuard

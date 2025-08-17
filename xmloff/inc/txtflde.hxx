@@ -35,19 +35,15 @@
 #include <optional>
 #include <string_view>
 
-#include "txtfld.hxx"
-
 class SvXMLExport;
 struct XMLPropertyState;
 
 namespace com::sun::star {
     namespace util { struct DateTime; }
-    namespace util { struct Date; }
     namespace text { class XTextField; }
     namespace text { class XText; }
     namespace beans { class XPropertySet; }
     namespace beans { class XPropertySetInfo; }
-    namespace frame { class XModel; }
     namespace uno { template<typename A> class Sequence; }
 }
 
@@ -112,6 +108,8 @@ enum FieldIdEnum {
     FIELD_ID_COUNT_WORDS,           //                    - words
     FIELD_ID_COUNT_CHARACTERS,      //                    - chars
     FIELD_ID_COUNT_PAGES,           //                    - pages
+    FIELD_ID_COUNT_PAGES_RANGE,     //                    - pages in section/range
+
     FIELD_ID_COUNT_TABLES,          //                    - tables
     FIELD_ID_COUNT_GRAPHICS,        //                    - graphics
     FIELD_ID_COUNT_OBJECTS,         //                    - objects
@@ -177,7 +175,7 @@ public:
     /// Also collect used field masters (if pUsedMasters is set)
     /// to be called for every field during style export.
     void ExportFieldAutoStyle(const css::uno::Reference < css::text::XTextField > & rTextField,
-                 const bool bProgress, const bool bRecursive );
+                 const bool bProgress );
 
     /// export field declarations.
     /// to be called once at beginning of document body.
@@ -231,7 +229,8 @@ private:
 
     /// export an element with string content
     void ExportElement(enum ::xmloff::token::XMLTokenEnum eElement, /// element token
-                       const OUString& sContent); /// element content
+                       const OUString& sContent,
+                       sal_uInt16 nNamespace = XML_NAMESPACE_TEXT); /// element content
 
     /// export a macro (as used in the macro field)
     void ExportMacro( const css::uno::Reference< css::beans::XPropertySet> & rPropSet,

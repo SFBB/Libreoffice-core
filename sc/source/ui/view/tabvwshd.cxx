@@ -32,7 +32,7 @@ weld::Window* ScTabViewShell::GetDialogParent()
 {
     //  if a ref-input dialog is open, use it as parent
     //  (necessary when a slot is executed from the dialog's OK handler)
-    if (nCurRefDlgId && nCurRefDlgId == SC_MOD()->GetCurRefDlgId())
+    if (nCurRefDlgId && nCurRefDlgId == ScModule::get()->GetCurRefDlgId())
     {
         SfxViewFrame& rViewFrm = GetViewFrame();
         if (rViewFrm.HasChildWindow(nCurRefDlgId))
@@ -48,14 +48,14 @@ weld::Window* ScTabViewShell::GetDialogParent()
         }
     }
 
-    ScDocShell* pDocSh = GetViewData().GetDocShell();
-    if (pDocSh->IsOle())
+    ScDocShell& rDocSh = GetViewData().GetDocShell();
+    if (rDocSh.IsOle())
     {
         // TODO/LATER: how to GetEditWindow in embedded document?!
         // It should be OK to return the ViewShell Window!
         vcl::Window* pWin = GetWindow();
         return pWin ? pWin->GetFrameWeld() : nullptr;
-        // SvInPlaceEnvironment* pEnv = pDocSh->GetIPEnv();
+        // SvInPlaceEnvironment* pEnv = rDocSh.GetIPEnv();
         // if (pEnv)
         //    return pEnv->GetEditWin();
     }

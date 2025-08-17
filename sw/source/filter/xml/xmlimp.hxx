@@ -36,10 +36,8 @@
 
 class SwDoc;
 class SvXMLUnitConverter;
-class SvXMLTokenMap;
 class SvXMLImportItemMapper;
 class SfxItemSet;
-class XMLTextImportHelper;
 class SvXMLGraphicHelper;
 class SvXMLEmbeddedObjectHelper;
 enum class SfxStyleFamily;
@@ -96,6 +94,7 @@ class SwXMLImport: public SvXMLImport
                      const css::uno::Reference< css::text::XTextRange > & rInsertPos );
     void         setStyleInsertMode( SfxStyleFamily nFamilies,
                                      bool bOverwrite );
+    SwDoc*       endDocAdjustNodes();
 
 protected:
 

@@ -28,7 +28,6 @@
 
 #include <docsh.hxx>
 
-#include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 
 #include <scresid.hxx>
@@ -50,22 +49,17 @@ IMPL_LINK(ScShareDocumentDlg, SizeAllocated, const Size&, rSize, void)
 }
 
 
-ScShareDocumentDlg::ScShareDocumentDlg(weld::Window* pParent, const ScViewData* pViewData)
-    : GenericDialogController(pParent, "modules/scalc/ui/sharedocumentdlg.ui",
-                              "ShareDocumentDialog")
+ScShareDocumentDlg::ScShareDocumentDlg(weld::Window* pParent, ScViewData& rViewData)
+    : GenericDialogController(pParent, u"modules/scalc/ui/sharedocumentdlg.ui"_ustr,
+                              u"ShareDocumentDialog"_ustr)
     , m_aStrNoUserData(ScResId(STR_NO_USER_DATA_AVAILABLE))
     , m_aStrUnknownUser(ScResId(STR_UNKNOWN_USER_CONFLICT))
     , m_aStrExclusiveAccess(ScResId(STR_EXCLUSIVE_ACCESS))
-    , mpDocShell(nullptr)
-    , m_xCbShare(m_xBuilder->weld_check_button("share"))
-    , m_xFtWarning(m_xBuilder->weld_label("warning"))
-    , m_xLbUsers(m_xBuilder->weld_tree_view("users"))
+    , mrDocShell(rViewData.GetDocShell())
+    , m_xCbShare(m_xBuilder->weld_check_button(u"share"_ustr))
+    , m_xFtWarning(m_xBuilder->weld_label(u"warning"_ustr))
+    , m_xLbUsers(m_xBuilder->weld_tree_view(u"users"_ustr))
 {
-
-    OSL_ENSURE( pViewData, "ScShareDocumentDlg CTOR: mpViewData is null!" );
-    mpDocShell = ( pViewData ? pViewData->GetDocShell() : nullptr );
-    OSL_ENSURE( mpDocShell, "ScShareDocumentDlg CTOR: mpDocShell is null!" );
-
     std::vector<int> aWidths
     {
         o3tl::narrowing<int>(m_xLbUsers->get_approximate_digit_width() * 25)
@@ -75,7 +69,7 @@ ScShareDocumentDlg::ScShareDocumentDlg(weld::Window* pParent, const ScViewData* 
     m_xLbUsers->set_size_request(-1, m_xLbUsers->get_height_rows(9));
     m_xLbUsers->connect_size_allocate(LINK(this, ScShareDocumentDlg, SizeAllocated));
 
-    bool bIsDocShared = mpDocShell && mpDocShell->IsDocShared();
+    bool bIsDocShared = mrDocShell.IsDocShared();
     m_xCbShare->set_active(bIsDocShared);
     m_xCbShare->connect_toggled( LINK( this, ScShareDocumentDlg, ToggleHandle ) );
     m_xFtWarning->set_sensitive(bIsDocShared);
@@ -101,16 +95,11 @@ bool ScShareDocumentDlg::IsShareDocumentChecked() const
 
 void ScShareDocumentDlg::UpdateView()
 {
-    if ( !mpDocShell )
-    {
-        return;
-    }
-
-    if ( mpDocShell->IsDocShared() )
+    if ( mrDocShell.IsDocShared() )
     {
         try
         {
-            ::svt::ShareControlFile aControlFile( mpDocShell->GetSharedFileURL() );
+            ::svt::ShareControlFile aControlFile( mrDocShell.GetSharedFileURL() );
             std::vector<LockFileEntry> aUsersData = aControlFile.GetUsersData();
             sal_Int32 nLength = aUsersData.size();
 
@@ -196,7 +185,7 @@ void ScShareDocumentDlg::UpdateView()
         }
         aUser += " " + m_aStrExclusiveAccess;
 
-        uno::Reference<document::XDocumentProperties> xDocProps = mpDocShell->GetModel()->getDocumentProperties();
+        uno::Reference<document::XDocumentProperties> xDocProps = mrDocShell.GetModel()->getDocumentProperties();
 
         util::DateTime uDT(xDocProps->getModificationDate());
         DateTime aDateTime(uDT);

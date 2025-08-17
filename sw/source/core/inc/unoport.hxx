@@ -16,8 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_CORE_INC_UNOPORT_HXX
-#define INCLUDED_SW_SOURCE_CORE_INC_UNOPORT_HXX
+
+#pragma once
 
 #include <memory>
 #include <deque>
@@ -37,10 +37,16 @@
 #include <svl/listener.hxx>
 
 #include <unocrsr.hxx>
+#include "unorefmark.hxx"
+#include "unoidx.hxx"
+#include "unofootnote.hxx"
+#include "unometa.hxx"
+#include "unocontentcontrol.hxx"
+#include "unolinebreak.hxx"
+#include "unobookmark.hxx"
 
 namespace com::sun::star::beans { struct PropertyValue; }
 namespace com::sun::star::text { class XTextField; }
-namespace com::sun::star::text { class XFootnote; }
 
 class SwFrameFormat;
 class SwRangeRedline;
@@ -96,22 +102,16 @@ class SwXTextPortion : public cppu::WeakImplHelper
 private:
 
     const SfxItemPropertySet *  m_pPropSet;
-    const css::uno::Reference< css::text::XText >
-        m_xParentText;
-    css::uno::Reference< css::text::XTextContent >
-        m_xRefMark;
-    css::uno::Reference< css::text::XTextContent >
-        m_xTOXMark;
-    css::uno::Reference< css::text::XTextContent >
-        m_xBookmark;
-    css::uno::Reference< css::text::XFootnote >
-        m_xFootnote;
+    const css::uno::Reference< SwXText > m_xParentText;
+    rtl::Reference< SwXReferenceMark > m_xRefMark;
+    rtl::Reference< SwXDocumentIndexMark > m_xTOXMark;
+    rtl::Reference< SwXBookmark > m_xBookmark;
+    rtl::Reference< SwXFootnote > m_xFootnote;
     css::uno::Reference< css::text::XTextField >
         m_xTextField;
-    css::uno::Reference< css::text::XTextContent >
-        m_xMeta;
-    css::uno::Reference<css::text::XTextContent> m_xLineBreak;
-    css::uno::Reference<css::text::XTextContent> m_xContentControl;
+    rtl::Reference< SwXMeta > m_xMeta;
+    rtl::Reference<SwXLineBreak> m_xLineBreak;
+    rtl::Reference<SwXContentControl> m_xContentControl;
     std::optional< css::uno::Any > m_oRubyText;
     std::optional< css::uno::Any > m_oRubyStyle;
     std::optional< css::uno::Any > m_oRubyAdjust;
@@ -157,13 +157,13 @@ protected:
     virtual void Notify(const SfxHint& rHint) override;
 
 public:
-    SwXTextPortion(const SwUnoCursor* pPortionCursor, css::uno::Reference< css::text::XText > xParent, SwTextPortionType   eType   );
-    SwXTextPortion(const SwUnoCursor* pPortionCursor, css::uno::Reference< css::text::XText > xParent, SwFrameFormat& rFormat );
+    SwXTextPortion(const SwUnoCursor* pPortionCursor, css::uno::Reference< SwXText > xParent, SwTextPortionType   eType   );
+    SwXTextPortion(const SwUnoCursor* pPortionCursor, css::uno::Reference< SwXText > xParent, SwFrameFormat& rFormat );
 
     // for Ruby
     SwXTextPortion(const SwUnoCursor* pPortionCursor,
         SwTextRuby const& rAttr,
-        css::uno::Reference< css::text::XText > xParent,
+        css::uno::Reference< SwXText > xParent,
         bool bIsEnd );
 
     //XTextRange
@@ -209,30 +209,30 @@ public:
     virtual css::uno::Reference< css::container::XEnumeration >  SAL_CALL createContentEnumeration(const OUString& aServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getAvailableServiceNames() override;
 
-    void SetRefMark( css::uno::Reference< css::text::XTextContent > const & xMark)
+    void SetRefMark( rtl::Reference< SwXReferenceMark > const & xMark)
     { m_xRefMark = xMark; }
 
-    void SetTOXMark( css::uno::Reference< css::text::XTextContent > const & xMark)
+    void SetTOXMark( rtl::Reference< SwXDocumentIndexMark > const & xMark)
     { m_xTOXMark = xMark; }
 
-    void SetBookmark( css::uno::Reference< css::text::XTextContent > const & xMark)
+    void SetBookmark( rtl::Reference< SwXBookmark > const & xMark)
     { m_xBookmark = xMark; }
 
-    void SetFootnote( css::uno::Reference< css::text::XFootnote > const & xNote)
+    void SetFootnote( rtl::Reference< SwXFootnote > const & xNote)
     { m_xFootnote = xNote; }
 
     void SetTextField( css::uno::Reference< css::text::XTextField> const & xField)
     { m_xTextField = xField; }
 
-    void SetMeta( css::uno::Reference< css::text::XTextContent > const & xMeta)
+    void SetMeta( rtl::Reference< SwXMeta > const & xMeta)
     { m_xMeta = xMeta; }
 
-    void SetLineBreak(css::uno::Reference<css::text::XTextContent> const& xLineBreak)
+    void SetLineBreak(rtl::Reference<SwXLineBreak> const& xLineBreak)
     {
         m_xLineBreak = xLineBreak;
     }
 
-    void SetContentControl(const css::uno::Reference<css::text::XTextContent>& xContentControl)
+    void SetContentControl(const rtl::Reference<SwXContentControl>& xContentControl)
     {
         m_xContentControl = xContentControl;
     }
@@ -291,12 +291,9 @@ public:
     SwXRedlinePortion(
         SwRangeRedline const& rRedline,
         SwUnoCursor const* pPortionCursor,
-        css::uno::Reference< css::text::XText > const& xParent,
+        css::uno::Reference< SwXText > const& xParent,
         bool const bIsStart);
 
-    /// @throws std::exception
-    static css::uno::Any  GetPropertyValue(
-            std::u16string_view PropertyName, SwRangeRedline const& rRedline);
     /// @throws std::exception
     static css::uno::Sequence< css::beans::PropertyValue > CreateRedlineProperties(
                 SwRangeRedline const& rRedline, bool const bIsStart);
@@ -308,7 +305,5 @@ public:
     virtual css::uno::Any SAL_CALL getPropertyValue(
             const OUString& rPropertyName) override;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

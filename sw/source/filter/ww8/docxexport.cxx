@@ -55,6 +55,8 @@
 #include <oox/ole/olehelper.hxx>
 
 #include <svx/svdpage.hxx>
+#include <svx/xfillit0.hxx>
+#include <svx/xflbmtit.hxx>
 
 #include <map>
 #include <algorithm>
@@ -91,6 +93,7 @@
 
 #include "ww8scan.hxx"
 #include <oox/token/properties.hxx>
+#include <comphelper/memorystream.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/storagehelper.hxx>
@@ -98,6 +101,9 @@
 #include <sal/log.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <comphelper/diagnose_ex.hxx>
+#include <unotxdoc.hxx>
+#include <formatflysplit.hxx>
+#include <fmtanchr.hxx>
 
 using namespace sax_fastparser;
 using namespace ::comphelper;
@@ -106,7 +112,7 @@ using namespace ::oox;
 
 using oox::vml::VMLExport;
 
-using sw::mark::IMark;
+using sw::mark::MarkBase;
 
 AttributeOutputBase& DocxExport::AttrOutput() const
 {
@@ -165,16 +171,16 @@ void DocxExport::AppendBookmarks( const SwTextNode& rNode, sal_Int32 nCurrentPos
     IMarkVector aMarks;
     if ( GetBookmarks( rNode, nCurrentPos, nCurrentPos + nLen, aMarks ) )
     {
-        for ( IMark* pMark : aMarks )
+        for ( MarkBase* pMark : aMarks )
         {
             const sal_Int32 nStart = pMark->GetMarkStart().GetContentIndex();
             const sal_Int32 nEnd = pMark->GetMarkEnd().GetContentIndex();
 
             if ( nStart == nCurrentPos )
-                aStarts.push_back( pMark->GetName() );
+                aStarts.push_back( pMark->GetName().toString() );
 
             if ( nEnd == nCurrentPos )
-                aEnds.push_back( pMark->GetName() );
+                aEnds.push_back( pMark->GetName().toString() );
         }
     }
 
@@ -197,13 +203,13 @@ void DocxExport::AppendBookmark( const OUString& rName )
 
 void DocxExport::AppendAnnotationMarks( const SwWW8AttrIter& rAttrs, sal_Int32 nCurrentPos, sal_Int32 nLen )
 {
-    std::vector< OUString > aStarts;
-    std::vector< OUString > aEnds;
+    std::vector< SwMarkName > aStarts;
+    std::vector< SwMarkName > aEnds;
 
     IMarkVector aMarks;
     if (GetAnnotationMarks(rAttrs, nCurrentPos, nCurrentPos + nLen, aMarks))
     {
-        for ( IMark* pMark : aMarks )
+        for ( MarkBase* pMark : aMarks )
         {
             const sal_Int32 nStart = pMark->GetMarkStart().GetContentIndex();
             const sal_Int32 nEnd = pMark->GetMarkEnd().GetContentIndex();
@@ -323,12 +329,12 @@ void DocxExport::OutputField( const SwField* pField, ww::eField eFieldType, cons
     m_pAttrOutput->WriteField_Impl( pField, eFieldType, rFieldCmd, nMode );
 }
 
-void DocxExport::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
+void DocxExport::WriteFormData( const ::sw::mark::Fieldmark& rFieldmark )
 {
     m_pAttrOutput->WriteFormData_Impl( rFieldmark );
 }
 
-void DocxExport::WriteHyperlinkData( const ::sw::mark::IFieldmark& /*rFieldmark*/ )
+void DocxExport::WriteHyperlinkData( const ::sw::mark::Fieldmark& /*rFieldmark*/ )
 {
     SAL_INFO("sw.ww8", "TODO DocxExport::WriteHyperlinkData().");
 }
@@ -389,7 +395,7 @@ OString DocxExport::OutputChart( uno::Reference< frame::XModel > const & xModel,
     aFileName = "word/charts/chart" + OUString::number(nCount) + ".xml";
     ::sax_fastparser::FSHelperPtr pChartFS =
         m_rFilter.openFragmentStreamWithSerializer( aFileName,
-            "application/vnd.openxmlformats-officedocument.drawingml.chart+xml" );
+            u"application/vnd.openxmlformats-officedocument.drawingml.chart+xml"_ustr );
 
 #if !ENABLE_WASM_STRIP_CHART
     // WASM_CHART change
@@ -422,7 +428,7 @@ OString DocxExport::WriteOLEObject(SwOLEObj& rObject, OUString & io_rProgID)
     const char * pProgID(nullptr);
 
     uno::Reference<io::XInputStream> const xInStream =
-        oox::GetOLEObjectStream(xContext, xObj, io_rProgID,
+        oox::GetOLEObjectStream(xObj, io_rProgID,
             sMediaType, sRelationType, sSuffix, pProgID);
 
     if (!xInStream.is())
@@ -468,12 +474,13 @@ std::pair<OString, OString> DocxExport::WriteActiveXObject(const uno::Reference<
 
     OString sGUID;
     OString sName;
-    uno::Reference<io::XStream> xOutStorage(m_rFilter.openFragmentStream(sBinaryFileName, "application/vnd.ms-office.activeX"), uno::UNO_QUERY);
+    uno::Reference<io::XStream> xOutStorage(m_rFilter.openFragmentStream(sBinaryFileName, u"application/vnd.ms-office.activeX"_ustr), uno::UNO_QUERY);
     if(xOutStorage.is())
     {
         oox::ole::OleStorage aOleStorage(m_rFilter.getComponentContext(), xOutStorage, false);
-        uno::Reference<io::XOutputStream> xOutputStream(aOleStorage.openOutputStream("contents"), uno::UNO_SET_THROW);
-        uno::Reference< css::frame::XModel > xModel( m_rDoc.GetDocShell() ? m_rDoc.GetDocShell()->GetModel() : nullptr );
+        uno::Reference<io::XOutputStream> xOutputStream(aOleStorage.openOutputStream(u"contents"_ustr), uno::UNO_SET_THROW);
+        SwDocShell* pShell = m_rDoc.GetDocShell();
+        uno::Reference< css::frame::XModel > xModel( pShell ? pShell->GetModel() : nullptr );
         oox::ole::OleFormCtrlExportHelper exportHelper(comphelper::getProcessComponentContext(), xModel, rxControlModel);
         if ( !exportHelper.isValid() )
             return std::make_pair<OString, OString>(OString(), OString());
@@ -485,7 +492,7 @@ std::pair<OString, OString> DocxExport::WriteActiveXObject(const uno::Reference<
 
     // Write out ActiveX fragment
     const OUString sXMLFileName = "word/activeX/activeX" + OUString::number( m_nActiveXControls ) + ".xml";
-    ::sax_fastparser::FSHelperPtr pActiveXFS = m_rFilter.openFragmentStreamWithSerializer(sXMLFileName, "application/vnd.ms-office.activeX+xml" );
+    ::sax_fastparser::FSHelperPtr pActiveXFS = m_rFilter.openFragmentStreamWithSerializer(sXMLFileName, u"application/vnd.ms-office.activeX+xml"_ustr );
 
     const OUString sBinaryId = m_rFilter.addRelation( pActiveXFS->getOutputStream(),
                                                        oox::getRelationship(Relationship::ACTIVEXCONTROLBINARY),
@@ -512,12 +519,65 @@ void DocxExport::OutputDML(uno::Reference<drawing::XShape> const & xShape)
 {
     uno::Reference<lang::XServiceInfo> xServiceInfo(xShape, uno::UNO_QUERY_THROW);
     sal_Int32 nNamespace = XML_wps;
-    if (xServiceInfo->supportsService("com.sun.star.drawing.GroupShape"))
+    if (xServiceInfo->supportsService(u"com.sun.star.drawing.GroupShape"_ustr))
         nNamespace = XML_wpg;
-    else if (xServiceInfo->supportsService("com.sun.star.drawing.GraphicObjectShape"))
+    else if (xServiceInfo->supportsService(u"com.sun.star.drawing.GraphicObjectShape"_ustr))
         nNamespace = XML_pic;
     oox::drawingml::ShapeExport aExport(nNamespace, m_pAttrOutput->GetSerializer(), nullptr, &m_rFilter, oox::drawingml::DOCUMENT_DOCX, m_pAttrOutput.get());
     aExport.WriteShape(xShape);
+}
+
+void DocxExport::CollectFloatingTables()
+{
+    if (!m_rDoc.GetSpzFrameFormats())
+    {
+        return;
+    }
+
+    sw::FrameFormats<sw::SpzFrameFormat*>& rSpzFormats = *m_rDoc.GetSpzFrameFormats();
+    for (sw::SpzFrameFormat* pFormat : rSpzFormats)
+    {
+        const SwFormatFlySplit& rFlySplit = pFormat->GetFlySplit();
+        if (!rFlySplit.GetValue())
+        {
+            continue;
+        }
+
+        const SwFormatAnchor& rAnchor = pFormat->GetAnchor();
+        const SwPosition* pContentAnchor = rAnchor.GetContentAnchor();
+        if (!pContentAnchor)
+        {
+            continue;
+        }
+
+        SwNode& rNode = pContentAnchor->GetNode();
+        SwTextNode* pTextNode = rNode.GetTextNode();
+        if (!pTextNode)
+        {
+            continue;
+        }
+
+        if (!pTextNode->HasSwAttrSet())
+        {
+            continue;
+        }
+
+        const SwAttrSet& rAttrSet = pTextNode->GetSwAttrSet();
+        const SvxLineSpacingItem& rLineSpacing = rAttrSet.GetLineSpacing();
+        if (rLineSpacing.GetLineSpaceRule() != SvxLineSpaceRule::Fix)
+        {
+            continue;
+        }
+
+        if (rLineSpacing.GetLineHeight() != 0)
+        {
+            continue;
+        }
+
+        // This is text node which is effectively invisible in Writer and has a floating table
+        // anchored to it; omit such nodes from the DOCX output.
+        m_aDummyFloatingTableAnchors.insert(&pContentAnchor->GetNode());
+    }
 }
 
 ErrCode DocxExport::ExportDocument_Impl()
@@ -535,6 +595,8 @@ ErrCode DocxExport::ExportDocument_Impl()
 
     // Make sure images are counted from one, even when exporting multiple documents.
     rGraphicExportCache.push();
+
+    CollectFloatingTables();
 
     WriteMainText();
 
@@ -658,7 +720,7 @@ void DocxExport::PrepareNewPageDesc( const SfxItemSet* pSet,
     }
     else if ( pNewPgDesc )
     {
-        m_pSections->AppendSection( pNewPgDesc, rNd, pFormat, nLnNm );
+        m_pSections->AppendSection( SwFormatPageDesc(pNewPgDesc), rNd, pFormat, nLnNm );
     }
 
 }
@@ -673,8 +735,8 @@ void DocxExport::InitStyles()
             u"styles.xml" );
 
     ::sax_fastparser::FSHelperPtr pStylesFS =
-        m_rFilter.openFragmentStreamWithSerializer( "word/styles.xml",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml" );
+        m_rFilter.openFragmentStreamWithSerializer( u"word/styles.xml"_ustr,
+            u"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"_ustr );
 
     // switch the serializer to redirect the output to word/styles.xml
     m_pAttrOutput->SetSerializer( pStylesFS );
@@ -698,8 +760,8 @@ void DocxExport::WriteFootnotesEndnotes()
                 u"footnotes.xml" );
 
         ::sax_fastparser::FSHelperPtr pFootnotesFS =
-            m_rFilter.openFragmentStreamWithSerializer( "word/footnotes.xml",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml" );
+            m_rFilter.openFragmentStreamWithSerializer( u"word/footnotes.xml"_ustr,
+                    u"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"_ustr );
 
         // switch the serializer to redirect the output to word/footnotes.xml
         m_pAttrOutput->SetSerializer( pFootnotesFS );
@@ -728,8 +790,8 @@ void DocxExport::WriteFootnotesEndnotes()
             u"endnotes.xml" );
 
     ::sax_fastparser::FSHelperPtr pEndnotesFS =
-        m_rFilter.openFragmentStreamWithSerializer( "word/endnotes.xml",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml" );
+        m_rFilter.openFragmentStreamWithSerializer( u"word/endnotes.xml"_ustr,
+                u"application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml"_ustr );
 
     // switch the serializer to redirect the output to word/endnotes.xml
     m_pAttrOutput->SetSerializer( pEndnotesFS );
@@ -759,8 +821,8 @@ void DocxExport::WritePostitFields()
             u"comments.xml" );
 
     ::sax_fastparser::FSHelperPtr pPostitFS =
-        m_rFilter.openFragmentStreamWithSerializer( "word/comments.xml",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml" );
+        m_rFilter.openFragmentStreamWithSerializer( u"word/comments.xml"_ustr,
+                u"application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"_ustr );
 
     pPostitFS->startElementNS( XML_w, XML_comments, MainXmlNamespaces());
     m_pAttrOutput->SetSerializer( pPostitFS );
@@ -777,8 +839,8 @@ void DocxExport::WritePostitFields()
                           u"commentsExtended.xml");
 
     pPostitFS = m_rFilter.openFragmentStreamWithSerializer(
-        "word/commentsExtended.xml",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml");
+        u"word/commentsExtended.xml"_ustr,
+        u"application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"_ustr);
 
     pPostitFS->startElementNS(XML_w15, XML_commentsEx, // Add namespaces manually now
                               FSNS(XML_xmlns, XML_mc), m_rFilter.getNamespaceURL(OOX_NS(mce)),
@@ -800,8 +862,8 @@ void DocxExport::WriteNumbering()
         oox::getRelationship(Relationship::NUMBERING),
         u"numbering.xml" );
 
-    ::sax_fastparser::FSHelperPtr pNumberingFS = m_rFilter.openFragmentStreamWithSerializer( "word/numbering.xml",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml" );
+    ::sax_fastparser::FSHelperPtr pNumberingFS = m_rFilter.openFragmentStreamWithSerializer( u"word/numbering.xml"_ustr,
+        u"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"_ustr );
 
     // switch the serializer to redirect the output to word/numbering.xml
     m_pAttrOutput->SetSerializer( pNumberingFS );
@@ -845,7 +907,7 @@ void DocxExport::WriteHeaderFooter( const SwFormat* pFormat, bool bHeader, const
                 aName );
 
         pFS = m_rFilter.openFragmentStreamWithSerializer( "word/" + aName,
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml" );
+                    u"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"_ustr );
 
         pFS->startElementNS( XML_w, XML_hdr, MainXmlNamespaces());
     }
@@ -858,7 +920,7 @@ void DocxExport::WriteHeaderFooter( const SwFormat* pFormat, bool bHeader, const
                 aName );
 
         pFS = m_rFilter.openFragmentStreamWithSerializer( "word/" + aName,
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml" );
+                    u"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"_ustr );
 
         pFS->startElementNS( XML_w, XML_ftr, MainXmlNamespaces());
     }
@@ -912,8 +974,8 @@ void DocxExport::WriteFonts()
             u"fontTable.xml" );
 
     ::sax_fastparser::FSHelperPtr pFS = m_rFilter.openFragmentStreamWithSerializer(
-            "word/fontTable.xml",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml" );
+            u"word/fontTable.xml"_ustr,
+            u"application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"_ustr );
 
     pFS->startElementNS( XML_w, XML_fonts,
             FSNS( XML_xmlns, XML_w ), m_rFilter.getNamespaceURL(OOX_NS(doc)),
@@ -968,8 +1030,8 @@ void DocxExport::WriteDocVars(const sax_fastparser::FSHelperPtr& pFS)
 
     // Only write docVars if there will be at least a single docVar.
     bool bStarted = false;
-    constexpr OUString aPrefix(u"com.sun.star.text.fieldmaster.User."_ustr);
-    for (const auto& rMasterName : std::as_const(aMasterNames))
+    static constexpr OUString aPrefix(u"com.sun.star.text.fieldmaster.User."_ustr);
+    for (const auto& rMasterName : aMasterNames)
     {
         if (!rMasterName.startsWith(aPrefix))
         {
@@ -986,7 +1048,7 @@ void DocxExport::WriteDocVars(const sax_fastparser::FSHelperPtr& pFS)
 
         OUString aKey = rMasterName.copy(aPrefix.getLength());
         OUString aValue;
-        xField->getPropertyValue("Content") >>= aValue;
+        xField->getPropertyValue(u"Content"_ustr) >>= aValue;
         if (!bStarted)
         {
             bStarted = true;
@@ -1003,22 +1065,22 @@ void DocxExport::WriteDocVars(const sax_fastparser::FSHelperPtr& pFS)
 }
 
 static auto
-WriteCompat(SwDoc const& rDoc, ::sax_fastparser::FSHelperPtr const& rpFS,
-        sal_Int32 & rTargetCompatibilityMode) -> void
+WriteCompat(SwDoc const& rDoc, ::sax_fastparser::FSHelperPtr const& rpFS) -> void
 {
     const IDocumentSettingAccess& rIDSA = rDoc.getIDocumentSettingAccess();
     if (!rIDSA.get(DocumentSettingId::ADD_EXT_LEADING))
     {
         rpFS->singleElementNS(XML_w, XML_noLeading);
-        if (rTargetCompatibilityMode > 14)
-        {   // Word ignores noLeading in compatibilityMode 15
-            rTargetCompatibilityMode = 14;
-        }
     }
     // Do not justify lines with manual break
     if (rIDSA.get(DocumentSettingId::DO_NOT_JUSTIFY_LINES_WITH_MANUAL_BREAK))
     {
         rpFS->singleElementNS(XML_w, XML_doNotExpandShiftReturn);
+    }
+    // tdf#88908 adjust CJK-context normal spaces to half of an ideographic space
+    if (rIDSA.get(DocumentSettingId::BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES))
+    {
+        rpFS->singleElementNS(XML_w, XML_balanceSingleByteDoubleByteWidth);
     }
     // tdf#146515 export "Use printer metrics for document formatting"
     if (!rIDSA.get(DocumentSettingId::USE_VIRTUAL_DEVICE))
@@ -1028,6 +1090,13 @@ WriteCompat(SwDoc const& rDoc, ::sax_fastparser::FSHelperPtr const& rpFS,
     {
         // Map the DoNotBreakWrappedTables compat flag to <w:doNotBreakWrappedTables>.
         rpFS->singleElementNS(XML_w, XML_doNotBreakWrappedTables);
+    }
+    if (rIDSA.get(DocumentSettingId::MS_WORD_UL_TRAIL_SPACE))
+        rpFS->singleElementNS(XML_w, XML_ulTrailSpace);
+
+    if (rIDSA.get(DocumentSettingId::ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT))
+    {
+        rpFS->singleElementNS(XML_w, XML_adjustLineHeightInTable);
     }
 }
 
@@ -1044,8 +1113,8 @@ void DocxExport::WriteSettings()
             u"settings.xml" );
 
     ::sax_fastparser::FSHelperPtr pFS = m_rFilter.openFragmentStreamWithSerializer(
-            "word/settings.xml",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml" );
+            u"word/settings.xml"_ustr,
+            u"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"_ustr );
 
     pFS->startElementNS( XML_w, XML_settings,
             FSNS( XML_xmlns, XML_w ), m_rFilter.getNamespaceURL(OOX_NS(doc)) );
@@ -1199,18 +1268,36 @@ void DocxExport::WriteSettings()
     // Set it's value to "auto" and disable on paragraph level, if no hyphenation is used there.
     pFS->singleElementNS(XML_w, XML_autoHyphenation, FSNS(XML_w, XML_val), "true");
 
-    // Hyphenation details set depending on default style
+    // Hyphenation details set depending on default style, otherwise on body style
     SwTextFormatColl* pColl = m_rDoc.getIDocumentStylePoolAccess().GetTextCollFromPool(RES_POOLCOLL_STANDARD, /*bRegardLanguage=*/false);
+    if (!pColl || !pColl->GetItemIfSet(RES_PARATR_HYPHENZONE, false))
+        pColl = m_rDoc.getIDocumentStylePoolAccess().GetTextCollFromPool(RES_POOLCOLL_TEXT, /*bRegardLanguage=*/false);
     const SvxHyphenZoneItem* pZoneItem;
+    bool bHyphenationKeep = false;
+    bool bHyphenationZone = false;
     if (pColl && (pZoneItem = pColl->GetItemIfSet(RES_PARATR_HYPHENZONE, false)))
     {
         if (pZoneItem->IsNoCapsHyphenation())
             pFS->singleElementNS(XML_w, XML_doNotHyphenateCaps);
 
         if ( sal_Int16 nHyphenZone = pZoneItem->GetTextHyphenZone() )
+        {
             pFS->singleElementNS(XML_w, XML_hyphenationZone, FSNS(XML_w, XML_val),
                                          OString::number(nHyphenZone));
+            bHyphenationZone = true;
+        }
+
+        if ( sal_Int16 nMaxHyphens = pZoneItem->GetMaxHyphens() )
+            pFS->singleElementNS(XML_w, XML_consecutiveHyphenLimit, FSNS(XML_w, XML_val),
+                                         OString::number(nMaxHyphens));
+
+        if ( pZoneItem->IsKeep() && pZoneItem->GetKeepType() )
+            bHyphenationKeep = true;
     }
+
+    // export 0, if hyphenation zone is not defined (otherwise it would be the default 360 twips)
+    if ( !bHyphenationZone )
+        pFS->singleElementNS(XML_w, XML_hyphenationZone, FSNS(XML_w, XML_val), "0");
 
     // Even and Odd Headers
     if( m_aSettings.evenAndOddHeaders )
@@ -1218,70 +1305,50 @@ void DocxExport::WriteSettings()
 
     // Has Footnotes
     if( m_pAttrOutput->HasFootnotes())
-        DocxAttributeOutput::WriteFootnoteEndnotePr( pFS, XML_footnotePr, m_rDoc.GetFootnoteInfo(), XML_footnote );
+        m_pAttrOutput->WriteFootnoteEndnotePr( pFS, XML_footnotePr, m_rDoc.GetFootnoteInfo(), XML_footnote );
 
     // Has Endnotes
     if( m_pAttrOutput->HasEndnotes())
-        DocxAttributeOutput::WriteFootnoteEndnotePr( pFS, XML_endnotePr, m_rDoc.GetEndNoteInfo(), XML_endnote );
+        m_pAttrOutput->WriteFootnoteEndnotePr( pFS, XML_endnotePr, m_rDoc.GetEndNoteInfo(), XML_endnote );
 
     // Has themeFontLang information
-    uno::Reference< beans::XPropertySet > xPropSet( pDocShell->GetBaseModel(), uno::UNO_QUERY_THROW );
-
     bool bUseGrabBagProtection = false;
     bool bWriterWantsToProtect = false;
     bool bWriterWantsToProtectForm = false;
     bool bWriterWantsToProtectRedline = false;
     bool bHasDummyRedlineProtectionKey = false;
     bool bReadOnlyStatusUnchanged = true;
-    uno::Reference< beans::XPropertySetInfo > xPropSetInfo = xPropSet->getPropertySetInfo();
+    uno::Reference< beans::XPropertySetInfo > xPropSetInfo = m_xTextDoc->getPropertySetInfo();
     if ( m_rDoc.getIDocumentSettingAccess().get(DocumentSettingId::PROTECT_FORM) ||
          m_pSections->DocumentIsProtected() )
     {
         bWriterWantsToProtect = bWriterWantsToProtectForm = true;
     }
-    if ( xPropSetInfo->hasPropertyByName( "RedlineProtectionKey" ) )
+    if ( xPropSetInfo->hasPropertyByName( u"RedlineProtectionKey"_ustr ) )
     {
         uno::Sequence<sal_Int8> aKey;
-        xPropSet->getPropertyValue( "RedlineProtectionKey" ) >>= aKey;
+        m_xTextDoc->getPropertyValue( u"RedlineProtectionKey"_ustr ) >>= aKey;
         bool bHasRedlineProtectionKey = aKey.hasElements();
         bHasDummyRedlineProtectionKey = aKey.getLength() == 1 && aKey[0] == 1;
         if ( bHasRedlineProtectionKey && !bHasDummyRedlineProtectionKey )
             bWriterWantsToProtect = bWriterWantsToProtectRedline = true;
     }
 
-    /* Compatibility Mode (tdf#131304)
-     * 11:  .doc level    [Word 97-2003]
-     * 12:  .docx default [Word 2007]  [LO < 7.0] [ECMA 376 1st ed.]
-     * 14:                [Word 2010]
-     * 15:                [Word 2013/2016/2019]  [LO >= 7.0]
-     *
-     * The PRIMARY purpose of compatibility mode does not seem to be related to layout etc.
-     * Its focus is on sharing files between multiple users, tracking the lowest supported mode in the group.
-     * It is to BENEFIT older programs by not using certain new features that they don't understand.
-     *
-     * The next time the compat mode needs to be changed, I foresee the following steps:
-     * 1.) Accept the new mode: Start round-tripping the new value, indicating we understand that format.
-     * 2.) Many years later, change the TargetCompatilityMode for new documents, when we no longer care
-     *     about working with perfect compatibility with older versions of MS Word.
-     */
-    sal_Int32 nTargetCompatibilityMode =
-        (GetFilter().getVersion() == oox::core::ECMA_376_1ST_EDITION)
-        ? 12 : 15; //older versions might not open our files well
     bool bHasCompatibilityMode = false;
     const OUString aGrabBagName = UNO_NAME_MISC_OBJ_INTEROPGRABBAG;
     if ( xPropSetInfo->hasPropertyByName( aGrabBagName ) )
     {
         uno::Sequence< beans::PropertyValue > propList;
-        xPropSet->getPropertyValue( aGrabBagName ) >>= propList;
+        m_xTextDoc->getPropertyValue( aGrabBagName ) >>= propList;
 
-        for( const auto& rProp : std::as_const(propList) )
+        for (const auto& rProp : propList)
         {
             if ( rProp.Name == "ThemeFontLangProps" )
             {
                 uno::Sequence< beans::PropertyValue > themeFontLangProps;
                 rProp.Value >>= themeFontLangProps;
                 OUString aValues[3];
-                for( const auto& rThemeFontLangProp : std::as_const(themeFontLangProps) )
+                for (const auto& rThemeFontLangProp : themeFontLangProps)
                 {
                     if( rThemeFontLangProp.Name == "val" )
                         rThemeFontLangProp.Value >>= aValues[0];
@@ -1299,12 +1366,12 @@ void DocxExport::WriteSettings()
             {
                 pFS->startElementNS(XML_w, XML_compat);
 
-                WriteCompat(m_rDoc, pFS, nTargetCompatibilityMode);
+                WriteCompat(m_rDoc, pFS);
 
                 uno::Sequence< beans::PropertyValue > aCompatSettingsSequence;
                 rProp.Value >>= aCompatSettingsSequence;
 
-                for(const auto& rCompatSetting : std::as_const(aCompatSettingsSequence))
+                for (const auto& rCompatSetting : aCompatSettingsSequence)
                 {
                     uno::Sequence< beans::PropertyValue > aCompatSetting;
                     rCompatSetting.Value >>= aCompatSetting;
@@ -1312,7 +1379,7 @@ void DocxExport::WriteSettings()
                     OUString aUri;
                     OUString aValue;
 
-                    for(const auto& rPropVal : std::as_const(aCompatSetting))
+                    for (const auto& rPropVal : aCompatSetting)
                     {
                         if( rPropVal.Name == "name" )
                             rPropVal.Value >>= aName;
@@ -1324,13 +1391,7 @@ void DocxExport::WriteSettings()
                     if ( aName == "compatibilityMode" )
                     {
                         bHasCompatibilityMode = true;
-                        // Among the group of programs sharing this document, the lowest mode is retained.
-                        // Reduce this number if we are not comfortable with the new/unknown mode yet.
-                        // Step 1 in accepting a new mode would be to comment out the following clause
-                        // and roundtrip the new value instead of overwriting with the older number.
-                        // There are no newer modes at the time this code was written.
-                        if ( aValue.toInt32() > nTargetCompatibilityMode )
-                            aValue = OUString::number(nTargetCompatibilityMode);
+                        aValue = OUString::number(getWordCompatibilityMode());
                     }
 
                     pFS->singleElementNS( XML_w, XML_compatSetting,
@@ -1344,7 +1405,7 @@ void DocxExport::WriteSettings()
                     pFS->singleElementNS( XML_w, XML_compatSetting,
                         FSNS( XML_w, XML_name ), "compatibilityMode",
                         FSNS( XML_w, XML_uri ),  "http://schemas.microsoft.com/office/word",
-                        FSNS( XML_w, XML_val ),  OString::number(nTargetCompatibilityMode));
+                        FSNS( XML_w, XML_val ),  OString::number(getWordCompatibilityMode()));
                     bHasCompatibilityMode = true;
                 }
 
@@ -1361,7 +1422,7 @@ void DocxExport::WriteSettings()
                     bool bIsProtectionTrackChanges = false;
                     // if grabbag protection is not enforced, allow Writer protection to override
                     bool bEnforced = false;
-                    for (const auto& rAttribute : std::as_const(rAttributeList))
+                    for (const auto& rAttribute : rAttributeList)
                     {
                         static DocxStringTokenMap const aTokens[] =
                         {
@@ -1429,12 +1490,13 @@ void DocxExport::WriteSettings()
     {
         pFS->startElementNS(XML_w, XML_compat);
 
-        WriteCompat(m_rDoc, pFS, nTargetCompatibilityMode);
+        WriteCompat(m_rDoc, pFS);
 
+        const sal_Int32 nWordCompatibilityMode = getWordCompatibilityMode();
         pFS->singleElementNS( XML_w, XML_compatSetting,
             FSNS( XML_w, XML_name ), "compatibilityMode",
             FSNS( XML_w, XML_uri ),  "http://schemas.microsoft.com/office/word",
-            FSNS( XML_w, XML_val ),  OString::number(nTargetCompatibilityMode));
+            FSNS( XML_w, XML_val ),  OString::number(nWordCompatibilityMode));
 
         const IDocumentSettingAccess& rIDSA = m_rDoc.getIDocumentSettingAccess();
         if (rIDSA.get(DocumentSettingId::ALLOW_TEXT_AFTER_FLOATING_TABLE_BREAK))
@@ -1445,6 +1507,24 @@ void DocxExport::WriteSettings()
                     FSNS(XML_w, XML_name), "allowTextAfterFloatingTableBreak",
                     FSNS(XML_w, XML_uri), "http://schemas.microsoft.com/office/word",
                     FSNS(XML_w, XML_val), "1");
+        }
+
+        // export useWord2013TrackBottomHyphenation and
+        // allowHyphenationAtTrackBottom for Word 2013/2016/2019
+        if (nWordCompatibilityMode >= 12)
+        {
+            pFS->singleElementNS(XML_w, XML_compatSetting,
+                    FSNS(XML_w, XML_name), "useWord2013TrackBottomHyphenation",
+                    FSNS(XML_w, XML_uri), "http://schemas.microsoft.com/office/word",
+                    FSNS(XML_w, XML_val), "1");
+
+            if ( !bHyphenationKeep )
+            {
+                pFS->singleElementNS(XML_w, XML_compatSetting,
+                    FSNS(XML_w, XML_name), "allowHyphenationAtTrackBottom",
+                    FSNS(XML_w, XML_uri), "http://schemas.microsoft.com/office/word",
+                    FSNS(XML_w, XML_val), "1");
+            }
         }
 
         pFS->endElementNS( XML_w, XML_compat );
@@ -1499,9 +1579,7 @@ void DocxExport::WriteTheme()
 // See OOXMLDocumentImpl::resolveGlossaryStream
 void DocxExport::WriteGlossary()
 {
-    uno::Reference< beans::XPropertySet > xPropSet( m_rDoc.GetDocShell()->GetBaseModel(), uno::UNO_QUERY_THROW );
-
-    uno::Reference< beans::XPropertySetInfo > xPropSetInfo = xPropSet->getPropertySetInfo();
+    uno::Reference< beans::XPropertySetInfo > xPropSetInfo = m_xTextDoc->getPropertySetInfo();
     OUString aName = UNO_NAME_MISC_OBJ_INTEROPGRABBAG;
     if ( !xPropSetInfo->hasPropertyByName( aName ) )
         return;
@@ -1509,9 +1587,9 @@ void DocxExport::WriteGlossary()
     uno::Reference<xml::dom::XDocument> glossaryDocDom;
     uno::Sequence< uno::Sequence<beans::NamedValue> > glossaryDomList;
     uno::Sequence< beans::PropertyValue > propList;
-    xPropSet->getPropertyValue( aName ) >>= propList;
+    m_xTextDoc->getPropertyValue( aName ) >>= propList;
     sal_Int32 collectedProperties = 0;
-    for ( const auto& rProp : std::as_const(propList) )
+    for (const auto& rProp : propList)
     {
         OUString propName = rProp.Name;
         if ( propName == "OOXGlossary" )
@@ -1536,14 +1614,13 @@ void DocxExport::WriteGlossary()
             oox::getRelationship(Relationship::GLOSSARYDOCUMENT),
             u"glossary/document.xml" );
 
-    uno::Reference< io::XOutputStream > xOutputStream = GetFilter().openFragmentStream( "word/glossary/document.xml",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml" );
+    uno::Reference< io::XOutputStream > xOutputStream = GetFilter().openFragmentStream( u"word/glossary/document.xml"_ustr,
+            u"application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml"_ustr );
 
     uno::Reference< xml::sax::XSAXSerializable > serializer( glossaryDocDom, uno::UNO_QUERY );
     uno::Reference< xml::sax::XWriter > writer = xml::sax::Writer::create( comphelper::getProcessComponentContext() );
     writer->setOutputStream( xOutputStream );
-    serializer->serialize( uno::Reference< xml::sax::XDocumentHandler >( writer, uno::UNO_QUERY_THROW ),
-        uno::Sequence< beans::StringPair >() );
+    serializer->serialize(writer, uno::Sequence< beans::StringPair >());
 
     for (const uno::Sequence<beans::NamedValue>& glossaryElement : glossaryDomList)
     {
@@ -1584,8 +1661,7 @@ void DocxExport::WriteGlossary()
             continue; // External relation, no stream to write
         uno::Reference< xml::sax::XSAXSerializable > gserializer( xDom, uno::UNO_QUERY );
         writer->setOutputStream(GetFilter().openFragmentStream( "word/glossary/" + gTarget, contentType ) );
-        gserializer->serialize( uno::Reference< xml::sax::XDocumentHandler >( writer, uno::UNO_QUERY_THROW ),
-               uno::Sequence< beans::StringPair >() );
+        gserializer->serialize(writer, uno::Sequence< beans::StringPair >());
     }
 }
 
@@ -1629,7 +1705,7 @@ static void lcl_UpdateXmlValues(const SdtData& sdtData, const uno::Reference<css
     // XSLT transformation stylesheet:
     //  - write all elements as is
     //  - but if element matches sdtData.xpath, replace its text content by sdtData.xpath
-    uno::Any(beans::NamedValue("StylesheetText", uno::Any(OUString("<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
+    uno::Any(beans::NamedValue(u"StylesheetText"_ustr, uno::Any(OUString("<?xml version=\"1.0\" encoding=\"UTF-8\"?> \
 <xsl:stylesheet\
     xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\"\
     " + sdtData.namespaces + "\
@@ -1662,16 +1738,14 @@ static void lcl_UpdateXmlValues(const SdtData& sdtData, const uno::Reference<css
 
 void DocxExport::WriteCustomXml()
 {
-    uno::Reference< beans::XPropertySet > xPropSet( m_rDoc.GetDocShell()->GetBaseModel(), uno::UNO_QUERY_THROW );
-
-    uno::Reference< beans::XPropertySetInfo > xPropSetInfo = xPropSet->getPropertySetInfo();
+    uno::Reference< beans::XPropertySetInfo > xPropSetInfo = m_xTextDoc->getPropertySetInfo();
     if ( !xPropSetInfo->hasPropertyByName( UNO_NAME_MISC_OBJ_INTEROPGRABBAG ) )
         return;
 
     uno::Sequence<uno::Reference<xml::dom::XDocument> > customXmlDomlist;
     uno::Sequence<uno::Reference<xml::dom::XDocument> > customXmlDomPropslist;
     uno::Sequence< beans::PropertyValue > propList;
-    xPropSet->getPropertyValue( UNO_NAME_MISC_OBJ_INTEROPGRABBAG ) >>= propList;
+    m_xTextDoc->getPropertyValue( UNO_NAME_MISC_OBJ_INTEROPGRABBAG ) >>= propList;
     auto pProp = std::find_if(std::cbegin(propList), std::cend(propList),
         [](const beans::PropertyValue& rProp) { return rProp.Name == "OOXCustomXml"; });
     if (pProp != std::cend(propList))
@@ -1684,8 +1758,8 @@ void DocxExport::WriteCustomXml()
 
     for (sal_Int32 j = 0; j < customXmlDomlist.getLength(); j++)
     {
-        uno::Reference<xml::dom::XDocument> customXmlDom = customXmlDomlist[j];
-        uno::Reference<xml::dom::XDocument> customXmlDomProps = customXmlDomPropslist[j];
+        const uno::Reference<xml::dom::XDocument>& customXmlDom = customXmlDomlist[j];
+        const uno::Reference<xml::dom::XDocument>& customXmlDomProps = customXmlDomPropslist[j];
         if (customXmlDom.is())
         {
             m_rFilter.addRelation( m_pDocumentFS->getOutputStream(),
@@ -1696,22 +1770,18 @@ void DocxExport::WriteCustomXml()
             uno::Reference< xml::sax::XWriter > writer = xml::sax::Writer::create( comphelper::getProcessComponentContext() );
 
             uno::Reference < css::io::XOutputStream > xOutStream = GetFilter().openFragmentStream("customXml/item" + OUString::number(j + 1) + ".xml",
-                "application/xml");
+                u"application/xml"_ustr);
             if (m_SdtData.size())
             {
                 // There are some SDT blocks data with data bindings which can update some custom xml values
-                uno::Reference< io::XStream > xMemStream(
-                    comphelper::getProcessComponentContext()->getServiceManager()->createInstanceWithContext("com.sun.star.comp.MemoryStream",
-                        comphelper::getProcessComponentContext()),
-                    uno::UNO_QUERY_THROW);
+                rtl::Reference< comphelper::UNOMemoryStream > xMemStream = new comphelper::UNOMemoryStream();
 
                 writer->setOutputStream(xMemStream->getOutputStream());
 
-                serializer->serialize(uno::Reference< xml::sax::XDocumentHandler >(writer, uno::UNO_QUERY_THROW),
-                    uno::Sequence< beans::StringPair >());
+                serializer->serialize(writer, uno::Sequence< beans::StringPair >());
 
                 uno::Reference< io::XStream > xXSLTInStream = xMemStream;
-                uno::Reference< io::XStream > xXSLTOutStream;
+                rtl::Reference< comphelper::UNOMemoryStream > xXSLTOutStream;
                 // Apply XSLT transformations for each SDT data binding
                 // Seems it is not possible to do this as one transformation: each data binding
                 // can have different namespaces, but with conflicting names (ns0, ns1, etc..)
@@ -1724,10 +1794,7 @@ void DocxExport::WriteCustomXml()
                     }
                     else
                     {
-                        xXSLTOutStream.set(
-                            comphelper::getProcessComponentContext()->getServiceManager()->createInstanceWithContext("com.sun.star.comp.MemoryStream",
-                                comphelper::getProcessComponentContext()),
-                            uno::UNO_QUERY_THROW);
+                        xXSLTOutStream = new comphelper::UNOMemoryStream();
                         lcl_UpdateXmlValues(m_SdtData[i], xXSLTInStream->getInputStream(), xXSLTOutStream->getOutputStream());
                         // Use previous output as an input for next run
                         xXSLTInStream.set( xXSLTOutStream );
@@ -1739,8 +1806,7 @@ void DocxExport::WriteCustomXml()
             {
                 writer->setOutputStream(xOutStream);
 
-                serializer->serialize(uno::Reference< xml::sax::XDocumentHandler >(writer, uno::UNO_QUERY_THROW),
-                    uno::Sequence< beans::StringPair >());
+                serializer->serialize(writer, uno::Sequence< beans::StringPair >());
             }
         }
 
@@ -1749,13 +1815,12 @@ void DocxExport::WriteCustomXml()
             uno::Reference< xml::sax::XSAXSerializable > serializer( customXmlDomProps, uno::UNO_QUERY );
             uno::Reference< xml::sax::XWriter > writer = xml::sax::Writer::create( comphelper::getProcessComponentContext() );
             writer->setOutputStream( GetFilter().openFragmentStream( "customXml/itemProps"+OUString::number(j+1)+".xml",
-                "application/vnd.openxmlformats-officedocument.customXmlProperties+xml" ) );
-            serializer->serialize( uno::Reference< xml::sax::XDocumentHandler >( writer, uno::UNO_QUERY_THROW ),
-                uno::Sequence< beans::StringPair >() );
+                u"application/vnd.openxmlformats-officedocument.customXmlProperties+xml"_ustr ) );
+            serializer->serialize(writer, uno::Sequence< beans::StringPair >());
 
             // Adding itemprops's relationship entry to item.xml.rels file
             m_rFilter.addRelation( GetFilter().openFragmentStream( "customXml/item"+OUString::number(j+1)+".xml",
-                    "application/xml" ) ,
+                    u"application/xml"_ustr ) ,
                     oox::getRelationship(Relationship::CUSTOMXMLPROPS),
                     Concat2View("itemProps"+OUString::number(j+1)+".xml" ));
         }
@@ -1764,12 +1829,11 @@ void DocxExport::WriteCustomXml()
 
 void DocxExport::WriteVBA()
 {
-    uno::Reference<document::XStorageBasedDocument> xStorageBasedDocument(m_rDoc.GetDocShell()->GetBaseModel(), uno::UNO_QUERY);
-    if (!xStorageBasedDocument.is())
+    if (!m_xTextDoc)
         return;
 
-    uno::Reference<embed::XStorage> xDocumentStorage = xStorageBasedDocument->getDocumentStorage();
-    OUString aMacrosName("_MS_VBA_Macros");
+    uno::Reference<embed::XStorage> xDocumentStorage = m_xTextDoc->getDocumentStorage();
+    OUString aMacrosName(u"_MS_VBA_Macros"_ustr);
     if (!xDocumentStorage.is() || !xDocumentStorage->hasByName(aMacrosName))
         return;
 
@@ -1781,7 +1845,7 @@ void DocxExport::WriteVBA()
         // First handle the project stream, this sets xProjectStream.
         std::unique_ptr<SvStream> pIn(utl::UcbStreamHelper::CreateStream(xMacrosStream));
 
-        xProjectStream = GetFilter().openFragmentStream("word/vbaProject.bin", "application/vnd.ms-office.vbaProject");
+        xProjectStream = GetFilter().openFragmentStream(u"word/vbaProject.bin"_ustr, u"application/vnd.ms-office.vbaProject"_ustr);
         uno::Reference<io::XStream> xOutputStream(xProjectStream, uno::UNO_QUERY);
         if (!xOutputStream.is())
             return;
@@ -1794,7 +1858,7 @@ void DocxExport::WriteVBA()
         m_rFilter.addRelation(m_pDocumentFS->getOutputStream(), oox::getRelationship(Relationship::VBAPROJECT), u"vbaProject.bin");
     }
 
-    OUString aDataName("_MS_VBA_Macros_XML");
+    OUString aDataName(u"_MS_VBA_Macros_XML"_ustr);
     if (!xDocumentStorage.is() || !xDocumentStorage->hasByName(aDataName))
         return;
 
@@ -1806,7 +1870,7 @@ void DocxExport::WriteVBA()
     // xProjectStream.
     std::unique_ptr<SvStream> pIn(utl::UcbStreamHelper::CreateStream(xDataStream));
 
-    uno::Reference<io::XStream> xOutputStream(GetFilter().openFragmentStream("word/vbaData.xml", "application/vnd.ms-word.vbaData+xml"), uno::UNO_QUERY);
+    uno::Reference<io::XStream> xOutputStream(GetFilter().openFragmentStream(u"word/vbaData.xml"_ustr, u"application/vnd.ms-word.vbaData+xml"_ustr), uno::UNO_QUERY);
     if (!xOutputStream.is())
         return;
     std::unique_ptr<SvStream> pOut(utl::UcbStreamHelper::CreateStream(xOutputStream));
@@ -1823,21 +1887,23 @@ void DocxExport::WriteVBA()
 
 void DocxExport::WriteEmbeddings()
 {
-    uno::Reference< beans::XPropertySet > xPropSet( m_rDoc.GetDocShell()->GetBaseModel(), uno::UNO_QUERY_THROW );
+    SwDocShell* pShell = m_rDoc.GetDocShell();
+    if (!pShell)
+        return;
 
-    uno::Reference< beans::XPropertySetInfo > xPropSetInfo = xPropSet->getPropertySetInfo();
+    uno::Reference< beans::XPropertySetInfo > xPropSetInfo = m_xTextDoc->getPropertySetInfo();
     OUString aName = UNO_NAME_MISC_OBJ_INTEROPGRABBAG;
     if ( !xPropSetInfo->hasPropertyByName( aName ) )
         return;
 
     uno::Sequence< beans::PropertyValue > embeddingsList;
     uno::Sequence< beans::PropertyValue > propList;
-    xPropSet->getPropertyValue( aName ) >>= propList;
+    m_xTextDoc->getPropertyValue( aName ) >>= propList;
     auto pProp = std::find_if(std::cbegin(propList), std::cend(propList),
         [](const beans::PropertyValue& rProp) { return rProp.Name == "OOXEmbeddings"; });
     if (pProp != std::cend(propList))
         pProp->Value >>= embeddingsList;
-    for (const auto& rEmbedding : std::as_const(embeddingsList))
+    for (const auto& rEmbedding : embeddingsList)
     {
         OUString embeddingPath = rEmbedding.Name;
         uno::Reference<io::XInputStream> embeddingsStream;
@@ -1851,7 +1917,7 @@ void DocxExport::WriteEmbeddings()
         {
             try
             {
-                const css::uno::Any val = xProps->getPropertyValue("MediaType");
+                const css::uno::Any val = xProps->getPropertyValue(u"MediaType"_ustr);
                 val >>= contentType;
             }
             catch (const css::beans::UnknownPropertyException&)
@@ -1899,6 +1965,63 @@ bool DocxExport::isMirroredMargin()
     return bMirroredMargins;
 }
 
+bool DocxExport::IsDummyFloattableAnchor(SwNode& rNode) const
+{
+    return GetDummyFloatingTableAnchors().contains(&rNode);
+}
+
+void DocxExport::WriteDocumentBackgroundFill()
+{
+    const std::unique_ptr<SvxBrushItem> pBrush = getBackground();
+    if (!pBrush)
+        return;
+
+    m_pDocumentFS->startElementNS(XML_w, XML_background, FSNS(XML_w, XML_color),
+                                  msfilter::util::ConvertColor(pBrush->GetColor()));
+
+    const SwAttrSet& rPageStyleAttrSet = m_rDoc.GetPageDesc(0).GetMaster().GetAttrSet();
+    const drawing::FillStyle eFillType = rPageStyleAttrSet.Get(XATTR_FILLSTYLE).GetValue();
+    const GraphicObject* pGraphicObj = pBrush->GetGraphicObject();
+    if (pGraphicObj) // image/pattern/texture
+    {
+        const OUString aRelId = m_pDrawingML->writeGraphicToStorage(pGraphicObj->GetGraphic());
+        if (!aRelId.isEmpty())
+        {
+            m_pDocumentFS->startElementNS(XML_v, XML_background);
+
+            // Although MSO treats everything as tile, it is better for LO to not always tile
+            OString sType = "frame"_ostr; // single image
+            if (rPageStyleAttrSet.Get(XATTR_FILLBMP_TILE).GetValue())
+                sType = "tile"_ostr; // primarily for patterns / textures
+            m_pDocumentFS->singleElementNS(XML_v, XML_fill, FSNS(XML_r, XML_id), aRelId, XML_type,
+                                           sType);
+
+            m_pDocumentFS->endElementNS(XML_v, XML_background);
+        }
+    }
+    else if (eFillType == drawing::FillStyle_GRADIENT)
+    {
+        SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(m_rDoc.GetAttrPool()));
+        aSet.Set(rPageStyleAttrSet);
+
+        // Collect all of the gradient attributes into SdrExporter() AttrLists
+        m_pAttrOutput->OutputStyleItemSet(aSet, /*TestForDefault=*/true);
+        assert(SdrExporter().getFlyAttrList().is() && "type and fillcolor are always provided");
+        assert(SdrExporter().getFlyFillAttrList().is() && "color2 is always provided");
+
+        rtl::Reference<FastAttributeList> xFlyAttrList(SdrExporter().getFlyAttrList());
+        rtl::Reference<FastAttributeList> xFillAttrList(SdrExporter().getFlyFillAttrList());
+        m_pDocumentFS->startElementNS(XML_v, XML_background, xFlyAttrList);
+        m_pDocumentFS->singleElementNS(XML_v, XML_fill, xFillAttrList);
+        m_pDocumentFS->endElementNS(XML_v, XML_background);
+
+        SdrExporter().getFlyAttrList().clear();
+        SdrExporter().getFlyFillAttrList().clear();
+    }
+
+    m_pDocumentFS->endElementNS(XML_w, XML_background);
+}
+
 void DocxExport::WriteMainText()
 {
     // setup the namespaces
@@ -1909,14 +2032,7 @@ void DocxExport::WriteMainText()
     m_aLinkedTextboxesHelper.clear();
 
     // Write background page color
-    if (std::unique_ptr<SvxBrushItem> oBrush = getBackground(); oBrush)
-    {
-        Color backgroundColor = oBrush->GetColor();
-        OString aBackgroundColorStr = msfilter::util::ConvertColor(backgroundColor);
-
-        m_pDocumentFS->singleElementNS(XML_w, XML_background, FSNS(XML_w, XML_color),
-                                       aBackgroundColorStr);
-    }
+    WriteDocumentBackgroundFill();
 
     // body
     m_pDocumentFS->startElementNS(XML_w, XML_body);
@@ -1949,6 +2065,7 @@ rtl::Reference<FastAttributeList> DocxExport::MainXmlNamespaces()
     pAttr->add( FSNS( XML_xmlns, XML_w ), OUStringToOString(m_rFilter.getNamespaceURL(OOX_NS(doc)), RTL_TEXTENCODING_UTF8) );
     pAttr->add( FSNS( XML_xmlns, XML_w10 ), OUStringToOString(m_rFilter.getNamespaceURL(OOX_NS(vmlWord)), RTL_TEXTENCODING_UTF8) );
     pAttr->add( FSNS( XML_xmlns, XML_wp ), OUStringToOString(m_rFilter.getNamespaceURL(OOX_NS(dmlWordDr)), RTL_TEXTENCODING_UTF8) );
+    pAttr->add( FSNS( XML_xmlns, XML_pic ), OUStringToOString(m_rFilter.getNamespaceURL(OOX_NS(dmlPicture)), RTL_TEXTENCODING_UTF8) );
     pAttr->add( FSNS( XML_xmlns, XML_wps ), OUStringToOString(m_rFilter.getNamespaceURL(OOX_NS(wps)), RTL_TEXTENCODING_UTF8) );
     pAttr->add( FSNS( XML_xmlns, XML_wpg ), OUStringToOString(m_rFilter.getNamespaceURL(OOX_NS(wpg)), RTL_TEXTENCODING_UTF8) );
     pAttr->add( FSNS( XML_xmlns, XML_mc ), OUStringToOString(m_rFilter.getNamespaceURL(OOX_NS(mce)), RTL_TEXTENCODING_UTF8) );
@@ -1994,6 +2111,13 @@ sal_Int32 DocxExport::WriteOutliner(const OutlinerParaObject& rParaObj, sal_uInt
         SfxItemSet aParagraphMarkerProperties(m_rDoc.GetAttrPool());
         AttrOutput().EndParagraphProperties(aParagraphMarkerProperties, nullptr, nullptr, nullptr);
 
+        if (n == 0)
+        {
+            m_pAttrOutput->GetSerializer()->startElementNS(XML_w, XML_r);
+            m_pAttrOutput->GetSerializer()->singleElementNS(XML_w, XML_annotationRef);
+            m_pAttrOutput->GetSerializer()->endElementNS(XML_w, XML_r);
+        }
+
         do {
             AttrOutput().StartRun( nullptr, 0 );
             const sal_Int32 nNextAttr = std::min(aAttrIter.WhereNext(), nEnd);
@@ -2029,25 +2153,43 @@ sal_Int32 DocxExport::WriteOutliner(const OutlinerParaObject& rParaObj, sal_uInt
 
 //Keep this function in-sync with the one in writerfilter/.../SettingsTable.cxx
 //Since this is not import code, "-1" needs to be handled as the mode that LO will save as.
-//To identify how your code should handle a "-1", look in DocxExport::WriteSettings().
-sal_Int32 DocxExport::getWordCompatibilityModeFromGrabBag() const
+sal_Int32 DocxExport::getWordCompatibilityMode()
 {
-    sal_Int32 nWordCompatibilityMode = -1;
-    uno::Reference< beans::XPropertySet > xPropSet(m_rDoc.GetDocShell()->GetBaseModel(), uno::UNO_QUERY_THROW);
-    uno::Reference< beans::XPropertySetInfo > xPropSetInfo = xPropSet->getPropertySetInfo();
+    if (m_nWordCompatibilityMode > 0)
+        return m_nWordCompatibilityMode; // cached result
+
+    /* Compatibility Mode (tdf#131304)
+     * 11:  .doc level    [Word 97-2003]
+     * 12:  .docx default [Word 2007]  [LO < 7.0] [ECMA 376 1st ed.]
+     * 14:                [Word 2010]
+     * 15:                [Word 2013/2016/2019/2021/2024]  [LO >= 7.0]
+     *
+     * The PRIMARY purpose of compatibility mode does not seem to be related to layout etc.
+     * Its focus is on sharing files between multiple users, tracking the LOWEST supported mode in the group.
+     * It is to BENEFIT older programs by not using certain new features that they don't understand.
+     *
+     * The next time the compat mode needs to be changed, I foresee the following steps:
+     * 1.) Accept the new mode: Start round-tripping the new value, indicating we understand that format.
+     * 2.) Many years later, change the initial m_nWordCompatibilityMode for new documents,
+     *     when we no longer care about working with perfect compatibility with older versions of MS Word.
+     */
+    m_nWordCompatibilityMode = 15; //older versions might not open our files well
+    uno::Reference< beans::XPropertySetInfo > xPropSetInfo = m_xTextDoc->getPropertySetInfo();
+    // Round-trip the existing compatibilityMode
     if (xPropSetInfo->hasPropertyByName(UNO_NAME_MISC_OBJ_INTEROPGRABBAG))
     {
         uno::Sequence< beans::PropertyValue > propList;
-        xPropSet->getPropertyValue( UNO_NAME_MISC_OBJ_INTEROPGRABBAG ) >>= propList;
+        m_xTextDoc->getPropertyValue( UNO_NAME_MISC_OBJ_INTEROPGRABBAG ) >>= propList;
 
-        for (const auto& rProp : std::as_const(propList))
+        sal_Int32 nImportedWordCompatbilityMode = -1;
+        for (const auto& rProp : propList)
         {
             if (rProp.Name == "CompatSettings")
             {
                 css::uno::Sequence< css::beans::PropertyValue > aCurrentCompatSettings;
                 rProp.Value >>= aCurrentCompatSettings;
 
-                for (const auto& rCurrentCompatSetting : std::as_const(aCurrentCompatSettings))
+                for (const auto& rCurrentCompatSetting : aCurrentCompatSettings)
                 {
                     uno::Sequence< beans::PropertyValue > aCompatSetting;
                     rCurrentCompatSetting.Value >>= aCompatSetting;
@@ -2056,7 +2198,7 @@ sal_Int32 DocxExport::getWordCompatibilityModeFromGrabBag() const
                     OUString sUri;
                     OUString sVal;
 
-                    for (const auto& rPropVal : std::as_const(aCompatSetting))
+                    for (const auto& rPropVal : aCompatSetting)
                     {
                         if ( rPropVal.Name == "name" ) rPropVal.Value >>= sName;
                         if ( rPropVal.Name == "uri" )  rPropVal.Value >>= sUri;
@@ -2067,16 +2209,34 @@ sal_Int32 DocxExport::getWordCompatibilityModeFromGrabBag() const
                     {
                         const sal_Int32 nValidMode = sVal.toInt32();
                         // if repeated, highest mode wins in MS Word. 11 is the first valid mode.
-                        if (nValidMode > 10 && nValidMode > nWordCompatibilityMode)
-                            nWordCompatibilityMode = nValidMode;
-
+                        if (nValidMode > 10 && nValidMode > nImportedWordCompatbilityMode)
+                            nImportedWordCompatbilityMode = nValidMode;
                     }
                 }
             }
         }
+        // Keep the imported compatibility mode (unless it is unknown / unsupported)
+        const bool bPreventRoundTrippingUnknownMode
+            = nImportedWordCompatbilityMode > m_nWordCompatibilityMode;
+        if (nImportedWordCompatbilityMode > 0 && !bPreventRoundTrippingUnknownMode)
+            m_nWordCompatibilityMode = nImportedWordCompatbilityMode;
     }
 
-    return nWordCompatibilityMode;
+    // Note: up to this point, WordCompatibilityMode is allowed to be increased.
+    // Place any maximum compatibility mode restrictions after this comment.
+    if (m_nWordCompatibilityMode > 12)
+    {
+        // If this is a Word 2007-only format, don't allow a compatibility mode greater than that
+        if (GetFilter().getVersion() == oox::core::ECMA_376_1ST_EDITION)
+            m_nWordCompatibilityMode = 12;
+    }
+    if (m_nWordCompatibilityMode > 14)
+    {
+        // Word ignores noLeading in compatibilityMode 15
+        if (!m_rDoc.getIDocumentSettingAccess().get(DocumentSettingId::ADD_EXT_LEADING))
+            m_nWordCompatibilityMode = 14;
+    }
+    return m_nWordCompatibilityMode;
 }
 
 void DocxExport::SetFS( ::sax_fastparser::FSHelperPtr const & pFS )
@@ -2096,6 +2256,7 @@ DocxExport::DocxExport(DocxExportFilter& rFilter, SwDoc& rDocument,
       m_nHeadersFootersInSection(0),
       m_bDocm(bDocm),
       m_bTemplate(bTemplate),
+      m_nWordCompatibilityMode(-1),
       m_pAuthorIDs(new SvtSecurityMapPersonalInfo)
 {
     // Write the document properties
@@ -2132,7 +2293,7 @@ DocxExport::DocxExport(DocxExportFilter& rFilter, SwDoc& rDocument,
 
 
     // the actual document
-    m_pDocumentFS = m_rFilter.openFragmentStreamWithSerializer( "word/document.xml", aMediaType );
+    m_pDocumentFS = m_rFilter.openFragmentStreamWithSerializer( u"word/document.xml"_ustr, aMediaType );
 
     SetFS(m_pDocumentFS);
 

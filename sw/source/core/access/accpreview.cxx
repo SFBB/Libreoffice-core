@@ -18,12 +18,8 @@
  */
 
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <cppuhelper/supportsservice.hxx>
 #include <strings.hrc>
 #include "accpreview.hxx"
-
-constexpr OUStringLiteral sImplementationName
-    = u"com.sun.star.comp.Writer.SwAccessibleDocumentPageView";
 
 using ::com::sun::star::uno::Sequence;
 
@@ -35,27 +31,6 @@ SwAccessiblePreview::SwAccessiblePreview(std::shared_ptr<SwAccessibleMap> const&
 
 SwAccessiblePreview::~SwAccessiblePreview()
 {
-}
-
-OUString SwAccessiblePreview::getImplementationName( )
-{
-    return sImplementationName;
-}
-
-sal_Bool SwAccessiblePreview::supportsService( const OUString& rServiceName )
-{
-    return cppu::supportsService(this, rServiceName);
-}
-
-Sequence<OUString> SwAccessiblePreview::getSupportedServiceNames( )
-{
-    return {"com.sun.star.text.AccessibleTextDocumentPageView",
-            sAccessibleServiceName};
-}
-
-Sequence< sal_Int8 > SAL_CALL SwAccessiblePreview::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
 }
 
 OUString SAL_CALL SwAccessiblePreview::getAccessibleDescription()

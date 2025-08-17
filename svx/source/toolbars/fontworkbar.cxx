@@ -47,7 +47,6 @@
 
 
 using namespace ::svx;
-using namespace ::cppu;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
@@ -152,7 +151,7 @@ static void SetFontWorkShapeTypeState( SdrView const * pSdrView, SfxItemSet& rSe
         if( dynamic_cast<const SdrObjCustomShape*>( pObj) !=  nullptr )
         {
             const SdrCustomShapeGeometryItem & rGeometryItem( pObj->GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ) );
-            const Any* pAny = rGeometryItem.GetPropertyValueByName( "Type" );
+            const Any* pAny = rGeometryItem.GetPropertyValueByName( u"Type"_ustr );
             if( pAny )
             {
                 OUString aType;
@@ -176,9 +175,9 @@ static void SetFontWorkShapeTypeState( SdrView const * pSdrView, SfxItemSet& rSe
 
 // Declare the default interface. (The slotmap must not be empty, so
 // we enter something which never occurs here (hopefully).)
-static SfxSlot aFontworkBarSlots_Impl[] =
+constexpr SfxSlot aFontworkBarSlots_Impl[] =
 {
-    { 0, SfxGroupId::NONE, SfxSlotMode::NONE, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, 0, SfxDisableFlags::NONE, "" }
+    { 0, SfxGroupId::NONE, SfxSlotMode::NONE, 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, 0, SfxDisableFlags::NONE, u""_ustr }
 };
 
 SFX_IMPL_INTERFACE(FontworkBar, SfxShell)
@@ -241,7 +240,7 @@ static void impl_execute( SfxRequest const & rReq, SdrCustomShapeGeometryItem& r
     {
         case SID_FONTWORK_SAME_LETTER_HEIGHTS:
         {
-            css::uno::Any* pAny = rGeometryItem.GetPropertyValueByName( "TextPath", "SameLetterHeights" );
+            css::uno::Any* pAny = rGeometryItem.GetPropertyValueByName( u"TextPath"_ustr, u"SameLetterHeights"_ustr );
 
             bool bOn = false;
             if( pAny )
@@ -250,15 +249,16 @@ static void impl_execute( SfxRequest const & rReq, SdrCustomShapeGeometryItem& r
             css::beans::PropertyValue aPropValue;
             aPropValue.Name = "SameLetterHeights";
             aPropValue.Value <<= bOn;
-            rGeometryItem.SetPropertyValue("TextPath", aPropValue);
+            rGeometryItem.SetPropertyValue(u"TextPath"_ustr, aPropValue);
         }
         break;
 
         case SID_FONTWORK_ALIGNMENT:
         {
-            if( rReq.GetArgs() && rReq.GetArgs()->GetItemState( SID_FONTWORK_ALIGNMENT ) == SfxItemState::SET )
+            const SfxInt32Item* pAlignItem = nullptr;
+            if( rReq.GetArgs() && rReq.GetArgs()->GetItemState( SID_FONTWORK_ALIGNMENT, true, &pAlignItem ) == SfxItemState::SET )
             {
-                sal_Int32 nValue = rReq.GetArgs()->GetItem<SfxInt32Item>(SID_FONTWORK_ALIGNMENT)->GetValue();
+                sal_Int32 nValue = pAlignItem->GetValue();
                 if ( ( nValue >= 0 ) && ( nValue < 5 ) )
                 {
                     drawing::TextFitToSizeType eFTS = drawing::TextFitToSizeType_NONE;
@@ -281,9 +281,10 @@ static void impl_execute( SfxRequest const & rReq, SdrCustomShapeGeometryItem& r
 
         case SID_FONTWORK_CHARACTER_SPACING:
         {
-            if( rReq.GetArgs() && ( rReq.GetArgs()->GetItemState( SID_FONTWORK_CHARACTER_SPACING ) == SfxItemState::SET ) )
+            const SfxInt32Item* pSpacingItem = nullptr;
+            if( rReq.GetArgs() && ( rReq.GetArgs()->GetItemState( SID_FONTWORK_CHARACTER_SPACING, true, &pSpacingItem ) == SfxItemState::SET ) )
             {
-                sal_Int32 nCharSpacing = rReq.GetArgs()->GetItem<SfxInt32Item>(SID_FONTWORK_CHARACTER_SPACING)->GetValue();
+                sal_Int32 nCharSpacing = pSpacingItem->GetValue();
                 pObj->SetMergedItem( SvxCharScaleWidthItem( static_cast<sal_uInt16>(nCharSpacing), EE_CHAR_FONTWIDTH ) );
                 pObj->BroadcastObjectChange();
             }
@@ -340,8 +341,6 @@ static void GetGeometryForCustomShape( SdrCustomShapeGeometryItem& rGeometryItem
         if ( aObjList[ i ].equalsIgnoreAsciiCase( rCustomShape ) )
         {
             FmFormModel aFormModel;
-            SfxItemPool& rPool(aFormModel.GetItemPool());
-            rPool.FreezeIdRanges();
 
             if ( GalleryExplorer::GetSdrObj( GALLERY_THEME_POWERPOINT, i, &aFormModel ) )
             {
@@ -418,7 +417,7 @@ void FontworkBar::execute( SdrView& rSdrView, SfxRequest const & rReq, SfxBindin
     {
         case SID_FONTWORK_GALLERY_FLOATER:
         {
-            std::shared_ptr<FontWorkGalleryDialog> pDlg = std::make_shared<FontWorkGalleryDialog>(rReq.GetFrameWeld(), rSdrView);
+            std::shared_ptr<FontWorkGalleryDialog> pDlg = std::make_shared<FontWorkGalleryDialog>(rReq.GetFrameWeld(), rSdrView, rBindings.GetActiveFrame());
             weld::DialogController::runAsync(pDlg, [](int){});
         }
         break;
@@ -474,9 +473,10 @@ void FontworkBar::execute( SdrView& rSdrView, SfxRequest const & rReq, SfxBindin
 
         case SID_FONTWORK_CHARACTER_SPACING_DIALOG :
         {
-            if( rReq.GetArgs() && ( rReq.GetArgs()->GetItemState( SID_FONTWORK_CHARACTER_SPACING ) == SfxItemState::SET ) )
+            const SfxInt32Item* pSpacingItem = nullptr;
+            if( rReq.GetArgs() && ( rReq.GetArgs()->GetItemState( SID_FONTWORK_CHARACTER_SPACING, true, &pSpacingItem ) == SfxItemState::SET ) )
             {
-                sal_Int32 nCharSpacing = rReq.GetArgs()->GetItem<SfxInt32Item>(SID_FONTWORK_CHARACTER_SPACING)->GetValue();
+                sal_Int32 nCharSpacing = pSpacingItem->GetValue();
                 FontworkCharacterSpacingDialog aDlg(rReq.GetFrameWeld(), nCharSpacing);
                 sal_uInt16 nRet = aDlg.run();
                 if (nRet != RET_CANCEL)

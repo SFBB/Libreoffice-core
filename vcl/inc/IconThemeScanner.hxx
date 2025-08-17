@@ -7,13 +7,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_VCL_ICONTHEMESCANNER_HXX
-#define INCLUDED_VCL_ICONTHEMESCANNER_HXX
+#pragma once
 
 #include <vcl/dllapi.h>
 
 #include <rtl/ustring.hxx>
 #include <vcl/IconThemeInfo.hxx>
+#include <vcl/UserResourceScanner.hxx>
 
 #include <memory>
 #include <vector>
@@ -25,13 +25,10 @@ namespace vcl
 {
 /** This class scans a folder for icon themes and provides the results.
  */
-class VCL_DLLPUBLIC IconThemeScanner
+class VCL_DLLPUBLIC IconThemeScanner : public UserResourceScanner
 {
 public:
-    /** Factory method to create the object.
-     * Provide a path to search for IconThemes.
-     */
-    static std::shared_ptr<IconThemeScanner> Create(std::u16string_view path);
+    IconThemeScanner();
 
     /** This method will return the standard path where icon themes are located.
      */
@@ -51,28 +48,11 @@ public:
     bool IconThemeIsInstalled(const OUString& themeId) const;
 
 private:
-    IconThemeScanner();
-
-    /** Scan a directory for icon themes.
-     *
-     * @return
-     * There are several cases when this method will fail:
-     * - The directory does not exist
-     * - There are no files which match the pattern images_xxx.zip
-     */
-    void ScanDirectoryForIconThemes(std::u16string_view path);
-
-    /** Adds the provided icon theme by path.
-     */
-    bool AddIconThemeByPath(const OUString& path);
-
-    /** Scans the provided directory for icon themes.
-     * The returned strings will contain the URLs to the icon themes.
-     */
-    static std::vector<OUString> ReadIconThemesFromPath(const OUString& dir);
+    /** Adds the provided icon theme by path. */
+    bool addResource(const OUString& path) override;
 
     /** Check whether a single file is valid */
-    static bool FileIsValidIconTheme(const OUString&);
+    bool isValidResource(const OUString& rFilename) override;
 
     std::vector<IconThemeInfo> mFoundIconThemes;
 
@@ -80,7 +60,5 @@ private:
 };
 
 } // end namespace vcl
-
-#endif // INCLUDED_VCL_ICONTHEMESCANNER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

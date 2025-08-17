@@ -108,15 +108,17 @@ OUString createPath(std::u16string_view name, sal_Int32 pos, std::u16string_view
     return OUString::Concat(name.substr(0, pos + 1)) + locale + name.substr(pos);
 }
 
+OUString getIconCacheUrlImpl()
+{
+    OUString sDir = u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache/"_ustr;
+    rtl::Bootstrap::expandMacros(sDir);
+    return sDir;
+}
+
 OUString getIconCacheUrl(std::u16string_view sVariant, ImageRequestParameters const & rParameters)
 {
     // the macro expansion can be expensive in bulk, so cache that
-    static OUString CACHE_DIR = []()
-    {
-        OUString sDir = "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache/";
-        rtl::Bootstrap::expandMacros(sDir);
-        return sDir;
-    }();
+    static OUString CACHE_DIR = getIconCacheUrlImpl();
     return CACHE_DIR + rParameters.msStyle + "/" + sVariant + "/" + rParameters.msName;
 }
 
@@ -172,12 +174,22 @@ void loadImageFromStream(std::shared_ptr<SvStream> const & xStream, OUString con
     if (rPath.endsWith(".png"))
     {
         vcl::PngImageReader aPNGReader(*xStream);
-        aPNGReader.read(rParameters.mrBitmap);
+        Bitmap aTmp;
+        aPNGReader.read(aTmp);
+        rParameters.mrBitmap = std::move(aTmp);
     }
     else if (rPath.endsWith(".svg"))
     {
         rParameters.mbWriteImageToCache = true; // We always want to cache a SVG image
-        vcl::bitmap::loadFromSvg(*xStream, rPath, rParameters.mrBitmap, aScalePercentage / 100.0);
+        Bitmap aTmp;
+        #ifdef _WIN32
+           // tdf#153421. Do not scale, individual crop handles are created from it using pixel unit.
+           if (rPath.endsWith("cropmarkers.svg"))
+               vcl::bitmap::loadFromSvg(*xStream, rPath, aTmp, 1.0);
+           else
+        #endif
+        vcl::bitmap::loadFromSvg(*xStream, rPath, aTmp, aScalePercentage / 100.0);
+        rParameters.mrBitmap = std::move(aTmp);
 
         if (bConvertToDarkTheme)
             BitmapFilter::Filter(rParameters.mrBitmap, BitmapLightenFilter());
@@ -340,7 +352,7 @@ OUString ImplImageTree::fallbackStyle(std::u16string_view rsStyle)
     return sResult;
 }
 
-bool ImplImageTree::loadImage(OUString const & rName, OUString const & rStyle, BitmapEx & rBitmap, bool localized,
+bool ImplImageTree::loadImage(OUString const & rName, OUString const & rStyle, Bitmap & rBitmap, bool localized,
                               const ImageLoadFlags eFlags, sal_Int32 nScalePercentage)
 {
     OUString aCurrentStyle(rStyle);
@@ -383,7 +395,9 @@ bool loadDiskCachedVersion(std::u16string_view sVariant, ImageRequestParameters&
         return false;
     SvFileStream aFileStream(sUrl, StreamMode::READ);
     vcl::PngImageReader aPNGReader(aFileStream);
-    aPNGReader.read(rParameters.mrBitmap);
+    Bitmap aTmp;
+    aPNGReader.read(aTmp);
+    rParameters.mrBitmap = std::move(aTmp);
     return true;
 }
 

@@ -54,30 +54,21 @@ using namespace ::com::sun::star::accessibility;
 
 // internal
 /** initialize this component and set default values */
-SvxGraphCtrlAccessibleContext::SvxGraphCtrlAccessibleContext(
-    GraphCtrl&                   rRepr ) :
-
-    SvxGraphCtrlAccessibleContext_Base( m_aMutex ),
-    mpControl( &rRepr ),
-    mpModel (nullptr),
-    mpPage (nullptr),
-    mpView (nullptr),
-    mnClientId( 0 ),
-    mbDisposed( false )
+SvxGraphCtrlAccessibleContext::SvxGraphCtrlAccessibleContext(GraphCtrl& rRepr)
+    : mpControl(&rRepr)
+    , mpPage(nullptr)
+    , mpView(nullptr)
 {
     if (mpControl != nullptr)
     {
-        mpModel = mpControl->GetSdrModel();
-        if (mpModel != nullptr)
-            mpPage = mpModel->GetPage( 0 );
+        SdrModel* pModel = mpControl->GetSdrModel();
+        if (pModel)
+            mpPage = pModel->GetPage(0);
         mpView = mpControl->GetSdrView();
 
-        if( mpModel == nullptr || mpPage == nullptr || mpView == nullptr )
+        if (pModel == nullptr || mpPage == nullptr || mpView == nullptr)
         {
-            mbDisposed = true;
-            // Set all the pointers to NULL just in case they are used as
-            // a disposed flag.
-            mpModel = nullptr;
+            // Set all the pointers to NULL
             mpPage = nullptr;
             mpView = nullptr;
         }
@@ -88,20 +79,7 @@ SvxGraphCtrlAccessibleContext::SvxGraphCtrlAccessibleContext(
         msName = SvxResId( RID_SVXSTR_GRAPHCTRL_ACC_NAME );
         msDescription = SvxResId( RID_SVXSTR_GRAPHCTRL_ACC_DESCRIPTION );
     }
-
-    maTreeInfo.SetSdrView( mpView );
-    maTreeInfo.SetWindow(mpControl->GetDrawingArea()->get_ref_device().GetOwnerWindow());
-    maTreeInfo.SetViewForwarder( this );
 }
-
-
-/** on destruction, this component is disposed and all dispose listeners
-    are called, except if this component was already disposed */
-SvxGraphCtrlAccessibleContext::~SvxGraphCtrlAccessibleContext()
-{
-    disposing();
-}
-
 
 /** returns the XAccessible interface for a given SdrObject.
     Multiple calls for the same SdrObject return the same XAccessible.
@@ -127,41 +105,27 @@ Reference< XAccessible > SvxGraphCtrlAccessibleContext::getAccessible( const Sdr
 
             css::uno::Reference<css::accessibility::XAccessible> xParent(getAccessibleParent());
             AccessibleShapeInfo aShapeInfo (xShape,xParent);
+            ::accessibility::AccessibleShapeTreeInfo aTreeInfo;
+            aTreeInfo.SetSdrView(mpView);
+            aTreeInfo.SetWindow(mpControl->GetDrawingArea()->get_ref_device().GetOwnerWindow());
+            aTreeInfo.SetViewForwarder(this);
             // Create accessible object that corresponds to the descriptor's shape.
             rtl::Reference<AccessibleShape> pAcc(ShapeTypeHandler::Instance().CreateAccessibleObject(
-                aShapeInfo, maTreeInfo));
+                aShapeInfo, aTreeInfo));
             xAccessibleShape = pAcc.get();
             if (pAcc.is())
             {
-                pAcc->Init ();
+                pAcc->Init();
             }
-            mxShapes[pObj] = pAcc;
+            mxShapes[pObj] = std::move(pAcc);
 
             // Create event and inform listeners of the object creation.
-            CommitChange( AccessibleEventId::CHILD, Any( xAccessibleShape ), Any( Reference<XAccessible>() ) );
+            NotifyAccessibleEvent(AccessibleEventId::CHILD, Any(), Any(xAccessibleShape));
         }
     }
 
     return xAccessibleShape;
 }
-
-// XAccessible
-Reference< XAccessibleContext > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleContext()
-{
-    return this;
-}
-
-// XAccessibleComponent
-sal_Bool SAL_CALL SvxGraphCtrlAccessibleContext::containsPoint( const awt::Point& rPoint )
-{
-    // no guard -> done in getSize()
-    awt::Size aSize (getSize());
-    return (rPoint.X >= 0)
-        && (rPoint.X < aSize.Width)
-        && (rPoint.Y >= 0)
-        && (rPoint.Y < aSize.Height);
-}
-
 
 Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleAtPoint( const awt::Point& rPoint )
 {
@@ -190,13 +154,8 @@ Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleAt
     return xAccessible;
 }
 
-awt::Rectangle SAL_CALL SvxGraphCtrlAccessibleContext::getBounds()
+awt::Rectangle SvxGraphCtrlAccessibleContext::implGetBounds()
 {
-    const SolarMutexGuard aSolarGuard;
-
-    if (nullptr == mpControl)
-        throw DisposedException();
-
     const Point         aOutPos;
     const Size          aOutSize( mpControl->GetOutputSizePixel() );
     awt::Rectangle      aRet;
@@ -205,65 +164,6 @@ awt::Rectangle SAL_CALL SvxGraphCtrlAccessibleContext::getBounds()
     aRet.Y = aOutPos.Y();
     aRet.Width = aOutSize.Width();
     aRet.Height = aOutSize.Height();
-
-    return aRet;
-}
-
-awt::Point SAL_CALL SvxGraphCtrlAccessibleContext::getLocation()
-{
-    const SolarMutexGuard aSolarGuard;
-
-    if (nullptr == mpControl)
-        throw DisposedException();
-
-    const awt::Rectangle    aRect( getBounds() );
-    awt::Point              aRet;
-
-    aRet.X = aRect.X;
-    aRet.Y = aRect.Y;
-
-    return aRet;
-}
-
-awt::Point SAL_CALL SvxGraphCtrlAccessibleContext::getLocationOnScreen()
-{
-    const SolarMutexGuard aSolarGuard;
-
-    if (nullptr == mpControl)
-        throw DisposedException();
-
-    awt::Point aScreenLoc(0, 0);
-
-    auto xParent(getAccessibleParent());
-    if (xParent)
-    {
-        css::uno::Reference<css::accessibility::XAccessibleContext> xParentContext(xParent->getAccessibleContext());
-        css::uno::Reference<css::accessibility::XAccessibleComponent> xParentComponent(xParentContext, css::uno::UNO_QUERY);
-        OSL_ENSURE( xParentComponent.is(), "ValueSetAcc::getLocationOnScreen: no parent component!" );
-        if ( xParentComponent.is() )
-        {
-            awt::Point aParentScreenLoc( xParentComponent->getLocationOnScreen() );
-            awt::Point aOwnRelativeLoc( getLocation() );
-            aScreenLoc.X = aParentScreenLoc.X + aOwnRelativeLoc.X;
-            aScreenLoc.Y = aParentScreenLoc.Y + aOwnRelativeLoc.Y;
-        }
-    }
-
-    return aScreenLoc;
-}
-
-awt::Size SAL_CALL SvxGraphCtrlAccessibleContext::getSize()
-{
-    const SolarMutexGuard aSolarGuard;
-
-    if (nullptr == mpControl)
-        throw DisposedException();
-
-    const awt::Rectangle    aRect( getBounds() );
-    awt::Size               aRet;
-
-    aRet.Width = aRect.Width;
-    aRet.Height = aRect.Height;
 
     return aRet;
 }
@@ -294,23 +194,6 @@ SdrObject* SvxGraphCtrlAccessibleContext::getSdrObject( sal_Int64 nIndex )
     return mpPage->GetObj( nIndex );
 }
 
-
-/** sends an AccessibleEventObject to all added XAccessibleEventListeners */
-void SvxGraphCtrlAccessibleContext::CommitChange (
-    sal_Int16 nEventId,
-    const uno::Any& rNewValue,
-    const uno::Any& rOldValue)
-{
-    AccessibleEventObject aEvent (
-        getXWeak(),
-        nEventId,
-        rNewValue,
-        rOldValue, -1);
-
-    if (mnClientId)
-        comphelper::AccessibleEventNotifier::addEvent( mnClientId, aEvent );
-}
-
 Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleChild( sal_Int64 nIndex )
 {
     ::SolarMutexGuard aGuard;
@@ -327,38 +210,6 @@ Reference< XAccessible > SAL_CALL SvxGraphCtrlAccessibleContext::getAccessiblePa
 
     return mpControl->GetDrawingArea()->get_accessible_parent();
 }
-
-sal_Int64 SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleIndexInParent()
-{
-    ::SolarMutexGuard aGuard;
-    //  Use a simple but slow solution for now.  Optimize later.
-
-    //  Iterate over all the parent's children and search for this object.
-    css::uno::Reference<css::accessibility::XAccessible> xParent(getAccessibleParent());
-    if (xParent.is())
-    {
-        Reference< XAccessibleContext > xParentContext( xParent->getAccessibleContext() );
-        if( xParentContext.is() )
-        {
-            sal_Int64 nChildCount = xParentContext->getAccessibleChildCount();
-            for( sal_Int64 i = 0 ; i < nChildCount ; ++i )
-            {
-                Reference< XAccessible > xChild( xParentContext->getAccessibleChild( i ) );
-                if( xChild.is() )
-                {
-                    Reference< XAccessibleContext > xChildContext = xChild->getAccessibleContext();
-                    if( xChildContext == static_cast<XAccessibleContext*>(this) )
-                        return i;
-                }
-            }
-        }
-    }
-
-    //   Return -1 to indicate that this object's parent does not know about the
-    //   object.
-    return -1;
-}
-
 
 sal_Int16 SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleRole()
 {
@@ -395,7 +246,7 @@ sal_Int64 SAL_CALL SvxGraphCtrlAccessibleContext::getAccessibleStateSet()
 
     sal_Int64 nStateSet = 0;
 
-    if ( rBHelper.bDisposed || mbDisposed )
+    if (!isAlive())
     {
         nStateSet |= AccessibleStateType::DEFUNC;
     }
@@ -429,38 +280,6 @@ lang::Locale SAL_CALL SvxGraphCtrlAccessibleContext::getLocale()
     throw IllegalAccessibleComponentStateException();
 }
 
-// XAccessibleEventListener
-void SAL_CALL SvxGraphCtrlAccessibleContext::addAccessibleEventListener( const Reference< XAccessibleEventListener >& xListener )
-{
-    if (xListener.is())
-    {
-        ::SolarMutexGuard aGuard;
-        if (!mnClientId)
-            mnClientId = comphelper::AccessibleEventNotifier::registerClient( );
-        comphelper::AccessibleEventNotifier::addEventListener( mnClientId, xListener );
-    }
-}
-
-
-void SAL_CALL SvxGraphCtrlAccessibleContext::removeAccessibleEventListener( const Reference< XAccessibleEventListener >& xListener )
-{
-    if (!xListener.is())
-        return;
-
-    ::SolarMutexGuard aGuard;
-
-    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, xListener );
-    if ( !nListenerCount )
-    {
-        // no listeners anymore
-        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-        // and at least to us not firing any events anymore, in case somebody calls
-        // NotifyAccessibleEvent, again
-        comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
-        mnClientId = 0;
-    }
-}
-
 void SAL_CALL SvxGraphCtrlAccessibleContext::grabFocus()
 {
     ::SolarMutexGuard aGuard;
@@ -487,7 +306,7 @@ sal_Int32 SAL_CALL SvxGraphCtrlAccessibleContext::getBackground()
 // XServiceInfo
 OUString SAL_CALL SvxGraphCtrlAccessibleContext::getImplementationName()
 {
-    return "com.sun.star.comp.ui.SvxGraphCtrlAccessibleContext";
+    return u"com.sun.star.comp.ui.SvxGraphCtrlAccessibleContext"_ustr;
 }
 
 sal_Bool SAL_CALL SvxGraphCtrlAccessibleContext::supportsService( const OUString& sServiceName )
@@ -497,21 +316,14 @@ sal_Bool SAL_CALL SvxGraphCtrlAccessibleContext::supportsService( const OUString
 
 Sequence< OUString > SAL_CALL SvxGraphCtrlAccessibleContext::getSupportedServiceNames()
 {
-    return { "com.sun.star.accessibility.Accessible",
-             "com.sun.star.accessibility.AccessibleContext",
-             "com.sun.star.drawing.AccessibleGraphControl" };
-}
-
-// XTypeProvider
-Sequence<sal_Int8> SAL_CALL SvxGraphCtrlAccessibleContext::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
+    return { u"com.sun.star.accessibility.AccessibleContext"_ustr,
+             u"com.sun.star.drawing.AccessibleGraphControl"_ustr };
 }
 
 // XServiceName
 OUString SvxGraphCtrlAccessibleContext::getServiceName()
 {
-    return "com.sun.star.accessibility.AccessibleContext";
+    return u"com.sun.star.accessibility.AccessibleContext"_ustr;
 }
 
 // XAccessibleSelection
@@ -642,23 +454,15 @@ void SvxGraphCtrlAccessibleContext::setModelAndView (
 {
     ::SolarMutexGuard aGuard;
 
-    mpModel = pModel;
-    if (mpModel != nullptr)
-        mpPage = mpModel->GetPage( 0 );
+    mpPage = pModel ? pModel->GetPage(0) : nullptr;
     mpView = pView;
 
-    if (mpModel == nullptr || mpPage == nullptr || mpView == nullptr)
+    if (mpPage == nullptr || mpView == nullptr)
     {
-        mbDisposed = true;
-
-        // Set all the pointers to NULL just in case they are used as
-        // a disposed flag.
-        mpModel = nullptr;
+        // Set all the pointers to NULL
         mpPage = nullptr;
         mpView = nullptr;
     }
-
-    maTreeInfo.SetSdrView (mpView);
 }
 
 
@@ -666,10 +470,8 @@ void SAL_CALL SvxGraphCtrlAccessibleContext::disposing()
 {
     ::SolarMutexGuard aGuard;
 
-    if( mbDisposed )
+    if (!isAlive())
         return;
-
-    mbDisposed = true;
 
     mpControl = nullptr;       // object dies with representation
     mpView = nullptr;
@@ -687,12 +489,7 @@ void SAL_CALL SvxGraphCtrlAccessibleContext::disposing()
         mxShapes.clear();
     }
 
-    // Send a disposing to all listeners.
-    if ( mnClientId )
-    {
-        comphelper::AccessibleEventNotifier::revokeClientNotifyDisposing( mnClientId, *this );
-        mnClientId =  0;
-    }
+    comphelper::OAccessible::disposing();
 }
 
 void SvxGraphCtrlAccessibleContext::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
@@ -718,10 +515,12 @@ void SvxGraphCtrlAccessibleContext::Notify( SfxBroadcaster& /*rBC*/, const SfxHi
                 break;
 
             case SdrHintKind::ObjectInserted:
-                CommitChange( AccessibleEventId::CHILD, Any( getAccessible( pSdrHint->GetObject() ) ) , uno::Any());
+                NotifyAccessibleEvent(AccessibleEventId::CHILD, uno::Any(),
+                                      Any(getAccessible(pSdrHint->GetObject())));
                 break;
             case SdrHintKind::ObjectRemoved:
-                CommitChange( AccessibleEventId::CHILD, uno::Any(), Any( getAccessible( pSdrHint->GetObject() ) )  );
+                NotifyAccessibleEvent(AccessibleEventId::CHILD,
+                                      Any(getAccessible(pSdrHint->GetObject())), uno::Any());
                 break;
             case SdrHintKind::ModelCleared:
                 dispose();

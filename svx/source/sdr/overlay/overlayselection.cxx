@@ -31,12 +31,41 @@
 #include <basegfx/polygon/b2dpolypolygoncutter.hxx>
 #include <svx/sdr/overlay/overlaymanager.hxx>
 #include <officecfg/Office/Common.hxx>
-
+#include <o3tl/sorted_vector.hxx>
+#include <map>
+#include <tools/fract.hxx>
 
 namespace sdr::overlay
 {
-        // combine rages geometrically to a single, ORed polygon
-        static basegfx::B2DPolyPolygon impCombineRangesToPolyPolygon(const std::vector< basegfx::B2DRange >& rRanges)
+
+        // combine ranges geometrically to a single, ORed polygon
+        static basegfx::B2DPolyPolygon impCombineRangesToPolyPolygon(const std::vector< basegfx::B2DRange >& rRanges, bool bOffset, double fOffset)
+        {
+            const sal_uInt32 nCount(rRanges.size());
+            basegfx::B2DPolyPolygon aRetval;
+
+            for(sal_uInt32 a(0); a < nCount; a++)
+            {
+                basegfx::B2DRange aRange(rRanges[a]);
+                if (bOffset)
+                    aRange.grow(fOffset);
+                const basegfx::B2DPolygon aDiscretePolygon(basegfx::utils::createPolygonFromRect(aRange));
+
+                if(0 == a)
+                {
+                    aRetval.append(aDiscretePolygon);
+                }
+                else
+                {
+                    aRetval = basegfx::utils::solvePolygonOperationOr(aRetval, basegfx::B2DPolyPolygon(aDiscretePolygon));
+                }
+            }
+
+            return aRetval;
+        }
+
+        // tdf#161204 Creates a poly-polygon using white hairline to provide contrast
+        static basegfx::B2DPolyPolygon impCombineRangesToContrastPolyPolygon(const std::vector< basegfx::B2DRange >& rRanges)
         {
             const sal_uInt32 nCount(rRanges.size());
             basegfx::B2DPolyPolygon aRetval;
@@ -77,12 +106,6 @@ namespace sdr::overlay
                         // not possible when in high contrast mode
                         return  OverlayType::Invert;
                     }
-
-                    if(!pOut->SupportsOperation(OutDevSupportType::TransparentRect))
-                    {
-                        // not possible when no fast transparence paint is supported on the system
-                        return OverlayType::Invert;
-                    }
                 }
             }
 
@@ -110,25 +133,30 @@ namespace sdr::overlay
                 for(sal_uInt32 a(0);a < nCount; a++)
                 {
                     const basegfx::B2DPolygon aPolygon(basegfx::utils::createPolygonFromRect(maRanges[a]));
-                    aRetval[a] = drawinglayer::primitive2d::Primitive2DReference(
+                    aRetval[a] =
                         new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
                             basegfx::B2DPolyPolygon(aPolygon),
-                            aRGBColor));
+                            aRGBColor);
                 }
 
                 if(bInvert)
                 {
                     // embed all in invert primitive
                     aRetval = drawinglayer::primitive2d::Primitive2DContainer {
-                        drawinglayer::primitive2d::Primitive2DReference(
                             new drawinglayer::primitive2d::InvertPrimitive2D(
-                                std::move(aRetval)))
+                                std::move(aRetval))
                     };
                 }
-                else if(OverlayType::Transparent == maLastOverlayType)
+                else if(maLastOverlayType == OverlayType::Transparent || maLastOverlayType == OverlayType::NoFill)
                 {
+                    // Determine transparency level
+                    double fTransparence;
+                    if (maLastOverlayType == OverlayType::NoFill)
+                        fTransparence = 1;
+                    else
+                        fTransparence = mnLastTransparence / 100.0;
+
                     // embed all rectangles in transparent paint
-                    const double fTransparence(mnLastTransparence / 100.0);
                     const drawinglayer::primitive2d::Primitive2DReference aUnifiedTransparence(
                         new drawinglayer::primitive2d::UnifiedTransparencePrimitive2D(
                             std::move(aRetval),
@@ -136,14 +164,33 @@ namespace sdr::overlay
 
                     if(mbBorder)
                     {
-                        basegfx::B2DPolyPolygon aPolyPolygon(impCombineRangesToPolyPolygon(getRanges()));
+                        aRetval = drawinglayer::primitive2d::Primitive2DContainer {aUnifiedTransparence};
+
+                        // tdf#161204 Outline with white color to provide contrast
+                        if (mbContrastOutline)
+                        {
+                            basegfx::B2DPolyPolygon aContrastPolyPolygon(impCombineRangesToContrastPolyPolygon(getRanges()));
+                            const drawinglayer::primitive2d::Primitive2DReference aContrastSelectionOutline(
+                                new drawinglayer::primitive2d::PolyPolygonHairlinePrimitive2D(
+                                    std::move(aContrastPolyPolygon),
+                                    basegfx::BColor(1.0, 1.0, 1.0)));
+                            aRetval.append(drawinglayer::primitive2d::Primitive2DContainer{aContrastSelectionOutline});
+                        }
+
+                        // Offset to be applied to the external outline
+                        double fOffset(0);
+                        if (getOverlayManager())
+                            fOffset = getOverlayManager()->getOutputDevice().PixelToLogic(Size(1, 1)).getWidth();
+
+                        // External outline using themed color
+                        basegfx::B2DPolyPolygon aPolyPolygon(impCombineRangesToPolyPolygon(getRanges(), mbContrastOutline, fOffset));
                         const drawinglayer::primitive2d::Primitive2DReference aSelectionOutline(
                             new drawinglayer::primitive2d::PolyPolygonHairlinePrimitive2D(
                                 std::move(aPolyPolygon),
                                 aRGBColor));
 
-                        // add both to result
-                        aRetval = drawinglayer::primitive2d::Primitive2DContainer { aUnifiedTransparence, aSelectionOutline };
+                        // Add to result
+                        aRetval.append(drawinglayer::primitive2d::Primitive2DContainer {aSelectionOutline});
                     }
                     else
                     {
@@ -160,13 +207,15 @@ namespace sdr::overlay
             OverlayType eType,
             const Color& rColor,
             std::vector< basegfx::B2DRange >&& rRanges,
-            bool bBorder)
+            bool bBorder,
+            bool bContrastOutline)
         :   OverlayObject(rColor),
             meOverlayType(eType),
             maRanges(std::move(rRanges)),
             maLastOverlayType(eType),
             mnLastTransparence(0),
-            mbBorder(bBorder)
+            mbBorder(bBorder),
+            mbContrastOutline(bContrastOutline)
         {
             // no AA for selection overlays
             allowAntiAliase(false);

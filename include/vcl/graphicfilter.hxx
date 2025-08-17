@@ -23,6 +23,7 @@
 #include <tools/gen.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/graph.hxx>
+#include <com/sun/star/task/InteractionHandler.hpp>
 #include <comphelper/errcode.hxx>
 #include <o3tl/typed_flags_set.hxx>
 #include <vcl/BinaryDataContainer.hxx>
@@ -37,7 +38,6 @@ class INetURLObject;
 
 class FilterConfigCache;
 class SvStream;
-struct WmfExternal;
 struct ConvertData;
 
 #define ERRCODE_GRFILTER_OPENERROR    ErrCode(ErrCodeArea::Vcl, ErrCodeClass::General, 1)
@@ -46,8 +46,6 @@ struct ConvertData;
 #define ERRCODE_GRFILTER_VERSIONERROR ErrCode(ErrCodeArea::Vcl, ErrCodeClass::General, 4)
 #define ERRCODE_GRFILTER_FILTERERROR  ErrCode(ErrCodeArea::Vcl, ErrCodeClass::General, 5)
 #define ERRCODE_GRFILTER_TOOBIG       ErrCode(ErrCodeArea::Vcl, ErrCodeClass::General, 7)
-
-#define GRFILTER_OUTHINT_GREY       1
 
 #define GRFILTER_FORMAT_NOTFOUND    (sal_uInt16(0xFFFF))
 #define GRFILTER_FORMAT_DONTKNOW    (sal_uInt16(0xFFFF))
@@ -134,32 +132,30 @@ class VCL_DLLPUBLIC GraphicDescriptor final
     GraphicMetadata      aMetadata;
     bool                 bOwnStream;
 
-    void                ImpConstruct();
-
-    bool            ImpDetectBMP( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectGIF( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectJPG( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectPCD( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectPCX( SvStream& rStm );
-    bool            ImpDetectPNG( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectTIF( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectXBM( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectXPM( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectPBM( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectPGM( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectPPM( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectRAS( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectTGA( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectPSD( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectEPS( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectWEBP( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectDXF( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectMET( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectPCT( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectSVM( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectWMF( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectEMF( SvStream& rStm, bool bExtendedInfo );
-    bool            ImpDetectSVG( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectBMP( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectGIF( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectJPG( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectPCD( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectPCX( SvStream& rStm );
+    SAL_DLLPRIVATE bool            ImpDetectPNG( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectTIF( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectXBM( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectXPM( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectPBM( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectPGM( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectPPM( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectRAS( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectTGA( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectPSD( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectEPS( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectWEBP( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectDXF( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectMET( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectPCT( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectSVM( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectWMF( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectEMF( SvStream& rStm, bool bExtendedInfo );
+    SAL_DLLPRIVATE bool            ImpDetectSVG( SvStream& rStm, bool bExtendedInfo );
     GraphicDescriptor( const GraphicDescriptor& ) = delete;
     GraphicDescriptor& operator=( const GraphicDescriptor& ) = delete;
 
@@ -229,15 +225,15 @@ public:
 class VCL_DLLPUBLIC GraphicFilter
 {
 public:
-                    GraphicFilter( bool bUseConfig = true );
+                    GraphicFilter();
                     ~GraphicFilter();
 
     sal_uInt16      GetImportFormatCount() const;
     sal_uInt16      GetImportFormatNumber( std::u16string_view rFormatName );
     sal_uInt16      GetImportFormatNumberForShortName( std::u16string_view rShortName );
     sal_uInt16      GetImportFormatNumberForTypeName( std::u16string_view rType );
-    OUString        GetImportFormatName( sal_uInt16 nFormat );
-    OUString        GetImportFormatTypeName( sal_uInt16 nFormat );
+    const OUString & GetImportFormatName( sal_uInt16 nFormat );
+    const OUString & GetImportFormatTypeName( sal_uInt16 nFormat );
 #ifdef _WIN32
     OUString        GetImportFormatMediaType( sal_uInt16 nFormat );
 #endif
@@ -248,10 +244,10 @@ public:
     sal_uInt16      GetExportFormatNumber( std::u16string_view rFormatName );
     sal_uInt16      GetExportFormatNumberForMediaType( std::u16string_view rShortName );
     sal_uInt16      GetExportFormatNumberForShortName( std::u16string_view rShortName );
-    OUString        GetExportInternalFilterName( sal_uInt16 nFormat );
+    const OUString & GetExportInternalFilterName( sal_uInt16 nFormat );
     sal_uInt16      GetExportFormatNumberForTypeName( std::u16string_view rType );
-    OUString        GetExportFormatName( sal_uInt16 nFormat );
-    OUString        GetExportFormatMediaType( sal_uInt16 nFormat );
+    const OUString & GetExportFormatName( sal_uInt16 nFormat );
+    const OUString & GetExportFormatMediaType( sal_uInt16 nFormat );
     OUString        GetExportFormatShortName( sal_uInt16 nFormat );
     OUString        GetExportWildcard( sal_uInt16 nFormat );
     bool            IsExportPixelFormat( sal_uInt16 nFormat );
@@ -267,23 +263,27 @@ public:
                                       sal_uInt16 nFormat,
                                       sal_uInt16 * pDeterminedFormat);
 
-    ErrCode             ImportGraphic( Graphic& rGraphic, const INetURLObject& rPath,
-                                   sal_uInt16 nFormat = GRFILTER_FORMAT_DONTKNOW,
-                                   sal_uInt16 * pDeterminedFormat = nullptr, GraphicFilterImportFlags nImportFlags = GraphicFilterImportFlags::NONE );
+    ErrCode ImportGraphic(
+        Graphic& rGraphic, const INetURLObject& rPath,
+        sal_uInt16 nFormat = GRFILTER_FORMAT_DONTKNOW, sal_uInt16 * pDeterminedFormat = nullptr,
+        GraphicFilterImportFlags nImportFlags = GraphicFilterImportFlags::NONE,
+        const css::uno::Reference<css::task::XInteractionHandler>& xInteractionHandler = nullptr);
 
     ErrCode             CanImportGraphic( std::u16string_view rPath, SvStream& rStream,
                                       sal_uInt16 nFormat,
                                       sal_uInt16 * pDeterminedFormat);
 
-    ErrCode             ImportGraphic( Graphic& rGraphic, std::u16string_view rPath,
-                                   SvStream& rStream,
-                                   sal_uInt16 nFormat = GRFILTER_FORMAT_DONTKNOW,
-                                   sal_uInt16 * pDeterminedFormat = nullptr, GraphicFilterImportFlags nImportFlags = GraphicFilterImportFlags::NONE );
+    ErrCode ImportGraphic(
+        Graphic& rGraphic, std::u16string_view rPath, SvStream& rStream,
+        sal_uInt16 nFormat = GRFILTER_FORMAT_DONTKNOW, sal_uInt16* pDeterminedFormat = nullptr,
+        GraphicFilterImportFlags nImportFlags = GraphicFilterImportFlags::NONE,
+        sal_Int32 nPageNum = -1,
+        const css::uno::Reference<css::task::XInteractionHandler>& xInteractionHandler = nullptr);
 
     /// Imports multiple graphics.
     ///
     /// The resulting graphic is added to rGraphics on success, nullptr is added on failure.
-    void ImportGraphics(std::vector< std::shared_ptr<Graphic> >& rGraphics, std::vector< std::unique_ptr<SvStream> > vStreams);
+    SAL_DLLPRIVATE void ImportGraphics(std::vector< std::shared_ptr<Graphic> >& rGraphics, std::vector< std::unique_ptr<SvStream> > vStreams);
 
     /**
      Tries to ensure all Graphic objects are available (Graphic::isAvailable()). Only an optimization, may
@@ -292,63 +292,65 @@ public:
     void MakeGraphicsAvailableThreaded(std::vector< Graphic* >& rGraphics);
 
     // Setting sizeLimit limits how much will be read from the stream.
-    Graphic ImportUnloadedGraphic(SvStream& rIStream, sal_uInt64 sizeLimit = 0, const Size* pSizeHint = nullptr);
+    Graphic ImportUnloadedGraphic(SvStream& rIStream, sal_uInt64 sizeLimit = 0,
+                                  const Size* pSizeHint = nullptr, sal_Int32 nPage = -1);
 
     const ErrCode&          GetLastError() const { return *mxErrorEx;}
-    void                    ResetLastError();
+    SAL_DLLPRIVATE void     ResetLastError();
 
     Link<ConvertData&,bool> GetFilterCallback() const;
     static GraphicFilter& GetGraphicFilter();
-    static ErrCode  LoadGraphic( const OUString& rPath, const OUString& rFilter,
+    static ErrCode  LoadGraphic(const OUString& rPath, const OUString& rFilter,
                      Graphic& rGraphic,
                      GraphicFilter* pFilter = nullptr,
-                     sal_uInt16* pDeterminedFormat = nullptr );
+                     sal_uInt16* pDeterminedFormat = nullptr,
+                     const css::uno::Reference<css::task::XInteractionHandler>& xInteractionHandler = nullptr);
 
     ErrCode         compressAsPNG(const Graphic& rGraphic, SvStream& rOutputStream);
 
-    static ErrCode readGIF(SvStream& rStream, Graphic& rGraphic, GfxLinkType& rLinkType);
-    static ErrCode readPNG(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType,
+    SAL_DLLPRIVATE static ErrCode readGIF(SvStream& rStream, Graphic& rGraphic, GfxLinkType& rLinkType);
+    SAL_DLLPRIVATE static ErrCode readPNG(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType,
                     BinaryDataContainer & rpGraphicContent);
-    static ErrCode readJPEG(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType,
+    SAL_DLLPRIVATE static ErrCode readJPEG(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType,
                     GraphicFilterImportFlags nImportFlags);
-    static ErrCode readSVG(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType,
+    SAL_DLLPRIVATE static ErrCode readSVG(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType,
                     BinaryDataContainer & rpGraphicContent);
-    static ErrCode readXBM(SvStream & rStream, Graphic & rGraphic);
-    static ErrCode readXPM(SvStream & rStream, Graphic & rGraphic);
+    SAL_DLLPRIVATE static ErrCode readXBM(SvStream & rStream, Graphic & rGraphic);
+    SAL_DLLPRIVATE static ErrCode readXPM(SvStream & rStream, Graphic & rGraphic);
 
-    static ErrCode readWMF_EMF(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType, VectorGraphicDataType eType);
-    static ErrCode readWMF(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
-    static ErrCode readEMF(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
+    SAL_DLLPRIVATE static ErrCode readWMF_EMF(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType, VectorGraphicDataType eType);
+    SAL_DLLPRIVATE static ErrCode readWMF(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
+    SAL_DLLPRIVATE static ErrCode readEMF(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
 
-    static ErrCode readPDF(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
-    static ErrCode readTIFF(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
-    static ErrCode readWithTypeSerializer(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType, std::u16string_view aFilterName);
-    static ErrCode readBMP(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
-    static ErrCode readTGA(SvStream & rStream, Graphic & rGraphic);
-    static ErrCode readPICT(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
-    static ErrCode readMET(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
-    static ErrCode readRAS(SvStream & rStream, Graphic & rGraphic);
-    static ErrCode readPCX(SvStream & rStream, Graphic & rGraphic);
-    static ErrCode readEPS(SvStream & rStream, Graphic & rGraphic);
-    static ErrCode readPSD(SvStream & rStream, Graphic & rGraphic);
-    static ErrCode readPCD(SvStream & rStream, Graphic & rGraphic);
-    static ErrCode readPBM(SvStream & rStream, Graphic & rGraphic);
-    static ErrCode readDXF(SvStream & rStream, Graphic & rGraphic);
-    static ErrCode readWEBP(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
+    SAL_DLLPRIVATE static ErrCode readPDF(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType,
+                    sal_Int32 nPageIndex,
+                    const css::uno::Reference<css::task::XInteractionHandler>& xInteractionHandler,
+                    BinaryDataContainer & rpGraphicContent);
+    SAL_DLLPRIVATE static ErrCode readTIFF(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
+    SAL_DLLPRIVATE static ErrCode readWithTypeSerializer(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType, std::u16string_view aFilterName);
+    SAL_DLLPRIVATE static ErrCode readBMP(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
+    SAL_DLLPRIVATE static ErrCode readTGA(SvStream & rStream, Graphic & rGraphic);
+    SAL_DLLPRIVATE static ErrCode readPICT(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
+    SAL_DLLPRIVATE static ErrCode readMET(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
+    SAL_DLLPRIVATE static ErrCode readRAS(SvStream & rStream, Graphic & rGraphic);
+    SAL_DLLPRIVATE static ErrCode readPCX(SvStream & rStream, Graphic & rGraphic);
+    SAL_DLLPRIVATE static ErrCode readEPS(SvStream & rStream, Graphic & rGraphic);
+    SAL_DLLPRIVATE static ErrCode readPSD(SvStream & rStream, Graphic & rGraphic);
+    SAL_DLLPRIVATE static ErrCode readPCD(SvStream & rStream, Graphic & rGraphic);
+    SAL_DLLPRIVATE static ErrCode readPBM(SvStream & rStream, Graphic & rGraphic);
+    SAL_DLLPRIVATE static ErrCode readDXF(SvStream & rStream, Graphic & rGraphic);
+    SAL_DLLPRIVATE static ErrCode readWEBP(SvStream & rStream, Graphic & rGraphic, GfxLinkType & rLinkType);
 
 private:
-    OUString        aFilterPath;
     FilterConfigCache*  pConfig;
 
-    void            ImplInit();
-    ErrCode         ImplSetError( ErrCode nError, const SvStream* pStm = nullptr );
-    ErrCode         ImpTestOrFindFormat( std::u16string_view rPath, SvStream& rStream, sal_uInt16& rFormat );
+    SAL_DLLPRIVATE ErrCode ImplSetError( ErrCode nError, const SvStream* pStm = nullptr );
+    SAL_DLLPRIVATE ErrCode ImpTestOrFindFormat( std::u16string_view rPath, SvStream& rStream, sal_uInt16& rFormat );
 
                     DECL_DLLPRIVATE_LINK( FilterCallback, ConvertData&, bool );
 
     /** Information about errors during the GraphicFilter operation. */
     std::optional<ErrCode> mxErrorEx;
-    bool                bUseConfig;
 };
 
 #endif // INCLUDED_VCL_GRAPHICFILTER_HXX

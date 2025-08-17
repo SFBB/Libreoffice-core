@@ -38,6 +38,7 @@ enum OpCode : sal_uInt16
         ocIfError           = SC_OPCODE_IF_ERROR,
         ocIfNA              = SC_OPCODE_IF_NA,
         ocChoose            = SC_OPCODE_CHOOSE,
+        ocLet               = SC_OPCODE_LET,
     // Parentheses and separators
         ocOpen              = SC_OPCODE_OPEN,
         ocClose             = SC_OPCODE_CLOSE,
@@ -61,6 +62,7 @@ enum OpCode : sal_uInt16
         ocTableRefItemTotals  = SC_OPCODE_TABLE_REF_ITEM_TOTALS,
         ocTableRefItemThisRow = SC_OPCODE_TABLE_REF_ITEM_THIS_ROW,
         ocSkip              = SC_OPCODE_SKIP,
+        ocStringName        = SC_OPCODE_STRINGNAME,
     // Access commands
         ocDBArea            = SC_OPCODE_DB_AREA,
         ocTableRef          = SC_OPCODE_TABLE_REF,
@@ -307,6 +309,7 @@ enum OpCode : sal_uInt16
         ocIndirect          = SC_OPCODE_INDIRECT,
         ocAddress           = SC_OPCODE_ADDRESS,
         ocMatch             = SC_OPCODE_MATCH,
+        ocXMatch            = SC_OPCODE_X_MATCH,
         ocCountEmptyCells   = SC_OPCODE_COUNT_EMPTY_CELLS,
         ocCountIf           = SC_OPCODE_COUNT_IF,
         ocSumIf             = SC_OPCODE_SUM_IF,
@@ -316,6 +319,7 @@ enum OpCode : sal_uInt16
         ocCountIfs          = SC_OPCODE_COUNT_IFS,
         ocLookup            = SC_OPCODE_LOOKUP,
         ocVLookup           = SC_OPCODE_V_LOOKUP,
+        ocXLookup           = SC_OPCODE_X_LOOKUP,
         ocHLookup           = SC_OPCODE_H_LOOKUP,
         ocMultiArea         = SC_OPCODE_MULTI_AREA,
         ocOffset            = SC_OPCODE_OFFSET,
@@ -504,6 +508,26 @@ enum OpCode : sal_uInt16
         ocEncodeURL         = SC_OPCODE_ENCODEURL,
         ocFourier           = SC_OPCODE_FOURIER,
         ocRandbetweenNV     = SC_OPCODE_RANDBETWEEN_NV,
+        ocFilter            = SC_OPCODE_FILTER,
+        ocSort              = SC_OPCODE_SORT,
+        ocSortBy            = SC_OPCODE_SORTBY,
+        ocMatSequence       = SC_OPCODE_MAT_SEQUENCE,
+        ocRandArray         = SC_OPCODE_RANDARRAY,
+        ocChooseCols        = SC_OPCODE_CHOOSECOLS,
+        ocChooseRows        = SC_OPCODE_CHOOSEROWS,
+        ocDrop              = SC_OPCODE_DROP,
+        ocExpand            = SC_OPCODE_EXPAND,
+        ocHStack            = SC_OPCODE_HSTACK,
+        ocVStack            = SC_OPCODE_VSTACK,
+        ocTake              = SC_OPCODE_TAKE,
+        ocTextAfter         = SC_OPCODE_TEXTAFTER,
+        ocTextBefore        = SC_OPCODE_TEXTBEFORE,
+        ocTextSplit         = SC_OPCODE_TEXTSPLIT,
+        ocToCol             = SC_OPCODE_TOCOL,
+        ocToRow             = SC_OPCODE_TOROW,
+        ocUnique            = SC_OPCODE_UNIQUE,
+        ocWrapCols          = SC_OPCODE_WRAPCOLS,
+        ocWrapRows          = SC_OPCODE_WRAPROWS,
     // internal stuff
         ocInternalBegin     = SC_OPCODE_INTERNAL_BEGIN,
         ocTTT               = SC_OPCODE_TTT,
@@ -545,6 +569,7 @@ inline std::string OpCodeEnumToString(OpCode eCode)
     case ocMissing: return "Missing";
     case ocBad: return "Bad";
     case ocStringXML: return "StringXML";
+    case ocStringName: return "StringName";
     case ocSpaces: return "Spaces";
     case ocWhitespace: return "Whitespace";
     case ocMatRef: return "MatRef";
@@ -789,6 +814,7 @@ inline std::string OpCodeEnumToString(OpCode eCode)
     case ocIndirect: return "Indirect";
     case ocAddress: return "Address";
     case ocMatch: return "Match";
+    case ocXMatch: return "XMatch";
     case ocCountEmptyCells: return "CountEmptyCells";
     case ocCountIf: return "CountIf";
     case ocSumIf: return "SumIf";
@@ -798,6 +824,7 @@ inline std::string OpCodeEnumToString(OpCode eCode)
     case ocCountIfs: return "CountIfs";
     case ocLookup: return "Lookup";
     case ocVLookup: return "VLookup";
+    case ocXLookup: return "XLookup";
     case ocHLookup: return "HLookup";
     case ocMultiArea: return "MultiArea";
     case ocOffset: return "Offset";
@@ -831,6 +858,7 @@ inline std::string OpCodeEnumToString(OpCode eCode)
     case ocMatDet: return "MatDet";
     case ocMatInv: return "MatInv";
     case ocMatMult: return "MatMult";
+    case ocMatSequence: return "MatSequence";
     case ocMatTrans: return "MatTrans";
     case ocMatrixUnit: return "MatrixUnit";
     case ocBackSolver: return "BackSolver";
@@ -980,6 +1008,26 @@ inline std::string OpCodeEnumToString(OpCode eCode)
     case ocEncodeURL: return "EncodeURL";
     case ocFourier: return "Fourier";
     case ocRandbetweenNV: return "RandbetweenNV";
+    case ocRandArray: return "RandArray";
+    case ocFilter: return "Filter";
+    case ocSort: return "Sort";
+    case ocSortBy: return "SortBy";
+    case ocChooseCols: return "ChooseCols";
+    case ocChooseRows: return "ChooseRows";
+    case ocDrop: return "Drop";
+    case ocExpand: return "Expand";
+    case ocHStack: return "HStack";
+    case ocVStack: return "VStack";
+    case ocTake: return "Take";
+    case ocTextAfter: return "TextAfter";
+    case ocTextBefore: return "TextBefore";
+    case ocTextSplit: return "TextSplit";
+    case ocToCol: return "ToCol";
+    case ocToRow: return "ToRow";
+    case ocUnique: return "Unique";
+    case ocLet: return "Let";
+    case ocWrapCols: return "WrapCols";
+    case ocWrapRows: return "WrapRows";
     case ocTTT: return "TTT";
     case ocDebugVar: return "DebugVar";
     case ocDataToken1: return "DataToken1";

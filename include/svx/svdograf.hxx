@@ -75,18 +75,15 @@ private:
     friend class SdrExchangeView; // Only for a ForceSwapIn() call.
     friend class SdrGraphicLink;
 
-    virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
-    virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
+    SAL_DLLPRIVATE virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
+    SAL_DLLPRIVATE virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
 
-    void ImpSetAttrToGrafInfo(); // Copy values from the pool
-    GraphicAttr aGrafInfo;
-
-    OUString aFileName; // If it's a Link, the filename can be found in here
-    OUString aFilterName;
+    OUString m_aFileName; // If it's a Link, the filename can be found in here
+    OUString m_aFilterName;
     std::unique_ptr<GraphicObject> mpGraphicObject; // In order to speed up output of bitmaps, especially rotated ones
     std::unique_ptr<GraphicObject> mpReplacementGraphicObject;
-    SdrGraphicLink* pGraphicLink; // And here a pointer for linked graphics
-    bool bMirrored:1; // True: the graphic is horizontal, which means it's mirrored along the y-axis
+    SdrGraphicLink* m_pGraphicLink; // And here a pointer for linked graphics
+    bool m_bMirrored:1; // True: the graphic is horizontal, which means it's mirrored along the y-axis
 
     // Flag for allowing text animation. Default is true.
     bool mbGrafAnimationAllowed:1;
@@ -103,19 +100,19 @@ private:
     css::uno::Reference<css::graphic::XGraphic> mpSignatureLineUnsignedGraphic;
 
     std::unique_ptr<css::drawing::BarCode> mpBarCode;
-    void                    ImpRegisterLink();
-    void                    ImpDeregisterLink();
-    void                    ImpSetLinkedGraphic( const Graphic& rGraphic );
-    void onGraphicChanged();
-    GDIMetaFile             GetMetaFile(GraphicType &rGraphicType) const;
+    SAL_DLLPRIVATE void                    ImpRegisterLink();
+    SAL_DLLPRIVATE void                    ImpDeregisterLink();
+    SAL_DLLPRIVATE void                    ImpSetLinkedGraphic( const Graphic& rGraphic );
+    SAL_DLLPRIVATE void onGraphicChanged();
+    SAL_DLLPRIVATE GDIMetaFile             GetMetaFile(GraphicType &rGraphicType) const;
 
     // protected destructor
-    virtual ~SdrGrafObj() override;
+    SAL_DLLPRIVATE virtual ~SdrGrafObj() override;
 
 public:
     SdrGrafObj(SdrModel& rSdrModel);
     // Copy constructor
-    SdrGrafObj(SdrModel& rSdrModel, SdrGrafObj const & rSource);
+    SAL_DLLPRIVATE SdrGrafObj(SdrModel& rSdrModel, SdrGrafObj const & rSource);
     SdrGrafObj(
         SdrModel& rSdrModel,
         const Graphic& rGrf);
@@ -126,9 +123,9 @@ public:
 
     void                    SetGraphicObject( const GraphicObject& rGrfObj );
     const GraphicObject&    GetGraphicObject(bool bForceSwapIn = false) const;
-    const GraphicObject*    GetReplacementGraphicObject() const;
+    SAL_DLLPRIVATE const GraphicObject*    GetReplacementGraphicObject() const;
 
-    void                    NbcSetGraphic(const Graphic& rGrf);
+    SAL_DLLPRIVATE void                    NbcSetGraphic(const Graphic& rGrf);
     void                    SetGraphic(const Graphic& rGrf);
     const Graphic&          GetGraphic() const;
 
@@ -142,71 +139,71 @@ public:
     bool IsAnimated() const;
     bool IsEPS() const;
 
-    MapMode          GetGrafPrefMapMode() const;
-    Size             GetGrafPrefSize() const;
+    SAL_DLLPRIVATE MapMode          GetGrafPrefMapMode() const;
+    SAL_DLLPRIVATE Size             GetGrafPrefSize() const;
 
-    void                    SetGrafStreamURL( const OUString& rGraphicStreamURL );
-    OUString const &        GetGrafStreamURL() const;
+    SAL_DLLPRIVATE void                    SetGrafStreamURL( const OUString& rGraphicStreamURL );
+    SAL_DLLPRIVATE OUString const &        GetGrafStreamURL() const;
     Size                    getOriginalSize() const;
 
 private:
-    void                    ForceSwapIn() const;
+    SAL_DLLPRIVATE void                    ForceSwapIn() const;
 
 public:
     void                    SetGraphicLink(const OUString& rFileName);
     void                    ReleaseGraphicLink();
     bool IsLinkedGraphic() const;
 
-    const OUString& GetFileName() const { return aFileName;}
+    const OUString& GetFileName() const { return m_aFileName;}
 
     void                    StartAnimation();
 
-    virtual void            TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
-    virtual SdrObjKind      GetObjIdentifier() const override;
+    SAL_DLLPRIVATE virtual void            TakeObjInfo(SdrObjTransformInfoRec& rInfo) const override;
+    SAL_DLLPRIVATE virtual SdrObjKind      GetObjIdentifier() const override;
 
-    virtual OUString        TakeObjNameSingul() const override;
-    virtual OUString        TakeObjNamePlural() const override;
+    SAL_DLLPRIVATE virtual OUString        TakeObjNameSingul() const override;
+    SAL_DLLPRIVATE virtual OUString        TakeObjNamePlural() const override;
 
     virtual rtl::Reference<SdrObject> CloneSdrObject(SdrModel& rTargetModel) const override;
 
-    virtual sal_uInt32 GetHdlCount() const override;
-    virtual void AddToHdlList(SdrHdlList& rHdlList) const override;
+    SAL_DLLPRIVATE virtual sal_uInt32 GetHdlCount() const override;
+    SAL_DLLPRIVATE virtual void AddToHdlList(SdrHdlList& rHdlList) const override;
 
     virtual void            NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
-    virtual void            NbcMirror(const Point& rRef1, const Point& rRef2) override;
-    virtual std::unique_ptr<SdrObjGeoData>  NewGeoData() const override;
-    virtual void            SaveGeoData(SdrObjGeoData& rGeo) const override;
-    virtual void            RestoreGeoData(const SdrObjGeoData& rGeo) override;
+    SAL_DLLPRIVATE virtual void            NbcMirror(const Point& rRef1, const Point& rRef2) override;
+    SAL_DLLPRIVATE virtual std::unique_ptr<SdrObjGeoData>  NewGeoData() const override;
+    SAL_DLLPRIVATE virtual void            SaveGeoData(SdrObjGeoData& rGeo) const override;
+    SAL_DLLPRIVATE virtual void            RestoreGeoData(const SdrObjGeoData& rGeo) override;
 
     bool                    HasGDIMetaFile() const;
 
     // react on model/page change
-    virtual void handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage) override;
+    SAL_DLLPRIVATE virtual void handlePageChange(SdrPage* pOldPage, SdrPage* pNewPage) override;
 
     bool isEmbeddedVectorGraphicData() const;
     GDIMetaFile getMetafileFromEmbeddedVectorGraphicData() const;
 
-    virtual rtl::Reference<SdrObject> DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+    SAL_DLLPRIVATE virtual rtl::Reference<SdrObject> DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
 
     virtual void            AdjustToMaxRect( const tools::Rectangle& rMaxRect, bool bShrinkOnly = false ) override;
 
-    virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
+   SAL_DLLPRIVATE  virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
-    bool IsMirrored() const { return bMirrored;}
-    void SetMirrored( bool _bMirrored );
+    bool IsMirrored() const { return m_bMirrored;}
+    SAL_DLLPRIVATE void SetMirrored( bool _bMirrored );
 
     virtual bool shouldKeepAspectRatio() const override { return true; }
 
     // Access to GrafAnimationAllowed flag
-    void SetGrafAnimationAllowed(bool bNew);
+    SAL_DLLPRIVATE void SetGrafAnimationAllowed(bool bNew);
 
-    css::uno::Reference< css::io::XInputStream > getInputStream() const;
+    SAL_DLLPRIVATE css::uno::Reference< css::io::XInputStream > getInputStream() const;
 
     // #i103116# FullDrag support
-    virtual rtl::Reference<SdrObject> getFullDragClone() const override;
+    SAL_DLLPRIVATE virtual rtl::Reference<SdrObject> getFullDragClone() const override;
 
     // add handles for crop mode when selected
-    virtual void addCropHandles(SdrHdlList& rTarget) const override;
+    SAL_DLLPRIVATE virtual void addCropHandles(SdrHdlList& rTarget) const override;
 
     // Signature Line
     void setIsSignatureLine(bool bIsSignatureLine) { mbIsSignatureLine = bIsSignatureLine; }

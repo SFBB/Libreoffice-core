@@ -22,6 +22,7 @@
 #include <breakiteratorImpl.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <unicode/uchar.h>
+#include <i18nutil/scriptclass.hxx>
 #include <i18nutil/unicode.hxx>
 #include <o3tl/string_view.hxx>
 
@@ -49,8 +50,6 @@ BreakIteratorImpl::~BreakIteratorImpl()
 {
 }
 
-#define LBI getLocaleSpecificBreakIterator(rLocale)
-
 sal_Int32 SAL_CALL BreakIteratorImpl::nextCharacters( const OUString& Text, sal_Int32 nStartPos,
         const Locale &rLocale, sal_Int16 nCharacterIteratorMode, sal_Int32 nCount, sal_Int32& nDone )
 {
@@ -58,7 +57,7 @@ sal_Int32 SAL_CALL BreakIteratorImpl::nextCharacters( const OUString& Text, sal_
         throw RuntimeException("BreakIteratorImpl::nextCharacters: expected nCount >=0, got "
                                + OUString::number(nCount));
 
-    return LBI->nextCharacters( Text, nStartPos, rLocale, nCharacterIteratorMode, nCount, nDone);
+    return getLocaleSpecificBreakIterator(rLocale)->nextCharacters( Text, nStartPos, rLocale, nCharacterIteratorMode, nCount, nDone);
 }
 
 sal_Int32 SAL_CALL BreakIteratorImpl::previousCharacters( const OUString& Text, sal_Int32 nStartPos,
@@ -68,7 +67,7 @@ sal_Int32 SAL_CALL BreakIteratorImpl::previousCharacters( const OUString& Text, 
         throw RuntimeException("BreakIteratorImpl::previousCharacters: expected nCount >=0, got "
                                + OUString::number(nCount));
 
-    return LBI->previousCharacters( Text, nStartPos, rLocale, nCharacterIteratorMode, nCount, nDone);
+    return getLocaleSpecificBreakIterator(rLocale)->previousCharacters( Text, nStartPos, rLocale, nCharacterIteratorMode, nCount, nDone);
 }
 
 #define isZWSP(c) (ch == 0x200B)
@@ -79,6 +78,7 @@ static sal_Int32 skipSpace(std::u16string_view Text, sal_Int32 nPos, sal_Int32 l
     sal_Int32 pos=nPos;
     switch (rWordType) {
         case WordType::ANYWORD_IGNOREWHITESPACES:
+        case WordType::WORD_COUNT:
             if (bDirection)
                 while (nPos < len)
                 {
@@ -114,24 +114,6 @@ static sal_Int32 skipSpace(std::u16string_view Text, sal_Int32 nPos, sal_Int32 l
                     nPos = pos;
                 }
             break;
-        case WordType::WORD_COUNT:
-            if (bDirection)
-                while (nPos < len)
-                {
-                    ch = o3tl::iterateCodePoints(Text, &pos);
-                    if (!u_isUWhiteSpace(ch) && !isZWSP(ch))
-                        break;
-                    nPos = pos;
-                }
-            else
-                while (nPos > 0)
-                {
-                    ch = o3tl::iterateCodePoints(Text, &pos, -1);
-                    if (!u_isUWhiteSpace(ch) && !isZWSP(ch))
-                        break;
-                    nPos = pos;
-                }
-            break;
     }
     return nPos;
 }
@@ -145,7 +127,7 @@ Boundary SAL_CALL BreakIteratorImpl::nextWord( const OUString& Text, sal_Int32 n
     else if (nStartPos >= len)
         result.endPos = result.startPos = len;
     else {
-        result = LBI->nextWord(Text, nStartPos, rLocale, rWordType);
+        result = getLocaleSpecificBreakIterator(rLocale)->nextWord(Text, nStartPos, rLocale, rWordType);
 
         nStartPos = skipSpace(Text, result.startPos, len, rWordType, true);
 
@@ -153,7 +135,7 @@ Boundary SAL_CALL BreakIteratorImpl::nextWord( const OUString& Text, sal_Int32 n
             if( nStartPos >= len )
                 result.startPos = result.endPos = len;
             else {
-                result = LBI->getWordBoundary(Text, nStartPos, rLocale, rWordType, true);
+                result = getLocaleSpecificBreakIterator(rLocale)->getWordBoundary(Text, nStartPos, rLocale, rWordType, true);
                 // i88041: avoid startPos goes back to nStartPos when switching between Latin and CJK scripts
                 if (result.startPos < nStartPos) result.startPos = nStartPos;
             }
@@ -188,7 +170,7 @@ Boundary SAL_CALL BreakIteratorImpl::previousWord( const OUString& Text, sal_Int
         return result;
     }
 
-    return LBI->previousWord(Text, result.startPos, rLocale, rWordType);
+    return getLocaleSpecificBreakIterator(rLocale)->previousWord(Text, result.startPos, rLocale, rWordType);
 }
 
 
@@ -219,7 +201,7 @@ Boundary SAL_CALL BreakIteratorImpl::getWordBoundary( const OUString& Text, sal_
                 else
                     nPos = bDirection ? next : prev;
             }
-            result = LBI->getWordBoundary(Text, nPos, rLocale, rWordType, bDirection);
+            result = getLocaleSpecificBreakIterator(rLocale)->getWordBoundary(Text, nPos, rLocale, rWordType, bDirection);
         }
     }
     return result;
@@ -263,7 +245,7 @@ sal_Int32 SAL_CALL BreakIteratorImpl::beginOfSentence( const OUString& Text, sal
     if (nStartPos < 0 || nStartPos > Text.getLength())
         return -1;
     if (Text.isEmpty()) return 0;
-    return LBI->beginOfSentence(Text, nStartPos, rLocale);
+    return getLocaleSpecificBreakIterator(rLocale)->beginOfSentence(Text, nStartPos, rLocale);
 }
 
 sal_Int32 SAL_CALL BreakIteratorImpl::endOfSentence( const OUString& Text, sal_Int32 nStartPos,
@@ -272,14 +254,14 @@ sal_Int32 SAL_CALL BreakIteratorImpl::endOfSentence( const OUString& Text, sal_I
     if (nStartPos < 0 || nStartPos > Text.getLength())
         return -1;
     if (Text.isEmpty()) return 0;
-    return LBI->endOfSentence(Text, nStartPos, rLocale);
+    return getLocaleSpecificBreakIterator(rLocale)->endOfSentence(Text, nStartPos, rLocale);
 }
 
 LineBreakResults SAL_CALL BreakIteratorImpl::getLineBreak( const OUString& Text, sal_Int32 nStartPos,
         const Locale& rLocale, sal_Int32 nMinBreakPos, const LineBreakHyphenationOptions& hOptions,
         const LineBreakUserOptions& bOptions )
 {
-    return LBI->getLineBreak(Text, nStartPos, rLocale, nMinBreakPos, hOptions, bOptions);
+    return getLocaleSpecificBreakIterator(rLocale)->getLineBreak(Text, nStartPos, rLocale, nMinBreakPos, hOptions, bOptions);
 }
 
 sal_Int16 SAL_CALL BreakIteratorImpl::getScriptType( const OUString& Text, sal_Int32 nPos )
@@ -466,94 +448,6 @@ sal_Int16 SAL_CALL BreakIteratorImpl::getWordType( const OUString& /*Text*/,
     return 0;
 }
 
-namespace
-{
-sal_Int16 getScriptClassByUAX24Script(sal_uInt32 currentChar)
-{
-    int32_t script = u_getIntPropertyValue(currentChar, UCHAR_SCRIPT);
-    return unicode::getScriptClassFromUScriptCode(static_cast<UScriptCode>(script));
-}
-
-struct UBlock2Script
-{
-    UBlockCode from;
-    UBlockCode to;
-    sal_Int16 script;
-};
-
-const UBlock2Script scriptList[] =
-{
-    {UBLOCK_NO_BLOCK, UBLOCK_NO_BLOCK, ScriptType::WEAK},
-    {UBLOCK_BASIC_LATIN, UBLOCK_SPACING_MODIFIER_LETTERS, ScriptType::LATIN},
-    {UBLOCK_GREEK, UBLOCK_ARMENIAN, ScriptType::LATIN},
-    {UBLOCK_HEBREW, UBLOCK_MYANMAR, ScriptType::COMPLEX},
-    {UBLOCK_GEORGIAN, UBLOCK_GEORGIAN, ScriptType::LATIN},
-    {UBLOCK_HANGUL_JAMO, UBLOCK_HANGUL_JAMO, ScriptType::ASIAN},
-    {UBLOCK_ETHIOPIC, UBLOCK_ETHIOPIC, ScriptType::COMPLEX},
-    {UBLOCK_CHEROKEE, UBLOCK_RUNIC, ScriptType::LATIN},
-    {UBLOCK_KHMER, UBLOCK_MONGOLIAN, ScriptType::COMPLEX},
-    {UBLOCK_LATIN_EXTENDED_ADDITIONAL, UBLOCK_GREEK_EXTENDED, ScriptType::LATIN},
-    {UBLOCK_NUMBER_FORMS, UBLOCK_NUMBER_FORMS, ScriptType::WEAK},
-    {UBLOCK_CJK_RADICALS_SUPPLEMENT, UBLOCK_HANGUL_SYLLABLES, ScriptType::ASIAN},
-    {UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS, UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS, ScriptType::ASIAN},
-    {UBLOCK_ARABIC_PRESENTATION_FORMS_A, UBLOCK_ARABIC_PRESENTATION_FORMS_A, ScriptType::COMPLEX},
-    {UBLOCK_CJK_COMPATIBILITY_FORMS, UBLOCK_CJK_COMPATIBILITY_FORMS, ScriptType::ASIAN},
-    {UBLOCK_ARABIC_PRESENTATION_FORMS_B, UBLOCK_ARABIC_PRESENTATION_FORMS_B, ScriptType::COMPLEX},
-    {UBLOCK_HALFWIDTH_AND_FULLWIDTH_FORMS, UBLOCK_HALFWIDTH_AND_FULLWIDTH_FORMS, ScriptType::ASIAN},
-    {UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B, UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS_SUPPLEMENT, ScriptType::ASIAN},
-    {UBLOCK_CJK_STROKES, UBLOCK_CJK_STROKES, ScriptType::ASIAN},
-    {UBLOCK_LATIN_EXTENDED_C, UBLOCK_LATIN_EXTENDED_D, ScriptType::LATIN}
-};
-
-#define scriptListCount SAL_N_ELEMENTS(scriptList)
-
-//always sets rScriptType
-
-//returns true for characters historically explicitly assigned to
-//latin/weak/asian
-
-//returns false for characters that historically implicitly assigned to
-//weak as unknown
-bool getCompatibilityScriptClassByBlock(sal_uInt32 currentChar, sal_Int16 &rScriptType)
-{
-    bool bKnown = true;
-    //handle specific characters always as weak:
-    //  0x01 - this breaks a word
-    //  0x02 - this can be inside a word
-    //  0x20 & 0xA0 - Bug 102975, declare western space and non-break space as WEAK char.
-    if( 0x01 == currentChar || 0x02 == currentChar || 0x20 == currentChar || 0xA0 == currentChar)
-        rScriptType = ScriptType::WEAK;
-    // Few Spacing Modifier Letters that can be Bopomofo tonal marks.
-    else if ( 0x2CA == currentChar || 0x2CB == currentChar || 0x2C7 == currentChar || 0x2D9 == currentChar )
-        rScriptType = ScriptType::WEAK;
-    // tdf#52577 superscript numbers should be we weak.
-    else if ( 0xB2 == currentChar || 0xB3 == currentChar || 0xB9 == currentChar )
-        rScriptType = ScriptType::WEAK;
-    // workaround for Coptic
-    else if ( 0x2C80 <= currentChar && 0x2CE3 >= currentChar)
-        rScriptType = ScriptType::LATIN;
-    else
-    {
-        UBlockCode block=ublock_getCode(currentChar);
-        size_t i = 0;
-        while (i < scriptListCount)
-        {
-            if (block <= scriptList[i].to)
-                break;
-            ++i;
-        }
-        if (i < scriptListCount && block >= scriptList[i].from)
-            rScriptType = scriptList[i].script;
-        else
-        {
-            rScriptType = ScriptType::WEAK;
-            bKnown = false;
-        }
-    }
-    return bKnown;
-}
-}
-
 sal_Int16  BreakIteratorImpl::getScriptClass(sal_uInt32 currentChar)
 {
     static sal_uInt32 lastChar = 0;
@@ -562,9 +456,7 @@ sal_Int16  BreakIteratorImpl::getScriptClass(sal_uInt32 currentChar)
     if (currentChar != lastChar)
     {
         lastChar = currentChar;
-
-        if (!getCompatibilityScriptClassByBlock(currentChar, nRet))
-            nRet = getScriptClassByUAX24Script(currentChar);
+        nRet = i18nutil::GetScriptClass(currentChar);
     }
 
     return nRet;
@@ -590,10 +482,6 @@ bool BreakIteratorImpl::createLocaleSpecificBreakIterator(const OUString& aLocal
 #endif
 #if !WITH_LOCALE_ALL && !WITH_LOCALE_ko
     if (aLocaleName == "ko")
-        return false;
-#endif
-#if !WITH_LOCALE_ALL && !WITH_LOCALE_th
-    if (aLocaleName == "th")
         return false;
 #endif
 
@@ -650,18 +538,18 @@ BreakIteratorImpl::getLocaleSpecificBreakIterator(const Locale& rLocale)
                  // load service with name <base>_<lang>
                  createLocaleSpecificBreakIterator(rLocale.Language)) ||
                 // load default service with name <base>_Unicode
-                createLocaleSpecificBreakIterator("Unicode")) {
+                createLocaleSpecificBreakIterator(u"Unicode"_ustr)) {
             lookupTable.emplace_back( aLocale, xBI );
             return xBI;
         }
     }
-    throw RuntimeException("getLocaleSpecificBreakIterator: iterator not found");
+    throw RuntimeException(u"getLocaleSpecificBreakIterator: iterator not found"_ustr);
 }
 
 OUString SAL_CALL
 BreakIteratorImpl::getImplementationName()
 {
-    return "com.sun.star.i18n.BreakIterator";
+    return u"com.sun.star.i18n.BreakIterator"_ustr;
 }
 
 sal_Bool SAL_CALL
@@ -673,7 +561,7 @@ BreakIteratorImpl::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 BreakIteratorImpl::getSupportedServiceNames()
 {
-    return { "com.sun.star.i18n.BreakIterator" };
+    return { u"com.sun.star.i18n.BreakIterator"_ustr };
 }
 
 }

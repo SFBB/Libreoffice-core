@@ -34,17 +34,24 @@
 #include <com/sun/star/style/XAutoStyles.hpp>
 #include <com/sun/star/style/XAutoStyle.hpp>
 
+#include "coreframestyle.hxx"
 #include "istyleaccess.hxx"
+#include "unobasestyle.hxx"
 #include <memory>
 #include <map>
-
-namespace com::sun::star::document { class XEventsSupplier; }
 
 class SwDocShell;
 class SwAutoStylesEnumImpl;
 class SfxItemSet;
+class SwXStyle;
+class SwXTextCellStyle;
+class SwXPageStyle;
+class SwXFrameStyle;
+class StyleFamilyEntry;
+class SwXStyleFamily;
+class SwXAutoStyleFamily;
 
-class SwXStyleFamilies final : public cppu::WeakImplHelper
+class SAL_DLLPUBLIC_RTTI SwXStyleFamilies final : public cppu::WeakImplHelper
 <
     css::container::XIndexAccess,
     css::container::XNameAccess,
@@ -55,14 +62,14 @@ class SwXStyleFamilies final : public cppu::WeakImplHelper
 {
     SwDocShell*         m_pDocShell;
 
-    std::map<SfxStyleFamily, css::uno::Reference<css::container::XNameContainer>> m_vFamilies;
+    std::map<SfxStyleFamily, rtl::Reference<SwXStyleFamily>> m_vFamilies;
 
     virtual ~SwXStyleFamilies() override;
 public:
     SwXStyleFamilies(SwDocShell& rDocShell);
 
     //XNameAccess
-    virtual css::uno::Any SAL_CALL getByName(const OUString& Name) override;
+    SW_DLLPUBLIC virtual css::uno::Any SAL_CALL getByName(const OUString& Name) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getElementNames() override;
     virtual sal_Bool SAL_CALL hasByName(const OUString& Name) override;
 
@@ -83,23 +90,23 @@ public:
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
+    SW_DLLPUBLIC rtl::Reference<SwXStyleFamily> GetPageStyles();
+    SW_DLLPUBLIC rtl::Reference<SwXStyleFamily> GetCharacterStyles();
+    SW_DLLPUBLIC rtl::Reference<SwXStyleFamily> GetParagraphStyles();
+    SW_DLLPUBLIC rtl::Reference<SwXStyleFamily> GetNumberingStyles();
+    SW_DLLPUBLIC rtl::Reference<SwXStyleFamily> GetStylesByName(const OUString& rName);
+    rtl::Reference<SwXStyleFamily> GetStylesByIndex(sal_Int32 nIndex);
+
     static css::uno::Reference<css::style::XStyle> CreateStyle(SfxStyleFamily eFamily, SwDoc& rDoc);
+    static rtl::Reference<SwXStyle> CreateStyleCharOrParaOrPseudo(SfxStyleFamily eFamily, SwDoc& rDoc);
+    static rtl::Reference<SwXPageStyle> CreateStylePage(SwDoc& rDoc);
+    static rtl::Reference<SwXFrameStyle> CreateStyleFrame(SwDoc& rDoc);
+    static rtl::Reference<SwXTextTableStyle> CreateStyleTable(SwDoc& rDoc);
+    static rtl::Reference<SwXTextCellStyle> CreateStyleCell(SwDoc& rDoc);
     // FIXME: This is very ugly as is the whole conditional paragraph style
     // hackety. Should be folded into CreateStyle hopefully one day
     static css::uno::Reference<css::style::XStyle> CreateStyleCondParagraph(SwDoc& rDoc);
 };
-
-namespace sw
-{
-    class ICoreFrameStyle
-    {
-        public:
-            virtual void SetItem(sal_uInt16 eAtr, const SfxPoolItem& rItem) =0;
-            virtual const SfxPoolItem* GetItem(sal_uInt16 eAtr) =0;
-            virtual css::document::XEventsSupplier& GetEventsSupplier() =0;
-            virtual ~ICoreFrameStyle() {};
-    };
-}
 
 // access to all automatic style families
 class SwXAutoStyles final :
@@ -107,9 +114,9 @@ class SwXAutoStyles final :
     public SwUnoCollection
 {
     SwDocShell *m_pDocShell;
-    css::uno::Reference< css::style::XAutoStyleFamily > m_xAutoCharStyles;
-    css::uno::Reference< css::style::XAutoStyleFamily > m_xAutoRubyStyles;
-    css::uno::Reference< css::style::XAutoStyleFamily > m_xAutoParaStyles;
+    rtl::Reference< SwXAutoStyleFamily > m_xAutoCharStyles;
+    rtl::Reference< SwXAutoStyleFamily > m_xAutoRubyStyles;
+    rtl::Reference< SwXAutoStyleFamily > m_xAutoParaStyles;
     virtual ~SwXAutoStyles() override;
 
 public:
@@ -229,10 +236,9 @@ public:
 typedef std::map<OUString, sal_Int32> CellStyleNameMap;
 
 /// A text table style is a UNO API wrapper for a SwTableAutoFormat
-class SwXTextTableStyle final : public cppu::WeakImplHelper
+class SwXTextTableStyle final : public cppu::ImplInheritanceHelper
 <
-    css::style::XStyle,
-    css::beans::XPropertySet,
+    SwXBaseStyle,
     css::container::XNameContainer,
     css::lang::XServiceInfo
 >
@@ -272,10 +278,10 @@ class SwXTextTableStyle final : public cppu::WeakImplHelper
 public:
     SwXTextTableStyle(SwDocShell* pDocShell, SwTableAutoFormat* pTableAutoFormat);
     /// Create non physical style
-    SwXTextTableStyle(SwDocShell* pDocShell, const OUString& rTableAutoFormatName);
+    SwXTextTableStyle(SwDocShell* pDocShell, const TableStyleName& rTableAutoFormatName);
 
     /// This function looks for a SwTableAutoFormat with given name. Returns nullptr if could not be found.
-    static SwTableAutoFormat* GetTableAutoFormat(SwDocShell* pDocShell, std::u16string_view sName);
+    static SwTableAutoFormat* GetTableAutoFormat(SwDocShell* pDocShell, const TableStyleName& sName);
     /// Returns box format assigned to this style
     SwTableAutoFormat* GetTableFormat();
     void SetPhysical();
@@ -318,14 +324,13 @@ public:
     virtual sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override;
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
-    static css::uno::Reference<css::style::XStyle> CreateXTextTableStyle(SwDocShell* pDocShell, const OUString& rTableAutoFormatName);
+    static rtl::Reference<SwXTextTableStyle> CreateXTextTableStyle(SwDocShell* pDocShell, const TableStyleName& rTableAutoFormatName);
 };
 
 /// A text cell style is a UNO API wrapper for a SwBoxAutoFormat core class
-class SwXTextCellStyle final : public cppu::WeakImplHelper
+class SwXTextCellStyle final : public cppu::ImplInheritanceHelper
 <
-    css::style::XStyle,
-    css::beans::XPropertySet,
+    SwXBaseStyle,
     css::beans::XPropertyState,
     css::lang::XServiceInfo
 >
@@ -334,15 +339,17 @@ class SwXTextCellStyle final : public cppu::WeakImplHelper
     SwBoxAutoFormat* m_pBoxAutoFormat;
     /// Stores SwBoxAutoFormat when this is not a physical style.
     std::shared_ptr<SwBoxAutoFormat> m_pBoxAutoFormat_Impl;
-    OUString m_sParentStyle;
-    OUString m_sName;
+    /// UIName of the table style that contains this cell style
+    TableStyleName m_sTableStyleUIName;
+    /// There are no built-in cell style names - presumably these don't need to be converted.
+    UIName m_sName;
     /// If true, then it points to a core object, if false, then this is a created, but not-yet-inserted format.
     bool m_bPhysical;
 
  public:
-    SwXTextCellStyle(SwDocShell* pDocShell, SwBoxAutoFormat* pBoxAutoFormat, OUString sParentStyle);
+    SwXTextCellStyle(SwDocShell* pDocShell, SwBoxAutoFormat* pBoxAutoFormat, TableStyleName sParentStyle);
     /// Create non physical style
-    SwXTextCellStyle(SwDocShell* pDocShell, OUString  sName);
+    SwXTextCellStyle(SwDocShell* pDocShell, UIName sName);
 
     /**
     * This function looks for a SwBoxAutoFormat with given name. Parses the name and returns parent name.
@@ -351,7 +358,7 @@ class SwXTextCellStyle final : public cppu::WeakImplHelper
     * @param pParentName Optional output. Pointer to an OUString where parsed parent name will be returned.
     * @return Pointer to a SwBoxAutoFormat, nullptr if not found.
     */
-    static SwBoxAutoFormat* GetBoxAutoFormat(SwDocShell* pDocShell, std::u16string_view sName, OUString* pParentName);
+    static SwBoxAutoFormat* GetBoxAutoFormat(SwDocShell* pDocShell, const UIName& sName, TableStyleName* pParentName);
     /// returns box format assigned to this style
     SwBoxAutoFormat* GetBoxFormat();
     /// Sets the address of SwBoxAutoFormat this style is bound to. Usable only when style is physical.
@@ -389,7 +396,71 @@ class SwXTextCellStyle final : public cppu::WeakImplHelper
     virtual sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override;
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
-    static css::uno::Reference<css::style::XStyle> CreateXTextCellStyle(SwDocShell* pDocShell, const OUString& sName);
+    static rtl::Reference<SwXTextCellStyle> CreateXTextCellStyle(SwDocShell* pDocShell, const UIName& sName);
+};
+
+class SW_DLLPUBLIC SwXStyleFamily final : public cppu::WeakImplHelper
+<
+    css::container::XNameContainer,
+    css::lang::XServiceInfo,
+    css::container::XIndexAccess,
+    css::beans::XPropertySet
+>
+, public SfxListener
+{
+    const StyleFamilyEntry& m_rEntry;
+    SfxStyleSheetBasePool* m_pBasePool;
+    SwDocShell* m_pDocShell;
+
+    SwXStyle* FindStyle(const UIName& rStyleName) const;
+    sal_Int32 GetCountOrName(UIName* pString, sal_Int32 nIndex = SAL_MAX_INT32);
+    rtl::Reference<SwXBaseStyle> getStyle(const SfxStyleSheetBase* pBase, const UIName& rStyleName);
+    static const StyleFamilyEntry& InitEntry(SfxStyleFamily eFamily);
+public:
+    SwXStyleFamily(SwDocShell* pDocShell, const SfxStyleFamily eFamily);
+
+    //XIndexAccess
+    virtual sal_Int32 SAL_CALL getCount() override;
+    virtual css::uno::Any SAL_CALL getByIndex(sal_Int32 nIndex) override;
+
+    //XElementAccess
+    virtual css::uno::Type SAL_CALL getElementType(  ) override;
+    virtual sal_Bool SAL_CALL hasElements(  ) override;
+
+    //XNameAccess
+    virtual css::uno::Any SAL_CALL getByName(const OUString& Name) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getElementNames() override;
+    virtual sal_Bool SAL_CALL hasByName(const OUString& Name) override;
+
+    //XNameContainer
+    virtual void SAL_CALL insertByName(const OUString& Name, const css::uno::Any& Element) override;
+    virtual void SAL_CALL replaceByName(const OUString& Name, const css::uno::Any& Element) override;
+    virtual void SAL_CALL removeByName(const OUString& Name) override;
+
+    //XPropertySet
+    virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) override;
+    virtual void SAL_CALL setPropertyValue( const OUString&, const css::uno::Any&) override;
+    virtual css::uno::Any SAL_CALL getPropertyValue( const OUString& PropertyName ) override;
+    virtual void SAL_CALL addPropertyChangeListener( const OUString&, const css::uno::Reference<css::beans::XPropertyChangeListener>&) override;
+    virtual void SAL_CALL removePropertyChangeListener( const OUString&, const css::uno::Reference<css::beans::XPropertyChangeListener>&) override;
+    virtual void SAL_CALL addVetoableChangeListener(const OUString&, const css::uno::Reference<css::beans::XVetoableChangeListener>&) override;
+    virtual void SAL_CALL removeVetoableChangeListener(const OUString&, const css::uno::Reference<css::beans::XVetoableChangeListener>&) override;
+
+    //SfxListener
+    virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
+
+    //XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+
+    rtl::Reference<SwXBaseStyle> getStyleByName(const OUString& rName);
+    rtl::Reference<SwXPageStyle> getPageStyleByName(const OUString& rName);
+    rtl::Reference<SwXStyle> getCharacterStyleByName(const OUString& rName);
+    rtl::Reference<SwXStyle> getParagraphStyleByName(const OUString& rName);
+    void insertStyleByName(const OUString& Name, const rtl::Reference<SwXStyle>& Element);
+private:
+    void insertStyleByNameImpl(const rtl::Reference<SwXStyle>& Element, const UIName& sStyleName);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

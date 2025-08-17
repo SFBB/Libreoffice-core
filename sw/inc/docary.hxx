@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_DOCARY_HXX
-#define INCLUDED_SW_INC_DOCARY_HXX
+#pragma once
 
 #include <vector>
 #include <type_traits>
@@ -29,6 +28,7 @@
 #include "tox.hxx"
 #include "numrule.hxx"
 #include "fldbas.hxx"
+#include "pam.hxx"
 
 class SwRangeRedline;
 class SwExtraRedline;
@@ -36,7 +36,6 @@ class SwOLENode;
 class SwTable;
 class SwTableLine;
 class SwTableBox;
-struct SwPosition;
 enum class RedlineType : sal_uInt16;
 
 /** provides some methods for generic operations on lists that contain SwFormat* subclasses. */
@@ -48,8 +47,8 @@ public:
     virtual ~SwFormatsBase();
 
     // default linear search implementation, some subclasses will override with a more efficient search
-    virtual SwFormat* FindFormatByName(const OUString& rName) const;
-    virtual void Rename(const SwFrameFormat&, const OUString&) {};
+    virtual SwFormat* FindFormatByName(const UIName& rName) const;
+    virtual void Rename(const SwFrameFormat&, const UIName&) {};
 
     SwFormatsBase() = default;
     SwFormatsBase(SwFormatsBase const &) = default;
@@ -131,7 +130,7 @@ public:
         erase( begin() + aStartIdx, begin() + aEndIdx);
     }
 
-    size_t GetPos(Value const& p) const
+    size_t GetPos(typename std::remove_pointer_t<Value> const* const p) const
     {
         const_iterator const it = std::find(begin(), end(), p);
         return it == end() ? SIZE_MAX : it - begin();
@@ -144,6 +143,7 @@ public:
     static void dumpAsXml(xmlTextWriterPtr /*pWriter*/) {};
 };
 
+/// Provides a generic container for Writer styles: paragraph, graphic, section, etc styles.
 template<typename Value>
 class SwFormatsModifyBase : public SwVectorModifyBase<Value>, public SwFormatsBase
 {
@@ -159,11 +159,8 @@ public:
     virtual Value GetFormat(size_t idx) const override
         { return SwVectorModifyBase<Value>::operator[](idx); }
 
-    size_t GetPos(const SwFormat *p) const
-        { return SwVectorModifyBase<Value>::GetPos( static_cast<Value>( const_cast<SwFormat*>( p ) ) ); }
-
     // Override return type to reduce casting
-    virtual Value FindFormatByName(const OUString& rName) const override
+    virtual Value FindFormatByName(const UIName& rName) const override
     { return static_cast<Value>(SwFormatsBase::FindFormatByName(rName)); }
 };
 
@@ -181,6 +178,7 @@ public:
     SwFrameFormatsV() : SwFormatsModifyBase( DestructorPolicy::KeepElements ) {}
 };
 
+/// Container of paragraph styles.
 class SwTextFormatColls final : public SwFormatsModifyBase<SwTextFormatColl*>
 {
 public:
@@ -209,13 +207,13 @@ public:
 
 struct CompareSwRedlineTable
 {
-    bool operator()(SwRangeRedline* const &lhs, SwRangeRedline* const &rhs) const;
+    bool operator()(const SwRangeRedline* lhs, const SwRangeRedline* rhs) const;
 };
 
 // Notification type for notifying about redlines to LOK clients
 enum class RedlineNotification { Add, Remove, Modify };
 
-class SwRedlineTable
+class SW_DLLPUBLIC SwRedlineTable
 {
 public:
     typedef o3tl::sorted_vector<SwRangeRedline*, CompareSwRedlineTable,
@@ -228,15 +226,17 @@ private:
     /// fast binary search, or if we have to fall back to a linear search
     bool m_bHasOverlappingElements = false;
     mutable sal_uInt32 m_nMaxMovedID = 1;   //every move-redline pair get a unique ID, so they can find each other.
+    mutable const SwRangeRedline* mpMaxEndPos = nullptr; // the redline with the maximum end pos
 public:
     ~SwRedlineTable();
-    bool Contains(const SwRangeRedline* p) const { return maVector.find(const_cast<SwRangeRedline*>(p)) != maVector.end(); }
+    bool Contains(const SwRangeRedline* p) const { return maVector.find(p) != maVector.end(); }
     size_type GetPos(const SwRangeRedline* p) const;
 
     bool Insert(SwRangeRedline*& p);
     bool Insert(SwRangeRedline*& p, size_type& rInsPos);
     bool InsertWithValidRanges(SwRangeRedline*& p, size_type* pInsPos = nullptr);
     bool HasOverlappingElements() const { return m_bHasOverlappingElements; }
+    const SwPosition& GetMaxEndPos() const;
 
     void Remove( size_type nPos );
     void Remove( const SwRangeRedline* p );
@@ -277,7 +277,7 @@ public:
     SwRangeRedline*             operator[]( size_type idx ) const { return maVector[idx]; }
     vector_type::const_iterator begin() const { return maVector.begin(); }
     vector_type::const_iterator end() const { return maVector.end(); }
-    void                        Resort() { maVector.Resort(); }
+    void                        Resort() { maVector.Resort(); mpMaxEndPos = nullptr; }
 
     // Notifies all LOK clients when redlines are added/modified/removed
     static void                 LOKRedlineNotification(RedlineNotification eType, SwRangeRedline* pRedline);
@@ -306,12 +306,10 @@ public:
     SwExtraRedline* GetRedline( sal_uInt16 uIndex ) const   {     return m_aExtraRedlines.operator[]( uIndex );  }
 
     SW_DLLPUBLIC bool DeleteAllTableRedlines( SwDoc& rDoc, const SwTable& rTable, bool bSaveInUndo, RedlineType nRedlineTypeToDelete );
-    bool DeleteTableRowRedline ( SwDoc* pDoc, const SwTableLine& rTableLine, bool bSaveInUndo, RedlineType nRedlineTypeToDelete );
-    bool DeleteTableCellRedline( SwDoc* pDoc, const SwTableBox& rTableBox, bool bSaveInUndo, RedlineType nRedlineTypeToDelete );
+    bool DeleteTableRowRedline ( SwDoc& rDoc, const SwTableLine& rTableLine, bool bSaveInUndo, RedlineType nRedlineTypeToDelete );
+    bool DeleteTableCellRedline( SwDoc& rDoc, const SwTableBox& rTableBox, bool bSaveInUndo, RedlineType nRedlineTypeToDelete );
 };
 
 typedef std::vector<SwOLENode*> SwOLENodes;
-
-#endif // INCLUDED_SW_INC_DOCARY_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

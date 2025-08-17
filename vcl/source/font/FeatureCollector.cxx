@@ -14,6 +14,7 @@
 #include <font/OpenTypeFeatureStrings.hrc>
 #include <svdata.hxx>
 
+#include <hb-aat.h>
 #include <hb-ot.h>
 #include <hb-graphite2.h>
 
@@ -75,9 +76,9 @@ bool FeatureCollector::collectGraphite()
 
             m_rFontFeatures.emplace_back(nFeatureCode, vcl::font::FeatureType::Graphite);
             vcl::font::Feature& rFeature = m_rFontFeatures.back();
-            rFeature.m_aDefinition
-                = vcl::font::FeatureDefinition(nFeatureCode, sLabel, eFeatureParameterType,
-                                               std::move(aParameters), int32_t(nValue));
+            rFeature.m_aDefinition = vcl::font::FeatureDefinition(
+                nFeatureCode, std::move(sLabel), eFeatureParameterType, std::move(aParameters),
+                int32_t(nValue));
         }
     }
     gr_featureval_destroy(pfeatureValues);
@@ -181,7 +182,7 @@ void FeatureCollector::collectForTable(hb_tag_t aTableTag)
         }
 
         if (aDefinition)
-            rFeature.m_aDefinition = aDefinition;
+            rFeature.m_aDefinition = std::move(aDefinition);
     }
 }
 
@@ -195,7 +196,9 @@ bool FeatureCollector::collect()
     }
     else
     {
-        collectForTable(HB_OT_TAG_GSUB); // substitution
+        // tdf#163213: Font Features dialog should not show OpenType features if the font has "morx" table
+        if (!hb_aat_layout_has_substitution(m_pHbFace))
+            collectForTable(HB_OT_TAG_GSUB); // substitution
         collectForTable(HB_OT_TAG_GPOS); // positioning
         return true;
     }

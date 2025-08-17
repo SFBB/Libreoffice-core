@@ -63,9 +63,7 @@
 // #i21457# - new implementation of local method <lcl_IsInSameTableBox(..)>.
 // Method now determines the previous/next on its own. Thus, it can be controlled,
 // for which previous/next is checked, if it's visible.
-static bool lcl_IsInSameTableBox( SwNodes const & _rNds,
-                         const SwNode& _rNd,
-                         const bool _bPrev )
+static bool lcl_IsInSameTableBox(const SwNode& _rNd, const bool _bPrev)
 {
     const SwTableNode* pTableNd = _rNd.FindTableNode();
     if ( !pTableNd )
@@ -84,7 +82,7 @@ static bool lcl_IsInSameTableBox( SwNodes const & _rNds,
     {
         if ( _bPrev
                 ? !SwNodes::GoPrevSection( &aChkIdx, false, false )
-                : !_rNds.GoNextSection( &aChkIdx, false, false ) )
+                : !SwNodes::GoNextSection( &aChkIdx, false, false ) )
         {
             OSL_FAIL( "<lcl_IsInSameTableBox(..)> - no previous/next!" );
             return false;
@@ -124,20 +122,20 @@ static bool lcl_IsInSameTableBox( SwNodes const & _rNds,
     return true;
 }
 
-static void lcl_CheckEmptyLayFrame( SwNodes const & rNds, SwSectionData& rSectionData,
+static void lcl_CheckEmptyLayFrame( SwSectionData& rSectionData,
                         const SwNode& rStt, const SwNode& rEnd )
 {
     SwNodeIndex aIdx( rStt );
     if( !SwNodes::GoPrevSection( &aIdx, true, false ) ||
         !CheckNodesRange( rStt, aIdx.GetNode(), true ) ||
         // #i21457#
-        !lcl_IsInSameTableBox( rNds, rStt, true ))
+        !lcl_IsInSameTableBox( rStt, true ))
     {
         aIdx = rEnd;
-        if( !rNds.GoNextSection( &aIdx, true, false ) ||
+        if( !SwNodes::GoNextSection( &aIdx, true, false ) ||
             !CheckNodesRange( rEnd, aIdx.GetNode(), true ) ||
             // #i21457#
-            !lcl_IsInSameTableBox( rNds, rEnd, false ))
+            !lcl_IsInSameTableBox( rEnd, false ))
         {
             rSectionData.SetHidden( false );
         }
@@ -166,14 +164,14 @@ SwDoc::InsertSwSection(SwPaM const& rRange, SwSectionData & rNewData,
     // See if the whole Document should be hidden, which we currently are not able to do.
     if (rNewData.IsHidden() && rRange.HasMark())
     {
-        auto [pStt, pEnd] = rRange.StartEnd(); // SwPosition*
-        if( !pStt->GetContentIndex() &&
+        auto [pStart, pEnd] = rRange.StartEnd(); // SwPosition*
+        if( !pStart->GetContentIndex() &&
             pEnd->GetNode().GetContentNode()->Len() ==
             pEnd->GetContentIndex() )
         {
-            ::lcl_CheckEmptyLayFrame( GetNodes(),
+            ::lcl_CheckEmptyLayFrame(
                                     rNewData,
-                                    pStt->GetNode(),
+                                    pStart->GetNode(),
                                     pEnd->GetNode() );
         }
     }
@@ -302,10 +300,9 @@ SwDoc::InsertSwSection(SwPaM const& rRange, SwSectionData & rNewData,
         }
         else
         {
-            if( pUndoInsSect && pCNd->IsTextNode() )
-            {
-                pUndoInsSect->SaveSplitNode( const_cast<SwTextNode*>(static_cast<const SwTextNode*>(pCNd)), true );
-            }
+            if (pUndoInsSect)
+                if (const SwTextNode* pTextNode = pCNd->GetTextNode())
+                    pUndoInsSect->SaveSplitNode(pTextNode, true);
             getIDocumentContentOperations().SplitNode( *pPos, false );
             pNewSectNode = GetNodes().InsertTextSection(
                 pPos->GetNode(), *pFormat, rNewData, pTOXBase, nullptr);
@@ -384,10 +381,10 @@ sal_uInt16 SwDoc::IsInsRegionAvailable( const SwPaM& rRange,
     if( rRange.HasMark() )
     {
         // See if we have a valid Section
-        auto [pStt, pEnd] = rRange.StartEnd(); // SwPosition*
+        auto [pStart, pEnd] = rRange.StartEnd(); // SwPosition*
 
         const SwContentNode* pCNd = pEnd->GetNode().GetContentNode();
-        const SwNode* pNd = &pStt->GetNode();
+        const SwNode* pNd = &pStart->GetNode();
         const SwSectionNode* pSectNd = pNd->FindSectionNode();
         const SwSectionNode* pEndSectNd = pCNd ? pCNd->FindSectionNode() : nullptr;
         if( pSectNd && pEndSectNd && pSectNd != pEndSectNd )
@@ -395,11 +392,11 @@ sal_uInt16 SwDoc::IsInsRegionAvailable( const SwPaM& rRange,
             // Try to create an enclosing Section, but only if Start is
             // located at the Section's beginning and End at it's end
             nRet = 0;
-            if( !pStt->GetContentIndex()
-                && pSectNd->GetIndex() == pStt->GetNodeIndex() - 1
+            if( !pStart->GetContentIndex()
+                && pSectNd->GetIndex() == pStart->GetNodeIndex() - 1
                 && pEnd->GetContentIndex() == pCNd->Len() )
             {
-                SwNodeIndex aIdx( pStt->GetNode(), -1 );
+                SwNodeIndex aIdx( pStart->GetNode(), -1 );
                 SwNodeOffset nCmp = pEnd->GetNodeIndex();
                 const SwStartNode* pPrvNd;
                 const SwEndNode* pNxtNd;
@@ -414,7 +411,7 @@ sal_uInt16 SwDoc::IsInsRegionAvailable( const SwPaM& rRange,
                                                 : pNd->StartOfSectionNode();
 
                 aIdx = pEnd->GetNodeIndex() + 1;
-                nCmp = pStt->GetNodeIndex();
+                nCmp = pStart->GetNodeIndex();
                 while( nullptr != ( pNxtNd = (pNd = &aIdx.GetNode())->GetEndNode() ) &&
                     pNxtNd->StartOfSectionNode()->IsSectionNode() &&
                     ( pNxtNd->StartOfSectionIndex() >= nCmp ||
@@ -465,9 +462,9 @@ sal_uInt16 SwDoc::IsInsRegionAvailable( const SwPaM& rRange,
             // Try to create an enclosing Section, but only if Start
             // is at the Section's start.
             nRet = 0;
-            if( !pStt->GetContentIndex() )
+            if( !pStart->GetContentIndex() )
             {
-                SwNodeIndex aIdx( pStt->GetNode(), -1 );
+                SwNodeIndex aIdx( pStart->GetNode(), -1 );
                 if( aIdx.GetNode().IsSectionNode() )
                 {
                     do {
@@ -491,15 +488,15 @@ sal_uInt16 SwDoc::IsInsRegionAvailable( const SwPaM& rRange,
 
 SwSection* SwDoc::GetCurrSection( const SwPosition& rPos )
 {
-    const SwSectionNode* pSectNd = rPos.GetNode().FindSectionNode();
+    SwSectionNode* pSectNd = rPos.GetNode().FindSectionNode();
     if( pSectNd )
-        return const_cast<SwSection*>(&pSectNd->GetSection());
+        return &pSectNd->GetSection();
     return nullptr;
 }
 
 SwSectionFormat* SwDoc::MakeSectionFormat()
 {
-    SwSectionFormat* pNew = new SwSectionFormat( mpDfltFrameFormat.get(), this );
+    SwSectionFormat* pNew = new SwSectionFormat( mpDfltFrameFormat.get(), *this );
     mpSectionFormatTable->push_back( pNew );
     return pNew;
 }
@@ -518,7 +515,7 @@ void SwDoc::DelSectionFormat( SwSectionFormat *pFormat, bool bDelNodes )
         if( !pFootnoteEndAtTextEnd )
             pFootnoteEndAtTextEnd = pFormat->GetItemIfSet(RES_END_AT_TXTEND);
 
-        const SwSectionNode* pSectNd;
+        SwSectionNode* pSectNd;
 
         if( GetIDocumentUndoRedo().DoesUndo() )
         {
@@ -541,7 +538,7 @@ void SwDoc::DelSectionFormat( SwSectionFormat *pFormat, bool bDelNodes )
                 nullptr != (pSectNd = pIdx->GetNode().GetSectionNode() ))
         {
             SwNodeIndex aUpdIdx( *pIdx );
-            getIDocumentContentOperations().DeleteSection( const_cast<SwNode*>(static_cast<SwNode const *>(pSectNd)) );
+            getIDocumentContentOperations().DeleteSection(pSectNd);
             if( pFootnoteEndAtTextEnd )
                 GetFootnoteIdxs().UpdateFootnote( aUpdIdx.GetNode() );
             getIDocumentState().SetModified();
@@ -640,19 +637,17 @@ void SwDoc::UpdateSection( size_t const nPos, SwSectionData & rNewData,
     // Test if the whole Content Section (Document/TableBox/Fly) should be hidden,
     // which we're currently not able to do.
     const SwNodeIndex* pIdx = nullptr;
+    if (rNewData.IsHidden())
     {
-        if (rNewData.IsHidden())
+        pIdx = pFormat->GetContent().GetContentIdx();
+        if (pIdx)
         {
-            pIdx = pFormat->GetContent().GetContentIdx();
-            if (pIdx)
+            const SwSectionNode* pSectNd =
+                pIdx->GetNode().GetSectionNode();
+            if (pSectNd)
             {
-                const SwSectionNode* pSectNd =
-                    pIdx->GetNode().GetSectionNode();
-                if (pSectNd)
-                {
-                    ::lcl_CheckEmptyLayFrame( GetNodes(), rNewData,
-                                *pSectNd, *pSectNd->EndOfSectionNode() );
-                }
+                ::lcl_CheckEmptyLayFrame( rNewData,
+                            *pSectNd, *pSectNd->EndOfSectionNode() );
             }
         }
     }
@@ -673,11 +668,11 @@ void SwDoc::UpdateSection( size_t const nPos, SwSectionData & rNewData,
                 &&  (rNewData.GetLinkFileName() != sCompareString)
                 &&  (rNewData.GetLinkFileName() != pSection->GetLinkFileName()));
 
-    OUString sSectName( rNewData.GetSectionName() );
+    UIName sSectName( rNewData.GetSectionName() );
     if (sSectName != pSection->GetSectionName())
-        sSectName = GetUniqueSectionName( &sSectName );
+        sSectName = UIName(GetUniqueSectionName( &sSectName.toString() ));
     else
-        sSectName.clear();
+        sSectName = UIName();
 
     /// In SwSection::operator=(..) class member m_bCondHiddenFlag is always set to true.
     /// IMHO this have to be changed, but I can't estimate the consequences:
@@ -739,21 +734,25 @@ void sw_DeleteFootnote( SwSectionNode *pNd, SwNodeOffset nStt, SwNodeOffset nEnd
 
     size_t nPos = 0;
     rFootnoteArr.SeekEntry( *pNd, &nPos );
-    SwTextFootnote* pSrch;
 
     // Delete all succeeding Footnotes
-    while( nPos < rFootnoteArr.size() &&
-        SwTextFootnote_GetIndex( (pSrch = rFootnoteArr[ nPos ]) ) <= nEnd )
+    while (nPos < rFootnoteArr.size())
     {
+        SwTextFootnote* pSrch = rFootnoteArr[nPos];
+        if (SwTextFootnote_GetIndex(pSrch) > nEnd)
+            break;
         // If the Nodes are not deleted, they need to deregister at the Pages
         // (delete Frames) or else they will remain there (Undo does not delete them!)
         pSrch->DelFrames(nullptr);
         ++nPos;
     }
 
-    while( nPos-- &&
-        SwTextFootnote_GetIndex( (pSrch = rFootnoteArr[ nPos ]) ) >= nStt )
+    while (nPos > 0)
     {
+        nPos--;
+        SwTextFootnote* pSrch = rFootnoteArr[nPos];
+        if (SwTextFootnote_GetIndex(pSrch) < nStt)
+            break;
         // If the Nodes are not deleted, they need to deregister at the Pages
         // (delete Frames) or else they will remain there (Undo does not delete them!)
         pSrch->DelFrames(nullptr);
@@ -967,12 +966,9 @@ SwSectionNode* SwNodes::InsertTextSection(SwNode& rNd,
 
 SwSectionNode* SwNode::FindSectionNode()
 {
-    if( IsSectionNode() )
-        return GetSectionNode();
-    SwStartNode* pTmp = m_pStartOfSection;
-    while( !pTmp->IsSectionNode() && pTmp->GetIndex() )
-        pTmp = pTmp->m_pStartOfSection;
-    return pTmp->GetSectionNode();
+    for (SwNode* tmp = this;; tmp = tmp->StartOfSectionNode())
+        if (SwSectionNode* sectNode = tmp->GetSectionNode(); sectNode || !tmp->GetIndex())
+            return sectNode;
 }
 
 // SwSectionNode
@@ -1022,9 +1018,9 @@ SwSectionNode::~SwSectionNode()
     }
 }
 
-SwFrame *SwSectionNode::MakeFrame( SwFrame *pSib )
+SwFrame* SwSectionNode::MakeFrame(SwFrame* pSib, bool bHidden)
 {
-    m_pSection->m_Data.SetHiddenFlag(false);
+    m_pSection->m_Data.SetHiddenFlag(bHidden);
     return new SwSectionFrame( *m_pSection, pSib );
 }
 
@@ -1040,7 +1036,7 @@ void SwSectionNode::MakeFramesForAdjacentContentNode(const SwNodeIndex & rIdx)
     if (GetSection().IsHiddenFlag() || IsContentHidden())
     {
         SwNodeIndex aIdx( *EndOfSectionNode() );
-        SwContentNode* pCNd = rNds.GoNextSection( &aIdx, true, false );
+        SwContentNode* pCNd = SwNodes::GoNextSection(&aIdx, true, false);
         if( !pCNd )
         {
             aIdx = *this;
@@ -1153,9 +1149,9 @@ void SwSectionNode::MakeFramesForAdjacentContentNode(const SwNodeIndex & rIdx)
 
 // Create a new SectionFrame for every occurrence in the Layout and insert before
 // the corresponding ContentFrame
-void SwSectionNode::MakeOwnFrames(SwNodeIndex* pIdxBehind, SwNodeIndex* pEndIdx)
+void SwSectionNode::MakeOwnFrames(SwNodeIndex* pIdxBehind, const SwNodeIndex* pEndIdx)
 {
-    OSL_ENSURE( pIdxBehind, "no Index" );
+    assert(pIdxBehind && "no Index");
     SwNodes& rNds = GetNodes();
     SwDoc& rDoc = rNds.GetDoc();
 
@@ -1166,9 +1162,9 @@ void SwSectionNode::MakeOwnFrames(SwNodeIndex* pIdxBehind, SwNodeIndex* pEndIdx)
     if( rNds.IsDocNodes() )
     {
         if( pEndIdx )
-            ::MakeFrames( &rDoc, pIdxBehind->GetNode(), pEndIdx->GetNode() );
+            ::MakeFrames( rDoc, pIdxBehind->GetNode(), pEndIdx->GetNode() );
         else
-            ::MakeFrames( &rDoc, pIdxBehind->GetNode(), SwNodeIndex( *EndOfSectionNode(), 1 ).GetNode() );
+            ::MakeFrames( rDoc, pIdxBehind->GetNode(), SwNodeIndex( *EndOfSectionNode(), 1 ).GetNode() );
     }
 }
 
@@ -1180,7 +1176,6 @@ void SwSectionNode::DelFrames(SwRootFrame const*const /*FIXME TODO*/, bool const
         return ;
     }
 
-    SwNodes& rNds = GetNodes();
     m_pSection->GetFormat()->DelFrames();
 
     // Update our Flag
@@ -1196,13 +1191,13 @@ void SwSectionNode::DelFrames(SwRootFrame const*const /*FIXME TODO*/, bool const
     if( !SwNodes::GoPrevSection( &aIdx, true, false ) ||
         !CheckNodesRange( *this, aIdx.GetNode(), true ) ||
         // #i21457#
-        !lcl_IsInSameTableBox( rNds, *this, true ))
+        !lcl_IsInSameTableBox( *this, true ))
     {
         aIdx = *EndOfSectionNode();
-        if( !rNds.GoNextSection( &aIdx, true, false ) ||
+        if( !SwNodes::GoNextSection( &aIdx, true, false ) ||
             !CheckNodesRange( *EndOfSectionNode(), aIdx.GetNode(), true ) ||
             // #i21457#
-            !lcl_IsInSameTableBox( rNds, *EndOfSectionNode(), false ))
+            !lcl_IsInSameTableBox( *EndOfSectionNode(), false ))
         {
             m_pSection->m_Data.SetHiddenFlag(false);
         }
@@ -1244,8 +1239,8 @@ SwSectionNode* SwSectionNode::MakeCopy( SwDoc& rDoc, const SwNodeIndex& rIdx ) c
         }
         else
         {
-            const OUString sSectionName(GetSection().GetSectionName());
-            pNewSect->SetSectionName(rDoc.GetUniqueSectionName( &sSectionName ));
+            const UIName sSectionName(GetSection().GetSectionName());
+            pNewSect->SetSectionName(UIName(rDoc.GetUniqueSectionName( &sSectionName.toString() )));
         }
     }
 
@@ -1337,7 +1332,7 @@ void SwSectionNode::NodesArrChgd()
         return;
 
     SwNodes& rNds = GetNodes();
-    SwDoc* pDoc = pFormat->GetDoc();
+    SwDoc& rDoc = pFormat->GetDoc();
 
     if( !rNds.IsDocNodes() )
     {
@@ -1351,7 +1346,7 @@ void SwSectionNode::NodesArrChgd()
     SwSectionNode* pSectNd = StartOfSectionNode()->FindSectionNode();
     // set the correct parent from the new section
     pFormat->SetDerivedFrom( pSectNd ? pSectNd->GetSection().GetFormat()
-                                  : pDoc->GetDfltFrameFormat() );
+                                  : rDoc.GetDfltFrameFormat() );
 
     // Set the right StartNode for all in this Area
     SwNodeOffset nStart = GetIndex()+1, nEnd = EndOfSectionIndex();
@@ -1369,23 +1364,23 @@ void SwSectionNode::NodesArrChgd()
     // Moving Nodes to the UndoNodes array?
     if( rNds.IsDocNodes() )
     {
-        OSL_ENSURE( pDoc == &GetDoc(),
+        OSL_ENSURE( &rDoc == &GetDoc(),
                 "Moving to different Documents?" );
         if( m_pSection->IsLinkType() ) // Remove the Link
-            m_pSection->CreateLink( pDoc->getIDocumentLayoutAccess().GetCurrentViewShell() ? LinkCreateType::Connect : LinkCreateType::NONE );
+            m_pSection->CreateLink( rDoc.getIDocumentLayoutAccess().GetCurrentViewShell() ? LinkCreateType::Connect : LinkCreateType::NONE );
 
         if (m_pSection->IsServer())
-            pDoc->getIDocumentLinksAdministration().GetLinkManager().InsertServer( m_pSection->GetObject() );
+            rDoc.getIDocumentLinksAdministration().GetLinkManager().InsertServer( m_pSection->GetObject() );
     }
     else
     {
         if (SectionType::Content != m_pSection->GetType()
             && m_pSection->IsConnected())
         {
-            pDoc->getIDocumentLinksAdministration().GetLinkManager().Remove( &m_pSection->GetBaseLink() );
+            rDoc.getIDocumentLinksAdministration().GetLinkManager().Remove( &m_pSection->GetBaseLink() );
         }
         if (m_pSection->IsServer())
-            pDoc->getIDocumentLinksAdministration().GetLinkManager().RemoveServer( m_pSection->GetObject() );
+            rDoc.getIDocumentLinksAdministration().GetLinkManager().RemoveServer( m_pSection->GetObject() );
     }
 
 }
@@ -1395,7 +1390,7 @@ OUString SwDoc::GetUniqueSectionName( const OUString* pChkStr ) const
     if( IsInMailMerge())
     {
         OUString newName = "MailMergeSection"
-            + OStringToOUString( DateTimeToOString( DateTime( DateTime::SYSTEM )), RTL_TEXTENCODING_ASCII_US )
+            + DateTimeToOUString( DateTime( DateTime::SYSTEM ) )
             + OUString::number( mpSectionFormatTable->size() + 1 );
         if( pChkStr )
             newName += *pChkStr;
@@ -1414,13 +1409,19 @@ OUString SwDoc::GetUniqueSectionName( const OUString* pChkStr ) const
         const SwSectionNode *const pSectNd = pFormat->GetSectionNode();
         if( pSectNd != nullptr )
         {
-            const OUString& rNm = pSectNd->GetSection().GetSectionName();
-            if (rNm.startsWith( aName ))
+            const UIName& rNm = pSectNd->GetSection().GetSectionName();
+            if (rNm.toString().startsWith( aName ))
             {
                 // Calculate the Number and reset the Flag
-                nNum = o3tl::toInt32(rNm.subView( aName.getLength() ));
-                if( nNum-- && nNum < mpSectionFormatTable->size() )
-                    pSetFlags[ nNum / 8 ] |= (0x01 << ( nNum & 0x07 ));
+                nNum = o3tl::toInt32(rNm.toString().subView( aName.getLength() ));
+                if (nNum)
+                {
+                    --nNum;
+                    if (nNum < mpSectionFormatTable->size())
+                    {
+                        pSetFlags[ nNum / 8 ] |= (0x01 << ( nNum & 0x07 ));
+                    }
+                }
             }
             if( pChkStr && *pChkStr==rNm )
                 pChkStr = nullptr;

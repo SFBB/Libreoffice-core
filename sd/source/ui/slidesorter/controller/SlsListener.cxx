@@ -22,6 +22,7 @@
 #include <SlideSorter.hxx>
 #include <ViewShell.hxx>
 #include <ViewShellHint.hxx>
+#include <unomodel.hxx>
 #include <controller/SlideSorterController.hxx>
 #include <controller/SlsPageSelector.hxx>
 #include <controller/SlsCurrentSlideManager.hxx>
@@ -45,7 +46,6 @@
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
-using namespace ::com::sun::star::accessibility;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
@@ -68,26 +68,24 @@ Listener::Listener (
     mbListeningToDocument = true;
 
     // Connect to the UNO document.
-    Reference<document::XEventBroadcaster> xBroadcaster (
-        mrSlideSorter.GetModel().GetDocument()->getUnoModel(), uno::UNO_QUERY);
+    rtl::Reference<SdXImpressDocument> xBroadcaster(
+        mrSlideSorter.GetModel().GetDocument()->getUnoModel());
     if (xBroadcaster.is())
     {
-        xBroadcaster->addEventListener (this);
+        xBroadcaster->addEventListener(css::uno::Reference< css::document::XEventListener >(this));
         mbListeningToUNODocument = true;
     }
 
     // Listen for disposing events from the document.
-    Reference<XComponent> xComponent (xBroadcaster, UNO_QUERY);
-    if (xComponent.is())
-        xComponent->addEventListener (
+    if (xBroadcaster.is())
+        xBroadcaster->addEventListener (
             Reference<lang::XEventListener>(
                 static_cast<XWeak*>(this), UNO_QUERY));
 
     // Connect to the frame to listen for controllers being exchanged.
     bool bIsMainViewShell (false);
-    ViewShell* pViewShell = mrSlideSorter.GetViewShell();
-    if (pViewShell != nullptr)
-        bIsMainViewShell = pViewShell->IsMainViewShell();
+    ViewShell& rViewShell = mrSlideSorter.GetViewShell();
+    bIsMainViewShell = rViewShell.IsMainViewShell();
     if ( ! bIsMainViewShell)
     {
         // Listen to changes of certain properties.
@@ -112,7 +110,7 @@ Listener::Listener (
     {
         ViewShell* pMainViewShell = mpBase->GetMainViewShell().get();
         if (pMainViewShell != nullptr
-            && pMainViewShell!=pViewShell)
+            && pMainViewShell!=&rViewShell)
         {
             StartListening(*pMainViewShell);
         }
@@ -139,15 +137,14 @@ void Listener::ReleaseListeners()
 
     if (mbListeningToUNODocument)
     {
-        Reference<document::XEventBroadcaster> xBroadcaster (
-            mrSlideSorter.GetModel().GetDocument()->getUnoModel(), UNO_QUERY);
+        rtl::Reference<SdXImpressDocument> xBroadcaster(
+            mrSlideSorter.GetModel().GetDocument()->getUnoModel());
         if (xBroadcaster.is())
-            xBroadcaster->removeEventListener (this);
+            xBroadcaster->removeEventListener(css::uno::Reference< css::document::XEventListener >(this));
 
         // Remove the dispose listener.
-        Reference<XComponent> xComponent (xBroadcaster, UNO_QUERY);
-        if (xComponent.is())
-            xComponent->removeEventListener (
+        if (xBroadcaster.is())
+            xBroadcaster->removeEventListener (
                 Reference<lang::XEventListener>(
                     static_cast<XWeak*>(this), UNO_QUERY));
 
@@ -176,11 +173,11 @@ void Listener::ReleaseListeners()
 
 void Listener::ConnectToController()
 {
-    ViewShell* pShell = mrSlideSorter.GetViewShell();
+    ViewShell& rShell = mrSlideSorter.GetViewShell();
 
     // Register at the controller of the main view shell (if we are that not
     // ourself).
-    if (pShell!=nullptr && pShell->IsMainViewShell())
+    if (rShell.IsMainViewShell())
         return;
 
     Reference<frame::XController> xController (mrSlideSorter.GetXController());
@@ -191,7 +188,7 @@ void Listener::ConnectToController()
     {
         try
         {
-            xSet->addPropertyChangeListener("CurrentPage", this);
+            xSet->addPropertyChangeListener(u"CurrentPage"_ustr, this);
         }
         catch (beans::UnknownPropertyException&)
         {
@@ -199,7 +196,7 @@ void Listener::ConnectToController()
         }
         try
         {
-            xSet->addPropertyChangeListener("IsMasterPageMode", this);
+            xSet->addPropertyChangeListener(u"IsMasterPageMode"_ustr, this);
         }
         catch (beans::UnknownPropertyException&)
         {
@@ -230,8 +227,8 @@ void Listener::DisconnectFromController()
         // Remove the property listener.
         if (xSet.is())
         {
-            xSet->removePropertyChangeListener( "CurrentPage", this );
-            xSet->removePropertyChangeListener( "IsMasterPageMode", this);
+            xSet->removePropertyChangeListener( u"CurrentPage"_ustr, this );
+            xSet->removePropertyChangeListener( u"IsMasterPageMode"_ustr, this);
         }
 
         // Remove the dispose listener.
@@ -279,8 +276,9 @@ void Listener::Notify (
         mrController.CheckForMasterPageAssignment();
         mrController.CheckForSlideTransitionAssignment();
     }
-    else if (auto pViewShellHint = dynamic_cast<const ViewShellHint*>(&rHint))
+    else if (rHint.GetId() == SfxHintId::SdViewShell)
     {
+        auto pViewShellHint = static_cast<const ViewShellHint*>(&rHint);
         switch (pViewShellHint->GetHintId())
         {
             case ViewShellHint::HINT_PAGE_RESIZE_START:
@@ -341,7 +339,7 @@ IMPL_LINK(Listener, EventMultiplexerCallback, ::sd::tools::EventMultiplexerEvent
                 mbIsMainViewChangePending = false;
                 ViewShell* pMainViewShell = mpBase->GetMainViewShell().get();
                 if (pMainViewShell != nullptr
-                    && pMainViewShell!=mrSlideSorter.GetViewShell())
+                    && pMainViewShell!=&mrSlideSorter.GetViewShell())
                 {
                     StartListening (*pMainViewShell);
                 }
@@ -387,7 +385,7 @@ void SAL_CALL Listener::disposing (
     if ((mbListeningToDocument || mbListeningToUNODocument)
         && mrSlideSorter.GetModel().GetDocument()!=nullptr
         && rEventObject.Source
-           == mrSlideSorter.GetModel().GetDocument()->getUnoModel())
+           == uno::Reference<XInterface>(cppu::getXWeak(mrSlideSorter.GetModel().GetDocument()->getUnoModel())))
     {
         mbListeningToDocument = false;
         mbListeningToUNODocument = false;
@@ -416,7 +414,7 @@ void SAL_CALL Listener::propertyChange (
 {
     if (m_bDisposed)
     {
-        throw lang::DisposedException ("SlideSorterController object has already been disposed",
+        throw lang::DisposedException (u"SlideSorterController object has already been disposed"_ustr,
             static_cast<uno::XWeak*>(this));
     }
 
@@ -428,14 +426,14 @@ void SAL_CALL Listener::propertyChange (
         {
             try
             {
-                Any aPageNumber = xPageSet->getPropertyValue ("Number");
+                Any aPageNumber = xPageSet->getPropertyValue (u"Number"_ustr);
                 sal_Int32 nCurrentPage = 0;
                 aPageNumber >>= nCurrentPage;
                 // The selection is already set but we call SelectPage()
                 // nevertheless in order to make the new current page the
                 // last recently selected page of the PageSelector.  This is
                 // used when making the selection visible.
-                mrController.GetCurrentSlideManager()->NotifyCurrentSlideChange(nCurrentPage-1);
+                mrController.GetCurrentSlideManager().NotifyCurrentSlideChange(nCurrentPage-1);
                 mrController.GetPageSelector().SelectPage(nCurrentPage-1);
             }
             catch (beans::UnknownPropertyException&)
@@ -481,13 +479,6 @@ void SAL_CALL Listener::frameAction (const frame::FrameActionEvent& rEvent)
     }
 }
 
-//===== accessibility::XAccessibleEventListener  ==============================
-
-void SAL_CALL Listener::notifyEvent (
-    const AccessibleEventObject& )
-{
-}
-
 void Listener::disposing(std::unique_lock<std::mutex>&)
 {
     ReleaseListeners();
@@ -504,7 +495,7 @@ void Listener::UpdateEditMode()
     {
         try
         {
-            Any aValue (xSet->getPropertyValue( "IsMasterPageMode" ));
+            Any aValue (xSet->getPropertyValue( u"IsMasterPageMode"_ustr ));
             aValue >>= bIsMasterPageMode;
         }
         catch (beans::UnknownPropertyException&)

@@ -38,6 +38,7 @@
 #include <swmodule.hxx>
 #include <fmtrowsplt.hxx>
 #include <fmtwrapinfluenceonobjpos.hxx>
+#include <unotbl.hxx>
 
 #include "docxexportfilter.hxx"
 #include "docxhelper.hxx"
@@ -63,28 +64,9 @@ OString lcl_padStartToLength(OString const& aString, sal_Int32 nLen, char cFill)
         return aString;
 }
 
-//Keep this function in-sync with the one in writerfilter/.../SettingsTable.cxx
-//Since this is not import code, "-1" needs to be handled as the mode that LO will save as.
-//To identify how your code should handle a "-1", look in DocxExport::WriteSettings().
-sal_Int32 lcl_getWordCompatibilityMode(const DocxExport& rDocExport)
-{
-    sal_Int32 nWordCompatibilityMode = rDocExport.getWordCompatibilityModeFromGrabBag();
-
-    // TODO: this is duplicated, better store it in DocxExport member?
-    if (!rDocExport.m_rDoc.getIDocumentSettingAccess().get(DocumentSettingId::ADD_EXT_LEADING))
-    {
-        if (nWordCompatibilityMode == -1 || 14 < nWordCompatibilityMode)
-        {
-            nWordCompatibilityMode = 14;
-        }
-    }
-
-    return nWordCompatibilityMode;
-}
-
 void CollectFloatingTableAttributes(DocxExport& rExport, const ww8::Frame& rFrame,
                                     ww8::WW8TableNodeInfoInner::Pointer_t pTableTextNodeInfoInner,
-                                    rtl::Reference<FastAttributeList>& pAttributes)
+                                    const rtl::Reference<FastAttributeList>& pAttributes)
 {
     // we export the values of the surrounding Frame
     OString sOrientation;
@@ -115,11 +97,11 @@ void CollectFloatingTableAttributes(DocxExport& rExport, const ww8::Frame& rFram
     if (nValue != 0)
         pAttributes->add(FSNS(XML_w, XML_bottomFromText), OString::number(nValue));
 
-    nValue = rFrame.GetFrameFormat().GetLRSpace().GetLeft();
+    nValue = rFrame.GetFrameFormat().GetLRSpace().ResolveLeft({});
     if (nValue != 0)
         pAttributes->add(FSNS(XML_w, XML_leftFromText), OString::number(nValue));
 
-    nValue = rFrame.GetFrameFormat().GetLRSpace().GetRight();
+    nValue = rFrame.GetFrameFormat().GetLRSpace().ResolveRight({});
     if (nValue != 0)
         pAttributes->add(FSNS(XML_w, XML_rightFromText), OString::number(nValue));
 
@@ -136,7 +118,7 @@ void CollectFloatingTableAttributes(DocxExport& rExport, const ww8::Frame& rFram
         const SwTableBox* pTabBox = pTableTextNodeInfoInner->getTableBox();
         const SwFrameFormat* pFrameFormat = pTabBox->GetFrameFormat();
         const SvxBoxItem& rBox = pFrameFormat->GetBox();
-        sal_Int32 nMode = lcl_getWordCompatibilityMode(rExport);
+        sal_Int32 nMode = rExport.getWordCompatibilityMode();
         if (nMode < 15)
         {
             sal_uInt16 nLeftDistance = rBox.GetDistance(SvxBoxItemLine::LEFT);
@@ -218,15 +200,15 @@ void DocxAttributeOutput::TableDefinition(
         nWidthPercent = rFrameSize.GetWidthPercent();
     }
 
-    uno::Reference<beans::XPropertySet> xPropertySet(
-        SwXTextTables::GetObject(*pTable->GetFrameFormat()), uno::UNO_QUERY);
+    rtl::Reference<SwXTextTable> xPropertySet
+        = SwXTextTable::CreateXTextTable(pTable->GetFrameFormat());
     bool isWidthRelative = false;
-    xPropertySet->getPropertyValue("IsWidthRelative") >>= isWidthRelative;
+    xPropertySet->getPropertyValue(u"IsWidthRelative"_ustr) >>= isWidthRelative;
     if (!isWidthRelative && !nWidthPercent)
     {
         // The best fit for "automatic" table placement is relative 100%
         short nHoriOrient = -1;
-        xPropertySet->getPropertyValue("HoriOrient") >>= nHoriOrient;
+        xPropertySet->getPropertyValue(u"HoriOrient"_ustr) >>= nHoriOrient;
         isWidthRelative = nHoriOrient == text::HoriOrientation::FULL;
         if (isWidthRelative)
             nWidthPercent = 100;
@@ -459,7 +441,7 @@ void DocxAttributeOutput::TableDefinition(
                 pJcVal = "left";
             else
                 pJcVal = "start";
-            nIndent = sal_Int32(pTableFormat->GetLRSpace().GetLeft());
+            nIndent = pTableFormat->GetLRSpace().ResolveLeft({});
 
             // Table indentation has different meaning in Word, depending if the table is nested or not.
             // If nested, tblInd is added to parent table's left spacing and defines left edge position
@@ -469,7 +451,7 @@ void DocxAttributeOutput::TableDefinition(
             // tdf#106742: since MS Word 2013 (compatibilityMode >= 15), top-level tables are handled the same as nested tables;
             // if no compatibilityMode is defined (which now should only happen on a new export to .docx),
             // LO uses a higher compatibility than 2010's 14.
-            sal_Int32 nMode = lcl_getWordCompatibilityMode(m_rExport);
+            sal_Int32 nMode = m_rExport.getWordCompatibilityMode();
 
             const SwFrameFormat* pFrameFormat
                 = pTableTextNodeInfoInner->getTableBox()->GetFrameFormat();
@@ -576,7 +558,7 @@ void DocxAttributeOutput::TableBackgrounds(
         = pFormat->GetAttrSet().GetItem<SfxGrabBagItem>(RES_FRMATR_GRABBAG)->GetGrabBag();
 
     OString sOriginalColor;
-    auto aGrabBagIt = rGrabBag.find("originalColor");
+    auto aGrabBagIt = rGrabBag.find(u"originalColor"_ustr);
     if (aGrabBagIt != rGrabBag.end())
         sOriginalColor
             = OUStringToOString(aGrabBagIt->second.get<OUString>(), RTL_TEXTENCODING_UTF8);
@@ -675,7 +657,7 @@ void DocxAttributeOutput::TableRowRedline(
         // use the same redline id in OOXML exported by MSO, but it seems, the recent solution
         // (different IDs for different ranges, also row changes) is also portable.
         OString aId(OString::number(m_nRedlineId++));
-        const OUString& rAuthor(SW_MOD()->GetRedlineAuthor(aRedlineData.GetAuthor()));
+        const OUString& rAuthor(SwModule::get()->GetRedlineAuthor(aRedlineData.GetAuthor()));
         OString aAuthor(OUStringToOString(
             bRemovePersonalInfo ? "Author" + OUString::number(GetExport().GetInfoID(rAuthor))
                                 : rAuthor,
@@ -737,7 +719,8 @@ void DocxAttributeOutput::TableCellRedline(
         const SwRedlineData& aRedlineData
             = bIsInExtra &&
                       // still the same type (an inserted cell could become a tracked deleted one)
-                      pRedline->GetRedlineData().GetType() == pRedline->GetRedlineData().GetType()
+                      pTableCellRedline->GetRedlineData().GetType()
+                          == pRedline->GetRedlineData().GetType()
                   ? pTableCellRedline->GetRedlineData()
                   : pRedline->GetRedlineData();
 
@@ -745,7 +728,7 @@ void DocxAttributeOutput::TableCellRedline(
         // use the same redline id in OOXML exported by MSO, but it seems, the recent solution
         // (different IDs for different ranges, also row changes) is also portable.
         OString aId(OString::number(m_nRedlineId++));
-        const OUString& rAuthor(SW_MOD()->GetRedlineAuthor(aRedlineData.GetAuthor()));
+        const OUString& rAuthor(SwModule::get()->GetRedlineAuthor(aRedlineData.GetAuthor()));
         OString aAuthor(OUStringToOString(
             bRemovePersonalInfo ? "Author" + OUString::number(GetExport().GetInfoID(rAuthor))
                                 : rAuthor,

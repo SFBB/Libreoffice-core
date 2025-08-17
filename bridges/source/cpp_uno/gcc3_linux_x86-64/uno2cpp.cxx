@@ -17,12 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sal/alloca.h>
-
 #include <exception>
 #include <typeinfo>
-
-#include <rtl/alloc.h>
 
 #include <com/sun/star/uno/genfunc.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
@@ -117,6 +113,7 @@ static void cpp_call(
 
     // Return
     typelib_TypeDescription * pReturnTypeDescr = nullptr;
+    // coverity[freed_arg] 2024.6.1 - pReturnTypeRef's nRefCount is > 1 here
     TYPELIB_DANGER_GET( &pReturnTypeDescr, pReturnTypeRef );
     assert(pReturnTypeDescr);
 
@@ -242,7 +239,7 @@ static void cpp_call(
                 "C++ code threw " + o3tl::runtimeToOUString(typeid(e).name())
                 + ": " + o3tl::runtimeToOUString(e.what()));
         } catch (...) {
-            throw RuntimeException("C++ code threw unknown exception");
+            throw RuntimeException(u"C++ code threw unknown exception"_ustr);
         }
 
         *ppUnoExc = nullptr;
@@ -343,7 +340,7 @@ void unoInterfaceProxyDispatch(
             aParam.bOut     = false;
 
             typelib_TypeDescriptionReference * pReturnTypeRef = nullptr;
-            OUString aVoidName("void");
+            OUString aVoidName(u"void"_ustr);
             typelib_typedescriptionreference_new(
                 &pReturnTypeRef, typelib_TypeClass_VOID, aVoidName.pData );
 
@@ -422,7 +419,7 @@ void unoInterfaceProxyDispatch(
     default:
     {
         ::com::sun::star::uno::RuntimeException aExc(
-            "illegal member type description!",
+            u"illegal member type description!"_ustr,
             ::com::sun::star::uno::Reference< ::com::sun::star::uno::XInterface >() );
 
         Type const & rExcType = cppu::UnoType<decltype(aExc)>::get();

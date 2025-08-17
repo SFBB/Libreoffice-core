@@ -30,6 +30,21 @@ void SAL_CALL WeakComponentImplHelperBase::dispose()
     maEventListeners.disposeAndClear(aGuard, aEvt);
 }
 
+// This is only called from the destructor to do cleanup that
+// might not have occurred
+void WeakComponentImplHelperBase::disposeOnDestruct()
+{
+    std::unique_lock aGuard(m_aMutex);
+    assert(m_refCount == 0 && "only supposed to be called from the destructor");
+    if (m_bDisposed)
+        return;
+    m_bDisposed = true;
+    // bump the ref-count so we don't accidentally do a double delete
+    // if something else increases and then decreases our ref-count
+    cppu::OWeakObject::acquire();
+    disposing(aGuard);
+}
+
 void WeakComponentImplHelperBase::disposing(std::unique_lock<std::mutex>&) {}
 
 void SAL_CALL WeakComponentImplHelperBase::addEventListener(
@@ -225,6 +240,34 @@ css::uno::Any WeakComponentImplHelper_query(css::uno::Type const& rType, cppu::c
         }
     }
     return pBase->comphelper::WeakComponentImplHelperBase::queryInterface(rType);
+}
+
+WeakImplHelperBase::~WeakImplHelperBase() {}
+
+css::uno::Any SAL_CALL WeakImplHelperBase::queryInterface(css::uno::Type const& rType)
+{
+    css::uno::Any aReturn = ::cppu::queryInterface(rType, static_cast<css::uno::XWeak*>(this));
+    if (aReturn.hasValue())
+        return aReturn;
+    return OWeakObject::queryInterface(rType);
+}
+
+css::uno::Any WeakImplHelper_query(css::uno::Type const& rType, cppu::class_data* cd,
+                                   WeakImplHelperBase* pBase)
+{
+    checkInterface(rType);
+    typelib_TypeDescriptionReference* pTDR = rType.getTypeLibType();
+
+    // shortcut XInterface to WeakComponentImplHelperBase
+    if (!isXInterface(pTDR->pTypeName))
+    {
+        void* p = queryDeepNoXInterface(pTDR, cd, pBase);
+        if (p)
+        {
+            return css::uno::Any(&p, pTDR);
+        }
+    }
+    return pBase->comphelper::WeakImplHelperBase::queryInterface(rType);
 }
 
 } // namespace comphelper

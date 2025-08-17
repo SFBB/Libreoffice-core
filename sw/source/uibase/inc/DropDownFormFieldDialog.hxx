@@ -14,7 +14,7 @@
 
 namespace sw::mark
 {
-class IFieldmark;
+class Fieldmark;
 }
 
 /// Dialog to specify the properties of drop-down form field
@@ -23,7 +23,7 @@ namespace sw
 class DropDownFormFieldDialog final : public weld::GenericDialogController
 {
 private:
-    mark::IFieldmark* m_pDropDownField;
+    mark::Fieldmark* m_pDropDownField;
     bool m_bListHasChanged;
 
     std::unique_ptr<weld::Entry> m_xListItemEntry;
@@ -43,19 +43,12 @@ private:
     void InitControls();
     void AppendItemToList();
     void UpdateButtons();
-    void Apply();
 
 public:
-    DropDownFormFieldDialog(weld::Widget* pParent, mark::IFieldmark* pDropDownField);
+    DropDownFormFieldDialog(weld::Widget* pParent, mark::Fieldmark* pDropDownField);
     virtual ~DropDownFormFieldDialog() override;
 
-    virtual short run() override
-    {
-        short nRet = GenericDialogController::run();
-        if (nRet == RET_OK)
-            Apply();
-        return nRet;
-    }
+    void Apply();
 };
 
 } // namespace sw

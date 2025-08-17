@@ -21,6 +21,7 @@
 
 #include <drawdoc.hxx>
 #include <DrawDocShell.hxx>
+#include <unomodel.hxx>
 #include <sdpage.hxx>
 #include <glob.hxx>
 #include <unmovss.hxx>
@@ -105,8 +106,7 @@ SdPage* DocumentHelper::CopyMasterPageToLocalDocument (
             break;
 
         // Create a new slide (and its notes page.)
-        uno::Reference<drawing::XDrawPagesSupplier> xSlideSupplier (
-            rTargetDocument.getUnoModel(), uno::UNO_QUERY);
+        rtl::Reference<SdXImpressDocument> xSlideSupplier(rTargetDocument.getUnoModel());
         if ( ! xSlideSupplier.is())
             break;
         uno::Reference<drawing::XDrawPages> xSlides =
@@ -167,8 +167,7 @@ SdPage* DocumentHelper::GetSlideForMasterPage (SdPage const * pMasterPage)
         // In most cases a new slide has just been inserted so start with
         // the last page.
         sal_uInt16 nPageIndex (pDocument->GetSdPageCount(PageKind::Standard)-1);
-        bool bFound (false);
-        while ( ! bFound)
+        while (true)
         {
             pCandidate = pDocument->GetSdPage(
                 nPageIndex,
@@ -178,21 +177,20 @@ SdPage* DocumentHelper::GetSlideForMasterPage (SdPage const * pMasterPage)
                 if (static_cast<SdPage*>(&pCandidate->TRG_GetMasterPage())
                     == pMasterPage)
                 {
-                    bFound = true;
                     break;
                 }
             }
 
             if (nPageIndex == 0)
+            {
+                // If no page was found, that referenced the given master page, reset
+                // the pointer that is returned.
+                pCandidate = nullptr;
                 break;
+            }
             else
                 nPageIndex --;
         }
-
-        // If no page was found, that referenced the given master page, reset
-        // the pointer that is returned.
-        if ( ! bFound)
-            pCandidate = nullptr;
     }
 
     return pCandidate;
@@ -272,7 +270,7 @@ void DocumentHelper::ProvideStyles (
         {
             pUndoManager->AddUndoAction (
                std::make_unique<SdMoveStyleSheetsUndoAction>(
-                   &rTargetDocument,
+                   rTargetDocument,
                    aCreatedStyles,
                    true));
         }

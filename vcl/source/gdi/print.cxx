@@ -153,10 +153,10 @@ void Printer::ImplPrintTransparent( const Bitmap& rBmp,
 
     // create forward mapping tables
     for( nX = 0; nX <= nSrcWidth; nX++ )
-        pMapX[ nX ] = aDestPt.X() + FRound( static_cast<double>(aDestSz.Width()) * nX / nSrcWidth );
+        pMapX[ nX ] = aDestPt.X() + basegfx::fround<tools::Long>( static_cast<double>(aDestSz.Width()) * nX / nSrcWidth );
 
     for( nY = 0; nY <= nSrcHeight; nY++ )
-        pMapY[ nY ] = aDestPt.Y() + FRound( static_cast<double>(aDestSz.Height()) * nY / nSrcHeight );
+        pMapY[ nY ] = aDestPt.Y() + basegfx::fround<tools::Long>( static_cast<double>(aDestSz.Height()) * nY / nSrcHeight );
 
     tools::Rectangle rectangle { Point(0,0), aSrcRect.GetSize() };
     const Point aMapPt(pMapX[rectangle.Left()], pMapY[rectangle.Top()]);
@@ -192,6 +192,15 @@ void Printer::DrawDeviceBitmapEx( const Point& rDestPt, const Size& rDestSize,
                                 const Point& rSrcPtPixel, const Size& rSrcSizePixel,
                                 BitmapEx& rBmpEx )
 {
+#ifdef MACOSX
+    // tdf#164354 draw alpha bitmaps directly to print graphics on macOS
+    // On macOS, there are no known problems drawing semi-transparent
+    // bitmaps so just draw the alpha bitmap directly without any blending.
+    AlphaMask aAlpha = rBmpEx.GetAlphaMask();
+    aAlpha.Invert();
+    DrawDeviceAlphaBitmap( rBmpEx.GetBitmap(), aAlpha, rDestPt, rDestSize, rSrcPtPixel, rSrcSizePixel );
+    aAlpha.Invert();
+#else
     if( rBmpEx.IsAlpha() )
     {
         // #107169# For true alpha bitmaps, no longer masking the
@@ -203,32 +212,21 @@ void Printer::DrawDeviceBitmapEx( const Point& rDestPt, const Size& rDestSize,
     }
     else
     {
-        Bitmap aBmp( rBmpEx.GetBitmap() );
+        const Bitmap& aBmp( rBmpEx.GetBitmap() );
         ImplPrintTransparent( aBmp, rDestPt, rDestSize, rSrcPtPixel, rSrcSizePixel );
     }
+#endif
 }
 
 void Printer::EmulateDrawTransparent ( const tools::PolyPolygon& rPolyPoly,
                                        sal_uInt16 nTransparencePercent )
 {
-    // #110958# Disable alpha VDev, we perform the necessary
-    VirtualDevice* pOldAlphaVDev = mpAlphaVDev;
-
-    // operation explicitly further below.
-    if( mpAlphaVDev )
-        mpAlphaVDev = nullptr;
-
     GDIMetaFile* pOldMetaFile = mpMetaFile;
     mpMetaFile = nullptr;
 
-    mpMetaFile = pOldMetaFile;
-
-    // #110958# Restore disabled alpha VDev
-    mpAlphaVDev = pOldAlphaVDev;
-
     tools::Rectangle       aPolyRect( LogicToPixel( rPolyPoly ).GetBoundRect() );
     const Size      aDPISize( LogicToPixel(Size(1, 1), MapMode(MapUnit::MapInch)) );
-    const tools::Long      nBaseExtent = std::max<tools::Long>( FRound( aDPISize.Width() / 300. ), 1 );
+    const tools::Long      nBaseExtent = std::max<tools::Long>( basegfx::fround<tools::Long>( aDPISize.Width() / 300. ), 1 );
     tools::Long            nMove;
     const sal_uInt16    nTrans = ( nTransparencePercent < 13 ) ? 0 :
         ( nTransparencePercent < 38 ) ? 25 :
@@ -280,9 +278,6 @@ void Printer::EmulateDrawTransparent ( const tools::PolyPolygon& rPolyPoly,
     Pop();
 
     mpMetaFile = pOldMetaFile;
-
-    // #110958# Restore disabled alpha VDev
-    mpAlphaVDev = pOldAlphaVDev;
 }
 
 void Printer::DrawOutDev( const Point& /*rDestPt*/, const Size& /*rDestSize*/,
@@ -449,6 +444,7 @@ void Printer::ImplInitData()
     mbInPrintPage       = false;
     mbNewJobSetup       = false;
     mbSinglePrintJobs   = false;
+    mbUsePrintSetting   = false;
     mpInfoPrinter       = nullptr;
     mpPrinter           = nullptr;
     mpDisplayDev        = nullptr;
@@ -729,10 +725,10 @@ void Printer::DrawDeviceMask( const Bitmap& rMask, const Color& rMaskColor,
 
     // create forward mapping tables
     for( nX = 0; nX <= nSrcWidth; nX++ )
-        pMapX[ nX ] = aDestPt.X() + FRound( static_cast<double>(aDestSz.Width()) * nX / nSrcWidth );
+        pMapX[ nX ] = aDestPt.X() + basegfx::fround<tools::Long>( static_cast<double>(aDestSz.Width()) * nX / nSrcWidth );
 
     for( nY = 0; nY <= nSrcHeight; nY++ )
-        pMapY[ nY ] = aDestPt.Y() + FRound( static_cast<double>(aDestSz.Height()) * nY / nSrcHeight );
+        pMapY[ nY ] = aDestPt.Y() + basegfx::fround<tools::Long>( static_cast<double>(aDestSz.Height()) * nY / nSrcHeight );
 
     // walk through all rectangles of mask
     const vcl::Region aWorkRgn(aMask.CreateRegion(COL_BLACK, tools::Rectangle(Point(), aMask.GetSizePixel())));
@@ -845,7 +841,7 @@ Printer::Printer( const JobSetup& rJobSetup )
 {
     ImplInitData();
     const ImplJobSetup& rConstData = rJobSetup.ImplGetConstData();
-    OUString aDriver = rConstData.GetDriver();
+    const OUString& aDriver = rConstData.GetDriver();
     SalPrinterQueueInfo* pInfo = ImplGetQueueInfo( rConstData.GetPrinterName(),
                                                    &aDriver );
     if ( pInfo )
@@ -920,8 +916,8 @@ void Printer::dispose()
     if ( mpNext )
         mpNext->mpPrev = mpPrev;
 
-    mpPrev.clear();
-    mpNext.clear();
+    mpPrev.reset();
+    mpNext.reset();
     OutputDevice::dispose();
 }
 
@@ -980,7 +976,7 @@ bool Printer::SetJobSetup( const JobSetup& rSetup )
     {
         ImplUpdateJobSetupPaper( aJobSetup );
         mbNewJobSetup = true;
-        maJobSetup = aJobSetup;
+        maJobSetup = std::move(aJobSetup);
         ImplUpdatePageData();
         ImplUpdateFontList();
         return true;
@@ -1021,7 +1017,7 @@ bool Printer::Setup(weld::Window* pWindow, PrinterSetupMode eMode)
     {
         ImplUpdateJobSetupPaper( aJobSetup );
         mbNewJobSetup = true;
-        maJobSetup = aJobSetup;
+        maJobSetup = std::move(aJobSetup);
         ImplUpdatePageData();
         ImplUpdateFontList();
         return true;
@@ -1089,7 +1085,7 @@ bool Printer::SetPrinterProps( const Printer* pPrinter )
         }
 
         // Construct new printer
-        OUString aDriver = pPrinter->GetDriverName();
+        const OUString& aDriver = pPrinter->GetDriverName();
         SalPrinterQueueInfo* pInfo = ImplGetQueueInfo( pPrinter->GetName(), &aDriver );
         if ( pInfo )
         {
@@ -1129,7 +1125,7 @@ bool Printer::SetOrientation( Orientation eOrientation )
         {
             ImplUpdateJobSetupPaper( aJobSetup );
             mbNewJobSetup = true;
-            maJobSetup = aJobSetup;
+            maJobSetup = std::move(aJobSetup);
             ImplUpdatePageData();
             ImplUpdateFontList();
             return true;
@@ -1170,7 +1166,7 @@ bool Printer::SetPaperBin( sal_uInt16 nPaperBin )
         {
             ImplUpdateJobSetupPaper( aJobSetup );
             mbNewJobSetup = true;
-            maJobSetup = aJobSetup;
+            maJobSetup = std::move(aJobSetup);
             ImplUpdatePageData();
             ImplUpdateFontList();
             return true;
@@ -1203,7 +1199,7 @@ void Printer::SetPrinterSettingsPreferred( bool bPaperSizeFromSetup)
         rData.SetPapersizeFromSetup(bPaperSizeFromSetup);
 
         mbNewJobSetup = true;
-        maJobSetup = aJobSetup;
+        maJobSetup = std::move(aJobSetup);
     }
 }
 
@@ -1292,7 +1288,7 @@ void Printer::SetPaper( Paper ePaper )
     {
         ImplUpdateJobSetupPaper( aJobSetup );
         mbNewJobSetup = true;
-        maJobSetup = aJobSetup;
+        maJobSetup = std::move(aJobSetup);
         ImplUpdatePageData();
         ImplUpdateFontList();
     }
@@ -1319,6 +1315,15 @@ bool Printer::SetPaperSizeUser( const Size& rSize )
 
         bNeedToChange = maJobSetup.ImplGetConstData().GetPaperFormat() != PAPER_USER &&
             maJobSetup.ImplGetConstData().GetPaperFormat() != aPaper;
+
+        if (!bNeedToChange)
+        {
+            Size aPaperSize = GetPaperSizePixel();
+            bNeedToChange = (aPageSize.Width() < aPageSize.Height()
+                             && aPaperSize.Width() > aPaperSize.Height())
+                            || (aPageSize.Width() > aPageSize.Height()
+                                && aPaperSize.Width() < aPaperSize.Height());
+        }
     }
 
     if(bNeedToChange)
@@ -1333,7 +1338,7 @@ bool Printer::SetPaperSizeUser( const Size& rSize )
         if ( IsDisplayPrinter() )
         {
             mbNewJobSetup = true;
-            maJobSetup = aJobSetup;
+            maJobSetup = std::move(aJobSetup);
             return true;
         }
 
@@ -1345,7 +1350,7 @@ bool Printer::SetPaperSizeUser( const Size& rSize )
         {
             ImplUpdateJobSetupPaper( aJobSetup );
             mbNewJobSetup = true;
-            maJobSetup = aJobSetup;
+            maJobSetup = std::move(aJobSetup);
             ImplUpdatePageData();
             ImplUpdateFontList();
             return true;
@@ -1439,7 +1444,7 @@ void Printer::SetDuplexMode( DuplexMode eDuplex )
     {
         ImplUpdateJobSetupPaper( aJobSetup );
         mbNewJobSetup = true;
-        maJobSetup = aJobSetup;
+        maJobSetup = std::move(aJobSetup);
         ImplUpdatePageData();
         ImplUpdateFontList();
     }
@@ -1477,6 +1482,22 @@ OUString Printer::GetPaperBinName( sal_uInt16 nPaperBin ) const
         return mpInfoPrinter->GetPaperBinName( &maJobSetup.ImplGetConstData(), nPaperBin );
     else
         return OUString();
+}
+
+sal_uInt16 Printer::GetPaperBinBySourceIndex(sal_uInt16 nPaperSource) const
+{
+    if ( IsDisplayPrinter() )
+        return 0;
+
+    return mpInfoPrinter->GetPaperBinBySourceIndex( &maJobSetup.ImplGetConstData(), nPaperSource );
+}
+
+sal_uInt16  Printer::GetSourceIndexByPaperBin(sal_uInt16 nPaperBin) const
+{
+    if (IsDisplayPrinter())
+        return 0;
+
+    return mpInfoPrinter->GetSourceIndexByPaperBin( &maJobSetup.ImplGetConstData(), nPaperBin);
 }
 
 void Printer::SetCopyCount( sal_uInt16 nCopy, bool bCollate )
@@ -1611,10 +1632,9 @@ void Printer::ClipAndDrawGradientMetafile ( const Gradient &rGradient, const too
 {
     const tools::Rectangle aBoundRect( rPolyPoly.GetBoundRect() );
 
-    Push( vcl::PushFlags::CLIPREGION );
+    auto popIt = ScopedPush(vcl::PushFlags::CLIPREGION);
     IntersectClipRegion(vcl::Region(rPolyPoly));
     DrawGradient( aBoundRect, rGradient );
-    Pop();
 }
 
 void Printer::SetFontOrientation( LogicalFontInstance* const pFontEntry ) const

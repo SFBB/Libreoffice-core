@@ -112,7 +112,7 @@ void OInterfaceContainer::impl_addVbEvents_nolck_nothrow(  const sal_Int32 i_nIn
                 break;
 
             Reference< XMultiServiceFactory > xDocFac( xDoc, UNO_QUERY_THROW );
-            Reference< XCodeNameQuery > xNameQuery( xDocFac->createInstance("ooo.vba.VBACodeNameProvider"), UNO_QUERY );
+            Reference< XCodeNameQuery > xNameQuery( xDocFac->createInstance(u"ooo.vba.VBACodeNameProvider"_ustr), UNO_QUERY );
             if ( !xNameQuery.is() )
                 break;
 
@@ -135,9 +135,9 @@ void OInterfaceContainer::impl_addVbEvents_nolck_nothrow(  const sal_Int32 i_nIn
 
             Reference< XPropertySet > xProps( xElement, UNO_QUERY_THROW );
             OUString sServiceName;
-            xProps->getPropertyValue("DefaultControl") >>= sServiceName;
+            xProps->getPropertyValue(u"DefaultControl"_ustr) >>= sServiceName;
 
-            Reference< ooo::vba::XVBAToOOEventDescGen > xDescSupplier( m_xContext->getServiceManager()->createInstanceWithContext("ooo.vba.VBAToOOEventDesc", m_xContext), UNO_QUERY_THROW );
+            Reference< ooo::vba::XVBAToOOEventDescGen > xDescSupplier( m_xContext->getServiceManager()->createInstanceWithContext(u"ooo.vba.VBAToOOEventDesc"_ustr, m_xContext), UNO_QUERY_THROW );
             Sequence< ScriptEventDescriptor > vbaEvents = xDescSupplier->getEventDescriptions( sServiceName , sCodeName );
 
             // register the vba script events
@@ -205,7 +205,7 @@ void OInterfaceContainer::clonedFrom(const OInterfaceContainer& _cloneSource)
     catch (const Exception&)
     {
         throw WrappedTargetRuntimeException(
-            "Could not clone the given interface hierarchy.",
+            u"Could not clone the given interface hierarchy."_ustr,
             static_cast< XIndexContainer* >( const_cast< OInterfaceContainer* >( &_cloneSource ) ),
             ::cppu::getCaughtException()
         );
@@ -748,8 +748,8 @@ void OInterfaceContainer::approveNewElement( const Reference< XPropertySet >& _r
     if ( _pElement )
     {
         _pElement->xPropertySet = _rxObject;
-        _pElement->xChild = xChild;
-        _pElement->aElementTypeInterface = aCorrectType;
+        _pElement->xChild = std::move(xChild);
+        _pElement->aElementTypeInterface = std::move(aCorrectType);
         _pElement->xInterface = Reference< XInterface >( _rxObject, UNO_QUERY );    // normalized XInterface
     }
 }
@@ -768,7 +768,7 @@ void OInterfaceContainer::implInsert(sal_Int32 _nIndex, const Reference< XProper
     if ( !pElementMetaData )
     {   // not yet approved by the caller -> do ourself
         pElementMetaData = createElementMetaData();
-        DBG_ASSERT( pElementMetaData, "OInterfaceContainer::implInsert: createElementMetaData returned nonsense!" );
+        assert(pElementMetaData && "OInterfaceContainer::implInsert: createElementMetaData returned nonsense!");
 
         // ensure that the meta data structure will be deleted later on
         aAutoDeleteMetaData.reset( pElementMetaData );
@@ -817,7 +817,7 @@ void OInterfaceContainer::implInsert(sal_Int32 _nIndex, const Reference< XProper
     bool bHandleVbaEvents = false;
     try
     {
-        _rxElement->getPropertyValue("GenerateVbaEvents") >>= bHandleVbaEvents;
+        _rxElement->getPropertyValue(u"GenerateVbaEvents"_ustr) >>= bHandleVbaEvents;
     }
     catch( const Exception& )
     {
@@ -1097,7 +1097,7 @@ void SAL_CALL OInterfaceContainer::replaceByName(const OUString& Name, const Any
     if (aPair.first == aPair.second)
         throw NoSuchElementException();
 
-    if (Element.getValueType().getTypeClass() != TypeClass_INTERFACE)
+    if (Element.getValueTypeClass() != TypeClass_INTERFACE)
         throw IllegalArgumentException();
 
     Reference<XPropertySet> xSet;

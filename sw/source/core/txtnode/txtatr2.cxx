@@ -54,14 +54,17 @@ bool lcl_CheckAutoFormatHint(const SfxHint& rHint, const SwTextNode* pTextNode)
 }
 }
 
-SwTextCharFormat::SwTextCharFormat( SwFormatCharFormat& rAttr,
-                    sal_Int32 nStt, sal_Int32 nEnd )
+SwTextCharFormat::SwTextCharFormat(
+    const SfxPoolItemHolder& rAttr,
+    sal_Int32 nStt,
+    sal_Int32 nEnd )
     : SwTextAttr( rAttr, nStt )
     , SwTextAttrEnd( rAttr, nStt, nEnd )
     , m_pTextNode( nullptr )
     , m_nSortNumber( 0 )
 {
-    rAttr.m_pTextAttribute = this;
+    SwFormatCharFormat& rSwFormatCharFormat(static_cast<SwFormatCharFormat&>(GetAttr()));
+    rSwFormatCharFormat.m_pTextAttribute = this;
     SetCharFormatAttr( true );
 }
 
@@ -72,11 +75,7 @@ SwTextCharFormat::~SwTextCharFormat( )
 void SwTextCharFormat::TriggerNodeUpdate(const sw::LegacyModifyHint& rHint)
 {
     const auto nWhich = rHint.GetWhich();
-    SAL_WARN_IF(
-            !isCHRATR(nWhich) &&
-            RES_OBJECTDYING != nWhich &&
-            RES_ATTRSET_CHG != nWhich &&
-            RES_FMT_CHG != nWhich, "sw.core", "SwTextCharFormat::TriggerNodeUpdate: unknown hint type");
+    assert( isCHRATR(nWhich) && "SwTextCharFormat::TriggerNodeUpdate: unknown hint type");
 
     if(m_pTextNode)
     {
@@ -84,7 +83,43 @@ void SwTextCharFormat::TriggerNodeUpdate(const sw::LegacyModifyHint& rHint)
             GetStart(),
             *GetEnd(),
             nWhich);
-        m_pTextNode->TriggerNodeUpdate(sw::LegacyModifyHint(&aUpdateAttr, &aUpdateAttr));
+        m_pTextNode->TriggerNodeUpdate(sw::UpdateAttrHint(&aUpdateAttr, &aUpdateAttr));
+    }
+}
+
+void SwTextCharFormat::TriggerNodeUpdate(const sw::ObjectDyingHint& /*rHint*/)
+{
+    if(m_pTextNode)
+    {
+        SwUpdateAttr aUpdateAttr(
+            GetStart(),
+            *GetEnd(),
+            RES_UPDATEATTR_OBJECTDYING);
+        m_pTextNode->TriggerNodeUpdate(sw::UpdateAttrHint(&aUpdateAttr, &aUpdateAttr));
+    }
+}
+
+void SwTextCharFormat::TriggerNodeUpdate(const sw::AttrSetChangeHint& /*rHint*/)
+{
+    if(m_pTextNode)
+    {
+        SwUpdateAttr aUpdateAttr(
+            GetStart(),
+            *GetEnd(),
+            RES_UPDATEATTR_ATTRSET_CHG);
+        m_pTextNode->TriggerNodeUpdate(sw::UpdateAttrHint(&aUpdateAttr, &aUpdateAttr));
+    }
+}
+
+void SwTextCharFormat::TriggerNodeUpdate(const SwFormatChangeHint&)
+{
+    if(m_pTextNode)
+    {
+        SwUpdateAttr aUpdateAttr(
+            GetStart(),
+            *GetEnd(),
+            RES_UPDATEATTR_FMT_CHG);
+        m_pTextNode->TriggerNodeUpdate(sw::UpdateAttrHint(&aUpdateAttr, &aUpdateAttr));
     }
 }
 
@@ -93,8 +128,10 @@ void SwTextCharFormat::HandleAutoFormatUsedHint(const sw::AutoFormatUsedHint& rH
     rHint.CheckNode(m_pTextNode);
 }
 
-SwTextAttrNesting::SwTextAttrNesting( SfxPoolItem & i_rAttr,
-            const sal_Int32 i_nStart, const sal_Int32 i_nEnd )
+SwTextAttrNesting::SwTextAttrNesting(
+    const SfxPoolItemHolder& i_rAttr,
+    const sal_Int32 i_nStart,
+    const sal_Int32 i_nEnd )
     : SwTextAttr( i_rAttr, i_nStart )
     , SwTextAttrEnd( i_rAttr, i_nStart, i_nEnd )
 {
@@ -110,8 +147,10 @@ SwTextAttrNesting::~SwTextAttrNesting()
 {
 }
 
-SwTextINetFormat::SwTextINetFormat( SwFormatINetFormat& rAttr,
-                            sal_Int32 nStart, sal_Int32 nEnd )
+SwTextINetFormat::SwTextINetFormat(
+    const SfxPoolItemHolder& rAttr,
+    sal_Int32 nStart,
+    sal_Int32 nEnd )
     : SwTextAttr( rAttr, nStart )
     , SwTextAttrNesting( rAttr, nStart, nEnd )
     , SwClient( nullptr )
@@ -119,7 +158,8 @@ SwTextINetFormat::SwTextINetFormat( SwFormatINetFormat& rAttr,
     , m_bVisited( false )
     , m_bVisitedValid( false )
 {
-    rAttr.mpTextAttr  = this;
+    SwFormatINetFormat& rSwFormatINetFormat(static_cast<SwFormatINetFormat&>(GetAttr()));
+    rSwFormatINetFormat.mpTextAttr  = this;
     SetCharFormatAttr( true );
 }
 
@@ -142,7 +182,7 @@ SwCharFormat* SwTextINetFormat::GetCharFormat()
         }
 
         const sal_uInt16 nId = IsVisited() ? rFormat.GetVisitedFormatId() : rFormat.GetINetFormatId();
-        const OUString& rStr = IsVisited() ? rFormat.GetVisitedFormat() : rFormat.GetINetFormat();
+        const UIName& rStr = IsVisited() ? rFormat.GetVisitedFormat() : rFormat.GetINetFormat();
         if (rStr.isEmpty())
         {
             OSL_ENSURE( false, "<SwTextINetFormat::GetCharFormat()> - missing character format at hyperlink attribute");
@@ -161,7 +201,7 @@ SwCharFormat* SwTextINetFormat::GetCharFormat()
     }
 
     if ( pRet )
-        pRet->Add( this );
+        pRet->Add(*this);
     else
         EndListeningAll();
 
@@ -173,18 +213,37 @@ void SwTextINetFormat::SwClientNotify(const SwModify&, const SfxHint& rHint)
     if(lcl_CheckAutoFormatHint(rHint))
         return;
 
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    const auto nWhich = pLegacy->GetWhich();
-    OSL_ENSURE(isCHRATR(nWhich) || (RES_OBJECTDYING == nWhich)
-            || (RES_ATTRSET_CHG == nWhich) || (RES_FMT_CHG == nWhich),
-            "SwTextINetFormat::SwClientNotify: unknown hint.");
-    if(!m_pTextNode)
-        return;
-
-    const SwUpdateAttr aUpdateAttr(GetStart(), *GetEnd(), nWhich);
-    m_pTextNode->TriggerNodeUpdate(sw::LegacyModifyHint(&aUpdateAttr, &aUpdateAttr));
+    if (rHint.GetId() == SfxHintId::SwFormatChange)
+    {
+        if(!m_pTextNode)
+            return;
+        const SwUpdateAttr aUpdateAttr(GetStart(), *GetEnd(), RES_UPDATEATTR_FMT_CHG);
+        m_pTextNode->TriggerNodeUpdate(sw::UpdateAttrHint(&aUpdateAttr, &aUpdateAttr));
+    }
+    else if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        if(!m_pTextNode)
+            return;
+        const SwUpdateAttr aUpdateAttr(GetStart(), *GetEnd(), RES_UPDATEATTR_ATTRSET_CHG);
+        m_pTextNode->TriggerNodeUpdate(sw::UpdateAttrHint(&aUpdateAttr, &aUpdateAttr));
+    }
+    else if (rHint.GetId() == SfxHintId::SwObjectDying)
+    {
+        if(!m_pTextNode)
+            return;
+        const SwUpdateAttr aUpdateAttr(GetStart(), *GetEnd(), RES_UPDATEATTR_OBJECTDYING);
+        m_pTextNode->TriggerNodeUpdate(sw::UpdateAttrHint(&aUpdateAttr, &aUpdateAttr));
+    }
+    else if (rHint.GetId() == SfxHintId::SwLegacyModify)
+    {
+        auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
+        const auto nWhich = pLegacy->GetWhich();
+        assert(isCHRATR(nWhich) && "SwTextINetFormat::SwClientNotify: unknown hint.");
+        if(!m_pTextNode)
+            return;
+        const SwUpdateAttr aUpdateAttr(GetStart(), *GetEnd(), nWhich);
+        m_pTextNode->TriggerNodeUpdate(sw::UpdateAttrHint(&aUpdateAttr, &aUpdateAttr));
+    }
 }
 
 bool SwTextINetFormat::IsProtect( ) const
@@ -192,36 +251,45 @@ bool SwTextINetFormat::IsProtect( ) const
     return m_pTextNode && m_pTextNode->IsProtect();
 }
 
-SwTextRuby::SwTextRuby( SwFormatRuby& rAttr,
-                      sal_Int32 nStart, sal_Int32 nEnd )
+SwTextRuby::SwTextRuby(
+    const SfxPoolItemHolder& rAttr,
+    sal_Int32 nStart,
+    sal_Int32 nEnd )
     : SwTextAttr( rAttr, nStart )
     , SwTextAttrNesting( rAttr, nStart, nEnd )
-    , SwClient( nullptr )
     , m_pTextNode( nullptr )
 {
-    rAttr.m_pTextAttr  = this;
+    SwFormatRuby& rSwFormatRuby(static_cast<SwFormatRuby&>(GetAttr()));
+    rSwFormatRuby.m_pTextAttr  = this;
 }
 
 SwTextRuby::~SwTextRuby()
 {
 }
 
-void SwTextRuby::SwClientNotify(const SwModify&, const SfxHint& rHint)
+void SwTextRuby::Notify(const SfxHint& rHint)
 {
     if(lcl_CheckAutoFormatHint(rHint, m_pTextNode))
         return;
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    const auto nWhich = pLegacy->GetWhich();
-    SAL_WARN_IF( !isCHRATR(nWhich)
-            && (RES_OBJECTDYING == nWhich)
-            && (RES_ATTRSET_CHG == nWhich)
-            && (RES_FMT_CHG == nWhich), "sw.core", "SwTextRuby::SwClientNotify(): unknown legacy hint");
-    if(!m_pTextNode)
+    sal_uInt16 nWhich = 0;
+    switch(rHint.GetId())
+    {
+        case SfxHintId::SwAttrSetChange: nWhich = RES_UPDATEATTR_ATTRSET_CHG; break;
+        case SfxHintId::SwFormatChange: nWhich = RES_UPDATEATTR_FMT_CHG; break;
+        case SfxHintId::SwObjectDying: nWhich = RES_UPDATEATTR_OBJECTDYING; break;
+        case SfxHintId::SwLegacyModify:
+        {
+            auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
+            nWhich = pLegacy->GetWhich();
+            assert( isCHRATR(nWhich) && "SwTextRuby::SwClientNotify(): unknown legacy hint");
+            break;
+        }
+        default: break;
+    }
+    if(!m_pTextNode || !nWhich)
         return;
     SwUpdateAttr aUpdateAttr(GetStart(), *GetEnd(), nWhich);
-    m_pTextNode->TriggerNodeUpdate(sw::LegacyModifyHint(&aUpdateAttr, &aUpdateAttr));
+    m_pTextNode->TriggerNodeUpdate(sw::UpdateAttrHint(&aUpdateAttr, &aUpdateAttr));
 }
 
 SwCharFormat* SwTextRuby::GetCharFormat()
@@ -232,7 +300,7 @@ SwCharFormat* SwTextRuby::GetCharFormat()
     if( !rFormat.GetText().isEmpty() )
     {
         const SwDoc& rDoc = GetTextNode().GetDoc();
-        const OUString& rStr = rFormat.GetCharFormatName();
+        const UIName& rStr = rFormat.GetCharFormatName();
         const sal_uInt16 nId = rStr.isEmpty()
                              ? o3tl::narrowing<sal_uInt16>(RES_POOLCHR_RUBYTEXT)
                              : rFormat.GetCharFormatId();
@@ -258,10 +326,9 @@ SwCharFormat* SwTextRuby::GetCharFormat()
         }
     }
 
-    if( pRet )
-        pRet->Add( this );
-    else
-        EndListeningAll();
+    EndListeningAll();
+    if(pRet)
+        StartListening(pRet->GetNotifier());
 
     return pRet;
 }
@@ -270,26 +337,30 @@ SwTextMeta *
 SwTextMeta::CreateTextMeta(
     ::sw::MetaFieldManager & i_rTargetDocManager,
     SwTextNode *const i_pTargetTextNode,
-    SwFormatMeta & i_rAttr,
+    const SfxPoolItemHolder& i_rAttr,
     sal_Int32 const i_nStart,
     sal_Int32 const i_nEnd,
     bool const i_bIsCopy)
 {
     if (i_bIsCopy)
     {   // i_rAttr is already cloned, now call DoCopy to copy the sw::Meta
-        OSL_ENSURE(i_pTargetTextNode, "cannot copy Meta without target node");
-        i_rAttr.DoCopy(i_rTargetDocManager, *i_pTargetTextNode);
+        assert(i_pTargetTextNode && "cannot copy Meta without target node");
+        SwFormatMeta* pSwFormatMeta(static_cast<SwFormatMeta*>(const_cast<SfxPoolItem*>(i_rAttr.getItem())));
+        pSwFormatMeta->DoCopy(i_rTargetDocManager, *i_pTargetTextNode);
     }
     SwTextMeta *const pTextMeta(new SwTextMeta(i_rAttr, i_nStart, i_nEnd));
     return pTextMeta;
 }
 
-SwTextMeta::SwTextMeta( SwFormatMeta & i_rAttr,
-        const sal_Int32 i_nStart, const sal_Int32 i_nEnd )
+SwTextMeta::SwTextMeta(
+    const SfxPoolItemHolder& i_rAttr,
+    const sal_Int32 i_nStart,
+    const sal_Int32 i_nEnd )
     : SwTextAttr( i_rAttr, i_nStart )
     , SwTextAttrNesting( i_rAttr, i_nStart, i_nEnd )
 {
-    i_rAttr.SetTextAttr( this );
+    SwFormatMeta& rSwFormatMeta(static_cast<SwFormatMeta&>(GetAttr()));
+    rSwFormatMeta.SetTextAttr( this );
     SetHasDummyChar(true);
 }
 

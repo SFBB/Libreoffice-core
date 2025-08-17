@@ -18,20 +18,16 @@
  */
 #pragma once
 
-#include "charttoolsdllapi.hxx"
-#include <cppuhelper/implbase.hxx>
-#include <com/sun/star/chart2/XColorScheme.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
+#include "BaseColorScheme.hxx"
 
 #include <memory>
-#include <string_view>
 
 namespace com::sun::star::uno { class XComponentContext; }
 
 namespace chart
 {
 
-OOO_DLLPUBLIC_CHARTTOOLS css::uno::Reference< css::chart2::XColorScheme > createConfigColorScheme(
+css::uno::Reference< css::chart2::XColorScheme > createConfigColorScheme(
     const css::uno::Reference< css::uno::XComponentContext > & xContext );
 
 namespace impl
@@ -39,22 +35,17 @@ namespace impl
 class ChartConfigItem;
 }
 
-class ConfigColorScheme final :
-    public ::cppu::WeakImplHelper<
-        css::chart2::XColorScheme,
-        css::lang::XServiceInfo >
+class ConfigColorScheme final : public BaseColorScheme
 {
 public:
     explicit ConfigColorScheme( const css::uno::Reference< css::uno::XComponentContext > & xContext );
     virtual ~ConfigColorScheme() override;
 
-    /// declare XServiceInfo methods
-    virtual OUString SAL_CALL getImplementationName() override;
-    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
     // ____ ConfigItemListener ____
     void notify();
+
+    /// declare XServiceInfo methods
+    virtual OUString SAL_CALL getImplementationName() override;
 
 protected:
     // ____ XColorScheme ____
@@ -66,8 +57,6 @@ private:
     // member variables
     css::uno::Reference< css::uno::XComponentContext >    m_xContext;
     std::unique_ptr< impl::ChartConfigItem >            m_apChartConfigItem;
-    mutable css::uno::Sequence< sal_Int64 >               m_aColorSequence;
-    mutable sal_Int32                                     m_nNumberOfColors;
     bool                                                  m_bNeedsUpdate;
 };
 

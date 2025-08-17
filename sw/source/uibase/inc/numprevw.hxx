@@ -23,14 +23,13 @@
 #include <vcl/customweld.hxx>
 
 class SwNumRule;
-namespace rtl { class OUString; }
 
 class NumberingPreview final : public weld::CustomWidgetController
 {
     const SwNumRule*    m_pActNum;
     vcl::Font           m_aStdFont;
     tools::Long                m_nPageWidth;
-    const OUString*     m_pOutlineNames;
+    const UIName*       m_pOutlineNames;
     bool                m_bPosition;
     sal_uInt16          m_nActLevel;
 
@@ -55,7 +54,7 @@ public:
 
     void    SetPageWidth(tools::Long nPgWidth)
                             {m_nPageWidth = nPgWidth;}
-    void    SetOutlineNames(const OUString* pNames)
+    void    SetOutlineNames(const UIName* pNames)
                     {m_pOutlineNames = pNames;}
     void    SetPositionMode()
                     { m_bPosition = true;}

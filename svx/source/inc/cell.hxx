@@ -35,7 +35,6 @@
 
 
 class SfxItemSet;
-class OutlinerParaObject;
 class SdrObject;
 namespace sdr::properties { class CellProperties; }
 
@@ -112,8 +111,8 @@ public:
     SVX_DLLPRIVATE virtual css::awt::Size SAL_CALL calcAdjustedSize( const css::awt::Size& aNewSize ) override;
 
     // XMergeableCell
-    SVX_DLLPRIVATE virtual ::sal_Int32 SAL_CALL getRowSpan() override;
-    SVX_DLLPRIVATE virtual ::sal_Int32 SAL_CALL getColumnSpan() override;
+    virtual ::sal_Int32 SAL_CALL getRowSpan() override;
+    virtual ::sal_Int32 SAL_CALL getColumnSpan() override;
     virtual sal_Bool SAL_CALL isMerged() override;
 
     // XCell

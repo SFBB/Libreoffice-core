@@ -36,20 +36,19 @@
 #include <bitmaps.hlst>
 
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::uno;
 
 // edit insert-field
 SwChangeDBDlg::SwChangeDBDlg(SwView const & rVw)
-    : SfxDialogController(rVw.GetViewFrame().GetFrameWeld(), "modules/swriter/ui/exchangedatabases.ui",
-                          "ExchangeDatabasesDialog")
+    : SfxDialogController(rVw.GetViewFrame().GetFrameWeld(), u"modules/swriter/ui/exchangedatabases.ui"_ustr,
+                          u"ExchangeDatabasesDialog"_ustr)
     , m_pSh(rVw.GetWrtShellPtr())
-    , m_xUsedDBTLB(m_xBuilder->weld_tree_view("inuselb"))
-    , m_xAvailDBTLB(new SwDBTreeList(m_xBuilder->weld_tree_view("availablelb")))
-    , m_xAddDBPB(m_xBuilder->weld_button("browse"))
-    , m_xDocDBNameFT(m_xBuilder->weld_label("dbnameft"))
-    , m_xDefineBT(m_xBuilder->weld_button("ok"))
+    , m_xUsedDBTLB(m_xBuilder->weld_tree_view(u"inuselb"_ustr))
+    , m_xAvailDBTLB(new SwDBTreeList(m_xBuilder->weld_tree_view(u"availablelb"_ustr)))
+    , m_xAddDBPB(m_xBuilder->weld_button(u"browse"_ustr))
+    , m_xDocDBNameFT(m_xBuilder->weld_label(u"dbnameft"_ustr))
+    , m_xDefineBT(m_xBuilder->weld_button(u"ok"_ustr))
 {
     int nWidth = m_xUsedDBTLB->get_approximate_digit_width() * 25;
     int nHeight = m_xUsedDBTLB->get_height_rows(8);
@@ -68,7 +67,7 @@ SwChangeDBDlg::SwChangeDBDlg(SwView const & rVw)
 
     Link<weld::TreeView&,void> aLink = LINK(this, SwChangeDBDlg, TreeSelectHdl);
 
-    m_xUsedDBTLB->connect_changed(aLink);
+    m_xUsedDBTLB->connect_selection_changed(aLink);
     m_xAvailDBTLB->connect_changed(aLink);
     TreeSelect();
 }
@@ -76,7 +75,7 @@ SwChangeDBDlg::SwChangeDBDlg(SwView const & rVw)
 // initialise database listboxes
 void SwChangeDBDlg::FillDBPopup()
 {
-    Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const Reference< XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
     Reference<XDatabaseContext> xDBContext = DatabaseContext::create(xContext);
     const SwDBData& rDBData = m_pSh->GetDBData();
     m_xAvailDBTLB->Select(rDBData.sDataSource, rDBData.sCommand, u"");
@@ -156,14 +155,6 @@ std::unique_ptr<weld::TreeIter> SwChangeDBDlg::Insert(std::u16string_view rDBNam
 // destroy dialog
 SwChangeDBDlg::~SwChangeDBDlg()
 {
-}
-
-short SwChangeDBDlg::run()
-{
-    short nRet = SfxDialogController::run();
-    if (nRet == RET_OK)
-        UpdateFields();
-    return nRet;
 }
 
 void SwChangeDBDlg::UpdateFields()

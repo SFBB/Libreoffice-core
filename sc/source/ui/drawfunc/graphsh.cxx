@@ -46,14 +46,14 @@ void ScGraphicShell::InitInterface_Impl()
                                             SfxVisibilityFlags::Standard | SfxVisibilityFlags::Server,
                                             ToolbarId::Graphic_Objectbar);
 
-    GetStaticInterface()->RegisterPopupMenu("graphic");
+    GetStaticInterface()->RegisterPopupMenu(u"graphic"_ustr);
 }
 
 
 ScGraphicShell::ScGraphicShell(ScViewData& rData) :
     ScDrawShell(rData)
 {
-    SetName("GraphicObject");
+    SetName(u"GraphicObject"_ustr);
     SfxShell::SetContextName(vcl::EnumContext::GetContextName(vcl::EnumContext::Context::Graphic));
 }
 
@@ -111,26 +111,22 @@ void ScGraphicShell::ExecuteFilter( const SfxRequest& rReq )
         if( auto pGraphicObj = dynamic_cast<SdrGrafObj*>( pObj) )
             if( pGraphicObj->GetGraphicType() == GraphicType::Bitmap )
             {
-                GraphicObject aFilterObj( pGraphicObj->GetGraphicObject() );
-
-                if( SvxGraphicFilterResult::NONE ==
-                    SvxGraphicFilter::ExecuteGrfFilterSlot( rReq, aFilterObj ) )
-                {
-                    SdrPageView* pPageView = pView->GetSdrPageView();
-
-                    if( pPageView )
+                SvxGraphicFilter::ExecuteGrfFilterSlot( rReq, pGraphicObj->GetGraphicObject(),
+                    [pView, pGraphicObj, pObj, rMarkList] (GraphicObject aFilterObj) -> void
                     {
-                        rtl::Reference<SdrGrafObj> pFilteredObj = SdrObject::Clone(*pGraphicObj, pGraphicObj->getSdrModelFromSdrObject());
-                        OUString    aStr = pView->GetDescriptionOfMarkedObjects() + " " + ScResId(SCSTR_UNDO_GRAFFILTER);
-                        pView->BegUndo( aStr );
-                        pFilteredObj->SetGraphicObject( aFilterObj );
-                        pView->ReplaceObjectAtView( pObj, *pPageView, pFilteredObj.get() );
-                        pView->EndUndo();
-                    }
-                }
+                        if( SdrPageView* pPageView = pView->GetSdrPageView() )
+                        {
+                            rtl::Reference<SdrGrafObj> pFilteredObj = SdrObject::Clone(*pGraphicObj, pGraphicObj->getSdrModelFromSdrObject());
+                            OUString aStr = rMarkList.GetMarkDescription() + " " + ScResId(SCSTR_UNDO_GRAFFILTER);
+                            pView->BegUndo( aStr );
+                            pFilteredObj->SetGraphicObject( aFilterObj );
+                            pView->ReplaceObjectAtView( pObj, *pPageView, pFilteredObj.get() );
+                            pView->EndUndo();
+                        }
+                    });
+                return;
             }
     }
-
     Invalidate();
 }
 
@@ -212,7 +208,7 @@ void ScGraphicShell::ExecuteCompressGraphic( SAL_UNUSED_PARAMETER SfxRequest& )
                 {
                     rtl::Reference<SdrGrafObj> pNewObject = dialog.GetCompressedSdrGrafObj();
                     SdrPageView* pPageView = pView->GetSdrPageView();
-                    OUString aUndoString = pView->GetDescriptionOfMarkedObjects() + " Compress";
+                    OUString aUndoString = rMarkList.GetMarkDescription() + " Compress";
                     pView->BegUndo( aUndoString );
                     pView->ReplaceObjectAtView( pObj, *pPageView, pNewObject.get() );
                     pView->EndUndo();
@@ -288,12 +284,12 @@ void ScGraphicShell::ExecuteSaveGraphic( SAL_UNUSED_PARAMETER SfxRequest& /*rReq
 
             if (nState == RET_YES)
             {
-                GraphicHelper::ExportGraphic(pWinFrame, pObj->GetTransformedGraphic(), "");
+                GraphicHelper::ExportGraphic(pWinFrame, pObj->GetTransformedGraphic(), u""_ustr);
             }
             else if (nState == RET_NO)
             {
                 const GraphicObject& aGraphicObject(pObj->GetGraphicObject());
-                GraphicHelper::ExportGraphic(pWinFrame, aGraphicObject.GetGraphic(), "");
+                GraphicHelper::ExportGraphic(pWinFrame, aGraphicObject.GetGraphic(), u""_ustr);
             }
         }
     }
@@ -346,7 +342,7 @@ void ScGraphicShell::ExecuteChangePicture( SAL_UNUSED_PARAMETER SfxRequest& /*rR
                         rtl::Reference<SdrGrafObj> pNewObject(SdrObject::Clone(*pGraphicObj, pGraphicObj->getSdrModelFromSdrObject()));
                         pNewObject->SetGraphic( aGraphic );
                         SdrPageView* pPageView = pView->GetSdrPageView();
-                        OUString aUndoString = pView->GetDescriptionOfMarkedObjects() + " Change";
+                        OUString aUndoString = rMarkList.GetMarkDescription() + " Change";
                         pView->BegUndo( aUndoString );
                         pView->ReplaceObjectAtView( pObj, *pPageView, pNewObject.get() );
                         pView->EndUndo();

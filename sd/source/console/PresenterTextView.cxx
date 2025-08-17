@@ -91,7 +91,7 @@ PresenterTextView::PresenterTextView (
     // portions of the same text direction.
     mxScriptTypeDetector.set(
         xFactory->createInstanceWithContext(
-            "com.sun.star.i18n.ScriptTypeDetector",
+            u"com.sun.star.i18n.ScriptTypeDetector"_ustr,
             rxContext),
         UNO_QUERY_THROW);
 }
@@ -124,7 +124,7 @@ void PresenterTextView::SetText (const Reference<text::XText>& rxText)
         pParagraph->SetupCellArray(mpFont);
         pParagraph->SetCharacterOffset(nCharacterCount);
         nCharacterCount += pParagraph->GetCharacterCount();
-        maParagraphs.push_back(pParagraph);
+        maParagraphs.push_back(std::move(pParagraph));
     }
 
     if (mpCaret)
@@ -454,7 +454,7 @@ PresenterTextParagraph::PresenterTextParagraph (
     Reference<beans::XPropertySet> xProperties (rxTextRange, UNO_QUERY);
     try
     {
-        xProperties->getPropertyValue("WritingMode") >>= mnWritingMode;
+        xProperties->getPropertyValue(u"WritingMode"_ustr) >>= mnWritingMode;
     }
     catch(beans::UnknownPropertyException&)
     {
@@ -710,7 +710,7 @@ void PresenterTextParagraph::AddLine (
     aLine.mnLineEndCellIndex = nCellIndex;
     aLine.mnWidth = nWidth;
 
-    maLines.push_back(aLine);
+    maLines.push_back(std::move(aLine));
 
     rCurrentLine.startPos = rCurrentLine.endPos;
 }
@@ -803,7 +803,11 @@ TextSegment PresenterTextParagraph::GetTextSegment (
         case AccessibleTextType::CHARACTER:
         case AccessibleTextType::GLYPH:
         case AccessibleTextType::ATTRIBUTE_RUN:
-            return CreateTextSegment(nIndex+nOffset, nIndex+nOffset+1);
+        {
+            const sal_Int32 nStartIndex = nIndex + nOffset;
+            const sal_Int32 nEndIndex = nStartIndex < GetCharacterCount() ? nStartIndex + 1 : nStartIndex;
+            return CreateTextSegment(nStartIndex, nEndIndex);
+        }
     }
 
     return TextSegment(OUString(), 0,0);

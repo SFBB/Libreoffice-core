@@ -20,14 +20,11 @@
 
 #include <WrappedProperty.hxx>
 #include "Chart2ModelContact.hxx"
-#include <DiagramHelper.hxx>
 #include <DataSeries.hxx>
 
 #include <memory>
 #include <utility>
 #include <vector>
-
-namespace com::sun::star::chart2 { class XDataSeries; }
 
 namespace chart::wrapper
 {
@@ -105,7 +102,7 @@ public:
     {
         PROPERTYTYPE aNewValue = PROPERTYTYPE();
         if( ! (rOuterValue >>= aNewValue) )
-            throw css::lang::IllegalArgumentException( "statistic property requires different type", nullptr, 0 );
+            throw css::lang::IllegalArgumentException( u"statistic property requires different type"_ustr, nullptr, 0 );
 
         if( m_ePropertyType == DIAGRAM )
         {

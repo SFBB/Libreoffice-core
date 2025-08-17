@@ -22,9 +22,6 @@
 #include <utility>
 
 
-using namespace com::sun::star;
-
-
 namespace drawinglayer::processor2d
 {
         void BaseProcessor2D::processBasePrimitive2D(const primitive2d::BasePrimitive2D& /*rCandidate*/)
@@ -49,7 +46,8 @@ namespace drawinglayer::processor2d
         // Primitive2DDecompositionVisitor
         void BaseProcessor2D::visit(const primitive2d::Primitive2DReference& rCandidate)
         {
-            processBasePrimitive2D(*rCandidate);
+            if (rCandidate)
+                processBasePrimitive2D(*rCandidate);
         }
         void BaseProcessor2D::visit(const primitive2d::Primitive2DContainer& rContainer)
         {
@@ -64,11 +62,23 @@ namespace drawinglayer::processor2d
         {
             for (const primitive2d::Primitive2DReference& rCandidate : rSource)
             {
-                if (rCandidate)
+                // Skip, if not visible
+                if (rCandidate && rCandidate->getVisible())
                     processBasePrimitive2D(*rCandidate);
             }
         }
 
+        void BaseProcessor2D::setViewInformation2D(const geometry::ViewInformation2D& rNew)
+        {
+            if (rNew != maViewInformation2D)
+            {
+                // set if changed
+                maViewInformation2D = rNew;
+
+                // allow reaction on change
+                onViewInformation2DChanged();
+            }
+        }
 } // end of namespace
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -27,7 +27,6 @@
 
 #include "XMLIndexTemplateContext.hxx"
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
@@ -47,8 +46,8 @@ XMLIndexChapterInfoEntryContext::XMLIndexChapterInfoEntryContext(
     XMLIndexTemplateContext& rTemplate,
     bool bT ) :
         XMLIndexSimpleEntryContext(rImport,
-                                   (bT ? OUString("TokenEntryNumber")
-                                       : OUString("TokenChapterInfo")),
+                                   (bT ? u"TokenEntryNumber"_ustr
+                                       : u"TokenChapterInfo"_ustr),
                                    rTemplate),
         nChapterInfo(ChapterFormat::NAME_NUMBER),
         bChapterInfoOK(false),
@@ -102,7 +101,7 @@ void XMLIndexChapterInfoEntryContext::startFastElement(
             case XML_ELEMENT(TEXT, XML_OUTLINE_LEVEL):
             {
                 sal_Int32 nTmp;
-                if (::sax::Converter::convertNumber(nTmp, aIter.toView()))
+                if (::sax::Converter::convertNumber(nTmp, aIter.toView(), 0, SAL_MAX_INT16))
                 {
 //control on range is carried out in the UNO level
                     nOutlineLevel = static_cast<sal_uInt16>(nTmp);

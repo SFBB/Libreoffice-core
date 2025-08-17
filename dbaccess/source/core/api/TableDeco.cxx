@@ -352,7 +352,7 @@ void ODBTableDecorator::construct()
 // XServiceInfo
 OUString SAL_CALL ODBTableDecorator::getImplementationName()
     {
-        return "com.sun.star.sdb.dbaccess.ODBTableDecorator";
+        return u"com.sun.star.sdb.dbaccess.ODBTableDecorator"_ustr;
     }
 sal_Bool SAL_CALL ODBTableDecorator::supportsService(const OUString& _rServiceName)
     {
@@ -607,13 +607,12 @@ void ODBTableDecorator::columnDropped(const OUString& _sName)
 
 Reference< XPropertySet > ODBTableDecorator::createColumnDescriptor()
 {
-    Reference<XDataDescriptorFactory> xNames;
-    if(m_xTable.is())
-        xNames.set(m_xTable->getColumns(),UNO_QUERY);
-    Reference< XPropertySet > xRet;
-    if ( xNames.is() )
-        xRet = new OTableColumnDescriptorWrapper( xNames->createDataDescriptor(), false, true );
-    return xRet;
+    if(!m_xTable.is())
+        return nullptr;
+    Reference<XDataDescriptorFactory> xNames(m_xTable->getColumns(),UNO_QUERY);
+    if ( !xNames.is() )
+        return nullptr;
+    return new OTableColumnDescriptorWrapper( xNames->createDataDescriptor(), false, true );
 }
 
 void SAL_CALL ODBTableDecorator::acquire() noexcept
@@ -628,7 +627,7 @@ void SAL_CALL ODBTableDecorator::release() noexcept
 
 void SAL_CALL ODBTableDecorator::setName( const OUString& /*aName*/ )
 {
-    throwFunctionNotSupportedRuntimeException( "XNamed::setName", *this );
+    throwFunctionNotSupportedRuntimeException( u"XNamed::setName"_ustr, *this );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

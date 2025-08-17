@@ -122,10 +122,11 @@
 #include <ndtxt.hxx>
 #include <iodetect.hxx>
 
+#include <vcl/tabs.hrc>
+
 #include <memory>
 
 using namespace ::com::sun::star::ui::dialogs;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 using namespace ::sfx2;
@@ -145,7 +146,9 @@ std::shared_ptr<SfxDocumentInfoDialog> SwDocShell::CreateDocumentInfoDialog(weld
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
             xDlg->AddFontTabPage();
-            xDlg->AddTabPage("writerstats", SwResId(STR_DOC_STAT), pFact->GetTabPageCreatorFunc(RID_SW_TP_DOC_STAT));
+            xDlg->AddTabPage(u"writerstats"_ustr, TabResId(RID_TAB_STATISTICS.aLabel),
+                             pFact->GetTabPageCreatorFunc(RID_SW_TP_DOC_STAT),
+                             RID_L + RID_TAB_STATISTICS.sIconName);
         }
     }
     return xDlg;
@@ -153,7 +156,7 @@ std::shared_ptr<SfxDocumentInfoDialog> SwDocShell::CreateDocumentInfoDialog(weld
 
 void SwDocShell::ToggleLayoutMode(SwView* pView)
 {
-    OSL_ENSURE( pView, "SwDocShell::ToggleLayoutMode, pView is null." );
+    assert(pView && "SwDocShell::ToggleLayoutMode, pView is null.");
 
     const SwViewOption& rViewOptions = *pView->GetWrtShell().GetViewOptions();
 
@@ -253,7 +256,7 @@ void SwDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
             case SfxEventHintId::OpenDoc:
             {
                 uno::Sequence< css::uno::Any > aArgs;
-                SW_MOD()->CallAutomationApplicationEventSinks( "DocumentChange", aArgs );
+                SwModule::get()->CallAutomationApplicationEventSinks(u"DocumentChange"_ustr, aArgs);
                 break;
             }
             default:
@@ -267,7 +270,7 @@ void SwDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
                     uno::Any aDocument;
                     aDocument <<= mxAutomationDocumentObject;
                     uno::Sequence< uno::Any > aArgs{ aDocument };
-                    SW_MOD()->CallAutomationApplicationEventSinks( "NewDocument", aArgs );
+                    SwModule::get()->CallAutomationApplicationEventSinks( u"NewDocument"_ustr, aArgs );
                 }
                 break;
             case SfxEventHintId::OpenDoc:
@@ -275,7 +278,7 @@ void SwDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
                     uno::Any aDocument;
                     aDocument <<= mxAutomationDocumentObject;
                     uno::Sequence< uno::Any > aArgs{ aDocument };
-                    SW_MOD()->CallAutomationApplicationEventSinks( "DocumentOpen", aArgs );
+                    SwModule::get()->CallAutomationApplicationEventSinks( u"DocumentOpen"_ustr, aArgs );
                 }
                 break;
             default:
@@ -366,7 +369,7 @@ bool SwDocShell::PrepareClose( bool bUI )
                                        uno::Any(false)
         };
 
-        SW_MOD()->CallAutomationApplicationEventSinks( "DocumentBeforeClose", aArgs );
+        SwModule::get()->CallAutomationApplicationEventSinks(u"DocumentBeforeClose"_ustr, aArgs);
 
         // If the Cancel argument was set to True by an event handler, return false.
         bool bCancel(false);
@@ -550,14 +553,16 @@ void SwDocShell::Execute(SfxRequest& rReq)
 
                 if ( aFileName.isEmpty() )
                 {
-                    SfxNewFileDialog aNewFileDlg(GetView()->GetFrameWeld(), SfxNewFileDialogMode::LoadTemplate);
+                    weld::Window* pDialogParent = rReq.GetFrameWeld();
+                    SAL_WARN_IF(!pDialogParent, "sw.ui", "missing parameter for DialogParent");
+                    SfxNewFileDialog aNewFileDlg(pDialogParent, SfxNewFileDialogMode::LoadTemplate);
                     aNewFileDlg.SetTemplateFlags(nFlags);
 
                     sal_uInt16 nRet = aNewFileDlg.run();
                     if(RET_TEMPLATE_LOAD == nRet)
                     {
                         FileDialogHelper aDlgHelper(TemplateDescription::FILEOPEN_SIMPLE,
-                                                    FileDialogFlags::NONE, GetView()->GetFrameWeld());
+                                                    FileDialogFlags::NONE, pDialogParent);
                         aDlgHelper.SetContext(FileDialogHelper::WriterLoadTemplate);
                         uno::Reference < XFilePicker3 > xFP = aDlgHelper.GetFilePicker();
 
@@ -568,7 +573,7 @@ void SwDocShell::Execute(SfxRequest& rReq)
                         while( pFlt )
                         {
                             // --> OD #i117339#
-                            if( pFlt && pFlt->IsAllowedAsTemplate() &&
+                            if( pFlt->IsAllowedAsTemplate() &&
                                 ( pFlt->GetUserData() == "CXML" ||
                                   pFlt->GetUserData() == "CXMLV" ) )
                             {
@@ -580,7 +585,7 @@ void SwDocShell::Execute(SfxRequest& rReq)
                         bool bWeb = dynamic_cast< SwWebDocShell *>( this ) !=  nullptr;
                         std::shared_ptr<const SfxFilter> pOwnFlt =
                                 SwDocShell::Factory().GetFilterContainer()->
-                                GetFilter4FilterName("writer8");
+                                GetFilter4FilterName(u"writer8"_ustr);
 
                         // make sure the default file format is also available
                         if(bWeb)
@@ -660,8 +665,8 @@ void SwDocShell::Execute(SfxRequest& rReq)
                         std::shared_ptr<const SfxFilter> pFlt = GetMedium()->GetFilter();
                         if(!pFlt || pFlt->GetUserData() != pHtmlFlt->GetUserData())
                         {
-                            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(rViewFrame.GetFrameWeld(), "modules/swriter/ui/saveashtmldialog.ui"));
-                            std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog("SaveAsHTMLDialog"));
+                            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(rViewFrame.GetFrameWeld(), u"modules/swriter/ui/saveashtmldialog.ui"_ustr));
+                            std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog(u"SaveAsHTMLDialog"_ustr));
                             if (RET_YES == xQuery->run())
                                 bLocalHasName = false;
                             else
@@ -750,70 +755,67 @@ void SwDocShell::Execute(SfxRequest& rReq)
         case FN_ABSTRACT_NEWDOC:
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            ScopedVclPtr<AbstractSwInsertAbstractDlg> pDlg(pFact->CreateSwInsertAbstractDlg(GetView()->GetFrameWeld()));
-            if(RET_OK == pDlg->Execute())
-            {
-                sal_uInt8 nLevel = pDlg->GetLevel();
-                sal_uInt8 nPara = pDlg->GetPara();
-                SwDoc* pSmryDoc = new SwDoc();
-                SfxObjectShellLock xDocSh(new SwDocShell(*pSmryDoc, SfxObjectCreateMode::STANDARD));
-                xDocSh->DoInitNew();
-
-                bool bImpress = FN_ABSTRACT_STARIMPRESS == nWhich;
-                m_xDoc->Summary(*pSmryDoc, nLevel, nPara, bImpress);
-                if( bImpress )
+            VclPtr<AbstractSwInsertAbstractDlg> pDlg(pFact->CreateSwInsertAbstractDlg(GetView()->GetFrameWeld()));
+            pDlg->StartExecuteAsync(
+                [this, pDlg, nWhich] (sal_Int32 nResult)->void
                 {
-                    WriterRef xWrt;
-                    // mba: looks as if relative URLs don't make sense here
-                    ::GetRTFWriter(std::u16string_view(), OUString(), xWrt);
-                    SvMemoryStream *pStrm = new SvMemoryStream();
-                    pStrm->SetBufferSize( 16348 );
-                    SwWriter aWrt( *pStrm, *pSmryDoc );
-                    ErrCodeMsg eErr = aWrt.Write( xWrt );
-                    if( !eErr.IgnoreWarning() )
+                    if (nResult == RET_OK)
                     {
-                        uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
-                        uno::Reference< frame::XDispatchProvider > xProv = drawing::ModuleDispatcher::create( xContext );
+                        sal_uInt8 nLevel = pDlg->GetLevel();
+                        sal_uInt8 nPara = pDlg->GetPara();
+                        SwDoc* pSmryDoc = new SwDoc();
+                        SfxObjectShellLock xDocSh(new SwDocShell(*pSmryDoc, SfxObjectCreateMode::STANDARD));
+                        xDocSh->DoInitNew();
 
-                        uno::Reference< frame::XDispatchHelper > xHelper( frame::DispatchHelper::create(xContext) );
-                        pStrm->Seek( STREAM_SEEK_TO_END );
-                        pStrm->WriteChar( '\0' );
-                        pStrm->Seek( STREAM_SEEK_TO_BEGIN );
-
-                        // Transfer ownership of stream to a lockbytes object
-                        SvLockBytes aLockBytes( pStrm, true );
-                        SvLockBytesStat aStat;
-                        if ( aLockBytes.Stat( &aStat ) == ERRCODE_NONE )
+                        bool bImpress = FN_ABSTRACT_STARIMPRESS == nWhich;
+                        m_xDoc->Summary(*pSmryDoc, nLevel, nPara, bImpress);
+                        if( bImpress )
                         {
-                            sal_uInt32 nLen = aStat.nSize;
-                            std::size_t nRead = 0;
-                            uno::Sequence< sal_Int8 > aSeq( nLen );
-                            aLockBytes.ReadAt( 0, aSeq.getArray(), nLen, &nRead );
+                            WriterRef xWrt;
+                            // mba: looks as if relative URLs don't make sense here
+                            ::GetRTFWriter(std::u16string_view(), OUString(), xWrt);
+                            SvMemoryStream *pStrm = new SvMemoryStream();
+                            pStrm->SetBufferSize( 16348 );
+                            SwWriter aWrt( *pStrm, *pSmryDoc );
+                            ErrCodeMsg eErr = aWrt.Write( xWrt );
+                            if( !eErr.IgnoreWarning() )
+                            {
+                                const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
+                                uno::Reference< frame::XDispatchProvider > xProv = drawing::ModuleDispatcher::create( xContext );
 
-                            uno::Sequence< beans::PropertyValue > aArgs{
-                                comphelper::makePropertyValue("RtfOutline", aSeq)
-                            };
-                            xHelper->executeDispatch( xProv, "SendOutlineToImpress", OUString(), 0, aArgs );
+                                uno::Reference< frame::XDispatchHelper > xHelper( frame::DispatchHelper::create(xContext) );
+                                pStrm->Seek( STREAM_SEEK_TO_END );
+                                pStrm->WriteChar( '\0' );
+                                pStrm->Seek( STREAM_SEEK_TO_BEGIN );
+
+                                uno::Sequence< sal_Int8 > aSeq( pStrm->TellEnd() );
+                                pStrm->ReadBytes( aSeq.getArray(), aSeq.getLength() );
+
+                                uno::Sequence< beans::PropertyValue > aArgs{
+                                    comphelper::makePropertyValue(u"RtfOutline"_ustr, aSeq)
+                                };
+                                xHelper->executeDispatch( xProv, u"SendOutlineToImpress"_ustr, OUString(), 0, aArgs );
+                            }
+                            else
+                                ErrorHandler::HandleError( eErr );
+                        }
+                        else
+                        {
+                            // Create new document
+                            SfxViewFrame *pFrame = SfxViewFrame::LoadDocument( *xDocSh, SFX_INTERFACE_NONE );
+                            SwView      *pCurrView = static_cast<SwView*>( pFrame->GetViewShell());
+
+                            // Set document's title
+                            OUString aTmp = SwResId(STR_ABSTRACT_TITLE) + GetTitle();
+                            xDocSh->SetTitle( aTmp );
+                            pCurrView->GetWrtShell().SetNewDoc();
+                            pFrame->Show();
+                            pSmryDoc->getIDocumentState().SetModified();
                         }
                     }
-                    else
-                        ErrorHandler::HandleError( eErr );
+                    pDlg->disposeOnce();
                 }
-                else
-                {
-                    // Create new document
-                    SfxViewFrame *pFrame = SfxViewFrame::LoadDocument( *xDocSh, SFX_INTERFACE_NONE );
-                    SwView      *pCurrView = static_cast<SwView*>( pFrame->GetViewShell());
-
-                    // Set document's title
-                    OUString aTmp = SwResId(STR_ABSTRACT_TITLE) + GetTitle();
-                    xDocSh->SetTitle( aTmp );
-                    pCurrView->GetWrtShell().SetNewDoc();
-                    pFrame->Show();
-                    pSmryDoc->getIDocumentState().SetModified();
-                }
-
-            }
+            );
         }
         break;
         case FN_OUTLINE_TO_CLIPBOARD:
@@ -836,7 +838,7 @@ void SwDocShell::Execute(SfxRequest& rReq)
                     pStrm->Seek( STREAM_SEEK_TO_BEGIN );
                     if ( nWhich == FN_OUTLINE_TO_IMPRESS )
                     {
-                        uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+                        const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
                         uno::Reference< frame::XDispatchProvider > xProv = drawing::ModuleDispatcher::create( xContext );
 
                         uno::Reference< frame::XDispatchHelper > xHelper( frame::DispatchHelper::create(xContext) );
@@ -844,21 +846,13 @@ void SwDocShell::Execute(SfxRequest& rReq)
                         pStrm->WriteChar( '\0' );
                         pStrm->Seek( STREAM_SEEK_TO_BEGIN );
 
-                        // Transfer ownership of stream to a lockbytes object
-                        SvLockBytes aLockBytes( pStrm.release(), true );
-                        SvLockBytesStat aStat;
-                        if ( aLockBytes.Stat( &aStat ) == ERRCODE_NONE )
-                        {
-                            sal_uInt32 nLen = aStat.nSize;
-                            std::size_t nRead = 0;
-                            uno::Sequence< sal_Int8 > aSeq( nLen );
-                            aLockBytes.ReadAt( 0, aSeq.getArray(), nLen, &nRead );
+                        uno::Sequence< sal_Int8 > aSeq( pStrm->TellEnd() );
+                        pStrm->ReadBytes( aSeq.getArray(), aSeq.getLength() );
 
-                            uno::Sequence< beans::PropertyValue > aArgs{
-                                comphelper::makePropertyValue("RtfOutline", aSeq)
-                            };
-                            xHelper->executeDispatch( xProv, "SendOutlineToImpress", OUString(), 0, aArgs );
-                        }
+                        uno::Sequence< beans::PropertyValue > aArgs{
+                            comphelper::makePropertyValue(u"RtfOutline"_ustr, aSeq)
+                        };
+                        xHelper->executeDispatch( xProv, u"SendOutlineToImpress"_ustr, OUString(), 0, aArgs );
                     }
                     else
                     {
@@ -1001,7 +995,7 @@ void SwDocShell::Execute(SfxRequest& rReq)
                     {
                         // for Global-documents we now only offer the current one.
                         pFlt = SwGlobalDocShell::Factory().GetFilterContainer()->
-                                    GetFilter4Extension( "odm"  );
+                                    GetFilter4Extension( u"odm"_ustr  );
                         pStrId = STR_LOAD_GLOBAL_DOC;
                     }
 
@@ -1051,7 +1045,7 @@ void SwDocShell::Execute(SfxRequest& rReq)
                             SwTextFormatColl &rTextColl = *(*m_xDoc->GetTextFormatColls())[ i ];
                             if( !rTextColl.IsDefault() && rTextColl.IsAtDocNodeSet() )
                             {
-                                pEntries[nIdx++] = sStyle + rTextColl.GetName();
+                                pEntries[nIdx++] = sStyle + rTextColl.GetName().toString();
                             }
                         }
 
@@ -1126,7 +1120,7 @@ void SwDocShell::Execute(SfxRequest& rReq)
                         {
                             const SwTextFormatColl* pSplitColl = nullptr;
                             if ( !aTemplateName.isEmpty() )
-                                pSplitColl = m_xDoc->FindTextFormatCollByName(aTemplateName);
+                                pSplitColl = m_xDoc->FindTextFormatCollByName(UIName(aTemplateName));
                             bDone = bCreateHtml
                                 ? m_xDoc->GenerateHTMLDoc( aFileName, pSplitColl )
                                 : m_xDoc->GenerateGlobalDoc( aFileName, pSplitColl );
@@ -1202,8 +1196,8 @@ void SwDocShell::Execute(SfxRequest& rReq)
 
             if (SfxDispatcher* pDispatch = pViewShell->GetDispatcher())
             {
-                SfxStringItem aApp(SID_DOC_SERVICE, "com.sun.star.text.TextDocument");
-                SfxStringItem aTarget(SID_TARGETNAME, "_blank");
+                SfxStringItem aApp(SID_DOC_SERVICE, u"com.sun.star.text.TextDocument"_ustr);
+                SfxStringItem aTarget(SID_TARGETNAME, u"_blank"_ustr);
                 pDispatch->ExecuteList(SID_OPENDOC, SfxCallMode::API|SfxCallMode::SYNCHRON, { &aApp, &aTarget });
             }
         }
@@ -1298,7 +1292,7 @@ void SwDocShell::Execute(SfxRequest& rReq)
             SfxBindings& rBindings( pViewShell->GetViewFrame().GetBindings() );
 
             if ( SfxNotebookBar::IsActive() )
-                sfx2::SfxNotebookBar::ExecMethod( rBindings, pFile ? pFile->GetValue() : "" );
+                sfx2::SfxNotebookBar::ExecMethod( rBindings, pFile ? pFile->GetValue() : u""_ustr );
             else
             {
                 sfx2::SfxNotebookBar::CloseMethod( rBindings );
@@ -1307,6 +1301,7 @@ void SwDocShell::Execute(SfxRequest& rReq)
         break;
         case FN_REDLINE_ACCEPT_ALL:
         case FN_REDLINE_REJECT_ALL:
+        case FN_REDLINE_REINSTATE_ALL:
         {
             IDocumentRedlineAccess& rRedlineAccess = GetDoc()->getIDocumentRedlineAccess();
             SwWrtShell *pWrtShell = dynamic_cast<SwWrtShell*>(GetDoc()->getIDocumentLayoutAccess().GetCurrentViewShell());
@@ -1354,7 +1349,15 @@ void SwDocShell::Execute(SfxRequest& rReq)
                 pWrtShell->StartAllAction();
             }
 
-            rRedlineAccess.AcceptAllRedline(nWhich == FN_REDLINE_ACCEPT_ALL);
+            if (nWhich == FN_REDLINE_REINSTATE_ALL)
+            {
+                pWrtShell->SelAll();
+                pWrtShell->ReinstateRedlinesInSelection();
+            }
+            else
+            {
+                rRedlineAccess.AcceptAllRedline(nWhich == FN_REDLINE_ACCEPT_ALL);
+            }
 
             if (pWrtShell)
             {
@@ -1438,7 +1441,7 @@ void SwDocShell::FillClass( SvGlobalName * pClassName,
 
 void SwDocShell::SetModified( bool bSet )
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
     SfxObjectShell::SetModified( bSet );
     if( !IsEnableSetModified())
@@ -1475,13 +1478,13 @@ void SwDocShell::UpdateChildWindows()
     SwFieldDlgWrapper *pWrp = static_cast<SwFieldDlgWrapper*>(rVFrame.
             GetChildWindow( SwFieldDlgWrapper::GetChildWindowId() ));
     if( pWrp )
-        pWrp->ReInitDlg( this );
+        pWrp->ReInitDlg();
 
     // if necessary newly initialize RedlineDlg
     SwRedlineAcceptChild *pRed = static_cast<SwRedlineAcceptChild*>(rVFrame.
             GetChildWindow( SwRedlineAcceptChild::GetChildWindowId() ));
     if( pRed )
-        pRed->ReInitDlg( this );
+        pRed->ReInitDlg();
 }
 
 namespace {
@@ -1554,9 +1557,8 @@ void SwDocShell::ReloadFromHtml( const OUString& rStreamName, SwSrcView* pSrcVie
     RemoveLink();
 
     // now also the UNO-Model has to be informed about the new Doc #51535#
-    uno::Reference<text::XTextDocument> xDoc(GetBaseModel(), uno::UNO_QUERY);
-    text::XTextDocument* pxDoc = xDoc.get();
-    static_cast<SwXTextDocument*>(pxDoc)->InitNewDoc();
+    rtl::Reference<SwXTextDocument> xDoc(GetBaseModel());
+    xDoc->InitNewDoc();
 
     AddLink();
     //#116402# update font list when new document is created
@@ -1569,10 +1571,12 @@ void SwDocShell::ReloadFromHtml( const OUString& rStreamName, SwSrcView* pSrcVie
     // The HTML template still has to be set
     SetHTMLTemplate( *GetDoc() );   //Styles from HTML.vor
 
-    SfxViewShell* pViewShell = GetView() ? static_cast<SfxViewShell*>(GetView())
-                                         : SfxViewShell::Current();
-    SfxViewFrame& rViewFrame = pViewShell->GetViewFrame();
-    rViewFrame.GetDispatcher()->Execute( SID_VIEWSHELL0, SfxCallMode::SYNCHRON );
+    if (SfxViewShell* pViewShell = GetView() ? static_cast<SfxViewShell*>(GetView())
+                                             : SfxViewShell::Current())
+    {
+        SfxViewFrame& rViewFrame = pViewShell->GetViewFrame();
+        rViewFrame.GetDispatcher()->Execute( SID_VIEWSHELL0, SfxCallMode::SYNCHRON );
+    }
 
     SubInitNew();
 
@@ -1639,7 +1643,7 @@ ErrCodeMsg SwDocShell::LoadStylesFromFile(const OUString& rURL, SwgReaderOption&
             try
             {
                 uno::Reference< beans::XPropertySet > xProps( xStorage, uno::UNO_QUERY_THROW );
-                xProps->getPropertyValue( "MediaType" );
+                xProps->getPropertyValue( u"MediaType"_ustr );
                 bImport = true;
             }
             catch (const uno::Exception&)
@@ -1789,8 +1793,7 @@ int SwFindDocShell( SfxObjectShellRef& xDocSh,
             xMed->SetFilter( pSfxFlt );
 
             // If the new shell is created, SfxObjectShellLock should be used to let it be closed later for sure
-            SwDocShell *const pNew(new SwDocShell(SfxObjectCreateMode::INTERNAL));
-            xLockRef = pNew;
+            xLockRef = new SwDocShell(SfxObjectCreateMode::INTERNAL);
             xDocSh = static_cast<SfxObjectShell*>(xLockRef);
             if (xDocSh->DoLoad(xMed.release()))
             {

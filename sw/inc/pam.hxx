@@ -41,7 +41,7 @@ struct SAL_WARN_UNUSED SW_DLLPUBLIC SwPosition
 
     SwPosition( const SwNodeIndex &rNode, const SwContentIndex &rContent );
     SwPosition( const SwNode &rNode, const SwContentIndex &rContent );
-    explicit SwPosition( SwNodes& rNodes, SwNodeOffset nIndex = SwNodeOffset(0) );
+    explicit SwPosition( const SwNodes& rNodes, SwNodeOffset nIndex = SwNodeOffset(0) );
     explicit SwPosition( const SwNodeIndex &rNode, SwNodeOffset nDiff = SwNodeOffset(0) );
     explicit SwPosition( const SwNode& rNode, SwNodeOffset nDiff = SwNodeOffset(0) );
     explicit SwPosition( const SwContentNode& rNode, sal_Int32 nContentOffset = 0 );
@@ -83,8 +83,7 @@ struct SAL_WARN_UNUSED SW_DLLPUBLIC SwPosition
 
     const SwContentNode* GetContentNode() const { return nContent.GetContentNode(); }
     sal_Int32 GetContentIndex() const { return nContent.GetIndex(); }
-    void SetMark(const sw::mark::IMark* pMark) { nContent.SetMark(pMark); }
-    void SetRedline(SwRangeRedline* pRangeRedline) { nContent.SetRedline(pRangeRedline); }
+    void SetOwner(ISwContentIndexOwner* pOwner) { nContent.SetOwner(pOwner); }
 
     /// These all set both nNode and nContent
     void Assign( const SwNode& rNd, SwNodeOffset nDelta, sal_Int32 nContentOffset = 0 );
@@ -210,7 +209,7 @@ public:
     SwPaM( const SwNode& rNd, SwNodeOffset nNdOffset, sal_Int32 nContent = 0, SwPaM* pRing = nullptr );
     explicit SwPaM( const SwNode& rNd, sal_Int32 nContent = 0, SwPaM* pRing = nullptr );
     explicit SwPaM( const SwNodeIndex& rNd, sal_Int32 nContent = 0, SwPaM* pRing = nullptr );
-    explicit SwPaM( SwNodes& rNds, SwNodeOffset nMkOffset = SwNodeOffset(0), SwPaM* pRing = nullptr );
+    explicit SwPaM( const SwNodes& rNds, SwNodeOffset nMkOffset = SwNodeOffset(0), SwPaM* pRing = nullptr );
     virtual ~SwPaM() override;
 
     /// this takes a second parameter, which indicates the Ring that
@@ -310,6 +309,8 @@ public:
     }
 
     OUString GetText() const;
+    // copy text into buffer
+    void AppendTextTo(rtl::OUStringBuffer& rBuffer) const;
     void InvalidatePaM();
     SwPaM* GetNext()
         { return GetNextInRing(); }

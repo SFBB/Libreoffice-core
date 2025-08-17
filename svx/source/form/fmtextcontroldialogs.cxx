@@ -27,17 +27,20 @@
 #include <svl/cjkoptions.hxx>
 #include <utility>
 
-
+#include <vcl/tabs.hrc>
 namespace svx
 {
 
     TextControlCharAttribDialog::TextControlCharAttribDialog(weld::Window* pParent, const SfxItemSet& rCoreSet, SvxFontListItem aFontList)
-        : SfxTabDialogController(pParent, "svx/ui/textcontrolchardialog.ui", "TextControlCharacterPropertiesDialog", &rCoreSet)
+        : SfxTabDialogController(pParent, u"svx/ui/textcontrolchardialog.ui"_ustr, u"TextControlCharacterPropertiesDialog"_ustr, &rCoreSet)
         , m_aFontList(std::move(aFontList))
     {
-        AddTabPage("font", RID_SVXPAGE_CHAR_NAME);
-        AddTabPage("fonteffects", RID_SVXPAGE_CHAR_EFFECTS);
-        AddTabPage("position", RID_SVXPAGE_CHAR_POSITION);
+        AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel), RID_SVXPAGE_CHAR_NAME,
+                   RID_L + RID_TAB_FONT.sIconName);
+        AddTabPage(u"fonteffects"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel),
+                   RID_SVXPAGE_CHAR_EFFECTS, RID_L + RID_TAB_FONTEFFECTS.sIconName);
+        AddTabPage(u"position"_ustr, TabResId(RID_TAB_POSITION.aLabel), RID_SVXPAGE_CHAR_POSITION,
+                   RID_L + RID_TAB_POSITION.sIconName);
     }
 
     void TextControlCharAttribDialog::PageCreated(const OUString& rId, SfxTabPage& rPage)
@@ -62,17 +65,19 @@ namespace svx
     }
 
     TextControlParaAttribDialog::TextControlParaAttribDialog(weld::Window* pParent, const SfxItemSet& rCoreSet)
-        : SfxTabDialogController(pParent, "svx/ui/textcontrolparadialog.ui", "TextControlParagraphPropertiesDialog", &rCoreSet)
+        : SfxTabDialogController(pParent, u"svx/ui/textcontrolparadialog.ui"_ustr, u"TextControlParagraphPropertiesDialog"_ustr, &rCoreSet)
     {
-        AddTabPage("labelTP_PARA_STD", RID_SVXPAGE_STD_PARAGRAPH);
-        AddTabPage("labelTP_PARA_ALIGN", RID_SVXPAGE_ALIGN_PARAGRAPH);
+        AddTabPage(u"indents"_ustr, TabResId(RID_TAB_INDENTS.aLabel), RID_SVXPAGE_STD_PARAGRAPH,
+                   RID_L + RID_TAB_INDENTS.sIconName);
+        AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel),
+                   RID_SVXPAGE_ALIGN_PARAGRAPH, RID_L + RID_TAB_ALIGNMENT.sIconName);
 
-        if( SvtCJKOptions::IsAsianTypographyEnabled() )
-            AddTabPage("labelTP_PARA_ASIAN", RID_SVXPAGE_PARA_ASIAN);
-        else
-            RemoveTabPage("labelTP_PARA_ASIAN");
+        if (SvtCJKOptions::IsAsianTypographyEnabled())
+            AddTabPage(u"asian"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel), RID_SVXPAGE_PARA_ASIAN,
+                       RID_L + RID_TAB_ASIANTYPO.sIconName);
 
-        AddTabPage("labelTP_TABULATOR", RID_SVXPAGE_TABULATOR);
+        AddTabPage(u"tabs"_ustr, TabResId(RID_TAB_TABS.aLabel), RID_SVXPAGE_TABULATOR,
+                   RID_L + RID_TAB_TABS.sIconName);
     }
 }
 

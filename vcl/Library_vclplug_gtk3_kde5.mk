@@ -88,7 +88,6 @@ $(eval $(call gb_Library_use_externals,vclplug_gtk3_kde5,\
 
 $(eval $(call gb_Library_add_exception_objects,vclplug_gtk3_kde5,\
 	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkaction \
-	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkbridge \
 	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkcomponent \
 	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkeditabletext \
 	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkfactory \
@@ -101,12 +100,12 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_gtk3_kde5,\
 	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktablecell \
 	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktextattributes \
 	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atktext \
-	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkutil \
 	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkvalue \
 	vcl/unx/gtk3_kde5/a11y/gtk3_kde5_atkwrapper \
 	vcl/unx/gtk3_kde5/gtk3_kde5_customcellrenderer \
 	vcl/unx/gtk3_kde5/gtk3_kde5_gtkdata \
 	vcl/unx/gtk3_kde5/gtk3_kde5_gtkinst \
+	vcl/unx/gtk3_kde5/gtk3_kde5_custom-theme \
 	vcl/unx/gtk3_kde5/gtk3_kde5_gtksys \
 	vcl/unx/gtk3_kde5/gtk3_kde5_filepicker \
 	vcl/unx/gtk3_kde5/gtk3_kde5_filepicker_ipc \

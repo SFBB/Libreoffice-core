@@ -85,6 +85,8 @@
 
 #include <algorithm>
 
+#include <vcl/tabs.hrc>
+
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
@@ -180,6 +182,7 @@ SfxDocumentInfoItem::SfxDocumentInfoItem()
     , m_isAutoloadEnabled(false)
     , m_EditingCycles(0)
     , m_EditingDuration(0)
+    , m_nFileSize(-1)
     , m_bHasTemplate( true )
     , m_bDeleteUserData( false )
     , m_bUseUserData( true )
@@ -190,7 +193,7 @@ SfxDocumentInfoItem::SfxDocumentInfoItem()
 SfxDocumentInfoItem::SfxDocumentInfoItem( const OUString& rFile,
         const uno::Reference<document::XDocumentProperties>& i_xDocProps,
         const uno::Sequence<document::CmisProperty>& i_cmisProps,
-        bool bIs, bool _bIs )
+        bool bIs, bool _bIs, sal_Int64 _nFileSize )
     : SfxStringItem( SID_DOCINFO, rFile )
     , m_AutoloadDelay( i_xDocProps->getAutoloadSecs() )
     , m_AutoloadURL( i_xDocProps->getAutoloadURL() )
@@ -210,6 +213,7 @@ SfxDocumentInfoItem::SfxDocumentInfoItem( const OUString& rFile,
                     i_xDocProps->getKeywords()) )
     , m_Subject( i_xDocProps->getSubject() )
     , m_Title( i_xDocProps->getTitle() )
+    , m_nFileSize( _nFileSize )
     , m_bHasTemplate( true )
     , m_bDeleteUserData( false )
     , m_bUseUserData( bIs )
@@ -280,6 +284,7 @@ SfxDocumentInfoItem::SfxDocumentInfoItem( const SfxDocumentInfoItem& rItem )
     , m_Type(rItem.getType())
     , m_Subject( rItem.getSubject() )
     , m_Title( rItem.getTitle() )
+    , m_nFileSize ( rItem.m_nFileSize )
     , m_bHasTemplate( rItem.m_bHasTemplate )
     , m_bDeleteUserData( rItem.m_bDeleteUserData )
     , m_bUseUserData( rItem.m_bUseUserData )
@@ -616,20 +621,20 @@ bool SfxDocumentInfoItem::PutValue( const Any& rVal, sal_uInt8 nMemberId )
 }
 
 SfxDocumentDescPage::SfxDocumentDescPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rItemSet)
-    : SfxTabPage(pPage, pController, "sfx/ui/descriptioninfopage.ui", "DescriptionInfoPage", &rItemSet)
+    : SfxTabPage(pPage, pController, u"sfx/ui/descriptioninfopage.ui"_ustr, u"DescriptionInfoPage"_ustr, &rItemSet)
     , m_pInfoItem(nullptr)
-    , m_xTitleEd(m_xBuilder->weld_entry("title"))
-    , m_xThemaEd(m_xBuilder->weld_entry("subject"))
-    , m_xKeywordsEd(m_xBuilder->weld_entry("keywords"))
-    , m_xContributorEd(m_xBuilder->weld_entry("contributor"))
-    , m_xCoverageEd(m_xBuilder->weld_entry("coverage"))
-    , m_xIdentifierEd(m_xBuilder->weld_entry("identifier"))
-    , m_xPublisherEd(m_xBuilder->weld_entry("publisher"))
-    , m_xRelationEd(m_xBuilder->weld_entry("relation"))
-    , m_xRightsEd(m_xBuilder->weld_entry("rights"))
-    , m_xSourceEd(m_xBuilder->weld_entry("source"))
-    , m_xTypeEd(m_xBuilder->weld_entry("type"))
-    , m_xCommentEd(m_xBuilder->weld_text_view("comments"))
+    , m_xTitleEd(m_xBuilder->weld_entry(u"title"_ustr))
+    , m_xThemaEd(m_xBuilder->weld_entry(u"subject"_ustr))
+    , m_xKeywordsEd(m_xBuilder->weld_entry(u"keywords"_ustr))
+    , m_xContributorEd(m_xBuilder->weld_entry(u"contributor"_ustr))
+    , m_xCoverageEd(m_xBuilder->weld_entry(u"coverage"_ustr))
+    , m_xIdentifierEd(m_xBuilder->weld_entry(u"identifier"_ustr))
+    , m_xPublisherEd(m_xBuilder->weld_entry(u"publisher"_ustr))
+    , m_xRelationEd(m_xBuilder->weld_entry(u"relation"_ustr))
+    , m_xRightsEd(m_xBuilder->weld_entry(u"rights"_ustr))
+    , m_xSourceEd(m_xBuilder->weld_entry(u"source"_ustr))
+    , m_xTypeEd(m_xBuilder->weld_entry(u"type"_ustr))
+    , m_xCommentEd(m_xBuilder->weld_text_view(u"comments"_ustr))
 {
     m_xCommentEd->set_size_request(m_xKeywordsEd->get_preferred_size().Width(),
                                    m_xCommentEd->get_height_rows(16));
@@ -659,7 +664,7 @@ bool SfxDocumentDescPage::FillItemSet(SfxItemSet *rSet)
     const bool bSourceMod = m_xSourceEd->get_value_changed_from_saved();
     const bool bTypeMod = m_xTypeEd->get_value_changed_from_saved();
     const bool bCommentMod = m_xCommentEd->get_value_changed_from_saved();
-    if (!(bTitleMod || bThemeMod || bKeywordsMod || bTitleMod || bThemeMod || bKeywordsMod
+    if (!(bTitleMod || bThemeMod || bKeywordsMod
           || bContributorMod || bCoverageMod || bIdentifierMod || bPublisherMod || bRelationMod
           || bRightsMod || bSourceMod || bTypeMod || bCommentMod))
     {
@@ -789,29 +794,29 @@ void SfxDocumentDescPage::Reset(const SfxItemSet *rSet)
 }
 
 SfxDocumentPage::SfxDocumentPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rItemSet)
-    : SfxTabPage(pPage, pController, "sfx/ui/documentinfopage.ui", "DocumentInfoPage", &rItemSet)
+    : SfxTabPage(pPage, pController, u"sfx/ui/documentinfopage.ui"_ustr, u"DocumentInfoPage"_ustr, &rItemSet)
     , bEnableUseUserData( false )
     , bHandleDelete( false )
-    , m_xBmp(m_xBuilder->weld_image("icon"))
-    , m_xNameED(m_xBuilder->weld_label("nameed"))
-    , m_xChangePassBtn(m_xBuilder->weld_button("changepass"))
-    , m_xShowTypeFT(m_xBuilder->weld_label("showtype"))
-    , m_xFileValEd(m_xBuilder->weld_link_button("showlocation"))
-    , m_xShowSizeFT(m_xBuilder->weld_label("showsize"))
-    , m_xCreateValFt(m_xBuilder->weld_label("showcreate"))
-    , m_xChangeValFt(m_xBuilder->weld_label("showmodify"))
-    , m_xSignedValFt(m_xBuilder->weld_label("showsigned"))
-    , m_xSignatureBtn(m_xBuilder->weld_button("signature"))
-    , m_xPrintValFt(m_xBuilder->weld_label("showprint"))
-    , m_xTimeLogValFt(m_xBuilder->weld_label("showedittime"))
-    , m_xDocNoValFt(m_xBuilder->weld_label("showrevision"))
-    , m_xUseUserDataCB(m_xBuilder->weld_check_button("userdatacb"))
-    , m_xDeleteBtn(m_xBuilder->weld_button("reset"))
-    , m_xUseThumbnailSaveCB(m_xBuilder->weld_check_button("thumbnailsavecb"))
-    , m_xTemplFt(m_xBuilder->weld_label("templateft"))
-    , m_xTemplValFt(m_xBuilder->weld_label("showtemplate"))
-    , m_xImagePreferredDpiCheckButton(m_xBuilder->weld_check_button("image-preferred-dpi-checkbutton"))
-    , m_xImagePreferredDpiComboBox(m_xBuilder->weld_combo_box("image-preferred-dpi-combobox"))
+    , m_xBmp(m_xBuilder->weld_image(u"icon"_ustr))
+    , m_xNameED(m_xBuilder->weld_label(u"nameed"_ustr))
+    , m_xChangePassBtn(m_xBuilder->weld_button(u"changepass"_ustr))
+    , m_xShowTypeFT(m_xBuilder->weld_label(u"showtype"_ustr))
+    , m_xFileValEd(m_xBuilder->weld_link_button(u"showlocation"_ustr))
+    , m_xShowSizeFT(m_xBuilder->weld_label(u"showsize"_ustr))
+    , m_xCreateValFt(m_xBuilder->weld_label(u"showcreate"_ustr))
+    , m_xChangeValFt(m_xBuilder->weld_label(u"showmodify"_ustr))
+    , m_xSignedValFt(m_xBuilder->weld_label(u"showsigned"_ustr))
+    , m_xSignatureBtn(m_xBuilder->weld_button(u"signature"_ustr))
+    , m_xPrintValFt(m_xBuilder->weld_label(u"showprint"_ustr))
+    , m_xTimeLogValFt(m_xBuilder->weld_label(u"showedittime"_ustr))
+    , m_xDocNoValFt(m_xBuilder->weld_label(u"showrevision"_ustr))
+    , m_xUseUserDataCB(m_xBuilder->weld_check_button(u"userdatacb"_ustr))
+    , m_xDeleteBtn(m_xBuilder->weld_button(u"reset"_ustr))
+    , m_xUseThumbnailSaveCB(m_xBuilder->weld_check_button(u"thumbnailsavecb"_ustr))
+    , m_xTemplFt(m_xBuilder->weld_label(u"templateft"_ustr))
+    , m_xTemplValFt(m_xBuilder->weld_label(u"showtemplate"_ustr))
+    , m_xImagePreferredDpiCheckButton(m_xBuilder->weld_check_button(u"image-preferred-dpi-checkbutton"_ustr))
+    , m_xImagePreferredDpiComboBox(m_xBuilder->weld_combo_box(u"image-preferred-dpi-combobox"_ustr))
 {
     m_xUseUserDataCB->set_accessible_description(SfxResId(STR_A11Y_DESC_USERDATA));
 
@@ -820,6 +825,7 @@ SfxDocumentPage::SfxDocumentPage(weld::Container* pPage, weld::DialogController*
 
     m_aMultiSignedStr = m_xSignedValFt->get_label();
     m_xSignedValFt->set_label(OUString());
+    m_xImagePreferredDpiComboBox->set_entry_width_chars(5); // "width in chars" in Glade not effective
 
     ImplUpdateSignatures();
     ImplCheckPasswordState();
@@ -833,7 +839,7 @@ SfxDocumentPage::SfxDocumentPage(weld::Container* pPage, weld::DialogController*
     // [i96288] Check if the document signature command is enabled
     // on the main list enable/disable the pushbutton accordingly
     SvtCommandOptions aCmdOptions;
-    if ( aCmdOptions.LookupDisabled( "Signature" ) )
+    if ( aCmdOptions.LookupDisabled( u"Signature"_ustr ) )
         m_xSignatureBtn->set_sensitive(false);
 }
 
@@ -842,7 +848,7 @@ SfxDocumentPage::~SfxDocumentPage()
     if (m_xPasswordDialog)
     {
         m_xPasswordDialog->Response(RET_CANCEL);
-        m_xPasswordDialog.clear();
+        m_xPasswordDialog.reset();
     }
 }
 
@@ -855,8 +861,8 @@ IMPL_LINK_NOARG(SfxDocumentPage, DeleteHdl, weld::Button&, void)
     DateTime now( DateTime::SYSTEM );
     util::DateTime uDT( now.GetUNODateTime() );
     m_xCreateValFt->set_label( ConvertDateTime_Impl( aName, uDT, rLocaleWrapper ) );
-    m_xChangeValFt->set_label( "" );
-    m_xPrintValFt->set_label( "" );
+    m_xChangeValFt->set_label( u""_ustr );
+    m_xPrintValFt->set_label( u""_ustr );
     m_xTimeLogValFt->set_label( rLocaleWrapper.getDuration( tools::Duration() ) );
     m_xDocNoValFt->set_label(OUString('1'));
     bHandleDelete = true;
@@ -867,9 +873,9 @@ IMPL_LINK_NOARG(SfxDocumentPage, SignatureHdl, weld::Button&, void)
     SfxObjectShell* pDoc = SfxObjectShell::Current();
     if( pDoc )
     {
-        pDoc->SignDocumentContent(GetFrameWeld());
-
-        ImplUpdateSignatures();
+        pDoc->SignDocumentContent(GetFrameWeld(), [this] (bool /*bHaveWeSigned*/) {
+            ImplUpdateSignatures();
+        });
     }
 }
 
@@ -898,7 +904,7 @@ IMPL_LINK_NOARG(SfxDocumentPage, ChangePassHdl, weld::Button&, void)
             VclAbstractDialogFactory * pFact = VclAbstractDialogFactory::Create();
             m_xPasswordDialog = pFact->CreatePasswordToOpenModifyDialog(GetFrameWeld(), maxPwdLen, false);
             m_xPasswordDialog->AllowEmpty(); // needed to remove password
-            m_xPasswordDialog->StartExecuteAsync([this, pFilter, &rMedSet, pShell](sal_Int32 nResult)
+            m_xPasswordDialog->StartExecuteAsync([this, pFilter=std::move(pFilter), &rMedSet, pShell](sal_Int32 nResult)
             {
                 if (nResult == RET_OK)
                 {
@@ -1054,7 +1060,7 @@ bool SfxDocumentPage::FillItemSet( SfxItemSet* rSet )
         uno::Reference<lang::XMultiServiceFactory> xFac(pDocSh->GetModel(), uno::UNO_QUERY);
         if (xFac.is())
         {
-            uno::Reference<beans::XPropertySet> xProps(xFac->createInstance("com.sun.star.document.Settings"), uno::UNO_QUERY);
+            uno::Reference<beans::XPropertySet> xProps(xFac->createInstance(u"com.sun.star.document.Settings"_ustr), uno::UNO_QUERY);
             if (xProps.is())
             {
                 sal_Int32 nImagePreferredDPI = 0;
@@ -1063,7 +1069,7 @@ bool SfxDocumentPage::FillItemSet( SfxItemSet* rSet )
                     OUString aImagePreferredDPIString = m_xImagePreferredDpiComboBox->get_active_text();
                     nImagePreferredDPI = aImagePreferredDPIString.toInt32();
                 }
-                xProps->setPropertyValue("ImagePreferredDPI", uno::Any(nImagePreferredDPI));
+                xProps->setPropertyValue(u"ImagePreferredDPI"_ustr, uno::Any(nImagePreferredDPI));
             }
         }
     }
@@ -1111,18 +1117,22 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
     // determine context symbol
     aURL.SetSmartProtocol( INetProtocol::File );
     aURL.SetSmartURL( aFactory);
-    const OUString& rMainURL = aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
+    const OUString aMainURL = aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
     OUString aImage = SvFileInformationManager::GetImageId( aURL, true );
     m_xBmp->set_from_icon_name(aImage);
 
     // determine size and type
     OUString aSizeText( m_aUnknownSize );
-    if ( aURL.GetProtocol() == INetProtocol::File ||
-         aURL.isAnyKnownWebDAVScheme() )
-        aSizeText = CreateSizeText( SfxContentHelper::GetSize( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ) ) );
+    // we might already know the size as an optional argument passed to .uno:SetDocumentProperties
+    sal_Int64 nSize = rInfoItem.getFileSize();
+    // otherwise, for some protocols we can reliably query for it
+    if (nSize == -1 && (aURL.GetProtocol() == INetProtocol::File || aURL.isAnyKnownWebDAVScheme()))
+        nSize = SfxContentHelper::GetSize( aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
+    if (nSize != -1)
+        aSizeText = CreateSizeText( nSize );
     m_xShowSizeFT->set_label( aSizeText );
 
-    OUString aDescription = SvFileInformationManager::GetDescription( INetURLObject(rMainURL) );
+    OUString aDescription = SvFileInformationManager::GetDescription( INetURLObject(aMainURL) );
     if ( aDescription.isEmpty() )
         aDescription = SfxResId( STR_SFX_NEWOFFICEDOC );
     m_xShowTypeFT->set_label( aDescription );
@@ -1136,7 +1146,7 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
 
         // Disable setting/changing password on text files.
         // Perhaps this needs to be done for both Online and Desktop.
-        OUString sExtension(INetURLObject(rMainURL).getExtension());
+        OUString sExtension(INetURLObject(aMainURL).getExtension());
         if (!sExtension.isEmpty())
         {
             sExtension = sExtension.toAsciiLowerCase();
@@ -1149,7 +1159,7 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
         aURL.SetSmartURL( aFile);
         if ( aURL.GetProtocol() == INetProtocol::File )
         {
-            INetURLObject aPath( aURL );
+            INetURLObject aPath(std::move(aURL));
             aPath.setFinalSlash();
             aPath.removeSegment();
             // we know it's a folder -> don't need the final slash, but it's better for WB_PATHELLIPSIS
@@ -1197,7 +1207,7 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
     // Check for cmis properties where otherwise unavailable
     if ( rInfoItem.isCmisDocument( ) )
     {
-        const uno::Sequence< document::CmisProperty > aCmisProps = rInfoItem.GetCmisProperties();
+        const uno::Sequence< document::CmisProperty >& aCmisProps = rInfoItem.GetCmisProperties();
         for ( const auto& rCmisProp : aCmisProps )
         {
             if ( rCmisProp.Id == "cmis:contentStreamLength" &&
@@ -1210,8 +1220,7 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
                 sal_uInt32 nIndex = aNumberFormatter.GetFormatIndex( NF_NUMBER_SYSTEM );
                 if ( seqValue.hasElements() )
                 {
-                    OUString sValue;
-                    aNumberFormatter.GetInputLineString( seqValue[0], nIndex, sValue );
+                    OUString sValue = aNumberFormatter.GetInputLineString( seqValue[0], nIndex );
                     m_xShowSizeFT->set_label( CreateSizeText( sValue.toInt64( ) ) );
                 }
             }
@@ -1257,10 +1266,13 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
     {
         try
         {
-            uno::Reference< lang::XMultiServiceFactory > xFac( pDocSh->GetModel(), uno::UNO_QUERY_THROW );
-            uno::Reference< beans::XPropertySet > xProps( xFac->createInstance("com.sun.star.document.Settings"), uno::UNO_QUERY_THROW );
-
-            xProps->getPropertyValue("ImagePreferredDPI") >>= nImagePreferredDPI;
+            uno::Reference< lang::XMultiServiceFactory > xFac( pDocSh->GetModel(), uno::UNO_QUERY );
+            if (xFac)
+            {
+                uno::Reference< beans::XPropertySet > xProps( xFac->createInstance(u"com.sun.star.document.Settings"_ustr), uno::UNO_QUERY );
+                if (xProps)
+                    xProps->getPropertyValue(u"ImagePreferredDPI"_ustr) >>= nImagePreferredDPI;
+            }
         }
         catch( uno::Exception& )
         {
@@ -1276,14 +1288,14 @@ void SfxDocumentPage::Reset( const SfxItemSet* rSet )
     {
         m_xImagePreferredDpiCheckButton->set_state(TRISTATE_FALSE);
         m_xImagePreferredDpiComboBox->set_sensitive(false);
-        m_xImagePreferredDpiComboBox->set_entry_text("");
+        m_xImagePreferredDpiComboBox->set_entry_text(u""_ustr);
     }
 
 }
 
 SfxDocumentInfoDialog::SfxDocumentInfoDialog(weld::Window* pParent, const SfxItemSet& rItemSet)
-    : SfxTabDialogController(pParent, "sfx/ui/documentpropertiesdialog.ui",
-                             "DocumentPropertiesDialog", &rItemSet)
+    : SfxTabDialogController(pParent, u"sfx/ui/documentpropertiesdialog.ui"_ustr,
+                             u"DocumentPropertiesDialog"_ustr, &rItemSet)
 {
     const SfxDocumentInfoItem& rInfoItem = rItemSet.Get( SID_DOCINFO );
 
@@ -1321,23 +1333,21 @@ SfxDocumentInfoDialog::SfxDocumentInfoDialog(weld::Window* pParent, const SfxIte
     m_xDialog->set_title(aTitle);
 
     // Property Pages
-    AddTabPage("general", SfxDocumentPage::Create, nullptr);
-    AddTabPage("description", SfxDocumentDescPage::Create, nullptr);
+    AddTabPage(u"general"_ustr, TabResId(RID_TAB_ORGANIZER.aLabel), SfxDocumentPage::Create,
+               RID_L + RID_TAB_ORGANIZER.sIconName);
+    AddTabPage(u"description"_ustr, TabResId(RID_TAB_DESCRIPTION.aLabel), SfxDocumentDescPage::Create,
+               RID_L + RID_TAB_DESCRIPTION.sIconName);
 
-    if (!comphelper::LibreOfficeKit::isActive())
-        AddTabPage("customprops", SfxCustomPropertiesPage::Create, nullptr);
-    else
-        RemoveTabPage("customprops");
+    AddTabPage(u"customprops"_ustr, TabResId(RID_TAB_CUSTOM.aLabel),
+               SfxCustomPropertiesPage::Create, RID_L + RID_TAB_CUSTOM.sIconName);
 
     if (rInfoItem.isCmisDocument())
-        AddTabPage("cmisprops", SfxCmisPropertiesPage::Create, nullptr);
-    else
-        RemoveTabPage("cmisprops");
+        AddTabPage(u"cmisprops"_ustr, TabResId(RID_TAB_CMIS.aLabel),
+                   SfxCmisPropertiesPage::Create, RID_L + RID_TAB_CMIS.sIconName);
     // Disable security page for online as not fully asynced yet
     if (!comphelper::LibreOfficeKit::isActive())
-        AddTabPage("security", SfxSecurityPage::Create, nullptr);
-    else
-        RemoveTabPage("security");
+        AddTabPage(u"security"_ustr, TabResId(RID_TAB_SECURITY.aLabel), SfxSecurityPage::Create,
+                   RID_L + RID_TAB_SECURITY.sIconName);
 }
 
 void SfxDocumentInfoDialog::PageCreated(const OUString& rId, SfxTabPage &rPage)
@@ -1348,7 +1358,8 @@ void SfxDocumentInfoDialog::PageCreated(const OUString& rId, SfxTabPage &rPage)
 
 void SfxDocumentInfoDialog::AddFontTabPage()
 {
-    AddTabPage("font", SfxResId(STR_FONT_TABPAGE), SfxDocumentFontsPage::Create);
+    AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel),
+               SfxDocumentFontsPage::Create, RID_L + RID_TAB_FONT.sIconName);
 }
 
 // class CustomPropertiesYesNoButton -------------------------------------
@@ -1369,15 +1380,15 @@ CustomPropertiesYesNoButton::~CustomPropertiesYesNoButton()
 
 
 DurationDialog_Impl::DurationDialog_Impl(weld::Widget* pParent, const util::Duration& rDuration)
-    : GenericDialogController(pParent, "sfx/ui/editdurationdialog.ui", "EditDurationDialog")
-    , m_xNegativeCB(m_xBuilder->weld_check_button("negative"))
-    , m_xYearNF(m_xBuilder->weld_spin_button("years"))
-    , m_xMonthNF(m_xBuilder->weld_spin_button("months"))
-    , m_xDayNF(m_xBuilder->weld_spin_button("days"))
-    , m_xHourNF(m_xBuilder->weld_spin_button("hours"))
-    , m_xMinuteNF(m_xBuilder->weld_spin_button("minutes"))
-    , m_xSecondNF(m_xBuilder->weld_spin_button("seconds"))
-    , m_xMSecondNF(m_xBuilder->weld_spin_button("milliseconds"))
+    : GenericDialogController(pParent, u"sfx/ui/editdurationdialog.ui"_ustr, u"EditDurationDialog"_ustr)
+    , m_xNegativeCB(m_xBuilder->weld_check_button(u"negative"_ustr))
+    , m_xYearNF(m_xBuilder->weld_spin_button(u"years"_ustr))
+    , m_xMonthNF(m_xBuilder->weld_spin_button(u"months"_ustr))
+    , m_xDayNF(m_xBuilder->weld_spin_button(u"days"_ustr))
+    , m_xHourNF(m_xBuilder->weld_spin_button(u"hours"_ustr))
+    , m_xMinuteNF(m_xBuilder->weld_spin_button(u"minutes"_ustr))
+    , m_xSecondNF(m_xBuilder->weld_spin_button(u"seconds"_ustr))
+    , m_xMSecondNF(m_xBuilder->weld_spin_button(u"milliseconds"_ustr))
 {
     m_xNegativeCB->set_active(rDuration.Negative);
     m_xYearNF->set_value(rDuration.Years);
@@ -1476,21 +1487,21 @@ namespace
 // struct CustomPropertyLine ---------------------------------------------
 CustomPropertyLine::CustomPropertyLine(CustomPropertiesWindow* pParent, weld::Widget* pContainer)
     : m_pParent(pParent)
-    , m_xBuilder(Application::CreateBuilder(pContainer, "sfx/ui/linefragment.ui"))
-    , m_xLine(m_xBuilder->weld_container("lineentry"))
-    , m_xNameBox(m_xBuilder->weld_combo_box("namebox"))
-    , m_xTypeBox(m_xBuilder->weld_combo_box("typebox"))
-    , m_xValueEdit(m_xBuilder->weld_entry("valueedit"))
-    , m_xDateTimeBox(m_xBuilder->weld_widget("datetimebox"))
-    , m_xDateField(new CustomPropertiesDateField(new SvtCalendarBox(m_xBuilder->weld_menu_button("date"))))
-    , m_xTimeField(new CustomPropertiesTimeField(m_xBuilder->weld_formatted_spin_button("time")))
-    , m_xDurationBox(m_xBuilder->weld_widget("durationbox"))
-    , m_xDurationField(new CustomPropertiesDurationField(m_xBuilder->weld_entry("duration"),
-                                                         m_xBuilder->weld_button("durationbutton")))
-    , m_xYesNoButton(new CustomPropertiesYesNoButton(m_xBuilder->weld_widget("yesno"),
-                                                     m_xBuilder->weld_radio_button("yes"),
-                                                     m_xBuilder->weld_radio_button("no")))
-    , m_xRemoveButton(m_xBuilder->weld_button("remove"))
+    , m_xBuilder(Application::CreateBuilder(pContainer, u"sfx/ui/linefragment.ui"_ustr))
+    , m_xLine(m_xBuilder->weld_container(u"lineentry"_ustr))
+    , m_xNameBox(m_xBuilder->weld_combo_box(u"namebox"_ustr))
+    , m_xTypeBox(m_xBuilder->weld_combo_box(u"typebox"_ustr))
+    , m_xValueEdit(m_xBuilder->weld_entry(u"valueedit"_ustr))
+    , m_xDateTimeBox(m_xBuilder->weld_widget(u"datetimebox"_ustr))
+    , m_xDateField(new CustomPropertiesDateField(new SvtCalendarBox(m_xBuilder->weld_menu_button(u"date"_ustr))))
+    , m_xTimeField(new CustomPropertiesTimeField(m_xBuilder->weld_formatted_spin_button(u"time"_ustr)))
+    , m_xDurationBox(m_xBuilder->weld_widget(u"durationbox"_ustr))
+    , m_xDurationField(new CustomPropertiesDurationField(m_xBuilder->weld_entry(u"duration"_ustr),
+                                                         m_xBuilder->weld_button(u"durationbutton"_ustr)))
+    , m_xYesNoButton(new CustomPropertiesYesNoButton(m_xBuilder->weld_widget(u"yesno"_ustr),
+                                                     m_xBuilder->weld_radio_button(u"yes"_ustr),
+                                                     m_xBuilder->weld_radio_button(u"no"_ustr)))
+    , m_xRemoveButton(m_xBuilder->weld_button(u"remove"_ustr))
     , m_bTypeLostFocus( false )
 {
     fillNameBox(*m_xNameBox);
@@ -1683,11 +1694,8 @@ void CustomPropertiesWindow::AddLine(const OUString& sName, Any const & rAny)
 void CustomPropertiesWindow::CreateNewLine()
 {
     CustomPropertyLine* pNewLine = new CustomPropertyLine(this, &m_rBody);
-    pNewLine->m_xNameBox->set_accessible_relation_labeled_by(&m_rHeaderAccName);
     pNewLine->m_xNameBox->set_accessible_name(m_rHeaderAccName.get_label());
-    pNewLine->m_xTypeBox->set_accessible_relation_labeled_by(&m_rHeaderAccType);
     pNewLine->m_xTypeBox->set_accessible_name(m_rHeaderAccType.get_label());
-    pNewLine->m_xValueEdit->set_accessible_relation_labeled_by(&m_rHeaderAccValue);
     pNewLine->m_xValueEdit->set_accessible_name(m_rHeaderAccValue.get_label());
 
     m_aCustomPropertiesLines.emplace_back( pNewLine );
@@ -1918,7 +1926,7 @@ void CustomPropertiesWindow::ReloadLinesContent()
         else if (rAny >>= nTmpValue)
         {
             sal_uInt32 nIndex = m_aNumberFormatter.GetFormatIndex(NF_NUMBER_SYSTEM);
-            m_aNumberFormatter.GetInputLineString(nTmpValue, nIndex, sValue);
+            sValue = m_aNumberFormatter.GetInputLineString(nTmpValue, nIndex);
             pLine->m_xValueEdit->set_text(sValue);
             nType = Custom_Type_Number;
         }
@@ -2001,13 +2009,13 @@ CustomPropertiesControl::CustomPropertiesControl()
 
 void CustomPropertiesControl::Init(weld::Builder& rBuilder)
 {
-    m_xBox = rBuilder.weld_widget("box");
-    m_xBody = rBuilder.weld_container("properties");
+    m_xBox = rBuilder.weld_widget(u"box"_ustr);
+    m_xBody = rBuilder.weld_container(u"properties"_ustr);
 
-    m_xName = rBuilder.weld_label("name");
-    m_xType = rBuilder.weld_label("type");
-    m_xValue = rBuilder.weld_label("value");
-    m_xVertScroll = rBuilder.weld_scrolled_window("scroll", true);
+    m_xName = rBuilder.weld_label(u"name"_ustr);
+    m_xType = rBuilder.weld_label(u"type"_ustr);
+    m_xValue = rBuilder.weld_label(u"value"_ustr);
+    m_xVertScroll = rBuilder.weld_scrolled_window(u"scroll"_ustr, true);
     m_xPropertiesWin.reset(new CustomPropertiesWindow(*m_xBody, *m_xName, *m_xType, *m_xValue));
 
     m_xBox->set_stack_background();
@@ -2032,12 +2040,11 @@ void CustomPropertiesControl::Init(weld::Builder& rBuilder)
 
     m_xPropertiesWin->SetRemovedHdl( LINK( this, CustomPropertiesControl, RemovedHdl ) );
 
-    m_xVertScroll->vadjustment_set_lower(0);
     m_xVertScroll->vadjustment_set_upper(0);
     m_xVertScroll->vadjustment_set_page_size(0xFFFF);
 
     Link<weld::ScrolledWindow&,void> aScrollLink = LINK( this, CustomPropertiesControl, ScrollHdl );
-    m_xVertScroll->connect_vadjustment_changed(aScrollLink);
+    m_xVertScroll->connect_vadjustment_value_changed(aScrollLink);
 
     ResizeHdl(Size(-1, nHeight));
 }
@@ -2101,9 +2108,9 @@ void CustomPropertiesControl::SetCustomProperties(std::vector< std::unique_ptr<C
 
 // class SfxCustomPropertiesPage -----------------------------------------
 SfxCustomPropertiesPage::SfxCustomPropertiesPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rItemSet )
-    : SfxTabPage(pPage, pController, "sfx/ui/custominfopage.ui", "CustomInfoPage", &rItemSet)
+    : SfxTabPage(pPage, pController, u"sfx/ui/custominfopage.ui"_ustr, u"CustomInfoPage"_ustr, &rItemSet)
     , m_xPropertiesCtrl(new CustomPropertiesControl)
-    , m_xAdd(m_xBuilder->weld_button("add"))
+    , m_xAdd(m_xBuilder->weld_button(u"add"_ustr))
 {
     m_xPropertiesCtrl->Init(*m_xBuilder);
     m_xAdd->connect_clicked(LINK(this, SfxCustomPropertiesPage, AddHdl));
@@ -2210,19 +2217,19 @@ std::unique_ptr<SfxTabPage> SfxCustomPropertiesPage::Create(weld::Container* pPa
 }
 
 CmisValue::CmisValue(weld::Widget* pParent, const OUString& aStr)
-    : m_xBuilder(Application::CreateBuilder(pParent, "sfx/ui/cmisline.ui"))
-    , m_xFrame(m_xBuilder->weld_frame("CmisFrame"))
-    , m_xValueEdit(m_xBuilder->weld_entry("value"))
+    : m_xBuilder(Application::CreateBuilder(pParent, u"sfx/ui/cmisline.ui"_ustr))
+    , m_xFrame(m_xBuilder->weld_frame(u"CmisFrame"_ustr))
+    , m_xValueEdit(m_xBuilder->weld_entry(u"value"_ustr))
 {
     m_xValueEdit->show();
     m_xValueEdit->set_text(aStr);
 }
 
 CmisDateTime::CmisDateTime(weld::Widget* pParent, const util::DateTime& aDateTime)
-    : m_xBuilder(Application::CreateBuilder(pParent, "sfx/ui/cmisline.ui"))
-    , m_xFrame(m_xBuilder->weld_frame("CmisFrame"))
-    , m_xDateField(new SvtCalendarBox(m_xBuilder->weld_menu_button("date")))
-    , m_xTimeField(m_xBuilder->weld_formatted_spin_button("time"))
+    : m_xBuilder(Application::CreateBuilder(pParent, u"sfx/ui/cmisline.ui"_ustr))
+    , m_xFrame(m_xBuilder->weld_frame(u"CmisFrame"_ustr))
+    , m_xDateField(new SvtCalendarBox(m_xBuilder->weld_menu_button(u"date"_ustr)))
+    , m_xTimeField(m_xBuilder->weld_formatted_spin_button(u"time"_ustr))
     , m_xFormatter(new weld::TimeFormatter(*m_xTimeField))
 {
     m_xFormatter->SetExtFormat(ExtTimeFieldFormat::LongDuration);
@@ -2235,10 +2242,10 @@ CmisDateTime::CmisDateTime(weld::Widget* pParent, const util::DateTime& aDateTim
 }
 
 CmisYesNo::CmisYesNo(weld::Widget* pParent, bool bValue)
-    : m_xBuilder(Application::CreateBuilder(pParent, "sfx/ui/cmisline.ui"))
-    , m_xFrame(m_xBuilder->weld_frame("CmisFrame"))
-    , m_xYesButton(m_xBuilder->weld_radio_button("yes"))
-    , m_xNoButton(m_xBuilder->weld_radio_button("no"))
+    : m_xBuilder(Application::CreateBuilder(pParent, u"sfx/ui/cmisline.ui"_ustr))
+    , m_xFrame(m_xBuilder->weld_frame(u"CmisFrame"_ustr))
+    , m_xYesButton(m_xBuilder->weld_radio_button(u"yes"_ustr))
+    , m_xNoButton(m_xBuilder->weld_radio_button(u"no"_ustr))
 {
     m_xYesButton->show();
     m_xNoButton->show();
@@ -2250,15 +2257,15 @@ CmisYesNo::CmisYesNo(weld::Widget* pParent, bool bValue)
 
 // struct CmisPropertyLine ---------------------------------------------
 CmisPropertyLine::CmisPropertyLine(weld::Widget* pParent)
-    : m_xBuilder(Application::CreateBuilder(pParent, "sfx/ui/cmisline.ui"))
+    : m_xBuilder(Application::CreateBuilder(pParent, u"sfx/ui/cmisline.ui"_ustr))
     , m_sType(CMIS_TYPE_STRING)
     , m_bUpdatable(false)
     , m_bRequired(false)
     , m_bMultiValued(false)
     , m_bOpenChoice(false)
-    , m_xFrame(m_xBuilder->weld_frame("CmisFrame"))
-    , m_xName(m_xBuilder->weld_label("name"))
-    , m_xType(m_xBuilder->weld_label("type"))
+    , m_xFrame(m_xBuilder->weld_frame(u"CmisFrame"_ustr))
+    , m_xName(m_xBuilder->weld_label(u"name"_ustr))
+    , m_xType(m_xBuilder->weld_label(u"type"_ustr))
 {
     m_xFrame->set_sensitive(true);
 }
@@ -2304,10 +2311,9 @@ void CmisPropertiesWindow::AddLine( const OUString& sId, const OUString& sName,
         Sequence< sal_Int64 > seqValue;
         rAny >>= seqValue;
         sal_uInt32 nIndex = m_aNumberFormatter.GetFormatIndex( NF_NUMBER_SYSTEM );
-        for ( const auto& rValue : std::as_const(seqValue) )
+        for (const auto& rValue : seqValue)
         {
-            OUString sValue;
-            m_aNumberFormatter.GetInputLineString( rValue, nIndex, sValue );
+            OUString sValue = m_aNumberFormatter.GetInputLineString( rValue, nIndex );
             std::unique_ptr<CmisValue> pValue(new CmisValue(m_xBox.get(), sValue));
             pValue->m_xValueEdit->set_editable(bUpdatable);
             pNewLine->m_aValues.push_back( std::move(pValue) );
@@ -2318,10 +2324,9 @@ void CmisPropertiesWindow::AddLine( const OUString& sId, const OUString& sName,
         Sequence< double > seqValue;
         rAny >>= seqValue;
         sal_uInt32 nIndex = m_aNumberFormatter.GetFormatIndex( NF_NUMBER_SYSTEM );
-        for ( const auto& rValue : std::as_const(seqValue) )
+        for (const auto& rValue : seqValue)
         {
-            OUString sValue;
-            m_aNumberFormatter.GetInputLineString( rValue, nIndex, sValue );
+            OUString sValue = m_aNumberFormatter.GetInputLineString( rValue, nIndex );
             std::unique_ptr<CmisValue> pValue(new CmisValue(m_xBox.get(), sValue));
             pValue->m_xValueEdit->set_editable(bUpdatable);
             pNewLine->m_aValues.push_back( std::move(pValue) );
@@ -2332,7 +2337,7 @@ void CmisPropertiesWindow::AddLine( const OUString& sId, const OUString& sName,
     {
         Sequence<sal_Bool> seqValue;
         rAny >>= seqValue;
-        for ( const auto& rValue : std::as_const(seqValue) )
+        for (const auto& rValue : seqValue)
         {
             std::unique_ptr<CmisYesNo> pYesNo(new CmisYesNo(m_xBox.get(), rValue));
             pYesNo->m_xYesButton->set_sensitive( bUpdatable );
@@ -2344,7 +2349,7 @@ void CmisPropertiesWindow::AddLine( const OUString& sId, const OUString& sName,
     {
         Sequence< OUString > seqValue;
         rAny >>= seqValue;
-        for ( const auto& rValue : std::as_const(seqValue) )
+        for (const auto& rValue : seqValue)
         {
             std::unique_ptr<CmisValue> pValue(new CmisValue(m_xBox.get(), rValue));
             pValue->m_xValueEdit->set_editable(bUpdatable);
@@ -2355,7 +2360,7 @@ void CmisPropertiesWindow::AddLine( const OUString& sId, const OUString& sName,
     {
         Sequence< util::DateTime > seqValue;
         rAny >>= seqValue;
-        for ( const auto& rValue : std::as_const(seqValue) )
+        for (const auto& rValue : seqValue)
         {
             std::unique_ptr<CmisDateTime> pDateTime(new CmisDateTime(m_xBox.get(), rValue));
             pDateTime->m_xDateField->set_sensitive(bUpdatable);
@@ -2482,8 +2487,8 @@ Sequence< document::CmisProperty > CmisPropertiesWindow::GetCmisProperties() con
 }
 
 CmisPropertiesControl::CmisPropertiesControl(weld::Builder& rBuilder)
-    : m_aPropertiesWin(rBuilder.weld_container("CmisWindow"))
-    , m_xScrolledWindow(rBuilder.weld_scrolled_window("CmisScroll"))
+    : m_aPropertiesWin(rBuilder.weld_container(u"CmisWindow"_ustr))
+    , m_xScrolledWindow(rBuilder.weld_scrolled_window(u"CmisScroll"_ustr))
 {
     // set height to something small and force it to take the size
     // dictated by the other pages
@@ -2507,7 +2512,7 @@ void CmisPropertiesControl::AddLine( const OUString& sId, const OUString& sName,
 
 // class SfxCmisPropertiesPage -----------------------------------------
 SfxCmisPropertiesPage::SfxCmisPropertiesPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rItemSet)
-    : SfxTabPage(pPage, pController, "sfx/ui/cmisinfopage.ui", "CmisInfoPage", &rItemSet)
+    : SfxTabPage(pPage, pController, u"sfx/ui/cmisinfopage.ui"_ustr, u"CmisInfoPage"_ustr, &rItemSet)
     , m_xPropertiesCtrl(new CmisPropertiesControl(*m_xBuilder))
 {
 }

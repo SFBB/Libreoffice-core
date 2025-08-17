@@ -31,7 +31,7 @@ MasterPropertySetInfo::MasterPropertySetInfo( PropertyInfo const * pMap )
     for ( ; !pMap->maName.isEmpty(); ++pMap )
     {
         SAL_WARN_IF(
-            maMap.find(pMap->maName) != maMap.end(),
+            maMap.contains(pMap->maName),
             "comphelper", "Duplicate property name \"" << pMap->maName << "\"");
         maMap[pMap->maName] = new PropertyData ( 0, pMap );
     }
@@ -52,7 +52,7 @@ void MasterPropertySetInfo::add( PropertyInfoHash &rHash, sal_uInt8 nMapId )
     for( const auto& rObj : rHash )
     {
         SAL_WARN_IF(
-            maMap.find(rObj.first) != maMap.end(),
+            maMap.contains(rObj.first),
             "comphelper", "Duplicate property name \"" << rObj.first << "\"");
         maMap[rObj.first] = new PropertyData ( nMapId, rObj.second );
     }
@@ -99,7 +99,7 @@ Property SAL_CALL MasterPropertySetInfo::getPropertyByName( const OUString& rNam
 
 sal_Bool SAL_CALL MasterPropertySetInfo::hasPropertyByName( const OUString& rName )
 {
-    return maMap.find ( rName ) != maMap.end();
+    return maMap.contains( rName );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

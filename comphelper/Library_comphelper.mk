@@ -34,6 +34,8 @@ $(eval $(call gb_Library_add_defs,comphelper,\
 $(eval $(call gb_Library_use_externals,comphelper,\
 	gpgmepp \
     boost_headers \
+    frozen \
+    icui18n \
     icuuc \
     icu_headers \
     zlib \
@@ -70,18 +72,21 @@ $(eval $(call gb_Library_add_exception_objects,comphelper,\
     comphelper/source/container/NamedPropertyValuesContainer \
     comphelper/source/container/container \
     comphelper/source/container/containermultiplexer \
-	comphelper/source/container/interfacecontainer2 \
+    comphelper/source/container/interfacecontainer2 \
     comphelper/source/container/embeddedobjectcontainer \
     comphelper/source/container/enumerablemap \
     comphelper/source/container/enumhelper \
     comphelper/source/container/namecontainer \
+    comphelper/source/crypto/Crypto \
+    $(if $(filter NSS,$(TLS)), comphelper/source/crypto/Crypto_NSS) \
+    $(if $(filter OPENSSL,$(TLS)), comphelper/source/crypto/Crypto_OpenSSL) \
+    $(if $(filter NSS OPENSSL,$(TLS)),,comphelper/source/crypto/Crypto_None) \
     comphelper/source/eventattachermgr/eventattachermgr \
-    comphelper/source/misc/accessiblecomponenthelper \
+    comphelper/source/misc/OAccessible \
     comphelper/source/misc/accessibleeventnotifier \
     comphelper/source/misc/accessiblekeybindinghelper \
     comphelper/source/misc/accessibleselectionhelper \
     comphelper/source/misc/accessibletexthelper \
-    comphelper/source/misc/accessiblewrapper \
     comphelper/source/misc/AccessibleImplementationHelper \
     comphelper/source/misc/anycompare \
     comphelper/source/misc/anytohash \
@@ -103,6 +108,7 @@ $(eval $(call gb_Library_add_exception_objects,comphelper,\
     comphelper/source/misc/docpasswordhelper \
     comphelper/source/misc/docpasswordrequest \
     comphelper/source/misc/documentinfo \
+    comphelper/source/misc/emscriptenthreading \
     comphelper/source/misc/errcode \
     comphelper/source/misc/evtlistenerhlp \
     comphelper/source/misc/evtmethodhelper \
@@ -114,13 +120,13 @@ $(eval $(call gb_Library_add_exception_objects,comphelper,\
     comphelper/source/misc/interaction \
     comphelper/source/misc/logging \
     comphelper/source/misc/lok \
+    comphelper/source/misc/markdown \
     comphelper/source/misc/mimeconfighelper \
     comphelper/source/misc/namedvaluecollection \
     comphelper/source/misc/numberedcollection \
     comphelper/source/misc/numbers \
     comphelper/source/misc/officerestartmanager \
     comphelper/source/misc/traceevent \
-    comphelper/source/misc/proxyaggregation \
     comphelper/source/misc/random \
     comphelper/source/misc/SelectionMultiplex \
     comphelper/source/misc/sequenceashashmap \
@@ -147,6 +153,7 @@ $(eval $(call gb_Library_add_exception_objects,comphelper,\
     comphelper/source/property/propagg \
     comphelper/source/property/propertybag \
     comphelper/source/property/propertycontainer \
+    comphelper/source/property/propertycontainer2 \
     comphelper/source/property/propertycontainerhelper \
     comphelper/source/property/property \
     comphelper/source/property/propertysethelper \

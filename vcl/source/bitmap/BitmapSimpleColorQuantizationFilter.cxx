@@ -8,23 +8,21 @@
  *
  */
 
-#include <vcl/bitmap.hxx>
-#include <vcl/bitmapex.hxx>
-#include <vcl/BitmapSimpleColorQuantizationFilter.hxx>
+#include <vcl/bitmap/BitmapSimpleColorQuantizationFilter.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
 #include <bitmap/Octree.hxx>
 
-BitmapEx BitmapSimpleColorQuantizationFilter::execute(BitmapEx const& aBitmapEx) const
+Bitmap BitmapSimpleColorQuantizationFilter::execute(Bitmap const& rBitmap) const
 {
-    Bitmap aBitmap = aBitmapEx.GetBitmap();
+    Bitmap aBitmap = rBitmap;
 
     if (vcl::numberOfColors(aBitmap.getPixelFormat()) <= sal_Int64(mnNewColorCount))
-        return BitmapEx(aBitmap);
+        return aBitmap;
 
     Bitmap aNewBmp;
     BitmapScopedReadAccess pRAcc(aBitmap);
     if (!pRAcc)
-        return BitmapEx();
+        return Bitmap();
 
     const sal_uInt16 nColorCount = std::min(mnNewColorCount, sal_uInt16(256));
     auto ePixelFormat = vcl::PixelFormat::N8_BPP;
@@ -35,7 +33,7 @@ BitmapEx BitmapSimpleColorQuantizationFilter::execute(BitmapEx const& aBitmapEx)
     aNewBmp = Bitmap(aBitmap.GetSizePixel(), ePixelFormat, &rPal);
     BitmapScopedWriteAccess pWAcc(aNewBmp);
     if (!pWAcc)
-        return BitmapEx();
+        return Bitmap();
 
     const sal_Int32 nWidth = pRAcc->Width();
     const sal_Int32 nHeight = pRAcc->Height();
@@ -77,12 +75,12 @@ BitmapEx BitmapSimpleColorQuantizationFilter::execute(BitmapEx const& aBitmapEx)
     const MapMode aMap(aBitmap.GetPrefMapMode());
     const Size aSize(aBitmap.GetPrefSize());
 
-    aBitmap = aNewBmp;
+    aBitmap = std::move(aNewBmp);
 
     aBitmap.SetPrefMapMode(aMap);
     aBitmap.SetPrefSize(aSize);
 
-    return BitmapEx(aBitmap);
+    return aBitmap;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

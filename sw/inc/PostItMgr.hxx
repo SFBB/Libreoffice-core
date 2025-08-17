@@ -16,12 +16,12 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-
-#ifndef INCLUDED_SW_INC_POSTITMGR_HXX
-#define INCLUDED_SW_INC_POSTITMGR_HXX
+#pragma once
 
 #include <sal/config.h>
 #include "swdllapi.h"
+
+#include <config_collab.h>
 
 #include <cstddef>
 #include <memory>
@@ -42,19 +42,16 @@ class SwWrtShell;
 class SwView;
 class SwPostItField;
 class SwFormatField;
-class SfxBroadcaster;
-class SfxHint;
 class SwEditWin;
 class Color;
 class SfxItemSet;
 class SvxSearchItem;
 namespace sw::annotation { class SwAnnotationWin; }
 namespace sw::sidebarwindows { class SwFrameSidebarWinContainer; }
-class SwSidebarItem;
+class SwAnnotationItem;
 class SwFrame;
 namespace vcl { class Window; }
 struct ImplSVEvent;
-class OutlinerParaObject;
 namespace i18nutil { struct SearchOptions2; }
 
 #define COL_NOTES_SIDEPANE_ARROW_ENABLED    Color(0,0,0)
@@ -66,8 +63,8 @@ struct SwPostItPageItem
     sw::sidebarwindows::SidebarPosition eSidebarPosition;
     tools::Long lOffset;
     SwRect mPageRect;
-    std::vector<SwSidebarItem*> mvSidebarItems;
-    SwPostItPageItem(): bScrollbar(false), eSidebarPosition( sw::sidebarwindows::SidebarPosition::LEFT ), lOffset(0)
+    std::vector<SwAnnotationItem*> mvSidebarItems;
+    SwPostItPageItem(): bScrollbar(false), eSidebarPosition( sw::sidebarwindows::SidebarPosition::NONE ), lOffset(0)
     {
     }
 };
@@ -82,52 +79,14 @@ struct FieldShadowState
     }
 };
 
-class SwNoteProps final : public utl::ConfigItem
-{
-    private:
-        bool m_bIsShowAnchor;
-
-        virtual void ImplCommit() override;
-
-    public:
-        SwNoteProps()
-            : ConfigItem("Office.Writer/Notes")
-            , m_bIsShowAnchor(false)
-        {
-            const css::uno::Sequence< OUString >& rNames = GetPropertyNames();
-            css::uno::Sequence< css::uno::Any > aValues = GetProperties(rNames);
-            const css::uno::Any* pValues = aValues.getConstArray();
-            SAL_WARN_IF(aValues.getLength() != rNames.getLength(), "sw", "GetProperties failed");
-            if (aValues.hasElements())
-                    pValues[0]>>=m_bIsShowAnchor;
-        }
-
-        bool IsShowAnchor() const
-        {
-            return m_bIsShowAnchor;
-        }
-        static css::uno::Sequence< OUString >& GetPropertyNames()
-        {
-            static css::uno::Sequence< OUString > aNames;
-            if(!aNames.hasElements())
-            {
-                aNames.realloc(1);
-                OUString* pNames = aNames.getArray();
-                pNames[0] = "ShowAnkor";
-            }
-            return aNames;
-        }
-
-    virtual void Notify( const css::uno::Sequence< OUString >& aPropertyNames ) override;
-};
-
-class SAL_DLLPUBLIC_RTTI SwPostItMgr final : public SfxListener
+class SAL_DLLPUBLIC_RTTI SwPostItMgr final : public SfxListener,
+                                             public SfxBroadcaster
 {
     private:
         SwView*                         mpView;
         SwWrtShell*                     mpWrtShell;
         VclPtr<SwEditWin>               mpEditWin;
-        std::vector<std::unique_ptr<SwSidebarItem>>     mvPostItFields;
+        std::vector<std::unique_ptr<SwAnnotationItem>>  mvPostItFields;
         std::vector<std::unique_ptr<SwPostItPageItem>>  mPages;
         ImplSVEvent *                   mnEventId;
         bool                            mbWaitingForCalcRects;
@@ -140,7 +99,6 @@ class SAL_DLLPUBLIC_RTTI SwPostItMgr final : public SfxListener
         FieldShadowState                mShadowState;
         std::optional<OutlinerParaObject> mpAnswer;
         OUString                        maAnswerText;
-        bool                            mbIsShowAnchor;
 
         // data structure to collect the <SwAnnotationWin> instances for certain <SwFrame> instances.
         std::unique_ptr<sw::sidebarwindows::SwFrameSidebarWinContainer> mpFrameSidebarWinContainer;
@@ -169,19 +127,26 @@ class SAL_DLLPUBLIC_RTTI SwPostItMgr final : public SfxListener
 
         sw::annotation::SwAnnotationWin* GetSidebarWin(const SfxBroadcaster* pBroadcaster) const;
 
-        SwSidebarItem*  InsertItem( SfxBroadcaster* pItem, bool bCheckExistence, bool bFocus);
+        SwAnnotationItem*  InsertItem( SfxBroadcaster* pItem, bool bCheckExistence, bool bFocus);
         void            RemoveItem( SfxBroadcaster* pBroadcast );
+
+#if ENABLE_YRS
+    public:
+#endif
+        VclPtr<sw::annotation::SwAnnotationWin> GetOrCreateAnnotationWindow(SwAnnotationItem& rItem, bool& rCreated);
 
     public:
         SwPostItMgr(SwView* aDoc);
         virtual ~SwPostItMgr() override;
 
-        typedef std::vector< std::unique_ptr<SwSidebarItem> >::const_iterator const_iterator;
+        typedef std::vector< std::unique_ptr<SwAnnotationItem> >::const_iterator const_iterator;
         const_iterator begin()  const { return mvPostItFields.begin(); }
         const_iterator end()    const { return mvPostItFields.end();  }
+        const std::vector<std::unique_ptr<SwAnnotationItem>>& GetPostItFields() { return mvPostItFields; }
 
         void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
+        std::vector<SwFormatField*> UpdatePostItsParentInfo();
         void LayoutPostIts();
         bool CalcRects();
 
@@ -190,7 +155,8 @@ class SAL_DLLPUBLIC_RTTI SwPostItMgr final : public SfxListener
         bool ShowScrollbar(const tools::ULong aPage) const;
         bool HasNotes() const ;
         bool ShowNotes() const;
-        bool IsShowAnchor() const { return mbIsShowAnchor;}
+        void SetSidebarWidth(const Point& rPointLogic);
+        tools::Rectangle GetSidebarRect(const Point& rPointLogic);
         tools::ULong GetSidebarWidth(bool bPx = false) const;
         tools::ULong GetSidebarBorderWidth(bool bPx = false) const;
 
@@ -205,13 +171,16 @@ class SAL_DLLPUBLIC_RTTI SwPostItMgr final : public SfxListener
         void DeleteCommentThread(sal_uInt32 nPostItId);
         void ToggleResolved(sal_uInt32 nPostItId);
         void ToggleResolvedForThread(sal_uInt32 nPostItId);
+        void PromoteToRoot(sal_uInt32 nPostItId);
+        void MoveSubthreadToRoot(const sw::annotation::SwAnnotationWin* pNewRoot);
+
+        sw::annotation::SwAnnotationWin* GetRemovedAnnotationWin(const SfxBroadcaster* pBroadcast);
 
         void ExecuteFormatAllDialog(SwView& rView);
         void FormatAll(const SfxItemSet &rNewAttr);
 
         void Hide( std::u16string_view rAuthor );
         void Hide();
-        void Show();
         void UpdateResolvedStatus(const sw::annotation::SwAnnotationWin* topNote);
         void ShowHideResolvedNotes(bool visible);
 
@@ -223,6 +192,7 @@ class SAL_DLLPUBLIC_RTTI SwPostItMgr final : public SfxListener
         bool IsHit(const Point &aPointPixel);
         /// Get the matching window that is responsible for handling mouse events of rPointLogic, if any.
         vcl::Window* IsHitSidebarWindow(const Point& rPointLogic);
+        bool IsHitSidebarDragArea(const Point& rPointLogic);
         Color GetArrowColor(sal_uInt16 aDirection, tools::ULong aPage) const;
 
         sw::annotation::SwAnnotationWin* GetAnnotationWin(const SwPostItField* pField) const;
@@ -231,6 +201,7 @@ class SAL_DLLPUBLIC_RTTI SwPostItMgr final : public SfxListener
         sw::annotation::SwAnnotationWin* GetNextPostIt( sal_uInt16 aDirection,
                                                         sw::annotation::SwAnnotationWin* aPostIt);
         SwPostItField* GetLatestPostItField();
+        sw::annotation::SwAnnotationWin* GetOrCreateAnnotationWindowForLatestPostItField();
 
         tools::Long GetNextBorder();
 
@@ -255,11 +226,12 @@ class SAL_DLLPUBLIC_RTTI SwPostItMgr final : public SfxListener
         static Color           GetColorLight(std::size_t aAuthorIndex);
         static Color           GetColorAnchor(std::size_t aAuthorIndex);
 
-        void                RegisterAnswer(const OutlinerParaObject* pAnswer) { if (pAnswer) mpAnswer =* pAnswer; else mpAnswer.reset(); }
+        void                RegisterAnswer(const OutlinerParaObject& rAnswer) { mpAnswer = rAnswer; }
         OutlinerParaObject* IsAnswer() { return mpAnswer ? &*mpAnswer : nullptr; }
-        void                RegisterAnswerText(const OUString& aAnswerText) { maAnswerText = aAnswerText; }
+        void                RegisterAnswerText(const OUString& rAnswerText) { maAnswerText = rAnswerText; }
         const OUString&     GetAnswerText() const { return maAnswerText; }
         void CheckMetaText();
+        void UpdateColors();
 
         sal_uInt16 Replace(SvxSearchItem const * pItem);
         sal_uInt16 SearchReplace(const SwFormatField &pField, const i18nutil::SearchOptions2& rSearchOptions,bool bSrchForward);
@@ -275,13 +247,12 @@ class SAL_DLLPUBLIC_RTTI SwPostItMgr final : public SfxListener
         bool HasFrameConnectedSidebarWins( const SwFrame& rFrame );
         vcl::Window* GetSidebarWinForFrameByIndex( const SwFrame& rFrame,
                                             const sal_Int32 nIndex );
-        void GetAllSidebarWinForFrame( const SwFrame& rFrame,
-                                     std::vector< vcl::Window* >* pChildren );
+        std::vector<vcl::Window*> GetAllSidebarWinForFrame(const SwFrame& rFrame);
 
         void DrawNotesForPage(OutputDevice *pOutDev, sal_uInt32 nPage);
         void PaintTile(OutputDevice& rRenderContext);
-};
 
-#endif
+        sw::sidebarwindows::SidebarPosition GetSidebarPos(const Point& rPointLogic);
+};
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -37,9 +37,9 @@
  *
  */
 
-#ifndef INCLUDED_VCL_INC_SFT_HXX
-#define INCLUDED_VCL_INC_SFT_HXX
+#pragma once
 
+#include <config_options.h>
 #include <rtl/ustring.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/fontcapabilities.hxx>
@@ -53,7 +53,7 @@
 #include <memory>
 #include <vector>
 
-class SvStream;
+#include "font/TTFStructure.hxx"
 
 namespace vcl
 {
@@ -433,24 +433,6 @@ constexpr sal_uInt32 T_true = 0x74727565;        /* 'true' */
 constexpr sal_uInt32 T_ttcf = 0x74746366;        /* 'ttcf' */
 constexpr sal_uInt32 T_otto = 0x4f54544f;        /* 'OTTO' */
 
-// standard TrueType table tags
-constexpr sal_uInt32 T_maxp = 0x6D617870;
-constexpr sal_uInt32 T_glyf = 0x676C7966;
-constexpr sal_uInt32 T_head = 0x68656164;
-constexpr sal_uInt32 T_loca = 0x6C6F6361;
-constexpr sal_uInt32 T_name = 0x6E616D65;
-constexpr sal_uInt32 T_hhea = 0x68686561;
-constexpr sal_uInt32 T_hmtx = 0x686D7478;
-constexpr sal_uInt32 T_cmap = 0x636D6170;
-constexpr sal_uInt32 T_vhea = 0x76686561;
-constexpr sal_uInt32 T_vmtx = 0x766D7478;
-constexpr sal_uInt32 T_OS2  = 0x4F532F32;
-constexpr sal_uInt32 T_post = 0x706F7374;
-constexpr sal_uInt32 T_cvt  = 0x63767420;
-constexpr sal_uInt32 T_prep = 0x70726570;
-constexpr sal_uInt32 T_fpgm = 0x6670676D;
-constexpr sal_uInt32 T_CFF  = 0x43464620;
-
 class AbstractTrueTypeFont;
 class TrueTypeFont;
 
@@ -604,7 +586,7 @@ class TrueTypeFont;
  * @ingroup sft
  *
  */
-    VCL_DLLPUBLIC void GetTTGlobalFontInfo(AbstractTrueTypeFont *ttf, TTGlobalFontInfo *info);
+void GetTTGlobalFontInfo(const AbstractTrueTypeFont *ttf, TTGlobalFontInfo *info);
 
 /**
  * Returns part of the head table info, normally collected by GetTTGlobalFontInfo.
@@ -620,7 +602,7 @@ class TrueTypeFont;
  * @return            true, if table data could be decoded
  * @ingroup sft
  */
-    VCL_DLLPUBLIC bool GetTTGlobalFontHeadInfo(const AbstractTrueTypeFont *ttf, int& xMin, int& yMin, int& xMax, int& yMax, sal_uInt16& macStyle);
+bool GetTTGlobalFontHeadInfo(const AbstractTrueTypeFont *ttf, int& xMin, int& yMin, int& xMax, int& yMax, sal_uInt16& macStyle);
 
 /*- private definitions */
 
@@ -643,7 +625,7 @@ constexpr int O_fpgm = 14;   /* 'fpgm' - only used in TT->TT generation */
 constexpr int O_CFF = 15;   /* 'CFF' */
 constexpr int NUM_TAGS = 16;
 
-class VCL_DLLPUBLIC AbstractTrueTypeFont
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) AbstractTrueTypeFont
 {
     std::string m_sFileName;
     sal_uInt32 m_nGlyphs;
@@ -719,7 +701,5 @@ const sal_uInt8* TrueTypeFont::table(sal_uInt32 ord, sal_uInt32& size) const
 }
 
 } // namespace vcl
-
-#endif // INCLUDED_VCL_INC_SFT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

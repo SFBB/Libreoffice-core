@@ -35,9 +35,9 @@ class SVXCORE_DLLPUBLIC XFormTextAdjustItem final : public SfxEnumItem<XFormText
 public:
                             static SfxPoolItem* CreateDefault();
 
+                            DECLARE_ITEM_TYPE_FUNCTION(XFormTextAdjustItem)
                             XFormTextAdjustItem(XFormTextAdjust = XFormTextAdjust::Center);
     virtual XFormTextAdjustItem* Clone(SfxItemPool* pPool = nullptr) const override;
-    virtual sal_uInt16      GetValueCount() const override;
     // #FontWork#
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;

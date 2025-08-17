@@ -55,25 +55,14 @@ using namespace ::com::sun::star::util;
 using ::com::sun::star::accessibility::XAccessibleContext;
 using ::com::sun::star::accessibility::XAccessible;
 
-namespace {
-
-struct LanguageDependentProp
+constexpr OUString aLanguageDependentProp[] =
 {
-    const char* pPropName;
-    sal_Int32   nPropNameLength;
-};
-
-}
-
-const LanguageDependentProp aLanguageDependentProp[] =
-{
-    { "Text",            4 },
-    { "Label",           5 },
-    { "Title",           5 },
-    { "HelpText",        8 },
-    { "CurrencySymbol", 14 },
-    { "StringItemList", 14 },
-    { nullptr, 0                 }
+    u"Text"_ustr,
+    u"Label"_ustr,
+    u"Title"_ustr,
+    u"HelpText"_ustr,
+    u"CurrencySymbol"_ustr,
+    u"StringItemList"_ustr,
 };
 
 static Sequence< OUString> lcl_ImplGetPropertyNames( const Reference< XMultiPropertySet > & rxModel )
@@ -229,7 +218,7 @@ bool UnoControl::ImplCheckLocalize( OUString& _rPossiblyLocalizable )
     {
         Reference< XPropertySet > xPropSet( mxModel, UNO_QUERY_THROW );
         Reference< resource::XStringResourceResolver > xStringResourceResolver(
-            xPropSet->getPropertyValue("ResourceResolver"),
+            xPropSet->getPropertyValue(u"ResourceResolver"_ustr),
             UNO_QUERY
         );
         if ( xStringResourceResolver.is() )
@@ -579,14 +568,13 @@ void UnoControl::ImplModelPropertiesChanged( const Sequence< PropertyChangeEvent
         // Add language dependent properties into the peer property set.
         // Our resource resolver has been changed and we must be sure
         // that language dependent props use the new resolver.
-        const LanguageDependentProp* pLangDepProp = aLanguageDependentProp;
-        while ( pLangDepProp->pPropName != nullptr )
+
+        for (const auto & rLangDepProp : aLanguageDependentProp)
         {
             bool bMustBeInserted( true );
             for (const PropertyValue & i : aPeerPropertiesToSet)
             {
-                if ( i.Name.equalsAsciiL(
-                        pLangDepProp->pPropName, pLangDepProp->nPropNameLength ))
+                if ( i.Name == rLangDepProp )
                 {
                     bMustBeInserted = false;
                     break;
@@ -596,14 +584,11 @@ void UnoControl::ImplModelPropertiesChanged( const Sequence< PropertyChangeEvent
             if ( bMustBeInserted )
             {
                 // Add language dependent props at the end
-                OUString aPropName( OUString::createFromAscii( pLangDepProp->pPropName ));
-                if ( xPSI.is() && xPSI->hasPropertyByName( aPropName ) )
+                if ( xPSI.is() && xPSI->hasPropertyByName( rLangDepProp ) )
                 {
-                    aPeerPropertiesToSet.emplace_back( aPropName, 0, xPS->getPropertyValue( aPropName ), PropertyState_DIRECT_VALUE );
+                    aPeerPropertiesToSet.emplace_back( rLangDepProp, 0, xPS->getPropertyValue( rLangDepProp ), PropertyState_DIRECT_VALUE );
                 }
             }
-
-            ++pLangDepProp;
         }
     }
     aGuard.clear();
@@ -1074,7 +1059,7 @@ void UnoControl::createPeer( const Reference< XToolkit >& rxToolkit, const Refer
     ::osl::ClearableMutexGuard aGuard( GetMutex() );
     if ( !mxModel.is() )
     {
-        throw RuntimeException("createPeer: no model!", getXWeak());
+        throw RuntimeException(u"createPeer: no model!"_ustr, getXWeak());
     }
 
     if( getPeer().is() )
@@ -1299,14 +1284,20 @@ void UnoControl::createPeer( const Reference< XToolkit >& rxToolkit, const Refer
     // tdf#150886 if false use the same settings for widgets regardless of theme
     // for consistency of document across platforms and in pdf/print output
     // note: tdf#155029 do this before updateFromModel
-    if (xInfo->hasPropertyByName("StandardTheme"))
+    if (xInfo->hasPropertyByName(u"StandardTheme"_ustr))
     {
-        aVal = xPSet->getPropertyValue("StandardTheme");
+        aVal = xPSet->getPropertyValue(u"StandardTheme"_ustr);
         bool bUseStandardTheme = false;
         aVal >>= bUseStandardTheme;
         if (bUseStandardTheme)
         {
             VclPtr<vcl::Window> pVclPeer = VCLUnoHelper::GetWindow(getPeer());
+
+            WindowBorderStyle nStyle = pVclPeer->GetBorderStyle();
+            nStyle |= WindowBorderStyle::NONATIVEBORDER;
+            pVclPeer->SetBorderStyle(nStyle);
+
+            // KEEP IN SYNC WITH ControlCharacterDialog::translatePropertiesToItems
             AllSettings aAllSettings = pVclPeer->GetSettings();
             StyleSettings aStyleSettings = aAllSettings.GetStyleSettings();
             aStyleSettings.SetStandardStyles();
@@ -1378,7 +1369,7 @@ sal_Bool UnoControl::setModel( const Reference< XControlModel >& rxModel )
             Sequence< OUString> aNames = lcl_ImplGetPropertyNames( xPropSet );
             xPropSet->addPropertiesChangeListener( aNames, xListener );
 
-            mpData->bLocalizationSupport = xPSI->hasPropertyByName("ResourceResolver");
+            mpData->bLocalizationSupport = xPSI->hasPropertyByName(u"ResourceResolver"_ustr);
         }
         catch( const Exception& )
         {
@@ -1459,7 +1450,7 @@ sal_Bool UnoControl::supportsService( const OUString& rServiceName )
 
 Sequence< OUString > UnoControl::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.awt.UnoControl" };
+    return { u"com.sun.star.awt.UnoControl"_ustr };
 }
 
 
@@ -1473,10 +1464,14 @@ Reference< XAccessibleContext > SAL_CALL UnoControl::getAccessibleContext(  )
     if ( !xCurrentContext.is() )
     {
         if ( !mbDesignMode )
-        {   // in alive mode, use the AccessibleContext of the peer
-            Reference< XAccessible > xPeerAcc( getPeer(), UNO_QUERY );
-            if ( xPeerAcc.is() )
-                xCurrentContext = xPeerAcc->getAccessibleContext( );
+        {
+            // in alive mode, use the accessible context of the window
+            if (vcl::Window* pWindow = VCLUnoHelper::GetWindow(getPeer()))
+            {
+                rtl::Reference<comphelper::OAccessible> pWinAcc = pWindow->GetAccessible();
+                if (pWinAcc.is())
+                    xCurrentContext = pWinAcc;
+            }
         }
         else
             // in design mode, use a fallback

@@ -56,17 +56,15 @@ private:
 };
 
 ScNamedRangeObj::ScNamedRangeObj():
-        UnoApiTest("/sc/qa/extras/testdocuments"),
-        apitest::XNamed("NamedRange")
+        UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr),
+        apitest::XNamed(u"NamedRange"_ustr)
 {
 }
 
 uno::Reference< sheet::XNamedRanges > ScNamedRangeObj::init_impl()
 {
-    CPPUNIT_ASSERT_MESSAGE("no component loaded", mxComponent.is());
-
     uno::Reference< beans::XPropertySet > xPropSet (mxComponent, UNO_QUERY_THROW);
-    uno::Reference< sheet::XNamedRanges > xNamedRanges(xPropSet->getPropertyValue("NamedRanges"), UNO_QUERY_THROW);
+    uno::Reference< sheet::XNamedRanges > xNamedRanges(xPropSet->getPropertyValue(u"NamedRanges"_ustr), UNO_QUERY_THROW);
     CPPUNIT_ASSERT(xNamedRanges.is());
 
     setCellRange(table::CellRangeAddress(0, 1, 7, 1, 7));
@@ -85,14 +83,14 @@ uno::Reference< sheet::XNamedRange> ScNamedRangeObj::getNamedRange(const OUStrin
 
 uno::Reference< uno::XInterface > ScNamedRangeObj::init()
 {
-    return getNamedRange("NamedRange");
+    return getNamedRange(u"NamedRange"_ustr);
 }
 
 void ScNamedRangeObj::setUp()
 {
     UnoApiTest::setUp();
     // create a calc document
-    loadFromURL(u"ScNamedRangeObj.ods");
+    loadFromFile(u"ScNamedRangeObj.ods");
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScNamedRangeObj);

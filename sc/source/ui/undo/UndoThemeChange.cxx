@@ -9,16 +9,15 @@
 
 #include <undo/UndoThemeChange.hxx>
 #include <docmodel/theme/Theme.hxx>
-#include <svx/svdpage.hxx>
 #include <scresid.hxx>
 #include <globstr.hrc>
 
 namespace sc
 {
-UndoThemeChange::UndoThemeChange(ScDocShell& rDocShell,
+UndoThemeChange::UndoThemeChange(ScDocShell& rShell,
                                  std::shared_ptr<model::ColorSet> const& pOldColorSet,
                                  std::shared_ptr<model::ColorSet> const& pNewColorSet)
-    : ScSimpleUndo(&rDocShell)
+    : ScSimpleUndo(rShell)
     , mpOldColorSet(pOldColorSet)
     , mpNewColorSet(pNewColorSet)
 {
@@ -46,7 +45,7 @@ void UndoThemeChange::Undo()
 {
     BeginUndo();
 
-    auto pTheme = getTheme(*pDocShell);
+    auto pTheme = getTheme(rDocShell);
     pTheme->setColorSet(mpOldColorSet);
 
     EndUndo();
@@ -56,7 +55,7 @@ void UndoThemeChange::Redo()
 {
     BeginUndo();
 
-    auto pTheme = getTheme(*pDocShell);
+    auto pTheme = getTheme(rDocShell);
     pTheme->setColorSet(mpNewColorSet);
 
     EndRedo();

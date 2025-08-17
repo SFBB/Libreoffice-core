@@ -42,7 +42,7 @@
 #include <comphelper/diagnose_ex.hxx>
 #include <vcl/svapp.hxx>
 #include <Annotation.hxx>
-#include <AnnotationEnumeration.hxx>
+#include <svx/annotation/AnnotationEnumeration.hxx>
 #include <createunopageimpl.hxx>
 #include <unomodel.hxx>
 #include <unopage.hxx>
@@ -485,6 +485,11 @@ rtl::Reference<SdrObject> SdGenericDrawPage::CreateSdrObject_( const Reference< 
     }
 
     ::tools::Rectangle aRect( eObjKind == PresObjKind::Title ? GetPage()->GetTitleRect() : GetPage()->GetLayoutRect()  );
+
+    // OOXML placeholder with "TextAutoGrowHeight" use the height set on the slide
+    sal_Int32 nHeight = xShape->getSize().Height;
+    if (nHeight != 0)
+        aRect.setHeight(nHeight);
 
     const awt::Point aPos( aRect.Left(), aRect.Top() );
     xShape->setPosition( aPos );
@@ -982,24 +987,16 @@ void SAL_CALL SdGenericDrawPage::setPropertyValue( const OUString& aPropertyName
         }
 
         case WID_PAGE_THEME:
-        {
-            SdrPage* pPage = GetPage();
-            uno::Reference<util::XTheme> xTheme;
-            if (aValue >>= xTheme)
+            if (uno::Reference<util::XTheme> xTheme; aValue >>= xTheme)
             {
                 auto& rUnoTheme = dynamic_cast<UnoTheme&>(*xTheme);
-                pPage->getSdrPageProperties().setTheme(rUnoTheme.getTheme());
+                GetPage()->getSdrPageProperties().setTheme(rUnoTheme.getTheme());
             }
             break;
-        }
 
         case WID_PAGE_THEME_UNO_REPRESENTATION:
-        {
-            SdrPage* pPage = GetPage();
-            std::shared_ptr<model::Theme> pTheme = model::Theme::FromAny(aValue);
-            pPage->getSdrPageProperties().setTheme(pTheme);
+            GetPage()->getSdrPageProperties().setTheme(model::Theme::FromAny(aValue));
             break;
-        }
 
         default:
             throw beans::UnknownPropertyException( aPropertyName, static_cast<cppu::OWeakObject*>(this));
@@ -1096,7 +1093,7 @@ Any SAL_CALL SdGenericDrawPage::getPropertyValue( const OUString& PropertyName )
     }
     case WID_PAGE_LDBITMAP:
         {
-            Reference< awt::XBitmap > xBitmap(VCLUnoHelper::CreateBitmap(BitmapEx(BMP_PAGE)));
+            Reference< awt::XBitmap > xBitmap(VCLUnoHelper::CreateBitmap(Bitmap(BMP_PAGE)));
             aAny <<= xBitmap;
         }
         break;
@@ -1159,11 +1156,11 @@ Any SAL_CALL SdGenericDrawPage::getPropertyValue( const OUString& PropertyName )
                     nPgNum++;
                 }
                 std::shared_ptr<GDIMetaFile> xMetaFile = pDocShell->GetPreviewMetaFile();
-                BitmapEx aBitmap;
+                Bitmap aBitmap;
                 if (xMetaFile && xMetaFile->CreateThumbnail(aBitmap))
                 {
                     SvMemoryStream aMemStream;
-                    WriteDIB(aBitmap.GetBitmap(), aMemStream, false, false);
+                    WriteDIB(aBitmap, aMemStream, false, false);
                     uno::Sequence<sal_Int8> aSeq( static_cast<sal_Int8 const *>(aMemStream.GetData()), aMemStream.Tell() );
                     aAny <<= aSeq;
                 }
@@ -1319,29 +1316,14 @@ Any SAL_CALL SdGenericDrawPage::getPropertyValue( const OUString& PropertyName )
         break;
 
     case WID_PAGE_THEME:
-    {
-        SdrPage* pPage = GetPage();
-        css::uno::Reference<css::util::XTheme> xTheme;
-        auto pTheme = pPage->getSdrPageProperties().getTheme();
-        if (pTheme)
-            xTheme = model::theme::createXTheme(pTheme);
-        aAny <<= xTheme;
+        if (auto pTheme = GetPage()->getSdrPageProperties().getTheme())
+            aAny <<= model::theme::createXTheme(pTheme);
         break;
-    }
 
     case WID_PAGE_THEME_UNO_REPRESENTATION:
-    {
-        SdrPage* pPage = GetPage();
-        auto pTheme = pPage->getSdrPageProperties().getTheme();
-        if (pTheme)
+        if (auto pTheme = GetPage()->getSdrPageProperties().getTheme())
             pTheme->ToAny(aAny);
-        else
-        {
-            beans::PropertyValues aValues;
-            aAny <<= aValues;
-        }
         break;
-    }
 
     default:
         throw beans::UnknownPropertyException( PropertyName, static_cast<cppu::OWeakObject*>(this));
@@ -1434,17 +1416,17 @@ Reference< drawing::XShape >  SdGenericDrawPage::CreateShape(SdrObject *pObj) co
                 if( GetPage()->GetPageKind() == PageKind::Notes && GetPage()->IsMasterPage() )
                 {
                     // fake an empty PageShape if it's a title shape on the master page
-                    pShape->SetShapeType("com.sun.star.presentation.PageShape");
+                    pShape->SetShapeType(u"com.sun.star.presentation.PageShape"_ustr);
                 }
                 else
                 {
-                    pShape->SetShapeType("com.sun.star.presentation.TitleTextShape");
+                    pShape->SetShapeType(u"com.sun.star.presentation.TitleTextShape"_ustr);
                 }
                 eKind = PresObjKind::NONE;
                 break;
             case SdrObjKind::OutlineText:
                 pShape = new SvxShapeText( pObj );
-                pShape->SetShapeType("com.sun.star.presentation.OutlinerShape");
+                pShape->SetShapeType(u"com.sun.star.presentation.OutlinerShape"_ustr);
                 eKind = PresObjKind::NONE;
                 break;
             default: ;
@@ -1458,7 +1440,7 @@ Reference< drawing::XShape >  SdGenericDrawPage::CreateShape(SdrObject *pObj) co
 
         if( eKind != PresObjKind::NONE )
         {
-            OUString aShapeType("com.sun.star.presentation.");
+            OUString aShapeType(u"com.sun.star.presentation."_ustr);
 
             switch( eKind )
             {
@@ -1909,7 +1891,6 @@ Reference< XAnimationNode > SAL_CALL SdGenericDrawPage::getAnimationNode()
 SdPageLinkTargets::SdPageLinkTargets( SdGenericDrawPage* pUnoPage ) noexcept
 {
     mxPage = pUnoPage;
-    mpUnoPage = pUnoPage;
 }
 
 SdPageLinkTargets::~SdPageLinkTargets() noexcept
@@ -1926,7 +1907,7 @@ sal_Bool SAL_CALL SdPageLinkTargets::hasElements()
 {
     ::SolarMutexGuard aGuard;
 
-    SdPage* pPage = mpUnoPage->GetPage();
+    SdPage* pPage = mxPage->GetPage();
     if( pPage != nullptr )
     {
         SdrObjListIter aIter( pPage, SdrIterMode::DeepWithGroups );
@@ -1953,7 +1934,7 @@ Any SAL_CALL SdPageLinkTargets::getByName( const OUString& aName )
 {
     ::SolarMutexGuard aGuard;
 
-    SdPage* pPage = mpUnoPage->GetPage();
+    SdPage* pPage = mxPage->GetPage();
     if( pPage != nullptr )
     {
         SdrObject* pObj = FindObject( aName );
@@ -1973,7 +1954,7 @@ Sequence< OUString > SAL_CALL SdPageLinkTargets::getElementNames()
 
     sal_uInt32 nObjCount = 0;
 
-    SdPage* pPage = mpUnoPage->GetPage();
+    SdPage* pPage = mxPage->GetPage();
     if( pPage != nullptr )
     {
         SdrObjListIter aIter( pPage, SdrIterMode::DeepWithGroups );
@@ -2019,7 +2000,7 @@ sal_Bool SAL_CALL SdPageLinkTargets::hasByName( const OUString& aName )
 
 SdrObject* SdPageLinkTargets::FindObject( std::u16string_view rName ) const noexcept
 {
-    SdPage* pPage = mpUnoPage->GetPage();
+    SdPage* pPage = mxPage->GetPage();
     if( pPage == nullptr )
         return nullptr;
 
@@ -2042,7 +2023,7 @@ SdrObject* SdPageLinkTargets::FindObject( std::u16string_view rName ) const noex
 // XServiceInfo
 OUString SAL_CALL SdPageLinkTargets::getImplementationName()
 {
-    return "SdPageLinkTargets";
+    return u"SdPageLinkTargets"_ustr;
 }
 
 sal_Bool SAL_CALL SdPageLinkTargets::supportsService( const OUString& ServiceName )
@@ -2052,7 +2033,7 @@ sal_Bool SAL_CALL SdPageLinkTargets::supportsService( const OUString& ServiceNam
 
 Sequence< OUString > SAL_CALL SdPageLinkTargets::getSupportedServiceNames()
 {
-  return { "com.sun.star.document.LinkTargets" };
+  return { u"com.sun.star.document.LinkTargets"_ustr };
 }
 
 // SdDrawPage
@@ -2230,7 +2211,7 @@ OUString SdDrawPage::getUiNameFromPageApiName( const OUString& rApiName )
 // XServiceInfo
 OUString SAL_CALL SdDrawPage::getImplementationName()
 {
-    return "SdDrawPage";
+    return u"SdDrawPage"_ustr;
 }
 
 Sequence< OUString > SAL_CALL SdDrawPage::getSupportedServiceNames()
@@ -2302,7 +2283,7 @@ void SAL_CALL SdDrawPage::setName( const OUString& rName )
 
     GetPage()->SetName( aName );
 
-    sal_uInt16 nNotesPageNum = (GetPage()->GetPageNum()-1)>>1;
+    sal_uInt16 nNotesPageNum = static_cast<sal_uInt16>( ( GetPage()->GetPageNum() - 1 ) >> 1 );
     if( GetModel()->GetDoc()->GetSdPageCount( PageKind::Notes ) > nNotesPageNum )
     {
         SdPage* pNotesPage = GetModel()->GetDoc()->GetSdPage( nNotesPageNum, PageKind::Notes );
@@ -2340,21 +2321,22 @@ OUString SAL_CALL SdDrawPage::getName()
 // XMasterPageTarget
 Reference< drawing::XDrawPage > SAL_CALL SdDrawPage::getMasterPage(  )
 {
+    return static_cast<SdGenericDrawPage*>(getSdMasterPage());
+}
+
+SdMasterPage* SdDrawPage::getSdMasterPage()
+{
     ::SolarMutexGuard aGuard;
 
     throwIfDisposed();
 
     if(GetPage())
     {
-        Reference< drawing::XDrawPage > xPage;
-
         if(SvxDrawPage::mpPage->TRG_HasMasterPage())
         {
             SdrPage& rMasterPage = SvxDrawPage::mpPage->TRG_GetMasterPage();
-            xPage.set( rMasterPage.getUnoPage(), uno::UNO_QUERY );
+            return dynamic_cast<SdMasterPage*>(rMasterPage.getUnoPage().get());
         }
-
-        return xPage;
     }
     return nullptr;
 }
@@ -2476,7 +2458,7 @@ void SdDrawPage::setBackground( const Any& rValue )
     // is it our own implementation?
     SdUnoPageBackground* pBack = dynamic_cast<SdUnoPageBackground*>( xSet.get() );
 
-    SfxItemSetFixed<XATTR_FILL_FIRST, XATTR_FILL_LAST> aSet( GetModel()->GetDoc()->GetPool() );
+    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(GetModel()->GetDoc()->GetPool()));
 
     if( pBack )
     {
@@ -2524,9 +2506,9 @@ Reference< XAnnotation > SAL_CALL SdGenericDrawPage::createAndInsertAnnotation()
     if( !GetPage() )
         throw DisposedException();
 
-    rtl::Reference< sd::Annotation > xRet;
-    GetPage()->createAnnotation(xRet);
-    return xRet;
+    auto xAnnotation = GetPage()->createAnnotation();
+    GetPage()->addAnnotation(xAnnotation);
+    return xAnnotation;
 }
 
 void SAL_CALL SdGenericDrawPage::removeAnnotation(const Reference< XAnnotation > & annotation)
@@ -2538,7 +2520,7 @@ void SAL_CALL SdGenericDrawPage::removeAnnotation(const Reference< XAnnotation >
 
 Reference< XAnnotationEnumeration > SAL_CALL SdGenericDrawPage::createAnnotationEnumeration()
 {
-    return ::sd::createAnnotationEnumeration( std::vector(GetPage()->getAnnotations()) );
+    return sdr::annotation::createAnnotationEnumeration(std::vector(GetPage()->getAnnotations()));
 }
 
 void SdDrawPage::getBackground(Any& rValue)
@@ -2747,7 +2729,7 @@ Sequence< sal_Int8 > SAL_CALL SdMasterPage::getImplementationId()
 // XServiceInfo
 OUString SAL_CALL SdMasterPage::getImplementationName()
 {
-    return "SdMasterPage";
+    return u"SdMasterPage"_ustr;
 }
 
 Sequence< OUString > SAL_CALL SdMasterPage::getSupportedServiceNames()
@@ -2844,7 +2826,7 @@ void SdMasterPage::setBackground( const Any& rValue )
             // is it our own implementation?
             SdUnoPageBackground* pBack = dynamic_cast<SdUnoPageBackground*>( xInputSet.get() );
 
-            SfxItemSetFixed<XATTR_FILL_FIRST, XATTR_FILL_LAST> aSet( GetModel()->GetDoc()->GetPool() );
+            SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(GetModel()->GetDoc()->GetPool()));
 
             if( pBack )
             {
@@ -2978,7 +2960,12 @@ void SAL_CALL SdMasterPage::setName( const OUString& rName )
     GetPage()->SetName( rName );
 
     if( pDoc )
-        pDoc->RenameLayoutTemplate( GetPage()->GetLayoutName(), rName );
+    {
+        // tdf#164463 we need to pass a copy of the LayoutName here, a
+        // reference means it can get updated to rName during the function.
+        OUString aOldPageLayoutName = GetPage()->GetLayoutName();
+        pDoc->RenameLayoutTemplate(aOldPageLayoutName, rName);
+    }
 
     // fake a mode change to repaint the page tab bar
     ::sd::DrawDocShell* pDocSh = GetModel()->GetDocShell();

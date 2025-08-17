@@ -22,7 +22,6 @@
 #include <com/sun/star/util/MeasureUnit.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/container/XNameReplace.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Exception.hpp>
@@ -33,7 +32,6 @@
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/XMLEventExport.hxx>
 #include <tools/debug.hxx>
-#include <comphelper/processfactory.hxx>
 
 
 using namespace ::com::sun::star;
@@ -106,7 +104,7 @@ ErrCode XMLAutoTextEventExport::exportDoc( enum XMLTokenEnum )
             // get filter component
             Reference< xml::sax::XDocumentHandler > xTmpDocHandler(
                 xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                    "com.sun.star.comp.Oasis2OOoTransformer",
+                    u"com.sun.star.comp.Oasis2OOoTransformer"_ustr,
                     aArgs,
                     xContext),
                 UNO_QUERY);
@@ -200,7 +198,7 @@ com_sun_star_comp_Writer_XMLOasisAutotextEventsExporter_get_implementation(
     css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
     return cppu::acquire(new XMLAutoTextEventExport(
-        context, "com.sun.star.comp.Writer.XMLOasisAutotextEventsExporter",
+        context, u"com.sun.star.comp.Writer.XMLOasisAutotextEventsExporter"_ustr,
         SvXMLExportFlags::ALL | SvXMLExportFlags::OASIS));
 }
 
@@ -209,7 +207,7 @@ com_sun_star_comp_Writer_XMLAutotextEventsExporter_get_implementation(
     css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
 {
     return cppu::acquire(new XMLAutoTextEventExport(
-        context, "com.sun.star.comp.Writer.XMLAutotextEventsExporter",
+        context, u"com.sun.star.comp.Writer.XMLAutotextEventsExporter"_ustr,
         SvXMLExportFlags::ALL));
 }
 

@@ -25,11 +25,8 @@
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::awt;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::util;
 using namespace ::osl;
 using namespace ::cppu;
 
@@ -195,7 +192,7 @@ Reference< XNameAccess > SAL_CALL OQueryDescriptor_Base::getColumns( )
 
 OUString SAL_CALL OQueryDescriptor_Base::getImplementationName(  )
 {
-    return "com.sun.star.sdb.OQueryDescriptor";
+    return u"com.sun.star.sdb.OQueryDescriptor"_ustr;
 }
 
 sal_Bool SAL_CALL OQueryDescriptor_Base::supportsService( const OUString& _rServiceName )

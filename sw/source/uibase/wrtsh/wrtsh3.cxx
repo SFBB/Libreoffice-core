@@ -46,10 +46,10 @@
 
 using namespace ::com::sun::star;
 
-bool SwWrtShell::MoveBookMark( BookMarkMove eFuncId, const ::sw::mark::IMark* const pMark)
+bool SwWrtShell::MoveBookMark( BookMarkMove eFuncId, const ::sw::mark::MarkBase* const pMark)
 {
     addCurrentPosition();
-    (this->*m_fnKillSel)( nullptr, false );
+    (this->*m_fnKillSel)( nullptr, false, ScrollSizeMode::ScrollSizeDefault );
 
     bool bRet = true;
     switch(eFuncId)
@@ -75,7 +75,7 @@ bool SwWrtShell::MoveBookMark( BookMarkMove eFuncId, const ::sw::mark::IMark* co
 
 bool SwWrtShell::GotoField( const SwFormatField& rField )
 {
-    (this->*m_fnKillSel)( nullptr, false );
+    (this->*m_fnKillSel)( nullptr, false, ScrollSizeMode::ScrollSizeDefault );
 
     bool bRet = SwCursorShell::GotoFormatField( rField );
     if( bRet && IsSelFrameMode() )
@@ -96,7 +96,7 @@ bool SwWrtShell::GotoField( const SwFormatField& rField )
 bool SwWrtShell::GotoContentControl(const SwFormatContentControl& rContentControl,
                                     bool bOnlyRefresh)
 {
-    std::shared_ptr<SwContentControl> pContentControl = rContentControl.GetContentControl();
+    const std::shared_ptr<SwContentControl>& pContentControl = rContentControl.GetContentControl();
     if (IsFrameSelected() && pContentControl && pContentControl->GetPicture())
     {
         // A frame is already selected, and its anchor is inside a picture content control.
@@ -109,7 +109,8 @@ bool SwWrtShell::GotoContentControl(const SwFormatContentControl& rContentContro
                 tools::JsonWriter aJson;
                 aJson.put("action", "change-picture");
                 OString pJson(aJson.finishAndGetAsOString());
-                GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_CONTENT_CONTROL,
+                if (SfxViewShell* pNotifySh = GetSfxViewShell())
+                    pNotifySh->libreOfficeKitViewCallback(LOK_CALLBACK_CONTENT_CONTROL,
                                                               pJson);
             }
             else
@@ -122,7 +123,7 @@ bool SwWrtShell::GotoContentControl(const SwFormatContentControl& rContentContro
         return true;
     }
 
-    (this->*m_fnKillSel)(nullptr, false);
+    (this->*m_fnKillSel)(nullptr, false, ScrollSizeMode::ScrollSizeDefault);
 
     bool bRet = SwCursorShell::GotoFormatContentControl(rContentControl);
 
@@ -221,9 +222,9 @@ bool SwWrtShell::GotoContentControl(const SwFormatContentControl& rContentContro
     return bRet;
 }
 
-bool SwWrtShell::GotoFieldmark(::sw::mark::IFieldmark const * const pMark)
+bool SwWrtShell::GotoFieldmark(::sw::mark::Fieldmark const * const pMark)
 {
-    (this->*m_fnKillSel)( nullptr, false );
+    (this->*m_fnKillSel)( nullptr, false, ScrollSizeMode::ScrollSizeDefault );
     bool bRet = SwCursorShell::GotoFieldmark(pMark);
     if( bRet && IsSelFrameMode() )
     {
@@ -261,15 +262,15 @@ void SwWrtShell::DrawSelChanged( )
     g_bNoInterrupt = bOldVal;
 }
 
-void SwWrtShell::GotoMark( const OUString& rName )
+void SwWrtShell::GotoMark( const SwMarkName& rName )
 {
-    IDocumentMarkAccess::const_iterator_t ppMark = getIDocumentMarkAccess()->findMark( rName );
+    auto ppMark = getIDocumentMarkAccess()->findMark( rName );
     if (ppMark == getIDocumentMarkAccess()->getAllMarksEnd())
         return;
     MoveBookMark( BOOKMARK_INDEX, *ppMark );
 }
 
-void SwWrtShell::GotoMark( const ::sw::mark::IMark* const pMark )
+void SwWrtShell::GotoMark( const ::sw::mark::MarkBase* const pMark )
 {
     MoveBookMark( BOOKMARK_INDEX, pMark );
 }
@@ -358,15 +359,15 @@ bool SwWrtShell::GetURLFromButton( OUString& rURL, OUString& rDescr ) const
                 uno::Any aTmp;
 
                 uno::Reference< beans::XPropertySetInfo >   xInfo = xPropSet->getPropertySetInfo();
-                if(xInfo->hasPropertyByName( "ButtonType" ))
+                if(xInfo->hasPropertyByName( u"ButtonType"_ustr ))
                 {
-                    aTmp = xPropSet->getPropertyValue( "ButtonType" );
+                    aTmp = xPropSet->getPropertyValue( u"ButtonType"_ustr );
                     form::FormButtonType eTmpButtonType;
                     aTmp >>= eTmpButtonType;
                     if( form::FormButtonType_URL == eTmpButtonType)
                     {
                         // Label
-                        aTmp = xPropSet->getPropertyValue( "Label" );
+                        aTmp = xPropSet->getPropertyValue( u"Label"_ustr );
                         OUString uTmp;
                         if( (aTmp >>= uTmp) && !uTmp.isEmpty())
                         {
@@ -374,7 +375,7 @@ bool SwWrtShell::GetURLFromButton( OUString& rURL, OUString& rDescr ) const
                         }
 
                         // util::URL
-                        aTmp = xPropSet->getPropertyValue( "TargetURL" );
+                        aTmp = xPropSet->getPropertyValue( u"TargetURL"_ustr );
                         if( (aTmp >>= uTmp) && !uTmp.isEmpty())
                         {
                             rURL = uTmp;
@@ -387,6 +388,11 @@ bool SwWrtShell::GetURLFromButton( OUString& rURL, OUString& rDescr ) const
     }
 
     return bRet;
+}
+
+SwPostItMgr* SwWrtShell::GetPostItMgr()
+{
+    return m_rView.GetPostItMgr();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

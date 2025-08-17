@@ -30,7 +30,6 @@
 class ScDocument;
 struct ScInterpreterContext;
 struct ScQueryParam;
-struct ScSortedRangeCacheMap;
 
 /** Sorted cache for one range used with interpreter functions such as VLOOKUP
     and MATCH. Caches sorted order for cells in the given range, which must
@@ -45,8 +44,9 @@ class ScSortedRangeCache final : public SvtListener
 {
 public:
     /// MUST be new'd because Notify() deletes.
-    ScSortedRangeCache(ScDocument* pDoc, const ScRange& rRange, const ScQueryParam& param,
-                       ScInterpreterContext* context, bool invalid = false);
+    ScSortedRangeCache(ScDocument& rDoc, const ScRange& rRange, const ScQueryParam& param,
+                       ScInterpreterContext* context, bool invalid = false,
+                       bool bNewSearchFunction = false, sal_uInt8 nSortedBinarySearch = 0x00);
 
     /// Returns if the cache is usable.
     bool isValid() const { return mValid; }
@@ -90,8 +90,10 @@ public:
         }
     };
 
+    /// Returns if the cache values in rows.
+    bool isRowSearch() const { return mRowSearch; }
+
     const std::vector<SCROW>& sortedRows() const { return mSortedRows; }
-    size_t size() const { return mSortedRows.size(); }
     size_t indexForRow(SCROW row) const
     {
         assert(row >= maRange.aStart.Row() && row <= maRange.aEnd.Row());
@@ -100,13 +102,24 @@ public:
     }
     SCROW rowForIndex(size_t index) const { return mSortedRows[index]; }
 
+    const std::vector<SCCOLROW>& sortedCols() const { return mSortedCols; }
+    size_t indexForCol(SCCOL col) const
+    {
+        assert(col >= maRange.aStart.Col() && col <= maRange.aEnd.Col());
+        assert(mColToIndex[col - maRange.aStart.Col()] != mSortedCols.max_size());
+        return mColToIndex[col - maRange.aStart.Col()];
+    }
+    SCCOL colForIndex(size_t index) const { return mSortedCols[index]; }
+
 private:
-    // Rows sorted by their value.
-    std::vector<SCROW> mSortedRows;
+    std::vector<SCROW> mSortedRows; // Rows sorted by their value.
+    std::vector<SCCOLROW> mSortedCols; // Cols sorted by their value.
     std::vector<size_t> mRowToIndex; // indexed by 'SCROW - maRange.aStart.Row()'
+    std::vector<size_t> mColToIndex; // indexed by 'SCCOL - maRange.aStart.Col()'
     ScRange maRange;
-    ScDocument* mpDoc;
+    ScDocument& mrDoc;
     bool mValid;
+    bool mRowSearch;
     ValueType mValueType;
     ScQueryOp mQueryOp;
     ScQueryEntry::QueryType mQueryType;

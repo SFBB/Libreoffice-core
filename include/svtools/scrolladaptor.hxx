@@ -67,9 +67,11 @@ public:
 
     virtual bool Inactive() const override { return !m_xScrollBar->get_sensitive(); }
 
-    bool HasGrab() const { return m_xScrollBar->has_grab(); }
+    bool HasGrab() const { return m_xScrollBar->has_mouse_grab(); }
 
     void SetThickness(int nThickness);
+
+    void SetSwapArrows(bool bSwap = true);
 
     ScrollAdaptor(vcl::Window* pParent, bool bHori);
     virtual void dispose() override;

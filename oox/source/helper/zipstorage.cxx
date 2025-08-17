@@ -35,7 +35,6 @@ namespace oox {
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::embed;
 using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 
 ZipStorage::ZipStorage( const Reference< XComponentContext >& rxContext, const Reference< XInputStream >& rxInStream, bool bRepairStorage ) :
@@ -65,7 +64,8 @@ ZipStorage::ZipStorage( const Reference< XComponentContext >& rxContext, const R
     }
     catch (Exception const&)
     {
-        TOOLS_WARN_EXCEPTION("oox.storage", "ZipStorage::ZipStorage exception opening input storage");
+        // this is normally a noise exception, because it happens during file format detection
+        TOOLS_INFO_EXCEPTION("oox.storage", "ZipStorage::ZipStorage exception opening input storage");
     }
 }
 

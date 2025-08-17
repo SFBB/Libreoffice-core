@@ -25,14 +25,10 @@
 
 using namespace connectivity::file;
 using namespace connectivity;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 
-sdbcx::ObjectType OColumns::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OColumns::createObject(const OUString& _rName)
 {
     const OUString sCatalogName;
     const OUString sSchemaName(m_pTable->getSchema());
@@ -40,31 +36,31 @@ sdbcx::ObjectType OColumns::createObject(const OUString& _rName)
     Reference< XResultSet > xResult = m_pTable->getConnection()->getMetaData()->getColumns(Any(),
     sSchemaName, sTableName, _rName);
 
-    sdbcx::ObjectType xRet;
-    if(xResult.is())
+    if(!xResult.is())
+        return nullptr;
+
+    rtl::Reference< sdbcx::OColumn > xRet;
+    Reference< XRow > xRow(xResult,UNO_QUERY);
+    while(xResult->next())
     {
-        Reference< XRow > xRow(xResult,UNO_QUERY);
-        while(xResult->next())
+        if(xRow->getString(4) == _rName)
         {
-            if(xRow->getString(4) == _rName)
-            {
-                xRet = new sdbcx::OColumn(_rName,
-                                            xRow->getString(6),
-                                            xRow->getString(13),
-                                            xRow->getString(12),
-                                            xRow->getInt(11),
-                                            xRow->getInt(7),
-                                            xRow->getInt(9),
-                                            xRow->getInt(5),
-                                            false,
-                                            false,
-                                            false,
-                                            m_pTable->getConnection()->getMetaData()->supportsMixedCaseQuotedIdentifiers(),
-                                            sCatalogName,
-                                            sSchemaName,
-                                            sTableName);
-                break;
-            }
+            xRet = new sdbcx::OColumn(_rName,
+                                        xRow->getString(6),
+                                        xRow->getString(13),
+                                        xRow->getString(12),
+                                        xRow->getInt(11),
+                                        xRow->getInt(7),
+                                        xRow->getInt(9),
+                                        xRow->getInt(5),
+                                        false,
+                                        false,
+                                        false,
+                                        m_pTable->getConnection()->getMetaData()->supportsMixedCaseQuotedIdentifiers(),
+                                        sCatalogName,
+                                        sSchemaName,
+                                        sTableName);
+            break;
         }
     }
 

@@ -47,12 +47,6 @@ namespace com::sun::star {
     namespace embed {
         class XStorage;
     }
-    namespace lang {
-        class XMultiServiceFactory;
-    }
-    namespace util {
-        class XCloseListener;
-    }
     namespace beans {
         struct PropertyValue;
         struct NamedValue;
@@ -71,8 +65,6 @@ namespace comphelper {
 // #define NUM_SUPPORTED_VERBS 5
 
 #include "docholder.hxx"
-
-class Interceptor;
 
 /**
  * Represents an OLE object that has native data and we loaded that data into a
@@ -93,7 +85,7 @@ class OCommonEmbeddedObject : public css::embed::XEmbeddedObject
 protected:
     ::osl::Mutex    m_aMutex;
 
-    rtl::Reference<DocumentHolder> m_xDocHolder;
+    rtl::Reference<embeddedobj::DocumentHolder> m_xDocHolder;
 
     std::unique_ptr<::comphelper::OMultiTypeInterfaceContainerHelper2> m_pInterfaceContainer;
 

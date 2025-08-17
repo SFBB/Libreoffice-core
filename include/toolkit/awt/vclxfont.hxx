@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_TOOLKIT_AWT_VCLXFONT_HXX
-#define INCLUDED_TOOLKIT_AWT_VCLXFONT_HXX
+#pragma once
 
+#include <config_options.h>
 #include <memory>
 #include <toolkit/dllapi.h>
 #include <com/sun/star/awt/XFont2.hpp>
@@ -34,7 +34,7 @@ class FontMetric;
 
 
 
-class TOOLKIT_DLLPUBLIC VCLXFont final :
+class UNLESS_MERGELIBS_MORE(TOOLKIT_DLLPUBLIC) VCLXFont final :
                         public cppu::WeakImplHelper<
                             css::awt::XFont2>
 {
@@ -47,10 +47,9 @@ class TOOLKIT_DLLPUBLIC VCLXFont final :
     bool            ImplAssertValidFontMetric();
 
 public:
-                    VCLXFont();
-                    virtual ~VCLXFont() override;
+    VCLXFont(css::awt::XDevice& rxDev, const vcl::Font& rFont);
+    virtual ~VCLXFont() override;
 
-    void            Init( css::awt::XDevice& rxDev, const vcl::Font& rFont );
     const vcl::Font&     GetFont() const { return maFont; }
 
     // css::lang::XFont
@@ -65,8 +64,5 @@ public:
     // css::lang::XFont2
     sal_Bool                                        SAL_CALL hasGlyphs( const OUString& aText ) override;
 };
-
-
-#endif // INCLUDED_TOOLKIT_AWT_VCLXFONT_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

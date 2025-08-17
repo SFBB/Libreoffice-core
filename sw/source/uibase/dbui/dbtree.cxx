@@ -110,7 +110,7 @@ bool SwDBTreeList_Impl::HasContext()
 {
     if(!m_xDatabaseContext.is())
     {
-        Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+        const Reference< XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
         m_xDatabaseContext = DatabaseContext::create(xContext);
         m_xDatabaseContext->addContainerListener( this );
     }
@@ -157,7 +157,7 @@ void SwDBTreeList::InitTreeList()
         { return sort.compare(x, y) < 0; });
 
     OUString aImg(RID_BMP_DB);
-    for (const OUString& rDBName : std::as_const(aDBNames))
+    for (const OUString& rDBName : aDBNames)
     {
         // If this database has a password or a (missing) remote connection,
         // then it might take a long time or spam for unnecessary credentials.

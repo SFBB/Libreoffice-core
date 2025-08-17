@@ -19,10 +19,11 @@
 
 #include "ViewTabBarModule.hxx"
 
+#include <framework/ConfigurationController.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
 #include <framework/FrameworkHelper.hxx>
+#include <ViewTabBar.hxx>
 #include <DrawController.hxx>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/XTabBar.hpp>
 #include <com/sun/star/frame/XController.hpp>
 
 #include <strings.hrc>
@@ -34,21 +35,13 @@ using namespace ::com::sun::star::drawing::framework;
 
 using ::sd::framework::FrameworkHelper;
 
-namespace {
-
-const sal_Int32 ResourceActivationRequestEvent = 0;
-const sal_Int32 ResourceDeactivationRequestEvent = 1;
-const sal_Int32 ResourceActivationEvent = 2;
-
-}
-
 namespace sd::framework {
 
 //===== ViewTabBarModule ==================================================
 
 ViewTabBarModule::ViewTabBarModule (
     const rtl::Reference<::sd::DrawController>& rxController,
-    const Reference<XResourceId>& rxViewTabBarId)
+    const rtl::Reference<ResourceId>& rxViewTabBarId)
     : mxViewTabBarId(rxViewTabBarId)
 {
     if (!rxController.is())
@@ -60,18 +53,15 @@ ViewTabBarModule::ViewTabBarModule (
 
     mxConfigurationController->addConfigurationChangeListener(
         this,
-        FrameworkHelper::msResourceActivationRequestEvent,
-        Any(ResourceActivationRequestEvent));
+        ConfigurationChangeEventType::ResourceActivationRequest);
     mxConfigurationController->addConfigurationChangeListener(
         this,
-        FrameworkHelper::msResourceDeactivationRequestEvent,
-        Any(ResourceDeactivationRequestEvent));
+        ConfigurationChangeEventType::ResourceDeactivationRequest);
 
     UpdateViewTabBar(nullptr);
     mxConfigurationController->addConfigurationChangeListener(
         this,
-        FrameworkHelper::msResourceActivationEvent,
-        Any(ResourceActivationEvent));
+        ConfigurationChangeEventType::ResourceActivation);
 }
 
 ViewTabBarModule::~ViewTabBarModule()
@@ -87,37 +77,38 @@ void ViewTabBarModule::disposing(std::unique_lock<std::mutex>&)
     }
 }
 
-void SAL_CALL ViewTabBarModule::notifyConfigurationChange (
+void ViewTabBarModule::notifyConfigurationChange (
     const ConfigurationChangeEvent& rEvent)
 {
     if (!mxConfigurationController.is())
         return;
 
-    sal_Int32 nEventType = 0;
-    rEvent.UserData >>= nEventType;
-    switch (nEventType)
+    switch (rEvent.Type)
     {
-        case ResourceActivationRequestEvent:
+        case ConfigurationChangeEventType::ResourceActivationRequest:
             if (mxViewTabBarId->isBoundTo(rEvent.ResourceId, AnchorBindingMode_DIRECT))
             {
                 mxConfigurationController->requestResourceActivation(
                     mxViewTabBarId,
-                    ResourceActivationMode_ADD);
+                    ResourceActivationMode::ADD);
             }
             break;
 
-        case ResourceDeactivationRequestEvent:
+        case ConfigurationChangeEventType::ResourceDeactivationRequest:
             if (mxViewTabBarId->isBoundTo(rEvent.ResourceId, AnchorBindingMode_DIRECT))
             {
                 mxConfigurationController->requestResourceDeactivation(mxViewTabBarId);
             }
             break;
 
-        case ResourceActivationEvent:
+        case ConfigurationChangeEventType::ResourceActivation:
             if (rEvent.ResourceId->compareTo(mxViewTabBarId) == 0)
             {
-                UpdateViewTabBar(Reference<XTabBar>(rEvent.ResourceObject,UNO_QUERY));
+                UpdateViewTabBar(dynamic_cast<sd::ViewTabBar*>(rEvent.ResourceObject.get()));
             }
+            break;
+
+        default: break;
     }
 }
 
@@ -125,7 +116,7 @@ void SAL_CALL ViewTabBarModule::disposing (
     const lang::EventObject& rEvent)
 {
     if (mxConfigurationController.is()
-        && rEvent.Source == mxConfigurationController)
+        && rEvent.Source == cppu::getXWeak(mxConfigurationController.get()))
     {
         // Without the configuration controller this class can do nothing.
         mxConfigurationController = nullptr;
@@ -133,24 +124,24 @@ void SAL_CALL ViewTabBarModule::disposing (
     }
 }
 
-void ViewTabBarModule::UpdateViewTabBar (const Reference<XTabBar>& rxTabBar)
+void ViewTabBarModule::UpdateViewTabBar (const rtl::Reference<sd::ViewTabBar>& rxTabBar)
 {
     if (!mxConfigurationController.is())
         return;
 
-    Reference<XTabBar> xBar (rxTabBar);
+    rtl::Reference<ViewTabBar> xBar (rxTabBar);
     if ( ! xBar.is())
-        xBar.set( mxConfigurationController->getResource(mxViewTabBarId), UNO_QUERY);
+        xBar = dynamic_cast<ViewTabBar*>(mxConfigurationController->getResource(mxViewTabBarId).get());
 
     if (!xBar.is())
         return;
 
     TabBarButton aEmptyButton;
 
-    Reference<XResourceId> xAnchor (mxViewTabBarId->getAnchor());
+    rtl::Reference<ResourceId> xAnchor (mxViewTabBarId->getAnchor());
 
     TabBarButton aImpressViewButton;
-    aImpressViewButton.ResourceId = FrameworkHelper::CreateResourceId(
+    aImpressViewButton.ResourceId = new ::sd::framework::ResourceId(
         FrameworkHelper::msImpressViewURL,
         xAnchor);
     aImpressViewButton.ButtonLabel = SdResId(STR_NORMAL_MODE);
@@ -158,7 +149,7 @@ void ViewTabBarModule::UpdateViewTabBar (const Reference<XTabBar>& rxTabBar)
         xBar->addTabBarButtonAfter(aImpressViewButton, aEmptyButton);
 
     TabBarButton aOutlineViewButton;
-    aOutlineViewButton.ResourceId = FrameworkHelper::CreateResourceId(
+    aOutlineViewButton.ResourceId = new ::sd::framework::ResourceId(
         FrameworkHelper::msOutlineViewURL,
         xAnchor);
     aOutlineViewButton.ButtonLabel = SdResId(STR_OUTLINE_MODE);
@@ -166,7 +157,7 @@ void ViewTabBarModule::UpdateViewTabBar (const Reference<XTabBar>& rxTabBar)
         xBar->addTabBarButtonAfter(aOutlineViewButton, aImpressViewButton);
 
     TabBarButton aNotesViewButton;
-    aNotesViewButton.ResourceId = FrameworkHelper::CreateResourceId(
+    aNotesViewButton.ResourceId = new ::sd::framework::ResourceId(
         FrameworkHelper::msNotesViewURL,
         xAnchor);
     aNotesViewButton.ButtonLabel = SdResId(STR_NOTES_MODE);

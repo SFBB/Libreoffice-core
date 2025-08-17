@@ -1,19 +1,22 @@
-struct hash_entry { const char* name; enum parseKey eKey; };
+struct hash_entry { int name; enum parseKey eKey; };
 
 #if defined __GNUC__
 #pragma GCC system_header
 #endif
 
 %%
+beginTransparencyGroup,BEGINTRANSPARENCYGROUP
 clipPath,CLIPPATH
+clipToStrokePath,CLIPTOSTROKEPATH
 drawChar,DRAWCHAR
 drawImage,DRAWIMAGE
-drawLink,DRAWLINK	
+drawLink,DRAWLINK
 drawMask,DRAWMASK
 drawMaskedImage,DRAWMASKEDIMAGE
 drawSoftMaskedImage,DRAWSOFTMASKEDIMAGE
 endPage,ENDPAGE
 endTextObject,ENDTEXTOBJECT
+endTransparencyGroup,ENDTRANSPARENCYGROUP
 eoClipPath,EOCLIPPATH
 eoFillPath,EOFILLPATH
 fillPath,FILLPATH
@@ -38,6 +41,7 @@ setTextRenderMode,SETTEXTRENDERMODE
 setTransformation,SETTRANSFORMATION
 startPage,STARTPAGE
 strokePath,STROKEPATH
+tilingPatternFill,TILINGPATTERNFILL
 updateBlendMode,UPDATEBLENDMODE
 updateCtm,UPDATECTM
 updateFillColor,UPDATEFILLCOLOR

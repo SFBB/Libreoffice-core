@@ -28,33 +28,22 @@ namespace
 /// Test dialogs constructed via UNO
 class DialogTest : public test::BootstrapFixture, public unotest::MacrosTest
 {
-protected:
-    uno::Reference<uno::XComponentContext> mxContext;
-
-public:
-    virtual void setUp() override;
 };
-
-void DialogTest::setUp()
-{
-    test::BootstrapFixture::setUp();
-
-    mxContext.set(comphelper::getComponentContext(getMultiServiceFactory()));
-}
 
 CPPUNIT_TEST_FIXTURE(DialogTest, testDialogSizeable)
 {
     uno::Reference<awt::XDialog> xDialog;
-    uno::Reference<lang::XMultiComponentFactory> xFactory(mxContext->getServiceManager(),
+    uno::Reference<lang::XMultiComponentFactory> xFactory(m_xContext->getServiceManager(),
                                                           uno::UNO_SET_THROW);
     uno::Reference<awt::XControlModel> xControlModel(
-        xFactory->createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", mxContext),
+        xFactory->createInstanceWithContext(u"com.sun.star.awt.UnoControlDialogModel"_ustr,
+                                            m_xContext),
         uno::UNO_QUERY_THROW);
 
     uno::Reference<beans::XPropertySet> xPropSet(xControlModel, uno::UNO_QUERY_THROW);
-    xPropSet->setPropertyValue("Sizeable", uno::Any(true));
+    xPropSet->setPropertyValue(u"Sizeable"_ustr, uno::Any(true));
 
-    uno::Reference<awt::XUnoControlDialog> xControl = awt::UnoControlDialog::create(mxContext);
+    uno::Reference<awt::XUnoControlDialog> xControl = awt::UnoControlDialog::create(m_xContext);
     xControl->setModel(xControlModel);
     xControl->setVisible(true);
     xDialog.set(xControl, uno::UNO_QUERY_THROW);

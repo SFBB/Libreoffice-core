@@ -28,10 +28,12 @@
 #include <editeng/fontitem.hxx>
 #include <editeng/flditem.hxx>
 #include <editeng/editeng.hxx>
+#include <editeng/udlnitem.hxx>
+#include <editeng/colritem.hxx>
 
 #include <svtools/rtftoken.h>
 #include <svtools/htmltokn.h>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 using namespace com::sun::star;
 
@@ -94,7 +96,7 @@ SvParserState EditRTFParser::CallParser()
     // Useful or not?
     aStart2PaM.GetNode()->GetContentAttribs().GetItems().ClearItem();
     AddRTFDefaultValues( aStart2PaM, aStart2PaM );
-    EditPaM aEnd1PaM = mpEditEngine->InsertParaBreak(aCurSel.Max());
+    EditPaM aEnd1PaM = mpEditEngine->InsertParaBreak(EditSelection(aCurSel.Max()));
     // aCurCel now points to the gap
 
     if (mpEditEngine->IsRtfImportHandlerSet())
@@ -116,7 +118,7 @@ SvParserState EditRTFParser::CallParser()
         ContentNode* pCurNode = aCurSel.Max().GetNode();
         sal_Int32 nPara = mpEditEngine->GetEditDoc().GetPos(pCurNode);
         ContentNode* pPrevNode = mpEditEngine->GetEditDoc().GetObject(nPara-1);
-        DBG_ASSERT( pPrevNode, "Invalid RTF-Document?!" );
+        assert(pPrevNode && "Invalid RTF-Document?!");
         EditSelection aSel;
         aSel.Min() = EditPaM( pPrevNode, pPrevNode->Len() );
         aSel.Max() = EditPaM( pCurNode, 0 );
@@ -154,8 +156,8 @@ void EditRTFParser::AddRTFDefaultValues( const EditPaM& rStart, const EditPaM& r
     aSz = mpEditEngine->GetRefDevice()->LogicToLogic(aSz, &aPntMode, &_aEditMapMode);
     SvxFontHeightItem aFontHeightItem( aSz.Width(), 100, EE_CHAR_FONTHEIGHT );
     vcl::Font aDefFont( GetFont( nDefFont ) );
-    SvxFontItem aFontItem( aDefFont.GetFamilyType(), aDefFont.GetFamilyName(),
-                    aDefFont.GetStyleName(), aDefFont.GetPitch(), aDefFont.GetCharSet(), EE_CHAR_FONTINFO );
+    SvxFontItem aFontItem( aDefFont.GetFamilyTypeMaybeAskConfig(), aDefFont.GetFamilyName(),
+                    aDefFont.GetStyleName(), aDefFont.GetPitchMaybeAskConfig(), aDefFont.GetCharSet(), EE_CHAR_FONTINFO );
 
     sal_Int32 nStartPara = mpEditEngine->GetEditDoc().GetPos( rStart.GetNode() );
     sal_Int32 nEndPara = mpEditEngine->GetEditDoc().GetPos( rEnd.GetNode() );
@@ -336,7 +338,7 @@ void EditRTFParser::SetAttrInDoc( SvxRTFItemStackType &rSet )
         {
             nEsc *= 10; //HalfPoints => Twips was embezzled in RTFITEM.CXX!
             SvxFont aFont;
-            if (utl::ConfigManager::IsFuzzing())
+            if (comphelper::IsFuzzing())
             {
                 // ofz#24932 detecting RTL vs LTR is slow
                 aFont = aStartPaM.GetNode()->GetCharAttribs().GetDefFont();
@@ -365,6 +367,8 @@ void EditRTFParser::SetAttrInDoc( SvxRTFItemStackType &rSet )
     ContentNode* pEN = aEndPaM.GetNode();
     sal_Int32 nStartNode = mpEditEngine->GetEditDoc().GetPos( pSN );
     sal_Int32 nEndNode = mpEditEngine->GetEditDoc().GetPos( pEN );
+    assert(nStartNode != EE_PARA_MAX);
+    assert(nEndNode != EE_PARA_MAX);
     sal_Int16 nOutlLevel = 0xff;
 
     if (rSet.StyleNo() && mpEditEngine->GetStyleSheetPool() && mpEditEngine->IsImportRTFStyleSheetsSet())
@@ -515,12 +519,16 @@ void EditRTFParser::ReadField()
     int _nOpenBrackets = 1;      // the first was already detected earlier
     bool bFldInst = false;
     bool bFldRslt = false;
+    bool bUnderline = false;
+    Color aColor;
+    bool bColor = false;
     OUString aFldInst;
     OUString aFldRslt;
 
     while( _nOpenBrackets && IsParserWorking() )
     {
-        switch( GetNextToken() )
+        auto nNextToken = GetNextToken();
+        switch( nNextToken )
         {
             case '}':
             {
@@ -553,11 +561,26 @@ void EditRTFParser::ReadField()
                     aFldRslt += aToken;
             }
             break;
+            case RTF_CF:
+            {
+                if (bFldRslt)
+                {
+                    aColor = GetColor(sal_uInt16(nTokenValue));
+                    bColor = true;
+                }
+            }
+            break;
+            case RTF_UL:
+            {
+                if (bFldRslt)
+                    bUnderline = true;
+            }
+            break;
         }
     }
     if ( !aFldInst.isEmpty() )
     {
-        OUString aHyperLinkMarker( "HYPERLINK " );
+        OUString aHyperLinkMarker( u"HYPERLINK "_ustr );
         if ( aFldInst.startsWithIgnoreAsciiCase( aHyperLinkMarker ) )
         {
             aFldInst = aFldInst.copy( aHyperLinkMarker.getLength() );
@@ -570,6 +593,17 @@ void EditRTFParser::ReadField()
 
             SvxFieldItem aField( SvxURLField( aFldInst, aFldRslt, SvxURLFormat::Repr ), EE_FEATURE_FIELD  );
             aCurSel = mpEditEngine->InsertField(aCurSel, aField);
+            if (bUnderline || bColor )
+            {
+                SfxItemSet aAttribs( mpEditEngine->GetEmptyItemSet() );
+                if (bUnderline)
+                   aAttribs.Put(SvxUnderlineItem(LINESTYLE_SINGLE, EE_CHAR_UNDERLINE));
+                if (bColor)
+                   aAttribs.Put(SvxColorItem(aColor, EE_CHAR_COLOR));
+                EditSelection aAttribSelection(aCurSel.Min(), aCurSel.Max());
+                aAttribSelection.Min().SetIndex(aAttribSelection.Min().GetIndex() - 1);
+                mpEditEngine->SetAttribs(aAttribSelection, aAttribs, SetAttribsMode::Edge);
+            }
             mpEditEngine->UpdateFieldsOnly();
             bLastActionInsertParaBreak = false;
         }

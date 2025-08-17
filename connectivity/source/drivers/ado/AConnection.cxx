@@ -54,7 +54,6 @@ IMPLEMENT_SERVICE_INFO(OConnection,"com.sun.star.sdbcx.AConnection","com.sun.sta
 OConnection::OConnection(ODriver*   _pDriver)
                          : m_xCatalog(nullptr),
                          m_pDriver(_pDriver),
-                         m_pCatalog(nullptr),
                          m_nEngineType(0),
                          m_bClosed(false),
                          m_bAutocommit(true)
@@ -96,16 +95,14 @@ void OConnection::construct(std::u16string_view url,const Sequence< PropertyValu
     o3tl::starts_with(aDSN, u"access:", &aDSN);
 
     sal_Int32 nTimeout = 20;
-    const PropertyValue *pIter  = info.getConstArray();
-    const PropertyValue *pEnd   = pIter + info.getLength();
-    for(;pIter != pEnd;++pIter)
+    for (const auto& propval : info)
     {
-        if(pIter->Name == "Timeout")
-            pIter->Value >>= nTimeout;
-        else if(pIter->Name == "user")
-            pIter->Value >>= aUID;
-        else if(pIter->Name == "password")
-            pIter->Value >>= aPWD;
+        if (propval.Name == "Timeout")
+            propval.Value >>= nTimeout;
+        else if (propval.Name == "user")
+            propval.Value >>= aUID;
+        else if (propval.Name == "password")
+            propval.Value >>= aPWD;
     }
     try
     {
@@ -121,9 +118,9 @@ void OConnection::construct(std::u16string_view url,const Sequence< PropertyValu
             WpADOProperties aProps = m_aAdoConnection.get_Properties();
             if(aProps.IsValid())
             {
-                OTools::putValue(aProps, std::u16string_view(u"Jet OLEDB:ODBC Parsing"), true);
+                OTools::putValue(aProps, std::u16string_view(u"ACE OLEDB:ODBC Parsing"), true);
                 OLEVariant aVar(
-                    OTools::getValue(aProps, std::u16string_view(u"Jet OLEDB:Engine Type")));
+                    OTools::getValue(aProps, std::u16string_view(u"ACE OLEDB:Engine Type")));
                 if(!aVar.isNull() && !aVar.isEmpty())
                     m_nEngineType = aVar.getInt32();
             }
@@ -184,7 +181,7 @@ OUString SAL_CALL OConnection::nativeSQL( const OUString& _sql )
     WpADOProperties aProps = m_aAdoConnection.get_Properties();
     if(aProps.IsValid())
     {
-        OTools::putValue(aProps, std::u16string_view(u"Jet OLEDB:ODBC Parsing"), true);
+        OTools::putValue(aProps, std::u16string_view(u"ACE OLEDB:ODBC Parsing"), true);
         WpADOCommand aCommand;
         aCommand.Create();
         aCommand.put_ActiveConnection(static_cast<IDispatch*>(m_aAdoConnection));
@@ -458,7 +455,7 @@ void OConnection::disposing()
 
     m_bClosed   = true;
     m_xMetaData = css::uno::WeakReference< css::sdbc::XDatabaseMetaData>();
-    m_xCatalog  = css::uno::WeakReference< css::sdbcx::XTablesSupplier>();
+    m_xCatalog.clear();
     m_pDriver   = nullptr;
 
     m_aAdoConnection.Close();

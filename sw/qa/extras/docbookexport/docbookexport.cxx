@@ -15,23 +15,25 @@ class DocbookExportTest : public SwModelTestBase
 {
 public:
     DocbookExportTest() :
-        SwModelTestBase("/sw/qa/extras/docbookexport/data/", "DocBook File")
+        SwModelTestBase(u"/sw/qa/extras/docbookexport/data/"_ustr, u"DocBook File"_ustr)
     {}
 };
 
-#define DECLARE_DOCBOOKEXPORT_TEST(TestName, filename) DECLARE_SW_EXPORT_TEST(TestName, filename, nullptr, DocbookExportTest)
-
-DECLARE_DOCBOOKEXPORT_TEST(testsimple, "simple.docx")
+CPPUNIT_TEST_FIXTURE(DocbookExportTest, testsimple)
 {
+    createSwDoc("simple.docx");
+    save(mpFilter);
     xmlDocUniquePtr pDoc = parseXml(maTempFile);
     CPPUNIT_ASSERT(pDoc);
 
-    assertXPathContent(pDoc, "/article/para"_ostr, "aaaa");
+    assertXPathContent(pDoc, "/article/para", u"aaaa");
 }
 
 /* the test actually should crash with this file */
-DECLARE_DOCBOOKEXPORT_TEST(testtdf91095, "tdf91095.docx")
+CPPUNIT_TEST_FIXTURE(DocbookExportTest, testtdf91095)
 {
+    createSwDoc("tdf91095.docx");
+    save(mpFilter);
     xmlDocUniquePtr pDoc = parseXml(maTempFile);
     CPPUNIT_ASSERT(pDoc);
 }

@@ -26,7 +26,6 @@
 
 // Forward declarations
 class SdrObjGroup;
-class SdrHdlList;
 
 namespace svx { namespace diagram {
 
@@ -80,11 +79,15 @@ private:
     // a newly created oox::drawingml::Theme object
     bool mbForceThemePtrRecreation; // false
 
+    // if true, content was self-created using addTo/addShape
+    // and the layouting stuff
+    bool mbSelfCreated;
+
 protected:
     void anchorToSdrObjGroup(SdrObjGroup& rTarget);
 
 public:
-    IDiagramHelper();
+    IDiagramHelper(bool bSelfCreated);
     virtual ~IDiagramHelper();
 
     // re-create XShapes
@@ -110,6 +113,10 @@ public:
     bool UseDiagramThemeData() const { return mbUseDiagramThemeData; }
     bool UseDiagramModelData() const { return mbUseDiagramModelData; }
     bool ForceThemePtrRecreation() const { return mbForceThemePtrRecreation; };
+
+    // get/set SelfCreated flag
+    bool isSelfCreated() const { return mbSelfCreated; }
+    void setSelfCreated() { mbSelfCreated = true; }
 
     static void AddAdditionalVisualization(const SdrObjGroup& rTarget, SdrHdlList& rHdlList);
 };

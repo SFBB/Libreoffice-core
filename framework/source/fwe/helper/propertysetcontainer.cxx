@@ -42,34 +42,6 @@ PropertySetContainer::~PropertySetContainer()
 {
 }
 
-// XInterface
-void SAL_CALL PropertySetContainer::acquire() noexcept
-{
-    OWeakObject::acquire();
-}
-
-void SAL_CALL PropertySetContainer::release() noexcept
-{
-    OWeakObject::release();
-}
-
-Any SAL_CALL PropertySetContainer::queryInterface( const Type& rType )
-{
-    Any a = ::cppu::queryInterface(
-                rType ,
-                static_cast< XIndexContainer* >(this),
-                static_cast< XIndexReplace* >(this),
-                static_cast< XIndexAccess* >(this),
-                static_cast< XElementAccess* >(this) );
-
-    if( a.hasValue() )
-    {
-        return a;
-    }
-
-    return OWeakObject::queryInterface( rType );
-}
-
 // XIndexContainer
 void SAL_CALL PropertySetContainer::insertByIndex( sal_Int32 Index, const css::uno::Any& Element )
 {
@@ -126,7 +98,7 @@ void SAL_CALL PropertySetContainer::replaceByIndex( sal_Int32 Index, const css::
             static_cast<OWeakObject *>(this), 2 );
     }
 
-    m_aPropertySetVector[ Index ] = aPropertySetElement;
+    m_aPropertySetVector[ Index ] = std::move(aPropertySetElement);
 }
 
 // XIndexAccess

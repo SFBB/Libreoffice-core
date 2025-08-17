@@ -28,7 +28,7 @@ class SdCustomShowList;
 /**
  * Dialog to define optionsm_xnd to start the presentation
  */
-class SdStartPresentationDlg : public weld::GenericDialogController
+class SdStartPresentationDlg final : public weld::GenericDialogController
 {
 private:
     SdCustomShowList*   pCustomShowList;
@@ -43,7 +43,7 @@ private:
 
     std::unique_ptr<weld::RadioButton> m_xRbtStandard;
     std::unique_ptr<weld::RadioButton> m_xRbtWindow;
-    std::unique_ptr<weld::RadioButton> m_xRbtAuto;
+    std::unique_ptr<weld::CheckButton> m_xCbxAuto;
     std::unique_ptr<weld::FormattedSpinButton> m_xTmfPause;
     std::unique_ptr<weld::TimeFormatter> m_xFormatter;
     std::unique_ptr<weld::CheckButton> m_xCbxAutoLogo;
@@ -60,6 +60,7 @@ private:
     std::unique_ptr<weld::Frame> m_xFrameEnableRemote;
     std::unique_ptr<weld::CheckButton> m_xCbxEnableRemote;
     std::unique_ptr<weld::CheckButton> m_xCbxEnableRemoteInsecure;
+    std::unique_ptr<weld::CheckButton> m_xCbxInteractiveMode;
 
     std::unique_ptr<weld::ComboBox> m_xLbConsole;
 

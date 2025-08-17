@@ -17,10 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
 
+#include <o3tl/unit_conversion.hxx>
+#include <o3tl/string_view.hxx>
 #include <officecfg/Setup.hxx>
 #include <officecfg/System.hxx>
-#include <sal/config.h>
 #include <sal/macros.h>
 #include <rtl/ustring.hxx>
 #include <rtl/string.hxx>
@@ -49,16 +51,10 @@ struct PageDesc
     const char *m_pAltPSName;
 };
 
+constexpr tools::Long PT2MM100(double v) { return o3tl::convert(v, o3tl::Length::pt, o3tl::Length::mm100) + 0.5; }
+constexpr tools::Long IN2MM100(double v) { return o3tl::convert(v, o3tl::Length::in, o3tl::Length::mm100) + 0.5; }
+constexpr tools::Long MM2MM100(double v) { return o3tl::convert(v, o3tl::Length::mm, o3tl::Length::mm100) + 0.5; }
 }
-
-#define PT2MM100( v ) \
-    tools::Long(((v) * 35.27777778) + 0.5)
-
-#define IN2MM100( v ) \
-    (tools::Long(((v) * 2540) + 0.5))
-
-#define MM2MM100( v ) \
-    (tools::Long((v) * 100))
 
 //PostScript Printer Description File Format Specification
 //http://partners.adobe.com/public/developer/en/ps/5003.PPD_Spec_v4.3.pdf
@@ -68,7 +64,7 @@ struct PageDesc
 //!! The order of these entries must correspond to enum Paper in <i18nutil/paper.hxx>
 
 // see XclPaperSize pPaperSizeTable in calc and ApiPaperSize in filter
-const PageDesc aDinTab[] =
+constexpr PageDesc aDinTab[] =
 {
     { MM2MM100( 841 ),   MM2MM100( 1189 ),   "A0",  nullptr },
     { MM2MM100( 594 ),   MM2MM100( 841 ),    "A1",  nullptr },
@@ -229,7 +225,7 @@ tools::Long PaperInfo::sloppyFitPageDimension(tools::Long nDimension)
 
 PaperInfo PaperInfo::getSystemDefaultPaper()
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return PaperInfo(PAPER_A4);
 
     OUString aLocaleStr = officecfg::Setup::L10N::ooSetupSystemLocale::get();
@@ -259,9 +255,9 @@ PaperInfo PaperInfo::getSystemDefaultPaper()
 
             if (bOk && pBuffer && *pBuffer != 0)
             {
-                OString aPaper(pBuffer);
-                aPaper = aPaper.trim();
-                static const struct { const char *pName; Paper ePaper; } aCustoms [] =
+                std::string_view aPaper(pBuffer);
+                aPaper = o3tl::trim(aPaper);
+                static constexpr struct { std::string_view aName; Paper ePaper; } aCustoms [] =
                 {
                     { "B0",   PAPER_B0_ISO },
                     { "B1",   PAPER_B1_ISO },
@@ -284,7 +280,7 @@ PaperInfo PaperInfo::getSystemDefaultPaper()
                 size_t const nExtraTabSize = SAL_N_ELEMENTS(aCustoms);
                 for (size_t i = 0; i < nExtraTabSize; ++i)
                 {
-                    if (rtl_str_compareIgnoreAsciiCase(aCustoms[i].pName, aPaper.getStr()) == 0)
+                    if (o3tl::equalsIgnoreAsciiCase(aCustoms[i].aName, aPaper))
                     {
                         ePaper = aCustoms[i].ePaper;
                         break;
@@ -293,7 +289,7 @@ PaperInfo PaperInfo::getSystemDefaultPaper()
 
                 if (ePaper == PAPER_USER)
                 {
-                    bHalve = aPaper.startsWith("half", &aPaper);
+                    bHalve = o3tl::starts_with(aPaper, "half", &aPaper);
                     ePaper = PaperInfo::fromPSName(aPaper);
                 }
 
@@ -403,20 +399,20 @@ OString PaperInfo::toPSName(Paper ePaper)
     return static_cast<size_t>(ePaper) < nTabSize && aDinTab[ePaper].m_pPSName ?  OString(aDinTab[ePaper].m_pPSName) : OString();
 }
 
-Paper PaperInfo::fromPSName(const OString &rName)
+Paper PaperInfo::fromPSName(std::string_view rName)
 {
-    if (rName.isEmpty())
+    if (rName.empty())
         return PAPER_USER;
 
     for ( size_t i = 0; i < nTabSize; ++i )
     {
         if (aDinTab[i].m_pPSName &&
-          !rtl_str_compareIgnoreAsciiCase(aDinTab[i].m_pPSName, rName.getStr()))
+          o3tl::equalsIgnoreAsciiCase(aDinTab[i].m_pPSName, rName))
         {
             return static_cast<Paper>(i);
         }
         else if (aDinTab[i].m_pAltPSName &&
-          !rtl_str_compareIgnoreAsciiCase(aDinTab[i].m_pAltPSName, rName.getStr()))
+          o3tl::equalsIgnoreAsciiCase(aDinTab[i].m_pAltPSName, rName))
         {
             return static_cast<Paper>(i);
         }

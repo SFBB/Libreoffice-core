@@ -233,18 +233,17 @@ namespace drawinglayer::primitive3d
                     }
 
                     // exchange aRetval content with texture group
-                    const Primitive3DReference xRef(pNewTexturePrimitive3D);
-                    aRetval = { xRef };
+                    aRetval = { Primitive3DReference(pNewTexturePrimitive3D) };
 
                     if(css::drawing::TextureKind2_LUMINANCE == aSdr3DObjectAttribute.getTextureKind())
                     {
                         // use modified color primitive to force textures to gray
-                        const basegfx::BColorModifierSharedPtr aBColorModifier =
+                        basegfx::BColorModifierSharedPtr aBColorModifier =
                             std::make_shared<basegfx::BColorModifier_gray>();
-                        const Primitive3DReference xRef2(
+                        Primitive3DReference xRef2(
                             new ModifiedColorPrimitive3D(
                                 aRetval,
-                                aBColorModifier));
+                                std::move(aBColorModifier)));
 
                         aRetval = { xRef2 };
                     }

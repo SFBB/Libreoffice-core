@@ -335,7 +335,7 @@ PolicyReader::PolicyReader( OUString fileName, AccessControl & ac )
     , m_pos( 1 ) // force readline
     , m_back( '\0' )
 {
-    ac.checkFilePermission( m_fileName, "read" );
+    ac.checkFilePermission( m_fileName, u"read"_ustr );
     if (osl_File_E_None != ::osl_openFile( m_fileName.pData, &m_file, osl_File_OpenFlag_Read ))
     {
         throw RuntimeException( "cannot open file \"" + m_fileName + "\"!" );
@@ -373,7 +373,7 @@ void FilePolicy::refresh()
     if ( fileName.isEmpty() )
     {
         throw RuntimeException(
-            "name of policy file unknown!",
+            u"name of policy file unknown!"_ustr,
             getXWeak() );
     }
 
@@ -442,14 +442,14 @@ void FilePolicy::refresh()
                 Sequence< Any > perms( userPermissions[ userId ] );
                 sal_Int32 len = perms.getLength();
                 perms.realloc( len +1 );
-                perms.getArray()[ len ] = perm;
-                userPermissions[ userId ] = perms;
+                perms.getArray()[ len ] = std::move(perm);
+                userPermissions[ userId ] = std::move(perms);
             }
             else
             {
                 sal_Int32 len = defaultPermissions.getLength();
                 defaultPermissions.realloc( len +1 );
-                defaultPermissions.getArray()[ len ] = perm;
+                defaultPermissions.getArray()[ len ] = std::move(perm);
             }
 
             token = reader.assureToken(); // next permissions token
@@ -461,8 +461,8 @@ void FilePolicy::refresh()
 
     // assign new ones
     MutexGuard guard( m_aMutex );
-    m_defaultPermissions = defaultPermissions;
-    m_userPermissions = userPermissions;
+    m_defaultPermissions = std::move(defaultPermissions);
+    m_userPermissions = std::move(userPermissions);
 }
 
 
@@ -478,7 +478,7 @@ sal_Bool FilePolicy::supportsService( OUString const & serviceName )
 
 Sequence< OUString > FilePolicy::getSupportedServiceNames()
 {
-    return { "com.sun.star.security.Policy" };
+    return { u"com.sun.star.security.Policy"_ustr };
 }
 
 } // namespace

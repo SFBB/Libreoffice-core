@@ -22,7 +22,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <vector>
 
 #include <codemaker/generatedtypeset.hxx>
 #include <codemaker/typemanager.hxx>
@@ -70,7 +69,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv) {
                 }
             }
         } else {
-            produce("", typeMgr, generated, options);
+            produce(u""_ustr, typeMgr, generated, options);
         }
     }
     catch (CannotDumpException & e) {

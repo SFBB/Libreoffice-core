@@ -29,6 +29,8 @@
 #include <paragr.hxx>
 #include <sdattr.hrc>
 
+#include <vcl/tabs.hrc>
+
 namespace {
 
 class SdParagraphNumTabPage : public SfxTabPage
@@ -37,7 +39,7 @@ public:
     SdParagraphNumTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet );
 
-    static WhichRangesContainer GetRanges();
+    static const WhichRangesContainer & GetRanges();
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
@@ -54,11 +56,11 @@ private:
 }
 
 SdParagraphNumTabPage::SdParagraphNumTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rAttr)
-    : SfxTabPage(pPage, pController, "modules/sdraw/ui/paranumberingtab.ui", "DrawParaNumbering", &rAttr)
+    : SfxTabPage(pPage, pController, u"modules/sdraw/ui/paranumberingtab.ui"_ustr, u"DrawParaNumbering"_ustr, &rAttr)
     , mbModified(false)
-    , m_xNewStartCB(m_xBuilder->weld_check_button("checkbuttonCB_NEW_START"))
-    , m_xNewStartNumberCB(m_xBuilder->weld_check_button("checkbuttonCB_NUMBER_NEW_START"))
-    , m_xNewStartNF(m_xBuilder->weld_spin_button("spinbuttonNF_NEW_START"))
+    , m_xNewStartCB(m_xBuilder->weld_check_button(u"checkbuttonCB_NEW_START"_ustr))
+    , m_xNewStartNumberCB(m_xBuilder->weld_check_button(u"checkbuttonCB_NUMBER_NEW_START"_ustr))
+    , m_xNewStartNF(m_xBuilder->weld_spin_button(u"spinbuttonNF_NEW_START"_ustr))
 {
     m_xNewStartCB->connect_toggled(LINK(this, SdParagraphNumTabPage, ImplNewStartHdl));
     m_xNewStartNumberCB->connect_toggled(LINK(this, SdParagraphNumTabPage, ImplNewStartHdl));
@@ -69,9 +71,10 @@ std::unique_ptr<SfxTabPage> SdParagraphNumTabPage::Create(weld::Container* pPage
     return std::make_unique<SdParagraphNumTabPage>(pPage, pController, *rAttrSet);
 }
 
-WhichRangesContainer SdParagraphNumTabPage::GetRanges()
+const WhichRangesContainer & SdParagraphNumTabPage::GetRanges()
 {
-    return WhichRangesContainer(svl::Items<ATTR_PARANUMBERING_START, ATTR_PARANUMBERING_END>);
+    static const auto gRanges = WhichRangesContainer(svl::Items<ATTR_PARANUMBERING_START, ATTR_PARANUMBERING_END>);
+    return gRanges;
 }
 
 bool SdParagraphNumTabPage::FillItemSet( SfxItemSet* rSet )
@@ -135,31 +138,33 @@ IMPL_LINK_NOARG(SdParagraphNumTabPage, ImplNewStartHdl, weld::Toggleable&, void)
 }
 
 SdParagraphDlg::SdParagraphDlg(weld::Window* pParent, const SfxItemSet* pAttr)
-    : SfxTabDialogController(pParent, "modules/sdraw/ui/drawparadialog.ui",
-                             "DrawParagraphPropertiesDialog", pAttr)
+    : SfxTabDialogController(pParent, u"modules/sdraw/ui/drawparadialog.ui"_ustr,
+                             u"DrawParagraphPropertiesDialog"_ustr, pAttr)
 {
-    AddTabPage( "labelTP_PARA_STD", RID_SVXPAGE_STD_PARAGRAPH);
+    AddTabPage(u"indents"_ustr, TabResId(RID_TAB_INDENTS.aLabel), RID_SVXPAGE_STD_PARAGRAPH,
+               RID_L + RID_TAB_INDENTS.sIconName);
 
-    if( SvtCJKOptions::IsAsianTypographyEnabled() )
-        AddTabPage( "labelTP_PARA_ASIAN", RID_SVXPAGE_PARA_ASIAN);
-    else
-        RemoveTabPage( "labelTP_PARA_ASIAN" );
+    if (SvtCJKOptions::IsAsianTypographyEnabled())
+        AddTabPage(u"asiantypo"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel), RID_SVXPAGE_PARA_ASIAN,
+                   RID_L + RID_TAB_ASIANTYPO.sIconName);
 
-    AddTabPage( "labelTP_PARA_ALIGN", RID_SVXPAGE_ALIGN_PARAGRAPH);
+    AddTabPage(u"tabs"_ustr, TabResId(RID_TAB_TABS.aLabel), RID_SVXPAGE_TABULATOR,
+               RID_L + RID_TAB_TABS.sIconName);
 
-    static const bool bShowParaNumbering = ( getenv( "SD_SHOW_NUMBERING_PAGE" ) != nullptr );
-    if( bShowParaNumbering )
-        AddTabPage( "labelNUMBERING", SdParagraphNumTabPage::Create, SdParagraphNumTabPage::GetRanges );
-    else
-        RemoveTabPage( "labelNUMBERING" );
+    AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel), RID_SVXPAGE_ALIGN_PARAGRAPH,
+               RID_L + RID_TAB_ALIGNMENT.sIconName);
 
-    AddTabPage("labelTP_TABULATOR", RID_SVXPAGE_TABULATOR);
+    static const bool bShowParaNumbering = (getenv("SD_SHOW_NUMBERING_PAGE") != nullptr);
+    if (bShowParaNumbering)
+        AddTabPage(u"numbering"_ustr, TabResId(RID_TAB_NUMBERING.aLabel),
+                   SdParagraphNumTabPage::Create, SdParagraphNumTabPage::GetRanges,
+                   RID_L + RID_TAB_NUMBERING.sIconName);
 }
 
 void SdParagraphDlg::PageCreated(const OUString& rId, SfxTabPage &rPage)
 {
     SfxAllItemSet aSet(*(GetInputSetImpl()->GetPool()));
-    if (rId == "labelTP_PARA_STD")
+    if (rId == "indents")
     {
         aSet.Put(SfxUInt32Item(SID_SVXSTDPARAGRAPHTABPAGE_ABSLINEDIST, MM50/2));
         rPage.PageCreated(aSet);

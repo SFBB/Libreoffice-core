@@ -76,7 +76,7 @@ bool SvMetaAttribute::ReadSvIdl( SvIdlDataBase & rBase,
         {
             tools::SvRef<SvMetaType> xT(new SvMetaType() );
             xT->SetRef( GetType() );
-            aType = xT;
+            aType = std::move(xT);
             bOk = aType->ReadMethodArgs( rBase, rInStm );
         }
         if( bOk )
@@ -99,18 +99,18 @@ bool SvMetaAttribute::ReadSvIdl( SvIdlDataBase & rBase,
 size_t SvMetaAttribute::MakeSfx( OStringBuffer& rAttrArray ) const
 {
     SvMetaType * pType = GetType();
-    DBG_ASSERT( pType, "no type for attribute" );
+    assert(pType && "no type for attribute");
     SvMetaType * pBaseType = pType->GetBaseType();
-    DBG_ASSERT( pBaseType, "no base type for attribute" );
+    assert(pBaseType && "no base type for attribute");
     if( pBaseType->GetMetaTypeType() == MetaTypeType::Struct )
         return pBaseType->MakeSfx( rAttrArray );
     else
     {
         rAttrArray.append('{');
         rAttrArray.append(GetSlotId().getString());
-        rAttrArray.append(",\"");
+        rAttrArray.append(",u\"");
         rAttrArray.append(GetName());
-        rAttrArray.append("\"}");
+        rAttrArray.append("\"_ustr}");
         return 1;
     }
 }
@@ -242,7 +242,7 @@ void SvMetaType::WriteSfxItem(
     rOutStm.WriteOString( "extern " );
     if (bExport)
         rOutStm.WriteOString( "SFX2_DLLPUBLIC " );
-    rOutStm.WriteOString( aTypeName )
+    rOutStm.WriteOString( "constinit const " ).WriteOString( aTypeName )
            .WriteOString( aVarName ).WriteChar( ';' ) << endl;
     if (bReturn)
         return;
@@ -252,7 +252,7 @@ void SvMetaType::WriteSfxItem(
     rOutStm.WriteOString( "#if !defined(_WIN32) && (defined(DISABLE_DYNLOADING) && (defined(ANDROID) || defined(IOS) || defined(EMSCRIPTEN) || defined(LINUX)))" ) << endl;
     rOutStm.WriteOString( "__attribute__((__weak__))" ) << endl;
     rOutStm.WriteOString( "#endif" ) << endl;
-    rOutStm.WriteOString( aTypeName ).WriteOString( aVarName )
+    rOutStm.WriteOString( "constinit const " ).WriteOString( aTypeName ).WriteOString( aVarName )
            .WriteOString( " = " ) << endl;
     rOutStm.WriteChar( '{' ) << endl;
 

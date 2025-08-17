@@ -43,7 +43,7 @@ SFX_IMPL_INTERFACE(ScPivotShell, SfxShell)
 
 void ScPivotShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("pivot");
+    GetStaticInterface()->RegisterPopupMenu(u"pivot"_ustr);
 }
 
 ScPivotShell::ScPivotShell( ScTabViewShell* pViewSh ) :
@@ -52,13 +52,13 @@ ScPivotShell::ScPivotShell( ScTabViewShell* pViewSh ) :
 {
     SetPool( &pViewSh->GetPool() );
     ScViewData& rViewData = pViewSh->GetViewData();
-    SfxUndoManager* pMgr = rViewData.GetSfxDocShell()->GetUndoManager();
+    SfxUndoManager* pMgr = rViewData.GetSfxDocShell().GetUndoManager();
     SetUndoManager( pMgr );
     if ( !rViewData.GetDocument().IsUndoEnabled() )
     {
         pMgr->SetMaxUndoActionCount( 0 );
     }
-    SetName("Pivot");
+    SetName(u"Pivot"_ustr);
     SfxShell::SetContextName(vcl::EnumContext::GetContextName(vcl::EnumContext::Context::Pivot));
 }
 
@@ -95,12 +95,12 @@ void ScPivotShell::Execute( const SfxRequest& rReq )
 
                 ScViewData& rViewData = pViewShell->GetViewData();
                 SfxItemSetFixed<SCITEM_QUERYDATA, SCITEM_QUERYDATA> aArgSet( pViewShell->GetPool() );
-                aArgSet.Put( ScQueryItem( SCITEM_QUERYDATA, &rViewData, &aQueryParam ) );
+                aArgSet.Put( ScQueryItem( SCITEM_QUERYDATA, &aQueryParam ) );
 
                 ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
 
                 ScopedVclPtr<AbstractScPivotFilterDlg> pDlg(pFact->CreateScPivotFilterDlg(
-                    pViewShell->GetFrameWeld(), aArgSet, nSrcTab));
+                    pViewShell->GetFrameWeld(), aArgSet, rViewData, nSrcTab));
 
                 if( pDlg->Execute() == RET_OK )
                 {
@@ -113,7 +113,7 @@ void ScPivotShell::Execute( const SfxRequest& rReq )
 
                     ScDPObject aNewObj( *pDPObj );
                     aNewObj.SetSheetDesc( aNewDesc );
-                    ScDBDocFunc aFunc( *rViewData.GetDocShell() );
+                    ScDBDocFunc aFunc( rViewData.GetDocShell() );
                     aFunc.DataPilotUpdate( pDPObj, &aNewObj, true, false );
                     rViewData.GetView()->CursorPosChanged();       // shells may be switched
                 }
@@ -125,9 +125,21 @@ void ScPivotShell::Execute( const SfxRequest& rReq )
 
 void ScPivotShell::GetState( SfxItemSet& rSet )
 {
-    ScDocShell* pDocSh = pViewShell->GetViewData().GetDocShell();
-    ScDocument& rDoc = pDocSh->GetDocument();
-    bool bDisable = pDocSh->IsReadOnly() || rDoc.GetChangeTrack();
+    ScDocShell& rDocSh = pViewShell->GetViewData().GetDocShell();
+    ScDocument& rDoc = rDocSh.GetDocument();
+    bool bDisable = rDocSh.IsReadOnly() || rDoc.GetChangeTrack();
+    bool bFilterDisable = bDisable;
+    if (!bDisable)
+    {
+        SCCOL nTab = pViewShell->GetViewData().GetTabNo();
+        const ScTableProtection* pTabProt = rDoc.GetTabProtection(nTab);
+        if (pTabProt && pTabProt->isProtected())
+        {
+            bDisable = true;
+            if (!pTabProt->isOptionEnabled(ScTableProtection::PIVOT_TABLES))
+                bFilterDisable = true;
+        }
+    }
 
     SfxWhichIter aIter(rSet);
     sal_uInt16 nWhich = aIter.FirstWhich();
@@ -148,7 +160,7 @@ void ScPivotShell::GetState( SfxItemSet& rSet )
             case SID_DP_FILTER:
             {
                 ScDPObject* pDPObj = GetCurrDPObject();
-                if( bDisable || !pDPObj || !pDPObj->IsSheetData() )
+                if( bFilterDisable || !pDPObj || !pDPObj->IsSheetData() )
                     rSet.DisableItem( nWhich );
             }
             break;

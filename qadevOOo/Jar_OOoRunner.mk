@@ -8,9 +8,6 @@
 #
 #
 
-#force debug information for OOoRunner
-gb_JavaClassSet_JAVACDEBUG:= -g
-
 $(eval $(call gb_Jar_Jar,OOoRunner))
 
 $(eval $(call gb_Jar_add_manifest_classpath,OOoRunner,\
@@ -1086,7 +1083,6 @@ $(eval $(call gb_Jar_add_sourcefiles,OOoRunner,\
     qadevOOo/tests/java/mod/_sw/SwAccessibleTextGraphicObject \
     qadevOOo/tests/java/mod/_sw/SwXAutoTextEntry \
     qadevOOo/tests/java/mod/_sw/SwXAutoTextGroup \
-    qadevOOo/tests/java/mod/_sw/SwXBodyText \
     qadevOOo/tests/java/mod/_sw/SwXCell \
     qadevOOo/tests/java/mod/_sw/SwXCellRange \
     qadevOOo/tests/java/mod/_sw/SwXChapterNumbering \
@@ -1094,9 +1090,6 @@ $(eval $(call gb_Jar_add_sourcefiles,OOoRunner,\
     qadevOOo/tests/java/mod/_sw/SwXDrawPage \
     qadevOOo/tests/java/mod/_sw/SwXEndnoteProperties \
     qadevOOo/tests/java/mod/_sw/SwXFieldMaster \
-    qadevOOo/tests/java/mod/_sw/SwXFootnote \
-    qadevOOo/tests/java/mod/_sw/SwXFootnoteProperties \
-    qadevOOo/tests/java/mod/_sw/SwXFootnoteText \
     qadevOOo/tests/java/mod/_sw/SwXFrames \
     qadevOOo/tests/java/mod/_sw/SwXHeadFootText \
     qadevOOo/tests/java/mod/_sw/SwXLineNumberingProperties \
@@ -1110,7 +1103,6 @@ $(eval $(call gb_Jar_add_sourcefiles,OOoRunner,\
     qadevOOo/tests/java/mod/_sw/SwXShape \
     qadevOOo/tests/java/mod/_sw/SwXStyle \
     qadevOOo/tests/java/mod/_sw/SwXStyleFamily \
-    qadevOOo/tests/java/mod/_sw/SwXTableCellText \
     qadevOOo/tests/java/mod/_sw/SwXTableColumns \
     qadevOOo/tests/java/mod/_sw/SwXTableRows \
     qadevOOo/tests/java/mod/_sw/SwXTextColumns \
@@ -1129,7 +1121,6 @@ $(eval $(call gb_Jar_add_sourcefiles,OOoRunner,\
     qadevOOo/tests/java/mod/_sw/SwXTextRanges \
     qadevOOo/tests/java/mod/_sw/SwXTextSearch \
     qadevOOo/tests/java/mod/_sw/SwXTextSection \
-    qadevOOo/tests/java/mod/_sw/SwXTextTable \
     qadevOOo/tests/java/mod/_sw/SwXTextTableCursor \
     qadevOOo/tests/java/mod/_sw/SwXTextTableRow \
     qadevOOo/tests/java/mod/_sw/SwXTextView \
@@ -1154,9 +1145,7 @@ $(eval $(call gb_Jar_add_sourcefiles,OOoRunner,\
     qadevOOo/tests/java/mod/_toolkit/AccessibleCheckBox \
     qadevOOo/tests/java/mod/_toolkit/AccessibleComboBox \
     qadevOOo/tests/java/mod/_toolkit/AccessibleDropDownComboBox \
-    qadevOOo/tests/java/mod/_toolkit/AccessibleDropDownListBox \
     qadevOOo/tests/java/mod/_toolkit/AccessibleEdit \
-    qadevOOo/tests/java/mod/_toolkit/AccessibleFixedText \
     qadevOOo/tests/java/mod/_toolkit/AccessibleList \
     qadevOOo/tests/java/mod/_toolkit/AccessibleListBox \
     qadevOOo/tests/java/mod/_toolkit/AccessibleListItem \

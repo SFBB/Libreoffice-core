@@ -34,9 +34,9 @@
  *   created by: Eric R. Mader
  */
 
-#ifndef INCLUDED_VCL_INC_SCRPTRUN_H
-#define INCLUDED_VCL_INC_SCRPTRUN_H
+#pragma once
 
+#include <config_options.h>
 #include <sal/config.h>
 
 #include <vcl/dllapi.h>
@@ -58,7 +58,7 @@ struct ParenStackEntry
     }
 };
 
-class VCL_DLLPUBLIC ScriptRun final : public icu::UObject
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) ScriptRun final : public icu::UObject
 {
 public:
     ScriptRun(const UChar chars[], int32_t length);
@@ -149,5 +149,3 @@ inline void ScriptRun::reset(const UChar chars[], int32_t start, int32_t length)
     reset(start, length);
 }
 }
-
-#endif

@@ -24,11 +24,13 @@
 #include <limits>
 #include <cassert>
 #include <type_traits>
+#include <compare>
+#include <config_options.h>
 
 namespace o3tl
 {
 
-#if !defined __COVERITY__
+#if !defined(__COVERITY__) || __COVERITY_MAJOR__ > 2024
 
 namespace detail {
 
@@ -83,29 +85,34 @@ template <typename UNDERLYING_TYPE, typename PHANTOM_TYPE>
 struct strong_int
 {
 public:
+// when compiling LO on macOS, debug builds will display a linking error where, see
+// <https://lists.freedesktop.org/archives/libreoffice/2024-February/091564.html>, "Our Clang
+// --enable-pch setup is known broken":
+#if defined MACOSX && defined __clang__ && (__clang_major__ == 16 || __clang_major__ == 17) && ENABLE_PCH
+    explicit constexpr strong_int(unsigned long long value) : m_value(value) {}
+    explicit constexpr strong_int(unsigned long value) : m_value(value) {}
+    explicit constexpr strong_int(long value) : m_value(value) {}
+    explicit constexpr strong_int(int value) : m_value(value) {}
+    explicit constexpr strong_int(unsigned int value) : m_value(value) {}
+#else
     template<typename T> explicit constexpr strong_int(
         T value,
         typename std::enable_if<std::is_integral<T>::value, int>::type = 0):
         m_value(value)
     {
-#if !defined __COVERITY__
         // catch attempts to pass in out-of-range values early
         assert(detail::isInRange<UNDERLYING_TYPE>(value)
                && "out of range");
-#endif
     }
+#endif
     strong_int() : m_value(0) {}
 
     explicit constexpr operator UNDERLYING_TYPE() const { return m_value; }
     explicit operator bool() const { return m_value != 0; }
     UNDERLYING_TYPE get() const { return m_value; }
 
-    bool operator<(strong_int const & other) const { return m_value < other.m_value; }
-    bool operator<=(strong_int const & other) const { return m_value <= other.m_value; }
-    bool operator>(strong_int const & other) const { return m_value > other.m_value; }
-    bool operator>=(strong_int const & other) const { return m_value >= other.m_value; }
-    bool operator==(strong_int const & other) const { return m_value == other.m_value; }
-    bool operator!=(strong_int const & other) const { return m_value != other.m_value; }
+    auto operator<=>(strong_int const & other) const = default;
+
     strong_int& operator++() { ++m_value; return *this; }
     strong_int operator++(int) { UNDERLYING_TYPE nOldValue = m_value; ++m_value; return strong_int(nOldValue); }
     strong_int& operator--() { --m_value; return *this; }

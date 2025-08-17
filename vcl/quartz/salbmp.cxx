@@ -31,7 +31,6 @@
 #include <vcl/BitmapBuffer.hxx>
 #include <vcl/BitmapColor.hxx>
 #include <vcl/BitmapPalette.hxx>
-#include <vcl/ColorMask.hxx>
 #include <vcl/Scanline.hxx>
 
 #include <bitmap/bmpfast.hxx>
@@ -45,10 +44,6 @@
 #else
 #include <ios/iosinst.hxx>
 #endif
-
-const unsigned long k32BitRedColorMask   = 0x00ff0000;
-const unsigned long k32BitGreenColorMask = 0x0000ff00;
-const unsigned long k32BitBlueColorMask  = 0x000000ff;
 
 QuartzSalBitmap::QuartzSalBitmap()
   : mxCachedImage( nullptr )
@@ -117,7 +112,7 @@ bool QuartzSalBitmap::Create( const SalBitmap& rSalBmp, vcl::PixelFormat eNewPix
 }
 
 bool QuartzSalBitmap::Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& /*xBitmapCanvas*/,
-                              Size& /*rSize*/, bool /*bMask*/ )
+                              Size& /*rSize*/ )
 {
     return false;
 }
@@ -276,12 +271,12 @@ void QuartzSalBitmap::ConvertBitmapData( sal_uInt32 nWidth, sal_uInt32 nHeight,
     {
         // TODO: extend bmpfast.cxx with a method that can be directly used here
         BitmapBuffer aSrcBuf;
-        aSrcBuf.mnFormat = ScanlineFormat::N24BitTcBgr;
+        aSrcBuf.meFormat = ScanlineFormat::N24BitTcBgr;
         aSrcBuf.mpBits = pSrcData;
         aSrcBuf.mnBitCount = nSrcBits;
         aSrcBuf.mnScanlineSize = nSrcBytesPerRow;
         BitmapBuffer aDstBuf;
-        aDstBuf.mnFormat = ScanlineFormat::N32BitTcArgb;
+        aDstBuf.meFormat = ScanlineFormat::N32BitTcArgb;
         aDstBuf.mpBits = pDestData;
         aDstBuf.mnBitCount = nDestBits;
         aDstBuf.mnScanlineSize = nDestBytesPerRow;
@@ -435,26 +430,17 @@ BitmapBuffer* QuartzSalBitmap::AcquireBuffer( BitmapAccessMode /*nMode*/ )
     switch( mnBits )
     {
         case 1:
-            pBuffer->mnFormat = ScanlineFormat::N1BitMsbPal;
+            pBuffer->meFormat = ScanlineFormat::N1BitMsbPal;
             break;
         case 8:
-            pBuffer->mnFormat = ScanlineFormat::N8BitPal;
+            pBuffer->meFormat = ScanlineFormat::N8BitPal;
             break;
         case 24:
-            pBuffer->mnFormat = ScanlineFormat::N24BitTcBgr;
+            pBuffer->meFormat = ScanlineFormat::N24BitTcBgr;
             break;
         case 32:
-        {
-            pBuffer->mnFormat = ScanlineFormat::N32BitTcArgb;
-            ColorMaskElement aRedMask(k32BitRedColorMask);
-            aRedMask.CalcMaskShift();
-            ColorMaskElement aGreenMask(k32BitGreenColorMask);
-            aGreenMask.CalcMaskShift();
-            ColorMaskElement aBlueMask(k32BitBlueColorMask);
-            aBlueMask.CalcMaskShift();
-            pBuffer->maColorMask  = ColorMask(aRedMask, aGreenMask, aBlueMask);
+            pBuffer->meFormat = ScanlineFormat::N32BitTcArgb;
             break;
-        }
         default: assert(false);
     }
 

@@ -271,7 +271,7 @@ void  ScDPFilteredCache::getValue( ScDPValue& rVal, SCCOL nCol, SCROW nRow) cons
         rVal.Set(0.0, ScDPValue::Empty);
 }
 
-OUString ScDPFilteredCache::getFieldName(SCCOL nIndex) const
+const OUString & ScDPFilteredCache::getFieldName(SCCOL nIndex) const
 {
     return mrCache.GetDimensionName(nIndex);
 }
@@ -307,9 +307,7 @@ void ScDPFilteredCache::filterTable(const vector<Criterion>& rCriteria, Sequence
     for (SCCOL  nCol = 0; nCol < nColSize; ++nCol)
     {
         OUString str = getFieldName( nCol);
-        Any any;
-        any <<= str;
-        pRow[nCol] = any;
+        pRow[nCol] <<= str;
     }
     tableData.push_back(headerRow);
 
@@ -342,7 +340,7 @@ void ScDPFilteredCache::filterTable(const vector<Criterion>& rCriteria, Sequence
                   OUString string (pData->GetString() );
                   any <<= string;
             }
-            pRow[nCol] = any;
+            pRow[nCol] = std::move(any);
         }
         tableData.push_back(row);
     }

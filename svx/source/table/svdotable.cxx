@@ -22,7 +22,7 @@
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/canvastools.hxx>
 #include <vcl/ptrstyle.hxx>
 #include <com/sun/star/style/XStyle.hpp>
@@ -251,9 +251,9 @@ void SdrTableObjImpl::CropTableModelToSelection(const CellPos& rStart, const Cel
     {
         for( sal_Int32 nCol = 0; nCol < nColumns; ++nCol ) try
         {
-            CellRef xTargetCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+            CellRef xTargetCell( mxTable->getCell( nCol, nRow ) );
             if( xTargetCell.is() )
-                xTargetCell->cloneFrom( dynamic_cast< Cell* >( xOldTable->getCellByPosition( rStart.mnCol + nCol, rStart.mnRow + nRow ).get() ) );
+                xTargetCell->cloneFrom( xOldTable->getCell( rStart.mnCol + nCol, rStart.mnRow + nRow ) );
         }
         catch( Exception& )
         {
@@ -382,7 +382,7 @@ SdrTableObjImpl& SdrTableObjImpl::operator=( const SdrTableObjImpl& rSource )
         const OUString sStyleName( Reference< XNamed >( rSource.mxTableStyle, UNO_QUERY_THROW )->getName() );
         Reference< XStyleFamiliesSupplier > xSFS(rTargetSdrModel.getUnoModel(), UNO_QUERY_THROW );
         Reference< XNameAccess > xFamilyNameAccess( xSFS->getStyleFamilies(), css::uno::UNO_SET_THROW );
-        Reference< XNameAccess > xTableFamilyAccess( xFamilyNameAccess->getByName( "table" ), UNO_QUERY_THROW );
+        Reference< XNameAccess > xTableFamilyAccess( xFamilyNameAccess->getByName( u"table"_ustr ), UNO_QUERY_THROW );
 
         if( xTableFamilyAccess->hasByName( sStyleName ) )
         {
@@ -402,7 +402,7 @@ SdrTableObjImpl& SdrTableObjImpl::operator=( const SdrTableObjImpl& rSource )
     }
 
     // set that TableStyle
-    mxTableStyle = xNewTableStyle;
+    mxTableStyle = std::move(xNewTableStyle);
 
     // Apply Style to Cells
     ApplyCellStyles();
@@ -706,8 +706,8 @@ void SAL_CALL SdrTableObjImpl::disposing( const css::lang::EventObject& Source )
     try
     {
         Reference<XStyleFamiliesSupplier> xSupplier(mpTableObj->getSdrModelFromSdrObject().getUnoModel(), UNO_QUERY_THROW);
-        Reference<XNameAccess> xTableFamily(xSupplier->getStyleFamilies()->getByName("table"), UNO_QUERY_THROW);
-        xDefaultStyle.set(xTableFamily->getByName("default"), UNO_QUERY_THROW);
+        Reference<XNameAccess> xTableFamily(xSupplier->getStyleFamilies()->getByName(u"table"_ustr), UNO_QUERY_THROW);
+        xDefaultStyle.set(xTableFamily->getByName(u"default"_ustr), UNO_QUERY_THROW);
     }
     catch( Exception& )
     {
@@ -723,7 +723,7 @@ CellRef SdrTableObjImpl::getCell(  const CellPos& rPos  ) const
     CellRef xCell;
     if( mxTable.is() ) try
     {
-        xCell.set( dynamic_cast< Cell* >( mxTable->getCellByPosition( rPos.mnCol, rPos.mnRow ).get() ) );
+        xCell = mxTable->getCell( rPos.mnCol, rPos.mnRow );
     }
     catch( Exception& )
     {
@@ -755,7 +755,7 @@ sal_Int32 SdrTableObjImpl::getRowCount() const
 
 void SdrTableObjImpl::LayoutTable( tools::Rectangle& rArea, bool bFitWidth, bool bFitHeight )
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
     if(!mpLayouter)
         return;
@@ -912,6 +912,10 @@ Reference< XTable > SdrTableObj::getTable() const
     return mpImpl->mxTable;
 }
 
+const rtl::Reference< TableModel > & SdrTableObj::getUnoTable() const
+{
+    return mpImpl->mxTable;
+}
 
 bool SdrTableObj::isValid( const CellPos& rPos ) const
 {
@@ -1585,12 +1589,12 @@ void SdrTableObj::setActiveCell( const CellPos& rPos )
 
     try
     {
-        mpImpl->mxActiveCell.set( dynamic_cast< Cell* >( mpImpl->mxTable->getCellByPosition( rPos.mnCol, rPos.mnRow ).get() ) );
+        mpImpl->mxActiveCell = mpImpl->mxTable->getCell( rPos.mnCol, rPos.mnRow );
         if( mpImpl->mxActiveCell.is() && mpImpl->mxActiveCell->isMerged() )
         {
             CellPos aOrigin;
             findMergeOrigin( mpImpl->mxTable, rPos.mnCol, rPos.mnRow, aOrigin.mnCol, aOrigin.mnRow );
-            mpImpl->mxActiveCell.set( dynamic_cast< Cell* >( mpImpl->mxTable->getCellByPosition( aOrigin.mnCol, aOrigin.mnRow ).get() ) );
+            mpImpl->mxActiveCell = mpImpl->mxTable->getCell( aOrigin.mnCol, aOrigin.mnRow );
             mpImpl->maEditPos = aOrigin;
         }
         else
@@ -1713,19 +1717,17 @@ EEAnchorMode SdrTableObj::GetOutlinerViewAnchorMode() const
     {
         SdrTextVertAdjust eV=xCell->GetTextVerticalAdjust();
 
+        if (eV==SDRTEXTVERTADJUST_TOP)
         {
-            if (eV==SDRTEXTVERTADJUST_TOP)
-            {
-                eRet=EEAnchorMode::TopLeft;
-            }
-            else if (eV==SDRTEXTVERTADJUST_BOTTOM)
-            {
-                eRet=EEAnchorMode::BottomLeft;
-            }
-            else
-            {
-                eRet=EEAnchorMode::VCenterLeft;
-            }
+            eRet=EEAnchorMode::TopLeft;
+        }
+        else if (eV==SDRTEXTVERTADJUST_BOTTOM)
+        {
+            eRet=EEAnchorMode::BottomLeft;
+        }
+        else
+        {
+            eRet=EEAnchorMode::VCenterLeft;
         }
     }
     return eRet;
@@ -1869,7 +1871,7 @@ OutlinerParaObject* SdrTableObj::GetOutlinerParaObject() const
 }
 
 
-void SdrTableObj::NbcSetOutlinerParaObject( std::optional<OutlinerParaObject> pTextObject)
+void SdrTableObj::NbcSetOutlinerParaObject( std::optional<OutlinerParaObject> pTextObject, bool bAdjustTextFrameWidthAndHeight )
 {
     CellRef xCell( getActiveCell() );
     if( !xCell.is() )
@@ -1885,11 +1887,12 @@ void SdrTableObj::NbcSetOutlinerParaObject( std::optional<OutlinerParaObject> pT
 
     xCell->SetOutlinerParaObject( std::move(pTextObject) );
     SetTextSizeDirty();
-    NbcAdjustTextFrameWidthAndHeight();
+    if (bAdjustTextFrameWidthAndHeight)
+        NbcAdjustTextFrameWidthAndHeight();
 }
 
 
-void SdrTableObj::NbcSetLogicRect(const tools::Rectangle& rRect)
+void SdrTableObj::NbcSetLogicRect(const tools::Rectangle& rRect, bool /*bAdaptTextMinSize*/)
 {
     maLogicRect=rRect;
     ImpJustifyRect(maLogicRect);
@@ -2457,7 +2460,7 @@ bool SdrTableObj::createTableEdgesJson(boost::property_tree::ptree & rJsonRoot)
         aTableColumns.put("tableOffset", o3tl::toTwips(aRect.Left(), o3tl::Length::mm100));
 
         boost::property_tree::ptree aEntries;
-        auto const & aEdges = mpImpl->mpLayouter->getVerticalEdges();
+        auto const aEdges = mpImpl->mpLayouter->getVerticalEdges();
         for (auto & rEdge : aEdges)
         {
             if (rEdge.nIndex == 0)
@@ -2487,7 +2490,7 @@ bool SdrTableObj::createTableEdgesJson(boost::property_tree::ptree & rJsonRoot)
         aTableRows.put("tableOffset", o3tl::toTwips(aRect.Top(), o3tl::Length::mm100));
 
         boost::property_tree::ptree aEntries;
-        auto const & aEdges = mpImpl->mpLayouter->getHorizontalEdges();
+        auto const aEdges = mpImpl->mpLayouter->getHorizontalEdges();
         for (auto & rEdge : aEdges)
         {
             if (rEdge.nIndex == 0)

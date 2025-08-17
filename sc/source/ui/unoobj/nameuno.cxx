@@ -71,9 +71,9 @@ static std::span<const SfxItemPropertyMapEntry> lcl_GetNamedRangesMap()
 
 constexpr OUString SCNAMEDRANGEOBJ_SERVICE = u"com.sun.star.sheet.NamedRange"_ustr;
 
-SC_SIMPLE_SERVICE_INFO( ScLabelRangeObj, "ScLabelRangeObj", "com.sun.star.sheet.LabelRange" )
-SC_SIMPLE_SERVICE_INFO( ScLabelRangesObj, "ScLabelRangesObj", "com.sun.star.sheet.LabelRanges" )
-SC_SIMPLE_SERVICE_INFO( ScNamedRangesObj, "ScNamedRangesObj", "com.sun.star.sheet.NamedRanges" )
+SC_SIMPLE_SERVICE_INFO( ScLabelRangeObj, u"ScLabelRangeObj"_ustr, u"com.sun.star.sheet.LabelRange"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScLabelRangesObj, u"ScLabelRangesObj"_ustr, u"com.sun.star.sheet.LabelRanges"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScNamedRangesObj, u"ScNamedRangesObj"_ustr, u"com.sun.star.sheet.NamedRanges"_ustr )
 
 // Database named ranges are not considered by getCount, hasByName, removeByName and getElementNames
 // Note that hidden named ranges are considered by these methods
@@ -409,7 +409,7 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScNamedRangeObj )
 
 OUString SAL_CALL ScNamedRangeObj::getImplementationName()
 {
-    return "ScNamedRangeObj";
+    return u"ScNamedRangeObj"_ustr;
 }
 
 sal_Bool SAL_CALL ScNamedRangeObj::supportsService( const OUString& rServiceName )
@@ -472,12 +472,12 @@ void SAL_CALL ScNamedRangesObj::addNewByName( const OUString& aName,
         {
             case ScRangeData::IsNameValidType::NAME_INVALID_CELL_REF:
                 throw uno::RuntimeException(
-                    "Invalid name. Reference to a cell, or a range of cells not allowed",
+                    u"Invalid name. Reference to a cell, or a range of cells not allowed"_ustr,
                     getXWeak());
                 break;
             case ScRangeData::IsNameValidType::NAME_INVALID_BAD_STRING:
                 throw uno::RuntimeException(
-                    "Invalid name. Start with a letter, use only letters, numbers and underscore",
+                    u"Invalid name. It must start with a letter (excluding c, C, r, or R followed by a number) or underscore.\nOnly letters, numbers, and underscores are permitted."_ustr,
                     getXWeak());
                 break;
             case ScRangeData::IsNameValidType::NAME_VALID:
@@ -567,7 +567,7 @@ void SAL_CALL ScNamedRangesObj::outputList( const table::CellAddress& aOutputPos
 uno::Reference<container::XEnumeration> SAL_CALL ScNamedRangesObj::createEnumeration()
 {
     SolarMutexGuard aGuard;
-    return new ScIndexEnumeration(this, "com.sun.star.sheet.NamedRangesEnumeration");
+    return new ScIndexEnumeration(this, u"com.sun.star.sheet.NamedRangesEnumeration"_ustr);
 }
 
 // container::XIndexAccess
@@ -592,11 +592,11 @@ sal_Int32 SAL_CALL ScNamedRangesObj::getCount()
 uno::Any SAL_CALL ScNamedRangesObj::getByIndex( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
-    uno::Reference< sheet::XNamedRange >  xRange(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
+    rtl::Reference< ScNamedRangeObj >  xRange(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
     if ( !xRange.is() )
         throw lang::IndexOutOfBoundsException();
 
-    return uno::Any(xRange);
+    return uno::Any(uno::Reference< sheet::XNamedRange >(xRange));
 }
 
 uno::Type SAL_CALL ScNamedRangesObj::getElementType()
@@ -642,11 +642,11 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScNamedRangesObj )
 uno::Any SAL_CALL ScNamedRangesObj::getByName( const OUString& aName )
 {
     SolarMutexGuard aGuard;
-    uno::Reference< sheet::XNamedRange >  xRange(GetObjectByName_Impl(aName));
+    rtl::Reference< ScNamedRangeObj >  xRange(GetObjectByName_Impl(aName));
     if ( !xRange.is() )
         throw container::NoSuchElementException();
 
-    return uno::Any(xRange);
+    return uno::Any(uno::Reference< sheet::XNamedRange >(xRange));
 }
 
 uno::Sequence<OUString> SAL_CALL ScNamedRangesObj::getElementNames()
@@ -942,9 +942,9 @@ void ScLabelRangeObj::Modify_Impl( const ScRange* pLabel, const ScRange* pData )
     xNewList->Join( *pEntry, true );
 
     if (bColumn)
-        rDoc.GetColNameRangesRef() = xNewList;
+        rDoc.GetColNameRangesRef() = std::move(xNewList);
     else
-        rDoc.GetRowNameRangesRef() = xNewList;
+        rDoc.GetRowNameRangesRef() = std::move(xNewList);
 
     rDoc.CompileColRowNameFormula();
     pDocShell->PostPaint( 0,0,0, rDoc.MaxCol(),rDoc.MaxRow(),MAXTAB, PaintPartFlags::Grid );
@@ -1057,9 +1057,9 @@ void SAL_CALL ScLabelRangesObj::addNew( const table::CellRangeAddress& aLabelAre
     xNewList->Join( ScRangePair( aLabelRange, aDataRange ) );
 
     if (bColumn)
-        rDoc.GetColNameRangesRef() = xNewList;
+        rDoc.GetColNameRangesRef() = std::move(xNewList);
     else
-        rDoc.GetRowNameRangesRef() = xNewList;
+        rDoc.GetRowNameRangesRef() = std::move(xNewList);
 
     rDoc.CompileColRowNameFormula();
     pDocShell->PostPaint( 0,0,0, rDoc.MaxCol(),rDoc.MaxRow(),MAXTAB, PaintPartFlags::Grid );
@@ -1084,9 +1084,9 @@ void SAL_CALL ScLabelRangesObj::removeByIndex( sal_Int32 nIndex )
             xNewList->Remove( nIndex );
 
             if (bColumn)
-                rDoc.GetColNameRangesRef() = xNewList;
+                rDoc.GetColNameRangesRef() = std::move(xNewList);
             else
-                rDoc.GetRowNameRangesRef() = xNewList;
+                rDoc.GetRowNameRangesRef() = std::move(xNewList);
 
             rDoc.CompileColRowNameFormula();
             pDocShell->PostPaint( 0,0,0, rDoc.MaxCol(),rDoc.MaxRow(),MAXTAB, PaintPartFlags::Grid );
@@ -1105,7 +1105,7 @@ void SAL_CALL ScLabelRangesObj::removeByIndex( sal_Int32 nIndex )
 uno::Reference<container::XEnumeration> SAL_CALL ScLabelRangesObj::createEnumeration()
 {
     SolarMutexGuard aGuard;
-    return new ScIndexEnumeration(this, "com.sun.star.sheet.LabelRangesEnumeration");
+    return new ScIndexEnumeration(this, u"com.sun.star.sheet.LabelRangesEnumeration"_ustr);
 }
 
 // container::XIndexAccess
@@ -1126,11 +1126,11 @@ sal_Int32 SAL_CALL ScLabelRangesObj::getCount()
 uno::Any SAL_CALL ScLabelRangesObj::getByIndex( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
-    uno::Reference< sheet::XLabelRange >  xRange(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
+    rtl::Reference< ScLabelRangeObj >  xRange(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
     if ( !xRange.is() )
         throw lang::IndexOutOfBoundsException();
 
-    return uno::Any(xRange);
+    return uno::Any(uno::Reference< sheet::XLabelRange >(xRange));
 }
 
 uno::Type SAL_CALL ScLabelRangesObj::getElementType()

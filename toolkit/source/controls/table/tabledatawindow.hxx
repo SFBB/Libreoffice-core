@@ -25,14 +25,12 @@
 namespace svt::table
 {
     class TableControl_Impl;
-    class TableFunctionSet;
 
     /** the window containing the content area (including headers) of
         a table control
     */
     class TableDataWindow : public vcl::Window
     {
-        friend class TableFunctionSet;
     private:
         TableControl_Impl&  m_rTableControl;
         Link<LinkParamNone*,void> m_aSelectHdl;

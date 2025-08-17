@@ -24,9 +24,6 @@
 #include <svx/svxdllapi.h>
 #include <memory>
 
-class XLineAttrSetItem;
-class XFillAttrSetItem;
-class SdrEdgeObj;
 class SdrObjConnection;
 
 class ImplConnectMarkerOverlay;
@@ -55,23 +52,23 @@ protected:
     bool mb1stPointAsCenter : 1;
     bool mbUseIncompatiblePathCreateInterface : 1;
 
-    void ImpClearConnectMarker();
+    SAL_DLLPRIVATE void ImpClearConnectMarker();
 
 protected:
-    bool ImpBegCreateObj(SdrInventor nInvent, SdrObjKind nIdent, const Point& rPnt, OutputDevice* pOut,
+    SAL_DLLPRIVATE bool ImpBegCreateObj(SdrInventor nInvent, SdrObjKind nIdent, const Point& rPnt, OutputDevice* pOut,
         sal_Int16 nMinMov, const tools::Rectangle& rLogRect, SdrObject* pPreparedFactoryObject);
 
-    void ShowCreateObj(/*OutputDevice* pOut, bool bFull*/);
-    void HideCreateObj(/*OutputDevice* pOut, bool bFull*/);
+    SAL_DLLPRIVATE void ShowCreateObj(/*OutputDevice* pOut, bool bFull*/);
+    SAL_DLLPRIVATE void HideCreateObj(/*OutputDevice* pOut, bool bFull*/);
     bool CheckEdgeMode();
 
 protected:
     // #i71538# make constructors of SdrView sub-components protected to avoid incomplete incarnations which may get casted to SdrView
-    SdrCreateView(
+    SAL_DLLPRIVATE SdrCreateView(
         SdrModel& rSdrModel,
         OutputDevice* pOut);
 
-    virtual ~SdrCreateView() override;
+    SAL_DLLPRIVATE virtual ~SdrCreateView() override;
 
 public:
     virtual bool IsAction() const override;
@@ -81,7 +78,7 @@ public:
     virtual void BrkAction() override;
     virtual void TakeActionRect(tools::Rectangle& rRect) const override;
 
-    virtual bool MouseMove(const MouseEvent& rMEvt, OutputDevice* pWin) override;
+    SAL_DLLPRIVATE virtual bool MouseMove(const MouseEvent& rMEvt, OutputDevice* pWin) override;
 
     void SetMeasureLayer(const OUString& rName) { maMeasureLayer=rName; }
 
@@ -92,13 +89,13 @@ public:
     void SetGluePointEditMode(bool bOn=true) { SdrDragView::SetGluePointEditMode(bOn); CheckEdgeMode(); }
 
     // Determine whether a text tool is activated
-    bool IsTextTool() const;
+    SAL_DLLPRIVATE bool IsTextTool() const;
 
     // Determine whether an object connector tool activated
-    bool IsEdgeTool() const;
+    SAL_DLLPRIVATE bool IsEdgeTool() const;
 
     // Determine whether a measurement tool activated
-    bool IsMeasureTool() const;
+    SAL_DLLPRIVATE bool IsMeasureTool() const;
 
     void SetCurrentObj(SdrObjKind nIdent, SdrInventor nInvent=SdrInventor::Default);
     void TakeCurrentObj(SdrObjKind& nIdent, SdrInventor& nInvent) const
@@ -114,7 +111,7 @@ public:
     bool BegCreatePreparedObject(const Point& rPnt, sal_Int16 nMinMov, SdrObject* pPreparedFactoryObject);
     void MovCreateObj(const Point& rPnt);
     bool EndCreateObj(SdrCreateCmd eCmd);
-    void BckCreateObj();  // go back one polygon point
+    SAL_DLLPRIVATE void BckCreateObj();  // go back one polygon point
     void BrkCreateObj();
     bool IsCreateObj() const { return mpCurrentCreate != nullptr; }
     SdrObject* GetCreateObj() const { return mpCurrentCreate.get(); }
@@ -138,7 +135,7 @@ public:
 
     // Setting for the minimum distance in pixels between 2 bezier points when
     // creating a freehand line.
-    // Default = 10 Pixel
+    // The value is defined by config item /org.openoffice.Office.Common/Misc/FreehandThresholdPixels
     sal_uInt16 GetFreeHandMinDistPix() const { return sal_uInt16(mnFreeHandMinDistPix); }
 
     // FIXME: Whoever wants to keep the Create Interface for the PathObj which is
@@ -151,12 +148,12 @@ public:
     // Default = sal_False;
     bool IsUseIncompatiblePathCreateInterface() const { return mbUseIncompatiblePathCreateInterface; }
     void SetUseIncompatiblePathCreateInterface(bool bOn) { mbUseIncompatiblePathCreateInterface = bOn; }
-    void SetConnectMarker(const SdrObjConnection& rCon);
-    void HideConnectMarker();
+    SAL_DLLPRIVATE void SetConnectMarker(const SdrObjConnection& rCon);
+    SAL_DLLPRIVATE void HideConnectMarker();
 
     // Attributes of the object that is in the process of being created
     /* new interface src537 */
-    void GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr) const;
+    SAL_DLLPRIVATE void GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr) const;
 
     bool SetAttributes(const SfxItemSet& rSet, bool bReplaceAll);
     SfxStyleSheet* GetStyleSheet() const; // SfxStyleSheet* GetStyleSheet(bool& rOk) const;

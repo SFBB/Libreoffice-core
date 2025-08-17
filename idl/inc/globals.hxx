@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_IDL_INC_GLOBALS_HXX
-#define INCLUDED_IDL_INC_GLOBALS_HXX
+#pragma once
 
 #include "hash.hxx"
 #include <memory>
@@ -59,6 +58,7 @@ struct SvGlobalHashNames
     SvStringHashEntry* MM_SbxObject;
     SvStringHashEntry* MM_Container;
     SvStringHashEntry* MM_ReadOnlyDoc;
+    SvStringHashEntry* MM_ViewerApp;
     SvStringHashEntry* MM_struct;
     SvStringHashEntry* MM_DisableFlags;
 
@@ -119,10 +119,8 @@ HASH_INLINE(FastCall)
 HASH_INLINE(SbxObject)
 HASH_INLINE(Container)
 HASH_INLINE(ReadOnlyDoc)
+HASH_INLINE(ViewerApp)
 HASH_INLINE(struct)
 HASH_INLINE(DisableFlags)
-
-
-#endif // INCLUDED_IDL_INC_GLOBALS_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

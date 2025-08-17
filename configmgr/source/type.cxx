@@ -55,7 +55,7 @@ Type elementType(Type type) {
         return TYPE_HEXBINARY;
     default:
         assert(false);
-        throw css::uno::RuntimeException("this cannot happen");
+        throw css::uno::RuntimeException(u"this cannot happen"_ustr);
     }
 }
 
@@ -94,12 +94,12 @@ css::uno::Type const & mapType(Type type) {
             css::uno::Sequence< css::uno::Sequence< sal_Int8 > > >::get();
     default:
         assert(false);
-        throw css::uno::RuntimeException("this cannot happen");
+        throw css::uno::RuntimeException(u"this cannot happen"_ustr);
     }
 }
 
 Type getDynamicType(css::uno::Any const & value) {
-    switch (value.getValueType().getTypeClass()) {
+    switch (value.getValueTypeClass()) {
     case css::uno::TypeClass_VOID:
         return TYPE_NIL;
     case css::uno::TypeClass_BOOLEAN:
@@ -125,7 +125,7 @@ Type getDynamicType(css::uno::Any const & value) {
         return TYPE_STRING;
     case css::uno::TypeClass_SEQUENCE: //TODO
         {
-            OUString name(value.getValueType().getTypeName());
+            OUString name(value.getValueTypeName());
             if ( name == "[]byte" ) {
                 return TYPE_HEXBINARY;
             } else if (name == "[]boolean")

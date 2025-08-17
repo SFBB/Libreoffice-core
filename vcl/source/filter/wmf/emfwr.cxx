@@ -698,13 +698,11 @@ void EMFWriter::ImplWritePolyPolygonRecord( const tools::PolyPolygon& rPolyPoly 
                 ImplWriteRect( rPolyPoly.GetBoundRect() );
                 m_rStm.WriteUInt32( nPolyCount ).WriteUInt32( nTotalPoints );
 
-                for( i = 0; i < nPolyCount; i++ )
-                    m_rStm.WriteUInt32( rPolyPoly[ i ].GetSize() );
+                for( auto const& rPoly : rPolyPoly )
+                    m_rStm.WriteUInt32( rPoly.GetSize() );
 
-                for( i = 0; i < nPolyCount; i++ )
+                for( auto const& rPoly : rPolyPoly )
                 {
-                    const tools::Polygon& rPoly = rPolyPoly[ i ];
-
                     for( n = 0; n < rPoly.GetSize(); n++ )
                         ImplWritePoint( rPoly[ n ] );
                 }
@@ -723,11 +721,10 @@ void EMFWriter::ImplWritePath( const tools::PolyPolygon& rPolyPoly, bool bClosed
     ImplBeginRecord( WIN_EMR_BEGINPATH );
     ImplEndRecord();
 
-    sal_uInt16 i, n, o, nPolyCount = rPolyPoly.Count();
-    for ( i = 0; i < nPolyCount; i++ )
+    sal_uInt16 n, o;
+    for ( auto const& rPoly : rPolyPoly )
     {
         n = 0;
-        const tools::Polygon& rPoly = rPolyPoly[ i ];
         while ( n < rPoly.GetSize() )
         {
             if( n == 0 )
@@ -882,7 +879,7 @@ void EMFWriter::ImplWriteTextRecord( const Point& rPos, const OUString& rText, K
     }
     else
     {
-        nNormWidth = maVDev->GetTextArray( rText, &aOwnArray );
+        nNormWidth = basegfx::fround<sal_uInt32>(maVDev->GetTextArray(rText, &aOwnArray));
         pDX = aOwnArray;
     }
 
@@ -894,13 +891,13 @@ void EMFWriter::ImplWriteTextRecord( const Point& rPos, const OUString& rText, K
         {
             if (!pDXArray.empty())
             {
-                aOwnArray.assign(pDXArray);
+                aOwnArray.assign(pDXArray.begin(), pDXArray.end());
                 pDX = aOwnArray;
             }
             const double fFactor = static_cast<double>(nWidth) / nNormWidth;
 
             for( i = 0; i < ( nLen - 1 ); i++ )
-                aOwnArray.set(i, FRound(aOwnArray[i] * fFactor));
+                aOwnArray[i] *= fFactor;
         }
     }
 
@@ -928,10 +925,8 @@ void EMFWriter::ImplWriteTextRecord( const Point& rPos, const OUString& rText, K
 
     if( nLen > 1 )
     {
-        for( i = 1; i < ( nLen - 1 ); i++ )
+        for (i = 1; i < nLen; i++)
             ImplWriteExtent( pDX[ i ] - pDX[ i - 1 ] );
-
-        ImplWriteExtent( pDX[ nLen - 2 ] / ( nLen - 1 ) );
     }
 
     ImplEndRecord();
@@ -959,8 +954,9 @@ void EMFWriter::Impl_handleLineInfoPolyPolygons(const LineInfo& rInfo, const bas
     if(!aFillPolyPolygon.count())
         return;
 
+    auto popIt = maVDev->ScopedPush(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR);
+
     const Color aOldLineColor(maVDev->GetLineColor());
-    const Color aOldFillColor(maVDev->GetFillColor());
 
     maVDev->SetLineColor();
     maVDev->SetFillColor(aOldLineColor);
@@ -969,9 +965,6 @@ void EMFWriter::Impl_handleLineInfoPolyPolygons(const LineInfo& rInfo, const bas
     {
         ImplWritePolyPolygonRecord(tools::PolyPolygon( tools::Polygon(rB2DPolygon) ));
     }
-
-    maVDev->SetLineColor(aOldLineColor);
-    maVDev->SetFillColor(aOldFillColor);
 }
 
 void EMFWriter::ImplWrite( const GDIMetaFile& rMtf )
@@ -1219,8 +1212,8 @@ void EMFWriter::ImplWrite( const GDIMetaFile& rMtf )
                 if( fScaleX != 1.0 || fScaleY != 1.0 )
                 {
                     aTmpMtf.Scale( fScaleX, fScaleY );
-                    aSrcPt.setX( FRound( aSrcPt.X() * fScaleX ) );
-                    aSrcPt.setY( FRound( aSrcPt.Y() * fScaleY ) );
+                    aSrcPt.setX(basegfx::fround<tools::Long>(aSrcPt.X() * fScaleX));
+                    aSrcPt.setY(basegfx::fround<tools::Long>(aSrcPt.Y() * fScaleY));
                 }
 
                 nMoveX = aDestPt.X() - aSrcPt.X();

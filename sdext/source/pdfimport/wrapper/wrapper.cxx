@@ -20,8 +20,6 @@
 #include <config_folders.h>
 
 #include <contentsink.hxx>
-#include <pdfparse.hxx>
-#include <pdfihelper.hxx>
 #include <wrapper.hxx>
 
 #include <o3tl/string_view.hxx>
@@ -40,7 +38,6 @@
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/rendering/PathCapType.hpp>
-#include <com/sun/star/rendering/PathJoinType.hpp>
 #include <com/sun/star/rendering/XPolyPolygon2D.hpp>
 #include <com/sun/star/geometry/Matrix2D.hpp>
 #include <com/sun/star/geometry/AffineMatrix2D.hpp>
@@ -52,15 +49,18 @@
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/utils/unopolypolygon.hxx>
+#include <basegfx/vector/b2enums.hxx>
 
 #include <vcl/metric.hxx>
 #include <vcl/font.hxx>
+#include <vcl/pdf/pwdinteract.hxx>
 #include <vcl/virdev.hxx>
 
 #include <cstddef>
 #include <memory>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 #include <string.h>
 
 using namespace com::sun::star;
@@ -74,7 +74,9 @@ namespace
 // identifier of the strings coming from the out-of-process xpdf
 // converter
 enum parseKey {
+    BEGINTRANSPARENCYGROUP,
     CLIPPATH,
+    CLIPTOSTROKEPATH,
     DRAWCHAR,
     DRAWIMAGE,
     DRAWLINK,
@@ -83,6 +85,7 @@ enum parseKey {
     DRAWSOFTMASKEDIMAGE,
     ENDPAGE,
     ENDTEXTOBJECT,
+    ENDTRANSPARENCYGROUP,
     EOCLIPPATH,
     EOFILLPATH,
     FILLPATH,
@@ -107,6 +110,7 @@ enum parseKey {
     SETTRANSFORMATION,
     STARTPAGE,
     STROKEPATH,
+    TILINGPATTERNFILL,
     UPDATEBLENDMODE,
     UPDATECTM,
     UPDATEFILLCOLOR,
@@ -195,6 +199,9 @@ public:
     void                 readLink();
     void                 readMaskedImage();
     void                 readSoftMaskedImage();
+    void                 readTilingPatternFill();
+    void                 beginTransparencyGroup();
+    void                 endTransparencyGroup();
 };
 
 /** Unescapes line-ending characters in input string. These
@@ -427,13 +434,13 @@ void LineParser::readLineDash()
 
 void LineParser::readLineJoin()
 {
-    sal_Int8 nJoin(rendering::PathJoinType::MITER);
+    basegfx::B2DLineJoin nJoin(basegfx::B2DLineJoin::Miter);
     switch( readInt32() )
     {
         default:
-        case 0: nJoin = rendering::PathJoinType::MITER; break;
-        case 1: nJoin = rendering::PathJoinType::ROUND; break;
-        case 2: nJoin = rendering::PathJoinType::BEVEL; break;
+        case 0: nJoin = basegfx::B2DLineJoin::Miter; break;
+        case 1: nJoin = basegfx::B2DLineJoin::Round; break;
+        case 2: nJoin = basegfx::B2DLineJoin::Bevel; break;
     }
     m_parser.m_pSink->setLineJoin(nJoin);
 }
@@ -636,28 +643,28 @@ void LineParser::readFont()
             }
 
             // Font weight
-            if (aFontReadResult.GetWeight() == WEIGHT_THIN)
+            if (aFontReadResult.GetWeightMaybeAskConfig() == WEIGHT_THIN)
                 aResult.fontWeight = u"100"_ustr;
-            else if (aFontReadResult.GetWeight() == WEIGHT_ULTRALIGHT)
+            else if (aFontReadResult.GetWeightMaybeAskConfig() == WEIGHT_ULTRALIGHT)
                 aResult.fontWeight = u"200"_ustr;
-            else if (aFontReadResult.GetWeight() == WEIGHT_LIGHT)
+            else if (aFontReadResult.GetWeightMaybeAskConfig() == WEIGHT_LIGHT)
                 aResult.fontWeight = u"300"_ustr;
-            else if (aFontReadResult.GetWeight() == WEIGHT_SEMILIGHT)
+            else if (aFontReadResult.GetWeightMaybeAskConfig() == WEIGHT_SEMILIGHT)
                 aResult.fontWeight = u"350"_ustr;
             // no need to check "normal" here as this is default in nFontWeight above
-            else if (aFontReadResult.GetWeight() == WEIGHT_SEMIBOLD)
+            else if (aFontReadResult.GetWeightMaybeAskConfig() == WEIGHT_SEMIBOLD)
                 aResult.fontWeight = u"600"_ustr;
-            else if (aFontReadResult.GetWeight() == WEIGHT_BOLD)
+            else if (aFontReadResult.GetWeightMaybeAskConfig() == WEIGHT_BOLD)
                 aResult.fontWeight = u"bold"_ustr;
-            else if (aFontReadResult.GetWeight() == WEIGHT_ULTRABOLD)
+            else if (aFontReadResult.GetWeightMaybeAskConfig() == WEIGHT_ULTRABOLD)
                 aResult.fontWeight = u"800"_ustr;
-            else if (aFontReadResult.GetWeight() == WEIGHT_BLACK)
+            else if (aFontReadResult.GetWeightMaybeAskConfig() == WEIGHT_BLACK)
                 aResult.fontWeight = u"900"_ustr;
             SAL_INFO("sdext.pdfimport", aResult.fontWeight);
 
             // Italic
-            aResult.isItalic = (aFontReadResult.GetItalic() == ITALIC_OBLIQUE ||
-                                aFontReadResult.GetItalic() == ITALIC_NORMAL);
+            aResult.isItalic = (aFontReadResult.GetItalicMaybeAskConfig() == ITALIC_OBLIQUE ||
+                                aFontReadResult.GetItalicMaybeAskConfig() == ITALIC_NORMAL);
         } else  // font detection failed
         {
             SAL_WARN("sdext.pdfimport",
@@ -717,7 +724,7 @@ uno::Sequence<beans::PropertyValue> LineParser::readImageImpl()
     uno::Reference< uno::XComponentContext > xContext( m_parser.m_xContext, uno::UNO_SET_THROW );
     uno::Reference< lang::XMultiComponentFactory > xFactory( xContext->getServiceManager(), uno::UNO_SET_THROW );
     uno::Reference< io::XInputStream > xDataStream(
-        xFactory->createInstanceWithArgumentsAndContext( "com.sun.star.io.SequenceInputStream", aStreamCreationArgs, m_parser.m_xContext ),
+        xFactory->createInstanceWithArgumentsAndContext( u"com.sun.star.io.SequenceInputStream"_ustr, aStreamCreationArgs, m_parser.m_xContext ),
         uno::UNO_QUERY_THROW );
 
     uno::Sequence<beans::PropertyValue> aSequence( comphelper::InitPropertySequence({
@@ -813,6 +820,50 @@ void LineParser::readSoftMaskedImage()
     m_parser.m_pSink->drawAlphaMaskedImage( aImage, aMask );
 }
 
+void LineParser::readTilingPatternFill()
+{
+    sal_Int32 nX0, nY0, nX1, nY1, nPaintType;
+    double nXStep, nYStep;
+    geometry::AffineMatrix2D aMat;
+    readInt32(nX0);
+    readInt32(nY0);
+    readInt32(nX1);
+    readInt32(nY1);
+
+    readDouble(nXStep);
+    readDouble(nYStep);
+
+    readInt32(nPaintType);
+
+    readDouble(aMat.m00);
+    readDouble(aMat.m10);
+    readDouble(aMat.m01);
+    readDouble(aMat.m11);
+    readDouble(aMat.m02);
+    readDouble(aMat.m12);
+
+    // The tile is an image with alpha
+    const uno::Sequence<beans::PropertyValue> aTile ( readImageImpl() );
+
+    m_parser.m_pSink->tilingPatternFill( nX0, nY0, nX1, nY1,
+         nXStep, nYStep,
+         nPaintType,
+         aMat,
+         aTile );
+}
+
+void LineParser::beginTransparencyGroup()
+{
+    sal_Int32 nForSoftMask;
+    readInt32( nForSoftMask );
+    m_parser.m_pSink->beginTransparencyGroup(!!nForSoftMask);
+}
+
+void LineParser::endTransparencyGroup()
+{
+    m_parser.m_pSink->endTransparencyGroup();
+}
+
 void Parser::parseLine( std::string_view aLine )
 {
     OSL_PRECOND( m_pSink,         "Invalid sink" );
@@ -823,11 +874,15 @@ void Parser::parseLine( std::string_view aLine )
     const std::string_view rCmd = lp.readNextToken();
     const hash_entry* pEntry = PdfKeywordHash::in_word_set( rCmd.data(),
                                                             rCmd.size() );
-    OSL_ASSERT(pEntry);
+    assert(pEntry);
     switch( pEntry->eKey )
     {
+        case BEGINTRANSPARENCYGROUP:
+            lp.beginTransparencyGroup(); break;
         case CLIPPATH:
             m_pSink->intersectClip(lp.readPath()); break;
+        case CLIPTOSTROKEPATH:
+            m_pSink->intersectClipToStroke(lp.readPath()); break;
         case DRAWCHAR:
             lp.readChar(); break;
         case DRAWIMAGE:
@@ -844,6 +899,8 @@ void Parser::parseLine( std::string_view aLine )
             m_pSink->endPage(); break;
         case ENDTEXTOBJECT:
             m_pSink->endText(); break;
+        case ENDTRANSPARENCYGROUP:
+            lp.endTransparencyGroup(); break;
         case EOCLIPPATH:
             m_pSink->intersectEoClip(lp.readPath()); break;
         case EOFILLPATH:
@@ -865,6 +922,8 @@ void Parser::parseLine( std::string_view aLine )
         }
         case STROKEPATH:
             m_pSink->strokePath(lp.readPath()); break;
+        case TILINGPATTERNFILL:
+            lp.readTilingPatternFill(); break;
         case UPDATECTM:
             lp.readTransformation(); break;
         case UPDATEFILLCOLOR:
@@ -902,69 +961,6 @@ void Parser::parseLine( std::string_view aLine )
 }
 
 } // namespace
-
-static bool checkEncryption( std::u16string_view                           i_rPath,
-                             const uno::Reference< task::XInteractionHandler >& i_xIHdl,
-                             OUString&                                     io_rPwd,
-                             bool&                                              o_rIsEncrypted,
-                             const OUString&                               i_rDocName
-                             )
-{
-    bool bSuccess = false;
-
-    std::unique_ptr<pdfparse::PDFEntry> pEntry(pdfparse::PDFReader::read(i_rPath));
-    if( pEntry )
-    {
-        pdfparse::PDFFile* pPDFFile = dynamic_cast<pdfparse::PDFFile*>(pEntry.get());
-        if( pPDFFile )
-        {
-            o_rIsEncrypted = pPDFFile->isEncrypted();
-            if( o_rIsEncrypted )
-            {
-                if( pPDFFile->usesSupportedEncryptionFormat() )
-                {
-                    bool bAuthenticated = false;
-                    if( !io_rPwd.isEmpty() )
-                    {
-                        OString aIsoPwd = OUStringToOString( io_rPwd,
-                                                                       RTL_TEXTENCODING_ISO_8859_1 );
-                        bAuthenticated = pPDFFile->setupDecryptionData( aIsoPwd );
-                    }
-                    if( bAuthenticated )
-                        bSuccess = true;
-                    else
-                    {
-                        if( i_xIHdl.is() )
-                        {
-                            bool bEntered = false;
-                            do
-                            {
-                                bEntered = getPassword( i_xIHdl, io_rPwd, ! bEntered, i_rDocName );
-                                OString aIsoPwd = OUStringToOString( io_rPwd,
-                                                                               RTL_TEXTENCODING_ISO_8859_1 );
-                                bAuthenticated = pPDFFile->setupDecryptionData( aIsoPwd );
-                            } while( bEntered && ! bAuthenticated );
-                        }
-
-                        bSuccess = bAuthenticated;
-                    }
-                }
-                else if( i_xIHdl.is() )
-                {
-                    reportUnsupportedEncryptionFormat( i_xIHdl );
-                        //TODO: this should either be handled further down the
-                        // call stack, or else information that this has already
-                        // been handled should be passed down the call stack, so
-                        // that SfxBaseModel::load does not show an additional
-                        // "General Error" message box
-                }
-            }
-            else
-                bSuccess = true;
-        }
-    }
-    return bSuccess;
-}
 
 namespace {
 
@@ -1005,6 +1001,41 @@ public:
         *pBytesRead = nBytesRead;
         return osl_File_E_None;
     }
+
+    // Read a line and return any error
+    // Note: It skips leading \n and \r
+    //       It clears the line buffer at the start
+    oslFileError readLine(OStringBuffer& line)
+    {
+        char aChar('\n');
+        sal_uInt64 nBytesRead;
+        oslFileError nRes;
+
+        line.setLength(0);
+
+        // skip garbage \r \n at start of line
+        for (;;)
+        {
+            nRes = read(&aChar, 1, &nBytesRead);
+            if (osl_File_E_None != nRes || nBytesRead != 1 || (aChar != '\n' && aChar != '\r'))
+                break;
+        }
+        if (osl_File_E_None != nRes)
+            return nRes;
+
+        if (aChar != '\n' && aChar != '\r')
+            line.append(aChar);
+
+        for (;;)
+        {
+            nRes = read(&aChar, 1, &nBytesRead);
+            if (osl_File_E_None != nRes || nBytesRead != 1 || aChar == '\n' || aChar == '\r')
+                break;
+            line.append(aChar);
+        }
+
+        return nRes;
+    }
 };
 
 }
@@ -1016,6 +1047,7 @@ bool xpdf_ImportFromFile(const OUString& rURL,
                          const uno::Reference<uno::XComponentContext>& xContext,
                          const OUString& rFilterOptions)
 {
+    bool bPasswordOnEntry = !rPwd.isEmpty();
     OSL_ASSERT(rSink);
 
     OUString aSysUPath;
@@ -1030,37 +1062,20 @@ bool xpdf_ImportFromFile(const OUString& rURL,
 
     // check for encryption, if necessary get password
     OUString aPwd( rPwd );
-    bool bIsEncrypted = false;
-    if( !checkEncryption( aSysUPath, xIHdl, aPwd, bIsEncrypted, aDocName ) )
-    {
-        SAL_INFO(
-            "sdext.pdfimport",
-            "checkEncryption(" << aSysUPath << ") failed");
-        return false;
-    }
 
     // Determine xpdfimport executable URL:
-    OUString converterURL("$BRAND_BASE_DIR/" LIBO_BIN_FOLDER "/xpdfimport");
+    OUString converterURL(u"$BRAND_BASE_DIR/" LIBO_BIN_FOLDER "/xpdfimport"_ustr);
     rtl::Bootstrap::expandMacros(converterURL); //TODO: detect failure
-
-    // Determine pathname of xpdfimport_err.pdf:
-    OUString errPathname("$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/xpdfimport/xpdfimport_err.pdf");
-    rtl::Bootstrap::expandMacros(errPathname); //TODO: detect failure
-    if (osl::FileBase::getSystemPathFromFileURL(errPathname, errPathname)
-        != osl::FileBase::E_None)
-    {
-        SAL_WARN(
-            "sdext.pdfimport",
-            "getSystemPathFromFileURL(" << errPathname << ") failed");
-        return false;
-    }
 
     // spawn separate process to keep LGPL/GPL code apart.
 
-    OUString aOptFlag("-o");
-    rtl_uString*  args[] = { aSysUPath.pData, errPathname.pData,
-                             aOptFlag.pData, rFilterOptions.pData };
-    sal_Int32 nArgs = rFilterOptions.isEmpty() ? 2 : 4;
+    static constexpr OUString aOptFlag(u"-o"_ustr);
+    std::vector<rtl_uString*> args({ aSysUPath.pData });
+    if (!rFilterOptions.isEmpty())
+    {
+        args.push_back(aOptFlag.pData);
+        args.push_back(rFilterOptions.pData);
+    }
 
     oslProcess    aProcess;
     oslFileHandle pIn  = nullptr;
@@ -1069,8 +1084,8 @@ bool xpdf_ImportFromFile(const OUString& rURL,
     oslSecurity pSecurity = osl_getCurrentSecurity ();
     oslProcessError eErr =
         osl_executeProcess_WithRedirectedIO(converterURL.pData,
-                                            args,
-                                            nArgs,
+                                            args.data(),
+                                            args.size(),
                                             osl_Process_SEARCHPATH|osl_Process_HIDDEN,
                                             pSecurity,
                                             nullptr, nullptr, 0,
@@ -1080,6 +1095,9 @@ bool xpdf_ImportFromFile(const OUString& rURL,
     bool bRet=true;
     try
     {
+        std::unique_ptr<Buffering> pBuffering;
+        sal_uInt64 nWritten = 0;
+
         if( eErr!=osl_Process_E_None )
         {
             SAL_WARN(
@@ -1089,58 +1107,96 @@ bool xpdf_ImportFromFile(const OUString& rURL,
             return false;
         }
 
-        if( pIn )
+        if (!pIn || !pOut || !pErr)
         {
-            OStringBuffer aBuf(256);
-            if( bIsEncrypted )
-                aBuf.append( OUStringToOString( aPwd, RTL_TEXTENCODING_ISO_8859_1 ) );
-            aBuf.append( '\n' );
-
-            sal_uInt64 nWritten = 0;
-            osl_writeFile( pIn, aBuf.getStr(), sal_uInt64(aBuf.getLength()), &nWritten );
+            SAL_WARN("sdext.pdfimport", "Failure opening pipes");
+            bRet = false;
         }
 
-        if( pOut && pErr )
+        // Loop possibly asking for a password if needed
+        bool bEntered = false;
+        do
         {
+            // Password lines are Pmypassword\n followed by "O\n" to try to open
+            OString aBuf = "P" + OUStringToOString(aPwd, RTL_TEXTENCODING_ISO_8859_1) + "\nO\n";
+
+            osl_writeFile(pIn, aBuf.getStr(), sal_uInt64(aBuf.getLength()), &nWritten);
+
+            // Check for a header saying if the child managed to open the document
+            OStringBuffer aHeaderLine;
+            pBuffering = std::unique_ptr<Buffering>(new Buffering(pOut));
+            oslFileError eFileErr = pBuffering->readLine(aHeaderLine);
+            if (osl_File_E_None == eFileErr)
+            {
+                auto aHeaderString = aHeaderLine.toString();
+                SAL_INFO("sdext.pdfimport", "Header line:" << aHeaderString);
+                if (aHeaderString.startsWith("#OPEN"))
+                {
+                    // Great - it opened!
+                    break;
+                }
+
+                // The only other thing we expect here is a line starting with
+                // #ERROR:
+                if (!aHeaderString.startsWith("#ERROR:"))
+                {
+                    SAL_WARN("sdext.pdfimport", "Bad parser answer:: " << aHeaderString);
+                    bRet = false;
+                    break;
+                }
+
+                if (!aHeaderString.endsWith(":ENCRYPTED"))
+                {
+                    // Some other type of parser error
+                    SAL_WARN("sdext.pdfimport", "Error from parser: " << aHeaderString);
+                    bRet = false;
+                    break;
+                }
+
+                // Must be a failure to decrypt, prompt for a password unless we've
+                // already got one (e.g. if the hybrid detect prompted for one)
+                if (!bPasswordOnEntry)
+                {
+                    bEntered = vcl::pdf::getPassword(xIHdl, aPwd, !bEntered, aDocName);
+                    if (!bEntered)
+                    {
+                        // User cancelled password input
+                        SAL_INFO("sdext.pdfimport", "User cancelled password input");
+                        bRet = false;
+                        break;
+                    }
+                }
+
+                // user entered a password, just loop around again
+            }
+            else
+            {
+                SAL_WARN("sdext.pdfimport", "Unable to read header line; " << eFileErr);
+                bRet = false;
+            }
+        } while (bRet);
+
+        if (bRet && pOut && pErr)
+        {
+            // Start the rendering by sending G command
+            osl_writeFile(pIn, "G\n", 2, &nWritten);
+            SAL_INFO("sdext.pdfimport", "Sent Go command: " << nWritten);
+
             // read results of PDF parser. One line - one call to
             // OutputDev. stderr is used for alternate streams, like
             // embedded fonts and bitmaps
             Parser aParser(rSink,pErr,xContext);
-            Buffering aBuffering(pOut);
             OStringBuffer line;
             for( ;; )
             {
-                char aChar('\n');
-                sal_uInt64 nBytesRead;
-                oslFileError nRes;
+                oslFileError nRes = pBuffering->readLine(line);
 
-                // skip garbage \r \n at start of line
-                for (;;)
-                {
-                    nRes = aBuffering.read(&aChar, 1, &nBytesRead);
-                    if (osl_File_E_None != nRes || nBytesRead != 1 || (aChar != '\n' && aChar != '\r') )
-                        break;
-                }
-                if ( osl_File_E_None != nRes )
-                    break;
-
-                if( aChar != '\n' && aChar != '\r' )
-                    line.append( aChar );
-
-                for (;;)
-                {
-                    nRes = aBuffering.read(&aChar, 1, &nBytesRead);
-                    if ( osl_File_E_None != nRes || nBytesRead != 1 || aChar == '\n' || aChar == '\r' )
-                        break;
-                    line.append( aChar );
-                }
                 if ( osl_File_E_None != nRes )
                     break;
                 if ( line.isEmpty() )
                     break;
 
                 aParser.parseLine(line);
-                line.setLength(0);
             }
         }
     }
@@ -1170,6 +1226,7 @@ bool xpdf_ImportFromFile(const OUString& rURL,
                     "sdext.pdfimport",
                     "getProcessInfo of " << converterURL
                         << " failed with exit code " << info.Code);
+                // TODO: use xIHdl and/or exceptions to inform the user; see poppler/ErrorCodes.h
                 bRet = false;
             }
         }

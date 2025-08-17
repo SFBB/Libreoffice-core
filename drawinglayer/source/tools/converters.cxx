@@ -29,14 +29,13 @@
 #include <comphelper/diagnose_ex.hxx>
 
 #include <drawinglayer/converters.hxx>
+#include <config_vclplug.h>
 
 #ifdef DBG_UTIL
+#include <o3tl/environment.hxx>
 #include <tools/stream.hxx>
-// #include <vcl/filter/PngImageWriter.hxx>
 #include <vcl/dibtools.hxx>
 #endif
-
-// #include <vcl/BitmapReadAccess.hxx>
 
 namespace
 {
@@ -113,7 +112,7 @@ AlphaMask implcreateAlphaMask(drawinglayer::primitive2d::Primitive2DContainer& r
     }
     const drawinglayer::primitive2d::Primitive2DReference xRef(
         new drawinglayer::primitive2d::ModifiedColorPrimitive2D(std::move(rSequence),
-                                                                aBColorModifier));
+                                                                std::move(aBColorModifier)));
     const drawinglayer::primitive2d::Primitive2DContainer xSeq{ xRef };
 
     // render
@@ -153,7 +152,7 @@ AlphaMask createAlphaMask(drawinglayer::primitive2d::Primitive2DContainer&& rSeq
     return implcreateAlphaMask(aSequence, rViewInformation2D, aSizePixel, bUseLuminance);
 }
 
-BitmapEx convertToBitmapEx(drawinglayer::primitive2d::Primitive2DContainer&& rSeq,
+Bitmap convertToBitmap(drawinglayer::primitive2d::Primitive2DContainer&& rSeq,
                            const geometry::ViewInformation2D& rViewInformation2D,
                            sal_uInt32 nDiscreteWidth, sal_uInt32 nDiscreteHeight,
                            sal_uInt32 nMaxSquarePixels, bool bForceAlphaMaskCreation)
@@ -162,8 +161,29 @@ BitmapEx convertToBitmapEx(drawinglayer::primitive2d::Primitive2DContainer&& rSe
 
     if (!implPrepareConversion(aSequence, nDiscreteWidth, nDiscreteHeight, nMaxSquarePixels))
     {
-        return BitmapEx();
+        return Bitmap();
     }
+
+#if USE_HEADLESS_CODE
+    // shortcut: try to directly create a PixelProcessor2D with
+    // RGBA support - that's what we need
+    // Currently only implemented for CairoSDPR, so add code only
+    // for USE_HEADLESS_CODE, but is designed as a general functionality
+    std::unique_ptr<processor2d::BaseProcessor2D> pRGBAProcessor
+        = processor2d::createPixelProcessor2DFromScratch(rViewInformation2D, nDiscreteWidth, nDiscreteHeight, true);
+    if (pRGBAProcessor)
+    {
+        // render content
+        pRGBAProcessor->process(aSequence);
+
+        // create final BitmapEx result (content)
+        const Bitmap aRetval(processor2d::extractBitmapFromBaseProcessor2D(pRGBAProcessor));
+
+        // check if we have a result and return if so
+        if (!aRetval.IsEmpty())
+            return aRetval;
+    }
+#endif
 
     const Point aEmptyPoint;
     const Size aSizePixel(nDiscreteWidth, nDiscreteHeight);
@@ -207,7 +227,7 @@ BitmapEx convertToBitmapEx(drawinglayer::primitive2d::Primitive2DContainer&& rSe
     {
         SAL_WARN("vcl", "Cannot set VirtualDevice to size : " << aSizePixel.Width() << "x"
                                                               << aSizePixel.Height());
-        return BitmapEx();
+        return Bitmap();
     }
 
     // We map to pixel, use that MapMode. Init by erasing.
@@ -231,8 +251,7 @@ BitmapEx convertToBitmapEx(drawinglayer::primitive2d::Primitive2DContainer&& rSe
     if (bDoSaveForVisualControl)
     {
         // VCL_DUMP_BMP_PATH should be like C:/path/ or ~/path/
-        static const OUString sDumpPath(
-            OUString::createFromAscii(std::getenv("VCL_DUMP_BMP_PATH")));
+        static const OUString sDumpPath(o3tl::getEnvironment(u"VCL_DUMP_BMP_PATH"_ustr));
         if (!sDumpPath.isEmpty())
         {
             SvFileStream aNew(sDumpPath + "test_content.bmp",
@@ -251,8 +270,7 @@ BitmapEx convertToBitmapEx(drawinglayer::primitive2d::Primitive2DContainer&& rSe
     if (bDoSaveForVisualControl)
     {
         // VCL_DUMP_BMP_PATH should be like C:/path/ or ~/path/
-        static const OUString sDumpPath(
-            OUString::createFromAscii(std::getenv("VCL_DUMP_BMP_PATH")));
+        static const OUString sDumpPath(o3tl::getEnvironment(u"VCL_DUMP_BMP_PATH"_ustr));
         if (!sDumpPath.isEmpty())
         {
             SvFileStream aNew(sDumpPath + "test_alpha.bmp", StreamMode::WRITE | StreamMode::TRUNC);
@@ -285,20 +303,20 @@ BitmapEx convertToBitmapEx(drawinglayer::primitive2d::Primitive2DContainer&& rSe
             aAlpha.Invert();
         }
         // return combined result
-        return BitmapEx(aRetval, aAlpha);
+        return Bitmap(BitmapEx(aRetval, aAlpha));
     }
     else
-        return BitmapEx(aRetval);
+        return aRetval;
 }
 
-BitmapEx convertPrimitive2DContainerToBitmapEx(primitive2d::Primitive2DContainer&& rSequence,
+Bitmap convertPrimitive2DContainerToBitmap(primitive2d::Primitive2DContainer&& rSequence,
                                                const basegfx::B2DRange& rTargetRange,
                                                sal_uInt32 nMaximumQuadraticPixels,
                                                const o3tl::Length eTargetUnit,
                                                const std::optional<Size>& rTargetDPI)
 {
     if (rSequence.empty())
-        return BitmapEx();
+        return Bitmap();
 
     try
     {
@@ -322,8 +340,8 @@ BitmapEx convertPrimitive2DContainerToBitmapEx(primitive2d::Primitive2DContainer
         const double fWidth(aRange.getWidth());
         const double fHeight(aRange.getHeight());
 
-        if (!(basegfx::fTools::more(fWidth, 0.0) && basegfx::fTools::more(fHeight, 0.0)))
-            return BitmapEx();
+        if (fWidth <= 0.0 || fHeight <= 0.0 || basegfx::fTools::equalZero(fWidth) || basegfx::fTools::equalZero(fHeight))
+            return Bitmap();
 
         if (0 == DPI_X)
         {
@@ -355,16 +373,16 @@ BitmapEx convertPrimitive2DContainerToBitmapEx(primitive2d::Primitive2DContainer
             new primitive2d::TransformPrimitive2D(aEmbedding, std::move(rSequence)));
         primitive2d::Primitive2DContainer xEmbedSeq{ xEmbedRef };
 
-        BitmapEx aBitmapEx(convertToBitmapEx(std::move(xEmbedSeq), aViewInformation2D,
+        Bitmap aBitmap(convertToBitmap(std::move(xEmbedSeq), aViewInformation2D,
                                              nDiscreteWidth, nDiscreteHeight,
                                              nMaximumQuadraticPixels));
 
-        if (aBitmapEx.IsEmpty())
-            return BitmapEx();
-        aBitmapEx.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
-        aBitmapEx.SetPrefSize(Size(basegfx::fround(fWidth), basegfx::fround(fHeight)));
+        if (aBitmap.IsEmpty())
+            return Bitmap();
+        aBitmap.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
+        aBitmap.SetPrefSize(Size(basegfx::fround<tools::Long>(fWidth), basegfx::fround<tools::Long>(fHeight)));
 
-        return aBitmapEx;
+        return aBitmap;
     }
     catch (const css::uno::Exception&)
     {
@@ -375,8 +393,9 @@ BitmapEx convertPrimitive2DContainerToBitmapEx(primitive2d::Primitive2DContainer
         SAL_WARN("vcl", "Got no graphic::XPrimitive2DRenderer! : " << e.what());
     }
 
-    return BitmapEx();
+    return Bitmap();
 }
+
 } // end of namespace drawinglayer
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

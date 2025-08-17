@@ -49,10 +49,8 @@ using namespace ::cppu;
 using namespace ::dbtools;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sheet;
 using namespace ::com::sun::star::table;
 using namespace ::com::sun::star::text;
@@ -71,14 +69,11 @@ static void lcl_UpdateArea( const Reference<XCellRange>& xUsedRange, sal_Int32& 
         CellFlags::STRING | CellFlags::VALUE | CellFlags::DATETIME | CellFlags::FORMULA | CellFlags::ANNOTATION;
 
     const Reference<XSheetCellRanges> xUsedRanges = xUsedQuery->queryContentCells( nContentFlags );
-    const Sequence<CellRangeAddress> aAddresses = xUsedRanges->getRangeAddresses();
 
-    const sal_Int32 nCount = aAddresses.getLength();
-    const CellRangeAddress* pData = aAddresses.getConstArray();
-    for ( sal_Int32 i=0; i<nCount; i++ )
+    for (auto& address : xUsedRanges->getRangeAddresses())
     {
-        rEndCol = std::max(pData[i].EndColumn, rEndCol);
-        rEndRow = std::max(pData[i].EndRow, rEndRow);
+        rEndCol = std::max(address.EndColumn, rEndCol);
+        rEndRow = std::max(address.EndRow, rEndRow);
     }
 }
 
@@ -139,7 +134,7 @@ static CellContentType lcl_GetContentOrResultType( const Reference<XCell>& xCell
         Reference<XPropertySet> xProp( xCell, UNO_QUERY );
         try
         {
-            xProp->getPropertyValue( "CellContentType" ) >>= eCellType;      // type of cell content
+            xProp->getPropertyValue( u"CellContentType"_ustr ) >>= eCellType;      // type of cell content
         }
         catch (UnknownPropertyException&)
         {
@@ -253,7 +248,7 @@ static void lcl_GetColumnInfo( const Reference<XSpreadsheet>& xSheet, const Refe
         {
             sal_Int32 nKey = 0;
 
-            if ( xProp->getPropertyValue( "NumberFormat" ) >>= nKey )
+            if ( xProp->getPropertyValue( u"NumberFormat"_ustr ) >>= nKey )
             {
                 const Reference<XPropertySet> xFormat = xFormats->getByKey( nKey );
                 if ( xFormat.is() )
@@ -537,7 +532,7 @@ void OCalcTable::construct()
             Reference<XPropertySet> xDocProp( xDoc, UNO_QUERY );
             if ( xDocProp.is() )
             {
-                Reference<XDatabaseRanges> xRanges(xDocProp->getPropertyValue("DatabaseRanges"),UNO_QUERY);
+                Reference<XDatabaseRanges> xRanges(xDocProp->getPropertyValue(u"DatabaseRanges"_ustr),UNO_QUERY);
 
                 if ( xRanges.is() && xRanges->hasByName( m_Name ) )
                 {
@@ -551,7 +546,7 @@ void OCalcTable::construct()
                         bool bRangeHeader = true;
                         Reference<XPropertySet> xFiltProp( xDBRange->getFilterDescriptor(), UNO_QUERY );
                         if ( xFiltProp.is() )
-                            xFiltProp->getPropertyValue("ContainsHeader") >>= bRangeHeader;
+                            xFiltProp->getPropertyValue(u"ContainsHeader"_ustr) >>= bRangeHeader;
 
                         Reference<XSheetCellRange> xSheetRange( xRefer->getReferredCells(), UNO_QUERY );
                         Reference<XCellRangeAddressable> xAddr( xSheetRange, UNO_QUERY );
@@ -585,7 +580,7 @@ void OCalcTable::construct()
         if (xProp.is())
         {
             css::util::Date aDateStruct;
-            if ( xProp->getPropertyValue("NullDate") >>= aDateStruct )
+            if ( xProp->getPropertyValue(u"NullDate"_ustr) >>= aDateStruct )
                 m_aNullDate = ::Date( aDateStruct.Day, aDateStruct.Month, aDateStruct.Year );
         }
     }

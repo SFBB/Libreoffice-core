@@ -23,6 +23,7 @@
 #include "xmlstyli.hxx"
 #include "xmlstyle.hxx"
 #include <document.hxx>
+#include <cellsuno.hxx>
 #include <docuno.hxx>
 #include <olinetab.hxx>
 #include <sheetdata.hxx>
@@ -30,7 +31,7 @@
 #include <unonames.hxx>
 
 #include <comphelper/extract.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/families.hxx>
 #include <xmloff/xmltoken.hxx>
@@ -40,8 +41,6 @@
 #include <com/sun/star/sheet/XPrintAreas.hpp>
 #include <comphelper/servicehelper.hxx>
 #include <osl/diagnose.h>
-
-constexpr OUStringLiteral SC_ISFILTERED = u"IsFiltered";
 
 using namespace com::sun::star;
 using namespace xmloff::token;
@@ -72,10 +71,13 @@ ScXMLTableRowContext::ScXMLTableRowContext( ScXMLImport& rImport,
                 break;
                 case XML_ELEMENT( TABLE, XML_NUMBER_ROWS_REPEATED ):
                 {
-                    nRepeatedRows = std::max( it.toInt32(), sal_Int32(1) );
-                    nRepeatedRows = std::min( nRepeatedRows, rImport.GetDocument()->GetSheetLimits().GetMaxRowCount() );
-                    if (utl::ConfigManager::IsFuzzing())
-                        nRepeatedRows = std::min(nRepeatedRows, sal_Int32(1024));
+                    if (ScDocument* pDoc = rImport.GetDocument())
+                    {
+                        nRepeatedRows = std::max( it.toInt32(), sal_Int32(1) );
+                        nRepeatedRows = std::min( nRepeatedRows, pDoc->GetSheetLimits().GetMaxRowCount() );
+                        if (comphelper::IsFuzzing())
+                            nRepeatedRows = std::min(nRepeatedRows, sal_Int32(1024));
+                    }
                 }
                 break;
                 case XML_ELEMENT( TABLE, XML_DEFAULT_CELL_STYLE_NAME ):
@@ -139,6 +141,9 @@ void SAL_CALL ScXMLTableRowContext::endFastElement(sal_Int32 /*nElement*/)
 {
     ScXMLImport& rXMLImport(GetScImport());
     ScDocument* pDoc(rXMLImport.GetDocument());
+    if (!pDoc)
+        return;
+
     if (!bHasCell && nRepeatedRows > 1)
     {
         for (sal_Int32 i = 0; i < nRepeatedRows - 1; ++i) //one row is always added
@@ -147,7 +152,7 @@ void SAL_CALL ScXMLTableRowContext::endFastElement(sal_Int32 /*nElement*/)
     }
     SCTAB nSheet = rXMLImport.GetTables().GetCurrentSheet();
     sal_Int32 nCurrentRow(rXMLImport.GetTables().GetCurrentRow());
-    uno::Reference<sheet::XSpreadsheet> xSheet(rXMLImport.GetTables().GetCurrentXSheet());
+    rtl::Reference<ScTableSheetObj> xSheet(rXMLImport.GetTables().GetCurrentXSheet());
     if(!xSheet.is())
         return;
 
@@ -156,15 +161,11 @@ void SAL_CALL ScXMLTableRowContext::endFastElement(sal_Int32 /*nElement*/)
         nFirstRow = pDoc->MaxRow();
     if (nCurrentRow > pDoc->MaxRow())
         nCurrentRow = pDoc->MaxRow();
-    uno::Reference <table::XCellRange> xCellRange(xSheet->getCellRangeByPosition(0, nFirstRow, 0, nCurrentRow));
-    if (!xCellRange.is())
-        return;
 
-    uno::Reference<table::XColumnRowRange> xColumnRowRange (xCellRange, uno::UNO_QUERY);
-    if (!xColumnRowRange.is())
-        return;
-
-    uno::Reference <beans::XPropertySet> xRowProperties(xColumnRowRange->getRows(), uno::UNO_QUERY);
+    // Take the solarmutex here and pass references to places that need the lock - avoids
+    // the cost of taking and releasing it several times.
+    SolarMutexGuard aGuard;
+    rtl::Reference<ScTableRowsObj> xRowProperties(xSheet->getScRowsByPosition(aGuard, 0, nFirstRow, 0, nCurrentRow));
     if (!xRowProperties.is())
         return;
 
@@ -209,11 +210,9 @@ void SAL_CALL ScXMLTableRowContext::endFastElement(sal_Int32 /*nElement*/)
         rXMLImport.GetDoc().setRowsVisible(nSheet, nFirstRow, nCurrentRow, false);
     }
     if (bFiltered)
-        xRowProperties->setPropertyValue(SC_ISFILTERED, uno::Any(bFiltered));
+        xRowProperties->setPropertyValueIsFiltered(aGuard, bFiltered);
 
-    uno::Any any = xRowProperties->getPropertyValue(SC_UNONAME_OHEIGHT);
-    bool bOptionalHeight = false;
-    any >>= bOptionalHeight;
+    bool bOptionalHeight = xRowProperties->getPropertyValueOHeight(aGuard);
     if (bOptionalHeight)
     {
         // Save this row for later height update, only if we have no already optimal row heights
@@ -318,7 +317,7 @@ void SAL_CALL ScXMLTableRowsContext::endFastElement(sal_Int32 /*nElement*/)
         SCROW nHeaderEndRow = rXMLImport.GetTables().GetCurrentRow();
         if (nHeaderStartRow <= nHeaderEndRow)
         {
-            uno::Reference <sheet::XPrintAreas> xPrintAreas (rXMLImport.GetTables().GetCurrentXSheet(), uno::UNO_QUERY);
+            rtl::Reference<ScTableSheetObj> xPrintAreas (rXMLImport.GetTables().GetCurrentXSheet());
             if (xPrintAreas.is())
             {
                 if (!xPrintAreas->getPrintTitleRows())

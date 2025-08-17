@@ -17,6 +17,7 @@
 #include <svl/svldllapi.h>
 
 #include <unordered_map>
+#include <array>
 #include <vector>
 
 namespace svl
@@ -93,7 +94,7 @@ public:
     bool HasStyleSheet(const rtl::Reference<SfxStyleSheetBase>& style) const;
 
     /** Obtain the number of style sheets which are held */
-    sal_Int32 GetNumberOfStyleSheets() const;
+    sal_Int32 GetNumberOfStyleSheets() const { return mStyleSheets.size(); }
 
     /** Obtain the number of style sheets for which a certain condition holds */
     sal_Int32 GetNumberOfStyleSheetsWithPredicate(StyleSheetPredicate& predicate) const;
@@ -144,19 +145,23 @@ public:
     void Clear(StyleSheetDisposer& cleanup);
 
     void Reindex();
+    void ReindexOnNameChange(const SfxStyleSheetBase& style, const OUString& rOldName,
+                             const OUString& rNewName);
 
-    /** Warning: counting for n starts at 0, i.e., the 0th style sheet is the first that is found. */
-    SfxStyleSheetBase* GetNthStyleSheetThatMatchesPredicate(sal_Int32 n,
-                                                            StyleSheetPredicate& predicate,
-                                                            sal_Int32 startAt = 0);
+    /** Warning: counting for n starts at 0, i.e., the 0th style sheet is the first that is found.
+        Returns a pointer if a stylesheet is found, and the position of the found stylesheet
+     */
+    std::pair<SfxStyleSheetBase*, sal_Int32>
+    GetNthStyleSheetThatMatchesPredicate(sal_Int32 n, StyleSheetPredicate& predicate,
+                                         sal_Int32 startAt = 0);
 
     /** Get the positions of the style sheets which belong to a certain family.
      */
-    const std::vector<sal_Int32>& GetStyleSheetPositionsByFamily(SfxStyleFamily) const;
+    const std::vector<SfxStyleSheetBase*>& GetStyleSheetsByFamily(SfxStyleFamily) const;
 
 private:
     /** Register the position of a styleName in the index */
-    void Register(const SfxStyleSheetBase& style, sal_Int32 pos);
+    void Register(SfxStyleSheetBase& style, sal_Int32 pos);
 
     typedef std::vector<rtl::Reference<SfxStyleSheetBase>> VectorType;
     /** Vector with the stylesheets to allow for index-based access.
@@ -172,7 +177,9 @@ private:
     /** A map which stores the positions of style sheets by their name */
     MapType mPositionsByName;
 
-    std::vector<std::vector<sal_Int32>> mStyleSheetPositionsByFamily;
+    static constexpr size_t NUMBER_OF_FAMILIES = 6;
+
+    std::array<std::vector<SfxStyleSheetBase*>, NUMBER_OF_FAMILIES> mStyleSheetsByFamily;
 };
 
 } /* namespace svl */

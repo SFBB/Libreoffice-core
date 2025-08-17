@@ -145,7 +145,7 @@ SvxXMLXTableExportComponent::SvxXMLXTableExportComponent(
     const uno::Reference<xml::sax::XDocumentHandler> & rHandler,
     const uno::Reference<container::XNameContainer >& xTable,
     uno::Reference<document::XGraphicStorageHandler> const & xGraphicStorageHandler)
-:   SvXMLExport(rContext, "", /*rFileName*/"", rHandler, nullptr, FieldUnit::MM_100TH, SvXMLExportFlags::NONE),
+:   SvXMLExport(rContext, u""_ustr, /*rFileName*/u""_ustr, rHandler, nullptr, FieldUnit::MM_100TH, SvXMLExportFlags::NONE),
     mxTable( xTable )
 {
 
@@ -173,10 +173,10 @@ static void initializeStreamMetadata( const uno::Reference< uno::XInterface > &x
 
     try
     {
-        xProps->setPropertyValue("MediaType",  uno::Any( OUString( "text/xml" ) ) );
+        xProps->setPropertyValue(u"MediaType"_ustr,  uno::Any( u"text/xml"_ustr ) );
 
         // use stock encryption
-        xProps->setPropertyValue("UseCommonStoragePasswordEncryption", uno::Any( true ) );
+        xProps->setPropertyValue(u"UseCommonStoragePasswordEncryption"_ustr, uno::Any( true ) );
     } catch ( const uno::Exception & )
     {
         TOOLS_WARN_EXCEPTION("svx", "exception setting stream metadata");
@@ -188,7 +188,7 @@ static void createStorageStream( uno::Reference < io::XOutputStream > *xOut,
                                  const uno::Reference < embed::XStorage >& xSubStorage )
 {
     uno::Reference < io::XStream > xStream = xSubStorage->openStreamElement(
-                        "Content.xml",
+                        u"Content.xml"_ustr,
                         embed::ElementModes::WRITE );
     rxGraphicHelper = SvXMLGraphicHelper::Create( xSubStorage, SvXMLGraphicHelperMode::Write );
     initializeStreamMetadata( xStream );
@@ -214,7 +214,7 @@ bool SvxXMLXTableExportComponent::save(
 
     try
     {
-        uno::Reference< uno::XComponentContext> xContext( ::comphelper::getProcessComponentContext() );
+        const uno::Reference< uno::XComponentContext>& xContext( ::comphelper::getProcessComponentContext() );
 
         uno::Reference< xml::sax::XWriter > xWriter = xml::sax::Writer::create( xContext );
 
@@ -339,39 +339,39 @@ bool SvxXMLXTableExportComponent::exportTable() noexcept
             if( !mxTable.is() )
                 break;
 
-            char const* pEleName;
+            OUString pEleName;
             Type aExportType = mxTable->getElementType();
             std::unique_ptr<SvxXMLTableEntryExporter> pExporter;
 
             if( aExportType == cppu::UnoType<sal_Int32>::get() )
             {
                 pExporter.reset(new SvxXMLColorEntryExporter(*this));
-                pEleName = "color-table";
+                pEleName = u"color-table"_ustr;
             }
             else if( aExportType == cppu::UnoType< drawing::PolyPolygonBezierCoords >::get() )
             {
                 pExporter.reset(new SvxXMLLineEndEntryExporter(*this));
-                pEleName = "marker-table";
+                pEleName = u"marker-table"_ustr;
             }
             else if( aExportType == cppu::UnoType< drawing::LineDash >::get() )
             {
                 pExporter.reset(new SvxXMLDashEntryExporter(*this));
-                pEleName = "dash-table";
+                pEleName = u"dash-table"_ustr;
             }
             else if( aExportType == cppu::UnoType< drawing::Hatch >::get() )
             {
                 pExporter.reset(new SvxXMLHatchEntryExporter(*this));
-                pEleName = "hatch-table";
+                pEleName = u"hatch-table"_ustr;
             }
             else if( aExportType == cppu::UnoType< awt::Gradient >::get() )
             {
                 pExporter.reset(new SvxXMLGradientEntryExporter(*this));
-                pEleName = "gradient-table";
+                pEleName = u"gradient-table"_ustr;
             }
             else if( aExportType == cppu::UnoType<awt::XBitmap>::get())
             {
                 pExporter.reset(new SvxXMLBitmapEntryExporter(*this));
-                pEleName = "bitmap-table";
+                pEleName = u"bitmap-table"_ustr;
             }
             else
             {

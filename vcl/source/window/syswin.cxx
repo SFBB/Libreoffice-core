@@ -17,8 +17,12 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <cassert>
 #include <memory>
 
+#include "menubarwindow.hxx"
+
+#include <comphelper/scopeguard.hxx>
 #include <o3tl/safeint.hxx>
 #include <sal/config.h>
 #include <sal/log.hxx>
@@ -45,7 +49,6 @@
 #include <window.h>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 
 class SystemWindow::ImplData
 {
@@ -65,19 +68,20 @@ SystemWindow::ImplData::ImplData()
     maMaxOutSize = Size( SHRT_MAX, SHRT_MAX );
 }
 
-SystemWindow::SystemWindow(WindowType nType, const char* pIdleDebugName)
-    : Window(nType)
-    , mbDockBtn(false)
-    , mbHideBtn(false)
-    , mbSysChild(false)
-    , mbIsCalculatingInitialLayoutSize(false)
-    , mbInitialLayoutSizeCalculated(false)
-    , mbPaintComplete(false)
-    , mnMenuBarMode(MenuBarMode::Normal)
-    , mnIcon(0)
+bool SystemWindow::LayoutIdle::DecideTransferredExecution()
+{
+    if (transferState_ == TransferState::NotTransferable) {
+        return false;
+    }
+    parent_.acquire(); // paired with release in ImplHandleLayoutTimerHdl
+    transferState_ = TransferState::Transferred;
+    return true;
+}
+
+SystemWindow::SystemWindow(WindowType eType, const char* pIdleDebugName, bool transferableIdle)
+    : Window(eType)
     , mpImplData(new ImplData)
-    , maLayoutIdle( pIdleDebugName )
-    , mbIsDeferredInit(false)
+    , maLayoutIdle( pIdleDebugName, *this, transferableIdle )
 {
     mpWindowImpl->mbSysWin            = true;
     mpWindowImpl->mnActivateMode      = ActivateModeFlags::GrabFocus;
@@ -109,8 +113,8 @@ void SystemWindow::dispose()
     // as a SystemWindow (which it no longer is by then):
     mpWindowImpl->mbSysWin = false;
     disposeBuilder();
-    mpDialogParent.clear();
-    mpMenuBar.clear();
+    mpDialogParent.reset();
+    mpMenuBar.reset();
     Window::dispose();
 }
 
@@ -179,7 +183,8 @@ bool SystemWindow::EventNotify( NotifyEvent& rNEvt )
         ToggleMnemonicsOnHierarchy(*rNEvt.GetCommandEvent(), this);
 
     // capture KeyEvents for menu handling
-    if (rNEvt.GetType() == NotifyEventType::KEYINPUT)
+    if (rNEvt.GetType() == NotifyEventType::KEYINPUT ||
+        rNEvt.GetType() == NotifyEventType::COMMAND)
     {
         MenuBar* pMBar = mpMenuBar;
         if ( !pMBar && ( GetType() == WindowType::FLOATINGWINDOW ) )
@@ -188,7 +193,15 @@ bool SystemWindow::EventNotify( NotifyEvent& rNEvt )
             if( pWin && pWin->IsSystemWindow() )
                 pMBar = static_cast<SystemWindow*>(pWin)->GetMenuBar();
         }
-        if (pMBar && pMBar->ImplHandleKeyEvent(*rNEvt.GetKeyEvent()))
+        bool bDone(false);
+        if (pMBar)
+        {
+            if (rNEvt.GetType() == NotifyEventType::COMMAND)
+                bDone = pMBar->ImplHandleCmdEvent(*rNEvt.GetCommandEvent());
+            else
+                bDone = pMBar->ImplHandleKeyEvent(*rNEvt.GetKeyEvent());
+        }
+        if (bDone)
             return true;
     }
 
@@ -254,7 +267,7 @@ TaskPaneList* SystemWindow::GetTaskPaneList()
                 pMBar = static_cast<SystemWindow*>(pWin)->GetMenuBar();
         }
         if( pMBar )
-            mpImplData->mpTaskPaneList->AddWindow( pMBar->ImplGetWindow() );
+            mpImplData->mpTaskPaneList->AddWindow(pMBar->GetWindow());
         return mpImplData->mpTaskPaneList.get();
     }
 }
@@ -401,62 +414,61 @@ const Size& SystemWindow::GetMaxOutputSizePixel() const
 
 vcl::WindowData::WindowData(std::u16string_view rStr)
 {
-    vcl::WindowData& rData = *this;
     vcl::WindowDataMask nValidMask = vcl::WindowDataMask::NONE;
     sal_Int32 nIndex      = 0;
 
     std::u16string_view aTokenStr = o3tl::getToken(rStr, 0, ',', nIndex);
     if (!aTokenStr.empty())
     {
-        rData.setX(o3tl::toInt32(aTokenStr));
-        if (rData.x() > -16384 && rData.x() < 16384)
+        setX(o3tl::toInt32(aTokenStr));
+        if (x() > -16384 && x() < 16384)
             nValidMask |= vcl::WindowDataMask::X;
         else
-            rData.setX(0);
+            setX(0);
     }
     else
-        rData.setX(0);
+        setX(0);
     aTokenStr = o3tl::getToken(rStr, 0, ',', nIndex);
     if (!aTokenStr.empty())
     {
-        rData.setY(o3tl::toInt32(aTokenStr));
-        if (rData.y() > -16384 && rData.y() < 16384)
+        setY(o3tl::toInt32(aTokenStr));
+        if (y() > -16384 && y() < 16384)
             nValidMask |= vcl::WindowDataMask::Y;
         else
-            rData.setY(0);
+            setY(0);
     }
     else
-        rData.setY(0);
+        setY(0);
     aTokenStr = o3tl::getToken(rStr, 0, ',', nIndex);
     if (!aTokenStr.empty())
     {
         sal_Int32 nWidth = o3tl::toInt32(aTokenStr);
         if (nWidth >= 0)
         {
-            rData.setWidth(nWidth);
+            setWidth(nWidth);
         }
-        if (rData.width() > 0 && rData.width() < 16384)
+        if (width() > 0 && width() < 16384)
             nValidMask |= vcl::WindowDataMask::Width;
         else
-            rData.setWidth(0);
+            setWidth(0);
     }
     else
-        rData.setWidth(0);
+        setWidth(0);
     aTokenStr = o3tl::getToken(rStr, 0, ';', nIndex);
     if (!aTokenStr.empty())
     {
         sal_Int32 nHeight = o3tl::toInt32(aTokenStr);
         if (nHeight >= 0)
         {
-            rData.setHeight(nHeight);
+            setHeight(nHeight);
         }
-        if (rData.height() > 0 && rData.height() < 16384)
+        if (height() > 0 && height() < 16384)
             nValidMask |= vcl::WindowDataMask::Height;
         else
-            rData.setHeight(0);
+            setHeight(0);
     }
     else
-        rData.setHeight(0);
+        setHeight(0);
     aTokenStr = o3tl::getToken(rStr, 0, ';', nIndex);
     if (!aTokenStr.empty())
     {
@@ -464,60 +476,60 @@ vcl::WindowData::WindowData(std::u16string_view rStr)
         // 91625 - ignore Minimize
         vcl::WindowState nState = static_cast<vcl::WindowState>(o3tl::toInt32(aTokenStr));
         //nState &= ~vcl::WindowState::Minimized;
-        rData.setState(nState);
+        setState(nState);
         nValidMask |= vcl::WindowDataMask::State;
     }
     else
-        rData.setState(vcl::WindowState::NONE);
+        setState(vcl::WindowState::NONE);
 
     // read maximized pos/size
     aTokenStr = o3tl::getToken(rStr, 0, ',', nIndex);
     if (!aTokenStr.empty())
     {
-        rData.SetMaximizedX(o3tl::toInt32(aTokenStr));
-        if (rData.GetMaximizedX() > -16384 && rData.GetMaximizedX() < 16384)
+        SetMaximizedX(o3tl::toInt32(aTokenStr));
+        if (GetMaximizedX() > -16384 && GetMaximizedX() < 16384)
             nValidMask |= vcl::WindowDataMask::MaximizedX;
         else
-            rData.SetMaximizedX(0);
+            SetMaximizedX(0);
     }
     else
-        rData.SetMaximizedX(0);
+        SetMaximizedX(0);
     aTokenStr = o3tl::getToken(rStr, 0, ',', nIndex);
     if (!aTokenStr.empty())
     {
-        rData.SetMaximizedY(o3tl::toInt32(aTokenStr));
-        if (rData.GetMaximizedY() > -16384 && rData.GetMaximizedY() < 16384)
+        SetMaximizedY(o3tl::toInt32(aTokenStr));
+        if (GetMaximizedY() > -16384 && GetMaximizedY() < 16384)
             nValidMask |= vcl::WindowDataMask::MaximizedY;
         else
-            rData.SetMaximizedY(0);
+            SetMaximizedY(0);
     }
     else
-        rData.SetMaximizedY(0);
+        SetMaximizedY(0);
     aTokenStr = o3tl::getToken(rStr, 0, ',', nIndex);
     if (!aTokenStr.empty())
     {
-        rData.SetMaximizedWidth(o3tl::toInt32(aTokenStr));
-        if (rData.GetMaximizedWidth() > 0 && rData.GetMaximizedWidth() < 16384)
+        SetMaximizedWidth(o3tl::toInt32(aTokenStr));
+        if (GetMaximizedWidth() > 0 && GetMaximizedWidth() < 16384)
             nValidMask |= vcl::WindowDataMask::MaximizedWidth;
         else
-            rData.SetMaximizedWidth(0);
+            SetMaximizedWidth(0);
     }
     else
-        rData.SetMaximizedWidth(0);
+        SetMaximizedWidth(0);
     aTokenStr = o3tl::getToken(rStr, 0, ';', nIndex);
     if (!aTokenStr.empty())
     {
-        rData.SetMaximizedHeight(o3tl::toInt32(aTokenStr));
-        if (rData.GetMaximizedHeight() > 0 && rData.GetMaximizedHeight() < 16384)
+        SetMaximizedHeight(o3tl::toInt32(aTokenStr));
+        if (GetMaximizedHeight() > 0 && GetMaximizedHeight() < 16384)
             nValidMask |= vcl::WindowDataMask::MaximizedHeight;
         else
-            rData.SetMaximizedHeight(0);
+            SetMaximizedHeight(0);
     }
     else
-        rData.SetMaximizedHeight(0);
+        SetMaximizedHeight(0);
 
     // mark valid fields
-    rData.setMask(nValidMask);
+    setMask(nValidMask);
 }
 
 OUString vcl::WindowData::toStr() const
@@ -733,15 +745,15 @@ void SystemWindow::SetWindowState(const vcl::WindowData& rData)
         tools::Long nY         = rData.y();
         tools::Long nWidth     = rData.width();
         tools::Long nHeight    = rData.height();
-        const SalFrameGeometry& rGeom = pWindow->mpWindowImpl->mpFrame->GetGeometry();
+        const SalFrameGeometry aGeom = pWindow->mpWindowImpl->mpFrame->GetGeometry();
         if( nX < 0 )
             nX = 0;
-        if( nX + nWidth > static_cast<tools::Long>(rGeom.width()) )
-            nX = rGeom.width() - nWidth;
+        if( nX + nWidth > static_cast<tools::Long>(aGeom.width()) )
+            nX = aGeom.width() - nWidth;
         if( nY < 0 )
             nY = 0;
-        if( nY + nHeight > static_cast<tools::Long>(rGeom.height()) )
-            nY = rGeom.height() - nHeight;
+        if( nY + nHeight > static_cast<tools::Long>(aGeom.height()) )
+            nY = aGeom.height() - nHeight;
         setPosSizePixel( nX, nY, nWidth, nHeight, nPosSize );
     }
 
@@ -846,26 +858,26 @@ void SystemWindow::SetMenuBar(MenuBar* pMenuBar)
         return;
 
     MenuBar* pOldMenuBar = mpMenuBar;
-    vcl::Window*  pOldWindow = nullptr;
-    VclPtr<vcl::Window> pNewWindow;
+    MenuBarWindow*  pOldWindow = nullptr;
+    VclPtr<MenuBarWindow> pNewWindow;
     mpMenuBar = pMenuBar;
 
     if ( mpWindowImpl->mpBorderWindow && (mpWindowImpl->mpBorderWindow->GetType() == WindowType::BORDERWINDOW) )
     {
         if ( pOldMenuBar )
-            pOldWindow = pOldMenuBar->ImplGetWindow();
+            pOldWindow = pOldMenuBar->getMenuBarWindow();
         else
             pOldWindow = nullptr;
         if ( pOldWindow )
         {
             CallEventListeners( VclEventId::WindowMenubarRemoved, static_cast<void*>(pOldMenuBar) );
-            pOldWindow->SetAccessible( css::uno::Reference< css::accessibility::XAccessible >() );
+            pOldWindow->SetAccessible({});
         }
         if ( pMenuBar )
         {
-            SAL_WARN_IF( pMenuBar->pWindow, "vcl", "SystemWindow::SetMenuBar() - MenuBars can only set in one SystemWindow at time" );
+            SAL_WARN_IF( pMenuBar->m_pWindow, "vcl", "SystemWindow::SetMenuBar() - MenuBars can only set in one SystemWindow at time" );
 
-            pNewWindow = MenuBar::ImplCreate(mpWindowImpl->mpBorderWindow, pOldWindow, pMenuBar);
+            pNewWindow = pMenuBar->ImplCreate(mpWindowImpl->mpBorderWindow, pOldWindow);
             static_cast<ImplBorderWindow*>(mpWindowImpl->mpBorderWindow.get())->SetMenuBarWindow(pNewWindow);
 
             CallEventListeners( VclEventId::WindowMenubarAdded, static_cast<void*>(pMenuBar) );
@@ -881,7 +893,7 @@ void SystemWindow::SetMenuBar(MenuBar* pMenuBar)
                 if( mpImplData->mpTaskPaneList )
                     mpImplData->mpTaskPaneList->RemoveWindow( pOldWindow );
             }
-            MenuBar::ImplDestroy( pOldMenuBar, bDelete );
+            pOldMenuBar->ImplDestroy(bDelete);
             if( bDelete )
                 pOldWindow = nullptr;  // will be deleted in MenuBar::ImplDestroy,
         }
@@ -890,9 +902,9 @@ void SystemWindow::SetMenuBar(MenuBar* pMenuBar)
     else
     {
         if( pMenuBar )
-            pNewWindow = pMenuBar->ImplGetWindow();
+            pNewWindow = pMenuBar->getMenuBarWindow();
         if( pOldMenuBar )
-            pOldWindow = pOldMenuBar->ImplGetWindow();
+            pOldWindow = pOldMenuBar->getMenuBarWindow();
     }
 
     // update taskpane list to make menubar accessible
@@ -910,6 +922,8 @@ void SystemWindow::SetNotebookBar(const OUString& rUIXMLDescription,
                                   const NotebookBarAddonsItem& aNotebookBarAddonsItem,
                                   bool bReloadNotebookbar)
 {
+    mbInSetNoteBookBar = true;
+
     if (rUIXMLDescription != maNotebookBarUIFile || bReloadNotebookbar)
     {
         static_cast<ImplBorderWindow*>(mpWindowImpl->mpBorderWindow.get())
@@ -918,6 +932,8 @@ void SystemWindow::SetNotebookBar(const OUString& rUIXMLDescription,
         if(GetNotebookBar())
             GetNotebookBar()->SetSystemWindow(this);
     }
+
+    mbInSetNoteBookBar = false;
 }
 
 void SystemWindow::CloseNotebookBar()
@@ -955,7 +971,7 @@ bool SystemWindow::ImplIsInTaskPaneList( vcl::Window* pWin )
 
 unsigned int SystemWindow::GetScreenNumber() const
 {
-    return mpWindowImpl->mpFrame->maGeometry.screen();
+    return mpWindowImpl->mpFrame->GetUnmirroredGeometry().screen();
 }
 
 void SystemWindow::SetScreenNumber(unsigned int nDisplayScreen)
@@ -1032,6 +1048,11 @@ void SystemWindow::setPosSizeOnContainee(Size aSize, Window &rBox)
 
 IMPL_LINK_NOARG( SystemWindow, ImplHandleLayoutTimerHdl, Timer*, void )
 {
+    comphelper::ScopeGuard g([this] {
+        if (maLayoutIdle.wasTransferred()) {
+            release(); // paired with acquire in LayoutIdle::DecideTransferredExecution
+        }
+    });
     Window *pBox = GetWindow(GetWindowType::FirstChild);
     if (!isLayoutEnabled())
     {
@@ -1102,7 +1123,15 @@ void SystemWindow::DoInitialLayout()
     }
 }
 
-void SystemWindow::doDeferredInit(WinBits /*nBits*/)
+void SystemWindow::doDeferredInit(WinBits nBits)
+{
+    VclPtr<vcl::Window> pParent = mpDialogParent;
+    mpDialogParent.reset();
+    ImplDeferredInit(pParent, nBits);
+    mbIsDeferredInit = false;
+}
+
+void SystemWindow::ImplDeferredInit(vcl::Window* /*pParent*/, WinBits /*nBits*/)
 {
     SAL_WARN("vcl.layout", "SystemWindow in layout without doDeferredInit impl");
 }

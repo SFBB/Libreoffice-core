@@ -27,7 +27,7 @@
 #include <vcl/BitmapWriteAccess.hxx>
 #include <tools/fract.hxx>
 #include <tools/stream.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <tiffio.h>
 
@@ -40,13 +40,19 @@ namespace
         SvStream& rStream;
         tsize_t nStart;
         tsize_t nSize;
+        ErrCode nOrigError;
         bool bAllowOneShortRead;
         Context(SvStream& rInStream)
             : rStream(rInStream)
             , nStart(rInStream.Tell())
             , nSize(rInStream.remainingSize())
+            , nOrigError(rInStream.GetError())
             , bAllowOneShortRead(false)
         {
+        }
+        ~Context()
+        {
+            rStream.SetError(nOrigError);
         }
     };
 }
@@ -54,6 +60,9 @@ namespace
 static tsize_t tiff_read(thandle_t handle, tdata_t buf, tsize_t size)
 {
     Context* pContext = static_cast<Context*>(handle);
+    if (pContext->rStream.bad())
+        return 0;
+
     tsize_t nRead = pContext->rStream.ReadBytes(buf, size);
     // tdf#149417 allow one short read, which is similar to what
     // we do for jpeg since tdf#138950
@@ -91,7 +100,11 @@ static toff_t tiff_seek(thandle_t handle, toff_t offset, int whence)
             break;
     }
 
-    pContext->rStream.Seek(offset);
+    if (pContext->rStream.bad() || !checkSeek(pContext->rStream, offset))
+    {
+        offset = pContext->rStream.Tell();
+        pContext->rStream.SetError(SVSTREAM_SEEK_ERROR);
+    }
 
     return offset - pContext->nStart;
 }
@@ -129,7 +142,7 @@ bool ImportTiffGraphicImport(SvStream& rTIFF, Graphic& rGraphic)
 
     Animation aAnimation;
 
-    const bool bFuzzing = utl::ConfigManager::IsFuzzing();
+    const bool bFuzzing = comphelper::IsFuzzing();
     uint64_t nTotalPixelsRequired = 0;
 
     do
@@ -155,8 +168,7 @@ bool ImportTiffGraphicImport(SvStream& rTIFF, Graphic& rGraphic)
         }
 
         uint32_t nPixelsRequired;
-        // use the same max size that libtiff defaults to for its own utilities
-        constexpr size_t nMaxPixelsAllowed = (256 * 1024 * 1024) / 4;
+        constexpr size_t nMaxPixelsAllowed = SAL_MAX_INT32/4;
         // two buffers currently required, so limit further
         bool bOk = !o3tl::checked_multiply(w, h, nPixelsRequired) && nPixelsRequired <= nMaxPixelsAllowed / 2;
         SAL_WARN_IF(!bOk, "filter.tiff", "skipping oversized tiff image " << w << " x " << h);

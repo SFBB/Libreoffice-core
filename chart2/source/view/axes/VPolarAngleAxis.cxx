@@ -33,7 +33,6 @@
 namespace chart
 {
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 
 VPolarAngleAxis::VPolarAngleAxis( const AxisProperties& rAxisProperties
             , const uno::Reference< util::XNumberFormatsSupplier >& xNumberFormatsSupplier
@@ -60,7 +59,7 @@ void VPolarAngleAxis::createTextShapes_ForAngleAxis(
     tNameSequence aPropNames;
     tAnySequence aPropValues;
 
-    uno::Reference< beans::XPropertySet > xProps( m_aAxisProperties.m_xAxisModel );
+    rtl::Reference< ::chart::Axis > xProps( m_aAxisProperties.m_xAxisModel );
     PropertyMapper::getTextLabelMultiPropertyLists( xProps, aPropNames, aPropValues, false, -1, false, false );
     LabelPositionHelper::doDynamicFontResize( aPropValues, aPropNames, xProps
         , rAxisLabelProperties.m_aFontReferenceSize );
@@ -194,7 +193,7 @@ void VPolarAngleAxis::createShapes()
     rtl::Reference<SvxShapePolyPolygon> xShape = ShapeFactory::createLine2D(
             m_xGroupShape_Shapes, aPoints, &m_aAxisProperties.m_aLineProperties );
     //because of this name this line will be used for marking the axis
-    ::chart::ShapeFactory::setShapeName( xShape, "MarkHandles" );
+    ::chart::ShapeFactory::setShapeName( xShape, u"MarkHandles"_ustr );
 
     //create labels
     createLabels();

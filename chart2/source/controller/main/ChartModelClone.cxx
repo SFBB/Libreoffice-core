@@ -19,7 +19,6 @@
 
 #include "ChartModelClone.hxx"
 #include <ChartModel.hxx>
-#include <ChartModelHelper.hxx>
 #include <ControllerLockGuard.hxx>
 #include <DataSource.hxx>
 #include <DataSourceHelper.hxx>
@@ -29,9 +28,6 @@
 #include <com/sun/star/util/XCloneable.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/chart2/XTitled.hpp>
-#include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/chart2/data/XLabeledDataSequence.hpp>
 
 #include <comphelper/property.hxx>
@@ -175,7 +171,7 @@ namespace chart
             ControllerLockGuardUNO aLockedControllers( i_model );
 
             // propagate the correct flag for plotting of hidden values to the data provider and all used sequences
-            ChartModelHelper::setIncludeHiddenCells(ChartModelHelper::isIncludeHiddenCells( i_modelToCopyFrom ), *i_model);
+            i_model->setIncludeHiddenCells(i_modelToCopyFrom->isIncludeHiddenCells());
 
             // diagram
             i_model->setFirstDiagram( i_modelToCopyFrom->getFirstDiagram() );

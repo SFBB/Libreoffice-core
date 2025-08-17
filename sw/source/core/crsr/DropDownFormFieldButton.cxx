@@ -25,15 +25,15 @@
 
 void DropDownFormFieldButton::InitDropdown()
 {
-    const sw::mark::IFieldmark::parameter_map_t* const pParameters = m_rFieldmark.GetParameters();
+    const sw::mark::Fieldmark::parameter_map_t* const pParameters = m_rFieldmark.GetParameters();
 
-    sw::mark::IFieldmark::parameter_map_t::const_iterator pListEntries
+    sw::mark::Fieldmark::parameter_map_t::const_iterator pListEntries
         = pParameters->find(ODF_FORMDROPDOWN_LISTENTRY);
     css::uno::Sequence<OUString> vListEntries;
     if (pListEntries != pParameters->end())
     {
         pListEntries->second >>= vListEntries;
-        for (OUString const& i : std::as_const(vListEntries))
+        for (OUString const& i : vListEntries)
             m_xTreeView->append_text(i);
     }
 
@@ -43,7 +43,7 @@ void DropDownFormFieldButton::InitDropdown()
     }
 
     // Select the current one
-    sw::mark::IFieldmark::parameter_map_t::const_iterator pResult
+    sw::mark::Fieldmark::parameter_map_t::const_iterator pResult
         = pParameters->find(ODF_FORMDROPDOWN_RESULT);
     if (pResult != pParameters->end())
     {
@@ -99,9 +99,9 @@ DropDownFormFieldButton::~DropDownFormFieldButton() { disposeOnce(); }
 void DropDownFormFieldButton::LaunchPopup()
 {
     m_xFieldPopupBuilder
-        = Application::CreateBuilder(GetFrameWeld(), "modules/swriter/ui/formdropdown.ui");
-    m_xFieldPopup = m_xFieldPopupBuilder->weld_popover("FormDropDown");
-    m_xTreeView = m_xFieldPopupBuilder->weld_tree_view("list");
+        = Application::CreateBuilder(GetFrameWeld(), u"modules/swriter/ui/formdropdown.ui"_ustr);
+    m_xFieldPopup = m_xFieldPopupBuilder->weld_popover(u"FormDropDown"_ustr);
+    m_xTreeView = m_xFieldPopupBuilder->weld_tree_view(u"list"_ustr);
     InitDropdown();
     m_xTreeView->connect_row_activated(LINK(this, DropDownFormFieldButton, MyListBoxHandler));
     FormFieldButton::LaunchPopup();

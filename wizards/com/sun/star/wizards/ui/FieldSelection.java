@@ -25,8 +25,8 @@ import java.util.*;
 
 public class FieldSelection
 {
-    public XListBox xFieldsListBox;                 // Left ListBox
-    public XListBox xSelectedFieldsListBox;         // right (selected) ListBox
+    protected XListBox xFieldsListBox;                 // Left ListBox
+    protected XListBox xSelectedFieldsListBox;         // right (selected) ListBox
 
     protected UnoDialog CurUnoDialog;
     protected String sIncSuffix;
@@ -60,7 +60,7 @@ public class FieldSelection
         public void itemStateChanged(com.sun.star.awt.ItemEvent EventObject)
         {
             com.sun.star.wizards.common.Helper.setUnoPropertyValue(CurUnoDialog.xDialogModel, PropertyNames.PROPERTY_ENABLED, Boolean.FALSE);
-            int iKey = CurUnoDialog.getControlKey(EventObject.Source, CurUnoDialog.ControlList);
+            int iKey = CurUnoDialog.getControlKey(EventObject.Source);
             switch (iKey)
             {
                 case SOFLDSLST:
@@ -90,7 +90,7 @@ public class FieldSelection
         {
             try
             {
-                int iKey = CurUnoDialog.getControlKey(actionEvent.Source, CurUnoDialog.ControlList);
+                int iKey = CurUnoDialog.getControlKey(actionEvent.Source);
                 switch (iKey)
                 {
                     case SOCMDMOVESEL:
@@ -143,12 +143,12 @@ public class FieldSelection
     {
         try
         {
-            final String AccessTextMoveSelected = CurUnoDialog.m_oResource.getResText("RID_DB_COMMON_39");
-            final String AccessTextRemoveSelected = CurUnoDialog.m_oResource.getResText("RID_DB_COMMON_40");
-            final String AccessTextMoveAll = CurUnoDialog.m_oResource.getResText("RID_DB_COMMON_41");
-            final String AccessTextRemoveAll = CurUnoDialog.m_oResource.getResText("RID_DB_COMMON_42");
-            final String AccessMoveFieldUp = CurUnoDialog.m_oResource.getResText("RID_DB_COMMON_43");
-            final String AccessMoveFieldDown = CurUnoDialog.m_oResource.getResText("RID_DB_COMMON_44");
+            final String AccessTextMoveSelected = CurUnoDialog.getResource().getResText("RID_DB_COMMON_39");
+            final String AccessTextRemoveSelected = CurUnoDialog.getResource().getResText("RID_DB_COMMON_40");
+            final String AccessTextMoveAll = CurUnoDialog.getResource().getResText("RID_DB_COMMON_41");
+            final String AccessTextRemoveAll = CurUnoDialog.getResource().getResText("RID_DB_COMMON_42");
+            final String AccessMoveFieldUp = CurUnoDialog.getResource().getResText("RID_DB_COMMON_43");
+            final String AccessMoveFieldDown = CurUnoDialog.getResource().getResText("RID_DB_COMMON_44");
 
             FirstHelpIndex = _FirstHelpIndex;
             short curtabindex = UnoDialog.setInitialTabindex(_iStep);
@@ -169,7 +169,7 @@ public class FieldSelection
             Integer cmdShiftButtonPosX = Integer.valueOf((CompPosX + ListBoxWidth.intValue() + cmdButtonHoriDist));
             Integer ListBoxPosY = Integer.valueOf(CompPosY + lblVertiDist + lblHeight);
             Integer ListBoxHeight = Integer.valueOf(CompHeight - 8 - 2);
-            Integer SelListBoxPosX = Integer.valueOf(cmdShiftButtonPosX.intValue() + cmdButtonWidth + cmdButtonHoriDist);
+            Integer SelListBoxPosX = Integer.valueOf(cmdShiftButtonPosX.intValue() + cmdButtonWidth + cmdButtonHoriDist + 2);
 
             IStep = Integer.valueOf(_iStep);
             if (bshowFourButtons)
@@ -621,6 +621,16 @@ public class FieldSelection
         CurUnoDialog.setControlProperty("lstSelFields" + sIncSuffix, PropertyNames.STRING_ITEM_LIST, _sfieldnames);
         String[] sleftboxfieldnames = JavaTools.removefromList(xFieldsListBox.getItems(), _sfieldnames);
         CurUnoDialog.setControlProperty("lstFields" + sIncSuffix, PropertyNames.STRING_ITEM_LIST, sleftboxfieldnames);
+    }
+
+    public XListBox getFieldsListBox()
+    {
+        return xFieldsListBox;
+    }
+
+    public XListBox getSelectedFieldsListBox()
+    {
+        return xSelectedFieldsListBox;
     }
 
     public void setModified(boolean _bModified)

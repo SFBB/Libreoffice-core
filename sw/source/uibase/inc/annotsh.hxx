@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_UIBASE_INC_ANNOTSH_HXX
-#define INCLUDED_SW_SOURCE_UIBASE_INC_ANNOTSH_HXX
+#pragma once
 
 #include <sfx2/shell.hxx>
 #include <shellid.hxx>
@@ -25,6 +24,8 @@
 #include <unotools/caserotate.hxx>
 
 class SwView;
+class OutlinerView;
+
 class SwAnnotationShell final : public SfxShell
 {
     SwView&     m_rView;
@@ -73,8 +74,9 @@ public:
                 GetUndoManager() override;
 
     static SfxItemPool* GetAnnotationPool(SwView const & rV);
-};
 
-#endif
+private:
+    void        ExecPost(const SfxRequest& rReq, sal_uInt16 nEEWhich, SfxItemSet& rNewAttr, OutlinerView* pOLV );
+};
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

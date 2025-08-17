@@ -35,7 +35,6 @@
 #include <osl/thread.h>
 #include <mutex>
 
-using namespace osl;
 using namespace cppu;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
@@ -62,6 +61,7 @@ namespace io_stm {
         static void static_run( void* pObject );
 
         void close();
+        void joinWithThread();
         void fireClose();
         void fireStarted();
         void fireTerminated();
@@ -199,7 +199,6 @@ void Pump::fireTerminated()
     }
 }
 
-
 void Pump::close()
 {
     // close streams and release references
@@ -239,6 +238,14 @@ void Pump::close()
     }
 }
 
+void Pump::joinWithThread()
+{
+    std::unique_lock guard( m_aMutex );
+    // wait for the worker to die
+    if( m_aThread )
+        osl_joinWithThread( m_aThread );
+}
+
 void Pump::static_run( void* pObject )
 {
     osl_setThreadName("io_stm::Pump::run()");
@@ -263,14 +270,14 @@ void Pump::run()
 
             if( ! rInput.is() )
             {
-                throw NotConnectedException( "no input stream set", getXWeak() );
+                throw NotConnectedException( u"no input stream set"_ustr, getXWeak() );
             }
             Sequence< sal_Int8 > aData;
             while( rInput->readSomeBytes( aData, 65536 ) )
             {
                 if( ! rOutput.is() )
                 {
-                    throw NotConnectedException( "no output stream set", getXWeak() );
+                    throw NotConnectedException( u"no output stream set"_ustr, getXWeak() );
                 }
                 rOutput->writeBytes( aData );
                 osl_yieldThread();
@@ -358,7 +365,7 @@ void Pump::start()
     if( !m_aThread )
     {
         throw RuntimeException(
-            "Pump::start Couldn't create worker thread",
+            u"Pump::start Couldn't create worker thread"_ustr,
             *this);
     }
 
@@ -368,19 +375,15 @@ void Pump::start()
 
 }
 
-
 void Pump::terminate()
 {
     close();
 
-    // wait for the worker to die
-    if( m_aThread )
-        osl_joinWithThread( m_aThread );
+    joinWithThread();
 
     fireTerminated();
     fireClose();
 }
-
 
 /*
  * XActiveDataSink
@@ -427,7 +430,7 @@ Reference< XOutputStream > Pump::getOutputStream()
 // XServiceInfo
 OUString Pump::getImplementationName()
 {
-    return "com.sun.star.comp.io.Pump";
+    return u"com.sun.star.comp.io.Pump"_ustr;
 }
 
 // XServiceInfo
@@ -439,7 +442,7 @@ sal_Bool Pump::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence< OUString > Pump::getSupportedServiceNames()
 {
-    return { "com.sun.star.io.Pump" };
+    return { u"com.sun.star.io.Pump"_ustr };
 }
 
 }

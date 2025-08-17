@@ -18,19 +18,15 @@
  */
 
 #include <comphelper/lok.hxx>
-#include <o3tl/safeint.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/event.hxx>
+
+#include <vcl/DocWindow.hxx>
 #include <vcl/ctrl.hxx>
 #include <vcl/decoview.hxx>
+#include <vcl/event.hxx>
 #include <vcl/mnemonic.hxx>
-#include <vcl/settings.hxx>
-#include <vcl/uitest/logger.hxx>
-#include <vcl/DocWindow.hxx>
-#include <sal/log.hxx>
 
-#include <textlayout.hxx>
 #include <svdata.hxx>
+#include <textlayout.hxx>
 
 using namespace vcl;
 
@@ -40,17 +36,17 @@ void Control::ImplInitControlData()
     mbShowAccelerator       = false;
 }
 
-Control::Control( WindowType nType ) :
-    Window( nType )
+Control::Control(WindowType eType)
+    : Window(eType)
 {
     ImplInitControlData();
 }
 
-Control::Control( vcl::Window* pParent, WinBits nStyle ) :
-    Window( WindowType::CONTROL )
+Control::Control(vcl::Window* pParent, WinBits eStyle)
+    : Window(WindowType::CONTROL)
 {
     ImplInitControlData();
-    ImplInit( pParent, nStyle, nullptr );
+    ImplInit(pParent, eStyle, nullptr);
 }
 
 Control::~Control()
@@ -61,7 +57,7 @@ Control::~Control()
 void Control::dispose()
 {
     mxLayoutData.reset();
-    mpReferenceDevice.clear();
+    mpReferenceDevice.reset();
     Window::dispose();
 }
 

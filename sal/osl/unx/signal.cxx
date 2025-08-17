@@ -33,6 +33,7 @@
 #include <osl/signal.h>
 #include <sal/log.hxx>
 #include <sal/macros.h>
+#include <sal/backtrace.hxx>
 
 #define ACT_IGNORE  1
 #define ACT_EXIT    2
@@ -49,14 +50,17 @@
 
 namespace
 {
-extern "C" using Handler1 = void (*)(int);
-extern "C" using Handler2 = void (*)(int, siginfo_t *, void *);
+extern "C" using Handler1_t = void (*)(int);
+extern "C" using Handler2_t = void (*)(int, siginfo_t *, void *);
 struct SignalAction
 {
     int Signal;
     int Action;
-    Handler1 Handler;
-    bool siginfo; // Handler's type is Handler2
+    union {
+        Handler1_t Handler1;
+        Handler2_t Handler2;
+    };
+    bool siginfo; // Handler2 is active
 } Signals[] =
 {
     { SIGHUP,    ACT_HIDE,   SIG_DFL, false }, /* hangup */
@@ -204,13 +208,13 @@ bool onInitSignal()
                     if (sigaction(rSignal.Signal, &ign, &oact) == 0) {
                         rSignal.siginfo = (oact.sa_flags & SA_SIGINFO) != 0;
                         if (rSignal.siginfo) {
-                            rSignal.Handler = reinterpret_cast<Handler1>(
-                                oact.sa_sigaction);
+                            rSignal.Handler2 =
+                                oact.sa_sigaction;
                         } else {
-                            rSignal.Handler = oact.sa_handler;
+                            rSignal.Handler1 = oact.sa_handler;
                         }
                     } else {
-                        rSignal.Handler = SIG_DFL;
+                        rSignal.Handler1 = SIG_DFL;
                         rSignal.siginfo = false;
                     }
                 }
@@ -220,13 +224,13 @@ bool onInitSignal()
                     if (sigaction(rSignal.Signal, &act, &oact) == 0) {
                         rSignal.siginfo = (oact.sa_flags & SA_SIGINFO) != 0;
                         if (rSignal.siginfo) {
-                            rSignal.Handler = reinterpret_cast<Handler1>(
-                                oact.sa_sigaction);
+                            rSignal.Handler2 =
+                                oact.sa_sigaction;
                         } else {
-                            rSignal.Handler = oact.sa_handler;
+                            rSignal.Handler1 = oact.sa_handler;
                         }
                     } else {
-                        rSignal.Handler = SIG_DFL;
+                        rSignal.Handler1 = SIG_DFL;
                         rSignal.siginfo = false;
                     }
                 }
@@ -262,11 +266,11 @@ bool onDeInitSignal()
                 && (bSetILLHandler || Signals[i].Signal != SIGILL)))
         {
             if (Signals[i].siginfo) {
-                act.sa_sigaction = reinterpret_cast<Handler2>(
-                    Signals[i].Handler);
+                act.sa_sigaction =
+                    Signals[i].Handler2;
                 act.sa_flags = SA_SIGINFO;
             } else {
-                act.sa_handler = Signals[i].Handler;
+                act.sa_handler = Signals[i].Handler1;
                 act.sa_flags = 0;
             }
 
@@ -280,8 +284,7 @@ namespace
 {
 void printStack(int sig)
 {
-    void *buffer[MAX_STACK_FRAMES];
-    int size = backtrace( buffer, SAL_N_ELEMENTS(buffer) );
+    std::unique_ptr<sal::BacktraceState> bs = sal::backtrace_get(MAX_STACK_FRAMES);
 
     fprintf( stderr, "\n\nFatal exception: Signal %d\n", sig );
 
@@ -289,11 +292,8 @@ void printStack(int sig)
     fprintf( stderr, "Please turn on Enable Crash Reporting and\nAutomatic Display of Crashlogs in the Console application\n" );
 #endif
 
-    if ( size > 0 )
-    {
-        fputs( "Stack:\n", stderr );
-        backtrace_symbols_fd( buffer, size, fileno(stderr) );
-    }
+    fputs( "Stack:\n", stderr );
+    fprintf( stderr, "%s\n", OUStringToOString( sal::backtrace_to_string(bs.get()), RTL_TEXTENCODING_UTF8 ).getStr() );
 }
 
 void callSystemHandler(int signal, siginfo_t * info, void * context)
@@ -309,9 +309,9 @@ void callSystemHandler(int signal, siginfo_t * info, void * context)
     if (i >= NoSignals)
         return;
 
-    if ((Signals[i].Handler == SIG_DFL) ||
-        (Signals[i].Handler == SIG_IGN) ||
-         (Signals[i].Handler == SIG_ERR))
+    if ((Signals[i].Handler1 == SIG_DFL) ||
+        (Signals[i].Handler1 == SIG_IGN) ||
+         (Signals[i].Handler1 == SIG_ERR))
     {
         switch (Signals[i].Action)
         {
@@ -338,10 +338,10 @@ void callSystemHandler(int signal, siginfo_t * info, void * context)
         }
     }
     else if (Signals[i].siginfo) {
-        (*reinterpret_cast<Handler2>(Signals[i].Handler))(
+        (*Signals[i].Handler2)(
             signal, info, context);
     } else {
-        (*Signals[i].Handler)(signal);
+        (*Signals[i].Handler1)(signal);
     }
 }
 

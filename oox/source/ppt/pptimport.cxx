@@ -143,6 +143,28 @@ bool PowerPointImport::exportDocument() noexcept
     return false;
 }
 
+void PowerPointImport::getSchemeColorToken(sal_Int32& nToken) const
+{
+    if (mpActualSlidePersist)
+    {
+        bool bColorMapped = false;
+        oox::drawingml::ClrMapPtr pClrMapPtr(mpActualSlidePersist->getClrMap());
+        if (pClrMapPtr)
+            bColorMapped = pClrMapPtr->getColorMap(nToken);
+
+        if (!bColorMapped)    // try masterpage mapping
+        {
+            SlidePersistPtr pMasterPersist = mpActualSlidePersist->getMasterPersist();
+            if (pMasterPersist)
+            {
+                pClrMapPtr = pMasterPersist->getClrMap();
+                if (pClrMapPtr)
+                    pClrMapPtr->getColorMap(nToken);
+            }
+        }
+    }
+}
+
 ::Color PowerPointImport::getSchemeColor( sal_Int32 nToken ) const
 {
     ::Color nColor;
@@ -201,7 +223,7 @@ sal_Bool SAL_CALL PowerPointImport::filter( const Sequence< PropertyValue >& rDe
         }));
 
         Reference<css::lang::XMultiServiceFactory> aFactory(getComponentContext()->getServiceManager(), UNO_QUERY_THROW);
-        Reference< XExporter > xExporter(aFactory->createInstanceWithArguments("com.sun.star.comp.Impress.oox.PowerPointExport", aArguments), UNO_QUERY);
+        Reference< XExporter > xExporter(aFactory->createInstanceWithArguments(u"com.sun.star.comp.Impress.oox.PowerPointExport"_ustr, aArguments), UNO_QUERY);
 
         if (Reference<XFilter> xFilter{ xExporter, UNO_QUERY })
         {
@@ -259,6 +281,7 @@ class PptGraphicHelper : public GraphicHelper
 public:
     explicit            PptGraphicHelper( const PowerPointImport& rFilter );
     virtual ::Color     getSchemeColor( sal_Int32 nToken ) const override;
+    virtual void        getSchemeColorToken( sal_Int32& nToken ) const override;
     virtual sal_Int32   getDefaultChartAreaFillStyle() const override;
 private:
     const PowerPointImport& mrFilter;
@@ -268,6 +291,11 @@ PptGraphicHelper::PptGraphicHelper( const PowerPointImport& rFilter ) :
     GraphicHelper( rFilter.getComponentContext(), rFilter.getTargetFrame(), rFilter.getStorage() ),
     mrFilter( rFilter )
 {
+}
+
+void PptGraphicHelper::getSchemeColorToken(sal_Int32& nToken) const
+{
+    return mrFilter.getSchemeColorToken(nToken);
 }
 
 ::Color PptGraphicHelper::getSchemeColor( sal_Int32 nToken ) const
@@ -294,7 +322,7 @@ GraphicHelper* PowerPointImport::implCreateGraphicHelper() const
 
 OUString PowerPointImport::getImplementationName()
 {
-    return "com.sun.star.comp.oox.ppt.PowerPointImport";
+    return u"com.sun.star.comp.oox.ppt.PowerPointImport"_ustr;
 }
 
 }

@@ -28,6 +28,7 @@
 #include <utility>
 #include <vector>
 #include <o3tl/sorted_vector.hxx>
+#include <svtools/parhtml.hxx>
 
 #include <rangelst.hxx>
 #include "eeparser.hxx"
@@ -80,16 +81,16 @@ class ScHTMLParser : public ScEEParser
     ScHTMLStyles                maStyles;
 protected:
     sal_uInt32                  maFontHeights[ SC_HTML_FONTSIZES ];
-    ScDocument*                 mpDoc;          /// The destination document.
+    ScDocument&                 mrDoc;          /// The destination document.
 
 public:
-    explicit                    ScHTMLParser( EditEngine* pEditEngine, ScDocument* pDoc );
+    explicit                    ScHTMLParser( EditEngine* pEditEngine, ScDocument& rDoc );
     virtual                     ~ScHTMLParser() override;
 
     virtual ErrCode             Read( SvStream& rStrm, const OUString& rBaseURL  ) override = 0;
 
     ScHTMLStyles&               GetStyles() { return maStyles;}
-    ScDocument&                 GetDoc() { return *mpDoc;}
+    ScDocument&                 GetDoc() { return mrDoc;}
 
     /** Returns the "global table" which contains the entire HTML document. */
     virtual const ScHTMLTable*  GetGlobalTable() const = 0;
@@ -101,7 +102,7 @@ struct ScHTMLTableStackEntry
 {
     ScRangeListRef      xLockedList;
     std::shared_ptr<ScEEParseEntry> xCellEntry;
-    ScHTMLColOffset*    pLocalColOffset;
+    std::shared_ptr<ScHTMLColOffset> xLocalColOffset;
     sal_uLong           nFirstTableCell;
     SCROW               nRowCnt;
     SCCOL               nColCntStart;
@@ -112,14 +113,14 @@ struct ScHTMLTableStackEntry
     sal_uInt16          nColOffsetStart;
     bool                bFirstRow;
                         ScHTMLTableStackEntry( std::shared_ptr<ScEEParseEntry> xE,
-                                ScRangeListRef xL, ScHTMLColOffset* pTO,
+                                ScRangeListRef xL, std::shared_ptr<ScHTMLColOffset> xTO,
                                 sal_uLong nFTC,
                                 SCROW nRow,
                                 SCCOL nStart, SCCOL nMax, sal_uInt16 nTab,
                                 sal_uInt16 nTW, sal_uInt16 nCO, sal_uInt16 nCOS,
                                 bool bFR )
                             : xLockedList(std::move( xL )), xCellEntry(std::move(xE)),
-                            pLocalColOffset( pTO ),
+                            xLocalColOffset( std::move(xTO) ),
                             nFirstTableCell( nFTC ),
                             nRowCnt( nRow ),
                             nColCntStart( nStart ), nMaxCol( nMax ),
@@ -143,12 +144,12 @@ struct ScHTMLAdjustStackEntry
 
 class EditEngine;
 class ScDocument;
-class HTMLOption;
 
 // TODO these need better names
 typedef ::std::map<SCROW, SCROW> InnerMap;
-typedef ::std::map<sal_uInt16, InnerMap*> OuterMap;
+typedef ::std::map<sal_uInt16, std::unique_ptr<InnerMap>> OuterMap;
 
+/// HTML parser used during paste into Calc.
 class ScHTMLLayoutParser : public ScHTMLParser
 {
 private:
@@ -160,7 +161,7 @@ private:
     ScRangeListRef      xLockedList;        // per table
     std::unique_ptr<OuterMap> pTables;
     ScHTMLColOffset     maColOffset;
-    ScHTMLColOffset*    pLocalColOffset;    // per table
+    std::shared_ptr<ScHTMLColOffset> xLocalColOffset;    // per table
     sal_uLong           nFirstTableCell;    // per table
     short               nTableLevel;
     sal_uInt16          nTable;
@@ -211,9 +212,12 @@ private:
     void                Image( HtmlImportInfo* );
     void                AnchorOn( HtmlImportInfo* );
     void                FontOn( HtmlImportInfo* );
+    void SpanOn(HtmlImportInfo* pInfo);
+    /// Handles the various data-sheets-* attributes on <td> and <span>.
+    void HandleDataSheetsAttributes(const HTMLOptions& rOptions);
 
 public:
-                        ScHTMLLayoutParser( EditEngine*, OUString aBaseURL, const Size& aPageSize, ScDocument* );
+                        ScHTMLLayoutParser( EditEngine*, OUString aBaseURL, const Size& aPageSize, ScDocument& );
     virtual             ~ScHTMLLayoutParser() override;
     virtual ErrCode     Read( SvStream&, const OUString& rBaseURL  ) override;
     virtual const ScHTMLTable*  GetGlobalTable() const override;
@@ -426,7 +430,7 @@ public:
     void                GetDocRange( ScRange& rRange ) const;
 
     /** Applies border formatting to the passed document. */
-    void                ApplyCellBorders( ScDocument* pDoc, const ScAddress& rFirstPos ) const;
+    void                ApplyCellBorders( ScDocument& rDoc, const ScAddress& rFirstPos ) const;
 
     SvNumberFormatter* GetFormatTable();
 
@@ -575,11 +579,13 @@ public:
 
     Builds the table structure correctly, ignores extended formatting like
     pictures or column widths.
+
+    Used during file load / import into Calc.
  */
 class ScHTMLQueryParser : public ScHTMLParser
 {
 public:
-    explicit            ScHTMLQueryParser( EditEngine* pEditEngine, ScDocument* pDoc );
+    explicit            ScHTMLQueryParser( EditEngine* pEditEngine, ScDocument& rDoc );
     virtual             ~ScHTMLQueryParser() override;
 
     virtual ErrCode     Read( SvStream& rStrm, const OUString& rBaseURL  ) override;

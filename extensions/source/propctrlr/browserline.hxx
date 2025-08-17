@@ -50,14 +50,14 @@ namespace pcr
     private:
         OUString                m_sEntryName;
         std::unique_ptr<weld::Builder> m_xBuilder;
-        std::unique_ptr<weld::Container> m_xContainer;
+        std::unique_ptr<weld::Grid> m_xGrid;
         std::unique_ptr<weld::Label> m_xFtTitle;
         std::unique_ptr<weld::Button> m_xBrowseButton;
         std::unique_ptr<weld::Button> m_xAdditionalBrowseButton;
         css::uno::Reference< css::inspection::XPropertyControl >
                                 m_xControl;
         weld::Container*        m_pInitialControlParent;
-        weld::Container*        m_pParent;
+        weld::Box*              m_pParent;
         weld::Widget*           m_pControlWindow;
         weld::Button*           m_pBrowseButton;
         weld::Button*           m_pAdditionalBrowseButton;
@@ -68,7 +68,7 @@ namespace pcr
         bool                    m_bReadOnly;
 
     public:
-        OBrowserLine(OUString aEntryName, weld::Container* pParent, weld::SizeGroup* pLabelGroup,
+        OBrowserLine(OUString aEntryName, weld::Box* pParent, weld::SizeGroup* pLabelGroup,
                      weld::Container* pInitialControlParent);
         ~OBrowserLine();
 
@@ -91,7 +91,7 @@ namespace pcr
         OUString            GetTitle() const;
         void                SetTitleWidth(sal_uInt16);
 
-        int                 GetRowHeight() const { return m_xContainer->get_preferred_size().Height(); }
+        int                 GetRowHeight() const { return m_xGrid->get_preferred_size().Height(); }
         void                Show(bool bFlag=true);
         void                Hide();
 

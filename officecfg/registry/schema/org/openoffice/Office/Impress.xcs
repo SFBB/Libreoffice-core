@@ -290,6 +290,7 @@
           <info>
             <desc>Indicates whether to show only the bounding box of graphic-objects like bitmaps and drawings.</desc>
             <label>Image placeholders</label>
+            <deprecated>Not used anymore</deprecated>
           </info>
           <value>false</value>
         </prop>
@@ -298,6 +299,7 @@
           <info>
             <desc>Indicates whether to show only outlines of objects such as filled rectangles and filled ellipses.</desc>
             <label>Contour mode</label>
+            <deprecated>Not used anymore</deprecated>
           </info>
           <value>false</value>
         </prop>
@@ -306,6 +308,7 @@
           <info>
             <desc>Indicates whether to show only a placeholder for text in graphical objects.</desc>
             <label>Text placeholders</label>
+            <deprecated>Not used anymore</deprecated>
           </info>
           <value>false</value>
         </prop>
@@ -314,6 +317,7 @@
           <info>
             <desc>Indicates whether to show only hairlines instead of the true line styles.</desc>
             <label>Line contour only</label>
+            <deprecated>Not used anymore</deprecated>
           </info>
           <value>false</value>
         </prop>
@@ -418,6 +422,13 @@
           <label>Show Undo-Stack Delete Warning</label>
         </info>
         <value>true</value>
+      </prop>
+      <prop oor:name="SorterSlidesPerRow" oor:type="xs:int" oor:nillable="false">
+        <info>
+          <desc>Default number of slides per row in slide sorter.</desc>
+          <label>Sorter slides per row</label>
+        </info>
+        <value>4</value>
       </prop>
       <prop oor:name="SlideshowRespectZOrder" oor:type="xs:boolean" oor:nillable="false">
         <!-- UIHints: Slideshow Z order for animations -->
@@ -526,8 +537,8 @@
       <prop oor:name="PenWidth" oor:type="xs:double" oor:nillable="false">
         <!-- UIHints: slide show context menu -->
         <info>
-          <desc>Width of the pen during slideshow.</desc>
-          <label>Pen Width</label>
+          <desc>Thickness of the pen during slideshow.</desc>
+          <label>Pen Thickness</label>
         </info>
         <value>150</value>
       </prop>
@@ -565,6 +576,13 @@
             <label>Only text area selectable</label>
           </info>
           <value>false</value>
+        </prop>
+        <prop oor:name="ShowBoundary" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Indicates whether placeholder get a virtual frame.</desc>
+            <label>Show boundary for placeholder</label>
+          </info>
+          <value>true</value>
         </prop>
       </group>
       <group oor:name="NewDoc">
@@ -1307,6 +1325,46 @@
             <label>Recently Used Master Pages</label>
           </info>
         </set>
+      </group>
+      <group oor:name="NotesPane">
+        <info>
+          <desc>Values related to the slide sorter.</desc>
+          <label>Notes Pane Options</label>
+        </info>
+        <group oor:name="Visible">
+          <info>
+            <desc>Options that control the visibility of the slide sorter.</desc>
+            <label>Notes Pane Visibility</label>
+          </info>
+          <prop oor:name="ImpressView" oor:type="xs:boolean">
+            <info>
+              <desc>Visibility of the Notes Pane in the Impress view.</desc>
+              <label>Notes Pane Visibility ImpressView</label>
+            </info>
+            <value>false</value>
+          </prop>
+	        <prop oor:name="OutlineView" oor:type="xs:boolean">
+            <info>
+              <desc>Visibility of the Notes Pane in the Outline view.</desc>
+              <label>Notes Pane Visibility OutlineView</label>
+            </info>
+            <value>false</value>
+          </prop>
+          <prop oor:name="NotesView" oor:type="xs:boolean">
+            <info>
+              <desc>Visibility of the Notes Pane in the Notes view.</desc>
+              <label>Notes Pane Visibility NotesView</label>
+            </info>
+            <value>false</value>
+          </prop>
+          <prop oor:name="HandoutView" oor:type="xs:boolean">
+            <info>
+              <desc>Visibility of the Notes Pane in the Handout view.</desc>
+              <label>Notes Pane Visibility HandoutView</label>
+            </info>
+            <value>false</value>
+          </prop>
+        </group>
       </group>
       <group oor:name="SlideSorterBar">
         <info>

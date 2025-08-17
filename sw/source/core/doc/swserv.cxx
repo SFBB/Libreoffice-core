@@ -148,13 +148,13 @@ void SwServerObject::SendDataChanged( const SwPaM& rRange )
 
     bool bCall = false;
     const SwStartNode* pNd = nullptr;
-    auto [pStt, pEnd] = rRange.StartEnd(); // SwPosition*
+    auto [pStart, pEnd] = rRange.StartEnd(); // SwPosition*
     switch( m_eType )
     {
     case BOOKMARK_SERVER:
         if(m_CNTNT_TYPE.pBkmk->IsExpanded())
         {
-            bCall = *pStt <= m_CNTNT_TYPE.pBkmk->GetMarkEnd()
+            bCall = *pStart <= m_CNTNT_TYPE.pBkmk->GetMarkEnd()
                 && *pEnd > m_CNTNT_TYPE.pBkmk->GetMarkStart();
         }
         break;
@@ -166,7 +166,7 @@ void SwServerObject::SendDataChanged( const SwPaM& rRange )
     if( pNd )
     {
         // Is the start area within the node area?
-        bCall = pStt->GetNodeIndex() <  pNd->EndOfSectionIndex() &&
+        bCall = pStart->GetNodeIndex() <  pNd->EndOfSectionIndex() &&
                 pEnd->GetNodeIndex() >= pNd->GetIndex();
     }
 
@@ -189,12 +189,12 @@ bool SwServerObject::IsLinkInServer( const SwBaseLink* pChkLnk ) const
     case BOOKMARK_SERVER:
         if( m_CNTNT_TYPE.pBkmk->IsExpanded() )
         {
-            const SwPosition* pStt = &m_CNTNT_TYPE.pBkmk->GetMarkStart(),
+            const SwPosition* pStart = &m_CNTNT_TYPE.pBkmk->GetMarkStart(),
                             * pEnd = &m_CNTNT_TYPE.pBkmk->GetMarkEnd();
 
-            nSttNd = pStt->GetNodeIndex();
+            nSttNd = pStart->GetNodeIndex();
             nEndNd = pEnd->GetNodeIndex();
-            pNds = &pStt->GetNodes();
+            pNds = &pStart->GetNodes();
         }
         break;
 
@@ -214,6 +214,7 @@ bool SwServerObject::IsLinkInServer( const SwBaseLink* pChkLnk ) const
 
     if( nSttNd && nEndNd )
     {
+        assert(pNds);
         // Get LinkManager
         const ::sfx2::SvBaseLinks& rLnks = pNds->GetDoc().getIDocumentLinksAdministration().GetLinkManager().GetLinks();
 
@@ -260,7 +261,7 @@ void SwServerObject::SetNoServer()
     }
 }
 
-void SwServerObject::SetDdeBookmark( ::sw::mark::IMark& rBookmark)
+void SwServerObject::SetDdeBookmark( ::sw::mark::MarkBase& rBookmark)
 {
     ::sw::mark::DdeBookmark* const pDdeBookmark = dynamic_cast< ::sw::mark::DdeBookmark* >(&rBookmark);
     if(pDdeBookmark)

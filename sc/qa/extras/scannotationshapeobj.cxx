@@ -18,7 +18,6 @@
 
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSheetAnnotation.hpp>
 #include <com/sun/star/sheet/XSheetAnnotationAnchor.hpp>
 #include <com/sun/star/sheet/XSheetAnnotationShapeSupplier.hpp>
@@ -93,15 +92,15 @@ private:
 uno::Reference<text::XTextContent> ScAnnotationShapeObj::m_xField;
 
 ScAnnotationShapeObj::ScAnnotationShapeObj()
-    : UnoApiTest("sc/qa/extras/testdocuments")
-    , XShapeDescriptor("com.sun.star.drawing.CaptionShape")
+    : UnoApiTest(u"sc/qa/extras/testdocuments"_ustr)
+    , XShapeDescriptor(u"com.sun.star.drawing.CaptionShape"_ustr)
 {
 }
 
 void ScAnnotationShapeObj::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 void ScAnnotationShapeObj::tearDown()
@@ -130,7 +129,7 @@ uno::Reference<uno::XInterface> ScAnnotationShapeObj::init()
     uno::Reference<sheet::XSheetAnnotation> xAnnotation(xAnchor->getAnnotation(),
                                                         uno::UNO_SET_THROW);
     uno::Reference<text::XSimpleText> xAnnoText(xAnnotation, uno::UNO_QUERY_THROW);
-    xAnnoText->setString("ScAnnotationShapeObj");
+    xAnnoText->setString(u"ScAnnotationShapeObj"_ustr);
 
     uno::Reference<sheet::XSheetAnnotationShapeSupplier> xShapeSupp(xAnnotation,
                                                                     uno::UNO_QUERY_THROW);
@@ -144,7 +143,7 @@ uno::Reference<text::XTextContent> ScAnnotationShapeObj::getTextContent()
     if (!m_xField.is())
     {
         uno::Reference<lang::XMultiServiceFactory> xSM(mxComponent, uno::UNO_QUERY_THROW);
-        m_xField.set(xSM->createInstance("com.sun.star.text.TextField.DateTime"),
+        m_xField.set(xSM->createInstance(u"com.sun.star.text.TextField.DateTime"_ustr),
                      uno::UNO_QUERY_THROW);
     }
     return m_xField;

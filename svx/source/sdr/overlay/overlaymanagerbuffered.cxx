@@ -24,7 +24,6 @@
 #include <vcl/window.hxx>
 #include <tools/fract.hxx>
 #include <vcl/cursor.hxx>
-#include <svtools/optionsdrawinglayer.hxx>
 
 
 namespace sdr::overlay
@@ -197,7 +196,28 @@ namespace sdr::overlay
             maBufferIdle.Stop();
 
             if(maBufferRememberedRangePixel.isEmpty())
+                // nothing to refresh, done
                 return;
+
+            if (maMapModeLastCompleteRedraw == MapMode())
+                // there was no CompleteRedraw yet, done
+                return;
+
+            // in calc i stumbled over the situation that MapModes for OutDevs
+            // were different for ::CompleteRedraw and this timer-based refresh,
+            // probably due to Calc's massive MapMode changes - as soon as an
+            // overlay invalidate happened the next reschedule in calc *will*
+            // trigger this refresh, despite what MapMode may be set at the
+            // target device currently.
+            // These updates only make sense in combination with the saved
+            // background, so this is an error (and happens only in Calc due
+            // to these always changing MapModes).
+            // Thus it is plausible to remember the MapMode of the last full
+            // CompleteRedraw and force local usage to it.
+            const MapMode aPrevMapMode(getOutputDevice().GetMapMode());
+            const bool bPatchMapMode(aPrevMapMode != maMapModeLastCompleteRedraw);
+            if (bPatchMapMode)
+                getOutputDevice().SetMapMode(maMapModeLastCompleteRedraw);
 
             // logic size for impDrawMember call
             basegfx::B2DRange aBufferRememberedRangeLogic(
@@ -345,6 +365,11 @@ namespace sdr::overlay
 
             // forget remembered Region
             maBufferRememberedRangePixel.reset();
+
+            // restore evtl. temporarily patched MapMode (see explanation
+            // above)
+            if (bPatchMapMode)
+                getOutputDevice().SetMapMode(aPrevMapMode);
         }
 
         OverlayManagerBuffered::OverlayManagerBuffered(
@@ -352,7 +377,8 @@ namespace sdr::overlay
         :   OverlayManager(rOutputDevice),
             mpBufferDevice(VclPtr<VirtualDevice>::Create()),
             mpOutputBufferDevice(VclPtr<VirtualDevice>::Create()),
-            maBufferIdle( "sdr::overlay::OverlayManagerBuffered maBufferIdle" )
+            maBufferIdle( "sdr::overlay::OverlayManagerBuffered maBufferIdle" ),
+            maMapModeLastCompleteRedraw()
         {
             // Init timer
             maBufferIdle.SetPriority( TaskPriority::POST_PAINT );
@@ -379,6 +405,11 @@ namespace sdr::overlay
 
         void OverlayManagerBuffered::completeRedraw(const vcl::Region& rRegion, OutputDevice* pPreRenderDevice) const
         {
+            // remember MapMode of last full completeRedraw to
+            // have it available in timer-based updates (see
+            // ImpBufferTimerHandler)
+            maMapModeLastCompleteRedraw = getOutputDevice().GetMapMode();
+
             if(!rRegion.IsEmpty())
             {
                 // save new background
@@ -389,20 +420,28 @@ namespace sdr::overlay
             OverlayManager::completeRedraw(rRegion, pPreRenderDevice);
         }
 
-        void OverlayManagerBuffered::flush()
-        {
-            // call timer handler direct
-            ImpBufferTimerHandler(nullptr);
-        }
-
         void OverlayManagerBuffered::invalidateRange(const basegfx::B2DRange& rRange)
         {
             if(rRange.isEmpty())
                 return;
 
+            if (maMapModeLastCompleteRedraw == MapMode())
+                // there was no CompleteRedraw yet, done
+                return;
+
             // buffered output, do not invalidate but use the timer
             // to trigger a timer event for refresh
             maBufferIdle.Start();
+
+            // tdf#166520 need to also use MapModeLastCompleteRedraw for
+            // the invalidates -> Calc is just completely unstable using
+            // MapModes at any Window. The one remembered at full
+            // repaint has to be the DrawingLayer one - overlay works
+            // in DrawingLayer coordinates/MapMode(s)
+            const MapMode aPrevMapMode(getOutputDevice().GetMapMode());
+            const bool bPatchMapMode(aPrevMapMode != maMapModeLastCompleteRedraw);
+            if (bPatchMapMode)
+                getOutputDevice().SetMapMode(maMapModeLastCompleteRedraw);
 
             // add the discrete range to the remembered region
             // #i75163# use double precision and floor/ceil rounding to get overlapped pixel region, even
@@ -435,6 +474,11 @@ namespace sdr::overlay
                 maBufferRememberedRangePixel.expand(aTopLeft);
                 maBufferRememberedRangePixel.expand(aBottomRight);
             }
+
+            // restore evtl. temporarily patched MapMode (see explanation
+            // above)
+            if (bPatchMapMode)
+                getOutputDevice().SetMapMode(aPrevMapMode);
         }
 } // end of namespace
 

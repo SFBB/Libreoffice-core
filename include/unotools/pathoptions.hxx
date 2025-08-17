@@ -61,6 +61,7 @@ public:
         Storage,
         Temp,
         Template,
+        DocumentTheme,
         UserConfig,
         Work,
         Classification,
@@ -80,19 +81,19 @@ public:
     const OUString& GetAutoTextPath() const;
     const OUString& GetBackupPath() const;
     const OUString& GetBasicPath() const;
-    const OUString& GetBitmapPath() const;
+    SAL_DLLPRIVATE const OUString& GetBitmapPath() const;
     const OUString& GetConfigPath() const;
-    const OUString& GetDictionaryPath() const;
-    const OUString& GetFavoritesPath() const;
-    const OUString& GetFilterPath() const;
+    SAL_DLLPRIVATE const OUString& GetDictionaryPath() const;
+    SAL_DLLPRIVATE const OUString& GetFavoritesPath() const;
+    SAL_DLLPRIVATE const OUString& GetFilterPath() const;
     const OUString& GetGalleryPath() const;
     const OUString& GetGraphicPath() const;
     const OUString& GetHelpPath() const;
-    const OUString& GetLinguisticPath() const;
-    const OUString& GetModulePath() const;
+    SAL_DLLPRIVATE const OUString& GetLinguisticPath() const;
+    SAL_DLLPRIVATE const OUString& GetModulePath() const;
     const OUString& GetIconsetPath() const;
     const OUString& GetPalettePath() const;
-    const OUString& GetPluginPath() const;
+    SAL_DLLPRIVATE const OUString& GetPluginPath() const;
     const OUString& GetStoragePath() const;
     const OUString& GetTempPath() const;
     const OUString& GetTemplatePath() const;
@@ -101,15 +102,17 @@ public:
     const OUString& GetFingerprintPath() const;
     const OUString& GetNumbertextPath() const;
     const OUString& GetClassificationPath() const;
+    const OUString& GetDocumentThemePath() const;
 
     // set the paths
     void            SetAutoTextPath( const OUString& rPath );
     void            SetBasicPath( const OUString& rPath );
     void            SetTempPath( const OUString& rPath );
+    void            SetWorkPath( const OUString& rPath );
 
     OUString        SubstituteVariable( const OUString& rVar ) const;
     OUString        ExpandMacros( const OUString& rPath ) const;
-    OUString        UseVariable( const OUString& rVar ) const;
+    SAL_DLLPRIVATE OUString UseVariable( const OUString& rVar ) const;
     bool            SearchFile( OUString& rIniFile, Paths ePath = Paths::UserConfig );
 };
 

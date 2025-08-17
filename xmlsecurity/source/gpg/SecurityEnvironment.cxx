@@ -13,7 +13,6 @@
 #include <com/sun/star/security/CertificateCharacters.hpp>
 #include <com/sun/star/security/CertificateValidity.hpp>
 
-#include <comphelper/servicehelper.hxx>
 #include <vector>
 #include <rtl/ref.hxx>
 
@@ -27,7 +26,9 @@
 
 #include <key.h>
 #include <keylistresult.h>
-#include <xmlsec-wrapper.h>
+#include <libxml/xmlstring.h>
+#include <xmlsec/base64.h>
+#include <xmlsec/xmlsec.h>
 
 #if defined _MSC_VER && defined __clang__
 #pragma clang diagnostic push
@@ -78,11 +79,11 @@ SecurityEnvironmentGpg::SecurityEnvironmentGpg()
 #endif
     GpgME::Error err = GpgME::checkEngine(GpgME::OpenPGP);
     if (err)
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
     m_ctx.reset( GpgME::Context::createForProtocol(GpgME::OpenPGP) );
     if (m_ctx == nullptr)
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
     m_ctx->setArmor(false);
 }
 
@@ -98,7 +99,6 @@ OUString SecurityEnvironmentGpg::getSecurityEnvironmentInformation()
 Sequence< Reference < XCertificate > > SecurityEnvironmentGpg::getCertificatesImpl( bool bPrivateOnly )
 {
     std::vector< GpgME::Key > keyList;
-    std::vector< rtl::Reference<CertificateImpl> > certsList;
 
     m_ctx->setKeyListMode(GPGME_KEYLIST_MODE_LOCAL);
     GpgME::Error err = m_ctx->startKeyListing("", bPrivateOnly );
@@ -114,17 +114,13 @@ Sequence< Reference < XCertificate > > SecurityEnvironmentGpg::getCertificatesIm
     }
     m_ctx->endKeyListing();
 
-    for (auto const& key : keyList) {
-        rtl::Reference<CertificateImpl> xCert = new CertificateImpl();
-        xCert->setCertificate(m_ctx.get(),key);
-        certsList.push_back(xCert);
-    }
-
-    Sequence< Reference< XCertificate > > xCertificateSequence(certsList.size());
+    Sequence< Reference< XCertificate > > xCertificateSequence(keyList.size());
     auto xCertificateSequenceRange = asNonConstRange(xCertificateSequence);
     int i = 0;
-    for (const auto& cert : certsList) {
-        xCertificateSequenceRange[i++] = cert;
+    for (auto const& key : keyList) {
+        rtl::Reference<CertificateImpl> xCert = new CertificateImpl();
+        xCert->setCertificate(m_ctx, key);
+        xCertificateSequenceRange[i++] = xCert;  // fills xCertificateSequence
     }
 
     return xCertificateSequence;
@@ -148,7 +144,7 @@ Reference< XCertificate > SecurityEnvironmentGpg::getCertificate( const OUString
     xmlSecSize nWritten;
     int nRet = xmlSecBase64Decode_ex(strKeyId, const_cast<xmlSecByte*>(strKeyId), xmlStrlen(strKeyId), &nWritten);
     if(nRet < 0)
-        throw RuntimeException("Base64 decode failed");
+        throw RuntimeException(u"Base64 decode failed"_ustr);
 
     m_ctx->setKeyListMode(GPGME_KEYLIST_MODE_LOCAL);
     GpgME::Error err = m_ctx->startKeyListing("", false);
@@ -158,7 +154,7 @@ Reference< XCertificate > SecurityEnvironmentGpg::getCertificate( const OUString
             break;
         if (!k.isInvalid() && strcmp(k.primaryFingerprint(), reinterpret_cast<const char*>(strKeyId)) == 0) {
             rtl::Reference<CertificateImpl> xCert = new CertificateImpl();
-            xCert->setCertificate(m_ctx.get(), k);
+            xCert->setCertificate(m_ctx, k);
             m_ctx->endKeyListing();
             return xCert;
         }

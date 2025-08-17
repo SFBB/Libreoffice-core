@@ -48,10 +48,10 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
 {
     int error_base, event_base;
     X11SalObject*       pObject  = new X11SalObject();
-    SystemEnvData*    pObjData = const_cast<SystemEnvData*>(pObject->GetSystemData());
+    SystemEnvData& rObjData = const_cast<SystemEnvData&>(pObject->GetSystemData());
 
-    if ( ! XShapeQueryExtension( static_cast<Display*>(pObjData->pDisplay),
-                                  &event_base, &error_base ) )
+    if (!XShapeQueryExtension(static_cast<Display*>(rObjData.pDisplay),
+                              &event_base, &error_base))
     {
         delete pObject;
         return nullptr;
@@ -60,9 +60,9 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
     pObject->mpParent = pParent;
 
     SalDisplay* pSalDisp        = vcl_sal::getSalDisplay(GetGenericUnixSalData());
-    const SystemEnvData* pEnv   = pParent->GetSystemData();
+    const SystemEnvData& rEnv   = pParent->GetSystemData();
     Display* pDisp              = pSalDisp->GetDisplay();
-    ::Window aObjectParent      = static_cast<::Window>(pEnv->GetWindowHandle(pParent));
+    ::Window aObjectParent      = static_cast<::Window>(rEnv.GetWindowHandle(pParent));
     pObject->maParentWin = aObjectParent;
 
     // find out on which screen that window is
@@ -156,10 +156,10 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
         XMapWindow( pDisp, pObject->maPrimary );
     }
 
-    pObjData->pDisplay      = pDisp;
-    pObjData->SetWindowHandle(pObject->maSecondary);
-    pObjData->pWidget       = nullptr;
-    pObjData->pVisual       = pVisual;
+    rObjData.pDisplay      = pDisp;
+    rObjData.SetWindowHandle(pObject->maSecondary);
+    rObjData.pWidget       = nullptr;
+    rObjData.pVisual       = pVisual;
 
     XSync(pDisp, False);
     if( GetGenericUnixSalData()->ErrorTrapPop( false ) )
@@ -228,7 +228,6 @@ X11SalObject::X11SalObject()
     maSystemChildData.pSalFrame = nullptr;
     maSystemChildData.pWidget       = nullptr;
     maSystemChildData.pVisual       = nullptr;
-    maSystemChildData.aShellWindow  = 0;
     maSystemChildData.toolkit = SystemEnvData::Toolkit::Gen;
     maSystemChildData.platform = SystemEnvData::Platform::Xcb;
 
@@ -358,9 +357,9 @@ void X11SalObject::GrabFocus()
                          CurrentTime );
 }
 
-const SystemEnvData* X11SalObject::GetSystemData() const
+const SystemEnvData& X11SalObject::GetSystemData() const
 {
-    return &maSystemChildData;
+    return maSystemChildData;
 }
 
 static sal_uInt16 sal_GetCode( int state )

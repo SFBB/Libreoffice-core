@@ -21,7 +21,6 @@
 #include "Chart2ModelContact.hxx"
 #include <FastPropertyIdRanges.hxx>
 #include <DataSeries.hxx>
-#include <DiagramHelper.hxx>
 #include <ControllerLockGuard.hxx>
 #include <WrappedProperty.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
@@ -73,7 +72,7 @@ void WrappedStockProperty::setPropertyValue( const css::uno::Any& rOuterValue, c
 {
     bool bNewValue = false;
     if( ! (rOuterValue >>= bNewValue) )
-        throw lang::IllegalArgumentException( "stock properties require type sal_Bool", nullptr, 0 );
+        throw lang::IllegalArgumentException( u"stock properties require type sal_Bool"_ustr, nullptr, 0 );
 
     m_aOuterValue = rOuterValue;
 
@@ -127,7 +126,7 @@ public:
 }
 
 WrappedVolumeProperty::WrappedVolumeProperty(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
-        : WrappedStockProperty( "Volume", uno::Any(false) , spChart2ModelContact )
+        : WrappedStockProperty( u"Volume"_ustr, uno::Any(false) , spChart2ModelContact )
 {
 }
 
@@ -167,16 +166,16 @@ rtl::Reference< ::chart::ChartTypeTemplate > WrappedVolumeProperty::getNewTempla
     if( bNewValue ) //add volume
     {
         if( rCurrentTemplate == "com.sun.star.chart2.template.StockLowHighClose" )
-            xTemplate = xFactory->createTemplate( "com.sun.star.chart2.template.StockVolumeLowHighClose" );
+            xTemplate = xFactory->createTemplate( u"com.sun.star.chart2.template.StockVolumeLowHighClose"_ustr );
         else if( rCurrentTemplate == "com.sun.star.chart2.template.StockOpenLowHighClose" )
-            xTemplate = xFactory->createTemplate( "com.sun.star.chart2.template.StockVolumeOpenLowHighClose" );
+            xTemplate = xFactory->createTemplate( u"com.sun.star.chart2.template.StockVolumeOpenLowHighClose"_ustr );
     }
     else //remove volume
     {
         if( rCurrentTemplate == "com.sun.star.chart2.template.StockVolumeLowHighClose" )
-            xTemplate = xFactory->createTemplate( "com.sun.star.chart2.template.StockLowHighClose" );
+            xTemplate = xFactory->createTemplate( u"com.sun.star.chart2.template.StockLowHighClose"_ustr );
         else if( rCurrentTemplate == "com.sun.star.chart2.template.StockVolumeOpenLowHighClose" )
-            xTemplate = xFactory->createTemplate( "com.sun.star.chart2.template.StockOpenLowHighClose" );
+            xTemplate = xFactory->createTemplate( u"com.sun.star.chart2.template.StockOpenLowHighClose"_ustr );
     }
     return xTemplate;
 }
@@ -196,7 +195,7 @@ public:
 }
 
 WrappedUpDownProperty::WrappedUpDownProperty(const std::shared_ptr<Chart2ModelContact>& spChart2ModelContact)
-        : WrappedStockProperty( "UpDown", uno::Any(false) , spChart2ModelContact )
+        : WrappedStockProperty( u"UpDown"_ustr, uno::Any(false) , spChart2ModelContact )
 {
 }
 
@@ -231,16 +230,16 @@ rtl::Reference< ::chart::ChartTypeTemplate > WrappedUpDownProperty::getNewTempla
     if( bNewValue ) //add open series
     {
         if( rCurrentTemplate == "com.sun.star.chart2.template.StockLowHighClose" )
-            xTemplate = xFactory->createTemplate( "com.sun.star.chart2.template.StockOpenLowHighClose" );
+            xTemplate = xFactory->createTemplate( u"com.sun.star.chart2.template.StockOpenLowHighClose"_ustr );
         else if( rCurrentTemplate == "com.sun.star.chart2.template.StockVolumeLowHighClose" )
-            xTemplate = xFactory->createTemplate( "com.sun.star.chart2.template.StockVolumeOpenLowHighClose" );
+            xTemplate = xFactory->createTemplate( u"com.sun.star.chart2.template.StockVolumeOpenLowHighClose"_ustr );
     }
     else //remove open series
     {
         if( rCurrentTemplate == "com.sun.star.chart2.template.StockOpenLowHighClose" )
-            xTemplate = xFactory->createTemplate( "com.sun.star.chart2.template.StockLowHighClose" );
+            xTemplate = xFactory->createTemplate( u"com.sun.star.chart2.template.StockLowHighClose"_ustr );
         else if( rCurrentTemplate == "com.sun.star.chart2.template.StockVolumeOpenLowHighClose" )
-            xTemplate = xFactory->createTemplate( "com.sun.star.chart2.template.StockVolumeLowHighClose" );
+            xTemplate = xFactory->createTemplate( u"com.sun.star.chart2.template.StockVolumeLowHighClose"_ustr );
     }
     return xTemplate;
 }

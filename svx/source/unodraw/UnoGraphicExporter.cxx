@@ -33,6 +33,7 @@
 #include <com/sun/star/task/XInteractionContinuation.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
+#include <boost/property_tree/json_parser/error.hpp>
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <tools/urlobj.hxx>
@@ -66,7 +67,7 @@
 #include <comphelper/sequenceashashmap.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/sequence.hxx>
-#include "UnoGraphicExporter.hxx"
+#include <UnoGraphicExporter.hxx>
 #include <memory>
 // #i102251#
 #include <editeng/editstat.hxx>
@@ -81,7 +82,6 @@ using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::task;
 
@@ -130,7 +130,7 @@ namespace {
 
         @implements com.sun.star.drawing.GraphicExportFilter
     */
-    class GraphicExporter : public WeakImplHelper< XGraphicExportFilter, XServiceInfo >
+    class GraphicExporter : public ::cppu::WeakImplHelper< XGraphicExportFilter, XServiceInfo >
     {
     public:
         GraphicExporter();
@@ -171,37 +171,6 @@ namespace {
         SdrPage*            mpCurrentPage;
         SdrModel*           mpDoc;
     };
-
-    /** creates a bitmap that is optionally transparent from a metafile
-    */
-    BitmapEx GetBitmapFromMetaFile( const GDIMetaFile& rMtf, const Size* pSize )
-    {
-        // use new primitive conversion tooling
-        basegfx::B2DRange aRange(basegfx::B2DPoint(0.0, 0.0));
-        sal_uInt32 nMaximumQuadraticPixels(500000);
-
-        if(pSize)
-        {
-            // use 100th mm for primitive bitmap converter tool, input is pixel
-            // use a real OutDev to get the correct DPI, the static LogicToLogic assumes 72dpi which is wrong (!)
-            const Size aSize100th(Application::GetDefaultDevice()->PixelToLogic(*pSize, MapMode(MapUnit::Map100thMM)));
-
-            aRange.expand(basegfx::B2DPoint(aSize100th.Width(), aSize100th.Height()));
-
-            // when explicitly pixels are requested from the GraphicExporter, use a *very* high limit
-            // of 16gb (4096x4096 pixels), else use the default for the converters
-            nMaximumQuadraticPixels = std::min(sal_uInt32(4096 * 4096), sal_uInt32(pSize->Width() * pSize->Height()));
-        }
-        else
-        {
-            // use 100th mm for primitive bitmap converter tool
-            const Size aSize100th(OutputDevice::LogicToLogic(rMtf.GetPrefSize(), rMtf.GetPrefMapMode(), MapMode(MapUnit::Map100thMM)));
-
-            aRange.expand(basegfx::B2DPoint(aSize100th.Width(), aSize100th.Height()));
-        }
-
-        return convertMetafileToBitmapEx(rMtf, aRange, nMaximumQuadraticPixels);
-    }
 
     Size* CalcSize( sal_Int32 nWidth, sal_Int32 nHeight, const Size& aBoundSize, Size& aOutSize )
     {
@@ -407,12 +376,12 @@ void GraphicExporter::ParseSettings(const Sequence<PropertyValue>& rDescriptor,
         comphelper::SequenceAsHashMap aMap(aDescriptor);
         Sequence<PropertyValue> aFilterData;
         OUString aFilterOptions;
-        auto it = aMap.find("FilterData");
+        auto it = aMap.find(u"FilterData"_ustr);
         if (it != aMap.end())
         {
             it->second >>= aFilterData;
         }
-        it = aMap.find("FilterOptions");
+        it = aMap.find(u"FilterOptions"_ustr);
         if (it != aMap.end())
         {
             it->second >>= aFilterOptions;
@@ -420,12 +389,19 @@ void GraphicExporter::ParseSettings(const Sequence<PropertyValue>& rDescriptor,
         if (!aFilterData.hasElements() && !aFilterOptions.isEmpty())
         {
             // Allow setting filter data keys from the cmdline.
-            std::vector<PropertyValue> aData
-                = comphelper::JsonToPropertyValues(aFilterOptions.toUtf8());
-            aFilterData = comphelper::containerToSequence(aData);
+            try
+            {
+                std::vector<PropertyValue> aData
+                    = comphelper::JsonToPropertyValues(aFilterOptions.toUtf8());
+                aFilterData = comphelper::containerToSequence(aData);
+            }
+            catch (const boost::property_tree::json_parser::json_parser_error&)
+            {
+                // This wasn't a valid json; maybe came from import filter (tdf#162528)
+            }
             if (aFilterData.hasElements())
             {
-                aMap["FilterData"] <<= aFilterData;
+                aMap[u"FilterData"_ustr] <<= aFilterData;
                 aDescriptor = aMap.getAsConstPropertyValueList();
             }
         }
@@ -597,7 +573,8 @@ bool GraphicExporter::GetGraphic( ExportSettings const & rSettings, Graphic& aGr
     SdrOutliner& rOutl=mpDoc->GetDrawOutliner();
     maOldCalcFieldValueHdl = rOutl.GetCalcFieldValueHdl();
     rOutl.SetCalcFieldValueHdl( LINK(this, GraphicExporter, CalcFieldValueHdl) );
-    rOutl.SetBackgroundColor( pPage->GetPageBackgroundColor() );
+    ::Color aOldBackColor(rOutl.GetBackgroundColor());
+    rOutl.SetBackgroundColor(pPage->GetPageBackgroundColor());
 
     // #i102251#
     const EEControlBits nOldCntrl(rOutl.GetControlWord());
@@ -685,7 +662,7 @@ bool GraphicExporter::GetGraphic( ExportSettings const & rSettings, Graphic& aGr
 
                 if( pVDev )
                 {
-                    aGraphic = pVDev->GetBitmapEx( Point(), pVDev->GetOutputSize() );
+                    aGraphic = pVDev->GetBitmap( Point(), pVDev->GetOutputSize() );
                     aGraphic.SetPrefMapMode( aMap );
                     aGraphic.SetPrefSize( aSize );
                 }
@@ -885,8 +862,8 @@ bool GraphicExporter::GetGraphic( ExportSettings const & rSettings, Graphic& aGr
             ScopedVclPtrInstance< VirtualDevice > aOut;
 
             // calculate bound rect for all shapes
-            // tdf#126319 I did not convert all rendering to primities,
-            // that would be to much for this fix. But I  did so for the
+            // tdf#126319 I did not convert all rendering to primitives,
+            // that would be too much for this fix. But I  did so for the
             // range calculation to get a valid high quality range.
             // Based on that the conversion is reliable. With the BoundRect
             // fetched from the Metafile it was just not possible to get the
@@ -926,8 +903,8 @@ bool GraphicExporter::GetGraphic( ExportSettings const & rSettings, Graphic& aGr
             // that avoids to do it later by Metafile::Move what would be expensive
             aOutMap.SetOrigin(
                 Point(
-                    basegfx::fround(-aBound.getMinX() - aHalfPixelInMtf.getWidth()),
-                    basegfx::fround(-aBound.getMinY() - aHalfPixelInMtf.getHeight()) ) );
+                    basegfx::fround<tools::Long>(-aBound.getMinX() - aHalfPixelInMtf.getWidth()),
+                    basegfx::fround<tools::Long>(-aBound.getMinY() - aHalfPixelInMtf.getHeight()) ) );
             aOut->SetRelativeMapMode( aOutMap );
 
             sdr::contact::DisplayInfo aDisplayInfo;
@@ -965,8 +942,8 @@ bool GraphicExporter::GetGraphic( ExportSettings const & rSettings, Graphic& aGr
             // export is always a risky thing, so it will have to show if this will
             // not influence something else.
             const Size aBoundSize(
-                basegfx::fround(aBound.getWidth() + 1),
-                basegfx::fround(aBound.getHeight() + 1));
+                basegfx::fround<tools::Long>(aBound.getWidth() + 1),
+                basegfx::fround<tools::Long>(aBound.getHeight() + 1));
             aMtf.SetPrefMapMode( aMap );
             aMtf.SetPrefSize( aBoundSize );
 
@@ -988,6 +965,8 @@ bool GraphicExporter::GetGraphic( ExportSettings const & rSettings, Graphic& aGr
 
     // #i102251#
     rOutl.SetControlWord(nOldCntrl);
+
+    rOutl.SetBackgroundColor(aOldBackColor);
 
     return bRet;
 
@@ -1025,23 +1004,26 @@ sal_Bool SAL_CALL GraphicExporter::filter( const Sequence< PropertyValue >& aDes
         AllSettings aAllSettings = Application::GetSettings();
         StyleSettings aStyleSettings = aAllSettings.GetStyleSettings();
         bool bUseFontAAFromSystem = aStyleSettings.GetUseFontAAFromSystem();
+        bool bUseSubpixelAA = aStyleSettings.GetUseSubpixelAA();
+        aStyleSettings.SetUseSubpixelAA(false);
         if (aSettings.meAntiAliasing != TRISTATE_INDET)
         {
             // This is safe to do globally as we own the solar mutex.
             SvtOptionsDrawinglayer::SetAntiAliasing(aSettings.meAntiAliasing == TRISTATE_TRUE, /*bTemporary*/true);
             // Opt in to have AA affect font rendering as well.
             aStyleSettings.SetUseFontAAFromSystem(false);
-            aAllSettings.SetStyleSettings(aStyleSettings);
-            Application::SetSettings(aAllSettings);
         }
+        aAllSettings.SetStyleSettings(aStyleSettings);
+        Application::SetSettings(aAllSettings, /*bTemporary*/true);
         nStatus = GetGraphic( aSettings, aGraphic, bVectorType ) ? ERRCODE_NONE : ERRCODE_GRFILTER_FILTERERROR;
         if (aSettings.meAntiAliasing != TRISTATE_INDET)
         {
             SvtOptionsDrawinglayer::SetAntiAliasing(bAntiAliasing, /*bTemporary*/true);
             aStyleSettings.SetUseFontAAFromSystem(bUseFontAAFromSystem);
-            aAllSettings.SetStyleSettings(aStyleSettings);
-            Application::SetSettings(aAllSettings);
         }
+        aStyleSettings.SetUseSubpixelAA(bUseSubpixelAA);
+        aAllSettings.SetStyleSettings(aStyleSettings);
+        Application::SetSettings(aAllSettings, /*bTemporary*/true);
     }
 
     if( nStatus == ERRCODE_NONE )
@@ -1146,7 +1128,7 @@ void SAL_CALL GraphicExporter::setSourceDocument( const Reference< lang::XCompon
                 if (!xPropertySet.is())
                     break;
                 uno::Reference<graphic::XGraphic> xGraphic(
-                    xPropertySet->getPropertyValue("Graphic"), uno::UNO_QUERY);
+                    xPropertySet->getPropertyValue(u"Graphic"_ustr), uno::UNO_QUERY);
                 if (!xGraphic.is())
                     break;
 
@@ -1228,7 +1210,7 @@ void SAL_CALL GraphicExporter::setSourceDocument( const Reference< lang::XCompon
 // XServiceInfo
 OUString SAL_CALL GraphicExporter::getImplementationName(  )
 {
-    return "com.sun.star.comp.Draw.GraphicExporter";
+    return u"com.sun.star.comp.Draw.GraphicExporter"_ustr;
 }
 
 sal_Bool SAL_CALL GraphicExporter::supportsService( const OUString& ServiceName )
@@ -1238,7 +1220,7 @@ sal_Bool SAL_CALL GraphicExporter::supportsService( const OUString& ServiceName 
 
 Sequence< OUString > SAL_CALL GraphicExporter::getSupportedServiceNames(  )
 {
-    Sequence< OUString > aSupportedServiceNames { "com.sun.star.drawing.GraphicExportFilter" };
+    Sequence< OUString > aSupportedServiceNames { u"com.sun.star.drawing.GraphicExportFilter"_ustr };
     return aSupportedServiceNames;
 }
 
@@ -1285,6 +1267,42 @@ Sequence< OUString > SAL_CALL GraphicExporter::getSupportedMimeTypeNames(  )
     return aSeq;
 }
 
+}
+
+/** creates a bitmap that is optionally transparent from a metafile
+    */
+Bitmap GetBitmapFromMetaFile(const GDIMetaFile& rMtf, const Size* pSize)
+{
+    // use new primitive conversion tooling
+    basegfx::B2DRange aRange(basegfx::B2DPoint(0.0, 0.0));
+    sal_uInt32 nMaximumQuadraticPixels;
+
+    if (pSize)
+    {
+        // use 100th mm for primitive bitmap converter tool, input is pixel
+        // use a real OutDev to get the correct DPI, the static LogicToLogic assumes 72dpi which is wrong (!)
+        const Size aSize100th(
+            Application::GetDefaultDevice()->PixelToLogic(*pSize, MapMode(MapUnit::Map100thMM)));
+
+        aRange.expand(basegfx::B2DPoint(aSize100th.Width(), aSize100th.Height()));
+
+        // when explicitly pixels are requested from the GraphicExporter, use a *very* high limit
+        // of 16gb (4096x4096 pixels)
+        nMaximumQuadraticPixels = 4096 * 4096;
+    }
+    else
+    {
+        // use 100th mm for primitive bitmap converter tool
+        const Size aSize100th(OutputDevice::LogicToLogic(rMtf.GetPrefSize(), rMtf.GetPrefMapMode(),
+                                                         MapMode(MapUnit::Map100thMM)));
+
+        aRange.expand(basegfx::B2DPoint(aSize100th.Width(), aSize100th.Height()));
+
+        // limit to 2048x2048 pixels, as in ImpGraphic::getBitmap (vcl/source/gdi/impgraph.cxx):
+        nMaximumQuadraticPixels = 2048 * 2048;
+    }
+
+    return convertMetafileToBitmap(rMtf, aRange, nMaximumQuadraticPixels);
 }
 
 Graphic SvxGetGraphicForShape( SdrObject& rShape )

@@ -29,10 +29,12 @@
 #include <o3tl/typed_flags_set.hxx>
 #include <svx/swframetypes.hxx>
 #include <vcl/weld.hxx>
+#include <sfx2/redlinerecordingmode.hxx>
 
 #include <doc.hxx>
 #include <docsh.hxx>
 #include <viewopt.hxx>
+#include <reffldsubtype.hxx>
 
 namespace vcl { class Window; }
 class SbxArray;
@@ -43,7 +45,6 @@ class SwView;
 class SvGlobalName;
 class SwInputFieldList;
 class SwSectionData;
-class Timer;
 class SvxMacro;
 class SwFormatINetFormat;
 class SvxAutoCorrect;
@@ -54,7 +55,6 @@ enum class SvMacroItemId : sal_uInt16;
 class SwFieldMgr;
 class SfxRequest;
 enum class SwLineBreakClear;
-class SwContentControl;
 enum class SwContentControlType;
 
 namespace i18nutil {
@@ -93,7 +93,7 @@ namespace o3tl {
 Eg. the Insert() method will take the current cursor position, insert the
 string, and take care of undo etc.
 */
-class SW_DLLPUBLIC SwWrtShell final : public SwFEShell
+class SAL_DLLPUBLIC_RTTI SwWrtShell final : public SwFEShell
 {
 private:
     using SwCursorShell::Left;
@@ -108,7 +108,7 @@ private:
     using SwEditShell::AutoCorrect;
     using SwCursorShell::GotoMark;
 
-    typedef tools::Long (SwWrtShell::*SELECTFUNC)(const Point *, bool bProp );
+    typedef tools::Long (SwWrtShell::*SELECTFUNC)(const Point *, bool bProp, ScrollSizeMode eScrollSizeMode );
     typedef void (SwWrtShell::*SELECTFUNC2)(const Point *, bool bProp );
 
     SELECTFUNC2 m_fnDrag      = &SwWrtShell::BeginDrag;
@@ -120,36 +120,43 @@ public:
     using SwCursorShell::GotoFootnoteAnchor;
     using SwEditShell::Insert;
 
-    tools::Long CallSetCursor(const Point* pPt, bool bProp) { return (this->*m_fnSetCursor)(pPt, bProp); }
+    tools::Long CallSetCursor(const Point* pPt, bool bProp,
+        ScrollSizeMode eScrollSizeMode = ScrollSizeMode::ScrollSizeDefault)
+        { return (this->*m_fnSetCursor)(pPt, bProp, eScrollSizeMode); }
     void Drag         (const Point* pPt, bool bProp) { (this->*m_fnDrag)(pPt, bProp); }
     void EndDrag      (const Point* pPt, bool bProp) { (this->*m_fnEndDrag)(pPt, bProp); }
-    tools::Long KillSelection(const Point* pPt, bool bProp) { return (this->*m_fnKillSel)(pPt, bProp); }
+    tools::Long KillSelection(const Point* pPt, bool bProp,
+        ScrollSizeMode eScrollSizeMode = ScrollSizeMode::ScrollSizeDefault)
+        { return (this->*m_fnKillSel)(pPt, bProp, eScrollSizeMode ); }
 
     bool IsSplitVerticalByDefault() const;
     void SetSplitVerticalByDefault(bool value);
 
     // reset all selections
-    tools::Long ResetSelect( const Point *, bool );
+    SW_DLLPUBLIC tools::Long ResetSelect( const Point *, bool, ScrollSizeMode );
 
     // resets the cursorstack after movement with PageUp/-Down if a stack is built up
     inline void ResetCursorStack();
-    SelectionType   GetSelectionType() const;
+    SW_DLLPUBLIC SelectionType GetSelectionType() const;
+
+    // checks if the section is editable in read-only mode
+    bool    IsSectionEditableInReadonly() const;
 
     bool    IsModePushed() const { return nullptr != m_pModeStack; }
     void    PushMode();
     void    PopMode();
 
     void    SttSelect();
-    void    EndSelect();
+    SW_DLLPUBLIC void EndSelect();
     bool    IsInSelect() const { return m_bInSelect; }
     void    SetInSelect() { m_bInSelect = true; }
         // is there a text- or frameselection?
     bool    HasSelection() const { return SwCursorShell::HasSelection() ||
-                                        IsMultiSelection() || IsSelFrameMode() || IsObjSelected(); }
+                                        IsMultiSelection() || IsSelFrameMode() || GetSelectedObjCount(); }
     bool    Pop(SwCursorShell::PopMode, ::std::optional<SwCallLink>& roLink);
-    bool    Pop(SwCursorShell::PopMode = SwCursorShell::PopMode::DeleteStack);
+    SW_DLLPUBLIC bool Pop(SwCursorShell::PopMode = SwCursorShell::PopMode::DeleteStack);
 
-    void    EnterStdMode();
+    SW_DLLPUBLIC void EnterStdMode();
     bool    IsStdMode() const { return !m_bExtMode && !m_bAddMode && !m_bBlockMode; }
 
     void AssureStdMode();
@@ -172,13 +179,13 @@ public:
     void    SetInsMode( bool bOn = true );
     void    ToggleInsMode() { SetInsMode( !m_bIns ); }
     bool    IsInsMode() const { return m_bIns; }
-    void    SetRedlineFlagsAndCheckInsMode( RedlineFlags eMode );
+    SW_DLLPUBLIC void SetRedlineFlagsAndCheckInsMode( RedlineFlags eMode, SfxRedlineRecordingMode eRedlineRecordingMode = SfxRedlineRecordingMode::ViewAgnostic);
 
-    void    EnterSelFrameMode(const Point *pStartDrag = nullptr);
-    void    LeaveSelFrameMode();
+    SW_DLLPUBLIC void EnterSelFrameMode(const Point *pStartDrag = nullptr);
+    SW_DLLPUBLIC void LeaveSelFrameMode();
     bool    IsSelFrameMode() const { return m_bLayoutMode; }
         // reset selection of frames
-    void    UnSelectFrame();
+    SW_DLLPUBLIC void UnSelectFrame();
 
     void    Invalidate();
 
@@ -200,39 +207,39 @@ public:
 
     // select word / sentence
     bool    SelNearestWrd();
-    bool    SelWrd      (const Point * = nullptr );
+    SW_DLLPUBLIC bool SelWrd(const Point * = nullptr, sal_Int16 nWordType = i18n::WordType::ANYWORD_IGNOREWHITESPACES );
     // #i32329# Enhanced selection
     void    SelSentence (const Point *);
-    void    SelPara     (const Point *);
-    void    SelAll();
+    SW_DLLPUBLIC void SelPara     (const Point *);
+    SW_DLLPUBLIC void SelAll();
 
     // basecursortravelling
 typedef bool (SwWrtShell::*FNSimpleMove)();
-    bool SimpleMove( FNSimpleMove, bool bSelect );
+    SW_DLLPUBLIC bool SimpleMove( FNSimpleMove, bool bSelect );
 
-    bool Left       ( SwCursorSkipMode nMode, bool bSelect,
+    SW_DLLPUBLIC bool Left( SwCursorSkipMode nMode, bool bSelect,
                             sal_uInt16 nCount, bool bBasicCall, bool bVisual = false );
-    bool Right      ( SwCursorSkipMode nMode, bool bSelect,
+    SW_DLLPUBLIC bool Right( SwCursorSkipMode nMode, bool bSelect,
                             sal_uInt16 nCount, bool bBasicCall, bool bVisual = false );
-    bool Up         ( bool bSelect, sal_uInt16 nCount = 1, bool bBasicCall = false );
-    bool Down       ( bool bSelect, sal_uInt16 nCount = 1, bool bBasicCall = false );
+    SW_DLLPUBLIC bool Up  ( bool bSelect, sal_uInt16 nCount = 1, bool bBasicCall = false );
+    SW_DLLPUBLIC bool Down( bool bSelect, sal_uInt16 nCount = 1, bool bBasicCall = false );
     void NxtWrd     ( bool bSelect = false ) { SimpleMove( &SwWrtShell::NxtWrd_, bSelect ); }
     bool PrvWrd     ( bool bSelect = false ) { return SimpleMove( &SwWrtShell::PrvWrd_, bSelect ); }
 
     bool LeftMargin ( bool bSelect, bool bBasicCall );
-    bool RightMargin( bool bSelect, bool bBasicCall );
+    SW_DLLPUBLIC bool RightMargin( bool bSelect, bool bBasicCall );
 
-    bool StartOfSection( bool bSelect = false );
-    bool EndOfSection  ( bool bSelect = false );
+    SW_DLLPUBLIC bool StartOfSection( bool bSelect = false );
+    SW_DLLPUBLIC bool EndOfSection  ( bool bSelect = false );
 
-    bool SttNxtPg   ( bool bSelect = false );
+    SW_DLLPUBLIC bool SttNxtPg   ( bool bSelect = false );
     void SttPrvPg   ( bool bSelect = false );
     void EndNxtPg   ( bool bSelect = false );
-    bool EndPrvPg   ( bool bSelect = false );
-    bool SttPg      ( bool bSelect = false );
-    bool EndPg      ( bool bSelect = false );
-    bool SttPara    ( bool bSelect = false );
-    void EndPara    ( bool bSelect = false );
+    SW_DLLPUBLIC bool EndPrvPg   ( bool bSelect = false );
+    SW_DLLPUBLIC bool SttPg      ( bool bSelect = false );
+    SW_DLLPUBLIC bool EndPg      ( bool bSelect = false );
+    SW_DLLPUBLIC bool SttPara    ( bool bSelect = false );
+    SW_DLLPUBLIC void EndPara    ( bool bSelect = false );
     bool FwdPara    ()
                 { return SimpleMove( &SwWrtShell::FwdPara_, false/*bSelect*/ ); }
     void BwdPara    ()
@@ -243,12 +250,12 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
                 { SimpleMove( &SwWrtShell::BwdSentence_, bSelect ); }
 
     // #i20126# Enhanced table selection
-    bool SelectTableRowCol( const Point& rPt, const Point* pEnd = nullptr, bool bRowDrag = false );
+    SW_DLLPUBLIC bool SelectTableRowCol( const Point& rPt, const Point* pEnd = nullptr, bool bRowDrag = false );
     void SelectTableRow();
     void SelectTableCol();
     void SelectTableCell();
 
-    bool SelectTextAttr( sal_uInt16 nWhich, const SwTextAttr* pAttr = nullptr );
+    SW_DLLPUBLIC bool SelectTextAttr( sal_uInt16 nWhich, const SwTextAttr* pAttr = nullptr );
 
     // per column jumps
     void StartOfColumn      ();
@@ -262,10 +269,10 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
     // additionally to an identically named implementation in crsrsh.hxx
     // here all existing selections are being reset before setting the
     // cursor
-    bool    GotoPage( sal_uInt16 nPage, bool bRecord );
+    SW_DLLPUBLIC bool GotoPage( sal_uInt16 nPage, bool bRecord );
 
     // setting the cursor; remember the old position for turning back
-    DECL_DLLPRIVATE_LINK( ExecFlyMac, const SwFlyFrameFormat*, void );
+    DECL_LINK( ExecFlyMac, const SwFlyFrameFormat*, void );
 
     bool    PageCursor(SwTwips lOffset, bool bSelect);
 
@@ -279,19 +286,19 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
     void SetRetainSelection( bool bRet ) { m_bRetainSelection = bRet; }
 
     // change current data base and notify
-    void ChgDBData(const SwDBData& SwDBData);
+    SW_DLLPUBLIC void ChgDBData(const SwDBData& SwDBData);
 
     // delete
     void    DelToEndOfLine();
-    void    DelToStartOfLine();
-    void    DelLine();
-    bool    DelLeft();
+    SW_DLLPUBLIC void DelToStartOfLine();
+    SW_DLLPUBLIC void DelLine();
+    SW_DLLPUBLIC bool DelLeft();
 
     // also deletes the frame or sets the cursor in the frame when bDelFrame == false
-    bool    DelRight(bool isReplaceHeuristic = false);
-    void    DelToEndOfPara();
+    SW_DLLPUBLIC bool DelRight(bool isReplaceHeuristic = false);
+    SW_DLLPUBLIC void DelToEndOfPara();
     void    DelToStartOfPara();
-    bool    DelToEndOfSentence();
+    SW_DLLPUBLIC bool DelToEndOfSentence();
     void    DelToStartOfSentence();
     void    DelNxtWord();
     void    DelPrvWord();
@@ -309,25 +316,29 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
     int     IntelligentCut(SelectionType nSelectionType, bool bCut = true);
 
     // edit
-    bool    InsertField2(SwField const &, SwPaM* pAnnotationRange = nullptr);
-    void    Insert(const OUString &);
+    bool InsertField2Impl(SwField const &, SwPaM* pAnnotationRange,
+            ::std::optional<SwPosition> *const poAnchorStart);
+    SW_DLLPUBLIC bool InsertField2(SwField const &, SwPaM* pAnnotationRange = nullptr,
+            ::std::optional<SwPosition> *const poAnchorStart = nullptr);
+    SW_DLLPUBLIC void Insert(const OUString &);
     // graphic
     void    InsertGraphic( const OUString &rPath, const OUString &rFilter,
                     const Graphic &, SwFlyFrameAttrMgr * = nullptr,
                     RndStdIds nAnchorType = RndStdIds::FLY_AT_PARA);
 
     void    InsertByWord( const OUString & );
-    void    InsertPageBreak(const OUString *pPageDesc = nullptr, const ::std::optional<sal_uInt16>& rPgNum = std::nullopt);
-    void InsertLineBreak(std::optional<SwLineBreakClear> oClear = std::nullopt);
+    SW_DLLPUBLIC void InsertPageBreak(const UIName *pPageDesc = nullptr, const ::std::optional<sal_uInt16>& rPgNum = std::nullopt);
+    void InsertEnclosingChars(const OUString& sStartStr, const OUString& sEndStr);
+    SW_DLLPUBLIC void InsertLineBreak(std::optional<SwLineBreakClear> oClear = std::nullopt);
     void    InsertColumnBreak();
-    void InsertContentControl(SwContentControlType eType);
-    void    InsertFootnote(const OUString &, bool bEndNote = false, bool bEdit = true );
-    void    SplitNode( bool bAutoFormat = false );
+    SW_DLLPUBLIC void InsertContentControl(SwContentControlType eType);
+    SW_DLLPUBLIC void InsertFootnote(const OUString &, bool bEndNote = false, bool bEdit = true );
+    SW_DLLPUBLIC void SplitNode( bool bAutoFormat = false );
     bool    CanInsert();
 
     // indexes
     void    InsertTableOf(const SwTOXBase& rTOX, const SfxItemSet* pSet = nullptr);
-    void    UpdateTableOf(const SwTOXBase& rTOX, const SfxItemSet* pSet = nullptr);
+    SW_DLLPUBLIC void UpdateTableOf(const SwTOXBase& rTOX, const SfxItemSet* pSet = nullptr);
 
     // numbering and bullets
     /**
@@ -339,16 +350,16 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
     void    NumOrBulletOn(bool bNum); // #i29560#
     void    NumOrBulletOff(); // #i29560#
     void    NumOn();
-    void    BulletOn();
+    SW_DLLPUBLIC void BulletOn();
 
     //OLE
-    void    InsertObject(     /*SvInPlaceObjectRef *pObj, */       // != 0 for clipboard
+    SW_DLLPUBLIC void InsertObject(     /*SvInPlaceObjectRef *pObj, */       // != 0 for clipboard
                           const svt::EmbeddedObjectRef&,
                           SvGlobalName const *pName,      // != 0 create object accordingly
                           sal_uInt16 nSlotId = 0);       // SlotId for dialog
 
     bool    InsertOleObject( const svt::EmbeddedObjectRef& xObj, SwFlyFrameFormat **pFlyFrameFormat = nullptr );
-    void    LaunchOLEObj(sal_Int32 nVerb = css::embed::EmbedVerbs::MS_OLEVERB_PRIMARY); // start server
+    SW_DLLPUBLIC void LaunchOLEObj(sal_Int32 nVerb = css::embed::EmbedVerbs::MS_OLEVERB_PRIMARY); // start server
     virtual void MoveObjectIfActive( svt::EmbeddedObjectRef& xObj, const Point& rOffset ) override;
     virtual void CalcAndSetScale( svt::EmbeddedObjectRef& xObj,
                                   const SwRect *pFlyPrtRect = nullptr,
@@ -364,15 +375,15 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
                     GETSTYLE_CREATESOME,        // if on PoolId create mapt
                     GETSTYLE_CREATEANY };       // return standard if applicable
 
-    SwTextFormatColl*   GetParaStyle(const OUString &rCollName,
+    SW_DLLPUBLIC SwTextFormatColl* GetParaStyle(const UIName &rCollName,
                                     GetStyle eCreate = GETSTYLE_NOCREATE);
-    SwCharFormat*      GetCharStyle(const OUString &rFormatName,
+    SW_DLLPUBLIC SwCharFormat* GetCharStyle(const UIName &rFormatName,
                                     GetStyle eCreate = GETSTYLE_NOCREATE);
-    SwFrameFormat*       GetTableStyle(std::u16string_view rFormatName);
+    SW_DLLPUBLIC SwFrameFormat* GetTableStyle(const UIName& rFormatName);
 
-    void            SetPageStyle(const OUString &rCollName);
+    void            SetPageStyle(const UIName &rCollName);
 
-    OUString const & GetCurPageStyle() const;
+    SW_DLLPUBLIC UIName const & GetCurPageStyle() const;
 
     // change current style using the attributes in effect
     void    QuickUpdateStyle();
@@ -387,16 +398,16 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
     void    GetDoStrings( DoType eDoType, SfxStringListItem& rStrLstItem ) const;
 
     // search and replace
-    sal_Int32 SearchPattern(const i18nutil::SearchOptions2& rSearchOpt,
+    SW_DLLPUBLIC sal_Int32 SearchPattern(const i18nutil::SearchOptions2& rSearchOpt,
                          bool bSearchInNotes,
                          SwDocPositions eStart, SwDocPositions eEnd,
                          FindRanges eFlags = FindRanges::InBody,
                          bool bReplace = false );
 
-    sal_Int32 SearchTempl  (const OUString &rTempl,
+    sal_Int32 SearchTempl  (const UIName &rTempl,
                          SwDocPositions eStart, SwDocPositions eEnd,
                          FindRanges eFlags = FindRanges::InBody,
-                         const OUString* pReplTempl = nullptr );
+                         const UIName* pReplTempl = nullptr );
 
     sal_Int32 SearchAttr   (const SfxItemSet& rFindSet,
                          bool bNoColls,
@@ -405,7 +416,7 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
                          const i18nutil::SearchOptions2* pSearchOpt = nullptr,
                          const SfxItemSet* pReplaceSet = nullptr);
 
-    void AutoCorrect( SvxAutoCorrect& rACorr, sal_Unicode cChar );
+    SW_DLLPUBLIC void AutoCorrect( SvxAutoCorrect& rACorr, sal_Unicode cChar );
 
     // action ahead of cursor movement
     // resets selection if applicable, triggers timer and GCAttr()
@@ -420,21 +431,21 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
     virtual void DrawSelChanged( ) override;
 
     // jump to bookmark and set the "selections-flags" correctly again
-    void GotoMark( const ::sw::mark::IMark* const pMark );
-    bool GotoMark( const ::sw::mark::IMark* const pMark, bool bSelect );
-    void GotoMark( const OUString& rName );
+    SW_DLLPUBLIC void GotoMark( const ::sw::mark::MarkBase* const pMark );
+    bool GotoMark( const ::sw::mark::MarkBase* const pMark, bool bSelect );
+    SW_DLLPUBLIC void GotoMark( const SwMarkName& rName );
     bool GoNextBookmark(); // true when there still was one
     bool GoPrevBookmark();
 
-    bool GotoFieldmark(::sw::mark::IFieldmark const * const pMark);
+    bool GotoFieldmark(::sw::mark::Fieldmark const * const pMark);
 
-    bool GotoField( const SwFormatField& rField );
+    SW_DLLPUBLIC bool GotoField( const SwFormatField& rField );
 
     /** @param bOnlyRefresh:
      *         false: run default actions (e.g. toggle checkbox, remove placeholder content)
      *         true: do not alter the content control, just refresh the doc model
      */
-    bool GotoContentControl(const SwFormatContentControl& rContentControl,
+    SW_DLLPUBLIC bool GotoContentControl(const SwFormatContentControl& rContentControl,
                             bool bOnlyRefresh = false);
 
     // jump to the next / previous hyperlink - inside text and also
@@ -461,11 +472,10 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
     // if a URL-Button is selected, return its URL; otherwise an empty string
     bool GetURLFromButton( OUString& rURL, OUString& rDescr ) const;
 
-    void NavigatorPaste( const NaviContentBookmark& rBkmk,
-                         const sal_uInt16 nAction );
+    void NavigatorPaste(const NaviContentBookmark& rBkmk);
 
-    virtual void ApplyViewOptions( const SwViewOption &rOpt ) override;
-    virtual void SetReadonlyOption( bool bSet ) override;
+    SW_DLLPUBLIC virtual void ApplyViewOptions( const SwViewOption &rOpt ) override;
+    SW_DLLPUBLIC virtual void SetReadonlyOption( bool bSet ) override;
 
     // automatic update of styles
     void AutoUpdateFrame(SwFrameFormat* pFormat, const SfxItemSet& rStyleSet);
@@ -480,28 +490,30 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
                 const SwViewOption *pViewOpt);
     virtual ~SwWrtShell() override;
 
-    bool TryRemoveIndent(); // #i23725#
+    SW_DLLPUBLIC virtual SwPostItMgr* GetPostItMgr() override;
+
+    SW_DLLPUBLIC bool TryRemoveIndent(); // #i23725#
 
     OUString GetSelDescr() const;
 
     SwNavigationMgr& GetNavigationMgr() { return m_aNavigationMgr; }
 
     void addCurrentPosition();
-    bool GotoFly( const OUString& rName, FlyCntType eType = FLYCNTTYPE_ALL,
+    SW_DLLPUBLIC bool GotoFly( const UIName& rName, FlyCntType eType = FLYCNTTYPE_ALL,
          bool bSelFrame = true );
     bool GotoINetAttr( const SwTextINetFormat& rAttr );
     void GotoOutline( SwOutlineNodes::size_type nIdx );
     bool GotoOutline( const OUString& rName );
     bool GotoRegion( std::u16string_view rName );
-    bool GotoRefMark( const OUString& rRefMark, sal_uInt16 nSubType = 0,
+    bool GotoRefMark( const SwMarkName& rRefMark, ReferencesSubtype nSubType = ReferencesSubtype::SetRefAttr,
         sal_uInt16 nSeqNo = 0, sal_uInt16 nFlags = 0 );
-    bool GotoNextTOXBase( const OUString* pName = nullptr);
-    bool GotoTable( const OUString& rName );
+    SW_DLLPUBLIC bool GotoNextTOXBase( const UIName* pName = nullptr);
+    SW_DLLPUBLIC bool GotoTable( const UIName& rName );
     void GotoFormatField( const SwFormatField& rField );
     const SwRangeRedline* GotoRedline( SwRedlineTable::size_type nArrPos, bool bSelect);
-    bool GotoDrawingObject(std::u16string_view rName);
+    SW_DLLPUBLIC bool GotoDrawingObject(std::u16string_view rName);
     void GotoFootnoteAnchor(const SwTextFootnote& rTextFootnote);
-    void ChangeHeaderOrFooter(std::u16string_view rStyleName, bool bHeader, bool bOn, bool bShowWarning);
+    SW_DLLPUBLIC void ChangeHeaderOrFooter(const UIName& rStyleName, bool bHeader, bool bOn, bool bShowWarning);
     virtual void SetShowHeaderFooterSeparator( FrameControlType eControl, bool bShow ) override;
 
     /// Inserts a new annotation/comment at the current cursor position / selection.
@@ -524,8 +536,8 @@ typedef bool (SwWrtShell::*FNSimpleMove)();
 
 private:
 
-    SAL_DLLPRIVATE void  OpenMark();
-    SAL_DLLPRIVATE void  CloseMark( bool bOkFlag );
+    void  OpenMark();
+    void  CloseMark( bool bOkFlag );
 
     struct ModeStack
     {
@@ -578,21 +590,21 @@ private:
     Point   m_aDest;
     bool    m_bDestOnStack = false;
     bool    HasCursorStack() const { return nullptr != m_pCursorStack; }
-    SAL_DLLPRIVATE bool  PushCursor(SwTwips lOffset, bool bSelect);
-    SAL_DLLPRIVATE bool  PopCursor(bool bUpdate, bool bSelect = false);
+    bool  PushCursor(SwTwips lOffset, bool bSelect);
+    bool  PopCursor(bool bUpdate, bool bSelect = false);
 
     // take END cursor along when PageUp / -Down
-    SAL_DLLPRIVATE void SttWrd();
-    SAL_DLLPRIVATE void EndWrd();
-    SAL_DLLPRIVATE bool NxtWrd_();
-    SAL_DLLPRIVATE bool PrvWrd_();
+    void SttWrd();
+    void EndWrd();
+    bool NxtWrd_();
+    bool PrvWrd_();
     // #i92468#
-    SAL_DLLPRIVATE bool NxtWrdForDelete();
-    SAL_DLLPRIVATE bool PrvWrdForDelete();
-    SAL_DLLPRIVATE bool FwdSentence_();
-    SAL_DLLPRIVATE bool BwdSentence_();
-    bool FwdPara_();
-    SAL_DLLPRIVATE bool BwdPara_();
+    bool NxtWrdForDelete();
+    bool PrvWrdForDelete();
+    bool FwdSentence_();
+    bool BwdSentence_();
+    SW_DLLPUBLIC bool FwdPara_();
+    bool BwdPara_();
 
         // selections
     bool    m_bIns            :1;
@@ -611,34 +623,38 @@ private:
     Link<SwWrtShell&,void>  m_aSelTableLink;
 
     // resets the cursor stack after movement by PageUp/-Down
-    SAL_DLLPRIVATE void  ResetCursorStack_();
+    void  ResetCursorStack_();
 
     using SwCursorShell::SetCursor;
-    SAL_DLLPRIVATE tools::Long  SetCursor(const Point *, bool bProp=false );
+    tools::Long  SetCursor(const Point *, bool bProp=false,
+        ScrollSizeMode eScrollSizeMode = ScrollSizeMode::ScrollSizeDefault );
 
-    SAL_DLLPRIVATE tools::Long  SetCursorKillSel(const Point *, bool bProp );
+    tools::Long  SetCursorKillSel(const Point *, bool bProp,
+        ScrollSizeMode eScrollSizeMode = ScrollSizeMode::ScrollSizeDefault );
 
-    SAL_DLLPRIVATE void  BeginDrag(const Point *, bool bProp );
-    SAL_DLLPRIVATE void  DefaultDrag(const Point *, bool bProp );
-    SAL_DLLPRIVATE void  DefaultEndDrag(const Point *, bool bProp );
+    void  BeginDrag(const Point *, bool bProp );
+    void  DefaultDrag(const Point *, bool bProp );
+    void  DefaultEndDrag(const Point *, bool bProp );
 
-    SAL_DLLPRIVATE void  ExtSelWrd(const Point *, bool bProp );
-    SAL_DLLPRIVATE void  ExtSelLn(const Point *, bool bProp );
+    void  ExtSelWrd(const Point *, bool bProp );
+    void  ExtSelLn(const Point *, bool bProp );
 
-    SAL_DLLPRIVATE void  BeginFrameDrag(const Point *, bool bProp );
+     void  BeginFrameDrag(const Point *, bool bProp );
 
     // after SSize/Move of a frame update; Point is destination.
-    SAL_DLLPRIVATE void  UpdateLayoutFrame(const Point *, bool bProp );
+    void  UpdateLayoutFrame(const Point *, bool bProp );
 
-    SAL_DLLPRIVATE void  SttLeaveSelect();
-    SAL_DLLPRIVATE void  AddLeaveSelect();
-    SAL_DLLPRIVATE tools::Long  Ignore(const Point *, bool bProp );
+    void  SttLeaveSelect();
+    void  AddLeaveSelect();
+    tools::Long  Ignore(const Point *, bool bProp, ScrollSizeMode eScrollSizeMode = ScrollSizeMode::ScrollSizeDefault );
 
-    SAL_DLLPRIVATE void  LeaveExtSel() { m_bSelWrd = m_bSelLn = false;}
+    void  LeaveExtSel() { m_bSelWrd = m_bSelLn = false;}
 
-    SAL_DLLPRIVATE bool  GoStart(bool KeepArea, bool *,
+    bool  GoStart(bool KeepArea, bool *,
             bool bSelect, bool bDontMoveRegion = false);
-    SAL_DLLPRIVATE bool  GoEnd(bool KeepArea = false, const bool * = nullptr);
+    bool  GoEnd(bool KeepArea = false, const bool * = nullptr);
+
+    SAL_DLLPRIVATE void  ImplSetInsMode(bool bOn);
 
     enum BookMarkMove
     {
@@ -647,7 +663,7 @@ private:
         BOOKMARK_PREV
     };
 
-    SAL_DLLPRIVATE bool MoveBookMark(BookMarkMove eFuncId, const ::sw::mark::IMark* const pMark=nullptr);
+    bool MoveBookMark(BookMarkMove eFuncId, const ::sw::mark::MarkBase* const pMark=nullptr);
 };
 
 inline void SwWrtShell::ResetCursorStack()

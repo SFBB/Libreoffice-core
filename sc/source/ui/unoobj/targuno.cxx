@@ -62,9 +62,9 @@ static std::span<const SfxItemPropertyMapEntry> lcl_GetLinkTargetMap()
 // service for ScLinkTargetTypeObj is not defined
 //  must not support document::LinkTarget because the target type cannot be used as a target
 
-SC_SIMPLE_SERVICE_INFO( ScLinkTargetTypesObj, "ScLinkTargetTypesObj", "com.sun.star.document.LinkTargets" )
-SC_SIMPLE_SERVICE_INFO( ScLinkTargetTypeObj,  "ScLinkTargetTypeObj",  "com.sun.star.document.LinkTargetSupplier" )
-SC_SIMPLE_SERVICE_INFO( ScLinkTargetsObj,     "ScLinkTargetsObj",     "com.sun.star.document.LinkTargets" )
+SC_SIMPLE_SERVICE_INFO( ScLinkTargetTypesObj, u"ScLinkTargetTypesObj"_ustr, u"com.sun.star.document.LinkTargets"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScLinkTargetTypeObj,  u"ScLinkTargetTypeObj"_ustr,  u"com.sun.star.document.LinkTargetSupplier"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScLinkTargetsObj,     u"ScLinkTargetsObj"_ustr,     u"com.sun.star.document.LinkTargets"_ustr )
 
 ScLinkTargetTypesObj::ScLinkTargetTypesObj(ScDocShell* pDocSh) :
     pDocShell( pDocSh )
@@ -229,8 +229,8 @@ void ScLinkTargetTypeObj::SetLinkTargetBitmap( uno::Any& rRet, sal_uInt16 nType 
     }
     if (nImgId != ScContentId::ROOT)
     {
-        BitmapEx aBitmapEx { aContentBmps[static_cast<int>(nImgId) -1 ] };
-        rRet <<= VCLUnoHelper::CreateBitmap(aBitmapEx);
+        Bitmap aBitmap { aContentBmps[static_cast<int>(nImgId) -1 ] };
+        rRet <<= VCLUnoHelper::CreateBitmap(aBitmap);
     }
 }
 

@@ -79,7 +79,7 @@ OStatement_Base::OStatement_Base(OConnection* _pConnection ) :  OStatement_BASE(
 void OStatement_Base::disposeResultSet()
 {
     // free the cursor if alive
-    Reference< XComponent > xComp(m_xResultSet.get(), UNO_QUERY);
+    rtl::Reference< OResultSet > xComp = m_xResultSet.get();
     if (xComp.is())
         xComp->dispose();
     m_xResultSet.clear();
@@ -120,11 +120,8 @@ Any SAL_CALL OStatement_Base::queryInterface( const Type & rType )
 
 css::uno::Sequence< css::uno::Type > SAL_CALL OStatement_Base::getTypes(  )
 {
-    ::cppu::OTypeCollection aTypes( cppu::UnoType<css::beans::XMultiPropertySet>::get(),
-                                    cppu::UnoType<css::beans::XFastPropertySet>::get(),
-                                    cppu::UnoType<css::beans::XPropertySet>::get());
-
-    return ::comphelper::concatSequences(aTypes.getTypes(),OStatement_BASE::getTypes());
+    return comphelper::concatSequences(cppu::OPropertySetHelper::getTypes(),
+                                       OStatement_BASE::getTypes());
 }
 
 
@@ -178,8 +175,7 @@ void OStatement_Base::clearMyResultSet ()
 
     try
     {
-        Reference<XCloseable> xCloseable(
-            m_xResultSet.get(), css::uno::UNO_QUERY);
+        rtl::Reference<OResultSet> xCloseable = m_xResultSet.get();
         if ( xCloseable.is() )
             xCloseable->close();
     }
@@ -286,7 +282,7 @@ Reference< XResultSet > SAL_CALL OStatement_Base::executeQuery( const OUString& 
 
     reset();
 
-    m_xResultSet = WeakReference<XResultSet>(nullptr);
+    m_xResultSet.clear();
 
     WpADORecordset aSet;
     aSet.Create();
@@ -308,7 +304,7 @@ Reference< XResultSet > SAL_CALL OStatement_Base::executeQuery( const OUString& 
     rtl::Reference<OResultSet> pSet = new OResultSet(aSet,this);
     pSet->construct();
 
-    m_xResultSet = WeakReference<XResultSet>(pSet);
+    m_xResultSet = pSet.get();
 
     return pSet;
 }
@@ -375,7 +371,7 @@ Sequence< sal_Int32 > SAL_CALL OStatement::executeBatch(  )
         {
             assignRecordSet( pSet );
 
-            ADO_LONGPTR nValue;
+            long nValue;
             if(m_RecordSet.get_RecordCount(nValue))
                 pArray[j] = nValue;
         }
@@ -417,7 +413,7 @@ Reference< XResultSet > SAL_CALL OStatement_Base::getResultSet(  )
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
 
-    return m_xResultSet;
+    return m_xResultSet.get();
 }
 
 
@@ -427,7 +423,7 @@ sal_Int32 SAL_CALL OStatement_Base::getUpdateCount(  )
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
 
-    ADO_LONGPTR nRet;
+    long nRet;
     if(m_RecordSet.IsValid() && m_RecordSet.get_RecordCount(nRet))
         return nRet;
     return -1;
@@ -490,7 +486,7 @@ sal_Int32 OStatement_Base::getQueryTimeOut() const
 
 sal_Int32 OStatement_Base::getMaxRows() const
 {
-    ADO_LONGPTR nRet=-1;
+    long nRet = -1;
     if(!(m_RecordSet.IsValid() && m_RecordSet.get_MaxRecords(nRet)))
         ::dbtools::throwFunctionSequenceException(nullptr);
     return nRet;

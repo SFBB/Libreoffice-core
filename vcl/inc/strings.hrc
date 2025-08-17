@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_STRINGS_HRC
-#define INCLUDED_VCL_INC_STRINGS_HRC
+#pragma once
 
 #define NC_(Context, String) TranslateId(Context, u8##String)
 
@@ -127,6 +126,15 @@
 
 #define STR_SPECIAL_CHARACTER_MENU_ENTRY            NC_("editmenu|specialchar", "_Special Character...")
 
-#endif // INCLUDED_VCL_INC_STRINGS_HRC
+#define RID_STR_ACC_NAME_BROWSEBUTTON               NC_("RID_STR_ACC_NAME_BROWSEBUTTON", "Browse")
+#define STR_SVT_ACC_ACTION_EXPAND                   NC_("STR_SVT_ACC_ACTION_EXPAND", "Expand" )
+#define STR_SVT_ACC_ACTION_COLLAPSE                 NC_("STR_SVT_ACC_ACTION_COLLAPSE", "Collapse")
+#define RID_STR_ACC_ACTION_CHECK                    NC_("RID_STR_ACC_ACTION_CHECK", "Check")
+#define RID_STR_ACC_ACTION_UNCHECK                  NC_("RID_STR_ACC_ACTION_UNCHECK", "Uncheck")
+#define RID_STR_ACC_SCROLLBAR_NAME_VERTICAL         NC_("RID_STR_ACC_SCROLLBAR_NAME_VERTICAL", "Vertical scroll bar")
+#define RID_STR_ACC_SCROLLBAR_NAME_HORIZONTAL       NC_("RID_STR_ACC_SCROLLBAR_NAME_HORIZONTAL", "Horizontal scroll bar")
+#define RID_STR_ACC_PANEL_DESCRIPTION               NC_("RID_STR_ACC_PANEL_DESCRIPTION", "Please press enter to go into child control for more operations")
+
+#define RID_STR_PICK_COLOR                          NC_("RID_STR_PICK_COLOR", "Pick a Color")
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

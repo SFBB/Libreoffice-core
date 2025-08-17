@@ -86,7 +86,7 @@ public:
     void setTheme( const oox::drawingml::ThemePtr& rThemePtr ){ mpThemePtr = rThemePtr; }
     const oox::drawingml::ThemePtr& getTheme() const { return mpThemePtr; }
 
-    void setClrMap( const oox::drawingml::ClrMapPtr pClrMapPtr ){ mpClrMapPtr = pClrMapPtr; }
+    void setClrMap( const oox::drawingml::ClrMapPtr& pClrMapPtr ){ mpClrMapPtr = pClrMapPtr; }
     const oox::drawingml::ClrMapPtr& getClrMap() const { return mpClrMapPtr; }
 
     void setBackgroundProperties( const oox::drawingml::FillPropertiesPtr& rFillPropertiesPtr ){ mpBackgroundPropertiesPtr = rFillPropertiesPtr; }
@@ -125,7 +125,7 @@ public:
     CommentList& getCommentsList() { return maCommentsList; }
     CommentAuthorList& getCommentAuthors() { return maCommentAuthors; }
 
-    void createConnectorShapeConnection();
+    void createConnectorShapeConnection(const oox::drawingml::ShapePtr& pConnector);
 
 private:
     OUString                                                                maPath;
@@ -158,8 +158,6 @@ private:
     // slide comments
     CommentList                                                             maCommentsList;
     CommentAuthorList                                                       maCommentAuthors;
-
-    std::vector<OUString>                                                   maConnectorShapeId;
 };
 
 }

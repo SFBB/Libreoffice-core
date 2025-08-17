@@ -18,6 +18,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <msiquery.h>
+#include <shlobj.h>
 
 #include <pathhash.h>
 
@@ -80,6 +81,23 @@ CloseHandleGuard guard(HANDLE handle) { return CloseHandleGuard(handle, CloseHan
 
 bool runExecutable(std::wstring const& installLocation, wchar_t const* argument)
 {
+    bool use = false;
+    PWSTR progPath;
+    if (SHGetKnownFolderPath(FOLDERID_ProgramFiles, 0, nullptr, &progPath) == S_OK)
+    {
+        auto const n = wcslen(progPath);
+        // For SHGetKnownFolderPath it is guaranteed that "The returned path does not include a
+        // trailing backslash":
+        use = (installLocation.size() == n
+               || (installLocation.size() > n && installLocation[n] == L'\\'))
+              && _wcsnicmp(progPath, installLocation.data(), n) == 0;
+    }
+    CoTaskMemFree(progPath);
+    if (!use)
+    {
+        return true;
+    }
+
     std::wstring cmdline(L"\"");
     cmdline += installLocation;
     cmdline += L"\\program\\update_service.exe\" ";
@@ -177,6 +195,10 @@ extern "C" __declspec(dllexport) UINT __stdcall PrepareUpdateservice(MSIHANDLE h
     {
         ok = false;
     }
+    if (MsiSetPropertyW(handle, L"remove_updateservice", loc.c_str()) != ERROR_SUCCESS)
+    {
+        ok = false;
+    }
     if (MsiSetPropertyW(handle, L"uninstall_updateservice", loc.c_str()) != ERROR_SUCCESS)
     {
         ok = false;
@@ -201,6 +223,32 @@ extern "C" __declspec(dllexport) UINT __stdcall InstallUpdateservice(MSIHANDLE h
         ok = false;
     }
     return ok ? ERROR_SUCCESS : ERROR_INSTALL_FAILURE;
+}
+
+extern "C" __declspec(dllexport) UINT __stdcall RemoveUpdateservice(MSIHANDLE handle)
+{
+    std::wstring sInstallPath;
+    if (!getProperty(handle, L"CustomActionData", &sInstallPath))
+    {
+        return ERROR_INSTALL_FAILURE;
+    }
+
+    const wchar_t* strarray[] = { L"\\program\\mar.exe", L"\\program\\update_service.exe",
+                                  L"\\program\\updater.exe", L"\\program\\updater.ini" };
+
+    for (const wchar_t* file : strarray)
+    {
+        std::wstring sFilePath = sInstallPath + file;
+        WIN32_FIND_DATAW aFindData;
+        HANDLE hFind = FindFirstFileW(sFilePath.c_str(), &aFindData);
+        if (INVALID_HANDLE_VALUE != hFind)
+        {
+            FindClose(hFind);
+            SetFileAttributesW(sFilePath.c_str(), FILE_ATTRIBUTE_NORMAL);
+            DeleteFileW(sFilePath.c_str());
+        }
+    }
+    return ERROR_SUCCESS;
 }
 
 extern "C" __declspec(dllexport) UINT __stdcall UninstallUpdateservice(MSIHANDLE handle)

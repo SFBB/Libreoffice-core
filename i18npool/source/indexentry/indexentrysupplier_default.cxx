@@ -96,6 +96,7 @@ void IndexTable::init(sal_Unicode start_, sal_Unicode end_, IndexKey const *keys
     start=start_;
     end=end_;
     table = static_cast<sal_uInt8*>(malloc((end-start+1)*sizeof(sal_uInt8)));
+    assert(table && "Don't handle OOM conditions");
     for (sal_Unicode i = start; i <= end; i++) {
         sal_Int16 j;
         for (j = 0; j < key_count; j++) {
@@ -163,7 +164,7 @@ OUString Index::getIndexDescription(const OUString& rIndexEntry)
     return OUString(&indexChar, 1);
 }
 
-#define LOCALE_EN lang::Locale("en", OUString(), OUString())
+#define LOCALE_EN lang::Locale(u"en"_ustr, OUString(), OUString())
 
 void Index::makeIndexKeys(const lang::Locale &rLocale, std::u16string_view algorithm)
 {
@@ -174,7 +175,7 @@ void Index::makeIndexKeys(const lang::Locale &rLocale, std::u16string_view algor
                     LocaleDataImpl::get()->getDefaultIndexAlgorithm(LOCALE_EN));
         if (keyStr.isEmpty())
             throw RuntimeException(
-                "Index::makeIndexKeys: No index keys returned by algorithm");
+                u"Index::makeIndexKeys: No index keys returned by algorithm"_ustr);
     }
 
     sal_Int16 len = sal::static_int_cast<sal_Int16>( keyStr.getLength() );
@@ -193,8 +194,8 @@ void Index::makeIndexKeys(const lang::Locale &rLocale, std::u16string_view algor
         switch(curr) {
             case u'-': {
                     if (key_count <= 0 || i + 1 >= len)
-                        throw RuntimeException("Index::makeIndexKeys: key_count<=0||"
-                                                "'-' is the last char of KeyString");
+                        throw RuntimeException(u"Index::makeIndexKeys: key_count<=0||"
+                                                "'-' is the last char of KeyString"_ustr);
                     for (curr = keyStr[++i]; key_count < MAX_KEYS && keys[key_count-1].key < curr; key_count++) {
                         keys[key_count].key = keys[key_count-1].key+1;
                         keys[key_count].desc.clear();
@@ -219,13 +220,13 @@ void Index::makeIndexKeys(const lang::Locale &rLocale, std::u16string_view algor
                 [[fallthrough]];
             case u'(': {
                     if (key_count <= 0)
-                        throw RuntimeException("Index::makeIndexKeys: key_count<=0");
+                        throw RuntimeException(u"Index::makeIndexKeys: key_count<=0"_ustr);
 
                     sal_Int16 end = i+1;
                     for (; end < len && keyStr[end] != close; end++) ;
 
                     if (end >= len) // no found
-                        throw RuntimeException("Index::makeIndexKeys: Closing bracket not found");
+                        throw RuntimeException(u"Index::makeIndexKeys: Closing bracket not found"_ustr);
                     if (close == ')')
                         keys[key_count-1].desc = keyStr.copy(i+1, end-i-1);
                     else {
@@ -246,9 +247,7 @@ void Index::makeIndexKeys(const lang::Locale &rLocale, std::u16string_view algor
     for (i = 0; i < mkey_count; i++) {
         for (j=i+1; j < mkey_count; j++) {
             if (keys[mkeys[i]].mkey.getLength() < keys[mkeys[j]].mkey.getLength()) {
-                sal_Int16 k = mkeys[i];
-                mkeys[i] = mkeys[j];
-                mkeys[j] = k;
+                std::swap(mkeys[i], mkeys[j]);
             }
         }
     }
@@ -263,12 +262,12 @@ void Index::init(const lang::Locale &rLocale, const OUString& algorithm)
     if (!scriptList.hasElements()) {
         scriptList = LocaleDataImpl::get()->getUnicodeScripts(LOCALE_EN);
         if (!scriptList.hasElements())
-            throw RuntimeException("Index::init: scriptList is empty");
+            throw RuntimeException(u"Index::init: scriptList is empty"_ustr);
     }
 
     table_count = sal::static_int_cast<sal_Int16>( scriptList.getLength() );
     if (table_count > MAX_TABLES)
-        throw RuntimeException("Index::init: Length of scriptList is too big");
+        throw RuntimeException(u"Index::init: Length of scriptList is too big"_ustr);
 
     collator->loadCollatorAlgorithm(algorithm, rLocale, CollatorOptions::CollatorOptions_IGNORE_CASE_ACCENT);
     sal_Int16 j=0;

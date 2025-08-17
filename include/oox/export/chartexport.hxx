@@ -25,6 +25,7 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <com/sun/star/chart2/FormattedString.hpp>
 #include <oox/dllapi.h>
 #include <oox/export/drawingml.hxx>
 #include <oox/export/shapes.hxx>
@@ -128,7 +129,7 @@ private:
 };
 
 
-class OOX_DLLPUBLIC ChartExport final : public DrawingML {
+class ChartExport final : public DrawingML {
 
 public:
     // first: data sequence for label, second: data sequence for values.
@@ -165,20 +166,29 @@ private:
     OUString parseFormula( const OUString& rRange );
     void InitPlotArea();
 
-    void ExportContent_();
+    void ExportContent_(bool bIsChartex);
     void exportChartSpace( const css::uno::Reference<
                            css::chart::XChartDocument >& rChartDoc,
-                           bool bIncludeTable );
+                           bool bIncludeTable,
+                           bool bIsChartex);
     void exportChart( const css::uno::Reference<
-                          css::chart::XChartDocument >& rChartDoc );
+                          css::chart::XChartDocument >& rChartDoc,
+                          bool bIsChartex);
+    void exportData_chartex( const css::uno::Reference<
+                              css::chart::XChartDocument >& rChartDoc);
     void exportExternalData( const css::uno::Reference<
-                              css::chart::XChartDocument >& rChartDoc );
+                              css::chart::XChartDocument >& rChartDoc,
+                              bool bIsChartex);
     void exportLegend( const css::uno::Reference<
-                          css::chart::XChartDocument >& rChartDoc );
+                          css::chart::XChartDocument >& rChartDoc,
+                          bool bIsChartex);
     void exportTitle( const css::uno::Reference< css::drawing::XShape >& xShape,
-                          const OUString* pSubText = nullptr );
+                        bool bIsChartex,
+                          const css::uno::Sequence< css::uno::Reference< css::chart2::XFormattedString > >& xFormattedSubTitle =
+                          css::uno::Sequence< css::uno::Reference< css::chart2::XFormattedString > >() );
     void exportPlotArea( const css::uno::Reference<
-                             css::chart::XChartDocument >& rChartDoc );
+                             css::chart::XChartDocument >& rChartDoc,
+                             bool bIsChartex);
     void exportAdditionalShapes( const css::uno::Reference<css::chart::XChartDocument >& rChartDoc );
     void exportFill( const css::uno::Reference< css::beans::XPropertySet >& xPropSet );
     void exportSolidFill(const css::uno::Reference<css::beans::XPropertySet>& xPropSet);
@@ -191,7 +201,10 @@ private:
     void exportBarChart( const css::uno::Reference< css::chart2::XChartType >& xChartType );
     void exportBubbleChart( const css::uno::Reference< css::chart2::XChartType >& xChartType );
     void exportDoughnutChart( const css::uno::Reference< css::chart2::XChartType >& xChartType );
+    void exportFunnelChart( const css::uno::Reference< css::chart2::XChartType >& xChartType );
     void exportLineChart( const css::uno::Reference< css::chart2::XChartType >& xChartType );
+    void exportOfPieChart( const css::uno::Reference< css::chart2::XChartType >&
+            xChartType, const char* s_subtype, double nSplitPos );
     void exportPieChart( const css::uno::Reference< css::chart2::XChartType >& xChartType );
     void exportRadarChart( const css::uno::Reference< css::chart2::XChartType >& xChartType );
     void exportScatterChart( const css::uno::Reference< css::chart2::XChartType >& xChartType );
@@ -203,8 +216,12 @@ private:
     void exportUpDownBars(const css::uno::Reference< css::chart2::XChartType >& xChartType );
 
     void exportAllSeries(const css::uno::Reference<css::chart2::XChartType>& xChartType, bool& rPrimaryAxes);
-    void exportSeries(const css::uno::Reference< css::chart2::XChartType >& xChartType,
-            const css::uno::Sequence<css::uno::Reference<css::chart2::XDataSeries> >& rSeriesSeq, bool& rPrimaryAxes);
+    void exportSeries_chart(const css::uno::Reference< css::chart2::XChartType >& xChartType,
+            const css::uno::Sequence<css::uno::Reference<css::chart2::XDataSeries> >& rSeriesSeq,
+            bool& rPrimaryAxes);
+    void exportSeries_chartex(const css::uno::Reference< css::chart2::XChartType >& xChartType,
+            const css::uno::Sequence<css::uno::Reference<css::chart2::XDataSeries> >& rSeriesSeq,
+            const char* sTypeName);
 
     void exportVaryColors(const css::uno::Reference<css::chart2::XChartType>& xChartType);
     void exportCandleStickSeries(
@@ -213,17 +230,19 @@ private:
                 css::chart2::XDataSeries > > & aSeriesSeq,
         bool& rPrimaryAxes );
     void exportSeriesText(
-        const css::uno::Reference< css::chart2::data::XDataSequence >& xValueSeq );
+        const css::uno::Reference< css::chart2::data::XDataSequence >& xValueSeq, bool bIsChartex );
     void exportSeriesCategory(
         const css::uno::Reference< css::chart2::data::XDataSequence >& xValueSeq, sal_Int32 nValueType = XML_cat );
     void exportSeriesValues(
         const css::uno::Reference< css::chart2::data::XDataSequence >& xValueSeq, sal_Int32 nValueType = XML_val );
-    void exportShapeProps( const css::uno::Reference< css::beans::XPropertySet >& xPropSet );
+    void exportShapeProps( const css::uno::Reference< css::beans::XPropertySet >& xPropSet,
+            bool bIsChartex);
     void exportDataPoints(
         const css::uno::Reference< css::beans::XPropertySet >& xSeriesProperties,
         sal_Int32 nSeriesLength, sal_Int32 eChartType );
     void exportDataLabels( const css::uno::Reference<css::chart2::XDataSeries>& xSeries, sal_Int32 nSeriesLength,
-        sal_Int32 eChartType, DataLabelsRange& rDLblsRange );
+        sal_Int32 eChartType, DataLabelsRange& rDLblsRange,
+        bool bIsChartex);
     void exportGrouping( bool isBar = false );
     void exportTrendlines( const css::uno::Reference< css::chart2::XDataSeries >& xSeries );
     void exportMarker( const css::uno::Reference< css::beans::XPropertySet >& xPropSet );
@@ -235,19 +254,30 @@ private:
 
     void exportManualLayout(const css::chart2::RelativePosition& rPos, const css::chart2::RelativeSize& rSize, const bool bIsExcludingDiagramPositioning);
 
-    void exportAxes( );
-    void exportAxis(const AxisIdPair& rAxisIdPair);
-    void _exportAxis(
+    void exportAxes( bool bIsChartex );
+    void exportAxis(const AxisIdPair& rAxisIdPair,
+            bool bIsChartex);
+    void exportOneAxis_chart(
         const css::uno::Reference< css::beans::XPropertySet >& xAxisProp,
         const css::uno::Reference< css::drawing::XShape >& xAxisTitle,
         const css::uno::Reference< css::beans::XPropertySet >& xMajorGrid,
         const css::uno::Reference< css::beans::XPropertySet >& xMinorGrid,
         sal_Int32 nAxisType,
         const char* sAxisPos,
-        const AxisIdPair& rAxisIdPair );
-    void exportAxesId(bool bPrimaryAxes, bool bCheckCombinedAxes = false);
+        const AxisIdPair& rAxisIdPair);
+    void exportOneAxis_chartex(
+        const css::uno::Reference< css::beans::XPropertySet >& xAxisProp,
+        const css::uno::Reference< css::drawing::XShape >& xAxisTitle,
+        const css::uno::Reference< css::beans::XPropertySet >& xMajorGrid,
+        const css::uno::Reference< css::beans::XPropertySet >& xMinorGrid,
+        sal_Int32 nAxisType,
+        const AxisIdPair& rAxisIdPair);
+    void createAxes(bool bPrimaryAxes, bool bCheckCombinedAxes);
     void exportView3D();
     bool isDeep3dChart();
+    // Determine if (at least one) chart exported is from the 2014 chartex
+    // schema. If not, all are from the 2006 chart schema.
+    bool isChartexNotChartNS() const;
 
     void exportMissingValueTreatment(const css::uno::Reference<css::beans::XPropertySet>& xPropSet);
 
@@ -255,18 +285,17 @@ private:
 
 public:
 
-    ChartExport( sal_Int32 nXmlNamespace, ::sax_fastparser::FSHelperPtr pFS, css::uno::Reference< css::frame::XModel > const & xModel,
+    OOX_DLLPUBLIC ChartExport( sal_Int32 nXmlNamespace, ::sax_fastparser::FSHelperPtr pFS, css::uno::Reference< css::frame::XModel > const & xModel,
                  ::oox::core::XmlFilterBase* pFB, DocumentType eDocumentType );
-    virtual ~ChartExport() {}
 
-    void SetURLTranslator(const std::shared_ptr<URLTransformer>& pTransformer);
+    OOX_DLLPUBLIC void SetURLTranslator(const std::shared_ptr<URLTransformer>& pTransformer);
 
     const css::uno::Reference< css::frame::XModel >& getModel() const { return mxChartModel; }
 
-    void WriteChartObj( const css::uno::Reference< css::drawing::XShape >& xShape, sal_Int32 nID, sal_Int32 nChartCount );
-    void exportTextProps(const css::uno::Reference< css::beans::XPropertySet >& xPropSet);
+    OOX_DLLPUBLIC void WriteChartObj( const css::uno::Reference< css::drawing::XShape >& xShape, sal_Int32 nID, sal_Int32 nChartCount );
+    void exportTextProps(const css::uno::Reference< css::beans::XPropertySet >& xPropSet, bool bIsChartex);
 
-    void ExportContent();
+    OOX_DLLPUBLIC void ExportContent();
     void InitRangeSegmentationProperties(
         const css::uno::Reference<
             css::chart2::XChartDocument > & xChartDoc );

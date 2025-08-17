@@ -57,12 +57,10 @@ using namespace ::connectivity;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::accessibility;
 
 #define DEFAULT_QUERY_COLS  20
-#define DEFAULT_SIZE        GetTextWidth("0") * 30
+#define DEFAULT_SIZE        GetTextWidth(u"0"_ustr) * 30
 #define HANDLE_ID            0
 #define HANDLE_COLUMN_WIDTH 70
 #define SORT_COLUMN_NONE    0xFFFFFFFF
@@ -257,7 +255,7 @@ namespace
     public:
         explicit OSelectionBrwBoxHeader(OSelectionBrowseBox* pParent);
         virtual ~OSelectionBrwBoxHeader() override { disposeOnce(); }
-        virtual void dispose() override { m_pBrowseBox.clear(); ::svt::EditBrowserHeader::dispose(); }
+        virtual void dispose() override { m_pBrowseBox.reset(); ::svt::EditBrowserHeader::dispose(); }
     };
     OSelectionBrwBoxHeader::OSelectionBrwBoxHeader(OSelectionBrowseBox* pParent)
         : ::svt::EditBrowserHeader(pParent,WB_BUTTONSTYLE|WB_DRAG)
@@ -709,7 +707,7 @@ bool OSelectionBrowseBox::saveField(OUString& _sFieldName ,OTableFieldDescRef co
             bool bQuote = ( nPass <= 2 );
             bool bInternational = ( nPass % 2 ) == 0;
 
-            OUString sSql {"SELECT "};
+            OUString sSql {u"SELECT "_ustr};
             if ( bQuote )
                 sSql += sQuotedFullFieldName;
             else
@@ -813,7 +811,7 @@ bool OSelectionBrowseBox::saveField(OUString& _sFieldName ,OTableFieldDescRef co
                     if ( nFunCount == 4 && SQL_ISRULE(pColumnRef->getChild(3),column_ref) )
                         bError = fillColumnRef( pColumnRef->getChild(3), xConnection, aSelEntry, _bListAction );
                     else if ( nFunCount == 3 ) // we have a COUNT(*) here, so take the first table
-                        bError = fillColumnRef( "*", std::u16string_view(), xMetaData, aSelEntry, _bListAction );
+                        bError = fillColumnRef( u"*"_ustr, std::u16string_view(), xMetaData, aSelEntry, _bListAction );
                     else
                     {
                         nFunctionType |= FKT_NUMERIC;
@@ -1065,7 +1063,7 @@ bool OSelectionBrowseBox::SaveModified()
                             // we have to change the visible flag, so we must append also an undo action
                             pEntry->SetVisible();
                             m_pVisibleCell->GetBox().set_active(true);
-                            appendUndoAction("0",u"1",BROW_VIS_ROW,bListAction);
+                            appendUndoAction(u"0"_ustr,u"1",BROW_VIS_ROW,bListAction);
                             RowModified(GetBrowseRow(BROW_VIS_ROW), GetCurColumnId());
                         }
 
@@ -1206,7 +1204,7 @@ bool OSelectionBrowseBox::SaveModified()
     {
         // Default to visible
         pEntry->SetVisible();
-        appendUndoAction("0",u"1",BROW_VIS_ROW,bListAction);
+        appendUndoAction(u"0"_ustr,u"1",BROW_VIS_ROW,bListAction);
         RowModified(BROW_VIS_ROW, GetCurColumnId());
 
         // if required add empty columns
@@ -1508,7 +1506,9 @@ void OSelectionBrowseBox::InsertColumn(const OTableFieldDescRef& pEntry, sal_uIn
                 getFields().size());
         }
         else
-            ++_nColumnPosition; // within the list
+        {
+            _nColumnPosition = static_cast<sal_uInt16>(_nColumnPosition + 1); // within the list
+        }
         nColumnId = GetColumnId(_nColumnPosition);
         pEntry->SetColumnId( nColumnId );
         getFields()[ _nColumnPosition - 1] = pEntry;
@@ -1618,7 +1618,7 @@ OTableFieldDescRef OSelectionBrowseBox::FindFirstFreeCol(sal_uInt16& _rColumnPos
 
     for (auto const& field : getFields())
     {
-        ++_rColumnPosition;
+        _rColumnPosition = static_cast<sal_uInt16>(_rColumnPosition + 1);
         OTableFieldDescRef pEntry = field;
         if ( pEntry.is() && pEntry->IsEmpty() )
             return pEntry;
@@ -1951,8 +1951,8 @@ void OSelectionBrowseBox::Command(const CommandEvent& rEvt)
                 {
                     ::tools::Rectangle aRect(aMenuPos, Size(1, 1));
                     weld::Window* pPopupParent = weld::GetPopupParent(*this, aRect);
-                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "dbaccess/ui/querycolmenu.ui"));
-                    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
+                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"dbaccess/ui/querycolmenu.ui"_ustr));
+                    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
                     OUString sIdent = xContextMenu->popup_at_rect(pPopupParent, aRect);
                     if (sIdent == "delete")
                        RemoveField(nColId);
@@ -1966,12 +1966,12 @@ void OSelectionBrowseBox::Command(const CommandEvent& rEvt)
                 {
                     ::tools::Rectangle aRect(aMenuPos, Size(1, 1));
                     weld::Window* pPopupParent = weld::GetPopupParent(*this, aRect);
-                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "dbaccess/ui/queryfuncmenu.ui"));
-                    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
-                    xContextMenu->set_active("functions", m_bVisibleRow[BROW_FUNCTION_ROW]);
-                    xContextMenu->set_active("tablename", m_bVisibleRow[BROW_TABLE_ROW]);
-                    xContextMenu->set_active("alias", m_bVisibleRow[BROW_COLUMNALIAS_ROW]);
-                    xContextMenu->set_active("distinct", static_cast<OQueryController&>(getDesignView()->getController()).isDistinct());
+                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"dbaccess/ui/queryfuncmenu.ui"_ustr));
+                    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
+                    xContextMenu->set_active(u"functions"_ustr, m_bVisibleRow[BROW_FUNCTION_ROW]);
+                    xContextMenu->set_active(u"tablename"_ustr, m_bVisibleRow[BROW_TABLE_ROW]);
+                    xContextMenu->set_active(u"alias"_ustr, m_bVisibleRow[BROW_COLUMNALIAS_ROW]);
+                    xContextMenu->set_active(u"distinct"_ustr, static_cast<OQueryController&>(getDesignView()->getController()).isDistinct());
 
                     OUString sIdent = xContextMenu->popup_at_rect(pPopupParent, aRect);
                     if (sIdent == "functions")
@@ -2692,7 +2692,8 @@ void OSelectionBrowseBox::setFunctionCell(OTableFieldDescRef const & _pEntry)
     }
 }
 
-Reference< XAccessible > OSelectionBrowseBox::CreateAccessibleCell( sal_Int32 _nRow, sal_uInt16 _nColumnPos )
+rtl::Reference<comphelper::OAccessible>
+OSelectionBrowseBox::CreateAccessibleCell(sal_Int32 _nRow, sal_uInt16 _nColumnPos)
 {
     OTableFieldDescRef pEntry;
     if ( _nColumnPos != 0 && _nColumnPos != BROWSER_INVALIDID && _nColumnPos <= getFields().size() )

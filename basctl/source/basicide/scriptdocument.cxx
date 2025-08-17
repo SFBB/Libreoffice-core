@@ -18,7 +18,8 @@
  */
 
 #include <memory>
-#include <scriptdocument.hxx>
+#include <basctl/basctldllpublic.hxx>
+#include <basctl/scriptdocument.hxx>
 #include <basobj.hxx>
 #include <strings.hrc>
 #include <iderid.hxx>
@@ -42,7 +43,6 @@
 
 #include <sfx2/app.hxx>
 #include <sfx2/objsh.hxx>
-#include <sfx2/bindings.hxx>
 #include <sfx2/docfile.hxx>
 
 #include <basic/basicmanagerrepository.hxx>
@@ -75,6 +75,7 @@ namespace basctl
     using ::com::sun::star::frame::XModel;
     using ::com::sun::star::beans::XPropertySet;
     using ::com::sun::star::script::XLibraryContainer;
+    using ::com::sun::star::script::XStorageBasedLibraryContainer;
     using ::com::sun::star::uno::UNO_QUERY_THROW;
     using ::com::sun::star::uno::UNO_SET_THROW;
     using ::com::sun::star::uno::Exception;
@@ -206,7 +207,7 @@ namespace basctl
                         getDocumentRef() const { return m_xDocument; }
 
         /// returns a library container belonging to the document
-        Reference< XLibraryContainer >
+        Reference< XStorageBasedLibraryContainer >
                     getLibraryContainer( LibraryContainerType _eType ) const;
 
         /// determines whether a given library is part of the shared installation
@@ -332,23 +333,22 @@ namespace basctl
         return m_bValid;
     }
 
-    Reference< XLibraryContainer > ScriptDocument::Impl::getLibraryContainer( LibraryContainerType _eType ) const
+    Reference<XStorageBasedLibraryContainer> ScriptDocument::Impl::getLibraryContainer( LibraryContainerType _eType ) const
     {
         OSL_ENSURE( isValid(), "ScriptDocument::Impl::getLibraryContainer: invalid!" );
 
-        Reference< XLibraryContainer > xContainer;
+        Reference<XStorageBasedLibraryContainer> xContainer;
         if ( !isValid() )
             return xContainer;
 
         try
         {
             if ( isApplication() )
-                xContainer.set( _eType == E_SCRIPTS ? SfxGetpApp()->GetBasicContainer() : SfxGetpApp()->GetDialogContainer(), UNO_QUERY_THROW );
+                xContainer.set(_eType == E_SCRIPTS ? SfxGetpApp()->GetBasicContainer() : SfxGetpApp()->GetDialogContainer());
             else
             {
                 xContainer.set(
-                    _eType == E_SCRIPTS ? m_xScriptAccess->getBasicLibraries() : m_xScriptAccess->getDialogLibraries(),
-                    UNO_QUERY_THROW );
+                    _eType == E_SCRIPTS ? m_xScriptAccess->getBasicLibraries() : m_xScriptAccess->getDialogLibraries());
             }
         }
         catch( const Exception& )
@@ -597,7 +597,7 @@ namespace basctl
             if ( _eType == E_DIALOGS )
             {
                 // create dialog model
-                Reference< XComponentContext > aContext(
+                const Reference< XComponentContext >& aContext(
                     comphelper::getProcessComponentContext() );
                 Reference< XNameContainer > xDialogModel;
                 if ( _rxExistingDialogModel.is() )
@@ -606,7 +606,7 @@ namespace basctl
                     xDialogModel.set(
                         ( aContext->getServiceManager()->
                           createInstanceWithContext(
-                              "com.sun.star.awt.UnoControlDialogModel",
+                              u"com.sun.star.awt.UnoControlDialogModel"_ustr,
                               aContext ) ),
                         UNO_QUERY_THROW );
 
@@ -733,11 +733,11 @@ namespace basctl
                 return false;
 
             // create new dialog model
-            Reference< XComponentContext > aContext(
+            const Reference< XComponentContext >& aContext(
                 comphelper::getProcessComponentContext() );
             Reference< XNameContainer > xDialogModel(
                 aContext->getServiceManager()->createInstanceWithContext(
-                    "com.sun.star.awt.UnoControlDialogModel", aContext ),
+                    u"com.sun.star.awt.UnoControlDialogModel"_ustr, aContext ),
                 UNO_QUERY_THROW );
 
             // set name property
@@ -819,7 +819,7 @@ namespace basctl
 
             Reference< XDispatchProvider > xDispProv( xFrame, UNO_QUERY_THROW );
             Reference< XDispatch > xDispatch(
-                xDispProv->queryDispatch( aURL, "_self", FrameSearchFlag::AUTO ),
+                xDispProv->queryDispatch( aURL, u"_self"_ustr, FrameSearchFlag::AUTO ),
                 UNO_SET_THROW );
 
             xDispatch->dispatch( aURL, aArgs );
@@ -915,7 +915,7 @@ namespace basctl
             if ( !xLibContainer->hasByName( _rLibName ) || !xLibContainer->isLibraryLink( _rLibName ) )
                 return false;
             OUString aFileURL;
-            Reference< XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+            const Reference< XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
             Reference< XUriReferenceFactory > xUriFac = UriReferenceFactory::create(xContext);
 
             OUString aLinkURL( xLibContainer->getLibraryLinkURL( _rLibName ) );
@@ -1078,12 +1078,12 @@ namespace basctl
 
         for (auto const& doc : aDocuments)
         {
-            const ScriptDocument aCheck( doc.xModel );
+            ScriptDocument aCheck( doc.xModel );
             if  (   _rUrlOrCaption == aCheck.getTitle()
                 ||  _rUrlOrCaption == aCheck.m_pImpl->getURL()
                 )
             {
-                aDocument = aCheck;
+                aDocument = std::move(aCheck);
                 break;
             }
         }
@@ -1112,7 +1112,7 @@ namespace basctl
                 if ( !aDoc.isValid() )
                     continue;
 
-                aScriptDocs.push_back( aDoc );
+                aScriptDocs.push_back(std::move(aDoc));
             }
         }
         catch( const Exception& )
@@ -1160,7 +1160,7 @@ namespace basctl
     }
 
 
-    Reference< XLibraryContainer > ScriptDocument::getLibraryContainer( LibraryContainerType _eType ) const
+    Reference< XStorageBasedLibraryContainer > ScriptDocument::getLibraryContainer( LibraryContainerType _eType ) const
     {
         return m_pImpl->getLibraryContainer( _eType );
     }
@@ -1225,7 +1225,7 @@ namespace basctl
     {
         OUString aObjectName;
 
-        OUString aBaseName = _eType == E_SCRIPTS ? OUString("Module") : OUString("Dialog");
+        OUString aBaseName = _eType == E_SCRIPTS ? u"Module"_ustr : u"Dialog"_ustr;
 
         const Sequence< OUString > aUsedNames( getObjectNames( _eType, _rLibName ) );
         std::set< OUString > aUsedNamesCheck( aUsedNames.begin(), aUsedNames.end() );

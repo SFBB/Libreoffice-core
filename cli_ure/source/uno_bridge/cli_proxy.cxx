@@ -42,19 +42,15 @@ using namespace cli_uno;
 extern "C"
 {
 
-void SAL_CALL cli_proxy_free( uno_ExtEnvironment * env, void * proxy )
-    SAL_THROW_EXTERN_C();
+void SAL_CALL cli_proxy_free( uno_ExtEnvironment * env, void * proxy ) noexcept;
 
-void SAL_CALL cli_proxy_acquire( uno_Interface * pUnoI )
-    SAL_THROW_EXTERN_C();
+void SAL_CALL cli_proxy_acquire( uno_Interface * pUnoI ) noexcept;
 
-void SAL_CALL cli_proxy_release( uno_Interface * pUnoI )
-    SAL_THROW_EXTERN_C();
+void SAL_CALL cli_proxy_release( uno_Interface * pUnoI ) noexcept;
 
 void SAL_CALL cli_proxy_dispatch(
     uno_Interface * pUnoI, typelib_TypeDescription const * member_td,
-    void * uno_ret, void * uno_args[], uno_Any ** uno_exc )
-    SAL_THROW_EXTERN_C();
+    void * uno_ret, void * uno_args[], uno_Any ** uno_exc ) noexcept;
 
 
 }
@@ -419,7 +415,7 @@ srrm::IMessage^ UnoInterfaceProxy::Invoke(srrm::IMessage^ callmsg)
 
         System::Type^ typeBeingCalled = loadCliType(sTypeName);
         UnoInterfaceInfo^ info = findInfo( typeBeingCalled );
-        OSL_ASSERT( nullptr != info );
+        assert(info);
 
         // ToDo do without string conversion, an OUString is not needed here
         // get the type description of the call
@@ -711,7 +707,7 @@ void CliProxy::makeMethodInfos()
         {
             sr::InterfaceMapping mapInherited = objType->GetInterfaceMap(
                 arInheritedIfaces[nArLength - 1]);
-            int numMethods = mapInherited.TargetMethods->Length;
+            numMethods = mapInherited.TargetMethods->Length;
             m_arInterfaceMethodCount[nArLength - 1] = numMethods;
             for (int i = 0; i < numMethods; i++, index++)
             {
@@ -886,8 +882,7 @@ inline void CliProxy::release() const
 
 
 extern "C"
-void SAL_CALL cli_proxy_free( uno_ExtEnvironment *, void * proxy )
-    SAL_THROW_EXTERN_C()
+void SAL_CALL cli_proxy_free( uno_ExtEnvironment *, void * proxy ) noexcept
 {
     cli_uno::CliProxy * cliProxy = reinterpret_cast<
         cli_uno::CliProxy * >( proxy );
@@ -896,16 +891,14 @@ void SAL_CALL cli_proxy_free( uno_ExtEnvironment *, void * proxy )
 }
 
 extern "C"
-void SAL_CALL cli_proxy_acquire( uno_Interface * pUnoI )
-    SAL_THROW_EXTERN_C()
+void SAL_CALL cli_proxy_acquire( uno_Interface * pUnoI ) noexcept
 {
     CliProxy const * cliProxy = static_cast< CliProxy const * >( pUnoI );
     cliProxy->acquire();
 }
 
 extern "C"
-void SAL_CALL cli_proxy_release( uno_Interface * pUnoI )
-    SAL_THROW_EXTERN_C()
+void SAL_CALL cli_proxy_release( uno_Interface * pUnoI ) noexcept
 {
     CliProxy * cliProxy = static_cast< CliProxy * >( pUnoI );
     cliProxy->release();
@@ -916,8 +909,7 @@ extern "C"
 
 void SAL_CALL cli_proxy_dispatch(
     uno_Interface * pUnoI, typelib_TypeDescription const * member_td,
-    void * uno_ret, void * uno_args [], uno_Any ** uno_exc )
-    SAL_THROW_EXTERN_C()
+    void * uno_ret, void * uno_args [], uno_Any ** uno_exc ) noexcept
 {
     CliProxy * proxy = static_cast< CliProxy* >( pUnoI );
     try
@@ -1029,11 +1021,11 @@ void SAL_CALL cli_proxy_dispatch(
                         OSL_ENSURE(usOid.equals( proxy->m_usOid ),
                                     "### different oids!");
 #endif
-                        uno_Interface* pUnoI = bridge->map_cli2uno(
+                        uno_Interface* pUnoI2 = bridge->map_cli2uno(
                             proxy->m_cliI, demanded_td.get() );
                         uno_any_construct(
-                            (uno_Any *)uno_ret, &pUnoI, demanded_td.get(), 0 );
-                        (*pUnoI->release)( pUnoI );
+                            (uno_Any *)uno_ret, &pUnoI2, demanded_td.get(), 0 );
+                        (*pUnoI2->release)( pUnoI2 );
                     }
                     else // object does not support demanded interface
                     {

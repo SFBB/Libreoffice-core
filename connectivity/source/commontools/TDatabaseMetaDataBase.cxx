@@ -95,7 +95,7 @@ Reference< XResultSet > SAL_CALL ODatabaseMetaDataBase::getTypeInfo(  )
         Reference< XRow > xRow(xRet,UNO_QUERY);
         ::comphelper::SequenceAsHashMap aMap(m_aConnectionInfo);
         Sequence< Any > aTypeInfoSettings;
-        aTypeInfoSettings = aMap.getUnpackedValueOrDefault("TypeInfoSettings",aTypeInfoSettings);
+        aTypeInfoSettings = aMap.getUnpackedValueOrDefault(u"TypeInfoSettings"_ustr,aTypeInfoSettings);
 
         if ( xRow.is() )
         {
@@ -122,12 +122,10 @@ Reference< XResultSet > SAL_CALL ODatabaseMetaDataBase::getTypeInfo(  )
             std::vector<std::shared_ptr<ExpressionNode>> aConditions;
             if ( aTypeInfoSettings.getLength() > 1 && ((aTypeInfoSettings.getLength() % 2) == 0) )
             {
-                const Any* pIter = aTypeInfoSettings.getConstArray();
-                const Any* pEnd  = pIter + aTypeInfoSettings.getLength();
                 try
                 {
-                    for(;pIter != pEnd;++pIter)
-                        aConditions.push_back(FunctionParser::parseFunction(::comphelper::getString(*pIter)));
+                    for (auto& any : aTypeInfoSettings)
+                        aConditions.push_back(FunctionParser::parseFunction(::comphelper::getString(any)));
                 }
                 catch(ParseError&)
                 {
@@ -162,9 +160,9 @@ Reference< XResultSet > SAL_CALL ODatabaseMetaDataBase::getTypeInfo(  )
                     else
                         ++aIter;
                 }
-                aTypeInfoRows.push_back(aRow);
+                aTypeInfoRows.push_back(std::move(aRow));
             }
-            m_aTypeInfoRows = aTypeInfoRows;
+            m_aTypeInfoRows = std::move(aTypeInfoRows);
         }
     }
     rtl::Reference<::connectivity::ODatabaseMetaDataResultSet> pResult = new ::connectivity::ODatabaseMetaDataResultSet(::connectivity::ODatabaseMetaDataResultSet::eTypeInfo);

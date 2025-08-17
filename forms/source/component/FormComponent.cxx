@@ -117,7 +117,6 @@ private:
 // base class for form layer controls
 OControl::OControl( const Reference< XComponentContext >& _rxContext, const OUString& _rAggregateService, const bool _bSetDelegator )
             :OComponentHelper(m_aMutex)
-            ,m_xContext( _rxContext )
 {
     // Aggregate VCL Control
     // Increment the RefCount for aggregates, because the aggregate by itself increments the RefCount in the setDelegator
@@ -181,8 +180,7 @@ Sequence<Type> SAL_CALL OControl::getTypes()
 {
     TypeBag aTypes( _getTypes() );
 
-    Reference< XTypeProvider > xProv;
-    if ( query_aggregation( m_xAggregate, xProv ) )
+    if (auto xProv = query_aggregation<XTypeProvider>(m_xAggregate))
         aTypes.addTypes( xProv->getTypes() );
 
     return aTypes.getTypes();
@@ -200,8 +198,7 @@ void OControl::disposing()
 
     m_aWindowStateGuard.attach( nullptr, nullptr );
 
-    Reference< XComponent > xComp;
-    if (query_aggregation(m_xAggregate, xComp))
+    if (auto xComp = query_aggregation<XComponent>(m_xAggregate))
         xComp->dispose();
 }
 
@@ -214,8 +211,7 @@ sal_Bool SAL_CALL OControl::supportsService(const OUString& _rsServiceName)
 Sequence< OUString > OControl::getAggregateServiceNames() const
 {
     Sequence< OUString > aAggServices;
-    Reference< XServiceInfo > xInfo;
-    if ( query_aggregation( m_xAggregate, xInfo ) )
+    if (auto xInfo = query_aggregation<XServiceInfo>(m_xAggregate))
         aAggServices = xInfo->getSupportedServiceNames();
 
     return aAggServices;
@@ -230,14 +226,12 @@ Sequence<OUString> SAL_CALL OControl::getSupportedServiceNames()
 // XEventListener
 void SAL_CALL OControl::disposing(const css::lang::EventObject& _rEvent)
 {
-    Reference< XInterface > xAggAsIface;
-    query_aggregation(m_xAggregate, xAggAsIface);
+    auto xAggAsIface = query_aggregation<XInterface>(m_xAggregate);
 
     // does the disposing come from the aggregate?
     if (xAggAsIface != Reference< XInterface >(_rEvent.Source, UNO_QUERY))
     {   // no -> forward it
-        Reference<css::lang::XEventListener> xListener;
-        if (query_aggregation(m_xAggregate, xListener))
+        if (auto xListener = query_aggregation<css::lang::XEventListener>(m_xAggregate))
             xListener->disposing(_rEvent);
     }
 }
@@ -414,9 +408,7 @@ Sequence<Type> SAL_CALL OControlModel::getTypes()
 {
     TypeBag aTypes( _getTypes() );
 
-    Reference< XTypeProvider > xProv;
-
-    if ( query_aggregation( m_xAggregate, xProv ) )
+    if (auto xProv = query_aggregation<XTypeProvider>(m_xAggregate))
         aTypes.addTypes( xProv->getTypes() );
 
     return aTypes.getTypes();
@@ -541,7 +533,7 @@ OControlModel::OControlModel( const OControlModel* _pOriginal, const Reference< 
     ,m_nTabIndex( FRM_DEFAULT_TABINDEX )
     ,m_nClassId( FormComponentType::CONTROL )
 {
-    DBG_ASSERT( _pOriginal, "OControlModel::OControlModel: invalid original!" );
+    assert(_pOriginal && "OControlModel::OControlModel: invalid original!");
 
     // copy members
     m_aName = _pOriginal->m_aName;
@@ -635,7 +627,7 @@ OUString SAL_CALL OControlModel::getName()
     {
         css::uno::Any a(cppu::getCaughtException());
         throw WrappedTargetRuntimeException(
-            "OControlModel::getName",
+            u"OControlModel::getName"_ustr,
             *this,
             a
         );
@@ -653,7 +645,7 @@ void SAL_CALL OControlModel::setName(const OUString& _rName)
     {
         css::uno::Any a(cppu::getCaughtException());
         throw WrappedTargetRuntimeException(
-            "OControlModel::setName",
+            u"OControlModel::setName"_ustr,
             *this,
             a
         );
@@ -669,8 +661,7 @@ sal_Bool SAL_CALL OControlModel::supportsService(const OUString& _rServiceName)
 Sequence< OUString > OControlModel::getAggregateServiceNames() const
 {
     Sequence< OUString > aAggServices;
-    Reference< XServiceInfo > xInfo;
-    if ( query_aggregation( m_xAggregate, xInfo ) )
+    if (auto xInfo = query_aggregation<XServiceInfo>(m_xAggregate))
         aAggServices = xInfo->getSupportedServiceNames();
     return aAggServices;
 }
@@ -685,7 +676,7 @@ Sequence<OUString> SAL_CALL OControlModel::getSupportedServiceNames()
 
 Sequence< OUString > OControlModel::getSupportedServiceNames_Static()
 {
-    return { FRM_SUN_FORMCOMPONENT, "com.sun.star.form.FormControlModel" };
+    return { FRM_SUN_FORMCOMPONENT, u"com.sun.star.form.FormControlModel"_ustr };
 }
 
 // XEventListener
@@ -699,8 +690,7 @@ void SAL_CALL OControlModel::disposing(const css::lang::EventObject& _rSource)
     }
     else
     {
-        Reference<css::lang::XEventListener> xEvtLst;
-        if (query_aggregation(m_xAggregate, xEvtLst))
+        if (auto xEvtLst = query_aggregation<css::lang::XEventListener>(m_xAggregate))
         {
             osl::MutexGuard aGuard(m_aMutex);
             xEvtLst->disposing(_rSource);
@@ -713,8 +703,7 @@ void OControlModel::disposing()
 {
     OPropertySetAggregationHelper::disposing();
 
-    Reference<css::lang::XComponent> xComp;
-    if (query_aggregation(m_xAggregate, xComp))
+    if (auto xComp = query_aggregation<css::lang::XComponent>(m_xAggregate))
         xComp->dispose();
 
     setParent(Reference<XFormComponent>());
@@ -724,15 +713,13 @@ void OControlModel::disposing()
 
 void OControlModel::writeAggregate( const Reference< XObjectOutputStream >& _rxOutStream ) const
 {
-    Reference< XPersistObject > xPersist;
-    if ( query_aggregation( m_xAggregate, xPersist ) )
+    if (auto xPersist = query_aggregation<XPersistObject>(m_xAggregate))
         xPersist->write( _rxOutStream );
 }
 
 void OControlModel::readAggregate( const Reference< XObjectInputStream >& _rxInStream )
 {
-    Reference< XPersistObject > xPersist;
-    if ( query_aggregation( m_xAggregate, xPersist ) )
+    if (auto xPersist = query_aggregation<XPersistObject>(m_xAggregate))
         xPersist->read( _rxInStream );
 }
 
@@ -874,8 +861,6 @@ Any OControlModel::getPropertyDefaultByHandle( sal_Int32 _nHandle ) const
             aReturn <<= true;
             break;
         case PROPERTY_ID_STANDARD_THEME:
-            aReturn <<= false;
-            break;
         case PROPERTY_ID_GENERATEVBAEVENTS:
             aReturn <<= false;
             break;
@@ -1145,7 +1130,7 @@ OBoundControlModel::OBoundControlModel(
         const OUString& _rUnoControlModelTypeName, const OUString& _rDefault,
         const bool _bCommitable, const bool _bSupportExternalBinding, const bool _bSupportsValidation )
     :OControlModel( _rxFactory, _rUnoControlModelTypeName, _rDefault, false )
-    ,OPropertyChangeListener( m_aMutex )
+    ,OPropertyChangeListener()
     ,m_nValuePropertyAggregateHandle( -1 )
     ,m_nFieldType( DataType::OTHER )
     ,m_bValuePropertyMayBeVoid( false )
@@ -1174,7 +1159,7 @@ OBoundControlModel::OBoundControlModel(
 OBoundControlModel::OBoundControlModel(
         const OBoundControlModel* _pOriginal, const Reference< XComponentContext>& _rxFactory )
     :OControlModel( _pOriginal, _rxFactory, true, false )
-    ,OPropertyChangeListener( m_aMutex )
+    ,OPropertyChangeListener()
     ,m_nValuePropertyAggregateHandle( _pOriginal->m_nValuePropertyAggregateHandle )
     ,m_nFieldType( DataType::OTHER )
     ,m_bValuePropertyMayBeVoid( _pOriginal->m_bValuePropertyMayBeVoid )
@@ -1522,7 +1507,7 @@ css::uno::Sequence<OUString> SAL_CALL OBoundControlModel::getSupportedServiceNam
 
 Sequence< OUString > OBoundControlModel::getSupportedServiceNames_Static()
 {
-    Sequence<OUString> aOwnServiceNames { "com.sun.star.form.DataAwareControlModel" };
+    static constexpr OUString aOwnServiceNames[] { u"com.sun.star.form.DataAwareControlModel"_ustr };
     return ::comphelper::concatSequences(
         OControlModel::getSupportedServiceNames_Static(),
         aOwnServiceNames
@@ -1761,7 +1746,7 @@ void OBoundControlModel::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, co
                 throw css::lang::IllegalArgumentException();
             }
 
-            m_xLabelControl = xAsPropSet;
+            m_xLabelControl = std::move(xAsPropSet);
             Reference<css::lang::XComponent> xComp(m_xLabelControl, UNO_QUERY);
             if (xComp.is())
                 xComp->addEventListener(static_cast<css::lang::XEventListener*>(static_cast<XPropertyChangeListener*>(this)));
@@ -1994,7 +1979,7 @@ void OBoundControlModel::initFromField( const Reference< XRowSet >& _rxRowSet )
         if (xPS.is())
         {
             assert(!shouldTransfer);
-            xPS->getPropertyValue("IsNew") >>= shouldTransfer;
+            xPS->getPropertyValue(u"IsNew"_ustr) >>= shouldTransfer;
         }
     }
     if ( shouldTransfer )
@@ -2368,7 +2353,7 @@ bool OBoundControlModel::impl_approveValueBinding_nolock( const Reference< XValu
         // < SYNCHRONIZED
     }
 
-    for ( auto const & type : std::as_const(aTypeCandidates) )
+    for (auto const& type : aTypeCandidates)
     {
         if ( _rxBinding->supportsType( type ) )
             return true;

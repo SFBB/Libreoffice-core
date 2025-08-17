@@ -60,8 +60,8 @@ public:
     DrawDocShell* GetDocSh() { return mpDocSh; }
 
     virtual void DoCut();
-    virtual void DoCopy();
-    virtual void DoPaste();
+    virtual void DoCopy(bool bMergeMasterPagesOnly = false );
+    virtual void DoPaste(bool bMergeMasterPagesOnly = false );
     virtual void DoPasteUnformatted();
 
     // mouse & key events; return value = sal_True: event has been handled
@@ -108,14 +108,10 @@ public:
     virtual bool doConstructOrthogonal() const;
 
 protected:
-    /**
-        @param pViewSh
-            May be NULL.
-    */
-    FuPoor (ViewShell* pViewSh,
+    FuPoor (ViewShell& rViewSh,
         ::sd::Window* pWin,
         ::sd::View* pView,
-        SdDrawDocument* pDoc,
+        SdDrawDocument& rDoc,
         SfxRequest& rReq);
     virtual ~FuPoor() override;
 
@@ -142,10 +138,10 @@ protected:
     void SwitchLayer (sal_Int32 nOffset);
 
     ::sd::View* mpView;
-    ViewShell* mpViewShell;
+    ViewShell& mrViewShell;
     VclPtr< ::sd::Window> mpWindow;
     DrawDocShell* mpDocSh;
-    SdDrawDocument* mpDoc;
+    SdDrawDocument& mrDoc;
 
     sal_uInt16          nSlotId;
 

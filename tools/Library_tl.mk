@@ -67,10 +67,13 @@ $(eval $(call gb_Library_add_exception_objects,tl,\
     tools/source/inet/inetmime \
     tools/source/inet/inetmsg \
     tools/source/inet/inetstrm \
+    tools/source/inet/hostfilter \
     tools/source/memtools/multisel \
     tools/source/misc/cpuid \
     tools/source/misc/extendapplicationenvironment \
     tools/source/misc/json_writer \
+    tools/source/misc/lazydelete \
+    tools/source/misc/UniqueID \
     tools/source/ref/globname \
     tools/source/ref/ref \
     tools/source/stream/stream \
@@ -116,7 +119,7 @@ endif
 
 ifeq ($(SYSTEM_LIBFIXMATH),TRUE)
 $(eval $(call gb_Library_add_libs,tl,\
-	-llibfixmath \
+	$(LIBFIXMATH_LIBS) \
 ))
 endif
 

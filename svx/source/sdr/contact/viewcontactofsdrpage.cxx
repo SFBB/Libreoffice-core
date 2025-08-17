@@ -18,9 +18,9 @@
  */
 
 #include <sdr/contact/viewcontactofsdrpage.hxx>
-#include <svx/sdr/contact/displayinfo.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <svx/svdpage.hxx>
+#include <svx/svdmodel.hxx>
 #include <sdr/contact/viewobjectcontactofsdrpage.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
@@ -28,7 +28,6 @@
 #include <tools/debug.hxx>
 #include <vcl/svapp.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
-#include <svx/sdr/contact/viewobjectcontactofsdrobj.hxx>
 #include <drawinglayer/primitive2d/backgroundcolorprimitive2d.hxx>
 #include <drawinglayer/primitive2d/PolygonHairlinePrimitive2D.hxx>
 #include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
@@ -36,7 +35,7 @@
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <sdr/primitive2d/sdrdecompositiontools.hxx>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <vcl/settings.hxx>
 #include <drawinglayer/primitive2d/discreteshadowprimitive2d.hxx>
 #include <drawinglayer/attribute/sdrfillattribute.hxx>
@@ -137,8 +136,8 @@ void ViewContactOfPageShadow::createViewIndependentPrimitive2DSequence(drawingla
     }
     else
     {
-        static vcl::DeleteOnDeinit< drawinglayer::primitive2d::DiscreteShadow > aDiscreteShadow((
-                BitmapEx(SIP_SA_PAGESHADOW35X35)));
+        static tools::DeleteOnDeinit< drawinglayer::primitive2d::DiscreteShadow > aDiscreteShadow((
+                Bitmap(SIP_SA_PAGESHADOW35X35)));
 
         if(aDiscreteShadow.get())
         {
@@ -253,7 +252,7 @@ void ViewContactOfPageFill::createViewIndependentPrimitive2DSequence(drawinglaye
 
     // create and add primitive
     const basegfx::BColor aRGBColor(aPageFillColor.getBColor());
-    rVisitor.visit(drawinglayer::primitive2d::Primitive2DReference(new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(basegfx::B2DPolyPolygon(aPageFillPolygon), aRGBColor)));
+    rVisitor.visit(new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(basegfx::B2DPolyPolygon(aPageFillPolygon), aRGBColor));
 }
 
 ViewContactOfPageFill::ViewContactOfPageFill(ViewContactOfSdrPage& rParentViewContactOfSdrPage)
@@ -302,13 +301,13 @@ void ViewContactOfOuterPageBorder::createViewIndependentPrimitive2DSequence(draw
         aRight.append(basegfx::B2DPoint(aPageBorderRange.getMaxX(), aPageBorderRange.getMinY()));
         aRight.append(basegfx::B2DPoint(aPageBorderRange.getMaxX(), aPageBorderRange.getMaxY()));
 
-        rVisitor.visit(drawinglayer::primitive2d::Primitive2DReference(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(std::move(aLeft), aRGBBorderColor)));
-        rVisitor.visit(drawinglayer::primitive2d::Primitive2DReference(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(std::move(aRight), aRGBBorderColor)));
+        rVisitor.visit(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(std::move(aLeft), aRGBBorderColor));
+        rVisitor.visit(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(std::move(aRight), aRGBBorderColor));
     }
     else
     {
         basegfx::B2DPolygon aPageBorderPolygon(basegfx::utils::createPolygonFromRect(aPageBorderRange));
-        rVisitor.visit(drawinglayer::primitive2d::Primitive2DReference(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(std::move(aPageBorderPolygon), aRGBBorderColor)));
+        rVisitor.visit(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(std::move(aPageBorderPolygon), aRGBBorderColor));
     }
 }
 
@@ -348,14 +347,14 @@ void ViewContactOfInnerPageBorder::createViewIndependentPrimitive2DSequence(draw
     }
     else
     {
-        svtools::ColorConfigValue aBorderConfig = aColorConfig.GetColorValue(svtools::DOCBOUNDARIES);
-        aBorderColor = aBorderConfig.bIsVisible ? aBorderConfig.nColor :
-                           aColorConfig.GetColorValue(svtools::DOCCOLOR).nColor;
+        const bool bShowMargin = rPage.getSdrModelFromSdrPage().IsShowMargin();
+        aBorderColor = bShowMargin ? aColorConfig.GetColorValue(svtools::DOCBOUNDARIES).nColor
+                                   : aColorConfig.GetColorValue(svtools::DOCCOLOR).nColor;
     }
 
     // create page outer border primitive
     const basegfx::BColor aRGBBorderColor(aBorderColor.getBColor());
-    rVisitor.visit(drawinglayer::primitive2d::Primitive2DReference(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(std::move(aPageBorderPolygon), aRGBBorderColor)));
+    rVisitor.visit(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(std::move(aPageBorderPolygon), aRGBBorderColor));
 }
 
 ViewContactOfInnerPageBorder::ViewContactOfInnerPageBorder(ViewContactOfSdrPage& rParentViewContactOfSdrPage)
@@ -402,34 +401,11 @@ sal_uInt32 ViewContactOfPageHierarchy::GetObjectCount() const
     return getPage().GetObjCount();
 }
 
-SdrObject& ViewContactOfPageHierarchy::GetSdrObject(sal_uInt32 nIndex) const
+ViewContact& ViewContactOfPageHierarchy::GetViewContact(sal_uInt32 nIndex) const
 {
     SdrObject* pObj = getPage().GetObj(nIndex);
     assert(pObj && "ViewContactOfPageHierarchy::GetViewContact: Corrupt SdrObjList (!)");
-    return *pObj;
-}
-
-ViewContact& ViewContactOfPageHierarchy::GetViewContact(sal_uInt32 nIndex) const
-{
-    return GetSdrObject(nIndex).GetViewContact();
-}
-
-void ViewContactOfPageHierarchy::getPrimitive2DSequenceHierarchyOfIndex(
-    sal_uInt32 nIndex, DisplayInfo& rDisplayInfo, ObjectContact& rObjectContact,
-    drawinglayer::primitive2d::Primitive2DDecompositionVisitor& rVisitor)
-{
-    SdrObject& rSdrObject(GetSdrObject(nIndex));
-
-    // optimization over parent impl to skip SdrObject::GetViewContent(), etc if the SdrObject isn't
-    // shown on the target layer. ViewObjectContactOfSdrobject::getPrimitive2DSequenceHierarchy does
-    // the same check, but after a set of allocations which is expensive in the case of SdrCaptions
-    // in a calc internal layer where there can be thousands of such objects.
-    if (!ViewObjectContactOfSdrObj::isObjectVisibleOnAnyLayer(rSdrObject, rDisplayInfo.GetProcessLayers()))
-        return;
-
-    ViewContact& rViewContact = rSdrObject.GetViewContact();
-    const ViewObjectContact& rCandidate(rViewContact.GetViewObjectContact(rObjectContact));
-    rCandidate.getPrimitive2DSequenceHierarchy(rDisplayInfo, rVisitor);
+    return pObj->GetViewContact();
 }
 
 ViewObjectContact& ViewContactOfGrid::CreateObjectSpecificViewObjectContact(ObjectContact& rObjectContact)
@@ -515,10 +491,10 @@ sal_uInt32 ViewContactOfSdrPage::GetObjectCount() const
 {
     // Fixed count of content. It contains PageBackground (Wiese), PageShadow, PageFill,
     // then - depending on if the page has a MasterPage - either MasterPage Hierarchy
-    // or MPBGO. Also OuterPageBorder, InnerPageBorder and two pairs of Grid and Helplines
-    // (for front and back) which internally are visible or not depending on the current
+    // or MPBGO. Also OuterPageBorder, InnerPageBorder, PageHierarchy and two pairs of Grid and
+    // Helplines (for front and back) which internally are visible or not depending on the current
     // front/back setting for those.
-    return 10;
+    return 11;
 }
 
 ViewContact& ViewContactOfSdrPage::GetViewContact(sal_uInt32 nIndex) const

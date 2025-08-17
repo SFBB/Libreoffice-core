@@ -37,9 +37,9 @@ const tools::Long SC_OL_POSOFFSET                  = 2;
 const size_t SC_OL_NOLEVEL                  = static_cast< size_t >( -1 );
 const size_t SC_OL_HEADERENTRY              = static_cast< size_t >( -1 );
 
-ScOutlineWindow::ScOutlineWindow( vcl::Window* pParent, ScOutlineMode eMode, ScViewData* pViewData, ScSplitPos eWhich ) :
+ScOutlineWindow::ScOutlineWindow( vcl::Window* pParent, ScOutlineMode eMode, ScViewData& rViewData, ScSplitPos eWhich ) :
     Window( pParent ),
-    mrViewData( *pViewData ),
+    mrViewData( rViewData ),
     meWhich( eWhich ),
     mbHoriz( eMode == SC_OUTLINE_HOR ),
     mbMirrorEntries( false ),           // updated in SetHeaderSize
@@ -539,12 +539,12 @@ namespace
 
 void ScOutlineWindow::DrawImageRel(tools::Long nLevelPos, tools::Long nEntryPos, const OUString& rId)
 {
-    const Image& rImage = GetImage(rId);
+    const Image aImage = GetImage(rId);
     GetOutDev()->SetLineColor();
     GetOutDev()->SetFillColor( GetBackground().GetColor() );
     Point aPos( GetPoint( nLevelPos, nEntryPos ) );
-    GetOutDev()->DrawRect( tools::Rectangle( aPos, rImage.GetSizePixel() ) );
-    GetOutDev()->DrawImage( aPos, rImage );
+    GetOutDev()->DrawRect( tools::Rectangle( aPos, aImage.GetSizePixel() ) );
+    GetOutDev()->DrawImage( aPos, aImage );
 }
 
 void ScOutlineWindow::DrawBorderRel( size_t nLevel, size_t nEntry, bool bPressed )

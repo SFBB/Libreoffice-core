@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_OCTREE_HXX
-#define INCLUDED_VCL_INC_OCTREE_HXX
+#pragma once
 
 #include <vcl/dllapi.h>
 #include <vcl/BitmapColor.hxx>
@@ -42,8 +41,8 @@ class BitmapReadAccess;
 class VCL_PLUGIN_PUBLIC Octree
 {
 private:
-    void CreatePalette(OctreeNode* pNode);
-    void GetPalIndex(const OctreeNode* pNode, BitmapColor const& color);
+    SAL_DLLPRIVATE void CreatePalette(OctreeNode* pNode);
+    SAL_DLLPRIVATE void GetPalIndex(const OctreeNode* pNode, BitmapColor const& color);
 
     SAL_DLLPRIVATE void add(std::unique_ptr<OctreeNode>& rpNode, BitmapColor const& color);
     SAL_DLLPRIVATE void reduce();
@@ -60,7 +59,7 @@ public:
     ~Octree();
 
     const BitmapPalette& GetPalette();
-    sal_uInt16 GetBestPaletteIndex(const BitmapColor& rColor);
+    SAL_DLLPRIVATE sal_uInt16 GetBestPaletteIndex(const BitmapColor& rColor);
 };
 
 class InverseColorMap
@@ -75,9 +74,7 @@ public:
     explicit InverseColorMap(const BitmapPalette& rPal);
     ~InverseColorMap();
 
-    sal_uInt16 GetBestPaletteIndex(const BitmapColor& rColor);
+    sal_uInt8 GetBestPaletteIndex(const BitmapColor& rColor);
 };
-
-#endif // INCLUDED_VCL_INC_OCTREE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

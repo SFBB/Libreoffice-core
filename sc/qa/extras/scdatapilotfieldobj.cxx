@@ -15,7 +15,6 @@
 #include <test/sheet/xdatapilotfield.hxx>
 #include <test/sheet/xdatapilotfieldgrouping.hxx>
 
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XDataPilotTablesSupplier.hpp>
@@ -80,11 +79,11 @@ public:
 };
 
 ScDataPilotFieldObj::ScDataPilotFieldObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
-    , XNamed("Col1")
-    , XPropertySet({ "Function", "HasAutoShowInfo", "HasLayoutInfo", "HasSortInfo", "Subtotals",
-                     "Subtotals2" })
-    , XServiceInfo("ScDataPilotFieldObj", "com.sun.star.sheet.DataPilotField")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
+    , XNamed(u"Col1"_ustr)
+    , XPropertySet({ u"Function"_ustr, u"HasAutoShowInfo"_ustr, u"HasLayoutInfo"_ustr,
+                     u"HasSortInfo"_ustr, u"Subtotals"_ustr, u"Subtotals2"_ustr })
+    , XServiceInfo(u"ScDataPilotFieldObj"_ustr, u"com.sun.star.sheet.DataPilotField"_ustr)
 {
 }
 
@@ -98,7 +97,7 @@ uno::Reference<uno::XInterface> ScDataPilotFieldObj::init()
     uno::Reference<sheet::XDataPilotTables> xDPT(xDPTS->getDataPilotTables(), uno::UNO_SET_THROW);
     (void)xDPT->getElementNames();
 
-    uno::Reference<sheet::XDataPilotDescriptor> xDPDsc(xDPT->getByName("DataPilot1"),
+    uno::Reference<sheet::XDataPilotDescriptor> xDPDsc(xDPT->getByName(u"DataPilot1"_ustr),
                                                        uno::UNO_QUERY_THROW);
     uno::Reference<container::XIndexAccess> xIA(xDPDsc->getDataPilotFields(), uno::UNO_SET_THROW);
     uno::Reference<uno::XInterface> xReturnValue(xIA->getByIndex(0), uno::UNO_QUERY_THROW);
@@ -109,7 +108,7 @@ void ScDataPilotFieldObj::setUp()
 {
     UnoApiTest::setUp();
 
-    loadFromURL(u"scdatapilotfieldobj.ods");
+    loadFromFile(u"scdatapilotfieldobj.ods");
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScDataPilotFieldObj);

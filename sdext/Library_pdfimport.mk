@@ -23,10 +23,13 @@ $(eval $(call gb_Library_set_include,pdfimport,\
 $(eval $(call gb_Library_use_libraries,pdfimport,\
     basegfx \
     comphelper \
+    drawinglayercore \
+    drawinglayer \
     vcl \
     cppu \
     cppuhelper \
     sal \
+    salhelper \
     tl \
     xo \
     i18nutil \
@@ -52,7 +55,6 @@ $(eval $(call gb_Library_add_defs,pdfimport, \
 $(eval $(call gb_Library_add_exception_objects,pdfimport,\
     sdext/source/pdfimport/filterdet \
     sdext/source/pdfimport/misc/pdfihelper \
-    sdext/source/pdfimport/misc/pwdinteract \
     sdext/source/pdfimport/odf/odfemitter \
     sdext/source/pdfimport/pdfiadaptor \
     sdext/source/pdfimport/pdfparse/pdfentries \

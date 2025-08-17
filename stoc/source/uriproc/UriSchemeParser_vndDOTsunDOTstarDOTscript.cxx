@@ -34,6 +34,7 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <o3tl/safeint.hxx>
+#include <o3tl/numeric.hxx>
 
 #include <string_view>
 
@@ -43,19 +44,12 @@ namespace com::sun::star::uri { class XUriReference; }
 
 namespace {
 
-int getHexWeight(sal_Unicode c) {
-    return c >= '0' && c <= '9' ? static_cast< int >(c - '0')
-        : c >= 'A' && c <= 'F' ? static_cast< int >(c - 'A' + 10)
-        : c >= 'a' && c <= 'f' ? static_cast< int >(c - 'a' + 10)
-        : -1;
-}
-
 int parseEscaped(std::u16string_view part, sal_Int32 * index) {
     if (part.size() - *index < 3 || part[*index] != '%') {
         return -1;
     }
-    int n1 = getHexWeight(part[*index + 1]);
-    int n2 = getHexWeight(part[*index + 2]);
+    int n1 = o3tl::convertToHex<int>(part[*index + 1]);
+    int n2 = o3tl::convertToHex<int>(part[*index + 2]);
     if (n1 < 0 || n2 < 0) {
         return -1;
     }
@@ -349,7 +343,7 @@ private:
 
 OUString Parser::getImplementationName()
 {
-    return "com.sun.star.comp.uri.UriSchemeParser_vndDOTsunDOTstarDOTscript";
+    return u"com.sun.star.comp.uri.UriSchemeParser_vndDOTsunDOTstarDOTscript"_ustr;
 }
 
 sal_Bool Parser::supportsService(OUString const & serviceName)
@@ -359,7 +353,7 @@ sal_Bool Parser::supportsService(OUString const & serviceName)
 
 css::uno::Sequence< OUString > Parser::getSupportedServiceNames()
 {
-    return { "com.sun.star.uri.UriSchemeParser_vndDOTsunDOTstarDOTscript" };
+    return { u"com.sun.star.uri.UriSchemeParser_vndDOTsunDOTstarDOTscript"_ustr };
 }
 
 css::uno::Reference< css::uri::XUriReference >

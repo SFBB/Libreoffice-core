@@ -55,6 +55,16 @@ namespace o3tl {
     template<> struct typed_flags<ExcTabBufFlags> : is_typed_flags<ExcTabBufFlags, 0x73> {};
 }
 
+struct XclExpSBIndex
+{
+    sal_uInt16          mnSupbook;          /// SUPBOOK index for an Excel sheet.
+    sal_uInt16          mnSBTab;            /// Sheet name index in SUPBOOK for an Excel sheet.
+    void         Set( sal_uInt16 nSupbook, sal_uInt16 nSBTab )
+    { mnSupbook = nSupbook; mnSBTab = nSBTab; }
+    XclExpSBIndex( sal_uInt16 nSupbook, sal_uInt16 nSBTab ) : mnSupbook(nSupbook), mnSBTab(nSBTab)  {}
+    XclExpSBIndex() : mnSupbook(0), mnSBTab(0) {}
+};
+
 /** Stores the correct Excel sheet index for each Calc sheet.
     @descr  The class knows all sheets which will not exported
     (i.e. external link sheets, scenario sheets). */
@@ -186,27 +196,22 @@ public:
     void StoreCellRange( sal_uInt16 nFileId, const OUString& rTabName, const ScRange& rRange );
 
     /** Finds or inserts an EXTERNNAME record for an add-in function name.
-        @param rnExtSheet  (out-param) Returns the index of the EXTSHEET structure for the add-in function name.
-        @param rnExtName  (out-param) Returns the 1-based EXTERNNAME record index.
-        @return  true = add-in function inserted; false = error (i.e. not supported in current BIFF). */
-    bool                InsertAddIn(
-                            sal_uInt16& rnExtSheet, sal_uInt16& rnExtName,
-                            const OUString& rName );
+        rnExtName Returns the 1-based EXTERNNAME record index.
+        sc/source/filter/inc/xelink.hxx
+        @return  [rnExtSheet, rnExtName] as an optional pair. If empty, it's not supported in current BIFF.*/
+    std::optional<XclExpSBIndex> InsertAddIn(const OUString& rName);
     /** InsertEuroTool */
-    bool                InsertEuroTool(
-                            sal_uInt16& rnExtSheet, sal_uInt16& rnExtName,
-                            const OUString& rName );
+    std::optional<XclExpSBIndex> InsertEuroTool(const OUString& rName);
     /** Finds or inserts an EXTERNNAME record for DDE links.
-        @param rnExtSheet  (out-param) Returns the index of the EXTSHEET structure for the DDE link.
-        @param rnExtName  (out-param) Returns the 1-based EXTERNNAME record index.
-        @return  true = DDE link inserted; false = error (i.e. not supported in current BIFF). */
-    bool                InsertDde(
-                            sal_uInt16& rnExtSheet, sal_uInt16& rnExtName,
-                            const OUString& rApplic, const OUString& rTopic, const OUString& rItem );
+        rnExtSheet Returns the index of the EXTSHEET structure for the DDE link.
+        rnExtName Returns the 1-based EXTERNNAME record index.
+        @return  [rnExtSheet, rnExtName] as an optional pair. If empty, it's not supported in current BIFF. */
+    std::optional<XclExpSBIndex>
+        InsertDde(const OUString& rApplic, const OUString& rTopic, const OUString& rItem);
 
-    bool                InsertExtName(
-                            sal_uInt16& rnExtSheet, sal_uInt16& rnExtName, const OUString& rUrl,
-                            const OUString& rName, const ScExternalRefCache::TokenArrayRef& rArray );
+    std::optional<XclExpSBIndex>
+        InsertExtName(const OUString& rUrl, const OUString& rName,
+                      const ScExternalRefCache::TokenArrayRef& rArray);
 
     /** Writes the entire Link table. */
     virtual void        Save( XclExpStream& rStrm ) override;

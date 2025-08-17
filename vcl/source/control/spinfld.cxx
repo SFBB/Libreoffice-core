@@ -30,7 +30,7 @@
 
 namespace {
 
-void ImplGetSpinbuttonValue(vcl::Window* pWin,
+void lcl_GetSpinbuttonValue(vcl::Window* pWin,
                             const tools::Rectangle& rUpperRect, const tools::Rectangle& rLowerRect,
                             bool bUpperIn, bool bLowerIn, bool bUpperEnabled, bool bLowerEnabled,
                             bool bHorz, SpinbuttonValue& rValue )
@@ -69,7 +69,7 @@ void ImplGetSpinbuttonValue(vcl::Window* pWin,
     rValue.mnLowerPart = bHorz ? ControlPart::ButtonRight : ControlPart::ButtonDown;
 }
 
-bool ImplDrawNativeSpinfield(vcl::RenderContext& rRenderContext, vcl::Window const * pWin, const SpinbuttonValue& rSpinbuttonValue)
+bool lcl_DrawNativeSpinfield(vcl::RenderContext& rRenderContext, vcl::Window const * pWin, const SpinbuttonValue& rSpinbuttonValue)
 {
     bool bNativeOK = false;
 
@@ -137,7 +137,7 @@ bool ImplDrawNativeSpinfield(vcl::RenderContext& rRenderContext, vcl::Window con
     return bNativeOK;
 }
 
-bool ImplDrawNativeSpinbuttons(vcl::RenderContext& rRenderContext, const SpinbuttonValue& rSpinbuttonValue)
+bool lcl_DrawNativeSpinbuttons(vcl::RenderContext& rRenderContext, const SpinbuttonValue& rSpinbuttonValue)
 {
     bool bNativeOK = false;
 
@@ -183,14 +183,14 @@ void ImplDrawSpinButton(vcl::RenderContext& rRenderContext, vcl::Window* pWindow
         }
 
         SpinbuttonValue aValue;
-        ImplGetSpinbuttonValue(pWindow, rUpperRect, rLowerRect,
+        lcl_GetSpinbuttonValue(pWindow, rUpperRect, rLowerRect,
                                bUpperIn, bLowerIn, bUpperEnabled, bLowerEnabled,
                                bHorz, aValue);
 
         if( aControl == ControlType::Spinbox )
-            bNativeOK = ImplDrawNativeSpinfield(rRenderContext, pWindow, aValue);
+            bNativeOK = lcl_DrawNativeSpinfield(rRenderContext, pWindow, aValue);
         else if( aControl == ControlType::SpinButtons )
-            bNativeOK = ImplDrawNativeSpinbuttons(rRenderContext, aValue);
+            bNativeOK = lcl_DrawNativeSpinbuttons(rRenderContext, aValue);
     }
 
     if (bNativeOK)
@@ -317,11 +317,11 @@ void SpinField::ImplInit(vcl::Window* pParent, WinBits nWinStyle)
     if ((nWinStyle & WB_SPIN) && ImplUseNativeBorder(*GetOutDev(), nWinStyle))
     {
         SetBackground();
-        mpEdit.set(VclPtr<Edit>::Create(this, WB_NOBORDER));
+        mpEdit.reset(VclPtr<Edit>::Create(this, WB_NOBORDER));
         mpEdit->SetBackground();
     }
     else
-        mpEdit.set(VclPtr<Edit>::Create(this, WB_NOBORDER));
+        mpEdit.reset(VclPtr<Edit>::Create(this, WB_NOBORDER));
 
     mpEdit->EnableRTL(false);
     mpEdit->SetPosPixel(Point());
@@ -337,8 +337,8 @@ void SpinField::ImplInit(vcl::Window* pParent, WinBits nWinStyle)
     SetCompoundControl(true);
 }
 
-SpinField::SpinField(vcl::Window* pParent, WinBits nWinStyle, WindowType nType) :
-    Edit(nType), maRepeatTimer("SpinField maRepeatTimer")
+SpinField::SpinField(vcl::Window* pParent, WinBits nWinStyle, WindowType eType) :
+    Edit(eType), maRepeatTimer("SpinField maRepeatTimer")
 {
     ImplInitSpinFieldData();
     ImplInit(pParent, nWinStyle);
@@ -543,9 +543,14 @@ bool SpinField::EventNotify(NotifyEvent& rNEvt)
     {
         if ((rNEvt.GetCommandEvent()->GetCommand() == CommandEventId::Wheel) && !IsReadOnly())
         {
+            const tools::Rectangle aRect(Point(0, 0), GetSizePixel());
+            const Point& rMousePos = rNEvt.GetCommandEvent()->GetMousePosPixel();
+            const bool bMouseHovered = aRect.Contains(rMousePos);
+
             MouseWheelBehaviour nWheelBehavior(GetSettings().GetMouseSettings().GetWheelBehavior());
-            if (nWheelBehavior == MouseWheelBehaviour::ALWAYS
-               || (nWheelBehavior == MouseWheelBehaviour::FocusOnly && HasChildPathFocus()))
+            if (bMouseHovered
+                && (nWheelBehavior == MouseWheelBehaviour::ALWAYS
+                    || (nWheelBehavior == MouseWheelBehaviour::FocusOnly && HasChildPathFocus())))
             {
                 const CommandWheelData* pData = rNEvt.GetCommandEvent()->GetWheelData();
                 if (pData->GetMode() == CommandWheelMode::SCROLL)

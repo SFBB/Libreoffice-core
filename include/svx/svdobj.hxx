@@ -31,6 +31,7 @@
 #include <svx/svdtypes.hxx>
 #include <svx/svdobjkind.hxx>
 #include <svx/svxdllapi.h>
+#include <tools/UniqueID.hxx>
 #include <tools/link.hxx>
 #include <tools/gen.hxx>
 #include <unotools/resmgr.hxx>
@@ -38,12 +39,10 @@
 #include <unordered_set>
 
 class SfxBroadcaster;
-class AutoTimer;
 class E3dObject;
 class E3dScene;
 class OutlinerParaObject;
 class Outliner;
-class SdrOutliner;
 class SdrDragStat;
 class SdrHdl;
 class SdrHdlList;
@@ -51,23 +50,15 @@ class SdrItemPool;
 class SdrModel;
 class SdrObjList;
 class SdrObject;
+class SdrOle2Obj;
 class SdrPage;
 class SdrPageView;
 class SdrTextObj;
-class SdrView;
 class SfxItemSet;
 class SfxGrabBagItem;
-class SfxSetItem;
 class SfxStyleSheet;
-class SfxUndoAction;
-class XFillAttrSetItem;
-class XLineAttrSetItem;
 class SfxItemPool;
-namespace tools { class PolyPolygon; }
-class SfxPoolItem;
 class SdrVirtObj;
-class SdrDragView;
-class SdrObjUserDataList;
 class SdrObjPlusData;
 class SdrGluePoint;
 class SdrGluePointList;
@@ -87,7 +78,7 @@ namespace basegfx
 namespace sdr { class ObjectUser; }
 namespace sdr::properties { class BaseProperties; }
 namespace sdr::contact { class ViewContact; }
-
+namespace sdr::annotation { class ObjectAnnotationData; }
 namespace com::sun::star::drawing { class XShape; }
 namespace svx::diagram { class IDiagramHelper; }
 
@@ -278,6 +269,8 @@ public:
     virtual void SAL_CALL acquire() noexcept override final;
     virtual void SAL_CALL release() noexcept override final;
 
+    sal_uInt64 GetUniqueID() const { return maUniqueID.getID(); }
+
     // SdrModel/SdrPage access on SdrObject level
     SdrPage* getSdrPageFromSdrObject() const;
     SdrModel& getSdrModelFromSdrObject() const;
@@ -359,6 +352,11 @@ public:
     virtual void SetDecorative(bool isDecorative);
     virtual bool IsDecorative() const;
 
+    // Object representing an annotation
+    bool isAnnotationObject() const { return bool(mpAnnotationData); }
+    void setAsAnnotationObject();
+    std::unique_ptr<sdr::annotation::ObjectAnnotationData>& getAnnotationData();
+
     // for group objects
     bool IsGroupObject() const;
     virtual SdrObjList* GetSubList() const;
@@ -370,6 +368,10 @@ public:
     /// and the next GetOrdNum() call recalculates the order number of all
     /// SdrObjects in the SdrObjList.
     sal_uInt32 GetOrdNum() const;
+
+    /// Ensure this object is sorted immediately after rFirst
+    /// ie. rFirst.GetOrdNum() + 1 == this->GetOrdNum()
+    void ensureSortedImmediatelyAfter(const SdrObject& rFirst);
 
     // setting the order number should only happen from the model or from the page
     void SetOrdNum(sal_uInt32 nNum);
@@ -404,7 +406,7 @@ public:
 
     void BroadcastObjectChange() const;
 
-    const SfxBroadcaster* GetBroadcaster() const;
+    SfxBroadcaster* GetBroadcaster() const;
 
     // set modified-flag in the model
     virtual void SetChanged();
@@ -518,6 +520,7 @@ public:
     /// Nbc means "no broadcast".
     virtual void NbcMove  (const Size& rSiz);
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact);
+    virtual bool IsSizeValid(Size aTargetSize);
     virtual void NbcCrop  (const basegfx::B2DPoint& rRef, double fxFact, double fyFact);
     virtual void NbcRotate(const Point& rRef, Degree100 nAngle, double sn, double cs) = 0;
     // Utility for call sites that don't have sin and cos handy
@@ -553,7 +556,9 @@ public:
     // Logic Rect: for the Rect for instance without regard to rotation angle, shear, ...
     virtual const tools::Rectangle& GetLogicRect() const;
     virtual void SetLogicRect(const tools::Rectangle& rRect);
-    virtual void NbcSetLogicRect(const tools::Rectangle& rRect);
+    // @param bAdaptTextMinSize pass false if you know it is safe to avoid the cost of doing
+    //              text layout right now.
+    virtual void NbcSetLogicRect(const tools::Rectangle& rRect, bool bAdaptTextMinSize = true);
 
     // the default is to set the logic rect to the given rectangle rMaxRect. If the shape
     // has an intrinsic aspect ratio it may set the logic rect so the aspect
@@ -589,7 +594,9 @@ public:
     const SfxItemSet& GetMergedItemSet() const;
     void SetMergedItem(const SfxPoolItem& rItem);
     void ClearMergedItem(const sal_uInt16 nWhich = 0);
-    void SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems = false);
+    // @param bAdjustTextFrameWidthAndHeight pass false if you know it is safe to avoid the cost of doing
+    //              text layout right now.
+    void SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems = false, bool bAdjustTextFrameWidthAndHeight = true);
     const SfxPoolItem& GetMergedItem(const sal_uInt16 nWhich) const;
     template<class T>
     const T&           GetMergedItem( TypedWhichId<T> nWhich ) const
@@ -608,7 +615,9 @@ public:
     // if bDontRemoveHardAttr is false, set all attributes, which were set in the style sheet, to their default value
     // if true, all hard attributes keep their values
     void SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr);
-    void NbcSetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr);
+    // @param bAdjustTextFrameWidthAndHeight pass false if you know it is safe to avoid the cost of doing
+    //              text layout right now.
+    void NbcSetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr, bool bAdjustTextFrameWidthAndHeight = true);
     SfxStyleSheet* GetStyleSheet() const;
 
     virtual bool HasTextEdit() const;
@@ -616,7 +625,7 @@ public:
     // keep text in outliner's format
     // SetOutlinerParaObject: transfer ownership of *pTextObject!
     void SetOutlinerParaObject(std::optional<OutlinerParaObject> pTextObject);
-    virtual void NbcSetOutlinerParaObject(std::optional<OutlinerParaObject> pTextObject);
+    virtual void NbcSetOutlinerParaObject(std::optional<OutlinerParaObject> pTextObject, bool bAdjustTextFrameWidthAndHeight = true);
     virtual OutlinerParaObject* GetOutlinerParaObject() const;
     virtual void NbcReformatText();
 
@@ -732,13 +741,14 @@ public:
     bool IsMoveProtect() const { return m_bMovProt;}
     void SetResizeProtect(bool bProt);
     bool IsResizeProtect() const { return m_bSizProt;}
-    void SetPrintable(bool bPrn);
-    bool IsPrintable() const { return !m_bNoPrint;}
-    void SetVisible(bool bVisible);
-    bool IsVisible() const { return mbVisible;}
+    virtual void SetPrintable(bool isPrintable);
+    virtual bool IsPrintable() const;
+    virtual void SetVisible(bool isVisible);
+    virtual bool IsVisible() const;
     void SetMarkProtect(bool bProt);
     bool IsMarkProtect() const { return m_bMarkProt;}
     virtual bool IsSdrTextObj() const { return false; }
+    virtual bool IsSdrOle2Obj() const { return false; }
     virtual bool IsTextPath() const { return false ; }
 
     /// Whether the aspect ratio should be kept by default when resizing.
@@ -805,6 +815,8 @@ public:
 
     void SetEmptyPresObj(bool bEpt);
     bool IsEmptyPresObj() const { return m_bEmptyPresObj;}
+    void SetCustomPromptText(const OUString& aVal);
+    OUString GetCustomPromptText() const { return m_aCustomPromptText; }
     void SetNotVisibleAsMaster(bool bFlg);
     bool IsNotVisibleAsMaster() const { return m_bNotVisibleAsMaster;}
     void SetUserCall(SdrObjUserCall* pUser);
@@ -894,6 +906,10 @@ protected:
     bool                        mbLineIsOutsideGeometry : 1;
     // #i25616#
     bool                        mbSupportTextIndentingOnLineWidthChange : 1;
+    // custom prompt text for empty presentation object
+    OUString                    m_aCustomPromptText;
+
+    std::unique_ptr<sdr::annotation::ObjectAnnotationData> mpAnnotationData;
 
     virtual ~SdrObject() override;
 
@@ -901,6 +917,7 @@ protected:
 
     virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact();
 
+    static void ImpCommonDragCalcRect(const SdrDragStat& rDrag, tools::Rectangle& rTmpRect);
     tools::Rectangle ImpDragCalcRect(const SdrDragStat& rDrag) const;
 
     // for GetDragComment
@@ -930,13 +947,17 @@ protected:
 
     const SfxItemSet* getBackgroundFillSet() const;
 
-    virtual void InternalSetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr, bool bBroadcast);
+    // @param bAdjustTextFrameWidthAndHeight pass false if you know it is safe to avoid the cost of doing
+    //              text layout right now.
+    virtual void InternalSetStyleSheet(SfxStyleSheet* pNewStyleSheet,
+                    bool bDontRemoveHardAttr, bool bBroadcast, bool bAdjustTextFrameWidthAndHeight = true);
 
 private:
     struct Impl;
     std::unique_ptr<Impl>             mpImpl;
     SdrObjList*                       mpParentOfSdrObject;     // list that includes this object
     sal_uInt32                        m_nOrdNum;      // order number of the object in the list
+    class UniqueID                          maUniqueID;
     std::unique_ptr<SfxGrabBagItem>   m_pGrabBagItem; // holds the GrabBagItem property
     // Position in the navigation order. SAL_MAX_UINT32 when not used.
     sal_uInt32                        mnNavigationPosition;
@@ -976,6 +997,8 @@ SVXCORE_DLLPUBLIC E3dObject* DynCastE3dObject(SdrObject*);
 inline const E3dObject* DynCastE3dObject(const SdrObject* p) { return DynCastE3dObject(const_cast<SdrObject*>(p)); }
 SVXCORE_DLLPUBLIC SdrTextObj* DynCastSdrTextObj(SdrObject*);
 inline const SdrTextObj* DynCastSdrTextObj(const SdrObject* p) { return DynCastSdrTextObj(const_cast<SdrObject*>(p)); }
+SVXCORE_DLLPUBLIC SdrOle2Obj* DynCastSdrOle2Obj(SdrObject*);
+inline const SdrOle2Obj* DynCastSdrOle2Obj(const SdrObject* p) { return DynCastSdrOle2Obj(const_cast<SdrObject*>(p)); }
 
 
 struct SdrObjCreatorParams

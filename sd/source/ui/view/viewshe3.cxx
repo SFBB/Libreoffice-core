@@ -66,7 +66,8 @@ void  ViewShell::GetMenuState( SfxItemSet &rSet )
 
         SdrView* pDrView = GetDrawView();
 
-        if( pDrView->AreObjectsMarked() )
+        const SdrMarkList& rMarkList = pDrView->GetMarkedObjectList();
+        if( rMarkList.GetMarkCount() != 0 )
         {
             SfxStyleSheet* pStyleSheet = pDrView->GetStyleSheet();
             if( pStyleSheet )
@@ -330,7 +331,7 @@ SdPage* ViewShell::CreateOrDuplicatePage (
                             i == nNewPageIndex);
                     }
                     // Move the selected page to the head of the document
-                    pDocument->MovePages (sal_uInt16(-1));
+                    pDocument->MoveSelectedPages (sal_uInt16(-1));
                     nNewPageIndex = 0;
                 }
             else
@@ -343,7 +344,7 @@ SdPage* ViewShell::CreateOrDuplicatePage (
                     eNotesLayout,
                     bIsPageBack,
                     bIsPageObj,
-                    nInsertPosition);
+                    pInsertPos ? (pInsertPos->GetValue()*2)+1 : nInsertPosition);
             break;
 
         case SID_DUPLICATE_PAGE:

@@ -13,7 +13,6 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheets.hpp>
@@ -46,7 +45,7 @@ public:
 };
 
 ScIndexEnumeration_DDELinksEnumeration::ScIndexEnumeration_DDELinksEnumeration()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -60,23 +59,23 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_DDELinksEnumeration::init()
     uno::Reference<sheet::XSpreadsheet> xSheet0(xIA->getByIndex(0), uno::UNO_QUERY_THROW);
 
     xSheet0->getCellByPosition(5, 5)->setFormula(
-        "=DDE(\"soffice\";\"ScDDELinksObj.ods\";\"Sheet1.A1\"");
+        u"=DDE(\"soffice\";\"ScDDELinksObj.ods\";\"Sheet1.A1\""_ustr);
     xSheet0->getCellByPosition(1, 4)->setFormula(
-        "=DDE(\"soffice\";\"ScDDELinksObj.ods\";\"Sheet1.A1\"");
+        u"=DDE(\"soffice\";\"ScDDELinksObj.ods\";\"Sheet1.A1\""_ustr);
     xSheet0->getCellByPosition(2, 0)->setFormula(
-        "=DDE(\"soffice\";\"ScDDELinksObj.ods\";\"Sheet1.A1\"");
+        u"=DDE(\"soffice\";\"ScDDELinksObj.ods\";\"Sheet1.A1\""_ustr);
 
     uno::Reference<beans::XPropertySet> xPropertySet(xDoc, uno::UNO_QUERY_THROW);
 
-    uno::Reference<container::XEnumerationAccess> xEA(xPropertySet->getPropertyValue("DDELinks"),
-                                                      uno::UNO_QUERY_THROW);
+    uno::Reference<container::XEnumerationAccess> xEA(
+        xPropertySet->getPropertyValue(u"DDELinks"_ustr), uno::UNO_QUERY_THROW);
     return xEA->createEnumeration();
 }
 
 void ScIndexEnumeration_DDELinksEnumeration::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScIndexEnumeration_DDELinksEnumeration);

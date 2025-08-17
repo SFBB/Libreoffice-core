@@ -19,7 +19,7 @@ $(eval $(call gb_Module_add_targets,extensions,\
 	Library_scn \
 	$(if $(filter WNT,$(OS)), \
 		Library_WinUserInfoBe \
-		$(if $(filter TRUE,$(BUILD_X86)),Executable_twain32shim) \
+		$(if $(CXX_X86_BINARY),Executable_twain32shim) \
 	) \
 	UIConfig_sabpilot \
 	UIConfig_scanner \
@@ -84,12 +84,6 @@ $(eval $(call gb_Module_add_targets,extensions,\
 	CustomTarget_so_activex_idl \
 ))
 
-ifeq ($(BUILD_X64),TRUE)
-$(eval $(call gb_Module_add_targets,extensions,\
-	CustomTarget_so_activex_x64 \
-	Library_so_activex_x64 \
-))
-endif # BUILD_X64
 endif # COM=MSC
 
 $(eval $(call gb_Module_add_targets,extensions,\
@@ -104,9 +98,16 @@ endif # WNT
 
 ifeq ($(OS),MACOSX)
 $(eval $(call gb_Module_add_targets,extensions,\
+	StaticLibrary_extensions_macosx_common \
 	Library_OOoSpotlightImporter \
+	Executable_QuickLookPreview \
+	Executable_QuickLookThumbnail \
 	Package_mdibundle \
 	Package_OOoSpotlightImporter \
+	Package_quicklookpreviewappex \
+	Package_QuickLookPreview \
+	Package_quicklookthumbnailappex \
+	Package_QuickLookThumbnail \
 ))
 endif # OS=MACOSX
 

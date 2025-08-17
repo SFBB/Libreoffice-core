@@ -7,7 +7,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <memory>
 #include <PivotTableDataSequence.hxx>
 
 #include <sal/config.h>
@@ -26,7 +25,7 @@ using namespace css;
 namespace sc
 {
 
-SC_SIMPLE_SERVICE_INFO( PivotTableDataSequence, "PivotTableDataSequence", "com.sun.star.chart2.data.DataSequence")
+SC_SIMPLE_SERVICE_INFO( PivotTableDataSequence, u"PivotTableDataSequence"_ustr, u"com.sun.star.chart2.data.DataSequence"_ustr)
 
 static std::span<const SfxItemPropertyMapEntry> lcl_GetDataSequencePropertyMap()
 {

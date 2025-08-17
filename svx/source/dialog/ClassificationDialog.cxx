@@ -27,7 +27,6 @@
 #include <vcl/customweld.hxx>
 #include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
-#include <sfx2/objsh.hxx>
 
 #include <officecfg/Office/Common.hxx>
 
@@ -75,7 +74,7 @@ constexpr OUString constRecentlyUsedFileName(u"recentlyUsed.xml"_ustr);
 
 OUString lcl_getClassificationUserPath()
 {
-    OUString sPath("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/user/classification/");
+    OUString sPath(u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/user/classification/"_ustr);
     rtl::Bootstrap::expandMacros(sPath);
     return sPath;
 }
@@ -119,15 +118,15 @@ OUString classificationTypeToString(svx::ClassificationType const & reType)
     switch(reType)
     {
         case svx::ClassificationType::CATEGORY:
-            return "CATEGORY"; break;
+            return u"CATEGORY"_ustr; break;
         case svx::ClassificationType::MARKING:
-            return "MARKING"; break;
+            return u"MARKING"_ustr; break;
         case svx::ClassificationType::TEXT:
-            return "TEXT"; break;
+            return u"TEXT"_ustr; break;
         case svx::ClassificationType::INTELLECTUAL_PROPERTY_PART:
-            return "INTELLECTUAL_PROPERTY_PART"; break;
+            return u"INTELLECTUAL_PROPERTY_PART"_ustr; break;
         case svx::ClassificationType::PARAGRAPH:
-            return "PARAGRAPH"; break;
+            return u"PARAGRAPH"_ustr; break;
     }
     return OUString();
 }
@@ -157,27 +156,27 @@ void writeResultToXml(tools::XmlWriter & rXmlWriter,
 
 ClassificationDialog::ClassificationDialog(weld::Window* pParent, const css::uno::Reference<css::document::XDocumentProperties>& rDocProps,
                                            const bool bPerParagraph, std::function<void()> aParagraphSignHandler)
-    : GenericDialogController(pParent, "svx/ui/classificationdialog.ui", "AdvancedDocumentClassificationDialog")
+    : GenericDialogController(pParent, u"svx/ui/classificationdialog.ui"_ustr, u"AdvancedDocumentClassificationDialog"_ustr)
     , maHelper(rDocProps)
     , maInternationalHelper(rDocProps, /*bUseLocalizedPolicy*/ false)
     , m_bPerParagraph(bPerParagraph)
     , m_aParagraphSignHandler(std::move(aParagraphSignHandler))
     , m_nCurrentSelectedCategory(-1)
-    , m_xOkButton(m_xBuilder->weld_button("ok"))
-    , m_xSignButton(m_xBuilder->weld_button("signButton"))
-    , m_xToolBox(m_xBuilder->weld_toggle_button("toolbox"))
-    , m_xRecentlyUsedListBox(m_xBuilder->weld_combo_box("recentlyUsedCB"))
-    , m_xClassificationListBox(m_xBuilder->weld_combo_box("classificationCB"))
-    , m_xInternationalClassificationListBox(m_xBuilder->weld_combo_box("internationalClassificationCB"))
-    , m_xMarkingLabel(m_xBuilder->weld_label("markingLabel"))
-    , m_xMarkingListBox(m_xBuilder->weld_tree_view("markingLB"))
-    , m_xIntellectualPropertyPartListBox(m_xBuilder->weld_tree_view("intellectualPropertyPartLB"))
-    , m_xIntellectualPropertyPartNumberListBox(m_xBuilder->weld_tree_view("intellectualPropertyPartNumberLB"))
-    , m_xIntellectualPropertyPartAddButton(m_xBuilder->weld_button("intellectualPropertyPartAddButton"))
-    , m_xIntellectualPropertyPartEdit(m_xBuilder->weld_entry("intellectualPropertyPartEntry"))
-    , m_xIntellectualPropertyExpander(m_xBuilder->weld_expander("intellectualPropertyExpander"))
+    , m_xOkButton(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xSignButton(m_xBuilder->weld_button(u"signButton"_ustr))
+    , m_xToolBox(m_xBuilder->weld_toggle_button(u"toolbox"_ustr))
+    , m_xRecentlyUsedListBox(m_xBuilder->weld_combo_box(u"recentlyUsedCB"_ustr))
+    , m_xClassificationListBox(m_xBuilder->weld_combo_box(u"classificationCB"_ustr))
+    , m_xInternationalClassificationListBox(m_xBuilder->weld_combo_box(u"internationalClassificationCB"_ustr))
+    , m_xMarkingLabel(m_xBuilder->weld_label(u"markingLabel"_ustr))
+    , m_xMarkingListBox(m_xBuilder->weld_tree_view(u"markingLB"_ustr))
+    , m_xIntellectualPropertyPartListBox(m_xBuilder->weld_tree_view(u"intellectualPropertyPartLB"_ustr))
+    , m_xIntellectualPropertyPartNumberListBox(m_xBuilder->weld_tree_view(u"intellectualPropertyPartNumberLB"_ustr))
+    , m_xIntellectualPropertyPartAddButton(m_xBuilder->weld_button(u"intellectualPropertyPartAddButton"_ustr))
+    , m_xIntellectualPropertyPartEdit(m_xBuilder->weld_entry(u"intellectualPropertyPartEntry"_ustr))
+    , m_xIntellectualPropertyExpander(m_xBuilder->weld_expander(u"intellectualPropertyExpander"_ustr))
     , m_xEditWindow(new ClassificationEditView)
-    , m_xEditWindowWeld(new weld::CustomWeld(*m_xBuilder, "classificationEditWindow", *m_xEditWindow))
+    , m_xEditWindowWeld(new weld::CustomWeld(*m_xBuilder, u"classificationEditWindow"_ustr, *m_xEditWindow))
 {
     m_xOkButton->connect_clicked(LINK(this, ClassificationDialog, OkHdl));
     m_xSignButton->connect_clicked(LINK(this, ClassificationDialog, ButtonClicked));
@@ -357,13 +356,13 @@ void ClassificationDialog::readRecentlyUsed()
                         }
                         aWalker.parent();
 
-                        aResults.push_back({ eType, sString, sAbbreviatedString, sIdentifier });
+                        aResults.emplace_back(eType, sString, sAbbreviatedString, sIdentifier);
                     }
                 }
                 aWalker.next();
             }
             aWalker.parent();
-            m_aRecentlyUsedValuesCollection.push_back(aResults);
+            m_aRecentlyUsedValuesCollection.push_back(std::move(aResults));
         }
         aWalker.next();
     }
@@ -487,13 +486,11 @@ void ClassificationDialog::toggleWidgetsDependingOnCategory()
 
     for (sal_Int32 nParagraph = 0; nParagraph < rEditEngine.GetParagraphCount(); ++nParagraph)
     {
-        sal_uInt16 nFieldCount = rEditEngine.GetFieldCount(nParagraph);
-        for (sal_uInt16 nField = 0; nField < nFieldCount; ++nField)
+        for (const EFieldInfo& rFieldInfo : rEditEngine.GetFieldInfo(nParagraph))
         {
-            EFieldInfo aFieldInfo = rEditEngine.GetFieldInfo(nParagraph, nField);
-            if (aFieldInfo.pFieldItem)
+            if (rFieldInfo.pFieldItem)
             {
-                const ClassificationField* pClassificationField = dynamic_cast<const ClassificationField*>(aFieldInfo.pFieldItem->GetField());
+                const ClassificationField* pClassificationField = dynamic_cast<const ClassificationField*>(rFieldInfo.pFieldItem->GetField());
                 if (pClassificationField && pClassificationField->meType == ClassificationType::CATEGORY)
                 {
                     m_xOkButton->set_sensitive(true);
@@ -536,12 +533,12 @@ std::vector<ClassificationResult> ClassificationDialog::getResult()
                     eFontWeight = WEIGHT_BOLD;
             }
             // Font weight to string
-            OUString sWeightProperty = "NORMAL";
+            OUString sWeightProperty = u"NORMAL"_ustr;
             if (eFontWeight == WEIGHT_BOLD)
                 sWeightProperty = "BOLD";
             // Insert into collection
             OUString sBlank;
-            aClassificationResults.push_back({ ClassificationType::PARAGRAPH, sWeightProperty, sBlank, sBlank });
+            aClassificationResults.emplace_back(ClassificationType::PARAGRAPH, sWeightProperty, sBlank, sBlank);
         }
 
         const SvxFieldItem* pFieldItem = findField(rSection);
@@ -554,12 +551,12 @@ std::vector<ClassificationResult> ClassificationDialog::getResult()
 
             if (pClassificationField)
             {
-                aClassificationResults.push_back({ pClassificationField->meType, pClassificationField->msFullClassName,
-                                                   pClassificationField->msDescription, pClassificationField->msIdentifier });
+                aClassificationResults.emplace_back(pClassificationField->meType, pClassificationField->msFullClassName,
+                                                   pClassificationField->msDescription, pClassificationField->msIdentifier);
             }
             else
             {
-                aClassificationResults.push_back({ ClassificationType::TEXT, sDisplayString, sDisplayString, OUString() });
+                aClassificationResults.emplace_back(ClassificationType::TEXT, sDisplayString, sDisplayString, OUString());
             }
         }
     }

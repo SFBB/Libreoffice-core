@@ -212,10 +212,10 @@ bool RedundantCast::VisitImplicitCastExpr(const ImplicitCastExpr * expr) {
             Expr const * e = expr->getSubExpr()->IgnoreParenImpCasts();
             while (isa<CXXConstCastExpr>(e)) {
                 auto cc = dyn_cast<CXXConstCastExpr>(e);
-                if (expr->getType()->getAs<clang::PointerType>()
-                    ->getPointeeType().isAtLeastAsQualifiedAs(
-                        cc->getSubExpr()->getType()
-                        ->getAs<clang::PointerType>()->getPointeeType()))
+                if (compat::isAtLeastAsQualifiedAs(
+                        expr->getType()->getAs<clang::PointerType>()->getPointeeType(),
+                        cc->getSubExpr()->getType()->getAs<clang::PointerType>()->getPointeeType(),
+                        compiler.getASTContext()))
                 {
                     report(
                         DiagnosticsEngine::Warning,
@@ -256,10 +256,10 @@ bool RedundantCast::VisitImplicitCastExpr(const ImplicitCastExpr * expr) {
             Expr const * e = expr->getSubExpr()->IgnoreParenImpCasts();
             while (isa<CXXConstCastExpr>(e)) {
                 auto cc = dyn_cast<CXXConstCastExpr>(e);
-                if (expr->getType()->getAs<clang::PointerType>()
-                    ->getPointeeType().isAtLeastAsQualifiedAs(
-                        cc->getSubExpr()->getType()
-                        ->getAs<clang::PointerType>()->getPointeeType()))
+                if (compat::isAtLeastAsQualifiedAs(
+                        expr->getType()->getAs<clang::PointerType>()->getPointeeType(),
+                        cc->getSubExpr()->getType()->getAs<clang::PointerType>()->getPointeeType(),
+                        compiler.getASTContext()))
                 {
                     report(
                         DiagnosticsEngine::Warning,
@@ -275,10 +275,10 @@ bool RedundantCast::VisitImplicitCastExpr(const ImplicitCastExpr * expr) {
             Expr const * e = expr->getSubExpr()->IgnoreParenImpCasts();
             while (isa<CXXConstCastExpr>(e)) {
                 auto cc = dyn_cast<CXXConstCastExpr>(e);
-                if (expr->getType()->getAs<ReferenceType>()->getPointeeType()
-                    .isAtLeastAsQualifiedAs(
-                        cc->getSubExpr()->getType()
-                        ->getAs<ReferenceType>()->getPointeeType()))
+                if (compat::isAtLeastAsQualifiedAs(
+                        expr->getType()->getAs<ReferenceType>()->getPointeeType(),
+                        cc->getSubExpr()->getType()->getAs<ReferenceType>()->getPointeeType(),
+                        compiler.getASTContext()))
                 {
                     report(
                         DiagnosticsEngine::Warning,
@@ -897,7 +897,7 @@ bool RedundantCast::VisitCXXDynamicCastExpr(CXXDynamicCastExpr const * expr) {
                 << t2 << t1 << expr->getSourceRange();
             return true;
         }
-        if (qt1->getAsCXXRecordDecl() && qt2->getAsCXXRecordDecl()->isDerivedFrom(qt1->getAsCXXRecordDecl()))
+        if (qt1->getAsCXXRecordDecl() && qt2->getAsCXXRecordDecl() && qt2->getAsCXXRecordDecl()->isDerivedFrom(qt1->getAsCXXRecordDecl()))
         {
             report(
                 DiagnosticsEngine::Warning,

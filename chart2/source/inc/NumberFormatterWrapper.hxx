@@ -18,7 +18,7 @@
  */
 #pragma once
 
-#include "charttoolsdllapi.hxx"
+#include <config_options.h>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <tools/date.hxx>
 
@@ -28,7 +28,7 @@ class Color;
 namespace chart
 {
 
-class OOO_DLLPUBLIC_CHARTTOOLS NumberFormatterWrapper final
+class NumberFormatterWrapper final
 {
 public:
     NumberFormatterWrapper( const css::uno::Reference< css::util::XNumberFormatsSupplier >& xSupplier );

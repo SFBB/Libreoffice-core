@@ -52,7 +52,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 
 SFX_IMPL_INTERFACE(SfxApplication,SfxShell)
 
@@ -114,7 +113,7 @@ static bool FileExists( const INetURLObject& rURL )
             ::ucbhelper::Content  aCnt( rURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ), uno::Reference< ucb::XCommandEnvironment >(), comphelper::getProcessComponentContext() );
             OUString aTitle;
 
-            aCnt.getPropertyValue("Title") >>= aTitle;
+            aCnt.getPropertyValue(u"Title"_ustr) >>= aTitle;
             bRet = ( !aTitle.isEmpty() );
         }
         catch(const Exception&)
@@ -126,7 +125,7 @@ static bool FileExists( const INetURLObject& rURL )
     return bRet;
 }
 
-bool SfxApplication::loadBrandSvg(const char *pName, BitmapEx &rBitmap, int nWidth)
+bool SfxApplication::loadBrandSvg(const char *pName, Bitmap &rBitmap, int nWidth)
 {
     // Load from disk
 
@@ -139,7 +138,16 @@ bool SfxApplication::loadBrandSvg(const char *pName, BitmapEx &rBitmap, int nWid
     if ( !FileExists(aObj) )
         return false;
 
-    VectorGraphicData aVectorGraphicData(aObj.PathToFileName(), VectorGraphicDataType::Svg);
+    // Read the SVG file
+    SvFileStream aStream(aObj.PathToFileName(), StreamMode::STD_READ);
+    if (aStream.GetError())
+        return false;
+
+    BinaryDataContainer aDataContainer(aStream, aStream.remainingSize());
+    if (aStream.GetError())
+        return false;
+
+    VectorGraphicData aVectorGraphicData(std::move(aDataContainer), VectorGraphicDataType::Svg);
 
     // transform into [0,0,width,width*aspect] std dimensions
 
@@ -161,7 +169,7 @@ bool SfxApplication::loadBrandSvg(const char *pName, BitmapEx &rBitmap, int nWid
 
     // UNO dance to render from drawinglayer
 
-    uno::Reference< uno::XComponentContext > xContext(::comphelper::getProcessComponentContext());
+    const uno::Reference< uno::XComponentContext >& xContext(::comphelper::getProcessComponentContext());
 
     try
     {
@@ -171,7 +179,7 @@ bool SfxApplication::loadBrandSvg(const char *pName, BitmapEx &rBitmap, int nWid
         // cancel out rasterize's mm2pixel conversion
         // see fFactor100th_mmToInch in
         // drawinglayer/source/drawinglayeruno/xprimitive2drenderer.cxx
-        const double fFakeDPI=2.54 * 1000.0;
+        constexpr double fFakeDPI = o3tl::convert(1.0, o3tl::Length::in, o3tl::Length::mm100);
 
         geometry::RealRectangle2D aRealRect(
             0, 0,
@@ -189,7 +197,7 @@ bool SfxApplication::loadBrandSvg(const char *pName, BitmapEx &rBitmap, int nWid
         if(xBitmap.is())
         {
             const uno::Reference< rendering::XIntegerReadOnlyBitmap> xIntBmp(xBitmap, uno::UNO_QUERY_THROW);
-            rBitmap = vcl::unotools::bitmapExFromXBitmap(xIntBmp);
+            rBitmap = vcl::unotools::bitmapFromXBitmap(xIntBmp);
             return true;
         }
     }
@@ -201,9 +209,9 @@ bool SfxApplication::loadBrandSvg(const char *pName, BitmapEx &rBitmap, int nWid
 }
 
 /** loads the application logo as used in the impress slideshow pause screen */
-BitmapEx SfxApplication::GetApplicationLogo(tools::Long nWidth)
+Bitmap SfxApplication::GetApplicationLogo(tools::Long nWidth)
 {
-    BitmapEx aBitmap;
+    Bitmap aBitmap;
     SfxApplication::loadBrandSvg("shell/about", aBitmap, nWidth);
     return aBitmap;
 }

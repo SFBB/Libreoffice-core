@@ -25,6 +25,7 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/implbase.hxx>
+#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
 
 #include <mutex>
@@ -36,6 +37,8 @@
 
 namespace framework
 {
+
+class WeakContainerListener;
 
 //  Configuration access class for PopupMenuControllerFactory implementation
 
@@ -71,10 +74,6 @@ private:
         ControllerInfo(OUString _aImplementationName, OUString _aValue) : m_aImplementationName(std::move(_aImplementationName)),m_aValue(std::move(_aValue)){}
         ControllerInfo(){}
     };
-    class MenuControllerMap : public std::unordered_map< OUString,
-                                                         ControllerInfo >
-    {
-    };
 
     bool impl_getElementProps( const css::uno::Any& aElement, OUString& aCommand, OUString& aModule, OUString& aServiceSpecifier,OUString& aValue ) const;
 
@@ -84,10 +83,10 @@ private:
     OUString                     m_aPropController;
     OUString                     m_aPropValue;
     OUString                     m_sRoot;
-    MenuControllerMap            m_aMenuControllerMap;
+    std::unordered_map< OUString, ControllerInfo >            m_aMenuControllerMap;
     css::uno::Reference< css::lang::XMultiServiceFactory >    m_xConfigProvider;
     css::uno::Reference< css::container::XNameAccess >        m_xConfigAccess;
-    css::uno::Reference< css::container::XContainerListener > m_xConfigAccessListener;
+    rtl::Reference< WeakContainerListener > m_xConfigAccessListener;
     bool                          m_bConfigAccessInitialized;
 };
 

@@ -31,10 +31,8 @@ using namespace osl;
 using namespace connectivity::evoab;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::ucb;
 
 
 OEvoabDriver::OEvoabDriver(const Reference< XComponentContext >& _rxContext) :
@@ -53,7 +51,7 @@ void OEvoabDriver::disposing()
     // when driver will be destroyed so all our connections have to be destroyed as well
     for (const auto& rxConnection : m_xConnections)
     {
-        Reference< XComponent > xComp(rxConnection.get(), UNO_QUERY);
+        rtl::Reference< OEvoabConnection > xComp(rxConnection);
         if (xComp.is())
         {
             try
@@ -67,7 +65,6 @@ void OEvoabDriver::disposing()
         }
     }
     m_xConnections.clear();
-    connectivity::OWeakRefArray().swap(m_xConnections); // this really clears
 
     ODriver_BASE::disposing();
 }
@@ -91,7 +88,7 @@ Sequence< OUString > SAL_CALL OEvoabDriver::getSupportedServiceNames(  )
 {
     // which service is supported
     // for more information @see com.sun.star.sdbc.Driver
-    return { "com.sun.star.sdbc.Driver" };
+    return { u"com.sun.star.sdbc.Driver"_ustr };
 }
 
 
@@ -106,7 +103,7 @@ Reference< XConnection > SAL_CALL OEvoabDriver::connect( const OUString& url, co
 
     rtl::Reference<OEvoabConnection> pCon = new OEvoabConnection( *this );
     pCon->construct(url,info);
-    m_xConnections.push_back(WeakReferenceHelper(*pCon));
+    m_xConnections.push_back(pCon);
 
     return pCon;
 }

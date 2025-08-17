@@ -37,8 +37,6 @@
 
 #include <unx/i18n_cb.hxx>
 
-using namespace vcl;
-
 // kinput2 IME needs special key handling since key release events are filtered in
 // preeditmode and XmbResetIC does not work
 
@@ -255,7 +253,7 @@ SalI18N_InputMethod::~SalI18N_InputMethod()
 }
 
 // XXX
-// debug routine: lets have a look at the provided method styles
+// debug routine: let's have a look at the provided method styles
 
 #if OSL_DEBUG_LEVEL > 1
 
@@ -332,7 +330,7 @@ SalI18N_InputMethod::CreateMethod ( Display *pDisplay )
 
         if ((maMethod == nullptr) && (getenv("XMODIFIERS") != nullptr))
         {
-                OUString envVar("XMODIFIERS");
+                OUString envVar(u"XMODIFIERS"_ustr);
                 osl_clearEnvironment(envVar.pData);
                 XSetLocaleModifiers("");
                 maMethod = XOpenIM(pDisplay, nullptr, nullptr, nullptr);

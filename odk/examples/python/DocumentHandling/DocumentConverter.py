@@ -13,7 +13,6 @@ import sys
 from os.path import abspath, basename, isdir, join, splitext
 
 import uno
-import unohelper
 from com.sun.star.beans import PropertyValue
 from com.sun.star.connection import NoConnectException
 
@@ -51,7 +50,7 @@ def convert(src_file, dest_file, to_type):
         PropertyValue(Name="FilterName", Value=to_type),
     )
     try:
-        doc.storeAsURL(dest_url, opts);
+        doc.storeAsURL(dest_url, opts)
     finally:
         doc.dispose()
 

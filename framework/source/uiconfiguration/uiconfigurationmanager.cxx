@@ -78,7 +78,7 @@ class UIConfigurationManager :   public ::cppu::WeakImplHelper<
 public:
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.UIConfigurationManager";
+        return u"com.sun.star.comp.framework.UIConfigurationManager"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -88,7 +88,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.ui.UIConfigurationManager"};
+        return {u"com.sun.star.ui.UIConfigurationManager"_ustr};
     }
 
     explicit UIConfigurationManager( css::uno::Reference< css::uno::XComponentContext > xContext );
@@ -163,10 +163,12 @@ private:
     {
         UIElementType() : bModified( false ),
                           bLoaded( false ),
+                          bShouldReloadRWOnStore( false ),
                           nElementType( css::ui::UIElementType::UNKNOWN ) {}
 
         bool                                                              bModified;
         bool                                                              bLoaded;
+        bool                                                              bShouldReloadRWOnStore;
         sal_Int16                                                         nElementType;
         UIElementDataHashMap                                              aElementsHashMap;
         css::uno::Reference< css::embed::XStorage > xStorage;
@@ -202,7 +204,7 @@ private:
 
 // important: The order and position of the elements must match the constant
 // definition of "css::ui::UIElementType"
-std::u16string_view UIELEMENTTYPENAMES[] =
+constexpr std::u16string_view UIELEMENTTYPENAMES[] =
 {
     u"",  // Dummy value for unknown!
     u"" UIELEMENTTYPE_MENUBAR_NAME,
@@ -631,8 +633,6 @@ void UIConfigurationManager::impl_Initialize()
     // Initialize the top-level structures with the storage data
     if ( m_xDocConfigStorage.is() )
     {
-        tools::Long nModes = m_bReadOnly ? ElementModes::READ : ElementModes::READWRITE;
-
         // Try to access our module sub folder
         for ( sal_Int16 i = 1; i < css::ui::UIElementType::COUNT;
               i++ )
@@ -640,7 +640,7 @@ void UIConfigurationManager::impl_Initialize()
             Reference< XStorage > xElementTypeStorage;
             try
             {
-                xElementTypeStorage = m_xDocConfigStorage->openStorageElement( OUString(UIELEMENTTYPENAMES[i]), nModes );
+                xElementTypeStorage = m_xDocConfigStorage->openStorageElement( OUString(UIELEMENTTYPENAMES[i]), ElementModes::READ );
             }
             catch ( const css::container::NoSuchElementException& )
             {
@@ -660,7 +660,8 @@ void UIConfigurationManager::impl_Initialize()
 
             m_aUIElements[i].nElementType = i;
             m_aUIElements[i].bModified = false;
-            m_aUIElements[i].xStorage = xElementTypeStorage;
+            m_aUIElements[i].bShouldReloadRWOnStore = !m_bReadOnly;
+            m_aUIElements[i].xStorage = std::move(xElementTypeStorage);
         }
     }
     else
@@ -675,7 +676,7 @@ UIConfigurationManager::UIConfigurationManager( css::uno::Reference< css::uno::X
       m_bReadOnly( true )
     , m_bModified( false )
     , m_bDisposed( false )
-    , m_aPropUIName( "UIName" )
+    , m_aPropUIName( u"UIName"_ustr )
     , m_xContext(std::move( xContext ))
 {
     // Make sure we have a default initialized entry for every layer and user interface element type!
@@ -868,11 +869,11 @@ Sequence< Sequence< PropertyValue > > SAL_CALL UIConfigurationManager::getUIElem
     sal_Int32 n = 0;
     for (auto const& elem : aUIElementInfoCollection)
     {
-        Sequence< PropertyValue > aUIElementInfo{
-            comphelper::makePropertyValue("ResourceURL", elem.second.aResourceURL),
+        aElementInfoSeq[n++] =
+        {
+            comphelper::makePropertyValue(u"ResourceURL"_ustr, elem.second.aResourceURL),
             comphelper::makePropertyValue(m_aPropUIName, elem.second.aUIName)
         };
-        aElementInfoSeq[n++] = aUIElementInfo;
     }
 
     return comphelper::containerToSequence(aElementInfoSeq);
@@ -1203,7 +1204,7 @@ void SAL_CALL UIConfigurationManager::setStorage( const Reference< XStorage >& S
             try
             {
                 tools::Long nOpenMode = 0;
-                Any a = xPropSet->getPropertyValue("OpenMode");
+                Any a = xPropSet->getPropertyValue(u"OpenMode"_ustr);
                 if ( a >>= nOpenMode )
                     m_bReadOnly = !( nOpenMode & ElementModes::WRITE );
             }
@@ -1286,8 +1287,30 @@ void SAL_CALL UIConfigurationManager::store()
         {
             UIElementType& rElementType = m_aUIElements[i];
 
-            if ( rElementType.bModified && rElementType.xStorage.is() )
-                impl_storeElementTypeData( rElementType.xStorage, rElementType );
+            if ( rElementType.bModified )
+            {
+                if ( rElementType.bShouldReloadRWOnStore )
+                {
+                    rElementType.bShouldReloadRWOnStore = false;
+                    rElementType.xStorage.clear();
+                    try
+                    {
+                        rElementType.xStorage = m_xDocConfigStorage->openStorageElement( OUString(UIELEMENTTYPENAMES[i]),
+                                                                                         ElementModes::READWRITE );
+                    }
+                    catch ( const Exception& )
+                    {
+                        rElementType.xStorage = m_xDocConfigStorage->openStorageElement( OUString(UIELEMENTTYPENAMES[i]),
+                                                                                        ElementModes::READ );
+                        throw;
+                    }
+                }
+                if ( rElementType.xStorage.is() )
+                {
+                    impl_storeElementTypeData( rElementType.xStorage, rElementType );
+                }
+
+            }
         }
         catch ( const Exception& )
         {

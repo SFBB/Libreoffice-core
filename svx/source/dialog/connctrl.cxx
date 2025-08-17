@@ -125,7 +125,7 @@ void SvxXConnectionPreview::AdaptSize()
 
 void SvxXConnectionPreview::Construct()
 {
-    DBG_ASSERT( pView, "No valid view is passed on! ");
+    assert(pView && "No valid view is passed on!");
 
     const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
     const size_t nMarkCount = rMarkList.GetMarkCount();
@@ -239,7 +239,7 @@ sal_uInt16 SvxXConnectionPreview::GetLineDeltaCount() const
     const SfxItemSet& rSet = pEdgeObj->GetMergedItemSet();
     sal_uInt16 nCount(0);
 
-    if(SfxItemState::DONTCARE != rSet.GetItemState(SDRATTR_EDGELINEDELTACOUNT))
+    if(SfxItemState::INVALID != rSet.GetItemState(SDRATTR_EDGELINEDELTACOUNT))
         nCount = rSet.Get(SDRATTR_EDGELINEDELTACOUNT).GetValue();
 
     return nCount;

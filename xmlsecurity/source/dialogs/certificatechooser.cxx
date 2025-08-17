@@ -20,18 +20,23 @@
 #include <config_gpgme.h>
 #include <certificatechooser.hxx>
 #include <certificateviewer.hxx>
+#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/xml/crypto/XSecurityEnvironment.hpp>
 #include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
+#include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/xmlsechelper.hxx>
+#include <comphelper/lok.hxx>
+#include <sfx2/viewsh.hxx>
+#include <svl/cryptosign.hxx>
 
 #include <com/sun/star/security/NoPasswordException.hpp>
 #include <com/sun/star/security/CertificateCharacters.hpp>
+#include <com/sun/star/xml/crypto/NSSInitializer.hpp>  // tdf#161909 - maybe not needed
 
-#include <o3tl/safeint.hxx>
 #include <unotools/datetime.hxx>
 #include <unotools/charclass.hxx>
-
+#include <unotools/useroptions.hxx>
 
 #include <resourcemanager.hxx>
 #include <strings.hrc>
@@ -40,25 +45,35 @@ using namespace comphelper;
 using namespace css;
 
 CertificateChooser::CertificateChooser(weld::Window* _pParent,
+                                       SfxViewShell* pViewShell,
                                        std::vector< css::uno::Reference< css::xml::crypto::XXMLSecurityContext > > && rxSecurityContexts,
-                                       UserAction eAction)
-    : GenericDialogController(_pParent, "xmlsec/ui/selectcertificatedialog.ui", "SelectCertificateDialog")
+                                       CertificateChooserUserAction eAction)
+    : GenericDialogController(_pParent, u"xmlsec/ui/selectcertificatedialog.ui"_ustr, u"SelectCertificateDialog"_ustr)
     , meAction(eAction)
-    , m_xFTSign(m_xBuilder->weld_label("sign"))
-    , m_xFTEncrypt(m_xBuilder->weld_label("encrypt"))
-    , m_xCertLB(m_xBuilder->weld_tree_view("signatures"))
-    , m_xViewBtn(m_xBuilder->weld_button("viewcert"))
-    , m_xOKBtn(m_xBuilder->weld_button("ok"))
-    , m_xFTDescription(m_xBuilder->weld_label("description-label"))
-    , m_xDescriptionED(m_xBuilder->weld_entry("description"))
-    , m_xSearchBox(m_xBuilder->weld_entry("searchbox"))
-    , m_xReloadBtn(m_xBuilder->weld_button("reloadcert"))
+    , m_pViewShell(pViewShell)
+    , m_xFTSign(m_xBuilder->weld_label(u"sign"_ustr))
+    , m_xFTEncrypt(m_xBuilder->weld_label(u"encrypt"_ustr))
+    , m_xFTLoadedCerts(m_xBuilder->weld_label(u"loaded-certs"_ustr))
+    , m_xCertLB(m_xBuilder->weld_tree_view(u"signatures"_ustr))
+    , m_xViewBtn(m_xBuilder->weld_button(u"viewcert"_ustr))
+    , m_xOKBtn(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xFTDescription(m_xBuilder->weld_label(u"description-label"_ustr))
+    , m_xDescriptionED(m_xBuilder->weld_entry(u"description"_ustr))
+    , m_xSearchBox(m_xBuilder->weld_entry(u"searchbox"_ustr))
+    , m_xReloadBtn(m_xBuilder->weld_button(u"reloadcert"_ustr))
 {
     auto nControlWidth = m_xCertLB->get_approximate_digit_width() * 105;
     m_xCertLB->set_size_request(nControlWidth, m_xCertLB->get_height_rows(12));
-    m_xCertLB->make_sorted();
 
-    m_xCertLB->connect_changed( LINK( this, CertificateChooser, CertificateHighlightHdl ) );
+    std::vector<int> aWidths
+    {
+        o3tl::narrowing<int>(30*nControlWidth/100),
+        o3tl::narrowing<int>(30*nControlWidth/100),
+        o3tl::narrowing<int>(10*nControlWidth/100),
+        o3tl::narrowing<int>(20*nControlWidth/100)
+    };
+    m_xCertLB->set_column_fixed_widths(aWidths);
+    m_xCertLB->connect_selection_changed(LINK(this, CertificateChooser, CertificateHighlightHdl));
     m_xCertLB->connect_row_activated( LINK( this, CertificateChooser, CertificateSelectHdl ) );
     m_xViewBtn->connect_clicked( LINK( this, CertificateChooser, ViewButtonHdl ) );
     m_xSearchBox->connect_changed(LINK(this, CertificateChooser, SearchModifyHdl));
@@ -69,13 +84,21 @@ CertificateChooser::CertificateChooser(weld::Window* _pParent,
 
     // disable buttons
     CertificateHighlightHdl(*m_xCertLB);
+
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        // Single certificate doesn't change during the lifetime of a LOK view: no need to search or
+        // reload it.
+        m_xSearchBox->hide();
+        m_xReloadBtn->hide();
+    }
 }
 
 CertificateChooser::~CertificateChooser()
 {
 }
 
-short CertificateChooser::run()
+void CertificateChooser::BeforeRun()
 {
     // #i48432#
     // We can't check for personal certificates before raising this dialog,
@@ -92,6 +115,11 @@ short CertificateChooser::run()
 
     m_xDialog->show();
     ImplInitialize();
+}
+
+short CertificateChooser::run()
+{
+    BeforeRun();
     return GenericDialogController::run();
 }
 
@@ -136,6 +164,7 @@ void CertificateChooser::ImplInitialize(bool mbSearch)
         return;
 
     m_xCertLB->clear();
+    m_xCertLB->make_unsorted();
     m_xCertLB->freeze();
 
     SvtUserOptions aUserOpts;
@@ -146,19 +175,19 @@ void CertificateChooser::ImplInitialize(bool mbSearch)
 
     switch (meAction)
     {
-        case UserAction::Sign:
+        case CertificateChooserUserAction::Sign:
             m_xFTSign->show();
             m_xOKBtn->set_label(XsResId(STR_SIGN));
             msPreferredKey = aUserOpts.GetSigningKey();
             break;
 
-        case UserAction::SelectSign:
+        case CertificateChooserUserAction::SelectSign:
             m_xFTSign->show();
             m_xOKBtn->set_label(XsResId(STR_SELECTSIGN));
             msPreferredKey = aUserOpts.GetSigningKey();
             break;
 
-        case UserAction::Encrypt:
+        case CertificateChooserUserAction::Encrypt:
             m_xFTEncrypt->show();
             m_xFTDescription->hide();
             m_xDescriptionED->hide();
@@ -169,6 +198,8 @@ void CertificateChooser::ImplInitialize(bool mbSearch)
 
     }
 
+    bool has_x509 = false;
+    bool has_openpgp_gpg = false;
     ::std::optional<int> oSelectRow;
     uno::Sequence<uno::Reference< security::XCertificate>> xCerts;
     for (auto& secContext : mxSecurityContexts)
@@ -179,6 +210,11 @@ void CertificateChooser::ImplInitialize(bool mbSearch)
         if (!secEnvironment.is())
             continue;
 
+        uno::Reference<lang::XServiceInfo> secContextServiceInfo(secContext, uno::UNO_QUERY);
+        OUString secContextType = secContextServiceInfo->getImplementationName();
+        if (secContextType == "com.sun.star.xml.crypto.XMLSecurityContext") has_x509 = true;
+        else if (secContextType == "com.sun.star.xml.security.gpg.XMLSecurityContext_GpgImpl") has_openpgp_gpg = true;
+
         try
         {
             if (xMemCerts.count(secContext))
@@ -187,9 +223,24 @@ void CertificateChooser::ImplInitialize(bool mbSearch)
             }
             else
             {
-                if (meAction == UserAction::Sign || meAction == UserAction::SelectSign)
-                    xCerts = secEnvironment->getPersonalCertificates();
+                if (meAction == CertificateChooserUserAction::Sign || meAction == CertificateChooserUserAction::SelectSign)
+                {
+                    if (comphelper::LibreOfficeKit::isActive())
+                    {
+                        // The LOK case takes the signing certificate from the view.
+                        if (m_pViewShell && m_pViewShell->GetSigningCertificate().m_xCertificate.is())
+                        {
+                            xCerts = { m_pViewShell->GetSigningCertificate().m_xCertificate };
+                        }
+                    }
+                    else
+                    {
+                        // Otherwise working from the system cert store is OK.
+                        xCerts = secEnvironment->getPersonalCertificates();
+                    }
+                }
                 else
+                    // Currently (master 2024-07) all X.509 implementations (nss+mscrypt) give an empty list.
                     xCerts = secEnvironment->getAllCertificates();
 
                 for (sal_Int32 nCert = xCerts.getLength(); nCert;)
@@ -211,42 +262,43 @@ void CertificateChooser::ImplInitialize(bool mbSearch)
         }
 
         // fill list of certificates; the first entry will be selected
-        for (const auto& xCert : std::as_const(xCerts))
+        for (const auto& xCert : xCerts)
         {
-            std::shared_ptr<UserData> userData = std::make_shared<UserData>();
+            std::shared_ptr<CertificateChooserUserData> userData = std::make_shared<CertificateChooserUserData>();
             userData->xCertificate = xCert;
             userData->xSecurityContext = secContext;
             userData->xSecurityEnvironment = secEnvironment;
+
+            // Needed to keep userData alive. (reference to shared_ptr prevents delete)
             mvUserData.push_back(userData);
 
             OUString sIssuer = xmlsec::GetContentPart( xCert->getIssuerName(), xCert->getCertificateKind());
-            OUString sExpDate = utl::GetDateString(xCert->getNotValidAfter());
 
             // If we are searching and there is no match skip
             if (mbSearch
-                && rCharClass.uppercase(sIssuer).indexOf(aSearchStr) < 0
                 && rCharClass.uppercase(sIssuer).indexOf(aSearchStr) < 0
                 && !aSearchStr.isEmpty())
                     continue;
 
             m_xCertLB->append();
             int nRow = m_xCertLB->n_children() - 1;
-            OUString sId(weld::toId(userData.get()));
-            m_xCertLB->set_id(nRow, sId);
             m_xCertLB->set_text(nRow, xmlsec::GetContentPart(xCert->getSubjectName(), xCert->getCertificateKind()), 0);
             m_xCertLB->set_text(nRow, sIssuer, 1);
-            m_xCertLB->set_text(nRow, sExpDate, 2);
+            m_xCertLB->set_text(nRow, xmlsec::GetCertificateKind(xCert->getCertificateKind()), 2);
+            m_xCertLB->set_text(nRow, utl::GetDateString(xCert->getNotValidAfter()), 3);
+            m_xCertLB->set_text(nRow, UsageInClearText(xCert->getCertificateUsage()), 4);
+            OUString sId(weld::toId(userData.get()));
+            m_xCertLB->set_id(nRow, sId);
 
 #if HAVE_FEATURE_GPGME
-            // only GPG has preferred keys
-            if ( !sIssuer.isEmpty() && !msPreferredKey.isEmpty() ) {
-                if ( sIssuer == msPreferredKey )
+            if ( !msPreferredKey.isEmpty() ) {
+                if ( xmlsec::GetHexString(xCert->getSHA1Thumbprint(), "") == msPreferredKey )
                 {
-                    if ( meAction == UserAction::Sign || meAction == UserAction::SelectSign )
+                    if ( meAction == CertificateChooserUserAction::Sign || meAction == CertificateChooserUserAction::SelectSign )
                     {
                         oSelectRow.emplace(nRow);
                     }
-                    else if ( meAction == UserAction::Encrypt &&
+                    else if ( meAction == CertificateChooserUserAction::Encrypt &&
                               aUserOpts.GetEncryptToSelf() )
                         mxEncryptToSelf = xCert;
                 }
@@ -255,8 +307,34 @@ void CertificateChooser::ImplInitialize(bool mbSearch)
         }
     }
 
+    std::vector<OUString> seqLoadedCertsLabels;
+    if (has_openpgp_gpg)
+        seqLoadedCertsLabels.push_back(XsResId(STR_LOADED_CERTS_OPENPGP_GPG));
+    if (has_x509)
+    {
+#ifdef _WIN32
+        seqLoadedCertsLabels.push_back(XsResId(STR_LOADED_CERTS_X509_MSCRYPT));
+#else  // _WIN32
+        // Should be the last one for optimal formatting, because of the appended path.
+        const uno::Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
+        OUString nssPath = xml::crypto::NSSInitializer::create(xContext)->getNSSPath();
+        seqLoadedCertsLabels.push_back(XsResId(STR_LOADED_CERTS_X509_NSS_NEWLINE) + nssPath);
+#endif // _WIN32
+    }
+    OUString loadedCertsLabel = XsResId(STR_LOADED_CERTS_BASE
+                                        );
+    for (size_t label_i=0; label_i<seqLoadedCertsLabels.size(); label_i++)
+    {
+        if (label_i > 0)
+            loadedCertsLabel += ", ";
+        loadedCertsLabel += seqLoadedCertsLabels[label_i];
+    }
+    m_xFTLoadedCerts->set_label(loadedCertsLabel);
+    m_xFTLoadedCerts->set_visible(true);
+
     m_xCertLB->thaw();
     m_xCertLB->unselect_all();
+    m_xCertLB->make_sorted();
 
     if (oSelectRow)
     {
@@ -270,11 +348,11 @@ void CertificateChooser::ImplInitialize(bool mbSearch)
 uno::Sequence<uno::Reference< css::security::XCertificate > > CertificateChooser::GetSelectedCertificates()
 {
     std::vector< uno::Reference< css::security::XCertificate > > aRet;
-    if (meAction == UserAction::Encrypt)
+    if (meAction == CertificateChooserUserAction::Encrypt)
     {
         // for encryption, multiselection is enabled
         m_xCertLB->selected_foreach([this, &aRet](weld::TreeIter& rEntry){
-            UserData* userData = weld::fromId<UserData*>(m_xCertLB->get_id(rEntry));
+            CertificateChooserUserData* userData = weld::fromId<CertificateChooserUserData*>(m_xCertLB->get_id(rEntry));
             aRet.push_back( userData->xCertificate );
             return false;
         });
@@ -285,7 +363,7 @@ uno::Sequence<uno::Reference< css::security::XCertificate > > CertificateChooser
         int nSel = m_xCertLB->get_selected_index();
         if (nSel != -1)
         {
-            UserData* userData = weld::fromId<UserData*>(m_xCertLB->get_id(nSel));
+            CertificateChooserUserData* userData = weld::fromId<CertificateChooserUserData*>(m_xCertLB->get_id(nSel));
             xCert = userData->xCertificate;
         }
         aRet.push_back( xCert );
@@ -305,7 +383,7 @@ uno::Reference<xml::crypto::XXMLSecurityContext> CertificateChooser::GetSelected
     if (nSel == -1)
         return uno::Reference<xml::crypto::XXMLSecurityContext>();
 
-    UserData* userData = weld::fromId<UserData*>(m_xCertLB->get_id(nSel));
+    CertificateChooserUserData* userData = weld::fromId<CertificateChooserUserData*>(m_xCertLB->get_id(nSel));
     uno::Reference<xml::crypto::XXMLSecurityContext> xCert = userData->xSecurityContext;
     return xCert;
 }
@@ -365,13 +443,13 @@ void CertificateChooser::ImplShowCertificateDetails()
     if (nSel == -1)
         return;
 
-    UserData* userData = weld::fromId<UserData*>(m_xCertLB->get_id(nSel));
+    CertificateChooserUserData* userData = weld::fromId<CertificateChooserUserData*>(m_xCertLB->get_id(nSel));
 
     if (!userData->xSecurityEnvironment.is() || !userData->xCertificate.is())
         return;
 
-    CertificateViewer aViewer(m_xDialog.get(), userData->xSecurityEnvironment, userData->xCertificate, true, this);
-    aViewer.run();
+    auto xViewer = std::make_shared<CertificateViewer>(m_xDialog.get(), userData->xSecurityEnvironment, userData->xCertificate, true, this);
+    weld::DialogController::runAsync(xViewer, [] (int) {});
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -22,6 +22,7 @@
 #include "osxvcltypes.h"
 #include <com/sun/star/accessibility/XAccessibleAction.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
+#include <com/sun/star/accessibility/XAccessibleContext2.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleExtendedComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
@@ -38,6 +39,7 @@ struct ReferenceWrapper
 {
     css::uno::Reference < css::accessibility::XAccessibleAction > rAccessibleAction;
     css::uno::Reference < css::accessibility::XAccessibleContext > rAccessibleContext;
+    css::uno::Reference < css::accessibility::XAccessibleContext2 > rAccessibleContext2;
     css::uno::Reference < css::accessibility::XAccessibleComponent > rAccessibleComponent;
     css::uno::Reference < css::accessibility::XAccessibleExtendedComponent > rAccessibleExtendedComponent;
     css::uno::Reference < css::accessibility::XAccessibleSelection > rAccessibleSelection;
@@ -67,6 +69,7 @@ struct ReferenceWrapper
     ReferenceWrapper maReferenceWrapper;
     BOOL mActsAsRadioGroup;
     BOOL mIsTableCell;
+    BOOL mIsDisposed;
 }
 // NSAccessibility Protocol
 -(id)accessibilityAttributeValue:(NSString *)attribute;
@@ -101,6 +104,7 @@ struct ReferenceWrapper
 -(NSWindow*)windowForParent;
 -(id)init;
 -(id)initWithAccessibleContext: (css::uno::Reference < css::accessibility::XAccessibleContext >) anAccessibleContext;
+-(void)setDisposed;
 -(void) setDefaults: (css::uno::Reference < css::accessibility::XAccessibleContext >) rxAccessibleContext;
 +(void)setPopupMenuOpen:(BOOL)popupMenuOpen;
 -(css::accessibility::XAccessibleAction *)accessibleAction;

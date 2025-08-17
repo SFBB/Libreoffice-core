@@ -24,15 +24,12 @@
 #include <svl/macitem.hxx>
 #include <optional>
 
-class SwWrtShell;
-
 enum DlgEventType
 {
     MACASSGN_AUTOTEXT,
     MACASSGN_GRAPHIC,
     MACASSGN_OLE,
     MACASSGN_FRMURL,
-    MACASSGN_INETFMT,
     MACASSGN_ALLFRM
 };
 
@@ -40,8 +37,6 @@ class SwMacroAssignDlg
 {
 public:
     static SfxEventNamesItem AddEvents(DlgEventType eType);
-    static bool INetFormatDlg(weld::Window* pParent, SwWrtShell& rSh,
-                              std::optional<SvxMacroTableDtor>& rpINetItem);
 };
 
 #endif

@@ -22,13 +22,12 @@
 
 using namespace connectivity::component;
 using namespace connectivity::file;
-using namespace com::sun::star::uno;
 
 rtl::Reference<OResultSet> OComponentPreparedStatement::createResultSet()
 {
     return new connectivity::component::OComponentResultSet(this,m_aSQLIterator);
 }
 
-IMPLEMENT_SERVICE_INFO(OComponentPreparedStatement,"com.sun.star.sdbc.driver.component.PreparedStatement","com.sun.star.sdbc.PreparedStatement");
+IMPLEMENT_SERVICE_INFO(OComponentPreparedStatement,u"com.sun.star.sdbc.driver.component.PreparedStatement"_ustr,u"com.sun.star.sdbc.PreparedStatement"_ustr);
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

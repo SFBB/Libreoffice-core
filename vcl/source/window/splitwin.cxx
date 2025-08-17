@@ -1140,6 +1140,8 @@ SplitWindow::SplitWindow( vcl::Window* pParent, WinBits nStyle ) :
     DockingWindow( WindowType::SPLITWINDOW, "vcl::SplitWindow maLayoutIdle" )
 {
     ImplInit( pParent, nStyle );
+    // ensure there is sufficient border reserved to fit the splitter into
+    set_border_width(SPLITWIN_SPLITSIZE);
 }
 
 SplitWindow::~SplitWindow()
@@ -1236,15 +1238,11 @@ Size SplitWindow::CalcLayoutSizePixel( const Size& aNewSize )
             switch ( meAlign )
             {
             case WindowAlign::Top:
-                aSize.AdjustHeight(nDelta );
-                break;
             case WindowAlign::Bottom:
                 aSize.AdjustHeight(nDelta );
                 break;
-            case WindowAlign::Left:
-                aSize.AdjustWidth(nDelta );
-                break;
             case WindowAlign::Right:
+            case WindowAlign::Left:
             default:
                 aSize.AdjustWidth(nDelta );
                 break;
@@ -2257,8 +2255,8 @@ void SplitWindow::RemoveItem( sal_uInt16 nId )
     }
 
     // Clear and delete
-    pWindow.clear();
-    pOrgParent.clear();
+    pWindow.reset();
+    pOrgParent.reset();
 }
 
 void SplitWindow::SplitItem( sal_uInt16 nId, tools::Long nNewSize,

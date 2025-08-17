@@ -29,6 +29,7 @@
 
 #include <sfx2/chalign.hxx>
 #include <sfx2/basedlgs.hxx>
+#include <comphelper/lok.hxx>
 
 namespace com::sun::star::frame { class XFrame; }
 
@@ -36,7 +37,6 @@ class SfxWorkWindow;
 class SfxModule;
 class SfxChildWindow;
 class SfxBindings;
-class SfxModelessDialogController;
 
 enum class SfxChildWindowFlags
 {
@@ -113,6 +113,9 @@ protected:
 
 public:
     virtual             ~SfxChildWindow();
+    // subclasses can override this in case any initialization needs to happen after
+    // the constructor was called (e.g. to avoid calling virtual methods in the constructor)
+    virtual             void Initialize() {}
     void                Destroy();
     vcl::Window*        GetWindow() const
                         { return pWindow; }
@@ -184,6 +187,8 @@ const int nCloseResponseToJustHide = -42;
                 {   \
                     SfxChildWinFactory aFact( \
                         Class::CreateImpl, MyID, Pos );   \
+                    if (comphelper::LibreOfficeKit::isActive() && nFlags == SfxChildWindowFlags::NONE) \
+                        nFlags |= SfxChildWindowFlags::NEVERCLONE; \
                     aFact.aInfo.nFlags |= nFlags;  \
                     aFact.aInfo.bVisible = bVis;         \
                     SfxChildWindow::RegisterChildWindow(pMod, aFact); \

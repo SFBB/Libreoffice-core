@@ -19,23 +19,21 @@
 
 #pragma once
 
-#include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
+#include <ResourceId.hxx>
+#include <framework/ConfigurationChangeListener.hxx>
 #include <comphelper/compbase.hxx>
 #include <rtl/ref.hxx>
 #include <memory>
 #include <set>
 
-namespace com::sun::star::drawing::framework { class XConfigurationController; }
-namespace com::sun::star::drawing::framework { class XControllerManager; }
-namespace com::sun::star::drawing::framework { class XTabBar; }
-namespace com::sun::star::frame { class XController; }
 namespace sd { class DrawController; }
+namespace sd { class ViewTabBar; }
 
-namespace sd::framework {
+namespace sd::framework
+{
+class ConfigurationController;
+class Configuration;
 
-typedef comphelper::WeakComponentImplHelper <
-    css::drawing::framework::XConfigurationChangeListener
-    > SlideSorterModuleBase;
 
 /** This module is responsible for showing the slide sorter bar and the
     slide sorter view in the center pane.
@@ -47,7 +45,7 @@ typedef comphelper::WeakComponentImplHelper <
     detects this and remembers it for the future.
 */
 class SlideSorterModule final
-    : public SlideSorterModuleBase
+    : public sd::framework::ConfigurationChangeListener
 {
 public:
     SlideSorterModule (
@@ -64,24 +62,23 @@ public:
 
     virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    // XConfigurationChangeListener
-    virtual void SAL_CALL notifyConfigurationChange (
-        const css::drawing::framework::ConfigurationChangeEvent& rEvent) override;
+    // ConfigurationChangeListener
+    virtual void notifyConfigurationChange (
+        const sd::framework::ConfigurationChangeEvent& rEvent) override;
 
     // XEventListener
     virtual void SAL_CALL disposing (
         const css::lang::EventObject& rEvent) override;
 
 private:
-    css::uno::Reference<css::drawing::framework::XConfigurationController>
-        mxConfigurationController;
+    rtl::Reference<ConfigurationController> mxConfigurationController;
     ::std::set<OUString> maActiveMainViewContainer;
     /// The resource managed by this class.
-    css::uno::Reference<css::drawing::framework::XResourceId> mxResourceId;
+    rtl::Reference<sd::framework::ResourceId> mxResourceId;
     /// The anchor of the main view.
-    css::uno::Reference<css::drawing::framework::XResourceId> mxMainViewAnchorId;
+    rtl::Reference<sd::framework::ResourceId> mxMainViewAnchorId;
     OUString msCurrentMainViewURL;
-    css::uno::Reference<css::drawing::framework::XResourceId> mxViewTabBarId;
+    rtl::Reference<sd::framework::ResourceId> mxViewTabBarId;
     rtl::Reference<::sd::DrawController> mxControllerManager;
 
     void HandleMainViewSwitch (
@@ -89,9 +86,9 @@ private:
         const bool bIsActivated);
     void HandleResourceRequest(
         bool bActivation,
-        const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration);
+        const rtl::Reference<sd::framework::Configuration>& rxConfiguration);
     void UpdateViewTabBar (
-        const css::uno::Reference<css::drawing::framework::XTabBar>& rxViewTabBar);
+        const rtl::Reference<sd::ViewTabBar>& rxViewTabBar);
 };
 
 } // end of namespace sd::framework

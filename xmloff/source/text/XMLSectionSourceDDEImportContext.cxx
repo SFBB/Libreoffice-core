@@ -18,10 +18,8 @@
  */
 
 #include "XMLSectionSourceDDEImportContext.hxx"
-#include "XMLSectionImportContext.hxx"
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <sax/tools/converter.hxx>
@@ -36,7 +34,6 @@ using ::com::sun::star::uno::Reference;
 using ::com::sun::star::xml::sax::XFastAttributeList;
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::text;
 using namespace ::xmloff::token;
 
 XMLSectionSourceDDEImportContext::XMLSectionSourceDDEImportContext(
@@ -89,11 +86,11 @@ void XMLSectionSourceDDEImportContext::startFastElement(sal_Int32 /*nElement*/,
 
     // DDE not supported on all platforms; query property first
     if (!rSectionPropertySet->getPropertySetInfo()->
-        hasPropertyByName("DDECommandFile"))
+        hasPropertyByName(u"DDECommandFile"_ustr))
         return;
 
     // use multi property set to force single update of connection #83654#
-    Sequence<OUString> aNames { "DDECommandFile", "DDECommandType", "DDECommandElement", "IsAutomaticUpdate" };
+    Sequence<OUString> aNames { u"DDECommandFile"_ustr, u"DDECommandType"_ustr, u"DDECommandElement"_ustr, u"IsAutomaticUpdate"_ustr };
     Sequence<Any> aValues { Any(sApplication), Any(sTopic), Any(sItem), Any(bAutomaticUpdate) };
 
     Reference<XMultiPropertySet> rMultiPropSet(rSectionPropertySet,

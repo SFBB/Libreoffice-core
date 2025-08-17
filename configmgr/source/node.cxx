@@ -33,7 +33,7 @@ namespace configmgr {
 
 NodeMap & Node::getMembers() {
     assert(false);
-    throw css::uno::RuntimeException("this cannot happen");
+    throw css::uno::RuntimeException(u"this cannot happen"_ustr);
 }
 
 OUString Node::getTemplateName() const {
@@ -65,11 +65,25 @@ rtl::Reference< Node > Node::getMember(OUString const & name) {
     return i == members.end() ? rtl::Reference< Node >() : i->second;
 }
 
-Node::Node(int layer): layer_(layer), finalized_(Data::NO_LAYER) {}
+bool Node::CreateStaticizedNodes = false;
+
+void Node::setStaticizedFlag(bool staticized)
+{
+    CreateStaticizedNodes = staticized;
+}
+
+Node::Node(int layer): layer_(layer), finalized_(Data::NO_LAYER)
+{
+    if (CreateStaticizedNodes)
+        staticize();
+}
 
 Node::Node(const Node & other):
     SimpleReferenceObject(), layer_(other.layer_), finalized_(other.finalized_)
-{}
+{
+    if (CreateStaticizedNodes)
+        staticize();
+}
 
 Node::~Node() {}
 

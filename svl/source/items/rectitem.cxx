@@ -31,6 +31,7 @@ SfxPoolItem* SfxRectangleItem::CreateDefault() { return new SfxRectangleItem; }
 
 
 SfxRectangleItem::SfxRectangleItem()
+    : SfxPoolItem( 0 )
 {
 }
 

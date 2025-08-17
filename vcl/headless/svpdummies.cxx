@@ -17,9 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <rtl/ustrbuf.hxx>
 #include <headless/svpdummies.hxx>
-#include <headless/svpinst.hxx>
 
 SvpSalObject::~SvpSalObject()
 {
@@ -31,7 +29,7 @@ void SvpSalObject::UnionClipRegion( tools::Long, tools::Long, tools::Long, tools
 void SvpSalObject::EndSetClipRegion() {}
 void SvpSalObject::SetPosSize( tools::Long, tools::Long, tools::Long, tools::Long ) {}
 void SvpSalObject::Show( bool ) {}
-const SystemEnvData* SvpSalObject::GetSystemData() const { return &m_aSystemChildData; }
+const SystemEnvData& SvpSalObject::GetSystemData() const { return m_aSystemChildData; }
 
 // SalSystem
 SvpSalSystem::~SvpSalSystem() {}

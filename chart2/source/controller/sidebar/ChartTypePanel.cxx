@@ -21,13 +21,11 @@
 #include <TimerTriggeredControllerLock.hxx>
 
 #include <ChartController.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartModel.hxx>
 #include <ChartResourceGroups.hxx>
 #include <ChartTypeDialogController.hxx>
 #include <ChartTypeManager.hxx>
 #include <ChartTypeTemplate.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <unonames.hxx>
 
@@ -40,7 +38,7 @@ using namespace css::uno;
 namespace chart::sidebar
 {
 ChartTypePanel::ChartTypePanel(weld::Widget* pParent, ::chart::ChartController* pController)
-    : PanelLayout(pParent, "ChartTypePanel", "modules/schart/ui/sidebartype.ui")
+    : PanelLayout(pParent, u"ChartTypePanel"_ustr, u"modules/schart/ui/sidebartype.ui"_ustr)
     , mxListener(new ChartSidebarModifyListener(this))
     , mbModelValid(true)
     , m_pDim3DLookResourceGroup(new Dim3DLookResourceGroup(m_xBuilder.get()))
@@ -54,9 +52,9 @@ ChartTypePanel::ChartTypePanel(weld::Widget* pParent, ::chart::ChartController* 
     , m_pCurrentMainType(nullptr)
     , m_nChangingCalls(0)
     , m_aTimerTriggeredControllerLock(m_xChartModel)
-    , m_xMainTypeList(m_xBuilder->weld_combo_box("cmb_chartType"))
-    , m_xSubTypeList(new ValueSet(m_xBuilder->weld_scrolled_window("subtypewin", true)))
-    , m_xSubTypeListWin(new weld::CustomWeld(*m_xBuilder, "subtype", *m_xSubTypeList))
+    , m_xMainTypeList(m_xBuilder->weld_combo_box(u"cmb_chartType"_ustr))
+    , m_xSubTypeList(new ValueSet(m_xBuilder->weld_scrolled_window(u"subtypewin"_ustr, true)))
+    , m_xSubTypeListWin(new weld::CustomWeld(*m_xBuilder, u"subtype"_ustr, *m_xSubTypeList))
 {
     Size aSize(m_xSubTypeList->GetDrawingArea()->get_ref_device().LogicToPixel(
         Size(120, 40), MapMode(MapUnit::MapAppFont)));
@@ -77,7 +75,7 @@ ChartTypePanel::ChartTypePanel(weld::Widget* pParent, ::chart::ChartController* 
     {
         try
         {
-            xProps->getPropertyValue("EnableComplexChartTypes") >>= bEnableComplexChartTypes;
+            xProps->getPropertyValue(u"EnableComplexChartTypes"_ustr) >>= bEnableComplexChartTypes;
         }
         catch (const uno::Exception&)
         {
@@ -87,7 +85,9 @@ ChartTypePanel::ChartTypePanel(weld::Widget* pParent, ::chart::ChartController* 
 
     m_aChartTypeDialogControllerList.push_back(std::make_unique<ColumnChartDialogController>());
     m_aChartTypeDialogControllerList.push_back(std::make_unique<BarChartDialogController>());
+    m_aChartTypeDialogControllerList.push_back(std::make_unique<HistogramChartDialogController>());
     m_aChartTypeDialogControllerList.push_back(std::make_unique<PieChartDialogController>());
+    m_aChartTypeDialogControllerList.push_back(std::make_unique<OfPieChartDialogController>());
     m_aChartTypeDialogControllerList.push_back(std::make_unique<AreaChartDialogController>());
     m_aChartTypeDialogControllerList.push_back(std::make_unique<LineChartDialogController>());
     if (bEnableComplexChartTypes)
@@ -105,7 +105,7 @@ ChartTypePanel::ChartTypePanel(weld::Widget* pParent, ::chart::ChartController* 
 
     for (auto const& elem : m_aChartTypeDialogControllerList)
     {
-        m_xMainTypeList->append("", elem->getName(), elem->getImage());
+        m_xMainTypeList->append(u""_ustr, elem->getName(), elem->getImage());
         elem->setChangeListener(this);
     }
 
@@ -391,7 +391,9 @@ void ChartTypePanel::commitToModel(const ChartTypeParameter& rParameter)
         return;
 
     m_aTimerTriggeredControllerLock.startTimer();
-    m_pCurrentMainType->commitToModel(rParameter, m_xChartModel);
+    uno::Reference<beans::XPropertySet> xTemplateProps(
+        static_cast<cppu::OWeakObject*>(getCurrentTemplate().get()), uno::UNO_QUERY);
+    m_pCurrentMainType->commitToModel(rParameter, m_xChartModel, xTemplateProps);
 }
 
 void ChartTypePanel::selectMainType()

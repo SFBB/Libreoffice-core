@@ -148,7 +148,7 @@ static void lcl_CopyTableLine( const SwTableLine* pLine, CopyTable* pCT );
 
 static void lcl_CopyTableBox( SwTableBox* pBox, CopyTable* pCT )
 {
-    SwTableBoxFormat * pBoxFormat = static_cast<SwTableBoxFormat*>(pBox->GetFrameFormat());
+    SwTableBoxFormat * pBoxFormat = pBox->GetFrameFormat();
     for (const auto& rMap : pCT->m_rMapArr)
         if ( !lcl_SrchNew( rMap, reinterpret_cast<SwFrameFormat**>(&pBoxFormat) ) )
             break;
@@ -213,7 +213,7 @@ static void lcl_CopyTableBox( SwTableBox* pBox, CopyTable* pCT )
 
 static void lcl_CopyTableLine( const SwTableLine* pLine, CopyTable* pCT )
 {
-    SwTableLineFormat * pLineFormat = static_cast<SwTableLineFormat*>(pLine->GetFrameFormat());
+    SwTableLineFormat * pLineFormat = pLine->GetFrameFormat();
     for (const auto& rMap : pCT->m_rMapArr)
         if ( !lcl_SrchNew( rMap, reinterpret_cast<SwFrameFormat**>(&pLineFormat) ) )
             break;
@@ -246,14 +246,12 @@ SwTableNode* SwTableNode::MakeCopy( SwDoc& rDoc, const SwNodeIndex& rIdx ) const
     // In which array are we? Nodes? UndoNodes?
     SwNodes& rNds = const_cast<SwNodes&>(GetNodes());
 
-    {
-        if( rIdx < rDoc.GetNodes().GetEndOfInserts().GetIndex() &&
-            rIdx >= rDoc.GetNodes().GetEndOfInserts().StartOfSectionIndex() )
-            return nullptr;
-    }
+    if( rIdx < rDoc.GetNodes().GetEndOfInserts().GetIndex() &&
+        rIdx >= rDoc.GetNodes().GetEndOfInserts().StartOfSectionIndex() )
+        return nullptr;
 
     // Copy the TableFrameFormat
-    OUString sTableName( GetTable().GetFrameFormat()->GetName() );
+    UIName sTableName( GetTable().GetFrameFormat()->GetName() );
     if( !rDoc.IsCopyIsMove() )
     {
         const sw::TableFrameFormats& rTableFormats = *rDoc.GetTableFrameFormats();

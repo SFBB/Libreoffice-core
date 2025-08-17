@@ -9,172 +9,33 @@
 
 #pragma once
 
+#include <jsdialog/jsdialogregister.hxx>
+#include <jsdialog/jsdialogmessages.hxx>
+#include <jsdialog/jsdialogsender.hxx>
+
 #include <utility>
 #include <vcl/weld.hxx>
-#include <vcl/jsdialog/executor.hxx>
 #include <vcl/virdev.hxx>
 #include <salvtables.hxx>
 #include <vcl/toolkit/button.hxx>
 #include <vcl/toolkit/fmtfield.hxx>
+#include <vcl/toolkit/prgsbar.hxx>
 
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/datatransfer/dnd/XDropTarget.hpp>
 #include <comphelper/compbase.hxx>
 
-#include <deque>
 #include <list>
 #include <mutex>
-
-#define ACTION_TYPE "action_type"
-#define PARENT_ID "parent_id"
-#define WINDOW_ID "id"
-#define CLOSE_ID "close_id"
 
 class ToolBox;
 class ComboBox;
 class VclMultiLineEdit;
 class SvTabListBox;
 class IconView;
-class VclScrolledWindow;
 
-namespace vcl
-{
-class ILibreOfficeKitNotifier;
-}
-
-typedef std::map<OUString, weld::Widget*> WidgetMap;
-
-namespace jsdialog
-{
-enum MessageType
-{
-    FullUpdate,
-    WidgetUpdate,
-    Close,
-    Action,
-    Popup,
-    PopupClose
-};
-}
-
-/// Class with the message description for storing in the queue
-class JSDialogMessageInfo
-{
-public:
-    jsdialog::MessageType m_eType;
-    VclPtr<vcl::Window> m_pWindow;
-    std::unique_ptr<jsdialog::ActionDataMap> m_pData;
-
-private:
-    void copy(const JSDialogMessageInfo& rInfo)
-    {
-        this->m_eType = rInfo.m_eType;
-        this->m_pWindow = rInfo.m_pWindow;
-        if (rInfo.m_pData)
-        {
-            std::unique_ptr<jsdialog::ActionDataMap> pData(
-                new jsdialog::ActionDataMap(*rInfo.m_pData));
-            this->m_pData = std::move(pData);
-        }
-    }
-
-public:
-    JSDialogMessageInfo(jsdialog::MessageType eType, VclPtr<vcl::Window> pWindow,
-                        std::unique_ptr<jsdialog::ActionDataMap> pData)
-        : m_eType(eType)
-        , m_pWindow(std::move(pWindow))
-        , m_pData(std::move(pData))
-    {
-    }
-
-    JSDialogMessageInfo(const JSDialogMessageInfo& rInfo) { copy(rInfo); }
-
-    JSDialogMessageInfo& operator=(JSDialogMessageInfo aInfo)
-    {
-        if (this == &aInfo)
-            return *this;
-
-        copy(aInfo);
-        return *this;
-    }
-};
-
-class JSDialogNotifyIdle final : public Idle
-{
-    // used to send message
-    VclPtr<vcl::Window> m_aNotifierWindow;
-    // used to generate JSON
-    VclPtr<vcl::Window> m_aContentWindow;
-    OUString m_sTypeOfJSON;
-    OString m_LastNotificationMessage;
-    bool m_bForce;
-
-    std::deque<JSDialogMessageInfo> m_aMessageQueue;
-    std::mutex m_aQueueMutex;
-
-public:
-    JSDialogNotifyIdle(VclPtr<vcl::Window> aNotifierWindow, VclPtr<vcl::Window> aContentWindow,
-                       const OUString& sTypeOfJSON);
-
-    void Invoke() override;
-
-    void clearQueue();
-    void forceUpdate();
-    void sendMessage(jsdialog::MessageType eType, VclPtr<vcl::Window> pWindow,
-                     std::unique_ptr<jsdialog::ActionDataMap> pData = nullptr);
-
-private:
-    void send(tools::JsonWriter& aJsonWriter);
-    std::unique_ptr<tools::JsonWriter> generateFullUpdate() const;
-    std::unique_ptr<tools::JsonWriter> generateWidgetUpdate(VclPtr<vcl::Window> pWindow) const;
-    std::unique_ptr<tools::JsonWriter> generateCloseMessage() const;
-    std::unique_ptr<tools::JsonWriter>
-    generateActionMessage(VclPtr<vcl::Window> pWindow,
-                          std::unique_ptr<jsdialog::ActionDataMap> pData) const;
-    std::unique_ptr<tools::JsonWriter>
-    generatePopupMessage(VclPtr<vcl::Window> pWindow, OUString sParentId, OUString sCloseId) const;
-    std::unique_ptr<tools::JsonWriter> generateClosePopupMessage(OUString sWindowId) const;
-};
-
-class JSDialogSender
-{
-    std::unique_ptr<JSDialogNotifyIdle> mpIdleNotify;
-
-protected:
-    bool m_bCanClose; // specifies if can send a close message
-
-public:
-    JSDialogSender()
-        : m_bCanClose(true)
-    {
-    }
-    JSDialogSender(VclPtr<vcl::Window> aNotifierWindow, VclPtr<vcl::Window> aContentWindow,
-                   const OUString& sTypeOfJSON)
-        : m_bCanClose(true)
-    {
-        initializeSender(aNotifierWindow, aContentWindow, sTypeOfJSON);
-    }
-
-    virtual ~JSDialogSender() COVERITY_NOEXCEPT_FALSE;
-
-    virtual void sendFullUpdate(bool bForce = false);
-    void sendClose();
-    void sendUpdate(VclPtr<vcl::Window> pWindow, bool bForce = false);
-    virtual void sendAction(VclPtr<vcl::Window> pWindow,
-                            std::unique_ptr<jsdialog::ActionDataMap> pData);
-    virtual void sendPopup(VclPtr<vcl::Window> pWindow, const OUString& rParentId,
-                           const OUString& rCloseId);
-    virtual void sendClosePopup(vcl::LOKWindowId nWindowId);
-    void flush() { mpIdleNotify->Invoke(); }
-
-protected:
-    void initializeSender(VclPtr<vcl::Window> aNotifierWindow, VclPtr<vcl::Window> aContentWindow,
-                          const OUString& sTypeOfJSON)
-    {
-        mpIdleNotify.reset(new JSDialogNotifyIdle(aNotifierWindow, aContentWindow, sTypeOfJSON));
-    }
-};
+typedef jsdialog::WidgetRegister<weld::Widget*> WidgetMap;
 
 class JSDropTarget final
     : public comphelper::WeakComponentImplHelper<
@@ -211,6 +72,33 @@ public:
 
 class JSInstanceBuilder final : public SalInstanceBuilder, public JSDialogSender
 {
+    enum Type
+    {
+        Dialog,
+        Popup,
+        Sidebar,
+        Notebookbar,
+        Formulabar,
+        Menu,
+    };
+
+    struct JSDialogRegister
+    {
+        jsdialog::WidgetRegister<std::shared_ptr<WidgetMap>> aWidgets;
+        jsdialog::WidgetRegister<VclPtr<vcl::Window>> aPopups;
+        jsdialog::WidgetRegister<weld::Menu*> aMenus;
+    };
+    static JSDialogRegister m_aWidgetRegister;
+
+    void initializeDialogSender();
+    void initializePopupSender();
+    void initializeSidebarSender(sal_uInt64 nLOKWindowId, const std::u16string_view& rUIFile,
+                                 const std::u16string_view& sTypeOfJSON);
+    void initializeNotebookbarSender(sal_uInt64 nLOKWindowId);
+    void initializeFormulabarSender(sal_uInt64 nLOKWindowId, const std::u16string_view& sTypeOfJSON,
+                                    vcl::Window* pVclParent);
+    void initializeMenuSender(weld::Widget* pParent);
+
     sal_uInt64 m_nWindowId;
     /// used in case of tab pages where dialog is not a direct top level
     VclPtr<vcl::Window> m_aParentDialog;
@@ -231,53 +119,54 @@ class JSInstanceBuilder final : public SalInstanceBuilder, public JSDialogSender
     friend class JSAssistant;
 
     friend VCL_DLLPUBLIC bool jsdialog::ExecuteAction(const OUString& nWindowId,
-                                                      const OUString& rWidget, StringMap& rData);
+                                                      const OUString& rWidget,
+                                                      const StringMap& rData);
     friend VCL_DLLPUBLIC void jsdialog::SendFullUpdate(const OUString& nWindowId,
                                                        const OUString& rWidget);
     friend VCL_DLLPUBLIC void jsdialog::SendAction(const OUString& nWindowId,
                                                    const OUString& rWidget,
                                                    std::unique_ptr<jsdialog::ActionDataMap> pData);
 
-    static std::map<OUString, WidgetMap>& GetLOKWeldWidgetsMap();
     static void InsertWindowToMap(const OUString& nWindowId);
     void RememberWidget(OUString id, weld::Widget* pWidget);
     static void RememberWidget(const OUString& nWindowId, const OUString& id,
                                weld::Widget* pWidget);
-    static weld::Widget* FindWeldWidgetsMap(const OUString& nWindowId, const OUString& rWidget);
 
     OUString getMapIdFromWindowId() const;
 
 public:
-    /// used for dialogs or popups
-    JSInstanceBuilder(weld::Widget* pParent, const OUString& rUIRoot, const OUString& rUIFile,
-                      bool bPopup = false);
-    /// used for sidebar panels
-    JSInstanceBuilder(weld::Widget* pParent, const OUString& rUIRoot, const OUString& rUIFile,
-                      sal_uInt64 nLOKWindowId);
-    /// used for notebookbar, optional nWindowId is used if getting parent id failed
-    JSInstanceBuilder(vcl::Window* pParent, const OUString& rUIRoot, const OUString& rUIFile,
-                      const css::uno::Reference<css::frame::XFrame>& rFrame,
-                      sal_uInt64 nWindowId = 0);
-    /// used for formulabar
-    JSInstanceBuilder(vcl::Window* pParent, const OUString& rUIRoot, const OUString& rUIFile,
-                      sal_uInt64 nLOKWindowId);
+    JSInstanceBuilder(weld::Widget* pParent, vcl::Window* pVclParent, std::u16string_view rUIRoot,
+                      const OUString& rUIFile, Type eBuilderType, sal_uInt64 nLOKWindowId = 0,
+                      const std::u16string_view& sTypeOfJSON = u"",
+                      const css::uno::Reference<css::frame::XFrame>& rFrame
+                      = css::uno::Reference<css::frame::XFrame>());
 
     static std::unique_ptr<JSInstanceBuilder>
     CreateDialogBuilder(weld::Widget* pParent, const OUString& rUIRoot, const OUString& rUIFile);
+
     static std::unique_ptr<JSInstanceBuilder>
     CreateNotebookbarBuilder(vcl::Window* pParent, const OUString& rUIRoot, const OUString& rUIFile,
                              const css::uno::Reference<css::frame::XFrame>& rFrame,
                              sal_uInt64 nWindowId = 0);
-    static std::unique_ptr<JSInstanceBuilder> CreateSidebarBuilder(weld::Widget* pParent,
-                                                                   const OUString& rUIRoot,
-                                                                   const OUString& rUIFile,
-                                                                   sal_uInt64 nLOKWindowId = 0);
+    static std::unique_ptr<JSInstanceBuilder>
+    CreateSidebarBuilder(weld::Widget* pParent, const OUString& rUIRoot, const OUString& rUIFile,
+                         const OUString& jsonType, sal_uInt64 nLOKWindowId = 0);
+
     static std::unique_ptr<JSInstanceBuilder>
     CreatePopupBuilder(weld::Widget* pParent, const OUString& rUIRoot, const OUString& rUIFile);
+
+    static std::unique_ptr<JSInstanceBuilder>
+    CreateMenuBuilder(weld::Widget* pParent, const OUString& rUIRoot, const OUString& rUIFile);
+
     static std::unique_ptr<JSInstanceBuilder> CreateFormulabarBuilder(vcl::Window* pParent,
                                                                       const OUString& rUIRoot,
                                                                       const OUString& rUIFile,
                                                                       sal_uInt64 nLOKWindowId);
+
+    static std::unique_ptr<JSInstanceBuilder> CreateAddressInputBuilder(vcl::Window* pParent,
+                                                                        const OUString& rUIRoot,
+                                                                        const OUString& rUIFile,
+                                                                        sal_uInt64 nLOKWindowId);
 
     virtual ~JSInstanceBuilder() override;
     virtual std::unique_ptr<weld::MessageDialog> weld_message_dialog(const OUString& id) override;
@@ -295,10 +184,9 @@ public:
     virtual std::unique_ptr<weld::FormattedSpinButton>
     weld_formatted_spin_button(const OUString& id) override;
     virtual std::unique_ptr<weld::CheckButton> weld_check_button(const OUString& id) override;
-    virtual std::unique_ptr<weld::DrawingArea>
-    weld_drawing_area(const OUString& id, const a11yref& rA11yImpl = nullptr,
-                      FactoryFunction pUITestFactoryFunction = nullptr,
-                      void* pUserData = nullptr) override;
+    virtual std::unique_ptr<weld::DrawingArea> weld_drawing_area(
+        const OUString& id, const rtl::Reference<comphelper::OAccessible>& rA11yImpl = nullptr,
+        FactoryFunction pUITestFactoryFunction = nullptr, void* pUserData = nullptr) override;
     virtual std::unique_ptr<weld::Toolbar> weld_toolbar(const OUString& id) override;
     virtual std::unique_ptr<weld::TextView> weld_text_view(const OUString& id) override;
     virtual std::unique_ptr<weld::TreeView> weld_tree_view(const OUString& id) override;
@@ -309,10 +197,12 @@ public:
     virtual std::unique_ptr<weld::RadioButton> weld_radio_button(const OUString& id) override;
     virtual std::unique_ptr<weld::Frame> weld_frame(const OUString& id) override;
     virtual std::unique_ptr<weld::MenuButton> weld_menu_button(const OUString& id) override;
+    virtual std::unique_ptr<weld::Menu> weld_menu(const OUString& id) override;
     virtual std::unique_ptr<weld::Popover> weld_popover(const OUString& id) override;
     virtual std::unique_ptr<weld::Box> weld_box(const OUString& id) override;
     virtual std::unique_ptr<weld::Widget> weld_widget(const OUString& id) override;
     virtual std::unique_ptr<weld::Image> weld_image(const OUString& id) override;
+    virtual std::unique_ptr<weld::LevelBar> weld_level_bar(const OUString& id) override;
     virtual std::unique_ptr<weld::Calendar> weld_calendar(const OUString& id) override;
 
     static weld::MessageDialog*
@@ -320,14 +210,20 @@ public:
                         VclButtonsType eButtonType, const OUString& rPrimaryMessage,
                         const vcl::ILibreOfficeKitNotifier* pNotifier = nullptr);
 
-    static void AddChildWidget(const OUString& nWindowId, const OUString& id,
-                               weld::Widget* pWidget);
-    static void RemoveWindowWidget(const OUString& nWindowId);
+    // regular widgets
+    static jsdialog::WidgetRegister<std::shared_ptr<WidgetMap>>& Widgets()
+    {
+        return m_aWidgetRegister.aWidgets;
+    };
 
     // we need to remember original popup window to close it properly (its handled by vcl)
-    static void RememberPopup(const OUString& nWindowId, VclPtr<vcl::Window> pWidget);
-    static void ForgetPopup(const OUString& nWindowId);
-    static vcl::Window* FindPopup(const OUString& nWindowId);
+    static jsdialog::WidgetRegister<VclPtr<vcl::Window>>& Popups()
+    {
+        return m_aWidgetRegister.aPopups;
+    }
+
+    // menus in separate container as they don't share base class with weld::Widget
+    static jsdialog::WidgetRegister<weld::Menu*>& Menus() { return m_aWidgetRegister.aMenus; }
 
 private:
     const OUString& GetTypeOfJSON() const;
@@ -354,12 +250,18 @@ public:
     virtual void sendClosePopup(vcl::LOKWindowId nWindowId) = 0;
 };
 
+class SAL_LOPLUGIN_ANNOTATE("crosscast") OnDemandRenderingHandler
+{
+public:
+    virtual void render_entry(int pos, int dpix, int dpiy) = 0;
+};
+
 template <class BaseInstanceClass, class VclClass>
 class JSWidget : public BaseInstanceClass, public BaseJSWidget
 {
 protected:
     rtl::Reference<JSDropTarget> m_xDropTarget;
-    bool m_bIsFreezed;
+    sal_Int8 m_nFreezeCounter;
 
     JSDialogSender* m_pSender;
 
@@ -367,7 +269,7 @@ public:
     JSWidget(JSDialogSender* pSender, VclClass* pObject, SalInstanceBuilder* pBuilder,
              bool bTakeOwnership)
         : BaseInstanceClass(pObject, pBuilder, bTakeOwnership)
-        , m_bIsFreezed(false)
+        , m_nFreezeCounter(0)
         , m_pSender(pSender)
     {
     }
@@ -375,17 +277,17 @@ public:
     JSWidget(JSDialogSender* pSender, VclClass* pObject, SalInstanceBuilder* pBuilder,
              bool bTakeOwnership, bool bUserManagedScrolling)
         : BaseInstanceClass(pObject, pBuilder, bTakeOwnership, bUserManagedScrolling)
-        , m_bIsFreezed(false)
+        , m_nFreezeCounter(0)
         , m_pSender(pSender)
     {
     }
 
     JSWidget(JSDialogSender* pSender, VclClass* pObject, SalInstanceBuilder* pBuilder,
-             const a11yref& rAlly, FactoryFunction pUITestFactoryFunction, void* pUserData,
-             bool bTakeOwnership)
+             const rtl::Reference<comphelper::OAccessible>& rAlly,
+             FactoryFunction pUITestFactoryFunction, void* pUserData, bool bTakeOwnership)
         : BaseInstanceClass(pObject, pBuilder, rAlly, std::move(pUITestFactoryFunction), pUserData,
                             bTakeOwnership)
-        , m_bIsFreezed(false)
+        , m_nFreezeCounter(0)
         , m_pSender(pSender)
     {
     }
@@ -422,7 +324,12 @@ public:
         bool bIsSensitive = BaseInstanceClass::get_sensitive();
         BaseInstanceClass::set_sensitive(sensitive);
         if (bIsSensitive != sensitive)
-            sendUpdate();
+        {
+            std::unique_ptr<jsdialog::ActionDataMap> pMap
+                = std::make_unique<jsdialog::ActionDataMap>();
+            (*pMap)[ACTION_TYPE ""_ostr] = (sensitive ? u"enable" : u"disable");
+            sendAction(std::move(pMap));
+        }
     }
 
     virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget> get_drop_target() override
@@ -436,14 +343,16 @@ public:
     virtual void freeze() override
     {
         BaseInstanceClass::freeze();
-        m_bIsFreezed = true;
+        m_nFreezeCounter++;
     }
 
     virtual void thaw() override
     {
         BaseInstanceClass::thaw();
-        m_bIsFreezed = false;
-        sendUpdate();
+        assert(m_nFreezeCounter > 0);
+        m_nFreezeCounter--;
+        if (m_nFreezeCounter == 0)
+            sendUpdate();
     }
 
     virtual void grab_focus() override
@@ -462,32 +371,32 @@ public:
 
     virtual void sendUpdate(bool bForce = false) override
     {
-        if (!m_bIsFreezed && m_pSender)
+        if (!m_nFreezeCounter && m_pSender)
             m_pSender->sendUpdate(BaseInstanceClass::m_xWidget, bForce);
     }
 
     virtual void sendFullUpdate(bool bForce = false) override
     {
-        if ((!m_bIsFreezed || bForce) && m_pSender)
+        if ((!m_nFreezeCounter || bForce) && m_pSender)
             m_pSender->sendFullUpdate(bForce);
     }
 
     virtual void sendAction(std::unique_ptr<jsdialog::ActionDataMap> pData) override
     {
-        if (!m_bIsFreezed && m_pSender && pData)
+        if (!m_nFreezeCounter && m_pSender && pData)
             m_pSender->sendAction(BaseInstanceClass::m_xWidget, std::move(pData));
     }
 
     virtual void sendPopup(vcl::Window* pPopup, const OUString& rParentId,
                            const OUString& rCloseId) override
     {
-        if (!m_bIsFreezed && m_pSender)
+        if (!m_nFreezeCounter && m_pSender)
             m_pSender->sendPopup(pPopup, rParentId, rCloseId);
     }
 
     virtual void sendClosePopup(vcl::LOKWindowId nWindowId) override
     {
-        if (!m_bIsFreezed && m_pSender)
+        if (!m_nFreezeCounter && m_pSender)
             m_pSender->sendClosePopup(nWindowId);
     }
 
@@ -505,10 +414,10 @@ public:
     JSDialog(JSDialogSender* pSender, ::Dialog* pDialog, SalInstanceBuilder* pBuilder,
              bool bTakeOwnership);
 
-    virtual void collapse(weld::Widget* pEdit, weld::Widget* pButton) override;
+    virtual void collapse(weld::Widget& rEdit, weld::Widget* pButton) override;
     virtual void undo_collapse() override;
     virtual void response(int response) override;
-    virtual weld::Button* weld_widget_for_response(int response) override;
+    virtual std::unique_ptr<weld::Button> weld_button_for_response(int response) override;
     virtual int run() override;
     virtual bool runAsync(std::shared_ptr<weld::DialogController> const& rxOwner,
                           const std::function<void(sal_Int32)>& rEndDialogFn) override;
@@ -525,7 +434,7 @@ public:
     virtual void set_current_page(int nPage) override;
     virtual void set_current_page(const OUString& rIdent) override;
     virtual void response(int response) override;
-    virtual weld::Button* weld_widget_for_response(int response) override;
+    virtual std::unique_ptr<weld::Button> weld_button_for_response(int response) override;
     virtual int run() override;
     virtual bool runAsync(std::shared_ptr<weld::DialogController> const& rxOwner,
                           const std::function<void(sal_Int32)>& rEndDialogFn) override;
@@ -538,6 +447,17 @@ class JSContainer final : public JSWidget<SalInstanceContainer, vcl::Window>
 public:
     JSContainer(JSDialogSender* pSender, vcl::Window* pContainer, SalInstanceBuilder* pBuilder,
                 bool bTakeOwnership);
+
+    void move(weld::Widget* pWidget, weld::Container* pNewParent) override;
+
+    // all widgets below has to be updated in this case
+    virtual void set_sensitive(bool sensitive) override
+    {
+        bool bIsSensitive = SalInstanceContainer::get_sensitive();
+        SalInstanceContainer::set_sensitive(sensitive);
+        if (bIsSensitive != sensitive)
+            sendUpdate();
+    }
 };
 
 class JSScrolledWindow final : public JSWidget<SalInstanceScrolledWindow, ::VclScrolledWindow>
@@ -546,15 +466,15 @@ public:
     JSScrolledWindow(JSDialogSender* pSender, ::VclScrolledWindow* pWindow,
                      SalInstanceBuilder* pBuilder, bool bTakeOwnership, bool bUserManagedScrolling);
 
-    virtual void vadjustment_configure(int value, int lower, int upper, int step_increment,
-                                       int page_increment, int page_size) override;
+    virtual void vadjustment_configure(int value, int upper, int step_increment, int page_increment,
+                                       int page_size) override;
     virtual void vadjustment_set_value(int value) override;
     void vadjustment_set_value_no_notification(int value);
     virtual void vadjustment_set_page_size(int size) override;
     virtual void set_vpolicy(VclPolicyType eVPolicy) override;
 
-    virtual void hadjustment_configure(int value, int lower, int upper, int step_increment,
-                                       int page_increment, int page_size) override;
+    virtual void hadjustment_configure(int value, int upper, int step_increment, int page_increment,
+                                       int page_size) override;
     virtual void hadjustment_set_value(int value) override;
     void hadjustment_set_value_no_notification(int value);
     virtual void hadjustment_set_page_size(int size) override;
@@ -611,7 +531,8 @@ public:
     virtual void set_active(int pos) override;
 };
 
-class JSComboBox final : public JSWidget<SalInstanceComboBoxWithEdit, ::ComboBox>
+class JSComboBox final : public JSWidget<SalInstanceComboBoxWithEdit, ::ComboBox>,
+                         public OnDemandRenderingHandler
 {
 public:
     JSComboBox(JSDialogSender* pSender, ::ComboBox* pComboBox, SalInstanceBuilder* pBuilder,
@@ -619,13 +540,14 @@ public:
     virtual void insert(int pos, const OUString& rStr, const OUString* pId,
                         const OUString* pIconName, VirtualDevice* pImageSurface) override;
     virtual void remove(int pos) override;
-    virtual void set_entry_text_without_notify(const OUString& rText);
+    void set_entry_text_without_notify(const OUString& rText);
     virtual void set_entry_text(const OUString& rText) override;
     virtual void set_active(int pos) override;
     virtual void set_active_id(const OUString& rText) override;
     virtual bool changed_by_direct_pick() const override;
 
-    void render_entry(int pos, int dpix, int dpiy);
+    // OnDemandRenderingHandler
+    virtual void render_entry(int pos, int dpix, int dpiy) override;
 };
 
 class JSNotebook final : public JSWidget<SalInstanceNotebook, ::TabControl>
@@ -635,7 +557,8 @@ public:
                bool bTakeOwnership);
 
     virtual void remove_page(const OUString& rIdent) override;
-    virtual void insert_page(const OUString& rIdent, const OUString& rLabel, int nPos) override;
+    virtual void insert_page(const OUString& rIdent, const OUString& rLabel, int nPos,
+                             const OUString* pIconName = nullptr) override;
 };
 
 class JSVerticalNotebook final : public JSWidget<SalInstanceVerticalNotebook, ::VerticalTabControl>
@@ -645,7 +568,8 @@ public:
                        SalInstanceBuilder* pBuilder, bool bTakeOwnership);
 
     virtual void remove_page(const OUString& rIdent) override;
-    virtual void insert_page(const OUString& rIdent, const OUString& rLabel, int nPos) override;
+    virtual void insert_page(const OUString& rIdent, const OUString& rLabel, int nPos,
+                             const OUString* pIconName = nullptr) override;
 };
 
 class JSSpinButton final : public JSWidget<SalInstanceSpinButton, ::FormattedField>
@@ -654,7 +578,8 @@ public:
     JSSpinButton(JSDialogSender* pSender, ::FormattedField* pSpin, SalInstanceBuilder* pBuilder,
                  bool bTakeOwnership);
 
-    virtual void set_value(sal_Int64 value) override;
+    virtual void set_floating_point_value(double fValue) override;
+    virtual void set_floating_point_range(double fMin, double fMax) override;
 };
 
 class JSFormattedSpinButton final
@@ -709,14 +634,15 @@ public:
     JSCheckButton(JSDialogSender* pSender, ::CheckBox* pCheckBox, SalInstanceBuilder* pBuilder,
                   bool bTakeOwnership);
 
-    virtual void set_active(bool active) override;
+    virtual void set_state(TriState eState) override;
 };
 
 class JSDrawingArea final : public JSWidget<SalInstanceDrawingArea, VclDrawingArea>
 {
 public:
     JSDrawingArea(JSDialogSender* pSender, VclDrawingArea* pDrawingArea,
-                  SalInstanceBuilder* pBuilder, const a11yref& rAlly,
+                  SalInstanceBuilder* pBuilder,
+                  const rtl::Reference<comphelper::OAccessible>& rAlly,
                   FactoryFunction pUITestFactoryFunction, void* pUserData);
 
     virtual void queue_draw() override;
@@ -731,9 +657,13 @@ public:
     JSToolbar(JSDialogSender* pSender, ::ToolBox* pToolbox, SalInstanceBuilder* pBuilder,
               bool bTakeOwnership);
 
+    virtual void set_item_active(const OUString& rIdent, bool bActive) override;
     virtual void set_menu_item_active(const OUString& rIdent, bool bActive) override;
     virtual void set_item_sensitive(const OUString& rIdent, bool bSensitive) override;
     virtual void set_item_icon_name(const OUString& rIdent, const OUString& rIconName) override;
+    using JSWidget<SalInstanceToolbar, ::ToolBox>::set_item_image;
+    virtual void set_item_image(const OUString& rIdent,
+                                const css::uno::Reference<css::graphic::XGraphic>& rImage) override;
 };
 
 class JSTextView final : public JSWidget<SalInstanceTextView, ::VclMultiLineEdit>
@@ -756,6 +686,11 @@ public:
     /// pos is used differently here, it defines how many steps of iterator we need to perform to take entry
     virtual void set_toggle(int pos, TriState eState, int col = -1) override;
     virtual void set_toggle(const weld::TreeIter& rIter, TriState bOn, int col = -1) override;
+
+    using SalInstanceTreeView::set_sensitive;
+    /// pos is used differently here, it defines how many steps of iterator we need to perform to take entry
+    virtual void set_sensitive(int pos, bool bSensitive, int col = -1) override;
+    virtual void set_sensitive(const weld::TreeIter& rIter, bool bSensitive, int col = -1) override;
 
     using SalInstanceTreeView::select;
     /// pos is used differently here, it defines how many steps of iterator we need to perform to take entry
@@ -798,7 +733,8 @@ public:
     virtual void set_expanded(bool bExpand) override;
 };
 
-class JSIconView final : public JSWidget<SalInstanceIconView, ::IconView>
+class JSIconView final : public JSWidget<SalInstanceIconView, ::IconView>,
+                         public OnDemandRenderingHandler
 {
 public:
     JSIconView(JSDialogSender* pSender, ::IconView* pIconView, SalInstanceBuilder* pBuilder,
@@ -807,14 +743,17 @@ public:
     virtual void insert(int pos, const OUString* pStr, const OUString* pId,
                         const OUString* pIconName, weld::TreeIter* pRet) override;
 
-    virtual void insert(int pos, const OUString* pStr, const OUString* pId,
-                        const VirtualDevice* pIcon, weld::TreeIter* pRet) override;
+    virtual void insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
+                        weld::TreeIter* pRet) override;
 
     virtual void insert_separator(int pos, const OUString* pId) override;
 
     virtual void clear() override;
     virtual void select(int pos) override;
     virtual void unselect(int pos) override;
+
+    // OnDemandRenderingHandler
+    virtual void render_entry(int pos, int dpix, int dpiy) override;
 };
 
 class JSRadioButton final : public JSWidget<SalInstanceRadioButton, ::RadioButton>
@@ -843,6 +782,19 @@ public:
     virtual void set_image(VirtualDevice* pDevice) override;
     virtual void set_image(const css::uno::Reference<css::graphic::XGraphic>& rImage) override;
     virtual void set_active(bool active) override;
+};
+
+class JSMenu final : public SalInstanceMenu
+{
+    VclPtr<PopupMenu> m_pPopupMenu;
+    JSDialogSender* m_pSender;
+
+public:
+    JSMenu(JSDialogSender* pSender, PopupMenu* pMenu, SalInstanceBuilder* pBuilder,
+           bool bTakeOwnership);
+
+    virtual OUString popup_at_rect(weld::Widget* pParent, const tools::Rectangle& rRect,
+                                   weld::Placement ePlace = weld::Placement::Under) override;
 };
 
 class JSPopover : public JSWidget<SalInstancePopover, DockingWindow>
@@ -885,6 +837,14 @@ public:
             bool bTakeOwnership);
     virtual void set_image(VirtualDevice* pDevice) override;
     virtual void set_image(const css::uno::Reference<css::graphic::XGraphic>& rImage) override;
+};
+
+class JSLevelBar : public JSWidget<SalInstanceLevelBar, ::ProgressBar>
+{
+public:
+    JSLevelBar(JSDialogSender* pSender, ::ProgressBar* pProgressBar, SalInstanceBuilder* pBuilder,
+               bool bTakeOwnership);
+    virtual void set_percentage(double fPercentage) override;
 };
 
 class JSCalendar : public JSWidget<SalInstanceCalendar, ::Calendar>

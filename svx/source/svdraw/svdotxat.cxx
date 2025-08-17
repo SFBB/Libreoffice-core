@@ -144,14 +144,14 @@ bool SdrTextObj::AdjustTextFrameWidthAndHeight( tools::Rectangle& rR, bool bHgt,
     {
         Outliner& rOutliner = ImpGetDrawOutliner();
         rOutliner.SetPaperSize(aNewSize);
-        rOutliner.SetUpdateLayout(true);
         // TODO: add the optimization with bPortionInfoChecked etc. here
         OutlinerParaObject* pOutlinerParaObject = GetOutlinerParaObject();
         if (pOutlinerParaObject)
         {
-            rOutliner.SetText(*pOutlinerParaObject);
             rOutliner.SetFixedCellHeight(GetMergedItem(SDRATTR_TEXT_USEFIXEDCELLHEIGHT).GetValue());
+            rOutliner.SetText(*pOutlinerParaObject);
         }
+        rOutliner.SetUpdateLayout(true);
 
         if (bWdtGrow)
         {
@@ -360,10 +360,13 @@ void SdrTextObj::ImpSetTextStyleSheetListeners()
     while (nNum>0) {
         nNum--;
         SfxBroadcaster* pBroadcast=GetBroadcasterJOE(nNum);
-        SfxStyleSheet* pStyle=dynamic_cast<SfxStyleSheet*>( pBroadcast );
-        if (pStyle!=nullptr && pStyle!=GetStyleSheet()) { // special case for stylesheet of the object
-            if (aStyleSheets.find(pStyle)==aStyleSheets.end()) {
-                EndListening(*pStyle);
+        if (pBroadcast->IsSfxStyleSheet())
+        {
+            SfxStyleSheet* pStyle = static_cast<SfxStyleSheet*>( pBroadcast );
+            if (pStyle!=GetStyleSheet()) { // special case for stylesheet of the object
+                if (aStyleSheets.find(pStyle)==aStyleSheets.end()) {
+                    EndListening(*pStyle);
+                }
             }
         }
     }
@@ -400,7 +403,7 @@ void SdrTextObj::RemoveOutlinerCharacterAttribs( const std::vector<sal_uInt16>& 
                 pOutliner->SetText(*pOutlinerParaObject);
             }
 
-            ESelection aSelAll( 0, 0, EE_PARA_ALL, EE_TEXTPOS_ALL );
+            auto aSelAll = ESelection::All();
             for( const auto& rWhichId : rCharWhichIds )
             {
                 pOutliner->RemoveAttribs( aSelAll, false, rWhichId );
@@ -424,17 +427,16 @@ bool SdrTextObj::HasText() const
 
     OutlinerParaObject* pOPO = GetOutlinerParaObject();
 
-    bool bHasText = false;
-    if( pOPO )
-    {
-        const EditTextObject& rETO = pOPO->GetTextObject();
-        sal_Int32 nParaCount = rETO.GetParagraphCount();
+    if( !pOPO )
+        return false;
 
-        if( nParaCount > 0 )
-            bHasText = (nParaCount > 1) || (!rETO.GetText( 0 ).isEmpty());
-    }
-
-    return bHasText;
+    const EditTextObject& rETO = pOPO->GetTextObject();
+    sal_Int32 nParaCount = rETO.GetParagraphCount();
+    if( nParaCount == 0 )
+        return false;
+    if( nParaCount > 1 )
+        return true;
+    return rETO.HasText( 0 );
 }
 
 void SdrTextObj::AppendFamilyToStyleName(OUString& styleName, SfxStyleFamily family)

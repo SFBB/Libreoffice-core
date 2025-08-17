@@ -57,8 +57,8 @@ class ConstantValueExpression : public ExpressionNode
 
 public:
 
-    explicit ConstantValueExpression( ORowSetValueDecoratorRef aValue ) :
-        maValue(std::move( aValue ))
+    explicit ConstantValueExpression(ORowSetValueDecoratorRef aValue)
+        : maValue(std::move(aValue))
     {
     }
     virtual ORowSetValueDecoratorRef evaluate(const ODatabaseMetaDataResultSet::ORow& /*_aRow*/ ) const override
@@ -156,7 +156,7 @@ public:
     void operator()( StringIteratorT rFirst,StringIteratorT rSecond) const
     {
         OUString sVal( rFirst, rSecond - rFirst, RTL_TEXTENCODING_UTF8 );
-        mpContext->maOperandStack.push( std::make_shared<ConstantValueExpression>( new ORowSetValueDecorator( sVal ) ) );
+        mpContext->maOperandStack.push(std::make_shared<ConstantValueExpression>(ORowSetValueDecoratorRef(new ORowSetValueDecorator(sVal))));
     }
 };
 
@@ -173,7 +173,7 @@ public:
     }
     void operator()( sal_Int32 n ) const
     {
-        mpContext->maOperandStack.push( std::make_shared<ConstantValueExpression>( new ORowSetValueDecorator( n ) ) );
+        mpContext->maOperandStack.push(std::make_shared<ConstantValueExpression>(ORowSetValueDecoratorRef(new ORowSetValueDecorator(n))));
     }
 };
 
@@ -404,15 +404,15 @@ std::shared_ptr<ExpressionNode> const & FunctionParser::parseFunction( const OUS
     // TODO(Q1): Check if a combination of the RTL_UNICODETOTEXT_FLAGS_*
     // gives better conversion robustness here (we might want to map space
     // etc. to ASCII space here)
-    const OString& rAsciiFunction(
+    const OString aAsciiFunction(
         OUStringToOString( _sFunction, RTL_TEXTENCODING_ASCII_US ) );
 
-    StringIteratorT aStart( rAsciiFunction.getStr() );
-    StringIteratorT aEnd( rAsciiFunction.getStr()+rAsciiFunction.getLength() );
+    StringIteratorT aStart( aAsciiFunction.getStr() );
+    StringIteratorT aEnd( aAsciiFunction.getStr()+aAsciiFunction.getLength() );
 
     // static parser context, because the actual
     // Spirit parser is also a static object
-    ParserContextSharedPtr pContext = getParserContext();
+    const ParserContextSharedPtr& pContext = getParserContext();
 
     ExpressionGrammar aExpressionGrammer( pContext );
 

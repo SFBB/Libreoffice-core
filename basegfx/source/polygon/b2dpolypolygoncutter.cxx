@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <basegfx/numeric/ftools.hxx>
 #include <basegfx/polygon/b2dpolypolygoncutter.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/vector/b2dvector.hxx>
@@ -32,6 +31,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <tuple>
 
 namespace basegfx
 {
@@ -72,23 +72,12 @@ namespace basegfx
         public:
             PN*                     mpPN;
 
+            // For this to be a strict weak ordering, the assumption is that none of the involved
+            // maPoint coordinates are NaN:
             bool operator<(const SN& rComp) const
             {
-                if(fTools::equal(mpPN->maPoint.getX(), rComp.mpPN->maPoint.getX()))
-                {
-                    if(fTools::equal(mpPN->maPoint.getY(), rComp.mpPN->maPoint.getY()))
-                    {
-                        return (mpPN->mnI < rComp.mpPN->mnI);
-                    }
-                    else
-                    {
-                        return fTools::less(mpPN->maPoint.getY(), rComp.mpPN->maPoint.getY());
-                    }
-                }
-                else
-                {
-                    return fTools::less(mpPN->maPoint.getX(), rComp.mpPN->maPoint.getX());
-                }
+                return std::tie(mpPN->maPoint, mpPN->mnI)
+                    < std::tie(rComp.mpPN->maPoint, rComp.mpPN->mnI);
             }
         };
 
@@ -146,16 +135,16 @@ namespace basegfx
                 if(rVecA.cross(rVecB) > 0.0)
                 {
                     // b is left turn seen from a, test if Test is left of both and so inside (left is seen as inside)
-                    const bool bBoolA(fTools::moreOrEqual(rVecA.cross(rTest), 0.0));
-                    const bool bBoolB(fTools::lessOrEqual(rVecB.cross(rTest), 0.0));
+                    const bool bBoolA(rVecA.cross(rTest) >= 0.0);
+                    const bool bBoolB(rVecB.cross(rTest) <= 0.0);
 
                     return (bBoolA && bBoolB);
                 }
                 else
                 {
                     // b is right turn seen from a, test if Test is right of both and so outside (left is seen as inside)
-                    const bool bBoolA(fTools::lessOrEqual(rVecA.cross(rTest), 0.0));
-                    const bool bBoolB(fTools::moreOrEqual(rVecB.cross(rTest), 0.0));
+                    const bool bBoolA(rVecA.cross(rTest) <= 0.0);
+                    const bool bBoolB(rVecB.cross(rTest) >= 0.0);
 
                     return (!(bBoolA && bBoolB));
                 }
@@ -435,7 +424,6 @@ namespace basegfx
 
                 // handle common nodes
                 const sal_uInt32 nNodeCount(maSNV.size());
-                sal_uInt32 a(0);
 
                 // snap unsharp-equal points
                 if(nNodeCount)
@@ -465,16 +453,16 @@ namespace basegfx
 
                         pLast = pCurrent;
                     }
-                }
 
-                for(a = 0; a < nNodeCount - 1; a++)
-                {
-                    // test a before using it, not after. Also use nPointCount instead of aSortNodes.size()
-                    PN& rPNb = *(maSNV[a].mpPN);
-
-                    for(sal_uInt32 b(a + 1); b < nNodeCount && rPNb.maPoint.equal(maSNV[b].mpPN->maPoint); b++)
+                    for (sal_uInt32 a = 0; a < nNodeCount - 1; a++)
                     {
-                        impHandleCommon(rPNb, *maSNV[b].mpPN);
+                        // test a before using it, not after. Also use nPointCount instead of aSortNodes.size()
+                        PN& rPNb = *(maSNV[a].mpPN);
+
+                        for(sal_uInt32 b(a + 1); b < nNodeCount && rPNb.maPoint.equal(maSNV[b].mpPN->maPoint); b++)
+                        {
+                            impHandleCommon(rPNb, *maSNV[b].mpPN);
+                        }
                     }
                 }
             }
@@ -1081,7 +1069,7 @@ namespace basegfx::utils
                         if(!aCandidateRange.overlaps(aTargetRange))
                         {
                             aTarget.append(aCandidate);
-                            b = aTarget;
+                            b = std::move(aTarget);
                             bCouldMergeSimple = true;
                             break;
                         }
@@ -1118,7 +1106,7 @@ namespace basegfx::utils
                     }
                 }
 
-                aResult = aResult2;
+                aResult = std::move(aResult2);
             }
 
             // third step: get result

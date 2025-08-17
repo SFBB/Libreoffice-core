@@ -651,6 +651,8 @@ OUString SwAuthorityField::GetAbsoluteURL() const
             ? AUTH_FIELD_URL : AUTH_FIELD_TARGET_URL);
     SwDoc* pDoc = static_cast<SwAuthorityFieldType*>(GetTyp())->GetDoc();
     SwDocShell* pDocShell = pDoc->GetDocShell();
+    if (!pDocShell)
+        return OUString();
     OUString aBasePath = pDocShell->getDocumentBaseURL();
     return INetURLObject::GetAbsURL(aBasePath, rURL, INetURLObject::EncodeMechanism::WasEncoded,
                                     INetURLObject::DecodeMechanism::WithCharset);
@@ -662,6 +664,8 @@ OUString SwAuthorityField::GetRelativeURI() const
 
     SwDoc* pDoc = static_cast<SwAuthorityFieldType*>(GetTyp())->GetDoc();
     SwDocShell* pDocShell = pDoc->GetDocShell();
+    if (!pDocShell)
+        return OUString();
     const OUString aBaseURL = pDocShell->getDocumentBaseURL();
     std::u16string_view aBaseURIScheme;
     sal_Int32 nSep = aBaseURL.indexOf(':');
@@ -721,42 +725,42 @@ void SwAuthorityField::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterEndElement(pWriter);
 }
 
-const char* const aFieldNames[] =
+constexpr OUString aFieldNames[]
 {
-    "Identifier",
-    "BibiliographicType",
-    "Address",
-    "Annote",
-    "Author",
-    "Booktitle",
-    "Chapter",
-    "Edition",
-    "Editor",
-    "Howpublished",
-    "Institution",
-    "Journal",
-    "Month",
-    "Note",
-    "Number",
-    "Organizations",
-    "Pages",
-    "Publisher",
-    "School",
-    "Series",
-    "Title",
-    "Report_Type",
-    "Volume",
-    "Year",
-    "URL",
-    "Custom1",
-    "Custom2",
-    "Custom3",
-    "Custom4",
-    "Custom5",
-    "ISBN",
-    "LocalURL",
-    "TargetType",
-    "TargetURL",
+    u"Identifier"_ustr,
+    u"BibiliographicType"_ustr,
+    u"Address"_ustr,
+    u"Annote"_ustr,
+    u"Author"_ustr,
+    u"Booktitle"_ustr,
+    u"Chapter"_ustr,
+    u"Edition"_ustr,
+    u"Editor"_ustr,
+    u"Howpublished"_ustr,
+    u"Institution"_ustr,
+    u"Journal"_ustr,
+    u"Month"_ustr,
+    u"Note"_ustr,
+    u"Number"_ustr,
+    u"Organizations"_ustr,
+    u"Pages"_ustr,
+    u"Publisher"_ustr,
+    u"School"_ustr,
+    u"Series"_ustr,
+    u"Title"_ustr,
+    u"Report_Type"_ustr,
+    u"Volume"_ustr,
+    u"Year"_ustr,
+    u"URL"_ustr,
+    u"Custom1"_ustr,
+    u"Custom2"_ustr,
+    u"Custom3"_ustr,
+    u"Custom4"_ustr,
+    u"Custom5"_ustr,
+    u"ISBN"_ustr,
+    u"LocalURL"_ustr,
+    u"TargetType"_ustr,
+    u"TargetURL"_ustr,
 };
 
 void SwAuthEntry::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -766,7 +770,7 @@ void SwAuthEntry::dumpAsXml(xmlTextWriterPtr pWriter) const
     for (int i = 0; i < AUTH_FIELD_END; ++i)
     {
         (void)xmlTextWriterStartElement(pWriter, BAD_CAST("m_aAuthField"));
-        (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("key"), BAD_CAST(aFieldNames[i]));
+        (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("key"), BAD_CAST(aFieldNames[i].toUtf8().getStr()));
         (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"), BAD_CAST(m_aAuthFields[i].toUtf8().getStr()));
         (void)xmlTextWriterEndElement(pWriter);
     }
@@ -784,7 +788,7 @@ bool    SwAuthorityField::QueryValue( Any& rAny, sal_uInt16 /*nWhichId*/ ) const
     PropertyValue* pValues = aRet.getArray();
     for(int i = 0; i < AUTH_FIELD_END; ++i)
     {
-        pValues[i].Name = OUString::createFromAscii(aFieldNames[i]);
+        pValues[i].Name = aFieldNames[i];
         const OUString& sField = m_xAuthEntry->GetAuthorField(static_cast<ToxAuthorityField>(i));
         if(i == AUTH_FIELD_AUTHORITY_TYPE)
             pValues[i].Value <<= sal_Int16(sField.toInt32());
@@ -799,7 +803,7 @@ bool    SwAuthorityField::QueryValue( Any& rAny, sal_uInt16 /*nWhichId*/ ) const
 static sal_Int32 lcl_Find(std::u16string_view rFieldName)
 {
     for(sal_Int32 i = 0; i < AUTH_FIELD_END; ++i)
-        if(o3tl::equalsAscii(rFieldName, aFieldNames[i]))
+        if(aFieldNames[i] == rFieldName)
             return i;
     return -1;
 }
@@ -816,7 +820,7 @@ bool    SwAuthorityField::PutValue( const Any& rAny, sal_uInt16 /*nWhichId*/ )
     OUStringBuffer sBuf(+(AUTH_FIELD_END - 1));
     comphelper::string::padToLength(sBuf, (AUTH_FIELD_END - 1), TOX_STYLE_DELIMITER);
     OUString sToSet(sBuf.makeStringAndClear());
-    for(const PropertyValue& rParam : std::as_const(aParam))
+    for (const PropertyValue& rParam : aParam)
     {
         const sal_Int32 nFound = lcl_Find(rParam.Name);
         if(nFound >= 0)

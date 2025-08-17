@@ -41,6 +41,8 @@
 #include <anchoredobject.hxx>
 #include <flyfrm.hxx>
 
+#include <com/sun/star/text/ParagraphHyphenationKeepType.hpp>
+
 #undef WIDOWTWIPS
 
 namespace
@@ -67,10 +69,19 @@ SwTextFrameBreak::SwTextFrameBreak( SwTextFrame *pNewFrame, const SwTwips nRst )
     if( !m_bKeep && m_pFrame->IsInSct() )
     {
         const SwSectionFrame* const pSct = m_pFrame->FindSctFrame();
-        m_bKeep = pSct->Lower()->IsColumnFrame() && !pSct->MoveAllowed( m_pFrame );
+        if (const SwFrame* pLower = pSct->Lower())
+            m_bKeep = pLower->IsColumnFrame() && !pSct->MoveAllowed( m_pFrame );
     }
     m_bKeep = m_bKeep || !m_pFrame->GetTextNodeForParaProps()->GetSwAttrSet().GetSplit().GetValue() ||
         m_pFrame->GetTextNodeForParaProps()->GetSwAttrSet().GetKeep().GetValue();
+
+    if (m_bKeep)
+    {
+        // Ignore keep-together and keep-with-next if this is an anchor for a floating table. It's
+        // OK to split the text frame into two, to separate the floating table and the anchor text.
+        m_bKeep = m_pFrame->IgnoringSplitFlyAnchor(m_bKeep);
+    }
+
     m_bBreak = false;
 
     if( !m_nRstHeight && !m_pFrame->IsFollow() && m_pFrame->IsInFootnote() && m_pFrame->HasPara() )
@@ -103,7 +114,7 @@ SwTextFrameBreak::SwTextFrameBreak( SwTextFrame *pNewFrame, const SwTwips nRst )
  * be done until the Follow is formatted. Unfortunately this is crucial
  * to decide if the whole paragraph goes to the next page or not.
  */
-bool SwTextFrameBreak::IsInside( SwTextMargin const &rLine ) const
+bool SwTextFrameBreak::IsInside(SwTextMargin const& rLine, SwResizeLimitReason& reason) const
 {
     bool bFit = false;
 
@@ -130,11 +141,6 @@ bool SwTextFrameBreak::IsInside( SwTextMargin const &rLine ) const
         SwTwips nHeight =
             aRectFnSet.YDiff( aRectFnSet.GetPrtBottom(*m_pFrame->GetUpper()), m_nOrigin );
         SwTwips nDiff = nHeight - nLineHeight;
-
-        // Hide whitespace may require not to insert a new page.
-        SwPageFrame* pPageFrame = m_pFrame->FindPageFrame();
-        if (!pPageFrame->CheckPageHeightValidForHideWhitespace(nDiff))
-            nDiff = 0;
 
         // If everything is inside the existing frame the result is true;
         bFit = nDiff >= 0;
@@ -209,7 +215,7 @@ bool SwTextFrameBreak::IsInside( SwTextMargin const &rLine ) const
             // The LineHeight exceeds the current Frame height.
             // Call a test Grow to detect if the Frame could
             // grow the requested area.
-            nHeight += m_pFrame->GrowTst( LONG_MAX );
+            nHeight += m_pFrame->GrowTst(LONG_MAX, reason);
 
             // The Grow() returns the height by which the Upper of the TextFrame
             // would let the TextFrame grow.
@@ -224,10 +230,11 @@ bool SwTextFrameBreak::IsInside( SwTextMargin const &rLine ) const
 bool SwTextFrameBreak::IsBreakNow( SwTextMargin &rLine )
 {
     SwSwapIfSwapped swap(m_pFrame);
+    SwResizeLimitReason reason = SwResizeLimitReason::Unspecified;
 
     // bKeep is stronger than IsBreakNow()
     // Is there enough space ?
-    if( m_bKeep || IsInside( rLine ) )
+    if (m_bKeep || IsInside(rLine, reason))
         m_bBreak = false;
     else
     {
@@ -253,7 +260,9 @@ bool SwTextFrameBreak::IsBreakNow( SwTextMargin &rLine )
         if( ( bFirstLine && m_pFrame->GetIndPrev() )
             || ( rLine.GetLineNr() <= rLine.GetDropLines() ) )
         {
-            m_bKeep = true;
+            // The SwTextFrameBreak ctor already turns off m_bKeep for split fly anchors, don't
+            // change that decision here.
+            m_bKeep = m_pFrame->IgnoringSplitFlyAnchor(true);
             m_bBreak = false;
         }
         else if(bFirstLine && m_pFrame->IsInFootnote() && !m_pFrame->FindFootnoteFrame()->GetPrev())
@@ -261,6 +270,11 @@ bool SwTextFrameBreak::IsBreakNow( SwTextMargin &rLine )
             SwLayoutFrame* pTmp = m_pFrame->FindFootnoteBossFrame()->FindBodyCont();
             if( !pTmp || !pTmp->Lower() )
                 m_bBreak = false;
+        }
+        else if (reason == SwResizeLimitReason::FixedSizeFrame)
+        {
+            // The content is in a clipping frame - no need to break at all
+            m_bBreak = false;
         }
     }
 
@@ -430,7 +444,7 @@ bool WidowsAndOrphans::FindWidows( SwTextFrame *pFrame, SwTextMargin &rLine )
     OSL_ENSURE( ! pFrame->IsVertical() || ! pFrame->IsSwapped(),
             "WidowsAndOrphans::FindWidows with swapped frame" );
 
-    if( !m_nWidLines || !pFrame->IsFollow() )
+    if( !pFrame->IsFollow() )
         return false;
 
     rLine.Bottom();
@@ -463,15 +477,156 @@ bool WidowsAndOrphans::FindWidows( SwTextFrame *pFrame, SwTextMargin &rLine )
 
     const SwTwips nChg = aRectFnSet.YDiff( nTmpY, nDocPrtTop + nOldHeight );
 
-    // below the Widows-threshold...
-    if( rLine.GetLineNr() >= m_nWidLines )
+    // hyphenation-keep: truncate a hyphenated line at the end of
+    // the column, page or spread (but not more)
+    // hyphenation-keep-line: disable hyphenation in the last line instead of truncating it
+    // hyphenation-zone-always/page/column/spread: modify hyphenation in the last line (end zone)
+    int nExtraWidLines = 0;
+    if( rLine.GetLineNr() >= m_nWidLines && pMaster->HasPara() )
+    {
+        SwParaPortion *pMasterPara = pMaster->GetPara();
+        const SwAttrSet& rSet = pFrame->GetTextNodeForParaProps()->GetSwAttrSet();
+        const SvxHyphenZoneItem &rAttr = rSet.GetHyphenZone();
+
+        bool bKeep = rAttr.IsHyphen() && rAttr.IsKeep() && rAttr.GetKeepType();
+        bool bKeepLine = bKeep && rAttr.IsKeepLine();
+
+        // last line of a column inside a page
+        auto pMasterPage = pMaster->FindPageFrame();
+        auto pPage = pFrame->FindPageFrame();
+        // across column, but not page or spread, when both parts are there on the same page
+        bool bAcrossColumnNotPage = pMasterPage == pPage;
+        // across page, but not spread, when the parts are there not on the same page
+        bool bAcrossPageNotSpread = !bAcrossColumnNotPage &&
+                   !pMasterPage->OnRightPage() && pPage->OnRightPage() &&
+                   // linked text frames can be on a different spread, so check
+                   // that the master is there on the previous page
+                   pMasterPage == pPage->GetPrev();
+
+        // calculate end zones, based on their inheritance (0 means inheritance)
+        sal_Int16 nEndZoneParagraph = rAttr.GetTextHyphenZoneAlways() > 0
+                ? rAttr.GetTextHyphenZoneAlways()
+                : rAttr.GetTextHyphenZone();
+        sal_Int16 nEndZoneColumn = rAttr.GetTextHyphenZoneColumn() > 0
+                ? rAttr.GetTextHyphenZoneColumn()
+                : nEndZoneParagraph;
+        sal_Int16 nEndZonePage = rAttr.GetTextHyphenZonePage() > 0
+                ? rAttr.GetTextHyphenZonePage()
+                : nEndZoneColumn;
+        sal_Int16 nEndZoneSpread = rAttr.GetTextHyphenZoneSpread() > 0
+                ? rAttr.GetTextHyphenZoneSpread()
+                : nEndZonePage;
+
+        // set end zone
+        sal_Int16 nNoHyphEndZone = bAcrossColumnNotPage
+            ? nEndZoneColumn
+            : bAcrossPageNotSpread
+                ? nEndZonePage
+                : nEndZoneSpread;
+
+        // if PAGE or SPREAD, allow hyphenation in the not last column or in the
+        // not last linked frame on the same page
+        if( bKeep && bAcrossColumnNotPage && (
+                rAttr.GetKeepType() == css::text::ParagraphHyphenationKeepType::SPREAD ||
+                rAttr.GetKeepType() == css::text::ParagraphHyphenationKeepType::PAGE ) )
+        {
+            bKeep = false;
+        }
+
+        // if SPREAD, allow hyphenation at bottom of left page on the same spread
+        if ( bKeep && rAttr.GetKeepType() == css::text::ParagraphHyphenationKeepType::SPREAD &&
+                   bAcrossPageNotSpread )
+        {
+            bKeep = false;
+        }
+
+        // remove remaining NoHyphOffset after enabling Hyphenate Across Spread (!bKeep) or
+        // enabling Move Line (!bKeepLine), or setting End Zone to no-limit,
+        // and invalidate the master to update the last line
+        if ( (!bKeep || !bKeepLine) &&
+                    pMaster->GetNoHyphOffset() != TextFrameIndex(COMPLETE_STRING) )
+        {
+            pMaster->SetNoHyphOffset(TextFrameIndex(COMPLETE_STRING));
+            pMaster->Prepare( PrepareHint::AdjustSizeWithoutFormatting );
+            pMaster->InvalidateSize_();
+        }
+
+        // applied end zone, i.e. hyphenation is not disabled completely,
+        // end zone is not zero and different from the hyphenation zone
+        bool bApplyEndZone = !bKeep && nNoHyphEndZone > 0 &&
+                nNoHyphEndZone != rAttr.GetTextHyphenZone();
+        if ( ( bKeep || bApplyEndZone ) && pMasterPara && pMasterPara->GetNext() )
+        {
+            // calculate the beginning of last hyphenated line
+            TextFrameIndex nIdx(pMasterPara->GetLen());
+            SwLineLayout * pNext = pMasterPara->GetNext();
+            nIdx += pNext->GetLen();
+            SwLineLayout * pCurr = pNext;
+            SwLineLayout * pPrev = pNext;
+            while ( pNext->GetNext() )
+            {
+                pPrev = pCurr;
+                pCurr = pNext;
+                pNext = pNext->GetNext();
+                nIdx += pNext->GetLen();
+            }
+            nIdx -= pNext->GetLen();
+            // hyphenated line, but not the last remaining one
+            // in the case of shifting full line (bKeepLine = false)
+            if ( pNext->IsEndHyph() && ( bKeepLine || !pNext->IsLastHyph() || bApplyEndZone ) )
+            {
+                nExtraWidLines = rLine.GetLineNr() - m_nWidLines + 1;
+                // shift only a word: disable hyphenation in the line, if needed
+                if ( ( bKeepLine || bApplyEndZone ) && nExtraWidLines )
+                {
+                    pMaster->SetNoHyphOffset(nIdx);
+                    pMaster->SetNoHyphEndZone(bApplyEndZone ? nNoHyphEndZone : -1);
+                    // update also columns and frames
+                    pMaster->Prepare( PrepareHint::AdjustSizeWithoutFormatting );
+                    pMaster->InvalidateSize_();
+                    nExtraWidLines = 0; // no need to shift the full line
+                }
+                // shift full line:
+                // set remaining line to "last remaining hyphenated line"
+                // to avoid truncating multiple hyphenated lines instead
+                // of a single one
+                else if ( bKeep && !bKeepLine && pCurr->IsEndHyph() )
+                    pCurr->SetLastHyph( true );
+                // also unset the line before the remaining one
+                // TODO: check also the line after the truncated line?
+                if ( pPrev->IsLastHyph() )
+                    pPrev->SetLastHyph( false );
+            }
+
+            // update the old line with disabled hyphenation, i.e. when there is a line
+            // with disabled hyphenation, but it is not the last line any more
+            TextFrameIndex nNoHyphIdx = pMaster->GetNoHyphOffset();
+            if ( nNoHyphIdx != TextFrameIndex(COMPLETE_STRING) && nNoHyphIdx != nIdx )
+            {
+                // enable hyphenation for all the lines in the TextFrame again
+                pMaster->SetNoHyphOffset(TextFrameIndex(COMPLETE_STRING));
+                // update all the previous lines before the previous offset, e.g.
+                // when deleting all the lines before the last line with disabled hyphenation
+                // results a starting line with disabled hyphenation -> repaint it with enabled
+                // hyphenation again
+                pMaster->InvalidateRange_(SwCharRange(TextFrameIndex(0), nNoHyphIdx));
+            }
+        }
+    }
+
+    // no widow (e.g. in tables) and no hyphenation-keep
+    if( !m_nWidLines && !nExtraWidLines )
+        return false;
+
+    // below the Widows-threshold..., with an extra hyphenated line
+    if( rLine.GetLineNr() >= m_nWidLines + nExtraWidLines )
     {
         // Follow to Master I
         // If the Follow *grows*, there is the chance for the Master to
         // receive lines, that it was forced to hand over to the Follow lately:
         // Prepare(Need); check that below nChg!
         // (0W, 2O, 2M, 2F) + 1F = 3M, 2F
-        if( rLine.GetLineNr() > m_nWidLines && pFrame->IsJustWidow() )
+        if( rLine.GetLineNr() > m_nWidLines + nExtraWidLines && pFrame->IsJustWidow() )
         {
             // If the Master is locked, it has probably just donated a line
             // to us, we don't return that just because we turned it into

@@ -75,7 +75,10 @@
 
 // MM02 needed for VOC mechanism and getting the OC - may be moved to an own file
 #include <svx/sdrpagewindow.hxx>
+#include <svx/svdoutl.hxx>
+#include <svx/svdpage.hxx>
 #include <svx/svdpagv.hxx>
+#include <svx/unopage.hxx>
 #include <svx/sdr/contact/viewcontact.hxx>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
 #include <svx/sdr/contact/objectcontact.hxx>
@@ -103,7 +106,7 @@ static void lcl_PaintReplacement( const SwRect &rRect, const OUString &rText,
         vcl::Font tmp;
         tmp.SetWeight( WEIGHT_BOLD );
         tmp.SetStyleName( OUString() );
-        tmp.SetFamilyName("Noto Sans");
+        tmp.SetFamilyName(u"Noto Sans"_ustr);
         tmp.SetFamily( FAMILY_SWISS );
         tmp.SetTransparent( true );
         return tmp;
@@ -140,8 +143,9 @@ static void lcl_PaintReplacement( const SwRect &rRect, const OUString &rText,
     aFont.SetUnderline( eUnderline );
     aFont.SetColor( aCol );
 
-    const BitmapEx& rBmp = const_cast<SwViewShell&>(rSh).GetReplacementBitmap(bDefect);
-    Graphic::DrawEx(*rSh.GetOut(), rText, aFont, rBmp, rRect.Pos(), rRect.SSize());
+    const Bitmap& rBmp = bDefect ? const_cast<SwViewShell&>(rSh).GetErrorBitmap()
+                                 : const_cast<SwViewShell&>(rSh).GetReplacementBitmap();
+    Graphic::DrawEx(*rSh.GetOut(), rText, aFont, BitmapEx(rBmp), rRect.Pos(), rRect.SSize());
 }
 
 SwNoTextFrame::SwNoTextFrame(SwNoTextNode * const pNode, SwFrame* pSib )
@@ -211,7 +215,7 @@ static void lcl_ClearArea( const SwFrame &rFrame,
     }
 }
 
-void SwNoTextFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect const& rRect) const
+void SwNoTextFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect const& rRect, PaintFrameMode) const
 {
     if ( getFrameArea().IsEmpty() )
         return;
@@ -228,7 +232,7 @@ void SwNoTextFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect cons
             if ( aText.isEmpty() && pNd->IsGrfNode() )
                 GetRealURL( *static_cast<const SwGrfNode*>(pNd), aText );
             if( aText.isEmpty() )
-                aText = FindFlyFrame()->GetFormat()->GetName();
+                aText = FindFlyFrame()->GetFormat()->GetName().toString();
             lcl_PaintReplacement( getFrameArea(), aText, *pSh, this, false );
         }
         return;
@@ -258,7 +262,10 @@ void SwNoTextFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect cons
          FindFlyFrame()->GetContour( aPoly, true )
        )
     {
-        rRenderContext.SetClipRegion(vcl::Region(aPoly));
+        // don't clip if related compatibility flag is set
+        const IDocumentSettingAccess& rIDSA = pSh->GetDoc()->getIDocumentSettingAccess();
+        if (!rIDSA.get(DocumentSettingId::NO_CLIPPING_WITH_WRAP_POLYGON))
+            rRenderContext.SetClipRegion(vcl::Region(aPoly));
         bClip = false;
     }
 
@@ -743,99 +750,101 @@ void SwNoTextFrame::OnGraphicArrived()
 
 void SwNoTextFrame::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
 {
-    if(dynamic_cast<const sw::GrfRereadAndInCacheHint*>(&rHint))
+    if(rHint.GetId() == SfxHintId::SwGrfRereadAndInCache)
     {
         if(SwNodeType::Grf != GetNode()->GetNodeType())
         {
             InvalidatePrt();
             SetCompletePaint();
         }
-        return;
     }
-    if(rHint.GetId() == SfxHintId::SwPreGraphicArrived
+    else if(rHint.GetId() == SfxHintId::SwPreGraphicArrived
             || rHint.GetId() == SfxHintId::SwGraphicPieceArrived
             || rHint.GetId() == SfxHintId::SwLinkedGraphicStreamArrived)
     {
         OnGraphicArrived();
-        return;
     }
-    else if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    sal_uInt16 nWhich = pLegacy->GetWhich();
-
-    SwContentFrame::SwClientNotify(rModify, rHint);
-
-    bool bComplete = true;
-
-    switch( nWhich )
+    else if (rHint.GetId() == SfxHintId::SwFormatChange)
     {
-    case RES_OBJECTDYING:
-        break;
-
-    case RES_UPDATE_ATTR:
-        if (GetNode()->GetNodeType() != SwNodeType::Grf) {
-            break;
-        }
-        [[fallthrough]];
-    case RES_FMT_CHG:
         ClearCache();
-        break;
+        InvalidatePrt();
+        SetCompletePaint();
+    }
+    else if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+        SwContentFrame::SwClientNotify(rModify, rHint);
 
-    case RES_ATTRSET_CHG:
-        {
-            sal_uInt16 n;
-            for( n = RES_GRFATR_BEGIN; n < RES_GRFATR_END; ++n )
-                if( SfxItemState::SET == static_cast<const SwAttrSetChg*>(pLegacy->m_pOld)->GetChgSet()->
-                                GetItemState( n, false ))
+        sal_uInt16 n;
+        for( n = RES_GRFATR_BEGIN; n < RES_GRFATR_END; ++n )
+            if( SfxItemState::SET == pChangeHint->m_pOld->GetChgSet()->
+                            GetItemState( n, false ))
+            {
+                ClearCache();
+
+                if(RES_GRFATR_ROTATION == n)
                 {
-                    ClearCache();
-
-                    if(RES_GRFATR_ROTATION == n)
+                    // RotGrfFlyFrame: Update Handles in view, these may be rotation-dependent
+                    // (e.g. crop handles) and need a visualisation update
+                    if ( GetNode()->GetNodeType() == SwNodeType::Grf )
                     {
-                        // RotGrfFlyFrame: Update Handles in view, these may be rotation-dependent
-                        // (e.g. crop handles) and need a visualisation update
-                        if ( GetNode()->GetNodeType() == SwNodeType::Grf )
+                        SwGrfNode* pNd = static_cast<SwGrfNode*>( GetNode());
+                        SwViewShell *pVSh = pNd->GetDoc().getIDocumentLayoutAccess().GetCurrentViewShell();
+
+                        if(pVSh)
                         {
-                            SwGrfNode* pNd = static_cast<SwGrfNode*>( GetNode());
-                            SwViewShell *pVSh = pNd->GetDoc().getIDocumentLayoutAccess().GetCurrentViewShell();
+                            SdrView* pDrawView = pVSh->GetDrawView();
 
-                            if(pVSh)
+                            if(pDrawView)
                             {
-                                SdrView* pDrawView = pVSh->GetDrawView();
-
-                                if(pDrawView)
-                                {
-                                    pDrawView->AdjustMarkHdl(nullptr);
-                                }
+                                pDrawView->AdjustMarkHdl(nullptr);
                             }
-
-                            // RotateFlyFrame3 - invalidate needed for ContentFrame (inner, this)
-                            // and LayoutFrame (outer, GetUpper). It is possible to only invalidate
-                            // the outer frame, but that leads to an in-between state that gets
-                            // potentially painted
-                            if(GetUpper())
-                            {
-                                GetUpper()->InvalidateAll_();
-                            }
-
-                            InvalidateAll_();
                         }
-                    }
-                    break;
-                }
-            if( RES_GRFATR_END == n )           // not found
-                return ;
-        }
-        break;
 
-    default:
+                        // RotateFlyFrame3 - invalidate needed for ContentFrame (inner, this)
+                        // and LayoutFrame (outer, GetUpper). It is possible to only invalidate
+                        // the outer frame, but that leads to an in-between state that gets
+                        // potentially painted
+                        if(GetUpper())
+                        {
+                            GetUpper()->InvalidateAll_();
+                        }
+
+                        InvalidateAll_();
+                    }
+                }
+                break;
+            }
+        if( RES_GRFATR_END == n )           // not found
+            return ;
+
+        InvalidatePrt();
+        SetCompletePaint();
+    }
+    else if (rHint.GetId() == SfxHintId::SwObjectDying)
+    {
+        SwContentFrame::SwClientNotify(rModify, rHint);
+        InvalidatePrt();
+        SetCompletePaint();
+    }
+    else if (rHint.GetId() == SfxHintId::SwUpdateAttr)
+    {
+        SwContentFrame::SwClientNotify(rModify, rHint);
+        if (GetNode()->GetNodeType() == SwNodeType::Grf)
+            ClearCache();
+        InvalidatePrt();
+        SetCompletePaint();
+    }
+    else if (rHint.GetId() == SfxHintId::SwLegacyModify)
+    {
+        auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
+        sal_uInt16 nWhich = pLegacy->GetWhich();
+
+        SwContentFrame::SwClientNotify(rModify, rHint);
+
         if ( !pLegacy->m_pNew || !isGRFATR(nWhich) )
             return;
-    }
 
-    if( bComplete )
-    {
         InvalidatePrt();
         SetCompletePaint();
     }
@@ -925,11 +934,11 @@ void paintGraphicUsingPrimitivesHelper(
     // -> the primitive handles all crop and mirror stuff
     // -> the primitive renderer will create the needed pdf export data
     // -> if bitmap content, it will be cached system-dependent
-    drawinglayer::primitive2d::Primitive2DContainer aContent(1);
-    aContent[0] = new drawinglayer::primitive2d::GraphicPrimitive2D(
-        rGraphicTransform,
-        rGrfObj,
-        rGraphicAttr);
+    drawinglayer::primitive2d::Primitive2DContainer aContent {
+        new drawinglayer::primitive2d::GraphicPrimitive2D(
+            rGraphicTransform,
+            rGrfObj,
+            rGraphicAttr) };
 
     // MM02 use primitive-based version for visualization
     paintGraphicUsingPrimitivesHelper(
@@ -966,11 +975,10 @@ void paintGraphicUsingPrimitivesHelper(
 
         if(0 != aClip.count())
         {
-            rContent.resize(1);
-            rContent[0] =
+            rContent = drawinglayer::primitive2d::Primitive2DContainer {
                 new drawinglayer::primitive2d::MaskPrimitive2D(
                     std::move(aClip),
-                    drawinglayer::primitive2d::Primitive2DContainer(rContent));
+                    std::move(rContent)) };
         }
     }
 
@@ -978,13 +986,12 @@ void paintGraphicUsingPrimitivesHelper(
     {
         // Embed to ObjectInfoPrimitive2D when we have Name/Title/Description
         // information available
-        rContent.resize(1);
-        rContent[0] =
+        rContent = drawinglayer::primitive2d::Primitive2DContainer {
             new drawinglayer::primitive2d::ObjectInfoPrimitive2D(
-                drawinglayer::primitive2d::Primitive2DContainer(rContent),
+                std::move(rContent),
                 rName,
                 rTitle,
-                rDescription);
+                rDescription) };
     }
 
     basegfx::B2DRange aTargetRange(0.0, 0.0, 1.0, 1.0);
@@ -1160,7 +1167,7 @@ void SwNoTextFrame::PaintPicture( vcl::RenderContext* pOut, const SwRect &rGrfAr
 
             // #i99665#
             // Adjust AntiAliasing mode at output device for chart OLE
-            if ( pOLENd->IsChart() )
+            if (pOLENd && pOLENd->IsChart())
                 nNewAntialiasingAtOutput |= AntialiasingFlags::PixelSnapHairline;
 
             pOut->SetAntialiasing( nNewAntialiasingAtOutput );
@@ -1179,7 +1186,7 @@ void SwNoTextFrame::PaintPicture( vcl::RenderContext* pOut, const SwRect &rGrfAr
 void SwNoTextFrame::ImplPaintPictureGraphic( vcl::RenderContext* pOut,
     SwGrfNode* pGrfNd, bool bPrn,
     const SwRect& rAlignedGrfArea, SwViewShell* pShell,
-    SwNoTextNode& rNoTNd ) const
+    const SwNoTextNode& rNoTNd ) const
 {
     bool bContinue = true;
     const GraphicObject& rGrfObj = pGrfNd->GetGrfObj(bPrn);
@@ -1292,7 +1299,7 @@ void SwNoTextFrame::ImplPaintPictureGraphic( vcl::RenderContext* pOut,
                 *pOut,
                 aPrimitives,
                 aGraphicTransform,
-                nullptr == pGrfNd->GetFlyFormat() ? OUString() : pGrfNd->GetFlyFormat()->GetName(),
+                nullptr == pGrfNd->GetFlyFormat() ? OUString() : pGrfNd->GetFlyFormat()->GetName().toString(),
                 rNoTNd.GetTitle(),
                 rNoTNd.GetDescription());
             bSucceeded = true;
@@ -1310,13 +1317,13 @@ void SwNoTextFrame::ImplPaintPictureGraphic( vcl::RenderContext* pOut,
             rGrfObj,
             aGrfAttr,
             aGraphicTransform,
-            nullptr == pGrfNd->GetFlyFormat() ? OUString() : pGrfNd->GetFlyFormat()->GetName(),
+            nullptr == pGrfNd->GetFlyFormat() ? OUString() : pGrfNd->GetFlyFormat()->GetName().toString(),
             rNoTNd.GetTitle(),
             rNoTNd.GetDescription());
     }
 }
 
-void SwNoTextFrame::ImplPaintPictureAnimate(vcl::RenderContext* pOut, SwViewShell* pShell,
+void SwNoTextFrame::ImplPaintPictureAnimate(vcl::RenderContext* pOut, const SwViewShell* pShell,
         SwGrfNode* pGrfNd, const SwRect& rAlignedGrfArea) const
 {
     OutputDevice* pVout;
@@ -1342,8 +1349,8 @@ void SwNoTextFrame::ImplPaintPictureAnimate(vcl::RenderContext* pOut, SwViewShel
                         pVout );
 }
 
-void SwNoTextFrame::ImplPaintPictureReplacement(const GraphicObject& rGrfObj, SwGrfNode* pGrfNd,
-        const SwRect& rAlignedGrfArea, SwViewShell* pShell) const
+void SwNoTextFrame::ImplPaintPictureReplacement(const GraphicObject& rGrfObj, const SwGrfNode* pGrfNd,
+        const SwRect& rAlignedGrfArea, const SwViewShell* pShell) const
 {
     TranslateId pResId;
 
@@ -1385,11 +1392,25 @@ void SwNoTextFrame::ImplPaintPictureBitmap( vcl::RenderContext* pOut,
                 rAlignedGrfArea.Left(), rAlignedGrfArea.Top(),
                 rAlignedGrfArea.Right(), rAlignedGrfArea.Bottom());
 
+            Color aOldBackColor;
+            SvxDrawPage* pDrawPage = pOLENd->GetOLEObj().tryToGetChartDrawPage();
+            SdrPage* pPage = pDrawPage ? pDrawPage->GetSdrPage() : nullptr;
+            if (pPage)
+            {
+                SdrModel& rModel = pPage->getSdrModelFromSdrPage();
+                SdrOutliner& rOutl = rModel.GetDrawOutliner();
+                aOldBackColor = rOutl.GetBackgroundColor();
+                rOutl.SetBackgroundColor(pPage->GetPageBackgroundColor());
+            }
+
             bDone = paintUsingPrimitivesHelper(
                 *pOut,
                 aSequence,
                 aSourceRange,
                 aTargetRange);
+
+            if (pPage)
+                pPage->getSdrModelFromSdrPage().GetDrawOutliner().SetBackgroundColor(aOldBackColor);
         }
     }
 
@@ -1402,12 +1423,13 @@ void SwNoTextFrame::ImplPaintPictureBitmap( vcl::RenderContext* pOut,
     const Point aPosition(rAlignedGrfArea.Pos());
     const Size aSize(rAlignedGrfArea.SSize());
 
+    uno::Reference<embed::XEmbeddedObject> xObj = pOLENd->GetOLEObj().GetOleRef();
+
     if ( pGraphic && pGraphic->GetType() != GraphicType::NONE )
     {
         pGraphic->Draw(*pOut, aPosition, aSize);
 
         // shade the representation if the object is activated outplace
-        uno::Reference < embed::XEmbeddedObject > xObj = pOLENd->GetOLEObj().GetOleRef();
         if ( xObj.is() && xObj->getCurrentState() == embed::EmbedStates::ACTIVE )
         {
 
@@ -1426,7 +1448,7 @@ void SwNoTextFrame::ImplPaintPictureBitmap( vcl::RenderContext* pOut,
             pOut);
     }
 
-    sal_Int64 nMiscStatus = pOLENd->GetOLEObj().GetOleRef()->getStatus( pOLENd->GetAspect() );
+    sal_Int64 nMiscStatus = xObj ? xObj->getStatus(pOLENd->GetAspect()) : 0;
     if ( !bPrn && dynamic_cast< const SwCursorShell *>( pShell ) !=  nullptr &&
             (nMiscStatus & embed::EmbedMisc::MS_EMBED_ACTIVATEWHENVISIBLE))
     {

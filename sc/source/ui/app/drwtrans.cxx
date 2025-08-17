@@ -69,7 +69,7 @@ constexpr sal_uInt32 SCDRAWTRANS_TYPE_EMBOBJ    = 1;
 constexpr sal_uInt32 SCDRAWTRANS_TYPE_DRAWMODEL = 2;
 constexpr sal_uInt32 SCDRAWTRANS_TYPE_DOCUMENT  = 3;
 
-ScDrawTransferObj::ScDrawTransferObj( std::unique_ptr<SdrModel> pClipModel, ScDocShell* pContainerShell,
+ScDrawTransferObj::ScDrawTransferObj( std::unique_ptr<SdrModel> pClipModel, ScDocShell& rContainerShell,
                                         TransferableObjectDescriptor aDesc ) :
     m_pModel( std::move(pClipModel) ),
     m_aObjDesc(std::move( aDesc )),
@@ -78,7 +78,7 @@ ScDrawTransferObj::ScDrawTransferObj( std::unique_ptr<SdrModel> pClipModel, ScDo
     m_bOleObj( false ),
     m_nDragSourceFlags( ScDragSrc::Undefined ),
     m_bDragWasInternal( false ),
-    maShellID(SfxObjectShell::CreateShellID(pContainerShell))
+    maShellID(SfxObjectShell::CreateShellID(&rContainerShell))
 {
 
     //  check what kind of objects are contained
@@ -129,7 +129,7 @@ ScDrawTransferObj::ScDrawTransferObj( std::unique_ptr<SdrModel> pClipModel, ScDo
                     uno::Reference< beans::XPropertySet > xPropSet( xControlModel, uno::UNO_QUERY );
                     uno::Reference< beans::XPropertySetInfo > xInfo = xPropSet->getPropertySetInfo();
 
-                    OUString sPropButtonType( "ButtonType" );
+                    OUString sPropButtonType( u"ButtonType"_ustr );
 
                     if(xInfo->hasPropertyByName( sPropButtonType ))
                     {
@@ -138,7 +138,7 @@ ScDrawTransferObj::ScDrawTransferObj( std::unique_ptr<SdrModel> pClipModel, ScDo
                         if ( (aAny >>= eTmp) && eTmp == form::FormButtonType_URL )
                         {
                             // URL
-                            OUString sPropTargetURL( "TargetURL" );
+                            OUString sPropTargetURL( u"TargetURL"_ustr );
                             if(xInfo->hasPropertyByName( sPropTargetURL ))
                             {
                                 aAny = xPropSet->getPropertyValue( sPropTargetURL );
@@ -147,21 +147,18 @@ ScDrawTransferObj::ScDrawTransferObj( std::unique_ptr<SdrModel> pClipModel, ScDo
                                 {
                                     OUString aUrl = sTmp;
                                     OUString aAbs = aUrl;
-                                    if (pContainerShell)
+                                    const SfxMedium* pMedium = rContainerShell.GetMedium();
+                                    if (pMedium)
                                     {
-                                        const SfxMedium* pMedium = pContainerShell->GetMedium();
-                                        if (pMedium)
-                                        {
-                                            bool bWasAbs = true;
-                                            aAbs = pMedium->GetURLObject().smartRel2Abs( aUrl, bWasAbs ).
-                                                        GetMainURL(INetURLObject::DecodeMechanism::NONE);
-                                            // full path as stored INetBookmark must be encoded
-                                        }
+                                        bool bWasAbs = true;
+                                        aAbs = pMedium->GetURLObject().smartRel2Abs( aUrl, bWasAbs ).
+                                                    GetMainURL(INetURLObject::DecodeMechanism::NONE);
+                                        // full path as stored INetBookmark must be encoded
                                     }
 
                                     // Label
                                     OUString aLabel;
-                                    OUString sPropLabel( "Label" );
+                                    OUString sPropLabel( u"Label"_ustr );
                                     if(xInfo->hasPropertyByName( sPropLabel ))
                                     {
                                         aAny = xPropSet->getPropertyValue( sPropLabel );
@@ -201,13 +198,10 @@ ScDrawTransferObj::ScDrawTransferObj( std::unique_ptr<SdrModel> pClipModel, ScDo
 
     // remember a unique ID of the source document
 
-    if ( pContainerShell )
+    ScDocument& rDoc = rContainerShell.GetDocument();
+    if ( pPage )
     {
-        ScDocument& rDoc = pContainerShell->GetDocument();
-        if ( pPage )
-        {
-            ScChartHelper::FillProtectedChartRangesVector( m_aProtectedChartRangesVector, rDoc, pPage );
-        }
+        ScChartHelper::FillProtectedChartRangesVector( m_aProtectedChartRangesVector, rDoc, pPage );
     }
 }
 
@@ -215,8 +209,9 @@ ScDrawTransferObj::~ScDrawTransferObj()
 {
     SolarMutexGuard aSolarGuard;
 
-    ScModule* pScMod = SC_MOD();
-    if (pScMod && pScMod->GetDragData().pDrawTransfer == this)
+    ScModule* pScMod = ScModule::get();
+    const ScDragData* pDragData = pScMod ? pScMod->GetDragData() : nullptr;
+    if (pDragData && pDragData->pDrawTransfer == this)
     {
         OSL_FAIL("ScDrawTransferObj wasn't released");
         pScMod->ResetDragObject();
@@ -380,7 +375,7 @@ bool ScDrawTransferObj::GetData( const css::datatransfer::DataFlavor& rFlavor, c
             if ( nFormat == SotClipboardFormatId::GDIMETAFILE )
                 bOK = SetGDIMetaFile( aView.GetMarkedObjMetaFile(true) );
             else
-                bOK = SetBitmapEx( aView.GetMarkedObjBitmapEx(true), rFlavor );
+                bOK = SetBitmapEx( aView.GetMarkedObjBitmap(true), rFlavor );
         }
         else if ( nFormat == SotClipboardFormatId::SVXB )
         {
@@ -425,7 +420,7 @@ bool ScDrawTransferObj::GetData( const css::datatransfer::DataFlavor& rFlavor, c
     return bOK;
 }
 
-bool ScDrawTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId,
+bool ScDrawTransferObj::WriteObject( SvStream& rOStm, void* pUserObject, sal_uInt32 nUserObjectId,
                                         const css::datatransfer::DataFlavor& /* rFlavor */ )
 {
     // called from SetObject, put data into stream
@@ -437,12 +432,12 @@ bool ScDrawTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* 
             {
                 SdrModel* pDrawModel = static_cast<SdrModel*>(pUserObject);
                 pDrawModel->BurnInStyleSheetAttributes();
-                rxOStm->SetBufferSize( 0xff00 );
+                rOStm.SetBufferSize( 0xff00 );
 
                 // for the changed pool defaults from drawing layer pool set those
                 // attributes as hard attributes to preserve them for saving
                 const SfxItemPool& rItemPool = pDrawModel->GetItemPool();
-                const SvxFontHeightItem& rDefaultFontHeight = rItemPool.GetDefaultItem(EE_CHAR_FONTHEIGHT);
+                const SvxFontHeightItem& rDefaultFontHeight = rItemPool.GetUserOrPoolDefaultItem(EE_CHAR_FONTHEIGHT);
 
                 // SW should have no MasterPages
                 OSL_ENSURE(0 == pDrawModel->GetMasterPageCount(), "SW with MasterPages (!)");
@@ -465,11 +460,11 @@ bool ScDrawTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* 
                 }
 
                 {
-                    css::uno::Reference<css::io::XOutputStream> xDocOut( new utl::OOutputStreamWrapper( *rxOStm ) );
+                    css::uno::Reference<css::io::XOutputStream> xDocOut( new utl::OOutputStreamWrapper( rOStm ) );
                     SvxDrawingLayerExport( pDrawModel, xDocOut );
                 }
 
-                bRet = ( rxOStm->GetError() == ERRCODE_NONE );
+                bRet = ( rOStm.GetError() == ERRCODE_NONE );
             }
             break;
 
@@ -489,17 +484,17 @@ bool ScDrawTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* 
                     try
                     {
                         uno::Sequence < beans::PropertyValue > aSeq;
-                        OUString aDummyName("Dummy");
+                        OUString aDummyName(u"Dummy"_ustr);
                         xPers->storeToEntry( xWorkStore, aDummyName, aSeq, aSeq );
                         if ( xWorkStore->isStreamElement( aDummyName ) )
                         {
-                            uno::Reference < io::XOutputStream > xDocOut( new utl::OOutputStreamWrapper( *rxOStm ) );
+                            uno::Reference < io::XOutputStream > xDocOut( new utl::OOutputStreamWrapper( rOStm ) );
                             uno::Reference < io::XStream > xNewStream = xWorkStore->openStreamElement( aDummyName, embed::ElementModes::READ );
                             ::comphelper::OStorageHelper::CopyInputToOutput( xNewStream->getInputStream(), xDocOut );
                         }
                         else
                         {
-                            uno::Reference < io::XStream > xDocStr( new utl::OStreamWrapper( *rxOStm ) );
+                            uno::Reference < io::XStream > xDocStr( new utl::OStreamWrapper( rOStm ) );
                             uno::Reference< embed::XStorage > xDocStg = ::comphelper::OStorageHelper::GetStorageFromStream( xDocStr );
                             uno::Reference < embed::XStorage > xNewStg = xWorkStore->openStorageElement( aDummyName, embed::ElementModes::READ );
                             xNewStg->copyToStorage( xDocStg );
@@ -539,8 +534,8 @@ bool ScDrawTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* 
                     if ( xTransact.is() )
                         xTransact->commit();
 
-                    rxOStm->SetBufferSize( 0xff00 );
-                    rxOStm->WriteStream( *pTempStream );
+                    rOStm.SetBufferSize( 0xff00 );
+                    rOStm.WriteStream( *pTempStream );
 
                     xWorkStore->dispose();
                     xWorkStore.clear();
@@ -548,7 +543,7 @@ bool ScDrawTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* 
                 catch ( uno::Exception& )
                 {}
 
-                bRet = ( rxOStm->GetError() == ERRCODE_NONE );
+                bRet = ( rOStm.GetError() == ERRCODE_NONE );
             }
             break;
 
@@ -568,8 +563,9 @@ void ScDrawTransferObj::DragFinished( sal_Int8 nDropAction )
             m_pDragSourceView->DeleteMarked();
     }
 
-    ScModule* pScMod = SC_MOD();
-    if ( pScMod->GetDragData().pDrawTransfer == this )
+    ScModule* pScMod = ScModule::get();
+    const ScDragData* pDragData = pScMod ? pScMod->GetDragData() : nullptr;
+    if (pDragData && pDragData->pDrawTransfer == this)
         pScMod->ResetDragObject();
 
     m_pDragSourceView.reset();
@@ -677,13 +673,12 @@ void ScDrawTransferObj::InitDocShell()
     if ( m_aDocShellRef.is() )
         return;
 
-    ScDocShell* pDocSh = new ScDocShell;
-    m_aDocShellRef = pDocSh;      // ref must be there before InitNew
+    m_aDocShellRef = new ScDocShell;      // ref must be there before InitNew
 
-    pDocSh->DoInitNew();
+    m_aDocShellRef->DoInitNew();
 
-    ScDocument& rDestDoc = pDocSh->GetDocument();
-    rDestDoc.InitDrawLayer( pDocSh );
+    ScDocument& rDestDoc = m_aDocShellRef->GetDocument();
+    rDestDoc.InitDrawLayer(m_aDocShellRef.get());
 
     auto pPool = rDestDoc.GetStyleSheetPool();
     pPool->CopyStyleFrom(m_pModel->GetStyleSheetPool(), ScResId(STR_STYLENAME_STANDARD), SfxStyleFamily::Frame);
@@ -717,18 +712,18 @@ void ScDrawTransferObj::InitDocShell()
     }
 
     tools::Rectangle aDestArea( Point(), m_aSrcSize );
-    pDocSh->SetVisArea( aDestArea );
+    m_aDocShellRef->SetVisArea(aDestArea);
 
     ScViewOptions aViewOpt( rDestDoc.GetViewOptions() );
-    aViewOpt.SetOption( VOPT_GRID, false );
+    aViewOpt.SetOption(sc::ViewOption::GRID, false);
     rDestDoc.SetViewOptions( aViewOpt );
 
-    ScViewData aViewData( *pDocSh, nullptr );
+    ScViewData aViewData(*m_aDocShellRef, nullptr);
     aViewData.SetTabNo( 0 );
     aViewData.SetScreen( aDestArea );
     aViewData.SetCurX( 0 );
     aViewData.SetCurY( 0 );
-    pDocSh->UpdateOle(aViewData, true);
+    m_aDocShellRef->UpdateOle(aViewData, true);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

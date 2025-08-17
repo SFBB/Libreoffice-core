@@ -49,6 +49,12 @@ bool VCL_DLLPUBLIC ReadDIBBitmapEx(
     bool bFileHeader = true,
     bool bMSOFormat = false);
 
+bool VCL_DLLPUBLIC ReadDIBBitmapEx(
+    Bitmap& rTarget,
+    SvStream& rIStm,
+    bool bFileHeader = true,
+    bool bMSOFormat = false);
+
 bool VCL_DLLPUBLIC ReadDIBV5(
     Bitmap& rTarget,
     AlphaMask& rTargetAlpha,
@@ -56,6 +62,12 @@ bool VCL_DLLPUBLIC ReadDIBV5(
 
 bool VCL_DLLPUBLIC ReadRawDIB(
     BitmapEx& rTarget,
+    const unsigned char* pBuf,
+    const ScanlineFormat nFormat,
+    const int nHeight,
+    const int nStride);
+bool VCL_DLLPUBLIC ReadRawDIB(
+    Bitmap& rTarget,
     const unsigned char* pBuf,
     const ScanlineFormat nFormat,
     const int nHeight,
@@ -73,9 +85,17 @@ bool VCL_DLLPUBLIC WriteDIB(
     const BitmapEx& rSource,
     SvStream& rOStm,
     bool bCompressed = true);
+bool VCL_DLLPUBLIC WriteDIB(
+    const Bitmap& rSource,
+    SvStream& rOStm,
+    bool bCompressed = true);
 
 bool VCL_DLLPUBLIC WriteDIBBitmapEx(
     const BitmapEx& rSource,
+    SvStream& rOStm);
+
+bool VCL_DLLPUBLIC WriteDIBBitmapEx(
+    const Bitmap& rSource,
     SvStream& rOStm);
 
 // needed in emfio for emf/wmf migration

@@ -30,7 +30,6 @@
 
 class SwLayoutFrame;
 class SwFont;
-class SwTextFrame;
 class SwFormatAnchor;
 class SwViewShell;
 class SwPageFrame;
@@ -41,13 +40,11 @@ class SwDoc;
 class SdrObject;
 class SvxBrushItem;
 class SdrMarkList;
-class SwNodeIndex;
 class GraphicObject;
 class GraphicAttr;
 class SwPageDesc;
 class SwRegionRects;
 class SwTextNode;
-namespace sw { struct Extent; }
 namespace basegfx::utils { class B2DClipState; }
 
 #define FAR_AWAY (SAL_MAX_INT32 - 20000)  // initial position of a Fly
@@ -56,10 +53,10 @@ constexpr tools::Long BROWSE_HEIGHT = 56700 * 10; // 10 Meters
 #define GRFNUM_YES 1
 #define GRFNUM_REPLACE 2
 
-void AppendObjs(const sw::FrameFormats<sw::SpzFrameFormat*>* pSpz, SwNodeOffset nIndex, SwFrame* pFrame, SwPageFrame* pPage, SwDoc* doc);
+void AppendObjs(const sw::FrameFormats<sw::SpzFrameFormat*>* pSpz, SwNodeOffset nIndex, SwFrame* pFrame, SwPageFrame* pPage, SwDoc& rDoc);
 
 void AppendObjsOfNode(sw::FrameFormats<sw::SpzFrameFormat*> const* pTable, SwNodeOffset nIndex,
-        SwFrame * pFrame, SwPageFrame * pPage, SwDoc * pDoc,
+        SwFrame * pFrame, SwPageFrame * pPage, SwDoc & rDoc,
         std::vector<sw::Extent>::const_iterator const* pIter,
         std::vector<sw::Extent>::const_iterator const* pEnd,
         SwTextNode const* pFirstNode, SwTextNode const* pLastNode);
@@ -139,13 +136,12 @@ SwFrame *SaveContent( SwLayoutFrame *pLay, SwFrame *pStart = nullptr );
 void RestoreContent( SwFrame *pSav, SwLayoutFrame *pParent, SwFrame *pSibling );
 
 // Get ContentNodes, create ContentFrames, and add them to LayFrame.
-void InsertCnt_( SwLayoutFrame *pLay, SwDoc *pDoc, SwNodeOffset nIndex,
+void InsertCnt_( SwLayoutFrame *pLay, SwDoc& rDoc, SwNodeOffset nIndex,
                  bool bPages = false, SwNodeOffset nEndIndex = SwNodeOffset(0),
                  SwFrame *pPrv = nullptr, sw::FrameMode eMode = sw::FrameMode::New);
 
 // Creation of frames for a specific section (uses InsertCnt_)
-void MakeFrames( SwDoc *pDoc, SwNode &rSttIdx,
-                            SwNode &rEndIdx );
+void MakeFrames( SwDoc &rDoc, const SwNode &rSttIdx, const SwNode &rEndIdx );
 
 extern bool bObjsDirect;
 
@@ -153,7 +149,7 @@ extern bool bObjsDirect;
 extern bool bSetCompletePaintOnInvalidate;
 
 // for table settings via keyboard
-SwTwips CalcRowRstHeight( SwLayoutFrame *pRow );
+SwTwips CalcRowRstHeight(SwLayoutFrame& rRow);
 tools::Long CalcHeightWithFlys( const SwFrame *pFrame );
 
 namespace sw {
@@ -215,7 +211,7 @@ SwFrame* GetFrameOfModify( const SwRootFrame* pLayout,
                        std::pair<Point, bool> const* pViewPosAndCalcFrame = nullptr);
 
 // Should extra data (redline stroke, line numbers) be painted?
-bool IsExtraData( const SwDoc *pDoc );
+bool IsExtraData( const SwDoc &rDoc );
 
 // #i11760# - method declaration <CalcContent(..)>
 void CalcContent( SwLayoutFrame *pLay, bool bNoColl = false );
@@ -339,8 +335,8 @@ class SwBorderAttrs final : public SwCacheObj
     mutable bool m_bCachedJoinedWithPrev : 1;
     mutable bool m_bCachedJoinedWithNext : 1;
     // Booleans indicate that borders are joined with previous/next frame.
-    bool m_bJoinedWithPrev :1;
-    bool m_bJoinedWithNext :1;
+    mutable bool m_bJoinedWithPrev :1;
+    mutable bool m_bJoinedWithNext :1;
 
     // The cached values (un-defined until calculated for the first time)
     sal_uInt16 m_nTopLine,
@@ -375,8 +371,8 @@ class SwBorderAttrs final : public SwCacheObj
     // #i25029# - If <_pPrevFrame> is set, its value is taken for testing, if
     // borders/shadow have to be joined with previous frame.
     void CalcJoinedWithPrev( const SwFrame& _rFrame,
-                              const SwFrame* _pPrevFrame );
-    void CalcJoinedWithNext( const SwFrame& _rFrame );
+                              const SwFrame* _pPrevFrame ) const;
+    void CalcJoinedWithNext( const SwFrame& _rFrame ) const;
 
     // internal helper method for CalcJoinedWithPrev and CalcJoinedWithNext
     bool JoinWithCmp( const SwFrame& _rCallerFrame,

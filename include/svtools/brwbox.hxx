@@ -26,12 +26,14 @@
 #include <vcl/headbar.hxx>
 #include <vcl/transfer.hxx>
 #include <vcl/timer.hxx>
-#include <vcl/AccessibleBrowseBoxObjType.hxx>
+#include <vcl/accessibility/AccessibleBrowseBox.hxx>
+#include <vcl/accessibility/AccessibleBrowseBoxObjType.hxx>
 #include <vcl/accessibletableprovider.hxx>
 #include <vector>
 #include <stack>
 
 #include <limits.h>
+#include <map>
 #include <memory>
 #include <o3tl/typed_flags_set.hxx>
 
@@ -39,14 +41,6 @@ class BrowserColumn;
 class BrowserHeader;
 class ScrollAdaptor;
 class MeasureStatusBar;
-
-namespace svt {
-    class BrowseBoxImpl;
-}
-
-namespace vcl {
-    class IAccessibleFactory;
-}
 
 namespace weld {
     class Scrollbar;
@@ -89,31 +83,33 @@ namespace o3tl
     template<> struct typed_flags<BrowserMode> : is_typed_flags<BrowserMode, 0x2cf73b> {};
 }
 
-#define BROWSER_NONE                      0
-#define BROWSER_SELECT                  720
-#define BROWSER_ENHANCESELECTION        722
-#define BROWSER_SELECTDOWN              724
-#define BROWSER_SELECTUP                725
-#define BROWSER_CURSORDOWN              731
-#define BROWSER_CURSORUP                732
-#define BROWSER_CURSORLEFT              733
-#define BROWSER_CURSORRIGHT             734
-#define BROWSER_CURSORPAGEDOWN          735
-#define BROWSER_CURSORPAGEUP            736
-#define BROWSER_CURSORENDOFFILE         741
-#define BROWSER_CURSORTOPOFFILE         742
-#define BROWSER_CURSORENDOFSCREEN       743
-#define BROWSER_CURSORTOPOFSCREEN       744
-#define BROWSER_CURSORHOME              745
-#define BROWSER_CURSOREND               746
-#define BROWSER_SCROLLDOWN              751
-#define BROWSER_SCROLLUP                752
-#define BROWSER_SELECTHOME              753
-#define BROWSER_SELECTEND               754
-#define BROWSER_SELECTCOLUMN            755
-#define BROWSER_MOVECOLUMNLEFT          756
-#define BROWSER_MOVECOLUMNRIGHT         757
-
+enum class BrowserDispatchId
+{
+    NONE,
+    SELECT,
+    ENHANCESELECTION,
+    SELECTDOWN,
+    SELECTUP,
+    CURSORDOWN,
+    CURSORUP,
+    CURSORLEFT,
+    CURSORRIGHT,
+    CURSORPAGEDOWN,
+    CURSORPAGEUP,
+    CURSORENDOFFILE,
+    CURSORTOPOFFILE,
+    CURSORENDOFSCREEN,
+    CURSORTOPOFSCREEN,
+    CURSORHOME,
+    CURSOREND,
+    SCROLLDOWN,
+    SCROLLUP,
+    SELECTHOME,
+    SELECTEND,
+    SELECTCOLUMN,
+    MOVECOLUMNLEFT,
+    MOVECOLUMNRIGHT,
+};
 
 class BrowseEvent
 {
@@ -261,9 +257,10 @@ class SVT_DLLPUBLIC BrowseBox
         ,public vcl::IAccessibleTableProvider
 {
     friend class BrowserDataWin;
-    friend class ::svt::BrowseBoxImpl;
 
 public:
+    typedef ::std::map<sal_Int32, css::uno::Reference<css::accessibility::XAccessible>> THeaderCellMap;
+
     static const sal_uInt16 HandleColumnId = 0;
 
 private:
@@ -277,7 +274,7 @@ private:
     tools::Long     m_nCornerWidth; // width of scrollbox corner
     tools::Long     m_nActualCornerWidth; // size of scrollbox corner
     sal_uInt16      nTitleLines;    // number of lines in title row
-    sal_uLong       nControlAreaWidth; // width of fixed area beneath hscroll
+    sal_uInt16      nControlAreaWidth; // width of fixed area beneath hscroll
     bool            bColumnCursor;  // single columns and fields selectable
     bool            bMultiSelection;// allow multiple selected rows
     bool            bKeepHighlight; // don't hide selection on LoseFocus
@@ -342,14 +339,16 @@ private:
     std::stack<CursorMoveAttempt>
                     m_aGotoStack;
 
-    ::std::unique_ptr< ::svt::BrowseBoxImpl >  m_pImpl;       // impl structure of the BrowseBox object
-
     bool            m_bFocusOnlyCursor; // hide cursor if we don't have the focus
     Color           m_aCursorColor;     // special color for cursor, COL_TRANSPARENT for usual (VCL-painted) "inverted" cursor
     BrowserMode     m_nCurrentMode;     // last argument of SetMode (redundant, as our other members represent the current settings, too)
 
+    rtl::Reference<AccessibleBrowseBox> m_xAccessible;
+
+    THeaderCellMap m_aColHeaderCellMap;
+    THeaderCellMap m_aRowHeaderCellMap;
+
 private:
-    SVT_DLLPRIVATE void            ConstructImpl(BrowserMode nMode);
     SVT_DLLPRIVATE void            ExpandRowSelection( const BrowserMouseEvent& rEvt );
     SVT_DLLPRIVATE void            ToggleSelection();
 
@@ -375,16 +374,25 @@ private:
     bool            GoToColumnId( sal_uInt16 nColId, bool bMakeVisible, bool bRowColMove = false);
     void            SelectColumnPos( sal_uInt16 nCol, bool _bSelect, bool bMakeVisible);
 
-    void            ImplPaintData(OutputDevice& _rOut, const tools::Rectangle& _rRect, bool _bForeignDevice);
+    SAL_DLLPRIVATE void ImplPaintData(OutputDevice& _rOut, const tools::Rectangle& _rRect, bool _bForeignDevice);
 
     bool            PaintCursorIfHiddenOnce() const { return !m_bFocusOnlyCursor && !HasFocus(); }
 
-    sal_uInt16      ToggleSelectedColumn();
-    void            SetToggledSelectedColumn(sal_uInt16 _nSelectedColumnId);
+    SAL_DLLPRIVATE sal_uInt16 ToggleSelectedColumn();
+    SAL_DLLPRIVATE void SetToggledSelectedColumn(sal_uInt16 _nSelectedColumnId);
 
-protected:
-    /// retrieves the XAccessible implementation associated with the BrowseBox instance
-    ::vcl::IAccessibleFactory&   getAccessibleFactory();
+    /// @see AccessibleBrowseBox::getHeaderBar
+    css::uno::Reference<css::accessibility::XAccessible>
+    getAccessibleHeaderBar(AccessibleBrowseBoxObjType _eObjType);
+
+    css::uno::Reference<css::accessibility::XAccessible>
+    getAccessibleHeaderCell(BrowseBox::THeaderCellMap& _raHeaderCells, sal_Int32 _nPos,
+                            AccessibleBrowseBoxObjType _eType,
+                            const css::uno::Reference<css::accessibility::XAccessible>& _rParent);
+
+    /// @see AccessibleBrowseBox::getTable
+    css::uno::Reference<css::accessibility::XAccessible>
+    getAccessibleTable();
 
 protected:
     bool                m_bNavigationBar;
@@ -410,8 +418,8 @@ protected:
             nRow starts at 0
     */
     virtual bool    SeekRow( sal_Int32 nRow ) = 0;
-    void            DrawCursor();
-    void            PaintData(vcl::Window const & rWin, vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect);
+    SAL_DLLPRIVATE void DrawCursor();
+    SAL_DLLPRIVATE void PaintData(vcl::Window const & rWin, vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect);
     virtual void    PaintField(vcl::RenderContext& rDev, const tools::Rectangle& rRect, sal_uInt16 nColumnId) const = 0;
     // Advice for the subclass: the visible scope of rows has changed.
     // The subclass is able to announce changes of the model with the
@@ -435,9 +443,9 @@ protected:
     sal_uInt16      GetFirstVisibleColNumber() const { return nFirstCol; }
 
     // Focus-Rect enable / disable
-    void            DoShowCursor();
-    void            DoHideCursor();
-    short           GetCursorHideCount() const;
+    SAL_DLLPRIVATE void DoShowCursor();
+    SAL_DLLPRIVATE void DoHideCursor();
+    SAL_DLLPRIVATE short GetCursorHideCount() const;
 
     virtual VclPtr<BrowserHeader> CreateHeaderBar( BrowseBox* pParent );
 
@@ -459,7 +467,7 @@ protected:
     virtual void    ImplEndTracking();
 
 public:
-                    BrowseBox( vcl::Window* pParent, WinBits nBits,
+    SAL_DLLPRIVATE BrowseBox( vcl::Window* pParent, WinBits nBits,
                                BrowserMode nMode = BrowserMode::NONE );
     virtual         ~BrowseBox() override;
     virtual void    dispose() override;
@@ -487,7 +495,7 @@ public:
     // new handlers
     virtual void    MouseButtonDown( const BrowserMouseEvent& rEvt );
     virtual void    MouseButtonUp( const BrowserMouseEvent& rEvt );
-    void            StartScroll();
+    SAL_DLLPRIVATE void StartScroll();
     virtual void    EndScroll();
     virtual void    Select();
     virtual void    DoubleClick( const BrowserMouseEvent& rEvt );
@@ -528,16 +536,16 @@ public:
     tools::Long            GetTitleHeight() const;
 
     // access to dynamic values of cursor row
-    OUString        GetColumnTitle( sal_uInt16 nColumnId ) const;
+    const OUString &       GetColumnTitle( sal_uInt16 nColumnId ) const;
     tools::Rectangle       GetFieldRect( sal_uInt16 nColumnId ) const;
     tools::Long     GetColumnWidth( sal_uInt16 nColumnId ) const;
     sal_uInt16      GetColumnId( sal_uInt16 nPos ) const;
     sal_uInt16      GetColumnPos( sal_uInt16 nColumnId ) const;
-    bool            IsFrozen( sal_uInt16 nColumnId ) const;
+    SAL_DLLPRIVATE bool IsFrozen( sal_uInt16 nColumnId ) const;
 
     // movement of visible area
-    sal_Int32       ScrollColumns( sal_Int32 nColumns );
-    sal_Int32       ScrollRows( sal_Int32 nRows );
+    SAL_DLLPRIVATE sal_Int32 ScrollColumns( sal_Int32 nColumns );
+    SAL_DLLPRIVATE sal_Int32 ScrollRows( sal_Int32 nRows );
     void            MakeFieldVisible( sal_Int32 nRow, sal_uInt16 nColId );
 
     // access and movement of cursor
@@ -575,14 +583,14 @@ public:
     tools::Rectangle       GetRowRectPixel( sal_Int32 nRow ) const;
     tools::Rectangle       GetFieldRectPixel( sal_Int32 nRow, sal_uInt16 nColId,
                                        bool bRelToBrowser = true) const;
-    bool            IsFieldVisible( sal_Int32 nRow, sal_uInt16 nColId,
+    SAL_DLLPRIVATE bool IsFieldVisible( sal_Int32 nRow, sal_uInt16 nColId,
                                     bool bComplete = false ) const;
     sal_Int32       GetRowAtYPosPixel( tools::Long nY,
                                         bool bRelToBrowser = true  ) const;
     sal_uInt16      GetColumnAtXPosPixel( tools::Long nX ) const;
 
     // invalidations
-    void            Clear();
+    SAL_DLLPRIVATE void Clear();
     void            RowRemoved( sal_Int32 nRow, sal_Int32 nNumRows = 1, bool bDoPaint = true );
     void            RowModified( sal_Int32 nRow, sal_uInt16 nColId = BROWSER_INVALIDID );
     void            RowInserted( sal_Int32 nRow, sal_Int32 nNumRows = 1, bool bDoPaint = true, bool bKeepSelection = false );
@@ -593,7 +601,7 @@ public:
     virtual bool    ProcessKey(const KeyEvent& rEvt);
     virtual void    ChildFocusIn();
     virtual void    ChildFocusOut();
-    void            Dispatch( sal_uInt16 nId );
+    SAL_DLLPRIVATE void Dispatch(BrowserDispatchId eId);
     void            SetMode( BrowserMode nMode );
     BrowserMode     GetMode( ) const { return m_nCurrentMode; }
 
@@ -644,7 +652,7 @@ public:
         @param rOldValue
             the old value
     */
-    void commitBrowseBoxEvent(sal_Int16 nEventId,
+    SAL_DLLPRIVATE void commitBrowseBoxEvent(sal_Int16 nEventId,
             const css::uno::Any& rNewValue,
             const css::uno::Any& rOldValue);
 
@@ -656,7 +664,7 @@ public:
         @param rOldValue
             the old value
     */
-    void commitTableEvent(sal_Int16 nEventId,
+    SAL_DLLPRIVATE void commitTableEvent(sal_Int16 nEventId,
             const css::uno::Any& rNewValue,
             const css::uno::Any& rOldValue);
 
@@ -669,7 +677,7 @@ public:
         @param rOldValue
             the old value
     */
-    void commitHeaderBarEvent(sal_Int16 nEventId,
+    SAL_DLLPRIVATE void commitHeaderBarEvent(sal_Int16 nEventId,
             const css::uno::Any& rNewValue,
             const css::uno::Any& rOldValue,
             bool _bColumnHeaderBar
@@ -678,50 +686,34 @@ public:
     /** returns the Rectangle for either the column header bar or the row header bar
         @param  _bIsColumnBar
             <TRUE/> when column header bar is used
-        @param  _bOnScreen
-            <TRUE/> when the rectangle should be calculated OnScreen
         @return
             the Rectangle
     */
-    virtual tools::Rectangle calcHeaderRect(bool _bIsColumnBar, bool _bOnScreen = true) override;
+    virtual tools::Rectangle calcHeaderRect(bool _bIsColumnBar) override;
 
-    /** calculates the Rectangle of the table
-        @param  _bOnScreen
-            <TRUE/> when the rectangle should be calculated OnScreen
+    /** calculates the Rectangle of the table relative to the BrowseBox.
         @return
             the Rectangle
     */
-    virtual tools::Rectangle calcTableRect(bool _bOnScreen = true) override;
+    virtual tools::Rectangle calcTableRect() override;
 
-    /**
-        @param  _nRowId
-            the current row
-        @param  _nColId
-            the column id
-        @param  _bOnScreen
-            <TRUE/> when the rectangle should be calculated OnScreen
-        @return
-            the Rectangle
-    */
-    virtual tools::Rectangle GetFieldRectPixel(sal_Int32 _nRowId, sal_uInt16 _nColId, bool _bIsHeader, bool _bOnScreen) override;
+    virtual tools::Rectangle calcFieldRectPixel(sal_Int32 _nRowId, sal_uInt16 _nColId, bool _bIsHeader) override;
 
     /// return <TRUE/> if and only if the accessible object for this instance has been created and is alive
-    bool isAccessibleAlive( ) const;
+    SAL_DLLPRIVATE bool isAccessibleAlive( ) const;
 
 public:
     /** Creates and returns the accessible object of the whole BrowseBox. */
-    virtual css::uno::Reference<
-        css::accessibility::XAccessible > CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     // Children ---------------------------------------------------------------
 
     /** Creates the accessible object of a data table cell.
         @param nRow  The row index of the cell.
         @param nColumnId  The column pos of the cell.
-        @return  The XAccessible interface of the specified cell. */
-    virtual css::uno::Reference<
-        css::accessibility::XAccessible >
-    CreateAccessibleCell( sal_Int32 nRow, sal_uInt16 nColumnPos ) override;
+        @return  The accessible object of the specified cell. */
+    virtual rtl::Reference<comphelper::OAccessible>
+    CreateAccessibleCell(sal_Int32 nRow, sal_uInt16 nColumnPos) override;
 
     /** Creates the accessible object of a row header.
         @param nRow  The row index of the header.
@@ -736,16 +728,6 @@ public:
     virtual css::uno::Reference<
         css::accessibility::XAccessible >
     CreateAccessibleColumnHeader( sal_uInt16 nColumnPos ) override;
-
-    /** @return  The count of additional controls of the control area. */
-    virtual sal_Int32 GetAccessibleControlCount() const override;
-
-    /** Creates the accessible object of an additional control.
-        @param nIndex  The 0-based index of the control.
-        @return  The XAccessible interface of the specified control. */
-    virtual css::uno::Reference<
-        css::accessibility::XAccessible >
-    CreateAccessibleControl( sal_Int32 nIndex ) override;
 
     /** Converts a point relative to the data window origin to a cell address.
         @param rnRow  Out-parameter that takes the row index.
@@ -831,10 +813,9 @@ public:
     virtual bool                    IsCellVisible( sal_Int32 _nRow, sal_uInt16 _nColumn ) const override;
     virtual OUString                GetAccessibleCellText(sal_Int32 _nRow, sal_uInt16 _nColPos) const override;
     virtual bool                    GetGlyphBoundRects( const Point& rOrigin, const OUString& rStr, int nIndex, int nLen, std::vector< tools::Rectangle >& rVector ) override;
-    virtual AbsoluteScreenPixelRectangle GetWindowExtentsAbsolute() const override;
     virtual tools::Rectangle        GetWindowExtentsRelative(const vcl::Window& rRelativeWindow) const override;
     virtual void                    GrabFocus() override;
-    virtual css::uno::Reference< css::accessibility::XAccessible > GetAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> GetAccessible() override;
     virtual vcl::Window*            GetAccessibleParentWindow() const override;
     virtual vcl::Window*            GetWindowInstance() override;
 

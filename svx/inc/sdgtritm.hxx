@@ -31,8 +31,9 @@
 class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SdrGrafTransparenceItem final : public SdrPercentItem
 {
 public:
-
-                            SdrGrafTransparenceItem( sal_uInt16 nTransparencePercent = 0 ) : SdrPercentItem( SDRATTR_GRAFTRANSPARENCE, nTransparencePercent ) {}
+    DECLARE_ITEM_TYPE_FUNCTION(SdrGrafTransparenceItem)
+    SdrGrafTransparenceItem( sal_uInt16 nTransparencePercent = 0 )
+        : SdrPercentItem( SDRATTR_GRAFTRANSPARENCE, nTransparencePercent ) {}
 
     virtual SdrGrafTransparenceItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
 };

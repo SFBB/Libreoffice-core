@@ -32,7 +32,7 @@ public:
     static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rSet);
     virtual ~SwFootNotePage() override;
 
-    static WhichRangesContainer GetRanges() { return s_aPageRg; }
+    static const WhichRangesContainer & GetRanges() { return s_aPageRg; }
 
     virtual bool FillItemSet(SfxItemSet *rSet) override;
     virtual void Reset(const SfxItemSet *rSet) override;
@@ -44,12 +44,16 @@ private:
     std::unique_ptr<weld::RadioButton> m_xMaxHeightPageBtn;
     std::unique_ptr<weld::RadioButton> m_xMaxHeightBtn;
     std::unique_ptr<weld::MetricSpinButton> m_xMaxHeightEdit;
+    std::unique_ptr<weld::Label> m_xDistLabel;
     std::unique_ptr<weld::MetricSpinButton> m_xDistEdit;
+    std::unique_ptr<weld::Label> m_xLinePosLabel;
     std::unique_ptr<weld::ComboBox> m_xLinePosBox;
     std::unique_ptr<SvtLineListBox> m_xLineTypeBox;
     std::unique_ptr<weld::MetricSpinButton> m_xLineWidthEdit;
     std::unique_ptr<ColorListBox> m_xLineColorBox;
+    std::unique_ptr<weld::Label> m_xLineLengthLabel;
     std::unique_ptr<weld::MetricSpinButton> m_xLineLengthEdit;
+    std::unique_ptr<weld::Label> m_xLineDistLabel;
     std::unique_ptr<weld::MetricSpinButton> m_xLineDistEdit;
 
     DECL_LINK(HeightPage, weld::Toggleable&, void);

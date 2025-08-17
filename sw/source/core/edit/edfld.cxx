@@ -111,7 +111,7 @@ void SwEditShell::RemoveFieldType(SwFieldIds nResId, const OUString& rStr)
         SwFieldType* pFieldType = (*pFieldTypes)[i].get();
         if( pFieldType->Which() == nResId )
         {
-            if( aTmp == rCC.lowercase( pFieldType->GetName() ) )
+            if( aTmp == rCC.lowercase( pFieldType->GetName().toString() ) )
             {
                 GetDoc()->getIDocumentFieldsAccess().RemoveFieldType(i);
                 return;
@@ -161,7 +161,7 @@ bool SwEditShell::InsertField(SwField const & rField, const bool bForceExpandHin
 }
 
 /// Are the PaMs positioned on fields?
-static SwTextField* lcl_FindInputField( SwDoc* pDoc, const SwField& rField )
+static SwTextField* lcl_FindInputField( const SwDoc* pDoc, const SwField& rField )
 {
     // Search field via its address. For input fields this needs to be done in protected fields.
     SwTextField* pTField = nullptr;
@@ -169,30 +169,32 @@ static SwTextField* lcl_FindInputField( SwDoc* pDoc, const SwField& rField )
         || (SwFieldIds::SetExp == rField.Which()
             && static_cast<const SwSetExpField&>(rField).GetInputFlag()
             && (static_cast<SwSetExpFieldType*>(rField.GetTyp())->GetType()
-                & nsSwGetSetExpType::GSE_STRING)))
+                & SwGetSetExpType::String)))
     {
-        for (const SfxPoolItem* pItem : pDoc->GetAttrPool().GetItemSurrogates(RES_TXTATR_INPUTFIELD))
-        {
-            auto pFormatField = dynamic_cast<const SwFormatField*>(pItem);
-            if( pFormatField && pFormatField->GetField() == &rField )
+        pDoc->ForEachFormatField(RES_TXTATR_INPUTFIELD,
+            [&rField, &pTField] (const SwFormatField& rFormatField) -> bool
             {
-                pTField = const_cast<SwFormatField*>(pFormatField)->GetTextField();
-                break;
-            }
-        }
+                if( rFormatField.GetField() == &rField )
+                {
+                    pTField = const_cast<SwFormatField&>(rFormatField).GetTextField();
+                    return false;
+                }
+                return true;
+            });
     }
     else if( SwFieldIds::SetExp == rField.Which()
         && static_cast<const SwSetExpField&>(rField).GetInputFlag() )
     {
-        for (const SfxPoolItem* pItem : pDoc->GetAttrPool().GetItemSurrogates(RES_TXTATR_FIELD))
-        {
-            auto pFormatField = dynamic_cast<const SwFormatField*>(pItem);
-            if( pFormatField && pFormatField->GetField() == &rField )
+        pDoc->ForEachFormatField(RES_TXTATR_FIELD,
+            [&rField, &pTField] (const SwFormatField& rFormatField) -> bool
             {
-                pTField = const_cast<SwFormatField*>(pFormatField)->GetTextField();
-                break;
-            }
-        }
+                if( rFormatField.GetField() == &rField )
+                {
+                    pTField = const_cast<SwFormatField&>(rFormatField).GetTextField();
+                    return false;
+                }
+                return true;
+            });
     }
     return pTField;
 }
@@ -286,6 +288,14 @@ void SwEditShell::UpdateOneField(SwField &rField)
         }
     }
     GetDoc()->getIDocumentState().SetModified();
+    EndAllAction();
+}
+
+void SwEditShell::ConvertOneFieldToText(const SwField& rField)
+{
+    CurrShell aCurr( this );
+    StartAllAction();
+    GetDoc()->ConvertFieldToText(rField, *GetLayout());
     EndAllAction();
 }
 

@@ -165,11 +165,11 @@ NumberFormatCodeMapper::mapElementTypeShortToString(sal_Int16 formatType)
     switch ( formatType )
     {
         case css::i18n::KNumberFormatType::SHORT :
-            return "short";
+            return u"short"_ustr;
         case css::i18n::KNumberFormatType::MEDIUM :
-            return "medium";
+            return u"medium"_ustr;
         case css::i18n::KNumberFormatType::LONG :
-            return "long";
+            return u"long"_ustr;
     }
     return OUString();
 }
@@ -193,21 +193,21 @@ NumberFormatCodeMapper::mapElementUsageShortToString(sal_Int16 formatUsage)
     switch ( formatUsage )
     {
         case css::i18n::KNumberFormatUsage::DATE :
-            return "DATE";
+            return u"DATE"_ustr;
         case css::i18n::KNumberFormatUsage::TIME :
-            return "TIME";
+            return u"TIME"_ustr;
         case css::i18n::KNumberFormatUsage::DATE_TIME :
-            return "DATE_TIME";
+            return u"DATE_TIME"_ustr;
         case css::i18n::KNumberFormatUsage::FIXED_NUMBER :
-            return "FIXED_NUMBER";
+            return u"FIXED_NUMBER"_ustr;
         case css::i18n::KNumberFormatUsage::FRACTION_NUMBER :
-            return "FRACTION_NUMBER";
+            return u"FRACTION_NUMBER"_ustr;
         case css::i18n::KNumberFormatUsage::PERCENT_NUMBER :
-            return "PERCENT_NUMBER";
+            return u"PERCENT_NUMBER"_ustr;
         case css::i18n::KNumberFormatUsage::CURRENCY :
-            return "CURRENCY";
+            return u"CURRENCY"_ustr;
         case css::i18n::KNumberFormatUsage::SCIENTIFIC_NUMBER :
-            return "SCIENTIFIC_NUMBER";
+            return u"SCIENTIFIC_NUMBER"_ustr;
     }
     return OUString();
 }
@@ -240,7 +240,7 @@ NumberFormatCodeMapper::mapElementUsageStringToShort(std::u16string_view formatU
 OUString SAL_CALL
 NumberFormatCodeMapper::getImplementationName()
 {
-    return "com.sun.star.i18n.NumberFormatCodeMapper";
+    return u"com.sun.star.i18n.NumberFormatCodeMapper"_ustr;
 }
 
 sal_Bool SAL_CALL NumberFormatCodeMapper::supportsService(const OUString& rServiceName)
@@ -251,7 +251,7 @@ sal_Bool SAL_CALL NumberFormatCodeMapper::supportsService(const OUString& rServi
 css::uno::Sequence< OUString > SAL_CALL
 NumberFormatCodeMapper::getSupportedServiceNames()
 {
-    return { "com.sun.star.i18n.NumberFormatMapper" };
+    return { u"com.sun.star.i18n.NumberFormatMapper"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *

@@ -24,15 +24,13 @@
 #include <vector>
 
 #include <com/sun/star/uno/Reference.hxx>
+#include <comphelper/OAccessible.hxx>
+#include <rtl/ref.hxx>
 #include <sal/types.h>
 #include <svx/svxdllapi.h>
 
 namespace com::sun::star
 {
-namespace accessibility
-{
-class XAccessible;
-}
 namespace accessibility
 {
 class XAccessibleEventListener;
@@ -119,8 +117,6 @@ class AccessibleTextHelper_Impl;
 class SVX_DLLPUBLIC AccessibleTextHelper final
 {
 public:
-    typedef ::std::vector<sal_Int16> VectorOfStates;
-
     /** Create accessible text object for given edit source
 
         @param pEditSource
@@ -202,11 +198,11 @@ public:
         Dispose() when you as the owner are disposing, since until
         then this object will hold that reference
 
-        @param rInterface
-        The interface that should be set as the source for
+        @param rEventSource
+        The accessible that should be set as the source for
         accessibility events sent by this object.
     */
-    void SetEventSource(const css::uno::Reference<css::accessibility::XAccessible>& rInterface);
+    void SetEventSource(const rtl::Reference<comphelper::OAccessible>& rEventSource);
 
     /** Set offset of EditEngine/Outliner from parent
 
@@ -348,7 +344,7 @@ public:
         @attention Don't call with locked mutexes. You may hold
         the solar mutex, but this method acquires it anyway.
     */
-    css::uno::Reference<css::accessibility::XAccessible> GetChild(sal_Int64 i);
+    rtl::Reference<comphelper::OAccessible> GetChild(sal_Int64 i);
 
     // XAccessibleEventBroadcaster child related methods
 
@@ -372,7 +368,7 @@ public:
         @attention Don't call with locked mutexes. You may hold
         the solar mutex, but this method acquires it anyway.
     */
-    css::uno::Reference<css::accessibility::XAccessible> GetAt(const css::awt::Point& aPoint);
+    rtl::Reference<comphelper::OAccessible> GetAt(const css::awt::Point& aPoint);
 
 private:
     /// @dyn

@@ -20,8 +20,7 @@
 #pragma once
 
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/beans/XPropertyChangeListener.hpp>
-#include <com/sun/star/container/XContainerListener.hpp>
+#include <com/sun/star/beans/PropertyChangeEvent.hpp>
 #include <svx/svdouno.hxx>
 
 #include <optional>
@@ -33,10 +32,10 @@ namespace basctl
 
 typedef std::multimap< sal_Int16, OUString > IndexToNameMap;
 
-
 class DlgEdForm;
 class DlgEditor;
-
+class DlgEdEvtContListenerImpl;
+class DlgEdPropListenerImpl;
 
 // DlgEdObj
 
@@ -51,8 +50,8 @@ class DlgEdObj: public SdrUnoObj
 private:
     bool            bIsListening;
     rtl::Reference<DlgEdForm> pDlgEdForm;
-    css::uno::Reference< css::beans::XPropertyChangeListener> m_xPropertyChangeListener;
-    css::uno::Reference< css::container::XContainerListener>  m_xContainerListener;
+    rtl::Reference<DlgEdPropListenerImpl> m_xPropertyChangeListener;
+    rtl::Reference<DlgEdEvtContListenerImpl>  m_xContainerListener;
 
 private:
     DlgEditor& GetDialogEditor ();

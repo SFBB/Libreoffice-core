@@ -35,11 +35,9 @@
 #include <svx/svxdllapi.h>
 #include <unotools/resmgr.hxx>
 
-class SfxItemSet;
 class SfxPoolItem;
 class SfxStyleSheet;
 class SdrView;
-class SdrPageView;
 class SdrModel;
 class SdrObject;
 class SdrPage;
@@ -47,7 +45,6 @@ class SdrObjList;
 class SdrLayer;
 class SdrLayerAdmin;
 class SdrObjGeoData;
-class OutlinerParaObject;
 
 namespace svx { namespace diagram {
     class DiagramDataState;
@@ -60,7 +57,7 @@ namespace svx { namespace diagram {
 class SVXCORE_DLLPUBLIC SdrUndoAction : public SfxUndoAction
 {
 protected:
-    SdrModel& rMod;
+    SdrModel& m_rMod;
     ViewShellId m_nViewShellId;
 
 protected:
@@ -94,10 +91,10 @@ class SVXCORE_DLLPUBLIC SdrUndoGroup final : public SdrUndoAction
     std::vector<std::unique_ptr<SdrUndoAction>> maActions;
 
     // No expanded description of the Action (contains %O)
-    OUString aComment;
-    OUString aObjDescription;
+    OUString m_aComment;
+    OUString m_aObjDescription;
 
-    SdrRepeatFunc eFunction;
+    SdrRepeatFunc m_eFunction;
 
 public:
     SdrUndoGroup(SdrModel& rNewMod);
@@ -107,8 +104,8 @@ public:
     SdrUndoAction* GetAction(sal_Int32 nNum) const { return maActions[nNum].get(); }
     void AddAction(std::unique_ptr<SdrUndoAction> pAct);
 
-    void SetComment(const OUString& rStr) { aComment=rStr; }
-    void SetObjDescription(const OUString& rStr) { aObjDescription=rStr; }
+    void SetComment(const OUString& rStr) { m_aComment=rStr; }
+    void SetObjDescription(const OUString& rStr) { m_aObjDescription=rStr; }
     virtual OUString GetComment() const override;
     virtual OUString GetSdrRepeatComment() const override;
 
@@ -117,7 +114,7 @@ public:
 
     virtual bool CanSdrRepeat(SdrView& rView) const override;
     virtual void SdrRepeat(SdrView& rView) override;
-    void SetRepeatFunction(SdrRepeatFunc eFunc) { eFunction=eFunc; }
+    void SetRepeatFunction(SdrRepeatFunc eFunc) { m_eFunction=eFunc; }
 };
 
 /**
@@ -155,17 +152,17 @@ class SVXCORE_DLLPUBLIC SdrUndoAttrObj : public SdrUndoObj
     // FIXME: Or should we better remember the StyleSheetNames?
     rtl::Reference< SfxStyleSheet > mxUndoStyleSheet;
     rtl::Reference< SfxStyleSheet > mxRedoStyleSheet;
-    bool bStyleSheet;
-    bool bHaveToTakeRedoSet;
+    bool m_bStyleSheet;
+    bool m_bHaveToTakeRedoSet;
 
     // When assigning TextItems to a drawing object with text:
-    std::optional<OutlinerParaObject> pTextUndo;
+    std::optional<OutlinerParaObject> m_pTextUndo;
     // #i8508#
     // The text rescue mechanism needs also to be implemented for redo actions.
-    std::optional<OutlinerParaObject> pTextRedo;
+    std::optional<OutlinerParaObject> m_pTextRedo;
 
     // If we have a group object:
-    std::unique_ptr<SdrUndoGroup> pUndoGroup;
+    std::unique_ptr<SdrUndoGroup> m_pUndoGroup;
 
 protected:
     // Helper to ensure StyleSheet is in pool (provided by SdrModel from SdrObject)
@@ -188,10 +185,10 @@ public:
 
 class SVXCORE_DLLPUBLIC SdrUndoMoveObj final : public SdrUndoObj
 {
-    Size aDistance; // Distance by which we move
+    Size m_aDistance; // Distance by which we move
 
 public:
-    SdrUndoMoveObj(SdrObject& rNewObj, const Size& rDist): SdrUndoObj(rNewObj),aDistance(rDist) {}
+    SdrUndoMoveObj(SdrObject& rNewObj, const Size& rDist): SdrUndoObj(rNewObj),m_aDistance(rDist) {}
     virtual ~SdrUndoMoveObj() override;
 
     virtual void Undo() override;
@@ -211,10 +208,10 @@ public:
 
 class SVXCORE_DLLPUBLIC SdrUndoGeoObj : public SdrUndoObj
 {
-    std::unique_ptr<SdrObjGeoData> pUndoGeo;
-    std::unique_ptr<SdrObjGeoData> pRedoGeo;
+    std::unique_ptr<SdrObjGeoData> m_pUndoGeo;
+    std::unique_ptr<SdrObjGeoData> m_pRedoGeo;
     // If we have a group object:
-    std::unique_ptr<SdrUndoGroup> pUndoGroup;
+    std::unique_ptr<SdrUndoGroup> m_pUndoGroup;
     /// If we have a table object, should its layout change?
     bool mbSkipChangeLayout;
 
@@ -230,7 +227,7 @@ public:
 };
 
 // Diagram ModelData changes
-class SVXCORE_DLLPUBLIC SdrUndoDiagramModelData final : public SdrUndoObj
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SdrUndoDiagramModelData final : public SdrUndoObj
 {
     std::shared_ptr< svx::diagram::DiagramDataState > m_aStartState;
     std::shared_ptr< svx::diagram::DiagramDataState > m_aEndState;
@@ -238,7 +235,7 @@ class SVXCORE_DLLPUBLIC SdrUndoDiagramModelData final : public SdrUndoObj
     void implUndoRedo(bool bUndo);
 
 public:
-    SdrUndoDiagramModelData(SdrObject& rNewObj, std::shared_ptr< svx::diagram::DiagramDataState >& rStartState);
+    SdrUndoDiagramModelData(SdrObject& rNewObj, const std::shared_ptr< svx::diagram::DiagramDataState >& rStartState);
     virtual ~SdrUndoDiagramModelData() override;
 
     virtual void Undo() override;
@@ -346,7 +343,7 @@ public:
 
 class SVXCORE_DLLPUBLIC SdrUndoReplaceObj : public SdrUndoObj
 {
-    SdrObjList* pObjList;
+    SdrObjList* m_pObjList;
     rtl::Reference<SdrObject> mxNewObj;
 
 public:
@@ -373,8 +370,8 @@ public:
 
 class SdrUndoObjOrdNum final : public SdrUndoObj
 {
-    sal_uInt32 nOldOrdNum;
-    sal_uInt32 nNewOrdNum;
+    sal_uInt32 m_nOldOrdNum;
+    sal_uInt32 m_nNewOrdNum;
 
 public:
     SdrUndoObjOrdNum(SdrObject& rNewObj, sal_uInt32 nOldOrdNum1, sal_uInt32 nNewOrdNum1);
@@ -421,11 +418,11 @@ public:
 class SVXCORE_DLLPUBLIC SdrUndoObjSetText : public SdrUndoObj
 {
     std::optional<OutlinerParaObject>
-                                pOldText;
+                                m_pOldText;
     std::optional<OutlinerParaObject>
-                                pNewText;
-    bool                        bNewTextAvailable;
-    bool                        bEmptyPresObj;
+                                m_pNewText;
+    bool                        m_bNewTextAvailable;
+    bool                        m_bEmptyPresObj;
     sal_Int32                   mnText;
 
 public:
@@ -594,7 +591,7 @@ class SVXCORE_DLLPUBLIC SdrUndoDelPage final : public SdrUndoPageList
 {
     // When deleting a MasterPage, we remember all relations of the
     // Character Page with the MasterPage in this UndoGroup.
-    std::unique_ptr<SdrUndoGroup> pUndoGroup;
+    std::unique_ptr<SdrUndoGroup> m_pUndoGroup;
     std::unique_ptr<SfxPoolItem> mpFillBitmapItem;
     bool mbHasFillBitmap;
 
@@ -657,12 +654,12 @@ public:
 
 class SdrUndoSetPageNum final : public SdrUndoPage
 {
-    sal_uInt16 nOldPageNum;
-    sal_uInt16 nNewPageNum;
+    sal_uInt16 m_nOldPageNum;
+    sal_uInt16 m_nNewPageNum;
 
 public:
     SdrUndoSetPageNum(SdrPage& rNewPg, sal_uInt16 nOldPageNum1, sal_uInt16 nNewPageNum1)
-    :   SdrUndoPage(rNewPg),nOldPageNum(nOldPageNum1),nNewPageNum(nNewPageNum1) {}
+    :   SdrUndoPage(rNewPg),m_nOldPageNum(nOldPageNum1),m_nNewPageNum(nNewPageNum1) {}
 
     virtual void Undo() override;
     virtual void Redo() override;

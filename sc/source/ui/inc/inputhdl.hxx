@@ -50,7 +50,6 @@ class CommandEvent;
 class VclWindowEvent;
 namespace vcl { class Window; }
 struct ReferenceMark;
-struct ESelection;
 
 //  ScInputHandler
 
@@ -198,6 +197,8 @@ public:
 
     bool            KeyInput( const KeyEvent& rKEvt, bool bStartEdit );
     void            EnterHandler( ScEnterMode nBlockMode = ScEnterMode::NORMAL, bool bBeforeSavingInLOK = false );
+    void            EnterHandler2(ScEnterMode nBlockMode, bool bForget, OUString aString,
+                       const OUString& aPreAutoCorrectString);
     void            CancelHandler();
     void            SetReference( const ScRange& rRef, const ScDocument& rDoc );
     void            AddRefEntry();
@@ -271,7 +272,7 @@ public:
     /// Returns true if there is a partial autocomplete suggestion.
     bool            HasPartialComplete() const              { return mbPartialPrefix; };
 
-    bool            IsModalMode( const SfxObjectShell* pDocSh );
+    bool            IsModalMode( const SfxObjectShell& rDocSh );
 
     void            ForgetLastPattern();
 
@@ -290,7 +291,7 @@ public:
 
     void SetDocumentDisposing( bool b );
 
-    static ReferenceMark GetReferenceMark( const ScViewData& rViewData, ScDocShell* pDocSh,
+    static ReferenceMark GetReferenceMark( const ScViewData& rViewData, ScDocShell& rDocSh,
                                     tools::Long nX1, tools::Long nX2, tools::Long nY1, tools::Long nY2,
                                     tools::Long nTab, const Color& rColor );
 

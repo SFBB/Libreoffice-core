@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <o3tl/nonstaticstring.hxx>
 #include <rtl/alloc.h>
 #include <rtl/ustrbuf.hxx>
 #include <sal/types.h>
@@ -156,9 +157,9 @@ public:
         const char sample[] = "Hello World";
         std::vector<OUString> aStrings;
 
-        rtl_alloc_preInit(true);
+        rtl_alloc_preInit(1);
 
-        OUString aFoo("foo");
+        OUString aFoo(o3tl::nonStaticString(u"foo"));
 
         // fill some cache bits
         for (int iter = 0; iter < 4; iter++)
@@ -181,7 +182,7 @@ public:
         }
 
         // should static-ize all the strings.
-        rtl_alloc_preInit(false);
+        rtl_alloc_preInit(0);
 
         for (size_t i = 0; i < aStrings.size(); ++i)
             CPPUNIT_ASSERT_MESSAGE( "static after.", (aStrings[i].pData->refCount & SAL_STRING_STATIC_FLAG) );
@@ -189,7 +190,7 @@ public:
 
     void test2()
     {
-        // should never happen but lets try it again.
+        // should never happen but let's try it again.
         test();
     }
 

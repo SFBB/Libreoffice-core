@@ -41,6 +41,7 @@
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
 #include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
 #include <com/sun/star/ui/dialogs/XFilePickerControlAccess.hpp>
+#include <basctl/basctldllpublic.hxx>
 #include <comphelper/processfactory.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/filedlghelper.hxx>
@@ -95,7 +96,7 @@ DialogWindow::DialogWindow(DialogWindowLayout* pParent, ScriptDocument const& rD
     SetHelpId( HID_BASICIDE_DIALOGWINDOW );
 
     // set readonly mode for readonly libraries
-    Reference< script::XLibraryContainer2 > xDlgLibContainer( GetDocument().getLibraryContainer( E_DIALOGS ), UNO_QUERY );
+    Reference< script::XLibraryContainer2 > xDlgLibContainer( GetDocument().getLibraryContainer( E_DIALOGS ) );
     if ( xDlgLibContainer.is() && xDlgLibContainer->hasByName( aLibName ) && xDlgLibContainer->isLibraryReadOnly( aLibName ) )
         SetReadOnly(true);
 
@@ -204,7 +205,7 @@ void DialogWindow::Command( const CommandEvent& rCEvt )
         if (GetDispatcher())
         {
             SdrView& rView = GetView();
-            if( !rCEvt.IsMouseEvent() && rView.AreObjectsMarked() )
+            if( !rCEvt.IsMouseEvent() && rView.GetMarkedObjectList().GetMarkCount() != 0 )
             {
                 tools::Rectangle aMarkedRect( rView.GetMarkedRect() );
                 Point MarkedCenter( aMarkedRect.Center() );
@@ -250,7 +251,7 @@ void DialogWindow::GetState( SfxItemSet& rSet )
         if ( xModel.is() )
         {
             Reference< lang::XServiceInfo > xServiceInfo ( xModel, UNO_QUERY );
-            if ( xServiceInfo.is() && xServiceInfo->supportsService( "com.sun.star.sheet.SpreadsheetDocument" ) )
+            if ( xServiceInfo.is() && xServiceInfo->supportsService( u"com.sun.star.sheet.SpreadsheetDocument"_ustr ) )
                 bIsCalc = true;
         }
     }
@@ -271,7 +272,7 @@ void DialogWindow::GetState( SfxItemSet& rSet )
             case SID_COPY:
             {
                 // any object selected?
-                if ( !m_pEditor->GetView().AreObjectsMarked() )
+                if ( m_pEditor->GetView().GetMarkedObjectList().GetMarkCount() == 0 )
                     rSet.DisableItem( nWh );
             }
             break;
@@ -280,7 +281,7 @@ void DialogWindow::GetState( SfxItemSet& rSet )
             case SID_BACKSPACE:
             {
                 // any object selected?
-                if ( !m_pEditor->GetView().AreObjectsMarked() )
+                if ( m_pEditor->GetView().GetMarkedObjectList().GetMarkCount() == 0 )
                     rSet.DisableItem( nWh );
 
                 if ( IsReadOnly() )
@@ -314,7 +315,7 @@ void DialogWindow::GetState( SfxItemSet& rSet )
             {
                 Shell* pShell = GetShell();
                 SfxViewFrame* pViewFrame = pShell ? &pShell->GetViewFrame() : nullptr;
-                if ( pViewFrame && !pViewFrame->HasChildWindow( SID_SHOW_PROPERTYBROWSER ) && !m_pEditor->GetView().AreObjectsMarked() )
+                if ( pViewFrame && !pViewFrame->HasChildWindow( SID_SHOW_PROPERTYBROWSER ) && m_pEditor->GetView().GetMarkedObjectList().GetMarkCount() == 0 )
                     rSet.DisableItem( nWh );
 
                 if ( IsReadOnly() )
@@ -610,7 +611,7 @@ void DialogWindow::SaveDialog()
     xFP->setDefaultName( GetName() );
 
     OUString aDialogStr(IDEResId(RID_STR_STDDIALOGNAME));
-    xFP->appendFilter( aDialogStr, "*.xdl" );
+    xFP->appendFilter( aDialogStr, u"*.xdl"_ustr );
     xFP->appendFilter( IDEResId(RID_STR_FILTER_ALLFILES), FilterMask_All );
     xFP->setCurrentFilter( aDialogStr );
 
@@ -619,7 +620,7 @@ void DialogWindow::SaveDialog()
 
     OUString aSelectedFileURL = xFP->getSelectedFiles()[0];
 
-    Reference<uno::XComponentContext> xContext(comphelper::getProcessComponentContext());
+    const Reference<uno::XComponentContext>& xContext(comphelper::getProcessComponentContext());
     Reference< XSimpleFileAccess3 > xSFI( SimpleFileAccess::create(xContext) );
 
     Reference< XOutputStream > xOutput;
@@ -652,7 +653,7 @@ void DialogWindow::SaveDialog()
     {
         try
         {
-            Any aResourceResolver = xDialogModelPropSet->getPropertyValue( "ResourceResolver" );
+            Any aResourceResolver = xDialogModelPropSet->getPropertyValue( u"ResourceResolver"_ustr );
             aResourceResolver >>= xStringResourceResolver;
         }
         catch(const beans::UnknownPropertyException& )
@@ -785,14 +786,14 @@ bool implImportDialog(weld::Window* pWin, const ScriptDocument& rDocument, const
 {
     bool bDone = false;
 
-    Reference<uno::XComponentContext> xContext(::comphelper::getProcessComponentContext());
+    const Reference<uno::XComponentContext>& xContext(::comphelper::getProcessComponentContext());
     sfx2::FileDialogHelper aDlg(ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE,
                                 FileDialogFlags::NONE, pWin);
     aDlg.SetContext(sfx2::FileDialogHelper::BasicImportDialog);
     Reference<XFilePicker3> xFP = aDlg.GetFilePicker();
 
     OUString aDialogStr(IDEResId(RID_STR_STDDIALOGNAME));
-    xFP->appendFilter( aDialogStr, "*.xdl" );
+    xFP->appendFilter( aDialogStr, u"*.xdl"_ustr );
     xFP->appendFilter( IDEResId(RID_STR_FILTER_ALLFILES), FilterMask_All );
     xFP->setCurrentFilter( aDialogStr );
 
@@ -801,23 +802,23 @@ bool implImportDialog(weld::Window* pWin, const ScriptDocument& rDocument, const
         Sequence< OUString > aPaths = xFP->getSelectedFiles();
 
         OUString aBasePath;
-        OUString aOUCurPath( aPaths[0] );
-        sal_Int32 iSlash = aOUCurPath.lastIndexOf( '/' );
+        const OUString& rOUCurPath( aPaths[0] );
+        sal_Int32 iSlash = rOUCurPath.lastIndexOf( '/' );
         if( iSlash != -1 )
-            aBasePath = aOUCurPath.copy( 0, iSlash + 1 );
+            aBasePath = rOUCurPath.copy( 0, iSlash + 1 );
 
         try
         {
             // create dialog model
             Reference< container::XNameContainer > xDialogModel(
-                xContext->getServiceManager()->createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", xContext),
+                xContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.awt.UnoControlDialogModel"_ustr, xContext),
                 UNO_QUERY_THROW );
 
             Reference< XSimpleFileAccess3 > xSFI( SimpleFileAccess::create(xContext) );
 
             Reference< XInputStream > xInput;
-            if( xSFI->exists( aOUCurPath ) )
-                xInput = xSFI->openFileRead( aOUCurPath );
+            if( xSFI->exists( rOUCurPath ) )
+                xInput = xSFI->openFileRead( rOUCurPath );
 
             ::xmlscript::importDialogModel( xInput, xDialogModel, xContext, rDocument.isDocument() ? rDocument.getDocument() : Reference< frame::XModel >() );
 
@@ -944,7 +945,7 @@ bool implImportDialog(weld::Window* pWin, const ScriptDocument& rDocument, const
                                             return localesAreEqual(aImportDefaultLocale, aTmpLocale);
                                         }))
                         {
-                            aFirstLocale = aImportDefaultLocale;
+                            aFirstLocale = std::move(aImportDefaultLocale);
                         }
                     }
 
@@ -1084,7 +1085,7 @@ EntryDescriptor DialogWindow::CreateEntryDescriptor()
     ScriptDocument aDocument( GetDocument() );
     OUString aLibName( GetLibName() );
     LibraryLocation eLocation = aDocument.getLibraryLocation( aLibName );
-    return EntryDescriptor( aDocument, eLocation, aLibName, OUString(), GetName(), OBJ_TYPE_DIALOG );
+    return EntryDescriptor( std::move(aDocument), eLocation, aLibName, OUString(), GetName(), OBJ_TYPE_DIALOG );
 }
 
 void DialogWindow::SetReadOnly (bool bReadOnly)
@@ -1117,7 +1118,7 @@ void DialogWindow::StoreData()
 
             if( xDialogModel.is() )
             {
-                Reference< XComponentContext > xContext(
+                const Reference< XComponentContext >& xContext(
                     comphelper::getProcessComponentContext() );
                 Reference< XInputStreamProvider > xISP = ::xmlscript::exportDialogModel( xDialogModel, xContext, GetDocument().isDocument() ? GetDocument().getDocument() : Reference< frame::XModel >() );
                 xLib->replaceByName( GetName(), Any( xISP ) );
@@ -1180,7 +1181,7 @@ void DialogWindow::InitSettings()
     SetBackground(rStyleSettings.GetFaceColor());
 }
 
-css::uno::Reference< css::accessibility::XAccessible > DialogWindow::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> DialogWindow::CreateAccessible()
 {
     return new AccessibleDialogWindow(this);
 }
@@ -1190,9 +1191,9 @@ OUString DialogWindow::GetHid () const
     return HID_BASICIDE_DIALOGWINDOW;
 }
 
-ItemType DialogWindow::GetType () const
+SbxItemType DialogWindow::GetSbxType () const
 {
-    return TYPE_DIALOG;
+    return SBX_TYPE_DIALOG;
 }
 
 

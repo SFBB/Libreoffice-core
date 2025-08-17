@@ -183,6 +183,8 @@ const sal_uInt16 BIFF12_DXF_FONT_HEIGHT     = 36;
 const sal_uInt16 BIFF12_DXF_FONT_SCHEME     = 37;
 const sal_uInt16 BIFF12_DXF_NUMFMT_CODE     = 38;
 const sal_uInt16 BIFF12_DXF_NUMFMT_ID       = 41;
+const sal_uInt16 BIFF12_DXF_CELL_LOCKED     = 43;
+const sal_uInt16 BIFF12_DXF_CELL_HIDDEN     = 44;
 
 // BIFF12 CELLSTYLE flags
 const sal_uInt16 BIFF12_CELLSTYLE_BUILTIN   = 0x0001;
@@ -498,6 +500,37 @@ void FontModel::setBiffEscapement( sal_uInt16 nEscapement )
     mnEscapement = STATIC_ARRAY_SELECT( spnEscapes, nEscapement, XML_baseline );
 }
 
+bool FontModel::operator==(const FontModel& rhs) const
+{
+    if (maName != rhs.maName)
+        return false;
+    if (maColor != rhs.maColor)
+        return false;
+    if (mnScheme != rhs.mnScheme)
+        return false;
+    if (mnFamily != rhs.mnFamily)
+        return false;
+    if (mnCharSet != rhs.mnCharSet)
+        return false;
+    if (mfHeight != rhs.mfHeight)
+        return false;
+    if (mnUnderline != rhs.mnUnderline)
+        return false;
+    if (mnEscapement != rhs.mnEscapement)
+        return false;
+    if (mbBold != rhs.mbBold)
+        return false;
+    if (mbItalic != rhs.mbItalic)
+        return false;
+    if (mbStrikeout != rhs.mbStrikeout)
+        return false;
+    if (mbOutline != rhs.mbOutline)
+        return false;
+    if (mbShadow != rhs.mbShadow)
+        return false;
+    return true;
+}
+
 ApiFontUsedFlags::ApiFontUsedFlags( bool bAllUsed ) :
     mbNameUsed( bAllUsed ),
     mbColorUsed( bAllUsed ),
@@ -521,7 +554,7 @@ ApiScriptFontName::ApiScriptFontName() :
 
 ApiFontData::ApiFontData() :
     maDesc(
-        "Calibri",
+        u"Calibri"_ustr,
         220,                                            // height 11 points
         0,
         OUString(),
@@ -794,9 +827,19 @@ void Font::finalizeImport()
     if( !maUsedFlags.mbNameUsed )
         return;
 
+    // For caching if the font has glyphs then the underline and strike-through don't matter.
+    // Those aren't differences in the actual font, so just zero those out for the cache.
+    // The weight and pitch are different faces though, and there are some fonts with glyphs
+    // missing in one or other variant.
+    css::awt::FontDescriptor aGlyphDesc = maApiData.maDesc;
+    aGlyphDesc.Strikeout = css::awt::FontStrikeout::NONE;
+    aGlyphDesc.Underline = css::awt::FontUnderline::NONE;
+    // Never seen that to be the case for font *sizes* however, so we can use a uniform 10pt size
+    aGlyphDesc.Height = 200;
+
     bool bHasAsian(false), bHasCmplx(false), bHasLatin(false);
     FontClassificationMap& rFontClassificationCache = getFontClassificationCache();
-    if (auto found = rFontClassificationCache.find(maApiData.maDesc); found != rFontClassificationCache.end())
+    if (auto found = rFontClassificationCache.find(aGlyphDesc); found != rFontClassificationCache.end())
     {
         FontClassification eClassification = found->second;
         bHasAsian = bool(eClassification & FontClassification::Asian);
@@ -810,7 +853,7 @@ void Font::finalizeImport()
         if( !xDevice.is() )
             return;
 
-        Reference< XFont2 > xFont( xDevice->getFont( maApiData.maDesc ), UNO_QUERY );
+        Reference< XFont2 > xFont( xDevice->getFont(aGlyphDesc), UNO_QUERY );
         if( !xFont.is() )
             return;
 
@@ -851,7 +894,7 @@ void Font::finalizeImport()
             eClassification = eClassification | FontClassification::Cmplx;
         if (bHasLatin)
             eClassification = eClassification | FontClassification::Latin;
-        rFontClassificationCache.emplace(maApiData.maDesc, eClassification);
+        rFontClassificationCache.emplace(aGlyphDesc, eClassification);
     }
 
     lclSetFontName( maApiData.maLatinFont, maApiData.maDesc, bHasLatin );
@@ -1358,8 +1401,9 @@ bool operator==( const ApiProtectionData& rLeft, const ApiProtectionData& rRight
         (rLeft.maCellProt.IsPrintHidden   == rRight.maCellProt.IsPrintHidden);
 }
 
-Protection::Protection( const WorkbookHelper& rHelper ) :
-    WorkbookHelper( rHelper )
+Protection::Protection( const WorkbookHelper& rHelper, bool bDxf ) :
+    WorkbookHelper( rHelper ),
+    mbDxf( bDxf )
 {
 }
 
@@ -1367,6 +1411,23 @@ void Protection::importProtection( const AttributeList& rAttribs )
 {
     maModel.mbLocked = rAttribs.getBool( XML_locked, true );
     maModel.mbHidden = rAttribs.getBool( XML_hidden, false );
+}
+
+void Protection::importDxfProtection( sal_Int32 nElement, SequenceInputStream& rStrm )
+{
+    SAL_WARN_IF( !mbDxf, "sc", "Protection::importDxfProtection - missing protection flag" );
+    bool bFlag = rStrm.readuInt8() != 0;
+    switch( nElement )
+    {
+        case XML_locked:
+            maModel.mbLocked = bFlag;
+        break;
+        case XML_hidden:
+            maModel.mbHidden = bFlag;
+        break;
+        default:
+            OSL_FAIL( "Protection::importDxfProtection - unexpected element identifier" );
+    }
 }
 
 void Protection::setBiff12Data( sal_uInt32 nFlags )
@@ -1410,6 +1471,17 @@ void BorderLineModel::setBiffStyle( sal_Int32 nLineStyle )
         XML_mediumDashed, XML_dashDot, XML_mediumDashDot, XML_dashDotDot,
         XML_mediumDashDotDot, XML_slantDashDot };
     mnStyle = STATIC_ARRAY_SELECT( spnStyleIds, nLineStyle, XML_none );
+}
+
+bool BorderLineModel::operator==(const BorderLineModel& rhs) const
+{
+    if (maColor != rhs.maColor)
+        return false;
+    if (mnStyle != rhs.mnStyle)
+        return false;
+    if (mbUsed != rhs.mbUsed)
+        return false;
+    return true;
 }
 
 BorderModel::BorderModel( bool bDxf ) :
@@ -1669,6 +1741,25 @@ void PatternFillModel::setBiffPattern( sal_Int32 nPattern )
     mnPattern = STATIC_ARRAY_SELECT( spnPatternIds, nPattern, XML_none );
 }
 
+bool PatternFillModel::operator==(const PatternFillModel& rhs) const
+{
+    if (maPatternColor != rhs.maPatternColor)
+        return false;
+    if (maFilterPatternColor != rhs.maFilterPatternColor)
+        return false;
+    if (maFillColor != rhs.maFillColor)
+        return false;
+    if (mnPattern != rhs.mnPattern)
+        return false;
+    if (mbPattColorUsed != rhs.mbPattColorUsed)
+        return false;
+    if (mbFillColorUsed != rhs.mbFillColorUsed)
+        return false;
+    if (mbPatternUsed != rhs.mbPatternUsed)
+        return false;
+    return true;
+}
+
 GradientFillModel::GradientFillModel() :
     mnType( XML_linear ),
     mfAngle( 0.0 ),
@@ -1708,7 +1799,7 @@ void GradientFillModel::readGradientStop( SequenceInputStream& rStrm, bool bDxf 
         fPosition = rStrm.readDouble();
     }
     if( !rStrm.isEof() && (fPosition >= 0.0) )
-        maColors[ fPosition ] = aColor;
+        maColors[ fPosition ] = std::move(aColor);
 }
 
 ApiSolidFillData::ApiSolidFillData() :
@@ -1995,7 +2086,7 @@ Xf::Xf( const WorkbookHelper& rHelper ) :
     WorkbookHelper( rHelper ),
     mnScNumFmt(0),
     maAlignment( rHelper ),
-    maProtection( rHelper ),
+    maProtection( rHelper, false ),
     meRotationRef( css::table::CellVertJustify2::STANDARD ),
     mpStyleSheet( nullptr )
 {
@@ -2140,9 +2231,9 @@ void Xf::applyPatternToAttrList( AttrList& rAttrs, SCROW nRow1, SCROW nRow2, sal
     }
     if ( !pCachedPattern && nNumFmtId >= 0 )
     {
-        ScPatternAttr aNumPat(rDoc.GetPool());
-        mnScNumFmt = getStyles().writeNumFmtToItemSet( aNumPat.GetItemSet(), nNumFmtId, false );
-        rPat.GetItemSet().Put(aNumPat.GetItemSet());
+        ScPatternAttr aNumPat(rDoc.getCellAttributeHelper());
+        mnScNumFmt = getStyles().writeNumFmtToItemSet( aNumPat.GetItemSetWritable(), nNumFmtId, false );
+        rPat.GetItemSetWritable().Put(aNumPat.GetItemSet());
     }
 
     if (!pCachedPattern && !rDocImport.isLatinScript(mnScNumFmt))
@@ -2166,25 +2257,25 @@ void Xf::applyPatternToAttrList( AttrList& rAttrs, SCROW nRow1, SCROW nRow2, sal
         // Fill this gap with the default pattern.
         ScAttrEntry aEntry;
         aEntry.nEndRow = nRow1 - 1;
-        aEntry.pPattern = &rDoc.GetPool()->DirectPutItemInPool(*rAttrs.mpDefPattern);
+        aEntry.setScPatternAttr(rAttrs.mpDefPattern, false);
         rAttrs.maAttrs.push_back(aEntry);
 
         // Check if the default pattern is 'General'.
-        if (!rDocImport.isLatinScript(*aEntry.pPattern))
+        if (!rDocImport.isLatinScript(*aEntry.getScPatternAttr()))
             rAttrs.mbLatinNumFmtOnly = false;
     }
 
     ScAttrEntry aEntry;
     aEntry.nEndRow = nRow2;
-    aEntry.pPattern = &rDoc.GetPool()->DirectPutItemInPool(rPat);
+    aEntry.setScPatternAttr(&rPat, false);
     // Put the allocated pattern to cache
     if (!pCachedPattern)
-        rCache.add(nXfId, nNumFmtId, const_cast<ScPatternAttr*>(aEntry.pPattern));
+        rCache.add(nXfId, nNumFmtId, const_cast<ScPatternAttr*>(aEntry.getScPatternAttr()));
 
-    rAttrs.maAttrs.push_back(aEntry);
-
-    if (!rDocImport.isLatinScript(*aEntry.pPattern))
+    if (!rDocImport.isLatinScript(*aEntry.getScPatternAttr()))
         rAttrs.mbLatinNumFmtOnly = false;
+
+    rAttrs.maAttrs.push_back(std::move(aEntry));
 }
 
 void Xf::writeToDoc( ScDocumentImport& rDoc, const ScRange& rRange )
@@ -2218,8 +2309,8 @@ Xf::createPattern( bool bSkipPoolDefs )
 {
     if( mpPattern )
         return *mpPattern;
-    mpPattern.reset( new ::ScPatternAttr( getScDocument().GetPool() ) );
-    SfxItemSet& rItemSet = mpPattern->GetItemSet();
+    mpPattern.reset( new ::ScPatternAttr(getScDocument().getCellAttributeHelper()) );
+    SfxItemSet& rItemSet = mpPattern->GetItemSetWritable();
     /*  Enables the used flags, if the formatting attributes differ from the
         style XF. In cell XFs Excel uses the cell attributes, if they differ
         from the parent style XF (even if the used flag is switched off).
@@ -2331,6 +2422,13 @@ FillRef const & Dxf::createFill( bool bAlwaysNew )
     return mxFill;
 }
 
+ProtectionRef const & Dxf::createProtection( bool bAlwaysNew )
+{
+    if ( bAlwaysNew || !mxProtection )
+        mxProtection = std::make_shared<Protection>( *this, true );
+    return mxProtection;
+}
+
 void Dxf::importNumFmt( const AttributeList& rAttribs )
 {
     // don't propagate number formats defined in Dxf entries
@@ -2381,6 +2479,8 @@ void Dxf::importDxf( SequenceInputStream& rStrm )
             case BIFF12_DXF_FONT_SCHEME:        createFont( false )->importDxfScheme( rStrm );                          break;
             case BIFF12_DXF_NUMFMT_CODE:        aFmtCode = BiffHelper::readString( rStrm, false );                      break;
             case BIFF12_DXF_NUMFMT_ID:          nNumFmtId = rStrm.readuInt16();                                         break;
+            case BIFF12_DXF_CELL_LOCKED:        createProtection( false )->importDxfProtection( XML_locked, rStrm );    break;
+            case BIFF12_DXF_CELL_HIDDEN:        createProtection( false )->importDxfProtection( XML_hidden, rStrm );    break;
         }
         rStrm.seek( nRecEnd );
     }
@@ -3037,6 +3137,11 @@ OUString StylesBuffer::createExtDxfStyle( sal_Int32 nDxfId ) const
         rStyleName = maCellStyles.getDefaultStyleName();
 
     return rStyleName;
+}
+
+DxfRef StylesBuffer::getDxf(sal_Int32 nDxfId) const
+{
+    return maDxfs.get(nDxfId);
 }
 
 void StylesBuffer::writeFontToItemSet( SfxItemSet& rItemSet, sal_Int32 nFontId, bool bSkipPoolDefs ) const

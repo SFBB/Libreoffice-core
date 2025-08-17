@@ -20,6 +20,7 @@
 
 #include <sal/config.h>
 
+#include <atomic>
 #include <map>
 #include <memory>
 
@@ -65,6 +66,7 @@
 namespace comphelper {
     class NamedValueCollection;
 }
+namespace framework { class TitleHelper; }
 
 namespace dbaccess
 {
@@ -72,6 +74,7 @@ namespace dbaccess
 class DocumentEvents;
 class DocumentEventExecutor;
 class DocumentGuard;
+class OCommandContainer;
 
 typedef std::vector< css::uno::Reference< css::frame::XController > >   Controllers;
 
@@ -184,7 +187,7 @@ class ODatabaseDocument :public ModelDependentComponent             // ModelDepe
 
     /** @short  such module manager is used to classify new opened documents. */
     css::uno::Reference< css::frame::XModuleManager2 >                                          m_xModuleManager;
-    css::uno::Reference< css::frame::XTitle >                                                   m_xTitleHelper;
+    rtl::Reference< ::framework::TitleHelper >                                                  m_xTitleHelper;
     TNumberedController                                                                         m_aNumberedControllers;
 
     /** true if and only if the DatabaseDocument's "initNew" or "load" have been called (or, well,
@@ -192,7 +195,8 @@ class ODatabaseDocument :public ModelDependentComponent             // ModelDepe
     */
     InitState                                                                                   m_eInitState;
     bool                                                                                        m_bClosing;
-    bool                                                                                        m_bAllowDocumentScripting;
+    /// Using atomic because locking around accessing this will lead to deadlock in queryInterface
+    std::atomic<bool>                                                                           m_bAllowDocumentScripting;
     bool                                                                                        m_bHasBeenRecovered;
     /// If XModel::attachResource() was called to inform us that the document is embedded into another one.
     bool                                                                                        m_bEmbedded;
@@ -233,8 +237,8 @@ class ODatabaseDocument :public ModelDependentComponent             // ModelDepe
     /// write a single XML stream into the package
     void WriteThroughComponent(
         const css::uno::Reference< css::lang::XComponent > & xComponent,  /// the component we export
-        const char* pStreamName,                                                                /// the stream name
-        const char* pServiceName,                                                               /// service name of the component
+        const OUString& rStreamName,                                                                /// the stream name
+        const OUString& rServiceName,                                                               /// service name of the component
         const css::uno::Sequence< css::uno::Any> & rArguments,            /// the argument (XInitialization)
         const css::uno::Sequence< css::beans::PropertyValue> & rMediaDesc,/// output descriptor
         const css::uno::Reference< css::embed::XStorage >& _xStorageToSaveTo
@@ -245,7 +249,7 @@ class ODatabaseDocument :public ModelDependentComponent             // ModelDepe
     void WriteThroughComponent(
         const css::uno::Reference< css::io::XOutputStream >& xOutputStream,
         const css::uno::Reference< css::lang::XComponent >& xComponent,
-        const char* pServiceName,
+        const OUString& rServiceName,
         const css::uno::Sequence< css::uno::Any >& rArguments,
         const css::uno::Sequence< css::beans::PropertyValue> & rMediaDesc
     ) const;
@@ -266,7 +270,7 @@ class ODatabaseDocument :public ModelDependentComponent             // ModelDepe
     // ModelDependentComponent overridables
     virtual css::uno::Reference< css::uno::XInterface > getThis() const override;
 
-    css::uno::Reference< css::frame::XTitle > const &     impl_getTitleHelper_throw();
+    rtl::Reference< ::framework::TitleHelper> const &     impl_getTitleHelper_throw();
     css::uno::Reference< css::frame::XUntitledNumbers >   impl_getUntitledHelper_throw(
         const css::uno::Reference< css::uno::XInterface >& _xComponent = css::uno::Reference< css::uno::XInterface >());
 
@@ -436,6 +440,8 @@ public:
     */
     static void clearObjectContainer(
                 css::uno::WeakReference< css::container::XNameAccess >& _rxContainer);
+    static void clearObjectContainer(
+                unotools::WeakReference< OCommandContainer >& _rxContainer);
 
     /** checks whether the component is already initialized, throws a NotInitializedException if not
     */

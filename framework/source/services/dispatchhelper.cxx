@@ -35,7 +35,7 @@ namespace framework
 
 OUString SAL_CALL DispatchHelper::getImplementationName()
 {
-    return "com.sun.star.comp.framework.services.DispatchHelper";
+    return u"com.sun.star.comp.framework.services.DispatchHelper"_ustr;
 }
 
 sal_Bool SAL_CALL DispatchHelper::supportsService(const OUString& sServiceName)
@@ -45,7 +45,7 @@ sal_Bool SAL_CALL DispatchHelper::supportsService(const OUString& sServiceName)
 
 css::uno::Sequence<OUString> SAL_CALL DispatchHelper::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.DispatchHelper" };
+    return { u"com.sun.star.frame.DispatchHelper"_ustr };
 }
 
 /** ctor.
@@ -110,12 +110,13 @@ css::uno::Any SAL_CALL DispatchHelper::executeDispatch(
         = xDispatchProvider->queryDispatch(aURL, sTargetFrameName, nSearchFlags);
 
     utl::MediaDescriptor aDescriptor(lArguments);
-    bool bOnMainThread = aDescriptor.getUnpackedValueOrDefault("OnMainThread", false);
+    bool bOnMainThread = aDescriptor.getUnpackedValueOrDefault(u"OnMainThread"_ustr, false);
 
     if (bOnMainThread)
-        return vcl::solarthread::syncExecute([this, &xDispatch, &aURL, &lArguments]() {
-            return executeDispatch(xDispatch, aURL, true, lArguments);
-        });
+        return vcl::solarthread::syncExecute(
+            [this, &xDispatch, &aURL, &lArguments]() -> css::uno::Any {
+                return executeDispatch(xDispatch, aURL, true, lArguments);
+            });
     else
         return executeDispatch(xDispatch, aURL, true, lArguments);
 }

@@ -45,6 +45,7 @@ void WinSalTimer::ImplStop()
     if ( m_bSetTimerRunning )
     {
         m_bSetTimerRunning = false;
+        assert(pInst);
         KillTimer( pInst->mhComWnd, m_aWmTimerId );
     }
     m_bDirectTimeout = false;
@@ -148,6 +149,8 @@ void CALLBACK SalTimerProc(PVOID data, BOOLEAN)
 #if OSL_DEBUG_LEVEL > 0
         if (!ret) // SEH prevents using SAL_WARN here?
             fputs("ERROR: PostMessage() failed!\n", stderr);
+#else
+        (void)ret;
 #endif
     }
     __except(WinSalInstance::WorkaroundExceptionHandlingInUSER32Lib(GetExceptionCode(), GetExceptionInformation()))

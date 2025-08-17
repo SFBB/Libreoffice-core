@@ -96,21 +96,41 @@ class VCL_DLLPUBLIC SystemWindow
     class ImplData;
 
 private:
-    VclPtr<MenuBar> mpMenuBar;
-    Size            maMinOutSize;
-    bool            mbDockBtn;
-    bool            mbHideBtn;
-    bool            mbSysChild;
-    bool            mbIsCalculatingInitialLayoutSize;
-    bool            mbInitialLayoutSizeCalculated;
-    bool            mbPaintComplete;
-    MenuBarMode     mnMenuBarMode;
-    sal_uInt16      mnIcon;
+    class LayoutIdle: public Idle {
+    public:
+        LayoutIdle(char const * pDebugName, SystemWindow & parent, bool transferable):
+            Idle(pDebugName), parent_(parent),
+            transferState_(
+                transferable ? TransferState::Transferable : TransferState::NotTransferable)
+        {}
+
+        bool DecideTransferredExecution() override;
+
+        bool wasTransferred() const { return transferState_ == TransferState::Transferred; }
+
+    private:
+        enum class TransferState { NotTransferable, Transferable, Transferred };
+
+        SystemWindow & parent_;
+        TransferState transferState_;
+    };
+
     std::unique_ptr<ImplData> mpImplData;
-    Idle            maLayoutIdle;
+    VclPtr<MenuBar> mpMenuBar;
     OUString        maNotebookBarUIFile;
+    Size            maMinOutSize;
+    MenuBarMode     mnMenuBarMode = MenuBarMode::Normal;
+    sal_uInt16      mnIcon = 0;
+    bool            mbDockBtn : 1 = false;
+    bool            mbHideBtn : 1 = false;
+    bool            mbSysChild : 1 = false;
+    bool            mbIsCalculatingInitialLayoutSize : 1 = false;
+    bool            mbInitialLayoutSizeCalculated : 1 = false;
+    bool            mbInSetNoteBookBar : 1 = false;
+    bool            mbPaintComplete : 1 = false;
+    bool            mbIsDeferredInit : 1 = false;
+    LayoutIdle      maLayoutIdle;
 protected:
-    bool            mbIsDeferredInit;
     VclPtr<vcl::Window> mpDialogParent;
 public:
     using Window::ImplIsInTaskPaneList;
@@ -135,14 +155,17 @@ private:
 
 protected:
     // Single argument ctors shall be explicit.
-    explicit SystemWindow(WindowType nType, const char* pIdleDebugName);
-    void loadUI(vcl::Window* pParent, const OUString& rID, const OUString& rUIXMLDescription, const css::uno::Reference<css::frame::XFrame> &rFrame = css::uno::Reference<css::frame::XFrame>());
+    SAL_DLLPRIVATE explicit SystemWindow(
+        WindowType eType, const char* pIdleDebugName, bool transferableIdle = false);
+    SAL_DLLPRIVATE void loadUI(vcl::Window* pParent, const OUString& rID, const OUString& rUIXMLDescription, const css::uno::Reference<css::frame::XFrame> &rFrame = css::uno::Reference<css::frame::XFrame>());
 
-    void SetWindowState(const vcl::WindowData& rData);
+    SAL_DLLPRIVATE void SetWindowState(const vcl::WindowData& rData);
 
     virtual void settingOptimalLayoutSize(Window *pBox);
 
     SAL_DLLPRIVATE void DoInitialLayout();
+
+    virtual void ImplDeferredInit(vcl::Window* pParent, WinBits nBits);
 
 public:
     virtual         ~SystemWindow() override;
@@ -157,9 +180,10 @@ public:
     virtual void    Resize() override;
     virtual Size    GetOptimalSize() const override;
     virtual void    queue_resize(StateChangedType eReason = StateChangedType::Layout) override;
-    bool            isLayoutEnabled() const;
-    void            setOptimalLayoutSize(bool bAllowWindowShrink);
+    SAL_DLLPRIVATE bool            isLayoutEnabled() const;
+    SAL_DLLPRIVATE void            setOptimalLayoutSize(bool bAllowWindowShrink);
     bool            isCalculatingInitialLayoutSize() const { return mbIsCalculatingInitialLayoutSize; }
+    bool            isSettingUpNoteBookBar() const { return mbInSetNoteBookBar; }
 
     void            SetIcon( sal_uInt16 nIcon );
     sal_uInt16          GetIcon() const { return mnIcon; }
@@ -167,13 +191,13 @@ public:
     // separately from the window title
     void            SetRepresentedURL( const OUString& );
 
-    void            ShowTitleButton( TitleButton nButton, bool bVisible );
-    bool            IsTitleButtonVisible( TitleButton nButton ) const;
+    SAL_DLLPRIVATE void            ShowTitleButton( TitleButton nButton, bool bVisible );
+    SAL_DLLPRIVATE bool            IsTitleButtonVisible( TitleButton nButton ) const;
 
     void            SetMinOutputSizePixel( const Size& rSize );
     const Size&     GetMinOutputSizePixel() const { return maMinOutSize; }
-    void            SetMaxOutputSizePixel( const Size& rSize );
-    const Size&     GetMaxOutputSizePixel() const;
+    SAL_DLLPRIVATE void            SetMaxOutputSizePixel( const Size& rSize );
+    SAL_DLLPRIVATE const Size&     GetMaxOutputSizePixel() const;
 
     void            SetWindowState(std::u16string_view rStr);
     OUString GetWindowState(vcl::WindowDataMask nMask = vcl::WindowDataMask::All) const;
@@ -193,7 +217,7 @@ public:
     VclPtr<NotebookBar> const & GetNotebookBar() const;
 
     TaskPaneList*   GetTaskPaneList();
-    void GetWindowState(vcl::WindowData& rData) const;
+    SAL_DLLPRIVATE void GetWindowState(vcl::WindowData& rData) const;
 
     virtual void     SetText( const OUString& rStr ) override;
     virtual OUString GetText() const override;
@@ -239,7 +263,7 @@ public:
 
     SAL_DLLPRIVATE bool hasPendingLayout() const { return maLayoutIdle.IsActive(); }
 
-    virtual        void    doDeferredInit(WinBits nBits);
+    void doDeferredInit(WinBits nBits);
 
     // Screenshot interface
     VclPtr<VirtualDevice> createScreenshot();

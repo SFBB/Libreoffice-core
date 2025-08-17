@@ -24,9 +24,9 @@
 #include <config_feature_desktop.h>
 
 #include <app.hxx>
+#include <dp_misc.h>
 #include "officeipcthread.hxx"
 #include "cmdlineargs.hxx"
-#include "dispatchwatcher.hxx"
 #include <com/sun/star/frame/TerminationVetoException.hpp>
 #include <salhelper/thread.hxx>
 #include <sal/log.hxx>
@@ -44,6 +44,8 @@
 #include <osl/file.hxx>
 #include <rtl/process.h>
 #include <o3tl/string_view.hxx>
+#include <comphelper/diagnose_ex.hxx>
+#include <comphelper/scopeguard.hxx>
 
 #include <cassert>
 #include <cstdlib>
@@ -115,7 +117,7 @@ public:
         case '1':
             {
                 OUString url;
-                if (!next(&url, false)) {
+                if (!next(url, false)) {
                     throw CommandLineArgs::Supplier::Exception();
                 }
                 m_cwdUrl = url;
@@ -124,7 +126,7 @@ public:
         case '2':
             {
                 OUString path;
-                if (!next(&path, false)) {
+                if (!next(path, false)) {
                     throw CommandLineArgs::Supplier::Exception();
                 }
                 OUString url;
@@ -142,11 +144,10 @@ public:
 
     virtual std::optional< OUString > getCwdUrl() override { return m_cwdUrl; }
 
-    virtual bool next(OUString * argument) override { return next(argument, true); }
+    virtual bool next(OUString& argument) override { return next(argument, true); }
 
 private:
-    bool next(OUString * argument, bool prefix) {
-        OSL_ASSERT(argument != nullptr);
+    bool next(OUString& argument, bool prefix) {
         if (m_index < m_input.getLength()) {
             if (prefix) {
                 if (m_input[m_index] != ',') {
@@ -180,7 +181,7 @@ private:
             }
             OString b2(b.makeStringAndClear());
             if (!rtl_convertStringToUString(
-                    &argument->pData, b2.getStr(), b2.getLength(),
+                    &argument.pData, b2.getStr(), b2.getLength(),
                     RTL_TEXTENCODING_UTF8,
                     (RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR |
                      RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR |
@@ -234,36 +235,6 @@ bool addArgument(OStringBuffer &rArguments, char prefix,
 }
 
 rtl::Reference< RequestHandler > RequestHandler::pGlobal;
-
-// Turns a string in aMsg such as file:///home/foo/.libreoffice/3
-// Into a hex string of well known length ff132a86...
-static OUString CreateMD5FromString( const OUString& aMsg )
-{
-    SAL_INFO("desktop.app", "create md5 from '" << aMsg << "'");
-
-    rtlDigest handle = rtl_digest_create( rtl_Digest_AlgorithmMD5 );
-    if ( handle )
-    {
-        const sal_uInt8* pData = reinterpret_cast<const sal_uInt8*>(aMsg.getStr());
-        sal_uInt32       nSize = aMsg.getLength() * sizeof( sal_Unicode );
-        sal_uInt32       nMD5KeyLen = rtl_digest_queryLength( handle );
-        std::unique_ptr<sal_uInt8[]> pMD5KeyBuffer(new sal_uInt8[ nMD5KeyLen ]);
-
-        rtl_digest_init( handle, pData, nSize );
-        rtl_digest_update( handle, pData, nSize );
-        rtl_digest_get( handle, pMD5KeyBuffer.get(), nMD5KeyLen );
-        rtl_digest_destroy( handle );
-
-        // Create hex-value string from the MD5 value to keep the string size minimal
-        OUStringBuffer aBuffer( nMD5KeyLen * 2 + 1 );
-        for ( sal_uInt32 i = 0; i < nMD5KeyLen; i++ )
-            aBuffer.append( static_cast<sal_Int32>(pMD5KeyBuffer[i]), 16 );
-
-        return aBuffer.makeStringAndClear();
-    }
-
-    return OUString();
-}
 
 namespace {
 
@@ -321,7 +292,7 @@ oslSignalAction SalMainPipeExchangeSignal_impl(SAL_UNUSED_PARAMETER void* /*pDat
 // XServiceInfo
 OUString SAL_CALL RequestHandlerController::getImplementationName()
 {
-    return "com.sun.star.comp.RequestHandlerController";
+    return u"com.sun.star.comp.RequestHandlerController"_ustr;
 }
 
 sal_Bool RequestHandlerController::supportsService(
@@ -731,7 +702,7 @@ RequestHandler::Status RequestHandler::Enable(bool ipc)
     assert(thread.is() == (stat == IPC_STATUS_OK));
     if (stat == IPC_STATUS_OK) {
         pGlobal = new RequestHandler;
-        pGlobal->mIpcThread = thread;
+        pGlobal->mIpcThread = std::move(thread);
         pGlobal->mIpcThread->start(pGlobal.get());
     }
     return stat;
@@ -741,26 +712,21 @@ RequestHandler::Status PipeIpcThread::enable(rtl::Reference<IpcThread> * thread)
 {
     assert(thread != nullptr);
 
-    // The name of the named pipe is created with the hashcode of the user installation directory (without /user). We have to retrieve
-    // this information from a unotools implementation.
-    OUString aUserInstallPath;
-    ::utl::Bootstrap::PathStatus aLocateResult = ::utl::Bootstrap::locateUserInstallation( aUserInstallPath );
-    if (aLocateResult != utl::Bootstrap::PATH_EXISTS
-        && aLocateResult != utl::Bootstrap::PATH_VALID)
-    {
-        return RequestHandler::IPC_STATUS_BOOTSTRAP_ERROR;
-    }
-
     // Try to  determine if we are the first office or not! This should prevent multiple
     // access to the user directory !
     // First we try to create our pipe if this fails we try to connect. We have to do this
     // in a loop because the other office can crash or shutdown between createPipe
     // and connectPipe!!
-    auto aUserInstallPathHashCode = CreateMD5FromString(aUserInstallPath);
-
-    // Check result to create a hash code from the user install path
-    if ( aUserInstallPathHashCode.isEmpty() )
+    OUString aPipeIdent;
+    try
+    {
+        aPipeIdent = dp_misc::generateOfficePipeId();
+    }
+    catch (const Exception&)
+    {
+        DBG_UNHANDLED_EXCEPTION("desktop.app");
         return RequestHandler::IPC_STATUS_BOOTSTRAP_ERROR; // Something completely broken, we cannot create a valid hash code!
+    }
 
     osl::Pipe pipe;
     enum PipeMode
@@ -771,7 +737,6 @@ RequestHandler::Status PipeIpcThread::enable(rtl::Reference<IpcThread> * thread)
     };
     PipeMode nPipeMode = PIPEMODE_DONTKNOW;
 
-    OUString aPipeIdent( "SingleOfficeIPC_" + aUserInstallPathHashCode );
     do
     {
         osl::Security security;
@@ -811,7 +776,7 @@ RequestHandler::Status PipeIpcThread::enable(rtl::Reference<IpcThread> * thread)
     if ( nPipeMode == PIPEMODE_CREATED )
     {
         // Seems we are the one and only, so create listening thread
-        *thread = new PipeIpcThread(pipe);
+        *thread = new PipeIpcThread(std::move(pipe));
         return RequestHandler::IPC_STATUS_OK;
     }
     else
@@ -827,10 +792,11 @@ RequestHandler::Status PipeIpcThread::enable(rtl::Reference<IpcThread> * thread)
             aArguments.append('0');
         }
         sal_uInt32 nCount = rtl_getAppCommandArgCount();
+        OUString arg;
         for( sal_uInt32 i=0; i < nCount; i++ )
         {
-            rtl_getAppCommandArg( i, &aUserInstallPath.pData );
-            if (!addArgument(aArguments, ',', aUserInstallPath)) {
+            rtl_getAppCommandArg(i, &arg.pData);
+            if (!addArgument(aArguments, ',', arg)) {
                 return RequestHandler::IPC_STATUS_BOOTSTRAP_ERROR;
             }
         }
@@ -971,8 +937,8 @@ bool IpcThread::process(OString const & arguments, bool * waitProcessed) {
             aCmdLineArgs->getCwdUrl()));
         m_handler->cProcessed.reset();
         pRequest->pcProcessed = &m_handler->cProcessed;
-        m_handler->mbSuccess = false;
-        pRequest->mpbSuccess = &m_handler->mbSuccess;
+        m_handler->mFlags = DispatchRequestFlags::NONE;
+        pRequest->mpFlags = &m_handler->mFlags;
 
         // Print requests are not dependent on the --invisible cmdline argument as they are
         // loaded with the "hidden" flag! So they are always checked.
@@ -985,6 +951,7 @@ bool IpcThread::process(OString const & arguments, bool * waitProcessed) {
         pRequest->aConversionParams = aCmdLineArgs->GetConversionParams();
         pRequest->aConversionOut = aCmdLineArgs->GetConversionOut();
         pRequest->aImageConversionType = aCmdLineArgs->GetImageConversionType();
+        pRequest->aStartListParams = aCmdLineArgs->GetStartListParams();
         pRequest->aInFilter = aCmdLineArgs->GetInFilter();
         pRequest->bTextCat = aCmdLineArgs->IsTextCat();
         pRequest->bScriptCat = aCmdLineArgs->IsScriptCat();
@@ -1089,13 +1056,13 @@ bool IpcThread::process(OString const & arguments, bool * waitProcessed) {
                 SvtModuleOptions    aOpt;
 
                 // Support command line parameters to start a module (as preselection)
-                if ( aCmdLineArgs->IsWriter() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
+                if (aCmdLineArgs->IsWriter() && aOpt.IsWriterInstalled())
                     pRequest->aModule = aOpt.GetFactoryName( SvtModuleOptions::EFactory::WRITER );
-                else if ( aCmdLineArgs->IsCalc() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::CALC ) )
+                else if (aCmdLineArgs->IsCalc() && aOpt.IsCalcInstalled())
                     pRequest->aModule = aOpt.GetFactoryName( SvtModuleOptions::EFactory::CALC );
-                else if ( aCmdLineArgs->IsImpress() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::IMPRESS ) )
+                else if (aCmdLineArgs->IsImpress() && aOpt.IsImpressInstalled())
                     pRequest->aModule= aOpt.GetFactoryName( SvtModuleOptions::EFactory::IMPRESS );
-                else if ( aCmdLineArgs->IsDraw() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::DRAW ) )
+                else if (aCmdLineArgs->IsDraw() && aOpt.IsDrawInstalled())
                     pRequest->aModule= aOpt.GetFactoryName( SvtModuleOptions::EFactory::DRAW );
             }
 
@@ -1121,6 +1088,8 @@ bool IpcThread::process(OString const & arguments, bool * waitProcessed) {
 void PipeIpcThread::execute()
 {
     assert(m_handler != nullptr);
+    dp_misc::setOfficeIpcThreadRunning(true);
+    comphelper::ScopeGuard resetThreadRunning([]() { dp_misc::setOfficeIpcThreadRunning(false); });
     do
     {
         osl::StreamPipe aStreamPipe;
@@ -1175,7 +1144,7 @@ void PipeIpcThread::execute()
             if (waitProcessed)
             {
                 m_handler->cProcessed.wait();
-                bSuccess = m_handler->mbSuccess;
+                bSuccess = static_cast<bool>(m_handler->mFlags & DispatchRequestFlags::Finished);
             }
             if (bSuccess)
             {
@@ -1307,14 +1276,14 @@ bool RequestHandler::ExecuteCmdLineRequests(
     static std::vector<DispatchWatcher::DispatchRequest> aDispatchList;
 
     // Create dispatch list for dispatch watcher
-    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aInFilter, DispatchWatcher::REQUEST_INFILTER, "", aRequest.aModule );
-    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aOpenList, DispatchWatcher::REQUEST_OPEN, "", aRequest.aModule );
-    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aViewList, DispatchWatcher::REQUEST_VIEW, "", aRequest.aModule );
-    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aStartList, DispatchWatcher::REQUEST_START, "", aRequest.aModule );
-    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aPrintList, DispatchWatcher::REQUEST_PRINT, "", aRequest.aModule );
+    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aInFilter, DispatchWatcher::REQUEST_INFILTER, u""_ustr, aRequest.aModule );
+    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aOpenList, DispatchWatcher::REQUEST_OPEN, u""_ustr, aRequest.aModule );
+    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aViewList, DispatchWatcher::REQUEST_VIEW, u""_ustr, aRequest.aModule );
+    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aStartList, DispatchWatcher::REQUEST_START, aRequest.aStartListParams, aRequest.aModule );
+    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aPrintList, DispatchWatcher::REQUEST_PRINT, u""_ustr, aRequest.aModule );
     AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aPrintToList, DispatchWatcher::REQUEST_PRINTTO, aRequest.aPrinterName, aRequest.aModule );
-    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aForceOpenList, DispatchWatcher::REQUEST_FORCEOPEN, "", aRequest.aModule );
-    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aForceNewList, DispatchWatcher::REQUEST_FORCENEW, "", aRequest.aModule );
+    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aForceOpenList, DispatchWatcher::REQUEST_FORCEOPEN, u""_ustr, aRequest.aModule );
+    AddToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aForceNewList, DispatchWatcher::REQUEST_FORCENEW, u""_ustr, aRequest.aModule );
     AddConversionsToDispatchList( aDispatchList, aRequest.aCwdUrl, aRequest.aConversionList, aRequest.aConversionParams, aRequest.aPrinterName, aRequest.aModule, aRequest.aConversionOut, aRequest.aImageConversionType, aRequest.bTextCat, aRequest.bScriptCat );
     bool bShutdown( false );
 
@@ -1344,9 +1313,8 @@ bool RequestHandler::ExecuteCmdLineRequests(
         aGuard.clear();
 
         // Execute dispatch requests
-        bShutdown = dispatchWatcher->executeDispatchRequests( aTempList, noTerminate);
-        if (aRequest.mpbSuccess)
-            *aRequest.mpbSuccess = true; // signal that we have actually succeeded
+        bShutdown
+            = dispatchWatcher->executeDispatchRequests(aTempList, noTerminate, aRequest.mpFlags);
     }
 
     return bShutdown;

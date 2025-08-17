@@ -37,7 +37,6 @@ $(eval $(call gb_Library_use_sdk_api,editeng))
 
 ifneq ($(ENABLE_WASM_STRIP_ACCESSIBILITY),TRUE)
 $(eval $(call gb_Library_add_exception_objects,editeng,\
-    editeng/source/accessibility/AccessibleComponentBase \
     editeng/source/accessibility/AccessibleContextBase \
     editeng/source/accessibility/AccessibleEditableTextPara \
     editeng/source/accessibility/AccessibleHyperlink \
@@ -50,11 +49,13 @@ $(eval $(call gb_Library_add_exception_objects,editeng,\
 endif
 
 $(eval $(call gb_Library_add_exception_objects,editeng,\
+    editeng/source/editeng/ContentNode \
     editeng/source/editeng/editattr \
     editeng/source/editeng/editdata \
     editeng/source/editeng/editdbg \
     editeng/source/editeng/editdoc \
     editeng/source/editeng/editeng \
+    editeng/source/editeng/EditLine \
     editeng/source/editeng/editobj \
     editeng/source/editeng/editsel \
     editeng/source/editeng/editundo \
@@ -72,7 +73,9 @@ $(eval $(call gb_Library_add_exception_objects,editeng,\
     editeng/source/editeng/impedit5 \
     editeng/source/editeng/misspellrange \
     editeng/source/editeng/section \
+    editeng/source/editeng/StripPortionsHelper \
     editeng/source/editeng/textconv \
+    editeng/source/editeng/TextPortionList \
     editeng/source/items/borderline \
     editeng/source/items/bulitem \
     editeng/source/items/CustomPropertyField \
@@ -86,6 +89,7 @@ $(eval $(call gb_Library_add_exception_objects,editeng,\
     editeng/source/items/optitems \
     editeng/source/items/paperinf \
     editeng/source/items/paraitem \
+    editeng/source/items/rubyitem \
     editeng/source/items/svdfield \
     editeng/source/items/svxfont \
     editeng/source/items/textitem \
@@ -139,6 +143,8 @@ $(eval $(call gb_Library_use_libraries,editeng,\
     xo \
     basegfx \
     docmodel \
+	drawinglayercore \
+    drawinglayer \
     lng \
     svt \
     tk \
@@ -164,6 +170,7 @@ $(eval $(call gb_Library_use_externals,editeng,\
 	icuuc \
 	icu_headers \
 	libxml2 \
+	yrs \
 ))
 
 # vim: set noet sw=4 ts=4:

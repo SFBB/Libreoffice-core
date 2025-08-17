@@ -19,7 +19,7 @@
 
 #include <memory>
 #include <XPropertyTable.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/pathoptions.hxx>
 
 #include <svx/strings.hrc>
@@ -32,9 +32,9 @@ XColorListRef XColorList::CreateStdColorList()
 {
     return XPropertyList::AsColorList(
         XPropertyList::CreatePropertyList(
-            XPropertyListType::Color, !utl::ConfigManager::IsFuzzing() ?
+            XPropertyListType::Color, !comphelper::IsFuzzing() ?
                                           SvtPathOptions().GetPalettePath() :
-                                          "", ""));
+                                          u""_ustr, u""_ustr));
 }
 
 XColorListRef XColorList::GetStdColorList()
@@ -151,9 +151,9 @@ bool XColorList::Create()
     return(165 == Count());
 }
 
-BitmapEx XColorList::CreateBitmapForUI( tools::Long /*nIndex*/ )
+Bitmap XColorList::CreateBitmapForUI( tools::Long /*nIndex*/ )
 {
-    return BitmapEx();
+    return Bitmap();
 }
 
 tools::Long XColorList::GetIndexOfColor( const Color& rColor ) const

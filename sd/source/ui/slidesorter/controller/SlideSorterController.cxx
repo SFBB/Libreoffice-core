@@ -77,7 +77,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::sd::slidesorter::model;
 using namespace ::sd::slidesorter::view;
 using namespace ::sd::slidesorter::controller;
-using namespace ::basegfx;
 
 namespace sd::slidesorter::controller {
 
@@ -116,10 +115,10 @@ SlideSorterController::SlideSorterController (SlideSorter& rSlideSorter)
 
 void SlideSorterController::Init()
 {
-    mpCurrentSlideManager = std::make_shared<CurrentSlideManager>(mrSlideSorter);
+    mpCurrentSlideManager = std::make_unique<CurrentSlideManager>(mrSlideSorter);
     mpPageSelector.reset(new PageSelector(mrSlideSorter));
     mpFocusManager.reset(new FocusManager(mrSlideSorter));
-    mpSlotManager = std::make_shared<SlotManager>(mrSlideSorter);
+    mpSlotManager = std::make_unique<SlotManager>(mrSlideSorter);
     mpScrollBarManager.reset(new ScrollBarManager(mrSlideSorter));
     mpSelectionManager = std::make_shared<SelectionManager>(mrSlideSorter);
     mpClipboard.reset(new Clipboard(mrSlideSorter));
@@ -141,9 +140,8 @@ SlideSorterController::~SlideSorterController()
 {
     try
     {
-        uno::Reference<lang::XComponent> xComponent = mpListener;
-        if (xComponent.is())
-            xComponent->dispose();
+        if (mpListener.is())
+            mpListener->dispose();
     }
     catch( uno::Exception& )
     {
@@ -214,16 +212,14 @@ ScrollBarManager& SlideSorterController::GetScrollBarManager()
     return *mpScrollBarManager;
 }
 
-std::shared_ptr<CurrentSlideManager> const & SlideSorterController::GetCurrentSlideManager() const
+CurrentSlideManager& SlideSorterController::GetCurrentSlideManager() const
 {
-    OSL_ASSERT(mpCurrentSlideManager != nullptr);
-    return mpCurrentSlideManager;
+    return *mpCurrentSlideManager;
 }
 
-std::shared_ptr<SlotManager> const & SlideSorterController::GetSlotManager() const
+SlotManager& SlideSorterController::GetSlotManager() const
 {
-    OSL_ASSERT(mpSlotManager != nullptr);
-    return mpSlotManager;
+    return *mpSlotManager;
 }
 
 std::shared_ptr<SelectionManager> const & SlideSorterController::GetSelectionManager() const
@@ -284,9 +280,7 @@ bool SlideSorterController::Command (
     if (pWindow == nullptr)
         return false;
 
-    ViewShell* pViewShell = mrSlideSorter.GetViewShell();
-    if (pViewShell == nullptr)
-        return false;
+    ViewShell& rViewShell = mrSlideSorter.GetViewShell();
 
     switch (rEvent.GetCommand())
     {
@@ -319,7 +313,7 @@ bool SlideSorterController::Command (
                 // indicator so that the user knows where a page insertion
                 // would take place.
                 mpInsertionIndicatorHandler->Start(false);
-                mpInsertionIndicatorHandler->UpdateIndicatorIcon(SD_MOD()->pTransferClip);
+                mpInsertionIndicatorHandler->UpdateIndicatorIcon(SdModule::get()->pTransferClip);
                 mpInsertionIndicatorHandler->UpdatePosition(
                     pWindow->PixelToLogic(rEvent.GetMousePosPixel()),
                     InsertionIndicatorHandler::MoveMode);
@@ -347,7 +341,7 @@ bool SlideSorterController::Command (
                 }
             }
 
-            if (SfxDispatcher* pDispatcher = pViewShell->GetDispatcher())
+            if (SfxDispatcher* pDispatcher = rViewShell.GetDispatcher())
             {
                 mbContextMenuOpen = true;
                 if (!rEvent.IsMouseEvent())
@@ -380,9 +374,23 @@ bool SlideSorterController::Command (
                 return false;
             if (pData->IsMod1())
             {
-                // We do not support zooming with control+mouse wheel.
-                return false;
+                sal_Int32 nColumnCount = mrSlideSorter.GetView().GetLayouter().GetColumnCount();
+                if (0L > pData->GetDelta())
+                {
+                    if (nColumnCount < MAX_PAGES_PER_ROW)
+                        ++nColumnCount;
+                }
+                else if (nColumnCount > 1)
+                    --nColumnCount;
+                mrSlideSorter.GetView().GetLayouter().SetColumnCount (
+                        nColumnCount, nColumnCount);
+                Rearrange(true);
+                mrSlideSorter.GetViewShell().GetViewFrame()->GetBindings().Invalidate(SID_PAGES_PER_ROW);
+                bEventHasBeenHandled = true;
             }
+            // tdf#119745: ScrollLines gives accurate distance scrolled on touchpad. NotchDelta sign
+            // gives direction. Default is 3 lines at a time, so factor that out.
+            double scrollDistance = -pData->GetScrollLines() * pData->GetNotchDelta() / 3.0;
             // Determine whether to scroll horizontally or vertically.  This
             // depends on the orientation of the scroll bar and the
             // IsHoriz() flag of the event.
@@ -391,13 +399,13 @@ bool SlideSorterController::Command (
             {
                 GetScrollBarManager().Scroll(
                     ScrollBarManager::Orientation_Vertical,
-                    -pData->GetNotchDelta());
+                    scrollDistance);
             }
             else
             {
                 GetScrollBarManager().Scroll(
                     ScrollBarManager::Orientation_Horizontal,
-                    -pData->GetNotchDelta());
+                    scrollDistance);
             }
             mrSlideSorter.GetView().UpdatePageUnderMouse(rEvent.GetMousePosPixel());
 
@@ -431,11 +439,10 @@ void SlideSorterController::PreModelChange()
     if (mbPostModelChangePending)
         return;
 
-    if (mrSlideSorter.GetViewShell() != nullptr)
-        mrSlideSorter.GetViewShell()->Broadcast(
-            ViewShellHint(ViewShellHint::HINT_COMPLEX_MODEL_CHANGE_START));
+    mrSlideSorter.GetViewShell().Broadcast(
+        ViewShellHint(ViewShellHint::HINT_COMPLEX_MODEL_CHANGE_START));
 
-    GetCurrentSlideManager()->PrepareModelChange();
+    GetCurrentSlideManager().PrepareModelChange();
 
     if (mrSlideSorter.GetContentWindow())
         mrView.PreModelChange();
@@ -451,7 +458,7 @@ void SlideSorterController::PostModelChange()
     sd::Window *pWindow (mrSlideSorter.GetContentWindow().get());
     if (pWindow)
     {
-        GetCurrentSlideManager()->HandleModelChange();
+        GetCurrentSlideManager().HandleModelChange();
 
         mrView.PostModelChange ();
 
@@ -464,9 +471,8 @@ void SlideSorterController::PostModelChange()
         Rearrange(mbIsForcedRearrangePending);
     }
 
-    if (mrSlideSorter.GetViewShell() != nullptr)
-        mrSlideSorter.GetViewShell()->Broadcast(
-            ViewShellHint(ViewShellHint::HINT_COMPLEX_MODEL_CHANGE_END));
+    mrSlideSorter.GetViewShell().Broadcast(
+        ViewShellHint(ViewShellHint::HINT_COMPLEX_MODEL_CHANGE_END));
 }
 
 void SlideSorterController::HandleModelChange()
@@ -524,7 +530,7 @@ IMPL_LINK(SlideSorterController, WindowEventHandler, VclWindowEvent&, rEvent, vo
                     {
                         // Select the current slide so that it is properly
                         // visualized when the focus is moved to the edit view.
-                        GetPageSelector().SelectPage(GetCurrentSlideManager()->GetCurrentSlide());
+                        GetPageSelector().SelectPage(GetCurrentSlideManager().GetCurrentSlide());
                     }
                 }
                 break;
@@ -538,8 +544,7 @@ IMPL_LINK(SlideSorterController, WindowEventHandler, VclWindowEvent&, rEvent, vo
                 DrawModeFlags nDrawMode (Application::GetSettings().GetStyleSettings().GetHighContrastMode()
                     ? sd::OUTPUT_DRAWMODE_CONTRAST
                     : sd::OUTPUT_DRAWMODE_COLOR);
-                if (mrSlideSorter.GetViewShell() != nullptr)
-                    mrSlideSorter.GetViewShell()->GetFrameView()->SetDrawMode(nDrawMode);
+                mrSlideSorter.GetViewShell().GetFrameView()->SetDrawMode(nDrawMode);
                 if (pActiveWindow != nullptr)
                     pActiveWindow->GetOutDev()->SetDrawMode(nDrawMode);
                 mrView.HandleDrawModeChange();
@@ -700,7 +705,7 @@ rtl::Reference<FuPoor> SlideSorterController::CreateSelectionFunction (SfxReques
 
 ::rtl::Reference<SelectionFunction> SlideSorterController::GetCurrentSelectionFunction() const
 {
-    rtl::Reference<FuPoor> pFunction (mrSlideSorter.GetViewShell()->GetCurrentFunction());
+    rtl::Reference<FuPoor> pFunction (mrSlideSorter.GetViewShell().GetCurrentFunction());
     return ::rtl::Reference<SelectionFunction>(dynamic_cast<SelectionFunction*>(pFunction.get()));
 }
 
@@ -732,9 +737,8 @@ void SlideSorterController::PrepareEditModeChange()
     }
 
     // Remember the current page.
-    if (mrSlideSorter.GetViewShell() != nullptr)
-        mnCurrentPageBeforeSwitch = (mrSlideSorter.GetViewShell()->GetViewShellBase()
-        .GetMainViewShell()->GetActualPage()->GetPageNum()-1)/2;
+    mnCurrentPageBeforeSwitch = (mrSlideSorter.GetViewShell().GetViewShellBase()
+    .GetMainViewShell()->GetActualPage()->GetPageNum()-1)/2;
 }
 
 void SlideSorterController::ChangeEditMode (EditMode eEditMode)
@@ -764,7 +768,7 @@ void SlideSorterController::FinishEditModeChange()
             SharedPageDescriptor pDescriptor (aAllPages.GetNextElement());
             if (pDescriptor->GetPage() == mpEditModeChangeMasterPage)
             {
-                GetCurrentSlideManager()->SwitchCurrentSlide(pDescriptor);
+                GetCurrentSlideManager().SwitchCurrentSlide(pDescriptor);
                 mpPageSelector->SelectPage(pDescriptor);
                 break;
             }
@@ -775,7 +779,7 @@ void SlideSorterController::FinishEditModeChange()
         PageSelector::BroadcastLock aBroadcastLock (*mpPageSelector);
 
         SharedPageDescriptor pDescriptor (mrModel.GetPageDescriptor(mnCurrentPageBeforeSwitch));
-        GetCurrentSlideManager()->SwitchCurrentSlide(pDescriptor);
+        GetCurrentSlideManager().SwitchCurrentSlide(pDescriptor);
 
         // Restore the selection.
         mpPageSelector->DeselectAllPages();
@@ -801,9 +805,8 @@ void SlideSorterController::PageNameHasChanged (int nPageIndex, const OUString& 
     if ( ! pWindow)
         return;
 
-    css::uno::Reference< css::accessibility::XAccessible >
-        xAccessible (pWindow->GetAccessible(false));
-    if ( ! xAccessible.is())
+    rtl::Reference<comphelper::OAccessible> pAccessible = pWindow->GetAccessible(false);
+    if (!pAccessible.is())
         return;
 
     // Now comes a small hack.  We assume that the accessible object is
@@ -817,7 +820,7 @@ void SlideSorterController::PageNameHasChanged (int nPageIndex, const OUString& 
     // However, the dynamic cast together with the check of the result
     // being NULL should be safe enough.
     ::accessibility::AccessibleSlideSorterView* pAccessibleView
-            = dynamic_cast< ::accessibility::AccessibleSlideSorterView*>(xAccessible.get());
+        = dynamic_cast<::accessibility::AccessibleSlideSorterView*>(pAccessible.get());
     if (pAccessibleView == nullptr)
         return;
 

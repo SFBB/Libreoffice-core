@@ -21,14 +21,13 @@
 
 #include <cassert>
 
-#include "jni_bridge.h"
+#include "jni_helper.h"
 
 #include <com/sun/star/uno/RuntimeException.hpp>
 
 #include <jvmaccess/unovirtualmachine.hxx>
 #include <rtl/string.hxx>
 #include <rtl/strbuf.hxx>
-#include <rtl/ustrbuf.hxx>
 
 #include <uno/lbnames.h>
 
@@ -743,7 +742,7 @@ JNI_info::JNI_info(
     assert( m_method_AsynchronousFinalizer_drain != nullptr );
 
     // get java env
-    OUString java_env_type_name( UNO_LB_JAVA );
+    OUString java_env_type_name( u"" UNO_LB_JAVA ""_ustr );
     JLocalAutoRef jo_java(
         jni, ustring_to_jstring( jni, java_env_type_name.pData ) );
     jvalue args[ 2 ];
@@ -965,8 +964,7 @@ extern "C"
 
 SAL_JNI_EXPORT void
 JNICALL Java_com_sun_star_bridges_jni_1uno_JNI_1info_1holder_finalize__J(
-    JNIEnv * jni_env, SAL_UNUSED_PARAMETER jobject, jlong jni_info_handle )
-    SAL_THROW_EXTERN_C()
+    JNIEnv * jni_env, SAL_UNUSED_PARAMETER jobject, jlong jni_info_handle ) noexcept
 {
     ::jni_uno::JNI_info * jni_info =
           reinterpret_cast< ::jni_uno::JNI_info * >( jni_info_handle );

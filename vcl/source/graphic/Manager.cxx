@@ -26,14 +26,12 @@
 
 using namespace css;
 
-namespace vcl::graphic
-{
 namespace
 {
 void setupConfigurationValuesIfPossible(sal_Int64& rMemoryLimit,
                                         std::chrono::seconds& rAllowedIdleTime, bool& bSwapEnabled)
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
 
     try
@@ -51,75 +49,130 @@ void setupConfigurationValuesIfPossible(sal_Int64& rMemoryLimit,
 }
 }
 
-Manager& Manager::get()
+namespace vcl::graphic
 {
-    static Manager gStaticManager;
-    return gStaticManager;
-}
-
-Manager::Manager()
-    : mnAllowedIdleTime(10)
-    , mbSwapEnabled(true)
-    , mbReducingGraphicMemory(false)
-    , mnMemoryLimit(300000000)
-    , mnUsedSize(0)
-    , maSwapOutTimer("graphic::Manager maSwapOutTimer")
+MemoryManager::MemoryManager()
+    : maSwapOutTimer("MemoryManager::MemoryManager maSwapOutTimer")
 {
     setupConfigurationValuesIfPossible(mnMemoryLimit, mnAllowedIdleTime, mbSwapEnabled);
 
     if (mbSwapEnabled)
     {
-        maSwapOutTimer.SetInvokeHandler(LINK(this, Manager, SwapOutTimerHandler));
-        maSwapOutTimer.SetTimeout(10000);
-        maSwapOutTimer.Start();
+        maSwapOutTimer.SetPriority(TaskPriority::DEFAULT_IDLE);
+        maSwapOutTimer.SetInvokeHandler(LINK(this, MemoryManager, ReduceMemoryTimerHandler));
+        maSwapOutTimer.SetTimeout(mnTimeout);
+        maSwapOutTimer.Stop();
     }
 }
 
-void Manager::loopGraphicsAndSwapOut(std::unique_lock<std::mutex>& rGuard, bool bDropAll)
+MemoryManager& MemoryManager::get()
 {
-    // make a copy of m_pImpGraphicList because if we swap out a svg, the svg
-    // filter may create more temp Graphics which are auto-added to
-    // m_pImpGraphicList invalidating a loop over m_pImpGraphicList, e.g.
-    // reexport of tdf118346-1.odg
-    o3tl::sorted_vector<ImpGraphic*> aImpGraphicList = m_pImpGraphicList;
+    static MemoryManager gStaticManager;
+    return gStaticManager;
+}
 
-    for (ImpGraphic* pEachImpGraphic : aImpGraphicList)
+IMPL_LINK_NOARG(MemoryManager, ReduceMemoryTimerHandler, Timer*, void)
+{
+    std::unique_lock aGuard(maMutex);
+    maSwapOutTimer.Stop();
+    reduceMemory(aGuard);
+    // will be started again on size change
+}
+
+void MemoryManager::registerObject(MemoryManaged* pMemoryManaged)
+{
+    std::unique_lock aGuard(maMutex);
+
+    // Insert and update the used size (bytes)
+    assert(aGuard.owns_lock() && aGuard.mutex() == &maMutex);
+    // coverity[missing_lock: FALSE] - as above assert
+    // Related: tdf#167007 Only add object bytes if the object is
+    // actually inserted into the cache
+    if (maObjectList.insert(pMemoryManaged).second)
+        mnTotalSize += pMemoryManaged->getCurrentSizeInBytes();
+    checkStartReduceTimer();
+}
+
+void MemoryManager::unregisterObject(MemoryManaged* pMemoryManaged)
+{
+    std::unique_lock aGuard(maMutex);
+    // Related: tdf#167007 Only remove object size if the object is
+    // actually removed from the cache
+    if (maObjectList.erase(pMemoryManaged))
+        mnTotalSize -= pMemoryManaged->getCurrentSizeInBytes();
+    checkStartReduceTimer();
+}
+
+void MemoryManager::changeExisting(MemoryManaged* pMemoryManaged, sal_Int64 nNewSize)
+{
+    std::scoped_lock aGuard(maMutex);
+    // Related: tdf#167007 Only change total cache bytes if the object
+    // actually exists in the cache
+    if (maObjectList.find(pMemoryManaged) != maObjectList.end())
     {
-        if (mnUsedSize < sal_Int64(mnMemoryLimit * 0.7) && !bDropAll)
-            return;
+        sal_Int64 nOldSize = pMemoryManaged->getCurrentSizeInBytes();
+        mnTotalSize -= nOldSize;
+        mnTotalSize += nNewSize;
+    }
+    pMemoryManaged->setCurrentSizeInBytes(nNewSize);
+    checkStartReduceTimer();
+}
 
-        if (pEachImpGraphic->isSwappedOut())
-            continue;
+void MemoryManager::swappedIn(MemoryManaged* pMemoryManaged, sal_Int64 nNewSize)
+{
+    changeExisting(pMemoryManaged, nNewSize);
+}
 
-        sal_Int64 nCurrentGraphicSize = getGraphicSizeBytes(pEachImpGraphic);
-        if (nCurrentGraphicSize > 100000 || bDropAll)
-        {
-            if (!pEachImpGraphic->mpContext)
-            {
-                auto aCurrent = std::chrono::high_resolution_clock::now();
-                auto aDeltaTime = aCurrent - pEachImpGraphic->maLastUsed;
-                auto aSeconds = std::chrono::duration_cast<std::chrono::seconds>(aDeltaTime);
+void MemoryManager::swappedOut(MemoryManaged* pMemoryManaged, sal_Int64 nNewSize)
+{
+    changeExisting(pMemoryManaged, nNewSize);
+}
 
-                if (aSeconds > mnAllowedIdleTime)
-                {
-                    // unlock because svgio can call back into us
-                    rGuard.unlock();
-                    pEachImpGraphic->swapOut();
-                    rGuard.lock();
-                }
-            }
-        }
+OUString MemoryManager::getCacheName() const { return "MemoryManager"; }
+
+bool MemoryManager::dropCaches()
+{
+    std::unique_lock aGuard(maMutex);
+    reduceMemory(aGuard, true);
+    return true;
+}
+
+void MemoryManager::dumpState(rtl::OStringBuffer& rState)
+{
+    std::unique_lock aGuard(maMutex);
+
+    rState.append("\nMemory Manager items:\t");
+    rState.append(static_cast<sal_Int32>(maObjectList.size()));
+    rState.append("\tsize:\t");
+    rState.append(static_cast<sal_Int64>(mnTotalSize / 1024));
+    rState.append("\tkb");
+
+    for (MemoryManaged* pMemoryManaged : maObjectList)
+    {
+        pMemoryManaged->dumpState(rState);
     }
 }
 
-void Manager::reduceGraphicMemory(std::unique_lock<std::mutex>& rGuard, bool bDropAll)
+void MemoryManager::checkStartReduceTimer()
+{
+    // maMutex is locked in callers
+
+    if (!mbSwapEnabled || mnTotalSize < mnMemoryLimit)
+        return;
+
+    // start the timer
+    if (!maSwapOutTimer.IsActive())
+        maSwapOutTimer.Start();
+}
+
+void MemoryManager::reduceMemory(std::unique_lock<std::mutex>& rGuard, bool bDropAll)
 {
     // maMutex is locked in callers
 
     if (!mbSwapEnabled)
         return;
 
-    if (mnUsedSize < mnMemoryLimit && !bDropAll)
+    if (mnTotalSize < mnMemoryLimit && !bDropAll)
         return;
 
     // avoid recursive reduceGraphicMemory on reexport of tdf118346-1.odg to odg
@@ -128,190 +181,43 @@ void Manager::reduceGraphicMemory(std::unique_lock<std::mutex>& rGuard, bool bDr
 
     mbReducingGraphicMemory = true;
 
-    loopGraphicsAndSwapOut(rGuard, bDropAll);
-
-    sal_Int64 calculatedSize = 0;
-    for (ImpGraphic* pEachImpGraphic : m_pImpGraphicList)
-    {
-        if (!pEachImpGraphic->isSwappedOut())
-        {
-            calculatedSize += getGraphicSizeBytes(pEachImpGraphic);
-        }
-    }
-
-    if (calculatedSize != mnUsedSize)
-    {
-        assert(rGuard.owns_lock() && rGuard.mutex() == &maMutex);
-        // coverity[missing_lock: FALSE] - as above assert
-        mnUsedSize = calculatedSize;
-    }
+    loopAndReduceMemory(rGuard, bDropAll);
 
     mbReducingGraphicMemory = false;
 }
 
-void Manager::dropCache()
+void MemoryManager::loopAndReduceMemory(std::unique_lock<std::mutex>& rGuard, bool bDropAll)
 {
-    std::unique_lock aGuard(maMutex);
+    // make a copy of m_pImpGraphicList because if we swap out a svg, the svg
+    // filter may create more temp Graphics which are auto-added to
+    // m_pImpGraphicList invalidating a loop over m_pImpGraphicList, e.g.
+    // reexport of tdf118346-1.odg
 
-    reduceGraphicMemory(aGuard, true);
-}
+    o3tl::sorted_vector<MemoryManaged*> aObjectListCopy = maObjectList;
 
-void Manager::dumpState(rtl::OStringBuffer& rState)
-{
-    std::unique_lock aGuard(maMutex);
-
-    rState.append("\nImage Manager items:\t");
-    rState.append(static_cast<sal_Int32>(m_pImpGraphicList.size()));
-    rState.append("\tsize:\t");
-    rState.append(static_cast<sal_Int64>(mnUsedSize / 1024));
-    rState.append("\tkb");
-
-    for (ImpGraphic* pEachImpGraphic : m_pImpGraphicList)
+    for (MemoryManaged* pMemoryManaged : aObjectListCopy)
     {
-        pEachImpGraphic->dumpState(rState);
-    }
-}
+        if (!pMemoryManaged->canReduceMemory())
+            continue;
 
-sal_Int64 Manager::getGraphicSizeBytes(const ImpGraphic* pImpGraphic)
-{
-    if (!pImpGraphic->isAvailable())
-        return 0;
-    return pImpGraphic->getSizeBytes();
-}
-
-IMPL_LINK(Manager, SwapOutTimerHandler, Timer*, pTimer, void)
-{
-    std::unique_lock aGuard(maMutex);
-
-    pTimer->Stop();
-    reduceGraphicMemory(aGuard);
-    pTimer->Start();
-}
-
-void Manager::registerGraphic(const std::shared_ptr<ImpGraphic>& pImpGraphic)
-{
-    std::unique_lock aGuard(maMutex);
-
-    // make some space first
-    if (mnUsedSize > mnMemoryLimit)
-        reduceGraphicMemory(aGuard);
-
-    // Insert and update the used size (bytes)
-    assert(aGuard.owns_lock() && aGuard.mutex() == &maMutex);
-    // coverity[missing_lock: FALSE] - as above assert
-    mnUsedSize += getGraphicSizeBytes(pImpGraphic.get());
-    m_pImpGraphicList.insert(pImpGraphic.get());
-
-    // calculate size of the graphic set
-    sal_Int64 calculatedSize = 0;
-    for (ImpGraphic* pEachImpGraphic : m_pImpGraphicList)
-    {
-        if (!pEachImpGraphic->isSwappedOut())
+        sal_Int64 nCurrentSizeInBytes = pMemoryManaged->getCurrentSizeInBytes();
+        if (nCurrentSizeInBytes > mnSmallFrySize || bDropAll) // ignore small-fry
         {
-            calculatedSize += getGraphicSizeBytes(pEachImpGraphic);
+            auto aCurrent = std::chrono::high_resolution_clock::now();
+            auto aDeltaTime = aCurrent - pMemoryManaged->getLastUsed();
+            auto aSeconds = std::chrono::duration_cast<std::chrono::seconds>(aDeltaTime);
+
+            if (aSeconds > mnAllowedIdleTime)
+            {
+                // unlock because svgio can call back into us
+                rGuard.unlock();
+                pMemoryManaged->reduceMemory();
+                rGuard.lock();
+            }
         }
     }
-
-    if (calculatedSize != mnUsedSize)
-    {
-        SAL_INFO_IF(calculatedSize != mnUsedSize, "vcl.gdi",
-                    "Calculated size mismatch. Variable size is '"
-                        << mnUsedSize << "' but calculated size is '" << calculatedSize << "'");
-        mnUsedSize = calculatedSize;
-    }
 }
 
-void Manager::unregisterGraphic(ImpGraphic* pImpGraphic)
-{
-    std::scoped_lock aGuard(maMutex);
-
-    mnUsedSize -= getGraphicSizeBytes(pImpGraphic);
-    m_pImpGraphicList.erase(pImpGraphic);
-}
-
-std::shared_ptr<ImpGraphic> Manager::copy(std::shared_ptr<ImpGraphic> const& rImpGraphicPtr)
-{
-    auto pReturn = std::make_shared<ImpGraphic>(*rImpGraphicPtr);
-    registerGraphic(pReturn);
-    return pReturn;
-}
-
-std::shared_ptr<ImpGraphic> Manager::newInstance()
-{
-    auto pReturn = std::make_shared<ImpGraphic>();
-    registerGraphic(pReturn);
-    return pReturn;
-}
-
-std::shared_ptr<ImpGraphic> Manager::newInstance(std::shared_ptr<GfxLink> const& rGfxLink,
-                                                 sal_Int32 nPageIndex)
-{
-    auto pReturn = std::make_shared<ImpGraphic>(rGfxLink, nPageIndex);
-    registerGraphic(pReturn);
-    return pReturn;
-}
-
-std::shared_ptr<ImpGraphic> Manager::newInstance(const BitmapEx& rBitmapEx)
-{
-    auto pReturn = std::make_shared<ImpGraphic>(rBitmapEx);
-    registerGraphic(pReturn);
-    return pReturn;
-}
-
-std::shared_ptr<ImpGraphic> Manager::newInstance(const Animation& rAnimation)
-{
-    auto pReturn = std::make_shared<ImpGraphic>(rAnimation);
-    registerGraphic(pReturn);
-    return pReturn;
-}
-
-std::shared_ptr<ImpGraphic>
-Manager::newInstance(const std::shared_ptr<VectorGraphicData>& rVectorGraphicDataPtr)
-{
-    auto pReturn = std::make_shared<ImpGraphic>(rVectorGraphicDataPtr);
-    registerGraphic(pReturn);
-    return pReturn;
-}
-
-std::shared_ptr<ImpGraphic> Manager::newInstance(const GDIMetaFile& rMetaFile)
-{
-    auto pReturn = std::make_shared<ImpGraphic>(rMetaFile);
-    registerGraphic(pReturn);
-    return pReturn;
-}
-
-std::shared_ptr<ImpGraphic> Manager::newInstance(const GraphicExternalLink& rGraphicLink)
-{
-    auto pReturn = std::make_shared<ImpGraphic>(rGraphicLink);
-    registerGraphic(pReturn);
-    return pReturn;
-}
-
-void Manager::swappedIn(const ImpGraphic* pImpGraphic, sal_Int64 nSizeBytes)
-{
-    std::scoped_lock aGuard(maMutex);
-    if (pImpGraphic)
-    {
-        mnUsedSize += nSizeBytes;
-    }
-}
-
-void Manager::swappedOut(const ImpGraphic* pImpGraphic, sal_Int64 nSizeBytes)
-{
-    std::scoped_lock aGuard(maMutex);
-    if (pImpGraphic)
-    {
-        mnUsedSize -= nSizeBytes;
-    }
-}
-
-void Manager::changeExisting(const ImpGraphic* pImpGraphic, sal_Int64 nOldSizeBytes)
-{
-    std::scoped_lock aGuard(maMutex);
-
-    mnUsedSize -= nOldSizeBytes;
-    mnUsedSize += getGraphicSizeBytes(pImpGraphic);
-}
 } // end vcl::graphic
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

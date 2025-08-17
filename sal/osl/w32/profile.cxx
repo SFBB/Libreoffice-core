@@ -32,6 +32,8 @@
 #include <sal/macros.h>
 #include <sal/log.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <systools/win32/extended_max_path.hxx>
+
 #include <algorithm>
 #include <vector>
 using std::min;
@@ -371,7 +373,7 @@ DWORD GetPrivateProfileStringWrapper(const osl_TProfileImpl* pProfile,
     char* pszString, sal_uInt32 MaxLen,
     const char* pszDefault)
 {
-    OSL_ASSERT(pProfile && (!MaxLen || pszString));
+    assert(pProfile && (!MaxLen || pszString));
 
     rtl_uString *pSection = nullptr, *pEntry = nullptr, *pDefault = nullptr;
     if (pszSection)
@@ -412,10 +414,10 @@ bool WritePrivateProfileStringWrapper(const osl_TProfileImpl* pProfile,
     const char* pszSection, const char* pszEntry,
     const char* pszString)
 {
-    OSL_ASSERT(pProfile && pszSection);
+    assert(pProfile && pszSection);
     rtl_uString *pSection, *pEntry = nullptr, *pString = nullptr;
     rtl_string2UString(&pSection, pszSection, strlen(pszSection), osl_getThreadTextEncoding(), OSTRING_TO_OUSTRING_CVTFLAGS);
-    OSL_ASSERT(pSection);
+    assert(pSection);
     if (pszEntry)
     {
         rtl_string2UString(&pEntry, pszEntry, strlen(pszEntry), osl_getThreadTextEncoding(), OSTRING_TO_OUSTRING_CVTFLAGS);
@@ -764,8 +766,8 @@ sal_uInt32 SAL_CALL osl_getProfileSectionEntries(oslProfile Profile, const char 
 bool osl_getProfileName(rtl_uString* strPath, rtl_uString* strName, rtl_uString** strProfileName)
 {
     bool bFailed;
-    ::osl::LongPathBuffer< sal_Unicode > aFile( MAX_LONG_PATH );
-    ::osl::LongPathBuffer< sal_Unicode > aPath( MAX_LONG_PATH );
+    osl::LongPathBuffer<sal_Unicode> aFile(EXTENDED_MAX_PATH);
+    osl::LongPathBuffer<sal_Unicode> aPath(EXTENDED_MAX_PATH);
     sal_uInt32  nFileLen = 0;
     sal_uInt32  nPathLen = 0;
 
@@ -1258,6 +1260,7 @@ static bool putLine(osl_TFile* pFile, const char *pszLine)
     if ( pFile->m_pWriteBuf == nullptr )
     {
         pFile->m_pWriteBuf = static_cast<char*>(malloc(Len+3));
+        assert(pFile->m_pWriteBuf && "Don't handle OOM conditions");
         pFile->m_nWriteBufLen = Len+3;
         pFile->m_nWriteBufFree = Len+3;
     }
@@ -1352,9 +1355,9 @@ static const char* addLine(osl_TProfileImpl* pProfile, const char* Line)
 
     }
 
-    if ( pProfile->m_Lines != nullptr && pProfile->m_Lines[pProfile->m_NoLines] != nullptr )
+    if (pProfile->m_Lines[pProfile->m_NoLines] != nullptr)
     {
-            free(pProfile->m_Lines[pProfile->m_NoLines]);
+        free(pProfile->m_Lines[pProfile->m_NoLines]);
     }
     pProfile->m_Lines[pProfile->m_NoLines++] = strdup(Line);
 
@@ -2000,7 +2003,7 @@ static bool lookupProfile(const sal_Unicode *strPath, const sal_Unicode *strFile
     char Buffer[4096] = "";
     char Product[132] = "";
 
-    ::osl::LongPathBuffer< sal_Unicode > aPath( MAX_LONG_PATH );
+    osl::LongPathBuffer<sal_Unicode> aPath(EXTENDED_MAX_PATH);
     aPath[0] = 0;
 
     if (*strPath == L'"')
@@ -2034,7 +2037,7 @@ static bool lookupProfile(const sal_Unicode *strPath, const sal_Unicode *strFile
             rtl_uString * strSVFallback = nullptr;
             rtl_uString * strSVLocation = nullptr;
             rtl_uString * strSVName     = nullptr;
-            ::osl::LongPathBuffer< char > aDir( MAX_LONG_PATH );
+            osl::LongPathBuffer<char> aDir(EXTENDED_MAX_PATH);
             oslProfile hProfile;
 
             rtl_uString_newFromAscii(&strSVFallback, SVERSION_FALLBACK);
@@ -2183,7 +2186,7 @@ static bool lookupProfile(const sal_Unicode *strPath, const sal_Unicode *strFile
     }
 
     {
-        ::osl::LongPathBuffer< char > aTmpPath( MAX_LONG_PATH );
+        osl::LongPathBuffer<char> aTmpPath(EXTENDED_MAX_PATH);
 
         WideCharToMultiByte(CP_ACP,0, o3tl::toW(aPath), -1, aTmpPath, aTmpPath.getBufSizeInSymbols(), nullptr, nullptr);
 
@@ -2232,7 +2235,7 @@ static bool lookupProfile(const sal_Unicode *strPath, const sal_Unicode *strFile
     copy_ustr_n(aPath + dwPathLen, strFile, rtl_ustr_getLength(strFile)+1);
 
     {
-        ::osl::LongPathBuffer< char > aTmpPath( MAX_LONG_PATH );
+        osl::LongPathBuffer<char> aTmpPath(EXTENDED_MAX_PATH);
 
         WideCharToMultiByte(CP_ACP,0, o3tl::toW(aPath), -1, aTmpPath, aTmpPath.getBufSizeInSymbols(), nullptr, nullptr);
 
@@ -2300,7 +2303,7 @@ static bool lookupProfile(const sal_Unicode *strPath, const sal_Unicode *strFile
                         }
                         else
                         {
-                            ::osl::LongPathBuffer< char > aTmpPath2( MAX_LONG_PATH );
+                            osl::LongPathBuffer<char> aTmpPath2(EXTENDED_MAX_PATH);
                             int n;
 
                             if ((n = WideCharToMultiByte(

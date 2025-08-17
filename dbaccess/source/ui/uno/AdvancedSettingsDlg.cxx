@@ -28,7 +28,6 @@ namespace dbaui
 {
 
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
 
     namespace {
@@ -73,12 +72,12 @@ namespace dbaui
 
     OUString SAL_CALL OAdvancedSettingsDialog::getImplementationName()
     {
-        return "org.openoffice.comp.dbu.OAdvancedSettingsDialog";
+        return u"org.openoffice.comp.dbu.OAdvancedSettingsDialog"_ustr;
     }
 
     css::uno::Sequence<OUString> SAL_CALL OAdvancedSettingsDialog::getSupportedServiceNames()
     {
-        return { "com.sun.star.sdb.AdvancedDatabaseSettingsDialog" };
+        return { u"com.sun.star.sdb.AdvancedDatabaseSettingsDialog"_ustr };
     }
 
     Reference<XPropertySetInfo>  SAL_CALL OAdvancedSettingsDialog::getPropertySetInfo()

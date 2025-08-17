@@ -50,11 +50,11 @@ namespace dbaui
 
     // OGeneralPage
     OGeneralPage::OGeneralPage(weld::Container* pPage, weld::DialogController* pController, const OUString& _rUIXMLDescription, const SfxItemSet& _rItems)
-        : OGenericAdministrationPage(pPage, pController, _rUIXMLDescription, "PageGeneral", _rItems)
-        , m_xSpecialMessage(m_xBuilder->weld_label("specialMessage"))
+        : OGenericAdministrationPage(pPage, pController, _rUIXMLDescription, u"PageGeneral"_ustr, _rItems)
+        , m_xSpecialMessage(m_xBuilder->weld_label(u"specialMessage"_ustr))
         , m_eLastMessage(smNone)
         , m_bInitTypeList(true)
-        , m_xDatasourceType(m_xBuilder->weld_combo_box("datasourceType"))
+        , m_xDatasourceType(m_xBuilder->weld_combo_box(u"datasourceType"_ustr))
         , m_pCollection(nullptr)
     {
         // extract the datasource type collection from the item set
@@ -226,31 +226,29 @@ namespace dbaui
 
     OUString OGeneralPageWizard::getEmbeddedDBName( const SfxItemSet& _rSet )
     {
+        if (!m_pCollection)
+            return {};
         // first check whether or not the selection is invalid or readonly (invalid implies readonly, but not vice versa)
         bool bValid, bReadonly;
         getFlags( _rSet, bValid, bReadonly );
-
-        // if the selection is invalid, disable everything
-
-        implSetCurrentType(  OUString() );
+        if (!bValid)
+            return {};
 
         // compare the DSN prefix with the registered ones
-        OUString sDisplayName;
+        OUString sDBURL;
+        if (const SfxStringItem* pUrlItem = _rSet.GetItem<SfxStringItem>(DSID_CONNECTURL))
+            if (dbaccess::ODsnTypeCollection::isEmbeddedDatabase(pUrlItem->GetValue()))
+                sDBURL = pUrlItem->GetValue();
+        if (sDBURL.isEmpty())
+            sDBURL = dbaccess::ODsnTypeCollection::getEmbeddedDatabase();
+        OUString sDisplayName = m_pCollection->getTypeDisplayName(sDBURL);
 
-        if (m_pCollection && bValid)
-        {
-            implSetCurrentType( dbaccess::ODsnTypeCollection::getEmbeddedDatabase() );
-            sDisplayName = m_pCollection->getTypeDisplayName( m_eCurrentSelection );
-            onTypeSelected(m_eCurrentSelection);
-        }
-
-        // select the correct datasource type
-        if  (  dbaccess::ODsnTypeCollection::isEmbeddedDatabase( m_eCurrentSelection )
-            && m_xEmbeddedDBType->find_text(sDisplayName) == -1 )
+        // ensure presence of the correct datasource type
+        if (!sDisplayName.isEmpty() && m_xEmbeddedDBType->find_text(sDisplayName) == -1)
         {   // this indicates it's really a type which is known in general, but not supported on the current platform
             // show a message saying so
             //  eSpecialMessage = smUnsupportedType;
-            insertEmbeddedDBTypeEntryData( m_eCurrentSelection, sDisplayName );
+            insertEmbeddedDBTypeEntryData(sDBURL, sDisplayName);
         }
 
         return sDisplayName;
@@ -312,7 +310,7 @@ namespace dbaui
         {
             // do not display the Connector/OOo driver itself, it is always wrapped via the MySQL-Driver, if
             // this driver is installed
-            if ( m_pCollection->hasDriver( "sdbc:mysql:mysqlc:" ) )
+            if ( m_pCollection->hasDriver( u"sdbc:mysql:mysqlc:" ) )
                 _inout_rDisplayName.clear();
         }
 
@@ -404,7 +402,7 @@ namespace dbaui
 
     // OGeneralPageDialog
     OGeneralPageDialog::OGeneralPageDialog(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& _rItems)
-        : OGeneralPage(pPage, pController, "dbaccess/ui/generalpagedialog.ui", _rItems)
+        : OGeneralPage(pPage, pController, u"dbaccess/ui/generalpagedialog.ui"_ustr, _rItems)
     {
     }
 
@@ -447,16 +445,16 @@ namespace dbaui
 
     // OGeneralPageWizard
     OGeneralPageWizard::OGeneralPageWizard(weld::Container* pPage, ODbTypeWizDialogSetup* pController, const SfxItemSet& _rItems)
-        : OGeneralPage( pPage, pController, "dbaccess/ui/generalpagewizard.ui", _rItems )
-        , m_xRB_CreateDatabase(m_xBuilder->weld_radio_button("createDatabase"))
-        , m_xRB_OpenExistingDatabase(m_xBuilder->weld_radio_button("openExistingDatabase"))
-        , m_xRB_ConnectDatabase(m_xBuilder->weld_radio_button("connectDatabase"))
-        , m_xFT_EmbeddedDBLabel(m_xBuilder->weld_label("embeddeddbLabel"))
-        , m_xEmbeddedDBType(m_xBuilder->weld_combo_box("embeddeddbList"))
-        , m_xFT_DocListLabel(m_xBuilder->weld_label("docListLabel"))
-        , m_xLB_DocumentList(new OpenDocumentListBox(m_xBuilder->weld_combo_box("documentList"), "com.sun.star.sdb.OfficeDatabaseDocument"))
-        , m_xPB_OpenDatabase(new OpenDocumentButton(m_xBuilder->weld_button("openDatabase"), "com.sun.star.sdb.OfficeDatabaseDocument"))
-        , m_xFT_NoEmbeddedDBLabel(m_xBuilder->weld_label("noembeddeddbLabel"))
+        : OGeneralPage( pPage, pController, u"dbaccess/ui/generalpagewizard.ui"_ustr, _rItems )
+        , m_xRB_CreateDatabase(m_xBuilder->weld_radio_button(u"createDatabase"_ustr))
+        , m_xRB_OpenExistingDatabase(m_xBuilder->weld_radio_button(u"openExistingDatabase"_ustr))
+        , m_xRB_ConnectDatabase(m_xBuilder->weld_radio_button(u"connectDatabase"_ustr))
+        , m_xFT_EmbeddedDBLabel(m_xBuilder->weld_label(u"embeddeddbLabel"_ustr))
+        , m_xEmbeddedDBType(m_xBuilder->weld_combo_box(u"embeddeddbList"_ustr))
+        , m_xFT_DocListLabel(m_xBuilder->weld_label(u"docListLabel"_ustr))
+        , m_xLB_DocumentList(new OpenDocumentListBox(m_xBuilder->weld_combo_box(u"documentList"_ustr), "com.sun.star.sdb.OfficeDatabaseDocument"))
+        , m_xPB_OpenDatabase(new OpenDocumentButton(m_xBuilder->weld_button(u"openDatabase"_ustr), u"com.sun.star.sdb.OfficeDatabaseDocument"_ustr))
+        , m_xFT_NoEmbeddedDBLabel(m_xBuilder->weld_label(u"noembeddeddbLabel"_ustr))
         , m_eOriginalCreationMode(eCreateNew)
         , m_bInitEmbeddedDBList(true)
         , m_bIsDisplayedTypesEmpty(true)
@@ -470,10 +468,10 @@ namespace dbaui
         // also, if our application policies tell us to hide the option, do it
         ::utl::OConfigurationTreeRoot aConfig( ::utl::OConfigurationTreeRoot::createWithComponentContext(
             ::comphelper::getProcessComponentContext(),
-            "/org.openoffice.Office.DataAccess/Policies/Features/Base"
+            u"/org.openoffice.Office.DataAccess/Policies/Features/Base"_ustr
         ) );
         bool bAllowCreateLocalDatabase( true );
-        OSL_VERIFY( aConfig.getNodeValue( "CreateLocalDatabase" ) >>= bAllowCreateLocalDatabase );
+        OSL_VERIFY( aConfig.getNodeValue( u"CreateLocalDatabase"_ustr ) >>= bAllowCreateLocalDatabase );
         if ( !bAllowCreateLocalDatabase )
             bHideCreateNew = true;
 
@@ -584,7 +582,7 @@ namespace dbaui
 
         if ( m_xRB_CreateDatabase->get_active() )
         {
-            _rCoreAttrs->Put( SfxStringItem( DSID_CONNECTURL, "sdbc:dbase:" ) );
+            _rCoreAttrs->Put( SfxStringItem( DSID_CONNECTURL, u"sdbc:dbase:"_ustr ) );
             bChangedSomething = true;
             bCommitTypeSelection = false;
         }
@@ -666,7 +664,7 @@ namespace dbaui
     {
         ::sfx2::FileDialogHelper aFileDlg(
                 ui::dialogs::TemplateDescription::FILEOPEN_READONLY_VERSION,
-                FileDialogFlags::NONE, "sdatabase", SfxFilterFlags::NONE, SfxFilterFlags::NONE, GetFrameWeld());
+                FileDialogFlags::NONE, u"sdatabase"_ustr, SfxFilterFlags::NONE, SfxFilterFlags::NONE, GetFrameWeld());
         aFileDlg.SetContext(sfx2::FileDialogHelper::BaseDataSource);
         std::shared_ptr<const SfxFilter> pFilter = getStandardDatabaseFilter();
         if ( pFilter )

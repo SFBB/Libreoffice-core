@@ -31,7 +31,7 @@ class SwCoreCrsrTest : public SwModelTestBase
 {
 public:
     SwCoreCrsrTest()
-        : SwModelTestBase("/sw/qa/core/crsr/data/")
+        : SwModelTestBase(u"/sw/qa/core/crsr/data/"_ustr)
     {
     }
 };
@@ -45,7 +45,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testFindReplace)
     uno::Reference<text::XText> xText = xTextDocument->getText();
     // Create a document which has 2 lines: first line has foo in it, second line has the same, but
     // followed by a formatted soft hyphen.
-    xText->insertString(xText->getEnd(), "foo xxx", /*bAbsorb=*/false);
+    xText->insertString(xText->getEnd(), u"foo xxx"_ustr, /*bAbsorb=*/false);
     xText->insertControlCharacter(xText->getEnd(), text::ControlCharacter::PARAGRAPH_BREAK,
                                   /*bAbsorb=*/false);
     xText->insertString(xText->getEnd(), u"foo xxx \xad after"_ustr, /*bAbsorb=*/false);
@@ -57,21 +57,21 @@ CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testFindReplace)
     xViewCursor->goLeft(/*nCount=*/6, /*bExpand=*/false);
     xViewCursor->goLeft(/*nCount=*/1, /*bExpand=*/true);
     uno::Reference<beans::XPropertySet> xViewCursorProps(xViewCursor, uno::UNO_QUERY);
-    xViewCursorProps->setPropertyValue("CharWeight", uno::Any(awt::FontWeight::BOLD));
+    xViewCursorProps->setPropertyValue(u"CharWeight"_ustr, uno::Any(awt::FontWeight::BOLD));
     xViewCursor->gotoStart(/*bExpand=*/false);
 
     // When: doing search & replace 3 times.
     uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence({
-        { "SearchItem.SearchString", uno::Any(OUString("foo")) },
-        { "SearchItem.ReplaceString", uno::Any(OUString("bar")) },
+        { "SearchItem.SearchString", uno::Any(u"foo"_ustr) },
+        { "SearchItem.ReplaceString", uno::Any(u"bar"_ustr) },
         { "SearchItem.Command", uno::Any(static_cast<sal_Int16>(SvxSearchCmd::REPLACE)) },
     }));
     // Find the first foo.
-    dispatchCommand(mxComponent, ".uno:ExecuteSearch", aArgs);
+    dispatchCommand(mxComponent, u".uno:ExecuteSearch"_ustr, aArgs);
     // Replace the first foo.
-    dispatchCommand(mxComponent, ".uno:ExecuteSearch", aArgs);
+    dispatchCommand(mxComponent, u".uno:ExecuteSearch"_ustr, aArgs);
     // Replace the second foo.
-    dispatchCommand(mxComponent, ".uno:ExecuteSearch", aArgs);
+    dispatchCommand(mxComponent, u".uno:ExecuteSearch"_ustr, aArgs);
 
     // Then: the second "foo" should be replaced as well.
     xViewCursor->gotoEnd(/*bExpand=*/false);
@@ -84,14 +84,13 @@ CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testFindReplace)
     // - Expected: bar
     // - Actual  : foo
     // i.e. the foo on the second line was not replaced.
-    CPPUNIT_ASSERT_EQUAL(OUString("bar"), aActualStart);
+    CPPUNIT_ASSERT_EQUAL(u"bar"_ustr, aActualStart);
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testSelAllStartsWithTable)
 {
     createSwDoc("sel-all-starts-with-table.odt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pDocShell = pTextDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwDoc* pDoc = pDocShell->GetDoc();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
 
@@ -113,24 +112,23 @@ CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testContentControlLineBreak)
 {
     // Given a document with a (rich text) content control:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
     uno::Reference<lang::XMultiServiceFactory> xMSF(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XText> xText = xTextDocument->getText();
     uno::Reference<text::XTextCursor> xCursor = xText->createTextCursor();
-    xText->insertString(xCursor, "test", /*bAbsorb=*/false);
+    xText->insertString(xCursor, u"test"_ustr, /*bAbsorb=*/false);
     xCursor->gotoStart(/*bExpand=*/false);
     xCursor->gotoEnd(/*bExpand=*/true);
     uno::Reference<text::XTextContent> xContentControl(
-        xMSF->createInstance("com.sun.star.text.ContentControl"), uno::UNO_QUERY);
+        xMSF->createInstance(u"com.sun.star.text.ContentControl"_ustr), uno::UNO_QUERY);
     xText->insertTextContent(xCursor, xContentControl, /*bAbsorb=*/true);
 
     // When pressing "enter" in the middle of that content control:
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->SttEndDoc(/*bStt=*/true);
     // Go after "t".
     pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 2, /*bBasicCall=*/false);
-    dispatchCommand(mxComponent, ".uno:InsertPara", {});
+    dispatchCommand(mxComponent, u".uno:InsertPara"_ustr, {});
 
     // Then make sure that we only insert a line break, not a new paragraph:
     SwTextNode* pTextNode = pWrtShell->GetCursor()->GetMark()->GetNode().GetTextNode();
@@ -138,14 +136,13 @@ CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testContentControlLineBreak)
     // - Expected: t\nest
     // - Actual  : est
     // i.e. a new paragraph was inserted, which is not allowed for inline content controls.
-    CPPUNIT_ASSERT_EQUAL(OUString("t\nest"), pTextNode->GetExpandText(pWrtShell->GetLayout()));
+    CPPUNIT_ASSERT_EQUAL(u"t\nest"_ustr, pTextNode->GetExpandText(pWrtShell->GetLayout()));
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testContentControlReadOnly)
 {
     // Given a document with a checkbox content control:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
     uno::Reference<lang::XMultiServiceFactory> xMSF(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XText> xText = xTextDocument->getText();
@@ -154,13 +151,13 @@ CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testContentControlReadOnly)
     xCursor->gotoStart(/*bExpand=*/false);
     xCursor->gotoEnd(/*bExpand=*/true);
     uno::Reference<text::XTextContent> xContentControl(
-        xMSF->createInstance("com.sun.star.text.ContentControl"), uno::UNO_QUERY);
+        xMSF->createInstance(u"com.sun.star.text.ContentControl"_ustr), uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xContentControlProps(xContentControl, uno::UNO_QUERY);
-    xContentControlProps->setPropertyValue("Checkbox", uno::Any(true));
+    xContentControlProps->setPropertyValue(u"Checkbox"_ustr, uno::Any(true));
     xText->insertTextContent(xCursor, xContentControl, /*bAbsorb=*/true);
 
     // When entering the content control:
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->SttEndDoc(/*bStt=*/true);
     pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 1, /*bBasicCall=*/false);
 
@@ -173,8 +170,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testContentControlReadOnly)
 CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testTdf135451)
 {
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
 
     // Insert narrow no-break space and move the cursor right before it
     pWrtShell->Insert(u"a" + OUStringChar(CHAR_NNBSP) + "b");
@@ -187,15 +183,14 @@ CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testTdf135451)
     // - Expected: a
     // - Actual  : CHAR_NNBSP
     // i.e., the cursor did not move over the narrow no-break space (CHAR_NNBSP)
-    CPPUNIT_ASSERT_EQUAL(OUString("a"), pWrtShell->GetSelText());
+    CPPUNIT_ASSERT_EQUAL(u"a"_ustr, pWrtShell->GetSelText());
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testDropdownContentControl)
 {
     // Given a document with a dropdown content control:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->InsertContentControl(SwContentControlType::DROP_DOWN_LIST);
 
     // When entering the content control:
@@ -212,12 +207,11 @@ CPPUNIT_TEST_FIXTURE(SwCoreCrsrTest, testContentControlProtectedSection)
 {
     // Given a document with a date content control in a protected section:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->InsertContentControl(SwContentControlType::DATE);
     pWrtShell->SelAll();
     OUString aSectionName = pWrtShell->GetUniqueSectionName();
-    SwSectionData aSection(SectionType::Content, aSectionName);
+    SwSectionData aSection(SectionType::Content, UIName(aSectionName));
     aSection.SetProtectFlag(true);
     pWrtShell->InsertSection(aSection);
 

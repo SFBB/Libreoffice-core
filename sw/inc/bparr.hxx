@@ -41,6 +41,7 @@ public:
 
     inline sal_Int32 GetPos() const;
     inline BigPtrArray& GetArray() const;
+    bool IsDisconnected() const { return m_pBlock == nullptr; }
 };
 
 // 1000 entries per Block = a bit less than 4K
@@ -61,7 +62,7 @@ struct BlockInfo final
                  mvData;               ///< data block
 };
 
-class SW_DLLPUBLIC BigPtrArray
+class BigPtrArray
 {
 protected:
     std::unique_ptr<BlockInfo*[]>
@@ -76,6 +77,8 @@ protected:
     BlockInfo*  InsBlock( sal_uInt16 );         ///< insert block
     void        BlockDel( sal_uInt16 );         ///< some blocks were deleted
     void        UpdIndex( sal_uInt16 );         ///< recalculate indices
+    void        ImplRemove( sal_Int32 pos, sal_Int32 n, bool bClearElement );
+    void        ImplReplace( sal_Int32 idx, BigPtrEntry* pElem, bool bClearElement );
 
     // fill all blocks
     sal_uInt16 Compress();
@@ -91,7 +94,12 @@ public:
     void Move( sal_Int32 from, sal_Int32 to );
     void Replace( sal_Int32 pos, BigPtrEntry* p);
 
-    BigPtrEntry* operator[]( sal_Int32 ) const;
+    /** Speed up the complicated removal logic in SwNodes::RemoveNode.
+        Returns the entry before pNotTheOne.
+    */
+    BigPtrEntry* ReplaceTheOneAfter( BigPtrEntry* pNotTheOne, BigPtrEntry* pNewEntry);
+
+    SW_DLLPUBLIC BigPtrEntry* operator[]( sal_Int32 ) const;
 };
 
 inline sal_Int32 BigPtrEntry::GetPos() const

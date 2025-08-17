@@ -19,8 +19,6 @@
 #   --PYTHONOBJECTS
 #
 # Add black listed modules a json files (--DENYLIST)
-#
-# Reduce number of denylisted modules
 
 ifneq ($(filter gbuildtojson,$(MAKECMDGOALS)),)
 
@@ -82,14 +80,21 @@ define gb_Postprocess_register_target
 gbuildtojson : $(call gb_LinkTarget_get_target,$(call gb_$(2)_get_linktarget,$(3)))
 
 $(call gb_LinkTarget_get_target,$(call gb_$(2)_get_linktarget,$(3))): $(gb_Helper_MISCDUMMY) $(gb_GbuildToJson_PHONY)
-$(call gb_LinkTarget_get_target,$(call gb_$(2)_get_linktarget,$(3))): T_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+$(call gb_LinkTarget_get_target,$(call gb_$(2)_get_linktarget,$(3))): T_MAKEFILE := $(lastword $(filter %.mk,$(MAKEFILE_LIST)))
 endef
 
 define gb_CppunitTest_register_target
 gbuildtojson : $(call gb_LinkTarget_get_target,$(2))
 
 $(call gb_LinkTarget_get_target,$(2)): $(gb_Helper_MISCDUMMY) $(gb_GbuildToJson_PHONY)
-$(call gb_LinkTarget_get_target,$(2)): T_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+$(call gb_LinkTarget_get_target,$(2)): T_MAKEFILE := $(lastword $(filter %.mk,$(MAKEFILE_LIST)))
+endef
+
+define gb_StaticLibrary_register_target
+gbuildtojson : $(call gb_LinkTarget_get_target,$(2))
+
+$(call gb_LinkTarget_get_target,$(2)): $(gb_Helper_MISCDUMMY) $(gb_GbuildToJson_PHONY)
+$(call gb_LinkTarget_get_target,$(2)): T_MAKEFILE := $(lastword $(filter %.mk,$(MAKEFILE_LIST)))
 endef
 
 gb_LinkTarget_use_static_libraries =
@@ -151,11 +156,11 @@ gb_Library_set_componentfile =
 gb_Library_add_componentimpl =
 
 #$(call gb_Library_get_exports_target,%):
-$(WORKDIR)/LinkTarget/Library/%.exports:
+$(gb_Library_DLLDIR)/%.exports:
 	@true
 
 define gb_LinkTarget__use_custom_headers
-$(call gb_LinkTarget__add_include,$(1),$(call gb_CustomTarget_get_workdir,$(2)))
+$(call gb_LinkTarget__add_include,$(1),$(gb_CustomTarget_workdir)/$(2))
 
 endef
 
@@ -175,7 +180,7 @@ $(call gb_Module_get_check_target,$(1)) : $(3)
 endef
 
 define gb_Module_add_target
-$(if $(filter Library_% Executable_%,$(2)),$(call gb_Module__add_target_impl,$(1),$(2),$$(gb_Module_CURRENTTARGET)))
+$(if $(filter Library_% Executable_% StaticLibrary_%,$(2)),$(call gb_Module__add_target_impl,$(1),$(2),$$(gb_Module_CURRENTTARGET)))
 endef
 
 define gb_Module_add_check_target
@@ -184,7 +189,7 @@ endef
 
 gb_Module_add_l10n_target =
 
-gb_GbuildToJson_DENYLISTEDMODULES := cli_ure jurt external
+gb_GbuildToJson_DENYLISTEDMODULES := 
 
 define gb_Module__add_moduledir_impl
 include $(patsubst $(1):%,%,$(filter $(1):%,$(gb_Module_MODULELOCATIONS)))/$(2)/Module_$(notdir $(2)).mk

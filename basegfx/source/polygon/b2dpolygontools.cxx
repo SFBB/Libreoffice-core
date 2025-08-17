@@ -36,9 +36,9 @@
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 
 // #i37443#
-#define ANGLE_BOUND_START_VALUE     (2.25)
-#define ANGLE_BOUND_MINIMUM_VALUE   (0.1)
-#define STEPSPERQUARTER     (3)
+constexpr double ANGLE_BOUND_START_VALUE = 2.25;
+constexpr double ANGLE_BOUND_MINIMUM_VALUE = 0.1;
+constexpr sal_uInt32 STEPSPERQUARTER = 3;
 
 namespace basegfx::utils
 {
@@ -475,7 +475,7 @@ namespace basegfx::utils
             return fRetval;
         }
 
-        double getLength(const B2DPolygon& rCandidate, bool bApproximateBezierLength)
+        double getLength(const B2DPolygon& rCandidate)
         {
             double fRetval(0.0);
             const sal_uInt32 nPointCount(rCandidate.count());
@@ -486,45 +486,18 @@ namespace basegfx::utils
 
                 if(rCandidate.areControlPointsUsed())
                 {
-                    if (bApproximateBezierLength)
+                    B2DCubicBezier aEdge;
+                    aEdge.setStartPoint(rCandidate.getB2DPoint(0));
+
+                    for(sal_uInt32 a(0); a < nEdgeCount; a++)
                     {
-                        B2DPoint aStartPoint = rCandidate.getB2DPoint(0);
+                        const sal_uInt32 nNextIndex((a + 1) % nPointCount);
+                        aEdge.setControlPointA(rCandidate.getNextControlPoint(a));
+                        aEdge.setControlPointB(rCandidate.getPrevControlPoint(nNextIndex));
+                        aEdge.setEndPoint(rCandidate.getB2DPoint(nNextIndex));
 
-                        for(sal_uInt32 a(0); a < nEdgeCount; a++)
-                        {
-                            // An approximate length of a cubic Bezier curve is the average
-                            // of its chord length and the sum of the lengths of its control net sides.
-                            const sal_uInt32 nNextIndex((a + 1) % nPointCount);
-                            const B2DPoint& aControlPoint1 = rCandidate.getNextControlPoint(a);
-                            const B2DPoint& aControlPoint2 = rCandidate.getPrevControlPoint(nNextIndex);
-                            const B2DPoint& aEndPoint = rCandidate.getB2DPoint(nNextIndex);
-
-                            double chord_length = B2DVector(aEndPoint - aStartPoint).getLength();
-                            double control_net_length = B2DVector(aStartPoint - aControlPoint1).getLength()
-                                + B2DVector(aControlPoint2 - aControlPoint1).getLength()
-                                + B2DVector(aEndPoint - aControlPoint2).getLength();
-                            double approximate_arc_length = (control_net_length + chord_length) / 2;
-
-                            fRetval += approximate_arc_length;
-                            aStartPoint = aEndPoint;
-                        }
-
-                    }
-                    else
-                    {
-                        B2DCubicBezier aEdge;
-                        aEdge.setStartPoint(rCandidate.getB2DPoint(0));
-
-                        for(sal_uInt32 a(0); a < nEdgeCount; a++)
-                        {
-                            const sal_uInt32 nNextIndex((a + 1) % nPointCount);
-                            aEdge.setControlPointA(rCandidate.getNextControlPoint(a));
-                            aEdge.setControlPointB(rCandidate.getPrevControlPoint(nNextIndex));
-                            aEdge.setEndPoint(rCandidate.getB2DPoint(nNextIndex));
-
-                            fRetval += aEdge.getLength();
-                            aEdge.setStartPoint(aEdge.getEndPoint());
-                        }
+                        fRetval += aEdge.getLength();
+                        aEdge.setStartPoint(aEdge.getEndPoint());
                     }
                 }
                 else
@@ -567,7 +540,7 @@ namespace basegfx::utils
                     fLength = getLength(rCandidate);
                 }
 
-                if(fTools::less(fDistance, 0.0))
+                if (fDistance < 0.0)
                 {
                     // handle fDistance < 0.0
                     if(rCandidate.isClosed())
@@ -708,7 +681,7 @@ namespace basegfx::utils
                 }
 
                 // test and correct fFrom
-                if(fTools::less(fFrom, 0.0))
+                if (fFrom < 0.0)
                 {
                     fFrom = 0.0;
                 }
@@ -1157,22 +1130,17 @@ namespace basegfx::utils
                 pGapTarget->clear();
             }
 
-            // provide callbacks as lambdas
-            auto aLineCallback(
-                nullptr == pLineTarget
-                ? std::function<void(const basegfx::B2DPolygon&)>()
-                : [&pLineTarget](const basegfx::B2DPolygon& rSnippet){ pLineTarget->append(rSnippet); });
-            auto aGapCallback(
-                nullptr == pGapTarget
-                ? std::function<void(const basegfx::B2DPolygon&)>()
-                : [&pGapTarget](const basegfx::B2DPolygon& rSnippet){ pGapTarget->append(rSnippet); });
-
             // call version that uses callbacks
             applyLineDashing(
                 rCandidate,
                 rDotDashArray,
-                aLineCallback,
-                aGapCallback,
+                // provide callbacks as lambdas
+                (!pLineTarget
+                    ? std::function<void(const basegfx::B2DPolygon&)>()
+                    : [&pLineTarget](const basegfx::B2DPolygon& rSnippet){ pLineTarget->append(rSnippet); }),
+                (!pGapTarget
+                    ? std::function<void(const basegfx::B2DPolygon&)>()
+                    : [&pGapTarget](const basegfx::B2DPolygon& rSnippet){ pGapTarget->append(rSnippet); }),
                 fDotDashLength);
         }
 
@@ -1239,12 +1207,12 @@ namespace basegfx::utils
             const sal_uInt32 nPointCount(rCandidate.count());
             const sal_uInt32 nDotDashCount(rDotDashArray.size());
 
-            if(fTools::lessOrEqual(fDotDashLength, 0.0))
+            if(fDotDashLength <= 0.0)
             {
                 fDotDashLength = std::accumulate(rDotDashArray.begin(), rDotDashArray.end(), 0.0);
             }
 
-            if(fTools::lessOrEqual(fDotDashLength, 0.0) || (!rLineTargetCallback && !rGapTargetCallback) || !nPointCount)
+            if(fDotDashLength <= 0.0 || (!rLineTargetCallback && !rGapTargetCallback) || !nPointCount)
             {
                 // parameters make no sense, just add source to targets
                 if (rLineTargetCallback)
@@ -1259,9 +1227,9 @@ namespace basegfx::utils
             // precalculate maximal acceptable length of candidate polygon assuming
             // we want to create a maximum of fNumberOfAllowedSnippets. For
             // fNumberOfAllowedSnippets use ca. 65536, double due to line & gap.
-            static const double fNumberOfAllowedSnippets(100.0 * 2.0);
+            static const double fNumberOfAllowedSnippets(65535.0 * 2.0);
             const double fAllowedLength((fNumberOfAllowedSnippets * fDotDashLength) / double(rDotDashArray.size()));
-            const double fCandidateLength(basegfx::utils::getLength(rCandidate, /*bApproximateBezierLength*/true));
+            const double fCandidateLength(basegfx::utils::getLength(rCandidate));
             std::vector<double> aDotDashArray(rDotDashArray);
 
             if(fCandidateLength > fAllowedLength)
@@ -1847,7 +1815,7 @@ namespace basegfx::utils
 
             // truncate fStart, fEnd to a range of [0.0 .. 2PI[ where 2PI
             // falls back to 0.0 to ensure a unique definition
-            if(fTools::less(fStart, 0.0))
+            if(fStart < 0.0)
             {
                 fStart = 0.0;
             }
@@ -1857,7 +1825,7 @@ namespace basegfx::utils
                 fStart = 0.0;
             }
 
-            if(fTools::less(fEnd, 0.0))
+            if(fEnd < 0.0)
             {
                 fEnd = 0.0;
             }
@@ -2846,7 +2814,7 @@ namespace basegfx::utils
         {
             OSL_ENSURE(rOld1.count() == rOld2.count(), "B2DPolygon interpolate: Different geometry (!)");
 
-            if(fTools::lessOrEqual(t, 0.0) || rOld1 == rOld2)
+            if(t <= 0.0 || rOld1 == rOld2)
             {
                 return rOld1;
             }
@@ -3277,12 +3245,10 @@ namespace basegfx::utils
             if(nLength)
             {
                 aRetval.reserve(nLength);
-                const css::awt::Point* pArray = rPointSequenceSource.getConstArray();
-                const css::awt::Point* pArrayEnd = pArray + rPointSequenceSource.getLength();
 
-                for(;pArray != pArrayEnd; pArray++)
+                for(auto& point : rPointSequenceSource)
                 {
-                    aRetval.append(B2DPoint(pArray->X, pArray->Y));
+                    aRetval.append(B2DPoint(point.X, point.Y));
                 }
 
                 // check for closed state flag
@@ -3328,7 +3294,7 @@ namespace basegfx::utils
                 // copy first point if closed
                 if(bIsClosed)
                 {
-                    *pSequence = *rPointSequenceRetval.getConstArray();
+                    *pSequence = rPointSequenceRetval[0];
                 }
             }
             else
@@ -3344,8 +3310,8 @@ namespace basegfx::utils
             const css::drawing::PointSequence& rPointSequenceSource,
             const css::drawing::FlagSequence& rFlagSequenceSource)
         {
-            const sal_uInt32 nCount(static_cast<sal_uInt32>(rPointSequenceSource.getLength()));
-            OSL_ENSURE(nCount == static_cast<sal_uInt32>(rFlagSequenceSource.getLength()),
+            const sal_Int32 nCount(rPointSequenceSource.getLength());
+            OSL_ENSURE(nCount == rFlagSequenceSource.getLength(),
                 "UnoPolygonBezierCoordsToB2DPolygon: Unequal count of Points and Flags (!)");
 
             // prepare new polygon
@@ -3355,32 +3321,28 @@ namespace basegfx::utils
             {
                 aRetval.reserve(nCount);
 
-                const css::awt::Point* pPointSequence = rPointSequenceSource.getConstArray();
-                const css::drawing::PolygonFlags* pFlagSequence = rFlagSequenceSource.getConstArray();
-
                 // get first point and flag
-                B2DPoint aNewCoordinatePair(pPointSequence->X, pPointSequence->Y); pPointSequence++;
-                css::drawing::PolygonFlags ePolygonFlag(*pFlagSequence); pFlagSequence++;
+                B2DPoint aNewCoordinatePair(rPointSequenceSource[0].X, rPointSequenceSource[0].Y);
                 B2DPoint aControlA;
                 B2DPoint aControlB;
 
                 // first point is not allowed to be a control point
-                OSL_ENSURE(ePolygonFlag != css::drawing::PolygonFlags_CONTROL,
+                OSL_ENSURE(rFlagSequenceSource[0] != css::drawing::PolygonFlags_CONTROL,
                     "UnoPolygonBezierCoordsToB2DPolygon: Start point is a control point, illegal input polygon (!)");
 
                 // add first point as start point
                 aRetval.append(aNewCoordinatePair);
 
-                for(sal_uInt32 b(1); b < nCount;)
+                for(sal_Int32 b(1); b < nCount;)
                 {
                     // prepare loop
                     bool bControlA(false);
                     bool bControlB(false);
 
                     // get next point and flag
-                    aNewCoordinatePair = B2DPoint(pPointSequence->X, pPointSequence->Y);
-                    ePolygonFlag = *pFlagSequence;
-                    pPointSequence++; pFlagSequence++; b++;
+                    aNewCoordinatePair = B2DPoint(rPointSequenceSource[b].X, rPointSequenceSource[b].Y);
+                    css::drawing::PolygonFlags ePolygonFlag = rFlagSequenceSource[b];
+                    b++;
 
                     if(b < nCount && ePolygonFlag == css::drawing::PolygonFlags_CONTROL)
                     {
@@ -3388,9 +3350,9 @@ namespace basegfx::utils
                         bControlA = true;
 
                         // get next point and flag
-                        aNewCoordinatePair = B2DPoint(pPointSequence->X, pPointSequence->Y);
-                        ePolygonFlag = *pFlagSequence;
-                        pPointSequence++; pFlagSequence++; b++;
+                        aNewCoordinatePair = B2DPoint(rPointSequenceSource[b].X, rPointSequenceSource[b].Y);
+                        ePolygonFlag = rFlagSequenceSource[b];
+                        b++;
                     }
 
                     if(b < nCount && ePolygonFlag == css::drawing::PolygonFlags_CONTROL)
@@ -3399,9 +3361,9 @@ namespace basegfx::utils
                         bControlB = true;
 
                         // get next point and flag
-                        aNewCoordinatePair = B2DPoint(pPointSequence->X, pPointSequence->Y);
-                        ePolygonFlag = *pFlagSequence;
-                        pPointSequence++; pFlagSequence++; b++;
+                        aNewCoordinatePair = B2DPoint(rPointSequenceSource[b].X, rPointSequenceSource[b].Y);
+                        ePolygonFlag = rFlagSequenceSource[b];
+                        b++;
                     }
 
                     // two or no control points are consumed, another one would be an error.
@@ -3586,7 +3548,7 @@ namespace basegfx::utils
                     if(bClosed)
                     {
                         // add first point as closing point
-                        *pPointSequence = *rPointSequenceRetval.getConstArray();
+                        *pPointSequence = rPointSequenceRetval[0];
                         *pFlagSequence = css::drawing::PolygonFlags_NORMAL;
                     }
                 }

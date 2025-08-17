@@ -30,7 +30,7 @@
 using ::oox::core::ContextHandlerRef;
 using ::oox::xls::CondFormatBuffer;
 
-sal_Int32 rStyleIdx = 0;
+sal_Int32 gnStyleIdx = 0; // Holds index of the <extlst> <cfRule> style (Will be reset by finalize import)
 
 namespace oox::xls {
 
@@ -80,7 +80,7 @@ void ExtCfRuleContext::onStartElement( const AttributeList& rAttribs )
             xRule->importCfvo( rAttribs );
             xRule->getModel().mbIsLower = mbFirstEntry;
             mbFirstEntry = false;
-            mpRule = xRule;
+            mpRule = std::move(xRule);
             break;
         }
         default:
@@ -151,7 +151,7 @@ ContextHandlerRef ExtConditionalFormattingContext::onCreateContext(sal_Int32 nEl
         ScDocument& rDoc = getScDocument();
         SCTAB nTab = getSheetIndex();
         ScAddress aPos(0, 0, nTab);
-        mpCurrentRule->SetData(&rIconSet, &rDoc, aPos);
+        mpCurrentRule->SetData(&rIconSet, rDoc, aPos);
         mpCurrentRule.reset();
     }
     if (nElement == XLS14_TOKEN(cfRule))
@@ -170,12 +170,9 @@ ContextHandlerRef ExtConditionalFormattingContext::onCreateContext(sal_Int32 nEl
             if (aExt == getExtLst().end())
             {
                 pInfo = new ScDataBarFormatData();
-                if (pInfo)
-                {
-                    auto pFormat = std::make_unique<ScDataBarFormat>(&getScDocument());
-                    pFormat->SetDataBarData(pInfo);
-                    getCondFormats().importExtFormatEntries().push_back(std::move(pFormat));
-                }
+                auto pFormat = std::make_unique<ScDataBarFormat>(getScDocument());
+                pFormat->SetDataBarData(pInfo);
+                getCondFormats().importExtFormatEntries().push_back(std::move(pFormat));
             }
             else
             {
@@ -192,7 +189,7 @@ ContextHandlerRef ExtConditionalFormattingContext::onCreateContext(sal_Int32 nEl
         {
             ScDocument& rDoc = getScDocument();
             mpCurrentRule.reset(new IconSetRule(*this));
-            maEntries.push_back(std::make_unique<ScIconSetFormat>(&rDoc));
+            maEntries.push_back(std::make_unique<ScIconSetFormat>(rDoc));
             return new IconSetContext(*this, mpCurrentRule.get());
         }
         else if (aType == "cellIs")
@@ -292,9 +289,10 @@ void ExtConditionalFormattingContext::onEndElement()
                 maModel.eOperator = ScConditionMode::Direct;
             }
 
-            getStyles().getExtDxfs().forEachMem( &Dxf::finalizeImport );
-            maModel.aStyle = getStyles().createExtDxfStyle(rStyleIdx);
-            rStyleIdx++;
+            if (Dxf* pDxf = getStyles().getExtDxfs().get(gnStyleIdx).get())
+                pDxf->finalizeImport();
+            maModel.aStyle = getStyles().createExtDxfStyle(gnStyleIdx);
+            gnStyleIdx++;
             nFormulaCount = 0;
             maModels.push_back(maModel);
         }
@@ -327,8 +325,8 @@ void ExtConditionalFormattingContext::onEndElement()
                 for (size_t i = 0; i < maModels.size(); ++i)
                 {
                     ScAddress rPos = aRange.GetTopLeftCorner();
-                    ScCondFormatEntry* pEntry = new ScCondFormatEntry(maModels[i].eOperator, maModels[i].aFormula, "", rDoc,
-                                                                      rPos, maModels[i].aStyle, "", "",
+                    ScCondFormatEntry* pEntry = new ScCondFormatEntry(maModels[i].eOperator, maModels[i].aFormula, u""_ustr, rDoc,
+                                                                      rPos, maModels[i].aStyle, u""_ustr, u""_ustr,
                                                                       formula::FormulaGrammar::GRAM_OOXML ,
                                                                       formula::FormulaGrammar::GRAM_OOXML,
                                                                       ScFormatEntry::Type::ExtCondition );

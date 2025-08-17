@@ -32,14 +32,16 @@ class SwTextRefMark final : public SwTextAttrEnd
     sal_Int32 * m_pEnd; // end is optional (point reference)
 
 public:
-    SwTextRefMark( SwFormatRefMark& rAttr,
-            sal_Int32 const nStart, sal_Int32 const*const pEnd = nullptr);
+    SwTextRefMark(
+        const SfxPoolItemHolder& rAttr,
+        sal_Int32 const nStart,
+        sal_Int32 const*const pEnd = nullptr);
 
     ~SwTextRefMark();
 
     virtual const sal_Int32* GetEnd() const override;       // SwTextAttr
     virtual void SetEnd(sal_Int32) override;       // SwTextAttr
-    void UpdateFieldContent(SwDoc* pDoc, SwWrtShell& rWrtSh, OUString aContent);
+    void UpdateFieldContent(SwDoc* pDoc, SwWrtShell& rWrtSh, const OUString& aContent);
 
     // get and set TextNode pointer
     inline const SwTextNode& GetTextNode() const;

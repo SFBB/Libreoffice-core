@@ -19,19 +19,13 @@
 
 #pragma once
 
-#include <com/sun/star/drawing/framework/TabBarButton.hpp>
-#include <com/sun/star/drawing/framework/XTabBar.hpp>
-#include <com/sun/star/drawing/framework/XToolBar.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
+#include "framework/AbstractResource.hxx"
+#include "framework/ConfigurationChangeListener.hxx"
 #include <comphelper/compbase.hxx>
 #include <vcl/InterimItemWindow.hxx>
 
 #include <vector>
 
-namespace com::sun::star::drawing::framework { class XConfigurationController; }
-namespace com::sun::star::drawing::framework { class XResourceId; }
-namespace com::sun::star::drawing::framework { struct ConfigurationChangeEvent; }
-namespace com::sun::star::frame { class XController; }
 namespace vcl { class Window; }
 
 namespace sd {
@@ -39,6 +33,8 @@ namespace sd {
     class ViewShellBase;
     class ViewTabBar;
 }
+namespace sd::framework { class ConfigurationController; }
+namespace sd::framework { class ResourceId; }
 
 namespace sd {
 
@@ -59,20 +55,55 @@ private:
     DECL_LINK(NotebookSizeAllocHdl, const Size&, void);
 };
 
-typedef comphelper::WeakComponentImplHelper <
-    css::drawing::framework::XToolBar,
-    css::drawing::framework::XTabBar,
-    css::drawing::framework::XConfigurationChangeListener
-    > ViewTabBarInterfaceBase;
+/** Descriptor of a tab bar button.  Tab bar buttons are typically used to
+    offer the user the choice between different views to be displayed in
+    one pane.
+    <p>For identification only the #ResourceId is used, so for
+    some methods of the XTabBar interface only the
+    #ResourceId member is evaluated.</p>
+*/
+struct TabBarButton
+{
+    /** This label is displayed on the UI as button text.
+        <p>The label is expected to be localized.</p>
+    */
+    OUString ButtonLabel;
+
+    /** ResourceId object of the resource that is requested to be
+        displayed when the tab bar button is activated.
+        <p>For some methods of the XTabBar interface only this
+        member is evaluated.  That is because only this member is used to
+        identify a tab bar button.</p>
+    */
+    rtl::Reference<sd::framework::ResourceId> ResourceId;
+};
+
 
 /** Tab control for switching between views in the center pane.
+
+    UI control for the selection of views in a pane.
+    <p>Every tab of a tab bar has, besides its localized title and help
+    text, the URL of a view.  A possible alternative would be to use a
+    command URL instead of the view URL.</p>
+    <p>In the current Impress implementation a tab bar is only used for the
+    center pane to switch between views in the center pane.  Tab bars can
+    make sense for other panes as well, i.e. for showing either the slide
+    sorter or the outline view in the left pane.</p>
+    <p>Tab bar buttons are identified by their resource id.  Note that
+    because the resource anchors are all the same (the tab bar), it is the
+    resource URL that really identifies a button. There can not be two
+    buttons with the same resource id.</p>
+    </p>
+    <p>A better place for this interface (in an extended version) would be
+    <code>com::sun::star::awt</code></p>
+    @see TabBarButton
 */
 class ViewTabBar final
-    : public ViewTabBarInterfaceBase
+    : public sd::framework::AbstractResource
 {
 public:
     ViewTabBar (
-        const css::uno::Reference< css::drawing::framework::XResourceId>& rxViewTabBarId,
+        const rtl::Reference<framework::ResourceId>& rxViewTabBarId,
         const rtl::Reference< ::sd::DrawController>& rxController);
     virtual ~ViewTabBar() override;
 
@@ -82,45 +113,36 @@ public:
 
     bool ActivatePage(size_t nIndex);
 
-    //----- drawing::framework::XConfigurationChangeListener ------------------
+    /** Add a tab bar button to the right of another one.
+        @param aButton
+            The new tab bar button that is to be inserted.  If a button with
+            the same resource id is already present than that is removed before the
+            new button is inserted.
+        @param aAnchor
+            The new button is inserted to the right of this button.  When
+            its ResourceId is empty then the new button is inserted at the left
+            most position.
+    */
+    void
+        addTabBarButtonAfter (
+            const TabBarButton& rButton,
+            const TabBarButton& rAnchor);
 
-    virtual void SAL_CALL
-        notifyConfigurationChange (
-            const css::drawing::framework::ConfigurationChangeEvent& rEvent) override;
+    /** Test whether the specified button exists in the tab bar.
+        @param aButton
+            The tab bar button whose existence is tested.
+        @return
+            Returns `TRUE` when the button exists.
+    */
+    bool
+        hasTabBarButton (
+            const TabBarButton& rButton);
 
-    //----- XEventListener ----------------------------------------------------
+    //----- AbstractResource ---------------------------------------------------------
 
-    virtual void SAL_CALL disposing(
-        const css::lang::EventObject& rEvent) override;
+    virtual rtl::Reference<framework::ResourceId> getResourceId() override;
 
-    //----- XTabBar -----------------------------------------------------------
-
-    virtual void
-        SAL_CALL addTabBarButtonAfter (
-            const css::drawing::framework::TabBarButton& rButton,
-            const css::drawing::framework::TabBarButton& rAnchor) override;
-
-    virtual void
-        SAL_CALL appendTabBarButton (
-            const css::drawing::framework::TabBarButton& rButton) override;
-
-    virtual void
-        SAL_CALL removeTabBarButton (
-            const css::drawing::framework::TabBarButton& rButton) override;
-
-    virtual sal_Bool
-        SAL_CALL hasTabBarButton (
-            const css::drawing::framework::TabBarButton& rButton) override;
-
-    virtual css::uno::Sequence<css::drawing::framework::TabBarButton>
-        SAL_CALL getTabBarButtons() override;
-
-    //----- XResource ---------------------------------------------------------
-
-    virtual css::uno::Reference<
-        css::drawing::framework::XResourceId> SAL_CALL getResourceId() override;
-
-    virtual sal_Bool SAL_CALL isAnchorOnly() override;
+    virtual bool isAnchorOnly() override;
 
     /** The returned value is calculated as the difference between the
         total height of the control and the height of its first tab page.
@@ -136,29 +158,41 @@ public:
     void UpdateActiveButton();
 
     void AddTabBarButton (
-        const css::drawing::framework::TabBarButton& rButton,
-        const css::drawing::framework::TabBarButton& rAnchor);
-    void AddTabBarButton (
-        const css::drawing::framework::TabBarButton& rButton);
-    void RemoveTabBarButton (
-        const css::drawing::framework::TabBarButton& rButton);
+        const TabBarButton& rButton,
+        const TabBarButton& rAnchor);
     bool HasTabBarButton (
-        const css::drawing::framework::TabBarButton& rButton);
-    css::uno::Sequence<css::drawing::framework::TabBarButton>
-        GetTabBarButtons();
+        const TabBarButton& rButton);
 
 private:
+    class Listener : public sd::framework::ConfigurationChangeListener
+    {
+    public:
+        Listener(ViewTabBar& rParent) : mrParent(rParent) {}
+
+        //----- sd::framework::ConfigurationChangeListener ------------------
+        virtual void
+            notifyConfigurationChange (
+                const sd::framework::ConfigurationChangeEvent& rEvent) override;
+
+        //----- XEventListener ----------------------------------------------------
+        using WeakComponentImplHelperBase::disposing;
+        virtual void SAL_CALL disposing(
+            const css::lang::EventObject& rEvent) override;
+    private:
+        ViewTabBar& mrParent;
+    };
+    rtl::Reference<Listener> mxListener;
     VclPtr<TabBarControl> mpTabControl;
     rtl::Reference<::sd::DrawController> mxController;
-    css::uno::Reference<css::drawing::framework::XConfigurationController> mxConfigurationController;
-    typedef ::std::vector<css::drawing::framework::TabBarButton> TabBarButtonList;
+    rtl::Reference<::sd::framework::ConfigurationController> mxConfigurationController;
+    typedef ::std::vector<TabBarButton> TabBarButtonList;
     TabBarButtonList maTabBarButtons;
-    css::uno::Reference<css::drawing::framework::XResourceId> mxViewTabBarId;
+    rtl::Reference<sd::framework::ResourceId> mxViewTabBarId;
     ViewShellBase* mpViewShellBase;
     int mnNoteBookWidthPadding;
 
     void AddTabBarButton (
-        const css::drawing::framework::TabBarButton& rButton,
+        const TabBarButton& rButton,
         sal_Int32 nPosition);
     void UpdateTabBarButtons();
 
@@ -168,7 +202,7 @@ private:
         members.
     */
     static vcl::Window* GetAnchorWindow(
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewTabBarId,
+        const rtl::Reference<sd::framework::ResourceId>& rxViewTabBarId,
         const rtl::Reference<::sd::DrawController>& rxController);
 };
 

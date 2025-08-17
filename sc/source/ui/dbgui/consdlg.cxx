@@ -67,36 +67,37 @@ public:
 ScConsolidateDlg::ScConsolidateDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent,
                                    const SfxItemSet& rArgSet)
 
-    : ScAnyRefDlgController(pB, pCW, pParent, "modules/scalc/ui/consolidatedialog.ui", "ConsolidateDialog")
+    : ScAnyRefDlgController(pB, pCW, pParent, u"modules/scalc/ui/consolidatedialog.ui"_ustr, u"ConsolidateDialog"_ustr)
     , aStrUndefined   ( ScResId( SCSTR_UNDEFINED ) )
     , theConsData     ( static_cast<const ScConsolidateItem&>(
                          rArgSet.Get( rArgSet.GetPool()->
-                                          GetWhich( SID_CONSOLIDATE ) )
+                                          GetWhichIDFromSlotID( SID_CONSOLIDATE ) )
                                     ).GetData() )
     , rViewData       ( static_cast<ScTabViewShell*>(SfxViewShell::Current())->
                               GetViewData() )
     , rDoc            ( static_cast<ScTabViewShell*>(SfxViewShell::Current())->
                               GetViewData().GetDocument() )
     , nAreaDataCount  ( 0 )
-    , nWhichCons      ( rArgSet.GetPool()->GetWhich( SID_CONSOLIDATE ) )
+    , nWhichCons      ( rArgSet.GetPool()->GetWhichIDFromSlotID( SID_CONSOLIDATE ) )
     , bDlgLostFocus   ( false )
-    , m_xLbFunc(m_xBuilder->weld_combo_box("func"))
-    , m_xLbConsAreas(m_xBuilder->weld_tree_view("consareas"))
-    , m_xLbDataArea(m_xBuilder->weld_combo_box("lbdataarea"))
-    , m_xEdDataArea(new formula::RefEdit(m_xBuilder->weld_entry("eddataarea")))
-    , m_xRbDataArea(new formula::RefButton(m_xBuilder->weld_button("rbdataarea")))
-    , m_xLbDestArea(m_xBuilder->weld_combo_box("lbdestarea"))
-    , m_xEdDestArea(new formula::RefEdit(m_xBuilder->weld_entry("eddestarea")))
-    , m_xRbDestArea(new formula::RefButton(m_xBuilder->weld_button("rbdestarea")))
-    , m_xBtnByRow(m_xBuilder->weld_check_button("byrow"))
-    , m_xBtnByCol(m_xBuilder->weld_check_button("bycol"))
-    , m_xBtnRefs(m_xBuilder->weld_check_button("refs"))
-    , m_xBtnOk(m_xBuilder->weld_button("ok"))
-    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
-    , m_xBtnAdd(m_xBuilder->weld_button("add"))
-    , m_xBtnRemove(m_xBuilder->weld_button("delete"))
-    , m_xDataFT(m_xBuilder->weld_label("ftdataarea"))
-    , m_xDestFT(m_xBuilder->weld_label("ftdestarea"))
+    , m_xLbFunc(m_xBuilder->weld_combo_box(u"func"_ustr))
+    , m_xLbConsAreas(m_xBuilder->weld_tree_view(u"consareas"_ustr))
+    , m_xLbDataArea(m_xBuilder->weld_combo_box(u"lbdataarea"_ustr))
+    , m_xEdDataArea(new formula::RefEdit(m_xBuilder->weld_entry(u"eddataarea"_ustr)))
+    , m_xRbDataArea(new formula::RefButton(m_xBuilder->weld_button(u"rbdataarea"_ustr)))
+    , m_xLbDestArea(m_xBuilder->weld_combo_box(u"lbdestarea"_ustr))
+    , m_xEdDestArea(new formula::RefEdit(m_xBuilder->weld_entry(u"eddestarea"_ustr)))
+    , m_xRbDestArea(new formula::RefButton(m_xBuilder->weld_button(u"rbdestarea"_ustr)))
+    , m_xExpander(m_xBuilder->weld_expander(u"more"_ustr))
+    , m_xBtnByRow(m_xBuilder->weld_check_button(u"byrow"_ustr))
+    , m_xBtnByCol(m_xBuilder->weld_check_button(u"bycol"_ustr))
+    , m_xBtnRefs(m_xBuilder->weld_check_button(u"refs"_ustr))
+    , m_xBtnOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xBtnCancel(m_xBuilder->weld_button(u"cancel"_ustr))
+    , m_xBtnAdd(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xBtnRemove(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xDataFT(m_xBuilder->weld_label(u"ftdataarea"_ustr))
+    , m_xDestFT(m_xBuilder->weld_label(u"ftdestarea"_ustr))
 {
     m_pRefInputEdit = m_xEdDataArea.get();
     Init();
@@ -122,7 +123,7 @@ void ScConsolidateDlg::Init()
     m_xLbDestArea->connect_focus_in( LINK( this, ScConsolidateDlg, GetFocusHdl ) );
     m_xEdDataArea->SetModifyHdl( LINK( this, ScConsolidateDlg, ModifyHdl ) );
     m_xEdDestArea->SetModifyHdl( LINK( this, ScConsolidateDlg, ModifyHdl ) );
-    m_xLbConsAreas->connect_changed( LINK( this, ScConsolidateDlg, SelectTVHdl ) );
+    m_xLbConsAreas->connect_selection_changed(LINK(this, ScConsolidateDlg, SelectTVHdl));
     m_xLbDataArea->connect_changed( LINK( this, ScConsolidateDlg, SelectCBHdl ) );
     m_xLbDestArea->connect_changed( LINK( this, ScConsolidateDlg, SelectCBHdl ) );
     m_xBtnOk->connect_clicked( LINK( this, ScConsolidateDlg, OkHdl ) );

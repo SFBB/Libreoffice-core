@@ -9,7 +9,7 @@
 
 $(eval $(call gb_CustomTarget_CustomTarget,readlicense_oo/readme))
 
-readlicense_oo_DIR := $(call gb_CustomTarget_get_workdir,readlicense_oo/readme)
+readlicense_oo_DIR := $(gb_CustomTarget_workdir)/readlicense_oo/readme
 
 # gb_WITH_LANG is empty if --with-lang is not set
 # what we need here is: gb_WITH_LANG_OR_DEFAULT ;-)
@@ -46,6 +46,7 @@ endif
 readlicense_oo_README_SED := \
 	-e 's,$${PRODUCTNAME},$(PRODUCTNAME),g' \
 	-e 's,$${PRODUCTVERSION},$(LIBO_VERSION_MAJOR).$(LIBO_VERSION_MINOR),g' \
+	-e 's,$${LCPRODUCTNAME},'"$$(printf %s '$(PRODUCTNAME)' | tr A-Z a-z)",g \
 
 $(readlicense_oo_DIR)/$(call gb_README,%) : \
 		$(SRCDIR)/readlicense_oo/docs/readme.xsl \

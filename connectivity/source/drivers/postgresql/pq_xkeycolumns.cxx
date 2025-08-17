@@ -73,7 +73,7 @@ KeyColumns::KeyColumns(
         OUString tableName,
         const Sequence< OUString > &columnNames,
         const Sequence< OUString > &foreignColumnNames )
-    : Container( refMutex, origin, pSettings,  "KEY_COLUMN" ),
+    : Container( refMutex, origin, pSettings,  u"KEY_COLUMN"_ustr ),
       m_schemaName(std::move( schemaName )),
       m_tableName(std::move( tableName )),
       m_columnNames( columnNames ),
@@ -120,7 +120,6 @@ void KeyColumns::refresh()
 
             rtl::Reference<KeyColumn> pKeyColumn =
                 new KeyColumn( m_xMutex, m_origin, m_pSettings );
-            Reference< css::beans::XPropertySet > prop = pKeyColumn;
 
             OUString name = columnMetaData2SDBCX( pKeyColumn.get(), xRow );
             if( keyindex < m_foreignColumnNames.getLength() )
@@ -130,7 +129,7 @@ void KeyColumns::refresh()
             }
 
             {
-                m_values.emplace_back(prop);
+                m_values.emplace_back(Reference< css::beans::XPropertySet >(pKeyColumn));
                 map[ name ] = columnIndex;
                 ++columnIndex;
             }
@@ -152,7 +151,7 @@ void KeyColumns::appendByDescriptor(
     const css::uno::Reference< css::beans::XPropertySet >& )
 {
     throw css::sdbc::SQLException(
-        "KeyColumns::appendByDescriptor not implemented yet",
+        u"KeyColumns::appendByDescriptor not implemented yet"_ustr,
         *this, OUString(), 1, Any() );
 
 //     osl::MutexGuard guard( m_xMutex->GetMutex() );
@@ -168,7 +167,7 @@ void KeyColumns::appendByDescriptor(
 void KeyColumns::dropByIndex( sal_Int32 )
 {
     throw css::sdbc::SQLException(
-        "KeyColumns::dropByIndex not implemented yet",
+        u"KeyColumns::dropByIndex not implemented yet"_ustr,
         *this, OUString(), 1, Any() );
 //     osl::MutexGuard guard( m_xMutex->GetMutex() );
 //     if( index < 0 ||  index >= m_values.getLength() )
@@ -227,7 +226,7 @@ KeyColumnDescriptors::KeyColumnDescriptors(
         const ::rtl::Reference< comphelper::RefCountedMutex > & refMutex,
         const css::uno::Reference< css::sdbc::XConnection >  & origin,
         ConnectionSettings *pSettings )
-    : Container( refMutex, origin, pSettings,  "KEY_COLUMN" )
+    : Container( refMutex, origin, pSettings,  u"KEY_COLUMN"_ustr )
 {}
 
 Reference< css::beans::XPropertySet > KeyColumnDescriptors::createDataDescriptor()

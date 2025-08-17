@@ -24,6 +24,7 @@
 #include "swtypes.hxx"
 #include "calbck.hxx"
 #include "nodeoffset.hxx"
+#include "names.hxx"
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <cppuhelper/weakref.hxx>
@@ -42,6 +43,7 @@ class SvNumberFormatter;
 class IDocumentRedlineAccess;
 class SwGetRefField;
 class SwXFieldMaster;
+enum class ReferencesSubtype : sal_uInt16;
 namespace com::sun::star::uno { class Any; }
 
 typedef struct _xmlTextWriter* xmlTextWriterPtr;
@@ -145,95 +147,80 @@ enum class SwFieldTypesEnum : sal_uInt16 {
     LAST,
     Unknown = USHRT_MAX // used by SwFieldMgr::GetCurTypeId
 };
-enum SwAttrFieldType {
-    ATTR_NONE,
-    ATTR_DATEFLD,
-    ATTR_TIMEFLD,
-    ATTR_PAGENUMBERFLD,
-    ATTR_PAGECOUNTFLD,
-    ATTR_BOOKMARKFLD,
-    ATTR_SETREFATTRFLD
+enum class SwFileNameFormat {
+    // most of the constants are a regular enum
+    Name,
+    PathName,
+    Path,
+    NameNoExt,
+    UIName,
+    UIRange,
+    End, // marker value, used for asserts
+    // except for this, which is a flag
+    Fixed = 0x8000
 };
-enum SwFileNameFormat {
-    FF_BEGIN,
-    FF_NAME = FF_BEGIN,
-    FF_PATHNAME,
-    FF_PATH,
-    FF_NAME_NOEXT,
-    FF_UI_NAME,
-    FF_UI_RANGE,
-    FF_END,
-    FF_FIXED = 0x8000
-};
+namespace o3tl { template<> struct typed_flags<SwFileNameFormat> : is_typed_flags<SwFileNameFormat, 0x800f> {}; }
 
-enum SwVarFormat {
-    VVF_CMD         = 0x0010,   ///< Show command.
-    VVF_INVISIBLE   = 0x0040,   ///< Invisible.
-    VVF_XXP         = 0x0400,   ///< 1234%
-    VVF_XX_XXP      = 0x0800,   ///< 1.234,56%
-    VVF_CLEAR       = 0x000f,
-
-// From here new formats:
-    VVF_SYS         = 0x2000,   ///< Format for numbers from system.
-    VVF_X           = 0x2100,   ///< 1234
-    VVF_X_X         = 0x2200,   ///< 1234.5
-    VVF_X_XX        = 0x2300,   ///< 1245.56
-    VVF_XX_X        = 0x2400,   ///< 1.234.5
-    VVF_XX_XX       = 0x2500,   ///< 1.234.56
-    VVF_XX_XXX      = 0x2600,   ///< 1.234.567
-    VVF_SYS_CUR     = 0x2700,   ///< Format for currency from system.
-    VVF_CUR_X       = 0x2800,   ///< EUR 1234
-    VVF_CUR_XX_XX   = 0x2900,   ///< EUR 1234.56 EUR 1234.00
-    VVF_CUR_XX_X0   = 0x2a00,   ///< EUR 1234.56 EUR 1234.--
-    VVF_X_CUR       = 0x2b00,   ///< 1234 EUR
-    VVF_XX_XX_CUR   = 0x2c00,   ///< 1234.56 EUR 1234.00 EUR
-    VVF_XX_X0_CUR   = 0x2d00,   ///< 1234.56 EUR 1234.-- EUR
-/// Compatibility:
-    VF_CMD          = VVF_CMD,
-    VF_INVISIBLE    = VVF_INVISIBLE,
-    VF_XXP          = VVF_XXP,
-    VF_XX_XXP       = VVF_XX_XXP,
-    VF_VISIBLE      = VVF_SYS,
-    VF_XX           = VVF_X,
-    VF_XX_XX        = VVF_XX_XX,
-    VF_XX_XX_CUR    = VVF_SYS_CUR,
-    VF_CLEAR        = VVF_CLEAR
-
-};
-
-typedef sal_uInt16 SwGetSetExpType;
-namespace nsSwGetSetExpType
+enum class SwTableFieldSubType : sal_uInt16
 {
-const SwGetSetExpType GSE_STRING  = 0x0001; ///< String
-const SwGetSetExpType GSE_EXPR    = 0x0002; ///< Expression
-const SwGetSetExpType GSE_SEQ     = 0x0008; ///< Sequence
-const SwGetSetExpType GSE_FORMULA = 0x0010; ///< Formula
-}
+    String    = 0x0001, ///< String
+    Formula   = 0x0010, ///< Formula
+    Command   = 0x0100, ///< Show command.
+};
+namespace o3tl { template<> struct typed_flags<SwTableFieldSubType> : is_typed_flags<SwTableFieldSubType, 0x0111> {}; }
 
-typedef sal_uInt16 SwExtendedSubType;
-namespace nsSwExtendedSubType
+enum class SwGetSetExpType : sal_uInt16
 {
-const SwExtendedSubType SUB_CMD         = 0x0100;   ///< Show command.
-const SwExtendedSubType SUB_INVISIBLE   = 0x0200;   ///< Invisible.
-const SwExtendedSubType SUB_OWN_FMT     = 0x0400;   ///< SwDBField: Don't accept formatting from database.
-}
-
-enum SwInputFieldSubType {
-    INP_TXT     = 0x01,
-    INP_USR     = 0x02,
-    INP_VAR     = 0x03
+    None          = 0x0000,
+    String        = 0x0001, ///< String
+    Expr          = 0x0002, ///< Expression
+    Sequence      = 0x0008, ///< Sequence
+    Formula       = 0x0010, ///< Formula
+    LowerMask     = 0x001f,
+    UpperMask     = 0x0300,
+    Command       = 0x0100, ///< Show command.
+    Invisible     = 0x0200  ///< Invisible.
 };
+namespace o3tl { template<> struct typed_flags<SwGetSetExpType> : is_typed_flags<SwGetSetExpType, 0x031f> {}; }
 
-enum SwUserType {
-    UF_STRING   = 0x01,
-    UF_EXPR     = 0x02
+enum class SwDBFieldSubType : sal_uInt16
+{
+    None      = 0x0000,
+    Invisible = 0x0200,   ///< Invisible.
+    OwnFormat = 0x0400    ///< SwDBField: Don't accept formatting from database.
 };
+namespace o3tl { template<> struct typed_flags<SwDBFieldSubType> : is_typed_flags<SwDBFieldSubType, 0x0600> {}; }
 
-enum SwDateTimeSubType {
-    FIXEDFLD = 1,
-    DATEFLD  = 2,
-    TIMEFLD  = 4
+enum class SwInputFieldSubType : sal_uInt16
+{
+    None        = 0x0000,
+    Text        = 0x0001,
+    User        = 0x0002,
+    Var         = 0x0003,
+    LowerMask   = 0x0003,
+    UpperMask   = 0x0200,
+    Invisible   = 0x0200   ///< Invisible.
 };
+namespace o3tl { template<> struct typed_flags<SwInputFieldSubType> : is_typed_flags<SwInputFieldSubType, 0x0203> {}; }
+
+enum class SwUserType : sal_uInt16 {
+    None          = 0x0000,
+    String        = 0x0001, ///< String
+    Expr          = 0x0002, ///< Expression
+    LowerMask     = 0x0003,
+    UpperMask     = 0x0300,
+    ShowCommand   = 0x0100, ///< Show command.
+    Invisible     = 0x0200, ///< Invisible.
+};
+namespace o3tl { template<> struct typed_flags<SwUserType> : is_typed_flags<SwUserType, 0x0303> {}; }
+
+enum class SwDateTimeSubType : sal_uInt16 {
+    None  = 0,
+    Fixed = 1,
+    Date  = 2,
+    Time  = 4
+};
+namespace o3tl { template<> struct typed_flags<SwDateTimeSubType> : is_typed_flags<SwDateTimeSubType, 0x0007> {}; }
 
 /// General tools.
 OUString  FormatNumber(sal_uInt32 nNum, SvxNumType nFormat, LanguageType nLang = LANGUAGE_NONE);
@@ -268,7 +255,7 @@ public:
     static const OUString & GetTypeStr( SwFieldTypesEnum nTypeId );
 
     /// Only in derived classes.
-    virtual OUString        GetName() const;
+    virtual UIName        GetName() const;
     virtual std::unique_ptr<SwFieldType> Copy() const = 0;
     virtual void QueryValue( css::uno::Any& rVal, sal_uInt16 nWhich ) const;
     virtual void PutValue( const css::uno::Any& rVal, sal_uInt16 nWhich );
@@ -282,7 +269,7 @@ public:
     void CollectPostIts(std::vector<SwFormatField*>& rvFormatFields, IDocumentRedlineAccess const& rIDRA, bool HideRedlines);
     bool HasHiddenInformationNotes() const;
     void GatherNodeIndex(std::vector<SwNodeOffset>& rvNodeIndex);
-    void GatherRefFields(std::vector<SwGetRefField*>& rvRFields, const sal_uInt16 nTyp);
+    void GatherRefFields(std::vector<SwGetRefField*>& rvRFields, const ReferencesSubtype nTyp);
     void GatherFields(std::vector<SwFormatField*>& rvFormatFields, bool bCollectOnlyInDocNodes=true) const;
     void GatherDdeTables(std::vector<SwDDETable*>& rvTables) const;
     void UpdateDocPos(const SwTwips nDocPos);
@@ -297,7 +284,6 @@ class SW_DLLPUBLIC SwField
 private:
     mutable OUString    m_Cache;                ///< Cached expansion (for clipboard).
     SwFieldType*        m_pType;
-    sal_uInt32          m_nFormat;              /// this can be either SvxNumType or SwChapterFormat depending on the subtype
     LanguageType        m_nLang;                ///< Always change via SetLanguage!
     bool                m_bUseFieldValueCache;  /// control the usage of the cached field value
     bool                m_bIsAutomaticLanguage;
@@ -308,12 +294,7 @@ private:
     virtual std::unique_ptr<SwField> Copy() const = 0;
 
 protected:
-    void                SetFormat(sal_uInt32 const nSet) {
-        m_nFormat = nSet;
-    }
-
     SwField( SwFieldType* pTyp,
-             sal_uInt32 nFormat = 0,
              LanguageType nLang = LANGUAGE_SYSTEM,
              bool m_bUseFieldValueCache = true );
 
@@ -356,21 +337,21 @@ public:
 
     // TYP_ID
     SwFieldTypesEnum    GetTypeId() const;
-    virtual sal_uInt16      GetSubType() const;
-    virtual void        SetSubType(sal_uInt16);
+
+    // for code that is still passing around untyped values
+    sal_uInt16 GetUntypedSubType() const;
+    void SetUntypedSubType(sal_uInt16);
 
     /// Language at field position.
     inline LanguageType GetLanguage() const;
     virtual void        SetLanguage(LanguageType nLng);
 
     /// Query parameters for dialog and for BASIC.
-    inline sal_uInt32   GetFormat() const;
     virtual OUString GetPar1() const;
     virtual OUString GetPar2() const;
 
     virtual OUString    GetFormula() const;
 
-    void        ChangeFormat(sal_uInt32 n);
     virtual void        SetPar1(const OUString& rStr);
     virtual void        SetPar2(const OUString& rStr);
 
@@ -394,16 +375,15 @@ public:
     virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
     const OUString & GetTitle() const { return m_aTitle; }
     void SetTitle(const OUString& rTitle) { m_aTitle = rTitle; }
+
+    /// Helpers for those places still passing untyped format ids around for SwField
+    sal_uInt32 GetUntypedFormat() const;
+    void SetUntypedFormat(sal_uInt32);
 };
 
 inline SwFieldType* SwField::GetTyp() const
 {
     return m_pType;
-}
-
-inline sal_uInt32 SwField::GetFormat() const
-{
-    return m_nFormat;
 }
 
 inline LanguageType SwField::GetLanguage() const
@@ -448,6 +428,7 @@ class SW_DLLPUBLIC SwValueField : public SwField
 {
 private:
     double m_fValue;
+    sal_uInt32 m_nFormat;
 
 protected:
     SwValueField( SwValueFieldType* pFieldType, sal_uInt32 nFormat, LanguageType nLang = LANGUAGE_SYSTEM, const double fVal = 0.0 );
@@ -456,6 +437,8 @@ protected:
 public:
     virtual                 ~SwValueField() override;
 
+    sal_uInt32 GetFormat() const { return m_nFormat; }
+    void SetFormat(sal_uInt32 nFormat) { m_nFormat = nFormat; }
     virtual SwFieldType*    ChgTyp( SwFieldType* ) override;
     virtual void            SetLanguage(LanguageType nLng) override;
 

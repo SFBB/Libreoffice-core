@@ -45,8 +45,8 @@ typedef ::cppu::ImplInheritanceHelper
 ,   css::text::XTextContent
 > SwXBookmark_Base;
 
-/// UNO API wrapper around an internal sw::mark::IMark.
-class SwXBookmark
+/// UNO API wrapper around an internal sw::mark::MarkBase.
+class SAL_DLLPUBLIC_RTTI SwXBookmark
     : public SwXBookmark_Base
 {
 
@@ -67,13 +67,13 @@ protected:
     virtual void attachToRange(
             const css::uno::Reference< css::text::XTextRange > & xTextRange);
 
-    ::sw::mark::IMark* GetBookmark() const;
+    ::sw::mark::MarkBase* GetBookmark() const;
 
     IDocumentMarkAccess* GetIDocumentMarkAccess();
 
     SwDoc * GetDoc();
 
-    void registerInMark( SwXBookmark& rXMark, ::sw::mark::IMark* const pMarkBase );
+    void registerInMark( SwXBookmark& rXMark, ::sw::mark::MarkBase* const pMarkBase );
 
     virtual ~SwXBookmark() override;
 
@@ -85,10 +85,10 @@ protected:
 public:
 
     static rtl::Reference<SwXBookmark>
-        CreateXBookmark(SwDoc & rDoc, ::sw::mark::IMark * pBookmark);
+        CreateXBookmark(SwDoc & rDoc, ::sw::mark::MarkBase * pBookmark);
 
     /// @return IMark for this, but only if it lives in pDoc
-    static ::sw::mark::IMark const* GetBookmarkInDoc(SwDoc const*const pDoc,
+    static ::sw::mark::MarkBase const* GetBookmarkInDoc(SwDoc const*const pDoc,
             const css::uno::Reference<css::uno::XInterface> & xUT);
 
     // MetadatableMixin
@@ -133,7 +133,7 @@ public:
 
     // XNamed
     virtual OUString SAL_CALL getName() override;
-    virtual void SAL_CALL setName(const OUString& rName) override;
+    SW_DLLPUBLIC virtual void SAL_CALL setName(const OUString& rName) override;
 
     // XTextContent
     virtual void SAL_CALL attach(
@@ -147,11 +147,11 @@ class SwXFieldmarkParameters final
     , public SvtListener
 {
     private:
-        ::sw::mark::IFieldmark* m_pFieldmark;
+        ::sw::mark::Fieldmark* m_pFieldmark;
         /// @throws css::uno::RuntimeException
-        ::sw::mark::IFieldmark::parameter_map_t* getCoreParameters();
+        ::sw::mark::Fieldmark::parameter_map_t* getCoreParameters();
     public:
-        SwXFieldmarkParameters(::sw::mark::IFieldmark* const pFieldmark)
+        SwXFieldmarkParameters(::sw::mark::Fieldmark* const pFieldmark)
             : m_pFieldmark(pFieldmark)
         {
             StartListening(pFieldmark->GetNotifier());
@@ -178,24 +178,28 @@ typedef cppu::ImplInheritanceHelper< SwXBookmark,
         css::text::XTextField
     > SwXFieldmark_Base;
 
-/// UNO wrapper around an sw::mark::IFieldmark.
-class SwXFieldmark final
+/// UNO wrapper around an sw::mark::Fieldmark.
+class SW_DLLPUBLIC SwXFieldmark final
     : public SwXFieldmark_Base
 {
-    ::sw::mark::ICheckboxFieldmark* getCheckboxFieldmark();
+    ::sw::mark::CheckboxFieldmark* getCheckboxFieldmark();
     bool const m_bReplacementObject;
     bool m_isFieldmarkSeparatorAtStart = false;
 
     rtl::Reference<SwXTextRange>
-        GetCommand(::sw::mark::IFieldmark const& rMark);
+        GetCommand(::sw::mark::Fieldmark const& rMark);
     rtl::Reference<SwXTextRange>
-        GetResult(::sw::mark::IFieldmark const& rMark);
+        GetResult(::sw::mark::Fieldmark const& rMark);
 
     SwXFieldmark(bool isReplacementObject, SwDoc* pDoc);
 
+    // workaround MSVC compiler
+    SwXFieldmark(const SwXFieldmark&) = delete;
+    SwXFieldmark(SwXFieldmark&&) = delete;
+
 public:
-    static rtl::Reference<SwXBookmark>
-        CreateXFieldmark(SwDoc & rDoc, ::sw::mark::IMark * pMark,
+    static rtl::Reference<SwXFieldmark>
+        CreateXFieldmark(SwDoc & rDoc, ::sw::mark::MarkBase * pMark,
                 bool isReplacementObject = false);
 
     virtual void attachToRange(

@@ -45,7 +45,7 @@ std::optional<OutlinerParaObject> TextChainingUtils::JuxtaposeParaObject(
     // Special case: if only empty text remove it at the end
     bool bOnlyOneEmptyPara = !pNextPObj ||
                              (pOutl->GetParagraphCount() == 1 &&
-                              pNextPObj->GetTextObject().GetText(0).isEmpty());
+                              !pNextPObj->GetTextObject().HasText(0));
 
     EditEngine &rEditEngine = const_cast<EditEngine &>(pOutl->GetEditEngine());
 
@@ -94,7 +94,7 @@ std::optional<OutlinerParaObject> TextChainingUtils::DeeplyMergeParaObject(
 
 css::uno::Reference< css::datatransfer::XTransferable > TextChainingUtils::CreateTransferableFromText(Outliner const *pOutl)
 {
-    const EditEngine &rEditEngine = pOutl->GetEditEngine();
+    EditEngine& rEditEngine = const_cast<EditEngine &>(pOutl->GetEditEngine());
     sal_Int32 nLastPara = pOutl->GetParagraphCount()-1;
     ESelection aWholeTextSel(0, 0, nLastPara, rEditEngine.GetTextLen(nLastPara));
 
@@ -126,9 +126,9 @@ bool NonOverflowingText::IsLastParaInterrupted() const
 std::optional<OutlinerParaObject> NonOverflowingText::RemoveOverflowingText(Outliner *pOutliner) const
 {
     pOutliner->QuickDelete(maContentSel);
-    SAL_INFO("editeng.chaining", "Deleting selection from (Para: " << maContentSel.nStartPara
-             << ", Pos: " << maContentSel.nStartPos << ") to (Para: " << maContentSel.nEndPara
-             << ", Pos: " << maContentSel.nEndPos << ")");
+    SAL_INFO("editeng.chaining", "Deleting selection from (Para: " << maContentSel.start.nPara
+             << ", Pos: " << maContentSel.start.nIndex << ") to (Para: " << maContentSel.end.nPara
+             << ", Pos: " << maContentSel.end.nIndex << ")");
     return pOutliner->CreateParaObject();
 }
 
@@ -137,7 +137,7 @@ ESelection NonOverflowingText::GetOverflowPointSel() const
     //return getLastPositionSel(mpContentTextObj);
 
     // return the starting point of the selection we are removing
-    return ESelection(maContentSel.nStartPara, maContentSel.nStartPos); //XXX
+    return ESelection(maContentSel.start); //XXX
 }
 
 // The equivalent of ToParaObject for OverflowingText. Here we are prepending the overflowing text to the old dest box's text

@@ -61,6 +61,8 @@
 #define SC_OPCODE_TABLE_REF_ITEM_THIS_ROW 35
 #define SC_OPCODE_STOP_DIV           36
 #define SC_OPCODE_SKIP               37     /* used to skip raw tokens during string compilation */
+#define SC_OPCODE_STRINGNAME         38     /* special OpCode for lambda function names */
+#define SC_OPCODE_LET                39
 
 /*** error constants #... ***/
 #define SC_OPCODE_START_ERRORS       40
@@ -398,8 +400,8 @@
 #define SC_OPCODE_CELL              385
 #define SC_OPCODE_ISPMT             386
 #define SC_OPCODE_HYPERLINK         387
-// free: 388
-// free: 389
+#define SC_OPCODE_X_LOOKUP          388
+#define SC_OPCODE_X_MATCH           389
 #define SC_OPCODE_GET_PIVOT_DATA    390
 #define SC_OPCODE_EUROCONVERT       391
 #define SC_OPCODE_NUMBERVALUE       392
@@ -510,7 +512,27 @@
 #define SC_OPCODE_REGEX             497
 #define SC_OPCODE_FOURIER           498
 #define SC_OPCODE_RANDBETWEEN_NV    499
-#define SC_OPCODE_STOP_2_PAR        500     /* last function with two or more parameters' OpCode + 1 */
+#define SC_OPCODE_FILTER            500
+#define SC_OPCODE_SORT              501
+#define SC_OPCODE_SORTBY            502
+#define SC_OPCODE_MAT_SEQUENCE      503
+#define SC_OPCODE_RANDARRAY         504
+#define SC_OPCODE_CHOOSECOLS        505
+#define SC_OPCODE_CHOOSEROWS        506
+#define SC_OPCODE_DROP              507
+#define SC_OPCODE_EXPAND            508
+#define SC_OPCODE_HSTACK            509
+#define SC_OPCODE_VSTACK            510
+#define SC_OPCODE_TAKE              511
+#define SC_OPCODE_TEXTAFTER         512
+#define SC_OPCODE_TEXTBEFORE        513
+#define SC_OPCODE_TEXTSPLIT         514
+#define SC_OPCODE_TOCOL             515
+#define SC_OPCODE_TOROW             516
+#define SC_OPCODE_UNIQUE            517
+#define SC_OPCODE_WRAPCOLS          518
+#define SC_OPCODE_WRAPROWS          519
+#define SC_OPCODE_STOP_2_PAR        520     /* last function with two or more parameters' OpCode + 1 */
 
 #define SC_OPCODE_STOP_FUNCTION     SC_OPCODE_STOP_2_PAR            /* last function's OpCode + 1 */
 #define SC_OPCODE_LAST_OPCODE_ID    (SC_OPCODE_STOP_FUNCTION - 1)   /* last OpCode */

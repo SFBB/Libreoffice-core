@@ -23,7 +23,6 @@
 // levels free in svdmark itself (MS compiler include depth limit)
 #include <svx/svdhdl.hxx>
 #include <tools/weakbase.h>
-#include <svtools/accessibilityoptions.hxx>
 #include <svx/svxdllapi.h>
 #include <svx/svdcrtv.hxx>
 #include <vcl/event.hxx>
@@ -49,6 +48,7 @@
 //         SdrView         View
 
 class SvxURLField;
+class SdrPageWindow;
 namespace sdr::contact { class ObjectContact; }
 
 enum class SdrViewContext {
@@ -151,8 +151,6 @@ class SVXCORE_DLLPUBLIC SdrView : public SdrCreateView, public tools::WeakBase
     bool mbNoExtendedKeyDispatcher : 1;
     bool mbMasterPagePaintCaching : 1;
 
-    SvtAccessibilityOptions maAccessibilityOptions;
-
 public:
     explicit SdrView(
         SdrModel& rSdrModel,
@@ -187,8 +185,6 @@ public:
     virtual bool MouseMove(const MouseEvent& rMEvt, OutputDevice* pWin) override;
     using SdrCreateView::RequestHelp;
     virtual bool Command(const CommandEvent& rCEvt, vcl::Window* pWin) override;
-
-    virtual void ConfigurationChanged( utl::ConfigurationBroadcaster*, ConfigurationHints ) override;
 
     bool SetAttributes(const SfxItemSet& rSet, bool bReplaceAll=false) { return SdrCreateView::SetAttributes(rSet,bReplaceAll); }
 
@@ -231,8 +227,6 @@ public:
     //   - General dragging
     // and more...
     OUString GetStatusText();
-
-    virtual void onAccessibilityOptionsChanged();
 
     // Do not create ObjectContact locally, but offer a call to allow override
     // and to create own derivations of ObjectContact

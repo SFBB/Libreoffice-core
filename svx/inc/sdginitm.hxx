@@ -29,9 +29,8 @@
 class SdrGrafInvertItem final : public SdrOnOffItem
 {
 public:
-
-
-                            SdrGrafInvertItem( bool bInvert = false ) : SdrOnOffItem( SDRATTR_GRAFINVERT, bInvert ) {}
+    DECLARE_ITEM_TYPE_FUNCTION(SdrGrafInvertItem)
+    SdrGrafInvertItem( bool bInvert = false ) : SdrOnOffItem( SDRATTR_GRAFINVERT, bInvert ) {}
 
     virtual SdrGrafInvertItem*    Clone( SfxItemPool* pPool = nullptr ) const override;
 };

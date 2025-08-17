@@ -21,6 +21,7 @@
 #include <math.h>
 
 #include <o3tl/safeint.hxx>
+#include <o3tl/unit_conversion.hxx>
 #include <osl/file.h>
 #include <sal/log.hxx>
 #include <tools/stream.hxx>
@@ -32,6 +33,7 @@
 #include <sal/config.h>
 #include <sal/macros.h>
 #include <memory>
+#include <iterator>
 
 #if (OSL_DEBUG_LEVEL > 0) || defined DBG_UTIL
 #include <stdarg.h>
@@ -110,8 +112,7 @@ inline oslGenericFunction Sane::LoadSymbol( const char* pSymbolname )
     oslGenericFunction pFunction = osl_getAsciiFunctionSymbol( pSaneLib, pSymbolname );
     if( ! pFunction )
     {
-        fprintf( stderr, "Could not load symbol %s\n",
-                 pSymbolname );
+        SAL_WARN( "extensions.scanner", "Could not load symbol " << pSymbolname );
         bSaneSymbolLoadFailed = true;
     }
     return pFunction;
@@ -170,7 +171,7 @@ Sane::~Sane()
 void Sane::Init()
 {
 #ifndef DISABLE_DYNLOADING
-    OUString sSaneLibName( "libsane" SAL_DLLEXTENSION  );
+    OUString sSaneLibName( u"libsane" SAL_DLLEXTENSION ""_ustr  );
     pSaneLib = osl_loadModule( sSaneLibName.pData, SAL_LOADMODULE_LAZY );
     if( ! pSaneLib )
     {
@@ -180,7 +181,7 @@ void Sane::Init()
     // try reasonable places that might not be in the library search path
     if( ! pSaneLib )
     {
-        OUString sSaneLibSystemPath( "/usr/local/lib/libsane" SAL_DLLEXTENSION  );
+        OUString sSaneLibSystemPath( u"/usr/local/lib/libsane" SAL_DLLEXTENSION ""_ustr  );
         osl_getFileURLFromSystemPath( sSaneLibSystemPath.pData, &sSaneLibName.pData );
         pSaneLib = osl_loadModule( sSaneLibName.pData, SAL_LOADMODULE_LAZY );
     }
@@ -269,11 +270,11 @@ void Sane::ReloadOptions()
     SANE_Status nStatus = p_control_option( maHandle, 0, SANE_ACTION_GET_VALUE,
                                             static_cast<void*>(pOptions), nullptr );
     if( nStatus != SANE_STATUS_GOOD )
-        fprintf( stderr, "Error: sane driver returned %s while reading number of options !\n", p_strstatus( nStatus ) );
+        SAL_WARN( "extensions.scanner", "Error: sane driver returned " << p_strstatus( nStatus ) << " while reading number of options !" );
 
     mnOptions = pOptions[ 0 ];
     if( o3tl::make_unsigned(pZero->size) > sizeof( SANE_Word ) )
-        fprintf( stderr, "driver returned number of options with larger size than SANE_Word!!!\n" );
+        SAL_WARN( "extensions.scanner", "driver returned number of options with larger size than SANE_Word!!!" );
     mppOptions.reset(new const SANE_Option_Descriptor*[ mnOptions ]);
     mppOptions[ 0 ] = pZero;
     for( int i = 1; i < mnOptions; i++ )
@@ -668,7 +669,7 @@ bool Sane::Start( BitmapTransporter& rBitmap )
                     eType = FrameStyle_Separated;
                     break;
                 default:
-                    fprintf( stderr, "Warning: unknown frame style !!!\n" );
+                    SAL_WARN( "extensions.scanner", "Unknown frame style" );
             }
 
             bool bSynchronousRead = true;
@@ -717,7 +718,7 @@ bool Sane::Start( BitmapTransporter& rBitmap )
                     tv.tv_sec = 5;
                     tv.tv_usec = 0;
                     if( select( fd+1, &fdset, nullptr, nullptr, &tv ) == 0 )
-                        fprintf( stderr, "Timeout on sane_read descriptor\n" );
+                        SAL_WARN( "extensions.scanner", "Timeout on sane_read descriptor" );
                 }
                 nLen = 0;
                 nStatus = p_read( maHandle, pBuffer.get(), BYTE_BUFFER_SIZE, &nLen );
@@ -748,9 +749,9 @@ bool Sane::Start( BitmapTransporter& rBitmap )
                 if( ! fResl )
                     fResl = 300; // if all else fails that's a good guess
                 if( ! nWidthMM )
-                    nWidthMM = static_cast<int>((static_cast<double>(nWidth) / fResl) * 25.4);
+                    nWidthMM = o3tl::convert(nWidth / fResl, o3tl::Length::in, o3tl::Length::mm);
                 if( ! nHeightMM )
-                    nHeightMM = static_cast<int>((static_cast<double>(nHeight) / fResl) * 25.4);
+                    nHeightMM = o3tl::convert(nHeight / fResl, o3tl::Length::in, o3tl::Length::mm);
                 SAL_INFO("extensions.scanner", "set dimensions to(" << nWidth << ", " << nHeight << ") Pixel, (" << nWidthMM << ", " << nHeightMM <<
                     ") mm, resolution is " << fResl);
 
@@ -965,7 +966,7 @@ int Sane::GetRange( int n, std::unique_ptr<double[]>& rpDouble )
     }
 }
 
-static const char *ppUnits[] = {
+const char* const ppUnits[] = {
     "",
     "[Pixel]",
     "[Bit]",
@@ -980,7 +981,7 @@ OUString Sane::GetOptionUnitName( int n )
     OUString aText;
     SANE_Unit nUnit = mppOptions[n]->unit;
     size_t nUnitAsSize = static_cast<size_t>(nUnit);
-    if (nUnitAsSize >= SAL_N_ELEMENTS( ppUnits ))
+    if (nUnitAsSize >= std::size( ppUnits ))
         aText = "[unknown units]";
     else
         aText = OUString( ppUnits[ nUnit ], strlen(ppUnits[ nUnit ]), osl_getThreadTextEncoding() );

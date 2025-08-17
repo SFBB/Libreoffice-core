@@ -240,12 +240,12 @@ void SmNode::Move(const Point& rVector)
     ForEachNonNull(this, [&rVector](SmNode *pNode){pNode->Move(rVector);});
 }
 
-void SmNode::AdaptToX(OutputDevice &/*rDev*/, sal_uLong /*nWidth*/)
+void SmNode::AdaptToX(OutputDevice &/*rDev*/, tools::Long /*nWidth*/)
 {
 }
 
 
-void SmNode::AdaptToY(OutputDevice &/*rDev*/, sal_uLong /*nHeight*/)
+void SmNode::AdaptToY(OutputDevice &/*rDev*/, tools::Long /*nHeight*/)
 {
 }
 
@@ -256,8 +256,8 @@ const SmNode * SmNode::FindTokenAt(sal_uInt16 nRow, sal_uInt16 nCol) const
     //! (there should be exactly one such node if any)
 {
     if (    IsVisible()
-        &&  nRow == GetSelection().nStartPara
-        &&  nCol >= GetSelection().nStartPos  &&  nCol <= GetSelection().nEndPos )
+        &&  nRow == GetSelection().start.nPara
+        &&  nCol >= GetSelection().start.nIndex  &&  nCol <= GetSelection().end.nIndex )
         return this;
     else
     {
@@ -562,7 +562,7 @@ void SmTableNode::Arrange(OutputDevice &rDev, const SmFormat &rFormat)
         SmTmpDevice aTmpDev (rDev, true);
         aTmpDev.SetFont(GetFont());
 
-        SmRect aRect(aTmpDev, &rFormat, "a", GetFont().GetBorderWidth());
+        SmRect aRect(aTmpDev, &rFormat, u"a"_ustr, GetFont().GetBorderWidth());
         mnFormulaBaseline = GetAlignM();
         // move from middle position by constant - distance
         // between middle and baseline for single letter
@@ -621,7 +621,7 @@ void SmLineNode::Arrange(OutputDevice &rDev, const SmFormat &rFormat)
         //! be sure to use a character that has explicitly defined HiAttribut
         //! line in rect.cxx such as 'a' in order to make 'vec a' look same to
         //! 'vec {a}'.
-        SmRect::operator = (SmRect(aTmpDev, &rFormat, "a",
+        SmRect::operator = (SmRect(aTmpDev, &rFormat, u"a"_ustr,
                             GetFont().GetBorderWidth()));
         // make sure that the rectangle occupies (almost) no space
         SetWidth(1);
@@ -1715,13 +1715,13 @@ SmPolyLineNode::SmPolyLineNode(const SmToken &rNodeToken)
 }
 
 
-void SmPolyLineNode::AdaptToX(OutputDevice &/*rDev*/, sal_uLong nNewWidth)
+void SmPolyLineNode::AdaptToX(OutputDevice &/*rDev*/, tools::Long nNewWidth)
 {
     maToSize.setWidth( nNewWidth );
 }
 
 
-void SmPolyLineNode::AdaptToY(OutputDevice &/*rDev*/, sal_uLong nNewHeight)
+void SmPolyLineNode::AdaptToY(OutputDevice &/*rDev*/, tools::Long nNewHeight)
 {
     GetFont().FreezeBorderWidth();
     maToSize.setHeight( nNewHeight );
@@ -1769,13 +1769,13 @@ void SmPolyLineNode::Arrange(OutputDevice &rDev, const SmFormat &rFormat)
 
 /**************************************************************************/
 
-void SmRootSymbolNode::AdaptToX(OutputDevice &/*rDev*/, sal_uLong nWidth)
+void SmRootSymbolNode::AdaptToX(OutputDevice &/*rDev*/, tools::Long nWidth)
 {
     mnBodyWidth = nWidth;
 }
 
 
-void SmRootSymbolNode::AdaptToY(OutputDevice &rDev, sal_uLong nHeight)
+void SmRootSymbolNode::AdaptToY(OutputDevice &rDev, tools::Long nHeight)
 {
     // some additional length so that the horizontal
     // bar will be positioned above the argument
@@ -1786,13 +1786,13 @@ void SmRootSymbolNode::AdaptToY(OutputDevice &rDev, sal_uLong nHeight)
 /**************************************************************************/
 
 
-void SmRectangleNode::AdaptToX(OutputDevice &/*rDev*/, sal_uLong nWidth)
+void SmRectangleNode::AdaptToX(OutputDevice &/*rDev*/, tools::Long nWidth)
 {
     maToSize.setWidth( nWidth );
 }
 
 
-void SmRectangleNode::AdaptToY(OutputDevice &/*rDev*/, sal_uLong nHeight)
+void SmRectangleNode::AdaptToY(OutputDevice &/*rDev*/, tools::Long nHeight)
 {
     GetFont().FreezeBorderWidth();
     maToSize.setHeight( nHeight );
@@ -1813,7 +1813,7 @@ void SmRectangleNode::Arrange(OutputDevice &rDev, const SmFormat &/*rFormat*/)
     aTmpDev.SetFont(GetFont());
 
     // add some borderspace
-    sal_uLong  nTmpBorderWidth = GetFont().GetBorderWidth();
+    tools::Long  nTmpBorderWidth = GetFont().GetBorderWidth();
     nHeight += 2 * nTmpBorderWidth;
 
     //! use this method in order to have 'SmRect::HasAlignInfo() == true'
@@ -2068,7 +2068,7 @@ SmMathSymbolNode::SmMathSymbolNode(const SmToken &rNodeToken)
     SetText(GetToken().cMathChar);
 }
 
-void SmMathSymbolNode::AdaptToX(OutputDevice &rDev, sal_uLong nWidth)
+void SmMathSymbolNode::AdaptToX(OutputDevice &rDev, tools::Long nWidth)
 {
     // Since there is no function to do this, we try to approximate it:
     Size  aFntSize (GetFont().GetFontSize());
@@ -2091,7 +2091,7 @@ void SmMathSymbolNode::AdaptToX(OutputDevice &rDev, sal_uLong nWidth)
     GetFont().SetSize(aFntSize);
 }
 
-void SmMathSymbolNode::AdaptToY(OutputDevice &rDev, sal_uLong nHeight)
+void SmMathSymbolNode::AdaptToY(OutputDevice &rDev, tools::Long nHeight)
 {
     GetFont().FreezeBorderWidth();
     Size  aFntSize (GetFont().GetFontSize());
@@ -2182,19 +2182,21 @@ void SmSpecialNode::Prepare(const SmFormat &rFormat, const SmDocShell &rDocShell
 {
     SmNode::Prepare(rFormat, rDocShell, nDepth);
 
-    const SmSym   *pSym;
-    SmModule  *pp = SM_MOD();
+    const SmSym* pSym
+        = GetToken().aText.isEmpty()
+              ? nullptr
+              : SmModule::get()->GetSymbolManager().GetSymbolByName(GetToken().aText.subView(1));
 
     bool bIsGreekSymbol = false;
     bool bIsSpecialSymbol = false;
     bool bIsArabic = false;
 
-    if (nullptr != (pSym = pp->GetSymbolManager().GetSymbolByName(GetToken().aText.subView(1))))
+    if (pSym)
     {
         sal_UCS4 cChar = pSym->GetCharacter();
         OUString aTmp( &cChar, 1 );
         SetText( aTmp );
-        GetFont() = pSym->GetFace(&rFormat);
+        GetFont() = SmFace(pSym->GetFace(&rFormat));
 
         OUString aSymbolSetName = SmLocalizedSymbolData::GetExportSymbolSetName(pSym->GetSymbolSetName());
         if (aSymbolSetName == "Greek")

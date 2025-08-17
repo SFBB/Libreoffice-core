@@ -33,7 +33,6 @@ using namespace com::sun::star::datatransfer;
 using namespace com::sun::star::datatransfer::clipboard;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::awt;
 using namespace cppu;
 using namespace osl;
 using namespace x11;
@@ -64,7 +63,7 @@ X11Clipboard::create( SelectionManager& rManager, Atom aSelection )
     else
     {
         rManager.registerHandler(XA_PRIMARY, *cb);
-        rManager.registerHandler(rManager.getAtom("CLIPBOARD"), *cb);
+        rManager.registerHandler(rManager.getAtom(u"CLIPBOARD"_ustr), *cb);
     }
     return cb;
 }
@@ -86,7 +85,7 @@ X11Clipboard::~X11Clipboard()
     else
     {
         m_xSelectionManager->deregisterHandler( XA_PRIMARY );
-        m_xSelectionManager->deregisterHandler( m_xSelectionManager->getAtom( "CLIPBOARD" ) );
+        m_xSelectionManager->deregisterHandler( m_xSelectionManager->getAtom( u"CLIPBOARD"_ustr ) );
     }
 }
 
@@ -117,7 +116,7 @@ void X11Clipboard::clearContents()
     // copy member references on stack so they can be called
     // without having the mutex
     Reference< XClipboardOwner > xOwner( m_aOwner );
-    Reference< XTransferable > xKeepAlive( m_aContents );
+    Reference< XTransferable > xTrans( m_aContents );
     // clear members
     m_aOwner.clear();
     m_aContents.clear();
@@ -127,7 +126,7 @@ void X11Clipboard::clearContents()
 
     // inform previous owner of lost ownership
     if ( xOwner.is() )
-        xOwner->lostOwnership(xThis, m_aContents);
+        xOwner->lostOwnership(xThis, xTrans);
 }
 
 Reference< XTransferable > SAL_CALL X11Clipboard::getContents()
@@ -160,7 +159,7 @@ void SAL_CALL X11Clipboard::setContents(
     else
     {
         m_xSelectionManager->requestOwnership( XA_PRIMARY );
-        m_xSelectionManager->requestOwnership( m_xSelectionManager->getAtom( "CLIPBOARD" ) );
+        m_xSelectionManager->requestOwnership( m_xSelectionManager->getAtom( u"CLIPBOARD"_ustr ) );
     }
 
     // notify old owner on loss of ownership

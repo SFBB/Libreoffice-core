@@ -25,13 +25,15 @@
 #undef WB_LEFT
 #undef WB_RIGHT
 
-#include "shutdownicon.hxx"
+#include <shutdownicon.hxx>
 #include <sfx2/sfxresid.hxx>
 #include <sfx2/strings.hrc>
 #include <shlobj.h>
 #include <objidl.h>
 #include <osl/diagnose.h>
 #include <osl/thread.h>
+#include <systools/win32/comtools.hxx>
+#include <systools/win32/extended_max_path.hxx>
 #include <systools/win32/qswin32.h>
 #include <comphelper/sequenceashashmap.hxx>
 #include <comphelper/windowserrorstring.hxx>
@@ -455,7 +457,7 @@ static unsigned __stdcall SystrayThread(void* /*lpParam*/)
         }
         if (-1 == bRet)
         {
-            SAL_WARN("sfx.appl", "GetMessageW failed: " << WindowsErrorString(GetLastError()));
+            SAL_WARN("sfx.appl", "GetMessageW failed: " << comphelper::WindowsErrorString(GetLastError()));
             return 1;
         }
         TranslateMessage( &msg );
@@ -658,20 +660,6 @@ void OnDrawItem(HWND /*hwnd*/, LPDRAWITEMSTRUCT lpdis)
 
 // code from setup2 project
 
-
-static void SHFree_( void *pv )
-{
-    IMalloc *pMalloc;
-    if( NOERROR == SHGetMalloc(&pMalloc) )
-    {
-        pMalloc->Free( pv );
-        pMalloc->Release();
-    }
-}
-
-#define ALLOC(type, n) static_cast<type *>(HeapAlloc(GetProcessHeap(), 0, sizeof(type) * n ))
-#define FREE(p) HeapFree(GetProcessHeap(), 0, p)
-
 static OUString SHGetSpecialFolder( int nFolderID )
 {
 
@@ -681,15 +669,11 @@ static OUString SHGetSpecialFolder( int nFolderID )
 
     if( hHdl == NOERROR )
     {
-        WCHAR *lpFolderA;
-        lpFolderA = ALLOC( WCHAR, 16000 );
-
-        SHGetPathFromIDListW( pidl, lpFolderA );
-        aFolder = o3tl::toU( lpFolderA );
-
-        FREE( lpFolderA );
-        SHFree_( pidl );
+        auto xFolder = std::make_unique<WCHAR[]>(16000);
+        SHGetPathFromIDListW(pidl, xFolder.get());
+        aFolder = o3tl::toU(xFolder.get());
     }
+
     return aFolder;
 }
 
@@ -718,36 +702,22 @@ static HRESULT WINAPI SHCoCreateInstance( LPVOID lpszReserved, REFCLSID clsid, L
 static bool CreateShortcut( const OUString& rAbsObject, const OUString& rAbsObjectPath,
     const OUString& rAbsShortcut, const OUString& rDescription, const OUString& rParameter )
 {
-    HRESULT hres;
-    IShellLinkW* psl;
-    CLSID clsid_ShellLink = CLSID_ShellLink;
-    CLSID clsid_IShellLink = IID_IShellLinkW;
-
-    hres = CoCreateInstance( clsid_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
-                             clsid_IShellLink, reinterpret_cast<void**>(&psl) );
-    if( FAILED(hres) )
-        hres = SHCoCreateInstance( nullptr, clsid_ShellLink, nullptr, clsid_IShellLink, reinterpret_cast<void**>(&psl) );
-
-    if( SUCCEEDED(hres) )
+    try
     {
-        IPersistFile* ppf;
+        sal::systools::COMReference<IShellLinkW> psl(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER);
         psl->SetPath( o3tl::toW(rAbsObject.getStr()) );
         psl->SetWorkingDirectory( o3tl::toW(rAbsObjectPath.getStr()) );
         psl->SetDescription( o3tl::toW(rDescription.getStr()) );
-        if( rParameter.getLength() )
+        if (!rParameter.isEmpty())
             psl->SetArguments( o3tl::toW(rParameter.getStr()) );
 
-        CLSID clsid_IPersistFile = IID_IPersistFile;
-        hres = psl->QueryInterface( clsid_IPersistFile, reinterpret_cast<void**>(&ppf) );
-
-        if( SUCCEEDED(hres) )
-        {
-            hres = ppf->Save( o3tl::toW(rAbsShortcut.getStr()), TRUE );
-            ppf->Release();
-        } else return false;
-        psl->Release();
-    } else return false;
-    return true;
+        sal::systools::COMReference<IPersistFile> ppf(psl, sal::systools::COM_QUERY_THROW);
+        return SUCCEEDED(ppf->Save(o3tl::toW(rAbsShortcut.getStr()), TRUE));
+    }
+    catch (const sal::systools::ComError&)
+    {
+        return false;
+    }
 }
 
 
@@ -771,23 +741,23 @@ static bool FileExistsW( LPCWSTR lpPath )
 
 bool ShutdownIcon::IsQuickstarterInstalled()
 {
-    wchar_t aPath[_MAX_PATH];
-    GetModuleFileNameW( nullptr, aPath, _MAX_PATH-1);
+    wchar_t aPath[EXTENDED_MAX_PATH];
+    GetModuleFileNameW(nullptr, aPath, std::size(aPath));
 
-    OUString aOfficepath( o3tl::toU(aPath) );
-    int i = aOfficepath.lastIndexOf('\\');
-    if( i != -1 )
-        aOfficepath = aOfficepath.copy(0, i);
+    std::u16string_view aOfficepath(o3tl::toU(aPath));
+    auto i = aOfficepath.find_last_of('\\');
+    if (i != std::u16string_view::npos)
+        aOfficepath = aOfficepath.substr(0, i);
 
-    OUString quickstartExe(aOfficepath + "\\quickstart.exe");
+    OUString quickstartExe(OUString::Concat(aOfficepath) + "\\quickstart.exe");
 
     return FileExistsW( o3tl::toW(quickstartExe.getStr()) );
 }
 
 void ShutdownIcon::EnableAutostartW32( const OUString &aShortcut )
 {
-    wchar_t aPath[_MAX_PATH];
-    GetModuleFileNameW( nullptr, aPath, _MAX_PATH-1);
+    wchar_t aPath[EXTENDED_MAX_PATH];
+    GetModuleFileNameW(nullptr, aPath, std::size(aPath));
 
     OUString aOfficepath( o3tl::toU(aPath) );
     int i = aOfficepath.lastIndexOf('\\');

@@ -19,7 +19,6 @@
 
 #include <memory>
 #include <ChartController.hxx>
-#include <ChartView.hxx>
 
 #include <dlg_InsertAxis_Grid.hxx>
 #include <dlg_InsertDataLabel.hxx>
@@ -33,7 +32,6 @@
 #include <AxisHelper.hxx>
 #include <TitleHelper.hxx>
 #include <DataSeries.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <GridProperties.hxx>
 #include <chartview/DrawModelWrapper.hxx>
@@ -69,7 +67,6 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 using ::com::sun::star::uno::Reference;
-using ::com::sun::star::uno::Sequence;
 
 namespace
 {
@@ -90,34 +87,37 @@ namespace chart
 
 void ChartController::executeDispatch_InsertAxes()
 {
-    UndoGuard aUndoGuard(
+    auto xUndoGuard = std::make_shared<UndoGuard>(
         ActionDescriptionProvider::createDescription(
             ActionDescriptionProvider::ActionType::Insert, SchResId( STR_OBJECT_AXES )),
         m_xUndoManager );
 
     try
     {
-        InsertAxisOrGridDialogData aDialogInput;
+        auto xDialogInput = std::make_shared<InsertAxisOrGridDialogData>();
         rtl::Reference< Diagram > xDiagram = getFirstDiagram();
-        AxisHelper::getAxisOrGridExistence( aDialogInput.aExistenceList, xDiagram );
-        AxisHelper::getAxisOrGridPossibilities( aDialogInput.aPossibilityList, xDiagram );
+        AxisHelper::getAxisOrGridExistence( xDialogInput->aExistenceList, xDiagram );
+        AxisHelper::getAxisOrGridPossibilities( xDialogInput->aPossibilityList, xDiagram );
 
         SolarMutexGuard aGuard;
-        SchAxisDlg aDlg(GetChartFrame(), aDialogInput);
-        if (aDlg.run() == RET_OK)
-        {
-            // lock controllers till end of block
-            ControllerLockGuardUNO aCLGuard( getChartModel() );
+        auto aDlg = std::make_shared<SchAxisDlg>(GetChartFrame(), *xDialogInput);
+        weld::DialogController::runAsync(aDlg, [this, aDlg, xDialogInput=std::move(xDialogInput),
+                                                xUndoGuard=std::move(xUndoGuard)](int nResult) {
+            if ( nResult == RET_OK )
+            {
+                // lock controllers till end of block
+                ControllerLockGuardUNO aCLGuard( getChartModel() );
 
-            InsertAxisOrGridDialogData aDialogOutput;
-            aDlg.getResult(aDialogOutput);
-            ReferenceSizeProvider aRefSizeProvider(impl_createReferenceSizeProvider());
-            bool bChanged = AxisHelper::changeVisibilityOfAxes( xDiagram
-                , aDialogInput.aExistenceList, aDialogOutput.aExistenceList, m_xCC
-                , &aRefSizeProvider );
-            if( bChanged )
-                aUndoGuard.commit();
-        }
+                InsertAxisOrGridDialogData aDialogOutput;
+                aDlg->getResult(aDialogOutput);
+                ReferenceSizeProvider aRefSizeProvider(impl_createReferenceSizeProvider());
+                bool bChanged = AxisHelper::changeVisibilityOfAxes( getFirstDiagram()
+                    , xDialogInput->aExistenceList, aDialogOutput.aExistenceList, m_xCC
+                    , &aRefSizeProvider );
+                if( bChanged )
+                    xUndoGuard->commit();
+            }
+        });
     }
     catch(const uno::RuntimeException&)
     {
@@ -178,19 +178,19 @@ void ChartController::executeDispatch_OpenInsertDataTableDialog()
         {
             uno::Reference<beans::XPropertySet> xProperties(xDataTable, uno::UNO_QUERY);
 
-            uno::Any aAny = xProperties->getPropertyValue("HBorder");
+            uno::Any aAny = xProperties->getPropertyValue(u"HBorder"_ustr);
             if (aAny.has<bool>())
                 aData.mbHorizontalBorders = aAny.get<bool>();
 
-            aAny = xProperties->getPropertyValue("VBorder");
+            aAny = xProperties->getPropertyValue(u"VBorder"_ustr);
             if (aAny.has<bool>())
                 aData.mbVerticalBorders = aAny.get<bool>();
 
-            aAny = xProperties->getPropertyValue("Outline");
+            aAny = xProperties->getPropertyValue(u"Outline"_ustr);
             if (aAny.has<bool>())
                 aData.mbOutline = aAny.get<bool>();
 
-            aAny = xProperties->getPropertyValue("Keys");
+            aAny = xProperties->getPropertyValue(u"Keys"_ustr);
             if (aAny.has<bool>())
                 aData.mbKeys = aAny.get<bool>();
         }
@@ -224,10 +224,10 @@ void ChartController::executeDispatch_OpenInsertDataTableDialog()
         if (rDialogData.mbShow && xDataTable.is())
         {
             uno::Reference<beans::XPropertySet> xProperties(xDataTable, uno::UNO_QUERY);
-            xProperties->setPropertyValue("HBorder" , uno::Any(rDialogData.mbHorizontalBorders));
-            xProperties->setPropertyValue("VBorder" , uno::Any(rDialogData.mbVerticalBorders));
-            xProperties->setPropertyValue("Outline" , uno::Any(rDialogData.mbOutline));
-            xProperties->setPropertyValue("Keys" , uno::Any(rDialogData.mbKeys));
+            xProperties->setPropertyValue(u"HBorder"_ustr , uno::Any(rDialogData.mbHorizontalBorders));
+            xProperties->setPropertyValue(u"VBorder"_ustr , uno::Any(rDialogData.mbVerticalBorders));
+            xProperties->setPropertyValue(u"Outline"_ustr , uno::Any(rDialogData.mbOutline));
+            xProperties->setPropertyValue(u"Keys"_ustr , uno::Any(rDialogData.mbKeys));
             bChanged = true;
         }
 
@@ -274,28 +274,31 @@ void ChartController::executeDispatch_DeleteDataTable()
 
 void ChartController::executeDispatch_InsertTitles()
 {
-    UndoGuard aUndoGuard(
+    auto xUndoGuard = std::make_shared<UndoGuard>(
         ActionDescriptionProvider::createDescription(
             ActionDescriptionProvider::ActionType::Insert, SchResId( STR_OBJECT_TITLES )),
         m_xUndoManager );
 
     try
     {
-        TitleDialogData aDialogInput;
-        aDialogInput.readFromModel( getChartModel() );
+        auto xDialogInput = std::make_shared<TitleDialogData>();
+        xDialogInput->readFromModel( getChartModel() );
 
         SolarMutexGuard aGuard;
-        SchTitleDlg aDlg(GetChartFrame(), aDialogInput);
-        if (aDlg.run() == RET_OK)
-        {
-            // lock controllers till end of block
-            ControllerLockGuardUNO aCLGuard( getChartModel() );
-            TitleDialogData aDialogOutput(impl_createReferenceSizeProvider());
-            aDlg.getResult(aDialogOutput);
-            bool bChanged = aDialogOutput.writeDifferenceToModel( getChartModel(), m_xCC, &aDialogInput );
-            if( bChanged )
-                aUndoGuard.commit();
-        }
+        auto aDlg = std::make_shared<SchTitleDlg>(GetChartFrame(), *xDialogInput);
+        weld::DialogController::runAsync(aDlg, [this, aDlg, xDialogInput=std::move(xDialogInput),
+                                                xUndoGuard=std::move(xUndoGuard)](int nResult){
+            if ( nResult == RET_OK )
+            {
+                // lock controllers till end of block
+                ControllerLockGuardUNO aCLGuard( getChartModel() );
+                TitleDialogData aDialogOutput( impl_createReferenceSizeProvider() );
+                aDlg->getResult( aDialogOutput );
+                bool bChanged = aDialogOutput.writeDifferenceToModel( getChartModel(), m_xCC, xDialogInput.get() );
+                if( bChanged )
+                    xUndoGuard->commit();
+            }
+        });
     }
     catch(const uno::RuntimeException&)
     {
@@ -354,7 +357,7 @@ void ChartController::executeDispatch_OpenLegendDialog()
 
 void ChartController::executeDispatch_InsertMenu_DataLabels()
 {
-    UndoGuard aUndoGuard(
+    std::shared_ptr<UndoGuard> aUndoGuard = std::make_shared<UndoGuard>(
         ActionDescriptionProvider::createDescription(
             ActionDescriptionProvider::ActionType::Insert, SchResId( STR_OBJECT_DATALABELS )),
         m_xUndoManager );
@@ -365,25 +368,21 @@ void ChartController::executeDispatch_InsertMenu_DataLabels()
     if( xSeries.is() )
     {
         // add labels
-        DataSeriesHelper::insertDataLabelsToSeriesAndAllPoints( xSeries );
+        xSeries->insertDataLabelsToSeriesAndAllPoints();
 
         OUString aChildParticle( ObjectIdentifier::getStringForType( OBJECTTYPE_DATA_LABELS ) + "=" );
         OUString aObjectCID = ObjectIdentifier::createClassifiedIdentifierForParticles(
             ObjectIdentifier::getSeriesParticleFromCID(m_aSelection.getSelectedCID()), aChildParticle );
 
-        bool bSuccess = ChartController::executeDlg_ObjectProperties_withoutUndoGuard( aObjectCID, true );
-        if( bSuccess )
-            aUndoGuard.commit();
+        ChartController::executeDlg_ObjectProperties_withUndoGuard(std::move(aUndoGuard), aObjectCID, true );
         return;
     }
-
     try
     {
         wrapper::AllDataLabelItemConverter aItemConverter(
             getChartModel(),
             m_pDrawModelWrapper->GetItemPool(),
-            m_pDrawModelWrapper->getSdrModel(),
-            getChartModel() );
+            m_pDrawModelWrapper->getSdrModel() );
         SfxItemSet aItemSet = aItemConverter.CreateEmptyItemSet();
         aItemConverter.FillItemSet( aItemSet );
 
@@ -404,7 +403,7 @@ void ChartController::executeDispatch_InsertMenu_DataLabels()
             ControllerLockGuardUNO aCLGuard( getChartModel() );
             bool bChanged = aItemConverter.ApplyItemSet( aOutItemSet );//model should be changed now
             if( bChanged )
-                aUndoGuard.commit();
+                aUndoGuard->commit();
         }
     }
     catch(const uno::RuntimeException&)
@@ -470,7 +469,7 @@ void ChartController::executeDispatch_InsertTrendline()
     if( !xRegressionCurveContainer.is() )
         return;
 
-    UndoLiveUpdateGuard aUndoGuard(
+    auto xUndoGuard = std::make_shared<UndoLiveUpdateGuard>(
         ActionDescriptionProvider::createDescription(
             ActionDescriptionProvider::ActionType::Insert, SchResId( STR_OBJECT_CURVE )),
         m_xUndoManager );
@@ -483,14 +482,14 @@ void ChartController::executeDispatch_InsertTrendline()
     if( !xCurve.is())
         return;
 
-    wrapper::RegressionCurveItemConverter aItemConverter(
+    auto aItemConverter = std::make_shared<wrapper::RegressionCurveItemConverter>(
         xCurve, xRegressionCurveContainer, m_pDrawModelWrapper->getSdrModel().GetItemPool(),
         m_pDrawModelWrapper->getSdrModel(),
         getChartModel() );
 
     // open dialog
-    SfxItemSet aItemSet = aItemConverter.CreateEmptyItemSet();
-    aItemConverter.FillItemSet( aItemSet );
+    SfxItemSet aItemSet = aItemConverter->CreateEmptyItemSet();
+    aItemConverter->FillItemSet( aItemSet );
     ObjectPropertiesDialogParameter aDialogParameter(
         ObjectIdentifier::createDataCurveCID(
             ObjectIdentifier::getSeriesParticleFromCID( m_aSelection.getSelectedCID()),
@@ -498,23 +497,24 @@ void ChartController::executeDispatch_InsertTrendline()
     aDialogParameter.init( getChartModel() );
     ViewElementListProvider aViewElementListProvider( m_pDrawModelWrapper.get());
     SolarMutexGuard aGuard;
-    SchAttribTabDlg aDialog(
-        GetChartFrame(), &aItemSet, &aDialogParameter,
-        &aViewElementListProvider,
-        getChartModel() );
+    auto aDialog = std::make_shared<SchAttribTabDlg>(GetChartFrame(), &aItemSet, aDialogParameter,
+                                                     &aViewElementListProvider, getChartModel());
 
     // note: when a user pressed "OK" but didn't change any settings in the
     // dialog, the SfxTabDialog returns "Cancel"
-    if( aDialog.run() == RET_OK || aDialog.DialogWasClosedWithOK())
-    {
-        const SfxItemSet* pOutItemSet = aDialog.GetOutputItemSet();
-        if( pOutItemSet )
+    SfxTabDialogController::runAsync(aDialog, [this, aDialog, aItemConverter = std::move(aItemConverter),
+                                               xUndoGuard=std::move(xUndoGuard)](int nResult) {
+        if ( nResult == RET_OK || aDialog->DialogWasClosedWithOK() )
         {
-            ControllerLockGuardUNO aCLGuard( getChartModel() );
-            aItemConverter.ApplyItemSet( *pOutItemSet );
+            const SfxItemSet* pOutItemSet = aDialog->GetOutputItemSet();
+            if( pOutItemSet )
+            {
+                ControllerLockGuardUNO aCLGuard( getChartModel() );
+                aItemConverter->ApplyItemSet( *pOutItemSet );
+            }
+            xUndoGuard->commit();
         }
-        aUndoGuard.commit();
-    }
+    });
 }
 
 void ChartController::executeDispatch_InsertErrorBars( bool bYError )
@@ -527,7 +527,7 @@ void ChartController::executeDispatch_InsertErrorBars( bool bYError )
 
     if( xSeries.is())
     {
-        UndoLiveUpdateGuard aUndoGuard(
+        auto xUndoGuard = std::make_shared<UndoLiveUpdateGuard>(
             ActionDescriptionProvider::createDescription(
                 ActionDescriptionProvider::ActionType::Insert,
                 SchResId( bYError ? STR_OBJECT_ERROR_BARS_Y : STR_OBJECT_ERROR_BARS_X )),
@@ -540,46 +540,48 @@ void ChartController::executeDispatch_InsertErrorBars( bool bYError )
                                             bYError));
 
         // get an appropriate item converter
-        wrapper::ErrorBarItemConverter aItemConverter(
+        auto aItemConverter = std::make_shared<wrapper::ErrorBarItemConverter> (
             getChartModel(), xErrorBarProp, m_pDrawModelWrapper->getSdrModel().GetItemPool(),
-            m_pDrawModelWrapper->getSdrModel(),
-            getChartModel() );
+            m_pDrawModelWrapper->getSdrModel() );
 
         // open dialog
-        SfxItemSet aItemSet = aItemConverter.CreateEmptyItemSet();
+        SfxItemSet aItemSet = aItemConverter->CreateEmptyItemSet();
         aItemSet.Put(SfxBoolItem(SCHATTR_STAT_ERRORBAR_TYPE,bYError));
-        aItemConverter.FillItemSet( aItemSet );
+        aItemConverter->FillItemSet( aItemSet );
         ObjectPropertiesDialogParameter aDialogParameter(
             ObjectIdentifier::createClassifiedIdentifierWithParent(
                 objType, u"", m_aSelection.getSelectedCID()));
         aDialogParameter.init( getChartModel() );
         ViewElementListProvider aViewElementListProvider( m_pDrawModelWrapper.get());
         SolarMutexGuard aGuard;
-        SchAttribTabDlg aDlg(
-                GetChartFrame(), &aItemSet, &aDialogParameter,
+        auto aDlg = std::make_shared<SchAttribTabDlg>(
+                GetChartFrame(), &aItemSet, aDialogParameter,
                 &aViewElementListProvider,
                 getChartModel() );
-        aDlg.SetAxisMinorStepWidthForErrorBarDecimals(
+        aDlg->SetAxisMinorStepWidthForErrorBarDecimals(
             InsertErrorBarsDialog::getAxisMinorStepWidthForErrorBarDecimals( getChartModel(),
                                                                              m_xChartView, m_aSelection.getSelectedCID()));
 
         // note: when a user pressed "OK" but didn't change any settings in the
         // dialog, the SfxTabDialog returns "Cancel"
-        if (aDlg.run() == RET_OK || aDlg.DialogWasClosedWithOK())
-        {
-            const SfxItemSet* pOutItemSet = aDlg.GetOutputItemSet();
-            if( pOutItemSet )
+        SfxTabDialogController::runAsync(aDlg, [this, aDlg, aItemConverter=std::move(aItemConverter),
+                                                xUndoGuard=std::move(xUndoGuard)](int nResult) {
+            if ( nResult == RET_OK || aDlg->DialogWasClosedWithOK() )
             {
-                ControllerLockGuardUNO aCLGuard( getChartModel() );
-                aItemConverter.ApplyItemSet( *pOutItemSet );
+                const SfxItemSet* pOutItemSet = aDlg->GetOutputItemSet();
+                if( pOutItemSet )
+                {
+                    ControllerLockGuardUNO aCLGuard( getChartModel() );
+                    aItemConverter->ApplyItemSet( *pOutItemSet );
+                }
+                xUndoGuard->commit();
             }
-            aUndoGuard.commit();
-        }
+        });
     }
     else
     {
         //if no series is selected insert error bars for all series
-        UndoGuard aUndoGuard(
+        auto xUndoGuard = std::make_shared<UndoGuard>(
             ActionDescriptionProvider::createDescription(
                 ActionDescriptionProvider::ActionType::Insert,
                 ObjectNameProvider::getName_ObjectForAllSeries( objType ) ),
@@ -587,32 +589,35 @@ void ChartController::executeDispatch_InsertErrorBars( bool bYError )
 
         try
         {
-            wrapper::AllSeriesStatisticsConverter aItemConverter(
+            auto xItemConverter = std::make_shared<wrapper::AllSeriesStatisticsConverter>(
                 getChartModel(), m_pDrawModelWrapper->GetItemPool() );
-            SfxItemSet aItemSet = aItemConverter.CreateEmptyItemSet();
-            aItemConverter.FillItemSet( aItemSet );
+            SfxItemSet aItemSet = xItemConverter->CreateEmptyItemSet();
+            xItemConverter->FillItemSet( aItemSet );
 
             //prepare and open dialog
             SolarMutexGuard aGuard;
-            InsertErrorBarsDialog aDlg(
+            auto aDlg = std::make_shared<InsertErrorBarsDialog>(
                 GetChartFrame(), aItemSet,
                 getChartModel(),
                 bYError ? ErrorBarResources::ERROR_BAR_Y : ErrorBarResources::ERROR_BAR_X);
 
-            aDlg.SetAxisMinorStepWidthForErrorBarDecimals(
+            aDlg->SetAxisMinorStepWidthForErrorBarDecimals(
                 InsertErrorBarsDialog::getAxisMinorStepWidthForErrorBarDecimals( getChartModel(), m_xChartView, u"" ) );
 
-            if (aDlg.run() == RET_OK)
-            {
-                SfxItemSet aOutItemSet = aItemConverter.CreateEmptyItemSet();
-                aDlg.FillItemSet( aOutItemSet );
+            weld::DialogController::runAsync(aDlg, [this, aDlg, xItemConverter=std::move(xItemConverter),
+                                                    xUndoGuard=std::move(xUndoGuard)](int nResult) {
+                if ( nResult == RET_OK )
+                {
+                    SfxItemSet aOutItemSet = xItemConverter->CreateEmptyItemSet();
+                    aDlg->FillItemSet( aOutItemSet );
 
-                // lock controllers till end of block
-                ControllerLockGuardUNO aCLGuard( getChartModel() );
-                bool bChanged = aItemConverter.ApplyItemSet( aOutItemSet );//model should be changed now
-                if( bChanged )
-                    aUndoGuard.commit();
-            }
+                    // lock controllers till end of block
+                    ControllerLockGuardUNO aCLGuard( getChartModel() );
+                    bool bChanged = xItemConverter->ApplyItemSet( aOutItemSet );//model should be changed now
+                    if( bChanged )
+                        xUndoGuard->commit();
+                }
+            });
         }
         catch(const uno::RuntimeException&)
         {
@@ -641,10 +646,10 @@ void ChartController::executeDispatch_InsertTrendlineEquation( bool bInsertR2 )
             ActionDescriptionProvider::createDescription(
                 ActionDescriptionProvider::ActionType::Insert, SchResId( STR_OBJECT_CURVE_EQUATION )),
             m_xUndoManager );
-        xEqProp->setPropertyValue( "ShowEquation", uno::Any( true ));
-        xEqProp->setPropertyValue( "XName", uno::Any( OUString("x") ));
-        xEqProp->setPropertyValue( "YName", uno::Any( OUString("f(x)") ));
-        xEqProp->setPropertyValue( "ShowCorrelationCoefficient", uno::Any( bInsertR2 ));
+        xEqProp->setPropertyValue( u"ShowEquation"_ustr, uno::Any( true ));
+        xEqProp->setPropertyValue( u"XName"_ustr, uno::Any( u"x"_ustr ));
+        xEqProp->setPropertyValue( u"YName"_ustr, uno::Any( u"f(x)"_ustr ));
+        xEqProp->setPropertyValue( u"ShowCorrelationCoefficient"_ustr, uno::Any( bInsertR2 ));
         aUndoGuard.commit();
     }
 }
@@ -659,7 +664,7 @@ void ChartController::executeDispatch_InsertR2Value()
             ActionDescriptionProvider::createDescription(
                 ActionDescriptionProvider::ActionType::Insert, SchResId( STR_OBJECT_CURVE_EQUATION )),
             m_xUndoManager );
-        xEqProp->setPropertyValue( "ShowCorrelationCoefficient", uno::Any( true ));
+        xEqProp->setPropertyValue( u"ShowCorrelationCoefficient"_ustr, uno::Any( true ));
         aUndoGuard.commit();
     }
 }
@@ -674,7 +679,7 @@ void ChartController::executeDispatch_DeleteR2Value()
             ActionDescriptionProvider::createDescription(
                 ActionDescriptionProvider::ActionType::Insert, SchResId( STR_OBJECT_CURVE_EQUATION )),
             m_xUndoManager );
-        xEqProp->setPropertyValue( "ShowCorrelationCoefficient", uno::Any( false ));
+        xEqProp->setPropertyValue( u"ShowCorrelationCoefficient"_ustr, uno::Any( false ));
         aUndoGuard.commit();
     }
 }
@@ -748,7 +753,7 @@ void ChartController::executeDispatch_InsertDataLabels()
         UndoGuard aUndoGuard( ActionDescriptionProvider::createDescription( ActionDescriptionProvider::ActionType::Insert,
             SchResId( STR_OBJECT_DATALABELS )),
             m_xUndoManager );
-        DataSeriesHelper::insertDataLabelsToSeriesAndAllPoints( xSeries );
+        xSeries->insertDataLabelsToSeriesAndAllPoints();
         aUndoGuard.commit();
     }
 }
@@ -771,7 +776,7 @@ void ChartController::executeDispatch_DeleteDataLabels()
         UndoGuard aUndoGuard( ActionDescriptionProvider::createDescription( ActionDescriptionProvider::ActionType::Delete,
             SchResId( STR_OBJECT_DATALABELS )),
             m_xUndoManager );
-        DataSeriesHelper::deleteDataLabelsFromSeriesAndAllPoints( xSeries );
+        xSeries->deleteDataLabelsFromSeriesAndAllPoints();
         aUndoGuard.commit();
     }
 }

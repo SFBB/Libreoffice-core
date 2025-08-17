@@ -142,11 +142,6 @@ namespace basegfx
         return mpImpl->isEqual(*rMat.mpImpl);
     }
 
-    bool B3DHomMatrix::operator!=(const B3DHomMatrix& rMat) const
-    {
-        return !(*this == rMat);
-    }
-
     void B3DHomMatrix::rotate(double fAngleX,double fAngleY,double fAngleZ)
     {
         if(fTools::equalZero(fAngleX) && fTools::equalZero(fAngleY) && fTools::equalZero(fAngleZ))
@@ -472,7 +467,6 @@ namespace basegfx
 
         if(!fTools::equalZero(fShearY))
         {
-            // coverity[copy_paste_error : FALSE] - this is correct getZ, not getY
             rShear.setY(rShear.getY() / rScale.getZ());
         }
 
@@ -480,7 +474,6 @@ namespace basegfx
 
         if(!fTools::equalZero(fShearZ))
         {
-            // coverity[original] - this is not an original copy-and-paste source for ^^^
             rShear.setZ(rShear.getZ() / rScale.getZ());
         }
 

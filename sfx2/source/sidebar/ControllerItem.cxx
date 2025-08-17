@@ -20,9 +20,13 @@
 #include <sfx2/sidebar/ControllerItem.hxx>
 
 #include <sfx2/bindings.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <comphelper/lok.hxx>
+#include <unotools/localedatawrapper.hxx>
+#include <tools/fldunit.hxx>
+#include <svl/intitem.hxx>
 
 using namespace css;
-using namespace css::uno;
 
 namespace sfx2::sidebar {
 
@@ -40,12 +44,33 @@ ControllerItem::~ControllerItem()
     dispose();
 }
 
+static bool IsCloneable(const SfxPoolItem* pState)
+{
+    return pState && !IsInvalidItem(pState) && !IsDisabledItem(pState);
+}
+
+void ControllerItem::ReceiverNotifyItemUpdate(sal_uInt16 nSID, SfxItemState eState,
+                                              const SfxPoolItem* pState)
+{
+    if (nSID == SID_ATTR_METRIC && IsCloneable(pState) && comphelper::LibreOfficeKit::isActive())
+    {
+        std::unique_ptr<SfxPoolItem> xClose(pState->Clone());
+        MeasurementSystem eSystem
+            = LocaleDataWrapper(comphelper::LibreOfficeKit::getLocale()).getMeasurementSystemEnum();
+        FieldUnit eUnit = MeasurementSystem::Metric == eSystem ? FieldUnit::CM : FieldUnit::INCH;
+        static_cast<SfxUInt16Item*>(xClose.get())->SetValue(static_cast<sal_uInt16>(eUnit));
+        mrItemUpdateReceiver.NotifyItemUpdate(nSID, eState, xClose.get());
+        return;
+    }
+    mrItemUpdateReceiver.NotifyItemUpdate(nSID, eState, pState);
+}
+
 void ControllerItem::StateChangedAtToolBoxControl (
     sal_uInt16 nSID,
     SfxItemState eState,
     const SfxPoolItem* pState)
 {
-    mrItemUpdateReceiver.NotifyItemUpdate(nSID, eState, pState);
+    ReceiverNotifyItemUpdate(nSID, eState, pState);
 }
 
 void ControllerItem::GetControlState (
@@ -59,7 +84,7 @@ void ControllerItem::RequestUpdate()
 {
     std::unique_ptr<SfxPoolItem> pState;
     const SfxItemState eState (GetBindings().QueryState(GetId(), pState));
-    mrItemUpdateReceiver.NotifyItemUpdate(GetId(), eState, pState.get());
+    ReceiverNotifyItemUpdate(GetId(), eState, pState.get());
 }
 
 ControllerItem::ItemUpdateReceiverInterface::~ItemUpdateReceiverInterface()

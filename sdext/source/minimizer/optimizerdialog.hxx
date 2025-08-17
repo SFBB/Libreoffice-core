@@ -26,18 +26,7 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <vcl/roadmapwizard.hxx>
-
-#define MAX_STEP        4
-#define OD_DIALOG_WIDTH 330
-#define DIALOG_HEIGHT   210
-#define BUTTON_WIDTH    50
-#define BUTTON_HEIGHT   14
-#define BUTTON_POS_Y    DIALOG_HEIGHT - BUTTON_HEIGHT - 6
-
-#define PAGE_POS_X      91
-#define PAGE_POS_Y      8
-#define PAGE_WIDTH      OD_DIALOG_WIDTH - PAGE_POS_X
+#include <vcl/roadmapwizardmachine.hxx>
 
 #define ITEM_ID_INTRODUCTION            0
 #define ITEM_ID_SLIDES                  1
@@ -47,10 +36,22 @@
 
 class OptimizerDialog;
 
-class IntroPage : public vcl::OWizardPage
+class OptimizedDialogPage : public vcl::OWizardPage
+{
+protected:
+    OptimizerDialog& mrOptimizerDialog;
+private:
+    int m_nPageNum;
+public:
+    OptimizedDialogPage(weld::Container* pPage, OptimizerDialog& rOptimizerDialog,
+                        const OUString& rUIXMLDescription, const OUString& rID,
+                        int nPageNum);
+    virtual void Activate() override;
+};
+
+class IntroPage : public OptimizedDialogPage
 {
 private:
-    OptimizerDialog& mrOptimizerDialog;
     std::unique_ptr<weld::ComboBox> mxComboBox;
     std::unique_ptr<weld::Button> mxButton;
 
@@ -66,10 +67,9 @@ public:
     }
 };
 
-class SlidesPage : public vcl::OWizardPage
+class SlidesPage : public OptimizedDialogPage
 {
 private:
-    OptimizerDialog& mrOptimizerDialog;
     std::unique_ptr<weld::CheckButton> mxMasterSlides;
     std::unique_ptr<weld::CheckButton> mxHiddenSlides;
     std::unique_ptr<weld::CheckButton> mxUnusedSlides;
@@ -93,10 +93,9 @@ public:
     }
 };
 
-class ImagesPage : public vcl::OWizardPage
+class ImagesPage : public OptimizedDialogPage
 {
 private:
-    OptimizerDialog& mrOptimizerDialog;
     std::unique_ptr<weld::RadioButton> m_xLossLessCompression;
     std::unique_ptr<weld::Label> m_xQualityLabel;
     std::unique_ptr<weld::SpinButton> m_xQuality;
@@ -118,10 +117,9 @@ public:
                              int nResolution, bool bEmbedLinkedGraphics);
 };
 
-class ObjectsPage : public vcl::OWizardPage
+class ObjectsPage : public OptimizedDialogPage
 {
 private:
-    OptimizerDialog& mrOptimizerDialog;
     std::unique_ptr<weld::CheckButton> m_xCreateStaticImage;
     std::unique_ptr<weld::RadioButton> m_xAllOLEObjects;
     std::unique_ptr<weld::RadioButton> m_xForeignOLEObjects;
@@ -138,10 +136,9 @@ public:
     void UpdateControlStates(bool bConvertOLEObjects, int nOLEOptimizationType);
 };
 
-class SummaryPage : public vcl::OWizardPage
+class SummaryPage : public OptimizedDialogPage
 {
 private:
-    OptimizerDialog& mrOptimizerDialog;
     std::unique_ptr<weld::Label> m_xLabel1;
     std::unique_ptr<weld::Label> m_xLabel2;
     std::unique_ptr<weld::Label> m_xLabel3;

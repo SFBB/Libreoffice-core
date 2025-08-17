@@ -176,7 +176,6 @@ bool AccObjectWinManager::NotifyAccEvent(XAccessible* pXAcc, UnoMSAAEvent eEvent
     case UnoMSAAEvent::STATE_FOCUSED:
         {
             UpdateAccFocus(pXAcc);
-            selfAccObj->UpdateDefaultAction( );
             UpdateValue(pXAcc);
             NotifyWinEvent( EVENT_OBJECT_FOCUS,hAcc, OBJID_CLIENT,dChildID  );
             break;
@@ -245,7 +244,7 @@ bool AccObjectWinManager::NotifyAccEvent(XAccessible* pXAcc, UnoMSAAEvent eEvent
         NotifyWinEvent( IA2_EVENT_TEXT_CARET_MOVED,hAcc, OBJID_CLIENT,dChildID  );
         break;
     case UnoMSAAEvent::OBJECT_TEXTCHANGE:
-        NotifyWinEvent( IA2_EVENT_TEXT_CHANGED,hAcc, OBJID_CLIENT,dChildID  );
+        NotifyWinEvent(IA2_EVENT_TEXT_UPDATED, hAcc, OBJID_CLIENT, dChildID);
         break;
     case UnoMSAAEvent::ACTIVE_DESCENDANT_CHANGED:
         UpdateAccFocus(pXAcc);
@@ -475,7 +474,7 @@ void AccObjectWinManager::DeleteAccObj( XAccessible* pXAcc )
     }
     if (pListener)
     {
-        pListener->RemoveMeFromBroadcaster(false);
+        pListener->RemoveMeFromBroadcaster();
     }
 }
 
@@ -511,15 +510,14 @@ bool AccObjectWinManager::InsertChildrenAccObj( css::accessibility::XAccessible*
     if(!IsContainer(pXAcc))
         return false;
 
-    Reference< XAccessibleContext > pRContext;
-
     if( pXAcc == nullptr)
         return false;
-    pRContext = pXAcc->getAccessibleContext();
-    if( !pRContext.is() )
+
+    Reference<XAccessibleContext> xContext = pXAcc->getAccessibleContext();
+    if (!xContext.is())
         return false;
 
-    short role = pRContext->getAccessibleRole();
+    short role = xContext->getAccessibleRole();
 
     if(css::accessibility::AccessibleRole::DOCUMENT == role ||
             css::accessibility::AccessibleRole::DOCUMENT_PRESENTATION == role ||
@@ -532,11 +530,10 @@ bool AccObjectWinManager::InsertChildrenAccObj( css::accessibility::XAccessible*
         }
     }
 
-    const sal_Int64 nCount = pRContext->getAccessibleChildCount();
+    const sal_Int64 nCount = xContext->getAccessibleChildCount();
     for (sal_Int64 i = 0; i < nCount; i++)
     {
-        Reference<XAccessible> mxAccessible
-        = pRContext->getAccessibleChild(i);
+        Reference<XAccessible> mxAccessible = xContext->getAccessibleChild(i);
         XAccessible* mpAccessible = mxAccessible.get();
         if(mpAccessible != nullptr)
         {
@@ -579,17 +576,15 @@ void AccObjectWinManager::InsertAccChildNode( AccObject* pCurObj, AccObject* pPa
    */
 bool AccObjectWinManager::InsertAccObj( XAccessible* pXAcc,XAccessible* pParentXAcc,HWND pWnd )
 {
-    Reference< XAccessibleContext > pRContext;
-
     if( pXAcc == nullptr)
         return false;
 
-    pRContext = pXAcc->getAccessibleContext();
-    if( !pRContext.is() )
+    Reference<XAccessibleContext> xContext = pXAcc->getAccessibleContext();
+    if (!xContext.is())
         return false;
 
     {
-        short nCurRole = GetRole(pXAcc);
+        short nCurRole = xContext->getAccessibleRole();
 
         std::scoped_lock l(m_Mutex);
 
@@ -620,6 +615,16 @@ bool AccObjectWinManager::InsertAccObj( XAccessible* pXAcc,XAccessible* pParentX
         if(pParentXAcc)
         {
             AccObject* pObj = GetAccObjByXAcc(pParentXAcc);
+
+            // insert parent if necessary
+            if (!pObj)
+            {
+                Reference<XAccessibleContext> xParentContext = pParentXAcc->getAccessibleContext();
+                assert(xParentContext.is() && "parent accessible has no context");
+                InsertAccObj(pParentXAcc, xParentContext->getAccessibleParent().get());
+                pObj = GetAccObjByXAcc(pParentXAcc);
+            }
+
             if(pObj)
                 pWnd = pObj->GetParentHWND();
         }
@@ -628,9 +633,7 @@ bool AccObjectWinManager::InsertAccObj( XAccessible* pXAcc,XAccessible* pParentX
     }
 
     AccObject pObj(pXAcc, this);
-    if( pObj.GetIMAccessible() == nullptr )
-        return false;
-    pObj.SetResID( this->ImpleGenerateResID());
+    pObj.SetResID(ImpleGenerateResID());
     pObj.SetParentHWND( pWnd );
 
     //for file name support
@@ -648,15 +651,13 @@ bool AccObjectWinManager::InsertAccObj( XAccessible* pXAcc,XAccessible* pParentX
     }
     //end of file name
 
-    ::rtl::Reference<AccEventListener> const pListener =
-        CreateAccEventListener(pXAcc);
-    if (!pListener.is())
-        return false;
-    Reference<XAccessibleComponent> xComponent(pRContext,UNO_QUERY);
+    rtl::Reference<AccEventListener> const xListener = CreateAccEventListener(pXAcc);
+    assert(xListener.is());
+
+    Reference<XAccessibleComponent> xComponent(xContext, UNO_QUERY);
     Reference<XAccessibleEventBroadcaster> broadcaster(xComponent,UNO_QUERY);
     if (broadcaster.is())
     {
-        Reference<XAccessibleEventListener> const xListener(pListener);
         broadcaster->addAccessibleEventListener(xListener);
     }
     else
@@ -673,7 +674,7 @@ bool AccObjectWinManager::InsertAccObj( XAccessible* pXAcc,XAccessible* pParentX
     AccObject* pCurObj = GetAccObjByXAcc(pXAcc);
     if( pCurObj )
     {
-        pCurObj->SetListener(pListener);
+        pCurObj->SetListener(xListener);
     }
 
     AccObject* pParentObj = GetAccObjByXAcc(pParentXAcc);
@@ -714,13 +715,11 @@ AccObjectWinManager::CreateAccEventListener(XAccessible* pXAcc)
             pRet = new AccDialogEventListener(pXAcc, *this);
             break;
         case AccessibleRole::FRAME:
+        case AccessibleRole::ROOT_PANE:
             pRet = new AccFrameEventListener(pXAcc, *this);
             break;
         case AccessibleRole::WINDOW:
             pRet = new AccWindowEventListener(pXAcc, *this);
-            break;
-        case AccessibleRole::ROOT_PANE:
-            pRet = new AccFrameEventListener(pXAcc, *this);
             break;
             //Container
         case AccessibleRole::CANVAS:
@@ -848,26 +847,6 @@ void  AccObjectWinManager::UpdateState( css::accessibility::XAccessible* pXAcc )
 }
 
 /**
-   * Set corresponding com object's accessible name via XAccessible interface and new
-   * name
-   * @param pXAcc XAccessible interface.
-   * @return
-   */
-void  AccObjectWinManager::UpdateAccName( XAccessible* pXAcc )
-{
-    AccObject* pAccObj = GetAccObjByXAcc( pXAcc );
-    if( pAccObj )
-        pAccObj->UpdateName();
-}
-
-void  AccObjectWinManager::UpdateAction( XAccessible* pXAcc )
-{
-    AccObject* pAccObj = GetAccObjByXAcc( pXAcc );
-    if( pAccObj )
-        pAccObj->UpdateAction();
-}
-
-/**
    * Set corresponding com object's value  via XAccessible interface and new value.
    * @param pXAcc XAccessible interface.
    * @param pAny new value.
@@ -890,19 +869,6 @@ void  AccObjectWinManager::UpdateValue( XAccessible* pXAcc )
     AccObject* pAccObj = GetAccObjByXAcc( pXAcc );
     if( pAccObj )
         pAccObj->UpdateValue();
-}
-
-/**
-   * Set corresponding com object's name via XAccessible interface and new name.
-   * @param pXAcc XAccessible interface.
-   * @param newName new name
-   * @return
-   */
-void  AccObjectWinManager::SetAccName( XAccessible* pXAcc, Any newName)
-{
-    AccObject* pAccObj = GetAccObjByXAcc( pXAcc );
-    if( pAccObj )
-        pAccObj->SetName( newName );
 }
 
 /**
@@ -1060,37 +1026,6 @@ void AccObjectWinManager::UpdateChildState(css::accessibility::XAccessible* pAcc
             }
         }
     }
-}
-
-
-bool AccObjectWinManager::IsSpecialToolbarItem(css::accessibility::XAccessible* pXAcc)
-{
-    if (pXAcc && oldFocus != pXAcc)
-    {
-        if (GetParentRole(pXAcc) == AccessibleRole::TOOL_BAR)
-        {
-            Reference< XAccessibleContext > pRContext(pXAcc->getAccessibleContext());
-            if (pRContext.is())
-            {
-                if (pRContext->getAccessibleRole() == AccessibleRole::TOGGLE_BUTTON)
-                {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
-short AccObjectWinManager::GetRole(css::accessibility::XAccessible* pXAcc)
-{
-    assert(pXAcc != nullptr);
-    Reference<css::accessibility::XAccessibleContext> xContext = pXAcc->getAccessibleContext();
-    if(xContext.is())
-    {
-        return xContext->getAccessibleRole();
-    }
-    return -1;
 }
 
 XAccessible* AccObjectWinManager::GetAccDocByHWND(HWND pWnd)

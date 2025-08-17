@@ -41,7 +41,6 @@
 #include <cppuhelper/exc_hlp.hxx>
 
 #include <toolkit/helper/vclunohelper.hxx>
-#include <toolkit/helper/convert.hxx>
 
 #include <svtools/colorcfg.hxx>
 #include <svtools/embedhlp.hxx>
@@ -60,6 +59,7 @@
 #include <cppuhelper/implbase.hxx>
 
 #include <vcl/svapp.hxx>
+#include <vcl/unohelp.hxx>
 
 #include <svx/svdmodel.hxx>
 #include <svx/dialmgr.hxx>
@@ -423,7 +423,7 @@ uno::Reference< css::frame::XLayoutManager > SAL_CALL SdrLightEmbeddedClient_Imp
     uno::Reference < beans::XPropertySet > xFrame( lcl_getFrame_throw(mpObj));
     try
     {
-        xMan.set(xFrame->getPropertyValue("LayoutManager"),uno::UNO_QUERY);
+        xMan.set(xFrame->getPropertyValue(u"LayoutManager"_ustr),uno::UNO_QUERY);
     }
     catch ( uno::Exception& ex )
     {
@@ -454,7 +454,7 @@ awt::Rectangle SAL_CALL SdrLightEmbeddedClient_Impl::getPlacement()
         aContainerMapUnit = VCLUnoHelper::UnoEmbed2VCLMapUnit( xParentVis->getMapUnit( mpObj->GetAspect() ) );
 
     aLogicRect = Application::GetDefaultDevice()->LogicToPixel(aLogicRect, MapMode(aContainerMapUnit));
-    return AWTRectangle( aLogicRect );
+    return vcl::unohelper::ConvertToAWTRect(aLogicRect);
 }
 
 awt::Rectangle SAL_CALL SdrLightEmbeddedClient_Impl::getClipRectangle()
@@ -480,8 +480,8 @@ void SAL_CALL SdrLightEmbeddedClient_Impl::changedPlacement( const awt::Rectangl
 
     // check if the change is at least one pixel in size
     awt::Rectangle aOldRect = getPlacement();
-    tools::Rectangle aNewPixelRect = VCLRectangle( aPosRect );
-    tools::Rectangle aOldPixelRect = VCLRectangle( aOldRect );
+    tools::Rectangle aNewPixelRect = vcl::unohelper::ConvertToVCLRect(aPosRect);
+    tools::Rectangle aOldPixelRect = vcl::unohelper::ConvertToVCLRect(aOldRect);
     if ( aOldPixelRect == aNewPixelRect )
         // nothing has changed
         return;
@@ -544,7 +544,7 @@ void SdrLightEmbeddedClient_Impl::setWindow(const uno::Reference< awt::XWindow >
 
 SdrEmbedObjectLink::SdrEmbedObjectLink(SdrOle2Obj* pObject):
     ::sfx2::SvBaseLink( ::SfxLinkUpdateMode::ONCALL, SotClipboardFormatId::SVXB ),
-    pObj(pObject)
+    m_pObj(pObject)
 {
     SetSynchron( false );
 }
@@ -556,10 +556,10 @@ SdrEmbedObjectLink::~SdrEmbedObjectLink()
 ::sfx2::SvBaseLink::UpdateResult SdrEmbedObjectLink::DataChanged(
     const OUString& /*rMimeType*/, const css::uno::Any & /*rValue*/ )
 {
-    if ( !pObj->UpdateLinkURL_Impl() )
+    if ( !m_pObj->UpdateLinkURL_Impl() )
     {
         // the link URL was not changed
-        uno::Reference< embed::XEmbeddedObject > xObject = pObj->GetObjRef();
+        uno::Reference< embed::XEmbeddedObject > xObject = m_pObj->GetObjRef();
         OSL_ENSURE( xObject.is(), "The object must exist always!" );
         if ( xObject.is() )
         {
@@ -582,15 +582,15 @@ SdrEmbedObjectLink::~SdrEmbedObjectLink()
         }
     }
 
-    pObj->GetNewReplacement();
-    pObj->SetChanged();
+    m_pObj->GetNewReplacement();
+    m_pObj->SetChanged();
 
     return SUCCESS;
 }
 
 void SdrEmbedObjectLink::Closed()
 {
-    pObj->BreakFileLink_Impl();
+    m_pObj->BreakFileLink_Impl();
     SvBaseLink::Closed();
 }
 
@@ -639,6 +639,7 @@ public:
     mutable bool mbIsChart:1;
     bool mbLoadingOLEObjectFailed:1; // New local var to avoid repeated loading if load of OLE2 fails
     bool mbConnected:1;
+    bool mbIgnoreOLEObjectScale : 1 = false; // See SdXMLObjectShapeContext::createFastChildContext
 
     sfx2::SvBaseLink* mpObjectLink;
     OUString maLinkURL;
@@ -930,7 +931,7 @@ bool SdrOle2Obj::UpdateLinkURL_Impl()
 
                         // TODO/LATER: there should be possible to get current mediadescriptor settings from the object
                         uno::Sequence< beans::PropertyValue > aArgs{ comphelper::makePropertyValue(
-                            "URL", aNewLinkURL) };
+                            u"URL"_ustr, aNewLinkURL) };
                         xPersObj->reload( aArgs, uno::Sequence< beans::PropertyValue >() );
 
                         mpImpl->maLinkURL = aNewLinkURL;
@@ -1020,7 +1021,7 @@ void SdrOle2Obj::CheckFileLink_Impl()
             {
                 uno::Reference<beans::XPropertySet> xSet(xObject->getComponent(), uno::UNO_QUERY);
                 if (xSet.is())
-                    xSet->getPropertyValue("FrameURL") >>= aLinkURL;
+                    xSet->getPropertyValue(u"FrameURL"_ustr) >>= aLinkURL;
                 bIFrame = true;
             }
         }
@@ -1100,7 +1101,7 @@ void SdrOle2Obj::Connect_Impl(SvxOle2Shape* pCreator)
             {
                 uno::Reference<beans::XPropertySet> xSet(mpImpl->mxObjRef->getComponent(), uno::UNO_QUERY);
                 if (xSet.is())
-                    xSet->setPropertyValue("FrameURL", uno::Any(sFrameURL));
+                    xSet->setPropertyValue(u"FrameURL"_ustr, uno::Any(sFrameURL));
             }
         }
 
@@ -1318,7 +1319,7 @@ rtl::Reference<SdrObject> SdrOle2Obj::createSdrGrafObjReplacement(bool bAddText)
         // gray outline
         pClone->SetMergedItem(XLineStyleItem(css::drawing::LineStyle_SOLID));
         const svtools::ColorConfig aColorConfig;
-        const svtools::ColorConfigValue aColor(aColorConfig.GetColorValue(svtools::OBJECTBOUNDARIES));
+        const svtools::ColorConfigValue aColor(aColorConfig.GetColorValue(svtools::DOCBOUNDARIES));
         pClone->SetMergedItem(XLineColorItem(OUString(), aColor.nColor));
 
         // bitmap fill
@@ -1689,9 +1690,9 @@ void SdrOle2Obj::NbcSetSnapRect(const tools::Rectangle& rRect)
     }
 }
 
-void SdrOle2Obj::NbcSetLogicRect(const tools::Rectangle& rRect)
+void SdrOle2Obj::NbcSetLogicRect(const tools::Rectangle& rRect, bool bAdaptTextMinSize)
 {
-    SdrRectObj::NbcSetLogicRect(rRect);
+    SdrRectObj::NbcSetLogicRect(rRect, bAdaptTextMinSize);
 
     if( !getSdrModelFromSdrObject().isLocked() )
         ImpSetVisAreaSize();
@@ -1915,7 +1916,7 @@ bool SdrOle2Obj::IsCalc() const
         || SvGlobalName(SO3_SC_CLASSID) == aObjClsId;
 }
 
-uno::Reference< frame::XModel > SdrOle2Obj::GetParentXModel() const
+const uno::Reference< frame::XModel > & SdrOle2Obj::GetParentXModel() const
 {
     return getSdrModelFromSdrObject().getUnoModel();
 }
@@ -1949,6 +1950,8 @@ bool SdrOle2Obj::CalculateNewScaling( Fraction& aScaleWidth, Fraction& aScaleHei
     return true;
 }
 
+void SdrOle2Obj::SetIgnoreOLEObjectScale(bool val) { mpImpl->mbIgnoreOLEObjectScale = val; }
+
 bool SdrOle2Obj::AddOwnLightClient()
 {
     // The Own Light Client must be registered in object only using this method!
@@ -1957,7 +1960,7 @@ bool SdrOle2Obj::AddOwnLightClient()
     {
         Connect();
 
-        if ( mpImpl->mxObjRef.is() && mpImpl->mxLightClient.is() )
+        if (!mpImpl->mbIgnoreOLEObjectScale && mpImpl->mxObjRef.is() && mpImpl->mxLightClient.is())
         {
             Fraction aScaleWidth;
             Fraction aScaleHeight;
@@ -1982,7 +1985,7 @@ bool SdrOle2Obj::AddOwnLightClient()
 
 Graphic SdrOle2Obj::GetEmptyOLEReplacementGraphic()
 {
-    return Graphic(BitmapEx(BMP_SVXOLEOBJ));
+    return Graphic(Bitmap(BMP_SVXOLEOBJ));
 }
 
 void SdrOle2Obj::SetWindow(const css::uno::Reference < css::awt::XWindow >& _xWindow)

@@ -330,14 +330,14 @@ css::uno::Any UnoControlModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
                 }
 
                 // the remaining is the locale
-                LocaleDataWrapper aLocaleInfo( m_xContext, LanguageTag(sDefaultCurrency) );
+                const LocaleDataWrapper* pLocaleInfo = LocaleDataWrapper::get( LanguageTag(sDefaultCurrency) );
                 if ( sBankSymbol.isEmpty() )
-                    sBankSymbol = aLocaleInfo.getCurrBankSymbol();
+                    sBankSymbol = pLocaleInfo->getCurrBankSymbol();
 
                 // look for the currency entry (for this language) which has the given bank symbol
-                const Sequence< Currency2 > aAllCurrencies = aLocaleInfo.getAllCurrencies();
+                const Sequence< Currency2 > aAllCurrencies = pLocaleInfo->getAllCurrencies();
 
-                OUString sCurrencySymbol = aLocaleInfo.getCurrSymbol();
+                OUString sCurrencySymbol = pLocaleInfo->getCurrSymbol();
                 if ( sBankSymbol.isEmpty() )
                 {
                     DBG_ASSERT( aAllCurrencies.hasElements(), "UnoControlModel::ImplGetDefaultValue: no currencies at all!" );
@@ -549,7 +549,7 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
         const css::uno::Any* pProp = &(maData[rProp]);
         OutStream->writeShort( rProp );
 
-        bool bVoid = pProp->getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+        bool bVoid = pProp->getValueTypeClass() == css::uno::TypeClass_VOID;
 
         OutStream->writeBoolean( bVoid );
 
@@ -643,7 +643,7 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
                 rValue >>= aSeq;
                 tools::Long nEntries = aSeq.getLength();
                 OutStream->writeLong( nEntries );
-                for ( const auto& rVal : std::as_const(aSeq) )
+                for (const auto& rVal : aSeq)
                     OutStream->writeUTF( rVal );
             }
             else if ( rType == cppu::UnoType< cppu::UnoSequenceType<cppu::UnoUnsignedShortType> >::get() )
@@ -652,7 +652,7 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
                 rValue >>= aSeq;
                 tools::Long nEntries = aSeq.getLength();
                 OutStream->writeLong( nEntries );
-                for ( const auto nVal : std::as_const(aSeq) )
+                for (const auto nVal : aSeq)
                     OutStream->writeShort( nVal );
             }
             else if ( rType == cppu::UnoType< css::uno::Sequence<sal_Int16> >::get() )
@@ -661,7 +661,7 @@ void UnoControlModel::write( const css::uno::Reference< css::io::XObjectOutputSt
                 rValue >>= aSeq;
                 tools::Long nEntries = aSeq.getLength();
                 OutStream->writeLong( nEntries );
-                for ( const auto nVal : std::as_const(aSeq) )
+                for (const auto nVal : aSeq)
                     OutStream->writeShort( nVal );
             }
             else if ( rType.getTypeClass() == TypeClass_ENUM )
@@ -967,7 +967,7 @@ void UnoControlModel::read( const css::uno::Reference< css::io::XObjectInputStre
         if ( maData.find( nPropId ) != maData.end() )
         {
             aProps.getArray()[i] = GetPropertyName( nPropId );
-            aValues.getArray()[i] = aValue;
+            aValues.getArray()[i] = std::move(aValue);
         }
         else
         {
@@ -1025,12 +1025,12 @@ sal_Bool UnoControlModel::supportsService( const OUString& rServiceName )
 
 css::uno::Sequence< OUString > UnoControlModel::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.awt.UnoControlModel" };
+    return { u"com.sun.star.awt.UnoControlModel"_ustr };
 }
 
 bool UnoControlModel::convertFastPropertyValue( std::unique_lock<std::mutex>& rGuard, Any & rConvertedValue, Any & rOldValue, sal_Int32 nPropId, const Any& rValue )
 {
-    bool bVoid = rValue.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+    bool bVoid = rValue.getValueTypeClass() == css::uno::TypeClass_VOID;
     if ( bVoid )
     {
         rConvertedValue.clear();
@@ -1105,7 +1105,7 @@ bool UnoControlModel::convertFastPropertyValue( std::unique_lock<std::mutex>& rG
                     break;
                     case TypeClass_INTERFACE:
                     {
-                        if ( rValue.getValueType().getTypeClass() == TypeClass_INTERFACE )
+                        if ( rValue.getValueTypeClass() == TypeClass_INTERFACE )
                         {
                             Reference< XInterface > xPure( rValue, UNO_QUERY );
                             if ( xPure.is() )
@@ -1133,7 +1133,7 @@ bool UnoControlModel::convertFastPropertyValue( std::unique_lock<std::mutex>& rG
                         "Unable to convert the given value for the property "
                         + GetPropertyName( static_cast<sal_uInt16>(nPropId) )
                         + ".\nExpected type: " + pDestType->getTypeName()
-                        + "\nFound type: " + rValue.getValueType().getTypeName(),
+                        + "\nFound type: " + rValue.getValueTypeName(),
                         static_cast< css::beans::XPropertySet* >(this),
                         1);
                 }
@@ -1154,7 +1154,7 @@ void UnoControlModel::setFastPropertyValue_NoBroadcast( std::unique_lock<std::mu
     const css::uno::Any* pProp = it == maData.end() ? nullptr : &(it->second);
     ENSURE_OR_RETURN_VOID( pProp, "UnoControlModel::setFastPropertyValue_NoBroadcast: invalid property id!" );
 
-    DBG_ASSERT( ( rValue.getValueType().getTypeClass() != css::uno::TypeClass_VOID ) || ( GetPropertyAttribs( static_cast<sal_uInt16>(nPropId) ) & css::beans::PropertyAttribute::MAYBEVOID ), "Property should not be VOID!" );
+    DBG_ASSERT( ( rValue.getValueTypeClass() != css::uno::TypeClass_VOID ) || ( GetPropertyAttribs( static_cast<sal_uInt16>(nPropId) ) & css::beans::PropertyAttribute::MAYBEVOID ), "Property should not be VOID!" );
     maData[ nPropId ] = rValue;
 }
 
@@ -1224,14 +1224,13 @@ void UnoControlModel::setFastPropertyValueImpl( std::unique_lock<std::mutex>& rG
         getFastPropertyValue( rGuard, aOldSingleValue, BASEPROPERTY_FONTDESCRIPTORPART_START );
 
         css::uno::Any* pProp = &maData[ BASEPROPERTY_FONTDESCRIPTOR ];
-        FontDescriptor aOldFontDescriptor;
-        (*pProp) >>= aOldFontDescriptor;
+        FontDescriptor aFontDescriptor;
+        (*pProp) >>= aFontDescriptor;
 
-        FontDescriptor aNewFontDescriptor( aOldFontDescriptor );
-        lcl_ImplMergeFontProperty( aNewFontDescriptor, static_cast<sal_uInt16>(nPropId), rValue );
+        lcl_ImplMergeFontProperty(aFontDescriptor, static_cast<sal_uInt16>(nPropId), rValue);
 
         Any aNewValue;
-        aNewValue <<= aNewFontDescriptor;
+        aNewValue <<= aFontDescriptor;
         sal_Int32 nDescriptorId = BASEPROPERTY_FONTDESCRIPTOR;
 
         // also, we need  fire a propertyChange event for the single property, since with
@@ -1263,7 +1262,7 @@ void UnoControlModel::setPropertyValuesImpl( std::unique_lock<std::mutex>& rGuar
 {
     sal_Int32 nProps = rPropertyNames.getLength();
     if (nProps != Values.getLength())
-        throw css::lang::IllegalArgumentException("lengths do not match",
+        throw css::lang::IllegalArgumentException(u"lengths do not match"_ustr,
                                                   getXWeak(), -1);
 
 //  sal_Int32* pHandles = new sal_Int32[nProps];

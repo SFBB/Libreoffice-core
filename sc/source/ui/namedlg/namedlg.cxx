@@ -44,12 +44,13 @@ ScNameDlg::ScNameDlg( SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParen
         ScViewData&  rViewData,
         const ScAddress&  aCursorPos,
         std::map<OUString, ScRangeName> *const pRangeMap)
-    : ScAnyRefDlgController(pB, pCW, pParent, "modules/scalc/ui/managenamesdialog.ui",
-                            "ManageNamesDialog")
+    : ScAnyRefDlgController(pB, pCW, pParent, u"modules/scalc/ui/managenamesdialog.ui"_ustr,
+                            u"ManageNamesDialog"_ustr)
 
     , maGlobalNameStr(ScResId(STR_GLOBAL_SCOPE))
     , maErrInvalidNameStr(ScResId(STR_ERR_NAME_INVALID))
     , maErrNameInUse(ScResId(STR_ERR_NAME_EXISTS))
+    , maErrInvalidSheetReference(ScResId(STR_INVALID_TABREF_PRINT_AREA))
     , maStrMultiSelect(ScResId(STR_MULTI_SELECT))
 
     , mrViewData(rViewData)
@@ -58,20 +59,21 @@ ScNameDlg::ScNameDlg( SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParen
     , mbDataChanged(false)
     , mbCloseWithoutUndo(false)
 
-    , m_xEdName(m_xBuilder->weld_entry("name"))
-    , m_xFtAssign(m_xBuilder->weld_label("label3"))
-    , m_xEdAssign(new formula::RefEdit(m_xBuilder->weld_entry("range")))
-    , m_xRbAssign(new formula::RefButton(m_xBuilder->weld_button("assign")))
-    , m_xLbScope(m_xBuilder->weld_combo_box("scope"))
-    , m_xBtnPrintArea(m_xBuilder->weld_check_button("printrange"))
-    , m_xBtnColHeader(m_xBuilder->weld_check_button("colheader"))
-    , m_xBtnCriteria(m_xBuilder->weld_check_button("filter"))
-    , m_xBtnRowHeader(m_xBuilder->weld_check_button("rowheader"))
-    , m_xBtnAdd(m_xBuilder->weld_button("add"))
-    , m_xBtnDelete(m_xBuilder->weld_button("delete"))
-    , m_xBtnOk(m_xBuilder->weld_button("ok"))
-    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
-    , m_xFtInfo(m_xBuilder->weld_label("info"))
+    , m_xEdName(m_xBuilder->weld_entry(u"name"_ustr))
+    , m_xFtAssign(m_xBuilder->weld_label(u"label3"_ustr))
+    , m_xEdAssign(new formula::RefEdit(m_xBuilder->weld_entry(u"range"_ustr)))
+    , m_xRbAssign(new formula::RefButton(m_xBuilder->weld_button(u"assign"_ustr)))
+    , m_xLbScope(m_xBuilder->weld_combo_box(u"scope"_ustr))
+    , m_xBtnPrintArea(m_xBuilder->weld_check_button(u"printrange"_ustr))
+    , m_xBtnColHeader(m_xBuilder->weld_check_button(u"colheader"_ustr))
+    , m_xBtnCriteria(m_xBuilder->weld_check_button(u"filter"_ustr))
+    , m_xBtnRowHeader(m_xBuilder->weld_check_button(u"rowheader"_ustr))
+    , m_xBtnAdd(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xBtnDelete(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xBtnOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xBtnCancel(m_xBuilder->weld_button(u"cancel"_ustr))
+    , m_xFtInfo(m_xBuilder->weld_label(u"info"_ustr))
+    , m_xExpander(m_xBuilder->weld_expander(u"more"_ustr))
 {
     m_xEdAssign->SetReferences(this, m_xFtAssign.get());
     m_xRbAssign->SetReferences(this, m_xEdAssign.get());
@@ -101,7 +103,7 @@ void ScNameDlg::Init()
 {
     //init UI
 
-    std::unique_ptr<weld::TreeView> xTreeView(m_xBuilder->weld_tree_view("names"));
+    std::unique_ptr<weld::TreeView> xTreeView(m_xBuilder->weld_tree_view(u"names"_ustr));
     xTreeView->set_size_request(xTreeView->get_approximate_digit_width() * 75,
                                 xTreeView->get_height_rows(10));
     m_xRangeManagerTable.reset(new ScRangeManagerTable(std::move(xTreeView), m_RangeMap, maCursorPos));
@@ -258,23 +260,51 @@ bool ScNameDlg::IsNameValid()
         m_xFtInfo->set_label(maErrNameInUse);
         return false;
     }
-    m_xFtInfo->set_label( maStrInfoDefault );
     return true;
 }
 
 bool ScNameDlg::IsFormulaValid()
 {
-    ScCompiler aComp(mrDoc, maCursorPos, mrDoc.GetGrammar());
-    std::unique_ptr<ScTokenArray> pCode = aComp.CompileString(m_xEdAssign->GetText());
-    if (pCode->GetCodeError() != FormulaError::NONE)
+    const OUString aRangeOrFormulaExp = m_xEdAssign->GetText();
+    // tdf#140394 - check if formula is a valid print range
+    if (m_xBtnPrintArea->get_active())
     {
-        m_xFtInfo->set_label_type(weld::LabelType::Error);
-        return false;
+        const ScRefFlags nValidAddr  = ScRefFlags::VALID | ScRefFlags::ROW_VALID | ScRefFlags::COL_VALID;
+        const ScRefFlags nValidRange = nValidAddr | ScRefFlags::ROW2_VALID | ScRefFlags::COL2_VALID;
+        const formula::FormulaGrammar::AddressConvention eConv = mrDoc.GetAddressConvention();
+        const sal_Unicode sep = ScCompiler::GetNativeSymbolChar(ocSep);
+
+        ScAddress aAddr;
+        ScRange aRange;
+        for (sal_Int32 nIdx = 0; nIdx >= 0;)
+        {
+            const OUString aOne = aRangeOrFormulaExp.getToken(0, sep, nIdx);
+            ScRefFlags nResult = aRange.Parse(aOne, mrDoc, eConv);
+            if ((nResult & nValidRange) != nValidRange)
+            {
+                ScRefFlags nAddrResult = aAddr.Parse(aOne, mrDoc, eConv);
+                if ((nAddrResult & nValidAddr) != nValidAddr)
+                {
+                    m_xFtInfo->set_label_type(weld::LabelType::Error);
+                    m_xFtInfo->set_label(maErrInvalidSheetReference);
+                    return false;
+                }
+            }
+        }
     }
     else
     {
-        return true;
+        ScCompiler aComp(mrDoc, maCursorPos, mrDoc.GetGrammar());
+        std::unique_ptr<ScTokenArray> pCode = aComp.CompileString(aRangeOrFormulaExp);
+        if (pCode->GetCodeError() != FormulaError::NONE)
+        {
+            m_xFtInfo->set_label_type(weld::LabelType::Error);
+            //TODO: implement an info text
+            return false;
+        }
     }
+
+    return true;
 }
 
 ScRangeName* ScNameDlg::GetRangeName(const OUString& rScope)
@@ -306,8 +336,8 @@ void ScNameDlg::ShowOptions(const ScRangeNameLine& rLine)
 void ScNameDlg::AddPushed()
 {
     mbCloseWithoutUndo = true;
-    ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell();
-    pViewSh->SwitchBetweenRefDialogs(this);
+    if (ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell())
+        pViewSh->SwitchBetweenRefDialogs(this);
 }
 
 void ScNameDlg::SetEntry(const OUString& rName, const OUString& rScope)
@@ -347,22 +377,19 @@ void ScNameDlg::NameModified()
     OUString aOldName = aLine.aName;
     OUString aNewName = m_xEdName->get_text();
     aNewName = aNewName.trim();
-    m_xFtInfo->set_label_type(weld::LabelType::Normal);
+    m_xBtnOk->set_sensitive(false);
     if (aNewName != aOldName)
     {
         if (!IsNameValid())
             return;
     }
-    else
-    {
-        m_xFtInfo->set_label( maStrInfoDefault );
-    }
 
     if (!IsFormulaValid())
-    {
-        //TODO: implement an info text
         return;
-    }
+
+    m_xFtInfo->set_label_type(weld::LabelType::Normal);
+    m_xFtInfo->set_label(maStrInfoDefault);
+    m_xBtnOk->set_sensitive(true);
 
     OUString aOldScope = aLine.aScope;
     //empty table

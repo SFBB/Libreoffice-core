@@ -23,14 +23,13 @@
 #include <tools/gen.hxx>
 #include <svl/poolitem.hxx>
 
-class SvStream;
-
 class SVL_DLLPUBLIC SfxRectangleItem final : public SfxPoolItem
 {
     tools::Rectangle                maVal;
 
 public:
                              static SfxPoolItem* CreateDefault();
+                             DECLARE_ITEM_TYPE_FUNCTION(SfxRectangleItem)
                              SfxRectangleItem();
                              SfxRectangleItem( sal_uInt16 nWhich, const tools::Rectangle& rVal );
 

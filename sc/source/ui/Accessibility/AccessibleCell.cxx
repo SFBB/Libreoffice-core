@@ -85,18 +85,11 @@ ScAccessibleCell::~ScAccessibleCell()
 {
     if (!ScAccessibleContextBase::IsDefunc() && !rBHelper.bInDispose)
     {
-        // increment refcount to prevent double call off dtor
+        // increment refcount to prevent double call of dtor
         osl_atomic_increment( &m_refCount );
         // call dispose to inform object which have a weak reference to this object
         dispose();
     }
-}
-
-void ScAccessibleCell::Init()
-{
-    ScAccessibleCellBase::Init();
-
-    SetEventSource(this);
 }
 
 void SAL_CALL ScAccessibleCell::disposing()
@@ -142,7 +135,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessibleCell::getAccessibleAtPoint(
 void SAL_CALL ScAccessibleCell::grabFocus(  )
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     if (getAccessibleParent().is() && mpViewShell)
     {
         uno::Reference<XAccessibleComponent> xAccessibleComponent(getAccessibleParent()->getAccessibleContext(), uno::UNO_QUERY);
@@ -154,7 +147,7 @@ void SAL_CALL ScAccessibleCell::grabFocus(  )
     }
 }
 
-AbsoluteScreenPixelRectangle ScAccessibleCell::GetBoundingBoxOnScreen() const
+AbsoluteScreenPixelRectangle ScAccessibleCell::GetBoundingBoxOnScreen()
 {
     AbsoluteScreenPixelRectangle aCellRect(GetBoundingBox());
     if (mpViewShell)
@@ -169,7 +162,7 @@ AbsoluteScreenPixelRectangle ScAccessibleCell::GetBoundingBoxOnScreen() const
     return aCellRect;
 }
 
-tools::Rectangle ScAccessibleCell::GetBoundingBox() const
+tools::Rectangle ScAccessibleCell::GetBoundingBox()
 {
     tools::Rectangle aCellRect;
     if (mpViewShell)
@@ -285,7 +278,7 @@ uno::Reference<XAccessibleRelationSet> SAL_CALL
        ScAccessibleCell::getAccessibleRelationSet()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     rtl::Reference<utl::AccessibleRelationSetHelper> pRelationSet;
     if (mpAccDoc)
         pRelationSet = mpAccDoc->GetRelationSet(&maCellAddress);
@@ -295,22 +288,6 @@ uno::Reference<XAccessibleRelationSet> SAL_CALL
     FillPrecedents(pRelationSet.get());
     return pRelationSet;
 }
-
-    //=====  XServiceInfo  ====================================================
-
-OUString SAL_CALL ScAccessibleCell::getImplementationName()
-{
-    return "ScAccessibleCell";
-}
-
-uno::Sequence< OUString> SAL_CALL
-    ScAccessibleCell::getSupportedServiceNames()
-{
-    const css::uno::Sequence<OUString> vals { "com.sun.star.sheet.AccessibleCell" };
-    return comphelper::concatSequences(ScAccessibleContextBase::getSupportedServiceNames(), vals);
-}
-
-    //====  internal  =========================================================
 
 bool ScAccessibleCell::IsDefunc(sal_Int64 nParentStates)
 {
@@ -414,7 +391,7 @@ void ScAccessibleCell::FillDependents(utl::AccessibleRelationSetHelper* pRelatio
                     bFound = true;
             }
             if (bFound)
-                AddRelation(aCellIter.GetPos(), AccessibleRelationType::CONTROLLER_FOR, pRelationSet);
+                AddRelation(aCellIter.GetPos(), AccessibleRelationType_CONTROLLER_FOR, pRelationSet);
         }
     }
 }
@@ -432,20 +409,20 @@ void ScAccessibleCell::FillPrecedents(utl::AccessibleRelationSetHelper* pRelatio
         ScRange aRef;
         while ( aIter.GetNextRef( aRef ) )
         {
-            AddRelation( aRef, AccessibleRelationType::CONTROLLED_BY, pRelationSet);
+            AddRelation( aRef, AccessibleRelationType_CONTROLLED_BY, pRelationSet);
         }
     }
 }
 
 void ScAccessibleCell::AddRelation(const ScAddress& rCell,
-    const sal_uInt16 aRelationType,
+    const AccessibleRelationType eRelationType,
     utl::AccessibleRelationSetHelper* pRelationSet)
 {
-    AddRelation(ScRange(rCell, rCell), aRelationType, pRelationSet);
+    AddRelation(ScRange(rCell, rCell), eRelationType, pRelationSet);
 }
 
 void ScAccessibleCell::AddRelation(const ScRange& rRange,
-    const sal_uInt16 aRelationType,
+    const AccessibleRelationType eRelationType,
     utl::AccessibleRelationSetHelper* pRelationSet)
 {
     uno::Reference < XAccessibleTable > xTable ( getAccessibleParent()->getAccessibleContext(), uno::UNO_QUERY );
@@ -464,8 +441,8 @@ void ScAccessibleCell::AddRelation(const ScRange& rRange,
         return;
     }
 
-    uno::Sequence < uno::Reference < uno::XInterface > > aTargetSet( nCount );
-    uno::Reference < uno::XInterface >* pTargetSet = aTargetSet.getArray();
+    uno::Sequence<uno::Reference<css::accessibility::XAccessible>> aTargetSet(nCount);
+    uno::Reference <css::accessibility::XAccessible>* pTargetSet = aTargetSet.getArray();
     sal_uInt32 nPos(0);
     for (sal_uInt32 nRow = rRange.aStart.Row(); nRow <= sal::static_int_cast<sal_uInt32>(rRange.aEnd.Row()); ++nRow)
     {
@@ -477,8 +454,8 @@ void ScAccessibleCell::AddRelation(const ScRange& rRange,
     }
     OSL_ENSURE(nCount == nPos, "something went wrong");
     AccessibleRelation aRelation;
-    aRelation.RelationType = aRelationType;
-    aRelation.TargetSet = aTargetSet;
+    aRelation.RelationType = eRelationType;
+    aRelation.TargetSet = std::move(aTargetSet);
     pRelationSet->AddRelation(aRelation);
 }
 
@@ -491,7 +468,7 @@ static OUString ReplaceFourChar(const OUString& oldOUString)
         .replaceAll(u":", u"\\:");
 }
 
-uno::Any SAL_CALL ScAccessibleCell::getExtendedAttributes()
+OUString SAL_CALL ScAccessibleCell::getExtendedAttributes()
 {
     SolarMutexGuard aGuard;
 
@@ -529,7 +506,7 @@ uno::Any SAL_CALL ScAccessibleCell::getExtendedAttributes()
         sAttributes += strFor ;
     }
 
-    return uno::Any(sAttributes);
+    return sAttributes;
 }
 
 // cell has its own ParaIndent property, so when calling character attributes on cell, the ParaIndent should replace the ParaLeftMargin if its value is not zero.

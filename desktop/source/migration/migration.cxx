@@ -201,7 +201,7 @@ bool MigrationImpl::doMigration()
             OUString aOldCfgDataPath = m_aInfo.userdata + "/user/config/soffice.cfg/modules/" + i.sModuleShortName;
             uno::Sequence< uno::Any > lArgs {uno::Any(aOldCfgDataPath), uno::Any(embed::ElementModes::READ)};
 
-            uno::Reference< uno::XComponentContext > xContext(comphelper::getProcessComponentContext());
+            const uno::Reference< uno::XComponentContext >& xContext(comphelper::getProcessComponentContext());
             uno::Reference< lang::XSingleServiceFactory > xStorageFactory(embed::FileSystemStorageFactory::create(xContext));
             uno::Reference< embed::XStorage >             xModules(xStorageFactory->createInstanceWithArguments(lArgs), uno::UNO_QUERY);
             uno::Reference< ui::XUIConfigurationManager2 > xOldCfgManager = ui::UIConfigurationManager::create(xContext);
@@ -263,7 +263,7 @@ void MigrationImpl::setMigrationCompleted()
 {
     try {
         uno::Reference< XPropertySet > aPropertySet(getConfigAccess("org.openoffice.Setup/Office", true), uno::UNO_QUERY_THROW);
-        aPropertySet->setPropertyValue("MigrationCompleted", uno::Any(true));
+        aPropertySet->setPropertyValue(u"MigrationCompleted"_ustr, uno::Any(true));
         uno::Reference< XChangesBatch >(aPropertySet, uno::UNO_QUERY_THROW)->commitChanges();
     } catch (...) {
         // fail silently
@@ -276,7 +276,7 @@ bool MigrationImpl::checkMigrationCompleted()
     try {
         uno::Reference< XPropertySet > aPropertySet(
             getConfigAccess("org.openoffice.Setup/Office"), uno::UNO_QUERY_THROW);
-        aPropertySet->getPropertyValue("MigrationCompleted") >>= bMigrationCompleted;
+        aPropertySet->getPropertyValue(u"MigrationCompleted"_ustr) >>= bMigrationCompleted;
 
         if( !bMigrationCompleted && getenv("SAL_DISABLE_USERMIGRATION" ) ) {
             // migration prevented - fake its success
@@ -320,7 +320,7 @@ void MigrationImpl::readAvailableMigrations(migrations_available& rAvailableMigr
         supported_migration aSupportedMigration;
         aSupportedMigration.name      = supportedVersion;
         aSupportedMigration.nPriority = nPriority;
-        for (OUString const & s : std::as_const(seqVersions))
+        for (OUString const& s : seqVersions)
             aSupportedMigration.supported_versions.push_back(s.trim());
         insertSorted( rAvailableMigrations, aSupportedMigration );
         SAL_INFO( "desktop.migration", " available migration '" << aSupportedMigration.name << "'" );
@@ -335,7 +335,7 @@ migrations_vr MigrationImpl::readMigrationSteps(const OUString& rMigrationName)
 
     // get migration description from org.openoffice.Setup/Migration
     // and build vector of migration steps
-    uno::Reference< XNameAccess > theNameAccess(xMigrationData->getByName("MigrationSteps"), uno::UNO_QUERY_THROW);
+    uno::Reference< XNameAccess > theNameAccess(xMigrationData->getByName(u"MigrationSteps"_ustr), uno::UNO_QUERY_THROW);
     uno::Reference< XNameAccess > tmpAccess;
     uno::Sequence< OUString > tmpSeq;
     migrations_vr vrMigrations(new migrations_v);
@@ -346,39 +346,34 @@ migrations_vr MigrationImpl::readMigrationSteps(const OUString& rMigrationName)
         migration_step tmpStep;
 
         // read included files from current step description
-        if (tmpAccess->getByName("IncludedFiles") >>= tmpSeq) {
-            for (const OUString& rSeqEntry : std::as_const(tmpSeq))
-                tmpStep.includeFiles.push_back(rSeqEntry);
+        if (tmpAccess->getByName(u"IncludedFiles"_ustr) >>= tmpSeq) {
+            tmpStep.includeFiles.insert(tmpStep.includeFiles.end(), tmpSeq.begin(), tmpSeq.end());
         }
 
         // excluded files...
-        if (tmpAccess->getByName("ExcludedFiles") >>= tmpSeq) {
-            for (const OUString& rSeqEntry : std::as_const(tmpSeq))
-                tmpStep.excludeFiles.push_back(rSeqEntry);
+        if (tmpAccess->getByName(u"ExcludedFiles"_ustr) >>= tmpSeq) {
+            tmpStep.excludeFiles.insert(tmpStep.excludeFiles.end(), tmpSeq.begin(), tmpSeq.end());
         }
 
         // included nodes...
-        if (tmpAccess->getByName("IncludedNodes") >>= tmpSeq) {
-            for (const OUString& rSeqEntry : std::as_const(tmpSeq))
-                tmpStep.includeConfig.push_back(rSeqEntry);
+        if (tmpAccess->getByName(u"IncludedNodes"_ustr) >>= tmpSeq) {
+            tmpStep.includeConfig.insert(tmpStep.includeConfig.end(), tmpSeq.begin(), tmpSeq.end());
         }
 
         // excluded nodes...
-        if (tmpAccess->getByName("ExcludedNodes") >>= tmpSeq) {
-            for (const OUString& rSeqEntry : std::as_const(tmpSeq))
-                tmpStep.excludeConfig.push_back(rSeqEntry);
+        if (tmpAccess->getByName(u"ExcludedNodes"_ustr) >>= tmpSeq) {
+            tmpStep.excludeConfig.insert(tmpStep.excludeConfig.end(), tmpSeq.begin(), tmpSeq.end());
         }
 
         // excluded extensions...
-        if (tmpAccess->getByName("ExcludedExtensions") >>= tmpSeq) {
-            for (const OUString& rSeqEntry : std::as_const(tmpSeq))
-                tmpStep.excludeExtensions.push_back(rSeqEntry);
+        if (tmpAccess->getByName(u"ExcludedExtensions"_ustr) >>= tmpSeq) {
+            tmpStep.excludeExtensions.insert(tmpStep.excludeExtensions.end(), tmpSeq.begin(), tmpSeq.end());
         }
 
         // generic service
-        tmpAccess->getByName("MigrationService") >>= tmpStep.service;
+        tmpAccess->getByName(u"MigrationService"_ustr) >>= tmpStep.service;
 
-        vrMigrations->push_back(tmpStep);
+        vrMigrations->push_back(std::move(tmpStep));
     }
     return vrMigrations;
 }
@@ -493,7 +488,7 @@ sal_Int32 MigrationImpl::findPreferredMigrationProcess(const migrations_availabl
     {
         install_info aInstallInfo = findInstallation(availableMigration.supported_versions);
         if (!aInstallInfo.productname.isEmpty() ) {
-            m_aInfo = aInstallInfo;
+            m_aInfo = std::move(aInstallInfo);
             nIndex  = i;
             break;
         }
@@ -772,17 +767,17 @@ next:
         OUString sMigratedColorScheme;
         uno::Reference<XPropertySet> aPropertySet(
             getConfigAccess("org.openoffice.Office.UI/ColorScheme", true), uno::UNO_QUERY_THROW);
-        if (aPropertySet->getPropertyValue("CurrentColorScheme") >>= sMigratedColorScheme)
+        if (aPropertySet->getPropertyValue(u"CurrentColorScheme"_ustr) >>= sMigratedColorScheme)
         {
             if (sMigratedColorScheme.equals(sMigratedProductName))
             {
-                aPropertySet->setPropertyValue("CurrentColorScheme",
+                aPropertySet->setPropertyValue(u"CurrentColorScheme"_ustr,
                                                uno::Any(sProductName));
                 uno::Reference<XChangesBatch>(aPropertySet, uno::UNO_QUERY_THROW)->commitChanges();
             }
             else if (sMigratedColorScheme.equals(sMigratedProductNameDark))
             {
-                aPropertySet->setPropertyValue("CurrentColorScheme",
+                aPropertySet->setPropertyValue(u"CurrentColorScheme"_ustr,
                                                uno::Any(sProductNameDark));
                 uno::Reference<XChangesBatch>(aPropertySet, uno::UNO_QUERY_THROW)->commitChanges();
             }
@@ -858,9 +853,9 @@ void MigrationImpl::runServices()
     // Build argument array
     uno::Sequence< uno::Any > seqArguments(3);
     auto pseqArguments = seqArguments.getArray();
-    pseqArguments[0] <<= NamedValue("Productname",
+    pseqArguments[0] <<= NamedValue(u"Productname"_ustr,
                                    uno::Any(m_aInfo.productname));
-    pseqArguments[1] <<= NamedValue("UserData",
+    pseqArguments[1] <<= NamedValue(u"UserData"_ustr,
                                    uno::Any(m_aInfo.userdata));
 
 
@@ -868,7 +863,7 @@ void MigrationImpl::runServices()
     // and execute the migration job
     uno::Reference< XJob > xMigrationJob;
 
-    uno::Reference< uno::XComponentContext > xContext(comphelper::getProcessComponentContext());
+    const uno::Reference< uno::XComponentContext >& xContext(comphelper::getProcessComponentContext());
     for (auto const& rMigration : *m_vrMigrations)
     {
         if( !rMigration.service.isEmpty()) {
@@ -880,7 +875,7 @@ void MigrationImpl::runServices()
                 if ( nSize > 0 )
                     seqExtDenyList = comphelper::arrayToSequence< OUString >(
                                           rMigration.excludeExtensions.data(), nSize );
-                pseqArguments[2] <<= NamedValue("ExtensionDenyList",
+                pseqArguments[2] <<= NamedValue(u"ExtensionDenyList"_ustr,
                                                uno::Any( seqExtDenyList ));
 
                 xMigrationJob.set(
@@ -922,7 +917,7 @@ std::vector< MigrationModuleInfo > MigrationImpl::detectUIChangesForAllModules()
     uno::Sequence< OUString > lNames = xModules->getElementNames();
     sal_Int32 nLength = lNames.getLength();
     for (sal_Int32 i=0; i<nLength; ++i) {
-        OUString sModuleShortName = lNames[i];
+        const OUString& sModuleShortName = lNames[i];
         uno::Reference< embed::XStorage > xModule = xModules->openStorageElement(sModuleShortName, embed::ElementModes::READ);
         if (xModule.is()) {
             MigrationModuleInfo aModuleInfo;
@@ -954,7 +949,7 @@ std::vector< MigrationModuleInfo > MigrationImpl::detectUIChangesForAllModules()
             }
 
             if (!aModuleInfo.sModuleShortName.isEmpty())
-                vModulesInfo.push_back(aModuleInfo);
+                vModulesInfo.push_back(std::move(aModuleInfo));
         }
     }
 
@@ -977,7 +972,7 @@ void MigrationImpl::compareOldAndNewConfig(const OUString& sParent,
     for (int n=0; n<nOldCount; ++n) {
         MigrationItem aMigrationItem;
         if (xIndexOld->getByIndex(n) >>= aProps) {
-            for(beans::PropertyValue const & prop : std::as_const(aProps)) {
+            for(beans::PropertyValue const & prop : aProps) {
                 if ( prop.Name == ITEM_DESCRIPTOR_COMMANDURL )
                     prop.Value >>= aMigrationItem.m_sCommandURL;
                 else if ( prop.Name == ITEM_DESCRIPTOR_CONTAINER )
@@ -992,7 +987,7 @@ void MigrationImpl::compareOldAndNewConfig(const OUString& sParent,
     for (int n=0; n<nNewCount; ++n) {
         MigrationItem aMigrationItem;
         if (xIndexNew->getByIndex(n) >>= aProps) {
-            for(beans::PropertyValue const & prop : std::as_const(aProps)) {
+            for(beans::PropertyValue const & prop : aProps) {
                 if ( prop.Name == ITEM_DESCRIPTOR_COMMANDURL )
                     prop.Value >>= aMigrationItem.m_sCommandURL;
                 else if ( prop.Name == ITEM_DESCRIPTOR_CONTAINER )
@@ -1059,7 +1054,7 @@ void MigrationImpl::mergeOldToNewVersion(const uno::Reference< ui::XUIConfigurat
 
                 uno::Sequence< beans::PropertyValue > aPropSeq;
                 xTemp->getByIndex(i) >>= aPropSeq;
-                for (beans::PropertyValue const & prop : std::as_const(aPropSeq)) {
+                for (beans::PropertyValue const & prop : aPropSeq) {
                     OUString sPropName = prop.Name;
                     if ( sPropName == ITEM_DESCRIPTOR_COMMANDURL )
                         prop.Value >>= sCommandURL;
@@ -1070,7 +1065,7 @@ void MigrationImpl::mergeOldToNewVersion(const uno::Reference< ui::XUIConfigurat
                 }
 
                 if (sCommandURL == sToken) {
-                    xTemp = xChild;
+                    xTemp = std::move(xChild);
                     break;
                 }
             }
@@ -1094,7 +1089,7 @@ void MigrationImpl::mergeOldToNewVersion(const uno::Reference< ui::XUIConfigurat
                     OUString sCmd;
                     uno::Sequence< beans::PropertyValue > aTempPropSeq;
                     xTemp->getByIndex(i) >>= aTempPropSeq;
-                    for (beans::PropertyValue const & prop : std::as_const(aTempPropSeq)) {
+                    for (beans::PropertyValue const & prop : aTempPropSeq) {
                         if ( prop.Name == ITEM_DESCRIPTOR_COMMANDURL ) {
                             prop.Value >>= sCmd;
                             break;
@@ -1154,7 +1149,7 @@ uno::Reference< container::XIndexContainer > NewVersionUIInfo::getNewToolbarSett
         if (newProp.Name == sModuleShortName) {
             uno::Sequence< beans::PropertyValue > lToolbarSettingsSeq;
             newProp.Value >>= lToolbarSettingsSeq;
-            for (auto const & prop : std::as_const(lToolbarSettingsSeq)) {
+            for (auto const & prop : lToolbarSettingsSeq) {
                 if (prop.Name == sToolbarName) {
                     prop.Value >>= xNewToolbarSettings;
                     break;

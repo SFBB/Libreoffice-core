@@ -36,7 +36,7 @@ class E3dScene;
 
 enum class SvxPreviewObjectType { SPHERE, CUBE };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC Svx3DPreviewControl : public weld::CustomWidgetController
+class SAL_WARN_UNUSED UNLESS_MERGELIBS(SVX_DLLPUBLIC) Svx3DPreviewControl : public weld::CustomWidgetController
 {
 protected:
     std::unique_ptr<FmFormModel> mpModel;
@@ -61,9 +61,10 @@ public:
     SvxPreviewObjectType GetObjectType() const { return mnObjectType; }
     SfxItemSet const & Get3DAttributes() const;
     virtual void Set3DAttributes(const SfxItemSet& rAttr);
+    void ClearPageView();
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC Svx3DLightControl final : public Svx3DPreviewControl
+class SAL_WARN_UNUSED UNLESS_MERGELIBS(SVX_DLLPUBLIC) Svx3DLightControl final : public Svx3DPreviewControl
 {
     // Callback for interactive changes
     Link<Svx3DLightControl*,void>  maChangeCallback;
@@ -137,7 +138,7 @@ public:
     basegfx::B3DVector GetLightDirection(sal_uInt32 nNum) const;
 };
 
-class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxLightCtl3D
+class SAL_WARN_UNUSED UNLESS_MERGELIBS(SVX_DLLPUBLIC) SvxLightCtl3D
 {
     // local controls
     Svx3DLightControl& mrLightControl;

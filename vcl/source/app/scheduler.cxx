@@ -25,18 +25,21 @@
 #include <typeinfo>
 
 #include <com/sun/star/uno/Exception.hpp>
+#include <config_emscripten.h>
+#include <config_vclplug.h>
 #include <sal/log.hxx>
 #include <sal/types.h>
 #include <svdata.hxx>
 #include <tools/time.hxx>
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/TaskStopwatch.hxx>
 #include <vcl/scheduler.hxx>
 #include <vcl/idle.hxx>
 #include <saltimer.hxx>
 #include <salinst.hxx>
+#include <comphelper/emscriptenthreading.hxx>
 #include <comphelper/profilezone.hxx>
 #include <schedulerimpl.hxx>
 
@@ -123,7 +126,7 @@ void Scheduler::ImplDeInitScheduler()
     SAL_INFO( "vcl.schedule.deinit",
               "DeInit the scheduler - pending tasks: " << nTasks );
 
-    // clean up all the sfx::SfxItemDisruptor_Impl Idles
+    // clean up all Idles
     Unlock();
     ProcessEventsToIdle();
     Lock();
@@ -271,6 +274,73 @@ bool Scheduler::GetDeterministicMode()
     return g_bDeterministicMode;
 }
 
+Scheduler::IdlesLockGuard::IdlesLockGuard()
+{
+    ImplSVData* pSVData = ImplGetSVData();
+    ImplSchedulerContext& rSchedCtx = pSVData->maSchedCtx;
+    osl_atomic_increment(&rSchedCtx.mnIdlesLockCount);
+    if (!Application::IsMainThread())
+    {
+        // Make sure that main thread has reached the main message loop, so no idles are executing.
+        // It is important to ensure this, because e.g. ProcessEventsToIdle could be executed in a
+        // nested event loop, while an active processed idle in the main thread is waiting for some
+        // condition to proceed. Only main thread returning to Application::Execute guarantees that
+        // the flag really took effect.
+        pSVData->m_inExecuteCondtion.reset();
+        // Put an empty event to the application's queue, to make sure that it loops through the
+        // code that sets the condition, even when there's no other events in the queue
+        Application::PostUserEvent({});
+        SolarMutexReleaser releaser;
+        pSVData->m_inExecuteCondtion.wait();
+    }
+}
+
+Scheduler::IdlesLockGuard::~IdlesLockGuard()
+{
+    ImplSchedulerContext& rSchedCtx = ImplGetSVData()->maSchedCtx;
+    osl_atomic_decrement(&rSchedCtx.mnIdlesLockCount);
+}
+
+int Scheduler::GetMostUrgentTaskPriority()
+{
+    // Similar to Scheduler::CallbackTaskScheduling(), figure out the most urgent priority, but
+    // don't actually invoke any task.
+    int nMostUrgentPriority = -1;
+    ImplSVData* pSVData = ImplGetSVData();
+    ImplSchedulerContext& rSchedCtx = pSVData->maSchedCtx;
+    if (!rSchedCtx.mbActive || rSchedCtx.mnTimerPeriod == InfiniteTimeoutMs)
+    {
+        return nMostUrgentPriority;
+    }
+
+    sal_uInt64 nTime = tools::Time::GetSystemTicks();
+    if (nTime < rSchedCtx.mnTimerStart + rSchedCtx.mnTimerPeriod - 1)
+    {
+        return nMostUrgentPriority;
+    }
+
+    for (int nTaskPriority = 0; nTaskPriority < PRIO_COUNT; ++nTaskPriority)
+    {
+        ImplSchedulerData* pSchedulerData = rSchedCtx.mpFirstSchedulerData[nTaskPriority];
+        while (pSchedulerData)
+        {
+            Task* pTask = pSchedulerData->mpTask;
+            if (pTask && pTask->IsActive())
+            {
+                // Const, doesn't modify the task.
+                sal_uInt64 nReadyPeriod = pTask->UpdateMinPeriod(nTime);
+                if (nReadyPeriod == ImmediateTimeoutMs)
+                {
+                    nMostUrgentPriority = nTaskPriority;
+                    return nMostUrgentPriority;
+                }
+            }
+            pSchedulerData = pSchedulerData->mpNext;
+        }
+    }
+    return nMostUrgentPriority;
+}
+
 inline void Scheduler::UpdateSystemTimer( ImplSchedulerContext &rSchedCtx,
                                           const sal_uInt64 nMinPeriod,
                                           const bool bForce, const sal_uInt64 nTime )
@@ -331,7 +401,12 @@ void Scheduler::CallbackTaskScheduling()
     ImplSVData *pSVData = ImplGetSVData();
     ImplSchedulerContext &rSchedCtx = pSVData->maSchedCtx;
 
+#if !(defined EMSCRIPTEN && ENABLE_QT6 && HAVE_EMSCRIPTEN_JSPI && !HAVE_EMSCRIPTEN_PROXY_TO_PTHREAD)
+    //TODO: While the special Emscripten Qt6 JSPI/non-PROXY_TO_PTHREAD mode doesn't lock the
+    // SolarMutex in QtTimer::timeoutActivated, but only down below when calling pTask->Invoke(),
+    // that looks too brittle in general, so treat that special mode specially here.
     DBG_TESTSOLARMUTEX();
+#endif
 
     SchedulerGuard aSchedulerGuard;
     if ( !rSchedCtx.mbActive || InfiniteTimeoutMs == rSchedCtx.mnTimerPeriod )
@@ -362,7 +437,7 @@ void Scheduler::CallbackTaskScheduling()
         // Only higher priority tasks need to be fired to redraw the window
         // so skip firing potentially long-running tasks, such as the Writer
         // idle layout timer, when a window is in live resize
-        if ( ImplGetSVData()->mpWinData->mbIsLiveResize && nTaskPriority == static_cast<int>(TaskPriority::LOWEST) )
+        if ( nTaskPriority == static_cast<int>(TaskPriority::LOWEST) && ( ImplGetSVData()->mpWinData->mbIsLiveResize || ImplGetSVData()->mpWinData->mbIsWaitingForNativeEvent ) )
             continue;
 
         pSchedulerData = rSchedCtx.mpFirstSchedulerData[nTaskPriority];
@@ -449,7 +524,38 @@ void Scheduler::CallbackTaskScheduling()
     rSchedCtx.mpSchedulerStack = pMostUrgent;
     rSchedCtx.mpSchedulerStackTop = pMostUrgent;
 
-    bool bIsHighPriorityIdle = pMostUrgent->mePriority >= TaskPriority::HIGH_IDLE;
+    // high priority idle handlers have smaller numerical values for mePriority
+    bool bIsLowerPriorityIdle = pMostUrgent->mePriority >= TaskPriority::HIGH_IDLE;
+
+#ifdef MACOSX
+    // tdf#165277 On macOS, only delay priorities lower than POST_PAINT
+    // macOS bugs tdf#157312 and tdf#163945 were fixed by firing the
+    // Skia flush task with TaskPriority::POST_PAINT.
+    // The problem is that this method often executes within an
+    // NSTimer and NSTimers are always fired while LibreOffice is in
+    // -[NSApp nextEventMatchingMask:untilDate:inMode:dequeue:].
+    // Since fetching the next native event doesn't handle pending
+    // events until *after* all of the pending NSTimers have fired,
+    // calling SalInstance::AnyInput() will almost always return true
+    // due to the pending events that will be handled immediately
+    // after all of the pending NSTimers have fired.
+    // The result is that the Skia flush task is frequently delayed
+    // and, in cases like tdf#165277, a user's attempts to get
+    // LibreOffice to paint the window through key and mouse events
+    // leads to an endless delaying of the Skia flush task.
+    // After experimenting with both Skia/Metal and Skia/Raster,
+    // tdf#165277 requires the Skia flush task to run immediately
+    // before the TaskPriority::POST_PAINT tasks. After that, all
+    // TaskPriority::POST_PAINT tasks must run so the Skia flush
+    // task now uses the TaskPriority::SKIA_FLUSH priority on macOS.
+    // One positive side effect of this change is that live resizing
+    // on macOS is now much smoother. Even with Skia disabled (which
+    // does not paint using a task but does use tasks to handle live
+    // resizing), the content resizes much more quickly when a user
+    // rapidly changes window's size.
+    if (bIsLowerPriorityIdle && pMostUrgent->mePriority <= TaskPriority::POST_PAINT)
+        bIsLowerPriorityIdle = false;
+#endif
 
     // invoke the task
     Unlock();
@@ -457,8 +563,10 @@ void Scheduler::CallbackTaskScheduling()
     // Delay invoking tasks with idle priorities as long as there are user input or repaint events
     // in the OS event queue. This will often effectively compress such events and repaint only
     // once at the end, improving performance in cases such as repeated zooming with a complex document.
-    bool bDelayInvoking = bIsHighPriorityIdle &&
-        Application::AnyInput( VclInputFlags::MOUSE | VclInputFlags::KEYBOARD | VclInputFlags::PAINT );
+    bool bDelayInvoking
+        = bIsLowerPriorityIdle
+          && (rSchedCtx.mnIdlesLockCount > 0
+              || Application::AnyInput(VclInputFlags::MOUSE | VclInputFlags::KEYBOARD | VclInputFlags::PAINT));
 
     /*
     * Current policy is that scheduler tasks aren't allowed to throw an exception.
@@ -477,7 +585,27 @@ void Scheduler::CallbackTaskScheduling()
         {
             // prepare Scheduler object for deletion after handling
             pTask->SetDeletionFlags();
+#if defined EMSCRIPTEN && ENABLE_QT6 && HAVE_EMSCRIPTEN_JSPI && !HAVE_EMSCRIPTEN_PROXY_TO_PTHREAD
+            if (pTask->DecideTransferredExecution())
+            {
+                auto & data = comphelper::emscriptenthreading::getData();
+                (void) emscripten_proxy_promise(
+                    data.proxyingQueue.queue, data.eventHandlerThread,
+                    [](void * p) {
+                        auto const pTask = static_cast<Task *>(p);
+                        SolarMutexGuard g;
+                        pTask->Invoke();
+                    },
+                    pTask);
+            }
+            else
+            {
+                SolarMutexGuard g;
+                pTask->Invoke();
+            }
+#else
             pTask->Invoke();
+#endif
         }
     }
     catch (css::uno::Exception&)
@@ -661,7 +789,12 @@ Task::~Task() COVERITY_NOEXCEPT_FALSE
             mpSchedulerData->mpTask = nullptr;
     }
     else
-        assert(nullptr == mpSchedulerData || utl::ConfigManager::IsFuzzing());
+        assert(nullptr == mpSchedulerData || comphelper::IsFuzzing());
+}
+
+bool Task::DecideTransferredExecution()
+{
+    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

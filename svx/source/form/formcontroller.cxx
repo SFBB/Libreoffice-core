@@ -366,7 +366,7 @@ void ColumnInfoCache::initializeControls( const Sequence< Reference< XControl > 
                     if ( gridCol < gridColCount )
                     {
                         // found a grid column which is bound to the given
-                        rCol.xFirstGridWithInputRequiredColumn = xGrid;
+                        rCol.xFirstGridWithInputRequiredColumn = std::move(xGrid);
                         rCol.nRequiredGridColumn = gridCol;
                         break;
                     }
@@ -454,7 +454,7 @@ public:
     {
     }
 
-    virtual OUString GetComponentServiceName() const override {return "Edit";}
+    virtual OUString GetComponentServiceName() const override {return u"Edit"_ustr;}
     virtual void SAL_CALL createPeer( const Reference< XToolkit > & rxToolkit, const Reference< XWindowPeer >  & rParentPeer ) override;
 
 protected:
@@ -534,7 +534,7 @@ FormController::FormController(const Reference< css::uno::XComponentContext > & 
                   ,m_aFilterListeners(m_aMutex)
                   ,m_aTabActivationIdle("svx FormController m_aTabActivationIdle")
                   ,m_aFeatureInvalidationTimer("svx FormController m_aFeatureInvalidationTimer")
-                  ,m_aMode( OUString( "DataMode"  ) )
+                  ,m_aMode( u"DataMode"_ustr )
                   ,m_aLoadEvent( LINK( this, FormController, OnLoad ) )
                   ,m_aToggleEvent( LINK( this, FormController, OnToggleAutoFields ) )
                   ,m_aActivationEvent( LINK( this, FormController, OnActivated ) )
@@ -649,14 +649,14 @@ sal_Bool SAL_CALL FormController::supportsService(const OUString& ServiceName)
 
 OUString SAL_CALL FormController::getImplementationName()
 {
-    return "org.openoffice.comp.svx.FormController";
+    return u"org.openoffice.comp.svx.FormController"_ustr;
 }
 
 Sequence< OUString> SAL_CALL FormController::getSupportedServiceNames()
 {
     // service names which are supported only, but cannot be used to created an
     // instance at a service factory
-    Sequence<OUString> aNonCreatableServiceNames { "com.sun.star.form.FormControllerDispatcher" };
+    static constexpr OUString aNonCreatableServiceNames[] { u"com.sun.star.form.FormControllerDispatcher"_ustr };
 
     // services which can be used to created an instance at a service factory
     Sequence< OUString > aCreatableServiceNames( getSupportedServiceNames_Static() );
@@ -682,8 +682,8 @@ Sequence< OUString> const & FormController::getSupportedServiceNames_Static()
 {
     static Sequence< OUString> const aServices
     {
-        "com.sun.star.form.runtime.FormController",
-        "com.sun.star.awt.control.TabController"
+        u"com.sun.star.form.runtime.FormController"_ustr,
+        u"com.sun.star.awt.control.TabController"_ustr
     };
     return aServices;
 }
@@ -945,7 +945,7 @@ Sequence< Sequence< OUString > > FormController::getPredicateExpressions()
             ++componentIndex;
         }
 
-        aExpressionsRange[ termIndex ] = aConjunction;
+        aExpressionsRange[ termIndex ] = std::move(aConjunction);
         ++termIndex;
     }
 
@@ -1971,7 +1971,7 @@ void FormController::setContainer(const Reference< XControlContainer > & xContai
         m_aFilterComponents.clear();
 
         // collecting the controls
-        for ( const Reference< XControl >& rControl : std::as_const(m_aControls) )
+        for (const Reference<XControl>& rControl : m_aControls)
             implControlRemoved( rControl, true );
 
         // make database-specific things
@@ -2073,7 +2073,7 @@ Sequence< Reference< XControl > > FormController::getControls()
         if ( j != nModels )
             aNewControls.realloc( j );
 
-        m_aControls = aNewControls;
+        m_aControls = std::move(aNewControls);
         m_bControlsSorted = true;
     }
     return m_aControls;
@@ -2125,7 +2125,7 @@ void FormController::setControlLock(const Reference< XControl > & xControl)
     bool bTouch = true;
     if (::comphelper::hasProperty(FM_PROP_ENABLED, xSet))
         bTouch = ::comphelper::getBOOL(xSet->getPropertyValue(FM_PROP_ENABLED));
-    if (::comphelper::hasProperty(FM_PROP_READONLY, xSet))
+    if (bTouch && ::comphelper::hasProperty(FM_PROP_READONLY, xSet))
         bTouch = !::comphelper::getBOOL(xSet->getPropertyValue(FM_PROP_READONLY));
 
     if (!bTouch)
@@ -2161,7 +2161,7 @@ void FormController::setLocks()
 {
     OSL_ENSURE( !impl_isDisposed_nofail(), "FormController: already disposed!" );
     // lock/unlock all controls connected to a data source
-    for ( const Reference< XControl >& rControl : std::as_const(m_aControls) )
+    for (const Reference<XControl>& rControl : m_aControls)
         setControlLock( rControl );
 }
 
@@ -2299,7 +2299,7 @@ void FormController::startListening()
     m_bModified  = false;
 
     // now register at bound fields
-    for ( const Reference< XControl >& rControl : std::as_const(m_aControls) )
+    for (const Reference<XControl>& rControl : m_aControls)
         startControlModifyListening( rControl );
 }
 
@@ -2310,7 +2310,7 @@ void FormController::stopListening()
     m_bModified  = false;
 
     // now register at bound fields
-    for ( const Reference< XControl >& rControl : std::as_const(m_aControls) )
+    for (const Reference<XControl>& rControl : m_aControls)
         stopControlModifyListening( rControl );
 }
 
@@ -2619,7 +2619,7 @@ void FormController::unload()
 
 void FormController::removeBoundFieldListener()
 {
-    for ( const Reference< XControl >& rControl : std::as_const(m_aControls) )
+    for (const Reference<XControl>& rControl : m_aControls)
     {
         Reference< XPropertySet > xProp( rControl, UNO_QUERY );
         if ( xProp.is() )
@@ -2972,7 +2972,7 @@ void FormController::setFilter(::std::vector<FmFieldInfo>& rFieldInfos)
         {
             Reference< XMultiServiceFactory > xFactory( xConnection, UNO_QUERY_THROW );
             m_xComposer.set(
-                xFactory->createInstance("com.sun.star.sdb.SingleSelectQueryComposer"),
+                xFactory->createInstance(u"com.sun.star.sdb.SingleSelectQueryComposer"_ustr),
                 UNO_QUERY_THROW );
 
             Reference< XPropertySet > xSet( xForm, UNO_QUERY );
@@ -3041,7 +3041,7 @@ void FormController::setFilter(::std::vector<FmFieldInfo>& rFieldInfos)
                         xQueryColumns->getByName(rRefValue.Name) >>= xSet;
 
                         // get the RealName
-                        xSet->getPropertyValue("RealName") >>= aRealName;
+                        xSet->getPropertyValue(u"RealName"_ustr) >>= aRealName;
 
                         // compare the condition field name and the RealName
                         if (aCompare(aRealName, rRefValue.Name))
@@ -3054,7 +3054,7 @@ void FormController::setFilter(::std::vector<FmFieldInfo>& rFieldInfos)
                         for (sal_Int32 n = 0, nCount = xColumnsByIndex->getCount(); n < nCount; n++)
                         {
                             xColumnsByIndex->getByIndex(n) >>= xSet;
-                            xSet->getPropertyValue("RealName") >>= aRealName;
+                            xSet->getPropertyValue(u"RealName"_ustr) >>= aRealName;
                             if (aCompare(aRealName, rRefValue.Name))
                             {
                                 // get the column by its alias
@@ -3081,10 +3081,9 @@ void FormController::setFilter(::std::vector<FmFieldInfo>& rFieldInfos)
                         if (aRow.find(rFieldInfo.xText) != aRow.end())
                         {
                             OString aVal = m_pParser->getContext().getIntlKeywordAscii(IParseContext::InternationalKeyCode::And);
-                            OUString aCompText = aRow[rFieldInfo.xText] + " "  +
-                                OStringToOUString(aVal, RTL_TEXTENCODING_ASCII_US) + " " +
-                                ::comphelper::getString(rRefValue.Value);
-                            aRow[rFieldInfo.xText] = aCompText;
+                            aRow[rFieldInfo.xText] = aRow[rFieldInfo.xText] + " "  +
+                                                        OStringToOUString(aVal, RTL_TEXTENCODING_ASCII_US) + " " +
+                                                        ::comphelper::getString(rRefValue.Value);
                         }
                         else
                         {
@@ -3201,7 +3200,7 @@ void FormController::startFiltering()
             Reference< XModeSelector >  xSelector(xControl, UNO_QUERY);
             if (xSelector.is())
             {
-                xSelector->setMode( "FilterMode" );
+                xSelector->setMode( u"FilterMode"_ustr );
 
                 // listening for new controls of the selector
                 Reference< XContainer >  xContainer(xSelector, UNO_QUERY);
@@ -3327,7 +3326,7 @@ void FormController::stopFiltering()
             Reference< XModeSelector >  xSelector(xControl, UNO_QUERY);
             if (xSelector.is())
             {
-                xSelector->setMode( "DataMode" );
+                xSelector->setMode( u"DataMode"_ustr );
 
                 // listening for new controls of the selector
                 Reference< XContainer >  xContainer(xSelector, UNO_QUERY);
@@ -3422,8 +3421,8 @@ Sequence< OUString > SAL_CALL FormController::getSupportedModes()
 
     static Sequence< OUString > const aModes
     {
-        "DataMode",
-        "FilterMode"
+        u"DataMode"_ustr,
+        u"FilterMode"_ustr
     };
     return aModes;
 }
@@ -3437,7 +3436,7 @@ sal_Bool SAL_CALL FormController::supportsMode(const OUString& Mode)
     return comphelper::findValue(aModes, Mode) != -1;
 }
 
-css::uno::Reference<css::awt::XWindow> FormController::getDialogParentWindow(css::uno::Reference<css::form::runtime::XFormController> xFormController)
+css::uno::Reference<css::awt::XWindow> FormController::getDialogParentWindow(const css::uno::Reference<css::form::runtime::XFormController> & xFormController)
 {
     try
     {
@@ -3562,7 +3561,7 @@ namespace
                 return true;
 
             Reference< XPropertySet > xDataSourceSettings(
-                xDataSource->getPropertyValue("Settings"),
+                xDataSource->getPropertyValue(u"Settings"_ustr),
                 UNO_QUERY_THROW );
 
             bool bShouldValidate = true;

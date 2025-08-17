@@ -24,8 +24,8 @@
 
 #include <sal/log.hxx>
 
-ScLookupCache::QueryCriteria::QueryCriteria( const ScQueryEntry& rEntry ) :
-    mfVal(0.0), mbAlloc(false), mbString(false)
+ScLookupCache::QueryCriteria::QueryCriteria( const ScQueryEntry& rEntry, LookupSearchMode nSearchMode ) :
+    mfVal(0.0), mbAlloc(false), mbString(false), meSearchMode(nSearchMode)
 {
     switch (rEntry.eOp)
     {
@@ -54,7 +54,8 @@ ScLookupCache::QueryCriteria::QueryCriteria( const ScLookupCache::QueryCriteria 
     mfVal( r.mfVal),
     mbAlloc( false),
     mbString( false),
-    meOp( r.meOp)
+    meOp( r.meOp),
+    meSearchMode( r.meSearchMode)
 {
     if (r.mbString && r.mpStr)
     {
@@ -72,7 +73,7 @@ ScLookupCache::Result ScLookupCache::lookup( ScAddress & o_rResultAddress,
         const QueryCriteria & rCriteria, const ScAddress & rQueryAddress ) const
 {
     auto it( maQueryMap.find( QueryKey( rQueryAddress,
-                    rCriteria.getQueryOp())));
+                    rCriteria.getQueryOp(), rCriteria.getSearchMode())));
     if (it == maQueryMap.end())
         return NOT_CACHED;
     const QueryCriteriaAndResult& rResult = (*it).second;
@@ -88,7 +89,7 @@ SCROW ScLookupCache::lookup( const QueryCriteria & rCriteria ) const
 {
     // try to find the row index for which we have already performed lookup
     auto it = std::find_if(maQueryMap.begin(), maQueryMap.end(),
-        [&rCriteria](const std::pair<QueryKey, QueryCriteriaAndResult>& rEntry) {
+        [&rCriteria](const QueryMap::value_type& rEntry) {
             return rEntry.second.maCriteria == rCriteria;
         });
     if (it != maQueryMap.end())
@@ -102,7 +103,7 @@ bool ScLookupCache::insert( const ScAddress & rResultAddress,
         const QueryCriteria & rCriteria, const ScAddress & rQueryAddress,
         const bool bAvailable )
 {
-    QueryKey aKey( rQueryAddress, rCriteria.getQueryOp());
+    QueryKey aKey( rQueryAddress, rCriteria.getQueryOp(), rCriteria.getSearchMode() );
     QueryCriteriaAndResult aResult( rCriteria, rResultAddress);
     if (!bAvailable)
         aResult.maAddress.SetRow(-1);

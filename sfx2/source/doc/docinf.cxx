@@ -116,6 +116,7 @@ ErrCode LoadOlePropertySet(
                  && aDateTime.Day == 0 && aDateTime.Month == 0
                  && aDateTime.Year == 0) )
         {
+            assert(aDateTime.Day <= 31);
             // subtract offset 1601-01-01
             aDateTime.Year  -= 1601;
             aDateTime.Month -= 1;
@@ -258,7 +259,7 @@ bool SaveOlePropertySet(
         const sal_Int32 nPropId = rCustomSect.GetFreePropertyId();
         rCustomSect.SetBlobValue( nPropId, *i_pGuid );
         rCustomSect.SetPropertyName( nPropId,
-            "_PID_GUID" );
+            u"_PID_GUID"_ustr );
     }
 
     // write hyperlinks
@@ -266,7 +267,7 @@ bool SaveOlePropertySet(
         const sal_Int32 nPropId = rCustomSect.GetFreePropertyId();
         rCustomSect.SetBlobValue( nPropId, *i_pHyperlinks );
         rCustomSect.SetPropertyName( nPropId,
-            "_PID_HLINKS" );
+            u"_PID_HLINKS"_ustr );
     }
 
     uno::Reference<beans::XPropertySet> xUserDefinedProps(
@@ -308,11 +309,11 @@ bool SaveOlePropertySet(
 uno::Sequence<sal_Int8> convertMetaFile(GDIMetaFile const * i_pThumb)
 {
     if (i_pThumb) {
-        BitmapEx aBitmap;
+        Bitmap aBitmap;
         SvMemoryStream aStream;
         if (i_pThumb->CreateThumbnail(aBitmap))
         {
-            WriteDIB(aBitmap.GetBitmap(), aStream, false, false);
+            WriteDIB(aBitmap, aStream, false, false);
             return uno::Sequence<sal_Int8>(static_cast< const sal_Int8* >( aStream.GetData() ), aStream.TellEnd());
         }
     }

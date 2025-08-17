@@ -27,7 +27,6 @@
 #include <com/sun/star/i18n/ScriptType.hpp>
 
 #include <vector>
-#include <deque>
 #include <optional>
 #include <svtools/colorcfg.hxx>
 #include <svtools/sampletext.hxx>
@@ -66,9 +65,6 @@
 //TODO: remove this and calculate off the actual size of text, not
 //an arbitrary number of characters
 #define TEXT_WIDTH 80
-
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 
 
 // small helper functions to set fonts
@@ -432,7 +428,7 @@ void FontPrevWin_Impl::ScaleFontWidth(vcl::RenderContext const & rOutDev)
 
 static bool GetWhich (const SfxItemSet& rSet, sal_uInt16 nSlot, sal_uInt16& rWhich)
 {
-    rWhich = rSet.GetPool()->GetWhich(nSlot);
+    rWhich = rSet.GetPool()->GetWhichIDFromSlotID(nSlot);
     return rSet.GetItemState(rWhich) >= SfxItemState::DEFAULT;
 }
 
@@ -769,7 +765,13 @@ void SvxFontPrevWindow::Paint(vcl::RenderContext& rRenderContext, const tools::R
 
             Color aLineCol = rRenderContext.GetLineColor();
 
-            rRenderContext.SetLineColor(rFont.GetColor());
+            if (rFont.GetColor() == COL_TRANSPARENT)
+                rRenderContext.SetLineColor();
+            else if (!rRenderContext.HasAlpha() && rFont.GetColor().IsTransparent())
+                rRenderContext.SetLineColor(::Color(rFont.GetColor().GetRed(), rFont.GetColor().GetGreen(),
+                    rFont.GetColor().GetBlue()));
+            else
+                rRenderContext.SetLineColor(rFont.GetColor());
             rRenderContext.DrawLine(Point(0,  nY), Point(nX, nY));
             rRenderContext.DrawLine(Point(nX + aTxtSize.Width(), nY), Point(aLogSize.Width(), nY));
             rRenderContext.SetLineColor(aLineCol);

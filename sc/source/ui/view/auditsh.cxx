@@ -36,7 +36,7 @@ SFX_IMPL_INTERFACE(ScAuditingShell, SfxShell)
 
 void ScAuditingShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("audit");
+    GetStaticInterface()->RegisterPopupMenu(u"audit"_ustr);
 }
 
 ScAuditingShell::ScAuditingShell(ScViewData& rData) :
@@ -45,13 +45,13 @@ ScAuditingShell::ScAuditingShell(ScViewData& rData) :
     nFunction( SID_FILL_ADD_PRED )
 {
     SetPool( &rViewData.GetViewShell()->GetPool() );
-    SfxUndoManager* pMgr = rViewData.GetSfxDocShell()->GetUndoManager();
+    SfxUndoManager* pMgr = rViewData.GetSfxDocShell().GetUndoManager();
     SetUndoManager( pMgr );
     if ( !rViewData.GetDocument().IsUndoEnabled() )
     {
         pMgr->SetMaxUndoActionCount( 0 );
     }
-    SetName("Auditing");
+    SetName(u"Auditing"_ustr);
     SfxShell::SetContextName(vcl::EnumContext::GetContextName(vcl::EnumContext::Context::Auditing));
 }
 

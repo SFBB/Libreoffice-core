@@ -82,13 +82,11 @@ sal_Bool SAL_CALL SwAccessibleHyperlink::doAccessibleAction( sal_Int32 nIndex )
     if(nIndex != 0)
         throw lang::IndexOutOfBoundsException();
     SwFormatINetFormat const*const pINetFormat = GetTextAttr();
-    if (pINetFormat && !pINetFormat->GetValue().isEmpty())
+    if (pINetFormat)
     {
-        SwViewShell *pVSh = m_xParagraph->GetShell();
-        if (pVSh)
+        if (LoadURL(m_xParagraph->GetShell(), pINetFormat->GetValue(), LoadUrlFlags::NONE,
+                    pINetFormat->GetTargetFrame()))
         {
-            LoadURL(*pVSh, pINetFormat->GetValue(), LoadUrlFlags::NONE,
-                     pINetFormat->GetTargetFrame());
             const SwTextINetFormat *const pTextAttr = pINetFormat->GetTextINetFormat();
             if (pTextAttr)
             {
@@ -120,21 +118,18 @@ OUString SAL_CALL SwAccessibleHyperlink::getAccessibleActionDescription(
 uno::Reference< XAccessibleKeyBinding > SAL_CALL
     SwAccessibleHyperlink::getAccessibleActionKeyBinding( sal_Int32 )
 {
-    uno::Reference< XAccessibleKeyBinding > xKeyBinding;
+    if( !isValid() )
+        return nullptr;
 
-    if( isValid() )
-    {
-        rtl::Reference<::comphelper::OAccessibleKeyBindingHelper> pKeyBindingHelper =
-               new ::comphelper::OAccessibleKeyBindingHelper();
-        xKeyBinding = pKeyBindingHelper;
+    rtl::Reference<::comphelper::OAccessibleKeyBindingHelper> xKeyBinding =
+           new ::comphelper::OAccessibleKeyBindingHelper();
 
-        awt::KeyStroke aKeyStroke;
-        aKeyStroke.Modifiers = 0;
-        aKeyStroke.KeyCode = KEY_RETURN;
-        aKeyStroke.KeyChar = 0;
-        aKeyStroke.KeyFunc = 0;
-        pKeyBindingHelper->AddKeyBinding( aKeyStroke );
-    }
+    awt::KeyStroke aKeyStroke;
+    aKeyStroke.Modifiers = 0;
+    aKeyStroke.KeyCode = KEY_RETURN;
+    aKeyStroke.KeyChar = 0;
+    aKeyStroke.KeyFunc = 0;
+    xKeyBinding->AddKeyBinding( aKeyStroke );
 
     return xKeyBinding;
 }
@@ -195,7 +190,7 @@ sal_Bool SAL_CALL SwAccessibleHyperlink::isValid(  )
                 uno::Reference< lang::XMultiServiceFactory > xFactory( ::comphelper::getProcessServiceFactory() );
                 if( ! xFactory.is() )
                     return false;
-                uno::Reference< css::frame::XDesktop > xDesktop( xFactory->createInstance( "com.sun.star.frame.Desktop" ),
+                uno::Reference< css::frame::XDesktop > xDesktop( xFactory->createInstance( u"com.sun.star.frame.Desktop"_ustr ),
                     uno::UNO_QUERY );
                 if( !xDesktop.is() )
                     return false;

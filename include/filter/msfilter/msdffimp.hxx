@@ -48,7 +48,6 @@
 #include <tools/poly.hxx>
 #include <vcl/graph.hxx>
 
-class Color;
 class GDIMetaFile;
 class SotStorage;
 class SvStream;
@@ -413,7 +412,9 @@ public:
 */
 class MSFILTER_DLLPUBLIC SvxMSDffManager : public DffPropertyReader
 {
-    std::unique_ptr<SvxMSDffBLIPInfos>      m_pBLIPInfos;
+    /// Offsets of the BLIP in data stream.
+    /// They are sorted by the order of their appearance.
+    std::vector<sal_uInt32>   m_aBLIPOffsets;
     std::unique_ptr<SvxMSDffShapeInfos_ByTxBxComp> m_xShapeInfosByTxBxComp;
     std::unique_ptr<SvxMSDffShapeInfos_ById> m_xShapeInfosById;
     SvxMSDffShapeOrders     m_aShapeOrders;
@@ -535,7 +536,7 @@ protected:
 // the following method needs to be overridden for the import of OLE objects
     virtual bool GetOLEStorageName( sal_uInt32 nOLEId,
                                       OUString& rStorageName,
-                                      tools::SvRef<SotStorage>& rSrcStorage,
+                                      rtl::Reference<SotStorage>& rSrcStorage,
                                       css::uno::Reference < css::embed::XStorage >& xDestStg
                                     ) const;
 
@@ -630,7 +631,7 @@ public:
     static bool         ConvertToOle2( SvStream& rStm,
                                        sal_uInt32 nLen,
                                        const GDIMetaFile*,
-                                       const tools::SvRef<SotStorage> & rDest );
+                                       const rtl::Reference<SotStorage> & rDest );
 
     void SetModel(SdrModel* pModel, tools::Long nApplicationScale);
     SdrModel*  GetModel() const { return pSdrModel; }
@@ -718,7 +719,7 @@ public:
     static rtl::Reference<SdrOle2Obj> CreateSdrOLEFromStorage(
         SdrModel& rSdrModel,
         const OUString& rStorageName,
-        tools::SvRef<SotStorage> const & rSrcStorage,
+        rtl::Reference<SotStorage> const & rSrcStorage,
         const css::uno::Reference < css::embed::XStorage >& xDestStg,
         const Graphic& rGraf,
         const tools::Rectangle& rBoundRect,

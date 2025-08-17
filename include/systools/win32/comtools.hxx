@@ -19,6 +19,9 @@
 
 #pragma once
 
+#include <sal/config.h>
+
+#include <source_location>
 #include <string>
 #include <string_view>
 #include <stdexcept>
@@ -35,22 +38,27 @@ namespace sal::systools
     class ComError : public std::runtime_error
     {
     public:
-        ComError(const std::string& message, HRESULT hr) :
-            std::runtime_error(message),
-            hr_(hr)
+        ComError(std::string_view message, HRESULT hr,
+                 const std::source_location& loc = std::source_location::current())
+            : std::runtime_error(std::string(message))
+            , hr_(hr)
+            , loc_(loc)
         {}
 
         HRESULT GetHresult() const { return hr_; }
+        const std::source_location& GetLocation() const { return loc_; }
 
     private:
         HRESULT hr_;
+        std::source_location loc_;
     };
 
     /* Convert failed HRESULT to thrown ComError */
-    inline void ThrowIfFailed(HRESULT hr, std::string_view msg)
+    inline void ThrowIfFailed(HRESULT hr, std::string_view msg,
+                              std::source_location loc = std::source_location::current())
     {
         if (FAILED(hr))
-            throw ComError(std::string(msg), hr);
+            throw ComError(msg, hr, loc);
     }
 
     /* A guard class to call CoInitializeEx/CoUninitialize in proper pairs
@@ -92,10 +100,7 @@ namespace sal::systools
     };
 
     struct COM_QUERY_TAG {} constexpr COM_QUERY;
-    struct COM_QUERY_THROW_TAG {} constexpr COM_QUERY_THROW;
-    template <typename TAG>
-    constexpr bool is_COM_query_tag
-        = std::is_same_v<TAG, COM_QUERY_TAG> || std::is_same_v<TAG, COM_QUERY_THROW_TAG>;
+    struct COM_QUERY_THROW_TAG : public COM_QUERY_TAG {} constexpr COM_QUERY_THROW;
 
     /* A simple COM smart pointer template */
     template <typename T>
@@ -157,7 +162,8 @@ namespace sal::systools
 
         ~COMReference() { release(com_ptr_); }
 
-        template <typename T2, typename TAG, std::enable_if_t<is_COM_query_tag<TAG>, int> = 0>
+        template <typename T2, typename TAG>
+            requires std::is_base_of_v<COM_QUERY_TAG, TAG>
         COMReference<T2> QueryInterface(TAG) const
         {
             T2* ip = nullptr;

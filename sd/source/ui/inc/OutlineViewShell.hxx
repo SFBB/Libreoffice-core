@@ -53,7 +53,6 @@ public:
             one view shell to the next.
     */
     OutlineViewShell (
-        SfxViewFrame* pFrame,
         ViewShellBase& rViewShellBase,
         vcl::Window* pParentWindow,
         FrameView* pFrameView);
@@ -126,8 +125,8 @@ public:
         @return
             Returns an <type>AccessibleDrawDocumentView</type> object.
    */
-    virtual css::uno::Reference<css::accessibility::XAccessible>
-        CreateAccessibleDocumentView (::sd::Window* pWindow) override;
+    virtual rtl::Reference<comphelper::OAccessible>
+    CreateAccessibleDocumentView(::sd::Window* pWindow) override;
 
     /** Update the preview to show the specified page.
     */

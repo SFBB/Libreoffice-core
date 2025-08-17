@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_IOS_IOSINST_HXX
-#define INCLUDED_VCL_INC_IOS_IOSINST_HXX
+#pragma once
 
 #include <premac.h>
 #include <CoreGraphics/CoreGraphics.h>
@@ -41,9 +40,6 @@ public:
 
     SalSystem* CreateSalSystem() override;
 
-    css::uno::Reference<css::uno::XInterface>
-    CreateClipboard(const css::uno::Sequence<css::uno::Any>& i_rArguments) override;
-
     void GetWorkArea(AbsoluteScreenPixelRectangle& rRect);
     SalFrame* CreateFrame(SalFrame* pParent, SalFrameStyleFlags nStyle) override;
     SalFrame* CreateChildFrame(SystemParentData* pParent, SalFrameStyleFlags nStyle) override;
@@ -61,7 +57,5 @@ public:
     explicit SalData();
     virtual ~SalData();
 };
-
-#endif // INCLUDED_VCL_INC_IOS_IOSINST_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

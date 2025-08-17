@@ -30,6 +30,7 @@
 #include <property.hxx>
 #include <services.hxx>
 #include <comphelper/propertyvalue.hxx>
+#include <comphelper/guarding.hxx>
 
 #include <com/sun/star/awt/XControlContainer.hpp>
 #include <com/sun/star/awt/XTextComponent.hpp>
@@ -52,11 +53,13 @@
 #include <com/sun/star/sdbc/XRowSet.hpp>
 #include <com/sun/star/sdbcx/Privilege.hpp>
 #include <com/sun/star/sdbcx/XColumnsSupplier.hpp>
+#include <com/sun/star/util/NumberFormatter.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
 #include <com/sun/star/util/XModifiable2.hpp>
 
 #include <comphelper/basicio.hxx>
+#include <comphelper/numbers.hxx>
 #include <comphelper/property.hxx>
 #include <comphelper/seqstream.hxx>
 #include <comphelper/sequence.hxx>
@@ -67,6 +70,7 @@
 #include <rtl/math.hxx>
 #include <rtl/tencinfo.h>
 #include <svl/inettype.hxx>
+#include <svl/numformat.hxx>
 #include <tools/datetime.hxx>
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
@@ -176,8 +180,7 @@ Sequence<Type> SAL_CALL ODatabaseForm::getTypes()
 {
     // ask the aggregate
     Sequence<Type> aAggregateTypes;
-    Reference<XTypeProvider> xAggregateTypes;
-    if (query_aggregation(m_xAggregate, xAggregateTypes))
+    if (auto xAggregateTypes = query_aggregation<XTypeProvider>(m_xAggregate))
         aAggregateTypes = xAggregateTypes->getTypes();
 
     Sequence< Type > aRet = concatSequences(
@@ -226,7 +229,7 @@ Any SAL_CALL ODatabaseForm::queryAggregation(const Type& _rType)
 ODatabaseForm::ODatabaseForm(const Reference<XComponentContext>& _rxContext)
     :OFormComponents(_rxContext)
     ,OPropertySetAggregationHelper(OComponentHelper::rBHelper)
-    ,OPropertyChangeListener(m_aMutex)
+    ,OPropertyChangeListener()
     ,m_aLoadListeners(m_aMutex)
     ,m_aRowSetApproveListeners(m_aMutex)
     ,m_aSubmitListeners(m_aMutex)
@@ -256,7 +259,7 @@ ODatabaseForm::ODatabaseForm(const Reference<XComponentContext>& _rxContext)
 ODatabaseForm::ODatabaseForm( const ODatabaseForm& _cloneSource )
     :OFormComponents( _cloneSource )
     ,OPropertySetAggregationHelper( OComponentHelper::rBHelper )
-    ,OPropertyChangeListener( m_aMutex )
+    ,OPropertyChangeListener()
     ,ODatabaseForm_BASE1()
     ,ODatabaseForm_BASE2()
     ,ODatabaseForm_BASE3()
@@ -338,7 +341,7 @@ ODatabaseForm::ODatabaseForm( const ODatabaseForm& _cloneSource )
         {
             css::uno::Any a(cppu::getCaughtException());
             throw WrappedTargetRuntimeException(
-                "Could not clone the given database form.",
+                u"Could not clone the given database form."_ustr,
                 *const_cast< ODatabaseForm* >( &_cloneSource ),
                 a
             );
@@ -622,7 +625,7 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
             // Special treatment for multiline edit only if we have a control for it
             Any aTmp = xComponentSet->getPropertyValue( PROPERTY_MULTILINE );
             bool bMulti =   rxSubmitButton.is()
-                            && (aTmp.getValueType().getTypeClass() == TypeClass_BOOLEAN)
+                            && (aTmp.getValueTypeClass() == TypeClass_BOOLEAN)
                             && getBOOL(aTmp);
             OUString sText;
             if ( bMulti ) // For multiline edit, get the text at the control
@@ -721,7 +724,9 @@ void ODatabaseForm::AppendComponent(HtmlSuccessfulObjList& rList, const Referenc
                 sal_Int32 nInt32Val = 0;
                 if (aVal >>= nInt32Val)
                 {
-                    ::tools::Time aTime(nInt32Val);
+                    // Is this 32-bit number actually encoded time? Or should rather
+                    // Time::MakeTimeFromNS be used here?
+                    ::tools::Time aTime(tools::Time::fromEncodedTime(nInt32Val));
                     OUStringBuffer aBuffer;
                     appendDigits( aTime.GetHour(), 2, aBuffer );
                     aBuffer.append( '-' );
@@ -935,14 +940,14 @@ void ODatabaseForm::InsertTextPart( INetMIMEMessage& rParent, std::u16string_vie
     OUString aBestMatchingEncoding = OUString::createFromAscii(pBestMatchingEncoding);
     pChild->SetContentType(
         "text/plain; charset=\"" + aBestMatchingEncoding + "\"");
-    pChild->SetContentTransferEncoding("8bit");
+    pChild->SetContentTransferEncoding(u"8bit"_ustr);
 
     // Body
-    SvMemoryStream* pStream = new SvMemoryStream;
+    std::unique_ptr<SvMemoryStream> pStream(new SvMemoryStream);
     pStream->WriteLine( OUStringToOString(rData, rtl_getTextEncodingFromMimeCharset(pBestMatchingEncoding)) );
     pStream->FlushBuffer();
     pStream->Seek( 0 );
-    pChild->SetDocumentLB( new SvLockBytes(pStream, true) );
+    pChild->SetDocumentLB( std::move(pStream) );
     rParent.AttachChild( std::move(pChild) );
 }
 
@@ -997,11 +1002,11 @@ void ODatabaseForm::InsertFilePart( INetMIMEMessage& rParent, std::u16string_vie
         "\"";
     pChild->SetContentDisposition(aContentDisp);
     pChild->SetContentType( aContentType );
-    pChild->SetContentTransferEncoding("8bit");
+    pChild->SetContentTransferEncoding(u"8bit"_ustr);
 
 
     // Body
-    pChild->SetDocumentLB( new SvLockBytes(pStream.release(), true) );
+    pChild->SetDocumentLB( std::move(pStream) );
     rParent.AttachChild( std::move(pChild) );
 }
 
@@ -1118,8 +1123,6 @@ bool ODatabaseForm::executeRowSet(::osl::ResettableMutexGuard& _rClearForNotifie
     // we can't be updatable!
     if (m_bSubForm && !hasValidParent())
     {
-        nConcurrency = ResultSetConcurrency::READ_ONLY;
-
         // don't use any parameters if we don't have a valid parent
         m_aParameterManager.setAllParametersNull();
 
@@ -1129,8 +1132,6 @@ bool ODatabaseForm::executeRowSet(::osl::ResettableMutexGuard& _rClearForNotifie
     }
     else if (m_bAllowInsert || m_bAllowUpdate || m_bAllowDelete)
         nConcurrency = ResultSetConcurrency::UPDATABLE;
-    else
-        nConcurrency = ResultSetConcurrency::READ_ONLY;
 
     m_xAggregateSet->setPropertyValue( PROPERTY_RESULTSET_CONCURRENCY, Any( nConcurrency ) );
     m_xAggregateSet->setPropertyValue( PROPERTY_RESULTSET_TYPE, Any( sal_Int32(ResultSetType::SCROLL_SENSITIVE) ) );
@@ -1181,8 +1182,7 @@ bool ODatabaseForm::executeRowSet(::osl::ResettableMutexGuard& _rClearForNotifie
                     // move on the insert row of set
                     // resetting must be done later, after the load events have been posted
                     // see: moveToInsertRow and load , reload
-                    Reference<XResultSetUpdate>  xUpdate;
-                    if (query_aggregation( m_xAggregate, xUpdate))
+                    if (auto xUpdate = query_aggregation<XResultSetUpdate>(m_xAggregate))
                         xUpdate->moveToInsertRow();
                 }
             }
@@ -1234,8 +1234,7 @@ void ODatabaseForm::disposing()
         m_xAggregateAsRowSet->removeRowSetListener(this);
 
     // dispose the active connection
-    Reference<XComponent>  xAggregationComponent;
-    if (query_aggregation(m_xAggregate, xAggregationComponent))
+    if (auto xAggregationComponent = query_aggregation<XComponent>(m_xAggregate))
         xAggregationComponent->dispose();
 
     m_aPropertyBagHelper.dispose();
@@ -1277,7 +1276,7 @@ void ODatabaseForm::describeFixedAndAggregateProperties(
 
     // we remove and re-declare the DataSourceName property, 'cause we want it to be constrained, and the
     // original property of our aggregate isn't
-    RemoveProperty( _rAggregateProps, PROPERTY_DATASOURCE );
+    RemoveProperty( _rAggregateProps, PROPERTY_DATASOURCENAME );
 
     // for connection sharing, we need to override the ActiveConnection property, too
     RemoveProperty( _rAggregateProps, PROPERTY_ACTIVE_CONNECTION );
@@ -1297,7 +1296,7 @@ void ODatabaseForm::describeFixedAndAggregateProperties(
     *pProperties++ = css::beans::Property(PROPERTY_NAME, PROPERTY_ID_NAME, cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::BOUND);
     *pProperties++ = css::beans::Property(PROPERTY_MASTERFIELDS, PROPERTY_ID_MASTERFIELDS, cppu::UnoType<Sequence< OUString >>::get(), css::beans::PropertyAttribute::BOUND);
     *pProperties++ = css::beans::Property(PROPERTY_DETAILFIELDS, PROPERTY_ID_DETAILFIELDS, cppu::UnoType<Sequence< OUString >>::get(), css::beans::PropertyAttribute::BOUND);
-    *pProperties++ = css::beans::Property(PROPERTY_DATASOURCE, PROPERTY_ID_DATASOURCE, cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::BOUND | css::beans::PropertyAttribute::CONSTRAINED);
+    *pProperties++ = css::beans::Property(PROPERTY_DATASOURCENAME, PROPERTY_ID_DATASOURCE, cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::BOUND | css::beans::PropertyAttribute::CONSTRAINED);
     *pProperties++ = css::beans::Property(PROPERTY_CYCLE, PROPERTY_ID_CYCLE, cppu::UnoType<TabulatorCycle>::get(), css::beans::PropertyAttribute::BOUND | css::beans::PropertyAttribute::MAYBEVOID | css::beans::PropertyAttribute::MAYBEDEFAULT);
     *pProperties++ = css::beans::Property(PROPERTY_FILTER, PROPERTY_ID_FILTER, cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::BOUND | css::beans::PropertyAttribute::MAYBEDEFAULT);
     *pProperties++ = css::beans::Property(PROPERTY_HAVINGCLAUSE, PROPERTY_ID_HAVINGCLAUSE, cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::BOUND | css::beans::PropertyAttribute::MAYBEDEFAULT);
@@ -1398,7 +1397,7 @@ void ODatabaseForm::fire( sal_Int32* pnHandles, const Any* pNewValues, const Any
             if (pnHandles[nPos] == PROPERTY_ID_ISMODIFIED)
                 break;
 
-        if ((nPos < nCount) && (pNewValues[nPos].getValueType().getTypeClass() == TypeClass_BOOLEAN) && getBOOL(pNewValues[nPos]))
+        if ((nPos < nCount) && (pNewValues[nPos].getValueTypeClass() == TypeClass_BOOLEAN) && getBOOL(pNewValues[nPos]))
         {   // yeah, we found it, and it changed to TRUE
             if (nPos == 0)
             {   // just cut the first element
@@ -1455,7 +1454,7 @@ void ODatabaseForm::getFastPropertyValue( Any& rValue, sal_Int32 nHandle ) const
             break;
 
         case PROPERTY_ID_DATASOURCE:
-            rValue = m_xAggregateSet->getPropertyValue( PROPERTY_DATASOURCE );
+            rValue = m_xAggregateSet->getPropertyValue( PROPERTY_DATASOURCENAME );
             break;
 
         case PROPERTY_ID_TARGET_URL:
@@ -1643,13 +1642,17 @@ void ODatabaseForm::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const A
 
         case PROPERTY_ID_DATASOURCE:
         {
-            Reference< XConnection > xSomeConnection;
-            if ( ::dbtools::isEmbeddedInDatabase( getParent(), xSomeConnection ) )
-                throw PropertyVetoException();
-
+            css::uno::Reference<XInterface> xParent = getParent();
+            {
+                // prevent ABBA deadlock between this mutex and the SolarMutex
+                comphelper::MutexRelease aReleaser(m_aMutex);
+                Reference< XConnection > xSomeConnection;
+                if ( ::dbtools::isEmbeddedInDatabase( xParent, xSomeConnection ) )
+                    throw PropertyVetoException();
+            }
             try
             {
-                m_xAggregateSet->setPropertyValue(PROPERTY_DATASOURCE, rValue);
+                m_xAggregateSet->setPropertyValue(PROPERTY_DATASOURCENAME, rValue);
             }
             catch(const Exception&)
             {
@@ -1709,8 +1712,15 @@ void ODatabaseForm::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const A
 
         case PROPERTY_ID_ACTIVE_CONNECTION:
         {
+            bool bIsEmbeddedInDatabase;
             Reference< XConnection > xOuterConnection;
-            if ( ::dbtools::isEmbeddedInDatabase( getParent(), xOuterConnection ) )
+            css::uno::Reference<XInterface> xParent = getParent();
+            {
+                // prevent ABBA deadlock between this mutex and the SolarMutex
+                comphelper::MutexRelease aReleaser(m_aMutex);
+                bIsEmbeddedInDatabase = ::dbtools::isEmbeddedInDatabase( xParent, xOuterConnection );
+            }
+            if (bIsEmbeddedInDatabase)
             {
                 if ( xOuterConnection != Reference< XConnection >( rValue, UNO_QUERY ) )
                     // somebody's trying to set a connection which is not equal the connection
@@ -1916,6 +1926,70 @@ void SAL_CALL ODatabaseForm::reset()
     }
 }
 
+Reference<XNumberFormatter> ODatabaseForm::getFormatter()
+{
+    if (auto xSupplier = dbtools::getNumberFormats(getConnection(), true, m_xContext))
+    {
+        auto result = NumberFormatter::create(m_xContext);
+        result->attachNumberFormatsSupplier(xSupplier);
+        return result;
+    }
+    return {};
+}
+
+static void maybeConvertDefaultStringToDate(Any& def, const auto& getFieldPropOrDefault,
+                                            const auto& getFormatter)
+{
+    OUString sDefault;
+    if (!(def >>= sDefault))
+        return;
+
+    sal_Int32 dataType = getFieldPropOrDefault(PROPERTY_FIELDTYPE, sal_Int32());
+    if (dataType != css::sdbc::DataType::DATE && dataType != css::sdbc::DataType::TIMESTAMP)
+        return;
+
+    Reference<XNumberFormatter> xFormatter = getFormatter();
+    if (!xFormatter)
+        return;
+
+    // Convert to a date
+    sal_uInt32 nFormatKey = xFormatter->detectNumberFormat(
+        getFieldPropOrDefault(PROPERTY_FORMATKEY, sal_uInt32()), sDefault);
+    sal_Int16 nType = comphelper::getNumberFormatType(xFormatter, nFormatKey);
+    if ((nType & css::util::NumberFormat::DATE) == 0)
+        return;
+
+    Reference<XNumberFormatsSupplier> xSupplier = xFormatter->getNumberFormatsSupplier();
+    css::util::Date aNull;
+    try
+    {
+        if (!(xSupplier->getNumberFormatSettings()->getPropertyValue(u"NullDate"_ustr) >>= aNull))
+            return;
+    }
+    catch (const Exception&)
+    {
+        return;
+    }
+    ::Date d(aNull);
+
+    double value = xFormatter->convertStringToNumber(nFormatKey, sDefault);
+    switch (dataType)
+    {
+        case css::sdbc::DataType::DATE:
+        {
+            d.AddDays(value);
+            def <<= d.GetUNODate();
+            break;
+        }
+        case css::sdbc::DataType::TIMESTAMP:
+        {
+            ::DateTime dt(d);
+            dt.AddTime(value);
+            def <<= dt.GetUNODateTime();
+            break;
+        }
+    }
+}
 
 void ODatabaseForm::reset_impl(bool _bApproveByListeners)
 {
@@ -1949,31 +2023,34 @@ void ODatabaseForm::reset_impl(bool _bApproveByListeners)
                 if ( !xColUpdate.is() )
                     continue;
 
-                Reference< XPropertySetInfo > xPSI;
-                if ( xColProps.is() )
-                    xPSI = xColProps->getPropertySetInfo( );
-
-                static constexpr OUString PROPERTY_CONTROLDEFAULT = u"ControlDefault"_ustr;
-                if ( xPSI.is() && xPSI->hasPropertyByName( PROPERTY_CONTROLDEFAULT ) )
+                auto getPropValOrDefault = [&xColProps, xPSI = xColProps->getPropertySetInfo()](
+                                               const OUString& propname, auto default_value)
                 {
-                    Any aDefault = xColProps->getPropertyValue( PROPERTY_CONTROLDEFAULT );
+                    if (xPSI && xPSI->hasPropertyByName(propname))
+                        fromAny(xColProps->getPropertyValue(propname), &default_value);
+                    return default_value;
+                };
 
-                    bool bReadOnly = false;
-                    if ( xPSI->hasPropertyByName( PROPERTY_ISREADONLY ) )
-                        xColProps->getPropertyValue( PROPERTY_ISREADONLY ) >>= bReadOnly;
+                Any aDefault = getPropValOrDefault(u"ControlDefault"_ustr, Any());
+                if (!aDefault.hasValue())
+                    continue;
 
-                    if ( !bReadOnly )
-                    {
-                        try
-                        {
-                            if ( aDefault.hasValue() )
-                                xColUpdate->updateObject( aDefault );
-                        }
-                        catch(const Exception&)
-                        {
-                            DBG_UNHANDLED_EXCEPTION("forms.component");
-                        }
-                    }
+                if (getPropValOrDefault(PROPERTY_ISREADONLY, false))
+                    continue;
+
+                // If the column is a date, and the default is a string, it may be
+                // impossible to convert the string to date at a later stage (namely, in
+                // DBTypeConversion::getValue, where the column formatting is unknown).
+                maybeConvertDefaultStringToDate(aDefault, getPropValOrDefault,
+                                                [this]() { return getFormatter(); });
+
+                try
+                {
+                    xColUpdate->updateObject( aDefault );
+                }
+                catch(const Exception&)
+                {
+                    DBG_UNHANDLED_EXCEPTION("forms.component");
                 }
             }
         }
@@ -2111,8 +2188,8 @@ static void lcl_dispatch(const Reference< XFrame >& xFrame,const Reference<XURLT
 
     Sequence<PropertyValue> aArgs
     {
-        comphelper::makePropertyValue("Referer", aReferer),
-        comphelper::makePropertyValue("PostData", xPostData)
+        comphelper::makePropertyValue(u"Referer"_ustr, aReferer),
+        comphelper::makePropertyValue(u"PostData"_ustr, xPostData)
     };
 
     xDisp->dispatch(aURL, aArgs);
@@ -2192,7 +2269,7 @@ void ODatabaseForm::submit_impl(const Reference<XControl>& Control, const css::a
 
             if (xDisp.is())
             {
-                Sequence<PropertyValue> aArgs { comphelper::makePropertyValue("Referer", aReferer) };
+                Sequence<PropertyValue> aArgs { comphelper::makePropertyValue(u"Referer"_ustr, aReferer) };
                 xDisp->dispatch(aURL, aArgs);
             }
         }
@@ -2228,9 +2305,9 @@ void ODatabaseForm::submit_impl(const Reference<XControl>& Control, const css::a
 
             Sequence<PropertyValue> aArgs
             {
-                comphelper::makePropertyValue("Referer", aReferer),
-                comphelper::makePropertyValue("ContentType", aContentType),
-                comphelper::makePropertyValue("PostData", xPostData)
+                comphelper::makePropertyValue(u"Referer"_ustr, aReferer),
+                comphelper::makePropertyValue(u"ContentType"_ustr, aContentType),
+                comphelper::makePropertyValue(u"PostData"_ustr, xPostData)
             };
 
             xDisp->dispatch(aURL, aArgs);
@@ -2363,7 +2440,7 @@ void SAL_CALL ODatabaseForm::setParent(const css::uno::Reference<css::uno::XInte
     bool bIsEmbedded = ::dbtools::isEmbeddedInDatabase( Parent, xOuterConnection );
 
     if ( bIsEmbedded )
-        xAggregateProperties->setPropertyValue( PROPERTY_DATASOURCE, Any( OUString() ) );
+        xAggregateProperties->setPropertyValue( PROPERTY_DATASOURCENAME, Any( OUString() ) );
 }
 
 
@@ -2510,8 +2587,7 @@ void SAL_CALL ODatabaseForm::disposing(const EventObject& Source)
     // does the disposing come from the aggregate ?
     if (m_xAggregate.is())
     {   // no -> forward it
-        css::uno::Reference<css::lang::XEventListener> xListener;
-        if (query_aggregation(m_xAggregate, xListener))
+        if (auto xListener = query_aggregation<css::lang::XEventListener>(m_xAggregate))
             xListener->disposing(Source);
     }
 }
@@ -2609,14 +2685,14 @@ bool ODatabaseForm::canShareConnection( const Reference< XPropertySet >& _rxPare
 {
     // our own data source
     OUString sOwnDatasource;
-    m_xAggregateSet->getPropertyValue( PROPERTY_DATASOURCE ) >>= sOwnDatasource;
+    m_xAggregateSet->getPropertyValue( PROPERTY_DATASOURCENAME ) >>= sOwnDatasource;
 
     // our parents data source
     OUString sParentDataSource;
-    OSL_ENSURE( _rxParentProps.is() && _rxParentProps->getPropertySetInfo().is() && _rxParentProps->getPropertySetInfo()->hasPropertyByName( PROPERTY_DATASOURCE ),
+    OSL_ENSURE( _rxParentProps.is() && _rxParentProps->getPropertySetInfo().is() && _rxParentProps->getPropertySetInfo()->hasPropertyByName( PROPERTY_DATASOURCENAME ),
         "ODatabaseForm::doShareConnection: invalid parent form!" );
     if ( _rxParentProps.is() )
-        _rxParentProps->getPropertyValue( PROPERTY_DATASOURCE ) >>= sParentDataSource;
+        _rxParentProps->getPropertyValue( PROPERTY_DATASOURCENAME ) >>= sParentDataSource;
 
     bool bCanShareConnection = false;
 
@@ -2879,9 +2955,7 @@ void SAL_CALL ODatabaseForm::unload()
         try
         {
             // close the aggregate
-            Reference<XCloseable>  xCloseable;
-            query_aggregation( m_xAggregate, xCloseable);
-            if (xCloseable.is())
+            if (auto xCloseable = query_aggregation<XCloseable>(m_xAggregate))
                 xCloseable->close();
         }
         catch(const SQLException&)
@@ -2919,16 +2993,14 @@ void ODatabaseForm::reload_impl(bool bMoveToFirst, const Reference< XInteraction
         // reloading...
 
     EventObject aEvent(static_cast<XWeak*>(this));
+    // only if there is no approve listener we can post the event at this time
+    // otherwise see approveRowsetChange
+    // the approval is done by the aggregate
+    if (!m_aRowSetApproveListeners.getLength())
     {
-        // only if there is no approve listener we can post the event at this time
-        // otherwise see approveRowsetChange
-        // the approval is done by the aggregate
-        if (!m_aRowSetApproveListeners.getLength())
-        {
-            aGuard.clear();
-            m_aLoadListeners.notifyEach( &XLoadListener::reloading, aEvent);
-            aGuard.reset();
-        }
+        aGuard.clear();
+        m_aLoadListeners.notifyEach( &XLoadListener::reloading, aEvent);
+        aGuard.reset();
     }
 
     bool bSuccess = true;
@@ -3175,8 +3247,7 @@ void SAL_CALL ODatabaseForm::addRowSetApproveListener(const Reference<XRowSetApp
     // do we have to multiplex ?
     if (m_aRowSetApproveListeners.getLength() == 1)
     {
-        Reference<XRowSetApproveBroadcaster>  xBroadcaster;
-        if (query_aggregation( m_xAggregate, xBroadcaster))
+        if (auto xBroadcaster = query_aggregation<XRowSetApproveBroadcaster>(m_xAggregate))
         {
             Reference<XRowSetApproveListener>  xListener(static_cast<XRowSetApproveListener*>(this));
             xBroadcaster->addRowSetApproveListener(xListener);
@@ -3192,8 +3263,7 @@ void SAL_CALL ODatabaseForm::removeRowSetApproveListener(const Reference<XRowSet
     m_aRowSetApproveListeners.removeInterface(_rListener);
     if ( m_aRowSetApproveListeners.getLength() == 0 )
     {
-        Reference<XRowSetApproveBroadcaster>  xBroadcaster;
-        if (query_aggregation( m_xAggregate, xBroadcaster))
+        if (auto xBroadcaster = query_aggregation<XRowSetApproveBroadcaster>(m_xAggregate))
         {
             Reference<XRowSetApproveListener>  xListener(static_cast<XRowSetApproveListener*>(this));
             xBroadcaster->removeRowSetApproveListener(xListener);
@@ -3407,8 +3477,7 @@ void SAL_CALL ODatabaseForm::insertRow()
 {
     try
     {
-        Reference<XResultSetUpdate>  xUpdate;
-        if (query_aggregation( m_xAggregate, xUpdate))
+        if (auto xUpdate = query_aggregation<XResultSetUpdate>(m_xAggregate))
             xUpdate->insertRow();
     }
     catch(const RowSetVetoException&)
@@ -3427,8 +3496,7 @@ void SAL_CALL ODatabaseForm::updateRow()
 {
     try
     {
-        Reference<XResultSetUpdate>  xUpdate;
-        if (query_aggregation( m_xAggregate, xUpdate))
+        if (auto xUpdate = query_aggregation<XResultSetUpdate>(m_xAggregate))
             xUpdate->updateRow();
     }
     catch(const RowSetVetoException&)
@@ -3447,8 +3515,7 @@ void SAL_CALL ODatabaseForm::deleteRow()
 {
     try
     {
-        Reference<XResultSetUpdate>  xUpdate;
-        if (query_aggregation( m_xAggregate, xUpdate))
+        if (auto xUpdate = query_aggregation<XResultSetUpdate>(m_xAggregate))
             xUpdate->deleteRow();
     }
     catch(const RowSetVetoException&)
@@ -3467,8 +3534,7 @@ void SAL_CALL ODatabaseForm::cancelRowUpdates()
 {
     try
     {
-        Reference<XResultSetUpdate>  xUpdate;
-        if (query_aggregation( m_xAggregate, xUpdate))
+        if (auto xUpdate = query_aggregation<XResultSetUpdate>(m_xAggregate))
             xUpdate->cancelRowUpdates();
     }
     catch(const RowSetVetoException&)
@@ -3485,8 +3551,8 @@ void SAL_CALL ODatabaseForm::cancelRowUpdates()
 
 void SAL_CALL ODatabaseForm::moveToInsertRow()
 {
-    Reference<XResultSetUpdate>  xUpdate;
-    if (!query_aggregation( m_xAggregate, xUpdate))
+    auto xUpdate = query_aggregation<XResultSetUpdate>(m_xAggregate);
+    if (!xUpdate)
         return;
 
     // _always_ move to the insert row
@@ -3520,8 +3586,7 @@ void SAL_CALL ODatabaseForm::moveToInsertRow()
 
 void SAL_CALL ODatabaseForm::moveToCurrentRow()
 {
-    Reference<XResultSetUpdate>  xUpdate;
-    if (query_aggregation( m_xAggregate, xUpdate))
+    if (auto xUpdate = query_aggregation<XResultSetUpdate>(m_xAggregate))
         xUpdate->moveToCurrentRow();
 }
 
@@ -3531,8 +3596,7 @@ Sequence<sal_Int32> SAL_CALL ODatabaseForm::deleteRows(const Sequence<Any>& rows
 {
     try
     {
-        Reference<XDeleteRows>  xDelete;
-        if (query_aggregation( m_xAggregate, xDelete))
+        if (auto xDelete = query_aggregation<XDeleteRows>(m_xAggregate))
             return xDelete->deleteRows(rows);
     }
     catch(const RowSetVetoException&)
@@ -3708,7 +3772,7 @@ void SAL_CALL ODatabaseForm::propertyChange( const PropertyChangeEvent& evt )
 
 OUString SAL_CALL ODatabaseForm::getImplementationName()
 {
-    return "com.sun.star.comp.forms.ODatabaseForm";
+    return u"com.sun.star.comp.forms.ODatabaseForm"_ustr;
 }
 
 
@@ -3716,17 +3780,16 @@ Sequence< OUString > SAL_CALL ODatabaseForm::getSupportedServiceNames()
 {
     // the services of our aggregate
     Sequence< OUString > aServices;
-    Reference< XServiceInfo > xInfo;
-    if (query_aggregation(m_xAggregate, xInfo))
+    if (auto xInfo = query_aggregation<XServiceInfo>(m_xAggregate))
         aServices = xInfo->getSupportedServiceNames();
 
     // concat without own services
     return ::comphelper::concatSequences(
-        css::uno::Sequence<OUString> {
-            FRM_SUN_FORMCOMPONENT, "com.sun.star.form.FormComponents",
+        aServices,
+        std::initializer_list<OUString>{
+            FRM_SUN_FORMCOMPONENT, u"com.sun.star.form.FormComponents"_ustr,
             FRM_SUN_COMPONENT_FORM, FRM_SUN_COMPONENT_HTMLFORM,
-            FRM_SUN_COMPONENT_DATAFORM, FRM_COMPONENT_FORM },
-        aServices
+            FRM_SUN_COMPONENT_DATAFORM, FRM_COMPONENT_FORM }
     );
 }
 
@@ -3759,7 +3822,7 @@ void SAL_CALL ODatabaseForm::write(const Reference<XObjectOutputStream>& _rxOutS
 
     OUString sDataSource;
     if (m_xAggregateSet.is())
-        m_xAggregateSet->getPropertyValue(PROPERTY_DATASOURCE) >>= sDataSource;
+        m_xAggregateSet->getPropertyValue(PROPERTY_DATASOURCENAME) >>= sDataSource;
     _rxOutStream << sDataSource;
 
     // former CursorSource
@@ -3879,7 +3942,7 @@ void SAL_CALL ODatabaseForm::read(const Reference<XObjectInputStream>& _rxInStre
     OUString sAggregateProp;
     _rxInStream >> sAggregateProp;
     if (m_xAggregateSet.is())
-        m_xAggregateSet->setPropertyValue(PROPERTY_DATASOURCE, Any(sAggregateProp));
+        m_xAggregateSet->setPropertyValue(PROPERTY_DATASOURCENAME, Any(sAggregateProp));
     _rxInStream >> sAggregateProp;
     if (m_xAggregateSet.is())
         m_xAggregateSet->setPropertyValue(PROPERTY_COMMAND, Any(sAggregateProp));
@@ -4017,7 +4080,7 @@ OUString SAL_CALL ODatabaseForm::getName()
     catch (const css::beans::UnknownPropertyException&)
     {
         throw WrappedTargetRuntimeException(
-            "ODatabaseForm::getName",
+            u"ODatabaseForm::getName"_ustr,
             *this,
             ::cppu::getCaughtException()
         );

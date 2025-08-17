@@ -193,22 +193,12 @@ public:
      */
     virtual LanguageType    GetLanguage( sal_Int32 nPara, sal_Int32 nIndex ) const = 0;
 
-    /** Query number of fields in the underlying edit engine
-
-        @param nPara[0 .. n-1]
-        Index of paragraph to query field number in
-     */
-    virtual sal_Int32          GetFieldCount( sal_Int32 nPara ) const = 0;
-
-    /** Query information for given field number in the underlying edit engine
+    /** Query information for fields in the underlying edit engine
 
         @param nPara[0 .. n-1]
         Index of paragraph to query field info in
-
-        @param nField[0 .. m-1]
-        Index of field to query information of
      */
-    virtual EFieldInfo      GetFieldInfo( sal_Int32 nPara, sal_uInt16 nField ) const = 0;
+    virtual std::vector<EFieldInfo> GetFieldInfo( sal_Int32 nPara ) const = 0;
 
     /** Query information regarding bullets for given paragraph on the underlying edit engine
 
@@ -409,6 +399,9 @@ public:
          @return true if text have been successfully reformatted
       */
     virtual bool            QuickFormatDoc( bool bFull = false ) = 0;
+
+    // Is able to use Outline depth functions (GetDepth and SetDepth) meaningfully
+    virtual bool SupportsOutlineDepth() const = 0;
 
     /** Get the outline depth of given paragraph
 

@@ -295,8 +295,10 @@ inline constexpr OUString UNO_NAME_EDIT_PARA_ADJUST = u"ParaAdjust"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_PARA_BMARGIN = u"ParaBottomMargin"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_PARA_LASTLINEADJ = u"ParaLastLineAdjust"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_PARA_LMARGIN = u"ParaLeftMargin"_ustr;
+inline constexpr OUString UNO_NAME_EDIT_PARA_LMARGIN_UNIT = u"ParaLeftMarginUnit"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_PARA_LINESPACING = u"ParaLineSpacing"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_PARA_RMARGIN = u"ParaRightMargin"_ustr;
+inline constexpr OUString UNO_NAME_EDIT_PARA_RMARGIN_UNIT = u"ParaRightMarginUnit"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_PARA_TABSTOPS = u"ParaTabStops"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_PARA_TABSTOP_DEFAULT_DISTANCE = u"ParaTabStopDefaultDistance"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_PARA_TMARGIN = u"ParaTopMargin"_ustr;
@@ -305,6 +307,8 @@ inline constexpr OUString UNO_NAME_EDIT_PARA_IS_HANGING_PUNCTUATION = u"ParaIsHa
 inline constexpr OUString UNO_NAME_EDIT_PARA_IS_CHARACTER_DISTANCE = u"ParaIsCharacterDistance"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_PARA_IS_FORBIDDEN_RULES = u"ParaIsForbiddenRules"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_PARA_FIRST_LINE_INDENT = u"ParaFirstLineIndent"_ustr;
+inline constexpr OUString UNO_NAME_EDIT_PARA_FIRST_LINE_INDENT_UNIT
+    = u"ParaFirstLineIndentUnit"_ustr;
 
 inline constexpr OUString UNO_NAME_EDIT_CHAR_HEIGHT = u"CharHeight"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_CHAR_FONTNAME = u"CharFontName"_ustr;
@@ -355,6 +359,12 @@ inline constexpr OUString UNO_NAME_EDIT_CHAR_BACKGROUND_COLOR = u"CharBackColor"
 inline constexpr OUString UNO_NAME_EDIT_CHAR_BACKGROUND_COMPLEX_COLOR = u"CharBackgroundComplexColor"_ustr;
 inline constexpr OUString UNO_NAME_EDIT_CHAR_BACKGROUND_TRANSPARENT = u"CharBackTransparent"_ustr;
 
+inline constexpr OUString UNO_NAME_EDIT_CHAR_RUBY_TEXT = u"RubyText"_ustr;
+inline constexpr OUString UNO_NAME_EDIT_CHAR_RUBY_ADJUST = u"RubyAdjust"_ustr;
+inline constexpr OUString UNO_NAME_EDIT_CHAR_RUBY_POSITION = u"RubyPosition"_ustr;
+
+inline constexpr OUString UNO_NAME_EDIT_CHAR_SCRIPT_HINT = u"CharScriptHint"_ustr;
+
 inline constexpr OUString UNO_NAME_BITMAP = u"Bitmap"_ustr;
 
 inline constexpr OUString UNO_NAME_LINKDISPLAYNAME = u"LinkDisplayName"_ustr;
@@ -369,5 +379,7 @@ inline constexpr OUString UNO_NAME_GRAPHIC_GAMMA = u"Gamma"_ustr;
 inline constexpr OUString UNO_NAME_GRAPHIC_TRANSPARENCY = u"Transparency"_ustr;
 inline constexpr OUString UNO_NAME_GRAPHIC_COLOR_MODE = u"GraphicColorMode"_ustr;
 inline constexpr OUString UNO_NAME_GRAPHIC_GRAPHICCROP = u"GraphicCrop"_ustr;
+
+inline constexpr OUString UNO_NAME_OBJ_ISEMPTYPRESOBJ = u"IsEmptyPresentationObject"_ustr;
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

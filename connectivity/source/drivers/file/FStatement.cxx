@@ -93,7 +93,7 @@ void OStatement_Base::disposeResultSet()
 {
     SAL_INFO( "connectivity.drivers", "file Ocke.Janssen@sun.com OStatement_Base::disposeResultSet" );
     // free the cursor if alive
-    Reference< XComponent > xComp(m_xResultSet.get(), UNO_QUERY);
+    rtl::Reference< OResultSet > xComp(m_xResultSet.get());
     assert(xComp.is() || !m_xResultSet.get().is());
     if (xComp.is())
         xComp->dispose();
@@ -175,7 +175,7 @@ void OStatement_Base::closeResultSet()
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
-    Reference< XCloseable > xCloseable(m_xResultSet.get(), UNO_QUERY);
+    rtl::Reference< OResultSet > xCloseable(m_xResultSet.get());
     assert(xCloseable.is() || !m_xResultSet.get().is());
     if (xCloseable.is())
     {
@@ -223,7 +223,7 @@ rtl::Reference<OResultSet> OStatement::createResultSet()
     return new OResultSet(this,m_aSQLIterator);
 }
 
-IMPLEMENT_SERVICE_INFO(OStatement,"com.sun.star.sdbc.driver.file.Statement","com.sun.star.sdbc.Statement");
+IMPLEMENT_SERVICE_INFO(OStatement,u"com.sun.star.sdbc.driver.file.Statement"_ustr,u"com.sun.star.sdbc.Statement"_ustr);
 
 void SAL_CALL OStatement::acquire() noexcept
 {
@@ -252,15 +252,13 @@ Reference< XResultSet > SAL_CALL OStatement::executeQuery( const OUString& sql )
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
     construct(sql);
-    Reference< XResultSet > xRS;
     rtl::Reference<OResultSet> pResult = createResultSet();
-    xRS = pResult;
     initializeResultSet(pResult.get());
-    m_xResultSet = xRS;
+    m_xResultSet = pResult.get();
 
     pResult->OpenImpl();
 
-    return xRS;
+    return pResult;
 }
 
 Reference< XConnection > SAL_CALL OStatement::getConnection(  )
@@ -499,7 +497,7 @@ void OStatement_Base::GetAssignValues()
         OSL_ENSURE(SQL_ISRULE(pOptColumnCommalist,opt_column_commalist),"OResultSet: Error in Parse Tree");
         if (pOptColumnCommalist->count() == 0)
         {
-            const Sequence< OUString>& aNames = m_xColNames->getElementNames();
+            const Sequence< OUString> aNames = m_xColNames->getElementNames();
             aColumnNameList.insert(aColumnNameList.end(), aNames.begin(), aNames.end());
         }
         else
@@ -576,7 +574,7 @@ void OStatement_Base::GetAssignValues()
         OSL_ENSURE(m_pParseTree->count() >= 4,"OResultSet: Error in Parse Tree");
 
         OSQLParseNode * pAssignmentCommalist = m_pParseTree->getChild(3);
-        OSL_ENSURE(pAssignmentCommalist != nullptr,"OResultSet: pAssignmentCommalist == NULL");
+        assert(pAssignmentCommalist && "OResultSet: pAssignmentCommalist == NULL");
         OSL_ENSURE(SQL_ISRULE(pAssignmentCommalist,assignment_commalist),"OResultSet: Error in Parse Tree");
         OSL_ENSURE(pAssignmentCommalist->count() > 0,"OResultSet: pAssignmentCommalist->count() <= 0");
 
@@ -585,15 +583,15 @@ void OStatement_Base::GetAssignValues()
         for (size_t i = 0; i < pAssignmentCommalist->count(); i++)
         {
             OSQLParseNode * pAssignment = pAssignmentCommalist->getChild(i);
-            OSL_ENSURE(pAssignment != nullptr,"OResultSet: pAssignment == NULL");
+            assert(pAssignment && "OResultSet: pAssignment == NULL");
             OSL_ENSURE(SQL_ISRULE(pAssignment,assignment),"OResultSet: Error in Parse Tree");
             OSL_ENSURE(pAssignment->count() == 3,"OResultSet: pAssignment->count() != 3");
 
             OSQLParseNode * pCol = pAssignment->getChild(0);
-            OSL_ENSURE(pCol != nullptr,"OResultSet: pCol == NULL");
+            assert(pCol && "OResultSet: pCol == NULL");
 
             OSQLParseNode * pComp = pAssignment->getChild(1);
-            OSL_ENSURE(pComp != nullptr,"OResultSet: pComp == NULL");
+            assert(pComp && "OResultSet: pComp == NULL");
             OSL_ENSURE(pComp->getNodeType() == SQLNodeType::Equal,"OResultSet: pComp->getNodeType() != SQLNodeType::Comparison");
             if (pComp->getTokenValue().toChar() != '=')
             {
@@ -612,9 +610,9 @@ void OStatement_Base::GetAssignValues()
 void OStatement_Base::ParseAssignValues(const std::vector< OUString>& aColumnNameList,OSQLParseNode* pRow_Value_Constructor_Elem, sal_Int32 nIndex)
 {
     OSL_ENSURE(o3tl::make_unsigned(nIndex) <= aColumnNameList.size(),"SdbFileCursor::ParseAssignValues: nIndex > aColumnNameList.GetTokenCount()");
-    OUString aColumnName(aColumnNameList[nIndex]);
+    const OUString& aColumnName(aColumnNameList[nIndex]);
     OSL_ENSURE(aColumnName.getLength() > 0,"OResultSet: Column-Name not found");
-    OSL_ENSURE(pRow_Value_Constructor_Elem != nullptr,"OResultSet: pRow_Value_Constructor_Elem must not be NULL!");
+    assert(pRow_Value_Constructor_Elem != nullptr && "OResultSet: pRow_Value_Constructor_Elem must not be NULL!");
 
     if (pRow_Value_Constructor_Elem->getNodeType() == SQLNodeType::String ||
         pRow_Value_Constructor_Elem->getNodeType() == SQLNodeType::IntNum ||
@@ -661,14 +659,6 @@ void OStatement_Base::SetAssignValue(const OUString& aColumnName,
     {
         switch (::comphelper::getINT32(xCol->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPE))))
         {
-            // put criteria depending on the Type as String or double in the variable
-        case DataType::CHAR:
-        case DataType::VARCHAR:
-        case DataType::LONGVARCHAR:
-            *(*m_aAssignValues)[nId] = ORowSetValue(aValue);
-            //Characterset is already converted, since the entire statement was converted
-            break;
-
         case DataType::BIT:
             if (aValue.equalsIgnoreAsciiCase("TRUE")  || aValue[0] == '1')
                 *(*m_aAssignValues)[nId] = true;
@@ -677,6 +667,10 @@ void OStatement_Base::SetAssignValue(const OUString& aColumnName,
             else
                 throwFunctionSequenceException(*this);
             break;
+        case DataType::CHAR:
+        case DataType::VARCHAR:
+        case DataType::LONGVARCHAR:
+        //Characterset is already converted, since the entire statement was converted
         case DataType::TINYINT:
         case DataType::SMALLINT:
         case DataType::INTEGER:

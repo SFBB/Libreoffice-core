@@ -22,6 +22,7 @@
 #include <documentsignaturehelper.hxx>
 #include <xsecctl.hxx>
 #include <biginteger.hxx>
+#include <certificate.hxx>
 
 #include <UriBindingHelper.hxx>
 
@@ -43,7 +44,6 @@
 #include <comphelper/ofopxmlhelper.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/diagnose_ex.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 
 #include <optional>
@@ -70,10 +70,11 @@ XMLSignatureHelper::~XMLSignatureHelper()
 
 void XMLSignatureHelper::SetStorage(
     const Reference < css::embed::XStorage >& rxStorage,
-    std::u16string_view sODFVersion)
+    std::u16string_view sODFVersion,
+    const css::uno::Reference<css::io::XStream>& xScriptStream)
 {
     SAL_WARN_IF( mxUriBinding.is(), "xmlsecurity.helper", "SetStorage - UriBinding already set!" );
-    mxUriBinding = new UriBindingHelper( rxStorage );
+    mxUriBinding = new UriBindingHelper( rxStorage, xScriptStream );
     SAL_WARN_IF(!rxStorage.is(), "xmlsecurity.helper", "SetStorage - empty storage!");
     mbODFPre1_2 = DocumentSignatureHelper::isODFPre_1_2(sODFVersion);
 }
@@ -195,12 +196,12 @@ uno::Reference<xml::sax::XWriter> XMLSignatureHelper::CreateDocumentHandlerWithH
         sNamespace = NS_DOCUMENTSIGNATURES_ODF_1_2;
 
     pAttributeList->AddAttribute(
-        "xmlns",
+        u"xmlns"_ustr,
         sNamespace);
 
     xSaxWriter->startDocument();
     xSaxWriter->startElement(
-        "document-signatures",
+        u"document-signatures"_ustr,
         pAttributeList);
 
     return xSaxWriter;
@@ -208,7 +209,7 @@ uno::Reference<xml::sax::XWriter> XMLSignatureHelper::CreateDocumentHandlerWithH
 
 void XMLSignatureHelper::CloseDocumentHandler( const uno::Reference<xml::sax::XDocumentHandler>& xDocumentHandler )
 {
-    xDocumentHandler->endElement( "document-signatures" );
+    xDocumentHandler->endElement( u"document-signatures"_ustr );
     xDocumentHandler->endDocument();
 }
 
@@ -321,14 +322,14 @@ bool lcl_isSignatureOriginType(const beans::StringPair& rPair)
 bool XMLSignatureHelper::ReadAndVerifySignatureStorage(const uno::Reference<embed::XStorage>& xStorage, bool bCacheLastSignature)
 {
     sal_Int32 nOpenMode = embed::ElementModes::READ;
-    if (xStorage.is() && !xStorage->hasByName("_rels"))
+    if (xStorage.is() && !xStorage->hasByName(u"_rels"_ustr))
     {
         SAL_WARN("xmlsecurity.helper", "expected stream, in signature storage but not found: _rels");
         return false;
     }
 
-    uno::Reference<embed::XStorage> xSubStorage = xStorage->openStorageElement("_rels", nOpenMode);
-    uno::Reference<io::XInputStream> xRelStream(xSubStorage->openStreamElement("origin.sigs.rels", nOpenMode), uno::UNO_QUERY);
+    uno::Reference<embed::XStorage> xSubStorage = xStorage->openStorageElement(u"_rels"_ustr, nOpenMode);
+    uno::Reference<io::XInputStream> xRelStream(xSubStorage->openStreamElement(u"origin.sigs.rels"_ustr, nOpenMode), uno::UNO_QUERY);
     uno::Sequence< uno::Sequence<beans::StringPair> > aRelationsInfo = comphelper::OFOPXMLHelper::ReadRelationsInfoSequence(xRelStream, u"origin.sigs.rels", mxCtx);
 
     for (sal_Int32 i = 0; i < aRelationsInfo.getLength(); ++i)
@@ -364,7 +365,7 @@ bool XMLSignatureHelper::ReadAndVerifySignatureStorage(const uno::Reference<embe
                     continue;
 
                 sal_Int64 nSize = 0;
-                xPropertySet->getPropertyValue("Size") >>= nSize;
+                xPropertySet->getPropertyValue(u"Size"_ustr) >>= nSize;
                 if (nSize < 0 || nSize > SAL_MAX_INT32)
                 {
                     SAL_WARN("xmlsecurity.helper", "bogus signature size: " << nSize);
@@ -417,8 +418,8 @@ bool XMLSignatureHelper::ReadAndVerifySignatureStorageStream(const css::uno::Ref
 void XMLSignatureHelper::EnsureSignaturesRelation(const css::uno::Reference<css::embed::XStorage>& xStorage, bool bAdd)
 {
     sal_Int32 nOpenMode = embed::ElementModes::READWRITE;
-    uno::Reference<embed::XStorage> xSubStorage = xStorage->openStorageElement("_rels", nOpenMode);
-    uno::Reference<io::XInputStream> xRelStream(xSubStorage->openStreamElement(".rels", nOpenMode), uno::UNO_QUERY);
+    uno::Reference<embed::XStorage> xSubStorage = xStorage->openStorageElement(u"_rels"_ustr, nOpenMode);
+    uno::Reference<io::XInputStream> xRelStream(xSubStorage->openStreamElement(u".rels"_ustr, nOpenMode), uno::UNO_QUERY);
     std::vector< uno::Sequence<beans::StringPair> > aRelationsInfo = comphelper::sequenceToContainer< std::vector< uno::Sequence<beans::StringPair> > >(comphelper::OFOPXMLHelper::ReadRelationsInfoSequence(xRelStream, u".rels", mxCtx));
 
     // Do we have a relation already?
@@ -474,14 +475,14 @@ void XMLSignatureHelper::ExportSignatureRelations(const css::uno::Reference<css:
 {
     // Write the empty file, its relations will be the signatures.
     sal_Int32 nOpenMode = embed::ElementModes::READWRITE;
-    uno::Reference<io::XOutputStream> xOriginStream(xStorage->openStreamElement("origin.sigs", nOpenMode), uno::UNO_QUERY);
+    uno::Reference<io::XOutputStream> xOriginStream(xStorage->openStreamElement(u"origin.sigs"_ustr, nOpenMode), uno::UNO_QUERY);
     uno::Reference<io::XTruncate> xTruncate(xOriginStream, uno::UNO_QUERY);
     xTruncate->truncate();
     xOriginStream->closeOutput();
 
     // Write the relations.
-    uno::Reference<embed::XStorage> xSubStorage = xStorage->openStorageElement("_rels", nOpenMode);
-    uno::Reference<io::XOutputStream> xRelStream(xSubStorage->openStreamElement("origin.sigs.rels", nOpenMode), uno::UNO_QUERY);
+    uno::Reference<embed::XStorage> xSubStorage = xStorage->openStorageElement(u"_rels"_ustr, nOpenMode);
+    uno::Reference<io::XOutputStream> xRelStream(xSubStorage->openStreamElement(u"origin.sigs.rels"_ustr, nOpenMode), uno::UNO_QUERY);
     std::vector< uno::Sequence<beans::StringPair> > aRelations;
     for (int i = 0; i < nSignatureCount; ++i)
     {
@@ -498,7 +499,7 @@ void XMLSignatureHelper::ExportSignatureRelations(const css::uno::Reference<css:
 
 void XMLSignatureHelper::ExportSignatureContentTypes(const css::uno::Reference<css::embed::XStorage>& xStorage, int nSignatureCount)
 {
-    uno::Reference<io::XStream> xStream = xStorage->openStreamElement("[Content_Types].xml", embed::ElementModes::READWRITE);
+    uno::Reference<io::XStream> xStream = xStorage->openStreamElement(u"[Content_Types].xml"_ustr, embed::ElementModes::READWRITE);
     uno::Reference<io::XInputStream> xInputStream = xStream->getInputStream();
     uno::Sequence< uno::Sequence<beans::StringPair> > aContentTypeInfo = comphelper::OFOPXMLHelper::ReadContentTypeSequence(xInputStream, mxCtx);
     if (aContentTypeInfo.getLength() < 2)
@@ -632,10 +633,10 @@ static auto CheckX509Data(
     chain.emplace_back(*start);
 
     // second, check that there is a chain, no tree or cycle...
-    for (size_t i = 0; i < certs.size(); ++i)
+    for (size_t i = 0, certs_size = certs.size(); i < certs_size; ++i)
     {
         assert(chain.size() == i + 1);
-        for (size_t j = 0; j < certs.size(); ++j)
+        for (size_t j = 0; j < certs_size; ++j)
         {
             if (chain[i] != j)
             {
@@ -651,7 +652,7 @@ static auto CheckX509Data(
                 }
             }
         }
-        if (i == certs.size() - 1)
+        if (i == certs_size - 1)
         {   // last one: must be a leaf
             if (chain.size() != i + 1)
             {
@@ -702,7 +703,72 @@ XMLSignatureHelper::CheckAndUpdateSignatureInformation(
     }
     if (CheckX509Data(xSecEnv, temp, certs, tempResult))
     {
-        datas.emplace_back(tempResult);
+        if (rInfo.maEncapsulatedX509Certificates.empty()) // optional, XAdES
+        {
+            datas.emplace_back(tempResult);
+        }
+        else
+        {
+            // check for consistency between X509Data and EncapsulatedX509Certificate
+            // (LO produces just the signing certificate in X509Data and
+            // the entire chain in EncapsulatedX509Certificate so in this case
+            // using EncapsulatedX509Certificate yields additional intermediate
+            // certificates that may help in verifying)
+            std::vector<SignatureInformation::X509CertInfo> encapsulatedCertInfos;
+            for (OUString const& it : rInfo.maEncapsulatedX509Certificates)
+            {
+                encapsulatedCertInfos.emplace_back();
+                encapsulatedCertInfos.back().X509Certificate = it;
+            }
+            std::vector<uno::Reference<security::XCertificate>> encapsulatedCerts;
+            SignatureInformation::X509Data encapsulatedResult;
+            if (CheckX509Data(xSecEnv, encapsulatedCertInfos, encapsulatedCerts, encapsulatedResult))
+            {
+                auto const pXCertificate(dynamic_cast<xmlsecurity::Certificate*>(certs.back().get()));
+                auto const pECertificate(dynamic_cast<xmlsecurity::Certificate*>(encapsulatedCerts.back().get()));
+                assert(pXCertificate && pECertificate); // was just created by CheckX509Data
+                if (pXCertificate->getSHA256Thumbprint() == pECertificate->getSHA256Thumbprint())
+                {
+                    // both are chains - take the longer one
+                    if (encapsulatedCerts.size() < certs.size())
+                    {
+                        datas.emplace_back(tempResult);
+                    }
+                    else
+                    {
+#if 0
+                        // extra info needed in testSigningMultipleTimes_ODT
+                        // ... but with it, it fails with BROKEN signature?
+                        // fails even on the first signature, because somehow
+                        // the xd:SigningCertificate element was signed
+                        // containing only one certificate, but in the final
+                        // file it contains all 3 certificates due to this here.
+                        for (size_t i = 0; i < encapsulatedResult.size(); ++i)
+                        {
+                            encapsulatedResult[i].X509IssuerName = encapsulatedCerts[i]->getIssuerName();
+                            encapsulatedResult[i].X509SerialNumber = xmlsecurity::bigIntegerToNumericString(encapsulatedCerts[i]->getSerialNumber());
+                            encapsulatedResult[i].X509Subject = encapsulatedCerts[i]->getSubjectName();
+                            auto const pCertificate(dynamic_cast<xmlsecurity::Certificate*>(encapsulatedCerts[i].get()));
+                            assert(pCertificate); // this was just created by CheckX509Data
+                            OUStringBuffer aBuffer;
+                            comphelper::Base64::encode(aBuffer, pCertificate->getSHA256Thumbprint());
+                            encapsulatedResult[i].CertDigest = aBuffer.makeStringAndClear();
+                        }
+                        datas.emplace_back(encapsulatedResult);
+#else
+                        // keep the X509Data stuff in datas but return the
+                        // longer EncapsulatedX509Certificate chain
+                        datas.emplace_back(tempResult);
+#endif
+                        certs = std::move(encapsulatedCerts); // overwrite this seems easier
+                    }
+                }
+                else
+                {
+                    SAL_WARN("xmlsecurity.comp", "X509Data and EncapsulatedX509Certificate contain different certificates");
+                }
+            }
+        }
     }
 
     // rInfo is a copy, update the original

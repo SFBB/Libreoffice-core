@@ -43,7 +43,6 @@ struct SfxDispatcher_Impl;
 class VCLXPopupMenu;
 class SfxPoolItemHolder;
 
-namespace com::sun::star::awt { class XPopupMenu; }
 namespace vcl { class Window; }
 
 enum class SfxDispatcherPopFlags
@@ -80,6 +79,7 @@ friend class SfxBindings;
 friend class SfxStateCache;
 friend class SfxPopupMenuManager;
 friend class SfxHelp;
+friend class SfxHintPoster;
 
     DECL_DLLPRIVATE_LINK( EventHdl_Impl, Timer *, void );
     void PostMsgHandler(std::unique_ptr<SfxRequest>);
@@ -130,12 +130,12 @@ public:
 
     bool                IsActive( const SfxShell& rShell );
     sal_uInt16          GetShellLevel( const SfxShell &rShell );
-    SfxBindings*        GetBindings() const;
+    SAL_RET_MAYBENULL SfxBindings* GetBindings() const;
 
     void                Push( SfxShell& rShell );
     void                Pop( SfxShell& rShell, SfxDispatcherPopFlags nMode = SfxDispatcherPopFlags::NONE );
 
-    SfxShell*           GetShell(sal_uInt16 nIdx) const;
+    SAL_RET_MAYBENULL SfxShell* GetShell(sal_uInt16 nIdx) const;
     SfxViewFrame*       GetFrame() const;
     SfxModule*          GetModule() const;
 

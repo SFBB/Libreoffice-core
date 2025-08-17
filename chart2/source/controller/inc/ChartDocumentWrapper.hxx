@@ -36,7 +36,9 @@ namespace chart { class ChartView; }
 
 namespace chart::wrapper
 {
-
+class DiagramWrapper;
+class LegendWrapper;
+class TitleWrapper;
 class Chart2ModelContact;
 
 class ChartDocumentWrapper_Base : public ::cppu::ImplInheritanceHelper
@@ -75,8 +77,6 @@ public:
 
     /// @throws css::uno::RuntimeException
     rtl::Reference<SvxDrawPage> impl_getDrawPage() const;
-
-protected:
 
     // ____ chart::XChartDocument ____
     virtual css::uno::Reference< css::drawing::XShape > SAL_CALL getTitle() override;
@@ -151,11 +151,11 @@ private: //member
 
     css::uno::Reference< css::uno::XInterface >   m_xDelegator;
 
-    css::uno::Reference< css::drawing::XShape >   m_xTitle;
-    css::uno::Reference< css::drawing::XShape >   m_xSubTitle;
-    css::uno::Reference< css::drawing::XShape >   m_xLegend;
+    rtl::Reference< TitleWrapper >   m_xTitle;
+    rtl::Reference< TitleWrapper >   m_xSubTitle;
+    rtl::Reference< LegendWrapper >   m_xLegend;
     css::uno::Reference< css::chart::XChartData > m_xChartData;
-    css::uno::Reference< css::chart::XDiagram >   m_xDiagram;
+    rtl::Reference< DiagramWrapper >   m_xDiagram;
     css::uno::Reference< css::beans::XPropertySet > m_xArea;
 
     css::uno::Reference< css::util::XRefreshable > m_xAddIn;

@@ -82,7 +82,7 @@ def execute_make_and_parse_output(fileName, makeName):
         if line.startswith('DECLARE'):
             try:
                 testName = re.findall('"([^"]*)"', line)[0]
-            except:
+            except Exception:
                 #check in the next line when line is broken into 2 lines
                 testName = re.findall('"([^"]*)"', lines[i + 1])[0]
 
@@ -130,10 +130,10 @@ def insert_code_in_sw_model(repoPath, modelTestRelPath):
                 addText = False
 
         if addText and 'reload' in line:
-            modelTestLines.insert( i - 1, 'int nImportPages = getPages();int nImportShapes = getShapes();\n');
+            modelTestLines.insert( i - 1, 'int nImportPages = getPages();int nImportShapes = getShapes();\n')
             modelTestLines.insert( i + 2, 'int nExportPages = getPages();int nExportShapes = getShapes();SAL_' + \
                 'DEBUG("PAGES - " << filename << " - " << nImportPages << " - " << nExportPages);SAL_' + \
-                'DEBUG("SHAPES - " << filename << " - " << nImportShapes << " - " << nExportShapes);\n');
+                'DEBUG("SHAPES - " << filename << " - " << nImportShapes << " - " << nExportShapes);\n')
             addText = False
 
     modelTestFile = open(modelTestPath, 'w')

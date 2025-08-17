@@ -26,6 +26,7 @@
 #include <comphelper/string.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <sal/log.hxx>
+#include <svl/itemset.hxx>
 #include <tools/debug.hxx>
 
 #include <vcl/svapp.hxx>
@@ -218,6 +219,7 @@ std::unique_ptr<SfxChildWindow> SfxChildWindow::CreateChildWindow( sal_uInt16 nI
                 SfxChildWinInfo aInfo = rInfo;
                 Application::SetSystemWindowMode( SystemWindowFlags::NOAUTOMODE );
                 pChild = pFact->pCtor( pParent, nId, pBindings, &aInfo );
+                pChild->Initialize();
                 Application::SetSystemWindowMode( nOldMode );
                 if ( pBindings )
                     pBindings->LEAVEREGISTRATIONS();
@@ -239,6 +241,7 @@ std::unique_ptr<SfxChildWindow> SfxChildWindow::CreateChildWindow( sal_uInt16 nI
                 SfxChildWinInfo aInfo = rInfo;
                 Application::SetSystemWindowMode( SystemWindowFlags::NOAUTOMODE );
                 pChild = pFact->pCtor( pParent, nId, pBindings, &aInfo );
+                pChild->Initialize();
                 rInfo.nFlags |= aInfo.nFlags;
                 Application::SetSystemWindowMode( nOldMode );
                 if ( pBindings )
@@ -269,7 +272,7 @@ void SfxChildWindow::SaveStatus(const SfxChildWinInfo& rInfo)
 {
     sal_uInt16 nID = GetType();
 
-    OUString aInfoVisible = rInfo.bVisible ? OUString("V") : OUString("H");
+    OUString aInfoVisible = rInfo.bVisible ? u"V"_ustr : u"H"_ustr;
 
     OUString aWinData = "V"
                       + OUString::number(static_cast<sal_Int32>(nVersion))
@@ -290,7 +293,7 @@ void SfxChildWindow::SaveStatus(const SfxChildWinInfo& rInfo)
     aWinOpt.SetWindowState(rInfo.aWinState);
 
     css::uno::Sequence < css::beans::NamedValue > aSeq
-        { { "Data", css::uno::Any(aWinData) } };
+        { { u"Data"_ustr, css::uno::Any(aWinData) } };
     aWinOpt.SetUserData( aSeq );
 
     // ... but save status at runtime!

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.40.0 -->
+<!-- Generated with glade 3.38.2 -->
 <interface domain="sc">
   <requires lib="gtk+" version="3.20"/>
   <object class="GtkBox" id="TpViewPage">
@@ -20,7 +20,7 @@
             <property name="label-xalign">0</property>
             <property name="shadow-type">none</property>
             <child>
-              <!-- n-columns=2 n-rows=8 -->
+              <!-- n-columns=2 n-rows=10 -->
               <object class="GtkGrid" id="grid6">
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
@@ -72,6 +72,11 @@
                     <property name="receives-default">False</property>
                     <property name="use-underline">True</property>
                     <property name="draw-indicator">True</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="annot-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|annot">Specifies that a small triangle in the top right corner of the cell indicates that a comment exists.</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left-attach">1</property>
@@ -86,10 +91,15 @@
                     <property name="receives-default">False</property>
                     <property name="use-underline">True</property>
                     <property name="draw-indicator">True</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="formulamark-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|formulamark">Draws a blue triangle in the bottom-left corner of a cell that contains a formula. When pointing over the blue triangle, the formula is shown in a tool tip even if a different cell is selected.</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left-attach">1</property>
-                    <property name="top-attach">3</property>
+                    <property name="top-attach">4</property>
                   </packing>
                 </child>
                 <child>
@@ -108,7 +118,7 @@
                   </object>
                   <packing>
                     <property name="left-attach">1</property>
-                    <property name="top-attach">4</property>
+                    <property name="top-attach">5</property>
                   </packing>
                 </child>
                 <child>
@@ -127,7 +137,7 @@
                   </object>
                   <packing>
                     <property name="left-attach">1</property>
-                    <property name="top-attach">7</property>
+                    <property name="top-attach">9</property>
                   </packing>
                 </child>
                 <child>
@@ -179,7 +189,7 @@
                   </object>
                   <packing>
                     <property name="left-attach">0</property>
-                    <property name="top-attach">3</property>
+                    <property name="top-attach">4</property>
                   </packing>
                 </child>
                 <child>
@@ -192,7 +202,7 @@
                   </object>
                   <packing>
                     <property name="left-attach">0</property>
-                    <property name="top-attach">6</property>
+                    <property name="top-attach">8</property>
                   </packing>
                 </child>
                 <child>
@@ -205,7 +215,7 @@
                   </object>
                   <packing>
                     <property name="left-attach">0</property>
-                    <property name="top-attach">4</property>
+                    <property name="top-attach">5</property>
                   </packing>
                 </child>
                 <child>
@@ -224,7 +234,7 @@
                   </object>
                   <packing>
                     <property name="left-attach">1</property>
-                    <property name="top-attach">6</property>
+                    <property name="top-attach">8</property>
                   </packing>
                 </child>
                 <child>
@@ -237,7 +247,7 @@
                   </object>
                   <packing>
                     <property name="left-attach">0</property>
-                    <property name="top-attach">7</property>
+                    <property name="top-attach">9</property>
                   </packing>
                 </child>
                 <child>
@@ -256,7 +266,7 @@
                   </object>
                   <packing>
                     <property name="left-attach">1</property>
-                    <property name="top-attach">5</property>
+                    <property name="top-attach">6</property>
                   </packing>
                 </child>
                 <child>
@@ -269,7 +279,70 @@
                   </object>
                   <packing>
                     <property name="left-attach">0</property>
-                    <property name="top-attach">5</property>
+                    <property name="top-attach">6</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkCheckButton" id="editcellbg">
+                    <property name="label" translatable="yes" context="tpviewpage|value">Highlight cell in edit mode</property>
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">False</property>
+                    <property name="use-underline">True</property>
+                    <property name="draw-indicator">True</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="editcellbg-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|value">Mark this box to show highlighted background when the cell is in edit mode.</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">7</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkImage" id="lockeditcellbghigh">
+                    <property name="can-focus">False</property>
+                    <property name="no-show-all">True</property>
+                    <property name="halign">center</property>
+                    <property name="valign">center</property>
+                    <property name="icon-name">res/lock.png</property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">0</property>
+                    <property name="top-attach">7</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkCheckButton" id="cbNoteAuthor">
+                    <property name="label" translatable="yes" context="tpviewpage|noteauthor">Comment authorship</property>
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">False</property>
+                    <property name="draw-indicator">True</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="cbNoteAuthor-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|cbNoteAuthor">Specifies whether the author of the comment is displayed above the comment.</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">3</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkImage" id="imNoteAuthor">
+                    <property name="can-focus">False</property>
+                    <property name="no-show-all">True</property>
+                    <property name="halign">center</property>
+                    <property name="valign">center</property>
+                    <property name="icon-name">res/lock.png</property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">0</property>
+                    <property name="top-attach">3</property>
                   </packing>
                 </child>
               </object>
@@ -407,6 +480,11 @@
                     <property name="use-underline">True</property>
                     <property name="active">True</property>
                     <property name="draw-indicator">True</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="cbSummary-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|cbSummary">If this box is checked, a Search Results window appears when you choose Find All in the Find Box, which summarizes the search results.</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left-attach">1</property>
@@ -635,6 +713,11 @@
                     <property name="use-underline">True</property>
                     <property name="mnemonic-widget">grid</property>
                     <property name="xalign">0</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="grid_label-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|_Grid lines:">Specifies when grid lines will be displayed. </property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left-attach">1</property>
@@ -686,6 +769,11 @@
                     <property name="use-underline">True</property>
                     <property name="draw-indicator">True</property>
                     <property name="group">rbSystemCursor</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="rbThemedCursor-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|T_hemed">Shows the pointer as defined by the icon theme, typically as a fat cross.</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left-attach">2</property>
@@ -702,6 +790,11 @@
                     <property name="use-underline">True</property>
                     <property name="active">True</property>
                     <property name="draw-indicator">True</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="rbSystemCursor-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|rbSystemCursor">Shows the pointer as the system default, typically as an arrow.</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left-attach">3</property>
@@ -801,6 +894,11 @@
                     <property name="use-underline">True</property>
                     <property name="mnemonic-widget">objgrf</property>
                     <property name="xalign">0</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="objgrf_label-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|Ob_jects/Images:">Defines if objects and graphics are shown or hidden.</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left-attach">1</property>
@@ -815,6 +913,11 @@
                     <property name="use-underline">True</property>
                     <property name="mnemonic-widget">diagram</property>
                     <property name="xalign">0</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="diagram_label-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|Char_ts:">Defines if charts in your document are shown or hidden.</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left-attach">1</property>
@@ -829,6 +932,11 @@
                     <property name="use-underline">True</property>
                     <property name="mnemonic-widget">draw</property>
                     <property name="xalign">0</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="draw_label-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="extended_tip|_Drawing objects:">Defines if drawing objects in your document are shown or hidden.</property>
+                      </object>
+                    </child>
                   </object>
                   <packing>
                     <property name="left-attach">1</property>

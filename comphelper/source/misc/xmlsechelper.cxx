@@ -22,6 +22,7 @@
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
 #include <o3tl/string_view.hxx>
+#include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
 
 #include <utility>
 #include <vector>
@@ -33,9 +34,9 @@ namespace comphelper::xmlsec
         switch (rKind)
         {
             case css::security::CertificateKind_X509:
-                return "X.509";
+                return u"X.509"_ustr;
             case css::security::CertificateKind_OPENPGP:
-                return "OpenPGP";
+                return u"OpenPGP"_ustr;
             default:
                 return OUString();
         }
@@ -260,18 +261,16 @@ std::vector< std::pair< OUString, OUString> > parseDN(std::u16string_view rRawSt
 
     OUString GetContentPart( const OUString& _rRawString, const css::security::CertificateKind &rKind )
     {
-        char const * aIDs[] = { "CN", "OU", "O", "E", nullptr };
+        static constexpr OUString aIDs[] { u"CN"_ustr, u"OU"_ustr, u"O"_ustr, u"E"_ustr };
 
         // tdf#131733 Don't process OpenPGP certs, only X509
         if (rKind == css::security::CertificateKind_OPENPGP )
             return _rRawString;
 
         OUString retVal;
-        int i = 0;
         std::vector< std::pair< OUString, OUString > > vecAttrValueOfDN = parseDN(_rRawString);
-        while ( aIDs[i] )
+        for ( const auto & sPartId : aIDs )
         {
-            OUString sPartId = OUString::createFromAscii( aIDs[i++] );
             auto idn = std::find_if(vecAttrValueOfDN.cbegin(), vecAttrValueOfDN.cend(),
                 [&sPartId](const std::pair< OUString, OUString >& dn) { return dn.first == sPartId; });
             if (idn != vecAttrValueOfDN.cend())
@@ -284,18 +283,14 @@ std::vector< std::pair< OUString, OUString> > parseDN(std::u16string_view rRawSt
 
     OUString GetHexString( const css::uno::Sequence< sal_Int8 >& _rSeq, const char* _pSep, sal_uInt16 _nLineBreak )
     {
-        const sal_Int8*         pSerNumSeq = _rSeq.getConstArray();
-        int                     nCnt = _rSeq.getLength();
         OUStringBuffer          aStr;
         const char              pHexDigs[ 17 ] = "0123456789ABCDEF";
         char                    pBuffer[ 3 ] = "  ";
-        sal_uInt8                   nNum;
         sal_uInt16                  nBreakStart = _nLineBreak? _nLineBreak : 1;
         sal_uInt16                  nBreak = nBreakStart;
-        for( int i = 0 ; i < nCnt ; ++i )
+        for (sal_Int8 n : _rSeq)
         {
-            nNum = sal_uInt8( pSerNumSeq[ i ] );
-
+            sal_uInt8 nNum = static_cast<sal_uInt8>(n);
             // exchange the buffer[0] and buffer[1], which make it consistent with Mozilla and Windows
             pBuffer[ 1 ] = pHexDigs[ nNum & 0x0F ];
             nNum >>= 4;
@@ -313,6 +308,34 @@ std::vector< std::pair< OUString, OUString> > parseDN(std::u16string_view rRawSt
         }
 
         return aStr.makeStringAndClear();
+    }
+
+    css::uno::Reference<css::security::XCertificate> FindCertInContext(
+        const css::uno::Reference<css::xml::crypto::XXMLSecurityContext>& xSecurityContext,
+        const OUString& rSHA1Thumbprint)
+    {
+        if (!xSecurityContext.is())
+            return {};
+
+        css::uno::Reference<css::xml::crypto::XSecurityEnvironment> xSE
+            = xSecurityContext->getSecurityEnvironment();
+        css::uno::Sequence<css::uno::Reference<css::security::XCertificate>> xCertificates
+            = xSE->getPersonalCertificates();
+
+        auto aCertsIter = asNonConstRange(xCertificates);
+
+        auto pxCert
+                = std::find_if(aCertsIter.begin(), aCertsIter.end(),
+                               [&rSHA1Thumbprint](auto& xCert)
+                               {
+                                   return rSHA1Thumbprint
+                                           == GetHexString(xCert->getSHA1Thumbprint(), "");
+                               });
+
+        if (pxCert == aCertsIter.end())
+            return {};
+
+        return *pxCert;
     }
 }
 

@@ -60,7 +60,6 @@
 #include <AccessibilityHints.hxx>
 #include <vcl/svapp.hxx>
 #include <viewutil.hxx>
-#include <docpool.hxx>
 #include <patattr.hxx>
 #include <columnspanset.hxx>
 
@@ -197,13 +196,7 @@ void ScPreview::TestLastPage()
     {
         nTab = 0;
         nPageNo = nTabPage = nTabStart = nDisplayStart = 0;
-        aState.nPrintTab = 0;
-        aState.nStartCol = aState.nEndCol = 0;
-        aState.nStartRow = aState.nEndRow = 0;
-        aState.nZoom = 0;
-        aState.nPagesX = aState.nPagesY = 0;
-        aState.nTabPages = aState.nTotalPages =
-        aState.nPageStart = aState.nDocPages = 0;
+        aState = ScPrintState();
     }
 }
 
@@ -234,7 +227,7 @@ void ScPreview::CalcPages()
 
     //  PrintOptions is passed to PrintFunc for SkipEmpty flag,
     //  but always all sheets are used (there is no selected sheet)
-    ScPrintOptions aOptions = SC_MOD()->GetPrintOptions();
+    ScPrintOptions aOptions = ScModule::get()->GetPrintOptions();
 
     while (nStart > static_cast<SCTAB>(nPages.size()))
         nPages.push_back(0);
@@ -257,7 +250,7 @@ void ScPreview::CalcPages()
         tools::Long nAttrPage = i > 0 ? nFirstAttr[i-1] : 1;
 
         tools::Long nThisStart = nTotalPages;
-        ScPrintFunc aPrintFunc( GetOutDev(), pDocShell, i, nAttrPage, 0, nullptr, &aOptions );
+        ScPrintFunc aPrintFunc( GetOutDev(), *pDocShell, i, nAttrPage, 0, nullptr, &aOptions );
         tools::Long nThisTab = aPrintFunc.GetTotalPages();
         if (!aPrintFunc.HasPrintRange())
             mbHasEmptyRangeTable = true;
@@ -348,7 +341,7 @@ void ScPreview::DoPrint( ScPreviewLocationData* pFillLocation )
     bool bDoPrint = ( pFillLocation == nullptr );
     bool bValidPage = ( nPageNo < nTotalPages );
 
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     const svtools::ColorConfig& rColorCfg = pScMod->GetColorConfig();
     Color aBackColor( rColorCfg.GetColorValue(svtools::APPBACKGROUND).nColor );
 
@@ -382,15 +375,15 @@ void ScPreview::DoPrint( ScPreviewLocationData* pFillLocation )
 
         std::unique_ptr<ScPrintFunc, o3tl::default_delete<ScPrintFunc>> pPrintFunc;
         if (bStateValid)
-            pPrintFunc.reset(new ScPrintFunc(GetOutDev(), pDocShell, aState, &aOptions));
+            pPrintFunc.reset(new ScPrintFunc(GetOutDev(), *pDocShell, aState, &aOptions));
         else
-            pPrintFunc.reset(new ScPrintFunc(GetOutDev(), pDocShell, nTab, nFirstAttr[nTab], nTotalPages, nullptr, &aOptions));
+            pPrintFunc.reset(new ScPrintFunc(GetOutDev(), *pDocShell, nTab, nFirstAttr[nTab], nTotalPages, nullptr, &aOptions));
 
         pPrintFunc->SetOffset(aOffset);
         pPrintFunc->SetManualZoom(nZoom);
         pPrintFunc->SetDateTime(aDateTime);
         pPrintFunc->SetClearFlag(true);
-        pPrintFunc->SetUseStyleColor( officecfg::Office::Common::Accessibility::IsForPagePreviews::get() );
+        pPrintFunc->SetUseStyleColor(false); // tdf#101142 print preview should use a white background
 
         pPrintFunc->SetDrawView( pDrawView.get() );
 
@@ -425,24 +418,26 @@ void ScPreview::DoPrint( ScPreviewLocationData* pFillLocation )
             mvRight.resize(aPageArea.aEnd.Col()+1);
             if( !bLayoutRTL )
             {
-                pLocationData->GetCellPosition( aPageArea.aStart, aRectPosition );
+                aRectPosition = pLocationData->GetCellPosition(aPageArea.aStart);
                 nLeftPosition = aRectPosition.Left();
                 for( SCCOL i = aPageArea.aStart.Col(); i <= aPageArea.aEnd.Col(); i++ )
                 {
-                    pLocationData->GetCellPosition( ScAddress( i,aPageArea.aStart.Row(),aPageArea.aStart.Tab()),aRectCellPosition );
+                    aRectCellPosition = pLocationData->GetCellPosition(
+                        ScAddress(i, aPageArea.aStart.Row(), aPageArea.aStart.Tab()));
                     mvRight[i] = aRectCellPosition.Right();
                 }
             }
             else
             {
-                pLocationData->GetCellPosition( aPageArea.aEnd, aRectPosition );
+                aRectPosition = pLocationData->GetCellPosition(aPageArea.aEnd);
                 nLeftPosition = aRectPosition.Right()+1;
 
-                pLocationData->GetCellPosition( aPageArea.aStart,aRectCellPosition );
+                aRectCellPosition = pLocationData->GetCellPosition(aPageArea.aStart);
                 mvRight[ aPageArea.aEnd.Col() ] = aRectCellPosition.Left();
                 for( SCCOL i = aPageArea.aEnd.Col(); i > aPageArea.aStart.Col(); i-- )
                 {
-                    pLocationData->GetCellPosition( ScAddress( i,aPageArea.aEnd.Row(),aPageArea.aEnd.Tab()),aRectCellPosition );
+                    aRectCellPosition = pLocationData->GetCellPosition(
+                        ScAddress(i, aPageArea.aEnd.Row(), aPageArea.aEnd.Tab()));
                     mvRight[ i-1 ] = mvRight[ i ] + aRectCellPosition.Right() - aRectCellPosition.Left() + 1;
                 }
             }
@@ -499,17 +494,16 @@ void ScPreview::DoPrint( ScPreviewLocationData* pFillLocation )
         GetOutDev()->SetFillColor(aBackColor);
         GetOutDev()->DrawRect(tools::Rectangle(0, 0, aWinEnd.X(), aWinEnd.Y()));
 
-        const ScPatternAttr& rDefPattern =
-                rDoc.GetPool()->GetDefaultItem(ATTR_PATTERN);
+        const ScPatternAttr& rDefPattern(rDoc.getCellAttributeHelper().getDefaultCellAttribute());
 
         std::unique_ptr<ScEditEngineDefaulter> pEditEng(
             new ScEditEngineDefaulter(EditEngine::CreatePool().get(), true));
 
         pEditEng->SetRefMapMode(aMMMode);
-        auto pEditDefaults = std::make_unique<SfxItemSet>( pEditEng->GetEmptyItemSet() );
-        rDefPattern.FillEditItemSet(pEditDefaults.get());
-        pEditDefaults->Put(SvxColorItem(COL_LIGHTGRAY, EE_CHAR_COLOR));
-        pEditEng->SetDefaults(std::move(pEditDefaults));
+        SfxItemSet aEditDefaults( pEditEng->GetEmptyItemSet() );
+        rDefPattern.FillEditItemSet(&aEditDefaults);
+        aEditDefaults.Put(SvxColorItem(COL_LIGHTGRAY, EE_CHAR_COLOR));
+        pEditEng->SetDefaults(std::move(aEditDefaults));
 
         OUString aEmptyMsg;
         if (mbHasEmptyRangeTable)
@@ -528,7 +522,7 @@ void ScPreview::DoPrint( ScPreviewLocationData* pFillLocation )
             (aWinEnd.X() - pEditEng->CalcTextWidth())/2,
             (aWinEnd.Y() - pEditEng->GetTextHeight())/2);
 
-        pEditEng->Draw(*GetOutDev(), aCenter);
+        pEditEng->DrawText_ToPosition(*GetOutDev(), aCenter);
 
         return;
     }
@@ -581,7 +575,7 @@ void ScPreview::DoPrint( ScPreviewLocationData* pFillLocation )
     if ( !bValidPage )
         return;
 
-    Color aBorderColor( SC_MOD()->GetColorConfig().GetColorValue(svtools::FONTCOLOR).nColor );
+    Color aBorderColor(ScModule::get()->GetColorConfig().GetColorValue(svtools::FONTCOLOR).nColor);
 
     //  draw border
 
@@ -737,7 +731,6 @@ void ScPreview::SetZoom(sal_uInt16 nNewZoom)
     pViewShell->UpdateNeededScrollBars(true);
     bInSetZoom = false;
 
-    bStateValid = false;
     InvalidateLocationData( SfxHintId::ScAccVisAreaChanged );
     DoInvalidate();
     Invalidate();
@@ -905,6 +898,7 @@ void ScPreview::StaticInvalidate()
 
     SfxBindings& rBindings = pViewFrm->GetBindings();
     rBindings.Invalidate(SID_STATUS_DOCPOS);
+    rBindings.Invalidate(FID_AUTO_CALC);
     rBindings.Invalidate(SID_ROWCOL_SELCOUNT);
     rBindings.Invalidate(SID_STATUS_PAGESTYLE);
     rBindings.Invalidate(SID_PREVIEW_PREVIOUS);
@@ -1073,12 +1067,20 @@ void ScPreview::MouseButtonUp( const MouseEvent& rMEvt )
                     bMoveRulerAction = false;
                     Invalidate(tools::Rectangle(0, 0, 10000, 10000));
                 }
-                else if( bLeftRulerChange && ( o3tl::convert(aButtonUpPt.X(), o3tl::Length::mm100, o3tl::Length::twip) > nWidth - aLRItem.GetRight() - o3tl::convert(aOffset.X(), o3tl::Length::mm100, o3tl::Length::twip) ) )
+                else if (bLeftRulerChange
+                         && (o3tl::convert(aButtonUpPt.X(), o3tl::Length::mm100, o3tl::Length::twip)
+                             > nWidth - aLRItem.ResolveRight({})
+                                   - o3tl::convert(aOffset.X(), o3tl::Length::mm100,
+                                                   o3tl::Length::twip)))
                 {
                     bMoveRulerAction = false;
                     Invalidate(tools::Rectangle(0, 0, 10000, 10000));
                 }
-                else if( bRightRulerChange && ( o3tl::convert(aButtonUpPt.X(), o3tl::Length::mm100, o3tl::Length::twip) < aLRItem.GetLeft() - o3tl::convert(aOffset.X(), o3tl::Length::mm100, o3tl::Length::twip) ) )
+                else if (bRightRulerChange
+                         && (o3tl::convert(aButtonUpPt.X(), o3tl::Length::mm100, o3tl::Length::twip)
+                             < aLRItem.ResolveLeft({})
+                                   - o3tl::convert(aOffset.X(), o3tl::Length::mm100,
+                                                   o3tl::Length::twip)))
                 {
                     bMoveRulerAction = false;
                     Invalidate(tools::Rectangle(0, 0, 10000, 10000));
@@ -1093,13 +1095,19 @@ void ScPreview::MouseButtonUp( const MouseEvent& rMEvt )
                     ScDocShellModificator aModificator( *pDocShell );
                     if( bLeftRulerChange && bLeftRulerMove )
                     {
-                       aLRItem.SetLeft(o3tl::convert( aButtonUpPt.X(), o3tl::Length::mm100, o3tl::Length::twip) + o3tl::convert(aOffset.X(), o3tl::Length::mm100, o3tl::Length::twip));
-                       rStyleSet.Put( aLRItem );
-                       pDocShell->SetModified();
+                        aLRItem.SetLeft(SvxIndentValue::twips(
+                            o3tl::convert(aButtonUpPt.X(), o3tl::Length::mm100, o3tl::Length::twip)
+                            + o3tl::convert(aOffset.X(), o3tl::Length::mm100, o3tl::Length::twip)));
+                        rStyleSet.Put(aLRItem);
+                        pDocShell->SetModified();
                     }
                     else if( bRightRulerChange && bRightRulerMove )
                     {
-                        aLRItem.SetRight(nWidth - o3tl::convert(aButtonUpPt.X(), o3tl::Length::mm100, o3tl::Length::twip) - o3tl::convert(aOffset.X(), o3tl::Length::mm100, o3tl::Length::twip));
+                        aLRItem.SetRight(SvxIndentValue::twips(
+                            nWidth
+                            - o3tl::convert(aButtonUpPt.X(), o3tl::Length::mm100,
+                                            o3tl::Length::twip)
+                            - o3tl::convert(aOffset.X(), o3tl::Length::mm100, o3tl::Length::twip)));
                         rStyleSet.Put( aLRItem );
                         pDocShell->SetModified();
                     }
@@ -1109,13 +1117,13 @@ void ScPreview::MouseButtonUp( const MouseEvent& rMEvt )
                     if( bUndo )
                     {
                         pDocShell->GetUndoManager()->AddUndoAction(
-                            std::make_unique<ScUndoModifyStyle>( pDocShell, SfxStyleFamily::Page,
+                            std::make_unique<ScUndoModifyStyle>( *pDocShell, SfxStyleFamily::Page,
                             aOldData, aNewData ) );
                     }
 
                     if ( ValidTab( nTab ) )
                     {
-                        ScPrintFunc aPrintFunc( GetOutDev(), pDocShell, nTab );
+                        ScPrintFunc aPrintFunc( GetOutDev(), *pDocShell, nTab );
                         aPrintFunc.UpdatePages();
                     }
 
@@ -1209,13 +1217,13 @@ void ScPreview::MouseButtonUp( const MouseEvent& rMEvt )
                     if( bUndo )
                     {
                         pDocShell->GetUndoManager()->AddUndoAction(
-                            std::make_unique<ScUndoModifyStyle>( pDocShell, SfxStyleFamily::Page,
+                            std::make_unique<ScUndoModifyStyle>( *pDocShell, SfxStyleFamily::Page,
                             aOldData, aNewData ) );
                     }
 
                     if ( ValidTab( nTab ) )
                     {
-                        ScPrintFunc aPrintFunc( GetOutDev(), pDocShell, nTab );
+                        ScPrintFunc aPrintFunc( GetOutDev(), *pDocShell, nTab );
                         aPrintFunc.UpdatePages();
                     }
 
@@ -1275,7 +1283,7 @@ void ScPreview::MouseButtonUp( const MouseEvent& rMEvt )
                 }
                 if ( ValidTab( nTab ) )
                 {
-                    ScPrintFunc aPrintFunc( GetOutDev(), pDocShell, nTab );
+                    ScPrintFunc aPrintFunc( GetOutDev(), *pDocShell, nTab );
                     aPrintFunc.UpdatePages();
                 }
                 tools::Rectangle aRect(0, 0, 10000, 10000);
@@ -1303,13 +1311,13 @@ void ScPreview::MouseMove( const MouseEvent& rMEvt )
 
     if ( nPageNo < nTotalPages )
     {
-        ScPrintOptions aOptions = SC_MOD()->GetPrintOptions();
+        ScPrintOptions aOptions = ScModule::get()->GetPrintOptions();
 
         std::unique_ptr<ScPrintFunc, o3tl::default_delete<ScPrintFunc>> pPrintFunc;
         if (bStateValid)
-            pPrintFunc.reset(new ScPrintFunc( GetOutDev(), pDocShell, aState, &aOptions ));
+            pPrintFunc.reset(new ScPrintFunc( GetOutDev(), *pDocShell, aState, &aOptions ));
         else
-            pPrintFunc.reset(new ScPrintFunc( GetOutDev(), pDocShell, nTab, nFirstAttr[nTab], nTotalPages, nullptr, &aOptions ));
+            pPrintFunc.reset(new ScPrintFunc( GetOutDev(), *pDocShell, nTab, nFirstAttr[nTab], nTotalPages, nullptr, &aOptions ));
 
         nLeftMargin = o3tl::convert(pPrintFunc->GetLeftMargin(), o3tl::Length::twip, o3tl::Length::mm100) - aOffset.X();
         nRightMargin = o3tl::convert(pPrintFunc->GetRightMargin(), o3tl::Length::twip, o3tl::Length::mm100);
@@ -1507,21 +1515,13 @@ void ScPreview::LoseFocus()
     Window::LoseFocus();
 }
 
-css::uno::Reference<css::accessibility::XAccessible> ScPreview::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> ScPreview::CreateAccessible()
 {
-    css::uno::Reference<css::accessibility::XAccessible> xAcc= GetAccessible(false);
-    if (xAcc.is())
-    {
-        return xAcc;
-    }
-
     rtl::Reference<ScAccessibleDocumentPagePreview> pAccessible =
-        new ScAccessibleDocumentPagePreview( GetAccessibleParentWindow()->GetAccessible(), pViewShell );
-
-    xAcc = pAccessible;
-    SetAccessible(xAcc);
+        new ScAccessibleDocumentPagePreview(GetAccessibleParent(), pViewShell );
+    SetAccessible(pAccessible);
     pAccessible->Init();
-    return xAcc;
+    return pAccessible;
 }
 
 void ScPreview::DragMove( tools::Long nDragMovePos, PointerStyle nFlags )

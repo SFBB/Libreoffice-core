@@ -77,9 +77,9 @@ private:
     ImplType            mpImplPolygon;
 
 public:
-    static void         ImplReduceEdges( tools::Polygon& rPoly, const double& rArea, sal_uInt16 nPercent );
-    void                ImplRead( SvStream& rIStream );
-    void                ImplWrite( SvStream& rOStream ) const;
+    SAL_DLLPRIVATE static void ImplReduceEdges( tools::Polygon& rPoly, const double& rArea, sal_uInt16 nPercent );
+    SAL_DLLPRIVATE void ImplRead( SvStream& rIStream );
+    SAL_DLLPRIVATE void ImplWrite( SvStream& rOStream ) const;
 
 public:
                         Polygon();
@@ -95,6 +95,9 @@ public:
                                  const Point& rStart, const Point& rEnd,
                                  PolyStyle ePolyStyle = PolyStyle::Arc,
                                  const bool bClockWiseArcDirection = false);
+                        Polygon( const Point& aCenter, const sal_uInt32 nRadius,
+                                 const float fStartAngle, const float fSweepAngle,
+                                 const bool bClockWiseArcDirection);
                         Polygon( const Point& rBezPt1, const Point& rCtrlPt1,
                                  const Point& rBezPt2, const Point& rCtrlPt2,
                                  sal_uInt16 nPoints );
@@ -110,13 +113,13 @@ public:
     PolyFlags           GetFlags( sal_uInt16 nPos ) const;
     bool                HasFlags() const;
 
-    bool                IsRect() const;
+    SAL_DLLPRIVATE bool IsRect() const;
 
     void                SetSize( sal_uInt16 nNewSize );
     sal_uInt16          GetSize() const;
     sal_uInt16          size() const { return GetSize(); } //for vector compatibility
 
-    void                Clear();
+    SAL_DLLPRIVATE void Clear();
 
     tools::Rectangle           GetBoundRect() const;
     bool                Contains( const Point& rPt ) const;
@@ -197,6 +200,10 @@ private:
     TOOLS_DLLPRIVATE void  ImplDoOperation( const tools::PolyPolygon& rPolyPoly, tools::PolyPolygon& rResult, PolyClipOp nOperation ) const;
 
 public:
+
+    typedef std::vector<tools::Polygon>::iterator iterator;
+    typedef std::vector<tools::Polygon>::const_iterator const_iterator;
+
                         explicit PolyPolygon( sal_uInt16 nInitSize = 16 );
                         explicit PolyPolygon( const tools::Polygon& rPoly );
                         explicit PolyPolygon( const tools::Rectangle& );
@@ -264,6 +271,13 @@ public:
     // constructor to convert from ::basegfx::B2DPolyPolygon
      // #i76339# made explicit
      explicit PolyPolygon(const ::basegfx::B2DPolyPolygon& rPolyPolygon);
+
+
+    iterator begin();
+    iterator end();
+
+    const_iterator begin() const;
+    const_iterator end() const;
 };
 
 template< typename charT, typename traits >

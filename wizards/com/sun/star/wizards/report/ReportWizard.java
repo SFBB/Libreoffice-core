@@ -141,7 +141,7 @@ public class ReportWizard extends DatabaseObjectWizard implements XTextListener
                 String[] aFieldNames2 = m_reportDocument.getRecordParser().getFieldNames();
                 String[][] aSortFieldNames = m_reportDocument.getRecordParser().getSortFieldNames();
                 CurSortingComponent.initialize(aFieldNames2, aSortFieldNames);
-                int nLength = m_reportDocument.getRecordParser().GroupFieldNames.length;
+                int nLength = m_reportDocument.getRecordParser().getGroupFieldNames().length;
                 CurSortingComponent.setReadOnlyUntil(nLength);
                 break;
 
@@ -190,7 +190,7 @@ public class ReportWizard extends DatabaseObjectWizard implements XTextListener
             case SOGROUPPAGE:
                 // TODO: DESIGN!!! a getter should return a value!!!
                 CurGroupFieldHandler.getGroupFieldNames(m_reportDocument.getRecordParser());
-                String[] aGroupFieldNames = m_reportDocument.getRecordParser().GroupFieldNames;
+                String[] aGroupFieldNames = m_reportDocument.getRecordParser().getGroupFieldNames();
                 // CurReportDocument.getRecordParser().prependSortFieldNames(aGroupFieldNames);
                 m_reportDocument.setGrouping(aGroupFieldNames);
                 break;
@@ -275,7 +275,7 @@ public class ReportWizard extends DatabaseObjectWizard implements XTextListener
                 {
                     if (m_reportDocument instanceof ReportTextImplementation)
                     {
-                        sqlQueryComposer.m_xQueryAnalyzer.setQuery(sCommand);
+                        sqlQueryComposer.setQuery(sCommand);
                         sqlQueryComposer.prependSortingCriteria();
                         m_reportDocument.setCommandType(CommandType.COMMAND);
                         m_reportDocument.setCommand(sqlQueryComposer.getQuery());

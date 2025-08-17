@@ -33,10 +33,8 @@ typedef connectivity::file::OConnection  OConnection_BASE;
 
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::lang;
 
 ODbaseConnection::ODbaseConnection(ODriver* _pDriver) : OConnection(_pDriver)
 {
@@ -49,7 +47,7 @@ ODbaseConnection::~ODbaseConnection()
 
 // XServiceInfo
 
-IMPLEMENT_SERVICE_INFO(ODbaseConnection, "com.sun.star.sdbc.drivers.dbase.Connection", "com.sun.star.sdbc.Connection")
+IMPLEMENT_SERVICE_INFO(ODbaseConnection, u"com.sun.star.sdbc.drivers.dbase.Connection"_ustr, u"com.sun.star.sdbc.Connection"_ustr)
 
 
 Reference< XDatabaseMetaData > SAL_CALL ODbaseConnection::getMetaData(  )
@@ -71,11 +69,11 @@ Reference< XDatabaseMetaData > SAL_CALL ODbaseConnection::getMetaData(  )
 css::uno::Reference< XTablesSupplier > ODbaseConnection::createCatalog()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
-    Reference< XTablesSupplier > xTab = m_xCatalog;
+    rtl::Reference< connectivity::sdbcx::OCatalog > xTab = m_xCatalog;
     if(!xTab.is())
     {
         xTab = new ODbaseCatalog(this);
-        m_xCatalog = xTab;
+        m_xCatalog = xTab.get();
     }
     return xTab;
 }
@@ -104,9 +102,7 @@ Reference< XPreparedStatement > SAL_CALL ODbaseConnection::prepareStatement( con
 
 Reference< XPreparedStatement > SAL_CALL ODbaseConnection::prepareCall( const OUString& /*sql*/ )
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XConnection::prepareCall", *this );
-    return nullptr;
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XConnection::prepareCall"_ustr, *this );
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

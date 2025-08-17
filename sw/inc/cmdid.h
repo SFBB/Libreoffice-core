@@ -25,7 +25,6 @@
 #include <svl/solar.hrc>
 
 class SvxFrameDirectionItem;
-class SvxSizeItem;
 class SwAddPrinterItem;
 class SwPageFootnoteInfoItem;
 class SwPtrItem;
@@ -46,7 +45,7 @@ class SwUINumRuleItem;
 #define FN_FRAME                (SID_SW_START + 1300)
 #define FN_INSERT2              (SID_SW_START + 1400)
 #define FN_FORMAT2              (SID_SW_START + 1600)
-//#define FN_EDIT2                (SID_SW_START + 1800) defined in svxids.hrc
+//#define FN_EDIT2                (SID_SW_START + 1800) defined in sfxsids.hrc
 #define FN_QUERY2               (SID_SW_START + 2000)
 #define FN_EXTRA2               (SID_SW_START + 2200)
 #define FN_PARAM2               (SID_SW_START + 2400)
@@ -103,8 +102,6 @@ class SwUINumRuleItem;
 #define FN_NUM_BULLET_OUTLINE_MOVEDOWN  (FN_EDIT + 42)  /* Push down with sub-items */
 #define FN_UPDATE_INPUTFIELDS           (FN_EDIT + 43)  /* Update input fields */
 
-#define FN_NUM_OR_NONUM         (FN_EDIT + 46)  /* Number on/off */
-
 #define FN_GOTO_NEXT_INPUTFLD   (FN_EDIT + 47)  /* go to next inputfield */
 #define FN_GOTO_PREV_INPUTFLD   (FN_EDIT + 48)  /* go to previous inputfield    */
 #define FN_GOTO_MARK            (FN_EDIT + 49)  /* go to bookmark by name */
@@ -145,19 +142,24 @@ class SwUINumRuleItem;
 #define FN_NUM_CONTINUE              (FN_EDIT2 + 36)    /* continue previous numbering */
 #define FN_REDLINE_ACCEPT_DIRECT     (FN_EDIT2 + 37)    /* accept redline at current position*/
 #define FN_REDLINE_REJECT_DIRECT     (FN_EDIT2 + 38)    /* reject redline at current position*/
-// free
-// free
+#define FN_REDLINE_REINSTATE_DIRECT  (FN_EDIT2 + 39)    /* reinstate redline at current position*/
+#define FN_REDLINE_REINSTATE_TONEXT  (FN_EDIT2 + 40)    /* reinstate redline and jump to next */
 #define FN_REDLINE_NEXT_CHANGE       (FN_EDIT2 + 41)    /* Go to the next change */
 #define FN_REDLINE_PREV_CHANGE       (FN_EDIT2 + 42)    /* Go to the previous change */
 #define FN_REDLINE_ACCEPT_ALL        (FN_EDIT2 + 43)    /* Redlining Accept All*/
 #define FN_REDLINE_REJECT_ALL        (FN_EDIT2 + 44)    /* Redlining Reject All*/
 #define FN_REDLINE_ACCEPT_TONEXT     (FN_EDIT2 + 45)    /* Redlining Accept and jump to next*/
 #define FN_REDLINE_REJECT_TONEXT     (FN_EDIT2 + 46)    /* Redlining Reject and jump to next*/
+#define FN_TRANSFORM_DOCUMENT_STRUCTURE (FN_EDIT2 + 47) /* overwrite text of content control, and more*/
+#define FN_COPY_FIELD                (FN_EDIT2 + 48)    /* show field content in readonly documents to copy content*/
+#define FN_CONVERT_SEL_FIELD         (FN_EDIT2 + 49)    /* convert selected field to text */
+#define FN_REDLINE_REINSTATE_ALL     (FN_EDIT2 + 50)    /* redlining reinstate all */
 
 // Region: View
 #define FN_DRAW_WRAP_DLG        TypedWhichId<SfxInt16Item>(FN_VIEW + 3)   /* Draw wrapping dlg */
 #define FN_RULER                (FN_VIEW + 11)  /* Horizontal ruler */
 
+#define FN_VIEW_BOUNDARIES      (FN_VIEW + 12)  /* View text, section, table boundaries */
 #define FN_VIEW_GRAPHIC         (FN_VIEW + 13)  /* View graphic */
 #define FN_VIEW_BOUNDS          (FN_VIEW + 14)  /* View bounds */
 #define FN_VIEW_FIELDS          (FN_VIEW + 15)  /* View fields */
@@ -165,6 +167,7 @@ class SwUINumRuleItem;
 #define FN_VSCROLLBAR           (FN_VIEW + 17)  /* Vertical Scrollbar */
 #define FN_HSCROLLBAR           (FN_VIEW + 18)  /* Horizontal Scrollbar */
 #define FN_VIEW_SECTION_BOUNDARIES (FN_VIEW + 19)  /* View section boundaries */
+//  slot number 20220 conflicts with FN_BUL_NUM_RULE_INDEX!
 
 #define FN_VIEW_META_CHARS      (FN_VIEW + 24)  /* View meta chars */
 #define FN_VIEW_MARKS           (FN_VIEW + 25)  /* View marks */
@@ -204,6 +207,9 @@ class SwUINumRuleItem;
 #define FN_SET_TRACKED_DELETIONS_IN_MARGIN     (FN_VIEW + 68)  /* Show final text (deletions in margin) */
 #define FN_SET_TRACKED_INSERTIONS_IN_MARGIN    (FN_VIEW + 69)  /* Show original text (insertions in margin) */
 #define FN_OUTLINE_LEVELS_SHOWN                (FN_VIEW + 70)
+#define FN_RECORD_TRACKED_CHANGES_MENU         (FN_VIEW + 71)  /* Menu for the track changes record modes */
+#define FN_TRACK_CHANGES_IN_THIS_VIEW          (FN_VIEW + 72)  /* Record track changes only in this view */
+#define FN_TRACK_CHANGES_IN_ALL_VIEWS          (FN_VIEW + 73)  /* Record track changes only in all views */
 
 // Region: Insert
 #define FN_INSERT_BOOKMARK      (FN_INSERT + 2 )  /* Bookmark */
@@ -219,8 +225,6 @@ class SwUINumRuleItem;
 #define FN_INSERT_FOOTNOTE_DLG  (FN_INSERT + 12)  /* Footnote Dialog */
 
 #define FN_INSERT_REF_FIELD     (FN_INSERT + 13)  /* Insert Reference Field */
-
-#define FN_INSERT_HYPERLINK     (FN_INSERT + 14)  /* Character dialogue / hyperlink page */
 
 #define FN_INSERT_LINEBREAK     (FN_INSERT + 18)    /* Newline */
 #define FN_INSERT_FIELD_DATA_ONLY (FN_INSERT + 19)  /* Field dialog for mail merge*/
@@ -337,6 +341,8 @@ class SwUINumRuleItem;
 #define FN_DELETE_BOOKMARKS (FN_INSERT2 + 39)
 #define FN_DELETE_FIELDS (FN_INSERT2 + 40)
 #define FN_DELETE_SECTIONS (FN_INSERT2 + 41)
+#define FN_DELETE_CONTENT_CONTROL (FN_INSERT2 + 42) /* Delete content control formatting */
+#define FN_INSERT_FLD_RANGE_PGCOUNT (FN_INSERT2 + 43) /*insert field page count in range*/
 
 // Region: Format
 #define FN_AUTOFORMAT_APPLY     (FN_FORMAT + 1 ) /* apply autoformat options */
@@ -414,6 +420,7 @@ class SwUINumRuleItem;
 #define FN_CONVERT_TEXT_TO_TABLE    (FN_FORMAT + 131)  /* convert selected text to table */
 #define FN_CONVERT_TABLE_TO_TEXT    (FN_FORMAT + 132)  /* convert a table to text */
 #define FN_TABLE_SORT_DIALOG        (FN_FORMAT + 133)  /* sorting in tables*/
+#define FN_BREAK_ABOVE_TABLE        (FN_FORMAT + 134)
 
 // Region: Page Template
 #define FN_PAGE_STYLE_SET_LR_MARGIN (FN_FORMAT + 130) /* left / right margin */
@@ -520,12 +527,16 @@ class SwUINumRuleItem;
 #define FN_FORMAT_APPLY_DEFAULT             (FN_FORMAT2 + 157)
 #define FN_FORMAT_APPLY_TEXTBODY            (FN_FORMAT2 + 158)
 #define FN_REMOVE_DIRECT_CHAR_FORMATS       (FN_FORMAT2 + 159)
-//free (160)
+#define SID_ATTR_TABLE_ALIGNMENT            (FN_FORMAT2 + 160)
+#define SID_ATTR_TABLE_LEFT_SPACE           (FN_FORMAT2 + 161)
+#define SID_ATTR_TABLE_RIGHT_SPACE          (FN_FORMAT2 + 162)
+//free (163 except 194 already used above)
 
 // Region: Extras
 #define FN_LINE_NUMBERING_DLG       (FN_EXTRA + 2 )   /* */
 #define FN_HYPHENATE_OPT_DLG        (FN_EXTRA + 5 )   /* */
-#define FN_ADD_UNKNOWN              (FN_EXTRA + 6 )   /* learn words */
+#define FN_NO_BREAK                 (FN_EXTRA + 6 )   /* do not hyphenate */
+#define FN_ADD_UNKNOWN              (FN_EXTRA + 7 )   /* learn words */
 #define FN_NUMBERING_OUTLINE_DLG    (FN_EXTRA + 12)   /* */
 #define FN_SORTING_DLG              (FN_EXTRA + 14)   /* */
 #define FN_CALCULATE                (FN_EXTRA + 15)   /* */
@@ -544,8 +555,6 @@ class SwUINumRuleItem;
 #define FN_UPDATE_TOX               (FN_EXTRA + 53)   /* update all indices */
 #define FN_UPDATE_CUR_TOX           (FN_EXTRA + 54)   /* update current index */
 #define FN_REMOVE_CUR_TOX           (FN_EXTRA + 55)  /* remove the current TOX*/
-
-#define FN_GOTO_PAGE                (FN_EXTRA + 59 )  /* goto page */
 
 #define FN_COLL_TYPE                (FN_EXTRA + 98)   /* type for GlobalDoc-Collection*/
 #define FN_COLL_ADD                 (FN_EXTRA + 99)
@@ -633,8 +642,6 @@ class SwUINumRuleItem;
 #define FN_UNO_COMPONENT                    (FN_EXTRA2 + 97)
 #define FN_WORDCOUNT_DIALOG                 (FN_EXTRA2 + 98)
 
-#define FN_XFORMS_DESIGN_MODE               (FN_EXTRA2 + 99)
-
 #define FN_UNO_PARA_STYLE_CONDITIONS        (FN_EXTRA2 + 100)
 #define FN_UNO_GRAPHIC                      (FN_EXTRA2 + 101)
 
@@ -677,6 +684,7 @@ class SwUINumRuleItem;
 #define FN_UNO_GRAPHIC_PREVIEW              (FN_EXTRA2 + 130)
 #define FN_UNO_LINEBREAK (FN_EXTRA2 + 131)
 #define FN_UNO_CONTENT_CONTROL (FN_EXTRA2 + 132)
+#define FN_UNO_IS_CONTENT_EMPTY  (FN_EXTRA2 + 133)
 
 // Area: Help
 // Region: Traveling & Selection
@@ -774,6 +782,10 @@ class SwUINumRuleItem;
 #define FN_TO_PREV_PAGE             (FN_SELECTION + 96)
 #define FN_SELECTION_CYCLE          (FN_SELECTION + 97)
 
+#define FN_SINGLE_PAGE_PER_ROW      (FN_SELECTION + 98)   /*Show Single Page per row*/
+#define FN_MULTIPLE_PAGES_PER_ROW   (FN_SELECTION + 99)   /*Show Multiple Page per row*/
+#define FN_BOOKVIEW                 (FN_SELECTION + 100)   /*Show in Bookview*/
+
 // QUERY-Block
 #define FN_TXTATR_INET              (FN_QUERY +29)      /* INet-Attribute */
 
@@ -802,6 +814,7 @@ class SwUINumRuleItem;
 #define FN_RESOLVE_NOTE             (FN_NOTES+9)
 #define FN_RESOLVE_NOTE_THREAD      (FN_NOTES+10)
 #define FN_DELETE_COMMENT_THREAD    (FN_NOTES+11)
+#define FN_PROMOTE_COMMENT          (FN_NOTES+12)
 
 // Region: Parameter
 #define FN_PARAM_MOVE_COUNT         TypedWhichId<SfxInt32Item>(FN_PARAM+2)
@@ -849,7 +862,7 @@ class SwUINumRuleItem;
 #define FN_PARAM_CRSR_IN_PROTECTED      TypedWhichId<SfxBoolItem>(FN_PARAM2+13) /* Cursor in protected areas */
 #define FN_PARAM_TOX_TYPE               TypedWhichId<SfxUInt16Item>(FN_PARAM2+14) /* TOX type in tox dialog*/
 #define FN_PARAM_LINK_DISPLAY_NAME      (FN_PARAM2+15) /* LinkDisplayName property*/
-// free
+#define FN_PARAM_FMT_AIDS_AUTOCOMPL     TypedWhichId<SwFmtAidsAutoComplItem>(FN_PARAM2+16) /* Formatting aids autocomplete options */
 #define FN_PARAM_CONTOUR_PP             (FN_PARAM2+17) /* contour PolyPolygon*/
 
 #define FN_ANCHOR_POSITION              (FN_PARAM2+18) /* AnchorPosition property */

@@ -33,8 +33,6 @@
 #include <utility>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
-using namespace ::utl;
 
 SvtFileDialogFilter_Impl::SvtFileDialogFilter_Impl( OUString aName, OUString aType )
     : m_aName(std::move( aName ))
@@ -55,7 +53,7 @@ SvtUpButton_Impl::SvtUpButton_Impl(std::unique_ptr<weld::Toolbar> xToolbar,
     , m_xMenu(std::move(xMenu))
     , m_pDlg(pDlg)
 {
-    m_xToolbar->set_item_menu("up_btn", m_xMenu.get());
+    m_xToolbar->set_item_menu(u"up_btn"_ustr, m_xMenu.get());
     m_xToolbar->connect_clicked(LINK(this, SvtUpButton_Impl, ClickHdl));
     m_xMenu->connect_activate(LINK(this, SvtUpButton_Impl, SelectHdl));
 }
@@ -134,13 +132,6 @@ SvtExpFileDlg_Impl::~SvtExpFileDlg_Impl()
 {
 }
 
-void SvtExpFileDlg_Impl::SetStandardDir( const OUString& _rDir )
-{
-    m_aStdDir = _rDir;
-    if (m_aStdDir.isEmpty())
-        m_aStdDir = "file:///";
-}
-
 namespace {
     OUString lcl_DecoratedFilter( std::u16string_view _rOriginalFilter )
     {
@@ -150,7 +141,7 @@ namespace {
 
 void SvtExpFileDlg_Impl::SetCurFilter( SvtFileDialogFilter_Impl const * pFilter, const OUString& rDisplayName )
 {
-    DBG_ASSERT( pFilter, "SvtExpFileDlg_Impl::SetCurFilter: invalid filter!" );
+    assert(pFilter && "SvtExpFileDlg_Impl::SetCurFilter: invalid filter!");
     DBG_ASSERT( ( rDisplayName == pFilter->GetName() )
             ||  ( rDisplayName == lcl_DecoratedFilter( pFilter->GetName() ) ),
             "SvtExpFileDlg_Impl::SetCurFilter: arguments are inconsistent!" );
@@ -163,7 +154,7 @@ void SvtExpFileDlg_Impl::InsertFilterListEntry(const SvtFileDialogFilter_Impl* p
 {
     // insert and set user data
     OUString sId(weld::toId(pFilterDesc));
-    OUString sName = pFilterDesc->GetName();
+    const OUString& sName = pFilterDesc->GetName();
     if (pFilterDesc->isGroupSeparator())
         m_xLbFilter->append_separator(sId);
     else

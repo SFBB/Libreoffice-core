@@ -211,7 +211,7 @@ void XclExpSstImpl::SaveXml( XclExpXmlStream& rStrm )
         return;
 
     sax_fastparser::FSHelperPtr pSst = rStrm.CreateOutputStream(
-            "xl/sharedStrings.xml",
+            u"xl/sharedStrings.xml"_ustr,
             u"sharedStrings.xml",
             rStrm.GetCurrentStream()->getOutputStream(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml",
@@ -540,7 +540,7 @@ void XclExpHyperlink::SaveXml( XclExpXmlStream& rStrm )
     if (mxTextMark)
         sTextMark = XclXmlUtils::ToOString(*mxTextMark);
     rStrm.GetCurrentStream()->singleElement( XML_hyperlink,
-            XML_ref,                XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), maScPos),
+            XML_ref,                XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), ScRange(maScPos)),
             FSNS( XML_r, XML_id ),  sax_fastparser::UseIf(sId, !sId.isEmpty()),
             XML_location,           sTextMark,
             // OOXTODO: XML_tooltip,    from record HLinkTooltip 800h wzTooltip
@@ -869,8 +869,6 @@ const char* GetOperatorString(ScConditionMode eMode, bool& bFrmla2)
             pRet = "notBetween";
             break;
         case ScConditionMode::Duplicate:
-            pRet = nullptr;
-            break;
         case ScConditionMode::NotDuplicate:
             pRet = nullptr;
             break;
@@ -1003,11 +1001,13 @@ bool RequiresFixedFormula(ScConditionMode eMode)
     return false;
 }
 
-OString GetFixedFormula(ScConditionMode eMode, const ScAddress& rAddress, std::string_view rText)
+OString GetFixedFormula(ScConditionMode eMode, const ScAddress& rAddress, const OString& rText)
 {
     OStringBuffer aBuffer;
     XclXmlUtils::ToOString(aBuffer, rAddress);
     OString aPos = aBuffer.makeStringAndClear();
+    // double quotes in rText need to be escaped
+    const OString aText = rText.replaceAll("\""_ostr, "\"\""_ostr);
     switch (eMode)
     {
         case ScConditionMode::Error:
@@ -1015,13 +1015,13 @@ OString GetFixedFormula(ScConditionMode eMode, const ScAddress& rAddress, std::s
         case ScConditionMode::NoError:
             return OString("NOT(ISERROR(" + aPos + "))") ;
         case ScConditionMode::BeginsWith:
-            return OString("LEFT(" + aPos + ",LEN(\"" + rText + "\"))=\"" + rText + "\"");
+            return OString("LEFT(" + aPos + ",LEN(\"" + aText + "\"))=\"" + aText + "\"");
         case ScConditionMode::EndsWith:
-            return OString("RIGHT(" + aPos +",LEN(\"" + rText + "\"))=\"" + rText + "\"");
+            return OString("RIGHT(" + aPos +",LEN(\"" + aText + "\"))=\"" + aText + "\"");
         case ScConditionMode::ContainsText:
-            return OString(OString::Concat("NOT(ISERROR(SEARCH(\"") + rText + "\"," + aPos + ")))");
+            return OString(OString::Concat("NOT(ISERROR(SEARCH(\"") + aText + "\"," + aPos + ")))");
         case ScConditionMode::NotContainsText:
-            return OString(OString::Concat("ISERROR(SEARCH(\"") +  rText + "\"," + aPos + "))");
+            return OString(OString::Concat("ISERROR(SEARCH(\"") +  aText + "\"," + aPos + "))");
         default:
         break;
     }
@@ -1043,7 +1043,7 @@ void XclExpCFImpl::SaveXml( XclExpXmlStream& rStrm )
         || eOperation == ScConditionMode::BottomPercent;
     bool bPercent = eOperation == ScConditionMode::TopPercent ||
         eOperation == ScConditionMode::BottomPercent;
-    OUString aRank("0");
+    OUString aRank(u"0"_ustr);
     if(IsTopBottomRule(eOperation))
     {
         // position and formula grammar are not important
@@ -1093,7 +1093,7 @@ void XclExpCFImpl::SaveXml( XclExpXmlStream& rStrm )
     {
         rWorksheet->startElement(XML_formula);
         OString aFormula = GetFixedFormula(eOperation, maOrigin, aText);
-        rWorksheet->writeEscaped(aFormula.getStr());
+        rWorksheet->writeEscaped(aFormula);
         rWorksheet->endElement( XML_formula );
     }
     else if(RequiresFormula(eOperation))
@@ -1255,7 +1255,8 @@ void XclExpCfvo::SaveXml( XclExpXmlStream& rStrm )
 
     rWorksheet->startElement( XML_cfvo,
             XML_type, getColorScaleType(mrEntry, mbFirst),
-            XML_val, aValue );
+            XML_val, aValue,
+            XML_gte, sax_fastparser::UseIf("0", mrEntry.GetMode() != ScConditionMode::EqGreater));
 
     rWorksheet->endElement( XML_cfvo );
 }
@@ -1567,9 +1568,9 @@ void XclExpIconSet::SaveXml( XclExpXmlStream& rStrm )
             XML_type, "iconSet",
             XML_priority, OString::number(mnPriority + 1) );
 
-    const char* pIconSetName = ScIconSetFormat::getIconSetName(mrFormat.GetIconSetData()->eIconSetType);
+    OUString aIconSetName = ScIconSetFormat::getIconSetName(mrFormat.GetIconSetData()->eIconSetType);
     rWorksheet->startElement( XML_iconSet,
-            XML_iconSet, pIconSetName,
+            XML_iconSet, aIconSetName,
             XML_showValue, sax_fastparser::UseIf("0", !mrFormat.GetIconSetData()->mbShowValue),
             XML_reverse, sax_fastparser::UseIf("1", mrFormat.GetIconSetData()->mbReverse));
 

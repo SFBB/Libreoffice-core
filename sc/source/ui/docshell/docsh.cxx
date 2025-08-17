@@ -48,6 +48,7 @@
 #include <sfx2/lokhelper.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/viewfrm.hxx>
+#include <sfx2/infobar.hxx>
 #include <svl/documentlockfile.hxx>
 #include <svl/fstathelper.hxx>
 #include <svl/sharecontrolfile.hxx>
@@ -83,6 +84,7 @@
 #include <svx/svdpage.hxx>
 #include <docmodel/theme/Theme.hxx>
 
+#include <inputopt.hxx>
 #include <formulacell.hxx>
 #include <global.hxx>
 #include <filter.hxx>
@@ -142,6 +144,7 @@
 #include <datastream.hxx>
 #include <documentlinkmgr.hxx>
 #include <refupdatecontext.hxx>
+#include <DocumentModelAccessor.hxx>
 
 #include <memory>
 #include <vector>
@@ -149,6 +152,8 @@
 #include <comphelper/lok.hxx>
 #include <svtools/sfxecode.hxx>
 #include <unotools/pathoptions.hxx>
+
+#include <vcl/tabs.hrc>
 
 using namespace com::sun::star;
 using ::com::sun::star::uno::Reference;
@@ -187,7 +192,7 @@ void ScDocShell::InitInterface_Impl()
 }
 
 //  GlobalName of the current version:
-SFX_IMPL_OBJECTFACTORY( ScDocShell, SvGlobalName(SO3_SC_CLASSID), "scalc" )
+SFX_IMPL_OBJECTFACTORY( ScDocShell, SvGlobalName(SO3_SC_CLASSID), u"scalc"_ustr )
 
 
 void ScDocShell::FillClass( SvGlobalName* pClassName,
@@ -219,6 +224,13 @@ std::set<Color> ScDocShell::GetDocColors()
     return m_pDocument->GetDocColors();
 }
 
+std::shared_ptr<sfx::IDocumentModelAccessor> ScDocShell::GetDocumentModelAccessor() const
+{
+    std::shared_ptr<sfx::IDocumentModelAccessor> pReturn;
+    pReturn.reset(new sc::DocumentModelAccessor(m_pDocument));
+    return pReturn;
+}
+
 std::shared_ptr<model::ColorSet> ScDocShell::GetThemeColors()
 {
     ScTabViewShell* pShell = GetBestViewShell();
@@ -239,8 +251,8 @@ std::shared_ptr<model::ColorSet> ScDocShell::GetThemeColors()
 void ScDocShell::DoEnterHandler()
 {
     ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell();
-    if (pViewSh && pViewSh->GetViewData().GetDocShell() == this)
-        SC_MOD()->InputEnterHandler();
+    if (pViewSh && &pViewSh->GetViewData().GetDocShell() == this)
+        ScModule::get()->InputEnterHandler();
 }
 
 SCTAB ScDocShell::GetSaveTab()
@@ -459,8 +471,8 @@ private:
     std::unique_ptr<weld::CheckButton> m_xWarningOnBox;
 public:
     MessageWithCheck(weld::Window *pParent, const OUString& rUIFile, const OUString& rDialogId)
-        : MessageDialogController(pParent, rUIFile, rDialogId, "ask")
-        , m_xWarningOnBox(m_xBuilder->weld_check_button("ask"))
+        : MessageDialogController(pParent, rUIFile, rDialogId, u"ask"_ustr)
+        , m_xWarningOnBox(m_xBuilder->weld_check_button(u"ask"_ustr))
     {
     }
     bool get_active() const { return m_xWarningOnBox->get_active(); }
@@ -494,6 +506,63 @@ public:
 };
 #endif
 
+}
+
+bool ScDocShell::GetRecalcRowHeightsMode()
+{
+    const ScRecalcOptions nRecalcMode = static_cast<ScRecalcOptions>(
+        officecfg::Office::Calc::Formula::Load::RecalcOptimalRowHeightMode::get());
+
+    bool bHardRecalc = false;
+    switch (nRecalcMode)
+    {
+        case RECALC_ASK:
+        {
+            if (m_pDocument->IsUserInteractionEnabled())
+            {
+                // Ask if the user wants to perform full re-calculation.
+                MessageWithCheck aQueryBox(ScDocShell::GetActiveDialogParent(),
+                                           u"modules/scalc/ui/recalcquerydialog.ui"_ustr,
+                                           u"RecalcQueryDialog"_ustr);
+                aQueryBox.set_primary_text(ScResId(STR_QUERY_OPT_ROW_HEIGHT_RECALC_ONLOAD));
+                aQueryBox.set_default_response(RET_YES);
+
+                if (officecfg::Office::Calc::Formula::Load::RecalcOptimalRowHeightMode::isReadOnly())
+                    aQueryBox.hide_ask();
+
+                bHardRecalc = aQueryBox.run() == RET_YES;
+
+                if (aQueryBox.get_active())
+                {
+                    // Always perform selected action in the future.
+                    std::shared_ptr<comphelper::ConfigurationChanges> batch(
+                        comphelper::ConfigurationChanges::create());
+                    officecfg::Office::Calc::Formula::Load::RecalcOptimalRowHeightMode::set(
+                        bHardRecalc ? static_cast<sal_Int32>(RECALC_ALWAYS)
+                                    : static_cast<sal_Int32>(RECALC_NEVER),
+                        batch);
+
+                    ScModule* mod = ScModule::get();
+                    ScFormulaOptions aOpt = mod->GetFormulaOptions();
+                    aOpt.SetReCalcOptiRowHeights(bHardRecalc ? RECALC_ALWAYS : RECALC_NEVER);
+                    mod->SetFormulaOptions(aOpt);
+
+                    batch->commit();
+                }
+            }
+        }
+        break;
+        case RECALC_ALWAYS:
+            bHardRecalc = true;
+            break;
+        case RECALC_NEVER:
+            bHardRecalc = false;
+            break;
+        default:
+            SAL_WARN("sc", "unknown optimal row height recalc option!");
+    }
+
+    return bHardRecalc;
 }
 
 bool ScDocShell::LoadXML( SfxMedium* pLoadMedium, const css::uno::Reference< css::embed::XStorage >& xStor )
@@ -538,7 +607,7 @@ bool ScDocShell::LoadXML( SfxMedium* pLoadMedium, const css::uno::Reference< css
             // Generator is not LibreOffice.  Ask if the user wants to perform
             // full re-calculation.
             MessageWithCheck aQueryBox(GetActiveDialogParent(),
-                    "modules/scalc/ui/recalcquerydialog.ui", "RecalcQueryDialog");
+                    u"modules/scalc/ui/recalcquerydialog.ui"_ustr, u"RecalcQueryDialog"_ustr);
             aQueryBox.set_primary_text(ScResId(STR_QUERY_FORMULA_RECALC_ONLOAD_ODS));
             aQueryBox.set_default_response(RET_YES);
 
@@ -552,11 +621,12 @@ bool ScDocShell::LoadXML( SfxMedium* pLoadMedium, const css::uno::Reference< css
                 // Always perform selected action in the future.
                 std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
                 officecfg::Office::Calc::Formula::Load::ODFRecalcMode::set(sal_Int32(0), batch);
-                ScFormulaOptions aOpt = SC_MOD()->GetFormulaOptions();
+                ScModule* mod = ScModule::get();
+                ScFormulaOptions aOpt = mod->GetFormulaOptions();
                 aOpt.SetODFRecalcOptions(bHardRecalc ? RECALC_ALWAYS : RECALC_NEVER);
                 /* XXX  is this really supposed to set the ScModule options?
                  *      Not the ScDocShell options? */
-                SC_MOD()->SetFormulaOptions(aOpt);
+                mod->SetFormulaOptions(aOpt);
 
                 batch->commit();
             }
@@ -629,11 +699,11 @@ bool ScDocShell::Load( SfxMedium& rMedium )
             //  (for ConvertFrom, InitNew is called before)
             m_pDocument->MakeTable(0);
             m_pDocument->GetStyleSheetPool()->CreateStandardStyles();
-            m_pDocument->UpdStlShtPtrsFrmNms();
+            m_pDocument->getCellAttributeHelper().UpdateAllStyleSheets(*m_pDocument);
 
             /* Create styles that are imported through Orcus */
 
-            OUString aURL("$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/calc/styles.xml");
+            OUString aURL(u"$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/calc/styles.xml"_ustr);
             rtl::Bootstrap::expandMacros(aURL);
 
             OUString aPath;
@@ -671,9 +741,9 @@ bool ScDocShell::Load( SfxMedium& rMedium )
 
 void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
 {
-    const ScTablesHint* pScHint = dynamic_cast< const ScTablesHint* >( &rHint );
-    if (pScHint)
+    if (rHint.GetId() == SfxHintId::ScTables)
     {
+        const ScTablesHint* pScHint = static_cast< const ScTablesHint* >( &rHint );
         if (pScHint->GetTablesHintId() == SC_TAB_INSERTED)
         {
             uno::Reference< script::vba::XVBAEventProcessor > xVbaEvents = m_pDocument->GetVbaEventProcessor();
@@ -690,8 +760,9 @@ void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
 
     if ( auto pStyleSheetHint = dynamic_cast<const SfxStyleSheetHint*>(&rHint) ) // Template changed
         NotifyStyle( *pStyleSheetHint );
-    else if ( auto pStlHint = dynamic_cast<const ScAutoStyleHint*>(&rHint) )
+    else if ( rHint.GetId() == SfxHintId::ScAutoStyle )
     {
+        auto pStlHint = static_cast<const ScAutoStyleHint*>(&rHint);
         //! direct call for AutoStyles
 
         //  this is called synchronously from ScInterpreter::ScStyle,
@@ -715,7 +786,7 @@ void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
                 {
 #if HAVE_FEATURE_MULTIUSER_ENVIRONMENT
                     // the readonly documents should not be opened in shared mode
-                    if ( HasSharedXMLFlagSet() && !SC_MOD()->IsInSharedDocLoading() && !IsReadOnly() )
+                    if ( HasSharedXMLFlagSet() && !ScModule::get()->IsInSharedDocLoading() && !IsReadOnly() )
                     {
                         if ( SwitchToShared( true, false ) )
                         {
@@ -748,35 +819,40 @@ void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
 #endif
 
 #if HAVE_FEATURE_MULTIUSER_ENVIRONMENT
-                    if ( IsDocShared() && !SC_MOD()->IsInSharedDocLoading()
+                    if (ScModule* mod = ScModule::get(); IsDocShared() && !mod->IsInSharedDocLoading()
                          && !comphelper::LibreOfficeKit::isActive() )
                     {
-                        ScAppOptions aAppOptions = SC_MOD()->GetAppOptions();
+                        ScAppOptions aAppOptions = mod->GetAppOptions();
                         if ( aAppOptions.GetShowSharedDocumentWarning() )
                         {
                             MessageWithCheck aWarningBox(ScDocShell::GetActiveDialogParent(),
-                                    "modules/scalc/ui/sharedwarningdialog.ui", "SharedWarningDialog");
+                                    u"modules/scalc/ui/sharedwarningdialog.ui"_ustr, u"SharedWarningDialog"_ustr);
                             aWarningBox.run();
 
                             bool bChecked = aWarningBox.get_active();
                             if (bChecked)
                             {
                                 aAppOptions.SetShowSharedDocumentWarning(false);
-                                SC_MOD()->SetAppOptions( aAppOptions );
+                                mod->SetAppOptions(aAppOptions);
                             }
                         }
                     }
 #endif
+
+                    ScViewData* pViewData = GetViewData();
+                    SfxViewShell* pViewShell = pViewData ? pViewData->GetViewShell() : nullptr;
+                    SfxViewFrame* pViewFrame = pViewShell ? &pViewShell->GetViewFrame() : nullptr;
+
                     try
                     {
-                        uno::Reference< uno::XComponentContext > xContext(
+                        const uno::Reference< uno::XComponentContext >& xContext(
                             comphelper::getProcessComponentContext() );
                         uno::Reference< lang::XMultiServiceFactory > xServiceManager(
                             xContext->getServiceManager(),
                             uno::UNO_QUERY_THROW );
                         uno::Reference< container::XContentEnumerationAccess > xEnumAccess( xServiceManager, uno::UNO_QUERY_THROW );
                         uno::Reference< container::XEnumeration> xEnum = xEnumAccess->createContentEnumeration(
-                            "com.sun.star.sheet.SpreadsheetDocumentJob" );
+                            u"com.sun.star.sheet.SpreadsheetDocumentJob"_ustr );
                         if ( xEnum.is() )
                         {
                             while ( xEnum->hasMoreElements() )
@@ -787,13 +863,10 @@ void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
                                 if ( xFactory.is() )
                                 {
                                     uno::Reference< task::XJob > xJob( xFactory->createInstanceWithContext( xContext ), uno::UNO_QUERY_THROW );
-                                    ScViewData* pViewData = GetViewData();
-                                    SfxViewShell* pViewShell = ( pViewData ? pViewData->GetViewShell() : nullptr );
-                                    SfxViewFrame* pViewFrame = ( pViewShell ? &pViewShell->GetViewFrame() : nullptr );
                                     SfxFrame* pFrame = ( pViewFrame ? &pViewFrame->GetFrame() : nullptr );
                                     uno::Reference< frame::XController > xController = ( pFrame ? pFrame->GetController() : nullptr );
                                     uno::Reference< sheet::XSpreadsheetView > xSpreadsheetView( xController, uno::UNO_QUERY_THROW );
-                                    uno::Sequence< beans::NamedValue > aArgsForJob { { "SpreadsheetView", uno::Any( xSpreadsheetView ) } };
+                                    uno::Sequence< beans::NamedValue > aArgsForJob { { u"SpreadsheetView"_ustr, uno::Any( xSpreadsheetView ) } };
                                     xJob->execute( aArgsForJob );
                                 }
                             }
@@ -802,12 +875,22 @@ void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
                     catch ( uno::Exception & )
                     {
                     }
+
+                    // Show delayed infobar entries
+                    if (pViewFrame)
+                    {
+                        for (auto const& r : m_pImpl->mpDelayedInfobarEntry)
+                        {
+                            pViewFrame->AppendInfoBar(r.msId, r.msPrimaryMessage, r.msSecondaryMessage, r.maInfobarType, r.mbShowCloseButton);
+                        }
+                        m_pImpl->mpDelayedInfobarEntry.clear();
+                    }
                 }
                 break;
             case SfxEventHintId::SaveDoc:
                 {
 #if HAVE_FEATURE_MULTIUSER_ENVIRONMENT
-                    if ( IsDocShared() && !SC_MOD()->IsInSharedDocSaving() )
+                    if (ScModule* mod = ScModule::get(); IsDocShared() && !mod->IsInSharedDocSaving())
                     {
                         bool bSuccess = false;
                         bool bRetry = true;
@@ -923,7 +1006,7 @@ void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
                                             // TODO/LATER: More entries from the MediaDescriptor might be interesting for the merge
                                             uno::Sequence< beans::PropertyValue > aValues{
                                                 comphelper::makePropertyValue(
-                                                    "FilterName",
+                                                    u"FilterName"_ustr,
                                                     GetMedium()->GetFilter()->GetFilterName())
                                             };
 
@@ -944,9 +1027,9 @@ void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
                                                 pValues[aValues.getLength() - 1].Value = pEncryptionItem->GetValue();
                                             }
 
-                                            SC_MOD()->SetInSharedDocSaving( true );
+                                            mod->SetInSharedDocSaving(true);
                                             GetModel()->storeToURL( GetSharedFileURL(), aValues );
-                                            SC_MOD()->SetInSharedDocSaving( false );
+                                            mod->SetInSharedDocSaving(false);
 
                                             if ( bChangedViewSettings )
                                             {
@@ -987,7 +1070,7 @@ void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
                             catch ( uno::Exception& )
                             {
                                 TOOLS_WARN_EXCEPTION( "sc", "SfxEventHintId::SaveDoc" );
-                                SC_MOD()->SetInSharedDocSaving( false );
+                                mod->SetInSharedDocSaving(false);
 
                                 try
                                 {
@@ -1088,7 +1171,7 @@ void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
                 uno::Any aWorkbook;
                 aWorkbook <<= mxAutomationWorkbookObject;
                 uno::Sequence< uno::Any > aArgs{ aWorkbook };
-                SC_MOD()->CallAutomationApplicationEventSinks( "NewWorkbook", aArgs );
+                ScModule::get()->CallAutomationApplicationEventSinks(u"NewWorkbook"_ustr, aArgs);
             }
             break;
         case SfxEventHintId::OpenDoc:
@@ -1096,7 +1179,7 @@ void ScDocShell::Notify( SfxBroadcaster&, const SfxHint& rHint )
                 uno::Any aWorkbook;
                 aWorkbook <<= mxAutomationWorkbookObject;
                 uno::Sequence< uno::Any > aArgs{ aWorkbook };
-                SC_MOD()->CallAutomationApplicationEventSinks( "WorkbookOpen", aArgs );
+                ScModule::get()->CallAutomationApplicationEventSinks(u"WorkbookOpen"_ustr, aArgs);
             }
             break;
         default:
@@ -1251,6 +1334,13 @@ bool ScDocShell::ConvertFrom( SfxMedium& rMedium )
             // all graphics objects must have names
             m_pDocument->EnsureGraphicNames();
 
+            if (eError == SCWARN_IMPORT_UNKNOWN_ENCRYPTION)
+            {
+
+                m_pImpl->mpDelayedInfobarEntry.push_back({ u"UnknownEncryption"_ustr, ScResId(STR_CONTENT_WITH_UNKNOWN_ENCRYPTION), u""_ustr, InfobarType::INFO, true });
+                eError = ERRCODE_NONE;
+            }
+
             if (eError != ERRCODE_NONE)
             {
                 if (!GetErrorIgnoreWarning())
@@ -1268,7 +1358,7 @@ bool ScDocShell::ConvertFrom( SfxMedium& rMedium )
 
             if ( const SfxStringItem* pOptionsItem = rMedium.GetItemSet().GetItemIfSet( SID_FILE_FILTEROPTIONS ) )
             {
-                aOptions.ReadFromString( pOptionsItem->GetValue() );
+                aOptions.ReadFromString( pOptionsItem->GetValue(), rMedium.GetInStream() );
                 bOptInit = true;
             }
 
@@ -1501,7 +1591,7 @@ bool ScDocShell::ConvertFrom( SfxMedium& rMedium )
                 {
                     pInStream->Seek( 0 );
                     ScRange aRange;
-                    eError = ScFormatFilter::Get().ScImportRTF( *pInStream, rMedium.GetBaseURL(), m_pDocument.get(), aRange );
+                    eError = ScFormatFilter::Get().ScImportRTF( *pInStream, rMedium.GetBaseURL(), *m_pDocument, aRange );
                     if (eError != ERRCODE_NONE)
                     {
                         if (!GetErrorIgnoreWarning())
@@ -1555,7 +1645,7 @@ bool ScDocShell::ConvertFrom( SfxMedium& rMedium )
                     // HTML does its own ColWidth/RowHeight
                     CalcOutputFactor();
                     SvNumberFormatter aNumFormatter( comphelper::getProcessComponentContext(), eLang);
-                    eError = ScFormatFilter::Get().ScImportHTML( *pInStream, rMedium.GetBaseURL(), m_pDocument.get(), aRange,
+                    eError = ScFormatFilter::Get().ScImportHTML( *pInStream, rMedium.GetBaseURL(), *m_pDocument, aRange,
                                             GetOutputFactor(), !bWebQuery, &aNumFormatter, bDateConvert, bScientificConvert );
                     if (eError != ERRCODE_NONE)
                     {
@@ -1661,14 +1751,14 @@ bool ScDocShell::ConvertFrom( SfxMedium& rMedium )
         if (bSetRowHeights)
         {
             // Update all rows in all tables.
-            ScSizeDeviceProvider aProv(this);
+            ScSizeDeviceProvider aProv(*this);
             ScDocRowHeightUpdater aUpdater(*m_pDocument, aProv.GetDevice(), aProv.GetPPTX(), aProv.GetPPTY(), nullptr);
             aUpdater.update();
         }
         else if (!aRecalcRowRangesArray.empty())
         {
             // Update only specified row ranges for better performance.
-            ScSizeDeviceProvider aProv(this);
+            ScSizeDeviceProvider aProv(*this);
             ScDocRowHeightUpdater aUpdater(*m_pDocument, aProv.GetDevice(), aProv.GetPPTX(), aProv.GetPPTY(), &aRecalcRowRangesArray);
             aUpdater.update();
         }
@@ -1784,7 +1874,7 @@ void popFileName(OUString& rPath)
 void ScDocShell::TerminateEditing()
 {
     // Commit any cell changes before saving.
-    SC_MOD()->InputEnterHandler();
+    ScModule::get()->InputEnterHandler();
 }
 
 bool ScDocShell::SaveAs( SfxMedium& rMedium )
@@ -2031,7 +2121,7 @@ void ScDocShell::AsciiSave( SvStream& rStream, const ScImportOptions& rAsciiOpt,
     SCROW nNextRow = nStartRow;
     SCCOL nEmptyCol;
     SCROW nEmptyRow;
-    SvNumberFormatter& rFormatter = *m_pDocument->GetFormatTable();
+    ScInterpreterContext& rContext = m_pDocument->GetNonThreadedContext();
 
     ScHorizontalCellIterator aIter( *m_pDocument, nTab, nStartCol, nStartRow,
         nEndCol, nEndRow );
@@ -2128,16 +2218,16 @@ void ScDocShell::AsciiSave( SvStream& rStream, const ScImportOptions& rAsciiOpt,
                     }
                     else if (pCell->getFormula()->IsValue())
                     {
-                        sal_uInt32 nFormat = m_pDocument->GetNumberFormat(aPos);
+                        sal_uInt32 nFormat = m_pDocument->GetNumberFormat(ScRange(aPos));
                         if ( bFixedWidth || bSaveAsShown )
                         {
                             const Color* pDummy;
-                            aString = ScCellFormat::GetString(*pCell, nFormat, &pDummy, rFormatter, *m_pDocument);
-                            bString = bSaveAsShown && rFormatter.IsTextFormat( nFormat);
+                            aString = ScCellFormat::GetString(*pCell, nFormat, &pDummy, &rContext, *m_pDocument);
+                            bString = bSaveAsShown && rContext.NFIsTextFormat( nFormat);
                         }
                         else
                         {
-                            aString = ScCellFormat::GetInputString(*pCell, nFormat, rFormatter, *m_pDocument);
+                            aString = ScCellFormat::GetInputString(*pCell, nFormat, &rContext, *m_pDocument);
                             bString = bForceQuotes = !bSaveNumberAsSuch;
                         }
                     }
@@ -2145,9 +2235,9 @@ void ScDocShell::AsciiSave( SvStream& rStream, const ScImportOptions& rAsciiOpt,
                     {
                         if ( bSaveAsShown )
                         {
-                            sal_uInt32 nFormat = m_pDocument->GetNumberFormat(aPos);
+                            sal_uInt32 nFormat = m_pDocument->GetNumberFormat(ScRange(aPos));
                             const Color* pDummy;
-                            aString = ScCellFormat::GetString(*pCell, nFormat, &pDummy, rFormatter, *m_pDocument);
+                            aString = ScCellFormat::GetString(*pCell, nFormat, &pDummy, &rContext, *m_pDocument);
                         }
                         else
                             aString = pCell->getFormula()->GetString().getString();
@@ -2158,9 +2248,9 @@ void ScDocShell::AsciiSave( SvStream& rStream, const ScImportOptions& rAsciiOpt,
             case CELLTYPE_STRING :
                 if ( bSaveAsShown )
                 {
-                    sal_uInt32 nFormat = m_pDocument->GetNumberFormat(aPos);
+                    sal_uInt32 nFormat = m_pDocument->GetNumberFormat(ScRange(aPos));
                     const Color* pDummy;
-                    aString = ScCellFormat::GetString(*pCell, nFormat, &pDummy, rFormatter, *m_pDocument);
+                    aString = ScCellFormat::GetString(*pCell, nFormat, &pDummy, &rContext, *m_pDocument);
                 }
                 else
                     aString = pCell->getSharedString()->getString();
@@ -2181,12 +2271,12 @@ void ScDocShell::AsciiSave( SvStream& rStream, const ScImportOptions& rAsciiOpt,
                     if ( bFixedWidth || bSaveAsShown )
                     {
                         const Color* pDummy;
-                        aString = ScCellFormat::GetString(*pCell, nFormat, &pDummy, rFormatter, *m_pDocument);
-                        bString = bSaveAsShown && rFormatter.IsTextFormat( nFormat);
+                        aString = ScCellFormat::GetString(*pCell, nFormat, &pDummy, &rContext, *m_pDocument);
+                        bString = bSaveAsShown && rContext.NFIsTextFormat( nFormat);
                     }
                     else
                     {
-                        aString = ScCellFormat::GetInputString(*pCell, nFormat, rFormatter, *m_pDocument);
+                        aString = ScCellFormat::GetInputString(*pCell, nFormat, &rContext, *m_pDocument);
                         bString = bForceQuotes = !bSaveNumberAsSuch;
                     }
                 }
@@ -2551,8 +2641,13 @@ bool ScDocShell::ConvertTo( SfxMedium &rMed )
                 bRet = true;
 
                 if (m_pDocument->GetTableCount() > 1)
-                    if (!rMed.GetErrorIgnoreWarning())
-                        rMed.SetError(SCWARN_EXPORT_ASCII);
+                {
+                    if (!rMed.GetErrorIgnoreWarning() && ScModule::get()->GetInputOptions().GetWarnActiveSheet())
+                    {
+                        if (ScTabViewShell* pViewShell = GetBestViewShell())
+                            pViewShell->ExecuteOnlyActiveSheetSavedDlg();
+                    }
+                }
             }
         }
     }
@@ -2645,12 +2740,12 @@ bool ScDocShell::ConvertTo( SfxMedium &rMed )
             }
 
             weld::WaitObject aWait( GetActiveDialogParent() );
-            ScFormatFilter::Get().ScExportDif( *pStream, m_pDocument.get(), ScAddress(0,0,0),
+            ScFormatFilter::Get().ScExportDif( *pStream, *m_pDocument, ScAddress(0,0,0),
                 ScGlobal::GetCharsetValue(sItStr) );
             bRet = true;
 
             if (m_pDocument->GetTableCount() > 1)
-                if (!rMed.GetErrorIgnoreWarning())
+                if (!rMed.GetErrorIgnoreWarning() && ScModule::get()->GetInputOptions().GetWarnActiveSheet())
                     rMed.SetError(SCWARN_EXPORT_ASCII);
         }
     }
@@ -2700,6 +2795,7 @@ bool ScDocShell::ConvertTo( SfxMedium &rMed )
         if (GetErrorIgnoreWarning())
             SetError(SCERR_IMPORT_NI);
     }
+
     return bRet;
 }
 
@@ -2751,7 +2847,7 @@ bool ScDocShell::QuerySlotExecutable( sal_uInt16 nSlotId )
 
 bool ScDocShell::PrepareClose( bool bUI )
 {
-    if(SC_MOD()->GetCurRefDlgId()>0)
+    if (ScModule::get()->GetCurRefDlgId() > 0)
     {
         SfxViewFrame* pFrame = SfxViewFrame::GetFirst( this );
         if( pFrame )
@@ -2807,32 +2903,32 @@ OUString ScDocShell::GetOwnFilterName()
     return pFilterSc50;
 }
 
-OUString ScDocShell::GetHtmlFilterName()
+const OUString & ScDocShell::GetHtmlFilterName()
 {
     return pFilterHtml;
 }
 
-OUString ScDocShell::GetWebQueryFilterName()
+const OUString & ScDocShell::GetWebQueryFilterName()
 {
     return pFilterHtmlWebQ;
 }
 
-OUString ScDocShell::GetAsciiFilterName()
+const OUString & ScDocShell::GetAsciiFilterName()
 {
     return SC_TEXT_CSV_FILTER_NAME;
 }
 
-OUString ScDocShell::GetLotusFilterName()
+const OUString & ScDocShell::GetLotusFilterName()
 {
     return pFilterLotus;
 }
 
-OUString ScDocShell::GetDBaseFilterName()
+const OUString & ScDocShell::GetDBaseFilterName()
 {
     return pFilterDBase;
 }
 
-OUString ScDocShell::GetDifFilterName()
+const OUString & ScDocShell::GetDifFilterName()
 {
     return pFilterDif;
 }
@@ -2861,7 +2957,7 @@ std::unique_ptr<ScDocFunc> ScDocShell::CreateDocFunc()
 ScDocShell::ScDocShell( const SfxModelFlags i_nSfxCreationFlags, const std::shared_ptr<ScDocument>& pDoc ) :
     SfxObjectShell( i_nSfxCreationFlags ),
     m_pDocument       ( pDoc ? pDoc : std::make_shared<ScDocument>( SCDOCMODE_DOCUMENT, this )),
-    m_aDdeTextFmt(OUString("TEXT")),
+    m_aDdeTextFmt(u"TEXT"_ustr),
     m_nPrtToScreenFactor( 1.0 ),
     m_pImpl           ( new DocShell_Impl ),
     m_bHeaderOn       ( true ),
@@ -2874,7 +2970,7 @@ ScDocShell::ScDocShell( const SfxModelFlags i_nSfxCreationFlags, const std::shar
     m_nDocumentLock   ( 0 ),
     m_nCanUpdate (css::document::UpdateDocMode::ACCORDING_TO_CONFIG)
 {
-    SetPool( &SC_MOD()->GetPool() );
+    SetPool(&ScModule::get()->GetPool());
 
     m_bIsInplace = (GetCreateMode() == SfxObjectCreateMode::EMBEDDED);
     //  Will be reset if not in place
@@ -2983,7 +3079,7 @@ void ScDocShell::SetDocumentModified()
 
         ScDetOpList* pList = m_pDocument->GetDetOpList();
         if ( pList && ( m_pDocument->IsDetectiveDirty() || pList->HasAddError() ) &&
-             pList->Count() && !IsInUndo() && SC_MOD()->GetAppOptions().GetDetectiveAuto() )
+             pList->Count() && !IsInUndo() && ScModule::get()->GetAppOptions().GetDetectiveAuto() )
         {
             GetDocFunc().DetectiveRefresh(true);    // sal_True = caused by automatic update
         }
@@ -3034,7 +3130,7 @@ void ScDocShell::SetDrawModified()
         m_pDocument->UpdateChartListenerCollection();
         SfxGetpApp()->Broadcast(SfxHint( SfxHintId::ScDrawChanged ));    // Navigator
     }
-    SC_MOD()->AnythingChanged();
+    ScModule::get()->AnythingChanged();
 }
 
 void ScDocShell::SetInUndo(bool bSet)
@@ -3052,7 +3148,7 @@ void ScDocShell::GetDocStat( ScDocStat& rDocStat )
     if ( pPrinter )
         for ( SCTAB i=0; i<rDocStat.nTableCount; i++ )
             rDocStat.nPageCount = sal::static_int_cast<sal_uInt16>( rDocStat.nPageCount +
-                static_cast<sal_uInt16>(ScPrintFunc( this, pPrinter, i ).GetTotalPages()) );
+                static_cast<sal_uInt16>(ScPrintFunc( *this, pPrinter, i ).GetTotalPages()) );
 }
 
 std::shared_ptr<SfxDocumentInfoDialog> ScDocShell::CreateDocumentInfoDialog(weld::Window* pParent, const SfxItemSet &rSet)
@@ -3067,7 +3163,8 @@ std::shared_ptr<SfxDocumentInfoDialog> ScDocShell::CreateDocumentInfoDialog(weld
         ::CreateTabPage ScDocStatPageCreate = pFact->GetTabPageCreatorFunc(SID_SC_TP_STAT);
         OSL_ENSURE(ScDocStatPageCreate, "Tabpage create fail!");
         xDlg->AddFontTabPage();
-        xDlg->AddTabPage("calcstats", ScResId(STR_DOC_STAT), ScDocStatPageCreate);
+        xDlg->AddTabPage(u"calcstats"_ustr, TabResId(RID_TAB_STATISTICS.aLabel),
+                         ScDocStatPageCreate, RID_L + RID_TAB_STATISTICS.sIconName);
     }
     return xDlg;
 }
@@ -3119,7 +3216,7 @@ void ScDocShell::ResetKeyBindings( ScOptionsUtil::KeyBindingType eType )
 {
     using namespace ::com::sun::star::ui;
 
-    Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
     if (!xContext.is())
         return;
 
@@ -3129,7 +3226,7 @@ void ScDocShell::ResetKeyBindings( ScOptionsUtil::KeyBindingType eType )
     // Grab the Calc configuration.
     Reference<XUIConfigurationManager> xConfigMgr =
         xModuleCfgSupplier->getUIConfigurationManager(
-            "com.sun.star.sheet.SpreadsheetDocument");
+            u"com.sun.star.sheet.SpreadsheetDocument"_ustr);
 
     if (!xConfigMgr.is())
         return;
@@ -3205,22 +3302,22 @@ void ScDocShell::ResetKeyBindings( ScOptionsUtil::KeyBindingType eType )
     switch (eType)
     {
         case ScOptionsUtil::KEY_DEFAULT:
-            xScAccel->setKeyEvent(aDelete, ".uno:ClearContents");
-            xScAccel->setKeyEvent(aBackspace, ".uno:Delete");
-            xScAccel->setKeyEvent(aCtrlD, ".uno:FillDown");
-            xScAccel->setKeyEvent(aAltDown, ".uno:DataSelect");
-            xScAccel->setKeyEvent(aCtrlSpace, ".uno:SelectColumn");
-            xScAccel->setKeyEvent(aCtrlShiftSpace, ".uno:SelectAll");
-            xScAccel->setKeyEvent(aF4, ".uno:ToggleRelative");
-            xScAccel->setKeyEvent(aCtrlShiftF4, ".uno:ViewDataSourceBrowser");
+            xScAccel->setKeyEvent(aDelete, u".uno:ClearContents"_ustr);
+            xScAccel->setKeyEvent(aBackspace, u".uno:Delete"_ustr);
+            xScAccel->setKeyEvent(aCtrlD, u".uno:FillDown"_ustr);
+            xScAccel->setKeyEvent(aAltDown, u".uno:DataSelect"_ustr);
+            xScAccel->setKeyEvent(aCtrlSpace, u".uno:SelectColumn"_ustr);
+            xScAccel->setKeyEvent(aCtrlShiftSpace, u".uno:SelectAll"_ustr);
+            xScAccel->setKeyEvent(aF4, u".uno:ToggleRelative"_ustr);
+            xScAccel->setKeyEvent(aCtrlShiftF4, u".uno:ViewDataSourceBrowser"_ustr);
         break;
         case ScOptionsUtil::KEY_OOO_LEGACY:
-            xScAccel->setKeyEvent(aDelete, ".uno:Delete");
-            xScAccel->setKeyEvent(aBackspace, ".uno:ClearContents");
-            xScAccel->setKeyEvent(aCtrlD, ".uno:DataSelect");
-            xScAccel->setKeyEvent(aCtrlShiftSpace, ".uno:SelectColumn");
-            xScAccel->setKeyEvent(aF4, ".uno:ViewDataSourceBrowser");
-            xScAccel->setKeyEvent(aShiftF4, ".uno:ToggleRelative");
+            xScAccel->setKeyEvent(aDelete, u".uno:Delete"_ustr);
+            xScAccel->setKeyEvent(aBackspace, u".uno:ClearContents"_ustr);
+            xScAccel->setKeyEvent(aCtrlD, u".uno:DataSelect"_ustr);
+            xScAccel->setKeyEvent(aCtrlShiftSpace, u".uno:SelectColumn"_ustr);
+            xScAccel->setKeyEvent(aF4, u".uno:ViewDataSourceBrowser"_ustr);
+            xScAccel->setKeyEvent(aShiftF4, u".uno:ToggleRelative"_ustr);
         break;
         default:
             ;
@@ -3266,13 +3363,18 @@ ScDocShellModificator::ScDocShellModificator( ScDocShell& rDS )
     rDoc.EnableIdle(false);
 }
 
-ScDocShellModificator::~ScDocShellModificator() COVERITY_NOEXCEPT_FALSE
+void ScDocShellModificator::ImplDestroy()
 {
     ScDocument& rDoc = rDocShell.GetDocument();
     rDoc.SetAutoCalcShellDisabled( bAutoCalcShellDisabled );
     if ( !bAutoCalcShellDisabled && rDocShell.IsDocumentModifiedPending() )
         rDocShell.SetDocumentModified();    // last one shuts off the lights
     rDoc.EnableIdle(bIdleEnabled);
+}
+
+ScDocShellModificator::~ScDocShellModificator()
+{
+    suppress_fun_call_w_exception(ImplDestroy());
 }
 
 void ScDocShellModificator::SetDocumentModified()
@@ -3295,7 +3397,7 @@ void ScDocShellModificator::SetDocumentModified()
     }
 }
 
-bool ScDocShell::IsChangeRecording() const
+bool ScDocShell::IsChangeRecording(SfxViewShell* /*pViewShell*/, bool /*bRecordAllViews*/) const
 {
     ScChangeTrack* pChangeTrack = m_pDocument->GetChangeTrack();
     return pChangeTrack != nullptr;
@@ -3310,7 +3412,7 @@ bool ScDocShell::HasChangeRecordProtection() const
     return bRes;
 }
 
-void ScDocShell::SetChangeRecording( bool bActivate, bool /*bLockAllViews*/ )
+void ScDocShell::SetChangeRecording( bool bActivate, bool /*bLockAllViews*/, SfxRedlineRecordingMode /*eRedlineRecordingMode*/)
 {
     bool bOldChangeRecording = IsChangeRecording();
 
@@ -3397,6 +3499,22 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportSLK(SvStream &rStream)
 
     ScImportExport aImpEx(aDocument);
     return aImpEx.ImportStream(rStream, OUString(), SotClipboardFormatId::SYLK);
+}
+
+extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportCalcHTML(SvStream &rStream)
+{
+    ScDLL::Init();
+    ScDocument aDocument;
+    ScDocOptions aDocOpt = aDocument.GetDocOptions();
+    aDocOpt.SetLookUpColRowNames(false);
+    aDocument.SetDocOptions(aDocOpt);
+    aDocument.MakeTable(0);
+    aDocument.EnableExecuteLink(false);
+    aDocument.SetInsertingFromOtherDoc(true);
+    aDocument.SetImportingXML(true);
+
+    ScImportExport aImpEx(aDocument);
+    return aImpEx.ImportStream(rStream, OUString(), SotClipboardFormatId::HTML);
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportDBF(SvStream &rStream)

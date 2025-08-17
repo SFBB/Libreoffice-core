@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include <config_options.h>
 #include <svx/svxdllapi.h>
 #include <rtl/ustring.hxx>
 #include <array>
@@ -18,6 +19,10 @@
 namespace model
 {
 class ColorSet;
+}
+namespace tools
+{
+class JsonWriter;
 }
 
 namespace svx
@@ -53,14 +58,14 @@ struct SVXCORE_DLLPUBLIC ThemePaletteCollection
     std::array<ThemePaletteColorData, 12> maColors;
 };
 
-class SVXCORE_DLLPUBLIC ThemeColorPaletteManager final
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) ThemeColorPaletteManager final
 {
     std::shared_ptr<model::ColorSet> m_pColorSet;
 
 public:
     ThemeColorPaletteManager(std::shared_ptr<model::ColorSet> const& pColorSet);
     ThemePaletteCollection generate();
-    OString generateJSON();
+    void generateJSON(tools::JsonWriter& aTree);
 };
 
 } // end svx namespace

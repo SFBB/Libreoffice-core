@@ -45,7 +45,7 @@ namespace rptui
 
 OUString SAL_CALL OStatusbarController::getImplementationName()
 {
-    return "com.sun.star.report.comp.StatusbarController";
+    return u"com.sun.star.report.comp.StatusbarController"_ustr;
 }
 
 sal_Bool SAL_CALL OStatusbarController::supportsService( const OUString& ServiceName )
@@ -55,7 +55,7 @@ sal_Bool SAL_CALL OStatusbarController::supportsService( const OUString& Service
 
 Sequence< OUString> SAL_CALL OStatusbarController::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.StatusbarController" };
+    return { u"com.sun.star.frame.StatusbarController"_ustr };
 }
 
 IMPLEMENT_FORWARD_XINTERFACE2(OStatusbarController, ::svt::StatusbarController,OStatusbarController_BASE)
@@ -71,7 +71,6 @@ void SAL_CALL OStatusbarController::initialize( const Sequence< Any >& _rArgumen
 {
     StatusbarController::initialize(_rArguments);
     SolarMutexGuard aSolarMutexGuard;
-    ::osl::MutexGuard aGuard(m_aMutex);
 
     VclPtr< StatusBar > pStatusBar = static_cast<StatusBar*>(VCLUnoHelper::GetWindow(m_xParentWindow));
     if ( !pStatusBar )
@@ -117,7 +116,6 @@ void SAL_CALL OStatusbarController::initialize( const Sequence< Any >& _rArgumen
 void SAL_CALL OStatusbarController::statusChanged( const FeatureStateEvent& _aEvent)
 {
     SolarMutexGuard aSolarGuard;
-    ::osl::MutexGuard aGuard(m_aMutex);
 
     if ( !m_rController.is() )
         return;

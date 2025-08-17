@@ -116,36 +116,34 @@ void SdDisplay::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     SetOutputSizePixel(aSize);
 }
 
-const size_t AnimationWindow::EMPTY_FRAMELIST = std::numeric_limits<size_t>::max();
-
 /**
  *  AnimationWindow - FloatingWindow
  */
 AnimationWindow::AnimationWindow(SfxBindings* pInBindings, SfxChildWindow *pCW, vcl::Window* pParent)
     : SfxDockingWindow(pInBindings, pCW, pParent,
-        "DockingAnimation", "modules/simpress/ui/dockinganimation.ui")
+        u"DockingAnimation"_ustr, u"modules/simpress/ui/dockinganimation.ui"_ustr)
     , m_xCtlDisplay(new SdDisplay)
-    , m_xCtlDisplayWin(new weld::CustomWeld(*m_xBuilder, "preview", *m_xCtlDisplay))
-    , m_xBtnFirst(m_xBuilder->weld_button("first"))
-    , m_xBtnReverse(m_xBuilder->weld_button("prev"))
-    , m_xBtnStop(m_xBuilder->weld_button("stop"))
-    , m_xBtnPlay(m_xBuilder->weld_button("next"))
-    , m_xBtnLast(m_xBuilder->weld_button("last"))
-    , m_xNumFldBitmap(m_xBuilder->weld_spin_button("numbitmap"))
-    , m_xTimeField(m_xBuilder->weld_formatted_spin_button("duration"))
+    , m_xCtlDisplayWin(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, *m_xCtlDisplay))
+    , m_xBtnFirst(m_xBuilder->weld_button(u"first"_ustr))
+    , m_xBtnReverse(m_xBuilder->weld_button(u"prev"_ustr))
+    , m_xBtnStop(m_xBuilder->weld_button(u"stop"_ustr))
+    , m_xBtnPlay(m_xBuilder->weld_button(u"next"_ustr))
+    , m_xBtnLast(m_xBuilder->weld_button(u"last"_ustr))
+    , m_xNumFldBitmap(m_xBuilder->weld_spin_button(u"numbitmap"_ustr))
+    , m_xTimeField(m_xBuilder->weld_formatted_spin_button(u"duration"_ustr))
     , m_xFormatter(new weld::TimeFormatter(*m_xTimeField))
-    , m_xLbLoopCount(m_xBuilder->weld_combo_box("loopcount"))
-    , m_xBtnGetOneObject(m_xBuilder->weld_button("getone"))
-    , m_xBtnGetAllObjects(m_xBuilder->weld_button("getall"))
-    , m_xBtnRemoveBitmap(m_xBuilder->weld_button("delone"))
-    , m_xBtnRemoveAll(m_xBuilder->weld_button("delall"))
-    , m_xFiCount(m_xBuilder->weld_label("count"))
-    , m_xRbtGroup(m_xBuilder->weld_radio_button("group"))
-    , m_xRbtBitmap(m_xBuilder->weld_radio_button("bitmap"))
-    , m_xFtAdjustment(m_xBuilder->weld_label("alignmentft"))
-    , m_xLbAdjustment(m_xBuilder->weld_combo_box("alignment"))
-    , m_xBtnCreateGroup(m_xBuilder->weld_button("create"))
-    , m_xBtnHelp(m_xBuilder->weld_button("help"))
+    , m_xLbLoopCount(m_xBuilder->weld_combo_box(u"loopcount"_ustr))
+    , m_xBtnGetOneObject(m_xBuilder->weld_button(u"getone"_ustr))
+    , m_xBtnGetAllObjects(m_xBuilder->weld_button(u"getall"_ustr))
+    , m_xBtnRemoveBitmap(m_xBuilder->weld_button(u"delone"_ustr))
+    , m_xBtnRemoveAll(m_xBuilder->weld_button(u"delall"_ustr))
+    , m_xFiCount(m_xBuilder->weld_label(u"count"_ustr))
+    , m_xRbtGroup(m_xBuilder->weld_radio_button(u"group"_ustr))
+    , m_xRbtBitmap(m_xBuilder->weld_radio_button(u"bitmap"_ustr))
+    , m_xFtAdjustment(m_xBuilder->weld_label(u"alignmentft"_ustr))
+    , m_xLbAdjustment(m_xBuilder->weld_combo_box(u"alignment"_ustr))
+    , m_xBtnCreateGroup(m_xBuilder->weld_button(u"create"_ustr))
+    , m_xBtnHelp(m_xBuilder->weld_button(u"help"_ustr))
     , m_nCurrentFrame(EMPTY_FRAMELIST)
     , bMovie(false)
     , bAllObjects(false)
@@ -255,10 +253,10 @@ IMPL_LINK( AnimationWindow, ClickPlayHdl, weld::Button&, rButton, void )
     bool bBtnGetOneObjectEnabled = m_xBtnGetOneObject->get_sensitive();
 
     // calculate overall time
-    ::tools::Time aTime( 0 );
     ::tools::Long nFullTime;
     if( m_xRbtBitmap->get_active() )
     {
+        ::tools::Time aTime(::tools::Time::EMPTY);
         for (size_t i = 0; i < nCount; ++i)
         {
             aTime += m_FrameList[i].second;
@@ -268,7 +266,6 @@ IMPL_LINK( AnimationWindow, ClickPlayHdl, weld::Button&, rButton, void )
     else
     {
         nFullTime = nCount * 100;
-        aTime.MakeTimeFromMS( nFullTime );
     }
 
     // StatusBarManager from 1 second
@@ -277,61 +274,66 @@ IMPL_LINK( AnimationWindow, ClickPlayHdl, weld::Button&, rButton, void )
     {
         bDisableCtrls = true;
         m_xBtnStop->set_sensitive(true);
-        pProgress.reset(new SfxProgress( nullptr, "Animator:", nFullTime )); // "Animator:" here we should think about something smart
+        pProgress.reset(new SfxProgress( nullptr, u"Animator:"_ustr, nFullTime )); // "Animator:" here we should think about something smart
     }
 
     sal_uLong nTmpTime = 0;
     size_t i = 0;
     bool bCount = i < nCount;
-    if( bReverse )
+    if (bCount)
     {
-        i = nCount - 1;
-    }
-    while( bCount && bMovie )
-    {
-        // make list and view consistent
-        assert(i < m_FrameList.size());
-        m_nCurrentFrame = i;
-
-        UpdateControl(bDisableCtrls);
-
-        if( m_xRbtBitmap->get_active() )
-        {
-            ::tools::Time const & rTime = m_FrameList[i].second;
-
-            m_xFormatter->SetTime( rTime );
-            sal_uLong nTime = rTime.GetMSFromTime();
-
-            WaitInEffect( nTime, nTmpTime, pProgress.get() );
-            nTmpTime += nTime;
-        }
-        else
-        {
-            WaitInEffect( 100, nTmpTime, pProgress.get() );
-            nTmpTime += 100;
-        }
         if( bReverse )
+            i = nCount - 1;
+
+        while (bMovie)
         {
-            if (i == 0)
+            // make list and view consistent
+            assert(i < m_FrameList.size());
+            m_nCurrentFrame = i;
+
+            UpdateControl(bDisableCtrls);
+
+            if( m_xRbtBitmap->get_active() )
             {
-                // Terminate loop.
-                bCount = false;
+                ::tools::Time const & rTime = m_FrameList[i].second;
+
+                m_xFormatter->SetTime( rTime );
+                sal_uLong nTime = rTime.GetMSFromTime();
+
+                WaitInEffect( nTime, nTmpTime, pProgress.get() );
+                nTmpTime += nTime;
             }
             else
             {
-                --i;
+                WaitInEffect( 100, nTmpTime, pProgress.get() );
+                nTmpTime += 100;
             }
-        }
-        else
-        {
-            i++;
-            if (i >= nCount)
+            if( bReverse )
             {
-                // Terminate loop.
-                bCount = false;
-                // Move i back into valid range.
-                i = nCount - 1;
+                if (i == 0)
+                {
+                    // Terminate loop.
+                    bCount = false;
+                }
+                else
+                {
+                    --i;
+                }
             }
+            else
+            {
+                i++;
+                if (i >= nCount)
+                {
+                    // Terminate loop.
+                    bCount = false;
+                    // Move i back into valid range.
+                    i = nCount - 1;
+                }
+            }
+
+            if (!bCount)
+                break;
         }
     }
 
@@ -529,7 +531,7 @@ void AnimationWindow::UpdateControl(bool const bDisableCtrls)
                 : sd::OUTPUT_DRAWMODE_COLOR );
             pVD->Erase();
             pObject->SingleObjectPainter( *pVD );
-            aBmp = pVD->GetBitmapEx( aObjRect.TopLeft(), aObjSize );
+            aBmp = pVD->GetBitmap( aObjRect.TopLeft(), aObjSize );
         }
 
         m_xCtlDisplay->SetBitmapEx(&aBmp);
@@ -546,6 +548,8 @@ void AnimationWindow::UpdateControl(bool const bDisableCtrls)
 
     if (!m_FrameList.empty() && !bMovie)
     {
+        assert(m_nCurrentFrame != EMPTY_FRAMELIST && "only arises when m_FrameList.empty()");
+
         size_t nIndex = m_nCurrentFrame + 1;
         m_xNumFldBitmap->set_value(nIndex);
 

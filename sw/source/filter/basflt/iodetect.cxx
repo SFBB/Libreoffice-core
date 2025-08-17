@@ -34,7 +34,7 @@ using namespace ::com::sun::star;
 
 static bool IsDocShellRegistered()
 {
-    return SvtModuleOptions().IsWriter();
+    return SvtModuleOptions().IsWriterInstalled();
 }
 
 SwIoDetect aFilterDetect[] =
@@ -49,7 +49,8 @@ SwIoDetect aFilterDetect[] =
     SwIoDetect( FILTER_XML ),
     SwIoDetect( FILTER_TEXT_DLG ),
     SwIoDetect( FILTER_TEXT ),
-    SwIoDetect( FILTER_DOCX )
+    SwIoDetect( FILTER_DOCX ),
+    SwIoDetect( FILTER_MD ),
 };
 
 OUString SwIoSystem::GetSubStorageName( const SfxFilter& rFltr )
@@ -59,9 +60,9 @@ OUString SwIoSystem::GetSubStorageName( const SfxFilter& rFltr )
     if (rUserData == FILTER_XML ||
         rUserData == FILTER_XMLV ||
         rUserData == FILTER_XMLVW)
-        return "content.xml";
+        return u"content.xml"_ustr;
     if (rUserData == sWW6 || rUserData == FILTER_WW8)
-        return "WordDocument";
+        return u"WordDocument"_ustr;
     return OUString();
 }
 
@@ -98,7 +99,7 @@ bool SwIoSystem::IsValidStgFilter( const css::uno::Reference < css::embed::XStor
     try
     {
         SotClipboardFormatId nStgFormatId = SotStorage::GetFormatID( rStg );
-        bRet = rStg->isStreamElement( "content.xml" );
+        bRet = rStg->isStreamElement( u"content.xml"_ustr );
         if ( bRet )
             bRet = ( nStgFormatId != SotClipboardFormatId::NONE && ( rFilter.GetFormat() == nStgFormatId ) );
     }
@@ -125,13 +126,13 @@ bool SwIoSystem::IsValidStgFilter(SotStorage& rStg, const SfxFilter& rFilter)
         /* Bug 62703 - and also WinWord Docs w/o ClipBoardId! */
         if (rFilter.GetUserData() == FILTER_WW8 || rFilter.GetUserData() == sWW6)
         {
-            bRet = (rStg.IsContained("0Table")
-                    || rStg.IsContained("1Table"))
+            bRet = (rStg.IsContained(u"0Table"_ustr)
+                    || rStg.IsContained(u"1Table"_ustr))
                 == (rFilter.GetUserData() == FILTER_WW8);
             if (bRet && !rFilter.IsAllowedAsTemplate())
             {
-                tools::SvRef<SotStorageStream> xRef =
-                    rStg.OpenSotStream("WordDocument",
+                rtl::Reference<SotStorageStream> xRef =
+                    rStg.OpenSotStream(u"WordDocument"_ustr,
                             StreamMode::STD_READ );
                 xRef->Seek(10);
                 sal_uInt8 nByte;
@@ -161,7 +162,7 @@ std::shared_ptr<const SfxFilter> SwIoSystem::GetFileFilter(const OUString& rFile
     if (SotStorage::IsStorageFile(rFileName))
     {
         // package storage or OLEStorage based format
-        tools::SvRef<SotStorage> xStg;
+        rtl::Reference<SotStorage> xStg;
         INetURLObject aObj;
         aObj.SetSmartProtocol( INetProtocol::File );
         aObj.SetSmartURL( rFileName );
@@ -192,7 +193,7 @@ std::shared_ptr<const SfxFilter> SwIoSystem::GetFileFilter(const OUString& rFile
 
                 // there's only a template filter that could be found
                 if ( pTemplateFilter )
-                    pFilter = pTemplateFilter;
+                    pFilter = std::move(pTemplateFilter);
             }
         }
         else
@@ -227,7 +228,7 @@ std::shared_ptr<const SfxFilter> SwIoSystem::GetFileFilter(const OUString& rFile
 
                 // there's only a template filter that could be found
                 if ( pTemplateFilter )
-                    pFilter = pTemplateFilter;
+                    pFilter = std::move(pTemplateFilter);
 
             }
         }
@@ -358,14 +359,8 @@ bool SwIoSystem::IsDetectableText(const char* pBuf, sal_uLong &rLen,
             if (bLE != bNativeLE)
             {
                 bSwap = true;
-                char* pF = reinterpret_cast<char*>(pNewBuf);
-                char* pN = pF+1;
-                for(sal_uLong n = 0; n < nNewLen; ++n, pF+=2, pN+=2 )
-                {
-                    char c = *pF;
-                    *pF = *pN;
-                    *pN = c;
-                }
+                for (sal_uLong n = 0; n < nNewLen; ++n)
+                    pNewBuf[n] = OSL_SWAPWORD(pNewBuf[n]);
             }
         }
 

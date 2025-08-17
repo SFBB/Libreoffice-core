@@ -59,13 +59,13 @@ public:
 };
 
 ScAnchorTest::ScAnchorTest()
-    : UnoApiTest("sc/qa/unit/data/ods")
+    : UnoApiTest(u"sc/qa/unit/data/ods"_ustr)
 {
 }
 
 void ScAnchorTest::testUndoAnchor()
 {
-    loadFromURL(u"document_with_linked_graphic.ods");
+    loadFromFile(u"document_with_linked_graphic.ods");
 
     // Get the document model
     SfxObjectShell* pFoundShell = SfxObjectShell::GetShellFromComponent(mxComponent);
@@ -100,7 +100,7 @@ void ScAnchorTest::testUndoAnchor()
 
     // Select graphic object
     pDrawView->MarkNextObj();
-    CPPUNIT_ASSERT(pDrawView->AreObjectsMarked());
+    CPPUNIT_ASSERT(pDrawView->GetMarkedObjectList().GetMarkCount() != 0);
 
     // Set Cell Anchor
     ScDrawLayer::SetCellAnchoredFromPosition(*pObject, rDoc, 0, false);
@@ -159,7 +159,7 @@ void ScAnchorTest::testUndoAnchor()
 
 void ScAnchorTest::testTdf76183()
 {
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
     SfxObjectShell* pFoundShell = SfxObjectShell::GetShellFromComponent(mxComponent);
     ScDocShell* pDocSh = dynamic_cast<ScDocShell*>(pFoundShell);
     ScDocument& rDoc = pDocSh->GetDocument();
@@ -181,7 +181,7 @@ void ScAnchorTest::testTdf76183()
     uno::Reference<container::XIndexAccess> xIA(xDoc->getSheets(), uno::UNO_QUERY_THROW);
     uno::Reference<sheet::XSpreadsheet> xSheet(xIA->getByIndex(0), uno::UNO_QUERY_THROW);
     uno::Reference<text::XText> xText(xSheet->getCellByPosition(0, 0), uno::UNO_QUERY_THROW);
-    xText->setString("first\nsecond\nthird");
+    xText->setString(u"first\nsecond\nthird"_ustr);
 
     // The resize of first row must have moved the object down after its anchor cell
     CPPUNIT_ASSERT(aOrigRect.Top() < rNewRect.Top());
@@ -191,7 +191,7 @@ void ScAnchorTest::testTdf76183()
 
 void ScAnchorTest::testODFAnchorTypes()
 {
-    loadFromURL(u"3AnchorTypes.ods");
+    loadFromFile(u"3AnchorTypes.ods");
 
     // Get the document model
     SfxObjectShell* pFoundShell = SfxObjectShell::GetShellFromComponent(mxComponent);
@@ -230,7 +230,7 @@ void ScAnchorTest::testODFAnchorTypes()
 /// Test that copying a column with an image anchored to it also copies the image
 void ScAnchorTest::testCopyColumnWithImages()
 {
-    loadFromURL(u"3AnchorTypes.ods");
+    loadFromFile(u"3AnchorTypes.ods");
 
     // Get the document model
     SfxObjectShell* pFoundShell = SfxObjectShell::GetShellFromComponent(mxComponent);
@@ -253,13 +253,13 @@ void ScAnchorTest::testCopyColumnWithImages()
     {
         // 1. Copy source range
         ScRange aSrcRange;
-        aSrcRange.Parse("A1:A11", *pDoc, pDoc->GetAddressConvention());
+        aSrcRange.Parse(u"A1:A11"_ustr, *pDoc, pDoc->GetAddressConvention());
         pViewShell->GetViewData().GetMarkData().SetMarkArea(aSrcRange);
         pViewShell->GetViewData().GetView()->CopyToClip(&aClipDoc, false, false, true, false);
 
         // 2. Paste to target range
         ScRange aDstRange;
-        aDstRange.Parse("D1:D11", *pDoc, pDoc->GetAddressConvention());
+        aDstRange.Parse(u"D1:D11"_ustr, *pDoc, pDoc->GetAddressConvention());
         pViewShell->GetViewData().GetMarkData().SetMarkArea(aDstRange);
         pViewShell->GetViewData().GetView()->PasteFromClip(InsertDeleteFlags::ALL, &aClipDoc);
 
@@ -276,13 +276,13 @@ void ScAnchorTest::testCopyColumnWithImages()
     {
         // 1. Copy source cells
         ScRange aSrcRange;
-        aSrcRange.Parse("A3:B3", *pDoc, pDoc->GetAddressConvention());
+        aSrcRange.Parse(u"A3:B3"_ustr, *pDoc, pDoc->GetAddressConvention());
         pViewShell->GetViewData().GetMarkData().SetMarkArea(aSrcRange);
         pViewShell->GetViewData().GetView()->CopyToClip(&aClipDoc, false, false, true, false);
 
         // 2. Paste to target cells
         ScRange aDstRange;
-        aDstRange.Parse("G3:H3", *pDoc, pDoc->GetAddressConvention());
+        aDstRange.Parse(u"G3:H3"_ustr, *pDoc, pDoc->GetAddressConvention());
         pViewShell->GetViewData().GetMarkData().SetMarkArea(aDstRange);
         pViewShell->GetViewData().GetView()->PasteFromClip(InsertDeleteFlags::ALL, &aClipDoc);
 
@@ -296,7 +296,7 @@ void ScAnchorTest::testCopyColumnWithImages()
 
 void ScAnchorTest::testCutWithImages()
 {
-    loadFromURL(u"3AnchorTypes.ods");
+    loadFromFile(u"3AnchorTypes.ods");
     // open the document with graphic included
 
     // Get the document model
@@ -318,7 +318,7 @@ void ScAnchorTest::testCutWithImages()
     {
         // Cut source range
         ScRange aSrcRange;
-        aSrcRange.Parse("A1:A11", *pDoc, pDoc->GetAddressConvention());
+        aSrcRange.Parse(u"A1:A11"_ustr, *pDoc, pDoc->GetAddressConvention());
         pViewShell->GetViewData().GetMarkData().SetMarkArea(aSrcRange);
         pViewShell->GetViewData().GetView()->CutToClip();
 
@@ -336,7 +336,7 @@ void ScAnchorTest::testCutWithImages()
     {
         // Cut source cells
         ScRange aSrcRange;
-        aSrcRange.Parse("A3:B3", *pDoc, pDoc->GetAddressConvention());
+        aSrcRange.Parse(u"A3:B3"_ustr, *pDoc, pDoc->GetAddressConvention());
         pViewShell->GetViewData().GetMarkData().SetMarkArea(aSrcRange);
         pViewShell->GetViewData().GetView()->CutToClip();
 
@@ -350,7 +350,7 @@ void ScAnchorTest::testCutWithImages()
 
 void ScAnchorTest::testTdf121963()
 {
-    loadFromURL(u"tdf121963.ods");
+    loadFromFile(u"tdf121963.ods");
 
     // Without the accompanying fix in place, this test would have never returned due to an infinite
     // invalidation loop, where ScGridWindow::Paint() invalidated itself.
@@ -359,7 +359,7 @@ void ScAnchorTest::testTdf121963()
 
 void ScAnchorTest::testTdf129552()
 {
-    loadFromURL(u"tdf129552.fods");
+    loadFromFile(u"tdf129552.fods");
 
     // Without the accompanying fix in place, this test would have never returned due to an infinite
     // invalidation loop, where ScGridWindow::Paint() invalidated itself.
@@ -368,7 +368,7 @@ void ScAnchorTest::testTdf129552()
 
 void ScAnchorTest::testTdf130556()
 {
-    loadFromURL(u"tdf130556.ods");
+    loadFromFile(u"tdf130556.ods");
 
     // Without the accompanying fix in place, this test would have never returned due to an infinite
     // invalidation loop, where ScGridWindow::Paint() invalidated itself.
@@ -377,7 +377,7 @@ void ScAnchorTest::testTdf130556()
 
 void ScAnchorTest::testTdf134161()
 {
-    loadFromURL(u"tdf134161.ods");
+    loadFromFile(u"tdf134161.ods");
 
     // Without the accompanying fix in place, this test would have never returned due to an infinite
     // invalidation loop

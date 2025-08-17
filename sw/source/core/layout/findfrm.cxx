@@ -18,6 +18,7 @@
  */
 
 #include <pagefrm.hxx>
+#include <colfrm.hxx>
 #include <rootfrm.hxx>
 #include <cellfrm.hxx>
 #include <rowfrm.hxx>
@@ -65,6 +66,29 @@ SwContentFrame *SwPageFrame::FindLastBodyContent()
     return pRet;
 }
 
+SwSectionFrame* SwPageFrame::GetEndNoteSection()
+{
+    SwLayoutFrame* pBody = FindBodyCont();
+    if (!pBody)
+    {
+        return nullptr;
+    }
+
+    SwFrame* pLast = pBody->GetLastLower();
+    if (!pLast || !pLast->IsSctFrame())
+    {
+        return nullptr;
+    }
+
+    auto pLastSection = static_cast<SwSectionFrame*>(pLast);
+    if (!pLastSection->IsEndNoteSection())
+    {
+        return nullptr;
+    }
+
+    return pLastSection;
+}
+
 /**
  * Checks if the frame contains one or more ContentFrame's anywhere in his
  * subsidiary structure; if so the first found ContentFrame is returned.
@@ -80,9 +104,13 @@ const SwContentFrame *SwLayoutFrame::ContainsContent() const
     const SwLayoutFrame *pLayLeaf = this;
     do
     {
+        const SwFrame* pLower = pLayLeaf->Lower();
         while ( (!pLayLeaf->IsSctFrame() || pLayLeaf == this ) &&
-                pLayLeaf->Lower() && pLayLeaf->Lower()->IsLayoutFrame() )
-            pLayLeaf = static_cast<const SwLayoutFrame*>(pLayLeaf->Lower());
+                pLower && pLower->IsLayoutFrame() )
+        {
+            pLayLeaf = static_cast<const SwLayoutFrame*>(pLower);
+            pLower = pLayLeaf->Lower();
+        }
 
         if( pLayLeaf->IsSctFrame() && pLayLeaf != this )
         {
@@ -100,8 +128,8 @@ const SwContentFrame *SwLayoutFrame::ContainsContent() const
                     return static_cast<const SwContentFrame*>(pLayLeaf->GetNext());
             }
         }
-        else if ( pLayLeaf->Lower() )
-            return static_cast<const SwContentFrame*>(pLayLeaf->Lower());
+        else if ( pLower )
+            return static_cast<const SwContentFrame*>(pLower);
 
         pLayLeaf = pLayLeaf->GetNextLayoutLeaf();
         if( !IsAnLower( pLayLeaf) )
@@ -138,10 +166,14 @@ const SwFrame *SwLayoutFrame::ContainsAny( const bool _bInvestigateFootnoteForSe
     const bool bNoFootnote = IsSctFrame() && !_bInvestigateFootnoteForSections;
     do
     {
+        const SwFrame* pLower = pLayLeaf->Lower();
         while ( ( (!pLayLeaf->IsSctFrame() && !pLayLeaf->IsTabFrame())
                  || pLayLeaf == this ) &&
-                pLayLeaf->Lower() && pLayLeaf->Lower()->IsLayoutFrame() )
-            pLayLeaf = static_cast<const SwLayoutFrame*>(pLayLeaf->Lower());
+                pLower && pLower->IsLayoutFrame() )
+        {
+            pLayLeaf = static_cast<const SwLayoutFrame*>(pLower);
+            pLower = pLayLeaf->Lower();
+        }
 
         if( ( pLayLeaf->IsTabFrame() || pLayLeaf->IsSctFrame() )
             && pLayLeaf != this )
@@ -150,8 +182,8 @@ const SwFrame *SwLayoutFrame::ContainsAny( const bool _bInvestigateFootnoteForSe
             // maintained on SaveContent and RestoreContent
             return pLayLeaf;
         }
-        else if ( pLayLeaf->Lower() )
-            return static_cast<const SwContentFrame*>(pLayLeaf->Lower());
+        else if ( pLower )
+            return static_cast<const SwContentFrame*>(pLower);
 
         pLayLeaf = pLayLeaf->GetNextLayoutLeaf();
         if( bNoFootnote && pLayLeaf && pLayLeaf->IsInFootnote() )
@@ -235,12 +267,17 @@ bool SwLayoutFrame::IsAnLower( const SwFrame *pAssumed ) const
     const SwFrame *pUp = pAssumed;
     while ( pUp )
     {
-        if ( pUp == this )
-            return true;
-        if ( pUp->IsFlyFrame() )
-            pUp = static_cast<const SwFlyFrame*>(pUp)->GetAnchorFrame();
+        if (!pUp->IsInDtor())
+        {
+            if (pUp == this)
+                return true;
+            if (pUp->IsFlyFrame())
+                pUp = static_cast<const SwFlyFrame*>(pUp)->GetAnchorFrame();
+            else
+                pUp = pUp->GetUpper();
+        }
         else
-            pUp = pUp->GetUpper();
+            break;
     }
     return false;
 }
@@ -470,8 +507,14 @@ const SwContentFrame* SwContentFrame::ImplGetNextContentFrame( bool bFwd ) const
 SwPageFrame* SwFrame::ImplFindPageFrame()
 {
     SwFrame *pRet = this;
-    while ( pRet && !pRet->IsPageFrame() )
+    while ( pRet )
     {
+        if (pRet->IsInDtor())
+            return nullptr;
+
+        if (pRet->IsPageFrame())
+            break;
+
         if ( pRet->GetUpper() )
             pRet = pRet->GetUpper();
         else if ( pRet->IsFlyFrame() )
@@ -523,7 +566,7 @@ SwFootnoteBossFrame* SwFrame::FindFootnoteBossFrame( bool bFootnotes )
             bMoveToPageFrame = !bFAtEnd && !bNoBalance;
         }
     }
-    while (pRet
+    while (pRet && !pRet->IsInDtor()
            && ((!bMoveToPageFrame && !pRet->IsFootnoteBossFrame())
                || (bMoveToPageFrame && !pRet->IsPageFrame())))
     {
@@ -544,7 +587,7 @@ SwFootnoteBossFrame* SwFrame::FindFootnoteBossFrame( bool bFootnotes )
         !pRet->GetNext() && !pRet->GetPrev() )
     {
         SwSectionFrame* pSct = pRet->FindSctFrame();
-        OSL_ENSURE( pSct, "FindFootnoteBossFrame: Single column outside section?" );
+        assert(pSct && "FindFootnoteBossFrame: Single column outside section?");
         if( !pSct->IsFootnoteAtEnd() )
             return pSct->FindFootnoteBossFrame( true );
     }
@@ -554,10 +597,14 @@ SwFootnoteBossFrame* SwFrame::FindFootnoteBossFrame( bool bFootnotes )
 SwTabFrame* SwFrame::ImplFindTabFrame()
 {
     SwFrame *pRet = this;
+    if (pRet->IsInDtor())
+        return nullptr;
     while ( !pRet->IsTabFrame() )
     {
         pRet = pRet->GetUpper();
         if ( !pRet )
+            return nullptr;
+        if (pRet->IsInDtor())
             return nullptr;
     }
     return static_cast<SwTabFrame*>(pRet);
@@ -566,10 +613,14 @@ SwTabFrame* SwFrame::ImplFindTabFrame()
 SwSectionFrame* SwFrame::ImplFindSctFrame()
 {
     SwFrame *pRet = this;
+    if (pRet->IsInDtor())
+        return nullptr;
     while ( !pRet->IsSctFrame() )
     {
         pRet = pRet->GetUpper();
         if ( !pRet )
+            return nullptr;
+        if (pRet->IsInDtor())
             return nullptr;
     }
     return static_cast<SwSectionFrame*>(pRet);
@@ -652,6 +703,17 @@ const SwFootnoteFrame* SwFootnoteContFrame::FindFootNote() const
     const SwFootnoteFrame* pRet = static_cast<const SwFootnoteFrame*>(Lower());
     if( pRet && !pRet->GetAttr()->GetFootnote().IsEndNote() )
         return pRet;
+    return nullptr;
+}
+
+const SwFootnoteFrame* SwFootnoteContFrame::FindEndNote() const
+{
+    auto pRet = static_cast<const SwFootnoteFrame*>(Lower());
+    if (pRet && pRet->GetAttr()->GetFootnote().IsEndNote())
+    {
+        return pRet;
+    }
+
     return nullptr;
 }
 
@@ -994,7 +1056,7 @@ SwFrame *SwFrame::FindNext_()
             (!bFootnote || pSct->IsInFootnote() ) )
             return pSct;
     }
-    return pRet;
+    return pRet == this ? nullptr : pRet;
 }
 
 // #i27138# - add parameter <_bInSameFootnote>
@@ -1054,7 +1116,7 @@ SwContentFrame *SwFrame::FindNextCnt_( const bool _bInSameFootnote )
                 // handling for environments 'each footnote':
                 // Assure that found next content frame belongs to the same footnotes
                 const SwFootnoteFrame* pFootnoteFrameOfNext( pNxtCnt->FindFootnoteFrame() );
-                const SwFootnoteFrame* pFootnoteFrameOfCurr( pThis->FindFootnoteFrame() );
+                SwFootnoteFrame* pFootnoteFrameOfCurr(pThis->FindFootnoteFrame());
                 OSL_ENSURE( pFootnoteFrameOfCurr,
                         "<SwFrame::FindNextCnt_() - unknown layout situation: current frame has to have an upper footnote frame." );
                 if ( pFootnoteFrameOfNext == pFootnoteFrameOfCurr )
@@ -1065,8 +1127,7 @@ SwContentFrame *SwFrame::FindNextCnt_( const bool _bInSameFootnote )
                 {
                     // next content frame has to be the first content frame
                     // in the follow footnote, which contains a content frame.
-                    SwFootnoteFrame* pFollowFootnoteFrameOfCurr(
-                                        const_cast<SwFootnoteFrame*>(pFootnoteFrameOfCurr) );
+                    SwFootnoteFrame* pFollowFootnoteFrameOfCurr(pFootnoteFrameOfCurr);
                     pNxtCnt = nullptr;
                     do {
                         pFollowFootnoteFrameOfCurr = pFollowFootnoteFrameOfCurr->GetFollow();
@@ -1198,13 +1259,12 @@ SwContentFrame* SwFrame::FindPrevCnt_()
                     // handling for environments 'each footnote':
                     // Assure that found next content frame belongs to the same footnotes
                     const SwFootnoteFrame* pFootnoteFrameOfPrev( pPrevContentFrame->FindFootnoteFrame() );
-                    const SwFootnoteFrame* pFootnoteFrameOfCurr( pCurrContentFrame->FindFootnoteFrame() );
+                    SwFootnoteFrame* pFootnoteFrameOfCurr(pCurrContentFrame->FindFootnoteFrame());
                     if ( pFootnoteFrameOfPrev != pFootnoteFrameOfCurr )
                     {
                         if ( pFootnoteFrameOfCurr->GetMaster() )
                         {
-                            SwFootnoteFrame* pMasterFootnoteFrameOfCurr(
-                                        const_cast<SwFootnoteFrame*>(pFootnoteFrameOfCurr) );
+                            SwFootnoteFrame* pMasterFootnoteFrameOfCurr(pFootnoteFrameOfCurr);
                             pPrevContentFrame = nullptr;
                             // correct wrong loop-condition
                             do {
@@ -1380,11 +1440,7 @@ void SwFrame::InvalidateNextPrtArea()
     SwFrame* pNextFrame = FindNext();
     // skip empty section frames and hidden text frames
     {
-        while ( pNextFrame &&
-                ( ( pNextFrame->IsSctFrame() &&
-                    !static_cast<SwSectionFrame*>(pNextFrame)->GetSection() ) ||
-                  ( pNextFrame->IsTextFrame() &&
-                    static_cast<SwTextFrame*>(pNextFrame)->IsHiddenNow() ) ) )
+        while (pNextFrame && pNextFrame->IsHiddenNow())
         {
             pNextFrame = pNextFrame->FindNext();
         }
@@ -1490,7 +1546,7 @@ bool SwFrame::IsMoveable( const SwLayoutFrame* _pLayoutFrame ) const
                 {
                     // if fly frame has a follow (next linked fly frame) or can split,
                     // frame is moveable.
-                    SwFlyFrame* pFlyFrame = const_cast<SwLayoutFrame*>(_pLayoutFrame)->FindFlyFrame();
+                    const SwFlyFrame* pFlyFrame = _pLayoutFrame->FindFlyFrame();
                     if ( pFlyFrame->GetNextLink() || pFlyFrame->IsFlySplitAllowed() )
                     {
                         bRetVal = true;
@@ -1646,6 +1702,7 @@ static SwCellFrame* lcl_FindCorrespondingCellFrame( const SwRowFrame& rOrigRow,
     SwCellFrame* pRet = nullptr;
     const SwCellFrame* pCell = static_cast<const SwCellFrame*>(rOrigRow.Lower());
     SwCellFrame* pCorrCell = const_cast<SwCellFrame*>(static_cast<const SwCellFrame*>(rCorrRow.Lower()));
+    assert(pCell && pCorrCell && "lcl_FindCorrespondingCellFrame does not work");
 
     while ( pCell != &rOrigCell && !pCell->IsAnLower( &rOrigCell ) )
     {
@@ -1658,10 +1715,11 @@ static SwCellFrame* lcl_FindCorrespondingCellFrame( const SwRowFrame& rOrigRow,
     if ( pCell != &rOrigCell )
     {
         // rOrigCell must be a lower of pCell. We need to recurse into the rows:
-        assert(pCell->Lower() && pCell->Lower()->IsRowFrame() &&
+        const SwFrame* pLower = pCell->Lower();
+        assert(pLower && pLower->IsRowFrame() &&
                "lcl_FindCorrespondingCellFrame does not work");
 
-        const SwRowFrame* pRow = static_cast<const SwRowFrame*>(pCell->Lower());
+        const SwRowFrame* pRow = static_cast<const SwRowFrame*>(pLower);
         while ( !pRow->IsAnLower( &rOrigCell ) )
             pRow = static_cast<const SwRowFrame*>(pRow->GetNext());
 
@@ -1952,6 +2010,16 @@ SwPageFrame* SwFrame::DynCastPageFrame()
 const SwPageFrame* SwFrame::DynCastPageFrame() const
 {
     return IsPageFrame() ? static_cast<const SwPageFrame*>(this) : nullptr;
+}
+
+SwColumnFrame* SwFrame::DynCastColumnFrame()
+{
+    return IsColumnFrame() ? static_cast<SwColumnFrame*>(this) : nullptr;
+}
+
+const SwColumnFrame* SwFrame::DynCastColumnFrame() const
+{
+    return IsColumnFrame() ? static_cast<const SwColumnFrame*>(this) : nullptr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

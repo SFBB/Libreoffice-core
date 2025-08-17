@@ -8,7 +8,6 @@
  */
 
 #include <test/bootstrapfixture.hxx>
-#include <config_features.h>
 #include <config_fonts.h>
 #include <cppunit/TestAssert.h>
 
@@ -45,7 +44,7 @@ void FontFeatureTest::testGetFontFeaturesGraphite()
                                               DeviceFormat::WITH_ALPHA);
     aVDev->SetOutputSizePixel(Size(10, 10));
 
-    OUString aFontName("Linux Libertine G");
+    OUString aFontName(u"Linux Libertine G"_ustr);
     CPPUNIT_ASSERT(aVDev->IsFontAvailable(aFontName));
 
     vcl::Font aFont = aVDev->GetFont();
@@ -66,13 +65,13 @@ void FontFeatureTest::testGetFontFeaturesGraphite()
 
     CPPUNIT_ASSERT_EQUAL(size_t(53), rFontFeatures.size());
 
-    CPPUNIT_ASSERT_EQUAL(OUString("c2sc case dlig fina frac hlig liga lnum "
-                                  "locl onum pnum sa01 sa02 sa03 sa04 sa05 "
-                                  "sa06 sa07 sa08 salt sinf smcp ss01 ss02 "
-                                  "ss03 sups tnum zero ingl cpsp lith litt "
-                                  "itlc para algn arti circ dash dbls foot "
-                                  "frsp grkn hang lng minu nfsp name quot "
-                                  "texm thou vari caps ligc "),
+    CPPUNIT_ASSERT_EQUAL(u"c2sc case dlig fina frac hlig liga lnum "
+                         "locl onum pnum sa01 sa02 sa03 sa04 sa05 "
+                         "sa06 sa07 sa08 salt sinf smcp ss01 ss02 "
+                         "ss03 sups tnum zero ingl cpsp lith litt "
+                         "itlc para algn arti circ dash dbls foot "
+                         "frsp grkn hang lng minu nfsp name quot "
+                         "texm thou vari caps ligc "_ustr,
                          aFeaturesString);
 
     // Check C2SC feature
@@ -129,7 +128,7 @@ void FontFeatureTest::testGetFontFeaturesOpenType()
                                               DeviceFormat::WITH_ALPHA);
     aVDev->SetOutputSizePixel(Size(10, 10));
 
-    OUString aFontName("Amiri");
+    OUString aFontName(u"Amiri"_ustr);
     CPPUNIT_ASSERT(aVDev->IsFontAvailable(aFontName));
 
     vcl::Font aFont = aVDev->GetFont();
@@ -146,21 +145,21 @@ void FontFeatureTest::testGetFontFeaturesOpenType()
     for (vcl::font::Feature const& rFeature : rFontFeatures)
         aFeaturesString += vcl::font::featureCodeAsString(rFeature.m_nCode) + " ";
 
-    CPPUNIT_ASSERT_EQUAL(size_t(17), rFontFeatures.size());
+    CPPUNIT_ASSERT_EQUAL(size_t(15), rFontFeatures.size());
 
-    CPPUNIT_ASSERT_EQUAL(OUString("calt calt dnom liga numr pnum ss01 ss02 "
-                                  "ss03 ss04 ss05 ss06 ss07 ss08 kern kern "
-                                  "ss05 "),
+    CPPUNIT_ASSERT_EQUAL(u"dnom liga numr pnum ss01 ss02 "
+                         "ss03 ss04 ss05 ss06 ss07 ss08 kern kern "
+                         "ss05 "_ustr,
                          aFeaturesString);
 
     // Check ss01 feature
     {
-        vcl::font::Feature& rFeature = rFontFeatures[6];
+        vcl::font::Feature& rFeature = rFontFeatures[4];
         CPPUNIT_ASSERT_EQUAL(vcl::font::featureCode("ss01"), rFeature.m_nCode);
 
         vcl::font::FeatureDefinition& rFeatureDefinition = rFeature.m_aDefinition;
         CPPUNIT_ASSERT_EQUAL(vcl::font::featureCode("ss01"), rFeatureDefinition.getCode());
-        CPPUNIT_ASSERT_EQUAL(OUString("Low Baa dot following a Raa or Waw"),
+        CPPUNIT_ASSERT_EQUAL(u"Low Baa dot following a Raa or Waw"_ustr,
                              rFeatureDefinition.getDescription());
         CPPUNIT_ASSERT_EQUAL(vcl::font::FeatureParameterType::BOOL, rFeatureDefinition.getType());
 
@@ -178,7 +177,7 @@ void FontFeatureTest::testGetFontFeaturesOpenTypeEnum()
                                               DeviceFormat::WITH_ALPHA);
     aVDev->SetOutputSizePixel(Size(10, 10));
 
-    OUString aFontName("Reem Kufi");
+    OUString aFontName(u"Reem Kufi"_ustr);
     CPPUNIT_ASSERT(aVDev->IsFontAvailable(aFontName));
 
     vcl::Font aFont = aVDev->GetFont();
@@ -197,8 +196,8 @@ void FontFeatureTest::testGetFontFeaturesOpenTypeEnum()
 
     CPPUNIT_ASSERT_EQUAL(size_t(10), rFontFeatures.size());
 
-    CPPUNIT_ASSERT_EQUAL(OUString("aalt case cv01 cv02 cv03 frac ordn sups "
-                                  "zero kern "),
+    CPPUNIT_ASSERT_EQUAL(u"aalt case cv01 cv02 cv03 frac ordn sups "
+                         "zero kern "_ustr,
                          aFeaturesString);
 
     // Check aalt feature
@@ -430,7 +429,7 @@ void FontFeatureTest::testParseFeature()
         CPPUNIT_ASSERT_EQUAL(vcl::font::featureCode("abcd"), aFeatures[0].m_nTag);
         CPPUNIT_ASSERT_EQUAL(uint32_t(1), aFeatures[0].m_nValue);
 
-        CPPUNIT_ASSERT_EQUAL(OUString("slo"), aParser.getLanguage());
+        CPPUNIT_ASSERT_EQUAL(u"slo"_ustr, aParser.getLanguage());
     }
 }
 

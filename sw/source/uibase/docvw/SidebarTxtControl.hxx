@@ -21,7 +21,6 @@
 
 #include <svx/weldeditview.hxx>
 
-class OutlinerView;
 class SwView;
 class SwPostItMgr;
 struct SpellCallbackInfo;
@@ -40,8 +39,6 @@ class SidebarTextControl : public WeldEditView
         void MakeVisible();
 
     protected:
-        virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
-
         virtual bool Command(const CommandEvent& rCEvt) override;
         virtual void GetFocus() override;
         virtual void LoseFocus() override;
@@ -53,10 +50,16 @@ class SidebarTextControl : public WeldEditView
                            SwView& rDocView,
                            SwPostItMgr& rPostItMgr);
 
+        virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
+
         virtual EditView* GetEditView() const override;
 
         virtual EditEngine* GetEditEngine() const override;
 
+#if ENABLE_YRS
+        virtual void EditViewInvalidate(const tools::Rectangle& rRect) override;
+        virtual void EditViewSelectionChange() override;
+#endif
         virtual void EditViewScrollStateChange() override;
 
         void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;

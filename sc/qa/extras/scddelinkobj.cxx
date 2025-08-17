@@ -18,7 +18,6 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XDDELink.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
@@ -62,7 +61,7 @@ public:
 };
 
 ScDDELinkObj::ScDDELinkObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
     , XDDELink(maTempFile.GetURL())
     , XNamed("soffice|" + maTempFile.GetURL() + "!Sheet1.A1")
 {
@@ -84,7 +83,7 @@ uno::Reference<uno::XInterface> ScDDELinkObj::init()
                                                 + "\";\"Sheet1.A1\")");
 
     uno::Reference<beans::XPropertySet> xPropSet(xDoc, UNO_QUERY_THROW);
-    uno::Any aDDELinks = xPropSet->getPropertyValue("DDELinks");
+    uno::Any aDDELinks = xPropSet->getPropertyValue(u"DDELinks"_ustr);
     uno::Reference<container::XNameAccess> xNA(aDDELinks, UNO_QUERY_THROW);
     uno::Sequence<OUString> sLinkNames = xNA->getElementNames();
     uno::Reference<sheet::XDDELink> xDDELink(xNA->getByName(sLinkNames[0]), UNO_QUERY_THROW);
@@ -93,10 +92,10 @@ uno::Reference<uno::XInterface> ScDDELinkObj::init()
 
 void ScDDELinkObj::setUp()
 {
-    Application::SetAppName("soffice"); // Enable DDE
+    Application::SetAppName(u"soffice"_ustr); // Enable DDE
     UnoApiTest::setUp();
     // create a calc document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 
     createTempCopy(u"ScDDELinksObj.ods");
 }

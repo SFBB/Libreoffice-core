@@ -74,6 +74,7 @@
 #include <frameformats.hxx>
 #include <algorithm>
 #include <iterator>
+#include <unotxdoc.hxx>
 
 using namespace ::com::sun::star;
 
@@ -121,9 +122,9 @@ struct FrameClientSortListLess
             return;
         for(const auto pAnchoredObj : *pObjs)
         {
-            SwFrameFormat& rFormat = pAnchoredObj->GetFrameFormat();
+            SwFrameFormat* pFormat = pAnchoredObj->GetFrameFormat();
             // Filter out textboxes, which are not interesting at a UNO level.
-            if(SwTextBoxHelper::isTextBox(&rFormat, RES_FLYFRMFMT))
+            if(SwTextBoxHelper::isTextBox(pFormat, RES_FLYFRMFMT))
                 continue;
 
             if (nAnchorType == RndStdIds::FLY_AT_PARA)
@@ -137,11 +138,11 @@ struct FrameClientSortListLess
                 }
             }
 
-            if(rFormat.GetAnchor().GetAnchorId() == nAnchorType)
+            if(pFormat->GetAnchor().GetAnchorId() == nAnchorType)
             {
-                const sal_Int32 nIdx = rFormat.GetAnchor().GetAnchorContentOffset();
-                const auto nOrder = rFormat.GetAnchor().GetOrder();
-                rFrames.emplace_back(nIdx, nOrder, std::make_unique<sw::FrameClient>(&rFormat));
+                const sal_Int32 nIdx = pFormat->GetAnchor().GetAnchorContentOffset();
+                const auto nOrder = pFormat->GetAnchor().GetOrder();
+                rFrames.emplace_back(nIdx, nOrder, std::make_unique<sw::FrameClient>(pFormat));
             }
         }
     }
@@ -306,7 +307,7 @@ void SwUnoCursorHelper::SetCursorAttr(SwPaM & rPam,
 void SwUnoCursorHelper::GetCursorAttr(SwPaM & rPam,
         SfxItemSet & rSet, const bool bOnlyTextAttr, const bool bGetFromChrFormat)
 {
-    static const sal_uLong nMaxLookup = 1000;
+    static constexpr sal_Int32 nMaxLookup = 1000;
     SfxItemSet aSet( *rSet.GetPool(), rSet.GetRanges() );
     SfxItemSet *pSet = &rSet;
     for(SwPaM& rCurrent : rPam.GetRingContainer())
@@ -319,7 +320,6 @@ void SwUnoCursorHelper::GetCursorAttr(SwPaM & rPam,
         if (nEndNd - nSttNd >= SwNodeOffset(nMaxLookup))
         {
             rSet.ClearItem();
-            rSet.InvalidateAllItems();
             return;// uno::Any();
         }
 
@@ -430,11 +430,11 @@ struct SwXParagraphEnumerationImpl final : public SwXParagraphEnumeration
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override
-        { return "SwXParagraphEnumeration"; }
+        { return u"SwXParagraphEnumeration"_ustr; }
     virtual sal_Bool SAL_CALL supportsService( const OUString& rServiceName) override
         { return cppu::supportsService(this, rServiceName); };
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override
-        { return {"com.sun.star.text.ParagraphEnumeration"}; };
+        { return {u"com.sun.star.text.ParagraphEnumeration"_ustr}; };
 
     // XEnumeration
     virtual sal_Bool SAL_CALL hasMoreElements() override;
@@ -671,90 +671,62 @@ uno::Any SAL_CALL SwXParagraphEnumerationImpl::nextElement()
     return aRet;
 }
 
-class SwXTextRange::Impl
-    : public SvtListener
+void SwXTextRange::InvalidateImpl()
 {
-public:
-    const SfxItemPropertySet& m_rPropSet;
-    const enum RangePosition m_eRangePosition;
-    SwDoc& m_rDoc;
-    uno::Reference<text::XText> m_xParentText;
-    const SwFrameFormat* m_pTableOrSectionFormat;
-    const ::sw::mark::IMark* m_pMark;
-
-    Impl(SwDoc& rDoc, const enum RangePosition eRange,
-            SwFrameFormat* const pTableOrSectionFormat,
-            uno::Reference<text::XText> xParent = nullptr)
-        : m_rPropSet(*aSwMapProvider.GetPropertySet(PROPERTY_MAP_TEXT_CURSOR))
-        , m_eRangePosition(eRange)
-        , m_rDoc(rDoc)
-        , m_xParentText(std::move(xParent))
-        , m_pTableOrSectionFormat(pTableOrSectionFormat)
-        , m_pMark(nullptr)
+    if (m_pMark)
     {
-        if (m_pTableOrSectionFormat)
-        {
-            assert(m_eRangePosition == RANGE_IS_TABLE || m_eRangePosition == RANGE_IS_SECTION);
-            StartListening(pTableOrSectionFormat->GetNotifier());
-        }
-        else
-        {
-            assert(m_eRangePosition != RANGE_IS_TABLE && m_eRangePosition != RANGE_IS_SECTION);
-        }
+        m_rDoc.getIDocumentMarkAccess()->deleteMark(m_pMark);
+        m_pMark = nullptr;
     }
+    m_pTableOrSectionFormat = nullptr;
+    moSvtListener->EndListeningAll();
+}
 
-    virtual ~Impl() override
-    {
-        // Impl owns the bookmark; delete it here: SolarMutex is locked
-        Invalidate();
-    }
+void SwXTextRange::SetMark(::sw::mark::MarkBase& rMark)
+{
+    moSvtListener->EndListeningAll();
+    m_pTableOrSectionFormat = nullptr;
+    m_pMark = &rMark;
+    moSvtListener->StartListening(rMark.GetNotifier());
+}
 
-    void Invalidate()
-    {
-        if (m_pMark)
-        {
-            m_rDoc.getIDocumentMarkAccess()->deleteMark(m_pMark);
-            m_pMark = nullptr;
-        }
-        m_pTableOrSectionFormat = nullptr;
-        EndListeningAll();
-    }
-
-    const ::sw::mark::IMark* GetBookmark() const { return m_pMark; }
-    void SetMark(::sw::mark::IMark& rMark)
-    {
-        EndListeningAll();
-        m_pTableOrSectionFormat = nullptr;
-        m_pMark = &rMark;
-        StartListening(rMark.GetNotifier());
-    }
-
-protected:
-    virtual void Notify(const SfxHint&) override;
-};
-
-void SwXTextRange::Impl::Notify(const SfxHint& rHint)
+void SwXTextRange::MySvtListener::Notify(const SfxHint& rHint)
 {
     if(rHint.GetId() == SfxHintId::Dying)
     {
         EndListeningAll();
-        m_pTableOrSectionFormat = nullptr;
-        m_pMark = nullptr;
+        mrTextRange.m_pTableOrSectionFormat = nullptr;
+        mrTextRange.m_pMark = nullptr;
     }
 }
 
 SwXTextRange::SwXTextRange(SwPaM const & rPam,
         const uno::Reference< text::XText > & xParent,
-        const enum RangePosition eRange)
-    : m_pImpl( new SwXTextRange::Impl(rPam.GetDoc(), eRange, nullptr, xParent) )
+        const enum RangePosition eRange,
+        bool const isInCell)
+    : m_rPropSet(*aSwMapProvider.GetPropertySet(PROPERTY_MAP_TEXT_CURSOR))
+    , m_eRangePosition(eRange)
+    , m_isRangeInCell(isInCell)
+    , m_rDoc(rPam.GetDoc())
+    , m_xParentText(xParent)
+    , m_pTableOrSectionFormat(nullptr)
+    , m_pMark(nullptr)
+    , moSvtListener(std::in_place, *this)
 {
+    assert(m_eRangePosition != RANGE_IS_TABLE && m_eRangePosition != RANGE_IS_SECTION);
     SetPositions(rPam);
 }
 
 SwXTextRange::SwXTextRange(SwTableFormat& rTableFormat)
-    : m_pImpl(
-        new SwXTextRange::Impl(*rTableFormat.GetDoc(), RANGE_IS_TABLE, &rTableFormat) )
+    : m_rPropSet(*aSwMapProvider.GetPropertySet(PROPERTY_MAP_TEXT_CURSOR))
+    , m_eRangePosition(RANGE_IS_TABLE)
+    , m_isRangeInCell(false)
+    , m_rDoc(rTableFormat.GetDoc())
+    , m_pTableOrSectionFormat(&rTableFormat)
+    , m_pMark(nullptr)
+    , moSvtListener(std::in_place, *this)
 {
+    moSvtListener->StartListening(rTableFormat.GetNotifier());
     SwTable *const pTable = SwTable::FindTable( &rTableFormat );
     SwTableNode *const pTableNode = pTable->GetTableNode();
     SwPaM aPam( *pTableNode );
@@ -763,38 +735,38 @@ SwXTextRange::SwXTextRange(SwTableFormat& rTableFormat)
 }
 
 SwXTextRange::SwXTextRange(SwSectionFormat& rSectionFormat)
-    : m_pImpl(
-        new SwXTextRange::Impl(*rSectionFormat.GetDoc(), RANGE_IS_SECTION, &rSectionFormat) )
+    : m_rPropSet(*aSwMapProvider.GetPropertySet(PROPERTY_MAP_TEXT_CURSOR))
+    , m_eRangePosition(RANGE_IS_SECTION)
+    , m_isRangeInCell(false)
+    , m_rDoc(rSectionFormat.GetDoc())
+    , m_pTableOrSectionFormat(&rSectionFormat)
+    , m_pMark(nullptr)
+    , moSvtListener(std::in_place, *this)
 {
+    moSvtListener->StartListening(rSectionFormat.GetNotifier());
     // no SetPositions here for now
 }
 
 SwXTextRange::~SwXTextRange()
 {
-}
-
-const SwDoc& SwXTextRange::GetDoc() const
-{
-    return m_pImpl->m_rDoc;
-}
-
-SwDoc& SwXTextRange::GetDoc()
-{
-    return m_pImpl->m_rDoc;
+    // have to destruct SvtListener with SolarMutex held
+    SolarMutexGuard aGuard;
+    InvalidateImpl(); // delete bookmark under SolarMutex
+    moSvtListener.reset();
 }
 
 void SwXTextRange::Invalidate()
 {
-    m_pImpl->Invalidate();
+    InvalidateImpl();
 }
 
 void SwXTextRange::SetPositions(const SwPaM& rPam)
 {
-    m_pImpl->Invalidate();
-    IDocumentMarkAccess* const pMA = m_pImpl->m_rDoc.getIDocumentMarkAccess();
-    auto pMark = pMA->makeMark(rPam, OUString(), IDocumentMarkAccess::MarkType::UNO_BOOKMARK, sw::mark::InsertMode::New);
+    InvalidateImpl();
+    IDocumentMarkAccess* const pMA = m_rDoc.getIDocumentMarkAccess();
+    auto pMark = pMA->makeMark(rPam, SwMarkName(), IDocumentMarkAccess::MarkType::UNO_BOOKMARK, sw::mark::InsertMode::New);
     if (pMark)
-        m_pImpl->SetMark(*pMark);
+        SetMark(*pMark);
 }
 
 static void DeleteTable(SwDoc & rDoc, SwTable& rTable)
@@ -812,27 +784,27 @@ static void DeleteTable(SwDoc & rDoc, SwTable& rTable)
 void SwXTextRange::DeleteAndInsert(
         std::u16string_view aText, ::sw::DeleteAndInsertMode const eMode)
 {
-    if (RANGE_IS_TABLE == m_pImpl->m_eRangePosition)
+    if (RANGE_IS_TABLE == m_eRangePosition)
     {
         // setString on table not allowed
-        throw uno::RuntimeException("not possible for table");
+        throw uno::RuntimeException(u"not possible for table"_ustr);
     }
 
     const SwPosition aPos(GetDoc().GetNodes().GetEndOfContent());
     SwCursor aCursor(aPos, nullptr);
 
-    UnoActionContext aAction(& m_pImpl->m_rDoc);
+    UnoActionContext aAction(&m_rDoc);
 
-    if (RANGE_IS_SECTION == m_pImpl->m_eRangePosition)
+    if (RANGE_IS_SECTION == m_eRangePosition)
     {
-        SwSectionNode const* pSectionNode = m_pImpl->m_pTableOrSectionFormat ?
-            static_cast<SwSectionFormat const*>(m_pImpl->m_pTableOrSectionFormat)->GetSectionNode() :
+        SwSectionNode const* pSectionNode = m_pTableOrSectionFormat ?
+            static_cast<SwSectionFormat const*>(m_pTableOrSectionFormat)->GetSectionNode() :
             nullptr;
         if (!pSectionNode)
         {
-            throw uno::RuntimeException("disposed?");
+            throw uno::RuntimeException(u"disposed?"_ustr);
         }
-        m_pImpl->m_rDoc.GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT, nullptr);
+        m_rDoc.GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT, nullptr);
         SwNodeIndex const start(*pSectionNode);
         SwNodeIndex const end(*start.GetNode().EndOfSectionNode());
 
@@ -847,7 +819,7 @@ void SwXTextRange::DeleteAndInsert(
             }
             else if (SwTableNode *const pTableNode = rNode.GetTableNode())
             {
-                DeleteTable(m_pImpl->m_rDoc, pTableNode->GetTable());
+                DeleteTable(m_rDoc, pTableNode->GetTable());
                 // where does that leave index? presumably behind?
             }
             else
@@ -865,7 +837,7 @@ void SwXTextRange::DeleteAndInsert(
             {
                 if (SwTableNode *const pTableNode = rNode.StartOfSectionNode()->GetTableNode())
                 {
-                    DeleteTable(m_pImpl->m_rDoc, pTableNode->GetTable());
+                    DeleteTable(m_rDoc, pTableNode->GetTable());
                 }
                 else
                 {
@@ -892,31 +864,31 @@ void SwXTextRange::DeleteAndInsert(
     {
         if (!GetPositions(aCursor))
             return;
-        m_pImpl->m_rDoc.GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT, nullptr);
+        m_rDoc.GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT, nullptr);
     }
 
     if (aCursor.HasMark())
     {
-        m_pImpl->m_rDoc.getIDocumentContentOperations().DeleteAndJoin(aCursor,
+        m_rDoc.getIDocumentContentOperations().DeleteAndJoin(aCursor,
             (!aText.empty() || eMode & ::sw::DeleteAndInsertMode::ForceReplace) ? SwDeleteFlags::ArtificialSelection : SwDeleteFlags::Default);
     }
 
     if (!aText.empty())
     {
         SwUnoCursorHelper::DocInsertStringSplitCR(
-            m_pImpl->m_rDoc, aCursor, aText, bool(eMode & ::sw::DeleteAndInsertMode::ForceExpandHints));
+            m_rDoc, aCursor, aText, bool(eMode & ::sw::DeleteAndInsertMode::ForceExpandHints));
 
         SwUnoCursorHelper::SelectPam(aCursor, true);
         aCursor.Left(aText.size());
     }
     SetPositions(aCursor);
-    m_pImpl->m_rDoc.GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT, nullptr);
+    m_rDoc.GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT, nullptr);
 }
 
 OUString SAL_CALL
 SwXTextRange::getImplementationName()
 {
-    return "SwXTextRange";
+    return u"SwXTextRange"_ustr;
 }
 
 sal_Bool SAL_CALL SwXTextRange::supportsService(const OUString& rServiceName)
@@ -928,13 +900,13 @@ uno::Sequence< OUString > SAL_CALL
 SwXTextRange::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.text.TextRange",
-        "com.sun.star.style.CharacterProperties",
-        "com.sun.star.style.CharacterPropertiesAsian",
-        "com.sun.star.style.CharacterPropertiesComplex",
-        "com.sun.star.style.ParagraphProperties",
-        "com.sun.star.style.ParagraphPropertiesAsian",
-        "com.sun.star.style.ParagraphPropertiesComplex"
+        u"com.sun.star.text.TextRange"_ustr,
+        u"com.sun.star.style.CharacterProperties"_ustr,
+        u"com.sun.star.style.CharacterPropertiesAsian"_ustr,
+        u"com.sun.star.style.CharacterPropertiesComplex"_ustr,
+        u"com.sun.star.style.ParagraphProperties"_ustr,
+        u"com.sun.star.style.ParagraphPropertiesAsian"_ustr,
+        u"com.sun.star.style.ParagraphPropertiesComplex"_ustr
     };
 }
 
@@ -943,26 +915,25 @@ SwXTextRange::getText()
 {
     SolarMutexGuard aGuard;
 
-    if (!m_pImpl->m_xParentText.is() && m_pImpl->m_pTableOrSectionFormat)
+    if (!m_xParentText.is() && m_pTableOrSectionFormat)
     {
         std::optional<SwPosition> oPosition;
-        if (m_pImpl->m_eRangePosition == RANGE_IS_TABLE)
+        if (m_eRangePosition == RANGE_IS_TABLE)
         {
-            SwTable const*const pTable = SwTable::FindTable( m_pImpl->m_pTableOrSectionFormat );
+            SwTable const*const pTable = SwTable::FindTable( m_pTableOrSectionFormat );
             SwTableNode const*const pTableNode = pTable->GetTableNode();
             oPosition.emplace(*pTableNode);
         }
         else
         {
-            assert(m_pImpl->m_eRangePosition == RANGE_IS_SECTION);
-            auto const pSectFormat(static_cast<SwSectionFormat const*>(m_pImpl->m_pTableOrSectionFormat));
+            assert(m_eRangePosition == RANGE_IS_SECTION);
+            auto const pSectFormat(static_cast<SwSectionFormat const*>(m_pTableOrSectionFormat));
             oPosition.emplace(pSectFormat->GetContent().GetContentIdx()->GetNode());
         }
-        m_pImpl->m_xParentText =
-            ::sw::CreateParentXText(m_pImpl->m_rDoc, *oPosition);
+        m_xParentText = ::sw::CreateParentXText(m_rDoc, *oPosition);
     }
-    OSL_ENSURE(m_pImpl->m_xParentText.is(), "SwXTextRange::getText: no text");
-    return m_pImpl->m_xParentText;
+    OSL_ENSURE(m_xParentText.is(), "SwXTextRange::getText: no text");
+    return m_xParentText;
 }
 
 uno::Reference< text::XTextRange > SAL_CALL
@@ -970,34 +941,34 @@ SwXTextRange::getStart()
 {
     SolarMutexGuard aGuard;
 
-    uno::Reference< text::XTextRange >  xRet;
-    ::sw::mark::IMark const * const pBkmk = m_pImpl->GetBookmark();
-    if (!m_pImpl->m_xParentText.is())
+    rtl::Reference< SwXTextRange >  xRet;
+    ::sw::mark::MarkBase const * const pBkmk = m_pMark;
+    if (!m_xParentText.is())
     {
         getText();
     }
     if(pBkmk)
     {
         SwPaM aPam(pBkmk->GetMarkStart());
-        xRet = new SwXTextRange(aPam, m_pImpl->m_xParentText);
+        xRet = new SwXTextRange(aPam, m_xParentText);
     }
-    else if (RANGE_IS_TABLE == m_pImpl->m_eRangePosition)
+    else if (RANGE_IS_TABLE == m_eRangePosition)
     {
         // start and end are this, if it's a table
         xRet = this;
     }
-    else if (RANGE_IS_SECTION == m_pImpl->m_eRangePosition
-            && m_pImpl->m_pTableOrSectionFormat)
+    else if (RANGE_IS_SECTION == m_eRangePosition
+            && m_pTableOrSectionFormat)
     {
-        auto const pSectFormat(static_cast<SwSectionFormat const*>(m_pImpl->m_pTableOrSectionFormat));
+        auto const pSectFormat(static_cast<SwSectionFormat const*>(m_pTableOrSectionFormat));
         SwPaM aPaM(*pSectFormat->GetContent().GetContentIdx());
         aPaM.Move( fnMoveForward, GoInContent );
         assert(aPaM.GetPoint()->GetNode() < *pSectFormat->GetContent().GetContentIdx()->GetNode().EndOfSectionNode());
-        xRet = new SwXTextRange(aPaM, m_pImpl->m_xParentText);
+        xRet = new SwXTextRange(aPaM, m_xParentText);
     }
     else
     {
-        throw uno::RuntimeException("disposed?");
+        throw uno::RuntimeException(u"disposed?"_ustr);
     }
     return xRet;
 }
@@ -1007,34 +978,34 @@ SwXTextRange::getEnd()
 {
     SolarMutexGuard aGuard;
 
-    uno::Reference< text::XTextRange >  xRet;
-    ::sw::mark::IMark const * const pBkmk = m_pImpl->GetBookmark();
-    if (!m_pImpl->m_xParentText.is())
+    rtl::Reference< SwXTextRange >  xRet;
+    ::sw::mark::MarkBase const * const pBkmk = m_pMark;
+    if (!m_xParentText.is())
     {
         getText();
     }
     if(pBkmk)
     {
         SwPaM aPam(pBkmk->GetMarkEnd());
-        xRet = new SwXTextRange(aPam, m_pImpl->m_xParentText);
+        xRet = new SwXTextRange(aPam, m_xParentText);
     }
-    else if (RANGE_IS_TABLE == m_pImpl->m_eRangePosition)
+    else if (RANGE_IS_TABLE == m_eRangePosition)
     {
         // start and end are this, if it's a table
         xRet = this;
     }
-    else if (RANGE_IS_SECTION == m_pImpl->m_eRangePosition
-            && m_pImpl->m_pTableOrSectionFormat)
+    else if (RANGE_IS_SECTION == m_eRangePosition
+            && m_pTableOrSectionFormat)
     {
-        auto const pSectFormat(static_cast<SwSectionFormat const*>(m_pImpl->m_pTableOrSectionFormat));
+        auto const pSectFormat(static_cast<SwSectionFormat const*>(m_pTableOrSectionFormat));
         SwPaM aPaM(*pSectFormat->GetContent().GetContentIdx()->GetNode().EndOfSectionNode());
         aPaM.Move( fnMoveBackward, GoInContent );
         assert(*pSectFormat->GetContent().GetContentIdx() < aPaM.GetPoint()->GetNode());
-        xRet = new SwXTextRange(aPaM, m_pImpl->m_xParentText);
+        xRet = new SwXTextRange(aPaM, m_xParentText);
     }
     else
     {
-        throw uno::RuntimeException("disposed?");
+        throw uno::RuntimeException(u"disposed?"_ustr);
     }
     return xRet;
 }
@@ -1058,14 +1029,17 @@ void SAL_CALL SwXTextRange::setString(const OUString& rString)
 {
     SolarMutexGuard aGuard;
 
-    DeleteAndInsert(rString, ::sw::DeleteAndInsertMode::Default);
+    // tdf#158198 avoid deleting bookmark via setString on its anchor
+    DeleteAndInsert(rString, RANGE_IS_BOOKMARK == m_eRangePosition
+                                ? ::sw::DeleteAndInsertMode::ForceReplace
+                                : ::sw::DeleteAndInsertMode::Default);
 }
 
 bool SwXTextRange::GetPositions(SwPaM& rToFill, ::sw::TextRangeMode const eMode) const
 {
-    if (RANGE_IS_SECTION == m_pImpl->m_eRangePosition)
+    if (RANGE_IS_SECTION == m_eRangePosition)
     {
-        if (auto const pSectFormat = static_cast<SwSectionFormat const*>(m_pImpl->m_pTableOrSectionFormat))
+        if (auto const pSectFormat = static_cast<SwSectionFormat const*>(m_pTableOrSectionFormat))
         {
             if (eMode == ::sw::TextRangeMode::AllowNonTextNode)
             {
@@ -1099,7 +1073,7 @@ bool SwXTextRange::GetPositions(SwPaM& rToFill, ::sw::TextRangeMode const eMode)
             }
         }
     }
-    ::sw::mark::IMark const * const pBkmk = m_pImpl->GetBookmark();
+    ::sw::mark::MarkBase const * const pBkmk = m_pMark;
     if(pBkmk)
     {
         *rToFill.GetPoint() = pBkmk->GetMarkPos();
@@ -1117,13 +1091,83 @@ bool SwXTextRange::GetPositions(SwPaM& rToFill, ::sw::TextRangeMode const eMode)
     return false;
 }
 
+sal_Int16 SwXTextRange::compareRegionStarts(SwXTextRange& rhs)
+{
+    std::optional<SwPaM> oPam1, oPam2;
+    GetStartPaM(oPam1);
+    rhs.GetStartPaM(oPam2);
+
+    sal_Int16 nCompare = 0;
+    SwPosition const*const pStart1 = oPam1->Start();
+    SwPosition const*const pStart2 = oPam2->Start();
+    if (*pStart1 < *pStart2)
+    {
+        nCompare = 1;
+    }
+    else if (*pStart1 > *pStart2)
+    {
+        nCompare = -1;
+    }
+    else
+    {
+        OSL_ENSURE(*pStart1 == *pStart2,
+                "SwPositions should be equal here");
+        nCompare = 0;
+    }
+
+    return nCompare;
+}
+
+void SwXTextRange::GetStartPaM(std::optional<SwPaM>& roPaM)
+{
+    ::sw::mark::MarkBase const * const pBkmk = m_pMark;
+    if (!m_xParentText.is())
+    {
+        getText();
+    }
+    if(pBkmk)
+    {
+        roPaM.emplace(pBkmk->GetMarkStart());
+    }
+    else if (RANGE_IS_TABLE == m_eRangePosition)
+    {
+        // start and end are this, if it's a table
+        roPaM.emplace(GetDoc().GetNodes());
+        GetPositions(*roPaM, sw::TextRangeMode::RequireTextNode);
+    }
+    else if (RANGE_IS_SECTION == m_eRangePosition
+            && m_pTableOrSectionFormat)
+    {
+        auto const pSectFormat(static_cast<SwSectionFormat const*>(m_pTableOrSectionFormat));
+        roPaM.emplace(*pSectFormat->GetContent().GetContentIdx());
+        roPaM->Move( fnMoveForward, GoInContent );
+        assert(roPaM->GetPoint()->GetNode() < *pSectFormat->GetContent().GetContentIdx()->GetNode().EndOfSectionNode());
+    }
+    else
+    {
+        throw uno::RuntimeException(u"disposed?"_ustr);
+    }
+}
+
 namespace sw {
+
+static bool XTextRangeToSwPaMImpl( SwUnoInternalPaM & rToFill,
+        const SwDoc* pDoc,
+        const SwPaM* pUnoCursor);
 
 bool XTextRangeToSwPaM( SwUnoInternalPaM & rToFill,
         const uno::Reference<text::XTextRange> & xTextRange,
         ::sw::TextRangeMode const eMode)
 {
-    bool bRet = false;
+    SwXTextRange* pRange = dynamic_cast<SwXTextRange*>(xTextRange.get());
+    if(pRange && &pRange->GetDoc() == &rToFill.GetDoc())
+    {
+        return pRange->GetPositions(rToFill, eMode);
+    }
+    if (SwXParagraph* pPara = dynamic_cast<SwXParagraph*>(xTextRange.get()))
+    {
+        return pPara->SelectPaM(rToFill);
+    }
 
     SwXHeadFootText* pHeadText
         = eMode == TextRangeMode::AllowTableNode ? dynamic_cast<SwXHeadFootText*>(xTextRange.get()) : nullptr;
@@ -1153,44 +1197,39 @@ bool XTextRangeToSwPaM( SwUnoInternalPaM & rToFill,
     {
         pCursor = dynamic_cast<OTextCursorHelper*>(xTextRange.get());
     }
+    SwDoc* pDoc = nullptr;
+    const SwPaM* pUnoCursor = nullptr;
+    if (pCursor)
+    {
+        pDoc = pCursor->GetDoc();
+        pUnoCursor = pCursor->GetPaM();
+    }
+    else if (SwXTextPortion* pPortion = dynamic_cast<SwXTextPortion*>(xTextRange.get()))
+    {
+        pDoc = &pPortion->GetCursor().GetDoc();
+        pUnoCursor = &pPortion->GetCursor();
+    }
+    return XTextRangeToSwPaMImpl(rToFill, pDoc, pUnoCursor);
+}
 
-    SwXTextRange* pRange = dynamic_cast<SwXTextRange*>(xTextRange.get());
-    if(pRange && &pRange->GetDoc() == &rToFill.GetDoc())
+static bool XTextRangeToSwPaMImpl( SwUnoInternalPaM & rToFill,
+        const SwDoc* pDoc,
+        const SwPaM* pUnoCursor)
+{
+    bool bRet = false;
+    if (pUnoCursor && pDoc == &rToFill.GetDoc())
     {
-        bRet = pRange->GetPositions(rToFill, eMode);
-    }
-    else if (SwXParagraph* pPara = dynamic_cast<SwXParagraph*>(xTextRange.get()))
-    {
-        bRet = pPara->SelectPaM(rToFill);
-    }
-    else
-    {
-        SwDoc* pDoc = nullptr;
-        const SwPaM* pUnoCursor = nullptr;
-        if (pCursor)
+        OSL_ENSURE(!pUnoCursor->IsMultiSelection(),
+                "what to do about rings?");
+        bRet = true;
+        *rToFill.GetPoint() = *pUnoCursor->GetPoint();
+        if (pUnoCursor->HasMark())
         {
-            pDoc = pCursor->GetDoc();
-            pUnoCursor = pCursor->GetPaM();
+            rToFill.SetMark();
+            *rToFill.GetMark() = *pUnoCursor->GetMark();
         }
-        else if (SwXTextPortion* pPortion = dynamic_cast<SwXTextPortion*>(xTextRange.get()))
-        {
-            pDoc = &pPortion->GetCursor().GetDoc();
-            pUnoCursor = &pPortion->GetCursor();
-        }
-        if (pUnoCursor && pDoc == &rToFill.GetDoc())
-        {
-            OSL_ENSURE(!pUnoCursor->IsMultiSelection(),
-                    "what to do about rings?");
-            bRet = true;
-            *rToFill.GetPoint() = *pUnoCursor->GetPoint();
-            if (pUnoCursor->HasMark())
-            {
-                rToFill.SetMark();
-                *rToFill.GetMark() = *pUnoCursor->GetMark();
-            }
-            else
-                rToFill.DeleteMark();
-        }
+        else
+            rToFill.DeleteMark();
     }
     return bRet;
 }
@@ -1217,7 +1256,7 @@ lcl_IsStartNodeInFormat(const bool bHeader, SwStartNode const *const pSttNode,
             if ( !rFlyContent.GetContentIdx() )
                 return false;
             const SwNode& rNode = rFlyContent.GetContentIdx()->GetNode();
-            SwStartNode const*const pCurSttNode = rNode.FindSttNodeByType(
+            SwStartNode const*const pCurSttNode = rNode.FindStartNodeByType(
                 bHeader ? SwHeaderStartNode : SwFooterStartNode);
             if (pCurSttNode && (pCurSttNode == pSttNode))
             {
@@ -1233,7 +1272,8 @@ lcl_IsStartNodeInFormat(const bool bHeader, SwStartNode const *const pSttNode,
 
 rtl::Reference< SwXTextRange >
 SwXTextRange::CreateXTextRange(
-    SwDoc & rDoc, const SwPosition& rPos, const SwPosition *const pMark)
+    SwDoc & rDoc, const SwPosition& rPos, const SwPosition *const pMark,
+    RangePosition const eRange)
 {
     const uno::Reference<text::XText> xParentText(
             ::sw::CreateParentXText(rDoc, rPos));
@@ -1245,7 +1285,7 @@ SwXTextRange::CreateXTextRange(
     }
     const bool isCell( dynamic_cast<SwXCell*>(xParentText.get()) );
     return new SwXTextRange(*pNewCursor, xParentText,
-            isCell ? RANGE_IN_CELL : RANGE_IN_TEXT);
+            eRange, isCell);
 }
 
 namespace sw {
@@ -1326,14 +1366,15 @@ CreateParentXText(SwDoc & rDoc, const SwPosition& rPos)
             for (size_t n = 0; n < nFootnoteCnt; ++n )
             {
                 const SwTextFootnote* pTextFootnote = rDoc.GetFootnoteIdxs()[ n ];
-                const SwFormatFootnote& rFootnote = pTextFootnote->GetFootnote();
-                pTextFootnote = rFootnote.GetTextFootnote();
+                const SwFormatFootnote& rFormatFootnote = pTextFootnote->GetFootnote();
+                assert(pTextFootnote == rFormatFootnote.GetTextFootnote());
+                assert(&pTextFootnote->GetStartNode()->GetNode() == pTextFootnote->GetStartNode()->GetNode().
+                                    FindStartNodeByType(SwFootnoteStartNode));
 
-                if (pSttNode == pTextFootnote->GetStartNode()->GetNode().
-                                    FindSttNodeByType(SwFootnoteStartNode))
+                if (pSttNode == &pTextFootnote->GetStartNode()->GetNode())
                 {
                     xParentText = SwXFootnote::CreateXFootnote(rDoc,
-                            &const_cast<SwFormatFootnote&>(rFootnote));
+                            &const_cast<SwFormatFootnote&>(rFormatFootnote));
                     break;
                 }
             }
@@ -1344,10 +1385,8 @@ CreateParentXText(SwDoc & rDoc, const SwPosition& rPos)
             if (SwDocShell *const pDocSh = rDoc.GetDocShell())
             {
                 // then it is the body text
-                const uno::Reference<frame::XModel> xModel = pDocSh->GetBaseModel();
-                const uno::Reference< text::XTextDocument > xDoc(
-                    xModel, uno::UNO_QUERY);
-                xParentText = dynamic_cast<SwXText*>(xDoc->getText().get());
+                const rtl::Reference<SwXTextDocument> xModel = pDocSh->GetBaseModel();
+                xParentText = xModel->getBodyText();
             }
         }
     }
@@ -1364,18 +1403,18 @@ SwXTextRange::createContentEnumeration(const OUString& rServiceName)
 
     if ( rServiceName != "com.sun.star.text.TextContent" )
     {
-        throw uno::RuntimeException("unsupported service");
+        throw uno::RuntimeException(u"unsupported service"_ustr);
     }
 
-    if (!m_pImpl->GetBookmark())
+    if (!m_pMark)
     {
-        throw uno::RuntimeException("range has no mark (table?)");
+        throw uno::RuntimeException(u"range has no mark (table?)"_ustr);
     }
     const SwPosition aPos(GetDoc().GetNodes().GetEndOfContent());
-    const auto pNewCursor(m_pImpl->m_rDoc.CreateUnoCursor(aPos));
+    const auto pNewCursor(m_rDoc.CreateUnoCursor(aPos));
     if (!GetPositions(*pNewCursor))
     {
-        throw uno::RuntimeException("range has no positions");
+        throw uno::RuntimeException(u"range has no positions"_ustr);
     }
 
     return SwXParaFrameEnumeration::Create(*pNewCursor, PARAFRAME_PORTION_TEXTRANGE);
@@ -1386,24 +1425,24 @@ SwXTextRange::createEnumeration()
 {
     SolarMutexGuard g;
 
-    if (!m_pImpl->GetBookmark())
+    if (!m_pMark)
     {
-        throw uno::RuntimeException("range has no mark (table?)");
+        throw uno::RuntimeException(u"range has no mark (table?)"_ustr);
     }
     const SwPosition aPos(GetDoc().GetNodes().GetEndOfContent());
-    auto pNewCursor(m_pImpl->m_rDoc.CreateUnoCursor(aPos));
+    auto pNewCursor(m_rDoc.CreateUnoCursor(aPos));
     if (!GetPositions(*pNewCursor))
     {
-        throw uno::RuntimeException("range has no positions");
+        throw uno::RuntimeException(u"range has no positions"_ustr);
     }
-    if (!m_pImpl->m_xParentText.is())
+    if (!m_xParentText.is())
     {
         getText();
     }
 
-    const CursorType eSetType = (RANGE_IN_CELL == m_pImpl->m_eRangePosition)
+    const CursorType eSetType = m_isRangeInCell
             ? CursorType::SelectionInTable : CursorType::Selection;
-    return SwXParagraphEnumeration::Create(m_pImpl->m_xParentText, pNewCursor, eSetType);
+    return SwXParagraphEnumeration::Create(m_xParentText, pNewCursor, eSetType);
 }
 
 uno::Type SAL_CALL SwXTextRange::getElementType()
@@ -1419,7 +1458,7 @@ sal_Bool SAL_CALL SwXTextRange::hasElements()
 uno::Sequence< OUString > SAL_CALL
 SwXTextRange::getAvailableServiceNames()
 {
-    uno::Sequence<OUString> aRet { "com.sun.star.text.TextContent" };
+    uno::Sequence<OUString> aRet { u"com.sun.star.text.TextContent"_ustr };
     return aRet;
 }
 
@@ -1429,7 +1468,7 @@ SwXTextRange::getPropertySetInfo()
     SolarMutexGuard aGuard;
 
     static uno::Reference< beans::XPropertySetInfo > xRef =
-        m_pImpl->m_rPropSet.getPropertySetInfo();
+        m_rPropSet.getPropertySetInfo();
     return xRef;
 }
 
@@ -1439,13 +1478,13 @@ SwXTextRange::setPropertyValue(
 {
     SolarMutexGuard aGuard;
 
-    if (!m_pImpl->GetBookmark())
+    if (!m_pMark && (m_eRangePosition != RANGE_IS_SECTION || !m_pTableOrSectionFormat))
     {
-        throw uno::RuntimeException("range has no mark (table?)");
+        throw uno::RuntimeException(u"range has no mark (table?)"_ustr);
     }
     SwPaM aPaM(GetDoc().GetNodes());
-    GetPositions(aPaM);
-    SwUnoCursorHelper::SetPropertyValue(aPaM, m_pImpl->m_rPropSet,
+    GetPositions(aPaM, ::sw::TextRangeMode::AllowNonTextNode);
+    SwUnoCursorHelper::SetPropertyValue(aPaM, m_rPropSet,
             rPropertyName, rValue);
 }
 
@@ -1454,13 +1493,13 @@ SwXTextRange::getPropertyValue(const OUString& rPropertyName)
 {
     SolarMutexGuard aGuard;
 
-    if (!m_pImpl->GetBookmark())
+    if (!m_pMark && (m_eRangePosition != RANGE_IS_SECTION || !m_pTableOrSectionFormat))
     {
-        throw uno::RuntimeException("range has no mark (table?)");
+        throw uno::RuntimeException(u"range has no mark (table?)"_ustr);
     }
     SwPaM aPaM(GetDoc().GetNodes());
-    GetPositions(aPaM);
-    return SwUnoCursorHelper::GetPropertyValue(aPaM, m_pImpl->m_rPropSet,
+    GetPositions(aPaM, ::sw::TextRangeMode::AllowNonTextNode);
+    return SwUnoCursorHelper::GetPropertyValue(aPaM, m_rPropSet,
             rPropertyName);
 }
 
@@ -1501,13 +1540,13 @@ SwXTextRange::getPropertyState(const OUString& rPropertyName)
 {
     SolarMutexGuard aGuard;
 
-    if (!m_pImpl->GetBookmark())
+    if (!m_pMark && (m_eRangePosition != RANGE_IS_SECTION || !m_pTableOrSectionFormat))
     {
-        throw uno::RuntimeException("range has no mark (table?)");
+        throw uno::RuntimeException(u"range has no mark (table?)"_ustr);
     }
     SwPaM aPaM(GetDoc().GetNodes());
-    GetPositions(aPaM);
-    return SwUnoCursorHelper::GetPropertyState(aPaM, m_pImpl->m_rPropSet,
+    GetPositions(aPaM, ::sw::TextRangeMode::AllowNonTextNode);
+    return SwUnoCursorHelper::GetPropertyState(aPaM, m_rPropSet,
             rPropertyName);
 }
 
@@ -1516,13 +1555,13 @@ SwXTextRange::getPropertyStates(const uno::Sequence< OUString >& rPropertyName)
 {
     SolarMutexGuard g;
 
-    if (!m_pImpl->GetBookmark())
+    if (!m_pMark && (m_eRangePosition != RANGE_IS_SECTION || !m_pTableOrSectionFormat))
     {
-        throw uno::RuntimeException("range has no mark (table?)");
+        throw uno::RuntimeException(u"range has no mark (table?)"_ustr);
     }
     SwPaM aPaM(GetDoc().GetNodes());
-    GetPositions(aPaM);
-    return SwUnoCursorHelper::GetPropertyStates(aPaM, m_pImpl->m_rPropSet,
+    GetPositions(aPaM, ::sw::TextRangeMode::AllowNonTextNode);
+    return SwUnoCursorHelper::GetPropertyStates(aPaM, m_rPropSet,
             rPropertyName);
 }
 
@@ -1530,13 +1569,13 @@ void SAL_CALL SwXTextRange::setPropertyToDefault(const OUString& rPropertyName)
 {
     SolarMutexGuard aGuard;
 
-    if (!m_pImpl->GetBookmark())
+    if (!m_pMark && (m_eRangePosition != RANGE_IS_SECTION || !m_pTableOrSectionFormat))
     {
-        throw uno::RuntimeException("range has no mark (table?)");
+        throw uno::RuntimeException(u"range has no mark (table?)"_ustr);
     }
     SwPaM aPaM(GetDoc().GetNodes());
-    GetPositions(aPaM);
-    SwUnoCursorHelper::SetPropertyToDefault(aPaM, m_pImpl->m_rPropSet,
+    GetPositions(aPaM, ::sw::TextRangeMode::AllowNonTextNode);
+    SwUnoCursorHelper::SetPropertyToDefault(aPaM, m_rPropSet,
             rPropertyName);
 }
 
@@ -1545,13 +1584,13 @@ SwXTextRange::getPropertyDefault(const OUString& rPropertyName)
 {
     SolarMutexGuard aGuard;
 
-    if (!m_pImpl->GetBookmark())
+    if (!m_pMark && (m_eRangePosition != RANGE_IS_SECTION || !m_pTableOrSectionFormat))
     {
-        throw uno::RuntimeException("range has no mark (table?)");
+        throw uno::RuntimeException(u"range has no mark (table?)"_ustr);
     }
     SwPaM aPaM(GetDoc().GetNodes());
-    GetPositions(aPaM);
-    return SwUnoCursorHelper::GetPropertyDefault(aPaM, m_pImpl->m_rPropSet,
+    GetPositions(aPaM, ::sw::TextRangeMode::AllowNonTextNode);
+    return SwUnoCursorHelper::GetPropertyDefault(aPaM, m_rPropSet,
             rPropertyName);
 }
 
@@ -1562,9 +1601,9 @@ SwXTextRange::makeRedline(
 {
     SolarMutexGuard aGuard;
 
-    if (!m_pImpl->GetBookmark())
+    if (!m_pMark)
     {
-        throw uno::RuntimeException("range has no mark (table?)");
+        throw uno::RuntimeException(u"range has no mark (table?)"_ustr);
     }
     SwPaM aPaM(GetDoc().GetNodes());
     SwXTextRange::GetPositions(aPaM);
@@ -1578,11 +1617,11 @@ struct SwXTextRangesImpl final : public SwXTextRanges
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override
-        { return "SwXTextRanges"; };
+        { return u"SwXTextRanges"_ustr; };
     virtual sal_Bool SAL_CALL supportsService( const OUString& rServiceName) override
         { return cppu::supportsService(this, rServiceName); };
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override
-        { return { "com.sun.star.text.TextRanges" }; };
+        { return { u"com.sun.star.text.TextRanges"_ustr }; };
 
     // XElementAccess
     virtual css::uno::Type SAL_CALL getElementType() override
@@ -1685,11 +1724,11 @@ struct SwXParaFrameEnumerationImpl final : public SwXParaFrameEnumeration
 {
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override
-        { return "SwXParaFrameEnumeration"; };
+        { return u"SwXParaFrameEnumeration"_ustr; };
     virtual sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override
         { return cppu::supportsService(this, rServiceName); };
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override
-        { return {"com.sun.star.util.ContentEnumeration"}; };
+        { return {u"com.sun.star.util.ContentEnumeration"_ustr}; };
 
     // XEnumeration
     virtual sal_Bool SAL_CALL hasMoreElements() override;
@@ -1812,24 +1851,24 @@ uno::Reference<text::XTextContent> FrameClientToXTextContent(sw::FrameClient* pC
     else
     {
         const SwNodeIndex* pIdx = pFormat->GetContent().GetContentIdx();
-        OSL_ENSURE(pIdx, "where is the index?");
+        assert(pIdx && "where is the index?");
         SwNode const* const pNd = pIdx->GetNodes()[pIdx->GetIndex() + 1];
 
         if (!pNd->IsNoTextNode())
         {
             xRet = static_cast<SwXFrame*>(SwXTextFrame::CreateXTextFrame(
-                        *pFormat->GetDoc(), pFormat).get());
+                        pFormat->GetDoc(), pFormat).get());
         }
         else if (pNd->IsGrfNode())
         {
             xRet.set(SwXTextGraphicObject::CreateXTextGraphicObject(
-                        *pFormat->GetDoc(), pFormat));
+                        pFormat->GetDoc(), pFormat));
         }
         else
         {
             assert(pNd->IsOLENode());
             xRet.set(SwXTextEmbeddedObject::CreateXTextEmbeddedObject(
-                        *pFormat->GetDoc(), pFormat));
+                        pFormat->GetDoc(), pFormat));
         }
     }
     return xRet;

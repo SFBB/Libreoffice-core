@@ -22,10 +22,8 @@
 #include <ChartTypeManager.hxx>
 #include <strings.hrc>
 #include <ResId.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartModel.hxx>
 #include <ChartTypeTemplate.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <unonames.hxx>
 
@@ -43,7 +41,7 @@ using namespace ::com::sun::star::chart2;
 
 ChartTypeTabPage::ChartTypeTabPage(weld::Container* pPage, weld::DialogController* pController, rtl::Reference<::chart::ChartModel> xChartModel,
                                    bool bShowDescription)
-    : OWizardPage(pPage, pController, "modules/schart/ui/tp_ChartType.ui", "tp_ChartType")
+    : OWizardPage(pPage, pController, u"modules/schart/ui/tp_ChartType.ui"_ustr, u"tp_ChartType"_ustr)
     , m_pDim3DLookResourceGroup( new Dim3DLookResourceGroup(m_xBuilder.get()) )
     , m_pStackingResourceGroup( new StackingResourceGroup(m_xBuilder.get()) )
     , m_pSplineResourceGroup( new SplineResourceGroup(m_xBuilder.get(), pController->getDialog()) )
@@ -54,10 +52,10 @@ ChartTypeTabPage::ChartTypeTabPage(weld::Container* pPage, weld::DialogControlle
     , m_pCurrentMainType(nullptr)
     , m_nChangingCalls(0)
     , m_aTimerTriggeredControllerLock( m_xChartModel )
-    , m_xFT_ChooseType(m_xBuilder->weld_label("FT_CAPTION_FOR_WIZARD"))
-    , m_xMainTypeList(m_xBuilder->weld_tree_view("charttype"))
-    , m_xSubTypeList(new ValueSet(m_xBuilder->weld_scrolled_window("subtypewin", true)))
-    , m_xSubTypeListWin(new weld::CustomWeld(*m_xBuilder, "subtype", *m_xSubTypeList))
+    , m_xFT_ChooseType(m_xBuilder->weld_label(u"FT_CAPTION_FOR_WIZARD"_ustr))
+    , m_xMainTypeList(m_xBuilder->weld_tree_view(u"charttype"_ustr))
+    , m_xSubTypeList(new ValueSet(m_xBuilder->weld_scrolled_window(u"subtypewin"_ustr, true)))
+    , m_xSubTypeListWin(new weld::CustomWeld(*m_xBuilder, u"subtype"_ustr, *m_xSubTypeList))
 {
     Size aSize(m_xSubTypeList->GetDrawingArea()->get_ref_device().LogicToPixel(Size(150, 50), MapMode(MapUnit::MapAppFont)));
     m_xSubTypeListWin->set_size_request(aSize.Width(), aSize.Height());
@@ -73,11 +71,15 @@ ChartTypeTabPage::ChartTypeTabPage(weld::Container* pPage, weld::DialogControlle
 
     SetPageTitle(SchResId(STR_PAGE_CHARTTYPE));
 
-    m_xMainTypeList->connect_changed(LINK(this, ChartTypeTabPage, SelectMainTypeHdl));
+    m_xMainTypeList->connect_selection_changed(LINK(this, ChartTypeTabPage, SelectMainTypeHdl));
     m_xSubTypeList->SetSelectHdl( LINK( this, ChartTypeTabPage, SelectSubTypeHdl ) );
 
     m_xSubTypeList->SetStyle(m_xSubTypeList->GetStyle() |
         WB_ITEMBORDER | WB_DOUBLEBORDER | WB_NAMEFIELD | WB_FLATVALUESET | WB_3DLOOK );
+    // Set number of columns in chart type selector.
+    // TODO: Ideally this would not be hard-coded, but determined
+    // programmatically based on the maximum number of chart types across all
+    // controllers.
     m_xSubTypeList->SetColCount(4);
     m_xSubTypeList->SetLineCount(1);
 
@@ -87,7 +89,7 @@ ChartTypeTabPage::ChartTypeTabPage(weld::Container* pPage, weld::DialogControlle
     {
         try
         {
-            xProps->getPropertyValue("EnableComplexChartTypes") >>= bEnableComplexChartTypes;
+            xProps->getPropertyValue(u"EnableComplexChartTypes"_ustr) >>= bEnableComplexChartTypes;
         }
         catch( const uno::Exception& )
         {
@@ -97,7 +99,9 @@ ChartTypeTabPage::ChartTypeTabPage(weld::Container* pPage, weld::DialogControlle
 
     m_aChartTypeDialogControllerList.push_back(std::make_unique<ColumnChartDialogController>());
     m_aChartTypeDialogControllerList.push_back(std::make_unique<BarChartDialogController>());
+    m_aChartTypeDialogControllerList.push_back(std::make_unique<HistogramChartDialogController>());
     m_aChartTypeDialogControllerList.push_back(std::make_unique<PieChartDialogController>());
+    m_aChartTypeDialogControllerList.push_back(std::make_unique<OfPieChartDialogController>());
     m_aChartTypeDialogControllerList.push_back(std::make_unique<AreaChartDialogController>());
     m_aChartTypeDialogControllerList.push_back(std::make_unique<LineChartDialogController>());
     if (bEnableComplexChartTypes)
@@ -116,7 +120,7 @@ ChartTypeTabPage::ChartTypeTabPage(weld::Container* pPage, weld::DialogControlle
 
     for (auto const& elem : m_aChartTypeDialogControllerList)
     {
-        m_xMainTypeList->append("", elem->getName(), elem->getImage());
+        m_xMainTypeList->append(u""_ustr, elem->getName(), elem->getImage());
         elem->setChangeListener( this );
     }
 
@@ -162,7 +166,8 @@ void ChartTypeTabPage::commitToModel( const ChartTypeParameter& rParameter )
         return;
 
     m_aTimerTriggeredControllerLock.startTimer();
-    m_pCurrentMainType->commitToModel( rParameter, m_xChartModel );
+    uno::Reference< beans::XPropertySet > xTemplateProps( static_cast<cppu::OWeakObject*>(getCurrentTemplate().get()), uno::UNO_QUERY );
+    m_pCurrentMainType->commitToModel( rParameter, m_xChartModel, xTemplateProps );
 }
 
 void ChartTypeTabPage::stateChanged()

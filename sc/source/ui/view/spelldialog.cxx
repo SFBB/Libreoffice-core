@@ -132,7 +132,7 @@ void ScSpellDialogChildWindow::Reset()
             SCCOL nNewCol = mpViewData->GetCurX();
             SCROW nNewRow = mpViewData->GetCurY();
             mpDocShell->GetUndoManager()->AddUndoAction( std::make_unique<ScUndoConversion>(
-                mpDocShell, mpViewData->GetMarkData(),
+                *mpDocShell, mpViewData->GetMarkData(),
                 nOldCol, nOldRow, nTab, std::move(mxUndoDoc),
                 nNewCol, nNewRow, nTab, std::move(mxRedoDoc),
                 ScConversionParam( SC_CONVERSION_SPELLCHECK ) ) );
@@ -173,11 +173,11 @@ void ScSpellDialogChildWindow::Init()
 
     // exit edit mode - TODO support spelling in edit mode
     if( mpViewData->HasEditView( mpViewData->GetActivePart() ) )
-        SC_MOD()->InputEnterHandler();
+        ScModule::get()->InputEnterHandler();
 
     mxOldSel.reset( new ScSelectionState( *mpViewData ) );
 
-    mpDocShell = mpViewData->GetDocShell();
+    mpDocShell = &mpViewData->GetDocShell();
     mpDoc = &mpDocShell->GetDocument();
 
     const ScAddress& rCursor = mxOldSel->GetCellCursor();
@@ -245,10 +245,10 @@ void ScSpellDialogChildWindow::Init()
     // *** create and init the edit engine *** --------------------------------
 
     mxEngine.reset( new ScSpellingEngine(
-        mpDoc->GetEnginePool(), *mpViewData, mxUndoDoc.get(), mxRedoDoc.get(), LinguMgr::GetSpellChecker() ) );
+        mpDoc->GetEditEnginePool(), *mpViewData, mxUndoDoc.get(), mxRedoDoc.get(), LinguMgr::GetSpellChecker() ) );
     mxEngine->SetRefDevice( mpViewData->GetActiveWin()->GetOutDev() );
 
-    mpViewShell->MakeEditView( mxEngine.get(), nCol, nRow );
+    mpViewShell->MakeEditView(*mxEngine, nCol, nRow);
     EditView* pEditView = mpViewData->GetEditView( mpViewData->GetActivePart() );
     mpViewData->SetSpellingView( pEditView );
     tools::Rectangle aRect( Point( 0, 0 ), Point( 0, 0 ) );
@@ -269,7 +269,7 @@ bool ScSpellDialogChildWindow::IsSelectionChanged()
         return true;
 
     if( EditView* pEditView = mpViewData->GetSpellingView() )
-        if( pEditView->GetEditEngine() != mxEngine.get() )
+        if (&pEditView->getEditEngine() != mxEngine.get())
             return true;
 
     ScRangeList aCurrentRangeList;

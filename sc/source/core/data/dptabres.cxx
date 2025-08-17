@@ -876,7 +876,7 @@ OUString ScDPResultData::GetMeasureDimensionName(tools::Long nMeasure) const
     if ( nMeasure < 0 )
     {
         OSL_FAIL("GetMeasureDimensionName: negative");
-        return "***";
+        return u"***"_ustr;
     }
 
     return mrSource.GetDataDimName(nMeasure);
@@ -1797,7 +1797,7 @@ void ScDPResultMember::UpdateRunningTotals( const ScDPResultMember* pRefMember, 
 #if DUMP_PIVOT_TABLE
 void ScDPResultMember::DumpState( const ScDPResultMember* pRefMember, ScDocument* pDoc, ScAddress& rPos ) const
 {
-    dumpRow("ScDPResultMember", GetName(), nullptr, pDoc, rPos);
+    dumpRow(u"ScDPResultMember"_ustr, GetName(), nullptr, pDoc, rPos);
     SCROW nStartRow = rPos.Row();
 
     if (pDataRoot)
@@ -2657,7 +2657,7 @@ void ScDPDataMember::UpdateRunningTotals(
 #if DUMP_PIVOT_TABLE
 void ScDPDataMember::DumpState( const ScDPResultMember* pRefMember, ScDocument* pDoc, ScAddress& rPos ) const
 {
-    dumpRow("ScDPDataMember", GetName(), &aAggregate, pDoc, rPos);
+    dumpRow(u"ScDPDataMember"_ustr, GetName(), &aAggregate, pDoc, rPos);
     SCROW nStartRow = rPos.Row();
 
     const ScDPDataDimension* pDataChild = GetChildDimension();
@@ -3471,8 +3471,8 @@ ScDPDataMember* ScDPResultDimension::GetColReferenceMember(
 #if DUMP_PIVOT_TABLE
 void ScDPResultDimension::DumpState( const ScDPResultMember* pRefMember, ScDocument* pDoc, ScAddress& rPos ) const
 {
-    OUString aDimName = bIsDataLayout ? OUString("(data layout)") : GetName();
-    dumpRow("ScDPResultDimension", aDimName, nullptr, pDoc, rPos);
+    OUString aDimName = bIsDataLayout ? u"(data layout)"_ustr : GetName();
+    dumpRow(u"ScDPResultDimension"_ustr, aDimName, nullptr, pDoc, rPos);
 
     SCROW nStartRow = rPos.Row();
 
@@ -3621,7 +3621,8 @@ void ScDPDataDimension::FillDataRow(
     FilterStack aFilterStack(rFilterCxt.maFilters);
     aFilterStack.pushDimName(aDimName, bDataLayout);
 
-    OSL_ENSURE( pRefDim && static_cast<size_t>(pRefDim->GetMemberCount()) == maMembers.size(), "dimensions don't match" );
+    assert(pRefDim);
+    OSL_ENSURE( static_cast<size_t>(pRefDim->GetMemberCount()) == maMembers.size(), "dimensions don't match" );
     OSL_ENSURE( pRefDim == pResultDimension, "wrong dim" );
 
     const ScMemberSortOrder& rMemberOrder = pRefDim->GetMemberOrder();
@@ -3654,7 +3655,8 @@ void ScDPDataDimension::UpdateDataRow( const ScDPResultDimension* pRefDim,
                                     tools::Long nMeasure, bool bIsSubTotalRow,
                                     const ScDPSubTotalState& rSubState ) const
 {
-    OSL_ENSURE( pRefDim && static_cast<size_t>(pRefDim->GetMemberCount()) == maMembers.size(), "dimensions don't match" );
+    assert(pRefDim);
+    OSL_ENSURE( static_cast<size_t>(pRefDim->GetMemberCount()) == maMembers.size(), "dimensions don't match" );
     OSL_ENSURE( pRefDim == pResultDimension, "wrong dim" );
 
     tools::Long nMemberMeasure = nMeasure;
@@ -3719,7 +3721,8 @@ void ScDPDataDimension::DoAutoShow( ScDPResultDimension* pRefDim )
 
     // handle children first, before changing the visible state
 
-    OSL_ENSURE( pRefDim && static_cast<size_t>(pRefDim->GetMemberCount()) == maMembers.size(), "dimensions don't match" );
+    assert(pRefDim);
+    OSL_ENSURE( static_cast<size_t>(pRefDim->GetMemberCount()) == maMembers.size(), "dimensions don't match" );
     OSL_ENSURE( pRefDim == pResultDimension, "wrong dim" );
 
     // for data layout, call only once - sorting measure is always taken from settings
@@ -3808,7 +3811,8 @@ void ScDPDataDimension::UpdateRunningTotals( const ScDPResultDimension* pRefDim,
                                     const ScDPSubTotalState& rSubState, ScDPRunningTotalState& rRunning,
                                     ScDPRowTotals& rTotals, const ScDPResultMember& rRowParent ) const
 {
-    OSL_ENSURE( pRefDim && static_cast<size_t>(pRefDim->GetMemberCount()) == maMembers.size(), "dimensions don't match" );
+    assert(pRefDim);
+    OSL_ENSURE( static_cast<size_t>(pRefDim->GetMemberCount()) == maMembers.size(), "dimensions don't match" );
     OSL_ENSURE( pRefDim == pResultDimension, "wrong dim" );
 
     tools::Long nMemberMeasure = nMeasure;
@@ -3847,8 +3851,8 @@ void ScDPDataDimension::UpdateRunningTotals( const ScDPResultDimension* pRefDim,
 #if DUMP_PIVOT_TABLE
 void ScDPDataDimension::DumpState( const ScDPResultDimension* pRefDim, ScDocument* pDoc, ScAddress& rPos ) const
 {
-    OUString aDimName = bIsDataLayout ? OUString("(data layout)") : OUString("(unknown)");
-    dumpRow("ScDPDataDimension", aDimName, nullptr, pDoc, rPos);
+    OUString aDimName = bIsDataLayout ? u"(data layout)"_ustr : u"(unknown)"_ustr;
+    dumpRow(u"ScDPDataDimension"_ustr, aDimName, nullptr, pDoc, rPos);
 
     SCROW nStartRow = rPos.Row();
 
@@ -3952,7 +3956,7 @@ void ScDPResultVisibilityData::fillFieldFilters(vector<ScDPFilteredCache::Criter
         ScDPMembers* pMembers = pDim->GetHierarchiesObject()->getByIndex(0)->
             GetLevelsObject()->getByIndex(0)->GetMembersObject();
         if (pGrpFilter->getMatchItemCount() < o3tl::make_unsigned(pMembers->getCount()))
-            rFilters.push_back(aCri);
+            rFilters.push_back(std::move(aCri));
     }
 }
 

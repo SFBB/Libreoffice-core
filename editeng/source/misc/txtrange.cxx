@@ -305,9 +305,8 @@ void SvxBoundArgs::Calc( const tools::PolyPolygon& rPoly )
 {
     sal_uInt16 nCount;
     nAct = 0;
-    for( sal_uInt16 i = 0; i < rPoly.Count(); ++i )
+    for( auto const& rPol : rPoly )
     {
-        const tools::Polygon& rPol = rPoly[ i ];
         nCount = rPol.GetSize();
         if( nCount )
         {
@@ -457,7 +456,7 @@ void SvxBoundArgs::Add()
                 nBoolIdx = nBoolIdx - next;
                 nCount = nCount - next;
                 aBoolArr.erase( aBoolArr.begin() + nBoolIdx, aBoolArr.begin() + (nBoolIdx + next) );
-                if( nBoolIdx )
+                if (nBoolIdx > 0)
                     aBoolArr[ nBoolIdx - 1 ] = false;
 #if OSL_DEBUG_LEVEL > 1
                 else

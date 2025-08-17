@@ -28,7 +28,6 @@
 #include <sfx2/viewfrm.hxx>
 #include <svl/ptitem.hxx>
 #include <svx/svdobj.hxx>
-#include <svx/svdogrp.hxx>
 #include <svx/svdouno.hxx>
 #include <svx/extrusionbar.hxx>
 #include <svx/fontworkbar.hxx>
@@ -46,6 +45,8 @@
 #include <drwlayer.hxx>
 #include <drtxtob.hxx>
 #include <gridwin.hxx>
+#include <scmod.hxx>
+#include <appoptio.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/xflgrit.hxx>
 #include <comphelper/lok.hxx>
@@ -55,26 +56,27 @@
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <sfx2/ipclient.hxx>
 
-using namespace com::sun::star::drawing;
 using namespace com::sun::star;
 
 
 ScDrawShell::ScDrawShell( ScViewData& rData ) :
     SfxShell(rData.GetViewShell()),
-    rViewData( rData ),
-    mpSelectionChangeHandler(new svx::sidebar::SelectionChangeHandler(
-            [this] () { return this->GetSidebarContextName(); },
-            GetFrame()->GetFrame().GetController(),
-            vcl::EnumContext::Context::Cell))
+    rViewData( rData )
 {
+    SfxViewFrame* pFrame = GetFrame();
+    assert(pFrame);
+    mpSelectionChangeHandler = new svx::sidebar::SelectionChangeHandler(
+            [this] () { return this->GetSidebarContextName(); },
+            pFrame->GetFrame().GetController(),
+            vcl::EnumContext::Context::Cell);
     SetPool( &rViewData.GetScDrawView()->GetModel().GetItemPool() );
-    SfxUndoManager* pMgr = rViewData.GetSfxDocShell()->GetUndoManager();
+    SfxUndoManager* pMgr = rViewData.GetSfxDocShell().GetUndoManager();
     SetUndoManager( pMgr );
     if ( !rViewData.GetDocument().IsUndoEnabled() )
     {
         pMgr->SetMaxUndoActionCount( 0 );
     }
-    SetName("Drawing");
+    SetName(u"Drawing"_ustr);
 
     mpSelectionChangeHandler->Connect();
 }
@@ -92,6 +94,8 @@ void ScDrawShell::GetState( SfxItemSet& rSet )          // Conditions / Toggles
     rSet.Put( SfxBoolItem( SID_OBJECT_ROTATE, eMode == SdrDragMode::Rotate ) );
     rSet.Put( SfxBoolItem( SID_OBJECT_MIRROR, eMode == SdrDragMode::Mirror ) );
     rSet.Put( SfxBoolItem( SID_BEZIER_EDIT, !pView->IsFrameDragSingles() ) );
+    rSet.Put(SfxBoolItem(SID_CLICK_CHANGE_ROTATION,
+                         ScModule::get()->GetAppOptions().IsClickChangeRotation()));
 
     sal_uInt16 nFWId = ScGetFontWorkId();
     SfxViewFrame& rViewFrm = rViewData.GetViewShell()->GetViewFrame();
@@ -220,6 +224,7 @@ void ScDrawShell::GetDrawFuncState( SfxItemSet& rSet )      // disable functions
     {
         // no hyperlink options for a selected group
         rSet.DisableItem( SID_EDIT_HYPERLINK );
+        rSet.DisableItem( SID_INSERT_HYPERLINK );
         rSet.DisableItem( SID_REMOVE_HYPERLINK );
         rSet.DisableItem( SID_OPEN_HYPERLINK );
         rSet.DisableItem( SID_COPY_HYPERLINK_LOCATION );
@@ -235,6 +240,10 @@ void ScDrawShell::GetDrawFuncState( SfxItemSet& rSet )      // disable functions
             rSet.DisableItem( SID_OPEN_HYPERLINK );
             rSet.DisableItem( SID_REMOVE_HYPERLINK );
             rSet.DisableItem( SID_COPY_HYPERLINK_LOCATION );
+        }
+        else
+        {
+            rSet.DisableItem( SID_INSERT_HYPERLINK );
         }
         SdrLayerID nLayerID = pObj->GetLayer();
         if ( nLayerID != SC_LAYER_INTERN )
@@ -301,6 +310,7 @@ void ScDrawShell::GetDrawFuncState( SfxItemSet& rSet )      // disable functions
         rSet.DisableItem( SID_ORIGINALSIZE );
         rSet.DisableItem( SID_FITCELLSIZE );
         rSet.DisableItem( SID_ATTR_TRANSFORM );
+        rSet.DisableItem( SID_INSERT_HYPERLINK );
     }
 
     if ( rSet.GetItemState( SID_ENABLE_HYPHENATION ) != SfxItemState::UNKNOWN )
@@ -343,12 +353,12 @@ static void setupFillColorForChart(const SfxViewShell* pShell, SfxItemSet& rSet)
     if (!xInfo.is())
         return;
 
-    if (xInfo->hasPropertyByName("FillColor"))
+    if (xInfo->hasPropertyByName(u"FillColor"_ustr))
     {
         sal_uInt32 nFillColor = 0;
-        xPropSet->getPropertyValue("FillColor") >>= nFillColor;
+        xPropSet->getPropertyValue(u"FillColor"_ustr) >>= nFillColor;
 
-        XFillColorItem aFillColorItem("", Color(ColorTransparency, nFillColor));
+        XFillColorItem aFillColorItem(u""_ustr, Color(ColorTransparency, nFillColor));
         rSet.Put(aFillColorItem);
 
         if (comphelper::LibreOfficeKit::isActive())
@@ -356,11 +366,11 @@ static void setupFillColorForChart(const SfxViewShell* pShell, SfxItemSet& rSet)
                     (".uno:FillColor=" + OString::number(nFillColor)));
     }
 
-    if (!(comphelper::LibreOfficeKit::isActive() && xInfo->hasPropertyByName("FillGradientName")))
+    if (!(comphelper::LibreOfficeKit::isActive() && xInfo->hasPropertyByName(u"FillGradientName"_ustr)))
         return;
 
     OUString aGradientName;
-    xPropSet->getPropertyValue("FillGradientName") >>= aGradientName;
+    xPropSet->getPropertyValue(u"FillGradientName"_ustr) >>= aGradientName;
 
     ::css::uno::Reference< ::css::frame::XController > xChartController = xChart->getCurrentController();
     if( !xChartController.is() )
@@ -372,7 +382,7 @@ static void setupFillColorForChart(const SfxViewShell* pShell, SfxItemSet& rSet)
         return;
 
     css::uno::Reference<css::container::XNameAccess> xNameAccess(
-        xFact->createInstance("com.sun.star.drawing.GradientTable"), css::uno::UNO_QUERY);
+        xFact->createInstance(u"com.sun.star.drawing.GradientTable"_ustr), css::uno::UNO_QUERY);
 
     if (xNameAccess.is() && xNameAccess->hasByName(aGradientName))
     {
@@ -394,7 +404,8 @@ void ScDrawShell::GetDrawAttrState( SfxItemSet& rSet )
     vcl::Window*     pWindow     = rViewData.GetActiveWin();
     ScDrawView* pDrView     = rViewData.GetScDrawView();
     Point       aPos        = pWindow->PixelToLogic(aMousePos);
-    bool        bHasMarked  = pDrView->AreObjectsMarked();
+    const SdrMarkList& rMarkList = pDrView->GetMarkedObjectList();
+    bool        bHasMarked  = rMarkList.GetMarkCount() != 0;
 
     if( bHasMarked )
     {
@@ -450,7 +461,7 @@ void ScDrawShell::GetDrawAttrState( SfxItemSet& rSet )
     if ( bActionItem )
         return;
 
-    if ( pDrView->AreObjectsMarked() )      // selected objects
+    if ( rMarkList.GetMarkCount() != 0 )      // selected objects
     {
         tools::Rectangle aRect = pDrView->GetAllMarkedRect();
         pPV->LogicToPagePos(aRect);
@@ -522,6 +533,7 @@ bool ScDrawShell::AreAllObjectsOnLayer(SdrLayerID nLayerNo,const SdrMarkList& rM
     for (size_t i=0; i<nCount; ++i)
     {
         SdrObject* pObj = rMark.GetMark(i)->GetMarkedSdrObj();
+        assert(pObj);
         if ( dynamic_cast<const SdrUnoObj*>( pObj) ==  nullptr )
         {
             if(nLayerNo!=pObj->GetLayer())
@@ -548,10 +560,13 @@ void ScDrawShell::GetDrawAttrStateForIFBX( SfxItemSet& rSet )
 
 void ScDrawShell::Activate (const bool)
 {
-    ContextChangeEventMultiplexer::NotifyContextChange(
-        GetFrame()->GetFrame().GetController(),
-        vcl::EnumContext::GetContextEnum(
-            GetSidebarContextName()));
+    if (SfxViewFrame* pFrame = GetFrame())
+    {
+        ContextChangeEventMultiplexer::NotifyContextChange(
+            pFrame->GetFrame().GetController(),
+            vcl::EnumContext::GetContextEnum(
+                GetSidebarContextName()));
+    }
 }
 
 const OUString & ScDrawShell::GetSidebarContextName()

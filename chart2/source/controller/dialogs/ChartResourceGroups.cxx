@@ -29,8 +29,8 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 
 Dim3DLookResourceGroup::Dim3DLookResourceGroup(weld::Builder* pBuilder)
-    : m_xCB_3DLook(pBuilder->weld_check_button("3dlook"))
-    , m_xLB_Scheme(pBuilder->weld_combo_box("3dscheme"))
+    : m_xCB_3DLook(pBuilder->weld_check_button(u"3dlook"_ustr))
+    , m_xLB_Scheme(pBuilder->weld_combo_box(u"3dscheme"_ustr))
 {
     m_xCB_3DLook->connect_toggled(LINK(this, Dim3DLookResourceGroup, Dim3DLookCheckHdl));
     m_xLB_Scheme->connect_changed(LINK(this, Dim3DLookResourceGroup, SelectSchemeHdl));
@@ -87,7 +87,7 @@ IMPL_LINK_NOARG(Dim3DLookResourceGroup, SelectSchemeHdl, weld::ComboBox&, void)
 }
 
 SortByXValuesResourceGroup::SortByXValuesResourceGroup(weld::Builder* pBuilder)
-    : m_xCB_XValueSorting(pBuilder->weld_check_button("sort"))
+    : m_xCB_XValueSorting(pBuilder->weld_check_button(u"sort"_ustr))
 {
     m_xCB_XValueSorting->connect_toggled(
         LINK(this, SortByXValuesResourceGroup, SortByXValuesCheckHdl));
@@ -115,10 +115,10 @@ IMPL_LINK_NOARG(SortByXValuesResourceGroup, SortByXValuesCheckHdl, weld::Togglea
 }
 
 StackingResourceGroup::StackingResourceGroup(weld::Builder* pBuilder)
-    : m_xCB_Stacked(pBuilder->weld_check_button("stack"))
-    , m_xRB_Stack_Y(pBuilder->weld_radio_button("ontop"))
-    , m_xRB_Stack_Y_Percent(pBuilder->weld_radio_button("percent"))
-    , m_xRB_Stack_Z(pBuilder->weld_radio_button("deep"))
+    : m_xCB_Stacked(pBuilder->weld_check_button(u"stack"_ustr))
+    , m_xRB_Stack_Y(pBuilder->weld_radio_button(u"ontop"_ustr))
+    , m_xRB_Stack_Y_Percent(pBuilder->weld_radio_button(u"percent"_ustr))
+    , m_xRB_Stack_Z(pBuilder->weld_radio_button(u"deep"_ustr))
 {
     m_xCB_Stacked->connect_toggled(LINK(this, StackingResourceGroup, StackingEnableHdl));
     m_xRB_Stack_Y->connect_toggled(LINK(this, StackingResourceGroup, StackingChangeHdl));
@@ -142,9 +142,6 @@ void StackingResourceGroup::fillControls(const ChartTypeParameter& rParameter)
                != GlobalStackMode_STACK_Z); //todo remove this condition if z stacking radio button is really used
     switch (rParameter.eStackMode)
     {
-        case GlobalStackMode_STACK_Y:
-            m_xRB_Stack_Y->set_active(true);
-            break;
         case GlobalStackMode_STACK_Y_PERCENT:
             m_xRB_Stack_Y_Percent->set_active(true);
             break;
@@ -157,6 +154,7 @@ void StackingResourceGroup::fillControls(const ChartTypeParameter& rParameter)
             */
             m_xRB_Stack_Y->set_active(true);
             break;
+        case GlobalStackMode_STACK_Y:
         default:
             m_xRB_Stack_Y->set_active(true);
             break;
@@ -198,14 +196,14 @@ IMPL_LINK_NOARG(StackingResourceGroup, StackingEnableHdl, weld::Toggleable&, voi
 
 SplineResourceGroup::SplineResourceGroup(weld::Builder* pBuilder, weld::Window* pParent)
     : m_pParent(pParent)
-    , m_xFT_LineType(pBuilder->weld_label("linetypeft"))
-    , m_xLB_LineType(pBuilder->weld_combo_box("linetype"))
-    , m_xPB_DetailsDialog(pBuilder->weld_button("properties"))
+    , m_xFT_LineType(pBuilder->weld_label(u"linetypeft"_ustr))
+    , m_xLB_LineType(pBuilder->weld_combo_box(u"linetype"_ustr))
+    , m_xPB_DetailsDialog(pBuilder->weld_button(u"properties"_ustr))
 {
     m_xLB_LineType->connect_changed(LINK(this, SplineResourceGroup, LineTypeChangeHdl));
 }
 
-std::shared_ptr<SplinePropertiesDialog> SplineResourceGroup::getSplinePropertiesDialog()
+const std::shared_ptr<SplinePropertiesDialog>& SplineResourceGroup::getSplinePropertiesDialog()
 {
     if (!m_xSplinePropertiesDialog)
     {
@@ -214,7 +212,7 @@ std::shared_ptr<SplinePropertiesDialog> SplineResourceGroup::getSplineProperties
     return m_xSplinePropertiesDialog;
 }
 
-std::shared_ptr<SteppedPropertiesDialog> SplineResourceGroup::getSteppedPropertiesDialog()
+const std::shared_ptr<SteppedPropertiesDialog>& SplineResourceGroup::getSteppedPropertiesDialog()
 {
     if (!m_xSteppedPropertiesDialog)
     {

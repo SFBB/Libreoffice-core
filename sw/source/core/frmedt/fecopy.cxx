@@ -20,6 +20,7 @@
 #include <memory>
 #include <hintids.hxx>
 
+#include <officecfg/Office/Writer.hxx>
 #include <vcl/graph.hxx>
 #include <sot/formats.hxx>
 #include <svx/xfillit0.hxx>
@@ -74,7 +75,7 @@
 using namespace ::com::sun::star;
 
 // Copy for the internal clipboard. Copies all selections to the clipboard.
-void SwFEShell::Copy( SwDoc& rClpDoc, const OUString* pNewClpText )
+void SwFEShell::Copy( SwDoc& rClpDoc, const OUString* pNewClpText, bool bDeleteRedlines )
 {
     rClpDoc.GetIDocumentUndoRedo().DoUndo(false); // always false!
 
@@ -118,7 +119,10 @@ void SwFEShell::Copy( SwDoc& rClpDoc, const OUString* pNewClpText )
     }
 
     rClpDoc.getIDocumentFieldsAccess().LockExpFields();
-    rClpDoc.getIDocumentRedlineAccess().SetRedlineFlags_intern( RedlineFlags::DeleteRedlines );
+    if (bDeleteRedlines)
+    {
+        rClpDoc.getIDocumentRedlineAccess().SetRedlineFlags_intern( RedlineFlags::DeleteRedlines );
+    }
 
     // do we want to copy a FlyFrame?
     if( IsFrameSelected() )
@@ -171,7 +175,7 @@ void SwFEShell::Copy( SwDoc& rClpDoc, const OUString* pNewClpText )
             }
         }
     }
-    else if ( IsObjSelected() )
+    else if ( GetSelectedObjCount() )
     {
         SwPosition aPos( aSttIdx, pTextNd, 0 );
         const SdrMarkList &rMrkList = Imp()->GetDrawView()->GetMarkedObjectList();
@@ -195,18 +199,20 @@ void SwFEShell::Copy( SwDoc& rClpDoc, const OUString* pNewClpText )
             }
             else
             {
-                SwDrawContact *pContact = static_cast<SwDrawContact*>(GetUserCall( pObj ));
-                SwFrameFormat *pFormat = pContact->GetFormat();
-                SwFormatAnchor aAnchor( pFormat->GetAnchor() );
-                if ((RndStdIds::FLY_AT_PARA == aAnchor.GetAnchorId()) ||
-                    (RndStdIds::FLY_AT_CHAR == aAnchor.GetAnchorId()) ||
-                    (RndStdIds::FLY_AT_FLY  == aAnchor.GetAnchorId()) ||
-                    (RndStdIds::FLY_AS_CHAR == aAnchor.GetAnchorId()))
+                if (SwDrawContact *pContact = static_cast<SwDrawContact*>(GetUserCall( pObj )))
                 {
-                    aAnchor.SetAnchor( &aPos );
-                }
+                    SwFrameFormat *pFormat = pContact->GetFormat();
+                    SwFormatAnchor aAnchor( pFormat->GetAnchor() );
+                    if ((RndStdIds::FLY_AT_PARA == aAnchor.GetAnchorId()) ||
+                        (RndStdIds::FLY_AT_CHAR == aAnchor.GetAnchorId()) ||
+                        (RndStdIds::FLY_AT_FLY  == aAnchor.GetAnchorId()) ||
+                        (RndStdIds::FLY_AS_CHAR == aAnchor.GetAnchorId()))
+                    {
+                        aAnchor.SetAnchor( &aPos );
+                    }
 
-                rClpDoc.getIDocumentLayoutAccess().CopyLayoutFormat( *pFormat, aAnchor, true, true );
+                    rClpDoc.getIDocumentLayoutAccess().CopyLayoutFormat( *pFormat, aAnchor, true, true );
+                }
             }
         }
     }
@@ -297,6 +303,9 @@ bool SwFEShell::CopyDrawSel( SwFEShell& rDestShell, const Point& rSttPt,
         SdrObject *pObj = aMrkList.GetMark( i )->GetMarkedSdrObj();
 
         SwDrawContact *pContact = static_cast<SwDrawContact*>(GetUserCall( pObj ));
+        if (!pContact)
+            continue;
+
         SwFrameFormat *pFormat = pContact->GetFormat();
         const SwFormatAnchor& rAnchor = pFormat->GetAnchor();
 
@@ -442,7 +451,7 @@ bool SwFEShell::Copy( SwFEShell& rDestShell, const Point& rSttPt,
 {
     bool bRet = false;
 
-    OSL_ENSURE( this == &rDestShell || !rDestShell.IsObjSelected(),
+    OSL_ENSURE( this == &rDestShell || !rDestShell.GetSelectedObjCount(),
             "Dest-Shell cannot be in Obj-Mode" );
 
     CurrShell aCurr( &rDestShell );
@@ -561,7 +570,7 @@ bool SwFEShell::Copy( SwFEShell& rDestShell, const Point& rSttPt,
                 rDestShell.Imp()->GetDrawView()->hideMarkHandles();
         }
     }
-    else if ( IsObjSelected() )
+    else if ( GetSelectedObjCount() )
         bRet = CopyDrawSel( rDestShell, rSttPt, rInsPt, bIsMove, bSelectInsert );
     else if( IsTableMode() )
     {
@@ -687,7 +696,7 @@ namespace {
             return false;
         }
 
-        for(const sw::SpzFrameFormat* pSpzFormat: *pFormat->GetDoc()->GetSpzFrameFormats())
+        for(const sw::SpzFrameFormat* pSpzFormat: *pFormat->GetDoc().GetSpzFrameFormats())
         {
             if (pSpzFormat->Which() != RES_FLYFRMFMT)
             {
@@ -793,7 +802,8 @@ namespace {
         return pNew;
     }
 
-    void lcl_SelectFlyFormat(SwFrameFormat *const pNew, SwFEShell& rSh)
+    void lcl_InitSelectFlyOrDrawFormat(SwFrameFormat *const pNew,
+            SwFEShell & rSh, bool const isSelect)
     {
         if(!pNew)
             return;
@@ -802,21 +812,27 @@ namespace {
             case RES_FLYFRMFMT:
             {
                 assert(dynamic_cast<SwFlyFrameFormat*>(pNew));
-                const Point aPt(rSh.GetCursorDocPos());
-                SwFlyFrame* pFlyFrame = static_cast<SwFlyFrameFormat*>(pNew)->GetFrame(&aPt);
-                if(pFlyFrame)
-                    rSh.SelectFlyFrame(*pFlyFrame);
+                if (isSelect)
+                {
+                    const Point aPt(rSh.GetCursorDocPos());
+                    SwFlyFrame* pFlyFrame = static_cast<SwFlyFrameFormat*>(pNew)->GetFrame(&aPt);
+                    if (pFlyFrame)
+                        rSh.SelectFlyFrame(*pFlyFrame);
+                }
                 break;
             }
             case RES_DRAWFRMFMT:
             {
-                auto& rDrawView = *rSh.Imp()->GetDrawView();
                 assert(dynamic_cast<SwDrawFrameFormat*>(pNew));
                 SwDrawFrameFormat* pDrawFormat = static_cast<SwDrawFrameFormat*>(pNew);
                 // #i52780# - drawing object has to be made visible on paste.
                 pDrawFormat->CallSwClientNotify(sw::DrawFrameFormatHint(sw::DrawFrameFormatHintId::PREPPASTING));
-                SdrObject* pObj = pDrawFormat->FindSdrObject();
-                rDrawView.MarkObj(pObj, rDrawView.GetSdrPageView());
+                if (isSelect)
+                {
+                    auto& rDrawView = *rSh.Imp()->GetDrawView();
+                    SdrObject* pObj = pDrawFormat->FindSdrObject();
+                    rDrawView.MarkObj(pObj, rDrawView.GetSdrPageView());
+                }
                 // #i47455# - notify draw frame format
                 // that position attributes are already set.
                 pDrawFormat->PosAttrSet();
@@ -1009,7 +1025,7 @@ bool SwFEShell::Paste(SwDoc& rClpDoc, bool bNestedTable)
                 {
                     // exit first the complete table
                     // ???? what about only table in a frame ?????
-                    SwContentNode* pCNd = GetDoc()->GetNodes().GoNext( &aNdIdx );
+                    SwContentNode* pCNd = SwNodes::GoNext(&aNdIdx);
                     SwPosition aPos( aNdIdx, pCNd, 0 );
                     // #i59539: Don't remove all redline
                     SwPaM const tmpPaM(*pDestNd, *pDestNd->EndOfSectionNode());
@@ -1024,7 +1040,7 @@ bool SwFEShell::Paste(SwDoc& rClpDoc, bool bNestedTable)
                 {
                     // return to the box
                     aNdIdx = *pSttNd;
-                    SwContentNode* pCNd = GetDoc()->GetNodes().GoNext( &aNdIdx );
+                    SwContentNode* pCNd = SwNodes::GoNext(&aNdIdx);
                     SwPosition aPos( aNdIdx, pCNd, 0 );
                     // #i59539: Don't remove all redline
                     SwNode & rNode(rPaM.GetPoint()->GetNode());
@@ -1055,9 +1071,10 @@ bool SwFEShell::Paste(SwDoc& rClpDoc, bool bNestedTable)
                             lcl_PasteFlyOrDrawFormat(rPaM, pFlyFormat, *this));
                     }
                 }
+                bool const isSelect{officecfg::Office::Writer::Cursor::Option::SelectPastedAnchoredObject::get()};
                 for (auto const pFlyFormat : inserted)
                 {
-                    lcl_SelectFlyFormat(pFlyFormat, *this);
+                    lcl_InitSelectFlyOrDrawFormat(pFlyFormat, *this, isSelect);
                 }
             }
             else
@@ -1088,8 +1105,23 @@ bool SwFEShell::Paste(SwDoc& rClpDoc, bool bNestedTable)
 
                     --aIndexBefore;
 
+                    // copying to the clipboard, the section is inserted
+                    // at the start of the nodes, followed by empty text node
+                    bool const isSourceSection(aCpyPam.Start()->GetNode().IsSectionNode()
+                        && aCpyPam.End()->GetNodeIndex() == aCpyPam.Start()->GetNode().EndOfSectionIndex() + 1
+                        && aCpyPam.End()->GetNode().IsTextNode()
+                        && aCpyPam.End()->GetNode().GetTextNode()->Len() == 0);
+
                     rClpDoc.getIDocumentContentOperations().CopyRange(aCpyPam, rInsPos, SwCopyFlags::CheckPosInFly);
                     // Note: aCpyPam is invalid now
+
+                    if (isSourceSection
+                        && aIndexBefore.GetNode().IsStartNode()
+                        && rInsPos.GetNode().GetTextNode()->Len() == 0)
+                    {   // if there is an empty text node at the start, it
+                        // should be *replaced* by the section, so delete it
+                        GetDoc()->getIDocumentContentOperations().DelFullPara(rPaM);
+                    }
 
                     ++aIndexBefore;
                     SwPaM aPaM(aIndexBefore.GetNode(), rInsPos.GetNode());
@@ -1147,7 +1179,7 @@ void SwFEShell::PastePages( SwFEShell& rToFill, sal_uInt16 nStartPage, sal_uInt1
     }
     MovePage( GetThisFrame, GetFirstSub );
     ::std::optional<SwPaM> oSourcePam( *GetCursor()->GetPoint() );
-    OUString sStartingPageDesc = GetPageDesc( GetCurPageDesc()).GetName();
+    UIName sStartingPageDesc = GetPageDesc( GetCurPageDesc()).GetName();
     SwPageDesc* pDesc = rToFill.FindPageDescByName( sStartingPageDesc, true );
     if( pDesc )
         rToFill.ChgCurPageDesc( *pDesc );
@@ -1244,7 +1276,7 @@ bool SwFEShell::GetDrawObjGraphic( SotClipboardFormatId nFormat, Graphic& rGrf )
                     {
                         if( GraphicType::Bitmap != aGrf.GetType() )
                         {
-                            rGrf = aGrf;
+                            rGrf = std::move(aGrf);
                             bConvert = false;
                         }
                         else if( GetWin() )
@@ -1271,7 +1303,7 @@ bool SwFEShell::GetDrawObjGraphic( SotClipboardFormatId nFormat, Graphic& rGrf )
                     }
                     else if( GraphicType::Bitmap == aGrf.GetType() )
                     {
-                        rGrf = aGrf;
+                        rGrf = std::move(aGrf);
                         bConvert = false;
                     }
                     else
@@ -1287,11 +1319,11 @@ bool SwFEShell::GetDrawObjGraphic( SotClipboardFormatId nFormat, Graphic& rGrf )
                         if( pVirtDev->SetOutputSize( aSz ) )
                         {
                             aGrf.Draw(*pVirtDev, Point(), aSz);
-                            rGrf = pVirtDev->GetBitmapEx( Point(), aSz );
+                            rGrf = pVirtDev->GetBitmap( Point(), aSz );
                         }
                         else
                         {
-                            rGrf = aGrf;
+                            rGrf = std::move(aGrf);
                             bConvert = false;
                         }
                     }
@@ -1301,7 +1333,7 @@ bool SwFEShell::GetDrawObjGraphic( SotClipboardFormatId nFormat, Graphic& rGrf )
         else if( SotClipboardFormatId::GDIMETAFILE == nFormat )
             rGrf = Imp()->GetDrawView()->GetMarkedObjMetaFile();
         else if( SotClipboardFormatId::BITMAP == nFormat || SotClipboardFormatId::PNG == nFormat )
-            rGrf = Imp()->GetDrawView()->GetMarkedObjBitmapEx();
+            rGrf = Imp()->GetDrawView()->GetMarkedObjBitmap();
     }
     return bConvert;
 }
@@ -1357,8 +1389,6 @@ void SwFEShell::Paste( SvStream& rStrm, SwPasteSdr nAction, const Point* pPt )
             nullptr,
             GetDoc()->GetDocShell()));
 
-    pModel->GetItemPool().FreezeIdRanges();
-
     rStrm.Seek(0);
 
     uno::Reference< io::XInputStream > xInputStream( new utl::OInputStreamWrapper( rStrm ) );
@@ -1381,6 +1411,7 @@ void SwFEShell::Paste( SvStream& rStrm, SwPasteSdr nAction, const Point* pPt )
 
         SdrObject* pClpObj = pModel->GetPage(0)->GetObj(0);
         SdrObject* pOldObj = pView->GetMarkedObjectList().GetMark( 0 )->GetMarkedSdrObj();
+        assert(pOldObj);
 
         if( SwPasteSdr::SetAttr == nAction && dynamic_cast<const SwVirtFlyDrawObj*>( pOldObj) !=  nullptr )
             nAction = SwPasteSdr::Replace;
@@ -1440,7 +1471,7 @@ void SwFEShell::Paste( SvStream& rStrm, SwPasteSdr nAction, const Point* pPt )
                         const SwTextFrame* pTmp = static_cast<const SwTextFrame*>(pAnchor);
                         do {
                             pTmp = pTmp->FindMaster();
-                            OSL_ENSURE( pTmp, "Where's my Master?" );
+                            assert(pTmp && "Where's my Master?");
                         } while( pTmp->IsFollow() );
                         pAnchor = pTmp;
                     }
@@ -1550,6 +1581,7 @@ void SwFEShell::Paste( SvStream& rStrm, SwPasteSdr nAction, const Point* pPt )
             if ( nCnt > 1 )
                 pView->GroupMarked();
             SdrObject *pObj = pView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
+            assert(pObj);
             if( dynamic_cast<const SdrUnoObj*>( pObj) !=  nullptr )
             {
                 pObj->SetLayer( GetDoc()->getIDocumentDrawModelAccess().GetControlsId() );

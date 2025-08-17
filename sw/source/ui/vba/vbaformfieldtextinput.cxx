@@ -25,7 +25,7 @@ using namespace ::com::sun::star;
  */
 SwVbaFormFieldTextInput::SwVbaFormFieldTextInput(
     const uno::Reference<ooo::vba::XHelperInterface>& rParent,
-    const uno::Reference<uno::XComponentContext>& rContext, sw::mark::IFieldmark& rFormField)
+    const uno::Reference<uno::XComponentContext>& rContext, sw::mark::Fieldmark& rFormField)
     : SwVbaFormFieldTextInput_BASE(rParent, rContext)
     , m_rTextInput(rFormField)
 {
@@ -33,7 +33,7 @@ SwVbaFormFieldTextInput::SwVbaFormFieldTextInput(
 
 SwVbaFormFieldTextInput::~SwVbaFormFieldTextInput() {}
 
-OUString SwVbaFormFieldTextInput::getDefaultPropertyName() { return "Valid"; }
+OUString SwVbaFormFieldTextInput::getDefaultPropertyName() { return u"Valid"_ustr; }
 
 sal_Bool SwVbaFormFieldTextInput::getValid()
 {
@@ -102,7 +102,7 @@ void SwVbaFormFieldTextInput::Clear()
     if (!getValid() || m_rTextInput.GetContent().isEmpty())
         return;
 
-    m_rTextInput.ReplaceContent("");
+    m_rTextInput.ReplaceContent(u""_ustr);
 }
 
 void SwVbaFormFieldTextInput::EditType(sal_Int32 nType, const uno::Any& rDefault,
@@ -119,11 +119,11 @@ void SwVbaFormFieldTextInput::EditType(sal_Int32 nType, const uno::Any& rDefault
                            << "] bEnabled[" << bEnabled << "] stub");
 }
 
-OUString SwVbaFormFieldTextInput::getServiceImplName() { return "SwVbaFormFieldTextInput"; }
+OUString SwVbaFormFieldTextInput::getServiceImplName() { return u"SwVbaFormFieldTextInput"_ustr; }
 
 uno::Sequence<OUString> SwVbaFormFieldTextInput::getServiceNames()
 {
-    static uno::Sequence<OUString> const aServiceNames{ "ooo.vba.word.TextInput" };
+    static uno::Sequence<OUString> const aServiceNames{ u"ooo.vba.word.TextInput"_ustr };
     return aServiceNames;
 }
 

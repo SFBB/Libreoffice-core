@@ -30,7 +30,6 @@
 #include <swmodule.hxx>
 #include <view.hxx>
 
-using namespace svt;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
@@ -197,15 +196,15 @@ void SwGreetingsHandler::Contains(bool bContainsGreeting)
 }
 
 SwMailMergeGreetingsPage::SwMailMergeGreetingsPage(weld::Container* pPage, SwMailMergeWizard* pWizard)
-    : vcl::OWizardPage(pPage, pWizard, "modules/swriter/ui/mmsalutationpage.ui", "MMSalutationPage")
+    : vcl::OWizardPage(pPage, pWizard, u"modules/swriter/ui/mmsalutationpage.ui"_ustr, u"MMSalutationPage"_ustr)
     , SwGreetingsHandler(pWizard->GetConfigItem(), *m_xBuilder)
-    , m_xPreview(new SwAddressPreview(m_xBuilder->weld_scrolled_window("previewwin", true)))
-    , m_xPreviewFI(m_xBuilder->weld_label("previewft"))
-    , m_xAssignPB(m_xBuilder->weld_button("assign"))
-    , m_xDocumentIndexFI(m_xBuilder->weld_label("documentindex"))
-    , m_xPrevSetIB(m_xBuilder->weld_button("prev"))
-    , m_xNextSetIB(m_xBuilder->weld_button("next"))
-    , m_xPreviewWIN(new weld::CustomWeld(*m_xBuilder, "preview", *m_xPreview))
+    , m_xPreview(new SwAddressPreview(m_xBuilder->weld_scrolled_window(u"previewwin"_ustr, true)))
+    , m_xPreviewFI(m_xBuilder->weld_label(u"previewft"_ustr))
+    , m_xAssignPB(m_xBuilder->weld_button(u"assign"_ustr))
+    , m_xDocumentIndexFI(m_xBuilder->weld_label(u"documentindex"_ustr))
+    , m_xPrevSetIB(m_xBuilder->weld_button(u"prev"_ustr))
+    , m_xNextSetIB(m_xBuilder->weld_button(u"next"_ustr))
+    , m_xPreviewWIN(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, *m_xPreview))
 {
     m_pWizard = pWizard;
 
@@ -338,11 +337,11 @@ IMPL_LINK(SwMailMergeGreetingsPage, InsertDataHdl_Impl, weld::Button&, rButton, 
     m_xDocumentIndexFI->set_label(m_sDocument.replaceFirst("%1", OUString::number(nPos)));
 }
 
-SwMailBodyDialog::SwMailBodyDialog(weld::Window* pParent)
-    : SfxDialogController(pParent, "modules/swriter/ui/mmmailbody.ui", "MailBodyDialog")
-    , SwGreetingsHandler(*GetActiveView()->GetMailMergeConfigItem(), *m_xBuilder)
-    , m_xBodyMLE(m_xBuilder->weld_text_view("bodymle"))
-    , m_xOK(m_xBuilder->weld_button("ok"))
+SwMailBodyDialog::SwMailBodyDialog(weld::Window* pParent, std::shared_ptr<SwMailMergeConfigItem> const & rConfigItem)
+    : SfxDialogController(pParent, u"modules/swriter/ui/mmmailbody.ui"_ustr, u"MailBodyDialog"_ustr)
+    , SwGreetingsHandler(*rConfigItem, *m_xBuilder)
+    , m_xBodyMLE(m_xBuilder->weld_text_view(u"bodymle"_ustr))
+    , m_xOK(m_xBuilder->weld_button(u"ok"_ustr))
 {
     m_bIsTabPage = false;
     m_xBodyMLE->set_size_request(m_xBodyMLE->get_approximate_digit_width() * 45,

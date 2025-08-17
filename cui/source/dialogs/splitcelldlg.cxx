@@ -20,11 +20,12 @@
 #include <splitcelldlg.hxx>
 
 SvxSplitTableDlg::SvxSplitTableDlg(weld::Window *pParent, bool bIsTableVertical, tools::Long nMaxVertical, tools::Long nMaxHorizontal)
-    : GenericDialogController(pParent, "cui/ui/splitcellsdialog.ui", "SplitCellsDialog")
-    , m_xCountEdit(m_xBuilder->weld_spin_button("countnf"))
-    , m_xHorzBox(!bIsTableVertical ? m_xBuilder->weld_radio_button("hori") : m_xBuilder->weld_radio_button("vert"))
-    , m_xVertBox(!bIsTableVertical ? m_xBuilder->weld_radio_button("vert") : m_xBuilder->weld_radio_button("hori"))
-    , m_xPropCB(m_xBuilder->weld_check_button("prop"))
+    : GenericDialogController(pParent, u"cui/ui/splitcellsdialog.ui"_ustr, u"SplitCellsDialog"_ustr)
+    , m_xCountEdit(m_xBuilder->weld_spin_button(u"countnf"_ustr))
+    , m_xGrid(m_xBuilder->weld_grid("directiongrid"))
+    , m_xHorzBox(!bIsTableVertical ? m_xBuilder->weld_radio_button(u"hori"_ustr) : m_xBuilder->weld_radio_button(u"vert"_ustr))
+    , m_xVertBox(!bIsTableVertical ? m_xBuilder->weld_radio_button(u"vert"_ustr) : m_xBuilder->weld_radio_button(u"hori"_ustr))
+    , m_xPropCB(m_xBuilder->weld_check_button(u"prop"_ustr))
     , mnMaxVertical(nMaxVertical)
     , mnMaxHorizontal(nMaxHorizontal)
 {
@@ -42,10 +43,10 @@ SvxSplitTableDlg::SvxSplitTableDlg(weld::Window *pParent, bool bIsTableVertical,
     //exchange the meaning of horizontal and vertical for vertical text
     if (bIsTableVertical)
     {
-        int nHorzTopAttach = m_xHorzBox->get_grid_top_attach();
-        int nVertTopAttach = m_xVertBox->get_grid_top_attach();
-        m_xHorzBox->set_grid_top_attach(nVertTopAttach);
-        m_xVertBox->set_grid_top_attach(nHorzTopAttach);
+        int nHorzTopAttach = m_xGrid->get_child_top_attach(*m_xHorzBox);
+        int nVertTopAttach = m_xGrid->get_child_top_attach(*m_xVertBox);
+        m_xGrid->set_child_top_attach(*m_xHorzBox, nVertTopAttach);
+        m_xGrid->set_child_top_attach(*m_xVertBox, nHorzTopAttach);
         m_xHorzBox->set_active(m_xVertBox->get_active());
     }
 }
@@ -79,36 +80,6 @@ void SvxSplitTableDlg::SetSplitVerticalByDefault()
 {
     if( mnMaxVertical >= 2 )
         m_xVertBox->set_active(true); // tdf#60242
-}
-
-bool SvxAbstractSplitTableDialog_Impl::IsHorizontal() const
-{
-    return m_xDlg->IsHorizontal();
-}
-
-bool SvxAbstractSplitTableDialog_Impl::IsProportional() const
-{
-    return m_xDlg->IsProportional();
-}
-
-tools::Long SvxAbstractSplitTableDialog_Impl::GetCount() const
-{
-    return m_xDlg->GetCount();
-}
-
-void SvxAbstractSplitTableDialog_Impl::SetSplitVerticalByDefault()
-{
-    m_xDlg->SetSplitVerticalByDefault();
-}
-
-short SvxAbstractSplitTableDialog_Impl::Execute()
-{
-    return m_xDlg->run();
-}
-
-bool SvxAbstractSplitTableDialog_Impl::StartExecuteAsync(AsyncContext& rContext)
-{
-    return weld::DialogController::runAsync(m_xDlg, rContext.maEndDialogFn);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

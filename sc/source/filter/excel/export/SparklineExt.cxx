@@ -34,7 +34,7 @@ void SparklineExt::SaveXml(XclExpXmlStream& rStream)
     if (!pSparklineList)
         return;
 
-    auto const& rSparklineGroups = pSparklineList->getSparklineGroups();
+    auto const aSparklineGroups = pSparklineList->getSparklineGroups();
 
     sax_fastparser::FSHelperPtr& rWorksheet = rStream.GetCurrentStream();
     rWorksheet->startElement(XML_ext, FSNS(XML_xmlns, XML_x14),
@@ -43,10 +43,10 @@ void SparklineExt::SaveXml(XclExpXmlStream& rStream)
     rWorksheet->startElementNS(XML_x14, XML_sparklineGroups, FSNS(XML_xmlns, XML_xm),
                                rStream.getNamespaceURL(OOX_NS(xm)));
 
-    for (auto const& pSparklineGroup : rSparklineGroups)
+    for (auto const& pSparklineGroup : aSparklineGroups)
     {
-        auto const& rSparklineVector = pSparklineList->getSparklinesFor(pSparklineGroup);
-        addSparklineGroup(rStream, *pSparklineGroup, rSparklineVector);
+        auto const aSparklineVector = pSparklineList->getSparklinesFor(pSparklineGroup);
+        addSparklineGroup(rStream, *pSparklineGroup, aSparklineVector);
     }
 
     rWorksheet->endElementNS(XML_x14, XML_sparklineGroups);
@@ -54,8 +54,8 @@ void SparklineExt::SaveXml(XclExpXmlStream& rStream)
 }
 
 void SparklineExt::addSparklineGroupAttributes(
-    rtl::Reference<sax_fastparser::FastAttributeList>& pAttrList,
-    sc::SparklineAttributes& rAttributes)
+    const rtl::Reference<sax_fastparser::FastAttributeList>& pAttrList,
+    const sc::SparklineAttributes& rAttributes)
 {
     if (rAttributes.getLineWeight() != 0.75)
         pAttrList->add(XML_lineWeight, OString::number(rAttributes.getLineWeight()));
@@ -123,7 +123,7 @@ void SparklineExt::addSparklineGroupAttributes(
 }
 
 void SparklineExt::addSparklineGroupColors(XclExpXmlStream& rStream,
-                                           sc::SparklineAttributes& rAttributes)
+                                           const sc::SparklineAttributes& rAttributes)
 {
     sax_fastparser::FSHelperPtr& rWorksheet = rStream.GetCurrentStream();
 

@@ -38,18 +38,18 @@ namespace sd {
 
 
 FuLink::FuLink (
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window* pWin,
     ::sd::View* pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest& rReq )
-    : FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+    : FuPoor(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuLink::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuLink::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuLink( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuLink( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
@@ -65,12 +65,17 @@ void FuLink::DoExecute( SfxRequest& )
         return;
     }
 
-    sfx2::LinkManager* pLinkManager = mpDoc->GetLinkManager();
+    sfx2::LinkManager* pLinkManager = mrDoc.GetLinkManager();
 
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-    ScopedVclPtr<SfxAbstractLinksDialog> pDlg(pFact->CreateLinksDialog(mpViewShell->GetFrameWeld(), pLinkManager));
-    pDlg->Execute();
-    mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_MANAGE_LINKS );
+    VclPtr<SfxAbstractLinksDialog> pDlg(pFact->CreateLinksDialog(mrViewShell.GetFrameWeld(), pLinkManager));
+    pDlg->StartExecuteAsync(
+        [pDlg, pViewShell = &mrViewShell] (sal_Int32 /*nResult*/)->void
+        {
+            pViewShell->GetViewFrame()->GetBindings().Invalidate( SID_MANAGE_LINKS );
+            pDlg->disposeOnce();
+        }
+    );
 }
 
 } // end of namespace sd

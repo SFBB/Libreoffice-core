@@ -42,11 +42,10 @@ namespace sdext::presenter {
 
 PresenterSlidePreview::PresenterSlidePreview (
     const Reference<XComponentContext>& rxContext,
-    const Reference<XResourceId>& rxViewId,
-    const Reference<XPane>& rxAnchorPane,
+    const rtl::Reference<sd::framework::ResourceId>& rxViewId,
+    const rtl::Reference<sd::framework::AbstractPane>& rxAnchorPane,
     const ::rtl::Reference<PresenterController>& rpPresenterController)
-    : PresenterSlidePreviewInterfaceBase(m_aMutex),
-      mpPresenterController(rpPresenterController),
+    : mpPresenterController(rpPresenterController),
       mxViewId(rxViewId),
       mnSlideAspectRatio(28.0 / 21.0)
 {
@@ -56,7 +55,7 @@ PresenterSlidePreview::PresenterSlidePreview (
         || ! rpPresenterController.is())
     {
         throw RuntimeException(
-            "PresenterSlidePreview can not be constructed due to empty argument",
+            u"PresenterSlidePreview can not be constructed due to empty argument"_ustr,
             static_cast<XWeak*>(this));
     }
 
@@ -80,11 +79,7 @@ PresenterSlidePreview::PresenterSlidePreview (
 
     Reference<lang::XMultiComponentFactory> xFactory = rxContext->getServiceManager();
     if (xFactory.is())
-        mxPreviewRenderer.set(
-            xFactory->createInstanceWithContext(
-                "com.sun.star.drawing.SlideRenderer",
-                rxContext),
-            UNO_QUERY);
+        mxPreviewRenderer = new sd::presenter::SlideRenderer();
     mpBitmaps = std::make_shared<PresenterBitmapContainer>(
             "PresenterScreenSettings/ScrollBar/Bitmaps",
             std::shared_ptr<PresenterBitmapContainer>(),
@@ -97,7 +92,7 @@ PresenterSlidePreview::~PresenterSlidePreview()
 {
 }
 
-void SAL_CALL PresenterSlidePreview::disposing()
+void PresenterSlidePreview::disposing(std::unique_lock<std::mutex>&)
 {
     if (mxWindow.is())
     {
@@ -107,19 +102,18 @@ void SAL_CALL PresenterSlidePreview::disposing()
         mxCanvas = nullptr;
     }
 
-    Reference<lang::XComponent> xComponent (mxPreviewRenderer, UNO_QUERY);
-    if (xComponent.is())
-        xComponent->dispose();
+    if (mxPreviewRenderer.is())
+        mxPreviewRenderer->dispose();
 }
 
-//----- XResourceId -----------------------------------------------------------
+//----- AbstractResource -----------------------------------------------------------
 
-Reference<XResourceId> SAL_CALL PresenterSlidePreview::getResourceId()
+rtl::Reference<sd::framework::ResourceId> PresenterSlidePreview::getResourceId()
 {
     return mxViewId;
 }
 
-sal_Bool SAL_CALL PresenterSlidePreview::isAnchorOnly()
+bool PresenterSlidePreview::isAnchorOnly()
 {
     return false;
 }
@@ -128,7 +122,10 @@ sal_Bool SAL_CALL PresenterSlidePreview::isAnchorOnly()
 
 void SAL_CALL PresenterSlidePreview::windowResized (const awt::WindowEvent&)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     ::osl::MutexGuard aGuard (::osl::Mutex::getGlobalMutex());
     Resize();
 }
@@ -137,7 +134,10 @@ void SAL_CALL PresenterSlidePreview::windowMoved (const awt::WindowEvent&) {}
 
 void SAL_CALL PresenterSlidePreview::windowShown (const lang::EventObject&)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     ::osl::MutexGuard aGuard (::osl::Mutex::getGlobalMutex());
     Resize();
 }
@@ -148,7 +148,10 @@ void SAL_CALL PresenterSlidePreview::windowHidden (const lang::EventObject&) {}
 
 void SAL_CALL PresenterSlidePreview::windowPaint (const awt::PaintEvent& rEvent)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
 
     ::osl::MutexGuard aGuard (::osl::Mutex::getGlobalMutex());
     if (mxWindow.is())
@@ -175,14 +178,20 @@ void SAL_CALL PresenterSlidePreview::disposing (const lang::EventObject& rEvent)
 
 void SAL_CALL PresenterSlidePreview::setCurrentPage (const Reference<drawing::XDrawPage>& rxSlide)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     ::osl::MutexGuard aGuard (::osl::Mutex::getGlobalMutex());
     SetSlide(rxSlide);
 }
 
 Reference<drawing::XDrawPage> SAL_CALL PresenterSlidePreview::getCurrentPage()
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     return nullptr;
 }
 
@@ -242,7 +251,7 @@ void PresenterSlidePreview::Paint (const awt::Rectangle& rBoundingBox)
     {
         if (mnSlideAspectRatio > 0)
         {
-            const awt::Size aPreviewSize (mxPreviewRenderer->calculatePreviewSize(
+            const awt::Size aPreviewSize (sd::presenter::SlideRenderer::calculatePreviewSize(
                 mnSlideAspectRatio,awt::Size(aWindowBox.Width, aWindowBox.Height)));
             aPreviewBox = awt::Rectangle(
                 (aWindowBox.Width - aPreviewSize.Width)/2,
@@ -278,7 +287,7 @@ void PresenterSlidePreview::Paint (const awt::Rectangle& rBoundingBox)
         if( bTransition )
         {
             const awt::Rectangle aTransitionPreviewBox(5, aWindowBox.Height-20, 0, 0);
-            SharedBitmapDescriptor aTransitionDescriptor = mpBitmaps->GetBitmap("Transition");
+            SharedBitmapDescriptor aTransitionDescriptor = mpBitmaps->GetBitmap(u"Transition"_ustr);
             Reference<rendering::XBitmap> xTransitionIcon (aTransitionDescriptor->GetNormalBitmap());
             rendering::RenderState aTransitionRenderState (
                 geometry::AffineMatrix2D(1, 0, aTransitionPreviewBox.X, 0, 1, aTransitionPreviewBox.Y),
@@ -290,7 +299,7 @@ void PresenterSlidePreview::Paint (const awt::Rectangle& rBoundingBox)
         if( bCustomAnimation )
         {
             const awt::Rectangle aAnimationPreviewBox(5, aWindowBox.Height-40, 0, 0);
-            SharedBitmapDescriptor aAnimationDescriptor = mpBitmaps->GetBitmap("Animation");
+            SharedBitmapDescriptor aAnimationDescriptor = mpBitmaps->GetBitmap(u"Animation"_ustr);
             Reference<rendering::XBitmap> xAnimationIcon (aAnimationDescriptor->GetNormalBitmap());
             rendering::RenderState aAnimationRenderState (
                 geometry::AffineMatrix2D(1, 0, aAnimationPreviewBox.X, 0, 1, aAnimationPreviewBox.Y),
@@ -321,7 +330,7 @@ void PresenterSlidePreview::Resize()
     if (mxPreviewRenderer.is() && mxPreview.is())
     {
         const awt::Rectangle aWindowBox (mxWindow->getPosSize());
-        const awt::Size aNewPreviewSize (mxPreviewRenderer->calculatePreviewSize(
+        const awt::Size aNewPreviewSize (sd::presenter::SlideRenderer::calculatePreviewSize(
             mnSlideAspectRatio,
                 awt::Size(aWindowBox.Width, aWindowBox.Height)));
         const geometry::IntegerSize2D aPreviewSize (mxPreview->getSize());
@@ -335,16 +344,6 @@ void PresenterSlidePreview::Resize()
         }
     }
     SetSlide(mxCurrentSlide);
-}
-
-void PresenterSlidePreview::ThrowIfDisposed()
-{
-    if (PresenterSlidePreviewInterfaceBase::rBHelper.bDisposed || PresenterSlidePreviewInterfaceBase::rBHelper.bInDispose)
-    {
-        throw lang::DisposedException (
-            "PresenterSlidePreview object has already been disposed",
-            static_cast<uno::XWeak*>(this));
-    }
 }
 
 } // end of namespace ::sdext::presenter

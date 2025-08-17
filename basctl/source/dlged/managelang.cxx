@@ -40,7 +40,6 @@
 namespace basctl
 {
 
-using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::resource;
 using namespace ::com::sun::star::uno;
@@ -54,14 +53,14 @@ bool localesAreEqual( const Locale& rLocaleLeft, const Locale& rLocaleRight )
 }
 
 ManageLanguageDialog::ManageLanguageDialog(weld::Window* pParent, std::shared_ptr<LocalizationMgr> xLMgr)
-    : GenericDialogController(pParent, "modules/BasicIDE/ui/managelanguages.ui", "ManageLanguagesDialog")
+    : GenericDialogController(pParent, u"modules/BasicIDE/ui/managelanguages.ui"_ustr, u"ManageLanguagesDialog"_ustr)
     , m_xLocalizationMgr(std::move(xLMgr))
     , m_sDefLangStr(IDEResId(RID_STR_DEF_LANG))
     , m_sCreateLangStr(IDEResId(RID_STR_CREATE_LANG))
-    , m_xLanguageLB(m_xBuilder->weld_tree_view("treeview"))
-    , m_xAddPB(m_xBuilder->weld_button("add"))
-    , m_xDeletePB(m_xBuilder->weld_button("delete"))
-    , m_xMakeDefPB(m_xBuilder->weld_button("default"))
+    , m_xLanguageLB(m_xBuilder->weld_tree_view(u"treeview"_ustr))
+    , m_xAddPB(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xDeletePB(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xMakeDefPB(m_xBuilder->weld_button(u"default"_ustr))
 {
     m_xLanguageLB->set_size_request(m_xLanguageLB->get_approximate_digit_width() * 42,
                                     m_xLanguageLB->get_height_rows(10));
@@ -89,7 +88,7 @@ void ManageLanguageDialog::Init()
     m_xAddPB->connect_clicked( LINK( this, ManageLanguageDialog, AddHdl ) );
     m_xDeletePB->connect_clicked( LINK( this, ManageLanguageDialog, DeleteHdl ) );
     m_xMakeDefPB->connect_clicked( LINK( this, ManageLanguageDialog, MakeDefHdl ) );
-    m_xLanguageLB->connect_changed( LINK( this, ManageLanguageDialog, SelectHdl ) );
+    m_xLanguageLB->connect_selection_changed(LINK(this, ManageLanguageDialog, SelectHdl));
 
     m_xLanguageLB->set_selection_mode(SelectionMode::Multiple);
 }
@@ -101,19 +100,16 @@ void ManageLanguageDialog::FillLanguageBox()
     if ( m_xLocalizationMgr->isLibraryLocalized() )
     {
         Locale aDefaultLocale = m_xLocalizationMgr->getStringResourceManager()->getDefaultLocale();
-        Sequence< Locale > aLocaleSeq = m_xLocalizationMgr->getStringResourceManager()->getLocales();
-        const Locale* pLocale = aLocaleSeq.getConstArray();
-        sal_Int32 i, nCount = aLocaleSeq.getLength();
-        for ( i = 0;  i < nCount;  ++i )
+        for (auto& rLocale : m_xLocalizationMgr->getStringResourceManager()->getLocales())
         {
-            bool bIsDefault = localesAreEqual( aDefaultLocale, pLocale[i] );
-            LanguageType eLangType = LanguageTag::convertToLanguageType( pLocale[i] );
+            bool bIsDefault = localesAreEqual(aDefaultLocale, rLocale);
+            LanguageType eLangType = LanguageTag::convertToLanguageType(rLocale);
             OUString sLanguage = SvtLanguageTable::GetLanguageString( eLangType );
             if ( bIsDefault )
             {
                 sLanguage += " " + m_sDefLangStr;
             }
-            LanguageEntry* pEntry = new LanguageEntry(pLocale[i], bIsDefault);
+            LanguageEntry* pEntry = new LanguageEntry(rLocale, bIsDefault);
             m_xLanguageLB->append(weld::toId(pEntry), sLanguage);
         }
     }
@@ -153,8 +149,8 @@ IMPL_LINK_NOARG(ManageLanguageDialog, AddHdl, weld::Button&, void)
 
 IMPL_LINK_NOARG(ManageLanguageDialog, DeleteHdl, weld::Button&, void)
 {
-    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xDialog.get(), "modules/BasicIDE/ui/deletelangdialog.ui"));
-    std::unique_ptr<weld::MessageDialog> xQBox(xBuilder->weld_message_dialog("DeleteLangDialog"));
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xDialog.get(), u"modules/BasicIDE/ui/deletelangdialog.ui"_ustr));
+    std::unique_ptr<weld::MessageDialog> xQBox(xBuilder->weld_message_dialog(u"DeleteLangDialog"_ustr));
     if (xQBox->run() != RET_OK)
         return;
 
@@ -215,16 +211,16 @@ IMPL_LINK_NOARG(ManageLanguageDialog, SelectHdl, weld::TreeView&, void)
 // class SetDefaultLanguageDialog -----------------------------------------------
 
 SetDefaultLanguageDialog::SetDefaultLanguageDialog(weld::Window* pParent, std::shared_ptr<LocalizationMgr> xLMgr)
-    : GenericDialogController(pParent, "modules/BasicIDE/ui/defaultlanguage.ui", "DefaultLanguageDialog")
+    : GenericDialogController(pParent, u"modules/BasicIDE/ui/defaultlanguage.ui"_ustr, u"DefaultLanguageDialog"_ustr)
     , m_xLocalizationMgr(std::move(xLMgr))
-    , m_xLanguageFT(m_xBuilder->weld_label("defaultlabel"))
-    , m_xLanguageLB(m_xBuilder->weld_tree_view("entries"))
-    , m_xCheckLangFT(m_xBuilder->weld_label("checkedlabel"))
-    , m_xCheckLangLB(m_xBuilder->weld_tree_view("checkedentries"))
-    , m_xDefinedFT(m_xBuilder->weld_label("defined"))
-    , m_xAddedFT(m_xBuilder->weld_label("added"))
-    , m_xAltTitle(m_xBuilder->weld_label("alttitle"))
-    , m_xLanguageCB(new SvxLanguageBox(m_xBuilder->weld_combo_box("hidden")))
+    , m_xLanguageFT(m_xBuilder->weld_label(u"defaultlabel"_ustr))
+    , m_xLanguageLB(m_xBuilder->weld_tree_view(u"entries"_ustr))
+    , m_xCheckLangFT(m_xBuilder->weld_label(u"checkedlabel"_ustr))
+    , m_xCheckLangLB(m_xBuilder->weld_tree_view(u"checkedentries"_ustr))
+    , m_xDefinedFT(m_xBuilder->weld_label(u"defined"_ustr))
+    , m_xAddedFT(m_xBuilder->weld_label(u"added"_ustr))
+    , m_xAltTitle(m_xBuilder->weld_label(u"alttitle"_ustr))
+    , m_xLanguageCB(new SvxLanguageBox(m_xBuilder->weld_combo_box(u"hidden"_ustr)))
 {
     m_xLanguageLB->set_size_request(-1, m_xLanguageLB->get_height_rows(10));
     m_xCheckLangLB->set_size_request(-1, m_xCheckLangLB->get_height_rows(10));
@@ -257,11 +253,8 @@ void SetDefaultLanguageDialog::FillLanguageBox()
     if (m_xLocalizationMgr->isLibraryLocalized())
     {
         // remove the already localized languages
-        Sequence< Locale > aLocaleSeq = m_xLocalizationMgr->getStringResourceManager()->getLocales();
-        const Locale* pLocale = aLocaleSeq.getConstArray();
-        const sal_Int32 nCountLoc = aLocaleSeq.getLength();
-        for ( sal_Int32 i = 0;  i < nCountLoc;  ++i )
-            m_xLanguageCB->remove_id(LanguageTag::convertToLanguageType(pLocale[i]));
+        for (auto& rLocale : m_xLocalizationMgr->getStringResourceManager()->getLocales())
+            m_xLanguageCB->remove_id(LanguageTag::convertToLanguageType(rLocale));
 
         // fill checklistbox if not in default mode
         const sal_Int32 nCountLang = m_xLanguageCB->get_count();

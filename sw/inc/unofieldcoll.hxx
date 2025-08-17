@@ -23,17 +23,19 @@
 #include <memory>
 
 #include <com/sun/star/util/XRefreshable.hpp>
+#include <com/sun/star/container/XUniqueIDAccess.hpp>
 
 #include "unocoll.hxx"
 
 class SwFieldType;
+class SwXFieldEnumeration;
 
 typedef ::cppu::WeakImplHelper
 <   css::container::XNameAccess
 ,   css::lang::XServiceInfo
 > SwXTextFieldMasters_Base;
 
-class SwXTextFieldMasters final
+class SAL_DLLPUBLIC_RTTI SwXTextFieldMasters final
     : public SwXTextFieldMasters_Base
     , public SwUnoCollection
 {
@@ -60,17 +62,19 @@ public:
             const OUString& rName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL
         getElementNames() override;
-    virtual sal_Bool SAL_CALL hasByName(const OUString& rName) override;
+    SW_DLLPUBLIC virtual sal_Bool SAL_CALL hasByName(const OUString& rName) override;
 
+    SW_DLLPUBLIC rtl::Reference<SwXFieldMaster> getFieldMasterByName(const OUString& rName);
 };
 
 typedef ::cppu::WeakImplHelper
 <   css::container::XEnumerationAccess
 ,   css::lang::XServiceInfo
 ,   css::util::XRefreshable
+,   css::container::XUniqueIDAccess
 > SwXTextFieldTypes_Base;
 
-class SwXTextFieldTypes final
+class SW_DLLPUBLIC SwXTextFieldTypes final
     : public SwXTextFieldTypes_Base
     , public SwUnoCollection
 {
@@ -111,6 +115,11 @@ public:
             const css::uno::Reference<
                 css::util::XRefreshListener>& xListener) override;
 
+    // container::XUniqueIDAccess
+    virtual css::uno::Any SAL_CALL getByUniqueID( const OUString& ID ) override;
+    virtual void SAL_CALL removeByUniqueID( const OUString& ID ) override;
+
+    rtl::Reference<SwXFieldEnumeration> createFieldEnumeration();
 };
 
 #endif

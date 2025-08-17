@@ -25,18 +25,18 @@
 
 namespace drawinglayer::primitive2d
 {
-        void DiscreteBitmapPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
+        Primitive2DReference DiscreteBitmapPrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
             // use getViewTransformation() and getObjectTransformation() from
             // ObjectAndViewTransformationDependentPrimitive2D to create a BitmapPrimitive2D
             // with the correct mapping
 
-            if(getBitmapEx().IsEmpty())
-                return;
+            if(getBitmap().IsEmpty())
+                return nullptr;
 
             // get discrete size
-            const Size& rSizePixel = getBitmapEx().GetSizePixel();
-            const basegfx::B2DVector aDiscreteSize(rSizePixel.Width(), rSizePixel.Height());
+            const Size aSizePixel = getBitmap().GetSizePixel();
+            const basegfx::B2DVector aDiscreteSize(aSizePixel.Width(), aSizePixel.Height());
 
             // get inverse ViewTransformation
             basegfx::B2DHomMatrix aInverseViewTransformation(getViewTransformation());
@@ -64,16 +64,16 @@ namespace drawinglayer::primitive2d
             aObjectTransform = aInverseObjectTransformation * aObjectTransform;
 
             // create BitmapPrimitive2D with now object-local coordinate data
-            rContainer.push_back(
+            return
                 new BitmapPrimitive2D(
-                    getBitmapEx(),
-                    aObjectTransform));
+                    getBitmap(),
+                    aObjectTransform);
         }
 
         DiscreteBitmapPrimitive2D::DiscreteBitmapPrimitive2D(
-            const BitmapEx& rBitmapEx,
+            const Bitmap& rBitmap,
             const basegfx::B2DPoint& rTopLeft)
-        :   maBitmapEx(rBitmapEx),
+        :   maBitmap(rBitmap),
             maTopLeft(rTopLeft)
         {
         }
@@ -84,7 +84,7 @@ namespace drawinglayer::primitive2d
             {
                 const DiscreteBitmapPrimitive2D& rCompare = static_cast<const DiscreteBitmapPrimitive2D&>(rPrimitive);
 
-                return (getBitmapEx() == rCompare.getBitmapEx()
+                return (getBitmap() == rCompare.getBitmap()
                     && getTopLeft() == rCompare.getTopLeft());
             }
 

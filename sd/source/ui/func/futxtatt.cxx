@@ -28,51 +28,52 @@ namespace sd {
 
 
 FuTextAttrDlg::FuTextAttrDlg (
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window* pWin,
     ::sd::View* pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest& rReq)
-    : FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+    : FuPoor(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuTextAttrDlg::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuTextAttrDlg::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuTextAttrDlg( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuTextAttrDlg( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
 
 void FuTextAttrDlg::DoExecute( SfxRequest& rReq )
 {
-    SfxItemSet aNewAttr( mpDoc->GetPool() );
+    SfxItemSet aNewAttr( mrDoc.GetPool() );
     mpView->GetAttributes( aNewAttr );
 
     const SfxItemSet* pArgs = rReq.GetArgs();
 
-    if( !pArgs )
+    if( pArgs )
     {
-        SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateTextTabDialog(rReq.GetFrameWeld(), &aNewAttr, mpView));
-
-        sal_uInt16 nResult = pDlg->Execute();
-
-        switch( nResult )
-        {
-            case RET_OK:
-            {
-                rReq.Done( *( pDlg->GetOutputItemSet() ) );
-
-                pArgs = rReq.GetArgs();
-            }
-            break;
-
-            default:
-            return; // Cancel
-        }
+        mpView->SetAttributes( *pArgs );
+        return;
     }
-    mpView->SetAttributes( *pArgs );
+
+    SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
+    VclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateTextTabDialog(rReq.GetFrameWeld(), &aNewAttr, mpView));
+
+    auto xRequest = std::make_shared<SfxRequest>(rReq);
+    rReq.Ignore(); // the 'old' request is not relevant any more
+    auto pView = mpView; // copy vars we need, FuTextAttrDlg object will be gone by the time the dialog completes
+    pDlg->StartExecuteAsync(
+        [pDlg, xRequest=std::move(xRequest), pView] (sal_Int32 nResult)->void
+        {
+            if (nResult == RET_OK)
+            {
+                xRequest->Done( *pDlg->GetOutputItemSet() );
+                pView->SetAttributes( *xRequest->GetArgs() );
+            }
+            pDlg->disposeOnce();
+        }
+    );
 }
 
 } // end of namespace sd

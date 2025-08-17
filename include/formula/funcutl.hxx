@@ -36,12 +36,12 @@ class IControlReferenceHandler;
 class FORMULA_DLLPUBLIC RefEdit
 {
 protected:
-    std::unique_ptr<weld::Entry> xEntry;
+    std::unique_ptr<weld::Entry> mxEntry;
 
 private:
-    Idle aIdle;
-    IControlReferenceHandler* pAnyRefDlg; // parent dialog
-    weld::Label* pLabelWidget;
+    Idle maIdle;
+    IControlReferenceHandler* mpAnyRefDlg; // parent dialog
+    std::function<OUString()> maGetLabelTextForShrinkModeFunc;
     ImplSVEvent* mpFocusInEvent;
     ImplSVEvent* mpFocusOutEvent;
 
@@ -67,7 +67,7 @@ protected:
 
 public:
     RefEdit(std::unique_ptr<weld::Entry> xControl);
-    weld::Entry* GetWidget() const { return xEntry.get(); }
+    weld::Entry* GetWidget() const { return mxEntry.get(); }
     virtual ~RefEdit();
 
     void SetRefString( const OUString& rStr );
@@ -81,58 +81,57 @@ public:
     void SetText(const OUString& rStr);
     OUString GetText() const
     {
-        return xEntry->get_text();
+        return mxEntry->get_text();
     }
 
     void StartUpdateData();
 
-    void SetReferences( IControlReferenceHandler* pDlg, weld::Label *pLabelWidget );
+    // The label/text set in the Label/Frame is used in shrink mode
+    void SetReferences(IControlReferenceHandler* pDlg, weld::Label* pLabel = nullptr);
+    void SetReferences(IControlReferenceHandler* pDlg, weld::Frame* pFrame);
 
     void DoModify()
     {
-        Modify(*xEntry);
+        Modify(*mxEntry);
     }
 
     void GrabFocus()
     {
-        xEntry->grab_focus();
+        mxEntry->grab_focus();
     }
 
     void SelectAll()
     {
-        xEntry->select_region(0, -1);
+        mxEntry->select_region(0, -1);
     }
 
     void SetSelection(const Selection& rSelection)
     {
-        xEntry->select_region(rSelection.Min(), rSelection.Max());
+        mxEntry->select_region(rSelection.Min(), rSelection.Max());
     }
 
     void SetCursorAtLast()
     {
-        xEntry->set_position(-1);
+        mxEntry->set_position(-1);
     }
 
     Selection GetSelection() const
     {
         int nStartPos, nEndPos;
-        xEntry->get_selection_bounds(nStartPos, nEndPos);
+        mxEntry->get_selection_bounds(nStartPos, nEndPos);
         return Selection(nStartPos, nEndPos);
     }
 
-    weld::Label* GetLabelWidgetForShrinkMode()
-    {
-        return pLabelWidget;
-    }
+    OUString GetLabelTextForShrinkMode();
 
     void SaveValue()
     {
-        xEntry->save_value();
+        mxEntry->save_value();
     }
 
     bool IsValueChangedFromSaved() const
     {
-        return xEntry->get_value_changed_from_saved();
+        return mxEntry->get_value_changed_from_saved();
     }
 
     void SetGetFocusHdl(const Link<RefEdit&,void>& rLink) { maGetFocusHdl = rLink; }

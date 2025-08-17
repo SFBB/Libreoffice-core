@@ -92,7 +92,7 @@
 #include <toolkit/helper/vclunohelper.hxx>
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
@@ -133,7 +133,7 @@ const sal_uInt16 DatabaseSlotMap[] =
 
 // is used for Invalidate -> maintain it as well
 // sort ascending !!!!!!
-const sal_Int16 DlgSlotMap[] =    // slots of the controller
+const sal_uInt16 DlgSlotMap[] =    // slots of the controller
 {
     SID_FM_CTL_PROPERTIES,
     SID_FM_PROPERTIES,
@@ -149,7 +149,7 @@ const sal_Int16 DlgSlotMap[] =    // slots of the controller
     0
 };
 
-const sal_Int16 SelObjectSlotMap[] =  // slots depending on the SelObject
+const sal_uInt16 SelObjectSlotMap[] =  // slots depending on the SelObject
 {
     SID_FM_CONVERTTO_EDIT,
     SID_FM_CONVERTTO_BUTTON,
@@ -180,7 +180,7 @@ const sal_Int16 SelObjectSlotMap[] =  // slots depending on the SelObject
 
 // the following arrays must be consistent, i.e., corresponding entries should
 // be at the same relative position within their respective arrays
-static std::u16string_view aConvertSlots[] =
+constexpr std::u16string_view aConvertSlots[] =
 {
     u"ConvertToEdit",
     u"ConvertToButton",
@@ -285,6 +285,7 @@ namespace
         for ( size_t i = 0; i < nMarkCount; ++i)
         {
             SdrObject* pCurrent = _rMarkList.GetMark( i )->GetMarkedSdrObj();
+            assert(pCurrent && "marked object will exist");
 
             std::optional<SdrObjListIter> oGroupIterator;
             if ( pCurrent->IsGroupObject() )
@@ -430,7 +431,7 @@ namespace
     }
 
 
-    OUString getServiceNameByControlType(SdrObjKind nType)
+    const OUString & getServiceNameByControlType(SdrObjKind nType)
     {
         switch (nType)
         {
@@ -458,7 +459,7 @@ namespace
             case SdrObjKind::FormNavigationBar   : return FM_SUN_COMPONENT_NAVIGATIONBAR;
             default:;
         }
-        return OUString();
+        return EMPTY_OUSTRING;
     }
 
 }
@@ -604,7 +605,7 @@ FmXFormShell_Base_Disambiguation::FmXFormShell_Base_Disambiguation( ::osl::Mutex
 
 FmXFormShell::FmXFormShell( FmFormShell& _rShell, SfxViewFrame* _pViewFrame )
         :FmXFormShell_BASE(m_aMutex)
-        ,FmXFormShell_CFGBASE("Office.Common/Misc", ConfigItemMode::NONE)
+        ,FmXFormShell_CFGBASE(u"Office.Common/Misc"_ustr, ConfigItemMode::NONE)
         ,m_aMarkTimer("svx::FmXFormShell m_aMarkTimer")
         ,m_eNavigate( NavigationBarMode_NONE )
         ,m_nInvalidationEvent( nullptr )
@@ -640,7 +641,7 @@ FmXFormShell::FmXFormShell( FmFormShell& _rShell, SfxViewFrame* _pViewFrame )
     // cache the current configuration settings we're interested in
     implAdjustConfigCache_Lock();
     // and register for changes on this settings
-    Sequence< OUString > aNames { "FormControlPilotsEnabled" };
+    Sequence< OUString > aNames { u"FormControlPilotsEnabled"_ustr };
     EnableNotification(aNames);
 }
 
@@ -1092,7 +1093,7 @@ bool FmXFormShell::executeControlConversionSlot_Lock(const Reference<XFormCompon
                 return false;
 
             OUString sNewName( getServiceNameByControlType( nObjectTypes[ lookupSlot ] ) );
-            Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
+            const Reference<XComponentContext>& xContext = comphelper::getProcessComponentContext();
             Reference< XControlModel> xNewModel( xContext->getServiceManager()->createInstanceWithContext(sNewName, xContext), UNO_QUERY );
             if (!xNewModel.is())
                 return false;
@@ -1390,7 +1391,7 @@ void FmXFormShell::ExecuteTabOrderDialog_Lock(const Reference<XTabControllerMode
                 _rxForForm, getControlContainerForView_Lock(), xParentWindow
             );
 
-        xDialog->execute();
+        (void)xDialog->execute();
     }
     catch( const Exception& )
     {
@@ -1578,7 +1579,7 @@ bool FmXFormShell::GetY2KState_Lock(sal_uInt16& n)
         {
             try
             {
-                Any aVal( xSet->getPropertyValue("TwoDigitDateStart") );
+                Any aVal( xSet->getPropertyValue(u"TwoDigitDateStart"_ustr) );
                 aVal >>= n;
                 return true;
             }
@@ -1609,7 +1610,7 @@ void FmXFormShell::SetY2KState_Lock(sal_uInt16 n)
             {
                 try
                 {
-                    xSet->setPropertyValue("TwoDigitDateStart", Any(sal_uInt16(n)));
+                    xSet->setPropertyValue(u"TwoDigitDateStart"_ustr, Any(sal_uInt16(n)));
                 }
                 catch(Exception&)
                 {
@@ -1648,7 +1649,7 @@ void FmXFormShell::SetY2KState_Lock(sal_uInt16 n)
             {
                 try
                 {
-                    xSet->setPropertyValue("TwoDigitDateStart", Any(sal_uInt16(n)));
+                    xSet->setPropertyValue(u"TwoDigitDateStart"_ustr, Any(sal_uInt16(n)));
                 }
                 catch(Exception&)
                 {
@@ -1959,7 +1960,7 @@ bool FmXFormShell::setCurrentSelection_Lock( InterfaceBag&& _rSelection )
         }
     }
 
-    m_aCurrentSelection = _rSelection;
+    m_aCurrentSelection = std::move(_rSelection);
 
     // determine the form which all the selected objects belong to, if any
     Reference< XForm > xNewCurrentForm;
@@ -1970,7 +1971,7 @@ bool FmXFormShell::setCurrentSelection_Lock( InterfaceBag&& _rSelection )
 
         if ( !xNewCurrentForm.is() )
         {   // the first form we encountered
-            xNewCurrentForm = xThisRoundsForm;
+            xNewCurrentForm = std::move(xThisRoundsForm);
         }
         else if ( xNewCurrentForm != xThisRoundsForm )
         {   // different forms -> no "current form" at all
@@ -2071,7 +2072,7 @@ void FmXFormShell::startListening_Lock()
                                     break;
                             }
                         }
-                        m_xNavigationController = xParent;
+                        m_xNavigationController = std::move(xParent);
                     }
                     break;
 
@@ -2214,7 +2215,7 @@ IMPL_LINK(FmXFormShell, OnFoundData_Lock, FmFoundRecordInformation&, rfriWhere, 
         DBG_ASSERT(xModelSet.is(), "FmXFormShell::OnFoundData : invalid control model (no property set) !");
         xModelSet->setPropertyValue( FM_PROP_ALWAYSSHOWCURSOR, Any( true ) );
         xModelSet->setPropertyValue( FM_PROP_CURSORCOLOR, Any( COL_LIGHTRED ) );
-        m_xLastGridFound = xControlModel;
+        m_xLastGridFound = std::move(xControlModel);
 
         if ( xGrid.is() )
             xGrid->setCurrentColumnPosition(static_cast<sal_Int16>(nGridColumn));
@@ -2440,7 +2441,7 @@ IMPL_LINK(FmXFormShell, OnSearchContextRequest_Lock, FmSearchContext&, rfmscCont
         return 0;
     }
 
-    rfmscContextInfo.xCursor = xIter;
+    rfmscContextInfo.xCursor = std::move(xIter);
     rfmscContextInfo.strUsedFields = strFieldList;
     rfmscContextInfo.sFieldDisplayNames = sFieldDisplayNames;
 
@@ -2521,7 +2522,7 @@ void FmXFormShell::UpdateForms_Lock(bool _bInvalidate)
     if ( m_xForms != xForms )
     {
         RemoveElement_Lock( m_xForms );
-        m_xForms = xForms;
+        m_xForms = std::move(xForms);
         AddElement_Lock(m_xForms);
     }
 
@@ -2907,7 +2908,7 @@ void FmXFormShell::startFiltering_Lock()
         {
             Reference< XModeSelector> xModeSelector(rpController, UNO_QUERY);
             if (xModeSelector.is())
-                xModeSelector->setMode( "FilterMode" );
+                xModeSelector->setMode( u"FilterMode"_ustr );
         }
     }
 
@@ -3007,7 +3008,7 @@ void FmXFormShell::stopFiltering_Lock(bool bSave)
 
             Reference< XModeSelector> xModeSelector(rController, UNO_QUERY);
             if (xModeSelector.is())
-                xModeSelector->setMode( "DataMode" );
+                xModeSelector->setMode( u"DataMode"_ustr );
         }
         if (bSave)  // execute the filter
         {
@@ -3103,7 +3104,7 @@ void FmXFormShell::CreateExternalView_Lock()
     // load the component for external form views
     if (!bAlreadyExistent)
     {
-        OUString sFrameName("_beamer");
+        OUString sFrameName(u"_beamer"_ustr);
         URL aWantToDispatch;
         aWantToDispatch.Complete = FMURL_COMPONENT_FORMGRIDVIEW;
 
@@ -3312,7 +3313,7 @@ void FmXFormShell::CreateExternalView_Lock()
                 aColumnProps.realloc(nExistentDescs + aProps.getLength());
                 pColumnProps = aColumnProps.getArray() + nExistentDescs;
 
-                for (const Property& rProp : std::as_const(aProps))
+                for (const Property& rProp : aProps)
                 {
                     if (rProp.Name == FM_PROP_LABEL)
                         // already set
@@ -3395,7 +3396,7 @@ void FmXFormShell::CreateExternalView_Lock()
 
                 // column type : listbox
                 pDispatchArgs->Name = FMARG_ADDCOL_COLUMNTYPE;
-                pDispatchArgs->Value <<= OUString(FM_COL_LISTBOX);
+                pDispatchArgs->Value <<= u"" FM_COL_LISTBOX ""_ustr;
 //              pDispatchArgs->Value <<= (OUString)FM_COL_LISTBOX;
                 ++pDispatchArgs;
 
@@ -3432,13 +3433,13 @@ void FmXFormShell::CreateExternalView_Lock()
             Reference< XResultSet> xForm(xCurrentNavController->getModel(), UNO_QUERY);
             aArg.Value <<= xForm;
 
-            m_xExternalDisplayedForm = xForm;
+            m_xExternalDisplayedForm = std::move(xForm);
                 // do this before dispatching the "attach" command, as the attach may result in a call to our queryDispatch (for the FormSlots)
                 // which needs the m_xExternalDisplayedForm
 
             xAttachDispatch->dispatch(aAttachURL, Sequence< PropertyValue>(&aArg, 1));
 
-            m_xExtViewTriggerController = xCurrentNavController;
+            m_xExtViewTriggerController = std::move(xCurrentNavController);
 
             // we want to know modifications done in the external view
             // if the external controller is a XFormController we can use all our default handlings for it
@@ -3460,12 +3461,12 @@ void FmXFormShell::CreateExternalView_Lock()
 
 void FmXFormShell::implAdjustConfigCache_Lock()
 {
-    const bool bFuzzing(utl::ConfigManager::IsFuzzing());
+    const bool bFuzzing(comphelper::IsFuzzing());
     if (bFuzzing)
         return;
 
     // get (cache) the wizard usage flag
-    Sequence< OUString > aNames { "FormControlPilotsEnabled" };
+    Sequence< OUString > aNames { u"FormControlPilotsEnabled"_ustr };
     Sequence< Any > aFlags = GetProperties(aNames);
     if (1 == aFlags.getLength())
         m_bUseWizards = ::cppu::any2bool(aFlags[0]);
@@ -3495,7 +3496,7 @@ void FmXFormShell::SetWizardUsing_Lock(bool _bUseThem)
 {
     m_bUseWizards = _bUseThem;
 
-    Sequence< OUString > aNames { "FormControlPilotsEnabled" };
+    Sequence< OUString > aNames { u"FormControlPilotsEnabled"_ustr };
     Sequence< Any > aValues{ Any(m_bUseWizards) };
     PutProperties(aNames, aValues);
 }
@@ -3529,7 +3530,7 @@ void FmXFormShell::viewDeactivated_Lock(FmFormView& _rCurrentView, bool _bDeacti
                 Application::RemoveUserEvent( aAction.nEventId );
             }
         }
-        m_aLoadingPages = aNewEvents;
+        m_aLoadingPages = std::move(aNewEvents);
 
         // remove callbacks at the page
         pPage->GetImpl().SetFormsCreationHdl( Link<FmFormPageImpl&,void>() );

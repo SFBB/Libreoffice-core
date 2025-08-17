@@ -32,6 +32,12 @@ public:
     , mnEnd ( rBuffer.getLength() )
     {
     }
+    MemoryByteGrabber ( const sal_Int8* pBuffer, sal_Int32 nBufLen )
+    : mpBuffer ( pBuffer )
+    , mnCurrent ( 0 )
+    , mnEnd ( nBufLen )
+    {
+    }
     MemoryByteGrabber(css::uno::Sequence<sal_Int8> &&) = delete;
 
     const sal_Int8 * getCurrentPos () const { return mpBuffer + mnCurrent; }
@@ -47,6 +53,14 @@ public:
     void skipBytes( sal_Int32 nBytesToSkip )
     {
         mnCurrent += nBytesToSkip;
+    }
+
+    sal_Int8 ReadUInt8()
+    {
+        if (mnCurrent + 1 > mnEnd)
+            return 0;
+        sal_uInt8 nInt8 = mpBuffer[mnCurrent++];
+        return nInt8;
     }
 
     // XSeekable chained...

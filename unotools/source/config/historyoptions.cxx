@@ -56,10 +56,11 @@ static void TruncateList(
         sal_uInt32 nSize);
 
 static void PrependItem(const uno::Reference<container::XNameAccess>& xCfg,
-                        uno::Reference<container::XNameContainer>& xList, std::u16string_view sURL);
+                        const uno::Reference<container::XNameContainer>& xList,
+                        std::u16string_view sURL);
 static void MoveItemToUnpinned(const uno::Reference<container::XNameAccess>& xCfg,
-                               uno::Reference<container::XNameContainer>& xOrderList,
-                               uno::Reference<container::XNameContainer>& xItemList,
+                               const uno::Reference<container::XNameContainer>& xOrderList,
+                               const uno::Reference<container::XNameContainer>& xItemList,
                                std::u16string_view sURL);
 
 static sal_uInt32 GetCapacity(const uno::Reference<container::XNameAccess>& xCommonXCU, EHistoryType eHistory);
@@ -422,7 +423,7 @@ static uno::Reference<container::XNameAccess> GetConfig()
     return uno::Reference<container::XNameAccess>(
             ::comphelper::ConfigurationHelper::openConfig(
                 ::comphelper::getProcessComponentContext(),
-                "org.openoffice.Office.Histories/Histories",
+                u"org.openoffice.Office.Histories/Histories"_ustr,
                 ::comphelper::EConfigurationModes::Standard),
             uno::UNO_QUERY_THROW);
 }
@@ -432,7 +433,7 @@ static uno::Reference<container::XNameAccess> GetCommonXCU()
     return uno::Reference<container::XNameAccess>(
             ::comphelper::ConfigurationHelper::openConfig(
                 ::comphelper::getProcessComponentContext(),
-                "org.openoffice.Office.Common/History",
+                u"org.openoffice.Office.Common/History"_ustr,
                 ::comphelper::EConfigurationModes::Standard),
             uno::UNO_QUERY_THROW);
 }
@@ -445,11 +446,11 @@ static uno::Reference<container::XNameAccess> GetListAccess(
     switch (eHistory)
     {
     case EHistoryType::PickList:
-        xCfg->getByName("PickList") >>= xListAccess;
+        xCfg->getByName(u"PickList"_ustr) >>= xListAccess;
         break;
 
     case EHistoryType::HelpBookmarks:
-        xCfg->getByName("HelpBookmarks") >>= xListAccess;
+        xCfg->getByName(u"HelpBookmarks"_ustr) >>= xListAccess;
         break;
     }
     return xListAccess;
@@ -484,7 +485,7 @@ static void TruncateList(
 }
 
 static void PrependItem(const uno::Reference<container::XNameAccess>& xCfg,
-                        uno::Reference<container::XNameContainer>& xList, std::u16string_view sURL)
+                        const uno::Reference<container::XNameContainer>& xList, std::u16string_view sURL)
 {
     uno::Reference<beans::XPropertySet> xSet;
     const sal_Int32 nLength = xList->getElementNames().getLength();
@@ -516,8 +517,8 @@ static void PrependItem(const uno::Reference<container::XNameAccess>& xCfg,
 }
 
 static void MoveItemToUnpinned(const uno::Reference<container::XNameAccess>& xCfg,
-                               uno::Reference<container::XNameContainer>& xOrderList,
-                               uno::Reference<container::XNameContainer>& xItemList,
+                               const uno::Reference<container::XNameContainer>& xOrderList,
+                               const uno::Reference<container::XNameContainer>& xItemList,
                                std::u16string_view sURL)
 {
     uno::Reference<beans::XPropertySet> xSet;
@@ -596,11 +597,11 @@ static sal_uInt32 GetCapacity(const uno::Reference<container::XNameAccess>& xCom
     switch (eHistory)
     {
     case EHistoryType::PickList:
-        xListAccess->getPropertyValue("PickListSize") >>= nSize;
+        xListAccess->getPropertyValue(u"PickListSize"_ustr) >>= nSize;
         break;
 
     case EHistoryType::HelpBookmarks:
-        xListAccess->getPropertyValue("HelpBookmarkSize") >>= nSize;
+        xListAccess->getPropertyValue(u"HelpBookmarkSize"_ustr) >>= nSize;
         break;
     }
 

@@ -45,15 +45,6 @@
 
 using namespace ::com::sun::star;
 
-// Adjust line height (dialogue)
-void SwTableFUNC::ColWidthDlg(weld::Window *pParent)
-{
-    InitTabCols();
-    SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-    ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSwTableWidthDlg(pParent, *this));
-    pDlg->Execute();
-}
-
 // Determine the width
 SwTwips SwTableFUNC::GetColWidth(sal_uInt16 nNum) const
 {
@@ -192,7 +183,7 @@ uno::Reference< frame::XModel > SwTableFUNC::InsertChart(
     m_pSh->StartUndo( SwUndoId::UI_INSERT_CHART );
     m_pSh->StartAllAction();
 
-    OUString aName;
+    UIName aName;
     if (m_pSh->IsCursorInTable())
     {
         aName = m_pSh->GetTableFormat()->GetName();
@@ -295,16 +286,16 @@ uno::Reference< frame::XModel > SwTableFUNC::InsertChart(
 
         uno::Sequence< beans::PropertyValue > aArgs{
             beans::PropertyValue(
-                "CellRangeRepresentation", -1,
+                u"CellRangeRepresentation"_ustr, -1,
                 uno::Any( rCellRange ), beans::PropertyState_DIRECT_VALUE ),
             beans::PropertyValue(
-                "HasCategories", -1,
+                u"HasCategories"_ustr, -1,
                 uno::Any( bHasCategories ), beans::PropertyState_DIRECT_VALUE ),
             beans::PropertyValue(
-                "FirstCellAsLabel", -1,
+                u"FirstCellAsLabel"_ustr, -1,
                 uno::Any( bFirstCellAsLabel ), beans::PropertyState_DIRECT_VALUE ),
             beans::PropertyValue(
-                "DataRowSource", -1,
+                u"DataRowSource"_ustr, -1,
                 uno::Any( eDataRowSource ), beans::PropertyState_DIRECT_VALUE )
         };
         xDataReceiver->setArguments( aArgs );

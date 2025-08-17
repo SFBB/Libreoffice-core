@@ -190,7 +190,7 @@ ExcelToSc::~ExcelToSc()
 
 std::unique_ptr<ScTokenArray> ExcelToSc::GetDummy()
 {
-    aPool.Store( "Dummy()" );
+    aPool.Store( u"Dummy()"_ustr );
     aPool >> aStack;
     return aPool.GetTokenArray( GetDocImport().getDoc(), aStack.Get());
 }
@@ -216,7 +216,7 @@ ConvErr ExcelToSc::Convert( std::unique_ptr<ScTokenArray>& pResult, XclImpStream
 
     if( nFormulaLen == 0 )
     {
-        aPool.Store( "-/-" );
+        aPool.Store( u"-/-"_ustr );
         aPool >> aStack;
         pResult = aPool.GetTokenArray( GetDocImport().getDoc(), aStack.Get());
         return ConvErr::OK;
@@ -679,7 +679,7 @@ ConvErr ExcelToSc::Convert( std::unique_ptr<ScTokenArray>& pResult, XclImpStream
             case 0x78:
             case 0x38: // Command-Equivalent Function           [333    ]
             {
-                OUString aString = "COMM_EQU_FUNC";
+                OUString aString = u"COMM_EQU_FUNC"_ustr;
                 sal_uInt8 nByte = aIn.ReaduInt8();
                 aString += OUString::number( nByte );
                 nByte = aIn.ReaduInt8();
@@ -918,8 +918,6 @@ ConvErr ExcelToSc::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std:
         {           //                                      SDK4 SDK5
             case 0x01: // Array Formula                         [325    ]
                        // Array Formula or Shared Formula       [    277]
-                nIgnore = (meBiff == EXC_BIFF2) ? 3 : 4;
-                break;
             case 0x02: // Data Table                            [325 277]
                 nIgnore = (meBiff == EXC_BIFF2) ? 3 : 4;
                 break;
@@ -927,7 +925,7 @@ ConvErr ExcelToSc::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std:
             case 0x04: // Subtraction                           [313 264]
             case 0x05: // Multiplication                        [313 264]
             case 0x06: // Division                              [313 264]
-            case 0x07: // Exponetiation                         [313 265]
+            case 0x07: // Exponentiation                         [313 265]
             case 0x08: // Concatenation                         [313 265]
             case 0x09: // Less Than                             [313 265]
             case 0x0A: // Less Than or Equal                    [313 265]
@@ -1000,6 +998,9 @@ ConvErr ExcelToSc::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std:
                 nIgnore = 1;
                 break;
             case 0x1E: // Integer                               [315 266]
+            case 0x58:
+            case 0x78:
+            case 0x38: // Command-Equivalent Function           [333    ]
                 nIgnore = 2;
                 break;
             case 0x1F: // Number                                [315 266]
@@ -1153,11 +1154,6 @@ ConvErr ExcelToSc::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std:
             case 0x6F:
             case 0x2F: // Incomplete Reference Subexpression... [332 282]
                 nIgnore = (meBiff == EXC_BIFF2) ? 1 : 2;
-                break;
-            case 0x58:
-            case 0x78:
-            case 0x38: // Command-Equivalent Function           [333    ]
-                nIgnore = 2;
                 break;
             case 0x59:
             case 0x79:
@@ -1410,7 +1406,7 @@ void ExcelToSc::GetAbsRefs( ScRangeList& rRangeList, XclImpStream& rStrm, std::s
             case 0x04: // Subtraction                           [313 264]
             case 0x05: // Multiplication                        [313 264]
             case 0x06: // Division                              [313 264]
-            case 0x07: // Exponetiation                         [313 265]
+            case 0x07: // Exponentiation                         [313 265]
             case 0x08: // Concatenation                         [313 265]
             case 0x09: // Less Than                             [313 265]
             case 0x0A: // Less Than or Equal                    [313 265]

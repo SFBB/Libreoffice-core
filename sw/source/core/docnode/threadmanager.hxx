@@ -27,10 +27,9 @@
 #include <deque>
 #include <cppuhelper/weakref.hxx>
 #include <observablethread.hxx>
-
+#include "cancellablejob.hxx"
 #include <memory>
 
-namespace com::sun::star::util { class XCancellable; }
 namespace com::sun::star::util { class XJobManager; }
 
 class IFinishedThreadListener;
@@ -99,7 +98,7 @@ class ThreadManager final
         {
             oslInterlockedCount nThreadID;
             ::rtl::Reference< ObservableThread > pThread;
-            css::uno::Reference< css::util::XCancellable > aJob;
+            rtl::Reference< CancellableJob > aJob;
 
             tThreadData()
                 : nThreadID( 0 ),

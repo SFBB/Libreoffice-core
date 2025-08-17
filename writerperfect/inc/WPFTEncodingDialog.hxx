@@ -11,13 +11,15 @@
 
 #pragma once
 
+#include <config_options.h>
 #include <vcl/weld.hxx>
 
 #include "writerperfectdllapi.h"
 
 namespace writerperfect
 {
-class WRITERPERFECT_DLLPUBLIC WPFTEncodingDialog final : public weld::GenericDialogController
+class UNLESS_MERGELIBS_MORE(WRITERPERFECT_DLLPUBLIC) WPFTEncodingDialog final
+    : public weld::GenericDialogController
 {
 public:
     WPFTEncodingDialog(weld::Window* pParent, const OUString& title, const OUString& defEncoding);
@@ -35,6 +37,8 @@ private:
 
 private:
     DECL_DLLPRIVATE_LINK(CancelHdl, weld::Button&, void);
+    DECL_STATIC_LINK(WPFTEncodingDialog, InstallLOKNotifierHdl, void*,
+                     vcl::ILibreOfficeKitNotifier*);
 
     WPFTEncodingDialog(WPFTEncodingDialog const&) = delete;
     WPFTEncodingDialog& operator=(WPFTEncodingDialog const&) = delete;

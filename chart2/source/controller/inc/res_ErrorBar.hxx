@@ -22,10 +22,9 @@
 #include <tools/link.hxx>
 #include <svl/itemset.hxx>
 #include <svx/chrtitem.hxx>
-#include "RangeSelectionListener.hxx"
+#include <RangeSelectionListener.hxx>
 #include <rtl/ref.hxx>
 
-namespace com::sun::star::chart2 { class XChartDocument; }
 namespace weld { class Builder; }
 namespace weld { class Button; }
 namespace weld { class CheckButton; }
@@ -56,7 +55,7 @@ public:
 
     ErrorBarResources(
         weld::Builder* pParent, weld::DialogController* pControllerDialog, const SfxItemSet& rInAttrs, bool bNoneAvailable, chart::ErrorBarResources::tErrorBarType eType = ERROR_BAR_Y);
-    virtual ~ErrorBarResources();
+    ~ErrorBarResources();
 
     void SetAxisMinorStepWidthForErrorBarDecimals( double fMinorStepWidth );
     void SetErrorBarType( tErrorBarType eNewType );

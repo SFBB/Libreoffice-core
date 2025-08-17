@@ -23,7 +23,7 @@ class TxtExportTest : public SwModelTestBase
 {
 public:
     TxtExportTest()
-        : SwModelTestBase("/sw/qa/extras/txtexport/data/", "Text")
+        : SwModelTestBase(u"/sw/qa/extras/txtexport/data/"_ustr, u"Text"_ustr)
     {
     }
 
@@ -52,11 +52,10 @@ protected:
     }
 };
 
-#define DECLARE_TXTEXPORT_TEST(TestName, filename)                                                 \
-    DECLARE_SW_EXPORT_TEST(TestName, filename, nullptr, TxtExportTest)
-
-DECLARE_TXTEXPORT_TEST(testBullets, "bullets.odt")
+CPPUNIT_TEST_FIXTURE(TxtExportTest, testBullets)
 {
+    createSwDoc("bullets.odt");
+    save(mpFilter);
     OString aData = readExportedFile();
 
     OUString aString = OStringToOUString(
@@ -71,7 +70,12 @@ DECLARE_TXTEXPORT_TEST(testBullets, "bullets.odt")
         "    2. Second" SAL_NEWLINE_STRING "        1. Second-first" SAL_NEWLINE_STRING
         "       Third, but deleted" SAL_NEWLINE_STRING "    3. Actual third" SAL_NEWLINE_STRING
         "" SAL_NEWLINE_STRING "Paragraph after numbering" SAL_NEWLINE_STRING
-        "Next paragraph" SAL_NEWLINE_STRING "Final paragraph" SAL_NEWLINE_STRING,
+        "Next paragraph" SAL_NEWLINE_STRING "Final paragraph" SAL_NEWLINE_STRING
+        "Some Heading Outline Tests" SAL_NEWLINE_STRING " 1  Heading Level 1" SAL_NEWLINE_STRING
+        " 1.1  Heading Level 2" SAL_NEWLINE_STRING " 1.1.1  Heading Level 3" SAL_NEWLINE_STRING
+        " 1.1.1.1  Heading Level 4" SAL_NEWLINE_STRING
+        "                     1.1.1.1.1  Heading Level 5" SAL_NEWLINE_STRING
+        " 1.1.1.1.1.1  Heading Level 6" SAL_NEWLINE_STRING,
         RTL_TEXTENCODING_UTF8);
 
     // To get the stuff back in the system's encoding
@@ -80,32 +84,40 @@ DECLARE_TXTEXPORT_TEST(testBullets, "bullets.odt")
     CPPUNIT_ASSERT_EQUAL(aExpected, aData);
 }
 
-DECLARE_TXTEXPORT_TEST(testTdf120574_utf8bom, "UTF8BOMCRLF.txt")
+CPPUNIT_TEST_FIXTURE(TxtExportTest, testTdf120574_utf8bom)
 {
+    createSwDoc("UTF8BOMCRLF.txt");
+    save(mpFilter);
     std::vector<char> aMemStream = readMemoryStream<char>();
     OString aData(std::string_view(aMemStream.data(), aMemStream.size()));
-    CPPUNIT_ASSERT_EQUAL(u8"\uFEFFフー\r\nバー\r\n"_ostr, aData);
+    CPPUNIT_ASSERT_EQUAL(u8"\uFEFFAB\r\nCD\r\n"_ostr, aData);
 }
 
-DECLARE_TXTEXPORT_TEST(testTdf120574_utf16lebom, "UTF16LEBOMCRLF.txt")
+CPPUNIT_TEST_FIXTURE(TxtExportTest, testTdf120574_utf16lebom)
 {
+    createSwDoc("UTF16LEBOMCRLF.txt");
+    save(mpFilter);
     std::vector<sal_Unicode> aMemStream = readMemoryStream<sal_Unicode>();
     OUString aData(aMemStream.data(), aMemStream.size());
-    CPPUNIT_ASSERT_EQUAL(u"\uFEFFフー\r\nバー\r\n"_ustr, aData);
+    CPPUNIT_ASSERT_EQUAL(u"\uFEFFAB\r\nCD\r\n"_ustr, aData);
 }
 
-DECLARE_TXTEXPORT_TEST(testTdf142669_utf8, "UTF8CRLF.txt")
+CPPUNIT_TEST_FIXTURE(TxtExportTest, testTdf142669_utf8)
 {
+    createSwDoc("UTF8CRLF.txt");
+    save(mpFilter);
     std::vector<char> aMemStream = readMemoryStream<char>();
     OString aData(std::string_view(aMemStream.data(), aMemStream.size()));
-    CPPUNIT_ASSERT_EQUAL(u8"フー\r\nバー\r\n"_ostr, aData);
+    CPPUNIT_ASSERT_EQUAL(u8"AB\r\nCD\r\n"_ostr, aData);
 }
 
-DECLARE_TXTEXPORT_TEST(testTdf142669_utf16le, "UTF16LECRLF.txt")
+CPPUNIT_TEST_FIXTURE(TxtExportTest, testTdf142669_utf16le)
 {
+    createSwDoc("UTF16LECRLF.txt");
+    save(mpFilter);
     std::vector<sal_Unicode> aMemStream = readMemoryStream<sal_Unicode>();
     OUString aData(aMemStream.data(), aMemStream.size());
-    CPPUNIT_ASSERT_EQUAL(u"フー\r\nバー\r\n"_ustr, aData);
+    CPPUNIT_ASSERT_EQUAL(u"AB\r\nCD\r\n"_ustr, aData);
 }
 
 CPPUNIT_TEST_FIXTURE(TxtExportTest, testClearingBreakExport)
@@ -115,22 +127,18 @@ CPPUNIT_TEST_FIXTURE(TxtExportTest, testClearingBreakExport)
     uno::Reference<lang::XMultiServiceFactory> xMSF(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XTextContent> xLineBreak(
-        xMSF->createInstance("com.sun.star.text.LineBreak"), uno::UNO_QUERY);
+        xMSF->createInstance(u"com.sun.star.text.LineBreak"_ustr), uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xLineBreakProps(xLineBreak, uno::UNO_QUERY);
     auto eClear = static_cast<sal_Int16>(SwLineBreakClear::ALL);
-    xLineBreakProps->setPropertyValue("Clear", uno::Any(eClear));
+    xLineBreakProps->setPropertyValue(u"Clear"_ustr, uno::Any(eClear));
     uno::Reference<text::XText> xText = xTextDocument->getText();
     uno::Reference<text::XTextCursor> xCursor = xText->createTextCursor();
-    xText->insertString(xCursor, "foo", /*bAbsorb=*/false);
+    xText->insertString(xCursor, u"foo"_ustr, /*bAbsorb=*/false);
     xText->insertTextContent(xCursor, xLineBreak, /*bAbsorb=*/false);
-    xText->insertString(xCursor, "bar", /*bAbsorb=*/false);
+    xText->insertString(xCursor, u"bar"_ustr, /*bAbsorb=*/false);
 
     // When exporting to plain text:
-    uno::Reference<frame::XStorable> xStorable(mxComponent, uno::UNO_QUERY);
-    uno::Sequence<beans::PropertyValue> aStoreProps = {
-        comphelper::makePropertyValue("FilterName", OUString("Text")),
-    };
-    xStorable->storeToURL(maTempFile.GetURL(), aStoreProps);
+    save(mpFilter);
 
     // Then make sure that the newline is not lost:
     OString aActual = readExportedFile();

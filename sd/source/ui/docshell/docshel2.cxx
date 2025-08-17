@@ -59,34 +59,39 @@ void DrawDocShell::Draw(OutputDevice* pOut, const JobSetup&, sal_uInt16 nAspect,
     pView->SetPageVisible(false);
     pView->SetGlueVisible(false);
 
+    // tdf#93357 - display first page as thumbnail in the recent documents view
     SdPage* pSelectedPage = nullptr;
-
-    const std::vector<std::unique_ptr<sd::FrameView>> &rViews = mpDoc->GetFrameViewList();
-    if( !rViews.empty() )
+    if (nAspect == ASPECT_THUMBNAIL && pOut->GetOutDevType() == OUTDEV_VIRDEV)
+        pSelectedPage = mpDoc->GetSdPage(0, PageKind::Standard);
+    else
     {
-        sd::FrameView* pFrameView = rViews[0].get();
-        if( pFrameView->GetPageKind() == PageKind::Standard )
+        const std::vector<std::unique_ptr<sd::FrameView>> &rViews = mpDoc->GetFrameViewList();
+        if( !rViews.empty() )
         {
-            sal_uInt16 nSelectedPage = pFrameView->GetSelectedPage();
-            pSelectedPage = mpDoc->GetSdPage(nSelectedPage, PageKind::Standard);
-        }
-    }
-
-    if( nullptr == pSelectedPage )
-    {
-        SdPage* pPage = nullptr;
-        sal_uInt16 nPageCnt = mpDoc->GetSdPageCount(PageKind::Standard);
-
-        for (sal_uInt16 i = 0; i < nPageCnt; i++)
-        {
-            pPage = mpDoc->GetSdPage(i, PageKind::Standard);
-
-            if ( pPage->IsSelected() )
-                pSelectedPage = pPage;
+            sd::FrameView* pFrameView = rViews[0].get();
+            if( pFrameView->GetPageKind() == PageKind::Standard )
+            {
+                sal_uInt16 nSelectedPage = pFrameView->GetSelectedPage();
+                pSelectedPage = mpDoc->GetSdPage(nSelectedPage, PageKind::Standard);
+            }
         }
 
         if( nullptr == pSelectedPage )
-            pSelectedPage = mpDoc->GetSdPage(0, PageKind::Standard);
+        {
+            SdPage* pPage = nullptr;
+            sal_uInt16 nPageCnt = mpDoc->GetSdPageCount(PageKind::Standard);
+
+            for (sal_uInt16 i = 0; i < nPageCnt; i++)
+            {
+                pPage = mpDoc->GetSdPage(i, PageKind::Standard);
+
+                if ( pPage->IsSelected() )
+                    pSelectedPage = pPage;
+            }
+
+            if( nullptr == pSelectedPage )
+                pSelectedPage = mpDoc->GetSdPage(0, PageKind::Standard);
+        }
     }
 
     ::tools::Rectangle aVisArea = GetVisArea(nAspect);
@@ -172,7 +177,7 @@ FrameView* DrawDocShell::GetFrameView()
 /**
  * Creates a bitmap of an arbitrary page
  */
-BitmapEx DrawDocShell::GetPagePreviewBitmap(SdPage* pPage)
+Bitmap DrawDocShell::GetPagePreviewBitmap(SdPage* pPage)
 {
     const sal_uInt16 nMaxEdgePixel = 90;
     MapMode         aMapMode( MapUnit::Map100thMM );
@@ -255,7 +260,7 @@ BitmapEx DrawDocShell::GetPagePreviewBitmap(SdPage* pPage)
 
     pVDev->SetMapMode( MapMode() );
 
-    BitmapEx aPreview( pVDev->GetBitmapEx( aNullPt, pVDev->GetOutputSizePixel() ) );
+    Bitmap aPreview( pVDev->GetBitmap( aNullPt, pVDev->GetOutputSizePixel() ) );
 
     DBG_ASSERT(!aPreview.IsEmpty(), "Preview-Bitmap could not be generated");
 
@@ -293,7 +298,7 @@ bool DrawDocShell::CheckPageName(weld::Window* pWin, OUString& rName)
 
         if( aNameDlg->Execute() == RET_OK )
         {
-            aNameDlg->GetName( rName );
+            rName = aNameDlg->GetName();
             bIsNameValid = IsNewPageNameValid( rName );
         }
     }
@@ -355,7 +360,7 @@ bool DrawDocShell::IsNewPageNameValid( OUString & rInOutPageName, bool bResetStr
         else
         {
             // check for upper/lower case roman numbering
-            OUString sReserved("cdilmvx");
+            OUString sReserved(u"cdilmvx"_ustr);
 
             // skip all following characters contained in one reserved class
             if (sReserved.indexOf(sRemainder[0]) == -1)
@@ -411,8 +416,7 @@ bool DrawDocShell::IsPageNameUnique( std::u16string_view rPageName ) const
 
 IMPL_LINK( DrawDocShell, RenameSlideHdl, AbstractSvxNameDialog&, rDialog, bool )
 {
-    OUString aNewName;
-    rDialog.GetName( aNewName );
+    OUString aNewName = rDialog.GetName();
     return IsNewPageNameValid( aNewName );
 }
 

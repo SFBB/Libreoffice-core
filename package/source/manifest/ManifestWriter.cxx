@@ -33,7 +33,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::registry;
 using namespace ::com::sun::star::packages;
 using namespace ::com::sun::star::xml::sax;
 
@@ -69,7 +68,7 @@ void SAL_CALL ManifestWriter::writeManifestSequence( const Reference< XOutputStr
 
 OUString ManifestWriter::getImplementationName()
 {
-    return "com.sun.star.packages.manifest.comp.ManifestWriter";
+    return u"com.sun.star.packages.manifest.comp.ManifestWriter"_ustr;
 }
 
 sal_Bool SAL_CALL ManifestWriter::supportsService(OUString const & rServiceName)
@@ -78,7 +77,7 @@ sal_Bool SAL_CALL ManifestWriter::supportsService(OUString const & rServiceName)
 }
 Sequence < OUString > ManifestWriter::getSupportedServiceNames()
 {
-    return { "com.sun.star.packages.manifest.ManifestWriter" };
+    return { u"com.sun.star.packages.manifest.ManifestWriter"_ustr };
 }
 
 

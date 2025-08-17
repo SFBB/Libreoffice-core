@@ -62,9 +62,9 @@ void OCalcConnection::construct(const OUString& url,const Sequence< PropertyValu
 
     sal_Int32 nLen = url.indexOf(':');
     nLen = url.indexOf(':',nLen+1);
-    OUString aDSN(url.copy(nLen+1));
 
-    m_aFileName = aDSN;
+    m_aFileName = url.copy(nLen+1); // DSN
+
     INetURLObject aURL;
     aURL.SetSmartProtocol(INetProtocol::File);
     {
@@ -80,18 +80,15 @@ void OCalcConnection::construct(const OUString& url,const Sequence< PropertyValu
     m_aFileName = aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
 
     m_sPassword.clear();
-    const char pPwd[] = "password";
 
-    const PropertyValue *pIter  = info.getConstArray();
-    const PropertyValue *pEnd   = pIter + info.getLength();
-    for(;pIter != pEnd;++pIter)
+    for (auto& propval : info)
     {
-        if(pIter->Name == pPwd)
+        if (propval.Name == "password")
         {
-            pIter->Value >>= m_sPassword;
+            propval.Value >>= m_sPassword;
             break;
         }
-    } // for(;pIter != pEnd;++pIter)
+    }
     ODocHolder aDocHolder(this); // just to test that the doc can be loaded
     acquireDoc();
 }
@@ -123,7 +120,7 @@ Reference< XSpreadsheetDocument> const & OCalcConnection::acquireDoc()
     try
     {
         xComponent = xDesktop->loadComponentFromURL(
-            m_aFileName, "_blank", 0, aArgs );
+            m_aFileName, u"_blank"_ustr, 0, aArgs );
     }
     catch( const Exception& )
     {
@@ -193,7 +190,7 @@ void OCalcConnection::disposing()
 // XServiceInfo
 
 
-IMPLEMENT_SERVICE_INFO(OCalcConnection, "com.sun.star.sdbc.drivers.calc.Connection", "com.sun.star.sdbc.Connection")
+IMPLEMENT_SERVICE_INFO(OCalcConnection, u"com.sun.star.sdbc.drivers.calc.Connection"_ustr, u"com.sun.star.sdbc.Connection"_ustr)
 
 
 Reference< XDatabaseMetaData > SAL_CALL OCalcConnection::getMetaData(  )
@@ -216,11 +213,11 @@ Reference< XDatabaseMetaData > SAL_CALL OCalcConnection::getMetaData(  )
 css::uno::Reference< XTablesSupplier > OCalcConnection::createCatalog()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
-    Reference< XTablesSupplier > xTab = m_xCatalog;
+    rtl::Reference< connectivity::sdbcx::OCatalog > xTab = m_xCatalog;
     if(!xTab.is())
     {
         xTab = new OCalcCatalog(this);
-        m_xCatalog = xTab;
+        m_xCatalog = xTab.get();
     }
     return xTab;
 }
@@ -256,9 +253,7 @@ Reference< XPreparedStatement > SAL_CALL OCalcConnection::prepareCall( const OUS
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OConnection_BASE::rBHelper.bDisposed);
 
-    ::dbtools::throwFeatureNotImplementedSQLException( "XConnection::prepareCall", *this );
-    return nullptr;
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XConnection::prepareCall"_ustr, *this );
 }
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

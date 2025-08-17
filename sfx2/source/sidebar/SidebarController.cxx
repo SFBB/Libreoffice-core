@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <sfx2/sidebar/SidebarController.hxx>
+
+#include <boost/property_tree/json_parser.hpp>
+
 #include <sfx2/sidebar/Deck.hxx>
 #include <sidebar/DeckDescriptor.hxx>
 #include <sidebar/DeckTitleBar.hxx>
@@ -50,6 +53,7 @@
 #include <sal/log.hxx>
 #include <officecfg/Office/UI/Sidebar.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <o3tl/string_view.hxx>
 
 #include <com/sun/star/awt/XWindowPeer.hpp>
 #include <com/sun/star/frame/XDispatch.hpp>
@@ -117,16 +121,15 @@ SidebarController::SidebarController (
               mpParentWindow,
               mxFrame,
               [this](const OUString& rsDeckId) { return this->OpenThenToggleDeck(rsDeckId); },
-              [this](weld::Menu& rMainMenu, weld::Menu& rSubMenu,
-                     const ::std::vector<TabBar::DeckMenuData>& rMenuData) { return this->ShowPopupMenu(rMainMenu, rSubMenu, rMenuData); },
-              this)),
+              [this](weld::Menu& rMainMenu, weld::Menu& rSubMenu) { return this->ConnectMenuActivateHandlers(rMainMenu, rSubMenu); },
+              *this)),
       maCurrentContext(OUString(), OUString()),
       maRequestedContext(OUString(), OUString()),
       mnRequestedForceFlags(SwitchFlag_NoForce),
       mbMinimumSidebarWidth(officecfg::Office::UI::Sidebar::General::MinimumWidth::get()),
       msCurrentDeckId(gsDefaultDeckId),
-      maPropertyChangeForwarder([this](){ return this->BroadcastPropertyChange(); }),
-      maContextChangeUpdate([this](){ return this->UpdateConfigurations(); }),
+      maPropertyChangeForwarder(mpViewFrame, [this](){ return this->BroadcastPropertyChange(); }),
+      maContextChangeUpdate(mpViewFrame, [this](){ return this->UpdateConfigurations(); }),
       mbFloatingDeckClosed(!pParentWindow->IsFloatingMode()),
       mnSavedSidebarWidth(pParentWindow->GetSizePixel().Width()),
       maFocusManager([this](const Panel& rPanel){ return this->ShowPanel(rPanel); }),
@@ -153,7 +156,7 @@ rtl::Reference<SidebarController> SidebarController::create(SidebarDockingWindow
     // Listen for theme property changes.
     instance->mxThemePropertySet = Theme::GetPropertySet();
     instance->mxThemePropertySet->addPropertyChangeListener(
-        "",
+        u""_ustr,
         static_cast<css::beans::XPropertyChangeListener*>(instance.get()));
 
     // Get the dispatch object as preparation to listen for changes of
@@ -226,15 +229,23 @@ void SidebarController::disposeDecks()
         {
             const std::string hide = UnoNameFromDeckId(msCurrentDeckId, GetCurrentContext());
             if (!hide.empty())
+            {
+                // Be consistent with SwitchToDeck(), so both places emit JSON.
+                boost::property_tree::ptree aTree;
+                aTree.put("commandName", hide);
+                aTree.put("state", "false");
+                std::stringstream aStream;
+                boost::property_tree::write_json(aStream, aTree);
                 pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED,
-                                                       OString(hide + "=false"));
+                                                       OString(aStream.str()));
+            }
         }
 
         if (mpParentWindow)
             mpParentWindow->ReleaseLOKNotifier();
     }
 
-    mpCurrentDeck.clear();
+    mpCurrentDeck.reset();
     maFocusManager.Clear();
     mpResourceManager->disposeDecks();
 }
@@ -245,8 +256,8 @@ namespace
     {
     public:
         CloseIndicator(vcl::Window* pParent)
-            : InterimItemWindow(pParent, "svt/ui/fixedimagecontrol.ui", "FixedImageControl")
-            , m_xWidget(m_xBuilder->weld_image("image"))
+            : InterimItemWindow(pParent, u"svt/ui/fixedimagecontrol.ui"_ustr, u"FixedImageControl"_ustr)
+            , m_xWidget(m_xBuilder->weld_image(u"image"_ustr))
         {
             InitControlBase(m_xWidget.get());
 
@@ -309,7 +320,7 @@ void SidebarController::disposing(std::unique_lock<std::mutex>&)
 
     if (mxThemePropertySet.is())
         mxThemePropertySet->removePropertyChangeListener(
-            "",
+            u""_ustr,
             static_cast<css::beans::XPropertyChangeListener*>(this));
 
     if (mpParentWindow != nullptr)
@@ -351,8 +362,12 @@ void SAL_CALL SidebarController::notifyContextChangeEvent (const css::ui::Contex
         maContextChangeUpdate.RequestCall(); // async call, not a prob
                                              // calling with held
                                              // solarmutex
-        // TODO: this call is redundant but mandatory for unit test to update context on document loading
-        if (!comphelper::LibreOfficeKit::isActive())
+
+        bool bSwitchedApp = maRequestedContext.msApplication != maCurrentContext.msApplication;
+        // Happens on reattach of sidebar to frame or context change
+        // LOK performance impact: prevents to switch sidebar on every keypress in multi user case
+        // Allow when enters embedded OLE (eg. Math formula editor second time)
+        if (!comphelper::LibreOfficeKit::isActive() || bSwitchedApp)
             UpdateConfigurations();
     }
 }
@@ -539,8 +554,10 @@ void SidebarController::UpdateConfigurations()
         && mnRequestedForceFlags == SwitchFlag_NoForce)
         return;
 
-    if ((maCurrentContext.msApplication != "none") &&
-            !maCurrentContext.msApplication.isEmpty())
+    bool bIsLOK = comphelper::LibreOfficeKit::isActive();
+
+    if (!bIsLOK && maCurrentContext.msApplication != "none" &&
+        !maCurrentContext.msApplication.isEmpty())
     {
         mpResourceManager->SaveDecksSettings(maCurrentContext);
         mpResourceManager->SetLastActiveDeck(maCurrentContext, msCurrentDeckId);
@@ -548,11 +565,22 @@ void SidebarController::UpdateConfigurations()
 
     // get last active deck for this application on first update
     if (!maRequestedContext.msApplication.isEmpty() &&
-            (maCurrentContext.msApplication != maRequestedContext.msApplication))
+        (maCurrentContext.msApplication != maRequestedContext.msApplication))
     {
-        OUString sLastActiveDeck = mpResourceManager->GetLastActiveDeck( maRequestedContext );
-        if (!sLastActiveDeck.isEmpty())
-            msCurrentDeckId = sLastActiveDeck;
+        if (bIsLOK)
+        {
+            // LOK has no last-used memory
+            const auto& rOverrides = mpResourceManager->GetDeckOverrides();
+            const auto aOverride = rOverrides.find(maRequestedContext.msApplication);
+            if (aOverride != rOverrides.end())
+                msCurrentDeckId = aOverride->second;
+        }
+        else
+        {
+            OUString sLastActiveDeck = mpResourceManager->GetLastActiveDeck( maRequestedContext );
+            if (!sLastActiveDeck.isEmpty())
+                msCurrentDeckId = sLastActiveDeck;
+        }
     }
 
     maCurrentContext = maRequestedContext;
@@ -622,6 +650,8 @@ void collectUIInformation(const OUString& rDeckId)
 }
 
 }
+
+bool SidebarController::IsDocked() const { return !mpParentWindow->IsFloatingMode(); }
 
 void SidebarController::OpenThenToggleDeck (
     const OUString& rsDeckId)
@@ -720,7 +750,7 @@ void SidebarController::CreateDeck(std::u16string_view rDeckId, const Context& r
                         mpParentWindow,
                         [this]() { return this->RequestCloseDeck(); });
     }
-    xDeckDescriptor->mpDeck = aDeck;
+    xDeckDescriptor->mpDeck = std::move(aDeck);
     CreatePanels(rDeckId, rContext);
 }
 
@@ -805,18 +835,33 @@ void SidebarController::SwitchToDeck (
     {
         if (const SfxViewShell* pViewShell = mpViewFrame->GetViewShell())
         {
+            std::vector<std::pair<std::string, std::string>> aStateChanges;
             if (msCurrentDeckId != rDeckDescriptor.msId)
             {
                 const std::string hide = UnoNameFromDeckId(msCurrentDeckId, GetCurrentContext());
                 if (!hide.empty())
-                    pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED,
-                                                           OString(hide + "=false"));
+                {
+                    aStateChanges.push_back({hide, std::string("false")});
+                }
             }
 
             const std::string show = UnoNameFromDeckId(rDeckDescriptor.msId, GetCurrentContext());
             if (!show.empty())
+            {
+                aStateChanges.push_back({show, std::string("true")});
+            }
+
+            for (const auto& rStateChange : aStateChanges)
+            {
+                boost::property_tree::ptree aTree;
+                aTree.put("locale", comphelper::LibreOfficeKit::getLocale().getBcp47());
+                aTree.put("commandName", rStateChange.first);
+                aTree.put("state", rStateChange.second);
+                std::stringstream aStream;
+                boost::property_tree::write_json(aStream, aTree);
                 pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED,
-                                                       OString(show + "=true"));
+                                                       OString(aStream.str()));
+            }
         }
     }
 
@@ -880,7 +925,7 @@ void SidebarController::SwitchToDeck (
     if ( ! mpCurrentDeck)
         return;
 
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
     // Show the context name in the deck title bar.
     DeckTitleBar* pDebugTitleBar = mpCurrentDeck->GetTitleBar();
     if (pDebugTitleBar)
@@ -980,37 +1025,39 @@ Reference<ui::XUIElement> SidebarController::CreateUIElement (
 {
     try
     {
-        const Reference<XComponentContext> xComponentContext (::comphelper::getProcessComponentContext() );
+        const Reference<XComponentContext>& xComponentContext (::comphelper::getProcessComponentContext() );
         const Reference<ui::XUIElementFactory> xUIElementFactory =
                ui::theUIElementFactoryManager::get( xComponentContext );
 
        // Create the XUIElement.
         ::comphelper::NamedValueCollection aCreationArguments;
-        aCreationArguments.put("Frame", Any(mxFrame));
-        aCreationArguments.put("ParentWindow", Any(rxWindow));
+        aCreationArguments.put(u"Frame"_ustr, Any(mxFrame));
+        aCreationArguments.put(u"ParentWindow"_ustr, Any(rxWindow));
         SidebarDockingWindow* pSfxDockingWindow = mpParentWindow.get();
         if (pSfxDockingWindow != nullptr)
-            aCreationArguments.put("SfxBindings", Any(reinterpret_cast<sal_uInt64>(&pSfxDockingWindow->GetBindings())));
-        aCreationArguments.put("Theme", Theme::GetPropertySet());
-        aCreationArguments.put("Sidebar", Any(Reference<ui::XSidebar>(static_cast<ui::XSidebar*>(this))));
+            aCreationArguments.put(u"SfxBindings"_ustr, Any(reinterpret_cast<sal_uInt64>(&pSfxDockingWindow->GetBindings())));
+        aCreationArguments.put(u"Theme"_ustr, Theme::GetPropertySet());
+        aCreationArguments.put(u"Sidebar"_ustr, Any(Reference<ui::XSidebar>(static_cast<ui::XSidebar*>(this))));
         if (bWantsCanvas)
         {
             Reference<rendering::XSpriteCanvas> xCanvas (VCLUnoHelper::GetWindow(rxWindow)->GetOutDev()->GetSpriteCanvas());
-            aCreationArguments.put("Canvas", Any(xCanvas));
+            aCreationArguments.put(u"Canvas"_ustr, Any(xCanvas));
         }
 
         if (mxCurrentController.is())
         {
             OUString aModule = Tools::GetModuleName(mxCurrentController);
             if (!aModule.isEmpty())
-            {
-                aCreationArguments.put("Module", Any(aModule));
-            }
-            aCreationArguments.put("Controller", Any(mxCurrentController));
+                aCreationArguments.put(u"Module"_ustr, Any(aModule));
+            // See also sfx2::sidebar::GetFrame. Maybe we should always create
+            // uielements with the Controller's getFrame as the XFrame. For now
+            // set both XFrame and Controller and selectively get the XFrame
+            // from the Controller.
+            aCreationArguments.put(u"Controller"_ustr, Any(mxCurrentController));
         }
 
-        aCreationArguments.put("ApplicationName", Any(rContext.msApplication));
-        aCreationArguments.put("ContextName", Any(rContext.msContext));
+        aCreationArguments.put(u"ApplicationName"_ustr, Any(rContext.msApplication));
+        aCreationArguments.put(u"ContextName"_ustr, Any(rContext.msContext));
 
         Reference<ui::XUIElement> xUIElement(
             xUIElementFactory->createUIElement(
@@ -1048,6 +1095,11 @@ IMPL_LINK(SidebarController, WindowEventHandler, VclWindowEvent&, rEvent, void)
                 maContextChangeUpdate.RequestCall();
                 break;
 
+            case VclEventId::WindowToggleFloating:
+                // make sure the appropriate "Dock" or "Undock" menu entry is shown
+                mpTabBar->UpdateMenus();
+                break;
+
             case VclEventId::ObjectDying:
                 dispose();
                 break;
@@ -1083,67 +1135,10 @@ IMPL_LINK(SidebarController, WindowEventHandler, VclWindowEvent&, rEvent, void)
     }
 }
 
-void SidebarController::ShowPopupMenu(
-    weld::Menu& rMainMenu, weld::Menu& rSubMenu,
-    const ::std::vector<TabBar::DeckMenuData>& rMenuData) const
+void SidebarController::ConnectMenuActivateHandlers(weld::Menu& rMainMenu, weld::Menu& rSubMenu) const
 {
-    PopulatePopupMenus(rMainMenu, rSubMenu, rMenuData);
     rMainMenu.connect_activate(LINK(const_cast<SidebarController*>(this), SidebarController, OnMenuItemSelected));
     rSubMenu.connect_activate(LINK(const_cast<SidebarController*>(this), SidebarController, OnSubMenuItemSelected));
-}
-
-void SidebarController::PopulatePopupMenus(weld::Menu& rMenu, weld::Menu& rCustomizationMenu,
-                                           const std::vector<TabBar::DeckMenuData>& rMenuData) const
-{
-    // Add one entry for every tool panel element to individually make
-    // them visible or hide them.
-    sal_Int32 nIndex (0);
-    for (const auto& rItem : rMenuData)
-    {
-        OUString sIdent("select" + OUString::number(nIndex));
-        rMenu.insert(nIndex, sIdent, rItem.msDisplayName,
-                     nullptr, nullptr, nullptr, TRISTATE_FALSE);
-        rMenu.set_active(sIdent, rItem.mbIsCurrentDeck);
-        rMenu.set_sensitive(sIdent, rItem.mbIsEnabled && rItem.mbIsActive);
-
-        if (!comphelper::LibreOfficeKit::isActive())
-        {
-            if (rItem.mbIsCurrentDeck)
-            {
-                // Don't allow the currently visible deck to be disabled.
-                OUString sSubIdent("nocustomize" + OUString::number(nIndex));
-                rCustomizationMenu.insert(nIndex, sSubIdent, rItem.msDisplayName,
-                                          nullptr, nullptr, nullptr, TRISTATE_FALSE);
-                rCustomizationMenu.set_active(sSubIdent, true);
-            }
-            else
-            {
-                OUString sSubIdent("customize" + OUString::number(nIndex));
-                rCustomizationMenu.insert(nIndex, sSubIdent, rItem.msDisplayName,
-                                          nullptr, nullptr, nullptr, TRISTATE_TRUE);
-                rCustomizationMenu.set_active(sSubIdent, rItem.mbIsEnabled && rItem.mbIsActive);
-            }
-        }
-
-        ++nIndex;
-    }
-
-    bool bHideLock = true;
-    bool bHideUnLock = true;
-    // LOK doesn't support docked/undocked; Sidebar is floating but rendered docked in browser.
-    if (!comphelper::LibreOfficeKit::isActive())
-    {
-        // Add entry for docking or un-docking the tool panel.
-        if (mpParentWindow->IsFloatingMode())
-            bHideLock = false;
-        else
-            bHideUnLock = false;
-    }
-    rMenu.set_visible("locktaskpanel", !bHideLock);
-    rMenu.set_visible("unlocktaskpanel", !bHideUnLock);
-
-    // No Restore or Customize options for LoKit.
-    rMenu.set_visible("customization", !comphelper::LibreOfficeKit::isActive());
 }
 
 IMPL_LINK(SidebarController, OnMenuItemSelected, const OUString&, rCurItemId, void)
@@ -1162,7 +1157,7 @@ IMPL_LINK(SidebarController, OnMenuItemSelected, const OUString&, rCurItemId, vo
     {
         if (!comphelper::LibreOfficeKit::isActive())
         {
-            const util::URL aURL(Tools::GetURL(".uno:Sidebar"));
+            const util::URL aURL(Tools::GetURL(u".uno:Sidebar"_ustr));
             Reference<frame::XDispatch> xDispatch(Tools::GetDispatch(mxFrame, aURL));
             if (xDispatch.is())
                 xDispatch->dispatch(aURL, Sequence<beans::PropertyValue>());
@@ -1179,11 +1174,11 @@ IMPL_LINK(SidebarController, OnMenuItemSelected, const OUString&, rCurItemId, vo
     {
         try
         {
-            OUString sNumber;
+            std::u16string_view sNumber;
             if (rCurItemId.startsWith("select", &sNumber))
             {
                 RequestOpenDeck();
-                SwitchToDeck(mpTabBar->GetDeckIdForIndex(sNumber.toInt32()));
+                SwitchToDeck(mpTabBar->GetDeckIdForIndex(o3tl::toInt32(sNumber)));
             }
             mpParentWindow->GrabFocusToDocument();
         }
@@ -1195,16 +1190,12 @@ IMPL_LINK(SidebarController, OnMenuItemSelected, const OUString&, rCurItemId, vo
 
 IMPL_LINK(SidebarController, OnSubMenuItemSelected, const OUString&, rCurItemId, void)
 {
-    if (rCurItemId == "restoredefault")
-        mpTabBar->RestoreHideFlags();
-    else
-    {
         try
         {
-            OUString sNumber;
+            std::u16string_view sNumber;
             if (rCurItemId.startsWith("customize", &sNumber))
             {
-                mpTabBar->ToggleHideFlag(sNumber.toInt32());
+                mpTabBar->ToggleHideFlag(o3tl::toInt32(sNumber));
 
                 // Find the set of decks that could be displayed for the new context.
                 ResourceManager::DeckContextDescriptorContainer aDecks;
@@ -1224,7 +1215,6 @@ IMPL_LINK(SidebarController, OnSubMenuItemSelected, const OUString&, rCurItemId,
         catch (RuntimeException&)
         {
         }
-    }
 }
 
 

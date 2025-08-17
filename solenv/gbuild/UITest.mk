@@ -48,6 +48,9 @@ $(call gb_UITest_get_clean_target,%) :
 
 ifneq ($(DISABLE_PYTHON),TRUE)
 
+# dlopening unotest requires this
+gb_UITest_PRECOMMAND = $(gb_PythonTest_PRECOMMAND)
+
 # qadevOOo/qa/registrymodifications.xcu is copied to user profile directory to ensure en_US locale;
 # this might be overwritten later when gb_UITest_use_config is set
 .PHONY : $(call gb_UITest_get_target,%)
@@ -59,8 +62,8 @@ else
 	$(call gb_Trace_StartRange,$*,UIT)
 	$(call gb_Helper_abbreviate_dirs,\
 		rm -rf $(dir $(call gb_UITest_get_target,$*)) && \
-		mkdir -p $(dir $(call gb_UITest_get_target,$*))/user/user && \
-		cp -T $(if $(gb_UITest_use_config),$(gb_UITest_use_config),$(SRCDIR)/qadevOOo/qa/registrymodifications.xcu) $(dir $(call gb_UITest_get_target,$*))/user/user/registrymodifications.xcu && \
+		mkdir -p $(dir $(call gb_UITest_get_target,$*))user/user && \
+		cp $(if $(filter-out MACOSX,$(OS)),-T) $(if $(gb_UITest_use_config),$(gb_UITest_use_config),$(SRCDIR)/qadevOOo/qa/registrymodifications.xcu) $(dir $(call gb_UITest_get_target,$*))/user/user/registrymodifications.xcu && \
 		$(if $(gb_UITest__interactive),, \
 		    rm -fr $@.core && mkdir -p $(dir $(call gb_UITest_get_target,$*))user/ && mkdir $@.core && cd $@.core && ) \
 		$(call gb_CppunitTest_coredumpctl_setup,$@) \
@@ -68,12 +71,14 @@ else
 		$(if $(G_SLICE),G_SLICE=$(G_SLICE)) \
 		$(if $(GLIBCXX_FORCE_NEW),GLIBCXX_FORCE_NEW=$(GLIBCXX_FORCE_NEW)) \
 		$(DEFS) \
-		$(if $(filter WNT,$(OS)),SAL_LOG_FILE="$(dir $(call gb_UITest_get_target,$*))/soffice.out.log") \
+		$(if $(filter WNT,$(OS)),SAL_LOG_FILE="$(dir $(call gb_UITest_get_target,$*))soffice.out.log") \
 		TEST_LIB=$(call gb_Library_get_target,test) \
+		UNOTEST_LIB=$(call gb_Library_get_target,unotest) \
 		URE_BOOTSTRAP=vnd.sun.star.pathname:$(call gb_Helper_get_rcfile,$(INSTROOT)/$(LIBO_ETC_FOLDER)/fundamental) \
 		PYTHONPATH="$(PYPATH)" \
 		TestUserDir="$(call gb_Helper_make_url,$(dir $(call gb_UITest_get_target,$*)))" \
 		PYTHONDONTWRITEBYTECODE=0 \
+		LO_RUNNING_UI_TEST=1 \
 		$(if $(ENABLE_WERROR),PYTHONWARNINGS=error) \
 		$(if $(filter WNT,$(OS)),TZ=) \
 		$(gb_TEST_ENV_VARS) \
@@ -89,8 +94,8 @@ else
 				    RET=$$?; \
 				    $(call gb_CppunitTest_postprocess,$(gb_UITest_EXECUTABLE_GDB),$@.core,$$RET) >> $@.log 2>&1;) \
                 $(if $(filter WNT,$(OS)), \
-                    printf '%s: <<<\n' $(dir $(call gb_UITest_get_target,$*))/soffice.out.log; \
-                    cat $(dir $(call gb_UITest_get_target,$*))/soffice.out.log; \
+                    printf '%s: <<<\n' $(dir $(call gb_UITest_get_target,$*))soffice.out.log; \
+                    cat $(dir $(call gb_UITest_get_target,$*))soffice.out.log; \
                     printf ' >>>\n\n';) \
 			    cat $@.log; $(gb_UITest_UNITTESTFAILED) UI $*))))
 	$(call gb_Trace_EndRange,$*,UIT)
@@ -126,7 +131,7 @@ $(call gb_UITest_get_target,$(1)) : MODULES += $(strip $(2))/$(strip $(3))
 endef
 
 define gb_UITest_use_customtarget
-$(call gb_UITest_get_target,$(1)) : $(call gb_CustomTarget_get_workdir,$(2))
+$(call gb_UITest_get_target,$(1)) : $(gb_CustomTarget_workdir)/$(2)
 
 endef
 

@@ -18,21 +18,16 @@
  */
 #pragma once
 
-#include "charttoolsdllapi.hxx"
+#include <config_options.h>
 #include <com/sun/star/chart2/ScaleData.hpp>
 #include <rtl/ref.hxx>
+#include "GridProperties.hxx"
 
 #include <vector>
 
 namespace chart { class ChartModel; }
 namespace chart { class ExplicitCategoriesProvider; }
 namespace chart { class ReferenceSizeProvider; }
-namespace com::sun::star::beans { class XPropertySet; }
-namespace com::sun::star::chart2 { class XAxis; }
-namespace com::sun::star::chart2 { class XChartDocument; }
-namespace com::sun::star::chart2 { class XChartType; }
-namespace com::sun::star::chart2 { class XCoordinateSystem; }
-namespace com::sun::star::chart2 { class XDiagram; }
 namespace com::sun::star::chart2 { class XScaling; }
 namespace com::sun::star::uno { class XComponentContext; }
 
@@ -42,9 +37,8 @@ class Axis;
 class BaseCoordinateSystem;
 class ChartType;
 class Diagram;
-class GridProperties;
 
-class OOO_DLLPUBLIC_CHARTTOOLS AxisHelper
+class AxisHelper
 {
 public:
     static css::uno::Reference< css::chart2::XScaling > createLinearScaling();
@@ -106,7 +100,7 @@ public:
     static void hideAxisIfNoDataIsAttached( const rtl::Reference< ::chart::Axis >& xAxis
                                           , const rtl::Reference< ::chart::Diagram >& xDiagram);
 
-    SAL_DLLPRIVATE static bool areAxisLabelsVisible( const rtl::Reference< ::chart::Axis >& xAxisProperties );
+    static bool areAxisLabelsVisible( const rtl::Reference< ::chart::Axis >& xAxisProperties );
     static bool isAxisVisible( const rtl::Reference< ::chart::Axis >& xAxis );
     static bool isGridVisible( const rtl::Reference< ::chart::GridProperties >& xGridProperties );
 
@@ -166,7 +160,7 @@ public:
     /** @param bOnlyVisible if </TRUE>, only axes with property "Show" set to
                </sal_True> are returned
      */
-    SAL_DLLPRIVATE static std::vector< rtl::Reference< ::chart::Axis > >
+    static std::vector< rtl::Reference< ::chart::Axis > >
             getAllAxesOfCoordinateSystem( const rtl::Reference< ::chart::BaseCoordinateSystem >& xCooSys
             , bool bOnlyVisible = false );
 

@@ -16,30 +16,28 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_COLWD_HXX
-#define INCLUDED_SW_INC_COLWD_HXX
+#pragma once
 
 #include <vcl/weld.hxx>
+#include <memory>
 
 class SwTableFUNC;
+class SwWrtShell;
 
 class SwTableWidthDlg final : public weld::GenericDialogController
 {
 private:
-    SwTableFUNC& m_rFnc;
+    std::unique_ptr<SwTableFUNC> m_xFnc;
 
     std::unique_ptr<weld::SpinButton> m_xColNF;
     std::unique_ptr<weld::MetricSpinButton> m_xWidthMF;
 
     DECL_LINK(LoseFocusHdl, weld::SpinButton&, void);
 
-    void Apply();
-
 public:
-    SwTableWidthDlg(weld::Window* pParent, SwTableFUNC& rFnc);
-    virtual short run() override;
+    SwTableWidthDlg(weld::Window* pParent, SwWrtShell* pShell);
+    ~SwTableWidthDlg();
+    void Apply();
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

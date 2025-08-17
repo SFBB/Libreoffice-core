@@ -34,17 +34,12 @@ namespace dbaui
     class OpenDocumentButton
     {
     private:
-        OUString     m_sModule;
-
         std::unique_ptr<weld::Button> m_xControl;
     public:
-        OpenDocumentButton(std::unique_ptr<weld::Button> xControl, const char* _pAsciiModuleName);
+        OpenDocumentButton(std::unique_ptr<weld::Button> xControl, const OUString& _rAsciiModuleName);
 
         void set_sensitive(bool bSensitive) { m_xControl->set_sensitive(bSensitive); }
         void connect_clicked(const Link<weld::Button&, void>& rLink) { m_xControl->connect_clicked(rLink); }
-
-    private:
-        void    impl_init( const char* _pAsciiModuleName );
     };
 
     // OpenDocumentListBox

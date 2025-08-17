@@ -27,6 +27,7 @@
 #include "GlowSoftEgdeShadowTools.hxx"
 
 #ifdef DBG_UTIL
+#include <o3tl/environment.hxx>
 #include <tools/stream.hxx>
 #include <vcl/filter/PngImageWriter.hxx>
 #endif
@@ -40,7 +41,7 @@ SoftEdgePrimitive2D::SoftEdgePrimitive2D(double fRadius, Primitive2DContainer&& 
     , maLastClippedRange()
 {
     // activate callback to flush buffered decomposition content
-    setCallbackSeconds(15);
+    activateFlushOnTimer();
 }
 
 bool SoftEdgePrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
@@ -173,7 +174,7 @@ void SoftEdgePrimitive2D::create2DDecomposition(
         // drawinglayer::primitive2d::ProcessAndBlurAlphaMask() can be called.
         // Otherwise, blurring of edges will fail in cases like running in a
         // slideshow or exporting to PDF.
-        const BitmapEx aBitmapEx(::drawinglayer::convertToBitmapEx(
+        const BitmapEx aBitmapEx(::drawinglayer::convertToBitmap(
             std::move(xEmbedSeq), aViewInformation2D, nDiscreteClippedWidth, nDiscreteClippedHeight,
             nMaximumQuadraticPixels, true));
 
@@ -218,8 +219,7 @@ void SoftEdgePrimitive2D::create2DDecomposition(
         if (bDoSaveForVisualControl)
         {
             // VCL_DUMP_BMP_PATH should be like C:/path/ or ~/path/
-            static const OUString sDumpPath(
-                OUString::createFromAscii(std::getenv("VCL_DUMP_BMP_PATH")));
+            static const OUString sDumpPath(o3tl::getEnvironment(u"VCL_DUMP_BMP_PATH"_ustr));
             if (!sDumpPath.isEmpty())
             {
                 SvFileStream aNew(sDumpPath + "test_softedge.png",
@@ -233,10 +233,10 @@ void SoftEdgePrimitive2D::create2DDecomposition(
         // Independent from discrete sizes of soft alpha creation, always
         // map and project soft result to geometry range extended by soft
         // radius, but to the eventually clipped instance (ClippedRange)
-        const primitive2d::Primitive2DReference xEmbedRefBitmap(
-            new BitmapPrimitive2D(result, basegfx::utils::createScaleTranslateB2DHomMatrix(
-                                              aClippedRange.getWidth(), aClippedRange.getHeight(),
-                                              aClippedRange.getMinX(), aClippedRange.getMinY())));
+        const primitive2d::Primitive2DReference xEmbedRefBitmap(new BitmapPrimitive2D(
+            Bitmap(result), basegfx::utils::createScaleTranslateB2DHomMatrix(
+                                aClippedRange.getWidth(), aClippedRange.getHeight(),
+                                aClippedRange.getMinX(), aClippedRange.getMinY())));
 
         rContainer = primitive2d::Primitive2DContainer{ xEmbedRefBitmap };
 
@@ -268,7 +268,7 @@ void SoftEdgePrimitive2D::get2DDecomposition(
                                            fDiscreteSoftRadius, rViewInformation))
             break;
 
-        if (!getBuffered2DDecomposition().empty())
+        if (hasBuffered2DDecomposition())
         {
             // First check is to detect if the last created decompose is capable
             // to represent the now requested visualization (see similar
@@ -295,7 +295,7 @@ void SoftEdgePrimitive2D::get2DDecomposition(
             }
         }
 
-        if (!getBuffered2DDecomposition().empty())
+        if (hasBuffered2DDecomposition())
         {
             // Second check is to react on changes of the DiscreteSoftRadius when
             // zooming in/out (see similar implementation at GlowPrimitive2D).
@@ -321,7 +321,7 @@ void SoftEdgePrimitive2D::get2DDecomposition(
             }
         }
 
-        if (getBuffered2DDecomposition().empty())
+        if (!hasBuffered2DDecomposition())
         {
             // refresh last used DiscreteSoftRadius and ClippedRange to new remembered values
             const_cast<SoftEdgePrimitive2D*>(this)->mfLastDiscreteSoftRadius = fDiscreteSoftRadius;

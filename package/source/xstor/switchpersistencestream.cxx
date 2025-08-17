@@ -39,6 +39,7 @@ struct SPStreamData_Impl
     uno::Reference< io::XSeekable > m_xOrigSeekable;
     uno::Reference< io::XInputStream > m_xOrigInStream;
     uno::Reference< io::XOutputStream > m_xOrigOutStream;
+    comphelper::ByteReader* m_pByteReader;
 
     bool m_bInOpen;
     bool m_bOutOpen;
@@ -56,6 +57,7 @@ struct SPStreamData_Impl
     , m_xOrigSeekable(std::move( xOrigSeekable ))
     , m_xOrigInStream(std::move( xOrigInStream ))
     , m_xOrigOutStream(std::move( xOrigOutStream ))
+    , m_pByteReader(dynamic_cast<comphelper::ByteReader*>(m_xOrigInStream.get()))
     , m_bInOpen( bInOpen )
     , m_bOutOpen( bOutOpen )
     {
@@ -162,7 +164,7 @@ void SwitchablePersistenceStream::CopyAndSwitchPersistenceTo( const uno::Referen
         // the provided stream must be empty
         xTargetSeek.set( xTargetStream, uno::UNO_QUERY_THROW );
         if ( xTargetSeek->getLength() )
-            throw io::IOException("provided stream not empty");
+            throw io::IOException(u"provided stream not empty"_ustr);
     }
 
     uno::Reference< io::XTruncate > xTargetTruncate( xTargetStream, uno::UNO_QUERY_THROW );
@@ -241,6 +243,28 @@ uno::Reference< io::XOutputStream > SAL_CALL SwitchablePersistenceStream::getOut
         throw uno::RuntimeException();
 
     return m_pStreamData->m_xOrigInStream->readBytes( aData, nMaxBytesToRead );
+}
+
+::sal_Int32 SwitchablePersistenceStream::readSomeBytes( sal_Int8* aData, sal_Int32 nBytesToRead)
+{
+    std::scoped_lock aGuard( m_aMutex );
+
+    if ( !m_pStreamData )
+        throw io::NotConnectedException();
+
+    // the original stream data should be provided
+    if ( !m_pStreamData->m_xOrigInStream.is() )
+        throw uno::RuntimeException();
+
+    if (m_pStreamData->m_pByteReader)
+        return m_pStreamData->m_pByteReader->readSomeBytes( aData, nBytesToRead );
+    else
+    {
+        css::uno::Sequence < sal_Int8 > aSequence;
+        sal_Int32 nBytesActuallyRead = m_pStreamData->m_xOrigInStream->readSomeBytes( aSequence, nBytesToRead );
+        memcpy(aData, aSequence.getConstArray(), nBytesActuallyRead);
+        return nBytesActuallyRead;
+    }
 }
 
 void SAL_CALL SwitchablePersistenceStream::skipBytes( ::sal_Int32 nBytesToSkip )

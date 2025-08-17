@@ -20,6 +20,9 @@
 #include <sal/config.h>
 
 #include <o3tl/safeint.hxx>
+#include <com/sun/star/i18n/WordType.hpp>
+#include <swscanner.hxx>
+#include <i18nutil/kashida.hxx>
 
 #include <IDocumentSettingAccess.hxx>
 #include <doc.hxx>
@@ -45,7 +48,33 @@ void SwTextAdjuster::FormatBlock( )
     const SwLinePortion *pFly = nullptr;
 
     bool bSkip = !IsLastBlock() &&
+        // don't skip, if the last paragraph line needs space shrinking
+        m_pCurr->ExtraShrunkWidth() <= m_pCurr->Width() &&
         m_nStart + m_pCurr->GetLen() >= TextFrameIndex(GetInfo().GetText().getLength());
+
+    // tdf#162725 if the last line is longer, than the paragraph width,
+    // it contains shrinking spaces: don't skip block format here
+    if( bSkip )
+    {
+        // sum width of the text portions to calculate the line width without shrinking
+        tools::Long nBreakWidth = 0;
+        const SwLinePortion *pPos = m_pCurr->GetNextPortion();
+        while( pPos && bSkip )
+        {
+            if( !pPos->InGlueGrp() &&
+                // don't calculate with the terminating space,
+                // otherwise it would result justified line mistakenly
+                ( pPos->GetNextPortion() || !pPos->IsHolePortion() ) )
+            {
+                nBreakWidth += pPos->Width();
+            }
+
+            if( nBreakWidth > m_pCurr->Width() )
+                bSkip = false;
+
+            pPos = pPos->GetNextPortion();
+        }
+    }
 
     // Multi-line fields are tricky, because we need to check whether there are
     // any other text portions in the paragraph.
@@ -110,138 +139,101 @@ void SwTextAdjuster::FormatBlock( )
     GetInfo().GetParaPortion()->GetRepaint().SetOffset(0);
 }
 
-static bool lcl_CheckKashidaPositions( SwScriptInfo& rSI, SwTextSizeInfo& rInf, SwTextIter& rItr,
-            sal_Int32& rKashidas, TextFrameIndex& nGluePortion)
+static bool lcl_ComputeKashidaPositions(SwTextSizeInfo& rInf, SwTextIter& rItr,
+                                        TextFrameIndex& nGluePortion,
+                                        const tools::Long nGluePortionWidth,
+                                        SwLineLayout* pCurrLine, TextFrameIndex nLineBaseIndex)
 {
     // i60594 validate Kashida justification
     TextFrameIndex nIdx = rItr.GetStart();
     TextFrameIndex nEnd = rItr.GetEnd();
 
-    // Note on calling KashidaJustify():
-    // Kashida positions may be marked as invalid. Therefore KashidaJustify may return the clean
-    // total number of kashida positions, or the number of kashida positions after some positions
-    // have been dropped.
-    // Here we want the clean total, which is OK: We have called ClearKashidaInvalid() before.
-    rKashidas = rSI.KashidaJustify(nullptr, nullptr, rItr.GetStart(), rItr.GetLength());
+    std::vector<TextFrameIndex> aKashidaPositions;
+    std::vector<tools::Long> aKashidaWidths;
+    tools::Long nMaxKashidaWidth = 0;
 
-    if (rKashidas <= 0) // nothing to do
-        return true;
+    // Parse the text, and apply the kashida insertion rules
+    std::function<LanguageType(sal_Int32, sal_Int32, bool)> pGetLangOfChar(
+        [&rInf](sal_Int32 const nBegin, sal_uInt16 const nScript, bool const bNoChar)
+        { return rInf.GetTextFrame()->GetLangOfChar(TextFrameIndex{ nBegin }, nScript, bNoChar); });
+    SwScanner aScanner(std::move(pGetLangOfChar), rInf.GetText(), nullptr, ModelToViewHelper(),
+                       i18n::WordType::DICTIONARY_WORD, sal_Int32(nIdx), sal_Int32(nEnd));
 
-    // kashida positions found in SwScriptInfo are not necessarily valid in every font
-    // if two characters are replaced by a ligature glyph, there will be no place for a kashida
-    std::vector<TextFrameIndex> aKashidaPos;
-    rSI.GetKashidaPositions(nIdx, rItr.GetLength(), aKashidaPos);
-    assert(aKashidaPos.size() >= o3tl::make_unsigned(rKashidas));
-    std::vector<TextFrameIndex> aKashidaPosDropped(aKashidaPos.size());
-    sal_Int32 nKashidaIdx = 0;
-    while ( rKashidas && nIdx < nEnd )
+    std::vector<bool> aValidPositions;
+    while (aScanner.NextWord())
     {
-        rItr.SeekAndChgAttrIter( nIdx, rInf.GetOut() );
-        TextFrameIndex nNext = rItr.GetNextAttr();
+        const OUString& rWord = aScanner.GetWord();
 
-        // is there also a script change before?
-        // if there is, nNext should point to the script change
-        TextFrameIndex const nNextScript = rSI.NextScriptChg( nIdx );
-        if( nNextScript < nNext )
-            nNext = nNextScript;
-
-        if (nNext == TextFrameIndex(COMPLETE_STRING) || nNext > nEnd)
-            nNext = nEnd;
-        sal_Int32 nKashidasInAttr = rSI.KashidaJustify(nullptr, nullptr, nIdx, nNext - nIdx);
-        if (nKashidasInAttr > 0)
+        // Fetch the set of valid positions from VCL, where possible
+        if (SwScriptInfo::IsKashidaScriptText(rInf.GetText(), TextFrameIndex{ aScanner.GetBegin() },
+                                              TextFrameIndex{ aScanner.GetLen() }))
         {
+            aValidPositions.clear();
+
+            rItr.SeekAndChgAttrIter(TextFrameIndex{ aScanner.GetBegin() }, rInf.GetRefDev());
+
             // Kashida glyph looks suspicious, skip Kashida justification
-            if ( rInf.GetOut()->GetMinKashida() <= 0 )
-            {
-                return false;
-            }
+            auto nFontMinKashida = rInf.GetRefDev()->GetMinKashida();
+            if (nFontMinKashida <= 0)
+                continue;
 
-            sal_Int32 nKashidasDropped = 0;
-            if ( !SwScriptInfo::IsArabicText( rInf.GetText(), nIdx, nNext - nIdx ) )
+            vcl::text::ComplexTextLayoutFlags nOldLayout = rInf.GetRefDev()->GetLayoutMode();
+            rInf.GetRefDev()->SetLayoutMode(nOldLayout
+                                            | vcl::text::ComplexTextLayoutFlags::BiDiRtl);
+
+            rInf.GetRefDev()->GetWordKashidaPositions(rWord, &aValidPositions);
+
+            rInf.GetRefDev()->SetLayoutMode(nOldLayout);
+
+            auto stKashidaPos = i18nutil::GetWordKashidaPosition(rWord, aValidPositions);
+            if (stKashidaPos.has_value())
             {
-                nKashidasDropped = nKashidasInAttr;
-                rKashidas -= nKashidasDropped;
-            }
-            else
-            {
-                vcl::text::ComplexTextLayoutFlags nOldLayout = rInf.GetOut()->GetLayoutMode();
-                rInf.GetOut()->SetLayoutMode ( nOldLayout | vcl::text::ComplexTextLayoutFlags::BiDiRtl );
-                nKashidasDropped = rInf.GetOut()->ValidateKashidas(
-                    rInf.GetText(), sal_Int32(nIdx), sal_Int32(nNext - nIdx),
-                    nKashidasInAttr,
-                    reinterpret_cast<sal_Int32*>(aKashidaPos.data() + nKashidaIdx),
-                    reinterpret_cast<sal_Int32*>(aKashidaPosDropped.data()));
-                rInf.GetOut()->SetLayoutMode ( nOldLayout );
-                if ( nKashidasDropped )
+                TextFrameIndex nNewKashidaPos{ aScanner.GetBegin() + stKashidaPos->nIndex };
+
+                // tdf#164098: The above algorithm can return out-of-range kashida positions. This
+                // can happen if, for example, a single word is split across multiple lines, and
+                // the best kashida candidate position is on the first line.
+                if (nNewKashidaPos >= nIdx && nNewKashidaPos < nEnd)
                 {
-                    rSI.MarkKashidasInvalid(nKashidasDropped, aKashidaPosDropped.data());
-                    rKashidas -= nKashidasDropped;
-                    nGluePortion -= TextFrameIndex(nKashidasDropped);
+                    aKashidaPositions.push_back(nNewKashidaPos - nLineBaseIndex);
+                    aKashidaWidths.push_back(nFontMinKashida);
+                    nMaxKashidaWidth = std::max(nMaxKashidaWidth, nFontMinKashida);
                 }
             }
-            nKashidaIdx += nKashidasInAttr;
         }
-        nIdx = nNext;
     }
 
-    // return false if all kashidas have been eliminated
-    return (rKashidas > 0);
-}
+    nGluePortion += TextFrameIndex{ aKashidaPositions.size() };
 
-static bool lcl_CheckKashidaWidth ( SwScriptInfo& rSI, SwTextSizeInfo& rInf, SwTextIter& rItr, sal_Int32& rKashidas,
-                             TextFrameIndex& nGluePortion, const tools::Long nGluePortionWidth, tools::Long& nSpaceAdd )
-{
-    // check kashida width
-    // if width is smaller than minimal kashida width allowed by fonts in the current line
-    // drop one kashida after the other until kashida width is OK
-    while (rKashidas)
+    // The line may not have enough extra space for all possible kashida.
+    // Remove them from the beginning of the line to the end.
+    std::reverse(aKashidaPositions.begin(), aKashidaPositions.end());
+    std::reverse(aKashidaWidths.begin(), aKashidaWidths.end());
+
+    while (nGluePortion && !aKashidaPositions.empty())
     {
-        bool bAddSpaceChanged = false;
-        TextFrameIndex nIdx = rItr.GetStart();
-        TextFrameIndex nEnd = rItr.GetEnd();
-        while ( nIdx < nEnd )
+        tools::Long nSpaceAdd = nGluePortionWidth / sal_Int32(nGluePortion);
+        if (nSpaceAdd / SPACING_PRECISION_FACTOR >= nMaxKashidaWidth)
         {
-            rItr.SeekAndChgAttrIter( nIdx, rInf.GetOut() );
-            TextFrameIndex nNext = rItr.GetNextAttr();
-
-            // is there also a script change before?
-            // if there is, nNext should point to the script change
-            TextFrameIndex const nNextScript = rSI.NextScriptChg( nIdx );
-            if( nNextScript < nNext )
-               nNext = nNextScript;
-
-            if (nNext == TextFrameIndex(COMPLETE_STRING) || nNext > nEnd)
-                nNext = nEnd;
-            sal_Int32 nKashidasInAttr = rSI.KashidaJustify(nullptr, nullptr, nIdx, nNext - nIdx);
-
-            tools::Long nFontMinKashida = rInf.GetOut()->GetMinKashida();
-            if ( nFontMinKashida && nKashidasInAttr > 0 && SwScriptInfo::IsArabicText( rInf.GetText(), nIdx, nNext - nIdx ) )
-            {
-                sal_Int32 nKashidasDropped = 0;
-                while ( rKashidas && nGluePortion && nKashidasInAttr > 0 &&
-                        nSpaceAdd / SPACING_PRECISION_FACTOR < nFontMinKashida )
-                {
-                    --nGluePortion;
-                    --rKashidas;
-                    --nKashidasInAttr;
-                    ++nKashidasDropped;
-                    if( !rKashidas || !nGluePortion ) // nothing left, return false to
-                        return false;                 // do regular blank justification
-
-                    nSpaceAdd = nGluePortionWidth / sal_Int32(nGluePortion);
-                    bAddSpaceChanged = true;
-                }
-                if( nKashidasDropped )
-                   rSI.MarkKashidasInvalid( nKashidasDropped, nIdx, nNext - nIdx );
-            }
-            if ( bAddSpaceChanged )
-                break; // start all over again
-            nIdx = nNext;
+            break;
         }
-        if ( !bAddSpaceChanged )
-            break; // everything was OK
+
+        aKashidaPositions.pop_back();
+        aKashidaWidths.pop_back();
+
+        nMaxKashidaWidth = 0;
+        if (!aKashidaWidths.empty())
+        {
+            nMaxKashidaWidth = *std::max_element(aKashidaWidths.begin(), aKashidaWidths.end());
+        }
+
+        --nGluePortion;
     }
-    return true;
+
+    std::reverse(aKashidaPositions.begin(), aKashidaPositions.end());
+    pCurrLine->SetKashida(std::move(aKashidaPositions));
+
+    return !aKashidaWidths.empty();
 }
 
 // CalcNewBlock() must only be called _after_ CalcLine()!
@@ -264,20 +256,15 @@ void SwTextAdjuster::CalcNewBlock( SwLineLayout *pCurrent,
     SwTextSizeInfo aInf ( GetTextFrame() );
     SwTextIter aItr ( GetTextFrame(), &aInf );
 
-    if ( rSI.CountKashida() )
+    TextFrameIndex nLineBase{ 0 };
+    if (rSI.ParagraphContainsKashidaScript())
     {
         while (aItr.GetCurr() != pCurrent && aItr.GetNext())
            aItr.Next();
 
-        if( bSkipKashida )
-        {
-            rSI.SetNoKashidaLine ( aItr.GetStart(), aItr.GetLength());
-        }
-        else
-        {
-            rSI.ClearKashidaInvalid ( aItr.GetStart(), aItr.GetLength() );
-            rSI.ClearNoKashidaLine( aItr.GetStart(), aItr.GetLength() );
-        }
+        nLineBase = aItr.GetStart();
+        rSI.ReplaceKashidaPositions({});
+        pCurrent->SetKashida({});
     }
 
     // Do not forget: CalcRightMargin() sets pCurrent->Width() to the line width!
@@ -350,18 +337,16 @@ void SwTextAdjuster::CalcNewBlock( SwLineLayout *pCurrent,
                 const tools::Long nGluePortionWidth = static_cast<SwGluePortion*>(pPos)->GetPrtGlue() *
                                                SPACING_PRECISION_FACTOR;
 
-                sal_Int32 nKashidas = 0;
-                if( nGluePortion && rSI.CountKashida() && !bSkipKashida )
+                if (rSI.ParagraphContainsKashidaScript() && !bSkipKashida)
                 {
-                    // kashida positions found in SwScriptInfo are not necessarily valid in every font
-                    // if two characters are replaced by a ligature glyph, there will be no place for a kashida
-                    if ( !lcl_CheckKashidaPositions ( rSI, aInf, aItr, nKashidas, nGluePortion ))
+                    if (!lcl_ComputeKashidaPositions(aInf, aItr, nGluePortion, nGluePortionWidth,
+                                                     pCurrent, nLineBase))
                     {
-                        // all kashida positions are invalid
+                        // no kashidas left
                         // do regular blank justification
                         pCurrent->FinishSpaceAdd();
-                        GetInfo().SetIdx( m_nStart );
-                        CalcNewBlock( pCurrent, pStopAt, nReal, true );
+                        GetInfo().SetIdx(m_nStart);
+                        CalcNewBlock(pCurrent, pStopAt, nReal, true);
                         return;
                     }
                 }
@@ -369,27 +354,27 @@ void SwTextAdjuster::CalcNewBlock( SwLineLayout *pCurrent,
                 if( nGluePortion )
                 {
                     tools::Long nSpaceAdd = nGluePortionWidth / sal_Int32(nGluePortion);
+                    // shrink, if not shrunk line width exceed the set line width
+                    // i.e. if pCurrent->ExtraShrunkWidth() > 0
+                    // tdf#163720 but at hyphenated lines, still nBreakWidth contains the correct
+                    // not shrunk line width (ExtraShrunkWidth + hyphen length), so use that
+                    if ( pCurrent->ExtraShrunkWidth() > nBreakWidth )
+                        nBreakWidth = pCurrent->ExtraShrunkWidth();
                     // shrink, if portions exceed the line width
                     tools::Long nSpaceSub = ( nBreakWidth > pCurrent->Width() )
                         ? (nBreakWidth - pCurrent->Width()) * SPACING_PRECISION_FACTOR /
                                 sal_Int32(nGluePortion) + LONG_MAX/2
+                        : ( nSpaceAdd < 0 )
+                            // shrink, if portions exceed the line width available before an image
+                            ? -nSpaceAdd + LONG_MAX/2
+                            : 0;
+
+                    SwLinePortion *pPortion = pCurrent->GetFirstPortion();
+                    tools::Long nSpaceKern = pPortion->GetLetterSpacing() > 0 && pPortion->GetSpaceCount()
+                        ? tools::Long(pPortion->GetLetterSpacing()) / sal_Int32(pPortion->GetSpaceCount()) * 100
                         : 0;
-
-                    // i60594
-                    if( rSI.CountKashida() && !bSkipKashida )
-                    {
-                        if( !lcl_CheckKashidaWidth( rSI, aInf, aItr, nKashidas, nGluePortion, nGluePortionWidth, nSpaceAdd ))
-                        {
-                            // no kashidas left
-                            // do regular blank justification
-                            pCurrent->FinishSpaceAdd();
-                            GetInfo().SetIdx( m_nStart );
-                            CalcNewBlock( pCurrent, pStopAt, nReal, true );
-                            return;
-                        }
-                    }
-
-                    pCurrent->SetLLSpaceAdd( nSpaceSub ? nSpaceSub : nSpaceAdd, nSpaceIdx );
+                    // set expansion in 1/100 twips/space
+                    pCurrent->SetLLSpaceAdd( nSpaceSub ? nSpaceSub : (nSpaceAdd > nSpaceKern ? nSpaceAdd - nSpaceKern : 0), nSpaceIdx );
                     pPos->Width( static_cast<SwGluePortion*>(pPos)->GetFixWidth() );
                 }
                 else if (IsOneBlock() && nCharCnt > TextFrameIndex(1))
@@ -418,6 +403,33 @@ void SwTextAdjuster::CalcNewBlock( SwLineLayout *pCurrent,
         }
         pPos = pPos->GetNextPortion();
     }
+
+    // tdf#164140: Rebuild kashida position indices after line adjustment
+    if (rSI.ParagraphContainsKashidaScript())
+    {
+        std::vector<TextFrameIndex> aKashidaPositions;
+
+        SwTextSizeInfo aKashInf(GetTextFrame());
+        SwTextIter aKashItr(GetTextFrame(), &aKashInf);
+
+        while (true)
+        {
+            const SwLineLayout* pCurrLine = aKashItr.GetCurr();
+            for (const auto& nPos : pCurrLine->GetKashida())
+            {
+                aKashidaPositions.push_back(nPos + aKashItr.GetStart());
+            }
+
+            if (!aKashItr.GetNextLine())
+            {
+                break;
+            }
+
+            aKashItr.NextLine();
+        }
+
+        rSI.ReplaceKashidaPositions(std::move(aKashidaPositions));
+    }
 }
 
 SwTwips SwTextAdjuster::CalcKanaAdj( SwLineLayout* pCurrent )
@@ -445,7 +457,7 @@ SwTwips SwTextAdjuster::CalcKanaAdj( SwLineLayout* pCurrent )
         {
             // get maximum portion width from info structure, calculated
             // during text formatting
-            sal_uInt16 nMaxWidthDiff = GetInfo().GetMaxWidthDiff( pPos );
+            SwTwips nMaxWidthDiff = GetInfo().GetMaxWidthDiff(pPos);
 
             // check, if information is stored under other key
             if ( !nMaxWidthDiff && pPos == pCurrent->GetFirstPortion() )
@@ -556,10 +568,10 @@ SwMarginPortion *SwTextAdjuster::CalcRightMargin( SwLineLayout *pCurrent,
     SwTwips nReal )
 {
     tools::Long nRealWidth;
-    const sal_uInt16 nRealHeight = GetLineHeight();
-    const sal_uInt16 nLineHeight = pCurrent->Height();
+    const SwTwips nRealHeight = GetLineHeight();
+    const SwTwips nLineHeight = pCurrent->Height();
 
-    sal_uInt16 nPrtWidth = pCurrent->PrtWidth();
+    SwTwips nPrtWidth = pCurrent->PrtWidth();
     SwLinePortion *pLast = pCurrent->FindLastPortion();
 
     if( GetInfo().IsMulti() )
@@ -590,7 +602,7 @@ SwMarginPortion *SwTextAdjuster::CalcRightMargin( SwLineLayout *pCurrent,
     pLast->Append( pRight );
 
     if( tools::Long( nPrtWidth )< nRealWidth )
-        pRight->PrtWidth( sal_uInt16( nRealWidth - nPrtWidth ) );
+        pRight->PrtWidth(nRealWidth - nPrtWidth);
 
     // pCurrent->Width() is set to the real size, because we attach the
     // MarginPortions.
@@ -599,7 +611,7 @@ SwMarginPortion *SwTextAdjuster::CalcRightMargin( SwLineLayout *pCurrent,
     // implicitly. GetLeftMarginAdjust() and IsJustified() think they have a
     // line filled with chars.
 
-    pCurrent->PrtWidth( sal_uInt16( nRealWidth ) );
+    pCurrent->PrtWidth(nRealWidth);
     return pRight;
 }
 
@@ -713,7 +725,7 @@ SwFlyPortion *SwTextAdjuster::CalcFlyPortion( const tools::Long nRealWidth,
 {
     SwTextFly aTextFly( GetTextFrame() );
 
-    const sal_uInt16 nCurrWidth = m_pCurr->PrtWidth();
+    const SwTwips nCurrWidth = m_pCurr->PrtWidth();
     SwFlyPortion *pFlyPortion = nullptr;
 
     SwRect aLineVert( rCurrRect );
@@ -745,7 +757,7 @@ SwFlyPortion *SwTextAdjuster::CalcFlyPortion( const tools::Long nRealWidth,
             aLocal.Width( nRealWidth - aLocal.Left() );
         GetInfo().GetParaPortion()->SetFly();
         pFlyPortion = new SwFlyPortion( aLocal );
-        pFlyPortion->Height( sal_uInt16( rCurrRect.Height() ) );
+        pFlyPortion->Height(rCurrRect.Height());
         // The Width could be smaller than the FixWidth, thus:
         pFlyPortion->AdjFixWidth();
     }

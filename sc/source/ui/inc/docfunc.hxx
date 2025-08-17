@@ -138,7 +138,7 @@ public:
                                         bool bApi );
 
     bool            InsertCells( const ScRange& rRange,const ScMarkData* pTabMark,
-                              InsCellCmd eCmd, bool bRecord, bool bApi, bool bPartOfPaste = false );
+                              InsCellCmd eCmd, bool bRecord, bool bApi, bool bPartOfPaste = false, size_t nInsertCount = 0 );
 
     bool            DeleteCells( const ScRange& rRange, const ScMarkData* pTabMark,
                               DelCellCmd eCmd, bool bApi );
@@ -169,7 +169,7 @@ public:
     void            ProtectSheet( SCTAB nTab, const ScTableProtection& rProtect );
 
     bool            Protect( SCTAB nTab, const OUString& rPassword );
-    bool            Unprotect( SCTAB nTab, const OUString& rPassword, bool bApi );
+    bool            Unprotect( SCTAB nTab, std::u16string_view rPassword, bool bApi );
 
     void            ClearItems( const ScMarkData& rMark, const sal_uInt16* pWhich, bool bApi );
     bool            ChangeIndent( const ScMarkData& rMark, bool bIncrement, bool bApi );

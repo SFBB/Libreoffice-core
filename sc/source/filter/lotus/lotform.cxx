@@ -426,7 +426,7 @@ void LotusToSc::Convert( std::unique_ptr<ScTokenArray>& rpErg, sal_Int32& rRest 
 
     nBytesLeft = rRest;
 
-    while( eType )      // != FT_Return (==0)
+    while( eType != FT_Return )
     {
         sal_uInt8 nOc;
         Read(nOc);
@@ -479,7 +479,7 @@ void LotusToSc::Convert( std::unique_ptr<ScTokenArray>& rpErg, sal_Int32& rRest 
             }
             case FT_ConstFloat:
             {
-                double  fDouble;
+                double fDouble(0.0);
                 Read( fDouble );
                 aStack << aPool.Store( fDouble );
                 break;
@@ -638,7 +638,7 @@ void LotusToSc::Convert( std::unique_ptr<ScTokenArray>& rpErg, sal_Int32& rRest 
             }
             case FT_Const10Float:
             {
-                double fValue;
+                double fValue(0.0);
                 if (bWK123)
                     Read(fValue);
                 else
@@ -1739,7 +1739,7 @@ DefTokenId LotusToSc::IndexToTokenWK123( sal_uInt8 nIndex )
 
 const char* GetAddInName( const sal_uInt8 n )
 {
-    static const char*  pNames[ 256 ] =
+    static const char* const pNames[ 256 ] =
     {
         nullptr,                       //    0 8-Byte-IEEE-Float
         nullptr,                       //    1 Variable

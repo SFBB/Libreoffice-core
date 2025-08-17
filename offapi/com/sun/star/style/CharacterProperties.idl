@@ -193,7 +193,8 @@ published service CharacterProperties
     [optional, property] short CharFontType;
 
 
-    /** This optional property specifies the name of the style of the font.
+    /** This optional property specifies the name of the applied
+        character style.
      */
     [optional, property] string CharStyleName;
 
@@ -325,7 +326,13 @@ published service CharacterProperties
 
 
     /** This optional property determines if the word can be hyphenated at the
-        character.
+        character by automatic hyphenation.
+
+        <p>Setting to `true` will disable hyphenation enabled by ParaIsHyphenation.</p>
+
+        <p>Note: implemented since LibreOffice 24.2.</p>
+
+        @see ParaIsHyphenation
      */
     [optional, property] boolean CharNoHyphenation;
 
@@ -470,6 +477,14 @@ published service CharacterProperties
      *  @since LibreOffice 7.3
      **/
     [optional, property] short CharColorTintOrShade;
+
+    /** This optional property suggests that the text should be interpreted as a
+     *  specific script type.
+     *  @see com::sun::star::text::ScriptHintType
+     *
+     * @since LibreOffice 25.8
+     **/
+    [optional, property] short CharScriptHint;
 };
 
 }; }; }; };

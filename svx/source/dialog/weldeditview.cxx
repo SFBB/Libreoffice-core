@@ -23,11 +23,8 @@
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/accessibility/XAccessibleComponent.hpp>
-#include <com/sun/star/accessibility/XAccessibleContext.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <comphelper/OAccessible.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
@@ -112,21 +109,21 @@ void WeldEditView::makeEditEngine()
 
     vcl::Font aAppFont(Application::GetSettings().GetStyleSettings().GetAppFont());
 
-    pItemPool->SetPoolDefaultItem(SvxFontItem(aAppFont.GetFamilyType(), aAppFont.GetFamilyName(),
-                                              "", PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW,
-                                              EE_CHAR_FONTINFO));
-    pItemPool->SetPoolDefaultItem(SvxFontItem(aAppFont.GetFamilyType(), aAppFont.GetFamilyName(),
-                                              "", PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW,
-                                              EE_CHAR_FONTINFO_CJK));
-    pItemPool->SetPoolDefaultItem(SvxFontItem(aAppFont.GetFamilyType(), aAppFont.GetFamilyName(),
-                                              "", PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW,
-                                              EE_CHAR_FONTINFO_CTL));
+    pItemPool->SetUserDefaultItem(SvxFontItem(aAppFont.GetFamilyTypeMaybeAskConfig(),
+                                              aAppFont.GetFamilyName(), u""_ustr, PITCH_DONTKNOW,
+                                              RTL_TEXTENCODING_DONTKNOW, EE_CHAR_FONTINFO));
+    pItemPool->SetUserDefaultItem(SvxFontItem(aAppFont.GetFamilyTypeMaybeAskConfig(),
+                                              aAppFont.GetFamilyName(), u""_ustr, PITCH_DONTKNOW,
+                                              RTL_TEXTENCODING_DONTKNOW, EE_CHAR_FONTINFO_CJK));
+    pItemPool->SetUserDefaultItem(SvxFontItem(aAppFont.GetFamilyTypeMaybeAskConfig(),
+                                              aAppFont.GetFamilyName(), u""_ustr, PITCH_DONTKNOW,
+                                              RTL_TEXTENCODING_DONTKNOW, EE_CHAR_FONTINFO_CTL));
 
-    pItemPool->SetPoolDefaultItem(
+    pItemPool->SetUserDefaultItem(
         SvxFontHeightItem(aAppFont.GetFontHeight() * 20, 100, EE_CHAR_FONTHEIGHT));
-    pItemPool->SetPoolDefaultItem(
+    pItemPool->SetUserDefaultItem(
         SvxFontHeightItem(aAppFont.GetFontHeight() * 20, 100, EE_CHAR_FONTHEIGHT_CJK));
-    pItemPool->SetPoolDefaultItem(
+    pItemPool->SetUserDefaultItem(
         SvxFontHeightItem(aAppFont.GetFontHeight() * 20, 100, EE_CHAR_FONTHEIGHT_CTL));
 
     m_xEditEngine.reset(new EditEngine(pItemPool.get()));
@@ -144,7 +141,7 @@ void WeldEditView::Resize()
         pEditView->ShowCursor();
 
         const tools::Long nMaxVisAreaStart
-            = pEditView->GetEditEngine()->GetTextHeight() - aOutputSize.Height();
+            = pEditView->getEditEngine().GetTextHeight() - aOutputSize.Height();
         tools::Rectangle aVisArea(pEditView->GetVisArea());
         if (aVisArea.Top() > nMaxVisAreaStart)
         {
@@ -164,83 +161,94 @@ void WeldEditView::Paint(vcl::RenderContext& rRenderContext, const tools::Rectan
     DoPaint(rRenderContext, rRect);
 }
 
+void WeldEditView::PaintSelection(vcl::RenderContext& rRenderContext, tools::Rectangle const& rRect,
+                                  std::vector<tools::Rectangle> const& rLogicRects,
+                                  Color const color)
+{
+    if (rLogicRects.empty())
+    {
+        return;
+    }
+
+    std::vector<basegfx::B2DRange> aLogicRanges;
+    aLogicRanges.reserve(rLogicRects.size());
+
+    tools::Long nMinX(LONG_MAX), nMaxX(0), nMinY(LONG_MAX), nMaxY(0);
+    for (const auto& aRect : rLogicRects)
+    {
+        nMinX = std::min(nMinX, aRect.Left());
+        nMinY = std::min(nMinY, aRect.Top());
+        nMaxX = std::max(nMaxX, aRect.Right());
+        nMaxY = std::max(nMaxY, aRect.Bottom());
+    }
+
+    const Size aLogicPixel(rRenderContext.PixelToLogic(Size(1, 1)));
+    for (const auto& aRect : rLogicRects)
+    {
+        // Extend each range by one pixel so multiple lines touch each
+        // other if adjacent, so the whole set is drawn with a single
+        // border around the lot. But keep the selection within the
+        // original max extents.
+        auto nTop = aRect.Top();
+        if (nTop > nMinY)
+            nTop -= aLogicPixel.Height();
+        auto nBottom = aRect.Bottom();
+        if (nBottom < nMaxY)
+            nBottom += aLogicPixel.Height();
+        auto nLeft = aRect.Left();
+        if (nLeft > nMinX)
+            nLeft -= aLogicPixel.Width();
+        auto nRight = aRect.Right();
+        if (nRight < nMaxX)
+            nRight += aLogicPixel.Width();
+
+        aLogicRanges.emplace_back(nLeft, nTop, nRight, nBottom);
+    }
+
+    sdr::overlay::OverlaySelection aCursorOverlay(sdr::overlay::OverlayType::Transparent, color,
+                                                  std::move(aLogicRanges), true);
+
+    drawinglayer::geometry::ViewInformation2D aViewInformation2D;
+    aViewInformation2D.setViewTransformation(rRenderContext.GetViewTransformation());
+    aViewInformation2D.setViewport(vcl::unotools::b2DRectangleFromRectangle(rRect));
+
+    std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> xProcessor(
+        drawinglayer::processor2d::createProcessor2DFromOutputDevice(rRenderContext,
+                                                                     aViewInformation2D));
+
+    xProcessor->process(aCursorOverlay.getOverlayObjectPrimitive2DSequence());
+}
+
 void WeldEditView::DoPaint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect)
 {
+    EditView* const pEditView{ GetEditView() };
+
+    if (pEditView == nullptr)
+    {
+        return;
+    }
+
     rRenderContext.Push(vcl::PushFlags::ALL);
     rRenderContext.SetClipRegion();
 
+    pEditView->DrawText_ToEditView(
+        comphelper::LibreOfficeKit::isActive() ? rRenderContext.PixelToLogic(rRect) : rRect,
+        &rRenderContext);
+
+    if (HasFocus())
+    {
+        pEditView->ShowCursor(false);
+        vcl::Cursor* pCursor = pEditView->GetCursor();
+        pCursor->DrawToDevice(rRenderContext);
+    }
+
+    // get logic selection
     std::vector<tools::Rectangle> aLogicRects;
+    pEditView->GetSelectionRectangles(aLogicRects);
 
-    if (EditView* pEditView = GetEditView())
-    {
-        pEditView->Paint(comphelper::LibreOfficeKit::isActive() ? rRenderContext.PixelToLogic(rRect)
-                                                                : rRect,
-                         &rRenderContext);
-
-        if (HasFocus())
-        {
-            pEditView->ShowCursor(false);
-            vcl::Cursor* pCursor = pEditView->GetCursor();
-            pCursor->DrawToDevice(rRenderContext);
-        }
-
-        // get logic selection
-        pEditView->GetSelectionRectangles(aLogicRects);
-    }
-
-    if (!aLogicRects.empty())
-    {
-        std::vector<basegfx::B2DRange> aLogicRanges;
-        aLogicRanges.reserve(aLogicRects.size());
-
-        tools::Long nMinX(LONG_MAX), nMaxX(0), nMinY(LONG_MAX), nMaxY(0);
-        for (const auto& aRect : aLogicRects)
-        {
-            nMinX = std::min(nMinX, aRect.Left());
-            nMinY = std::min(nMinY, aRect.Top());
-            nMaxX = std::max(nMaxX, aRect.Right());
-            nMaxY = std::max(nMaxY, aRect.Bottom());
-        }
-
-        const Size aLogicPixel(rRenderContext.PixelToLogic(Size(1, 1)));
-        for (const auto& aRect : aLogicRects)
-        {
-            // Extend each range by one pixel so multiple lines touch each
-            // other if adjacent, so the whole set is drawn with a single
-            // border around the lot. But keep the selection within the
-            // original max extents.
-            auto nTop = aRect.Top();
-            if (nTop > nMinY)
-                nTop -= aLogicPixel.Height();
-            auto nBottom = aRect.Bottom();
-            if (nBottom < nMaxY)
-                nBottom += aLogicPixel.Height();
-            auto nLeft = aRect.Left();
-            if (nLeft > nMinX)
-                nLeft -= aLogicPixel.Width();
-            auto nRight = aRect.Right();
-            if (nRight < nMaxX)
-                nRight += aLogicPixel.Width();
-
-            aLogicRanges.emplace_back(nLeft, nTop, nRight, nBottom);
-        }
-
-        // get the system's highlight color
-        const Color aHighlight(SvtOptionsDrawinglayer::getHilightColor());
-
-        sdr::overlay::OverlaySelection aCursorOverlay(sdr::overlay::OverlayType::Transparent,
-                                                      aHighlight, std::move(aLogicRanges), true);
-
-        drawinglayer::geometry::ViewInformation2D aViewInformation2D;
-        aViewInformation2D.setViewTransformation(rRenderContext.GetViewTransformation());
-        aViewInformation2D.setViewport(vcl::unotools::b2DRectangleFromRectangle(rRect));
-
-        std::unique_ptr<drawinglayer::processor2d::BaseProcessor2D> xProcessor(
-            drawinglayer::processor2d::createProcessor2DFromOutputDevice(rRenderContext,
-                                                                         aViewInformation2D));
-
-        xProcessor->process(aCursorOverlay.getOverlayObjectPrimitive2DSequence());
-    }
+    // get the system's highlight color
+    const Color aHighlight(SvtOptionsDrawinglayer::getHilightColor());
+    PaintSelection(rRenderContext, rRect, aLogicRects, aHighlight);
 
     rRenderContext.Pop();
 }
@@ -287,12 +295,9 @@ bool WeldEditView::KeyInput(const KeyEvent& rKEvt)
         {
             if (nKey == KEY_A)
             {
-                EditEngine* pEditEngine = GetEditEngine();
-                sal_Int32 nPar = pEditEngine->GetParagraphCount();
-                if (nPar)
+                if (GetEditEngine()->GetParagraphCount())
                 {
-                    sal_Int32 nLen = pEditEngine->GetTextLen(nPar - 1);
-                    pEditView->SetSelection(ESelection(0, 0, nPar - 1, nLen));
+                    pEditView->SetSelection(ESelection::All());
                 }
                 return true;
             }
@@ -392,8 +397,7 @@ public:
     virtual bool IsValid() const override;
 
     virtual LanguageType GetLanguage(sal_Int32, sal_Int32) const override;
-    virtual sal_Int32 GetFieldCount(sal_Int32 nPara) const override;
-    virtual EFieldInfo GetFieldInfo(sal_Int32 nPara, sal_uInt16 nField) const override;
+    virtual std::vector<EFieldInfo> GetFieldInfo(sal_Int32 nPara) const override;
     virtual EBulletInfo GetBulletInfo(sal_Int32 nPara) const override;
     virtual tools::Rectangle GetCharBounds(sal_Int32 nPara, sal_Int32 nIndex) const override;
     virtual tools::Rectangle GetParaBounds(sal_Int32 nPara) const override;
@@ -413,6 +417,7 @@ public:
     virtual bool InsertText(const OUString&, const ESelection&) override;
     virtual bool QuickFormatDoc(bool bFull = false) override;
 
+    virtual bool SupportsOutlineDepth() const override { return false; };
     virtual sal_Int16 GetDepth(sal_Int32 nPara) const override;
     virtual bool SetDepth(sal_Int32 nPara, sal_Int16 nNewDepth) override;
 
@@ -502,13 +507,7 @@ public:
 };
 }
 
-typedef cppu::WeakImplHelper<css::lang::XServiceInfo, css::accessibility::XAccessible,
-                             css::accessibility::XAccessibleComponent,
-                             css::accessibility::XAccessibleContext,
-                             css::accessibility::XAccessibleEventBroadcaster>
-    WeldEditAccessibleBaseClass;
-
-class WeldEditAccessible : public WeldEditAccessibleBaseClass
+class WeldEditAccessible : public comphelper::OAccessible
 {
     weld::CustomWidgetController* m_pController;
     EditEngine* m_pEditEngine;
@@ -537,8 +536,11 @@ public:
     EditEngine* GetEditEngine() { return m_pEditEngine; }
     EditView* GetEditView() { return m_pEditView; }
 
-    void ClearWin()
+    void SAL_CALL dispose() override
     {
+        if (!isAlive())
+            return;
+
         // remove handler before current object gets destroyed
         // (avoid handler being called for already dead object)
         m_pEditEngine->SetNotifyHdl(Link<EENotify&, void>());
@@ -554,27 +556,11 @@ public:
         //! (e.g. the one set by the 'SetEventSource' call)
         m_xTextHelper->Dispose();
         m_xTextHelper.reset();
-    }
 
-    // XAccessible
-    virtual css::uno::Reference<css::accessibility::XAccessibleContext>
-        SAL_CALL getAccessibleContext() override
-    {
-        return this;
+        OAccessible::dispose();
     }
 
     // XAccessibleComponent
-    virtual sal_Bool SAL_CALL containsPoint(const css::awt::Point& rPoint) override
-    {
-        //! the arguments coordinates are relative to the current window !
-        //! Thus the top left-point is (0, 0)
-        SolarMutexGuard aGuard;
-        if (!m_pController)
-            throw css::uno::RuntimeException();
-
-        Size aSz(m_pController->GetOutputSizePixel());
-        return rPoint.X >= 0 && rPoint.Y >= 0 && rPoint.X < aSz.Width() && rPoint.Y < aSz.Height();
-    }
 
     virtual css::uno::Reference<css::accessibility::XAccessible>
         SAL_CALL getAccessibleAtPoint(const css::awt::Point& rPoint) override
@@ -586,9 +572,8 @@ public:
         return m_xTextHelper->GetAt(rPoint);
     }
 
-    virtual css::awt::Rectangle SAL_CALL getBounds() override
+    virtual css::awt::Rectangle implGetBounds() override
     {
-        SolarMutexGuard aGuard;
         if (!m_pController)
             throw css::uno::RuntimeException();
 
@@ -600,21 +585,6 @@ public:
         aRet.Y = aOutPos.Y();
         aRet.Width = aOutSize.Width();
         aRet.Height = aOutSize.Height();
-
-        return aRet;
-    }
-
-    virtual css::awt::Point SAL_CALL getLocation() override
-    {
-        SolarMutexGuard aGuard;
-        if (!m_pController)
-            throw css::uno::RuntimeException();
-
-        const css::awt::Rectangle aRect(getBounds());
-        css::awt::Point aRet;
-
-        aRet.X = aRect.X;
-        aRet.Y = aRect.Y;
 
         return aRet;
     }
@@ -635,16 +605,6 @@ public:
         }
 
         return aScreenLoc;
-    }
-
-    virtual css::awt::Size SAL_CALL getSize() override
-    {
-        SolarMutexGuard aGuard;
-        if (!m_pController)
-            throw css::uno::RuntimeException();
-
-        Size aSz(m_pController->GetOutputSizePixel());
-        return css::awt::Size(aSz.Width(), aSz.Height());
     }
 
     virtual void SAL_CALL grabFocus() override { m_pController->GrabFocus(); }
@@ -753,6 +713,16 @@ public:
         return aRet;
     }
 
+    virtual OUString SAL_CALL getAccessibleId() override
+    {
+        SolarMutexGuard aGuard;
+
+        if (m_pController)
+            return m_pController->GetAccessibleId();
+
+        return OUString();
+    }
+
     virtual OUString SAL_CALL getAccessibleName() override
     {
         SolarMutexGuard aGuard;
@@ -828,22 +798,9 @@ public:
             return;
         m_xTextHelper->RemoveEventListener(rListener);
     }
-
-    virtual OUString SAL_CALL getImplementationName() override { return "WeldEditAccessible"; }
-
-    virtual sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override
-    {
-        return cppu::supportsService(this, rServiceName);
-    }
-
-    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
-    {
-        return { "css::accessibility::Accessible", "css::accessibility::AccessibleComponent",
-                 "css::accessibility::AccessibleContext" };
-    }
 };
 
-css::uno::Reference<css::accessibility::XAccessible> WeldEditView::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> WeldEditView::CreateAccessible()
 {
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     if (!m_xAccessible.is())
@@ -857,7 +814,7 @@ WeldEditView::~WeldEditView()
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     if (m_xAccessible.is())
     {
-        m_xAccessible->ClearWin(); // make Accessible nonfunctional
+        m_xAccessible->dispose();
         m_xAccessible.clear();
     }
 #endif
@@ -951,7 +908,7 @@ SfxItemSet WeldTextForwarder::GetAttribs(const ESelection& rSel,
 {
     EditEngine* pEditEngine = m_rEditAcc.GetEditEngine();
     assert(pEditEngine && "EditEngine missing");
-    if (rSel.nStartPara == rSel.nEndPara)
+    if (rSel.start.nPara == rSel.end.nPara)
     {
         GetAttribsFlags nFlags = GetAttribsFlags::NONE;
         switch (nOnlyHardAttrib)
@@ -966,7 +923,8 @@ SfxItemSet WeldTextForwarder::GetAttribs(const ESelection& rSel,
                 SAL_WARN("svx", "unknown flags for WeldTextForwarder::GetAttribs");
         }
 
-        return pEditEngine->GetAttribs(rSel.nStartPara, rSel.nStartPos, rSel.nEndPos, nFlags);
+        return pEditEngine->GetAttribs(rSel.start.nPara, rSel.start.nIndex, rSel.end.nIndex,
+                                       nFlags);
     }
     else
     {
@@ -1098,17 +1056,17 @@ static SfxItemState GetSvxEditEngineItemState(EditEngine const& rEditEngine, con
     SfxItemState eState = SfxItemState::DEFAULT;
 
     // check all paragraphs inside the selection
-    for (sal_Int32 nPara = rSel.nStartPara; nPara <= rSel.nEndPara; nPara++)
+    for (sal_Int32 nPara = rSel.start.nPara; nPara <= rSel.end.nPara; nPara++)
     {
         SfxItemState eParaState = SfxItemState::DEFAULT;
 
         // calculate start and endpos for this paragraph
         sal_Int32 nPos = 0;
-        if (rSel.nStartPara == nPara)
-            nPos = rSel.nStartPos;
+        if (rSel.start.nPara == nPara)
+            nPos = rSel.start.nIndex;
 
-        sal_Int32 nEndPos = rSel.nEndPos;
-        if (rSel.nEndPara != nPara)
+        sal_Int32 nEndPos = rSel.end.nIndex;
+        if (rSel.end.nPara != nPara)
             nEndPos = rEditEngine.GetTextLen(nPara);
 
         // get list of char attribs
@@ -1122,7 +1080,7 @@ static SfxItemState GetSvxEditEngineItemState(EditEngine const& rEditEngine, con
 
         for (const auto& rAttrib : aAttribs)
         {
-            OSL_ENSURE(rAttrib.pAttr, "GetCharAttribs gives corrupt data");
+            assert(rAttrib.pAttr && "GetCharAttribs gives corrupt data");
 
             const bool bEmptyPortion = (rAttrib.nStart == rAttrib.nEnd);
             if ((!bEmptyPortion && (rAttrib.nStart >= nEndPos))
@@ -1141,7 +1099,7 @@ static SfxItemState GetSvxEditEngineItemState(EditEngine const& rEditEngine, con
             {
                 // ... and its different to this one than the state is don't care
                 if (*pParaItem != *(rAttrib.pAttr))
-                    return SfxItemState::DONTCARE;
+                    return SfxItemState::INVALID;
             }
             else
             {
@@ -1162,7 +1120,7 @@ static SfxItemState GetSvxEditEngineItemState(EditEngine const& rEditEngine, con
         if (bEmpty)
             eParaState = SfxItemState::DEFAULT;
         else if (bGaps)
-            eParaState = SfxItemState::DONTCARE;
+            eParaState = SfxItemState::INVALID;
         else
             eParaState = SfxItemState::SET;
 
@@ -1170,7 +1128,7 @@ static SfxItemState GetSvxEditEngineItemState(EditEngine const& rEditEngine, con
         if (pLastItem)
         {
             if ((pParaItem == nullptr) || (*pLastItem != *pParaItem))
-                return SfxItemState::DONTCARE;
+                return SfxItemState::INVALID;
         }
         else
         {
@@ -1209,16 +1167,12 @@ LanguageType WeldTextForwarder::GetLanguage(sal_Int32 nPara, sal_Int32 nIndex) c
     return pEditEngine ? pEditEngine->GetLanguage(nPara, nIndex).nLang : LANGUAGE_NONE;
 }
 
-sal_Int32 WeldTextForwarder::GetFieldCount(sal_Int32 nPara) const
+std::vector<EFieldInfo> WeldTextForwarder::GetFieldInfo(sal_Int32 nPara) const
 {
     EditEngine* pEditEngine = m_rEditAcc.GetEditEngine();
-    return pEditEngine ? pEditEngine->GetFieldCount(nPara) : 0;
-}
-
-EFieldInfo WeldTextForwarder::GetFieldInfo(sal_Int32 nPara, sal_uInt16 nField) const
-{
-    EditEngine* pEditEngine = m_rEditAcc.GetEditEngine();
-    return pEditEngine ? pEditEngine->GetFieldInfo(nPara, nField) : EFieldInfo();
+    if (!pEditEngine)
+        return {};
+    return pEditEngine->GetFieldInfo(nPara);
 }
 
 EBulletInfo WeldTextForwarder::GetBulletInfo(sal_Int32 /*nPara*/) const { return EBulletInfo(); }
@@ -1234,14 +1188,14 @@ tools::Rectangle WeldTextForwarder::GetCharBounds(sal_Int32 nPara, sal_Int32 nIn
         if (nIndex >= pEditEngine->GetTextLen(nPara))
         {
             if (nIndex)
-                aRect = pEditEngine->GetCharacterBounds(EPosition(nPara, nIndex - 1));
+                aRect = pEditEngine->GetCharacterBounds(EPaM(nPara, nIndex - 1));
 
             aRect.Move(aRect.Right() - aRect.Left(), 0);
             aRect.SetSize(Size(1, pEditEngine->GetTextHeight()));
         }
         else
         {
-            aRect = pEditEngine->GetCharacterBounds(EPosition(nPara, nIndex));
+            aRect = pEditEngine->GetCharacterBounds(EPaM(nPara, nIndex));
         }
     }
     return aRect;
@@ -1282,7 +1236,7 @@ bool WeldTextForwarder::GetIndexAtPoint(const Point& rPos, sal_Int32& nPara,
     EditEngine* pEditEngine = m_rEditAcc.GetEditEngine();
     if (pEditEngine)
     {
-        EPosition aDocPos = pEditEngine->FindDocPosition(rPos);
+        EPaM aDocPos = pEditEngine->FindDocPosition(rPos);
         nPara = aDocPos.nPara;
         nIndex = aDocPos.nIndex;
         bRes = true;
@@ -1297,13 +1251,13 @@ bool WeldTextForwarder::GetWordIndices(sal_Int32 nPara, sal_Int32 nIndex, sal_In
     EditEngine* pEditEngine = m_rEditAcc.GetEditEngine();
     if (pEditEngine)
     {
-        ESelection aRes = pEditEngine->GetWord(ESelection(nPara, nIndex, nPara, nIndex),
-                                               css::i18n::WordType::DICTIONARY_WORD);
+        ESelection aRes
+            = pEditEngine->GetWord(ESelection(nPara, nIndex), css::i18n::WordType::DICTIONARY_WORD);
 
-        if (aRes.nStartPara == nPara && aRes.nStartPara == aRes.nEndPara)
+        if (aRes.start.nPara == nPara && aRes.start.nPara == aRes.end.nPara)
         {
-            nStart = aRes.nStartPos;
-            nEnd = aRes.nEndPos;
+            nStart = aRes.start.nIndex;
+            nEnd = aRes.end.nIndex;
 
             bRes = true;
         }
@@ -1435,7 +1389,7 @@ sal_Int32 WeldTextForwarder::AppendTextPortion(sal_Int32 nPara, const OUString& 
         pEditEngine->QuickInsertText(rText, aSel);
 
         // set attributes for new appended text
-        nRes = aSel.nEndPos = pEditEngine->GetTextLen(nPara);
+        nRes = aSel.end.nIndex = pEditEngine->GetTextLen(nPara);
         pEditEngine->QuickSetAttribs(rSet, aSel);
     }
     return nRes;
@@ -1562,7 +1516,7 @@ void WeldEditView::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     EnableRTL(false);
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-    Color aBgColor = rStyleSettings.GetWindowColor();
+    Color aBgColor = rStyleSettings.GetFieldColor();
 
     OutputDevice& rDevice = pDrawingArea->get_ref_device();
 
@@ -1577,7 +1531,7 @@ void WeldEditView::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 
     m_xEditEngine->SetControlWord(m_xEditEngine->GetControlWord() | EEControlBits::MARKFIELDS);
 
-    m_xEditView.reset(new EditView(m_xEditEngine.get(), nullptr));
+    m_xEditView.reset(new EditView(*m_xEditEngine, nullptr));
     m_xEditView->setEditViewCallbacks(this);
     m_xEditView->SetOutputArea(tools::Rectangle(Point(0, 0), aOutputSize));
 
@@ -1705,12 +1659,12 @@ public:
     virtual StringMap get_state() override
     {
         StringMap aMap = WindowUIObject::get_state();
-        aMap["Text"] = mpEditView->GetText();
+        aMap[u"Text"_ustr] = mpEditView->GetText();
         return aMap;
     }
 
 private:
-    virtual OUString get_name() const override { return "WeldEditViewUIObject"; }
+    virtual OUString get_name() const override { return u"WeldEditViewUIObject"_ustr; }
 };
 }
 

@@ -26,7 +26,6 @@
 
 namespace com::sun::star::beans { class XPropertySet; }
 namespace com::sun::star::container { class XIndexAccess; class XNameContainer; }
-namespace com::sun::star::drawing { class XDrawView; }
 
 namespace sd
 {
@@ -36,6 +35,7 @@ class EventMultiplexerEvent;
 }
 
 class ViewShellBase;
+class DrawController;
 
 enum TableCheckBox : sal_uInt16
 {
@@ -104,7 +104,7 @@ private:
     std::unique_ptr<weld::CheckButton> m_aCheckBoxes[CB_COUNT];
 
     css::uno::Reference< css::beans::XPropertySet > mxSelectedTable;
-    css::uno::Reference< css::drawing::XDrawView > mxView;
+    rtl::Reference< DrawController > mxView;
     css::uno::Reference< css::container::XIndexAccess > mxTableFamily;
     css::uno::Reference< css::container::XNameContainer > mxCellFamily;
 };
@@ -116,8 +116,8 @@ private:
     std::unique_ptr<TableDesignWidget> m_xImpl;
 public:
     TableDesignPane( weld::Widget* pParent, ViewShellBase& rBase )
-        : PanelLayout(pParent, "TableDesignPanel",
-            "modules/simpress/ui/tabledesignpanel.ui")
+        : PanelLayout(pParent, u"TableDesignPanel"_ustr,
+            u"modules/simpress/ui/tabledesignpanel.ui"_ustr)
         , m_xImpl(new TableDesignWidget(*m_xBuilder, rBase))
     {
     }

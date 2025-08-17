@@ -35,6 +35,8 @@
 namespace rptxml
 {
     using namespace ::com::sun::star;
+    using namespace ::com::sun::star::lang;
+    using namespace ::com::sun::star::text;
 
 namespace {
 
@@ -87,7 +89,7 @@ void OXMLCharContent::InsertControlCharacter(sal_Int16   _nControl)
     switch( _nControl )
     {
         case ControlCharacter::LINE_BREAK:
-            m_pFixedContent->characters("\n");
+            m_pFixedContent->characters(u"\n"_ustr);
             break;
         default:
             OSL_FAIL("Not supported control character");

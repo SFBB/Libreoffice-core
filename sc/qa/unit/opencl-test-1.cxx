@@ -2,18 +2,12 @@
 
 #include <sal/config.h>
 
-#include <string_view>
-
 #include "helper/qahelper.hxx"
 
 #include <docsh.hxx>
 #include <document.hxx>
 
-#include <comphelper/sequence.hxx>
-#include <comphelper/servicehelper.hxx>
-
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
 
 class ScOpenCLTest1
     : public ScModelTestBase
@@ -2101,7 +2095,7 @@ CPPUNIT_TEST_FIXTURE(ScOpenCLTest1, testStatisticalFormulaGammaDist)
 }
 
 ScOpenCLTest1::ScOpenCLTest1()
-      : ScModelTestBase( "sc/qa/unit/data" )
+      : ScModelTestBase( u"sc/qa/unit/data"_ustr )
 {
 }
 

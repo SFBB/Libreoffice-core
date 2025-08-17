@@ -212,15 +212,17 @@ void recentUnoChanged( GtkWidget* pSelector, gpointer /* pItem */ )
     if (aUnoArgs.empty())
         return;
 
-    lok_doc_view_post_command(LOK_DOC_VIEW(pWindow->lokdocview), pUnoCmd, (aUnoArgs.empty() ? nullptr : aUnoArgs.c_str()), false);
+    lok_doc_view_post_command(LOK_DOC_VIEW(pWindow->lokdocview), pUnoCmd, aUnoArgs.c_str(), false);
     g_free(pUnoCmd);
 }
 
-static void addToRecentUnoCommands(GtvApplicationWindow* pWindow, const std::string& rUnoCmd, std::string rArgs)
+static void addToRecentUnoCommands(GtvApplicationWindow* pWindow, const std::string& rUnoCmd, std::string aArgs)
 {
     GtvMainToolbar* pToolbar = gtv_application_window_get_main_toolbar(pWindow);
-    rArgs.erase(std::find(rArgs.begin(), rArgs.end(), '\n'));
-    const std::string rUnoCmdStr = rUnoCmd + " | " + rArgs;
+    auto it = std::find(aArgs.begin(), aArgs.end(), '\n');
+    if (it != aArgs.end())
+        aArgs.erase(it);
+    const std::string rUnoCmdStr = rUnoCmd + " | " + aArgs;
 
 
     // add to file
@@ -276,7 +278,7 @@ void unoCommandDebugger(GtkWidget* pButton, gpointer /* pItem */)
         g_info("Generated UNO command: %s %s", sUnoCmd, aArguments.c_str());
 
         lok_doc_view_post_command(LOK_DOC_VIEW(window->lokdocview), sUnoCmd, (aArguments.empty() ? nullptr : aArguments.c_str()), false);
-        addToRecentUnoCommands(window, sUnoCmd, aArguments);
+        addToRecentUnoCommands(window, sUnoCmd, std::move(aArguments));
 
         g_free(sUnoCmd);
     }
@@ -703,7 +705,7 @@ gboolean signalFindbar(GtkWidget* pWidget, GdkEventKey* pEvent, gpointer /*pData
         case GDK_KEY_Escape:
         {
             // Hide the findbar.
-            gtk_widget_hide(GTK_WIDGET(window->findtoolbar));
+            gtk_widget_set_visible(GTK_WIDGET(window->findtoolbar), false);
             return true;
         }
     }

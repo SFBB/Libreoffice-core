@@ -35,8 +35,6 @@ namespace com::sun::star::awt { class XProgressBar; }
 
 class INetURLObject;
 class GalleryTheme;
-class SotStorageStream;
-class SotTempStream;
 
 struct ExchangeData
 {
@@ -74,9 +72,7 @@ enum class GalleryGraphicImportRet
 
 #define GALLERY_PROGRESS_RANGE  10000
 
-#define GALLERY_FG_COLOR        Application::GetSettings().GetStyleSettings().GetWindowTextColor()
 #define GALLERY_BG_COLOR        Application::GetSettings().GetStyleSettings().GetWindowColor()
-#define GALLERY_DLG_COLOR       Application::GetSettings().GetStyleSettings().GetDialogColor()
 
 class SvStream;
 class Graphic;
@@ -96,23 +92,23 @@ bool                KillFile( const INetURLObject& rURL );
 
 class SgaIMapInfo final : public SdrObjUserData, public SfxListener
 {
-    ImageMap                aImageMap;
+    ImageMap                m_aImageMap;
 
 public:
                             SgaIMapInfo() : SdrObjUserData( SdrInventor::SgaImap, ID_IMAPINFO ) {};
 
                             SgaIMapInfo( const ImageMap& rImageMap) :
                                 SdrObjUserData( SdrInventor::SgaImap, ID_IMAPINFO ),
-                                aImageMap( rImageMap ) {};
+                                m_aImageMap( rImageMap ) {};
 
     virtual std::unique_ptr<SdrObjUserData> Clone( SdrObject* ) const override
                             {
                                 SgaIMapInfo* pInfo = new SgaIMapInfo;
-                                pInfo->aImageMap = aImageMap;
+                                pInfo->m_aImageMap = m_aImageMap;
                                 return std::unique_ptr<SdrObjUserData>(pInfo);
                             }
 
-    const ImageMap&         GetImageMap() const { return aImageMap; }
+    const ImageMap&         GetImageMap() const { return m_aImageMap; }
 };
 
 class GraphicFilter;
@@ -140,7 +136,7 @@ using TransferableHelper::CopyToClipboard;
     GalleryTheme*                   mpTheme;
     SgaObjKind                      meObjectKind;
     sal_uInt32                      mnObjectPos;
-    tools::SvRef<SotTempStream>  mxModelStream;
+    std::unique_ptr<SvStream>       mxModelStream;
     std::unique_ptr<GraphicObject>  mpGraphicObject;
     std::unique_ptr<INetURLObject>  mpURL;
 
@@ -155,7 +151,7 @@ public:
     // TransferableHelper
     virtual void                    AddSupportedFormats() override;
     virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
-    virtual bool                    WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId, const css::datatransfer::DataFlavor& rFlavor ) override;
+    virtual bool                    WriteObject( SvStream& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId, const css::datatransfer::DataFlavor& rFlavor ) override;
     virtual void                    DragFinished( sal_Int8 nDropAction ) override;
     virtual void                    ObjectReleased() override;
 
@@ -169,7 +165,8 @@ enum class GalleryHintType
     THEME_RENAMED,
     THEME_CREATED,
     THEME_UPDATEVIEW,
-    CLOSE_OBJECT
+    CLOSE_OBJECT,
+    ADD_OBJECT
 };
 
 class GalleryHint final : public SfxHint
@@ -184,9 +181,11 @@ private:
 public:
 
                      GalleryHint( GalleryHintType nType, OUString aThemeName, void* nData1 = nullptr ) :
+                        SfxHint(SfxHintId::NONE),
                         mnType( nType ), maThemeName(std::move( aThemeName )), mnData1( nData1 ) {}
 
                      GalleryHint( GalleryHintType nType, OUString aThemeName, OUString aStringData ) :
+                        SfxHint(SfxHintId::NONE),
                         mnType( nType ), maThemeName(std::move( aThemeName )), maStringData(std::move( aStringData )), mnData1( nullptr ) {}
 
     GalleryHintType  GetType() const { return mnType; }

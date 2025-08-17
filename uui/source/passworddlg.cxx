@@ -26,40 +26,47 @@
 #include <tools/debug.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
+#include <bitmaps.hlst>
 
 using namespace ::com::sun::star;
 
 PasswordDialog::PasswordDialog(weld::Window* pParent,
     task::PasswordRequestMode nDialogMode, const std::locale& rResLocale,
     const OUString& aDocURL, bool bOpenToModify, bool bIsSimplePasswordRequest)
-    : GenericDialogController(pParent, "uui/ui/password.ui", "PasswordDialog")
-    , m_xFTPassword(m_xBuilder->weld_label("newpassFT"))
-    , m_xEDPassword(m_xBuilder->weld_entry("newpassEntry"))
-    , m_xFTConfirmPassword(m_xBuilder->weld_label("confirmpassFT"))
-    , m_xEDConfirmPassword(m_xBuilder->weld_entry("confirmpassEntry"))
-    , m_xOKBtn(m_xBuilder->weld_button("ok"))
+    : GenericDialogController(pParent, u"uui/ui/password.ui"_ustr, u"PasswordDialog"_ustr)
+    , m_xFTPassword(m_xBuilder->weld_label(u"newpassFT"_ustr))
+    , m_xEDPassword(m_xBuilder->weld_entry(u"newpassEntry"_ustr))
+    , m_xFTConfirmPassword(m_xBuilder->weld_label(u"confirmpassFT"_ustr))
+    , m_xEDConfirmPassword(m_xBuilder->weld_entry(u"confirmpassEntry"_ustr))
+    , m_xOKBtn(m_xBuilder->weld_button(u"ok"_ustr))
     , nMinLen(1)
     , aPasswdMismatch(Translate::get(STR_PASSWORD_MISMATCH, rResLocale))
 {
     // tdf#115964 we can be launched before the parent has resized to its final size
     m_xDialog->set_centered_on_parent(true);
 
-    if( nDialogMode == task::PasswordRequestMode_PASSWORD_REENTER )
+    m_xPass[0] = m_xBuilder->weld_toggle_button(u"togglebt1"_ustr);
+    m_xPass[1] = m_xBuilder->weld_toggle_button(u"togglebt2"_ustr);
+
+    Link<weld::Toggleable&, void> aToggleLink = LINK(this, PasswordDialog, ShowHdl);
+
+    for (auto& aPass : m_xPass)
     {
-        TranslateId pOpenToModifyErrStrId = bOpenToModify ? STR_ERROR_PASSWORD_TO_MODIFY_WRONG : STR_ERROR_PASSWORD_TO_OPEN_WRONG;
-        TranslateId pErrStrId = bIsSimplePasswordRequest ? STR_ERROR_SIMPLE_PASSWORD_WRONG : pOpenToModifyErrStrId;
-        OUString aErrorMsg(Translate::get(pErrStrId, rResLocale));
-        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pParent,
-                                                  VclMessageType::Warning, VclButtonsType::Ok, aErrorMsg));
-        xBox->run();
+        if (aPass->get_active())
+            aPass->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+        else
+            aPass->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+        aPass->connect_toggled(aToggleLink);
     }
 
     // default settings for enter password or reenter passwd...
     OUString aTitle(Translate::get(STR_TITLE_ENTER_PASSWORD, rResLocale));
     m_xFTConfirmPassword->hide();
     m_xEDConfirmPassword->hide();
+    m_xPass[1]->hide();
     m_xFTConfirmPassword->set_sensitive(false);
     m_xEDConfirmPassword->set_sensitive(false);
+    m_xPass[1]->set_sensitive(false);
 
     // settings for create password
     if (nDialogMode == task::PasswordRequestMode_PASSWORD_CREATE)
@@ -87,8 +94,9 @@ PasswordDialog::PasswordDialog(weld::Window* pParent,
         aFileName += " - " + utl::ConfigManager::getProductName();
     m_xDialog->set_title(aTitle + " - " + aFileName);
 
-    aMessage += url.HasError()
+    auto aUrl = url.HasError()
         ? aDocURL : url.GetMainURL(INetURLObject::DecodeMechanism::Unambiguous);
+    aMessage += m_xFTPassword->escape_ui_str(aUrl);
     m_xFTPassword->set_label(aMessage);
 
     if (bIsSimplePasswordRequest)
@@ -116,6 +124,41 @@ IMPL_LINK_NOARG(PasswordDialog, OKHdl_Impl, weld::Button&, void)
     }
     else if (bValid)
         m_xDialog->response(RET_OK);
+}
+
+IMPL_LINK(PasswordDialog, ShowHdl, weld::Toggleable& ,rToggleable, void)
+{
+    bool bChecked = rToggleable.get_active();
+    if (&rToggleable == m_xPass[0].get())
+    {
+        if (bChecked)
+        {
+            m_xPass[0]->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+            m_xEDPassword->set_visibility(true);
+            m_xEDPassword->grab_focus();
+        }
+        else
+        {
+            m_xPass[0]->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+            m_xEDPassword->set_visibility(false);
+            m_xEDPassword->grab_focus();
+        }
+    }
+    else if (&rToggleable == m_xPass[1].get())
+    {
+        if (bChecked)
+        {
+            m_xPass[1]->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+            m_xEDConfirmPassword->set_visibility(true);
+            m_xEDConfirmPassword->grab_focus();
+        }
+        else
+        {
+            m_xPass[1]->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+            m_xEDConfirmPassword->set_visibility(false);
+            m_xEDConfirmPassword->grab_focus();
+        }
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

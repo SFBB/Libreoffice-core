@@ -112,7 +112,7 @@ namespace dxcanvas
             vcl::Font aFont(
                 rFontRequest.FontDescription.FamilyName,
                 rFontRequest.FontDescription.StyleName,
-                Size( 0, ::basegfx::fround(rFontRequest.CellSize)));
+                Size( 0, ::basegfx::fround<::tools::Long>(rFontRequest.CellSize)));
 
             aFont.SetAlignment( ALIGN_BASELINE );
             aFont.SetCharSet( (rFontRequest.FontDescription.IsSymbolFont==css::util::TriState_YES) ? RTL_TEXTENCODING_SYMBOL : RTL_TEXTENCODING_UNICODE );
@@ -208,12 +208,7 @@ namespace dxcanvas
             if( rLogicalAdvancements.getLength() )
             {
                 // create the DXArray
-                const sal_Int32 nLen( rLogicalAdvancements.getLength() );
-                KernArray DXArray;
-                DXArray.reserve(nLen);
-                for( sal_Int32 i=0; i<nLen; ++i )
-                    DXArray.push_back(basegfx::fround(rLogicalAdvancements[i]));
-
+                KernArraySpan DXArray( rLogicalAdvancements.getConstArray(), rLogicalAdvancements.getLength() );
                 std::span<const sal_Bool> aKashidaArray(rKashidaPositions.getConstArray(), rKashidaPositions.getLength());
 
                 // draw the String
@@ -256,7 +251,7 @@ namespace dxcanvas
         vcl::Font aFont(
             rFontRequest.FontDescription.FamilyName,
             rFontRequest.FontDescription.StyleName,
-            Size( 0, ::basegfx::fround(rFontRequest.CellSize)));
+            Size( 0, ::basegfx::fround<::tools::Long>(rFontRequest.CellSize)));
 
         aFont.SetAlignment( ALIGN_BASELINE );
         aFont.SetCharSet( (rFontRequest.FontDescription.IsSymbolFont==css::util::TriState_YES) ? RTL_TEXTENCODING_SYMBOL : RTL_TEXTENCODING_UNICODE );

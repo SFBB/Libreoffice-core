@@ -111,7 +111,7 @@ namespace svx
 
     public:
         FmTextControlShell( SfxViewFrame* _pFrame );
-        virtual ~FmTextControlShell();
+        ~FmTextControlShell();
 
         // clean up any resources associated with this instance
         void    dispose();
@@ -160,7 +160,7 @@ namespace svx
         // fills the given structure with dispatchers for the given slots, for the given control
         void            fillFeatureDispatchers(
                             const css::uno::Reference< css::awt::XControl >& _rxControl,
-                            SfxSlotId* _pZeroTerminatedSlots,
+                            const SfxSlotId* _pZeroTerminatedSlots,
                             ControlFeatures& _rDispatchers
                         );
 

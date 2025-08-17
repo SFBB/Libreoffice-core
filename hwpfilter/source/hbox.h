@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_HWPFILTER_SOURCE_HBOX_H
-#define INCLUDED_HWPFILTER_SOURCE_HBOX_H
+#pragma once
 
 #include <sal/config.h>
 
@@ -523,15 +522,6 @@ enum pictype
     PICTYPE_FILE, PICTYPE_OLE, PICTYPE_EMBED,
     PICTYPE_DRAW, PICTYPE_UNKNOWN
 };
-/**
- * @short External image file
- */
-struct PicDefFile
-{
-    char path[256];
-    void *img;
-    bool skipfind;
-};
 
 /**
  * @short Embedded image file
@@ -539,15 +529,6 @@ struct PicDefFile
 struct PicDefEmbed
 {
     char  embname[16];
-};
-
-/**
- * @short Win32 ole object
- */
-struct PicDefOle
-{
-    char  embname[16];
-    void  *hwpole;
 };
 
 struct HWPDrawingObject;
@@ -573,9 +554,7 @@ struct PicDefUnknown
 
 typedef union
 {
-    PicDefFile        picfile;
     PicDefEmbed       picembed;
-    PicDefOle     picole;
     PicDefDraw        picdraw;
     PicDefUnknown     picun;
 } PicDef;
@@ -1002,6 +981,5 @@ struct FixedSpace: public HBox
 
     virtual bool Read(HWPFile &hwpf) override;
 };
-#endif // INCLUDED_HWPFILTER_SOURCE_HBOX_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

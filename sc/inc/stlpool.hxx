@@ -25,7 +25,7 @@
 class ScStyleSheet;
 class ScDocument;
 
-class SC_DLLPUBLIC ScStyleSheetPool final : public SfxStyleSheetPool
+class SAL_DLLPUBLIC_RTTI ScStyleSheetPool final : public SfxStyleSheetPool
 {
 public:
                         ScStyleSheetPool( const SfxItemPool& rPool,
@@ -42,7 +42,7 @@ public:
     SfxStyleSheetBase*  GetActualStyleSheet ()
                                 { return pActualStyleSheet; }
 
-    void                CreateStandardStyles();
+    SC_DLLPUBLIC void   CreateStandardStyles();
     void                CopyStdStylesFrom( ScStyleSheetPool* pSrcPool );
 
     void                CopyUsedGraphicStylesFrom( SfxStyleSheetBasePool* pSrcPool );
@@ -52,12 +52,16 @@ public:
 
     bool                HasStandardStyles() const { return bHasStandardStyles; }
 
-    ScStyleSheet*       FindCaseIns( const OUString& rName, SfxStyleFamily eFam );
+    SC_DLLPUBLIC ScStyleSheet* FindCaseIns( const OUString& rName, SfxStyleFamily eFam );
     // Finds Para style with given name case-insensitively, or STR_STYLENAME_STANDARD
     ScStyleSheet*       FindAutoStyle(const OUString& rName);
 
-    virtual SfxStyleSheetBase& Make( const OUString&, SfxStyleFamily eFam,
-                                     SfxStyleSearchBits nMask = SfxStyleSearchBits::All) override;
+    // Rename rStyle to rNewName, and update CellAttribute holder
+    SC_DLLPUBLIC void Rename(SfxStyleSheetBase& rStyle, const OUString& rNewName, SfxStyleFamily eFam);
+
+    SC_DLLPUBLIC virtual SfxStyleSheetBase& Make( const OUString&, SfxStyleFamily eFam,
+                                     SfxStyleSearchBits nMask = SfxStyleSearchBits::All,
+                                     const OUString& rParentStyleSheetName = u""_ustr) override;
 
     void setAllParaStandard();
 
@@ -68,7 +72,8 @@ private:
 
     virtual rtl::Reference<SfxStyleSheetBase> Create( const OUString&  rName,
                                        SfxStyleFamily   eFamily,
-                                       SfxStyleSearchBits     nMask) override;
+                                       SfxStyleSearchBits     nMask,
+                                       const OUString& rParentStyleSheetName) override;
     virtual rtl::Reference<SfxStyleSheetBase> Create( const SfxStyleSheetBase& rStyle ) override;
 
     SfxStyleSheetBase*  pActualStyleSheet;

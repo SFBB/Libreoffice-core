@@ -25,6 +25,7 @@
 #include <rtl/ustrbuf.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
+#include <bitmaps.hlst>
 
 IMPL_LINK_NOARG(SfxPasswordDialog, EditModifyHdl, weld::Entry&, void)
 {
@@ -96,6 +97,12 @@ IMPL_LINK(SfxPasswordDialog, InsertTextHdl, OUString&, rTest, bool)
         // discarded
         m_xOnlyAsciiFT->set_label_type(weld::LabelType::Warning);
     }
+    else
+    {
+        // tdf#161412: downgrade from "Warning" to "Normal" if a valid
+        // letter was discarded after an invalid letter.
+        m_xOnlyAsciiFT->set_label_type(weld::LabelType::Normal);
+    }
 
     return true;
 }
@@ -138,29 +145,97 @@ IMPL_LINK_NOARG(SfxPasswordDialog, OKHdl, weld::Button&, void)
         m_xDialog->response(RET_OK);
 }
 
+IMPL_LINK(SfxPasswordDialog, ShowHdl, weld::Toggleable&, rToggleable, void)
+{
+    bool bChecked = rToggleable.get_active();
+    if (&rToggleable == m_xPass[0].get())
+    {
+        if (bChecked)
+        {
+            m_xPass[0]->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+            m_xPassword1ED->set_visibility(true);
+            m_xPassword1ED->grab_focus();
+        }
+        else
+        {
+            m_xPass[0]->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+            m_xPassword1ED->set_visibility(false);
+            m_xPassword1ED->grab_focus();
+        }
+    }
+    else if (&rToggleable == m_xPass[1].get())
+    {
+        if (bChecked)
+        {
+            m_xPass[1]->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+            m_xConfirm1ED->set_visibility(true);
+            m_xConfirm1ED->grab_focus();
+        }
+        else
+        {
+            m_xPass[1]->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+            m_xConfirm1ED->set_visibility(false);
+            m_xConfirm1ED->grab_focus();
+        }
+    }
+    else if (&rToggleable == m_xPass[2].get())
+    {
+        if (bChecked)
+        {
+            m_xPass[2]->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+            m_xPassword2ED->set_visibility(true);
+            m_xPassword2ED->grab_focus();
+        }
+        else
+        {
+            m_xPass[2]->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+            m_xPassword2ED->set_visibility(false);
+            m_xPassword2ED->grab_focus();
+        }
+    }
+    else if (&rToggleable == m_xPass[3].get())
+    {
+        if (bChecked)
+        {
+            m_xPass[3]->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+            m_xConfirm2ED->set_visibility(true);
+            m_xConfirm2ED->grab_focus();
+        }
+        else
+        {
+            m_xPass[3]->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+            m_xConfirm2ED->set_visibility(false);
+            m_xConfirm2ED->grab_focus();
+        }
+    }
+    else {
+        // should not reach it
+    }
+}
+
 // CTOR / DTOR -----------------------------------------------------------
 
 SfxPasswordDialog::SfxPasswordDialog(weld::Widget* pParent, const OUString* pGroupText)
-    : GenericDialogController(pParent, "sfx/ui/password.ui", "PasswordDialog")
-    , m_xPassword1Box(m_xBuilder->weld_frame("password1frame"))
-    , m_xUserFT(m_xBuilder->weld_label("userft"))
-    , m_xUserED(m_xBuilder->weld_entry("usered"))
-    , m_xPassword1FT(m_xBuilder->weld_label("pass1ft"))
-    , m_xPassword1ED(m_xBuilder->weld_entry("pass1ed"))
-    , m_xPassword1StrengthBar(m_xBuilder->weld_level_bar("pass1bar"))
-    , m_xPassword1PolicyLabel(m_xBuilder->weld_label("pass1policylabel"))
-    , m_xConfirm1FT(m_xBuilder->weld_label("confirm1ft"))
-    , m_xConfirm1ED(m_xBuilder->weld_entry("confirm1ed"))
-    , m_xPassword2Box(m_xBuilder->weld_frame("password2frame"))
-    , m_xPassword2FT(m_xBuilder->weld_label("pass2ft"))
-    , m_xPassword2ED(m_xBuilder->weld_entry("pass2ed"))
-    , m_xPassword2StrengthBar(m_xBuilder->weld_level_bar("pass2bar"))
-    , m_xPassword2PolicyLabel(m_xBuilder->weld_label("pass2policylabel"))
-    , m_xConfirm2FT(m_xBuilder->weld_label("confirm2ft"))
-    , m_xConfirm2ED(m_xBuilder->weld_entry("confirm2ed"))
-    , m_xMinLengthFT(m_xBuilder->weld_label("minlenft"))
-    , m_xOnlyAsciiFT(m_xBuilder->weld_label("onlyascii"))
-    , m_xOKBtn(m_xBuilder->weld_button("ok"))
+    : GenericDialogController(pParent, u"sfx/ui/password.ui"_ustr, u"PasswordDialog"_ustr)
+    , m_xPassword1Box(m_xBuilder->weld_frame(u"password1frame"_ustr))
+    , m_xUserFT(m_xBuilder->weld_label(u"userft"_ustr))
+    , m_xUserED(m_xBuilder->weld_entry(u"usered"_ustr))
+    , m_xPassword1FT(m_xBuilder->weld_label(u"pass1ft"_ustr))
+    , m_xPassword1ED(m_xBuilder->weld_entry(u"pass1ed"_ustr))
+    , m_xPassword1StrengthBar(m_xBuilder->weld_level_bar(u"pass1bar"_ustr))
+    , m_xPassword1PolicyLabel(m_xBuilder->weld_label(u"pass1policylabel"_ustr))
+    , m_xConfirm1FT(m_xBuilder->weld_label(u"confirm1ft"_ustr))
+    , m_xConfirm1ED(m_xBuilder->weld_entry(u"confirm1ed"_ustr))
+    , m_xPassword2Box(m_xBuilder->weld_frame(u"password2frame"_ustr))
+    , m_xPassword2FT(m_xBuilder->weld_label(u"pass2ft"_ustr))
+    , m_xPassword2ED(m_xBuilder->weld_entry(u"pass2ed"_ustr))
+    , m_xPassword2StrengthBar(m_xBuilder->weld_level_bar(u"pass2bar"_ustr))
+    , m_xPassword2PolicyLabel(m_xBuilder->weld_label(u"pass2policylabel"_ustr))
+    , m_xConfirm2FT(m_xBuilder->weld_label(u"confirm2ft"_ustr))
+    , m_xConfirm2ED(m_xBuilder->weld_entry(u"confirm2ed"_ustr))
+    , m_xMinLengthFT(m_xBuilder->weld_label(u"minlenft"_ustr))
+    , m_xOnlyAsciiFT(m_xBuilder->weld_label(u"onlyascii"_ustr))
+    , m_xOKBtn(m_xBuilder->weld_button(u"ok"_ustr))
     , maMinLenPwdStr(SfxResId(STR_PASSWD_MIN_LEN))
     , maMinLenPwdStr1(SfxResId(STR_PASSWD_MIN_LEN1))
     , maEmptyPwdStr(SfxResId(STR_PASSWD_EMPTY))
@@ -178,6 +253,22 @@ SfxPasswordDialog::SfxPasswordDialog(weld::Widget* pParent, const OUString* pGro
     m_xConfirm1ED->connect_insert_text(aLink2);
     m_xConfirm2ED->connect_insert_text(aLink2);
     m_xOKBtn->connect_clicked(LINK(this, SfxPasswordDialog, OKHdl));
+
+    m_xPass[0] = m_xBuilder->weld_toggle_button(u"togglebt1"_ustr);
+    m_xPass[1] = m_xBuilder->weld_toggle_button(u"togglebt2"_ustr);
+    m_xPass[2] = m_xBuilder->weld_toggle_button(u"togglebt3"_ustr);
+    m_xPass[3] = m_xBuilder->weld_toggle_button(u"togglebt4"_ustr);
+
+    Link<weld::Toggleable&, void> aToggleLink = LINK(this, SfxPasswordDialog, ShowHdl);
+
+    for (auto& aPass : m_xPass)
+    {
+        if (aPass->get_active())
+            aPass->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+        else
+            aPass->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+        aPass->connect_toggled(aToggleLink);
+    }
 
     if(moPasswordPolicy)
     {

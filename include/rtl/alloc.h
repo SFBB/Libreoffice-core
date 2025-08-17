@@ -153,7 +153,8 @@ SAL_DLLPUBLIC void SAL_CALL rtl_freeAlignedMemory (
 
 /** Opaque rtl_arena_type.
  */
-typedef struct SAL_DLLPUBLIC_RTTI rtl_arena_st rtl_arena_type;
+struct SAL_DLLPUBLIC_RTTI rtl_arena_st;
+typedef struct rtl_arena_st rtl_arena_type;
 
 #define RTL_ARENA_NAME_LENGTH 31
 
@@ -297,8 +298,8 @@ SAL_DLLPUBLIC void SAL_CALL rtl_cache_free (
  * at the end of LibreOfficeKit pre-initialization to enable
  * various optimizations.
  *
- * Its function is to annotate a section @start = true
- * to end (@start = false) via. two calls. Inside this
+ * Its function is to annotate a section @mode = 1
+ * to end (@mode = 0) via. two calls. Inside this
  * section string allocators are replaced with ones which cause the
  * strings to be staticized at the end of the section.
  *
@@ -312,6 +313,8 @@ SAL_DLLPUBLIC void SAL_CALL rtl_cache_free (
  * This method is not thread-safe, nor intended for use in
  * a threaded context, cf. previous constraints.
  *
+ * Further @mode values may have further meanings, which may change at any time.
+ *
  * It is almost certainly not the method that you want,
  * use with extraordinary care referring to the
  * implementation.
@@ -319,7 +322,7 @@ SAL_DLLPUBLIC void SAL_CALL rtl_cache_free (
  * @since LibreOffice 6.1
  */
 SAL_DLLPUBLIC void SAL_CALL rtl_alloc_preInit (
-    sal_Bool start
+    sal_uInt8 mode
 ) SAL_THROW_EXTERN_C();
 /** @endcond */
 

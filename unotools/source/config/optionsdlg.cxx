@@ -30,10 +30,9 @@ using namespace com::sun::star::uno;
 
 constexpr OUString ROOT_NODE = u"OptionsDialogGroups"_ustr;
 constexpr OUString PAGES_NODE = u"Pages"_ustr;
-constexpr OUString OPTIONS_NODE = u"Options"_ustr;
 
 namespace {
-    enum NodeType{ NT_Group, NT_Page, NT_Option };
+    enum NodeType{ NT_Group, NT_Option };
 }
 constexpr OUString g_sPathDelimiter = u"/"_ustr;
 static void ReadNode(
@@ -45,7 +44,7 @@ static void ReadNode(
 SvtOptionsDialogOptions::SvtOptionsDialogOptions()
 {
     Reference<css::container::XHierarchicalNameAccess> xHierarchyAccess = utl::ConfigManager::acquireTree(u"Office.OptionsDialog");
-    const Sequence< OUString > aNodeSeq = utl::ConfigItem::GetNodeNames( xHierarchyAccess, ROOT_NODE, utl::ConfigNameFormat::LocalPath);
+    const Sequence< OUString > aNodeSeq = utl::ConfigItem::GetNodeNames( xHierarchyAccess, ROOT_NODE, utl::ConfigNameFormat::LocalNode);
     OUString sNode( ROOT_NODE + g_sPathDelimiter );
     for ( const auto& rNode : aNodeSeq )
     {
@@ -68,13 +67,6 @@ static void ReadNode(
         case NT_Group :
         {
             sSet = PAGES_NODE;
-            nLen = 2;
-            break;
-        }
-
-        case NT_Page :
-        {
-            sSet = OPTIONS_NODE;
             nLen = 2;
             break;
         }
@@ -102,11 +94,11 @@ static void ReadNode(
     if ( _eType != NT_Option )
     {
         OUString sNodes( sNode + sSet );
-        const Sequence< OUString > aNodes = utl::ConfigItem::GetNodeNames( xHierarchyAccess, sNodes, utl::ConfigNameFormat::LocalPath );
+        const Sequence< OUString > aNodes = utl::ConfigItem::GetNodeNames( xHierarchyAccess, sNodes, utl::ConfigNameFormat::LocalNode );
         for ( const auto& rNode : aNodes )
         {
             OUString sSubNodeName( sNodes + g_sPathDelimiter + rNode );
-            ReadNode( xHierarchyAccess, aOptionNodeList, sSubNodeName, _eType == NT_Group ? NT_Page : NT_Option );
+            ReadNode( xHierarchyAccess, aOptionNodeList, sSubNodeName, NT_Option );
         }
     }
 }
@@ -118,10 +110,6 @@ static OUString getGroupPath( std::u16string_view _rGroup )
 static OUString getPagePath( std::u16string_view _rPage )
 {
     return OUString( OUString::Concat(PAGES_NODE) + "/" + _rPage + "/" );
-}
-static OUString getOptionPath( std::u16string_view _rOption )
-{
-    return OUString( OUString::Concat(OPTIONS_NODE) + "/" + _rOption + "/" );
 }
 
 bool SvtOptionsDialogOptions::IsHidden( const OUString& _rPath ) const
@@ -141,12 +129,6 @@ bool SvtOptionsDialogOptions::IsGroupHidden( std::u16string_view _rGroup ) const
 bool SvtOptionsDialogOptions::IsPageHidden( std::u16string_view _rPage, std::u16string_view _rGroup ) const
 {
     return IsHidden( getGroupPath( _rGroup  ) + getPagePath( _rPage ) );
-}
-
-bool SvtOptionsDialogOptions::IsOptionHidden(
-    std::u16string_view _rOption, std::u16string_view _rPage, std::u16string_view _rGroup ) const
-{
-    return IsHidden( getGroupPath( _rGroup  ) + getPagePath( _rPage ) + getOptionPath( _rOption ) );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

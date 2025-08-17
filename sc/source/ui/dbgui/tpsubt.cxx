@@ -39,18 +39,18 @@
 // Subtotals group tabpage:
 
 ScTpSubTotalGroup::ScTpSubTotalGroup(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rArgSet, const sal_uInt16& rTabNumber)
-    : SfxTabPage(pPage, pController, "modules/scalc/ui/subtotalgrppage.ui", "SubTotalGrpPage", &rArgSet)
+    : SfxTabPage(pPage, pController, u"modules/scalc/ui/subtotalgrppage.ui"_ustr, u"SubTotalGrpPage"_ustr, &rArgSet)
     , aStrNone(ScResId(SCSTR_NONE))
     , aStrColumn(ScResId(SCSTR_COLUMN_LETTER))
     , pViewData(nullptr)
     , pDoc(nullptr)
-    , nWhichSubTotals(rArgSet.GetPool()->GetWhich(SID_SUBTOTALS))
+    , nWhichSubTotals(rArgSet.GetPool()->GetWhichIDFromSlotID(SID_SUBTOTALS))
     , rSubTotalData(rArgSet.Get(nWhichSubTotals).GetSubTotalData())
     , nFieldCount(0)
-    , mxLbGroup(m_xBuilder->weld_combo_box("group_by"))
-    , mxLbColumns(m_xBuilder->weld_tree_view("columns"))
-    , mxLbFunctions(m_xBuilder->weld_tree_view("functions"))
-    , mxLbSelectAllColumns(m_xBuilder->weld_check_button("select_all_columns_button"))
+    , mxLbGroup(m_xBuilder->weld_combo_box(u"group_by"_ustr))
+    , mxLbColumns(m_xBuilder->weld_tree_view(u"columns"_ustr))
+    , mxLbFunctions(m_xBuilder->weld_tree_view(u"functions"_ustr))
+    , mxLbSelectAllColumns(m_xBuilder->weld_check_button(u"select_all_columns_button"_ustr))
 {
     for (size_t i = 0; i < SAL_N_ELEMENTS(SCSTR_SUBTOTALS); ++i)
         mxLbFunctions->append_text(ScResId(SCSTR_SUBTOTALS[i]));
@@ -82,9 +82,9 @@ void ScTpSubTotalGroup::Init()
     assert(pDoc && "Document not found :-(");
 
     mxLbGroup->connect_changed( LINK( this, ScTpSubTotalGroup, SelectListBoxHdl ) );
-    mxLbColumns->connect_changed( LINK( this, ScTpSubTotalGroup, SelectTreeListBoxHdl ) );
+    mxLbColumns->connect_selection_changed(LINK(this, ScTpSubTotalGroup, SelectTreeListBoxHdl));
     mxLbColumns->connect_toggled( LINK( this, ScTpSubTotalGroup, CheckHdl ) );
-    mxLbFunctions->connect_changed( LINK( this, ScTpSubTotalGroup, SelectTreeListBoxHdl) );
+    mxLbFunctions->connect_selection_changed(LINK(this, ScTpSubTotalGroup, SelectTreeListBoxHdl));
     mxLbSelectAllColumns->connect_toggled( LINK( this, ScTpSubTotalGroup, CheckBoxHdl ) );
 
     mnFieldArr.resize(SC_MAXFIELDS(pDoc->GetSheetLimits()));
@@ -124,28 +124,25 @@ bool ScTpSubTotalGroup::DoReset( sal_uInt16             nGroupNo,
     for (int nLbEntry = 0, nCount = mxLbColumns->n_children(); nLbEntry < nCount; ++nLbEntry)
     {
         mxLbColumns->set_toggle(nLbEntry, TRISTATE_FALSE);
-        mxLbColumns->set_id(nLbEntry, "0");
+        mxLbColumns->set_id(nLbEntry, u"0"_ustr);
     }
     mxLbFunctions->select(0);
 
     const ScSubTotalParam & theSubTotalData( rArgSet.Get( nWhichSubTotals ).GetSubTotalData() );
 
-    if ( theSubTotalData.bGroupActive[nGroupIdx] )
+    if (theSubTotalData.aGroups[nGroupIdx].bActive)
     {
-        SCCOL           nField      = theSubTotalData.nField[nGroupIdx];
-        SCCOL           nSubTotals  = theSubTotalData.nSubTotals[nGroupIdx];
-        SCCOL*          pSubTotals  = theSubTotalData.pSubTotals[nGroupIdx].get();
-        ScSubTotalFunc* pFunctions  = theSubTotalData.pFunctions[nGroupIdx].get();
+        const auto& group = theSubTotalData.aGroups[nGroupIdx];
 
-        mxLbGroup->set_active( GetFieldSelPos( nField )+1 );
+        mxLbGroup->set_active(GetFieldSelPos(group.nField) + 1);
 
         sal_uInt16 nFirstChecked = 0;
-        for ( sal_uInt16 i=0; i<nSubTotals; i++ )
+        for (sal_uInt16 i = 0; i < group.nSubTotals; i++)
         {
-            sal_uInt16  nCheckPos = GetFieldSelPos( pSubTotals[i] );
+            sal_uInt16 nCheckPos = GetFieldSelPos(group.col(i));
 
             mxLbColumns->set_toggle(nCheckPos, TRISTATE_TRUE);
-            mxLbColumns->set_id(nCheckPos, OUString::number(FuncToLbPos(pFunctions[i])));
+            mxLbColumns->set_id(nCheckPos, OUString::number(FuncToLbPos(group.func(i))));
 
             if (i == 0 || nCheckPos < nFirstChecked)
                 nFirstChecked = nCheckPos;
@@ -206,8 +203,8 @@ bool ScTpSubTotalGroup::DoFillItemSet( sal_uInt16       nGroupNo,
     theSubTotalData.nRow1                   = rSubTotalData.nRow1;
     theSubTotalData.nCol2                   = rSubTotalData.nCol2;
     theSubTotalData.nRow2                   = rSubTotalData.nRow2;
-    theSubTotalData.bGroupActive[nGroupIdx] = (nGroup != 0);
-    theSubTotalData.nField[nGroupIdx]       = (nGroup != 0)
+    theSubTotalData.aGroups[nGroupIdx].bActive = (nGroup != 0);
+    theSubTotalData.aGroups[nGroupIdx].nField  = (nGroup != 0)
                                                 ? mnFieldArr[nGroup-1]
                                                 : static_cast<SCCOL>(0);
 
@@ -271,7 +268,7 @@ void ScTpSubTotalGroup::FillListBoxes()
         mxLbColumns->insert(i);
         mxLbColumns->set_toggle(i, TRISTATE_FALSE);
         mxLbColumns->set_text(i, aFieldName, 0);
-        mxLbColumns->set_id(i, "0");
+        mxLbColumns->set_id(i, u"0"_ustr);
         i++;
     }
     mxLbColumns->thaw();
@@ -438,21 +435,22 @@ bool ScTpSubTotalGroup3::FillItemSet( SfxItemSet* rArgSet ) { return FILLSET(3);
 ScTpSubTotalOptions::ScTpSubTotalOptions(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rArgSet)
 
         :   SfxTabPage      ( pPage, pController,
-                              "modules/scalc/ui/subtotaloptionspage.ui", "SubTotalOptionsPage",
+                              u"modules/scalc/ui/subtotaloptionspage.ui"_ustr, u"SubTotalOptionsPage"_ustr,
                               &rArgSet ),
             pViewData       ( nullptr ),
             pDoc            ( nullptr ),
-            nWhichSubTotals ( rArgSet.GetPool()->GetWhich( SID_SUBTOTALS ) ),
+            nWhichSubTotals ( rArgSet.GetPool()->GetWhichIDFromSlotID( SID_SUBTOTALS ) ),
             rSubTotalData   ( rArgSet.Get( nWhichSubTotals ).GetSubTotalData() )
-    , m_xBtnPagebreak(m_xBuilder->weld_check_button("pagebreak"))
-    , m_xBtnCase(m_xBuilder->weld_check_button("case"))
-    , m_xBtnSort(m_xBuilder->weld_check_button("sort"))
-    , m_xFlSort(m_xBuilder->weld_label("label2"))
-    , m_xBtnAscending(m_xBuilder->weld_radio_button("ascending"))
-    , m_xBtnDescending(m_xBuilder->weld_radio_button("descending"))
-    , m_xBtnFormats(m_xBuilder->weld_check_button("formats"))
-    , m_xBtnUserDef(m_xBuilder->weld_check_button("btnuserdef"))
-    , m_xLbUserDef(m_xBuilder->weld_combo_box("lbuserdef"))
+    , m_xBtnPagebreak(m_xBuilder->weld_check_button(u"pagebreak"_ustr))
+    , m_xBtnCase(m_xBuilder->weld_check_button(u"case"_ustr))
+    , m_xBtnSort(m_xBuilder->weld_check_button(u"sort"_ustr))
+    , m_xBtnSummary(m_xBuilder->weld_check_button(u"summarybelow"_ustr))
+    , m_xFlSort(m_xBuilder->weld_label(u"label2"_ustr))
+    , m_xBtnAscending(m_xBuilder->weld_radio_button(u"ascending"_ustr))
+    , m_xBtnDescending(m_xBuilder->weld_radio_button(u"descending"_ustr))
+    , m_xBtnFormats(m_xBuilder->weld_check_button(u"formats"_ustr))
+    , m_xBtnUserDef(m_xBuilder->weld_check_button(u"btnuserdef"_ustr))
+    , m_xLbUserDef(m_xBuilder->weld_combo_box(u"lbuserdef"_ustr))
 {
     m_xLbUserDef->set_accessible_description(ScResId(STR_A11Y_DESC_USERDEF));
     m_xBtnUserDef->set_accessible_description(ScResId(STR_A11Y_DESC_USERDEF));
@@ -490,6 +488,7 @@ void ScTpSubTotalOptions::Reset( const SfxItemSet* /* rArgSet */ )
     m_xBtnCase->set_active( rSubTotalData.bCaseSens );
     m_xBtnFormats->set_active( rSubTotalData.bIncludePattern );
     m_xBtnSort->set_active( rSubTotalData.bDoSort );
+    m_xBtnSummary->set_active( rSubTotalData.bSummaryBelow );
     m_xBtnAscending->set_active( rSubTotalData.bAscending );
     m_xBtnDescending->set_active( !rSubTotalData.bAscending );
 
@@ -524,6 +523,10 @@ bool ScTpSubTotalOptions::FillItemSet( SfxItemSet* rArgSet )
     theSubTotalData.bCaseSens       = m_xBtnCase->get_active();
     theSubTotalData.bIncludePattern = m_xBtnFormats->get_active();
     theSubTotalData.bDoSort         = m_xBtnSort->get_active();
+
+    theSubTotalData.bSummaryBelow   = m_xBtnSummary->get_active();
+    pDoc->SetTotalsRowBelow(pViewData->GetTabNo(), theSubTotalData.bSummaryBelow);
+
     theSubTotalData.bAscending      = m_xBtnAscending->get_active();
     theSubTotalData.bUserDef        = m_xBtnUserDef->get_active();
     theSubTotalData.nUserIndex      = (m_xBtnUserDef->get_active())
@@ -537,16 +540,13 @@ bool ScTpSubTotalOptions::FillItemSet( SfxItemSet* rArgSet )
 
 void ScTpSubTotalOptions::FillUserSortListBox()
 {
-    ScUserList* pUserLists = ScGlobal::GetUserList();
+    ScUserList& rUserLists = ScGlobal::GetUserList();
 
     m_xLbUserDef->freeze();
     m_xLbUserDef->clear();
-    if ( pUserLists )
-    {
-        size_t nCount = pUserLists->size();
-        for ( size_t i=0; i<nCount; ++i )
-            m_xLbUserDef->append_text((*pUserLists)[i].GetString() );
-    }
+    size_t nCount = rUserLists.size();
+    for ( size_t i=0; i<nCount; ++i )
+        m_xLbUserDef->append_text(rUserLists[i].GetString());
     m_xLbUserDef->thaw();
 }
 

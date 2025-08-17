@@ -102,16 +102,22 @@ std::optional<SfxItemSet> SwModule::CreateItemSet( sal_uInt16 nId )
             FN_PARAM_PRINTER, FN_PARAM_STDFONTS,
             FN_PARAM_WRTSHELL, FN_PARAM_WRTSHELL,
             FN_PARAM_SHADOWCURSOR, FN_PARAM_SHADOWCURSOR,
-            FN_PARAM_CRSR_IN_PROTECTED, FN_PARAM_CRSR_IN_PROTECTED>
+            FN_PARAM_CRSR_IN_PROTECTED, FN_PARAM_CRSR_IN_PROTECTED,
+            FN_PARAM_FMT_AIDS_AUTOCOMPL, FN_PARAM_FMT_AIDS_AUTOCOMPL>
         aRet(GetPool());
 
     aRet.Put( SwDocDisplayItem( aViewOpt ) );
-    aRet.Put( SwElemItem( aViewOpt ) );
+    SwElemItem aElemItem( aViewOpt );
     if( bTextDialog )
     {
         aRet.Put( SwShadowCursorItem( aViewOpt ));
         aRet.Put( SfxBoolItem(FN_PARAM_CRSR_IN_PROTECTED, aViewOpt.IsCursorInProtectedArea()));
+        aRet.Put(SwFmtAidsAutoComplItem(aViewOpt));
+        aElemItem.SetDefaultZoom(pPref->IsDefaultZoom());
+        aElemItem.SetDefaultZoomType(pPref->GetDefaultZoomType());
+        aElemItem.SetDefaultZoomValue(pPref->GetDefaultZoomValue());
     }
+    aRet.Put( aElemItem );
 
     if( pAppView )
     {
@@ -261,6 +267,12 @@ void SwModule::ApplyItemSet( sal_uInt16 nId, const SfxItemSet& rSet )
     if( const SwElemItem* pElemItem = rSet.GetItemIfSet( FN_PARAM_ELEM, false ) )
     {
         pElemItem->FillViewOptions( aViewOpt );
+        if (bTextDialog)
+        {
+            pPref->SetDefaultZoom(pElemItem->IsDefaultZoom());
+            pPref->SetDefaultZoomType(pElemItem->GetDefaultZoomType());
+            pPref->SetDefaultZoomValue(pElemItem->GetDefaultZoomValue());
+        }
 
         // Outline-folding options
         if (SwWrtShell* pWrtShell = GetActiveWrtShell())
@@ -367,6 +379,12 @@ void SwModule::ApplyItemSet( sal_uInt16 nId, const SfxItemSet& rSet )
         if (pOpt)
         {
             *pOpt = *pAddPrinterAttr;
+            SwPagePreview* pPagePreview = dynamic_cast<SwPagePreview*>( SfxViewShell::Current());
+            if( pPagePreview !=nullptr )
+            {
+                pPagePreview->GetViewShell()->getIDocumentDeviceAccess().setPrintData(*pOpt);
+                pPagePreview->PrintSettingsChanged();
+            }
         }
     }
 
@@ -391,6 +409,11 @@ void SwModule::ApplyItemSet( sal_uInt16 nId, const SfxItemSet& rSet )
     if( const SfxBoolItem* pItem = rSet.GetItemIfSet( FN_PARAM_CRSR_IN_PROTECTED, false ))
     {
         aViewOpt.SetCursorInProtectedArea(pItem->GetValue());
+    }
+
+    if (const SwFmtAidsAutoComplItem* pItem = rSet.GetItemIfSet(FN_PARAM_FMT_AIDS_AUTOCOMPL, false))
+    {
+        aViewOpt.SetEncloseWithCharactersOn(pItem->IsEncloseWithCharactersOn());
     }
 
     // set elements for the current view and shell
@@ -500,14 +523,6 @@ std::unique_ptr<SfxTabPage> SwModule::CreateTabPage( sal_uInt16 nId, weld::Conta
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
             ::CreateTabPage fnCreatePage = pFact->GetTabPageCreatorFunc( nId );
             xRet = (*fnCreatePage)( pPage, pController, &rSet );
-            break;
-        }
-        case  RID_SW_TP_BACKGROUND:
-        {
-            SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
-            ::CreateTabPage fnCreatePage = pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BKG );
-            xRet = (*fnCreatePage)( pPage, pController, &rSet );
-            xRet->PageCreated( rSet );
             break;
         }
         case RID_SW_TP_OPTCAPTION_PAGE:

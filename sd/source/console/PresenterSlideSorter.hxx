@@ -24,15 +24,14 @@
 #include "PresenterController.hxx"
 #include "PresenterPaneContainer.hxx"
 #include "PresenterViewFactory.hxx"
-#include <cppuhelper/basemutex.hxx>
+#include <PresenterPreviewCache.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <com/sun/star/awt/XPaintListener.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/drawing/XSlidePreviewCache.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
+#include <framework/AbstractView.hxx>
+#include <ResourceId.hxx>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/geometry/RealRectangle2D.hpp>
 #include <com/sun/star/rendering/XPolyPolygon2D.hpp>
@@ -42,8 +41,8 @@ namespace sdext::presenter {
 class PresenterButton;
 class PresenterScrollBar;
 
-typedef cppu::WeakComponentImplHelper<
-    css::drawing::framework::XView,
+typedef cppu::ImplInheritanceHelper<
+    sd::framework::AbstractView,
     css::awt::XWindowListener,
     css::awt::XPaintListener,
     css::beans::XPropertyChangeListener,
@@ -57,22 +56,22 @@ typedef cppu::WeakComponentImplHelper<
     to create the slide previews.  Painting is done via a canvas.
 */
 class PresenterSlideSorter
-    : private ::cppu::BaseMutex,
-      public PresenterSlideSorterInterfaceBase,
+    : public PresenterSlideSorterInterfaceBase,
       public CachablePresenterView
 {
 public:
     PresenterSlideSorter (
         const css::uno::Reference<css::uno::XComponentContext>& rxContext,
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
         const rtl::Reference<::sd::DrawController>& rxController,
         const ::rtl::Reference<PresenterController>& rpPresenterController);
     virtual ~PresenterSlideSorter() override;
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     // lang::XEventListener
 
+    using WeakComponentImplHelperBase::disposing;
     virtual void SAL_CALL
         disposing (const css::lang::EventObject& rEventObject) override;
 
@@ -106,11 +105,11 @@ public:
 
     virtual void SAL_CALL mouseDragged (const css::awt::MouseEvent& rEvent) override;
 
-    // XResourceId
+    // AbstractResource
 
-    virtual css::uno::Reference<css::drawing::framework::XResourceId> SAL_CALL getResourceId() override;
+    virtual rtl::Reference<sd::framework::ResourceId> getResourceId() override;
 
-    virtual sal_Bool SAL_CALL isAnchorOnly() override;
+    virtual bool isAnchorOnly() override;
 
     // XPropertyChangeListener
 
@@ -131,13 +130,13 @@ public:
 
 private:
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
-    css::uno::Reference<css::drawing::framework::XResourceId> mxViewId;
-    css::uno::Reference<css::drawing::framework::XPane> mxPane;
+    rtl::Reference<sd::framework::ResourceId> mxViewId;
+    rtl::Reference<sd::framework::AbstractPane> mxPane;
     css::uno::Reference<css::rendering::XCanvas> mxCanvas;
     css::uno::Reference<css::awt::XWindow> mxWindow;
     ::rtl::Reference<PresenterController> mpPresenterController;
     css::uno::Reference<css::presentation::XSlideShowController> mxSlideShowController;
-    css::uno::Reference<css::drawing::XSlidePreviewCache> mxPreviewCache;
+    rtl::Reference<sd::presenter::PresenterPreviewCache> mxPreviewCache;
     bool mbIsLayoutPending;
     class Layout;
     std::shared_ptr<Layout> mpLayout;
@@ -174,12 +173,8 @@ private:
     void SetHorizontalOffset (const double nXOffset);
     void SetVerticalOffset (const double nYOffset);
     void GotoSlide (const sal_Int32 nSlideIndex);
+    void ScrollSlideIntoView(sal_Int32 nSlideIndex);
     bool ProvideCanvas();
-
-    /** @throws css::lang::DisposedException when the object has already been
-        disposed.
-    */
-    void ThrowIfDisposed();
 };
 
 } // end of namespace ::sdext::presenter

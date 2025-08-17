@@ -13,12 +13,13 @@
 
 #include <officecfg/Office/Security.hxx>
 
-#if defined(LINUX) && !defined(SYSTEM_CURL)
+// curl is built with --with-secure-transport on macOS and iOS so doesn't need these
+// certs. Windows doesn't need them either, but let's assume everything else does
+#if !defined(SYSTEM_OPENSSL) && !defined(_WIN32) && !defined(MACOSX) && !defined(IOS)
 #include <com/sun/star/uno/RuntimeException.hpp>
 
 #define LO_CURL_NEEDS_CA_BUNDLE
 #include "opensslinit.hxx"
-#undef LO_CURL_NEEDS_CA_BUNDLE
 #endif
 
 #include <rtl/string.hxx>
@@ -29,16 +30,38 @@
 static void InitCurl_easy(CURL* const pCURL)
 {
     CURLcode rc;
-    (void)rc;
 
-#if defined(LINUX) && !defined(SYSTEM_CURL)
+#if defined(LO_CURL_NEEDS_CA_BUNDLE)
     char const* const path = GetCABundleFile();
-    rc = curl_easy_setopt(pCURL, CURLOPT_CAINFO, path);
-    if (rc != CURLE_OK) // only if OOM?
+    if (path == nullptr)
     {
-        throw css::uno::RuntimeException("CURLOPT_CAINFO failed");
+#if defined EMSCRIPTEN
+        SAL_WARN("ucb.ucp.webdav.curl", "no OpenSSL CA certificate bundle found");
+#else
+        throw css::uno::RuntimeException(u"no OpenSSL CA certificate bundle found"_ustr);
+#endif
+    }
+    else
+    {
+        rc = curl_easy_setopt(pCURL, CURLOPT_CAINFO, path);
+        if (rc != CURLE_OK) // only if OOM?
+        {
+            throw css::uno::RuntimeException(u"CURLOPT_CAINFO failed"_ustr);
+        }
     }
 #endif
+
+    // curl: "If you have a CA cert for the server stored someplace else than
+    // in the default bundle, then the CURLOPT_CAPATH option might come handy
+    // for you"
+    if (char const* const capath = getenv("LO_CERTIFICATE_AUTHORITY_PATH"))
+    {
+        rc = curl_easy_setopt(pCURL, CURLOPT_CAPATH, capath);
+        if (rc != CURLE_OK)
+        {
+            throw css::uno::RuntimeException("CURLOPT_CAPATH failed");
+        }
+    }
 
     if (!officecfg::Office::Security::Net::AllowInsecureProtocols::get())
     {
@@ -78,5 +101,7 @@ static void InitCurl_easy(CURL* const pCURL)
     rc = curl_easy_setopt(pCURL, CURLOPT_USERAGENT, useragent.getStr());
     assert(rc == CURLE_OK);
 }
+
+#undef LO_CURL_NEEDS_CA_BUNDLE
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

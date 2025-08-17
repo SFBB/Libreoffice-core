@@ -115,6 +115,7 @@ private:
 
     std::unique_ptr<weld::ComboBox> m_xLbAllow;
     std::unique_ptr<weld::CheckButton> m_xCbAllow;      /// Allow blank cells.
+    std::unique_ptr<weld::CheckButton> m_xCbCaseSens;   /// Allow Case sensitive.
     std::unique_ptr<weld::CheckButton> m_xCbShow;       /// Show selection list in cell.
     std::unique_ptr<weld::CheckButton> m_xCbSort;       /// Sort selection list in cell.
     std::unique_ptr<weld::Label> m_xFtValue;
@@ -127,7 +128,7 @@ private:
     std::unique_ptr<formula::RefEdit> m_xEdMax;
     std::unique_ptr<weld::Label> m_xFtHint;       /// Hint text for cell range validity.
     std::unique_ptr<formula::RefButton> m_xBtnRef;
-    std::unique_ptr<weld::Container> m_xRefGrid;
+    std::unique_ptr<weld::Grid> m_xRefGrid;
 
     weld::Container* m_pRefEditParent;
     weld::Container* m_pBtnRefParent;
@@ -164,7 +165,7 @@ public:
     virtual ~ScValidationDlg() override;
     static std::shared_ptr<SfxDialogController> Find1AliveObject(const weld::Window *pAncestor)
     {
-        return SC_MOD()->Find1RefWindow(SLOTID, pAncestor);
+        return ScModule::get()->Find1RefWindow(SLOTID, pAncestor);
     }
     ScTabViewShell *GetTabViewShell()
     {

@@ -23,13 +23,13 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <comphelper/comphelperdllapi.h>
+#include <rtl/ref.hxx>
 
 namespace com::sun::star::awt {
     struct FontDescriptor;
 }
 
 namespace com::sun::star::uno { class Any; }
-namespace com::sun::star::uno { class XInterface; }
 
 
 namespace comphelper
@@ -46,6 +46,15 @@ namespace comphelper
         if (xComp.is())
         {
             xComp->dispose();
+            _rxComp = nullptr;
+        }
+    }
+    template <class TYPE>
+    void disposeComponent(rtl::Reference<TYPE>& _rxComp)
+    {
+        if (_rxComp.is())
+        {
+            _rxComp->dispose();
             _rxComp = nullptr;
         }
     }

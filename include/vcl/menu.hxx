@@ -23,6 +23,7 @@
 #include <memory>
 #include <string_view>
 
+#include <comphelper/OAccessible.hxx>
 #include <vcl/vclenum.hxx>
 #include <tools/link.hxx>
 #include <tools/long.hxx>
@@ -32,6 +33,7 @@
 #include <vcl/vclreferencebase.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <o3tl/typed_flags_set.hxx>
+#include <tools/json_writer.hxx>
 #include <list>
 
 class OutputDevice;
@@ -45,23 +47,21 @@ class MenuItemList;
 class Image;
 class PopupMenu;
 class KeyEvent;
+class CommandEvent;
 class MenuFloatingWindow;
 class SalMenu;
 class MenuBarWindow;
 class VclMenuEvent;
 struct SystemMenuData;
-enum class FloatWinPopupFlags;
 enum class VclEventId;
 
 namespace com::sun::star::awt { class XPopupMenu; }
-namespace com::sun::star::accessibility { class XAccessible;  }
 
 namespace vcl
 {
 class Window;
 struct MenuLayoutData;
 typedef OutputDevice RenderContext; // same as in include/vcl/outdev.hxx
-class ILibreOfficeKitNotifier;
 }
 
 constexpr sal_uInt16 MENU_APPEND = 0xFFFF;
@@ -125,7 +125,7 @@ private:
     ImplMenuDelData* mpFirstDel;
     std::unique_ptr<MenuItemList> pItemList; // list with MenuItems
     VclPtr<Menu> pStartedFrom;
-    VclPtr<vcl::Window> pWindow;
+    VclPtr<vcl::Window> m_pWindow;
 
     Link<Menu*, bool> aActivateHdl;       // Active-Handler
     Link<Menu*, bool> aDeactivateHdl;     // Deactivate-Handler
@@ -152,7 +152,7 @@ private:
     bool bInCallback : 1; ///< In Activate/Deactivate
     bool bKilled : 1; ///< Killed
 
-    css::uno::Reference<css::accessibility::XAccessible > mxAccessible;
+    rtl::Reference<comphelper::OAccessible> mpAccessible;
     mutable std::unique_ptr<vcl::MenuLayoutData> mpLayoutData;
     std::unique_ptr<SalMenu> mpSalMenu;
 
@@ -181,7 +181,7 @@ protected:
     DECL_DLLPRIVATE_LINK(ImplCallSelect, void*, void );
 
     SAL_DLLPRIVATE void ImplFillLayoutData() const;
-    SAL_DLLPRIVATE SalMenu* ImplGetSalMenu() { return mpSalMenu.get(); }
+    SAL_DLLPRIVATE SalMenu* ImplGetSalMenu() const { return mpSalMenu.get(); }
     SAL_DLLPRIVATE OUString ImplGetHelpText( sal_uInt16 nItemId ) const;
 
     // returns native check and option menu symbol height in rCheckHeight and rRadioHeight
@@ -200,7 +200,7 @@ protected:
                                                size_t nPos, const OUString &rIdent);
 
     /// Close the 'pStartedFrom' menu window.
-    virtual void ClosePopup(Menu* pMenu) = 0;
+    virtual void ClosePopup(PopupMenu* pPopupMenu) = 0;
 
     /// Forward the KeyInput call to the MenuBar.
     virtual void MenuBarKeyInput(const KeyEvent& rEvent);
@@ -208,7 +208,6 @@ protected:
 public:
     SAL_DLLPRIVATE void ImplKillLayoutData() const;
 
-    SAL_DLLPRIVATE vcl::Window* ImplGetWindow() const { return pWindow; }
 #if defined(MACOSX)
     void ImplSelectWithStart( Menu* pStartMenu = nullptr );
 #endif
@@ -320,7 +319,7 @@ public:
     OUString GetHelpId( sal_uInt16 nItemId ) const;
 
     void SetHelpId( const OUString& rHelpId ) { m_sMenuHelpId = rHelpId; }
-    OUString GetHelpId() const { return m_sMenuHelpId; }
+    const OUString & GetHelpId() const { return m_sMenuHelpId; }
 
     void SetActivateHdl( const Link<Menu *, bool>& rLink )
     {
@@ -354,8 +353,7 @@ public:
     }
 
     // returns the system's menu handle if native menus are supported
-    // pData must point to a SystemMenuData structure
-    void GetSystemMenuData( SystemMenuData* pData ) const;
+    void GetSystemMenuData(SystemMenuData& rData) const;
 
     // accessibility helpers
 
@@ -369,13 +367,13 @@ public:
     // returns the bounding rectangle for an item at pos nItemPos
     tools::Rectangle GetBoundingRectangle( sal_uInt16 nItemPos ) const;
 
-    css::uno::Reference<css::accessibility::XAccessible> GetAccessible();
-    void SetAccessible(const css::uno::Reference<css::accessibility::XAccessible >& rxAccessible);
+    rtl::Reference<comphelper::OAccessible> GetAccessible();
+    void SetAccessible(const rtl::Reference<comphelper::OAccessible>& rAccessible);
 
     // gets the activation key of the specified item
     KeyEvent GetActivationKey( sal_uInt16 nItemId ) const;
 
-    vcl::Window* GetWindow() const { return pWindow; }
+    vcl::Window* GetWindow() const { return m_pWindow; }
 
     void SetAccessibleName( sal_uInt16 nItemId, const OUString& rStr );
     OUString GetAccessibleName( sal_uInt16 nItemId ) const;
@@ -389,9 +387,9 @@ public:
     void HighlightItem( sal_uInt16 nItemPos );
     void DeHighlight() { HighlightItem( 0xFFFF ); } // MENUITEMPOS_INVALID
 
-    bool HandleMenuCommandEvent(Menu *pMenu, sal_uInt16 nEventId) const;
-    bool HandleMenuActivateEvent(Menu *pMenu) const;
-    bool HandleMenuDeActivateEvent(Menu *pMenu) const;
+    bool HandleMenuCommandEvent(Menu* pMenu, sal_uInt16 nEventId);
+    bool HandleMenuActivateEvent(Menu* pMenu);
+    bool HandleMenuDeActivateEvent(Menu* pMenu);
 
     /**
      * Sets an ID.
@@ -402,6 +400,11 @@ public:
      * Get the ID of the window.
      */
     const OUString& get_id() const { return maID; }
+
+    virtual void DumpAsPropertyTree(tools::JsonWriter&) const;
+
+private:
+    rtl::Reference<comphelper::OAccessible> CreateAccessible();
 };
 
 struct MenuBarButtonCallbackArg
@@ -418,43 +421,42 @@ class VCL_DLLPUBLIC MenuBar final : public Menu
     bool mbHideBtnVisible : 1;
     bool mbDisplayable : 1;
 
-    friend class Application;
     friend class Menu;
     friend class MenuBarWindow;
-    friend class MenuFloatingWindow;
     friend class SystemWindow;
 
-    SAL_DLLPRIVATE static VclPtr<vcl::Window> ImplCreate(vcl::Window* pParent, vcl::Window* pWindow, MenuBar* pMenu);
-    SAL_DLLPRIVATE static void ImplDestroy(MenuBar* pMenu, bool bDelete);
+    SAL_DLLPRIVATE VclPtr<MenuBarWindow> ImplCreate(vcl::Window* pParent, MenuBarWindow* pWindow);
+    SAL_DLLPRIVATE void ImplDestroy(bool bDelete);
     SAL_DLLPRIVATE bool ImplHandleKeyEvent(const KeyEvent& rKEvent);
-
-    /// Return the MenuBarWindow.
-    MenuBarWindow* getMenuBarWindow();
+    SAL_DLLPRIVATE bool ImplHandleCmdEvent(const CommandEvent& rCEvent);
 
 public:
     MenuBar();
-    MenuBar( const MenuBar& rMenu );
-    virtual ~MenuBar() override;
+    SAL_DLLPRIVATE MenuBar( const MenuBar& rMenu );
+    SAL_DLLPRIVATE virtual ~MenuBar() override;
     virtual void dispose() override;
 
     MenuBar& operator =( const MenuBar& rMenu );
 
     virtual bool IsMenuBar() const override { return true; }
 
+    /// Return the MenuBarWindow.
+    SAL_DLLPRIVATE MenuBarWindow* getMenuBarWindow();
+
     /// Close the 'pStartedFrom' menu window.
-    virtual void ClosePopup(Menu* pMenu) override;
+    virtual void ClosePopup(PopupMenu* pPopupMenu) override;
 
     /// Forward the KeyInput call to the MenuBar.
-    virtual void MenuBarKeyInput(const KeyEvent& rEvent) override;
+    SAL_DLLPRIVATE virtual void MenuBarKeyInput(const KeyEvent& rEvent) override;
 
     void ShowCloseButton( bool bShow );
     bool HasCloseButton() const { return mbCloseBtnVisible; }
     bool HasFloatButton() const { return mbFloatBtnVisible; }
     bool HasHideButton() const { return mbHideBtnVisible; }
-    void ShowButtons( bool bClose, bool bFloat, bool bHide );
+    SAL_DLLPRIVATE void ShowButtons( bool bClose, bool bFloat, bool bHide );
 
-    virtual void SelectItem(sal_uInt16 nId) override;
-    bool HandleMenuHighlightEvent(Menu *pMenu, sal_uInt16 nEventId) const;
+    SAL_DLLPRIVATE virtual void SelectItem(sal_uInt16 nId) override;
+    SAL_DLLPRIVATE bool HandleMenuHighlightEvent(Menu* pMenu, sal_uInt16 nEventId);
     bool HandleMenuButtonEvent(sal_uInt16 nEventId);
 
     void SetCloseButtonClickHdl( const Link<void*,void>& rLink ) { maCloseHdl = rLink; }
@@ -470,20 +472,20 @@ public:
     // add an arbitrary button to the menubar (will appear next to closer)
     // passed link will be call with a MenuBarButtonCallbackArg on press
     // passed string will be set as tooltip
-    sal_uInt16 AddMenuBarButton( const Image&, const Link<MenuBarButtonCallbackArg&,bool>&, const OUString& );
+    SAL_DLLPRIVATE sal_uInt16 AddMenuBarButton( const Image&, const Link<MenuBarButtonCallbackArg&,bool>&, const OUString& );
     // set the highlight link for additional button with ID nId
     // highlight link will be called with a MenuBarButtonHighlightArg
     // the bHighlight member of that struct shall contain the new state
-    void SetMenuBarButtonHighlightHdl( sal_uInt16 nId, const Link<MenuBarButtonCallbackArg&,bool>& );
+    SAL_DLLPRIVATE void SetMenuBarButtonHighlightHdl( sal_uInt16 nId, const Link<MenuBarButtonCallbackArg&,bool>& );
     // returns the rectangle occupied by the additional button named nId
     // coordinates are relative to the systemwindow the menubar is attached to
     // if the menubar is unattached an empty rectangle is returned
-    tools::Rectangle GetMenuBarButtonRectPixel( sal_uInt16 nId );
-    void RemoveMenuBarButton( sal_uInt16 nId );
+    SAL_DLLPRIVATE tools::Rectangle GetMenuBarButtonRectPixel( sal_uInt16 nId );
+    SAL_DLLPRIVATE void RemoveMenuBarButton( sal_uInt16 nId );
     void LayoutChanged();
     // get the height of the menubar, return the native menubar height if that is active or the vcl
     // one if not
-    int GetMenuBarHeight() const;
+    SAL_DLLPRIVATE int GetMenuBarHeight() const;
 };
 
 inline MenuBar& MenuBar::operator=( const MenuBar& rMenu )
@@ -501,7 +503,6 @@ class VCL_DLLPUBLIC PopupMenu final : public Menu
 
 private:
     SAL_DLLPRIVATE MenuFloatingWindow * ImplGetFloatingWindow() const;
-    SAL_DLLPRIVATE bool PrepareRun(const VclPtr<vcl::Window>& pParentWin, tools::Rectangle& rRect, FloatWinPopupFlags& nPopupModeFlags, Menu* pSFrom, bool& bRealExecute, VclPtr<MenuFloatingWindow>&);
     SAL_DLLPRIVATE bool Run(const VclPtr<MenuFloatingWindow>&, bool bRealExecute, bool bPreSelectFirst, FloatWinPopupFlags nPopupModeFlags, Menu* pSFrom, const tools::Rectangle& rRect);
     SAL_DLLPRIVATE void FinishRun(const VclPtr<MenuFloatingWindow>&, const VclPtr<vcl::Window>& pParentWin, bool bRealExecute, bool bIsNativeMenu);
     SAL_DLLPRIVATE sal_uInt16 ImplExecute(const VclPtr<vcl::Window>& pParentWin, const tools::Rectangle& rRect, FloatWinPopupFlags nPopupModeFlags, Menu* pSFrom, bool bPreSelectFirst);
@@ -517,7 +518,7 @@ public:
     virtual bool IsMenuBar() const override { return false; }
 
     /// Close the 'pStartedFrom' menu window.
-    virtual void ClosePopup(Menu* pMenu) override;
+    SAL_DLLPRIVATE virtual void ClosePopup(PopupMenu* pPopupMenu) override;
 
     void SetText( const OUString& rTitle )
     {

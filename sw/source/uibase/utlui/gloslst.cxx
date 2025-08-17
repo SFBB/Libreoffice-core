@@ -64,14 +64,14 @@ public:
 }
 
 SwGlossDecideDlg::SwGlossDecideDlg(weld::Window* pParent)
-    : GenericDialogController(pParent, "modules/swriter/ui/selectautotextdialog.ui", "SelectAutoTextDialog")
-    , m_xOk(m_xBuilder->weld_button("ok"))
-    , m_xListLB(m_xBuilder->weld_tree_view("treeview"))
+    : GenericDialogController(pParent, u"modules/swriter/ui/selectautotextdialog.ui"_ustr, u"SelectAutoTextDialog"_ustr)
+    , m_xOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xListLB(m_xBuilder->weld_tree_view(u"treeview"_ustr))
 {
     m_xListLB->set_size_request(m_xListLB->get_approximate_digit_width() * 32,
                                 m_xListLB->get_height_rows(8));
     m_xListLB->connect_row_activated(LINK(this, SwGlossDecideDlg, DoubleClickHdl));
-    m_xListLB->connect_changed(LINK(this, SwGlossDecideDlg, SelectHdl));
+    m_xListLB->connect_selection_changed(LINK(this, SwGlossDecideDlg, SelectHdl));
 }
 
 IMPL_LINK_NOARG(SwGlossDecideDlg, DoubleClickHdl, weld::TreeView&, bool)
@@ -284,7 +284,7 @@ void SwGlossaryList::Update()
                                                     &sExt, &aDateTimeArr );
             for( size_t nFiles = 0; nFiles < aFiles.size(); ++nFiles )
             {
-                const OUString aTitle = aFiles[ nFiles ];
+                const OUString& aTitle = aFiles[ nFiles ];
                 ::DateTime& rDT = aDateTimeArr[ nFiles ];
 
                 OUString sName( aTitle.copy( 0, aTitle.getLength() - sExt.getLength() ));
@@ -425,7 +425,7 @@ void SwGlossaryList::HasLongName(const std::vector<OUString>& rBeginCandidates,
                        });
     }
 
-    const auto& it = std::unique(
+    const auto it = std::unique(
         aAllResults.begin(), aAllResults.end(),
         [](const std::pair<OUString, sal_uInt16>& s1, const std::pair<OUString, sal_uInt16>& s2) {
             return s1.first.equalsIgnoreAsciiCase(s2.first);

@@ -278,7 +278,7 @@ SfxItemState SfxControllerItem::GetItemState
                         All other values that may appear should be reset to
                         default.
 
-                        SfxItemState::DONTCARE
+                        SfxItemState::INVALID
                         Enabled but there were only ambiguous values available
                         (i.e. non that can be queried).
 
@@ -292,8 +292,8 @@ SfxItemState SfxControllerItem::GetItemState
     return !pState
                 ? SfxItemState::DISABLED
                 : IsInvalidItem(pState)
-                    ? SfxItemState::DONTCARE
-                    : pState->isVoidItem() && !pState->Which()
+                    ? SfxItemState::INVALID
+                    : IsDisabledItem(pState)
                         ? SfxItemState::UNKNOWN
                         : SfxItemState::DEFAULT;
 }
@@ -326,7 +326,7 @@ MapUnit SfxControllerItem::GetCoreMetric() const
             if (SfxShell *pSh = pDispat->GetShell( pServer->GetShellLevel() ))
             {
                 SfxItemPool &rPool = pSh->GetPool();
-                sal_uInt16 nWhich = rPool.GetWhich( nId );
+                sal_uInt16 nWhich = rPool.GetWhichIDFromSlotID( nId );
 
                 // invalidate slot and its message|slot server as 'global' information
                 // about the validated message|slot server is not made available

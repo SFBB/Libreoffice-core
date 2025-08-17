@@ -86,7 +86,7 @@ void NumberedCollection::setUntitledPrefix(const OUString& sPrefix)
     TNumberedItem aItem;
     aItem.xItem   = css::uno::WeakReference< css::uno::XInterface >(xComponent);
     aItem.nNumber = nFreeNumber;
-    m_lComponents[pComponent] = aItem;
+    m_lComponents[pComponent] = std::move(aItem);
 
     return nFreeNumber;
 
@@ -100,7 +100,7 @@ void SAL_CALL NumberedCollection::releaseNumber(::sal_Int32 nNumber)
     std::scoped_lock aLock(m_aMutex);
 
     if (nNumber == css::frame::UntitledNumbersConst::INVALID_NUMBER)
-        throw css::lang::IllegalArgumentException ("Special value INVALID_NUMBER not allowed as input parameter.", m_xOwner.get(), 1);
+        throw css::lang::IllegalArgumentException (u"Special value INVALID_NUMBER not allowed as input parameter."_ustr, m_xOwner.get(), 1);
 
     TDeadItemList               lDeadItems;
     TNumberedItemHash::iterator pComponent;

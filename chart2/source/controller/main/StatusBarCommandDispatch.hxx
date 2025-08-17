@@ -18,14 +18,14 @@
  */
 #pragma once
 
-#include "CommandDispatch.hxx"
+#include <sal/config.h>
+
+#include <CommandDispatch.hxx>
 #include <ObjectIdentifier.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
 #include <rtl/ref.hxx>
 
-namespace com::sun::star::frame { class XModel; }
-namespace com::sun::star::util { class XModifiable; }
 namespace com::sun::star::view { class XSelectionSupplier; }
 
 namespace chart

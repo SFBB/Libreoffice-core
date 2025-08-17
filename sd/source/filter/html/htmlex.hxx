@@ -32,16 +32,9 @@
 
 namespace sd { class DrawDocShell; }
 
-class OutlinerParaObject;
-class SfxItemSet;
 class SfxProgress;
-class SdrOutliner;
 class SdPage;
 class HtmlState;
-class SdrTextObj;
-class SdrObjGroup;
-namespace sdr::table { class SdrTableObj; }
-class SdrPage;
 class SdDrawDocument;
 
 /// this class exports an Impress Document as a HTML Presentation.
@@ -51,7 +44,7 @@ class HtmlExport final
 
     OUString maPath;
 
-    SdDrawDocument* mpDoc;
+    SdDrawDocument& mrDoc;
     ::sd::DrawDocShell* mpDocSh;
 
     std::unique_ptr<SfxProgress> mpProgress;
@@ -71,11 +64,11 @@ class HtmlExport final
     void Init();
     void ExportSingleDocument();
 
-    bool WriteHtml( const OUString& rFileName, bool bAddExtension, std::u16string_view rHtmlData );
+    bool WriteHtml( std::u16string_view rFileName, std::u16string_view rHtmlData );
 
  public:
     HtmlExport(OUString aPath,
-               SdDrawDocument* pExpDoc,
+               SdDrawDocument& rExpDoc,
                sd::DrawDocShell* pDocShell);
 
     ~HtmlExport();

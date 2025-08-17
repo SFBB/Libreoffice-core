@@ -28,8 +28,6 @@
 
 #include <map>
 
-class Button;
-
 /** Toolbox that holds the close button (right hand side of the menubar).
 
 This is also used by the online update check; when an update is available, it
@@ -76,6 +74,8 @@ private:
     VclPtr<vcl::Window> m_xSaveFocusId;
     bool            mbAutoPopup;
     bool            m_bIgnoreFirstMove;
+    bool            mbHideAccel;
+    bool            mbMenuKey;
 
     VclPtr<DecoToolBox>  m_aCloseBtn;
     VclPtr<PushButton>   m_aFloatBtn;
@@ -124,7 +124,7 @@ public:
     void    KillActivePopup();
     void    PopupClosed(Menu const * pMenu);
     sal_uInt16 GetHighlightedItem() const { return m_nHighlightedItem; }
-    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     void    SetAutoPopup(bool bAuto) { mbAutoPopup = bAuto; }
     void    LayoutChanged();
@@ -136,6 +136,10 @@ public:
     tools::Rectangle GetMenuBarButtonRectPixel(sal_uInt16 nId);
     void RemoveMenuBarButton(sal_uInt16 nId);
     bool HandleMenuButtonEvent(sal_uInt16 i_nButtonId);
+    void SetMBWHideAccel(bool val) { mbHideAccel = val; }
+    bool GetMBWHideAccel() const { return mbHideAccel; }
+    void SetMBWMenuKey(bool val) { mbMenuKey = val; }
+    bool GetMBWMenuKey() const { return mbMenuKey; }
     bool CanGetFocus() const;
 };
 

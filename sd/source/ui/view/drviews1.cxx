@@ -167,10 +167,9 @@ void DrawViewShell::SelectionHasChanged()
 
     SdrOle2Obj* pOleObj = nullptr;
 
-    if ( mpDrawView->AreObjectsMarked() )
+    const SdrMarkList& rMarkList(mpDrawView->GetMarkedObjectList());
+    if ( rMarkList.GetMarkCount() != 0 )
     {
-        const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
-
         if (rMarkList.GetMarkCount() == 1)
         {
             SdrMark* pMark = rMarkList.GetMark(0);
@@ -194,51 +193,23 @@ void DrawViewShell::SelectionHasChanged()
 
     try
     {
-        Client* pIPClient = static_cast<Client*>(rBase.GetIPClient());
-        if ( pIPClient && pIPClient->IsObjectInPlaceActive() )
+        if (pOleObj)
+        {
+            if (const auto& xObj = pOleObj->GetObjRef())
+                rBase.SetVerbs(xObj->getSupportedVerbs());
+        }
+        else if (auto* pIPClient = rBase.GetIPClient();
+                 pIPClient && pIPClient->IsObjectInPlaceActive())
         {
             // as appropriate take ole-objects into account and deactivate
 
             // this means we recently deselected an inplace active ole object so
             // we need to deselect it now
-            if (!pOleObj)
-            {
-                //#i47279# disable frame until after object has completed unload
-                LockUI aUILock(GetViewFrame());
-                pIPClient->DeactivateObject();
-                //HMHmpDrView->ShowMarkHdl();
-            }
-            else
-            {
-                const uno::Reference < embed::XEmbeddedObject >& xObj = pOleObj->GetObjRef();
-                if ( xObj.is() )
-                {
-                    rBase.SetVerbs( xObj->getSupportedVerbs() );
-                }
-                else
-                {
-                    rBase.SetVerbs( uno::Sequence < embed::VerbDescriptor >() );
-                }
-            }
-        }
-        else
-        {
-            if ( pOleObj )
-            {
-                const uno::Reference < embed::XEmbeddedObject >& xObj = pOleObj->GetObjRef();
-                if ( xObj.is() )
-                {
-                    rBase.SetVerbs( xObj->getSupportedVerbs() );
-                }
-                else
-                {
-                    rBase.SetVerbs( uno::Sequence < embed::VerbDescriptor >() );
-                }
-            }
-            else
-            {
-                rBase.SetVerbs( uno::Sequence < embed::VerbDescriptor >() );
-            }
+
+            //#i47279# disable frame until after object has completed unload
+            LockUI aUILock(GetViewFrame());
+            pIPClient->DeactivateObject();
+            //HMHmpDrView->ShowMarkHdl();
         }
     }
     catch( css::uno::Exception& )
@@ -452,9 +423,6 @@ void DrawViewShell::ChangeEditMode(EditMode eEMode, bool bIsLayerModeActive)
         setLeftPaneTitleIfPaneExists(SID_LEFT_PANE_DRAW, STR_LEFT_PANE_DRAW_TITLE_MASTER);
         setLeftPaneTitleIfPaneExists(SID_LEFT_PANE_IMPRESS, STR_LEFT_PANE_IMPRESS_TITLE_MASTER);
 
-        if (comphelper::LibreOfficeKit::isActive())
-            GetViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED,
-                                                       ".uno:SlideMasterPage=true"_ostr);
         if (!mpActualPage)
         {
             // as long as there is no mpActualPage, take first
@@ -689,6 +657,9 @@ void DrawViewShell::ResetActualPage()
     sal_uInt16 nCurrentPageNum = maTabControl->GetPagePos(nCurrentPageId);
     sal_uInt16 nPageCount   = (meEditMode == EditMode::Page)?GetDoc()->GetSdPageCount(mePageKind):GetDoc()->GetMasterSdPageCount(mePageKind);
 
+    if (nCurrentPageNum >= nPageCount)
+        nCurrentPageNum = nPageCount - 1;
+
     if (meEditMode == EditMode::Page)
     {
 
@@ -750,10 +721,9 @@ void DrawViewShell::ResetActualPage()
  */
 ErrCode DrawViewShell::DoVerb(sal_Int32 nVerb)
 {
-    if ( mpDrawView->AreObjectsMarked() )
+    const SdrMarkList& rMarkList(mpDrawView->GetMarkedObjectList());
+    if ( rMarkList.GetMarkCount() != 0 )
     {
-        const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
-
         if (rMarkList.GetMarkCount() == 1)
         {
             SdrMark* pMark = rMarkList.GetMark(0);
@@ -796,40 +766,27 @@ bool DrawViewShell::ActivateObject(SdrOle2Obj* pObj, sal_Int32 nVerb)
 bool DrawViewShell::SelectPage(sal_uInt16 nPage, sal_uInt16 nSelect)
 {
     SdPage* pPage = GetDoc()->GetSdPage(nPage, PageKind::Standard);
+    if (!pPage)
+        return false;
 
-    //page selector marks pages to selected in view
-    auto &pageSelector = sd::slidesorter::SlideSorterViewShell::GetSlideSorter(GetViewShellBase())->GetSlideSorter().GetController().GetPageSelector();
+    //page selector marks pages as selected in view
+    sd::slidesorter::SlideSorterViewShell* pSlideSorterVS
+        = sd::slidesorter::SlideSorterViewShell::GetSlideSorter(GetViewShellBase());
 
-    if (pPage)
+    if (nSelect == 1 || (/*Toggle*/ nSelect > 1 && !pPage->IsSelected()))
     {
-        if (nSelect == 0)
-        {
-            GetDoc()->SetSelected(pPage, false);  // Deselect.
-            pageSelector.DeselectPage(nPage);
-        }
-        else if (nSelect == 1)
-        {
-            GetDoc()->SetSelected(pPage, true);    // Select.
-            pageSelector.SelectPage(nPage);
-        }
-        else
-        {
-            // Toggle.
-            if (pPage->IsSelected())
-            {
-                GetDoc()->SetSelected(pPage, false);
-                pageSelector.DeselectPage(nPage);
-            }
-            else
-            {
-                GetDoc()->SetSelected(pPage, true);
-                pageSelector.SelectPage(nPage);
-            }
-        }
-        return true;
+        GetDoc()->SetSelected(pPage, true); // Select.
+        if (pSlideSorterVS)
+            pSlideSorterVS->GetSlideSorter().GetController().GetPageSelector().SelectPage(nPage);
+    }
+    else
+    {
+        GetDoc()->SetSelected(pPage, false); // Deselect.
+        if (pSlideSorterVS)
+            pSlideSorterVS->GetSlideSorter().GetController().GetPageSelector().DeselectPage(nPage);
     }
 
-    return false;
+    return true;
 }
 
 bool DrawViewShell::IsSelected(sal_uInt16 nPage)
@@ -848,8 +805,12 @@ bool DrawViewShell::IsSelected(sal_uInt16 nPage)
  * bAllowChangeFocus set to false when slide is inserted before current page
  *                   and we need to only update the current page number,
  *                   do not disturb editing in that case
+ * bUpdateScrollbars set to false when the scrollbars are going to be updated by
+ *                   some other mechanism. (e.g. if the page switch happened as
+ *                   a result of a scroll)
  */
-bool DrawViewShell::SwitchPage(sal_uInt16 nSelectedPage, bool bAllowChangeFocus)
+bool DrawViewShell::SwitchPage(sal_uInt16 nSelectedPage, bool bAllowChangeFocus,
+                               bool bUpdateScrollbars)
 {
     /** Under some circumstances there are nested calls to SwitchPage() and
         may crash the application (activation of form controls when the
@@ -1205,6 +1166,9 @@ bool DrawViewShell::SwitchPage(sal_uInt16 nSelectedPage, bool bAllowChangeFocus)
         UpdatePreview( mpActualPage );
 
         mpDrawView->AdjustMarkHdl();
+
+        if(bUpdateScrollbars)
+            UpdateScrollBars();
     }
 
     return bOK;
@@ -1347,7 +1311,7 @@ sal_Int8 DrawViewShell::AcceptDrop (
     sal_uInt16 /*nPage*/,
     SdrLayerID nLayer )
 {
-    if( SlideShow::IsRunning( GetViewShellBase() ) )
+    if( SlideShow::IsRunning( GetViewShellBase() ) && !SlideShow::IsInteractiveSlideshow( &GetViewShellBase() ) ) // IASS
         return DND_ACTION_NONE;
 
     return mpDrawView->AcceptDrop( rEvt, rTargetHelper, nLayer );
@@ -1367,7 +1331,7 @@ sal_Int8 DrawViewShell::ExecuteDrop (
     if( nPage != SDRPAGE_NOTFOUND )
         nPage = GetDoc()->GetSdPage( nPage, mePageKind )->GetPageNum();
 
-    if( SlideShow::IsRunning( GetViewShellBase() ) )
+    if( SlideShow::IsRunning( GetViewShellBase() ) && !SlideShow::IsInteractiveSlideshow( &GetViewShellBase() )) // IASS
         return DND_ACTION_NONE;
 
     Broadcast(ViewShellHint(ViewShellHint::HINT_COMPLEX_MODEL_CHANGE_START));

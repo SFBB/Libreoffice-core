@@ -45,8 +45,7 @@ void FeatureCommandDispatchBase::initialize()
 
 bool FeatureCommandDispatchBase::isFeatureSupported( const OUString& rCommandURL )
 {
-    SupportedFeatures::const_iterator aIter = m_aSupportedFeatures.find( rCommandURL );
-    return aIter != m_aSupportedFeatures.end();
+    return m_aSupportedFeatures.contains(rCommandURL);
 }
 
 void FeatureCommandDispatchBase::fireStatusEvent( const OUString& rURL,
@@ -78,15 +77,10 @@ void FeatureCommandDispatchBase::dispatch( const util::URL& URL,
     }
 }
 
-void FeatureCommandDispatchBase::implDescribeSupportedFeature( const char* pAsciiCommandURL,
+void FeatureCommandDispatchBase::implDescribeSupportedFeature( const OUString& sCommandURL,
     ChartCommandID nId, sal_Int16 nGroup )
 {
-    ControllerFeature aFeature;
-    aFeature.Command = OUString::createFromAscii( pAsciiCommandURL );
-    aFeature.nFeatureId = nId;
-    aFeature.GroupId = nGroup;
-
-    m_aSupportedFeatures[ aFeature.Command ] = aFeature;
+    m_aSupportedFeatures[sCommandURL] = { sCommandURL, nGroup, nId };
 }
 
 } //  namespace chart

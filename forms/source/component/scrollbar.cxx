@@ -34,11 +34,8 @@ namespace frm
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::form;
-    using namespace ::com::sun::star::awt;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::util;
     using namespace ::com::sun::star::io;
-    using namespace ::com::sun::star::form::binding;
 
 
     //= helper
@@ -114,7 +111,7 @@ namespace frm
 
     OUString SAL_CALL OScrollBarModel::getImplementationName()
     {
-        return "com.sun.star.comp.forms.OScrollBarModel";
+        return u"com.sun.star.comp.forms.OScrollBarModel"_ustr;
     }
 
         // note that we're passing OControlModel as "base class". This is because
@@ -123,7 +120,7 @@ namespace frm
         // to benefit from the functionality for binding to spreadsheet cells
     Sequence< OUString > SAL_CALL OScrollBarModel::getSupportedServiceNames()
     {
-        Sequence< OUString > aOwnNames { FRM_SUN_COMPONENT_SCROLLBAR, BINDABLE_INTEGER_VALUE_RANGE };
+        static constexpr OUString aOwnNames[] { FRM_SUN_COMPONENT_SCROLLBAR, BINDABLE_INTEGER_VALUE_RANGE };
 
         return ::comphelper::combineSequences(
             getAggregateServiceNames(),
@@ -288,8 +285,8 @@ namespace frm
     Any OScrollBarModel::translateExternalValueToControlValue( const Any& _rExternalValue ) const
     {
         return translateExternalDoubleToControlIntValue( _rExternalValue, m_xAggregateSet,
-            "ScrollValueMin",
-            "ScrollValueMax" );
+            u"ScrollValueMin"_ustr,
+            u"ScrollValueMax"_ustr );
     }
 
 

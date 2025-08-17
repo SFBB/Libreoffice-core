@@ -31,30 +31,30 @@ namespace chart
 {
 
 SchAxisLabelTabPage::SchAxisLabelTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SfxTabPage(pPage, pController, "modules/schart/ui/tp_axisLabel.ui", "AxisLabelTabPage", &rInAttrs)
+    : SfxTabPage(pPage, pController, u"modules/schart/ui/tp_axisLabel.ui"_ustr, u"AxisLabelTabPage"_ustr, &rInAttrs)
     , m_bShowStaggeringControls( true )
     , m_nInitialDegrees( 0 )
     , m_bHasInitialDegrees( true )
     , m_bInitialStacking( false )
     , m_bHasInitialStacking( true )
     , m_bComplexCategories( false )
-    , m_xCbShowDescription(m_xBuilder->weld_check_button("showlabelsCB"))
-    , m_xFlOrder(m_xBuilder->weld_label("orderL"))
-    , m_xRbSideBySide(m_xBuilder->weld_radio_button("tile"))
-    , m_xRbUpDown(m_xBuilder->weld_radio_button("odd"))
-    , m_xRbDownUp(m_xBuilder->weld_radio_button("even"))
-    , m_xRbAuto(m_xBuilder->weld_radio_button("auto"))
-    , m_xFlTextFlow(m_xBuilder->weld_label("textflowL"))
-    , m_xCbTextOverlap(m_xBuilder->weld_check_button("overlapCB"))
-    , m_xCbTextBreak(m_xBuilder->weld_check_button("breakCB"))
-    , m_xFtABCD(m_xBuilder->weld_label("labelABCD"))
-    , m_xFtRotate(m_xBuilder->weld_label("degreeL"))
-    , m_xNfRotate(m_xBuilder->weld_metric_spin_button("OrientDegree", FieldUnit::DEGREE))
-    , m_xCbStacked(m_xBuilder->weld_check_button("stackedCB"))
-    , m_xFtTextDirection(m_xBuilder->weld_label("textdirL"))
-    , m_aLbTextDirection(m_xBuilder->weld_combo_box("textdirLB"))
+    , m_xCbShowDescription(m_xBuilder->weld_check_button(u"showlabelsCB"_ustr))
+    , m_xFlOrder(m_xBuilder->weld_label(u"orderL"_ustr))
+    , m_xRbSideBySide(m_xBuilder->weld_radio_button(u"tile"_ustr))
+    , m_xRbUpDown(m_xBuilder->weld_radio_button(u"odd"_ustr))
+    , m_xRbDownUp(m_xBuilder->weld_radio_button(u"even"_ustr))
+    , m_xRbAuto(m_xBuilder->weld_radio_button(u"auto"_ustr))
+    , m_xFlTextFlow(m_xBuilder->weld_label(u"textflowL"_ustr))
+    , m_xCbTextOverlap(m_xBuilder->weld_check_button(u"overlapCB"_ustr))
+    , m_xCbTextBreak(m_xBuilder->weld_check_button(u"breakCB"_ustr))
+    , m_xFtABCD(m_xBuilder->weld_label(u"labelABCD"_ustr))
+    , m_xFtRotate(m_xBuilder->weld_label(u"degreeL"_ustr))
+    , m_xNfRotate(m_xBuilder->weld_metric_spin_button(u"OrientDegree"_ustr, FieldUnit::DEGREE))
+    , m_xCbStacked(m_xBuilder->weld_check_button(u"stackedCB"_ustr))
+    , m_xFtTextDirection(m_xBuilder->weld_label(u"textdirL"_ustr))
+    , m_aLbTextDirection(m_xBuilder->weld_combo_box(u"textdirLB"_ustr))
     , m_xCtrlDial(new svx::DialControl)
-    , m_xCtrlDialWin(new weld::CustomWeld(*m_xBuilder, "dialCtrl", *m_xCtrlDial))
+    , m_xCtrlDialWin(new weld::CustomWeld(*m_xBuilder, u"dialCtrl"_ustr, *m_xCtrlDial))
 {
     m_xCtrlDial->SetText(m_xFtABCD->get_label());
     m_xCtrlDial->SetLinkedField(m_xNfRotate.get());
@@ -134,7 +134,7 @@ void SchAxisLabelTabPage::Reset( const SfxItemSet* rInAttrs )
 
     // show description
     SfxItemState aState = rInAttrs->GetItemState( SCHATTR_AXIS_SHOWDESCR, false, &pPoolItem );
-    if( aState == SfxItemState::DONTCARE )
+    if( aState == SfxItemState::INVALID )
     {
         m_xCbShowDescription->set_state( TRISTATE_INDET );
     }
@@ -157,7 +157,7 @@ void SchAxisLabelTabPage::Reset( const SfxItemSet* rInAttrs )
     if( aState == SfxItemState::SET )
         m_nInitialDegrees = static_cast< const SdrAngleItem * >( pPoolItem )->GetValue();
 
-    m_bHasInitialDegrees = aState != SfxItemState::DONTCARE;
+    m_bHasInitialDegrees = aState != SfxItemState::INVALID;
     if( m_bHasInitialDegrees )
         m_xCtrlDial->SetRotation( m_nInitialDegrees );
     else
@@ -169,7 +169,7 @@ void SchAxisLabelTabPage::Reset( const SfxItemSet* rInAttrs )
     if( aState == SfxItemState::SET )
         m_bInitialStacking = static_cast< const SfxBoolItem * >( pPoolItem )->GetValue();
 
-    m_bHasInitialStacking = aState != SfxItemState::DONTCARE;
+    m_bHasInitialStacking = aState != SfxItemState::INVALID;
     if( m_bHasInitialDegrees )
         m_xCbStacked->set_state(m_bInitialStacking ? TRISTATE_TRUE : TRISTATE_FALSE);
     else
@@ -181,7 +181,7 @@ void SchAxisLabelTabPage::Reset( const SfxItemSet* rInAttrs )
 
     // Text overlap ----------
     aState = rInAttrs->GetItemState( SCHATTR_AXIS_LABEL_OVERLAP, false, &pPoolItem );
-    if( aState == SfxItemState::DONTCARE )
+    if( aState == SfxItemState::INVALID )
     {
         m_xCbTextOverlap->set_state( TRISTATE_INDET );
     }
@@ -198,7 +198,7 @@ void SchAxisLabelTabPage::Reset( const SfxItemSet* rInAttrs )
 
     // text break ----------
     aState = rInAttrs->GetItemState( SCHATTR_AXIS_LABEL_BREAK, false, &pPoolItem );
-    if( aState == SfxItemState::DONTCARE )
+    if( aState == SfxItemState::INVALID )
     {
         m_xCbTextBreak->set_state( TRISTATE_INDET );
     }

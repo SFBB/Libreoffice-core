@@ -33,24 +33,22 @@
 #include <stlsheet.hxx>
 #include <strings.hxx>
 
-StyleSheetUndoAction::StyleSheetUndoAction(SdDrawDocument* pTheDoc,
-                                           SfxStyleSheet* pTheStyleSheet,
-                                           const SfxItemSet* pTheNewItemSet) :
-                      SdUndoAction(pTheDoc)
+StyleSheetUndoAction::StyleSheetUndoAction(SdDrawDocument& rTheDoc,
+                                           SfxStyleSheet& rTheStyleSheet,
+                                           const SfxItemSet* pTheNewItemSet)
+    : SdUndoAction(rTheDoc),
+      mrStyleSheet(rTheStyleSheet)
 {
-    DBG_ASSERT(pTheStyleSheet, "Undo without StyleSheet ???");
-    mpStyleSheet = pTheStyleSheet;
-
     // Create ItemSets; Attention, it is possible that the new one is from a,
     // different pool. Therefore we clone it with its items.
     mpNewSet = std::make_unique<SfxItemSet>(static_cast<SfxItemPool&>(SdrObject::GetGlobalDrawObjectItemPool()), pTheNewItemSet->GetRanges());
-    SdrModel::MigrateItemSet( pTheNewItemSet, mpNewSet.get(), pTheDoc );
+    SdrModel::MigrateItemSet( pTheNewItemSet, mpNewSet.get(), rTheDoc );
 
-    mpOldSet = std::make_unique<SfxItemSet>(static_cast<SfxItemPool&>(SdrObject::GetGlobalDrawObjectItemPool()), mpStyleSheet->GetItemSet().GetRanges());
-    SdrModel::MigrateItemSet( &mpStyleSheet->GetItemSet(), mpOldSet.get(), pTheDoc );
+    mpOldSet = std::make_unique<SfxItemSet>(static_cast<SfxItemPool&>(SdrObject::GetGlobalDrawObjectItemPool()), mrStyleSheet.GetItemSet().GetRanges());
+    SdrModel::MigrateItemSet( &mrStyleSheet.GetItemSet(), mpOldSet.get(), rTheDoc );
 
     OUString aComment(SdResId(STR_UNDO_CHANGE_PRES_OBJECT));
-    OUString aName(mpStyleSheet->GetName());
+    OUString aName(mrStyleSheet.GetName());
 
     // delete layout name and separator
     sal_Int32 nPos = aName.indexOf(SD_LT_SEPARATOR);
@@ -94,26 +92,26 @@ StyleSheetUndoAction::StyleSheetUndoAction(SdDrawDocument* pTheDoc,
 
 void StyleSheetUndoAction::Undo()
 {
-    SfxItemSet aNewSet( mpDoc->GetItemPool(), mpOldSet->GetRanges() );
-    SdrModel::MigrateItemSet( mpOldSet.get(), &aNewSet, mpDoc );
+    SfxItemSet aNewSet( mrDoc.GetItemPool(), mpOldSet->GetRanges() );
+    SdrModel::MigrateItemSet( mpOldSet.get(), &aNewSet, mrDoc );
 
-    mpStyleSheet->GetItemSet().Set(aNewSet);
-    if( mpStyleSheet->GetFamily() == SfxStyleFamily::Pseudo )
-        static_cast<SdStyleSheet*>(mpStyleSheet)->GetRealStyleSheet()->Broadcast(SfxHint(SfxHintId::DataChanged));
+    mrStyleSheet.GetItemSet().Set(aNewSet);
+    if( mrStyleSheet.GetFamily() == SfxStyleFamily::Pseudo )
+        static_cast<SdStyleSheet&>(mrStyleSheet).GetRealStyleSheet()->Broadcast(SfxHint(SfxHintId::DataChanged));
     else
-        mpStyleSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
+        mrStyleSheet.Broadcast(SfxHint(SfxHintId::DataChanged));
 }
 
 void StyleSheetUndoAction::Redo()
 {
-    SfxItemSet aNewSet( mpDoc->GetItemPool(), mpOldSet->GetRanges() );
-    SdrModel::MigrateItemSet( mpNewSet.get(), &aNewSet, mpDoc );
+    SfxItemSet aNewSet( mrDoc.GetItemPool(), mpOldSet->GetRanges() );
+    SdrModel::MigrateItemSet( mpNewSet.get(), &aNewSet, mrDoc );
 
-    mpStyleSheet->GetItemSet().Set(aNewSet);
-    if( mpStyleSheet->GetFamily() == SfxStyleFamily::Pseudo )
-        static_cast<SdStyleSheet*>(mpStyleSheet)->GetRealStyleSheet()->Broadcast(SfxHint(SfxHintId::DataChanged));
+    mrStyleSheet.GetItemSet().Set(aNewSet);
+    if( mrStyleSheet.GetFamily() == SfxStyleFamily::Pseudo )
+        static_cast<SdStyleSheet&>(mrStyleSheet).GetRealStyleSheet()->Broadcast(SfxHint(SfxHintId::DataChanged));
     else
-        mpStyleSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
+        mrStyleSheet.Broadcast(SfxHint(SfxHintId::DataChanged));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -23,8 +23,10 @@
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
 #include <sfx2/dialoghelper.hxx>
+#include <sfx2/objsh.hxx>
 
 #include <strings.hrc>
+#include <svx/drawitem.hxx>
 #include <svx/xfillit0.hxx>
 #include <svx/xflhtit.hxx>
 #include <svx/xflclit.hxx>
@@ -44,26 +46,26 @@
 using namespace com::sun::star;
 
 SvxHatchTabPage::SvxHatchTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SfxTabPage(pPage, pController, "cui/ui/hatchpage.ui", "HatchPage", &rInAttrs)
+    : SfxTabPage(pPage, pController, u"cui/ui/hatchpage.ui"_ustr, u"HatchPage"_ustr, &rInAttrs)
     , m_rOutAttrs(rInAttrs)
-    , m_pnHatchingListState(nullptr)
+    , m_nHatchingListState(ChangeType::NONE)
     , m_pnColorListState(nullptr)
     , m_aXFillAttr(rInAttrs.GetPool())
     , m_rXFSet(m_aXFillAttr.GetItemSet())
-    , m_xMtrDistance(m_xBuilder->weld_metric_spin_button("distancemtr", FieldUnit::MM))
-    , m_xMtrAngle(m_xBuilder->weld_metric_spin_button("anglemtr", FieldUnit::DEGREE))
-    , m_xSliderAngle(m_xBuilder->weld_scale("angleslider"))
-    , m_xLbLineType(m_xBuilder->weld_combo_box("linetypelb"))
-    , m_xLbLineColor(new ColorListBox(m_xBuilder->weld_menu_button("linecolorlb"),
+    , m_xMtrDistance(m_xBuilder->weld_metric_spin_button(u"distancemtr"_ustr, FieldUnit::MM))
+    , m_xMtrAngle(m_xBuilder->weld_metric_spin_button(u"anglemtr"_ustr, FieldUnit::DEGREE))
+    , m_xSliderAngle(m_xBuilder->weld_scale(u"angleslider"_ustr))
+    , m_xLbLineType(m_xBuilder->weld_combo_box(u"linetypelb"_ustr))
+    , m_xLbLineColor(new ColorListBox(m_xBuilder->weld_menu_button(u"linecolorlb"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xCbBackgroundColor(m_xBuilder->weld_check_button("backgroundcolor"))
-    , m_xLbBackgroundColor(new ColorListBox(m_xBuilder->weld_menu_button("backgroundcolorlb"),
+    , m_xCbBackgroundColor(m_xBuilder->weld_check_button(u"backgroundcolor"_ustr))
+    , m_xLbBackgroundColor(new ColorListBox(m_xBuilder->weld_menu_button(u"backgroundcolorlb"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xHatchLB(new SvxPresetListBox(m_xBuilder->weld_scrolled_window("hatchpresetlistwin", true)))
-    , m_xBtnAdd(m_xBuilder->weld_button("add"))
-    , m_xBtnModify(m_xBuilder->weld_button("modify"))
-    , m_xHatchLBWin(new weld::CustomWeld(*m_xBuilder, "hatchpresetlist", *m_xHatchLB))
-    , m_xCtlPreview(new weld::CustomWeld(*m_xBuilder, "previewctl", m_aCtlPreview))
+    , m_xHatchLB(new SvxPresetListBox(m_xBuilder->weld_scrolled_window(u"hatchpresetlistwin"_ustr, true)))
+    , m_xBtnAdd(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xBtnModify(m_xBuilder->weld_button(u"modify"_ustr))
+    , m_xHatchLBWin(new weld::CustomWeld(*m_xBuilder, u"hatchpresetlist"_ustr, *m_xHatchLB))
+    , m_xCtlPreview(new weld::CustomWeld(*m_xBuilder, u"previewctl"_ustr, m_aCtlPreview))
 {
     Size aSize = getDrawPreviewOptimalSize(m_aCtlPreview.GetDrawingArea()->get_ref_device());
     m_xHatchLBWin->set_size_request(aSize.Width(), aSize.Height());
@@ -124,6 +126,17 @@ SvxHatchTabPage::~SvxHatchTabPage()
     m_xHatchLB.reset();
     m_xLbBackgroundColor.reset();
     m_xLbLineColor.reset();
+
+    if (m_nHatchingListState & ChangeType::MODIFIED)
+    {
+        m_pHatchingList->SetPath(AreaTabHelper::GetPalettePath());
+        m_pHatchingList->Save();
+
+        // ToolBoxControls are informed:
+        SfxObjectShell* pShell = SfxObjectShell::Current();
+        if (pShell)
+            pShell->PutItem(SvxHatchListItem(m_pHatchingList, SID_HATCH_LIST));
+    }
 }
 
 void SvxHatchTabPage::Construct()
@@ -172,13 +185,13 @@ void SvxHatchTabPage::ActivatePage( const SfxItemSet& rSet )
         ChangeHatchHdl_Impl();
     }
 
-    XFillBackgroundItem aBckItem( rSet.Get(XATTR_FILLBACKGROUND));
+    const XFillBackgroundItem& aBckItem( rSet.Get(XATTR_FILLBACKGROUND));
     m_rXFSet.Put( aBckItem );
 
     if (aBckItem.GetValue())
     {
         m_xCbBackgroundColor->set_state(TRISTATE_TRUE);
-        XFillColorItem aColorItem( rSet.Get(XATTR_FILLCOLOR) );
+        const XFillColorItem& aColorItem( rSet.Get(XATTR_FILLCOLOR) );
         Color aColor(aColorItem.GetColorValue());
         m_xLbBackgroundColor->SelectEntry(aColor);
         m_xLbBackgroundColor->set_sensitive(true);
@@ -254,11 +267,11 @@ void SvxHatchTabPage::Reset( const SfxItemSet* rSet )
 {
     ChangeHatchHdl_Impl();
 
-    XFillColorItem aColItem( rSet->Get(XATTR_FILLCOLOR) );
+    const XFillColorItem& aColItem( rSet->Get(XATTR_FILLCOLOR) );
     m_xLbBackgroundColor->SelectEntry(aColItem.GetColorValue());
     m_rXFSet.Put( aColItem );
 
-    XFillBackgroundItem aBckItem( rSet->Get(XATTR_FILLBACKGROUND) );
+    const XFillBackgroundItem& aBckItem( rSet->Get(XATTR_FILLBACKGROUND) );
     if(aBckItem.GetValue())
         m_xCbBackgroundColor->set_state(TRISTATE_TRUE);
     else
@@ -422,7 +435,7 @@ IMPL_LINK_NOARG(SvxHatchTabPage, ClickAddHdl_Impl, weld::Button&, void)
 
     while( pDlg->Execute() == RET_OK )
     {
-        pDlg->GetName( aName );
+        aName = pDlg->GetName();
 
         bValidHatchName = (SearchHatchList(aName) == -1);
         if( bValidHatchName )
@@ -431,8 +444,8 @@ IMPL_LINK_NOARG(SvxHatchTabPage, ClickAddHdl_Impl, weld::Button&, void)
             break;
         }
 
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "cui/ui/queryduplicatedialog.ui"));
-        std::unique_ptr<weld::MessageDialog> xWarnBox(xBuilder->weld_message_dialog("DuplicateNameDialog"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), u"cui/ui/queryduplicatedialog.ui"_ustr));
+        std::unique_ptr<weld::MessageDialog> xWarnBox(xBuilder->weld_message_dialog(u"DuplicateNameDialog"_ustr));
         if (xWarnBox->run() != RET_OK)
             break;
     }
@@ -449,13 +462,13 @@ IMPL_LINK_NOARG(SvxHatchTabPage, ClickAddHdl_Impl, weld::Button&, void)
     m_pHatchingList->Insert(std::make_unique<XHatchEntry>(aXHatch, aName), nCount);
 
     sal_Int32 nId = m_xHatchLB->GetItemId(nCount - 1); // calculate the last ID
-    BitmapEx aBitmap = m_pHatchingList->GetBitmapForPreview( nCount, m_xHatchLB->GetIconSize() );
+    Bitmap aBitmap = m_pHatchingList->GetBitmapForPreview( nCount, m_xHatchLB->GetIconSize() );
     // Insert the new entry at the next ID
     m_xHatchLB->InsertItem( nId + 1, Image(aBitmap), aName );
     m_xHatchLB->SelectItem( nId + 1 );
     m_xHatchLB->Resize();
 
-    *m_pnHatchingListState |= ChangeType::MODIFIED;
+    m_nHatchingListState |= ChangeType::MODIFIED;
 
     ChangeHatchHdl_Impl();
 }
@@ -477,7 +490,7 @@ IMPL_LINK_NOARG(SvxHatchTabPage, ClickModifyHdl_Impl, weld::Button&, void)
 
     m_pHatchingList->Replace(std::make_unique<XHatchEntry>(aXHatch, aName), nPos);
 
-    BitmapEx aBitmap = m_pHatchingList->GetBitmapForPreview( static_cast<sal_uInt16>(nPos), m_xHatchLB->GetIconSize() );
+    Bitmap aBitmap = m_pHatchingList->GetBitmapForPreview( static_cast<sal_uInt16>(nPos), m_xHatchLB->GetIconSize() );
     m_xHatchLB->RemoveItem( nId );
     m_xHatchLB->InsertItem( nId, Image(aBitmap), aName, static_cast<sal_uInt16>(nPos) );
     m_xHatchLB->SelectItem( nId );
@@ -489,39 +502,41 @@ IMPL_LINK_NOARG(SvxHatchTabPage, ClickModifyHdl_Impl, weld::Button&, void)
     m_xLbLineColor->SaveValue();
     m_xLbBackgroundColor->SaveValue();
 
-    *m_pnHatchingListState |= ChangeType::MODIFIED;
+    m_nHatchingListState |= ChangeType::MODIFIED;
 }
 
 IMPL_LINK_NOARG(SvxHatchTabPage, ClickDeleteHdl_Impl, SvxPresetListBox*, void)
 {
-    sal_uInt16 nId = m_xHatchLB->GetSelectedItemId();
-    size_t nPos = m_xHatchLB->GetSelectItemPos();
+    const sal_uInt16 nId = m_xHatchLB->GetContextMenuItemId();
+    const size_t nPos = m_xHatchLB->GetItemPos(nId);
 
     if( nPos == VALUESET_ITEM_NOTFOUND )
         return;
 
-    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "cui/ui/querydeletehatchdialog.ui"));
-    std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog("AskDelHatchDialog"));
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), u"cui/ui/querydeletehatchdialog.ui"_ustr));
+    std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog(u"AskDelHatchDialog"_ustr));
     if (xQueryBox->run() != RET_YES)
         return;
 
+    const bool bDeletingSelectedItem(nId == m_xHatchLB->GetSelectedItemId());
     m_pHatchingList->Remove(nPos);
     m_xHatchLB->RemoveItem( nId );
-    nId = m_xHatchLB->GetItemId(0);
-    m_xHatchLB->SelectItem( nId );
+    if (bDeletingSelectedItem)
+    {
+        m_xHatchLB->SelectItem(m_xHatchLB->GetItemId(/*Position=*/0));
+        m_aCtlPreview.Invalidate();
+    }
     m_xHatchLB->Resize();
-
-    m_aCtlPreview.Invalidate();
 
     ChangeHatchHdl_Impl();
 
-    *m_pnHatchingListState |= ChangeType::MODIFIED;
+    m_nHatchingListState |= ChangeType::MODIFIED;
 }
 
 IMPL_LINK_NOARG(SvxHatchTabPage, ClickRenameHdl_Impl, SvxPresetListBox*, void )
 {
-    sal_uInt16 nId = m_xHatchLB->GetSelectedItemId();
-    size_t nPos = m_xHatchLB->GetSelectItemPos();
+    const sal_uInt16 nId = m_xHatchLB->GetContextMenuItemId();
+    const size_t nPos = m_xHatchLB->GetItemPos(nId);
 
     if( nPos == VALUESET_ITEM_NOTFOUND )
         return;
@@ -535,7 +550,7 @@ IMPL_LINK_NOARG(SvxHatchTabPage, ClickRenameHdl_Impl, SvxPresetListBox*, void )
     bool bLoop = true;
     while( bLoop && pDlg->Execute() == RET_OK )
     {
-        pDlg->GetName( aName );
+        aName = pDlg->GetName();
         sal_Int32 nHatchPos = SearchHatchList( aName );
         bool bValidHatchName = (nHatchPos == static_cast<sal_Int32>(nPos) ) || (nHatchPos == -1);
 
@@ -545,14 +560,13 @@ IMPL_LINK_NOARG(SvxHatchTabPage, ClickRenameHdl_Impl, SvxPresetListBox*, void )
             m_pHatchingList->GetHatch(nPos)->SetName(aName);
 
             m_xHatchLB->SetItemText(nId, aName);
-            m_xHatchLB->SelectItem( nId );
 
-            *m_pnHatchingListState |= ChangeType::MODIFIED;
+            m_nHatchingListState |= ChangeType::MODIFIED;
         }
         else
         {
-            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "cui/ui/queryduplicatedialog.ui"));
-            std::unique_ptr<weld::MessageDialog> xBox(xBuilder->weld_message_dialog("DuplicateNameDialog"));
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), u"cui/ui/queryduplicatedialog.ui"_ustr));
+            std::unique_ptr<weld::MessageDialog> xBox(xBuilder->weld_message_dialog(u"DuplicateNameDialog"_ustr));
             xBox->run();
         }
     }

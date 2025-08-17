@@ -20,6 +20,7 @@
 #pragma once
 
 #include <vcl/InterimItemWindow.hxx>
+#include <vcl/toolbox.hxx>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
@@ -31,7 +32,7 @@ class AcceleratorExecute;
 class FindTextFieldControl final : public InterimItemWindow
 {
 public:
-    FindTextFieldControl(vcl::Window* pParent, css::uno::Reference<css::frame::XFrame> xFrame,
+    FindTextFieldControl(ToolBox* pParent, css::uno::Reference<css::frame::XFrame> xFrame,
                          css::uno::Reference<css::uno::XComponentContext> xContext);
 
     virtual void dispose() override;
@@ -47,6 +48,7 @@ public:
     OUString get_text(int nIndex) const;
     OUString get_active_text() const;
     void append_text(const OUString& rText);
+    void set_entry_message_type(weld::EntryMessageType eType);
 
 private:
     ImplSVEvent* m_nAsyncGetFocusId;

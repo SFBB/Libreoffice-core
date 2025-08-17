@@ -43,13 +43,9 @@ private:
     /// Even setting  null icon on a menuitem can be expensive, so cache state to avoid that call
     bool                            mbHasNullItemIcon = true;
     GtkWidget*                      mpMenuBarContainerWidget;
-    std::unique_ptr<utl::TempFileNamed> mxPersonaImage;
-    BitmapEx                        maPersonaBitmap;
     GtkWidget*                      mpMenuAllowShrinkWidget;
     GtkWidget*                      mpMenuBarWidget;
     GtkWidget*                      mpMenuWidget;
-    GtkCssProvider*                 mpMenuBarContainerProvider;
-    GtkCssProvider*                 mpMenuBarProvider;
     GtkWidget*                      mpCloseButton;
     VclPtr<Menu>                    mpVCLMenu;
     GtkSalMenu*                     mpParentSalMenu;
@@ -84,7 +80,6 @@ public:
     virtual void                SetItemText( unsigned nPos, SalMenuItem* pSalMenuItem, const OUString& rText ) override;
     virtual void                SetItemImage( unsigned nPos, SalMenuItem* pSalMenuItem, const Image& rImage) override;
     virtual void                SetAccelerator( unsigned nPos, SalMenuItem* pSalMenuItem, const vcl::KeyCode& rKeyCode, const OUString& rKeyName ) override;
-    virtual void                GetSystemMenuData( SystemMenuData* pData ) override;
 
     void                        SetMenu( Menu* pMenu ) { mpVCLMenu = pMenu; }
     Menu*                       GetMenu() { return mpVCLMenu; }
@@ -103,7 +98,7 @@ public:
                                                       MenuItemBits nBits,
                                                       bool bChecked,
                                                       bool bIsSubmenu );
-    void                        NativeSetEnableItem( gchar const * aCommand, gboolean bEnable );
+    void                        NativeSetEnableItem(const OString& sCommand, gboolean bEnable);
     void                        NativeCheckItem( unsigned nSection, unsigned nItemPos, MenuItemBits bits, gboolean bCheck );
     void                        NativeSetAccelerator( unsigned nSection, unsigned nItemPos, const vcl::KeyCode& rKeyCode, std::u16string_view rKeyName );
 
@@ -139,7 +134,6 @@ public:
     virtual bool CanGetFocus() const override;
     virtual bool TakeFocus() override;
     virtual int GetMenuBarHeight() const override;
-    virtual void ApplyPersona() override;
 };
 
 class GtkSalMenuItem final : public SalMenuItem

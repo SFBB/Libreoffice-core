@@ -28,6 +28,7 @@
 #include <com/sun/star/style/BreakType.hpp>
 #include <com/sun/star/style/GraphicLocation.hpp>
 #include <com/sun/star/awt/Size.hpp>
+#include <com/sun/star/beans/Pair.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
 #include <com/sun/star/frame/status/UpperLowerMarginScale.hpp>
 #include <com/sun/star/frame/status/LeftRightMarginScale.hpp>
@@ -74,6 +75,7 @@
 #include <o3tl/enumrange.hxx>
 #include <o3tl/safeint.hxx>
 #include <sal/log.hxx>
+#include <sax/tools/converter.hxx>
 #include <vcl/GraphicLoader.hxx>
 #include <unotools/securityoptions.hxx>
 #include <docmodel/uno/UnoComplexColor.hxx>
@@ -286,12 +288,124 @@ bool SvxSizeItem::HasMetrics() const
     return true;
 }
 
+double SvxIndentValue::ResolveDouble(const SvxFontUnitMetrics& rMetrics) const
+{
+    if (m_nUnit == css::util::MeasureUnit::TWIP)
+        return m_dValue;
+
+    SAL_WARN_IF(!rMetrics.m_bInitialized, "editeng", "font-relative indentation lost");
+
+    switch (m_nUnit)
+    {
+        case css::util::MeasureUnit::FONT_EM:
+            return m_dValue * rMetrics.m_dEmTwips;
+
+        case css::util::MeasureUnit::FONT_CJK_ADVANCE:
+            return m_dValue * rMetrics.m_dIcTwips;
+
+        default:
+            SAL_WARN("editeng", "unhandled type conversion");
+            return 0.0;
+    }
+}
+
+sal_Int32 SvxIndentValue::Resolve(const SvxFontUnitMetrics& rMetrics) const
+{
+    return static_cast<sal_Int32>(std::llround(ResolveDouble(rMetrics)));
+}
+
+sal_Int32 SvxIndentValue::ResolveFixedPart() const
+{
+    if (m_nUnit == css::util::MeasureUnit::TWIP)
+        return Resolve({});
+
+    return 0;
+}
+
+sal_Int32 SvxIndentValue::ResolveVariablePart(const SvxFontUnitMetrics& rMetrics) const
+{
+    if (m_nUnit == css::util::MeasureUnit::TWIP)
+        return 0;
+
+    return Resolve(rMetrics);
+}
+
+void SvxIndentValue::ScaleMetrics(tools::Long const nMult, tools::Long const nDiv)
+{
+    m_dValue = (m_dValue * static_cast<double>(nMult)) / static_cast<double>(nDiv);
+}
+
+size_t SvxIndentValue::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, m_dValue);
+    o3tl::hash_combine(seed, m_nUnit);
+    return seed;
+}
+
+namespace
+{
+
+boost::property_tree::ptree lcl_IndentValueToJson(const char* aName, SvxIndentValue stValue)
+{
+    boost::property_tree::ptree aState;
+
+    switch (stValue.m_nUnit)
+    {
+        case css::util::MeasureUnit::TWIP:
+        {
+            OUString sValue
+                = GetMetricText(stValue.m_dValue, MapUnit::MapTwip, MapUnit::MapInch, nullptr);
+            aState.put(aName, sValue);
+            aState.put("unit", "inch");
+        }
+        break;
+
+        case css::util::MeasureUnit::FONT_EM:
+            aState.put(aName, stValue.m_dValue);
+            aState.put("unit", "em");
+            break;
+
+        case css::util::MeasureUnit::FONT_CJK_ADVANCE:
+            aState.put(aName, stValue.m_dValue);
+            aState.put("unit", "ic");
+            break;
+
+        default:
+            SAL_WARN("editeng", "unhandled type conversion");
+            break;
+    }
+
+    return aState;
+}
+
+bool lcl_FillAbsoluteMeasureAny(const SvxIndentValue& rIndent, uno::Any& rVal, bool bConvert)
+{
+    if (rIndent.m_nUnit == css::util::MeasureUnit::TWIP)
+    {
+        auto nConvOffset = (bConvert ? convertTwipToMm100(rIndent.m_dValue) : rIndent.m_dValue);
+        rVal <<= static_cast<sal_Int32>(std::llround(nConvOffset));
+        return true;
+    }
+
+    return false;
+}
+
+bool lcl_FillRelativeMeasureAny(const SvxIndentValue& rIndent, uno::Any& rVal)
+{
+    if (rIndent.m_nUnit != css::util::MeasureUnit::TWIP)
+    {
+        rVal <<= css::beans::Pair<double, sal_Int16>{ rIndent.m_dValue, rIndent.m_nUnit };
+        return true;
+    }
+
+    return false;
+}
+
+}
 
 SvxLRSpaceItem::SvxLRSpaceItem(const sal_uInt16 nId)
     : SfxPoolItem(nId)
-    , nFirstLineOffset(0)
-    , nLeftMargin(0)
-    , nRightMargin(0)
     , m_nGutterMargin(0)
     , m_nRightGutterMargin(0),
     nPropFirstLineOffset( 100 ),
@@ -303,23 +417,21 @@ SvxLRSpaceItem::SvxLRSpaceItem(const sal_uInt16 nId)
 {
 }
 
-
-SvxLRSpaceItem::SvxLRSpaceItem( const tools::Long nLeft, const tools::Long nRight,
-                                const short nOfset,
-                                const sal_uInt16 nId )
+SvxLRSpaceItem::SvxLRSpaceItem(SvxIndentValue stLeft, SvxIndentValue stRight,
+                               SvxIndentValue stOffset, const sal_uInt16 nId)
     : SfxPoolItem(nId)
-    , nFirstLineOffset(nOfset)
-    , nLeftMargin(nLeft)
-    , nRightMargin(nRight)
     , m_nGutterMargin(0)
-    , m_nRightGutterMargin(0),
-    nPropFirstLineOffset( 100 ),
-    nPropLeftMargin( 100 ),
-    nPropRightMargin( 100 ),
-    bAutoFirst      ( false ),
-    bExplicitZeroMarginValRight(false),
-    bExplicitZeroMarginValLeft(false)
+    , m_nRightGutterMargin(0)
+    , nPropFirstLineOffset(100)
+    , nPropLeftMargin(100)
+    , nPropRightMargin(100)
+    , bAutoFirst(false)
+    , bExplicitZeroMarginValRight(false)
+    , bExplicitZeroMarginValLeft(false)
 {
+    SetLeft(stLeft);
+    SetRight(stRight);
+    SetTextFirstLineOffset(stOffset);
 }
 
 
@@ -334,27 +446,49 @@ bool SvxLRSpaceItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
         case 0:
         {
             css::frame::status::LeftRightMarginScale aLRSpace;
-            aLRSpace.Left = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nLeftMargin) : nLeftMargin);
-            aLRSpace.TextLeft = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(GetTextLeft()) : GetTextLeft());
-            aLRSpace.Right = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nRightMargin) : nRightMargin);
+
+            auto nLeftTwips = ResolveLeft({});
+            aLRSpace.Left
+                = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nLeftTwips) : nLeftTwips);
+
+            auto nTextLeftTwips = ResolveTextLeft({});
+            aLRSpace.TextLeft = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nTextLeftTwips)
+                                                                : nTextLeftTwips);
+
+            auto nRightTwips = ResolveRight({});
+            aLRSpace.Right
+                = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nRightTwips) : nRightTwips);
+
             aLRSpace.ScaleLeft = static_cast<sal_Int16>(nPropLeftMargin);
             aLRSpace.ScaleRight = static_cast<sal_Int16>(nPropRightMargin);
-            aLRSpace.FirstLine = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nFirstLineOffset) : nFirstLineOffset);
+
+            auto nFirstLineOffsetTwips = ResolveTextFirstLineOffset({});
+            aLRSpace.FirstLine = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nFirstLineOffsetTwips) : nFirstLineOffsetTwips);
+
             aLRSpace.ScaleFirstLine = static_cast<sal_Int16>(nPropFirstLineOffset);
             aLRSpace.AutoFirstLine = IsAutoFirst();
             rVal <<= aLRSpace;
             break;
         }
         case MID_L_MARGIN:
-            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nLeftMargin) : nLeftMargin);
+            bRet = lcl_FillAbsoluteMeasureAny(GetLeft(), rVal, bConvert);
             break;
 
-        case MID_TXT_LMARGIN :
-            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(GetTextLeft()) : GetTextLeft());
-        break;
-        case MID_R_MARGIN:
-            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nRightMargin) : nRightMargin);
+        case MID_TXT_LMARGIN:
+            bRet = lcl_FillAbsoluteMeasureAny(GetTextLeft(), rVal, bConvert);
             break;
+
+        case MID_L_UNIT_MARGIN:
+            bRet = lcl_FillRelativeMeasureAny(GetTextLeft(), rVal);
+            break;
+
+        case MID_R_MARGIN:
+            bRet = lcl_FillAbsoluteMeasureAny(m_stRightMargin, rVal, bConvert);
+            break;
+        case MID_R_UNIT_MARGIN:
+            bRet = lcl_FillRelativeMeasureAny(m_stRightMargin, rVal);
+            break;
+
         case MID_L_REL_MARGIN:
             rVal <<= static_cast<sal_Int16>(nPropLeftMargin);
         break;
@@ -363,11 +497,15 @@ bool SvxLRSpaceItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
         break;
 
         case MID_FIRST_LINE_INDENT:
-            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nFirstLineOffset) : nFirstLineOffset);
+            bRet = lcl_FillAbsoluteMeasureAny(m_stFirstLineOffset, rVal, bConvert);
             break;
 
         case MID_FIRST_LINE_REL_INDENT:
             rVal <<= static_cast<sal_Int16>(nPropFirstLineOffset);
+            break;
+
+        case MID_FIRST_LINE_UNIT_INDENT:
+            bRet = lcl_FillRelativeMeasureAny(m_stFirstLineOffset, rVal);
             break;
 
         case MID_FIRST_AUTO:
@@ -393,9 +531,10 @@ bool SvxLRSpaceItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
     bool bConvert = 0 != (nMemberId&CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
     sal_Int32 nVal = 0;
-    if( nMemberId != 0 && nMemberId != MID_FIRST_AUTO &&
-            nMemberId != MID_L_REL_MARGIN && nMemberId != MID_R_REL_MARGIN)
-        if(!(rVal >>= nVal))
+    if (nMemberId != 0 && nMemberId != MID_FIRST_AUTO && nMemberId != MID_L_REL_MARGIN
+        && nMemberId != MID_R_REL_MARGIN && nMemberId != MID_FIRST_LINE_UNIT_INDENT
+        && nMemberId != MID_L_UNIT_MARGIN && nMemberId != MID_R_UNIT_MARGIN)
+        if (!(rVal >>= nVal))
             return false;
 
     switch( nMemberId )
@@ -406,27 +545,61 @@ bool SvxLRSpaceItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             if(!(rVal >>= aLRSpace))
                 return false;
 
-            SetLeft( bConvert ? o3tl::toTwips(aLRSpace.Left, o3tl::Length::mm100) : aLRSpace.Left );
-            SetTextLeft( bConvert ? o3tl::toTwips(aLRSpace.TextLeft, o3tl::Length::mm100) : aLRSpace.TextLeft );
-            SetRight(bConvert ? o3tl::toTwips(aLRSpace.Right, o3tl::Length::mm100) : aLRSpace.Right);
+            SetLeft(SvxIndentValue::twips(
+                bConvert ? o3tl::toTwips(aLRSpace.Left, o3tl::Length::mm100) : aLRSpace.Left));
+            SetTextLeft(SvxIndentValue::twips(
+                bConvert ? o3tl::toTwips(aLRSpace.TextLeft, o3tl::Length::mm100)
+                         : aLRSpace.TextLeft));
+            SetRight(SvxIndentValue::twips(
+                bConvert ? o3tl::toTwips(aLRSpace.Right, o3tl::Length::mm100) : aLRSpace.Right));
             nPropLeftMargin = aLRSpace.ScaleLeft;
             nPropRightMargin = aLRSpace.ScaleRight;
-            SetTextFirstLineOffset(bConvert ? o3tl::toTwips(aLRSpace.FirstLine, o3tl::Length::mm100) : aLRSpace.FirstLine);
+            SetTextFirstLineOffset(SvxIndentValue::twips(
+                bConvert ? o3tl::toTwips(aLRSpace.FirstLine, o3tl::Length::mm100)
+                         : aLRSpace.FirstLine));
             SetPropTextFirstLineOffset ( aLRSpace.ScaleFirstLine );
             SetAutoFirst( aLRSpace.AutoFirstLine );
             break;
         }
         case MID_L_MARGIN:
-            SetLeft( bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal );
+            SetLeft(
+                SvxIndentValue::twips(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal));
             break;
 
-        case MID_TXT_LMARGIN :
-            SetTextLeft( bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal );
-        break;
+        case MID_TXT_LMARGIN:
+            SetTextLeft(
+                SvxIndentValue::twips(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal));
+            break;
+
+        case MID_L_UNIT_MARGIN:
+        {
+            css::beans::Pair<double, sal_Int16> stVal;
+            if (!(rVal >>= stVal))
+            {
+                return false;
+            }
+
+            SetTextLeft(SvxIndentValue{ stVal.First, stVal.Second });
+            break;
+        }
 
         case MID_R_MARGIN:
-            SetRight(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal);
+            SetRight(
+                SvxIndentValue::twips(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal));
             break;
+
+        case MID_R_UNIT_MARGIN:
+        {
+            css::beans::Pair<double, sal_Int16> stVal;
+            if (!(rVal >>= stVal))
+            {
+                return false;
+            }
+
+            SetRight(SvxIndentValue{ stVal.First, stVal.Second });
+            break;
+        }
+
         case MID_L_REL_MARGIN:
         case MID_R_REL_MARGIN:
         {
@@ -442,13 +615,26 @@ bool SvxLRSpaceItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
                 return false;
         }
         break;
-        case MID_FIRST_LINE_INDENT     :
-            SetTextFirstLineOffset(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal);
+        case MID_FIRST_LINE_INDENT:
+            SetTextFirstLineOffset(
+                SvxIndentValue::twips(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal));
             break;
 
         case MID_FIRST_LINE_REL_INDENT:
             SetPropTextFirstLineOffset ( nVal );
             break;
+
+        case MID_FIRST_LINE_UNIT_INDENT:
+        {
+            css::beans::Pair<double, sal_Int16> stVal;
+            if (!(rVal >>= stVal))
+            {
+                return false;
+            }
+
+            SetTextFirstLineOffset(SvxIndentValue{ stVal.First, stVal.Second });
+            break;
+        }
 
         case MID_FIRST_AUTO:
             SetAutoFirst( Any2Bool(rVal) );
@@ -471,105 +657,226 @@ void SvxLeftMarginItem::SetLeft(const tools::Long nL, const sal_uInt16 nProp)
     m_nPropLeftMargin = nProp;
 }
 
-void SvxLRSpaceItem::SetLeft(const tools::Long nL, const sal_uInt16 nProp)
+void SvxLRSpaceItem::SetLeft(SvxIndentValue stL, const sal_uInt16 nProp)
 {
-    nLeftMargin = (nL * nProp) / 100;
-    SAL_WARN_IF(nFirstLineOffset != 0, "editeng", "probably call SetTextLeft instead? looks inconsistent otherwise");
+    SAL_WARN_IF(m_stFirstLineOffset.m_dValue != 0.0, "editeng",
+                "probably call SetTextLeft instead? looks inconsistent otherwise");
+
+    m_stLeftMargin = stL;
     nPropLeftMargin = nProp;
+
+    if (nProp != 100)
+    {
+        m_stLeftMargin.m_dValue = (stL.m_dValue * static_cast<double>(nProp)) / 100.0;
+    }
 }
 
-void SvxRightMarginItem::SetRight(const tools::Long nR, const sal_uInt16 nProp)
+SvxIndentValue SvxLRSpaceItem::GetLeft() const { return m_stLeftMargin; }
+
+sal_Int32 SvxLRSpaceItem::ResolveLeft(const SvxFontUnitMetrics& rMetrics) const
 {
-    m_nRightMargin = (nR * nProp) / 100;
+    return m_stLeftMargin.Resolve(rMetrics);
+}
+
+void SvxRightMarginItem::SetRight(SvxIndentValue stR, const sal_uInt16 nProp)
+{
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
+
+    m_stRightMargin = stR;
     m_nPropRightMargin = nProp;
+
+    if (nProp != 100)
+    {
+        m_stRightMargin.m_dValue = (stR.m_dValue * static_cast<double>(nProp)) / 100.0;
+    }
 }
 
-void SvxLRSpaceItem::SetRight(const tools::Long nR, const sal_uInt16 nProp)
+SvxIndentValue SvxRightMarginItem::GetRight() const { return m_stRightMargin; }
+
+SvxIndentValue SvxLRSpaceItem::GetRight() const { return m_stRightMargin; }
+
+sal_Int32 SvxRightMarginItem::ResolveRight(const SvxFontUnitMetrics& rMetrics) const
 {
-    if (0 == nR)
+    return m_stRightMargin.Resolve(rMetrics);
+}
+
+sal_Int32 SvxLRSpaceItem::ResolveRight(const SvxFontUnitMetrics& rMetrics) const
+{
+    return m_stRightMargin.Resolve(rMetrics);
+}
+
+sal_Int32 SvxRightMarginItem::ResolveRightFixedPart() const
+{
+    return m_stRightMargin.ResolveFixedPart();
+}
+
+sal_Int32 SvxRightMarginItem::ResolveRightVariablePart(const SvxFontUnitMetrics& rMetrics) const
+{
+    return m_stRightMargin.ResolveVariablePart(rMetrics);
+}
+
+sal_uInt16 SvxRightMarginItem::GetPropRight() const { return m_nPropRightMargin; }
+
+void SvxLRSpaceItem::SetRight(SvxIndentValue stR, const sal_uInt16 nProp)
+{
+    if (0.0 == stR.m_dValue)
     {
         SetExplicitZeroMarginValRight(true);
     }
-    nRightMargin = (nR * nProp) / 100;
+
+    m_stRightMargin = stR;
     nPropRightMargin = nProp;
+
+    if (nProp != 100)
+    {
+        m_stRightMargin.m_dValue = (stR.m_dValue * static_cast<double>(nProp)) / 100.0;
+    }
 }
 
-void SvxFirstLineIndentItem::SetTextFirstLineOffset(
-    const short nF, const sal_uInt16 nProp)
-{
-    m_nFirstLineOffset = short((tools::Long(nF) * nProp ) / 100);
-    m_nPropFirstLineOffset = nProp;
-}
-
-void SvxLRSpaceItem::SetTextFirstLineOffset(const short nF, const sal_uInt16 nProp)
+void SvxLRSpaceItem::SetTextFirstLineOffset(SvxIndentValue stValue, sal_uInt16 nProp)
 {
     // note: left margin contains any negative first line offset - preserve it!
-    if (nFirstLineOffset < 0)
+    if (m_stFirstLineOffset.m_dValue < 0.0)
     {
-        nLeftMargin -= nFirstLineOffset;
+        m_stLeftMargin
+            = SvxIndentValue::twips(m_stLeftMargin.Resolve({}) - ResolveTextFirstLineOffset({}));
     }
-    nFirstLineOffset = short((tools::Long(nF) * nProp ) / 100);
+
+    m_stFirstLineOffset = stValue;
     nPropFirstLineOffset = nProp;
-    if (nFirstLineOffset < 0)
+
+    if (nProp != 100)
     {
-        nLeftMargin += nFirstLineOffset;
+        m_stFirstLineOffset.m_dValue = (stValue.m_dValue * static_cast<double>(nProp)) / 100.0;
+    }
+
+    if (m_stFirstLineOffset.m_dValue < 0.0)
+    {
+        m_stLeftMargin
+            = SvxIndentValue::twips(m_stLeftMargin.Resolve({}) + ResolveTextFirstLineOffset({}));
     }
 }
 
-#if 0
-void SvxTextLeftMarginItem::SetLeft(SvxFirstLineIndentItem const& rFirstLine,
-        const tools::Long nL, const sal_uInt16 nProp)
+void SvxTextLeftMarginItem::SetTextLeft(SvxIndentValue stL, const sal_uInt16 nProp)
 {
-    m_nTextLeftMargin = (nL * nProp) / 100;
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
+
+    m_stTextLeftMargin = stL;
     m_nPropLeftMargin = nProp;
-    // note: text left margin contains any negative first line offset
-    if (rFirstLine.GetTextFirstLineOffset() < 0)
+
+    if (nProp != 100)
     {
-        m_nTextLeftMargin += rFirstLine.GetTextFirstLineOffset();
+        m_stTextLeftMargin.m_dValue = (stL.m_dValue * static_cast<double>(nProp)) / 100.0;
     }
 }
-#endif
 
-void SvxTextLeftMarginItem::SetTextLeft(const tools::Long nL, const sal_uInt16 nProp)
+void SvxLRSpaceItem::SetTextLeft(SvxIndentValue stL, const sal_uInt16 nProp)
 {
-    m_nTextLeftMargin = (nL * nProp) / 100;
-    m_nPropLeftMargin = nProp;
-}
-
-void SvxLRSpaceItem::SetTextLeft(const tools::Long nL, const sal_uInt16 nProp)
-{
-    if (0 == nL)
+    if (0.0 == stL.m_dValue)
     {
         SetExplicitZeroMarginValLeft(true);
     }
-    auto const nTxtLeft = (nL * nProp) / 100;
+
+    m_stLeftMargin = stL;
     nPropLeftMargin = nProp;
+
+    if (nProp != 100)
+    {
+        m_stLeftMargin.m_dValue = (stL.m_dValue * static_cast<double>(nProp)) / 100.0;
+    }
+
     // note: left margin contains any negative first line offset
-    if ( 0 > nFirstLineOffset )
-        nLeftMargin = nTxtLeft + nFirstLineOffset;
-    else
-        nLeftMargin = nTxtLeft;
+    if (0.0 > m_stFirstLineOffset.m_dValue)
+    {
+        m_stLeftMargin
+            = SvxIndentValue::twips(m_stLeftMargin.Resolve({}) + ResolveTextFirstLineOffset({}));
+    }
 }
 
-tools::Long SvxTextLeftMarginItem::GetTextLeft() const
+SvxIndentValue SvxLRSpaceItem::GetTextFirstLineOffset() const
 {
-    return m_nTextLeftMargin;
+    return m_stFirstLineOffset;
 }
 
-tools::Long SvxTextLeftMarginItem::GetLeft(SvxFirstLineIndentItem const& rFirstLine) const
+sal_Int32 SvxLRSpaceItem::ResolveTextFirstLineOffset(const SvxFontUnitMetrics& rMetrics) const
 {
+    return m_stFirstLineOffset.Resolve(rMetrics);
+}
+
+SvxIndentValue SvxTextLeftMarginItem::GetTextLeft() const { return m_stTextLeftMargin; }
+
+sal_Int32 SvxTextLeftMarginItem::ResolveTextLeft(const SvxFontUnitMetrics& rMetrics) const
+{
+    return m_stTextLeftMargin.Resolve(rMetrics);
+}
+
+sal_Int32 SvxTextLeftMarginItem::ResolveLeft(const SvxFirstLineIndentItem& rFirstLine,
+                                             const SvxFontUnitMetrics& rMetrics) const
+{
+    auto nLeft = m_stTextLeftMargin.Resolve(rMetrics);
+
     // add any negative first line offset to text left margin to get left
-    return (rFirstLine.GetTextFirstLineOffset() < 0)
-        ? m_nTextLeftMargin + rFirstLine.GetTextFirstLineOffset()
-        : m_nTextLeftMargin;
+    auto nFirstLine = rFirstLine.GetTextFirstLineOffset().Resolve(rMetrics);
+    if (nFirstLine < 0)
+    {
+        nLeft += nFirstLine;
+    }
+
+    return nLeft;
 }
 
-tools::Long SvxLRSpaceItem::GetTextLeft() const
+sal_Int32
+SvxTextLeftMarginItem::ResolveLeftFixedPart(const SvxFirstLineIndentItem& rFirstLine) const
+{
+    auto nLeft = m_stTextLeftMargin.ResolveFixedPart();
+
+    // add any negative first line offset to text left margin to get left
+    auto nFirstLine = rFirstLine.GetTextFirstLineOffset().ResolveFixedPart();
+    if (nFirstLine < 0)
+    {
+        nLeft += nFirstLine;
+    }
+
+    return nLeft;
+}
+
+sal_Int32 SvxTextLeftMarginItem::ResolveLeftVariablePart(const SvxFirstLineIndentItem& rFirstLine,
+                                                         const SvxFontUnitMetrics& rMetrics) const
+{
+    auto nLeft = m_stTextLeftMargin.ResolveVariablePart(rMetrics);
+
+    // add any negative first line offset to text left margin to get left
+    auto nFirstLine = rFirstLine.GetTextFirstLineOffset().ResolveVariablePart(rMetrics);
+    if (nFirstLine < 0)
+    {
+        nLeft += nFirstLine;
+    }
+
+    return nLeft;
+}
+
+sal_uInt16 SvxTextLeftMarginItem::GetPropLeft() const { return m_nPropLeftMargin; }
+
+SvxIndentValue SvxLRSpaceItem::GetTextLeft() const
 {
     // remove any negative first line offset from left margin to get text-left
-    return (nFirstLineOffset < 0)
-        ? nLeftMargin - nFirstLineOffset
-        : nLeftMargin;
+    if (m_stFirstLineOffset.m_dValue < 0.0)
+    {
+        return SvxIndentValue::twips(m_stLeftMargin.Resolve({}) - ResolveTextFirstLineOffset({}));
+    }
+
+    return m_stLeftMargin;
+}
+
+sal_Int32 SvxLRSpaceItem::ResolveTextLeft(const SvxFontUnitMetrics& rMetrics) const
+{
+    // remove any negative first line offset from left margin to get text-left
+    if (m_stFirstLineOffset.m_dValue < 0.0)
+    {
+        return m_stLeftMargin.Resolve(rMetrics) - ResolveTextFirstLineOffset(rMetrics);
+    }
+
+    return m_stLeftMargin.Resolve(rMetrics);
 }
 
 SvxLeftMarginItem::SvxLeftMarginItem(const sal_uInt16 nId)
@@ -745,15 +1052,15 @@ SvxTextLeftMarginItem::SvxTextLeftMarginItem(const sal_uInt16 nId)
 {
 }
 
-SvxTextLeftMarginItem::SvxTextLeftMarginItem(const tools::Long nLeft, const sal_uInt16 nId)
+SvxTextLeftMarginItem::SvxTextLeftMarginItem(SvxIndentValue stLeft, const sal_uInt16 nId)
     : SfxPoolItem(nId)
-    , m_nTextLeftMargin(nLeft)
 {
+    SetTextLeft(stLeft);
 }
 
 bool SvxTextLeftMarginItem::QueryValue(uno::Any& rVal, sal_uInt8 nMemberId) const
 {
-    bool bRet = true;
+    bool bRet = false;
     bool bConvert = 0 != (nMemberId & CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
     switch (nMemberId)
@@ -762,17 +1069,25 @@ bool SvxTextLeftMarginItem::QueryValue(uno::Any& rVal, sal_uInt8 nMemberId) cons
         case 0:
         {
             css::frame::status::LeftRightMarginScale aLRSpace;
-            aLRSpace.TextLeft = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(GetTextLeft()) : GetTextLeft());
+
+            auto nLeftTwips = m_stTextLeftMargin.Resolve({});
+            aLRSpace.TextLeft
+                = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nLeftTwips) : nLeftTwips);
             aLRSpace.ScaleLeft = static_cast<sal_Int16>(m_nPropLeftMargin);
             rVal <<= aLRSpace;
+            bRet = true;
             break;
         }
         case MID_TXT_LMARGIN :
-            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(GetTextLeft()) : GetTextLeft());
-        break;
+            bRet = lcl_FillAbsoluteMeasureAny(m_stTextLeftMargin, rVal, bConvert);
+            break;
         case MID_L_REL_MARGIN:
             rVal <<= static_cast<sal_Int16>(m_nPropLeftMargin);
-        break;
+            bRet = true;
+            break;
+        case MID_L_UNIT_MARGIN:
+            bRet = lcl_FillRelativeMeasureAny(m_stTextLeftMargin, rVal);
+            break;
         default:
             assert(false);
             bRet = false;
@@ -784,6 +1099,7 @@ bool SvxTextLeftMarginItem::QueryValue(uno::Any& rVal, sal_uInt8 nMemberId) cons
 
 bool SvxTextLeftMarginItem::PutValue(const uno::Any& rVal, sal_uInt8 nMemberId)
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     bool bConvert = 0 != (nMemberId & CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
 
@@ -796,9 +1112,10 @@ bool SvxTextLeftMarginItem::PutValue(const uno::Any& rVal, sal_uInt8 nMemberId)
             {
                 return false;
             }
-            SetTextLeft(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal);
+            SetTextLeft(
+                SvxIndentValue::twips(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal));
+            break;
         }
-        break;
         case MID_L_REL_MARGIN:
         {
             sal_Int32 nRel = 0;
@@ -810,8 +1127,19 @@ bool SvxTextLeftMarginItem::PutValue(const uno::Any& rVal, sal_uInt8 nMemberId)
             {
                 return false;
             }
+            break;
         }
-        break;
+        case MID_L_UNIT_MARGIN:
+        {
+            css::beans::Pair<double, sal_Int16> stVal;
+            if (!(rVal >>= stVal))
+            {
+                return false;
+            }
+
+            SetTextLeft(SvxIndentValue{ stVal.First, stVal.Second });
+            break;
+        }
         default:
             assert(false);
             OSL_FAIL("unknown MemberId");
@@ -826,9 +1154,18 @@ bool SvxTextLeftMarginItem::operator==(const SfxPoolItem& rAttr) const
 
     const SvxTextLeftMarginItem& rOther = static_cast<const SvxTextLeftMarginItem&>(rAttr);
 
-    return (m_nTextLeftMargin == rOther.GetTextLeft()
-        && m_nPropLeftMargin == rOther.GetPropLeft());
+    return std::tie(m_stTextLeftMargin, m_nPropLeftMargin)
+           == std::tie(rOther.m_stTextLeftMargin, rOther.m_nPropLeftMargin);
 }
+
+size_t SvxTextLeftMarginItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, m_stTextLeftMargin.hashCode());
+    o3tl::hash_combine(seed, m_nPropLeftMargin);
+    return seed;
+}
+
 
 SvxTextLeftMarginItem* SvxTextLeftMarginItem::Clone(SfxItemPool *) const
 {
@@ -852,10 +1189,16 @@ bool SvxTextLeftMarginItem::GetPresentation
                 rText = unicode::formatPercent(m_nPropLeftMargin,
                     Application::GetSettings().GetUILanguageTag());
             }
+            else if (m_stTextLeftMargin.m_nUnit != css::util::MeasureUnit::TWIP)
+            {
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stTextLeftMargin.m_dValue,
+                                                   m_stTextLeftMargin.m_nUnit);
+                rText += stBuf.makeStringAndClear();
+            }
             else
             {
-                rText = GetMetricText(m_nTextLeftMargin,
-                                      eCoreUnit, ePresUnit, &rIntl);
+                rText = GetMetricText(m_stTextLeftMargin.m_dValue, eCoreUnit, ePresUnit, &rIntl);
             }
             return true;
         }
@@ -867,9 +1210,16 @@ bool SvxTextLeftMarginItem::GetPresentation
                 rText += unicode::formatPercent(m_nPropLeftMargin,
                     Application::GetSettings().GetUILanguageTag());
             }
+            else if (m_stTextLeftMargin.m_nUnit != css::util::MeasureUnit::TWIP)
+            {
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stTextLeftMargin.m_dValue,
+                                                   m_stTextLeftMargin.m_nUnit);
+                rText += stBuf.makeStringAndClear();
+            }
             else
             {
-                rText += GetMetricText(m_nTextLeftMargin, eCoreUnit, ePresUnit, &rIntl)
+                rText += GetMetricText(m_stTextLeftMargin.m_dValue, eCoreUnit, ePresUnit, &rIntl)
                     + " " + EditResId(GetMetricId(ePresUnit));
             }
             return true;
@@ -881,7 +1231,8 @@ bool SvxTextLeftMarginItem::GetPresentation
 
 void SvxTextLeftMarginItem::ScaleMetrics(tools::Long const nMult, tools::Long const nDiv)
 {
-    m_nTextLeftMargin = BigInt::Scale(m_nTextLeftMargin, nMult, nDiv);
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
+    m_stTextLeftMargin.ScaleMetrics(nMult, nDiv);
 }
 
 bool SvxTextLeftMarginItem::HasMetrics() const
@@ -893,7 +1244,12 @@ void SvxTextLeftMarginItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SvxTextLeftMarginItem"));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nTextLeftMargin"), BAD_CAST(OString::number(m_nTextLeftMargin).getStr()));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("m_dTextLeftMargin"),
+        BAD_CAST(OString::number(m_stTextLeftMargin.m_dValue).getStr()));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("m_nUnit"),
+        BAD_CAST(OString::number(m_stTextLeftMargin.m_nUnit).getStr()));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nPropLeftMargin"), BAD_CAST(OString::number(m_nPropLeftMargin).getStr()));
     (void)xmlTextWriterEndElement(pWriter);
 }
@@ -902,16 +1258,7 @@ boost::property_tree::ptree SvxTextLeftMarginItem::dumpAsJSON() const
 {
     boost::property_tree::ptree aTree = SfxPoolItem::dumpAsJSON();
 
-    boost::property_tree::ptree aState;
-
-    MapUnit eTargetUnit = MapUnit::MapInch;
-
-    OUString sLeft = GetMetricText(GetTextLeft(),
-                        MapUnit::MapTwip, eTargetUnit, nullptr);
-
-    aState.put("left", sLeft);
-    aState.put("unit", "inch");
-
+    auto aState = lcl_IndentValueToJson("left", m_stTextLeftMargin);
     aTree.push_back(std::make_pair("state", aState));
 
     return aTree;
@@ -922,28 +1269,79 @@ SvxFirstLineIndentItem::SvxFirstLineIndentItem(const sal_uInt16 nId)
 {
 }
 
-SvxFirstLineIndentItem::SvxFirstLineIndentItem(const short nFirst, const sal_uInt16 nId)
-    : SfxPoolItem(nId)
-    , m_nFirstLineOffset(nFirst)
+SvxFirstLineIndentItem::SvxFirstLineIndentItem(SvxIndentValue stValue, const sal_uInt16 nId)
+    : SvxFirstLineIndentItem(nId)
 {
+    SetTextFirstLineOffset(stValue);
+}
+
+bool SvxFirstLineIndentItem::IsAutoFirst() const { return m_bAutoFirst; }
+
+void SvxFirstLineIndentItem::SetAutoFirst(bool bNew)
+{
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
+    m_bAutoFirst = bNew;
+}
+
+void SvxFirstLineIndentItem::SetPropTextFirstLineOffset(sal_uInt16 nProp)
+{
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
+    m_nPropFirstLineOffset = nProp;
+}
+
+sal_uInt16 SvxFirstLineIndentItem::GetPropTextFirstLineOffset() const
+{
+    return m_nPropFirstLineOffset;
+}
+
+void SvxFirstLineIndentItem::SetTextFirstLineOffset(SvxIndentValue stValue, sal_uInt16 nProp)
+{
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
+    m_stFirstLineOffset = stValue;
+    m_nPropFirstLineOffset = nProp;
+
+    if (nProp != 100)
+    {
+        m_stFirstLineOffset.m_dValue = (stValue.m_dValue * static_cast<double>(nProp)) / 100.0;
+    }
+}
+
+SvxIndentValue SvxFirstLineIndentItem::GetTextFirstLineOffset() const
+{
+    return m_stFirstLineOffset;
+}
+
+sal_Int32
+SvxFirstLineIndentItem::ResolveTextFirstLineOffset(const SvxFontUnitMetrics& rMetrics) const
+{
+    return m_stFirstLineOffset.Resolve(rMetrics);
 }
 
 bool SvxFirstLineIndentItem::QueryValue(uno::Any& rVal, sal_uInt8 nMemberId) const
 {
-    bool bRet = true;
+    bool bRet = false;
     bool bConvert = 0 != (nMemberId & CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
     switch (nMemberId)
     {
         case MID_FIRST_LINE_INDENT:
-            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(m_nFirstLineOffset) : m_nFirstLineOffset);
+            bRet = lcl_FillAbsoluteMeasureAny(m_stFirstLineOffset, rVal, bConvert);
             break;
+
         case MID_FIRST_LINE_REL_INDENT:
             rVal <<= static_cast<sal_Int16>(m_nPropFirstLineOffset);
+            bRet = true;
             break;
+
+        case MID_FIRST_LINE_UNIT_INDENT:
+            bRet = lcl_FillRelativeMeasureAny(m_stFirstLineOffset, rVal);
+            break;
+
         case MID_FIRST_AUTO:
             rVal <<= IsAutoFirst();
+            bRet = true;
             break;
+
         default:
             assert(false);
             bRet = false;
@@ -955,6 +1353,7 @@ bool SvxFirstLineIndentItem::QueryValue(uno::Any& rVal, sal_uInt8 nMemberId) con
 
 bool SvxFirstLineIndentItem::PutValue(const uno::Any& rVal, sal_uInt8 nMemberId)
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     bool bConvert = 0 != (nMemberId & CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
 
@@ -967,7 +1366,9 @@ bool SvxFirstLineIndentItem::PutValue(const uno::Any& rVal, sal_uInt8 nMemberId)
             {
                 return false;
             }
-            m_nFirstLineOffset = bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal;
+
+            m_stFirstLineOffset
+                = SvxIndentValue::twips(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal);
             m_nPropFirstLineOffset = 100;
             break;
         }
@@ -982,6 +1383,17 @@ bool SvxFirstLineIndentItem::PutValue(const uno::Any& rVal, sal_uInt8 nMemberId)
             {
                 return false;
             }
+            break;
+        }
+        case MID_FIRST_LINE_UNIT_INDENT:
+        {
+            css::beans::Pair<double, sal_Int16> stVal;
+            if (!(rVal >>= stVal))
+            {
+                return false;
+            }
+
+            SetTextFirstLineOffset(SvxIndentValue{ stVal.First, stVal.Second });
             break;
         }
         case MID_FIRST_AUTO:
@@ -1001,9 +1413,18 @@ bool SvxFirstLineIndentItem::operator==(const SfxPoolItem& rAttr) const
 
     const SvxFirstLineIndentItem& rOther = static_cast<const SvxFirstLineIndentItem&>(rAttr);
 
-    return (m_nFirstLineOffset == rOther.GetTextFirstLineOffset()
-        && m_nPropFirstLineOffset == rOther.GetPropTextFirstLineOffset()
-        && m_bAutoFirst == rOther.IsAutoFirst());
+    return std::tie(m_stFirstLineOffset, m_nPropFirstLineOffset, m_bAutoFirst)
+           == std::tie(rOther.m_stFirstLineOffset, rOther.m_nPropFirstLineOffset,
+                       rOther.m_bAutoFirst);
+}
+
+size_t SvxFirstLineIndentItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, m_stFirstLineOffset.hashCode());
+    o3tl::hash_combine(seed, m_nPropFirstLineOffset);
+    o3tl::hash_combine(seed, m_bAutoFirst);
+    return seed;
 }
 
 SvxFirstLineIndentItem* SvxFirstLineIndentItem::Clone(SfxItemPool *) const
@@ -1028,10 +1449,16 @@ bool SvxFirstLineIndentItem::GetPresentation
                 rText += unicode::formatPercent(m_nPropFirstLineOffset,
                     Application::GetSettings().GetUILanguageTag());
             }
+            else if (m_stFirstLineOffset.m_nUnit != css::util::MeasureUnit::TWIP)
+            {
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stFirstLineOffset.m_dValue,
+                                                   m_stFirstLineOffset.m_nUnit);
+                rText += stBuf.makeStringAndClear();
+            }
             else
             {
-                rText += GetMetricText(static_cast<tools::Long>(m_nFirstLineOffset),
-                                       eCoreUnit, ePresUnit, &rIntl);
+                rText += GetMetricText(m_stFirstLineOffset.m_dValue, eCoreUnit, ePresUnit, &rIntl);
             }
             return true;
         }
@@ -1043,11 +1470,17 @@ bool SvxFirstLineIndentItem::GetPresentation
                 rText += unicode::formatPercent(m_nPropFirstLineOffset,
                             Application::GetSettings().GetUILanguageTag());
             }
+            else if (m_stFirstLineOffset.m_nUnit != css::util::MeasureUnit::TWIP)
+            {
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stFirstLineOffset.m_dValue,
+                                                   m_stFirstLineOffset.m_nUnit);
+                rText += stBuf.makeStringAndClear();
+            }
             else
             {
-                rText += GetMetricText(static_cast<tools::Long>(m_nFirstLineOffset),
-                                       eCoreUnit, ePresUnit, &rIntl)
-                    + " " + EditResId(GetMetricId(ePresUnit));
+                rText += GetMetricText(m_stFirstLineOffset.m_dValue, eCoreUnit, ePresUnit, &rIntl)
+                         + " " + EditResId(GetMetricId(ePresUnit));
             }
             return true;
         }
@@ -1058,7 +1491,8 @@ bool SvxFirstLineIndentItem::GetPresentation
 
 void SvxFirstLineIndentItem::ScaleMetrics(tools::Long const nMult, tools::Long const nDiv)
 {
-    m_nFirstLineOffset = static_cast<short>(BigInt::Scale(m_nFirstLineOffset, nMult, nDiv));
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
+    m_stFirstLineOffset.ScaleMetrics(nMult, nDiv);
 }
 
 bool SvxFirstLineIndentItem::HasMetrics() const
@@ -1070,7 +1504,12 @@ void SvxFirstLineIndentItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SvxFirstLineIndentItem"));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nFirstLineOffset"), BAD_CAST(OString::number(m_nFirstLineOffset).getStr()));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("m_dFirstLineOffset"),
+        BAD_CAST(OString::number(m_stFirstLineOffset.m_dValue).getStr()));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("m_nUnit"),
+        BAD_CAST(OString::number(m_stFirstLineOffset.m_nUnit).getStr()));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nPropFirstLineOffset"), BAD_CAST(OString::number(m_nPropFirstLineOffset).getStr()));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_bAutoFirst"), BAD_CAST(OString::number(int(m_bAutoFirst)).getStr()));
     (void)xmlTextWriterEndElement(pWriter);
@@ -1080,15 +1519,7 @@ boost::property_tree::ptree SvxFirstLineIndentItem::dumpAsJSON() const
 {
     boost::property_tree::ptree aTree = SfxPoolItem::dumpAsJSON();
 
-    boost::property_tree::ptree aState;
-
-    MapUnit eTargetUnit = MapUnit::MapInch;
-
-    OUString sFirstline = GetMetricText(GetTextFirstLineOffset(),
-                        MapUnit::MapTwip, eTargetUnit, nullptr);
-
-    aState.put("firstline", sFirstline);
-    aState.put("unit", "inch");
+    auto aState = lcl_IndentValueToJson("firstline", m_stFirstLineOffset);
 
     aTree.push_back(std::make_pair("state", aState));
 
@@ -1100,15 +1531,15 @@ SvxRightMarginItem::SvxRightMarginItem(const sal_uInt16 nId)
 {
 }
 
-SvxRightMarginItem::SvxRightMarginItem(const tools::Long nRight, const sal_uInt16 nId)
+SvxRightMarginItem::SvxRightMarginItem(SvxIndentValue stRight, const sal_uInt16 nId)
     : SfxPoolItem(nId)
-    , m_nRightMargin(nRight)
 {
+    SetRight(stRight);
 }
 
 bool SvxRightMarginItem::QueryValue(uno::Any& rVal, sal_uInt8 nMemberId) const
 {
-    bool bRet = true;
+    bool bRet = false;
     bool bConvert = 0 != (nMemberId & CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
     switch (nMemberId)
@@ -1117,17 +1548,25 @@ bool SvxRightMarginItem::QueryValue(uno::Any& rVal, sal_uInt8 nMemberId) const
         case 0:
         {
             css::frame::status::LeftRightMarginScale aLRSpace;
-            aLRSpace.Right = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(m_nRightMargin) : m_nRightMargin);
+
+            auto nRightTwips = ResolveRight({});
+            aLRSpace.Right
+                = static_cast<sal_Int32>(bConvert ? convertTwipToMm100(nRightTwips) : nRightTwips);
             aLRSpace.ScaleRight = static_cast<sal_Int16>(m_nPropRightMargin);
             rVal <<= aLRSpace;
+            bRet = true;
             break;
         }
         case MID_R_MARGIN:
-            rVal <<= static_cast<sal_Int32>(bConvert ? convertTwipToMm100(m_nRightMargin) : m_nRightMargin);
+            bRet = lcl_FillAbsoluteMeasureAny(m_stRightMargin, rVal, bConvert);
             break;
         case MID_R_REL_MARGIN:
             rVal <<= static_cast<sal_Int16>(m_nPropRightMargin);
-        break;
+            bRet = true;
+            break;
+        case MID_R_UNIT_MARGIN:
+            bRet = lcl_FillRelativeMeasureAny(m_stRightMargin, rVal);
+            break;
         default:
             assert(false);
             bRet = false;
@@ -1139,6 +1578,7 @@ bool SvxRightMarginItem::QueryValue(uno::Any& rVal, sal_uInt8 nMemberId) const
 
 bool SvxRightMarginItem::PutValue(const uno::Any& rVal, sal_uInt8 nMemberId)
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     bool bConvert = 0 != (nMemberId & CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
 
@@ -1151,7 +1591,8 @@ bool SvxRightMarginItem::PutValue(const uno::Any& rVal, sal_uInt8 nMemberId)
             {
                 return false;
             }
-            SetRight(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal);
+            SetRight(
+                SvxIndentValue::twips(bConvert ? o3tl::toTwips(nVal, o3tl::Length::mm100) : nVal));
             break;
         }
         case MID_R_REL_MARGIN:
@@ -1165,8 +1606,19 @@ bool SvxRightMarginItem::PutValue(const uno::Any& rVal, sal_uInt8 nMemberId)
             {
                 return false;
             }
+            break;
         }
-        break;
+        case MID_R_UNIT_MARGIN:
+        {
+            css::beans::Pair<double, sal_Int16> stVal;
+            if (!(rVal >>= stVal))
+            {
+                return false;
+            }
+
+            SetRight(SvxIndentValue{ stVal.First, stVal.Second });
+            break;
+        }
         default:
             assert(false);
             OSL_FAIL("unknown MemberId");
@@ -1181,8 +1633,16 @@ bool SvxRightMarginItem::operator==(const SfxPoolItem& rAttr) const
 
     const SvxRightMarginItem& rOther = static_cast<const SvxRightMarginItem&>(rAttr);
 
-    return (m_nRightMargin == rOther.GetRight()
-        && m_nPropRightMargin == rOther.GetPropRight());
+    return std::tie(m_stRightMargin, m_nPropRightMargin)
+           == std::tie(rOther.m_stRightMargin, rOther.m_nPropRightMargin);
+}
+
+size_t SvxRightMarginItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, m_stRightMargin.hashCode());
+    o3tl::hash_combine(seed, m_nPropRightMargin);
+    return seed;
 }
 
 SvxRightMarginItem* SvxRightMarginItem::Clone(SfxItemPool *) const
@@ -1202,15 +1662,21 @@ bool SvxRightMarginItem::GetPresentation
     {
         case SfxItemPresentation::Nameless:
         {
-            if (100 != m_nRightMargin)
+            if (100 != m_nPropRightMargin)
             {
-                rText += unicode::formatPercent(m_nRightMargin,
-                    Application::GetSettings().GetUILanguageTag());
+                rText += unicode::formatPercent(m_nPropRightMargin,
+                                                Application::GetSettings().GetUILanguageTag());
+            }
+            else if (m_stRightMargin.m_nUnit != css::util::MeasureUnit::TWIP)
+            {
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stRightMargin.m_dValue,
+                                                   m_stRightMargin.m_nUnit);
+                rText += stBuf.makeStringAndClear();
             }
             else
             {
-                rText += GetMetricText(m_nRightMargin,
-                                       eCoreUnit, ePresUnit, &rIntl);
+                rText += GetMetricText(m_stRightMargin.m_dValue, eCoreUnit, ePresUnit, &rIntl);
             }
             return true;
         }
@@ -1222,11 +1688,17 @@ bool SvxRightMarginItem::GetPresentation
                 rText += unicode::formatPercent(m_nPropRightMargin,
                     Application::GetSettings().GetUILanguageTag());
             }
+            else if (m_stRightMargin.m_nUnit != css::util::MeasureUnit::TWIP)
+            {
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stRightMargin.m_dValue,
+                                                   m_stRightMargin.m_nUnit);
+                rText += stBuf.makeStringAndClear();
+            }
             else
             {
-                rText += GetMetricText(m_nRightMargin,
-                                       eCoreUnit, ePresUnit, &rIntl)
-                    + " " + EditResId(GetMetricId(ePresUnit));
+                rText += GetMetricText(m_stRightMargin.m_dValue, eCoreUnit, ePresUnit, &rIntl) + " "
+                         + EditResId(GetMetricId(ePresUnit));
             }
             return true;
         }
@@ -1237,7 +1709,8 @@ bool SvxRightMarginItem::GetPresentation
 
 void SvxRightMarginItem::ScaleMetrics(tools::Long const nMult, tools::Long const nDiv)
 {
-    m_nRightMargin = BigInt::Scale(m_nRightMargin, nMult, nDiv);
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
+    m_stRightMargin.ScaleMetrics(nMult, nDiv);
 }
 
 bool SvxRightMarginItem::HasMetrics() const
@@ -1249,7 +1722,10 @@ void SvxRightMarginItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SvxRightMarginItem"));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nRightMargin"), BAD_CAST(OString::number(m_nRightMargin).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_dRightMargin"),
+                                      BAD_CAST(OString::number(m_stRightMargin.m_dValue).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nUnit"),
+                                      BAD_CAST(OString::number(m_stRightMargin.m_nUnit).getStr()));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nPropRightMargin"), BAD_CAST(OString::number(m_nPropRightMargin).getStr()));
     (void)xmlTextWriterEndElement(pWriter);
 }
@@ -1258,16 +1734,7 @@ boost::property_tree::ptree SvxRightMarginItem::dumpAsJSON() const
 {
     boost::property_tree::ptree aTree = SfxPoolItem::dumpAsJSON();
 
-    boost::property_tree::ptree aState;
-
-    MapUnit eTargetUnit = MapUnit::MapInch;
-
-    OUString sRight = GetMetricText(GetRight(),
-                        MapUnit::MapTwip, eTargetUnit, nullptr);
-
-    aState.put("right", sRight);
-    aState.put("unit", "inch");
-
+    auto aState = lcl_IndentValueToJson("right", m_stRightMargin);
     aTree.push_back(std::make_pair("state", aState));
 
     return aTree;
@@ -1495,18 +1962,14 @@ bool SvxLRSpaceItem::operator==( const SfxPoolItem& rAttr ) const
 
     const SvxLRSpaceItem& rOther = static_cast<const SvxLRSpaceItem&>(rAttr);
 
-    return (
-        nFirstLineOffset == rOther.GetTextFirstLineOffset() &&
-        m_nGutterMargin == rOther.GetGutterMargin() &&
-        m_nRightGutterMargin == rOther.GetRightGutterMargin() &&
-        nLeftMargin == rOther.GetLeft()  &&
-        nRightMargin == rOther.GetRight() &&
-        nPropFirstLineOffset == rOther.GetPropTextFirstLineOffset() &&
-        nPropLeftMargin == rOther.GetPropLeft()  &&
-        nPropRightMargin == rOther.GetPropRight() &&
-        bAutoFirst == rOther.IsAutoFirst() &&
-        bExplicitZeroMarginValRight == rOther.IsExplicitZeroMarginValRight() &&
-        bExplicitZeroMarginValLeft == rOther.IsExplicitZeroMarginValLeft() );
+    return std::tie(m_stFirstLineOffset, m_nGutterMargin, m_nRightGutterMargin, m_stLeftMargin,
+                    m_stRightMargin, nPropFirstLineOffset, nPropLeftMargin, nPropRightMargin,
+                    bAutoFirst, bExplicitZeroMarginValRight, bExplicitZeroMarginValLeft)
+           == std::tie(rOther.m_stFirstLineOffset, rOther.m_nGutterMargin,
+                       rOther.m_nRightGutterMargin, rOther.m_stLeftMargin, rOther.m_stRightMargin,
+                       rOther.nPropFirstLineOffset, rOther.nPropLeftMargin, rOther.nPropRightMargin,
+                       rOther.bAutoFirst, rOther.bExplicitZeroMarginValRight,
+                       rOther.bExplicitZeroMarginValLeft);
 }
 
 SvxLRSpaceItem* SvxLRSpaceItem::Clone( SfxItemPool* ) const
@@ -1531,27 +1994,48 @@ bool SvxLRSpaceItem::GetPresentation
                 rText = unicode::formatPercent(nPropLeftMargin,
                     Application::GetSettings().GetUILanguageTag());
             }
+            else if (m_stLeftMargin.m_nUnit != css::util::MeasureUnit::TWIP)
+            {
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stLeftMargin.m_dValue,
+                                                   m_stLeftMargin.m_nUnit);
+                rText += stBuf.makeStringAndClear();
+            }
             else
-                rText = GetMetricText( nLeftMargin,
-                                       eCoreUnit, ePresUnit, &rIntl );
+                rText = GetMetricText(static_cast<tools::Long>(m_stLeftMargin.m_dValue), eCoreUnit,
+                                      ePresUnit, &rIntl);
             rText += cpDelim;
             if ( 100 != nPropFirstLineOffset )
             {
                 rText += unicode::formatPercent(nPropFirstLineOffset,
                     Application::GetSettings().GetUILanguageTag());
             }
-            else
-                rText += GetMetricText( static_cast<tools::Long>(nFirstLineOffset),
-                                        eCoreUnit, ePresUnit, &rIntl );
-            rText += cpDelim;
-            if ( 100 != nRightMargin )
+            else if (m_stFirstLineOffset.m_nUnit != css::util::MeasureUnit::TWIP)
             {
-                rText += unicode::formatPercent(nRightMargin,
-                    Application::GetSettings().GetUILanguageTag());
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stFirstLineOffset.m_dValue,
+                                                   m_stFirstLineOffset.m_nUnit);
+                rText += stBuf.makeStringAndClear();
             }
             else
-                rText += GetMetricText( nRightMargin,
-                                        eCoreUnit, ePresUnit, &rIntl );
+                rText += GetMetricText(static_cast<tools::Long>(m_stFirstLineOffset.m_dValue),
+                                       eCoreUnit, ePresUnit, &rIntl);
+            rText += cpDelim;
+            if (100 != nPropRightMargin)
+            {
+                rText += unicode::formatPercent(nPropRightMargin,
+                                                Application::GetSettings().GetUILanguageTag());
+            }
+            else if (m_stRightMargin.m_nUnit != css::util::MeasureUnit::TWIP)
+            {
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stRightMargin.m_dValue,
+                                                   m_stRightMargin.m_nUnit);
+                rText += stBuf.makeStringAndClear();
+            }
+            else
+                rText += GetMetricText(static_cast<tools::Long>(m_stRightMargin.m_dValue),
+                                       eCoreUnit, ePresUnit, &rIntl);
             return true;
         }
         case SfxItemPresentation::Complete:
@@ -1560,35 +2044,59 @@ bool SvxLRSpaceItem::GetPresentation
             if ( 100 != nPropLeftMargin )
                 rText += unicode::formatPercent(nPropLeftMargin,
                     Application::GetSettings().GetUILanguageTag());
+            else if (m_stLeftMargin.m_nUnit != css::util::MeasureUnit::TWIP)
+            {
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stLeftMargin.m_dValue,
+                                                   m_stLeftMargin.m_nUnit);
+                rText += stBuf.makeStringAndClear();
+            }
             else
             {
-                rText += GetMetricText( nLeftMargin, eCoreUnit, ePresUnit, &rIntl ) +
-                        " " + EditResId(GetMetricId(ePresUnit));
+                rText += GetMetricText(static_cast<tools::Long>(m_stLeftMargin.m_dValue), eCoreUnit,
+                                       ePresUnit, &rIntl)
+                         + " " + EditResId(GetMetricId(ePresUnit));
             }
             rText += cpDelim;
-            if ( 100 != nPropFirstLineOffset || nFirstLineOffset )
+            if (100 != nPropFirstLineOffset || m_stFirstLineOffset.m_dValue != 0.0)
             {
                 rText += EditResId(RID_SVXITEMS_LRSPACE_FLINE);
                 if ( 100 != nPropFirstLineOffset )
                     rText += unicode::formatPercent(nPropFirstLineOffset,
                                 Application::GetSettings().GetUILanguageTag());
+                else if (m_stFirstLineOffset.m_nUnit != css::util::MeasureUnit::TWIP)
+                {
+                    OUStringBuffer stBuf;
+                    sax::Converter::convertMeasureUnit(stBuf, m_stFirstLineOffset.m_dValue,
+                                                       m_stFirstLineOffset.m_nUnit);
+                    rText += stBuf.makeStringAndClear();
+                }
                 else
                 {
-                    rText += GetMetricText( static_cast<tools::Long>(nFirstLineOffset),
-                                            eCoreUnit, ePresUnit, &rIntl ) +
-                            " " + EditResId(GetMetricId(ePresUnit));
+                    rText += GetMetricText(static_cast<tools::Long>(m_stFirstLineOffset.m_dValue),
+                                           eCoreUnit, ePresUnit, &rIntl)
+                             + " " + EditResId(GetMetricId(ePresUnit));
                 }
                 rText += cpDelim;
             }
             rText += EditResId(RID_SVXITEMS_LRSPACE_RIGHT);
-            if ( 100 != nPropRightMargin )
+            if (100 != nPropRightMargin)
+            {
                 rText += unicode::formatPercent(nPropRightMargin,
-                    Application::GetSettings().GetUILanguageTag());
+                                                Application::GetSettings().GetUILanguageTag());
+            }
+            else if (m_stRightMargin.m_nUnit != css::util::MeasureUnit::TWIP)
+            {
+                OUStringBuffer stBuf;
+                sax::Converter::convertMeasureUnit(stBuf, m_stRightMargin.m_dValue,
+                                                   m_stRightMargin.m_nUnit);
+                rText += stBuf.makeStringAndClear();
+            }
             else
             {
-                rText += GetMetricText( nRightMargin,
-                                       eCoreUnit, ePresUnit, &rIntl ) +
-                        " " + EditResId(GetMetricId(ePresUnit));
+                rText += GetMetricText(static_cast<tools::Long>(m_stRightMargin.m_dValue),
+                                       eCoreUnit, ePresUnit, &rIntl)
+                         + " " + EditResId(GetMetricId(ePresUnit));
             }
             return true;
         }
@@ -1600,9 +2108,9 @@ bool SvxLRSpaceItem::GetPresentation
 
 void SvxLRSpaceItem::ScaleMetrics( tools::Long nMult, tools::Long nDiv )
 {
-    nFirstLineOffset = static_cast<short>(BigInt::Scale( nFirstLineOffset, nMult, nDiv ));
-    nLeftMargin = BigInt::Scale( nLeftMargin, nMult, nDiv );
-    nRightMargin = BigInt::Scale( nRightMargin, nMult, nDiv );
+    m_stFirstLineOffset.ScaleMetrics(nMult, nDiv);
+    m_stLeftMargin.ScaleMetrics(nMult, nDiv);
+    m_stRightMargin.ScaleMetrics(nMult, nDiv);
 }
 
 
@@ -1616,9 +2124,20 @@ void SvxLRSpaceItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SvxLRSpaceItem"));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nFirstLineOffset"), BAD_CAST(OString::number(nFirstLineOffset).getStr()));
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nLeftMargin"), BAD_CAST(OString::number(nLeftMargin).getStr()));
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("nRightMargin"), BAD_CAST(OString::number(nRightMargin).getStr()));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("m_dFirstLineOffset"),
+        BAD_CAST(OString::number(m_stFirstLineOffset.m_dValue).getStr()));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("m_nFirstLineUnit"),
+        BAD_CAST(OString::number(m_stFirstLineOffset.m_nUnit).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_dLeftMargin"),
+                                      BAD_CAST(OString::number(m_stLeftMargin.m_dValue).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nLeftMarginUnit"),
+                                      BAD_CAST(OString::number(m_stLeftMargin.m_nUnit).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_dRightMargin"),
+                                      BAD_CAST(OString::number(m_stRightMargin.m_dValue).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nRightMarginUnit"),
+                                      BAD_CAST(OString::number(m_stRightMargin.m_nUnit).getStr()));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nGutterMargin"),
                                 BAD_CAST(OString::number(m_nGutterMargin).getStr()));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nRightGutterMargin"),
@@ -1641,14 +2160,12 @@ boost::property_tree::ptree SvxLRSpaceItem::dumpAsJSON() const
 
     MapUnit eTargetUnit = MapUnit::MapInch;
 
-    OUString sLeft = GetMetricText(GetLeft(),
-                        MapUnit::MapTwip, eTargetUnit, nullptr);
+    OUString sLeft = GetMetricText(ResolveLeft({}), MapUnit::MapTwip, eTargetUnit, nullptr);
 
-    OUString sRight = GetMetricText(GetRight(),
-                        MapUnit::MapTwip, eTargetUnit, nullptr);
+    OUString sRight = GetMetricText(ResolveRight({}), MapUnit::MapTwip, eTargetUnit, nullptr);
 
-    OUString sFirstline = GetMetricText(GetTextFirstLineOffset(),
-                        MapUnit::MapTwip, eTargetUnit, nullptr);
+    OUString sFirstline
+        = GetMetricText(ResolveTextFirstLineOffset({}), MapUnit::MapTwip, eTargetUnit, nullptr);
 
     aState.put("left", sLeft);
     aState.put("right", sRight);
@@ -1713,6 +2230,7 @@ bool SvxULSpaceItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 
 bool SvxULSpaceItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     bool bConvert = 0!=(nMemberId&CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
     sal_Int32 nVal = 0;
@@ -1785,6 +2303,17 @@ bool SvxULSpaceItem::operator==( const SfxPoolItem& rAttr ) const
              nPropLower == rSpaceItem.nPropLower );
 }
 
+size_t SvxULSpaceItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, nUpper);
+    o3tl::hash_combine(seed, nLower);
+    o3tl::hash_combine(seed, bContext);
+    o3tl::hash_combine(seed, nPropUpper);
+    o3tl::hash_combine(seed, nPropLower);
+    return seed;
+}
+
 SvxULSpaceItem* SvxULSpaceItem::Clone( SfxItemPool* ) const
 {
     return new SvxULSpaceItem( *this );
@@ -1854,6 +2383,7 @@ bool SvxULSpaceItem::GetPresentation
 
 void SvxULSpaceItem::ScaleMetrics( tools::Long nMult, tools::Long nDiv )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     nUpper = static_cast<sal_uInt16>(BigInt::Scale( nUpper, nMult, nDiv ));
     nLower = static_cast<sal_uInt16>(BigInt::Scale( nLower, nMult, nDiv ));
 }
@@ -2035,7 +2565,7 @@ void SvxProtectItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 SvxShadowItem::SvxShadowItem( const sal_uInt16 nId,
                  const Color *pColor, const sal_uInt16 nW,
                  const SvxShadowLocation eLoc ) :
-    SfxEnumItemInterface( nId ),
+    SfxPoolItem( nId ),
     aShadowColor(COL_GRAY),
     nWidth      ( nW ),
     eLocation   ( eLoc )
@@ -2083,6 +2613,7 @@ bool SvxShadowItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 
 bool SvxShadowItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     bool bConvert = 0!=(nMemberId&CONVERT_TWIPS);
     nMemberId &= ~CONVERT_TWIPS;
 
@@ -2153,6 +2684,15 @@ bool SvxShadowItem::operator==( const SfxPoolItem& rAttr ) const
              ( eLocation == rItem.GetLocation() ) );
 }
 
+size_t SvxShadowItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, sal_Int32(aShadowColor));
+    o3tl::hash_combine(seed, nWidth);
+    o3tl::hash_combine(seed, static_cast<int>(eLocation));
+    return seed;
+}
+
 SvxShadowItem* SvxShadowItem::Clone( SfxItemPool* ) const
 {
     return new SvxShadowItem( *this );
@@ -2194,7 +2734,7 @@ sal_uInt16 SvxShadowItem::CalcShadowSpace( SvxShadowItemSide nShadow ) const
     return nSpace;
 }
 
-static TranslateId RID_SVXITEMS_SHADOW[] =
+const TranslateId RID_SVXITEMS_SHADOW[] =
 {
     RID_SVXITEMS_SHADOW_NONE,
     RID_SVXITEMS_SHADOW_TOPLEFT,
@@ -2252,6 +2792,7 @@ bool SvxShadowItem::GetPresentation
 
 void SvxShadowItem::ScaleMetrics( tools::Long nMult, tools::Long nDiv )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     nWidth = static_cast<sal_uInt16>(BigInt::Scale( nWidth, nMult, nDiv ));
 }
 
@@ -2261,22 +2802,6 @@ bool SvxShadowItem::HasMetrics() const
     return true;
 }
 
-
-sal_uInt16 SvxShadowItem::GetValueCount() const
-{
-    return sal_uInt16(SvxShadowLocation::End);  // SvxShadowLocation::BottomRight + 1
-}
-
-sal_uInt16 SvxShadowItem::GetEnumValue() const
-{
-    return static_cast<sal_uInt16>(GetLocation());
-}
-
-
-void SvxShadowItem::SetEnumValue( sal_uInt16 nVal )
-{
-    SetLocation( static_cast<SvxShadowLocation>(nVal) );
-}
 
 void SvxShadowItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
@@ -2377,6 +2902,15 @@ bool SvxBoxItem::operator==( const SfxPoolItem& rAttr ) const
         CompareBorderLine(mpRightBorderLine, rBoxItem.GetRight()));
 }
 
+size_t SvxBoxItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, mnTopDistance);
+    o3tl::hash_combine(seed, mnBottomDistance);
+    o3tl::hash_combine(seed, mnLeftDistance);
+    o3tl::hash_combine(seed, mnRightDistance);
+    return seed;
+}
 
 table::BorderLine2 SvxBoxItem::SvxLineToLine(const SvxBorderLine* pLine, bool bConvert)
 {
@@ -2617,6 +3151,7 @@ lcl_setLine(const uno::Any& rAny, Item& rItem, Line nLine, const bool bConvert)
 
 bool SvxBoxItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     bool bConvert = 0!=(nMemberId&CONVERT_TWIPS);
     SvxBoxItemLine nLine = SvxBoxItemLine::TOP;
     bool bDistMember = false;
@@ -3009,6 +3544,7 @@ bool SvxBoxItem::GetPresentation
 
 void SvxBoxItem::ScaleMetrics( tools::Long nMult, tools::Long nDiv )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     if (mpTopBorderLine)
         mpTopBorderLine->ScaleMetrics( nMult, nDiv );
     if (mpBottomBorderLine)
@@ -3060,6 +3596,7 @@ const SvxBorderLine *SvxBoxItem::GetLine( SvxBoxItemLine nLine ) const
 
 void SvxBoxItem::SetLine( const SvxBorderLine* pNew, SvxBoxItemLine nLine )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     std::unique_ptr<SvxBorderLine> pTmp( pNew ? new SvxBorderLine( *pNew ) : nullptr );
 
     switch ( nLine )
@@ -3128,6 +3665,7 @@ sal_Int16 SvxBoxItem::GetDistance( SvxBoxItemLine nLine, bool bAllowNegative ) c
 
 void SvxBoxItem::SetDistance( sal_Int16 nNew, SvxBoxItemLine nLine )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     switch ( nLine )
     {
         case SvxBoxItemLine::TOP:
@@ -3218,6 +3756,7 @@ sal_Int16 SvxBoxItem::CalcLineSpace( SvxBoxItemLine nLine, bool bEvenIfNoLine, b
 
 void SvxBoxItem::tryMigrateComplexColor(SvxBoxItemLine eLine)
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     if (!GetLine(eLine))
         return;
 
@@ -3262,7 +3801,6 @@ SvxBoxInfoItem::SvxBoxInfoItem(const sal_uInt16 nId)
 {
     ResetFlags();
 }
-
 
 SvxBoxInfoItem::SvxBoxInfoItem( const SvxBoxInfoItem& rCopy )
     : SfxPoolItem(rCopy)
@@ -3745,7 +4283,7 @@ bool SvxFormatBreakItem::GetPresentation
 
 OUString SvxFormatBreakItem::GetValueTextByPos( sal_uInt16 nPos )
 {
-    static TranslateId RID_SVXITEMS_BREAK[] =
+    static const TranslateId RID_SVXITEMS_BREAK[] =
     {
         RID_SVXITEMS_BREAK_NONE,
         RID_SVXITEMS_BREAK_COLUMN_BEFORE,
@@ -3809,11 +4347,6 @@ bool SvxFormatBreakItem::PutValue( const uno::Any& rVal, sal_uInt8 /*nMemberId*/
 SvxFormatBreakItem* SvxFormatBreakItem::Clone( SfxItemPool* ) const
 {
     return new SvxFormatBreakItem( *this );
-}
-
-sal_uInt16 SvxFormatBreakItem::GetValueCount() const
-{
-    return sal_uInt16(SvxBreak::End);   // SvxBreak::PageBoth + 1
 }
 
 SvxFormatKeepItem* SvxFormatKeepItem::Clone( SfxItemPool* ) const
@@ -3978,8 +4511,14 @@ void SvxLineItem::SetLine( const SvxBorderLine* pNew )
     pLine.reset( pNew ? new SvxBorderLine( *pNew ) : nullptr );
 }
 
+ItemInstanceManager* SvxBrushItem::getItemInstanceManager() const
+{
+    static DefaultItemInstanceManager aInstanceManager(ItemType());
+    return &aInstanceManager;
+}
+
 SvxBrushItem::SvxBrushItem(sal_uInt16 _nWhich)
-    : SfxPoolItem(_nWhich)
+    : SfxPoolItem(_nWhich )
     , aColor(COL_TRANSPARENT)
     , aFilterColor(COL_TRANSPARENT)
     , nShadingValue(ShadingPattern::CLEAR)
@@ -3990,7 +4529,7 @@ SvxBrushItem::SvxBrushItem(sal_uInt16 _nWhich)
 }
 
 SvxBrushItem::SvxBrushItem(const Color& rColor, sal_uInt16 _nWhich)
-    : SfxPoolItem(_nWhich)
+    : SfxPoolItem(_nWhich )
     , aColor(rColor)
     , aFilterColor(COL_TRANSPARENT)
     , nShadingValue(ShadingPattern::CLEAR)
@@ -4188,6 +4727,7 @@ bool SvxBrushItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 
 bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     nMemberId &= ~CONVERT_TWIPS;
     switch( nMemberId)
     {
@@ -4201,6 +4741,7 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             {
                 aNewCol.SetAlpha(aColor.GetAlpha());
             }
+            ASSERT_CHANGE_REFCOUNTED_ITEM;
             aColor = aNewCol;
         }
         break;
@@ -4209,6 +4750,7 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             sal_Int32 nTrans = 0;
             if ( !( rVal >>= nTrans ) || nTrans < 0 || nTrans > 100 )
                 return false;
+            ASSERT_CHANGE_REFCOUNTED_ITEM;
             aColor.SetAlpha(255 - lcl_PercentToTransparency(nTrans));
         }
         break;
@@ -4220,7 +4762,10 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
                 return false;
 
             if (xComplexColor.is())
+            {
+                ASSERT_CHANGE_REFCOUNTED_ITEM;
                 maComplexColor = model::color::getFromXComplexColor(xComplexColor);
+            }
         }
         break;
 
@@ -4234,11 +4779,13 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
                     return false;
                 eLocation = static_cast<style::GraphicLocation>(nValue);
             }
+            ASSERT_CHANGE_REFCOUNTED_ITEM;
             SetGraphicPos( static_cast<SvxGraphicPosition>(static_cast<sal_uInt16>(eLocation)) );
         }
         break;
 
         case MID_GRAPHIC_TRANSPARENT:
+            ASSERT_CHANGE_REFCOUNTED_ITEM;
             aColor.SetAlpha( Any2Bool( rVal ) ? 0 : 255 );
         break;
 
@@ -4247,14 +4794,12 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
         {
             Graphic aGraphic;
 
-            if (rVal.getValueType() == ::cppu::UnoType<OUString>::get())
+            if (OUString aURL; rVal >>= aURL)
             {
-                OUString aURL = rVal.get<OUString>();
                 aGraphic = vcl::graphic::loadFromURL(aURL);
             }
-            else if (rVal.getValueType() == cppu::UnoType<graphic::XGraphic>::get())
+            else if (uno::Reference<graphic::XGraphic> xGraphic; rVal >>= xGraphic)
             {
-                auto xGraphic = rVal.get<uno::Reference<graphic::XGraphic>>();
                 aGraphic = Graphic(xGraphic);
             }
 
@@ -4262,19 +4807,20 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             {
                 maStrLink.clear();
 
+                ASSERT_CHANGE_REFCOUNTED_ITEM;
                 std::unique_ptr<GraphicObject> xOldGrfObj(std::move(xGraphicObject));
-                xGraphicObject.reset(new GraphicObject(aGraphic));
+                xGraphicObject.reset(new GraphicObject(std::move(aGraphic)));
                 ApplyGraphicTransparency_Impl();
                 xOldGrfObj.reset();
 
-                if (!aGraphic.IsNone() && eGraphicPos == GPOS_NONE)
+                if (eGraphicPos == GPOS_NONE)
                 {
                     eGraphicPos = GPOS_MM;
                 }
-                else if (aGraphic.IsNone())
-                {
-                    eGraphicPos = GPOS_NONE;
-                }
+            }
+            else
+            {
+                eGraphicPos = GPOS_NONE;
             }
         }
         break;
@@ -4285,6 +4831,7 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             {
                 OUString sLink;
                 rVal >>= sLink;
+                ASSERT_CHANGE_REFCOUNTED_ITEM;
                 SetGraphicFilter( sLink );
             }
         }
@@ -4295,6 +4842,7 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             rVal >>= nTmp;
             if(nTmp >= 0 && nTmp <= 100)
             {
+                ASSERT_CHANGE_REFCOUNTED_ITEM;
                 nGraphicTransparency = sal_Int8(nTmp);
                 if (xGraphicObject)
                     ApplyGraphicTransparency_Impl();
@@ -4308,6 +4856,7 @@ bool SvxBrushItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             if (!(rVal >>= nVal))
                 return false;
 
+            ASSERT_CHANGE_REFCOUNTED_ITEM;
             nShadingValue = nVal;
         }
         break;
@@ -4384,6 +4933,23 @@ bool SvxBrushItem::operator==( const SfxPoolItem& rAttr ) const
     return bEqual;
 }
 
+size_t SvxBrushItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, static_cast<sal_Int32>(aColor));
+    o3tl::hash_combine(seed, maComplexColor);
+    o3tl::hash_combine(seed, static_cast<sal_Int32>(aFilterColor));
+    o3tl::hash_combine(seed, eGraphicPos);
+    o3tl::hash_combine(seed, nGraphicTransparency);
+    if ( GPOS_NONE != eGraphicPos )
+    {
+        o3tl::hash_combine(seed, maStrLink);
+        o3tl::hash_combine(seed, maStrFilter);
+    }
+    o3tl::hash_combine(seed, nShadingValue);
+    return seed;
+}
+
 SvxBrushItem* SvxBrushItem::Clone( SfxItemPool* ) const
 {
     return new SvxBrushItem( *this );
@@ -4395,6 +4961,13 @@ const GraphicObject* SvxBrushItem::GetGraphicObject(OUString const & referer) co
     // when graphics already loaded, use as a cache
     {
         if (SvtSecurityOptions::isUntrustedReferer(referer)) {
+            return nullptr;
+        }
+
+        INetURLObject aGraphicURL( maStrLink );
+        if (aGraphicURL.IsExoticProtocol())
+        {
+            SAL_WARN("editeng", "Ignore exotic protocol: " << maStrLink);
             return nullptr;
         }
 
@@ -4418,8 +4991,6 @@ const GraphicObject* SvxBrushItem::GetGraphicObject(OUString const & referer) co
         // a 'data:' scheme url and try to load that (embedded graphics)
         if(!bGraphicLoaded)
         {
-            INetURLObject aGraphicURL( maStrLink );
-
             if( INetProtocol::Data == aGraphicURL.GetProtocol() )
             {
                 std::unique_ptr<SvMemoryStream> const xMemStream(aGraphicURL.getData());
@@ -4457,6 +5028,7 @@ void SvxBrushItem::setGraphicTransparency(sal_Int8 nNew)
 {
     if (nNew != nGraphicTransparency)
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         nGraphicTransparency = nNew;
         ApplyGraphicTransparency_Impl();
     }
@@ -4470,6 +5042,10 @@ const Graphic* SvxBrushItem::GetGraphic(OUString const & referer) const
 
 void SvxBrushItem::SetGraphicPos( SvxGraphicPosition eNew )
 {
+    if (eGraphicPos == eNew)
+        return;
+
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     eGraphicPos = eNew;
 
     if ( GPOS_NONE == eGraphicPos )
@@ -4491,6 +5067,7 @@ void SvxBrushItem::SetGraphic( const Graphic& rNew )
 {
     if ( maStrLink.isEmpty() )
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         if (xGraphicObject)
             xGraphicObject->SetGraphic(rNew);
         else
@@ -4511,6 +5088,7 @@ void SvxBrushItem::SetGraphicObject( const GraphicObject& rNewObj )
 {
     if ( maStrLink.isEmpty() )
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         if (xGraphicObject)
             *xGraphicObject = rNewObj;
         else
@@ -4529,6 +5107,7 @@ void SvxBrushItem::SetGraphicObject( const GraphicObject& rNewObj )
 
 void SvxBrushItem::SetGraphicLink( const OUString& rNew )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     if ( rNew.isEmpty() )
         maStrLink.clear();
     else
@@ -4540,6 +5119,7 @@ void SvxBrushItem::SetGraphicLink( const OUString& rNew )
 
 void SvxBrushItem::SetGraphicFilter( const OUString& rNew )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     maStrFilter = rNew;
 }
 
@@ -4569,6 +5149,11 @@ void SvxBrushItem::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterEndElement(pWriter);
 }
 
+ItemInstanceManager* SvxFrameDirectionItem::getItemInstanceManager() const
+{
+    static DefaultItemInstanceManager aInstanceManager(ItemType());
+    return &aInstanceManager;
+}
 
 SvxFrameDirectionItem::SvxFrameDirectionItem( SvxFrameDirection nValue ,
                                             sal_uInt16 _nWhich )
@@ -4618,6 +5203,7 @@ bool SvxFrameDirectionItem::PutValue( const css::uno::Any& rVal,
     bool bRet = ( rVal >>= nVal );
     if( bRet )
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         // translate WritingDirection2 constants into SvxFrameDirection
         switch( nVal )
         {
@@ -4641,6 +5227,9 @@ bool SvxFrameDirectionItem::PutValue( const css::uno::Any& rVal,
                 break;
             case text::WritingMode2::PAGE:
                 SetValue( SvxFrameDirection::Environment );
+                break;
+            case text::WritingMode2::STACKED:
+                SetValue(SvxFrameDirection::Stacked);
                 break;
             default:
                 bRet = false;
@@ -4680,6 +5269,9 @@ bool SvxFrameDirectionItem::QueryValue( css::uno::Any& rVal,
             break;
         case SvxFrameDirection::Environment:
             nVal = text::WritingMode2::PAGE;
+            break;
+        case SvxFrameDirection::Stacked:
+            nVal = text::WritingMode2::STACKED;
             break;
         default:
             OSL_FAIL("Unknown SvxFrameDirection value!");

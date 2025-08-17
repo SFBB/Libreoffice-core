@@ -34,6 +34,7 @@
 #include <comphelper/diagnose_ex.hxx>
 
 #include <unosett.hxx>
+#include <names.hxx>
 
 
 using namespace ::com::sun::star;
@@ -79,14 +80,14 @@ public:
         {
             return OUString();
         }
-        return pRules->GetName();
+        return pRules->GetName().toString();
     }
 
     virtual void SAL_CALL setName(OUString const& rName) override
     {
         SolarMutexGuard g;
         SwNumRulesWithName *const pRules(GetOrCreateRules());
-        pRules->SetName(rName);
+        pRules->SetName(UIName(rName));
     }
 
     // XElementAccess
@@ -118,17 +119,17 @@ public:
             return uno::Any();
         }
         SwNumFormat const* pNumFormat(nullptr);
-        OUString const* pCharStyleName(nullptr);
+        UIName const* pCharStyleName(nullptr);
         pRules->GetNumFormat(nIndex, pNumFormat, pCharStyleName);
         if (!pNumFormat)
         {   // the dialog only fills in those levels that are non-default
             return uno::Any(); // the export will ignore this level, yay
         }
         assert(pCharStyleName);
-        OUString dummy; // pass in empty HeadingStyleName - can't import anyway
+        ProgName dummy; // pass in empty HeadingStyleName - can't import anyway
         uno::Sequence<beans::PropertyValue> const ret(
             SwXNumberingRules::GetPropertiesForNumFormat(
-                *pNumFormat, *pCharStyleName, &dummy, ""));
+                *pNumFormat, *pCharStyleName, &dummy, u""_ustr));
         return uno::Any(ret);
     }
 
@@ -140,12 +141,12 @@ public:
             throw lang::IndexOutOfBoundsException();
         uno::Sequence<beans::PropertyValue> props;
         if (!(rElement >>= props))
-            throw lang::IllegalArgumentException("invalid type",
+            throw lang::IllegalArgumentException(u"invalid type"_ustr,
                     getXWeak(), 1);
 
         SolarMutexGuard g;
         SwNumFormat aNumberFormat;
-        OUString charStyleName;
+        UIName charStyleName;
         SwXNumberingRules::SetPropertiesToNumFormat(
             aNumberFormat,
             charStyleName,
@@ -166,7 +167,7 @@ public:
             uno::Reference<uno::XComponentContext> const& xContext,
             OUString const& rFileName,
             uno::Reference<xml::sax::XDocumentHandler> const& xHandler)
-        : SvXMLExport(xContext, "sw::StoredChapterNumberingExport", rFileName,
+        : SvXMLExport(xContext, u"sw::StoredChapterNumberingExport"_ustr, rFileName,
             util::MeasureUnit::CM, xHandler)
     {
         GetNamespaceMap_().Add(GetXMLToken(XML_NP_OFFICE),
@@ -204,25 +205,20 @@ public:
     }
 
     void ExportRules(
-            std::set<OUString> const& rCharStyles,
+            std::set<UIName> const& rCharStyles,
             std::vector<uno::Reference<container::XIndexReplace>> const& rRules)
     {
         GetDocHandler()->startDocument();
 
-        AddAttribute(XML_NAMESPACE_NONE,
-                      GetNamespaceMap_().GetAttrNameByKey(XML_NAMESPACE_OFFICE),
+        AddAttribute( GetNamespaceMap_().GetAttrNameByKey(XML_NAMESPACE_OFFICE),
                       GetNamespaceMap_().GetNameByKey(XML_NAMESPACE_OFFICE));
-        AddAttribute(XML_NAMESPACE_NONE,
-                      GetNamespaceMap_().GetAttrNameByKey (XML_NAMESPACE_TEXT),
+        AddAttribute( GetNamespaceMap_().GetAttrNameByKey (XML_NAMESPACE_TEXT),
                       GetNamespaceMap_().GetNameByKey(XML_NAMESPACE_TEXT));
-        AddAttribute(XML_NAMESPACE_NONE,
-                      GetNamespaceMap_().GetAttrNameByKey(XML_NAMESPACE_STYLE),
+        AddAttribute( GetNamespaceMap_().GetAttrNameByKey(XML_NAMESPACE_STYLE),
                       GetNamespaceMap_().GetNameByKey(XML_NAMESPACE_STYLE));
-        AddAttribute(XML_NAMESPACE_NONE,
-                      GetNamespaceMap_().GetAttrNameByKey(XML_NAMESPACE_FO),
+        AddAttribute( GetNamespaceMap_().GetAttrNameByKey(XML_NAMESPACE_FO),
                       GetNamespaceMap_().GetNameByKey(XML_NAMESPACE_FO));
-        AddAttribute(XML_NAMESPACE_NONE,
-                      GetNamespaceMap_().GetAttrNameByKey(XML_NAMESPACE_SVG),
+        AddAttribute( GetNamespaceMap_().GetAttrNameByKey(XML_NAMESPACE_SVG),
                       GetNamespaceMap_().GetNameByKey(XML_NAMESPACE_SVG));
 
         {
@@ -236,10 +232,10 @@ public:
                 AddAttribute( XML_NAMESPACE_STYLE, XML_FAMILY, XML_TEXT );
                 bool bEncoded(false);
                 AddAttribute( XML_NAMESPACE_STYLE, XML_NAME,
-                              EncodeStyleName(rCharStyle, &bEncoded) );
+                              EncodeStyleName(rCharStyle.toString(), &bEncoded) );
                 if (bEncoded)
                 {
-                    AddAttribute(XML_NAMESPACE_STYLE, XML_DISPLAY_NAME, rCharStyle);
+                    AddAttribute(XML_NAMESPACE_STYLE, XML_DISPLAY_NAME, rCharStyle.toString());
                 }
 
                 SvXMLElementExport style(*this,
@@ -367,7 +363,7 @@ public:
     StoredChapterNumberingImport(
             uno::Reference<uno::XComponentContext> const& xContext,
             SwChapterNumRules & rNumRules)
-        : SvXMLImport(xContext, "sw::StoredChapterNumberingImport", SvXMLImportFlags::ALL)
+        : SvXMLImport(xContext, u"sw::StoredChapterNumberingImport"_ustr, SvXMLImportFlags::ALL)
         , m_rNumRules(rNumRules)
     {
     }
@@ -386,7 +382,7 @@ public:
 void ExportStoredChapterNumberingRules(SwChapterNumRules & rRules,
         SvStream & rStream, OUString const& rFileName)
 {
-    uno::Reference<uno::XComponentContext> const xContext(
+    uno::Reference<uno::XComponentContext> const& xContext(
             ::comphelper::getProcessComponentContext());
 
     uno::Reference<io::XOutputStream> const xOutStream(
@@ -401,7 +397,7 @@ void ExportStoredChapterNumberingRules(SwChapterNumRules & rRules,
 
     // if style name contains a space then name != display-name
     // ... and the import needs to map from name to display-name then!
-    std::set<OUString> charStyles;
+    std::set<UIName> charStyles;
     std::vector<uno::Reference<container::XIndexReplace>> numRules;
     for (size_t i = 0; i < SwChapterNumRules::nMaxRules; ++i)
     {
@@ -410,7 +406,7 @@ void ExportStoredChapterNumberingRules(SwChapterNumRules & rRules,
             for (size_t j = 0; j < MAXLEVEL; ++j)
             {
                 SwNumFormat const* pDummy(nullptr);
-                OUString const* pCharStyleName(nullptr);
+                UIName const* pCharStyleName(nullptr);
                 pRule->GetNumFormat(j, pDummy, pCharStyleName);
                 if (pCharStyleName && !pCharStyleName->isEmpty())
                 {
@@ -434,7 +430,7 @@ void ExportStoredChapterNumberingRules(SwChapterNumRules & rRules,
 void ImportStoredChapterNumberingRules(SwChapterNumRules & rRules,
         SvStream & rStream, OUString const& rFileName)
 {
-    uno::Reference<uno::XComponentContext> const xContext(
+    uno::Reference<uno::XComponentContext> const& xContext(
             ::comphelper::getProcessComponentContext());
 
     uno::Reference<io::XInputStream> const xInStream(
@@ -442,7 +438,7 @@ void ImportStoredChapterNumberingRules(SwChapterNumRules & rRules,
 
     rtl::Reference<StoredChapterNumberingImport> const xImport(new StoredChapterNumberingImport(xContext, rRules));
 
-    xml::sax::InputSource const source(xInStream, "", "", rFileName);
+    xml::sax::InputSource const source(xInStream, u""_ustr, u""_ustr, rFileName);
 
     try
     {

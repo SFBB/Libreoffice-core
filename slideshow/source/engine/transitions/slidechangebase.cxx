@@ -270,7 +270,7 @@ bool SlideChangeBase::operator()( double nValue )
         // (i.e. pixel).
 
         ViewEntry& rViewEntry( maViewData[i] );
-        const ::cppcanvas::CanvasSharedPtr& rCanvas( rViewEntry.mpView->getCanvas() );
+        const ::cppcanvas::CanvasSharedPtr xCanvas( rViewEntry.mpView->getCanvas() );
         ::cppcanvas::CustomSpriteSharedPtr& rInSprite( rViewEntry.mpInSprite );
         ::cppcanvas::CustomSpriteSharedPtr& rOutSprite( rViewEntry.mpOutSprite );
 
@@ -331,9 +331,9 @@ bool SlideChangeBase::operator()( double nValue )
         }
 
         if( rOutSprite )
-            performOut( rOutSprite, rViewEntry, rCanvas, nValue );
+            performOut( rOutSprite, rViewEntry, xCanvas, nValue );
         if( rInSprite )
-            performIn( rInSprite, rViewEntry, rCanvas, nValue );
+            performIn( rInSprite, rViewEntry, xCanvas, nValue );
 
         // finishing deeds for first run.
         if( !mbSpritesVisible)
@@ -454,7 +454,7 @@ cppcanvas::CustomSpriteSharedPtr SlideChangeBase::createSprite(
     double                   nPrio ) const
 {
     // TODO(P2): change to bitmapsprite once that's working
-    const cppcanvas::CustomSpriteSharedPtr pSprite(
+    cppcanvas::CustomSpriteSharedPtr pSprite(
         pView->createSprite( rSpriteSize,
                              nPrio ));
 

@@ -54,6 +54,7 @@
 #include <doc.hxx>
 #include <strings.hrc>
 #include <IDocumentLayoutAccess.hxx>
+#include <svtools/colorcfg.hxx>
 
 #include <tools/color.hxx>
 #include <tools/json_writer.hxx>
@@ -62,10 +63,8 @@
 using namespace ::svx;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::view;
-using namespace ::com::sun::star::lang;
 
 static void lcl_SetUIPrefs(const SwViewOption &rPref, SwView* pView, SwViewShell* pSh )
 {
@@ -101,6 +100,16 @@ static void lcl_SetUIPrefs(const SwViewOption &rPref, SwView* pView, SwViewShell
         pView->CreateTab();
     else
         pView->KillTab();
+
+    bool bWeb = dynamic_cast<const SwWebView*>(pView) != nullptr;
+    SwModule* pModule = SwModule::get();
+    auto pUsrPref = const_cast<SwMasterUsrPref*>(pModule->GetUsrPref(bWeb));
+    if (rPref.GetZoomType() != pUsrPref->GetZoomType() || rPref.GetZoom() != pUsrPref->GetZoom())
+    {
+        // The current zoom is different, then set the new type and value. See how
+        // SwView::SetZoom_() stores these applied values in SwMasterUsrPref.
+        pView->SetZoom(rPref.GetZoomType(), rPref.GetZoom(), true);
+    }
 
     pView->GetPostItMgr()->PrepareView(true);
 }
@@ -368,7 +377,7 @@ void SwModule::ShowDBObj(SwView const & rView, const SwDBData& rData)
 {
     Reference<XFrame> xFrame = rView.GetViewFrame().GetFrame().GetFrameInterface();
 
-    uno::Reference<XFrame> xBeamerFrame = xFrame->findFrame("_beamer", FrameSearchFlag::CHILDREN);
+    uno::Reference<XFrame> xBeamerFrame = xFrame->findFrame(u"_beamer"_ustr, FrameSearchFlag::CHILDREN);
     if (!xBeamerFrame.is())
         return;
 
@@ -418,7 +427,7 @@ OUString const & SwModule::GetRedlineAuthor(std::size_t nPos)
     OSL_ENSURE(nPos < m_pAuthorNames.size(), "author not found!"); //#i45342# RTF doc with no author table caused reader to crash
     while(nPos >= m_pAuthorNames.size())
     {
-        InsertRedlineAuthor("nn");
+        InsertRedlineAuthor(u"nn"_ustr);
     }
     return m_pAuthorNames[nPos];
 }
@@ -430,14 +439,20 @@ void SwModule::ClearRedlineAuthors()
 
 static Color lcl_GetAuthorColor(std::size_t nPos)
 {
-    static const Color aColArr[] =
+    // same as SwPostItMgr::GetColorAnchor()
+    switch (nPos % 9)
     {
-        COL_AUTHOR1_DARK, COL_AUTHOR2_DARK, COL_AUTHOR3_DARK,
-        COL_AUTHOR4_DARK, COL_AUTHOR5_DARK, COL_AUTHOR6_DARK,
-        COL_AUTHOR7_DARK, COL_AUTHOR8_DARK, COL_AUTHOR9_DARK
-    };
-
-    return aColArr[nPos % SAL_N_ELEMENTS(aColArr)];
+        case 0: return SwModule::get()->GetColorConfig().GetColorValue(svtools::AUTHOR1).nColor;
+        case 1: return SwModule::get()->GetColorConfig().GetColorValue(svtools::AUTHOR2).nColor;
+        case 2: return SwModule::get()->GetColorConfig().GetColorValue(svtools::AUTHOR3).nColor;
+        case 3: return SwModule::get()->GetColorConfig().GetColorValue(svtools::AUTHOR4).nColor;
+        case 4: return SwModule::get()->GetColorConfig().GetColorValue(svtools::AUTHOR5).nColor;
+        case 5: return SwModule::get()->GetColorConfig().GetColorValue(svtools::AUTHOR6).nColor;
+        case 6: return SwModule::get()->GetColorConfig().GetColorValue(svtools::AUTHOR7).nColor;
+        case 7: return SwModule::get()->GetColorConfig().GetColorValue(svtools::AUTHOR8).nColor;
+        case 8: return SwModule::get()->GetColorConfig().GetColorValue(svtools::AUTHOR9).nColor;
+        default: return COL_AUTO; // silence -Wreturn-type
+    }
 }
 
 /// Returns a JSON representation of a redline author.

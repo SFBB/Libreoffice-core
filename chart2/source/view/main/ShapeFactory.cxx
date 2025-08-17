@@ -60,6 +60,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <numbers>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Reference;
@@ -124,7 +125,7 @@ rtl::Reference<SvxShapeGroupAnyD> ShapeFactory::getOrCreateChartRootShape(
     // cast to resolve ambiguity in converting to XShape
     xDrawPage->addBottom(static_cast<SvxShape*>(xShapeGroup.get()));
 
-    setShapeName(xShapeGroup, "com.sun.star.chart2.shapes");
+    setShapeName(xShapeGroup, u"com.sun.star.chart2.shapes"_ustr);
     xShapeGroup->setSize(awt::Size(0,0));
 
     return xShapeGroup;
@@ -402,7 +403,7 @@ rtl::Reference<Svx3DExtrudeObject>
             if( xSourceProp.is() )
             {
                 drawing::LineStyle aLineStyle;
-                xSourceProp->getPropertyValue( "BorderStyle" ) >>= aLineStyle;
+                xSourceProp->getPropertyValue( u"BorderStyle"_ustr ) >>= aLineStyle;
                 if( aLineStyle == drawing::LineStyle_SOLID )
                     bRounded = false;
             }
@@ -898,6 +899,12 @@ rtl::Reference<SvxShapePolyPolygon>
     xShape->setShapeKind(SdrObjKind::PathFill); // aka ClosedBezierShape
     xTarget->addShape(*xShape); //need to add the shape before setting of properties
 
+    if (std::isnan(fUnitCircleWidthAngleDegree))
+    {
+        SAL_WARN("chart2", "fUnitCircleWidthAngleDegree isNaN");
+        return xShape;
+    }
+
     //set properties
     try
     {
@@ -912,7 +919,7 @@ rtl::Reference<SvxShapePolyPolygon>
                                   basegfx::deg2rad(fUnitCircleWidthAngleDegree),
                                   aTransformationFromUnitCircle, fAngleSubdivisionRadian);
 
-        xShape->SvxShape::setPropertyValue( "PolyPolygonBezier", uno::Any( aCoords ) );
+        xShape->SvxShape::setPropertyValue( u"PolyPolygonBezier"_ustr, uno::Any( aCoords ) );
     }
     catch( const uno::Exception& )
     {
@@ -1092,7 +1099,7 @@ rtl::Reference<Svx3DExtrudeObject>
         //so we need to translate the object via transformation matrix
 
         //Matrix for position
-        if (!rPolyPolygon.empty() && !rPolyPolygon[0].empty())
+        if (!rPolyPolygon[0].empty())
         {
             basegfx::B3DHomMatrix aM;
             aM.translate(0, 0, rPolyPolygon[0][0].PositionZ);
@@ -1164,8 +1171,6 @@ static drawing::PointSequenceSequence createPolyPolygon_Symbol( const drawing::P
             nPointCount = 5;
             break;
         case Symbol_X:
-            nPointCount = 13;
-            break;
         case Symbol_Plus:
             nPointCount = 13;
             break;
@@ -1378,8 +1383,8 @@ static drawing::PointSequenceSequence createPolyPolygon_Symbol( const drawing::P
         {
             const double fScaleX = fWidthH / 128.0;
             const double fScaleY = fHeightH / 128.0;
-            const double fSmall = sqrt(200.0);
-            const double fLarge = 128.0 - fSmall;
+            constexpr double fSmall = std::numbers::sqrt2 * 10;
+            constexpr double fLarge = 128.0 - fSmall;
 
             *pInnerSequence++ = toPoint( fX, fY - fScaleY * fSmall );
 
@@ -1413,7 +1418,7 @@ static drawing::PointSequenceSequence createPolyPolygon_Symbol( const drawing::P
         {
             const double fScaleX = fWidthH / 128.0;
             const double fScaleY = fHeightH / 128.0;
-            const double fHalf = 10.0; //half line width on 256 size square
+            constexpr double fHalf = 10.0; //half line width on 256 size square
             const double fdX = fScaleX * fHalf;
             const double fdY = fScaleY * fHalf;
 
@@ -1447,12 +1452,12 @@ static drawing::PointSequenceSequence createPolyPolygon_Symbol( const drawing::P
         }
         case Symbol_Asterisk:
         {
-            const double fHalf = 10.0; // half line width on 256 size square
-            const double fTwoY = fHalf * sqrt(3.0);
-            const double fFourY = (128.0 - 2.0 * fHalf ) / sqrt(3.0);
-            const double fThreeX = 128.0 - fHalf;
-            const double fThreeY = fHalf * sqrt(3.0) + fFourY;
-            const double fFiveX = 2.0 * fHalf;
+            constexpr double fHalf = 10.0; // half line width on 256 size square
+            constexpr double fTwoY = fHalf * std::numbers::sqrt3;
+            constexpr double fFourY = (128.0 - 2.0 * fHalf ) * std::numbers::inv_sqrt3;
+            constexpr double fThreeX = 128.0 - fHalf;
+            constexpr double fThreeY = fHalf * std::numbers::sqrt3 + fFourY;
+            constexpr double fFiveX = 2.0 * fHalf;
 
             const double fScaleX = fWidthH / 128.0;
             const double fScaleY = fHeightH / 128.0;
@@ -1591,7 +1596,7 @@ rtl::Reference<SvxGraphicObject>
     }
     try
     {
-        xShape->SvxShape::setPropertyValue( "Graphic", uno::Any( xGraphic ));
+        xShape->SvxShape::setPropertyValue( u"Graphic"_ustr, uno::Any( xGraphic ));
     }
     catch( const uno::Exception& )
     {
@@ -1877,7 +1882,7 @@ rtl::Reference<SvxShapePolyPolygon>
 
             //LineDashName
             if(pLineProperties->DashName.hasValue())
-                xShape->SvxShape::setPropertyValue( "LineDashName"
+                xShape->SvxShape::setPropertyValue( u"LineDashName"_ustr
                     , pLineProperties->DashName );
 
             //LineCap
@@ -1942,7 +1947,7 @@ rtl::Reference<SvxShapePolyPolygon>
 
             //LineDashName
             if(pLineProperties->DashName.hasValue())
-                xShape->SvxShape::setPropertyValue( "LineDashName"
+                xShape->SvxShape::setPropertyValue( u"LineDashName"_ustr
                     , pLineProperties->DashName );
 
             //LineCap
@@ -2062,7 +2067,7 @@ rtl::Reference<SvxShapeText>
     try
     {
         if (rATransformation.hasValue())
-            xShape->SvxShape::setPropertyValue( "Transformation", rATransformation );
+            xShape->SvxShape::setPropertyValue( u"Transformation"_ustr, rATransformation );
         else
             SAL_INFO("chart2", "No rATransformation value is given to ShapeFactory::createText()");
 
@@ -2149,7 +2154,7 @@ rtl::Reference<SvxShapeText>
         //the matrix needs to be set at the end behind autogrow and such position influencing properties
         try
         {
-            xShape->SvxShape::setPropertyValue( "Transformation", rATransformation );
+            xShape->SvxShape::setPropertyValue( u"Transformation"_ustr, rATransformation );
         }
         catch( const uno::Exception& )
         {
@@ -2177,7 +2182,8 @@ rtl::Reference<SvxShapeText>
 
         //set text and text properties
         uno::Reference< text::XTextCursor > xTextCursor( xShape->createTextCursor() );
-        if( !xTextCursor.is() )
+        uno::Reference< text::XTextCursor > xSelectionCursor( xShape->createTextCursor() );
+        if( !xTextCursor.is() || !xSelectionCursor.is() )
             return xShape;
 
         tPropertyNameValueMap aValueMap;
@@ -2192,15 +2198,15 @@ rtl::Reference<SvxShapeText>
 
         //fill some more shape properties into the ValueMap
         {
-            aValueMap.insert( { "TextHorizontalAdjust", uno::Any(drawing::TextHorizontalAdjust_CENTER) } ); // drawing::TextHorizontalAdjust
-            aValueMap.insert( { "TextVerticalAdjust", uno::Any(drawing::TextVerticalAdjust_CENTER) } ); //drawing::TextVerticalAdjust
-            aValueMap.insert( { "TextAutoGrowHeight", uno::Any(true) } ); // sal_Bool
-            aValueMap.insert( { "TextAutoGrowWidth", uno::Any(true) } ); // sal_Bool
-            aValueMap.insert( { "TextMaximumFrameWidth", uno::Any(nTextMaxWidth) } ); // sal_Int32
+            aValueMap.insert( { u"TextHorizontalAdjust"_ustr, uno::Any(drawing::TextHorizontalAdjust_CENTER) } ); // drawing::TextHorizontalAdjust
+            aValueMap.insert( { u"TextVerticalAdjust"_ustr, uno::Any(drawing::TextVerticalAdjust_CENTER) } ); //drawing::TextVerticalAdjust
+            aValueMap.insert( { u"TextAutoGrowHeight"_ustr, uno::Any(true) } ); // sal_Bool
+            aValueMap.insert( { u"TextAutoGrowWidth"_ustr, uno::Any(true) } ); // sal_Bool
+            aValueMap.insert( { u"TextMaximumFrameWidth"_ustr, uno::Any(nTextMaxWidth) } ); // sal_Int32
 
             //set name/classified ObjectID (CID)
             if( !aName.isEmpty() )
-                aValueMap.emplace( "Name", uno::Any( aName ) ); //CID OUString
+                aValueMap.emplace( u"Name"_ustr, uno::Any( aName ) ); //CID OUString
         }
 
         //set global title properties
@@ -2214,7 +2220,7 @@ rtl::Reference<SvxShapeText>
         bool bStackCharacters(false);
         try
         {
-            xTextProperties->getPropertyValue( "StackCharacters" ) >>= bStackCharacters;
+            xTextProperties->getPropertyValue( u"StackCharacters"_ustr ) >>= bStackCharacters;
         }
         catch( const uno::Exception& )
         {
@@ -2226,22 +2232,36 @@ rtl::Reference<SvxShapeText>
             //if the characters should be stacked we use only the first character properties for code simplicity
             if( xFormattedString.hasElements() )
             {
-                OUString aLabel;
-                for( const auto & i : std::as_const(xFormattedString) )
-                    aLabel += i->getString();
-                aLabel = ShapeFactory::getStackedString( aLabel, bStackCharacters );
-
-                xTextCursor->gotoEnd(false);
-                xShape->insertString( xTextCursor, aLabel, false );
-                xTextCursor->gotoEnd(true);
-                uno::Reference< beans::XPropertySet > xSourceProps( xFormattedString[0], uno::UNO_QUERY );
-
-                PropertyMapper::setMappedProperties( *xShape, xSourceProps
-                        , PropertyMapper::getPropertyNameMapForCharacterProperties() );
+                size_t nLBreaks = xFormattedString.size() - 1;
+                uno::Reference< beans::XPropertySet > xSelectionProp(xSelectionCursor, uno::UNO_QUERY);
+                for (const uno::Reference<chart2::XFormattedString>& rxFS : xFormattedString)
+                {
+                    if (!rxFS->getString().isEmpty())
+                    {
+                        xTextCursor->gotoEnd(false);
+                        xSelectionCursor->gotoEnd(false);
+                        OUString aLabel = ShapeFactory::getStackedString(rxFS->getString(), bStackCharacters);
+                        if (nLBreaks-- > 0)
+                            aLabel += OUStringChar('\r');
+                        xShape->insertString(xTextCursor, aLabel, false);
+                        xSelectionCursor->gotoEnd(true); // select current paragraph
+                        uno::Reference< beans::XPropertySet > xSourceProps(rxFS, uno::UNO_QUERY);
+                        if (xFormattedString.size() > 1 && xSelectionProp.is())
+                        {
+                            PropertyMapper::setMappedProperties(xSelectionProp, xSourceProps,
+                                PropertyMapper::getPropertyNameMapForTextShapeProperties());
+                        }
+                        else
+                        {
+                            PropertyMapper::setMappedProperties(*xShape, xSourceProps,
+                                PropertyMapper::getPropertyNameMapForTextShapeProperties());
+                        }
+                    }
+                }
 
                 // adapt font size according to page size
                 awt::Size aOldRefSize;
-                if( xTextProperties->getPropertyValue( "ReferencePageSize") >>= aOldRefSize )
+                if( xTextProperties->getPropertyValue( u"ReferencePageSize"_ustr) >>= aOldRefSize )
                 {
                     RelativeSizeHelper::adaptFontSizes( *xShape, aOldRefSize, rSize );
                 }
@@ -2249,23 +2269,34 @@ rtl::Reference<SvxShapeText>
         }
         else
         {
-            for( const uno::Reference< chart2::XFormattedString >& rxFS : std::as_const(xFormattedString) )
+            uno::Reference< beans::XPropertySet > xSelectionProp(xSelectionCursor, uno::UNO_QUERY);
+            for (const uno::Reference<chart2::XFormattedString>& rxFS : xFormattedString)
             {
-                xTextCursor->gotoEnd(false);
-                xShape->insertString( xTextCursor, rxFS->getString(), false );
-                xTextCursor->gotoEnd(true);
+                if (!rxFS->getString().isEmpty())
+                {
+                    xTextCursor->gotoEnd(false);
+                    xSelectionCursor->gotoEnd(false);
+                    xShape->insertString(xTextCursor, rxFS->getString(), false);
+                    xSelectionCursor->gotoEnd(true); // select current paragraph
+                    uno::Reference< beans::XPropertySet > xSourceProps(rxFS, uno::UNO_QUERY);
+                    if (xFormattedString.size() > 1 && xSelectionProp.is())
+                    {
+                        PropertyMapper::setMappedProperties(xSelectionProp, xSourceProps,
+                            PropertyMapper::getPropertyNameMapForTextShapeProperties());
+                    }
+                    else
+                    {
+                        PropertyMapper::setMappedProperties(*xShape, xSourceProps,
+                            PropertyMapper::getPropertyNameMapForTextShapeProperties());
+                    }
+                }
             }
-            awt::Size aOldRefSize;
-            bool bHasRefPageSize =
-                ( xTextProperties->getPropertyValue( "ReferencePageSize") >>= aOldRefSize );
 
             if( xFormattedString.hasElements() )
             {
-                uno::Reference< beans::XPropertySet > xSourceProps( xFormattedString[0], uno::UNO_QUERY );
-                PropertyMapper::setMappedProperties( *xShape, xSourceProps, PropertyMapper::getPropertyNameMapForCharacterProperties() );
-
                 // adapt font size according to page size
-                if( bHasRefPageSize )
+                awt::Size aOldRefSize;
+                if( xTextProperties->getPropertyValue(u"ReferencePageSize"_ustr) >>= aOldRefSize )
                 {
                     RelativeSizeHelper::adaptFontSizes( *xShape, aOldRefSize, rSize );
                 }
@@ -2274,15 +2305,15 @@ rtl::Reference<SvxShapeText>
 
         // #i109336# Improve auto positioning in chart
         float fFontHeight = 0.0;
-        if ( xShape->SvxShape::getPropertyValue( "CharHeight" ) >>= fFontHeight )
+        if ( xShape->SvxShape::getPropertyValue( u"CharHeight"_ustr ) >>= fFontHeight )
         {
             fFontHeight = convertPointToMm100(fFontHeight);
             sal_Int32 nXDistance = static_cast< sal_Int32 >( ::rtl::math::round( fFontHeight * 0.18f ) );
             sal_Int32 nYDistance = static_cast< sal_Int32 >( ::rtl::math::round( fFontHeight * 0.30f ) );
-            xShape->SvxShape::setPropertyValue( "TextLeftDistance", uno::Any( nXDistance ) );
-            xShape->SvxShape::setPropertyValue( "TextRightDistance", uno::Any( nXDistance ) );
-            xShape->SvxShape::setPropertyValue( "TextUpperDistance", uno::Any( nYDistance ) );
-            xShape->SvxShape::setPropertyValue( "TextLowerDistance", uno::Any( nYDistance ) );
+            xShape->SvxShape::setPropertyValue( u"TextLeftDistance"_ustr, uno::Any( nXDistance ) );
+            xShape->SvxShape::setPropertyValue( u"TextRightDistance"_ustr, uno::Any( nXDistance ) );
+            xShape->SvxShape::setPropertyValue( u"TextUpperDistance"_ustr, uno::Any( nYDistance ) );
+            xShape->SvxShape::setPropertyValue( u"TextLowerDistance"_ustr, uno::Any( nYDistance ) );
         }
         sal_Int32 nXPos = rPos.X;
         sal_Int32 nYPos = rPos.Y;
@@ -2292,9 +2323,9 @@ rtl::Reference<SvxShapeText>
         ::basegfx::B2DHomMatrix aM;
         aM.rotate( -basegfx::deg2rad(nRotation) );//#i78696#->#i80521#
         aM.translate( nXPos, nYPos );
-        xShape->SvxShape::setPropertyValue( "Transformation", uno::Any( B2DHomMatrixToHomogenMatrix3(aM) ) );
+        xShape->SvxShape::setPropertyValue( u"Transformation"_ustr, uno::Any( B2DHomMatrixToHomogenMatrix3(aM) ) );
 
-        xShape->SvxShape::setPropertyValue( "ParaAdjust", uno::Any( style::ParagraphAdjust_CENTER ) );
+        xShape->SvxShape::setPropertyValue( u"ParaAdjust"_ustr, uno::Any( style::ParagraphAdjust_CENTER ) );
     }
     catch( const uno::Exception& )
     {
@@ -2307,14 +2338,13 @@ rtl::Reference<SvxShapeGroupAnyD> ShapeFactory::getChartRootShape(
     const rtl::Reference<SvxDrawPage>& xDrawPage )
 {
     rtl::Reference<SvxShapeGroupAnyD> xRet;
-    const uno::Reference< drawing::XShapes > xShapes = xDrawPage;
-    if( xShapes.is() )
+    if( xDrawPage.is() )
     {
-        sal_Int32 nCount = xShapes->getCount();
+        sal_Int32 nCount = xDrawPage->getCount();
         uno::Reference< drawing::XShape > xShape;
         for( sal_Int32 nN = nCount; nN--; )
         {
-            if( xShapes->getByIndex( nN ) >>= xShape )
+            if( xDrawPage->getByIndex( nN ) >>= xShape )
             {
                 if( ShapeFactory::getShapeName( xShape ) == "com.sun.star.chart2.shapes" )
                 {
@@ -2332,8 +2362,8 @@ void ShapeFactory::makeShapeInvisible( const rtl::Reference< SvxShape >& xShape 
 {
     try
     {
-        xShape->setPropertyValue( "LineStyle", uno::Any( drawing::LineStyle_NONE ));
-        xShape->setPropertyValue( "FillStyle", uno::Any( drawing::FillStyle_NONE ));
+        xShape->setPropertyValue( u"LineStyle"_ustr, uno::Any( drawing::LineStyle_NONE ));
+        xShape->setPropertyValue( u"FillStyle"_ustr, uno::Any( drawing::FillStyle_NONE ));
     }
     catch( const uno::Exception& )
     {

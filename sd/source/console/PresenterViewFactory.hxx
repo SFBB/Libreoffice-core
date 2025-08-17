@@ -21,11 +21,8 @@
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERVIEWFACTORY_HXX
 
 #include "PresenterController.hxx"
-#include <cppuhelper/compbase.hxx>
-#include <cppuhelper/basemutex.hxx>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XResourceFactory.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
+#include <framework/ResourceFactory.hxx>
+#include <framework/AbstractView.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <unotools/weakref.hxx>
 #include <rtl/ref.hxx>
@@ -34,10 +31,6 @@
 namespace sd { class DrawController; }
 
 namespace sdext::presenter {
-
-typedef ::cppu::WeakComponentImplHelper <
-    css::drawing::framework::XResourceFactory
-> PresenterViewFactoryInterfaceBase;
 
 /** Base class for presenter views that allows the view factory to store
     them in a cache and reuse deactivated views.
@@ -73,9 +66,7 @@ protected:
         the notes of the current slide,
         a tool bar
 */
-class PresenterViewFactory
-    : public ::cppu::BaseMutex,
-      public PresenterViewFactoryInterfaceBase
+class PresenterViewFactory : public sd::framework::ResourceFactory
 {
 public:
     static constexpr OUString msCurrentSlidePreviewViewURL
@@ -94,32 +85,31 @@ public:
         shut down and releases its reference to the factory then the factory
         is destroyed.
     */
-    static css::uno::Reference<css::drawing::framework::XResourceFactory> Create (
+    static rtl::Reference<sd::framework::ResourceFactory> Create (
         const css::uno::Reference<css::uno::XComponentContext>& rxContext,
         const ::rtl::Reference<::sd::DrawController>& rxController,
         const ::rtl::Reference<PresenterController>& rpPresenterController);
     virtual ~PresenterViewFactory() override;
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     // XResourceFactory
 
-    virtual css::uno::Reference<css::drawing::framework::XResource>
-        SAL_CALL createResource (
-            const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId) override;
+    virtual rtl::Reference<sd::framework::AbstractResource>
+        createResource (
+            const rtl::Reference<sd::framework::ResourceId>& rxViewId) override;
 
-    virtual void SAL_CALL
+    virtual void
         releaseResource (
-            const css::uno::Reference<css::drawing::framework::XResource>& rxPane) override;
+            const rtl::Reference<sd::framework::AbstractResource>& rxPane) override;
 
 private:
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
-    css::uno::Reference<css::drawing::framework::XConfigurationController>
-        mxConfigurationController;
+    rtl::Reference<sd::framework::ConfigurationController> mxConfigurationController;
     unotools::WeakReference<::sd::DrawController> mxControllerWeak;
     ::rtl::Reference<PresenterController> mpPresenterController;
-    typedef ::std::pair<css::uno::Reference<css::drawing::framework::XView>,
-        css::uno::Reference<css::drawing::framework::XPane> > ViewResourceDescriptor;
+    typedef ::std::pair<rtl::Reference<sd::framework::AbstractView>,
+        rtl::Reference<sd::framework::AbstractPane> > ViewResourceDescriptor;
     typedef ::std::map<OUString, ViewResourceDescriptor> ResourceContainer;
     std::unique_ptr<ResourceContainer> mpResourceCache;
 
@@ -130,34 +120,31 @@ private:
 
     void Register (const ::rtl::Reference<::sd::DrawController>& rxController);
 
-    css::uno::Reference<css::drawing::framework::XView> CreateSlideShowView(
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId) const;
+    rtl::Reference<sd::framework::AbstractView> CreateSlideShowView(
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId) const;
 
-    css::uno::Reference<css::drawing::framework::XView> CreateSlidePreviewView(
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
-        const css::uno::Reference<css::drawing::framework::XPane>& rxPane) const;
+    rtl::Reference<sd::framework::AbstractView> CreateSlidePreviewView(
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
+        const rtl::Reference<sd::framework::AbstractPane>& rxPane) const;
 
-    css::uno::Reference<css::drawing::framework::XView> CreateToolBarView(
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId) const;
+    rtl::Reference<sd::framework::AbstractView> CreateToolBarView(
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId) const;
 
-    css::uno::Reference<css::drawing::framework::XView> CreateNotesView(
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId) const;
+    rtl::Reference<sd::framework::AbstractView> CreateNotesView(
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId) const;
 
-    css::uno::Reference<css::drawing::framework::XView> CreateSlideSorterView(
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId) const;
+    rtl::Reference<sd::framework::AbstractView> CreateSlideSorterView(
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId) const;
 
-    css::uno::Reference<css::drawing::framework::XView> CreateHelpView(
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId) const;
+    rtl::Reference<sd::framework::AbstractView> CreateHelpView(
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId) const;
 
-    css::uno::Reference<css::drawing::framework::XResource> GetViewFromCache (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
-        const css::uno::Reference<css::drawing::framework::XPane>& rxAnchorPane) const;
-    css::uno::Reference<css::drawing::framework::XResource> CreateView(
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
-        const css::uno::Reference<css::drawing::framework::XPane>& rxAnchorPane);
-
-    /// @throws css::lang::DisposedException
-    void ThrowIfDisposed() const;
+    rtl::Reference<sd::framework::AbstractResource> GetViewFromCache (
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
+        const rtl::Reference<sd::framework::AbstractPane>& rxAnchorPane) const;
+    rtl::Reference<sd::framework::AbstractResource> CreateView(
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
+        const rtl::Reference<sd::framework::AbstractPane>& rxAnchorPane);
 };
 
 }

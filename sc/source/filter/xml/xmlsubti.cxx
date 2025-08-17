@@ -22,6 +22,7 @@
 #include "xmlimprt.hxx"
 #include <document.hxx>
 #include "XMLConverter.hxx"
+#include <cellsuno.hxx>
 #include <docuno.hxx>
 #include "XMLStylesImportHelper.hxx"
 #include <sheetdata.hxx>
@@ -49,7 +50,9 @@ ScXMLTabProtectionData::ScXMLTabProtectionData() :
     mbInsertColumns(false),
     mbInsertRows(false),
     mbDeleteColumns(false),
-    mbDeleteRows(false)
+    mbDeleteRows(false),
+    mbUseAutoFilter(false),
+    mbUsePivot(false)
 {
 }
 
@@ -69,23 +72,18 @@ ScMyTables::~ScMyTables()
 
 namespace {
 
-uno::Reference<sheet::XSpreadsheet> getCurrentSheet(const uno::Reference<frame::XModel>& xModel, SCTAB nSheet)
+rtl::Reference<ScTableSheetObj> getCurrentSheet(const uno::Reference<frame::XModel>& xModel, SCTAB nSheet)
 {
-    uno::Reference<sheet::XSpreadsheet> xSheet;
-    uno::Reference<sheet::XSpreadsheetDocument> xSpreadDoc(xModel, uno::UNO_QUERY);
-    if (!xSpreadDoc.is())
+    rtl::Reference<ScTableSheetObj> xSheet;
+    ScModelObj* pSpreadDoc = dynamic_cast<ScModelObj*>(xModel.get());
+    if (!pSpreadDoc)
         return xSheet;
 
-    uno::Reference <sheet::XSpreadsheets> xSheets(xSpreadDoc->getSheets());
+    rtl::Reference<ScTableSheetsObj> xSheets(pSpreadDoc->getScSheets());
     if (!xSheets.is())
         return xSheet;
 
-    uno::Reference <container::XIndexAccess> xIndex(xSheets, uno::UNO_QUERY);
-    if (!xIndex.is())
-        return xSheet;
-
-    xSheet.set(xIndex->getByIndex(nSheet), uno::UNO_QUERY);
-    return xSheet;
+    return xSheets->GetSheetByIndex(nSheet);
 }
 
 }
@@ -140,10 +138,6 @@ void ScMyTables::SetTableStyle(const OUString& sStyleName)
     if ( !xCurrentSheet.is() )
         return;
 
-    uno::Reference <beans::XPropertySet> xProperties(xCurrentSheet, uno::UNO_QUERY);
-    if ( !xProperties.is() )
-        return;
-
     XMLTableStylesContext *pStyles = static_cast<XMLTableStylesContext *>(rImport.GetAutoStyles());
     if ( pStyles )
     {
@@ -151,7 +145,7 @@ void ScMyTables::SetTableStyle(const OUString& sStyleName)
                 XmlStyleFamily::TABLE_TABLE, sStyleName, true)));
         if ( pStyle )
         {
-            pStyle->FillPropertySet(xProperties);
+            pStyle->FillPropertySet(xCurrentSheet);
 
             ScSheetSaveData* pSheetData = rImport.GetScModel()->GetSheetSaveData();
             pSheetData->AddTableStyle( sStyleName, ScAddress( 0, 0, maCurrentCellPos.Tab() ) );
@@ -179,6 +173,11 @@ void ScMyTables::AddColumn(bool bIsCovered)
         rImport.GetStylesImportHelper()->InsertCol(maCurrentCellPos.Col(), maCurrentCellPos.Tab());
 }
 
+void ScMyTables::AddColumns(sal_Int32 nRepeat)
+{
+    maCurrentCellPos.SetCol( maCurrentCellPos.Col() + nRepeat );
+}
+
 void ScMyTables::DeleteTable()
 {
     ScXMLImport::MutexGuard aGuard(rImport);
@@ -203,6 +202,8 @@ void ScMyTables::DeleteTable()
     aProtect.setOption(ScTableProtection::INSERT_ROWS,    maProtectionData.mbInsertRows);
     aProtect.setOption(ScTableProtection::DELETE_COLUMNS, maProtectionData.mbDeleteColumns);
     aProtect.setOption(ScTableProtection::DELETE_ROWS,    maProtectionData.mbDeleteRows);
+    aProtect.setOption(ScTableProtection::AUTOFILTER,     maProtectionData.mbUseAutoFilter);
+    aProtect.setOption(ScTableProtection::PIVOT_TABLES,   maProtectionData.mbUsePivot);
     rImport.GetDocument()->SetTabProtection(maCurrentCellPos.Tab(), &aProtect);
 }
 
@@ -210,18 +211,20 @@ void ScMyTables::AddColStyle(const sal_Int32 nRepeat, const OUString& rCellStyle
 {
     rImport.GetStylesImportHelper()->AddColumnStyle(rCellStyleName, nCurrentColCount, nRepeat);
     nCurrentColCount += nRepeat;
-    SAL_WARN_IF(nCurrentColCount > rImport.GetDocument()->GetSheetLimits().GetMaxColCount(),
-        "sc", "more columns than fit into SCCOL");
-    nCurrentColCount = std::min<sal_Int32>( nCurrentColCount, rImport.GetDocument()->GetSheetLimits().GetMaxColCount() );
+    if (ScDocument* pDoc = rImport.GetDocument())
+    {
+        SAL_WARN_IF(nCurrentColCount > pDoc->GetSheetLimits().GetMaxColCount(),
+            "sc", "more columns than fit into SCCOL");
+        nCurrentColCount = std::min<sal_Int32>( nCurrentColCount, pDoc->GetSheetLimits().GetMaxColCount() );
+    }
 }
 
 uno::Reference< drawing::XDrawPage > const & ScMyTables::GetCurrentXDrawPage()
 {
     if( (maCurrentCellPos.Tab() != nCurrentDrawPage) || !xDrawPage.is() )
     {
-        uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier( xCurrentSheet, uno::UNO_QUERY );
-        if( xDrawPageSupplier.is() )
-            xDrawPage.set(xDrawPageSupplier->getDrawPage());
+        if( xCurrentSheet.is() )
+            xDrawPage.set(xCurrentSheet->getDrawPage());
         nCurrentDrawPage = sal::static_int_cast<sal_Int16>(maCurrentCellPos.Tab());
     }
     return xDrawPage;
@@ -279,13 +282,16 @@ void ScMyTables::AddMatrixRange(
 bool ScMyTables::IsPartOfMatrix(const ScAddress& rScAddress) const
 {
     if (!maMatrixRangeList.empty())
-        return maMatrixRangeList.Contains(rScAddress);
+        return maMatrixRangeList.Contains(ScRange(rScAddress));
     return false;
 }
 
 SCCOL ScMyTables::GetCurrentColCount() const
 {
-    return std::min<sal_Int32>(nCurrentColCount, rImport.GetDocument()->MaxCol());
+    ScDocument* pDoc = rImport.GetDocument();
+    if (!pDoc)
+        return nCurrentColCount;
+    return std::min<sal_Int32>(nCurrentColCount, pDoc->MaxCol());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

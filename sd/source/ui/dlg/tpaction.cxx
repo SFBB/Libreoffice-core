@@ -59,7 +59,6 @@
 
 using namespace ::com::sun::star;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::lang;
 
 #define DOCUMENT_TOKEN '#'
 
@@ -69,11 +68,12 @@ constexpr OUStringLiteral pStarDrawXMLContent( u"content.xml" );
 /**
  * Constructor of the Tab dialog: appends the pages to the dialog
  */
-SdActionDlg::SdActionDlg(weld::Window* pParent, const SfxItemSet* pAttr, ::sd::View const * pView)
-    : SfxSingleTabDialogController(pParent, pAttr, "modules/simpress/ui/interactiondialog.ui",
-                                   "InteractionDialog")
+SdActionDlg::SdActionDlg(weld::Window* pParent, const SfxItemSet& rAttr, ::sd::View const * pView)
+    : SfxSingleTabDialogController(pParent, &rAttr, u"modules/simpress/ui/interactiondialog.ui"_ustr,
+                                   u"InteractionDialog"_ustr)
+    , m_xContent(m_xBuilder->weld_container(u"content"_ustr))
 {
-    std::unique_ptr<SfxTabPage> xNewPage = SdTPAction::Create(get_content_area(), this, *pAttr);
+    std::unique_ptr<SfxTabPage> xNewPage = SdTPAction::Create(m_xContent.get(), this, rAttr);
 
     // formerly in PageCreated
     static_cast<SdTPAction*>( xNewPage.get() )->SetView( pView );
@@ -86,23 +86,23 @@ SdActionDlg::SdActionDlg(weld::Window* pParent, const SfxItemSet* pAttr, ::sd::V
  *  Action-TabPage
  */
 SdTPAction::SdTPAction(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SfxTabPage(pPage, pController, "modules/simpress/ui/interactionpage.ui", "InteractionPage", &rInAttrs)
+    : SfxTabPage(pPage, pController, u"modules/simpress/ui/interactionpage.ui"_ustr, u"InteractionPage"_ustr, &rInAttrs)
     , mpView(nullptr)
     , mpDoc(nullptr)
     , bTreeUpdated(false)
-    , m_xLbAction(m_xBuilder->weld_combo_box("listbox"))
-    , m_xFtTree(m_xBuilder->weld_label("fttree"))
-    , m_xLbTree(new SdPageObjsTLV(m_xBuilder->weld_tree_view("tree")))
-    , m_xLbTreeDocument(new SdPageObjsTLV(m_xBuilder->weld_tree_view("treedoc")))
-    , m_xLbOLEAction(m_xBuilder->weld_tree_view("oleaction"))
-    , m_xFrame(m_xBuilder->weld_frame("frame"))
-    , m_xEdtSound(m_xBuilder->weld_entry("sound"))
-    , m_xEdtBookmark(m_xBuilder->weld_entry("bookmark"))
-    , m_xEdtDocument(m_xBuilder->weld_entry("document"))
-    , m_xEdtProgram(m_xBuilder->weld_entry("program"))
-    , m_xEdtMacro(m_xBuilder->weld_entry("macro"))
-    , m_xBtnSearch(m_xBuilder->weld_button("browse"))
-    , m_xBtnSeek(m_xBuilder->weld_button("find"))
+    , m_xLbAction(m_xBuilder->weld_combo_box(u"listbox"_ustr))
+    , m_xFtTree(m_xBuilder->weld_label(u"fttree"_ustr))
+    , m_xLbTree(new SdPageObjsTLV(m_xBuilder->weld_tree_view(u"tree"_ustr)))
+    , m_xLbTreeDocument(new SdPageObjsTLV(m_xBuilder->weld_tree_view(u"treedoc"_ustr)))
+    , m_xLbOLEAction(m_xBuilder->weld_tree_view(u"oleaction"_ustr))
+    , m_xFrame(m_xBuilder->weld_frame(u"frame"_ustr))
+    , m_xEdtSound(m_xBuilder->weld_entry(u"sound"_ustr))
+    , m_xEdtBookmark(m_xBuilder->weld_entry(u"bookmark"_ustr))
+    , m_xEdtDocument(m_xBuilder->weld_entry(u"document"_ustr))
+    , m_xEdtProgram(m_xBuilder->weld_entry(u"program"_ustr))
+    , m_xEdtMacro(m_xBuilder->weld_entry(u"macro"_ustr))
+    , m_xBtnSearch(m_xBuilder->weld_button(u"browse"_ustr))
+    , m_xBtnSeek(m_xBuilder->weld_button(u"find"_ustr))
 {
     m_xLbOLEAction->set_size_request(m_xLbOLEAction->get_approximate_digit_width() * 48,
                                      m_xLbOLEAction->get_height_rows(12));
@@ -141,9 +141,6 @@ void SdTPAction::SetView( const ::sd::View* pSdView )
         SfxViewFrame* pFrame = pDocSh->GetViewShell()->GetViewFrame();
         m_xLbTree->SetViewFrame( pFrame );
         m_xLbTreeDocument->SetViewFrame( pFrame );
-
-        pColList = pDocSh->GetItem( SID_COLOR_TABLE )->GetColorList();
-        DBG_ASSERT( pColList.is(), "No color table available!" );
     }
     else
     {
@@ -158,9 +155,9 @@ void SdTPAction::Construct()
     SdrGrafObj* pGrafObj = nullptr;
     bool        bOLEAction = false;
 
-    if ( mpView->AreObjectsMarked() )
+    const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
+    if ( rMarkList.GetMarkCount() != 0 )
     {
-        const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
         if (rMarkList.GetMarkCount() == 1)
         {
             SdrMark* pMark = rMarkList.GetMark(0);
@@ -203,7 +200,7 @@ void SdTPAction::Construct()
                 aVerbs = xObj->getSupportedVerbs();
             }
 
-            for( const embed::VerbDescriptor& aVerb : std::as_const(aVerbs) )
+            for (const embed::VerbDescriptor& aVerb : aVerbs)
             {
                 if( aVerb.VerbAttributes & embed::VerbAttributes::MS_VERBATTR_ONCONTAINERMENU )
                 {
@@ -287,7 +284,7 @@ void SdTPAction::Reset( const SfxItemSet* rAttrs )
     OUString aFileName;
 
     // m_xLbAction
-    if( rAttrs->GetItemState( ATTR_ACTION ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( ATTR_ACTION ) != SfxItemState::INVALID )
     {
         eCA = static_cast<presentation::ClickAction>( rAttrs->
                     Get( ATTR_ACTION ).GetValue());
@@ -297,7 +294,7 @@ void SdTPAction::Reset( const SfxItemSet* rAttrs )
         m_xLbAction->set_active(-1);
 
     // m_xEdtSound
-    if( rAttrs->GetItemState( ATTR_ACTION_FILENAME ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( ATTR_ACTION_FILENAME ) != SfxItemState::INVALID )
     {
             aFileName = rAttrs->Get( ATTR_ACTION_FILENAME ).GetValue();
             SetEditText( aFileName );
@@ -409,7 +406,7 @@ void SdTPAction::OpenFileDialog()
             // links on the desktop to directories.
             aFileDialog.AddFilter (
                 SfxResId(STR_SFX_FILTERNAME_ALL),
-                "*.*");
+                u"*.*"_ustr);
 
             if( aFileDialog.Execute() == ERRCODE_NONE )
             {

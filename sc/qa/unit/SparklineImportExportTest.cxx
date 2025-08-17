@@ -8,12 +8,11 @@
  */
 
 #include <test/unoapixml_test.hxx>
-
-#include <com/sun/star/lang/XComponent.hpp>
+#include <document.hxx>
 #include <comphelper/servicehelper.hxx>
-#include <docsh.hxx>
 #include <Sparkline.hxx>
 #include <SparklineGroup.hxx>
+#include <docuno.hxx>
 
 using namespace css;
 
@@ -22,7 +21,7 @@ class SparklineImportExportTest : public UnoApiXmlTest
 {
 public:
     SparklineImportExportTest()
-        : UnoApiXmlTest("sc/qa/unit/data")
+        : UnoApiXmlTest(u"sc/qa/unit/data"_ustr)
     {
     }
 
@@ -62,7 +61,7 @@ void checkSparklines(ScDocument& rDocument)
         CPPUNIT_ASSERT_EQUAL(COL_BLACK, rAttributes.getColorAxis().getFinalColor());
         CPPUNIT_ASSERT_EQUAL(COL_BLACK, rAttributes.getColorMarkers().getFinalColor());
         CPPUNIT_ASSERT_EQUAL(Color(0x7030a0), rAttributes.getColorFirst().getFinalColor());
-        CPPUNIT_ASSERT_EQUAL(Color(0xff0000), rAttributes.getColorLast().getFinalColor());
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, rAttributes.getColorLast().getFinalColor());
         CPPUNIT_ASSERT_EQUAL(Color(0x92d050), rAttributes.getColorHigh().getFinalColor());
         CPPUNIT_ASSERT_EQUAL(Color(0x00b0f0), rAttributes.getColorLow().getFinalColor());
 
@@ -91,7 +90,7 @@ void checkSparklines(ScDocument& rDocument)
         CPPUNIT_ASSERT_EQUAL(sc::SparklineType::Column, rAttributes.getType());
 
         CPPUNIT_ASSERT_EQUAL(Color(0x376092), rAttributes.getColorSeries().getFinalColor());
-        CPPUNIT_ASSERT_EQUAL(Color(0xff0000), rAttributes.getColorNegative().getFinalColor());
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, rAttributes.getColorNegative().getFinalColor());
         CPPUNIT_ASSERT_EQUAL(COL_BLACK, rAttributes.getColorAxis().getFinalColor());
         CPPUNIT_ASSERT_EQUAL(Color(0xd00000), rAttributes.getColorMarkers().getFinalColor());
         CPPUNIT_ASSERT_EQUAL(Color(0x92d050), rAttributes.getColorFirst().getFinalColor());
@@ -147,13 +146,13 @@ void checkSparklines(ScDocument& rDocument)
 
 void SparklineImportExportTest::testSparklinesRoundtripXLSX()
 {
-    loadFromURL(u"xlsx/Sparklines.xlsx");
+    loadFromFile(u"xlsx/Sparklines.xlsx");
     ScModelObj* pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
     CPPUNIT_ASSERT(pModelObj);
 
     checkSparklines(*pModelObj->GetDocument());
 
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
     CPPUNIT_ASSERT(pModelObj);
 
@@ -163,64 +162,61 @@ void SparklineImportExportTest::testSparklinesRoundtripXLSX()
 void SparklineImportExportTest::testSparklinesExportODS()
 {
     // Load the document containing sparklines
-    loadFromURL(u"xlsx/Sparklines.xlsx");
+    loadFromFile(u"xlsx/Sparklines.xlsx");
 
     // Save as ODS and check content.xml with XPath
-    save("calc8");
-    xmlDocUniquePtr pXmlDoc = parseExport("content.xml");
+    save(u"calc8"_ustr);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"content.xml"_ustr);
 
     // We have 3 sparkline groups = 3 tables that contain sparklines
-    assertXPath(pXmlDoc, "//table:table/calcext:sparkline-groups"_ostr, 3);
+    assertXPath(pXmlDoc, "//table:table/calcext:sparkline-groups", 3);
 
     // Check the number of sparkline groups in table[1]
-    assertXPath(pXmlDoc, "//table:table[1]/calcext:sparkline-groups/calcext:sparkline-group"_ostr,
-                2);
+    assertXPath(pXmlDoc, "//table:table[1]/calcext:sparkline-groups/calcext:sparkline-group", 2);
     // Check the number of sparkline groups in table[2]
-    assertXPath(pXmlDoc, "//table:table[2]/calcext:sparkline-groups/calcext:sparkline-group"_ostr,
-                2);
+    assertXPath(pXmlDoc, "//table:table[2]/calcext:sparkline-groups/calcext:sparkline-group", 2);
     // Check the number of sparkline groups in table[3]
-    assertXPath(pXmlDoc, "//table:table[3]/calcext:sparkline-groups/calcext:sparkline-group"_ostr,
-                3);
+    assertXPath(pXmlDoc, "//table:table[3]/calcext:sparkline-groups/calcext:sparkline-group", 3);
 
     // Check table[1] - sparkline-group[1]
     OString aSparklineGroupPath
         = "//table:table[1]/calcext:sparkline-groups/calcext:sparkline-group[1]"_ostr;
-    assertXPath(pXmlDoc, aSparklineGroupPath, "type"_ostr, "line");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "line-width"_ostr, "1pt");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "display-empty-cells-as"_ostr, "gap");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "markers"_ostr, "true");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "high"_ostr, "true");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "low"_ostr, "true");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "first"_ostr, "true");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "last"_ostr, "true");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "negative"_ostr, "true");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "display-x-axis"_ostr, "true");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "min-axis-type"_ostr, "individual");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "max-axis-type"_ostr, "individual");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "color-series"_ostr, "#376092");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "color-negative"_ostr, "#00b050");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "color-axis"_ostr, "#000000");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "color-markers"_ostr, "#000000");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "color-first"_ostr, "#7030a0");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "color-last"_ostr, "#ff0000");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "color-high"_ostr, "#92d050");
-    assertXPath(pXmlDoc, aSparklineGroupPath, "color-low"_ostr, "#00b0f0");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "type", u"line");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "line-width", u"1pt");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "display-empty-cells-as", u"gap");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "markers", u"true");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "high", u"true");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "low", u"true");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "first", u"true");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "last", u"true");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "negative", u"true");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "display-x-axis", u"true");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "min-axis-type", u"individual");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "max-axis-type", u"individual");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "color-series", u"#376092");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "color-negative", u"#00b050");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "color-axis", u"#000000");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "color-markers", u"#000000");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "color-first", u"#7030a0");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "color-last", u"#ff0000");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "color-high", u"#92d050");
+    assertXPath(pXmlDoc, aSparklineGroupPath, "color-low", u"#00b0f0");
 
     assertXPath(pXmlDoc, aSparklineGroupPath + "/calcext:sparklines/calcext:sparkline", 1);
     assertXPath(pXmlDoc, aSparklineGroupPath + "/calcext:sparklines/calcext:sparkline[1]",
-                "cell-address"_ostr, "Sheet1.A2");
+                "cell-address", u"Sheet1.A2");
 }
 
 void SparklineImportExportTest::testSparklinesRoundtripODS()
 {
-    loadFromURL(u"xlsx/Sparklines.xlsx");
+    loadFromFile(u"xlsx/Sparklines.xlsx");
     ScModelObj* pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
     CPPUNIT_ASSERT(pModelObj);
 
     checkSparklines(*pModelObj->GetDocument());
 
     // Trigger export and import of sparklines
-    saveAndReload("calc8");
+    saveAndReload(u"calc8"_ustr);
     pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
     CPPUNIT_ASSERT(pModelObj);
 
@@ -233,16 +229,16 @@ void SparklineImportExportTest::testNoSparklinesInDocumentXLSX()
     // Check no sparkline elements are written when there are none in the document
 
     // Load the document containing NO sparklines
-    loadFromURL(u"xlsx/empty.xlsx");
+    loadFromFile(u"xlsx/empty.xlsx");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pXmlDoc = parseExport("xl/worksheets/sheet1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"xl/worksheets/sheet1.xml"_ustr);
     CPPUNIT_ASSERT(pXmlDoc);
 
-    assertXPath(pXmlDoc, "/x:worksheet"_ostr, 1);
-    assertXPath(pXmlDoc, "/x:worksheet/x:extLst/x:ext/x14:sparklineGroups"_ostr, 0);
-    assertXPath(pXmlDoc, "/x:worksheet/x:extLst/x:ext"_ostr, 0);
-    assertXPath(pXmlDoc, "/x:worksheet/x:extLst"_ostr, 0);
+    assertXPath(pXmlDoc, "/x:worksheet", 1);
+    assertXPath(pXmlDoc, "/x:worksheet/x:extLst/x:ext/x14:sparklineGroups", 0);
+    assertXPath(pXmlDoc, "/x:worksheet/x:extLst/x:ext", 0);
+    assertXPath(pXmlDoc, "/x:worksheet/x:extLst", 0);
 }
 
 namespace
@@ -277,13 +273,13 @@ void checkSparklineThemeColors(ScDocument& rDocument)
 
 void SparklineImportExportTest::testSparklinesRoundtripThemeColorsODS()
 {
-    loadFromURL(u"fods/Sparklines.fods");
+    loadFromFile(u"fods/Sparklines.fods");
 
     ScModelObj* pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
     CPPUNIT_ASSERT(pModelObj);
     checkSparklineThemeColors(*pModelObj->GetDocument());
 
-    saveAndReload("calc8");
+    saveAndReload(u"calc8"_ustr);
 
     pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
     CPPUNIT_ASSERT(pModelObj);
@@ -292,8 +288,8 @@ void SparklineImportExportTest::testSparklinesRoundtripThemeColorsODS()
 
 void SparklineImportExportTest::testSparklinesRoundtripThemeColorsOOXML()
 {
-    loadFromURL(u"fods/Sparklines.fods");
-    saveAndReload("Calc Office Open XML");
+    loadFromFile(u"fods/Sparklines.fods");
+    saveAndReload(u"Calc Office Open XML"_ustr);
 
     ScModelObj* pModelObj = comphelper::getFromUnoTunnel<ScModelObj>(mxComponent);
     CPPUNIT_ASSERT(pModelObj);

@@ -187,6 +187,7 @@
           <info>
             <desc>Indicates whether to show only outlines of graphical objects.</desc>
             <label>Image placeholders</label>
+            <deprecated>Not used anymore</deprecated>
           </info>
           <value>false</value>
         </prop>
@@ -195,6 +196,7 @@
           <info>
             <desc>Indicates whether to show only outlines of draw objects.</desc>
             <label>Contour mode</label>
+            <deprecated>Not used anymore</deprecated>
           </info>
           <value>false</value>
         </prop>
@@ -203,6 +205,7 @@
           <info>
             <desc>Indicates whether to use placeholders for text in draw objects.</desc>
             <label>Text placeholders</label>
+            <deprecated>Not used anymore</deprecated>
           </info>
           <value>false</value>
         </prop>
@@ -211,6 +214,7 @@
           <info>
             <desc>Indicates whether to show only hairlines instead of an object's linestyle.</desc>
             <label>Line contour only</label>
+            <deprecated>Not used anymore</deprecated>
           </info>
           <value>false</value>
         </prop>
@@ -335,6 +339,13 @@
           </info>
           <value>false</value>
         </prop>
+        <prop oor:name="ShowBoundary" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Indicates whether margins get a virtual frame.</desc>
+            <label>Show boundary for margins</label>
+          </info>
+          <value>true</value>
+        </prop>
       </group>
       <group oor:name="CrossFading">
         <info>
@@ -413,6 +424,13 @@
           <value>2</value>
         </prop>
       </group>
+      <prop oor:name="DisableLayerHighlighting" oor:type="xs:int" oor:nillable="false">
+        <info>
+          <desc>Defines the maximum number of objects in a layer (0 - 65535) before hovering the mouse pointer over a layer tab of the layer bar does not cause the layer objects in the view to be highlighted.</desc>
+          <label/>
+        </info>
+        <value>65535</value>
+      </prop>
     </group>
     <group oor:name="Snap">
       <info>

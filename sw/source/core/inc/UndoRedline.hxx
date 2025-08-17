@@ -29,7 +29,7 @@ class SwRangeRedline;
 class SwRedlineSaveDatas;
 class SwUndoDelete;
 
-class SwUndoRedline : public SwUndo, public SwUndRng
+class SW_DLLPUBLIC SwUndoRedline : public SwUndo, public SwUndRng
 {
 protected:
     std::unique_ptr<SwRedlineData> mpRedlData;
@@ -37,12 +37,14 @@ protected:
     SwUndoId mnUserId;
     bool mbHiddenRedlines;
     sal_Int8 mnDepth;       // index of the SwRedlineData in SwRangeRedline
+    /// If the redline has multiple SwRedlineData instances associated that we want to track.
+    bool mbHierarchical;
 
     virtual void UndoRedlineImpl(SwDoc & rDoc, SwPaM & rPam);
     virtual void RedoRedlineImpl(SwDoc & rDoc, SwPaM & rPam);
 
 public:
-    SwUndoRedline( SwUndoId nUserId, const SwPaM& rRange, sal_Int8 nDepth = 0 );
+    SwUndoRedline( SwUndoId nUserId, const SwPaM& rRange, sal_Int8 nDepth = 0, bool bHierarchical = false );
 
     virtual ~SwUndoRedline() override;
 
@@ -53,6 +55,8 @@ public:
 #if OSL_DEBUG_LEVEL > 0
     void SetRedlineCountDontCheck(bool bCheck);
 #endif
+    SwUndoId GetUserId() const { return mnUserId; }
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 class SwUndoRedlineDelete final : public SwUndoRedline
@@ -115,13 +119,14 @@ public:
     virtual void RepeatImpl( ::sw::RepeatContext & ) override;
 };
 
+/// Undo for Edit -> Track Changes -> Reject.
 class SwUndoRejectRedline final : public SwUndoRedline
 {
 private:
     virtual void RedoRedlineImpl(SwDoc & rDoc, SwPaM & rPam) override;
 
 public:
-    SwUndoRejectRedline( const SwPaM& rRange, sal_Int8 nDepth = 0 );
+    SwUndoRejectRedline( const SwPaM& rRange, sal_Int8 nDepth = 0, bool bHierarchical = false );
 
     virtual void RepeatImpl( ::sw::RepeatContext & ) override;
 };

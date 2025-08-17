@@ -25,18 +25,6 @@
 #include <memory>
 #include <vector>
 
-namespace com::sun::star::drawing::framework
-{
-class XConfiguration;
-}
-namespace com::sun::star::drawing::framework
-{
-class XControllerManager;
-}
-namespace com::sun::star::drawing::framework
-{
-class XResourceId;
-}
 namespace sd
 {
 class DrawController;
@@ -44,10 +32,12 @@ class DrawController;
 
 namespace sd::framework
 {
+class Configuration;
 class ConfigurationClassifier;
 class ConfigurationUpdaterLock;
 class ConfigurationControllerResourceManager;
 class ConfigurationControllerBroadcaster;
+class ResourceId;
 
 /** This is a helper class for the ConfigurationController.  It handles the
     update of the current configuration so that it looks like a requested
@@ -75,11 +65,10 @@ public:
         if that is the case.  Otherwise it schedules a later call to
         UpdateConfiguration().
     */
-    void RequestUpdate(const css::uno::Reference<css::drawing::framework::XConfiguration>&
-                           rxRequestedConfiguration);
+    void
+    RequestUpdate(const rtl::Reference<sd::framework::Configuration>& rxRequestedConfiguration);
 
-    const css::uno::Reference<css::drawing::framework::XConfiguration>&
-    GetCurrentConfiguration() const
+    const rtl::Reference<sd::framework::Configuration>& GetCurrentConfiguration() const
     {
         return mxCurrentConfiguration;
     }
@@ -92,7 +81,7 @@ public:
     std::shared_ptr<ConfigurationUpdaterLock> GetLock();
 
 private:
-    /** A reference to the XControllerManager is kept so that
+    /** A reference to the DrawController is kept so that
         UpdateConfiguration() has access to the other sub controllers.
     */
     rtl::Reference<::sd::DrawController> mxControllerManager;
@@ -102,7 +91,7 @@ private:
     /** The current configuration holds the resources that are currently
         active.  It is modified during an update.
     */
-    css::uno::Reference<css::drawing::framework::XConfiguration> mxCurrentConfiguration;
+    rtl::Reference<sd::framework::Configuration> mxCurrentConfiguration;
 
     /** The requested configuration holds the resources that have been
         requested to activate or to deactivate since the last update.  It is
@@ -110,7 +99,7 @@ private:
         maintained by the ConfigurationController and given to the
         ConfigurationUpdater in the RequestUpdate() method.
     */
-    css::uno::Reference<css::drawing::framework::XConfiguration> mxRequestedConfiguration;
+    rtl::Reference<sd::framework::Configuration> mxRequestedConfiguration;
 
     /** This flag is set to </sal_True> when an update of the current
         configuration was requested (because the last request in the queue
@@ -165,9 +154,8 @@ private:
         This affects only the current configuration.
     */
     void CheckPureAnchors(
-        const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration,
-        ::std::vector<css::uno::Reference<css::drawing::framework::XResourceId>>&
-            rResourcesToDeactivate);
+        const rtl::Reference<sd::framework::Configuration>& rxConfiguration,
+        ::std::vector<rtl::Reference<sd::framework::ResourceId>>& rResourcesToDeactivate);
 
     /** Remove from the requested configuration all pure anchors that have no
         child.  Requested but not yet activated anchors can not be removed

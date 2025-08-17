@@ -22,7 +22,6 @@
 #include <com/sun/star/form/binding/XListEntrySink.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/container/XChild.hpp>
-#include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
@@ -40,7 +39,6 @@ namespace xmloff
     using namespace ::com::sun::star::frame;
     using namespace ::com::sun::star::sheet;
     using namespace ::com::sun::star::container;
-    using namespace ::com::sun::star::drawing;
     using namespace ::com::sun::star::table;
     using namespace ::com::sun::star::form;
     using namespace ::com::sun::star::lang;
@@ -332,20 +330,18 @@ bool FormCellBindingHelper::doesComponentSupport( const Reference< XInterface >&
 
 Reference< XValueBinding > FormCellBindingHelper::getCurrentBinding( ) const
 {
-    Reference< XValueBinding > xBinding;
     Reference< XBindableValue > xBindable( m_xControlModel, UNO_QUERY );
     if ( xBindable.is() )
-        xBinding = xBindable->getValueBinding();
-    return xBinding;
+        return xBindable->getValueBinding();
+    return Reference<XValueBinding>();
 }
 
 Reference< XListEntrySource > FormCellBindingHelper::getCurrentListSource( ) const
 {
-    Reference< XListEntrySource > xSource;
     Reference< XListEntrySink > xSink( m_xControlModel, UNO_QUERY );
-    if ( xSink.is() )
-        xSource = xSink->getListEntrySource();
-    return xSource;
+    if (xSink.is())
+        return xSink->getListEntrySource();
+    return Reference<XListEntrySource>();
 }
 
 void FormCellBindingHelper::setBinding( const Reference< XValueBinding >& _rxBinding )

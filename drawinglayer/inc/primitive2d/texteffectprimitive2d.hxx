@@ -30,7 +30,6 @@ enum class TextEffectStyle2D
     ReliefEmbossedDefault,
     ReliefEngravedDefault,
     ReliefEmbossed,
-    ReliefEngraved,
     Outline
 };
 
@@ -57,9 +56,8 @@ private:
     basegfx::B2DHomMatrix maLastObjectToViewTransformation;
 
     /// create local decomposition
-    virtual void
-    create2DDecomposition(Primitive2DContainer& rContainer,
-                          const geometry::ViewInformation2D& rViewInformation) const override;
+    virtual Primitive2DReference
+    create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
 public:
     /// constructor

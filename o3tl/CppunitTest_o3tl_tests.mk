@@ -19,17 +19,19 @@
 
 $(eval $(call gb_CppunitTest_CppunitTest,o3tl_tests))
 
-$(eval $(call gb_CppunitTest_use_external,o3tl_tests,boost_headers))
-
 $(eval $(call gb_CppunitTest_use_libraries,o3tl_tests,\
 	sal \
 ))
+
+# Needed for include/test/cppunitasserthelper.hxx
+$(eval $(call gb_CppunitTest_use_sdk_api,o3tl_tests))
 
 $(eval $(call gb_CppunitTest_add_exception_objects,o3tl_tests,\
 	o3tl/qa/cow_wrapper_clients \
 	o3tl/qa/test-cow_wrapper \
 	o3tl/qa/test-enumarray \
 	o3tl/qa/test-lru_map \
+	o3tl/qa/test-numeric \
 	o3tl/qa/test-safeint \
 	o3tl/qa/test-sorted_vector \
 	o3tl/qa/test-string_view \
@@ -37,6 +39,8 @@ $(eval $(call gb_CppunitTest_add_exception_objects,o3tl_tests,\
 	o3tl/qa/test-typed_flags \
 	o3tl/qa/test-unit_conversion \
 	o3tl/qa/test-vector_pool \
+	o3tl/qa/test-hash_combine \
+	o3tl/qa/BigEndianTypesTest \
 ))
 
 # vim: set noet sw=4:

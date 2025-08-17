@@ -805,7 +805,7 @@ namespace emfio
                                     }
                                 }
 
-                                aDXAry.set(i, nDx);
+                                aDXAry[i] = nDx;
                                 if ( nOptions & ETO_PDY )
                                 {
                                     pDYAry[i] = nDy;
@@ -897,7 +897,7 @@ namespace emfio
                     std::unique_ptr< sal_uInt8[] > pData;
                     pData.reset( new sal_uInt8[ nHeight * nBytesPerScan ] );
                     mpInputStream->ReadBytes( pData.get(), nHeight * nBytesPerScan );
-                    BitmapEx aBitmap = vcl::bitmap::CreateFromData( pData.get(), nWidth, nHeight, nBytesPerScan, nBitCount, true );
+                    Bitmap aBitmap = vcl::bitmap::CreateFromData( pData.get(), nWidth, nHeight, nBytesPerScan, nBitCount, true );
                     if ( nSye && nSxe &&
                          ( nXSrc + nSxe <= nWidth ) &&
                          ( nYSrc + nSye <= nHeight ) )
@@ -1004,9 +1004,9 @@ namespace emfio
                 if ( !aBmp.IsEmpty() )
                 {
                     BitmapScopedReadAccess pBmp(aBmp);
-                    for ( tools::Long y = 0; y < pBmp->Height(); y++ )
+                    for ( tools::Long y = 0, nHeight = pBmp->Height(); y < nHeight; y++ )
                     {
-                        for ( tools::Long x = 0; x < pBmp->Width(); x++ )
+                        for ( tools::Long x = 0, nWidth = pBmp->Width(); x < nWidth; x++ )
                         {
                             const BitmapColor aColor( pBmp->GetColor( y, x ) );
 
@@ -1303,7 +1303,7 @@ namespace emfio
                                                     {
                                                         sal_Int32 val;
                                                         aMemoryStream.ReadInt32(val);
-                                                        aDXAry.set(i, val);
+                                                        aDXAry[i] = val;
                                                     }
                                                     aMemoryStream.ReadUInt32(mnSkipActions);
                                                     DrawText(aPt, aString,

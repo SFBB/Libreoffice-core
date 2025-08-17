@@ -118,7 +118,7 @@ void bufferEscapeConstant( OUStringBuffer & buf, std::u16string_view value, Conn
         // We have no good XInterface Reference to pass here, so just give NULL
         throw SQLException(OUString(errstr, strlen(errstr), ConnectionSettings::encoding),
                            nullptr,
-                           "22018",
+                           u"22018"_ustr,
                            -1,
                            Any());
     }
@@ -154,7 +154,7 @@ void bufferQuoteAnyConstant( OUStringBuffer & buf, const Any &val, ConnectionSet
 
 static void ibufferQuoteIdentifier( OUStringBuffer & buf, std::u16string_view toQuote, ConnectionSettings *settings )
 {
-    OSL_ENSURE(settings, "pgsql-sdbc: bufferQuoteIdentifier got NULL settings");
+    assert(settings && "pgsql-sdbc: bufferQuoteIdentifier got NULL settings");
 
     OString y = iOUStringToOString( toQuote, settings );
     char *cstr = PQescapeIdentifier(settings->pConnection, y.getStr(), y.getLength());
@@ -164,7 +164,7 @@ static void ibufferQuoteIdentifier( OUStringBuffer & buf, std::u16string_view to
         // Implementation-defined SQLACCESS error
         throw SQLException(OUString(errstr, strlen(errstr), ConnectionSettings::encoding),
                            nullptr,
-                           "22018",
+                           u"22018"_ustr,
                            -1,
                            Any());
     }
@@ -259,7 +259,7 @@ Reference< XConnection > extractConnectionFromStatement( const Reference< XInter
             ret = myowner->getConnection();
         if( ! ret.is() )
             throw SQLException(
-                "PQSDBC: Couldn't retrieve connection from statement",
+                u"PQSDBC: Couldn't retrieve connection from statement"_ustr,
                 Reference< XInterface > () , OUString(), 0 , css::uno::Any()  );
     }
 
@@ -711,11 +711,11 @@ void fillAttnum2attnameMap(
     const OUString &table )
 {
     Reference< XPreparedStatement > prep = conn->prepareStatement(
-                   "SELECT attname,attnum "
+                   u"SELECT attname,attnum "
                    "FROM pg_attribute "
                          "INNER JOIN pg_class ON attrelid = pg_class.oid "
                          "INNER JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid "
-                   "WHERE relname=? AND nspname=?" );
+                   "WHERE relname=? AND nspname=?"_ustr );
 
     Reference< XParameters > paras( prep, UNO_QUERY_THROW );
     paras->setString( 1 , table );
@@ -810,7 +810,7 @@ OString extractSingleTableFromSelect( const std::vector< OString > &vec )
                     }
                     else
                     {
-                        static const char * forbiddenKeywords[] =
+                        static const char* const forbiddenKeywords[] =
                             { "join", "natural", "outer", "inner", "left", "right", "full" , nullptr };
                         for( int i = 0 ; forbiddenKeywords[i] ; i ++ )
                         {
@@ -836,21 +836,21 @@ OString extractSingleTableFromSelect( const std::vector< OString > &vec )
 OUString getColExprForDefaultSettingVal(ConnectionSettings const *settings)
 {
     return (PQserverVersion( settings->pConnection ) < 80000)?
-               OUString("pg_attrdef.adsrc"):
-               OUString("pg_get_expr(pg_attrdef.adbin, pg_attrdef.adrelid, true)");
+               u"pg_attrdef.adsrc"_ustr:
+               u"pg_get_expr(pg_attrdef.adbin, pg_attrdef.adrelid, true)"_ustr;
 }
 
-css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str )
+css::uno::Sequence< sal_Int32 > string2intarray( std::u16string_view str )
 {
     css::uno::Sequence< sal_Int32 > ret;
-    const sal_Int32 strlen = str.getLength();
-    if( str.getLength() > 1 )
+    const sal_Int32 strlen = str.size();
+    if( strlen > 1 )
     {
         sal_Int32 start = 0;
         sal_uInt32 c;
         for (;;)
         {
-            c = str.iterateCodePoints(&start);
+            c = o3tl::iterateCodePoints(str, &start);
             if (!iswspace(c))
                 break;
             if ( start == strlen)
@@ -860,7 +860,7 @@ css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str )
             return ret;
         for (;;)
         {
-            c = str.iterateCodePoints(&start);
+            c = o3tl::iterateCodePoints(str, &start);
             if ( !iswspace(c) )
                 break;
             if ( start == strlen)
@@ -879,7 +879,7 @@ css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str )
                     break;
                 if ( start == strlen)
                     return ret;
-                c=str.iterateCodePoints(&start);
+                c = o3tl::iterateCodePoints(str, &start);
             } while ( c );
             do
             {
@@ -888,7 +888,7 @@ css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str )
                 if ( start == strlen)
                     return ret;
                 digits.append(OUString(&c, 1));
-                c = str.iterateCodePoints(&start);
+                c = o3tl::iterateCodePoints(str, &start);
             } while ( c );
             vec.push_back( o3tl::toInt32(digits) );
             do
@@ -897,11 +897,11 @@ css::uno::Sequence< sal_Int32 > string2intarray( const OUString & str )
                     break;
                 if ( start == strlen)
                     return ret;
-                c = str.iterateCodePoints(&start);
+                c = o3tl::iterateCodePoints(str, &start);
             } while ( c );
             if ( c == L'}' )
                 break;
-            if ( str.iterateCodePoints(&start) != L',' )
+            if ( o3tl::iterateCodePoints(str, &start) != L',' )
                 return ret;
             if ( start == strlen)
                 return ret;

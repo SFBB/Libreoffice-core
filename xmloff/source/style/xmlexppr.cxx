@@ -27,7 +27,6 @@
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XTolerantMultiPropertySet.hpp>
 #include <com/sun/star/beans/TolerantPropertySetResultType.hpp>
-#include <rtl/ustrbuf.hxx>
 #include <comphelper/anycompare.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <cppuhelper/weakref.hxx>
@@ -50,7 +49,6 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::xmloff::token;
 
 #define GET_PROP_TYPE( f ) static_cast<sal_uInt16>((f & XML_TYPE_PROP_MASK) >> XML_TYPE_PROP_SHIFT)
@@ -567,7 +565,7 @@ std::vector<XMLPropertyState> SvXMLExportPropertyMapper::Filter_(
                     || nEarliestODFVersionForExport == SvtSaveOptions::ODFSVER_FUTURE_EXTENDED);
                 static_assert(SvtSaveOptions::ODFSVER_LATEST_EXTENDED < SvtSaveOptions::ODFSVER_FUTURE_EXTENDED);
                 /// standard ODF namespaces for elements and attributes
-                static sal_uInt16 s_OdfNs[] = {
+                static const sal_uInt16 s_OdfNs[] = {
                     XML_NAMESPACE_OFFICE,
                     XML_NAMESPACE_STYLE,
                     XML_NAMESPACE_TEXT,
@@ -906,7 +904,7 @@ void SvXMLExportPropertyMapper::_exportXML(
             rPropTypeFlags |= (1 << nEPType);
             if( nEPType == nPropType )
             {
-                // we have a valid map entry here, so lets use it...
+                // we have a valid map entry here, so let's use it...
                 if( ( nEFlags & MID_FLAG_ELEMENT_ITEM_EXPORT ) != 0 )
                 {
                     // element items do not add any properties,
@@ -943,6 +941,29 @@ sal_Int8 CheckExtendedNamespace(std::u16string_view sXMLAttributeName, std::u16s
              && (IsXMLToken(sValue, XML_PAGE_CONTENT_BOTTOM)
                  || IsXMLToken(sValue, XML_PAGE_CONTENT_TOP)))
         return nODFVersion & SvtSaveOptions::ODFSVER_EXTENDED ? 1 : -1;
+    // don't export end zones when they have the default no-limit value
+    else if (IsXMLToken(sXMLAttributeName, XML_HYPHENATION_ZONE_ALWAYS)
+        || IsXMLToken(sXMLAttributeName, XML_HYPHENATION_ZONE_COLUMN)
+        || IsXMLToken(sXMLAttributeName, XML_HYPHENATION_ZONE_PAGE)
+        || IsXMLToken(sXMLAttributeName, XML_HYPHENATION_ZONE_SPREAD))
+        return IsXMLToken(sValue, XML_NO_LIMIT) ? -1 : 1;
+    // don't export word spacing when they have the default 100% value
+    else if (IsXMLToken(sXMLAttributeName, XML_WORD_SPACING)
+        || IsXMLToken(sXMLAttributeName, XML_WORD_SPACING_MINIMUM)
+        || IsXMLToken(sXMLAttributeName, XML_WORD_SPACING_MAXIMUM))
+    {
+        static constexpr OUString s100PercentCompare( u"100%"_ustr );
+        size_t nBegin = sValue.find( s100PercentCompare );
+        return nBegin != std::u16string_view::npos ? -1 : 1;
+    }
+    // don't export letter spacing when they have the default 0% value
+    else if (IsXMLToken(sXMLAttributeName, XML_LETTER_SPACING_MINIMUM)
+        || IsXMLToken(sXMLAttributeName, XML_LETTER_SPACING_MAXIMUM))
+    {
+        static constexpr OUString sDefaultPercentCompare( u"0%"_ustr );
+        size_t nBegin = sValue.find( sDefaultPercentCompare );
+        return nBegin == static_cast<size_t>(0) ? -1 : 1;
+    }
     return 0;
 }
 }

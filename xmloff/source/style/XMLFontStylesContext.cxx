@@ -41,8 +41,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::awt;
 using namespace ::xmloff::token;
 
@@ -91,7 +89,7 @@ void XMLFontStyleContextFontFace::SetAttribute( sal_Int32 nElement,
     case XML_ELEMENT(STYLE, XML_FONT_CHARSET):
         if( GetStyles()->GetEncodingHdl().importXML( rValue, aAny,
                                                       rUnitConv ) )
-            aEnc = aAny;
+            aEnc = std::move(aAny);
         break;
     default:
         SvXMLStyleContext::SetAttribute( nElement, rValue );
@@ -154,6 +152,13 @@ OUString XMLFontStyleContextFontFace::familyName() const
 {
     OUString ret;
     aFamilyName >>= ret;
+    return ret;
+}
+
+OUString XMLFontStyleContextFontFace::styleName() const
+{
+    OUString ret;
+    aStyleName >>= ret;
     return ret;
 }
 
@@ -291,7 +296,7 @@ void XMLFontStyleContextFontFaceUri::handleEmbeddedFont( const OUString& url, bo
         uno::Reference< io::XInputStream > inputStream;
         inputStream.set( storage->openStreamElement( url.copy( url.indexOf( '/' ) + 1 ), ::embed::ElementModes::READ ),
             UNO_QUERY_THROW );
-        if (GetImport().addEmbeddedFont(inputStream, fontName, u"?", std::vector< unsigned char >(), eot))
+        if (GetImport().addEmbeddedFont(inputStream, fontName, font.styleName(), std::vector< unsigned char >(), eot))
             GetImport().NotifyContainsEmbeddedFont();
         inputStream->closeInput();
     }
@@ -303,7 +308,7 @@ void XMLFontStyleContextFontFaceUri::handleEmbeddedFont( const ::css::uno::Seque
 {
     const uno::Reference< io::XInputStream > xInput( new comphelper::SequenceInputStream( rData ) );
     const OUString fontName = font.familyName();
-    if (GetImport().addEmbeddedFont(xInput, fontName, u"?", std::vector< unsigned char >(), eot))
+    if (GetImport().addEmbeddedFont(xInput, fontName, font.styleName(), std::vector< unsigned char >(), eot))
         GetImport().NotifyContainsEmbeddedFont();
     xInput->closeInput();
 }

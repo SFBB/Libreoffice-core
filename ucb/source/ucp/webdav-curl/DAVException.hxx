@@ -93,6 +93,7 @@ const sal_uInt16 SC_HTTP_VERSION_NOT_SUPPORTED       = 505;
 const sal_uInt16 SC_INSUFFICIENT_STORAGE             = 507;
 
 // unofficial status codes only used internally by LO
+const sal_uInt16 USC_CONNECT_FAILED                  = 907;
 // used to cache the connection time out event
 const sal_uInt16 USC_CONNECTION_TIMED_OUT            = 908;
     // name resolution failed
@@ -144,6 +145,7 @@ class DAVException : public std::exception
     private:
         ExceptionCode   mExceptionCode;
         OUString   mData;
+        OUString   mMessage;
         sal_uInt16      mStatusCode;
 
     public:
@@ -159,6 +161,13 @@ class DAVException : public std::exception
              , mStatusCode( SC_NONE )
          {};
          DAVException( ExceptionCode inExceptionCode,
+                       OUString aData, OUString message)
+             : mExceptionCode( inExceptionCode )
+             , mData(std::move( aData ))
+             , mMessage(std::move(message))
+             , mStatusCode( SC_NONE )
+         {};
+         DAVException( ExceptionCode inExceptionCode,
                        OUString aData,
                        sal_uInt16 nStatusCode )
             : mExceptionCode( inExceptionCode )
@@ -168,6 +177,7 @@ class DAVException : public std::exception
 
     const ExceptionCode & getError() const { return mExceptionCode; }
     const OUString & getData() const  { return mData; }
+    const OUString & getMessage() const { return mMessage; }
     sal_uInt16 getStatus() const { return mStatusCode; }
 };
 

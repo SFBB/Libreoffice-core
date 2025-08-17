@@ -51,6 +51,7 @@
 #include <poolfmt.hxx>
 #include <swtablerep.hxx>
 #include <SwStyleNameMapper.hxx>
+#include <names.hxx>
 
 #include <cmdid.h>
 #include <svx/dialogs.hrc>
@@ -61,36 +62,38 @@
 #include <com/sun/star/text/HoriOrientation.hpp>
 #include <com/sun/star/text/VertOrientation.hpp>
 
+#include <vcl/tabs.hrc>
+
 using namespace ::com::sun::star;
 
 SwFormatTablePage::SwFormatTablePage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/formattablepage.ui", "FormatTablePage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/formattablepage.ui"_ustr, u"FormatTablePage"_ustr, &rSet)
     , m_pTableData(nullptr)
     , m_nSaveWidth(0)
     , m_nMinTableWidth(MINLAY)
     , m_bModified(false)
     , m_bFull(false)
     , m_bHtmlMode(false)
-    , m_xNameED(m_xBuilder->weld_entry("name"))
-    , m_xWidthFT(m_xBuilder->weld_label("widthft"))
-    , m_xWidthMF(new SwPercentField(m_xBuilder->weld_metric_spin_button("widthmf", FieldUnit::CM)))
-    , m_xRelWidthCB(m_xBuilder->weld_check_button("relwidth"))
-    , m_xFullBtn(m_xBuilder->weld_radio_button("full"))
-    , m_xLeftBtn(m_xBuilder->weld_radio_button("left"))
-    , m_xFromLeftBtn(m_xBuilder->weld_radio_button("fromleft"))
-    , m_xRightBtn(m_xBuilder->weld_radio_button("right"))
-    , m_xCenterBtn(m_xBuilder->weld_radio_button("center"))
-    , m_xFreeBtn(m_xBuilder->weld_radio_button("free"))
-    , m_xLeftFT(m_xBuilder->weld_label("leftft"))
-    , m_xLeftMF(new SwPercentField(m_xBuilder->weld_metric_spin_button("leftmf", FieldUnit::CM)))
-    , m_xRightFT(m_xBuilder->weld_label("rightft"))
-    , m_xRightMF(new SwPercentField(m_xBuilder->weld_metric_spin_button("rightmf", FieldUnit::CM)))
-    , m_xTopFT(m_xBuilder->weld_label("aboveft"))
-    , m_xTopMF(m_xBuilder->weld_metric_spin_button("abovemf", FieldUnit::CM))
-    , m_xBottomFT(m_xBuilder->weld_label("belowft"))
-    , m_xBottomMF(m_xBuilder->weld_metric_spin_button("belowmf", FieldUnit::CM))
-    , m_xTextDirectionLB(new svx::FrameDirectionListBox(m_xBuilder->weld_combo_box("textdirection")))
-    , m_xProperties(m_xBuilder->weld_widget("properties"))
+    , m_xNameED(m_xBuilder->weld_entry(u"name"_ustr))
+    , m_xWidthFT(m_xBuilder->weld_label(u"widthft"_ustr))
+    , m_xWidthMF(new SwPercentField(m_xBuilder->weld_metric_spin_button(u"widthmf"_ustr, FieldUnit::CM)))
+    , m_xRelWidthCB(m_xBuilder->weld_check_button(u"relwidth"_ustr))
+    , m_xFullBtn(m_xBuilder->weld_radio_button(u"full"_ustr))
+    , m_xLeftBtn(m_xBuilder->weld_radio_button(u"left"_ustr))
+    , m_xFromLeftBtn(m_xBuilder->weld_radio_button(u"fromleft"_ustr))
+    , m_xRightBtn(m_xBuilder->weld_radio_button(u"right"_ustr))
+    , m_xCenterBtn(m_xBuilder->weld_radio_button(u"center"_ustr))
+    , m_xFreeBtn(m_xBuilder->weld_radio_button(u"free"_ustr))
+    , m_xLeftFT(m_xBuilder->weld_label(u"leftft"_ustr))
+    , m_xLeftMF(new SwPercentField(m_xBuilder->weld_metric_spin_button(u"leftmf"_ustr, FieldUnit::CM)))
+    , m_xRightFT(m_xBuilder->weld_label(u"rightft"_ustr))
+    , m_xRightMF(new SwPercentField(m_xBuilder->weld_metric_spin_button(u"rightmf"_ustr, FieldUnit::CM)))
+    , m_xTopFT(m_xBuilder->weld_label(u"aboveft"_ustr))
+    , m_xTopMF(m_xBuilder->weld_metric_spin_button(u"abovemf"_ustr, FieldUnit::CM))
+    , m_xBottomFT(m_xBuilder->weld_label(u"belowft"_ustr))
+    , m_xBottomMF(m_xBuilder->weld_metric_spin_button(u"belowmf"_ustr, FieldUnit::CM))
+    , m_xTextDirectionLB(new svx::FrameDirectionListBox(m_xBuilder->weld_combo_box(u"textdirection"_ustr)))
+    , m_xProperties(m_xBuilder->weld_widget(u"properties"_ustr))
 {
     m_xWidthMF->GetMetricFieldRange(m_nOrigWidthMin, m_nOrigWidthMax);
     m_xLeftMF->GetMetricFieldRange(m_nOrigLeftMin, m_nOrigLeftMax);
@@ -586,9 +589,10 @@ void  SwFormatTablePage::Reset( const SfxItemSet* )
 
 void    SwFormatTablePage::ActivatePage( const SfxItemSet& rSet )
 {
-    OSL_ENSURE(m_pTableData, "table data not available?");
     if(SfxItemState::SET != rSet.GetItemState( FN_TABLE_REP ))
         return;
+
+    assert(m_pTableData && "table data not available?");
 
     SwTwips nCurWidth = text::HoriOrientation::FULL != m_pTableData->GetAlign() ?
                                     m_pTableData->GetWidth() :
@@ -725,7 +729,7 @@ DeactivateRC SwFormatTablePage::DeactivatePage( SfxItemSet* _pSet )
 
 //Description: Page column configuration
 SwTableColumnPage::SwTableColumnPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/tablecolumnpage.ui", "TableColumnPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/tablecolumnpage.ui"_ustr, u"TableColumnPage"_ustr, &rSet)
     , m_pTableData(nullptr)
     , m_pSizeHdlEvent(nullptr)
     , m_nTableWidth(0)
@@ -736,23 +740,24 @@ SwTableColumnPage::SwTableColumnPage(weld::Container* pPage, weld::DialogControl
     , m_bModified(false)
     , m_bModifyTable(false)
     , m_bPercentMode(false)
-    , m_aFieldArr { m_xBuilder->weld_metric_spin_button("width1", FieldUnit::CM),
-                    m_xBuilder->weld_metric_spin_button("width2", FieldUnit::CM),
-                    m_xBuilder->weld_metric_spin_button("width3", FieldUnit::CM),
-                    m_xBuilder->weld_metric_spin_button("width4", FieldUnit::CM),
-                    m_xBuilder->weld_metric_spin_button("width5", FieldUnit::CM)}
-    , m_aTextArr { m_xBuilder->weld_label("1"),
-                   m_xBuilder->weld_label("2"),
-                   m_xBuilder->weld_label("3"),
-                   m_xBuilder->weld_label("4"),
-                   m_xBuilder->weld_label("5")}
-    , m_xModifyTableCB(m_xBuilder->weld_check_button("adaptwidth"))
-    , m_xProportionalCB(m_xBuilder->weld_check_button("adaptcolumns"))
-    , m_xSpaceFT(m_xBuilder->weld_label("spaceft"))
-    , m_xSpaceSFT(m_xBuilder->weld_label("space"))
-    , m_xSpaceED(m_xBuilder->weld_metric_spin_button("spacefmt", FieldUnit::CM))
-    , m_xUpBtn(m_xBuilder->weld_button("next"))
-    , m_xDownBtn(m_xBuilder->weld_button("back"))
+    , m_aFieldArr { m_xBuilder->weld_metric_spin_button(u"width1"_ustr, FieldUnit::CM),
+                    m_xBuilder->weld_metric_spin_button(u"width2"_ustr, FieldUnit::CM),
+                    m_xBuilder->weld_metric_spin_button(u"width3"_ustr, FieldUnit::CM),
+                    m_xBuilder->weld_metric_spin_button(u"width4"_ustr, FieldUnit::CM),
+                    m_xBuilder->weld_metric_spin_button(u"width5"_ustr, FieldUnit::CM)}
+    , m_aTextArr { m_xBuilder->weld_label(u"1"_ustr),
+                   m_xBuilder->weld_label(u"2"_ustr),
+                   m_xBuilder->weld_label(u"3"_ustr),
+                   m_xBuilder->weld_label(u"4"_ustr),
+                   m_xBuilder->weld_label(u"5"_ustr)}
+    , m_xColumnWidthsGrid(m_xBuilder->weld_grid(u"columnwidthsgrid"_ustr))
+    , m_xModifyTableCB(m_xBuilder->weld_check_button(u"adaptwidth"_ustr))
+    , m_xProportionalCB(m_xBuilder->weld_check_button(u"adaptcolumns"_ustr))
+    , m_xSpaceFT(m_xBuilder->weld_label(u"spaceft"_ustr))
+    , m_xSpaceSFT(m_xBuilder->weld_label(u"space"_ustr))
+    , m_xSpaceED(m_xBuilder->weld_metric_spin_button(u"spacefmt"_ustr, FieldUnit::CM))
+    , m_xUpBtn(m_xBuilder->weld_button(u"next"_ustr))
+    , m_xDownBtn(m_xBuilder->weld_button(u"back"_ustr))
 {
     SetExchangeSupport();
 
@@ -781,8 +786,8 @@ IMPL_LINK_NOARG(SwTableColumnPage, SizeHdl, void*, void)
         if (pTopLevel->get_preferred_size().Width() > aOrigSize.Width())
         {
             m_nMetFields = i + 1;
-            m_aTextArr[i]->set_grid_width(1);
-            m_xUpBtn->set_grid_left_attach(m_nMetFields * 2 - 1);
+            m_xColumnWidthsGrid->set_child_column_span(*m_aTextArr[i], 1);
+            m_xColumnWidthsGrid->set_child_left_attach(*m_xUpBtn, m_nMetFields * 2 - 1);
             break;
         }
     }
@@ -1216,15 +1221,20 @@ void SwTableColumnPage::SetVisibleWidth(sal_uInt16 nPos, SwTwips nNewWidth)
 }
 
 SwTableTabDlg::SwTableTabDlg(weld::Window* pParent, const SfxItemSet* pItemSet, SwWrtShell* pSh)
-    : SfxTabDialogController(pParent, "modules/swriter/ui/tableproperties.ui", "TablePropertiesDialog", pItemSet)
+    : SfxTabDialogController(pParent, u"modules/swriter/ui/tableproperties.ui"_ustr, u"TablePropertiesDialog"_ustr, pItemSet)
     , m_pShell(pSh)
 {
     SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
-    AddTabPage("table", &SwFormatTablePage::Create, nullptr);
-    AddTabPage("textflow", &SwTextFlowPage::Create, nullptr);
-    AddTabPage("columns", &SwTableColumnPage::Create, nullptr);
-    AddTabPage("background", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BKG), nullptr);
-    AddTabPage("borders", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BORDER), nullptr);
+    AddTabPage(u"table"_ustr, TabResId(RID_TAB_TABLE.aLabel), &SwFormatTablePage::Create,
+               RID_L + RID_TAB_TABLE.sIconName);
+    AddTabPage(u"textflow"_ustr, TabResId(RID_TAB_TEXTFLOW.aLabel), &SwTextFlowPage::Create,
+               RID_L + RID_TAB_TEXTFLOW.sIconName);
+    AddTabPage(u"columns"_ustr, TabResId(RID_TAB_COLUMNS.aLabel), &SwTableColumnPage::Create,
+               RID_L + RID_TAB_COLUMNS.sIconName);
+    AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BORDER), RID_L + RID_TAB_BORDER.sIconName);
+    AddTabPage(u"background"_ustr, TabResId(RID_TAB_BACKGROUND.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BKG), RID_L + RID_TAB_BACKGROUND.sIconName);
 }
 
 void  SwTableTabDlg::PageCreated(const OUString& rId, SfxTabPage& rPage)
@@ -1251,27 +1261,27 @@ void  SwTableTabDlg::PageCreated(const OUString& rId, SfxTabPage& rPage)
 }
 
 SwTextFlowPage::SwTextFlowPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/tabletextflowpage.ui", "TableTextFlowPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/tabletextflowpage.ui"_ustr, u"TableTextFlowPage"_ustr, &rSet)
     , m_pShell(nullptr)
     , m_bPageBreak(true)
     , m_bHtmlMode(false)
-    , m_xPgBrkCB(m_xBuilder->weld_check_button("break"))
-    , m_xPgBrkRB(m_xBuilder->weld_radio_button("page"))
-    , m_xColBrkRB(m_xBuilder->weld_radio_button("column"))
-    , m_xPgBrkBeforeRB(m_xBuilder->weld_radio_button("before"))
-    , m_xPgBrkAfterRB(m_xBuilder->weld_radio_button("after"))
-    , m_xPageCollCB(m_xBuilder->weld_check_button("pagestyle"))
-    , m_xPageCollLB(m_xBuilder->weld_combo_box("pagestylelb"))
-    , m_xPageNoCB(m_xBuilder->weld_check_button("pagenoft"))
-    , m_xPageNoNF(m_xBuilder->weld_spin_button("pagenonf"))
-    , m_xSplitCB(m_xBuilder->weld_check_button("split"))
-    , m_xSplitRowCB(m_xBuilder->weld_check_button("splitrow"))
-    , m_xKeepCB(m_xBuilder->weld_check_button("keep"))
-    , m_xHeadLineCB(m_xBuilder->weld_check_button("headline"))
-    , m_xRepeatHeaderCombo(m_xBuilder->weld_widget("repeatheader"))
-    , m_xRepeatHeaderNF(m_xBuilder->weld_spin_button("repeatheadernf"))
-    , m_xTextDirectionLB(m_xBuilder->weld_combo_box("textorientation"))
-    , m_xVertOrientLB(m_xBuilder->weld_combo_box("vertorient"))
+    , m_xPgBrkCB(m_xBuilder->weld_check_button(u"break"_ustr))
+    , m_xPgBrkRB(m_xBuilder->weld_radio_button(u"page"_ustr))
+    , m_xColBrkRB(m_xBuilder->weld_radio_button(u"column"_ustr))
+    , m_xPgBrkBeforeRB(m_xBuilder->weld_radio_button(u"before"_ustr))
+    , m_xPgBrkAfterRB(m_xBuilder->weld_radio_button(u"after"_ustr))
+    , m_xPageCollCB(m_xBuilder->weld_check_button(u"pagestyle"_ustr))
+    , m_xPageCollLB(m_xBuilder->weld_combo_box(u"pagestylelb"_ustr))
+    , m_xPageNoCB(m_xBuilder->weld_check_button(u"pagenoft"_ustr))
+    , m_xPageNoNF(m_xBuilder->weld_spin_button(u"pagenonf"_ustr))
+    , m_xSplitCB(m_xBuilder->weld_check_button(u"split"_ustr))
+    , m_xSplitRowCB(m_xBuilder->weld_check_button(u"splitrow"_ustr))
+    , m_xKeepCB(m_xBuilder->weld_check_button(u"keep"_ustr))
+    , m_xHeadLineCB(m_xBuilder->weld_check_button(u"headline"_ustr))
+    , m_xRepeatHeaderCombo(m_xBuilder->weld_widget(u"repeatheader"_ustr))
+    , m_xRepeatHeaderNF(m_xBuilder->weld_spin_button(u"repeatheadernf"_ustr))
+    , m_xTextDirectionLB(m_xBuilder->weld_combo_box(u"textorientation"_ustr))
+    , m_xVertOrientLB(m_xBuilder->weld_combo_box(u"vertorient"_ustr))
 {
     m_xPgBrkCB->connect_toggled(LINK(this, SwTextFlowPage, PageBreakHdl_Impl));
     m_xPgBrkBeforeRB->connect_toggled(
@@ -1357,7 +1367,7 @@ bool  SwTextFlowPage::FillItemSet( SfxItemSet* rSet )
             || (pDesc->GetPageDesc()->GetName() != sPage)
             || (pDesc->GetNumOffset() != oPageNum))
         {
-            SwFormatPageDesc aFormat( m_pShell->FindPageDescByName( sPage, true ) );
+            SwFormatPageDesc aFormat( m_pShell->FindPageDescByName( UIName(sPage), true ) );
             aFormat.SetNumOffset(oPageNum);
             bModified |= nullptr != rSet->Put( aFormat );
             bPageItemPut = bState;
@@ -1436,15 +1446,15 @@ void   SwTextFlowPage::Reset( const SfxItemSet* rSet )
         for( size_t i = 0; i < nCount; ++i)
         {
             const SwPageDesc &rPageDesc = m_pShell->GetPageDesc(i);
-            m_xPageCollLB->append_text(rPageDesc.GetName());
+            m_xPageCollLB->append_text(rPageDesc.GetName().toString());
         }
 
-        OUString aFormatName;
+        UIName aFormatName;
         for (sal_uInt16 i = RES_POOLPAGE_BEGIN; i < RES_POOLPAGE_END; ++i)
         {
-            aFormatName = SwStyleNameMapper::GetUIName(i, aFormatName);
-            if (m_xPageCollLB->find_text(aFormatName) == -1)
-                m_xPageCollLB->append_text(aFormatName);
+            aFormatName = SwStyleNameMapper::GetUIName(i, ProgName());
+            if (m_xPageCollLB->find_text(aFormatName.toString()) == -1)
+                m_xPageCollLB->append_text(aFormatName.toString());
         }
 
         if(const SvxFormatKeepItem* pKeepItem = rSet->GetItemIfSet( RES_KEEP, false ))
@@ -1491,7 +1501,7 @@ void   SwTextFlowPage::Reset( const SfxItemSet* rSet )
                 }
 
                 if(pDesc)
-                    sPageDesc = pDesc->GetName();
+                    sPageDesc = pDesc->GetName().toString();
                 if (!sPageDesc.isEmpty() && m_xPageCollLB->find_text(sPageDesc) != -1)
                 {
                     m_xPageCollLB->set_active_text(sPageDesc);

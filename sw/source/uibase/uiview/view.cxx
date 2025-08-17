@@ -26,6 +26,7 @@
 
 #include <stdlib.h>
 #include <hintids.hxx>
+#include <comphelper/diagnose_ex.hxx>
 #include <comphelper/string.hxx>
 #include <comphelper/lok.hxx>
 #include <o3tl/any.hxx>
@@ -102,7 +103,7 @@
 #include <PostItMgr.hxx>
 #include <annotsh.hxx>
 #include <swruler.hxx>
-#include <svx/theme/ThemeColorPaletteManager.hxx>
+#include <svx/theme/ThemeColorChangerCommon.hxx>
 #include <com/sun/star/document/XDocumentProperties.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 
@@ -120,13 +121,13 @@
 #include <svx/svdview.hxx>
 #include <node2lay.hxx>
 #include <cntfrm.hxx>
+#include <IDocumentRedlineAccess.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::scanner;
 using namespace ::com::sun::star::sdb;
-using namespace ::com::sun::star::sdbc;
 
 #define SWVIEWFLAGS SfxViewShellFlags::HAS_PRINTOPTIONS
 
@@ -150,7 +151,7 @@ SfxDispatcher &SwView::GetDispatcher()
 
 void SwView::ImpSetVerb( SelectionType nSelType )
 {
-    bool bResetVerbs = m_bVerbsActive;
+    Sequence<embed::VerbDescriptor> newVerbs;
     if ( !GetViewFrame().GetFrame().IsInPlace() &&
          (SelectionType::Ole|SelectionType::Graphic) & nSelType )
     {
@@ -159,16 +160,21 @@ void SwView::ImpSetVerb( SelectionType nSelType )
         {
             if ( nSelType & SelectionType::Ole )
             {
-                SetVerbs( GetWrtShell().GetOLEObject()->getSupportedVerbs() );
-                m_bVerbsActive = true;
-                bResetVerbs = false;
+                try
+                {
+                    newVerbs = GetWrtShell().GetOLEObject()->getSupportedVerbs();
+                }
+                catch (css::uno::Exception&)
+                {
+                    DBG_UNHANDLED_EXCEPTION("sw.ui", "Failed to retrieve supported verbs");
+                }
             }
         }
     }
-    if ( bResetVerbs )
+    if (m_bVerbsActive || newVerbs.hasElements())
     {
-        SetVerbs( Sequence< embed::VerbDescriptor >() );
-        m_bVerbsActive = false;
+        SetVerbs(newVerbs);
+        m_bVerbsActive = newVerbs.hasElements();
     }
 }
 
@@ -237,7 +243,7 @@ uno::Reference<frame::XLayoutManager> getLayoutManager(const SfxViewFrame& rView
     {
         try
         {
-            xLayoutManager.set(xPropSet->getPropertyValue("LayoutManager"), uno::UNO_QUERY);
+            xLayoutManager.set(xPropSet->getPropertyValue(u"LayoutManager"_ustr), uno::UNO_QUERY);
         }
         catch (const Exception& e)
         {
@@ -248,16 +254,28 @@ uno::Reference<frame::XLayoutManager> getLayoutManager(const SfxViewFrame& rView
 }
 }
 
-void SwView::ShowUIElement(const OUString& sElementURL) const
+void SwView::SetUIElementVisibility(const OUString& sElementURL, bool bShow) const
 {
     if (auto xLayoutManager = getLayoutManager(GetViewFrame()))
     {
         if (!xLayoutManager->getElement(sElementURL).is())
-        {
             xLayoutManager->createElement(sElementURL);
+
+        if (bShow)
             xLayoutManager->showElement(sElementURL);
-        }
+        else
+            xLayoutManager->hideElement(sElementURL);
     }
+}
+
+void SwView::ShowUIElement(const OUString& sElementURL) const
+{
+    SetUIElementVisibility(sElementURL, true);
+}
+
+void SwView::HideUIElement(const OUString& sElementURL) const
+{
+    SetUIElementVisibility(sElementURL, false);
 }
 
 void SwView::SelectShell()
@@ -320,7 +338,7 @@ void SwView::SelectShell()
     {
 
         SfxDispatcher &rDispatcher = GetDispatcher();
-        SwToolbarConfigItem *pBarCfg = SW_MOD()->GetToolbarConfig();
+        SwToolbarConfigItem* pBarCfg = SwModule::get()->GetToolbarConfig();
 
         if ( m_pShell )
         {
@@ -454,6 +472,7 @@ void SwView::SelectShell()
                 rDispatcher.Push( *m_pShell );
             }
             m_pShell = new SwTextShell(*this);
+
             rDispatcher.Push( *m_pShell );
             if ( m_nSelectionType & SelectionType::Table )
             {
@@ -487,8 +506,8 @@ void SwView::SelectShell()
         }
 
         // Show Mail Merge toolbar initially for documents with Database fields
-        if (!m_bInitOnceCompleted && GetWrtShell().IsAnyDatabaseFieldInDoc() && !utl::ConfigManager::IsFuzzing())
-            ShowUIElement("private:resource/toolbar/mailmerge");
+        if (!m_bInitOnceCompleted && GetWrtShell().IsAnyDatabaseFieldInDoc() && !comphelper::IsFuzzing())
+            ShowUIElement(u"private:resource/toolbar/mailmerge"_ustr);
 
         // Activate the toolbar to the new selection which also was active last time.
         // Before a flush () must be, but does not affect the UI according to MBA and
@@ -523,14 +542,6 @@ void SwView::SelectShell()
 // can be somewhere in no man's land.
 // But since we can no longer supply status and we want instead lock
 // the dispatcher.
-
-extern "C"
-{
-    static int lcl_CmpIds( const void *pFirst, const void *pSecond)
-    {
-        return *static_cast<sal_uInt16 const *>(pFirst) - *static_cast<sal_uInt16 const *>(pSecond);
-    }
-}
 
 IMPL_LINK_NOARG(SwView, AttrChangedNotify, LinkParamNone*, void)
 {
@@ -622,55 +633,51 @@ void SwView::CheckReadonlyState()
 
     if ( !m_pWrtShell->IsCursorReadonly() )
     {
-        static sal_uInt16 aROIds[] =
+        static constexpr sal_uInt16 aROIds[] =
         {
-            SID_DELETE,                 FN_BACKSPACE,               FN_SHIFT_BACKSPACE,
-            SID_UNDO,
-            SID_REDO,                   SID_REPEAT,                 SID_PASTE,
-            SID_PASTE_UNFORMATTED,      FN_PASTE_NESTED_TABLE,      FN_TABLE_PASTE_ROW_BEFORE,
-            FN_TABLE_PASTE_COL_BEFORE,  SID_PASTE_SPECIAL,          SID_SBA_BRW_INSERT,
-            SID_BACKGROUND_COLOR,       FN_INSERT_BOOKMARK,         SID_CHARMAP_CONTROL,
-            SID_CHARMAP,                                            FN_INSERT_SOFT_HYPHEN,
-            FN_INSERT_HARDHYPHEN,       FN_INSERT_HARD_SPACE,       FN_INSERT_NNBSP,
-            FN_INSERT_BREAK,            FN_INSERT_LINEBREAK,        FN_INSERT_COLUMN_BREAK,
-            FN_INSERT_BREAK_DLG,        FN_INSERT_CONTENT_CONTROL,  FN_INSERT_CHECKBOX_CONTENT_CONTROL,
-            FN_INSERT_DROPDOWN_CONTENT_CONTROL, FN_INSERT_PICTURE_CONTENT_CONTROL,
-            FN_INSERT_DATE_CONTENT_CONTROL, FN_INSERT_PLAIN_TEXT_CONTENT_CONTROL,
-            FN_INSERT_COMBO_BOX_CONTENT_CONTROL,
-            FN_DELETE_SENT,             FN_DELETE_BACK_SENT,        FN_DELETE_WORD,
-            FN_DELETE_BACK_WORD,        FN_DELETE_LINE,             FN_DELETE_BACK_LINE,
-            FN_DELETE_PARA,             FN_DELETE_BACK_PARA,        FN_DELETE_WHOLE_LINE,
-            FN_CALCULATE,               FN_FORMAT_RESET,
-            FN_POSTIT,                  FN_JAVAEDIT,                SID_ATTR_PARA_ADJUST_LEFT,
-            SID_ATTR_PARA_ADJUST_RIGHT, SID_ATTR_PARA_ADJUST_CENTER,SID_ATTR_PARA_ADJUST_BLOCK,
-            SID_ATTR_PARA_LINESPACE_10, SID_ATTR_PARA_LINESPACE_15, SID_ATTR_PARA_LINESPACE_20,
-            SID_ATTR_CHAR_FONT,         SID_ATTR_CHAR_FONTHEIGHT,   SID_ATTR_CHAR_COLOR_BACKGROUND,
-            SID_ATTR_CHAR_BACK_COLOR,
-            SID_ATTR_CHAR_COLOR_BACKGROUND_EXT,                     SID_ATTR_CHAR_COLOR_EXT,
-            SID_ATTR_CHAR_COLOR,        SID_ATTR_CHAR_WEIGHT,       SID_ATTR_CHAR_POSTURE,
-            SID_ATTR_CHAR_OVERLINE,
-            SID_ATTR_CHAR_UNDERLINE,    SID_ATTR_FLASH,             SID_ATTR_CHAR_STRIKEOUT,
-            SID_ULINE_VAL_SINGLE,       SID_ULINE_VAL_DOUBLE,       SID_ULINE_VAL_DOTTED,
-            SID_ATTR_CHAR_CONTOUR,      SID_ATTR_CHAR_SHADOWED,
-            SID_ATTR_CHAR_AUTOKERN,     SID_ATTR_CHAR_ESCAPEMENT,   FN_SET_SUPER_SCRIPT,
-            FN_SET_SUB_SCRIPT,          SID_ATTR_CHAR_CASEMAP,      SID_ATTR_CHAR_LANGUAGE,
-            SID_ATTR_CHAR_KERNING,      SID_CHAR_DLG,               SID_ATTR_CHAR_WORDLINEMODE,
-            FN_GROW_FONT_SIZE,          FN_SHRINK_FONT_SIZE,        FN_TXTATR_INET,
-            FN_FORMAT_DROPCAPS,         SID_ATTR_PARA_ADJUST,       SID_ATTR_PARA_LINESPACE,
-            SID_ATTR_PARA_SPLIT,        SID_ATTR_PARA_KEEP,         SID_ATTR_PARA_WIDOWS,
-            SID_ATTR_PARA_ORPHANS,
-            SID_ATTR_PARA_MODEL,        SID_PARA_DLG,
-            FN_SELECT_PARA,             SID_DEC_INDENT,
-            SID_INC_INDENT
-        };
-        static bool bFirst = true;
-        if ( bFirst )
-        {
-            qsort( static_cast<void*>(aROIds), SAL_N_ELEMENTS(aROIds), sizeof(sal_uInt16), lcl_CmpIds );
-            bFirst = false;
-        }
+            SID_PASTE_SPECIAL, SID_PASTE_UNFORMATTED, SID_CHARMAP_CONTROL,
+            SID_REDO, SID_UNDO, SID_REPEAT,
+            SID_PASTE, SID_DELETE, SID_ATTR_CHAR_FONT,
+            SID_ATTR_CHAR_POSTURE, SID_ATTR_CHAR_WEIGHT, SID_ATTR_CHAR_SHADOWED,
+            SID_ATTR_CHAR_WORDLINEMODE, SID_ATTR_CHAR_CONTOUR, SID_ATTR_CHAR_STRIKEOUT,
+            SID_ATTR_CHAR_UNDERLINE, SID_ATTR_CHAR_FONTHEIGHT, SID_ATTR_CHAR_COLOR,
+            SID_ATTR_CHAR_KERNING, SID_ATTR_CHAR_CASEMAP, SID_ATTR_CHAR_LANGUAGE,
+            SID_ATTR_CHAR_ESCAPEMENT, SID_ATTR_PARA_ADJUST, SID_ATTR_PARA_ADJUST_LEFT,
+            SID_ATTR_PARA_ADJUST_RIGHT, SID_ATTR_PARA_ADJUST_CENTER, SID_ATTR_PARA_ADJUST_BLOCK,
+            SID_ATTR_PARA_LINESPACE, SID_ATTR_PARA_LINESPACE_10, SID_ATTR_PARA_LINESPACE_15,
+            SID_ATTR_PARA_LINESPACE_20, SID_ATTR_PARA_SPLIT, SID_ATTR_PARA_ORPHANS,
+            SID_ATTR_PARA_WIDOWS, SID_ATTR_PARA_MODEL, SID_ATTR_PARA_KEEP,
+            SID_ATTR_CHAR_AUTOKERN, SID_BACKGROUND_COLOR, SID_CHAR_DLG,
+            SID_PARA_DLG, SID_ATTR_FLASH, SID_DEC_INDENT,
+            SID_INC_INDENT, SID_ATTR_CHAR_COLOR_EXT, SID_ATTR_CHAR_COLOR_BACKGROUND,
+            SID_ATTR_CHAR_COLOR_BACKGROUND_EXT, SID_CHARMAP, FN_SVX_SET_NUMBER,
+            FN_SVX_SET_BULLET, FN_SVX_SET_OUTLINE, SID_ATTR_CHAR_BACK_COLOR,
+            SID_ULINE_VAL_SINGLE, SID_ULINE_VAL_DOUBLE, SID_ULINE_VAL_DOTTED,
+            SID_ATTR_CHAR_OVERLINE, SID_AUTOSPELL_CHECK, SID_SBA_BRW_INSERT,
+            FN_NUM_BULLET_ON, FN_NUM_NUMBERING_ON, FN_SELECT_PARA,
+            FN_INSERT_BOOKMARK, FN_INSERT_BREAK, FN_INSERT_BREAK_DLG,
+            FN_INSERT_COLUMN_BREAK, FN_INSERT_LINEBREAK, FN_INSERT_CONTENT_CONTROL,
+            FN_INSERT_CHECKBOX_CONTENT_CONTROL, FN_INSERT_DROPDOWN_CONTENT_CONTROL, FN_INSERT_PICTURE_CONTENT_CONTROL,
+            FN_INSERT_DATE_CONTENT_CONTROL, FN_INSERT_PLAIN_TEXT_CONTENT_CONTROL, FN_POSTIT,
+            FN_INSERT_TABLE, FN_INSERT_COMBO_BOX_CONTENT_CONTROL, FN_INSERT_SOFT_HYPHEN,
+            FN_INSERT_HARD_SPACE, FN_INSERT_NNBSP, FN_INSERT_HARDHYPHEN,
+            FN_GROW_FONT_SIZE, FN_SHRINK_FONT_SIZE, FN_SET_SUPER_SCRIPT,
+            FN_SET_SUB_SCRIPT, FN_FORMAT_DROPCAPS, FN_FORMAT_TABLE_DLG,
+            FN_FORMAT_RESET, FN_CALCULATE, FN_EXPAND_GLOSSARY,
+            FN_BACKSPACE, FN_DELETE_SENT, FN_DELETE_BACK_SENT,
+            FN_DELETE_WORD, FN_DELETE_BACK_WORD, FN_DELETE_LINE,
+            FN_DELETE_BACK_LINE, FN_DELETE_PARA, FN_DELETE_BACK_PARA,
+            FN_DELETE_WHOLE_LINE, FN_SHIFT_BACKSPACE, FN_TXTATR_INET,
+            FN_JAVAEDIT, FN_PASTE_NESTED_TABLE, FN_TABLE_PASTE_ROW_BEFORE,
+            FN_TABLE_PASTE_COL_BEFORE, FN_SPELL_GRAMMAR_DIALOG };
+
+        static_assert(std::is_sorted(std::begin(aROIds), std::end(aROIds)));
+
         if ( SfxItemState::DISABLED == eStateRO )
         {
+            if (m_pWrtShell->GetViewOptions()->IsReadonly())
+                ShowUIElement(u"private:resource/toolbar/drawtextobjectbar"_ustr);
+
             rDis.SetSlotFilter( SfxSlotFilterState::ENABLED_READONLY, aROIds );
             bChgd = true;
         }
@@ -679,13 +686,10 @@ void SwView::CheckReadonlyState()
     {
         if ( SfxItemState::DISABLED == eStateProtAll )
         {
-            static sal_uInt16 aAllProtIds[] = { SID_SAVEDOC, FN_EDIT_REGION };
-            static bool bAllProtFirst = true;
-            if ( bAllProtFirst )
-            {
-                qsort( static_cast<void*>(aAllProtIds), SAL_N_ELEMENTS(aAllProtIds), sizeof(sal_uInt16), lcl_CmpIds );
-                bAllProtFirst = false;
-            }
+            static constexpr sal_uInt16 aAllProtIds[] = { SID_SAVEDOC, FN_EDIT_REGION };
+
+            static_assert(std::is_sorted(std::begin(aAllProtIds), std::end(aAllProtIds)));
+
             rDis.SetSlotFilter( SfxSlotFilterState::ENABLED_READONLY, aAllProtIds );
             bChgd = true;
         }
@@ -693,6 +697,9 @@ void SwView::CheckReadonlyState()
     else if ( SfxItemState::DISABLED != eStateRO ||
                 SfxItemState::DISABLED != eStateProtAll )
     {
+        if (m_pWrtShell->GetViewOptions()->IsReadonly())
+            HideUIElement(u"private:resource/toolbar/drawtextobjectbar"_ustr);
+
         bChgd = true;
         rDis.SetSlotFilter();
     }
@@ -766,11 +773,6 @@ SwView::SwView(SfxViewFrame& _rFrame, SfxViewShell* pOldSh)
     m_pFormShell(nullptr),
     m_pHScrollbar(nullptr),
     m_pVScrollbar(nullptr),
-    m_pVRuler(VclPtr<SvxRuler>::Create(&GetViewFrame().GetWindow(), m_pEditWin,
-                            SvxRulerSupportFlags::TABS | SvxRulerSupportFlags::PARAGRAPH_MARGINS_VERTICAL|
-                                SvxRulerSupportFlags::BORDERS | SvxRulerSupportFlags::REDUCED_METRIC,
-                            GetViewFrame().GetBindings(),
-                            WB_VSCROLL |  WB_EXTRAFIELD | WB_BORDER )),
     m_pLastTableFormat(nullptr),
     m_pLastFlyFormat(nullptr),
     m_pFormatClipboard(new SwFormatClipboard()),
@@ -823,7 +825,7 @@ SwView::SwView(SfxViewFrame& _rFrame, SfxViewShell* pOldSh)
 
     bDocSzUpdated = true;
 
-    static bool bFuzzing = utl::ConfigManager::IsFuzzing();
+    static bool bFuzzing = comphelper::IsFuzzing();
 
     if (!bFuzzing)
     {
@@ -832,7 +834,7 @@ SwView::SwView(SfxViewFrame& _rFrame, SfxViewShell* pOldSh)
     }
 
     m_pViewImpl.reset(new SwView_Impl(this));
-    SetName("View");
+    SetName(u"View"_ustr);
     SetWindow( m_pEditWin );
 
     m_aTimer.SetTimeout( 120 );
@@ -849,13 +851,16 @@ SwView::SwView(SfxViewFrame& _rFrame, SfxViewShell* pOldSh)
         rDocSh.UpdateFontList();
     bool bWebDShell = dynamic_cast<const SwWebDocShell*>(&rDocSh) !=  nullptr;
 
-    const SwMasterUsrPref *pUsrPref = SW_MOD()->GetUsrPref(bWebDShell);
+    const SwMasterUsrPref* pUsrPref = SwModule::get()->GetUsrPref(bWebDShell);
     SwViewOption aUsrPref( *pUsrPref);
 
     //! get lingu options without loading lingu DLL
     SvtLinguOptions aLinguOpt;
     SvtLinguConfig().GetOptions( aLinguOpt );
     aUsrPref.SetOnlineSpell( aLinguOpt.bIsSpellAuto );
+
+    // Inherit the per-view setting from the per-document one.
+    aUsrPref.SetRedlineRecordingOn(rDocSh.GetDoc()->getIDocumentRedlineAccess().IsRedlineOn());
 
     bool bOldShellWasSrcView = false;
 
@@ -902,11 +907,16 @@ SwView::SwView(SfxViewFrame& _rFrame, SfxViewShell* pOldSh)
             aUsrPref.SetZoomType( SvxZoomType::PERCENT );
             aUsrPref.SetZoom( 100 );
         }
-        if (rDocSh.IsPreview())
+        else if (rDocSh.IsPreview())
         {
             aUsrPref.SetZoomType( SvxZoomType::WHOLEPAGE );
             aUsrPref.SetViewLayoutBookMode( false );
             aUsrPref.SetViewLayoutColumns( 1 );
+        }
+        else if (!pUsrPref->IsDefaultZoom())
+        {
+            aUsrPref.SetZoomType(pUsrPref->GetDefaultZoomType());
+            aUsrPref.SetZoom(pUsrPref->GetDefaultZoomValue());
         }
         m_pWrtShell.reset(new SwWrtShell(rDoc, m_pEditWin, *this, &aUsrPref));
         // creating an SwView from a SwPagePreview needs to
@@ -941,6 +951,15 @@ SwView::SwView(SfxViewFrame& _rFrame, SfxViewShell* pOldSh)
                 SvxRulerSupportFlags::REDUCED_METRIC,
                 GetViewFrame().GetBindings(),
                 WB_STDRULER | WB_EXTRAFIELD | WB_BORDER);
+
+    m_pVRuler = VclPtr<SvxRuler>::Create(&GetViewFrame().GetWindow(), m_pEditWin,
+                SvxRulerSupportFlags::TABS |
+                SvxRulerSupportFlags::PARAGRAPH_MARGINS_VERTICAL |
+                SvxRulerSupportFlags::BORDERS |
+                SvxRulerSupportFlags::NEGATIVE_MARGINS|
+                SvxRulerSupportFlags::REDUCED_METRIC,
+                GetViewFrame().GetBindings(),
+                WB_VSCROLL | WB_EXTRAFIELD | WB_BORDER);
 
     // assure that modified state of document
     // isn't reset, if document is already modified.
@@ -986,6 +1005,9 @@ SwView::SwView(SfxViewFrame& _rFrame, SfxViewShell* pOldSh)
     // Set DocShell
     m_xGlueDocShell.reset(new SwViewGlueDocShell(*this, rDocSh));
     m_pPostItMgr.reset(new SwPostItMgr(this));
+#if ENABLE_YRS
+    m_pWrtShell->GetDoc()->getIDocumentState().YrsInitAcceptor();
+#endif
 
     // Check and process the DocSize. Via the handler, the shell could not
     // be found, because the shell is not known in the SFX management
@@ -1011,6 +1033,8 @@ SwView::SwView(SfxViewFrame& _rFrame, SfxViewShell* pOldSh)
     // Disable "multiple window"
     SetNewWindowAllowed(!bBrowse);
     // End of disabled multiple window
+
+    UpdateXformsViewOption(GetDrawView()->IsDesignMode());
 
     m_bVScrollbarEnabled = aUsrPref.IsViewVScrollBar();
     m_bHScrollbarEnabled = aUsrPref.IsViewHScrollBar();
@@ -1078,7 +1102,7 @@ SwView::SwView(SfxViewFrame& _rFrame, SfxViewShell* pOldSh)
     uno::Reference< frame::XFrame >  xFrame = rVFrame.GetFrame().GetFrameInterface();
 
     uno::Reference< frame::XFrame >  xBeamerFrame = xFrame->findFrame(
-            "_beamer", frame::FrameSearchFlag::CHILDREN);
+            u"_beamer"_ustr, frame::FrameSearchFlag::CHILDREN);
     if(xBeamerFrame.is())
     {
         SwDBData aData = m_pWrtShell->GetDBData();
@@ -1129,7 +1153,7 @@ SwViewGlueDocShell::SwViewGlueDocShell(SwView& rView, SwDocShell& rDocSh)
 {
     // Set DocShell
     rDocSh.SetView(&m_rView);
-    SW_MOD()->SetView(&m_rView);
+    SwModule::get()->SetView(&m_rView);
 }
 
 SwViewGlueDocShell::~SwViewGlueDocShell()
@@ -1137,8 +1161,8 @@ SwViewGlueDocShell::~SwViewGlueDocShell()
     SwDocShell* pDocSh = m_rView.GetDocShell();
     if (pDocSh && pDocSh->GetView() == &m_rView)
         pDocSh->SetView(nullptr);
-    if (SW_MOD()->GetView() == &m_rView)
-        SW_MOD()->SetView(nullptr);
+    if (SwModule* mod = SwModule::get(); mod->GetView() == &m_rView)
+        mod->SetView(nullptr);
 }
 
 SwView::~SwView()
@@ -1217,8 +1241,9 @@ void SwView::afterCallbackRegistered()
     auto* pDocShell = GetDocShell();
     if (pDocShell)
     {
-        svx::ThemeColorPaletteManager aManager(pDocShell->GetThemeColors());
-        libreOfficeKitViewCallback(LOK_CALLBACK_COLOR_PALETTES, aManager.generateJSON());
+        std::shared_ptr<model::ColorSet> pThemeColors = pDocShell->GetThemeColors();
+        std::set<Color> aDocumentColors = pDocShell->GetDocColors();
+        svx::theme::notifyLOK(pThemeColors, aDocumentColors);
     }
 }
 
@@ -1273,7 +1298,7 @@ static bool lcl_IsOwnDocument( SwView& rView )
         = xDPS->getDocumentProperties();
     OUString Created = xDocProps->getAuthor();
     OUString Changed = xDocProps->getModifiedBy();
-    OUString FullName = SW_MOD()->GetUserOptions().GetFullName();
+    OUString FullName = SwModule::get()->GetUserOptions().GetFullName();
     return !FullName.isEmpty()
            && (Changed == FullName || (Changed.isEmpty() && Created == FullName));
 }
@@ -1429,23 +1454,23 @@ void SwView::ReadUserDataSequence ( const uno::Sequence < beans::PropertyValue >
         if ( rValue.Name == "ViewLeft" )
         {
            rValue.Value >>= nX;
-           nX = o3tl::toTwips(nX, o3tl::Length::mm100);
+           nX = o3tl::convertSaturate(nX, o3tl::Length::mm100, o3tl::Length::twip);
         }
         else if ( rValue.Name == "ViewTop" )
         {
            rValue.Value >>= nY;
-           nY = o3tl::toTwips(nY, o3tl::Length::mm100);
+           nY = o3tl::convertSaturate(nY, o3tl::Length::mm100, o3tl::Length::twip);
         }
         else if ( rValue.Name == "VisibleLeft" )
         {
            rValue.Value >>= nLeft;
-           nLeft = o3tl::toTwips(nLeft, o3tl::Length::mm100);
+           nLeft = o3tl::convertSaturate(nLeft, o3tl::Length::mm100, o3tl::Length::twip);
            bGotVisibleLeft = true;
         }
         else if ( rValue.Name == "VisibleTop" )
         {
            rValue.Value >>= nTop;
-           nTop = o3tl::toTwips(nTop, o3tl::Length::mm100);
+           nTop = o3tl::convertSaturate(nTop, o3tl::Length::mm100, o3tl::Length::twip);
            bGotVisibleTop = true;
         }
         else if ( rValue.Name == "ZoomType" )
@@ -1490,7 +1515,7 @@ void SwView::ReadUserDataSequence ( const uno::Sequence < beans::PropertyValue >
     if (bGotBrowseMode)
     {
         // delegate further
-        GetViewImpl()->GetUNOObject_Impl()->getViewSettings()->setPropertyValue("ShowOnlineLayout", uno::Any(bBrowseMode));
+        GetViewImpl()->GetUNOObject_Impl()->getViewSettings()->setPropertyValue(u"ShowOnlineLayout"_ustr, uno::Any(bBrowseMode));
     }
 
     SelectShell();
@@ -1557,7 +1582,7 @@ void SwView::ReadUserDataSequence ( const uno::Sequence < beans::PropertyValue >
         // Got a custom value, then it makes sense to trigger notifications.
         SwViewOption aUsrPref(*pVOpt);
         aUsrPref.SetKeepRatio(bKeepRatio);
-        SW_MOD()->ApplyUsrPref(aUsrPref, this);
+        SwModule::get()->ApplyUsrPref(aUsrPref, this);
     }
 
     // Set ViewLayoutSettings
@@ -1565,7 +1590,8 @@ void SwView::ReadUserDataSequence ( const uno::Sequence < beans::PropertyValue >
                                         ( pVOpt->GetViewLayoutColumns() != nViewLayoutColumns || pVOpt->IsViewLayoutBookMode() != bViewLayoutBookMode );
 
     const bool bSetViewSettings = bGotZoomType && bGotZoomFactor &&
-                                  ( pVOpt->GetZoom() != nZoomFactor || pVOpt->GetZoomType() != eZoom );
+                                  ( pVOpt->GetZoom() != nZoomFactor || pVOpt->GetZoomType() != eZoom ) &&
+                                   SwModule::get()->GetUsrPref(pVOpt->getBrowseMode())->IsDefaultZoom();
 
     // In case we have a 'fixed' view layout of 2 or more columns,
     // we have to apply the view options *before* starting the action.
@@ -1626,41 +1652,41 @@ void SwView::WriteUserDataSequence ( uno::Sequence < beans::PropertyValue >& rSe
     std::vector<beans::PropertyValue> aVector;
 
     sal_uInt16 nViewID( GetViewFrame().GetCurViewId());
-    aVector.push_back(comphelper::makePropertyValue("ViewId", "view" + OUString::number(nViewID)));
+    aVector.push_back(comphelper::makePropertyValue(u"ViewId"_ustr, "view" + OUString::number(nViewID)));
 
-    aVector.push_back(comphelper::makePropertyValue("ViewLeft", convertTwipToMm100 ( rRect.Left() )));
+    aVector.push_back(comphelper::makePropertyValue(u"ViewLeft"_ustr, convertTwipToMm100 ( rRect.Left() )));
 
-    aVector.push_back(comphelper::makePropertyValue("ViewTop", convertTwipToMm100 ( rRect.Top() )));
+    aVector.push_back(comphelper::makePropertyValue(u"ViewTop"_ustr, convertTwipToMm100 ( rRect.Top() )));
 
     auto visibleLeft = convertTwipToMm100 ( rVis.Left() );
-    aVector.push_back(comphelper::makePropertyValue("VisibleLeft", visibleLeft));
+    aVector.push_back(comphelper::makePropertyValue(u"VisibleLeft"_ustr, visibleLeft));
 
     auto visibleTop = convertTwipToMm100 ( rVis.Top() );
-    aVector.push_back(comphelper::makePropertyValue("VisibleTop", visibleTop));
+    aVector.push_back(comphelper::makePropertyValue(u"VisibleTop"_ustr, visibleTop));
 
     // We don't read VisibleRight and VisibleBottom anymore, but write them,
     // because older versions rely on their presence to restore position
 
     auto visibleRight = rVis.IsWidthEmpty() ? visibleLeft : convertTwipToMm100 ( rVis.Right() );
-    aVector.push_back(comphelper::makePropertyValue("VisibleRight", visibleRight));
+    aVector.push_back(comphelper::makePropertyValue(u"VisibleRight"_ustr, visibleRight));
 
     auto visibleBottom = rVis.IsHeightEmpty() ? visibleTop : convertTwipToMm100 ( rVis.Bottom() );
-    aVector.push_back(comphelper::makePropertyValue("VisibleBottom", visibleBottom));
+    aVector.push_back(comphelper::makePropertyValue(u"VisibleBottom"_ustr, visibleBottom));
 
     const sal_Int16 nZoomType = static_cast< sal_Int16 >(m_pWrtShell->GetViewOptions()->GetZoomType());
-    aVector.push_back(comphelper::makePropertyValue("ZoomType", nZoomType));
+    aVector.push_back(comphelper::makePropertyValue(u"ZoomType"_ustr, nZoomType));
 
     const sal_Int16 nViewLayoutColumns = static_cast< sal_Int16 >(m_pWrtShell->GetViewOptions()->GetViewLayoutColumns());
-    aVector.push_back(comphelper::makePropertyValue("ViewLayoutColumns", nViewLayoutColumns));
+    aVector.push_back(comphelper::makePropertyValue(u"ViewLayoutColumns"_ustr, nViewLayoutColumns));
 
-    aVector.push_back(comphelper::makePropertyValue("ViewLayoutBookMode", m_pWrtShell->GetViewOptions()->IsViewLayoutBookMode()));
+    aVector.push_back(comphelper::makePropertyValue(u"ViewLayoutBookMode"_ustr, m_pWrtShell->GetViewOptions()->IsViewLayoutBookMode()));
 
-    aVector.push_back(comphelper::makePropertyValue("ZoomFactor", static_cast < sal_Int16 > (m_pWrtShell->GetViewOptions()->GetZoom())));
+    aVector.push_back(comphelper::makePropertyValue(u"ZoomFactor"_ustr, static_cast < sal_Int16 > (m_pWrtShell->GetViewOptions()->GetZoom())));
 
-    aVector.push_back(comphelper::makePropertyValue("IsSelectedFrame", FrameTypeFlags::NONE != m_pWrtShell->GetSelFrameType()));
+    aVector.push_back(comphelper::makePropertyValue(u"IsSelectedFrame"_ustr, FrameTypeFlags::NONE != m_pWrtShell->GetSelFrameType()));
 
     aVector.push_back(
-        comphelper::makePropertyValue("KeepRatio", m_pWrtShell->GetViewOptions()->IsKeepRatio()));
+        comphelper::makePropertyValue(u"KeepRatio"_ustr, m_pWrtShell->GetViewOptions()->IsKeepRatio()));
 
     rSequence = comphelper::containerToSequence(aVector);
 
@@ -1676,7 +1702,7 @@ void SwView::ShowCursor( bool bOn )
 
     if( !bOn )
         m_pWrtShell->HideCursor();
-    else if( !m_pWrtShell->IsFrameSelected() && !m_pWrtShell->IsObjSelected() )
+    else if( !m_pWrtShell->IsFrameSelected() && !m_pWrtShell->GetSelectedObjCount() )
         m_pWrtShell->ShowCursor();
 
     if( bUnlockView )
@@ -1727,106 +1753,126 @@ SwGlossaryHdl* SwView::GetGlosHdl()
     return m_pGlosHdl.get();
 }
 
+void SwView::UpdateXformsViewOption(bool bDesignMode)
+{
+    // Set suitable view options when in/out of design mode in XForm documents
+    if( GetDocShell()->GetDoc()->isXForms() )
+    {
+        SwViewOption aViewOption = *GetWrtShellPtr()->GetViewOptions();
+        aViewOption.SetFormView(!bDesignMode);
+        GetWrtShellPtr()->ApplyViewOptions(aViewOption);
+    }
+}
+
 void SwView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 {
     bool bCallBase = true;
-    if(auto pChangedHint = dynamic_cast<const FmDesignModeChangedHint*>(&rHint))
+    SfxHintId nId = rHint.GetId();
+    switch ( nId )
     {
-        bool bDesignMode = pChangedHint->GetDesignMode();
-        if (!bDesignMode && GetDrawFuncPtr())
+        case SfxHintId::FmDesignModeChanged:
         {
-            GetDrawFuncPtr()->Deactivate();
-            SetDrawFuncPtr(nullptr);
-            LeaveDrawCreate();
-            AttrChangedNotify(nullptr);
+            auto pChangedHint = static_cast<const FmDesignModeChangedHint*>(&rHint);
+            bool bDesignMode = pChangedHint->GetDesignMode();
+
+            UpdateXformsViewOption(bDesignMode);
+
+            if (!bDesignMode && GetDrawFuncPtr())
+            {
+                GetDrawFuncPtr()->Deactivate();
+                SetDrawFuncPtr(nullptr);
+                LeaveDrawCreate();
+                AttrChangedNotify(nullptr);
+            }
+            break;
         }
-    }
-    else
-    {
-        SfxHintId nId = rHint.GetId();
-
-        switch ( nId )
-        {
-            // sub shells will be destroyed by the
-            // dispatcher, if the view frame is dying. Thus, reset member <pShell>.
-            case SfxHintId::Dying:
+        // sub shells will be destroyed by the
+        // dispatcher, if the view frame is dying. Thus, reset member <pShell>.
+        case SfxHintId::Dying:
+            {
+                if ( &rBC == &GetViewFrame() )
                 {
-                    if ( &rBC == &GetViewFrame() )
+                    ResetSubShell();
+                }
+            }
+            break;
+        case SfxHintId::ModeChanged:
+            {
+                // Modal mode change-over?
+                bool bModal = GetDocShell()->IsInModalMode();
+                m_pHRuler->SetActive( !bModal );
+                m_pVRuler->SetActive( !bModal );
+            }
+
+            [[fallthrough]];
+
+        case SfxHintId::TitleChanged:
+            if ( GetDocShell()->IsReadOnly() != GetWrtShell().GetViewOptions()->IsReadonly() )
+            {
+                SwWrtShell &rSh = GetWrtShell();
+                rSh.SetReadonlyOption( GetDocShell()->IsReadOnly() );
+
+                if ( rSh.GetViewOptions()->IsViewVRuler() )
+                    CreateVRuler();
+                else
+                    KillVRuler();
+                if ( rSh.GetViewOptions()->IsViewHRuler() )
+                    CreateTab();
+                else
+                    KillTab();
+                bool bReadonly = GetDocShell()->IsReadOnly();
+                // if document is to be opened in alive-mode then this has to be
+                // regarded while switching from readonly-mode to edit-mode
+                if( !bReadonly )
+                {
+                    SwDrawModel * pDrawDoc = GetDocShell()->GetDoc()->getIDocumentDrawModelAccess().GetDrawModel();
+                    if (pDrawDoc)
                     {
-                        ResetSubShell();
+                        if( !pDrawDoc->GetOpenInDesignMode() )
+                            break;// don't touch the design mode
                     }
                 }
-                break;
-            case SfxHintId::ModeChanged:
+                SfxBoolItem aItem( SID_FM_DESIGN_MODE, !bReadonly);
+                GetDispatcher().ExecuteList(SID_FM_DESIGN_MODE,
+                        SfxCallMode::ASYNCHRON, { &aItem });
+            }
+            break;
+
+        case SfxHintId::SwDrawViewsCreated:
+            {
+                bCallBase = false;
+                if ( GetFormShell() )
                 {
-                    // Modal mode change-over?
-                    bool bModal = GetDocShell()->IsInModalMode();
-                    m_pHRuler->SetActive( !bModal );
-                    m_pVRuler->SetActive( !bModal );
-                }
-
-                [[fallthrough]];
-
-            case SfxHintId::TitleChanged:
-                if ( GetDocShell()->IsReadOnly() != GetWrtShell().GetViewOptions()->IsReadonly() )
-                {
-                    SwWrtShell &rSh = GetWrtShell();
-                    rSh.SetReadonlyOption( GetDocShell()->IsReadOnly() );
-
-                    if ( rSh.GetViewOptions()->IsViewVRuler() )
-                        CreateVRuler();
-                    else
-                        KillVRuler();
-                    if ( rSh.GetViewOptions()->IsViewHRuler() )
-                        CreateTab();
-                    else
-                        KillTab();
-                    bool bReadonly = GetDocShell()->IsReadOnly();
-                    // if document is to be opened in alive-mode then this has to be
-                    // regarded while switching from readonly-mode to edit-mode
-                    if( !bReadonly )
-                    {
-                        SwDrawModel * pDrawDoc = GetDocShell()->GetDoc()->getIDocumentDrawModelAccess().GetDrawModel();
-                        if (pDrawDoc)
-                        {
-                            if( !pDrawDoc->GetOpenInDesignMode() )
-                                break;// don't touch the design mode
-                        }
-                    }
-                    SfxBoolItem aItem( SID_FM_DESIGN_MODE, !bReadonly);
+                    GetFormShell()->SetView(dynamic_cast<FmFormView*>(GetWrtShell().GetDrawView()));
+                    SfxBoolItem aItem( SID_FM_DESIGN_MODE, !GetDocShell()->IsReadOnly());
                     GetDispatcher().ExecuteList(SID_FM_DESIGN_MODE,
-                            SfxCallMode::ASYNCHRON, { &aItem });
+                            SfxCallMode::SYNCHRON, { &aItem });
                 }
-                break;
-
-            case SfxHintId::SwDrawViewsCreated:
-                {
-                    bCallBase = false;
-                    if ( GetFormShell() )
-                    {
-                        GetFormShell()->SetView(dynamic_cast<FmFormView*>(GetWrtShell().GetDrawView()));
-                        SfxBoolItem aItem( SID_FM_DESIGN_MODE, !GetDocShell()->IsReadOnly());
-                        GetDispatcher().ExecuteList(SID_FM_DESIGN_MODE,
-                                SfxCallMode::SYNCHRON, { &aItem });
-                    }
-                }
-                break;
-            case SfxHintId::RedlineChanged:
-                {
-                    static sal_uInt16 const aSlotRedLine[] = {
-                        FN_REDLINE_ACCEPT_DIRECT,
-                        FN_REDLINE_REJECT_DIRECT,
-                        FN_REDLINE_NEXT_CHANGE,
-                        FN_REDLINE_PREV_CHANGE,
-                        FN_REDLINE_ACCEPT_ALL,
-                        FN_REDLINE_REJECT_ALL,
-                        0
-                    };
-                    GetViewFrame().GetBindings().Invalidate(aSlotRedLine);
-                }
-                break;
-            default: break;
-        }
+            }
+            break;
+        case SfxHintId::RedlineChanged:
+            {
+                static sal_uInt16 const aSlotRedLine[] = {
+                    FN_REDLINE_ACCEPT_DIRECT,
+                    FN_REDLINE_REJECT_DIRECT,
+                    FN_REDLINE_NEXT_CHANGE,
+                    FN_REDLINE_PREV_CHANGE,
+                    FN_REDLINE_ACCEPT_ALL,
+                    FN_REDLINE_REJECT_ALL,
+                    0
+                };
+                GetViewFrame().GetBindings().Invalidate(aSlotRedLine);
+            }
+            break;
+        case SfxHintId::StylesSpotlightModified:
+            {
+                // we need to Invalidate to render with the new set of
+                // spotlighted styles
+                if (vcl::Window *pMyWin = GetWrtShell().GetWin())
+                    pMyWin->Invalidate();
+            }
+            break;
+        default: break;
     }
 
     if ( bCallBase )
@@ -1837,8 +1883,7 @@ void SwView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 
 void SwView::ScannerEventHdl()
 {
-    uno::Reference< XScannerManager2 > xScanMgr = SW_MOD()->GetScannerManager();
-    if( xScanMgr.is() )
+    if (uno::Reference<XScannerManager2> xScanMgr = SwModule::get()->GetScannerManager())
     {
         const ScannerContext    aContext( xScanMgr->getAvailableScanners().getConstArray()[ 0 ] );
         const ScanError         eError = xScanMgr->getError( aContext );
@@ -2004,16 +2049,16 @@ OUString SwView::GetDataSourceName() const
 {
     uno::Reference<lang::XMultiServiceFactory> xFactory(GetDocShell()->GetModel(), uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xSettings(
-        xFactory->createInstance("com.sun.star.document.Settings"), uno::UNO_QUERY);
-    OUString sDataSourceName = "";
-    xSettings->getPropertyValue("CurrentDatabaseDataSource") >>= sDataSourceName;
+        xFactory->createInstance(u"com.sun.star.document.Settings"_ustr), uno::UNO_QUERY);
+    OUString sDataSourceName = u""_ustr;
+    xSettings->getPropertyValue(u"CurrentDatabaseDataSource"_ustr) >>= sDataSourceName;
 
     return sDataSourceName;
 }
 
-bool SwView::IsDataSourceAvailable(const OUString sDataSourceName)
+bool SwView::IsDataSourceAvailable(const OUString& sDataSourceName)
 {
-    uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const uno::Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
     Reference< XDatabaseContext> xDatabaseContext = DatabaseContext::create(xContext);
 
     return xDatabaseContext->hasByName(sDataSourceName);
@@ -2111,7 +2156,7 @@ namespace sw {
 
 void InitPrintOptionsFromApplication(SwPrintData & o_rData, bool const bWeb)
 {
-    o_rData = *SW_MOD()->GetPrtOptions(bWeb);
+    o_rData = *SwModule::get()->GetPrtOptions(bWeb);
 }
 
 } // namespace sw

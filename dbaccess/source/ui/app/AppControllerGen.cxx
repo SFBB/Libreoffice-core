@@ -102,14 +102,14 @@ void OApplicationController::convertToView(const OUString& _sName)
         OSaveAsDlg aDlg(getFrameWeld(), CommandType::TABLE, getORB(), xConnection, aDefaultName, aNameChecker, SADFlags::NONE);
         if (aDlg.run() == RET_OK)
         {
-            OUString sName = aDlg.getName();
+            const OUString& sName = aDlg.getName();
             OUString sCatalog = aDlg.getCatalog();
             OUString sSchema  = aDlg.getSchema();
             OUString sNewName(
                 ::dbtools::composeTableName( xMeta, sCatalog, sSchema, sName, false, ::dbtools::EComposeRule::InTableDefinitions ) );
             Reference<XPropertySet> xView = ::dbaui::createView(sNewName,xConnection,xSourceObject);
             if ( !xView.is() )
-                throw SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE),*this, "S1000",0,Any());
+                throw SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE),*this, u"S1000"_ustr,0,Any());
             getContainer()->elementAdded(E_TABLE,sNewName,Any(xView));
         }
     }
@@ -166,7 +166,7 @@ void OApplicationController::openDialog( const OUString& _sServiceName )
                 xWindow = VCLUnoHelper::GetInterface(getView()->Window::GetParent());
         }
         // the parent window
-        pArgs[nArgPos++] <<= PropertyValue( "ParentWindow",
+        pArgs[nArgPos++] <<= PropertyValue( u"ParentWindow"_ustr,
                                     0,
                                     Any(xWindow),
                                     PropertyState_DIRECT_VALUE);
@@ -178,7 +178,7 @@ void OApplicationController::openDialog( const OUString& _sServiceName )
         if ( !sInitialSelection.isEmpty() )
         {
             pArgs[ nArgPos++ ] <<= PropertyValue(
-                "InitialSelection", 0,
+                u"InitialSelection"_ustr, 0,
                 Any( sInitialSelection ), PropertyState_DIRECT_VALUE );
         }
 
@@ -321,7 +321,8 @@ void SAL_CALL OApplicationController::connect(  )
 
         // no particular error, but nonetheless could not connect -> throw a generic exception
         OUString sConnectingContext( DBA_RES( STR_COULDNOTCONNECT_DATASOURCE ) );
-        ::dbtools::throwGenericSQLException( sConnectingContext.replaceFirst( "$name$", getStrippedDatabaseName() ), *this );
+        OUString sDatabaseName;
+        ::dbtools::throwGenericSQLException( sConnectingContext.replaceFirst( "$name$", ::dbaui::getStrippedDatabaseName(m_xDataSource, sDatabaseName) ), *this );
     }
 }
 
@@ -483,10 +484,10 @@ void OApplicationController::previewChanged( sal_Int32 _nMode )
         try
         {
             ::comphelper::NamedValueCollection aLayoutInfo( m_xDataSource->getPropertyValue( PROPERTY_LAYOUTINFORMATION ) );
-            sal_Int32 nOldMode = aLayoutInfo.getOrDefault( "Preview", _nMode );
+            sal_Int32 nOldMode = aLayoutInfo.getOrDefault( u"Preview"_ustr, _nMode );
             if ( nOldMode != _nMode )
             {
-                aLayoutInfo.put( "Preview", _nMode );
+                aLayoutInfo.put( u"Preview"_ustr, _nMode );
                 m_xDataSource->setPropertyValue( PROPERTY_LAYOUTINFORMATION, Any( aLayoutInfo.getPropertyValues() ) );
             }
         }
@@ -548,12 +549,6 @@ OUString OApplicationController::getDatabaseName() const
         DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
     return sDatabaseName;
-}
-
-OUString OApplicationController::getStrippedDatabaseName() const
-{
-    OUString sDatabaseName;
-    return ::dbaui::getStrippedDatabaseName( m_xDataSource, sDatabaseName );
 }
 
 void OApplicationController::onDocumentOpened( const OUString& _rName, const sal_Int32 _nType,
@@ -669,7 +664,7 @@ void OApplicationController::doAction(sal_uInt16 _nId, const ElementOpenMode _eO
     ElementOpenMode eOpenMode = _eOpenMode;
     if ( eType == E_REPORT && ElementOpenMode::Mail == _eOpenMode )
     {
-        aArguments.put("Hidden",true);
+        aArguments.put(u"Hidden"_ustr,true);
         eOpenMode = ElementOpenMode::Normal;
     }
 

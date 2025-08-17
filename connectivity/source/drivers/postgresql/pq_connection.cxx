@@ -148,7 +148,6 @@ void Connection::close()
 
         vectorDispose.push_back( Reference< XComponent > ( m_settings.users, UNO_QUERY ) );
         vectorDispose.push_back( Reference< XComponent > ( m_settings.tables , UNO_QUERY ) );
-        vectorDispose.push_back( Reference< XComponent > ( m_meta, UNO_QUERY ) );
         m_meta.clear();
         m_settings.tables.clear();
         m_settings.users.clear();
@@ -192,7 +191,7 @@ Reference< XStatement > Connection::createStatement()
     ::rtl::ByteSequence id( 16 );
     rtl_createUuid( reinterpret_cast<sal_uInt8*>(id.getArray()), nullptr, false );
     m_myStatements[ id ] = Reference< XCloseable > ( stmt );
-    stmt->queryAdapter()->addReference( new ClosableReference( id, this ) );
+    stmt->queryAdapter()->addReference( new ClosableReference( std::move(id), this ) );
     return stmt;
 }
 
@@ -208,14 +207,14 @@ Reference< XPreparedStatement > Connection::prepareStatement( const OUString& sq
     ::rtl::ByteSequence id( 16 );
     rtl_createUuid( reinterpret_cast<sal_uInt8*>(id.getArray()), nullptr, false );
     m_myStatements[ id ] = Reference< XCloseable > ( stmt );
-    stmt->queryAdapter()->addReference( new ClosableReference( id, this ) );
+    stmt->queryAdapter()->addReference(new ClosableReference(std::move(id), this));
     return stmt;
 }
 
 Reference< XPreparedStatement > Connection::prepareCall( const OUString& )
 {
     throw SQLException(
-        "pq_driver: Callable statements not supported",
+        u"pq_driver: Callable statements not supported"_ustr,
         Reference< XInterface > (), OUString() , 1, Any() );
 }
 
@@ -282,7 +281,7 @@ OUString Connection::getCatalog()
     MutexGuard guard( m_xMutex->GetMutex() );
     if( m_settings.pConnection == nullptr )
     {
-        throw SQLException( "pq_connection: connection is closed", *this,
+        throw SQLException( u"pq_connection: connection is closed"_ustr, *this,
                             OUString(), 1, Any() );
     }
     char * p = PQdb(m_settings.pConnection );
@@ -331,7 +330,15 @@ class cstr_vector
     std::vector<char*> values;
     std::vector<bool>  acquired;
 public:
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 14
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
     cstr_vector ()  { values.reserve(8); acquired.reserve(8); }
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 14
+#pragma GCC diagnostic pop
+#endif
     ~cstr_vector ()
     {
         OSL_ENSURE(values.size() == acquired.size(), "pq_connection: cstr_vector values and acquired size mismatch");
@@ -372,7 +379,7 @@ static void properties2arrays( const Sequence< PropertyValue > & args,
     // Else, at least support all keywords from
     // http://www.postgresql.org/docs/9.0/interactive/libpq-connect.html
 
-    static const char* keyword_list[] = {
+    static const char* const keyword_list[] = {
         "password",
         "user",
         "port",
@@ -419,7 +426,7 @@ void Connection::initialize( const Sequence< Any >& aArguments )
     if( ! tc.is() )
     {
         throw RuntimeException(
-            "pq_driver: Couldn't instantiate converter service" );
+            u"pq_driver: Couldn't instantiate converter service"_ustr );
     }
     if( aArguments.getLength() != 2 )
     {
@@ -432,7 +439,7 @@ void Connection::initialize( const Sequence< Any >& aArguments )
     {
         throw IllegalArgumentException(
             "pq_driver: expected string as first argument, got "
-            + aArguments[0].getValueType().getTypeName(),
+            + aArguments[0].getValueTypeName(),
             *this, 0 );
     }
 
@@ -471,7 +478,7 @@ void Connection::initialize( const Sequence< Any >& aArguments )
                 // Just the most likely error; the error might be  HY024 "Invalid attribute value".
                 throw SQLException(
                     "Error in database URL '" + url + "':\n"  + errorMessage,
-                    *this, "HY092", 5, Any() );
+                    *this, u"HY092"_ustr, 5, Any() );
             }
 
             for (  PQconninfoOption * opt = oOpts.get(); opt->keyword != nullptr; ++opt)
@@ -490,7 +497,7 @@ void Connection::initialize( const Sequence< Any >& aArguments )
         m_settings.pConnection = PQconnectdbParams( keywords.c_array(), values.c_array(), 0 );
     }
     if( ! m_settings.pConnection )
-        throw RuntimeException("pq_driver: out of memory" );
+        throw RuntimeException(u"pq_driver: out of memory"_ustr );
     if( PQstatus( m_settings.pConnection ) == CONNECTION_BAD )
     {
         const char * error = PQerrorMessage( m_settings.pConnection );
@@ -507,7 +514,7 @@ void Connection::initialize( const Sequence< Any >& aArguments )
     m_settings.user = OUString( p, strlen(p), RTL_TEXTENCODING_UTF8);
     p = PQdb( m_settings.pConnection );
     m_settings.catalog = OUString( p, strlen(p), RTL_TEXTENCODING_UTF8);
-    m_settings.tc = tc;
+    m_settings.tc = std::move(tc);
 
     SAL_INFO("connectivity.postgresql", "connection to '" << url << "' successfully opened");
 }
@@ -520,7 +527,7 @@ void Connection::disposing()
 void Connection::checkClosed()
 {
     if( !m_settings.pConnection )
-        throw SQLException( "pq_connection: Connection already closed",
+        throw SQLException( u"pq_connection: Connection already closed"_ustr,
                             *this, OUString(), 1, Any() );
 }
 

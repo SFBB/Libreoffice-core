@@ -26,7 +26,7 @@
 #include <editeng/editids.hrc>
 #include <editeng/editview.hxx>
 #include <editeng/editstat.hxx>
-#include <editeng/scripttypeitem.hxx>
+#include <editeng/scriptsetitem.hxx>
 
 #include <svl/itempool.hxx>
 #include <svl/itemset.hxx>
@@ -52,7 +52,7 @@ namespace frm
         ,m_bHasEverBeenShown    ( false               )
     {
         OSL_ENSURE( m_pAntiImpl, "RichTextControlImpl::RichTextControlImpl: invalid window!" );
-        OSL_ENSURE( m_pEngine,   "RichTextControlImpl::RichTextControlImpl: invalid edit engine! This will *definitely* crash!" );
+        assert(m_pEngine && "RichTextControlImpl::RichTextControlImpl: invalid edit engine! This will *definitely* crash!");
 
         m_pViewport = VclPtr<RichTextViewPort>::Create( m_pAntiImpl );
         m_pViewport->setAttributeInvalidationHandler( LINK( this, RichTextControlImpl, OnInvalidateAllAttributes ) );
@@ -63,7 +63,7 @@ namespace frm
         m_pAntiImpl->SetMapMode( aRefDeviceMapMode );
         m_pViewport->SetMapMode( aRefDeviceMapMode );
 
-        m_pView.reset(new EditView( m_pEngine, m_pViewport ));
+        m_pView.reset(new EditView(*m_pEngine, m_pViewport));
         m_pEngine->InsertView( m_pView.get() );
         m_pViewport->setView( *m_pView );
 
@@ -217,7 +217,7 @@ namespace frm
         _rScriptSetItem.GetItemSet().Put( m_pView->GetAttribs(), false );
         const SfxPoolItem* pNormalizedItem = _rScriptSetItem.GetItemOfScript( getSelectedScriptType() );
 
-        WhichId nNormalizedWhichId = _rScriptSetItem.GetItemSet().GetPool()->GetWhich( _rScriptSetItem.Which() );
+        WhichId nNormalizedWhichId = _rScriptSetItem.GetItemSet().GetPool()->GetWhichIDFromSlotID( _rScriptSetItem.Which() );
         if ( pNormalizedItem )
         {
             _rScriptSetItem.GetItemSet().Put( pNormalizedItem->CloneSetWhich(nNormalizedWhichId) );
@@ -438,7 +438,7 @@ namespace frm
             {
                 m_pViewport->GetOutDev()->Push( vcl::PushFlags::FONT );
                 m_pViewport->SetFont( m_pEngine->GetStandardFont(0) );
-                nFontWidth = m_pViewport->GetTextWidth( "x" );
+                nFontWidth = m_pViewport->GetTextWidth( u"x"_ustr );
                 m_pViewport->GetOutDev()->Pop();
             }
             // ... is the scroll size for the horizontal scrollbar
@@ -601,7 +601,7 @@ namespace frm
         lcl_inflate( aPlayground, -aOnePixel.Width(), -aOnePixel.Height() );
 
         // actually draw the content
-        m_pEngine->Draw(*_pDev, aPlayground, Point(), true);
+        m_pEngine->DrawText_ToRectangle(*_pDev, aPlayground, Point(), true);
 
         _pDev->Pop();
     }

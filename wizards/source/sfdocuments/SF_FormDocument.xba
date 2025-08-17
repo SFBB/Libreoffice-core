@@ -423,12 +423,14 @@ Public Function Properties() As Variant
 	Properties = Array( _
 					&quot;DocumentType&quot; _
 					, &quot;FileSystem&quot; _
+					, &quot;IsAlive&quot; _
 					, &quot;IsBase&quot; _
 					, &quot;IsCalc&quot; _
 					, &quot;IsDraw&quot; _
 					, &quot;IsFormDocument&quot; _
 					, &quot;IsImpress&quot; _
 					, &quot;IsMath&quot; _
+					, &quot;MenuHeaders&quot; _
 					, &quot;Readonly&quot; _
 					, &quot;StyleFamilies&quot; _
 					, &quot;XComponent&quot; _
@@ -443,6 +445,11 @@ REM ----------------------------------------------------------------------------
 Property Get FileSystem() As String
 	FileSystem = [_Super].GetProperty(&quot;FileSystem&quot;)
 End Property	&apos;	SFDocuments.SF_FormDocument.FileSystem
+
+REM -----------------------------------------------------------------------------
+Property Get IsAlive() As Boolean
+	IsAlive = [_Super].GetProperty(&quot;IsAlive&quot;)
+End Property	&apos;	SFDocuments.SF_FormDocument.IsAlive
 
 REM -----------------------------------------------------------------------------
 Property Get IsBase() As Boolean
@@ -475,6 +482,11 @@ Property Get IsMath() As Boolean
 End Property	&apos;	SFDocuments.SF_FormDocument.IsMath
 
 REM -----------------------------------------------------------------------------
+Property Get MenuHeaders() As Variant
+	MenuHeaders = [_Super].GetProperty(&quot;MenuHeaders&quot;)
+End Property	&apos;	SFDocuments.SF_FormDocument.MenuHeaders
+
+REM -----------------------------------------------------------------------------
 Property Get Readonly() As Variant
 	Readonly = [_Super].GetProperty(&quot;Readonly&quot;)
 End Property	&apos;	SFDocuments.SF_FormDocument.Readonly
@@ -500,6 +512,13 @@ REM ----------------------------------------------------------------------------
 Public Function Activate() As Boolean
 	Activate = [_Super].Activate()
 End Function    &apos;   SFDocuments.SF_FormDocument.Activate
+
+REM -----------------------------------------------------------------------------
+Public Function ContextMenus(Optional ByVal ContextMenuName As Variant _
+								, Optional ByVal SubmenuChar As Variant _
+								) As Variant
+	ContextMenus = [_Super].ContextMenus(ContextMenuName, SubmenuChar)
+End Function	&apos;	SFDocuments.SF_FormDocument.ContextMenus
 
 REM -----------------------------------------------------------------------------
 Public Function CreateMenu(Optional ByVal MenuHeader As Variant _

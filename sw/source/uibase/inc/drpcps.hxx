@@ -26,8 +26,6 @@
 #include <vcl/customweld.hxx>
 #include <vcl/print.hxx>
 
-class SwWrtShell;
-
 /// Dedicated drop caps dialog, opened by the .uno:FormatDropcap UNO command, which is not in the
 /// default menus.
 class SwDropCapsDlg final : public SfxSingleTabDialogController
@@ -151,7 +149,7 @@ public:
     virtual ~SwDropCapsPage() override;
 
     static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rSet);
-    static WhichRangesContainer GetRanges() { return s_aPageRg; }
+    static const WhichRangesContainer & GetRanges() { return s_aPageRg; }
 
 
     virtual bool FillItemSet(      SfxItemSet *rSet) override;

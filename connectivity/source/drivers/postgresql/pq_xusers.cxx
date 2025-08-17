@@ -83,7 +83,7 @@ void Users::refresh()
 
         Reference< XStatement > stmt = m_origin->createStatement();
 
-        Reference< XResultSet > rs = stmt->executeQuery( "SELECT usename FROM pg_shadow" );
+        Reference< XResultSet > rs = stmt->executeQuery( u"SELECT usename FROM pg_shadow"_ustr );
 
         Reference< XRow > xRow( rs , UNO_QUERY );
 
@@ -95,14 +95,13 @@ void Users::refresh()
         {
             rtl::Reference<User> pUser =
                 new User( m_xMutex, m_origin, m_pSettings );
-            Reference< css::beans::XPropertySet > prop = pUser;
 
             OUString name = xRow->getString( 1);
             pUser->setPropertyValue_NoBroadcast_public(
                 st.NAME , Any(xRow->getString( TABLE_INDEX_CATALOG+1) ) );
 
             {
-                m_values.push_back( Any( prop ) );
+                m_values.push_back( Any( Reference< css::beans::XPropertySet >(pUser) ) );
                 map[ name ] = tableIndex;
                 ++tableIndex;
             }

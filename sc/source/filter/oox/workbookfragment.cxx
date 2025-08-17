@@ -63,6 +63,7 @@
 #include <vcl/timer.hxx>
 #include <vcl/weld.hxx>
 
+#include <config_emscripten.h>
 #include <oox/core/fastparser.hxx>
 #include <svx/svdpage.hxx>
 #include <comphelper/threadpool.hxx>
@@ -75,6 +76,9 @@
 
 #include <comphelper/processfactory.hxx>
 #include <officecfg/Office/Calc.hxx>
+
+#include <xestream.hxx>
+#include <ucbhelper/content.hxx>
 
 namespace oox::xls {
 
@@ -329,6 +333,12 @@ void importSheetFragments( WorkbookFragment& rWorkbookHandler, SheetFragmentVect
          nSheetsLeft++;
     }
 
+#if defined EMSCRIPTEN && !HAVE_EMSCRIPTEN_JSPI
+    // Hack around Application::Yield() deliberately calling std::abort() in the standard (non-JSPI)
+    // Emscripten case; so instead of yielding (which implicitly releases the SolarMutex), just
+    // release the SolarMutex so that the WorkerThreads can proceed:
+    SolarMutexReleaser rel;
+#else
     // coverity[loop_top] - this isn't an infinite loop where nSheetsLeft gets decremented by the above threads
     while( nSheetsLeft > 0 && !Application::IsQuit())
     {
@@ -337,6 +347,7 @@ void importSheetFragments( WorkbookFragment& rWorkbookHandler, SheetFragmentVect
         // bar updating.
         Application::Yield();
     }
+#endif
     rSharedPool.waitUntilDone(pTag);
 
     // threads joined in ThreadPool destructor
@@ -379,7 +390,49 @@ void WorkbookFragment::finalizeImport()
     // read the connections substream
     OUString aConnFragmentPath = getFragmentPathFromFirstTypeFromOfficeDoc( u"connections" );
     if( !aConnFragmentPath.isEmpty() )
+    {
         importOoxFragment( new ConnectionsFragment( *this, aConnFragmentPath ) );
+        getScDocument().setHasConnectionXml(true);
+    }
+
+    // read the customXml substream
+    OUString aCustomXmlFragmentPath = getFragmentPathFromFirstTypeFromOfficeDoc( u"customXml" );
+    if (!aCustomXmlFragmentPath.isEmpty())
+        getScDocument().setHasCustomXml(true, aCustomXmlFragmentPath);
+
+    // read the xmlMaps substream (from xl/_rels/workbook.xml.rels)
+    OUString aXmlMapsFragmentPath = getFragmentPathFromFirstTypeFromOfficeDoc( u"xmlMaps" );
+    if (!aXmlMapsFragmentPath.isEmpty())
+    {
+        // read xmlMaps.xml
+        std::string sXmlMapsContent;
+        size_t nBufferSize = 4096;
+
+        ucbhelper::Content aContent(aXmlMapsFragmentPath,
+                                    Reference<css::ucb::XCommandEnvironment>(),
+                                    comphelper::getProcessComponentContext());
+
+        Reference<XInputStream> xXmlMapsInputStream(
+            getBaseFilter().openInputStream(aXmlMapsFragmentPath), UNO_SET_THROW);
+
+        std::ostringstream aStrmBuf;
+        Sequence<sal_Int8> aBytes;
+        size_t nBytesRead = 0;
+
+        do
+        {
+            nBytesRead = xXmlMapsInputStream->readBytes(aBytes, nBufferSize);
+            const sal_Int8* p = aBytes.getConstArray();
+            aStrmBuf << std::string(p, p + nBytesRead);
+        } while (nBytesRead == nBufferSize);
+
+        // put raw content of xmlMaps.xml into sXmlMapsContent
+        sXmlMapsContent = aStrmBuf.str();
+
+        if (!sXmlMapsContent.empty())
+            getScDocument().setHasXmlMaps(true, sXmlMapsContent);
+    }
+
     xGlobalSegment->setPosition( 1.0 );
 
     /*  Create fragments for all sheets, before importing them. Needed to do
@@ -550,8 +603,8 @@ private:
     std::unique_ptr<weld::CheckButton> m_xWarningOnBox;
 public:
     MessageWithCheck(weld::Window *pParent, const OUString& rUIFile, const OUString& rDialogId)
-        : MessageDialogController(pParent, rUIFile, rDialogId, "ask")
-        , m_xWarningOnBox(m_xBuilder->weld_check_button("ask"))
+        : MessageDialogController(pParent, rUIFile, rDialogId, u"ask"_ustr)
+        , m_xWarningOnBox(m_xBuilder->weld_check_button(u"ask"_ustr))
     {
     }
     bool get_active() const { return m_xWarningOnBox->get_active(); }
@@ -573,7 +626,7 @@ void WorkbookFragment::recalcFormulaCells()
         if (rDoc.IsUserInteractionEnabled())
         {
             // Ask the user if full re-calculation is desired.
-            MessageWithCheck aQueryBox(ScDocShell::GetActiveDialogParent(), "modules/scalc/ui/recalcquerydialog.ui", "RecalcQueryDialog");
+            MessageWithCheck aQueryBox(ScDocShell::GetActiveDialogParent(), u"modules/scalc/ui/recalcquerydialog.ui"_ustr, u"RecalcQueryDialog"_ustr);
             aQueryBox.set_primary_text(ScResId(STR_QUERY_FORMULA_RECALC_ONLOAD_XLS));
             aQueryBox.set_default_response(RET_YES);
 
@@ -587,11 +640,12 @@ void WorkbookFragment::recalcFormulaCells()
                 // Always perform selected action in the future.
                 std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
                 officecfg::Office::Calc::Formula::Load::OOXMLRecalcMode::set(sal_Int32(0), batch);
-                ScFormulaOptions aOpt = SC_MOD()->GetFormulaOptions();
+                ScModule* mod = ScModule::get();
+                ScFormulaOptions aOpt = mod->GetFormulaOptions();
                 aOpt.SetOOXMLRecalcOptions(bHardRecalc ? RECALC_ALWAYS : RECALC_NEVER);
                 /* XXX  is this really supposed to set the ScModule options?
                  *      Not the ScDocShell options? */
-                SC_MOD()->SetFormulaOptions(aOpt);
+                mod->SetFormulaOptions(aOpt);
 
                 batch->commit();
             }

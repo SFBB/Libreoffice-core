@@ -56,6 +56,7 @@
 #include <tabfrm.hxx>
 #include <txtfrm.hxx>
 #include <notxtfrm.hxx>
+#include <sectfrm.hxx>
 #include <layact.hxx>
 #include <flyfrms.hxx>
 #include <htmltbl.hxx>
@@ -64,6 +65,7 @@
 #include <sortedobjs.hxx>
 #include <calbck.hxx>
 #include <txtfly.hxx>
+#include <frmatr.hxx>
 
 using namespace ::com::sun::star;
 
@@ -86,7 +88,7 @@ void SwBodyFrame::Format( vcl::RenderContext* /*pRenderContext*/, const SwBorder
         SwTwips nHeight = GetUpper()->getFramePrintArea().Height();
         SwTwips nWidth = GetUpper()->getFramePrintArea().Width();
         const SwFrame *pFrame = GetUpper()->Lower();
-        do
+        while (pFrame)
         {
             if ( pFrame != this )
             {
@@ -96,7 +98,7 @@ void SwBodyFrame::Format( vcl::RenderContext* /*pRenderContext*/, const SwBorder
                     nHeight -= pFrame->getFrameArea().Height();
             }
             pFrame = pFrame->GetNext();
-        } while ( pFrame );
+        }
 
         if ( nHeight < 0 )
         {
@@ -119,18 +121,21 @@ void SwBodyFrame::Format( vcl::RenderContext* /*pRenderContext*/, const SwBorder
     {
         SwTextGridItem const*const pGrid(
                 GetGridItem(static_cast<SwPageFrame*>(GetUpper())));
-        if( pGrid )
+
+        bool bCenterGrid = !GetFormat()->getIDocumentSettingAccess().get(
+            DocumentSettingId::MS_WORD_COMP_GRID_METRICS);
+        if (pGrid && bCenterGrid)
         {
             bNoGrid = false;
             tools::Long nSum = pGrid->GetBaseHeight() + pGrid->GetRubyHeight();
             SwRectFnSet aRectFnSet(this);
             tools::Long nSize = aRectFnSet.GetWidth(getFrameArea());
             tools::Long nBorder = 0;
-            if( GRID_LINES_CHARS == pGrid->GetGridType() )
+            if( SwTextGrid::LinesAndChars == pGrid->GetGridType() )
             {
                 //for textgrid refactor
-                SwDoc *pDoc = GetFormat()->GetDoc();
-                nBorder = nSize % (GetGridWidth(*pGrid, *pDoc));
+                SwDoc& rDoc = GetFormat()->GetDoc();
+                nBorder = nSize % (GetGridWidth(*pGrid, rDoc));
                 nSize -= nBorder;
                 nBorder /= 2;
             }
@@ -153,7 +158,7 @@ void SwBodyFrame::Format( vcl::RenderContext* /*pRenderContext*/, const SwBorder
             nBorder /= 2;
 
             // #i21774# Footnotes and centering the grid does not work together:
-            const bool bAdjust = static_cast<SwPageFrame*>(GetUpper())->GetFormat()->GetDoc()->
+            const bool bAdjust = static_cast<SwPageFrame*>(GetUpper())->GetFormat()->GetDoc().
                                         GetFootnoteIdxs().empty();
 
             aRectFnSet.SetPosY( aPrt, bAdjust ? nBorder : 0 );
@@ -232,8 +237,8 @@ SwPageFrame::SwPageFrame( SwFrameFormat *pFormat, SwFrame* pSib, SwPageDesc *pPg
     }
 
     // create and insert body area if it is not a blank page
-    SwDoc* pDoc(pFormat->GetDoc());
-    m_bEmptyPage = (pFormat == pDoc->GetEmptyPageFormat());
+    SwDoc& rDoc(pFormat->GetDoc());
+    m_bEmptyPage = (pFormat == rDoc.GetEmptyPageFormat());
 
     if(m_bEmptyPage)
     {
@@ -241,7 +246,7 @@ SwPageFrame::SwPageFrame( SwFrameFormat *pFormat, SwFrame* pSib, SwPageDesc *pPg
     }
 
     Calc(pRenderContext); // so that the PrtArea is correct
-    SwBodyFrame *pBodyFrame = new SwBodyFrame( pDoc->GetDfltFrameFormat(), this );
+    SwBodyFrame *pBodyFrame = new SwBodyFrame( rDoc.GetDfltFrameFormat(), this );
     pBodyFrame->ChgSize( getFramePrintArea().SSize() );
     pBodyFrame->Paste( this );
     pBodyFrame->Calc(pRenderContext); // so that the columns can be inserted correctly
@@ -295,8 +300,7 @@ void SwPageFrame::DestroyImpl()
     }
 
     // prevent access to destroyed pages
-    SwDoc *pDoc = GetFormat() ? GetFormat()->GetDoc() : nullptr;
-    if( pDoc && !pDoc->IsInDtor() )
+    if( GetFormat() && !GetFormat()->GetDoc().IsInDtor() )
     {
         if ( pSh )
         {
@@ -395,8 +399,8 @@ static void lcl_FormatLay( SwLayoutFrame *pLay )
     while ( pTmp )
     {
         const SwFrameType nTypes = SwFrameType::Root | SwFrameType::Page | SwFrameType::Column
-                           | SwFrameType::Header | SwFrameType::Footer | SwFrameType::FtnCont
-                           | SwFrameType::Ftn | SwFrameType::Body;
+                           | SwFrameType::Header | SwFrameType::Footer | SwFrameType::FootnoteContainer
+                           | SwFrameType::Footnote | SwFrameType::Body;
         if ( pTmp->GetType() & nTypes )
             ::lcl_FormatLay( static_cast<SwLayoutFrame*>(pTmp) );
         pTmp = pTmp->GetNext();
@@ -408,11 +412,14 @@ static void lcl_FormatLay( SwLayoutFrame *pLay )
 static void lcl_MakeObjs(const sw::FrameFormats<sw::SpzFrameFormat*>& rSpzs, SwPageFrame* pPage)
 {
     // formats are in the special table of the document
-    for(size_t i = 0; i < rSpzs.size(); ++i )
+    const sal_uInt16 nPhyPageNum = pPage->GetPhyPageNum();
+    size_t i = 0;
+    const size_t nSpzsCnt = rSpzs.size();
+    while (i < nSpzsCnt)
     {
         auto pSpz = rSpzs[i];
         const SwFormatAnchor &rAnch = pSpz->GetAnchor();
-        if ( rAnch.GetPageNum() == pPage->GetPhyPageNum() )
+        if ( rAnch.GetPageNum() == nPhyPageNum )
         {
             if( rAnch.GetAnchorNode() )
             {
@@ -423,7 +430,10 @@ static void lcl_MakeObjs(const sw::FrameFormats<sw::SpzFrameFormat*>& rSpzs, SwP
                     pSpz->SetFormatAttr( aAnch );
                 }
                 else
+                {
+                    ++i;
                     continue;
+                }
             }
 
             // is it a border or a SdrObject?
@@ -432,8 +442,7 @@ static void lcl_MakeObjs(const sw::FrameFormats<sw::SpzFrameFormat*>& rSpzs, SwP
             if ( bSdrObj  && nullptr == (pSdrObj = pSpz->FindSdrObject()) )
             {
                 OSL_FAIL( "DrawObject not found." );
-                pSpz->GetDoc()->DelFrameFormat( pSpz );
-                --i;
+                pSpz->GetDoc().DelFrameFormat( pSpz );
                 continue;
             }
             // The object might be anchored to another page, e.g. when inserting
@@ -445,22 +454,21 @@ static void lcl_MakeObjs(const sw::FrameFormats<sw::SpzFrameFormat*>& rSpzs, SwP
             if ( bSdrObj )
             {
                 // OD 23.06.2003 #108784# - consider 'virtual' drawing objects
-                SwDrawContact *pContact =
-                            static_cast<SwDrawContact*>(::GetUserCall(pSdrObj));
-                if ( auto pDrawVirtObj = dynamic_cast<SwDrawVirtObj *>( pSdrObj ) )
+                if (SwDrawContact *pContact =
+                            static_cast<SwDrawContact*>(::GetUserCall(pSdrObj)))
                 {
-                    if ( pContact )
+                    if ( auto pDrawVirtObj = dynamic_cast<SwDrawVirtObj *>( pSdrObj ) )
                     {
                         pDrawVirtObj->RemoveFromWriterLayout();
                         pDrawVirtObj->RemoveFromDrawingPage();
                         pPg->AppendDrawObj( *(pContact->GetAnchoredObj( pDrawVirtObj )) );
                     }
-                }
-                else
-                {
-                    if ( pContact->GetAnchorFrame() )
-                        pContact->DisconnectFromLayout( false );
-                    pPg->AppendDrawObj( *(pContact->GetAnchoredObj( pSdrObj )) );
+                    else
+                    {
+                        if ( pContact->GetAnchorFrame() )
+                            pContact->DisconnectFromLayout( false );
+                        pPg->AppendDrawObj( *(pContact->GetAnchoredObj( pSdrObj )) );
+                    }
                 }
             }
             else
@@ -478,6 +486,7 @@ static void lcl_MakeObjs(const sw::FrameFormats<sw::SpzFrameFormat*>& rSpzs, SwP
                 ::RegistFlys( pPg, pFly );
             }
         }
+        ++i;
     }
 }
 
@@ -505,17 +514,17 @@ void SwPageFrame::PreparePage( bool bFootnote )
     // pages take care of them.
     if ( !bFootnote && !IsEmptyPage() )
     {
-        SwDoc *pDoc = GetFormat()->GetDoc();
+        SwDoc& rDoc = GetFormat()->GetDoc();
 
         if ( GetPrev() && static_cast<SwPageFrame*>(GetPrev())->IsEmptyPage() )
-            lcl_MakeObjs( *pDoc->GetSpzFrameFormats(), static_cast<SwPageFrame*>(GetPrev()) );
-        lcl_MakeObjs( *pDoc->GetSpzFrameFormats(), this );
+            lcl_MakeObjs( *rDoc.GetSpzFrameFormats(), static_cast<SwPageFrame*>(GetPrev()) );
+        lcl_MakeObjs( *rDoc.GetSpzFrameFormats(), this );
     }
 }
 
 void SwPageFrame::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
 {
-    if(typeid(sw::PageFootnoteHint) == typeid(rHint))
+    if(rHint.GetId() == SfxHintId::SwPageFootnote)
     {
         // currently the savest way:
         static_cast<SwRootFrame*>(GetUpper())->SetSuperfluous();
@@ -532,34 +541,46 @@ void SwPageFrame::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
         static_cast<const sw::AutoFormatUsedHint&>(rHint).SetUsed();
         return;
     }
-    else if (rHint.GetId() == SfxHintId::SwLegacyModify)
+    else if (rHint.GetId() == SfxHintId::SwLegacyModify || rHint.GetId() == SfxHintId::SwFormatChange
+            || rHint.GetId() == SfxHintId::SwAttrSetChange)
     {
-        auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
         if(auto pSh = getRootFrame()->GetCurrShell())
             pSh->SetFirstVisPageInvalid();
 
         SwPageFrameInvFlags eInvFlags = SwPageFrameInvFlags::NONE;
-        if(pLegacy->m_pNew && RES_ATTRSET_CHG == pLegacy->m_pNew->Which())
+        if (rHint.GetId() == SfxHintId::SwLegacyModify)
         {
-            auto& rOldSetChg = *static_cast<const SwAttrSetChg*>(pLegacy->m_pOld);
-            auto& rNewSetChg = *static_cast<const SwAttrSetChg*>(pLegacy->m_pNew);
-            SfxItemIter aOIter(*rOldSetChg.GetChgSet());
-            SfxItemIter aNIter(*rNewSetChg.GetChgSet());
-            const SfxPoolItem* pOItem = aOIter.GetCurItem();
-            const SfxPoolItem* pNItem = aNIter.GetCurItem();
-            SwAttrSetChg aOldSet(rOldSetChg);
-            SwAttrSetChg aNewSet(rNewSetChg);
-            do
-            {
-                UpdateAttr_(pOItem, pNItem, eInvFlags, &aOldSet, &aNewSet);
-                pOItem = aOIter.NextItem();
-                pNItem = aNIter.NextItem();
-            } while(pNItem);
-            if(aOldSet.Count() || aNewSet.Count())
-                SwLayoutFrame::SwClientNotify(rModify, sw::LegacyModifyHint(&aOldSet, &aNewSet));
-        }
-        else
+            auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
             UpdateAttr_(pLegacy->m_pOld, pLegacy->m_pNew, eInvFlags);
+        }
+        else if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+        {
+            auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+            if(pChangeHint->m_pNew)
+            {
+                const SwAttrSetChg& rOldSetChg = *pChangeHint->m_pOld;
+                const SwAttrSetChg& rNewSetChg = *pChangeHint->m_pNew;
+                SfxItemIter aOIter(*rOldSetChg.GetChgSet());
+                SfxItemIter aNIter(*rNewSetChg.GetChgSet());
+                const SfxPoolItem* pOItem = aOIter.GetCurItem();
+                const SfxPoolItem* pNItem = aNIter.GetCurItem();
+                SwAttrSetChg aOldSet(rOldSetChg);
+                SwAttrSetChg aNewSet(rNewSetChg);
+                do
+                {
+                    UpdateAttr_(pOItem, pNItem, eInvFlags, &aOldSet, &aNewSet);
+                    pOItem = aOIter.NextItem();
+                    pNItem = aNIter.NextItem();
+                } while(pNItem);
+                if(aOldSet.Count() || aNewSet.Count())
+                    SwLayoutFrame::SwClientNotify(rModify, sw::AttrSetChangeHint(&aOldSet, &aNewSet));
+            }
+        }
+        else // rHint.GetId() == SfxHintId::SwFormatChange
+        {
+            auto pChangeHint = static_cast<const SwFormatChangeHint*>(&rHint);
+            UpdateAttrForFormatChange(pChangeHint->m_pOldFormat, pChangeHint->m_pNewFormat, eInvFlags);
+        }
 
         if (eInvFlags == SwPageFrameInvFlags::NONE)
             return;
@@ -589,60 +610,6 @@ void SwPageFrame::UpdateAttr_( const SfxPoolItem *pOld, const SfxPoolItem *pNew,
     const sal_uInt16 nWhich = pOld ? pOld->Which() : pNew ? pNew->Which() : 0;
     switch( nWhich )
     {
-        case RES_FMT_CHG:
-        {
-            // state of m_bEmptyPage needs to be determined newly
-            const bool bNewState(GetFormat() == GetFormat()->GetDoc()->GetEmptyPageFormat());
-
-            if(m_bEmptyPage != bNewState)
-            {
-                // copy new state
-                m_bEmptyPage = bNewState;
-
-                if(nullptr == GetLower())
-                {
-                    // if we were an empty page before there is not yet a BodyArea in the
-                    // form of a SwBodyFrame, see constructor
-                    SwViewShell* pSh(getRootFrame()->GetCurrShell());
-                    vcl::RenderContext* pRenderContext(pSh ? pSh->GetOut() : nullptr);
-                    Calc(pRenderContext); // so that the PrtArea is correct
-                    SwBodyFrame* pBodyFrame = new SwBodyFrame(GetFormat(), this);
-                    pBodyFrame->ChgSize(getFramePrintArea().SSize());
-                    pBodyFrame->Paste(this);
-                    pBodyFrame->InvalidatePos();
-                }
-            }
-
-            // If the frame format is changed, several things might also change:
-            // 1. columns:
-            assert(pOld && pNew); //FMT_CHG Missing Format
-            const SwFormat *const pOldFormat = static_cast<const SwFormatChg*>(pOld)->pChangedFormat;
-            const SwFormat *const pNewFormat = static_cast<const SwFormatChg*>(pNew)->pChangedFormat;
-            assert(pOldFormat && pNewFormat); //FMT_CHG Missing Format
-            const SwFormatCol &rOldCol = pOldFormat->GetCol();
-            const SwFormatCol &rNewCol = pNewFormat->GetCol();
-            if( rOldCol != rNewCol )
-            {
-                SwLayoutFrame *pB = FindBodyCont();
-                assert(pB && "Page without Body.");
-                pB->ChgColumns( rOldCol, rNewCol );
-                rInvFlags |= SwPageFrameInvFlags::CheckGrid;
-            }
-
-            // 2. header and footer:
-            const SwFormatHeader &rOldH = pOldFormat->GetHeader();
-            const SwFormatHeader &rNewH = pNewFormat->GetHeader();
-            if( rOldH != rNewH )
-                rInvFlags |= SwPageFrameInvFlags::PrepareHeader;
-
-            const SwFormatFooter &rOldF = pOldFormat->GetFooter();
-            const SwFormatFooter &rNewF = pNewFormat->GetFooter();
-            if( rOldF != rNewF )
-                rInvFlags |= SwPageFrameInvFlags::PrepareFooter;
-            CheckDirChange();
-
-            [[fallthrough]];
-        }
         case RES_FRM_SIZE:
         {
             const SwRect aOldPageFrameRect( getFrameArea() );
@@ -663,16 +630,6 @@ void SwPageFrame::UpdateAttr_( const SfxPoolItem *pOld, const SfxPoolItem *pNew,
             }
             else if (pNew)
             {
-                const SwFormatFrameSize &rSz = nWhich == RES_FMT_CHG ?
-                        static_cast<const SwFormatChg*>(pNew)->pChangedFormat->GetFrameSize() :
-                        static_cast<const SwFormatFrameSize&>(*pNew);
-
-                {
-                    SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
-                    aFrm.Height( std::max( rSz.GetHeight(), tools::Long(MINLAY) ) );
-                    aFrm.Width ( std::max( rSz.GetWidth(),  tools::Long(MINLAY) ) );
-                }
-
                 if ( GetUpper() )
                 {
                     static_cast<SwRootFrame*>(GetUpper())->CheckViewLayout( nullptr, nullptr );
@@ -740,6 +697,106 @@ void SwPageFrame::UpdateAttr_( const SfxPoolItem *pOld, const SfxPoolItem *pNew,
     }
 }
 
+void SwPageFrame::UpdateAttrForFormatChange( SwFormat* pOldFormat, SwFormat* pNewFormat,
+                             SwPageFrameInvFlags &rInvFlags )
+{
+    // state of m_bEmptyPage needs to be determined newly
+    const bool bNewState(GetFormat() == GetFormat()->GetDoc().GetEmptyPageFormat());
+
+    if(m_bEmptyPage != bNewState)
+    {
+        // copy new state
+        m_bEmptyPage = bNewState;
+
+        if(nullptr == GetLower())
+        {
+            // if we were an empty page before there is not yet a BodyArea in the
+            // form of a SwBodyFrame, see constructor
+            SwViewShell* pSh(getRootFrame()->GetCurrShell());
+            vcl::RenderContext* pRenderContext(pSh ? pSh->GetOut() : nullptr);
+            Calc(pRenderContext); // so that the PrtArea is correct
+            SwBodyFrame* pBodyFrame = new SwBodyFrame(GetFormat(), this);
+            pBodyFrame->ChgSize(getFramePrintArea().SSize());
+            pBodyFrame->Paste(this);
+            pBodyFrame->InvalidatePos();
+        }
+    }
+
+    // If the frame format is changed, several things might also change:
+    // 1. columns:
+    assert(pOldFormat && pNewFormat); //FMT_CHG Missing Format
+    const SwFormatCol &rOldCol = pOldFormat->GetCol();
+    const SwFormatCol &rNewCol = pNewFormat->GetCol();
+    if( rOldCol != rNewCol )
+    {
+        SwLayoutFrame *pB = FindBodyCont();
+        assert(pB && "Page without Body.");
+        pB->ChgColumns( rOldCol, rNewCol );
+        rInvFlags |= SwPageFrameInvFlags::CheckGrid;
+    }
+
+    // 2. header and footer:
+    const SwFormatHeader &rOldH = pOldFormat->GetHeader();
+    const SwFormatHeader &rNewH = pNewFormat->GetHeader();
+    if( rOldH != rNewH )
+        rInvFlags |= SwPageFrameInvFlags::PrepareHeader;
+
+    const SwFormatFooter &rOldF = pOldFormat->GetFooter();
+    const SwFormatFooter &rNewF = pNewFormat->GetFooter();
+    if( rOldF != rNewF )
+        rInvFlags |= SwPageFrameInvFlags::PrepareFooter;
+    CheckDirChange();
+
+    const SwRect aOldPageFrameRect( getFrameArea() );
+    SwViewShell *pSh = getRootFrame()->GetCurrShell();
+    if( pSh && pSh->GetViewOptions()->getBrowseMode() )
+    {
+        setFrameAreaSizeValid(false);
+        // OD 28.10.2002 #97265# - Don't call <SwPageFrame::MakeAll()>
+        // Calculation of the page is not necessary, because its size is
+        // invalidated here and further invalidation is done in the
+        // calling method <SwPageFrame::Modify(..)> and probably by calling
+        // <SwLayoutFrame::SwClientNotify(..)> at the end.
+        // It can also causes inconsistences, because the lowers are
+        // adjusted, but not calculated, and a <SwPageFrame::MakeAll()> of
+        // a next page is called. This is performed on the switch to the
+        // online layout.
+        //MakeAll();
+    }
+    else if (pNewFormat)
+    {
+        const SwFormatFrameSize &rSz = pNewFormat->GetFrameSize();
+
+        {
+            SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
+            aFrm.Height( std::max( rSz.GetHeight(), tools::Long(MINLAY) ) );
+            aFrm.Width ( std::max( rSz.GetWidth(),  tools::Long(MINLAY) ) );
+        }
+
+        if ( GetUpper() )
+        {
+            static_cast<SwRootFrame*>(GetUpper())->CheckViewLayout( nullptr, nullptr );
+        }
+    }
+    // cleanup Window
+    if( pSh && pSh->GetWin() && aOldPageFrameRect.HasArea() )
+    {
+        // #i9719# - consider border and shadow of
+        // page frame for determine 'old' rectangle - it's used for invalidating.
+        const bool bRightSidebar = (SidebarPosition() == sw::sidebarwindows::SidebarPosition::RIGHT);
+        SwRect aOldRectWithBorderAndShadow;
+        SwPageFrame::GetBorderAndShadowBoundRect( aOldPageFrameRect, pSh, pSh->GetOut(), aOldRectWithBorderAndShadow,
+            IsLeftShadowNeeded(), IsRightShadowNeeded(), bRightSidebar );
+        pSh->InvalidateWindows( aOldRectWithBorderAndShadow );
+    }
+    rInvFlags |= SwPageFrameInvFlags::InvalidatePrt | SwPageFrameInvFlags::SetCompletePaint;
+    if ( aOldPageFrameRect.Height() != getFrameArea().Height() )
+        rInvFlags |= SwPageFrameInvFlags::InvalidateNextPos;
+
+    SwModify aMod;
+    SwLayoutFrame::SwClientNotify(aMod, SwFormatChangeHint(pOldFormat, pNewFormat));
+}
+
 void  SwPageFrame::SetPageDesc( SwPageDesc *pNew, SwFrameFormat *pFormat )
 {
     m_pDesc = pNew;
@@ -761,11 +818,11 @@ SwPageDesc *SwPageFrame::FindPageDesc()
     // 0.
     if ( IsFootnotePage() )
     {
-        SwDoc *pDoc = GetFormat()->GetDoc();
+        SwDoc& rDoc = GetFormat()->GetDoc();
         if ( IsEndNotePage() )
-            return pDoc->GetEndNoteInfo().GetPageDesc( *pDoc );
+            return rDoc.GetEndNoteInfo().GetPageDesc( rDoc );
         else
-            return pDoc->GetFootnoteInfo().GetPageDesc( *pDoc );
+            return rDoc.GetFootnoteInfo().GetPageDesc( rDoc );
     }
 
     SwPageDesc *pRet = nullptr;
@@ -785,11 +842,17 @@ SwPageDesc *SwPageFrame::FindPageDesc()
             pRet = const_cast<SwPageDesc*>(pFlow->GetPageDescItem().GetPageDesc());
         }
         if ( !pRet )
-            pRet = &GetFormat()->GetDoc()->GetPageDesc( 0 );
+            pRet = &GetFormat()->GetDoc().GetPageDesc( 0 );
         return pRet;
     }
 
-    SwFrame *pFlow = FindFirstBodyContent();
+    SwContentFrame* pFirstContent = FindFirstBodyContent();
+    while (pFirstContent && pFirstContent->IsInSct()
+            && pFirstContent->FindSctFrame()->IsHiddenNow())
+    {
+        pFirstContent = pFirstContent->GetNextContentFrame();
+    }
+    SwFrame* pFlow = pFirstContent;
     if ( pFlow && pFlow->IsInTab() )
         pFlow = pFlow->FindTabFrame();
 
@@ -816,7 +879,7 @@ SwPageDesc *SwPageFrame::FindPageDesc()
 
     //4.
     if ( !pRet )
-        pRet = &GetFormat()->GetDoc()->GetPageDesc( 0 );
+        pRet = &GetFormat()->GetDoc().GetPageDesc( 0 );
 
     OSL_ENSURE( pRet, "could not find page descriptor." );
     return pRet;
@@ -911,7 +974,7 @@ void SwPageFrame::Cut()
 void SwPageFrame::Paste( SwFrame* pParent, SwFrame* pSibling )
 {
     OSL_ENSURE( pParent->IsRootFrame(), "Parent is no Root." );
-    OSL_ENSURE( pParent, "No parent for Paste()." );
+    assert(pParent && "No parent for Paste().");
     OSL_ENSURE( pParent != this, "I'm my own parent." );
     OSL_ENSURE( pSibling != this, "I'm my own neighbour." );
     OSL_ENSURE( !GetPrev() && !GetNext() && !GetUpper(),
@@ -1020,7 +1083,7 @@ bool IsPageFrameEmpty(SwPageFrame const& rPage)
             // #i28701#
             SwAnchoredObject* pAnchoredObj = rObjs[i];
             // do not consider hidden objects
-            if ( rPage.GetFormat()->GetDoc()->getIDocumentDrawModelAccess().IsVisibleLayerId(
+            if ( rPage.GetFormat()->GetDoc().getIDocumentDrawModelAccess().IsVisibleLayerId(
                                 pAnchoredObj->GetDrawObj()->GetLayer() ) &&
                  !pAnchoredObj->GetAnchorFrame()->FindFooterOrHeader() )
             {
@@ -1031,11 +1094,16 @@ bool IsPageFrameEmpty(SwPageFrame const& rPage)
     }
 
     // optimization: check first if essential objects exist.
-    const SwLayoutFrame* pBody = nullptr;
-    if ( bExistEssentialObjs ||
-         rPage.FindFootnoteCont() ||
-         (nullptr != (pBody = rPage.FindBodyCont()) &&
-            ( pBody->ContainsContent() ||
+    if (bExistEssentialObjs)
+        return false;
+    else if (rPage.FindFootnoteCont())
+        return false;
+    else
+    {
+        if (const SwLayoutFrame* pBody = rPage.FindBodyCont())
+        {
+            const SwFrame* pLower = pBody->Lower();
+            if ( pBody->ContainsContent() ||
               // check for section frames that are being formatted on the stack
               rPage.ContainsDeleteForbiddenLayFrame() ||
                 // #i47580#
@@ -1044,14 +1112,12 @@ bool IsPageFrameEmpty(SwPageFrame const& rPage)
                 // instead of ContainsContent() to cover the empty-table-case,
                 // but I'm not fully sure, since ContainsAny() also returns
                 // SectionFrames. Therefore I prefer to do it the safe way:
-              ( pBody->Lower() && pBody->Lower()->IsTabFrame() ) ) ) )
-    {
-        return false;
+              ( pLower && pLower->IsTabFrame() ) )
+                return false;
+        }
     }
-    else
-    {
-        return true;
-    }
+
+    return true;
 }
 
 } // namespace sw
@@ -1088,8 +1154,8 @@ void SwFrame::CheckPageDescs( SwPageFrame *pStart, bool bNotifyFields, SwPageFra
     SwTwips nDocPos  = LONG_MAX;
 
     SwRootFrame *pRoot = static_cast<SwRootFrame*>(pStart->GetUpper());
-    SwDoc* pDoc      = pStart->GetFormat()->GetDoc();
-    const bool bFootnotes = !pDoc->GetFootnoteIdxs().empty();
+    SwDoc& rDoc      = pStart->GetFormat()->GetDoc();
+    const bool bFootnotes = !rDoc.GetFootnoteIdxs().empty();
 
     SwPageFrame *pPage = pStart;
     if( pPage->GetPrev() && static_cast<SwPageFrame*>(pPage->GetPrev())->IsEmptyPage() )
@@ -1194,7 +1260,7 @@ void SwFrame::CheckPageDescs( SwPageFrame *pStart, bool bNotifyFields, SwPageFra
             {
                 if ( pPrevPage )
                     pDesc = pPrevPage->GetPageDesc();
-                SwPageFrame *pTmp = new SwPageFrame( pDoc->GetEmptyPageFormat(), pRoot, pDesc );
+                SwPageFrame *pTmp = new SwPageFrame( rDoc.GetEmptyPageFormat(), pRoot, pDesc );
                 SAL_INFO( "sw.pageframe", "CheckPageDescs phys: " << pPage->GetPhyPageNum()
                           << " c: 3 - insert empty p: " << pTmp << " d: " << pDesc );
                 pTmp->Paste( pRoot, pPage );
@@ -1282,7 +1348,7 @@ void SwFrame::CheckPageDescs( SwPageFrame *pStart, bool bNotifyFields, SwPageFra
 
     if ( bNotifyFields && (!pImp || !pImp->IsUpdateExpFields()) )
     {
-        pDoc->getIDocumentFieldsAccess().UpdatePageFields(nDocPos);
+        rDoc.getIDocumentFieldsAccess().UpdatePageFields(nDocPos);
     }
 
 #if OSL_DEBUG_LEVEL > 0
@@ -1400,12 +1466,12 @@ SwPageFrame *SwFrame::InsertPage( SwPageFrame *pPrevPage, bool bFootnote )
         bWishedRightPage = !bWishedRightPage;
     bool const bWishedFirst = pDesc != pPrevPage->GetPageDesc();
 
-    SwDoc *pDoc = pPrevPage->GetFormat()->GetDoc();
+    SwDoc& rDoc = pPrevPage->GetFormat()->GetDoc();
     bool bCheckPages = false;
     // If there is no FrameFormat for this page, create an empty page.
     if (bWishedRightPage != bNextRightPage)
     {
-        if( doInsertPage( pRoot, &pSibling, pDoc->GetEmptyPageFormat(),
+        if( doInsertPage( pRoot, &pSibling, rDoc.GetEmptyPageFormat(),
                           pPrevPage->GetPageDesc(), bFootnote, nullptr ) )
             bCheckPages = true;
     }
@@ -1446,7 +1512,7 @@ SwPageFrame *SwFrame::InsertPage( SwPageFrame *pPrevPage, bool bFootnote )
     SwViewShell *pSh = getRootFrame()->GetCurrShell();
     if ( !pSh || !pSh->Imp()->IsUpdateExpFields() )
     {
-        pDoc->getIDocumentFieldsAccess().UpdatePageFields(pPrevPage->getFrameArea().Top());
+        rDoc.getIDocumentFieldsAccess().UpdatePageFields(pPrevPage->getFrameArea().Top());
     }
     return pPage;
 }
@@ -1470,14 +1536,14 @@ sw::sidebarwindows::SidebarPosition SwPageFrame::SidebarPosition() const
     }
 }
 
-SwTwips SwRootFrame::GrowFrame( SwTwips nDist, bool bTst, bool )
+SwTwips SwRootFrame::GrowFrame(SwTwips nDist, SwResizeLimitReason& reason, bool bTst, bool)
 {
     if ( !bTst )
     {
         SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
         aFrm.AddHeight(nDist );
     }
-
+    reason = SwResizeLimitReason::Unspecified;
     return nDist;
 }
 
@@ -1500,7 +1566,7 @@ void SwRootFrame::RemovePage( SwPageFrame **pDelRef, SwRemoveResult eResult )
     SwPageFrame *pDel = *pDelRef;
     (*pDelRef) = static_cast<SwPageFrame*>(
         eResult == SwRemoveResult::Next ? pDel->GetNext() : pDel->GetPrev() );
-    if ( !GetFormat()->GetDoc()->GetFootnoteIdxs().empty() )
+    if ( !GetFormat()->GetDoc().GetFootnoteIdxs().empty() )
         RemoveFootnotes( pDel, true );
     pDel->Cut();
     SwFrame::DestroyFrame( pDel );
@@ -1530,7 +1596,7 @@ void SwRootFrame::RemoveSuperfluous()
                 while ( pPage->IsFootnotePage() )
                 {
                     pPage = static_cast<SwPageFrame*>(pPage->GetPrev());
-                    OSL_ENSURE( pPage, "only endnote pages remain." );
+                    assert(pPage && "only endnote pages remain.");
                 }
                 continue;
             }
@@ -1550,7 +1616,7 @@ void SwRootFrame::RemoveSuperfluous()
     if ( nDocPos != LONG_MAX &&
          (!pSh || !pSh->Imp()->IsUpdateExpFields()) )
     {
-        GetFormat()->GetDoc()->getIDocumentFieldsAccess().UpdatePageFields(nDocPos);
+        GetFormat()->GetDoc().getIDocumentFieldsAccess().UpdatePageFields(nDocPos);
     }
 }
 
@@ -1561,8 +1627,8 @@ void SwRootFrame::AssertFlyPages()
         return;
     mbAssertFlyPages = false;
 
-    SwDoc *pDoc = GetFormat()->GetDoc();
-    const sw::SpzFrameFormats* pSpzs = pDoc->GetSpzFrameFormats();
+    SwDoc& rDoc = GetFormat()->GetDoc();
+    const sw::SpzFrameFormats* pSpzs = rDoc.GetSpzFrameFormats();
 
     // what page targets the "last" Fly?
     // note the needed pages in a set
@@ -1644,13 +1710,15 @@ void SwRootFrame::AssertFlyPages()
         pPage = static_cast<SwPageFrame*>(pPage->GetNext());
     }
 
+    assert(pPage);
+
     if ( nMaxPg > pPage->GetPhyPageNum() )
     {
         for ( sal_uInt16 i = pPage->GetPhyPageNum(); i < nMaxPg; ++i )
             pPage = InsertPage( pPage, false );
 
         // If the endnote pages are now corrupt, destroy them.
-        if ( !pDoc->GetFootnoteIdxs().empty() )
+        if ( !rDoc.GetFootnoteIdxs().empty() )
         {
             pPage = static_cast<SwPageFrame*>(Lower());
             while ( pPage && !pPage->IsFootnotePage() )
@@ -1682,7 +1750,7 @@ void SwRootFrame::AssertFlyPages()
 
 #if OSL_DEBUG_LEVEL > 0
     pPage = static_cast<SwPageFrame*>(Lower());
-    while ( pPage && pPage->GetNext() &&
+    while ( pPage->GetNext() &&
             !static_cast<SwPageFrame*>(pPage->GetNext())->IsFootnotePage() )
     {
         SAL_INFO( "sw.pageframe",  "AssertFlyPages p: " << pPage << " d: " << pPage->GetPageDesc()
@@ -1708,8 +1776,8 @@ void SwRootFrame::AssertPageFlys( SwPageFrame *pPage )
             while ( pPage->GetSortedObjs() && i< pPage->GetSortedObjs()->size() )
             {
                 // #i28701#
-                SwFrameFormat& rFormat = (*pPage->GetSortedObjs())[i]->GetFrameFormat();
-                const SwFormatAnchor &rAnch = rFormat.GetAnchor();
+                SwFrameFormat* pFormat = (*pPage->GetSortedObjs())[i]->GetFrameFormat();
+                const SwFormatAnchor &rAnch = pFormat->GetAnchor();
                 const sal_uInt16 nPg = rAnch.GetPageNum();
                 if ((rAnch.GetAnchorId() == RndStdIds::FLY_AT_PAGE) &&
                      nPg != pPage->GetPhyPageNum() )
@@ -1722,12 +1790,12 @@ void SwRootFrame::AssertPageFlys( SwPageFrame *pPage )
                         // It can move by itself. Just send a modify to its anchor attribute.
 #if OSL_DEBUG_LEVEL > 1
                         const size_t nCnt = pPage->GetSortedObjs()->size();
-                        rFormat.CallSwClientNotify(sw::LegacyModifyHint(nullptr, &rAnch));
+                        pFormat->CallSwClientNotify(sw::LegacyModifyHint(nullptr, &rAnch));
                         OSL_ENSURE( !pPage->GetSortedObjs() ||
                                 nCnt != pPage->GetSortedObjs()->size(),
                                 "Object couldn't be reattached!" );
 #else
-                        rFormat.CallSwClientNotify(sw::LegacyModifyHint(nullptr, &rAnch));
+                        pFormat->CallSwClientNotify(sw::LegacyModifyHint(nullptr, &rAnch));
 #endif
                         // Do not increment index, in this case
                         continue;
@@ -1823,7 +1891,7 @@ void SwRootFrame::ImplCalcBrowseWidth()
             const SwBorderAttrs &rAttrs = *aAccess.Get();
             const SwFormatHoriOrient &rHori = rAttrs.GetAttrSet().GetHoriOrient();
             tools::Long nWidth = rAttrs.GetSize().Width();
-            if ( nWidth < int(USHRT_MAX)-2000 && //-2k, because USHRT_MAX gets missing while trying to resize!  (and cast to int to avoid -Wsign-compare due to broken USHRT_MAX on Android)
+            if ( nWidth < std::numeric_limits<tools::Long>::max()-2000 && //-2k, because it changes while trying to resize!
                  text::HoriOrientation::FULL != rHori.GetHoriOrient() )
             {
                 const SwHTMLTableLayout *pLayoutInfo =
@@ -1853,19 +1921,19 @@ void SwRootFrame::ImplCalcBrowseWidth()
             {
                 // #i28701#
                 SwAnchoredObject* pAnchoredObj = (*pFrame->GetDrawObjs())[i];
-                const SwFrameFormat& rFormat = pAnchoredObj->GetFrameFormat();
+                const SwFrameFormat* pFormat = pAnchoredObj->GetFrameFormat();
                 const bool bFly = pAnchoredObj->DynCastFlyFrame() !=  nullptr;
                 if ((bFly && (FAR_AWAY == pAnchoredObj->GetObjRect().Width()))
-                    || rFormat.GetFrameSize().GetWidthPercent())
+                    || pFormat->GetFrameSize().GetWidthPercent())
                 {
                     continue;
                 }
 
                 tools::Long nWidth = 0;
-                switch ( rFormat.GetAnchor().GetAnchorId() )
+                switch ( pFormat->GetAnchor().GetAnchorId() )
                 {
                     case RndStdIds::FLY_AS_CHAR:
-                        nWidth = bFly ? rFormat.GetFrameSize().GetWidth() :
+                        nWidth = bFly ? pFormat->GetFrameSize().GetWidth() :
                                         pAnchoredObj->GetObjRect().Width();
                         break;
                     case RndStdIds::FLY_AT_PARA:
@@ -1877,8 +1945,8 @@ void SwRootFrame::ImplCalcBrowseWidth()
                             // at position FAR_AWAY.
                             if ( bFly )
                             {
-                                nWidth = rFormat.GetFrameSize().GetWidth();
-                                const SwFormatHoriOrient &rHori = rFormat.GetHoriOrient();
+                                nWidth = pFormat->GetFrameSize().GetWidth();
+                                const SwFormatHoriOrient &rHori = pFormat->GetHoriOrient();
                                 switch ( rHori.GetHoriOrient() )
                                 {
                                     case text::HoriOrientation::NONE:
@@ -2013,8 +2081,8 @@ static void lcl_MoveAllLowerObjs( SwFrame* pFrame, const Point& rOffset )
     for (size_t i = 0; i < pSortedObj->size(); ++i)
     {
         SwAnchoredObject *const pAnchoredObj = (*pSortedObj)[i];
-        const SwFrameFormat& rObjFormat = pAnchoredObj->GetFrameFormat();
-        const SwFormatAnchor& rAnchor = rObjFormat.GetAnchor();
+        const SwFrameFormat* pObjFormat = pAnchoredObj->GetFrameFormat();
+        const SwFormatAnchor& rAnchor = pObjFormat->GetAnchor();
 
         // all except from the as character anchored objects are moved
         // when processing the page frame:
@@ -2070,7 +2138,7 @@ static void lcl_MoveAllLowerObjs( SwFrame* pFrame, const Point& rOffset )
             pAnchoredDrawObj->SetLastObjRect( pAnchoredDrawObj->GetObjRect().SVRect() );
 
             // clear contour cache
-            if ( pAnchoredDrawObj->GetFrameFormat().GetSurround().IsContour() )
+            if ( pAnchoredDrawObj->GetFrameFormat()->GetSurround().IsContour() )
                 ClrContourCache( pAnchoredDrawObj->GetDrawObj() );
         }
         // #i92511#
@@ -2553,7 +2621,10 @@ bool SwPageFrame::CheckPageHeightValidForHideWhitespace(SwTwips nDiff)
             // Content frame doesn't fit the actual size, check if it fits the nominal one.
             const SwFrameFormat* pPageFormat = static_cast<const SwFrameFormat*>(GetDep());
             const Size& rPageSize = pPageFormat->GetFrameSize().GetSize();
-            tools::Long nWhitespace = rPageSize.getHeight() - getFrameArea().Height();
+            // Count what would be the max size for the body frame, ignoring top/bottom margin.
+            const SvxULSpaceItem& rULSpace = pPageFormat->GetULSpace();
+            SwTwips nNominalHeight = rPageSize.getHeight() - rULSpace.GetUpper() - rULSpace.GetLower();
+            tools::Long nWhitespace = nNominalHeight - getFrameArea().Height();
             if (nWhitespace > -nDiff)
             {
                 // It does: don't move it and invalidate our page frame so
@@ -2622,8 +2693,8 @@ void SwPageFrame::dumpAsXml(xmlTextWriterPtr writer) const
     (void)xmlTextWriterStartElement(writer, BAD_CAST("page_info"));
     (void)xmlTextWriterWriteFormatAttribute(writer, BAD_CAST("phyNum"), "%d", GetPhyPageNum());
     (void)xmlTextWriterWriteFormatAttribute(writer, BAD_CAST("virtNum"), "%d", GetVirtPageNum());
-    OUString aFormatName = GetPageDesc()->GetName();
-    (void)xmlTextWriterWriteFormatAttribute( writer, BAD_CAST("pageDesc"), "%s", BAD_CAST(OUStringToOString(aFormatName, RTL_TEXTENCODING_UTF8).getStr()));
+    UIName aFormatName = GetPageDesc()->GetName();
+    (void)xmlTextWriterWriteFormatAttribute( writer, BAD_CAST("pageDesc"), "%s", BAD_CAST(OUStringToOString(aFormatName.toString(), RTL_TEXTENCODING_UTF8).getStr()));
     (void)xmlTextWriterEndElement(writer);
     if (auto const* pObjs = GetSortedObjs())
     {
@@ -2671,7 +2742,7 @@ SwTextGridItem const* GetGridItem(SwPageFrame const*const pPage)
     {
         SwTextGridItem const& rGridItem(
                 pPage->GetPageDesc()->GetMaster().GetTextGrid());
-        if (GRID_NONE != rGridItem.GetGridType())
+        if (SwTextGrid::NONE != rGridItem.GetGridType())
         {
             return &rGridItem;
         }

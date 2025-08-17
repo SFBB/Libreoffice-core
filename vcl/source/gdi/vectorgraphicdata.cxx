@@ -37,6 +37,7 @@
 #include <comphelper/sequence.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/propertyvalue.hxx>
+#include <pdf/PdfConfig.hxx>
 #include <rtl/crc.h>
 #include <vcl/svapp.hxx>
 #include <vcl/outdev.hxx>
@@ -47,14 +48,14 @@
 
 using namespace ::com::sun::star;
 
-BitmapEx convertPrimitive2DSequenceToBitmapEx(
+Bitmap convertPrimitive2DSequenceToBitmap(
     const std::deque< css::uno::Reference< css::graphic::XPrimitive2D > >& rSequence,
     const basegfx::B2DRange& rTargetRange,
     const sal_uInt32 nMaximumQuadraticPixels,
     const o3tl::Length eTargetUnit,
     const std::optional<Size>& rTargetDPI)
 {
-    BitmapEx aRetval;
+    Bitmap aRetval;
 
     if(!rSequence.empty())
     {
@@ -62,11 +63,11 @@ BitmapEx convertPrimitive2DSequenceToBitmapEx(
         // create XPrimitive2DRenderer
         try
         {
-            uno::Reference< uno::XComponentContext > xContext(::comphelper::getProcessComponentContext());
+            const uno::Reference< uno::XComponentContext >& xContext(::comphelper::getProcessComponentContext());
             const uno::Reference< graphic::XPrimitive2DRenderer > xPrimitive2DRenderer = graphic::Primitive2DTools::create(xContext);
 
             uno::Sequence< beans::PropertyValue > aViewParameters = {
-                comphelper::makePropertyValue("RangeUnit", static_cast<sal_Int32>(eTargetUnit)),
+                comphelper::makePropertyValue(u"RangeUnit"_ustr, static_cast<sal_Int32>(eTargetUnit)),
             };
             geometry::RealRectangle2D aRealRect;
 
@@ -94,7 +95,7 @@ BitmapEx convertPrimitive2DSequenceToBitmapEx(
             if(xBitmap.is())
             {
                 const uno::Reference< rendering::XIntegerReadOnlyBitmap> xIntBmp(xBitmap, uno::UNO_QUERY_THROW);
-                aRetval = vcl::unotools::bitmapExFromXBitmap(xIntBmp);
+                aRetval = vcl::unotools::bitmapFromXBitmap(xIntBmp);
             }
         }
         catch (const uno::Exception&)
@@ -150,7 +151,7 @@ void VectorGraphicData::ensurePdfReplacement()
         return; // nothing to do
 
     // use PDFium directly
-    std::vector<BitmapEx> aBitmaps;
+    std::vector<Bitmap> aBitmaps;
     sal_Int32 nUsePageIndex = 0;
     if (mnPageIndex >= 0)
         nUsePageIndex = mnPageIndex;
@@ -178,8 +179,37 @@ void VectorGraphicData::ensureReplacement()
 
     if (!maSequence.empty())
     {
-        maReplacement = convertPrimitive2DSequenceToBitmapEx(maSequence, getRange());
+        maReplacement = convertPrimitive2DSequenceToBitmap(maSequence, getRange());
     }
+}
+
+Bitmap VectorGraphicData::getBitmap(const Size& pixelSize) const
+{
+    if (!maReplacement.IsEmpty() && maReplacement.GetSizePixel() == pixelSize)
+        return maReplacement;
+
+    if (getType() == VectorGraphicDataType::Pdf)
+    {
+        // use PDFium directly
+        const sal_Int32 nUsePageIndex = mnPageIndex > 0 ? mnPageIndex : 0;
+        const double dpi = vcl::pdf::getDefaultPdfResolutionDpi();
+        basegfx::B2DTuple sizeMM100(
+            o3tl::convert(pixelSize.Width() / dpi / vcl::PDF_INSERT_MAGIC_SCALE_FACTOR, o3tl::Length::in, o3tl::Length::mm100),
+            o3tl::convert(pixelSize.Height() / dpi / vcl::PDF_INSERT_MAGIC_SCALE_FACTOR, o3tl::Length::in, o3tl::Length::mm100));
+        std::vector<Bitmap> aBitmaps;
+        vcl::RenderPDFBitmaps(maDataContainer.getData(), maDataContainer.getSize(), aBitmaps,
+                              nUsePageIndex, 1, &sizeMM100);
+        if (!aBitmaps.empty())
+            return aBitmaps[0];
+    }
+
+    if (getPrimitive2DSequence().empty())
+        return {};
+
+    Size dpi(
+        std::round(pixelSize.Width() / o3tl::convert(maRange.getWidth(), o3tl::Length::mm100, o3tl::Length::in)),
+        std::round(pixelSize.Height() / o3tl::convert(maRange.getHeight(), o3tl::Length::mm100, o3tl::Length::in)));
+    return convertPrimitive2DSequenceToBitmap(maSequence, maRange, 4096 * 4096, o3tl::Length::mm100, dpi);
 }
 
 void VectorGraphicData::ensureSequenceAndRange()
@@ -191,7 +221,7 @@ void VectorGraphicData::ensureSequenceAndRange()
     maRange.reset();
 
     // create Vector Graphic Data interpreter
-    uno::Reference<uno::XComponentContext> xContext(::comphelper::getProcessComponentContext());
+    const uno::Reference<uno::XComponentContext>& xContext(::comphelper::getProcessComponentContext());
 
     switch (getType())
     {
@@ -225,7 +255,7 @@ void VectorGraphicData::ensureSequenceAndRange()
 
                 if (!mbEnableEMFPlus)
                 {
-                    aPropertySequence = { comphelper::makePropertyValue("EMFPlusEnable", uno::Any(false)) };
+                    aPropertySequence = { comphelper::makePropertyValue(u"EMFPlusEnable"_ustr, uno::Any(false)) };
                 }
 
                 maSequence = comphelper::sequenceToContainer<std::deque<css::uno::Reference< css::graphic::XPrimitive2D >>>(xEmfParser->getDecomposition(xInputStream, OUString(), aPropertySequence));
@@ -289,39 +319,13 @@ std::pair<VectorGraphicData::State, size_t> VectorGraphicData::getSizeBytes() co
     }
 }
 
-VectorGraphicData::VectorGraphicData(
-    BinaryDataContainer aDataContainer,
-    VectorGraphicDataType eVectorDataType,
-    sal_Int32 nPageIndex)
+VectorGraphicData::VectorGraphicData(BinaryDataContainer aDataContainer, VectorGraphicDataType eVectorDataType, sal_Int32 nPageIndex)
 :   maDataContainer(std::move(aDataContainer)),
     mbSequenceCreated(false),
     mNestedBitmapSize(0),
     meType(eVectorDataType),
     mnPageIndex(nPageIndex)
 {
-}
-
-VectorGraphicData::VectorGraphicData(
-    const OUString& rPath,
-    VectorGraphicDataType eVectorDataType)
-:   mbSequenceCreated(false),
-    mNestedBitmapSize(0),
-    meType(eVectorDataType),
-    mnPageIndex(-1)
-{
-    SvFileStream rIStm(rPath, StreamMode::STD_READ);
-    if(rIStm.GetError())
-        return;
-    const sal_uInt32 nStmLen(rIStm.remainingSize());
-    if (nStmLen)
-    {
-        BinaryDataContainer aData(rIStm, nStmLen);
-
-        if (!rIStm.GetError())
-        {
-            maDataContainer = aData;
-        }
-    }
 }
 
 VectorGraphicData::~VectorGraphicData()
@@ -342,7 +346,7 @@ const std::deque< css::uno::Reference< css::graphic::XPrimitive2D > >& VectorGra
     return maSequence;
 }
 
-const BitmapEx& VectorGraphicData::getReplacement() const
+const Bitmap& VectorGraphicData::getReplacement() const
 {
     const_cast< VectorGraphicData* >(this)->ensureReplacement();
 

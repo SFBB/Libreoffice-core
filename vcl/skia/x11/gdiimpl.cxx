@@ -18,7 +18,9 @@
 
 #include <skia/x11/gdiimpl.hxx>
 
-#include <tools/sk_app/unix/WindowContextFactory_unix.h>
+#include <tools/window/unix/RasterWindowContext_unix.h>
+#include <tools/window/unix/GaneshVulkanWindowContext_unix.h>
+#include <tools/window/unix/XlibWindowInfo.h>
 
 #include <skia/utils.hxx>
 #include <skia/zone.hxx>
@@ -33,11 +35,10 @@ X11SkiaSalGraphicsImpl::X11SkiaSalGraphicsImpl(X11SalGraphics& rParent)
 {
 }
 
-void X11SkiaSalGraphicsImpl::Init()
+void X11SkiaSalGraphicsImpl::UpdateX11GeometryProvider()
 {
     // The m_pFrame and m_pVDev pointers are updated late in X11
     setProvider(mX11Parent.GetGeometryProvider());
-    SkiaSalGraphicsImpl::Init();
 }
 
 void X11SkiaSalGraphicsImpl::createWindowSurfaceInternal(bool forceRaster)
@@ -60,22 +61,22 @@ void X11SkiaSalGraphicsImpl::createWindowSurfaceInternal(bool forceRaster)
     }
 }
 
-std::unique_ptr<sk_app::WindowContext>
+std::unique_ptr<skwindow::WindowContext>
 X11SkiaSalGraphicsImpl::createWindowContext(Display* display, Drawable drawable,
                                             const XVisualInfo* visual, int width, int height,
                                             RenderMethod renderMethod, bool temporary)
 {
     SkiaZone zone;
-    sk_app::DisplayParams displayParams;
-    displayParams.fColorType = kN32_SkColorType;
+    skwindow::DisplayParamsBuilder displayParamsBuilder;
+    displayParamsBuilder.colorType(kN32_SkColorType);
 #if defined LINUX
     // WORKAROUND: VSync causes freezes that can even temporarily freeze the entire desktop.
     // This happens even with the latest 450.66 drivers despite them claiming a fix for vsync.
     // https://forums.developer.nvidia.com/t/hangs-freezes-when-vulkan-v-sync-vk-present-mode-fifo-khr-is-enabled/67751
     if (getVendor() == DriverBlocklist::VendorNVIDIA)
-        displayParams.fDisableVsync = true;
+        displayParamsBuilder.disableVsync(true);
 #endif
-    sk_app::window_context_factory::XlibWindowInfo winInfo;
+    skwindow::XlibWindowInfo winInfo;
     assert(display);
     winInfo.fDisplay = display;
     winInfo.fWindow = drawable;
@@ -102,17 +103,19 @@ X11SkiaSalGraphicsImpl::createWindowContext(Display* display, Drawable drawable,
     switch (renderMethod)
     {
         case RenderRaster:
+        {
             // Make sure we ask for color type that matches the X11 visual. If red mask
             // is larger value than blue mask, then on little endian this means blue is first.
             // This should also preferably match SK_R32_SHIFT set in config_skia.h, as that
             // improves performance, the common setup seems to be BGRA (possibly because of
             // choosing OpenGL-capable visual).
-            displayParams.fColorType
-                = (visual->red_mask > visual->blue_mask ? kBGRA_8888_SkColorType
-                                                        : kRGBA_8888_SkColorType);
-            return sk_app::window_context_factory::MakeRasterForXlib(winInfo, displayParams);
+            displayParamsBuilder.colorType(visual->red_mask > visual->blue_mask
+                                               ? kBGRA_8888_SkColorType
+                                               : kRGBA_8888_SkColorType);
+            return skwindow::MakeRasterForXlib(winInfo, displayParamsBuilder.build());
+        }
         case RenderVulkan:
-            return sk_app::window_context_factory::MakeVulkanForXlib(winInfo, displayParams);
+            return skwindow::MakeGaneshVulkanForXlib(winInfo, displayParamsBuilder.build());
         case RenderMetal:
             abort();
             break;
@@ -140,11 +143,9 @@ bool X11SkiaSalGraphicsImpl::avoidRecreateByResize() const
     return mSurface->width() == int(w) && mSurface->height() == int(h);
 }
 
-void X11SkiaSalGraphicsImpl::freeResources() {}
-
 void X11SkiaSalGraphicsImpl::Flush() { performFlush(); }
 
-std::unique_ptr<sk_app::WindowContext> createVulkanWindowContext(bool temporary)
+std::unique_ptr<skwindow::WindowContext> createVulkanWindowContext(bool temporary)
 {
     SalDisplay* salDisplay = vcl_sal::getSalDisplay(GetGenericUnixSalData());
     const XVisualInfo* visual;
@@ -163,7 +164,7 @@ std::unique_ptr<sk_app::WindowContext> createVulkanWindowContext(bool temporary)
         assert(count == 1);
         visual = visuals;
     }
-    std::unique_ptr<sk_app::WindowContext> ret = X11SkiaSalGraphicsImpl::createWindowContext(
+    std::unique_ptr<skwindow::WindowContext> ret = X11SkiaSalGraphicsImpl::createWindowContext(
         salDisplay->GetDisplay(), None, visual, 1, 1, RenderVulkan, temporary);
     if (temporary)
         XFree(visuals);

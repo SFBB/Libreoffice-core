@@ -21,7 +21,6 @@
 #define INCLUDED_SD_SOURCE_UI_INC_ACCESSIBLEDOCUMENTVIEWBASE_HXX
 
 #include <editeng/AccessibleContextBase.hxx>
-#include <editeng/AccessibleComponentBase.hxx>
 #include <editeng/AccessibleSelectionBase.hxx>
 #include "AccessibleViewForwarder.hxx"
 #include <svx/AccessibleShapeTreeInfo.hxx>
@@ -80,7 +79,6 @@ namespace accessibility {
 */
 class AccessibleDocumentViewBase
     :   public AccessibleContextBase,
-        public AccessibleComponentBase,
         public AccessibleSelectionBase,
         public IAccessibleViewForwarderListener,
         public css::beans::XPropertyChangeListener,
@@ -89,8 +87,6 @@ class AccessibleDocumentViewBase
         public css::accessibility::XAccessibleExtendedAttributes
 {
 public:
-    //=====  internal  ========================================================
-
     /** Create a new object.  Note that the caller has to call the
         Init method directly after this constructor has finished.
     @param pSdWindow
@@ -148,18 +144,13 @@ public:
     virtual css::uno::Reference<css::accessibility::XAccessible> SAL_CALL
         getAccessibleChild (sal_Int64 nIndex) override;
 
+    // OAccessible
+    virtual css::awt::Rectangle implGetBounds() override;
+
     //=====  XAccessibleComponent  ============================================
 
     virtual css::uno::Reference<css::accessibility::XAccessible > SAL_CALL
         getAccessibleAtPoint (const css::awt::Point& aPoint) override;
-
-    virtual css::awt::Rectangle SAL_CALL getBounds() override;
-
-    virtual css::awt::Point SAL_CALL getLocation() override;
-
-    virtual css::awt::Point SAL_CALL getLocationOnScreen() override;
-
-    virtual css::awt::Size SAL_CALL getSize() override;
 
     //=====  XInterface  ======================================================
 
@@ -183,11 +174,6 @@ public:
 
     virtual css::uno::Sequence< OUString> SAL_CALL
         getSupportedServiceNames() override;
-
-    //=====  XTypeProvider  ===================================================
-
-    virtual css::uno::Sequence< css::uno::Type> SAL_CALL
-        getTypes() override;
 
     //=====  lang::XEventListener  ============================================
 
@@ -218,7 +204,7 @@ public:
     virtual void SAL_CALL focusGained (const css::awt::FocusEvent& e) override;
     virtual void SAL_CALL focusLost (const css::awt::FocusEvent& e) override;
     //----------------------------xAttribute----------------------------
-    virtual css::uno::Any SAL_CALL getExtendedAttributes() override;
+    virtual OUString SAL_CALL getExtendedAttributes() override;
      ::sd::ViewShell* mpViewShell;
 private:
 

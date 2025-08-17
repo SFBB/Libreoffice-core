@@ -99,7 +99,7 @@ void OFilterItemExchange::AddSupportedFormats()
 SotClipboardFormatId OFilterItemExchange::getFormatId()
 {
     static SotClipboardFormatId s_nFormat =
-         SotExchange::RegisterFormatName("application/x-openoffice;windows_formatname=\"form.FilterControlExchange\"");
+         SotExchange::RegisterFormatName(u"application/x-openoffice;windows_formatname=\"form.FilterControlExchange\""_ustr);
     DBG_ASSERT(static_cast<SotClipboardFormatId>(-1) != s_nFormat, "OFilterExchangeHelper::getFormatId: bad exchange id!");
     return s_nFormat;
 }
@@ -163,7 +163,7 @@ class FmFilterHint : public SfxHint
     FmFilterData*   m_pData;
 
 public:
-    explicit FmFilterHint(FmFilterData* pData):m_pData(pData){}
+    explicit FmFilterHint(SfxHintId nHintId, FmFilterData* pData) : SfxHint(nHintId), m_pData(pData) {}
     FmFilterData* GetData() const { return m_pData; }
 };
 
@@ -173,7 +173,7 @@ class FmFilterInsertedHint : public FmFilterHint
 
 public:
     FmFilterInsertedHint(FmFilterData* pData, size_t nRelPos)
-        :FmFilterHint(pData)
+        :FmFilterHint(SfxHintId::FmFilterInserted, pData)
         ,m_nPos(nRelPos){}
 
     size_t GetPos() const { return m_nPos; }
@@ -183,7 +183,7 @@ class FmFilterRemovedHint : public FmFilterHint
 {
 public:
     explicit FmFilterRemovedHint(FmFilterData* pData)
-        :FmFilterHint(pData){}
+        :FmFilterHint(SfxHintId::FmFilterRemoved, pData){}
 };
 
 
@@ -191,19 +191,19 @@ class FmFilterTextChangedHint : public FmFilterHint
 {
 public:
     explicit FmFilterTextChangedHint(FmFilterData* pData)
-        :FmFilterHint(pData){}
+        :FmFilterHint(SfxHintId::FmFilterTextChanged, pData){}
 };
 
 class FilterClearingHint : public SfxHint
 {
 public:
-    FilterClearingHint(){}
+    FilterClearingHint() : SfxHint(SfxHintId::FilterClearing) {}
 };
 
 class FmFilterCurrentChangedHint : public SfxHint
 {
 public:
-    FmFilterCurrentChangedHint(){}
+    FmFilterCurrentChangedHint() : SfxHint(SfxHintId::FmFilterCurrentChanged) {}
 };
 
 }
@@ -796,7 +796,7 @@ bool FmFilterModel::ValidateText(FmFilterItem const * pItem, OUString& rText, OU
             OUString aPreparedText;
             Locale aAppLocale = Application::GetSettings().GetUILanguageTag().getLocale();
             pParseNode->parseNodeToPredicateStr(
-                aPreparedText, xConnection, xFormatter, xField, OUString(), aAppLocale, ".", getParseContext() );
+                aPreparedText, xConnection, xFormatter, xField, OUString(), aAppLocale, u"."_ustr, getParseContext() );
             rText = aPreparedText;
             return true;
         }
@@ -1061,9 +1061,9 @@ FmFilterNavigator::FmFilterNavigator(vcl::Window* pTopLevel, std::unique_ptr<wel
 
     m_xTreeView->connect_custom_get_size(LINK(this, FmFilterNavigator, CustomGetSizeHdl));
     m_xTreeView->connect_custom_render(LINK(this, FmFilterNavigator, CustomRenderHdl));
-    m_xTreeView->set_column_custom_renderer(0, true);
+    m_xTreeView->set_column_custom_renderer(1, true);
 
-    m_xTreeView->connect_changed(LINK(this, FmFilterNavigator, SelectHdl));
+    m_xTreeView->connect_selection_changed(LINK(this, FmFilterNavigator, SelectHdl));
     m_xTreeView->connect_key_press(LINK(this, FmFilterNavigator, KeyInputHdl));
     m_xTreeView->connect_popup_menu(LINK(this, FmFilterNavigator, PopupMenuHdl));
     m_xTreeView->connect_editing(LINK(this, FmFilterNavigator, EditingEntryHdl),
@@ -1278,25 +1278,28 @@ IMPL_LINK_NOARG(FmFilterNavigator, SelectHdl, weld::TreeView&, void)
 
 void FmFilterNavigator::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
 {
-    if (const FmFilterInsertedHint* pInsertHint = dynamic_cast<const FmFilterInsertedHint*>(&rHint))
+    if (rHint.GetId() == SfxHintId::FmFilterInserted)
     {
+        const FmFilterInsertedHint* pInsertHint = static_cast<const FmFilterInsertedHint*>(&rHint);
         Insert(pInsertHint->GetData(), pInsertHint->GetPos());
     }
-    else if( dynamic_cast<const FilterClearingHint*>(&rHint) )
+    else if( rHint.GetId() == SfxHintId::FilterClearing )
     {
         m_xTreeView->clear();
     }
-    else if (const FmFilterRemovedHint* pRemoveHint = dynamic_cast<const FmFilterRemovedHint*>(&rHint))
+    else if ( rHint.GetId() == SfxHintId::FmFilterRemoved )
     {
+        const FmFilterRemovedHint* pRemoveHint = static_cast<const FmFilterRemovedHint*>(&rHint);
         Remove(pRemoveHint->GetData());
     }
-    else if (const FmFilterTextChangedHint *pChangeHint = dynamic_cast<const FmFilterTextChangedHint*>(&rHint))
+    else if ( rHint.GetId() == SfxHintId::FmFilterTextChanged )
     {
+        const FmFilterTextChangedHint *pChangeHint = static_cast<const FmFilterTextChangedHint*>(&rHint);
         std::unique_ptr<weld::TreeIter> xEntry = FindEntry(pChangeHint->GetData());
         if (xEntry)
             m_xTreeView->set_text(*xEntry, pChangeHint->GetData()->GetText());
     }
-    else if( dynamic_cast<const FmFilterCurrentChangedHint*>(&rHint) )
+    else if( rHint.GetId() == SfxHintId::FmFilterCurrentChanged )
     {
         m_xTreeView->queue_draw();
     }
@@ -1495,15 +1498,15 @@ IMPL_LINK(FmFilterNavigator, PopupMenuHdl, const CommandEvent&, rEvt, bool)
                     aSelectList.clear();
             }
 
-            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xTreeView.get(), "svx/ui/filtermenu.ui"));
-            std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xTreeView.get(), u"svx/ui/filtermenu.ui"_ustr));
+            std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
 
             // every condition could be deleted except the first one if it's the only one
             bool bNoDelete = false;
             if (aSelectList.empty())
             {
                 bNoDelete = true;
-                xContextMenu->remove("delete");
+                xContextMenu->remove(u"delete"_ustr);
             }
 
             FmFilterData* pFilterEntry = weld::fromId<FmFilterData*>(m_xTreeView->get_id(*xClicked));
@@ -1519,9 +1522,9 @@ IMPL_LINK(FmFilterNavigator, PopupMenuHdl, const CommandEvent&, rEvt, bool)
 
             if (!bEdit)
             {
-                xContextMenu->remove("edit");
-                xContextMenu->remove("isnull");
-                xContextMenu->remove("isnotnull");
+                xContextMenu->remove(u"edit"_ustr);
+                xContextMenu->remove(u"isnull"_ustr);
+                xContextMenu->remove(u"isnotnull"_ustr);
             }
 
             OUString sIdent = xContextMenu->popup_at_rect(m_xTreeView.get(), tools::Rectangle(aWhere, ::Size(1, 1)));
@@ -1532,7 +1535,7 @@ IMPL_LINK(FmFilterNavigator, PopupMenuHdl, const CommandEvent&, rEvt, bool)
             else if (sIdent == "isnull")
             {
                 OUString aErrorMsg;
-                OUString aText = "IS NULL";
+                OUString aText = u"IS NULL"_ustr;
                 assert(pFilterItem && "if item is null this menu entry was removed and unavailable");
                 m_pModel->ValidateText(pFilterItem, aText, aErrorMsg);
                 m_pModel->SetTextForItem(pFilterItem, aText);
@@ -1540,7 +1543,7 @@ IMPL_LINK(FmFilterNavigator, PopupMenuHdl, const CommandEvent&, rEvt, bool)
             else if (sIdent == "isnotnull")
             {
                 OUString aErrorMsg;
-                OUString aText = "IS NOT NULL";
+                OUString aText = u"IS NOT NULL"_ustr;
 
                 assert(pFilterItem && "if item is null this menu entry was removed and unavailable");
                 m_pModel->ValidateText(pFilterItem, aText, aErrorMsg);
@@ -1723,9 +1726,9 @@ void FmFilterNavigator::DeleteSelection()
 
 FmFilterNavigatorWin::FmFilterNavigatorWin(SfxBindings* _pBindings, SfxChildWindow* _pMgr,
                                            vcl::Window* _pParent)
-    : SfxDockingWindow(_pBindings, _pMgr, _pParent, "FilterNavigator", "svx/ui/filternavigator.ui")
+    : SfxDockingWindow(_pBindings, _pMgr, _pParent, u"FilterNavigator"_ustr, u"svx/ui/filternavigator.ui"_ustr)
     , SfxControllerItem( SID_FM_FILTER_NAVIGATOR_CONTROL, *_pBindings )
-    , m_xNavigatorTree(new FmFilterNavigator(this, m_xBuilder->weld_tree_view("treeview")))
+    , m_xNavigatorTree(new FmFilterNavigator(this, m_xBuilder->weld_tree_view(u"treeview"_ustr)))
 {
     SetHelpId( HID_FILTER_NAVIGATOR_WIN );
 

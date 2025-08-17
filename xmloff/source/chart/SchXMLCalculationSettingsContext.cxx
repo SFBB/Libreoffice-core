@@ -25,7 +25,6 @@
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 
@@ -66,7 +65,7 @@ void SchXMLCalculationSettingsContext::endFastElement(sal_Int32 )
     if ( m_aNullDate.hasValue() )
     {
         Reference < XPropertySet > xPropSet ( GetImport().GetModel(), UNO_QUERY );
-        xPropSet->setPropertyValue ( "NullDate", m_aNullDate );
+        xPropSet->setPropertyValue ( u"NullDate"_ustr, m_aNullDate );
     }
 }
 

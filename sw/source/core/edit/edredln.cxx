@@ -18,25 +18,39 @@
  */
 
 #include <IDocumentRedlineAccess.hxx>
+#include <IDocumentUndoRedo.hxx>
+#include <SwRewriter.hxx>
 #include <docary.hxx>
 #include <redline.hxx>
 #include <doc.hxx>
 #include <editsh.hxx>
 #include <frmtool.hxx>
+#include <docsh.hxx>
+#include <swdtflvr.hxx>
+#include <strings.hrc>
 
 RedlineFlags SwEditShell::GetRedlineFlags() const
 {
-    return GetDoc()->getIDocumentRedlineAccess().GetRedlineFlags();
+    return GetDoc()->getIDocumentRedlineAccess().GetRedlineFlags(this);
 }
 
-void SwEditShell::SetRedlineFlags( RedlineFlags eMode )
+void SwEditShell::SetRedlineFlags( RedlineFlags eMode, SfxRedlineRecordingMode eRedlineRecordingMode)
 {
-    if( eMode != GetDoc()->getIDocumentRedlineAccess().GetRedlineFlags() )
+    if (SwDocShell* pDocSh = GetDoc()->GetDocShell())
     {
-        CurrShell aCurr( this );
-        StartAllAction();
-        GetDoc()->getIDocumentRedlineAccess().SetRedlineFlags( eMode );
-        EndAllAction();
+        bool bRecordModeChange = false;
+        if (eRedlineRecordingMode != SfxRedlineRecordingMode::ViewAgnostic)
+        {
+            bool bRecordAllViews = eRedlineRecordingMode == SfxRedlineRecordingMode::AllViews;
+            bRecordModeChange = bRecordAllViews != pDocSh->IsChangeRecording(nullptr, bRecordAllViews);
+        }
+        if( eMode != GetDoc()->getIDocumentRedlineAccess().GetRedlineFlags() || bRecordModeChange )
+        {
+            CurrShell aCurr( this );
+            StartAllAction();
+            GetDoc()->getIDocumentRedlineAccess().SetRedlineFlags( eMode, eRedlineRecordingMode, bRecordModeChange );
+            EndAllAction();
+        }
     }
 }
 
@@ -55,6 +69,11 @@ const SwRangeRedline& SwEditShell::GetRedline( SwRedlineTable::size_type nPos ) 
     return *GetDoc()->getIDocumentRedlineAccess().GetRedlineTable()[ nPos ];
 }
 
+SwRangeRedline& SwEditShell::GetRedline(SwRedlineTable::size_type nPos)
+{
+    return const_cast<SwRangeRedline&>(const_cast<const SwEditShell*>(this)->GetRedline(nPos));
+}
+
 static void lcl_InvalidateAll( SwViewShell* pSh )
 {
     for(SwViewShell& rCurrentShell : pSh->GetRingContainer())
@@ -69,10 +88,86 @@ bool SwEditShell::AcceptRedline( SwRedlineTable::size_type nPos )
     CurrShell aCurr( this );
     StartAllAction();
     bool bRet = GetDoc()->getIDocumentRedlineAccess().AcceptRedline( nPos, true, true );
-    if( !nPos && !::IsExtraData( GetDoc() ) )
+    if( !nPos && !::IsExtraData( *GetDoc() ) )
         lcl_InvalidateAll( this );
     EndAllAction();
     return bRet;
+}
+
+void SwEditShell::ReinstatePaM(const SwRangeRedline& rRedline, SwPaM& rPaM)
+{
+    if (rRedline.GetType() == RedlineType::Insert)
+    {
+        // Disable compressing redlines, that would merge a self-insert and a self-delete, which is
+        // not wanted for reinstate.
+        IDocumentRedlineAccess& rIDRA = GetDoc()->getIDocumentRedlineAccess();
+        RedlineFlags eOld = rIDRA.GetRedlineFlags();
+        rIDRA.SetRedlineFlags(eOld | RedlineFlags::DontCombineRedlines);
+        DeleteSel(rPaM, /*isArtificialSelection=*/true);
+        rIDRA.SetRedlineFlags(eOld);
+    }
+    else if (rRedline.GetType() == RedlineType::Delete)
+    {
+        // Re-insert after the deletion.
+        SwDocShell* pDocShell = GetDoc()->GetDocShell();
+        if (!pDocShell)
+        {
+            return;
+        }
+
+        SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
+        if (!pWrtShell)
+        {
+            return;
+        }
+
+        // Get rid of table selection or multi-selection if there is one.
+        KillPams();
+        assert(!GetTableCursor() && "coverity#1645529");
+        SwShellCursor* pCursor = getShellCursor(/*bBlock=*/true);
+        *pCursor->GetPoint() = *rPaM.End();
+        SetMark();
+        *pCursor->GetMark() = *rPaM.Start();
+        rtl::Reference<SwTransferable> pTransfer(new SwTransferable(*pWrtShell));
+        // Copy rich text, but don't strip out text inside delete redlines.
+        pTransfer->Copy(/*bIsCut=*/false, /*bDeleteRedlines=*/false);
+        ClearMark();
+        *pCursor->GetPoint() = *rPaM.End();
+        TransferableDataHelper aHelper(pTransfer);
+        SwTransferable::Paste(*pWrtShell, aHelper);
+    }
+}
+
+void SwEditShell::ReinstateRedline(SwRedlineTable::size_type nPos)
+{
+    CurrShell aCurr(this);
+    StartAllAction();
+
+    if (!IsRedlineOn())
+    {
+        RedlineFlags nMode = GetRedlineFlags();
+        SetRedlineFlags(nMode | RedlineFlags::On, SfxRedlineRecordingMode::ThisView);
+    }
+
+    SwRangeRedline& rRedline = GetRedline(nPos);
+    SwPaM aPaM(*rRedline.GetPoint());
+    aPaM.SetMark();
+    *aPaM.GetMark() = *rRedline.GetMark();
+
+    IDocumentUndoRedo& rIDUR = GetDoc()->GetIDocumentUndoRedo();
+    if (rIDUR.DoesUndo())
+    {
+        SwRewriter aRewriter;
+        aRewriter.AddRule(UndoArg1, rRedline.GetDescr());
+        rIDUR.StartUndo(SwUndoId::REINSTATE_REDLINE, &aRewriter);
+    }
+    ReinstatePaM(rRedline, aPaM);
+    if (rIDUR.DoesUndo())
+    {
+        rIDUR.EndUndo(SwUndoId::END, nullptr);
+    }
+
+    EndAllAction();
 }
 
 bool SwEditShell::RejectRedline( SwRedlineTable::size_type nPos )
@@ -80,7 +175,7 @@ bool SwEditShell::RejectRedline( SwRedlineTable::size_type nPos )
     CurrShell aCurr( this );
     StartAllAction();
     bool bRet = GetDoc()->getIDocumentRedlineAccess().RejectRedline( nPos, true, true );
-    if( !nPos && !::IsExtraData( GetDoc() ) )
+    if( !nPos && !::IsExtraData( *GetDoc() ) )
         lcl_InvalidateAll( this );
     EndAllAction();
     return bRet;
@@ -144,6 +239,85 @@ bool SwEditShell::RejectRedlinesInSelection()
         bRet = GetDoc()->getIDocumentRedlineAccess().RejectRedline( *GetCursor(), true );
     EndAllAction();
     return bRet;
+}
+
+void SwEditShell::ReinstateRedlinesInSelection()
+{
+    CurrShell aCurr( this );
+    StartAllAction();
+    if (!IsRedlineOn())
+    {
+        RedlineFlags nMode = GetRedlineFlags();
+        SetRedlineFlags(nMode | RedlineFlags::On, SfxRedlineRecordingMode::ThisView);
+    }
+
+    SwPosition aCursorStart(*GetCursor()->Start());
+    SwPosition aCursorEnd(*GetCursor()->End());
+    SwRedlineTable& rTable = GetDoc()->getIDocumentRedlineAccess().GetRedlineTable();
+
+    // Work on a copy, since reinstate will modify the table, and reinstate of just inserted
+    // redlines is not wanted.
+    std::vector<SwRangeRedline*> aRedlines(rTable.begin(), rTable.end());
+
+    IDocumentUndoRedo& rIDUR = GetDoc()->GetIDocumentUndoRedo();
+    if (rIDUR.DoesUndo())
+    {
+        rIDUR.StartUndo(SwUndoId::REINSTATE_REDLINE, nullptr);
+    }
+    int nRedlines = 0;
+    for (size_t nIndex = 0; nIndex < aRedlines.size(); ++nIndex)
+    {
+        const SwRangeRedline& rRedline = *aRedlines[nIndex];
+        if (!rRedline.HasMark() || !rRedline.IsVisible())
+        {
+            continue;
+        }
+
+        if (*rRedline.End() < aCursorStart)
+        {
+            // Ends before the selection, skip to the next redline.
+            continue;
+        }
+
+        if (*rRedline.Start() > aCursorEnd)
+        {
+            // Starts after the selection, can stop.
+            break;
+        }
+
+        // Check if the redline is only partially selected.
+        const SwPosition* pStart = rRedline.Start();
+        if (*pStart < aCursorStart)
+        {
+            pStart = &aCursorStart;
+        }
+        const SwPosition* pEnd = rRedline.End();
+        if (*pEnd > aCursorEnd)
+        {
+            pEnd = &aCursorEnd;
+        }
+
+        // Process the (partially) selected redline.
+        SwPaM aPaM(*pEnd);
+        aPaM.SetMark();
+        *aPaM.GetMark() = *pStart;
+        ReinstatePaM(rRedline, aPaM);
+        ++nRedlines;
+    }
+    if (rIDUR.DoesUndo())
+    {
+        OUString aWith;
+        {
+            SwRewriter aRewriter;
+            aRewriter.AddRule(UndoArg1, OUString::number(nRedlines));
+            aWith = aRewriter.Apply(SwResId(STR_N_REDLINES));
+        }
+        SwRewriter aRewriter;
+        aRewriter.AddRule(UndoArg1, aWith);
+        rIDUR.EndUndo(SwUndoId::REINSTATE_REDLINE, &aRewriter);
+    }
+
+    EndAllAction();
 }
 
 // Set the comment at the Redline

@@ -28,6 +28,7 @@
 class SW_DLLPUBLIC SwFormatNoBalancedColumns final : public SfxBoolItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatNoBalancedColumns)
     SwFormatNoBalancedColumns( bool bFlag = false )
         : SfxBoolItem( RES_COLUMNBALANCE, bFlag ) {}
 

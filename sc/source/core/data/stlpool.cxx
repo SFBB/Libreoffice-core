@@ -24,7 +24,6 @@
 #include <editeng/borderline.hxx>
 #include <editeng/boxitem.hxx>
 #include <editeng/brushitem.hxx>
-#include <editeng/editdata.hxx>
 #include <editeng/editeng.hxx>
 #include <editeng/editobj.hxx>
 #include <editeng/flditem.hxx>
@@ -70,7 +69,8 @@ void ScStyleSheetPool::SetDocument( ScDocument* pDocument )
 }
 
 SfxStyleSheetBase& ScStyleSheetPool::Make( const OUString& rName,
-                                           SfxStyleFamily eFam, SfxStyleSearchBits mask)
+                                           SfxStyleFamily eFam, SfxStyleSearchBits mask,
+                                           const OUString& rParentStyleSheetName)
 {
     if ( rName == STRING_STANDARD && Find( rName, eFam ) != nullptr )
     {
@@ -86,21 +86,22 @@ SfxStyleSheetBase& ScStyleSheetPool::Make( const OUString& rName,
         {
             OUString aNewName = ScResId(STR_STYLENAME_STANDARD) + OUString::number( nAdd );
             if ( Find( aNewName, eFam ) == nullptr )
-                return SfxStyleSheetPool::Make(aNewName, eFam, mask);
+                return SfxStyleSheetPool::Make(aNewName, eFam, mask, rParentStyleSheetName);
         }
     }
 
     // Core uses translated names for both naming and display.
     // This for all three, loading standard builtin styles from styles.xml
     // configuration, loading documents and updating from templates.
-    return SfxStyleSheetPool::Make( ScStyleNameConversion::ProgrammaticToDisplayName( rName, eFam), eFam, mask);
+    return SfxStyleSheetPool::Make( ScStyleNameConversion::ProgrammaticToDisplayName( rName, eFam), eFam, mask, rParentStyleSheetName);
 }
 
 rtl::Reference<SfxStyleSheetBase> ScStyleSheetPool::Create( const OUString&   rName,
                                              SfxStyleFamily  eFamily,
-                                             SfxStyleSearchBits nMaskP )
+                                             SfxStyleSearchBits nMaskP,
+                                             const OUString& rParentStyleSheetName )
 {
-    rtl::Reference<ScStyleSheet> pSheet = new ScStyleSheet( rName, *this, eFamily, nMaskP );
+    rtl::Reference<ScStyleSheet> pSheet = new ScStyleSheet( rName, *this, eFamily, nMaskP, rParentStyleSheetName );
     if ( eFamily != SfxStyleFamily::Page && ScResId(STR_STYLENAME_STANDARD) != rName )
         pSheet->SetParent( ScResId(STR_STYLENAME_STANDARD) );
 
@@ -113,6 +114,17 @@ rtl::Reference<SfxStyleSheetBase> ScStyleSheetPool::Create( const SfxStyleSheetB
     return new ScStyleSheet( static_cast<const ScStyleSheet&>(rStyle) );
 }
 
+void ScStyleSheetPool::Rename(SfxStyleSheetBase& rStyle, const OUString& rNewName, SfxStyleFamily eFamily)
+{
+    if (eFamily == SfxStyleFamily::Para)
+    {
+        assert(nullptr != pDoc);
+        pDoc->getCellAttributeHelper().RenameCellStyle(static_cast<ScStyleSheet&>(rStyle), rNewName);
+        return;
+    }
+    rStyle.SetName(rNewName);
+}
+
 void ScStyleSheetPool::Remove( SfxStyleSheetBase* pStyle )
 {
     if ( pStyle )
@@ -120,7 +132,8 @@ void ScStyleSheetPool::Remove( SfxStyleSheetBase* pStyle )
         OSL_ENSURE( SfxStyleSearchBits::UserDefined & pStyle->GetMask(),
                     "SfxStyleSearchBits::UserDefined not set!" );
 
-        static_cast<ScDocumentPool&>(rPool).StyleDeleted(static_cast<ScStyleSheet*>(pStyle));
+        assert(nullptr != pDoc);
+        pDoc->getCellAttributeHelper().CellStyleDeleted(static_cast<ScStyleSheet&>(*pStyle));
         SfxStyleSheetPool::Remove(pStyle);
     }
 }
@@ -142,7 +155,7 @@ void ScStyleSheetPool::CopyStyleFrom( SfxStyleSheetBasePool* pSrcPool,
     if (!pDestSheet)
         pDestSheet = &Make( rName, eFamily, pStyleSheet->GetMask() );
     SfxItemSet& rDestSet = pDestSheet->GetItemSet();
-    rDestSet.PutExtended( rSourceSet, SfxItemState::DONTCARE, SfxItemState::DEFAULT );
+    rDestSet.PutExtended( rSourceSet, SfxItemState::INVALID, SfxItemState::DEFAULT );
 
     if ( eFamily == SfxStyleFamily::Page )
     {
@@ -152,13 +165,13 @@ void ScStyleSheetPool::CopyStyleFrom( SfxStyleSheetBasePool* pSrcPool,
         {
             const SfxItemSet& rSrcSub = pSetItem->GetItemSet();
             SfxItemSet aDestSub( *rDestSet.GetPool(), rSrcSub.GetRanges() );
-            aDestSub.PutExtended( rSrcSub, SfxItemState::DONTCARE, SfxItemState::DEFAULT );
+            aDestSub.PutExtended( rSrcSub, SfxItemState::INVALID, SfxItemState::DEFAULT );
         }
         if ( const SvxSetItem* pSetItem = rSourceSet.GetItemIfSet( ATTR_PAGE_FOOTERSET, false ) )
         {
             const SfxItemSet& rSrcSub = pSetItem->GetItemSet();
             SfxItemSet aDestSub( *rDestSet.GetPool(), rSrcSub.GetRanges() );
-            aDestSub.PutExtended( rSrcSub, SfxItemState::DONTCARE, SfxItemState::DEFAULT );
+            aDestSub.PutExtended( rSrcSub, SfxItemState::INVALID, SfxItemState::DEFAULT );
             rDestSet.Put( SvxSetItem( ATTR_PAGE_FOOTERSET, aDestSub ) );
         }
     }
@@ -170,7 +183,7 @@ void ScStyleSheetPool::CopyStyleFrom( SfxStyleSheetBasePool* pSrcPool,
         if ( pDoc && pDoc->GetFormatExchangeList() &&
              (pItem = rSourceSet.GetItemIfSet( ATTR_VALUE_FORMAT, false )) )
         {
-            sal_uLong nOldFormat = pItem->GetValue();
+            sal_uInt32 nOldFormat = pItem->GetValue();
             SvNumberFormatterIndexTable::const_iterator it = pDoc->GetFormatExchangeList()->find(nOldFormat);
             if (it != pDoc->GetFormatExchangeList()->end())
             {
@@ -230,8 +243,8 @@ static void lcl_CheckFont( SfxItemSet& rSet, LanguageType eLang, DefaultFontType
     if ( eLang != LANGUAGE_NONE && eLang != LANGUAGE_DONTKNOW && eLang != LANGUAGE_SYSTEM )
     {
         vcl::Font aDefFont = OutputDevice::GetDefaultFont( nFontType, eLang, GetDefaultFontFlags::OnlyOne );
-        SvxFontItem aNewItem( aDefFont.GetFamilyType(), aDefFont.GetFamilyName(), aDefFont.GetStyleName(),
-                              aDefFont.GetPitch(), aDefFont.GetCharSet(), nItemId );
+        SvxFontItem aNewItem( aDefFont.GetFamilyTypeMaybeAskConfig(), aDefFont.GetFamilyName(), aDefFont.GetStyleName(),
+                              aDefFont.GetPitchMaybeAskConfig(), aDefFont.GetCharSet(), nItemId );
         if ( aNewItem != rSet.Get( nItemId ) )
         {
             // put item into style's ItemSet only if different from (static) default
@@ -250,7 +263,7 @@ void ScStyleSheetPool::CreateStandardStyles()
     const OUString  aHelpFile;//which text???
     SfxItemSet*     pSet            = nullptr;
     SfxItemSet*     pHFSet          = nullptr;
-    ScEditEngineDefaulter aEdEngine( EditEngine::CreatePool().get(), true );
+    ScEditEngineDefaulter aEdEngine( pDoc->GetEditEnginePool(), true );
     aEdEngine.SetUpdateLayout( false );
     std::unique_ptr<EditTextObject> pEmptyTxtObj = aEdEngine.CreateTextObject();
     std::unique_ptr<EditTextObject> pTxtObj;
@@ -331,7 +344,7 @@ void ScStyleSheetPool::CreateStandardStyles()
     aStr = ScResId( STR_PAGE ) + " ";
     aEdEngine.SetTextCurrentDefaults( aStr );
     nStrLen = aStr.getLength();
-    aEdEngine.QuickInsertField( SvxFieldItem(SvxPageField(), EE_FEATURE_FIELD), ESelection(0,nStrLen,0,nStrLen) );
+    aEdEngine.QuickInsertField( SvxFieldItem(SvxPageField(), EE_FEATURE_FIELD), ESelection(0,nStrLen) );
     pTxtObj = aEdEngine.CreateTextObject();
     aFooterItem.SetLeftArea  ( *pEmptyTxtObj );
     aFooterItem.SetCenterArea( *pTxtObj );
@@ -376,14 +389,14 @@ void ScStyleSheetPool::CreateStandardStyles()
 
     aStr = " ()";
     aEdEngine.SetTextCurrentDefaults( aStr );
-    aEdEngine.QuickInsertField( SvxFieldItem(SvxFileField(), EE_FEATURE_FIELD), ESelection(0,2,0,2) );
+    aEdEngine.QuickInsertField( SvxFieldItem(SvxFileField(), EE_FEATURE_FIELD), ESelection(0,2) );
     aEdEngine.QuickInsertField( SvxFieldItem(SvxTableField(), EE_FEATURE_FIELD), ESelection() );
     pTxtObj = aEdEngine.CreateTextObject();
     aHeaderItem.SetLeftArea( *pTxtObj );
     aHeaderItem.SetCenterArea( *pEmptyTxtObj );
     aStr = ", ";
     aEdEngine.SetTextCurrentDefaults( aStr );
-    aEdEngine.QuickInsertField( SvxFieldItem(SvxTimeField(), EE_FEATURE_FIELD), ESelection(0,2,0,2) );
+    aEdEngine.QuickInsertField( SvxFieldItem(SvxTimeField(), EE_FEATURE_FIELD), ESelection(0,2) );
     aEdEngine.QuickInsertField( SvxFieldItem(SvxDateField(Date( Date::SYSTEM ),SvxDateType::Var), EE_FEATURE_FIELD),
                                     ESelection() );
     pTxtObj = aEdEngine.CreateTextObject();
@@ -398,8 +411,8 @@ void ScStyleSheetPool::CreateStandardStyles()
     aStr += " / ";
     sal_Int32 nStrLen2 = aStr.getLength();
     aEdEngine.SetTextCurrentDefaults( aStr );
-    aEdEngine.QuickInsertField( SvxFieldItem(SvxPagesField(), EE_FEATURE_FIELD), ESelection(0,nStrLen2,0,nStrLen2) );
-    aEdEngine.QuickInsertField( SvxFieldItem(SvxPageField(), EE_FEATURE_FIELD), ESelection(0,nStrLen,0,nStrLen) );
+    aEdEngine.QuickInsertField( SvxFieldItem(SvxPagesField(), EE_FEATURE_FIELD), ESelection(0,nStrLen2) );
+    aEdEngine.QuickInsertField( SvxFieldItem(SvxPageField(), EE_FEATURE_FIELD), ESelection(0,nStrLen) );
     pTxtObj = aEdEngine.CreateTextObject();
     aFooterItem.SetLeftArea  ( *pEmptyTxtObj );
     aFooterItem.SetCenterArea( *pTxtObj );

@@ -43,6 +43,7 @@
 #include <o3tl/string_view.hxx>
 #include <osl/file.hxx>
 #include <osl/mutex.hxx>
+#include <osl/process.h>
 #include <unotools/historyoptions.hxx>
 #include <unotools/pathoptions.hxx>
 #include <ucbhelper/commandenvironment.hxx>
@@ -60,7 +61,6 @@ using namespace ::ucbhelper;
 using namespace ::utl;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::task;
 using namespace ::com::sun::star::ucb;
@@ -315,7 +315,7 @@ void SvtMatchContext_Impl::ReadFolder( const OUString& rURL,
             ResultSetInclude eInclude = INCLUDE_FOLDERS_AND_DOCUMENTS;
             if ( bOnlyDirectories )
                 eInclude = INCLUDE_FOLDERS_ONLY;
-            uno::Reference< XDynamicResultSet > xDynResultSet = aCnt.createDynamicCursor( { "Title", "IsFolder" }, eInclude );
+            uno::Reference< XDynamicResultSet > xDynResultSet = aCnt.createDynamicCursor( { u"Title"_ustr, u"IsFolder"_ustr }, eInclude );
 
             uno::Reference < XAnyCompareFactory > xCompare;
             uno::Reference < XSortedDynamicResultSetFactory > xSRSFac =
@@ -460,14 +460,14 @@ void SvtMatchContext_Impl::doExecute()
                     bool folder = false;
                     if (aURLObject.hasFinalSlash()) {
                         try {
-                            css::uno::Reference< css::uno::XComponentContext >
+                            const css::uno::Reference< css::uno::XComponentContext >&
                                 ctx(comphelper::getProcessComponentContext());
                             css::uno::Reference<
                                 css::ucb::XUniversalContentBroker > ucb(
                                     css::ucb::UniversalContentBroker::create(
                                         ctx));
                             css::uno::Sequence< css::beans::Property > prop{
-                                { /* Name       */ "IsFolder",
+                                { /* Name       */ u"IsFolder"_ustr,
                                   /* Handle     */ -1,
                                   /* Type       */ cppu::UnoType< bool >::get(),
                                   /* Attributes */ {} }
@@ -489,7 +489,7 @@ void SvtMatchContext_Impl::doExecute()
                                 }
                                 res = proc->execute(
                                     css::ucb::Command(
-                                        "getPropertyValues", -1,
+                                        u"getPropertyValues"_ustr, -1,
                                         css::uno::Any(prop)),
                                     id,
                                     css::uno::Reference<
@@ -654,16 +654,8 @@ void SvtMatchContext_Impl::doExecute()
 /** Parse leading ~ for Unix systems,
     does nothing for Windows
  */
-bool SvtURLBox_Impl::TildeParsing(
-    OUString&
-#ifdef UNX
-    aText
-#endif
-    , OUString&
-#ifdef UNX
-    aBaseURL
-#endif
-)
+bool SvtURLBox_Impl::TildeParsing([[maybe_unused]] OUString& aText,
+                                  [[maybe_unused]] OUString& aBaseURL)
 {
 #ifdef UNX
     if( aText.startsWith( "~" ) )
@@ -674,11 +666,7 @@ bool SvtURLBox_Impl::TildeParsing(
         if( aText.getLength() == 1 || aText[ 1 ] == '/' )
         {
             // covers "~" or "~/..." cases
-            const char* aHomeLocation = getenv( "HOME" );
-            if( !aHomeLocation )
-                aHomeLocation = "";
-
-            aParseTilde = OUString::createFromAscii(aHomeLocation);
+            osl_getEnvironment(u"HOME"_ustr.pData, &aParseTilde.pData);
 
             // in case the whole path is just "~" then there should
             // be no trailing slash at the end
@@ -1039,7 +1027,7 @@ OUString SvtURLBox::GetURL()
         {
             OUString aFileURL;
 
-            Any aAny = UCBContentHelper::GetProperty(aURL, "CasePreservingURL");
+            Any aAny = UCBContentHelper::GetProperty(aURL, u"CasePreservingURL"_ustr);
             bool success = (aAny >>= aFileURL);
             OUString aTitle;
             if(success)

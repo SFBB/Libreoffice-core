@@ -30,7 +30,6 @@ namespace com::sun::star::uno { class XComponentContext; }
 using namespace ::com::sun::star;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
-using namespace osl;
 
 namespace comphelper
 {
@@ -76,7 +75,7 @@ Reference< XMultiServiceFactory > getProcessServiceFactory()
     Reference< XMultiServiceFactory> xReturn = localProcessFactory.get();
     if ( !xReturn.is() )
     {
-        throw DeploymentException( "null process service factory" );
+        throw DeploymentException( u"null process service factory"_ustr );
     }
     return xReturn;
 }
@@ -101,13 +100,13 @@ Reference< XComponentContext > getComponentContext(
     if ( !xRet.is() )
     {
         throw DeploymentException(
-            "no service factory DefaultContext",
+            u"no service factory DefaultContext"_ustr,
             Reference<XInterface>(factory, UNO_QUERY) );
     }
     return xRet;
 }
 
-Reference< XComponentContext > getProcessComponentContext()
+const Reference< XComponentContext > & getProcessComponentContext()
 {
     static const uno::Reference<XComponentContext> processComponentContext = getComponentContext( getProcessServiceFactory() );
     return processComponentContext;

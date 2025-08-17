@@ -24,7 +24,6 @@
 #include <com/sun/star/sdbc/XResultSet.hpp>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
@@ -41,7 +40,7 @@ void OCalcCatalog::refreshTables()
     ::std::vector<OUString> aVector;
     Sequence<OUString> aTypes;
     OCalcConnection::ODocHolder aDocHolder(static_cast<OCalcConnection*>(m_pConnection));
-    Reference<XResultSet> xResult = m_xMetaData->getTables(Any(), "%", "%", aTypes);
+    Reference<XResultSet> xResult = m_xMetaData->getTables(Any(), u"%"_ustr, u"%"_ustr, aTypes);
 
     if (xResult.is())
     {

@@ -18,6 +18,7 @@
  */
 
 #include <com/sun/star/container/XChild.hpp>
+#include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/embed/XEmbedPersist.hpp>
 #include <com/sun/star/embed/XLinkageSupport.hpp>
@@ -32,6 +33,7 @@
 #include <sfx2/linkmgr.hxx>
 #include <unotools/configitem.hxx>
 #include <utility>
+#include <vcl/dropcache.hxx>
 #include <vcl/outdev.hxx>
 #include <fmtanchr.hxx>
 #include <frmfmt.hxx>
@@ -47,14 +49,16 @@
 #include <IDocumentLayoutAccess.hxx>
 #include <comphelper/classids.hxx>
 #include <comphelper/propertyvalue.hxx>
+#include <comphelper/servicehelper.hxx>
 #include <vcl/graph.hxx>
 #include <sot/formats.hxx>
 #include <vcl/svapp.hxx>
 #include <strings.hrc>
 #include <svx/charthelper.hxx>
+#include <svx/unopage.hxx>
 #include <comphelper/threadpool.hxx>
 #include <atomic>
-#include <deque>
+#include <vector>
 #include <libxml/xmlwriter.h>
 #include <osl/diagnose.h>
 #include <flyfrm.hxx>
@@ -67,13 +71,38 @@ namespace {
 
 class SwOLELRUCache
     : private utl::ConfigItem
+    , public CacheOwner
 {
 private:
-    std::deque<SwOLEObj *> m_OleObjects;
+#if defined __cpp_lib_memory_resource
+    typedef std::pmr::vector<SwOLEObj*> vector_t;
+#else
+    typedef std::vector<SwOLEObj*> vector_t;
+#endif
+    vector_t m_OleObjects;
     sal_Int32 m_nLRU_InitSize;
     static uno::Sequence< OUString > GetPropertyNames();
 
     virtual void ImplCommit() override;
+
+    void tryShrinkCacheTo(sal_Int32 nVal);
+
+    virtual OUString getCacheName() const override
+    {
+        return "SwOLELRUCache";
+    }
+
+    virtual bool dropCaches() override
+    {
+        tryShrinkCacheTo(0);
+        return m_OleObjects.empty();
+    }
+
+    virtual void dumpState(rtl::OStringBuffer& rState) override
+    {
+        rState.append("\nSwOLELRUCache:\t");
+        rState.append(static_cast<sal_Int32>(m_OleObjects.size()));
+    }
 
 public:
     SwOLELRUCache();
@@ -251,7 +280,7 @@ public:
 
 }
 
-SwOLENode::SwOLENode( SwNode& rWhere,
+SwOLENode::SwOLENode( const SwNode& rWhere,
                     const svt::EmbeddedObjectRef& xObj,
                     SwGrfFormatColl *pGrfColl,
                     SwAttrSet const * pAutoAttr ) :
@@ -263,7 +292,7 @@ SwOLENode::SwOLENode( SwNode& rWhere,
     maOLEObj.SetNode( this );
 }
 
-SwOLENode::SwOLENode( SwNode& rWhere,
+SwOLENode::SwOLENode( const SwNode& rWhere,
                     const OUString &rString,
                     sal_Int64 nAspect,
                     SwGrfFormatColl *pGrfColl,
@@ -298,7 +327,7 @@ bool SwOLENode::RestorePersistentData()
     if ( maOLEObj.m_xOLERef.is() )
     {
         // If a SvPersist instance already exists, we use it
-        SfxObjectShell* p = GetDoc().GetPersist();
+        rtl::Reference<SfxObjectShell> p = GetDoc().GetPersist();
         if( !p )
         {
             // TODO/LATER: Isn't an EmbeddedObjectContainer sufficient here?
@@ -417,7 +446,7 @@ bool SwOLENode::SavePersistentData()
     return true;
 }
 
-SwOLENode * SwNodes::MakeOLENode( SwNode& rWhere,
+SwOLENode * SwNodes::MakeOLENode( const SwNode& rWhere,
                     const svt::EmbeddedObjectRef& xObj,
                                     SwGrfFormatColl* pGrfColl )
 {
@@ -439,7 +468,7 @@ SwOLENode * SwNodes::MakeOLENode( SwNode& rWhere,
     return pNode;
 }
 
-SwOLENode * SwNodes::MakeOLENode( SwNode& rWhere,
+SwOLENode * SwNodes::MakeOLENode( const SwNode& rWhere,
     const OUString &rName, sal_Int64 nAspect, SwGrfFormatColl* pGrfColl, SwAttrSet const * pAutoAttr )
 {
     OSL_ENSURE( pGrfColl,"SwNodes::MakeOLENode: Formatpointer is 0." );
@@ -469,13 +498,13 @@ Size SwOLENode::GetTwipSize() const
 SwContentNode* SwOLENode::MakeCopy( SwDoc& rDoc, SwNode& rIdx, bool) const
 {
     // If there's already a SvPersist instance, we use it
-    SfxObjectShell* pPersistShell = rDoc.GetPersist();
+    rtl::Reference<SfxObjectShell> pPersistShell = rDoc.GetPersist();
     if( !pPersistShell )
     {
         // TODO/LATER: is EmbeddedObjectContainer not enough?
         // the created document will be closed by rDoc ( should use SfxObjectShellLock )
         pPersistShell = new SwDocShell( rDoc, SfxObjectCreateMode::INTERNAL );
-        rDoc.SetTmpDocShell( pPersistShell );
+        rDoc.SetTmpDocShell(pPersistShell.get());
         pPersistShell->DoInitNew();
     }
 
@@ -586,7 +615,7 @@ bool SwOLENode::UpdateLinkURL_Impl()
 
                     // TODO/LATER: there should be possible to get current mediadescriptor settings from the object
                     uno::Sequence< beans::PropertyValue > aArgs{ comphelper::makePropertyValue(
-                        "URL", aNewLinkURL) };
+                        u"URL"_ustr, aNewLinkURL) };
                     xPersObj->reload( aArgs, uno::Sequence< beans::PropertyValue >() );
 
                     maLinkURL = aNewLinkURL;
@@ -623,7 +652,9 @@ void SwOLENode::BreakFileLink_Impl()
 
     try
     {
-        uno::Reference< embed::XLinkageSupport > xLinkSupport( maOLEObj.GetOleRef(), uno::UNO_QUERY_THROW );
+        uno::Reference< embed::XLinkageSupport > xLinkSupport( maOLEObj.GetOleRef(), uno::UNO_QUERY );
+        if (!xLinkSupport)
+            return;
         xLinkSupport->breakLink( xStorage, maOLEObj.GetCurrentPersistName() );
         DisconnectFileLink_Impl();
         maLinkURL.clear();
@@ -671,7 +702,7 @@ void SwOLENode::CheckFileLink_Impl()
             {
                 uno::Reference<beans::XPropertySet> xSet(xObject->getComponent(), uno::UNO_QUERY);
                 if (xSet.is())
-                    xSet->getPropertyValue("FrameURL") >>= aLinkURL;
+                    xSet->getPropertyValue(u"FrameURL"_ustr) >>= aLinkURL;
                 bIFrame = true;
             }
         }
@@ -937,7 +968,7 @@ void SwOLEObj::SetNode( SwOLENode* pNode )
     SwDoc& rDoc = pNode->GetDoc();
 
     // If there's already a SvPersist instance, we use it
-    SfxObjectShell* p = rDoc.GetPersist();
+    rtl::Reference<SfxObjectShell> p = rDoc.GetPersist();
     if( !p )
     {
         // TODO/LATER: Isn't an EmbeddedObjectContainer sufficient here?
@@ -952,7 +983,10 @@ void SwOLEObj::SetNode( SwOLENode* pNode )
     if ( xChild.is() && xChild->getParent() != p->GetModel() )
         // it is possible that the parent was set already
         xChild->setParent( p->GetModel() );
-    if (!p->GetEmbeddedObjectContainer().InsertEmbeddedObject( m_xOLERef.GetObject(), aObjName ) )
+    rtl::OUString sTargetShellID = SfxObjectShell::CreateShellID(rDoc.GetDocShell());
+
+    if (!p->GetEmbeddedObjectContainer().InsertEmbeddedObject( m_xOLERef.GetObject(), aObjName,
+        &sTargetShellID) )
     {
         OSL_FAIL( "InsertObject failed" );
         if ( xChild.is() )
@@ -1235,6 +1269,22 @@ drawinglayer::primitive2d::Primitive2DContainer const & SwOLEObj::tryToGetChartC
     return m_aPrimitive2DSequence;
 }
 
+SvxDrawPage* SwOLEObj::tryToGetChartDrawPage() const
+{
+    if (!m_xOLERef.is() || !m_xOLERef.IsChart())
+        return nullptr;
+    const uno::Reference<frame::XModel> xModel(m_xOLERef->getComponent(), uno::UNO_QUERY);
+    if (!xModel.is())
+        return nullptr;
+    const uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(xModel, uno::UNO_QUERY);
+    if (!xDrawPageSupplier)
+        return nullptr;
+    const uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPageSupplier->getDrawPage());
+    if (!xDrawPage)
+        return nullptr;
+    return comphelper::getFromUnoTunnel<SvxDrawPage>(xDrawPage);
+}
+
 void SwOLEObj::resetBufferedData()
 {
     m_aPrimitive2DSequence = drawinglayer::primitive2d::Primitive2DContainer();
@@ -1259,7 +1309,10 @@ void SwOLEObj::dumpAsXml(xmlTextWriterPtr pWriter) const
 }
 
 SwOLELRUCache::SwOLELRUCache()
-    : utl::ConfigItem("Office.Common/Cache")
+    : utl::ConfigItem(u"Office.Common/Cache"_ustr)
+#if defined __cpp_lib_memory_resource
+    , m_OleObjects(&GetMemoryResource())
+#endif
     , m_nLRU_InitSize( 20 )
 {
     EnableNotification( GetPropertyNames() );
@@ -1268,7 +1321,7 @@ SwOLELRUCache::SwOLELRUCache()
 
 uno::Sequence< OUString > SwOLELRUCache::GetPropertyNames()
 {
-    Sequence< OUString > aNames { "Writer/OLE_Objects" };
+    Sequence< OUString > aNames { u"Writer/OLE_Objects"_ustr };
     return aNames;
 }
 
@@ -1279,6 +1332,23 @@ void SwOLELRUCache::Notify( const uno::Sequence< OUString>&  )
 
 void SwOLELRUCache::ImplCommit()
 {
+}
+
+void SwOLELRUCache::tryShrinkCacheTo(sal_Int32 nVal)
+{
+    // size of cache has been changed
+    sal_Int32 nCount = m_OleObjects.size();
+    sal_Int32 nPos = nCount;
+
+    // try to remove the last entries until new maximum size is reached
+    while( nCount > nVal )
+    {
+        SwOLEObj *const pObj = m_OleObjects[ --nPos ];
+        if ( pObj->UnloadObject() )
+            nCount--;
+        if ( !nPos )
+            break;
+    }
 }
 
 void SwOLELRUCache::Load()
@@ -1292,25 +1362,11 @@ void SwOLELRUCache::Load()
 
     sal_Int32 nVal = 0;
     *pValues >>= nVal;
-
     if (nVal < m_nLRU_InitSize)
     {
         std::shared_ptr<SwOLELRUCache> xKeepAlive(g_pOLELRU_Cache); // prevent delete this
-        // size of cache has been changed
-        sal_Int32 nCount = m_OleObjects.size();
-        sal_Int32 nPos = nCount;
-
-        // try to remove the last entries until new maximum size is reached
-        while( nCount > nVal )
-        {
-            SwOLEObj *const pObj = m_OleObjects[ --nPos ];
-            if ( pObj->UnloadObject() )
-                nCount--;
-            if ( !nPos )
-                break;
-        }
+        tryShrinkCacheTo(nVal);
     }
-
     m_nLRU_InitSize = nVal;
 }
 
@@ -1336,7 +1392,7 @@ void SwOLELRUCache::InsertObj( SwOLEObj& rObj )
         if ( pObj->UnloadObject() )
             nCount--;
     }
-    m_OleObjects.push_front(&rObj);
+    m_OleObjects.insert(m_OleObjects.begin(), &rObj);
 }
 
 void SwOLELRUCache::RemoveObj( SwOLEObj& rObj )

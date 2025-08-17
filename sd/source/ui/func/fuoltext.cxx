@@ -82,25 +82,61 @@ const sal_uInt16 SidArray[] = {
                 SID_SUMMARY_PAGE,
                 0 };
 
+void FuOutlineText::UpdateForKeyPress (const KeyEvent& rEvent)
+{
+    FuSimpleOutlinerText::UpdateForKeyPress(rEvent);
+    mrViewShell.UpdatePreview(mrViewShell.GetActualPage());
+}
 
-FuOutlineText::FuOutlineText(ViewShell* pViewShell, ::sd::Window* pWindow,
-                             ::sd::View* pView, SdDrawDocument* pDoc,
+/**
+ * Process keyboard input
+ * @returns sal_True if a KeyEvent is being processed, sal_False otherwise
+ */
+bool FuOutlineText::KeyInput(const KeyEvent& rKEvt)
+{
+    sal_uInt16 nKeyGroup = rKEvt.GetKeyCode().GetGroup();
+    if( !mpDocSh->IsReadOnly() || nKeyGroup == KEYGROUP_CURSOR )
+    {
+        std::unique_ptr<OutlineViewModelChangeGuard, o3tl::default_delete<OutlineViewModelChangeGuard>> aGuard;
+        if( (nKeyGroup != KEYGROUP_CURSOR) && (nKeyGroup != KEYGROUP_FKEYS) )
+            aGuard.reset( new OutlineViewModelChangeGuard( *static_cast<OutlineView*>(mpSimpleOutlinerView) ) );
+
+        return FuSimpleOutlinerText::KeyInput(rKEvt);
+    }
+
+    return false;
+}
+
+rtl::Reference<FuPoor> FuOutlineText::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::SimpleOutlinerView* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
+{
+    rtl::Reference<FuPoor> xFunc( new FuOutlineText( rViewSh, pWin, pView, rDoc, rReq ) );
+    xFunc->DoExecute( rReq );
+    return xFunc;
+}
+
+FuOutlineText::FuOutlineText(ViewShell& rViewShell, ::sd::Window* pWindow,
+                             ::sd::SimpleOutlinerView* pView, SdDrawDocument& rDoc,
                              SfxRequest& rReq)
-       : FuPoor(pViewShell, pWindow, pView, pDoc, rReq),
-         pOutlineViewShell (static_cast<OutlineViewShell*>(pViewShell)),
-         pOutlineView (static_cast<OutlineView*>(pView))
+       : FuSimpleOutlinerText(rViewShell, pWindow, pView, rDoc, rReq)
+{}
+
+FuSimpleOutlinerText::FuSimpleOutlinerText(ViewShell& rViewShell, ::sd::Window* pWindow,
+                             ::sd::SimpleOutlinerView* pView, SdDrawDocument& rDoc,
+                             SfxRequest& rReq)
+       : FuPoor(rViewShell, pWindow, pView, rDoc, rReq),
+         mpSimpleOutlinerView (pView)
 {
 }
 
 /**
  * forward to OutlinerView
  */
-bool FuOutlineText::Command(const CommandEvent& rCEvt)
+bool FuSimpleOutlinerText::Command(const CommandEvent& rCEvt)
 {
     bool bResult = false;
 
-    OutlinerView* pOlView =
-        static_cast<OutlineView*>(mpView)->GetViewByWindow(mpWindow);
+    OutlinerView* pOlView = mpSimpleOutlinerView->GetViewByWindow(mpWindow);
+
     DBG_ASSERT (pOlView, "no OutlineView found");
 
     if (pOlView)
@@ -112,23 +148,16 @@ bool FuOutlineText::Command(const CommandEvent& rCEvt)
 }
 
 
-rtl::Reference<FuPoor> FuOutlineText::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
-{
-    rtl::Reference<FuPoor> xFunc( new FuOutlineText( pViewSh, pWin, pView, pDoc, rReq ) );
-    xFunc->DoExecute( rReq );
-    return xFunc;
-}
-
-bool FuOutlineText::MouseButtonDown(const MouseEvent& rMEvt)
+bool FuSimpleOutlinerText::MouseButtonDown(const MouseEvent& rMEvt)
 {
     mpWindow->GrabFocus();
 
-    bool bReturn = pOutlineView->GetViewByWindow(mpWindow)->MouseButtonDown(rMEvt);
+    bool bReturn = mpSimpleOutlinerView->GetViewByWindow(mpWindow)->MouseButtonDown(rMEvt);
 
     if (bReturn)
     {
         // Now the attributes of the current text position can be different
-        mpViewShell->GetViewFrame()->GetBindings().Invalidate( SidArray );
+        mrViewShell.GetViewFrame()->GetBindings().Invalidate( SidArray );
     }
     else
     {
@@ -138,9 +167,9 @@ bool FuOutlineText::MouseButtonDown(const MouseEvent& rMEvt)
     return bReturn;
 }
 
-bool FuOutlineText::MouseMove(const MouseEvent& rMEvt)
+bool FuSimpleOutlinerText::MouseMove(const MouseEvent& rMEvt)
 {
-    bool bReturn = pOutlineView->GetViewByWindow(mpWindow)->MouseMove(rMEvt);
+    bool bReturn = mpSimpleOutlinerView->GetViewByWindow(mpWindow)->MouseMove(rMEvt);
 
     if (!bReturn)
     {
@@ -150,18 +179,18 @@ bool FuOutlineText::MouseMove(const MouseEvent& rMEvt)
     return bReturn;
 }
 
-bool FuOutlineText::MouseButtonUp(const MouseEvent& rMEvt)
+bool FuSimpleOutlinerText::MouseButtonUp(const MouseEvent& rMEvt)
 {
-    bool bReturn = pOutlineView->GetViewByWindow(mpWindow)->MouseButtonUp(rMEvt);
+    bool bReturn = mpSimpleOutlinerView->GetViewByWindow(mpWindow)->MouseButtonUp(rMEvt);
 
     if (bReturn)
     {
         // Now the attributes of the current text position can be different
-        mpViewShell->GetViewFrame()->GetBindings().Invalidate( SidArray );
+        mrViewShell.GetViewFrame()->GetBindings().Invalidate( SidArray );
     }
     else
     {
-        const SvxFieldItem* pFieldItem = pOutlineView->GetViewByWindow( mpWindow )->GetFieldUnderMousePointer();
+        const SvxFieldItem* pFieldItem = mpSimpleOutlinerView->GetViewByWindow( mpWindow )->GetFieldUnderMousePointer();
         if( pFieldItem )
         {
             const SvxFieldData* pField = pFieldItem->GetField();
@@ -173,7 +202,7 @@ bool FuOutlineText::MouseButtonUp(const MouseEvent& rMEvt)
                 SfxStringItem aStrItem( SID_FILE_NAME, pURLField->GetURL() );
                 SfxStringItem aReferer( SID_REFERER, mpDocSh->GetMedium()->GetName() );
                 SfxBoolItem aBrowseItem( SID_BROWSE, true );
-                SfxViewFrame* pFrame = mpViewShell->GetViewFrame();
+                SfxViewFrame* pFrame = mrViewShell.GetViewFrame();
 
                 if ( rMEvt.IsMod1() )
                 {
@@ -204,7 +233,7 @@ bool FuOutlineText::MouseButtonUp(const MouseEvent& rMEvt)
  * Process keyboard input
  * @returns sal_True if a KeyEvent is being processed, sal_False otherwise
  */
-bool FuOutlineText::KeyInput(const KeyEvent& rKEvt)
+bool FuSimpleOutlinerText::KeyInput(const KeyEvent& rKEvt)
 {
     bool bReturn = false;
 
@@ -213,11 +242,7 @@ bool FuOutlineText::KeyInput(const KeyEvent& rKEvt)
     {
         mpWindow->GrabFocus();
 
-        std::unique_ptr<OutlineViewModelChangeGuard, o3tl::default_delete<OutlineViewModelChangeGuard>> aGuard;
-        if( (nKeyGroup != KEYGROUP_CURSOR) && (nKeyGroup != KEYGROUP_FKEYS) )
-            aGuard.reset( new OutlineViewModelChangeGuard( *pOutlineView ) );
-
-        bReturn = pOutlineView->GetViewByWindow(mpWindow)->PostKeyEvent(rKEvt);
+        bReturn = mpSimpleOutlinerView->GetViewByWindow(mpWindow)->PostKeyEvent(rKEvt);
 
         if (bReturn)
         {
@@ -232,74 +257,49 @@ bool FuOutlineText::KeyInput(const KeyEvent& rKEvt)
     return bReturn;
 }
 
-void FuOutlineText::UpdateForKeyPress (const KeyEvent& rEvent)
+void FuSimpleOutlinerText::UpdateForKeyPress (const KeyEvent& /*rEvent*/)
 {
     // Attributes at the current text position may have changed.
-    mpViewShell->GetViewFrame()->GetBindings().Invalidate(SidArray);
-
-    bool bUpdatePreview = true;
-    switch (rEvent.GetKeyCode().GetCode())
-    {
-        // When just the cursor has been moved the preview only changes when
-        // it moved to entries of another page.  To prevent unnecessary
-        // updates we check this here.  This is an early rejection test, so
-        // missing a key is not a problem.
-        case KEY_UP:
-        case KEY_DOWN:
-        case KEY_LEFT:
-        case KEY_RIGHT:
-        case KEY_HOME:
-        case KEY_END:
-        case KEY_PAGEUP:
-        case KEY_PAGEDOWN:
-        {
-            SdPage* pCurrentPage = pOutlineViewShell->GetActualPage();
-            bUpdatePreview = (pCurrentPage != pOutlineViewShell->GetActualPage());
-        }
-        break;
-    }
-    if (bUpdatePreview)
-        pOutlineViewShell->UpdatePreview (pOutlineViewShell->GetActualPage());
+    mrViewShell.GetViewFrame()->GetBindings().Invalidate(SidArray);
 }
 
 /**
  * Cut object to clipboard
  */
-void FuOutlineText::DoCut()
+void FuSimpleOutlinerText::DoCut()
 {
-    pOutlineView->GetViewByWindow(mpWindow)->Cut();
+    mpSimpleOutlinerView->GetViewByWindow(mpWindow)->Cut();
 }
 
 /**
  * Copy object to clipboard
  */
-void FuOutlineText::DoCopy()
+void FuSimpleOutlinerText::DoCopy(bool /*bMergeMasterPagesOnly*/)
 {
-    pOutlineView->GetViewByWindow(mpWindow)->Copy();
+    mpSimpleOutlinerView->GetViewByWindow(mpWindow)->Copy();
 }
 
 /**
  * Paste object from clipboard
  */
-void FuOutlineText::DoPaste()
+void FuSimpleOutlinerText::DoPaste(bool /*bMergeMasterPagesOnly*/)
 {
-    pOutlineView->GetViewByWindow(mpWindow)->PasteSpecial();
+    mpSimpleOutlinerView->GetViewByWindow(mpWindow)->PasteSpecial();
 }
 
 /**
  * Paste object as unformatted text from clipboard
  */
-void FuOutlineText::DoPasteUnformatted()
+void FuSimpleOutlinerText::DoPasteUnformatted()
 {
-   TransferableDataHelper aDataHelper( TransferableDataHelper::CreateFromSystemClipboard( mpViewShell->GetActiveWindow() ) );
+   TransferableDataHelper aDataHelper( TransferableDataHelper::CreateFromSystemClipboard( mrViewShell.GetActiveWindow() ) );
    if (aDataHelper.GetTransferable().is())
    {
        OUString aText;
        if (aDataHelper.GetString(SotClipboardFormatId::STRING, aText))
-           pOutlineView->GetViewByWindow(mpWindow)->InsertText(aText);
+           mpSimpleOutlinerView->GetViewByWindow(mpWindow)->InsertText(aText);
    }
 }
 
 } // end of namespace sd
-
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

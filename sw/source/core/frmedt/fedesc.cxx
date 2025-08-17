@@ -86,7 +86,7 @@ void SwFEShell::ChgCurPageDesc( const SwPageDesc& rDesc )
         {
             pPage   = static_cast<SwPageFrame*>(pPage->GetNext());
             pFlow = pPage->FindFirstBodyContent();
-            OSL_ENSURE( pFlow, "Document without content?!?" );
+            assert(pFlow && "Document without content?!?");
         }
     }
 
@@ -128,7 +128,7 @@ const SwPageDesc& SwFEShell::GetPageDesc( size_t i ) const
     return GetDoc()->GetPageDesc( i );
 }
 
-SwPageDesc* SwFEShell::FindPageDescByName( const OUString& rName,
+SwPageDesc* SwFEShell::FindPageDescByName( const UIName& rName,
                                             bool bGetFromPool,
                                             size_t* pPos )
 {

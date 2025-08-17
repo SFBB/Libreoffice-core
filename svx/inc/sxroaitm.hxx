@@ -25,6 +25,7 @@
 class SdrRotateAllItem final : public SdrAngleItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SdrRotateAllItem)
     SdrRotateAllItem()
         : SdrAngleItem(SDRATTR_ROTATEALL, 0_deg100)
     {

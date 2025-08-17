@@ -22,6 +22,7 @@
 
 #include <sfx2/tabdlg.hxx>
 #include <svx/dialcontrol.hxx>
+#include <svx/dlgutil.hxx>
 #include <svx/frmdirlbox.hxx>
 #include <svx/swframeexample.hxx>
 #include <swtypes.hxx>
@@ -43,6 +44,7 @@ class SwFramePage final : public SfxTabPage
     bool            m_bFormat;
     bool            m_bNew;
     bool            m_bNoModifyHdl;
+    bool m_bIgnoreFixedRatio = false;
     bool            m_bIsVerticalFrame;  //current frame is in vertical environment - strings are exchanged
     // #mongolianlayout#
     bool            m_bIsVerticalL2R;
@@ -74,6 +76,9 @@ class SwFramePage final : public SfxTabPage
 
     SwFrameExample m_aExampleWN;
 
+    SvxRatioConnector m_aRatioTop;
+    SvxRatioConnector m_aRatioBottom;
+
     // size
     std::unique_ptr<weld::Label> m_xWidthFT;
     std::unique_ptr<weld::Label> m_xWidthAutoFT;
@@ -88,7 +93,17 @@ class SwFramePage final : public SfxTabPage
     std::unique_ptr<weld::CheckButton> m_xAutoHeightCB;
 
     std::unique_ptr<weld::CheckButton> m_xFixedRatioCB;
+    std::unique_ptr<weld::Image> m_xCbxScaleImg;
+    std::unique_ptr<weld::CustomWeld> m_xImgRatioTop;
+    std::unique_ptr<weld::CustomWeld> m_xImgRatioBottom;
+
     std::unique_ptr<weld::Button> m_xRealSizeBT;
+
+    // protect
+    std::unique_ptr<weld::Widget> m_xProtectFrame;
+    std::unique_ptr<weld::CheckButton> m_xProtectContentCB;
+    std::unique_ptr<weld::CheckButton> m_xProtectFrameCB;
+    std::unique_ptr<weld::CheckButton> m_xProtectSizeCB;
 
     // anchor
     std::unique_ptr<weld::Widget> m_xAnchorFrame;
@@ -142,6 +157,7 @@ class SwFramePage final : public SfxTabPage
 
     DECL_LINK(AutoWidthClickHdl, weld::Toggleable&, void);
     DECL_LINK(AutoHeightClickHdl, weld::Toggleable&, void);
+    DECL_LINK(RatioClickHdl, weld::Toggleable&, void);
 
     // update example
     void            UpdateExample();
@@ -181,7 +197,7 @@ public:
     virtual ~SwFramePage() override;
 
     static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rSet);
-    static WhichRangesContainer GetRanges() { return s_aPageRg; }
+    static const WhichRangesContainer & GetRanges() { return s_aPageRg; }
 
     virtual bool FillItemSet(SfxItemSet *rSet) override;
     virtual void Reset(const SfxItemSet *rSet) override;
@@ -288,11 +304,6 @@ class SwFrameAddPage final : public SfxTabPage
     std::unique_ptr<weld::ComboBox> m_xPrevLB;
     std::unique_ptr<weld::ComboBox> m_xNextLB;
 
-    std::unique_ptr<weld::Widget> m_xProtectFrame;
-    std::unique_ptr<weld::CheckButton> m_xProtectContentCB;
-    std::unique_ptr<weld::CheckButton> m_xProtectFrameCB;
-    std::unique_ptr<weld::CheckButton> m_xProtectSizeCB;
-
     std::unique_ptr<weld::Widget> m_xContentAlignFrame;
     std::unique_ptr<weld::ComboBox> m_xVertAlignLB;
 
@@ -313,7 +324,7 @@ public:
     virtual ~SwFrameAddPage() override;
 
     static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rSet);
-    static WhichRangesContainer GetRanges() { return s_aAddPgRg; }
+    static const WhichRangesContainer & GetRanges() { return s_aAddPgRg; }
 
     virtual bool FillItemSet(SfxItemSet *rSet) override;
     virtual void Reset(const SfxItemSet *rSet) override;

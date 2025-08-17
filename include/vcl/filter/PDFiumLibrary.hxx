@@ -37,6 +37,7 @@
 #include <vcl/pdf/PDFAnnotAActionType.hxx>
 
 class SvMemoryStream;
+class Bitmap;
 
 namespace vcl::pdf
 {
@@ -45,6 +46,8 @@ inline constexpr OString constDictionaryKeyContents = "Contents"_ostr;
 inline constexpr OString constDictionaryKeyPopup = "Popup"_ostr;
 inline constexpr OString constDictionaryKeyModificationDate = "M"_ostr;
 inline constexpr OString constDictionaryKeyInteriorColor = "IC"_ostr;
+inline constexpr OString constDictionaryKey_DefaultStyle = "DS"_ostr;
+inline constexpr OString constDictionaryKey_RichContent = "RC"_ostr;
 
 class PDFiumBitmap;
 class PDFiumDocument;
@@ -80,6 +83,8 @@ public:
     virtual int getWidth() = 0;
     virtual int getHeight() = 0;
     virtual PDFBitmapType getFormat() = 0;
+    /// Convert the bitmap buffer to a Bitmap
+    virtual Bitmap createBitmapFromBuffer() = 0;
 };
 
 class VCL_DLLPUBLIC PDFiumAnnotation
@@ -105,12 +110,14 @@ public:
     virtual std::vector<basegfx::B2DPoint> getLineGeometry() = 0;
     virtual PDFFormFieldType getFormFieldType(PDFiumDocument* pDoc) = 0;
     virtual float getFontSize(PDFiumDocument* pDoc) = 0;
+    virtual Color getFontColor(PDFiumDocument* pDoc) = 0;
     virtual OUString getFormFieldAlternateName(PDFiumDocument* pDoc) = 0;
     virtual int getFormFieldFlags(PDFiumDocument* pDoc) = 0;
     virtual OUString getFormAdditionalActionJavaScript(PDFiumDocument* pDoc,
                                                        PDFAnnotAActionType eEvent)
         = 0;
     virtual OUString getFormFieldValue(PDFiumDocument* pDoc) = 0;
+    virtual int getOptionCount(PDFiumDocument* pDoc) = 0;
 };
 
 class PDFiumTextPage;
@@ -176,6 +183,34 @@ public:
     virtual basegfx::B2DRectangle getCharBox(int nIndex, double fPageHeight) = 0;
 };
 
+class VCL_DLLPUBLIC PDFiumStructureElement
+{
+public:
+    virtual ~PDFiumStructureElement() = default;
+
+    virtual OUString getAltText() = 0;
+    virtual OUString getActualText() = 0;
+    virtual OUString getID() = 0;
+    virtual OUString getLang() = 0;
+    virtual OUString getTitle() = 0;
+    virtual OUString getType() = 0;
+    virtual OUString getObjectType() = 0;
+
+    virtual int getNumberOfChildren() = 0;
+    virtual int getChildMarkedContentID(int nIndex) = 0;
+    virtual std::unique_ptr<PDFiumStructureElement> getChild(int nIndex) = 0;
+    virtual std::unique_ptr<PDFiumStructureElement> getParent() = 0;
+};
+
+class VCL_DLLPUBLIC PDFiumStructureTree
+{
+public:
+    virtual ~PDFiumStructureTree() = default;
+
+    virtual int getNumberOfChildren() = 0;
+    virtual std::unique_ptr<PDFiumStructureElement> getChild(int nIndex) = 0;
+};
+
 class VCL_DLLPUBLIC PDFiumPage
 {
 public:
@@ -190,6 +225,7 @@ public:
     virtual std::unique_ptr<PDFiumAnnotation> getAnnotation(int nIndex) = 0;
 
     virtual std::unique_ptr<PDFiumTextPage> getTextPage() = 0;
+    virtual std::unique_ptr<PDFiumStructureTree> getStructureTree() = 0;
 
     /// Get bitmap checksum of the page, without annotations/commenting.
     virtual BitmapChecksum getChecksum(int nMDPPerm) = 0;
@@ -218,6 +254,15 @@ public:
     virtual css::util::DateTime getTime() = 0;
 };
 
+class VCL_DLLPUBLIC PDFiumAttachment
+{
+public:
+    virtual ~PDFiumAttachment() = default;
+
+    virtual OUString getName() = 0;
+    virtual bool getFile(std::vector<unsigned char>& rOutBuffer) = 0;
+};
+
 class VCL_DLLPUBLIC PDFiumDocument
 {
 public:
@@ -228,11 +273,16 @@ public:
     virtual int getPageCount() = 0;
     virtual int getSignatureCount() = 0;
     virtual int getFileVersion() = 0;
-    virtual bool saveWithVersion(SvMemoryStream& rStream, int nFileVersion) = 0;
+    virtual int getAttachmentCount() = 0;
+    virtual bool saveWithVersion(SvMemoryStream& rStream, int nFileVersion, bool bRemoveSecurity)
+        = 0;
 
     virtual std::unique_ptr<PDFiumPage> openPage(int nIndex) = 0;
     virtual std::unique_ptr<PDFiumSignature> getSignature(int nIndex) = 0;
+    virtual std::unique_ptr<PDFiumAttachment> getAttachment(int nIndex) = 0;
+
     virtual std::vector<unsigned int> getTrailerEnds() = 0;
+    virtual OUString getBookmarks() = 0;
 };
 
 struct VCL_DLLPUBLIC PDFiumLibrary final

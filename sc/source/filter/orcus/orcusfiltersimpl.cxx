@@ -12,12 +12,14 @@
 #include <tokenarray.hxx>
 
 #include <osl/thread.hxx>
+#include <osl/file.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/frame.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <svl/itemset.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
+#include <unotools/tempfile.hxx>
 
 #include <orcus/format_detection.hpp>
 #include <orcus/orcus_import_ods.hpp>
@@ -28,6 +30,37 @@ using namespace com::sun::star;
 
 namespace
 {
+/**
+ * Stream copied to a temporary file with a filepath.
+ */
+class CopiedTempStream
+{
+    utl::TempFileNamed maTemp;
+
+public:
+    CopiedTempStream(SvStream& rSrc)
+    {
+        maTemp.EnableKillingFile();
+        SvStream* pDest = maTemp.GetStream(StreamMode::WRITE);
+
+        rSrc.Seek(0);
+
+        const std::size_t nReadBuffer = 1024 * 32;
+        std::size_t nRead = 0;
+
+        do
+        {
+            char pData[nReadBuffer];
+            nRead = rSrc.ReadBytes(pData, nReadBuffer);
+            pDest->WriteBytes(pData, nRead);
+        } while (nRead == nReadBuffer);
+
+        maTemp.CloseStream();
+    }
+
+    OString getFileName() const { return maTemp.GetFileName().toUtf8(); }
+};
+
 uno::Reference<task::XStatusIndicator> getStatusIndicator(const SfxMedium& rMedium)
 {
     uno::Reference<task::XStatusIndicator> xStatusIndicator;
@@ -40,21 +73,16 @@ uno::Reference<task::XStatusIndicator> getStatusIndicator(const SfxMedium& rMedi
 
 bool loadFileContent(SfxMedium& rMedium, orcus::iface::import_filter& filter)
 {
-    SvStream* pStream = rMedium.GetInStream();
-    pStream->Seek(0);
-    static const size_t nReadBuffer = 1024 * 32;
-    OStringBuffer aBuffer((int(nReadBuffer)));
-    size_t nRead = 0;
-    do
-    {
-        char pData[nReadBuffer];
-        nRead = pStream->ReadBytes(pData, nReadBuffer);
-        aBuffer.append(pData, nRead);
-    } while (nRead == nReadBuffer);
+    SvStream* pSrc = rMedium.GetInStream();
+    if (!pSrc)
+        return false;
 
     try
     {
-        filter.read_stream(aBuffer);
+        // memory-map the temp file and start the import
+        CopiedTempStream aTemp(*pSrc);
+        orcus::file_content input(aTemp.getFileName());
+        filter.read_stream(input.str());
     }
     catch (const std::exception& e)
     {
@@ -73,6 +101,7 @@ ScOrcusFilters::ImportResult ScOrcusFiltersImpl::importByName(ScDocument& rDoc, 
         { "Apache Parquet Spreadsheet", orcus::format_t::parquet },
         { "Gnumeric Spreadsheet", orcus::format_t::gnumeric },
         { "MS Excel 2003 XML Orcus", orcus::format_t::xls_xml },
+        { "Orcus CSV", orcus::format_t::csv },
         { "csv", orcus::format_t::csv },
         { "gnumeric", orcus::format_t::gnumeric },
         { "ods", orcus::format_t::ods },

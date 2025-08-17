@@ -46,53 +46,48 @@
 #include <inspectorproperties.hrc>
 #include <strings.hrc>
 #include <rdfhelper.hxx>
+#include <unotxdoc.hxx>
 
 namespace sw::sidebar
 {
-static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
+static void UpdateTree(SwDocShell& rDocSh, const SwEditShell& rEditSh,
                        std::vector<svx::sidebar::TreeNode>& aStore, sal_Int32& rParIdx);
 
-std::unique_ptr<PanelLayout> WriterInspectorTextPanel::Create(weld::Widget* pParent)
+std::unique_ptr<PanelLayout> WriterInspectorTextPanel::Create(weld::Widget* pParent,
+                                                              SfxBindings* pBindings)
 {
     if (pParent == nullptr)
         throw lang::IllegalArgumentException(
-            "no parent Window given to WriterInspectorTextPanel::Create", nullptr, 0);
-    return std::make_unique<WriterInspectorTextPanel>(pParent);
+            u"no parent Window given to WriterInspectorTextPanel::Create"_ustr, nullptr, 0);
+    return std::make_unique<WriterInspectorTextPanel>(pParent, pBindings);
 }
 
-WriterInspectorTextPanel::WriterInspectorTextPanel(weld::Widget* pParent)
-    : InspectorTextPanel(pParent)
-    , m_nParIdx(0)
+namespace
+{
+SwWrtShell* GetWrtShell()
 {
     SwDocShell* pDocSh = dynamic_cast<SwDocShell*>(SfxObjectShell::Current());
-    m_pShell = pDocSh ? pDocSh->GetWrtShell() : nullptr;
+    return pDocSh ? pDocSh->GetWrtShell() : nullptr;
+}
+}
+WriterInspectorTextPanel::WriterInspectorTextPanel(weld::Widget* pParent, SfxBindings* pBindings)
+    : InspectorTextPanel(pParent, pBindings)
+    , m_pShell(GetWrtShell())
+    , m_nParIdx(0)
+{
     if (m_pShell)
     {
         m_oldLink = m_pShell->GetChgLnk();
         m_pShell->SetChgLnk(LINK(this, WriterInspectorTextPanel, AttrChangedNotify));
-
-        // tdf#154629 listen to know if the shell destructs before this panel does,
-        // which can happen on entering print preview
-        m_pShell->Add(this);
     }
 
     // Update panel on start
     std::vector<svx::sidebar::TreeNode> aStore;
+    SwDocShell* pDocSh = dynamic_cast<SwDocShell*>(SfxObjectShell::Current());
     SwEditShell* pEditSh = pDocSh ? pDocSh->GetDoc()->GetEditShell() : nullptr;
     if (pEditSh && pEditSh->GetCursor()->GetPointNode().GetTextNode())
         UpdateTree(*pDocSh, *pEditSh, aStore, m_nParIdx);
     updateEntries(aStore, m_nParIdx);
-}
-
-void WriterInspectorTextPanel::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
-{
-    if (rHint.GetId() == SfxHintId::SwLegacyModify)
-    {
-        const sw::LegacyModifyHint& rLegacy = static_cast<const sw::LegacyModifyHint&>(rHint);
-        if (rLegacy.GetWhich() == RES_OBJECTDYING)
-            m_pShell = nullptr;
-    }
-    SwClient::SwClientNotify(rModify, rHint);
 }
 
 WriterInspectorTextPanel::~WriterInspectorTextPanel()
@@ -100,7 +95,6 @@ WriterInspectorTextPanel::~WriterInspectorTextPanel()
     if (m_pShell)
     {
         m_pShell->SetChgLnk(m_oldLink);
-        m_pShell->Remove(this);
     }
 }
 
@@ -178,6 +172,7 @@ static OUString PropertyNametoRID(const OUString& rName)
         { "CharRotation", RID_CHAR_ROTATION },
         { "CharRotationIsFitToLine", RID_CHAR_ROTATION_IS_FIT_TO_LINE },
         { "CharScaleWidth", RID_CHAR_SCALE_WIDTH },
+        { "CharScriptHint", RID_CHAR_SCRIPT_HINT },
         { "CharShadingValue", RID_CHAR_SHADING_VALUE },
         { "CharShadowFormat", RID_CHAR_SHADOW_FORMAT },
         { "CharShadowed", RID_CHAR_SHADOWED },
@@ -274,10 +269,19 @@ static OUString PropertyNametoRID(const OUString& rName)
         { "ParaHyphenationMaxHyphens", RID_PARA_HYPHENATION_MAX_HYPHENS },
         { "ParaHyphenationMaxLeadingChars", RID_PARA_HYPHENATION_MAX_LEADING_CHARS },
         { "ParaHyphenationMaxTrailingChars", RID_PARA_HYPHENATION_MAX_TRAILING_CHARS },
+        { "ParaHyphenationCompoundMinLeadingChars",
+          RID_PARA_HYPHENATION_COMPOUND_MIN_LEADING_CHARS },
         { "ParaHyphenationNoCaps", RID_PARA_HYPHENATION_NO_CAPS },
         { "ParaHyphenationNoLastWord", RID_PARA_HYPHENATION_NO_LAST_WORD },
         { "ParaHyphenationMinWordLength", RID_PARA_HYPHENATION_MIN_WORD_LENGTH },
         { "ParaHyphenationZone", RID_PARA_HYPHENATION_ZONE },
+        { "ParaHyphenationZoneAlways", RID_PARA_HYPHENATION_ZONE_ALWAYS },
+        { "ParaHyphenationZoneColumn", RID_PARA_HYPHENATION_ZONE_COLUMN },
+        { "ParaHyphenationZonePage", RID_PARA_HYPHENATION_ZONE_PAGE },
+        { "ParaHyphenationZoneSpread", RID_PARA_HYPHENATION_ZONE_SPREAD },
+        { "ParaHyphenationKeep", RID_PARA_HYPHENATION_KEEP },
+        { "ParaHyphenationKeepType", RID_PARA_HYPHENATION_KEEP_TYPE },
+        { "ParaHyphenationKeepLine", RID_PARA_HYPHENATION_KEEP_LINE },
         { "ParaInteropGrabBag", RID_PARA_INTEROP_GRAB_BAG },
         { "ParaIsAutoFirstLineIndent", RID_PARA_IS_AUTO_FIRST_LINE_INDENT },
         { "ParaIsCharacterDistance", RID_PARA_IS_CHARACTER_DISTANCE },
@@ -290,6 +294,8 @@ static OUString PropertyNametoRID(const OUString& rName)
         { "ParaLastLineAdjust", RID_PARA_LAST_LINE_ADJUST },
         { "ParaLeftMargin", RID_PARA_LEFT_MARGIN },
         { "ParaLeftMarginRelative", RID_PARA_LEFT_MARGIN_RELATIVE },
+        { "ParaLetterSpacingMinimum", RID_PARA_LETTER_SPACING_MIN },
+        { "ParaLetterSpacingMaximum", RID_PARA_LETTER_SPACING_MAX },
         { "ParaLineNumberCount", RID_PARA_LINE_NUMBER_COUNT },
         { "ParaLineNumberStartValue", RID_PARA_LINE_NUMBER_START_VALUE },
         { "ParaLineSpacing", RID_PARA_LINE_SPACING },
@@ -306,6 +312,9 @@ static OUString PropertyNametoRID(const OUString& rName)
         { "ParaUserDefinedAttributes", RID_PARA_USER_DEFINED_ATTRIBUTES },
         { "ParaVertAlignment", RID_PARA_VERT_ALIGNMENT },
         { "ParaWidows", RID_PARA_WIDOWS },
+        { "ParaWordSpacingMinimum", RID_PARA_WORD_SPACING_MIN },
+        { "ParaWordSpacing", RID_PARA_WORD_SPACING },
+        { "ParaWordSpacingMaximum", RID_PARA_WORD_SPACING_MAX },
         { "ReferenceMark", RID_REFERENCE_MARK },
         { "RightBorder", RID_RIGHT_BORDER },
         { "RightBorderDistance", RID_RIGHT_BORDER_DISTANCE },
@@ -359,13 +368,14 @@ static svx::sidebar::TreeNode BorderToTreeNode(const OUString& rName, const css:
     aCurNode.sNodeName = PropertyNametoRID(rName);
     aCurNode.NodeType = svx::sidebar::TreeNode::ComplexProperty;
 
-    aCurNode.children
-        = { SimplePropToTreeNode("BorderColor", css::uno::Any(aBorder.Color)),
-            SimplePropToTreeNode("BorderLineWidth", css::uno::Any(aBorder.LineWidth)),
-            SimplePropToTreeNode("BorderLineStyle", css::uno::Any(aBorder.LineStyle)),
-            SimplePropToTreeNode("BorderLineDistance", css::uno::Any(aBorder.LineDistance)),
-            SimplePropToTreeNode("BorderInnerLineWidth", css::uno::Any(aBorder.InnerLineWidth)),
-            SimplePropToTreeNode("BorderOuterLineWidth", css::uno::Any(aBorder.OuterLineWidth)) };
+    aCurNode.children = {
+        SimplePropToTreeNode(u"BorderColor"_ustr, css::uno::Any(aBorder.Color)),
+        SimplePropToTreeNode(u"BorderLineWidth"_ustr, css::uno::Any(aBorder.LineWidth)),
+        SimplePropToTreeNode(u"BorderLineStyle"_ustr, css::uno::Any(aBorder.LineStyle)),
+        SimplePropToTreeNode(u"BorderLineDistance"_ustr, css::uno::Any(aBorder.LineDistance)),
+        SimplePropToTreeNode(u"BorderInnerLineWidth"_ustr, css::uno::Any(aBorder.InnerLineWidth)),
+        SimplePropToTreeNode(u"BorderOuterLineWidth"_ustr, css::uno::Any(aBorder.OuterLineWidth))
+    };
     return aCurNode;
 }
 
@@ -425,27 +435,26 @@ static void MetadataToTreeNode(const css::uno::Reference<css::uno::XInterface>& 
     }
 
     svx::sidebar::TreeNode aCurNode;
-    aCurNode.sNodeName = PropertyNametoRID("MetadataReference");
+    aCurNode.sNodeName = PropertyNametoRID(u"MetadataReference"_ustr);
     aCurNode.NodeType = svx::sidebar::TreeNode::ComplexProperty;
 
     aCurNode.children.push_back(
-        SimplePropToTreeNode("xml:id", uno::Any(xMeta->getMetadataReference().Second)));
+        SimplePropToTreeNode(u"xml:id"_ustr, uno::Any(xMeta->getMetadataReference().Second)));
 
     // list associated (predicate, object) pairs of the actual subject
     // under the tree node "Metadata Reference"
     if (SwDocShell* pDocSh = static_cast<SwDocShell*>(SfxObjectShell::Current()))
     {
-        uno::Reference<rdf::XDocumentMetadataAccess> xDocumentMetadataAccess(pDocSh->GetBaseModel(),
-                                                                             uno::UNO_QUERY);
-        const uno::Reference<rdf::XRepository>& xRepo = xDocumentMetadataAccess->getRDFRepository();
+        rtl::Reference<SwXTextDocument> pSwXTextDocument(pDocSh->GetBaseModel());
+        const uno::Reference<rdf::XRepository> xRepo = pSwXTextDocument->getRDFRepository();
         const css::uno::Reference<css::rdf::XResource> xSubject(rSource, uno::UNO_QUERY);
         std::map<OUString, OUString> xStatements
-            = SwRDFHelper::getStatements(pDocSh->GetBaseModel(), xRepo->getGraphNames(), xSubject);
+            = SwRDFHelper::getStatements(pSwXTextDocument, xRepo->getGraphNames(), xSubject);
         for (const auto& pair : xStatements)
             aCurNode.children.push_back(SimplePropToTreeNode(pair.first, uno::Any(pair.second)));
     }
 
-    rNode.children.push_back(aCurNode);
+    rNode.children.push_back(std::move(aCurNode));
 }
 
 static svx::sidebar::TreeNode
@@ -517,7 +526,7 @@ static void InsertValues(const css::uno::Reference<css::uno::XInterface>& rSourc
                 aCurNode.aValue <<= NestedTextContentToText(aCurNode.aValue);
             }
 
-            rNode.children.push_back(aCurNode);
+            rNode.children.push_back(std::move(aCurNode));
         }
     }
 
@@ -532,7 +541,7 @@ static void InsertValues(const css::uno::Reference<css::uno::XInterface>& rSourc
         });
 }
 
-static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
+static void UpdateTree(SwDocShell& rDocSh, const SwEditShell& rEditSh,
                        std::vector<svx::sidebar::TreeNode>& aStore, sal_Int32& rParIdx)
 {
     SwDoc* pDoc = rDocSh.GetDoc();
@@ -587,22 +596,20 @@ static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
     InsertValues(static_cast<cppu::OWeakObject*>(xRange.get()), aIsDefined, aCharDFNode, false,
                  aHiddenProperties, aFieldsNode);
 
-    uno::Reference<style::XStyleFamiliesSupplier> xStyleFamiliesSupplier(rDocSh.GetBaseModel(),
-                                                                         uno::UNO_QUERY);
-    uno::Reference<container::XNameAccess> xStyleFamilies
-        = xStyleFamiliesSupplier->getStyleFamilies();
+    rtl::Reference<SwXTextDocument> pSwTextDocument(rDocSh.GetBaseModel());
+    uno::Reference<container::XNameAccess> xStyleFamilies = pSwTextDocument->getStyleFamilies();
     OUString sCurrentCharStyle, sCurrentParaStyle, sDisplayName;
 
     uno::Reference<container::XNameAccess> xStyleFamily(
-        xStyleFamilies->getByName("CharacterStyles"), uno::UNO_QUERY_THROW);
-    xRange->getPropertyValue("CharStyleName") >>= sCurrentCharStyle;
-    xRange->getPropertyValue("ParaStyleName") >>= sCurrentParaStyle;
+        xStyleFamilies->getByName(u"CharacterStyles"_ustr), uno::UNO_QUERY_THROW);
+    xRange->getPropertyValue(u"CharStyleName"_ustr) >>= sCurrentCharStyle;
+    xRange->getPropertyValue(u"ParaStyleName"_ustr) >>= sCurrentParaStyle;
 
     if (!sCurrentCharStyle.isEmpty())
     {
         uno::Reference<beans::XPropertySet> xPropertiesSet(
             xStyleFamily->getByName(sCurrentCharStyle), css::uno::UNO_QUERY_THROW);
-        xPropertiesSet->getPropertyValue("DisplayName") >>= sDisplayName;
+        xPropertiesSet->getPropertyValue(u"DisplayName"_ustr) >>= sDisplayName;
         svx::sidebar::TreeNode aCurrentChild;
         aCurrentChild.sNodeName = sDisplayName;
         aCurrentChild.NodeType = svx::sidebar::TreeNode::ComplexProperty;
@@ -610,7 +617,7 @@ static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
         InsertValues(xPropertiesSet, aIsDefined, aCurrentChild, false, aHiddenCharacterProperties,
                      aFieldsNode);
 
-        aCharNode.children.push_back(aCurrentChild);
+        aCharNode.children.push_back(std::move(aCurrentChild));
     }
 
     // Collect paragraph direct formatting
@@ -624,7 +631,7 @@ static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
                      aFieldsNode);
     }
 
-    xStyleFamily.set(xStyleFamilies->getByName("ParagraphStyles"), uno::UNO_QUERY_THROW);
+    xStyleFamily.set(xStyleFamilies->getByName(u"ParagraphStyles"_ustr), uno::UNO_QUERY_THROW);
 
     while (!sCurrentParaStyle.isEmpty())
     {
@@ -632,7 +639,7 @@ static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
                                                        uno::UNO_QUERY_THROW);
         uno::Reference<beans::XPropertySet> xPropertiesSet(xPropertiesStyle,
                                                            css::uno::UNO_QUERY_THROW);
-        xPropertiesSet->getPropertyValue("DisplayName") >>= sDisplayName;
+        xPropertiesSet->getPropertyValue(u"DisplayName"_ustr) >>= sDisplayName;
         OUString aParentParaStyle = xPropertiesStyle->getParentStyle();
         svx::sidebar::TreeNode aCurrentChild;
         aCurrentChild.sNodeName = sDisplayName;
@@ -641,7 +648,7 @@ static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
         InsertValues(xPropertiesSet, aIsDefined, aCurrentChild, aParentParaStyle.isEmpty(),
                      aHiddenCharacterProperties, aFieldsNode);
 
-        aParaNode.children.push_back(aCurrentChild);
+        aParaNode.children.push_back(std::move(aCurrentChild));
         sCurrentParaStyle = aParentParaStyle;
     }
 
@@ -649,10 +656,7 @@ static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
                  aParaNode.children.end()); // Parent style should be first then children
 
     // Collect bookmarks at character position
-    uno::Reference<text::XBookmarksSupplier> xBookmarksSupplier(rDocSh.GetBaseModel(),
-                                                                uno::UNO_QUERY);
-
-    uno::Reference<container::XIndexAccess> xBookmarks(xBookmarksSupplier->getBookmarks(),
+    uno::Reference<container::XIndexAccess> xBookmarks(pSwTextDocument->getBookmarks(),
                                                        uno::UNO_QUERY);
     for (sal_Int32 i = 0; i < xBookmarks->getCount(); ++i)
     {
@@ -676,7 +680,7 @@ static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
                 MetadataToTreeNode(xBookmark, aCurNode);
                 // show bookmark only if it has RDF metadata
                 if (aCurNode.children.size() > 0)
-                    aBookmarksNode.children.push_back(aCurNode);
+                    aBookmarksNode.children.push_back(std::move(aCurNode));
             }
         }
         catch (const lang::IllegalArgumentException&)
@@ -685,10 +689,7 @@ static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
     }
 
     // Collect sections at character position
-    uno::Reference<text::XTextSectionsSupplier> xTextSectionsSupplier(rDocSh.GetBaseModel(),
-                                                                      uno::UNO_QUERY);
-
-    uno::Reference<container::XIndexAccess> xTextSections(xTextSectionsSupplier->getTextSections(),
+    uno::Reference<container::XIndexAccess> xTextSections(pSwTextDocument->getTextSections(),
                                                           uno::UNO_QUERY);
     for (sal_Int32 i = 0; i < xTextSections->getCount(); ++i)
     {
@@ -712,7 +713,7 @@ static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
                 MetadataToTreeNode(xTextSection, aCurNode);
                 // show section only if it has RDF metadata
                 if (aCurNode.children.size() > 0)
-                    aTextSectionsNode.children.push_back(aCurNode);
+                    aTextSectionsNode.children.push_back(std::move(aCurNode));
             }
         }
         catch (const lang::IllegalArgumentException&)
@@ -734,23 +735,23 @@ static void UpdateTree(SwDocShell& rDocSh, SwEditShell& rEditSh,
     // show sections, bookmarks and fields only if they have RDF metadata
     if (aTextSectionsNode.children.size() > 0)
     {
-        aStore.push_back(aTextSectionsNode);
+        aStore.push_back(std::move(aTextSectionsNode));
         rParIdx++;
     }
     if (aBookmarksNode.children.size() > 0)
     {
-        aStore.push_back(aBookmarksNode);
+        aStore.push_back(std::move(aBookmarksNode));
         rParIdx++;
     }
     if (aFieldsNode.children.size() > 0)
     {
-        aStore.push_back(aFieldsNode);
+        aStore.push_back(std::move(aFieldsNode));
         rParIdx++;
     }
-    aStore.push_back(aParaNode);
-    aStore.push_back(aParaDFNode);
-    aStore.push_back(aCharNode);
-    aStore.push_back(aCharDFNode);
+    aStore.push_back(std::move(aParaNode));
+    aStore.push_back(std::move(aParaDFNode));
+    aStore.push_back(std::move(aCharNode));
+    aStore.push_back(std::move(aCharDFNode));
 }
 
 IMPL_LINK(WriterInspectorTextPanel, AttrChangedNotify, LinkParamNone*, pLink, void)
@@ -758,12 +759,21 @@ IMPL_LINK(WriterInspectorTextPanel, AttrChangedNotify, LinkParamNone*, pLink, vo
     if (m_oldLink.IsSet())
         m_oldLink.Call(pLink);
 
+    if (m_pShell->IsViewLocked())
+    {
+        return; // tdf#142806 avoid slowdown when storing files
+    }
+
     SwDocShell* pDocSh = m_pShell->GetDoc()->GetDocShell();
+    if (!pDocSh)
+        return;
+
     std::vector<svx::sidebar::TreeNode> aStore;
 
-    SwEditShell* pEditSh = pDocSh ? pDocSh->GetDoc()->GetEditShell() : nullptr;
-    if (pEditSh && pEditSh->GetCursor()->GetPointNode().GetTextNode())
-        UpdateTree(*pDocSh, *pEditSh, aStore, m_nParIdx);
+    if (m_pShell->GetCursor()->GetPointNode().GetTextNode())
+    {
+        UpdateTree(*pDocSh, *m_pShell, aStore, m_nParIdx);
+    }
 
     updateEntries(aStore, m_nParIdx);
 }

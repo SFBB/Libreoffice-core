@@ -56,7 +56,7 @@ void Test::setUp()
     BootstrapFixture::setUp();
 
     pExport = new SchXMLExport(
-        comphelper::getProcessComponentContext(), "SchXMLExport.Compact",
+        comphelper::getProcessComponentContext(), u"SchXMLExport.Compact"_ustr,
         SvXMLExportFlags::ALL);
 }
 
@@ -78,26 +78,26 @@ void Test::testAutoStylePool()
     xPool->AddFamily( XmlStyleFamily::TEXT_PARAGRAPH,
                       GetXMLToken( XML_PARAGRAPH ),
                       xExportPropMapper.get(),
-                      OUString( "Bob" ) );
+                      u"Bob"_ustr );
 
-    OUString aName = xPool->Add( XmlStyleFamily::TEXT_PARAGRAPH, "", {} );
+    OUString aName = xPool->Add( XmlStyleFamily::TEXT_PARAGRAPH, u""_ustr, {} );
 
     // not that interesting but worth checking
     bool bHack = (getenv("LIBO_ONEWAY_STABLE_ODF_EXPORT") != nullptr);
     if (bHack)
-        CPPUNIT_ASSERT_EQUAL_MESSAGE( "style / naming changed", OUString("Bob"), aName );
+        CPPUNIT_ASSERT_EQUAL_MESSAGE( "style / naming changed", u"Bob"_ustr, aName );
     else
-        CPPUNIT_ASSERT_EQUAL_MESSAGE( "style / naming changed", OUString("Bob1"), aName );
+        CPPUNIT_ASSERT_EQUAL_MESSAGE( "style / naming changed", u"Bob1"_ustr, aName );
 
     // find ourselves again:
-    OUString aSameName = xPool->Find( XmlStyleFamily::TEXT_PARAGRAPH, "", {} );
+    OUString aSameName = xPool->Find( XmlStyleFamily::TEXT_PARAGRAPH, u""_ustr, {} );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "same style not found", aName, aSameName );
 }
 
 void Test::testMetaGenerator()
 {
     comphelper::PropertyMapEntry const aInfoMap[] = {
-        { OUString("BuildId"), 0, ::cppu::UnoType<OUString>::get(), beans::PropertyAttribute::MAYBEVOID, 0 },
+        { u"BuildId"_ustr, 0, ::cppu::UnoType<OUString>::get(), beans::PropertyAttribute::MAYBEVOID, 0 },
     };
     uno::Reference<beans::XPropertySet> const xInfoSet(
         comphelper::GenericPropertySet_CreateInstance(
@@ -199,14 +199,16 @@ void Test::testMetaGenerator()
         { "LibreOffice_powered_by_CIBDev/6.4.0.0.0$Linux_X86_64 LibreOffice_project/e29e100174c133d27e953934311d68602c4515b7", ";6.4.0.0.0", SvXMLImport::LO_63x },
         { "LibreOfficeDev/7.0.6.0.0$Linux_X86_64 LibreOffice_project/dfc40e2292c6e19e285c10ed8c8044d9454107d0", ";7.0.6.0.0", SvXMLImport::LO_7x },
         { "CIB_OfficeDev/6.4.0.19$Linux_X86_64 LibreOffice_project/2e04f804b5f82770435f250873f07b3384d95504", ";6.4.0.19", SvXMLImport::LO_63x },
-        { "LibreOfficeDev/24.2.0.0.alpha0$Linux_X86_64 LibreOffice_project/b81e7b6f3c71fb3ade1cb665444ac730dac0a9a9", ";24.2.0.0.", SvXMLImport::LO_New },
+        { "LibreOfficeDev/24.2.0.0.alpha0$Linux_X86_64 LibreOffice_project/b81e7b6f3c71fb3ade1cb665444ac730dac0a9a9", ";24.2.0.0.", SvXMLImport::LO_242 },
+        { "LibreOfficeDev/24.8.6.2$Linux_X86_64 LibreOffice_project/dc6216c3d2b4ec3bcdba950f1e6ee1d013adb2d6", ";24.8.6.2", SvXMLImport::LO_248 },
+        { "LibreOfficeDev/25.8.0.0.alpha0$Linux_X86_64 LibreOffice_project/308705574842e0c36f7385f73fc47da9a4542367", ";25.8.0.0.", SvXMLImport::LO_New }
     };
 
     for (auto const[pGenerator, pBuildId, nResult] : tests)
     {
         // the DocumentInfo instance is cached so need fresh SvXMLImport
         rtl::Reference<SvXMLImport> const pImport(new SvXMLImport(
-            comphelper::getProcessComponentContext(), "testdummy",
+            comphelper::getProcessComponentContext(), u"testdummy"_ustr,
             SvXMLImportFlags::ALL));
 
         pImport->initialize(uno::Sequence<uno::Any>{ uno::Any(xInfoSet) });
@@ -216,11 +218,11 @@ void Test::testMetaGenerator()
         {
             CPPUNIT_ASSERT_EQUAL_MESSAGE(pGenerator,
                                  OUString::createFromAscii(pBuildId),
-                                 xInfoSet->getPropertyValue("BuildId").get<OUString>());
+                                 xInfoSet->getPropertyValue(u"BuildId"_ustr).get<OUString>());
         }
         else
         {
-            CPPUNIT_ASSERT_MESSAGE(pGenerator, !xInfoSet->getPropertyValue("BuildId").hasValue());
+            CPPUNIT_ASSERT_MESSAGE(pGenerator, !xInfoSet->getPropertyValue(u"BuildId"_ustr).hasValue());
         }
         CPPUNIT_ASSERT_EQUAL_MESSAGE(pGenerator, nResult, pImport->getGeneratorVersion());
     }

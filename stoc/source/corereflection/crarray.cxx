@@ -39,13 +39,13 @@ void ArrayIdlClassImpl::realloc( Any & rArray, sal_Int32 nLen )
     if (eTC != TypeClass_SEQUENCE)
     {
         throw IllegalArgumentException(
-            "expected sequence, but found " + rArray.getValueType().getTypeName(),
+            "expected sequence, but found " + rArray.getValueTypeName(),
             getXWeak(), 0 );
     }
     if (nLen < 0)
     {
         throw IllegalArgumentException(
-            "negative length given!",
+            u"negative length given!"_ustr,
             getXWeak(), 1 );
     }
 
@@ -63,7 +63,7 @@ sal_Int32 ArrayIdlClassImpl::getLen( const Any & rArray )
     if (eTC != TypeClass_SEQUENCE)
     {
         throw IllegalArgumentException(
-            "expected sequence, but found " + rArray.getValueType().getTypeName(),
+            "expected sequence, but found " + rArray.getValueTypeName(),
             getXWeak(), 0 );
     }
 
@@ -76,7 +76,7 @@ Any ArrayIdlClassImpl::get( const Any & rArray, sal_Int32 nIndex )
     if (eTC != TypeClass_SEQUENCE)
     {
         throw IllegalArgumentException(
-            "expected sequence, but found " + rArray.getValueType().getTypeName(),
+            "expected sequence, but found " + rArray.getValueTypeName(),
             getXWeak(), 0 );
     }
 
@@ -106,7 +106,7 @@ void ArrayIdlClassImpl::set( Any & rArray, sal_Int32 nIndex, const Any & rNewVal
     if (eTC != TypeClass_SEQUENCE)
     {
         throw IllegalArgumentException(
-            "expected sequence, but found " + rArray.getValueType().getTypeName(),
+            "expected sequence, but found " + rArray.getValueTypeName(),
             getXWeak(), 0 );
     }
 
@@ -134,7 +134,7 @@ void ArrayIdlClassImpl::set( Any & rArray, sal_Int32 nIndex, const Any & rNewVal
     {
         TYPELIB_DANGER_RELEASE( pElemTypeDescr );
         throw IllegalArgumentException(
-            "sequence element is not assignable by given value!",
+            u"sequence element is not assignable by given value!"_ustr,
             getXWeak(), 2 );
     }
     TYPELIB_DANGER_RELEASE( pElemTypeDescr );

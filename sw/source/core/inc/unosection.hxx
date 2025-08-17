@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SW_SOURCE_CORE_INC_UNOSECTION_HXX
-#define INCLUDED_SW_SOURCE_CORE_INC_UNOSECTION_HXX
+#pragma once
 
+#include <swdllapi.h>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
@@ -39,13 +39,27 @@ typedef ::cppu::ImplInheritanceHelper
 <   ::sfx2::MetadatableMixin
 ,   css::lang::XServiceInfo
 ,   css::beans::XPropertySet
+,   css::container::XNamed
+,   css::text::XTextContent
+> SwXSection_Base;
+
+/// Base class for SwXTextSection and SwXDocumentIndex
+class SW_DLLPUBLIC SwXSection
+    : public SwXSection_Base
+{
+public:
+    ~SwXSection();
+};
+
+
+typedef ::cppu::ImplInheritanceHelper
+<   SwXSection
 ,   css::beans::XPropertyState
 ,   css::beans::XMultiPropertySet
-,   css::container::XNamed
 ,   css::text::XTextSection
 > SwXTextSection_Base;
 
-class SwXTextSection final
+class SW_DLLPUBLIC SwXTextSection final
     : public SwXTextSection_Base
 {
 
@@ -149,7 +163,5 @@ public:
         getChildSections() override;
 
 };
-
-#endif // INCLUDED_SW_SOURCE_CORE_INC_UNOSECTION_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

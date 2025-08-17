@@ -35,6 +35,7 @@ class EDITENG_DLLPUBLIC SvxCaseMapItem final : public SfxEnumItem<SvxCaseMap>
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxCaseMapItem)
     SvxCaseMapItem( const SvxCaseMap eMap /*= SvxCaseMap::NotMapped*/,
                     const sal_uInt16 nId );
 
@@ -46,7 +47,6 @@ public:
 
     virtual SvxCaseMapItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     static OUString         GetValueTextByPos( sal_uInt16 nPos );
-    virtual sal_uInt16      GetValueCount() const override;
 
     // enum cast
     SvxCaseMap              GetCaseMap() const { return GetValue(); }

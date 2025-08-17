@@ -44,7 +44,7 @@ class ViewShell;
 class DrawDocShell;
 #ifndef SV_DECL_DRAW_DOC_SHELL_DEFINED
 #define SV_DECL_DRAW_DOC_SHELL_DEFINED
-typedef ::tools::SvRef<DrawDocShell> DrawDocShellRef;
+typedef rtl::Reference<DrawDocShell> DrawDocShellRef;
 #endif
 }
 namespace svt {
@@ -68,11 +68,9 @@ public:
     void SetOrderFrontToBack(bool bSet) { m_bOrderFrontToBack = bSet; }
 };
 
-class SD_DLLPUBLIC SdPageObjsTLV
+class SdPageObjsTLV
 {
 private:
-    static bool SAL_DLLPRIVATE bIsInDrag;      ///< static, in the case the navigator is deleted in ExecuteDrag
-
     std::unique_ptr<weld::TreeView> m_xTreeView;
     std::unique_ptr<weld::TreeIter> m_xScratchIter;
     std::unique_ptr<SdPageObjsTLVDropTarget> m_xDropTargetHelper;
@@ -102,7 +100,6 @@ private:
      */
     bool m_bNavigationGrabsFocus;
 
-    bool m_bMouseReleased = true; // hack for x11 inplace editing
     bool m_bEditing = false;
 
     SelectionMode m_eSelectionMode;
@@ -137,13 +134,13 @@ private:
 
     void CloseBookmarkDoc();
 
-    DECL_DLLPRIVATE_LINK(RequestingChildrenHdl, const weld::TreeIter&, bool);
-    DECL_DLLPRIVATE_LINK(SelectHdl, weld::TreeView&, void);
-    DECL_DLLPRIVATE_LINK(AsyncSelectHdl, void*, void);
-    DECL_DLLPRIVATE_LINK(RowActivatedHdl, weld::TreeView&, bool);
-    DECL_DLLPRIVATE_LINK(AsyncRowActivatedHdl, void*, void);
-    DECL_DLLPRIVATE_LINK(DragBeginHdl, bool&, bool);
-    DECL_DLLPRIVATE_LINK(KeyInputHdl, const KeyEvent&, bool);
+    DECL_LINK(RequestingChildrenHdl, const weld::TreeIter&, bool);
+    DECL_LINK(SelectHdl, weld::TreeView&, void);
+    DECL_LINK(AsyncSelectHdl, void*, void);
+    DECL_LINK(RowActivatedHdl, weld::TreeView&, bool);
+    DECL_LINK(AsyncRowActivatedHdl, void*, void);
+    DECL_LINK(DragBeginHdl, bool&, bool);
+    DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
 
     DECL_LINK(EditingEntryHdl, const weld::TreeIter&, bool);
     typedef std::pair<const weld::TreeIter&, OUString> IterString;
@@ -164,22 +161,14 @@ private:
     bool PageBelongsToCurrentShow (const SdPage* pPage) const;
 
     bool DoDrag();
-    static void OnDragFinished();
 
     // DragSourceHelper
     bool StartDrag();
 
 public:
 
-    SdPageObjsTLV(std::unique_ptr<weld::TreeView> xTreeview);
-    ~SdPageObjsTLV();
-
-    bool IsEditingActive() const {return m_bEditing;}
-
-    void set_sensitive(bool bSensitive)
-    {
-        m_xTreeView->set_sensitive(bSensitive);
-    }
+    SD_DLLPUBLIC SdPageObjsTLV(std::unique_ptr<weld::TreeView> xTreeview);
+    SD_DLLPUBLIC ~SdPageObjsTLV();
 
     void hide()
     {
@@ -206,10 +195,10 @@ public:
         return m_xTreeView->get_approximate_digit_width();
     }
 
-    DECL_LINK(MousePressHdl, const MouseEvent&, bool);
-    DECL_LINK(MouseReleaseHdl, const MouseEvent&, bool);
+    DECL_LINK(MousePressHdl, const MouseEvent&, SD_DLLPUBLIC bool);
+    DECL_LINK(MouseReleaseHdl, const MouseEvent&, SD_DLLPUBLIC bool);
 
-    void Select();
+    SD_DLLPUBLIC void Select();
 
     int get_height_rows(int nRows) const
     {
@@ -248,7 +237,7 @@ public:
     }
 
     bool HasSelectedChildren(std::u16string_view rName);
-    bool SelectEntry(std::u16string_view rName);
+    SD_DLLPUBLIC bool SelectEntry(std::u16string_view rName);
     void SelectEntry(const SdrObject* pObj);
 
     OUString get_selected_text() const
@@ -317,10 +306,10 @@ public:
         return OUString();
     }
 
-    void SetViewFrame(const SfxViewFrame* pViewFrame);
+    SD_DLLPUBLIC void SetViewFrame(const SfxViewFrame* pViewFrame);
 
-    void Fill(const SdDrawDocument*, bool bAllPages, const OUString& rDocName);
-    void Fill(const SdDrawDocument*, SfxMedium* pSfxMedium, const OUString& rDocName);
+    SD_DLLPUBLIC void Fill(const SdDrawDocument*, bool bAllPages, const OUString& rDocName);
+    SD_DLLPUBLIC void Fill(const SdDrawDocument*, SfxMedium* pSfxMedium, const OUString& rDocName);
 
     void SetShowAllShapes (const bool bShowAllShapes, const bool bFill);
     bool GetShowAllShapes() const { return m_bShowAllShapes; }
@@ -329,12 +318,10 @@ public:
     bool GetOrderFrontToBack() const { return m_bOrderFrontToBack; }
 
     bool IsNavigationGrabsFocus() const { return m_bNavigationGrabsFocus; }
-    bool IsEqualToDoc(const SdDrawDocument* pInDoc);
+    SD_DLLPUBLIC bool IsEqualToDoc(const SdDrawDocument* pInDoc);
     /// Visits rList recursively and tries to advance rEntry accordingly.
     bool IsEqualToShapeList(std::unique_ptr<weld::TreeIter>& rEntry, const SdrObjList& rList,
                             std::u16string_view rListName);
-
-    static bool             IsInDrag();
 
     /** Return the view shell that is linked to the given doc shell.
         Call this method when the there is a chance that the doc shell
@@ -377,11 +364,11 @@ public:
           nDepth == 0 -> pages
           nDepth == 1 -> objects  */
 
-    std::vector<OUString> GetSelectEntryList(const int nDepth) const;
+    SD_DLLPUBLIC std::vector<OUString> GetSelectEntryList(const int nDepth) const;
 
     std::vector<OUString> GetSelectedEntryIds() const;
 
-    SdDrawDocument* GetBookmarkDoc(SfxMedium* pMedium = nullptr);
+    SD_DLLPUBLIC SdDrawDocument* GetBookmarkDoc(SfxMedium* pMedium = nullptr);
 
     bool IsLinkableSelected() const { return m_bLinkableSelected; }
 
@@ -413,7 +400,7 @@ public:
     }
 
     // nested class to implement the TransferableHelper
-    class SAL_DLLPRIVATE SdPageObjsTransferable final : public SdTransferable
+    class SdPageObjsTransferable final : public SdTransferable
     {
     public:
         SdPageObjsTransferable(
@@ -443,7 +430,6 @@ public:
 
         virtual void      AddSupportedFormats() override;
         virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
-        virtual void      DragFinished( sal_Int8 nDropAction ) override;
     };
 
     friend class SdPageObjsTLV::SdPageObjsTransferable;

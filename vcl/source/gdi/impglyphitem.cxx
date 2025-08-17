@@ -21,7 +21,7 @@
 #include <utility>
 #include <vcl/glyphitemcache.hxx>
 #include <vcl/vcllayout.hxx>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <tools/stream.hxx>
 #include <unotools/configmgr.hxx>
 #include <TextLayoutCache.hxx>
@@ -234,10 +234,9 @@ void SalLayoutGlyphsCache::clear() { mCachedGlyphs.clear(); }
 
 SalLayoutGlyphsCache* SalLayoutGlyphsCache::self()
 {
-    static vcl::DeleteOnDeinit<SalLayoutGlyphsCache> cache(
-        !utl::ConfigManager::IsFuzzing()
-            ? officecfg::Office::Common::Cache::Font::GlyphsCacheSize::get()
-            : 20000);
+    static tools::DeleteOnDeinit<SalLayoutGlyphsCache> cache(
+        !comphelper::IsFuzzing() ? officecfg::Office::Common::Cache::Font::GlyphsCacheSize::get()
+                                 : 20000000);
     return cache.get();
 }
 
@@ -322,10 +321,9 @@ static void checkGlyphsEqual(const SalLayoutGlyphs& g1, const SalLayoutGlyphs& g
 }
 #endif
 
-const SalLayoutGlyphs*
-SalLayoutGlyphsCache::GetLayoutGlyphs(VclPtr<const OutputDevice> outputDevice, const OUString& text,
-                                      sal_Int32 nIndex, sal_Int32 nLen, tools::Long nLogicWidth,
-                                      const vcl::text::TextLayoutCache* layoutCache)
+const SalLayoutGlyphs* SalLayoutGlyphsCache::GetLayoutGlyphs(
+    const VclPtr<const OutputDevice>& outputDevice, const OUString& text, sal_Int32 nIndex,
+    sal_Int32 nLen, tools::Long nLogicWidth, const vcl::text::TextLayoutCache* layoutCache)
 {
     if (nLen == 0)
         return nullptr;
@@ -366,6 +364,13 @@ SalLayoutGlyphsCache::GetLayoutGlyphs(VclPtr<const OutputDevice> outputDevice, c
             // part being underlined. Doing this for any two segments allows this optimization
             // even when the prefix of the string would use a different font.
             // TODO: Can those font differences be ignored?
+
+            // Shaping performance seems to scale poorly with respect to string length. Certain
+            // writing systems involve extremely long strings (for example, Tibetan: tdf#92064).
+            // In such cases, this optimization would be a net loss, and must be disabled.
+            constexpr sal_Int32 nOptLengthThreshold = 20000;
+            bool bEnableOptimization = (text.getLength() < nOptLengthThreshold);
+
             // Writer layouts tests enable SAL_NON_APPLICATION_FONT_USE=abort in order
             // to make PrintFontManager::Substitute() abort if font fallback happens. When
             // laying out the entire string the chance this happens increases (e.g. testAbi11870
@@ -376,7 +381,7 @@ SalLayoutGlyphsCache::GetLayoutGlyphs(VclPtr<const OutputDevice> outputDevice, c
                 const char* pEnv = getenv("SAL_NON_APPLICATION_FONT_USE");
                 return pEnv && strcmp(pEnv, "abort") == 0;
             }();
-            if (mLastSubstringKey.has_value() && !bAbortOnFontSubstitute)
+            if (bEnableOptimization && mLastSubstringKey.has_value() && !bAbortOnFontSubstitute)
             {
                 sal_Int32 pos = nIndex;
                 if (mLastSubstringKey->len < pos && text[pos - 1] == nbSpace)
@@ -468,6 +473,34 @@ SalLayoutGlyphsCache::GetLayoutGlyphs(VclPtr<const OutputDevice> outputDevice, c
     return nullptr;
 }
 
+const SalLayoutGlyphs* SalLayoutGlyphsCache::GetLayoutGlyphs(
+    const VclPtr<const OutputDevice>& outputDevice, const OUString& text, sal_Int32 nIndex,
+    sal_Int32 nLen, sal_Int32 nDrawMinCharPos, sal_Int32 nDrawEndCharPos, tools::Long nLogicWidth,
+    const vcl::text::TextLayoutCache* layoutCache)
+{
+    // This version is used by callers that need to draw a subset of a layout. In all ordinary uses
+    // this function will be called for successive glyph subsets, so should optimize for that case.
+    auto* pWholeGlyphs
+        = GetLayoutGlyphs(outputDevice, text, nIndex, nLen, nLogicWidth, layoutCache);
+    if (nDrawMinCharPos <= nIndex && nDrawEndCharPos >= (nIndex + nLen))
+    {
+        return pWholeGlyphs;
+    }
+
+    if (pWholeGlyphs && pWholeGlyphs->IsValid())
+    {
+        mLastTemporaryKey.reset();
+        mLastTemporaryGlyphs = makeGlyphsSubset(*pWholeGlyphs, outputDevice, text, nDrawMinCharPos,
+                                                nDrawEndCharPos - nDrawMinCharPos);
+        if (mLastTemporaryGlyphs.IsValid())
+        {
+            return &mLastTemporaryGlyphs;
+        }
+    }
+
+    return nullptr;
+}
+
 void SalLayoutGlyphsCache::SetCacheGlyphsWhenDoingFallbackFonts(bool bOK)
 {
     mbCacheGlyphsWhenDoingFallbackFonts = bOK;
@@ -522,9 +555,14 @@ SalLayoutGlyphsCache::CachedGlyphsKey::CachedGlyphsKey(
     o3tl::hash_combine(hashValue, artificialBold);
     o3tl::hash_combine(hashValue, layoutMode);
     o3tl::hash_combine(hashValue, digitLanguage.get());
+
+    // In case the font name is the same, but the font family differs, then the font metric won't
+    // contain that custom font family, so explicitly include the font family from the output device
+    // font.
+    o3tl::hash_combine(hashValue, outputDevice->GetFont().GetFamilyType());
 }
 
-inline bool SalLayoutGlyphsCache::CachedGlyphsKey::operator==(const CachedGlyphsKey& other) const
+bool SalLayoutGlyphsCache::CachedGlyphsKey::operator==(const CachedGlyphsKey& other) const
 {
     return hashValue == other.hashValue && index == other.index && len == other.len
            && logicWidth == other.logicWidth && mapMode == other.mapMode && rtl == other.rtl
@@ -550,6 +588,20 @@ size_t SalLayoutGlyphsCache::GlyphsCost::operator()(const SalLayoutGlyphs& glyph
         cost += impl->size() * sizeof(impl->front());
     }
     return cost;
+}
+
+OUString SalLayoutGlyphsCache::getCacheName() const { return "SalLayoutGlyphsCache"; }
+
+bool SalLayoutGlyphsCache::dropCaches()
+{
+    clear();
+    return true;
+}
+
+void SalLayoutGlyphsCache::dumpState(rtl::OStringBuffer& rState)
+{
+    rState.append("\nSalLayoutGlyphsCache:\t");
+    rState.append(static_cast<sal_Int32>(mCachedGlyphs.size()));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

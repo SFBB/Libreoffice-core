@@ -24,7 +24,6 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include "StylesPreviewWindow.hxx"
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/frame/XDispatchProvider.hpp>
 
 class StylesPreviewToolBoxControl final
     : public cppu::ImplInheritanceHelper<svt::ToolboxController, css::lang::XServiceInfo>
@@ -46,7 +45,7 @@ public:
         SAL_CALL createItemWindow(const css::uno::Reference<css::awt::XWindow>& rParent) override;
 
     // XInitialization
-    virtual void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& aArguments) override;
+    virtual void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& rArguments) override;
 
     // XComponent
     virtual void SAL_CALL dispose() override;

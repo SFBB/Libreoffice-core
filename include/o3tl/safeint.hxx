@@ -36,6 +36,7 @@ template <typename T> inline constexpr T saturating_add(T a, T b)
             return std::numeric_limits<T>::max();
         }
     } else {
+        // coverity[dead_error_line] - suppress warning for template
         if (a >= std::numeric_limits<T>::min() - b) {
             return a + b;
         } else {
@@ -69,6 +70,8 @@ typename std::enable_if<std::is_signed<T>::value, T>::type saturating_toggle_sig
         return std::numeric_limits<T>::max();
     return a * -1;
 }
+
+// TODO: reimplement using ckd_add/ckd_sub/ckd_mul from <stdckdint.h>, when C23 is part of C++
 
 #if defined(_MSC_VER)
 
@@ -211,7 +214,7 @@ make_unsigned(T value)
 template<typename T1, typename T2> constexpr std::enable_if_t<std::is_unsigned_v<T1>, T1>
 clamp_to_unsigned(T2 value) {
     if constexpr (std::is_unsigned_v<T2>) {
-        // coverity[result_independent_of_operands] - suppress warning for template
+        // coverity[dead_error_line] - suppress warning for template
         return value <= std::numeric_limits<T1>::max() ? value : std::numeric_limits<T1>::max();
     } else {
         static_assert(std::is_signed_v<T2>);
@@ -230,6 +233,91 @@ template<typename T> [[nodiscard]] inline T sanitizing_min(T a, T b)
 {
     return std::min(a, b);
 }
+
+// To sanitize in/de-crementing value where the result is known by the caller to be guaranteed to fit in
+// the source type range without over/under-flow
+[[nodiscard]] inline unsigned short sanitizing_inc(unsigned short value)
+{
+    int res = value + 1;
+    assert(res <= std::numeric_limits<unsigned short>::max() &&
+           "nValue was supposed to be incrementable without overflow");
+    return static_cast<unsigned short>(res);
+}
+
+[[nodiscard]] inline unsigned short sanitizing_dec(unsigned short value)
+{
+    int res = value - 1;
+    assert(res >= 0 &&
+           "nValue was supposed to be decrementable without underflow");
+    return static_cast<unsigned short>(res);
+}
+
+[[nodiscard]] inline short sanitizing_inc(short value)
+{
+    int res = value + 1;
+    assert(res >= std::numeric_limits<short>::min() &&
+           res <= std::numeric_limits<short>::max() &&
+           "nValue was supposed to be incrementable without overflow");
+    return static_cast<short>(res);
+}
+
+[[nodiscard]] inline short sanitizing_dec(short value)
+{
+    int res = value - 1;
+    assert(res >= std::numeric_limits<short>::min() &&
+           res <= std::numeric_limits<short>::max() &&
+           "nValue was supposed to be decrementable without underflow");
+    return static_cast<short>(res);
+}
+
+// A helper for taking care of signed/unsigned comparisons in constant bounds case
+// Should avoid Coverity warnings like "cid#1618764 Operands don't affect result"
+template <typename I, I Min = std::template numeric_limits<I>::min(),
+                      I Max = std::template numeric_limits<I>::max(),
+                      std::enable_if_t<std::is_integral_v<I> && (Min <= 0) && (Max > 0), int> = 0>
+struct ValidRange
+{
+    using SI = std::make_signed_t<I>;
+    using UI = std::make_unsigned_t<I>;
+
+    template <typename I2, std::enable_if_t<std::is_integral_v<I2>, int> = 0>
+    static constexpr bool isAbove(I2 n)
+    {
+        using UI2 = std::make_unsigned_t<I2>;
+        if constexpr (static_cast<UI2>(std::numeric_limits<I2>::max()) <= static_cast<UI>(Max))
+            return false;
+        else if constexpr (std::is_signed_v<I> == std::is_signed_v<I2>)
+            return n > Max;
+        else if constexpr (std::is_signed_v<I>) // I2 is unsigned
+            return n > static_cast<UI>(Max);
+        else // I is unsigned, I2 is signed
+            return n > 0 && static_cast<UI2>(n) > Max;
+    }
+
+    template <typename I2, std::enable_if_t<std::is_integral_v<I2>, int> = 0>
+    static constexpr bool isBelow(I2 n)
+    {
+        using SI2 = std::make_signed_t<I2>;
+        if constexpr (static_cast<SI2>(std::numeric_limits<I2>::min()) >= static_cast<SI>(Min))
+            return false; // Covers all I2 unsigned
+        else if constexpr (std::is_signed_v<I> == std::is_signed_v<I2>)
+            return n < Min;
+        else // I is unsigned, I2 is signed
+            return n < 0;
+    }
+
+    template <typename I2, std::enable_if_t<std::is_integral_v<I2>, int> = 0>
+    static constexpr bool isOutside(I2 n)
+    {
+        return isAbove(n) || isBelow(n);
+    }
+
+    template <typename I2, std::enable_if_t<std::is_integral_v<I2>, int> = 0>
+    static constexpr bool isInside(I2 n)
+    {
+        return !isOutside(n);
+    }
+};
 
 }
 

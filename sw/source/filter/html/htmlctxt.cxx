@@ -32,6 +32,7 @@
 #include <o3tl/string_view.hxx>
 
 #include <doc.hxx>
+#include <fmtanchr.hxx>
 #include <pam.hxx>
 #include <shellio.hxx>
 #include <paratr.hxx>
@@ -465,6 +466,20 @@ void SwHTMLParser::ClearContext( HTMLAttrContext *pContext )
         StartListing();
 }
 
+//static
+void SwHTMLParser::SanitizeAnchor(SfxItemSet& rFrameItemSet)
+{
+    const SwFormatAnchor& rAnch = rFrameItemSet.Get(RES_ANCHOR);
+    if (SwNode* pAnchorNode = rAnch.GetAnchorNode())
+    {
+        if (pAnchorNode->IsEndNode())
+        {
+            SAL_WARN("sw.html", "Invalid EndNode Anchor");
+            rFrameItemSet.ClearItem(RES_ANCHOR);
+        }
+    }
+}
+
 bool SwHTMLParser::DoPositioning( SfxItemSet &rItemSet,
                                   SvxCSS1PropertyInfo &rPropInfo,
                                   HTMLAttrContext *pContext )
@@ -478,7 +493,7 @@ bool SwHTMLParser::DoPositioning( SfxItemSet &rItemSet,
     // - there's a given width
     if( SwCSS1Parser::MayBePositioned( rPropInfo ) )
     {
-        SfxItemSetFixed<RES_FRMATR_BEGIN, RES_FRMATR_END-1> aFrameItemSet( m_xDoc->GetAttrPool() );
+        SfxItemSet aFrameItemSet(SfxItemSet::makeFixedSfxItemSet<RES_FRMATR_BEGIN, RES_FRMATR_END-1>(m_xDoc->GetAttrPool()));
         if( !IsNewDoc() )
             Reader::ResetFrameFormatAttrs(aFrameItemSet );
 
@@ -493,7 +508,9 @@ bool SwHTMLParser::DoPositioning( SfxItemSet &rItemSet,
                         HtmlFrameFormatFlags::Box|HtmlFrameFormatFlags::Padding|HtmlFrameFormatFlags::Background|HtmlFrameFormatFlags::Direction,
                         aFrameItemSet );
 
-        InsertFlyFrame(aFrameItemSet, pContext, rPropInfo.m_aId);
+        SanitizeAnchor(aFrameItemSet);
+
+        InsertFlyFrame(aFrameItemSet, pContext, UIName(rPropInfo.m_aId));
         pContext->SetPopStack( true );
         rPropInfo.m_aId.clear();
         bRet = true;
@@ -540,7 +557,7 @@ void SwHTMLParser::InsertAttrs( SfxItemSet &rItemSet,
         SvxAdjust::Left == rPropInfo.m_eFloat )
     {
         SwFormatDrop aDrop;
-        aDrop.GetChars() = 1;
+        aDrop.SetChars(1);
 
         m_pCSS1Parser->FillDropCap( aDrop, rItemSet );
 
@@ -575,17 +592,17 @@ void SwHTMLParser::InsertAttrs( SfxItemSet &rItemSet,
         {
         case RES_MARGIN_FIRSTLINE:
             {
-                pFirstLineItem = static_cast<const SvxFirstLineIndentItem*>(pItem);
+                pFirstLineItem = &(pItem->StaticWhichCast(RES_MARGIN_FIRSTLINE));
             }
             break;
         case RES_MARGIN_TEXTLEFT:
             {
-                pTextLeftMargin = static_cast<const SvxTextLeftMarginItem*>(pItem);
+                pTextLeftMargin = &(pItem->StaticWhichCast(RES_MARGIN_TEXTLEFT));
             }
             break;
         case RES_MARGIN_RIGHT:
             {
-                pRightMargin = static_cast<const SvxRightMarginItem*>(pItem);
+                pRightMargin = &(pItem->StaticWhichCast(RES_MARGIN_RIGHT));
             }
             break;
         }
@@ -615,10 +632,10 @@ void SwHTMLParser::InsertAttrs( SfxItemSet &rItemSet,
                 // the item (with value 0) will be added
                 if( rPropInfo.m_bLeftMargin )
                 {
-                    OSL_ENSURE( rPropInfo.m_nLeftMargin < 0 ||
-                            !pTextLeftMargin ||
-                            rPropInfo.m_nLeftMargin == pTextLeftMargin->GetTextLeft(),
-                            "left margin does not match with item" );
+                    OSL_ENSURE(rPropInfo.m_nLeftMargin < 0 || !pTextLeftMargin
+                                   || rPropInfo.m_nLeftMargin
+                                          == pTextLeftMargin->ResolveTextLeft({}),
+                               "left margin does not match with item");
                     if( rPropInfo.m_nLeftMargin < 0 &&
                         -rPropInfo.m_nLeftMargin > nOldLeft )
                         nLeft = 0;
@@ -627,10 +644,9 @@ void SwHTMLParser::InsertAttrs( SfxItemSet &rItemSet,
                 }
                 if( rPropInfo.m_bRightMargin )
                 {
-                    OSL_ENSURE( rPropInfo.m_nRightMargin < 0 ||
-                            !pRightMargin ||
-                            rPropInfo.m_nRightMargin == pRightMargin->GetRight(),
-                            "right margin does not match with item" );
+                    OSL_ENSURE(rPropInfo.m_nRightMargin < 0 || !pRightMargin
+                                   || rPropInfo.m_nRightMargin == pRightMargin->ResolveRight({}),
+                               "right margin does not match with item");
                     if( rPropInfo.m_nRightMargin < 0 &&
                         -rPropInfo.m_nRightMargin > nOldRight )
                         nRight = 0;
@@ -638,25 +654,29 @@ void SwHTMLParser::InsertAttrs( SfxItemSet &rItemSet,
                         nRight = nOldRight + static_cast< sal_uInt16 >(rPropInfo.m_nRightMargin);
                 }
                 if (rPropInfo.m_bTextIndent && pFirstLineItem)
-                    nIndent = pFirstLineItem->GetTextFirstLineOffset();
+                    nIndent = pFirstLineItem->ResolveTextFirstLineOffset({});
 
                 // Remember the value for the following paragraphs
                 pContext->SetMargins( nLeft, nRight, nIndent );
 
                 // Set the attribute on the current paragraph
-                SvxFirstLineIndentItem const firstLine(nIndent, RES_MARGIN_FIRSTLINE);
+                SvxFirstLineIndentItem firstLine(SvxIndentValue::twips(nIndent),
+                                                 RES_MARGIN_FIRSTLINE);
                 NewAttr(m_xAttrTab, &m_xAttrTab->pFirstLineIndent, firstLine);
                 EndAttr(m_xAttrTab->pFirstLineIndent, false);
-                SvxTextLeftMarginItem const leftMargin(nLeft, RES_MARGIN_TEXTLEFT);
+                SvxTextLeftMarginItem const leftMargin(SvxIndentValue::twips(nLeft),
+                                                       RES_MARGIN_TEXTLEFT);
                 NewAttr(m_xAttrTab, &m_xAttrTab->pTextLeftMargin, leftMargin);
                 EndAttr(m_xAttrTab->pTextLeftMargin, false);
-                SvxRightMarginItem const rightMargin(nRight, RES_MARGIN_RIGHT);
+                SvxRightMarginItem const rightMargin(SvxIndentValue::twips(nRight),
+                                                     RES_MARGIN_RIGHT);
                 NewAttr(m_xAttrTab, &m_xAttrTab->pRightMargin, rightMargin);
                 EndAttr(m_xAttrTab->pRightMargin, false);
             }
 #endif
 
-    for (const SfxPoolItem* pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem())
+    SfxItemIter aIter2(rItemSet);
+    for (const SfxPoolItem* pItem = aIter2.GetCurItem(); pItem; pItem = aIter2.NextItem())
     {
         HTMLAttr **ppAttr = nullptr;
 
@@ -668,7 +688,7 @@ void SwHTMLParser::InsertAttrs( SfxItemSet &rItemSet,
             {
                 sal_uInt16 nUpper = 0, nLower = 0;
                 GetULSpaceFromContext( nUpper, nLower );
-                SvxULSpaceItem aULSpace( *static_cast<const SvxULSpaceItem *>(pItem) );
+                SvxULSpaceItem aULSpace( pItem->StaticWhichCast(RES_UL_SPACE) );
                 if( !rPropInfo.m_bTopMargin )
                     aULSpace.SetUpper( nUpper );
                 if( !rPropInfo.m_bBottomMargin )
@@ -689,17 +709,17 @@ void SwHTMLParser::InsertAttrs( SfxItemSet &rItemSet,
             break;
         case RES_CHRATR_FONTSIZE:
             // don't set attributes with a % property
-            if( static_cast<const SvxFontHeightItem *>(pItem)->GetProp() == 100 )
+            if( pItem->StaticWhichCast(RES_CHRATR_FONTSIZE).GetProp() == 100 )
                 ppAttr = &m_xAttrTab->pFontHeight;
             break;
         case RES_CHRATR_CJK_FONTSIZE:
             // don't set attributes with a % property
-            if( static_cast<const SvxFontHeightItem *>(pItem)->GetProp() == 100 )
+            if( pItem->StaticWhichCast(RES_CHRATR_CJK_FONTSIZE).GetProp() == 100 )
                 ppAttr = &m_xAttrTab->pFontHeightCJK;
             break;
         case RES_CHRATR_CTL_FONTSIZE:
             // don't set attributes with a % property
-            if( static_cast<const SvxFontHeightItem *>(pItem)->GetProp() == 100 )
+            if( pItem->StaticWhichCast(RES_CHRATR_CTL_FONTSIZE).GetProp() == 100 )
                 ppAttr = &m_xAttrTab->pFontHeightCTL;
             break;
 
@@ -707,7 +727,7 @@ void SwHTMLParser::InsertAttrs( SfxItemSet &rItemSet,
             if( bCharLvl )
             {
                 // Convert the Frame attribute to a Char attribute (if needed)
-                SvxBrushItem aBrushItem( *static_cast<const SvxBrushItem *>(pItem) );
+                SvxBrushItem aBrushItem( pItem->StaticWhichCast(RES_BACKGROUND) );
                 aBrushItem.SetWhich( RES_CHRATR_BACKGROUND );
 
                 // Set the attribute
@@ -727,7 +747,7 @@ void SwHTMLParser::InsertAttrs( SfxItemSet &rItemSet,
         case RES_BOX:
             if( bCharLvl )
             {
-                SvxBoxItem aBoxItem( *static_cast<const SvxBoxItem *>(pItem) );
+                SvxBoxItem aBoxItem( pItem->StaticWhichCast(RES_BOX) );
                 aBoxItem.SetWhich( RES_CHRATR_BOX );
 
                 NewAttr(m_xAttrTab, &m_xAttrTab->pCharBox, aBoxItem);
@@ -798,8 +818,8 @@ void SwHTMLParser::SplitPREListingXMP( HTMLAttrContext *pCntxt )
 SfxItemSet *HTMLAttrContext::GetFrameItemSet( SwDoc *pCreateDoc )
 {
     if( !m_pFrameItemSet && pCreateDoc )
-        m_pFrameItemSet = std::make_unique<SfxItemSetFixed<RES_FRMATR_BEGIN, RES_FRMATR_END-1>>
-                            ( pCreateDoc->GetAttrPool() );
+        m_pFrameItemSet = std::make_unique<SfxItemSet>(SfxItemSet::makeFixedSfxItemSet<
+                            RES_FRMATR_BEGIN, RES_FRMATR_END-1>(pCreateDoc->GetAttrPool()));
     return m_pFrameItemSet.get();
 }
 

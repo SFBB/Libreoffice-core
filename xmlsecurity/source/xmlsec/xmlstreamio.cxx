@@ -18,7 +18,8 @@
  */
 
 #include <sal/config.h>
-#include <xmlsec-wrapper.h>
+
+#include <xmlsec/io.h>
 
 /*
  * Implementation of the I/O interfaces based on stream and URI binding

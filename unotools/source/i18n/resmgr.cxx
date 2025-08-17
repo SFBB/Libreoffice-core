@@ -70,19 +70,6 @@
 
 namespace
 {
-    OUString createFromUtf8(const char* data, size_t size)
-    {
-        OUString aTarget;
-        bool bSuccess = rtl_convertStringToUString(&aTarget.pData,
-                                                   data,
-                                                   size,
-                                                   RTL_TEXTENCODING_UTF8,
-                                                   RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR|RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR|RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR);
-        (void) bSuccess;
-        assert(bSuccess);
-        return aTarget;
-    }
-
     OString genKeyId(const OString& rGenerator)
     {
         sal_uInt32 nCRC = rtl_crc32(0, rGenerator.getStr(), rGenerator.getLength());
@@ -141,7 +128,7 @@ namespace Translate
 #if defined(ANDROID) || defined(EMSCRIPTEN)
         OString sPath(OString(lo_get_app_data_dir()) + "/program/resource");
 #else
-        OUString uri("$BRAND_BASE_DIR/$BRAND_SHARE_RESOURCE_SUBDIR/");
+        OUString uri(u"$BRAND_BASE_DIR/$BRAND_SHARE_RESOURCE_SUBDIR/"_ustr);
         rtl::Bootstrap::expandMacros(uri);
         OUString path;
         osl::File::getSystemPathFromFileURL(uri, path);
@@ -213,15 +200,17 @@ namespace Translate
         assert(!strchr(sContextAndId.getId(), '\004') && "should be using nget, not get");
 
         //if it's a key id locale, generate it here
-        if (std::use_facet<boost::locale::info>(loc).language() == "qtz")
-        {
-            OString sKeyId(genKeyId(OString::Concat(sContextAndId.mpContext) + "|" + std::string_view(sContextAndId.getId())));
-            return OUString::fromUtf8(sKeyId) + u"\u2016" + createFromUtf8(sContextAndId.getId(), strlen(sContextAndId.getId()));
+        if (std::has_facet<boost::locale::info>(loc)) {
+            if (std::use_facet<boost::locale::info>(loc).language() == "qtz")
+            {
+                OString sKeyId(genKeyId(OString::Concat(sContextAndId.mpContext) + "|" + std::string_view(sContextAndId.getId())));
+                return OUString::fromUtf8(sKeyId) + u"\u2016" + OUString::fromUtf8(sContextAndId.getId());
+            }
         }
 
         //otherwise translate it
         const std::string ret = boost::locale::pgettext(sContextAndId.mpContext, sContextAndId.getId(), loc);
-        OUString result(ExpandVariables(createFromUtf8(ret.data(), ret.size())));
+        OUString result(ExpandVariables(OUString::fromUtf8(ret.data())));
 
         if (comphelper::LibreOfficeKit::isActive())
         {
@@ -233,6 +222,13 @@ namespace Translate
         return result;
     }
 
+    OUString getLanguage(const std::locale& loc)
+    {
+        std::string lang = std::use_facet<boost::locale::info>(loc).name(); // en_US.UTF-8
+        lang = lang.substr(0, lang.find('.')); // en_US
+        return OUString::fromUtf8(lang.data());
+    }
+
     OUString nget(TranslateNId aContextSingularPlural, int n, const std::locale &loc)
     {
         //if it's a key id locale, generate it here
@@ -240,12 +236,12 @@ namespace Translate
         {
             OString sKeyId(genKeyId(OString::Concat(aContextSingularPlural.mpContext) + "|" + aContextSingularPlural.mpSingular));
             const char* pForm = n == 0 ? aContextSingularPlural.mpSingular : aContextSingularPlural.mpPlural;
-            return OUString::fromUtf8(sKeyId) + u"\u2016" + createFromUtf8(pForm, strlen(pForm));
+            return OUString::fromUtf8(sKeyId) + u"\u2016" + OUString::fromUtf8(pForm);
         }
 
         //otherwise translate it
         const std::string ret = boost::locale::npgettext(aContextSingularPlural.mpContext, aContextSingularPlural.mpSingular, aContextSingularPlural.mpPlural, n, loc);
-        OUString result(ExpandVariables(createFromUtf8(ret.data(), ret.size())));
+        OUString result(ExpandVariables(OUString::fromUtf8(ret.data())));
 
         if (comphelper::LibreOfficeKit::isActive())
         {

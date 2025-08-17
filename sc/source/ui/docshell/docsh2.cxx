@@ -24,7 +24,7 @@
 #include <editeng/forbiddencharacterstable.hxx>
 #include <orcusfilters.hxx>
 #include <config_folders.h>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <comphelper/processfactory.hxx>
 #include <o3tl/unit_conversion.hxx>
 
@@ -61,11 +61,11 @@ bool ScDocShell::InitNew( const uno::Reference < embed::XStorage >& xStor )
     if (ScStyleSheetPool* pStyleSheetPool = m_pDocument->GetStyleSheetPool())
     {
         pStyleSheetPool->CreateStandardStyles();
-        m_pDocument->UpdStlShtPtrsFrmNms();
+        m_pDocument->getCellAttributeHelper().UpdateAllStyleSheets(*m_pDocument);
 
         /* Create styles that are imported through Orcus */
 
-        OUString aURL("$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/calc/styles.xml");
+        OUString aURL(u"$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/calc/styles.xml"_ustr);
         rtl::Bootstrap::expandMacros(aURL);
 
         OUString aPath;
@@ -111,13 +111,13 @@ void ScDocShell::InitItems()
         // Other modifications after creation of the DrawLayer
         pDrawLayer->SetNotifyUndoActionHdl( std::bind( &ScDocFunc::NotifyDrawUndo, m_pDocFunc.get(), std::placeholders::_1 ) );
     }
-    else if (!utl::ConfigManager::IsFuzzing())
+    else if (!comphelper::IsFuzzing())
     {
         //  always use global color table instead of local copy
         PutItem( SvxColorListItem( XColorList::GetStdColorList(), SID_COLOR_TABLE ) );
     }
 
-    if (utl::ConfigManager::IsFuzzing() ||
+    if (comphelper::IsFuzzing() ||
         (m_pDocument->GetForbiddenCharacters() && m_pDocument->IsValidAsianCompression() && m_pDocument->IsValidAsianKerning()))
         return;
 
@@ -127,7 +127,7 @@ void ScDocShell::InitItems()
     if (!m_pDocument->GetForbiddenCharacters())
     {
         // set forbidden characters if necessary
-        const uno::Sequence<lang::Locale> aLocales = aAsian.GetStartEndCharLocales();
+        const uno::Sequence<lang::Locale> aLocales = SvxAsianConfig::GetStartEndCharLocales();
         if (aLocales.hasElements())
         {
             std::shared_ptr<SvxForbiddenCharactersTable> xForbiddenTable(
@@ -136,7 +136,7 @@ void ScDocShell::InitItems()
             for (const lang::Locale& rLocale : aLocales)
             {
                 i18n::ForbiddenCharacters aForbidden;
-                aAsian.GetStartEndChars( rLocale, aForbidden.beginLine, aForbidden.endLine );
+                SvxAsianConfig::GetStartEndChars( rLocale, aForbidden.beginLine, aForbidden.endLine );
                 LanguageType eLang = LanguageTag::convertToLanguageType(rLocale);
 
                 xForbiddenTable->SetForbiddenCharacters( eLang, aForbidden );
@@ -149,13 +149,13 @@ void ScDocShell::InitItems()
     if ( !m_pDocument->IsValidAsianCompression() )
     {
         // set compression mode from configuration if not already set (e.g. XML import)
-        m_pDocument->SetAsianCompression( aAsian.GetCharDistanceCompression() );
+        m_pDocument->SetAsianCompression( SvxAsianConfig::GetCharDistanceCompression() );
     }
 
     if ( !m_pDocument->IsValidAsianKerning() )
     {
         // set asian punctuation kerning from configuration if not already set (e.g. XML import)
-        m_pDocument->SetAsianKerning( !aAsian.IsKerningWesternTextOnly() );    // reversed
+        m_pDocument->SetAsianKerning( !SvxAsianConfig::IsKerningWesternTextOnly() );    // reversed
     }
 }
 

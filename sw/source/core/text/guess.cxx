@@ -27,6 +27,7 @@
 #include <com/sun/star/i18n/BreakType.hpp>
 #include <com/sun/star/i18n/WordType.hpp>
 #include <com/sun/star/i18n/XBreakIterator.hpp>
+#include <com/sun/star/text/ParagraphHyphenationKeepType.hpp>
 #include <unotools/charclass.hxx>
 #include <svl/urihelper.hxx>
 #include "porfld.hxx"
@@ -44,13 +45,120 @@ namespace{
 
 bool IsBlank(sal_Unicode ch) { return ch == CH_BLANK || ch == CH_FULL_BLANK || ch == CH_NB_SPACE || ch == CH_SIX_PER_EM; }
 
+// Used when spaces should not be counted in layout
+// Returns adjusted cut position
+TextFrameIndex AdjustCutPos(TextFrameIndex cutPos, TextFrameIndex& rBreakPos,
+                            const SwTextFormatInfo& rInf)
+{
+    assert(cutPos >= rInf.GetIdx());
+    TextFrameIndex x = rBreakPos = cutPos;
+
+    // we step back until a non blank character has been found
+    // or there is only one more character left
+    while (x && x > rInf.GetIdx() + TextFrameIndex(1) && IsBlank(rInf.GetChar(--x)))
+        --rBreakPos;
+
+    while (IsBlank(rInf.GetChar(cutPos)))
+        ++cutPos;
+
+    return cutPos;
+}
+
+bool hasBlanksInLine(const SwTextFormatInfo& rInf, TextFrameIndex end)
+{
+    for (auto x = rInf.GetLineStart(); x < end; ++x)
+        if (IsBlank(rInf.GetChar(x)))
+            return true;
+    return false;
+}
+
+}
+
+// Called for the last text run in a line; if it is block-adjusted, or center / right-adjusted
+// with Word compatibility option set, and it has trailing spaces, then the function sets the
+// values, and returns 'false' value that SwTextGuess::Guess should return, to create a
+// trailing SwHolePortion.
+bool SwTextGuess::maybeAdjustPositionsForBlockAdjust(tools::Long& rMaxSizeDiff,
+                                                     SwTwips& rExtraAscent, SwTwips& rExtraDescent,
+                                                     const SwTextFormatInfo& rInf, const SwScriptInfo& rSI,
+                                                     sal_uInt16 maxComp,
+                                                     std::optional<SwLinePortionLayoutContext> nLayoutContext)
+{
+    const auto& adjObj = rInf.GetTextFrame()->GetTextNodeForParaProps()->GetSwAttrSet().GetAdjust();
+    const SvxAdjust adjust = adjObj.GetAdjust();
+    if (adjust == SvxAdjust::Block)
+    {
+        if (rInf.DontBlockJustify())
+            return true; // See tdf#106234
+    }
+    else
+    {
+        // tdf#104668 space chars at the end should be cut if the compatibility option is enabled
+        if (!rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
+                DocumentSettingId::MS_WORD_COMP_TRAILING_BLANKS))
+            return true;
+        // for LTR mode only
+        if (rInf.GetTextFrame()->IsRightToLeft())
+            return true;
+    }
+    if (auto ch = rInf.GetChar(m_nCutPos); !ch) // end of paragraph - last line
+    {
+        if (adjust == SvxAdjust::Block)
+        {
+            // Check adjustment for last line
+            switch (adjObj.GetLastBlock())
+            {
+                default:
+                    return true;
+                case SvxAdjust::Center: // tdf#104668
+                    if (!rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
+                            DocumentSettingId::MS_WORD_COMP_TRAILING_BLANKS))
+                        return true;
+                    break;
+                case SvxAdjust::Block:
+                    break; // OK - last line uses block-adjustment
+            }
+        }
+    }
+    else if (ch != CH_BREAK && !IsBlank(ch))
+        return true;
+
+    // tdf#57187: block-adjusted line shorter than full width, terminated by manual
+    // line break, must not use trailing spaces for adjustment
+    TextFrameIndex breakPos;
+    TextFrameIndex newCutPos = AdjustCutPos(m_nCutPos, breakPos, rInf);
+
+    if (auto ch = rInf.GetChar(newCutPos); ch && ch != CH_BREAK)
+        return true; // next is neither line break nor paragraph end
+    if (breakPos == newCutPos)
+        return true; // no trailing whitespace
+    if (adjust == SvxAdjust::Block && adjObj.GetOneWord() != SvxAdjust::Block
+        && !hasBlanksInLine(rInf, breakPos))
+        return true; // line can't block-adjust
+
+    // Some trailing spaces actually found, and in case of block adjustment, the text portion
+    // itself has spaces to be able to block-adjust, or single word is allowed to adjust
+    m_nBreakStart = m_nCutPos = newCutPos;
+    m_nBreakPos = breakPos;
+    // throw away old m_xHyphWord because the current break pos is now between words
+    m_xHyphWord = nullptr;
+
+    rInf.GetTextSize(&rSI, rInf.GetIdx(), breakPos - rInf.GetIdx(), nLayoutContext, maxComp,
+                     m_nBreakWidth, rMaxSizeDiff, rExtraAscent, rExtraDescent,
+                     rInf.GetCachedVclData().get());
+    rInf.GetTextSize(&rSI, breakPos, m_nBreakStart - breakPos, nLayoutContext, maxComp,
+                     m_nExtraBlankWidth, rMaxSizeDiff, rExtraAscent, rExtraDescent,
+                     rInf.GetCachedVclData().get());
+
+    return false; // require SwHolePortion creation
 }
 
 // provides information for line break calculation
 // returns true if no line break has to be performed
 // otherwise possible break or hyphenation position is determined
 bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
-                            const sal_uInt16 nPorHeight, sal_Int32 nSpacesInLine )
+                            const sal_uInt16 nPorHeight, sal_Int32 nSpacesInLine,
+                            sal_uInt16 nPropWordSpacing, sal_Int16 nSpaceWidth )
 {
     m_nCutPos = rInf.GetIdx();
 
@@ -63,61 +171,36 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
 
     OSL_ENSURE( nPorHeight, "+SwTextGuess::Guess: no height" );
 
-    sal_uInt16 nMaxSizeDiff;
+    tools::Long nMaxSizeDiff;
+    SwTwips nExtraAscent = 0;
+    SwTwips nExtraDescent = 0;
 
     const SwScriptInfo& rSI = rInf.GetParaPortion()->GetScriptInfo();
 
-    sal_uInt16 nMaxComp = ( SwFontScript::CJK == rInf.GetFont()->GetActual() ) &&
-                        rSI.CountCompChg() &&
-                        ! rInf.IsMulti() &&
-                        ! rPor.InFieldGrp() &&
-                        ! rPor.IsDropPortion() ?
-                        10000 :
-                            0 ;
+    const sal_uInt16 nMaxComp = rPor.GetMaxComp(rInf);
 
     SwTwips nLineWidth = rInf.GetLineWidth();
     TextFrameIndex nMaxLen = TextFrameIndex(rInf.GetText().getLength()) - rInf.GetIdx();
 
-    const SvxAdjust& rAdjust = rInf.GetTextFrame()->GetTextNodeForParaProps()->GetSwAttrSet().GetAdjust().GetAdjust();
+    SvxAdjustItem aAdjustItem = rInf.GetTextFrame()->GetTextNodeForParaProps()->GetSwAttrSet().GetAdjust();
+    const SvxAdjust aAdjust = aAdjustItem.GetAdjust();
+    // Maximum word spacing allows bigger spaces to limit hyphenation,
+    // implement it based on the hyphenation zone: calculate a hyphenation zone
+    // from maximum word spacing and space count of the line
+    SwTwips nWordSpacingMaximumZone = 0;
 
-    // allow up to 20% shrinking of the spaces
     if ( nSpacesInLine )
     {
-        static constexpr OUStringLiteral STR_BLANK = u" ";
-        sal_Int16 nSpaceWidth = rInf.GetTextSize(STR_BLANK).Width();
-        nLineWidth += nSpacesInLine * (nSpaceWidth/0.8 - nSpaceWidth);
-    }
-
-    // tdf#104668 space chars at the end should be cut if the compatibility option is enabled
-    // for LTR mode only
-    if ( !rInf.GetTextFrame()->IsRightToLeft() )
-    {
-        if (rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
-                    DocumentSettingId::MS_WORD_COMP_TRAILING_BLANKS))
+        SwTwips nExtraSpace = nSpacesInLine * nSpaceWidth/10.0 * (1.0 - nPropWordSpacing / 100.0);
+        nLineWidth += nExtraSpace;
+        // convert maximum word spacing to hyphenation zone, if defined
+        if ( nPropWordSpacing == aAdjustItem.GetPropWordSpacing() )
         {
-            if ( rAdjust == SvxAdjust::Right || rAdjust == SvxAdjust::Center )
-            {
-                TextFrameIndex nSpaceCnt(0);
-                for (sal_Int32 i = rInf.GetText().getLength() - 1;
-                     sal_Int32(rInf.GetIdx()) <= i; --i)
-                {
-                    sal_Unicode cChar = rInf.GetText()[i];
-                    if ( cChar != CH_BLANK && cChar != CH_FULL_BLANK && cChar != CH_SIX_PER_EM )
-                        break;
-                    ++nSpaceCnt;
-                }
-                TextFrameIndex nCharsCnt = nMaxLen - nSpaceCnt;
-                if ( nSpaceCnt && nCharsCnt < rPor.GetLen() )
-                {
-                    if (nSpaceCnt)
-                        rInf.GetTextSize( &rSI, rInf.GetIdx() + nCharsCnt, nSpaceCnt,
-                                          nMaxComp, m_nExtraBlankWidth, nMaxSizeDiff );
-                    nMaxLen = nCharsCnt;
-                    if ( !nMaxLen )
-                        return true;
-                }
-            }
+            SwTwips nMaxDif = aAdjustItem.GetPropWordSpacingMaximum() - nPropWordSpacing;
+            nWordSpacingMaximumZone = nSpacesInLine * nSpaceWidth/10.0 * nMaxDif / 100.0;
         }
+
+        rInf.SetExtraSpace(nExtraSpace);
     }
 
     if ( rInf.GetLen() < nMaxLen )
@@ -136,7 +219,7 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
         {
             SwTextGridItem const*const pGrid(
                     GetGridItem(rInf.GetTextFrame()->FindPageFrame()));
-            bAddItalic = !pGrid || GRID_LINES_CHARS != pGrid->GetGridType();
+            bAddItalic = !pGrid || SwTextGrid::LinesAndChars != pGrid->GetGridType();
         }
 
         // do not add extra italic value for an isolated blank:
@@ -176,31 +259,57 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
          ( bUnbreakableNumberings && rPor.IsNumberPortion() ) )
     {
         // call GetTextSize with maximum compression (for kanas)
-        rInf.GetTextSize( &rSI, rInf.GetIdx(), nMaxLen,
-                         nMaxComp, m_nBreakWidth, nMaxSizeDiff );
+        rInf.GetTextSize(&rSI, rInf.GetIdx(), nMaxLen, rInf.GetLayoutContext(), nMaxComp,
+                         m_nBreakWidth, nMaxSizeDiff, nExtraAscent, nExtraDescent);
 
         if ( ( m_nBreakWidth <= nLineWidth ) || ( bUnbreakableNumberings && rPor.IsNumberPortion() ) )
         {
             // portion fits to line
             m_nCutPos = rInf.GetIdx() + nMaxLen;
+            bool bRet = rPor.InFieldGrp()
+                        || maybeAdjustPositionsForBlockAdjust(
+                            nMaxSizeDiff, nExtraAscent, nExtraDescent, rInf,
+                            rSI, nMaxComp, rInf.GetLayoutContext());
             if( nItalic &&
                 (m_nCutPos >= TextFrameIndex(rInf.GetText().getLength()) ||
                   // #i48035# Needed for CalcFitToContent
                   // if first line ends with a manual line break
                   rInf.GetText()[sal_Int32(m_nCutPos)] == CH_BREAK))
-                m_nBreakWidth = m_nBreakWidth + nItalic;
+                m_nBreakWidth += nItalic;
 
             // save maximum width for later use
             if ( nMaxSizeDiff )
                 rInf.SetMaxWidthDiff( &rPor, nMaxSizeDiff );
 
+            rInf.SetExtraAscent(nExtraAscent);
+            rInf.SetExtraDescent(nExtraDescent);
+
             m_nBreakWidth += nLeftRightBorderSpace;
 
-            return true;
+            return bRet;
         }
     }
 
-    bool bHyph = rInf.IsHyphenate() && !rInf.IsHyphForbud();
+    bool bHyph = rInf.IsHyphenate() && !rInf.IsHyphForbud() &&
+            // disable hyphenation at minimum word spacing
+            // (and at weighted word spacing between minimum and desired word spacing)
+            !( nPropWordSpacing < aAdjustItem.GetPropWordSpacing() );
+
+    // disable hyphenation according to hyphenation-keep and hyphenation-keep-type,
+    // or modify hyphenation according to hyphenation-zone-column/page/spread (see widorp.cxx)
+    sal_Int16 nEndZone = 0;
+    if ( bHyph &&
+          rInf.GetTextFrame()->GetNoHyphOffset() != TextFrameIndex(COMPLETE_STRING) && // ) // &&
+          // when there is a portion in the last line, rInf.GetIdx() > GetNoHyphOffset()
+          rInf.GetTextFrame()->GetNoHyphOffset() <= rInf.GetIdx() )
+    {
+          nEndZone = rInf.GetTextFrame()->GetNoHyphEndZone();
+          // disable hyphenation in the last line, when hyphenation-keep-line is enabled
+          // and hyphenation-keep, too (i.e. when end zone is not defined),
+          // also when the end zone is bigger, than the line width
+          if ( nEndZone < 0 || nEndZone >= nLineWidth )
+              bHyph = false;
+    }
     TextFrameIndex nHyphPos(0);
 
     // nCutPos is the first character not fitting to the current line
@@ -212,33 +321,80 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
         // or 0, if the whole line in the hyphenation zone,
         // or -1, if no hyphenation zone defined (i.e. it is 0)
         sal_Int32 nHyphZone = -1;
+        sal_Int32 nParaZone = -1;
         const css::beans::PropertyValues & rHyphValues = rInf.GetHyphValues();
-        assert( rHyphValues.getLength() > 5 && rHyphValues[5].Name == UPN_HYPH_ZONE );
+        assert( rHyphValues.getLength() > 10 && rHyphValues[5].Name == UPN_HYPH_ZONE && rHyphValues[10].Name == UPN_HYPH_ZONE_ALWAYS );
         // hyphenation zone (distance from the line end in twips)
-        sal_uInt16 nTextHyphenZone;
-        if ( rHyphValues[5].Value >>= nTextHyphenZone )
+        sal_Int16 nTextHyphenZone = 0;
+        sal_Int16 nTextHyphenZoneAlways = 0;
+        rHyphValues[5].Value >>= nTextHyphenZone;
+
+        // maximum word spacing can result bigger hyphenation zone,
+        // if there are enough spaces in the line: apply that
+        if ( nWordSpacingMaximumZone > nTextHyphenZone )
+            nTextHyphenZone = nWordSpacingMaximumZone;
+
+        rHyphValues[10].Value >>= nTextHyphenZoneAlways;
+        if ( nTextHyphenZone || nTextHyphenZoneAlways || nEndZone )
+        {
             nHyphZone = nTextHyphenZone >= nLineWidth
                 ? 0
-                : sal_Int32(rInf.GetTextBreak( nLineWidth - nTextHyphenZone,
+                : sal_Int32(rInf.GetTextBreak( nLineWidth - (nEndZone ? nEndZone : nTextHyphenZone),
                                         nMaxLen, nMaxComp, rInf.GetCachedVclData().get() ));
-
+        }
         m_nCutPos = rInf.GetTextBreak( nLineWidth, nMaxLen, nMaxComp, nHyphPos, rInf.GetCachedVclData().get() );
 
-        // don't try to hyphenate in the hyphenation zone
-        if ( nHyphZone != -1 && TextFrameIndex(COMPLETE_STRING) != m_nCutPos )
+        if ( !nEndZone && nTextHyphenZoneAlways &&
+               // if paragraph end zone is not different from the hyphenation zone, skip its handling
+               nTextHyphenZoneAlways != nTextHyphenZone &&
+               // end of the paragraph
+               rInf.GetText().getLength() - sal_Int32(nHyphZone) <
+               sal_Int32(m_nCutPos) - sal_Int32(rInf.GetLineStart() ) )
+        {
+            nParaZone = nTextHyphenZoneAlways >= nLineWidth
+                ? 0
+                : sal_Int32(rInf.GetTextBreak( nLineWidth - nTextHyphenZoneAlways,
+                                        nMaxLen, nMaxComp, rInf.GetCachedVclData().get() ));
+        }
+
+        // don't try to hyphenate in the hyphenation zone or in the paragraph end zone
+        // maximum end zone is the lower non-negative text break position
+        // (-1 means that no hyphenation zone is defined)
+        sal_Int32 nMaxZone = nParaZone > -1 && nParaZone < nHyphZone
+                ? nParaZone
+                : nHyphZone;
+        if ( nMaxZone != -1 && TextFrameIndex(COMPLETE_STRING) != m_nCutPos )
         {
             sal_Int32 nZonePos = sal_Int32(m_nCutPos);
-            // disable hyphenation, if there is a space within the hyphenation zone
+            // disable hyphenation, if there is a space within the hyphenation or end zones
             // Note: for better interoperability, not fitting space character at
             // rInf.GetIdx()[nHyphZone] always disables the hyphenation, don't need to calculate
             // with its fitting part. Moreover, do not check double or more spaces there, they
             // are accepted outside of the hyphenation zone, too.
-            for (; sal_Int32(rInf.GetIdx()) <= nZonePos && nHyphZone <= nZonePos; --nZonePos )
+            for (; sal_Int32(rInf.GetLineStart()) <= nZonePos && nMaxZone <= nZonePos; --nZonePos )
             {
                 sal_Unicode cChar = rInf.GetText()[nZonePos];
                 if ( cChar == CH_BLANK || cChar == CH_FULL_BLANK || cChar == CH_SIX_PER_EM )
                 {
-                    bHyph = false;
+                    // no column/page/spread/end zone (!nEndZone),
+                    // but is it good for a paragraph end zone?
+                    if ( nParaZone != -1 && nParaZone <= nZonePos &&
+                        // still end of the paragraph, i.e. still more characters in the original
+                        // last full line, then in the planned last paragraph line
+                        // FIXME: guarantee, that last not full line won't become a full line
+                        rInf.GetText().getLength() - sal_Int32(nZonePos) <
+                            sal_Int32(m_nCutPos) - sal_Int32(rInf.GetLineStart() ) )
+                    {
+                        bHyph = false;
+                    }
+                    // otherwise disable hyphenation, if there is a space in the hyphenation zone
+                    else if ( nHyphZone != 1 && nHyphZone <= nZonePos )
+                    {
+                        bHyph = false;
+                    }
+                    // set applied end zone
+                    if ( !bHyph && nEndZone )
+                        rInf.GetTextFrame()->SetNoHyphOffset(TextFrameIndex(COMPLETE_STRING));
                 }
             }
         }
@@ -275,11 +431,29 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
         // search start of the last word, if needed
         if ( bHyph )
         {
-            // nLastWord is the space character before the last word
+            // nLastWord is the space character before the last word of the line
             sal_Int32 nLastWord = rInf.GetText().getLength() - 1;
-            bool bHyphenationNoLastWord = false;
+            bool bDoNotHyphenateLastLine = false; // don't hyphenate last full line of the paragraph
+            bool bHyphenationNoLastWord = false;  // do not hyphenate the last word of the paragraph
             assert( rHyphValues.getLength() > 3 && rHyphValues[3].Name == UPN_HYPH_NO_LAST_WORD );
-            if ( rHyphValues[3].Value >>= bHyphenationNoLastWord )
+            assert( rHyphValues.getLength() > 6 && rHyphValues[6].Name == UPN_HYPH_KEEP_TYPE );
+            assert( rHyphValues.getLength() > 8 && rHyphValues[8].Name == UPN_HYPH_KEEP );
+            rHyphValues[3].Value >>= bHyphenationNoLastWord;
+            rHyphValues[8].Value >>= bDoNotHyphenateLastLine;
+            if ( bDoNotHyphenateLastLine )
+            {
+                sal_Int16 nKeepType = css::text::ParagraphHyphenationKeepType::COLUMN;
+                rHyphValues[6].Value >>= nKeepType;
+                if ( nKeepType == css::text::ParagraphHyphenationKeepType::ALWAYS )
+                {
+                    if ( TextFrameIndex(COMPLETE_STRING) != m_nCutPos )
+                        nLastWord = sal_Int32(m_nCutPos);
+                }
+                else
+                    bDoNotHyphenateLastLine = false;
+            }
+
+            if ( bHyphenationNoLastWord || bDoNotHyphenateLastLine )
             {
                 // skip spaces after the last word
                 bool bCutBlank = false;
@@ -293,14 +467,26 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
                 }
             }
 
-            // don't hyphenate the last word of the paragraph
-            if ( bHyphenationNoLastWord && sal_Int32(m_nCutPos) > nLastWord &&
+            // don't hyphenate the last word of the paragraph line
+            if ( ( bHyphenationNoLastWord || bDoNotHyphenateLastLine ) &&
+                            sal_Int32(m_nCutPos) > nLastWord &&
                             TextFrameIndex(COMPLETE_STRING) != m_nCutPos &&
                             // if the last word is multiple line long, e.g. an URL,
                             // apply this only if the space before the word is there
                             // in the actual line, i.e. start the long word in a new
                             // line, but still allows to break its last parts
-                            sal_Int32(rInf.GetIdx()) < nLastWord )
+                            sal_Int32(rInf.GetLineStart()) < nLastWord &&
+                            // if the case of bDoNotHyphenateLastLine == true, skip hyphenation
+                            // only if the character length of the very last line of the paragraph
+                            // would be still less, than the length of the recent last but one line
+                            // with hyphenation, i.e. don't skip hyphenation, if the last paragraph
+                            // line is already near full.
+                            ( !bDoNotHyphenateLastLine ||
+                                  // FIXME: character count is not fail-safe: remaining characters
+                                  // can exceed the line, resulting two last full paragraph lines
+                                  // with disabled hyphenation.
+                                  rInf.GetText().getLength() - sal_Int32(nLastWord) <
+                                      sal_Int32(m_nCutPos) - sal_Int32(rInf.GetLineStart() ) ) )
             {
                 m_nCutPos = TextFrameIndex(nLastWord);
             }
@@ -316,9 +502,9 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
 #if OSL_DEBUG_LEVEL > 1
         if ( TextFrameIndex(COMPLETE_STRING) != m_nCutPos )
         {
-            sal_uInt16 nMinSize;
-            rInf.GetTextSize( &rSI, rInf.GetIdx(), m_nCutPos - rInf.GetIdx(),
-                             nMaxComp, nMinSize, nMaxSizeDiff );
+            SwTwips nMinSize;
+            rInf.GetTextSize(&rSI, rInf.GetIdx(), m_nCutPos - rInf.GetIdx(), std::nullopt, nMaxComp,
+                             nMinSize, nMaxSizeDiff, nExtraAscent, nExtraDescent);
             OSL_ENSURE( nMinSize <= nLineWidth, "What a Guess!!!" );
         }
 #endif
@@ -328,23 +514,31 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
     {
         // second check if everything fits to line
         m_nCutPos = m_nBreakPos = rInf.GetIdx() + nMaxLen - TextFrameIndex(1);
-        rInf.GetTextSize( &rSI, rInf.GetIdx(), nMaxLen, nMaxComp,
-                         m_nBreakWidth, nMaxSizeDiff );
+        rInf.GetTextSize(&rSI, rInf.GetIdx(), nMaxLen, rInf.GetLayoutContext(), nMaxComp,
+                         m_nBreakWidth, nMaxSizeDiff, nExtraAscent, nExtraDescent);
 
         // The following comparison should always give true, otherwise
         // there likely has been a pixel rounding error in GetTextBreak
         if ( m_nBreakWidth <= nLineWidth )
         {
+            bool bRet = rPor.InFieldGrp()
+                        || maybeAdjustPositionsForBlockAdjust(
+                            nMaxSizeDiff, nExtraAscent, nExtraDescent, rInf,
+                            rSI, nMaxComp, rInf.GetLayoutContext());
+
             if (nItalic && (m_nBreakPos + TextFrameIndex(1)) >= TextFrameIndex(rInf.GetText().getLength()))
-                m_nBreakWidth = m_nBreakWidth + nItalic;
+                m_nBreakWidth += nItalic;
 
             // save maximum width for later use
             if ( nMaxSizeDiff )
                 rInf.SetMaxWidthDiff( &rPor, nMaxSizeDiff );
 
+            rInf.SetExtraAscent(nExtraAscent);
+            rInf.SetExtraDescent(nExtraDescent);
+
             m_nBreakWidth += nLeftRightBorderSpace;
 
-            return true;
+            return bRet;
         }
     }
 
@@ -359,36 +553,13 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
 
     TextFrameIndex nPorLen(0);
     // do not call the break iterator nCutPos is a blank
-    sal_Unicode cCutChar = m_nCutPos < TextFrameIndex(rInf.GetText().getLength())
-        ? rInf.GetText()[sal_Int32(m_nCutPos)]
-        : 0;
+    sal_Unicode cCutChar = rInf.GetChar(m_nCutPos);
     if (IsBlank(cCutChar))
     {
-        m_nBreakPos = m_nCutPos;
-        TextFrameIndex nX = m_nBreakPos;
-
-        if ( rAdjust == SvxAdjust::Left )
-        {
-            // we step back until a non blank character has been found
-            // or there is only one more character left
-            while (nX && TextFrameIndex(rInf.GetText().getLength()) < m_nBreakPos &&
-                   IsBlank(rInf.GetChar(--nX)))
-                --m_nBreakPos;
-        }
-        else // #i20878#
-        {
-            while (nX && m_nBreakPos > rInf.GetLineStart() + TextFrameIndex(1) &&
-                   IsBlank(rInf.GetChar(--nX)))
-                --m_nBreakPos;
-        }
-
-        if( m_nBreakPos > rInf.GetIdx() )
-            nPorLen = m_nBreakPos - rInf.GetIdx();
-        while (++m_nCutPos < TextFrameIndex(rInf.GetText().getLength()) &&
-               IsBlank(rInf.GetChar(m_nCutPos)))
-            ; // nothing
-
-        m_nBreakStart = m_nCutPos;
+        m_nCutPos = m_nBreakStart = AdjustCutPos(m_nCutPos, m_nBreakPos, rInf);
+        nPorLen = m_nBreakPos - rInf.GetIdx();
+        // throw away old m_xHyphWord when m_nBreakStart changes
+        m_xHyphWord = nullptr;
     }
     else
     {
@@ -448,12 +619,12 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
         // We have to switch the current language if we have a script
         // change at nCutPos. Otherwise LATIN punctuation would never
         // be allowed to be hanging punctuation.
-        // NEVER call GetLang if the string has been modified!!!
+        // NEVER call GetLangOfChar if the string has been modified!!!
         LanguageType aLang = rInf.GetFont()->GetLanguage();
 
         // If we are inside a field portion, we use a temporary string which
         // differs from the string at the textnode. Therefore we are not allowed
-        // to call the GetLang function.
+        // to call the GetLangOfChar function.
         if ( m_nCutPos && ! rPor.InFieldGrp() )
         {
             const CharClass& rCC = GetAppCharClass();
@@ -532,6 +703,27 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
         m_nBreakStart = m_nBreakPos;
 
         bHyph = BreakType::HYPHENATION == aResult.breakType;
+        if (bHyph)
+        {
+            LanguageType aNoHyphLang;
+            if (rPor.InFieldGrp())
+            {
+                // If we are inside a field portion, we use a temporary string which
+                // differs from the string at the textnode. Therefore we are not allowed
+                // to call the GetLangOfChar function.
+                aNoHyphLang = LANGUAGE_DONTKNOW;
+            }
+            else
+            {
+                // allow hyphenation of the word only if it's not disabled by character formatting
+                aNoHyphLang = rInf.GetTextFrame()->GetLangOfChar(
+                                  TextFrameIndex( sal_Int32(m_nBreakPos) +
+                                            aResult.rHyphenatedWord->getHyphenationPos() ),
+                                    1, true, /*bNoneIfNoHyphenation=*/true );
+            }
+            // allow hyphenation of the word only if it's not disabled by character formatting
+            bHyph = aNoHyphLang != LANGUAGE_NONE;
+        }
 
         if (bHyph && m_nBreakPos != TextFrameIndex(COMPLETE_STRING))
         {
@@ -574,7 +766,7 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
                 m_nBreakPos = rInf.GetIdx() - TextFrameIndex(1);
             }
 
-            if( rAdjust != SvxAdjust::Left )
+            if( aAdjust != SvxAdjust::Left )
             {
                 // Delete any blanks at the end of a line, but be careful:
                 // If a field has been expanded, we do not want to delete any
@@ -603,7 +795,7 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
         if (m_nBreakPos > m_nCutPos && m_nBreakPos != TextFrameIndex(COMPLETE_STRING))
         {
             const TextFrameIndex nHangingLen = m_nBreakPos - m_nCutPos;
-            SwPosSize aTmpSize = rInf.GetTextSize( &rSI, m_nCutPos, nHangingLen );
+            SwPositiveSize aTmpSize = rInf.GetTextSize( &rSI, m_nCutPos, nHangingLen );
             aTmpSize.Width(aTmpSize.Width() + nLeftRightBorderSpace);
             OSL_ENSURE( !m_pHanging, "A hanging portion is hanging around" );
             m_pHanging.reset( new SwHangingPortion( std::move(aTmpSize) ) );
@@ -644,13 +836,16 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
 
     if( nPorLen )
     {
-        rInf.GetTextSize( &rSI, rInf.GetIdx(), nPorLen,
-                         nMaxComp, m_nBreakWidth, nMaxSizeDiff,
-                         rInf.GetCachedVclData().get() );
+        rInf.GetTextSize(&rSI, rInf.GetIdx(), nPorLen, std::nullopt, nMaxComp, m_nBreakWidth,
+                         nMaxSizeDiff, nExtraAscent, nExtraDescent, rInf.GetCachedVclData().get());
 
+        rInf.SetBreakWidth(m_nBreakWidth);
         // save maximum width for later use
         if ( nMaxSizeDiff )
             rInf.SetMaxWidthDiff( &rPor, nMaxSizeDiff );
+
+        rInf.SetExtraAscent(nExtraAscent);
+        rInf.SetExtraDescent(nExtraDescent);
 
         m_nBreakWidth += nItalic + nLeftRightBorderSpace;
     }
@@ -660,8 +855,9 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
     if (m_nBreakStart > rInf.GetIdx() + nPorLen + m_nFieldDiff)
     {
         rInf.GetTextSize(&rSI, rInf.GetIdx() + nPorLen,
-                         m_nBreakStart - rInf.GetIdx() - nPorLen - m_nFieldDiff, nMaxComp,
-                         m_nExtraBlankWidth, nMaxSizeDiff, rInf.GetCachedVclData().get());
+                         m_nBreakStart - rInf.GetIdx() - nPorLen - m_nFieldDiff, std::nullopt,
+                         nMaxComp, m_nExtraBlankWidth, nMaxSizeDiff, nExtraAscent, nExtraDescent,
+                         rInf.GetCachedVclData().get());
     }
 
     if( m_pHanging )

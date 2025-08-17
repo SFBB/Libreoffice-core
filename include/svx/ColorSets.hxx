@@ -5,11 +5,9 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- *
  */
 
-#ifndef INCLUDED_SVX_COLORSETS_HXX
-#define INCLUDED_SVX_COLORSETS_HXX
+#pragma once
 
 #include <svx/svxdllapi.h>
 #include <docmodel/theme/ColorSet.hxx>
@@ -21,10 +19,11 @@ class SVXCORE_DLLPUBLIC ColorSets
 {
 private:
     std::vector<model::ColorSet> maColorSets;
+    OUString maUserFolder;
+
     ColorSets();
     void init();
 public:
-    enum class IdenticalNameAction { Overwrite, AutoRename };
     static ColorSets& get();
 
     const std::vector<model::ColorSet>& getColorSetVector() const
@@ -39,11 +38,11 @@ public:
 
     model::ColorSet const* getColorSet(std::u16string_view rName) const;
 
-    void insert(model::ColorSet const& rColorSet, IdenticalNameAction eAction = IdenticalNameAction::Overwrite);
+    void insert(model::ColorSet const& rColorSet);
+    void writeToUserFolder(model::ColorSet const& rNewColorSet);
+
 };
 
 } // end of namespace svx
-
-#endif // INCLUDED_SVX_COLORSETS_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

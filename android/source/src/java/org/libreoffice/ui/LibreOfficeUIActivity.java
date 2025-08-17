@@ -20,10 +20,10 @@ import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.drawable.Icon;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.preference.PreferenceManager;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
@@ -31,6 +31,7 @@ import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.preference.PreferenceManager;
 import androidx.appcompat.widget.Toolbar;
 import android.text.TextUtils;
 import android.util.Log;
@@ -47,16 +48,14 @@ import android.widget.TextView;
 import org.libreoffice.AboutDialogFragment;
 import org.libreoffice.BuildConfig;
 import org.libreoffice.LibreOfficeMainActivity;
-import org.libreoffice.LocaleHelper;
 import org.libreoffice.R;
 import org.libreoffice.SettingsActivity;
-import org.libreoffice.SettingsListenerModel;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class LibreOfficeUIActivity extends AppCompatActivity implements SettingsListenerModel.OnSettingsPreferenceChangedListener, View.OnClickListener{
+public class LibreOfficeUIActivity extends AppCompatActivity implements View.OnClickListener{
     public enum DocumentType {
         WRITER,
         CALC,
@@ -71,7 +70,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     private static final String RECENT_DOCUMENTS_KEY = "RECENT_DOCUMENT_URIS";
     // delimiter used for storing multiple URIs in a string
     private static final String RECENT_DOCUMENTS_DELIMITER = " ";
-    private static final String DISPLAY_LANGUAGE = "DISPLAY_LANGUAGE";
 
     public static final String NEW_DOC_TYPE_KEY = "NEW_DOC_TYPE_KEY";
     public static final String NEW_WRITER_STRING_KEY = "private:factory/swriter";
@@ -99,6 +97,7 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
             "application/vnd.ms-powerpoint",
             "application/vnd.ms-excel",
             "application/vnd.visio",
+            "application/vnd.visio2013",
             "application/vnd.visio.xml",
             "application/x-mspublisher",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -141,13 +140,24 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        readPreferences();
-        SettingsListenerModel.getInstance().setListener(this);
-
         // init UI
         createUI();
         fabOpenAnimation = AnimationUtils.loadAnimation(this, R.anim.fab_open);
         fabCloseAnimation = AnimationUtils.loadAnimation(this, R.anim.fab_close);
+
+        getOnBackPressedDispatcher().addCallback(new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (isFabMenuOpen) {
+                    collapseFabMenu();
+                    return;
+                } else {
+                    setEnabled(false);
+                    getOnBackPressedDispatcher().onBackPressed();
+                    setEnabled(true);
+                }
+            }
+        });
     }
 
     @Override
@@ -159,11 +169,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
                 new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
                 PERMISSION_WRITE_EXTERNAL_STORAGE);
         }
-    }
-
-    @Override
-    protected void attachBaseContext(Context newBase) {
-        super.attachBaseContext(LocaleHelper.onAttach(newBase));
     }
 
     public void createUI() {
@@ -246,15 +251,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
     }
 
     @Override
-    public void onBackPressed() {
-        if (isFabMenuOpen) {
-            collapseFabMenu();
-        } else {
-            super.onBackPressed();
-        }
-    }
-
-    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_CODE_OPEN_FILECHOOSER && resultCode == RESULT_OK) {
@@ -331,17 +327,6 @@ public class LibreOfficeUIActivity extends AppCompatActivity implements Settings
         }
 
         return super.onOptionsItemSelected(item);
-    }
-
-    public void readPreferences(){
-        SharedPreferences defaultPrefs = PreferenceManager.getDefaultSharedPreferences(getBaseContext());
-        final String displayLanguage = defaultPrefs.getString(DISPLAY_LANGUAGE, LocaleHelper.SYSTEM_DEFAULT_LANGUAGE);
-        LocaleHelper.setLocale(this, displayLanguage);
-    }
-
-    @Override
-    public void settingsPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-        readPreferences();
     }
 
     @Override

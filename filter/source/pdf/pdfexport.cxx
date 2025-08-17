@@ -27,6 +27,8 @@
 #include <vcl/canvastools.hxx>
 #include <vcl/mapmod.hxx>
 #include <vcl/gdimtf.hxx>
+#include <vcl/graphic/GraphicMetadata.hxx>
+#include <vcl/pdf/PDFEncryptionInitialization.hxx>
 #include <rtl/ustring.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequence.hxx>
@@ -39,6 +41,7 @@
 #include <unotools/configmgr.hxx>
 #include <comphelper/compbase.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <sfx2/lokhelper.hxx>
 
 #include "pdfexport.hxx"
 #include <strings.hrc>
@@ -65,6 +68,10 @@
 #include <com/sun/star/xml/crypto/SEInitializer.hpp>
 
 #include <memory>
+#include <optional>
+
+#include <rtl/bootstrap.hxx>
+#include <config_features.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::io;
@@ -72,7 +79,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::view;
-using namespace ::com::sun::star::graphic;
 
 
 PDFExport::PDFExport( const Reference< XComponent >& rxSrcDoc,
@@ -86,14 +92,14 @@ PDFExport::PDFExport( const Reference< XComponent >& rxSrcDoc,
     mbUseLosslessCompression    ( false ),
     mbReduceImageResolution     ( true ),
     mbSkipEmptyPages            ( true ),
-    mnMaxImageResolution        ( 300 ),
-    mnQuality                   ( 80 ),
+    mnMaxImageResolution        ( DefaultPDFImageDPI ),
+    mnQuality                   ( DefaultPDFJPEGQuality ),
     mnProgressValue             ( 0 ),
     mbRemoveTransparencies      ( false ),
 
     mbIsRedactMode              ( false ),
     maWatermarkColor            ( COL_LIGHTGREEN ),
-    maWatermarkFontName         ( "Helvetica" )
+    maWatermarkFontName         ( u"Helvetica"_ustr )
 {
 }
 
@@ -269,15 +275,15 @@ void PDFExportStreamDoc::write( const Reference< XOutputStream >& xStream )
         return;
 
     std::vector<beans::PropertyValue> aArgs {
-        comphelper::makePropertyValue("FilterName", OUString()),
-        comphelper::makePropertyValue("OutputStream", xStream),
+        comphelper::makePropertyValue(u"FilterName"_ustr, OUString()),
+        comphelper::makePropertyValue(u"OutputStream"_ustr, xStream),
     };
     if (m_aPreparedPassword.hasElements())
-        aArgs.push_back(comphelper::makePropertyValue("EncryptionData", m_aPreparedPassword));
+        aArgs.push_back(comphelper::makePropertyValue(u"EncryptionData"_ustr, m_aPreparedPassword));
 
     try
     {
-        xStore->storeToURL("private:stream", comphelper::containerToSequence(aArgs));
+        xStore->storeToURL(u"private:stream"_ustr, comphelper::containerToSequence(aArgs));
     }
     catch( const IOException& )
     {
@@ -304,12 +310,12 @@ static OUString getMimetypeForDocument( const Reference< XComponentContext >& xC
                     configuration::theDefaultProvider::get( xContext );
                 beans::NamedValue aPathProp;
                 aPathProp.Name = "nodepath";
-                aPathProp.Value <<= OUString( "/org.openoffice.Setup/Office/Factories/" );
+                aPathProp.Value <<= u"/org.openoffice.Setup/Office/Factories/"_ustr;
                 uno::Sequence< uno::Any > aArgs{ uno::Any(aPathProp) };
 
                 Reference< container::XNameAccess > xSOFConfig(
                     xConfigProvider->createInstanceWithArguments(
-                        "com.sun.star.configuration.ConfigurationAccess", aArgs ),
+                        u"com.sun.star.configuration.ConfigurationAccess"_ustr, aArgs ),
                     uno::UNO_QUERY );
 
                 Reference< container::XNameAccess > xApplConfig;
@@ -317,18 +323,18 @@ static OUString getMimetypeForDocument( const Reference< XComponentContext >& xC
                 if ( xApplConfig.is() )
                 {
                     OUString aFilterName;
-                    xApplConfig->getByName( "ooSetupFactoryActualFilter" ) >>= aFilterName;
+                    xApplConfig->getByName( u"ooSetupFactoryActualFilter"_ustr ) >>= aFilterName;
                     if( !aFilterName.isEmpty() )
                     {
                         // find the related type name
                         OUString aTypeName;
                         Reference< container::XNameAccess > xFilterFactory(
-                            xContext->getServiceManager()->createInstanceWithContext("com.sun.star.document.FilterFactory", xContext),
+                            xContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.document.FilterFactory"_ustr, xContext),
                             uno::UNO_QUERY );
 
                         Sequence< beans::PropertyValue > aFilterData;
                         xFilterFactory->getByName( aFilterName ) >>= aFilterData;
-                        for ( const beans::PropertyValue& rProp : std::as_const(aFilterData) )
+                        for (const beans::PropertyValue& rProp : aFilterData)
                             if ( rProp.Name == "Type" )
                                 rProp.Value >>= aTypeName;
 
@@ -336,12 +342,12 @@ static OUString getMimetypeForDocument( const Reference< XComponentContext >& xC
                         {
                             // find the mediatype
                             Reference< container::XNameAccess > xTypeDetection(
-                                xContext->getServiceManager()->createInstanceWithContext("com.sun.star.document.TypeDetection", xContext),
+                                xContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.document.TypeDetection"_ustr, xContext),
                                 UNO_QUERY );
 
                             Sequence< beans::PropertyValue > aTypeData;
                             xTypeDetection->getByName( aTypeName ) >>= aTypeData;
-                            for ( const beans::PropertyValue& rProp : std::as_const(aTypeData) )
+                            for (const beans::PropertyValue& rProp : aTypeData)
                                 if ( rProp.Name == "MediaType" )
                                     rProp.Value >>= aDocMimetype;
                         }
@@ -357,7 +363,7 @@ static OUString getMimetypeForDocument( const Reference< XComponentContext >& xC
 }
 
 uno::Reference<security::XCertificate>
-PDFExport::GetCertificateFromSubjectName(const std::u16string_view& rSubjectName) const
+PDFExport::GetCertificateFromSubjectName(std::u16string_view rSubjectName) const
 {
     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
         = xml::crypto::SEInitializer::create(mxContext);
@@ -401,12 +407,13 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
             bool bUseTaggedPDF = false;
             sal_Int32 nPDFTypeSelection = 0;
             bool bPDFUACompliance = false;
+            std::optional<bool> bExportTrackedChanges;
             bool bExportNotes = true;
             bool bExportNotesInMargin = false;
             bool bExportNotesPages = false;
             bool bExportOnlyNotesPages = false;
             bool bUseTransitionEffects = true;
-            bool bExportFormFields = true;
+            bool bExportFormFields = false;
             sal_Int32 nFormsFormat = 0;
             bool bAllowDuplicateFieldNames = false;
             bool bHideViewerToolbar = false;
@@ -462,15 +469,15 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
             Reference< XServiceInfo > xInfo( mxSrcDoc, UNO_QUERY );
             if ( xInfo.is() )
             {
-                if ( xInfo->supportsService( "com.sun.star.presentation.PresentationDocument" ) )
+                if ( xInfo->supportsService( u"com.sun.star.presentation.PresentationDocument"_ustr ) )
                     aCreator = u"Impress"_ustr;
-                else if ( xInfo->supportsService( "com.sun.star.drawing.DrawingDocument" ) )
+                else if ( xInfo->supportsService( u"com.sun.star.drawing.DrawingDocument"_ustr ) )
                     aCreator = u"Draw"_ustr;
-                else if ( xInfo->supportsService( "com.sun.star.text.TextDocument" ) )
+                else if ( xInfo->supportsService( u"com.sun.star.text.TextDocument"_ustr ) )
                     aCreator = u"Writer"_ustr;
-                else if ( xInfo->supportsService( "com.sun.star.sheet.SpreadsheetDocument" ) )
+                else if ( xInfo->supportsService( u"com.sun.star.sheet.SpreadsheetDocument"_ustr ) )
                     aCreator = u"Calc"_ustr;
-                else if ( xInfo->supportsService( "com.sun.star.formula.FormulaProperties"  ) )
+                else if ( xInfo->supportsService( u"com.sun.star.formula.FormulaProperties"_ustr  ) )
                     aCreator = u"Math"_ustr;
             }
 
@@ -499,8 +506,11 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                 }
             }
 
-            if (!utl::ConfigManager::IsFuzzing())
+            if (!comphelper::IsFuzzing())
             {
+                OUString arch;
+                auto const ok = rtl::Bootstrap::get(u"_ARCH"_ustr, arch);
+                assert(ok); (void) ok;
                 // getting the string for the producer
                 OUString aProducerOverride = officecfg::Office::Common::Save::Document::GeneratorOverride::get();
                 if (!aProducerOverride.isEmpty())
@@ -509,12 +519,20 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                     aContext.DocumentInfo.Producer =
                         utl::ConfigManager::getProductName() +
                         " " +
-                        utl::ConfigManager::getProductVersion();
+                        utl::ConfigManager::getAboutBoxProductVersion() +
+                        " (" + arch + ")"
+#if HAVE_FEATURE_COMMUNITY_FLAVOR
+                        " / LibreOffice Community"
+#endif
+                        ;
             }
 
             aContext.DocumentInfo.Creator = aCreator;
 
             OUString aSignCertificateSubjectName;
+            OUString aSignCertificateCertPem;
+            OUString aSignCertificateKeyPem;
+            OUString aSignCertificateCaPem;
             for ( const beans::PropertyValue& rProp : rFilterData )
             {
                 if ( rProp.Name == "PageRange" )
@@ -545,6 +563,12 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                     rProp.Value >>= nPDFTypeSelection;
                 else if ( rProp.Name == "PDFUACompliance" )
                     rProp.Value >>= bPDFUACompliance;
+                else if (rProp.Name == "ExportTrackedChanges")
+                {
+                    bool bExportTrackedChangesProp = false;
+                    if (rProp.Value >>= bExportTrackedChangesProp)
+                        bExportTrackedChanges = bExportTrackedChangesProp;
+                }
                 else if ( rProp.Name == "ExportNotes" )
                     rProp.Value >>= bExportNotes;
                 else if ( rProp.Name == "ExportNotesInMargin" )
@@ -678,6 +702,12 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                     rProp.Value >>= aSignCertificate;
                 else if (rProp.Name == "SignCertificateSubjectName")
                     rProp.Value >>= aSignCertificateSubjectName;
+                else if (rProp.Name == "SignCertificateCertPem")
+                    rProp.Value >>= aSignCertificateCertPem;
+                else if (rProp.Name == "SignCertificateKeyPem")
+                    rProp.Value >>= aSignCertificateKeyPem;
+                else if (rProp.Name == "SignCertificateCaPem")
+                    rProp.Value >>= aSignCertificateCaPem;
                 else if ( rProp.Name == "SignatureTSA" )
                     rProp.Value >>= sSignTSA;
                 else if ( rProp.Name == "ExportPlaceholders" )
@@ -705,6 +735,24 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                 aSignCertificate = GetCertificateFromSubjectName(aSignCertificateSubjectName);
             }
 
+            if (!aSignCertificate.is())
+            {
+                // Still no signing certificate configured, see if we got a ca/cert/key in PEM
+                // format:
+                if (!aSignCertificateCaPem.isEmpty())
+                {
+                    std::string aSignatureCa(aSignCertificateCaPem.toUtf8());
+                    std::vector<std::string> aCerts = SfxLokHelper::extractCertificates(aSignatureCa);
+                    SfxLokHelper::addCertificates(aCerts);
+                }
+                if (!aSignCertificateCertPem.isEmpty() && !aSignCertificateKeyPem.isEmpty())
+                {
+                    std::string aSignatureCert(aSignCertificateCertPem.toUtf8());
+                    std::string aSignatureKey(aSignCertificateKeyPem.toUtf8());
+                    aSignCertificate = SfxLokHelper::getSigningCertificate(aSignatureCert, aSignatureKey);
+                }
+            }
+
             aContext.URL        = aURL.GetMainURL(INetURLObject::DecodeMechanism::ToIUri);
 
             // set the correct version, depending on user request
@@ -712,24 +760,32 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
             {
             default:
             case 0:
-                aContext.Version = vcl::PDFWriter::PDFVersion::PDF_1_7;
+                aContext.Version = vcl::PDFWriter::PDFVersion::Default;
                 break;
             case 1:
-                aContext.Version    = vcl::PDFWriter::PDFVersion::PDF_A_1;
+                aContext.Version = vcl::PDFWriter::PDFVersion::PDF_A_1;
                 bUseTaggedPDF = true;           // force the tagged PDF as well
                 mbRemoveTransparencies = true;  // does not allow transparencies
                 bEncrypt = false;               // no encryption
                 xEnc.clear();
                 break;
             case 2:
-                aContext.Version    = vcl::PDFWriter::PDFVersion::PDF_A_2;
+                aContext.Version = vcl::PDFWriter::PDFVersion::PDF_A_2;
                 bUseTaggedPDF = true;           // force the tagged PDF as well
                 mbRemoveTransparencies = false; // does allow transparencies
                 bEncrypt = false;               // no encryption
                 xEnc.clear();
                 break;
             case 3:
-                aContext.Version    = vcl::PDFWriter::PDFVersion::PDF_A_3;
+                aContext.Version = vcl::PDFWriter::PDFVersion::PDF_A_3;
+                bUseTaggedPDF = true;           // force the tagged PDF as well
+                mbRemoveTransparencies = false; // does allow transparencies
+                bEncrypt = false;               // no encryption
+                xEnc.clear();
+                break;
+            case 4:
+                // TODO - determine what is allowed for PDFA/4
+                aContext.Version = vcl::PDFWriter::PDFVersion::PDF_A_4;
                 bUseTaggedPDF = true;           // force the tagged PDF as well
                 mbRemoveTransparencies = false; // does allow transparencies
                 bEncrypt = false;               // no encryption
@@ -743,6 +799,9 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                 break;
             case 17:
                 aContext.Version = vcl::PDFWriter::PDFVersion::PDF_1_7;
+                break;
+            case 20:
+                aContext.Version = vcl::PDFWriter::PDFVersion::PDF_2_0;
                 break;
             }
 
@@ -881,7 +940,7 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                 aContext.Encryption.CanCopyOrExtract                = bCanCopyOrExtract;
                 aContext.Encryption.CanExtractForAccessibility  = bCanExtractForAccessibility;
                 if( bEncrypt && ! xEnc.is() )
-                    xEnc = vcl::PDFWriter::InitEncryption( aPermissionPassword, aOpenPassword );
+                    xEnc = vcl::pdf::initEncryption(aPermissionPassword, aOpenPassword);
                 if( bEncrypt && !aPermissionPassword.isEmpty() && ! aPreparedPermissionPassword.hasElements() )
                     aPreparedPermissionPassword = comphelper::OStorageHelper::CreatePackageEncryptionData( aPermissionPassword );
             }
@@ -938,6 +997,10 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                     // view PDF through an Internet browser
                     aContext.DefaultLinkAction = vcl::PDFWriter::URIActionDestination;
                     break;
+                case 3:
+                    // do not emit Link annotations for external links
+                    aContext.DefaultLinkAction = vcl::PDFWriter::RemoveExternalLinks;
+                    break;
                 }
                 aContext.ConvertOOoTargetToPDFTarget = bConvertOOoTargetToPDFTarget;
 
@@ -958,7 +1021,7 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
             aContext.SignContact = sSignContact;
             aContext.SignReason = sSignReason;
             aContext.SignPassword = sSignPassword;
-            aContext.SignCertificate = aSignCertificate;
+            aContext.SignCertificate = std::move(aSignCertificate);
             aContext.SignTSA = sSignTSA;
             aContext.UseReferenceXObject = bUseReferenceXObject;
 
@@ -1006,15 +1069,15 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                 aPDFExtOutDevData.SetIsExportNamedDestinations( bExportBmkToDest );
 
                 std::vector<PropertyValue> aRenderOptionsVector{
-                    comphelper::makePropertyValue("RenderDevice", uno::Reference<awt::XDevice>(xDevice)),
-                    comphelper::makePropertyValue("ExportNotesPages", false),
-                    comphelper::makePropertyValue("IsFirstPage", true),
-                    comphelper::makePropertyValue("IsLastPage", false),
-                    comphelper::makePropertyValue("IsSkipEmptyPages", mbSkipEmptyPages),
-                    comphelper::makePropertyValue("PageRange", aPageRange),
-                    comphelper::makePropertyValue("ExportPlaceholders", bExportPlaceholders),
-                    comphelper::makePropertyValue("SinglePageSheets", bSinglePageSheets),
-                    comphelper::makePropertyValue("ExportNotesInMargin", bExportNotesInMargin)
+                    comphelper::makePropertyValue(u"RenderDevice"_ustr, uno::Reference<awt::XDevice>(xDevice)),
+                    comphelper::makePropertyValue(u"ExportNotesPages"_ustr, false),
+                    comphelper::makePropertyValue(u"IsFirstPage"_ustr, true),
+                    comphelper::makePropertyValue(u"IsLastPage"_ustr, false),
+                    comphelper::makePropertyValue(u"IsSkipEmptyPages"_ustr, mbSkipEmptyPages),
+                    comphelper::makePropertyValue(u"PageRange"_ustr, aPageRange),
+                    comphelper::makePropertyValue(u"ExportPlaceholders"_ustr, bExportPlaceholders),
+                    comphelper::makePropertyValue(u"SinglePageSheets"_ustr, bSinglePageSheets),
+                    comphelper::makePropertyValue(u"ExportNotesInMargin"_ustr, bExportNotesInMargin)
                 };
                 if (oMathTitleRow)
                     aRenderOptionsVector.push_back(*oMathTitleRow);
@@ -1039,6 +1102,11 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                 bool bReHideWhitespace = false;
                 static constexpr OUString sHideWhitespace(u"HideWhitespace"_ustr);
                 uno::Reference< beans::XPropertySet > xViewProperties;
+                uno::Reference<beans::XPropertySet> xPropSet;
+                // property only exists and handled in SwXTextView for the purpose of
+                // exporting showing tracked changes to PDF from command line
+                static constexpr OUString sShowChangesPDF(u"PDFExport_ShowChanges"_ustr);
+                bool bToggleChangesPDF = false;
 
                 if ( aCreator == "Writer" )
                 {
@@ -1058,6 +1126,20 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                         if (bReHideWhitespace)
                         {
                             xViewProperties->setPropertyValue(sHideWhitespace, uno::Any(false));
+                        }
+
+                        if (bExportTrackedChanges.has_value())
+                        {
+                            xPropSet = uno::Reference<XPropertySet>(xModel->getCurrentController(),
+                                                                    uno::UNO_QUERY_THROW);
+                            bool bShowChangesPDF = false;
+                            xPropSet->getPropertyValue(sShowChangesPDF) >>= bShowChangesPDF;
+                            if (bShowChangesPDF != bExportTrackedChanges)
+                            {
+                                xPropSet->setPropertyValue(sShowChangesPDF,
+                                                           Any(bExportTrackedChanges.value()));
+                                bToggleChangesPDF = true;
+                            }
                         }
                     }
                     catch( const uno::Exception& )
@@ -1134,6 +1216,16 @@ bool PDFExport::Export( const OUString& rFile, const Sequence< PropertyValue >& 
                         xViewProperties->setPropertyValue( sHideWhitespace, uno::Any( true ) );
                     }
                     catch( const uno::Exception& )
+                    {
+                    }
+                }
+                if (bToggleChangesPDF)
+                {
+                    try
+                    {
+                        xPropSet->setPropertyValue(sShowChangesPDF, Any(!bExportTrackedChanges.value()));
+                    }
+                    catch (const uno::Exception&)
                     {
                     }
                 }
@@ -1314,7 +1406,7 @@ void PDFExport::ImplWriteWatermark( vcl::PDFWriter& rWriter, const Size& rPageSi
     rWriter.Push();
     // tdf#152235 tag around the reference to the XObject on the page
     sal_Int32 const id = rWriter.EnsureStructureElement();
-    rWriter.InitStructureElement(id, vcl::PDFWriter::NonStructElement, ::std::u16string_view());
+    rWriter.InitStructureElement(id, vcl::pdf::StructElement::NonStructElement, ::std::u16string_view());
     rWriter.BeginStructureElement(id);
     rWriter.SetStructureAttribute(vcl::PDFWriter::Type, vcl::PDFWriter::Pagination);
     rWriter.SetStructureAttribute(vcl::PDFWriter::Subtype, vcl::PDFWriter::Watermark);
@@ -1373,7 +1465,7 @@ void PDFExport::ImplWriteTiledWatermark( vcl::PDFWriter& rWriter, const Size& rP
     // Maximum number of characters in one line.
     // it is set to 21 to make it look like tiled watermarks as online in secure view
     const int lineLength = 21;
-    vcl::Font aFont( "Liberation Sans", Size( 0, 40 ) );
+    vcl::Font aFont( u"Liberation Sans"_ustr, Size( 0, 40 ) );
     aFont.SetItalic( ITALIC_NONE );
     aFont.SetWidthType( WIDTH_NORMAL );
     aFont.SetWeight( WEIGHT_NORMAL );
@@ -1412,7 +1504,7 @@ void PDFExport::ImplWriteTiledWatermark( vcl::PDFWriter& rWriter, const Size& rP
     rWriter.Push();
     // tdf#152235 tag around the reference to the XObject on the page
     sal_Int32 const id = rWriter.EnsureStructureElement();
-    rWriter.InitStructureElement(id, vcl::PDFWriter::NonStructElement, ::std::u16string_view());
+    rWriter.InitStructureElement(id, vcl::pdf::StructElement::NonStructElement, ::std::u16string_view());
     rWriter.BeginStructureElement(id);
     rWriter.SetStructureAttribute(vcl::PDFWriter::Type, vcl::PDFWriter::Pagination);
     rWriter.SetStructureAttribute(vcl::PDFWriter::Subtype, vcl::PDFWriter::Watermark);

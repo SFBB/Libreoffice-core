@@ -44,35 +44,28 @@ struct SwXTextField final : public UnoApiTest,
                             public apitest::XTextField
 {
     SwXTextField()
-        : UnoApiTest("")
+        : UnoApiTest(u""_ustr)
         , TextContent(text::TextContentAnchorType_AS_CHARACTER,
                       text::TextContentAnchorType_AS_CHARACTER, text::WrapTextMode_NONE,
                       text::WrapTextMode_NONE)
     {
     }
 
-    virtual void setUp() override
-    {
-        UnoApiTest::setUp();
-        mxDesktop.set(frame::Desktop::create(mxComponentContext));
-        mxComponent = loadFromDesktop("private:factory/swriter");
-        CPPUNIT_ASSERT(mxComponent.is());
-    }
-
     Reference<XInterface> init() override
     {
+        loadFromURL(u"private:factory/swriter"_ustr);
         Reference<text::XTextDocument> xTextDocument(mxComponent, UNO_QUERY_THROW);
         Reference<lang::XMultiServiceFactory> xMSF(mxComponent, UNO_QUERY_THROW);
 
         Reference<beans::XPropertySet> xFieldMaster(
-            xMSF->createInstance("com.sun.star.text.FieldMaster.Database"), UNO_QUERY_THROW);
+            xMSF->createInstance(u"com.sun.star.text.FieldMaster.Database"_ustr), UNO_QUERY_THROW);
 
-        xFieldMaster->setPropertyValue("DataBaseName", Any(OUString("Address Book File")));
-        xFieldMaster->setPropertyValue("DataTableName", Any(OUString("address")));
-        xFieldMaster->setPropertyValue("DataColumnName", Any(OUString("FIRSTNAME")));
+        xFieldMaster->setPropertyValue(u"DataBaseName"_ustr, Any(u"Address Book File"_ustr));
+        xFieldMaster->setPropertyValue(u"DataTableName"_ustr, Any(u"address"_ustr));
+        xFieldMaster->setPropertyValue(u"DataColumnName"_ustr, Any(u"FIRSTNAME"_ustr));
 
         Reference<text::XDependentTextField> xField(
-            xMSF->createInstance("com.sun.star.text.TextField.Database"), UNO_QUERY_THROW);
+            xMSF->createInstance(u"com.sun.star.text.TextField.Database"_ustr), UNO_QUERY_THROW);
         xField->attachTextFieldMaster(xFieldMaster);
 
         Reference<text::XText> xText = xTextDocument->getText();
@@ -82,7 +75,7 @@ struct SwXTextField final : public UnoApiTest,
 
         mxTextRange = Reference<text::XTextRange>(xCursor, UNO_QUERY_THROW);
         mxTextContent = Reference<text::XTextContent>(
-            xMSF->createInstance("com.sun.star.text.TextField.DateTime"), UNO_QUERY_THROW);
+            xMSF->createInstance(u"com.sun.star.text.TextField.DateTime"_ustr), UNO_QUERY_THROW);
 
         return Reference<XInterface>(xField, UNO_QUERY_THROW);
     }

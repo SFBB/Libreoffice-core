@@ -25,7 +25,6 @@
 #include <hasht.h>
 
 #include <comphelper/sequence.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
@@ -36,7 +35,6 @@
 #include <certificateextension_xmlsecimpl.hxx>
 
 #include "sanextension_nssimpl.hxx"
-#include <o3tl/string_view.hxx>
 #include <tools/time.hxx>
 #include <svl/sigstruct.hxx>
 
@@ -186,7 +184,7 @@ css::uno::Sequence< css::uno::Reference< css::security::XCertificateExtension > 
 
             // remove "OID." prefix if existing
             OString objID;
-            constexpr std::string_view oid("OID.");
+            static constexpr std::string_view oid("OID.");
             if (oidString.match(oid))
                 objID = oidString.copy(oid.size());
             else
@@ -483,7 +481,7 @@ sal_Int32 SAL_CALL X509Certificate_NssImpl::getCertificateUsage(  )
 /* XServiceInfo */
 OUString SAL_CALL X509Certificate_NssImpl::getImplementationName()
 {
-    return "com.sun.star.xml.security.gpg.XCertificate_NssImpl";
+    return u"com.sun.star.xml.security.gpg.XCertificate_NssImpl"_ustr;
 }
 
 /* XServiceInfo */

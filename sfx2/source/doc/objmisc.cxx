@@ -51,6 +51,7 @@
 #include <com/sun/star/task/ErrorCodeRequest2.hpp>
 
 #include <comphelper/lok.hxx>
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
 
@@ -102,10 +103,12 @@
 #include <workwin.hxx>
 #include <sfx2/sfxdlg.hxx>
 #include <sfx2/infobar.hxx>
+#include <sfx2/lokhelper.hxx>
 #include <sfx2/sfxbasemodel.hxx>
 #include <openflag.hxx>
 #include "objstor.hxx"
 #include <appopen.hxx>
+#include <sfx2/viewsh.hxx>
 
 #include <memory>
 
@@ -116,7 +119,6 @@ using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::script;
 using namespace ::com::sun::star::script::provider;
-using namespace ::com::sun::star::container;
 
 // class SfxHeaderAttributes_Impl ----------------------------------------
 
@@ -256,7 +258,13 @@ bool SfxObjectShell::IsEnableSetModified() const
     // which the user didn't load or activate to modified.
     return pImpl->m_bEnableSetModified && !IsPreview()
         && eCreateMode != SfxObjectCreateMode::ORGANIZER
-        && eCreateMode != SfxObjectCreateMode::INTERNAL;
+        && eCreateMode != SfxObjectCreateMode::INTERNAL
+        // tdf#157931 form documents only in design mode
+        && ((pImpl->pBaseModel
+                && !pImpl->pBaseModel->impl_isDisposed()
+                && pImpl->pBaseModel->IsInitialized()
+                && pImpl->pBaseModel->getIdentifier() != "com.sun.star.sdb.FormDesign")
+            || !IsReadOnly());
 }
 
 
@@ -324,7 +332,6 @@ void SfxObjectShell::ModifyChanged()
         // SetModified dispose of the models!
         return;
 
-
     SfxViewFrame* pViewFrame = SfxViewFrame::Current();
     if ( pViewFrame )
         pViewFrame->GetBindings().Invalidate( SID_SAVEDOCS );
@@ -334,6 +341,14 @@ void SfxObjectShell::ModifyChanged()
     Broadcast( SfxHint( SfxHintId::TitleChanged ) );    // xmlsec05, signed state might change in title...
 
     SfxGetpApp()->NotifyEvent( SfxEventHint( SfxEventHintId::ModifyChanged, GlobalEventConfig::GetEventName(GlobalEventId::MODIFYCHANGED), this ) );
+
+    // Don't wait to get this important state via binding notification timeout.
+    if ( comphelper::LibreOfficeKit::isActive() )
+    {
+        OString aStatus = ".uno:ModifiedStatus="_ostr;
+        aStatus += IsModified() ? "true" : "false";
+        SfxLokHelper::notifyAllViews(LOK_CALLBACK_STATE_CHANGED, aStatus);
+    }
 }
 
 
@@ -346,7 +361,7 @@ bool SfxObjectShell::IsReadOnlyUI() const
 */
 
 {
-    return pImpl->bReadOnlyUI;
+    return pImpl->bReadOnlyUI || SfxViewShell::IsCurrentLokViewReadOnly();
 }
 
 
@@ -419,7 +434,7 @@ void SfxObjectShell::SetReadOnly()
 
 bool SfxObjectShell::IsReadOnly() const
 {
-    return pImpl->bReadOnlyUI || pMedium == nullptr;
+    return pImpl->bReadOnlyUI || pMedium == nullptr || pMedium->HasRestrictedFonts();
 }
 
 
@@ -580,7 +595,7 @@ bool SfxObjectShell::SwitchToShared( bool bShared, bool bSave )
         bResult = false; // the second switch to the same mode
 
     if ( bResult )
-        SetTitle( "" );
+        SetTitle( u""_ustr );
 
     return bResult;
 }
@@ -733,7 +748,7 @@ OUString SfxObjectShell::GetTitle( sal_uInt16  nMaxLength ) const
     {
         static bool bRecur = false;
         if ( bRecur )
-            return "-not available-";
+            return u"-not available-"_ustr;
         bRecur = true;
 
         OUString aTitle;
@@ -850,9 +865,14 @@ void SfxObjectShell::InvalidateName()
 
 {
     pImpl->aTitle.clear();
-    SetName( GetTitle( SFX_TITLE_APINAME ) );
 
-    Broadcast( SfxHint(SfxHintId::TitleChanged) );
+    OUString sOldName = GetName();
+    OUString sNewName = GetTitle(SFX_TITLE_APINAME);
+    if (sOldName != sNewName)
+    {
+        SetName(sNewName);
+        Broadcast(SfxHint(SfxHintId::TitleChanged));
+    }
 }
 
 
@@ -947,6 +967,12 @@ void SfxObjectShell::BreakMacroSign_Impl( bool bBreakMacroSign )
 
 void SfxObjectShell::CheckSecurityOnLoading_Impl()
 {
+    if (GetErrorCode() == ERRCODE_IO_BROKENPACKAGE)
+    {   // safety first: don't run any macros from broken package.
+        pImpl->aMacroMode.disallowMacroExecution();
+        return; // do not get signature status - needs to be done after RepairPackage
+    }
+
     // make sure LO evaluates the macro signatures, so it can be preserved
     GetScriptingSignatureState();
 
@@ -1007,9 +1033,9 @@ void SfxObjectShell::CheckEncryption_Impl( const uno::Reference< task::XInteract
     try
     {
         uno::Reference < beans::XPropertySet > xPropSet( GetStorage(), uno::UNO_QUERY_THROW );
-        xPropSet->getPropertyValue("Version") >>= aVersion;
-        xPropSet->getPropertyValue("HasEncryptedEntries") >>= bIsEncrypted;
-        xPropSet->getPropertyValue("HasNonEncryptedEntries") >>= bHasNonEncrypted;
+        xPropSet->getPropertyValue(u"Version"_ustr) >>= aVersion;
+        xPropSet->getPropertyValue(u"HasEncryptedEntries"_ustr) >>= bIsEncrypted;
+        xPropSet->getPropertyValue(u"HasNonEncryptedEntries"_ustr) >>= bHasNonEncrypted;
     }
     catch( uno::Exception& )
     {
@@ -1116,6 +1142,8 @@ void SfxObjectShell::FinishedLoading( SfxLoadedFlags nFlags )
     {
         pImpl->nFlagsInProgress |= SfxLoadedFlags::MAINDOCUMENT;
         static_cast<SfxHeaderAttributes_Impl*>(GetHeaderAttributes())->SetAttributes();
+
+        pMedium->activateEmbeddedFonts();
 
         if ( ( GetModifyPasswordHash() || GetModifyPasswordInfo().hasElements() ) && !IsModifyPasswordEntered() )
             SetReadOnly();
@@ -1518,7 +1546,7 @@ ErrCode SfxObjectShell::CallXScript( const Reference< XInterface >& _rxScriptCon
             if ( xProps.is() )
             {
                 Sequence< uno::Any > aArgs{ *pCaller };
-                xProps->setPropertyValue("Caller", uno::Any( aArgs ) );
+                xProps->setPropertyValue(u"Caller"_ustr, uno::Any( aArgs ) );
             }
         }
         aRet = xScript->invoke( aParams, aOutParamIndex, aOutParam );
@@ -1600,7 +1628,7 @@ void SfxHeaderAttributes_Impl::SetAttribute( const SvKeyValue& rKV )
         }
         else
         {
-            pDoc->GetMedium()->SetExpired_Impl( Date( 1, 1, 1970 ) );
+            pDoc->GetMedium()->SetExpired_Impl( DateTime(Date( 1, 1, 1970 )) );
         }
     }
 }
@@ -1898,7 +1926,7 @@ bool SfxObjectShell_Impl::hasTrustedScriptingSignature(
             try
             {
                 uno::Reference < beans::XPropertySet > xPropSet( rDocShell.GetStorage(), uno::UNO_QUERY_THROW );
-                xPropSet->getPropertyValue("Version") >>= aVersion;
+                xPropSet->getPropertyValue(u"Version"_ustr) >>= aVersion;
             }
             catch( uno::Exception& )
             {
@@ -1906,7 +1934,7 @@ bool SfxObjectShell_Impl::hasTrustedScriptingSignature(
 
             uno::Reference< security::XDocumentDigitalSignatures > xSigner( security::DocumentDigitalSignatures::createWithVersion(comphelper::getProcessComponentContext(), aVersion) );
 
-            const uno::Sequence< security::DocumentSignatureInformation > aInfo = rDocShell.GetDocumentSignatureInformation( true, xSigner );
+            uno::Sequence<security::DocumentSignatureInformation> aInfo = rDocShell.GetDocumentSignatureInformation( true, xSigner );
 
             if ( aInfo.hasElements() )
             {
@@ -1925,7 +1953,7 @@ bool SfxObjectShell_Impl::hasTrustedScriptingSignature(
                         task::DocumentMacroConfirmationRequest aRequest;
                         aRequest.DocumentURL = getDocumentLocation();
                         aRequest.DocumentStorage = rDocShell.GetMedium()->GetScriptingStorageToSign_Impl();
-                        aRequest.DocumentSignatureInformation = aInfo;
+                        aRequest.DocumentSignatureInformation = std::move(aInfo);
                         aRequest.DocumentVersion = aVersion;
                         aRequest.Classification = task::InteractionClassification_QUERY;
                         bResult = SfxMedium::CallApproveHandler( _rxInteraction, uno::Any( aRequest ), true );
@@ -1951,15 +1979,13 @@ bool SfxObjectShell::IsContinueImportOnFilterExceptions()
         }
 
         if (utl::MediaDescriptor desc(pMedium->GetArgs());
-            !desc.getUnpackedValueOrDefault("RepairAllowed", true))
+            !desc.getUnpackedValueOrDefault(u"RepairAllowed"_ustr, true))
         {
             mbContinueImportOnFilterExceptions = no;
             return false;
         }
 
-        if (const SfxBoolItem* pRepairItem
-            = pMedium->GetItemSet().GetItem(SID_REPAIRPACKAGE, false);
-            pRepairItem && pRepairItem->GetValue())
+        if (pMedium->IsRepairPackage())
         {
             mbContinueImportOnFilterExceptions = yes;
             return true;
@@ -1997,9 +2023,18 @@ bool SfxObjectShell::isEditDocLocked() const
     Reference<XModel3> xModel = GetModel();
     if (!xModel.is())
         return false;
-    if (!officecfg::Office::Common::Misc::AllowEditReadonlyDocs::get())
+    if (officecfg::Office::Common::Misc::ViewerAppMode::get()
+        || !officecfg::Office::Common::Misc::AllowEditReadonlyDocs::get())
         return true;
-    return comphelper::NamedValueCollection::getOrDefault(xModel->getArgs2( { "LockEditDoc" } ), u"LockEditDoc", false);
+    try
+    {
+        return comphelper::NamedValueCollection::getOrDefault(xModel->getArgs2( { u"LockEditDoc"_ustr } ), u"LockEditDoc", false);
+    }
+    catch (const uno::RuntimeException&)
+    {
+        TOOLS_WARN_EXCEPTION("sfx.appl", "unexpected RuntimeException");
+    }
+    return false;
 }
 
 bool SfxObjectShell::isContentExtractionLocked() const
@@ -2007,7 +2042,15 @@ bool SfxObjectShell::isContentExtractionLocked() const
     Reference<XModel3> xModel = GetModel();
     if (!xModel.is())
         return false;
-    return comphelper::NamedValueCollection::getOrDefault(xModel->getArgs2( { "LockContentExtraction" } ), u"LockContentExtraction", false);
+    try
+    {
+        return comphelper::NamedValueCollection::getOrDefault(xModel->getArgs2( { u"LockContentExtraction"_ustr } ), u"LockContentExtraction", false);
+    }
+    catch (const uno::RuntimeException&)
+    {
+        TOOLS_WARN_EXCEPTION("sfx.appl", "unexpected RuntimeException");
+    }
+    return false;
 }
 
 bool SfxObjectShell::isExportLocked() const
@@ -2015,7 +2058,15 @@ bool SfxObjectShell::isExportLocked() const
     Reference<XModel3> xModel = GetModel();
     if (!xModel.is())
         return false;
-    return comphelper::NamedValueCollection::getOrDefault(xModel->getArgs2( { "LockExport" } ), u"LockExport", false);
+    try
+    {
+        return comphelper::NamedValueCollection::getOrDefault(xModel->getArgs2( { u"LockExport"_ustr } ), u"LockExport", false);
+    }
+    catch (const uno::RuntimeException&)
+    {
+        TOOLS_WARN_EXCEPTION("sfx.appl", "unexpected RuntimeException");
+    }
+    return false;
 }
 
 bool SfxObjectShell::isPrintLocked() const
@@ -2023,7 +2074,7 @@ bool SfxObjectShell::isPrintLocked() const
     Reference<XModel3> xModel = GetModel();
     if (!xModel.is())
         return false;
-    return comphelper::NamedValueCollection::getOrDefault(xModel->getArgs2( { "LockPrint" } ), u"LockPrint", false);
+    return comphelper::NamedValueCollection::getOrDefault(xModel->getArgs2( { u"LockPrint"_ustr } ), u"LockPrint", false);
 }
 
 bool SfxObjectShell::isSaveLocked() const
@@ -2031,7 +2082,7 @@ bool SfxObjectShell::isSaveLocked() const
     Reference<XModel3> xModel = GetModel();
     if (!xModel.is())
         return false;
-    return comphelper::NamedValueCollection::getOrDefault(xModel->getArgs2( { "LockSave" } ), u"LockSave", false);
+    return comphelper::NamedValueCollection::getOrDefault(xModel->getArgs2( { u"LockSave"_ustr } ), u"LockSave", false);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

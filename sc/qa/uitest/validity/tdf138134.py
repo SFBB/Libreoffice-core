@@ -25,7 +25,7 @@ class DetectiveCircle(UITestCase):
 
             #Select the cells to be validated
             gridwin.executeAction("SELECT", mkPropertyValues({"CELL": "A3"}))
-            #Apply Data > Validity ... > Whole Numbers
+            #Apply Data > Validity ... > Integer
             with self.ui_test.execute_dialog_through_command(".uno:Validation") as xDialog:
                 xTabs = xDialog.getChild("tabcontrol")
                 select_pos(xTabs, "0")
@@ -34,20 +34,20 @@ class DetectiveCircle(UITestCase):
                 xdata = xDialog.getChild("data")
                 xmin = xDialog.getChild("min")
 
-                select_by_text(xallow, "Whole Numbers")
+                select_by_text(xallow, "Integer")
                 xallowempty.executeAction("CLICK", tuple())
                 select_by_text(xdata, "equal")
                 xmin.executeAction("TYPE", mkPropertyValues({"TEXT":"5"}))
 
             self.xUITest.executeCommand(".uno:ShowInvalid")
 
-            detectiveCircle1 = document.Sheets.getByName("Sheet1").DrawPage.getCount()
+            detectiveCircle1 = len(document.Sheets.getByName("Sheet1").DrawPage)
             #There should be 1 detective circle object!
             self.assertEqual(detectiveCircle1, 1)
 
             enter_text_to_cell(gridwin, "A1", "2")
 
-            detectiveCircle2 = document.Sheets.getByName("Sheet1").DrawPage.getCount()
+            detectiveCircle2 = len(document.Sheets.getByName("Sheet1").DrawPage)
             #There should not be a detective circle object!
             self.assertEqual(detectiveCircle2, 0)
 

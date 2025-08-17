@@ -7,17 +7,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <config_gpgme.h>
-
 #include "CertificateImpl.hxx"
 
-#include <comphelper/servicehelper.hxx>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/security/KeyUsage.hpp>
 #include <officecfg/Office/Common.hxx>
 #include <svl/sigstruct.hxx>
+#include <svl/cryptosign.hxx>
 
 #include <context.h>
 #include <data.h>
@@ -122,6 +120,36 @@ Reference< XCertificateExtension > SAL_CALL CertificateImpl::findCertificateExte
 
 Sequence< sal_Int8 > SAL_CALL CertificateImpl::getEncoded()
 {
+    if (m_aBits.hasElements())
+        return m_aBits;
+
+    // lazy init: extract key data, store into m_aBits
+    GpgME::Data data_out;
+    m_pContext->setArmor(false); // caller will base64-encode anyway
+    GpgME::Error err = m_pContext->exportPublicKeys(  // "exportPublicKeys" is slow!
+        m_pKey.primaryFingerprint(),
+        data_out,
+        officecfg::Office::Common::Security::OpenPGP::MinimalKeyExport::get()
+         ? GpgME::Context::ExportMinimal : 0
+    );
+
+    if (err)
+        throw RuntimeException(u"The GpgME library failed to retrieve the public key"_ustr);
+
+    off_t result = data_out.seek(0,SEEK_SET);
+    (void) result;
+    assert(result == 0);
+    int len=0, curr=0; char buf;
+    while( (curr=data_out.read(&buf, 1)) )
+        len += curr;
+
+    // write bits to sequence of bytes
+    m_aBits.realloc(len);
+    result = data_out.seek(0,SEEK_SET);
+    assert(result == 0);
+    if( data_out.read(m_aBits.getArray(), len) != len )
+        throw RuntimeException(u"The GpgME library failed to read the key"_ustr);
+
     // Export key to base64Empty for gpg
     return m_aBits;
 }
@@ -157,8 +185,9 @@ Sequence< sal_Int8 > SAL_CALL CertificateImpl::getSHA1Thumbprint()
 {
     // This is mapped to the fingerprint for gpg
     const char* keyId = m_pKey.primaryFingerprint();
-    return comphelper::arrayToSequence<sal_Int8>(
-        keyId, strlen(keyId)+1);
+
+    // get hex fingerprint as byte array
+    return comphelper::containerToSequence<sal_Int8>(svl::crypto::DecodeHexString(keyId));
 }
 
 Sequence<sal_Int8> CertificateImpl::getSHA256Thumbprint()
@@ -193,36 +222,10 @@ sal_Int32 SAL_CALL CertificateImpl::getCertificateUsage()
     return KeyUsage::DIGITAL_SIGNATURE | KeyUsage::NON_REPUDIATION  | KeyUsage::KEY_ENCIPHERMENT | KeyUsage::DATA_ENCIPHERMENT;
 }
 
-void CertificateImpl::setCertificate(GpgME::Context* ctx, const GpgME::Key& key)
+void CertificateImpl::setCertificate(const std::shared_ptr<GpgME::Context>& ctx, const GpgME::Key& key)
 {
     m_pKey = key;
-
-    // extract key data, store into m_aBits
-    GpgME::Data data_out;
-    ctx->setArmor(false); // caller will base64-encode anyway
-    GpgME::Error err = ctx->exportPublicKeys(
-        key.primaryFingerprint(),
-        data_out,
-        officecfg::Office::Common::Security::OpenPGP::MinimalKeyExport::get()
-         ? GpgME::Context::ExportMinimal : 0
-    );
-
-    if (err)
-        throw RuntimeException("The GpgME library failed to retrieve the public key");
-
-    off_t result = data_out.seek(0,SEEK_SET);
-    (void) result;
-    assert(result == 0);
-    int len=0, curr=0; char buf;
-    while( (curr=data_out.read(&buf, 1)) )
-        len += curr;
-
-    // write bits to sequence of bytes
-    m_aBits.realloc(len);
-    result = data_out.seek(0,SEEK_SET);
-    assert(result == 0);
-    if( data_out.read(m_aBits.getArray(), len) != len )
-        throw RuntimeException("The GpgME library failed to read the key");
+    m_pContext = ctx;
 }
 
 const GpgME::Key* CertificateImpl::getCertificate() const
@@ -233,7 +236,7 @@ const GpgME::Key* CertificateImpl::getCertificate() const
 /* XServiceInfo */
 OUString SAL_CALL CertificateImpl::getImplementationName()
 {
-    return "com.sun.star.xml.security.gpg.XCertificate_GpgImpl";
+    return u"com.sun.star.xml.security.gpg.XCertificate_GpgImpl"_ustr;
 }
 
 /* XServiceInfo */

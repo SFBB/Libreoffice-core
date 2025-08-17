@@ -79,7 +79,7 @@ void SwView::ExecDraw(const SfxRequest& rReq)
     bool bDeselect = false;
 
     sal_uInt16 nSlotId = rReq.GetSlot();
-    if(pArgs && SfxItemState::SET == pArgs->GetItemState(GetPool().GetWhich(nSlotId), false, &pItem))
+    if(pArgs && SfxItemState::SET == pArgs->GetItemState(GetPool().GetWhichIDFromSlotID(nSlotId), false, &pItem))
         pStringItem = dynamic_cast< const SfxStringItem*>(pItem);
 
     SdrObjKind eNewFormObjKind = SdrObjKind::NONE;
@@ -151,7 +151,7 @@ void SwView::ExecDraw(const SfxRequest& rReq)
         pSdrView = m_pWrtShell->GetDrawView();
         if (pSdrView)
         {
-            std::shared_ptr<svx::FontWorkGalleryDialog> pDlg = std::make_shared<svx::FontWorkGalleryDialog>(rWin.GetFrameWeld(), *pSdrView);
+            std::shared_ptr<svx::FontWorkGalleryDialog> pDlg = std::make_shared<svx::FontWorkGalleryDialog>(rWin.GetFrameWeld(), *pSdrView, GetFrame()->GetBindings().GetActiveFrame());
             pDlg->SetSdrObjectRef(&pSdrView->GetModel());
             weld::DialogController::runAsync(pDlg, [this, pDlg](int) {
                 vcl::Window& rWin2 = m_pWrtShell->GetView().GetViewFrame().GetWindow();
@@ -160,18 +160,18 @@ void SwView::ExecDraw(const SfxRequest& rReq)
                 if ( pObj )
                 {
                     Size            aDocSize( m_pWrtShell->GetDocSize() );
-                    const SwRect&   rVisArea = comphelper::LibreOfficeKit::isActive() ?
+                    const SwRect    aVisArea = comphelper::LibreOfficeKit::isActive() ?
                                                 SwRect(m_pWrtShell->getLOKVisibleArea()) : m_pWrtShell->VisArea();
-                    Point           aPos( rVisArea.Center() );
+                    Point           aPos( aVisArea.Center() );
                     tools::Rectangle aObjRect( pObj->GetLogicRect() );
 
-                    if ( rVisArea.Width() > aDocSize.Width())
-                        aPos.setX( aDocSize.Width() / 2 + rVisArea.Left() );
+                    if ( aVisArea.Width() > aDocSize.Width())
+                        aPos.setX( aDocSize.Width() / 2 + aVisArea.Left() );
                     else if (aPos.getX() > aObjRect.GetWidth() / 2)
                          aPos.AdjustX( -(aObjRect.GetWidth() / 2) );
 
-                    if (rVisArea.Height() > aDocSize.Height())
-                        aPos.setY( aDocSize.Height() / 2 + rVisArea.Top() );
+                    if (aVisArea.Height() > aDocSize.Height())
+                        aPos.setY( aDocSize.Height() / 2 + aVisArea.Top() );
                     else if (aPos.getY() > aObjRect.GetHeight() / 2)
                          aPos.AdjustY( -(aObjRect.GetHeight() / 2) );
 
@@ -215,7 +215,7 @@ void SwView::ExecDraw(const SfxRequest& rReq)
             SetDrawFuncPtr(nullptr);
         }
 
-        if (m_pWrtShell->IsObjSelected() && !m_pWrtShell->IsSelFrameMode())
+        if (m_pWrtShell->GetSelectedObjCount() && !m_pWrtShell->IsSelFrameMode())
             m_pWrtShell->EnterSelFrameMode();
         LeaveDrawCreate();
 
@@ -237,7 +237,7 @@ void SwView::ExecDraw(const SfxRequest& rReq)
     {
         case SID_OBJECT_SELECT:
         case SID_DRAW_SELECT:
-            pFuncPtr.reset( new DrawSelection(m_pWrtShell.get(), m_pEditWin, this) );
+            pFuncPtr.reset( new DrawSelection(m_pWrtShell.get(), m_pEditWin, *this) );
             m_nDrawSfxId = m_nFormSfxId = SID_OBJECT_SELECT;
             m_sDrawCustom.clear();
             break;
@@ -259,7 +259,7 @@ void SwView::ExecDraw(const SfxRequest& rReq)
         case SID_DRAW_TEXT_MARQUEE:
         case SID_DRAW_CAPTION:
         case SID_DRAW_CAPTION_VERTICAL:
-            pFuncPtr.reset( new ConstRectangle(m_pWrtShell.get(), m_pEditWin, this) );
+            pFuncPtr.reset( new ConstRectangle(m_pWrtShell.get(), m_pEditWin, *this) );
             bCreateDirectly = comphelper::LibreOfficeKit::isActive();
             m_nDrawSfxId = nSlotId;
             m_sDrawCustom.clear();
@@ -273,7 +273,7 @@ void SwView::ExecDraw(const SfxRequest& rReq)
         case SID_DRAW_BEZIER_FILL:
         case SID_DRAW_FREELINE_NOFILL:
         case SID_DRAW_FREELINE:
-            pFuncPtr.reset( new ConstPolygon(m_pWrtShell.get(), m_pEditWin, this) );
+            pFuncPtr.reset( new ConstPolygon(m_pWrtShell.get(), m_pEditWin, *this) );
             m_nDrawSfxId = nSlotId;
             m_sDrawCustom.clear();
             break;
@@ -281,14 +281,14 @@ void SwView::ExecDraw(const SfxRequest& rReq)
         case SID_DRAW_ARC:
         case SID_DRAW_PIE:
         case SID_DRAW_CIRCLECUT:
-            pFuncPtr.reset( new ConstArc(m_pWrtShell.get(), m_pEditWin, this) );
+            pFuncPtr.reset( new ConstArc(m_pWrtShell.get(), m_pEditWin, *this) );
             m_nDrawSfxId = nSlotId;
             m_sDrawCustom.clear();
             break;
 
         case SID_FM_CREATE_CONTROL:
         {
-            pFuncPtr.reset(new ConstFormControl(m_pWrtShell.get(), m_pEditWin, this, eNewFormObjKind));
+            pFuncPtr.reset(new ConstFormControl(m_pWrtShell.get(), m_pEditWin, *this, eNewFormObjKind));
             m_nFormSfxId = nSlotId;
             m_eFormObjKind = eNewFormObjKind;
         }
@@ -302,7 +302,7 @@ void SwView::ExecDraw(const SfxRequest& rReq)
         case SID_DRAWTBX_CS_STAR :
         case SID_DRAW_CS_ID :
         {
-            pFuncPtr.reset( new ConstCustomShape(m_pWrtShell.get(), m_pEditWin, this, rReq ) );
+            pFuncPtr.reset( new ConstCustomShape(m_pWrtShell.get(), m_pEditWin, *this, rReq ) );
 
             bCreateDirectly = comphelper::LibreOfficeKit::isActive();
 
@@ -374,7 +374,7 @@ void SwView::ExecDraw(const SfxRequest& rReq)
     }
     else
     {
-        if (m_pWrtShell->IsObjSelected() && !m_pWrtShell->IsSelFrameMode())
+        if (m_pWrtShell->GetSelectedObjCount() && !m_pWrtShell->IsSelFrameMode())
             m_pWrtShell->EnterSelFrameMode();
     }
 
@@ -448,6 +448,22 @@ void SwView::NoRotate()
     }
 }
 
+void SwView::ToggleRotate()
+{
+    if ((m_pWrtShell->GetSelectedObjCount() &&
+        m_pWrtShell->GetDrawView()->IsRotateAllowed()) ||
+          (m_pWrtShell->IsRotationOfSwGrfNodePossible() &&
+              m_pWrtShell->GetDrawViewWithValidMarkList()->IsRotateAllowed()))
+    {
+        if (IsDrawRotate())
+            m_pWrtShell->SetDragMode(SdrDragMode::Move);
+        else
+            m_pWrtShell->SetDragMode(SdrDragMode::Rotate);
+
+        FlipDrawRotate();
+    }
+}
+
 // Enable DrawTextEditMode
 
 static bool lcl_isTextBox(SdrObject const * pObject)
@@ -464,7 +480,7 @@ bool SwView::EnterDrawTextMode(const Point& aDocPos)
 {
     SwWrtShell *pSh = &GetWrtShell();
     SdrView *pSdrView = pSh->GetDrawView();
-    OSL_ENSURE( pSdrView, "EnterDrawTextMode without DrawView?" );
+    assert(pSdrView && "EnterDrawTextMode without DrawView?");
 
     bool bReturn = false;
 
@@ -585,7 +601,7 @@ bool SwView::BeginTextEdit(SdrObject* pObj, SdrPageView* pPV, vcl::Window* pWin,
         }
 
         // editing should start at the end of text, spell checking at the beginning ...
-        ESelection aNewSelection(EE_PARA_NOT_FOUND, EE_INDEX_NOT_FOUND, EE_PARA_NOT_FOUND, EE_INDEX_NOT_FOUND);
+        ESelection aNewSelection(ESelection::AtEnd());
         if (bSetSelectionToStart)
             aNewSelection = ESelection();
         if (pView)
@@ -609,7 +625,7 @@ bool SwView::IsTextTool() const
     SdrObjKind nId;
     SdrInventor nInvent;
     SdrView *pSdrView = GetWrtShell().GetDrawView();
-    OSL_ENSURE( pSdrView, "IsTextTool without DrawView?" );
+    assert(pSdrView && "IsTextTool without DrawView?");
 
     if (pSdrView->IsCreateMode())
         pSdrView->SetCreateMode(false);

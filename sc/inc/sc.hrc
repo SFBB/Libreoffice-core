@@ -110,6 +110,7 @@ class SvxZoomSliderItem;
 
 // misc:
 #define SID_LINKS               (SC_VIEW_START + 60)
+#define SID_SC_INPUT_WARNACTIVESHEET    TypedWhichId<SfxBoolItem>(SC_VIEW_START + 61)
 #define SID_INSERT_SMATH        (SC_VIEW_START + 63)
 // Put this here since all available slots for "SC_INPUT" are taken
 #define SID_SC_INPUT_ENTER_PASTE_MODE TypedWhichId<SfxBoolItem>(SC_VIEW_START + 64)
@@ -167,7 +168,7 @@ class SvxZoomSliderItem;
 
 #define SID_SC_OPT_KEY_BINDING_COMPAT   TypedWhichId<SfxUInt16Item>(SC_VIEW_START + 99)
 
-// NOTE: last valid ID is (SC_VIEW_START + 99)
+// NOTE: last valid ID is (SC_VIEW_START + 100)
 
 // messages
 
@@ -247,6 +248,7 @@ class SvxZoomSliderItem;
 
 #define SID_OPEN_CALC                   (SC_FUNCTION_START + 4)
 #define SID_CONVERT_FORMULA_TO_VALUE    (SC_FUNCTION_START + 5)
+#define FID_MOVE_KEEP_INSERT_MODE       (SC_FUNCTION_START + 6)
 #ifndef FILE_MENU_END // duplicated in sfx2/sfxsids.hrc
 #define FILE_MENU_END                   (SC_FUNCTION_START + 20)
 #endif
@@ -275,6 +277,7 @@ class SvxZoomSliderItem;
 
 #define FID_TOGGLEINPUTLINE     TypedWhichId<SfxBoolItem>(VIEW_MENU_START + 1)
 #define FID_TOGGLEHEADERS       (VIEW_MENU_START + 2)
+#define FID_HANDLEDUPLICATERECORDS (VIEW_MENU_START + 3)
 #define FID_SCALE               TypedWhichId<SvxZoomItem>(VIEW_MENU_START + 4)
 #define FID_TOGGLESYNTAX        (VIEW_MENU_START + 5)
 #define FID_TOGGLECOLROWHIGHLIGHTING (VIEW_MENU_START + 6)
@@ -512,6 +515,7 @@ static_assert(SID_PREVIEW_END < SID_KEYFUNC_START, "calc slots ids trampling inf
 
 #define SID_ACCEPT_FORMULA      (SID_KEYFUNC_START + 42)
 #define SID_START_FORMULA       (SID_KEYFUNC_START + 43)
+#define SID_COPYDELETE          (SID_KEYFUNC_START + 44)
 
 #define SID_KEYFUNC_END         (SID_KEYFUNC_START + 50)
 
@@ -575,15 +579,16 @@ static_assert(SID_PREVIEW_END < SID_KEYFUNC_START, "calc slots ids trampling inf
 #define FID_VALID_VALUE1        TypedWhichId<SfxStringItem>(SID_NEW_SLOTS+62)
 #define FID_VALID_VALUE2        TypedWhichId<SfxStringItem>(SID_NEW_SLOTS+63)
 #define FID_VALID_BLANK         TypedWhichId<SfxBoolItem>(SID_NEW_SLOTS+64)
-#define FID_VALID_SHOWHELP      TypedWhichId<SfxBoolItem>(SID_NEW_SLOTS+65)
-#define FID_VALID_HELPTITLE     TypedWhichId<SfxStringItem>(SID_NEW_SLOTS+66)
-#define FID_VALID_HELPTEXT      TypedWhichId<SfxStringItem>(SID_NEW_SLOTS+67)
-#define FID_VALID_SHOWERR       TypedWhichId<SfxBoolItem>(SID_NEW_SLOTS+68)
-#define FID_VALID_ERRSTYLE      TypedWhichId<SfxUInt16Item>(SID_NEW_SLOTS+69)
-#define FID_VALID_ERRTITLE      TypedWhichId<SfxStringItem>(SID_NEW_SLOTS+70)
-#define FID_VALID_ERRTEXT       TypedWhichId<SfxStringItem>(SID_NEW_SLOTS+71)
+#define FID_VALID_CASESENS      TypedWhichId<SfxBoolItem>(SID_NEW_SLOTS+65)
+#define FID_VALID_SHOWHELP      TypedWhichId<SfxBoolItem>(SID_NEW_SLOTS+66)
+#define FID_VALID_HELPTITLE     TypedWhichId<SfxStringItem>(SID_NEW_SLOTS+67)
+#define FID_VALID_HELPTEXT      TypedWhichId<SfxStringItem>(SID_NEW_SLOTS+68)
+#define FID_VALID_SHOWERR       TypedWhichId<SfxBoolItem>(SID_NEW_SLOTS+69)
+#define FID_VALID_ERRSTYLE      TypedWhichId<SfxUInt16Item>(SID_NEW_SLOTS+70)
+#define FID_VALID_ERRTITLE      TypedWhichId<SfxStringItem>(SID_NEW_SLOTS+71)
+#define FID_VALID_ERRTEXT       TypedWhichId<SfxStringItem>(SID_NEW_SLOTS+72)
 
-#define SID_REFRESH_DBAREA      (SID_NEW_SLOTS+72)
+#define SID_REFRESH_DBAREA      (SID_NEW_SLOTS+73)
 
 #define FID_FOCUS_POSWND        (SID_NEW_SLOTS+74)
 
@@ -624,6 +629,7 @@ static_assert(SID_PREVIEW_END < SID_KEYFUNC_START, "calc slots ids trampling inf
 #define SID_UNGROUP_SPARKLINES      (SID_NEW_SLOTS+115)
 #define SID_EDIT_SPARKLINE          (SID_NEW_SLOTS+116)
 #define SID_SC_OPT_LINKS            TypedWhichId<SfxBoolItem>(SID_NEW_SLOTS + 117)
+#define SID_CLEAR_AUTO_FILTER       (SID_NEW_SLOTS+118)
 
 // idl parameter
 

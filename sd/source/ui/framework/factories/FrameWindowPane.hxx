@@ -21,20 +21,17 @@
 
 #include <framework/Pane.hxx>
 
-namespace com::sun::star::drawing::framework
-{
-class XResourceId;
-}
-
 namespace sd::framework
 {
+class ResourceId;
+
 /** This subclass is not necessary anymore.  We can remove it if that
     remains so.
 */
 class FrameWindowPane : public Pane
 {
 public:
-    FrameWindowPane(const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId,
+    FrameWindowPane(const rtl::Reference<sd::framework::ResourceId>& rxPaneId,
                     vcl::Window* pWindow);
     virtual ~FrameWindowPane() noexcept override;
 
@@ -42,7 +39,7 @@ public:
         children, if only to visualize that something (a view) is missing.
         Therefore this method always returns <FALSE/>.
     */
-    virtual sal_Bool SAL_CALL isAnchorOnly() override;
+    virtual bool isAnchorOnly() override;
 };
 
 } // end of namespace sd::framework

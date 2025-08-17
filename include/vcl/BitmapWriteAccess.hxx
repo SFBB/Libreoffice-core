@@ -21,9 +21,10 @@ public:
     BitmapWriteAccess(AlphaMask& rBitmap);
     virtual ~BitmapWriteAccess() override;
 
-    void CopyScanline(tools::Long nY, const BitmapReadAccess& rReadAcc);
-    void CopyScanline(tools::Long nY, ConstScanline aSrcScanline, ScanlineFormat nSrcScanlineFormat,
-                      sal_uInt32 nSrcScanlineSize);
+    SAL_DLLPRIVATE void CopyScanline(tools::Long nY, const BitmapReadAccess& rReadAcc);
+    SAL_DLLPRIVATE void CopyScanline(tools::Long nY, ConstScanline aSrcScanline,
+                                     ScanlineFormat nSrcScanlineFormat,
+                                     sal_uInt32 nSrcScanlineSize);
 
     void SetPalette(const BitmapPalette& rPalette)
     {
@@ -53,7 +54,7 @@ public:
         assert(nX < mpBuffer->mnWidth && "x-coordinate out of range!");
         assert(nY < mpBuffer->mnHeight && "y-coordinate out of range!");
 
-        mFncSetPixel(GetScanline(nY), nX, rBitmapColor, maColorMask);
+        mFncSetPixel(GetScanline(nY), nX, rBitmapColor);
     }
 
     void SetPixelIndex(tools::Long nY, tools::Long nX, sal_uInt8 cIndex)
@@ -68,7 +69,7 @@ public:
 
     void Erase(const Color& rColor);
 
-    void DrawLine(const Point& rStart, const Point& rEnd);
+    SAL_DLLPRIVATE void DrawLine(const Point& rStart, const Point& rEnd);
 
     void FillRect(const tools::Rectangle& rRect);
     void DrawRect(const tools::Rectangle& rRect);

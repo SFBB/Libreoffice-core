@@ -21,6 +21,7 @@
 
 #include <vcl/transfer.hxx>
 #include <vcl/syschild.hxx>
+#include <vcl/bitmap.hxx>
 
 #include <mediacontrol.hxx>
 
@@ -32,8 +33,6 @@ namespace com::sun::star::media {
 namespace com::sun::star::uno {
     class XComponentContext;
 }
-
-class BitmapEx;
 
 namespace avmedia
 {
@@ -87,6 +86,9 @@ public:
 
     const OUString& getURL() const;
 
+    void setFallbackURL(const OUString& rURL);
+    const OUString& getFallbackURL() const;
+
     bool isValid() const;
 
     Size getPreferredSize() const;
@@ -134,11 +136,11 @@ private:
 
     void onURLChanged();
 
-    static css::uno::Reference<css::media::XPlayer> createPlayer(const OUString& rURL, const OUString& rManagerServName,
-                                                                 const css::uno::Reference<css::uno::XComponentContext>& xContext);
+    static css::uno::Reference<css::media::XPlayer> createPlayer(const OUString& rURL, const OUString& rManagerServName);
 
     OUString maFileURL;
     OUString mTempFileURL;
+    OUString maFallbackFileURL;
     OUString maReferer;
     OUString m_sMimeType;
     css::uno::Reference<css::media::XPlayer> mxPlayer;
@@ -148,8 +150,8 @@ private:
     rtl::Reference<MediaEventListenersImpl> mxEvents;
     VclPtr<MediaChildWindow> mpChildWindow;
     VclPtr<MediaWindowControl> mpMediaWindowControl;
-    std::unique_ptr<BitmapEx> mpEmptyBmpEx;
-    std::unique_ptr<BitmapEx> mpAudioBmpEx;
+    Bitmap maEmptyBmp;
+    Bitmap maAudioBmp;
     const MediaItem* mpItem = nullptr;
 };
 

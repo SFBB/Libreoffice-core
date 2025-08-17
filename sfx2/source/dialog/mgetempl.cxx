@@ -46,7 +46,7 @@
  *  initializes the list box with the templates
  */
 SfxManageStyleSheetPage::SfxManageStyleSheetPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rAttrSet)
-    : SfxTabPage(pPage, pController, "sfx/ui/managestylepage.ui", "ManageStylePage", &rAttrSet)
+    : SfxTabPage(pPage, pController, u"sfx/ui/managestylepage.ui"_ustr, u"ManageStylePage"_ustr, &rAttrSet)
     , pStyle(&static_cast<SfxStyleDialogController*>(pController)->GetStyleSheet())
     , pItem(nullptr)
     , bModified(false)
@@ -54,17 +54,17 @@ SfxManageStyleSheetPage::SfxManageStyleSheetPage(weld::Container* pPage, weld::D
     , aFollow(pStyle->GetFollow())
     , aParent(pStyle->GetParent())
     , nFlags(pStyle->GetMask())
-    , m_xName(m_xBuilder->weld_entry("name"))
-    , m_xAutoCB(m_xBuilder->weld_check_button("autoupdate"))
-    , m_xFollowFt(m_xBuilder->weld_label("nextstyleft"))
-    , m_xFollowLb(m_xBuilder->weld_combo_box("nextstyle"))
-    , m_xEditStyleBtn(m_xBuilder->weld_button("editstyle"))
-    , m_xBaseFt(m_xBuilder->weld_label("linkedwithft"))
-    , m_xBaseLb(m_xBuilder->weld_combo_box("linkedwith"))
-    , m_xEditLinkStyleBtn(m_xBuilder->weld_button("editlinkstyle"))
-    , m_xFilterFt(m_xBuilder->weld_label("categoryft"))
-    , m_xFilterLb(m_xBuilder->weld_combo_box("category"))
-    , m_xDescFt(m_xBuilder->weld_label("desc"))
+    , m_xName(m_xBuilder->weld_entry(u"name"_ustr))
+    , m_xAutoCB(m_xBuilder->weld_check_button(u"autoupdate"_ustr))
+    , m_xFollowFt(m_xBuilder->weld_label(u"nextstyleft"_ustr))
+    , m_xFollowLb(m_xBuilder->weld_combo_box(u"nextstyle"_ustr))
+    , m_xEditStyleBtn(m_xBuilder->weld_button(u"editstyle"_ustr))
+    , m_xBaseFt(m_xBuilder->weld_label(u"linkedwithft"_ustr))
+    , m_xBaseLb(m_xBuilder->weld_combo_box(u"linkedwith"_ustr))
+    , m_xEditLinkStyleBtn(m_xBuilder->weld_button(u"editlinkstyle"_ustr))
+    , m_xFilterFt(m_xBuilder->weld_label(u"categoryft"_ustr))
+    , m_xFilterLb(m_xBuilder->weld_combo_box(u"category"_ustr))
+    , m_xDescFt(m_xBuilder->weld_label(u"desc"_ustr))
 {
     m_xFollowLb->make_sorted();
     // tdf#120188 like SwCharURLPage limit the width of the style combos
@@ -91,7 +91,7 @@ SfxManageStyleSheetPage::SfxManageStyleSheetPage(weld::Container* pPage, weld::D
     else
         m_xEditLinkStyleBtn->set_sensitive(true);
 
-    mxFamilies = SfxApplication::GetModule_Impl()->CreateStyleFamilies();
+    maFamilies = SfxApplication::GetModule_Impl()->CreateStyleFamilies();
 
     SfxStyleSheetBasePool* pPool = nullptr;
     SfxObjectShell* pDocShell = SfxObjectShell::Current();
@@ -184,11 +184,11 @@ SfxManageStyleSheetPage::SfxManageStyleSheetPage(weld::Container* pPage, weld::D
         m_xBaseLb->set_sensitive(false);
     }
 
-    size_t nCount = mxFamilies->size();
+    size_t nCount = maFamilies.size();
     size_t i;
     for ( i = 0; i < nCount; ++i )
     {
-        pItem = &(mxFamilies->at(i));
+        pItem = &(maFamilies.at(i));
 
         if ( pItem->GetFamily() == pStyle->GetFamily() )
             break;
@@ -255,7 +255,6 @@ SfxManageStyleSheetPage::SfxManageStyleSheetPage(weld::Container* pPage, weld::D
 
 SfxManageStyleSheetPage::~SfxManageStyleSheetPage()
 {
-    mxFamilies.reset();
     pItem = nullptr;
     pStyle = nullptr;
 }
@@ -301,9 +300,7 @@ void SfxManageStyleSheetPage::SetDescriptionText_Impl()
     SfxModule* pModule = SfxModule::GetActiveModule();
     if ( pModule )
     {
-        const SfxPoolItem* pPoolItem = pModule->GetItem( SID_ATTR_METRIC );
-        if ( pPoolItem )
-            eFieldUnit = static_cast<FieldUnit>(static_cast<const SfxUInt16Item*>( pPoolItem )->GetValue());
+        eFieldUnit = pModule->GetFieldUnit();
     }
 
     switch ( eFieldUnit )
@@ -373,8 +370,7 @@ bool SfxManageStyleSheetPage::Execute_Impl(
         nId, SfxCallMode::SYNCHRON | SfxCallMode::RECORD,
         pItems ));
 
-    return nullptr != aResult.getItem();
-
+    return aResult.is();
 }
 
 IMPL_LINK(SfxManageStyleSheetPage, GetFocusHdl, weld::Widget&, rControl, void)
@@ -438,7 +434,7 @@ bool SfxManageStyleSheetPage::FillItemSet( SfxItemSet* rSet )
          m_xFilterLb->get_sensitive() )
     {
         bModified = true;
-        OSL_ENSURE( pItem, "No Item" );
+        assert(pItem && "No Item");
         // is only possibly for user templates
         SfxStyleSearchBits nMask = pItem->GetFilterList()[m_xFilterLb->get_id(nFilterIdx).toUInt32()].nFlags | SfxStyleSearchBits::UserDefined;
         pStyle->SetMask( nMask );

@@ -28,13 +28,17 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/implbase.hxx>
+#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
 
 #include <mutex>
 #include <string_view>
 #include <unordered_map>
 
+
 namespace framework {
+
+class WeakContainerListener;
 
 class ConfigurationAccess_FactoryManager final : public ::cppu::WeakImplHelper< css::container::XContainerListener>
 {
@@ -58,10 +62,6 @@ class ConfigurationAccess_FactoryManager final : public ::cppu::WeakImplHelper< 
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
     private:
-        class FactoryManagerMap : public std::unordered_map<OUString,
-                                                            OUString>
-        {
-        };
 
         bool impl_getElementProps( const css::uno::Any& rElement, OUString& rType, OUString& rName, OUString& rModule, OUString& rServiceSpecifier ) const;
 
@@ -71,10 +71,10 @@ class ConfigurationAccess_FactoryManager final : public ::cppu::WeakImplHelper< 
         OUString                     m_aPropModule;
         OUString                     m_aPropFactory;
         OUString                     m_sRoot;
-        FactoryManagerMap            m_aFactoryManagerMap;
+        std::unordered_map<OUString, OUString> m_aFactoryManagerMap;
         css::uno::Reference< css::lang::XMultiServiceFactory >     m_xConfigProvider;
         css::uno::Reference< css::container::XNameAccess >         m_xConfigAccess;
-        css::uno::Reference< css::container::XContainerListener >  m_xConfigListener;
+        rtl::Reference< WeakContainerListener >  m_xConfigListener;
         bool                         m_bConfigAccessInitialized;
 };
 

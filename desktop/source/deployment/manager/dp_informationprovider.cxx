@@ -45,13 +45,13 @@
 #include <dp_version.hxx>
 #include <dp_update.hxx>
 
-namespace beans      = com::sun::star::beans ;
-namespace deployment = com::sun::star::deployment ;
-namespace lang       = com::sun::star::lang ;
-namespace task       = com::sun::star::task ;
-namespace css_ucb    = com::sun::star::ucb ;
-namespace uno        = com::sun::star::uno ;
-namespace xml = com::sun::star::xml ;
+namespace beans      = css::beans ;
+namespace deployment = css::deployment ;
+namespace lang       = css::lang ;
+namespace task       = css::task ;
+namespace css_ucb    = css::ucb ;
+namespace uno        = css::uno ;
+namespace xml = css::xml ;
 
 
 namespace dp_info {
@@ -96,7 +96,7 @@ PackageInformationProvider::PackageInformationProvider( uno::Reference< uno::XCo
 // XServiceInfo
 OUString PackageInformationProvider::getImplementationName()
 {
-    return "com.sun.star.comp.deployment.PackageInformationProvider";
+    return u"com.sun.star.comp.deployment.PackageInformationProvider"_ustr;
 }
 
 sal_Bool PackageInformationProvider::supportsService( const OUString& ServiceName )
@@ -107,7 +107,7 @@ sal_Bool PackageInformationProvider::supportsService( const OUString& ServiceNam
 css::uno::Sequence< OUString > PackageInformationProvider::getSupportedServiceNames()
 {
     // a private one:
-    return { "com.sun.star.comp.deployment.PackageInformationProvider" };
+    return { u"com.sun.star.comp.deployment.PackageInformationProvider"_ustr };
 }
 
 OUString PackageInformationProvider::getPackageLocation(
@@ -148,15 +148,15 @@ OUString PackageInformationProvider::getPackageLocation(
 OUString SAL_CALL
 PackageInformationProvider::getPackageLocation( const OUString& _sExtensionId )
 {
-    OUString aLocationURL = getPackageLocation( "user", _sExtensionId );
+    OUString aLocationURL = getPackageLocation( u"user"_ustr, _sExtensionId );
 
     if ( aLocationURL.isEmpty() )
     {
-        aLocationURL = getPackageLocation( "shared", _sExtensionId );
+        aLocationURL = getPackageLocation( u"shared"_ustr, _sExtensionId );
     }
     if ( aLocationURL.isEmpty() )
     {
-        aLocationURL = getPackageLocation( "bundled", _sExtensionId );
+        aLocationURL = getPackageLocation( u"bundled"_ustr, _sExtensionId );
     }
     if ( !aLocationURL.isEmpty() )
     {
@@ -248,7 +248,7 @@ PackageInformationProvider::isUpdateAvailable( const OUString& _sExtensionId )
         if (extensions[2].is() )
             sVersionBundled = extensions[2]->getVersion();
 
-        bool bSharedReadOnly = extMgr->isReadOnlyRepository("shared");
+        bool bSharedReadOnly = extMgr->isReadOnlyRepository(u"shared"_ustr);
 
         dp_misc::UPDATE_SOURCE sourceUser = dp_misc::isUpdateUserExtension(
             bSharedReadOnly, sVersionUser, sVersionShared, sVersionBundled, sOnlineVersion);

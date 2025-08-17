@@ -24,6 +24,7 @@
 
 #include <o3tl/any.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/environment.hxx>
 
 #include <osl/process.h>
 #include <osl/file.hxx>
@@ -36,16 +37,25 @@
 
 #include <com/sun/star/uno/XComponentContext.hpp>
 
+#include <comphelper/processfactory.hxx>
+#include <officecfg/Office/Common.hxx>
+
+#include <systools/win32/extended_max_path.hxx>
+
 // apparently PATH_MAX is not standard and not defined by MSVC
+#ifdef _WIN32
+#ifdef PATH_MAX
+#undef PATH_MAX
+#endif
+#define PATH_MAX EXTENDED_MAX_PATH
+#endif
 #ifndef PATH_MAX
-#ifdef _MAX_PATH
+#if defined _MAX_PATH
 #define PATH_MAX _MAX_PATH
-#else
-#ifdef MAX_PATH
+#elif defined MAX_PATH
 #define PATH_MAX MAX_PATH
 #else
 #error no PATH_MAX
-#endif
 #endif
 #endif
 
@@ -88,7 +98,7 @@ static PyRef getLoaderModule()
     raiseRuntimeExceptionWhenNeeded();
     if( !module.is() )
     {
-        throw RuntimeException( "pythonloader: Couldn't load pythonloader module" );
+        throw RuntimeException( u"pythonloader: Couldn't load pythonloader module"_ustr );
     }
     return PyRef( PyModule_GetDict( module.get() ));
 }
@@ -105,7 +115,11 @@ static PyRef getObjectFromLoaderModule( const char * func )
     return object;
 }
 
+#if PY_VERSION_HEX >= 0x03080000
+static void setPythonHome ( const OUString & pythonHome, PyConfig * config )
+#else
 static void setPythonHome ( const OUString & pythonHome )
+#endif
 {
     OUString systemPythonHome;
     osl_getSystemPathFromFileURL( pythonHome.pData, &(systemPythonHome.pData) );
@@ -117,21 +131,23 @@ static void setPythonHome ( const OUString & pythonHome )
         wcsncpy(wide, o3tl::toW(systemPythonHome.getStr()), len + 1);
 #else
     OString o = OUStringToOString(systemPythonHome, osl_getThreadTextEncoding());
-    size_t len = mbstowcs(wide, o.pData->buffer, PATH_MAX + 1);
+    size_t len = mbstowcs(wide, o.pData->buffer, std::size(wide));
     if(len == size_t(-1))
     {
         PyErr_SetString(PyExc_SystemError, "invalid multibyte sequence in python home path");
         return;
     }
 #endif
-    if(len >= PATH_MAX + 1)
+    if (len >= std::size(wide))
     {
         PyErr_SetString(PyExc_SystemError, "python home path is too long");
         return;
     }
-SAL_WNODEPRECATED_DECLARATIONS_PUSH
-    Py_SetPythonHome(wide); // deprecated since python 3.11
-SAL_WNODEPRECATED_DECLARATIONS_POP
+#if PY_VERSION_HEX >= 0x03080000
+    config->home = wide;
+#else
+    Py_SetPythonHome(wide);
+#endif
 }
 
 static void prependPythonPath( std::u16string_view pythonPathBootstrap )
@@ -164,15 +180,15 @@ static void prependPythonPath( std::u16string_view pythonPathBootstrap )
             break;
         nIndex = nNew + 1;
     }
-    const char * oldEnv = getenv( "PYTHONPATH");
-    if( oldEnv )
+    OUString oldEnv = o3tl::getEnvironment(u"PYTHONPATH"_ustr);
+    if (!oldEnv.isEmpty())
     {
         if (bAppendSep)
             bufPYTHONPATH.append( static_cast<sal_Unicode>(SAL_PATHSEPARATOR) );
-        bufPYTHONPATH.append( OUString(oldEnv, strlen(oldEnv), osl_getThreadTextEncoding()) );
+        bufPYTHONPATH.append(oldEnv);
     }
 
-    OUString envVar("PYTHONPATH");
+    OUString envVar(u"PYTHONPATH"_ustr);
     OUString envValue(bufPYTHONPATH.makeStringAndClear());
     osl_setEnvironment(envVar.pData, envValue.pData);
 }
@@ -183,20 +199,30 @@ void pythonInit() {
     if ( Py_IsInitialized()) // may be inited by getComponentContext() already
         return;
 
+#if PY_VERSION_HEX >= 0x03080000
+    PyConfig config;
+#endif
     OUString pythonPath;
     OUString pythonHome;
-    OUString path( "$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("pythonloader.uno" ));
+    OUString path( u"$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("pythonloader.uno" ) ""_ustr);
     rtl::Bootstrap::expandMacros(path); //TODO: detect failure
     rtl::Bootstrap bootstrap(path);
+#if PY_VERSION_HEX >= 0x03080000
+    PyConfig_InitPythonConfig( &config );
+#endif
 
     // look for pythonhome
-    bootstrap.getFrom( "PYUNO_LOADER_PYTHONHOME", pythonHome );
-    bootstrap.getFrom( "PYUNO_LOADER_PYTHONPATH", pythonPath );
+    bootstrap.getFrom( u"PYUNO_LOADER_PYTHONHOME"_ustr, pythonHome );
+    bootstrap.getFrom( u"PYUNO_LOADER_PYTHONPATH"_ustr, pythonPath );
 
     // pythonhome+pythonpath must be set before Py_Initialize(), otherwise there appear warning on the console
     // sadly, there is no api for setting the pythonpath, we have to use the environment variable
     if( !pythonHome.isEmpty() )
+#if PY_VERSION_HEX >= 0x03080000
+        setPythonHome( pythonHome, &config );
+#else
         setPythonHome( pythonHome );
+#endif
 
     if( !pythonPath.isEmpty() )
         prependPythonPath( pythonPath );
@@ -204,20 +230,18 @@ void pythonInit() {
 #ifdef _WIN32
     //extend PATH under windows to include the branddir/program so ssl libs will be found
     //for use by terminal mailmerge dependency _ssl.pyd
-    OUString sEnvName("PATH");
-    OUString sPath;
-    osl_getEnvironment(sEnvName.pData, &sPath.pData);
+    OUString sPath = o3tl::getEnvironment(u"PATH"_ustr);
     OUString sBrandLocation("$BRAND_BASE_DIR/program");
     rtl::Bootstrap::expandMacros(sBrandLocation);
     osl::FileBase::getSystemPathFromFileURL(sBrandLocation, sBrandLocation);
-    sPath = sPath + OUStringChar(SAL_PATHSEPARATOR) + sBrandLocation;
-    osl_setEnvironment(sEnvName.pData, sPath.pData);
+    sPath += OUStringChar(SAL_PATHSEPARATOR) + sBrandLocation;
+    o3tl::setEnvironment(u"PATH"_ustr, sPath);
 #endif
 
     PyImport_AppendInittab( "pyuno", PyInit_pyuno );
 
 #if HAVE_FEATURE_READONLY_INSTALLSET
-    Py_DontWriteBytecodeFlag = 1;
+    config.write_bytecode = 0;
 #endif
 
     // initialize python
@@ -242,7 +266,10 @@ extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 pyuno_Loader_get_implementation(
     css::uno::XComponentContext* ctx , css::uno::Sequence<css::uno::Any> const&)
 {
-    // tdf#114815 init python only once, via single-instace="true" in pythonloader.component
+    if (officecfg::Office::Common::Security::Scripting::DisablePythonRuntime::get(ctx))
+        return nullptr;
+
+    // tdf#114815 init python only once, via single-instance="true" in pythonloader.component
     pythonInit();
 
     Reference< XInterface > ret;

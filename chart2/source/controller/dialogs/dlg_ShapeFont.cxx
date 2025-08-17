@@ -26,6 +26,8 @@
 #include <svx/flagsdef.hxx>
 #include <editeng/flstitem.hxx>
 
+#include <vcl/tabs.hrc>
+
 using namespace ::com::sun::star;
 
 namespace chart
@@ -33,12 +35,15 @@ namespace chart
 
 ShapeFontDialog::ShapeFontDialog(weld::Window* pParent, const SfxItemSet* pAttr,
     const ViewElementListProvider* pViewElementListProvider)
-    : SfxTabDialogController(pParent, "modules/schart/ui/chardialog.ui", "CharDialog", pAttr)
+    : SfxTabDialogController(pParent, u"modules/schart/ui/chardialog.ui"_ustr, u"CharDialog"_ustr, pAttr)
     , m_pViewElementListProvider(pViewElementListProvider)
 {
-    AddTabPage("font", RID_SVXPAGE_CHAR_NAME);
-    AddTabPage("fonteffects", RID_SVXPAGE_CHAR_EFFECTS);
-    AddTabPage("position", RID_SVXPAGE_CHAR_POSITION );
+    AddTabPage(u"fontname"_ustr, TabResId(RID_TAB_FONT.aLabel), RID_SVXPAGE_CHAR_NAME,
+               RID_L + RID_TAB_FONT.sIconName);
+    AddTabPage(u"effects"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel), RID_SVXPAGE_CHAR_EFFECTS,
+               RID_L + RID_TAB_FONTEFFECTS.sIconName);
+    AddTabPage(u"position"_ustr, TabResId(RID_TAB_POSITION.aLabel), RID_SVXPAGE_CHAR_POSITION,
+               RID_L + RID_TAB_POSITION.sIconName);
 }
 
 void ShapeFontDialog::PageCreated(const OUString& rId, SfxTabPage& rPage)

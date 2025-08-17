@@ -25,6 +25,7 @@
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
+#include <com/sun/star/beans/Pair.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
@@ -307,6 +308,8 @@ std::span<const SfxItemPropertyMapEntry>  SwUnoPropertyMapProvider::GetAutoCharS
         { UNO_NAME_CHAR_BORDER_TOP_COMPLEX_COLOR, RES_CHRATR_BOX,    cppu::UnoType<css::util::XComplexColor>::get(),  PropertyAttribute::MAYBEVOID, MID_BORDER_TOP_COLOR },
         { UNO_NAME_CHAR_BORDER_BOTTOM_COMPLEX_COLOR, RES_CHRATR_BOX, cppu::UnoType<css::util::XComplexColor>::get(),  PropertyAttribute::MAYBEVOID, MID_BORDER_BOTTOM_COLOR },
         { UNO_NAME_CHAR_SHADOW_FORMAT, RES_CHRATR_SHADOW, cppu::UnoType<css::table::ShadowFormat>::get(), PROPERTY_NONE, CONVERT_TWIPS},
+        { UNO_NAME_CHAR_STYLE_NAME, RES_TXTATR_CHARFMT, cppu::UnoType<OUString>::get(), PropertyAttribute::MAYBEVOID, 0 },
+        { UNO_NAME_CHAR_SCRIPT_HINT, RES_CHRATR_SCRIPT_HINT, cppu::UnoType<sal_Int16>::get(), PropertyAttribute::MAYBEVOID, MID_SCRIPTHINT },
     };
 
     return aAutoCharStyleMap;
@@ -537,6 +540,7 @@ std::span<const SfxItemPropertyMapEntry> SwUnoPropertyMapProvider::GetPageStyleP
         { UNO_NAME_NUMBERING_TYPE, SID_ATTR_PAGE,             cppu::UnoType<sal_Int16>::get(),           PROPERTY_NONE , MID_PAGE_NUMTYPE       },
         { UNO_NAME_PAGE_STYLE_LAYOUT, SID_ATTR_PAGE,          cppu::UnoType<css::style::PageStyleLayout>::get(),    PROPERTY_NONE ,MID_PAGE_LAYOUT     },
         { UNO_NAME_PRINTER_PAPER_TRAY, RES_PAPER_BIN,             cppu::UnoType<OUString>::get(),            PROPERTY_NONE , 0 },
+        { UNO_NAME_PRINTER_PAPER_TRAY_INDEX, RES_PAPER_BIN,       cppu::UnoType<sal_Int32>::get(),            PROPERTY_NONE , 0 },
 //                  { UNO_NAME_REGISTER_MODE_ACTIVE, SID_SWREGISTER_MODE,     cppu::UnoType<bool>::get(),             PROPERTY_NONE , 0 },
         { UNO_NAME_REGISTER_PARAGRAPH_STYLE, SID_SWREGISTER_COLLECTION,   cppu::UnoType<OUString>::get(),        PROPERTY_NONE , 0 },
         { UNO_NAME_SIZE, SID_ATTR_PAGE_SIZE,  cppu::UnoType<css::awt::Size>::get(),             PROPERTY_NONE,   MID_SIZE_SIZE|CONVERT_TWIPS},

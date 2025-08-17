@@ -62,14 +62,13 @@ namespace dbtools
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::util;
     using namespace ::com::sun::star::sdb;
-    using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
 
 
     css::util::Date const & DBTypeConversion::getStandardDate()
     {
-        static css::util::Date STANDARD_DB_DATE(1,1,1900);
+        static css::util::Date STANDARD_DB_DATE(30,12,1899);
         return STANDARD_DB_DATE;
     }
 

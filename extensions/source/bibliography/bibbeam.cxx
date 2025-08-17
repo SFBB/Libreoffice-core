@@ -43,7 +43,7 @@ namespace bib
     {
         vcl::Window*             pParent = pWindow->GetParent();
 
-        DBG_ASSERT( pParent, "-GetTaskPaneList(): everybody here should have a parent!" );
+        assert(pParent && "-GetTaskPaneList(): everybody here should have a parent!");
 
         SystemWindow*       pSysWin = pParent->GetSystemWindow();
         if( pSysWin )
@@ -125,7 +125,7 @@ namespace bib
         if( !m_xControlContainer.is())
             return;
 
-        uno::Reference< uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
+        const uno::Reference< uno::XComponentContext >& xContext = comphelper::getProcessComponentContext();
 
         if ( !m_xGridModel.is())
             return;
@@ -134,7 +134,7 @@ namespace bib
 
         if ( xPropSet.is() && m_xGridModel.is() )
         {
-            uno::Any aAny = xPropSet->getPropertyValue( "DefaultControl" );
+            uno::Any aAny = xPropSet->getPropertyValue( u"DefaultControl"_ustr );
             OUString aControlName;
             aAny >>= aControlName;
 
@@ -146,7 +146,7 @@ namespace bib
             return;
 
         // Peer as Child to the FrameWindow
-        m_xControlContainer->addControl("GridControl", m_xControl);
+        m_xControlContainer->addControl(u"GridControl"_ustr, m_xControl);
         m_xGridWin.set(m_xControl, UNO_QUERY );
         m_xDispatchProviderInterception.set(m_xControl, UNO_QUERY );
         m_xGridWin->setVisible( true );

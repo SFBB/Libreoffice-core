@@ -15,9 +15,6 @@
 #include <vcl/timer.hxx>
 #include <optional>
 
-class Menu;
-class SwPageFrame;
-
 class SwPageBreakWin;
 
 /** Class for the page break control window.
@@ -40,7 +37,7 @@ public:
     SwBreakDashedLine(SwEditWin* pEditWin, const SwFrame *pFrame);
 
     virtual ~SwBreakDashedLine() override { disposeOnce(); }
-    virtual void dispose() override { m_pWin.disposeAndClear(); m_pEditWin.clear(); SwDashedLine::dispose(); }
+    virtual void dispose() override { m_pWin.disposeAndClear(); m_pEditWin.reset(); SwDashedLine::dispose(); }
 
     virtual void MouseMove(const MouseEvent& rMEvt) override;
 

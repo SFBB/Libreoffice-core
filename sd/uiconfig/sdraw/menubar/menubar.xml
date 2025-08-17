@@ -114,7 +114,7 @@
       <menu:menuitem menu:id=".uno:PageMode" menu:style="radio"/>
       <menu:menuitem menu:id=".uno:MasterPage" menu:style="radio"/>
       <menu:menuseparator/>
-      <menu:menuitem menu:id=".uno:ToolbarModeUI"/>
+      <menu:menuitem menu:id=".uno:UIPicker"/>
       <menu:menuitem menu:id=".uno:AvailableToolbars" menu:style="text"/>
       <menu:menuseparator/>
       <menu:menuitem menu:id=".uno:StatusBarVisible" menu:style="text"/>
@@ -428,6 +428,7 @@
       <menu:menuitem menu:id=".uno:FormatArea"/>
       <menu:menuitem menu:id=".uno:Window3D"/>
       <menu:menuitem menu:id=".uno:FillShadow"/>
+      <menu:menuitem menu:id=".uno:FontWork"/>
       <menu:menuseparator/>
       <menu:menuitem menu:id=".uno:NameGroup" menu:style="text"/>
       <menu:menuitem menu:id=".uno:ObjectTitleDescription" menu:style="text"/>
@@ -463,6 +464,7 @@
           <menu:menuitem menu:id=".uno:PreviousPage"/>
           <menu:menuitem menu:id=".uno:NextPage"/>
           <menu:menuitem menu:id=".uno:LastPage"/>
+          <menu:menuitem menu:id=".uno:GotoPage"/>
         </menu:menupopup>
       </menu:menu>
     </menu:menupopup>
@@ -593,6 +595,8 @@
       </menu:menu>
       <menu:menu menu:id=".uno:MacrosMenu">
         <menu:menupopup>
+          <menu:menuitem menu:id=".uno:MacroManager"/>
+          <menu:menuseparator/>
           <menu:menuitem menu:id=".uno:MacroRecorder"/>
           <menu:menuitem menu:id=".uno:RunMacro"/>
           <menu:menuitem menu:id=".uno:BasicIDEAppear"/>

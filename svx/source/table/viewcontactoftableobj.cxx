@@ -24,12 +24,11 @@
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <sdr/primitive2d/sdrattributecreator.hxx>
 #include <sdr/primitive2d/sdrdecompositiontools.hxx>
+#include <sdr/primitive2d/sdrcellprimitive.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <sdr/attribute/sdrtextattribute.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
 #include <editeng/borderline.hxx>
-#include <sdr/attribute/sdrfilltextattribute.hxx>
-#include <drawinglayer/primitive2d/BufferedDecompositionPrimitive2D.hxx>
 #include <drawinglayer/attribute/sdrlineattribute.hxx>
 #include <drawinglayer/attribute/sdrshadowattribute.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
@@ -57,42 +56,9 @@ using namespace com::sun::star;
 
 namespace drawinglayer::primitive2d
 {
-        namespace {
-
-        class SdrCellPrimitive2D : public BufferedDecompositionPrimitive2D
+        Primitive2DReference SdrCellPrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& /*aViewInformation*/) const
         {
-        private:
-            basegfx::B2DHomMatrix                       maTransform;
-            attribute::SdrFillTextAttribute             maSdrFTAttribute;
-
-        protected:
-            // local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
-
-        public:
-            SdrCellPrimitive2D(
-                basegfx::B2DHomMatrix aTransform,
-                const attribute::SdrFillTextAttribute& rSdrFTAttribute)
-            :   maTransform(std::move(aTransform)),
-                maSdrFTAttribute(rSdrFTAttribute)
-            {
-            }
-
-            // data access
-            const basegfx::B2DHomMatrix& getTransform() const { return maTransform; }
-            const attribute::SdrFillTextAttribute& getSdrFTAttribute() const { return maSdrFTAttribute; }
-
-            // compare operator
-            virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
-
-            // provide unique ID
-            virtual sal_uInt32 getPrimitive2DID() const override;
-        };
-
-        }
-
-        void SdrCellPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*aViewInformation*/) const
-        {
+            Primitive2DContainer aContainer;
             // prepare unit polygon
             const basegfx::B2DPolyPolygon aUnitPolyPolygon(basegfx::utils::createUnitPolygon());
 
@@ -102,7 +68,7 @@ namespace drawinglayer::primitive2d
                 basegfx::B2DPolyPolygon aTransformed(aUnitPolyPolygon);
 
                 aTransformed.transform(getTransform());
-                rContainer.push_back(
+                aContainer.push_back(
                     createPolyPolygonFillPrimitive(
                         aTransformed,
                         getSdrFTAttribute().getFill(),
@@ -111,7 +77,7 @@ namespace drawinglayer::primitive2d
             else
             {
                 // if no fill create one for HitTest and BoundRect fallback
-                rContainer.push_back(
+                aContainer.push_back(
                     createHiddenGeometryPrimitives2D(
                         true,
                         aUnitPolyPolygon,
@@ -121,7 +87,7 @@ namespace drawinglayer::primitive2d
             // add text
             if(!getSdrFTAttribute().getText().isDefault())
             {
-                rContainer.push_back(
+                aContainer.push_back(
                     createTextPrimitive(
                         aUnitPolyPolygon,
                         getTransform(),
@@ -130,6 +96,7 @@ namespace drawinglayer::primitive2d
                         true,
                         false));
             }
+            return new GroupPrimitive2D(std::move(aContainer));
         }
 
         bool SdrCellPrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
@@ -226,7 +193,7 @@ namespace sdr::contact
                 bool const isTaggedPDF,
                 drawinglayer::primitive2d::Primitive2DDecompositionVisitor& rVisitor)
         {
-            const uno::Reference< css::table::XTable > xTable = rTableObj.getTable();
+            const rtl::Reference< table::TableModel >& xTable = rTableObj.getUnoTable();
 
             if(xTable.is())
             {
@@ -278,15 +245,31 @@ namespace sdr::contact
                             }
 
                             // access the cell
-                            xCurrentCell.set(dynamic_cast< sdr::table::Cell* >(xTable->getCellByPosition(aCellPos.mnCol, aCellPos.mnRow).get()));
+                            xCurrentCell = xTable->getCell(aCellPos.mnCol, aCellPos.mnRow);
 
                             if(xCurrentCell.is())
                             {
+                                // tdf#135843: Find correct neighbor cell index for merged cells
+                                auto nNextCol = aCellPos.mnCol + xCurrentCell->getColumnSpan();
+                                auto nNextRow = aCellPos.mnRow + xCurrentCell->getRowSpan();
+
                                 // copy styles for current cell to CellBorderArray for primitive creation
-                                aArray.SetCellStyleLeft(aCellPos.mnCol, aCellPos.mnRow, impGetLineStyle(rTableLayouter, aCellPos.mnCol, aCellPos.mnRow, false, nColCount, nRowCount, bIsRTL));
-                                aArray.SetCellStyleRight(aCellPos.mnCol, aCellPos.mnRow, impGetLineStyle(rTableLayouter, aCellPos.mnCol + 1, aCellPos.mnRow, false, nColCount, nRowCount, bIsRTL));
-                                aArray.SetCellStyleTop(aCellPos.mnCol, aCellPos.mnRow, impGetLineStyle(rTableLayouter, aCellPos.mnCol, aCellPos.mnRow, true, nColCount, nRowCount, bIsRTL));
-                                aArray.SetCellStyleBottom(aCellPos.mnCol, aCellPos.mnRow, impGetLineStyle(rTableLayouter, aCellPos.mnCol, aCellPos.mnRow + 1, true, nColCount, nRowCount, bIsRTL));
+                                aArray.SetCellStyleLeft(
+                                    aCellPos.mnCol, aCellPos.mnRow,
+                                    impGetLineStyle(rTableLayouter, aCellPos.mnCol, aCellPos.mnRow,
+                                                    false, nColCount, nRowCount, bIsRTL));
+                                aArray.SetCellStyleRight(
+                                    aCellPos.mnCol, aCellPos.mnRow,
+                                    impGetLineStyle(rTableLayouter, nNextCol, aCellPos.mnRow, false,
+                                                    nColCount, nRowCount, bIsRTL));
+                                aArray.SetCellStyleTop(
+                                    aCellPos.mnCol, aCellPos.mnRow,
+                                    impGetLineStyle(rTableLayouter, aCellPos.mnCol, aCellPos.mnRow,
+                                                    true, nColCount, nRowCount, bIsRTL));
+                                aArray.SetCellStyleBottom(
+                                    aCellPos.mnCol, aCellPos.mnRow,
+                                    impGetLineStyle(rTableLayouter, aCellPos.mnCol, nNextRow, true,
+                                                    nColCount, nRowCount, bIsRTL));
 
                                 // ignore merged cells (all except the top-left of a merged cell)
                                 if(!xCurrentCell->isMerged())
@@ -377,12 +360,13 @@ namespace sdr::contact
                                 // first row, assume that it's a header row
                                 auto const eType(
                                    aCellPos.mnRow == 0 && rTableObj.getTableStyleSettings().mbUseFirstRow
-                                       ? vcl::PDFWriter::TableHeader
-                                       : vcl::PDFWriter::TableData);
+                                       ? vcl::pdf::StructElement::TableHeader
+                                       : vcl::pdf::StructElement::TableData);
                                 cell = drawinglayer::primitive2d::Primitive2DContainer {
                                     new drawinglayer::primitive2d::StructureTagPrimitive2D(
                                         eType,
                                         pPage->IsMasterPage(),
+                                        false,
                                         false,
                                         std::move(cell)) };
                             }
@@ -393,8 +377,9 @@ namespace sdr::contact
                         {
                             row = drawinglayer::primitive2d::Primitive2DContainer {
                                 new drawinglayer::primitive2d::StructureTagPrimitive2D(
-                                    vcl::PDFWriter::TableRow,
+                                    vcl::pdf::StructElement::TableRow,
                                     pPage->IsMasterPage(),
+                                    false,
                                     false,
                                     std::move(row)) };
                         }

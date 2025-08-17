@@ -144,17 +144,17 @@ void SbxArray::Put( SbxVariable* pVar, sal_uInt32 nIdx )
     }
 }
 
-OUString SbxArray::GetAlias( sal_uInt32 nIdx )
+const OUString & SbxArray::GetAlias( sal_uInt32 nIdx )
 {
     if( !CanRead() )
     {
         SetError( ERRCODE_BASIC_PROP_WRITEONLY );
-        return OUString();
+        return EMPTY_OUSTRING;
     }
     SbxVarEntry& rRef = reinterpret_cast<SbxVarEntry&>(GetRef( nIdx ));
 
     if (!rRef.maAlias)
-        return OUString();
+        return EMPTY_OUSTRING;
 
     return *rRef.maAlias;
 }
@@ -346,7 +346,7 @@ bool SbxArray::LoadData( SvStream& rStrm, sal_uInt16 /*nVer*/ )
         if( pVar )
         {
             SbxVariableRef& rRef = GetRef( nIdx );
-            rRef = pVar;
+            rRef = std::move(pVar);
         }
         else
         {
@@ -376,7 +376,7 @@ std::pair<bool, sal_uInt32> SbxArray::StoreData( SvStream& rStrm ) const
         if (rEntry.mpVar.is() && !(rEntry.mpVar->GetFlags() & SbxFlagBits::DontStore))
         {
             rStrm.WriteUInt16( n );
-            const auto& [bSuccess, nVersionModule] = rEntry.mpVar->Store(rStrm);
+            const auto [bSuccess, nVersionModule] = rEntry.mpVar->Store(rStrm);
             if (!bSuccess)
                 return { false, 0 };
             else if (nVersionModule > nVersion)

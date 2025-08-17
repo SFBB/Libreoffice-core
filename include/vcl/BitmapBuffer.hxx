@@ -26,7 +26,6 @@
 
 #include <vcl/dllapi.h>
 #include <vcl/BitmapPalette.hxx>
-#include <vcl/ColorMask.hxx>
 #include <vcl/Scanline.hxx>
 #include <tools/long.hxx>
 
@@ -39,14 +38,14 @@ struct VCL_DLLPUBLIC BitmapBuffer
     tools::Long     mnScanlineSize;
     BitmapPalette   maPalette;
     sal_uInt8*      mpBits;
-    ScanlineFormat  mnFormat;
-    ColorMask       maColorMask;
+    ScanlineFormat  meFormat = ScanlineFormat::NONE;
+    ScanlineDirection meDirection = ScanlineDirection::BottomUp;
     sal_uInt16      mnBitCount;
 };
 
 VCL_DLLPUBLIC std::optional<BitmapBuffer> StretchAndConvert(
     const BitmapBuffer& rSrcBuffer, const SalTwoRect& rTwoRect,
-    ScanlineFormat nDstBitmapFormat, std::optional<BitmapPalette> pDstPal = std::nullopt, const ColorMask* pDstMask = nullptr );
+    ScanlineFormat nDstBitmapFormat, std::optional<BitmapPalette> pDstPal = std::nullopt );
 
 #endif // INCLUDED_VCL_BITMAPBUFFER_HXX
 

@@ -82,6 +82,7 @@ void SAL_CALL  BindDispatch_Impl::statusChanged( const css::frame::FeatureStateE
         std::unique_ptr<SfxPoolItem> pItem;
         sal_uInt16 nId = pCache->GetId();
         SfxItemState eState = SfxItemState::DISABLED;
+        const SfxPoolItem* pArg(nullptr);
         if ( !aStatus.IsEnabled )
         {
             // default
@@ -126,20 +127,23 @@ void SAL_CALL  BindDispatch_Impl::statusChanged( const css::frame::FeatureStateE
                     pItem->PutValue( aAny, 0 );
                 }
                 else
+                    // tdf#162666 nId should not be zero. This will now create
+                    // a SAL_INFO in SfxVoidItem::SfxVoidItem
                     pItem.reset( new SfxVoidItem( nId ) );
             }
+            pArg = pItem.get();
         }
         else
         {
             // DONTCARE status
-            pItem.reset( new SfxVoidItem(0) );
+            pArg = DISABLED_POOL_ITEM;
             eState = SfxItemState::UNKNOWN;
         }
 
         for ( SfxControllerItem *pCtrl = pCache->GetItemLink();
             pCtrl;
             pCtrl = pCtrl->GetItemLink() )
-            pCtrl->StateChangedAtToolBoxControl( nId, eState, pItem.get() );
+            pCtrl->StateChangedAtToolBoxControl( nId, eState, pArg );
     }
 }
 
@@ -201,8 +205,13 @@ SfxStateCache::SfxStateCache( sal_uInt16 nFuncId ):
 SfxStateCache::~SfxStateCache()
 {
     DBG_ASSERT( pController == nullptr && pInternalController == nullptr, "there are still Controllers registered" );
-    if ( !IsInvalidItem(pLastItem) )
+
+    if ( !IsInvalidItem(pLastItem) && !IsDisabledItem(pLastItem) )
+    {
+        // tdf#162666 only delete if it *was* cloned
         delete pLastItem;
+    }
+
     if ( mxDispatch.is() )
         mxDispatch->Release();
 }
@@ -243,7 +252,7 @@ const SfxSlotServer* SfxStateCache::GetSlotServer( SfxDispatcher &rDispat , cons
                 // get the slot - even if it is disabled on the dispatcher
                 pSlot = SfxSlotPool::GetSlotPool( rDispat.GetFrame() ).GetSlot( nId );
 
-            if ( !pSlot || pSlot->pUnoName.isEmpty() )
+            if ( !pSlot || pSlot->aUnoName.isEmpty() )
             {
                 bSlotDirty = false;
                 bCtrlDirty = true;
@@ -252,7 +261,7 @@ const SfxSlotServer* SfxStateCache::GetSlotServer( SfxDispatcher &rDispat , cons
 
             // create the dispatch URL from the slot data
             css::util::URL aURL;
-            OUString aCmd = ".uno:";
+            OUString aCmd = u".uno:"_ustr;
             aURL.Protocol = aCmd;
             aURL.Path = pSlot->GetUnoName();
             aCmd += aURL.Path;
@@ -352,7 +361,8 @@ void SfxStateCache::SetVisibleState( bool bShow )
     bItemVisible = bShow;
     if ( bShow )
     {
-        if ( IsInvalidItem(pLastItem) || ( pLastItem == nullptr ))
+        // tdf#164745 also need to do this when disabled item
+        if ( nullptr == pLastItem || IsInvalidItem(pLastItem) || IsDisabledItem(pLastItem) )
         {
             pState = new SfxVoidItem( nId );
             bDeleteItem = true;
@@ -422,15 +432,18 @@ void SfxStateCache::SetState_Impl
             static_cast<SfxDispatchController_Impl *>(pInternalController)->StateChanged( nId, eState, pState, &aSlotServ );
 
         // Remember new value
-        if ( !IsInvalidItem(pLastItem) )
+        if ( !IsInvalidItem(pLastItem) && !IsDisabledItem(pLastItem) )
         {
             delete pLastItem;
             pLastItem = nullptr;
         }
-        if ( pState && !IsInvalidItem(pState) )
+
+        // tdf#164745 clone when it exists and it's really an item
+        if ( pState && !IsInvalidItem(pState) && !IsDisabledItem(pState) )
             pLastItem = pState->Clone();
         else
             pLastItem = nullptr;
+
         eLastState = eState;
         bItemDirty = false;
     }

@@ -28,6 +28,7 @@
 #include <comphelper/diagnose_ex.hxx>
 #include <comphelper/base64.hxx>
 #include <comphelper/extract.hxx>
+#include <unotools/securityoptions.hxx>
 
 #include <com/sun/star/linguistic2/XSupportedLocales.hpp>
 #include <com/sun/star/i18n/XForbiddenCharacters.hpp>
@@ -142,18 +143,12 @@ void XMLSettingsExportHelper::CallTypeFunction(const uno::Any& rAny,
                 aAny >>= aProps;
                 exportbase64Binary(aProps, rName);
             }
-            else if (aType.equals(cppu::UnoType<container::XNameContainer>::get()) ||
-                    aType.equals(cppu::UnoType<container::XNameAccess>::get()))
+            else if (uno::Reference<container::XNameAccess> aNamed; aAny >>= aNamed)
             {
-                uno::Reference< container::XNameAccess> aNamed;
-                aAny >>= aNamed;
                 exportNameAccess(aNamed, rName);
             }
-            else if (aType.equals(cppu::UnoType<container::XIndexAccess>::get()) ||
-                    aType.equals(cppu::UnoType<container::XIndexContainer>::get()) )
+            else if (uno::Reference<container::XIndexAccess> aIndexed; aAny >>= aIndexed)
             {
-                uno::Reference<container::XIndexAccess> aIndexed;
-                aAny >>= aIndexed;
                 exportIndexAccess(aIndexed, rName);
             }
             else if (aType.equals(cppu::UnoType<util::DateTime>::get()) )
@@ -162,9 +157,9 @@ void XMLSettingsExportHelper::CallTypeFunction(const uno::Any& rAny,
                 aAny >>= aDateTime;
                 exportDateTime(aDateTime, rName);
             }
-            else if( aType.equals(cppu::UnoType<i18n::XForbiddenCharacters>::get()) )
+            else if (uno::Reference<i18n::XForbiddenCharacters> xForbChars; aAny >>= xForbChars)
             {
-                exportForbiddenCharacters( aAny, rName );
+                exportForbiddenCharacters(xForbChars, rName);
             }
             else if( aType.equals(cppu::UnoType<uno::Sequence<formula::SymbolDescriptor>>::get() ) )
             {
@@ -173,7 +168,7 @@ void XMLSettingsExportHelper::CallTypeFunction(const uno::Any& rAny,
                 exportSymbolDescriptors(aProps, rName);
             }
             else {
-                OSL_FAIL("this type is not implemented now");
+                SAL_WARN("xmloff", "this type (" << aType.getTypeName() << ") is not implemented now");
             }
         }
         break;
@@ -276,8 +271,17 @@ void XMLSettingsExportHelper::exportSequencePropertyValue(
     {
         m_rContext.AddAttribute( XML_NAME, rName );
         m_rContext.StartElement( XML_CONFIG_ITEM_SET );
+        bool bSkipPrinterSettings = SvtSecurityOptions::IsOptionSet(
+                                        SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo)
+                                    && !SvtSecurityOptions::IsOptionSet(
+                                           SvtSecurityOptions::EOption::DocKeepPrinterSettings);
         for (const auto& rProp : aProps)
+        {
+            if (bSkipPrinterSettings
+                && (rProp.Name == "PrinterSetup" || rProp.Name == "PrinterName"))
+                continue;
             CallTypeFunction(rProp.Value, rProp.Name);
+        }
         m_rContext.EndElement( true );
     }
 }
@@ -361,7 +365,7 @@ void XMLSettingsExportHelper::exportMapEntry(const uno::Any& rAny,
         if (bNameAccess)
             m_rContext.AddAttribute( XML_NAME, rName );
         m_rContext.StartElement( XML_CONFIG_ITEM_MAP_ENTRY );
-        for (const auto& rProp : std::as_const(aProps))
+        for (const auto& rProp : aProps)
             CallTypeFunction(rProp.Value, rProp.Name);
         m_rContext.EndElement( true );
     }
@@ -399,21 +403,17 @@ void XMLSettingsExportHelper::exportIndexAccess(
         sal_Int32 nCount = rIndexed->getCount();
         for (sal_Int32 i = 0; i < nCount; i++)
         {
-            exportMapEntry(rIndexed->getByIndex(i), "", false);
+            exportMapEntry(rIndexed->getByIndex(i), u""_ustr, false);
         }
         m_rContext.EndElement( true );
     }
 }
 
 void XMLSettingsExportHelper::exportForbiddenCharacters(
-                    const uno::Any &rAny,
+                    const uno::Reference<i18n::XForbiddenCharacters>& xForbChars,
                     const OUString& rName) const
 {
-    uno::Reference<i18n::XForbiddenCharacters> xForbChars;
-    uno::Reference<linguistic2::XSupportedLocales> xLocales;
-
-    rAny >>= xForbChars;
-    rAny >>= xLocales;
+    uno::Reference<linguistic2::XSupportedLocales> xLocales(xForbChars, css::uno::UNO_QUERY);
 
     SAL_WARN_IF( !(xForbChars.is() && xLocales.is()), "xmloff","XMLSettingsExportHelper::exportForbiddenCharacters: got illegal forbidden characters!" );
 
@@ -482,11 +482,11 @@ void XMLSettingsExportHelper::ManipulateSetting( uno::Any& rAny, std::u16string_
         if( rAny >>= nTmp )
         {
             if( nTmp == document::PrinterIndependentLayout::LOW_RESOLUTION )
-                rAny <<= OUString("low-resolution");
+                rAny <<= u"low-resolution"_ustr;
             else if( nTmp == document::PrinterIndependentLayout::DISABLED )
-                rAny <<= OUString("disabled");
+                rAny <<= u"disabled"_ustr;
             else if( nTmp == document::PrinterIndependentLayout::HIGH_RESOLUTION )
-                rAny <<= OUString("high-resolution");
+                rAny <<= u"high-resolution"_ustr;
         }
     }
     else if( (rName == gsColorTableURL) || (rName == gsLineEndTableURL) || (rName == gsHatchTableURL) ||

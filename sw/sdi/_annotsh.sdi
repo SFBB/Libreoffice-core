@@ -78,6 +78,12 @@ interface _Annotation
         StateMethod = GetNoteState ;
     ]
 
+    FN_PROMOTE_COMMENT
+    [
+        ExecMethod = NoteExec ;
+        StateMethod = GetNoteState ;
+    ]
+
     FN_POSTIT
         [
                 ExecMethod = NoteExec ;
@@ -301,6 +307,13 @@ interface _Annotation
     ]
 
     SID_ATTR_CHAR_COLOR // api:
+    [
+        ExecMethod = Exec;
+        StateMethod = GetState ;
+        DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_ATTR_CHAR_COLOR2
     [
         ExecMethod = Exec;
         StateMethod = GetState ;

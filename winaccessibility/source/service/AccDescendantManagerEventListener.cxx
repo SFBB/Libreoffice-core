@@ -21,7 +21,6 @@
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 
 #include <vcl/svapp.hxx>
 
@@ -58,13 +57,13 @@ void  AccDescendantManagerEventListener::notifyEvent( const css::accessibility::
         HandleChildChangedNoFocusEvent(aEvent.OldValue, aEvent.NewValue);
         break;
     case AccessibleEventId::SELECTION_CHANGED_ADD:
-        HandleSelectionChangedAddEvent(aEvent.OldValue, aEvent.NewValue);
+        HandleSelectionChangedAddEvent(aEvent.NewValue);
         break;
     case AccessibleEventId::SELECTION_CHANGED_REMOVE:
-        HandleSelectionChangedRemoveEvent(aEvent.OldValue, aEvent.NewValue);
+        HandleSelectionChangedRemoveEvent(aEvent.NewValue);
         break;
     case AccessibleEventId::SELECTION_CHANGED_WITHIN:
-        HandleSelectionChangedWithinEvent(aEvent.OldValue, aEvent.NewValue);
+        HandleSelectionChangedWithinEvent(aEvent.NewValue);
         break;
     default:
         AccComponentEventListener::notifyEvent(aEvent);
@@ -168,7 +167,7 @@ bool AccDescendantManagerEventListener::NotifyChildEvent(UnoMSAAEvent eWinEvent,
     }
     return false;
 }
-void AccDescendantManagerEventListener::HandleSelectionChangedAddEvent(const Any& /*oldValue*/, const Any &newValue)
+void AccDescendantManagerEventListener::HandleSelectionChangedAddEvent(const Any& newValue)
 {
     if (NotifyChildEvent(UnoMSAAEvent::SELECTION_CHANGED_ADD, newValue))
     {
@@ -177,7 +176,7 @@ void AccDescendantManagerEventListener::HandleSelectionChangedAddEvent(const Any
     m_rObjManager.NotifyAccEvent(m_xAccessible.get(), UnoMSAAEvent::SELECTION_CHANGED_ADD);
 }
 
-void AccDescendantManagerEventListener::HandleSelectionChangedRemoveEvent(const Any& /*oldValue*/, const Any &newValue)
+void AccDescendantManagerEventListener::HandleSelectionChangedRemoveEvent(const Any& newValue)
 {
     if (NotifyChildEvent(UnoMSAAEvent::SELECTION_CHANGED_REMOVE, newValue))
     {
@@ -186,7 +185,7 @@ void AccDescendantManagerEventListener::HandleSelectionChangedRemoveEvent(const 
     m_rObjManager.NotifyAccEvent(m_xAccessible.get(), UnoMSAAEvent::SELECTION_CHANGED_REMOVE);
 }
 
-void AccDescendantManagerEventListener::HandleSelectionChangedWithinEvent(const Any& /*oldValue*/, const Any &newValue)
+void AccDescendantManagerEventListener::HandleSelectionChangedWithinEvent(const Any& newValue)
 {
     if (NotifyChildEvent(UnoMSAAEvent::SELECTION_CHANGED_WITHIN, newValue))
     {

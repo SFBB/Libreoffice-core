@@ -38,25 +38,28 @@ namespace com::sun::star::text
 class SwFormatFootnote;
 class SwSectionFormat;
 struct SvEventDescription;
+class SwXFootnote;
+class SwXTextSection;
+class SwXTextTable;
 
 const SvEventDescription* sw_GetSupportedMacroItems();
 
 class SwUnoCollection
 {
     SwDoc*      m_pDoc;
-    bool    m_bObjectValid;
 
     public:
         SwUnoCollection(SwDoc* p) :
-            m_pDoc(p),
-            m_bObjectValid(true){}
+            m_pDoc(p){}
 
     virtual ~SwUnoCollection() {}
 
     virtual void                Invalidate();
-    bool                        IsValid() const {return m_bObjectValid;}
 
-    SwDoc*          GetDoc() const {return m_pDoc;}
+protected:
+    bool IsValid() const { return m_pDoc; }
+
+    SwDoc& GetDoc() const;
 };
 
 /** entries in this enum are mapped in an array in unocoll.cxx */
@@ -123,6 +126,7 @@ enum class SwServiceType {
     FieldTypeDocInfoDescription     =  59,
     FieldTypeDocInfoCreateAuthor    =  60,
     FieldTypeDocInfoCreateDateTime  =  61,
+    FieldTypePageCountRange         =  62,
     FieldTypeDummy1                 =  63,
     FieldTypeDummy2                 =  64,
     FieldTypeDummy3                 =  65,
@@ -212,6 +216,7 @@ enum class SwServiceType {
 #define CSS_TEXT_TEXTFIELD_DATABASE_NAME                "com.sun.star.text.textfield.DatabaseName"
 #define CSS_TEXT_TEXTFIELD_TABLE_FORMULA                "com.sun.star.text.textfield.TableFormula"
 #define CSS_TEXT_TEXTFIELD_PAGE_COUNT                   "com.sun.star.text.textfield.PageCount"
+#define CSS_TEXT_TEXTFIELD_PAGE_COUNT_RANGE             "com.sun.star.text.textfield.PageCountRange"
 #define CSS_TEXT_TEXTFIELD_PARAGRAPH_COUNT              "com.sun.star.text.textfield.ParagraphCount"
 #define CSS_TEXT_TEXTFIELD_WORD_COUNT                   "com.sun.star.text.textfield.WordCount"
 #define CSS_TEXT_TEXTFIELD_CHARACTER_COUNT              "com.sun.star.text.textfield.CharacterCount"
@@ -285,7 +290,8 @@ public:
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    static css::uno::Reference<css::text::XTextTable> GetObject(SwFrameFormat& rFormat);
+    rtl::Reference<SwXTextTable> getTextTableByName(std::u16string_view Name);
+    rtl::Reference<SwXTextTable> getTextTableByIndex(sal_Int32 nIndex);
 };
 
 typedef
@@ -391,8 +397,6 @@ public:
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    static css::uno::Reference< css::text::XTextSection> GetObject( SwSectionFormat& rFormat );
 };
 
 class SwXBookmarks final : public SwCollectionBaseClass,
@@ -450,7 +454,7 @@ cppu::WeakImplHelper
 >
 SwSimpleIndexAccessBaseClass;
 
-class SwXFootnotes final : public SwSimpleIndexAccessBaseClass,
+class SW_DLLPUBLIC SwXFootnotes final : public SwSimpleIndexAccessBaseClass,
                      public SwUnoCollection
 {
     const bool m_bEndnote;
@@ -472,7 +476,7 @@ public:
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    static css::uno::Reference< css::text::XFootnote> GetObject( SwDoc& rDoc, const SwFormatFootnote& rFormat );
+    rtl::Reference<SwXFootnote> getFootnoteByIndex(sal_Int32 nIndex) ;
 };
 
 class SwXReferenceMarks final : public SwCollectionBaseClass,

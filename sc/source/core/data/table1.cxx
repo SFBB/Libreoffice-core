@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/types.h>
 #include <scitems.hxx>
 #include <editeng/justifyitem.hxx>
 #include <o3tl/safeint.hxx>
@@ -51,6 +52,7 @@
 #include <refupdatecontext.hxx>
 #include <rowheightcontext.hxx>
 #include <compressedarray.hxx>
+#include <tabvwsh.hxx>
 #include <vcl/svapp.hxx>
 
 #include <formula/vectortoken.hxx>
@@ -58,8 +60,6 @@
 
 #include <vector>
 #include <memory>
-
-using ::std::vector;
 
 namespace {
 
@@ -237,6 +237,8 @@ bool SetOptimalHeightsToRows(
 
 ScTable::ScTable( ScDocument& rDoc, SCTAB nNewTab, const OUString& rNewName,
                     bool bColInfo, bool bRowInfo ) :
+    nTab(nNewTab),
+    rDocument(rDoc),
     aCol( rDoc.GetSheetLimits(), INITIALCOLCOUNT ),
     aName( rNewName ),
     aCodeName( rNewName ),
@@ -248,17 +250,11 @@ ScTable::ScTable( ScDocument& rDoc, SCTAB nNewTab, const OUString& rNewName,
     nRepeatStartY( SCROW_REPEAT_NONE ),
     nRepeatEndY( SCROW_REPEAT_NONE ),
     mnOptimalMinRowHeight(0),
-    mpRowHeights( static_cast<ScFlatUInt16RowSegments*>(nullptr) ),
-    mpHiddenCols(new ScFlatBoolColSegments(rDoc.MaxCol())),
-    mpHiddenRows(new ScFlatBoolRowSegments(rDoc.MaxRow())),
-    mpFilteredCols(new ScFlatBoolColSegments(rDoc.MaxCol())),
-    mpFilteredRows(new ScFlatBoolRowSegments(rDoc.MaxRow())),
+    maFilterData(*this),
     nTableAreaX( 0 ),
     nTableAreaY( 0 ),
     nTableAreaVisibleX( 0 ),
     nTableAreaVisibleY( 0 ),
-    nTab( nNewTab ),
-    rDocument( rDoc ),
     pSortCollator( nullptr ),
     nLockCount( 0 ),
     aScenarioColor( COL_LIGHTGRAY ),
@@ -280,6 +276,7 @@ ScTable::ScTable( ScDocument& rDoc, SCTAB nNewTab, const OUString& rNewName,
     bActiveScenario(false),
     mbPageBreaksValid(false),
     mbForceBreaks(false),
+    mbTotalsRowBelow(true),
     bStreamValid(false)
 {
     aDefaultColData.InitAttrArray(new ScAttrArray(static_cast<SCCOL>(-1), nNewTab, rDoc, nullptr));
@@ -416,7 +413,7 @@ void ScTable::SetScenario( bool bFlag )
 
 void ScTable::SetLink( ScLinkMode nMode,
                         const OUString& rDoc, const OUString& rFlt, const OUString& rOpt,
-                        const OUString& rTab, sal_uLong nRefreshDelay )
+                        const OUString& rTab, sal_Int32 nRefreshDelay )
 {
     nLinkMode = nMode;
     aLinkDoc = rDoc;        // File
@@ -472,6 +469,29 @@ bool ScTable::SetOptimalHeight(
         return false;
     }
 
+    if (!rCxt.isForceAutoSize())
+    {
+        // Optimize - exit early if all rows have defined height: super expensive GetOptimalHeight
+        size_t nIndex;
+        SCROW nRow;
+        CRFlags nRowFlags = pRowFlags->GetValue(nStartRow, nIndex, nRow); // changes nIndex, nRow
+        if (nRowFlags & CRFlags::ManualSize) // first block of rows is manual - are all the rest?
+        {
+            bool bAllRowsAreManualHeight = true;
+            while (nRow < nEndRow)
+            {
+                nRowFlags = pRowFlags->GetNextValue(nIndex, nRow);
+                if (!(nRowFlags & CRFlags::ManualSize))
+                {
+                    bAllRowsAreManualHeight = false;
+                    break;
+                }
+            }
+            if (bAllRowsAreManualHeight)
+                return false;
+        }
+    }
+
     SCSIZE  nCount = static_cast<SCSIZE>(nEndRow-nStartRow+1);
 
     ScProgress* pProgress = GetProgressBar(nCount, GetWeightedCount(), pOuterProgress, &rDocument);
@@ -487,6 +507,18 @@ bool ScTable::SetOptimalHeight(
         delete pProgress;
 
     mpRowHeights->enableTreeSearch(true);
+
+    if (bChanged)
+    {
+        if (ScViewData* pViewData = ScDocShell::GetViewData())
+        {
+            ScTabViewShell::notifyAllViewsSheetGeomInvalidation(
+                pViewData->GetViewShell(),
+                false /* bColsAffected */, true /* bRowsAffected */,
+                true /* bSizes*/, false /* bHidden */, false /* bFiltered */,
+                false /* bGroups */, nTab);
+        }
+    }
 
     return bChanged;
 }
@@ -509,10 +541,22 @@ void ScTable::SetOptimalHeightOnly(
 
     SetRowHeightOnlyFunc aFunc(this);
 
-    SetOptimalHeightsToRows(rCxt, aFunc, pRowFlags.get(), nStartRow, nEndRow, true);
+    bool bChanged = SetOptimalHeightsToRows(rCxt, aFunc, pRowFlags.get(), nStartRow, nEndRow, true);
 
     if ( pProgress != pOuterProgress )
         delete pProgress;
+
+    if (bChanged)
+    {
+        if (ScViewData* pViewData = ScDocShell::GetViewData())
+        {
+            ScTabViewShell::notifyAllViewsSheetGeomInvalidation(
+                pViewData->GetViewShell(),
+                false /* bColsAffected */, true /* bRowsAffected */,
+                true /* bSizes*/, false /* bHidden */, false /* bFiltered */,
+                false /* bGroups */, nTab);
+        }
+    }
 }
 
 bool ScTable::GetCellArea( SCCOL& rEndCol, SCROW& rEndRow ) const
@@ -600,7 +644,7 @@ bool ScTable::GetPrintArea( SCCOL& rEndCol, SCROW& rEndRow, bool bNotes, bool bC
     SCROW nMaxY = 0;
     SCCOL i;
 
-    bool bSkipEmpty = SC_MOD()->GetPrintOptions().GetSkipEmpty();
+    bool bSkipEmpty = ScModule::get()->GetPrintOptions().GetSkipEmpty();
 
     for (i=0; i<aCol.size(); i++)               // Test data
     {
@@ -754,7 +798,7 @@ bool ScTable::GetPrintAreaVer( SCCOL nStartCol, SCCOL nEndCol,
     SCROW nMaxY = 0;
     SCCOL i;
 
-    bool bSkipEmpty = SC_MOD()->GetPrintOptions().GetSkipEmpty();
+    bool bSkipEmpty = ScModule::get()->GetPrintOptions().GetSkipEmpty();
 
     for (i=nStartCol; i<=nEndCol && i < aCol.size(); i++)              // Test attribute
     {
@@ -1873,7 +1917,7 @@ void ScTable::UpdateReference(
             nERow = rPrintRange.aEnd.Row();
 
             // do not try to modify sheet index of print range
-            if ( ScRefUpdate::Update( &rDocument, eUpdateRefMode,
+            if ( ScRefUpdate::Update( rDocument, eUpdateRefMode,
                                       nCol1,nRow1,nTab, nCol2,nRow2,nTab,
                                       nDx,nDy,0,
                                       nSCol,nSRow,nSTab, nECol,nERow,nETab ) )
@@ -1891,7 +1935,7 @@ void ScTable::UpdateReference(
             nERow = moRepeatColRange->aEnd.Row();
 
             // do not try to modify sheet index of repeat range
-            if ( ScRefUpdate::Update( &rDocument, eUpdateRefMode,
+            if ( ScRefUpdate::Update( rDocument, eUpdateRefMode,
                                       nCol1,nRow1,nTab, nCol2,nRow2,nTab,
                                       nDx,nDy,0,
                                       nSCol,nSRow,nSTab, nECol,nERow,nETab ) )
@@ -1911,7 +1955,7 @@ void ScTable::UpdateReference(
             nERow = moRepeatRowRange->aEnd.Row();
 
             // do not try to modify sheet index of repeat range
-            if ( ScRefUpdate::Update( &rDocument, eUpdateRefMode,
+            if ( ScRefUpdate::Update( rDocument, eUpdateRefMode,
                                       nCol1,nRow1,nTab, nCol2,nRow2,nTab,
                                       nDx,nDy,0,
                                       nSCol,nSRow,nSTab, nECol,nERow,nETab ) )
@@ -2091,17 +2135,19 @@ void ScTable::ExtendPrintArea( OutputDevice* pDev,
         else
         {
             // These columns are visible.  Check for empty columns.
-            for (SCCOL j = i; j <= nLastCol; ++j)
+            SCCOL nEmptyCount = 0;
+            SCCOL j = i;
+            for (; j <= nLastCol; ++j)
             {
                 if ( j >= aCol.size() )
-                {
-                    aSkipCols.setTrue( j, rDocument.MaxCol() );
                     break;
-                }
-                if (aCol[j].GetCellCount() == 0)
-                    // empty
-                    aSkipCols.setTrue(j,j);
+                if (aCol[j].IsCellCountZero()) // empty
+                    nEmptyCount++;
             }
+            if (nEmptyCount)
+                aSkipCols.setTrue(i,i+nEmptyCount);
+            if ( j >= aCol.size() )
+                aSkipCols.setTrue( j, rDocument.MaxCol() );
         }
         i = nLastCol;
     }
@@ -2124,7 +2170,7 @@ void ScTable::ExtendPrintArea( OutputDevice* pDev,
         for (SCCOL nDataCol = nCol; 0 <= nDataCol && nDataCol >= aColData.mnCol1; --nDataCol)
         {
             SCCOL nPrintCol = nDataCol;
-            VisibleDataCellIterator aIter(rDocument, *mpHiddenRows, aCol[nDataCol]);
+            VisibleDataCellIterator aIter(rDocument, *maFilterData.mpHiddenRows, aCol[nDataCol]);
             ScRefCellValue aCell = aIter.reset(nStartRow);
             if (aCell.isEmpty())
                 // No visible cells found in this column.  Skip it.
@@ -2465,7 +2511,7 @@ void ScTable::SetAnonymousDBData(std::unique_ptr<ScDBData> pDBData)
     pDBDataNoName = std::move(pDBData);
 }
 
-sal_uLong ScTable::AddCondFormat( std::unique_ptr<ScConditionalFormat> pNew )
+sal_uInt32 ScTable::AddCondFormat( std::unique_ptr<ScConditionalFormat> pNew )
 {
     if(!mpCondFormatList)
         mpCondFormatList.reset(new ScConditionalFormatList());
@@ -2567,10 +2613,7 @@ bool ScTable::HandleRefArrayForParallelism( SCCOL nCol, SCROW nRow1, SCROW nRow2
     if ( !IsColValid( nCol ) || !ValidRow( nRow1 ) || !ValidRow( nRow2 ) )
         return false;
 
-    mpHiddenCols->makeReady();
-    mpHiddenRows->makeReady();
-    mpFilteredCols->makeReady();
-    mpFilteredRows->makeReady();
+    maFilterData.makeReady();
 
     return aCol[nCol].HandleRefArrayForParallelism(nRow1, nRow2, mxGroup, pDirtiedAddress);
 }

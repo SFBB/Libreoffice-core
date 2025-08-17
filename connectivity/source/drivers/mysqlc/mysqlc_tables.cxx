@@ -45,7 +45,8 @@ static void lcl_unescape(OUString& rName)
     rName = rName.replaceAll("``", "`");
 }
 
-connectivity::sdbcx::ObjectType connectivity::mysqlc::Tables::createObject(const OUString& rName)
+css::uno::Reference<css::beans::XPropertySet>
+connectivity::mysqlc::Tables::createObject(const OUString& rName)
 {
     OUString sCatalog, sSchema, sTable;
     ::dbtools::qualifiedNameComponents(m_xMetaData, rName, sCatalog, sSchema, sTable,
@@ -66,14 +67,14 @@ connectivity::sdbcx::ObjectType connectivity::mysqlc::Tables::createObject(const
         = m_xMetaData->getTables(aCatalog, sSchema, sTable, css::uno::Sequence<OUString>());
 
     if (!xTables.is())
-        throw css::uno::RuntimeException("Could not acquire table.");
+        throw css::uno::RuntimeException(u"Could not acquire table."_ustr);
 
     css::uno::Reference<css::sdbc::XRow> xRow(xTables, css::uno::UNO_QUERY_THROW);
 
     if (!xTables->next())
         throw css::uno::RuntimeException();
 
-    connectivity::sdbcx::ObjectType xRet(
+    css::uno::Reference<css::beans::XPropertySet> xRet(
         new Table(this, m_rMutex, m_xMetaData->getConnection(),
                   xRow->getString(1), // Catalog
                   xRow->getString(2), // Schema
@@ -82,7 +83,7 @@ connectivity::sdbcx::ObjectType connectivity::mysqlc::Tables::createObject(const
                   xRow->getString(5))); // Description / Remarks / Comments
 
     if (xTables->next())
-        throw css::uno::RuntimeException("Found more tables than expected.");
+        throw css::uno::RuntimeException(u"Found more tables than expected."_ustr);
 
     return xRet;
 }
@@ -111,7 +112,7 @@ void connectivity::mysqlc::Tables::createTable(
 }
 
 // XAppend
-connectivity::sdbcx::ObjectType connectivity::mysqlc::Tables::appendObject(
+css::uno::Reference<css::beans::XPropertySet> connectivity::mysqlc::Tables::appendObject(
     const OUString& _rForName, const css::uno::Reference<css::beans::XPropertySet>& descriptor)
 {
     createTable(descriptor);
@@ -131,8 +132,8 @@ void connectivity::mysqlc::Tables::appendNew(const OUString& _rsNewTable)
         aListenerLoop.next()->elementInserted(aEvent);
 }
 
-OUString
-connectivity::mysqlc::Tables::getNameForObject(const connectivity::sdbcx::ObjectType& _xObject)
+OUString connectivity::mysqlc::Tables::getNameForObject(
+    const css::uno::Reference<css::beans::XPropertySet>& _xObject)
 {
     OSL_ENSURE(_xObject.is(), "OTables::getNameForObject: Object is NULL!");
     return ::dbtools::composeTableName(m_xMetaData, _xObject,
@@ -149,9 +150,16 @@ void connectivity::mysqlc::Tables::dropObject(sal_Int32 nPosition, const OUStrin
         return;
 
     OUString sType;
-    xTable->getPropertyValue("Type") >>= sType;
+    xTable->getPropertyValue(u"Type"_ustr) >>= sType;
 
-    m_xMetaData->getConnection()->createStatement()->execute("DROP " + sType + " " + sName);
+    OUString sCatalog, sSchema, sTable;
+    ::dbtools::qualifiedNameComponents(m_xMetaData, sName, sCatalog, sSchema, sTable,
+                                       ::dbtools::EComposeRule::InDataManipulation);
+
+    OUString sComposedName(::dbtools::composeTableName(
+        m_xMetaData, sCatalog, sSchema, sTable, true, ::dbtools::EComposeRule::InDataManipulation));
+
+    m_xMetaData->getConnection()->createStatement()->execute("DROP " + sType + " " + sComposedName);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

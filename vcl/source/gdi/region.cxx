@@ -33,7 +33,7 @@
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <tools/poly.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 namespace
 {
@@ -416,7 +416,7 @@ void vcl::Region::Move( tools::Long nHorzMove, tools::Long nVertMove )
     {
         basegfx::B2DPolyPolygon aPoly(*getB2DPolyPolygon());
 
-        aPoly.transform(basegfx::utils::createTranslateB2DHomMatrix(nHorzMove, nVertMove));
+        aPoly.translate(nHorzMove, nVertMove);
         if (aPoly.count())
             mpB2DPolyPolygon = aPoly;
         else
@@ -987,7 +987,7 @@ void vcl::Region::Intersect( const vcl::Region& rRegion )
             return;
         }
 
-        static size_t gPointLimit = !utl::ConfigManager::IsFuzzing() ? SAL_MAX_SIZE : 8192;
+        static size_t gPointLimit = !comphelper::IsFuzzing() ? SAL_MAX_SIZE : 8192;
         size_t nPointLimit(gPointLimit);
         const basegfx::B2DPolyPolygon aClip(
             basegfx::utils::clipPolyPolygonOnPolyPolygon(
@@ -1024,7 +1024,7 @@ void vcl::Region::Intersect( const vcl::Region& rRegion )
         // when we have less rectangles, turn around the call
         vcl::Region aTempRegion = rRegion;
         aTempRegion.Intersect( *this );
-        *this = aTempRegion;
+        *this = std::move(aTempRegion);
     }
     else
     {
@@ -1245,8 +1245,8 @@ tools::Rectangle vcl::Region::GetBoundRect() const
         {
             // #i122149# corrected rounding, no need for ceil() and floor() here
             return tools::Rectangle(
-                basegfx::fround(aRange.getMinX()), basegfx::fround(aRange.getMinY()),
-                basegfx::fround(aRange.getMaxX()), basegfx::fround(aRange.getMaxY()));
+                basegfx::fround<tools::Long>(aRange.getMinX()), basegfx::fround<tools::Long>(aRange.getMinY()),
+                basegfx::fround<tools::Long>(aRange.getMaxX()), basegfx::fround<tools::Long>(aRange.getMaxY()));
         }
     }
 
@@ -1564,7 +1564,7 @@ SvStream& ReadRegion(SvStream& rIStrm, vcl::Region& rRegion)
         {
             std::shared_ptr<RegionBand> xNewRegionBand(std::make_shared<RegionBand>());
             bool bSuccess = xNewRegionBand->load(rIStrm);
-            rRegion.mpRegionBand = xNewRegionBand;
+            rRegion.mpRegionBand = std::move(xNewRegionBand);
 
             bool bHasPolyPolygon(false);
             if (aCompat.GetVersion() >= 2)
@@ -1579,7 +1579,7 @@ SvStream& ReadRegion(SvStream& rIStrm, vcl::Region& rRegion)
                     if (nPolygons > 128)
                     {
                         SAL_WARN("vcl.gdi", "suspiciously high no of polygons in clip:" << nPolygons);
-                        if (utl::ConfigManager::IsFuzzing())
+                        if (comphelper::IsFuzzing())
                             aNewPoly.Clear();
                     }
                     rRegion.mpPolyPolygon = aNewPoly;

@@ -45,8 +45,6 @@ namespace frm
         SolarMutexGuard g;
 
         rtl::Reference<SfxItemPool> pPool = EditEngine::CreatePool();
-        pPool->FreezeIdRanges();
-
         RichTextEngine* pReturn = new RichTextEngine( pPool.get() );
         OutputDevice* pOutputDevice = pReturn->GetRefDevice();
         const MapMode& aDeviceMapMode( pOutputDevice->GetMapMode() );
@@ -57,19 +55,19 @@ namespace frm
 
         // defaults
         vcl::Font aFont = Application::GetSettings().GetStyleSettings().GetAppFont();
-        aFont.SetFamilyName( "Times New Roman" );
-        pPool->SetPoolDefaultItem( SvxFontItem( aFont.GetFamilyType(), aFont.GetFamilyName(), OUString(), aFont.GetPitch(), aFont.GetCharSet(), EE_CHAR_FONTINFO ) );
+        aFont.SetFamilyName( u"Times New Roman"_ustr );
+        pPool->SetUserDefaultItem( SvxFontItem( aFont.GetFamilyTypeMaybeAskConfig(), aFont.GetFamilyName(), OUString(), aFont.GetPitchMaybeAskConfig(), aFont.GetCharSet(), EE_CHAR_FONTINFO ) );
 
         // 12 pt font size
         MapMode aPointMapMode( MapUnit::MapPoint );
         Size a12PointSize( OutputDevice::LogicToLogic( Size( 12, 0 ), aPointMapMode, aDeviceMapMode ) );
-        pPool->SetPoolDefaultItem( SvxFontHeightItem( a12PointSize.Width(), 100, EE_CHAR_FONTHEIGHT ) );
+        pPool->SetUserDefaultItem( SvxFontHeightItem( a12PointSize.Width(), 100, EE_CHAR_FONTHEIGHT ) );
 
         // font languages
         SvtLinguOptions aLinguOpt;
-        pPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOpt.nDefaultLanguage, EE_CHAR_LANGUAGE ) );
-        pPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOpt.nDefaultLanguage_CJK, EE_CHAR_LANGUAGE_CJK ) );
-        pPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOpt.nDefaultLanguage_CTL, EE_CHAR_LANGUAGE_CTL ) );
+        pPool->SetUserDefaultItem( SvxLanguageItem( aLinguOpt.nDefaultLanguage, EE_CHAR_LANGUAGE ) );
+        pPool->SetUserDefaultItem( SvxLanguageItem( aLinguOpt.nDefaultLanguage_CJK, EE_CHAR_LANGUAGE_CJK ) );
+        pPool->SetUserDefaultItem( SvxLanguageItem( aLinguOpt.nDefaultLanguage_CTL, EE_CHAR_LANGUAGE_CTL ) );
 
         return pReturn;
     }

@@ -156,7 +156,7 @@ void ScCsvRuler::InitColors()
 {
     const StyleSettings& rSett = Application::GetSettings().GetStyleSettings();
     maBackColor = rSett.GetFaceColor();
-    maActiveColor = rSett.GetWindowColor();
+    maActiveColor = rSett.GetFieldColor();
     maTextColor = rSett.GetLabelTextColor();
     maSplitColor = maBackColor.IsDark() ? maTextColor : COL_LIGHTRED;
     InvalidateGfx();
@@ -655,7 +655,7 @@ void ScCsvRuler::ImplSetMousePointer( sal_Int32 nPos )
 
 // accessibility ==============================================================
 
-css::uno::Reference<css::accessibility::XAccessible> ScCsvRuler::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> ScCsvRuler::CreateAccessible()
 {
     rtl::Reference<ScAccessibleCsvRuler> xRef(new ScAccessibleCsvRuler(*this));
     mxAccessible = xRef;

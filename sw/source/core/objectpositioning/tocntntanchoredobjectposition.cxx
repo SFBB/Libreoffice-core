@@ -32,6 +32,7 @@
 #include <fmtfsize.hxx>
 #include <fmtanchr.hxx>
 #include <fmtornt.hxx>
+#include <IDocumentSettingAccess.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <svx/svdobj.hxx>
@@ -39,6 +40,7 @@
 #include <environmentofanchoredobject.hxx>
 #include <frmatr.hxx>
 #include <fmtwrapinfluenceonobjpos.hxx>
+#include <rowfrm.hxx>
 #include <sortedobjs.hxx>
 #include <textboxhelper.hxx>
 #include <flyfrms.hxx>
@@ -265,6 +267,14 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
     }
     aRectFnSet.Refresh(pOrientFrame);
 
+    // Microsoft allows WrapThrough shapes to be placed outside of the cell despite layoutInCell
+    // (Re-use existing compat flag to identify MSO formats. The name also matches this purpose.)
+    const bool bMSOLayout = rFrameFormat.getIDocumentSettingAccess().get(
+        DocumentSettingId::CONSIDER_WRAP_ON_OBJECT_POSITION);
+    const bool bMSOLayoutInCell
+        = bMSOLayout && DoesObjFollowsTextFlow() && GetAnchorTextFrame().IsInTab();
+    const bool bIgnoreVertLayoutInCell = bMSOLayoutInCell && bWrapThrough;
+
     // determine vertical position
     {
 
@@ -297,17 +307,15 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
             // determine relative vertical position
             SwTwips nRelPosY = nAlignAreaOffset;
             const SwTwips nObjHeight = aRectFnSet.GetHeight(aObjBoundRect);
-            const SwTwips nUpperSpace = aRectFnSet.IsVert()
-                                        ? ( aRectFnSet.IsVertL2R()
-                                            ? rLR.GetLeft()
-                                            : rLR.GetRight() )
-                                        : rUL.GetUpper();
+            const SwTwips nUpperSpace
+                = aRectFnSet.IsVert()
+                      ? (aRectFnSet.IsVertL2R() ? rLR.ResolveLeft({}) : rLR.ResolveRight({}))
+                      : rUL.GetUpper();
             // --> OD 2009-08-31 #monglianlayout#
-            const SwTwips nLowerSpace = aRectFnSet.IsVert()
-                                        ? ( aRectFnSet.IsVertL2R()
-                                            ? rLR.GetLeft()
-                                            : rLR.GetRight() )
-                                        : rUL.GetLower();
+            const SwTwips nLowerSpace
+                = aRectFnSet.IsVert()
+                      ? (aRectFnSet.IsVertL2R() ? rLR.ResolveLeft({}) : rLR.ResolveRight({}))
+                      : rUL.GetLower();
             switch ( aVert.GetVertOrient() )
             {
                 case text::VertOrientation::CHAR_BOTTOM:
@@ -447,7 +455,7 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
                                             *(pOrientFrame->GetUpper()) );
                 const bool bCheckBottom = !DoesObjFollowsTextFlow();
                 nRelPosY = AdjustVertRelPos( nTopOfAnch, aRectFnSet.IsVert(), aRectFnSet.IsVertL2R(),
-                                              rVertEnvironLayFrame, nRelPosY,
+                                              rVertEnvironLayFrame, aVert, nRelPosY,
                                               DoesObjFollowsTextFlow(),
                                               bCheckBottom );
             }
@@ -487,27 +495,25 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
         // This frame is used in the following instead of the 'real' anchor
         // frame <rAnchorTextFrame> for the 'vertical' position in all cases.
         const SwLayoutFrame* pUpperOfOrientFrame = nullptr;
+        // #i28701# - As long as the anchor frame is on the
+        // same page as <pOrientFrame> and the vertical position isn't aligned
+        // automatic at the anchor character or the top of the line of the
+        // anchor character, the anchor frame determines the vertical position.
+        // Split fly follows: always let the anchor char frame determine the vertical position.
+        // This gives us a vertical cut position between the master and the follow.
+        if ( &rAnchorTextFrame == pOrientFrame ||
+             ( rAnchorTextFrame.FindPageFrame() == pOrientFrame->FindPageFrame() &&
+               aVert.GetVertOrient() == text::VertOrientation::NONE &&
+               aVert.GetRelationOrient() != text::RelOrientation::CHAR &&
+               aVert.GetRelationOrient() != text::RelOrientation::TEXT_LINE && !bFollowSplitFly ) )
         {
-            // #i28701# - As long as the anchor frame is on the
-            // same page as <pOrientFrame> and the vertical position isn't aligned
-            // automatic at the anchor character or the top of the line of the
-            // anchor character, the anchor frame determines the vertical position.
-            // Split fly follows: always let the anchor char frame determine the vertical position.
-            // This gives us a vertical cut position between the master and the follow.
-            if ( &rAnchorTextFrame == pOrientFrame ||
-                 ( rAnchorTextFrame.FindPageFrame() == pOrientFrame->FindPageFrame() &&
-                   aVert.GetVertOrient() == text::VertOrientation::NONE &&
-                   aVert.GetRelationOrient() != text::RelOrientation::CHAR &&
-                   aVert.GetRelationOrient() != text::RelOrientation::TEXT_LINE && !bFollowSplitFly ) )
-            {
-                pUpperOfOrientFrame = rAnchorTextFrame.GetUpper();
-                pAnchorFrameForVertPos = &rAnchorTextFrame;
-            }
-            else
-            {
-                pUpperOfOrientFrame = pOrientFrame->GetUpper();
-                pAnchorFrameForVertPos = pOrientFrame;
-            }
+            pUpperOfOrientFrame = rAnchorTextFrame.GetUpper();
+            pAnchorFrameForVertPos = &rAnchorTextFrame;
+        }
+        else
+        {
+            pUpperOfOrientFrame = pOrientFrame->GetUpper();
+            pAnchorFrameForVertPos = pOrientFrame;
         }
 
         // ignore one-column sections.
@@ -598,6 +604,14 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
                     nVertOffsetToFrameAnchorPos += aRectFnSet.YDiff(
                                                 aRectFnSet.GetTop(aPgPrtRect),
                                                 nTopOfOrient );
+
+                    if (rPageAlignLayFrame.IsCellFrame())
+                    {
+                        // Cell upper/lower comes from the max margin of the entire row of cells
+                        const auto pRow = const_cast<SwLayoutFrame&>(rPageAlignLayFrame).FindRowFrame();
+                        assert(pRow);
+                        nVertOffsetToFrameAnchorPos += pRow->GetTopMarginForLowers();
+                    }
                 }
                 else if (aVert.GetRelationOrient() == text::RelOrientation::PAGE_PRINT_AREA_BOTTOM)
                 {
@@ -662,8 +676,8 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
                 // anchored object has to follow the text flow.
                 const bool bCheckBottom = !DoesObjFollowsTextFlow();
                 nRelPosY = AdjustVertRelPos( nTopOfAnch, aRectFnSet.IsVert(), aRectFnSet.IsVertL2R(),
-                                              rVertEnvironLayFrame, nRelPosY,
-                                              DoesObjFollowsTextFlow(),
+                                              rVertEnvironLayFrame, aVert, nRelPosY,
+                                              !bIgnoreVertLayoutInCell && DoesObjFollowsTextFlow(),
                                               bCheckBottom );
                 if ( aRectFnSet.IsVert() )
                     aRelPos.setX( nRelPosY );
@@ -702,7 +716,7 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
                         // frame, if anchored object has to follow the text flow.
                         const bool bCheckBottom = !DoesObjFollowsTextFlow();
                         nTmpRelPosY = AdjustVertRelPos( nTopOfAnch, aRectFnSet.IsVert(), aRectFnSet.IsVertL2R(),
-                                                         rVertEnvironLayFrame,
+                                                         rVertEnvironLayFrame, aVert,
                                                          nTmpRelPosY,
                                                          DoesObjFollowsTextFlow(),
                                                          bCheckBottom );
@@ -793,7 +807,7 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
                             const SwFrame& rVertEnvironLayFrame =
                                 aEnvOfObj.GetVertEnvironmentLayoutFrame( *pUpperOfOrientFrame );
                             nRelPosY = AdjustVertRelPos( nTopOfAnch, aRectFnSet.IsVert(), aRectFnSet.IsVertL2R(),
-                                                          rVertEnvironLayFrame,
+                                                          rVertEnvironLayFrame, aVert,
                                                           nRelPosY,
                                                           DoesObjFollowsTextFlow() );
                             if( aRectFnSet.IsVert() )
@@ -887,7 +901,7 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
             }
         }
 
-        if ( DoesObjFollowsTextFlow() &&
+        if (!bIgnoreVertLayoutInCell && DoesObjFollowsTextFlow() &&
              ( aVert.GetRelationOrient() != text::RelOrientation::PAGE_FRAME &&
                 aVert.GetRelationOrient() != text::RelOrientation::PAGE_PRINT_AREA ) )
         {
@@ -920,7 +934,7 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
                     const SwLayoutFrame& rVertEnvironLayFrame =
                         aEnvOfObj.GetVertEnvironmentLayoutFrame( *pUpperOfOrientFrame );
                     nTmpRelPosY = AdjustVertRelPos( nTopOfAnch, aRectFnSet.IsVert(), aRectFnSet.IsVertL2R(),
-                                                     rVertEnvironLayFrame,
+                                                     rVertEnvironLayFrame, aVert,
                                                      nTmpRelPosY,
                                                      DoesObjFollowsTextFlow(),
                                                      false );
@@ -1241,7 +1255,7 @@ void SwToContentAnchoredObjectPosition::CalcOverlap(const SwTextFrame* pAnchorFr
             break;
         }
 
-        if (SwTextBoxHelper::isTextBox(&pAnchoredObj->GetFrameFormat(), RES_FLYFRMFMT))
+        if (SwTextBoxHelper::isTextBox(pAnchoredObj->GetFrameFormat(), RES_FLYFRMFMT))
         {
             // Overlapping with the frame of a textbox is fine.
             continue;
@@ -1276,7 +1290,7 @@ void SwToContentAnchoredObjectPosition::CalcOverlap(const SwTextFrame* pAnchorFr
             }
         }
 
-        css::text::WrapTextMode eWrap = pAnchoredObj->GetFrameFormat().GetSurround().GetSurround();
+        css::text::WrapTextMode eWrap = pAnchoredObj->GetFrameFormat()->GetSurround().GetSurround();
         if (eWrap == css::text::WrapTextMode_THROUGH)
         {
             // The other object is wrap through: allowed to overlap.

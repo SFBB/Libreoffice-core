@@ -117,20 +117,20 @@ XclDefaultPalette::XclDefaultPalette( const XclRoot& rRoot ) :
     {
         case EXC_BIFF2:
             mpnColorTable = spnDefColorTable2;
-            mnTableSize = SAL_N_ELEMENTS( spnDefColorTable2 );
+            mnTableSize = std::size( spnDefColorTable2 );
         break;
         case EXC_BIFF3:
         case EXC_BIFF4:
             mpnColorTable = spnDefColorTable3;
-            mnTableSize = SAL_N_ELEMENTS( spnDefColorTable3 );
+            mnTableSize = std::size( spnDefColorTable3 );
         break;
         case EXC_BIFF5:
             mpnColorTable = spnDefColorTable5;
-            mnTableSize = SAL_N_ELEMENTS( spnDefColorTable5 );
+            mnTableSize = std::size( spnDefColorTable5 );
         break;
         case EXC_BIFF8:
             mpnColorTable = spnDefColorTable8;
-            mnTableSize = SAL_N_ELEMENTS( spnDefColorTable8 );
+            mnTableSize = std::size( spnDefColorTable8 );
         break;
         default:
             DBG_ERROR_BIFF();
@@ -164,7 +164,7 @@ Color XclDefaultPalette::GetDefColor( sal_uInt16 nXclIndex ) const
 
 // Font Data ==================================================================
 
-namespace Awt              = ::com::sun::star::awt;
+namespace Awt              = css::awt;
 namespace AwtFontFamily    = Awt::FontFamily;
 namespace AwtFontLineStyle  = Awt::FontUnderline;
 namespace AwtFontStrikeout = Awt::FontStrikeout;
@@ -747,7 +747,7 @@ void XclFontPropSetHelper::WriteFontProperties(
 
 ScfPropSetHelper& XclFontPropSetHelper::GetChartHelper( sal_Int16 nScript )
 {
-    namespace ApiScriptType = ::com::sun::star::i18n::ScriptType;
+    namespace ApiScriptType = css::i18n::ScriptType;
     switch( nScript )
     {
         case ApiScriptType::LATIN:      return maHlpChWstrn;

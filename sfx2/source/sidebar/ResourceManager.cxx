@@ -33,7 +33,6 @@
 
 #include <comphelper/diagnose_ex.hxx>
 #include <sal/log.hxx>
-#include <vcl/EnumContext.hxx>
 #include <o3tl/string_view.hxx>
 
 #include <com/sun/star/frame/ModuleManager.hpp>
@@ -50,17 +49,17 @@ namespace sfx2::sidebar {
 namespace
 {
 
-OUString getString(utl::OConfigurationNode const & aNode, const char* pNodeName)
+OUString getString(utl::OConfigurationNode const & aNode, const OUString& rNodeName)
 {
-    return comphelper::getString(aNode.getNodeValue(pNodeName));
+    return comphelper::getString(aNode.getNodeValue(rNodeName));
 }
-sal_Int32 getInt32(utl::OConfigurationNode const & aNode, const char* pNodeName)
+sal_Int32 getInt32(utl::OConfigurationNode const & aNode, const OUString& rNodeName)
 {
-    return comphelper::getINT32(aNode.getNodeValue(pNodeName));
+    return comphelper::getINT32(aNode.getNodeValue(rNodeName));
 }
-bool getBool(utl::OConfigurationNode const & aNode, const char* pNodeName)
+bool getBool(utl::OConfigurationNode const & aNode, const OUString& rNodeName)
 {
-    return comphelper::getBOOL(aNode.getNodeValue(pNodeName));
+    return comphelper::getBOOL(aNode.getNodeValue(rNodeName));
 }
 
 css::uno::Sequence<OUString> BuildContextList (const ContextList& rContextList)
@@ -130,6 +129,8 @@ std::shared_ptr<DeckDescriptor> ResourceManager::ImplGetDeckDescriptor(std::u16s
 {
     for (auto const& deck : maDecks)
     {
+        if (deck->mbHiddenInViewerMode && officecfg::Office::Common::Misc::ViewerAppMode::get())
+            continue;
         if (deck->mbExperimental && !officecfg::Office::Common::Misc::ExperimentalMode::get())
             continue;
         if (deck->msId == rsDeckId)
@@ -169,6 +170,8 @@ const ResourceManager::DeckContextDescriptorContainer& ResourceManager::GetMatch
     std::multimap<sal_Int32,DeckContextDescriptor> aOrderedIds;
     for (auto const& deck : maDecks)
     {
+        if (deck->mbHiddenInViewerMode && officecfg::Office::Common::Misc::ViewerAppMode::get())
+            continue;
         if (deck->mbExperimental && !officecfg::Office::Common::Misc::ExperimentalMode::get())
             continue;
 
@@ -233,14 +236,16 @@ const ResourceManager::PanelContextDescriptorContainer& ResourceManager::GetMatc
 
 const OUString& ResourceManager::GetLastActiveDeck( const Context& rContext )
 {
+    assert(!comphelper::LibreOfficeKit::isActive());
     if( maLastActiveDecks.find( rContext.msApplication ) == maLastActiveDecks.end())
-        return maLastActiveDecks["any"];
+        return maLastActiveDecks[u"any"_ustr];
     else
         return maLastActiveDecks[rContext.msApplication];
 }
 
 void ResourceManager::SetLastActiveDeck( const Context& rContext, const OUString &rsDeckId )
 {
+    assert(!comphelper::LibreOfficeKit::isActive());
     maLastActiveDecks[rContext.msApplication] = rsDeckId;
 }
 
@@ -248,7 +253,7 @@ void ResourceManager::ReadDeckList()
 {
     const utl::OConfigurationTreeRoot aDeckRootNode(
                                         comphelper::getProcessComponentContext(),
-                                        "org.openoffice.Office.UI.Sidebar/Content/DeckList",
+                                        u"org.openoffice.Office.UI.Sidebar/Content/DeckList"_ustr,
                                         false);
     if (!aDeckRootNode.isValid())
         return;
@@ -260,7 +265,7 @@ void ResourceManager::ReadDeckList()
         if (comphelper::LibreOfficeKit::isActive())
         {
             // Hide these decks in LOK as they aren't fully functional.
-            if (aDeckName == "GalleryDeck" || aDeckName == "StyleListDeck")
+            if (aDeckName == "GalleryDeck")
                 continue;
         }
 
@@ -271,16 +276,17 @@ void ResourceManager::ReadDeckList()
         maDecks.push_back(std::make_shared<DeckDescriptor>());
         DeckDescriptor& rDeckDescriptor (*maDecks.back());
 
-        rDeckDescriptor.msTitle = getString(aDeckNode, "Title");
-        rDeckDescriptor.msId = getString(aDeckNode, "Id");
-        rDeckDescriptor.msIconURL = getString(aDeckNode, "IconURL");
-        rDeckDescriptor.msHighContrastIconURL = getString(aDeckNode, "HighContrastIconURL");
-        rDeckDescriptor.msTitleBarIconURL = getString(aDeckNode, "TitleBarIconURL");
-        rDeckDescriptor.msHighContrastTitleBarIconURL = getString(aDeckNode, "HighContrastTitleBarIconURL");
+        rDeckDescriptor.msTitle = getString(aDeckNode, u"Title"_ustr);
+        rDeckDescriptor.msId = getString(aDeckNode, u"Id"_ustr);
+        rDeckDescriptor.msIconURL = getString(aDeckNode, u"IconURL"_ustr);
+        rDeckDescriptor.msHighContrastIconURL = getString(aDeckNode, u"HighContrastIconURL"_ustr);
+        rDeckDescriptor.msTitleBarIconURL = getString(aDeckNode, u"TitleBarIconURL"_ustr);
+        rDeckDescriptor.msHighContrastTitleBarIconURL = getString(aDeckNode, u"HighContrastTitleBarIconURL"_ustr);
         rDeckDescriptor.msHelpText = rDeckDescriptor.msTitle;
         rDeckDescriptor.msHelpId = "SIDEBAR_" + rDeckDescriptor.msId.toAsciiUpperCase();
-        rDeckDescriptor.mnOrderIndex = getInt32(aDeckNode, "OrderIndex");
-        rDeckDescriptor.mbExperimental = getBool(aDeckNode, "IsExperimental");
+        rDeckDescriptor.mnOrderIndex = getInt32(aDeckNode, u"OrderIndex"_ustr);
+        rDeckDescriptor.mbExperimental = getBool(aDeckNode, u"IsExperimental"_ustr);
+        rDeckDescriptor.mbHiddenInViewerMode = getBool(aDeckNode, u"HiddenInViewer"_ustr);
 
         rDeckDescriptor.msNodeName = aDeckName;
 
@@ -294,6 +300,9 @@ void ResourceManager::ReadDeckList()
 
 void ResourceManager::SaveDecksSettings(const Context& rContext)
 {
+    if (comphelper::LibreOfficeKit::isActive())
+        return;
+
     for (auto const& deck : maDecks)
     {
        const ContextList::Entry* pMatchingEntry = deck->maContextList.GetMatch(rContext);
@@ -311,7 +320,7 @@ void ResourceManager::SaveDeckSettings(const DeckDescriptor* pDeckDesc)
 {
     const utl::OConfigurationTreeRoot aDeckRootNode(
                                     comphelper::getProcessComponentContext(),
-                                    "org.openoffice.Office.UI.Sidebar/Content/DeckList",
+                                    u"org.openoffice.Office.UI.Sidebar/Content/DeckList"_ustr,
                                     true);
     if (!aDeckRootNode.isValid())
         return;
@@ -327,19 +336,19 @@ void ResourceManager::SaveDeckSettings(const DeckDescriptor* pDeckDesc)
     css::uno::Any aContextList(sContextList);
 
     bool bChanged = false;
-    if (aTitle != aDeckNode.getNodeValue("Title"))
+    if (aTitle != aDeckNode.getNodeValue(u"Title"_ustr))
     {
-        aDeckNode.setNodeValue("Title", aTitle);
+        aDeckNode.setNodeValue(u"Title"_ustr, aTitle);
         bChanged = true;
     }
-    if (aOrder != aDeckNode.getNodeValue("OrderIndex"))
+    if (aOrder != aDeckNode.getNodeValue(u"OrderIndex"_ustr))
     {
-        aDeckNode.setNodeValue("OrderIndex", aOrder);
+        aDeckNode.setNodeValue(u"OrderIndex"_ustr, aOrder);
         bChanged = true;
     }
-    if (aContextList != aDeckNode.getNodeValue("ContextList"))
+    if (aContextList != aDeckNode.getNodeValue(u"ContextList"_ustr))
     {
-        aDeckNode.setNodeValue("ContextList", aContextList);
+        aDeckNode.setNodeValue(u"ContextList"_ustr, aContextList);
         bChanged = true;
     }
 
@@ -350,7 +359,7 @@ void ResourceManager::SaveDeckSettings(const DeckDescriptor* pDeckDesc)
 
     const utl::OConfigurationTreeRoot aPanelRootNode(
                                     comphelper::getProcessComponentContext(),
-                                    "org.openoffice.Office.UI.Sidebar/Content/PanelList",
+                                    u"org.openoffice.Office.UI.Sidebar/Content/PanelList"_ustr,
                                     true);
 
     if (!aPanelRootNode.isValid())
@@ -375,19 +384,19 @@ void ResourceManager::SaveDeckSettings(const DeckDescriptor* pDeckDesc)
         aOrder <<= xPanelDesc->mnOrderIndex;
         aContextList <<= sPanelContextList;
 
-        if (aTitle != aPanelNode.getNodeValue("Title"))
+        if (aTitle != aPanelNode.getNodeValue(u"Title"_ustr))
         {
-            aPanelNode.setNodeValue("Title", aTitle);
+            aPanelNode.setNodeValue(u"Title"_ustr, aTitle);
             bChanged = true;
         }
-        if (aOrder != aPanelNode.getNodeValue("OrderIndex"))
+        if (aOrder != aPanelNode.getNodeValue(u"OrderIndex"_ustr))
         {
-            aPanelNode.setNodeValue("OrderIndex", aOrder);
+            aPanelNode.setNodeValue(u"OrderIndex"_ustr, aOrder);
             bChanged = true;
         }
-        if (aContextList != aPanelNode.getNodeValue("ContextList"))
+        if (aContextList != aPanelNode.getNodeValue(u"ContextList"_ustr))
         {
-            aPanelNode.setNodeValue("ContextList", aContextList);
+            aPanelNode.setNodeValue(u"ContextList"_ustr, aContextList);
             bChanged = true;
         }
     }
@@ -398,6 +407,9 @@ void ResourceManager::SaveDeckSettings(const DeckDescriptor* pDeckDesc)
 
 void ResourceManager::SaveLastActiveDeck(const Context& rContext, const OUString& rActiveDeck)
 {
+    if (comphelper::LibreOfficeKit::isActive())
+        return;
+
     maLastActiveDecks[rContext.msApplication] = rActiveDeck;
 
     std::set<OUString> aLastActiveDecks;
@@ -415,7 +427,7 @@ void ResourceManager::ReadPanelList()
 {
     const utl::OConfigurationTreeRoot aPanelRootNode(
                                         comphelper::getProcessComponentContext(),
-                                        "org.openoffice.Office.UI.Sidebar/Content/PanelList",
+                                        u"org.openoffice.Office.UI.Sidebar/Content/PanelList"_ustr,
                                         false);
     if (!aPanelRootNode.isValid())
         return;
@@ -431,7 +443,7 @@ void ResourceManager::ReadPanelList()
         if (comphelper::LibreOfficeKit::isActive())
         {
             // Hide these panels in LOK as they aren't fully functional.
-            OUString aPanelId = getString(aPanelNode, "Id");
+            OUString aPanelId = getString(aPanelNode, u"Id"_ustr);
             if (aPanelId == "PageStylesPanel" || aPanelId == "PageHeaderPanel"
                 || aPanelId == "PageFooterPanel")
                 continue;
@@ -440,19 +452,19 @@ void ResourceManager::ReadPanelList()
         maPanels.push_back(std::make_shared<PanelDescriptor>());
         PanelDescriptor& rPanelDescriptor(*maPanels.back());
 
-        rPanelDescriptor.msTitle = getString(aPanelNode, "Title");
-        rPanelDescriptor.mbIsTitleBarOptional = getBool(aPanelNode, "TitleBarIsOptional");
-        rPanelDescriptor.msId = getString(aPanelNode, "Id");
-        rPanelDescriptor.msDeckId = getString(aPanelNode, "DeckId");
-        rPanelDescriptor.msTitleBarIconURL = getString(aPanelNode, "TitleBarIconURL");
-        rPanelDescriptor.msHighContrastTitleBarIconURL = getString(aPanelNode, "HighContrastTitleBarIconURL");
-        rPanelDescriptor.msImplementationURL = getString(aPanelNode, "ImplementationURL");
-        rPanelDescriptor.mnOrderIndex = getInt32(aPanelNode, "OrderIndex");
-        rPanelDescriptor.mbShowForReadOnlyDocuments = getBool(aPanelNode, "ShowForReadOnlyDocument");
-        rPanelDescriptor.mbWantsCanvas = getBool(aPanelNode, "WantsCanvas");
-        rPanelDescriptor.mbWantsAWT = getBool(aPanelNode, "WantsAWT");
-        rPanelDescriptor.mbExperimental = getBool(aPanelNode, "IsExperimental");
-        const OUString sDefaultMenuCommand(getString(aPanelNode, "DefaultMenuCommand"));
+        rPanelDescriptor.msTitle = getString(aPanelNode, u"Title"_ustr);
+        rPanelDescriptor.mbIsTitleBarOptional = getBool(aPanelNode, u"TitleBarIsOptional"_ustr);
+        rPanelDescriptor.msId = getString(aPanelNode, u"Id"_ustr);
+        rPanelDescriptor.msDeckId = getString(aPanelNode, u"DeckId"_ustr);
+        rPanelDescriptor.msTitleBarIconURL = getString(aPanelNode, u"TitleBarIconURL"_ustr);
+        rPanelDescriptor.msHighContrastTitleBarIconURL = getString(aPanelNode, u"HighContrastTitleBarIconURL"_ustr);
+        rPanelDescriptor.msImplementationURL = getString(aPanelNode, u"ImplementationURL"_ustr);
+        rPanelDescriptor.mnOrderIndex = getInt32(aPanelNode, u"OrderIndex"_ustr);
+        rPanelDescriptor.mbShowForReadOnlyDocuments = getBool(aPanelNode, u"ShowForReadOnlyDocument"_ustr);
+        rPanelDescriptor.mbWantsCanvas = getBool(aPanelNode, u"WantsCanvas"_ustr);
+        rPanelDescriptor.mbWantsAWT = getBool(aPanelNode, u"WantsAWT"_ustr);
+        rPanelDescriptor.mbExperimental = getBool(aPanelNode, u"IsExperimental"_ustr);
+        const OUString sDefaultMenuCommand(getString(aPanelNode, u"DefaultMenuCommand"_ustr));
 
         rPanelDescriptor.msNodeName = rPanelNodeName;
 
@@ -462,6 +474,9 @@ void ResourceManager::ReadPanelList()
 
 void ResourceManager::ReadLastActive()
 {
+    if (comphelper::LibreOfficeKit::isActive())
+        return;
+
     const Sequence <OUString> aLastActive (officecfg::Office::UI::Sidebar::Content::LastActiveDeck::get());
 
     for (const auto& rDeckInfo : aLastActive)
@@ -483,9 +498,15 @@ void ResourceManager::ReadLastActive()
     }
 
     // Set up a default for Math - will do nothing if already set
-    maLastActiveDecks.emplace(
-        vcl::EnumContext::GetApplicationName(vcl::EnumContext::Application::Formula),
-        "ElementsDeck");
+    for (const auto& aOverrideDeck : GetDeckOverrides())
+        maLastActiveDecks.emplace(aOverrideDeck.first, aOverrideDeck.second);
+}
+
+void ResourceManager::SetupOverrides()
+{
+    maApplicationDeckOverrides = {
+        { vcl::EnumContext::GetApplicationName(vcl::EnumContext::Application::Formula), "ElementsDeck" }
+    };
 }
 
 void ResourceManager::ReadContextList (
@@ -493,12 +514,12 @@ void ResourceManager::ReadContextList (
                         ContextList& rContextList,
                         const OUString& rsDefaultMenuCommand)
 {
-    const Any aValue = rParentNode.getNodeValue("ContextList");
+    const Any aValue = rParentNode.getNodeValue(u"ContextList"_ustr);
     Sequence<OUString> aValues;
     if (!(aValue >>= aValues))
         return;
 
-    for (const OUString& sValue : std::as_const(aValues))
+    for (const OUString& sValue : aValues)
     {
         sal_Int32 nCharacterIndex (0);
         const OUString sApplicationName (o3tl::trim(o3tl::getToken(sValue, 0, ',', nCharacterIndex)));
@@ -513,7 +534,7 @@ void ResourceManager::ReadContextList (
             }
             else
             {
-                OSL_FAIL("expecting three or four values per ContextList entry, separated by comma");
+                SAL_WARN("sfx.sidebar", "expecting three or four values per ContextList entry, separated by comma, entries: " << aValues);
                 continue;
             }
         }
@@ -521,7 +542,7 @@ void ResourceManager::ReadContextList (
         const OUString sContextName(o3tl::trim(o3tl::getToken(sValue, 0, ',', nCharacterIndex)));
         if (nCharacterIndex < 0)
         {
-            OSL_FAIL("expecting three or four values per ContextList entry, separated by comma");
+            SAL_WARN("sfx.sidebar", "expecting three or four values per ContextList entry, separated by comma");
             continue;
         }
 
@@ -612,7 +633,7 @@ void ResourceManager::ReadContextList (
             bIsInitiallyVisible = false;
         else
         {
-            OSL_FAIL("unrecognized state");
+            SAL_WARN("sfx.sidebar", "unrecognized state");
             continue;
         }
 
@@ -676,20 +697,20 @@ void ResourceManager::ReadLegacyAddons (const Reference<frame::XController>& rxC
 
         maDecks.push_back(std::make_shared<DeckDescriptor>());
         DeckDescriptor& rDeckDescriptor(*maDecks.back());
-        rDeckDescriptor.msTitle = getString(aChildNode, "UIName");
+        rDeckDescriptor.msTitle = getString(aChildNode, u"UIName"_ustr);
         rDeckDescriptor.msId = rsNodeName;
-        rDeckDescriptor.msIconURL = getString(aChildNode, "ImageURL");
+        rDeckDescriptor.msIconURL = getString(aChildNode, u"ImageURL"_ustr);
         rDeckDescriptor.msHighContrastIconURL = rDeckDescriptor.msIconURL;
         rDeckDescriptor.msTitleBarIconURL.clear();
         rDeckDescriptor.msHighContrastTitleBarIconURL.clear();
         rDeckDescriptor.msHelpText = rDeckDescriptor.msTitle;
         rDeckDescriptor.mbIsEnabled = true;
         rDeckDescriptor.mnOrderIndex = 100000 + nReadIndex;
-        rDeckDescriptor.maContextList.AddContextDescription(Context(sModuleName, "any"), true, OUString());
+        rDeckDescriptor.maContextList.AddContextDescription(Context(sModuleName, u"any"_ustr), true, OUString());
 
         maPanels.push_back(std::make_shared<PanelDescriptor>());
         PanelDescriptor& rPanelDescriptor(*maPanels.back());
-        rPanelDescriptor.msTitle = getString(aChildNode, "UIName");
+        rPanelDescriptor.msTitle = getString(aChildNode, u"UIName"_ustr);
         rPanelDescriptor.mbIsTitleBarOptional = true;
         rPanelDescriptor.msId = rsNodeName;
         rPanelDescriptor.msDeckId = rsNodeName;
@@ -700,7 +721,7 @@ void ResourceManager::ReadLegacyAddons (const Reference<frame::XController>& rxC
         rPanelDescriptor.mbShowForReadOnlyDocuments = false;
         rPanelDescriptor.mbWantsCanvas = false;
         rPanelDescriptor.mbWantsAWT = true;
-        rPanelDescriptor.maContextList.AddContextDescription(Context(sModuleName, "any"), true, OUString());
+        rPanelDescriptor.maContextList.AddContextDescription(Context(sModuleName, u"any"_ustr), true, OUString());
     }
 }
 
@@ -724,11 +745,11 @@ utl::OConfigurationTreeRoot ResourceManager::GetLegacyAddonRootNode (const OUStr
 {
     try
     {
-        const Reference<XComponentContext> xContext(comphelper::getProcessComponentContext());
+        const Reference<XComponentContext>& xContext(comphelper::getProcessComponentContext());
         const Reference<frame::XModuleManager2> xModuleAccess = frame::ModuleManager::create(xContext);
         const comphelper::NamedValueCollection aModuleProperties(xModuleAccess->getByName(rsModuleName));
         const OUString sWindowStateRef(aModuleProperties.getOrDefault(
-                                       "ooSetupFactoryWindowStateConfigRef",
+                                       u"ooSetupFactoryWindowStateConfigRef"_ustr,
                                        OUString()));
 
         OUString aPathComposer = "org.openoffice.Office.UI." + sWindowStateRef +

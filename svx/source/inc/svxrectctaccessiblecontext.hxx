@@ -33,19 +33,11 @@
 #include <tools/gen.hxx>
 #include <vector>
 
-namespace com::sun::star::awt {
-    struct Point;
-    struct Rectangle;
-    struct Size;
-    class XFocusListener;
-}
-namespace tools { class Rectangle; }
 class SvxRectCtl;
 class SvxRectCtlChildAccessibleContext;
 
-class SvxRectCtlAccessibleContext final : public cppu::ImplInheritanceHelper<
-                                              ::comphelper::OAccessibleSelectionHelper,
-                                              css::accessibility::XAccessible>
+class SvxRectCtlAccessibleContext final
+    : public cppu::ImplInheritanceHelper<::comphelper::OAccessibleSelectionHelper>
 {
 public:
     // internal
@@ -55,7 +47,6 @@ public:
     virtual void SAL_CALL grabFocus() override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint(const css::awt::Point& rPoint) override;
 
-    // XAccessible
     // XAccessibleContext
     virtual sal_Int64 SAL_CALL getAccessibleChildCount() override;
     virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL getAccessibleChild(sal_Int64 nIndex) override;
@@ -66,7 +57,6 @@ public:
     virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL getAccessibleRelationSet() override;
     virtual sal_Int64 SAL_CALL getAccessibleStateSet() override;
 
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL getAccessibleContext() override { return this; }
     virtual sal_Int32 SAL_CALL getForeground() override;
     virtual sal_Int32 SAL_CALL getBackground() override;
 
@@ -91,7 +81,7 @@ private:
     // select the specified child => watch for special ChildIndexes (ACCESSIBLE_SELECTION_CHILD_xxx)
     virtual void implSelect(sal_Int64 nAccessibleChildIndex, bool bSelect) override;
 
-    // OCommonAccessibleComponent
+    // OAccessible
     virtual css::awt::Rectangle implGetBounds() override;
 
     virtual void SAL_CALL disposing() override;
@@ -127,11 +117,10 @@ private:
     tools::Long                                mnSelectedChild;
 };
 
-class SvxRectCtlChildAccessibleContext final : public cppu::ImplInheritanceHelper<
-                                                   ::comphelper::OAccessibleComponentHelper,
-                                                   css::accessibility::XAccessible,
-                                                   css::accessibility::XAccessibleValue,
-                                                   css::accessibility::XAccessibleAction>
+class SvxRectCtlChildAccessibleContext final
+    : public cppu::ImplInheritanceHelper<::comphelper::OAccessible,
+                                         css::accessibility::XAccessibleValue,
+                                         css::accessibility::XAccessibleAction>
 {
 public:
     SvxRectCtlChildAccessibleContext(
@@ -153,8 +142,6 @@ public:
     virtual OUString SAL_CALL getAccessibleName() override;
     virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL getAccessibleRelationSet() override;
     virtual sal_Int64 SAL_CALL getAccessibleStateSet() override;
-
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL getAccessibleContext() override { return this; }
 
     virtual sal_Int32 SAL_CALL getForeground() override;
     virtual sal_Int32 SAL_CALL getBackground() override;
@@ -191,7 +178,7 @@ private:
 
     virtual void SAL_CALL disposing() override;
 
-    // OCommonAccessibleComponent
+    // OAccessible
     /// implements the calculation of the bounding rectangle
     virtual css::awt::Rectangle implGetBounds(  ) override;
 

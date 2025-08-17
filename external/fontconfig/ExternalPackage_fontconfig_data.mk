@@ -15,6 +15,8 @@ $(eval $(call gb_ExternalPackage_add_files,fontconfig_data,$(LIBO_SHARE_FOLDER)/
     fonts.conf \
 ))
 
+# The list below is created with
+# find workdir/UnpackedTarball/fontconfig/conf.d/ -name "*.conf" | LC_COLLATE=C sort | sed -e 's/^/    /' -e 's/$/ \\/' -e 's/workdir\/UnpackedTarball\/fontconfig\///'
 $(eval $(call gb_ExternalPackage_add_unpacked_files,fontconfig_data,$(LIBO_SHARE_FOLDER)/fontconfig/conf.d,\
     conf.d/05-reset-dirs-sample.conf \
     conf.d/09-autohint-if-no-hinting.conf \
@@ -35,6 +37,7 @@ $(eval $(call gb_ExternalPackage_add_unpacked_files,fontconfig_data,$(LIBO_SHARE
     conf.d/11-lcdfilter-default.conf \
     conf.d/11-lcdfilter-legacy.conf \
     conf.d/11-lcdfilter-light.conf \
+    conf.d/11-lcdfilter-none.conf \
     conf.d/20-unhint-small-vera.conf \
     conf.d/25-unhint-nonlatin.conf \
     conf.d/30-metric-aliases.conf \
@@ -52,6 +55,8 @@ $(eval $(call gb_ExternalPackage_add_unpacked_files,fontconfig_data,$(LIBO_SHARE
     conf.d/65-khmer.conf \
     conf.d/65-nonlatin.conf \
     conf.d/69-unifont.conf \
+    conf.d/70-no-bitmaps-and-emoji.conf \
+    conf.d/70-no-bitmaps-except-emoji.conf \
     conf.d/70-no-bitmaps.conf \
     conf.d/70-yes-bitmaps.conf \
     conf.d/80-delicious.conf \

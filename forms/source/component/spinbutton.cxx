@@ -35,11 +35,8 @@ namespace frm
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::form;
-    using namespace ::com::sun::star::awt;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::util;
     using namespace ::com::sun::star::io;
-    using namespace ::com::sun::star::form::binding;
 
 
     //= OSpinButtonModel
@@ -67,7 +64,7 @@ namespace frm
 
     OUString SAL_CALL OSpinButtonModel::getImplementationName()
     {
-        return "com.sun.star.comp.forms.OSpinButtonModel";
+        return u"com.sun.star.comp.forms.OSpinButtonModel"_ustr;
     }
 
         // note that we're passing OControlModel as "base class". This is because
@@ -76,7 +73,7 @@ namespace frm
         // to benefit from the functionality for binding to spreadsheet cells
     Sequence< OUString > SAL_CALL OSpinButtonModel::getSupportedServiceNames()
     {
-        Sequence< OUString > aOwnNames { FRM_SUN_COMPONENT_SPINBUTTON, BINDABLE_INTEGER_VALUE_RANGE };
+        static constexpr OUString aOwnNames[] { FRM_SUN_COMPONENT_SPINBUTTON, BINDABLE_INTEGER_VALUE_RANGE };
 
         return ::comphelper::combineSequences(
             getAggregateServiceNames(),
@@ -242,8 +239,8 @@ namespace frm
     Any OSpinButtonModel::translateExternalValueToControlValue( const Any& _rExternalValue ) const
     {
         return translateExternalDoubleToControlIntValue( _rExternalValue, m_xAggregateSet,
-            "SpinValueMin",
-            "SpinValueMax" );
+            u"SpinValueMin"_ustr,
+            u"SpinValueMax"_ustr );
     }
 
 

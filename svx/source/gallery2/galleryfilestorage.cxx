@@ -24,7 +24,6 @@
 #include <galleryfilestorage.hxx>
 #include <svx/galleryobjectcollection.hxx>
 #include <svx/gallery1.hxx>
-#include <osl/thread.hxx>
 #include "codec.hxx"
 #include "gallerydrawmodel.hxx"
 #include <vcl/cvtgrf.hxx>
@@ -92,7 +91,7 @@ void GalleryFileStorage::ImplCreateSvDrawStorage()
     }
 }
 
-const tools::SvRef<SotStorage>& GalleryFileStorage::GetSvDrawStorage() const
+const rtl::Reference<SotStorage>& GalleryFileStorage::GetSvDrawStorage() const
 {
     return m_aSvDrawStorageRef;
 }
@@ -148,7 +147,7 @@ void GalleryFileStorage::insertObject(const SgaObject& rObj, GalleryObject* pFou
             }
         }
         else if (rObj.GetTitle() == "__<empty>__")
-            const_cast<SgaObject&>(rObj).SetTitle("");
+            const_cast<SgaObject&>(rObj).SetTitle(u""_ustr);
 
         implWriteSgaObject(rObj, nInsertPos, &aNewEntry);
         pFoundEntry->nOffset = aNewEntry.nOffset;
@@ -266,14 +265,14 @@ bool GalleryFileStorage::implWriteSgaObject(const SgaObject& rObj, sal_uInt32 nP
 
 bool GalleryFileStorage::readModel(const GalleryObject* pObject, SdrModel& rModel)
 {
-    tools::SvRef<SotStorage> xSotStorage(GetSvDrawStorage());
+    rtl::Reference<SotStorage> xSotStorage(GetSvDrawStorage());
     bool bRet = false;
     const INetURLObject aURL(ImplGetURL(pObject));
 
     if (xSotStorage.is())
     {
         const OUString aStreamName(GetSvDrawStreamNameFromURL(aURL));
-        tools::SvRef<SotStorageStream> xInputStream(
+        rtl::Reference<SotStorageStream> xInputStream(
             xSotStorage->OpenSotStream(aStreamName, StreamMode::READ));
 
         if (xInputStream.is() && !xInputStream->GetError())
@@ -290,13 +289,13 @@ SgaObjectSvDraw GalleryFileStorage::insertModel(const FmFormModel& rModel,
                                                 const INetURLObject& rUserURL)
 {
     INetURLObject aURL(implCreateUniqueURL(SgaObjKind::SvDraw, rUserURL));
-    tools::SvRef<SotStorage> xSotStorage(GetSvDrawStorage());
+    rtl::Reference<SotStorage> xSotStorage(GetSvDrawStorage());
     bool bRet = false;
 
     if (xSotStorage.is())
     {
         const OUString aStreamName(GetSvDrawStreamNameFromURL(aURL));
-        tools::SvRef<SotStorageStream> xOutputStream(
+        rtl::Reference<SotStorageStream> xOutputStream(
             xSotStorage->OpenSotStream(aStreamName, StreamMode::WRITE | StreamMode::TRUNC));
 
         if (xOutputStream.is() && !xOutputStream->GetError())
@@ -333,17 +332,16 @@ SgaObjectSvDraw GalleryFileStorage::insertModel(const FmFormModel& rModel,
     return SgaObjectSvDraw();
 }
 
-bool GalleryFileStorage::readModelStream(const GalleryObject* pObject,
-                                         tools::SvRef<SotTempStream> const& rxModelStream)
+bool GalleryFileStorage::readModelStream(const GalleryObject* pObject, SvStream& rxModelStream)
 {
     const INetURLObject aURL(ImplGetURL(pObject));
-    tools::SvRef<SotStorage> xSotStorage(GetSvDrawStorage());
+    rtl::Reference<SotStorage> xSotStorage(GetSvDrawStorage());
     bool bRet = false;
 
     if (xSotStorage.is())
     {
         const OUString aStreamName(GetSvDrawStreamNameFromURL(aURL));
-        tools::SvRef<SotStorageStream> xInputStream(
+        rtl::Reference<SotStorageStream> xInputStream(
             xSotStorage->OpenSotStream(aStreamName, StreamMode::READ));
 
         if (xInputStream.is() && !xInputStream->GetError())
@@ -364,13 +362,13 @@ bool GalleryFileStorage::readModelStream(const GalleryObject* pObject,
 
                         {
                             uno::Reference<io::XOutputStream> xDocOut(
-                                new utl::OOutputStreamWrapper(*rxModelStream));
+                                new utl::OOutputStreamWrapper(rxModelStream));
 
                             SvxDrawingLayerExport(aModel.GetModel(), xDocOut);
                         }
                     }
 
-                    bRet = (rxModelStream->GetError() == ERRCODE_NONE);
+                    bRet = (rxModelStream.GetError() == ERRCODE_NONE);
                 }
             }
 
@@ -380,17 +378,16 @@ bool GalleryFileStorage::readModelStream(const GalleryObject* pObject,
     return bRet;
 }
 
-SgaObjectSvDraw
-GalleryFileStorage::insertModelStream(const tools::SvRef<SotTempStream>& rxModelStream,
-                                      const INetURLObject& rUserURL)
+SgaObjectSvDraw GalleryFileStorage::insertModelStream(SvStream& rModelStream,
+                                                      const INetURLObject& rUserURL)
 {
     INetURLObject aURL(implCreateUniqueURL(SgaObjKind::SvDraw, rUserURL));
-    tools::SvRef<SotStorage> xSotStorage(GetSvDrawStorage());
+    rtl::Reference<SotStorage> xSotStorage(GetSvDrawStorage());
 
     if (xSotStorage.is())
     {
         const OUString aStreamName(GetSvDrawStreamNameFromURL(aURL));
-        tools::SvRef<SotStorageStream> xOutputStream(
+        rtl::Reference<SotStorageStream> xOutputStream(
             xSotStorage->OpenSotStream(aStreamName, StreamMode::WRITE | StreamMode::TRUNC));
 
         if (xOutputStream.is() && !xOutputStream->GetError())
@@ -398,7 +395,7 @@ GalleryFileStorage::insertModelStream(const tools::SvRef<SotTempStream>& rxModel
             GalleryCodec aCodec(*xOutputStream);
 
             xOutputStream->SetBufferSize(16348);
-            aCodec.Write(*rxModelStream);
+            aCodec.Write(rModelStream);
 
             if (!xOutputStream->GetError())
             {
@@ -502,7 +499,7 @@ SgaObjectBmp GalleryFileStorage::insertGraphic(const Graphic& rGraphic, const Gf
 
         if (ConvertDataFormat::SVM == nExportFormat)
         {
-            GDIMetaFile aMtf(rGraphic.GetGDIMetaFile());
+            const GDIMetaFile& aMtf(rGraphic.GetGDIMetaFile());
 
             SvmWriter aWriter(*pOStm);
             aWriter.Write(aMtf);
@@ -523,8 +520,7 @@ SgaObjectBmp GalleryFileStorage::insertGraphic(const Graphic& rGraphic, const Gf
     }
     if (bRet)
     {
-        const SgaObjectBmp aObjBmp(aURL);
-        return aObjBmp;
+        return SgaObjectBmp(aURL);
     }
     return SgaObjectBmp();
 }
@@ -534,7 +530,7 @@ SgaObjectSvDraw GalleryFileStorage::updateSvDrawObject(const GalleryObject* pEnt
     if (GetSvDrawStorage().is())
     {
         const OUString aStmName(GetSvDrawStreamNameFromURL(*pEntry->m_oStorageUrl));
-        tools::SvRef<SotStorageStream> pIStm
+        rtl::Reference<SotStorageStream> pIStm
             = GetSvDrawStorage()->OpenSotStream(aStmName, StreamMode::READ);
 
         if (pIStm.is() && !pIStm->GetError())
@@ -619,7 +615,7 @@ void GalleryFileStorage::updateTheme()
 
     try
     {
-        tools::SvRef<SotStorage> aTempStorageRef(
+        rtl::Reference<SotStorage> aTempStorageRef(
             new SotStorage(false, aTmpURL.GetMainURL(INetURLObject::DecodeMechanism::NONE),
                            StreamMode::STD_READWRITE));
         GetSvDrawStorage()->CopyTo(aTempStorageRef.get());
@@ -654,11 +650,11 @@ void GalleryFileStorage::insertFileOrDirURL(const INetURLObject& rFileOrDirURL,
                                   comphelper::getProcessComponentContext());
         bool bFolder = false;
 
-        aCnt.getPropertyValue("IsFolder") >>= bFolder;
+        aCnt.getPropertyValue(u"IsFolder"_ustr) >>= bFolder;
 
         if (bFolder)
         {
-            uno::Sequence<OUString> aProps{ "Url" };
+            uno::Sequence<OUString> aProps{ u"Url"_ustr };
             uno::Reference<sdbc::XResultSet> xResultSet(
                 aCnt.createCursor(aProps, ::ucbhelper::INCLUDE_DOCUMENTS_ONLY));
             uno::Reference<ucb::XContentAccess> xContentAccess(xResultSet, uno::UNO_QUERY);
@@ -803,7 +799,7 @@ DateTime GalleryFileStorage::getModificationDate() const
     util::DateTime aDateTimeModified;
     DateTime aDateTime(DateTime::EMPTY);
 
-    aCnt.getPropertyValue("DateModified") >>= aDateTimeModified;
+    aCnt.getPropertyValue(u"DateModified"_ustr) >>= aDateTimeModified;
     ::utl::typeConvert(aDateTimeModified, aDateTime);
 
     return aDateTime;

@@ -367,13 +367,15 @@ XclExpStringRef lclCreateFormattedString(
 
     // script type handling
     Reference< XBreakIterator > xBreakIt = rRoot.GetDoc().GetBreakIterator();
-    namespace ApiScriptType = ::com::sun::star::i18n::ScriptType;
+    namespace ApiScriptType = css::i18n::ScriptType;
     // #i63255# get script type for leading weak characters
     sal_Int16 nLastScript = XclExpStringHelper::GetLeadingScriptType( rRoot, rText );
 
     // font buffer and cell item set
     XclExpFontBuffer& rFontBuffer = rRoot.GetFontBuffer();
-    const SfxItemSet& rItemSet = pCellAttr ? pCellAttr->GetItemSet() : rRoot.GetDoc().GetDefPattern()->GetItemSet();
+    const SfxItemSet& rItemSet = pCellAttr ?
+        pCellAttr->GetItemSet() :
+        rRoot.GetDoc().getCellAttributeHelper().getDefaultCellAttribute().GetItemSet();
 
     // process all script portions
     sal_Int32 nPortionPos = 0;
@@ -441,7 +443,7 @@ XclExpStringRef lclCreateFormattedString(
 
     // script type handling
     Reference< XBreakIterator > xBreakIt = rRoot.GetDoc().GetBreakIterator();
-    namespace ApiScriptType = ::com::sun::star::i18n::ScriptType;
+    namespace ApiScriptType = css::i18n::ScriptType;
     // #i63255# get script type for leading weak characters
     sal_Int16 nLastScript = XclExpStringHelper::GetLeadingScriptType( rRoot, rEE.GetText() );
 
@@ -458,8 +460,8 @@ XclExpStringRef lclCreateFormattedString(
         // process all portions in the paragraph
         for( const auto& rPos : aPosList )
         {
-            aSel.nEndPos = rPos;
-            OUString aXclPortionText = aParaText.copy( aSel.nStartPos, aSel.nEndPos - aSel.nStartPos );
+            aSel.end.nIndex = rPos;
+            OUString aXclPortionText = aParaText.copy( aSel.start.nIndex, aSel.end.nIndex - aSel.start.nIndex );
 
             aItemSet.ClearItem();
             SfxItemSet aEditSet( rEE.GetAttribs( aSel ) );
@@ -470,7 +472,7 @@ XclExpStringRef lclCreateFormattedString(
 
             // process text fields
             bool bIsHyperlink = false;
-            if( aSel.nStartPos + 1 == aSel.nEndPos )
+            if (aSel.start.nIndex + 1 == aSel.end.nIndex)
             {
                 // test if the character is a text field
                 if( const SvxFieldItem* pItem = aEditSet.GetItemIfSet( EE_FEATURE_FIELD, false ) )
@@ -521,7 +523,7 @@ XclExpStringRef lclCreateFormattedString(
                 xString->AppendFormat( nXclPortionStart, nFontIdx );
             }
 
-            aSel.nStartPos = aSel.nEndPos;
+            aSel.start.nIndex = aSel.end.nIndex;
         }
 
         // add trailing newline (important for correct character index calculation)
@@ -529,6 +531,11 @@ XclExpStringRef lclCreateFormattedString(
             XclExpStringHelper::AppendChar( *xString, rRoot, '\n' );
     }
 
+    if (xString->HasNewline() && nParaCount == 1)
+    {
+        // Found buggy Excel behaviour: although the content has newlines, it has not been wrapped.
+        xString->SetSingleLineForMultipleParagraphs(true);
+    }
     return xString;
 }
 
@@ -587,10 +594,12 @@ XclExpStringRef XclExpStringHelper::CreateCellString(
     bool bOldUpdateMode = rEE.SetUpdateLayout( true );
 
     // default items
-    const SfxItemSet& rItemSet = pCellAttr ? pCellAttr->GetItemSet() : rRoot.GetDoc().GetDefPattern()->GetItemSet();
-    auto pEEItemSet = std::make_unique<SfxItemSet>( rEE.GetEmptyItemSet() );
-    ScPatternAttr::FillToEditItemSet( *pEEItemSet, rItemSet );
-    rEE.SetDefaults( std::move(pEEItemSet) );      // edit engine takes ownership
+    const SfxItemSet& rItemSet = pCellAttr ?
+        pCellAttr->GetItemSet() :
+        rRoot.GetDoc().getCellAttributeHelper().getDefaultCellAttribute().GetItemSet();
+    SfxItemSet aEEItemSet( rEE.GetEmptyItemSet() );
+    ScPatternAttr::FillToEditItemSet( aEEItemSet, rItemSet );
+    rEE.SetDefaults( std::move(aEEItemSet) );      // edit engine takes ownership
 
     // create the string
     rEE.SetTextCurrentDefaults(rEditText);
@@ -650,7 +659,7 @@ XclExpStringRef XclExpStringHelper::CreateString(
 
 sal_Int16 XclExpStringHelper::GetLeadingScriptType( const XclExpRoot& rRoot, const OUString& rString )
 {
-    namespace ApiScriptType = ::com::sun::star::i18n::ScriptType;
+    namespace ApiScriptType = css::i18n::ScriptType;
     Reference< XBreakIterator > xBreakIt = rRoot.GetDoc().GetBreakIterator();
     sal_Int32 nStrPos = 0;
     sal_Int32 nStrLen = rString.getLength();
@@ -725,8 +734,8 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
 
         for( const auto& rPos : aPosList )
         {
-            aSel.nEndPos = rPos;
-            if( aSel.nStartPos < aSel.nEndPos )
+            aSel.end.nIndex = rPos;
+            if (aSel.start.nIndex < aSel.end.nIndex)
             {
 
 // --- font attributes ---
@@ -741,8 +750,8 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
 
                 // font name and style
                 aNewData.maName = XclTools::GetXclFontName( aFont.GetFamilyName() );
-                aNewData.mnWeight = (aFont.GetWeight() > WEIGHT_NORMAL) ? EXC_FONTWGHT_BOLD : EXC_FONTWGHT_NORMAL;
-                aNewData.mbItalic = (aFont.GetItalic() != ITALIC_NONE);
+                aNewData.mnWeight = (aFont.GetWeightMaybeAskConfig() > WEIGHT_NORMAL) ? EXC_FONTWGHT_BOLD : EXC_FONTWGHT_NORMAL;
+                aNewData.mbItalic = (aFont.GetItalicMaybeAskConfig() != ITALIC_NONE);
                 bool bNewFont = (aFontData.maName != aNewData.maName);
                 bool bNewStyle = (aFontData.mnWeight != aNewData.mnWeight) ||
                                  (aFontData.mbItalic != aNewData.mbItalic);
@@ -790,7 +799,7 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
                 }
 
                 // font color
-                aNewData.maComplexColor = aComplexColor;
+                aNewData.maComplexColor = std::move(aComplexColor);
                 Color aNewColor = aNewData.maComplexColor.getFinalColor();
 
                 if (!aFontData.maComplexColor.getFinalColor().IsRGBEqual(aNewColor))
@@ -823,7 +832,7 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
 // --- text content or text fields ---
 
                 const SvxFieldItem* pItem;
-                if( (aSel.nStartPos + 1 == aSel.nEndPos) &&     // fields are single characters
+                if( (aSel.start.nIndex + 1 == aSel.end.nIndex) &&     // fields are single characters
                     (pItem = aEditSet.GetItemIfSet( EE_FEATURE_FIELD, false )) )
                 {
                     if( const SvxFieldData* pFieldData = pItem->GetField() )
@@ -876,7 +885,7 @@ void XclExpHFConverter::AppendPortion( const EditTextObject* pTextObj, sal_Unico
                 }
             }
 
-            aSel.nStartPos = aSel.nEndPos;
+            aSel.start.nIndex = aSel.end.nIndex;
         }
 
         aText = ScGlobal::addToken( aText, aParaText, '\n' );

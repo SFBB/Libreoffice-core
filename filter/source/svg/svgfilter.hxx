@@ -51,8 +51,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::xml::sax;
 
-#define SVG_EXPORT_ALLPAGES ((sal_Int32)-1)
-
+namespace com::sun::star::frame { class XController; }
 
 // Placeholder tag used into the ImplWriteActions method to filter text placeholder fields
 inline constexpr OUString sPlaceholderTag = u"<[:isPlaceholder:]>"_ustr;
@@ -123,22 +122,12 @@ struct PagePropertySet
     bool               bIsBackgroundVisible;
     bool               bAreBackgroundObjectsVisible;
     bool               bIsPageNumberFieldVisible;
-    bool               bIsDateTimeFieldVisible;
-    bool               bIsFooterFieldVisible;
-    bool               bIsHeaderFieldVisible;
     sal_Int32          nPageNumberingType;
-    bool               bIsDateTimeFieldFixed;
-    SvxDateFormat      nDateTimeFormat;
     PagePropertySet()
         : bIsBackgroundVisible(false)
         , bAreBackgroundObjectsVisible(false)
         , bIsPageNumberFieldVisible(false)
-        , bIsDateTimeFieldVisible(false)
-        , bIsFooterFieldVisible(false)
-        , bIsHeaderFieldVisible(false)
         , nPageNumberingType(0)
-        , bIsDateTimeFieldFixed(false)
-        , nDateTimeFormat(SvxDateFormat::AppDefault)
     {
     }
 };
@@ -294,6 +283,9 @@ private:
 
     bool filterImpressOrDraw( const Sequence< PropertyValue >& rDescriptor );
     bool filterWriterOrCalc( const Sequence< PropertyValue >& rDescriptor );
+
+    css::uno::Reference<css::frame::XController> getSourceController() const;
+    css::uno::Reference<css::frame::XController> fillDrawImpressSelectedPages();
 
 protected:
 

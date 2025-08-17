@@ -19,11 +19,9 @@
 
 #include <ReferenceSizeProvider.hxx>
 #include <RelativeSizeHelper.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartModel.hxx>
 #include <DataSeries.hxx>
 #include <DataSeriesProperties.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <Axis.hxx>
 #include <AxisHelper.hxx>
@@ -69,7 +67,7 @@ void ReferenceSizeProvider::setValuesAtTitle(
         Reference< beans::XPropertySet > xTitleProp( xTitle, uno::UNO_QUERY_THROW );
         awt::Size aOldRefSize;
         bool bHasOldRefSize(
-            xTitleProp->getPropertyValue( "ReferencePageSize") >>= aOldRefSize );
+            xTitleProp->getPropertyValue( u"ReferencePageSize"_ustr) >>= aOldRefSize );
 
         // set from auto-resize on to off -> adapt font sizes at XFormattedStrings
         if( bHasOldRefSize && ! useAutoScale())
@@ -94,6 +92,8 @@ void ReferenceSizeProvider::setValuesAtTitle(
 
 void ReferenceSizeProvider::setValuesAtAllDataSeries()
 {
+    if (!m_xChartDoc)
+        return;
     rtl::Reference< Diagram > xDiagram( m_xChartDoc->getFirstChartDiagram());
     if (!xDiagram)
         return;
@@ -111,7 +111,7 @@ void ReferenceSizeProvider::setValuesAtAllDataSeries()
             // "AttributedDataPoints"
             if( elem->getFastPropertyValue( PROP_DATASERIES_ATTRIBUTED_DATA_POINTS) >>= aPointIndexes )
             {
-                for( sal_Int32 idx : std::as_const(aPointIndexes) )
+                for (sal_Int32 idx : aPointIndexes)
                     setValuesAtPropertySet(
                         elem->getDataPointByIndex( idx ) );
             }
@@ -174,7 +174,7 @@ void ReferenceSizeProvider::getAutoResizeFromPropSet(
     {
         try
         {
-            if( xProp->getPropertyValue( "ReferencePageSize" ).hasValue())
+            if( xProp->getPropertyValue( u"ReferencePageSize"_ustr ).hasValue())
                 eSingleState = AUTO_RESIZE_YES;
             else
                 eSingleState = AUTO_RESIZE_NO;
@@ -226,7 +226,8 @@ ReferenceSizeProvider::AutoResizeState ReferenceSizeProvider::getAutoResizeState
     // Main Title
     if( xChartDoc.is())
         impl_getAutoResizeFromTitled( xChartDoc, eResult );
-    if( eResult == AUTO_RESIZE_AMBIGUOUS )
+    if (eResult == AUTO_RESIZE_AMBIGUOUS
+        || eResult == AUTO_RESIZE_UNKNOWN) // Unknown when xChartDoc is null.
         return eResult;
 
     // diagram is needed by the rest of the objects
@@ -274,7 +275,7 @@ ReferenceSizeProvider::AutoResizeState ReferenceSizeProvider::getAutoResizeState
             // "AttributedDataPoints"
             if( elem->getFastPropertyValue( PROP_DATASERIES_ATTRIBUTED_DATA_POINTS) >>= aPointIndexes )
             {
-                for( sal_Int32 idx : std::as_const(aPointIndexes) )
+                for (sal_Int32 idx : aPointIndexes)
                 {
                     getAutoResizeFromPropSet(
                         elem->getDataPointByIndex( idx ), eResult );

@@ -46,6 +46,7 @@
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 #include <o3tl/string_view.hxx>
+#include <PostItMgr.hxx>
 
 #include <view.hxx>
 #include <pview.hxx>
@@ -282,7 +283,7 @@ std::shared_ptr<SwMailMergeConfigItem> SwView::EnsureMailMergeConfigItem(const S
             GetWrtShell().GetAllUsedDB(aDBNameList, &aAllDBNames);
             if (!aDBNameList.empty())
             {
-                OUString sDBName(aDBNameList[0]);
+                const OUString& sDBName(aDBNameList[0]);
                 SwDBData aDBData;
                 sal_Int32 nIdx{ 0 };
                 aDBData.sDataSource = sDBName.getToken(0, DB_DELIM, nIdx);
@@ -309,7 +310,7 @@ SwView* lcl_LoadDoc(SwView* pView, const OUString& rURL)
     if(!rURL.isEmpty())
     {
         SfxStringItem aURL(SID_FILE_NAME, rURL);
-        SfxStringItem aTargetFrameName( SID_TARGETNAME, "_blank" );
+        SfxStringItem aTargetFrameName( SID_TARGETNAME, u"_blank"_ustr );
         SfxBoolItem aHidden( SID_HIDDEN, true );
         SfxStringItem aReferer(SID_REFERER, pView->GetDocShell()->GetTitle());
         const SfxPoolItemHolder aResult(
@@ -411,10 +412,10 @@ void SwMailMergeWizardExecutor::ExecuteMailMergeWizard( const SfxItemSet * pArgs
                 using namespace org::freedesktop::PackageKit;
                 using namespace svtools;
                 css::uno::Reference< XSyncDbusSessionHelper > xSyncDbusSessionHelper(SyncDbusSessionHelper::create(comphelper::getProcessComponentContext()));
-                const css::uno::Sequence< OUString > vPackages{ "libreoffice-base" };
+                const css::uno::Sequence< OUString > vPackages{ u"libreoffice-base"_ustr };
                 xSyncDbusSessionHelper->InstallPackageNames(vPackages, OUString());
                 SolarMutexGuard aGuard;
-                executeRestartDialog(comphelper::getProcessComponentContext(), nullptr, RESTART_REASON_MAILMERGE_INSTALL);
+                (void)executeRestartDialog(comphelper::getProcessComponentContext(), nullptr, RESTART_REASON_MAILMERGE_INSTALL);
             }
             catch (const css::uno::Exception &)
             {
@@ -484,7 +485,7 @@ void SwMailMergeWizardExecutor::ExecutionFinished()
             pDbManager->CommitLastRegistrations();
 
         // Show the toolbar
-        m_pView->ShowUIElement("private:resource/toolbar/mailmerge");
+        m_pView->ShowUIElement(u"private:resource/toolbar/mailmerge"_ustr);
 
         // Update Mail Merge controls
         const sal_uInt16 slotIds[] = { FN_MAILMERGE_FIRST_ENTRY,
@@ -876,7 +877,7 @@ void SwModule::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
     if (rHint.GetId() == SfxHintId::ThisIsAnSfxEventHint)
     {
         const SfxEventHint& rEvHint = static_cast<const SfxEventHint&>(rHint);
-        SwDocShell* pDocSh = dynamic_cast<SwDocShell*>(rEvHint.GetObjShell());
+        rtl::Reference<SwDocShell> pDocSh = dynamic_cast<SwDocShell*>(rEvHint.GetObjShell().get());
         if( pDocSh )
         {
             SwWrtShell* pWrtSh = pDocSh->GetWrtShell();
@@ -907,7 +908,7 @@ void SwModule::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
                         bUpdateFields = false;
                     if(bUpdateFields)
                     {
-                        comphelper::dispatchCommand(".uno:UpdateInputFields", {});
+                        comphelper::dispatchCommand(u".uno:UpdateInputFields"_ustr, {});
 
                         // Are database fields contained?
                         // Get all used databases for the first time
@@ -944,11 +945,6 @@ void SwModule::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
             {
                 m_pColorConfig->RemoveListener(this);
                 m_pColorConfig.reset();
-            }
-            if( m_pAccessibilityOptions )
-            {
-                m_pAccessibilityOptions->RemoveListener(this);
-                m_pAccessibilityOptions.reset();
             }
             if( m_pCTLOptions )
             {
@@ -1000,7 +996,14 @@ void SwModule::ConfigurationChanged(utl::ConfigurationBroadcaster* pBrdCst, Conf
                         pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_APPLICATION_BACKGROUND_COLOR,
                             aViewColors.m_aAppBackgroundColor.AsRGBHexString().toUtf8());
                         pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_DOCUMENT_BACKGROUND_COLOR,
-                            aViewColors.m_aAppBackgroundColor.AsRGBHexString().toUtf8());
+                            aViewColors.m_aDocColor.AsRGBHexString().toUtf8());
+                    }
+
+                    if (!bKit)
+                    {
+                        SwPostItMgr* pPostItManager = pSwView->GetPostItMgr();
+                        if (pPostItManager)
+                            pPostItManager->UpdateColors();
                     }
 
                     // if nothing changed, and the hint was OnlyCurrentDocumentColorScheme we can skip invalidate
@@ -1019,34 +1022,9 @@ void SwModule::ConfigurationChanged(utl::ConfigurationBroadcaster* pBrdCst, Conf
             pViewShell = SfxViewShell::GetNext( *pViewShell );
         }
     }
-#if !ENABLE_WASM_STRIP_ACCESSIBILITY
-    else if ( pBrdCst == m_pAccessibilityOptions.get() )
-    {
-        //set Accessibility options
-        SfxViewShell* pViewShell = SfxViewShell::GetFirst();
-        while(pViewShell)
-        {
-            if(pViewShell->GetWindow())
-            {
-                auto pSwView = dynamic_cast<SwView *>( pViewShell );
-                auto pPagePreview = dynamic_cast<SwPagePreview *>( pViewShell );
-
-                if(pSwView)
-                    pSwView->ApplyAccessibilityOptions();
-                else if(pPagePreview)
-                    pPagePreview->ApplyAccessibilityOptions();
-
-                if(pSwView || pPagePreview || dynamic_cast< const SwSrcView *>( pViewShell ) !=  nullptr)
-                {
-                    pViewShell->GetWindow()->Invalidate();
-                }
-            }
-            pViewShell = SfxViewShell::GetNext( *pViewShell );
-        }
-    }
-#endif
     else if( pBrdCst == m_pCTLOptions.get() )
     {
+        m_eCTLTextNumerals = SvtCTLOptions::GetCTLTextNumerals();
         const SfxObjectShell* pObjSh = SfxObjectShell::GetFirst();
         while( pObjSh )
         {
@@ -1060,7 +1038,6 @@ void SwModule::ConfigurationChanged(utl::ConfigurationBroadcaster* pBrdCst, Conf
             pObjSh = SfxObjectShell::GetNext(*pObjSh);
         }
     }
-
 }
 
 SwDBConfig* SwModule::GetDBConfig()

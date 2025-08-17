@@ -75,7 +75,7 @@ sal_uInt16 ScaFuncData::GetStrIndex( sal_uInt16 nParam ) const
 void sca::pricing::InitScaFuncDataList(ScaFuncDataList& rList)
 {
     for (const auto & nIndex : pFuncDataArr)
-        rList.push_back(ScaFuncData(nIndex));
+        rList.emplace_back(nIndex);
 }
 
 // entry points for service registration / instantiation
@@ -96,9 +96,9 @@ ScaPricingAddIn::~ScaPricingAddIn()
 {
 }
 
-static const char*  pLang[] = { "en" };
-static const char*  pCoun[] = { "US" };
-const sal_uInt32 nNumOfLoc = SAL_N_ELEMENTS( pLang );
+const char* const pLang[] = { "en" };
+const char* const pCoun[] = { "US" };
+constexpr sal_uInt32 nNumOfLoc = std::size( pLang );
 
 void ScaPricingAddIn::InitDefLocales()
 {

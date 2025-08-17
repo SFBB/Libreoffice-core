@@ -35,7 +35,6 @@
 #include <vcl/toolbox.hxx>
 
 using namespace ::com::sun::star;
-using namespace css::awt;
 using namespace css::uno;
 using namespace css::beans;
 using namespace css::lang;
@@ -72,14 +71,14 @@ void SAL_CALL ComplexToolbarController::dispose()
     svt::ToolboxController::dispose();
 
     m_xURLTransformer.clear();
-    m_xToolbar.clear();
+    m_xToolbar.reset();
     m_nID = ToolBoxItemId(0);
 }
 
 Sequence<PropertyValue> ComplexToolbarController::getExecuteArgs(sal_Int16 KeyModifier) const
 {
     // Add key modifier to argument list
-    Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue("KeyModifier", KeyModifier) };
+    Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue(u"KeyModifier"_ustr, KeyModifier) };
     return aArgs;
 }
 
@@ -111,9 +110,9 @@ void SAL_CALL ComplexToolbarController::execute( sal_Int16 KeyModifier )
     {
         // Execute dispatch asynchronously
         ExecuteInfo* pExecuteInfo = new ExecuteInfo;
-        pExecuteInfo->xDispatch     = xDispatch;
-        pExecuteInfo->aTargetURL    = aTargetURL;
-        pExecuteInfo->aArgs         = aArgs;
+        pExecuteInfo->xDispatch     = std::move(xDispatch);
+        pExecuteInfo->aTargetURL    = std::move(aTargetURL);
+        pExecuteInfo->aArgs         = std::move(aArgs);
         Application::PostUserEvent( LINK(nullptr, ComplexToolbarController , ExecuteHdl_Impl), pExecuteInfo );
     }
 }
@@ -175,7 +174,7 @@ void ComplexToolbarController::statusChanged( const FeatureStateEvent& Event )
     {
         if (aControlCommand.Command == "SetQuickHelpText")
         {
-            for (NamedValue const & rArg : std::as_const(aControlCommand.Arguments))
+            for (NamedValue const& rArg : aControlCommand.Arguments)
             {
                 if (rArg.Name == "HelpText")
                 {
@@ -255,7 +254,7 @@ void ComplexToolbarController::addNotifyInfo(
     NotifyInfo* pNotifyInfo = new NotifyInfo;
 
     pNotifyInfo->aEventName      = aEventName;
-    pNotifyInfo->xNotifyListener = xControlNotify;
+    pNotifyInfo->xNotifyListener = std::move(xControlNotify);
     pNotifyInfo->aSourceURL      = getInitializedURL();
 
     // Add frame as source to the information sequence
@@ -265,7 +264,7 @@ void ComplexToolbarController::addNotifyInfo(
     auto pInfoSeq = aInfoSeq.getArray();
     pInfoSeq[nCount].Name  = "Source";
     pInfoSeq[nCount].Value <<= getFrameInterface();
-    pNotifyInfo->aInfoSeq  = aInfoSeq;
+    pNotifyInfo->aInfoSeq  = std::move(aInfoSeq);
 
     Application::PostUserEvent( LINK(nullptr, ComplexToolbarController, Notify_Impl), pNotifyInfo );
 }
@@ -298,7 +297,7 @@ void ComplexToolbarController::notifyFocusGet()
 {
     // send focus get notification
     uno::Sequence< beans::NamedValue > aInfo;
-    addNotifyInfo( "FocusSet",
+    addNotifyInfo( u"FocusSet"_ustr,
                     getDispatchFromCommand( m_aCommandURL ),
                     aInfo );
 }
@@ -307,7 +306,7 @@ void ComplexToolbarController::notifyFocusLost()
 {
     // send focus lost notification
     uno::Sequence< beans::NamedValue > aInfo;
-    addNotifyInfo( "FocusLost",
+    addNotifyInfo( u"FocusLost"_ustr,
                     getDispatchFromCommand( m_aCommandURL ),
                     aInfo );
 }
@@ -315,8 +314,8 @@ void ComplexToolbarController::notifyFocusLost()
 void ComplexToolbarController::notifyTextChanged( const OUString& aText )
 {
     // send text changed notification
-    uno::Sequence< beans::NamedValue > aInfo { { "Text", css::uno::Any(aText) } };
-    addNotifyInfo( "TextChanged",
+    uno::Sequence< beans::NamedValue > aInfo { { u"Text"_ustr, css::uno::Any(aText) } };
+    addNotifyInfo( u"TextChanged"_ustr,
                    getDispatchFromCommand( m_aCommandURL ),
                    aInfo );
 }

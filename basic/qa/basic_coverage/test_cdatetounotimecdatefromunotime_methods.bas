@@ -10,7 +10,7 @@ Option Explicit
 
 Function doUnitTest as String
     dim aDate as Date
-    aDate = Time()
+    aDate = Time$() ' Use string variant of the function, to limit precision to seconds
     ' CDateToUnoTime CDateFromUnoTime
     If ( CDateFromUnoTime( CDateToUnoTime( aDate ) ) <> aDate ) Then
         doUnitTest = "FAIL"

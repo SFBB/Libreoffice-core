@@ -41,10 +41,8 @@ namespace pcr
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::script;
     using namespace ::com::sun::star::form;
     using namespace ::com::sun::star::xforms;
-    using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::inspection;
 
 
@@ -84,7 +82,7 @@ namespace pcr
 
     SubmissionPropertyHandler::SubmissionPropertyHandler( const Reference< XComponentContext >& _rxContext )
         :PropertyHandlerComponent( _rxContext )
-        ,OPropertyChangeListener( m_aMutex )
+        ,OPropertyChangeListener()
     {
     }
 
@@ -97,13 +95,13 @@ namespace pcr
 
     OUString SubmissionPropertyHandler::getImplementationName(  )
     {
-        return "com.sun.star.comp.extensions.SubmissionPropertyHandler";
+        return u"com.sun.star.comp.extensions.SubmissionPropertyHandler"_ustr;
     }
 
 
     Sequence< OUString > SubmissionPropertyHandler::getSupportedServiceNames(  )
     {
-        return { "com.sun.star.form.inspection.SubmissionPropertyHandler" };
+        return { u"com.sun.star.form.inspection.SubmissionPropertyHandler"_ustr };
     }
 
 

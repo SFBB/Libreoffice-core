@@ -38,6 +38,7 @@
 #include <editeng/crossedoutitem.hxx>
 #include <editeng/justifyitem.hxx>
 #include <editeng/eeitem.hxx>
+#include <editeng/escapementitem.hxx>
 
 #include <svl/sharedstringpool.hxx>
 #include <svl/numformat.hxx>
@@ -45,6 +46,7 @@
 #include <svl/intitem.hxx>
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <i18nlangtag/lang.h>
+#include <o3tl/unit_conversion.hxx>
 #include <tools/fontenum.hxx>
 #include <sal/log.hxx>
 
@@ -55,119 +57,15 @@
 #include <unordered_map>
 #include <frozen/bits/defines.h>
 #include <frozen/bits/elsa_std.h>
-#include <frozen/unordered_map.h>
 
 using namespace com::sun::star;
 
 namespace os = orcus::spreadsheet;
 
-namespace {
-
-formula::FormulaGrammar::Grammar getCalcGrammarFromOrcus( os::formula_grammar_t grammar )
-{
-    formula::FormulaGrammar::Grammar eGrammar = formula::FormulaGrammar::GRAM_ODFF;
-    switch(grammar)
-    {
-        case orcus::spreadsheet::formula_grammar_t::ods:
-            eGrammar = formula::FormulaGrammar::GRAM_ODFF;
-            break;
-        case orcus::spreadsheet::formula_grammar_t::xlsx:
-            eGrammar = formula::FormulaGrammar::GRAM_OOXML;
-            break;
-        case orcus::spreadsheet::formula_grammar_t::gnumeric:
-            eGrammar = formula::FormulaGrammar::GRAM_ENGLISH_XL_A1;
-            break;
-        case orcus::spreadsheet::formula_grammar_t::xls_xml:
-            eGrammar = formula::FormulaGrammar::GRAM_ENGLISH_XL_R1C1;
-            break;
-        case orcus::spreadsheet::formula_grammar_t::unknown:
-            break;
-    }
-
-    return eGrammar;
-}
-
-}
-
-ScOrcusGlobalSettings::ScOrcusGlobalSettings(ScDocumentImport& rDoc)
-    : mrDoc(rDoc)
-    , meCalcGrammar(formula::FormulaGrammar::GRAM_UNSPECIFIED)
-    , meOrcusGrammar(os::formula_grammar_t::unknown)
-    , mnTextEncoding(RTL_TEXTENCODING_UTF8)
+ScOrcusRefResolver::ScOrcusRefResolver(const ScOrcusGlobalSettings& rGS)
+    : mrGlobalSettings(rGS)
 {
 }
-
-void ScOrcusGlobalSettings::set_origin_date(int year, int month, int day)
-{
-    mrDoc.setOriginDate(year, month, day);
-}
-
-void ScOrcusGlobalSettings::set_character_set(orcus::character_set_t cs)
-{
-    // Keep the entries sorted by the key.
-    static constexpr auto rules = frozen::make_unordered_map<orcus::character_set_t, rtl_TextEncoding>({
-        { orcus::character_set_t::big5, RTL_TEXTENCODING_BIG5 },
-        { orcus::character_set_t::euc_jp, RTL_TEXTENCODING_EUC_JP },
-        { orcus::character_set_t::euc_kr, RTL_TEXTENCODING_EUC_KR },
-        { orcus::character_set_t::gb2312, RTL_TEXTENCODING_GB_2312 },
-        { orcus::character_set_t::gbk, RTL_TEXTENCODING_GBK },
-        { orcus::character_set_t::iso_2022_cn, RTL_TEXTENCODING_ISO_2022_CN },
-        { orcus::character_set_t::iso_2022_cn_ext, RTL_TEXTENCODING_ISO_2022_CN },
-        { orcus::character_set_t::iso_2022_jp, RTL_TEXTENCODING_ISO_2022_JP },
-        { orcus::character_set_t::iso_2022_jp_2, RTL_TEXTENCODING_ISO_2022_JP },
-        { orcus::character_set_t::iso_8859_1, RTL_TEXTENCODING_ISO_8859_1 },
-        { orcus::character_set_t::iso_8859_14, RTL_TEXTENCODING_ISO_8859_14 },
-        { orcus::character_set_t::iso_8859_15, RTL_TEXTENCODING_ISO_8859_15 },
-        { orcus::character_set_t::iso_8859_1_windows_3_0_latin_1, RTL_TEXTENCODING_ISO_8859_1 },
-        { orcus::character_set_t::iso_8859_1_windows_3_1_latin_1, RTL_TEXTENCODING_ISO_8859_1 },
-        { orcus::character_set_t::iso_8859_2, RTL_TEXTENCODING_ISO_8859_2 },
-        { orcus::character_set_t::iso_8859_2_windows_latin_2, RTL_TEXTENCODING_ISO_8859_2 },
-        { orcus::character_set_t::iso_8859_3, RTL_TEXTENCODING_ISO_8859_3 },
-        { orcus::character_set_t::iso_8859_4, RTL_TEXTENCODING_ISO_8859_4 },
-        { orcus::character_set_t::iso_8859_5, RTL_TEXTENCODING_ISO_8859_5 },
-        { orcus::character_set_t::iso_8859_6, RTL_TEXTENCODING_ISO_8859_6 },
-        { orcus::character_set_t::iso_8859_6_e, RTL_TEXTENCODING_ISO_8859_6 },
-        { orcus::character_set_t::iso_8859_6_i, RTL_TEXTENCODING_ISO_8859_6 },
-        { orcus::character_set_t::iso_8859_7, RTL_TEXTENCODING_ISO_8859_7 },
-        { orcus::character_set_t::iso_8859_8, RTL_TEXTENCODING_ISO_8859_8 },
-        { orcus::character_set_t::iso_8859_8_e, RTL_TEXTENCODING_ISO_8859_8 },
-        { orcus::character_set_t::iso_8859_8_i, RTL_TEXTENCODING_ISO_8859_8 },
-        { orcus::character_set_t::iso_8859_9, RTL_TEXTENCODING_ISO_8859_9 },
-        { orcus::character_set_t::iso_8859_9_windows_latin_5, RTL_TEXTENCODING_ISO_8859_9 },
-        { orcus::character_set_t::jis_x0201, RTL_TEXTENCODING_JIS_X_0201 },
-        { orcus::character_set_t::jis_x0212_1990, RTL_TEXTENCODING_JIS_X_0212 },
-        { orcus::character_set_t::shift_jis, RTL_TEXTENCODING_SHIFT_JIS },
-        { orcus::character_set_t::us_ascii, RTL_TEXTENCODING_ASCII_US },
-        { orcus::character_set_t::utf_7, RTL_TEXTENCODING_UTF7 },
-        { orcus::character_set_t::utf_8, RTL_TEXTENCODING_UTF8 },
-        { orcus::character_set_t::windows_1250, RTL_TEXTENCODING_MS_1250 },
-        { orcus::character_set_t::windows_1251, RTL_TEXTENCODING_MS_1251 },
-        { orcus::character_set_t::windows_1252, RTL_TEXTENCODING_MS_1252 },
-        { orcus::character_set_t::windows_1253, RTL_TEXTENCODING_MS_1253 },
-        { orcus::character_set_t::windows_1254, RTL_TEXTENCODING_MS_1254 },
-        { orcus::character_set_t::windows_1255, RTL_TEXTENCODING_MS_1255 },
-        { orcus::character_set_t::windows_1256, RTL_TEXTENCODING_MS_1256 },
-        { orcus::character_set_t::windows_1257, RTL_TEXTENCODING_MS_1257 },
-        { orcus::character_set_t::windows_1258, RTL_TEXTENCODING_MS_1258 },
-    });
-
-    if (auto it = rules.find(cs); it != rules.end())
-        mnTextEncoding = it->second;
-}
-
-void ScOrcusGlobalSettings::set_default_formula_grammar(os::formula_grammar_t grammar)
-{
-    meCalcGrammar = getCalcGrammarFromOrcus(grammar);
-    meOrcusGrammar = grammar;
-}
-
-orcus::spreadsheet::formula_grammar_t ScOrcusGlobalSettings::get_default_formula_grammar() const
-{
-    return meOrcusGrammar;
-}
-
-ScOrcusRefResolver::ScOrcusRefResolver( const ScOrcusGlobalSettings& rGS ) :
-    mrGlobalSettings(rGS) {}
 
 os::src_address_t ScOrcusRefResolver::resolve_address(std::string_view address)
 {
@@ -175,8 +73,7 @@ os::src_address_t ScOrcusRefResolver::resolve_address(std::string_view address)
 
     ScAddress aAddr;
     aAddr.Parse(aStr, mrGlobalSettings.getDoc().getDoc(),
-        formula::FormulaGrammar::extractRefConvention(
-            mrGlobalSettings.getCalcGrammar()));
+                formula::FormulaGrammar::extractRefConvention(mrGlobalSettings.getCalcGrammar()));
 
     if (!aAddr.IsValid())
     {
@@ -199,8 +96,7 @@ os::src_range_t ScOrcusRefResolver::resolve_range(std::string_view range)
 
     ScRange aRange;
     aRange.Parse(aStr, mrGlobalSettings.getDoc().getDoc(),
-        formula::FormulaGrammar::extractRefConvention(
-            mrGlobalSettings.getCalcGrammar()));
+                 formula::FormulaGrammar::extractRefConvention(mrGlobalSettings.getCalcGrammar()));
 
     if (!aRange.IsValid())
     {
@@ -210,19 +106,23 @@ os::src_range_t ScOrcusRefResolver::resolve_range(std::string_view range)
     }
 
     os::src_range_t ret;
-    ret.first.sheet  = aRange.aStart.Tab();
+    ret.first.sheet = aRange.aStart.Tab();
     ret.first.column = aRange.aStart.Col();
-    ret.first.row    = aRange.aStart.Row();
-    ret.last.sheet   = aRange.aEnd.Tab();
-    ret.last.column  = aRange.aEnd.Col();
-    ret.last.row     = aRange.aEnd.Row();
+    ret.first.row = aRange.aStart.Row();
+    ret.last.sheet = aRange.aEnd.Tab();
+    ret.last.column = aRange.aEnd.Col();
+    ret.last.row = aRange.aEnd.Row();
 
     return ret;
 }
 
-ScOrcusNamedExpression::ScOrcusNamedExpression(
-    ScDocumentImport& rDoc, const ScOrcusGlobalSettings& rGS, SCTAB nTab ) :
-    mrDoc(rDoc), mrGlobalSettings(rGS), mnTab(nTab) {}
+ScOrcusNamedExpression::ScOrcusNamedExpression(ScDocumentImport& rDoc,
+                                               const ScOrcusGlobalSettings& rGS, SCTAB nTab)
+    : mrDoc(rDoc)
+    , mrGlobalSettings(rGS)
+    , mnTab(nTab)
+{
+}
 
 void ScOrcusNamedExpression::reset()
 {
@@ -240,7 +140,8 @@ void ScOrcusNamedExpression::set_base_position(const orcus::spreadsheet::src_add
     maBasePos.SetRow(pos.row);
 }
 
-void ScOrcusNamedExpression::set_named_expression(std::string_view name, std::string_view expression)
+void ScOrcusNamedExpression::set_named_expression(std::string_view name,
+                                                  std::string_view expression)
 {
     maName = OUString(name.data(), name.size(), mrGlobalSettings.getTextEncoding());
     maExpr = OUString(expression.data(), expression.size(), mrGlobalSettings.getTextEncoding());
@@ -253,13 +154,14 @@ void ScOrcusNamedExpression::set_named_range(std::string_view /*name*/, std::str
 
 void ScOrcusNamedExpression::commit()
 {
-    ScRangeName* pNames = mnTab >= 0 ? mrDoc.getDoc().GetRangeName(mnTab) : mrDoc.getDoc().GetRangeName();
+    ScRangeName* pNames
+        = mnTab >= 0 ? mrDoc.getDoc().GetRangeName(mnTab) : mrDoc.getDoc().GetRangeName();
     if (!pNames)
         return;
 
-    ScRangeData* pRange = new ScRangeData(
-        mrDoc.getDoc(), maName, maExpr, maBasePos, ScRangeData::Type::Name,
-        mrGlobalSettings.getCalcGrammar());
+    ScRangeData* pRange
+        = new ScRangeData(mrDoc.getDoc(), maName, maExpr, maBasePos, ScRangeData::Type::Name,
+                          mrGlobalSettings.getCalcGrammar());
 
     pNames->insert(pRange, false);
 
@@ -297,7 +199,7 @@ ScOrcusFactory::CellStoreToken::CellStoreToken(const ScAddress& rPos, uint32_t n
 }
 
 ScOrcusFactory::CellStoreToken::CellStoreToken(const ScAddress& rPos, OUString aFormula,
-        formula::FormulaGrammar::Grammar eGrammar)
+                                               formula::FormulaGrammar::Grammar eGrammar)
     : maStr1(std::move(aFormula))
     , mfValue(std::numeric_limits<double>::quiet_NaN())
     , maPos(rPos)
@@ -308,17 +210,19 @@ ScOrcusFactory::CellStoreToken::CellStoreToken(const ScAddress& rPos, OUString a
 {
 }
 
-ScOrcusFactory::ScOrcusFactory(ScDocument& rDoc, bool bSkipDefaultStyles) :
-    maDoc(rDoc),
-    maGlobalSettings(maDoc),
-    maRefResolver(maGlobalSettings),
-    maSharedStrings(*this),
-    maNamedExpressions(maDoc, maGlobalSettings),
-    maStyles(*this, bSkipDefaultStyles),
-    mnProgress(0) {}
+ScOrcusFactory::ScOrcusFactory(ScDocument& rDoc, bool bSkipDefaultStyles)
+    : maDoc(rDoc)
+    , maGlobalSettings(maDoc)
+    , maRefResolver(maGlobalSettings)
+    , maSharedStrings(*this)
+    , maNamedExpressions(maDoc, maGlobalSettings)
+    , maStyles(*this, bSkipDefaultStyles)
+    , mnProgress(0)
+{
+}
 
-orcus::spreadsheet::iface::import_sheet* ScOrcusFactory::append_sheet(
-    orcus::spreadsheet::sheet_t sheet_index, std::string_view sheet_name)
+orcus::spreadsheet::iface::import_sheet*
+ScOrcusFactory::append_sheet(orcus::spreadsheet::sheet_t sheet_index, std::string_view sheet_name)
 {
     OUString aTabName(sheet_name.data(), sheet_name.size(), maGlobalSettings.getTextEncoding());
 
@@ -327,7 +231,7 @@ orcus::spreadsheet::iface::import_sheet* ScOrcusFactory::append_sheet(
         // The calc document initializes with one sheet already present.
         assert(maDoc.getSheetCount() == 1);
         maDoc.setSheetName(0, aTabName);
-        maSheets.push_back(std::make_unique<ScOrcusSheet>(maDoc, 0, *this));
+        maSheets.push_back(std::make_unique<ScOrcusSheet>(maDoc, maGlobalSettings, 0, *this));
         return maSheets.back().get();
     }
 
@@ -335,23 +239,26 @@ orcus::spreadsheet::iface::import_sheet* ScOrcusFactory::append_sheet(
         return nullptr;
 
     SCTAB nTab = maDoc.getSheetCount() - 1;
-    maSheets.push_back(std::make_unique<ScOrcusSheet>(maDoc, nTab, *this));
+    maSheets.push_back(std::make_unique<ScOrcusSheet>(maDoc, maGlobalSettings, nTab, *this));
     return maSheets.back().get();
 }
 
-namespace {
-
+namespace
+{
 class FindSheetByIndex
 {
     SCTAB mnTab;
+
 public:
-    explicit FindSheetByIndex(SCTAB nTab) : mnTab(nTab) {}
-    bool operator() (const std::unique_ptr<ScOrcusSheet>& rSheet) const
+    explicit FindSheetByIndex(SCTAB nTab)
+        : mnTab(nTab)
+    {
+    }
+    bool operator()(const std::unique_ptr<ScOrcusSheet>& rSheet) const
     {
         return rSheet->getIndex() == mnTab;
     }
 };
-
 }
 
 orcus::spreadsheet::iface::import_sheet* ScOrcusFactory::get_sheet(std::string_view sheet_name)
@@ -363,31 +270,32 @@ orcus::spreadsheet::iface::import_sheet* ScOrcusFactory::get_sheet(std::string_v
         return nullptr;
 
     // See if we already have an orcus sheet instance by that index.
-    std::vector< std::unique_ptr<ScOrcusSheet> >::iterator it =
-        std::find_if(maSheets.begin(), maSheets.end(), FindSheetByIndex(nTab));
+    std::vector<std::unique_ptr<ScOrcusSheet>>::iterator it
+        = std::find_if(maSheets.begin(), maSheets.end(), FindSheetByIndex(nTab));
 
     if (it != maSheets.end())
         // We already have one. Return it.
         return it->get();
 
     // Create a new orcus sheet instance for this.
-    maSheets.push_back(std::make_unique<ScOrcusSheet>(maDoc, nTab, *this));
+    maSheets.push_back(std::make_unique<ScOrcusSheet>(maDoc, maGlobalSettings, nTab, *this));
     return maSheets.back().get();
 }
 
-orcus::spreadsheet::iface::import_sheet* ScOrcusFactory::get_sheet(orcus::spreadsheet::sheet_t sheet_index)
+orcus::spreadsheet::iface::import_sheet*
+ScOrcusFactory::get_sheet(orcus::spreadsheet::sheet_t sheet_index)
 {
     SCTAB nTab = static_cast<SCTAB>(sheet_index);
     // See if we already have an orcus sheet instance by that index.
-    std::vector< std::unique_ptr<ScOrcusSheet> >::iterator it =
-        std::find_if(maSheets.begin(), maSheets.end(), FindSheetByIndex(nTab));
+    std::vector<std::unique_ptr<ScOrcusSheet>>::iterator it
+        = std::find_if(maSheets.begin(), maSheets.end(), FindSheetByIndex(nTab));
 
     if (it != maSheets.end())
         // We already have one. Return it.
         return it->get();
 
     // Create a new orcus sheet instance for this.
-    maSheets.push_back(std::make_unique<ScOrcusSheet>(maDoc, nTab, *this));
+    maSheets.push_back(std::make_unique<ScOrcusSheet>(maDoc, maGlobalSettings, nTab, *this));
     return maSheets.back().get();
 }
 
@@ -406,12 +314,10 @@ orcus::spreadsheet::iface::import_named_expression* ScOrcusFactory::get_named_ex
     return &maNamedExpressions;
 }
 
-orcus::spreadsheet::iface::import_styles* ScOrcusFactory::get_styles()
-{
-    return &maStyles;
-}
+orcus::spreadsheet::iface::import_styles* ScOrcusFactory::get_styles() { return &maStyles; }
 
-os::iface::import_reference_resolver* ScOrcusFactory::get_reference_resolver(os::formula_ref_context_t cxt)
+os::iface::import_reference_resolver*
+ScOrcusFactory::get_reference_resolver(os::formula_ref_context_t cxt)
 {
     switch (cxt)
     {
@@ -419,6 +325,7 @@ os::iface::import_reference_resolver* ScOrcusFactory::get_reference_resolver(os:
             return &maRefResolver;
         case os::formula_ref_context_t::named_expression_base:
         case os::formula_ref_context_t::named_range:
+        case os::formula_ref_context_t::table_range:
             return nullptr;
     }
 
@@ -427,8 +334,7 @@ os::iface::import_reference_resolver* ScOrcusFactory::get_reference_resolver(os:
 
 void ScOrcusFactory::finalize()
 {
-    auto toFormulaCell = [this]( const CellStoreToken& rToken ) -> std::unique_ptr<ScFormulaCell>
-    {
+    auto toFormulaCell = [this](const CellStoreToken& rToken) -> std::unique_ptr<ScFormulaCell> {
         const ScOrcusSheet& rSheet = *maSheets.at(rToken.maPos.Tab());
         const sc::SharedFormulaGroups& rSFG = rSheet.getSharedFormulaGroups();
         const ScTokenArray* pArray = rSFG.get(rToken.mnIndex1);
@@ -477,8 +383,7 @@ void ScOrcusFactory::finalize()
             }
             case CellStoreToken::Type::Formula:
             {
-                maDoc.setFormulaCell(
-                    rToken.maPos, rToken.maStr1, rToken.meGrammar);
+                maDoc.setFormulaCell(rToken.maPos, rToken.maStr1, rToken.meGrammar);
 
                 ++nCellCount;
                 break;
@@ -486,9 +391,11 @@ void ScOrcusFactory::finalize()
             case CellStoreToken::Type::FormulaWithResult:
             {
                 if (std::isfinite(rToken.mfValue))
-                    maDoc.setFormulaCell(rToken.maPos, rToken.maStr1, rToken.meGrammar, &rToken.mfValue);
+                    maDoc.setFormulaCell(rToken.maPos, rToken.maStr1, rToken.meGrammar,
+                                         &rToken.mfValue);
                 else
-                    maDoc.setFormulaCell(rToken.maPos, rToken.maStr1, rToken.meGrammar, rToken.maStr2);
+                    maDoc.setFormulaCell(rToken.maPos, rToken.maStr1, rToken.meGrammar,
+                                         rToken.maStr2);
 
                 ++nCellCount;
                 break;
@@ -527,8 +434,8 @@ void ScOrcusFactory::finalize()
                     break;
 
                 ScRange aRange(rToken.maPos);
-                aRange.aEnd.IncCol(rToken.mnIndex1-1);
-                aRange.aEnd.IncRow(rToken.mnIndex2-1);
+                aRange.aEnd.IncCol(rToken.mnIndex1 - 1);
+                aRange.aEnd.IncRow(rToken.mnIndex2 - 1);
 
                 ScCompiler aComp(maDoc.getDoc(), aRange.aStart, rToken.meGrammar);
                 std::unique_ptr<ScTokenArray> pArray(aComp.CompileString(rToken.maStr1));
@@ -546,8 +453,7 @@ void ScOrcusFactory::finalize()
                 maDoc.fillDownCells(rToken.maPos, rToken.mnIndex1);
                 break;
             }
-            default:
-                ;
+            default:;
         }
 
         if (nCellCount == 100000)
@@ -563,10 +469,7 @@ void ScOrcusFactory::finalize()
     maDoc.finalize();
 }
 
-ScDocumentImport& ScOrcusFactory::getDoc()
-{
-    return maDoc;
-}
+ScDocumentImport& ScOrcusFactory::getDoc() { return maDoc; }
 
 size_t ScOrcusFactory::appendString(const OUString& rStr)
 {
@@ -606,43 +509,43 @@ const OUString* ScOrcusFactory::getString(size_t nIndex) const
     return &std::get<OUString>(rStr);
 }
 
-void ScOrcusFactory::pushCellStoreAutoToken( const ScAddress& rPos, const OUString& rVal )
+void ScOrcusFactory::pushCellStoreAutoToken(const ScAddress& rPos, const OUString& rVal)
 {
     maCellStoreTokens.emplace_back(rPos, CellStoreToken::Type::Auto);
     maCellStoreTokens.back().maStr1 = rVal;
 }
 
-void ScOrcusFactory::pushCellStoreToken( const ScAddress& rPos, uint32_t nStrIndex )
+void ScOrcusFactory::pushCellStoreToken(const ScAddress& rPos, uint32_t nStrIndex)
 {
     maCellStoreTokens.emplace_back(rPos, nStrIndex);
 }
 
-void ScOrcusFactory::pushCellStoreToken( const ScAddress& rPos, double fValue )
+void ScOrcusFactory::pushCellStoreToken(const ScAddress& rPos, double fValue)
 {
     maCellStoreTokens.emplace_back(rPos, fValue);
 }
 
-void ScOrcusFactory::pushCellStoreToken(
-    const ScAddress& rPos, const OUString& rFormula, formula::FormulaGrammar::Grammar eGrammar )
+void ScOrcusFactory::pushCellStoreToken(const ScAddress& rPos, const OUString& rFormula,
+                                        formula::FormulaGrammar::Grammar eGrammar)
 {
     maCellStoreTokens.emplace_back(rPos, rFormula, eGrammar);
 }
 
-void ScOrcusFactory::pushFillDownCellsToken( const ScAddress& rPos, uint32_t nFillSize )
+void ScOrcusFactory::pushFillDownCellsToken(const ScAddress& rPos, uint32_t nFillSize)
 {
     maCellStoreTokens.emplace_back(rPos, CellStoreToken::Type::FillDownCells);
     maCellStoreTokens.back().mnIndex1 = nFillSize;
 }
 
-void ScOrcusFactory::pushSharedFormulaToken( const ScAddress& rPos, uint32_t nIndex )
+void ScOrcusFactory::pushSharedFormulaToken(const ScAddress& rPos, uint32_t nIndex)
 {
     maCellStoreTokens.emplace_back(rPos, CellStoreToken::Type::SharedFormula);
     maCellStoreTokens.back().mnIndex1 = nIndex;
 }
 
-void ScOrcusFactory::pushMatrixFormulaToken(
-    const ScAddress& rPos, const OUString& rFormula, formula::FormulaGrammar::Grammar eGrammar,
-    uint32_t nRowRange, uint32_t nColRange )
+void ScOrcusFactory::pushMatrixFormulaToken(const ScAddress& rPos, const OUString& rFormula,
+                                            formula::FormulaGrammar::Grammar eGrammar,
+                                            uint32_t nRowRange, uint32_t nColRange)
 {
     maCellStoreTokens.emplace_back(rPos, CellStoreToken::Type::Matrix);
     CellStoreToken& rT = maCellStoreTokens.back();
@@ -652,7 +555,7 @@ void ScOrcusFactory::pushMatrixFormulaToken(
     rT.mnIndex2 = nRowRange;
 }
 
-void ScOrcusFactory::pushFormulaResult( const ScAddress& rPos, double fValue )
+void ScOrcusFactory::pushFormulaResult(const ScAddress& rPos, double fValue)
 {
     // Formula result is expected to be pushed immediately following the
     // formula token it belongs.
@@ -678,7 +581,7 @@ void ScOrcusFactory::pushFormulaResult( const ScAddress& rPos, double fValue )
     rToken.mfValue = fValue;
 }
 
-void ScOrcusFactory::pushFormulaResult( const ScAddress& rPos, const OUString& rValue )
+void ScOrcusFactory::pushFormulaResult(const ScAddress& rPos, const OUString& rValue)
 {
     // Formula result is expected to be pushed immediately following the
     // formula token it belongs.
@@ -728,35 +631,32 @@ void ScOrcusFactory::setStatusIndicator(const uno::Reference<task::XStatusIndica
     mxStatusIndicator = rIndicator;
 }
 
-const ScOrcusGlobalSettings& ScOrcusFactory::getGlobalSettings() const
-{
-    return maGlobalSettings;
-}
+const ScOrcusGlobalSettings& ScOrcusFactory::getGlobalSettings() const { return maGlobalSettings; }
 
-ScOrcusSheetProperties::ScOrcusSheetProperties(SCTAB nTab, ScDocumentImport& rDoc):
-    mrDoc(rDoc),
-    mnTab(nTab)
+ScOrcusSheetProperties::ScOrcusSheetProperties(SCTAB nTab, ScDocumentImport& rDoc)
+    : mrDoc(rDoc)
+    , mnTab(nTab)
 {
 }
 
-ScOrcusSheetProperties::~ScOrcusSheetProperties()
+ScOrcusSheetProperties::~ScOrcusSheetProperties() {}
+
+namespace
 {
-}
-
-namespace {
-
 double translateToInternal(double nVal, orcus::length_unit_t unit)
 {
-    switch(unit)
+    switch (unit)
     {
         case orcus::length_unit_t::inch:
-            return nVal * 72.0 * 20.0;
+            return o3tl::convert(nVal, o3tl::Length::in, o3tl::Length::twip);
         case orcus::length_unit_t::twip:
             return nVal;
         case orcus::length_unit_t::point:
-            return nVal * 20.0;
+            return o3tl::convert(nVal, o3tl::Length::pt, o3tl::Length::twip);
         case orcus::length_unit_t::centimeter:
-            return nVal * 20.0 * 72.0 / 2.54;
+            return o3tl::convert(nVal, o3tl::Length::cm, o3tl::Length::twip);
+        case orcus::length_unit_t::millimeter:
+            return o3tl::convert(nVal, o3tl::Length::mm, o3tl::Length::twip);
         case orcus::length_unit_t::unknown:
             if (nVal != 0)
                 SAL_WARN("sc.orcus", "unknown unit");
@@ -766,11 +666,10 @@ double translateToInternal(double nVal, orcus::length_unit_t unit)
     }
     return nVal;
 }
-
-
 }
 
-void ScOrcusSheetProperties::set_column_width(os::col_t col, os::col_t col_span, double width, orcus::length_unit_t unit)
+void ScOrcusSheetProperties::set_column_width(os::col_t col, os::col_t col_span, double width,
+                                              orcus::length_unit_t unit)
 {
     double nNewWidth = translateToInternal(width, unit);
 
@@ -784,37 +683,40 @@ void ScOrcusSheetProperties::set_column_hidden(os::col_t col, os::col_t col_span
         mrDoc.getDoc().SetColHidden(col, col + col_span - 1, mnTab, hidden);
 }
 
-void ScOrcusSheetProperties::set_row_height(os::row_t row, double height, orcus::length_unit_t unit)
+void ScOrcusSheetProperties::set_row_height(os::row_t row, os::row_t row_span, double height,
+                                            orcus::length_unit_t unit)
 {
     double nNewHeight = translateToInternal(height, unit);
-    mrDoc.getDoc().SetRowHeightOnly(row, row,mnTab, nNewHeight);
+    SCROW nStartRow = row;
+    SCROW nEndRow = row + row_span - 1;
+    mrDoc.getDoc().SetRowHeightOnly(nStartRow, nEndRow, mnTab, nNewHeight);
 }
 
-void ScOrcusSheetProperties::set_row_hidden(os::row_t row, bool hidden)
+void ScOrcusSheetProperties::set_row_hidden(os::row_t row, os::row_t row_span, bool hidden)
 {
-    if (hidden)
-        mrDoc.getDoc().SetRowHidden(row, row, mnTab, hidden);
+    SCROW nStartRow = row;
+    SCROW nEndRow = row + row_span - 1;
+    mrDoc.getDoc().SetRowHidden(nStartRow, nEndRow, mnTab, hidden);
 }
 
 void ScOrcusSheetProperties::set_merge_cell_range(const orcus::spreadsheet::range_t& range)
 {
-    mrDoc.setMergedCells(mnTab, range.first.column, range.first.row, range.last.column, range.last.row);
+    mrDoc.setMergedCells(mnTab, range.first.column, range.first.row, range.last.column,
+                         range.last.row);
 }
 
-ScOrcusConditionalFormat::ScOrcusConditionalFormat(SCTAB nTab, ScDocument& rDoc):
-    mnTab(nTab),
-    mrDoc(rDoc),
-    mpCurrentFormat(new ScConditionalFormat(0, &mrDoc)),
-    meEntryType(ScFormatEntry::Type::Condition)
+ScOrcusConditionalFormat::ScOrcusConditionalFormat(SCTAB nTab, ScDocument& rDoc)
+    : mnTab(nTab)
+    , mrDoc(rDoc)
+    , mpCurrentFormat(new ScConditionalFormat(0, mrDoc))
+    , meEntryType(ScFormatEntry::Type::Condition)
 {
 }
 
-ScOrcusConditionalFormat::~ScOrcusConditionalFormat()
-{
-}
+ScOrcusConditionalFormat::~ScOrcusConditionalFormat() {}
 
 void ScOrcusConditionalFormat::set_color(os::color_elem_t /*alpha*/, os::color_elem_t /*red*/,
-        os::color_elem_t /*green*/, os::color_elem_t /*blue*/)
+                                         os::color_elem_t /*green*/, os::color_elem_t /*blue*/)
 {
     SAL_INFO("sc.orcus.condformat", "set_color");
 }
@@ -859,15 +761,19 @@ void ScOrcusConditionalFormat::set_databar_axis(os::databar_axis_t /*axis*/)
     SAL_INFO("sc.orcus.condformat", "set_databar_axis");
 }
 
-void ScOrcusConditionalFormat::set_databar_color_positive(os::color_elem_t /*alpha*/, os::color_elem_t /*red*/,
-        os::color_elem_t /*green*/, os::color_elem_t /*blue*/)
+void ScOrcusConditionalFormat::set_databar_color_positive(os::color_elem_t /*alpha*/,
+                                                          os::color_elem_t /*red*/,
+                                                          os::color_elem_t /*green*/,
+                                                          os::color_elem_t /*blue*/)
 {
     assert(meEntryType == ScFormatEntry::Type::Databar);
     SAL_INFO("sc.orcus.condformat", "set_databar_color_positive");
 }
 
-void ScOrcusConditionalFormat::set_databar_color_negative(os::color_elem_t /*alpha*/, os::color_elem_t /*red*/,
-        os::color_elem_t /*green*/, os::color_elem_t /*blue*/)
+void ScOrcusConditionalFormat::set_databar_color_negative(os::color_elem_t /*alpha*/,
+                                                          os::color_elem_t /*red*/,
+                                                          os::color_elem_t /*green*/,
+                                                          os::color_elem_t /*blue*/)
 {
     assert(meEntryType == ScFormatEntry::Type::Databar);
     SAL_INFO("sc.orcus.condformat", "set_databar_color_negative");
@@ -914,26 +820,23 @@ void ScOrcusConditionalFormat::set_type(os::conditional_format_t type)
         case os::conditional_format_t::formula:
             meEntryType = ScFormatEntry::Type::Condition;
             // mpCurrentEntry.reset(new ScCondFormatEntry());
-        break;
+            break;
         case os::conditional_format_t::date:
-        break;
+            break;
         case os::conditional_format_t::colorscale:
-        break;
+            break;
         case os::conditional_format_t::databar:
-        break;
+            break;
         case os::conditional_format_t::iconset:
-        break;
+            break;
         default:
             SAL_INFO("sc.orcus.condformat", "unknown conditional_format_t value");
-        break;
+            break;
     }
     SAL_INFO("sc.orcus.condformat", "set_type");
 }
 
-void ScOrcusConditionalFormat::commit_entry()
-{
-    SAL_INFO("sc.orcus.condformat", "commit_entry");
-}
+void ScOrcusConditionalFormat::commit_entry() { SAL_INFO("sc.orcus.condformat", "commit_entry"); }
 
 void ScOrcusConditionalFormat::set_range(std::string_view /*range*/)
 {
@@ -941,7 +844,7 @@ void ScOrcusConditionalFormat::set_range(std::string_view /*range*/)
 }
 
 void ScOrcusConditionalFormat::set_range(os::row_t row_start, os::col_t col_start,
-        os::row_t row_end, os::col_t col_end)
+                                         os::row_t row_end, os::col_t col_end)
 {
     SAL_INFO("sc.orcus.condformat", "set_range");
     ScRange aRange(col_start, row_start, mnTab, col_end, row_end, mnTab);
@@ -951,21 +854,22 @@ void ScOrcusConditionalFormat::set_range(os::row_t row_start, os::col_t col_star
 void ScOrcusConditionalFormat::commit_format()
 {
     SAL_INFO("sc.orcus.condformat", "commit_format");
-    mpCurrentFormat.reset(new ScConditionalFormat(0, &mrDoc));
+    mpCurrentFormat.reset(new ScConditionalFormat(0, mrDoc));
 }
 
-ScOrcusSheet::ScOrcusSheet(ScDocumentImport& rDoc, SCTAB nTab, ScOrcusFactory& rFactory) :
-    mrDoc(rDoc),
-    mnTab(nTab),
-    mrFactory(rFactory),
-    mrStyles(static_cast<ScOrcusStyles&>(*mrFactory.get_styles())),
-    maAutoFilter(rFactory.getGlobalSettings()),
-    maProperties(mnTab, mrDoc),
-    maConditionalFormat(mnTab, rDoc.getDoc()),
-    maNamedExpressions(rDoc, rFactory.getGlobalSettings(), nTab),
-    maFormula(*this),
-    maArrayFormula(*this),
-    mnCellCount(0)
+ScOrcusSheet::ScOrcusSheet(ScDocumentImport& rDoc, const ScOrcusGlobalSettings& rGS, SCTAB nTab,
+                           ScOrcusFactory& rFactory)
+    : mrDoc(rDoc)
+    , mnTab(nTab)
+    , mrFactory(rFactory)
+    , mrStyles(static_cast<ScOrcusStyles&>(*mrFactory.get_styles()))
+    , maProperties(mnTab, mrDoc)
+    , maConditionalFormat(mnTab, rDoc.getDoc())
+    , maNamedExpressions(rDoc, rFactory.getGlobalSettings(), nTab)
+    , maFormula(*this)
+    , maArrayFormula(*this)
+    , maAutoFilter(rDoc, rGS, nTab)
+    , mnCellCount(0)
 {
 }
 
@@ -982,15 +886,17 @@ void ScOrcusFormula::reset()
     mfResult = 0.0;
 }
 
-ScOrcusFormula::ScOrcusFormula( ScOrcusSheet& rSheet ) :
-    mrSheet(rSheet),
-    mnCol(-1),
-    mnRow(-1),
-    meGrammar(formula::FormulaGrammar::GRAM_UNSPECIFIED),
-    mnSharedFormulaIndex(0),
-    mbShared(false),
-    meResType(ResultType::NotSet),
-    mfResult(0.0) {}
+ScOrcusFormula::ScOrcusFormula(ScOrcusSheet& rSheet)
+    : mrSheet(rSheet)
+    , mnCol(-1)
+    , mnRow(-1)
+    , meGrammar(formula::FormulaGrammar::GRAM_UNSPECIFIED)
+    , mnSharedFormulaIndex(0)
+    , mbShared(false)
+    , meResType(ResultType::NotSet)
+    , mfResult(0.0)
+{
+}
 
 ScOrcusFormula::~ScOrcusFormula() {}
 
@@ -1002,7 +908,8 @@ void ScOrcusFormula::set_position(os::row_t row, os::col_t col)
 
 void ScOrcusFormula::set_formula(os::formula_grammar_t grammar, std::string_view formula)
 {
-    maFormula = OUString(formula.data(), formula.size(), mrSheet.getFactory().getGlobalSettings().getTextEncoding());
+    maFormula = OUString(formula.data(), formula.size(),
+                         mrSheet.getFactory().getGlobalSettings().getTextEncoding());
     meGrammar = getCalcGrammarFromOrcus(grammar);
 }
 
@@ -1021,13 +928,11 @@ void ScOrcusFormula::set_result_value(double value)
 void ScOrcusFormula::set_result_string(std::string_view value)
 {
     meResType = ResultType::String;
-    maResult = OUString(value.data(), value.size(), mrSheet.getFactory().getGlobalSettings().getTextEncoding());
+    maResult = OUString(value.data(), value.size(),
+                        mrSheet.getFactory().getGlobalSettings().getTextEncoding());
 }
 
-void ScOrcusFormula::set_result_empty()
-{
-    meResType = ResultType::Empty;
-}
+void ScOrcusFormula::set_result_empty() { meResType = ResultType::Empty; }
 
 void ScOrcusFormula::set_result_bool(bool value)
 {
@@ -1081,8 +986,7 @@ void ScOrcusFormula::commit()
         case ResultType::Value:
             rFactory.pushFormulaResult(aPos, mfResult);
             break;
-        default:
-            ;
+        default:;
     }
 
     mrSheet.cellInserted();
@@ -1099,13 +1003,15 @@ void ScOrcusArrayFormula::reset()
     meGrammar = formula::FormulaGrammar::GRAM_UNSPECIFIED;
 }
 
-ScOrcusArrayFormula::ScOrcusArrayFormula( ScOrcusSheet& rSheet ) :
-    mrSheet(rSheet),
-    mnCol(-1),
-    mnRow(-1),
-    mnColRange(0),
-    mnRowRange(0),
-    meGrammar(formula::FormulaGrammar::GRAM_UNSPECIFIED) {}
+ScOrcusArrayFormula::ScOrcusArrayFormula(ScOrcusSheet& rSheet)
+    : mrSheet(rSheet)
+    , mnCol(-1)
+    , mnRow(-1)
+    , mnColRange(0)
+    , mnRowRange(0)
+    , meGrammar(formula::FormulaGrammar::GRAM_UNSPECIFIED)
+{
+}
 
 ScOrcusArrayFormula::~ScOrcusArrayFormula() {}
 
@@ -1121,7 +1027,8 @@ void ScOrcusArrayFormula::set_range(const os::range_t& range)
 void ScOrcusArrayFormula::set_formula(os::formula_grammar_t grammar, std::string_view formula)
 {
     meGrammar = getCalcGrammarFromOrcus(grammar);
-    maFormula = OUString(formula.data(), formula.size(), mrSheet.getFactory().getGlobalSettings().getTextEncoding());
+    maFormula = OUString(formula.data(), formula.size(),
+                         mrSheet.getFactory().getGlobalSettings().getTextEncoding());
 }
 
 void ScOrcusArrayFormula::set_result_value(os::row_t /*row*/, os::col_t /*col*/, double /*value*/)
@@ -1129,7 +1036,8 @@ void ScOrcusArrayFormula::set_result_value(os::row_t /*row*/, os::col_t /*col*/,
     // TODO : implement result cache for matrix
 }
 
-void ScOrcusArrayFormula::set_result_string(os::row_t /*row*/, os::col_t /*col*/, std::string_view /*value*/)
+void ScOrcusArrayFormula::set_result_string(os::row_t /*row*/, os::col_t /*col*/,
+                                            std::string_view /*value*/)
 {
     // TODO : implement result cache for matrix
 }
@@ -1161,25 +1069,9 @@ void ScOrcusSheet::cellInserted()
     }
 }
 
-ScDocumentImport& ScOrcusSheet::getDoc()
-{
-    return mrDoc;
-}
+ScDocumentImport& ScOrcusSheet::getDoc() { return mrDoc; }
 
-os::iface::import_auto_filter* ScOrcusSheet::get_auto_filter()
-{
-    return &maAutoFilter;
-}
-
-os::iface::import_table* ScOrcusSheet::get_table()
-{
-    return nullptr;
-}
-
-os::iface::import_sheet_properties* ScOrcusSheet::get_sheet_properties()
-{
-    return &maProperties;
-}
+os::iface::import_sheet_properties* ScOrcusSheet::get_sheet_properties() { return &maProperties; }
 
 os::iface::import_conditional_format* ScOrcusSheet::get_conditional_format()
 {
@@ -1228,8 +1120,8 @@ void ScOrcusSheet::set_bool(os::row_t row, os::col_t col, bool value)
     cellInserted();
 }
 
-void ScOrcusSheet::set_date_time(
-    os::row_t row, os::col_t col, int year, int month, int day, int hour, int minute, double second)
+void ScOrcusSheet::set_date_time(os::row_t row, os::col_t col, int year, int month, int day,
+                                 int hour, int minute, double second)
 {
     SvNumberFormatter* pFormatter = mrDoc.getDoc().GetFormatTable();
 
@@ -1239,11 +1131,9 @@ void ScOrcusSheet::set_date_time(
     tools::Time aTime(hour, minute, nSec, nNanoSec);
     tools::Long nDateDiff = aDate - pFormatter->GetNullDate();
 
-    double fTime =
-        static_cast<double>(aTime.GetNanoSec()) / ::tools::Time::nanoSecPerSec +
-        aTime.GetSec() +
-        aTime.GetMin() * ::tools::Time::secondPerMinute +
-        aTime.GetHour() * ::tools::Time::secondPerHour;
+    double fTime = static_cast<double>(aTime.GetNanoSec()) / ::tools::Time::nanoSecPerSec
+                   + aTime.GetSec() + aTime.GetMin() * ::tools::Time::secondPerMinute
+                   + aTime.GetHour() * ::tools::Time::secondPerHour;
 
     fTime /= DATE_TIME_FACTOR;
 
@@ -1255,37 +1145,33 @@ void ScOrcusSheet::set_format(os::row_t row, os::col_t col, size_t xf_index)
 {
     SAL_INFO("sc.orcus.style", "set format: " << xf_index);
 
-    ScPatternAttr aPattern(mrDoc.getDoc().GetPool());
-    mrStyles.applyXfToItemSet(aPattern.GetItemSet(), xf_index);
+    ScPatternAttr aPattern(mrDoc.getDoc().getCellAttributeHelper());
+    mrStyles.applyXfToItemSet(aPattern.GetItemSetWritable(), xf_index);
     mrDoc.getDoc().ApplyPattern(col, row, mnTab, aPattern);
 }
 
-void ScOrcusSheet::set_format(os::row_t row_start, os::col_t col_start,
-        os::row_t row_end, os::col_t col_end, size_t xf_index)
+void ScOrcusSheet::set_format(os::row_t row_start, os::col_t col_start, os::row_t row_end,
+                              os::col_t col_end, size_t xf_index)
 {
     SAL_INFO("sc.orcus.style", "set format range: " << xf_index);
-    ScPatternAttr aPattern(mrDoc.getDoc().GetPool());
-    mrStyles.applyXfToItemSet(aPattern.GetItemSet(), xf_index);
+    ScPatternAttr aPattern(mrDoc.getDoc().getCellAttributeHelper());
+    mrStyles.applyXfToItemSet(aPattern.GetItemSetWritable(), xf_index);
     mrDoc.getDoc().ApplyPatternAreaTab(col_start, row_start, col_end, row_end, mnTab, aPattern);
 }
 
-void ScOrcusSheet::set_column_format(
-    os::col_t col, os::col_t col_span, std::size_t xf_index)
+void ScOrcusSheet::set_column_format(os::col_t col, os::col_t col_span, std::size_t xf_index)
 {
-    ScPatternAttr aPattern(mrDoc.getDoc().GetPool());
-    mrStyles.applyXfToItemSet(aPattern.GetItemSet(), xf_index);
-
-    mrDoc.getDoc().ApplyPatternAreaTab(
-        col, 0, col + col_span - 1, mrDoc.getDoc().MaxRow(), mnTab, aPattern);
+    ScPatternAttr aPattern(mrDoc.getDoc().getCellAttributeHelper());
+    mrStyles.applyXfToItemSet(aPattern.GetItemSetWritable(), xf_index);
+    mrDoc.getDoc().ApplyPatternAreaTab(col, 0, col + col_span - 1, mrDoc.getDoc().MaxRow(), mnTab,
+                                       aPattern);
 }
 
 void ScOrcusSheet::set_row_format(os::row_t row, std::size_t xf_index)
 {
-    ScPatternAttr aPattern(mrDoc.getDoc().GetPool());
-    mrStyles.applyXfToItemSet(aPattern.GetItemSet(), xf_index);
-
-    mrDoc.getDoc().ApplyPatternAreaTab(
-        0, row, mrDoc.getDoc().MaxCol(), row, mnTab, aPattern);
+    ScPatternAttr aPattern(mrDoc.getDoc().getCellAttributeHelper());
+    mrStyles.applyXfToItemSet(aPattern.GetItemSetWritable(), xf_index);
+    mrDoc.getDoc().ApplyPatternAreaTab(0, row, mrDoc.getDoc().MaxCol(), row, mnTab, aPattern);
 }
 
 orcus::spreadsheet::range_size_t ScOrcusSheet::get_sheet_size() const
@@ -1303,30 +1189,278 @@ void ScOrcusSheet::fill_down_cells(os::row_t row, os::col_t col, os::row_t range
     cellInserted();
 }
 
+os::iface::import_auto_filter* ScOrcusSheet::start_auto_filter(const os::range_t& range)
+{
+    maAutoFilter.reset(range);
+    return &maAutoFilter;
+}
+
 const sc::SharedFormulaGroups& ScOrcusSheet::getSharedFormulaGroups() const
 {
     return maFormulaGroups;
 }
 
-sc::SharedFormulaGroups& ScOrcusSheet::getSharedFormulaGroups()
+sc::SharedFormulaGroups& ScOrcusSheet::getSharedFormulaGroups() { return maFormulaGroups; }
+
+ScOrcusFactory& ScOrcusSheet::getFactory() { return mrFactory; }
+
+void ScOrcusStrikethrough::reset()
 {
-    return maFormulaGroups;
+    meStyle.reset();
+    meType.reset();
+    meWidth.reset();
+    meText.reset();
 }
 
-ScOrcusFactory& ScOrcusSheet::getFactory()
+std::optional<FontStrikeout> ScOrcusStrikethrough::toFontStrikeout() const
 {
-    return mrFactory;
+    std::optional<FontStrikeout> eStrikeout;
+
+    if (meType)
+    {
+        switch (*meType)
+        {
+            case os::strikethrough_type_t::unknown:
+                eStrikeout = STRIKEOUT_DONTKNOW;
+                break;
+            case os::strikethrough_type_t::none:
+                eStrikeout = STRIKEOUT_NONE;
+                break;
+            case os::strikethrough_type_t::single_type:
+                eStrikeout = STRIKEOUT_SINGLE;
+                break;
+            case os::strikethrough_type_t::double_type:
+                eStrikeout = STRIKEOUT_DOUBLE;
+                break;
+        }
+    }
+
+    if (meWidth)
+    {
+        switch (*meWidth)
+        {
+            case os::strikethrough_width_t::bold:
+                eStrikeout = STRIKEOUT_BOLD;
+                break;
+            default:;
+        }
+    }
+
+    if (meText)
+    {
+        switch (*meText)
+        {
+            case os::strikethrough_text_t::slash:
+                eStrikeout = STRIKEOUT_SLASH;
+                break;
+            case os::strikethrough_text_t::cross:
+                eStrikeout = STRIKEOUT_X;
+                break;
+            case os::strikethrough_text_t::unknown:
+                break;
+        }
+    }
+
+    return eStrikeout;
+}
+
+void ScOrcusUnderline::reset()
+{
+    meStyle.reset();
+    meThickness.reset();
+    meSpacing.reset();
+    meCount.reset();
+}
+
+std::optional<FontLineStyle> ScOrcusUnderline::toFontLineStyle() const
+{
+    std::optional<FontLineStyle> eUnderline;
+
+    if (meStyle)
+    {
+        switch (*meStyle)
+        {
+            case os::underline_style_t::none:
+                eUnderline = LINESTYLE_NONE;
+                break;
+            case os::underline_style_t::solid:
+            {
+                if (meCount)
+                {
+                    switch (*meCount)
+                    {
+                        case os::underline_count_t::single_count:
+                            eUnderline = LINESTYLE_SINGLE;
+                            break;
+                        case os::underline_count_t::double_count:
+                            eUnderline = LINESTYLE_DOUBLE;
+                            break;
+                        case os::underline_count_t::none:
+                            break;
+                    }
+                }
+                else
+                    eUnderline = LINESTYLE_SINGLE;
+                break;
+            }
+            case os::underline_style_t::dotted:
+                eUnderline = LINESTYLE_DOTTED;
+                break;
+            case os::underline_style_t::dash:
+                eUnderline = LINESTYLE_DASH;
+                break;
+            case os::underline_style_t::long_dash:
+                eUnderline = LINESTYLE_LONGDASH;
+                break;
+            case os::underline_style_t::dot_dash:
+                eUnderline = LINESTYLE_DASHDOT;
+                break;
+            case os::underline_style_t::dot_dot_dash:
+                eUnderline = LINESTYLE_DASHDOTDOT;
+                break;
+            case os::underline_style_t::wave:
+            {
+                if (meCount)
+                {
+                    switch (*meCount)
+                    {
+                        case os::underline_count_t::single_count:
+                            eUnderline = LINESTYLE_WAVE;
+                            break;
+                        case os::underline_count_t::double_count:
+                            eUnderline = LINESTYLE_DOUBLEWAVE;
+                            break;
+                        case os::underline_count_t::none:
+                            break;
+                    }
+                }
+                else
+                    eUnderline = LINESTYLE_WAVE;
+                break;
+            }
+        }
+    }
+
+    bool bApplyBold = false;
+
+    if (meThickness)
+    {
+        switch (*meThickness)
+        {
+            case os::underline_thickness_t::bold:
+            case os::underline_thickness_t::thick:
+                bApplyBold = true;
+                break;
+            default:;
+        }
+    }
+
+    if (bApplyBold)
+    {
+        if (eUnderline)
+        {
+            switch (*eUnderline)
+            {
+                case LINESTYLE_NONE:
+                case LINESTYLE_SINGLE:
+                    eUnderline = LINESTYLE_BOLD;
+                    break;
+                case LINESTYLE_DOTTED:
+                    eUnderline = LINESTYLE_BOLDDOTTED;
+                    break;
+                case LINESTYLE_DASH:
+                    eUnderline = LINESTYLE_BOLDDASH;
+                    break;
+                case LINESTYLE_LONGDASH:
+                    eUnderline = LINESTYLE_BOLDLONGDASH;
+                    break;
+                case LINESTYLE_DASHDOT:
+                    eUnderline = LINESTYLE_BOLDDASHDOT;
+                    break;
+                case LINESTYLE_DASHDOTDOT:
+                    eUnderline = LINESTYLE_BOLDDASHDOTDOT;
+                    break;
+                case LINESTYLE_WAVE:
+                    eUnderline = LINESTYLE_BOLDWAVE;
+                    break;
+                default:;
+            }
+        }
+    }
+
+    return eUnderline;
+}
+
+void ScOrcusSegmentStrikethrough::reset(SfxItemSet* pDestFormat)
+{
+    mpDestFormat = pDestFormat;
+    maAttrs.reset();
+}
+
+void ScOrcusSegmentStrikethrough::set_style(os::strikethrough_style_t s) { maAttrs.meStyle = s; }
+
+void ScOrcusSegmentStrikethrough::set_type(os::strikethrough_type_t s) { maAttrs.meType = s; }
+
+void ScOrcusSegmentStrikethrough::set_width(os::strikethrough_width_t s) { maAttrs.meWidth = s; }
+
+void ScOrcusSegmentStrikethrough::set_text(os::strikethrough_text_t s) { maAttrs.meText = s; }
+
+void ScOrcusSegmentStrikethrough::commit()
+{
+    auto eStrikeout = maAttrs.toFontStrikeout();
+    if (!eStrikeout)
+        return;
+
+    mpDestFormat->Put(SvxCrossedOutItem(*eStrikeout, EE_CHAR_STRIKEOUT));
+}
+
+void ScOrcusSegmentUnderline::reset(SfxItemSet* pDestFormat)
+{
+    mpDestFormat = pDestFormat;
+    maAttrs.reset();
+    maColor.reset();
+}
+
+void ScOrcusSegmentUnderline::set_style(os::underline_style_t e) { maAttrs.meStyle = e; }
+
+void ScOrcusSegmentUnderline::set_thickness(os::underline_thickness_t e)
+{
+    maAttrs.meThickness = e;
+}
+
+void ScOrcusSegmentUnderline::set_spacing(os::underline_spacing_t e) { maAttrs.meSpacing = e; }
+
+void ScOrcusSegmentUnderline::set_count(os::underline_count_t e) { maAttrs.meCount = e; }
+
+void ScOrcusSegmentUnderline::set_color(os::color_elem_t alpha, os::color_elem_t red,
+                                        os::color_elem_t green, os::color_elem_t blue)
+{
+    maColor = Color(ColorAlpha, alpha, red, green, blue);
+}
+
+void ScOrcusSegmentUnderline::commit()
+{
+    auto eUnderline = maAttrs.toFontLineStyle();
+    if (!eUnderline)
+        return;
+
+    SvxUnderlineItem aItem(*eUnderline, EE_CHAR_UNDERLINE);
+
+    if (maColor)
+        aItem.SetColor(*maColor);
+
+    mpDestFormat->Put(aItem);
 }
 
 OUString ScOrcusSharedStrings::toOUString(std::string_view s)
 {
-    return {s.data(), sal_Int32(s.size()), mrFactory.getGlobalSettings().getTextEncoding()};
+    return { s.data(), sal_Int32(s.size()), mrFactory.getGlobalSettings().getTextEncoding() };
 }
 
-ScOrcusSharedStrings::ScOrcusSharedStrings(ScOrcusFactory& rFactory) :
-    mrFactory(rFactory),
-    mrEditEngine(rFactory.getDoc().getDoc().GetEditEngine()),
-    maCurFormat(mrEditEngine.GetEmptyItemSet())
+ScOrcusSharedStrings::ScOrcusSharedStrings(ScOrcusFactory& rFactory)
+    : mrFactory(rFactory)
+    , mrEditEngine(rFactory.getDoc().getDoc().GetEditEngine())
+    , maCurFormat(mrEditEngine.GetEmptyItemSet())
 {
     mrEditEngine.Clear();
 }
@@ -1336,14 +1470,9 @@ size_t ScOrcusSharedStrings::append(std::string_view s)
     return mrFactory.appendString(toOUString(s));
 }
 
-size_t ScOrcusSharedStrings::add(std::string_view s)
-{
-    return mrFactory.addString(toOUString(s));
-}
+size_t ScOrcusSharedStrings::add(std::string_view s) { return mrFactory.addString(toOUString(s)); }
 
-void ScOrcusSharedStrings::set_segment_font(size_t /*font_index*/)
-{
-}
+void ScOrcusSharedStrings::set_segment_font(size_t /*font_index*/) {}
 
 void ScOrcusSharedStrings::set_segment_bold(bool b)
 {
@@ -1357,16 +1486,23 @@ void ScOrcusSharedStrings::set_segment_italic(bool b)
     maCurFormat.Put(SvxPostureItem(eItalic, EE_CHAR_ITALIC));
 }
 
+void ScOrcusSharedStrings::set_segment_superscript(bool b)
+{
+    if (b)
+        maCurFormat.Put(SvxEscapementItem(SvxEscapement::Superscript, EE_CHAR_ESCAPEMENT));
+}
+
+void ScOrcusSharedStrings::set_segment_subscript(bool b)
+{
+    if (b)
+        maCurFormat.Put(SvxEscapementItem(SvxEscapement::Subscript, EE_CHAR_ESCAPEMENT));
+}
+
 void ScOrcusSharedStrings::set_segment_font_name(std::string_view s)
 {
     OUString aName = toOUString(s);
-    maCurFormat.Put(
-        SvxFontItem(
-            FAMILY_DONTKNOW, aName, aName, PITCH_DONTKNOW,
-            mrFactory.getGlobalSettings().getTextEncoding(),
-            EE_CHAR_FONTINFO
-        )
-    );
+    maCurFormat.Put(SvxFontItem(FAMILY_DONTKNOW, aName, aName, PITCH_DONTKNOW,
+                                mrFactory.getGlobalSettings().getTextEncoding(), EE_CHAR_FONTINFO));
 }
 
 void ScOrcusSharedStrings::set_segment_font_size(double point)
@@ -1376,29 +1512,40 @@ void ScOrcusSharedStrings::set_segment_font_size(double point)
     maCurFormat.Put(SvxFontHeightItem(nMM, 100, EE_CHAR_FONTHEIGHT));
 }
 
-void ScOrcusSharedStrings::set_segment_font_color(
-    os::color_elem_t alpha, os::color_elem_t red, os::color_elem_t green, os::color_elem_t blue)
+void ScOrcusSharedStrings::set_segment_font_color(os::color_elem_t alpha, os::color_elem_t red,
+                                                  os::color_elem_t green, os::color_elem_t blue)
 {
     Color aColor(ColorAlpha, alpha, red, green, blue);
     maCurFormat.Put(SvxColorItem(aColor, EE_CHAR_COLOR));
 }
 
+os::iface::import_underline* ScOrcusSharedStrings::start_underline()
+{
+    maImportUnderline.reset(&maCurFormat);
+    return &maImportUnderline;
+}
+
+os::iface::import_strikethrough* ScOrcusSharedStrings::start_strikethrough()
+{
+    maImportStrikethrough.reset(&maCurFormat);
+    return &maImportStrikethrough;
+}
+
 void ScOrcusSharedStrings::append_segment(std::string_view s)
 {
-    sal_Int32 nPos = mrEditEngine.GetText().getLength();
-    ESelection aSel{0, nPos, 0, nPos}; // end of current text
+    ESelection aSel{ mrEditEngine.GetEnd() }; // end of current text
 
     OUString aStr = toOUString(s);
     mrEditEngine.QuickInsertText(aStr, aSel);
 
-    aSel.nEndPos += aStr.getLength(); // expand the selection over the current segment
+    aSel.end = mrEditEngine.GetEnd(); // expand the selection over the current segment
     maFormatSegments.emplace_back(aSel, maCurFormat);
     maCurFormat.ClearItem();
 }
 
 size_t ScOrcusSharedStrings::commit_segments()
 {
-    for (const auto& [rSel, rFormat] : maFormatSegments)
+    for (const auto & [ rSel, rFormat ] : maFormatSegments)
         mrEditEngine.QuickSetAttribs(rFormat, rSel);
 
     auto nPos = mrFactory.appendFormattedString(mrEditEngine.CreateTextObject());
@@ -1407,7 +1554,7 @@ size_t ScOrcusSharedStrings::commit_segments()
     return nPos;
 }
 
-void ScOrcusFont::applyToItemSet( SfxItemSet& rSet ) const
+void ScOrcusFont::applyToItemSet(SfxItemSet& rSet) const
 {
     if (mbBold)
     {
@@ -1446,16 +1593,19 @@ void ScOrcusFont::applyToItemSet( SfxItemSet& rSet ) const
     }
 
     if (maColor)
-        rSet.Put( SvxColorItem(*maColor, ATTR_FONT_COLOR));
+        rSet.Put(SvxColorItem(*maColor, ATTR_FONT_COLOR));
 
     if (maName && !maName->isEmpty())
-        rSet.Put( SvxFontItem( FAMILY_DONTKNOW, *maName, *maName, PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW, ATTR_FONT ));
+        rSet.Put(SvxFontItem(FAMILY_DONTKNOW, *maName, *maName, PITCH_DONTKNOW,
+                             RTL_TEXTENCODING_DONTKNOW, ATTR_FONT));
 
     if (maNameAsian && !maNameAsian->isEmpty())
-        rSet.Put( SvxFontItem( FAMILY_DONTKNOW, *maNameAsian, *maNameAsian, PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW, ATTR_CJK_FONT ));
+        rSet.Put(SvxFontItem(FAMILY_DONTKNOW, *maNameAsian, *maNameAsian, PITCH_DONTKNOW,
+                             RTL_TEXTENCODING_DONTKNOW, ATTR_CJK_FONT));
 
     if (maNameComplex && !maNameComplex->isEmpty())
-        rSet.Put( SvxFontItem( FAMILY_DONTKNOW, *maNameComplex, *maNameComplex, PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW, ATTR_CTL_FONT ));
+        rSet.Put(SvxFontItem(FAMILY_DONTKNOW, *maNameComplex, *maNameComplex, PITCH_DONTKNOW,
+                             RTL_TEXTENCODING_DONTKNOW, ATTR_CTL_FONT));
 
     if (mnSize)
     {
@@ -1491,7 +1641,7 @@ void ScOrcusFont::applyToItemSet( SfxItemSet& rSet ) const
         rSet.Put(SvxCrossedOutItem(*meStrikeout, ATTR_FONT_CROSSEDOUT));
 }
 
-void ScOrcusFill::applyToItemSet( SfxItemSet& rSet ) const
+void ScOrcusFill::applyToItemSet(SfxItemSet& rSet) const
 {
     if (!mePattern || !maFgColor)
         return;
@@ -1500,10 +1650,9 @@ void ScOrcusFill::applyToItemSet( SfxItemSet& rSet ) const
         rSet.Put(SvxBrushItem(*maFgColor, ATTR_BACKGROUND));
 }
 
-void ScOrcusBorder::applyToItemSet( SfxItemSet& rSet ) const
+void ScOrcusBorder::applyToItemSet(SfxItemSet& rSet) const
 {
-    auto getDirection = [](os::border_direction_t dir) -> SvxBoxItemLine
-    {
+    auto getDirection = [](os::border_direction_t dir) -> SvxBoxItemLine {
         switch (dir)
         {
             case os::border_direction_t::right:
@@ -1514,8 +1663,7 @@ void ScOrcusBorder::applyToItemSet( SfxItemSet& rSet ) const
                 return SvxBoxItemLine::TOP;
             case os::border_direction_t::bottom:
                 return SvxBoxItemLine::BOTTOM;
-            default:
-                ;
+            default:;
         }
         return SvxBoxItemLine::RIGHT;
     };
@@ -1527,7 +1675,7 @@ void ScOrcusBorder::applyToItemSet( SfxItemSet& rSet ) const
     SvxLineItem aDiagonal_TLBR(ATTR_BORDER_TLBR);
     SvxLineItem aDiagonal_BLTR(ATTR_BORDER_BLTR);
 
-    for (const auto& [dir, attrs] : maBorders)
+    for (const auto & [ dir, attrs ] : maBorders)
     {
         SvxBoxItemLine eDir = getDirection(dir);
 
@@ -1562,9 +1710,10 @@ void ScOrcusBorder::applyToItemSet( SfxItemSet& rSet ) const
     rSet.Put(aBoxItem);
 }
 
-void ScOrcusProtection::applyToItemSet( SfxItemSet& rSet ) const
+void ScOrcusProtection::applyToItemSet(SfxItemSet& rSet) const
 {
-    if (!mbLocked.has_value() && !mbHidden.has_value() && !mbPrintContent.has_value() && !mbFormulaHidden.has_value())
+    if (!mbLocked.has_value() && !mbHidden.has_value() && !mbPrintContent.has_value()
+        && !mbFormulaHidden.has_value())
         return;
 
     bool bLocked = mbLocked.value_or(true); // defaults to true.
@@ -1574,7 +1723,7 @@ void ScOrcusProtection::applyToItemSet( SfxItemSet& rSet ) const
     rSet.Put(ScProtectionAttr(bLocked, bFormulaHidden, bHidden, bPrintContent));
 }
 
-void ScOrcusNumberFormat::applyToItemSet( SfxItemSet& rSet, const ScDocument& rDoc ) const
+void ScOrcusNumberFormat::applyToItemSet(SfxItemSet& rSet, const ScDocument& rDoc) const
 {
     if (!maCode)
         return;
@@ -1582,7 +1731,8 @@ void ScOrcusNumberFormat::applyToItemSet( SfxItemSet& rSet, const ScDocument& rD
     sal_uInt32 nKey;
     sal_Int32 nCheckPos;
     SvNumberFormatter* pFormatter = rDoc.GetFormatTable();
-    OUString Code = *maCode; /* <-- Done because the SvNumberFormatter::PutEntry demands a non const NumFormat Code*/
+    OUString Code
+        = *maCode; /* <-- Done because the SvNumberFormatter::PutEntry demands a non const NumFormat Code*/
     SvNumFormatType type = SvNumFormatType::ALL;
 
     pFormatter->PutEntry(Code, nCheckPos, type, nKey, LANGUAGE_ENGLISH_US);
@@ -1590,70 +1740,115 @@ void ScOrcusNumberFormat::applyToItemSet( SfxItemSet& rSet, const ScDocument& rD
         rSet.Put(SfxUInt32Item(ATTR_VALUE_FORMAT, nKey));
 }
 
-ScOrcusXf::ScOrcusXf() :
-    mnFontId(0),
-    mnFillId(0),
-    mnBorderId(0),
-    mnProtectionId(0),
-    mnNumberFormatId(0),
-    mnStyleXf(0),
-    mbApplyAlignment(false),
-    mbWrapText(false),
-    mbShrinkToFit(false),
-    meHorAlignment(SvxCellHorJustify::Standard),
-    meVerAlignment(SvxCellVerJustify::Standard),
-    meHorAlignMethod(SvxCellJustifyMethod::Auto),
-    meVerAlignMethod(SvxCellJustifyMethod::Auto)
+ScOrcusXf::ScOrcusXf()
+    : mnFontId(0)
+    , mnFillId(0)
+    , mnBorderId(0)
+    , mnProtectionId(0)
+    , mnNumberFormatId(0)
+    , mnStyleXf(0)
+    , mbApplyAlignment(false)
+    , mbWrapText(false)
+    , mbShrinkToFit(false)
+    , meHorAlignment(SvxCellHorJustify::Standard)
+    , meVerAlignment(SvxCellVerJustify::Standard)
+    , meHorAlignMethod(SvxCellJustifyMethod::Auto)
+    , meVerAlignMethod(SvxCellJustifyMethod::Auto)
 {
 }
 
-ScOrcusCellStyle::ScOrcusCellStyle() :
-    maParentName(SC_STYLE_PROG_STANDARD),
-    mnXFId(0),
-    mnBuiltInId(0)
+ScOrcusCellStyle::ScOrcusCellStyle()
+    : maParentName(SC_STYLE_PROG_STANDARD)
+    , mnXFId(0)
+    , mnBuiltInId(0)
 {
 }
 
-ScOrcusImportFontStyle::ScOrcusImportFontStyle( ScOrcusFactory& rFactory, std::vector<ScOrcusFont>& rFonts ) :
-    mrFactory(rFactory),
-    mrFonts(rFonts)
+void ScOrcusImportFontUnderlineStyle::reset(ScOrcusFont* pDest)
+{
+    mpDestFont = pDest;
+
+    maAttrs.reset();
+    maColor.reset();
+}
+
+void ScOrcusImportFontUnderlineStyle::set_style(os::underline_style_t e) { maAttrs.meStyle = e; }
+
+void ScOrcusImportFontUnderlineStyle::set_thickness(os::underline_thickness_t e)
+{
+    maAttrs.meThickness = e;
+}
+
+void ScOrcusImportFontUnderlineStyle::set_spacing(os::underline_spacing_t e)
+{
+    maAttrs.meSpacing = e;
+}
+
+void ScOrcusImportFontUnderlineStyle::set_count(os::underline_count_t e) { maAttrs.meCount = e; }
+
+void ScOrcusImportFontUnderlineStyle::set_color(os::color_elem_t alpha, os::color_elem_t red,
+                                                os::color_elem_t green, os::color_elem_t blue)
+{
+    maColor = Color(ColorAlpha, alpha, red, green, blue);
+}
+
+void ScOrcusImportFontUnderlineStyle::commit()
+{
+    mpDestFont->meUnderline = maAttrs.toFontLineStyle();
+    mpDestFont->maUnderlineColor = maColor;
+}
+
+void ScOrcusImportFontStrikethroughStyle::reset(ScOrcusFont* pDest)
+{
+    mpDestFont = pDest;
+    maAttrs.reset();
+}
+
+void ScOrcusImportFontStrikethroughStyle::set_style(orcus::spreadsheet::strikethrough_style_t s)
+{
+    maAttrs.meStyle = s;
+}
+
+void ScOrcusImportFontStrikethroughStyle::set_type(orcus::spreadsheet::strikethrough_type_t s)
+{
+    maAttrs.meType = s;
+}
+
+void ScOrcusImportFontStrikethroughStyle::set_width(orcus::spreadsheet::strikethrough_width_t s)
+{
+    maAttrs.meWidth = s;
+}
+
+void ScOrcusImportFontStrikethroughStyle::set_text(orcus::spreadsheet::strikethrough_text_t s)
+{
+    maAttrs.meText = s;
+}
+
+void ScOrcusImportFontStrikethroughStyle::commit()
+{
+    mpDestFont->meStrikeout = maAttrs.toFontStrikeout();
+}
+
+ScOrcusImportFontStyle::ScOrcusImportFontStyle(ScOrcusFactory& rFactory,
+                                               std::vector<ScOrcusFont>& rFonts)
+    : mrFactory(rFactory)
+    , mrFonts(rFonts)
 {
 }
 
-void ScOrcusImportFontStyle::reset()
-{
-    maCurrentFont = ScOrcusFont();
-}
+void ScOrcusImportFontStyle::reset() { maCurrentFont = ScOrcusFont(); }
 
-void ScOrcusImportFontStyle::set_bold(bool b)
-{
-    maCurrentFont.mbBold = b;
-}
+void ScOrcusImportFontStyle::set_bold(bool b) { maCurrentFont.mbBold = b; }
 
-void ScOrcusImportFontStyle::set_bold_asian(bool b)
-{
-    maCurrentFont.mbBoldAsian = b;
-}
+void ScOrcusImportFontStyle::set_bold_asian(bool b) { maCurrentFont.mbBoldAsian = b; }
 
-void ScOrcusImportFontStyle::set_bold_complex(bool b)
-{
-    maCurrentFont.mbBoldComplex = b;
-}
+void ScOrcusImportFontStyle::set_bold_complex(bool b) { maCurrentFont.mbBoldComplex = b; }
 
-void ScOrcusImportFontStyle::set_italic(bool b)
-{
-    maCurrentFont.mbItalic = b;
-}
+void ScOrcusImportFontStyle::set_italic(bool b) { maCurrentFont.mbItalic = b; }
 
-void ScOrcusImportFontStyle::set_italic_asian(bool b)
-{
-    maCurrentFont.mbItalicAsian = b;
-}
+void ScOrcusImportFontStyle::set_italic_asian(bool b) { maCurrentFont.mbItalicAsian = b; }
 
-void ScOrcusImportFontStyle::set_italic_complex(bool b)
-{
-    maCurrentFont.mbItalicComplex = b;
-}
+void ScOrcusImportFontStyle::set_italic_complex(bool b) { maCurrentFont.mbItalicComplex = b; }
 
 void ScOrcusImportFontStyle::set_name(std::string_view name)
 {
@@ -1673,196 +1868,28 @@ void ScOrcusImportFontStyle::set_name_complex(std::string_view name)
     maCurrentFont.maNameComplex = aName;
 }
 
-void ScOrcusImportFontStyle::set_size(double point)
-{
-    maCurrentFont.mnSize = point;
-}
+void ScOrcusImportFontStyle::set_size(double point) { maCurrentFont.mnSize = point; }
 
-void ScOrcusImportFontStyle::set_size_asian(double point)
-{
-    maCurrentFont.mnSizeAsian = point;
-}
+void ScOrcusImportFontStyle::set_size_asian(double point) { maCurrentFont.mnSizeAsian = point; }
 
-void ScOrcusImportFontStyle::set_size_complex(double point)
-{
-    maCurrentFont.mnSizeComplex = point;
-}
+void ScOrcusImportFontStyle::set_size_complex(double point) { maCurrentFont.mnSizeComplex = point; }
 
-void ScOrcusImportFontStyle::set_underline(os::underline_t e)
-{
-    switch(e)
-    {
-        case os::underline_t::single_line:
-        case os::underline_t::single_accounting:
-            maCurrentFont.meUnderline = LINESTYLE_SINGLE;
-            break;
-        case os::underline_t::double_line:
-        case os::underline_t::double_accounting:
-            maCurrentFont.meUnderline = LINESTYLE_DOUBLE;
-            break;
-        case os::underline_t::none:
-            maCurrentFont.meUnderline = LINESTYLE_NONE;
-            break;
-        case os::underline_t::dotted:
-            maCurrentFont.meUnderline = LINESTYLE_DOTTED;
-            break;
-        case os::underline_t::dash:
-            maCurrentFont.meUnderline = LINESTYLE_DASH;
-            break;
-        case os::underline_t::long_dash:
-            maCurrentFont.meUnderline = LINESTYLE_LONGDASH;
-            break;
-        case os::underline_t::dot_dash:
-            maCurrentFont.meUnderline = LINESTYLE_DASHDOT;
-            break;
-        case os::underline_t::dot_dot_dash:
-            maCurrentFont.meUnderline = LINESTYLE_DASHDOTDOT;
-            break;
-        case os::underline_t::wave:
-            maCurrentFont.meUnderline = LINESTYLE_WAVE;
-            break;
-        default:
-            ;
-    }
-}
-
-void ScOrcusImportFontStyle::set_underline_width(os::underline_width_t e)
-{
-    if (e == os::underline_width_t::bold || e == os::underline_width_t::thick)
-    {
-        if (maCurrentFont.meUnderline)
-        {
-            switch (*maCurrentFont.meUnderline)
-            {
-                case LINESTYLE_NONE:
-                case LINESTYLE_SINGLE:
-                    maCurrentFont.meUnderline = LINESTYLE_BOLD;
-                    break;
-                case LINESTYLE_DOTTED:
-                    maCurrentFont.meUnderline = LINESTYLE_BOLDDOTTED;
-                    break;
-                case LINESTYLE_DASH:
-                    maCurrentFont.meUnderline = LINESTYLE_BOLDDASH;
-                    break;
-                case LINESTYLE_LONGDASH:
-                    maCurrentFont.meUnderline = LINESTYLE_BOLDLONGDASH;
-                    break;
-                case LINESTYLE_DASHDOT:
-                    maCurrentFont.meUnderline = LINESTYLE_BOLDDASHDOT;
-                    break;
-                case LINESTYLE_DASHDOTDOT:
-                    maCurrentFont.meUnderline = LINESTYLE_BOLDDASHDOTDOT;
-                    break;
-                case LINESTYLE_WAVE:
-                    maCurrentFont.meUnderline = LINESTYLE_BOLDWAVE;
-                    break;
-                default:
-                    ;
-            }
-        }
-        else
-            maCurrentFont.meUnderline = LINESTYLE_BOLD;
-    }
-}
-
-void ScOrcusImportFontStyle::set_underline_mode(os::underline_mode_t /*e*/)
-{
-}
-
-void ScOrcusImportFontStyle::set_underline_type(os::underline_type_t  e )
-{
-    if (e == os::underline_type_t::double_type)
-    {
-        if (maCurrentFont.meUnderline)
-        {
-            switch (*maCurrentFont.meUnderline)
-            {
-                case LINESTYLE_NONE:
-                case LINESTYLE_SINGLE:
-                    maCurrentFont.meUnderline = LINESTYLE_DOUBLE;
-                    break;
-                case LINESTYLE_WAVE:
-                    maCurrentFont.meUnderline = LINESTYLE_DOUBLEWAVE;
-                    break;
-                default:
-                    ;
-            }
-        }
-        else
-            maCurrentFont.meUnderline = LINESTYLE_DOUBLE;
-    }
-}
-
-void ScOrcusImportFontStyle::set_underline_color(
-    os::color_elem_t alpha, os::color_elem_t red, os::color_elem_t green, os::color_elem_t blue)
-{
-    maCurrentFont.maUnderlineColor = Color(ColorAlpha, alpha, red, green, blue);
-}
-
-void ScOrcusImportFontStyle::set_color(
-    os::color_elem_t alpha, os::color_elem_t red, os::color_elem_t green, os::color_elem_t blue)
+void ScOrcusImportFontStyle::set_color(os::color_elem_t alpha, os::color_elem_t red,
+                                       os::color_elem_t green, os::color_elem_t blue)
 {
     maCurrentFont.maColor = Color(ColorAlpha, alpha, red, green, blue);
 }
 
-void ScOrcusImportFontStyle::set_strikethrough_style(os::strikethrough_style_t /*s*/)
+orcus::spreadsheet::iface::import_underline* ScOrcusImportFontStyle::start_underline()
 {
+    maUnderlineImport.reset(&maCurrentFont);
+    return &maUnderlineImport;
 }
 
-void ScOrcusImportFontStyle::set_strikethrough_type(os::strikethrough_type_t s)
+orcus::spreadsheet::iface::import_strikethrough* ScOrcusImportFontStyle::start_strikethrough()
 {
-    if (maCurrentFont.meStrikeout)
-    {
-        if (*maCurrentFont.meStrikeout == STRIKEOUT_BOLD ||
-            *maCurrentFont.meStrikeout == STRIKEOUT_SLASH ||
-            *maCurrentFont.meStrikeout == STRIKEOUT_X)
-            return;
-    }
-
-    switch (s)
-    {
-        case os::strikethrough_type_t::unknown:
-            maCurrentFont.meStrikeout = STRIKEOUT_DONTKNOW;
-            break;
-        case os::strikethrough_type_t::none:
-            maCurrentFont.meStrikeout = STRIKEOUT_NONE;
-            break;
-        case os::strikethrough_type_t::single_type:
-            maCurrentFont.meStrikeout = STRIKEOUT_SINGLE;
-            break;
-        case os::strikethrough_type_t::double_type:
-            maCurrentFont.meStrikeout = STRIKEOUT_DOUBLE;
-            break;
-        default:
-            ;
-    }
-}
-
-void ScOrcusImportFontStyle::set_strikethrough_width(os::strikethrough_width_t s)
-{
-    switch (s)
-    {
-        case os::strikethrough_width_t::bold:
-            maCurrentFont.meStrikeout = STRIKEOUT_BOLD;
-            break;
-        default:
-            ;
-    }
-}
-
-void ScOrcusImportFontStyle::set_strikethrough_text(os::strikethrough_text_t s)
-{
-    switch (s)
-    {
-        case os::strikethrough_text_t::slash:
-            maCurrentFont.meStrikeout = STRIKEOUT_SLASH;
-            break;
-        case os::strikethrough_text_t::cross:
-            maCurrentFont.meStrikeout = STRIKEOUT_X;
-            break;
-        default:
-            ;
-    }
+    maStrikeoutImport.reset(&maCurrentFont);
+    return &maStrikeoutImport;
 }
 
 std::size_t ScOrcusImportFontStyle::commit()
@@ -1873,29 +1900,26 @@ std::size_t ScOrcusImportFontStyle::commit()
     return mrFonts.size() - 1;
 }
 
-ScOrcusImportFillStyle::ScOrcusImportFillStyle( std::vector<ScOrcusFill>& rFills ) :
-    mrFills(rFills)
+ScOrcusImportFillStyle::ScOrcusImportFillStyle(std::vector<ScOrcusFill>& rFills)
+    : mrFills(rFills)
 {
 }
 
-void ScOrcusImportFillStyle::reset()
-{
-    maCurrentFill = ScOrcusFill();
-}
+void ScOrcusImportFillStyle::reset() { maCurrentFill = ScOrcusFill(); }
 
 void ScOrcusImportFillStyle::set_pattern_type(os::fill_pattern_t fp)
 {
     maCurrentFill.mePattern = fp;
 }
 
-void ScOrcusImportFillStyle::set_fg_color(
-    os::color_elem_t alpha, os::color_elem_t red, os::color_elem_t green, os::color_elem_t blue)
+void ScOrcusImportFillStyle::set_fg_color(os::color_elem_t alpha, os::color_elem_t red,
+                                          os::color_elem_t green, os::color_elem_t blue)
 {
     maCurrentFill.maFgColor = Color(ColorAlpha, alpha, red, green, blue);
 }
 
-void ScOrcusImportFillStyle::set_bg_color(
-    os::color_elem_t alpha, os::color_elem_t red, os::color_elem_t green, os::color_elem_t blue)
+void ScOrcusImportFillStyle::set_bg_color(os::color_elem_t alpha, os::color_elem_t red,
+                                          os::color_elem_t green, os::color_elem_t blue)
 {
     maCurrentFill.maBgColor = Color(ColorAlpha, alpha, red, green, blue);
 }
@@ -1908,13 +1932,12 @@ std::size_t ScOrcusImportFillStyle::commit()
     return mrFills.size() - 1;
 }
 
-ScOrcusImportBorderStyle::ScOrcusImportBorderStyle( std::vector<ScOrcusBorder>& rBorders ) :
-    mrBorders(rBorders)
+ScOrcusImportBorderStyle::ScOrcusImportBorderStyle(std::vector<ScOrcusBorder>& rBorders)
+    : mrBorders(rBorders)
 {
 }
 
-void ScOrcusImportBorderStyle::set_style(
-    os::border_direction_t dir, os::border_style_t style)
+void ScOrcusImportBorderStyle::set_style(os::border_direction_t dir, os::border_style_t style)
 {
     ScOrcusBorder::BorderLine& rBorderLine = maCurrentBorder.maBorders[dir];
 
@@ -1977,25 +2000,22 @@ void ScOrcusImportBorderStyle::set_style(
         case os::border_style_t::none:
             rBorderLine.mnWidth = oox::xls::API_LINE_NONE;
             break;
-        default:
-            ;
+        default:;
     }
 }
 
-void ScOrcusImportBorderStyle::set_color(
-    os::border_direction_t dir, os::color_elem_t alpha, os::color_elem_t red,
-    os::color_elem_t green, os::color_elem_t blue)
+void ScOrcusImportBorderStyle::set_color(os::border_direction_t dir, os::color_elem_t alpha,
+                                         os::color_elem_t red, os::color_elem_t green,
+                                         os::color_elem_t blue)
 {
     ScOrcusBorder::BorderLine& rBorderLine = maCurrentBorder.maBorders[dir];
     rBorderLine.maColor = Color(ColorAlpha, alpha, red, green, blue);
 }
 
-void ScOrcusImportBorderStyle::reset()
-{
-    maCurrentBorder = ScOrcusBorder();
-}
+void ScOrcusImportBorderStyle::reset() { maCurrentBorder = ScOrcusBorder(); }
 
-void ScOrcusImportBorderStyle::set_width(os::border_direction_t  dir, double val, orcus::length_unit_t unit)
+void ScOrcusImportBorderStyle::set_width(os::border_direction_t dir, double val,
+                                         orcus::length_unit_t unit)
 {
     ScOrcusBorder::BorderLine& rBorderLine = maCurrentBorder.maBorders[dir];
     rBorderLine.mnWidth = translateToInternal(val, unit);
@@ -2009,32 +2029,24 @@ std::size_t ScOrcusImportBorderStyle::commit()
     return mrBorders.size() - 1;
 }
 
-ScOrcusImportCellProtection::ScOrcusImportCellProtection( std::vector<ScOrcusProtection>& rProtections ) :
-    mrProtections(rProtections)
+ScOrcusImportCellProtection::ScOrcusImportCellProtection(
+    std::vector<ScOrcusProtection>& rProtections)
+    : mrProtections(rProtections)
 {
 }
 
-void ScOrcusImportCellProtection::reset()
-{
-    maCurrentProtection = ScOrcusProtection();
-}
+void ScOrcusImportCellProtection::reset() { maCurrentProtection = ScOrcusProtection(); }
 
-void ScOrcusImportCellProtection::set_hidden(bool b)
-{
-    maCurrentProtection.mbHidden = b;
-}
+void ScOrcusImportCellProtection::set_hidden(bool b) { maCurrentProtection.mbHidden = b; }
 
-void ScOrcusImportCellProtection::set_locked(bool b)
-{
-    maCurrentProtection.mbLocked = b;
-}
+void ScOrcusImportCellProtection::set_locked(bool b) { maCurrentProtection.mbLocked = b; }
 
-void ScOrcusImportCellProtection::set_print_content(bool b )
+void ScOrcusImportCellProtection::set_print_content(bool b)
 {
     maCurrentProtection.mbPrintContent = b;
 }
 
-void ScOrcusImportCellProtection::set_formula_hidden(bool b )
+void ScOrcusImportCellProtection::set_formula_hidden(bool b)
 {
     maCurrentProtection.mbFormulaHidden = b;
 }
@@ -2047,19 +2059,16 @@ std::size_t ScOrcusImportCellProtection::commit()
     return mrProtections.size() - 1;
 }
 
-ScOrcusImportNumberFormat::ScOrcusImportNumberFormat( ScOrcusFactory& rFactory, std::vector<ScOrcusNumberFormat>& rFormats ) :
-    mrFactory(rFactory), mrNumberFormats(rFormats)
+ScOrcusImportNumberFormat::ScOrcusImportNumberFormat(ScOrcusFactory& rFactory,
+                                                     std::vector<ScOrcusNumberFormat>& rFormats)
+    : mrFactory(rFactory)
+    , mrNumberFormats(rFormats)
 {
 }
 
-void ScOrcusImportNumberFormat::reset()
-{
-    maCurrentFormat = ScOrcusNumberFormat();
-}
+void ScOrcusImportNumberFormat::reset() { maCurrentFormat = ScOrcusNumberFormat(); }
 
-void ScOrcusImportNumberFormat::set_identifier(std::size_t /*id*/)
-{
-}
+void ScOrcusImportNumberFormat::set_identifier(std::size_t /*id*/) {}
 
 void ScOrcusImportNumberFormat::set_code(std::string_view s)
 {
@@ -2075,42 +2084,36 @@ std::size_t ScOrcusImportNumberFormat::commit()
     return mrNumberFormats.size() - 1;
 }
 
-ScOrucsImportCellStyle::ScOrucsImportCellStyle(
-    ScOrcusFactory& rFactory, ScOrcusStyles& rStyles, const std::vector<ScOrcusXf>& rXfs ) :
-    mrFactory(rFactory),
-    mrStyles(rStyles),
-    mrXfs(rXfs)
+ScOrucsImportCellStyle::ScOrucsImportCellStyle(ScOrcusFactory& rFactory, ScOrcusStyles& rStyles,
+                                               const std::vector<ScOrcusXf>& rXfs)
+    : mrFactory(rFactory)
+    , mrStyles(rStyles)
+    , mrXfs(rXfs)
 {
 }
 
-void ScOrucsImportCellStyle::reset()
-{
-    maCurrentStyle = ScOrcusCellStyle();
-}
+void ScOrucsImportCellStyle::reset() { maCurrentStyle = ScOrcusCellStyle(); }
 
 void ScOrucsImportCellStyle::set_name(std::string_view name)
 {
-    maCurrentStyle.maName = OUString(name.data(), name.size(), mrFactory.getGlobalSettings().getTextEncoding());
+    maCurrentStyle.maName
+        = OUString(name.data(), name.size(), mrFactory.getGlobalSettings().getTextEncoding());
 }
 
 void ScOrucsImportCellStyle::set_display_name(std::string_view name)
 {
-    maCurrentStyle.maDisplayName = OUString(name.data(), name.size(), mrFactory.getGlobalSettings().getTextEncoding());
+    maCurrentStyle.maDisplayName
+        = OUString(name.data(), name.size(), mrFactory.getGlobalSettings().getTextEncoding());
 }
 
-void ScOrucsImportCellStyle::set_xf(size_t index)
-{
-    maCurrentStyle.mnXFId = index;
-}
+void ScOrucsImportCellStyle::set_xf(size_t index) { maCurrentStyle.mnXFId = index; }
 
-void ScOrucsImportCellStyle::set_builtin(size_t index)
-{
-    maCurrentStyle.mnBuiltInId = index;
-}
+void ScOrucsImportCellStyle::set_builtin(size_t index) { maCurrentStyle.mnBuiltInId = index; }
 
 void ScOrucsImportCellStyle::set_parent_name(std::string_view name)
 {
-    maCurrentStyle.maParentName = OUString(name.data(), name.size(), mrFactory.getGlobalSettings().getTextEncoding());
+    maCurrentStyle.maParentName
+        = OUString(name.data(), name.size(), mrFactory.getGlobalSettings().getTextEncoding());
 }
 
 void ScOrucsImportCellStyle::commit()
@@ -2128,9 +2131,8 @@ void ScOrucsImportCellStyle::commit()
     ScStyleSheetPool* pPool = mrFactory.getDoc().getDoc().GetStyleSheetPool();
     SfxStyleSheetBase& rBase = pPool->Make(maCurrentStyle.maName, SfxStyleFamily::Para);
     // Need to convert the parent name to localized UI name, see tdf#139205.
-    rBase.SetParent(
-        ScStyleNameConversion::ProgrammaticToDisplayName(
-            maCurrentStyle.maParentName, SfxStyleFamily::Para));
+    rBase.SetParent(ScStyleNameConversion::ProgrammaticToDisplayName(maCurrentStyle.maParentName,
+                                                                     SfxStyleFamily::Para));
 
     SfxItemSet& rSet = rBase.GetItemSet();
     const ScOrcusXf& rXf = mrXfs[maCurrentStyle.mnXFId];
@@ -2139,46 +2141,25 @@ void ScOrucsImportCellStyle::commit()
     maCurrentStyle = ScOrcusCellStyle();
 }
 
-void ScOrcusImportXf::reset( std::vector<ScOrcusXf>& rXfs )
+void ScOrcusImportXf::reset(std::vector<ScOrcusXf>& rXfs)
 {
     mpXfs = &rXfs;
     maCurrentXf = ScOrcusXf();
 }
 
-void ScOrcusImportXf::set_font(std::size_t index)
-{
-    maCurrentXf.mnFontId = index;
-}
+void ScOrcusImportXf::set_font(std::size_t index) { maCurrentXf.mnFontId = index; }
 
-void ScOrcusImportXf::set_fill(std::size_t index)
-{
-    maCurrentXf.mnFillId = index;
-}
+void ScOrcusImportXf::set_fill(std::size_t index) { maCurrentXf.mnFillId = index; }
 
-void ScOrcusImportXf::set_border(std::size_t index)
-{
-    maCurrentXf.mnBorderId = index;
-}
+void ScOrcusImportXf::set_border(std::size_t index) { maCurrentXf.mnBorderId = index; }
 
-void ScOrcusImportXf::set_protection(std::size_t index)
-{
-    maCurrentXf.mnProtectionId = index;
-}
+void ScOrcusImportXf::set_protection(std::size_t index) { maCurrentXf.mnProtectionId = index; }
 
-void ScOrcusImportXf::set_number_format(std::size_t index)
-{
-    maCurrentXf.mnNumberFormatId = index;
-}
+void ScOrcusImportXf::set_number_format(std::size_t index) { maCurrentXf.mnNumberFormatId = index; }
 
-void ScOrcusImportXf::set_style_xf(std::size_t index)
-{
-    maCurrentXf.mnStyleXf = index;
-}
+void ScOrcusImportXf::set_style_xf(std::size_t index) { maCurrentXf.mnStyleXf = index; }
 
-void ScOrcusImportXf::set_apply_alignment(bool b)
-{
-    maCurrentXf.mbApplyAlignment = b;
-}
+void ScOrcusImportXf::set_apply_alignment(bool b) { maCurrentXf.mbApplyAlignment = b; }
 
 void ScOrcusImportXf::set_horizontal_alignment(os::hor_alignment_t align)
 {
@@ -2203,8 +2184,7 @@ void ScOrcusImportXf::set_horizontal_alignment(os::hor_alignment_t align)
         case os::hor_alignment_t::unknown:
             maCurrentXf.meHorAlignment = SvxCellHorJustify::Standard;
             break;
-        default:
-            ;
+        default:;
     }
     maCurrentXf.mbApplyAlignment = true;
 }
@@ -2232,21 +2212,14 @@ void ScOrcusImportXf::set_vertical_alignment(os::ver_alignment_t align)
         case os::ver_alignment_t::unknown:
             maCurrentXf.meVerAlignment = SvxCellVerJustify::Standard;
             break;
-        default:
-            ;
+        default:;
     }
     maCurrentXf.mbApplyAlignment = true;
 }
 
-void ScOrcusImportXf::set_wrap_text(bool b)
-{
-    maCurrentXf.mbWrapText = b;
-}
+void ScOrcusImportXf::set_wrap_text(bool b) { maCurrentXf.mbWrapText = b; }
 
-void ScOrcusImportXf::set_shrink_to_fit(bool b)
-{
-    maCurrentXf.mbShrinkToFit = b;
-}
+void ScOrcusImportXf::set_shrink_to_fit(bool b) { maCurrentXf.mbShrinkToFit = b; }
 
 std::size_t ScOrcusImportXf::commit()
 {
@@ -2254,15 +2227,14 @@ std::size_t ScOrcusImportXf::commit()
     return mpXfs->size() - 1;
 }
 
-
-ScOrcusStyles::ScOrcusStyles( ScOrcusFactory& rFactory, bool bSkipDefaultStyles ) :
-    mrFactory(rFactory),
-    maFontStyle(rFactory, maFonts),
-    maFillStyle(maFills),
-    maBorderStyle(maBorders),
-    maCellProtection(maProtections),
-    maNumberFormat(rFactory, maNumberFormats),
-    maCellStyle(rFactory, *this, maCellStyleXfs)
+ScOrcusStyles::ScOrcusStyles(ScOrcusFactory& rFactory, bool bSkipDefaultStyles)
+    : mrFactory(rFactory)
+    , maFontStyle(rFactory, maFonts)
+    , maFillStyle(maFills)
+    , maBorderStyle(maBorders)
+    , maCellProtection(maProtections)
+    , maNumberFormat(rFactory, maNumberFormats)
+    , maCellStyle(rFactory, *this, maCellStyleXfs)
 {
     ScDocument& rDoc = rFactory.getDoc().getDoc();
     if (!bSkipDefaultStyles && !rDoc.GetStyleSheetPool()->HasStandardStyles())
@@ -2281,7 +2253,7 @@ std::ostream& operator<<(std::ostream& rStrm, const Color& rColor)
 }
 */
 
-void ScOrcusStyles::applyXfToItemSet( SfxItemSet& rSet, const ScOrcusXf& rXf )
+void ScOrcusStyles::applyXfToItemSet(SfxItemSet& rSet, const ScOrcusXf& rXf)
 {
     size_t nFontId = rXf.mnFontId;
     if (nFontId >= maFonts.size())
@@ -2342,7 +2314,7 @@ void ScOrcusStyles::applyXfToItemSet( SfxItemSet& rSet, const ScOrcusXf& rXf )
         rSet.Put(ScShrinkToFitCell(*rXf.mbShrinkToFit));
 }
 
-void ScOrcusStyles::applyXfToItemSet( SfxItemSet& rSet, std::size_t xfId )
+void ScOrcusStyles::applyXfToItemSet(SfxItemSet& rSet, std::size_t xfId)
 {
     SAL_INFO("sc.orcus.style", "applyXfToitemSet: " << xfId);
     if (maCellXfs.size() <= xfId)
@@ -2411,68 +2383,16 @@ os::iface::import_cell_style* ScOrcusStyles::start_cell_style()
     return &maCellStyle;
 }
 
-void ScOrcusStyles::set_font_count(size_t /*n*/)
-{
-}
+void ScOrcusStyles::set_font_count(size_t /*n*/) {}
 
-void ScOrcusStyles::set_fill_count(size_t /*n*/)
-{
-}
+void ScOrcusStyles::set_fill_count(size_t /*n*/) {}
 
-void ScOrcusStyles::set_border_count(size_t /*n*/)
-{
-}
+void ScOrcusStyles::set_border_count(size_t /*n*/) {}
 
-void ScOrcusStyles::set_number_format_count(size_t /*n*/)
-{
-}
+void ScOrcusStyles::set_number_format_count(size_t /*n*/) {}
 
-void ScOrcusStyles::set_xf_count(os::xf_category_t /*cat*/, size_t /*n*/)
-{
-}
+void ScOrcusStyles::set_xf_count(os::xf_category_t /*cat*/, size_t /*n*/) {}
 
-void ScOrcusStyles::set_cell_style_count(size_t /*n*/)
-{
-}
-
-// auto filter import
-
-ScOrcusAutoFilter::ScOrcusAutoFilter( const ScOrcusGlobalSettings& rGS ) :
-    mrGlobalSettings(rGS)
-{
-}
-
-ScOrcusAutoFilter::~ScOrcusAutoFilter()
-{
-}
-
-void ScOrcusAutoFilter::set_range(const os::range_t& range)
-{
-    maRange.aStart.SetRow(range.first.row);
-    maRange.aStart.SetCol(range.first.column);
-    maRange.aEnd.SetRow(range.last.row);
-    maRange.aEnd.SetCol(range.last.column);
-}
-
-void ScOrcusAutoFilter::set_column(os::col_t col)
-{
-    SAL_INFO("sc.orcus.autofilter", "set_column: " << col);
-}
-
-void ScOrcusAutoFilter::append_column_match_value(std::string_view value)
-{
-    OUString aString(value.data(), value.size(), mrGlobalSettings.getTextEncoding());
-    SAL_INFO("sc.orcus.autofilter", "append_column_match_value: " << aString);
-}
-
-void ScOrcusAutoFilter::commit_column()
-{
-    SAL_INFO("sc.orcus.autofilter", "commit column");
-}
-
-void ScOrcusAutoFilter::commit()
-{
-    SAL_INFO("sc.orcus.autofilter", "commit");
-}
+void ScOrcusStyles::set_cell_style_count(size_t /*n*/) {}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

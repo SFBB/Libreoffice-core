@@ -75,17 +75,20 @@
 #include <txmsrt.hxx>
 #include <unotools/useroptions.hxx>
 #include <IDocumentContentOperations.hxx>
+#if ENABLE_YRS
+#include <IDocumentState.hxx>
+#include <txtfld.hxx>
+#endif
 #include <translatehelper.hxx>
+#include <txtrfmrk.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::container;
-using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::text;
 using namespace com::sun::star::style;
 using namespace com::sun::star::sdbc;
 using namespace ::com::sun::star;
-using namespace nsSwDocInfoSubType;
 
 // groups of fields
 enum
@@ -197,6 +200,7 @@ const TranslateId FMT_FF_ARY[] =
 const TranslateId FLD_STAT_ARY[] =
 {
     FLD_STAT_PAGE,
+    FLD_STAT_PAGE_RANGE,
     FLD_STAT_PARA,
     FLD_STAT_WORD,
     FLD_STAT_CHAR,
@@ -380,7 +384,7 @@ SwFieldMgr::~SwFieldMgr()
 }
 
 // organise RefMark by names
-bool  SwFieldMgr::CanInsertRefMark( std::u16string_view rStr )
+bool  SwFieldMgr::CanInsertRefMark( const SwMarkName& rStr )
 {
     bool bRet = false;
     SwWrtShell *pSh = m_pWrtShell ? m_pWrtShell : lcl_GetShell();
@@ -487,7 +491,7 @@ sal_uInt16 SwFieldMgr::GetGroup(SwFieldTypesEnum nTypeId, sal_uInt16 nSubType)
     if (nTypeId == SwFieldTypesEnum::SetInput)
         nTypeId = SwFieldTypesEnum::Set;
 
-    if (nTypeId == SwFieldTypesEnum::Input && (nSubType & INP_USR))
+    if (nTypeId == SwFieldTypesEnum::Input && (static_cast<SwInputFieldSubType>(nSubType) & SwInputFieldSubType::User))
         nTypeId = SwFieldTypesEnum::User;
 
     if (nTypeId == SwFieldTypesEnum::FixedDate)
@@ -603,20 +607,20 @@ void SwFieldMgr::GetSubTypes(SwFieldTypesEnum nTypeId, std::vector<OUString>& rT
                    (nTypeId == SwFieldTypesEnum::User && nWhich == SwFieldIds::User) ||
 
                    (nTypeId == SwFieldTypesEnum::Get && nWhich == SwFieldIds::SetExp &&
-                    !(static_cast<SwSetExpFieldType*>(pFieldType)->GetType() & nsSwGetSetExpType::GSE_SEQ)) ||
+                    !(static_cast<SwSetExpFieldType*>(pFieldType)->GetType() & SwGetSetExpType::Sequence)) ||
 
                    (nTypeId == SwFieldTypesEnum::Set && nWhich == SwFieldIds::SetExp &&
-                    !(static_cast<SwSetExpFieldType*>(pFieldType)->GetType() & nsSwGetSetExpType::GSE_SEQ)) ||
+                    !(static_cast<SwSetExpFieldType*>(pFieldType)->GetType() & SwGetSetExpType::Sequence)) ||
 
                    (nTypeId == SwFieldTypesEnum::Sequence && nWhich == SwFieldIds::SetExp  &&
-                   (static_cast<SwSetExpFieldType*>(pFieldType)->GetType() & nsSwGetSetExpType::GSE_SEQ)) ||
+                   (static_cast<SwSetExpFieldType*>(pFieldType)->GetType() & SwGetSetExpType::Sequence)) ||
 
                    ((nTypeId == SwFieldTypesEnum::Input || nTypeId == SwFieldTypesEnum::Formel) &&
                      (nWhich == SwFieldIds::User ||
                       (nWhich == SwFieldIds::SetExp &&
-                      !(static_cast<SwSetExpFieldType*>(pFieldType)->GetType() & nsSwGetSetExpType::GSE_SEQ))) ) )
+                      !(static_cast<SwSetExpFieldType*>(pFieldType)->GetType() & SwGetSetExpType::Sequence))) ) )
                 {
-                    rToFill.push_back(pFieldType->GetName());
+                    rToFill.push_back(pFieldType->GetName().toString());
                 }
             }
             break;
@@ -634,7 +638,7 @@ void SwFieldMgr::GetSubTypes(SwFieldTypesEnum nTypeId, std::vector<OUString>& rT
             {
                 sal_uInt16 nCount;
                 if (nTypeId == SwFieldTypesEnum::DocumentInfo)
-                    nCount = DI_SUBTYPE_END - DI_SUBTYPE_BEGIN;
+                    nCount = static_cast<sal_uInt16>(SwDocInfoSubType::SubtypeEnd) - static_cast<sal_uInt16>(SwDocInfoSubType::SubtypeBegin);
                 else
                     nCount = aSwFields[nPos].nSubTypeLength;
 
@@ -643,7 +647,7 @@ void SwFieldMgr::GetSubTypes(SwFieldTypesEnum nTypeId, std::vector<OUString>& rT
                     OUString sNew;
                     if (nTypeId == SwFieldTypesEnum::DocumentInfo)
                     {
-                        if ( i == DI_CUSTOM )
+                        if ( i == static_cast<sal_uInt16>(SwDocInfoSubType::Custom) )
                             sNew = SwResId(STR_CUSTOM_FIELD);
                         else
                             sNew = SwViewShell::GetShellRes()->aDocInfoLst[i];
@@ -703,6 +707,12 @@ sal_uInt16 SwFieldMgr::GetFormatCount(SwFieldTypesEnum nTypeId, bool bHtmlMode) 
 }
 
 // determine FormatString to a type
+OUString SwFieldMgr::GetFormatStr(const SwField& rField) const
+{
+    return GetFormatStr(rField.GetTypeId(), rField.GetUntypedFormat());
+}
+
+// determine FormatString to a type
 OUString SwFieldMgr::GetFormatStr(SwFieldTypesEnum nTypeId, sal_uInt32 nFormatId) const
 {
     assert(nTypeId < SwFieldTypesEnum::LAST && "forbidden TypeId");
@@ -716,7 +726,7 @@ OUString SwFieldMgr::GetFormatStr(SwFieldTypesEnum nTypeId, sal_uInt32 nFormatId
         return OUString();
 
     if (SwFieldTypesEnum::Author == nTypeId || SwFieldTypesEnum::Filename == nTypeId)
-        nFormatId &= ~static_cast<sal_uInt32>(FF_FIXED); // mask out Fixed-Flag
+        nFormatId &= ~static_cast<sal_uInt32>(SwFileNameFormat::Fixed); // mask out Fixed-Flag
 
     if (nFormatId < aSwFields[nPos].nFormatLength)
         return SwResId(pStart[nFormatId]);
@@ -766,11 +776,11 @@ sal_uInt16 SwFieldMgr::GetFormatId(SwFieldTypesEnum nTypeId, sal_uInt32 nFormatI
         {
             TranslateId sId = aSwFields[GetPos(nTypeId)].pFormatResIds[nFormatId];
             if (sId == FMT_REG_AUTHOR)
-                nId = DI_SUB_AUTHOR;
+                nId = static_cast<sal_uInt16>(SwDocInfoSubType::SubAuthor);
             else if (sId == FMT_REG_TIME)
-                nId = DI_SUB_TIME;
+                nId = static_cast<sal_uInt16>(SwDocInfoSubType::SubTime);
             else if (sId == FMT_REG_DATE)
-                nId = DI_SUB_DATE;
+                nId = static_cast<sal_uInt16>(SwDocInfoSubType::SubDate);
             break;
         }
         case SwFieldTypesEnum::PageNumber:
@@ -887,7 +897,7 @@ bool SwFieldMgr::InsertField(
     bool bTable = false;
     bool bPageVar = false;
     sal_uInt32 nFormatId = rData.m_nFormatId;
-    sal_uInt16 nSubType = rData.m_nSubType;
+    SwInputFieldSubType nInputSubType = SwInputFieldSubType::None; // only used for SwInputField
     sal_Unicode cSeparator = rData.m_cSeparator;
     SwWrtShell* pCurShell = rData.m_pSh;
     if(!pCurShell)
@@ -902,14 +912,24 @@ bool SwFieldMgr::InsertField(
         {
             SvtUserOptions aUserOpt;
             SwPostItFieldType* pType = static_cast<SwPostItFieldType*>(pCurShell->GetFieldType(0, SwFieldIds::Postit));
-            pField.reset(
+            auto const pPostItField(
                 new SwPostItField(
                     pType,
                     rData.m_sPar1, // author
                     rData.m_sPar2, // content
                     aUserOpt.GetID(), // author's initials
-                    OUString(), // name
+                    SwMarkName(), // name
                     DateTime(DateTime::SYSTEM) ));
+            if (rData.m_oParentId)
+            {
+                pPostItField->SetParentId(std::get<0>(*rData.m_oParentId));
+                pPostItField->SetParentPostItId(std::get<1>(*rData.m_oParentId));
+                pPostItField->SetParentName(std::get<2>(*rData.m_oParentId));
+            }
+#if ENABLE_YRS
+            pPostItField->SetYrsCommentId(pCurShell->GetDoc()->getIDocumentState().YrsGenNewCommentId());
+#endif
+            pField.reset(pPostItField);
         }
         break;
         case SwFieldTypesEnum::Script:
@@ -945,8 +965,10 @@ bool SwFieldMgr::InsertField(
     case SwFieldTypesEnum::Date:
     case SwFieldTypesEnum::Time:
         {
-            sal_uInt16 nSub = static_cast< sal_uInt16 >(rData.m_nTypeId == SwFieldTypesEnum::Date ? DATEFLD : TIMEFLD);
-            nSub |= nSubType == DATE_VAR ? 0 : FIXEDFLD;
+            sal_uInt16 nSubType = rData.m_nSubType;
+            SwDateTimeSubType nSub = (rData.m_nTypeId == SwFieldTypesEnum::Date ? SwDateTimeSubType::Date : SwDateTimeSubType::Time);
+            if (nSubType != DATE_VAR)
+                nSub |= SwDateTimeSubType::Fixed;
 
             SwDateTimeFieldType* pTyp =
                 static_cast<SwDateTimeFieldType*>( pCurShell->GetFieldType(0, SwFieldIds::DateTime) );
@@ -959,7 +981,7 @@ bool SwFieldMgr::InsertField(
         {
             SwFileNameFieldType* pTyp =
                 static_cast<SwFileNameFieldType*>( pCurShell->GetFieldType(0, SwFieldIds::Filename) );
-            pField.reset(new SwFileNameField(pTyp, nFormatId));
+            pField.reset(new SwFileNameField(pTyp, static_cast<SwFileNameFormat>(nFormatId)));
             break;
         }
 
@@ -967,7 +989,7 @@ bool SwFieldMgr::InsertField(
         {
             SwTemplNameFieldType* pTyp =
                 static_cast<SwTemplNameFieldType*>( pCurShell->GetFieldType(0, SwFieldIds::TemplateName) );
-            pField.reset(new SwTemplNameField(pTyp, nFormatId));
+            pField.reset(new SwTemplNameField(pTyp, static_cast<SwFileNameFormat>(nFormatId)));
             break;
         }
 
@@ -976,7 +998,7 @@ bool SwFieldMgr::InsertField(
             sal_uInt16 nByte = o3tl::narrowing<sal_uInt16>(rData.m_sPar2.toInt32());
             SwChapterFieldType* pTyp =
                 static_cast<SwChapterFieldType*>( pCurShell->GetFieldType(0, SwFieldIds::Chapter) );
-            pField.reset(new SwChapterField(pTyp, nFormatId));
+            pField.reset(new SwChapterField(pTyp, static_cast<SwChapterFormat>(nFormatId)));
             nByte = std::max(sal_uInt16(1), nByte);
             nByte = std::min(nByte, sal_uInt16(MAXLEVEL));
             nByte -= 1;
@@ -988,6 +1010,7 @@ bool SwFieldMgr::InsertField(
     case SwFieldTypesEnum::PreviousPage:
     case SwFieldTypesEnum::PageNumber:
         {
+            SwPageNumSubType nSubType = static_cast<SwPageNumSubType>(rData.m_nSubType);
             short nOff = static_cast<short>(rData.m_sPar2.toInt32());
 
             if(rData.m_nTypeId == SwFieldTypesEnum::NextPage)
@@ -996,7 +1019,7 @@ bool SwFieldMgr::InsertField(
                     nOff = 1;
                 else
                     nOff += 1;
-                nSubType = PG_NEXT;
+                nSubType = SwPageNumSubType::Next;
             }
             else if(rData.m_nTypeId == SwFieldTypesEnum::PreviousPage)
             {
@@ -1004,26 +1027,27 @@ bool SwFieldMgr::InsertField(
                     nOff = -1;
                 else
                     nOff -= 1;
-                nSubType =  PG_PREV;
+                nSubType =  SwPageNumSubType::Previous;
             }
             else
-                nSubType = PG_RANDOM;
+                nSubType = SwPageNumSubType::Random;
 
             SwPageNumberFieldType* pTyp =
                 static_cast<SwPageNumberFieldType*>( pCurShell->GetFieldType(0, SwFieldIds::PageNumber) );
-            pField.reset(new SwPageNumberField(pTyp, nSubType, nFormatId, nOff));
+            pField.reset(new SwPageNumberField(pTyp, nSubType, static_cast<SvxNumType>(nFormatId), nOff));
 
             if( SVX_NUM_CHAR_SPECIAL == nFormatId &&
-                ( PG_PREV == nSubType || PG_NEXT == nSubType ) )
+                ( SwPageNumSubType::Previous == nSubType || SwPageNumSubType::Next == nSubType ) )
                 static_cast<SwPageNumberField*>(pField.get())->SetUserString( rData.m_sPar2 );
             break;
         }
 
     case SwFieldTypesEnum::DocumentStatistics:
         {
+            sal_uInt16 nSubType = rData.m_nSubType;
             SwDocStatFieldType* pTyp =
                 static_cast<SwDocStatFieldType*>( pCurShell->GetFieldType(0, SwFieldIds::DocStat) );
-            pField.reset(new SwDocStatField(pTyp, nSubType, nFormatId));
+            pField.reset(new SwDocStatField(pTyp, static_cast<SwDocStatSubType>(nSubType), static_cast<SvxNumType>(nFormatId)));
             break;
         }
 
@@ -1031,7 +1055,7 @@ bool SwFieldMgr::InsertField(
         {
             SwAuthorFieldType* pTyp =
                 static_cast<SwAuthorFieldType*>( pCurShell->GetFieldType(0, SwFieldIds::Author) );
-            pField.reset(new SwAuthorField(pTyp, nFormatId));
+            pField.reset(new SwAuthorField(pTyp, static_cast<SwAuthorFormat>(nFormatId)));
             break;
         }
 
@@ -1056,7 +1080,7 @@ bool SwFieldMgr::InsertField(
 
     case SwFieldTypesEnum::SetRef:
         {
-            if( !rData.m_sPar1.isEmpty() && CanInsertRefMark( rData.m_sPar1 ) )
+            if( !rData.m_sPar1.isEmpty() && CanInsertRefMark( SwMarkName(rData.m_sPar1) ) )
             {
                 const OUString& rRefmarkText = rData.m_sPar2;
                 SwPaM* pCursorPos = pCurShell->GetCursor();
@@ -1088,7 +1112,15 @@ bool SwFieldMgr::InsertField(
                     }
                 }
 
-                pCurShell->SetAttrItem( SwFormatRefMark( rData.m_sPar1 ) );
+                pCurShell->SetAttrItem( SwFormatRefMark( SwMarkName(rData.m_sPar1) ) );
+                if (rData.m_bNeverExpand)
+                {
+                    SwTextRefMark* xTextRefMark = const_cast<SwTextRefMark*>(
+                        pCurShell->GetRefMark(SwMarkName(rData.m_sPar1))->GetTextRefMark());
+                    xTextRefMark->SetDontExpand(true);
+                    xTextRefMark->SetLockExpandFlag(true);
+                    xTextRefMark->SetDontExpandStartAttr(true);
+                }
 
                 if (!bHadMark && !rRefmarkText.isEmpty())
                 {
@@ -1102,13 +1134,14 @@ bool SwFieldMgr::InsertField(
 
     case SwFieldTypesEnum::GetRef:
         {
+            ReferencesSubtype nSubType = static_cast<ReferencesSubtype>(rData.m_nSubType);
             SwGetRefFieldType* pTyp =
                 static_cast<SwGetRefFieldType*>( pCurShell->GetFieldType(0, SwFieldIds::GetRef) );
 
             sal_uInt16 nSeqNo = 0;
             sal_uInt16 nFlags = 0;
 
-            if (nSubType == REF_STYLE) nFlags = o3tl::narrowing<sal_uInt16>(rData.m_sPar2.toInt32());
+            if (nSubType == ReferencesSubtype::Style) nFlags = o3tl::narrowing<sal_uInt16>(rData.m_sPar2.toInt32());
             else nSeqNo = o3tl::narrowing<sal_uInt16>(rData.m_sPar2.toInt32());
 
             OUString sReferenceLanguage;
@@ -1126,7 +1159,7 @@ bool SwFieldMgr::InsertField(
                 nFormatId %= SAL_N_ELEMENTS(FMT_REF_ARY);
             }
 
-            pField.reset(new SwGetRefField(pTyp, rData.m_sPar1, sReferenceLanguage, nSubType, nSeqNo, nFlags, nFormatId));
+            pField.reset(new SwGetRefField(pTyp, SwMarkName(rData.m_sPar1), sReferenceLanguage, nSubType, nSeqNo, nFlags, static_cast<RefFieldFormat>(nFormatId)));
             bExp = true;
             break;
         }
@@ -1142,7 +1175,7 @@ bool SwFieldMgr::InsertField(
                 sCmd = sCmd.replaceFirst(" ", OUStringChar(sfx2::cTokenSeparator), &nIndex);
             }
 
-            SwDDEFieldType aType( rData.m_sPar1, sCmd, static_cast<SfxLinkUpdateMode>(nFormatId) );
+            SwDDEFieldType aType( UIName(rData.m_sPar1), sCmd, static_cast<SfxLinkUpdateMode>(nFormatId) );
             SwDDEFieldType* pTyp = static_cast<SwDDEFieldType*>( pCurShell->InsertFieldType( aType ) );
             pField.reset(new SwDDEField( pTyp ));
             break;
@@ -1169,23 +1202,25 @@ bool SwFieldMgr::InsertField(
             SwJumpEditFieldType* pTyp =
                 static_cast<SwJumpEditFieldType*>(pCurShell->GetFieldType(0, SwFieldIds::JumpEdit));
 
-            pField.reset(new SwJumpEditField(pTyp, nFormatId, rData.m_sPar1, rData.m_sPar2));
+            pField.reset(new SwJumpEditField(pTyp, static_cast<SwJumpEditFormat>(nFormatId), rData.m_sPar1, rData.m_sPar2));
             break;
         }
 
     case SwFieldTypesEnum::DocumentInfo:
         {
+            sal_uInt16 nSubType = rData.m_nSubType;
             SwDocInfoFieldType* pTyp = static_cast<SwDocInfoFieldType*>( pCurShell->GetFieldType(
                 0, SwFieldIds::DocInfo ) );
-            pField.reset(new SwDocInfoField(pTyp, nSubType, rData.m_sPar1, nFormatId));
+            pField.reset(new SwDocInfoField(pTyp, static_cast<SwDocInfoSubType>(nSubType), rData.m_sPar1, nFormatId));
             break;
         }
 
     case SwFieldTypesEnum::ExtendedUser:
         {
+            SwExtUserSubType nSubType = static_cast<SwExtUserSubType>(rData.m_nSubType);
             SwExtUserFieldType* pTyp = static_cast<SwExtUserFieldType*>( pCurShell->GetFieldType(
                 0, SwFieldIds::ExtUser) );
-            pField.reset(new SwExtUserField(pTyp, nSubType, nFormatId));
+            pField.reset(new SwExtUserField(pTyp, nSubType, static_cast<SwAuthorFormat>(nFormatId)));
             break;
         }
 
@@ -1194,6 +1229,7 @@ bool SwFieldMgr::InsertField(
 #if HAVE_FEATURE_DBCONNECTIVITY && !ENABLE_FUZZERS
             SwDBData aDBData;
             OUString sPar1;
+            SwDBFieldSubType nSubType = static_cast<SwDBFieldSubType>(rData.m_nSubType);
 
             if (rData.m_sPar1.indexOf(DB_DELIM)<0)
             {
@@ -1214,10 +1250,9 @@ bool SwFieldMgr::InsertField(
 
             SwDBFieldType* pTyp = static_cast<SwDBFieldType*>(pCurShell->InsertFieldType(
                 SwDBFieldType(pCurShell->GetDoc(), sPar1, aDBData) ) );
-            pField.reset(new SwDBField(pTyp));
-            pField->SetSubType(nSubType);
+            pField.reset(new SwDBField(pTyp, 0, nSubType));
 
-            if( !(nSubType & nsSwExtendedSubType::SUB_OWN_FMT) ) // determine database format
+            if( !(nSubType & SwDBFieldSubType::OwnFormat) ) // determine database format
             {
                 Reference< XDataSource> xSource;
                 rData.m_aDBDataSource >>= xSource;
@@ -1235,7 +1270,7 @@ bool SwFieldMgr::InsertField(
                     aDBData.sDataSource, aDBData.sCommand, sPar1,
                     pCurShell->GetNumberFormatter(), GetCurrLanguage() );
             }
-            pField->ChangeFormat( nFormatId );
+            static_cast<SwDBField*>(pField.get())->SetFormat( nFormatId );
 
             bExp = true;
 #endif
@@ -1322,6 +1357,7 @@ bool SwFieldMgr::InsertField(
 
     case SwFieldTypesEnum::User:
         {
+            SwUserType nSubType = static_cast<SwUserType>(rData.m_nSubType);
             SwUserFieldType* pTyp =
                 static_cast<SwUserFieldType*>( pCurShell->GetFieldType(SwFieldIds::User, rData.m_sPar1) );
 
@@ -1329,20 +1365,19 @@ bool SwFieldMgr::InsertField(
             if(!pTyp)
             {
                 pTyp = static_cast<SwUserFieldType*>( pCurShell->InsertFieldType(
-                    SwUserFieldType(pCurShell->GetDoc(), rData.m_sPar1)) );
+                    SwUserFieldType(pCurShell->GetDoc(), UIName(rData.m_sPar1))) );
             }
             if (pTyp->GetContent(nFormatId) != rData.m_sPar2)
                 pTyp->SetContent(rData.m_sPar2, nFormatId);
-            pField.reset(new SwUserField(pTyp, 0, nFormatId));
-            if (pField->GetSubType() != nSubType)
-                pField->SetSubType(nSubType);
+            pField.reset(new SwUserField(pTyp, nSubType, nFormatId));
             bTable = true;
             break;
         }
 
     case SwFieldTypesEnum::Input:
         {
-            if ((nSubType & 0x00ff) == INP_VAR)
+            nInputSubType = static_cast<SwInputFieldSubType>(rData.m_nSubType);
+            if ((nInputSubType & SwInputFieldSubType::LowerMask) == SwInputFieldSubType::Var)
             {
                 SwSetExpFieldType* pTyp = static_cast<SwSetExpFieldType*>(
                     pCurShell->GetFieldType(SwFieldIds::SetExp, rData.m_sPar1) );
@@ -1354,9 +1389,11 @@ bool SwFieldMgr::InsertField(
                         new SwSetExpField(pTyp, OUString(), nFormatId));
 
                     // Don't change type of SwSetExpFieldType:
-                    sal_uInt16 nOldSubType = pExpField->GetSubType();
-                    pExpField->SetSubType(nOldSubType | (nSubType & 0xff00));
-
+                    if (nInputSubType & SwInputFieldSubType::Invisible)
+                    {
+                        SwGetSetExpType nOldSubType = pExpField->GetSubType();
+                        pExpField->SetSubType(nOldSubType | SwGetSetExpType::Invisible);
+                    }
                     pExpField->SetPromptText(rData.m_sPar2);
                     pExpField->SetInputFlag(true) ;
                     bExp = true;
@@ -1371,18 +1408,19 @@ bool SwFieldMgr::InsertField(
                     static_cast<SwInputFieldType*>( pCurShell->GetFieldType(0, SwFieldIds::Input) );
 
                 pField.reset(
-                    new SwInputField( pTyp, rData.m_sPar1, rData.m_sPar2, nSubType|nsSwExtendedSubType::SUB_INVISIBLE, nFormatId));
+                    new SwInputField( pTyp, rData.m_sPar1, rData.m_sPar2, nInputSubType|SwInputFieldSubType::Invisible, nFormatId));
             }
             break;
         }
 
     case SwFieldTypesEnum::Set:
         {
+            SwGetSetExpType nSubType = static_cast<SwGetSetExpType>(rData.m_nSubType);
             if (rData.m_sPar2.isEmpty())   // empty variables are not allowed
                 return false;
 
             SwSetExpFieldType* pTyp = static_cast<SwSetExpFieldType*>( pCurShell->InsertFieldType(
-                SwSetExpFieldType(pCurShell->GetDoc(), rData.m_sPar1) ) );
+                SwSetExpFieldType(pCurShell->GetDoc(), UIName(rData.m_sPar1)) ) );
 
             std::unique_ptr<SwSetExpField> pExpField(new SwSetExpField( pTyp, rData.m_sPar2, nFormatId));
             pExpField->SetSubType(nSubType);
@@ -1394,8 +1432,9 @@ bool SwFieldMgr::InsertField(
 
     case SwFieldTypesEnum::Sequence:
         {
+            sal_uInt16 nSubType = rData.m_nSubType;
             SwSetExpFieldType* pTyp = static_cast<SwSetExpFieldType*>( pCurShell->InsertFieldType(
-                SwSetExpFieldType(pCurShell->GetDoc(), rData.m_sPar1, nsSwGetSetExpType::GSE_SEQ)));
+                SwSetExpFieldType(pCurShell->GetDoc(), UIName(rData.m_sPar1), SwGetSetExpType::Sequence)));
 
             sal_uInt8 nLevel = static_cast< sal_uInt8 >(nSubType & 0xff);
 
@@ -1411,6 +1450,7 @@ bool SwFieldMgr::InsertField(
 
     case SwFieldTypesEnum::Get:
         {
+            SwGetSetExpType nSubType = static_cast<SwGetSetExpType>(rData.m_nSubType);
             // is there a corresponding SetField
             SwSetExpFieldType* pSetTyp = static_cast<SwSetExpFieldType*>(
                 pCurShell->GetFieldType(SwFieldIds::SetExp, rData.m_sPar1));
@@ -1419,8 +1459,7 @@ bool SwFieldMgr::InsertField(
             {
                 SwGetExpFieldType* pTyp = static_cast<SwGetExpFieldType*>( pCurShell->GetFieldType(
                     0, SwFieldIds::GetExp) );
-                pField.reset( new SwGetExpField(pTyp, rData.m_sPar1, pSetTyp->GetType(), nFormatId) );
-                pField->SetSubType(nSubType | pSetTyp->GetType());
+                pField.reset( new SwGetExpField(pTyp, rData.m_sPar1, nSubType | pSetTyp->GetType(), nFormatId) );
                 bExp = true;
             }
             else
@@ -1445,7 +1484,7 @@ bool SwFieldMgr::InsertField(
                                 { &aFormat });
                 }
 
-                SfxItemSetFixed<RES_BOXATR_FORMULA, RES_BOXATR_FORMULA> aBoxSet( pCurShell->GetAttrPool() );
+                SfxItemSet aBoxSet(SfxItemSet::makeFixedSfxItemSet<RES_BOXATR_FORMULA, RES_BOXATR_FORMULA>(pCurShell->GetAttrPool()));
 
                 OUString sFormula(comphelper::string::stripStart(rData.m_sPar2, ' '));
                 if ( sFormula.startsWith("=") )
@@ -1465,8 +1504,7 @@ bool SwFieldMgr::InsertField(
             {
                 SwGetExpFieldType* pTyp = static_cast<SwGetExpFieldType*>(
                     pCurShell->GetFieldType(0, SwFieldIds::GetExp) );
-                pField.reset( new SwGetExpField(pTyp, rData.m_sPar2, nsSwGetSetExpType::GSE_FORMULA, nFormatId) );
-                pField->SetSubType(nSubType);
+                pField.reset( new SwGetExpField(pTyp, rData.m_sPar2, static_cast<SwGetSetExpType>(rData.m_nSubType), nFormatId) );
                 bExp = true;
             }
             break;
@@ -1474,13 +1512,13 @@ bool SwFieldMgr::InsertField(
         case SwFieldTypesEnum::SetRefPage:
             pField.reset( new SwRefPageSetField( static_cast<SwRefPageSetFieldType*>(
                                 pCurShell->GetFieldType( 0, SwFieldIds::RefPageSet ) ),
-                                static_cast<short>(rData.m_sPar2.toInt32()), 0 != nSubType  ) );
+                                static_cast<short>(rData.m_sPar2.toInt32()), 0 != rData.m_nSubType  ) );
             bPageVar = true;
             break;
 
         case SwFieldTypesEnum::GetRefPage:
             pField.reset( new SwRefPageGetField( static_cast<SwRefPageGetFieldType*>(
-                            pCurShell->GetFieldType( 0, SwFieldIds::RefPageGet ) ), nFormatId ) );
+                            pCurShell->GetFieldType( 0, SwFieldIds::RefPageGet ) ), static_cast<SvxNumType>(nFormatId) ) );
             bPageVar = true;
             break;
         case SwFieldTypesEnum::Dropdown :
@@ -1517,7 +1555,8 @@ bool SwFieldMgr::InsertField(
     // insert
     pCurShell->StartAllAction();
 
-    bool const isSuccess = pCurShell->InsertField2(*pField, rData.m_oAnnotationRange ? &*rData.m_oAnnotationRange : nullptr);
+    ::std::optional<SwPosition> oAnchorStart;
+    bool const isSuccess = pCurShell->InsertField2(*pField, rData.m_oAnnotationRange ? &*rData.m_oAnnotationRange : nullptr, &oAnchorStart);
 
     if (isSuccess)
     {
@@ -1527,7 +1566,7 @@ bool SwFieldMgr::InsertField(
 
             // start dialog, not before the field is inserted tdf#99529
             pCurShell->Left(SwCursorSkipMode::Chars, false,
-                (INP_VAR == (nSubType & 0xff) || pCurShell->GetViewOptions()->IsFieldName()) ? 1 : 2,
+                (SwInputFieldSubType::Var == (nInputSubType & SwInputFieldSubType::LowerMask) || pCurShell->GetViewOptions()->IsFieldName()) ? 1 : 2,
                 false);
             pCurShell->StartInputFieldDlg(pField.get(), false, true, rData.m_pParent);
 
@@ -1559,6 +1598,20 @@ bool SwFieldMgr::InsertField(
     pField.reset();
 
     pCurShell->EndAllAction();
+
+#if ENABLE_YRS
+    if (isSuccess && rData.m_nTypeId == SwFieldTypesEnum::Postit)
+    {
+        // now the SwAnnotationWin are created
+        // shell cursor is behind field
+        SwPosition const pos{pCurShell->GetCursor()->GetPoint()->nContent, -1};
+        pCurShell->GetDoc()->getIDocumentState().YrsAddComment(
+            pos, oAnchorStart,
+            static_cast<SwPostItField const&>(*SwCursorShell::GetTextFieldAtPos(&pos, ::sw::GetTextAttrMode::Default)->GetFormatField().GetField()),
+            true);
+    }
+#endif
+
     return isSuccess;
 }
 
@@ -1659,12 +1712,12 @@ void SwFieldMgr::UpdateCurField(sal_uInt32 nFormat,
         case SwFieldTypesEnum::GetRef:
             {
                 bSetPar2 = false;
-                sal_Int16 nSubType = o3tl::narrowing<sal_uInt16>(rPar2.toInt32());
+                ReferencesSubtype nSubType = static_cast<ReferencesSubtype>(rPar2.toInt32());
                 static_cast<SwGetRefField*>(pTmpField.get())->SetSubType( nSubType );
                 const sal_Int32 nPos = rPar2.indexOf( '|' );
                 if( nPos>=0 )
                     switch (nSubType) {
-                        case REF_STYLE:
+                        case ReferencesSubtype::Style:
                             static_cast<SwGetRefField*>(pTmpField.get())->SetFlags( o3tl::narrowing<sal_uInt16>(o3tl::toInt32(rPar2.subView( nPos + 1 ))));
                             break;
                         default:
@@ -1742,7 +1795,7 @@ void SwFieldMgr::UpdateCurField(sal_uInt32 nFormat,
 
     // set format
     // setup format before SetPar2 because of NumberFormatter!
-    pTmpField->ChangeFormat(nFormat);
+    pTmpField->SetUntypedFormat(nFormat);
 
     if( bSetPar1 )
         pTmpField->SetPar1( rPar1 );
@@ -1875,7 +1928,7 @@ void SwFieldMgr::SetMacroPath(const OUString& rPath)
     // try to set sMacroName member variable by parsing the macro path
     // using the new URI parsing services
 
-    Reference< XComponentContext > xContext =
+    const Reference< XComponentContext >& xContext =
         ::comphelper::getProcessComponentContext();
 
     Reference< uri::XUriReferenceFactory >
@@ -1922,7 +1975,7 @@ Reference<XNumberingTypeInfo> const & SwFieldMgr::GetNumberingInfo() const
 {
     if(!m_xNumberingInfo.is())
     {
-        Reference<XComponentContext>         xContext( ::comphelper::getProcessComponentContext() );
+        const Reference<XComponentContext>&         xContext( ::comphelper::getProcessComponentContext() );
         Reference<XDefaultNumberingProvider> xDefNum = text::DefaultNumberingProvider::create(xContext);
         const_cast<SwFieldMgr*>(this)->m_xNumberingInfo.set(xDefNum, UNO_QUERY);
     }

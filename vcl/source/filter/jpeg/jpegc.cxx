@@ -37,7 +37,7 @@ extern "C" {
 #include "JpegReader.hxx"
 #include "JpegWriter.hxx"
 #include <memory>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/graphicfilter.hxx>
 
 #ifdef _MSC_VER
@@ -51,6 +51,12 @@ struct ErrorManagerStruct
 {
     jpeg_error_mgr pub;
     jmp_buf setjmp_buffer;
+
+    ErrorManagerStruct()
+    {
+        pub = {};
+        memset(&setjmp_buffer, 0, sizeof(setjmp_buffer));
+    }
 };
 
 }
@@ -91,7 +97,7 @@ static void emitMessage (j_common_ptr cinfo, int msg_level)
         // limit (initially using ImageMagick's current limit of 1000), then
         // bail.
         constexpr int WarningLimit = 1000;
-        static bool bFuzzing = utl::ConfigManager::IsFuzzing();
+        static bool bFuzzing = comphelper::IsFuzzing();
         // ofz#50452 due to Timeouts, just abandon fuzzing on any
         // JWRN_NOT_SEQUENTIAL
         if (bFuzzing && cinfo->err->msg_code == JWRN_NOT_SEQUENTIAL)
@@ -178,7 +184,7 @@ void progress_monitor(j_common_ptr cinfo)
 
 }
 
-static void ReadJPEG(JpegStuff& rContext, JPEGReader* pJPEGReader, void* pInputStream, tools::Long* pLines,
+static void ReadJPEG(JpegStuff& rContext, JPEGReader* pJPEGReader, void* pInputStream,
               GraphicFilterImportFlags nImportFlags,
               BitmapScopedWriteAccess* ppAccess)
 {
@@ -211,7 +217,7 @@ static void ReadJPEG(JpegStuff& rContext, JPEGReader* pJPEGReader, void* pInputS
     tools::Long nWidth = rContext.cinfo.output_width;
     tools::Long nHeight = rContext.cinfo.output_height;
 
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
     {
         tools::Long nResult = 0;
         if (o3tl::checked_multiply(nWidth, nHeight, nResult) || nResult > 4000000)
@@ -305,9 +311,9 @@ static void ReadJPEG(JpegStuff& rContext, JPEGReader* pJPEGReader, void* pInputS
             }
 
             // tdf#138950 allow up to one short read (no_data_available_failures <= 1) to not trigger cancelling import
-            for (*pLines = 0; *pLines < nHeight && source->no_data_available_failures <= 1; (*pLines)++)
+            for (tools::Long nLine = 0; nLine < nHeight && source->no_data_available_failures <= 1; nLine++)
             {
-                size_t yIndex = *pLines;
+                size_t yIndex = nLine;
 
                 sal_uInt8* p = (rContext.cinfo.out_color_space == JCS_CMYK) ? rContext.pCYMKBuffer.data() : rContext.pScanLineBuffer.data();
                 jpeg_read_scanlines(&rContext.cinfo, reinterpret_cast<JSAMPARRAY>(&p), 1);
@@ -356,12 +362,12 @@ static void ReadJPEG(JpegStuff& rContext, JPEGReader* pJPEGReader, void* pInputS
     }
 }
 
-void ReadJPEG( JPEGReader* pJPEGReader, void* pInputStream, tools::Long* pLines,
+void ReadJPEG( JPEGReader* pJPEGReader, void* pInputStream,
                GraphicFilterImportFlags nImportFlags,
                BitmapScopedWriteAccess* ppAccess )
 {
     JpegStuff aContext;
-    ReadJPEG(aContext, pJPEGReader, pInputStream, pLines, nImportFlags, ppAccess);
+    ReadJPEG(aContext, pJPEGReader, pInputStream, nImportFlags, ppAccess);
 }
 
 bool WriteJPEG( JPEGWriter* pJPEGWriter, void* pOutputStream,

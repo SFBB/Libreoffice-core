@@ -27,6 +27,7 @@
 
 #include <osl/module.hxx>
 #include <osl/thread.h>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <sal/log.hxx>
 
@@ -96,7 +97,7 @@ public:
         , nPosConsumed (0)
     {
         if ( ! used )
-            throw RuntimeException("pyuno._createUnoStructHelper failed to create new dictionary");
+            throw RuntimeException(u"pyuno._createUnoStructHelper failed to create new dictionary"_ustr);
     }
     ~fillStructState()
     {
@@ -170,11 +171,11 @@ void fillStruct(
         for( int i = 0 ; i < remainingPosInitialisers && i < nMembers ; i ++ )
         {
             const int tupleIndex = state.getCntConsumed();
-            const OUString& rMemberName (pCompType->ppMemberNames[i]);
-            state.setInitialised(rMemberName, tupleIndex);
+            const OUString aMemberName (pCompType->ppMemberNames[i]);
+            state.setInitialised(aMemberName, tupleIndex);
             PyObject *element = PyTuple_GetItem( initializer, tupleIndex );
             Any a = runtime.pyObject2Any( element, ACCEPT_UNO_ANY );
-            inv->setValue( rMemberName, a );
+            inv->setValue( aMemberName, a );
         }
     }
     if ( PyTuple_Size( initializer ) <= 0 )
@@ -196,21 +197,24 @@ void fillStruct(
     }
 }
 
-OUString getLibDir()
+const OUString & getLibDir();
+OUString getLibDirImpl()
 {
-    static OUString sLibDir = []() {
-        OUString libDir;
+    OUString libDir;
 
-        // workarounds the $(ORIGIN) until it is available
-        if (Module::getUrlFromAddress(reinterpret_cast<oslGenericFunction>(getLibDir), libDir))
-        {
-            libDir = libDir.copy(0, libDir.lastIndexOf('/'));
-            OUString name("PYUNOLIBDIR");
-            rtl_bootstrap_set(name.pData, libDir.pData);
-        }
-        return libDir;
-    }();
+    // workarounds the $(ORIGIN) until it is available
+    if (Module::getUrlFromAddress(reinterpret_cast<oslGenericFunction>(getLibDir), libDir))
+    {
+        libDir = libDir.copy(0, libDir.lastIndexOf('/'));
+        OUString name(u"PYUNOLIBDIR"_ustr);
+        rtl_bootstrap_set(name.pData, libDir.pData);
+    }
+    return libDir;
+}
 
+const OUString & getLibDir()
+{
+    static OUString sLibDir = getLibDirImpl();
     return sLibDir;
 }
 
@@ -234,7 +238,7 @@ static PyObject* getComponentContext(
         Reference<XComponentContext> ctx;
 
         // getLibDir() must be called in order to set bootstrap variables correctly !
-        OUString path( getLibDir());
+        const OUString& path( getLibDir());
         if( Runtime::isInitialized() )
         {
             Runtime runtime;
@@ -368,6 +372,65 @@ static PyObject* deinitTestEnvironment(
         {
             oslGenericFunction const pFunc(
                     testModule->getFunctionSymbol("test_deinit"));
+            if (!pFunc) { abort(); }
+            reinterpret_cast<void (SAL_CALL *)()>(pFunc)();
+        }
+        catch (const css::uno::Exception &)
+        {
+            abort();
+        }
+    }
+    return Py_None;
+}
+
+static PyObject* initTestEnvironmentGPG(
+    SAL_UNUSED_PARAMETER PyObject*, PyObject* args)
+{
+    // this tries to set up certificate stores for unit tests
+    // which is only possible indirectly because pyuno is URE
+    // so load "unotest" library and invoke a function there to do the work
+    Runtime const runtime;
+    osl::Module & rModule(runtime.getImpl()->cargo->unoTestModule);
+    assert(!rModule.is());
+    try
+    {
+        char *const testlib = getenv("UNOTEST_LIB");
+        if (!testlib) { abort(); }
+#ifdef _WIN32
+        OString const libname = OString(testlib, strlen(testlib))
+            .replaceAll(OString('/'), OString('\\'));
+#else
+        OString const libname(testlib, strlen(testlib));
+#endif
+
+        rModule.load(OStringToOUString(libname, osl_getThreadTextEncoding()),
+                                SAL_LOADMODULE_LAZY | SAL_LOADMODULE_GLOBAL);
+        if (!rModule.is()) { abort(); }
+        oslGenericFunction const pFunc(rModule.getFunctionSymbol("test_init_gpg"));
+        if (!pFunc) { abort(); }
+        char * pTestDirURL;
+        if (!PyArg_ParseTuple(args, "s", &pTestDirURL)) { abort(); }
+        OUString const testDirURL(OUString::createFromAscii(pTestDirURL));
+        reinterpret_cast<void (SAL_CALL *)(OUString const&)>(pFunc)(testDirURL);
+    }
+    catch (const css::uno::Exception &)
+    {
+        abort();
+    }
+    return Py_None;
+}
+
+static PyObject* deinitTestEnvironmentGPG(
+    SAL_UNUSED_PARAMETER PyObject*, SAL_UNUSED_PARAMETER PyObject*)
+{
+    Runtime const runtime;
+    osl::Module & rModule(runtime.getImpl()->cargo->unoTestModule);
+    if (rModule.is())
+    {
+        try
+        {
+            oslGenericFunction const pFunc(
+                    rModule.getFunctionSymbol("test_deinit_gpg"));
             if (!pFunc) { abort(); }
             reinterpret_cast<void (SAL_CALL *)()>(pFunc)();
         }
@@ -844,12 +907,29 @@ static PyObject *sal_debug(
 
 }
 
+#if defined __GNUC__ && !defined __clang__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 struct PyMethodDef PyUNOModule_methods [] =
 {
     {"private_initTestEnvironment", initTestEnvironment, METH_VARARGS, nullptr},
     {"private_deinitTestEnvironment", deinitTestEnvironment, METH_VARARGS, nullptr},
+    {"private_initTestEnvironmentGPG", initTestEnvironmentGPG, METH_VARARGS, nullptr},
+    {"private_deinitTestEnvironmentGPG", deinitTestEnvironmentGPG, METH_VARARGS, nullptr},
     {"getComponentContext", getComponentContext, METH_VARARGS, nullptr},
+#if defined __clang__
+#pragma clang diagnostic push
+#if __has_warning("-Wcast-function-type-mismatch")
+#pragma clang diagnostic ignored "-Wcast-function-type-mismatch"
+#endif
+#endif
     {"_createUnoStructHelper", reinterpret_cast<PyCFunction>(createUnoStructHelper), METH_VARARGS | METH_KEYWORDS, nullptr},
+#if defined __clang__
+#if __has_warning("-Wcast-function-type-mismatch")
+#pragma clang diagnostic pop
+#endif
+#endif
     {"getTypeByName", getTypeByName, METH_VARARGS, nullptr},
     {"getConstantByName", getConstantByName, METH_VARARGS, nullptr},
     {"getClass", getClass, METH_VARARGS, nullptr},
@@ -866,6 +946,9 @@ struct PyMethodDef PyUNOModule_methods [] =
     {"sal_debug", sal_debug, METH_VARARGS, nullptr},
     {nullptr, nullptr, 0, nullptr}
 };
+#if defined __GNUC__ && !defined __clang__
+#pragma GCC diagnostic pop
+#endif
 
 }
 

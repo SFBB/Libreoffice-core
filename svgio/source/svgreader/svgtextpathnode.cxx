@@ -147,7 +147,7 @@ namespace svgio::svgreader
                         nIndex,
                         nLength));
 
-                if(basegfx::fTools::more(fSnippetWidth, 0.0))
+                if (fSnippetWidth > 0.0 && !basegfx::fTools::equalZero(fSnippetWidth))
                 {
                     const OUString aText(getSource().getText());
                     const std::u16string_view aTrimmedChars(o3tl::trim(aText.subView(nIndex, nLength)));
@@ -363,6 +363,7 @@ namespace svgio::svgreader
             if(basegfx::fTools::equalZero(fBasegfxPathLength))
                 return;
 
+            assert(fBasegfxPathLength != 0 && "help coverity see it's not zero");
             double fUserToBasegfx(1.0); // multiply: user->basegfx, divide: basegfx->user
 
             if(pSvgPathNode->getPathLength().isSet())
@@ -393,13 +394,12 @@ namespace svgio::svgreader
             if(fPosition < 0.0)
                 return;
 
-            const sal_Int32 nLength(rPathContent.size());
-            sal_Int32 nCurrent(0);
+            auto pathContentIt = rPathContent.begin();
 
-            while(fPosition < fBasegfxPathLength && nCurrent < nLength)
+            while(fPosition < fBasegfxPathLength && pathContentIt != rPathContent.end())
             {
                 const drawinglayer::primitive2d::TextSimplePortionPrimitive2D* pCandidate = nullptr;
-                const drawinglayer::primitive2d::Primitive2DReference xReference(rPathContent[nCurrent]);
+                const drawinglayer::primitive2d::Primitive2DReference xReference(*pathContentIt);
 
                 if(xReference.is())
                 {
@@ -427,7 +427,7 @@ namespace svgio::svgreader
                     fPosition = aPathTextBreakupHelper.getPosition();
                 }
 
-                nCurrent++;
+                ++pathContentIt;
             }
         }
 

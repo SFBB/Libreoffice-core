@@ -44,7 +44,7 @@ using namespace ::com::sun::star::linguistic2::LinguServiceEventFlags;
 
 SwLinguServiceEventListener::SwLinguServiceEventListener()
 {
-    Reference< XComponentContext > xContext( comphelper::getProcessComponentContext() );
+    const Reference< XComponentContext >& xContext( comphelper::getProcessComponentContext() );
     try
     {
         m_xDesktop = frame::Desktop::create(xContext);
@@ -107,7 +107,7 @@ void SAL_CALL SwLinguServiceEventListener::disposing(
 
     if (m_xLngSvcMgr.is() && rEventObj.Source == m_xLngSvcMgr)
         m_xLngSvcMgr = nullptr;
-    if (m_xLngSvcMgr.is() && rEventObj.Source == m_xGCIterator)
+    if (m_xGCIterator.is() && rEventObj.Source == m_xGCIterator)
         m_xGCIterator = nullptr;
 }
 

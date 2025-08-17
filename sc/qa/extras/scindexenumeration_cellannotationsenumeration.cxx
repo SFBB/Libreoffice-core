@@ -13,7 +13,6 @@
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSheetAnnotations.hpp>
 #include <com/sun/star/sheet/XSheetAnnotationsSupplier.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
@@ -48,7 +47,7 @@ public:
 };
 
 ScIndexEnumeration_CellAnnotationsEnumeration::ScIndexEnumeration_CellAnnotationsEnumeration()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -63,7 +62,7 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_CellAnnotationsEnumeration::i
 
     uno::Reference<sheet::XSheetAnnotationsSupplier> xSAS(xSheet0, uno::UNO_QUERY_THROW);
     uno::Reference<sheet::XSheetAnnotations> xSA(xSAS->getAnnotations(), uno::UNO_SET_THROW);
-    xSA->insertNew(table::CellAddress(0, 5, 5), "Note");
+    xSA->insertNew(table::CellAddress(0, 5, 5), u"Note"_ustr);
 
     uno::Reference<container::XEnumerationAccess> xEA(xSA, uno::UNO_QUERY_THROW);
     uno::Reference<container::XEnumeration> xE(xEA->createEnumeration(), uno::UNO_SET_THROW);
@@ -74,7 +73,7 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_CellAnnotationsEnumeration::i
 void ScIndexEnumeration_CellAnnotationsEnumeration::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScIndexEnumeration_CellAnnotationsEnumeration);

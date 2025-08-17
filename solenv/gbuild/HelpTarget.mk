@@ -45,14 +45,14 @@ $(call gb_Helper_abbreviate_dirs, \
 			-l $(HELP_LANG) \
 			-mi $${HELPFILES} \
 			-m $${POFILES} \
-			-o $(call gb_HelpTranslatePartTarget_get_workdir,$(2)) && \
+			-o $(gb_HelpTranslatePartTarget_workdir)/$(2) && \
 		rm -f $${POFILES} \
 		, \
 		$(gb_HelpTranslatePartTarget_COMMAND) \
 			-l $(HELP_LANG) \
 			-mi $${HELPFILES} \
 			-m \
-			-o $(call gb_HelpTranslatePartTarget_get_workdir,$(2)) \
+			-o $(gb_HelpTranslatePartTarget_workdir)/$(2) \
 	) \
 ) && \
 touch $@ && \
@@ -69,14 +69,9 @@ $(call gb_HelpTranslatePartTarget_get_target,%) : $(gb_HelpTranslatePartTarget_D
 	$(call gb_HelpTranslatePartTarget__command,$@,$*,$^)
 	$(call gb_Trace_EndRange,$*,HPX)
 
-.PHONY : $(call gb_HelpTranslatePartTarget_get_clean_target,%)
-$(call gb_HelpTranslatePartTarget_get_clean_target,%) :
-	$(call gb_Output_announce,$*,$(false),HPX,1)
-	$(call gb_Helper_abbreviate_dirs,\
-		rm -rf \
-			$(call gb_HelpTranslatePartTarget_get_target,$*) \
-			$(call gb_HelpTranslatePartTarget_get_workdir,$*) \
-	)
+clear_HelpTranslatePartTarget:
+	$(call gb_Output_announce,clear HelpTranslatePartTarget,$(false),HPX,1)
+	rm -rf $(gb_HelpTranslatePartTarget_workdir)
 
 # Translate a set of .xhp files from one directory.
 #
@@ -88,7 +83,7 @@ $(call gb_HelpTranslatePartTarget_get_target,$(1)) : POFILES := $(3)
 $(call gb_HelpTranslatePartTarget_get_target,$(1)) : $(gb_Module_CURRENTMAKEFILE)
 $(call gb_HelpTranslatePartTarget_get_target,$(1)) : $(3)
 $(call gb_HelpTranslatePartTarget_get_target,$(1)) :| $(dir $(call gb_HelpTranslatePartTarget_get_target,$(1))).dir
-$(call gb_HelpTranslatePartTarget_get_target,$(1)) :| $(call gb_HelpTranslatePartTarget_get_workdir,$(1))/.dir
+$(call gb_HelpTranslatePartTarget_get_target,$(1)) :| $(gb_HelpTranslatePartTarget_workdir)/$(1)/.dir
 
 endef
 
@@ -104,7 +99,7 @@ endef
 gb_HelpTranslateTarget__get_lang = $(lastword $(subst /, ,$(1)))
 
 gb_HelpTranslateTarget__get_partname = $(call gb_HelpTranslateTarget__get_lang,$(1))/$(patsubst %/,%,$(2))
-gb_HelpTranslateTarget__get_part_workdir = $(call gb_HelpTranslatePartTarget_get_workdir,$(call gb_HelpTranslateTarget__get_partname,$(1),$(2)))
+gb_HelpTranslateTarget__get_part_workdir = $(gb_HelpTranslatePartTarget_workdir)/$(call gb_HelpTranslateTarget__get_partname,$(1),$(2))
 
 gb_HelpTranslateTarget_get_translated_target = $(call gb_HelpTranslatePartTarget_get_translated_target,$(call gb_HelpTranslateTarget__get_partname,$(1),$(dir $(2))),$(notdir $(2)))
 gb_HelpTranslateTarget__get_any_translated_target = $(abspath $(call gb_HelpTranslatePartTarget_get_translated_target,,$(1)))
@@ -145,7 +140,7 @@ define gb_HelpTranslateTarget__make_part
 $(call gb_HelpTranslatePartTarget_HelpTranslatePartTarget,$(2),$(3),$(wildcard $(gb_POLOCATION)/$(3)/$(patsubst %/,%,$(4)).po))
 
 $(call gb_HelpTranslateTarget_get_target,$(1)) : $(call gb_HelpTranslatePartTarget_get_target,$(2))
-$(call gb_HelpTranslateTarget_get_clean_target,$(1)) : $(call gb_HelpTranslatePartTarget_get_clean_target,$(2))
+$(call gb_HelpTranslateTarget_get_clean_target,$(1)) : clear_HelpTranslatePartTarget
 
 endef
 
@@ -382,7 +377,7 @@ endef
 # gb_HelpLinkTarget_set_indexed target indexfiles
 define gb_HelpLinkTarget_set_indexed
 $(call gb_HelpLinkTarget_get_target,$(1)) : HELP_INDEXED := $(2)
-$(addprefix $(call gb_HelpTarget_get_workdir,$(1))/,$(2)) : $(call gb_HelpIndexTarget_get_target,$(1))
+$(addprefix $(gb_HelpTarget_workdir)/$(1)/,$(2)) : $(call gb_HelpIndexTarget_get_target,$(1))
 
 endef
 
@@ -412,7 +407,7 @@ endef
 define gb_HelpLinkTarget_add_renamed_file
 $(call gb_HelpLinkTarget_get_target,$(1)) : HELP_EXTRA_ADD_FILES += $(strip $(2)),$(strip $(3))
 $(call gb_HelpLinkTarget_get_target,$(1)) : $(3)
-$(call gb_HelpTarget_get_workdir,$(1))/$(2) : $(call gb_HelpLinkTarget_get_target,$(1))
+$(gb_HelpTarget_workdir)/$(1)/$(2) : $(call gb_HelpLinkTarget_get_target,$(1))
 	touch $$@
 
 endef
@@ -587,7 +582,7 @@ endif
 			$(call gb_HelpTarget_get_linked_target,$*) \
 			$(call gb_HelpTarget_get_target,$*) \
 			$(call gb_HelpTarget_get_translation_target,$*) \
-			$(call gb_HelpTarget_get_workdir,$*) \
+			$(gb_HelpTarget_workdir)/$* \
 	)
 
 gb_HelpTarget_get_packagename = HelpTarget/$(1)
@@ -604,7 +599,7 @@ $(call gb_HelpTarget_get_target,$(1)) : HELP_LANG := $(3)
 $(call gb_HelpTarget_get_translation_target,$(1)) : HELP_FILES :=
 $(call gb_HelpTarget_get_translation_target,$(1)) : $(gb_Module_CURRENTMAKEFILE)
 
-$(call gb_HelpTarget__HelpTarget_impl,$(1),$(2),$(3),$(call gb_HelpTarget_get_workdir,$(1)),$(call gb_HelpTarget_get_packagename,$(1)))
+$(call gb_HelpTarget__HelpTarget_impl,$(1),$(2),$(3),$(gb_HelpTarget_workdir)/$(1),$(call gb_HelpTarget_get_packagename,$(1)))
 
 endef
 
@@ -622,7 +617,7 @@ endif
 $(call gb_HelpTarget_get_linked_target,$(1)) : $(call gb_HelpTarget_get_translation_target,$(1))
 ifeq ($(ENABLE_HTMLHELP),)
 $(call gb_HelpLinkTarget_get_target,$(1)) : $(call gb_HelpTarget_get_linked_target,$(1))
-$(call gb_HelpLinkTarget_get_target,$(1)) :| $(call gb_HelpTarget_get_workdir,$(1))/.dir
+$(call gb_HelpLinkTarget_get_target,$(1)) :| $(gb_HelpTarget_workdir)/$(1)/.dir
 $(call gb_HelpTarget_get_target,$(1)) : $(call gb_HelpLinkTarget_get_target,$(1))
 $(call gb_Package_get_preparation_target,$(5)) : $(call gb_HelpTarget_get_target,$(1))
 endif

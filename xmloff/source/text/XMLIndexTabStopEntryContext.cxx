@@ -24,7 +24,6 @@
 
 #include "XMLIndexTemplateContext.hxx"
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
@@ -41,7 +40,7 @@ using ::com::sun::star::beans::PropertyValue;
 XMLIndexTabStopEntryContext::XMLIndexTabStopEntryContext(
     SvXMLImport& rImport,
     XMLIndexTemplateContext& rTemplate ) :
-        XMLIndexSimpleEntryContext(rImport, "TokenTabStop",
+        XMLIndexSimpleEntryContext(rImport, u"TokenTabStop"_ustr,
                                    rTemplate),
         nTabPosition(0),
         bTabPositionOK(false),

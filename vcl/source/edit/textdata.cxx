@@ -25,8 +25,9 @@
 
 #include <utility>
 #include <vcl/textdata.hxx>
-#include "textdat2.hxx"
 
+#include "TextLine.hxx"
+#include "textdat2.hxx"
 
 TextSelection::TextSelection()
 {
@@ -266,47 +267,6 @@ void TEParaPortion::CorrectValuesBehindLastFormattedLine( sal_uInt16 nLastFormat
 
 TEParaPortions::~TEParaPortions()
 {
-}
-
-IdleFormatter::IdleFormatter()
-    : Idle("vcl::TextEngine mpIdleFormatter")
-    , mpView(nullptr)
-    , mnRestarts(0)
-{
-    SetPriority(TaskPriority::HIGH_IDLE);
-}
-
-IdleFormatter::~IdleFormatter()
-{
-    mpView = nullptr;
-}
-
-void IdleFormatter::DoIdleFormat( TextView* pV, sal_uInt16 nMaxRestarts )
-{
-    mpView = pV;
-
-    if ( IsActive() )
-        mnRestarts++;
-
-    if ( mnRestarts > nMaxRestarts )
-    {
-        mnRestarts = 0;
-        Invoke();
-    }
-    else
-    {
-        Start();
-    }
-}
-
-void IdleFormatter::ForceTimeout()
-{
-    if ( IsActive() )
-    {
-        Stop();
-        mnRestarts = 0;
-        Invoke();
-    }
 }
 
 TextHint::TextHint( SfxHintId Id ) : SfxHint( Id ), mnValue(0)

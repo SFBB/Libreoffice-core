@@ -71,8 +71,6 @@ using namespace ::svxform;
 using namespace ::dbtools;
 
 
-namespace {
-
 class ScriptEventListenerWrapper : public cppu::WeakImplHelper< XScriptListener >
 {
 public:
@@ -115,17 +113,17 @@ private:
 
         try
         {
-            css::uno::Reference<css::uno::XComponentContext> context(
+            const css::uno::Reference<css::uno::XComponentContext>& context(
                 comphelper::getProcessComponentContext());
             Reference< XScriptListener > const xScriptListener(
                 context->getServiceManager()->createInstanceWithContext(
-                    "ooo.vba.EventListener", context),
+                    u"ooo.vba.EventListener"_ustr, context),
                 UNO_QUERY_THROW);
             Reference< XPropertySet > const xListenerProps( xScriptListener, UNO_QUERY_THROW );
             // SfxObjectShellRef is good here since the model controls the lifetime of the shell
             SfxObjectShellRef const xObjectShell = m_rModel.GetObjectShell();
             ENSURE_OR_THROW( xObjectShell.is(), "no object shell!" );
-            xListenerProps->setPropertyValue("Model", Any( xObjectShell->GetModel() ) );
+            xListenerProps->setPropertyValue(u"Model"_ustr, Any( xObjectShell->GetModel() ) );
 
             m_vbaListener = xScriptListener;
         }
@@ -141,6 +139,8 @@ private:
 
 };
 
+
+namespace {
 
 // some helper structs for caching property infos
 
@@ -964,7 +964,7 @@ FmUndoPropertyAction::FmUndoPropertyAction(FmFormModel& rNewMod, const PropertyC
 
 void FmUndoPropertyAction::Undo()
 {
-    FmXUndoEnvironment& rEnv = static_cast<FmFormModel&>(rMod).GetUndoEnv();
+    FmXUndoEnvironment& rEnv = static_cast<FmFormModel&>(m_rMod).GetUndoEnv();
 
     if (!xObj.is() || rEnv.IsLocked())
         return;
@@ -984,7 +984,7 @@ void FmUndoPropertyAction::Undo()
 
 void FmUndoPropertyAction::Redo()
 {
-    FmXUndoEnvironment& rEnv = static_cast<FmFormModel&>(rMod).GetUndoEnv();
+    FmXUndoEnvironment& rEnv = static_cast<FmFormModel&>(m_rMod).GetUndoEnv();
 
     if (!xObj.is() || rEnv.IsLocked())
         return;
@@ -1125,7 +1125,7 @@ void FmUndoContainerAction::implReRemove( )
 
 void FmUndoContainerAction::Undo()
 {
-    FmXUndoEnvironment& rEnv = static_cast< FmFormModel& >( rMod ).GetUndoEnv();
+    FmXUndoEnvironment& rEnv = static_cast< FmFormModel& >( m_rMod ).GetUndoEnv();
 
     if ( !(m_xContainer.is() && !rEnv.IsLocked() && m_xElement.is()) )
         return;
@@ -1154,7 +1154,7 @@ void FmUndoContainerAction::Undo()
 
 void FmUndoContainerAction::Redo()
 {
-    FmXUndoEnvironment& rEnv = static_cast< FmFormModel& >( rMod ).GetUndoEnv();
+    FmXUndoEnvironment& rEnv = static_cast< FmFormModel& >( m_rMod ).GetUndoEnv();
     if ( !(m_xContainer.is() && !rEnv.IsLocked() && m_xElement.is()) )
         return;
 
@@ -1236,7 +1236,7 @@ void FmUndoModelReplaceAction::Undo()
             m_pObject->SetUnoControlModel(m_xReplaced);
             m_pObject->SetChanged();
 
-            m_xReplaced = xCurrentModel;
+            m_xReplaced = std::move(xCurrentModel);
         }
     }
     catch(Exception&)

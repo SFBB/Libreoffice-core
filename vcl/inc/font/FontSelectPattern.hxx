@@ -30,12 +30,13 @@
 
 namespace vcl { class Font; }
 
-class LogicalFontInstance;
 class Size;
 
 namespace vcl::font
 {
+#ifdef _WIN32
 class PhysicalFontFace;
+#endif
 
 class VCL_DLLPUBLIC FontSelectPattern : public FontAttributes
 {
@@ -77,7 +78,7 @@ template< typename charT, typename traits >
 inline std::basic_ostream<charT, traits> & operator <<(
     std::basic_ostream<charT, traits> & stream, const vcl::font::FontSelectPattern & rFSP)
 {
-    stream << (rFSP.maTargetName.isEmpty() ? "<default>" : rFSP.maTargetName)
+    stream << (rFSP.maTargetName.isEmpty() ? u"<default>"_ustr : rFSP.maTargetName)
            << " (" << rFSP.maSearchName << ") w: " << rFSP.mnWidth << " h: "
            << rFSP.mnHeight << " alias: " << rFSP.mbNonAntialiased;
     return stream;

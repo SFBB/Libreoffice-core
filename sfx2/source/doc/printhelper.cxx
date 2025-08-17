@@ -54,13 +54,16 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
+namespace {
+class SfxPrintJob_Impl;
+}
 
 struct IMPL_PrintListener_DataContainer : public SfxListener
 {
     SfxObjectShellRef                               m_pObjectShell;
     std::mutex                                      m_aMutex;
     comphelper::OInterfaceContainerHelper4<view::XPrintJobListener> m_aJobListeners;
-    uno::Reference< css::view::XPrintJob>           m_xPrintJob;
+    rtl::Reference<SfxPrintJob_Impl>                m_xPrintJob;
     css::uno::Sequence< css::beans::PropertyValue > m_aPrintOptions;
 
     explicit IMPL_PrintListener_DataContainer()
@@ -269,14 +272,14 @@ uno::Sequence< beans::PropertyValue > SAL_CALL SfxPrintHelper::getPrinter()
 
     return
     {
-        comphelper::makePropertyValue("Name", pPrinter->GetName()),
-        comphelper::makePropertyValue("PaperOrientation", static_cast<view::PaperOrientation>(pPrinter->GetOrientation())),
-        comphelper::makePropertyValue("PaperFormat", convertToPaperFormat(pPrinter->GetPaper())),
-        comphelper::makePropertyValue("PaperSize", impl_Size_Object2Struct(pPrinter->GetPaperSize() )),
-        comphelper::makePropertyValue("IsBusy", pPrinter->IsPrinting()),
-        comphelper::makePropertyValue("CanSetPaperOrientation", pPrinter->HasSupport( PrinterSupport::SetOrientation )),
-        comphelper::makePropertyValue("CanSetPaperFormat", pPrinter->HasSupport( PrinterSupport::SetPaper )),
-        comphelper::makePropertyValue("CanSetPaperSize", pPrinter->HasSupport( PrinterSupport::SetPaperSize ))
+        comphelper::makePropertyValue(u"Name"_ustr, pPrinter->GetName()),
+        comphelper::makePropertyValue(u"PaperOrientation"_ustr, static_cast<view::PaperOrientation>(pPrinter->GetOrientation())),
+        comphelper::makePropertyValue(u"PaperFormat"_ustr, convertToPaperFormat(pPrinter->GetPaper())),
+        comphelper::makePropertyValue(u"PaperSize"_ustr, impl_Size_Object2Struct(pPrinter->GetPaperSize() )),
+        comphelper::makePropertyValue(u"IsBusy"_ustr, pPrinter->IsPrinting()),
+        comphelper::makePropertyValue(u"CanSetPaperOrientation"_ustr, pPrinter->HasSupport( PrinterSupport::SetOrientation )),
+        comphelper::makePropertyValue(u"CanSetPaperFormat"_ustr, pPrinter->HasSupport( PrinterSupport::SetPaper )),
+        comphelper::makePropertyValue(u"CanSetPaperSize"_ustr, pPrinter->HasSupport( PrinterSupport::SetPaperSize ))
     };
 }
 
@@ -465,7 +468,7 @@ class ImplUCBPrintWatcher : public ::osl::Thread
                 SolarMutexGuard aGuard;
                 while( m_pPrinter->IsPrinting() && !Application::IsQuit())
                     Application::Yield();
-                m_pPrinter.clear(); // don't delete it! It's borrowed only :-)
+                m_pPrinter.reset(); // don't delete it! It's borrowed only :-)
             }
             /* } SAFE */
 
@@ -756,9 +759,13 @@ void SAL_CALL SfxPrintHelper::print(const uno::Sequence< beans::PropertyValue >&
 
 void IMPL_PrintListener_DataContainer::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 {
-    const SfxPrintingHint* pPrintHint = dynamic_cast<const SfxPrintingHint*>(&rHint);
+    if (rHint.GetId() != SfxHintId::ThisIsAnSfxEventHint)
+        return;
+    const SfxEventHint& rEventHint = static_cast<const SfxEventHint&>(rHint);
+    if (rEventHint.GetEventId() != SfxEventHintId::PrintDoc)
+        return;
+    const SfxPrintingHint* pPrintHint = static_cast<const SfxPrintingHint*>(&rHint);
     if ( &rBC != m_pObjectShell.get()
-        || !pPrintHint
         || pPrintHint->GetWhich() == SFX_PRINTABLESTATE_CANCELJOB )
         return;
 
@@ -773,7 +780,7 @@ void IMPL_PrintListener_DataContainer::Notify( SfxBroadcaster& rBC, const SfxHin
     if (!m_aJobListeners.getLength(aGuard))
         return;
     view::PrintJobEvent aEvent;
-    aEvent.Source = m_xPrintJob;
+    aEvent.Source = getXWeak(m_xPrintJob.get());
     aEvent.State = pPrintHint->GetWhich();
 
     comphelper::OInterfaceIteratorHelper4 pIterator(aGuard, m_aJobListeners);

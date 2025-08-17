@@ -30,6 +30,7 @@ class EDITENG_DLLPUBLIC SvxHorJustifyItem final : public SfxEnumItem<SvxCellHorJ
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxHorJustifyItem)
     explicit SvxHorJustifyItem( const sal_uInt16 nId );
 
     SvxHorJustifyItem(
@@ -44,7 +45,6 @@ public:
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual sal_uInt16       GetValueCount() const override;
     static OUString          GetValueText( SvxCellHorJustify nVal );
     virtual SvxHorJustifyItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
@@ -57,6 +57,7 @@ class EDITENG_DLLPUBLIC SvxVerJustifyItem final : public SfxEnumItem<SvxCellVerJ
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxVerJustifyItem)
     explicit SvxVerJustifyItem( const sal_uInt16 nId  );
 
     SvxVerJustifyItem(
@@ -71,7 +72,6 @@ public:
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual sal_uInt16       GetValueCount() const override;
     static OUString          GetValueText( SvxCellVerJustify nVal );
     virtual SvxVerJustifyItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
@@ -82,6 +82,7 @@ public:
 class EDITENG_DLLPUBLIC SvxJustifyMethodItem final : public SfxEnumItem<SvxCellJustifyMethod>
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SvxJustifyMethodItem)
     SvxJustifyMethodItem(
         const SvxCellJustifyMethod eMethod,
         const sal_uInt16 nId );
@@ -94,7 +95,6 @@ public:
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool             PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual sal_uInt16       GetValueCount() const override;
     static OUString          GetValueText( SvxCellJustifyMethod nVal );
     virtual SvxJustifyMethodItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 };

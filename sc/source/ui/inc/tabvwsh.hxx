@@ -31,18 +31,23 @@
 #include <shellids.hxx>
 #include <tabprotection.hxx>
 #include <com/sun/star/ui/dialogs/DialogClosedEvent.hpp>
+#include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <dragdata.hxx>
 
 #include <memory>
 #include <map>
 
 class SdrOle2Obj;
+class SfxAbstractTabDialog;
 class SfxBindings;
 class SfxChildWindow;
 class SvxNumberInfoItem;
 struct SfxChildWinInfo;
-
-class ScArea;
+class AbstractScInsertTableDlg;
+class AbstractScMoveTableDlg;
+class AbstractScTabBgColorDlg;
+class AbstractScStringInputDlg;
+class ScStyleSaveData;
 class ScAuditingShell;
 class ScDrawShell;
 class ScDrawTextObjectBar;
@@ -58,15 +63,15 @@ class ScChartShell;
 class ScPageBreakShell;
 class ScDPObject;
 class ScNavigatorSettings;
-class ScRangeName;
 class ScDrawTransferObj;
+class ScCondFormatDlgData;
+class ScDispatchProviderInterceptor;
+
 namespace sc { class SparklineShell; }
 
 struct ScHeaderFieldData;
 
 namespace editeng { class SvxBorderLine; }
-
-namespace com::sun::star::frame { class XDispatchProviderInterceptor; }
 
 namespace svx {
     class ExtrusionBar;
@@ -92,7 +97,7 @@ enum ObjectSelectionType
 
 class ScFormEditData;
 class ScViewOptiChangesListener;
-class SC_DLLPUBLIC ScTabViewShell : public SfxViewShell, public ScDBFunc
+class SAL_DLLPUBLIC_RTTI ScTabViewShell : public SfxViewShell, public ScDBFunc
 {
 private:
     rtl::Reference<ScViewOptiChangesListener> mChangesListener;
@@ -101,6 +106,7 @@ private:
         OUString m_aText;
         OUString m_aSelection;
         sal_uInt64 m_nShellId;
+        OUString m_separator;
         std::chrono::steady_clock::time_point m_nTimeStamp;
 
         SendFormulabarUpdate()
@@ -140,8 +146,7 @@ private:
 
     std::unique_ptr<::editeng::SvxBorderLine> pCurFrameLine;
 
-    css::uno::Reference< css::frame::XDispatchProviderInterceptor >
-                            xDisProvInterceptor;
+    rtl::Reference<ScDispatchProviderInterceptor> xDisProvInterceptor;
 
     Point                   aWinPos;
 
@@ -176,7 +181,11 @@ private:
     bool                    bInPrepareClose;
     bool                    bInDispose;
 
+    bool                    bMoveKeepEdit;
+
     sal_uInt16              nCurRefDlgId;
+
+    bool                    bIsTabChangeInProgress;
 
     std::unique_ptr<SfxBroadcaster> pAccessibilityBroadcaster;
 
@@ -187,6 +196,12 @@ private:
     OUString   maScope;
 
     std::unique_ptr<ScDragData> m_pDragData;
+    // temporary data for exchange in the used multi-dialog structure
+    std::shared_ptr<ScCondFormatDlgData> m_pScCondFormatDlgData;
+
+    // Chart insert wizard's mark to make sure it undoes the correct thing in LOK case
+    UndoStackMark m_InsertWizardUndoMark = MARK_INVALID;
+
 private:
     void    Construct( TriState nForceDesignMode );
 
@@ -198,12 +213,12 @@ private:
     bool            IsSignatureLineSigned();
     bool            IsQRCodeSelected();
 
-    DECL_DLLPRIVATE_LINK( SimpleRefClose, const OUString*, void );
-    DECL_DLLPRIVATE_LINK( SimpleRefDone, const OUString&, void );
-    DECL_DLLPRIVATE_LINK( SimpleRefAborted, const OUString&, void );
-    DECL_DLLPRIVATE_LINK( SimpleRefChange, const OUString&, void );
-    DECL_DLLPRIVATE_LINK( FormControlActivated, LinkParamNone*, void );
-    DECL_DLLPRIVATE_LINK( DialogClosedHdl, css::ui::dialogs::DialogClosedEvent*, void );
+    DECL_LINK( SimpleRefClose, const OUString*, void );
+    DECL_LINK( SimpleRefDone, const OUString&, void );
+    DECL_LINK( SimpleRefAborted, const OUString&, void );
+    DECL_LINK( SimpleRefChange, const OUString&, void );
+    DECL_LINK( FormControlActivated, LinkParamNone*, void );
+    DECL_LINK( DialogClosedHdl, css::ui::dialogs::DialogClosedEvent*, void );
 
 protected:
     virtual void    Activate(bool bMDI) override;
@@ -250,12 +265,19 @@ public:
 
     weld::Window*   GetDialogParent();
 
-    bool            IsRefInputMode() const;
+    SC_DLLPUBLIC bool IsRefInputMode() const;
     void            ExecuteInputDirect();
+
+    void HandleDuplicateRecords(const css::uno::Reference<css::sheet::XSpreadsheet>& ActiveSheet,
+                                const css::table::CellRangeAddress& aRange, bool bRemove,
+                                bool bIncludesHeaders, bool bDuplicateRows,
+                                const std::vector<int>& rSelectedEntries);
+    css::uno::Reference<css::sheet::XSpreadsheet> GetRangeWithSheet(css::table::CellRangeAddress& rRangeData, bool& bHasData, bool bHasUnoArguments);
+    void            ExtendSingleSelection(css::table::CellRangeAddress& rRangeData);
 
     const ScInputHandler* GetInputHandler() const { return mpInputHandler.get(); }
     ScInputHandler* GetInputHandler() { return mpInputHandler.get(); }
-    const OUString* GetEditString() const;
+    SC_DLLPUBLIC const OUString* GetEditString() const;
     void            UpdateInputHandler( bool bForce = false, bool bStopEditing = true );
     void            UpdateInputHandlerCellAdjust( SvxCellHorJustify eJust );
     bool            TabKeyInput(const KeyEvent& rKEvt);
@@ -263,17 +285,20 @@ public:
 
     void            SetActive();
 
+    void            SetTabChangeInProgress(bool bState) { bIsTabChangeInProgress = bState; }
+    bool            IsTabChangeInProgress() { return bIsTabChangeInProgress; }
+
     ::editeng::SvxBorderLine*   GetDefaultFrameLine() const { return pCurFrameLine.get(); }
     void            SetDefaultFrameLine(const ::editeng::SvxBorderLine* pLine );
 
-    void           Execute( SfxRequest& rReq );
-    void           GetState( SfxItemSet& rSet );
+    SC_DLLPUBLIC void Execute( SfxRequest& rReq );
+    SC_DLLPUBLIC void GetState( SfxItemSet& rSet );
 
     void            ExecuteTable( SfxRequest& rReq );
     void            GetStateTable( SfxItemSet& rSet );
 
     void            WindowChanged();
-    void            ExecDraw(SfxRequest&);
+    SC_DLLPUBLIC void ExecDraw(SfxRequest&);
     void            ExecDrawIns(SfxRequest& rReq);
     void            GetDrawState(SfxItemSet &rSet);
     void            GetDrawInsState(SfxItemSet &rSet);
@@ -301,7 +326,7 @@ public:
     void            GetStyleState(SfxItemSet &rSet);
 
     void            UpdateDrawShell();
-    void            SetDrawShell( bool bActive );
+    SC_DLLPUBLIC void SetDrawShell( bool bActive );
     void            SetDrawTextShell( bool bActive );
 
     void            SetPivotShell( bool bActive );
@@ -353,7 +378,7 @@ public:
 
     void            DeactivateOle();
 
-    static ScTabViewShell* GetActiveViewShell();
+    SAL_RET_MAYBENULL SC_DLLPUBLIC static ScTabViewShell* GetActiveViewShell();
 
     std::shared_ptr<SfxModelessDialogController> CreateRefDialogController(SfxBindings* pB, SfxChildWindow* pCW,
                                                     SfxChildWinInfo* pInfo,
@@ -370,13 +395,13 @@ public:
                             const Point* pInsPos );
     void    InsertURLField( const OUString& rName, const OUString& rURL, const OUString& rTarget );
 
-    bool    SelectObject( std::u16string_view rName );
+    SC_DLLPUBLIC bool SelectObject( std::u16string_view rName );
 
     void    SetInFormatDialog(bool bFlag) {bInFormatDialog=bFlag;}
 
     void    ForceMove()     { Move(); }
 
-    static std::unique_ptr<SvxNumberInfoItem> MakeNumberInfoItem( ScDocument& rDoc, const ScViewData& rViewData );
+    SC_DLLPUBLIC static std::unique_ptr<SvxNumberInfoItem> MakeNumberInfoItem( ScDocument& rDoc, const ScViewData& rViewData );
 
     static void UpdateNumberFormatter( const SvxNumberInfoItem&  rInfoItem );
 
@@ -396,6 +421,12 @@ public:
     bool    HasAccessibilityObjects() const;
 
     bool    ExecuteRetypePassDlg(ScPasswordHash eDesiredHash);
+    void    ExecuteOnlyActiveSheetSavedDlg();
+
+    void    FinishProtectTable();
+    void    ExecProtectTable( SfxRequest& rReq );
+
+    void    ExecGoToTab( SfxRequest& rReq, SfxBindings& rBindings );
 
     using ScTabView::ShowCursor;
 
@@ -424,11 +455,11 @@ public:
     /// is equal to nCurrentTabIndex
     static void notifyAllViewsSheetGeomInvalidation(const SfxViewShell* pForViewShell, bool bColumns, bool bRows, bool bSizes,
                                                     bool bHidden, bool bFiltered, bool bGroups, SCTAB nCurrentTabIndex);
-    void LOKSendFormulabarUpdate(EditView* pEditView, const OUString& rText, const ESelection& rSelection);
+    void LOKSendFormulabarUpdate(const EditView* pEditView, const OUString& rText, const ESelection& rSelection);
     css::uno::Reference<css::drawing::XShapes> getSelectedXShapes();
-    static  css::uno::Reference<css::datatransfer::XTransferable2> GetClipData(vcl::Window* pWin);
+    SC_DLLPUBLIC static css::uno::Reference<css::datatransfer::XTransferable2> GetClipData(vcl::Window* pWin);
 
-    void InitFormEditData();
+    void InitFormEditData(ScDocShell& rShell);
     void ClearFormEditData();
     ScFormEditData* GetFormEditData() { return mpFormEditData.get(); }
 
@@ -439,6 +470,42 @@ public:
     void ResetDragObject();
     void SetDragLink(const OUString& rDoc, const OUString& rTab, const OUString& rArea);
     void SetDragJump(ScDocument* pLocalDoc, const OUString& rTarget, const OUString& rText);
+
+    void SetMoveKeepEdit(bool value) { bMoveKeepEdit = value; };
+    bool GetMoveKeepEdit() { return bMoveKeepEdit; };
+
+    void setScCondFormatDlgData(const std::shared_ptr<ScCondFormatDlgData>& rItem) { m_pScCondFormatDlgData = rItem; }
+    const std::shared_ptr<ScCondFormatDlgData>& getScCondFormatDlgData() const { return m_pScCondFormatDlgData; }
+
+    void SetInsertWizardUndoMark();
+
+private:
+    void ExecuteMoveTable( SfxRequest& rReq );
+    void DoMoveTableFromDialog( SfxRequest& rReq, const VclPtr<AbstractScMoveTableDlg>& pDlg );
+    void ExecuteInsertTable( SfxRequest& rReq );
+    void DoInsertTableFromDialog( SfxRequest& rReq, const VclPtr<AbstractScInsertTableDlg>& pDlg );
+    void ExecuteAppendOrRenameTable( SfxRequest& rReq );
+    void ExecuteAppendOrRenameTableDialog( const VclPtr<AbstractScStringInputDlg>& pDlg, const std::shared_ptr<SfxRequest>& xReq, sal_uInt16 nSlot );
+    bool DoAppendOrRenameTableDialog( sal_Int32 nResult, const VclPtr<AbstractScStringInputDlg>& pDlg, const std::shared_ptr<SfxRequest>& xReq, sal_uInt16 nSlot );
+    void ExecuteSetTableBackgroundCol( SfxRequest& rReq );
+    void ExecuteTableBackgroundDialog( const VclPtr<AbstractScTabBgColorDlg>& pDlg, const std::shared_ptr<SfxRequest>& xReq, Color aOldTabBgColor, sal_uInt16 nSlot );
+    bool DoTableBackgroundDialog( sal_Int32 nResult, const VclPtr<AbstractScTabBgColorDlg>& pDlg, const std::shared_ptr<SfxRequest>& xReq, Color aOldTabBgColor, sal_uInt16 nSlot );
+    void ExecuteStyleEdit(SfxRequest& rReq, SfxStyleSheetBase* pStyleSheet, sal_uInt16 nRetMask, sal_uInt16 nSlotId,
+                            bool bAddUndo, bool bUndo,
+                            const std::shared_ptr<ScStyleSaveData>& rOldData,
+                            const std::shared_ptr<ScStyleSaveData>& rNewData,
+                            SfxStyleFamily eFamily, bool bStyleToMarked, bool bListAction,
+                            SdrObject* pEditObject, ESelection aSelection);
+    void ExecuteStyleEditDialog(VclPtr<SfxAbstractTabDialog> pDlg,
+                            SfxStyleSheetBase* pStyleSheet, sal_uInt16 nResult, sal_uInt16& rnRetMask,
+                            std::shared_ptr<SfxItemSet> xOldSet, sal_uInt16 nSlotId,
+                            bool& rbAddUndo,
+                            ScStyleSaveData& rNewData, std::u16string_view aOldName);
+    void ExecuteStyleEditPost(SfxRequest& rReq, SfxStyleSheetBase* pStyleSheet, sal_uInt16 nSlotId,
+                            sal_uInt16 nRetMask, bool bAddUndo, bool bUndo, SfxStyleFamily eFamily,
+                            ScStyleSaveData& rOldData, ScStyleSaveData& rNewData,
+                            bool bStyleToMarked, bool bListAction,
+                            SdrObject* pEditObject, ESelection aSelection);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

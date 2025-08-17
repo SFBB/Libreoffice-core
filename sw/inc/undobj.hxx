@@ -38,7 +38,6 @@ class SwTextFormatColl;
 class SwFrameFormat;
 class SwFormatAnchor;
 class SwNode;
-class SwNodeRange;
 class SwRedlineData;
 class SwRedlineSaveDatas;
 enum class RedlineFlags;
@@ -50,7 +49,7 @@ namespace sw {
     class RepeatContext;
 }
 
-class SwUndo
+class SW_DLLPUBLIC SwUndo
     : public SfxUndoAction
 {
     SwUndoId const m_nId;
@@ -86,7 +85,7 @@ public: // should not be public, but ran into trouble in untbl.cxx
 
 private:
     /// Try to obtain the view shell ID of the current view.
-    static ViewShellId CreateViewShellId(const SwDoc* pDoc);
+    static ViewShellId CreateViewShellId(const SwDoc& rDoc);
     // SfxUndoAction
     virtual void Undo() override;
     virtual void Redo() override;
@@ -96,7 +95,7 @@ private:
     virtual bool CanRepeat(SfxRepeatTarget &) const override;
 
 public:
-    SwUndo(SwUndoId const nId, const SwDoc* pDoc);
+    SwUndo(SwUndoId const nId, const SwDoc& rDoc);
     virtual ~SwUndo() override;
 
     SwUndoId GetId() const { return m_nId; }
@@ -214,8 +213,8 @@ public:
 
     void SaveSection( const SwNodeIndex& rSttIdx );
     void SaveSection(const SwNodeRange& rRange, bool bExpandNodes = true);
-    void RestoreSection( SwDoc* pDoc, SwNodeIndex* pIdx, sal_uInt16 nSectType );
-    void RestoreSection(SwDoc* pDoc, const SwNode& rInsPos, bool bForceCreateFrames = false);
+    void RestoreSection( SwDoc& rDoc, SwNodeIndex* pIdx, sal_uInt16 nSectType );
+    void RestoreSection(SwDoc& rDoc, const SwNode& rInsPos, bool bForceCreateFrames = false);
 
     const SwHistory* GetHistory() const { return m_pHistory.get(); }
           SwHistory* GetHistory()       { return m_pHistory.get(); }
@@ -244,7 +243,7 @@ class SwUndoInsLayFormat;
 namespace sw {
 
 std::optional<std::vector<SwFrameFormat*>>
-GetFlysAnchoredAt(SwDoc & rDoc, SwNodeOffset nSttNode);
+GetFlysAnchoredAt(SwDoc & rDoc, SwNodeOffset nSttNode, bool isAtPageIncluded);
 
 }
 
@@ -288,6 +287,8 @@ public:
     SwUndoInsDoc( const SwPaM& );
 };
 
+/// Undo for copying from part of a document and then inserting that text, as opposed to inserting
+/// it from a file or clipboard.
 class SwUndoCpyDoc final : public SwUndoInserts
 {
 public:
@@ -304,7 +305,7 @@ protected:
     bool m_bDelFormat;           // Delete saved format.
 
     void InsFly(::sw::UndoRedoContext & rContext, bool bShowSel = true);
-    void DelFly( SwDoc* );
+    void DelFly( SwDoc& );
 
     SwUndoFlyBase( SwFrameFormat* pFormat, SwUndoId nUndoId );
 

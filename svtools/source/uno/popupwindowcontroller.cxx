@@ -83,7 +83,7 @@ void PopupWindowControllerImpl::SetFloatingWindow()
         mpFloatingWindow.disposeAndClear();
     }
     mpFloatingWindow = mpPopupWindow;
-    mpPopupWindow.clear();
+    mpPopupWindow.reset();
 }
 
 IMPL_LINK( PopupWindowControllerImpl, WindowEventListener, VclWindowEvent&, rWindowEvent, void )
@@ -171,7 +171,7 @@ sal_Bool SAL_CALL PopupWindowController::supportsService( const OUString& Servic
 // XComponent
 void SAL_CALL PopupWindowController::dispose()
 {
-    mxInterimPopover.clear();
+    mxInterimPopover.reset();
     mxPopoverContainer.reset();
     mxImpl.reset();
     svt::ToolboxController::dispose();
@@ -212,6 +212,16 @@ Reference< awt::XWindow > SAL_CALL PopupWindowController::createPopupWindow()
     {
         mxPopoverContainer->unsetPopover();
         mxPopoverContainer->setPopover(weldPopupWindow());
+
+        // tdf#141577 setPopover might GrabFocus, which may cause the ActiveFrame to be
+        // unset. So explicitly set this frame as the active frame of its parent when
+        // this popup is created.
+        if (uno::Reference<frame::XFrame> xFrame = getFrameInterface())
+        {
+            if (uno::Reference<frame::XFramesSupplier> xParentFrame = xFrame->getCreator())
+                xParentFrame->setActiveFrame(xFrame);
+        }
+
         return Reference<awt::XWindow>();
     }
 

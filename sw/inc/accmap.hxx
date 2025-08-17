@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_ACCMAP_HXX
-#define INCLUDED_SW_INC_ACCMAP_HXX
+#pragma once
 
 #include <cppuhelper/weakref.hxx>
 #include <rtl/ref.hxx>
@@ -38,7 +37,6 @@ class SwFrame;
 class SwTextFrame;
 class SwPageFrame;
 class SwAccessibleContext;
-class SwAccessibleContextMap_Impl;
 class SwAccessibleEventList_Impl;
 class SwAccessibleEventMap_Impl;
 class SdrObject;
@@ -54,18 +52,6 @@ class Fraction;
 struct PreviewPage;
 namespace vcl { class Window; }
 namespace com::sun::star::accessibility { class XAccessible; }
-
-// The shape list is filled if an accessible shape is destroyed. It
-// simply keeps a reference to the accessible shape's XShape. These
-// references are destroyed within the EndAction when firing events.
-// There are two reason for this. First of all, a new accessible shape
-// for the XShape might be created soon. It's then cheaper if the XShape
-// still exists. The other reason are situations where an accessible shape
-// is destroyed within an SwFrameFormat::SwClientNotify. In this case, destroying
-// the XShape at the same time (indirectly by destroying the accessible
-// shape) leads to an assert, because a client of the Modify is destroyed
-// within a Modify call.
-using SwShapeList_Impl = std::vector<css::uno::Reference<css::drawing::XShape>>;
 
 enum class AccessibleStates
 {
@@ -85,14 +71,29 @@ namespace o3tl
     template<> struct typed_flags<AccessibleStates> : is_typed_flags<AccessibleStates, 0x3e3> {};
 }
 
+using SwAccessibleContextMap
+    = std::unordered_map<const SwFrame*, unotools::WeakReference<SwAccessibleContext>>;
+
 class SwAccessibleMap final : public ::accessibility::IAccessibleViewForwarder,
                         public ::accessibility::IAccessibleParent
                 , public std::enable_shared_from_this<SwAccessibleMap>
 {
     ::osl::Mutex maEventMutex;
-    std::unique_ptr<SwAccessibleContextMap_Impl> mpFrameMap;
+    SwAccessibleContextMap maFrameMap;
     std::unique_ptr<SwAccessibleShapeMap_Impl> mpShapeMap;
-    SwShapeList_Impl mvShapes;
+
+    // The shape list is filled if an accessible shape is destroyed. It
+    // simply keeps a reference to the accessible shape's XShape. These
+    // references are destroyed within the EndAction when firing events.
+    // There are two reason for this. First of all, a new accessible shape
+    // for the XShape might be created soon. It's then cheaper if the XShape
+    // still exists. The other reason are situations where an accessible shape
+    // is destroyed within an SwFrameFormat::SwClientNotify. In this case, destroying
+    // the XShape at the same time (indirectly by destroying the accessible
+    // shape) leads to an assert, because a client of the Modify is destroyed
+    // within a Modify call.
+    std::vector<css::uno::Reference<css::drawing::XShape>> mvShapes;
+
     std::unique_ptr<SwAccessibleEventList_Impl> mpEvents;
     std::unique_ptr<SwAccessibleEventMap_Impl> mpEventMap;
 
@@ -103,7 +104,7 @@ class SwAccessibleMap final : public ::accessibility::IAccessibleViewForwarder,
     // #i27301 data structure to keep information about
     // accessible paragraph, which have a selection.
     std::unique_ptr<SwAccessibleSelectedParas_Impl> mpSelectedParas;
-    SwViewShell *mpVSh;
+    SwViewShell& m_rViewShell;
     /// for page preview: store preview data, VisArea, and mapping of
     /// preview-to-display coordinates
     std::unique_ptr<SwAccPreviewData> mpPreview;
@@ -116,23 +117,22 @@ class SwAccessibleMap final : public ::accessibility::IAccessibleViewForwarder,
 
     void AppendEvent( const SwAccessibleEvent_Impl& rEvent );
 
-    void InvalidateCursorPosition( const css::uno::Reference<css::accessibility::XAccessible>& rAcc );
+    void InvalidateCursorPosition(const rtl::Reference<SwAccessibleContext>& rxAcc);
     void DoInvalidateShapeSelection(bool bInvalidateFocusMode = false);
 
     void InvalidateShapeSelection();
 
-    //mpSelectedFrameMap contains the old selected objects.
-    std::unique_ptr<SwAccessibleContextMap_Impl> mpSelectedFrameMap;
+    //maSelectedFrameMap contains the old selected objects.
+    SwAccessibleContextMap maSelectedFrameMap;
 
     OUString maDocName;
 
     //InvalidateShapeInParaSelection() method is responsible for the updating the selected states of the objects.
     void InvalidateShapeInParaSelection();
 
-    void InvalidateRelationSet_( const SwFrame* pFrame, bool bFrom );
+    void InvalidateRelationSet_(const SwFrame& rFrame, bool bFrom);
 
-    css::uno::Reference<css::accessibility::XAccessible>
-            GetDocumentView_( bool bPagePreview );
+    rtl::Reference<SwAccessibleContext> GetDocumentView_(bool bPagePreview);
 
     /** method to build up a new data structure of the accessible paragraphs,
         which have a selection
@@ -143,16 +143,15 @@ class SwAccessibleMap final : public ::accessibility::IAccessibleViewForwarder,
 
 public:
 
-    SwAccessibleMap( SwViewShell *pSh );
+    SwAccessibleMap(SwViewShell& rViewShell);
     virtual ~SwAccessibleMap() override;
 
-    css::uno::Reference<css::accessibility::XAccessible> GetDocumentView();
+    rtl::Reference<comphelper::OAccessible> GetDocumentView();
 
-    css::uno::Reference<css::accessibility::XAccessible> GetDocumentPreview(
-                            const std::vector<std::unique_ptr<PreviewPage>>& _rPreviewPages,
-                            const Fraction&  _rScale,
-                            const SwPageFrame* _pSelectedPageFrame,
-                            const Size&      _rPreviewWinSize );
+    rtl::Reference<comphelper::OAccessible>
+    GetDocumentPreview(const std::vector<std::unique_ptr<PreviewPage>>& _rPreviewPages,
+                       const Fraction& _rScale, const SwPageFrame* _pSelectedPageFrame,
+                       const Size& _rPreviewWinSize);
 
     ::rtl::Reference < SwAccessibleContext > GetContextImpl(
                                                  const SwFrame *pFrame,
@@ -170,9 +169,9 @@ public:
                                         SwAccessibleContext *pParentImpl,
                                         bool bCreate = true );
 
-    SwViewShell* GetShell() const
+    SwViewShell& GetShell() const
     {
-        return mpVSh;
+        return m_rViewShell;
     }
     static bool IsInSameLevel(const SdrObject* pObj, const SwFEShell* pFESh);
     void AddShapeContext(const SdrObject *pObj,
@@ -221,7 +220,7 @@ public:
     // is processed when the last action ends.
     void InvalidateEditableStates( const SwFrame* _pFrame );
 
-    void InvalidateRelationSet( const SwFrame* pMaster, const SwFrame* pFollow );
+    void InvalidateRelationSet(const SwFrame& rMaster, const SwFrame& rFollow);
 
     /** invalidation CONTENT_FLOWS_FROM/_TO relation of a paragraph
 
@@ -273,7 +272,7 @@ public:
     ) override;
     virtual ::accessibility::AccessibleControlShape* GetAccControlShapeFromModel
         (css::beans::XPropertySet* pSet) override;
-    virtual css::uno::Reference< css::accessibility::XAccessible >   GetAccessibleCaption (
+    virtual css::accessibility::XAccessible*   GetAccessibleCaption (
         const css::uno::Reference< css::drawing::XShape > & xShape) override;
 
     // additional Core/Pixel conversions for internal use; also works
@@ -298,15 +297,11 @@ private:
         input parameter - constant reference to point to determine the mapping
         mode adjustments for page/print preview.
 
-        @param _orMapMode
-        output parameter - reference to the mapping mode, which is determined
-        by the method
+        @return mapping mode, which is determined by the method
     */
-    void GetMapMode( const Point& _rPoint,
-                     MapMode&     _orMapMode ) const;
+    MapMode GetMapMode(const Point& _rPoint) const;
 public:
     virtual bool IsDocumentSelAll() override;
 };
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

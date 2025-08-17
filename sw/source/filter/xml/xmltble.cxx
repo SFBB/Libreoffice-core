@@ -54,13 +54,12 @@
 #include <o3tl/sorted_vector.hxx>
 #include <textboxhelper.hxx>
 #include <SwStyleNameMapper.hxx>
+#include <names.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::container;
 using namespace ::xmloff::token;
 using table::XCell;
 using std::vector;
@@ -99,7 +98,7 @@ struct SwXMLTableColumnCmpWidth_Impl
     }
 };
 
-class SwXMLTableColumns_Impl : public o3tl::sorted_vector<std::unique_ptr<SwXMLTableColumn_Impl>, o3tl::less_uniqueptr_to<SwXMLTableColumn_Impl> > {
+class SwXMLTableColumns_Impl : public o3tl::sorted_vector<std::unique_ptr<SwXMLTableColumn_Impl>, o3tl::less_ptr_to > {
 };
 
 }
@@ -291,7 +290,9 @@ public:
             continue;
 
         // found!
-        auto const oName(m_rFormatMap.find(pTestFormat)->second);
+        auto const oNameIt(m_rFormatMap.find(pTestFormat));
+        assert(oNameIt != m_rFormatMap.end());
+        auto const oName(oNameIt->second);
         assert(oName);
         m_rFormatMap.try_emplace(&rFrameFormat, oName);
         return {};
@@ -482,7 +483,9 @@ static OUString lcl_xmltble_appendBoxPrefix(std::u16string_view rNamePrefix,
             continue;
 
         // found!
-        auto const oName(m_rFormatMap.find(pTestFormat)->second);
+        auto const oNameIt(m_rFormatMap.find(pTestFormat));
+        assert(oNameIt != m_rFormatMap.end());
+        auto const oName(oNameIt->second);
         assert(oName);
         m_rFormatMap.try_emplace(&rFrameFormat, oName);
         return {};
@@ -708,7 +711,7 @@ void SwXMLExport::ExportTableLinesAutoStyles( const SwTableLines& rLines,
                 {
                     if( !rTableInfo.IsBaseSectionValid() )
                     {
-                        Any aAny = xCell->getPropertyValue("TextSection");
+                        Any aAny = xCell->getPropertyValue(u"TextSection"_ustr);
                         Reference < XTextSection > xTextSection;
                         aAny >>= xTextSection;
                         rTableInfo.SetBaseSection( xTextSection );
@@ -779,7 +782,7 @@ void SwXMLExport::ExportTableAutoStyles(const SwTableNode& rTableNd)
     SwXMLTableFrameFormatsSort_Impl aExpCells(rBoxFormats);
     SwXMLTableInfo_Impl aTableInfo(&rTable, XML_NAMESPACE_TABLE, rRowFormats, rBoxFormats);
     ExportTableLinesAutoStyles( rTable.GetTabLines(), nAbsWidth, nBaseWidth,
-                                pTableFormat->GetName(), aExpCols, aExpRows, aExpCells,
+                                pTableFormat->GetName().toString(), aExpCols, aExpRows, aExpCells,
                                 aTableInfo, true);
 
 }
@@ -844,7 +847,7 @@ void SwXMLExport::ExportTableBox( const SwTableBox& rBox,
 
                 // value and format (if NumberFormat != -1)
                 sal_Int32 nNumberFormat = 0;
-                Any aAny = xCell->getPropertyValue("NumberFormat");
+                Any aAny = xCell->getPropertyValue(u"NumberFormat"_ustr);
                 aAny >>= nNumberFormat;
 
                 if (static_cast<sal_Int32>(getSwDefaultTextFormat()) == nNumberFormat)
@@ -864,7 +867,7 @@ void SwXMLExport::ExportTableBox( const SwTableBox& rBox,
                 // else: invalid key; ignore
 
                 // cell protection
-                aAny = xCell->getPropertyValue("IsProtected");
+                aAny = xCell->getPropertyValue(u"IsProtected"_ustr);
                 if (*o3tl::doAccess<bool>(aAny))
                 {
                     AddAttribute( XML_NAMESPACE_TABLE, XML_PROTECTED,
@@ -873,7 +876,7 @@ void SwXMLExport::ExportTableBox( const SwTableBox& rBox,
 
                 if( !rTableInfo.IsBaseSectionValid() )
                 {
-                    aAny = xCell->getPropertyValue("TextSection");
+                    aAny = xCell->getPropertyValue(u"TextSection"_ustr);
                     Reference < XTextSection > xTextSection;
                     aAny >>= xTextSection;
                     rTableInfo.SetBaseSection( xTextSection );
@@ -1119,17 +1122,17 @@ void SwXMLExport::ExportTable( const SwTableNode& rTableNd )
     const SwFrameFormat *pTableFormat = rTable.GetFrameFormat();
     if (pTableFormat && !pTableFormat->GetName().isEmpty())
     {
-        AddAttribute(XML_NAMESPACE_TABLE, XML_NAME, pTableFormat->GetName());
+        AddAttribute(XML_NAMESPACE_TABLE, XML_NAME, pTableFormat->GetName().toString());
         AddAttribute(XML_NAMESPACE_TABLE, XML_STYLE_NAME,
-                     EncodeStyleName(pTableFormat->GetName()));
+                     EncodeStyleName(pTableFormat->GetName().toString()));
     }
 
     // table:template-name=
     if (!rTable.GetTableStyleName().isEmpty())
     {
-        OUString sStyleName;
-        SwStyleNameMapper::FillProgName(rTable.GetTableStyleName(), sStyleName, SwGetPoolIdFromName::TabStyle);
-        AddAttribute(XML_NAMESPACE_TABLE, XML_TEMPLATE_NAME, sStyleName);
+        ProgName sStyleName;
+        SwStyleNameMapper::FillProgName(UIName(rTable.GetTableStyleName().toString()), sStyleName, SwGetPoolIdFromName::TableStyle);
+        AddAttribute(XML_NAMESPACE_TABLE, XML_TEMPLATE_NAME, sStyleName.toString());
     }
 
     SvXMLElementExport aElem(*this, *oPrefix, XML_TABLE, true, true);
@@ -1142,7 +1145,7 @@ void SwXMLExport::ExportTable( const SwTableNode& rTableNd )
 
         // connection name
         AddAttribute( XML_NAMESPACE_OFFICE, XML_NAME,
-                      pDDEFieldType->GetName() );
+                      pDDEFieldType->GetName().toString() );
 
         // DDE command
         const OUString& sCmd = pDDEFieldType->GetCmd();
@@ -1220,11 +1223,11 @@ void SwXMLTextParagraphExport::exportTable(
         if( pXTable )
         {
             SwFrameFormat *const pFormat = pXTable->GetFrameFormat();
-            OSL_ENSURE( pFormat, "table format missing" );
+            assert(pFormat && "table format missing");
             const SwTable *pTable = SwTable::FindTable( pFormat );
-            OSL_ENSURE( pTable, "table missing" );
+            assert(pTable && "table missing");
             const SwTableNode *pTableNd = pTable->GetTableNode();
-            OSL_ENSURE( pTableNd, "table node missing" );
+            assert(pTableNd && "table node missing");
             if( bAutoStyles )
             {
                 // AUTOSTYLES: Optimization: Do not export table autostyle if
@@ -1234,7 +1237,7 @@ void SwXMLTextParagraphExport::exportTable(
                 // ALL flags are set at the same time.
                 const bool bExportStyles = bool( GetExport().getExportFlags() & SvXMLExportFlags::STYLES );
                 if (!isAutoStylesCollected()
-                    && (bExportStyles || !pFormat->GetDoc()->IsInHeaderFooter(*pTableNd)))
+                    && (bExportStyles || !pFormat->GetDoc().IsInHeaderFooter(*pTableNd)))
                 {
                     maTableNodes.push_back(pTableNd);
                     m_TableFormats.try_emplace(pTableNd);

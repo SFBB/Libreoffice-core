@@ -31,7 +31,7 @@
 #include <vcl/outdev.hxx>
 #include <vcl/metaact.hxx>
 #include <vcl/graphictools.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/fontdefs.hxx>
 #include <vcl/TypeSerializer.hxx>
 
@@ -40,8 +40,8 @@ namespace
 
 void ImplScalePoint( Point& rPt, double fScaleX, double fScaleY )
 {
-    rPt.setX( FRound( fScaleX * rPt.X() ) );
-    rPt.setY( FRound( fScaleY * rPt.Y() ) );
+    rPt.setX(basegfx::fround<tools::Long>(fScaleX * rPt.X()));
+    rPt.setY(basegfx::fround<tools::Long>(fScaleY * rPt.Y()));
 }
 
 void ImplScaleRect( tools::Rectangle& rRect, double fScaleX, double fScaleY )
@@ -68,10 +68,10 @@ void ImplScaleLineInfo( LineInfo& rLineInfo, double fScaleX, double fScaleY )
     {
         const double fScale = ( fabs(fScaleX) + fabs(fScaleY) ) * 0.5;
 
-        rLineInfo.SetWidth( FRound( fScale * rLineInfo.GetWidth() ) );
-        rLineInfo.SetDashLen( FRound( fScale * rLineInfo.GetDashLen() ) );
-        rLineInfo.SetDotLen( FRound( fScale * rLineInfo.GetDotLen() ) );
-        rLineInfo.SetDistance( FRound( fScale * rLineInfo.GetDistance() ) );
+        rLineInfo.SetWidth(fScale * rLineInfo.GetWidth());
+        rLineInfo.SetDashLen(fScale * rLineInfo.GetDashLen());
+        rLineInfo.SetDotLen(fScale * rLineInfo.GetDotLen());
+        rLineInfo.SetDistance(fScale * rLineInfo.GetDistance());
     }
 }
 
@@ -237,8 +237,35 @@ MetaRectAction::MetaRectAction( const tools::Rectangle& rRect ) :
     maRect      ( rRect )
 {}
 
+static bool AllowDim(tools::Long nDim)
+{
+    static bool bFuzzing = comphelper::IsFuzzing();
+    if (bFuzzing)
+    {
+        if (nDim > 0x20000000 || nDim < -0x20000000)
+        {
+            SAL_WARN("vcl", "skipping huge dimension: " << nDim);
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool AllowPoint(const Point& rPoint)
+{
+    return AllowDim(rPoint.X()) && AllowDim(rPoint.Y());
+}
+
+static bool AllowRect(const tools::Rectangle& rRect)
+{
+    return AllowPoint(rRect.TopLeft()) && AllowPoint(rRect.BottomRight());
+}
+
 void MetaRectAction::Execute( OutputDevice* pOut )
 {
+    if (!AllowRect(pOut->LogicToPixel(maRect)))
+        return;
+
     pOut->DrawRect( maRect );
 }
 
@@ -292,8 +319,8 @@ void MetaRoundRectAction::Move( tools::Long nHorzMove, tools::Long nVertMove )
 void MetaRoundRectAction::Scale( double fScaleX, double fScaleY )
 {
     ImplScaleRect( maRect, fScaleX, fScaleY );
-    mnHorzRound = FRound( mnHorzRound * fabs(fScaleX) );
-    mnVertRound = FRound( mnVertRound * fabs(fScaleY) );
+    mnHorzRound = basegfx::fround<sal_uInt32>(mnHorzRound * fabs(fScaleX));
+    mnVertRound = basegfx::fround<sal_uInt32>(mnVertRound * fabs(fScaleY));
 }
 
 MetaEllipseAction::MetaEllipseAction() :
@@ -345,6 +372,9 @@ MetaArcAction::MetaArcAction( const tools::Rectangle& rRect,
 
 void MetaArcAction::Execute( OutputDevice* pOut )
 {
+    if (!AllowRect(pOut->LogicToPixel(maRect)))
+        return;
+
     pOut->DrawArc( maRect, maStartPt, maEndPt );
 }
 
@@ -384,6 +414,9 @@ MetaPieAction::MetaPieAction( const tools::Rectangle& rRect,
 
 void MetaPieAction::Execute( OutputDevice* pOut )
 {
+    if (!AllowRect(pOut->LogicToPixel(maRect)))
+        return;
+
     pOut->DrawPie( maRect, maStartPt, maEndPt );
 }
 
@@ -462,30 +495,6 @@ MetaPolyLineAction::MetaPolyLineAction( tools::Polygon aPoly, LineInfo aLineInfo
     maLineInfo  (std::move( aLineInfo )),
     maPoly      (std::move( aPoly ))
 {}
-
-static bool AllowDim(tools::Long nDim)
-{
-    static bool bFuzzing = utl::ConfigManager::IsFuzzing();
-    if (bFuzzing)
-    {
-        if (nDim > 0x20000000 || nDim < -0x20000000)
-        {
-            SAL_WARN("vcl", "skipping huge dimension: " << nDim);
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool AllowPoint(const Point& rPoint)
-{
-    return AllowDim(rPoint.X()) && AllowDim(rPoint.Y());
-}
-
-static bool AllowRect(const tools::Rectangle& rRect)
-{
-    return AllowPoint(rRect.TopLeft()) && AllowPoint(rRect.BottomRight());
-}
 
 void MetaPolyLineAction::Execute( OutputDevice* pOut )
 {
@@ -626,14 +635,16 @@ MetaTextArrayAction::MetaTextArrayAction() :
     mnLen       ( 0 )
 {}
 
-MetaTextArrayAction::MetaTextArrayAction( const MetaTextArrayAction& rAction ) :
-    MetaAction  ( MetaActionType::TEXTARRAY ),
-    maStartPt   ( rAction.maStartPt ),
-    maStr       ( rAction.maStr ),
-    maDXAry     ( rAction.maDXAry ),
-    maKashidaAry( rAction.maKashidaAry ),
-    mnIndex     ( rAction.mnIndex ),
-    mnLen       ( rAction.mnLen )
+MetaTextArrayAction::MetaTextArrayAction(const MetaTextArrayAction& rAction)
+    : MetaAction(MetaActionType::TEXTARRAY)
+    , maStartPt(rAction.maStartPt)
+    , maStr(rAction.maStr)
+    , maDXAry(rAction.maDXAry)
+    , maKashidaAry(rAction.maKashidaAry)
+    , mnIndex(rAction.mnIndex)
+    , mnLen(rAction.mnLen)
+    , mnLayoutContextIndex(rAction.mnLayoutContextIndex)
+    , mnLayoutContextLen(rAction.mnLayoutContextLen)
 {
 }
 
@@ -666,7 +677,23 @@ MetaTextArrayAction::MetaTextArrayAction( const Point& rStartPt,
     mnIndex     ( nIndex ),
     mnLen       ( nLen )
 {
-    maDXAry.assign(pDXAry);
+    maDXAry.assign(pDXAry.begin(), pDXAry.end());
+}
+
+MetaTextArrayAction::MetaTextArrayAction(const Point& rStartPt, OUString aStr, KernArraySpan pDXAry,
+                                         std::span<const sal_Bool> pKashidaAry, sal_Int32 nIndex,
+                                         sal_Int32 nLen, sal_Int32 nLayoutContextIndex,
+                                         sal_Int32 nLayoutContextLen)
+    : MetaAction(MetaActionType::TEXTARRAY)
+    , maStartPt(rStartPt)
+    , maStr(std::move(aStr))
+    , maKashidaAry(pKashidaAry.begin(), pKashidaAry.end())
+    , mnIndex(nIndex)
+    , mnLen(nLen)
+    , mnLayoutContextIndex(nLayoutContextIndex)
+    , mnLayoutContextLen(nLayoutContextLen)
+{
+    maDXAry.assign(pDXAry.begin(), pDXAry.end());
 }
 
 MetaTextArrayAction::~MetaTextArrayAction()
@@ -675,7 +702,18 @@ MetaTextArrayAction::~MetaTextArrayAction()
 
 void MetaTextArrayAction::Execute( OutputDevice* pOut )
 {
-    pOut->DrawTextArray( maStartPt, maStr, maDXAry, maKashidaAry, mnIndex, mnLen );
+    if (!AllowPoint(pOut->LogicToPixel(maStartPt)))
+        return;
+
+    if (mnLayoutContextIndex >= 0)
+    {
+        pOut->DrawPartialTextArray(maStartPt, maStr, maDXAry, maKashidaAry, mnLayoutContextIndex,
+                                   mnLayoutContextLen, mnIndex, mnLen);
+    }
+    else
+    {
+        pOut->DrawTextArray(maStartPt, maStr, maDXAry, maKashidaAry, mnIndex, mnLen);
+    }
 }
 
 rtl::Reference<MetaAction> MetaTextArrayAction::Clone() const
@@ -695,7 +733,7 @@ void MetaTextArrayAction::Scale( double fScaleX, double fScaleY )
     if ( !maDXAry.empty() && mnLen )
     {
         for ( sal_uInt16 i = 0, nCount = mnLen; i < nCount; i++ )
-            maDXAry.set(i, FRound(maDXAry[i] * fabs(fScaleX)));
+            maDXAry[i] *= fabs(fScaleX);
     }
 }
 
@@ -732,8 +770,25 @@ MetaStretchTextAction::MetaStretchTextAction( const Point& rPt, sal_uInt32 nWidt
 
 void MetaStretchTextAction::Execute( OutputDevice* pOut )
 {
-    if (!AllowDim(pOut->LogicToPixel(maPt).Y()))
+    if (!AllowRect(pOut->LogicToPixel(tools::Rectangle(maPt, Size(mnWidth, pOut->GetTextHeight())))))
         return;
+
+    static bool bFuzzing = comphelper::IsFuzzing();
+    if (bFuzzing && mnWidth > 10000)
+    {
+        FontLineStyle eUnderline = pOut->GetFont().GetUnderline();
+        FontLineStyle eOverline = pOut->GetFont().GetOverline();
+
+        if (eUnderline == LINESTYLE_SMALLWAVE || eUnderline == LINESTYLE_WAVE ||
+            eUnderline == LINESTYLE_DOUBLEWAVE || eUnderline == LINESTYLE_BOLDWAVE ||
+            eOverline == LINESTYLE_SMALLWAVE || eOverline == LINESTYLE_WAVE ||
+            eOverline == LINESTYLE_DOUBLEWAVE || eOverline == LINESTYLE_BOLDWAVE)
+        {
+            SAL_WARN("vcl.gdi", "MetaStretchTextAction::Execute, skipping suspicious WaveTextLine of length: "
+                                    << mnWidth << " for fuzzing performance");
+            return;
+        }
+    }
 
     pOut->DrawStretchText( maPt, mnWidth, maStr, mnIndex, mnLen );
 }
@@ -751,7 +806,7 @@ void MetaStretchTextAction::Move( tools::Long nHorzMove, tools::Long nVertMove )
 void MetaStretchTextAction::Scale( double fScaleX, double fScaleY )
 {
     ImplScalePoint( maPt, fScaleX, fScaleY );
-    mnWidth = static_cast<sal_uLong>(FRound( mnWidth * fabs(fScaleX) ));
+    mnWidth = basegfx::fround<sal_uInt32>(mnWidth * fabs(fScaleX));
 }
 MetaTextRectAction::MetaTextRectAction() :
     MetaAction  ( MetaActionType::TEXTRECT ),
@@ -822,6 +877,9 @@ void MetaTextLineAction::Execute( OutputDevice* pOut )
         SAL_WARN("vcl", "skipping line with negative width: " << mnWidth);
         return;
     }
+    if (!AllowRect(pOut->LogicToPixel(tools::Rectangle(maPos, Size(mnWidth, pOut->GetTextHeight())))))
+        return;
+
     pOut->DrawTextLine( maPos, mnWidth, meStrikeout, meUnderline, meOverline );
 }
 
@@ -838,7 +896,7 @@ void MetaTextLineAction::Move( tools::Long nHorzMove, tools::Long nVertMove )
 void MetaTextLineAction::Scale( double fScaleX, double fScaleY )
 {
     ImplScalePoint( maPos, fScaleX, fScaleY );
-    mnWidth = FRound( mnWidth * fabs(fScaleX) );
+    mnWidth = basegfx::fround<tools::Long>(mnWidth * fabs(fScaleX));
 }
 
 MetaBmpAction::MetaBmpAction() :
@@ -891,7 +949,7 @@ MetaBmpScaleAction::MetaBmpScaleAction( const Point& rPt, const Size& rSz,
 
 static bool AllowScale(const Size& rSource, const Size& rDest)
 {
-    static bool bFuzzing = utl::ConfigManager::IsFuzzing();
+    static bool bFuzzing = comphelper::IsFuzzing();
     if (bFuzzing)
     {
         constexpr int nMaxScaleWhenFuzzing = 128;
@@ -1140,6 +1198,8 @@ MetaMaskAction::MetaMaskAction( const Point& rPt,
 
 void MetaMaskAction::Execute( OutputDevice* pOut )
 {
+    if (!AllowPoint(pOut->LogicToPixel(maPt)))
+        return;
     pOut->DrawMask( maPt, maBmp, maColor );
 }
 
@@ -1523,8 +1583,8 @@ rtl::Reference<MetaAction> MetaMoveClipRegionAction::Clone() const
 
 void MetaMoveClipRegionAction::Scale( double fScaleX, double fScaleY )
 {
-    mnHorzMove = FRound( mnHorzMove * fScaleX );
-    mnVertMove = FRound( mnVertMove * fScaleY );
+    mnHorzMove = basegfx::fround<tools::Long>(mnHorzMove * fScaleX);
+    mnVertMove = basegfx::fround<tools::Long>(mnVertMove * fScaleY);
 }
 
 MetaLineColorAction::MetaLineColorAction() :
@@ -1773,8 +1833,8 @@ rtl::Reference<MetaAction> MetaFontAction::Clone() const
 void MetaFontAction::Scale( double fScaleX, double fScaleY )
 {
     const Size aSize(
-        FRound(maFont.GetFontSize().Width() * fabs(fScaleX)),
-        FRound(maFont.GetFontSize().Height() * fabs(fScaleY)));
+        basegfx::fround<tools::Long>(maFont.GetFontSize().Width() * fabs(fScaleX)),
+        basegfx::fround<tools::Long>(maFont.GetFontSize().Height() * fabs(fScaleY)));
     maFont.SetFontSize( aSize );
 }
 

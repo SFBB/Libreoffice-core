@@ -37,17 +37,16 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace dbtools;
 
-sdbcx::ObjectType OTables::createObject(const OUString& _rName)
+css::uno::Reference<css::beans::XPropertySet> OTables::createObject(const OUString& _rName)
 {
     OUString sCatalog, sSchema, sTable;
     ::dbtools::qualifiedNameComponents(m_xMetaData, _rName, sCatalog, sSchema, sTable,
                                        ::dbtools::EComposeRule::InDataManipulation);
 
     Sequence<OUString> sTableTypes{
-        "VIEW", "TABLE", "%"
+        u"VIEW"_ustr, u"TABLE"_ustr, u"%"_ustr
     }; // this last one just to be sure to include anything else...
 
     Any aCatalog;
@@ -55,7 +54,7 @@ sdbcx::ObjectType OTables::createObject(const OUString& _rName)
         aCatalog <<= sCatalog;
     Reference<XResultSet> xResult = m_xMetaData->getTables(aCatalog, sSchema, sTable, sTableTypes);
 
-    sdbcx::ObjectType xRet;
+    rtl::Reference<OMySQLTable> xRet;
     if (xResult.is())
     {
         Reference<XRow> xRow(xResult, UNO_QUERY);
@@ -90,8 +89,8 @@ Reference<XPropertySet> OTables::createDescriptor()
 }
 
 // XAppend
-sdbcx::ObjectType OTables::appendObject(const OUString& _rForName,
-                                        const Reference<XPropertySet>& descriptor)
+css::uno::Reference<css::beans::XPropertySet>
+OTables::appendObject(const OUString& _rForName, const Reference<XPropertySet>& descriptor)
 {
     createTable(descriptor);
     return createObject(_rForName);
@@ -111,7 +110,7 @@ void OTables::dropObject(sal_Int32 _nPos, const OUString& _sElementName)
     ::dbtools::qualifiedNameComponents(m_xMetaData, _sElementName, sCatalog, sSchema, sTable,
                                        ::dbtools::EComposeRule::InDataManipulation);
 
-    OUString aSql("DROP ");
+    OUString aSql(u"DROP "_ustr);
 
     Reference<XPropertySet> xProp(xObject, UNO_QUERY);
     bool bIsView = xProp.is()
@@ -184,7 +183,7 @@ void OTables::appendNew(const OUString& _rsNewTable)
         aListenerLoop.next()->elementInserted(aEvent);
 }
 
-OUString OTables::getNameForObject(const sdbcx::ObjectType& _xObject)
+OUString OTables::getNameForObject(const css::uno::Reference<css::beans::XPropertySet>& _xObject)
 {
     OSL_ENSURE(_xObject.is(), "OTables::getNameForObject: Object is NULL!");
     return ::dbtools::composeTableName(m_xMetaData, _xObject,

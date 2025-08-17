@@ -53,11 +53,9 @@ using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
-using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::form::binding;
 
 
 Sequence<Type> OComboBoxModel::_getTypes()
@@ -205,7 +203,7 @@ void OComboBoxModel::setFastPropertyValue_NoBroadcast(sal_Int32 _nHandle, const 
             break;
 
         case PROPERTY_ID_LISTSOURCE :
-            DBG_ASSERT(_rValue.getValueType().getTypeClass() == TypeClass_STRING,
+            DBG_ASSERT(_rValue.getValueTypeClass() == TypeClass_STRING,
                 "OComboBoxModel::setFastPropertyValue_NoBroadcast : invalid type !" );
             _rValue >>= m_aListSource;
             // The ListSource has changed -> reload
@@ -219,13 +217,13 @@ void OComboBoxModel::setFastPropertyValue_NoBroadcast(sal_Int32 _nHandle, const 
             break;
 
         case PROPERTY_ID_EMPTY_IS_NULL :
-            DBG_ASSERT(_rValue.getValueType().getTypeClass() == TypeClass_BOOLEAN,
+            DBG_ASSERT(_rValue.getValueTypeClass() == TypeClass_BOOLEAN,
                 "OComboBoxModel::setFastPropertyValue_NoBroadcast : invalid type !" );
             _rValue >>= m_bEmptyIsNull;
             break;
 
         case PROPERTY_ID_DEFAULT_TEXT :
-            DBG_ASSERT(_rValue.getValueType().getTypeClass() == TypeClass_STRING,
+            DBG_ASSERT(_rValue.getValueTypeClass() == TypeClass_STRING,
                 "OComboBoxModel::setFastPropertyValue_NoBroadcast : invalid type !" );
             _rValue >>= m_aDefaultText;
             resetNoBroadcast();
@@ -341,7 +339,7 @@ void SAL_CALL OComboBoxModel::write(const Reference<css::io::XObjectOutputStream
 
     // Mask for Any
     sal_uInt16 nAnyMask = 0;
-    if (m_aBoundColumn.getValueType().getTypeClass() == TypeClass_SHORT)
+    if (m_aBoundColumn.getValueTypeClass() == TypeClass_SHORT)
         nAnyMask |= BOUNDCOLUMN;
     _rxOutStream << nAnyMask;
 
@@ -413,7 +411,7 @@ void SAL_CALL OComboBoxModel::read(const Reference<css::io::XObjectInputStream>&
         m_aListSource.clear();
         css::uno::Sequence<OUString> aListSource;
         _rxInStream >> aListSource;
-        for (const OUString& rToken : std::as_const(aListSource))
+        for (const OUString& rToken : aListSource)
             m_aListSource += rToken;
     }
 
@@ -517,7 +515,7 @@ void OComboBoxModel::loadData( bool _bForce )
                     // otherwise look for the alias
                     Reference<XPropertySet> xFormProp(m_xCursor,UNO_QUERY);
                     Reference< XColumnsSupplier > xSupplyFields;
-                    xFormProp->getPropertyValue("SingleSelectQueryComposer") >>= xSupplyFields;
+                    xFormProp->getPropertyValue(u"SingleSelectQueryComposer"_ustr) >>= xSupplyFields;
 
                     // search the field
                     DBG_ASSERT(xSupplyFields.is(), "OComboBoxModel::loadData : invalid query composer !");
@@ -748,7 +746,7 @@ bool OComboBoxModel::commitControlValueToDbColumn( bool _bPostReset )
             }
         }
 
-        m_aLastKnownValue = aNewValue;
+        m_aLastKnownValue = std::move(aNewValue);
     }
 
     // add the new value to the list
@@ -763,7 +761,7 @@ bool OComboBoxModel::commitControlValueToDbColumn( bool _bPostReset )
         return true;
 
     bool bFound = false;
-    for (const OUString& rStringItem : std::as_const(aStringItemList))
+    for (const OUString& rStringItem : aStringItemList)
     {
         if ( (bFound = rStringItem == sNewValue) )
             break;

@@ -20,6 +20,7 @@
 #include <string.h>
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 
 #include <runtime.hxx>
@@ -40,10 +41,8 @@
 #include <iosys.hxx>
 
 using namespace com::sun::star::uno;
-using namespace com::sun::star::lang;
 using namespace com::sun::star::ucb;
 using namespace com::sun::star::io;
-using namespace com::sun::star::bridge;
 
 
 namespace {
@@ -65,11 +64,11 @@ public:
 }
 
 SbiInputDialog::SbiInputDialog(weld::Window* pParent, const OUString& rPrompt)
-    : GenericDialogController(pParent, "svt/ui/inputbox.ui", "InputBox")
-    , m_xInput(m_xBuilder->weld_entry("entry"))
-    , m_xOk(m_xBuilder->weld_button("ok"))
-    , m_xCancel(m_xBuilder->weld_button("cancel"))
-    , m_xPromptText(m_xBuilder->weld_label("prompt"))
+    : GenericDialogController(pParent, u"svt/ui/inputbox.ui"_ustr, u"InputBox"_ustr)
+    , m_xInput(m_xBuilder->weld_entry(u"entry"_ustr))
+    , m_xOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xCancel(m_xBuilder->weld_button(u"cancel"_ustr))
+    , m_xPromptText(m_xBuilder->weld_label(u"prompt"_ustr))
 {
     m_xDialog->set_title(rPrompt);
     m_xPromptText->set_label(rPrompt);
@@ -133,7 +132,7 @@ void SbiStream::MapError()
 bool hasUno()
 {
     static const bool bRetVal = [] {
-        Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+        const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
         if( !xContext.is() )
         {
             // No service manager at all
@@ -143,7 +142,7 @@ bool hasUno()
         {
             Reference< XUniversalContentBroker > xManager = UniversalContentBroker::create(xContext);
 
-            if ( !( xManager->queryContentProvider( "file:///" ).is() ) )
+            if ( !( xManager->queryContentProvider( u"file:///"_ustr ).is() ) )
             {
                 // No UCB
                 return false;
@@ -416,7 +415,7 @@ void    UCBStream::SetSize( sal_uInt64 )
 
 
 ErrCode const & SbiStream::Open
-( std::string_view rName, StreamMode nStrmMode, SbiStreamFlags nFlags, short nL )
+( const OUString& rName, StreamMode nStrmMode, SbiStreamFlags nFlags, short nL )
 {
     nMode   = nFlags;
     nLen    = nL;
@@ -426,8 +425,7 @@ ErrCode const & SbiStream::Open
     {
         nStrmMode |= StreamMode::NOCREATE;
     }
-    OUString aStr(OStringToOUString(rName, osl_getThreadTextEncoding()));
-    OUString aNameStr = getFullPath( aStr );
+    OUString aNameStr = getFullPath(rName);
 
     if( hasUno() )
     {
@@ -626,7 +624,7 @@ ErrCode SbiIoSystem::GetError()
     return n;
 }
 
-void SbiIoSystem::Open(short nCh, std::string_view rName, StreamMode nMode, SbiStreamFlags nFlags, short nLen)
+void SbiIoSystem::Open(short nCh, const OUString& rName, StreamMode nMode, SbiStreamFlags nFlags, short nLen)
 {
     nError = ERRCODE_NONE;
     if( nCh >= CHANNELS || !nCh )
@@ -785,8 +783,7 @@ void SbiIoSystem::CloseAll()
 
 void SbiIoSystem::ReadCon(OString& rIn)
 {
-    OUString aPromptStr(OStringToOUString(aPrompt, osl_getThreadTextEncoding()));
-    SbiInputDialog aDlg(nullptr, aPromptStr);
+    SbiInputDialog aDlg(nullptr, aPrompt);
     if (aDlg.run() == RET_OK)
     {
         rIn = OUStringToOString(aDlg.GetInput(), osl_getThreadTextEncoding());

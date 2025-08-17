@@ -33,10 +33,7 @@ using namespace connectivity;
 using namespace connectivity::hsqldb;
 using namespace css::uno;
 using namespace css::beans;
-using namespace css::sdbcx;
 using namespace css::sdbc;
-using namespace css::container;
-using namespace css::lang;
 using namespace dbtools;
 typedef connectivity::sdbcx::OCollection OCollection_TYPE;
 
@@ -51,7 +48,7 @@ HViews::HViews( const Reference< XConnection >& _rxConnection, ::cppu::OWeakObje
 }
 
 
-sdbcx::ObjectType HViews::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > HViews::createObject(const OUString& _rName)
 {
     OUString sCatalog,sSchema,sTable;
     ::dbtools::qualifiedNameComponents(m_xMetaData,
@@ -82,7 +79,7 @@ Reference< XPropertySet > HViews::createDescriptor()
 }
 
 // XAppend
-sdbcx::ObjectType HViews::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > HViews::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     createView(descriptor);
     return createObject( _rForName );
@@ -98,7 +95,7 @@ void HViews::dropObject(sal_Int32 _nPos,const OUString& /*_sElementName*/)
     bool bIsNew = connectivity::sdbcx::ODescriptor::isNew( xObject );
     if (!bIsNew)
     {
-        OUString aSql(  "DROP VIEW" );
+        OUString aSql(  u"DROP VIEW"_ustr );
 
         Reference<XPropertySet> xProp(xObject,UNO_QUERY);
         aSql += ::dbtools::composeTableName( m_xMetaData, xProp, ::dbtools::EComposeRule::InTableDefinitions, true );

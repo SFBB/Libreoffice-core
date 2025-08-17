@@ -25,14 +25,13 @@
 class SwView;
 class SwWrtShell;
 class SwEditWin;
-class KeyEvent;
 class MouseEvent;
 
 // base class for all functions
 class SwDrawBase
 {
 protected:
-    SwView*         m_pView;
+    SwView&         m_rView;
     SwWrtShell*     m_pSh;
     VclPtr<SwEditWin> m_pWin;
     Point           m_aStartPos;                 // position of BeginCreate
@@ -42,7 +41,7 @@ protected:
 
     Point           GetDefaultCenterPos() const;
 public:
-    SwDrawBase(SwWrtShell *pSh, SwEditWin* pWin, SwView* pView);
+    SwDrawBase(SwWrtShell *pSh, SwEditWin* pWin, SwView& rView);
     virtual ~SwDrawBase();
 
     void         SetDrawPointer();

@@ -35,6 +35,7 @@
 class EDITENG_DLLPUBLIC SvxPrintItem final : public SfxBoolItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SvxPrintItem)
     explicit SvxPrintItem( const sal_uInt16 nId , const bool bPrt = true );
 
     // "pure virtual Methods" from SfxPoolItem

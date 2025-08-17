@@ -51,14 +51,14 @@ public class Finalizer
             this.curtabledescriptor = _curtabledescriptor;
             short curtabindex = (short) (TableWizard.SOFINALPAGE * 100);
             Integer IFINALSTEP = Integer.valueOf(TableWizard.SOFINALPAGE);
-            String slblTableName = CurUnoDialog.m_oResource.getResText("RID_TABLE_34");
-            String slblProceed = CurUnoDialog.m_oResource.getResText("RID_TABLE_36");
-            String sWorkWithTable = CurUnoDialog.m_oResource.getResText("RID_TABLE_38");
-            String sStartFormWizard = CurUnoDialog.m_oResource.getResText("RID_TABLE_39");
-            String sModifyTable = CurUnoDialog.m_oResource.getResText("RID_TABLE_37");
-            String sCongratulations = CurUnoDialog.m_oResource.getResText("RID_TABLE_35");
-            String slblCatalog = CurUnoDialog.m_oResource.getResText("RID_TABLE_49");
-            String slblSchema = CurUnoDialog.m_oResource.getResText("RID_TABLE_50");
+            String slblTableName = CurUnoDialog.getResource().getResText("RID_TABLE_34");
+            String slblProceed = CurUnoDialog.getResource().getResText("RID_TABLE_36");
+            String sWorkWithTable = CurUnoDialog.getResource().getResText("RID_TABLE_38");
+            String sStartFormWizard = CurUnoDialog.getResource().getResText("RID_TABLE_39");
+            String sModifyTable = CurUnoDialog.getResource().getResText("RID_TABLE_37");
+            String sCongratulations = CurUnoDialog.getResource().getResText("RID_TABLE_35");
+            String slblCatalog = CurUnoDialog.getResource().getResText("RID_TABLE_49");
+            String slblSchema = CurUnoDialog.getResource().getResText("RID_TABLE_50");
             String[] sCatalogNames = curtabledescriptor.getCatalogNames();
             String[] sSchemaNames = curtabledescriptor.getSchemaNames();
             int nListBoxPosX = 97;
@@ -91,7 +91,7 @@ public class Finalizer
                     });
             txtTableName.addTextListener(CurUnoDialog);
             txtTableName.setMaxTextLen((short) this.curtabledescriptor.getMaxTableNameLength());
-            if (this.curtabledescriptor.xDBMetaData.supportsCatalogsInTableDefinitions())
+            if (this.curtabledescriptor.getDBMetaData().supportsCatalogsInTableDefinitions())
             {
                 if (sCatalogNames != null && sCatalogNames.length > 0)
                 {
@@ -99,7 +99,7 @@ public class Finalizer
                     String sCatalog = PropertyNames.EMPTY_STRING;
                     try
                     {
-                        sCatalog = curtabledescriptor.DBConnection.getCatalog();
+                        sCatalog = curtabledescriptor.getDBConnection().getCatalog();
                     }
                     catch (SQLException e1)
                     {
@@ -143,7 +143,7 @@ public class Finalizer
                     nListBoxPosX = 200;
                 }
             }
-            if (this.curtabledescriptor.xDBMetaData.supportsSchemasInTableDefinitions())
+            if (this.curtabledescriptor.getDBMetaData().supportsSchemasInTableDefinitions())
             {
                 if (sSchemaNames != null && sSchemaNames.length > 0)
                 {

@@ -36,16 +36,16 @@ class WinFontInstance : public LogicalFontInstance
 public:
     ~WinFontInstance() override;
 
-    bool hasHScale() const;
     float getHScale() const;
 
     void SetGraphics(WinSalGraphics*);
     WinSalGraphics* GetGraphics() const { return m_pGraphics; }
 
     HFONT GetHFONT() const { return m_hFont; }
+    HFONT GetVerticalHFONT() const { return m_hVerticalFont; }
+
     // Return true if the font is for vertical writing.
-    // I.e. the font name of the LOGFONT is prefixed with '@'.
-    bool  IsCJKVerticalFont() const { return m_bIsCJKVerticalFont; }
+    bool IsCJKVerticalFont() const { return m_hVerticalFont != nullptr; }
     sal_Int32 GetTmDescent() const { return m_nTmDescent; }
 
     const WinFontFace * GetFontFace() const { return static_cast<const WinFontFace *>(LogicalFontInstance::GetFontFace()); }
@@ -62,7 +62,7 @@ private:
 
     WinSalGraphics *m_pGraphics;
     HFONT m_hFont;
-    bool  m_bIsCJKVerticalFont;
+    HFONT m_hVerticalFont = nullptr;
     sal_Int32 m_nTmDescent;
     mutable sal::systools::COMReference<IDWriteFontFace> mxDWFontFace;
 };
@@ -75,14 +75,13 @@ protected:
     TextOutRenderer & operator = (const TextOutRenderer &) = delete;
 
 public:
-    static TextOutRenderer & get(bool bUseDWrite, bool bRenderingModeNatural);
+    static TextOutRenderer & get(bool bUseDWrite, bool bRenderingModeNatural, bool bAntiAlias);
 
     virtual ~TextOutRenderer() = default;
 
     virtual bool operator ()(GenericSalLayout const &rLayout,
         SalGraphics &rGraphics,
-        HDC hDC,
-        bool bRenderingModeNatural) = 0;
+        HDC hDC) = 0;
 };
 
 class ExTextOutRenderer : public TextOutRenderer
@@ -95,8 +94,7 @@ public:
 
     bool operator ()(GenericSalLayout const &rLayout,
         SalGraphics &rGraphics,
-        HDC hDC,
-        bool bRenderingModeNatural) override;
+        HDC hDC) override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

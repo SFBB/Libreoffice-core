@@ -34,7 +34,8 @@ SvgFilterNode::SvgFilterNode(SVGToken aType, SvgDocument& rDocument, SvgNode* pP
 
 SvgFilterNode::~SvgFilterNode() {}
 
-void SvgFilterNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTarget) const
+void SvgFilterNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTarget,
+                          const SvgFilterNode* /*pParent*/) const
 {
     if (rTarget.empty())
         return;
@@ -42,12 +43,51 @@ void SvgFilterNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTarg
     const auto& rChildren = getChildren();
     const sal_uInt32 nCount(rChildren.size());
 
+    addGraphicSourceToMapper(u"SourceGraphic"_ustr, rTarget);
+
+    // TODO: For now, map SourceAlpha, BackgroundImage,
+    // BackgroundAlpha, FillPaint and StrokePaint to rTarget
+    // so at least something is displayed
+    addGraphicSourceToMapper(u"SourceAlpha"_ustr, rTarget);
+    addGraphicSourceToMapper(u"BackgroundImage"_ustr, rTarget);
+    addGraphicSourceToMapper(u"BackgroundAlpha"_ustr, rTarget);
+    addGraphicSourceToMapper(u"FillPaint"_ustr, rTarget);
+    addGraphicSourceToMapper(u"StrokePaint"_ustr, rTarget);
+
     // apply children's filters
     for (sal_uInt32 a(0); a < nCount; a++)
     {
         SvgFilterNode* pFilterNode = dynamic_cast<SvgFilterNode*>(rChildren[a].get());
         if (pFilterNode)
-            pFilterNode->apply(rTarget);
+        {
+            pFilterNode->apply(rTarget, this);
+        }
+    }
+}
+
+void SvgFilterNode::addGraphicSourceToMapper(
+    const OUString& rStr, drawinglayer::primitive2d::Primitive2DContainer pGraphicSource) const
+{
+    if (!rStr.isEmpty())
+    {
+        const_cast<SvgFilterNode*>(this)->maIdGraphicSourceMapperList.emplace(rStr, pGraphicSource);
+    }
+}
+
+const drawinglayer::primitive2d::Primitive2DContainer*
+SvgFilterNode::findGraphicSource(const OUString& rStr) const
+{
+    if (rStr.isEmpty())
+        return nullptr;
+
+    const IdGraphicSourceMapper::const_iterator aResult(maIdGraphicSourceMapperList.find(rStr));
+    if (aResult == maIdGraphicSourceMapperList.end())
+    {
+        return nullptr;
+    }
+    else
+    {
+        return &aResult->second;
     }
 }
 

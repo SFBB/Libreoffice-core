@@ -27,6 +27,12 @@ class SwDoc;
 namespace sw
 {
 
+class AppendRedlineContext;
+
+/// The redline manager is owned by the SwDoc and manages the track changes related model data of
+/// one opened Writer document. Per-view data is not stored here. Important members are the redline
+/// flags (whether to record / show changes) & the redline table (that contains the actual
+/// redlines).
 class SAL_DLLPUBLIC_RTTI DocumentRedlineManager final : public IDocumentRedlineAccess
 {
 public:
@@ -34,13 +40,13 @@ public:
 
     /**
      * Replaced by SwRootFrame::IsHideRedlines() (this is model-level redline
-     * hiding).
+     * hiding) for hide/show.
      */
-    virtual RedlineFlags GetRedlineFlags() const override;
+    virtual RedlineFlags GetRedlineFlags(const SwViewShell* pViewShell = nullptr) const override;
 
-    virtual void SetRedlineFlags_intern(/*[in]*/RedlineFlags eMode) override;
+    virtual void SetRedlineFlags_intern(/*[in]*/RedlineFlags eMode, SfxRedlineRecordingMode eRedlineRecordingMode = SfxRedlineRecordingMode::ViewAgnostic, bool bRecordModeChange = false) override;
 
-    virtual void SetRedlineFlags(/*[in]*/RedlineFlags eMode) override;
+    virtual void SetRedlineFlags(/*[in]*/RedlineFlags eMode, SfxRedlineRecordingMode eRedlineRecordingMode = SfxRedlineRecordingMode::ViewAgnostic, bool bRecordModeChange = false) override;
 
     virtual bool IsRedlineOn() const override;
 
@@ -137,6 +143,8 @@ public:
         /*[in]*/ SwRedlineTable::size_type nStartPos,
         /*[in]*/ SwRedlineTable::size_type nEndPos) const override;
 
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+
     //Non Interface methods;
 
     /** Set comment-text for Redline. It then comes in via AppendRedLine.
@@ -155,13 +163,18 @@ public:
 private:
 
     bool RejectRedlineRange(SwRedlineTable::size_type nPosOrigin,
-                            SwRedlineTable::size_type& nPosStart,
-                            SwRedlineTable::size_type& nPosEnd, bool bCallDelete);
+                            const SwRedlineTable::size_type& nPosStart,
+                            const SwRedlineTable::size_type& nPosEnd, bool bCallDelete);
     bool AcceptRedlineRange(SwRedlineTable::size_type nPosOrigin,
-                            SwRedlineTable::size_type& nPosStart,
-                            SwRedlineTable::size_type& nPosEnd, bool bCallDelete);
+                            const SwRedlineTable::size_type& nPosStart,
+                            const SwRedlineTable::size_type& nPosEnd, bool bCallDelete);
     bool AcceptMovedRedlines(sal_uInt32 nMovedID, bool bCallDelete);
     bool RejectMovedRedlines(sal_uInt32 nMovedID, bool bCallDelete);
+    void PreAppendInsertRedline(AppendRedlineContext& rCtx);
+    void PreAppendDeleteRedline(AppendRedlineContext& rCtx);
+    void PreAppendFormatRedline(AppendRedlineContext& rCtx);
+    /// Append a next redline partially on top of another existing redline.
+    void PreAppendForeignRedline(AppendRedlineContext& rCtx);
 
     DocumentRedlineManager(DocumentRedlineManager const&) = delete;
     DocumentRedlineManager& operator=(DocumentRedlineManager const&) = delete;

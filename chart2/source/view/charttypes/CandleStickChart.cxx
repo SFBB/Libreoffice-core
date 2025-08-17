@@ -32,7 +32,6 @@
 namespace chart
 {
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 
 CandleStickChart::CandleStickChart( const rtl::Reference<ChartType>& xChartTypeModel
                                     , sal_Int32 nDimensionCount )
@@ -106,13 +105,13 @@ void CandleStickChart::createShapes()
     {
         if( m_xChartTypeModel.is() )
         {
-            m_xChartTypeModel->getPropertyValue( "ShowFirst" ) >>= bShowFirst;
+            m_xChartTypeModel->getPropertyValue( u"ShowFirst"_ustr ) >>= bShowFirst;
 
             uno::Reference< beans::XPropertySet > xWhiteDayProps;
             uno::Reference< beans::XPropertySet > xBlackDayProps;
-            m_xChartTypeModel->getPropertyValue( "Japanese" ) >>= bJapaneseStyle;
-            m_xChartTypeModel->getPropertyValue( "WhiteDay" ) >>= xWhiteDayProps;
-            m_xChartTypeModel->getPropertyValue( "BlackDay" ) >>= xBlackDayProps;
+            m_xChartTypeModel->getPropertyValue( u"Japanese"_ustr ) >>= bJapaneseStyle;
+            m_xChartTypeModel->getPropertyValue( u"WhiteDay"_ustr ) >>= xWhiteDayProps;
+            m_xChartTypeModel->getPropertyValue( u"BlackDay"_ustr ) >>= xBlackDayProps;
 
             tPropertyNameValueMap aWhiteBox_Map;
             PropertyMapper::getValueMap( aWhiteBox_Map, PropertyMapper::getPropertyNameMapForFillAndLineProperties(), xWhiteDayProps );
@@ -200,9 +199,7 @@ void CandleStickChart::createShapes()
                     drawing::Position3D aPosMiddleMinimum( pPosHelper->transformScaledLogicToScene( fScaledX, fScaledY_Min ,0 ,true ) );
                     drawing::Position3D aPosMiddleMaximum( pPosHelper->transformScaledLogicToScene( fScaledX, fScaledY_Max ,0 ,true ) );
 
-                    rtl::Reference<SvxShapeGroupAnyD> xLossGainTarget( xGainTarget );
-                    if(bBlack)
-                        xLossGainTarget = xLossTarget;
+                    rtl::Reference<SvxShapeGroupAnyD> xLossGainTarget(bBlack ? xLossTarget : xGainTarget);
 
                     uno::Reference< beans::XPropertySet > xPointProp( pSeries->getPropertiesOfPoint( nIndex ));
                     rtl::Reference<SvxShapeGroupAnyD> xPointGroupShape_Shapes;

@@ -45,12 +45,6 @@ namespace configmgr::update {
 
 namespace {
 
-std::set< OUString > seqToSet(
-    css::uno::Sequence< OUString > const & sequence)
-{
-    return std::set< OUString >( sequence.begin(), sequence.end() );
-}
-
 class Service:
     public cppu::WeakImplHelper< css::configuration::XUpdate, css::lang::XServiceInfo >
 {
@@ -82,7 +76,7 @@ private:
         css::uno::Sequence< OUString > const & excludedPaths) override;
 
     OUString SAL_CALL getImplementationName() override {
-        return "com.sun.star.comp.configuration.Update";
+        return u"com.sun.star.comp.configuration.Update"_ustr;
     }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override {
@@ -90,7 +84,7 @@ private:
     }
 
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override {
-        return {"com.sun.star.configuration.Update_Service"};
+        return {u"com.sun.star.configuration.Update_Service"_ustr};
     }
 
     std::shared_ptr<osl::Mutex> lock_;
@@ -144,7 +138,7 @@ void Service::insertModificationXcuFile(
         Components & components = Components::getSingleton(context_);
         Modifications mods;
         components.insertModificationXcuFile(
-            fileUri, seqToSet(includedPaths), seqToSet(excludedPaths), &mods);
+            fileUri, includedPaths, excludedPaths, &mods);
         components.initGlobalBroadcaster(
             mods, rtl::Reference< RootAccess >(), &bc);
     }

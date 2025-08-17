@@ -346,14 +346,14 @@ public:
      * It is used to do the visual <-> text correspondence.
      * @return line
      */
-    sal_uInt16 GetRow() const { return sal::static_int_cast<sal_uInt16>(m_aESelection.nStartPara); }
+    sal_Int32 GetRow() const { return m_aESelection.start.nPara; }
 
     /**
      * Gets the column of the line in the text where the node is located.
      * It is used to do the visual <-> text correspondence.
      * @return column
      */
-    sal_uInt16 GetColumn() const { return sal::static_int_cast<sal_uInt16>(m_aESelection.nStartPos); }
+    sal_Int32 GetColumn() const { return m_aESelection.start.nIndex; }
 
     /**
      * Gets the scale mode.
@@ -369,8 +369,8 @@ public:
     void SetScaleMode(SmScaleMode eMode) { meScaleMode = eMode; }
 
     //visual stuff TODO comment
-    virtual void AdaptToX(OutputDevice &rDev, sal_uLong nWidth);
-    virtual void AdaptToY(OutputDevice &rDev, sal_uLong nHeight);
+    virtual void AdaptToX(OutputDevice &rDev, tools::Long nWidth);
+    virtual void AdaptToY(OutputDevice &rDev, tools::Long nHeight);
 
     /**
      * Gets the node type.
@@ -671,8 +671,8 @@ public:
     {}
 
     //visual stuff TODO comment
-    virtual void AdaptToX(OutputDevice &rDev, sal_uLong nWidth) override;
-    virtual void AdaptToY(OutputDevice &rDev, sal_uLong nHeight) override;
+    virtual void AdaptToX(OutputDevice &rDev, tools::Long nWidth) override;
+    virtual void AdaptToY(OutputDevice &rDev, tools::Long nHeight) override;
 
     /**
      * Prepares the SmRect to render.
@@ -718,8 +718,8 @@ public:
     tools::Polygon &GetPolygon()  { return maPoly; }
 
     //visual stuff TODO comment
-    virtual void AdaptToX(OutputDevice &rDev, sal_uLong nWidth) override;
-    virtual void AdaptToY(OutputDevice &rDev, sal_uLong nHeight) override;
+    virtual void AdaptToX(OutputDevice &rDev, tools::Long nWidth) override;
+    virtual void AdaptToY(OutputDevice &rDev, tools::Long nHeight) override;
 
     /**
      * Prepares the SmRect to render.
@@ -962,8 +962,8 @@ public:
     explicit SmMathSymbolNode(const SmToken &rNodeToken);
 
     //visual stuff TODO comment
-    virtual void AdaptToX(OutputDevice &rDev, sal_uLong nWidth) override;
-    virtual void AdaptToY(OutputDevice &rDev, sal_uLong nHeight) override;
+    virtual void AdaptToX(OutputDevice &rDev, tools::Long nWidth) override;
+    virtual void AdaptToY(OutputDevice &rDev, tools::Long nHeight) override;
 
     /**
      * Prepare preliminary settings about font and text
@@ -1016,7 +1016,7 @@ public:
  */
 class SmRootSymbolNode final : public SmMathSymbolNode
 {
-    sal_uLong mnBodyWidth;  // width of body (argument) of root sign
+    tools::Long mnBodyWidth;  // width of body (argument) of root sign
 
 public:
     explicit SmRootSymbolNode(const SmToken &rNodeToken)
@@ -1028,11 +1028,11 @@ public:
      * Allows to know how long is the root and paint it.
      * @return body width
      */
-    sal_uLong GetBodyWidth() const {return mnBodyWidth;};
+    tools::Long GetBodyWidth() const {return mnBodyWidth;};
 
     //visual stuff TODO comment
-    virtual void AdaptToX(OutputDevice &rDev, sal_uLong nHeight) override;
-    virtual void AdaptToY(OutputDevice &rDev, sal_uLong nHeight) override;
+    virtual void AdaptToX(OutputDevice &rDev, tools::Long nHeight) override;
+    virtual void AdaptToY(OutputDevice &rDev, tools::Long nHeight) override;
 
     /**
      * Accept a visitor.
@@ -1055,7 +1055,7 @@ class SmPlaceNode final : public SmMathSymbolNode
 public:
     explicit SmPlaceNode(const SmToken &rNodeToken)
         : SmMathSymbolNode(SmNodeType::Place, rNodeToken) { }
-    SmPlaceNode() : SmMathSymbolNode(SmNodeType::Place, SmToken(TPLACE, MS_PLACE, "<?>")) { };
+    SmPlaceNode() : SmMathSymbolNode(SmNodeType::Place, SmToken(TPLACE, MS_PLACE, u"<?>"_ustr)) { };
 
     /**
      * Prepare preliminary settings about font and text

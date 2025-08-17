@@ -88,7 +88,7 @@ namespace {
 
 OUString getVersion( OUString const & sVersion )
 {
-    return ( sVersion.isEmpty() ) ? OUString( "0" ) : sVersion;
+    return ( sVersion.isEmpty() ) ? u"0"_ustr : sVersion;
 }
 
 OUString getVersion( const uno::Reference< deployment::XPackage > &rPackage )
@@ -363,7 +363,7 @@ void ProgressCmdEnv::handle( uno::Reference< task::XInteractionRequest > const &
     {
         std::vector< OUString > deps;
         deps.reserve(depExc.UnsatisfiedDependencies.getLength());
-        for (auto const & i : std::as_const(depExc.UnsatisfiedDependencies))
+        for (auto const& i : depExc.UnsatisfiedDependencies)
         {
             deps.push_back( dp_misc::Dependencies::getErrorText(i) );
         }
@@ -507,27 +507,24 @@ void ProgressCmdEnv::handle( uno::Reference< task::XInteractionRequest > const &
     }
     else
     {
+        assert(approve != abort);
         // select:
-        uno::Sequence< uno::Reference< task::XInteractionContinuation > > conts(
-            xRequest->getContinuations() );
-        uno::Reference< task::XInteractionContinuation > const * pConts = conts.getConstArray();
-        sal_Int32 len = conts.getLength();
-        for ( sal_Int32 pos = 0; pos < len; ++pos )
+        for (auto& cont : xRequest->getContinuations())
         {
             if (approve) {
-                uno::Reference< task::XInteractionApprove > xInteractionApprove( pConts[ pos ], uno::UNO_QUERY );
+                uno::Reference<task::XInteractionApprove> xInteractionApprove(cont, uno::UNO_QUERY);
                 if (xInteractionApprove.is()) {
                     xInteractionApprove->select();
                     // don't query again for ongoing continuations:
-                    approve = false;
+                    break;
                 }
             }
-            else if (abort) {
-                uno::Reference< task::XInteractionAbort > xInteractionAbort( pConts[ pos ], uno::UNO_QUERY );
+            else /*if (abort)*/ {
+                uno::Reference<task::XInteractionAbort> xInteractionAbort(cont, uno::UNO_QUERY);
                 if (xInteractionAbort.is()) {
                     xInteractionAbort->select();
                     // don't query again for ongoing continuations:
-                    abort = false;
+                    break;
                 }
             }
         }
@@ -841,7 +838,7 @@ void ExtensionCmdQueue::Thread::_addExtension( ::rtl::Reference< ProgressCmdEnv 
     uno::Any anyTitle;
     try
     {
-        anyTitle = ::ucbhelper::Content( rPackageURL, rCmdEnv, m_xContext ).getPropertyValue( "Title" );
+        anyTitle = ::ucbhelper::Content( rPackageURL, rCmdEnv, m_xContext ).getPropertyValue( u"Title"_ustr );
     }
     catch ( const uno::Exception & )
     {
@@ -1095,7 +1092,7 @@ void ExtensionCmdQueue::acceptLicense( const uno::Reference< deployment::XPackag
 
 void ExtensionCmdQueue::syncRepositories( const uno::Reference< uno::XComponentContext > &xContext )
 {
-    dp_misc::syncRepositories( false, new ProgressCmdEnv( xContext, nullptr, "Extension Manager" ) );
+    dp_misc::syncRepositories( false, new ProgressCmdEnv( xContext, nullptr, u"Extension Manager"_ustr ) );
 }
 
 bool ExtensionCmdQueue::isBusy()
@@ -1106,7 +1103,7 @@ bool ExtensionCmdQueue::isBusy()
 void handleInteractionRequest( const uno::Reference< uno::XComponentContext > & xContext,
                                const uno::Reference< task::XInteractionRequest > & xRequest )
 {
-    ::rtl::Reference< ProgressCmdEnv > xCmdEnv( new ProgressCmdEnv( xContext, nullptr, "Extension Manager" ) );
+    ::rtl::Reference< ProgressCmdEnv > xCmdEnv( new ProgressCmdEnv( xContext, nullptr, u"Extension Manager"_ustr ) );
     xCmdEnv->handle( xRequest );
 }
 

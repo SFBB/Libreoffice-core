@@ -17,8 +17,6 @@
 #include <vcl/svapp.hxx>
 #include <orcusfilters.hxx>
 
-using namespace com::sun::star;
-
 namespace sc
 {
 class XMLFetchThread : public salhelper::Thread
@@ -68,7 +66,7 @@ void XMLFetchThread::execute()
         aRangeLink.maPos = ScAddress(0, 0, 0);
         aRangeLink.maFieldPaths.push_back(OUStringToOString(maID, RTL_TEXTENCODING_UTF8));
         maParam.maRangeLinks.clear();
-        maParam.maRangeLinks.push_back(aRangeLink);
+        maParam.maRangeLinks.push_back(std::move(aRangeLink));
     }
     // Do the import.
     SolarMutexGuard aGuard;
@@ -105,10 +103,9 @@ void XMLDataProvider::Import()
 
     mpDoc.reset(new ScDocument(SCDOCMODE_CLIP));
     mpDoc->ResetClip(mpDocument, SCTAB(0));
-    mxXMLFetchThread = new XMLFetchThread(*mpDoc, mrDataSource.getURL(),
-                                          mrDataSource.getXMLImportParam(), mrDataSource.getID(),
-                                          std::bind(&XMLDataProvider::ImportFinished, this),
-                                          std::vector(mrDataSource.getDataTransformation()));
+    mxXMLFetchThread = new XMLFetchThread(
+        *mpDoc, mrDataSource.getURL(), mrDataSource.getXMLImportParam(), mrDataSource.getID(),
+        [this]() { this->ImportFinished(); }, std::vector(mrDataSource.getDataTransformation()));
     mxXMLFetchThread->launch();
 
     if (mbDeterministic)

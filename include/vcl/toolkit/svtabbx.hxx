@@ -23,6 +23,8 @@
 #error "don't use this in new code"
 #endif
 
+#include <config_options.h>
+#include <accessibility/accessibletablistbox.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/toolkit/treelistbox.hxx>
 #include <vcl/accessibletableprovider.hxx>
@@ -32,14 +34,7 @@
 #include <memory>
 #include <vector>
 
-enum class SvTabJustify
-{
-    AdjustRight = static_cast<int>(SvLBoxTabFlags::ADJUST_RIGHT),
-    AdjustLeft = static_cast<int>(SvLBoxTabFlags::ADJUST_LEFT),
-    AdjustCenter = static_cast<int>(SvLBoxTabFlags::ADJUST_CENTER)
-};
-
-class VCL_DLLPUBLIC SvTabListBox : public SvTreeListBox
+class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTabListBox : public SvTreeListBox
 {
 private:
     std::vector<SvLBoxTab>      mvTabList;
@@ -59,7 +54,7 @@ public:
     SvTabListBox( vcl::Window* pParent, WinBits );
     virtual ~SvTabListBox() override;
     virtual void dispose() override;
-    void            SetTabs(sal_uInt16 nTabs, tools::Long const pTabPositions[], MapUnit = MapUnit::MapAppFont);
+    void SetTabs(const std::vector<tools::Long>& rTabPositions, MapUnit = MapUnit::MapAppFont);
     using SvTreeListBox::GetTab;
     tools::Long            GetLogicTab( sal_uInt16 nTab );
 
@@ -77,7 +72,7 @@ public:
     OUString         GetCellText( sal_uInt32 nPos, sal_uInt16 nCol ) const;
     sal_uInt32       GetEntryPos( const SvTreeListEntry* pEntry ) const;
 
-    void             SetTabJustify( sal_uInt16 nTab, SvTabJustify );
+    void             SetTabAlignCenter(sal_uInt16 nTab);
     void             SetTabEditable( sal_uInt16 nTab, bool bEditable );
 
     virtual void     DumpAsPropertyTree(tools::JsonWriter& rJsonWriter) override;
@@ -89,14 +84,18 @@ class HeaderBar;
 namespace vcl {
     struct SvHeaderTabListBoxImpl;
 }
+class AccessibleBrowseBoxHeaderCell;
 
-class VCL_DLLPUBLIC SvHeaderTabListBox : public SvTabListBox, public vcl::IAccessibleTableProvider
+class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvHeaderTabListBox final : public SvTabListBox, public vcl::IAccessibleTableProvider
 {
 private:
     bool                            m_bFirstPaint;
-    std::unique_ptr<::vcl::SvHeaderTabListBoxImpl>  m_pImpl;
-    ::vcl::IAccessibleTabListBox*   m_pAccessible;
-    std::vector<css::uno::Reference<css::accessibility::XAccessible>> m_aAccessibleChildren;
+    VclPtr<HeaderBar> m_xHeaderBar;
+    rtl::Reference<AccessibleTabListBox>  m_xAccessible;
+    std::vector<rtl::Reference<AccessibleBrowseBoxHeaderCell>> m_aAccessibleChildren;
+
+    Link<SvTreeListEntry*, bool> m_aEditingEntryHdl;
+    Link<const IterString&, bool> m_aEditedEntryHdl;
 
     DECL_DLLPRIVATE_LINK( ScrollHdl_Impl, SvTreeListBox*, void );
     DECL_DLLPRIVATE_LINK( CreateAccessibleHdl_Impl, HeaderBar*, void );
@@ -104,13 +103,12 @@ private:
     void            RecalculateAccessibleChildren();
 
 public:
-    SvHeaderTabListBox( vcl::Window* pParent, WinBits nBits );
+    SvHeaderTabListBox(vcl::Window* pParent, WinBits nBits, HeaderBar* pHeaderBar);
     virtual ~SvHeaderTabListBox() override;
     virtual void dispose() override;
 
     virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& ) override;
 
-    void            InitHeaderBar(HeaderBar* pHeaderBar);
     HeaderBar*      GetHeaderBar();
     static bool     IsItemChecked( SvTreeListEntry* pEntry, sal_uInt16 nCol );
 
@@ -162,16 +160,17 @@ public:
     virtual bool                    IsCellVisible( sal_Int32 _nRow, sal_uInt16 _nColumn ) const override;
     virtual OUString                GetAccessibleCellText( sal_Int32 _nRow, sal_uInt16 _nColumnPos ) const override;
 
-    virtual tools::Rectangle               calcHeaderRect( bool _bIsColumnBar, bool _bOnScreen = true ) override;
-    virtual tools::Rectangle               calcTableRect( bool _bOnScreen = true ) override;
-    virtual tools::Rectangle               GetFieldRectPixel( sal_Int32 _nRow, sal_uInt16 _nColumn, bool _bIsHeader, bool _bOnScreen ) override;
+    virtual tools::Rectangle calcHeaderRect(bool _bIsColumnBar) override;
+    virtual tools::Rectangle calcTableRect() override;
+    virtual tools::Rectangle calcFieldRectPixel(sal_Int32 _nRow, sal_uInt16 _nColumn, bool _bIsHeader) override;
 
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleCell( sal_Int32 _nRow, sal_uInt16 _nColumn ) override;
+    rtl::Reference<comphelper::OAccessible> CreateAccessibleCell(sal_Int32 _nRow,
+                                                                 sal_uInt16 _nColumn) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleRowHeader( sal_Int32 _nRow ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleColumnHeader( sal_uInt16 _nColumnPos ) override;
 
     virtual sal_Int32               GetAccessibleControlCount() const override;
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleControl( sal_Int32 _nIndex ) override;
+    rtl::Reference<comphelper::OAccessible> CreateAccessibleControl(sal_Int32 _nIndex) override;
     virtual bool                    ConvertPointToControlIndex( sal_Int32& _rnIndex, const Point& _rPoint ) override;
 
     virtual bool                    ConvertPointToCellAddress( sal_Int32& _rnRow, sal_uInt16& _rnColPos, const Point& _rPoint ) override;
@@ -190,18 +189,43 @@ public:
     virtual bool                    GetGlyphBoundRects( const Point& rOrigin, const OUString& rStr, int nIndex, int nLen, std::vector< tools::Rectangle >& rVector ) override;
 
     // Window
-    virtual AbsoluteScreenPixelRectangle GetWindowExtentsAbsolute() const override;
     virtual tools::Rectangle        GetWindowExtentsRelative(const vcl::Window& rRelativeWindow) const override;
     virtual void                    GrabFocus() override;
-    virtual css::uno::Reference< css::accessibility::XAccessible > GetAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> GetAccessible() override;
     /** Creates and returns the accessible object of the whole BrowseBox. */
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
     virtual vcl::Window*            GetAccessibleParentWindow() const override;
 
     virtual tools::Rectangle        GetFieldCharacterBounds(sal_Int32 _nRow,sal_Int32 _nColumnPos,sal_Int32 nIndex) override;
     virtual sal_Int32               GetFieldIndexAtPoint(sal_Int32 _nRow,sal_Int32 _nColumnPos,const Point& _rPoint) override;
 
     virtual void DumpAsPropertyTree(tools::JsonWriter& rJsonWriter) override;
+
+    void SetEditingEntryHdl(const Link<SvTreeListEntry*, bool>& rLink)
+    {
+        m_aEditingEntryHdl = rLink;
+    }
+
+    void SetEditedEntryHdl(const Link<const IterString&, bool>& rLink)
+    {
+        m_aEditedEntryHdl = rLink;
+    }
+
+    //the default NotifyStartDrag is weird to me, and defaults to enabling all
+    //possibilities when drag starts, while restricting it to some subset of
+    //the configured drag drop mode would make more sense to me, but I'm not
+    //going to change the baseclass
+    virtual DragDropMode NotifyStartDrag() override { return GetDragDropMode(); }
+
+    virtual bool EditingEntry(SvTreeListEntry* pEntry) override
+    {
+        return m_aEditingEntryHdl.Call(pEntry);
+    }
+
+    virtual bool EditedEntry(SvTreeListEntry* pEntry, const OUString& rNewText) override
+    {
+        return m_aEditedEntryHdl.Call(IterString(pEntry, rNewText));
+    }
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_DCONTACT_HXX
-#define INCLUDED_SW_INC_DCONTACT_HXX
+#pragma once
 
 #include <svx/svdobj.hxx>
 #include <svx/svdovirt.hxx>
@@ -37,7 +36,6 @@ class SwVirtFlyDrawObj;
 class SwFlyDrawObj;
 class SwRect;
 class SwDrawContact;
-struct SwPosition;
 class SdrTextObj;
 class SwContact;
 
@@ -57,7 +55,7 @@ void setContextWritingMode( SdrObject* pObj, SwFrame const * pAnchor );
 SwRect GetBoundRectOfAnchoredObj( const SdrObject* pObj );
 
 /// @return UserCall of group object (if applicable).
-SwContact* GetUserCall( const SdrObject* );
+SAL_RET_MAYBENULL SwContact* GetUserCall( const SdrObject* );
 
 /// @return TRUE if the SrdObject is a Marquee object.
 bool IsMarqueeTextObj( const SdrObject& rObj );
@@ -109,9 +107,10 @@ public:
     virtual const SdrObject *GetMaster() const = 0;
     virtual SdrObject *GetMaster() = 0;
 
-          SwFrameFormat  *GetFormat() { return static_cast<SwFrameFormat*>(GetRegisteredIn()); }
-    const SwFrameFormat  *GetFormat() const
-        { return static_cast<const SwFrameFormat*>(GetRegisteredIn()); }
+    /// these two methods return either  SwDrawFrameFormat* or SwFltFrameFormat*
+          sw::SpzFrameFormat  *GetFormat() { return static_cast<sw::SpzFrameFormat*>(GetRegisteredIn()); }
+    const sw::SpzFrameFormat  *GetFormat() const
+        { return static_cast<const sw::SpzFrameFormat*>(GetRegisteredIn()); }
 
     bool IsInDTOR() const { return mbInDTOR;}
 
@@ -280,7 +279,7 @@ class SwDrawVirtObj final : public SdrVirtObj
         virtual void NbcSetSnapRect(const tools::Rectangle& rRect) override;
         virtual const tools::Rectangle& GetLogicRect() const override;
         virtual void SetLogicRect(const tools::Rectangle& rRect) override;
-        virtual void NbcSetLogicRect(const tools::Rectangle& rRect) override;
+        virtual void NbcSetLogicRect(const tools::Rectangle& rRect, bool bAdaptTextMinSize = true) override;
         virtual Point GetSnapPoint(sal_uInt32 i) const override;
         virtual Point GetPoint(sal_uInt32 i) const override;
         virtual void NbcSetPoint(const Point& rPnt, sal_uInt32 i) override;
@@ -408,7 +407,5 @@ class SAL_DLLPUBLIC_RTTI SwDrawContact final : public SwContact
         static void GetTextObjectsFromFormat( std::list<SdrTextObj*>&, SwDoc& );
         virtual void GetAnchoredObjs( std::vector<SwAnchoredObject*>& _roAnchoredObjs ) const override;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

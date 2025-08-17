@@ -51,12 +51,7 @@ using namespace ::sd;
 using namespace sdr::table;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::drawing;
-using namespace ::com::sun::star::linguistic2;
 
 namespace sd
 {
@@ -73,8 +68,8 @@ static void apply_table_style( SdrTableObj* pObj, SdrModel const * pModel, const
 
     try
     {
-        Reference< XNameContainer > xTableFamily( xPool->getByName( "table" ), UNO_QUERY_THROW );
-        OUString aStdName( "default" );
+        Reference< XNameContainer > xTableFamily( xPool->getByName( u"table"_ustr ), UNO_QUERY_THROW );
+        OUString aStdName( u"default"_ustr );
         if( !sTableStyle.isEmpty() )
             aStdName = sTableStyle;
         Reference< XIndexAccess > xStyle( xTableFamily->getByName( aStdName ), UNO_QUERY_THROW );
@@ -226,7 +221,7 @@ void DrawViewShell::FuTable(SfxRequest& rReq)
 
         rReq.Ignore();
         SfxViewShell* pViewShell = GetViewShell();
-        OSL_ASSERT (pViewShell!=nullptr);
+        assert(pViewShell!=nullptr);
         SfxBindings& rBindings = pViewShell->GetViewFrame().GetBindings();
         rBindings.Invalidate( SID_INSERT_TABLE, true );
         break;
@@ -234,13 +229,16 @@ void DrawViewShell::FuTable(SfxRequest& rReq)
     case SID_TABLEDESIGN:
     {
         // First make sure that the sidebar is visible
-        GetViewFrame()->ShowChildWindow(SID_SIDEBAR);
-        ::sfx2::sidebar::Sidebar::TogglePanel(
-            u"SdTableDesignPanel",
-            GetViewFrame()->GetFrame().GetFrameInterface());
+        if (SfxViewFrame* pViewFrame = GetViewFrame())
+        {
+            pViewFrame->ShowChildWindow(SID_SIDEBAR);
+            ::sfx2::sidebar::Sidebar::TogglePanel(
+                u"SdTableDesignPanel",
+                pViewFrame->GetFrame().GetFrameInterface());
 
-        Cancel();
-        rReq.Done ();
+            Cancel();
+            rReq.Done ();
+        }
         break;
     }
     default:
@@ -256,7 +254,7 @@ void DrawViewShell::GetTableMenuState( SfxItemSet &rSet )
     if(
         ( !aActiveLayer.isEmpty() && pPV && ( pPV->IsLayerLocked(aActiveLayer) ||
         !pPV->IsLayerVisible(aActiveLayer) ) ) ||
-        SD_MOD()->GetWaterCan() )
+        SdModule::get()->GetWaterCan() )
     {
         rSet.DisableItem( SID_INSERT_TABLE );
     }
@@ -286,6 +284,32 @@ void CreateTableFromRTF( SvStream& rStream, SdDrawDocument* pModel )
     pPage->NbcInsertObject( pObj.get() );
 
     sdr::table::ImportAsRTF( rStream, *pObj );
+}
+
+void CreateTableFromHTML(SvStream& rStream, SdDrawDocument* pModel)
+{
+    rStream.Seek( 0 );
+
+    if( !pModel )
+        return;
+
+    SdrPage* pPage = pModel->GetPage(0);
+    if( !pPage )
+        return;
+
+    Size aSize( 200, 200 );
+    ::tools::Rectangle aRect (Point(), aSize);
+    rtl::Reference<sdr::table::SdrTableObj> pObj = new sdr::table::SdrTableObj(
+        *pModel,
+        aRect,
+        1,
+        1);
+    pObj->NbcSetStyleSheet( pModel->GetDefaultStyleSheet(), true );
+    apply_table_style( pObj.get(), pModel, OUString() );
+
+    pPage->NbcInsertObject( pObj.get() );
+
+    sdr::table::ImportAsHTML( rStream, *pObj );
 }
 
 }

@@ -461,7 +461,7 @@ const Number natnum11 = { NumberChar_Hangul_ko, MultiplierChar_6_CJK[Multiplier_
 
 //! ATTENTION: Do not change order of elements!
 //! Append new languages to the end of the list!
-const char *natnum1Locales[] = {
+const char* const natnum1Locales[] = {
     "zh_CN",
     "zh_TW",
     "ja",
@@ -600,7 +600,7 @@ OUString getNumberText(const Locale& rLocale, const OUString& rNumberString,
     }
 
     // Handle also month and day names for NatNum12 date formatting
-    const OUString& rNumberStr = (count == 0) ? rNumberString : sBuf.makeStringAndClear();
+    const OUString aNumberStr = (count == 0) ? rNumberString : sBuf.makeStringAndClear();
 
     static auto xNumberText
         = css::linguistic2::NumberText::create(comphelper::getProcessComponentContext());
@@ -616,14 +616,14 @@ OUString getNumberText(const Locale& rLocale, const OUString& rNumberString,
     // of the continuous update of the multiple number names during typing.
     // We fix this by buffering the result of the conversion.
     static std::unordered_map<OUString, std::map<OUString, OUString>> aBuff;
-    auto& rItems = aBuff[rNumberStr];
+    auto& rItems = aBuff[aNumberStr];
     auto& rItem = rItems[numbertext_prefix + aLoc];
     if (rItem.isEmpty())
     {
-        rItem = xNumberText->getNumberText(numbertext_prefix + rNumberStr, rLocale);
+        rItem = xNumberText->getNumberText(numbertext_prefix + aNumberStr, rLocale);
         // use number at missing number to text conversion
         if (rItem.isEmpty())
-            rItem = rNumberStr;
+            rItem = aNumberStr;
     }
     OUString sResult = rItem;
     if (i != 0 && i < len)
@@ -668,7 +668,7 @@ OUString NativeNumberSupplierService::getNativeNumberString(const OUString& aNum
 
         std::size_t nStripCase = 0;
         size_t nCasing;
-        for (nCasing = 0; nCasing < SAL_N_ELEMENTS(Casings); ++nCasing)
+        for (nCasing = 0; nCasing < std::size(Casings); ++nCasing)
         {
             if (o3tl::starts_with(rNativeNumberParams, Casings[nCasing].aLiteral))
             {
@@ -890,7 +890,7 @@ NativeNumberXmlAttributes SAL_CALL NativeNumberSupplierService::convertToXmlAttr
     static const sal_Int16 attShort         = 0;
     static const sal_Int16 attMedium        = 1;
     static const sal_Int16 attLong          = 2;
-    static const char *attType[] = { "short", "medium", "long" };
+    static const char * const attType[] = { "short", "medium", "long" };
 
     sal_Int16 number = NumberChar_HalfWidth, type = attShort;
 
@@ -1064,7 +1064,7 @@ static void makeHebrewNumber(sal_Int64 value, OUStringBuffer& output, bool isLas
         output.append(value == 1000 ? thousand : isLast ? thousands_last : thousands);
     } else {
         sal_Int16 nbOfChar = 0;
-        for (sal_Int32 j = 0; num > 0 && j < sal_Int32(SAL_N_ELEMENTS(HebrewNumberCharArray)); j++) {
+        for (sal_Int32 j = 0; num > 0 && j < sal_Int32(std::size(HebrewNumberCharArray)); j++) {
             if (num - HebrewNumberCharArray[j].value >= 0) {
                 nbOfChar++;
                 // https://en.wikipedia.org/wiki/Hebrew_numerals#Key_exceptions
@@ -1177,7 +1177,7 @@ static void makeCyrillicNumber(sal_Int64 value, OUStringBuffer& output, bool add
             addTitlo = false;
     }
 
-    for (sal_Int32 j = 0; num > 0 && j < sal_Int32(SAL_N_ELEMENTS(CyrillicNumberCharArray)); j++) {
+    for (sal_Int32 j = 0; num > 0 && j < sal_Int32(std::size(CyrillicNumberCharArray)); j++) {
         if (num < 20 && num > 10) {
             num -= 10;
             makeCyrillicNumber(num, output, false);
@@ -1259,7 +1259,7 @@ NativeNumberSupplierService::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 NativeNumberSupplierService::getSupportedServiceNames()
 {
-    return {implementationName, "com.sun.star.i18n.NativeNumberSupplier2"};
+    return {implementationName, u"com.sun.star.i18n.NativeNumberSupplier2"_ustr};
 }
 
 }

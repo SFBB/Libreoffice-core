@@ -20,9 +20,11 @@
 #include <ToolBarManager.hxx>
 
 #include <DrawViewShell.hxx>
+#include <NotesPanelViewShell.hxx>
 #include <EventMultiplexer.hxx>
 #include <ViewShellBase.hxx>
 #include <ViewShellManager.hxx>
+#include <framework/FrameworkHelper.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XLayoutManager.hpp>
 
@@ -287,7 +289,7 @@ public:
     public:
         explicit UpdateLockImplementation (Implementation& rImplementation)
             : mrImplementation(rImplementation) { mrImplementation.LockUpdate();  }
-        ~UpdateLockImplementation() { mrImplementation.UnlockUpdate(); }
+        ~UpdateLockImplementation() { suppress_fun_call_w_exception(mrImplementation.UnlockUpdate()); }
     private:
         Implementation& mrImplementation;
     };
@@ -552,7 +554,7 @@ void ToolBarManager::Implementation::SetValid (bool bValid)
         try
         {
             Reference<beans::XPropertySet> xFrameProperties (xFrame, UNO_QUERY_THROW);
-            Any aValue (xFrameProperties->getPropertyValue("LayoutManager"));
+            Any aValue (xFrameProperties->getPropertyValue(u"LayoutManager"_ustr));
             aValue >>= mxLayouter;
             // tdf#119997 if mpSynchronousLayouterLock was created before mxLayouter was
             // set then update it now that its available
@@ -947,6 +949,7 @@ void ToolBarRules::MainViewShellChanged (ViewShell::ShellType nShellType)
         case ::sd::ViewShell::ST_IMPRESS:
         case ::sd::ViewShell::ST_NOTES:
         case ::sd::ViewShell::ST_HANDOUT:
+        case ::sd::ViewShell::ST_DRAW:
             mpToolBarManager->AddToolBar(
                 ToolBarManager::ToolBarGroup::Permanent,
                 ToolBarManager::msToolBar);
@@ -958,16 +961,9 @@ void ToolBarRules::MainViewShellChanged (ViewShell::ShellType nShellType)
                 ToolBarManager::msViewerToolBar);
             break;
 
-        case ::sd::ViewShell::ST_DRAW:
-            mpToolBarManager->AddToolBar(
-                ToolBarManager::ToolBarGroup::Permanent,
-                ToolBarManager::msToolBar);
-            mpToolBarManager->AddToolBar(
-                ToolBarManager::ToolBarGroup::Permanent,
-                ToolBarManager::msOptionsToolBar);
-            mpToolBarManager->AddToolBar(
-                ToolBarManager::ToolBarGroup::Permanent,
-                ToolBarManager::msViewerToolBar);
+        case ::sd::ViewShell::ST_NOTESPANEL:
+            mpToolBarManager->AddToolBarShell(ToolBarManager::ToolBarGroup::Permanent,
+                                              ToolbarId::Draw_Text_Toolbox_Sd);
             break;
 
         case ViewShell::ST_OUTLINE:
@@ -1044,47 +1040,46 @@ void ToolBarRules::SelectionHasChanged (
 
     mpToolBarManager->ResetToolBars(ToolBarManager::ToolBarGroup::Function);
 
-    if (!sfx2::SfxNotebookBar::IsActive())
+    switch (rView.GetContext())
     {
-        switch (rView.GetContext())
-        {
-            case SdrViewContext::Graphic:
-                if (!bTextEdit)
-                    mpToolBarManager->SetToolBarShell(ToolBarManager::ToolBarGroup::Function,
-                                                      ToolbarId::Draw_Graf_Toolbox);
-                break;
-
-            case SdrViewContext::Media:
-                if (!bTextEdit)
-                    mpToolBarManager->SetToolBarShell(ToolBarManager::ToolBarGroup::Function,
-                                                      ToolbarId::Draw_Media_Toolbox);
-                break;
-
-            case SdrViewContext::Table:
+        case SdrViewContext::Graphic:
+            if (!bTextEdit)
                 mpToolBarManager->SetToolBarShell(ToolBarManager::ToolBarGroup::Function,
-                                                  ToolbarId::Draw_Table_Toolbox);
-                bTextEdit = true;
-                break;
+                                                  ToolbarId::Draw_Graf_Toolbox);
+            break;
 
-            case SdrViewContext::Standard:
-            default:
-                if (!bTextEdit)
+        case SdrViewContext::Media:
+            if (!bTextEdit)
+                mpToolBarManager->SetToolBarShell(ToolBarManager::ToolBarGroup::Function,
+                                                  ToolbarId::Draw_Media_Toolbox);
+            break;
+
+        case SdrViewContext::Table:
+            mpToolBarManager->SetToolBarShell(ToolBarManager::ToolBarGroup::Function,
+                                              ToolbarId::Draw_Table_Toolbox);
+            bTextEdit = true;
+            break;
+
+        case SdrViewContext::Standard:
+        default:
+            if (!bTextEdit)
+            {
+                switch(rViewShell.GetShellType())
                 {
-                    switch(rViewShell.GetShellType())
-                    {
-                        case ::sd::ViewShell::ST_IMPRESS:
-                        case ::sd::ViewShell::ST_DRAW:
-                        case ::sd::ViewShell::ST_NOTES:
-                        case ::sd::ViewShell::ST_HANDOUT:
-                            mpToolBarManager->SetToolBar(ToolBarManager::ToolBarGroup::Function,
-                                                         ToolBarManager::msDrawingObjectToolBar);
-                            break;
-                        default:
-                            break;
-                    }
-                    break;
+                    case ::sd::ViewShell::ST_IMPRESS:
+                    case ::sd::ViewShell::ST_DRAW:
+                    case ::sd::ViewShell::ST_NOTES:
+                    case ::sd::ViewShell::ST_HANDOUT:
+                        mpToolBarManager->SetToolBar(ToolBarManager::ToolBarGroup::Function,
+                                                     ToolBarManager::msDrawingObjectToolBar);
+                        mpToolBarManager->SetToolBar(ToolBarManager::ToolBarGroup::Permanent,
+                                                     ToolBarManager::msToolBar);
+                        break;
+                    default:
+                        break;
                 }
-        }
+                break;
+            }
     }
 
     if( bTextEdit )
@@ -1121,6 +1116,7 @@ void ToolBarRules::SubShellAdded (
             break;
 
         case ToolbarId::Draw_Text_Toolbox_Sd:
+            mpToolBarManager->RemoveToolBar(ToolBarManager::ToolBarGroup::Permanent, ToolBarManager::msToolBar);
             mpToolBarManager->AddToolBar(eGroup, ToolBarManager::msTextObjectBar);
             break;
 
@@ -1346,6 +1342,9 @@ void ToolBarShellList::UpdateShells (
     if (rpMainViewShell == nullptr)
         return;
 
+    const std::shared_ptr<ViewShell> pCurrentMainViewShell
+        = rpManager->GetOverridingMainShell() ? rpManager->GetOverridingMainShell() : rpMainViewShell;
+
     GroupedShellList aList;
 
     // Deactivate shells that are in maCurrentList, but not in
@@ -1356,7 +1355,7 @@ void ToolBarShellList::UpdateShells (
     for (const auto& rShell : aList)
     {
         SAL_INFO("sd.view", __func__ << ": deactivating tool bar shell " << static_cast<sal_uInt32>(rShell.mnId));
-        rpManager->DeactivateSubShell(*rpMainViewShell, rShell.mnId);
+        rpManager->DeactivateSubShell(*pCurrentMainViewShell, rShell.mnId);
     }
 
     // Activate shells that are in maNewList, but not in
@@ -1368,7 +1367,7 @@ void ToolBarShellList::UpdateShells (
     for (const auto& rShell : aList)
     {
         SAL_INFO("sd.view", __func__ << ": activating tool bar shell " << static_cast<sal_uInt32>(rShell.mnId));
-        rpManager->ActivateSubShell(*rpMainViewShell, rShell.mnId);
+        rpManager->ActivateSubShell(*pCurrentMainViewShell, rShell.mnId);
     }
 
     // The maNewList now reflects the current state and thus is made

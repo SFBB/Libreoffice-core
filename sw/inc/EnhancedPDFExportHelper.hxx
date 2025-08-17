@@ -41,8 +41,6 @@ class SwEditShell;
 class StringRangeEnumerator;
 class SwTextAttr;
 class SwTextNode;
-class SwTable;
-class SwNumberTreeNode;
 class SwTextPaintInfo;
 class SwTextFrame;
 
@@ -154,11 +152,11 @@ class SwTaggedPDFHelper
     const Por_Info* mpPorInfo;
 
     void OpenTagImpl(void const* pKey);
-    sal_Int32 BeginTagImpl(void const* pKey,vcl::PDFWriter::StructElement aTagRole, const OUString& rTagName);
-    void BeginTag( vcl::PDFWriter::StructElement aTagRole, const OUString& rTagName );
+    sal_Int32 BeginTagImpl(void const* pKey,vcl::pdf::StructElement aTagRole, const OUString& rTagName);
+    void BeginTag(vcl::pdf::StructElement aTagRole, const OUString& rTagName);
     void EndTag();
 
-    void SetAttributes( vcl::PDFWriter::StructElement eType );
+    void SetAttributes(vcl::pdf::StructElement eType);
 
     // These functions are called by the c'tor, d'tor
     void BeginNumberedListStructureElements();
@@ -247,6 +245,10 @@ class SwEnhancedPDFExportHelper
     //scale and position rRectangle if we're scaling due to notes in margins.
     tools::Rectangle SwRectToPDFRect(const SwPageFrame* pCurrPage,
         const tools::Rectangle& rRectangle) const;
+
+    static tools::Rectangle MapSwRectToPDFRect(const SwPageFrame* pCurrPage,
+                                               const tools::Rectangle& rRectangle);
+    static double GetSwRectToPDFRectScale();
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

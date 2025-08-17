@@ -36,6 +36,7 @@
 #include <vcl/svapp.hxx>
 #include <vcl/wmf.hxx>
 #include <vcl/cvtgrf.hxx>
+#include <vcl/graphic/BitmapHelper.hxx>
 #include <vcl/GraphicLoader.hxx>
 
 #include <svx/svdpool.hxx>
@@ -67,7 +68,6 @@
 
 #include <memory>
 
-using namespace ::osl;
 using namespace ::cppu;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -263,7 +263,7 @@ void SAL_CALL SvxShapeGroup::remove( const uno::Reference< drawing::XShape >& xS
         SdrViewIter::ForAllViews( pSdrShape,
             [&pSdrShape] (SdrView* pView)
             {
-                if(SAL_MAX_SIZE != pView->TryToFindMarkedObject(pSdrShape))
+                if(SAL_MAX_SIZE != pView->GetMarkedObjectList().FindObject(pSdrShape))
                 {
                     pView->MarkObj(pSdrShape, pView->GetSdrPageView(), true);
                 }
@@ -571,43 +571,43 @@ struct
     OUString msAPIName;
     OUString msFormName;
 }
-const SvxShapeControlPropertyMapping[] =
+constexpr SvxShapeControlPropertyMapping[] =
 {
     // Warning: The first entry must be FontSlant because the any needs to be converted
-    { UNO_NAME_EDIT_CHAR_POSTURE, "FontSlant"  }, //  const sal_Int16 => css::awt::FontSlant
-    { UNO_NAME_EDIT_CHAR_FONTNAME, "FontName" },
-    { UNO_NAME_EDIT_CHAR_FONTSTYLENAME, "FontStyleName" },
-    { UNO_NAME_EDIT_CHAR_FONTFAMILY, "FontFamily" },
-    { UNO_NAME_EDIT_CHAR_FONTCHARSET, "FontCharset" },
-    { UNO_NAME_EDIT_CHAR_HEIGHT, "FontHeight" },
-    { UNO_NAME_EDIT_CHAR_FONTPITCH, "FontPitch" },
-    { UNO_NAME_EDIT_CHAR_WEIGHT, "FontWeight" },
-    { UNO_NAME_EDIT_CHAR_UNDERLINE, "FontUnderline" },
-    { UNO_NAME_EDIT_CHAR_STRIKEOUT, "FontStrikeout" },
-    { "CharKerning", "FontKerning" },
-    { "CharWordMode", "FontWordLineMode" },
-    { UNO_NAME_EDIT_CHAR_COLOR,   "TextColor" },
-    { "CharBackColor", "CharBackColor" },
-    { "CharBackTransparent", "CharBackTransparent" },
+    { UNO_NAME_EDIT_CHAR_POSTURE, u"FontSlant"_ustr  }, //  const sal_Int16 => css::awt::FontSlant
+    { UNO_NAME_EDIT_CHAR_FONTNAME, u"FontName"_ustr },
+    { UNO_NAME_EDIT_CHAR_FONTSTYLENAME, u"FontStyleName"_ustr },
+    { UNO_NAME_EDIT_CHAR_FONTFAMILY, u"FontFamily"_ustr },
+    { UNO_NAME_EDIT_CHAR_FONTCHARSET, u"FontCharset"_ustr },
+    { UNO_NAME_EDIT_CHAR_HEIGHT, u"FontHeight"_ustr },
+    { UNO_NAME_EDIT_CHAR_FONTPITCH, u"FontPitch"_ustr },
+    { UNO_NAME_EDIT_CHAR_WEIGHT, u"FontWeight"_ustr },
+    { UNO_NAME_EDIT_CHAR_UNDERLINE, u"FontUnderline"_ustr },
+    { UNO_NAME_EDIT_CHAR_STRIKEOUT, u"FontStrikeout"_ustr },
+    { u"CharKerning"_ustr, u"FontKerning"_ustr },
+    { u"CharWordMode"_ustr, u"FontWordLineMode"_ustr },
+    { UNO_NAME_EDIT_CHAR_COLOR,   u"TextColor"_ustr },
+    { u"CharBackColor"_ustr, u"CharBackColor"_ustr },
+    { u"CharBackTransparent"_ustr, u"CharBackTransparent"_ustr },
     { UNO_NAME_TEXT_CHAINNEXTNAME, UNO_NAME_TEXT_CHAINNEXTNAME },
-    { "CharRelief",   "FontRelief" },
-    { "CharUnderlineColor",   "TextLineColor" },
-    { UNO_NAME_EDIT_PARA_ADJUST, "Align" },
-    { "TextVerticalAdjust", "VerticalAlign" },
-    { "ControlBackground", "BackgroundColor" },
-    { "ControlSymbolColor", "SymbolColor" },
-    { "ControlBorder", "Border" },
-    { "ControlBorderColor", "BorderColor" },
-    { "ControlTextEmphasis",  "FontEmphasisMark" },
-    { "ImageScaleMode",  "ScaleMode" },
-    { "ControlWritingMode", "WritingMode" },
+    { u"CharRelief"_ustr,   u"FontRelief"_ustr },
+    { u"CharUnderlineColor"_ustr,   u"TextLineColor"_ustr },
+    { UNO_NAME_EDIT_PARA_ADJUST, u"Align"_ustr },
+    { u"TextVerticalAdjust"_ustr, u"VerticalAlign"_ustr },
+    { u"ControlBackground"_ustr, u"BackgroundColor"_ustr },
+    { u"ControlSymbolColor"_ustr, u"SymbolColor"_ustr },
+    { u"ControlBorder"_ustr, u"Border"_ustr },
+    { u"ControlBorderColor"_ustr, u"BorderColor"_ustr },
+    { u"ControlTextEmphasis"_ustr,  u"FontEmphasisMark"_ustr },
+    { u"ImageScaleMode"_ustr,  u"ScaleMode"_ustr },
+    { u"ControlWritingMode"_ustr, u"WritingMode"_ustr },
     //added for exporting OCX control
-    { "ControlTypeinMSO", "ControlTypeinMSO" },
-    { "ObjIDinMSO", "ObjIDinMSO" },
-    { "CharCaseMap", "CharCaseMap" },
-    { "CharColorTheme", "CharColorTheme" },
-    { "CharColorTintOrShade", "CharColorTintOrShade" },
-    { UNO_NAME_EDIT_CHAR_COMPLEX_COLOR, "CharComplexColor" },
+    { u"ControlTypeinMSO"_ustr, u"ControlTypeinMSO"_ustr },
+    { u"ObjIDinMSO"_ustr, u"ObjIDinMSO"_ustr },
+    { u"CharCaseMap"_ustr, u"CharCaseMap"_ustr },
+    { u"CharColorTheme"_ustr, u"CharColorTheme"_ustr },
+    { u"CharColorTintOrShade"_ustr, u"CharColorTintOrShade"_ustr },
+    { UNO_NAME_EDIT_CHAR_COMPLEX_COLOR, u"CharComplexColor"_ustr },
 };
 
 namespace
@@ -1197,26 +1197,14 @@ bool SvxGraphicObject::setPropertyValueImpl( const OUString& rName, const SfxIte
                 bOk = true;
             }
         }
-        else if (rValue.getValueType() == cppu::UnoType<graphic::XGraphic>::get())
+        else if (uno::Reference<graphic::XGraphic> xGraphic = vcl::GetGraphic(rValue))
         {
-            auto xGraphic = rValue.get<uno::Reference<graphic::XGraphic>>();
-            if (xGraphic.is())
-            {
-                static_cast<SdrGrafObj*>(GetSdrObject())->SetGraphic(Graphic(xGraphic));
-                bOk = true;
-            }
+            // Handles both graphic::XGraphic and awt::XBitmap
+            static_cast<SdrGrafObj*>(GetSdrObject())->SetGraphic(Graphic(xGraphic));
+            bOk = true;
         }
-        else if (rValue.getValueType() == cppu::UnoType<awt::XBitmap>::get())
-        {
-            auto xBitmap = rValue.get<uno::Reference<awt::XBitmap>>();
-            if (xBitmap.is())
-            {
-                uno::Reference<graphic::XGraphic> xGraphic(xBitmap, uno::UNO_QUERY);
-                Graphic aGraphic(xGraphic);
-                static_cast<SdrGrafObj*>(GetSdrObject())->SetGraphic(aGraphic);
-                bOk = true;
-            }
-        }
+        if (bOk)
+            GetSdrObject()->SetEmptyPresObj(false);
         break;
     }
 
@@ -1232,6 +1220,7 @@ bool SvxGraphicObject::setPropertyValueImpl( const OUString& rName, const SfxIte
             if( HasSdrObject() )
             {
                 static_cast<SdrGrafObj*>(GetSdrObject())->SetGrafStreamURL( aStreamURL );
+                GetSdrObject()->SetEmptyPresObj(false);
             }
             bOk = true;
         }
@@ -1264,6 +1253,8 @@ bool SvxGraphicObject::setPropertyValueImpl( const OUString& rName, const SfxIte
                 }
             }
         }
+        if (bOk)
+            GetSdrObject()->SetEmptyPresObj(false);
         break;
     }
 
@@ -1273,6 +1264,7 @@ bool SvxGraphicObject::setPropertyValueImpl( const OUString& rName, const SfxIte
         if( xGraphic.is() )
         {
             static_cast< SdrGrafObj*>( GetSdrObject() )->SetGraphic( xGraphic );
+            GetSdrObject()->SetEmptyPresObj(false);
             bOk = true;
         }
         break;
@@ -1372,6 +1364,17 @@ bool SvxGraphicObject::setPropertyValueImpl( const OUString& rName, const SfxIte
         if (xGraphic.is())
         {
             static_cast<SdrGrafObj*>(GetSdrObject())->setSignatureLineUnsignedGraphic(xGraphic);
+            bOk = true;
+        }
+        break;
+    }
+
+    case OWN_ATTR_OBJ_ISEMPTYPRESOBJ:
+    {
+        bool bIsEmptyPresObj;
+        if (rValue >>= bIsEmptyPresObj)
+        {
+            GetSdrObject()->SetEmptyPresObj(bIsEmptyPresObj);
             bOk = true;
         }
         break;
@@ -1539,6 +1542,12 @@ bool SvxGraphicObject::getPropertyValueImpl( const OUString& rName, const SfxIte
     case OWN_ATTR_SIGNATURELINE_IS_SIGNED:
     {
         rValue <<= static_cast<SdrGrafObj*>(GetSdrObject())->isSignatureLineSigned();
+        break;
+    }
+
+    case OWN_ATTR_OBJ_ISEMPTYPRESOBJ:
+    {
+        rValue <<= GetSdrObject()->IsEmptyPresObj();
         break;
     }
 

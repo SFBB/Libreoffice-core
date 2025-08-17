@@ -29,13 +29,11 @@
 #include <svx/svxdllapi.h>
 #include <deque>
 
-class OutputDevice;
 class SdrHdlList;
 class SdrMarkView;
 class SdrObject;
 class SdrPageView;
 class MouseEvent;
-class HelpEvent;
 
 namespace sdr::contact {
     class ObjectContact;
@@ -165,11 +163,11 @@ private:
     bool                        mbMouseOver;    // is true if the mouse is over this handle
 
 protected:
-    std::unique_ptr<sdr::overlay::OverlayObject> CreateOverlayObject(
+    SAL_DLLPRIVATE std::unique_ptr<sdr::overlay::OverlayObject> CreateOverlayObject(
         const basegfx::B2DPoint& rPos,
         BitmapColorIndex eColIndex, BitmapMarkerKind eKindOfMarker,
         Point aMoveOutsideOffset = Point());
-    static BitmapMarkerKind GetNextBigger(BitmapMarkerKind eKnd);
+    SAL_DLLPRIVATE static BitmapMarkerKind GetNextBigger(BitmapMarkerKind eKnd);
 
     // Helper to support inserting a new OverlayObject. It will do all
     // necessary stuff involved with that:
@@ -184,13 +182,13 @@ protected:
         sdr::overlay::OverlayManager& rOverlayManager);
 
 public:
-    SdrHdl();
+    SAL_DLLPRIVATE SdrHdl();
     explicit SdrHdl(const Point& rPnt, SdrHdlKind eNewKind);
     virtual ~SdrHdl();
 
     const sdr::overlay::OverlayObjectList& getOverlayObjectList() const { return maOverlayGroup; }
 
-    void SetHdlList(SdrHdlList* pList);
+    SAL_DLLPRIVATE void SetHdlList(SdrHdlList* pList);
     SdrHdlKind GetKind() const { return m_eKind; }
     void Touch();
 
@@ -206,8 +204,8 @@ public:
     bool IsSelected() const { return m_bSelect; }
     void SetSelected(bool bJa=true);
 
-    void Set1PixMore(bool bJa=true);
-    void SetRotationAngle(Degree100 n);
+    SAL_DLLPRIVATE void Set1PixMore(bool bJa=true);
+    SAL_DLLPRIVATE void SetRotationAngle(Degree100 n);
 
     bool IsCornerHdl() const { return m_eKind==SdrHdlKind::UpperLeft || m_eKind==SdrHdlKind::UpperRight || m_eKind==SdrHdlKind::LowerLeft || m_eKind==SdrHdlKind::LowerRight; }
     bool IsVertexHdl() const { return m_eKind==SdrHdlKind::Upper || m_eKind==SdrHdlKind::Lower || m_eKind==SdrHdlKind::Left  || m_eKind==SdrHdlKind::Right; }
@@ -228,11 +226,11 @@ public:
     sal_uInt32 GetSourceHdlNum() const { return m_nSourceHdlNum; }
 
     virtual PointerStyle GetPointer() const;
-    bool IsHdlHit(const Point& rPnt) const;
+    SAL_DLLPRIVATE bool IsHdlHit(const Point& rPnt) const;
 
     virtual bool IsFocusHdl() const;
 
-    void SetMoveOutside( bool bMoveOutside );
+    SAL_DLLPRIVATE void SetMoveOutside( bool bMoveOutside );
 
     /** is called when the mouse enters the area of this handle. If the handle changes his
         visualisation during mouse over it must override this method and call Touch(). */
@@ -245,7 +243,7 @@ public:
         visualisation during mouse over it must override this method and call Touch(). */
     virtual void onMouseLeave();
 
-    static BitmapEx createGluePointBitmap();
+    SAL_DLLPRIVATE static Bitmap createGluePointBitmap();
 };
 
 
@@ -270,12 +268,12 @@ class SVXCORE_DLLPUBLIC SdrHdlColor final : public SdrHdl
     SVX_DLLPRIVATE virtual void CreateB2dIAObject() override;
 
     // help functions
-    SVX_DLLPRIVATE BitmapEx CreateColorDropper(Color aCol);
+    SVX_DLLPRIVATE Bitmap CreateColorDropper(Color aCol);
     SVX_DLLPRIVATE static Color GetLuminance(const Color& rCol);
 
 public:
-    explicit SdrHdlColor(const Point& rRef, Color aCol, const Size& rSize, bool bLuminance);
-    virtual ~SdrHdlColor() override;
+    SAL_DLLPRIVATE explicit SdrHdlColor(const Point& rRef, Color aCol, const Size& rSize, bool bLuminance);
+    SAL_DLLPRIVATE virtual ~SdrHdlColor() override;
 
     bool IsUseLuminance() const { return m_bUseLuminance; }
 
@@ -455,30 +453,30 @@ public:
     // Sorting: 1.Level first reference point handle, then normal handles, next Glue, then User then Plushandles
     //          2.Level PageView (Pointer)
     //          3.Level Position (x+y)
-    void     Sort();
+    SAL_DLLPRIVATE void     Sort();
     size_t   GetHdlCount() const { return maList.size(); }
     SdrHdl*  GetHdl(size_t nNum) const { return nNum < maList.size() ? maList[nNum].get() : nullptr; }
     size_t   GetHdlNum(const SdrHdl* pHdl) const;
-    void     SetHdlSize(sal_uInt16 nSiz);
+    SAL_DLLPRIVATE void     SetHdlSize(sal_uInt16 nSiz);
     sal_uInt16   GetHdlSize() const                        { return m_nHdlSize; }
-    void     SetMoveOutside(bool bOn);
+    SAL_DLLPRIVATE void     SetMoveOutside(bool bOn);
     bool IsMoveOutside() const                     { return m_bMoveOutside; }
-    void     SetRotateShear(bool bOn);
+    SAL_DLLPRIVATE void     SetRotateShear(bool bOn);
     bool IsRotateShear() const                     { return m_bRotateShear; }
-    void     SetDistortShear(bool bOn);
+    SAL_DLLPRIVATE void     SetDistortShear(bool bOn);
     bool IsDistortShear() const                    { return m_bDistortShear; }
 
     // AddHdl takes ownership of the handle. It should be on the Heap
     // as Clear() deletes it.
     void    AddHdl(std::unique_ptr<SdrHdl> pHdl);
-    std::unique_ptr<SdrHdl> RemoveHdl(size_t nNum);
+    SAL_DLLPRIVATE std::unique_ptr<SdrHdl> RemoveHdl(size_t nNum);
     void RemoveAllByKind(SdrHdlKind eKind);
 
     // move the ownership of all the SdrHdl to rOther
     void MoveTo(SdrHdlList& rOther);
 
     // Last inserted handles are likely hit (if the handles are above each other)
-    SdrHdl* IsHdlListHit(const Point& rPnt) const;
+    SAL_DLLPRIVATE SdrHdl* IsHdlListHit(const Point& rPnt) const;
     SdrHdl* GetHdl(SdrHdlKind eKind1) const;
 };
 
@@ -496,7 +494,7 @@ private:
     // create marker for this kind
     virtual void CreateB2dIAObject() override;
 
-    BitmapEx GetBitmapForHandle( const BitmapEx& rBitmap, int nSize );
+    Bitmap GetBitmapForHandle( const Bitmap& rBitmap, int nSize );
 
     // evtl. shear and rotation, equal to the object's one to allow adaptation of
     // the visualization handles

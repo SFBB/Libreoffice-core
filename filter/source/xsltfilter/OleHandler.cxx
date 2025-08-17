@@ -9,6 +9,7 @@
  */
 
 
+#include <osl/diagnose.h>
 #include <rtl/ustrbuf.hxx>
 
 #include <package/Inflater.hxx>
@@ -27,6 +28,7 @@
 
 #include "OleHandler.hxx"
 #include <optional>
+#include <package/InflateZlib.hxx>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
@@ -51,7 +53,7 @@ namespace XSLT
 
             m_storage.set(
                  Reference<XMultiServiceFactory>(m_xContext->getServiceManager(), UNO_QUERY_THROW)
-                     ->createInstanceWithArguments("com.sun.star.embed.OLESimpleStorage", args), UNO_QUERY);
+                     ->createInstanceWithArguments(u"com.sun.star.embed.OLESimpleStorage"_ustr, args), UNO_QUERY);
         }
     }
 
@@ -72,7 +74,7 @@ namespace XSLT
         Sequence<Any> args{ Any(xSeek) };
         m_storage.set(
              Reference<XMultiServiceFactory>(m_xContext->getServiceManager(), UNO_QUERY_THROW)
-                 ->createInstanceWithArguments("com.sun.star.embed.OLESimpleStorage", args), UNO_QUERY);
+                 ->createInstanceWithArguments(u"com.sun.star.embed.OLESimpleStorage"_ustr, args), UNO_QUERY);
     }
 
     OString
@@ -115,7 +117,7 @@ namespace XSLT
         }
 
         // Decompress the bytes
-        std::optional< ::ZipUtils::Inflater> decompresser(std::in_place, false);
+        std::unique_ptr< ::ZipUtils::Inflater> decompresser = std::make_unique< ::ZipUtils::InflateZlib>(false);
         decompresser->setInput(content);
         Sequence<sal_Int8> result(oleLength);
         decompresser->doInflateSegment(result, 0, oleLength);

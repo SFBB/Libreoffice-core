@@ -122,6 +122,7 @@ sal_uInt16 SvxZoomSliderControl::Offset2Zoom( tools::Long nOffset ) const
 // returns the offset to the left control border
 tools::Long SvxZoomSliderControl::Zoom2Offset( sal_uInt16 nCurrentZoom ) const
 {
+    // coverity[ tainted_data_return : FALSE ] version 2023.12.2
     const tools::Long nControlWidth = getControlRect().GetWidth();
     tools::Long nRet = nSliderXOffset;
 
@@ -164,7 +165,7 @@ void SvxZoomSliderControl::StateChangedAtStatusBarControl( sal_uInt16 /*nSID*/, 
 {
     if (SfxItemState::DEFAULT != eState || SfxItemState::DISABLED == eState)
     {
-        GetStatusBar().SetItemText( GetId(), "" );
+        GetStatusBar().SetItemText( GetId(), u""_ustr );
         mxImpl->mbValuesSet   = false;
     }
     else
@@ -234,8 +235,7 @@ void SvxZoomSliderControl::Paint( const UserDrawEvent& rUsrEvt )
     aSlider.AdjustLeft(nSliderXOffset );
     aSlider.AdjustRight( -nSliderXOffset );
 
-    Color               aOldLineColor = pDev->GetLineColor();
-    Color               aOldFillColor = pDev->GetFillColor();
+    pDev->Push(vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR);
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
     pDev->SetLineColor( rStyleSettings.GetDarkShadowColor() );
@@ -274,8 +274,7 @@ void SvxZoomSliderControl::Paint( const UserDrawEvent& rUsrEvt )
     aImagePoint.setX( aRect.Left() + aControlRect.GetWidth() - mxImpl->maIncreaseButton.GetSizePixel().Width() - (nSliderXOffset - mxImpl->maIncreaseButton.GetSizePixel().Height())/2 );
     pDev->DrawImage( aImagePoint, mxImpl->maIncreaseButton );
 
-    pDev->SetLineColor( aOldLineColor );
-    pDev->SetFillColor( aOldFillColor );
+    pDev->Pop();
 }
 
 bool SvxZoomSliderControl::MouseButtonDown( const MouseEvent & rEvt )
@@ -364,7 +363,7 @@ bool SvxZoomSliderControl::MouseMove( const MouseEvent & rEvt )
         GetStatusBar().SetQuickHelpText(GetId(), SvxResId(RID_SVXSTR_ZOOM_IN));
     else
         // don't hide the slider and its handle with a tooltip during zooming
-        GetStatusBar().SetQuickHelpText(GetId(), "");
+        GetStatusBar().SetQuickHelpText(GetId(), u""_ustr);
 
     return true;
 }
@@ -384,7 +383,7 @@ void SvxZoomSliderControl::repaintAndExecute()
     css::uno::Any any;
     aZoomSliderItem.QueryValue(any);
 
-    css::uno::Sequence<css::beans::PropertyValue> aArgs{ comphelper::makePropertyValue("ZoomSlider",
+    css::uno::Sequence<css::beans::PropertyValue> aArgs{ comphelper::makePropertyValue(u"ZoomSlider"_ustr,
                                                                                        any) };
     execute(aArgs);
 }

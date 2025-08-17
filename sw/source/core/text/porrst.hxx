@@ -25,20 +25,17 @@
 #include <txtfrm.hxx>
 #include <svx/ctredlin.hxx>
 #include <scriptinfo.hxx>
+#include <names.hxx>
 
 #include "porlin.hxx"
 #include "portxt.hxx"
 #include "possiz.hxx"
 
-class SwPortionHandler;
 class SwTextPaintInfo;
-class SwTextSizeInfo;
 class SwFont;
 
 #define LINE_BREAK_WIDTH        150
 #define SPECIAL_FONT_HEIGHT     200
-
-class SwTextFormatInfo;
 
 class SwTmpEndPortion : public SwLinePortion
 {
@@ -72,8 +69,8 @@ public:
     virtual SwLinePortion *Compress() override;
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
     virtual bool Format( SwTextFormatInfo &rInf ) override;
-    virtual sal_uInt16 GetViewWidth( const SwTextSizeInfo &rInf ) const override;
-    virtual TextFrameIndex GetModelPositionForViewPoint(sal_uInt16 nOfst) const override;
+    virtual SwTwips GetViewWidth(const SwTextSizeInfo& rInf) const override;
+    virtual TextFrameIndex GetModelPositionForViewPoint(SwTwips nOfst) const override;
 
     // Accessibility: pass information about this portion to the PortionHandler
     virtual void HandlePortion( SwPortionHandler& rPH ) const override;
@@ -131,16 +128,16 @@ public:
 // The SwHangingPortion is the corresponding textportion to do that.
 class SwHangingPortion : public SwTextPortion
 {
-    sal_uInt16 m_nInnerWidth;
+    SwTwips m_nInnerWidth;
 public:
-    explicit SwHangingPortion( SwPosSize aSize ) : m_nInnerWidth( aSize.Width() )
+    explicit SwHangingPortion( SwPositiveSize aSize ) : m_nInnerWidth( aSize.Width() )
     {
         SetWhichPor( PortionType::Hanging );
         SetLen(TextFrameIndex(1));
         Height( aSize.Height() );
     }
 
-    sal_uInt16 GetInnerWidth() const { return m_nInnerWidth; }
+    SwTwips GetInnerWidth() const { return m_nInnerWidth; }
 };
 
 // Used to hide text
@@ -160,9 +157,9 @@ class SwControlCharPortion : public SwLinePortion
 {
 
 private:
-    mutable sal_uInt16 mnViewWidth;            // used to cache a calculated value
+    mutable SwTwips mnViewWidth; // used to cache a calculated value
 protected:
-    mutable sal_uInt16 mnHalfCharWidth;        // used to cache a calculated value
+    mutable SwTwips mnHalfCharWidth; // used to cache a calculated value
     sal_Unicode mcChar;
 
 public:
@@ -177,7 +174,7 @@ public:
         OUString & rOutString, SwFont & rTmpFont, int & rDeltaY) const;
     virtual void Paint( const SwTextPaintInfo &rInf ) const override;
     virtual bool Format( SwTextFormatInfo &rInf ) override;
-    virtual sal_uInt16 GetViewWidth( const SwTextSizeInfo& rInf ) const override;
+    virtual SwTwips GetViewWidth(const SwTextSizeInfo& rInf) const override;
 };
 
 /// for showing bookmark starts and ends; note that in contrast to
@@ -185,13 +182,13 @@ public:
 class SwBookmarkPortion : public SwControlCharPortion
 {
     // custom colors defined by metadata
-    std::vector<std::tuple<SwScriptInfo::MarkKind, Color, OUString>> m_aColors;
+    std::vector<std::tuple<SwScriptInfo::MarkKind, Color, SwMarkName, OUString>> m_aColors;
     // number of MarkKind marks
     sal_Int16 m_nStart, m_nEnd, m_nPoint;
     bool m_bHasCustomColor;
 
 public:
-    explicit SwBookmarkPortion(sal_Unicode const cChar, std::vector<std::tuple<SwScriptInfo::MarkKind, Color, OUString>> aColors)
+    explicit SwBookmarkPortion(sal_Unicode const cChar, std::vector<std::tuple<SwScriptInfo::MarkKind, Color, SwMarkName, OUString>> aColors)
         : SwControlCharPortion(cChar), m_aColors(std::move(aColors)), m_nStart(0), m_nEnd(0), m_nPoint(0), m_bHasCustomColor(false)
     {
         SetWhichPor(PortionType::Bookmark);

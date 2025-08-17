@@ -35,8 +35,6 @@
 class SwDoc;
 class SwPaM;
 class SwTableNode;
-class SwNodeIndex;
-class SwNoTextNode;
 class SwTextNode;
 class WW8TabDesc;
 
@@ -175,7 +173,7 @@ namespace sw
                 rName and WW-rName[0..SAL_MAX_INT32], which is both unlikely
                 and impossible.
             */
-            StyleResult GetStyle(const OUString& rName, ww::sti eSti,
+            StyleResult GetStyle(const UIName& rName, ww::sti eSti,
                                  std::map<OUString, sal_Int32>& rCollisions);
         };
 
@@ -237,7 +235,7 @@ namespace sw
                 rName and WW-rName[0..SAL_MAX_INT32], which is both unlikely
                 and impossible.
             */
-            StyleResult GetStyle(const OUString& rName, ww::sti eSti,
+            StyleResult GetStyle(const UIName& rName, ww::sti eSti,
                                  std::map<OUString, sal_Int32>& rCollisions);
         };
 
@@ -302,6 +300,8 @@ namespace sw
 
             RedlineStack(RedlineStack const&) = delete;
             RedlineStack& operator=(RedlineStack const&) = delete;
+
+            void ImplDestroy();
 
         public:
             explicit RedlineStack(SwDoc &rDoc) : mrDoc(rDoc) {}

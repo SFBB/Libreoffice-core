@@ -88,7 +88,7 @@ OUString val2str( const void * pVal, typelib_TypeDescriptionReference * pTypeRef
 {
     assert( pVal );
     if (pTypeRef->eTypeClass == typelib_TypeClass_VOID)
-        return "void";
+        return u"void"_ustr;
 
     OUStringBuffer buf( 64 );
     buf.append( "(" + OUString::unacquired(&pTypeRef->pTypeName) + ")" );
@@ -559,10 +559,10 @@ static void lcl_getRowsColumns( PyUNO const * me, sal_Int32& nRows, sal_Int32& n
     Sequence<short> aOutParamIndex;
     Sequence<Any> aOutParam;
     Sequence<Any> aParams;
-    Any aRet = me->members->xInvocation->invoke ( "getRows", aParams, aOutParamIndex, aOutParam );
+    Any aRet = me->members->xInvocation->invoke ( u"getRows"_ustr, aParams, aOutParamIndex, aOutParam );
     Reference< XIndexAccess > xIndexAccessRows( aRet, UNO_QUERY );
     nRows = xIndexAccessRows->getCount();
-    aRet = me->members->xInvocation->invoke ( "getColumns", aParams, aOutParamIndex, aOutParam );
+    aRet = me->members->xInvocation->invoke ( u"getColumns"_ustr, aParams, aOutParamIndex, aOutParam );
     Reference< XIndexAccess > xIndexAccessCols( aRet, UNO_QUERY );
     nColumns = xIndexAccessCols->getCount();
 }
@@ -596,7 +596,7 @@ static PyObject* lcl_getitem_XCellRange( PyUNO const * me, PyObject* pKey )
         {
             PyThreadDetach antiguard;
             aRet = me->members->xInvocation->invoke (
-                "getCellRangeByName", aParams, aOutParamIndex, aOutParam );
+                u"getCellRangeByName"_ustr, aParams, aOutParamIndex, aOutParam );
         }
         PyRef rRet = runtime.any2PyObject ( aRet );
         return rRet.getAcquired();
@@ -634,7 +634,7 @@ static PyObject* lcl_getitem_XCellRange( PyUNO const * me, PyObject* pKey )
         {
             PyThreadDetach antiguard;
             aRet = me->members->xInvocation->invoke (
-                "getCellByPosition", aParams, aOutParamIndex, aOutParam );
+                u"getCellByPosition"_ustr, aParams, aOutParamIndex, aOutParam );
         }
         PyRef rRet = runtime.any2PyObject( aRet );
         return rRet.getAcquired();
@@ -657,7 +657,7 @@ static PyObject* lcl_getitem_XCellRange( PyUNO const * me, PyObject* pKey )
         {
             PyThreadDetach antiguard;
 
-            if ( lcl_hasInterfaceByName( me->members->wrappedObject, "com.sun.star.table.XColumnRowRange" ) )
+            if ( lcl_hasInterfaceByName( me->members->wrappedObject, u"com.sun.star.table.XColumnRowRange"_ustr ) )
             {
                 lcl_getRowsColumns (me, nLen0, nLen1);
             }
@@ -680,7 +680,7 @@ static PyObject* lcl_getitem_XCellRange( PyUNO const * me, PyObject* pKey )
             {
                 PyThreadDetach antiguard;
                 aRet = me->members->xInvocation->invoke (
-                    "getCellRangeByPosition", aParams, aOutParamIndex, aOutParam );
+                    u"getCellRangeByPosition"_ustr, aParams, aOutParamIndex, aOutParam );
             }
             PyRef rRet = runtime.any2PyObject( aRet );
             return rRet.getAcquired();
@@ -825,7 +825,7 @@ static PyObject* PyUNO_getitem( PyObject *self, PyObject *pKey )
         {
             PyThreadDetach antiguard;
 
-            hasXCellRange = lcl_hasInterfaceByName( me->members->wrappedObject, "com.sun.star.table.XCellRange" );
+            hasXCellRange = lcl_hasInterfaceByName( me->members->wrappedObject, u"com.sun.star.table.XCellRange"_ustr );
         }
         if ( hasXCellRange )
         {
@@ -939,7 +939,7 @@ static int lcl_setitem_index( PyUNO const *me, PyObject *pKey, PyObject *pValue 
     }
 
     PyErr_SetString( PyExc_TypeError, "cannot assign to object" );
-    return 1;
+    return -1;
 }
 
 static int lcl_setitem_slice( PyUNO const *me, PyObject *pKey, PyObject *pValue )
@@ -979,27 +979,27 @@ static int lcl_setitem_slice( PyUNO const *me, PyObject *pKey, PyObject *pValue 
         if ( !PyTuple_Check (pValue) )
         {
             PyErr_SetString( PyExc_TypeError, "value is not a tuple" );
-            return 1;
+            return -1;
         }
 
         Py_ssize_t nTupleLength_ssize = PyTuple_Size( pValue );
         if ( nTupleLength_ssize > SAL_MAX_INT32 )
         {
             PyErr_SetString( PyExc_ValueError, "tuple too large" );
-            return 1;
+            return -1;
         }
         sal_Int32 nTupleLength = static_cast<sal_Int32>(nTupleLength_ssize);
 
         if ( (nTupleLength != nSliceLength) && (nStep != 1) )
         {
             PyErr_SetString( PyExc_ValueError, "number of items assigned must be equal" );
-            return 1;
+            return -1;
         }
 
         if ( (nTupleLength != nSliceLength) && !xIndexContainer.is() )
         {
             PyErr_SetString( PyExc_ValueError, "cannot change length" );
-            return 1;
+            return -1;
         }
 
         sal_Int32 nCur, i;
@@ -1057,7 +1057,7 @@ static int lcl_setitem_slice( PyUNO const *me, PyObject *pKey, PyObject *pValue 
     }
 
     PyErr_SetString( PyExc_TypeError, "cannot assign to object" );
-    return 1;
+    return -1;
 }
 
 static int lcl_setitem_string( PyUNO const *me, PyObject *pKey, PyObject *pValue )
@@ -1129,7 +1129,7 @@ static int lcl_setitem_string( PyUNO const *me, PyObject *pKey, PyObject *pValue
     }
 
     PyErr_SetString( PyExc_TypeError, "cannot assign to object" );
-    return 1;
+    return -1;
 }
 
 static int PyUNO_setitem( PyObject *self, PyObject *pKey, PyObject *pValue )
@@ -1182,7 +1182,7 @@ static int PyUNO_setitem( PyObject *self, PyObject *pKey, PyObject *pValue )
         raisePyExceptionWithAny( css::uno::Any( e ) );
     }
 
-    return 1;
+    return -1;
 }
 
 static PyObject* PyUNO_iter( PyObject *self )
@@ -1461,25 +1461,25 @@ static int PyUNO_setattr (PyObject* self, char* name, PyObject* value)
     catch( const css::reflection::InvocationTargetException & e )
     {
         raisePyExceptionWithAny( e.TargetException );
-        return 1;
+        return -1;
     }
     catch( const css::beans::UnknownPropertyException & e )
     {
         raisePyExceptionWithAny( Any(e) );
-        return 1;
+        return -1;
     }
     catch( const css::script::CannotConvertException &e )
     {
         raisePyExceptionWithAny( Any(e) );
-        return 1;
+        return -1;
     }
     catch( const RuntimeException & e )
     {
         raisePyExceptionWithAny( Any( e ) );
-        return 1;
+        return -1;
     }
     PyErr_SetString (PyExc_AttributeError, name);
-    return 1; //as above.
+    return -1; //as above.
 }
 
 static PyObject* PyUNO_cmp( PyObject *self, PyObject *that, int op )
@@ -1529,11 +1529,29 @@ static PyObject* PyUNO_cmp( PyObject *self, PyObject *that, int op )
     return result;
 }
 
+#if defined __GNUC__ && !defined __clang__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static PyMethodDef PyUNOMethods[] =
 {
+#if defined __clang__
+#if __has_warning("-Wcast-function-type-mismatch")
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcast-function-type-mismatch"
+#endif
+#endif
     {"__dir__",    reinterpret_cast<PyCFunction>(PyUNO_dir),    METH_NOARGS,  nullptr},
+#if defined __clang__
+#if __has_warning("-Wcast-function-type-mismatch")
+#pragma clang diagnostic pop
+#endif
+#endif
     {nullptr,         nullptr,                                        0,            nullptr}
 };
+#if defined __GNUC__ && !defined __clang__
+#pragma GCC diagnostic pop
+#endif
 
 static PyNumberMethods PyUNONumberMethods[] =
 {
@@ -1667,6 +1685,12 @@ static PyTypeObject PyUNOType =
 #pragma clang diagnostic pop
 #endif
 #endif
+#if PY_VERSION_HEX >= 0x030C00A1
+    , 0 // tp_watched
+#endif
+#if PY_VERSION_HEX >= 0x030D00A4
+    , 0 // tp_versions_used
+#endif
 #endif
 #endif
 };
@@ -1704,7 +1728,7 @@ PyRef PyUNO_new (
     if (self == nullptr)
         return PyRef(); // == error
     self->members = new PyUNOInternals;
-    self->members->xInvocation = xInvocation;
+    self->members->xInvocation = std::move(xInvocation);
     self->members->wrappedObject = targetInterface;
     return PyRef( reinterpret_cast<PyObject*>(self), SAL_NO_ACQUIRE );
 

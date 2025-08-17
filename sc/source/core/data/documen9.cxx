@@ -33,7 +33,6 @@
 #include <svx/svdpage.hxx>
 #include <svx/svdundo.hxx>
 #include <svx/xtable.hxx>
-#include <sfx2/objsh.hxx>
 #include <sfx2/printer.hxx>
 
 #include <document.hxx>
@@ -51,6 +50,7 @@
 #include <charthelper.hxx>
 #include <conditio.hxx>
 #include <documentlinkmgr.hxx>
+#include <userdat.hxx>
 
 using namespace ::com::sun::star;
 
@@ -88,6 +88,14 @@ void ScDocument::TransferDrawPage(const ScDocument& rSrcDoc, SCTAB nSrcPos, SCTA
                 rtl::Reference<SdrObject> pNewObject(pOldObject->CloneSdrObject(*mpDrawLayer));
                 pNewObject->NbcMove(Size(0,0));
                 pNewPage->InsertObject( pNewObject.get() );
+
+                // tdf#167450 adapt anchor tab
+                ScDrawObjData* pNewData = ScDrawLayer::GetObjData(pNewObject.get());
+                if (pNewData)
+                {
+                    pNewData->maStart.SetTab(nDestPos);
+                    pNewData->maEnd.SetTab(nDestPos);
+                }
 
                 if (mpDrawLayer->IsRecording())
                     mpDrawLayer->AddCalcUndo( std::make_unique<SdrUndoInsertObj>( *pNewObject ) );
@@ -169,7 +177,7 @@ void ScDocument::InitDrawLayer( ScDocShell* pDocShell )
 
     // set draw defaults directly
     SfxItemPool& rDrawPool = mpDrawLayer->GetItemPool();
-    rDrawPool.SetPoolDefaultItem( SvxAutoKernItem( true, EE_CHAR_PAIRKERNING ) );
+    rDrawPool.SetUserDefaultItem( SvxAutoKernItem( true, EE_CHAR_PAIRKERNING ) );
 
     UpdateDrawLanguages();
     if (bImportingXML)
@@ -185,9 +193,9 @@ void ScDocument::UpdateDrawLanguages()
     if (mpDrawLayer)
     {
         SfxItemPool& rDrawPool = mpDrawLayer->GetItemPool();
-        rDrawPool.SetPoolDefaultItem( SvxLanguageItem( eLanguage, EE_CHAR_LANGUAGE ) );
-        rDrawPool.SetPoolDefaultItem( SvxLanguageItem( eCjkLanguage, EE_CHAR_LANGUAGE_CJK ) );
-        rDrawPool.SetPoolDefaultItem( SvxLanguageItem( eCtlLanguage, EE_CHAR_LANGUAGE_CTL ) );
+        rDrawPool.SetUserDefaultItem( SvxLanguageItem( eLanguage, EE_CHAR_LANGUAGE ) );
+        rDrawPool.SetUserDefaultItem( SvxLanguageItem( eCjkLanguage, EE_CHAR_LANGUAGE_CJK ) );
+        rDrawPool.SetUserDefaultItem( SvxLanguageItem( eCtlLanguage, EE_CHAR_LANGUAGE_CTL ) );
     }
 }
 
@@ -440,13 +448,8 @@ bool ScDocument::IsPrintEmpty( SCCOL nStartCol, SCROW nStartRow,
         //  keep vertical part of aMMRect, only update horizontal position
         aMMRect = *pLastMM;
 
-        tools::Long nLeft = 0;
-        SCCOL i;
-        for (i=0; i<nStartCol; i++)
-            nLeft += GetColWidth(i,nTab);
-        tools::Long nRight = nLeft;
-        for (i=nStartCol; i<=nEndCol; i++)
-            nRight += GetColWidth(i,nTab);
+        tools::Long nLeft = GetColWidth(0, nStartCol-1, nTab);
+        tools::Long nRight = nLeft + GetColWidth(nStartCol,nEndCol, nTab);
 
         aMMRect.SetLeft(o3tl::convert(nLeft, o3tl::Length::twip, o3tl::Length::mm100));
         aMMRect.SetRight(o3tl::convert(nRight, o3tl::Length::twip, o3tl::Length::mm100));
@@ -546,24 +549,32 @@ void ScDocument::UpdateFontCharSet()
         return;
 
     ScDocumentPool* pPool = mxPoolHelper->GetDocPool();
-    for (const SfxPoolItem* pItem : pPool->GetItemSurrogates(ATTR_FONT))
+
+    pPool->iterateItemSurrogates(ATTR_FONT, [&](SfxItemPool::SurrogateData& rData)
     {
-        auto pFontItem = const_cast<SvxFontItem*>(dynamic_cast<const SvxFontItem*>(pItem));
-        if ( pFontItem && ( pFontItem->GetCharSet() == eSrcSet ||
-                           ( bUpdateOld && pFontItem->GetCharSet() != RTL_TEXTENCODING_SYMBOL ) ) )
-            pFontItem->SetCharSet(eSysSet);
-    }
+        const SvxFontItem& rSvxFontItem(static_cast<const SvxFontItem&>(rData.getItem()));
+        if (eSrcSet == rSvxFontItem.GetCharSet() || (bUpdateOld && RTL_TEXTENCODING_SYMBOL != rSvxFontItem.GetCharSet()))
+        {
+            SvxFontItem* pNew(rSvxFontItem.Clone(pPool));
+            pNew->SetCharSet(eSysSet);
+            rData.setItem(std::unique_ptr<SfxPoolItem>(pNew));
+        }
+        return true; // continue callbacks
+    });
 
     if ( mpDrawLayer )
     {
-        SfxItemPool& rDrawPool = mpDrawLayer->GetItemPool();
-        for (const SfxPoolItem* pItem : rDrawPool.GetItemSurrogates(EE_CHAR_FONTINFO))
+        pPool->iterateItemSurrogates(EE_CHAR_FONTINFO, [&](SfxItemPool::SurrogateData& rData)
         {
-            SvxFontItem* pFontItem = const_cast<SvxFontItem*>(dynamic_cast<const SvxFontItem*>(pItem));
-            if ( pFontItem && ( pFontItem->GetCharSet() == eSrcSet ||
-                               ( bUpdateOld && pFontItem->GetCharSet() != RTL_TEXTENCODING_SYMBOL ) ) )
-                pFontItem->SetCharSet( eSysSet );
-        }
+            const SvxFontItem& rSvxFontItem(static_cast<const SvxFontItem&>(rData.getItem()));
+            if (eSrcSet == rSvxFontItem.GetCharSet() || (bUpdateOld && RTL_TEXTENCODING_SYMBOL != rSvxFontItem.GetCharSet()))
+            {
+                SvxFontItem* pNew(rSvxFontItem.Clone(pPool));
+                pNew->SetCharSet(eSysSet);
+                rData.setItem(std::unique_ptr<SfxPoolItem>(pNew));
+            }
+            return true; // continue callbacks
+        });
     }
 }
 
@@ -600,6 +611,11 @@ void ScDocument::SetImportingXML( bool bVal )
     }
 
     SetLoadingMedium(bVal);
+}
+
+void ScDocument::SetImportingXLSX( bool bVal )
+{
+    mbImportingXLSX = bVal;
 }
 
 const std::shared_ptr<SvxForbiddenCharactersTable>& ScDocument::GetForbiddenCharacters() const

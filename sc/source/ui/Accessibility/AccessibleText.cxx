@@ -653,15 +653,14 @@ ScDocShell* ScAccessibleCellTextData::GetDocShell(ScTabViewShell* pViewShell)
 {
     ScDocShell* pDocSh = nullptr;
     if (pViewShell)
-        pDocSh = pViewShell->GetViewData().GetDocShell();
+        pDocSh = &pViewShell->GetViewData().GetDocShell();
     return pDocSh;
 }
 
 ScAccessibleEditObjectTextData::ScAccessibleEditObjectTextData(EditView* pEditView, OutputDevice* pWin, bool isClone)
-    :
-    mpEditView(pEditView),
-    mpEditEngine(pEditView ? pEditView->GetEditEngine() : nullptr),
-    mpWindow(pWin)
+    : mpEditView(pEditView)
+    , mpEditEngine(pEditView ? &pEditView->getEditEngine() : nullptr)
+    , mpWindow(pWin)
 {
     // If the object is cloned, do NOT add notify hdl.
     mbIsCloned = isClone;
@@ -706,7 +705,7 @@ SvxTextForwarder* ScAccessibleEditObjectTextData::GetTextForwarder()
     if ((!mpForwarder && mpEditView) || (mpEditEngine && !mpEditEngine->GetNotifyHdl().IsSet()))
     {
         if (!mpEditEngine)
-            mpEditEngine = mpEditView->GetEditEngine();
+            mpEditEngine = &mpEditView->getEditEngine();
         // If the object is cloned, do NOT add notify hdl.
         if (mpEditEngine && !mpEditEngine->GetNotifyHdl().IsSet()&&!mbIsCloned)
             mpEditEngine->SetNotifyHdl( LINK(this, ScAccessibleEditObjectTextData, NotifyHdl) );
@@ -769,12 +768,12 @@ ScAccessibleEditLineTextData::~ScAccessibleEditLineTextData()
         delete mpEditEngine;
         mpEditEngine = nullptr;    // don't access in ScAccessibleEditObjectTextData dtor!
     }
-    else if (mpTxtWnd && mpTxtWnd->HasEditView() && mpTxtWnd->GetEditView()->GetEditEngine())
+    else if (mpTxtWnd && mpTxtWnd->HasEditView())
     {
         //  the NotifyHdl also has to be removed from the ScTextWnd's EditEngine
         //  (it's set in ScAccessibleEditLineTextData::GetTextForwarder, and mpEditEngine
         //  is reset there)
-        mpTxtWnd->GetEditView()->GetEditEngine()->SetNotifyHdl(Link<EENotify&,void>());
+        mpTxtWnd->GetEditView()->getEditEngine().SetNotifyHdl(Link<EENotify&,void>());
     }
 }
 
@@ -818,8 +817,7 @@ SvxTextForwarder* ScAccessibleEditLineTextData::GetTextForwarder()
             if (!mpEditEngine)
             {
                 rtl::Reference<SfxItemPool> pEnginePool = EditEngine::CreatePool();
-                pEnginePool->FreezeIdRanges();
-                mpEditEngine = new ScFieldEditEngine(nullptr, pEnginePool.get(), nullptr, true);
+                mpEditEngine = new ScFieldEditEngine(nullptr, pEnginePool.get(), true);
                 mbEditEngineCreated = true;
                 mpEditEngine->EnableUndo( false );
                 mpEditEngine->SetRefMapMode(MapMode(MapUnit::Map100thMM));
@@ -868,8 +866,8 @@ void ScAccessibleEditLineTextData::ResetEditMode()
 {
     if (mbEditEngineCreated && mpEditEngine)
         delete mpEditEngine;
-    else if (mpTxtWnd && mpTxtWnd->HasEditView() && mpTxtWnd->GetEditView()->GetEditEngine())
-        mpTxtWnd->GetEditView()->GetEditEngine()->SetNotifyHdl(Link<EENotify&,void>());
+    else if (mpTxtWnd && mpTxtWnd->HasEditView())
+        mpTxtWnd->GetEditView()->getEditEngine().SetNotifyHdl(Link<EENotify&,void>());
     mpEditEngine = nullptr;
 
     mpForwarder.reset();
@@ -1022,8 +1020,7 @@ SvxTextForwarder* ScAccessiblePreviewHeaderCellTextData::GetTextForwarder()
         else
         {
             rtl::Reference<SfxItemPool> pEnginePool = EditEngine::CreatePool();
-            pEnginePool->FreezeIdRanges();
-            pEditEngine.reset( new ScFieldEditEngine(nullptr, pEnginePool.get(), nullptr, true) );
+            pEditEngine.reset( new ScFieldEditEngine(nullptr, pEnginePool.get(), true) );
         }
         pEditEngine->EnableUndo( false );
         if (pDocShell)
@@ -1123,7 +1120,6 @@ SvxTextForwarder* ScAccessibleHeaderTextData::GetTextForwarder()
     if (!mpEditEngine)
     {
         rtl::Reference<SfxItemPool> pEnginePool = EditEngine::CreatePool();
-        pEnginePool->FreezeIdRanges();
         std::unique_ptr<ScHeaderEditEngine> pHdrEngine(new ScHeaderEditEngine( pEnginePool.get() ));
 
         pHdrEngine->EnableUndo( false );
@@ -1131,17 +1127,31 @@ SvxTextForwarder* ScAccessibleHeaderTextData::GetTextForwarder()
 
         //  default font must be set, independently of document
         //  -> use global pool from module
+        std::unique_ptr<CellAttributeHelper> pTmp;
+        const ScPatternAttr* pCellAttributeDefault(nullptr);
 
-        SfxItemSet aDefaults( pHdrEngine->GetEmptyItemSet() );
-        const ScPatternAttr& rPattern = SC_MOD()->GetPool().GetDefaultItem(ATTR_PATTERN);
-        rPattern.FillEditItemSet( &aDefaults );
+        if (nullptr != mpDocSh)
+        {
+            // we can use default CellAttribute from ScDocument
+            pCellAttributeDefault = &mpDocSh->GetDocument().getCellAttributeHelper().getDefaultCellAttribute();
+        }
+        else
+        {
+            // no access to ScDocument, use temporary CellAttributeHelper.
+            // also see ScHeaderFooterTextData::GetTextForwarder for more comments
+            pTmp.reset(new CellAttributeHelper(ScModule::get()->GetPool()));
+            pCellAttributeDefault = &pTmp->getDefaultCellAttribute();
+        }
+
+        SfxItemSet aDefaults(pHdrEngine->GetEmptyItemSet());
+        pCellAttributeDefault->FillEditItemSet(&aDefaults);
         //  FillEditItemSet adjusts font height to 1/100th mm,
         //  but for header/footer twips is needed, as in the PatternAttr:
-        aDefaults.Put( rPattern.GetItem(ATTR_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT) );
-        aDefaults.Put( rPattern.GetItem(ATTR_CJK_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CJK) );
-        aDefaults.Put( rPattern.GetItem(ATTR_CTL_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CTL) );
+        aDefaults.Put( pCellAttributeDefault->GetItem(ATTR_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT) );
+        aDefaults.Put( pCellAttributeDefault->GetItem(ATTR_CJK_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CJK) );
+        aDefaults.Put( pCellAttributeDefault->GetItem(ATTR_CTL_FONT_HEIGHT).CloneSetWhich(EE_CHAR_FONTHEIGHT_CTL) );
         aDefaults.Put( SvxAdjustItem( meAdjust, EE_PARA_JUST ) );
-        pHdrEngine->SetDefaults( aDefaults );
+        pHdrEngine->SetDefaults(std::move(aDefaults));
 
         ScHeaderFieldData aData;
         if (mpViewShell)
@@ -1237,8 +1247,7 @@ SvxTextForwarder* ScAccessibleNoteTextData::GetTextForwarder()
         else
         {
             rtl::Reference<SfxItemPool> pEnginePool = EditEngine::CreatePool();
-            pEnginePool->FreezeIdRanges();
-            mpEditEngine.reset( new ScFieldEditEngine(nullptr, pEnginePool.get(), nullptr, true) );
+            mpEditEngine.reset( new ScFieldEditEngine(nullptr, pEnginePool.get(), true) );
         }
         mpEditEngine->EnableUndo( false );
         if (mpDocSh)

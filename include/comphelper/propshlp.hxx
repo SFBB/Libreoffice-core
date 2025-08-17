@@ -18,6 +18,7 @@
  */
 #pragma once
 
+#include <config_options.h>
 #include <comphelper/multiinterfacecontainer4.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -90,33 +91,32 @@ public:
        value and setFastPropertyValue is called.
      */
     virtual void SAL_CALL setPropertyValue(const ::rtl::OUString& rPropertyName,
-                                           const css::uno::Any& aValue) override final;
+                                           const css::uno::Any& aValue) override;
     /**
        Throw UnknownPropertyException if the property with the name
        rPropertyName does not exist.
      */
-    virtual css::uno::Any SAL_CALL
-    getPropertyValue(const ::rtl::OUString& aPropertyName) override final;
+    virtual css::uno::Any SAL_CALL getPropertyValue(const ::rtl::OUString& aPropertyName) override;
 
     /** Ignored if the property is not bound. */
     virtual void SAL_CALL addPropertyChangeListener(
         const ::rtl::OUString& aPropertyName,
-        const css::uno::Reference<css::beans::XPropertyChangeListener>& aListener) override final;
+        const css::uno::Reference<css::beans::XPropertyChangeListener>& aListener) override;
 
     /** Ignored if the property is not bound. */
     virtual void SAL_CALL removePropertyChangeListener(
         const ::rtl::OUString& aPropertyName,
-        const css::uno::Reference<css::beans::XPropertyChangeListener>& aListener) override final;
+        const css::uno::Reference<css::beans::XPropertyChangeListener>& aListener) override;
 
     /** Ignored if the property is not constrained. */
     virtual void SAL_CALL addVetoableChangeListener(
         const ::rtl::OUString& aPropertyName,
-        const css::uno::Reference<css::beans::XVetoableChangeListener>& aListener) override final;
+        const css::uno::Reference<css::beans::XVetoableChangeListener>& aListener) override;
 
     /** Ignored if the property is not constrained. */
     virtual void SAL_CALL removeVetoableChangeListener(
         const ::rtl::OUString& aPropertyName,
-        const css::uno::Reference<css::beans::XVetoableChangeListener>& aListener) override final;
+        const css::uno::Reference<css::beans::XVetoableChangeListener>& aListener) override;
 
     /**
        Throw UnknownPropertyException or PropertyVetoException if the property with the name
@@ -168,9 +168,9 @@ protected:
     /** Override this if you need to do something special during setFastPropertyValue */
     virtual void setFastPropertyValueImpl(std::unique_lock<std::mutex>& rGuard, sal_Int32 nHandle,
                                           const css::uno::Any& rValue);
-    /** Override this if you need to do something special during getPropertyValue */
+
     virtual css::uno::Any getPropertyValueImpl(std::unique_lock<std::mutex>& rGuard,
-                                               const ::rtl::OUString& aPropertyName);
+                                               const ::rtl::OUString& aPropertyName) final;
 
     /**
        This method fire events to all registered property listeners.
@@ -181,7 +181,7 @@ protected:
        @param bVetoable true means fire to VetoableChangeListener, false means fire to
                   XPropertyChangedListener and XMultiPropertyChangedListener.
      */
-    void fire(std::unique_lock<std::mutex>& rGuard, sal_Int32* pnHandles,
+    void fire(std::unique_lock<std::mutex>& rGuard, const sal_Int32* pnHandles,
               const css::uno::Any* pNewValues, const css::uno::Any* pOldValues, sal_Int32 nCount,
               bool bVetoable);
 

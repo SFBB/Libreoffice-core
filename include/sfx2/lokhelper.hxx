@@ -11,6 +11,8 @@
 #define INCLUDED_SFX2_LOKHELPER_HXX
 
 #include <com/sun/star/ui/XAcceleratorConfiguration.hpp>
+#include <com/sun/star/security/XCertificate.hpp>
+#include <com/sun/star/xml/crypto/XCertificateCreator.hpp>
 
 #include <vcl/IDialogRenderable.hxx>
 #include <vcl/ITiledRenderable.hxx>
@@ -23,8 +25,10 @@
 #include <cstddef>
 #include <rtl/strbuf.hxx>
 #include <rtl/string.hxx>
+#include <list>
 #include <optional>
 #include <string_view>
+#include <unordered_map>
 
 #define LOK_NOTIFY_LOG_TO_CLIENT 1
 
@@ -83,7 +87,7 @@ class SFX2_DLLPUBLIC SfxLokHelper
 {
 public:
     /// Gets the short cut accelerators.
-    static std::unordered_map<OUString, css::uno::Reference<com::sun::star::ui::XAcceleratorConfiguration>>& getAcceleratorConfs();
+    static std::unordered_map<OUString, css::uno::Reference<css::ui::XAcceleratorConfiguration>>& getAcceleratorConfs();
     /// Create a new view shell from the current view frame.
     /// This assumes a single document is ever loaded.
     static int createView();
@@ -99,11 +103,17 @@ public:
     static void setEditMode(int nMode, vcl::ITiledRenderable* pDoc);
     /// Get view shell with id
     static SfxViewShell* getViewOfId(int nId);
-    /// Get the currently active view.
-    static int getView(const SfxViewShell* pViewShell = nullptr);
+    /// Get view id of view shell
+    static int getView(const SfxViewShell& rViewShell);
+    /// Get the currently active view shell id
+    static int getCurrentView();
     /// Get the number of views of the current DocId.
     static std::size_t getViewsCount(int nDocId);
-    /// Get viewIds of views of the current DocId.
+    /// Get the number of docs
+    static std::size_t getDocsCount();
+    /// Get the most recently active viewId of the DocId.
+    static int getViewId(int nDocId);
+    /// Get viewIds of views of the DocId.
     static bool getViewIds(int nDocId, int* pArray, size_t nSize);
     /// Set View Blocked for some uno commands
     static void setBlockedCommandList(int nViewId, const char* blockedCommandList);
@@ -117,6 +127,12 @@ public:
     static void setDefaultLanguage(const OUString& rBcp47LanguageTag);
     /// Enable/Disable AT support for the given view.
     static void setAccessibilityState(int nId, bool nEnabled);
+    // Set the readonly state of the view.
+    static void setViewReadOnly(int nId, bool readOnly);
+    // In readonly view, can user add / modify comments or not.
+    static void setAllowChangeComments(int nId, bool allow);
+    // In readonly view, can user accept / reject tracked changes or not.
+    static void setAllowManageRedlines(int nId, bool allow);
     /// Get the language used by the loading view (used for all save operations).
     static const LanguageTag & getLoadLanguage();
     /// Set the language used by the loading view (used for all save operations).
@@ -150,10 +166,10 @@ public:
     static void notifyOtherViews(const SfxViewShell* pThisView, int nType,
                                  const boost::property_tree::ptree& rTree);
     /// Same as notifyOtherViews(), but works on a selected "other" view, not on all of them.
-    static void notifyOtherView(const SfxViewShell* pThisView, SfxViewShell const* pOtherView,
+    static void notifyOtherView(const SfxViewShell& rThisView, SfxViewShell const* pOtherView,
                                 int nType, std::string_view rKey, const OString& rPayload);
     /// Same as notifyOtherViews(), the property-tree version, but works on a selected "other" view, not on all of them.
-    static void notifyOtherView(const SfxViewShell* pThisView, SfxViewShell const* pOtherView,
+    static void notifyOtherView(const SfxViewShell& rThisView, SfxViewShell const* pOtherView,
                                 int nType, const boost::property_tree::ptree& rTree);
 
     /// Emits a LOK_CALLBACK_STATE_CHANGED
@@ -186,11 +202,11 @@ public:
     // Notify about the given type needing an update.
     static void notifyUpdate(SfxViewShell const* pViewShell, int nType);
     // Notify about the given type needing a per-viewid update.
-    static void notifyUpdatePerViewId(SfxViewShell const* pViewShell, int nType);
+    static void notifyUpdatePerViewId(SfxViewShell const& rViewShell, int nType);
     /// Same as notifyUpdatePerViewId(), pTargetShell will be notified, relevant viewId in pViewShell,
     /// pSourceView->getLOKPayload() will be called to get the data.
-    static void notifyUpdatePerViewId(SfxViewShell const* pTargetShell, SfxViewShell const* pViewShell,
-        SfxViewShell const* pSourceShell, int nType);
+    static void notifyUpdatePerViewId(SfxViewShell const& rTargetShell, SfxViewShell const* pViewShell,
+        SfxViewShell const& rSourceShell, int nType);
     // Notify other views about the given type needing a per-viewid update.
     static void notifyOtherViewsUpdatePerViewId(SfxViewShell const* pViewShell, int nType);
 
@@ -226,7 +242,29 @@ public:
 
     static VclPtr<vcl::Window> getInPlaceDocWindow(SfxViewShell* pViewShell);
 
+    /// Sends Network Access error to LOK
+    static void sendNetworkAccessError(std::string_view rAction);
+
     static void notifyLog(const std::ostringstream& stream);
+
+    /// Extracts base64 data inside begin/end markers.
+    static std::string extractCertificate(const std::string& rCert);
+    /// Extracts multiple certificates in base64 from inside begin/end markers.
+    static std::vector<std::string> extractCertificates(const std::string& rCerts);
+    /// Takes a single CA certificate to add them to the list of trusted certificates.
+    static css::uno::Reference<css::security::XCertificate> addCertificate(const css::uno::Reference<css::xml::crypto::XCertificateCreator>& xCertificateCreator, const css::uno::Sequence<sal_Int8>& rCert);
+    /// Takes a CA chain to add them to the list of trusted certificates.
+    static void addCertificates(const std::vector<std::string>& rCerts);
+    /// Parses a private key + certificate pair.
+    static css::uno::Reference<css::security::XCertificate> getSigningCertificate(const std::string& rCert, const std::string& rKey);
+    /// Decides if it's OK to call getCommandValues(rCommand).
+    static bool supportsCommand(std::u16string_view rCommand);
+    /// Returns information about a given command in JSON format.
+    static void getCommandValues(tools::JsonWriter& rJsonWriter, std::string_view rCommand);
+    /// Parses key-value parameters of rCommand.
+    static std::map<OUString, OUString> parseCommandParameters(std::u16string_view rCommand);
+    /// Registers function pointers in comphelper/ to set/get of the current LOK view.
+    static void registerViewCallbacks();
 
 private:
     static int createView(SfxViewFrame& rViewFrame, ViewShellDocId docId);
@@ -246,6 +284,33 @@ void SfxLokHelper::forEachOtherView(ViewShellType* pThisViewShell, FunctionType 
         pViewShell = SfxViewShell::GetNext(*pViewShell);
     }
 }
+
+/// If LOK is active, switch to the language/locale of the provided shell and back on delete.
+class SfxLokLanguageGuard
+{
+    bool m_bSetLanguage;
+    const SfxViewShell* m_pOldShell;
+
+public:
+    SfxLokLanguageGuard(const SfxViewShell* pNewShell);
+    ~SfxLokLanguageGuard();
+};
+
+typedef std::list<SfxViewShell*> ViewShellList;
+
+/// Used to keep track of the last N views that text edited a document through an EditView
+class SFX2_DLLPUBLIC LOKEditViewHistory
+{
+public:
+    typedef std::list<SfxViewShell*> ViewShellList;
+    typedef std::unordered_map<int, ViewShellList> EditViewHistoryMap;
+
+    static void Update(bool bRemove = false);
+    static ViewShellList GetHistoryForDoc(ViewShellDocId aDocId);
+    static ViewShellList GetSortedViewsForDoc(ViewShellDocId aDocId);
+private:
+    static EditViewHistoryMap maEditViewHistory;
+};
 
 #endif
 

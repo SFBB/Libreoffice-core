@@ -22,7 +22,6 @@
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <toolkit/helper/convert.hxx>
 #include <utility>
 #include <vcl/svapp.hxx>
 #include <osl/mutex.hxx>
@@ -30,6 +29,7 @@
 #include <tools/gen.hxx>
 #include <sal/log.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/unohelp.hxx>
 #include <svx/strings.hrc>
 #include <svx/dlgctrl.hxx>
 #include <svx/dialmgr.hxx>
@@ -136,14 +136,14 @@ Reference< XAccessible > SAL_CALL SvxRectCtlAccessibleContext::getAccessibleChil
 {
     checkChildIndex( nIndex );
 
-    Reference< XAccessible > xChild(mvChildren[ nIndex ]);
+    rtl::Reference< SvxRectCtlChildAccessibleContext > xChild(mvChildren[ nIndex ]);
     if( !xChild.is() )
     {
         ::SolarMutexGuard aSolarGuard;
 
         ::osl::MutexGuard   aGuard( m_aMutex );
 
-        xChild = mvChildren[ nIndex ].get();
+        xChild = mvChildren[ nIndex ];
 
         if (!xChild.is() && mpRepr)
         {
@@ -190,9 +190,6 @@ OUString SAL_CALL SvxRectCtlAccessibleContext::getAccessibleName()
     return msName;
 }
 
-/** Return empty reference to indicate that the relation set is not
-    supported.
-*/
 Reference< XAccessibleRelationSet > SAL_CALL SvxRectCtlAccessibleContext::getAccessibleRelationSet()
 {
     ::osl::MutexGuard   aGuard( m_aMutex );
@@ -263,12 +260,12 @@ void SvxRectCtlAccessibleContext::implSelect(sal_Int64 nIndex, bool bSelect)
 
     checkChildIndex( nIndex );
 
-    const ChildIndexToPointData*    pData = IndexToPoint( nIndex );
-
-    DBG_ASSERT(pData, "SvxRectCtlAccessibleContext::selectAccessibleChild(): this is an impossible state! Or at least should be...");
-
     if (mpRepr)
     {
+        const ChildIndexToPointData* pData = IndexToPoint(nIndex);
+
+        assert(pData && "SvxRectCtlAccessibleContext::selectAccessibleChild(): this is an impossible state! Or at least should be...");
+
         if (bSelect)
         {
             // this does all what is needed, including the change of the child's state!
@@ -472,16 +469,13 @@ OUString SAL_CALL SvxRectCtlChildAccessibleContext::getAccessibleName()
     return msName;
 }
 
-/** Return empty reference to indicate that the relation set is not
-    supported.
-*/
 Reference<XAccessibleRelationSet> SAL_CALL SvxRectCtlChildAccessibleContext::getAccessibleRelationSet()
 {
     rtl::Reference<utl::AccessibleRelationSetHelper> pRelationSetHelper = new utl::AccessibleRelationSetHelper;
     if( mxParent.is() )
     {
-        uno::Sequence< uno::Reference< uno::XInterface > > aSequence { mxParent };
-        pRelationSetHelper->AddRelation( css::accessibility::AccessibleRelation( css::accessibility::AccessibleRelationType::MEMBER_OF, aSequence ) );
+        uno::Sequence<uno::Reference<css::accessibility::XAccessible>> aSequence { mxParent };
+        pRelationSetHelper->AddRelation(css::accessibility::AccessibleRelation(css::accessibility::AccessibleRelationType_MEMBER_OF, aSequence));
     }
 
     return pRelationSetHelper;
@@ -578,7 +572,7 @@ OUString SvxRectCtlChildAccessibleContext::getAccessibleActionDescription ( sal_
     if ( nIndex < 0 || nIndex >= getAccessibleActionCount() )
         throw IndexOutOfBoundsException();
 
-    return "select";
+    return u"select"_ustr;
 }
 
 
@@ -594,14 +588,14 @@ Reference< XAccessibleKeyBinding > SvxRectCtlChildAccessibleContext::getAccessib
 
 void SAL_CALL SvxRectCtlChildAccessibleContext::disposing()
 {
-    OAccessibleComponentHelper::disposing();
+    OAccessible::disposing();
     mxParent.clear();
 }
 
 awt::Rectangle SvxRectCtlChildAccessibleContext::implGetBounds(  )
 {
     // no guard necessary, because no one changes maBoundingBox after creating it
-    return AWTRectangle(maBoundingBox);
+    return vcl::unohelper::ConvertToAWTRect(maBoundingBox);
 }
 
 void SvxRectCtlChildAccessibleContext::setStateChecked( bool bChecked )

@@ -55,9 +55,6 @@
 #include <svl/itemprop.hxx>
 #include <vcl/ITiledRenderable.hxx>
 
-namespace com::sun::star::chart2::data { class XDataProvider; }
-namespace com::sun::star::sheet::opencl { struct OpenCLPlatform; }
-
 class ScDocShell;
 class ScAnnotationObj;
 class ScMarkData;
@@ -71,8 +68,10 @@ class ScRangeList;
 class ScPrintUIOptions;
 class ScSheetSaveData;
 struct ScFormatSaveData;
+class ScTableSheetsObj;
+class SolarMutexGuard;
 
-class SC_DLLPUBLIC ScModelObj : public SfxBaseModel,
+class SAL_DLLPUBLIC_RTTI ScModelObj : public SfxBaseModel,
                     public vcl::ITiledRenderable,
                     public css::sheet::XSpreadsheetDocument,
                     public css::document::XActionLockable,
@@ -138,10 +137,10 @@ public:
     /// create ScModelObj and set at pDocSh (SetBaseModel)
     static void             CreateAndSet(ScDocShell* pDocSh);
 
-    ScDocument*             GetDocument() const;
-    SfxObjectShell*         GetEmbeddedObject() const;
+    SC_DLLPUBLIC ScDocument*     GetDocument() const;
+    SC_DLLPUBLIC SfxObjectShell* GetEmbeddedObject() const;
 
-    void UpdateAllRowHeights();
+    SC_DLLPUBLIC void UpdateAllRowHeights();
 
     void                    BeforeXMLLoading();
     void                    AfterXMLLoading();
@@ -163,8 +162,9 @@ public:
     virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
                             /// XSpreadsheetDocument
-    virtual css::uno::Reference< css::sheet::XSpreadsheets > SAL_CALL
-                            getSheets() override;
+    SC_DLLPUBLIC virtual css::uno::Reference< css::sheet::XSpreadsheets > SAL_CALL
+                            getSheets() override final;
+    SC_DLLPUBLIC rtl::Reference< ScTableSheetsObj > getScSheets();
 
                             /// XDataProviderAccess
     virtual ::css::uno::Reference< css::chart2::data::XDataProvider > SAL_CALL
@@ -260,7 +260,7 @@ public:
                             /// XUnoTunnel
     virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
 
-    static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
+    SC_DLLPUBLIC static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
 
                             /// XTypeProvider
     virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
@@ -308,7 +308,7 @@ public:
                             tools::Long nTileHeight ) override;
 
     /// @see vcl::ITiledRenderable::getDocumentSize().
-    virtual Size getDocumentSize() final override;
+    SC_DLLPUBLIC virtual Size getDocumentSize() final override;
 
     /// @see vcl::ITiledRenderable::getDataArea().
     virtual Size getDataArea(long nPart) override;
@@ -363,6 +363,9 @@ public:
 
     /// @see vcl::ITiledRenderable::setClientZoom().
     virtual void setClientZoom(int nTilePixelWidth, int nTilePixelHeight, int nTileTwipWidth, int nTileTwipHeight) override;
+
+    /// @see vcl::ITiledRenderable::setExportZoom().
+    virtual void setExportZoom(int nExportZoom) override;
 
     /// @see vcl::ITiledRenderable::setOutlineState().
     virtual void setOutlineState(bool bColumn, int nLevel, int nIndex, bool bHidden) override;
@@ -438,7 +441,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScTableSheetsObj final : public cppu::WeakImplHelper<
+class SC_DLLPUBLIC ScTableSheetsObj final : public cppu::WeakImplHelper<
                                 css::sheet::XSpreadsheets2,
                                 css::sheet::XCellRangesAccess,
                                 css::container::XEnumerationAccess,
@@ -449,7 +452,6 @@ class ScTableSheetsObj final : public cppu::WeakImplHelper<
 private:
     ScDocShell*             pDocShell;
 
-    rtl::Reference<ScTableSheetObj> GetObjectByIndex_Impl(sal_Int32 nIndex) const;
     rtl::Reference<ScTableSheetObj> GetObjectByName_Impl(const OUString& aName) const;
 
 public:
@@ -511,6 +513,8 @@ public:
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+
+    rtl::Reference<ScTableSheetObj> GetSheetByIndex(sal_Int32 nIndex) const;
 };
 
 class ScTableColumnsObj final : public cppu::WeakImplHelper<
@@ -637,6 +641,9 @@ public:
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+
+    void setPropertyValueIsFiltered( SolarMutexGuard& rGuard, bool b );
+    bool getPropertyValueOHeight( SolarMutexGuard& rGuard );
 };
 
 class ScSpreadsheetSettingsObj final : public cppu::WeakImplHelper<

@@ -25,13 +25,14 @@
 #include <unordered_map>
 #include <memory>
 
-class SwCursorShell;
 class SfxViewShell;
 
 namespace sw::mark {
-    typedef std::unordered_map<OUString, sal_Int32> MarkBasenameMapUniqueOffset_t;
+    typedef std::unordered_map<SwMarkName, sal_Int32> MarkBasenameMapUniqueOffset_t;
 
-    class FieldmarkWithDropDownButton;
+    class AnnotationMark;
+
+    class UniqueNameChecksGuard_impl;
 
     class MarkManager final
         : virtual public IDocumentMarkAccess
@@ -39,27 +40,29 @@ namespace sw::mark {
         public:
             MarkManager(/*[in/out]*/ SwDoc& rDoc);
             // IDocumentMarkAccess
-            virtual ::sw::mark::IMark* makeMark(const SwPaM& rPaM,
-                const OUString& rName, IDocumentMarkAccess::MarkType eMark,
+            virtual ::sw::mark::MarkBase* makeMark(const SwPaM& rPaM,
+                const SwMarkName& rName, IDocumentMarkAccess::MarkType eMark,
                 sw::mark::InsertMode eMode,
                 SwPosition const* pSepPos = nullptr) override;
 
-            virtual sw::mark::IFieldmark* makeFieldBookmark( const SwPaM& rPaM,
-                const OUString& rName,
+            virtual sw::mark::Fieldmark* makeFieldBookmark( const SwPaM& rPaM,
+                const SwMarkName& rName,
                 const OUString& rType,
                 SwPosition const* pSepPos = nullptr) override;
-            virtual sw::mark::IFieldmark* makeNoTextFieldBookmark( const SwPaM& rPaM,
-                const OUString& rName,
+            virtual sw::mark::Fieldmark* makeNoTextFieldBookmark( const SwPaM& rPaM,
+                const SwMarkName& rName,
                 const OUString& rType) override;
 
-            virtual ::sw::mark::IMark* getMarkForTextNode(const SwTextNode& rTextNode, IDocumentMarkAccess::MarkType eMark) override;
+            virtual ::sw::mark::MarkBase* getMarkForTextNode(const SwTextNode& rTextNode, IDocumentMarkAccess::MarkType eMark) override;
 
-            virtual sw::mark::IMark* makeAnnotationMark(
+            virtual sw::mark::MarkBase* makeAnnotationMark(
                 const SwPaM& rPaM,
-                const OUString& rName ) override;
+                const SwMarkName& rName ) override;
 
-            virtual void repositionMark(::sw::mark::IMark* io_pMark, const SwPaM& rPaM) override;
-            virtual bool renameMark(::sw::mark::IMark* io_pMark, const OUString& rNewName) override;
+            virtual std::unique_ptr<UniqueNameChecksGuard> disableUniqueNameChecks() override;
+
+            virtual void repositionMark(::sw::mark::MarkBase* io_pMark, const SwPaM& rPaM) override;
+            virtual bool renameMark(::sw::mark::MarkBase* io_pMark, const SwMarkName& rNewName) override;
             virtual void correctMarksAbsolute(const SwNode& rOldNode, const SwPosition& rNewPos, const sal_Int32 nOffset) override;
             virtual void correctMarksRelative(const SwNode& rOldNode, const SwPosition& rNewPos, const sal_Int32 nOffset) override;
 
@@ -72,39 +75,40 @@ namespace sw::mark {
 
             // deleters
             virtual std::unique_ptr<ILazyDeleter>
-                deleteMark(const const_iterator_t& ppMark, bool isMoveNodes) override;
-            virtual void deleteMark(const ::sw::mark::IMark* const pMark) override;
+                deleteMark(const const_iterator& ppMark, bool isMoveNodes) override;
+            virtual void deleteMark(const ::sw::mark::MarkBase* const pMark) override;
             virtual void clearAllMarks() override;
 
             // marks
-            virtual const_iterator_t getAllMarksBegin() const override;
-            virtual const_iterator_t getAllMarksEnd() const override;
+            virtual const_iterator getAllMarksBegin() const override;
+            virtual const_iterator getAllMarksEnd() const override;
             virtual sal_Int32 getAllMarksCount() const override;
-            virtual const_iterator_t findMark(const OUString& rName) const override;
+            virtual const_iterator findMark(const SwMarkName& rName) const override;
+            virtual std::vector<sw::mark::Bookmark*>::const_iterator findFirstBookmarkNotStartsBefore(const SwPosition& rPos) const override;
 
             // bookmarks
             virtual bool isBookmarkDeleted(SwPaM const& rPaM, bool isReplace) const override;
-            virtual const_iterator_t getBookmarksBegin() const override;
-            virtual const_iterator_t getBookmarksEnd() const override;
+            virtual std::vector<sw::mark::Bookmark*>::const_iterator getBookmarksBegin() const override;
+            virtual std::vector<sw::mark::Bookmark*>::const_iterator getBookmarksEnd() const override;
             virtual sal_Int32 getBookmarksCount() const override;
-            virtual const_iterator_t findBookmark(const OUString& rName) const override;
-            virtual const_iterator_t findFirstBookmarkStartsAfter(const SwPosition& rPos) const override;
-            virtual ::sw::mark::IMark* getOneInnermostBookmarkFor(const SwPosition& rPos) const override;
+            virtual std::vector<sw::mark::Bookmark*>::const_iterator findBookmark(const SwMarkName& rName) const override;
+            virtual std::vector<sw::mark::Bookmark*>::const_iterator findFirstBookmarkStartsAfter(const SwPosition& rPos) const override;
+            virtual ::sw::mark::Bookmark* getOneInnermostBookmarkFor(const SwPosition& rPos) const override;
 
             // Fieldmarks
-            virtual const_iterator_t getFieldmarksBegin() const override;
-            virtual const_iterator_t getFieldmarksEnd() const override;
+            virtual std::vector<Fieldmark*>::const_iterator getFieldmarksBegin() const override;
+            virtual std::vector<Fieldmark*>::const_iterator getFieldmarksEnd() const override;
             virtual sal_Int32 getFieldmarksCount() const override;
-            virtual ::sw::mark::IFieldmark* getFieldmarkAt(const SwPosition& rPos) const override;
-            virtual sw::mark::IFieldmark* getInnerFieldmarkFor(const SwPosition& rPos) const override;
-            virtual sw::mark::IFieldmark* getFieldmarkBefore(const SwPosition& rPos, bool bLoop) const override;
-            virtual sw::mark::IFieldmark* getFieldmarkAfter(const SwPosition& rPos, bool bLoop) const override;
+            virtual ::sw::mark::Fieldmark* getFieldmarkAt(const SwPosition& rPos) const override;
+            virtual sw::mark::Fieldmark* getInnerFieldmarkFor(const SwPosition& rPos) const override;
+            virtual sw::mark::Fieldmark* getFieldmarkBefore(const SwPosition& rPos, bool bLoop) const override;
+            virtual sw::mark::Fieldmark* getFieldmarkAfter(const SwPosition& rPos, bool bLoop) const override;
 
-            virtual ::sw::mark::IFieldmark* getDropDownFor(const SwPosition &rPos) const override;
-            virtual std::vector<::sw::mark::IFieldmark*> getNoTextFieldmarksIn(const SwPaM &rPaM) const override;
+            virtual ::sw::mark::Fieldmark* getDropDownFor(const SwPosition &rPos) const override;
+            virtual std::vector<::sw::mark::Fieldmark*> getNoTextFieldmarksIn(const SwPaM &rPaM) const override;
 
             virtual void deleteFieldmarkAt(const SwPosition& rPos) override;
-            virtual ::sw::mark::IFieldmark* changeFormFieldmarkType(::sw::mark::IFieldmark* pFieldmark, const OUString& rNewType) override;
+            virtual ::sw::mark::Fieldmark* changeFormFieldmarkType(::sw::mark::Fieldmark* pFieldmark, const OUString& rNewType) override;
 
             virtual void NotifyCursorUpdate(const SwCursorShell& rCursorShell) override;
             virtual void ClearFieldActivation() override;
@@ -113,23 +117,25 @@ namespace sw::mark {
             void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
             // Annotation Marks
-            virtual const_iterator_t getAnnotationMarksBegin() const override;
-            virtual const_iterator_t getAnnotationMarksEnd() const override;
+            virtual std::vector<sw::mark::AnnotationMark*>::const_iterator getAnnotationMarksBegin() const override;
+            virtual std::vector<sw::mark::AnnotationMark*>::const_iterator getAnnotationMarksEnd() const override;
             virtual sal_Int32 getAnnotationMarksCount() const override;
-            virtual const_iterator_t findAnnotationMark( const OUString& rName ) const override;
-            virtual sw::mark::IMark* getAnnotationMarkFor(const SwPosition& rPos) const override;
-            virtual const_iterator_t findFirstAnnotationStartsAfter(const SwPosition& rPos) const override;
+            virtual std::vector<sw::mark::AnnotationMark*>::const_iterator findAnnotationMark( const SwMarkName& rName ) const override;
+            virtual sw::mark::AnnotationMark* getAnnotationMarkFor(const SwPosition& rPos) const override;
 
             virtual void assureSortedMarkContainers() const override;
+            virtual void assureSortedMarkContainers(sal_Int32 nMinIndexModified) const override;
 
             typedef std::vector<sw::mark::MarkBase*> container_t;
 
             // helper bookmark to store annotation range of redlines
-            virtual ::sw::mark::IMark* makeAnnotationBookmark(const SwPaM& rPaM,
-                const OUString& rName, IDocumentMarkAccess::MarkType eMark,
+            virtual ::sw::mark::Bookmark* makeAnnotationBookmark(const SwPaM& rPaM,
+                const SwMarkName& rName,
                 sw::mark::InsertMode eMode,
                 SwPosition const* pSepPos = nullptr) override;
-            virtual const_iterator_t findAnnotationBookmark( const OUString& rName ) const override;
+            virtual std::vector<sw::mark::AnnotationMark*>::const_iterator findFirstAnnotationMarkNotStartsBefore(const SwPosition& rPos) const override;
+            virtual std::vector<sw::mark::AnnotationMark*>::const_iterator findFirstAnnotationMarkNotStartsBefore(const SwNode& rPos) const override;
+            virtual std::vector<sw::mark::Bookmark*>::const_iterator findAnnotationBookmark( const SwMarkName& rName ) const override;
             virtual void restoreAnnotationMarks(bool bDelete = true) override;
 
         private:
@@ -138,7 +144,9 @@ namespace sw::mark {
             MarkManager& operator=(MarkManager const&) = delete;
 
             // make names
-            OUString getUniqueMarkName(const OUString& rName) const;
+            template <class IsNameUniqueFunc>
+                requires std::is_invocable_r_v<bool, IsNameUniqueFunc, const SwMarkName&>
+            SwMarkName getUniqueMarkName(const SwMarkName& rName, IsNameUniqueFunc f) const;
 
             void sortSubsetMarks();
             void sortMarks();
@@ -147,18 +155,21 @@ namespace sw::mark {
             container_t m_vAllMarks;
 
             // additional container for bookmarks
-            container_t m_vBookmarks;
+            std::vector<sw::mark::Bookmark*> m_vBookmarks;
             // additional container for fieldmarks
-            container_t m_vFieldmarks;
+            std::vector<sw::mark::Fieldmark*> m_vFieldmarks;
 
             mutable MarkBasenameMapUniqueOffset_t m_aMarkBasenameMapUniqueOffset;
 
             // container for annotation marks
-            container_t m_vAnnotationMarks;
+            std::vector<sw::mark::AnnotationMark*> m_vAnnotationMarks;
 
             SwDoc& m_rDoc;
 
             sw::mark::FieldmarkWithDropDownButton* m_pLastActiveFieldmark;
+
+            friend class UniqueNameChecksGuard_impl;
+            UniqueNameChecksGuard_impl* m_pUniqueNameChecksGuard = nullptr;
     };
 
 }

@@ -30,8 +30,6 @@
 #include <vcl/weldutils.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
-class BrowserDataWin;
-
 // EditBrowseBoxFlags (EBBF)
 enum class EditBrowseBoxFlags
 {
@@ -82,7 +80,7 @@ namespace svt
         CellController(ControlBase* pW);
         virtual ~CellController() override;
 
-        ControlBase& GetWindow() const { return *const_cast<CellController*>(this)->pWindow; }
+        ControlBase& GetWindow() const { return *pWindow; }
 
         virtual void SaveValue() = 0;
         virtual bool IsValueChangedFromSaved() const = 0;
@@ -211,6 +209,8 @@ namespace svt
         {
             m_aKeyReleaseHdl = rHdl;
         }
+
+        rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     protected:
         DECL_DLLPRIVATE_LINK(KeyInputHdl, const KeyEvent&, bool);
@@ -829,6 +829,8 @@ namespace svt
 
         void SetDate(const Date& rDate);
 
+        virtual void SetEditableReadOnly(bool bReadOnly) override;
+
         virtual void dispose() override;
     private:
         std::unique_ptr<weld::MenuButton> m_xMenuButton;
@@ -884,7 +886,6 @@ namespace svt
 
 
     //= EditBrowseBox
-    class EditBrowseBoxImpl;
     class SVT_DLLPUBLIC EditBrowseBox: public BrowseBox
     {
         friend class EditBrowserHeader;
@@ -916,7 +917,7 @@ namespace svt
         EditBrowseBox(EditBrowseBox const &) = delete;
         EditBrowseBox& operator=(EditBrowseBox const &) = delete;
 
-        class BrowserMouseEventPtr
+        class SAL_DLLPRIVATE BrowserMouseEventPtr
         {
             std::unique_ptr<BrowserMouseEvent> pEvent;
             bool               bDown;
@@ -954,7 +955,9 @@ namespace svt
         VclPtr<CheckBoxControl> pCheckBoxPaint;
 
         EditBrowseBoxFlags  m_nBrowserFlags;
-        std::unique_ptr< EditBrowseBoxImpl> m_aImpl;
+
+        rtl::Reference<comphelper::OAccessible> m_pActiveCell;
+        void clearActiveCell();
 
     protected:
         VclPtr<BrowserHeader>  pHeader;
@@ -1059,7 +1062,7 @@ namespace svt
         // late construction
         virtual void Init();
         virtual void RemoveRows();
-        virtual void Dispatch(sal_uInt16 nId);
+        virtual void Dispatch(BrowserDispatchId eId);
 
         const CellControllerRef& Controller() const { return aController; }
         EditBrowseBoxFlags  GetBrowserFlags() const { return m_nBrowserFlags; }
@@ -1076,9 +1079,9 @@ namespace svt
             @param nIndex
                 The 0-based index of the control.
             @return
-                The XAccessible interface of the specified control. */
-        virtual css::uno::Reference< css::accessibility::XAccessible >
-        CreateAccessibleControl( sal_Int32 nIndex ) override;
+                The accessible object of the specified control. */
+        virtual rtl::Reference<comphelper::OAccessible>
+        CreateAccessibleControl(sal_Int32 nIndex) override;
 
         /** Sets focus to current cell of the data table. */
         virtual void GrabTableFocus() override;
@@ -1091,7 +1094,9 @@ namespace svt
         virtual void ChildFocusIn() override;
         virtual void ChildFocusOut() override;
 
-        css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleCheckBoxCell(sal_Int32 _nRow, sal_uInt16 _nColumnPos,const TriState& eState);
+        rtl::Reference<comphelper::OAccessible>
+        CreateAccessibleCheckBoxCell(sal_Int32 _nRow, sal_uInt16 _nColumnPos,
+                                     const TriState& eState);
         bool ControlHasFocus() const;
     protected:
         // creates the accessible which wraps the active cell

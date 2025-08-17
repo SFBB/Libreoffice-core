@@ -19,6 +19,7 @@
 #ifndef INCLUDED_SW_INC_UNOFRAME_HXX
 #define INCLUDED_SW_INC_UNOFRAME_HXX
 
+#include "swdllapi.h"
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
@@ -28,6 +29,7 @@
 #include <com/sun/star/util/XModifyListener.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 
+#include <comphelper/interfacecontainer4.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <sal/types.h>
 #include <svl/listener.hxx>
@@ -37,11 +39,14 @@
 #include "unotext.hxx"
 
 #include <memory>
+#include <mutex>
 
 class SdrObject;
 class SwDoc;
 class SwFormat;
+class SwUnoInternalPaM;
 class SfxItemPropertySet;
+class SwXOLEListener;
 namespace com::sun::star::frame { class XModel; }
 
 class BaseFrameProperties_Impl;
@@ -57,8 +62,8 @@ class SAL_DLLPUBLIC_RTTI SAL_LOPLUGIN_ANNOTATE("crosscast") SwXFrame : public cp
     public SvtListener
 {
 private:
-    class Impl;
-    ::sw::UnoImplPtr<Impl> m_pImpl;
+    std::mutex m_Mutex; // just for OInterfaceContainerHelper4
+    ::comphelper::OInterfaceContainerHelper4<css::lang::XEventListener> m_EventListeners;
     SwFrameFormat* m_pFrameFormat;
 
     const SfxItemPropertySet*       m_pPropSet;
@@ -69,7 +74,7 @@ private:
     // Descriptor-interface
     std::unique_ptr<BaseFrameProperties_Impl> m_pProps;
     bool m_bIsDescriptor;
-    OUString                        m_sName;
+    UIName                          m_sName;
 
     sal_Int64                       m_nDrawAspect;
     sal_Int64                       m_nVisibleAreaWidth;
@@ -98,12 +103,12 @@ protected:
 public:
 
     //XNamed
-    virtual OUString SAL_CALL getName() override;
-    virtual void SAL_CALL setName(const OUString& Name_) override;
+    SW_DLLPUBLIC virtual OUString SAL_CALL getName() override;
+    SW_DLLPUBLIC virtual void SAL_CALL setName(const OUString& Name_) override;
 
     //XPropertySet
     virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo(  ) override;
-    virtual void SAL_CALL setPropertyValue( const OUString& aPropertyName, const css::uno::Any& aValue ) override;
+    SW_DLLPUBLIC virtual void SAL_CALL setPropertyValue( const OUString& aPropertyName, const css::uno::Any& aValue ) override;
     virtual css::uno::Any SAL_CALL getPropertyValue( const OUString& PropertyName ) override;
     virtual void SAL_CALL addPropertyChangeListener( const OUString& aPropertyName, const css::uno::Reference< css::beans::XPropertyChangeListener >& xListener ) override;
     virtual void SAL_CALL removePropertyChangeListener( const OUString& aPropertyName, const css::uno::Reference< css::beans::XPropertyChangeListener >& aListener ) override;
@@ -187,7 +192,7 @@ public:
     using SwXText::SetDoc;
 
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
-    virtual void SAL_CALL acquire(  ) noexcept override;
+    virtual SW_DLLPUBLIC void SAL_CALL acquire(  ) noexcept override;
     virtual SW_DLLPUBLIC void SAL_CALL release(  ) noexcept override;
 
     //XTypeProvider
@@ -202,7 +207,7 @@ public:
     virtual rtl::Reference< SwXTextCursor > createXTextCursorByRange(
             const ::css::uno::Reference< ::css::text::XTextRange >& aTextPosition ) override;
 
-    //XEnumerationAccess - frueher XParagraphEnumerationAccess
+    //XEnumerationAccess - was: XParagraphEnumerationAccess
     virtual css::uno::Reference< css::container::XEnumeration >  SAL_CALL createEnumeration() override;
 
     //XElementAccess
@@ -229,6 +234,8 @@ public:
     //XPropertySet
     virtual SW_DLLPUBLIC css::uno::Any SAL_CALL getPropertyValue( const OUString& PropertyName ) override;
     using SwXFrame::setPropertyValue;
+private:
+    rtl::Reference< SwXTextCursor > createXTextCursorByRangeImpl(SwFrameFormat& rFormat, SwUnoInternalPaM& rPam);
 };
 
 typedef cppu::ImplInheritanceHelper
@@ -236,7 +243,7 @@ typedef cppu::ImplInheritanceHelper
     css::document::XEventsSupplier
 >
 SwXTextGraphicObjectBaseClass;
-class SwXTextGraphicObject final : public SwXTextGraphicObjectBaseClass
+class SW_DLLPUBLIC SwXTextGraphicObject final : public SwXTextGraphicObjectBaseClass
 {
     friend class SwXFrame; // just for CreateXFrame
 
@@ -265,9 +272,9 @@ typedef cppu::ImplInheritanceHelper
     css::document::XEventsSupplier
 > SwXTextEmbeddedObjectBaseClass;
 
-class SwXTextEmbeddedObject final : public SwXTextEmbeddedObjectBaseClass
+class SW_DLLPUBLIC SwXTextEmbeddedObject final : public SwXTextEmbeddedObjectBaseClass
 {
-    css::uno::Reference<css::util::XModifyListener> m_xOLEListener;
+    rtl::Reference<SwXOLEListener> m_xOLEListener;
 
     friend class SwXFrame; // just for CreateXFrame
 

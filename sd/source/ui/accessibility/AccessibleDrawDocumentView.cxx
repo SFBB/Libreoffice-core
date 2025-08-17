@@ -78,8 +78,6 @@ struct XShapePosCompareHelper
 
 }
 
-//=====  internal  ============================================================
-
 AccessibleDrawDocumentView::AccessibleDrawDocumentView (
     ::sd::Window* pSdWindow,
     ::sd::ViewShell* pViewShell,
@@ -147,7 +145,7 @@ rtl::Reference<AccessiblePageShape> AccessibleDrawDocumentView::CreateDrawPageSh
             uno::Reference<lang::XMultiServiceFactory> xFactory (mxModel, uno::UNO_QUERY);
             uno::Reference<drawing::XShape> xRectangle;
             if (xFactory.is())
-                xRectangle.set(xFactory->createInstance ("com.sun.star.drawing.RectangleShape"),
+                xRectangle.set(xFactory->createInstance (u"com.sun.star.drawing.RectangleShape"_ustr),
                     uno::UNO_QUERY);
 
             // Set the shape's size and position.
@@ -159,15 +157,15 @@ rtl::Reference<AccessiblePageShape> AccessibleDrawDocumentView::CreateDrawPageSh
 
                 // Set size and position of the shape to those of the draw
                 // page.
-                aValue = xSet->getPropertyValue ("BorderLeft");
+                aValue = xSet->getPropertyValue (u"BorderLeft"_ustr);
                 aValue >>= aPosition.X;
-                aValue = xSet->getPropertyValue ("BorderTop");
+                aValue = xSet->getPropertyValue (u"BorderTop"_ustr);
                 aValue >>= aPosition.Y;
                 xRectangle->setPosition (aPosition);
 
-                aValue = xSet->getPropertyValue ("Width");
+                aValue = xSet->getPropertyValue (u"Width"_ustr);
                 aValue >>= aSize.Width;
-                aValue = xSet->getPropertyValue ("Height");
+                aValue = xSet->getPropertyValue (u"Height"_ustr);
                 aValue >>= aSize.Height;
                 xRectangle->setSize (aSize);
 
@@ -186,7 +184,7 @@ rtl::Reference<AccessiblePageShape> AccessibleDrawDocumentView::CreateDrawPageSh
 sal_Int64 SAL_CALL
     AccessibleDrawDocumentView::getAccessibleChildCount()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     sal_Int64 nChildCount = AccessibleDocumentViewBase::getAccessibleChildCount();
 
@@ -200,7 +198,7 @@ sal_Int64 SAL_CALL
 uno::Reference<XAccessible> SAL_CALL
     AccessibleDrawDocumentView::getAccessibleChild (sal_Int64 nIndex)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     ::osl::ClearableMutexGuard aGuard (m_aMutex);
 
@@ -268,7 +266,7 @@ OUString SAL_CALL
 void SAL_CALL
     AccessibleDrawDocumentView::disposing (const lang::EventObject& rEventObject)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     AccessibleDocumentViewBase::disposing (rEventObject);
     if (rEventObject.Source == mxModel)
@@ -285,7 +283,7 @@ void SAL_CALL
 void SAL_CALL
     AccessibleDrawDocumentView::propertyChange (const beans::PropertyChangeEvent& rEventObject)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     AccessibleDocumentViewBase::propertyChange (rEventObject);
 
@@ -339,7 +337,8 @@ void SAL_CALL
             //mpChildrenManager->SetShapeList (uno::Reference<drawing::XShapes> (
             //    xView->getCurrentPage(), uno::UNO_QUERY));
             rtl::Reference< sd::SlideShow > xSlideshow( sd::SlideShow::GetSlideShow( mpSdViewSh->GetViewShellBase() ) );
-            if( xSlideshow.is() && xSlideshow->isRunning() && xSlideshow->isFullScreen() )
+            if( xSlideshow.is() && (xSlideshow->isRunning() && !xSlideshow->IsInteractiveSlideshow()) //IASS
+                && xSlideshow->isFullScreen() )
             {
                 css::uno::Reference< drawing::XDrawPage > xSlide;
                 // MT IA2: Not used...
@@ -374,14 +373,14 @@ void SAL_CALL
 OUString SAL_CALL
     AccessibleDrawDocumentView::getImplementationName()
 {
-    return "AccessibleDrawDocumentView";
+    return u"AccessibleDrawDocumentView"_ustr;
 }
 
 css::uno::Sequence< OUString> SAL_CALL
     AccessibleDrawDocumentView::getSupportedServiceNames()
 {
-    ThrowIfDisposed();
-    const css::uno::Sequence<OUString> vals { "com.sun.star.drawing.AccessibleDrawDocumentView" };
+    ensureAlive();
+    const css::uno::Sequence<OUString> vals { u"com.sun.star.drawing.AccessibleDrawDocumentView"_ustr };
     uno::Sequence<OUString> aServiceNames =
         AccessibleDocumentViewBase::getSupportedServiceNames();
 
@@ -524,7 +523,7 @@ OUString AccessibleDrawDocumentView::CreateAccessibleName()
     if (xInfo.is())
     {
         uno::Sequence< OUString > aServices( xInfo->getSupportedServiceNames() );
-        OUString sFirstService = aServices[0];
+        const OUString& sFirstService = aServices[0];
         if ( sFirstService == "com.sun.star.drawing.DrawingDocumentDrawView" )
         {
             if( aServices.getLength() >= 2 && aServices[1] == "com.sun.star.presentation.PresentationView")
@@ -749,7 +748,7 @@ void AccessibleDrawDocumentView::UpdateAccessibleName()
             try
             {
                 sal_Int16 nPageNumber (0);
-                if (xProperties->getPropertyValue("Number") >>= nPageNumber)
+                if (xProperties->getPropertyValue(u"Number"_ustr) >>= nPageNumber)
                 {
                     sNewName += OUString::number(nPageNumber);
                 }

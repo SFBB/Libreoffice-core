@@ -77,13 +77,13 @@ namespace sdr::properties
 
                 while(nWhich)
                 {
-                    if(SfxItemState::DONTCARE == aIter.GetItemState(false))
+                    if(SfxItemState::INVALID == aIter.GetItemState(false))
                     {
                         moMergedItemSet->InvalidateItem(nWhich);
                     }
                     else
                     {
-                        moMergedItemSet->MergeValue(rSet.Get(nWhich), true);
+                        moMergedItemSet->MergeValue(rSet.Get(nWhich));
                     }
 
                     nWhich = aIter.NextWhich();
@@ -95,7 +95,7 @@ namespace sdr::properties
             return *moMergedItemSet;
         }
 
-        void GroupProperties::SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems)
+        void GroupProperties::SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems, bool bAdjustTextFrameWidthAndHeight)
         {
             // iterate over contained SdrObjects
             const SdrObjList* pSub(static_cast<const SdrObjGroup&>(GetSdrObject()).GetSubList());
@@ -104,7 +104,7 @@ namespace sdr::properties
                 return;
             for (const rtl::Reference<SdrObject>& pObj : *pSub)
                 // Set merged ItemSet at contained object
-                pObj->SetMergedItemSet(rSet, bClearAllItems);
+                pObj->SetMergedItemSet(rSet, bClearAllItems, bAdjustTextFrameWidthAndHeight);
 
             // Do not call parent here. Group objects do not have local ItemSets
             // where items need to be set.
@@ -156,7 +156,7 @@ namespace sdr::properties
                 pObj->GetProperties().ClearMergedItem(nWhich);
         }
 
-        void GroupProperties::SetObjectItemSet(const SfxItemSet& /*rSet*/)
+        void GroupProperties::SetObjectItemSet(const SfxItemSet& /*rSet*/, bool /*bAdjustTextFrameWidthAndHeight*/)
         {
             assert(!"GroupProperties::SetObjectItemSet() should never be called");
         }
@@ -192,7 +192,7 @@ namespace sdr::properties
         }
 
         void GroupProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast)
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight)
         {
             const SdrObjList* pSub(static_cast<const SdrObjGroup&>(GetSdrObject()).GetSubList());
             OSL_ENSURE(nullptr != pSub, "Children of SdrObject expected (!)");
@@ -204,7 +204,7 @@ namespace sdr::properties
                 if(bBroadcast)
                     pObj->SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
                 else
-                    pObj->NbcSetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
+                    pObj->NbcSetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr, bAdjustTextFrameWidthAndHeight);
             }
         }
 

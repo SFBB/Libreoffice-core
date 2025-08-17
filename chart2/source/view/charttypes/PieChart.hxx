@@ -24,6 +24,10 @@
 #include <PlottingPositionHelper.hxx>
 #include <basegfx/vector/b2ivector.hxx>
 #include <com/sun/star/awt/Point.hpp>
+#include <com/sun/star/chart2/PieChartSubType.hpp>
+
+using namespace ::com::sun::star;
+using namespace ::com::sun::star::chart2;
 
 namespace chart
 {
@@ -35,11 +39,91 @@ public:
 
     bool    getInnerAndOuterRadius( double fCategoryX, double& fLogicInnerRadius, double& fLogicOuterRadius, bool bUseRings, double fMaxOffset ) const;
 
+    // Determine if the pie wedges are ordered clockwise (returns true) or
+    // counterclockwise (returns false)
+    bool    clockwiseWedges() const;
+
 public:
     //Distance between different category rings, seen relative to width of a ring:
     double  m_fRingDistance; //>=0 m_fRingDistance=1 --> distance == width
 };
 
+enum class SubPieType {
+    NONE,   // solo pie or donut
+    LEFT,   // left pie in pie-of-pie
+    RIGHT   // right pie in pie-of-pie
+};
+
+
+//=======================
+// class PieDataSrcBase
+//=======================
+class PieDataSrcBase
+{
+public:
+    PieDataSrcBase() = default;
+    virtual ~PieDataSrcBase() = default;
+
+    // Number of data points for given pie subtype
+    virtual sal_Int32 getNPoints(const VDataSeries* pSeries,
+                enum SubPieType eType) const = 0;
+
+    // Get the value for the given pie wedge, for the given subtype
+    virtual double getData(const VDataSeries* pSeries, sal_Int32 nPtIdx,
+            enum SubPieType eType) const = 0;
+
+    // Get the properties for the wedge and subtype
+    virtual uno::Reference< beans::XPropertySet > getProps(
+            const VDataSeries* pSeries, sal_Int32 nPtIdx,
+            enum SubPieType eType) const = 0;
+};
+
+//=======================
+// class PieDataSrc
+//=======================
+class PieDataSrc : public PieDataSrcBase
+{
+public:
+    sal_Int32 getNPoints(const VDataSeries* pSeries,
+                enum SubPieType eType) const;
+
+    double getData(const VDataSeries* pSeries, sal_Int32 nPtIdx,
+            [[maybe_unused]]enum SubPieType eType) const;
+
+    virtual uno::Reference< beans::XPropertySet > getProps(
+            const VDataSeries* pSeries, sal_Int32 nPtIdx,
+            enum SubPieType eType) const;
+};
+
+//=======================
+// class OfPieDataSrc
+//=======================
+class OfPieDataSrc : public PieDataSrcBase
+{
+public:
+    OfPieDataSrc(sal_Int32 nSplitPos):
+        m_nSplitPos(nSplitPos)
+    {}
+
+    // Minimum sensible number of data points
+    static constexpr sal_Int32 minPoints = 4;
+
+    sal_Int32 getNPoints(const VDataSeries* pSeries,
+                enum SubPieType eType) const;
+
+    double getData(const VDataSeries* pSeries, sal_Int32 nPtIdx,
+            enum SubPieType eType) const;
+
+    virtual uno::Reference< beans::XPropertySet > getProps(
+            const VDataSeries* pSeries, sal_Int32 nPtIdx,
+            enum SubPieType eType) const;
+private:
+    double    m_nSplitPos;
+};
+
+//=======================
+// class PieChart
+//=======================
 class PieChart : public VSeriesPlotter
 {
     struct ShapeParam;
@@ -65,8 +149,7 @@ public:
     //MinimumAndMaximumSupplier
     virtual double getMinimumX() override;
     virtual double getMaximumX() override;
-    virtual double getMinimumYInRange( double fMinimumX, double fMaximumX, sal_Int32 nAxisIndex ) override;
-    virtual double getMaximumYInRange( double fMinimumX, double fMaximumX, sal_Int32 nAxisIndex ) override;
+    virtual std::pair<double, double> getMinimumAndMaximumYInRange( double fMinimumX, double fMaximumX, sal_Int32 nAxisIndex ) override;
 
     virtual bool isExpandBorderToIncrementRhythm( sal_Int32 nDimensionIndex ) override;
     virtual bool isExpandIfValuesCloseToBorder( sal_Int32 nDimensionIndex ) override;
@@ -77,12 +160,18 @@ public:
 private: //methods
     rtl::Reference<SvxShape>
         createDataPoint(
+            enum SubPieType eType,
             const rtl::Reference<SvxShapeGroupAnyD>& xTarget,
             const css::uno::Reference<css::beans::XPropertySet>& xObjectProperties,
             const ShapeParam& rParam,
             const sal_Int32 nPointCount,
             const bool bConcentricExplosion);
 
+    rtl::Reference<SvxShape> createBarDataPoint(
+            const rtl::Reference<SvxShapeGroupAnyD>& xTarget,
+            const uno::Reference<beans::XPropertySet>& xObjectProperties,
+            const ShapeParam& rParam,
+            double fBarSegBottom, double fBarSegTop);
     /** This method creates a text shape for a label of a data point.
      *
      *  @param xTextTarget
@@ -96,7 +185,15 @@ private: //methods
      */
     void createTextLabelShape(
         const rtl::Reference<SvxShapeGroupAnyD>& xTextTarget,
-        VDataSeries& rSeries, sal_Int32 nPointIndex, ShapeParam& rParam );
+        VDataSeries& rSeries, sal_Int32 nPointIndex, ShapeParam& rParam ,
+        enum SubPieType eType );
+
+    /** Same as createTextLabelShape(), but for bar-of-pie bar charts.
+     */
+    void createBarLabelShape(
+        const rtl::Reference<SvxShapeGroupAnyD>& xTextTarget,
+        VDataSeries& rSeries, sal_Int32 nPointIndex,
+        double fBarBottom, double fBarTop, ShapeParam& rParam);
 
     /** This method sets `m_fMaxOffset` to the maximum `Offset` property and
      *  returns it. There is a `Offset` property for each entry in a data
@@ -119,12 +216,66 @@ struct PieLabelInfo;
                                 , const css::awt::Size& rPageSize );
 
     bool                performLabelBestFitInnerPlacement( ShapeParam& rShapeParam
-                                , PieLabelInfo const & rPieLabelInfo );
+                                , PieLabelInfo const & rPieLabelInfo
+                                , double fRadiusScale
+                                , const ::basegfx::B3DVector& aShift);
+
+    // A standalone pie, one pie in a pie-of-pie, or one ring of a donut
+    void                createOneRing([[maybe_unused]]enum SubPieType eType
+                                , double fSlotX
+                                , ShapeParam& aParam
+                                , const rtl::Reference<SvxShapeGroupAnyD>& xSeriesTarget
+                                , const rtl::Reference<SvxShapeGroup>& xTextTarget
+                                , VDataSeries* pSeries
+                                , const PieDataSrcBase *pDataSrc
+                                , sal_Int32 n3DRelativeHeight);
+
+    // A bar chart in a bar-of-pie
+    void                createOneBar(
+            enum SubPieType eType,
+            ShapeParam& aParam,
+            const rtl::Reference<SvxShapeGroupAnyD>& xSeriesTarget,
+            const rtl::Reference<SvxShapeGroup>& xTextTarget,
+            VDataSeries* pSeries,
+            const PieDataSrcBase *pDataSrc,
+            sal_Int32 n3DRelativeHeight);
+
+    void getBarRect(css::awt::Point *pPos, css::awt::Size *pSz,
+            double fBarBottom, double fBarTop, const ShapeParam& rParam) const;
+
+    // Determine left endpoints of connecting lines. These will terminate either
+    // at the corners of the composite wedge (if the wedge is small enough), or
+    // tangent to the left pie circle (if the wedge is larger). The endpoints
+    // are at the returned values (xl0, +/-yl0).
+    static void leftConnEndpoints(double* xl0_p, double* yl0_p,
+            const PieDataSrcBase *pDataSrc,
+            const VDataSeries *pSeries,
+            const ShapeParam &aParam);
 
 private: //member
+    // Constants for of-pie charts. Some of these will want to become
+    // user-selectable values. TODO
+
+    // Radius scalings for left and right of-pie subcharts
+    static constexpr double m_fLeftScale = 2.0/3;
+    static constexpr double m_fRightScale = 1.0/3;
+    // Shifts left/right for of-pie subcharts
+    static constexpr double m_fLeftShift = -0.75;
+    static constexpr double m_fRightShift = 0.75;
+    // Height of bar-of-pie bar
+    static constexpr double m_fFullBarHeight = 1.0;
+    // Bar-of-pie bar left side position
+    static constexpr double m_fBarLeft = 0.75;
+    // Bar-of-pie bar right side position
+    static constexpr double m_fBarRight = 1.25;
+
     PiePositionHelper     m_aPosHelper;
+
     bool                  m_bUseRings;
     bool                  m_bSizeExcludesLabelsAndExplodedSegments;
+    ::css::chart2::PieChartSubType m_eSubType;
+    // Number of entries in an of-pie composite wedge
+    double                m_nSplitPos;
 
     struct PieLabelInfo
     {
@@ -151,6 +302,7 @@ private: //member
 
     double m_fMaxOffset;    /// cached max offset value (init'ed to NaN)
 };
+
 } //namespace chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

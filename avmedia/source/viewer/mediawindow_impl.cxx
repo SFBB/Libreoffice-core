@@ -25,11 +25,11 @@
 #include <helpids.h>
 
 #include <algorithm>
-#include <string_view>
 
 #include <sal/log.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/diagnose_ex.hxx>
+#include <comphelper/DirectoryHelper.hxx>
 #include <comphelper/scopeguard.hxx>
 #include <tools/urlobj.hxx>
 #include <unotools/securityoptions.hxx>
@@ -160,8 +160,8 @@ void MediaWindowImpl::dispose()
 
     mpMediaWindow = nullptr;
 
-    mpEmptyBmpEx.reset();
-    mpAudioBmpEx.reset();
+    maEmptyBmp.SetEmpty();
+    maAudioBmp.SetEmpty();
     mpMediaWindowControl.disposeAndClear();
     mpChildWindow.disposeAndClear();
 
@@ -170,34 +170,37 @@ void MediaWindowImpl::dispose()
 
 uno::Reference<media::XPlayer> MediaWindowImpl::createPlayer(const OUString& rURL, const OUString& rReferer, const OUString*)
 {
-    uno::Reference<media::XPlayer> xPlayer;
-
     if( rURL.isEmpty() )
-        return xPlayer;
+        return nullptr;
 
     if (SvtSecurityOptions::isUntrustedReferer(rReferer))
-    {
-        return xPlayer;
-    }
+        return nullptr;
+
+    if (INetURLObject(rURL).IsExoticProtocol())
+        return nullptr;
+
+    uno::Reference<media::XPlayer> xPlayer;
 
     // currently there isn't anything else, throw any mime type to the media players
     //if (!pMimeType || *pMimeType == AVMEDIA_MIMETYPE_COMMON)
     {
-        uno::Reference<uno::XComponentContext> xContext(::comphelper::getProcessComponentContext());
-        if (Application::GetToolkitName() == "gtk4")
-            xPlayer = createPlayer(rURL, "com.sun.star.comp.avmedia.Manager_Gtk", xContext);
+        const OUString sToolkitName = Application::GetToolkitName();
+        if (sToolkitName == "gtk4")
+            xPlayer = createPlayer(rURL, u"com.sun.star.comp.avmedia.Manager_Gtk"_ustr);
+        else if (sToolkitName.startsWith(u"kf6") || sToolkitName.startsWith(u"qt6"))
+            xPlayer = createPlayer(rURL, u"com.sun.star.comp.avmedia.Manager_Qt"_ustr);
         else
-            xPlayer = createPlayer(rURL, AVMEDIA_MANAGER_SERVICE_NAME, xContext);
+            xPlayer = createPlayer(rURL, AVMEDIA_MANAGER_SERVICE_NAME);
     }
 
     return xPlayer;
 }
 
 uno::Reference< media::XPlayer > MediaWindowImpl::createPlayer(
-    const OUString& rURL, const OUString& rManagerServName,
-    const uno::Reference< uno::XComponentContext >& xContext)
+    const OUString& rURL, const OUString& rManagerServName)
 {
     uno::Reference< media::XPlayer > xPlayer;
+    const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
     try
     {
         uno::Reference< media::XManager > xManager (
@@ -248,13 +251,35 @@ void MediaWindowImpl::setURL( const OUString& rURL,
             maFileURL = rURL;
     }
 
-    mxPlayer = createPlayer((!mTempFileURL.isEmpty()) ? mTempFileURL : maFileURL, rReferer, &m_sMimeType );
+    OUString mediaURL;
+    // If the file with the given URL does not exist and a fallback is specified, then use it
+    if ( rURL.startsWith("file:///")
+         && !comphelper::DirectoryHelper::fileExists(maFileURL)
+         && maFallbackFileURL.getLength() > 0 )
+    {
+        mediaURL = maFallbackFileURL;
+    }
+    else
+        mediaURL = (!mTempFileURL.isEmpty()) ? mTempFileURL : maFileURL;
+
+    mxPlayer = createPlayer(mediaURL, rReferer, &m_sMimeType );
+
     onURLChanged();
 }
 
 const OUString& MediaWindowImpl::getURL() const
 {
     return maFileURL;
+}
+
+void MediaWindowImpl::setFallbackURL( const OUString& rURL )
+{
+    maFallbackFileURL = rURL;
+}
+
+const OUString& MediaWindowImpl::getFallbackURL() const
+{
+    return maFallbackFileURL;
 }
 
 bool MediaWindowImpl::isValid() const
@@ -295,6 +320,7 @@ void MediaWindowImpl::updateMediaItem( MediaItem& rItem ) const
     rItem.setMute( mxPlayer.is() && mxPlayer->isMute() );
     rItem.setVolumeDB( mxPlayer.is() ? mxPlayer->getVolumeDB() : 0 );
     rItem.setZoom( mxPlayerWindow.is() ? mxPlayerWindow->getZoomLevel() : media::ZoomLevel_NOT_AVAILABLE );
+    rItem.setFallbackURL( getFallbackURL() );
     rItem.setURL( getURL(), mTempFileURL, maReferer );
 }
 
@@ -309,6 +335,7 @@ void MediaWindowImpl::executeMediaItem( const MediaItem& rItem )
     if (nMaskSet & AVMediaSetMask::URL)
     {
         m_sMimeType = rItem.getMimeType();
+        setFallbackURL(rItem.getFallbackURL());
         setURL(rItem.getURL(), rItem.getTempURL(), rItem.getReferer());
     }
 
@@ -558,21 +585,21 @@ void MediaWindowImpl::Paint(vcl::RenderContext& rRenderContext, const tools::Rec
     if (mxPlayerWindow.is())
         mxPlayerWindow->update();
 
-    BitmapEx* pLogo = nullptr;
+    Bitmap* pLogo = nullptr;
 
     if (!mxPlayer.is())
     {
-        if (!mpEmptyBmpEx)
-            mpEmptyBmpEx.reset(new BitmapEx(AVMEDIA_BMP_EMPTYLOGO));
+        if (maEmptyBmp.IsEmpty())
+            maEmptyBmp = Bitmap(AVMEDIA_BMP_EMPTYLOGO);
 
-        pLogo = mpEmptyBmpEx.get();
+        pLogo = &maEmptyBmp;
     }
     else if (!mxPlayerWindow.is())
     {
-        if (!mpAudioBmpEx)
-            mpAudioBmpEx.reset(new BitmapEx(AVMEDIA_BMP_AUDIOLOGO));
+        if (maAudioBmp.IsEmpty())
+            maAudioBmp = Bitmap(AVMEDIA_BMP_AUDIOLOGO);
 
-        pLogo = mpAudioBmpEx.get();
+        pLogo = &maAudioBmp;
     }
 
     if (!mpChildWindow)

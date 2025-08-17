@@ -21,10 +21,11 @@
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
-#include <toolkit/helper/convert.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 #include <utility>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/unohelp.hxx>
 #include <osl/mutex.hxx>
 #include <tools/debug.hxx>
 #include <tools/gen.hxx>
@@ -49,11 +50,6 @@ SvxPixelCtlAccessible::~SvxPixelCtlAccessible()
     ensureDisposed();
 }
 
-uno::Reference< XAccessibleContext > SvxPixelCtlAccessible::getAccessibleContext(  )
-{
-    return this;
-}
-
 sal_Int64 SvxPixelCtlAccessible::getAccessibleChildCount(  )
 {
     return SvxPixelCtl::GetSquares();
@@ -63,9 +59,9 @@ uno::Reference< XAccessible > SvxPixelCtlAccessible::getAccessibleChild( sal_Int
     ::osl::MutexGuard   aGuard( m_aMutex );
     if ( i < 0 || i >= getAccessibleChildCount())
         throw lang::IndexOutOfBoundsException();
-    Reference< XAccessible > xChild;
-    if (mpPixelCtl)
-        xChild = CreateChild(i, mpPixelCtl->IndexToPoint(i));
+    if (!mpPixelCtl)
+        return nullptr;
+    rtl::Reference< SvxPixelCtlAccessibleChild > xChild = CreateChild(i, mpPixelCtl->IndexToPoint(i));
     return xChild;
 }
 
@@ -86,13 +82,13 @@ OUString SvxPixelCtlAccessible::getAccessibleDescription(  )
 {
 
     ::osl::MutexGuard   aGuard( m_aMutex );
-    return mpPixelCtl ? mpPixelCtl->GetAccessibleDescription() : "";
+    return mpPixelCtl ? mpPixelCtl->GetAccessibleDescription() : u""_ustr;
 }
 
 OUString SvxPixelCtlAccessible::getAccessibleName(  )
 {
     ::osl::MutexGuard   aGuard( m_aMutex );
-    return mpPixelCtl ? mpPixelCtl->GetAccessibleName() : "";
+    return mpPixelCtl ? mpPixelCtl->GetAccessibleName() : u""_ustr;
 }
 
 Reference< XAccessibleRelationSet > SAL_CALL SvxPixelCtlAccessible::getAccessibleRelationSet()
@@ -130,13 +126,10 @@ uno::Reference<XAccessible > SAL_CALL SvxPixelCtlAccessible::getAccessibleAtPoin
 {
     ::osl::MutexGuard   aGuard( m_aMutex );
 
-    Reference< XAccessible >    xRet;
-
-    if (mpPixelCtl)
-    {
-        tools::Long nIndex = mpPixelCtl->PointToIndex(Point(rPoint.X, rPoint.Y));
-        xRet = CreateChild(nIndex, mpPixelCtl->IndexToPoint(nIndex));
-    }
+    if (!mpPixelCtl)
+        return nullptr;
+    tools::Long nIndex = mpPixelCtl->PointToIndex(Point(rPoint.X, rPoint.Y));
+    rtl::Reference< SvxPixelCtlAccessibleChild > xRet = CreateChild(nIndex, mpPixelCtl->IndexToPoint(nIndex));
 
     return xRet;
 }
@@ -255,7 +248,7 @@ void SvxPixelCtlAccessible::NotifyChild(tools::Long nIndex,bool bSelect ,bool bC
     {
         xNewChild->CheckChild();
     }
-    m_xCurChild = xNewChild;
+    m_xCurChild = std::move(xNewChild);
 }
 
 rtl::Reference<SvxPixelCtlAccessibleChild> SvxPixelCtlAccessible::CreateChild (tools::Long nIndex,Point mPoint)
@@ -315,12 +308,6 @@ SvxPixelCtlAccessibleChild::SvxPixelCtlAccessibleChild( SvxPixelCtl& rWindow, bo
 SvxPixelCtlAccessibleChild::~SvxPixelCtlAccessibleChild()
 {
     ensureDisposed();
-}
-
-// XAccessible
-uno::Reference< XAccessibleContext> SAL_CALL SvxPixelCtlAccessibleChild::getAccessibleContext()
-{
-    return this;
 }
 
 uno::Reference< XAccessible > SAL_CALL SvxPixelCtlAccessibleChild::getAccessibleAtPoint( const awt::Point& )
@@ -418,14 +405,14 @@ sal_Int64 SAL_CALL SvxPixelCtlAccessibleChild::getAccessibleStateSet()
 
 void SAL_CALL SvxPixelCtlAccessibleChild::disposing()
 {
-    OAccessibleComponentHelper::disposing();
+    OAccessible::disposing();
     mxParent.clear();
 }
 
 awt::Rectangle SvxPixelCtlAccessibleChild::implGetBounds()
 {
     // no guard necessary, because no one changes maBoundingBox after creating it
-    return AWTRectangle(maBoundingBox);
+    return vcl::unohelper::ConvertToAWTRect(maBoundingBox);
 }
 
 OUString SvxPixelCtlAccessibleChild::GetName() const

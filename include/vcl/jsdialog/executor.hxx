@@ -23,18 +23,18 @@ public:
 
     static void trigger_changed(weld::ComboBox& rComboBox) { rComboBox.signal_changed(); }
 
-    static void trigger_changed(weld::TreeView& rTreeView) { rTreeView.signal_changed(); }
+    static void trigger_changed(weld::TreeView& rTreeView) { rTreeView.signal_selection_changed(); }
 
     static void trigger_changed(weld::IconView& rIconView) { rIconView.signal_selection_changed(); }
 
     static void trigger_scrollv(weld::ScrolledWindow& rScrolledWindow)
     {
-        rScrolledWindow.signal_vadjustment_changed();
+        rScrolledWindow.signal_vadjustment_value_changed();
     }
 
     static void trigger_scrollh(weld::ScrolledWindow& rScrolledWindow)
     {
-        rScrolledWindow.signal_hadjustment_changed();
+        rScrolledWindow.signal_hadjustment_value_changed();
     }
 
     static void trigger_toggled(weld::Toggleable& rButton) { rButton.signal_toggled(); }
@@ -42,6 +42,16 @@ public:
     static void trigger_row_activated(weld::TreeView& rTreeView)
     {
         rTreeView.signal_row_activated();
+    }
+
+    static void trigger_popup_menu(weld::TreeView& rTreeView, const CommandEvent& rCommand)
+    {
+        rTreeView.signal_popup_menu(rCommand);
+    }
+
+    static void trigger_activated(weld::Menu& rMenu, const OUString& rIdent)
+    {
+        rMenu.signal_activate(rIdent);
     }
 
     static void trigger_item_activated(weld::IconView& rIconView)
@@ -81,6 +91,11 @@ public:
         rDrawingArea.mouse_move(rPos);
     }
 
+    static void trigger_mouse_press(weld::IconView& rIconView, const MouseEvent& rEvent)
+    {
+        rIconView.signal_mouse_press(rEvent);
+    }
+
     static void trigger_selected(weld::MenuButton& rButton, const OUString& rIdent)
     {
         rButton.signal_selected(rIdent);
@@ -102,29 +117,34 @@ public:
 
     static void trigger_closed(weld::Popover& rPopover) { rPopover.popdown(); }
 
-    static void trigger_key_press(weld::Widget& rWidget, const KeyEvent& rEvent)
+    static void trigger_key_press(const weld::Widget& rWidget, const KeyEvent& rEvent)
     {
         rWidget.m_aKeyPressHdl.Call(rEvent);
     }
 
-    static void trigger_key_release(weld::Widget& rWidget, const KeyEvent& rEvent)
+    static void trigger_key_release(const weld::Widget& rWidget, const KeyEvent& rEvent)
     {
         rWidget.m_aKeyReleaseHdl.Call(rEvent);
     }
 
-    static void command(weld::DrawingArea& rArea, const CommandEvent& rCmd)
+    static void command(const weld::DrawingArea& rArea, const CommandEvent& rCmd)
     {
         rArea.m_aCommandHdl.Call(rCmd);
     }
 
-    static void enter_page(weld::Notebook& rNotebook, const OUString& rPage)
+    static void enter_page(const weld::Notebook& rNotebook, const OUString& rPage)
     {
         rNotebook.m_aEnterPageHdl.Call(rPage);
     }
 
-    static void leave_page(weld::Notebook& rNotebook, const OUString& rPage)
+    static void leave_page(const weld::Notebook& rNotebook, const OUString& rPage)
     {
         rNotebook.m_aLeavePageHdl.Call(rPage);
+    }
+
+    static bool activate_link(weld::LinkButton& rLinkButton)
+    {
+        return rLinkButton.signal_activate_link();
     }
 };
 
@@ -133,9 +153,12 @@ namespace jsdialog
 // type used to store key-value pairs to put in the generated messages
 typedef std::unordered_map<OString, OUString> ActionDataMap;
 
+VCL_DLLPUBLIC void SendNavigatorForView(const sal_uInt64 nShellId);
+VCL_DLLPUBLIC void SendSidebarForView(const sal_uInt64 nShellId);
+
 /// execute action on a widget
 VCL_DLLPUBLIC bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget,
-                                 StringMap& rData);
+                                 const StringMap& rData);
 /// send full update message to the client
 VCL_DLLPUBLIC void SendFullUpdate(const OUString& nWindowId, const OUString& rWidget);
 /// send action message to the client

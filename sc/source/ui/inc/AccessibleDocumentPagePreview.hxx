@@ -31,11 +31,10 @@ class ScShapeChildren;
 class ScAccessiblePreviewTable;
 class ScAccessiblePageHeader;
 
-class ScAccessibleDocumentPagePreview
+class ScAccessibleDocumentPagePreview final
     :   public ScAccessibleDocumentBase
 {
 public:
-    //=====  internal  ========================================================
     ScAccessibleDocumentPagePreview(
         const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
         ScPreviewShell* pViewShell );
@@ -74,26 +73,6 @@ public:
     virtual sal_Int64 SAL_CALL getAccessibleStateSet() override;
 
     virtual OUString SAL_CALL getAccessibleName() override;
-    ///=====  XServiceInfo  ====================================================
-
-    /** Returns an identifier for the implementation of this object.
-    */
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    /** Returns a list of all supported services.
-    */
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
-    ///=====  XTypeProvider  ===================================================
-
-    /** Returns an implementation id.
-    */
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL
-        getImplementationId() override;
-
-    ///=====  internal  ========================================================
 
 protected:
     /// Return this object's description.
@@ -106,11 +85,11 @@ protected:
 
 public: // needed in ScShapeChildren
     /// Return the object's current bounding box relative to the desktop.
-    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() const override;
+    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() override;
 
 protected:
     /// Return the object's current bounding box relative to the parent object.
-    virtual tools::Rectangle GetBoundingBox() const override;
+    virtual tools::Rectangle GetBoundingBox() override;
 
 private:
     ScPreviewShell* mpViewShell;

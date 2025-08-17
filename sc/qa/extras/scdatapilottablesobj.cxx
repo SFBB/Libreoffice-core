@@ -16,7 +16,6 @@
 #include <test/sheet/xdatapilottables.hxx>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XDataPilotDescriptor.hpp>
 #include <com/sun/star/sheet/XDataPilotTable2.hpp>
 #include <com/sun/star/sheet/XDataPilotTables.hpp>
@@ -83,11 +82,11 @@ public:
 };
 
 ScDataPilotTablesObj::ScDataPilotTablesObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
     , XElementAccess(cppu::UnoType<sheet::XDataPilotTable2>::get())
     , XIndexAccess(1)
-    , XNameAccess("DataPilotTable")
-    , XServiceInfo("ScDataPilotTablesObj", "com.sun.star.sheet.DataPilotTables")
+    , XNameAccess(u"DataPilotTable"_ustr)
+    , XServiceInfo(u"ScDataPilotTablesObj"_ustr, u"com.sun.star.sheet.DataPilotTables"_ustr)
 {
 }
 
@@ -110,7 +109,7 @@ uno::Reference<uno::XInterface> ScDataPilotTablesObj::init()
     uno::Reference<sheet::XDataPilotDescriptor> xDPD(xDPT->createDataPilotDescriptor(),
                                                      UNO_SET_THROW);
     xDPD->setSourceRange(table::CellRangeAddress(0, 0, 0, 4, 4));
-    xDPT->insertNewByName("DataPilotTable", table::CellAddress(0, 5, 5), xDPD);
+    xDPT->insertNewByName(u"DataPilotTable"_ustr, table::CellAddress(0, 5, 5), xDPD);
 
     return xDPT;
 }
@@ -130,7 +129,7 @@ void ScDataPilotTablesObj::setUp()
 {
     UnoApiTest::setUp();
     // create a calc document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScDataPilotTablesObj);

@@ -64,7 +64,6 @@
 #include <memory>
 #include "fileview.hxx"
 
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::task;
 using namespace ::com::sun::star::ucb;
@@ -121,7 +120,7 @@ namespace
 class ViewTabListBox_Impl
 {
 private:
-    Reference< XCommandEnvironment >    mxCmdEnv;
+    rtl::Reference< ::ucbhelper::CommandEnvironment >    mxCmdEnv;
     std::unique_ptr<weld::TreeView> mxTreeView;
     std::unique_ptr<weld::TreeIter> mxScratchIter;
 
@@ -177,7 +176,10 @@ public:
     OUString get_id(const weld::TreeIter& rIter) { return mxTreeView->get_id(rIter); }
 
     void connect_row_activated(const Link<weld::TreeView&, bool>& rLink) { mxTreeView->connect_row_activated(rLink); }
-    void connect_changed(const Link<weld::TreeView&, void>& rLink) { mxTreeView->connect_changed(rLink); }
+    void connect_changed(const Link<weld::TreeView&, void>& rLink)
+    {
+        mxTreeView->connect_selection_changed(rLink);
+    }
 
     int n_children() const { return mxTreeView->n_children(); }
 
@@ -220,7 +222,7 @@ public:
     void            EnableDelete( bool bEnable ) { mbEnableDelete = bEnable; }
     bool            TypeColumnVisible() const { return mbShowType; }
 
-    const Reference< XCommandEnvironment >& GetCommandEnvironment() const { return mxCmdEnv; }
+    const rtl::Reference< ::ucbhelper::CommandEnvironment >& GetCommandEnvironment() const { return mxCmdEnv; }
 
     DECL_LINK(ResetQuickSearch_Impl, Timer *, void);
     DECL_LINK(CommandHdl, const CommandEvent&, bool);
@@ -443,7 +445,7 @@ ViewTabListBox_Impl::ViewTabListBox_Impl(std::unique_ptr<weld::TreeView> xTreeVi
     maResetQuickSearch.SetTimeout( QUICK_SEARCH_TIMEOUT );
     maResetQuickSearch.SetInvokeHandler( LINK( this, ViewTabListBox_Impl, ResetQuickSearch_Impl ) );
 
-    Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     Reference< XInteractionHandler > xInteractionHandler(
         InteractionHandler::createWithParent(xContext, pTopLevel->GetXWindow()), UNO_QUERY_THROW);
 
@@ -526,7 +528,7 @@ IMPL_LINK(ViewTabListBox_Impl, CommandHdl, const CommandEvent&, rCEvt, bool)
             {
                 Reference< XCommandInfo > aCommands = aCnt.getCommands();
                 if ( aCommands.is() )
-                    bEnableDelete = aCommands->hasCommandByName( "delete" );
+                    bEnableDelete = aCommands->hasCommandByName( u"delete"_ustr );
                 else
                     bEnableDelete = false;
             }
@@ -543,7 +545,7 @@ IMPL_LINK(ViewTabListBox_Impl, CommandHdl, const CommandEvent&, rCEvt, bool)
                 Reference< XPropertySetInfo > aProps = aCnt.getProperties();
                 if ( aProps.is() )
                 {
-                    Property aProp = aProps->getPropertyByName("Title");
+                    Property aProp = aProps->getPropertyByName(u"Title"_ustr);
                     bEnableRename
                         = !( aProp.Attributes & PropertyAttribute::READONLY );
                 }
@@ -567,10 +569,10 @@ IMPL_LINK(ViewTabListBox_Impl, CommandHdl, const CommandEvent&, rCEvt, bool)
 
     if (bEnableDelete || bEnableRename)
     {
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(mxTreeView.get(), "svt/ui/fileviewmenu.ui"));
-        auto xContextMenu = xBuilder->weld_menu("menu");
-        xContextMenu->set_visible("delete", bEnableDelete);
-        xContextMenu->set_visible("rename", bEnableRename);
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(mxTreeView.get(), u"svt/ui/fileviewmenu.ui"_ustr));
+        auto xContextMenu = xBuilder->weld_menu(u"menu"_ustr);
+        xContextMenu->set_visible(u"delete"_ustr, bEnableDelete);
+        xContextMenu->set_visible(u"rename"_ustr, bEnableRename);
         OUString sCommand(xContextMenu->popup_at_rect(mxTreeView.get(), tools::Rectangle(rCEvt.GetMousePosPixel(), Size(1,1))));
         ExecuteContextMenuAction(sCommand);
     }
@@ -617,7 +619,7 @@ void ViewTabListBox_Impl::DeleteEntries()
             ::ucbhelper::Content aCnt( aURL, mxCmdEnv, comphelper::getProcessComponentContext() );
             Reference< XCommandInfo > aCommands = aCnt.getCommands();
             if ( aCommands.is() )
-                canDelete = aCommands->hasCommandByName( "delete" );
+                canDelete = aCommands->hasCommandByName( u"delete"_ustr );
             else
                 canDelete = false;
         }
@@ -689,7 +691,7 @@ IMPL_LINK(ViewTabListBox_Impl, EditedEntryHdl, const IterString&, rIterString, b
 
     try
     {
-        OUString aPropName( "Title" );
+        OUString aPropName( u"Title"_ustr );
         bool canRename = true;
         ::ucbhelper::Content aContent( aURL, mxCmdEnv, comphelper::getProcessComponentContext() );
 
@@ -772,7 +774,7 @@ bool ViewTabListBox_Impl::Kill( const OUString& rContent )
     try
     {
         ::ucbhelper::Content aCnt( rContent, mxCmdEnv, comphelper::getProcessComponentContext() );
-        aCnt.executeCommand( "delete", Any( true ) );
+        aCnt.executeCommand( u"delete"_ustr, Any( true ) );
     }
     catch( css::ucb::CommandAbortedException const & )
     {
@@ -799,7 +801,7 @@ SvtFileView::SvtFileView(weld::Window* pTopLevel,
     if ( bShowType )
         nFlags |= FileViewFlags::SHOW_TYPE;
 
-    Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     Reference< XInteractionHandler > xInteractionHandler(
         InteractionHandler::createWithParent(xContext, pTopLevel->GetXWindow()), UNO_QUERY_THROW);
     Reference < XCommandEnvironment > xCmdEnv = new ::ucbhelper::CommandEnvironment( xInteractionHandler, Reference< XProgressHandler >() );
@@ -1110,7 +1112,7 @@ void SvtFileView::SetConfigString(std::u16string_view rCfgStr)
 
     while ( nIdx != -1 )
     {
-        sal_uInt16 nItemId = static_cast<sal_uInt16>(o3tl::toInt32(o3tl::getToken(rCfgStr, 0, ';', nIdx )));
+        int nItemId = o3tl::toInt32(o3tl::getToken(rCfgStr, 0, ';', nIdx ));
 
         int nWidth = o3tl::toInt32(o3tl::getToken(rCfgStr, 0, ';', nIdx ));
 
@@ -1575,7 +1577,7 @@ static const CollatorWrapper*   pCollatorWrapper = nullptr;
 */
 static bool CompareSortingData_Impl( std::unique_ptr<SortingData_Impl> const & aOne, std::unique_ptr<SortingData_Impl> const & aTwo )
 {
-    DBG_ASSERT( pCollatorWrapper, "*CompareSortingData_Impl(): Can't work this way!" );
+    assert(pCollatorWrapper && "*CompareSortingData_Impl(): Can't work this way!");
 
     sal_Int32 nComp;
     bool      bRet = false;

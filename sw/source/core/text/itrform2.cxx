@@ -62,12 +62,14 @@
 #include <docsh.hxx>
 #include <unocrsrhelper.hxx>
 #include <textcontentcontrol.hxx>
+#include <EnhancedPDFExportHelper.hxx>
 #include <com/sun/star/rdf/Statement.hpp>
 #include <com/sun/star/rdf/URI.hpp>
 #include <com/sun/star/rdf/URIs.hpp>
 #include <com/sun/star/rdf/XDocumentMetadataAccess.hpp>
 #include <com/sun/star/rdf/XLiteral.hpp>
 #include <com/sun/star/text/XTextContent.hpp>
+#include <unotxdoc.hxx>
 
 using namespace ::com::sun::star;
 
@@ -138,7 +140,7 @@ void SwTextFormatter::Insert( SwLineLayout *pLay )
         m_pCurr = pLay;
 }
 
-sal_uInt16 SwTextFormatter::GetFrameRstHeight() const
+SwTwips SwTextFormatter::GetFrameRstHeight() const
 {
     // We want the rest height relative to the page.
     // If we're in a table, then pFrame->GetUpper() is not the page.
@@ -152,7 +154,7 @@ sal_uInt16 SwTextFormatter::GetFrameRstHeight() const
     if( 0 > nHeight )
         return m_pCurr->Height();
     else
-        return sal_uInt16( nHeight );
+        return nHeight;
 }
 
 bool SwTextFormatter::ClearIfIsFirstOfBorderMerge(const SwLinePortion* pPortion)
@@ -177,7 +179,6 @@ SwLinePortion *SwTextFormatter::Underflow( SwTextFormatInfo &rInf )
     // Can be seen in 8081.sdw, if you enter text in the first line
 
     TextFrameIndex const nSoftHyphPos = rInf.GetSoftHyphPos();
-    TextFrameIndex const nUnderScorePos = rInf.GetUnderScorePos();
 
     // Save flys and set to 0, or else segmentation fault
     // Not ClearFly(rInf) !
@@ -190,7 +191,6 @@ SwLinePortion *SwTextFormatter::Underflow( SwTextFormatInfo &rInf )
     // Truncate()
     rInf.SetUnderflow(nullptr);
     rInf.SetSoftHyphPos( nSoftHyphPos );
-    rInf.SetUnderScorePos( nUnderScorePos );
     rInf.SetPaintOfst( GetLeftMargin() );
 
     // We look for the portion with the under-flow position
@@ -420,7 +420,7 @@ void SwTextFormatter::BuildPortions( SwTextFormatInfo &rInf )
                 if (pAnchoredObj->RestartLayoutProcess()
                     && !pAnchoredObj->IsTmpConsiderWrapInfluence())
                 {
-                    SwFormatAnchor const& rAnchor(pAnchoredObj->GetFrameFormat().GetAnchor());
+                    SwFormatAnchor const& rAnchor(pAnchoredObj->GetFrameFormat()->GetAnchor());
                     assert(rAnchor.GetAnchorId() == RndStdIds::FLY_AT_CHAR || rAnchor.GetAnchorId() == RndStdIds::FLY_AT_PARA);
                     TextFrameIndex const nAnchor(GetTextFrame()->MapModelToViewPos(*rAnchor.GetContentAnchor()));
                     if (pFollow->GetOffset() <= nAnchor
@@ -441,9 +441,16 @@ void SwTextFormatter::BuildPortions( SwTextFormatInfo &rInf )
 
     // Asian grid stuff
     SwTextGridItem const*const pGrid(GetGridItem(m_pFrame->FindPageFrame()));
-    const bool bHasGrid = pGrid && rInf.SnapToGrid() &&
-                              GRID_LINES_CHARS == pGrid->GetGridType();
 
+    // tdf#149089: For compatibility with MSO grid layout, do not insert kern portions to
+    // align successive portions to the char grid when MS_WORD_COMP_GRID_METRICS is set.
+    // See also tdf#161145.
+    // tdf#139418: However, in testing, this only seems to apply to horizontal text.
+    const bool bUseGridKernPors = GetTextFrame()->IsVertical()
+                                  || !GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
+                                      DocumentSettingId::MS_WORD_COMP_GRID_METRICS);
+    const bool bHasGrid = pGrid && rInf.SnapToGrid()
+                          && SwTextGrid::LinesAndChars == pGrid->GetGridType() && bUseGridKernPors;
 
     const SwDoc & rDoc = rInf.GetTextFrame()->GetDoc();
     const sal_uInt16 nGridWidth = bHasGrid ? GetGridWidth(*pGrid, rDoc) : 0;
@@ -476,7 +483,7 @@ void SwTextFormatter::BuildPortions( SwTextFormatInfo &rInf )
         {
             SwFontScript nNxtActual = rInf.GetFont()->GetActual();
             SwFontScript nLstActual = nNxtActual;
-            sal_uInt16 nLstHeight = o3tl::narrowing<sal_uInt16>(rInf.GetFont()->GetHeight());
+            tools::Long nLstHeight = rInf.GetFont()->GetHeight();
             bool bAllowBehind = false;
             const CharClass& rCC = GetAppCharClass();
 
@@ -519,7 +526,7 @@ void SwTextFormatter::BuildPortions( SwTextFormatInfo &rInf )
                         if ( pTmpFnt )
                         {
                             nLstActual = pTmpFnt->GetActual();
-                            nLstHeight = o3tl::narrowing<sal_uInt16>(pTmpFnt->GetHeight());
+                            nLstHeight = pTmpFnt->GetHeight();
                         }
                     }
                 }
@@ -721,7 +728,7 @@ void SwTextFormatter::BuildPortions( SwTextFormatInfo &rInf )
 
                 // calculate size
                 SwLinePortion* pTmpPor = pGridKernPortion->GetNextPortion();
-                sal_uInt16 nSumWidth = pPor->Width();
+                SwTwips nSumWidth = pPor->Width();
                 while ( pTmpPor )
                 {
                     nSumWidth = nSumWidth + pTmpPor->Width();
@@ -852,6 +859,7 @@ void SwTextFormatter::CalcAscent( SwTextFormatInfo &rInf, SwLinePortion *pPor )
 
         // In empty lines the attributes are switched on via SeekStart
         const bool bFirstPor = rInf.GetLineStart() == rInf.GetIdx();
+
         if ( pPor->IsQuoVadisPortion() )
             bChg = SeekStartAndChg( rInf, true );
         else
@@ -860,10 +868,16 @@ void SwTextFormatter::CalcAscent( SwTextFormatInfo &rInf, SwLinePortion *pPor )
             {
                 if( !rInf.GetText().isEmpty() )
                 {
-                    if ( pPor->GetLen() || !rInf.GetIdx()
-                         || ( m_pCurr != pLast && !pLast->IsFlyPortion() )
-                         || !m_pCurr->IsRest() ) // instead of !rInf.GetRest()
+                    if ((rInf.GetIdx() != TextFrameIndex(rInf.GetText().getLength())
+                            || rInf.GetRest() // field continued - not empty
+                            || !GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
+                                DocumentSettingId::APPLY_TEXT_ATTR_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH))
+                        && (pPor->GetLen() || !rInf.GetIdx()
+                            || (m_pCurr != pLast && !pLast->IsFlyPortion())
+                            || !m_pCurr->IsRest())) // instead of !rInf.GetRest()
+                    {
                         bChg = SeekAndChg( rInf );
+                    }
                     else
                         bChg = SeekAndChgBefore( rInf );
                 }
@@ -885,7 +899,7 @@ void SwTextFormatter::CalcAscent( SwTextFormatInfo &rInf, SwLinePortion *pPor )
         {
             pPor->SetHangingBaseline( rInf.GetHangingBaseline() );
             pPor->SetAscent( rInf.GetAscent()  );
-            pPor->Height( rInf.GetTextHeight() );
+            pPor->Height(rInf.GetTextHeight());
             bCalc = true;
         }
         else
@@ -1009,6 +1023,8 @@ bool SwContentControlPortion::DescribePDFControl(const SwTextPaintInfo& rInf) co
         case SwContentControlType::PLAIN_TEXT:
         {
             pDescriptor = std::make_unique<vcl::PDFWriter::EditWidget>();
+            auto pEditWidget = static_cast<vcl::PDFWriter::EditWidget*>(pDescriptor.get());
+            pEditWidget->MultiLine = true;
             break;
         }
         case SwContentControlType::CHECKBOX:
@@ -1016,8 +1032,13 @@ bool SwContentControlPortion::DescribePDFControl(const SwTextPaintInfo& rInf) co
             pDescriptor = std::make_unique<vcl::PDFWriter::CheckBoxWidget>();
             auto pCheckBoxWidget = static_cast<vcl::PDFWriter::CheckBoxWidget*>(pDescriptor.get());
             pCheckBoxWidget->Checked = pContentControl->GetChecked();
-            pCheckBoxWidget->OnValue = pContentControl->GetCheckedState();
-            pCheckBoxWidget->OffValue = pContentControl->GetUncheckedState();
+            // If it's checked already, then leave the default "Yes" OnValue unchanged, so the
+            // appropriate appearance is found by PDF readers.
+            if (!pCheckBoxWidget->Checked)
+            {
+                pCheckBoxWidget->OnValue = pContentControl->GetCheckedState();
+                pCheckBoxWidget->OffValue = pContentControl->GetUncheckedState();
+            }
             break;
         }
         case SwContentControlType::DROP_DOWN_LIST:
@@ -1026,12 +1047,23 @@ bool SwContentControlPortion::DescribePDFControl(const SwTextPaintInfo& rInf) co
             auto pListWidget = static_cast<vcl::PDFWriter::ListBoxWidget*>(pDescriptor.get());
             pListWidget->DropDown = true;
             sal_Int32 nIndex = 0;
+            bool bTextFound = false;
             for (const auto& rItem : pContentControl->GetListItems())
             {
                 pListWidget->Entries.push_back(rItem.m_aDisplayText);
                 if (rItem.m_aDisplayText == aText)
+                {
                     pListWidget->SelectedEntries.push_back(nIndex);
+                    bTextFound = true;
+                }
                 ++nIndex;
+            }
+            if (!aText.isEmpty() && !bTextFound)
+            {
+                // The selected entry has to be an index, if there is no index for it, insert one at
+                // the start.
+                pListWidget->Entries.insert(pListWidget->Entries.begin(), aText);
+                pListWidget->SelectedEntries.push_back(0);
             }
             break;
         }
@@ -1065,10 +1097,23 @@ bool SwContentControlPortion::DescribePDFControl(const SwTextPaintInfo& rInf) co
         return false;
     }
 
+    bool bShrinkPageForPostIts = pPDFExtOutDevData->GetIsExportNotesInMargin()
+                                 && sw_GetPostIts(rDoc.getIDocumentFieldsAccess(), nullptr);
     const SwFont* pFont = rInf.GetFont();
     if (pFont)
     {
         pDescriptor->TextFont = pFont->GetActualFont();
+        if (bShrinkPageForPostIts)
+        {
+            // Page area is scaled down so we have space for comments. Scale down the font height
+            // for the content of the widgets, too.
+            double fScale = SwEnhancedPDFExportHelper::GetSwRectToPDFRectScale();
+            pDescriptor->TextFont.SetFontHeight(pDescriptor->TextFont.GetFontHeight() * fScale);
+        }
+
+        // Need to transport the color explicitly, so it's applied to both already filled in and
+        // future content.
+        pDescriptor->TextColor = pFont->GetColor();
     }
 
     // Description for accessibility purposes.
@@ -1100,9 +1145,27 @@ bool SwContentControlPortion::DescribePDFControl(const SwTextPaintInfo& rInf) co
 
     aLocation = aStartRect;
     aLocation.Union(aEndRect);
-    pDescriptor->Location = aLocation.SVRect();
 
-    pPDFExtOutDevData->WrapBeginStructureElement(vcl::PDFWriter::Form);
+    // PDF spec 12.5.2 Annotation Dictionaries says the default border with is 1pt wide, increase
+    // the rectangle to compensate for that, otherwise the text will be cut off at the end.
+    aLocation.AddTop(-20);
+    aLocation.AddBottom(20);
+    aLocation.AddLeft(-20);
+    aLocation.AddRight(20);
+
+    tools::Rectangle aRect = aLocation.SVRect();
+    if (bShrinkPageForPostIts)
+    {
+        // Map the rectangle of the form widget, similar to how it's done for e.g. hyperlinks.
+        const SwPageFrame* pPageFrame = pTextFrame->FindPageFrame();
+        if (pPageFrame)
+        {
+            aRect = SwEnhancedPDFExportHelper::MapSwRectToPDFRect(pPageFrame, aRect);
+        }
+    }
+    pDescriptor->Location = aRect;
+
+    pPDFExtOutDevData->WrapBeginStructureElement(vcl::pdf::StructElement::Form);
     pPDFExtOutDevData->CreateControl(*pDescriptor);
     pPDFExtOutDevData->EndStructureElement();
 
@@ -1125,25 +1188,25 @@ void SwContentControlPortion::Paint(const SwTextPaintInfo& rInf) const
 }
 
 namespace sw::mark {
-    OUString ExpandFieldmark(IFieldmark* pBM)
+    OUString ExpandFieldmark(Fieldmark* pBM)
     {
         if (pBM->GetFieldname() == ODF_FORMCHECKBOX)
         {
-            ::sw::mark::ICheckboxFieldmark const*const pCheckboxFm(
-                    dynamic_cast<ICheckboxFieldmark const*>(pBM));
+            ::sw::mark::CheckboxFieldmark const*const pCheckboxFm(
+                    dynamic_cast<CheckboxFieldmark const*>(pBM));
             assert(pCheckboxFm);
             return pCheckboxFm->IsChecked()
                     ? u"\u2612"_ustr
                     : u"\u2610"_ustr;
         }
         assert(pBM->GetFieldname() == ODF_FORMDROPDOWN);
-        const IFieldmark::parameter_map_t* const pParameters = pBM->GetParameters();
+        const Fieldmark::parameter_map_t* const pParameters = pBM->GetParameters();
         sal_Int32 nCurrentIdx = 0;
-        const IFieldmark::parameter_map_t::const_iterator pResult = pParameters->find(ODF_FORMDROPDOWN_RESULT);
+        const Fieldmark::parameter_map_t::const_iterator pResult = pParameters->find(ODF_FORMDROPDOWN_RESULT);
         if(pResult != pParameters->end())
             pResult->second >>= nCurrentIdx;
 
-        const IFieldmark::parameter_map_t::const_iterator pListEntries = pParameters->find(ODF_FORMDROPDOWN_LISTENTRY);
+        const Fieldmark::parameter_map_t::const_iterator pListEntries = pParameters->find(ODF_FORMDROPDOWN_LISTENTRY);
         if (pListEntries != pParameters->end())
         {
             uno::Sequence< OUString > vListEntries;
@@ -1152,7 +1215,6 @@ namespace sw::mark {
                 return vListEntries[nCurrentIdx];
         }
 
-        static constexpr OUStringLiteral vEnSpaces = u"\u2002\u2002\u2002\u2002\u2002";
         return vEnSpaces;
     }
 }
@@ -1212,29 +1274,31 @@ SwTextPortion *SwTextFormatter::WhichTextPor( SwTextFormatInfo &rInf ) const
                 static uno::Reference< rdf::XURI > xODF_SHADING(
                     rdf::URI::createKnown(xContext, rdf::URIs::LO_EXT_SHADING), uno::UNO_SET_THROW);
 
-                uno::Reference<rdf::XDocumentMetadataAccess> xDocumentMetadataAccess(
-                    rDoc.GetDocShell()->GetBaseModel(), uno::UNO_QUERY);
-
-                const css::uno::Reference<css::rdf::XResource> xSubject(xRet, uno::UNO_QUERY);
-                const uno::Reference<rdf::XRepository>& xRepository =
-                    xDocumentMetadataAccess->getRDFRepository();
-                const uno::Reference<container::XEnumeration> xEnum(
-                    xRepository->getStatements(xSubject, xODF_SHADING, nullptr), uno::UNO_SET_THROW);
-
-                while (xEnum->hasMoreElements())
+                if (const SwDocShell* pShell = rDoc.GetDocShell())
                 {
-                    rdf::Statement stmt;
-                    if (!(xEnum->nextElement() >>= stmt)) {
-                        throw uno::RuntimeException();
+                    rtl::Reference<SwXTextDocument> xDocumentMetadataAccess(pShell->GetBaseModel());
+
+                    const css::uno::Reference<css::rdf::XResource> xSubject(xRet, uno::UNO_QUERY);
+                    const uno::Reference<rdf::XRepository> xRepository =
+                        xDocumentMetadataAccess->getRDFRepository();
+                    const uno::Reference<container::XEnumeration> xEnum(
+                        xRepository->getStatements(xSubject, xODF_SHADING, nullptr), uno::UNO_SET_THROW);
+
+                    while (xEnum->hasMoreElements())
+                    {
+                        rdf::Statement stmt;
+                        if (!(xEnum->nextElement() >>= stmt)) {
+                            throw uno::RuntimeException();
+                        }
+                        const uno::Reference<rdf::XLiteral> xObject(stmt.Object, uno::UNO_QUERY);
+                        if (!xObject.is()) continue;
+                        if (xEnum->hasMoreElements()) {
+                            SAL_INFO("sw.uno", "ignoring other odf:shading statements");
+                        }
+                        Color rColor = Color::STRtoRGB(xObject->getValue());
+                        pMetaPor->SetShadowColor(rColor);
+                        break;
                     }
-                    const uno::Reference<rdf::XLiteral> xObject(stmt.Object, uno::UNO_QUERY);
-                    if (!xObject.is()) continue;
-                    if (xEnum->hasMoreElements()) {
-                        SAL_INFO("sw.uno", "ignoring other odf:shading statements");
-                    }
-                    Color rColor = Color::STRtoRGB(xObject->getValue());
-                    pMetaPor->SetShadowColor(rColor);
-                    break;
                 }
             }
             pPor = pMetaPor;
@@ -1261,10 +1325,10 @@ SwTextPortion *SwTextFormatter::WhichTextPor( SwTextFormatInfo &rInf ) const
             // If pCurr does not have a width, it can however already have content.
             // E.g. for non-displayable characters
 
-            auto const ch(rInf.GetText()[sal_Int32(rInf.GetIdx())]);
+            auto const ch(rInf.GetChar(rInf.GetIdx()));
             SwTextFrame const*const pFrame(rInf.GetTextFrame());
             SwPosition aPosition(pFrame->MapViewToModelPos(rInf.GetIdx()));
-            sw::mark::IFieldmark *pBM = pFrame->GetDoc().getIDocumentMarkAccess()->getInnerFieldmarkFor(aPosition);
+            sw::mark::Fieldmark *pBM = pFrame->GetDoc().getIDocumentMarkAccess()->getInnerFieldmarkFor(aPosition);
             if(pBM != nullptr && pBM->GetFieldname( ) == ODF_FORMDATE)
             {
                 if (ch == CH_TXT_ATR_FIELDSTART)
@@ -1304,10 +1368,14 @@ SwTextPortion *SwTextFormatter::WhichTextPor( SwTextFormatInfo &rInf ) const
             }
             if( !pPor )
             {
-                if( !rInf.X() && !m_pCurr->GetNextPortion() && !m_pCurr->GetLen() )
+                if( !rInf.X() && !m_pCurr->GetNextPortion() && !m_pCurr->GetLen()  && !GetFnt()->IsURL() )
                     pPor = m_pCurr;
                 else
+                {
                     pPor = new SwTextPortion;
+                    if (pBM && pBM->GetFieldname() == ODF_FORMTEXT)
+                        pPor->SetFieldmarkText(true);
+                }
             }
         }
     }
@@ -1327,25 +1395,23 @@ SwTextPortion *SwTextFormatter::NewTextPortion( SwTextFormatInfo &rInf )
     Seek( rInf.GetIdx() );
     SwTextPortion *pPor = WhichTextPor( rInf );
 
+    TextFrameIndex nNextChg(rInf.GetText().getLength());
+
     // until next attribute change:
     const TextFrameIndex nNextAttr = GetNextAttr();
-    TextFrameIndex nNextChg = std::min(nNextAttr, TextFrameIndex(rInf.GetText().getLength()));
-
+    // until next layout-breaking attribute change:
+    const TextFrameIndex nNextLayoutBreakAttr = GetNextLayoutBreakAttr();
     // end of script type:
     const TextFrameIndex nNextScript = m_pScriptInfo->NextScriptChg(rInf.GetIdx());
-    nNextChg = std::min( nNextChg, nNextScript );
-
     // end of direction:
     const TextFrameIndex nNextDir = m_pScriptInfo->NextDirChg(rInf.GetIdx());
-    nNextChg = std::min( nNextChg, nNextDir );
-
     // hidden change (potentially via bookmark):
     const TextFrameIndex nNextHidden = m_pScriptInfo->NextHiddenChg(rInf.GetIdx());
-    nNextChg = std::min( nNextChg, nNextHidden );
-
     // bookmarks
     const TextFrameIndex nNextBookmark = m_pScriptInfo->NextBookmark(rInf.GetIdx());
-    nNextChg = std::min(nNextChg, nNextBookmark);
+
+    auto nNextContext = std::min({ nNextChg, nNextLayoutBreakAttr, nNextScript, nNextDir });
+    nNextChg = std::min({ nNextChg, nNextAttr, nNextScript, nNextDir, nNextHidden, nNextBookmark });
 
     // Turbo boost:
     // We assume that font characters are not larger than twice
@@ -1364,13 +1430,15 @@ SwTextPortion *SwTextFormatter::NewTextPortion( SwTextFormatInfo &rInf )
     CalcAscent( rInf, pPor );
 
     const SwFont* pTmpFnt = rInf.GetFont();
-    sal_Int32 nExpect = std::min( sal_Int32( pTmpFnt->GetHeight() ),
-                             sal_Int32( pPor->GetAscent() ) ) / 8;
-    if ( !nExpect )
-        nExpect = 1;
-    nExpect = sal_Int32(rInf.GetIdx()) + (rInf.GetLineWidth() / nExpect);
-    if (TextFrameIndex(nExpect) > rInf.GetIdx() && nNextChg > TextFrameIndex(nExpect))
-        nNextChg = TextFrameIndex(std::min(nExpect, rInf.GetText().getLength()));
+    auto nCharWidthGuess = std::min(pTmpFnt->GetHeight(), pPor->GetAscent()) / 8;
+    if (!nCharWidthGuess)
+        nCharWidthGuess = 1;
+    auto nExpect = rInf.GetIdx() + TextFrameIndex(rInf.GetLineWidth() / nCharWidthGuess);
+    if (nExpect > rInf.GetIdx())
+    {
+        nNextChg = std::min(nNextChg, nExpect);
+        nNextContext = std::min(nNextContext, nExpect);
+    }
 
     // we keep an invariant during method calls:
     // there are no portion ending characters like hard spaces
@@ -1390,6 +1458,56 @@ SwTextPortion *SwTextFormatter::NewTextPortion( SwTextFormatInfo &rInf )
 
     pPor->SetLen( nNextChg - rInf.GetIdx() );
     rInf.SetLen( pPor->GetLen() );
+
+    // Generate a new layout context for the text portion. This is necessary
+    // for the first text portion in a paragraph, or for any successive
+    // portions that are outside of the bounds of the previous context.
+    if (!rInf.GetLayoutContext().has_value()
+        || rInf.GetLayoutContext()->m_nBegin < rInf.GetLineStart().get()
+        || rInf.GetLayoutContext()->m_nEnd < nNextChg.get())
+    {
+        // The layout context must terminate at special characters
+        sal_Int32 nEnd = rInf.GetIdx().get();
+        for (; nEnd < nNextContext.get(); ++nEnd)
+        {
+            bool bAtEnd = false;
+            switch (rInf.GetText()[nEnd])
+            {
+                case CH_TXTATR_BREAKWORD:
+                case CH_TXTATR_INWORD:
+                case CH_TXTATR_TAB:
+                case CH_TXTATR_NEWLINE:
+                case CH_TXT_ATR_INPUTFIELDSTART:
+                case CH_TXT_ATR_INPUTFIELDEND:
+                case CH_TXT_ATR_FORMELEMENT:
+                case CH_TXT_ATR_FIELDSTART:
+                case CH_TXT_ATR_FIELDSEP:
+                case CH_TXT_ATR_FIELDEND:
+                case CHAR_SOFTHYPHEN:
+                    bAtEnd = true;
+                    break;
+
+                default:
+                    break;
+            }
+
+            if (bAtEnd)
+            {
+                break;
+            }
+        }
+
+        std::optional<SwLinePortionLayoutContext> nNewContext;
+        if (rInf.GetIdx().get() != nEnd)
+        {
+            nNewContext = SwLinePortionLayoutContext{ rInf.GetIdx().get(), nEnd };
+        }
+
+        rInf.SetLayoutContext(nNewContext);
+    }
+
+    pPor->SetLayoutContext(rInf.GetLayoutContext());
+
     return pPor;
 }
 
@@ -1530,13 +1648,13 @@ SwLinePortion *SwTextFormatter::WhichFirstPortion(SwTextFormatInfo &rInf)
     // check this *last* so that BuildMultiPortion() can find it!
     if (!pPor && rInf.CheckCurrentPosBookmark())
     {
-        const auto& bookmark = m_pScriptInfo->GetBookmarks(rInf.GetIdx());
+        auto bookmark = m_pScriptInfo->GetBookmarks(rInf.GetIdx());
         if (!bookmark.empty())
         {
             // only for character width, maybe replaced with ] later
             sal_Unicode mark = '[';
 
-            pPor = new SwBookmarkPortion(mark, bookmark);
+            pPor = new SwBookmarkPortion(mark, std::move(bookmark));
         }
     }
 
@@ -1758,7 +1876,7 @@ SwLinePortion *SwTextFormatter::NewPortion(SwTextFormatInfo &rInf,
                              PortionType::TabDecimal == pLastTabPortion->GetWhichPor() )
                         {
                             OSL_ENSURE( rInf.X() >= pLastTabPortion->GetFix(), "Decimal tab stop position cannot be calculated" );
-                            const sal_uInt16 nWidthOfPortionsUpToDecimalPosition = o3tl::narrowing<sal_uInt16>(rInf.X() - pLastTabPortion->GetFix() );
+                            const SwTwips nWidthOfPortionsUpToDecimalPosition = rInf.X() - pLastTabPortion->GetFix();
                             static_cast<SwTabDecimalPortion*>(pLastTabPortion)->SetWidthOfPortionsUpToDecimalPosition( nWidthOfPortionsUpToDecimalPosition );
                             rInf.SetTabDecimal( 0 );
                         }
@@ -1904,6 +2022,7 @@ TextFrameIndex SwTextFormatter::FormatLine(TextFrameIndex const nStartPos)
 
     m_pCurr->SetEndHyph( false );
     m_pCurr->SetMidHyph( false );
+    m_pCurr->SetLastHyph( false );
 
     // fly positioning can make it necessary format a line several times
     // for this, we have to keep a copy of our rest portion
@@ -2019,6 +2138,7 @@ TextFrameIndex SwTextFormatter::FormatLine(TextFrameIndex const nStartPos)
                     }
                 }
                 GetInfo().ResetMaxWidthDiff();
+                GetInfo().SetExtraSpace(0);
 
                 // delete old rest
                 if ( GetInfo().GetRest() )
@@ -2033,6 +2153,7 @@ TextFrameIndex SwTextFormatter::FormatLine(TextFrameIndex const nStartPos)
 
                 m_pCurr->SetLen(TextFrameIndex(0));
                 m_pCurr->Width(0);
+                m_pCurr->ExtraShrunkWidth(0);
                 m_pCurr->Truncate();
             }
         }
@@ -2043,7 +2164,7 @@ TextFrameIndex SwTextFormatter::FormatLine(TextFrameIndex const nStartPos)
     // the SwLineLayout is wider as well.
     if (GetInfo().GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(DocumentSettingId::TAB_OVER_MARGIN))
     {
-        sal_uInt16 nSum = 0;
+        SwTwips nSum = 0;
         SwLinePortion* pPor = m_pCurr->GetFirstPortion();
 
         while (pPor)
@@ -2121,15 +2242,57 @@ void SwTextFormatter::CalcRealHeight( bool bNewLine )
     SwTextGridItem const*const pGrid(GetGridItem(m_pFrame->FindPageFrame()));
     if ( pGrid && GetInfo().SnapToGrid() )
     {
+        // tdf#88752 tdf#167583: Grid base height is conditionally ignored for tables
+        if (m_pFrame->IsInTab()
+            && !m_pFrame->GetDoc().getIDocumentSettingAccess().get(
+                DocumentSettingId::ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT))
+        {
+            m_pCurr->SetRealHeight(nLineHeight);
+            return;
+        }
+
         const sal_uInt16 nGridWidth = pGrid->GetBaseHeight();
         const sal_uInt16 nRubyHeight = pGrid->GetRubyHeight();
         const bool bRubyTop = ! pGrid->GetRubyTextBelow();
 
         nLineHeight = nGridWidth + nRubyHeight;
-        const sal_uInt16 nAmpRatio = (m_pCurr->Height() + nLineHeight - 1)/nLineHeight;
+        const auto nAmpRatio = (m_pCurr->Height() + nLineHeight - 1) / nLineHeight;
         nLineHeight *= nAmpRatio;
 
-        const sal_uInt16 nAsc = m_pCurr->GetAscent() +
+        // tdf#164871: Handle all types of line spacing in grid layout.
+        // The prop/auto rule was originally implemented with #99106#, but other spacing
+        // types were not implemented (perhaps unintentionally). These implementations
+        // differ from the below non-grid implementations, so cannot be reused.
+        const SvxLineSpacingItem* pSpace = m_aLineInf.GetLineSpacing();
+        if (pSpace)
+        {
+            switch (pSpace->GetLineSpaceRule())
+            {
+                case SvxLineSpaceRule::Min:
+                    // tdf#164871: MSO idiosyncratically disables the grid extra space
+                    // when the minimum height is 0. While strange, certain documents
+                    // require this and it seems harmless to emulate.
+                    if (pSpace->GetLineHeight() == 0)
+                    {
+                        nLineHeight = m_pCurr->Height() + nRubyHeight;
+                    }
+
+                    if (nLineHeight < pSpace->GetLineHeight())
+                    {
+                        nLineHeight = pSpace->GetLineHeight();
+                    }
+                    break;
+
+                case SvxLineSpaceRule::Fix:
+                    nLineHeight = pSpace->GetLineHeight();
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        const SwTwips nAsc = m_pCurr->GetAscent() +
                       ( bRubyTop ?
                        ( nLineHeight - m_pCurr->Height() + nRubyHeight ) / 2 :
                        ( nLineHeight - m_pCurr->Height() - nRubyHeight ) / 2 );
@@ -2139,7 +2302,6 @@ void SwTextFormatter::CalcRealHeight( bool bNewLine )
         m_pInf->GetParaPortion()->SetFixLineHeight();
 
         // we ignore any line spacing options except from ...
-        const SvxLineSpacingItem* pSpace = m_aLineInf.GetLineSpacing();
         if ( ! IsParaLine() && pSpace &&
              SvxInterLineSpaceRule::Prop == pSpace->GetInterLineSpaceRule() )
         {
@@ -2185,7 +2347,7 @@ void SwTextFormatter::CalcRealHeight( bool bNewLine )
                             if( !nTmp )
                                 ++nTmp;
                             nLineHeight = nTmp;
-                            sal_uInt16 nAsc = ( 4 * nLineHeight ) / 5;  // 80%
+                            SwTwips nAsc = (4 * nLineHeight) / 5; // 80%
 #if 0
                             // could do clipping here (like Word does)
                             // but at 0.5 its unreadable either way...
@@ -2209,7 +2371,7 @@ void SwTextFormatter::CalcRealHeight( bool bNewLine )
                 case SvxLineSpaceRule::Fix:
                 {
                     nLineHeight = pSpace->GetLineHeight();
-                    const sal_uInt16 nAsc = ( 4 * nLineHeight ) / 5;  // 80%
+                    const SwTwips nAsc = (4 * nLineHeight) / 5; // 80%
                     if( nAsc < m_pCurr->GetAscent() ||
                         nLineHeight - nAsc < m_pCurr->Height() - m_pCurr->GetAscent() )
                         m_pCurr->SetClipping( true );
@@ -2235,6 +2397,8 @@ void SwTextFormatter::CalcRealHeight( bool bNewLine )
                         if( nTmp < 50 )
                             nTmp = nTmp ? 50 : 100;
 
+                        bool bPropLineShrinks = (nTmp < 100);
+
                         // extend line height by (nPropLineSpace - 100) percent of the font height
                         nTmp -= 100;
                         nTmp *= m_pCurr->GetTextHeight();
@@ -2243,6 +2407,19 @@ void SwTextFormatter::CalcRealHeight( bool bNewLine )
                         if (nTmp < 1)
                             nTmp = 1;
                         nLineHeight = nTmp;
+
+                        // tdf#146081: The height and ascent of the first line may have been
+                        // adjusted above. In order to have consistent line spacing when rendering,
+                        // the same adjustments must be made to the following lines.
+                        if (bPropLineShrinks
+                            && GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
+                                DocumentSettingId::PROP_LINE_SPACING_SHRINKS_FIRST_LINE))
+                        {
+                            SwTwips nAsc = (4 * nLineHeight) / 5; // 80%
+                            m_pCurr->SetAscent(nAsc);
+                            m_pCurr->Height(nLineHeight, false);
+                            m_pInf->GetParaPortion()->SetFixLineHeight();
+                        }
                         break;
                     }
                     case SvxInterLineSpaceRule::Fix:
@@ -2284,8 +2461,8 @@ void SwTextFormatter::FeedInf( SwTextFormatInfo &rInf ) const
     rInf.First( FirstLeft() );
     rInf.LeftMargin(GetLeftMargin());
 
-    rInf.RealWidth( sal_uInt16(rInf.Right() - GetLeftMargin()) );
-    rInf.Width( rInf.RealWidth() );
+    rInf.RealWidth(rInf.Right() - GetLeftMargin());
+    rInf.Width(std::max(rInf.RealWidth(), SwTwips(0)));
     if( const_cast<SwTextFormatter*>(this)->GetRedln() )
     {
         const_cast<SwTextFormatter*>(this)->GetRedln()->Clear( const_cast<SwTextFormatter*>(this)->GetFnt() );
@@ -2595,7 +2772,7 @@ bool SwTextFormatter::ChkFlyUnderflow( SwTextFormatInfo &rInf ) const
     {
         // First we check, whether a fly overlaps with the line.
         // = GetLineHeight()
-        const sal_uInt16 nHeight = GetCurr()->GetRealHeight();
+        const SwTwips nHeight = GetCurr()->GetRealHeight();
         SwRect aLine( GetLeftMargin(), Y(), rInf.RealWidth(), nHeight );
 
         SwRect aLineVert( aLine );
@@ -2868,7 +3045,7 @@ void SwTextFormatter::CalcFlyWidth( SwTextFormatInfo &rInf )
     if( bForced )
     {
         m_pCurr->SetForcedLeftMargin();
-        rInf.ForcedLeftMargin( o3tl::narrowing<sal_uInt16>(aInter.Width()) );
+        rInf.ForcedLeftMargin(aInter.Width());
     }
 
     if( bFullLine )
@@ -3133,8 +3310,8 @@ void SwTextFormatter::MergeCharacterBorder( SwLinePortion& rPortion, SwLinePorti
         {
             // Calculate maximum height and ascent
             SwLinePortion* pActPor = m_pFirstOfBorderMerge;
-            sal_uInt16 nMaxAscent = 0;
-            sal_uInt16 nMaxHeight = 0;
+            SwTwips nMaxAscent = 0;
+            SwTwips nMaxHeight = 0;
             bool bReachCurrent = false;
             while( pActPor )
             {
@@ -3172,6 +3349,16 @@ void SwTextFormatter::MergeCharacterBorder( SwLinePortion& rPortion, SwLinePorti
         }
     }
     Seek(rInf.GetIdx());
+}
+
+namespace sw {
+    bool IsShowHiddenChars(SwViewShell const*const pViewShell)
+    {
+        SwViewOption const*const pOpt{pViewShell ? pViewShell->GetViewOptions() : nullptr};
+        const bool bShowInDocView{pViewShell && pViewShell->GetWin() && pOpt->IsShowHiddenChar()};
+        const bool bShowForPrinting{pViewShell && pOpt->IsShowHiddenChar(true) && pOpt->IsPrinting()};
+        return (bShowInDocView || bShowForPrinting);
+    }
 }
 
 namespace {

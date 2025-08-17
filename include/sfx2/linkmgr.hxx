@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SFX2_LINKMGR_HXX
-#define INCLUDED_SFX2_LINKMGR_HXX
+#pragma once
 
 #include <rtl/ustring.hxx>
 #include <sal/config.h>
@@ -131,7 +130,8 @@ public:
 
     void        UpdateAllLinks(bool bAskUpdate,
                                bool bUpdateGrfLinks,
-                               weld::Window* pParentWin);
+                               weld::Window* pParentWin,
+                               OUString const & referer);
 
     // Call for list of links (eg for link-dialog)
     const       SvBaseLinks& GetLinks() const { return aLinkTbl; }
@@ -181,7 +181,5 @@ SFX2_DLLPUBLIC void MakeLnkName( OUString& rName,
                  const OUString* pFilter = nullptr );
 
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

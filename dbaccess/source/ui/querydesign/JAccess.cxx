@@ -29,17 +29,16 @@ namespace dbaui
 {
     using namespace ::com::sun::star::accessibility;
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::lang;
 
     OJoinDesignViewAccess::OJoinDesignViewAccess(OJoinTableView* _pTableView)
-        :ImplInheritanceHelper(_pTableView->GetComponentInterface().is() ? _pTableView->GetWindowPeer() : nullptr)
-        ,m_pTableView(_pTableView)
+        : VCLXAccessibleComponent(_pTableView)
+        , m_pTableView(_pTableView)
     {
     }
     OUString SAL_CALL OJoinDesignViewAccess::getImplementationName()
     {
-        return "org.openoffice.comp.dbu.JoinViewAccessibility";
+        return u"org.openoffice.comp.dbu.JoinViewAccessibility"_ustr;
     }
     void OJoinDesignViewAccess::clearTableView()
     {
@@ -59,7 +58,7 @@ namespace dbaui
     }
     Reference< XAccessible > SAL_CALL OJoinDesignViewAccess::getAccessibleChild( sal_Int64 i )
     {
-        Reference< XAccessible > aRet;
+        rtl::Reference<comphelper::OAccessible> pRet;
         ::osl::MutexGuard aGuard( m_aMutex  );
         if(i < 0 || i >= getAccessibleChildCount() || !m_pTableView)
             throw IndexOutOfBoundsException();
@@ -68,19 +67,15 @@ namespace dbaui
         if( i < nTableWindowCount )
         {
             OJoinTableView::OTableWindowMap::const_iterator aIter = std::next(m_pTableView->GetTabWinMap().begin(), i);
-            aRet = aIter->second->GetAccessible();
+            pRet = aIter->second->GetAccessible();
         }
         else if( o3tl::make_unsigned(i - nTableWindowCount) < m_pTableView->getTableConnections().size() )
-            aRet = m_pTableView->getTableConnections()[i - nTableWindowCount]->GetAccessible();
-        return aRet;
+            pRet = m_pTableView->getTableConnections()[i - nTableWindowCount]->GetAccessible();
+        return pRet;
     }
     sal_Int16 SAL_CALL OJoinDesignViewAccess::getAccessibleRole(  )
     {
         return AccessibleRole::VIEW_PORT;
-    }
-    Reference< XAccessibleContext > SAL_CALL OJoinDesignViewAccess::getAccessibleContext(  )
-    {
-        return this;
     }
 }
 

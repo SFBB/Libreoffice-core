@@ -22,7 +22,7 @@
 #include <svl/zformat.hxx>
 #include <formula/token.hxx>
 #include <sal/log.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <osl/diagnose.h>
 #include <o3tl/string_view.hxx>
 
@@ -76,183 +76,175 @@ bool ScDocument::Solver(SCCOL nFCol, SCROW nFRow, SCTAB nFTab,
 {
     bool bRet = false;
     nX = 0.0;
-    if ( ValidColRow( nFCol, nFRow ) && ValidTab( nFTab ) &&
-         ValidColRow( nVCol, nVRow ) && ValidTab( nVTab ) &&
-         nFTab < GetTableCount() && maTabs[nFTab] &&
-         nVTab < GetTableCount() && maTabs[nVTab] )
+    ScFormulaCell* pFormula = nullptr;
+    double fTargetVal = 0.0;
     {
         CellType eFType = GetCellType(nFCol, nFRow, nFTab);
-        CellType eVType = GetCellType(nVCol, nVRow, nVTab);
         // #i108005# convert target value to number using default format,
         // as previously done in ScInterpreter::GetDouble
-        ScFormulaCell* pFormula = nullptr;
-        double fTargetVal = 0.0;
         sal_uInt32 nFIndex = 0;
-        if ( eFType == CELLTYPE_FORMULA && eVType == CELLTYPE_VALUE &&
+        if ( eFType == CELLTYPE_FORMULA && FetchTable(nVTab) && ValidColRow(nVCol, nVRow) &&
              GetFormatTable()->IsNumberFormat( sValStr, nFIndex, fTargetVal ) )
         {
             ScAddress aFormulaAdr( nFCol, nFRow, nFTab );
             pFormula = GetFormulaCell( aFormulaAdr );
         }
-        if (pFormula)
+    }
+    if (pFormula)
+    {
+        bool bDoneIteration = false;
+        const ScAddress aValueAdr(nVCol, nVRow, nVTab);
+        const ScRange aVRange(aValueAdr, aValueAdr); // for SetDirty
+
+        const sal_uInt16 nMaxIter = 100;
+        const double fEps = 1E-10;
+        const double fDelta = 1E-6;
+
+        double fXPrev = GetValue(aValueAdr);
+        double fBestX = fXPrev;
+
+        // Original value to be restored later if necessary
+        const ScCellValue aSaveVal(GetRefCellValue(aValueAdr));
+        const bool changeCellType = aSaveVal.getType() != CELLTYPE_VALUE;
+        if (changeCellType)
+            SetValue(aValueAdr, fXPrev);
+        double* pVCell = GetValueCell(aValueAdr);
+
+        pFormula->Interpret();
+        bool bError = ( pFormula->GetErrCode() != FormulaError::NONE );
+        // bError always corresponds with fF
+
+        double fFPrev = pFormula->GetValue() - fTargetVal;
+
+        double fBestF = fabs( fFPrev );
+        if ( fBestF < fDelta )
+            bDoneIteration = true;
+
+        double fX = fXPrev + fEps;
+        double fF = fFPrev;
+        double fSlope;
+
+        sal_uInt16 nIter = 0;
+
+        bool bHorMoveError = false;
+        // Conform Regula Falsi Method
+        while ( !bDoneIteration && ( nIter++ < nMaxIter ) )
         {
-            bool bDoneIteration = false;
-            ScAddress aValueAdr( nVCol, nVRow, nVTab );
-            double* pVCell = GetValueCell( aValueAdr );
-
-            ScRange aVRange( aValueAdr, aValueAdr );    // for SetDirty
-            // Original value to be restored later if necessary
-            double fSaveVal = *pVCell;
-
-            const sal_uInt16 nMaxIter = 100;
-            const double fEps = 1E-10;
-            const double fDelta = 1E-6;
-
-            double fBestX, fXPrev;
-            double fBestF, fFPrev;
-            fBestX = fXPrev = fSaveVal;
-
-            pFormula->Interpret();
-            bool bError = ( pFormula->GetErrCode() != FormulaError::NONE );
-            // bError always corresponds with fF
-
-            fFPrev = pFormula->GetValue() - fTargetVal;
-
-            fBestF = fabs( fFPrev );
-            if ( fBestF < fDelta )
-                bDoneIteration = true;
-
-            double fX = fXPrev + fEps;
-            double fF = fFPrev;
-            double fSlope;
-
-            sal_uInt16 nIter = 0;
-
-            bool bHorMoveError = false;
-            // Conform Regula Falsi Method
-            while ( !bDoneIteration && ( nIter++ < nMaxIter ) )
-            {
-                *pVCell = fX;
-                SetDirty( aVRange, false );
-                pFormula->Interpret();
-                bError = ( pFormula->GetErrCode() != FormulaError::NONE );
-                fF = pFormula->GetValue() - fTargetVal;
-
-                if ( fF == fFPrev && !bError )
-                {
-                    // HORIZONTAL SEARCH: Keep moving x in both directions until the f(x)
-                    // becomes different from the previous f(x).  This routine is needed
-                    // when a given function is discrete, in which case the resulting slope
-                    // may become zero which ultimately causes the goal seek operation
-                    // to fail. #i28955#
-
-                    sal_uInt16 nHorIter = 0;
-                    const double fHorStepAngle = 5.0;
-                    const double fHorMaxAngle = 80.0;
-                    int const nHorMaxIter = static_cast<int>( fHorMaxAngle / fHorStepAngle );
-                    bool bDoneHorMove = false;
-
-                    while ( !bDoneHorMove && !bHorMoveError && nHorIter++ < nHorMaxIter )
-                    {
-                        double fHorAngle = fHorStepAngle * static_cast<double>( nHorIter );
-                        double fHorTangent = std::tan(basegfx::deg2rad(fHorAngle));
-
-                        sal_uInt16 nIdx = 0;
-                        while( nIdx++ < 2 && !bDoneHorMove )
-                        {
-                            double fHorX;
-                            if ( nIdx == 1 )
-                                fHorX = fX + fabs( fF ) * fHorTangent;
-                            else
-                                fHorX = fX - fabs( fF ) * fHorTangent;
-
-                            *pVCell = fHorX;
-                            SetDirty( aVRange, false );
-                            pFormula->Interpret();
-                            bHorMoveError = ( pFormula->GetErrCode() != FormulaError::NONE );
-                            if ( bHorMoveError )
-                                break;
-
-                            fF = pFormula->GetValue() - fTargetVal;
-                            if ( fF != fFPrev )
-                            {
-                                fX = fHorX;
-                                bDoneHorMove = true;
-                            }
-                        }
-                    }
-                    if ( !bDoneHorMove )
-                        bHorMoveError = true;
-                }
-
-                if ( bError )
-                {
-                    // move closer to last valid value (fXPrev), keep fXPrev & fFPrev
-                    double fDiff = ( fXPrev - fX ) / 2;
-                    if ( fabs( fDiff ) < fEps )
-                        fDiff = ( fDiff < 0.0 ? - fEps : fEps );
-                    fX += fDiff;
-                }
-                else if ( bHorMoveError )
-                    break;
-                else if ( fabs(fF) < fDelta )
-                {
-                    // converged to root
-                    fBestX = fX;
-                    bDoneIteration = true;
-                }
-                else
-                {
-                    if ( fabs(fF) + fDelta < fBestF )
-                    {
-                        fBestX = fX;
-                        fBestF = fabs( fF );
-                    }
-
-                    if ( ( fXPrev - fX ) != 0 )
-                    {
-                        fSlope = ( fFPrev - fF ) / ( fXPrev - fX );
-                        if ( fabs( fSlope ) < fEps )
-                            fSlope = fSlope < 0.0 ? -fEps : fEps;
-                    }
-                    else
-                        fSlope = fEps;
-
-                    fXPrev = fX;
-                    fFPrev = fF;
-                    fX = fX - ( fF / fSlope );
-                }
-            }
-
-            // Try a nice rounded input value if possible.
-            const double fNiceDelta = ( bDoneIteration && fabs( fBestX ) >= 1e-3 ? 1e-3 : fDelta );
-            nX = ::rtl::math::approxFloor( ( fBestX / fNiceDelta ) + 0.5 ) * fNiceDelta;
-
-            if ( bDoneIteration )
-            {
-                *pVCell = nX;
-                SetDirty( aVRange, false );
-                pFormula->Interpret();
-                if ( fabs( pFormula->GetValue() - fTargetVal ) > fabs( fF ) )
-                    nX = fBestX;
-                bRet = true;
-            }
-            else if ( bError || bHorMoveError )
-            {
-                nX = fBestX;
-            }
-            *pVCell = fSaveVal;
+            *pVCell = fX;
             SetDirty( aVRange, false );
             pFormula->Interpret();
-            if ( !bDoneIteration )
+            bError = ( pFormula->GetErrCode() != FormulaError::NONE );
+            fF = pFormula->GetValue() - fTargetVal;
+
+            if ( fF == fFPrev && !bError )
             {
-                SetError( nVCol, nVRow, nVTab, FormulaError::NotAvailable );
+                // HORIZONTAL SEARCH: Keep moving x in both directions until the f(x)
+                // becomes different from the previous f(x).  This routine is needed
+                // when a given function is discrete, in which case the resulting slope
+                // may become zero which ultimately causes the goal seek operation
+                // to fail. #i28955#
+
+                sal_uInt16 nHorIter = 0;
+                const double fHorStepAngle = 5.0;
+                const double fHorMaxAngle = 80.0;
+                int const nHorMaxIter = static_cast<int>( fHorMaxAngle / fHorStepAngle );
+                bool bDoneHorMove = false;
+
+                while ( !bDoneHorMove && !bHorMoveError && nHorIter++ < nHorMaxIter )
+                {
+                    double fHorAngle = fHorStepAngle * static_cast<double>( nHorIter );
+                    double fHorTangent = std::tan(basegfx::deg2rad(fHorAngle));
+
+                    sal_uInt16 nIdx = 0;
+                    while( nIdx++ < 2 && !bDoneHorMove )
+                    {
+                        double fHorX;
+                        if ( nIdx == 1 )
+                            fHorX = fX + fabs( fF ) * fHorTangent;
+                        else
+                            fHorX = fX - fabs( fF ) * fHorTangent;
+
+                        *pVCell = fHorX;
+                        SetDirty( aVRange, false );
+                        pFormula->Interpret();
+                        bHorMoveError = ( pFormula->GetErrCode() != FormulaError::NONE );
+                        if ( bHorMoveError )
+                            break;
+
+                        fF = pFormula->GetValue() - fTargetVal;
+                        if ( fF != fFPrev )
+                        {
+                            fX = fHorX;
+                            bDoneHorMove = true;
+                        }
+                    }
+                }
+                if ( !bDoneHorMove )
+                    bHorMoveError = true;
+            }
+
+            if ( bError )
+            {
+                // move closer to last valid value (fXPrev), keep fXPrev & fFPrev
+                double fDiff = ( fXPrev - fX ) / 2;
+                if ( fabs( fDiff ) < fEps )
+                    fDiff = ( fDiff < 0.0 ? - fEps : fEps );
+                fX += fDiff;
+            }
+            else if ( bHorMoveError )
+                break;
+            else if ( fabs(fF) < fDelta )
+            {
+                // converged to root
+                fBestX = fX;
+                bDoneIteration = true;
+            }
+            else
+            {
+                if ( fabs(fF) + fDelta < fBestF )
+                {
+                    fBestX = fX;
+                    fBestF = fabs( fF );
+                }
+
+                if ( ( fXPrev - fX ) != 0 )
+                {
+                    fSlope = ( fFPrev - fF ) / ( fXPrev - fX );
+                    if ( fabs( fSlope ) < fEps )
+                        fSlope = fSlope < 0.0 ? -fEps : fEps;
+                }
+                else
+                    fSlope = fEps;
+
+                fXPrev = fX;
+                fFPrev = fF;
+                fX = fX - ( fF / fSlope );
             }
         }
-        else
+
+        // Try a nice rounded input value if possible.
+        const double fNiceDelta = ( bDoneIteration && fabs( fBestX ) >= 1e-3 ? 1e-3 : fDelta );
+        nX = ::rtl::math::approxFloor( ( fBestX / fNiceDelta ) + 0.5 ) * fNiceDelta;
+
+        if ( bDoneIteration )
         {
-            SetError( nVCol, nVRow, nVTab, FormulaError::NotAvailable );
+            *pVCell = nX;
+            SetDirty( aVRange, false );
+            pFormula->Interpret();
+            if ( fabs( pFormula->GetValue() - fTargetVal ) > fabs( fF ) )
+                nX = fBestX;
+            bRet = true;
         }
+        else if ( bError || bHorMoveError )
+        {
+            nX = fBestX;
+        }
+        if (changeCellType)
+            aSaveVal.commit(*this, aValueAdr);
+        else
+            *pVCell = aSaveVal.getDouble();
+        SetDirty( aVRange, false );
+        pFormula->Interpret();
     }
     return bRet;
 }
@@ -273,7 +265,7 @@ void ScDocument::InsertMatrixFormula(SCCOL nCol1, SCROW nRow1,
         SAL_WARN("sc", "ScDocument::InsertMatrixFormula: No table marked");
         return;
     }
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
     {
         // just too slow
         if (nCol2 - nCol1 > 64)
@@ -438,18 +430,19 @@ void ScDocument::InsertTableOp(const ScTabOpParam& rParam,  // multiple (repeate
     ScFormulaCell aRefCell( *this, ScAddress( nCol1, nRow1, nTab1 ), aForString.makeStringAndClear(),
            formula::FormulaGrammar::GRAM_NATIVE, ScMatrixMode::NONE );
     for( j = nCol1; j <= nCol2; j++ )
+    {
         for( k = nRow1; k <= nRow2; k++ )
-            for (i = 0; i < GetTableCount(); i++)
+        {
+            for (const auto& rTab : rMark)
             {
-                for (const auto& rTab : rMark)
-                {
-                    if (rTab >= nMax)
-                        break;
-                    if( maTabs[rTab] )
-                        maTabs[rTab]->SetFormulaCell(
-                            j, k, new ScFormulaCell(aRefCell, *this, ScAddress(j, k, rTab), ScCloneFlags::StartListening));
-                }
+                if (rTab >= nMax)
+                    break;
+                if( maTabs[rTab] )
+                    maTabs[rTab]->SetFormulaCell(
+                        j, k, new ScFormulaCell(aRefCell, *this, ScAddress(j, k, rTab), ScCloneFlags::StartListening));
             }
+        }
+    }
 }
 
 namespace {
@@ -609,7 +602,7 @@ bool ScDocument::GetSelectionFunction( ScSubTotalFunc eFunc,
     ScMarkData aMark(rMark);
     aMark.MarkToMulti();
     if (!aMark.IsMultiMarked() && !aMark.IsCellMarked(rCursor.Col(), rCursor.Row()))
-        aMark.SetMarkArea(rCursor);
+        aMark.SetMarkArea(ScRange(rCursor));
 
     SCTAB nMax = GetTableCount();
     ScMarkData::const_iterator itr = aMark.begin(), itrEnd = aMark.end();
@@ -694,11 +687,7 @@ double ScDocument::RoundValueAsShown( double fVal, sal_uInt32 nFormat, const ScI
             if (nPrecision == static_cast<short>(SvNumberFormatter::UNLIMITED_PRECISION))
                 return fVal;
         }
-        double fRound = ::rtl::math::round( fVal, nPrecision );
-        if ( ::rtl::math::approxEqual( fVal, fRound ) )
-            return fVal;        // rounding might introduce some error
-        else
-            return fRound;
+        return ::rtl::math::round( fVal, nPrecision );
     }
     else
         return fVal;
@@ -706,7 +695,7 @@ double ScDocument::RoundValueAsShown( double fVal, sal_uInt32 nFormat, const ScI
 
 // conditional formats and validation ranges
 
-sal_uLong ScDocument::AddCondFormat( std::unique_ptr<ScConditionalFormat> pNew, SCTAB nTab )
+sal_uInt32 ScDocument::AddCondFormat( std::unique_ptr<ScConditionalFormat> pNew, SCTAB nTab )
 {
     if(!pNew)
         return 0;
@@ -717,7 +706,7 @@ sal_uLong ScDocument::AddCondFormat( std::unique_ptr<ScConditionalFormat> pNew, 
     return 0;
 }
 
-sal_uLong ScDocument::AddValidationEntry( const ScValidationData& rNew )
+sal_uInt32 ScDocument::AddValidationEntry( const ScValidationData& rNew )
 {
     if (rNew.IsEmpty())
         return 0;                   // empty is always 0
@@ -726,23 +715,35 @@ sal_uLong ScDocument::AddValidationEntry( const ScValidationData& rNew )
     {
         ScMutationGuard aGuard(*this, ScMutationGuardFlags::CORE);
         pValidationList.reset(new ScValidationDataList);
+        mnLastValidationListMax = 0;
     }
 
-    sal_uLong nMax = 0;
-    for( const auto& rxData : *pValidationList )
+    sal_uInt32 nMax = 0;
+    if (IsImportingXLSX())
     {
-        const ScValidationData* pData = rxData.get();
-        sal_uLong nKey = pData->GetKey();
-        if ( pData->EqualEntries( rNew ) )
-            return nKey;
-        if ( nKey > nMax )
-            nMax = nKey;
+        // During import, the search becomes an O(n^2) problem.
+        // Just ignore any duplicates we might find, which seems to be rare.
+        nMax = mnLastValidationListMax;
+        ++mnLastValidationListMax;
+    }
+    else
+    {
+        for( const auto& rxData : *pValidationList )
+        {
+            const ScValidationData* pData = rxData.get();
+            sal_uInt32 nKey = pData->GetKey();
+            if ( pData->EqualEntries( rNew ) )
+            {
+                return nKey;
+            }
+            if ( nKey > nMax )
+                nMax = nKey;
+        }
     }
 
-    // might be called from ScPatternAttr::PutInPool; thus clone (real copy)
-
-    sal_uLong nNewKey = nMax + 1;
-    std::unique_ptr<ScValidationData> pInsert(rNew.Clone(this));
+    // might be called from ScPatternAttr::MigrateToDocument; thus clone (real copy)
+    sal_uInt32 nNewKey = nMax + 1;
+    std::unique_ptr<ScValidationData> pInsert(rNew.Clone(*this));
     pInsert->SetKey( nNewKey );
     ScMutationGuard aGuard(*this, ScMutationGuardFlags::CORE);
     pValidationList->InsertNew( std::move(pInsert) );
@@ -756,9 +757,10 @@ const SfxPoolItem* ScDocument::GetEffItem(
     if ( pPattern )
     {
         const SfxItemSet& rSet = pPattern->GetItemSet();
-        if ( rSet.GetItemState( ATTR_CONDITIONAL ) == SfxItemState::SET )
+        const ScCondFormatItem* pConditionalItem = nullptr;
+        if ( rSet.GetItemState( ATTR_CONDITIONAL, true, &pConditionalItem ) == SfxItemState::SET )
         {
-            const ScCondFormatIndexes& rIndex = pPattern->GetItem(ATTR_CONDITIONAL).GetCondFormatData();
+            const ScCondFormatIndexes& rIndex = pConditionalItem->GetCondFormatData();
             ScConditionalFormatList* pCondFormList = GetCondFormList( nTab );
             if (!rIndex.empty() && pCondFormList)
             {
@@ -769,7 +771,7 @@ const SfxPoolItem* ScDocument::GetEffItem(
                     {
                         ScAddress aPos(nCol, nRow, nTab);
                         ScRefCellValue aCell(const_cast<ScDocument&>(*this), aPos);
-                        const OUString& aStyle = pForm->GetCellStyle(aCell, aPos);
+                        const OUString aStyle = pForm->GetCellStyle(aCell, aPos);
                         if (!aStyle.isEmpty())
                         {
                             SfxStyleSheetBase* pStyleSheet = mxPoolHelper->GetStylePool()->Find(
@@ -802,6 +804,11 @@ const SfxItemSet* ScDocument::GetCondResult( SCCOL nCol, SCROW nRow, SCTAB nTab,
         aCell.assign(const_cast<ScDocument&>(*this), aPos);
         pCell = &aCell;
     }
+    // if the underlying cell needs evaluation, ScPatternAttr
+    // and ScCondFormatIndexes might end up being deleted under
+    // us, so we need to trigger evaluation before accessing them.
+    if (pCell->getType() == CELLTYPE_FORMULA)
+        (void)pCell->getFormula()->IsValue();
     const ScPatternAttr* pPattern = GetPattern( nCol, nRow, nTab );
     const ScCondFormatIndexes& rIndex =
         pPattern->GetItem(ATTR_CONDITIONAL).GetCondFormatData();
@@ -810,7 +817,7 @@ const SfxItemSet* ScDocument::GetCondResult( SCCOL nCol, SCROW nRow, SCTAB nTab,
 }
 
 const SfxItemSet* ScDocument::GetCondResult(
-    ScRefCellValue& rCell, const ScAddress& rPos, const ScConditionalFormatList& rList,
+    const ScRefCellValue& rCell, const ScAddress& rPos, const ScConditionalFormatList& rList,
     const ScCondFormatIndexes& rIndex ) const
 {
     for (const auto& rItem : rIndex)
@@ -819,7 +826,7 @@ const SfxItemSet* ScDocument::GetCondResult(
         if (!pForm)
             continue;
 
-        const OUString& aStyle = pForm->GetCellStyle(rCell, rPos);
+        const OUString aStyle = pForm->GetCellStyle(rCell, rPos);
         if (!aStyle.isEmpty())
         {
             SfxStyleSheetBase* pStyleSheet =

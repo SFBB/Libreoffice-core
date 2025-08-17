@@ -62,25 +62,26 @@ using ::rtl::Uri;
 
 XMLFilterSettingsDialog::XMLFilterSettingsDialog(weld::Window* pParent,
         const css::uno::Reference<css::uno::XComponentContext>& rxContext)
-    : GenericDialogController(pParent, "filter/ui/xmlfiltersettings.ui", "XMLFilterSettingsDialog")
+    : GenericDialogController(pParent, u"filter/ui/xmlfiltersettings.ui"_ustr, u"XMLFilterSettingsDialog"_ustr)
     , mxContext( rxContext )
-    , m_sTemplatePath("$(user)/template/")
-    , m_sDocTypePrefix("doctype:")
-    , m_xPBNew(m_xBuilder->weld_button("new"))
-    , m_xPBEdit(m_xBuilder->weld_button("edit"))
-    , m_xPBTest(m_xBuilder->weld_button("test"))
-    , m_xPBDelete(m_xBuilder->weld_button("delete"))
-    , m_xPBSave(m_xBuilder->weld_button("save"))
-    , m_xPBOpen(m_xBuilder->weld_button("open"))
-    , m_xPBClose(m_xBuilder->weld_button("close"))
-    , m_xFilterListBox(m_xBuilder->weld_tree_view("filterlist"))
+    , m_sTemplatePath(u"$(user)/template/"_ustr)
+    , m_sDocTypePrefix(u"doctype:"_ustr)
+    , m_xPBNew(m_xBuilder->weld_button(u"new"_ustr))
+    , m_xPBEdit(m_xBuilder->weld_button(u"edit"_ustr))
+    , m_xPBTest(m_xBuilder->weld_button(u"test"_ustr))
+    , m_xPBDelete(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xPBSave(m_xBuilder->weld_button(u"save"_ustr))
+    , m_xPBOpen(m_xBuilder->weld_button(u"open"_ustr))
+    , m_xPBClose(m_xBuilder->weld_button(u"close"_ustr))
+    , m_xFilterListBox(m_xBuilder->weld_tree_view(u"filterlist"_ustr))
 {
     m_xFilterListBox->set_selection_mode(SelectionMode::Multiple);
 
     m_xFilterListBox->set_size_request(m_xFilterListBox->get_approximate_digit_width() * 65,
                                        m_xFilterListBox->get_height_rows(12));
 
-    m_xFilterListBox->connect_changed( LINK( this, XMLFilterSettingsDialog, SelectionChangedHdl_Impl ) );
+    m_xFilterListBox->connect_selection_changed(
+        LINK(this, XMLFilterSettingsDialog, SelectionChangedHdl_Impl));
     m_xFilterListBox->connect_row_activated( LINK( this, XMLFilterSettingsDialog, DoubleClickHdl_Impl ) );
     m_xFilterListBox->set_accessible_name(FilterResId(STR_XML_FILTER_LISTBOX));
 
@@ -94,9 +95,9 @@ XMLFilterSettingsDialog::XMLFilterSettingsDialog(weld::Window* pParent,
 
     try
     {
-        mxFilterContainer.set( rxContext->getServiceManager()->createInstanceWithContext( "com.sun.star.document.FilterFactory", rxContext ), UNO_QUERY );
-        mxTypeDetection.set( rxContext->getServiceManager()->createInstanceWithContext( "com.sun.star.document.TypeDetection", rxContext ), UNO_QUERY );
-        mxExtendedTypeDetection.set( rxContext->getServiceManager()->createInstanceWithContext( "com.sun.star.document.ExtendedTypeDetectionFactory", rxContext ), UNO_QUERY );
+        mxFilterContainer.set( rxContext->getServiceManager()->createInstanceWithContext( u"com.sun.star.document.FilterFactory"_ustr, rxContext ), UNO_QUERY );
+        mxTypeDetection.set( rxContext->getServiceManager()->createInstanceWithContext( u"com.sun.star.document.TypeDetection"_ustr, rxContext ), UNO_QUERY );
+        mxExtendedTypeDetection.set( rxContext->getServiceManager()->createInstanceWithContext( u"com.sun.star.document.ExtendedTypeDetectionFactory"_ustr, rxContext ), UNO_QUERY );
 
         SvtPathOptions aOptions;
         m_sTemplatePath = aOptions.SubstituteVariable( m_sTemplatePath );
@@ -495,14 +496,14 @@ bool XMLFilterSettingsDialog::insertOrEdit( filter_info_impl* pNewInfo, const fi
 
         // 3. create property values for filter entry
         Sequence< PropertyValue > aFilterData{
-            comphelper::makePropertyValue("Type", pFilterEntry->maType),
-            comphelper::makePropertyValue("UIName", pFilterEntry->maInterfaceName),
-            comphelper::makePropertyValue("DocumentService", pFilterEntry->maDocumentService),
-            comphelper::makePropertyValue("FilterService", OUString( "com.sun.star.comp.Writer.XmlFilterAdaptor" )),
-            comphelper::makePropertyValue("Flags", pFilterEntry->maFlags),
-            comphelper::makePropertyValue("UserData", aUserData),
-            comphelper::makePropertyValue("FileFormatVersion", pFilterEntry->maFileFormatVersion),
-            comphelper::makePropertyValue("TemplateName", pFilterEntry->maImportTemplate)
+            comphelper::makePropertyValue(u"Type"_ustr, pFilterEntry->maType),
+            comphelper::makePropertyValue(u"UIName"_ustr, pFilterEntry->maInterfaceName),
+            comphelper::makePropertyValue(u"DocumentService"_ustr, pFilterEntry->maDocumentService),
+            comphelper::makePropertyValue(u"FilterService"_ustr, u"com.sun.star.comp.Writer.XmlFilterAdaptor"_ustr),
+            comphelper::makePropertyValue(u"Flags"_ustr, pFilterEntry->maFlags),
+            comphelper::makePropertyValue(u"UserData"_ustr, aUserData),
+            comphelper::makePropertyValue(u"FileFormatVersion"_ustr, pFilterEntry->maFileFormatVersion),
+            comphelper::makePropertyValue(u"TemplateName"_ustr, pFilterEntry->maImportTemplate)
         };
 
         // 4. insert new or replace existing filter
@@ -541,10 +542,10 @@ bool XMLFilterSettingsDialog::insertOrEdit( filter_info_impl* pNewInfo, const fi
             aDocType.clear();
 
         Sequence< PropertyValue > aValues{
-            comphelper::makePropertyValue("UIName", pFilterEntry->maInterfaceName),
-            comphelper::makePropertyValue("ClipboardFormat", aDocType),
-            comphelper::makePropertyValue("DocumentIconID", pFilterEntry->mnDocumentIconID),
-            comphelper::makePropertyValue("Extensions", createExtensionsSequence( pFilterEntry->maExtension ))
+            comphelper::makePropertyValue(u"UIName"_ustr, pFilterEntry->maInterfaceName),
+            comphelper::makePropertyValue(u"ClipboardFormat"_ustr, aDocType),
+            comphelper::makePropertyValue(u"DocumentIconID"_ustr, pFilterEntry->mnDocumentIconID),
+            comphelper::makePropertyValue(u"Extensions"_ustr, createExtensionsSequence( pFilterEntry->maExtension ))
         };
 
         // the detect service will only be registered, if a doctype/search token was specified
@@ -553,7 +554,7 @@ bool XMLFilterSettingsDialog::insertOrEdit( filter_info_impl* pNewInfo, const fi
             aValues.realloc(5);
             auto pValues = aValues.getArray();
             pValues[4].Name = "DetectService";
-            pValues[4].Value <<= OUString( "com.sun.star.comp.filters.XMLFilterDetect" );
+            pValues[4].Value <<= u"com.sun.star.comp.filters.XMLFilterDetect"_ustr;
         }
 
         // 6. insert new or replace existing type information
@@ -595,7 +596,7 @@ bool XMLFilterSettingsDialog::insertOrEdit( filter_info_impl* pNewInfo, const fi
 
         if( !bOk )
         {
-            // we failed to add the type, so lets remove the filter
+            // we failed to add the type, so let's remove the filter
             try
             {
                 mxFilterContainer->removeByName( pFilterEntry->maFilterName );
@@ -622,7 +623,7 @@ bool XMLFilterSettingsDialog::insertOrEdit( filter_info_impl* pNewInfo, const fi
 
             if( !bOk )
             {
-                // we failed to add the filter, so lets remove the type
+                // we failed to add the filter, so let's remove the type
                 try
                 {
                     mxTypeDetection->removeByName( pFilterEntry->maType );
@@ -640,7 +641,7 @@ bool XMLFilterSettingsDialog::insertOrEdit( filter_info_impl* pNewInfo, const fi
     {
         if( mxExtendedTypeDetection.is() )
         {
-            OUString sFilterDetectService( "com.sun.star.comp.filters.XMLFilterDetect" );
+            OUString sFilterDetectService( u"com.sun.star.comp.filters.XMLFilterDetect"_ustr );
             if( mxExtendedTypeDetection->hasByName( sFilterDetectService ) )
             {
                 Sequence< PropertyValue > aSequence;
@@ -828,7 +829,7 @@ void XMLFilterSettingsDialog::onSave()
         FileDialogFlags::NONE, m_xDialog.get());
     aDlg.SetContext(sfx2::FileDialogHelper::XMLFilterSettings);
 
-    OUString aExtensions( "*.jar" );
+    OUString aExtensions( u"*.jar"_ustr );
     OUString aFilterName = FilterResId(STR_FILTER_PACKAGE) +
         " (" + aExtensions + ")";
 
@@ -842,7 +843,7 @@ void XMLFilterSettingsDialog::onSave()
 
     INetURLObject aURL( aDlg.GetPath() );
 
-    OUString sPlaceholder( "%s" );
+    OUString sPlaceholder( u"%s"_ustr );
 
     OUString aMsg;
     if( nFilters > 0 )
@@ -874,7 +875,7 @@ void XMLFilterSettingsDialog::onOpen()
     FileDialogFlags::NONE, m_xDialog.get());
     aDlg.SetContext(sfx2::FileDialogHelper::XMLFilterSettings);
 
-    OUString aExtensions( "*.jar" );
+    OUString aExtensions( u"*.jar"_ustr );
     OUString aFilterName = FilterResId(STR_FILTER_PACKAGE) +
         " (" + aExtensions + ")";
 
@@ -903,7 +904,7 @@ void XMLFilterSettingsDialog::onOpen()
     disposeFilterList();
     initFilterList();
 
-    OUString sPlaceholder( "%s" );
+    OUString sPlaceholder( u"%s"_ustr );
     OUString aMsg;
     if( nFilters == 0 )
     {
@@ -1090,9 +1091,8 @@ void XMLFilterSettingsDialog::initFilterList()
                 }
 
                 // add entry to internal container and to ui filter list box
-                maFilterVector.push_back( std::unique_ptr<filter_info_impl>(pTempFilter.get()) );
-                addFilterEntry( pTempFilter.release() );
-
+                maFilterVector.push_back(std::move(pTempFilter));
+                addFilterEntry(maFilterVector.back().get());
 
                 pTempFilter.reset( new filter_info_impl );
             }
@@ -1111,11 +1111,11 @@ void XMLFilterSettingsDialog::initFilterList()
     }
 }
 
-application_info_impl::application_info_impl( const char * pDocumentService, const OUString& rUINameRes, const char * mpXMLImporter, const char * mpXMLExporter )
-:   maDocumentService( pDocumentService, strlen( pDocumentService ), RTL_TEXTENCODING_ASCII_US ),
+application_info_impl::application_info_impl( const OUString& rDocumentService, const OUString& rUINameRes, const OUString& rXMLImporter, const OUString& rXMLExporter )
+:   maDocumentService( rDocumentService ),
     maDocumentUIName(Translate::ExpandVariables(rUINameRes)),
-    maXMLImporter( mpXMLImporter, strlen( mpXMLImporter ), RTL_TEXTENCODING_ASCII_US ),
-    maXMLExporter( mpXMLExporter, strlen( mpXMLExporter ), RTL_TEXTENCODING_ASCII_US )
+    maXMLImporter( rXMLImporter ),
+    maXMLExporter( rXMLExporter )
 {
 }
 
@@ -1123,46 +1123,46 @@ std::vector< application_info_impl > const & getApplicationInfos()
 {
     static std::vector< application_info_impl > const aInfos
     {
-        {   "com.sun.star.text.TextDocument",
+        {   u"com.sun.star.text.TextDocument"_ustr,
             STR_APPL_NAME_WRITER,
-            "com.sun.star.comp.Writer.XMLImporter",
-            "com.sun.star.comp.Writer.XMLExporter" },
+            u"com.sun.star.comp.Writer.XMLImporter"_ustr,
+            u"com.sun.star.comp.Writer.XMLExporter"_ustr },
 
-        {   "com.sun.star.sheet.SpreadsheetDocument",
+        {   u"com.sun.star.sheet.SpreadsheetDocument"_ustr,
             STR_APPL_NAME_CALC,
-            "com.sun.star.comp.Calc.XMLImporter",
-            "com.sun.star.comp.Calc.XMLExporter" },
+            u"com.sun.star.comp.Calc.XMLImporter"_ustr,
+            u"com.sun.star.comp.Calc.XMLExporter"_ustr },
 
-        {  "com.sun.star.presentation.PresentationDocument",
+        {   u"com.sun.star.presentation.PresentationDocument"_ustr,
             STR_APPL_NAME_IMPRESS,
-            "com.sun.star.comp.Impress.XMLImporter",
-            "com.sun.star.comp.Impress.XMLExporter" },
+            u"com.sun.star.comp.Impress.XMLImporter"_ustr,
+            u"com.sun.star.comp.Impress.XMLExporter"_ustr },
 
-        {   "com.sun.star.drawing.DrawingDocument",
+        {   u"com.sun.star.drawing.DrawingDocument"_ustr,
             STR_APPL_NAME_DRAW,
-            "com.sun.star.comp.Draw.XMLImporter",
-            "com.sun.star.comp.Draw.XMLExporter" },
+            u"com.sun.star.comp.Draw.XMLImporter"_ustr,
+            u"com.sun.star.comp.Draw.XMLExporter"_ustr },
 
         // --- oasis file formats...
-        {   "com.sun.star.text.TextDocument",
+        {   u"com.sun.star.text.TextDocument"_ustr,
             STR_APPL_NAME_OASIS_WRITER,
-            "com.sun.star.comp.Writer.XMLOasisImporter",
-            "com.sun.star.comp.Writer.XMLOasisExporter" },
+            u"com.sun.star.comp.Writer.XMLOasisImporter"_ustr,
+            u"com.sun.star.comp.Writer.XMLOasisExporter"_ustr },
 
-        {   "com.sun.star.sheet.SpreadsheetDocument",
+        {   u"com.sun.star.sheet.SpreadsheetDocument"_ustr,
             STR_APPL_NAME_OASIS_CALC,
-            "com.sun.star.comp.Calc.XMLOasisImporter",
-            "com.sun.star.comp.Calc.XMLOasisExporter" },
+            u"com.sun.star.comp.Calc.XMLOasisImporter"_ustr,
+            u"com.sun.star.comp.Calc.XMLOasisExporter"_ustr },
 
-        {   "com.sun.star.presentation.PresentationDocument",
+        {   u"com.sun.star.presentation.PresentationDocument"_ustr,
             STR_APPL_NAME_OASIS_IMPRESS,
-            "com.sun.star.comp.Impress.XMLOasisImporter",
-            "com.sun.star.comp.Impress.XMLOasisExporter" },
+            u"com.sun.star.comp.Impress.XMLOasisImporter"_ustr,
+            u"com.sun.star.comp.Impress.XMLOasisExporter"_ustr },
 
-        {  "com.sun.star.drawing.DrawingDocument",
+        {  u"com.sun.star.drawing.DrawingDocument"_ustr,
             STR_APPL_NAME_OASIS_DRAW,
-            "com.sun.star.comp.Draw.XMLOasisImporter",
-            "com.sun.star.comp.Draw.XMLOasisExporter" },
+            u"com.sun.star.comp.Draw.XMLOasisImporter"_ustr,
+            u"com.sun.star.comp.Draw.XMLOasisExporter"_ustr },
     };
 
     return aInfos;
@@ -1289,7 +1289,7 @@ Sequence< OUString > filter_info_impl::getFilterUserData() const
 {
     return
     {
-        "com.sun.star.documentconversion.XSLTFilter",
+        u"com.sun.star.documentconversion.XSLTFilter"_ustr,
         OUString::boolean( mbNeedsXSLT2 ),
         maImportService,
         maExportService,

@@ -31,11 +31,11 @@
 #include <strings.hxx>
 #include "resultcolumn.hxx"
 #include "resultset.hxx"
+#include <connection.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdbcx;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::cppu;
@@ -43,7 +43,7 @@ using namespace ::osl;
 using namespace dbaccess;
 
 
-OPreparedStatement::OPreparedStatement(const Reference< XConnection > & _xConn,
+OPreparedStatement::OPreparedStatement(const rtl::Reference< OConnection > & _xConn,
                                       const Reference< XInterface > & _xStatement)
                    :OStatementBase(_xConn, _xStatement)
 {
@@ -107,7 +107,7 @@ void OPreparedStatement::release() noexcept
 // XServiceInfo
 OUString OPreparedStatement::getImplementationName(  )
 {
-    return "com.sun.star.sdb.OPreparedStatement";
+    return u"com.sun.star.sdb.OPreparedStatement"_ustr;
 }
 
 sal_Bool OPreparedStatement::supportsService( const OUString& _rServiceName )
@@ -187,14 +187,14 @@ Reference< XResultSet >  OPreparedStatement::executeQuery()
 
     disposeResultSet();
 
-    Reference< XResultSet > xResultSet;
+    rtl::Reference< OResultSet > xResultSet;
     Reference< XResultSet > xDrvResultSet = Reference< XPreparedStatement >( m_xAggregateAsSet, UNO_QUERY_THROW )->executeQuery();
     if (xDrvResultSet.is())
     {
         xResultSet = new OResultSet(xDrvResultSet, *this, m_pColumns->isCaseSensitive());
 
         // keep the resultset weak
-        m_aResultSet = xResultSet;
+        m_xWeakResultSet = xResultSet.get();
     }
     return xResultSet;
 }
@@ -221,7 +221,7 @@ sal_Bool OPreparedStatement::execute()
 
 Reference< XConnection > OPreparedStatement::getConnection()
 {
-    return Reference< XConnection > (m_xParent, UNO_QUERY);
+    return m_xParent.get();
 }
 
 // XParameters

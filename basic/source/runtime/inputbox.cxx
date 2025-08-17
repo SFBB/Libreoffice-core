@@ -52,11 +52,11 @@ public:
 SvRTLInputBox::SvRTLInputBox(weld::Window* pParent, const OUString& rPrompt,
         const OUString& rTitle, const OUString& rDefault,
         tools::Long nXTwips, tools::Long nYTwips)
-    : GenericDialogController(pParent, "svt/ui/inputbox.ui", "InputBox")
-    , m_xEdit(m_xBuilder->weld_entry("entry"))
-    , m_xOk(m_xBuilder->weld_button("ok"))
-    , m_xCancel(m_xBuilder->weld_button("cancel"))
-    , m_xPromptText(m_xBuilder->weld_label("prompt"))
+    : GenericDialogController(pParent, u"svt/ui/inputbox.ui"_ustr, u"InputBox"_ustr)
+    , m_xEdit(m_xBuilder->weld_entry(u"entry"_ustr))
+    , m_xOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xCancel(m_xBuilder->weld_button(u"cancel"_ustr))
+    , m_xPromptText(m_xBuilder->weld_label(u"prompt"_ustr))
 {
     PositionDialog( nXTwips, nYTwips );
     InitButtons();
@@ -118,7 +118,7 @@ void SbRtl_InputBox(StarBASIC *, SbxArray & rPar, bool)
         OUString aTitle;
         OUString aDefault;
         sal_Int32 nX = -1, nY = -1;  // center
-        const OUString& rPrompt = rPar.Get(1)->GetOUString();
+        const OUString aPrompt = rPar.Get(1)->GetOUString();
         if (nArgCount > 2 && !rPar.Get(2)->IsErr())
             aTitle = rPar.Get(2)->GetOUString();
         if (nArgCount > 3 && !rPar.Get(3)->IsErr())
@@ -133,7 +133,7 @@ void SbRtl_InputBox(StarBASIC *, SbxArray & rPar, bool)
             nX = rPar.Get(4)->GetLong();
             nY = rPar.Get(5)->GetLong();
         }
-        SvRTLInputBox aDlg(Application::GetDefDialogParent(), rPrompt, aTitle, aDefault, nX, nY);
+        SvRTLInputBox aDlg(Application::GetDefDialogParent(), aPrompt, aTitle, aDefault, nX, nY);
         aDlg.run();
         rPar.Get(0)->PutString(aDlg.GetText());
     }

@@ -60,10 +60,11 @@
 #include <fmtfollowtextflow.hxx>
 #include <textboxhelper.hxx>
 #include <svx/diagram/IDiagramHelper.hxx>
+#include <svl/grabbagitem.hxx>
+#include <IDocumentSettingAccess.hxx>
 
 using namespace ::com::sun::star;
 using namespace css::beans;
-using namespace css::drawing;
 using namespace css::uno;
 
 SFX_IMPL_SUPERCLASS_INTERFACE(SwDrawBaseShell, SwBaseShell)
@@ -95,7 +96,7 @@ SwDrawBaseShell::~SwDrawBaseShell()
     SwTransferable::ClearSelection( GetShell() );
 }
 
-void SwDrawBaseShell::Execute(SfxRequest const &rReq)
+void SwDrawBaseShell::Execute(SfxRequest& rReq)
 {
     SwWrtShell *pSh = &GetShell();
     SdrView*    pSdrView = pSh->GetDrawView();
@@ -117,7 +118,7 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
     {
         case FN_DRAW_WRAP_DLG:
         {
-            if(pSdrView->AreObjectsMarked())
+            if(pSdrView->GetMarkedObjectList().GetMarkCount() != 0)
             {
                 if(!pArgs)
                 {
@@ -139,23 +140,32 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
                         aSet.Put(SfxInt16Item(FN_DRAW_WRAP_DLG, pSh->GetLayerId().get()));
 
                         pSh->GetObjAttr(aSet);
+
+                        auto xRequest = std::make_shared<SfxRequest>(rReq);
+                        rReq.Ignore(); // the 'old' request is not relevant any more
                         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                        ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateSwWrapDlg(GetView().GetFrameWeld(), aSet, pSh));
-
-                        if (pDlg->Execute() == RET_OK)
-                        {
-                            const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
-                            if(const SfxInt16Item* pWrapItem = pOutSet->GetItemIfSet(FN_DRAW_WRAP_DLG, false))
+                        VclPtr<SfxAbstractDialog> pDlg(pFact->CreateSwWrapDlg(GetView().GetFrameWeld(), aSet, pSh));
+                        pDlg->StartExecuteAsync(
+                            [pDlg, pSh, xRequest=std::move(xRequest)] (sal_Int32 nResult)->void
                             {
-                                short nLayer = pWrapItem->GetValue();
-                                if (nLayer == 1)
-                                    pSh->SelectionToHeaven();
-                                else
-                                    pSh->SelectionToHell();
-                            }
+                                if (nResult == RET_OK)
+                                {
+                                    const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
+                                    if(const SfxInt16Item* pWrapItem = pOutSet->GetItemIfSet(FN_DRAW_WRAP_DLG, false))
+                                    {
+                                        short nLayer = pWrapItem->GetValue();
+                                        if (nLayer == 1)
+                                            pSh->SelectionToHeaven();
+                                        else
+                                            pSh->SelectionToHell();
+                                    }
 
-                            pSh->SetObjAttr(*pOutSet);
-                        }
+                                    pSh->SetObjAttr(*pOutSet);
+                                }
+                                pDlg->disposeOnce();
+                                xRequest->Done();
+                            }
+                        );
                     }
                 }
             }
@@ -164,7 +174,7 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
 
         case SID_ATTR_TRANSFORM:
         {
-            if(pSdrView->AreObjectsMarked())
+            if(pSdrView->GetMarkedObjectList().GetMarkCount() != 0)
             {
                 if(!pArgs)
                 {
@@ -204,10 +214,9 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
                         }
                         SfxItemSet aNewAttr(pSdrView->GetGeoAttrFromMarked());
 
-                        const WhichRangesContainer& pRange = pDlg->GetInputRanges( *aNewAttr.GetPool() );
-                        SfxItemSet aSet( *aNewAttr.GetPool(), pRange );
+                        SfxItemSet aSet(*aNewAttr.GetPool(), pDlg->GetInputRanges(*aNewAttr.GetPool()));
                         FieldUnit eMetric = ::GetDfltMetric( dynamic_cast<SwWebView*>(&GetView()) != nullptr );
-                        SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)) );
+                        SwModule::get()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)) );
 
                         aSet.Put( aNewAttr, false );
 
@@ -234,6 +243,15 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
                         aSet.Put(SfxInt16Item(SID_ATTR_TRANSFORM_HORI_RELATION, aHOrient.GetRelationOrient() ));
                         aSet.Put(SfxBoolItem(SID_ATTR_TRANSFORM_HORI_MIRROR, aHOrient.IsPosToggle()));
                         aSet.Put(SfxInt32Item(SID_ATTR_TRANSFORM_HORI_POSITION, aHOrient.GetPos()));
+
+                        const IDocumentSettingAccess& rIDSA = pFrameFormat->getIDocumentSettingAccess();
+                        if (rIDSA.get(DocumentSettingId::DO_NOT_MIRROR_RTL_DRAW_OBJS))
+                        {
+                            SfxGrabBagItem aItem(RES_CHRATR_GRABBAG,
+                                    std::map<OUString, css::uno::Any>{
+                                    { u"DoNotMirrorRtlDrawObjs"_ustr, uno::Any(true) } } );
+                            aSet.Put(aItem);
+                        }
 
                         aSet.Put(SfxUInt16Item(SID_HTML_MODE, nHtmlMode));
 
@@ -370,7 +388,7 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
 
         case SID_DELETE:
         case FN_BACKSPACE:
-            if (pSh->IsObjSelected() && !pSdrView->IsTextEdit())
+            if (pSh->GetSelectedObjCount() && !pSdrView->IsTextEdit())
             {
                 bDone = true;
 
@@ -409,7 +427,7 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
             break;
 
         case SID_GROUP:
-            if (pSh->IsObjSelected() > 1 && pSh->IsGroupAllowed())
+            if (pSh->GetSelectedObjCount() > 1 && pSh->IsGroupAllowed())
             {
                 pSh->GroupSelection();
                 rBind.Invalidate(SID_UNGROUP);
@@ -462,10 +480,15 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
                         else // SID_EDIT_DIAGRAM
                         {
                             VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
-                            ScopedVclPtr<VclAbstractDialog> pDlg = pFact->CreateDiagramDialog(
+                            VclPtr<VclAbstractDialog> pDlg = pFact->CreateDiagramDialog(
                                 GetView().GetFrameWeld(),
                                 *static_cast<SdrObjGroup*>(pObj));
-                            pDlg->Execute();
+                            pDlg->StartExecuteAsync(
+                                [pDlg] (sal_Int32 /*nResult*/)->void
+                                {
+                                    pDlg->disposeOnce();
+                                }
+                            );
                         }
                     }
                 }
@@ -581,32 +604,41 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
         {
             bDone = true;
 
-            if(1 == pSdrView->GetMarkedObjectCount())
+            if(1 == pSdrView->GetMarkedObjectList().GetMarkCount())
             {
                 // #i68101#
-                SdrObject* pSelected = pSdrView->GetMarkedObjectByIndex(0);
-                OSL_ENSURE(pSelected, "DrawViewShell::FuTemp03: nMarkCount, but no object (!)");
-                OUString aName(pSelected->GetName());
+                rtl::Reference<SdrObject> pSelected = pSdrView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
+                assert(pSelected && "DrawViewShell::FuTemp03: nMarkCount, but no object (!)");
+                OUString aOrigName(pSelected->GetName());
 
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                ScopedVclPtr<AbstractSvxObjectNameDialog> pDlg(pFact->CreateSvxObjectNameDialog(GetView().GetFrameWeld(), aName));
+                VclPtr<AbstractSvxObjectNameDialog> pDlg(pFact->CreateSvxObjectNameDialog(GetView().GetFrameWeld(), aOrigName));
 
                 pDlg->SetCheckNameHdl(LINK(this, SwDrawBaseShell, CheckGroupShapeNameHdl));
 
-                if(RET_OK == pDlg->Execute())
-                {
-                    const OUString aOrigName = aName;
-                    pDlg->GetName(aName);
-                    pSelected->SetName(aName);
-                    pSh->SetModified();
-
-                    // update accessibility sidebar object name if we modify the object name on the navigator bar
-                    if (!aName.isEmpty() && aOrigName != aName)
+                pDlg->StartExecuteAsync(
+                    [pDlg, pSelected, pSh, aOrigName] (sal_Int32 nResult)->void
                     {
-                        if (SwNode* pSwNode = FindFrameFormat(pSelected)->GetAnchor().GetAnchorNode())
-                            pSwNode->resetAndQueueAccessibilityCheck(true);
+                        if (nResult == RET_OK)
+                        {
+                            OUString aNewName = pDlg->GetName();
+                            pSelected->SetName(aNewName);
+                            pSh->SetModified();
+
+                            // update accessibility sidebar object name if we modify the object name on the navigator bar
+                            if (!aNewName.isEmpty() && aOrigName != aNewName)
+                            {
+                                auto pFrameFormat = FindFrameFormat(pSelected.get());
+                                if (pFrameFormat)
+                                {
+                                    if (SwNode* pSwNode = pFrameFormat->GetAnchor().GetAnchorNode())
+                                        pSwNode->resetAndQueueAccessibilityCheck(true);
+                                }
+                            }
+                        }
+                        pDlg->disposeOnce();
                     }
-                }
+                );
             }
 
             break;
@@ -617,30 +649,32 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
         {
             bDone = true;
 
-            if(1 == pSdrView->GetMarkedObjectCount())
+            if(1 == pSdrView->GetMarkedObjectList().GetMarkCount())
             {
-                SdrObject* pSelected = pSdrView->GetMarkedObjectByIndex(0);
-                OSL_ENSURE(pSelected, "DrawViewShell::FuTemp03: nMarkCount, but no object (!)");
+                rtl::Reference<SdrObject> pSelected = pSdrView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
+                assert(pSelected && "DrawViewShell::FuTemp03: nMarkCount, but no object (!)");
                 OUString aTitle(pSelected->GetTitle());
                 OUString aDescription(pSelected->GetDescription());
                 bool isDecorative(pSelected->IsDecorative());
 
                 SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                ScopedVclPtr<AbstractSvxObjectTitleDescDialog> pDlg(pFact->CreateSvxObjectTitleDescDialog(GetView().GetFrameWeld(),
+                VclPtr<AbstractSvxObjectTitleDescDialog> pDlg(pFact->CreateSvxObjectTitleDescDialog(GetView().GetFrameWeld(),
                             aTitle, aDescription, isDecorative));
 
-                if(RET_OK == pDlg->Execute())
-                {
-                    pDlg->GetTitle(aTitle);
-                    pDlg->GetDescription(aDescription);
-                    pDlg->IsDecorative(isDecorative);
+                pDlg->StartExecuteAsync(
+                    [pDlg, pSelected, pSh] (sal_Int32 nResult)->void
+                    {
+                        if (nResult == RET_OK)
+                        {
+                            pSelected->SetTitle(pDlg->GetTitle());
+                            pSelected->SetDescription(pDlg->GetDescription());
+                            pSelected->SetDecorative(pDlg->IsDecorative());
 
-                    pSelected->SetTitle(aTitle);
-                    pSelected->SetDescription(aDescription);
-                    pSelected->SetDecorative(isDecorative);
-
-                    pSh->SetModified();
-                }
+                            pSh->SetModified();
+                        }
+                        pDlg->disposeOnce();
+                    }
+                );
             }
 
             break;
@@ -656,6 +690,7 @@ void SwDrawBaseShell::Execute(SfxRequest const &rReq)
         }
 
         case SID_EDIT_HYPERLINK:
+        case SID_INSERT_HYPERLINK:
         case SID_HYPERLINK_DIALOG:
         {
             GetView().GetViewFrame().SetChildWindow(SID_HYPERLINK_DIALOG, true);
@@ -717,8 +752,7 @@ IMPL_LINK( SwDrawBaseShell, CheckGroupShapeNameHdl, AbstractSvxObjectNameDialog&
     OSL_ENSURE(rMarkList.GetMarkCount() == 1, "wrong draw selection");
     SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
     const OUString sCurrentName = pObj->GetName();
-    OUString sNewName;
-    rNameDialog.GetName(sNewName);
+    OUString sNewName = rNameDialog.GetName();
     bool bRet = false;
     if (sNewName.isEmpty() || sCurrentName == sNewName)
         bRet = true;
@@ -763,11 +797,11 @@ void SwDrawBaseShell::GetState(SfxItemSet& rSet)
             case FN_FRAME_DOWN:
             case SID_DELETE:
             case FN_BACKSPACE:
-                if( bProtected || !rSh.IsObjSelected() )
+                if( bProtected || !rSh.GetSelectedObjCount() )
                     rSet.DisableItem( nWhich );
                 break;
             case SID_GROUP:
-                if ( rSh.IsObjSelected() < 2 || bProtected || !rSh.IsGroupAllowed() )
+                if ( rSh.GetSelectedObjCount() < 2 || bProtected || !rSh.IsGroupAllowed() )
                     rSet.DisableItem( nWhich );
                 break;
             case SID_UNGROUP:
@@ -836,8 +870,12 @@ void SwDrawBaseShell::GetState(SfxItemSet& rSet)
 
                         SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
                         SwFrameFormat* pFrameFormat = FindFrameFormat(pObj);
-                        SwFormatHoriOrient aHOrient(pFrameFormat->GetFormatAttr(RES_HORI_ORIENT));
-                        rSet.Put(SfxBoolItem(nWhich, aHOrient.GetHoriOrient() == nHoriOrient));
+                        if (pFrameFormat)
+                        {
+                            SwFormatHoriOrient aHOrient(
+                                pFrameFormat->GetFormatAttr(RES_HORI_ORIENT));
+                            rSet.Put(SfxBoolItem(nWhich, aHOrient.GetHoriOrient() == nHoriOrient));
+                        }
                     }
 
                     if (bVert && !bDisableThis && rMarkList.GetMarkCount() == 1)
@@ -860,15 +898,19 @@ void SwDrawBaseShell::GetState(SfxItemSet& rSet)
 
                         SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
                         SwFrameFormat* pFrameFormat = FindFrameFormat(pObj);
-                        SwFormatVertOrient aVOrient(pFrameFormat->GetFormatAttr(RES_VERT_ORIENT));
-                        rSet.Put(SfxBoolItem(nWhich, aVOrient.GetVertOrient() == nVertOrient));
+                        if (pFrameFormat)
+                        {
+                            SwFormatVertOrient aVOrient(
+                                pFrameFormat->GetFormatAttr(RES_VERT_ORIENT));
+                            rSet.Put(SfxBoolItem(nWhich, aVOrient.GetVertOrient() == nVertOrient));
+                        }
                     }
                 }
                 break;
 
             case FN_NAME_SHAPE :
                 {
-                    if(1 != pSdrView->GetMarkedObjectCount())
+                    if(1 != pSdrView->GetMarkedObjectList().GetMarkCount())
                     {
                         rSet.DisableItem( nWhich );
                     }
@@ -880,7 +922,7 @@ void SwDrawBaseShell::GetState(SfxItemSet& rSet)
                 {
                     const bool bIsWebView(nullptr != dynamic_cast<SwWebView*>(&GetView()));
 
-                    if(!bIsWebView && 1 != pSdrView->GetMarkedObjectCount())
+                    if(!bIsWebView && 1 != pSdrView->GetMarkedObjectList().GetMarkCount())
                     {
                         rSet.DisableItem( nWhich );
                     }
@@ -888,12 +930,13 @@ void SwDrawBaseShell::GetState(SfxItemSet& rSet)
                 break;
 
             case SID_OPEN_HYPERLINK:
+            case SID_INSERT_HYPERLINK:
             case SID_EDIT_HYPERLINK:
             case SID_HYPERLINK_DIALOG:
             case SID_REMOVE_HYPERLINK:
             case SID_COPY_HYPERLINK_LOCATION:
             {
-                if (pSdrView->GetMarkedObjectCount() != 1)
+                if (pSdrView->GetMarkedObjectList().GetMarkCount() != 1)
                 {
                     rSet.DisableItem(nWhich);
                     break;
@@ -929,6 +972,10 @@ void SwDrawBaseShell::GetState(SfxItemSet& rSet)
                 {
                     if (pObj->getHyperlink().isEmpty())
                         rSet.DisableItem(nWhich);
+                }
+                if (nWhich == SID_INSERT_HYPERLINK && !pObj->getHyperlink().isEmpty())
+                {
+                    rSet.DisableItem(nWhich);
                 }
             }
             break;
@@ -968,8 +1015,6 @@ void SwDrawBaseShell::GetState(SfxItemSet& rSet)
                 }
             }
             break;
-
-
         }
         nWhich = aIter.NextWhich();
     }

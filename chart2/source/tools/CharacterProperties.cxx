@@ -37,6 +37,7 @@
 #include <i18nlangtag/languagetag.hxx>
 #include <tools/color.hxx>
 #include <vcl/outdev.hxx>
+#include <vcl/svapp.hxx>
 
 using namespace ::com::sun::star;
 
@@ -340,6 +341,7 @@ void CharacterProperties::AddPropertiesToVector(
 void CharacterProperties::AddDefaultsToMap(
     ::chart::tPropertyValueMap & rOutMap )
 {
+    SolarMutexGuard aGuard;
     const float fDefaultFontHeight = 13.0;
 
     SvtLinguConfig aLinguConfig;
@@ -361,9 +363,9 @@ void CharacterProperties::AddDefaultsToMap(
 
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_FONT_NAME, aFont.GetFamilyName() );
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_FONT_STYLE_NAME, aFont.GetStyleName() );
-    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_FONT_FAMILY, sal_Int16(aFont.GetFamilyType()) );//awt::FontFamily::SWISS
+    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_FONT_FAMILY, sal_Int16(aFont.GetFamilyTypeMaybeAskConfig()) );//awt::FontFamily::SWISS
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_FONT_CHAR_SET, sal_Int16(aFont.GetCharSet()) );//use awt::CharSet::DONTKNOW instead of SYSTEM to avoid assertion issue 50249
-    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_FONT_PITCH, sal_Int16(aFont.GetPitch()) );//awt::FontPitch::VARIABLE
+    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_FONT_PITCH, sal_Int16(aFont.GetPitchMaybeAskConfig()) );//awt::FontPitch::VARIABLE
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_COLOR, COL_AUTO ); //automatic color
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_CHAR_HEIGHT, fDefaultFontHeight );
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_UNDERLINE, awt::FontUnderline::NONE );
@@ -391,9 +393,9 @@ void CharacterProperties::AddDefaultsToMap(
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_ASIAN_LOCALE, aDefaultLocale_CJK );
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_ASIAN_FONT_NAME, aFontCJK.GetFamilyName() );
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_ASIAN_FONT_STYLE_NAME, aFontCJK.GetStyleName() );
-    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_ASIAN_FONT_FAMILY, sal_Int16(aFontCJK.GetFamilyType()) );
+    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_ASIAN_FONT_FAMILY, sal_Int16(aFontCJK.GetFamilyTypeMaybeAskConfig()) );
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_ASIAN_CHAR_SET, sal_Int16(aFontCJK.GetCharSet()) );
-    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_ASIAN_FONT_PITCH, sal_Int16(aFontCJK.GetPitch()) );
+    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_ASIAN_FONT_PITCH, sal_Int16(aFontCJK.GetPitchMaybeAskConfig()) );
 
     // Complex Text Layout (com.sun.star.style.CharacterPropertiesComplex)
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_COMPLEX_CHAR_HEIGHT, fDefaultFontHeight );
@@ -402,9 +404,9 @@ void CharacterProperties::AddDefaultsToMap(
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_COMPLEX_LOCALE, aDefaultLocale_CTL );
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_COMPLEX_FONT_NAME, aFontCTL.GetFamilyName() );
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_COMPLEX_FONT_STYLE_NAME, aFontCTL.GetStyleName() );
-    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_COMPLEX_FONT_FAMILY, sal_Int16(aFontCTL.GetFamilyType()) );
+    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_COMPLEX_FONT_FAMILY, sal_Int16(aFontCTL.GetFamilyTypeMaybeAskConfig()) );
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_COMPLEX_CHAR_SET, sal_Int16(aFontCTL.GetCharSet()) );
-    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_COMPLEX_FONT_PITCH, sal_Int16(aFontCTL.GetPitch()) );
+    ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_CHAR_COMPLEX_FONT_PITCH, sal_Int16(aFontCTL.GetPitchMaybeAskConfig()) );
 
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_WRITING_MODE, sal_Int16( css::text::WritingMode2::PAGE ) );
     ::chart::PropertyHelper::setPropertyValueDefault( rOutMap, PROP_PARA_IS_CHARACTER_DISTANCE, true );
@@ -422,17 +424,17 @@ awt::FontDescriptor CharacterProperties::createFontDescriptorFromPropertySet(
     awt::FontDescriptor aResult;
     // Note: keep this sorted!
     uno::Sequence< OUString > aPropNameSeq{
-        "CharFontCharSet",   // CharSet
-        "CharFontFamily",    // Family
-        "CharFontName",      // Name
-        "CharFontPitch",     // Pitch
-        "CharFontStyleName", // StyleName
-        "CharHeight",        // Height
-        "CharPosture",       // Slant
-        "CharStrikeout",     // Strikeout
-        "CharUnderline",     // Underline
-        "CharWeight",        // Weight
-        "CharWordMode"};     // WordLineMode
+        u"CharFontCharSet"_ustr,   // CharSet
+        u"CharFontFamily"_ustr,    // Family
+        u"CharFontName"_ustr,      // Name
+        u"CharFontPitch"_ustr,     // Pitch
+        u"CharFontStyleName"_ustr, // StyleName
+        u"CharHeight"_ustr,        // Height
+        u"CharPosture"_ustr,       // Slant
+        u"CharStrikeout"_ustr,     // Strikeout
+        u"CharUnderline"_ustr,     // Underline
+        u"CharWeight"_ustr,        // Weight
+        u"CharWordMode"_ustr};     // WordLineMode
     uno::Sequence< uno::Any > aValues( xMultiPropSet->getPropertyValues( aPropNameSeq ));
 
     sal_Int32 i=0;

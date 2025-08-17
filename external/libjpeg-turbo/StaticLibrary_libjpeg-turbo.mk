@@ -14,7 +14,7 @@ $(eval $(call gb_StaticLibrary_use_unpacked,libjpeg-turbo,libjpeg-turbo))
 $(eval $(call gb_StaticLibrary_set_warnings_disabled,libjpeg-turbo))
 
 $(eval $(call gb_StaticLibrary_set_include,libjpeg-turbo,\
-    -I$(call gb_UnpackedTarball_get_dir,libjpeg-turbo) \
+    -I$(gb_UnpackedTarball_workdir)/libjpeg-turbo \
     $$(INCLUDE) \
 ))
 
@@ -37,64 +37,71 @@ endif
 endif
 
 $(eval $(call gb_StaticLibrary_add_generated_cobjects,libjpeg-turbo,\
-    UnpackedTarball/libjpeg-turbo/jaricom \
-    UnpackedTarball/libjpeg-turbo/jcapimin \
-    UnpackedTarball/libjpeg-turbo/jcapistd \
-    UnpackedTarball/libjpeg-turbo/jcarith \
-    UnpackedTarball/libjpeg-turbo/jccoefct \
-    UnpackedTarball/libjpeg-turbo/jccolor \
-    UnpackedTarball/libjpeg-turbo/jcdctmgr \
-    UnpackedTarball/libjpeg-turbo/jchuff \
-    UnpackedTarball/libjpeg-turbo/jcicc \
-    UnpackedTarball/libjpeg-turbo/jcinit \
-    UnpackedTarball/libjpeg-turbo/jcmainct \
-    UnpackedTarball/libjpeg-turbo/jcmarker \
-    UnpackedTarball/libjpeg-turbo/jcmaster \
-    UnpackedTarball/libjpeg-turbo/jcomapi \
-    UnpackedTarball/libjpeg-turbo/jcparam \
-    UnpackedTarball/libjpeg-turbo/jcphuff \
-    UnpackedTarball/libjpeg-turbo/jcprepct \
-    UnpackedTarball/libjpeg-turbo/jcsample \
-    UnpackedTarball/libjpeg-turbo/jctrans \
-    UnpackedTarball/libjpeg-turbo/jdapimin \
-    UnpackedTarball/libjpeg-turbo/jdapistd \
-    UnpackedTarball/libjpeg-turbo/jdarith \
-    UnpackedTarball/libjpeg-turbo/jdatadst \
-    UnpackedTarball/libjpeg-turbo/jdatasrc \
-    UnpackedTarball/libjpeg-turbo/jdcoefct \
-    UnpackedTarball/libjpeg-turbo/jdcolor \
-    UnpackedTarball/libjpeg-turbo/jddctmgr \
-    UnpackedTarball/libjpeg-turbo/jdhuff \
-    UnpackedTarball/libjpeg-turbo/jdicc \
-    UnpackedTarball/libjpeg-turbo/jdinput \
-    UnpackedTarball/libjpeg-turbo/jdmainct \
-    UnpackedTarball/libjpeg-turbo/jdmarker \
-    UnpackedTarball/libjpeg-turbo/jdmaster \
-    UnpackedTarball/libjpeg-turbo/jdmerge \
-    UnpackedTarball/libjpeg-turbo/jdphuff \
-    UnpackedTarball/libjpeg-turbo/jdpostct \
-    UnpackedTarball/libjpeg-turbo/jdsample \
-    UnpackedTarball/libjpeg-turbo/jdtrans \
-    UnpackedTarball/libjpeg-turbo/jerror \
-    UnpackedTarball/libjpeg-turbo/jfdctflt \
-    UnpackedTarball/libjpeg-turbo/jfdctfst \
-    UnpackedTarball/libjpeg-turbo/jfdctint \
-    UnpackedTarball/libjpeg-turbo/jidctflt \
-    UnpackedTarball/libjpeg-turbo/jidctfst \
-    UnpackedTarball/libjpeg-turbo/jidctint \
-    UnpackedTarball/libjpeg-turbo/jidctred \
-    UnpackedTarball/libjpeg-turbo/jmemmgr \
-    UnpackedTarball/libjpeg-turbo/jmemnobs \
-    UnpackedTarball/libjpeg-turbo/jquant1 \
-    UnpackedTarball/libjpeg-turbo/jquant2 \
-    UnpackedTarball/libjpeg-turbo/jutils \
+    UnpackedTarball/libjpeg-turbo/src/jaricom \
+    UnpackedTarball/libjpeg-turbo/src/jcapimin \
+    UnpackedTarball/libjpeg-turbo/src/jcapistd \
+    UnpackedTarball/libjpeg-turbo/src/jcarith \
+    UnpackedTarball/libjpeg-turbo/src/jccoefct \
+    UnpackedTarball/libjpeg-turbo/src/jccolor \
+    UnpackedTarball/libjpeg-turbo/src/jcdctmgr \
+    UnpackedTarball/libjpeg-turbo/src/jcdiffct \
+    UnpackedTarball/libjpeg-turbo/src/jchuff \
+    UnpackedTarball/libjpeg-turbo/src/jcicc \
+    UnpackedTarball/libjpeg-turbo/src/jcinit \
+    UnpackedTarball/libjpeg-turbo/src/jclhuff \
+    UnpackedTarball/libjpeg-turbo/src/jclossls \
+    UnpackedTarball/libjpeg-turbo/src/jcmainct \
+    UnpackedTarball/libjpeg-turbo/src/jcmarker \
+    UnpackedTarball/libjpeg-turbo/src/jcmaster \
+    UnpackedTarball/libjpeg-turbo/src/jcomapi \
+    UnpackedTarball/libjpeg-turbo/src/jcparam \
+    UnpackedTarball/libjpeg-turbo/src/jcphuff \
+    UnpackedTarball/libjpeg-turbo/src/jcprepct \
+    UnpackedTarball/libjpeg-turbo/src/jcsample \
+    UnpackedTarball/libjpeg-turbo/src/jctrans \
+    UnpackedTarball/libjpeg-turbo/src/jdapimin \
+    UnpackedTarball/libjpeg-turbo/src/jdapistd \
+    UnpackedTarball/libjpeg-turbo/src/jdarith \
+    UnpackedTarball/libjpeg-turbo/src/jdatadst \
+    UnpackedTarball/libjpeg-turbo/src/jdatasrc \
+    UnpackedTarball/libjpeg-turbo/src/jdcoefct \
+    UnpackedTarball/libjpeg-turbo/src/jdcolor \
+    UnpackedTarball/libjpeg-turbo/src/jddctmgr \
+    UnpackedTarball/libjpeg-turbo/src/jddiffct \
+    UnpackedTarball/libjpeg-turbo/src/jdhuff \
+    UnpackedTarball/libjpeg-turbo/src/jdicc \
+    UnpackedTarball/libjpeg-turbo/src/jdinput \
+    UnpackedTarball/libjpeg-turbo/src/jdlhuff \
+    UnpackedTarball/libjpeg-turbo/src/jdlossls \
+    UnpackedTarball/libjpeg-turbo/src/jdmainct \
+    UnpackedTarball/libjpeg-turbo/src/jdmarker \
+    UnpackedTarball/libjpeg-turbo/src/jdmaster \
+    UnpackedTarball/libjpeg-turbo/src/jdmerge \
+    UnpackedTarball/libjpeg-turbo/src/jdphuff \
+    UnpackedTarball/libjpeg-turbo/src/jdpostct \
+    UnpackedTarball/libjpeg-turbo/src/jdsample \
+    UnpackedTarball/libjpeg-turbo/src/jdtrans \
+    UnpackedTarball/libjpeg-turbo/src/jerror \
+    UnpackedTarball/libjpeg-turbo/src/jfdctflt \
+    UnpackedTarball/libjpeg-turbo/src/jfdctfst \
+    UnpackedTarball/libjpeg-turbo/src/jfdctint \
+    UnpackedTarball/libjpeg-turbo/src/jidctflt \
+    UnpackedTarball/libjpeg-turbo/src/jidctfst \
+    UnpackedTarball/libjpeg-turbo/src/jidctint \
+    UnpackedTarball/libjpeg-turbo/src/jidctred \
+    UnpackedTarball/libjpeg-turbo/src/jmemmgr \
+    UnpackedTarball/libjpeg-turbo/src/jmemnobs \
+    UnpackedTarball/libjpeg-turbo/src/jpeg_nbits \
+    UnpackedTarball/libjpeg-turbo/src/jquant1 \
+    UnpackedTarball/libjpeg-turbo/src/jquant2 \
+    UnpackedTarball/libjpeg-turbo/src/jutils \
 ))
 
 ifneq ($(NASM),)
 
 $(eval $(call gb_StaticLibrary_add_nasmflags,libjpeg-turbo,\
-	-I$(call gb_UnpackedTarball_get_dir,libjpeg-turbo)/simd/nasm/ \
-	-I$(dir $(call gb_UnpackedTarball_get_dir,libjpeg-turbo)/$(1)) \
+	-I$(gb_UnpackedTarball_workdir)/libjpeg-turbo/simd/nasm/ \
+	-I$(dir $(gb_UnpackedTarball_workdir)/libjpeg-turbo/$(1)) \
 ))
 
 ifeq ($(CPUNAME),X86_64)
@@ -194,20 +201,7 @@ $(eval $(call gb_StaticLibrary_add_generated_nasmobjects,libjpeg-turbo,\
     UnpackedTarball/libjpeg-turbo/simd/i386/jquanti-avx2.asm \
 ))
 
-else
-
-$(eval $(call gb_StaticLibrary_add_generated_cobjects,libjpeg-turbo,\
-    UnpackedTarball/libjpeg-turbo/jsimd_none \
-))
-
 endif
-
-else
-
-$(eval $(call gb_StaticLibrary_add_generated_cobjects,libjpeg-turbo,\
-    UnpackedTarball/libjpeg-turbo/jsimd_none \
-))
-
 endif
 
 

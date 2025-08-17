@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <vcl/themecolors.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <config_wasm_strip.h>
 
@@ -57,7 +58,6 @@
 #include <ndindex.hxx>
 #include <accmap.hxx>
 #include <vcl/bitmapex.hxx>
-#include <svtools/accessibilityoptions.hxx>
 #include <accessibilityoptions.hxx>
 #include <strings.hrc>
 #include <bitmaps.hlst>
@@ -90,7 +90,12 @@
 
 bool SwViewShell::sbLstAct = false;
 ShellResource *SwViewShell::spShellRes = nullptr;
-vcl::DeleteOnDeinit<std::shared_ptr<weld::Window>> SwViewShell::spCareDialog {};
+
+static tools::DeleteOnDeinit<std::shared_ptr<weld::Window>>& getCareDialog()
+{
+    static tools::DeleteOnDeinit<std::shared_ptr<weld::Window>> spCareDialog {}; ///< Avoid this window.
+    return spCareDialog;
+}
 
 static bool bInSizeNotify = false;
 
@@ -157,6 +162,10 @@ bool SwViewShell::isOutputToWindow() const
 void SwViewShell::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwViewShell"));
+    if (mpOpt)
+    {
+        mpOpt->dumpAsXml(pWriter);
+    }
     (void)xmlTextWriterEndElement(pWriter);
 }
 
@@ -205,7 +214,7 @@ void SwViewShell::DLPrePaint2(const vcl::Region& rRegion)
 
         // #i74769# use SdrPaintWindow now direct
         mpTargetPaintWindow = Imp()->GetDrawView()->BeginDrawLayers(mpPrePostOutDev, rRegion);
-        OSL_ENSURE(mpTargetPaintWindow, "BeginDrawLayers: Got no SdrPaintWindow (!)");
+        assert(mpTargetPaintWindow && "BeginDrawLayers: Got no SdrPaintWindow (!)");
 
         // #i74769# if prerender, save OutDev and redirect to PreRenderDevice
         if(mpTargetPaintWindow->GetPreRenderDevice())
@@ -251,11 +260,41 @@ void SwViewShell::DLPostPaint2(bool bPaintFormLayer)
         }
 
         // #i74769# use SdrPaintWindow now direct
-        Imp()->GetDrawView()->EndDrawLayers(*mpTargetPaintWindow, bPaintFormLayer);
+        SwViewObjectContactRedirector aSwRedirector(*this);
+        Imp()->GetDrawView()->EndDrawLayers(*mpTargetPaintWindow, bPaintFormLayer, &aSwRedirector);
         mpTargetPaintWindow = nullptr;
     }
 }
 // end of Pre/PostPaints
+
+void SwViewShell::StartAllAction()
+{
+    for (SwViewShell & rCurrentShell : GetRingContainer())
+    {
+        rCurrentShell.StartAction();
+    }
+}
+
+void SwViewShell::EndAllAction()
+{
+    for (SwViewShell & rCurrentShell : GetRingContainer())
+    {
+        rCurrentShell.EndAction();
+    }
+}
+
+void SwViewShell::StartAction()
+{
+    if (!mnStartAction++)
+        ImplStartAction();
+}
+
+void SwViewShell::EndAction(const bool bIdleEnd)
+{
+    if (0 == (mnStartAction - 1))
+        ImplEndAction(bIdleEnd);
+    --mnStartAction;
+}
 
 void SwViewShell::ImplEndAction( const bool bIdleEnd )
 {
@@ -297,7 +336,7 @@ void SwViewShell::ImplEndAction( const bool bIdleEnd )
     if ( Imp()->HasPaintRegion() && Imp()->GetPaintRegion()->GetOrigin() != VisArea() )
         Imp()->DeletePaintRegion();
 
-    const bool bExtraData = ::IsExtraData( GetDoc() );
+    const bool bExtraData = ::IsExtraData( *GetDoc() );
 
     if ( !bIdleEnd )
     {
@@ -451,8 +490,14 @@ void SwViewShell::ImplUnlockPaint(std::vector<LockPaintReason>& rReasons, bool b
                 GetWin()->Validate();
 
                 Imp()->UnlockPaint();
-                pVout->SetLineColor( mpOut->GetLineColor() );
-                pVout->SetFillColor( mpOut->GetFillColor() );
+                if (mpOut->IsLineColor())
+                    pVout->SetLineColor( mpOut->GetLineColor() );
+                else
+                    pVout->SetLineColor();
+                if (mpOut->IsFillColor())
+                    pVout->SetFillColor( mpOut->GetFillColor() );
+                else
+                    pVout->SetFillColor();
 
                 // #i72754# start Pre/PostPaint encapsulation before mpOut is changed to the buffering VDev
                 const vcl::Region aRepaintRegion(VisArea().SVRect());
@@ -646,9 +691,9 @@ const SwRect& SwViewShell::VisArea() const
     return comphelper::LibreOfficeKit::isActive()? GetLayout()->getFrameArea(): maVisArea;
 }
 
-void SwViewShell::MakeVisible( const SwRect &rRect )
+void SwViewShell::MakeVisible( const SwRect &rRect, ScrollSizeMode eScrollSizeMode )
 {
-    if ( !(!VisArea().Contains( rRect ) || IsScrollMDI( this, rRect ) || GetCareDialog(*this)) )
+    if ( !(!VisArea().Contains( rRect ) || IsScrollMDI( *this, rRect ) || GetCareDialog(*this)) )
         return;
 
     if ( IsViewLocked() )
@@ -661,9 +706,9 @@ void SwViewShell::MakeVisible( const SwRect &rRect )
         tools::Long nOldH;
         do{
             nOldH = pRoot->getFrameArea().Height();
-            StartAction();
-            ScrollMDI( this, rRect, USHRT_MAX, USHRT_MAX );
-            EndAction();
+            SwViewShell::StartAction();
+            ScrollMDI( *this, rRect, USHRT_MAX, USHRT_MAX, eScrollSizeMode );
+            SwViewShell::EndAction(); // DO NOT call virtual here!
         } while( nOldH != pRoot->getFrameArea().Height() && nLoopCnt-- );
     }
 #if OSL_DEBUG_LEVEL > 0
@@ -719,22 +764,15 @@ bool SwViewShell::IsDummyPage( sal_uInt16 nPageNum ) const
  * type is sent (???).
  * @param[in] bCloseDB Passed in to GetDoc()->UpdateFields. [TODO] Purpose???
  */
-void SwViewShell::UpdateFields(bool bCloseDB)
+void SwViewShell::UpdateFields(bool bCloseDB, bool bSetModified)
 {
     CurrShell aCurr( this );
 
-    auto pCursorShell = dynamic_cast<SwCursorShell*>( this );
-    if ( pCursorShell )
-        pCursorShell->StartAction();
-    else
-        StartAction();
+    StartAction();
 
-    GetDoc()->getIDocumentFieldsAccess().UpdateFields(bCloseDB);
+    GetDoc()->getIDocumentFieldsAccess().UpdateFields(bCloseDB, bSetModified);
 
-    if ( pCursorShell )
-        pCursorShell->EndAction();
-    else
-        EndAction();
+    EndAction();
 }
 
 void SwViewShell::UpdateOleObjectPreviews()
@@ -829,16 +867,9 @@ void SwViewShell::LayoutIdle()
 
 static void lcl_InvalidateAllContent( SwViewShell& rSh, SwInvalidateFlags nInv )
 {
-    auto pCursorShell = dynamic_cast<SwCursorShell*>( &rSh);
-    if ( pCursorShell )
-        pCursorShell->StartAction();
-    else
-        rSh.StartAction();
+    rSh.StartAction();
     rSh.GetLayout()->InvalidateAllContent( nInv );
-    if ( pCursorShell )
-        pCursorShell->EndAction();
-    else
-        rSh.EndAction();
+    rSh.EndAction();
 
     rSh.GetDoc()->getIDocumentState().SetModified();
 }
@@ -849,18 +880,11 @@ static void lcl_InvalidateAllContent( SwViewShell& rSh, SwInvalidateFlags nInv )
  */
 static void lcl_InvalidateAllObjPos( SwViewShell &_rSh )
 {
-    auto pCursorShell = dynamic_cast<SwCursorShell*>( &_rSh);
-    if ( pCursorShell )
-        pCursorShell->StartAction();
-    else
-        _rSh.StartAction();
+    _rSh.StartAction();
 
     _rSh.GetLayout()->InvalidateAllObjPos();
 
-    if ( pCursorShell )
-        pCursorShell->EndAction();
-    else
-        _rSh.EndAction();
+    _rSh.EndAction();
 
     _rSh.GetDoc()->getIDocumentState().SetModified();
 }
@@ -1037,14 +1061,141 @@ void SwViewShell::SetEmptyDbFieldHidesPara(bool bEmptyDbFieldHidesPara)
 
     SwWait aWait(*GetDoc()->GetDocShell(), true);
     rIDSA.set(DocumentSettingId::EMPTY_DB_FIELD_HIDES_PARA, bEmptyDbFieldHidesPara);
-    StartAction();
+    SwViewShell::StartAction();
     GetDoc()->getIDocumentState().SetModified();
     for (auto const & pFieldType : *GetDoc()->getIDocumentFieldsAccess().GetFieldTypes())
     {
         if(pFieldType->Which() == SwFieldIds::Database)
             pFieldType->UpdateFields();
     }
-    EndAction();
+    SwViewShell::EndAction();
+}
+
+void SwViewShell::SetNoGapAfterNoteNumber(bool bNew)
+{
+    IDocumentSettingAccess& rIDSA = getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::NO_GAP_AFTER_NOTE_NUMBER) != bNew)
+    {
+        SwWait aWait(*GetDoc()->GetDocShell(), true);
+        rIDSA.set(DocumentSettingId::NO_GAP_AFTER_NOTE_NUMBER, bNew);
+        const SwInvalidateFlags nInv = SwInvalidateFlags::Size | SwInvalidateFlags::Pos | SwInvalidateFlags::PrtArea;
+        lcl_InvalidateAllContent(*this, nInv);
+    }
+}
+
+void SwViewShell::SetTabsRelativeToIndent(bool bNew)
+{
+    IDocumentSettingAccess& rIDSA = getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::TABS_RELATIVE_TO_INDENT) != bNew)
+    {
+        SwWait aWait(*GetDoc()->GetDocShell(), true);
+        rIDSA.set(DocumentSettingId::TABS_RELATIVE_TO_INDENT, bNew);
+        const SwInvalidateFlags nInv = SwInvalidateFlags::Size | SwInvalidateFlags::Section | SwInvalidateFlags::PrtArea | SwInvalidateFlags::Table | SwInvalidateFlags::Pos;
+        lcl_InvalidateAllContent(*this, nInv);
+    }
+}
+
+void SwViewShell::SetTabOverMargin(bool bNew)
+{
+    IDocumentSettingAccess& rIDSA = getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::TAB_OVER_MARGIN) != bNew)
+    {
+        SwWait aWait(*GetDoc()->GetDocShell(), true);
+        rIDSA.set(DocumentSettingId::TAB_OVER_MARGIN, bNew);
+        const SwInvalidateFlags nInv = SwInvalidateFlags::Size | SwInvalidateFlags::Section | SwInvalidateFlags::PrtArea | SwInvalidateFlags::Table | SwInvalidateFlags::Pos;
+        lcl_InvalidateAllContent(*this, nInv);
+    }
+}
+
+void SwViewShell::SetDoNotMirrorRtlDrawObjs(bool bDoNotMirrorRtlDrawObjs)
+{
+    IDocumentSettingAccess& rIDSA = getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::DO_NOT_MIRROR_RTL_DRAW_OBJS) != bDoNotMirrorRtlDrawObjs)
+    {
+        SwWait aWait(*GetDoc()->GetDocShell(), true);
+        rIDSA.set(DocumentSettingId::DO_NOT_MIRROR_RTL_DRAW_OBJS, bDoNotMirrorRtlDrawObjs);
+        lcl_InvalidateAllObjPos(*this);
+    }
+}
+
+void SwViewShell::SetContinuousEndnotes(bool bContinuousEndnotes)
+{
+    IDocumentSettingAccess& rIDSA = getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::CONTINUOUS_ENDNOTES) != bContinuousEndnotes)
+    {
+        SwWait aWait(*GetDoc()->GetDocShell(), true);
+        rIDSA.set(DocumentSettingId::CONTINUOUS_ENDNOTES, bContinuousEndnotes);
+        SwViewShell::StartAction();
+        GetLayout()->RemoveFootnotes(/*pPage=*/nullptr, /*pPageOnly=*/false, /*bEndNotes=*/true);
+        SwViewShell::EndAction();
+        GetDoc()->getIDocumentState().SetModified();
+    }
+}
+
+void SwViewShell::SetMsWordCompGridMetrics(bool _bMsWordCompGridMetrics)
+{
+    IDocumentSettingAccess& rIDSA = getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::MS_WORD_COMP_GRID_METRICS) != _bMsWordCompGridMetrics)
+    {
+        SwWait aWait(*GetDoc()->GetDocShell(), true);
+        rIDSA.set(DocumentSettingId::MS_WORD_COMP_GRID_METRICS, _bMsWordCompGridMetrics);
+        const SwInvalidateFlags nInv = SwInvalidateFlags::PrtArea | SwInvalidateFlags::Pos
+                                       | SwInvalidateFlags::Size | SwInvalidateFlags::Table
+                                       | SwInvalidateFlags::Section;
+        lcl_InvalidateAllContent(*this, nInv);
+    }
+}
+
+void SwViewShell::SetIgnoreTabsAndBlanksForLineCalculation(bool val)
+{
+    IDocumentSettingAccess& rIDSA = getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::IGNORE_TABS_AND_BLANKS_FOR_LINE_CALCULATION) != val)
+    {
+        SwWait aWait(*GetDoc()->GetDocShell(), true);
+        rIDSA.set(DocumentSettingId::IGNORE_TABS_AND_BLANKS_FOR_LINE_CALCULATION, val);
+        const SwInvalidateFlags nInv = SwInvalidateFlags::Size | SwInvalidateFlags::Section
+                                        | SwInvalidateFlags::PrtArea | SwInvalidateFlags::Table
+                                        | SwInvalidateFlags::Pos;
+        lcl_InvalidateAllContent(*this, nInv);
+    }
+}
+
+void SwViewShell::SetMsWordUlTrailSpace(bool val)
+{
+    IDocumentSettingAccess& rIDSA = getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::MS_WORD_UL_TRAIL_SPACE) != val)
+    {
+        SwWait aWait(*GetDoc()->GetDocShell(), true);
+        rIDSA.set(DocumentSettingId::MS_WORD_UL_TRAIL_SPACE, val);
+        const SwInvalidateFlags nInv = SwInvalidateFlags::Size;
+        lcl_InvalidateAllContent(*this, nInv);
+    }
+}
+
+void SwViewShell::SetBalanceSpacesAndIdeographicSpaces(bool bValue)
+{
+    IDocumentSettingAccess& rIDSA = getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES) != bValue)
+    {
+        SwWait aWait(*GetDoc()->GetDocShell(), true);
+        rIDSA.set(DocumentSettingId::BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES, bValue);
+        const SwInvalidateFlags nInv
+            = SwInvalidateFlags::Size | SwInvalidateFlags::Pos | SwInvalidateFlags::PrtArea;
+        lcl_InvalidateAllContent(*this, nInv);
+    }
+}
+
+void SwViewShell::SetAdjustTableLineHeightsToGridHeight(bool bValue)
+{
+    IDocumentSettingAccess& rIDSA = getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT) != bValue)
+    {
+        SwWait aWait(*GetDoc()->GetDocShell(), true);
+        rIDSA.set(DocumentSettingId::ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT, bValue);
+        const SwInvalidateFlags nInv = SwInvalidateFlags::PrtArea | SwInvalidateFlags::Pos
+                                       | SwInvalidateFlags::Size | SwInvalidateFlags::Table;
+        lcl_InvalidateAllContent(*this, nInv);
+    }
 }
 
 void SwViewShell::Reformat()
@@ -1058,9 +1209,9 @@ void SwViewShell::Reformat()
 
     if( GetLayout()->IsCallbackActionEnabled() )
     {
-        StartAction();
+        SwViewShell::StartAction();
         GetLayout()->InvalidateAllContent( SwInvalidateFlags::Size | SwInvalidateFlags::Pos | SwInvalidateFlags::PrtArea );
-        EndAction();
+        SwViewShell::EndAction();
     }
 }
 
@@ -1142,23 +1293,23 @@ void SwViewShell::SizeChgNotify()
 
         if ( !Imp()->IsCalcLayoutProgress() && dynamic_cast<const SwCursorShell*>( this ) !=  nullptr )
         {
-            PageNumNotify(this);
+            PageNumNotify(*this);
 
-            if (comphelper::LibreOfficeKit::isActive())
+            if (SfxViewShell* pNotifySh = comphelper::LibreOfficeKit::isActive() ? GetSfxViewShell() : nullptr)
             {
                 Size aDocSize = GetDocSize();
                 OString sPayload = OString::number(aDocSize.Width() + 2 * DOCUMENTBORDER) +
                     ", " + OString::number(aDocSize.Height() + 2 * DOCUMENTBORDER);
 
-                SwXTextDocument* pModel = comphelper::getFromUnoTunnel<SwXTextDocument>(GetSfxViewShell()->GetCurrentDocument());
-                SfxLokHelper::notifyDocumentSizeChanged(GetSfxViewShell(), sPayload, pModel);
+                SwXTextDocument* pModel = comphelper::getFromUnoTunnel<SwXTextDocument>(pNotifySh->GetCurrentDocument());
+                SfxLokHelper::notifyDocumentSizeChanged(pNotifySh, sPayload, pModel);
             }
         }
     }
     else
     {
         mbDocSizeChgd = false;
-        ::SizeNotify( this, GetDocSize() );
+        ::SizeNotify( *this, GetDocSize() );
     }
 }
 
@@ -1257,14 +1408,14 @@ void SwViewShell::VisPortChgd( const SwRect &rRect)
                             // ignore objects that are not actually placed on the page
                             if (pObj->IsFormatPossible())
                             {
-                                const tools::Rectangle &rBound = pObj->GetObjRect().SVRect();
-                                if (rBound.Left() != FAR_AWAY) {
+                                const tools::Rectangle aBound = pObj->GetObjRect().SVRect();
+                                if (aBound.Left() != FAR_AWAY) {
                                     // OD 03.03.2003 #107927# - use correct datatype
-                                    const SwTwips nL = std::max( SwTwips(0), SwTwips(rBound.Left() - nOfst) );
+                                    const SwTwips nL = std::max( SwTwips(0), SwTwips(aBound.Left() - nOfst) );
                                     if ( nL < nMinLeft )
                                         nMinLeft = nL;
-                                    if( rBound.Right() + nOfst > nMaxRight )
-                                        nMaxRight = rBound.Right() + nOfst;
+                                    if( aBound.Right() + nOfst > nMaxRight )
+                                        nMaxRight = aBound.Right() + nOfst;
                                 }
                             }
                         }
@@ -1655,6 +1806,9 @@ void SwViewShell::PaintDesktop(const vcl::RenderContext& rRenderContext, const S
 // PaintDesktop is split in two, this part is also used by PreviewPage
 void SwViewShell::PaintDesktop_(const SwRegionRects &rRegion)
 {
+    if (DrawAppBackgroundBitmap(GetOut(), rRegion.GetOrigin()))
+        return;
+
     // OD 2004-04-23 #116347#
     GetOut()->Push( vcl::PushFlags::FILLCOLOR|vcl::PushFlags::LINECOLOR );
     GetOut()->SetLineColor();
@@ -1704,6 +1858,28 @@ void SwViewShell::PaintDesktop_(const SwRegionRects &rRegion)
     GetOut()->Pop();
 }
 
+bool SwViewShell::DrawAppBackgroundBitmap(vcl::RenderContext* rRenderContext, const SwRect& rRect)
+{
+    if (Application::IsHeadlessModeEnabled() || !ThemeColors::UseBmpForAppBack())
+        return false;
+
+    const Bitmap& aAppBackImg
+        = Application::GetSettings().GetStyleSettings().GetAppBackgroundBitmap();
+    if (aAppBackImg.IsEmpty())
+        return false;
+
+    Wallpaper aWallpaper((BitmapEx(aAppBackImg)));
+    if (ThemeColors::GetAppBackBmpDrawType() == u"Tiled"_ustr)
+        aWallpaper.SetStyle(WallpaperStyle::Tile);
+    else if (ThemeColors::GetAppBackBmpDrawType() == u"Stretched"_ustr)
+        aWallpaper.SetStyle(WallpaperStyle::Scale);
+    else
+        aWallpaper.SetStyle(WallpaperStyle::Tile);
+
+    rRenderContext->DrawWallpaper(rRect.SVRect(), aWallpaper);
+    return true;
+}
+
 bool SwViewShell::CheckInvalidForPaint( const SwRect &rRect )
 {
     if ( !GetWin() )
@@ -1744,15 +1920,10 @@ bool SwViewShell::CheckInvalidForPaint( const SwRect &rRect )
         if ( oRegion && aAction.IsBrowseActionStop() )
         {
             //only of interest when something has changed in the visible range
-            bool bStop = true;
-            for ( size_t i = 0; i < oRegion->size(); ++i )
-            {
-                const SwRect &rTmp = (*oRegion)[i];
-                bStop = rTmp.Overlaps( VisArea() );
-                if ( !bStop )
-                    break;
-            }
-            if ( bStop )
+            bool bAllNoOverlap = std::all_of(oRegion->begin(), oRegion->end(), [this](const SwRect &rTmp) {
+                return rTmp.Overlaps( VisArea() );
+            });
+            if ( bAllNoOverlap )
                 oRegion.reset();
         }
 
@@ -1764,8 +1935,8 @@ bool SwViewShell::CheckInvalidForPaint( const SwRect &rRect )
             if ( !oRegion->empty() )
             {
                 SwRegionRects aRegion( rRect );
-                for ( size_t i = 0; i < oRegion->size(); ++i )
-                {   const SwRect &rTmp = (*oRegion)[i];
+                for ( const SwRect &rTmp : *oRegion )
+                {
                     if ( !rRect.Contains( rTmp ) )
                     {
                         InvalidateWindows( rTmp );
@@ -1992,7 +2163,7 @@ void SwViewShell::PaintTile(VirtualDevice &rDevice, int contextWidth, int contex
     mpOut = &rDevice;
 
     // resizes the virtual device so to contain the entries context
-    rDevice.SetOutputSizePixel(Size(contextWidth, contextHeight));
+    rDevice.SetOutputSizePixel(Size(contextWidth, contextHeight), /*bErase*/false);
 
     // setup the output device to draw the tile
     MapMode aMapMode(rDevice.GetMapMode());
@@ -2061,11 +2232,14 @@ void SwViewShell::PaintTile(VirtualDevice &rDevice, int contextWidth, int contex
 
         // Changing the zoom value doesn't always trigger the updating of
         // the client ole object area, so we call it directly.
-        SfxInPlaceClient* pIPClient = GetSfxViewShell()->GetIPClient();
-        if (pIPClient)
+        if (SfxViewShell* pNotifySh = GetSfxViewShell())
         {
-            pIPClient->VisAreaChanged();
+            if (SfxInPlaceClient* pIPClient = pNotifySh->GetIPClient())
+            {
+                pIPClient->VisAreaChanged();
+            }
         }
+
         // Make sure the map mode (disabled in SwXTextDocument::initializeForTiledRendering()) is still disabled.
         GetWin()->EnableMapMode(false);
     }
@@ -2129,7 +2303,7 @@ void SwViewShell::InvalidateLayout( bool bSizeChanged )
     }
 
     LockPaint(LockPaintReason::InvalidateLayout);
-    StartAction();
+    SwViewShell::StartAction();
 
     SwPageFrame *pPg = static_cast<SwPageFrame*>(GetLayout()->Lower());
     do
@@ -2156,7 +2330,7 @@ void SwViewShell::InvalidateLayout( bool bSizeChanged )
 
     SwFrame::CheckPageDescs( static_cast<SwPageFrame*>(GetLayout()->Lower()) );
 
-    EndAction();
+    SwViewShell::EndAction();
     UnlockPaint();
 }
 
@@ -2205,7 +2379,7 @@ SfxItemPool& SwViewShell::GetAttrPool()
 void SwViewShell::ApplyViewOptions( const SwViewOption &rOpt )
 {
     for(SwViewShell& rSh : GetRingContainer())
-        rSh.StartAction();
+        rSh.SwViewShell::StartAction();
 
     ImplApplyViewOptions( rOpt );
 
@@ -2218,21 +2392,14 @@ void SwViewShell::ApplyViewOptions( const SwViewOption &rOpt )
         if(&rSh == this)
             continue;
         SwViewOption aOpt( *rSh.GetViewOptions() );
-        aOpt.SetFieldName( rOpt.IsFieldName() );
-        aOpt.SetShowHiddenField( rOpt.IsShowHiddenField() );
-        aOpt.SetShowHiddenPara( rOpt.IsShowHiddenPara() );
-        aOpt.SetShowHiddenChar( rOpt.IsShowHiddenChar() );
-        aOpt.SetViewLayoutBookMode( rOpt.IsViewLayoutBookMode() );
-        aOpt.SetHideWhitespaceMode(rOpt.IsHideWhitespaceMode());
-        aOpt.SetViewLayoutColumns(rOpt.GetViewLayoutColumns());
-        aOpt.SetPostIts(rOpt.IsPostIts());
+        aOpt.SyncLayoutRelatedViewOptions(rOpt);
         if ( !(aOpt == *rSh.GetViewOptions()) )
             rSh.ImplApplyViewOptions( aOpt );
     }
     // End of disabled multiple window
 
     for(SwViewShell& rSh : GetRingContainer())
-        rSh.EndAction();
+        rSh.SwViewShell::EndAction();
 }
 
 static bool
@@ -2252,8 +2419,7 @@ IsCursorInFieldmarkHidden(SwPaM const& rCursor, sw::FieldmarkMode const eMode)
         }
         if (*rCursor.GetPoint() < (**iter).GetMarkEnd())
         {
-            SwPosition const sepPos(sw::mark::FindFieldSep(
-                        dynamic_cast<sw::mark::IFieldmark&>(**iter)));
+            SwPosition const sepPos(sw::mark::FindFieldSep(**iter));
             if (eMode == sw::FieldmarkMode::ShowResult)
             {
                 if (*rCursor.GetPoint() <= sepPos
@@ -2324,18 +2490,9 @@ void SwViewShell::ImplApplyViewOptions( const SwViewOption &rOpt )
     // ( - SwEndPortion must _no_ longer be generated. )
     // - Of course, the screen is something completely different than the printer ...
     bool const isToggleFieldNames(mpOpt->IsFieldName() != rOpt.IsFieldName());
-
-    if (mpOpt->IsFieldName() != rOpt.IsFieldName()
-        || mpOpt->IsParagraph() != rOpt.IsParagraph())
-    {
-        GetLayout()->SetFieldmarkMode( rOpt.IsFieldName()
-                    ? sw::FieldmarkMode::ShowCommand
-                    : sw::FieldmarkMode::ShowResult,
-                rOpt.IsParagraph()
-                    ? sw::ParagraphBreakMode::Shown
-                    : sw::ParagraphBreakMode::Hidden);
-        bReformat = true;
-    }
+    bool const isToggleLayoutHide{isToggleFieldNames
+                || mpOpt->IsParagraph() != rOpt.IsParagraph()
+                || mpOpt->IsShowHiddenChar() != rOpt.IsShowHiddenChar()};
 
     // The map mode is changed, minima/maxima will be attended by UI
     if( mpOpt->GetZoom() != rOpt.GetZoom() && !IsPreview() )
@@ -2405,6 +2562,17 @@ void SwViewShell::ImplApplyViewOptions( const SwViewOption &rOpt )
 
     mxDoc->GetDocumentSettingManager().set(DocumentSettingId::HTML_MODE, 0 != ::GetHtmlMode(mxDoc->GetDocShell()));
 
+    if (isToggleLayoutHide)
+    {
+        GetLayout()->SetFieldmarkMode( rOpt.IsFieldName()
+                    ? sw::FieldmarkMode::ShowCommand
+                    : sw::FieldmarkMode::ShowResult,
+                sw::IsShowHiddenChars(this)
+                    ? sw::ParagraphBreakMode::Shown
+                    : sw::ParagraphBreakMode::Hidden);
+        bReformat = true;
+    }
+
     if( bBrowseModeChanged || bHideWhitespaceModeChanged )
     {
         // #i44963# Good occasion to check if page sizes in
@@ -2413,17 +2581,20 @@ void SwViewShell::ImplApplyViewOptions( const SwViewOption &rOpt )
         InvalidateLayout( true );
     }
 
-    SwXTextDocument* pModel = comphelper::getFromUnoTunnel<SwXTextDocument>(GetSfxViewShell()->GetCurrentDocument());
-    SfxLokHelper::notifyViewRenderState(GetSfxViewShell(), pModel);
+    if (SfxViewShell* pNotifySh = GetSfxViewShell())
+    {
+        SwXTextDocument* pModel = comphelper::getFromUnoTunnel<SwXTextDocument>(pNotifySh->GetCurrentDocument());
+        SfxLokHelper::notifyViewRenderState(pNotifySh, pModel);
+    }
 
     pMyWin->Invalidate();
     if ( bReformat )
     {
         // Nothing helps, we need to send all ContentFrames a
         // Prepare, we format anew:
-        StartAction();
+        SwViewShell::StartAction();
         Reformat();
-        EndAction();
+        SwViewShell::EndAction();
     }
 
     if (isToggleFieldNames)
@@ -2491,13 +2662,13 @@ void SwViewShell::SetReadonlyOption(bool bSet)
 
     if( bReformat )
     {
-        StartAction();
+        SwViewShell::StartAction();
         Reformat();
-        if ( GetWin() )
+        if ( GetWin() && !comphelper::LibreOfficeKit::isActive() )
             GetWin()->Invalidate();
-        EndAction();
+        SwViewShell::EndAction();
     }
-    else if ( GetWin() )
+    else if ( GetWin() && !comphelper::LibreOfficeKit::isActive() )
         GetWin()->Invalidate();
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     if( Imp()->IsAccessible() )
@@ -2535,7 +2706,7 @@ void SwViewShell::UISizeNotify()
         mbDocSizeChgd = false;
         bool bOld = bInSizeNotify;
         bInSizeNotify = true;
-        ::SizeNotify( this, GetDocSize() );
+        ::SizeNotify( *this, GetDocSize() );
         bInSizeNotify = bOld;
     }
 }
@@ -2556,21 +2727,21 @@ bool SwViewShell::IsNewLayout() const
 }
 
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
-uno::Reference< css::accessibility::XAccessible > SwViewShell::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> SwViewShell::CreateAccessible()
 {
-    uno::Reference< css::accessibility::XAccessible > xAcc;
+    rtl::Reference<comphelper::OAccessible> pAcc;
 
     // We require a layout and an XModel to be accessible.
     OSL_ENSURE( mpLayout, "no layout, no access" );
     OSL_ENSURE( GetWin(), "no window, no access" );
 
     if( mxDoc->getIDocumentLayoutAccess().GetCurrentViewShell() && GetWin() )
-        xAcc = Imp()->GetAccessibleMap().GetDocumentView();
+        pAcc = Imp()->GetAccessibleMap().GetDocumentView();
 
-    return xAcc;
+    return pAcc;
 }
 
-uno::Reference< css::accessibility::XAccessible > SwViewShell::CreateAccessiblePreview()
+rtl::Reference<comphelper::OAccessible> SwViewShell::CreateAccessiblePreview()
 {
     OSL_ENSURE( IsPreview(),
                 "Can't create accessible preview for non-preview SwViewShell" );
@@ -2642,7 +2813,7 @@ SwAccessibleMap* SwViewShell::GetAccessibleMap()
 
 void SwViewShell::ApplyAccessibilityOptions()
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
     if (mpOpt->IsPagePreview() && !officecfg::Office::Common::Accessibility::IsForPagePreviews::get())
     {
@@ -2651,12 +2822,15 @@ void SwViewShell::ApplyAccessibilityOptions()
     }
     else
     {
-        mpAccOptions->SetAlwaysAutoColor(SvtAccessibilityOptions::GetIsAutomaticFontColor());
-        mpAccOptions->SetStopAnimatedGraphics(! SvtAccessibilityOptions::GetIsAllowAnimatedGraphics());
+        mpAccOptions->SetAlwaysAutoColor(officecfg::Office::Common::Accessibility::IsAutomaticFontColor::get());
+        // tdf#161765: Let user choose which animation settings to use: OS's / LO's
+        // New options: "System"/"No"/"Yes".
+        // Do respect OS's animation setting if the user has selected the option "System"
+        mpAccOptions->SetStopAnimatedGraphics(! MiscSettings::IsAnimatedGraphicAllowed());
 
         // Form view
         // Always set this option, not only if document is read-only:
-        mpOpt->SetSelectionInReadonly(SvtAccessibilityOptions::IsSelectionInReadonly());
+        mpOpt->SetSelectionInReadonly(officecfg::Office::Common::Accessibility::IsSelectionInReadonly::get());
     }
 }
 #endif // ENABLE_WASM_STRIP_ACCESSIBILITY
@@ -2666,9 +2840,18 @@ ShellResource* SwViewShell::GetShellRes()
     return spShellRes;
 }
 
+//static
 void SwViewShell::SetCareDialog(const std::shared_ptr<weld::Window>& rNew)
 {
+    auto& spCareDialog = getCareDialog();
     (*spCareDialog.get()) = rNew;
+}
+
+//static
+weld::Window* SwViewShell::GetCareDialog(SwViewShell const & rVSh)
+{
+    auto& spCareDialog = getCareDialog();
+    return (*spCareDialog.get()) ? spCareDialog.get()->get() : CareChildWin(rVSh);
 }
 
 sal_uInt16 SwViewShell::GetPageCount() const
@@ -2685,13 +2868,14 @@ Size SwViewShell::GetPageSize( sal_uInt16 nPageNum, bool bSkipEmptyPages ) const
         const SwPageFrame* pPage = static_cast<const SwPageFrame*>
                                  (pTmpRoot->Lower());
 
-        while( --nPageNum && pPage->GetNext() )
+        while( --nPageNum && pPage && pPage->GetNext() )
             pPage = static_cast<const SwPageFrame*>( pPage->GetNext() );
 
-        if( !bSkipEmptyPages && pPage->IsEmptyPage() && pPage->GetNext() )
+        if( !bSkipEmptyPages && pPage && pPage->IsEmptyPage() && pPage->GetNext() )
             pPage = static_cast<const SwPageFrame*>( pPage->GetNext() );
 
-        aSize = pPage->getFrameArea().SSize();
+        if (pPage)
+            aSize = pPage->getFrameArea().SSize();
     }
     return aSize;
 }
@@ -2743,25 +2927,25 @@ sal_Int32 SwViewShell::GetPageNumAndSetOffsetForPDF( OutputDevice& rOut, const S
     return nRet;
 }
 
-// --> PB 2007-05-30 #146850#
-const BitmapEx& SwViewShell::GetReplacementBitmap( bool bIsErrorState )
+const Bitmap& SwViewShell::GetErrorBitmap()
 {
-    if (bIsErrorState)
-    {
-        if (!m_xErrorBmp)
-            m_xErrorBmp.reset(new BitmapEx(RID_GRAPHIC_ERRORBMP));
-        return *m_xErrorBmp;
-    }
+    if (maErrorBmp.IsEmpty())
+        maErrorBmp = Bitmap(RID_GRAPHIC_ERRORBMP);
+    return maErrorBmp;
+}
 
-    if (!m_xReplaceBmp)
-        m_xReplaceBmp.reset(new BitmapEx(RID_GRAPHIC_REPLACEBMP));
-    return *m_xReplaceBmp;
+// --> PB 2007-05-30 #146850#
+const Bitmap& SwViewShell::GetReplacementBitmap()
+{
+    if (maReplaceBmp.IsEmpty())
+        maReplaceBmp = Bitmap(RID_GRAPHIC_REPLACEBMP);
+    return maReplaceBmp;
 }
 
 void SwViewShell::DeleteReplacementBitmaps()
 {
-    m_xErrorBmp.reset();
-    m_xReplaceBmp.reset();
+    maErrorBmp.SetEmpty();
+    maReplaceBmp.SetEmpty();
 }
 
 SwPostItMgr* SwViewShell::GetPostItMgr()
@@ -2773,12 +2957,9 @@ SwPostItMgr* SwViewShell::GetPostItMgr()
     return nullptr;
 }
 
-void SwViewShell::GetFirstLastVisPageNumbers(SwVisiblePageNumbers& rVisiblePageNumbers)
+void SwViewShell::GetFirstLastVisPageNumbers(SwVisiblePageNumbers& rVisiblePageNumbers, const SwView& rView)
 {
-    SwView* pView = GetDoc()->GetDocShell() ? GetDoc()->GetDocShell()->GetView() : nullptr;
-    if (!pView)
-        return;
-    SwRect rViewVisArea(pView->GetVisArea());
+    SwRect rViewVisArea(rView.GetVisArea());
     vcl::RenderContext* pRenderContext = GetOut();
     const SwPageFrame* pPageFrame = Imp()->GetFirstVisPage(pRenderContext);
     SwRect rPageRect = pPageFrame->getFrameArea();

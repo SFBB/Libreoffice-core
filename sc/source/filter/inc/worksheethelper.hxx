@@ -187,9 +187,6 @@ public:
     /** Returns the XCell interface for the passed cell address. */
     css::uno::Reference< css::table::XCell >
                         getCell( const ScAddress& rAddress ) const;
-    /** Returns the XCellRange interface for the passed cell range address. */
-    css::uno::Reference< css::table::XCellRange >
-                        getCellRange( const ScRange& rRange ) const;
 
     /** Returns the XDrawPage interface of the draw page of the current sheet. */
     css::uno::Reference< css::drawing::XDrawPage >
@@ -291,9 +288,6 @@ public:
 
     void setCellFormulaValue(
         const ScAddress& rAddress, const OUString& rValueStr, sal_Int32 nCellType );
-
-    ScDocument& getScDocument();
-
 
 private:
     WorksheetGlobals&   mrSheetGlob;

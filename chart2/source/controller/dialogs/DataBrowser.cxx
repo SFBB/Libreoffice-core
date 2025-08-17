@@ -20,7 +20,7 @@
 #include <svl/zforlist.hxx>
 
 #include "DataBrowser.hxx"
-#include "DataBrowserModel.hxx"
+#include <DataBrowserModel.hxx>
 #include <strings.hrc>
 #include <DataSeries.hxx>
 #include <DataSeriesHelper.hxx>
@@ -88,7 +88,7 @@ namespace impl
 class SeriesHeaderEdit
 {
 public:
-    explicit SeriesHeaderEdit(std::unique_ptr<weld::Entry> xControl);
+    explicit SeriesHeaderEdit(std::unique_ptr<weld::Entry> xControl, sal_Int32 nHeader);
 
     void setStartColumn( sal_Int32 nStartColumn );
     sal_Int32 getStartColumn() const { return m_nStartColumn;}
@@ -117,7 +117,7 @@ private:
     bool m_bShowWarningBox;
 };
 
-SeriesHeaderEdit::SeriesHeaderEdit(std::unique_ptr<weld::Entry> xControl)
+SeriesHeaderEdit::SeriesHeaderEdit(std::unique_ptr<weld::Entry> xControl, sal_Int32 nHeader)
     : m_xControl(std::move(xControl))
     , m_nStartColumn(0)
     , m_bShowWarningBox(false)
@@ -126,6 +126,8 @@ SeriesHeaderEdit::SeriesHeaderEdit(std::unique_ptr<weld::Entry> xControl)
     m_xControl->connect_changed(LINK(this, SeriesHeaderEdit, NameEdited));
     m_xControl->connect_focus_in(LINK(this, SeriesHeaderEdit, NameFocusIn));
     m_xControl->connect_mouse_press(LINK(this, SeriesHeaderEdit, MousePressHdl));
+
+    m_xControl->set_buildable_name(m_xControl->get_buildable_name() + OUString::number(nHeader));
 }
 
 IMPL_LINK_NOARG(SeriesHeaderEdit, NameEdited, weld::Entry&, void)
@@ -164,7 +166,7 @@ IMPL_LINK_NOARG(SeriesHeaderEdit, MousePressHdl, const MouseEvent&, bool)
 class SeriesHeader
 {
 public:
-    explicit SeriesHeader(weld::Container* pParent, weld::Container* pColorParent);
+    explicit SeriesHeader(weld::Box* pParent, weld::Box* pColorParent, sal_Int32 nHeader);
             ~SeriesHeader();
 
     void SetColor( const Color & rCol );
@@ -205,8 +207,8 @@ private:
     std::unique_ptr<weld::Builder> m_xBuilder1;
     std::unique_ptr<weld::Builder> m_xBuilder2;
 
-    weld::Container* m_pParent;
-    weld::Container* m_pColorParent;
+    weld::Box* m_pParent;
+    weld::Box* m_pColorParent;
 
     std::unique_ptr<weld::Container> m_xContainer1;
     std::unique_ptr<weld::Container> m_xContainer2;
@@ -231,17 +233,17 @@ private:
     bool      m_bSeriesNameChangePending;
 };
 
-SeriesHeader::SeriesHeader(weld::Container* pParent, weld::Container* pColorParent)
+SeriesHeader::SeriesHeader(weld::Box* pParent, weld::Box* pColorParent, sal_Int32 nHeader)
     : m_aUpdateDataTimer( "SeriesHeader UpdateDataTimer" )
-    , m_xBuilder1(Application::CreateBuilder(pParent, "modules/schart/ui/columnfragment.ui"))
-    , m_xBuilder2(Application::CreateBuilder(pColorParent, "modules/schart/ui/imagefragment.ui"))
+    , m_xBuilder1(Application::CreateBuilder(pParent, u"modules/schart/ui/columnfragment.ui"_ustr))
+    , m_xBuilder2(Application::CreateBuilder(pColorParent, u"modules/schart/ui/imagefragment.ui"_ustr))
     , m_pParent(pParent)
     , m_pColorParent(pColorParent)
-    , m_xContainer1(m_xBuilder1->weld_container("container"))
-    , m_xContainer2(m_xBuilder2->weld_container("container"))
-    , m_spSymbol(m_xBuilder1->weld_image("image"))
-    , m_spSeriesName(new SeriesHeaderEdit(m_xBuilder1->weld_entry("entry")))
-    , m_spColorBar(m_xBuilder2->weld_image("image"))
+    , m_xContainer1(m_xBuilder1->weld_container(u"container"_ustr))
+    , m_xContainer2(m_xBuilder2->weld_container(u"container"_ustr))
+    , m_spSymbol(m_xBuilder1->weld_image(u"image"_ustr))
+    , m_spSeriesName(new SeriesHeaderEdit(m_xBuilder1->weld_entry(u"entry"_ustr), nHeader))
+    , m_spColorBar(m_xBuilder2->weld_image(u"image"_ustr))
     , m_xDevice(Application::GetDefaultDevice())
     , m_nStartCol( 0 )
     , m_nEndCol( 0 )
@@ -471,7 +473,7 @@ sal_Int32 lcl_getColumnInDataOrHeader(
 } // anonymous namespace
 
 DataBrowser::DataBrowser(const css::uno::Reference<css::awt::XWindow> &rParent,
-                         weld::Container* pColumns, weld::Container* pColors) :
+                         weld::Box* pColumns, weld::Box* pColors) :
     ::svt::EditBrowseBox(VCLUnoHelper::GetWindow(rParent),
             EditBrowseBoxFlags::SMART_TAB_TRAVEL | EditBrowseBoxFlags::HANDLE_COLUMN_TEXT,
             WB_BORDER | WB_TABSTOP, BrowserStdFlags ),
@@ -636,25 +638,26 @@ void DataBrowser::RenewTable()
     Link<impl::SeriesHeaderEdit&,void> aFocusLink( LINK( this, DataBrowser, SeriesHeaderGotFocus ));
     Link<impl::SeriesHeaderEdit&,void> aSeriesHeaderChangedLink( LINK( this, DataBrowser, SeriesHeaderChanged ));
 
-    for (auto const& elemHeader : aHeaders)
+    for (size_t i = 0; i < aHeaders.size(); ++i)
     {
-        auto spHeader = std::make_shared<impl::SeriesHeader>( m_pColumnsWin, m_pColorsWin );
+        auto const& elemHeader = aHeaders[i];
+        auto spHeader = std::make_shared<impl::SeriesHeader>( m_pColumnsWin, m_pColorsWin, i);
         Color nColor;
         // @todo: Set "DraftColor", i.e. interpolated colors for gradients, bitmaps, etc.
         if( elemHeader.m_xDataSeries.is() &&
-            ( elemHeader.m_xDataSeries->getPropertyValue( "Color" ) >>= nColor ))
+            ( elemHeader.m_xDataSeries->getPropertyValue( u"Color"_ustr ) >>= nColor ))
             spHeader->SetColor( nColor );
         spHeader->SetChartType( elemHeader.m_xChartType, elemHeader.m_bSwapXAndYAxis );
         spHeader->SetSeriesName(
             elemHeader.m_xDataSeries->getLabelForRole(
                         elemHeader.m_xChartType.is() ?
                          elemHeader.m_xChartType->getRoleOfSequenceForSeriesLabel() :
-                         OUString("values-y")));
+                         u"values-y"_ustr));
         // index is 1-based, as 0 is for the column that contains the row-numbers
         spHeader->SetRange( elemHeader.m_nStartColumn + 1, elemHeader.m_nEndColumn + 1 );
         spHeader->SetGetFocusHdl( aFocusLink );
         spHeader->SetEditChangedHdl( aSeriesHeaderChangedLink );
-        m_aSeriesHeaders.push_back( spHeader );
+        m_aSeriesHeaders.push_back(std::move(spHeader));
     }
 
     ImplAdjustHeaderControls();
@@ -663,12 +666,12 @@ void DataBrowser::RenewTable()
     Invalidate();
 }
 
-OUString DataBrowser::GetColString( sal_Int32 nColumnId ) const
+const OUString & DataBrowser::GetColString( sal_Int32 nColumnId ) const
 {
     OSL_ASSERT(m_apDataBrowserModel);
     if( nColumnId > 0 )
         return m_apDataBrowserModel->getRoleOfColumn( nColumnId - 1 );
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 OUString DataBrowser::GetCellText( sal_Int32 nRow, sal_uInt16 nColumnId ) const
@@ -940,7 +943,7 @@ void DataBrowser::MoveLeftColumn()
     // keep cursor in swapped column
     if(( 0 < GetCurColumnId() ) && ( GetCurColumnId() <= ColCount() - 1 ))
     {
-        Dispatch( BROWSER_CURSORLEFT );
+        Dispatch(BrowserDispatchId::CURSORLEFT);
     }
     RenewTable();
 }
@@ -961,7 +964,7 @@ void DataBrowser::MoveRightColumn()
     // keep cursor in swapped column
     if( GetCurColumnId() < ColCount() - 1 )
     {
-        Dispatch( BROWSER_CURSORRIGHT );
+        Dispatch(BrowserDispatchId::CURSORRIGHT);
     }
     RenewTable();
 }
@@ -982,7 +985,7 @@ void DataBrowser::MoveUpRow()
     // keep cursor in swapped row
     if(( 0 < GetCurRow() ) && ( GetCurRow() <= GetRowCount() - 1 ))
     {
-        Dispatch( BROWSER_CURSORUP );
+        Dispatch(BrowserDispatchId::CURSORUP);
     }
     RenewTable();
 }
@@ -1003,7 +1006,7 @@ void DataBrowser::MoveDownRow()
     // keep cursor in swapped row
     if( GetCurRow() < GetRowCount() - 1 )
     {
-        Dispatch( BROWSER_CURSORDOWN );
+        Dispatch(BrowserDispatchId::CURSORDOWN);
     }
     RenewTable();
 }
@@ -1261,23 +1264,25 @@ void DataBrowser::RenewSeriesHeaders()
     Link<impl::SeriesHeaderEdit&,void> aFocusLink( LINK( this, DataBrowser, SeriesHeaderGotFocus ));
     Link<impl::SeriesHeaderEdit&,void> aSeriesHeaderChangedLink( LINK( this, DataBrowser, SeriesHeaderChanged ));
 
-    for (auto const& elemHeader : aHeaders)
+
+    for (size_t i = 0; i < aHeaders.size(); ++i)
     {
-        auto spHeader = std::make_shared<impl::SeriesHeader>( m_pColumnsWin, m_pColorsWin );
+        auto const& elemHeader = aHeaders[i];
+        auto spHeader = std::make_shared<impl::SeriesHeader>( m_pColumnsWin, m_pColorsWin, i );
         Color nColor;
         if( elemHeader.m_xDataSeries.is() &&
-            ( elemHeader.m_xDataSeries->getPropertyValue( "Color" ) >>= nColor ))
+            ( elemHeader.m_xDataSeries->getPropertyValue( u"Color"_ustr ) >>= nColor ))
             spHeader->SetColor( nColor );
         spHeader->SetChartType( elemHeader.m_xChartType, elemHeader.m_bSwapXAndYAxis );
         spHeader->SetSeriesName(
             elemHeader.m_xDataSeries->getLabelForRole(
                         elemHeader.m_xChartType.is() ?
                          elemHeader.m_xChartType->getRoleOfSequenceForSeriesLabel() :
-                         OUString( "values-y")));
+                         u"values-y"_ustr));
         spHeader->SetRange( elemHeader.m_nStartColumn + 1, elemHeader.m_nEndColumn + 1 );
         spHeader->SetGetFocusHdl( aFocusLink );
         spHeader->SetEditChangedHdl( aSeriesHeaderChangedLink );
-        m_aSeriesHeaders.push_back( spHeader );
+        m_aSeriesHeaders.push_back(std::move(spHeader));
     }
 
     ImplAdjustHeaderControls();

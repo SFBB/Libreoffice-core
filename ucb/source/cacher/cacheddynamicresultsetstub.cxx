@@ -48,32 +48,29 @@ CachedDynamicResultSetStub::~CachedDynamicResultSetStub()
 
 //virtual
 void CachedDynamicResultSetStub
-    ::impl_InitResultSetOne( const Reference< XResultSet >& xResultSet )
+    ::impl_InitResultSetOne( std::unique_lock<std::mutex>& rGuard, const Reference< XResultSet >& xResultSet )
 {
-    DynamicResultSetWrapper::impl_InitResultSetOne( xResultSet );
+    DynamicResultSetWrapper::impl_InitResultSetOne( rGuard, xResultSet );
     OSL_ENSURE( m_xSourceResultOne.is(), "need source resultset" );
 
     Reference< XResultSet > xStub(
         new CachedContentResultSetStub( m_xSourceResultOne ) );
 
-    std::unique_lock aGuard( m_aMutex );
-    m_xMyResultOne = xStub;
+    m_xMyResultOne = std::move(xStub);
 }
 
 //virtual
 void CachedDynamicResultSetStub
-    ::impl_InitResultSetTwo( const Reference< XResultSet >& xResultSet )
+    ::impl_InitResultSetTwo( std::unique_lock<std::mutex>& rGuard, const Reference< XResultSet >& xResultSet )
 {
-    DynamicResultSetWrapper::impl_InitResultSetTwo( xResultSet );
+    DynamicResultSetWrapper::impl_InitResultSetTwo( rGuard, xResultSet );
     OSL_ENSURE( m_xSourceResultTwo.is(), "need source resultset" );
 
     Reference< XResultSet > xStub(
         new CachedContentResultSetStub( m_xSourceResultTwo ) );
 
-    std::unique_lock aGuard( m_aMutex );
-    m_xMyResultTwo = xStub;
+    m_xMyResultTwo = std::move(xStub);
 }
-
 
 // XInterface methods.
 void SAL_CALL CachedDynamicResultSetStub::acquire()
@@ -121,7 +118,7 @@ XTYPEPROVIDER_IMPL_5( CachedDynamicResultSetStub
 
 OUString SAL_CALL CachedDynamicResultSetStub::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.CachedDynamicResultSetStub";
+    return u"com.sun.star.comp.ucb.CachedDynamicResultSetStub"_ustr;
 }
 
 sal_Bool SAL_CALL CachedDynamicResultSetStub::supportsService( const OUString& ServiceName )
@@ -131,7 +128,7 @@ sal_Bool SAL_CALL CachedDynamicResultSetStub::supportsService( const OUString& S
 
 css::uno::Sequence< OUString > SAL_CALL CachedDynamicResultSetStub::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.CachedDynamicResultSetStub" };
+    return { u"com.sun.star.ucb.CachedDynamicResultSetStub"_ustr };
 }
 
 
@@ -152,7 +149,7 @@ CachedDynamicResultSetStubFactory::~CachedDynamicResultSetStubFactory()
 
 OUString SAL_CALL CachedDynamicResultSetStubFactory::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.CachedDynamicResultSetStubFactory";
+    return u"com.sun.star.comp.ucb.CachedDynamicResultSetStubFactory"_ustr;
 }
 sal_Bool SAL_CALL CachedDynamicResultSetStubFactory::supportsService( const OUString& ServiceName )
 {
@@ -160,7 +157,7 @@ sal_Bool SAL_CALL CachedDynamicResultSetStubFactory::supportsService( const OUSt
 }
 css::uno::Sequence< OUString > SAL_CALL CachedDynamicResultSetStubFactory::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.CachedDynamicResultSetStubFactory" };
+    return { u"com.sun.star.ucb.CachedDynamicResultSetStubFactory"_ustr };
 }
 
 // Service factory implementation.
@@ -219,7 +216,7 @@ void SAL_CALL CachedDynamicResultSetStubFactory
                 xSortFactory->createSortedDynamicResultSet(
                     Source, SortingInfo, CompareFactory ) );
             if( xSorted.is() )
-                xSource = xSorted;
+                xSource = std::move(xSorted);
         }
     }
 

@@ -20,7 +20,6 @@
 #ifndef INCLUDED_SAX_FSHELPER_HXX
 #define INCLUDED_SAX_FSHELPER_HXX
 
-#include <com/sun/star/xml/sax/XFastAttributeList.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/ustring.hxx>
@@ -129,14 +128,13 @@ public:
 
     void startElement(sal_Int32 elementTokenId, const rtl::Reference<FastAttributeList>& xAttrList);
 
-    FastSerializerHelper* write(const char* value);
-    FastSerializerHelper* write(const OString& value);
+    FastSerializerHelper* write(std::string_view value);
     FastSerializerHelper* write(std::u16string_view value);
     FastSerializerHelper* write(sal_Int32 value);
     FastSerializerHelper* write(sal_Int64 value);
     FastSerializerHelper* write(double value);
 
-    FastSerializerHelper* writeEscaped(const char* value);
+    FastSerializerHelper* writeEscaped(std::string_view value);
     FastSerializerHelper* writeEscaped(std::u16string_view value);
 
     FastSerializerHelper* writeId(sal_Int32 tokenId);
@@ -154,8 +152,7 @@ public:
     void setAllowXEscape(bool bSet);
 
 private:
-    void pushAttributeValue( sal_Int32 attribute, const char* value );
-    void pushAttributeValue( sal_Int32 attribute, const OString& value );
+    void pushAttributeValue(sal_Int32 attribute, std::string_view value);
 
     std::unique_ptr<FastSaxSerializer> mpSerializer;
 };

@@ -50,7 +50,6 @@ namespace dbp
 {
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::awt;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::sdb;
     using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::sdbcx;
@@ -117,23 +116,18 @@ namespace dbp
     void OControlWizardPage::fillListBox(weld::TreeView& _rList, const Sequence< OUString >& _rItems)
     {
         _rList.clear();
-        const OUString* pItems = _rItems.getConstArray();
-        const OUString* pEnd = pItems + _rItems.getLength();
-        sal_Int32 nIndex = 0;
-        for (;pItems < pEnd; ++pItems, ++nIndex)
+        for (sal_Int32 nIndex = 0; nIndex < _rItems.getLength(); ++nIndex)
         {
-            _rList.append(OUString::number(nIndex), *pItems);
+            _rList.append(OUString::number(nIndex), _rItems[nIndex]);
         }
     }
 
     void OControlWizardPage::fillListBox(weld::ComboBox& _rList, const Sequence< OUString >& _rItems)
     {
         _rList.clear();
-        const OUString* pItems = _rItems.getConstArray();
-        const OUString* pEnd = pItems + _rItems.getLength();
-        for (;pItems < pEnd; ++pItems)
+        for (auto& item : _rItems)
         {
-            _rList.append_text(*pItems);
+            _rList.append_text(item);
         }
     }
 
@@ -143,13 +137,13 @@ namespace dbp
             // nothing to do
             return;
 
-        m_xFrame = m_xBuilder->weld_frame("sourceframe");
+        m_xFrame = m_xBuilder->weld_frame(u"sourceframe"_ustr);
         m_xFrame->show();
-        m_xFormContentType = m_xBuilder->weld_label("contenttype");
-        m_xFormContentTypeLabel = m_xBuilder->weld_label("contenttypelabel");
-        m_xFormDatasource = m_xBuilder->weld_label("datasource");
-        m_xFormDatasourceLabel = m_xBuilder->weld_label("datasourcelabel");
-        m_xFormTable = m_xBuilder->weld_label("formtable");
+        m_xFormContentType = m_xBuilder->weld_label(u"contenttype"_ustr);
+        m_xFormContentTypeLabel = m_xBuilder->weld_label(u"contenttypelabel"_ustr);
+        m_xFormDatasource = m_xBuilder->weld_label(u"datasource"_ustr);
+        m_xFormDatasourceLabel = m_xBuilder->weld_label(u"datasourcelabel"_ustr);
+        m_xFormTable = m_xBuilder->weld_label(u"formtable"_ustr);
 
         const OControlWizardContext& rContext = getContext();
         if ( rContext.bEmbedded )
@@ -169,9 +163,9 @@ namespace dbp
             sal_Int32 nCommandType = CommandType::COMMAND;
             try
             {
-                rContext.xForm->getPropertyValue("DataSourceName") >>= sDataSource;
-                rContext.xForm->getPropertyValue("Command") >>= sCommand;
-                rContext.xForm->getPropertyValue("CommandType") >>= nCommandType;
+                rContext.xForm->getPropertyValue(u"DataSourceName"_ustr) >>= sDataSource;
+                rContext.xForm->getPropertyValue(u"Command"_ustr) >>= sCommand;
+                rContext.xForm->getPropertyValue(u"CommandType"_ustr) >>= nCommandType;
             }
             catch(const Exception&)
             {
@@ -227,7 +221,7 @@ namespace dbp
         sal_Int16 nClassId = FormComponentType::CONTROL;
         try
         {
-            getContext().xObjectModel->getPropertyValue("ClassId") >>= nClassId;
+            getContext().xObjectModel->getPropertyValue(u"ClassId"_ustr) >>= nClassId;
         }
         catch(const Exception&)
         {
@@ -346,7 +340,7 @@ namespace dbp
             {
                 DBG_ASSERT(xPage.is(), "OControlWizard::implDeterminePage: can't determine the page (no model)!");
             }
-            m_aContext.xDrawPage = xPage;
+            m_aContext.xDrawPage = std::move(xPage);
         }
         catch(const Exception&)
         {
@@ -381,7 +375,7 @@ namespace dbp
         try
         {
             if ( !::dbtools::isEmbeddedInDatabase(m_aContext.xForm,xConn) )
-                m_aContext.xForm->getPropertyValue("ActiveConnection") >>= xConn;
+                m_aContext.xForm->getPropertyValue(u"ActiveConnection"_ustr) >>= xConn;
         }
         catch(const Exception&)
         {
@@ -410,7 +404,7 @@ namespace dbp
             }
             else
             {
-                m_aContext.xForm->setPropertyValue("ActiveConnection", Any( _rxConn ) );
+                m_aContext.xForm->setPropertyValue(u"ActiveConnection"_ustr, Any( _rxConn ) );
             }
         }
         catch(const Exception&)
@@ -480,8 +474,8 @@ namespace dbp
             if (m_aContext.xForm.is())
             {
                 // collect some properties of the form
-                OUString sObjectName = ::comphelper::getString(m_aContext.xForm->getPropertyValue("Command"));
-                sal_Int32 nObjectType = ::comphelper::getINT32(m_aContext.xForm->getPropertyValue("CommandType"));
+                OUString sObjectName = ::comphelper::getString(m_aContext.xForm->getPropertyValue(u"Command"_ustr));
+                sal_Int32 nObjectType = ::comphelper::getINT32(m_aContext.xForm->getPropertyValue(u"CommandType"_ustr));
 
                 // calculate the connection the rowset is working with
                 Reference< XConnection > xConnection;
@@ -526,7 +520,7 @@ namespace dbp
 
                             // not interested in any results, only in the fields
                             Reference< XPropertySet > xStatementProps(xStatement, UNO_QUERY);
-                            xStatementProps->setPropertyValue("MaxRows", Any(sal_Int32(0)));
+                            xStatementProps->setPropertyValue(u"MaxRows"_ustr, Any(sal_Int32(0)));
 
                             // TODO: think about handling local SQLExceptions here ...
                             Reference< XColumnsSupplier >  xSupplyCols(xStatement->executeQuery(), UNO_QUERY);
@@ -540,16 +534,14 @@ namespace dbp
             if (xColumns.is())
             {
                 m_aContext.aFieldNames = xColumns->getElementNames();
-                const OUString* pBegin = m_aContext.aFieldNames.getConstArray();
-                const OUString* pEnd   = pBegin + m_aContext.aFieldNames.getLength();
-                for(;pBegin != pEnd;++pBegin)
+                for (auto& name : m_aContext.aFieldNames)
                 {
                     sal_Int32 nFieldType = DataType::OTHER;
                     try
                     {
                         Reference< XPropertySet > xColumn;
-                        xColumns->getByName(*pBegin) >>= xColumn;
-                        xColumn->getPropertyValue("Type") >>= nFieldType;
+                        xColumns->getByName(name) >>= xColumn;
+                        xColumn->getPropertyValue(u"Type"_ustr) >>= nFieldType;
                     }
                     catch(const Exception&)
                     {
@@ -557,7 +549,7 @@ namespace dbp
                             "extensions.dbpilots",
                             "unexpected exception while gathering column information!");
                     }
-                    m_aContext.aTypes.emplace(*pBegin,nFieldType);
+                    m_aContext.aTypes.emplace(name, nFieldType);
                 }
             }
         }
@@ -606,11 +598,11 @@ namespace dbp
         try
         {
             Reference< XPropertySetInfo > xInfo = m_aContext.xObjectModel->getPropertySetInfo();
-            if (xInfo.is() && xInfo->hasPropertyByName("Label"))
+            if (xInfo.is() && xInfo->hasPropertyByName(u"Label"_ustr))
             {
                 OUString sControlLabel(_pSettings->sControlLabel);
                 m_aContext.xObjectModel->setPropertyValue(
-                    "Label",
+                    u"Label"_ustr,
                     Any(sControlLabel)
                 );
             }
@@ -631,7 +623,7 @@ namespace dbp
         // initialize some settings from the control model give
         try
         {
-            OUString sLabelPropertyName("Label");
+            OUString sLabelPropertyName(u"Label"_ustr);
             Reference< XPropertySetInfo > xInfo = m_aContext.xObjectModel->getPropertySetInfo();
             if (xInfo.is() && xInfo->hasPropertyByName(sLabelPropertyName))
             {

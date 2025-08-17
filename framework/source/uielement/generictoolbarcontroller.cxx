@@ -124,7 +124,7 @@ void SAL_CALL GenericToolbarController::dispose()
     svt::ToolboxController::dispose();
 
     m_pToolbar = nullptr;
-    m_xToolbar.clear();
+    m_xToolbar.reset();
     m_nID = ToolBoxItemId(0);
 }
 
@@ -166,10 +166,10 @@ void SAL_CALL GenericToolbarController::execute( sal_Int16 KeyModifier )
 
     // Execute dispatch asynchronously
     ExecuteInfo* pExecuteInfo = new ExecuteInfo;
-    pExecuteInfo->xDispatch     = xDispatch;
-    pExecuteInfo->aTargetURL    = aTargetURL;
+    pExecuteInfo->xDispatch     = std::move(xDispatch);
+    pExecuteInfo->aTargetURL    = std::move(aTargetURL);
     // Add key modifier to argument list
-    pExecuteInfo->aArgs = { comphelper::makePropertyValue("KeyModifier", KeyModifier) };
+    pExecuteInfo->aArgs = { comphelper::makePropertyValue(u"KeyModifier"_ustr, KeyModifier) };
 
     Application::PostUserEvent( LINK(nullptr, GenericToolbarController , ExecuteHdl_Impl), pExecuteInfo );
 }
@@ -287,7 +287,7 @@ void GenericToolbarController::statusChanged( const FeatureStateEvent& Event )
     {
         if (aControlCommand.Command == "SetQuickHelpText")
         {
-            for ( NamedValue const & rArg : std::as_const(aControlCommand.Arguments) )
+            for (NamedValue const& rArg : aControlCommand.Arguments)
             {
                 if (rArg.Name == "HelpText")
                 {
@@ -339,7 +339,7 @@ ImageOrientationController::ImageOrientationController(const Reference<XComponen
                                                        const Reference<XFrame>& rFrame,
                                                        const Reference<css::awt::XWindow>& rParentWindow,
                                                        const OUString& rModuleName)
-    : ToolboxController(rContext, rFrame, ".uno:ImageOrientation")
+    : ToolboxController(rContext, rFrame, u".uno:ImageOrientation"_ustr)
     , m_nRotationAngle(0_deg10)
     , m_bMirrored(false)
 {
@@ -394,6 +394,20 @@ void ImageOrientationController::statusChanged(const css::frame::FeatureStateEve
             OUString aCommand = m_pToolbar->get_item_ident(i);
             if (vcl::CommandInfoProvider::IsMirrored(aCommand, getModuleName()))
             {
+                if (m_bMirrored)
+                {
+                    // Search for a specialized mirrored graphic
+                    auto xRltbGraphic = vcl::CommandInfoProvider::GetXGraphicForCommand(
+                        aCommand, m_xFrame, m_pToolbar->get_icon_size(),
+                        vcl::ImageWritingDirection::RightLeftTopBottom);
+                    if (xRltbGraphic)
+                    {
+                        m_pToolbar->set_item_image_mirrored(aCommand, false);
+                        m_pToolbar->set_item_image(aCommand, xRltbGraphic);
+                        continue;
+                    }
+                }
+
                 m_pToolbar->set_item_image_mirrored(aCommand, m_bMirrored);
                 auto xGraphic(vcl::CommandInfoProvider::GetXGraphicForCommand(
                     aCommand, m_xFrame, m_pToolbar->get_icon_size()));
@@ -408,8 +422,25 @@ void ImageOrientationController::statusChanged(const css::frame::FeatureStateEve
         {
             ToolBoxItemId nItemId = pToolBox->GetItemId(i);
             OUString aCommand = pToolBox->GetItemCommand(nItemId);
+
+            bool bCmdMirrored = vcl::CommandInfoProvider::IsMirrored(aCommand, getModuleName());
+            if (bCmdMirrored && m_bMirrored)
+            {
+                // Search for a specialized mirrored graphic
+                auto xRltbGraphic = vcl::CommandInfoProvider::GetXGraphicForCommand(
+                    aCommand, m_xFrame, pToolBox->GetImageSize(),
+                    vcl::ImageWritingDirection::RightLeftTopBottom);
+                if (xRltbGraphic)
+                {
+                    pToolBox->SetItemImageMirrorMode(nItemId, false);
+                    pToolBox->SetItemImageAngle(nItemId, m_nRotationAngle);
+                    pToolBox->SetItemImage(nItemId, Image{ xRltbGraphic });
+                    continue;
+                }
+            }
+
             bool bModified = false;
-            if (vcl::CommandInfoProvider::IsMirrored(aCommand, getModuleName()))
+            if (bCmdMirrored)
             {
                 pToolBox->SetItemImageMirrorMode(nItemId, m_bMirrored);
                 bModified = true;

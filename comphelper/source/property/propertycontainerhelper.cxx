@@ -199,7 +199,7 @@ namespace
         throw IllegalArgumentException(
             "The given value cannot be converted to the required property type."
             " (property name \"" +  _rProperty.aProperty.Name
-            + "\", found value type \"" + _rValue.getValueType().getTypeName()
+            + "\", found value type \"" + _rValue.getValueTypeName()
             + "\", required property type \"" + _rProperty.aProperty.Type.getTypeName()
             + "\")",
             nullptr, 4 );
@@ -251,7 +251,7 @@ bool OPropertyContainerHelper::convertFastPropertyValue(
                 {
                     // we were able to query the given XInterface-derivee for the interface
                     // which is required for this property
-                    aNewRequestedValue = aProperlyTyped;
+                    aNewRequestedValue = std::move(aProperlyTyped);
                 }
             }
 
@@ -292,7 +292,7 @@ bool OPropertyContainerHelper::convertFastPropertyValue(
             if (bModified)
             {
                 _rOldValue = *pPropContainer;
-                _rConvertedValue = aNewRequestedValue;
+                _rConvertedValue = std::move(aNewRequestedValue);
             }
         }
         break;
@@ -399,7 +399,7 @@ void OPropertyContainerHelper::getFastPropertyValue(Any& _rValue, sal_Int32 _nHa
     PropertiesIterator aPos = const_cast<OPropertyContainerHelper*>(this)->searchHandle(_nHandle);
     if (aPos == m_aProperties.end())
     {
-        OSL_FAIL( "OPropertyContainerHelper::getFastPropertyValue: unknown handle!" );
+        assert( false && "OPropertyContainerHelper::getFastPropertyValue: unknown handle" );
         // should not happen if the derived class has built a correct property set info helper to be used by
         // our base class OPropertySetHelper
         return;
@@ -484,7 +484,7 @@ void OPropertyContainerHelper::describeProperties(Sequence< Property >& _rProps)
               );
 
     // copy the output
-    _rProps = aOutput;
+    _rProps = std::move(aOutput);
 }
 
 

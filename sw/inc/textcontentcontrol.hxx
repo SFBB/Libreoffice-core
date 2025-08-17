@@ -21,19 +21,18 @@
 #include "txatbase.hxx"
 
 class SwContentControlManager;
-class SwFormatContentControl;
 
 /// SwTextAttr subclass that tracks the location of the wrapped SwFormatContentControl.
 class SW_DLLPUBLIC SwTextContentControl final : public SwTextAttrNesting
 {
     SwContentControlManager* m_pManager;
 
-    SwTextContentControl(SwContentControlManager* pManager, SwFormatContentControl& rAttr,
+    SwTextContentControl(SwContentControlManager* pManager, const SfxPoolItemHolder& rAttr,
                          sal_Int32 nStart, sal_Int32 nEnd);
 
 public:
     static SwTextContentControl* CreateTextContentControl(SwDoc& rDoc, SwTextNode* pTargetTextNode,
-                                                          SwFormatContentControl& rAttr,
+                                                          const SfxPoolItemHolder& rHolder,
                                                           sal_Int32 nStart, sal_Int32 nEnd,
                                                           bool bIsCopy);
 

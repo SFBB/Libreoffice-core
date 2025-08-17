@@ -105,11 +105,11 @@ void SvxPageWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Recta
             aSz = rRenderContext.PixelToLogic(GetOutputSizePixel());
             nYPos = (aSz.Height() - aSize.Height()) / 2;
             tools::Long nXPos = (aSz.Width() - aSize.Width()) / 2;
-            DrawPage(rRenderContext, Point(nXPos,nYPos),true,true);
+            DrawPage(rRenderContext, Point(nXPos,nYPos),false,true);
         }
         else
             // Portrait
-            DrawPage(rRenderContext, Point((aSz.Width() - aSize.Width()) / 2,nYPos),true,true);
+            DrawPage(rRenderContext, Point((aSz.Width() - aSize.Width()) / 2,nYPos),false,true);
     }
     else
     {
@@ -125,7 +125,7 @@ void SvxPageWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Recta
 void SvxPageWindow::DrawPage(vcl::RenderContext& rRenderContext, const Point& rOrg, const bool bSecond, const bool bEnabled)
 {
     const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
-    const Color& rFieldColor = rStyleSettings.GetFieldColor();
+    const Color& rFieldColor = svtools::ColorConfig().GetColorValue(svtools::DOCCOLOR).nColor;
     const Color& rFieldTextColor = rStyleSettings.GetFieldTextColor();
     const Color& rDisableColor = rStyleSettings.GetDisableColor();
     const Color& rDlgColor = rStyleSettings.GetDialogColor();
@@ -133,7 +133,7 @@ void SvxPageWindow::DrawPage(vcl::RenderContext& rRenderContext, const Point& rO
     // background
     if (!bSecond || bResetBackground)
     {
-        rRenderContext.SetLineColor(COL_TRANSPARENT);
+        rRenderContext.SetLineColor();
         rRenderContext.SetFillColor(rDlgColor);
         Size winSize(rRenderContext.GetOutputSize());
         rRenderContext.DrawRect(tools::Rectangle(Point(0,0), winSize));
@@ -142,6 +142,7 @@ void SvxPageWindow::DrawPage(vcl::RenderContext& rRenderContext, const Point& rO
             bResetBackground = false;
     }
     rRenderContext.SetLineColor(rFieldTextColor);
+    rRenderContext.SetTextColor(COL_GRAY);
 
     // Shadow
     Size aTempSize = aSize;
@@ -178,13 +179,10 @@ void SvxPageWindow::DrawPage(vcl::RenderContext& rRenderContext, const Point& rO
 
     if (bHeader || bFooter)
     {
-        // Header and/or footer used
-        const Color aLineColor(rRenderContext.GetLineColor());
-
         // draw PageFill first and on the whole page, no outline
         rRenderContext.SetLineColor();
         drawFillAttributes(rRenderContext, maPageFillAttributes, aRect, aRect);
-        rRenderContext.SetLineColor(aLineColor);
+        rRenderContext.SetLineColor(COL_GRAY);
 
         if (bHeader)
         {
@@ -227,7 +225,7 @@ void SvxPageWindow::DrawPage(vcl::RenderContext& rRenderContext, const Point& rO
         Size aDrawSize(0,aRect.GetHeight() / 6);
         aFont.SetFontSize(aDrawSize);
         rRenderContext.SetFont(aFont);
-        OUString sText("ABC");
+        OUString sText(u"ABC"_ustr);
         Point aMove(1, rRenderContext.GetTextHeight());
         sal_Unicode cArrow = 0x2193;
         tools::Long nAWidth = rRenderContext.GetTextWidth(sText.copy(0,1));

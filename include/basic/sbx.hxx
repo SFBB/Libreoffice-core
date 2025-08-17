@@ -33,8 +33,6 @@
 
 class SvStream;
 
-class SfxBroadcaster;
-
 // Parameter information
 struct SbxParamInfo
 {
@@ -82,6 +80,7 @@ class BASIC_DLLPUBLIC SbxHint final : public SfxHint
     SbxVariable* pVar;
 public:
     SbxHint( SfxHintId n, SbxVariable* v ) : SfxHint( n ), pVar( v ) {}
+    ~SbxHint() override;
     SbxVariable* GetVar() const { return pVar; }
 };
 
@@ -122,7 +121,7 @@ public:
     void                 Remove( sal_uInt32 );
     void                 Remove( SbxVariable const * );
     void                 Merge( SbxArray* );
-    OUString GetAlias(sal_uInt32);
+    const OUString & GetAlias(sal_uInt32);
     void PutAlias(const OUString&, sal_uInt32);
     SbxVariable* Find( const OUString&, SbxClassType );
 };

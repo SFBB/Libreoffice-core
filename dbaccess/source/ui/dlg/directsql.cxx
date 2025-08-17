@@ -25,6 +25,7 @@
 #include <comphelper/types.hxx>
 #include <osl/mutex.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <rtl/ustring.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
@@ -36,8 +37,21 @@
 #include <com/sun/star/sdbc/XResultSetMetaData.hpp>
 #include <com/sun/star/sdbc/XResultSetMetaDataSupplier.hpp>
 
+// tdf#140298 - remember user settings within the current session
+// memp is filled in dtor and restored after initialization
+namespace
+{
+    struct memParam {
+        std::vector<OUString> SQLHistory;
+        bool DirectSQL;
+        bool ShowOutput;
+    };
+    memParam memp;
+}
+
 namespace dbaui
 {
+
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::lang;
@@ -46,16 +60,16 @@ namespace dbaui
 
     // DirectSQLDialog
     DirectSQLDialog::DirectSQLDialog(weld::Window* _pParent, const Reference< XConnection >& _rxConn)
-        : GenericDialogController(_pParent, "dbaccess/ui/directsqldialog.ui", "DirectSQLDialog")
-        , m_xExecute(m_xBuilder->weld_button("execute"))
-        , m_xSQLHistory(m_xBuilder->weld_combo_box("sqlhistory"))
-        , m_xStatus(m_xBuilder->weld_text_view("status"))
-        , m_xDirectSQL(m_xBuilder->weld_check_button("directsql"))
-        , m_xShowOutput(m_xBuilder->weld_check_button("showoutput"))
-        , m_xOutput(m_xBuilder->weld_text_view("output"))
-        , m_xClose(m_xBuilder->weld_button("close"))
-        , m_xSQL(new SQLEditView(m_xBuilder->weld_scrolled_window("scrolledwindow", true)))
-        , m_xSQLEd(new weld::CustomWeld(*m_xBuilder, "sql", *m_xSQL))
+        : GenericDialogController(_pParent, u"dbaccess/ui/directsqldialog.ui"_ustr, u"DirectSQLDialog"_ustr)
+        , m_xExecute(m_xBuilder->weld_button(u"execute"_ustr))
+        , m_xSQLHistory(m_xBuilder->weld_combo_box(u"sqlhistory"_ustr))
+        , m_xStatus(m_xBuilder->weld_text_view(u"status"_ustr))
+        , m_xDirectSQL(m_xBuilder->weld_check_button(u"directsql"_ustr))
+        , m_xShowOutput(m_xBuilder->weld_check_button(u"showoutput"_ustr))
+        , m_xOutput(m_xBuilder->weld_text_view(u"output"_ustr))
+        , m_xClose(m_xBuilder->weld_button(u"close"_ustr))
+        , m_xSQL(new SQLEditView(m_xBuilder->weld_scrolled_window(u"scrolledwindow"_ustr, true)))
+        , m_xSQLEd(new weld::CustomWeld(*m_xBuilder, u"sql"_ustr, *m_xSQL))
         , m_nStatusCount(1)
         , m_xConnection(_rxConn)
         , m_pClosingEvent(nullptr)
@@ -66,12 +80,23 @@ namespace dbaui
         m_xSQLEd->set_size_request(nWidth, nHeight);
         m_xStatus->set_size_request(-1, nHeight);
         m_xOutput->set_size_request(-1, nHeight);
+        m_xSQLHistory->set_size_request(nWidth, -1);
 
         m_xSQL->GrabFocus();
 
         m_xExecute->connect_clicked(LINK(this, DirectSQLDialog, OnExecute));
         m_xClose->connect_clicked(LINK(this, DirectSQLDialog, OnCloseClick));
         m_xSQLHistory->connect_changed(LINK(this, DirectSQLDialog, OnListEntrySelected));
+
+        m_xDirectSQL->set_active(true);
+        m_xShowOutput->set_active(true);
+
+        for (size_t i = 0; i < memp.SQLHistory.size(); i++)
+        {
+            implAddToStatementHistory(memp.SQLHistory[i], true);
+            m_xDirectSQL->set_active(memp.DirectSQL);
+            m_xShowOutput->set_active(memp.ShowOutput);
+        }
 
         // add a dispose listener to the connection
         Reference< XComponent > xConnComp(m_xConnection, UNO_QUERY);
@@ -85,6 +110,9 @@ namespace dbaui
 
     DirectSQLDialog::~DirectSQLDialog()
     {
+        memp.DirectSQL = m_xDirectSQL->get_active();
+        memp.ShowOutput = m_xShowOutput->get_active();
+
         ::osl::MutexGuard aGuard(m_aMutex);
         if (m_pClosingEvent)
             Application::RemoveUserEvent(m_pClosingEvent);
@@ -147,7 +175,7 @@ namespace dbaui
         }
     }
 
-    void DirectSQLDialog::implAddToStatementHistory(const OUString& _rStatement)
+    void DirectSQLDialog::implAddToStatementHistory(const OUString& _rStatement, const bool bFromMemory)
     {
         #ifdef DBG_UTIL
         {
@@ -159,6 +187,8 @@ namespace dbaui
 
         // add the statement to the history
         m_aStatementHistory.push_back(_rStatement);
+        if (!bFromMemory)
+            memp.SQLHistory.push_back(_rStatement);
 
         // normalize the statement, and remember the normalized form, too
         OUString sNormalized = _rStatement.replaceAll("\n", " ");
@@ -213,7 +243,7 @@ namespace dbaui
 
             if (m_xDirectSQL->get_active())
             {
-                Reference< com::sun::star::beans::XPropertySet > xStatementProps(xStatement, UNO_QUERY_THROW);
+                Reference< css::beans::XPropertySet > xStatementProps(xStatement, UNO_QUERY_THROW);
                 try
                 {
                     xStatementProps->setPropertyValue(PROPERTY_ESCAPE_PROCESSING, Any(false));
@@ -311,7 +341,7 @@ namespace dbaui
 
         const Reference<XResultSetMetaData> xResultSetMetaData = Reference<XResultSetMetaDataSupplier>(xRS,UNO_QUERY_THROW)->getMetaData();
         const sal_Int32 nColumnsCount = xResultSetMetaData->getColumnCount();
-
+        sal_Int32 nRowCount = 0;
         // get a handle for the rows
         css::uno::Reference< css::sdbc::XRow > xRow( xRS, css::uno::UNO_QUERY );
         // work through each of the rows
@@ -348,6 +378,7 @@ namespace dbaui
                             out.append(xRow->getString(i) + ",");
                     }
                 }
+                nRowCount++;
             }
             // trap for when we fall off the end of the row
             catch (const SQLException&)
@@ -356,6 +387,7 @@ namespace dbaui
             // report the output
             addOutputText(out);
         }
+        addOutputText(DBA_RES_PLURAL(STR_COMMAND_NROWS, nRowCount).replaceAll("%1", OUString::number(nRowCount)));
     }
 
     void DirectSQLDialog::addStatusText(std::u16string_view _rMessage)

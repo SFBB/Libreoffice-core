@@ -23,11 +23,12 @@
 #include <skia/salbmp.hxx>
 #include <vcl/idle.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <vcl/gradient.hxx>
 #include <vcl/skia/SkiaHelper.hxx>
 #include <skia/utils.hxx>
 #include <skia/zone.hxx>
+#include <tools/debug.hxx>
 
 #include <SkBitmap.h>
 #include <SkCanvas.h>
@@ -36,7 +37,7 @@
 #include <SkRegion.h>
 #include <SkPathEffect.h>
 #include <SkDashPathEffect.h>
-#include <GrBackendSurface.h>
+#include <ganesh/GrBackendSurface.h>
 #include <SkTextBlob.h>
 #include <SkRSXform.h>
 
@@ -244,8 +245,14 @@ public:
         : Idle(get_debug_name(pGraphics))
         , mpGraphics(pGraphics)
     {
+#ifdef MACOSX
+        // tdf#165277 Skia needs to flush immediately before POST_PAINT
+        // tasks on macOS
+        SetPriority(TaskPriority::SKIA_FLUSH);
+#else
         // We don't want to be swapping before we've painted.
-        SetPriority(TaskPriority::POST_PAINT);
+        SetPriority(TaskPriority::HIGHEST);
+#endif
     }
 #ifndef NDEBUG
     virtual ~SkiaFlushIdle() { free(debugname); }
@@ -268,13 +275,19 @@ public:
     {
         mpGraphics->performFlush();
         Stop();
-        // tdf#157312 Don't change priority
-        // Instances of this class are constructed with
-        // TaskPriority::POST_PAINT, but then it was set to
-        // TaskPriority::HIGHEST when reused. Flushing
-        // seems to be expensive (at least with Skia/Metal) so keep the
-        // existing priority when reused.
-        SetPriority(TaskPriority::POST_PAINT);
+#ifdef MACOSX
+        // tdf#157312 and tdf#163945 Lower Skia flush timer priority on macOS
+        // On macOS, flushing with Skia/Metal is noticeably slower than
+        // with Skia/Raster. So lower the flush timer priority to
+        // TaskPriority::SKIA_FLUSH so that the flush timer runs less
+        // frequently but each pass copies a more up-to-date offscreen
+        // surface.
+        // tdf#165277 Skia needs to flush immediately before POST_PAINT
+        // tasks on macOS
+        SetPriority(TaskPriority::SKIA_FLUSH);
+#else
+        SetPriority(TaskPriority::HIGHEST);
+#endif
     }
 };
 
@@ -297,8 +310,6 @@ SkiaSalGraphicsImpl::~SkiaSalGraphicsImpl()
     assert(!mWindowContext);
 }
 
-void SkiaSalGraphicsImpl::Init() {}
-
 void SkiaSalGraphicsImpl::createSurface()
 {
     SkiaZone zone;
@@ -312,7 +323,13 @@ void SkiaSalGraphicsImpl::createSurface()
 
     // We don't want to be swapping before we've painted.
     mFlush->Stop();
+#ifdef MACOSX
+    // tdf#165277 Skia needs to flush immediately before POST_PAINT
+    // tasks on macOS
+    mFlush->SetPriority(TaskPriority::SKIA_FLUSH);
+#else
     mFlush->SetPriority(TaskPriority::POST_PAINT);
+#endif
 }
 
 void SkiaSalGraphicsImpl::createWindowSurface(bool forceRaster)
@@ -393,13 +410,13 @@ void SkiaSalGraphicsImpl::performFlush()
 {
     SkiaZone zone;
     flushDrawing();
-    // Related: tdf#152703 Eliminate flickering during live resizing of a window
-    // When in live resize, the SkiaSalGraphicsImpl class does not detect that
-    // the window size has changed until after the flush has been called so
-    // call checkSurface() to recreate the SkSurface if needed before flushing.
-    checkSurface();
     if (mSurface)
     {
+        // Related: tdf#152703 Eliminate flickering during live resizing of a window
+        // When in live resize, the SkiaSalGraphicsImpl class does not detect that
+        // the window size has changed until after the flush has been called so
+        // call checkSurface() to recreate the SkSurface if needed before flushing.
+        checkSurface();
         if (mDirtyRect.intersect(SkIRect::MakeWH(GetWidth(), GetHeight())))
             flushSurfaceToWindowContext();
         mDirtyRect.setEmpty();
@@ -415,14 +432,19 @@ void SkiaSalGraphicsImpl::flushSurfaceToWindowContext()
         // for every swapBuffers(), for this reason mSurface is an offscreen surface
         // where we keep the contents (LO does not do full redraws).
         // So here blit the surface to the window context surface and then swap it.
-        assert(isGPU()); // Raster should always draw directly to backbuffer to save copying
+
+        // Raster should always draw directly to backbuffer to save copying
+        // except for small sizes - see renderMethodToUseForSize
+        assert(isGPU() || (mSurface->width() <= 32 && mSurface->height() <= 32));
         SkPaint paint;
         paint.setBlendMode(SkBlendMode::kSrc); // copy as is
         // We ignore mDirtyRect here, and mSurface already is in screenSurface coordinates,
         // so no transformation needed.
         screenSurface->getCanvas()->drawImage(makeCheckedImageSnapshot(mSurface), 0, 0,
                                               SkSamplingOptions(), &paint);
-        screenSurface->flushAndSubmit(); // Otherwise the window is not drawn sometimes.
+        // Otherwise the window is not drawn sometimes.
+        if (auto dContext = GrAsDirectContext(screenSurface->getCanvas()->recordingContext()))
+            dContext->flushAndSubmit();
         mWindowContext->swapBuffers(nullptr); // Must swap the entire surface.
     }
     else
@@ -443,7 +465,7 @@ void SkiaSalGraphicsImpl::DeInit() { destroySurface(); }
 
 void SkiaSalGraphicsImpl::preDraw()
 {
-    assert(comphelper::SolarMutex::get()->IsCurrentThread());
+    DBG_TESTSOLARMUTEX();
     SkiaZone::enter(); // matched in postDraw()
     checkSurface();
     checkPendingDrawing();
@@ -458,22 +480,31 @@ void SkiaSalGraphicsImpl::postDraw()
     // a problematic operation has been performed too many times without a flush.
     // Note that the counter is a static variable, as all drawing shares the same Skia drawing
     // context (and so the flush here will also flush all drawing).
-    if (pendingOperationsToFlush > 1000)
+    static int maxOperationsToFlush = 1000;
+    if (pendingOperationsToFlush > maxOperationsToFlush)
     {
-        mSurface->flushAndSubmit();
+        if (auto dContext = GrAsDirectContext(mSurface->getCanvas()->recordingContext()))
+            dContext->flushAndSubmit();
         pendingOperationsToFlush = 0;
     }
     SkiaZone::leave(); // matched in preDraw()
     // If there's a problem with the GPU context, abort.
     if (GrDirectContext* context = GrAsDirectContext(mSurface->getCanvas()->recordingContext()))
     {
-        // Running out of memory on the GPU technically could be possibly recoverable,
-        // but we don't know the exact status of the surface (and what has or has not been drawn to it),
-        // so in practice this is unrecoverable without possible data loss.
+        // We don't know the exact status of the surface (and what has or has not been drawn to it).
+        // But let's pretend it was drawn OK, and reduce the flush limit, to try to avoid possible
+        // small HW memory limitation
         if (context->oomed())
         {
-            SAL_WARN("vcl.skia", "GPU context has run out of memory, aborting.");
-            abort();
+            if (maxOperationsToFlush > 10)
+            {
+                maxOperationsToFlush /= 2;
+            }
+            else
+            {
+                SAL_WARN("vcl.skia", "GPU context has run out of memory, aborting.");
+                abort();
+            }
         }
         // Unrecoverable problem.
         if (context->abandoned())
@@ -679,8 +710,6 @@ void SkiaSalGraphicsImpl::SetROPLineColor(SalROPColor nROPColor)
             moLineColor = Color(0, 0, 0);
             break;
         case SalROPColor::N1:
-            moLineColor = Color(0xff, 0xff, 0xff);
-            break;
         case SalROPColor::Invert:
             moLineColor = Color(0xff, 0xff, 0xff);
             break;
@@ -696,8 +725,6 @@ void SkiaSalGraphicsImpl::SetROPFillColor(SalROPColor nROPColor)
             moFillColor = Color(0, 0, 0);
             break;
         case SalROPColor::N1:
-            moFillColor = Color(0xff, 0xff, 0xff);
-            break;
         case SalROPColor::Invert:
             moFillColor = Color(0xff, 0xff, 0xff);
             break;
@@ -717,7 +744,21 @@ void SkiaSalGraphicsImpl::drawPixel(tools::Long nX, tools::Long nY, Color nColor
     SkPaint paint = makePixelPaint(nColor);
     // Apparently drawPixel() is actually expected to set the pixel and not draw it.
     paint.setBlendMode(SkBlendMode::kSrc); // set as is, including alpha
+
+#ifdef MACOSX
+    // tdf#148569 set extra drawing constraints when scaling
+    // Previously, setting stroke width and cap was only done when running
+    // unit tests. But the same drawing constraints are necessary when running
+    // with a Retina display on macOS.
+    if (mScaling != 1)
+#else
+    // Related tdf#148569: do not apply macOS fix to non-macOS platforms
+    // Setting the stroke width and cap has a noticeable performance penalty
+    // when running on GTK3. Since tdf#148569 only appears to occur on macOS
+    // Retina displays, revert commit a4488013ee6c87a97501b620dbbf56622fb70246
+    // for non-macOS platforms.
     if (mScaling != 1 && isUnitTestRunning())
+#endif
     {
         // On HiDPI displays, draw a square on the entire non-hidpi "pixel" when running unittests,
         // since tests often require precise pixel drawing.
@@ -775,7 +816,15 @@ void SkiaSalGraphicsImpl::privateDrawAlphaRect(tools::Long nX, tools::Long nY, t
     {
         SkPaint paint = makeLinePaint(fTransparency);
         paint.setAntiAlias(!blockAA && mParent.getAntiAlias());
+#ifdef MACOSX
+        // tdf#162646 set extra drawing constraints when scaling
+        // Previously, setting stroke width and cap was only done when running
+        // unit tests. But the same drawing constraints are necessary when
+        // running with a Retina display on macOS and antialiasing is disabled.
+        if (mScaling != 1 && (isUnitTestRunning() || !paint.isAntiAlias()))
+#else
         if (mScaling != 1 && isUnitTestRunning())
+#endif
         {
             // On HiDPI displays, do not draw just a hairline but instead a full-width "pixel" when running unittests,
             // since tests often require precise pixel drawing.
@@ -893,6 +942,14 @@ void SkiaSalGraphicsImpl::performDrawPolyPolygon(const basegfx::B2DPolyPolygon& 
     // So if AA is enabled, avoid this fixup for rectangular areas.
     if (!useAA || !hasOnlyOrthogonal)
     {
+#ifdef MACOSX
+        // tdf#162646 don't move orthogonal polypolygons when scaling
+        // Previously, polypolygons would be moved slightly but this causes
+        // misdrawing of orthogonal polypolygons (i.e. polypolygons with only
+        // vertical and horizontal lines) when using a Retina display on
+        // macOS and antialiasing is disabled.
+        if ((!isUnitTestRunning() && (useAA || !hasOnlyOrthogonal)) || getWindowScaling() == 1)
+#else
         // We normally use pixel at their center positions, but slightly off (see toSkX/Y()).
         // With AA lines that "slightly off" causes tiny changes of color, making some tests
         // fail. Since moving AA-ed line slightly to a side doesn't cause any real visual
@@ -900,6 +957,7 @@ void SkiaSalGraphicsImpl::performDrawPolyPolygon(const basegfx::B2DPolyPolygon& 
         // When running on macOS with a Retina display, one BackendTest unit
         // test will fail if the position is adjusted.
         if (!isUnitTestRunning() || getWindowScaling() == 1)
+#endif
         {
             const SkScalar posFix = useAA ? toSkXYFix : 0;
             polygonPath.offset(toSkX(0) + posFix, toSkY(0) + posFix, nullptr);
@@ -907,7 +965,7 @@ void SkiaSalGraphicsImpl::performDrawPolyPolygon(const basegfx::B2DPolyPolygon& 
     }
     if (moFillColor)
     {
-        SkPaint aPaint = makeFillPaint(fTransparency);
+        SkPaint aPaint = makeFillPaint(fTransparency, /*bSrcATop*/ true);
         aPaint.setAntiAlias(useAA);
         // HACK: If the polygon is just a line, it still should be drawn. But when filling
         // Skia doesn't draw empty polygons, so in that case ensure the line is drawn.
@@ -974,7 +1032,7 @@ bool SkiaSalGraphicsImpl::delayDrawPolyPolygon(const basegfx::B2DPolyPolygon& aP
     if (!polygonContainsLine(aPolyPolygon))
         return false;
 
-    if (mLastPolyPolygonInfo.polygons.size() != 0
+    if (!mLastPolyPolygonInfo.polygons.empty()
         && (mLastPolyPolygonInfo.transparency != fTransparency
             || !mLastPolyPolygonInfo.bounds.overlaps(aPolyPolygon.getB2DRange())))
     {
@@ -1026,7 +1084,7 @@ static void roundPolygonPoints(basegfx::B2DPolyPolygon& polyPolygon)
 
 void SkiaSalGraphicsImpl::checkPendingDrawing()
 {
-    if (mLastPolyPolygonInfo.polygons.size() != 0)
+    if (!mLastPolyPolygonInfo.polygons.empty())
     { // Flush any pending polygon drawing.
         basegfx::B2DPolyPolygonVector polygons;
         std::swap(polygons, mLastPolyPolygonInfo.polygons);
@@ -1062,9 +1120,18 @@ bool SkiaSalGraphicsImpl::drawPolyLine(const basegfx::B2DHomMatrix& rObjectToDev
 
     // Adjust line width for object-to-device scale.
     fLineWidth = (rObjectToDevice * basegfx::B2DVector(fLineWidth, 0)).getLength();
+#ifdef MACOSX
+    // tdf#162646 suppressing drawing hairlines when scaling
+    // Previously, drawing of hairlines (i.e. zero line width) was only
+    // suppressed when running unit tests. But drawing hairlines causes
+    // unexpected shifting of the lines when using a Retina display on
+    // macOS and antialiasing is disabled.
+    if (fLineWidth == 0 && mScaling != 1 && (isUnitTestRunning() || !mParent.getAntiAlias()))
+#else
     // On HiDPI displays, do not draw hairlines, draw 1-pixel wide lines in order to avoid
     // smoothing that would confuse unittests.
     if (fLineWidth == 0 && mScaling != 1 && isUnitTestRunning())
+#endif
         fLineWidth = 1; // this will be scaled by mScaling
 
     // Transform to DeviceCoordinates, get DeviceLineWidth, execute PixelSnapHairline
@@ -1118,7 +1185,7 @@ bool SkiaSalGraphicsImpl::drawPolyLine(const basegfx::B2DHomMatrix& rObjectToDev
         // Transform size by the matrix.
         for (double stroke : *pStroke)
             intervals.push_back((rObjectToDevice * basegfx::B2DVector(stroke, 0)).getLength());
-        aPaint.setPathEffect(SkDashPathEffect::Make(intervals.data(), intervals.size(), 0));
+        aPaint.setPathEffect(SkDashPathEffect::Make(intervals, 0));
     }
 
     // Skia does not support basegfx::B2DLineJoin::NONE, so in that case batch only if lines
@@ -1216,7 +1283,7 @@ void SkiaSalGraphicsImpl::copyBits(const SalTwoRect& rPosAry, SalGraphics* pSrcG
     postDraw();
 }
 
-void SkiaSalGraphicsImpl::privateCopyBits(const SalTwoRect& rPosAry, SkiaSalGraphicsImpl* src)
+void SkiaSalGraphicsImpl::privateCopyBits(const SalTwoRect& rPosAry, const SkiaSalGraphicsImpl* src)
 {
     assert(mXorMode == XorMode::None);
     addUpdateRegion(SkRect::MakeXYWH(rPosAry.mnDestX, rPosAry.mnDestY, rPosAry.mnDestWidth,
@@ -1275,83 +1342,6 @@ void SkiaSalGraphicsImpl::privateCopyBits(const SalTwoRect& rPosAry, SkiaSalGrap
     }
 }
 
-bool SkiaSalGraphicsImpl::blendBitmap(const SalTwoRect& rPosAry, const SalBitmap& rBitmap)
-{
-    if (checkInvalidSourceOrDestination(rPosAry))
-        return false;
-
-    assert(dynamic_cast<const SkiaSalBitmap*>(&rBitmap));
-    const SkiaSalBitmap& rSkiaBitmap = static_cast<const SkiaSalBitmap&>(rBitmap);
-    // This is used by VirtualDevice in the alpha mode for the "alpha" layer
-    // So the result is transparent only if both the inputs
-    // are transparent. Which seems to be what SkBlendMode::kModulate does,
-    // so use that.
-    // See also blendAlphaBitmap().
-    if (rSkiaBitmap.IsFullyOpaqueAsAlpha())
-    {
-        // Optimization. If the bitmap means fully opaque, it's all one's. In CPU
-        // mode it should be faster to just copy instead of SkBlendMode::kMultiply.
-        drawBitmap(rPosAry, rSkiaBitmap);
-    }
-    else
-        drawBitmap(rPosAry, rSkiaBitmap, SkBlendMode::kModulate);
-    return true;
-}
-
-bool SkiaSalGraphicsImpl::blendAlphaBitmap(const SalTwoRect& rPosAry,
-                                           const SalBitmap& rSourceBitmap,
-                                           const SalBitmap& rMaskBitmap,
-                                           const SalBitmap& rAlphaBitmap)
-{
-    // tdf#156361 use slow blending path if alpha mask blending is disabled
-    // SkiaSalGraphicsImpl::blendBitmap() fails unexpectedly in the following
-    // cases so return false and use the non-Skia alpha mask blending code:
-    // - Unexpected white areas when running a slideshow or printing:
-    //     https://bugs.documentfoundation.org/attachment.cgi?id=188447
-    // - Unexpected scaling of bitmap and/or alpha mask when exporting to PDF:
-    //     https://bugs.documentfoundation.org/attachment.cgi?id=188498
-    if (!SkiaHelper::isAlphaMaskBlendingEnabled())
-        return false;
-
-    if (checkInvalidSourceOrDestination(rPosAry))
-        return false;
-
-    assert(dynamic_cast<const SkiaSalBitmap*>(&rSourceBitmap));
-    assert(dynamic_cast<const SkiaSalBitmap*>(&rMaskBitmap));
-    assert(dynamic_cast<const SkiaSalBitmap*>(&rAlphaBitmap));
-    const SkiaSalBitmap& rSkiaSourceBitmap = static_cast<const SkiaSalBitmap&>(rSourceBitmap);
-    const SkiaSalBitmap& rSkiaMaskBitmap = static_cast<const SkiaSalBitmap&>(rMaskBitmap);
-    const SkiaSalBitmap& rSkiaAlphaBitmap = static_cast<const SkiaSalBitmap&>(rAlphaBitmap);
-
-    if (rSkiaMaskBitmap.IsFullyOpaqueAsAlpha())
-    {
-        // Optimization. If the mask of the bitmap to be blended means it's actually opaque,
-        // just draw the bitmap directly (that's what the math below will result in).
-        drawBitmap(rPosAry, rSkiaSourceBitmap);
-        return true;
-    }
-    // This was originally implemented for the OpenGL drawing method and it is poorly documented.
-    // The source and mask bitmaps are the usual data and alpha bitmaps, and 'alpha'
-    // is the "alpha" layer of the VirtualDevice (the alpha in VirtualDevice is also stored
-    // as a separate bitmap). Now if I understand it correctly these two alpha masks first need
-    // to be combined into the actual alpha mask to be used. The formula for TYPE_BLEND
-    // in opengl's combinedTextureFragmentShader.glsl is
-    // "result_alpha = 1.0 - (1.0 - floor(alpha)) * mask".
-    // See also blendBitmap().
-
-    SkSamplingOptions samplingOptions = makeSamplingOptions(rPosAry, mScaling);
-    // First do the "( 1 - alpha ) * mask"
-    // (no idea how to do "floor", but hopefully not needed in practice).
-    sk_sp<SkShader> shaderAlpha
-        = SkShaders::Blend(SkBlendMode::kDstIn, rSkiaMaskBitmap.GetAlphaSkShader(samplingOptions),
-                           rSkiaAlphaBitmap.GetAlphaSkShader(samplingOptions));
-    // And now draw the bitmap with "1 - x", where x is the "( 1 - alpha ) * mask".
-    sk_sp<SkShader> shader = SkShaders::Blend(SkBlendMode::kSrcIn, shaderAlpha,
-                                              rSkiaSourceBitmap.GetSkShader(samplingOptions));
-    drawShader(rPosAry, shader);
-    return true;
-}
-
 void SkiaSalGraphicsImpl::drawBitmap(const SalTwoRect& rPosAry, const SalBitmap& rSalBitmap)
 {
     if (checkInvalidSourceOrDestination(rPosAry))
@@ -1385,7 +1375,8 @@ void SkiaSalGraphicsImpl::drawMask(const SalTwoRect& rPosAry, const SalBitmap& r
 }
 
 std::shared_ptr<SalBitmap> SkiaSalGraphicsImpl::getBitmap(tools::Long nX, tools::Long nY,
-                                                          tools::Long nWidth, tools::Long nHeight)
+                                                          tools::Long nWidth, tools::Long nHeight,
+                                                          bool bWithoutAlpha)
 {
     SkiaZone zone;
     checkSurface();
@@ -1397,7 +1388,7 @@ std::shared_ptr<SalBitmap> SkiaSalGraphicsImpl::getBitmap(tools::Long nX, tools:
     // in blendAlphaBitmap(), where we could simply use the proper rect of the image.
     sk_sp<SkImage> image = makeCheckedImageSnapshot(
         mSurface, scaleRect(SkIRect::MakeXYWH(nX, nY, nWidth, nHeight), mScaling));
-    std::shared_ptr<SkiaSalBitmap> bitmap = std::make_shared<SkiaSalBitmap>(image);
+    std::shared_ptr<SkiaSalBitmap> bitmap = std::make_shared<SkiaSalBitmap>(image, bWithoutAlpha);
     // If the surface is scaled for HiDPI, the bitmap needs to be scaled down, otherwise
     // it would have incorrect size from the API point of view. The DirectImage::Yes handling
     // in mergeCacheBitmaps() should access the original unscaled bitmap data to avoid
@@ -1466,9 +1457,9 @@ void SkiaSalGraphicsImpl::invert(basegfx::B2DPolygon const& rPoly, SalInvert eFl
             // by clipping.
             getDrawCanvas()->clipRect(aPath.getBounds(), SkClipOp::kIntersect, false);
             aPaint.setStrokeWidth(2);
-            constexpr float intervals[] = { 4.0f, 4.0f };
+            static constexpr float intervals[] = { 4.0f, 4.0f };
             aPaint.setStyle(SkPaint::kStroke_Style);
-            aPaint.setPathEffect(SkDashPathEffect::Make(intervals, std::size(intervals), 0));
+            aPaint.setPathEffect(SkDashPathEffect::Make(intervals, 0));
         }
         else
         {
@@ -1496,6 +1487,26 @@ void SkiaSalGraphicsImpl::invert(basegfx::B2DPolygon const& rPoly, SalInvert eFl
                 aPaint.setShader(aBitmap.makeShader(SkTileMode::kRepeat, SkTileMode::kRepeat,
                                                     SkSamplingOptions()));
             }
+
+#ifdef SK_METAL
+            // tdf#153306 prevent subpixel shifting of X coordinate
+            // HACK: for some unknown reason, if the X coordinate of the
+            // path's bounds is more than 1024, SkBlendMode::kExclusion will
+            // shift by about a half a pixel to the right with Skia/Metal on
+            // a Retina display. Weirdly, if the same polygon is repeatedly
+            // drawn, the total shift is cumulative so if the drawn polygon
+            // is more than a few pixels wide, the blinking cursor in Writer
+            // will exhibit this bug but only for one thin vertical slice at
+            // a time. Apparently, shifting drawing a very tiny amount to
+            // the left seems to be enough to quell this runaway cumulative
+            // X coordinate shift.
+            if (isGPU())
+            {
+                SkMatrix aMatrix;
+                aMatrix.set(SkMatrix::kMTransX, -0.001);
+                getDrawCanvas()->concat(aMatrix);
+            }
+#endif
         }
         getDrawCanvas()->drawPath(aPath, aPaint);
     }
@@ -1521,12 +1532,6 @@ void SkiaSalGraphicsImpl::invert(sal_uInt32 nPoints, const Point* pPointArray, S
     aPolygon.setClosed(true);
 
     invert(aPolygon, eFlags);
-}
-
-bool SkiaSalGraphicsImpl::drawEPS(tools::Long, tools::Long, tools::Long, tools::Long, void*,
-                                  sal_uInt32)
-{
-    return false;
 }
 
 // Create SkImage from a bitmap and possibly an alpha mask (the usual VCL one-minus-alpha),
@@ -1842,12 +1847,12 @@ void SkiaSalGraphicsImpl::drawShader(const SalTwoRect& rPosAry, const sk_sp<SkSh
             return rtl::math::round(p1.x(), 2) == p2.x() && rtl::math::round(p1.y(), 2) == p2.y();
         };
 #endif
-        assert(compareRounded(matrix.mapXY(rPosAry.mnSrcX, rPosAry.mnSrcY),
+        assert(compareRounded(matrix.mapPoint(SkPoint::Make(rPosAry.mnSrcX, rPosAry.mnSrcY)),
                               SkPoint::Make(rPosAry.mnDestX, rPosAry.mnDestY)));
-        assert(compareRounded(
-            matrix.mapXY(rPosAry.mnSrcX + rPosAry.mnSrcWidth, rPosAry.mnSrcY + rPosAry.mnSrcHeight),
-            SkPoint::Make(rPosAry.mnDestX + rPosAry.mnDestWidth,
-                          rPosAry.mnDestY + rPosAry.mnDestHeight)));
+        assert(compareRounded(matrix.mapPoint(SkPoint::Make(rPosAry.mnSrcX + rPosAry.mnSrcWidth,
+                                                            rPosAry.mnSrcY + rPosAry.mnSrcHeight)),
+                              SkPoint::Make(rPosAry.mnDestX + rPosAry.mnDestWidth,
+                                            rPosAry.mnDestY + rPosAry.mnDestHeight)));
         canvas->concat(matrix);
         SkRect sourceRect = SkRect::MakeXYWH(rPosAry.mnSrcX, rPosAry.mnSrcY, rPosAry.mnSrcWidth,
                                              rPosAry.mnSrcHeight);
@@ -2135,8 +2140,8 @@ bool SkiaSalGraphicsImpl::implDrawGradient(const basegfx::B2DPolyPolygon& rPolyP
 }
 
 static double toRadian(Degree10 degree10th) { return toRadians(3600_deg10 - degree10th); }
-static double toCos(Degree10 degree10th) { return SkScalarCos(toRadian(degree10th)); }
-static double toSin(Degree10 degree10th) { return SkScalarSin(toRadian(degree10th)); }
+static auto toCos(Degree10 degree10th) { return SkScalarCos(toRadian(degree10th)); }
+static auto toSin(Degree10 degree10th) { return SkScalarSin(toRadian(degree10th)); }
 
 void SkiaSalGraphicsImpl::drawGenericLayout(const GenericSalLayout& layout, Color textColor,
                                             const SkFont& font, const SkFont& verticalFont)
@@ -2151,22 +2156,23 @@ void SkiaSalGraphicsImpl::drawGenericLayout(const GenericSalLayout& layout, Colo
     basegfx::B2DPoint aPos;
     const GlyphItem* pGlyph;
     int nStart = 0;
+    auto cos = toCos(layout.GetOrientation());
+    auto sin = toSin(layout.GetOrientation());
     while (layout.GetNextGlyph(&pGlyph, aPos, nStart))
     {
         glyphIds.push_back(pGlyph->glyphId());
-        Degree10 angle = layout.GetOrientation();
-        if (pGlyph->IsVertical())
-            angle += 900_deg10;
-        SkRSXform form = SkRSXform::Make(toCos(angle), toSin(angle), aPos.getX(), aPos.getY());
-        glyphForms.emplace_back(std::move(form));
         verticals.emplace_back(pGlyph->IsVertical());
+        auto cos1 = pGlyph->IsVertical() ? sin : cos; // cos (x - 90) = sin (x)
+        auto sin1 = pGlyph->IsVertical() ? -cos : sin; // sin (x - 90) = -cos (x)
+        SkRSXform form = SkRSXform::Make(cos1, sin1, aPos.getX(), aPos.getY());
+        glyphForms.emplace_back(std::move(form));
     }
     if (glyphIds.empty())
         return;
 
     preDraw();
     auto getBoundRect = [&layout]() {
-        tools::Rectangle rect;
+        basegfx::B2DRectangle rect;
         layout.GetBoundRect(rect);
         return rect;
     };
@@ -2184,7 +2190,7 @@ void SkiaSalGraphicsImpl::drawGenericLayout(const GenericSalLayout& layout, Colo
         size_t index = pos - verticals.cbegin();
         size_t count = rangeEnd - pos;
         sk_sp<SkTextBlob> textBlob = SkTextBlob::MakeFromRSXform(
-            glyphIds.data() + index, count * sizeof(SkGlyphID), glyphForms.data() + index,
+            glyphIds.data() + index, count * sizeof(SkGlyphID), glyphForms,
             verticalRun ? verticalFont : font, SkTextEncoding::kGlyphID);
         addUpdateRegion(textBlob->bounds());
         SkPaint paint = makeTextPaint(textColor);
@@ -2194,16 +2200,7 @@ void SkiaSalGraphicsImpl::drawGenericLayout(const GenericSalLayout& layout, Colo
     postDraw();
 }
 
-bool SkiaSalGraphicsImpl::supportsOperation(OutDevSupportType eType) const
-{
-    switch (eType)
-    {
-        case OutDevSupportType::TransparentRect:
-            return true;
-        default:
-            return false;
-    }
-}
+bool SkiaSalGraphicsImpl::supportsOperation(OutDevSupportType /*eType*/) const { return false; }
 
 static int getScaling()
 {

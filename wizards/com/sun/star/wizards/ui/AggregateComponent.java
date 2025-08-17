@@ -125,7 +125,7 @@ public class AggregateComponent extends ControlScroller
         }
         catch (com.sun.star.uno.Exception exception)
         {
-            Resource.showCommonResourceError(CurDBMetaData.xMSF);
+            Resource.showCommonResourceError(CurDBMetaData.getMSF());
         }
     }
 
@@ -152,7 +152,7 @@ public class AggregateComponent extends ControlScroller
         {
             try
             {
-                int iKey = CurUnoDialog.getControlKey(actionEvent.Source, CurUnoDialog.ControlList);
+                int iKey = CurUnoDialog.getControlKey(actionEvent.Source);
                 switch (iKey)
                 {
                     case SOADDROW:
@@ -180,18 +180,18 @@ public class AggregateComponent extends ControlScroller
     {
         if (i == 0)
         {
-            soptDetailQuery = CurUnoDialog.m_oResource.getResText("RID_QUERY_11");
-            soptSummaryQuery = CurUnoDialog.m_oResource.getResText("RID_QUERY_12");
-            slblAggregate = CurUnoDialog.m_oResource.getResText("RID_QUERY_16");
-            slblFieldNames = CurUnoDialog.m_oResource.getResText("RID_QUERY_17");
+            soptDetailQuery = CurUnoDialog.getResource().getResText("RID_QUERY_11");
+            soptSummaryQuery = CurUnoDialog.getResource().getResText("RID_QUERY_12");
+            slblAggregate = CurUnoDialog.getResource().getResText("RID_QUERY_16");
+            slblFieldNames = CurUnoDialog.getResource().getResText("RID_QUERY_17");
             sFunctions = new String[5];
-            sFunctions[0] = CurUnoDialog.m_oResource.getResText("RID_QUERY_40");
-            sFunctions[1] = CurUnoDialog.m_oResource.getResText("RID_QUERY_41");
-            sFunctions[2] = CurUnoDialog.m_oResource.getResText("RID_QUERY_42");
-            sFunctions[3] = CurUnoDialog.m_oResource.getResText("RID_QUERY_43");
-            sFunctions[4] = CurUnoDialog.m_oResource.getResText("RID_QUERY_44");
+            sFunctions[0] = CurUnoDialog.getResource().getResText("RID_QUERY_40");
+            sFunctions[1] = CurUnoDialog.getResource().getResText("RID_QUERY_41");
+            sFunctions[2] = CurUnoDialog.getResource().getResText("RID_QUERY_42");
+            sFunctions[3] = CurUnoDialog.getResource().getResText("RID_QUERY_43");
+            sFunctions[4] = CurUnoDialog.getResource().getResText("RID_QUERY_44");
 
-            sDuplicateAggregateFunction = CurUnoDialog.m_oResource.getResText("RID_QUERY_90");
+            sDuplicateAggregateFunction = CurUnoDialog.getResource().getResText("RID_QUERY_90");
         }
         if (ControlRowVector == null)
         {
@@ -292,13 +292,13 @@ public class AggregateComponent extends ControlScroller
     {
         try
         {
-            boolean benableGroupPage = isAggregateComponentEnabled() && CurDBMetaData.xDBMetaData.supportsGroupBy() && hasonlycompletefunctions();
+            boolean benableGroupPage = isAggregateComponentEnabled() && CurDBMetaData.getDBMetaData().supportsGroupBy() && hasonlycompletefunctions();
             String[][] sAggregateFieldNames = this.getAggregateFieldNames();
             if (benableGroupPage)
             {
-                for (int i = 0; i < CurDBMetaData.NumericFieldNames.length; i++)
+                for (int i = 0; i < CurDBMetaData.getNumericFieldNames().length; i++)
                 {
-                    boolean bisthere = (JavaTools.FieldInTable(sAggregateFieldNames, CurDBMetaData.NumericFieldNames[i]) > -1);
+                    boolean bisthere = (JavaTools.FieldInTable(sAggregateFieldNames, CurDBMetaData.getNumericFieldNames()[i]) > -1);
                     if (!bisthere)
                     {
                         return true;
@@ -318,7 +318,7 @@ public class AggregateComponent extends ControlScroller
         boolean benabletherest = true;
         boolean benableGroupPage = isGroupingpossible();
         CurUnoDialog.setStepEnabled(UIConsts.SOGROUPSELECTIONPAGE, benableGroupPage);
-        CurUnoDialog.setStepEnabled(UIConsts.SOGROUPFILTERPAGE, benableGroupPage && CurDBMetaData.GroupFieldNames.length > 0);
+        CurUnoDialog.setStepEnabled(UIConsts.SOGROUPFILTERPAGE, benableGroupPage && CurDBMetaData.getGroupFieldNames().length > 0);
         if (isAggregateComponentEnabled())
         {
             benabletherest = hasonlycompletefunctions();
@@ -362,7 +362,7 @@ public class AggregateComponent extends ControlScroller
                             if ((iselfield.length > 0) && (iselfunction.length > 0))
                             {
                                 String[] curaggregatename = new String[] {
-                                    CurDBMetaData.NumericFieldNames[iselfield[0]],
+                                    CurDBMetaData.getNumericFieldNames()[iselfield[0]],
                                     this.sFunctionOperators[iselfunction[0]] };
                                 aggregatevector.add(curaggregatename);
                             }
@@ -446,7 +446,7 @@ public class AggregateComponent extends ControlScroller
         PropertyValue[] currowproperties = new PropertyValue[2];
         if (_index < CurDBMetaData.AggregateFieldNames.length)
         {
-            short iselfieldsindex = (short) JavaTools.FieldInList(CurDBMetaData.NumericFieldNames, CurDBMetaData.AggregateFieldNames[_index][0]);
+            short iselfieldsindex = (short) JavaTools.FieldInList(CurDBMetaData.getNumericFieldNames(), CurDBMetaData.AggregateFieldNames[_index][0]);
             iselfieldslist = new short[]
                     {
                         iselfieldsindex
@@ -535,7 +535,7 @@ public class AggregateComponent extends ControlScroller
 
         private void insertFieldNames()
         {
-            Helper.setUnoPropertyValue(UnoDialog.getModel(xFieldListBox), PropertyNames.STRING_ITEM_LIST, CurDBMetaData.NumericFieldNames);
+            Helper.setUnoPropertyValue(UnoDialog.getModel(xFieldListBox), PropertyNames.STRING_ITEM_LIST, CurDBMetaData.getNumericFieldNames());
         }
 
         private boolean isComplete()

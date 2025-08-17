@@ -33,6 +33,8 @@
 #include <sfx2/bindings.hxx>
 #include <sfx2/objsh.hxx>
 #include <cmdid.h>
+#include <strings.hrc>
+#include <swtypes.hxx>
 
 using namespace ::com::sun::star;
 
@@ -79,9 +81,9 @@ static SvxPageUsage PosToPageUsage_Impl( sal_uInt16 nPos )
 std::unique_ptr<PanelLayout> PageStylesPanel::Create(weld::Widget* pParent, SfxBindings* pBindings)
 {
     if( pParent == nullptr )
-        throw ::com::sun::star::lang::IllegalArgumentException("no parent window given to PageStylesPanel::Create", nullptr, 0);
+        throw css::lang::IllegalArgumentException(u"no parent window given to PageStylesPanel::Create"_ustr, nullptr, 0);
     if( pBindings == nullptr )
-        throw ::com::sun::star::lang::IllegalArgumentException("no SfxBindings given to PageStylesPanel::Create", nullptr, 0);
+        throw css::lang::IllegalArgumentException(u"no SfxBindings given to PageStylesPanel::Create"_ustr, nullptr, 0);
 
     return std::make_unique<PageStylesPanel>(pParent, pBindings);
 }
@@ -90,7 +92,7 @@ PageStylesPanel::PageStylesPanel(
     weld::Widget* pParent,
     SfxBindings* pBindings
     ) :
-    PanelLayout(pParent, "PageStylesPanel", "modules/swriter/ui/pagestylespanel.ui"),
+    PanelLayout(pParent, u"PageStylesPanel"_ustr, u"modules/swriter/ui/pagestylespanel.ui"_ustr),
     mpBindings( pBindings ),
     mpPageColumnItem( new SfxInt16Item(SID_ATTR_PAGE_COLUMN) ),
     mpPageItem( new SvxPageItem(SID_ATTR_PAGE) ),
@@ -101,15 +103,15 @@ PageStylesPanel::PageStylesPanel(
     maBgGradientControl( SID_ATTR_PAGE_GRADIENT, *pBindings, *this ),
     maBgBitmapControl( SID_ATTR_PAGE_BITMAP, *pBindings, *this ),
     maBgFillStyleControl(SID_ATTR_PAGE_FILLSTYLE, *pBindings, *this),
-    mxBgColorLB(new ColorListBox(m_xBuilder->weld_menu_button("lbcolor"), [this]{ return GetFrameWeld(); })),
-    mxBgHatchingLB(m_xBuilder->weld_combo_box("lbhatching")),
-    mxBgGradientLB(new ColorListBox(m_xBuilder->weld_menu_button("lbgradient"), [this]{ return GetFrameWeld(); })),
-    mxBgBitmapLB(m_xBuilder->weld_combo_box("lbbitmap")),
-    mxLayoutSelectLB(m_xBuilder->weld_combo_box("layoutbox")),
-    mxColumnCount(m_xBuilder->weld_combo_box("columnbox")),
-    mxNumberSelectLB(new SvxPageNumberListBox(m_xBuilder->weld_combo_box("numberbox"))),
-    mxBgFillType(m_xBuilder->weld_combo_box("bgselect")),
-    mxCustomEntry(m_xBuilder->weld_label("customlabel"))
+    mxBgColorLB(new ColorListBox(m_xBuilder->weld_menu_button(u"lbcolor"_ustr), [this]{ return GetFrameWeld(); })),
+    mxBgHatchingLB(m_xBuilder->weld_combo_box(u"lbhatching"_ustr)),
+    mxBgGradientLB(new ColorListBox(m_xBuilder->weld_menu_button(u"lbgradient"_ustr), [this]{ return GetFrameWeld(); })),
+    mxBgBitmapLB(m_xBuilder->weld_combo_box(u"lbbitmap"_ustr)),
+    mxLayoutSelectLB(m_xBuilder->weld_combo_box(u"layoutbox"_ustr)),
+    mxColumnCount(m_xBuilder->weld_combo_box(u"columnbox"_ustr)),
+    mxNumberSelectLB(new SvxPageNumberListBox(m_xBuilder->weld_combo_box(u"numberbox"_ustr))),
+    mxBgFillType(m_xBuilder->weld_combo_box(u"bgselect"_ustr)),
+    mxCustomEntry(m_xBuilder->weld_label(u"customlabel"_ustr))
 {
     Initialize();
 }
@@ -180,6 +182,7 @@ void PageStylesPanel::Update()
             mxBgBitmapLB->hide();
             mxBgGradientLB->hide();
             mxBgHatchingLB->hide();
+            mxBgColorLB->set_accessible_name(SwResId(STR_BACKGROUND_COLOR));
             mxBgColorLB->show();
             const Color aColor = GetColorSetOrDefault();
             mxBgColorLB->SelectEntry(aColor);
@@ -189,6 +192,7 @@ void PageStylesPanel::Update()
         {
             mxBgBitmapLB->hide();
             mxBgHatchingLB->hide();
+            mxBgColorLB->set_accessible_name(SwResId(STR_GRADIENT_COLOR_1));
             mxBgColorLB->show();
             mxBgGradientLB->show();
 
@@ -220,6 +224,10 @@ void PageStylesPanel::Update()
             mxBgColorLB->hide();
             mxBgGradientLB->hide();
             mxBgHatchingLB->hide();
+
+            const OUString sAccName = (eXFS == BITMAP) ? SwResId(STR_BACKGROUND_BITMAP)
+                                                       : SwResId(STR_BACKGROUND_PATTERN);
+            mxBgBitmapLB->set_accessible_name(sAccName);
             mxBgBitmapLB->show();
             mxBgBitmapLB->clear();
             OUString aBitmapName;
@@ -544,9 +552,9 @@ void PageStylesPanel::ModifyFillColor()
     {
         case SOLID:
         {
-            auto aNamedColor =  mxBgColorLB->GetSelectedEntry();
-            XFillColorItem aItem(OUString(), aNamedColor.m_aColor);
-            aItem.setComplexColor(aNamedColor.getComplexColor());
+            const NamedColor& rNamedColor = mxBgColorLB->GetSelectedEntry();
+            XFillColorItem aItem(OUString(), rNamedColor.m_aColor);
+            aItem.setComplexColor(rNamedColor.getComplexColor());
             aItem.setComplexColor(mxBgColorLB->GetSelectedEntry().getComplexColor());
             GetBindings()->GetDispatcher()->ExecuteList(SID_ATTR_PAGE_COLOR, SfxCallMode::RECORD, { &aItem });
         }

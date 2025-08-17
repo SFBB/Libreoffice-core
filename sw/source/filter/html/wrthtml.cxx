@@ -206,41 +206,40 @@ void SwHTMLWriter::SetupFilterOptions(std::u16string_view rFilterOptions)
     comphelper::SequenceAsHashMap aStoreMap;
     if (rFilterOptions.find(u"SkipImages") != std::u16string_view::npos)
     {
-        aStoreMap["SkipImages"] <<= true;
+        aStoreMap[u"SkipImages"_ustr] <<= true;
     }
     else if (rFilterOptions.find(u"SkipHeaderFooter") != std::u16string_view::npos)
     {
-        aStoreMap["SkipHeaderFooter"] <<= true;
+        aStoreMap[u"SkipHeaderFooter"_ustr] <<= true;
     }
     else if (rFilterOptions.find(u"EmbedImages") != std::u16string_view::npos)
     {
-        aStoreMap["EmbedImages"] <<= true;
+        aStoreMap[u"EmbedImages"_ustr] <<= true;
     }
 
     // this option can be "on" together with any of above
     if (rFilterOptions.find(u"NoLineLimit") != std::u16string_view::npos)
     {
-        aStoreMap["NoLineLimit"] <<= true;
+        aStoreMap[u"NoLineLimit"_ustr] <<= true;
     }
 
     // this option can be "on" together with any of above
     if (rFilterOptions.find(u"NoPrettyPrint") != std::u16string_view::npos)
     {
-        aStoreMap["NoPrettyPrint"] <<= true;
+        aStoreMap[u"NoPrettyPrint"_ustr] <<= true;
     }
 
     const uno::Sequence<OUString> aOptionSeq
         = comphelper::string::convertCommaSeparated(rFilterOptions);
-    static constexpr OUString aXhtmlNsKey(u"xhtmlns="_ustr);
     for (const auto& rOption : aOptionSeq)
     {
         if (rOption == "XHTML")
         {
-            aStoreMap["XHTML"] <<= true;
+            aStoreMap[u"XHTML"_ustr] <<= true;
         }
-        else if (rOption.startsWith(aXhtmlNsKey))
+        else if (OUString aNamespace; rOption.startsWith("xhtmlns=", &aNamespace))
         {
-            aStoreMap["XhtmlNs"] <<= rOption.copy(aXhtmlNsKey.getLength());
+            aStoreMap[u"XhtmlNs"_ustr] <<= aNamespace;
         }
     }
 
@@ -251,25 +250,25 @@ void SwHTMLWriter::SetupFilterFromPropertyValues(
     const css::uno::Sequence<css::beans::PropertyValue>& rPropertyValues)
 {
     comphelper::SequenceAsHashMap aStoreMap(rPropertyValues);
-    auto it = aStoreMap.find("RTFOLEMimeType");
+    auto it = aStoreMap.find(u"RTFOLEMimeType"_ustr);
     if (it != aStoreMap.end())
     {
         it->second >>= m_aRTFOLEMimeType;
     }
 
-    it = aStoreMap.find("ExportImagesAsOLE");
+    it = aStoreMap.find(u"ExportImagesAsOLE"_ustr);
     if (it != aStoreMap.end())
     {
         it->second >>= m_bExportImagesAsOLE;
     }
 
-    it = aStoreMap.find("ExportFormulasAsPDF");
+    it = aStoreMap.find(u"ExportFormulasAsPDF"_ustr);
     if (it != aStoreMap.end())
     {
         it->second >>= m_bExportFormulasAsPDF;
     }
 
-    it = aStoreMap.find("ShapeDPI");
+    it = aStoreMap.find(u"ShapeDPI"_ustr);
     if (it != aStoreMap.end())
     {
         sal_Int32 nVal{};
@@ -277,7 +276,7 @@ void SwHTMLWriter::SetupFilterFromPropertyValues(
         m_nShapeDPI.emplace(nVal);
     }
 
-    it = aStoreMap.find("SkipImages");
+    it = aStoreMap.find(u"SkipImages"_ustr);
     if (it != aStoreMap.end())
     {
         bool bVal{};
@@ -285,7 +284,7 @@ void SwHTMLWriter::SetupFilterFromPropertyValues(
         mbSkipImages = bVal;
     }
 
-    it = aStoreMap.find("SkipHeaderFooter");
+    it = aStoreMap.find(u"SkipHeaderFooter"_ustr);
     if (it != aStoreMap.end())
     {
         bool bVal{};
@@ -294,14 +293,14 @@ void SwHTMLWriter::SetupFilterFromPropertyValues(
     }
 
     // this option can be "on" together with any of above
-    it = aStoreMap.find("NoPrettyPrint");
+    it = aStoreMap.find(u"NoPrettyPrint"_ustr);
     if (it != aStoreMap.end())
     {
         m_nWishLineLen = -1;
         m_bPrettyPrint = false;
     }
 
-    it = aStoreMap.find("EmbedImages");
+    it = aStoreMap.find(u"EmbedImages"_ustr);
     if (it != aStoreMap.end())
     {
         bool bVal{};
@@ -309,7 +308,7 @@ void SwHTMLWriter::SetupFilterFromPropertyValues(
         mbEmbedImages = bVal;
     }
 
-    it = aStoreMap.find("NoLineLimit");
+    it = aStoreMap.find(u"NoLineLimit"_ustr);
     if (it != aStoreMap.end())
     {
         bool bVal{};
@@ -320,7 +319,7 @@ void SwHTMLWriter::SetupFilterFromPropertyValues(
         }
     }
 
-    it = aStoreMap.find("XHTML");
+    it = aStoreMap.find(u"XHTML"_ustr);
     if (it != aStoreMap.end())
     {
         bool bVal{};
@@ -328,7 +327,7 @@ void SwHTMLWriter::SetupFilterFromPropertyValues(
         mbXHTML = bVal;
     }
 
-    it = aStoreMap.find("XhtmlNs");
+    it = aStoreMap.find(u"XhtmlNs"_ustr);
     if (it != aStoreMap.end())
     {
         OUString aVal;
@@ -341,11 +340,13 @@ void SwHTMLWriter::SetupFilterFromPropertyValues(
             // XHTML is always just a fragment inside ReqIF.
             mbSkipHeaderFooter = true;
         }
+        if (!maNamespace.isEmpty())
+            maNamespace += ":";
         // XHTML namespace implies XHTML.
         mbXHTML = true;
     }
 
-    it = aStoreMap.find("LeadingTabWidth");
+    it = aStoreMap.find(u"LeadingTabWidth"_ustr);
     if (it != aStoreMap.end())
     {
         sal_Int32 nVal{};
@@ -353,7 +354,7 @@ void SwHTMLWriter::SetupFilterFromPropertyValues(
         m_nLeadingTabWidth.emplace(nVal);
     }
 
-    it = aStoreMap.find("PreserveSpaces");
+    it = aStoreMap.find(u"PreserveSpaces"_ustr);
     if (it != aStoreMap.end())
     {
         // Paragraphs with leading/trailing/repeated whitespace will have "white-space: pre-wrap"
@@ -362,11 +363,23 @@ void SwHTMLWriter::SetupFilterFromPropertyValues(
         it->second >>= bVal;
         m_bPreserveSpacesOnWrite = bVal;
     }
+
+    it = aStoreMap.find(u"RelativeOwnObjectURL"_ustr);
+    if (it != aStoreMap.end())
+    {
+        // URLs for images / objects created by export (from the document information) will be
+        // relative, regardless of org.openoffice.Office.Common/Save/URL/Internet and
+        // org.openoffice.Office.Common/Save/URL/FileSystem settings
+        bool bVal = false;
+        it->second >>= bVal;
+        m_bRelativeURLsForOwnObjects = bVal;
+    }
 }
 
 ErrCode SwHTMLWriter::WriteStream()
 {
-    if (!SW_MOD())
+    SwModule* mod = SwModule::get();
+    if (!mod)
         return ERRCODE_ABORT;
     // Intercept paste output if requested.
     char* pPasteEnv = getenv("SW_DEBUG_HTML_PASTE_TO");
@@ -428,7 +441,7 @@ ErrCode SwHTMLWriter::WriteStream()
     if( IsHTMLMode(HTMLMODE_SOME_STYLES | HTMLMODE_FULL_STYLES) )
         m_nHTMLMode |= HTMLMODE_PRINT_EXT;
 
-    m_eCSS1Unit = SW_MOD()->GetMetric( m_pDoc->getIDocumentSettingAccess().get(DocumentSettingId::HTML_MODE) );
+    m_eCSS1Unit = mod->GetMetric( m_pDoc->getIDocumentSettingAccess().get(DocumentSettingId::HTML_MODE) );
 
     // Only for the MS-IE we favour the export of styles.
     m_bCfgPreferStyles = HTML_CFG_MSIE == m_nExportMode;
@@ -480,8 +493,10 @@ ErrCode SwHTMLWriter::WriteStream()
     m_nLastLFPos = 0;
     m_nDefListLvl = 0;
     m_nDefListMargin = ((m_xTemplate.is() && !m_bCfgOutStyles) ? m_xTemplate.get() : m_pDoc)
-        ->getIDocumentStylePoolAccess().GetTextCollFromPool( RES_POOLCOLL_HTML_DD, false )
-        ->GetTextLeftMargin().GetTextLeft();
+                           ->getIDocumentStylePoolAccess()
+                           .GetTextCollFromPool(RES_POOLCOLL_HTML_DD, false)
+                           ->GetTextLeftMargin()
+                           .ResolveTextLeft({});
     m_nHeaderFooterSpace = 0;
     m_nTextAttrsToIgnore = 0;
     m_nCSS1OutMode = 0;
@@ -542,7 +557,7 @@ ErrCode SwHTMLWriter::WriteStream()
 
                 // save only the tag of section
                 OString aName = HTMLOutFuncs::ConvertStringToHTML(
-                    pSNd->GetSection().GetSectionName() );
+                    pSNd->GetSection().GetSectionName().toString() );
 
                 aStartTags =
                     "<" + GetNamespace() + OOO_STRING_SVTOOLS_HTML_division
@@ -741,13 +756,13 @@ static void lcl_html_OutSectionStartTag( SwHTMLWriter& rHTMLWrt,
 
     OStringBuffer sOut("<" + rHTMLWrt.GetNamespace() + OOO_STRING_SVTOOLS_HTML_division);
 
-    const OUString& rName = rSection.GetSectionName();
+    const UIName& rName = rSection.GetSectionName();
     if( !rName.isEmpty() && !bContinued )
     {
         sOut.append(" " OOO_STRING_SVTOOLS_HTML_O_id "=\"");
         rHTMLWrt.Strm().WriteOString( sOut );
         sOut.setLength(0);
-        HTMLOutFuncs::Out_String( rHTMLWrt.Strm(), rName );
+        HTMLOutFuncs::Out_String( rHTMLWrt.Strm(), rName.toString() );
         sOut.append('\"');
     }
 
@@ -770,7 +785,7 @@ static void lcl_html_OutSectionStartTag( SwHTMLWriter& rHTMLWrt,
         OUString aFilter( aFName.getToken(0, sfx2::cTokenSeparator, nIdx) );
         OUString aSection( aFName.getToken(0, sfx2::cTokenSeparator, nIdx) );
 
-        OUString aEncURL( URIHelper::simpleNormalizedMakeRelative(rHTMLWrt.GetBaseURL(), aURL ) );
+        OUString aEncURL(rHTMLWrt.normalizeURL(aURL, false));
         sal_Unicode cDelim = 255U;
         bool bURLContainsDelim = (-1 != aEncURL.indexOf( cDelim ) );
 
@@ -810,7 +825,7 @@ static void lcl_html_OutSectionStartTag( SwHTMLWriter& rHTMLWrt,
 
     rHTMLWrt.SetLFPossible(true);
     if( !rName.isEmpty() && !bContinued )
-        rHTMLWrt.OutImplicitMark( rName, "region" );
+        rHTMLWrt.OutImplicitMark( rName.toString(), "region" );
 
     rHTMLWrt.IncIndentLevel();
 }
@@ -833,7 +848,7 @@ static SwHTMLWriter& OutHTML_Section( SwHTMLWriter& rWrt, const SwSectionNode& r
 
     const SwSection& rSection = rSectNd.GetSection();
     const SwSectionFormat *pFormat = rSection.GetFormat();
-    OSL_ENSURE( pFormat, "Section without a format?" );
+    assert(pFormat && "Section without a format?");
 
     bool bStartTag = true;
     bool bEndTag = true;
@@ -927,9 +942,7 @@ void SwHTMLWriter::Out_SwDoc( SwPaM* pPam )
         // search for first on PaM created FlyFrame
         // still missing:
 
-        while( m_pCurrentPam->GetPoint()->GetNodeIndex() < m_pCurrentPam->GetMark()->GetNodeIndex() ||
-              (m_pCurrentPam->GetPoint()->GetNodeIndex() == m_pCurrentPam->GetMark()->GetNodeIndex() &&
-               m_pCurrentPam->GetPoint()->GetContentIndex() <= m_pCurrentPam->GetMark()->GetContentIndex()) )
+        while (*m_pCurrentPam->GetPoint() <= *m_pCurrentPam->GetMark())
         {
             SwNode&  rNd = m_pCurrentPam->GetPointNode();
 
@@ -1032,7 +1045,7 @@ static void OutBodyColor( const char* pTag, const SwFormat *pFormat,
     else if( pRefItem )
     {
         // The item was still set in the HTML template so we output the default
-        pColorItem = &rItemSet.GetPool()->GetDefaultItem( RES_CHRATR_COLOR );
+        pColorItem = &rItemSet.GetPool()->GetUserOrPoolDefaultItem( RES_CHRATR_COLOR );
     }
 
     if( pColorItem )
@@ -1259,28 +1272,27 @@ void SwHTMLWriter::OutAnchor( const OUString& rName )
 void SwHTMLWriter::OutBookmarks()
 {
     // fetch current bookmark
-    const ::sw::mark::IMark* pBookmark = nullptr;
     IDocumentMarkAccess* const pMarkAccess = m_pDoc->getIDocumentMarkAccess();
-    if(m_nBkmkTabPos != -1)
-        pBookmark = pMarkAccess->getAllMarksBegin()[m_nBkmkTabPos];
+
     // Output all bookmarks in this paragraph. The content position
     // for the moment isn't considered!
     SwNodeOffset nNode = m_pCurrentPam->GetPoint()->GetNodeIndex();
-    while( m_nBkmkTabPos != -1
-           && pBookmark->GetMarkPos().GetNodeIndex() == nNode )
+    while (m_nBkmkTabPos != -1)
     {
+        const ::sw::mark::Bookmark* pBookmark = pMarkAccess->getBookmarksBegin()[m_nBkmkTabPos];
+        assert(pBookmark);
+        if (pBookmark->GetMarkPos().GetNodeIndex() != nNode)
+            break;
         // The area of bookmarks is first ignored, because it's not read.
 
         // first the SWG specific data:
-        if ( dynamic_cast< const ::sw::mark::IBookmark* >(pBookmark) && !pBookmark->GetName().isEmpty() )
-        {
-            OutAnchor( pBookmark->GetName() );
-        }
+        if ( !pBookmark->GetName().isEmpty() )
+            OutAnchor( pBookmark->GetName().toString() );
 
-        if( ++m_nBkmkTabPos >= pMarkAccess->getAllMarksCount() )
+        if( ++m_nBkmkTabPos >= pMarkAccess->getBookmarksCount() )
             m_nBkmkTabPos = -1;
         else
-            pBookmark = pMarkAccess->getAllMarksBegin()[m_nBkmkTabPos];
+            pBookmark = pMarkAccess->getBookmarksBegin()[m_nBkmkTabPos];
     }
 
     decltype(m_aOutlineMarkPoss)::size_type nPos;
@@ -1306,15 +1318,15 @@ void SwHTMLWriter::OutPointFieldmarks( const SwPosition& rPos )
     if (!pMarkAccess)
         return;
 
-    const sw::mark::IFieldmark* pMark = pMarkAccess->getFieldmarkAt(rPos);
+    const sw::mark::Fieldmark* pMark = pMarkAccess->getFieldmarkAt(rPos);
     if (!pMark)
         return;
 
     if (pMark->GetFieldname() != ODF_FORMCHECKBOX)
         return;
 
-    const sw::mark::ICheckboxFieldmark* pCheckBox =
-        dynamic_cast<const sw::mark::ICheckboxFieldmark*>(pMark);
+    const sw::mark::CheckboxFieldmark* pCheckBox =
+        dynamic_cast<const sw::mark::CheckboxFieldmark*>(pMark);
 
     if (!pCheckBox)
         return;
@@ -1381,7 +1393,7 @@ OUString SwHTMLWriter::convertHyperlinkHRefValue(const OUString& rURL)
         if (!aURL.HasError())
             sURL = aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
     }
-    return URIHelper::simpleNormalizedMakeRelative( GetBaseURL(), sURL );
+    return normalizeURL(sURL, false);
 }
 
 void SwHTMLWriter::OutHyperlinkHRefValue( const OUString& rURL )
@@ -1422,11 +1434,12 @@ void SwHTMLWriter::OutBackground( const SvxBrushItem *pBrushItem, bool bGraphic 
     }
     else
     {
+        bool bOwn = false;
         if( m_bCfgCpyLinkedGrfs )
         {
-            CopyLocalFileToINet( GraphicURL );
+            bOwn = CopyLocalFileToINet(GraphicURL);
         }
-        OUString s( URIHelper::simpleNormalizedMakeRelative( GetBaseURL(), GraphicURL));
+        OUString s(normalizeURL(GraphicURL, bOwn));
         Strm().WriteOString(" " OOO_STRING_SVTOOLS_HTML_O_background "=\"" );
         HTMLOutFuncs::Out_String( Strm(), s );
         Strm().WriteOString("\"");
@@ -1451,7 +1464,7 @@ TypedWhichId<SvxLanguageItem> SwHTMLWriter::GetLangWhichIdFromScript( sal_uInt16
         nWhichId = RES_CHRATR_CJK_LANGUAGE;
         break;
     case CSS1_OUTMODE_CTL:
-        nWhichId = RES_CHRATR_CJK_LANGUAGE;
+        nWhichId = RES_CHRATR_CTL_LANGUAGE;
         break;
     default:
         nWhichId = RES_CHRATR_LANGUAGE;
@@ -1597,12 +1610,19 @@ sal_Int32 SwHTMLWriter::indexOfDotLeaders( sal_uInt16 nPoolId, std::u16string_vi
     return -1;
 }
 
-OString SwHTMLWriter::GetNamespace() const
+OUString SwHTMLWriter::normalizeURL(const OUString& url, bool own) const
 {
-    if (maNamespace.isEmpty())
-        return OString();
-
-    return maNamespace + ":";
+    OUString ret(url);
+    if (HTMLOutFuncs::PrivateURLToInternalImg(ret))
+        return ret;
+    OUString base;
+    if (!mpTempBaseURL)
+        base = GetBaseURL();
+    else if (own && m_bRelativeURLsForOwnObjects && GetOrigFileName())
+        base = *GetOrigFileName();
+    if (!base.isEmpty())
+        ret = URIHelper::simpleNormalizedMakeRelative(base, ret);
+    return ret;
 }
 
 // Structure caches the current data of the writer to output a

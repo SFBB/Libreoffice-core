@@ -90,7 +90,6 @@ using namespace sd;
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::linguistic2;
 
 namespace sd {
@@ -105,7 +104,7 @@ SFX_IMPL_INTERFACE(OutlineViewShell, SfxShell)
 
 void OutlineViewShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("outline");
+    GetStaticInterface()->RegisterPopupMenu(u"outline"_ustr);
 
     GetStaticInterface()->RegisterObjectBar(SFX_OBJECTBAR_TOOLS, SfxVisibilityFlags::Standard | SfxVisibilityFlags::FullScreen | SfxVisibilityFlags::Server,
                                             ToolbarId::Outline_Toolbox);
@@ -156,7 +155,7 @@ void OutlineViewShell::Construct()
 
     pLastPage = GetActualPage();
 
-    SetName( "OutlineViewShell" );
+    SetName( u"OutlineViewShell"_ustr );
 
     GetActiveWindow()->SetHelpId( HID_SDOUTLINEVIEWSHELL );
 }
@@ -178,7 +177,6 @@ Reference<drawing::XDrawSubController> OutlineViewShell::CreateSubController()
  * Default constructor, windows must not center themselves automatically
  */
 OutlineViewShell::OutlineViewShell (
-    SfxViewFrame* /*pFrame*/,
     ViewShellBase& rViewShellBase,
     vcl::Window* pParentWindow,
     FrameView* pFrameViewArgument)
@@ -318,7 +316,7 @@ void OutlineViewShell::Activate( bool bIsMDIActivate )
     }
 
     ViewShell::Activate( bIsMDIActivate );
-    SfxShell::BroadcastContextForActivation(true);
+    BroadcastContextForActivation(true);
 
     pOlView->SetLinks();
     pOlView->ConnectToApplication();
@@ -326,8 +324,8 @@ void OutlineViewShell::Activate( bool bIsMDIActivate )
     if( bIsMDIActivate )
     {
         OutlinerView* pOutlinerView = pOlView->GetViewByWindow( GetActiveWindow() );
-        ::Outliner* pOutl = pOutlinerView->GetOutliner();
-        pOutl->UpdateFields();
+        ::Outliner& rOutl = pOutlinerView->GetOutliner();
+        rOutl.UpdateFields();
     }
 }
 
@@ -356,7 +354,7 @@ void OutlineViewShell::GetCtrlState(SfxItemSet &rSet)
             if (pFieldItem)
             {
                 ESelection aSel = pOLV->GetSelection();
-                if ( abs( aSel.nEndPos - aSel.nStartPos ) == 1 )
+                if (abs(aSel.end.nIndex - aSel.start.nIndex) == 1)
                 {
                     const SvxFieldData* pField = pFieldItem->GetField();
                     if ( auto pUrlField = dynamic_cast< const SvxURLField *>( pField ) )
@@ -671,7 +669,7 @@ void OutlineViewShell::FuPermanent(SfxRequest &rReq)
             rOutl.GetUndoManager().Clear();
             rOutl.UpdateFields();
 
-            SetCurrentFunction( FuOutlineText::Create(this,GetActiveWindow(),pOlView.get(),GetDoc(),rReq) );
+            SetCurrentFunction( FuOutlineText::Create(*this,GetActiveWindow(),pOlView.get(),*GetDoc(),rReq) );
 
             rReq.Done();
         }
@@ -819,7 +817,7 @@ void OutlineViewShell::GetMenuState( SfxItemSet &rSet )
 
     // does the selection provide a unique presentation layout?
     // if not, the templates must not be edited
-    SfxItemSetFixed<SID_STATUS_LAYOUT, SID_STATUS_LAYOUT> aSet(*rSet.GetPool());
+    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<SID_STATUS_LAYOUT, SID_STATUS_LAYOUT>(*rSet.GetPool()));
     GetStatusBarState(aSet);
     OUString aTest = aSet.Get(SID_STATUS_LAYOUT).GetValue();
     if (aTest.isEmpty())
@@ -1319,7 +1317,7 @@ void OutlineViewShell::GetStatusBarState(SfxItemSet& rSet)
         if( nPos >= GetDoc()->GetSdPageCount( PageKind::Standard ) )
             nPos = 0;
 
-        SdrPage* pPage = GetDoc()->GetSdPage( static_cast<sal_uInt16>(nPos), PageKind::Standard );
+        SdPage* pPage = GetDoc()->GetSdPage( static_cast<sal_uInt16>(nPos), PageKind::Standard );
 
         if (GetDoc()->GetDocumentType() == DocumentType::Draw)
             aPageStr = SdResId(STR_SD_PAGE_COUNT_DRAW);
@@ -1363,7 +1361,7 @@ void OutlineViewShell::Command( const CommandEvent& rCEvt, ::sd::Window* pWin )
         }
         else
         {
-           GetViewFrame()->GetDispatcher()->ExecutePopup("outline");
+           GetViewFrame()->GetDispatcher()->ExecutePopup(u"outline"_ustr);
         }
     }
     else
@@ -1448,14 +1446,14 @@ void OutlineViewShell::GetAttrState( SfxItemSet& rSet )
                     if (pStyleSheet)
                     {
                         SfxTemplateItem aItem( nWhich, pStyleSheet->GetName() );
-                        aAllSet.Put( aItem, aItem.Which()  );
+                        aAllSet.Put( aItem );
                     }
                 }
 
                 if( !pStyleSheet )
                 {
                     SfxTemplateItem aItem( nWhich, OUString() );
-                    aAllSet.Put( aItem, aItem.Which() );
+                    aAllSet.Put( aItem );
                     // rSet.DisableItem( nWhich );
                 }
             }
@@ -1467,7 +1465,7 @@ void OutlineViewShell::GetAttrState( SfxItemSet& rSet )
                 GetViewFrame()->GetBindings().QueryState(SID_STYLE_FAMILY, pFamilyItem);
                 if (pFamilyItem && static_cast<SfxStyleFamily>(pFamilyItem->GetValue()) == SfxStyleFamily::Pseudo)
                 {
-                    SfxItemSetFixed<SID_STATUS_LAYOUT, SID_STATUS_LAYOUT> aSet(*rSet.GetPool());
+                    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<SID_STATUS_LAYOUT, SID_STATUS_LAYOUT>(*rSet.GetPool()));
                     GetStatusBarState(aSet);
                     OUString aRealStyle = aSet.Get(SID_STATUS_LAYOUT).GetValue();
                     if (aRealStyle.isEmpty())
@@ -1485,8 +1483,7 @@ void OutlineViewShell::GetAttrState( SfxItemSet& rSet )
                 OutlinerView* pOV = pOlView->GetViewByWindow(pActWin);
                 ESelection aESel(pOV->GetSelection());
 
-                if (aESel.nStartPara != aESel.nEndPara ||
-                    aESel.nStartPos  != aESel.nEndPos)
+                if (aESel.HasRange())
                     // spanned selection, i.e. StyleSheet and/or
                     // attribution not necessarily unique
                     rSet.DisableItem(nWhich);
@@ -1622,7 +1619,7 @@ void OutlineViewShell::UpdateTitleObject( SdPage* pPage, Paragraph const * pPara
                 // make it empty
                 if( pOlView->isRecordingUndo() )
                     pOlView->AddUndo(GetDoc()->GetSdrUndoFactory().CreateUndoObjectSetText(*pTO,0));
-                pPage->RestoreDefaultText( pTO );
+                pPage->RestoreDefaultText( pTO, pTO->GetCustomPromptText() );
                 pTO->SetEmptyPresObj(true);
                 pTO->ActionChanged();
             }
@@ -1722,7 +1719,7 @@ void OutlineViewShell::UpdateOutlineObject( SdPage* pPage, Paragraph* pPara )
                 // delete old OutlinerParaObject, too
                 if( pOlView->isRecordingUndo() )
                     pOlView->AddUndo(GetDoc()->GetSdrUndoFactory().CreateUndoObjectSetText(*pTO,0));
-                pPage->RestoreDefaultText( pTO );
+                pPage->RestoreDefaultText( pTO, pTO->GetCustomPromptText() );
                 pTO->SetEmptyPresObj(true);
                 pTO->ActionChanged();
             }
@@ -1823,8 +1820,8 @@ void OutlineViewShell::VisAreaChanged(const ::tools::Rectangle& rRect)
     <type>AccessibleDrawDocumentView</type>.  Otherwise return an empty
     reference.
 */
-css::uno::Reference<css::accessibility::XAccessible>
-    OutlineViewShell::CreateAccessibleDocumentView (::sd::Window* pWindow)
+rtl::Reference<comphelper::OAccessible>
+OutlineViewShell::CreateAccessibleDocumentView(::sd::Window* pWindow)
 {
     OSL_ASSERT (GetViewShell()!=nullptr);
     if (GetViewShell()->GetController() != nullptr)
@@ -1834,13 +1831,13 @@ css::uno::Reference<css::accessibility::XAccessible>
                 pWindow,
                 this,
                 GetViewShell()->GetController(),
-                pWindow->GetAccessibleParentWindow()->GetAccessible());
+                pWindow->GetAccessibleParent());
         pDocumentView->Init();
         return pDocumentView;
     }
 
     SAL_WARN("sd", "OutlineViewShell::CreateAccessibleDocumentView: no controller");
-    return css::uno::Reference< css::accessibility::XAccessible >();
+    return {};
 }
 
 void OutlineViewShell::GetState (SfxItemSet& rSet)

@@ -18,7 +18,7 @@ class XHtmlExportTest : public SwModelTestBase, public HtmlTestTools
 {
 public:
     XHtmlExportTest()
-        : SwModelTestBase("/sw/qa/extras/odfexport/data/", "XHTML Writer File")
+        : SwModelTestBase(u"/sw/qa/extras/odfexport/data/"_ustr, u"XHTML Writer File"_ustr)
     {
     }
 };
@@ -26,21 +26,21 @@ public:
 CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testImageEmbedding)
 {
     createSwDoc("image-mimetype.odt");
-    setFilterOptions("UTF8");
+    setFilterOptions(u"UTF8"_ustr);
     save(mpFilter);
     htmlDocUniquePtr pDoc = parseHtml(maTempFile);
     CPPUNIT_ASSERT(pDoc);
 
-    assertXPath(pDoc, "/html/body"_ostr, 1);
-    assertXPath(pDoc, "/html/body/div[1]/div[1]/img"_ostr, 1);
-    OUString aValue = getXPath(pDoc, "/html/body/div[1]/div[1]/img"_ostr, "src"_ostr);
+    assertXPath(pDoc, "/html/body", 1);
+    assertXPath(pDoc, "/html/body/div[1]/div[1]/img", 1);
+    OUString aValue = getXPath(pDoc, "/html/body/div[1]/div[1]/img", "src");
     CPPUNIT_ASSERT(aValue.startsWith("data:image/svg+xml;base64"));
 }
 
 CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf131812)
 {
     createSwDoc("tdf131812.odt");
-    setFilterOptions("UTF8");
+    setFilterOptions(u"UTF8"_ustr);
     save(mpFilter);
     SvStream* pStream = maTempFile.GetStream(StreamMode::READ);
     CPPUNIT_ASSERT(pStream);
@@ -55,7 +55,7 @@ CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf131812)
 CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf146264)
 {
     createSwDoc("tdf146264.odt");
-    setFilterOptions("UTF8");
+    setFilterOptions(u"UTF8"_ustr);
     save(mpFilter);
     SvStream* pStream = maTempFile.GetStream(StreamMode::READ);
     CPPUNIT_ASSERT(pStream);
@@ -71,10 +71,40 @@ CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf146264)
     }
 }
 
+CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf167910)
+{
+    createSwDoc("tdf167910.fodt");
+    setFilterOptions(u"UTF8"_ustr);
+    save(mpFilter);
+    SvStream* pStream = maTempFile.GetStream(StreamMode::READ);
+    CPPUNIT_ASSERT(pStream);
+    sal_uInt64 nLength = pStream->TellEnd();
+    OString aStream(read_uInt8s_ToOString(*pStream, nLength));
+    auto para1{ aStream.indexOf("text-decoration:underline;") };
+    CPPUNIT_ASSERT(para1 != -1);
+    auto para2{ aStream.indexOf("text-decoration:overline;", para1) };
+    CPPUNIT_ASSERT(para2 != -1);
+    auto para3{ aStream.indexOf("text-decoration:underline overline;", para2) };
+    CPPUNIT_ASSERT(para3 != -1);
+    // the paragraph 4 is using common style not automatic style and these
+    // are exported after all automatic ones...
+    auto para5{ aStream.indexOf("text-decoration:underline;", para3) };
+    CPPUNIT_ASSERT(para5 != -1);
+    auto para6{ aStream.indexOf("text-decoration: overline;", para5) };
+    CPPUNIT_ASSERT(para6 != -1);
+    // this one is style overridden by autostyle
+    auto para7{ aStream.indexOf("text-decoration:none ! important;", para6) };
+    CPPUNIT_ASSERT(para7 != -1);
+    auto para4style{ aStream.indexOf(".paragraph-underover", para7) };
+    CPPUNIT_ASSERT(para4style != -1);
+    auto para4{ aStream.indexOf("text-decoration:underline overline;", para4style) };
+    CPPUNIT_ASSERT(para4 != -1);
+}
+
 CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf118637)
 {
     createSwDoc("tdf118637.odt");
-    setFilterOptions("UTF8");
+    setFilterOptions(u"UTF8"_ustr);
     save(mpFilter);
     SvStream* pStream = maTempFile.GetStream(StreamMode::READ);
     CPPUNIT_ASSERT(pStream);
@@ -87,7 +117,7 @@ CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf118637)
 CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf145361)
 {
     createSwDoc("tdf145361.odt");
-    setFilterOptions("UTF8");
+    setFilterOptions(u"UTF8"_ustr);
     save(mpFilter);
     // Without the fix in place, this test would have failed with
     // - SfxBaseModel::impl_store <file:///tmp/lu66091ameq.tmp> failed: 0xc10(Error Area:Io Class:Write Code:16)
@@ -102,7 +132,7 @@ CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf145361)
 CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf142483)
 {
     createSwDoc("tdf142483.odt");
-    setFilterOptions("UTF8");
+    setFilterOptions(u"UTF8"_ustr);
     save(mpFilter);
     SvStream* pStream = maTempFile.GetStream(StreamMode::READ);
     CPPUNIT_ASSERT(pStream);
@@ -141,7 +171,7 @@ CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf142483)
 CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf107696)
 {
     createSwDoc("tdf107696.odt");
-    setFilterOptions("UTF8");
+    setFilterOptions(u"UTF8"_ustr);
     save(mpFilter);
     SvStream* pStream = maTempFile.GetStream(StreamMode::READ);
     CPPUNIT_ASSERT(pStream);
@@ -171,16 +201,16 @@ CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf107696)
 CPPUNIT_TEST_FIXTURE(XHtmlExportTest, testTdf66305)
 {
     createSwDoc("tdf66305.odt");
-    setFilterOptions("UTF8");
+    setFilterOptions(u"UTF8"_ustr);
     save(mpFilter);
     SvStream* pStream = maTempFile.GetStream(StreamMode::READ);
     CPPUNIT_ASSERT(pStream);
     sal_uInt64 nLength = pStream->TellEnd();
     OString aStream(read_uInt8s_ToOString(*pStream, nLength));
     CPPUNIT_ASSERT(
-        aStream.indexOf("<p class=\"paragraph-P6\"><a href=\"#__RefHeading__82004_486970805\" "
+        aStream.indexOf("<p class=\"paragraph-P5\"><a href=\"#__RefHeading__82004_486970805\" "
                         "class=\"text-Internet_20_link\">Introduction</a></p><p "
-                        "class=\"paragraph-P7\"> </p>")
+                        "class=\"paragraph-P6\"> </p>")
         != -1);
 }
 

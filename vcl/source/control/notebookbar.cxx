@@ -29,8 +29,8 @@
 
 static OUString getCustomizedUIRootDir()
 {
-    OUString sShareLayer("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE(
-        "bootstrap") ":UserInstallation}/user/config/soffice.cfg/");
+    OUString sShareLayer(u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE(
+        "bootstrap") ":UserInstallation}/user/config/soffice.cfg/"_ustr);
     rtl::Bootstrap::expandMacros(sShareLayer);
     return sShareLayer;
 }
@@ -106,7 +106,7 @@ NotebookBar::NotebookBar(Window* pParent, const OUString& rID, const OUString& r
         int i = 0;
         do
         {
-            OUString aName = "ContextContainer";
+            OUString aName = u"ContextContainer"_ustr;
             if (i)
                 aName += OUString::number(i);
 
@@ -137,7 +137,7 @@ void NotebookBar::dispose()
     m_pContextContainers.clear();
     if (m_pSystemWindow && m_pSystemWindow->ImplIsInTaskPaneList(this))
         m_pSystemWindow->GetTaskPaneList()->RemoveWindow(this);
-    m_pSystemWindow.clear();
+    m_pSystemWindow.reset();
 
     if (m_rDisposeLink.IsSet())
         m_rDisposeLink.Call(m_pViewShell);
@@ -296,7 +296,7 @@ void NotebookBar::SetupListener(bool bListen)
 
 void SAL_CALL NotebookBarContextChangeEventListener::disposing(const ::css::lang::EventObject&)
 {
-    mpParent.clear();
+    mpParent.reset();
 }
 
 void NotebookBar::DataChanged(const DataChangedEvent& rDCEvt)
@@ -315,21 +315,9 @@ void NotebookBar::StateChanged(const  StateChangedType nStateChange )
 void NotebookBar::UpdateBackground()
 {
     const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
-    const BitmapEx& aPersona = rStyleSettings.GetPersonaHeader();
-    Wallpaper aWallpaper(aPersona);
-    aWallpaper.SetStyle(WallpaperStyle::TopRight);
-    if (!aPersona.IsEmpty())
-    {
-        SetBackground(aWallpaper);
-        UpdatePersonaSettings();
-        GetOutDev()->SetSettings( PersonaSettings );
-    }
-    else
-    {
-        SetBackground(rStyleSettings.GetDialogColor());
-        UpdateDefaultSettings();
-        GetOutDev()->SetSettings( DefaultSettings );
-    }
+    SetBackground(rStyleSettings.GetDialogColor());
+    UpdateDefaultSettings();
+    GetOutDev()->SetSettings( DefaultSettings );
 
     Invalidate(tools::Rectangle(Point(0,0), GetSizePixel()));
 }
@@ -350,26 +338,7 @@ void NotebookBar::UpdateDefaultSettings()
     aStyleSet.SetToolTextColor(aTextColor);
 
     aAllSettings.SetStyleSettings(aStyleSet);
-    DefaultSettings = aAllSettings;
-}
-
-void NotebookBar::UpdatePersonaSettings()
-{
-    AllSettings aAllSettings( GetSettings() );
-    StyleSettings aStyleSet( aAllSettings.GetStyleSettings() );
-
-    ::Color aTextColor = aStyleSet.GetPersonaMenuBarTextColor().value_or(COL_BLACK );
-    aStyleSet.SetDialogTextColor( aTextColor );
-    aStyleSet.SetButtonTextColor( aTextColor );
-    aStyleSet.SetRadioCheckTextColor( aTextColor );
-    aStyleSet.SetGroupTextColor( aTextColor );
-    aStyleSet.SetLabelTextColor( aTextColor );
-    aStyleSet.SetWindowTextColor( aTextColor );
-    aStyleSet.SetTabTextColor(aTextColor);
-    aStyleSet.SetToolTextColor(aTextColor);
-
-    aAllSettings.SetStyleSettings(aStyleSet);
-    PersonaSettings = aAllSettings;
+    DefaultSettings = std::move(aAllSettings);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -232,7 +232,7 @@ EscherExHostAppData* XclEscherEx::StartShape( const Reference< XShape >& rxShape
             Any aAny;
             try
             {
-                aAny = xPropSet->getPropertyValue("ControlTypeinMSO");
+                aAny = xPropSet->getPropertyValue(u"ControlTypeinMSO"_ustr);
                 aAny >>= nMsCtlType;
             }
             catch(const Exception&)
@@ -240,7 +240,11 @@ EscherExHostAppData* XclEscherEx::StartShape( const Reference< XShape >& rxShape
                 SAL_WARN("sc", "XclEscherEx::StartShape, this control can't get the property ControlTypeinMSO!");
             }
             if( nMsCtlType == 2 )  //OCX Form Control
+            {
                 pCurrXclObj = CreateOCXCtrlObj( rxShape, pChildAnchor ).release();
+                if(!pCurrXclObj) // Give a chance to handle control object with XclExpTbxControlObj instead of XclObjAny
+                    pCurrXclObj = CreateTBXCtrlObj( rxShape, pChildAnchor ).release();
+            }
             else  //TBX Form Control
                 pCurrXclObj = CreateTBXCtrlObj( rxShape, pChildAnchor ).release();
             if( !pCurrXclObj )
@@ -314,7 +318,7 @@ EscherExHostAppData* XclEscherEx::StartShape( const Reference< XShape >& rxShape
             Any aAny;
             try
             {
-                aAny = xPropSet->getPropertyValue("ObjIDinMSO");
+                aAny = xPropSet->getPropertyValue(u"ObjIDinMSO"_ustr);
             }
             catch(const Exception&)
             {

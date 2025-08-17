@@ -30,11 +30,9 @@
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/beans/XMultiPropertyStates.hpp>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
 
 namespace com::sun::star::container { class XIndexReplace; }
-namespace com::sun::star::lang { class XComponent; }
 
 class ScDocShell;
 class SfxItemPropertySet;

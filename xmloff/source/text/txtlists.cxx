@@ -138,8 +138,7 @@ void XMLTextListsHelper::KeepListAsProcessed( const OUString& sListId,
         mpMapListIdToListStyleDefaultListId = std::make_unique<tMapForLists>();
     }
 
-    if ( mpMapListIdToListStyleDefaultListId->find( sListStyleName ) ==
-                            mpMapListIdToListStyleDefaultListId->end() )
+    if ( !mpMapListIdToListStyleDefaultListId->contains( sListStyleName ) )
     {
         (*mpMapListIdToListStyleDefaultListId)[ sListStyleName ] =
             ::std::pair<OUString, OUString>(sListId, sListStyleDefaultListId);
@@ -153,10 +152,10 @@ bool XMLTextListsHelper::IsListProcessed( const OUString& sListId ) const
         return false;
     }
 
-    return mpProcessedLists->find( sListId ) != mpProcessedLists->end();
+    return mpProcessedLists->contains( sListId );
 }
 
-OUString XMLTextListsHelper::GetListStyleOfProcessedList(
+const OUString & XMLTextListsHelper::GetListStyleOfProcessedList(
                                             const OUString& sListId ) const
 {
     if ( mpProcessedLists )
@@ -168,10 +167,10 @@ OUString XMLTextListsHelper::GetListStyleOfProcessedList(
         }
     }
 
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
-OUString XMLTextListsHelper::GetContinueListIdOfProcessedList(
+const OUString & XMLTextListsHelper::GetContinueListIdOfProcessedList(
                                             const OUString& sListId ) const
 {
     if ( mpProcessedLists )
@@ -183,14 +182,14 @@ OUString XMLTextListsHelper::GetContinueListIdOfProcessedList(
         }
     }
 
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 
 OUString XMLTextListsHelper::GenerateNewListId() const
 {
     static bool bHack = (getenv("LIBO_ONEWAY_STABLE_ODF_EXPORT") != nullptr);
-    OUString sTmpStr( "list" );
+    OUString sTmpStr( u"list"_ustr );
 
     if (bHack)
     {
@@ -212,7 +211,7 @@ OUString XMLTextListsHelper::GenerateNewListId() const
     if ( mpProcessedLists )
     {
         tools::Long nHitCount = 0;
-        while ( mpProcessedLists->find( sNewListId ) != mpProcessedLists->end() )
+        while ( mpProcessedLists->contains( sNewListId ) )
         {
             ++nHitCount;
             sNewListId = sTmpStr + OUString::number( nHitCount );
@@ -425,7 +424,7 @@ XMLTextListsHelper::MakeNumRule(
 
             uno::Reference< beans::XPropertySet > xPropSet( xStyle,
                 uno::UNO_QUERY );
-            any = xPropSet->getPropertyValue("NumberingRules");
+            any = xPropSet->getPropertyValue(u"NumberingRules"_ustr);
             any >>= xNumRules;
         }
         else

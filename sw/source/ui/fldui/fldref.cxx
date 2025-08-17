@@ -66,22 +66,22 @@ enum FMT_REF_IDX
 }
 
 SwFieldRefPage::SwFieldRefPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *const pCoreSet )
-    : SwFieldPage(pPage, pController, "modules/swriter/ui/fldrefpage.ui", "FieldRefPage", pCoreSet)
+    : SwFieldPage(pPage, pController, u"modules/swriter/ui/fldrefpage.ui"_ustr, u"FieldRefPage"_ustr, pCoreSet)
     , mpSavedSelectedTextNode(nullptr)
     , mnSavedSelectedPos(0)
-    , m_xTypeLB(m_xBuilder->weld_tree_view("type"))
-    , m_xSelection(m_xBuilder->weld_widget("selectframe"))
-    , m_xSelectionLB(m_xBuilder->weld_tree_view("select"))
-    , m_xSelectionToolTipLB(m_xBuilder->weld_tree_view("selecttip"))
-    , m_xFormat(m_xBuilder->weld_widget("formatframe"))
-    , m_xFormatLB(m_xBuilder->weld_tree_view("format"))
-    , m_xNameFT(m_xBuilder->weld_label("nameft"))
-    , m_xNameED(m_xBuilder->weld_entry("name"))
-    , m_xValueED(m_xBuilder->weld_entry("value"))
-    , m_xFilterED(m_xBuilder->weld_entry("filter"))
-    , m_xStylerefFlags(m_xBuilder->weld_widget("stylerefflagsframe"))
-    , m_xStylerefFromBottomCB(m_xBuilder->weld_check_button("stylereffrombottomcheckbox"))
-    , m_xStylerefHideNonNumericalCB(m_xBuilder->weld_check_button("stylerefhidenonnumericalcheckbox"))
+    , m_xTypeLB(m_xBuilder->weld_tree_view(u"type"_ustr))
+    , m_xSelection(m_xBuilder->weld_widget(u"selectframe"_ustr))
+    , m_xSelectionLB(m_xBuilder->weld_tree_view(u"select"_ustr))
+    , m_xSelectionToolTipLB(m_xBuilder->weld_tree_view(u"selecttip"_ustr))
+    , m_xFormat(m_xBuilder->weld_widget(u"formatframe"_ustr))
+    , m_xFormatLB(m_xBuilder->weld_tree_view(u"format"_ustr))
+    , m_xNameFT(m_xBuilder->weld_label(u"nameft"_ustr))
+    , m_xNameED(m_xBuilder->weld_entry(u"name"_ustr))
+    , m_xValueED(m_xBuilder->weld_entry(u"value"_ustr))
+    , m_xFilterED(m_xBuilder->weld_entry(u"filter"_ustr))
+    , m_xStylerefFlags(m_xBuilder->weld_widget(u"stylerefflagsframe"_ustr))
+    , m_xStylerefFromBottomCB(m_xBuilder->weld_check_button(u"stylereffrombottomcheckbox"_ustr))
+    , m_xStylerefHideNonNumericalCB(m_xBuilder->weld_check_button(u"stylerefhidenonnumericalcheckbox"_ustr))
 {
     m_xSelectionLB->make_sorted();
     // #i83479#
@@ -113,14 +113,15 @@ SwFieldRefPage::SwFieldRefPage(weld::Container* pPage, weld::DialogController* p
     m_xFilterED->connect_changed( LINK( this, SwFieldRefPage, ModifyHdl_Impl ) );
 
     m_xTypeLB->connect_row_activated(LINK(this, SwFieldRefPage, TreeViewInsertHdl));
-    m_xTypeLB->connect_changed(LINK(this, SwFieldRefPage, TypeHdl));
-    m_xSelectionLB->connect_changed(LINK(this, SwFieldRefPage, SubTypeListBoxHdl));
+    m_xTypeLB->connect_selection_changed(LINK(this, SwFieldRefPage, TypeHdl));
+    m_xSelectionLB->connect_selection_changed(LINK(this, SwFieldRefPage, SubTypeListBoxHdl));
     m_xSelectionLB->connect_row_activated(LINK(this, SwFieldRefPage, TreeViewInsertHdl));
     m_xFormatLB->connect_row_activated(LINK(this, SwFieldRefPage, TreeViewInsertHdl));
-    m_xFormatLB->connect_changed(LINK(this, SwFieldRefPage, FormatHdl));
+    m_xFormatLB->connect_selection_changed(LINK(this, SwFieldRefPage, FormatHdl));
 
     // #i83479#
-    m_xSelectionToolTipLB->connect_changed( LINK(this, SwFieldRefPage, SubTypeTreeListBoxHdl) );
+    m_xSelectionToolTipLB->connect_selection_changed(
+        LINK(this, SwFieldRefPage, SubTypeTreeListBoxHdl));
     m_xSelectionToolTipLB->connect_row_activated( LINK(this, SwFieldRefPage, TreeViewInsertHdl) );
     m_xFilterED->grab_focus();
 
@@ -235,9 +236,9 @@ void SwFieldRefPage::Reset(const SfxItemSet* )
     {
         SwSetExpFieldType* pType = static_cast<SwSetExpFieldType*>(pSh->GetFieldType(n, SwFieldIds::SetExp));
 
-        if ((nsSwGetSetExpType::GSE_SEQ & pType->GetType()) && pType->HasWriterListeners() && pSh->IsUsed(*pType))
+        if ((SwGetSetExpType::Sequence & pType->GetType()) && pType->HasWriterListeners() && pSh->IsUsed(*pType))
         {
-            m_xTypeLB->append(OUString::number(REFFLDFLAG | n), pType->GetName());
+            m_xTypeLB->append(OUString::number(REFFLDFLAG | n), pType->GetName().toString());
         }
     }
 
@@ -268,7 +269,7 @@ void SwFieldRefPage::Reset(const SfxItemSet* )
     nFieldDlgFormatSel = 0;
 
     sal_uInt16 nFormatBoxPosition = USHRT_MAX;
-    if( !IsRefresh() )
+    if( !IsFieldEdit() )
     {
         sal_Int32 nIdx{ 0 };
         const OUString sUserData = GetUserData();
@@ -321,26 +322,23 @@ IMPL_LINK_NOARG(SwFieldRefPage, TypeHdl, weld::TreeView&, void)
 
     if(GetTypeSel() == -1)
     {
-        if (IsFieldEdit())
+        if (SwGetRefField* pRefField = IsFieldEdit() ? dynamic_cast<SwGetRefField*>(GetCurField()) : nullptr)
         {
             // select positions
             OUString sName;
             sal_uInt16 nFlag = 0;
 
-            switch( GetCurField()->GetSubType() )
+            switch( pRefField->GetSubType() )
             {
-                case REF_BOOKMARK:
+                case ReferencesSubtype::Bookmark:
                 {
                     // #i83479#
-                    SwGetRefField* pRefField = dynamic_cast<SwGetRefField*>(GetCurField());
-                    if ( pRefField &&
-                         pRefField->IsRefToHeadingCrossRefBookmark() )
+                    if ( pRefField->IsRefToHeadingCrossRefBookmark() )
                     {
                         sName = m_sHeadingText;
                         nFlag = REFFLDFLAG_HEADING;
                     }
-                    else if ( pRefField &&
-                              pRefField->IsRefToNumItemCrossRefBookmark() )
+                    else if ( pRefField->IsRefToNumItemCrossRefBookmark() )
                     {
                         sName = m_sNumItemText;
                         nFlag = REFFLDFLAG_NUMITEM;
@@ -353,42 +351,35 @@ IMPL_LINK_NOARG(SwFieldRefPage, TypeHdl, weld::TreeView&, void)
                 }
                 break;
 
-                case REF_FOOTNOTE:
+                case ReferencesSubtype::Footnote:
                     sName = m_sFootnoteText;
                     nFlag = REFFLDFLAG_FOOTNOTE;
                     break;
 
-                case REF_ENDNOTE:
+                case ReferencesSubtype::Endnote:
                     sName = m_sEndnoteText;
                     nFlag = REFFLDFLAG_ENDNOTE;
                     break;
 
-                case REF_SETREFATTR:
+                case ReferencesSubtype::SetRefAttr:
                     sName = SwResId(STR_GETREFFLD);
-                    nFlag = REF_SETREFATTR;
                     break;
 
-                case REF_SEQUENCEFLD:
+                case ReferencesSubtype::SequenceField:
                 {
-                    SwGetRefField const*const pRefField(dynamic_cast<SwGetRefField*>(GetCurField()));
-                    if (pRefField)
-                    {
-                        sName = pRefField->GetSetRefName();
-                    }
+                    sName = pRefField->GetSetRefName().toString();
                     nFlag = REFFLDFLAG;
                     break;
                 }
 
-                case REF_STYLE:
+                case ReferencesSubtype::Style:
                 {
-                    SwGetRefField const*const pRefField(dynamic_cast<SwGetRefField*>(GetCurField()));
-                    if (pRefField)
-                    {
-                        sName = pRefField->GetPar1();
-                    }
+                    sName = pRefField->GetPar1();
                     nFlag = REFFLDFLAG_STYLE;
                     break;
                 }
+
+                default: break; // ReferencesSubtype::Outline not handled?
             }
 
             if (m_xTypeLB->find_text(sName) == -1)   // reference to deleted mark
@@ -584,22 +575,22 @@ void SwFieldRefPage::UpdateSubType(const OUString& filterString)
         {
             // get all text marks
             IDocumentMarkAccess* const pMarkAccess = pSh->getIDocumentMarkAccess();
-            for(IDocumentMarkAccess::const_iterator_t ppMark = pMarkAccess->getBookmarksBegin();
+            for(auto ppMark = pMarkAccess->getBookmarksBegin();
                 ppMark != pMarkAccess->getBookmarksEnd();
                 ++ppMark)
             {
-                const ::sw::mark::IMark* pBkmk = *ppMark;
+                const ::sw::mark::MarkBase* pBkmk = *ppMark;
                 if(IDocumentMarkAccess::MarkType::BOOKMARK == IDocumentMarkAccess::GetType(*pBkmk))
                 {
-                    bool isSubstring = MatchSubstring(pBkmk->GetName(), filterString);
+                    bool isSubstring = MatchSubstring(pBkmk->GetName().toString(), filterString);
                     if(isSubstring)
                     {
-                        m_xSelectionLB->append_text( pBkmk->GetName() );
+                        m_xSelectionLB->append_text( pBkmk->GetName().toString() );
                     }
                 }
             }
             if (IsFieldEdit() && pRefField)
-                sOldSel = pRefField->GetSetRefName();
+                sOldSel = pRefField->GetSetRefName().toString();
         }
         else if (nTypeId == REFFLDFLAG_FOOTNOTE)
         {
@@ -778,7 +769,7 @@ void SwFieldRefPage::UpdateSubType(const OUString& filterString)
         }
 
         if (IsFieldEdit() && pRefField)
-            sOldSel = pRefField->GetSetRefName();
+            sOldSel = pRefField->GetSetRefName().toString();
     }
 
     // #i83479#
@@ -790,12 +781,14 @@ void SwFieldRefPage::UpdateSubType(const OUString& filterString)
     m_xSelectionLB->set_visible( !bShowSelectionToolTipLB );
     if ( bShowSelectionToolTipLB )
     {
-        bool bEnable = m_xSelectionToolTipLB->n_children() != 0;
-        m_xSelection->set_sensitive( bEnable );
+        bool bHasChildren = m_xSelectionToolTipLB->n_children() != 0;
+        m_xSelection->set_sensitive(bHasChildren);
 
         int nEntry = m_xSelectionToolTipLB->get_selected_index();
         if (nEntry != -1)
             m_xSelectionToolTipLB->scroll_to_row(nEntry);
+        else if (bHasChildren)
+            m_xSelectionToolTipLB->select(0);
 
         if (IsFieldEdit() && nEntry == -1)
         {
@@ -927,42 +920,42 @@ sal_Int32 SwFieldRefPage::FillFormatLB(sal_uInt16 nTypeId)
     {
         for (sal_uInt16 i = 0; i < nSize; i++)
         {
-            OUString sId(OUString::number(GetFieldMgr().GetFormatId( nFieldType, i + SAL_N_ELEMENTS(FMT_REF_ARY))));
+            OUString sId(OUString::number(GetFieldMgr().GetFormatId( nFieldType, i + std::size(FMT_REF_ARY))));
             m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_LOWERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, i ));
         }
         nExtraSize += nSize;
 
         if ( bAddCrossRefFormats )
         {
-            sal_uInt16 nFormat = FMT_REF_NUMBER_IDX + SAL_N_ELEMENTS(FMT_REF_ARY);
+            sal_uInt16 nFormat = FMT_REF_NUMBER_IDX + std::size(FMT_REF_ARY);
             OUString sId(OUString::number(GetFieldMgr().GetFormatId(nFieldType, nFormat)));
-            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_LOWERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % SAL_N_ELEMENTS(FMT_REF_ARY)));
-            nFormat = FMT_REF_NUMBER_NO_CONTEXT_IDX + SAL_N_ELEMENTS(FMT_REF_ARY);
+            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_LOWERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % std::size(FMT_REF_ARY)));
+            nFormat = FMT_REF_NUMBER_NO_CONTEXT_IDX + std::size(FMT_REF_ARY);
             sId = OUString::number(GetFieldMgr().GetFormatId(nFieldType, nFormat));
-            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_LOWERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % SAL_N_ELEMENTS(FMT_REF_ARY)));
-            nFormat = FMT_REF_NUMBER_FULL_CONTEXT_IDX + SAL_N_ELEMENTS(FMT_REF_ARY);
+            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_LOWERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % std::size(FMT_REF_ARY)));
+            nFormat = FMT_REF_NUMBER_FULL_CONTEXT_IDX + std::size(FMT_REF_ARY);
             sId = OUString::number(GetFieldMgr().GetFormatId(nFieldType, nFormat));
-            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_LOWERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % SAL_N_ELEMENTS(FMT_REF_ARY)));
+            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_LOWERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % std::size(FMT_REF_ARY)));
             nExtraSize += 3;
         }
         // uppercase article
         for (sal_uInt16 i = 0; i < nSize; i++)
         {
-            OUString sId(OUString::number(GetFieldMgr().GetFormatId( nFieldType, i + 2 * SAL_N_ELEMENTS(FMT_REF_ARY))));
+            OUString sId(OUString::number(GetFieldMgr().GetFormatId( nFieldType, i + 2 * std::size(FMT_REF_ARY))));
             m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_UPPERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, i ));
         }
         nExtraSize += nSize;
         if ( bAddCrossRefFormats )
         {
-            sal_uInt16 nFormat = FMT_REF_NUMBER_IDX + 2 * SAL_N_ELEMENTS(FMT_REF_ARY);
+            sal_uInt16 nFormat = FMT_REF_NUMBER_IDX + 2 * std::size(FMT_REF_ARY);
             OUString sId(OUString::number(GetFieldMgr().GetFormatId(nFieldType, nFormat)));
-            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_UPPERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % SAL_N_ELEMENTS(FMT_REF_ARY)));
-            nFormat = FMT_REF_NUMBER_NO_CONTEXT_IDX + 2 * SAL_N_ELEMENTS(FMT_REF_ARY);
+            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_UPPERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % std::size(FMT_REF_ARY)));
+            nFormat = FMT_REF_NUMBER_NO_CONTEXT_IDX + 2 * std::size(FMT_REF_ARY);
             sId = OUString::number(GetFieldMgr().GetFormatId(nFieldType, nFormat));
-            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_UPPERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % SAL_N_ELEMENTS(FMT_REF_ARY)));
-            nFormat = FMT_REF_NUMBER_FULL_CONTEXT_IDX + 2 * SAL_N_ELEMENTS(FMT_REF_ARY);
+            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_UPPERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % std::size(FMT_REF_ARY)));
+            nFormat = FMT_REF_NUMBER_FULL_CONTEXT_IDX + 2 * std::size(FMT_REF_ARY);
             sId = OUString::number(GetFieldMgr().GetFormatId(nFieldType, nFormat));
-            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_UPPERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % SAL_N_ELEMENTS(FMT_REF_ARY)));
+            m_xFormatLB->append(sId, SwResId(FMT_REF_WITH_UPPERCASE_HU_ARTICLE) + GetFieldMgr().GetFormatStr( nFieldType, nFormat % std::size(FMT_REF_ARY)));
             nExtraSize += 3;
         }
     }
@@ -975,7 +968,7 @@ sal_Int32 SwFieldRefPage::FillFormatLB(sal_uInt16 nTypeId)
         if (!IsFieldEdit())
             m_xFormatLB->select_text(sOldSel);
         else
-            m_xFormatLB->select_text(SwResId(FMT_REF_ARY[GetCurField()->GetFormat() % SAL_N_ELEMENTS(FMT_REF_ARY)]));
+            m_xFormatLB->select_text(SwResId(FMT_REF_ARY[GetCurField()->GetUntypedFormat() % std::size(FMT_REF_ARY)]));
 
         if (m_xFormatLB->get_selected_index() == -1)
         {
@@ -998,12 +991,12 @@ IMPL_LINK_NOARG(SwFieldRefPage, ModifyHdl, weld::Entry&, void)
     bool bEnable = true;
     sal_uInt16 nTypeId = m_xTypeLB->get_id(GetTypeSel()).toUInt32();
 
-    if ((nTypeId == static_cast<sal_uInt16>(SwFieldTypesEnum::SetRef) && !GetFieldMgr().CanInsertRefMark(aName)) ||
+    if ((nTypeId == static_cast<sal_uInt16>(SwFieldTypesEnum::SetRef) && !GetFieldMgr().CanInsertRefMark(SwMarkName(aName))) ||
         (bEmptyName && (nTypeId == static_cast<sal_uInt16>(SwFieldTypesEnum::GetRef) || nTypeId == static_cast<sal_uInt16>(SwFieldTypesEnum::SetRef) ||
                        nTypeId == REFFLDFLAG_BOOKMARK)))
         bEnable = false;
 
-    EnableInsert(bEnable);
+    EnableInsert(bEnable, IsCurrentPage());
 
     m_xSelectionLB->select_text(aName);
 }
@@ -1013,7 +1006,7 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
     bool bModified = false;
     sal_uInt16 nTypeId = m_xTypeLB->get_id(GetTypeSel()).toUInt32();
 
-    sal_uInt16 nSubType = 0;
+    ReferencesSubtype nSubType = ReferencesSubtype::SetRefAttr;
     const sal_Int32 nEntryPos = m_xFormatLB->get_selected_index();
     const sal_uInt32 nFormat = (nEntryPos == -1)
         ? 0 : m_xFormatLB->get_id(nEntryPos).toUInt32();
@@ -1024,7 +1017,7 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
     switch(nTypeId)
     {
         case static_cast<sal_uInt16>(SwFieldTypesEnum::GetRef):
-            nSubType = REF_SETREFATTR;
+            nSubType = ReferencesSubtype::SetRefAttr;
             break;
 
         case static_cast<sal_uInt16>(SwFieldTypesEnum::SetRef):
@@ -1052,7 +1045,7 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
         {
             aName = m_xNameED->get_text();
             nTypeId = static_cast<sal_uInt16>(SwFieldTypesEnum::GetRef);
-            nSubType = REF_BOOKMARK;
+            nSubType = ReferencesSubtype::Bookmark;
         }
         else if (REFFLDFLAG_FOOTNOTE == nTypeId)        // footnotes
         {
@@ -1062,7 +1055,7 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
             size_t nPos = 0;
 
             nTypeId = static_cast<sal_uInt16>(SwFieldTypesEnum::GetRef);
-            nSubType = REF_FOOTNOTE;
+            nSubType = ReferencesSubtype::Footnote;
             aName.clear();
 
             if (pSh->GetSeqFootnoteList(aArr) && aArr.SeekEntry(aElem, &nPos))
@@ -1083,7 +1076,7 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
             size_t nPos = 0;
 
             nTypeId = static_cast<sal_uInt16>(SwFieldTypesEnum::GetRef);
-            nSubType = REF_ENDNOTE;
+            nSubType = ReferencesSubtype::Endnote;
             aName.clear();
 
             if (pSh->GetSeqFootnoteList(aArr, true) && aArr.SeekEntry(aElem, &nPos))
@@ -1108,12 +1101,12 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
                 pSh->getIDocumentOutlineNodesAccess()->getOutlineNodes( maOutlineNodes );
                 if ( nOutlIdx < maOutlineNodes.size() )
                 {
-                    ::sw::mark::IMark const * const pMark = pSh->getIDocumentMarkAccess()->getMarkForTextNode(
+                    ::sw::mark::MarkBase const * const pMark = pSh->getIDocumentMarkAccess()->getMarkForTextNode(
                         *(maOutlineNodes[nOutlIdx]),
                         IDocumentMarkAccess::MarkType::CROSSREF_HEADING_BOOKMARK);
-                    aName = pMark->GetName();
+                    aName = pMark->GetName().toString();
                     nTypeId = static_cast<sal_uInt16>(SwFieldTypesEnum::GetRef);
-                    nSubType = REF_BOOKMARK;
+                    nSubType = ReferencesSubtype::Bookmark;
                 }
             }
         }
@@ -1128,12 +1121,12 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
                 pSh->getIDocumentListItemsAccess()->getNumItems(maNumItems);
                 if ( nNumItemIdx < maNumItems.size() )
                 {
-                    ::sw::mark::IMark const * const pMark = pSh->getIDocumentMarkAccess()->getMarkForTextNode(
+                    ::sw::mark::MarkBase const * const pMark = pSh->getIDocumentMarkAccess()->getMarkForTextNode(
                         *(maNumItems[nNumItemIdx]->GetTextNode()),
                         IDocumentMarkAccess::MarkType::CROSSREF_NUMITEM_BOOKMARK);
-                    aName = pMark->GetName();
+                    aName = pMark->GetName().toString();
                     nTypeId = static_cast<sal_uInt16>(SwFieldTypesEnum::GetRef);
-                    nSubType = REF_BOOKMARK;
+                    nSubType = ReferencesSubtype::Bookmark;
                 }
             }
         }
@@ -1144,7 +1137,7 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
             {
                 aName = m_xSelectionLB->get_text(nEntry);
                 nTypeId = static_cast<sal_uInt16>(SwFieldTypesEnum::GetRef);
-                nSubType = REF_STYLE;
+                nSubType = ReferencesSubtype::Style;
                 sal_uInt16 nVal = REFFLDFLAG_STYLE;
 
                 if (m_xStylerefFromBottomCB->get_active()) {
@@ -1173,8 +1166,8 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
                 size_t nPos = 0;
 
                 nTypeId = static_cast<sal_uInt16>(SwFieldTypesEnum::GetRef);
-                nSubType = REF_SEQUENCEFLD;
-                aName = pType->GetName();
+                nSubType = ReferencesSubtype::SequenceField;
+                aName = pType->GetName().toString();
 
                 if (pType->GetSeqFieldList(aArr, pSh->GetLayout())
                     && aArr.SeekEntry(aElem, &nPos))
@@ -1192,7 +1185,7 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
 
     if (IsFieldEdit() && nTypeId == static_cast<sal_uInt16>(SwFieldTypesEnum::GetRef))
     {
-        aVal = OUString::number(nSubType) + "|" + aVal;
+        aVal = OUString::number(static_cast<sal_uInt16>(nSubType)) + "|" + aVal;
     }
 
     if (!IsFieldEdit() || bModified ||
@@ -1201,10 +1194,10 @@ bool SwFieldRefPage::FillItemSet(SfxItemSet* )
         m_xTypeLB->get_value_changed_from_saved() ||
         m_xSelectionLB->get_value_changed_from_saved() ||
         m_xFormatLB->get_value_changed_from_saved() ||
-        (nSubType == REF_STYLE
+        (nSubType == ReferencesSubtype::Style
          && (m_xStylerefFromBottomCB->get_state_changed_from_saved() || m_xStylerefHideNonNumericalCB->get_state_changed_from_saved())))
     {
-        InsertField( static_cast<SwFieldTypesEnum>(nTypeId), nSubType, aName, aVal, nFormat );
+        InsertField( static_cast<SwFieldTypesEnum>(nTypeId), static_cast<sal_uInt16>(nSubType), aName, aVal, nFormat );
     }
 
     ModifyHdl(*m_xNameED);    // enable/disable insert if applicable

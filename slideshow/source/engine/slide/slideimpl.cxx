@@ -19,14 +19,18 @@
 
 
 #include <osl/diagnose.hxx>
+#include <canvas/canvastools.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <cppcanvas/basegfxfactory.hxx>
+#include <cppcanvas/vclfactory.hxx>
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 
 #include <com/sun/star/awt/SystemPointer.hpp>
 #include <com/sun/star/drawing/XMasterPageTarget.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/presentation/ParagraphTarget.hpp>
 #include <com/sun/star/presentation/EffectNodeType.hpp>
@@ -47,9 +51,12 @@
 #include "userpaintoverlay.hxx"
 #include "targetpropertiescreator.hxx"
 #include <tools.hxx>
+#include <tools/helpers.hxx>
+#include <tools/json_writer.hxx>
 #include <box2dtools.hxx>
 #include <utility>
 #include <vcl/graphicfilter.hxx>
+#include <vcl/virdev.hxx>
 #include <svx/svdograf.hxx>
 
 using namespace ::com::sun::star;
@@ -57,9 +64,9 @@ using namespace ::com::sun::star;
 
 namespace slideshow::internal
 {
+
 namespace
 {
-
 class SlideImpl : public Slide,
                   public CursorManager,
                   public ViewEventHandler,
@@ -85,7 +92,7 @@ public:
                double                                            dUserPaintStrokeWidth,
                bool                                              bUserPaintEnabled,
                bool                                              bIntrinsicAnimationsAllowed,
-               bool                                              bDisableAnimationZOrder );
+               bool                                              bDisableAnimationZOrder);
 
     virtual ~SlideImpl() override;
 
@@ -110,7 +117,6 @@ public:
     // TODO(F2): Rework SlideBitmap to no longer be based on XBitmap,
     // but on canvas-independent basegfx bitmaps
     virtual SlideBitmapSharedPtr getCurrentSlideBitmap( const UnoViewSharedPtr& rView ) const override;
-
 
 private:
     // ViewEventHandler
@@ -306,7 +312,7 @@ SlideImpl::SlideImpl( const uno::Reference< drawing::XDrawPage >&           xDra
                       double                                                dUserPaintStrokeWidth,
                       bool                                                  bUserPaintEnabled,
                       bool                                                  bIntrinsicAnimationsAllowed,
-                      bool                                                  bDisableAnimationZOrder ) :
+                      bool                                                  bDisableAnimationZOrder) :
     mxDrawPage( xDrawPage ),
     mxDrawPagesSupplier(std::move( xDrawPages )),
     mxRootNode(std::move( xRootNode )),
@@ -355,6 +361,14 @@ SlideImpl::SlideImpl( const uno::Reference< drawing::XDrawPage >&           xDra
     mbPaintOverlayActive( false ),
     mbFinalStateApplied( false )
 {
+    if (uno::Reference<frame::XModel> xModel{ mxDrawPagesSupplier, uno::UNO_QUERY })
+    {
+        OUString presentationURL = xModel->getURL();
+        auto fileDirectoryEndIdx = presentationURL.lastIndexOf("/");
+        if (presentationURL.startsWith("file:///") && fileDirectoryEndIdx != -1)
+            maContext.maFallbackDir = OUString::Concat(presentationURL.subView(0, fileDirectoryEndIdx + 1));
+    }
+
     // clone already existing views for slide bitmaps
     for( const auto& rView : rViewContainer )
         viewAdded( rView );
@@ -395,7 +409,7 @@ void SlideImpl::prefetch()
     std::vector<Graphic*> graphics;
     for (sal_Int32 i = 0; i < mxDrawPage->getCount(); i++)
     {
-        com::sun::star::uno::Reference<com::sun::star::drawing::XShape> xShape(mxDrawPage->getByIndex(i), com::sun::star::uno::UNO_QUERY_THROW);
+        css::uno::Reference<css::drawing::XShape> xShape(mxDrawPage->getByIndex(i), css::uno::UNO_QUERY_THROW);
         SdrObject* pObj = SdrObject::getSdrObjectFromXShape(xShape);
         if (!pObj)
             continue;
@@ -996,12 +1010,12 @@ bool SlideImpl::loadShapes()
 
                 while( !aMPShapesFunctor.isImportDone() )
                 {
-                    ShapeSharedPtr const& rShape(
+                    ShapeSharedPtr const pShape(
                         aMPShapesFunctor.importShape() );
-                    if( rShape )
+                    if( pShape )
                     {
-                        rShape->setIsForeground(false);
-                        mpLayerManager->addShape( rShape );
+                        pShape->setIsForeground(false);
+                        mpLayerManager->addShape( pShape );
                     }
                 }
                 addPolygons(aMPShapesFunctor.getPolygons());
@@ -1041,10 +1055,10 @@ bool SlideImpl::loadShapes()
 
         while( !aShapesFunctor.isImportDone() )
         {
-            ShapeSharedPtr const& rShape(
+            ShapeSharedPtr const pShape(
                 aShapesFunctor.importShape() );
-            if( rShape )
-                mpLayerManager->addShape( rShape );
+            if( pShape )
+                mpLayerManager->addShape( pShape );
         }
         addPolygons(aShapesFunctor.getPolygons());
     }
@@ -1076,13 +1090,13 @@ basegfx::B2ISize SlideImpl::getSlideSizeImpl() const
 
     sal_Int32 nDocWidth = 0;
     sal_Int32 nDocHeight = 0;
-    xPropSet->getPropertyValue("Width") >>= nDocWidth;
-    xPropSet->getPropertyValue("Height") >>= nDocHeight;
+    xPropSet->getPropertyValue(u"Width"_ustr) >>= nDocWidth;
+    xPropSet->getPropertyValue(u"Height"_ustr) >>= nDocHeight;
 
     return basegfx::B2ISize( nDocWidth, nDocHeight );
 }
 
-} // namespace
+} // anonymous namespace
 
 
 SlideSharedPtr createSlide( const uno::Reference< drawing::XDrawPage >&         xDrawPage,

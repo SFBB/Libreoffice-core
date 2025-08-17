@@ -20,13 +20,11 @@
 #pragma once
 
 #include <xmloff/xmlictxt.hxx>
-#include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.h>
 
 namespace com::sun::star {
     namespace container { class XIndexContainer; }
     namespace beans { class XPropertySet; }
-    namespace xml::sax { class XAttributeList; }
 }
 
 

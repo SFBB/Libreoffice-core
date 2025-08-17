@@ -49,19 +49,19 @@
       <prop oor:name="YY" oor:type="xs:int">
         <info>
           <desc>Specifies the year.</desc>
-          <label>12/30/1899 (Standard) 01/01/1900 (StarCalc 1.0) 01/01/1904</label>
+          <label>1899-12-30 (Standard) 1900-01-01 (StarCalc 1.0) 1904-01-01</label>
         </info>
       </prop>
       <prop oor:name="MM" oor:type="xs:int">
         <info>
           <desc>Specifies the month.</desc>
-          <label>12/30/1899 (Standard) 01/01/1900 (StarCalc 1.0) 01/01/1904</label>
+          <label>1899-12-30 (Standard) 1900-01-01 (StarCalc 1.0) 1904-01-01</label>
         </info>
       </prop>
       <prop oor:name="DD" oor:type="xs:int">
         <info>
           <desc>Specifies the day.</desc>
-          <label>12/30/1899 (Standard) 01/01/1900 (StarCalc 1.0) 01/01/1904</label>
+          <label>1899-12-30 (Standard) 1900-01-01 (StarCalc 1.0) 1904-01-01</label>
         </info>
       </prop>
     </group>
@@ -105,6 +105,22 @@
           </info>
           <value>true</value>
         </prop>
+        <prop oor:name="NoteIndicator" oor:type="xs:int" oor:nillable="false">
+          <!-- UIHints: Tools - Options -Spreadsheets - Contents - [Section] Display -->
+          <info>
+            <desc>If less than 1, the size of comment indicator is calculated dynamically; otherwise this value will be used.</desc>
+            <label>Comment indicator size</label>
+          </info>
+          <value>0</value>
+        </prop>
+        <prop oor:name="NoteAuthor" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints: Tools - Options -Spreadsheets - Contents - [Section] Display -->
+          <info>
+            <desc>Indicates whether authorship metadata for comments on hover are shown.</desc>
+            <label>Comment authorship</label>
+          </info>
+          <value>true</value>
+        </prop>
         <prop oor:name="FormulaMark" oor:type="xs:boolean" oor:nillable="false">
           <!-- UIHints: Tools - Options -Spreadsheets - Contents - [Section] Display -->
           <info>
@@ -126,6 +142,14 @@
           <info>
             <desc>Indicates whether the column/row highlight has been enabled or not.</desc>
             <label>Column/row highlighting</label>
+          </info>
+          <value>false</value>
+        </prop>
+        <prop oor:name="EditCellBackgroundHighlighting" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints: Tools - Options -Spreadsheets - Contents - [Section] Display -->
+          <info>
+            <desc>Indicates whether the edit cell background highlighting is enabled or not.</desc>
+            <label>Edit cell background highlighting</label>
           </info>
           <value>false</value>
         </prop>
@@ -682,10 +706,25 @@
         </info>
         <value>true</value>
       </prop>
+      <prop oor:name="WarnActiveSheet" oor:type="xs:boolean" oor:nillable="false">
+        <!-- UIHints: Tools - Options - Spreadsheet - General - [Section] Input settings -->
+        <info>
+          <desc>Specifies whether a warning is shown if saving a document works only for the active sheet, eg. in case of CSV.</desc>
+          <label>Warn when saving only the active sheet</label>
+        </info>
+        <value>true</value>
+      </prop>
       <prop oor:name="UseScrollLock" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Toggles the scroll lock behavior allowing to disable it for special keyboards</desc>
           <label>Toggles the scroll lock behavior allowing to disable it for special keyboards</label>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="WrapNextPrevSheetTab" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>When switching to next / previous sheet, wrap from last to first tab (and vice versa)</desc>
+          <label>When switching to next / previous sheet, wrap from last to first tab (and vice versa)</label>
         </info>
         <value>true</value>
       </prop>
@@ -723,6 +762,13 @@
         </constraints>
         <value>224 226 222 223 6</value>
       </prop>
+      <prop oor:name="FavouriteFunctions" oor:type="oor:int-list" oor:nillable="false">
+        <info>
+          <desc>Specifies the favourite functions.</desc>
+          <label>Favourite Functions</label>
+        </info>
+        <value></value>
+      </prop>
       <prop oor:name="AutoInput" oor:type="xs:boolean" oor:nillable="false">
         <!-- UIHints: Tools  Cell Contents  AutoInput -->
         <info>
@@ -736,6 +782,13 @@
         <info>
           <desc>Specifies whether all the Detective traces in the sheet are automatically refreshed when modifying a formula.</desc>
           <label>Detective Auto Refresh</label>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="SelectRangeBeforeAll" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Disable to always select all</desc>
+          <label>Select range before all</label>
         </info>
         <value>true</value>
       </prop>
@@ -973,6 +1026,13 @@
           </info>
           <value>false</value>
         </prop>
+        <prop oor:name="SeparatorType" oor:type="xs:short" oor:nillable="false">
+          <info>
+            <desc>Fixed width, separator or detected separator</desc>
+            <label>SeparatorType</label>
+          </info>
+          <value>2</value>
+        </prop>
         <prop oor:name="QuotedFieldAsText" oor:type="xs:boolean" oor:nillable="false">
           <info>
             <desc>If true, quoted field is always imported as text with no exception.</desc>
@@ -1031,10 +1091,17 @@
         </prop>
         <prop oor:name="CharSet" oor:type="xs:int" oor:nillable="false">
           <info>
-            <desc>Char Set</desc>
+            <desc>Char Set (index of selected item in the dialog's list box; obsoleted by Encoding)</desc>
             <label>CharSet</label>
           </info>
           <value>-1</value>
+        </prop>
+        <prop oor:name="Encoding" oor:type="xs:short" oor:nillable="false">
+          <info>
+            <desc>Encoding (an rtl_TextEncoding value; default is "don't know")</desc>
+            <label>Encoding</label>
+          </info>
+          <value>0</value>
         </prop>
         <prop oor:name="FixedWidthList" oor:type="xs:string" oor:nillable="false">
           <info>
@@ -1068,6 +1135,13 @@
             <label>EvaluateFormulas</label>
           </info>
           <value>true</value>
+        </prop>
+        <prop oor:name="SeparatorType" oor:type="xs:short" oor:nillable="false">
+          <info>
+            <desc>Fixed width, separator or detected separator</desc>
+            <label>SeparatorType</label>
+          </info>
+          <value>2</value>
         </prop>
         <prop oor:name="QuotedFieldAsText" oor:type="xs:boolean" oor:nillable="false">
           <info>
@@ -1134,10 +1208,17 @@
         </prop>
         <prop oor:name="CharSet" oor:type="xs:int" oor:nillable="false">
           <info>
-            <desc>Char Set</desc>
+            <desc>Char Set (index of selected item in the dialog's list box; obsoleted by Encoding)</desc>
             <label>CharSet</label>
           </info>
           <value>-1</value>
+        </prop>
+        <prop oor:name="Encoding" oor:type="xs:short" oor:nillable="false">
+          <info>
+            <desc>Encoding (an rtl_TextEncoding value; default is "don't know")</desc>
+            <label>Encoding</label>
+          </info>
+          <value>0</value>
         </prop>
         <prop oor:name="FixedWidthList" oor:type="xs:string" oor:nillable="false">
           <info>
@@ -1145,6 +1226,17 @@
             <label>FixedWidthList</label>
           </info>
           <value/>
+        </prop>
+      </group>
+      <group oor:name="ClipboardHTMLImport">
+        <prop oor:name="Language" oor:type="xs:int" oor:nillable="false">
+          <value>0</value> <!-- LANGUAGE_SYSTEM -->
+        </prop>
+        <prop oor:name="DetectSpecialNumbers" oor:type="xs:boolean" oor:nillable="false">
+          <value>false</value>
+        </prop>
+        <prop oor:name="DetectScientificNumbers" oor:type="xs:boolean" oor:nillable="false">
+          <value>false</value>
         </prop>
       </group>
       <group oor:name="TextToColumnsImport">
@@ -1171,6 +1263,13 @@
             <label>EvaluateFormulas</label>
           </info>
           <value>true</value>
+        </prop>
+        <prop oor:name="SeparatorType" oor:type="xs:short" oor:nillable="false">
+          <info>
+            <desc>Fixed width, separator or detected separator</desc>
+            <label>SeparatorType</label>
+          </info>
+          <value>2</value>
         </prop>
         <prop oor:name="Separators" oor:type="xs:string" oor:nillable="false">
           <info>
@@ -1532,6 +1631,30 @@
           </constraints>
           <value>1</value>
         </prop>
+        <prop oor:name="RecalcOptimalRowHeightMode" oor:type="xs:int" oor:nillable="false">
+          <!-- UIHint: Tools - Options - Spreadsheet - Formula -->
+          <info>
+            <desc>Specifies whether to force a hard recalc after load on optimal row heights.</desc>
+          </info>
+          <constraints>
+            <enumeration oor:value="0">
+              <info>
+                <desc>Recalc always</desc>
+              </info>
+            </enumeration>
+            <enumeration oor:value="1">
+              <info>
+                <desc>Recalc never</desc>
+              </info>
+            </enumeration>
+            <enumeration oor:value="2">
+              <info>
+                <desc>Ask before Recalc</desc>
+              </info>
+            </enumeration>
+          </constraints>
+          <value>0</value>
+        </prop>
       </group>
     </group>
     <group oor:name="Revision">
@@ -1728,6 +1851,36 @@
       <info>
         <desc>Contains miscellaneous settings.</desc>
       </info>
+      <group oor:name="HandleDuplicateRecords">
+        <info>
+          <desc>Defines the settings for 'handle duplicate records' dialog.</desc>
+          <label>Handle duplicate records settings</label>
+        </info>
+        <prop oor:name="DataIncludesHeaders" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints: Data - Duplicate Records... -->
+          <info>
+            <desc>Indicates whether selected data includes headers in the 'handle duplicate records' dialog.</desc>
+            <label>Data includes row/column headers</label>
+          </info>
+          <value>false</value>
+        </prop>
+        <prop oor:name="RemoveDuplicateRows" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints: Data - Duplicate Records... -->
+          <info>
+            <desc>Indicates whether to remove rows, or columns in the 'handle duplicate records' dialog.</desc>
+            <label>Compare rows</label>
+          </info>
+          <value>true</value>
+        </prop>
+        <prop oor:name="RemoveRecords" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints: Data - Duplicate Records... -->
+          <info>
+            <desc>Indicates whether to select or remove records in the 'handle duplicate records' dialog.</desc>
+            <label>Select or remove</label>
+          </info>
+          <value>true</value>
+        </prop>
+      </group>
       <group oor:name="DefaultObjectSize">
         <info>
           <desc>Defines the default size of newly created objects using CTRL-Return or CTRL-Click at an object creating Button.</desc>
@@ -1757,6 +1910,16 @@
           <info>
             <desc>Specifies whether the warning box for shared documents is shown.</desc>
             <label>Show warning box</label>
+          </info>
+          <value>true</value>
+        </prop>
+      </group>
+      <group oor:name="Draw">
+        <prop oor:name="ClickChangeRotation" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints: Configured into draw toolbar -->
+          <info>
+            <desc>Enables to toggle rotate mode in shapes.</desc>
+            <label>ClickChangeRotation</label>
           </info>
           <value>true</value>
         </prop>

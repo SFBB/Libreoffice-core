@@ -20,10 +20,11 @@
 #include "ConfigurationControllerResourceManager.hxx"
 #include "ConfigurationControllerBroadcaster.hxx"
 #include "ResourceFactoryManager.hxx"
+#include <ResourceId.hxx>
 #include <framework/FrameworkHelper.hxx>
 #include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
-#include <com/sun/star/drawing/framework/XResourceFactory.hpp>
+#include <framework/Configuration.hxx>
+#include <framework/ResourceFactory.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <sal/log.hxx>
 #include <algorithm>
@@ -52,7 +53,7 @@ ConfigurationControllerResourceManager::~ConfigurationControllerResourceManager(
 
 ConfigurationControllerResourceManager::ResourceDescriptor
     ConfigurationControllerResourceManager::GetResource (
-        const Reference<XResourceId>& rxResourceId)
+        const rtl::Reference<ResourceId>& rxResourceId)
 {
     ::osl::MutexGuard aGuard (maMutex);
     ResourceMap::const_iterator iResource (maResourceMap.find(rxResourceId));
@@ -63,20 +64,20 @@ ConfigurationControllerResourceManager::ResourceDescriptor
 }
 
 void ConfigurationControllerResourceManager::ActivateResources (
-    const ::std::vector<Reference<XResourceId> >& rResources,
-    const Reference<XConfiguration>& rxConfiguration)
+    const ::std::vector<rtl::Reference<ResourceId> >& rResources,
+    const rtl::Reference<Configuration>& rxConfiguration)
 {
     ::osl::MutexGuard aGuard (maMutex);
     // Iterate in normal order over the resources that are to be
     // activated so that resources on which others depend are activated
     // before the depending resources are activated.
-    for (const Reference<XResourceId>& xResource : rResources)
+    for (const rtl::Reference<ResourceId>& xResource : rResources)
         ActivateResource(xResource, rxConfiguration);
 }
 
 void ConfigurationControllerResourceManager::DeactivateResources (
-    const ::std::vector<Reference<XResourceId> >& rResources,
-    const Reference<XConfiguration>& rxConfiguration)
+    const ::std::vector<rtl::Reference<ResourceId> >& rResources,
+    const rtl::Reference<Configuration>& rxConfiguration)
 {
     ::osl::MutexGuard aGuard (maMutex);
     // Iterate in reverse order over the resources that are to be
@@ -85,7 +86,7 @@ void ConfigurationControllerResourceManager::DeactivateResources (
     ::std::for_each(
         rResources.rbegin(),
         rResources.rend(),
-        [&] (Reference<XResourceId> const& xResource) {
+        [&] (rtl::Reference<ResourceId> const& xResource) {
             return DeactivateResource(xResource, rxConfiguration);
         } );
 }
@@ -99,8 +100,8 @@ void ConfigurationControllerResourceManager::DeactivateResources (
     5. Notify listeners.
 */
 void ConfigurationControllerResourceManager::ActivateResource (
-    const Reference<XResourceId>& rxResourceId,
-    const Reference<XConfiguration>& rxConfiguration)
+    const rtl::Reference<ResourceId>& rxResourceId,
+    const rtl::Reference<Configuration>& rxConfiguration)
 {
     if ( ! rxResourceId.is())
     {
@@ -113,7 +114,7 @@ void ConfigurationControllerResourceManager::ActivateResource (
 
     // 1. Get the factory.
     const OUString sResourceURL (rxResourceId->getResourceURL());
-    Reference<XResourceFactory> xFactory (mpResourceFactoryContainer->GetFactory(sResourceURL));
+    rtl::Reference<ResourceFactory> xFactory (mpResourceFactoryContainer->GetFactory(sResourceURL));
     if ( ! xFactory.is())
     {
         SAL_INFO("sd.fwk", __func__ << ":    no factory found for " << sResourceURL);
@@ -123,7 +124,7 @@ void ConfigurationControllerResourceManager::ActivateResource (
     try
     {
         // 2. Create the resource.
-        Reference<XResource> xResource;
+        rtl::Reference<AbstractResource> xResource;
         try
         {
             xResource = xFactory->createResource(rxResourceId);
@@ -147,7 +148,7 @@ void ConfigurationControllerResourceManager::ActivateResource (
 
             // 5. Notify the new resource to listeners of the ConfigurationController.
             mpBroadcaster->NotifyListeners(
-                FrameworkHelper::msResourceActivationEvent,
+                ConfigurationChangeEventType::ResourceActivation,
                 rxResourceId,
                 xResource);
         }
@@ -171,8 +172,8 @@ void ConfigurationControllerResourceManager::ActivateResource (
     5. Notify listeners about that deactivation is completed.
 */
 void ConfigurationControllerResourceManager::DeactivateResource (
-    const Reference<XResourceId>& rxResourceId,
-    const Reference<XConfiguration>& rxConfiguration)
+    const rtl::Reference<ResourceId>& rxResourceId,
+    const rtl::Reference<Configuration>& rxConfiguration)
 {
     if ( ! rxResourceId.is())
         return;
@@ -189,7 +190,7 @@ void ConfigurationControllerResourceManager::DeactivateResource (
         {
             // 2.  Notify listeners that the resource is being deactivated.
             mpBroadcaster->NotifyListeners(
-                FrameworkHelper::msResourceDeactivationEvent,
+                ConfigurationChangeEventType::ResourceDeactivation,
                 rxResourceId,
                 aDescriptor.mxResource);
 
@@ -204,7 +205,7 @@ void ConfigurationControllerResourceManager::DeactivateResource (
             catch (const lang::DisposedException& rException)
             {
                 if ( ! rException.Context.is()
-                    || rException.Context == aDescriptor.mxResourceFactory)
+                    || rException.Context == cppu::getXWeak(aDescriptor.mxResourceFactory.get()))
                 {
                     // The factory is disposed and can be removed from the
                     // list of registered factories.
@@ -223,12 +224,6 @@ void ConfigurationControllerResourceManager::DeactivateResource (
         DBG_UNHANDLED_EXCEPTION("sd");
     }
 
-    // 5.  Notify listeners that the resource is being deactivated.
-    mpBroadcaster->NotifyListeners(
-        FrameworkHelper::msResourceDeactivationEndEvent,
-        rxResourceId,
-        nullptr);
-
 #if OSL_DEBUG_LEVEL >= 1
     if (bSuccess)
         SAL_INFO("sd.fwk", __func__ << ": successfully deactivated " <<
@@ -241,8 +236,8 @@ void ConfigurationControllerResourceManager::DeactivateResource (
 }
 
 void ConfigurationControllerResourceManager::AddResource (
-    const Reference<XResource>& rxResource,
-    const Reference<XResourceFactory>& rxFactory)
+    const rtl::Reference<AbstractResource>& rxResource,
+    const rtl::Reference<ResourceFactory>& rxFactory)
 {
     if ( ! rxResource.is())
     {
@@ -251,10 +246,7 @@ void ConfigurationControllerResourceManager::AddResource (
     }
 
     // Add the resource to the resource container.
-    ResourceDescriptor aDescriptor;
-    aDescriptor.mxResource = rxResource;
-    aDescriptor.mxResourceFactory = rxFactory;
-    maResourceMap[rxResource->getResourceId()] = aDescriptor;
+    maResourceMap[rxResource->getResourceId()] = ResourceDescriptor{rxResource, rxFactory};
 
 #if OSL_DEBUG_LEVEL >= 2
     SAL_INFO("sd.fwk", __func__ << ": ConfigurationControllerResourceManager::AddResource(): added " <<
@@ -265,7 +257,7 @@ void ConfigurationControllerResourceManager::AddResource (
 
 ConfigurationControllerResourceManager::ResourceDescriptor
     ConfigurationControllerResourceManager::RemoveResource (
-        const Reference<XResourceId>& rxResourceId)
+        const rtl::Reference<ResourceId>& rxResourceId)
 {
     ResourceDescriptor aDescriptor;
 
@@ -288,8 +280,8 @@ ConfigurationControllerResourceManager::ResourceDescriptor
 //===== ConfigurationControllerResourceManager::ResourceComparator ============
 
 bool ConfigurationControllerResourceManager::ResourceComparator::operator() (
-    const Reference<XResourceId>& rxId1,
-    const Reference<XResourceId>& rxId2) const
+    const rtl::Reference<ResourceId>& rxId1,
+    const rtl::Reference<ResourceId>& rxId2) const
 {
     if (rxId1.is() && rxId2.is())
         return rxId1->compareTo(rxId2)<0;

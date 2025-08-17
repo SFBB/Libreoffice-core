@@ -25,24 +25,26 @@
 
 using LanguageToolCfg = officecfg::Office::Linguistic::GrammarChecking::LanguageTool;
 constexpr OUString LANGUAGETOOL_DEFAULT_URL = u"https://api.languagetool.org/v2"_ustr;
+constexpr OUString LANGUAGETOOLPLUS_DEFAULT_URL = u"https://api.languagetoolplus.com/v2"_ustr;
 
 OptLanguageToolTabPage::OptLanguageToolTabPage(weld::Container* pPage,
                                                weld::DialogController* pController,
                                                const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/langtoolconfigpage.ui", "OptLangToolPage", &rSet)
-    , m_xBaseURLED(m_xBuilder->weld_entry("baseurl"))
-    , m_xBaseURLImg(m_xBuilder->weld_widget("lockbaseurl"))
-    , m_xUsernameED(m_xBuilder->weld_entry("username"))
-    , m_xUsernameImg(m_xBuilder->weld_widget("lockusername"))
-    , m_xApiKeyED(m_xBuilder->weld_entry("apikey"))
-    , m_xApiKeyImg(m_xBuilder->weld_widget("lockapikey"))
-    , m_xRestProtocol(m_xBuilder->weld_entry("restprotocol"))
-    , m_xRestProtocolImg(m_xBuilder->weld_widget("lockrestprotocol"))
-    , m_xActivateBox(m_xBuilder->weld_check_button("activate"))
-    , m_xActivateBoxImg(m_xBuilder->weld_widget("lockactivate"))
-    , m_xSSLDisableVerificationBox(m_xBuilder->weld_check_button("verifyssl"))
-    , m_xSSLDisableVerificationBoxImg(m_xBuilder->weld_widget("lockverifyssl"))
-    , m_xApiSettingsFrame(m_xBuilder->weld_frame("apisettings"))
+    : SfxTabPage(pPage, pController, u"cui/ui/langtoolconfigpage.ui"_ustr, u"OptLangToolPage"_ustr,
+                 &rSet)
+    , m_xBaseURLED(m_xBuilder->weld_entry(u"baseurl"_ustr))
+    , m_xBaseURLImg(m_xBuilder->weld_widget(u"lockbaseurl"_ustr))
+    , m_xUsernameED(m_xBuilder->weld_entry(u"username"_ustr))
+    , m_xUsernameImg(m_xBuilder->weld_widget(u"lockusername"_ustr))
+    , m_xApiKeyED(m_xBuilder->weld_entry(u"apikey"_ustr))
+    , m_xApiKeyImg(m_xBuilder->weld_widget(u"lockapikey"_ustr))
+    , m_xRestProtocol(m_xBuilder->weld_entry(u"restprotocol"_ustr))
+    , m_xRestProtocolImg(m_xBuilder->weld_widget(u"lockrestprotocol"_ustr))
+    , m_xActivateBox(m_xBuilder->weld_check_button(u"activate"_ustr))
+    , m_xActivateBoxImg(m_xBuilder->weld_widget(u"lockactivate"_ustr))
+    , m_xSSLDisableVerificationBox(m_xBuilder->weld_check_button(u"verifyssl"_ustr))
+    , m_xSSLDisableVerificationBoxImg(m_xBuilder->weld_widget(u"lockverifyssl"_ustr))
+    , m_xApiSettingsFrame(m_xBuilder->weld_frame(u"apisettings"_ustr))
 {
     m_xActivateBox->connect_toggled(LINK(this, OptLanguageToolTabPage, CheckHdl));
     EnableControls(LanguageToolCfg::IsEnabled::get());
@@ -81,20 +83,21 @@ IMPL_LINK_NOARG(OptLanguageToolTabPage, CheckHdl, weld::Toggleable&, void)
 void OptLanguageToolTabPage::Reset(const SfxItemSet*)
 {
     // tdf#150494 If no URL has been set, use the default URL
-    OUString aBaseURL = LanguageToolCfg::BaseURL::get().value_or("");
-    if (aBaseURL.isEmpty())
-        m_xBaseURLED->set_text(LANGUAGETOOL_DEFAULT_URL);
-    else
-        m_xBaseURLED->set_text(aBaseURL);
+    OUString aUsername = LanguageToolCfg::Username::get().value_or("");
+    OUString aApiKey = LanguageToolCfg::ApiKey::get().value_or("");
+    OUString aBaseURL = LanguageToolCfg::BaseURL::get().value_or(
+        (aUsername.isEmpty() && aApiKey.isEmpty()) ? LANGUAGETOOL_DEFAULT_URL
+                                                   : LANGUAGETOOLPLUS_DEFAULT_URL);
 
+    m_xBaseURLED->set_text(aBaseURL);
     m_xBaseURLED->set_sensitive(!LanguageToolCfg::BaseURL::isReadOnly());
     m_xBaseURLImg->set_visible(LanguageToolCfg::BaseURL::isReadOnly());
 
-    m_xUsernameED->set_text(LanguageToolCfg::Username::get().value_or(""));
+    m_xUsernameED->set_text(aUsername);
     m_xUsernameED->set_sensitive(!LanguageToolCfg::Username::isReadOnly());
     m_xUsernameImg->set_visible(LanguageToolCfg::Username::isReadOnly());
 
-    m_xApiKeyED->set_text(LanguageToolCfg::ApiKey::get().value_or(""));
+    m_xApiKeyED->set_text(aApiKey);
     m_xApiKeyED->set_sensitive(!LanguageToolCfg::ApiKey::isReadOnly());
     m_xApiKeyImg->set_visible(LanguageToolCfg::ApiKey::isReadOnly());
 
@@ -110,25 +113,27 @@ void OptLanguageToolTabPage::Reset(const SfxItemSet*)
 OUString OptLanguageToolTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "langtoolsettings", "disclaimer",  "apisettingsheader", "base",
-                          "urldesc",          "usernamelbl", "usernamedesc",      "apikeylbl",
-                          "apikeydesc",       "restlbl",     "restdesc" };
+    OUString labels[] = {
+        u"langtoolsettings"_ustr, u"disclaimer"_ustr,  u"apisettingsheader"_ustr, u"base"_ustr,
+        u"urldesc"_ustr,          u"usernamelbl"_ustr, u"usernamedesc"_ustr,      u"apikeylbl"_ustr,
+        u"apikeydesc"_ustr,       u"restlbl"_ustr,     u"restdesc"_ustr
+    };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString checkButton[] = { "activate", "verifyssl" };
+    OUString checkButton[] = { u"activate"_ustr, u"verifyssl"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
-    if (const auto& pString = m_xBuilder->weld_link_button("policy"))
+    if (const auto pString = m_xBuilder->weld_link_button(u"policy"_ustr))
         sAllStrings += pString->get_label() + " ";
 
     return sAllStrings.replaceAll("_", "");
@@ -139,14 +144,21 @@ bool OptLanguageToolTabPage::FillItemSet(SfxItemSet*)
     auto batch(comphelper::ConfigurationChanges::create());
 
     // tdf#150494 If no URL has been set, then save the default URL
+    // tdf#159395 If Username and ApiKey are set, then save the default URL for paid service
     OUString aBaseURL = m_xBaseURLED->get_text();
-    if (aBaseURL.isEmpty())
-        LanguageToolCfg::BaseURL::set(LANGUAGETOOL_DEFAULT_URL, batch);
-    else
-        LanguageToolCfg::BaseURL::set(aBaseURL, batch);
+    OUString aUsername = m_xUsernameED->get_text();
+    OUString aApiKey = m_xApiKeyED->get_text();
 
-    LanguageToolCfg::Username::set(m_xUsernameED->get_text(), batch);
-    LanguageToolCfg::ApiKey::set(m_xApiKeyED->get_text(), batch);
+    if (aBaseURL.isEmpty()
+        || (aUsername.isEmpty() && aApiKey.isEmpty() && aBaseURL == LANGUAGETOOLPLUS_DEFAULT_URL))
+        aBaseURL = LANGUAGETOOL_DEFAULT_URL;
+
+    if (!aUsername.isEmpty() && !aApiKey.isEmpty() && aBaseURL == LANGUAGETOOL_DEFAULT_URL)
+        aBaseURL = LANGUAGETOOLPLUS_DEFAULT_URL;
+
+    LanguageToolCfg::BaseURL::set(aBaseURL, batch);
+    LanguageToolCfg::Username::set(aUsername, batch);
+    LanguageToolCfg::ApiKey::set(aApiKey, batch);
     LanguageToolCfg::RestProtocol::set(m_xRestProtocol->get_text(), batch);
     LanguageToolCfg::SSLCertVerify::set(!m_xSSLDisableVerificationBox->get_active(), batch);
     batch->commit();

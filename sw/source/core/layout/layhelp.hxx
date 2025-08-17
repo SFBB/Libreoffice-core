@@ -112,24 +112,23 @@ class SwLayHelper
     SwLayoutFrame* &mrpLay;
     std::unique_ptr<SwActualSection> &mrpActualSection;
     bool mbBreakAfter;
-    SwDoc* mpDoc;
+    SwDoc& mrDoc;
     SwLayCacheImpl* mpImpl;
-    sal_uLong mnMaxParaPerPage;
-    sal_uLong mnParagraphCnt;
     SwNodeOffset mnStartOfContent;
     size_t mnIndex;                          ///< the index in the page break array
     size_t mnFlyIdx;                         ///< the index in the fly cache array
     bool mbFirst : 1;
     void CheckFlyCache_( SwPageFrame* pPage );
 public:
-    SwLayHelper( SwDoc *pD, SwFrame* &rpF, SwFrame* &rpP, SwPageFrame* &rpPg,
+    SwLayHelper( SwDoc& rDoc, SwFrame* &rpF, SwFrame* &rpP, SwPageFrame* &rpPg,
             SwLayoutFrame* &rpL, std::unique_ptr<SwActualSection> &rpA,
             SwNodeOffset nNodeIndex, bool bCache );
     ~SwLayHelper();
     sal_uLong CalcPageCount();
     bool CheckInsert( SwNodeOffset nNodeIndex );
 
-    bool CheckInsertPage();
+    static bool CheckInsertPage(SwPageFrame *& rpPage, SwLayoutFrame *& rpLay,
+        SwFrame *& rpFrame, bool & rIsBreakAfter);
 
     /// Look for fresh text frames at this (new) page and set them to the right
     /// position, if they are in the fly cache.

@@ -92,7 +92,7 @@ public:
 };
 
 
-/** Handler for pie type group contexts (c:doughnutChart, c:ofPieChart,
+/** Handler for pie type group contexts (c:doughnutChart,
     c:pie3DChart, c:pieChart elements).
  */
 class PieTypeGroupContext final : public TypeGroupContextBase
@@ -100,6 +100,18 @@ class PieTypeGroupContext final : public TypeGroupContextBase
 public:
     explicit            PieTypeGroupContext( ::oox::core::ContextHandler2Helper& rParent, TypeGroupModel& rModel );
     virtual             ~PieTypeGroupContext() override;
+
+    virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
+};
+
+
+/** Handler for of-pie type group contexts (c:ofPieChart elements).
+ */
+class OfPieTypeGroupContext final : public TypeGroupContextBase
+{
+public:
+    explicit            OfPieTypeGroupContext( ::oox::core::ContextHandler2Helper& rParent, TypeGroupModel& rModel );
+    virtual             ~OfPieTypeGroupContext() override;
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
 };
@@ -137,6 +149,21 @@ class SurfaceTypeGroupContext final : public TypeGroupContextBase
 public:
     explicit            SurfaceTypeGroupContext( ::oox::core::ContextHandler2Helper& rParent, TypeGroupModel& rModel );
     virtual             ~SurfaceTypeGroupContext() override;
+
+    virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
+};
+
+
+/** Handler for chartex type group contexts
+ */
+class ChartexTypeGroupContext final : public TypeGroupContextBase
+{
+public:
+    explicit            ChartexTypeGroupContext( ::oox::core::ContextHandler2Helper& rParent, TypeGroupModel& rModel );
+    virtual             ~ChartexTypeGroupContext() override;
+
+    // Explicitly create a new series
+    void CreateSeries();
 
     virtual ::oox::core::ContextHandlerRef onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs ) override;
 };

@@ -20,7 +20,6 @@
 #include <sal/config.h>
 
 #include <o3tl/any.hxx>
-#include <comphelper/anycompare.hxx>
 #include <comphelper/anytohash.hxx>
 #include <svx/sdasitm.hxx>
 
@@ -41,6 +40,7 @@ SdrCustomShapeGeometryItem::SdrCustomShapeGeometryItem( const uno::Sequence< bea
 
 css::uno::Any* SdrCustomShapeGeometryItem::GetPropertyValueByName( const OUString& rPropName )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     css::uno::Any* pRet = nullptr;
     PropertyHashMap::iterator aHashIter( m_aPropHashMap.find( rPropName ) );
     if ( aHashIter != m_aPropHashMap.end() )
@@ -59,6 +59,7 @@ const css::uno::Any* SdrCustomShapeGeometryItem::GetPropertyValueByName( const O
 
 css::uno::Any* SdrCustomShapeGeometryItem::GetPropertyValueByName( const OUString& rSequenceName, const OUString& rPropName )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     css::uno::Any* pRet = nullptr;
     css::uno::Any* pSeqAny = GetPropertyValueByName( rSequenceName );
     if ( pSeqAny )
@@ -95,6 +96,7 @@ const css::uno::Any* SdrCustomShapeGeometryItem::GetPropertyValueByName( const O
 
 void SdrCustomShapeGeometryItem::SetPropertyValue( const css::beans::PropertyValue& rPropVal )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     css::uno::Any* pAny = GetPropertyValueByName( rPropVal.Name );
     if ( pAny )
     {   // property is already available
@@ -133,6 +135,7 @@ void SdrCustomShapeGeometryItem::SetPropertyValue( const css::beans::PropertyVal
 
 void SdrCustomShapeGeometryItem::SetPropertyValue( const OUString& rSequenceName, const css::beans::PropertyValue& rPropVal )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     css::uno::Any* pAny = GetPropertyValueByName( rSequenceName, rPropVal.Name );
     if ( pAny ) // just replacing
         *pAny = rPropVal.Value;
@@ -152,7 +155,7 @@ void SdrCustomShapeGeometryItem::SetPropertyValue( const OUString& rSequenceName
             sal_uInt32 nIndex = m_aPropSeq.getLength();
             m_aPropSeq.realloc( nIndex + 1 );
             auto pPropSeq = m_aPropSeq.getArray();
-            pPropSeq[ nIndex ] = aValue;
+            pPropSeq[ nIndex ] = std::move(aValue);
             m_aPropHashMap[ rSequenceName ] = nIndex;
 
             pSeqAny = &pPropSeq[ nIndex ].Value;
@@ -182,6 +185,7 @@ void SdrCustomShapeGeometryItem::SetPropertyValue( const OUString& rSequenceName
 
 void SdrCustomShapeGeometryItem::ClearPropertyValue( const OUString& rPropName )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     if ( !m_aPropSeq.hasElements() )
         return;
 
@@ -287,6 +291,7 @@ bool SdrCustomShapeGeometryItem::QueryValue( uno::Any& rVal, sal_uInt8 /*nMember
 
 bool SdrCustomShapeGeometryItem::PutValue( const uno::Any& rVal, sal_uInt8 /*nMemberId*/ )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     css::uno::Sequence< css::beans::PropertyValue > propSeq;
     if ( ! ( rVal >>= propSeq ) )
         return false;
@@ -297,6 +302,7 @@ bool SdrCustomShapeGeometryItem::PutValue( const uno::Any& rVal, sal_uInt8 /*nMe
 
 void SdrCustomShapeGeometryItem::SetPropSeq( const css::uno::Sequence< css::beans::PropertyValue >& rVal )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     if( m_aPropSeq == rVal )
         return;
 

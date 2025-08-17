@@ -26,6 +26,8 @@
 #include <svx/drawitem.hxx>
 #include <cuitabarea.hxx>
 
+#include <vcl/tabs.hrc>
+
 SvxAreaTabDialog::SvxAreaTabDialog
 (
     weld::Window* pParent,
@@ -34,7 +36,7 @@ SvxAreaTabDialog::SvxAreaTabDialog
     bool bShadow,
     bool bSlideBackground
 )
-    : SfxTabDialogController(pParent, "cui/ui/areadialog.ui", "AreaDialog", pAttr)
+    : SfxTabDialogController(pParent, u"cui/ui/areadialog.ui"_ustr, u"AreaDialog"_ustr, pAttr)
     , mpDrawModel          ( pModel ),
     mpColorList          ( pModel->GetColorList() ),
     mpNewColorList       ( pModel->GetColorList() ),
@@ -46,28 +48,22 @@ SvxAreaTabDialog::SvxAreaTabDialog
     mpNewBitmapList      ( pModel->GetBitmapList() ),
     mpPatternList        ( pModel->GetPatternList() ),
     mpNewPatternList     ( pModel->GetPatternList() ),
-
-    mnColorListState ( ChangeType::NONE ),
-    mnBitmapListState ( ChangeType::NONE ),
-    mnPatternListState ( ChangeType::NONE ),
-    mnGradientListState ( ChangeType::NONE ),
-    mnHatchingListState ( ChangeType::NONE )
+    mnColorListState(ChangeType::NONE)
 {
     if (bSlideBackground)
-        AddTabPage("RID_SVXPAGE_AREA", SvxAreaTabPage::CreateWithSlideBackground, nullptr);
+        AddTabPage(u"RID_SVXPAGE_AREA"_ustr, TabResId(RID_TAB_AREA.aLabel),
+                   SvxAreaTabPage::CreateWithSlideBackground, RID_L + RID_TAB_AREA.sIconName);
     else
-        AddTabPage("RID_SVXPAGE_AREA", SvxAreaTabPage::Create, nullptr);
+        AddTabPage(u"RID_SVXPAGE_AREA"_ustr, TabResId(RID_TAB_AREA.aLabel), SvxAreaTabPage::Create,
+                   RID_L + RID_TAB_AREA.sIconName);
 
     if (bShadow)
     {
-        AddTabPage("RID_SVXPAGE_SHADOW", SvxShadowTabPage::Create, nullptr);
+        AddTabPage(u"RID_SVXPAGE_SHADOW"_ustr, TabResId(RID_TAB_SHADOW.aLabel),
+                   SvxShadowTabPage::Create, RID_L + RID_TAB_SHADOW.sIconName);
     }
-    else
-    {
-        RemoveTabPage( "RID_SVXPAGE_SHADOW" );
-    }
-
-    AddTabPage( "RID_SVXPAGE_TRANSPARENCE", SvxTransparenceTabPage::Create,  nullptr);
+    AddTabPage(u"RID_SVXPAGE_TRANSPARENCE"_ustr, TabResId(RID_TAB_TRANSPARENCE.aLabel),
+               SvxTransparenceTabPage::Create, RID_L + RID_TAB_TRANSPARENCE.sIconName);
 
     weld::Button& rBtnCancel = GetCancelButton();
     rBtnCancel.connect_clicked(LINK(this, SvxAreaTabDialog, CancelHdlImpl));
@@ -75,135 +71,55 @@ SvxAreaTabDialog::SvxAreaTabDialog
 
 void SvxAreaTabDialog::SavePalettes()
 {
-    SfxObjectShell* pShell = SfxObjectShell::Current();
+    SfxObjectShell* pShell(SfxObjectShell::Current());
+    if (!pShell)
+    {
+        SAL_WARN("cui.dialogs", "SvxAreaTabDialog: No SfxObjectShell!");
+        return;
+    }
+
     if( mpNewColorList != mpDrawModel->GetColorList() )
     {
         mpDrawModel->SetPropertyList( static_cast<XPropertyList *>(mpNewColorList.get()) );
         SvxColorListItem aColorListItem( mpNewColorList, SID_COLOR_TABLE );
-        if ( pShell )
-            pShell->PutItem( aColorListItem );
-        else
-            mpDrawModel->GetItemPool().DirectPutItemInPool(aColorListItem,SID_COLOR_TABLE);
+        pShell->PutItem( aColorListItem );
         mpColorList = mpDrawModel->GetColorList();
     }
     if( mpNewGradientList != mpDrawModel->GetGradientList() )
     {
         mpDrawModel->SetPropertyList( static_cast<XPropertyList *>(mpNewGradientList.get()) );
         SvxGradientListItem aItem( mpNewGradientList, SID_GRADIENT_LIST );
-        if ( pShell )
-            pShell->PutItem( aItem );
-        else
-            mpDrawModel->GetItemPool().DirectPutItemInPool(aItem,SID_GRADIENT_LIST);
+        pShell->PutItem( aItem );
         mpGradientList = mpDrawModel->GetGradientList();
     }
     if( mpNewHatchingList != mpDrawModel->GetHatchList() )
     {
         mpDrawModel->SetPropertyList( static_cast<XPropertyList *>(mpNewHatchingList.get()) );
         SvxHatchListItem aItem( mpNewHatchingList, SID_HATCH_LIST );
-        if ( pShell )
-            pShell->PutItem( aItem );
-        else
-            mpDrawModel->GetItemPool().DirectPutItemInPool(aItem,SID_HATCH_LIST);
+        pShell->PutItem( aItem );
         mpHatchingList = mpDrawModel->GetHatchList();
     }
     if( mpNewBitmapList != mpDrawModel->GetBitmapList() )
     {
         mpDrawModel->SetPropertyList( static_cast<XPropertyList *>(mpNewBitmapList.get()) );
         SvxBitmapListItem aItem( mpNewBitmapList, SID_BITMAP_LIST );
-        if ( pShell )
-            pShell->PutItem( aItem );
-        else
-            mpDrawModel->GetItemPool().DirectPutItemInPool(aItem,SID_BITMAP_LIST);
+        pShell->PutItem( aItem );
         mpBitmapList = mpDrawModel->GetBitmapList();
     }
     if( mpNewPatternList != mpDrawModel->GetPatternList() )
     {
         mpDrawModel->SetPropertyList( static_cast<XPropertyList *>(mpNewPatternList.get()) );
         SvxPatternListItem aItem( mpNewPatternList, SID_PATTERN_LIST );
-        if( pShell )
-            pShell->PutItem( aItem );
-        else
-            mpDrawModel->GetItemPool().DirectPutItemInPool(aItem,SID_PATTERN_LIST);
+        pShell->PutItem( aItem );
         mpPatternList = mpDrawModel->GetPatternList();
     }
 
     // save the tables when they have been changed
-
-    OUString aPalettePath(SvtPathOptions().GetPalettePath());
-    OUString aPath;
-    sal_Int32 nIndex = 0;
-    do
-    {
-        aPath = aPalettePath.getToken(0, ';', nIndex);
-    }
-    while (nIndex >= 0);
-
-    if( mnHatchingListState & ChangeType::MODIFIED )
-    {
-        mpHatchingList->SetPath( aPath );
-        mpHatchingList->Save();
-
-        SvxHatchListItem aItem( mpHatchingList, SID_HATCH_LIST );
-        // ToolBoxControls are informed:
-        if ( pShell )
-            pShell->PutItem( aItem );
-        else
-            mpDrawModel->GetItemPool().DirectPutItemInPool(aItem);
-    }
-
-    if( mnBitmapListState & ChangeType::MODIFIED )
-    {
-        mpBitmapList->SetPath( aPath );
-        mpBitmapList->Save();
-
-        SvxBitmapListItem aItem( mpBitmapList, SID_BITMAP_LIST );
-        // ToolBoxControls are informed:
-        if ( pShell )
-            pShell->PutItem( aItem );
-        else
-        {
-            mpDrawModel->GetItemPool().DirectPutItemInPool(aItem);
-        }
-    }
-
-    if( mnPatternListState & ChangeType::MODIFIED )
-    {
-        mpPatternList->SetPath( aPath );
-        mpPatternList->Save();
-
-        SvxPatternListItem aItem( mpPatternList, SID_PATTERN_LIST );
-        // ToolBoxControls are informed:
-        if( pShell )
-            pShell->PutItem( aItem );
-        else
-            mpDrawModel->GetItemPool().DirectPutItemInPool(aItem);
-    }
-
-    if( mnGradientListState & ChangeType::MODIFIED )
-    {
-        mpGradientList->SetPath( aPath );
-        mpGradientList->Save();
-
-        SvxGradientListItem aItem( mpGradientList, SID_GRADIENT_LIST );
-        // ToolBoxControls are informed:
-        if ( pShell )
-            pShell->PutItem( aItem );
-        else
-        {
-            mpDrawModel->GetItemPool().DirectPutItemInPool(aItem);
-        }
-    }
-
     if (mnColorListState & ChangeType::MODIFIED && mpColorList.is())
     {
         SvxColorListItem aItem( mpColorList, SID_COLOR_TABLE );
         // ToolBoxControls are informed:
-        if ( pShell )
-            pShell->PutItem( aItem );
-        else
-        {
-            mpDrawModel->GetItemPool().DirectPutItemInPool(aItem);
-        }
+        pShell->PutItem( aItem );
     }
 }
 
@@ -231,10 +147,6 @@ void SvxAreaTabDialog::PageCreated(const OUString& rId, SfxTabPage &rPage)
         static_cast<SvxAreaTabPage&>(rPage).SetHatchingList( mpHatchingList );
         static_cast<SvxAreaTabPage&>(rPage).SetBitmapList( mpBitmapList );
         static_cast<SvxAreaTabPage&>(rPage).SetPatternList( mpPatternList );
-        static_cast<SvxAreaTabPage&>(rPage).SetGrdChgd( &mnGradientListState );
-        static_cast<SvxAreaTabPage&>(rPage).SetHtchChgd( &mnHatchingListState );
-        static_cast<SvxAreaTabPage&>(rPage).SetBmpChgd( &mnBitmapListState );
-        static_cast<SvxAreaTabPage&>(rPage).SetPtrnChgd( &mnPatternListState );
         static_cast<SvxAreaTabPage&>(rPage).SetColorChgd( &mnColorListState );
     }
     else if (rId == "RID_SVXPAGE_SHADOW")

@@ -30,7 +30,6 @@
 #include <rtl/ref.hxx>
 
 #include <vector>
-#include "charttoolsdllapi.hxx"
 
 namespace chart
 {
@@ -41,7 +40,9 @@ class ModifyEventForwarder;
 enum
 {
     PROP_PIECHARTTYPE_USE_RINGS,
-    PROP_PIECHARTTYPE_3DRELATIVEHEIGHT
+    PROP_PIECHARTTYPE_3DRELATIVEHEIGHT,
+    PROP_PIECHARTTYPE_SUBTYPE, // none, of-bar, of-pie
+    PROP_PIECHARTTYPE_SPLIT_POS
 };
 
 
@@ -58,7 +59,7 @@ typedef ::cppu::WeakImplHelper<
     ChartType_Base;
 }
 
-class OOO_DLLPUBLIC_CHARTTOOLS ChartType :
+class ChartType :
     public impl::ChartType_Base,
     public ::property::OPropertySet
 {
@@ -98,7 +99,7 @@ public:
         const css::uno::Reference< css::util::XModifyListener >& aListener ) override;
     virtual void SAL_CALL removeModifyListener(
         const css::uno::Reference< css::util::XModifyListener >& aListener ) override;
-        
+
     virtual rtl::Reference<ChartType> cloneChartType() const = 0;
 
     void addDataSeries(
@@ -107,10 +108,38 @@ public:
         const rtl::Reference< ::chart::DataSeries >& aDataSeries );
     void setDataSeries(
         const std::vector< rtl::Reference< ::chart::DataSeries > >& aDataSeries );
-    const std::vector< rtl::Reference< ::chart::DataSeries > > & getDataSeries2() const { return m_aDataSeries; }
+
+    const std::vector<rtl::Reference<::chart::DataSeries>>& getDataSeries2() const;
 
     virtual rtl::Reference< ::chart::BaseCoordinateSystem >
         createCoordinateSystem2( sal_Int32 DimensionCount );
+
+    virtual void createCalculatedDataSeries();
+
+    void deleteSeries( const rtl::Reference< ::chart::DataSeries > & xSeries );
+
+    // Tools
+    bool isSupportingMainAxis(sal_Int32 nDimensionCount, sal_Int32 nDimensionIndex);
+    bool isSupportingStatisticProperties(sal_Int32 nDimensionCount);
+    bool isSupportingRegressionProperties(sal_Int32 nDimensionCount);
+    bool isSupportingGeometryProperties(sal_Int32 nDimensionCount);
+    bool isSupportingAreaProperties(sal_Int32 nDimensionCount);
+    bool isSupportingSymbolProperties(sal_Int32 nDimensionCount);
+    bool isSupportingSecondaryAxis(sal_Int32 nDimensionCount);
+    bool isSupportingRightAngledAxes();
+    bool isSupportingOverlapAndGapWidthProperties(sal_Int32 nDimensionCount);
+    bool isSupportingBarConnectors(sal_Int32 nDimensionCount);
+    bool isSupportingAxisSideBySide(sal_Int32 nDimensionCount);
+    bool isSupportingBaseValue();
+    bool isSupportingAxisPositioning(sal_Int32 nDimensionCount, sal_Int32 nDimensionIndex);
+    bool isSupportingStartingAngle();
+    bool isSupportingDateAxis(sal_Int32 nDimensionIndex);
+    bool isSupportingComplexCategory();
+    bool isSupportingCategoryPositioning(sal_Int32 nDimensionIndex);
+    bool isSupportingOnlyDeepStackingFor3D();
+    bool isSeriesInFrontOfAxisLine();
+
+    sal_Int32 getAxisType(sal_Int32 nDimensionIndex);
 
 protected:
 
@@ -145,9 +174,8 @@ private:
     void impl_addDataSeriesWithoutNotification(
         const rtl::Reference< ::chart::DataSeries >& aDataSeries );
 
-private:
-    typedef
-        std::vector< rtl::Reference< ::chart::DataSeries > >  tDataSeriesContainerType;
+protected:
+    typedef std::vector<rtl::Reference<::chart::DataSeries>>  tDataSeriesContainerType;
 
     // --- mutable members: the following members need mutex guard ---
 

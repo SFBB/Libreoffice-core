@@ -24,10 +24,7 @@
 
 using namespace dbaccess;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::cppu;
 using namespace ::osl;
 
@@ -71,7 +68,7 @@ void OCallableStatement::release() noexcept
 // XServiceInfo
 OUString OCallableStatement::getImplementationName(  )
 {
-    return "com.sun.star.sdb.OCallableStatement";
+    return u"com.sun.star.sdb.OCallableStatement"_ustr;
 }
 
 Sequence< OUString > OCallableStatement::getSupportedServiceNames(  )

@@ -29,13 +29,13 @@ namespace accessibility {
 
 // AccessibleChildrenManager
 ChildrenManager::ChildrenManager (
-    const css::uno::Reference<XAccessible>& rxParent,
+    const rtl::Reference<comphelper::OAccessible>& rpParent,
     const css::uno::Reference<drawing::XShapes>& rxShapeList,
     const AccessibleShapeTreeInfo& rShapeTreeInfo,
     AccessibleContextBase& rContext)
     : mpImpl(
         new ChildrenManagerImpl(
-            rxParent, rxShapeList, rShapeTreeInfo, rContext))
+            rpParent, rxShapeList, rShapeTreeInfo, rContext))
 {
     mpImpl->Init ();
 }
@@ -54,7 +54,7 @@ sal_Int64 ChildrenManager::GetChildCount() const noexcept
     return mpImpl->GetChildCount();
 }
 
-css::uno::Reference<XAccessible> ChildrenManager::GetChild (sal_Int64 nIndex)
+rtl::Reference<comphelper::OAccessible> ChildrenManager::GetChild(sal_Int64 nIndex)
 {
     return mpImpl->GetChild (nIndex);
 }

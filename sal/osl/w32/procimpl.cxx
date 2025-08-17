@@ -29,8 +29,10 @@
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
 #include "secimpl.hxx"
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/environment.hxx>
 
 #include <vector>
 #include <algorithm>
@@ -122,7 +124,7 @@ namespace /* private */
         sal_uInt32 env_vars_count,
         /*in|out*/ std::vector<OUString>* merged_env)
     {
-        OSL_ASSERT(env_vars && env_vars_count > 0 && merged_env);
+        assert(env_vars && env_vars_count > 0 && merged_env);
 
         read_environment(merged_env);
 
@@ -346,8 +348,7 @@ namespace /* private */
 
     OUString get_batch_processor()
     {
-        OUString comspec;
-        osl_getEnvironment(u"COMSPEC"_ustr.pData, &comspec.pData);
+        OUString comspec = o3tl::getEnvironment(u"COMSPEC"_ustr);
 
         OSL_ASSERT(comspec.getLength());
 
@@ -466,10 +467,9 @@ oslProcessError SAL_CALL osl_executeProcess_WithRedirectedIO(
     if ((Options & osl_Process_DETACHED) && !(flags & CREATE_NEW_CONSOLE))
         flags |= DETACHED_PROCESS;
 
-    STARTUPINFOW startup_info = {};
-    startup_info.cb        = sizeof(startup_info);
-    startup_info.dwFlags   = STARTF_USESHOWWINDOW;
-    startup_info.lpDesktop = const_cast<LPWSTR>(L"");
+    STARTUPINFOW startup_info{ .cb = sizeof(startup_info),
+                               .lpDesktop = const_cast<LPWSTR>(L""),
+                               .dwFlags = STARTF_USESHOWWINDOW };
 
     /* Create pipes for redirected IO */
     HANDLE hInputRead  = nullptr;
@@ -575,6 +575,8 @@ oslProcessError SAL_CALL osl_executeProcess_WithRedirectedIO(
 
             return osl_Process_E_None;
         }
+        else
+            CloseHandle(process_info.hProcess);
     }
 
     /* if an error occurred we have to close the server side pipe ends too */

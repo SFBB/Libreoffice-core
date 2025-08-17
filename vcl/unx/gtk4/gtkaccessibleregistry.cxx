@@ -12,13 +12,11 @@
 
 #include <cassert>
 
-#if GTK_CHECK_VERSION(4, 9, 0)
-
 std::map<css::accessibility::XAccessible*, LoAccessible*> GtkAccessibleRegistry::m_aMapping = {};
 
-LoAccessible*
-GtkAccessibleRegistry::getLOAccessible(css::uno::Reference<css::accessibility::XAccessible> xAcc,
-                                       GdkDisplay* pDisplay, GtkAccessible* pParent)
+LoAccessible* GtkAccessibleRegistry::getLOAccessible(
+    css::uno::Reference<css::accessibility::XAccessible> const& xAcc, GdkDisplay* pDisplay,
+    GtkAccessible* pParent)
 {
     if (!xAcc.is())
         return nullptr;
@@ -28,18 +26,32 @@ GtkAccessibleRegistry::getLOAccessible(css::uno::Reference<css::accessibility::X
     if (entry != m_aMapping.end())
         return entry->second;
 
+    assert(pDisplay);
+    if (!pParent)
+    {
+        // try to find parent via XAccessible hierarchy; this could be problematic
+        // as it could create a separate hierarchy besides the one including native
+        // GTK widgets if no object which already has its native parent set exists
+        // in the a11y tree path from the root to this object
+        css::uno::Reference<css::accessibility::XAccessibleContext> xContext
+            = xAcc->getAccessibleContext();
+        assert(xContext);
+        css::uno::Reference<css::accessibility::XAccessible> xParent
+            = xContext->getAccessibleParent();
+        pParent = GTK_ACCESSIBLE(getLOAccessible(xParent, pDisplay, nullptr));
+        assert(pParent && "No parent explicitly given and none found via the a11y hierarchy");
+    }
+
     // create a new object and remember it in the map
     LoAccessible* pLoAccessible = lo_accessible_new(pDisplay, pParent, xAcc);
     m_aMapping.emplace(xAcc.get(), pLoAccessible);
     return pLoAccessible;
 }
 
-void GtkAccessibleRegistry::remove(css::uno::Reference<css::accessibility::XAccessible> xAcc)
+void GtkAccessibleRegistry::remove(css::uno::Reference<css::accessibility::XAccessible> const& xAcc)
 {
     assert(xAcc.is());
     m_aMapping.erase(xAcc.get());
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

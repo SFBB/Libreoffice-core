@@ -55,6 +55,10 @@
 #include <wrtsh.hxx>
 #include <AnnotationWin.hxx>
 #include <IDocumentDeviceAccess.hxx>
+#if ENABLE_YRS
+#include <IDocumentState.hxx>
+#include <swmodule.hxx>
+#endif
 #include <redline.hxx>
 #include <memory>
 
@@ -83,7 +87,7 @@ EditEngine* SidebarTextControl::GetEditEngine() const
     OutlinerView* pOutlinerView = mrSidebarWin.GetOutlinerView();
     if (!pOutlinerView)
         return nullptr;
-    return pOutlinerView->GetEditView().GetEditEngine();
+    return &pOutlinerView->GetEditView().getEditEngine();
 }
 
 void SidebarTextControl::SetDrawingArea(weld::DrawingArea* pDrawingArea)
@@ -110,14 +114,14 @@ void SidebarTextControl::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     EditView* pEditView = GetEditView();
     pEditView->setEditViewCallbacks(this);
 
-    EditEngine* pEditEngine = GetEditEngine();
+    EditEngine& rEditEngine = pEditView->getEditEngine();
     // For tdf#143443 note we want an 'infinite' height initially (which is the
     // editengines default). For tdf#144686 it is helpful if the initial width
     // is the "SidebarWidth" so the calculated text height is always meaningful
     // for layout in the sidebar.
-    Size aPaperSize(mrPostItMgr.GetSidebarWidth(), pEditEngine->GetPaperSize().Height());
-    pEditEngine->SetPaperSize(aPaperSize);
-    pEditEngine->SetRefDevice(mrDocView.GetWrtShell().getIDocumentDeviceAccess().getReferenceDevice(false));
+    Size aPaperSize(mrPostItMgr.GetSidebarWidth(), rEditEngine.GetPaperSize().Height());
+    rEditEngine.SetPaperSize(aPaperSize);
+    rEditEngine.SetRefDevice(mrDocView.GetWrtShell().getIDocumentDeviceAccess().getReferenceDevice(false));
 
     pEditView->SetOutputArea(tools::Rectangle(Point(0, 0), aOutputSize));
     pEditView->SetBackgroundColor(aBgColor);
@@ -199,6 +203,23 @@ OUString SidebarTextControl::RequestHelp(tools::Rectangle& rHelpRect)
     return OUString();
 }
 
+#if ENABLE_YRS
+void SidebarTextControl::EditViewInvalidate(const tools::Rectangle& rRect)
+{
+    SAL_INFO("sw.yrs", "YRS EditViewInvalidate");
+    mrDocView.GetDocShell()->GetDoc()->getIDocumentState().YrsNotifyCursorUpdate();
+    mrDocView.GetDocShell()->GetDoc()->getIDocumentState().YrsCommitModified(true);
+    return WeldEditView::EditViewInvalidate(rRect);
+}
+
+void SidebarTextControl::EditViewSelectionChange()
+{
+    SAL_INFO("sw.yrs", "YRS EditViewSelectionChange");
+    mrDocView.GetDocShell()->GetDoc()->getIDocumentState().YrsNotifyCursorUpdate();
+    return WeldEditView::EditViewSelectionChange();
+}
+#endif
+
 void SidebarTextControl::EditViewScrollStateChange()
 {
     mrSidebarWin.SetScrollbar();
@@ -212,7 +233,7 @@ void SidebarTextControl::DrawForPage(OutputDevice* pDev, const Point& rPt)
 
     if (OutlinerView* pOutlinerView = mrSidebarWin.GetOutlinerView())
     {
-        pOutlinerView->GetOutliner()->Draw(*pDev, tools::Rectangle(rPt, aSize));
+        pOutlinerView->GetOutliner().DrawText_ToRectangle(*pDev, tools::Rectangle(rPt, aSize));
     }
 
     if ( mrSidebarWin.GetLayoutStatus()!=SwPostItHelper::DELETED )
@@ -256,6 +277,25 @@ void SidebarTextControl::Paint(vcl::RenderContext& rRenderContext, const tools::
     }
 
     DoPaint(rRenderContext, rRect);
+
+#if ENABLE_YRS
+    if (EditView *const pEditView{GetEditView()})
+    {
+        rRenderContext.Push(vcl::PushFlags::ALL);
+        rRenderContext.SetClipRegion();
+
+        ::std::vector<::std::pair<OUString, ::std::vector<tools::Rectangle>>> rects;
+        pEditView->YrsGetSelectionRectangles(rects);
+        for (auto const& it : rects)
+        {
+            ::std::size_t const authorId{SwModule::get()->InsertRedlineAuthor(it.first)};
+            Color const color{SwPostItMgr::GetColorAnchor(authorId)};
+            PaintSelection(rRenderContext, rRect, it.second, color);
+        }
+
+        rRenderContext.Pop();
+    }
+#endif
 
     if (mrSidebarWin.GetLayoutStatus() != SwPostItHelper::DELETED)
         return;
@@ -440,7 +480,13 @@ bool SidebarTextControl::Command( const CommandEvent& rCEvt )
                 const Size aSize = GetOutputSizePixel();
                 aPos = Point( aSize.getWidth()/2, aSize.getHeight()/2 );
             }
-            SfxDispatcher::ExecutePopup(&mrSidebarWin, &aPos);
+
+            // tdf#164072: don't use SwAnnotationWin itself as popup parent because it
+            // may get disposed while the popup menu is still executed
+            vcl::Window* pParentWin = mrSidebarWin.GetParent();
+            assert(pParentWin);
+            aPos += mrSidebarWin.GetWindowExtentsRelative(*pParentWin).TopLeft();
+            SfxDispatcher::ExecutePopup(pParentWin, &aPos);
         }
         return true;
     }

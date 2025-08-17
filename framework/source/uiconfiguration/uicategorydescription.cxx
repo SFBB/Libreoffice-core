@@ -27,6 +27,7 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
 #include <sal/log.hxx>
+#include <rtl/ref.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <unotools/syslocale.hxx>
@@ -38,7 +39,6 @@
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::configuration;
 using namespace com::sun::star::container;
 using namespace framework;
@@ -89,7 +89,7 @@ class ConfigurationAccess_UICategory : public ::cppu::WeakImplHelper<XNameAccess
         Reference< XNameAccess >          m_xGenericUICategories;
         Reference< XMultiServiceFactory > m_xConfigProvider;
         Reference< XNameAccess >          m_xConfigAccess;
-        Reference< XContainerListener >   m_xConfigListener;
+        rtl::Reference< WeakContainerListener >   m_xConfigListener;
         bool                              m_bConfigAccessInitialized;
         bool                              m_bCacheFilled;
         IdToInfoCache                     m_aIdCache;
@@ -101,7 +101,7 @@ ConfigurationAccess_UICategory::ConfigurationAccess_UICategory( std::u16string_v
     // Create configuration hierarchical access name
     m_aConfigCategoryAccess(
         OUString::Concat("/org.openoffice.Office.UI.") + aModuleName + "/Commands/Categories"),
-    m_aPropUIName( "Name" ),
+    m_aPropUIName( u"Name"_ustr ),
     m_xGenericUICategories( rGenericUICategories ),
     m_xConfigProvider(theDefaultProvider::get( rxContext )),
     m_bConfigAccessInitialized( false ),
@@ -294,7 +294,7 @@ void ConfigurationAccess_UICategory::initializeConfigAccess()
         }));
 
         m_xConfigAccess.set( m_xConfigProvider->createInstanceWithArguments(
-                    "com.sun.star.configuration.ConfigurationAccess", aArgs ),UNO_QUERY );
+                    u"com.sun.star.configuration.ConfigurationAccess"_ustr, aArgs ),UNO_QUERY );
         if ( m_xConfigAccess.is() )
         {
             // Add as container listener
@@ -347,7 +347,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.UICategoryDescription";
+        return u"com.sun.star.comp.framework.UICategoryDescription"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -357,7 +357,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.ui.UICategoryDescription"};
+        return {u"com.sun.star.ui.UICategoryDescription"_ustr};
     }
 
 };
@@ -368,11 +368,11 @@ UICategoryDescription::UICategoryDescription( const Reference< XComponentContext
     SvtSysLocale aSysLocale;
     const LanguageTag& rCurrentLanguage = aSysLocale.GetUILanguageTag();
     Reference< XNameAccess > xEmpty;
-    OUString aGenericCategories( "GenericCategories" );
+    OUString aGenericCategories( u"GenericCategories"_ustr );
     m_xGenericUICommands[rCurrentLanguage] = new ConfigurationAccess_UICategory( aGenericCategories, xEmpty, rxContext );
 
     // insert generic categories mappings
-    m_aModuleToCommandFileMap.emplace( OUString("generic"), aGenericCategories );
+    m_aModuleToCommandFileMap.emplace( u"generic"_ustr, aGenericCategories );
 
     auto& rMap = m_aUICommandsHashMap[rCurrentLanguage];
     UICommandsHashMap::iterator pCatIter = rMap.find( aGenericCategories );

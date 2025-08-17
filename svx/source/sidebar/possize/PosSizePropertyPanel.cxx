@@ -48,6 +48,7 @@
 #include <boost/property_tree/ptree.hpp>
 
 #include <svtools/unitconv.hxx>
+#include <bitmaps.hlst>
 
 using namespace css;
 using namespace css::uno;
@@ -61,32 +62,37 @@ PosSizePropertyPanel::PosSizePropertyPanel(
     const css::uno::Reference<css::frame::XFrame>& rxFrame,
     SfxBindings* pBindings,
     css::uno::Reference<css::ui::XSidebar> xSidebar)
-:   PanelLayout(pParent, "PosSizePropertyPanel", "svx/ui/sidebarpossize.ui"),
-    mxFtPosX(m_xBuilder->weld_label("horizontallabel")),
-    mxMtrPosX(m_xBuilder->weld_metric_spin_button("horizontalpos", FieldUnit::CM)),
-    mxFtPosY(m_xBuilder->weld_label("verticallabel")),
-    mxMtrPosY(m_xBuilder->weld_metric_spin_button("verticalpos", FieldUnit::CM)),
-    mxFtWidth(m_xBuilder->weld_label("widthlabel")),
-    mxMtrWidth(m_xBuilder->weld_metric_spin_button("selectwidth", FieldUnit::CM)),
-    mxFtHeight(m_xBuilder->weld_label("heightlabel")),
-    mxMtrHeight(m_xBuilder->weld_metric_spin_button("selectheight", FieldUnit::CM)),
-    mxCbxScale(m_xBuilder->weld_check_button("ratio")),
-    mxFtAngle(m_xBuilder->weld_label("rotationlabel")),
-    mxMtrAngle(m_xBuilder->weld_metric_spin_button("rotation", FieldUnit::DEGREE)),
+:   PanelLayout(pParent, u"PosSizePropertyPanel"_ustr, u"svx/ui/sidebarpossize.ui"_ustr),
+    m_aRatioTop(ConnectorType::Top),
+    m_aRatioBottom(ConnectorType::Bottom),
+    mxFtPosX(m_xBuilder->weld_label(u"horizontallabel"_ustr)),
+    mxMtrPosX(m_xBuilder->weld_metric_spin_button(u"horizontalpos"_ustr, FieldUnit::CM)),
+    mxFtPosY(m_xBuilder->weld_label(u"verticallabel"_ustr)),
+    mxMtrPosY(m_xBuilder->weld_metric_spin_button(u"verticalpos"_ustr, FieldUnit::CM)),
+    mxFtWidth(m_xBuilder->weld_label(u"widthlabel"_ustr)),
+    mxMtrWidth(m_xBuilder->weld_metric_spin_button(u"selectwidth"_ustr, FieldUnit::CM)),
+    mxFtHeight(m_xBuilder->weld_label(u"heightlabel"_ustr)),
+    mxMtrHeight(m_xBuilder->weld_metric_spin_button(u"selectheight"_ustr, FieldUnit::CM))
+    , mxCbxScale(m_xBuilder->weld_check_button(u"ratio"_ustr))
+    , m_xCbxScaleImg(m_xBuilder->weld_image(u"imRatio"_ustr))
+    , m_xImgRatioTop(new weld::CustomWeld(*m_xBuilder, u"daRatioTop"_ustr, m_aRatioTop))
+    , m_xImgRatioBottom(new weld::CustomWeld(*m_xBuilder, u"daRatioBottom"_ustr, m_aRatioBottom))
+    , mxFtAngle(m_xBuilder->weld_label(u"rotationlabel"_ustr))
+    , mxMtrAngle(m_xBuilder->weld_metric_spin_button(u"rotation"_ustr, FieldUnit::DEGREE)),
     mxCtrlDial(new DialControl),
-    mxDial(new weld::CustomWeld(*m_xBuilder, "orientationcontrol", *mxCtrlDial)),
-    mxFtFlip(m_xBuilder->weld_label("fliplabel")),
-    mxFlipTbx(m_xBuilder->weld_toolbar("selectrotationtype")),
+    mxDial(new weld::CustomWeld(*m_xBuilder, u"orientationcontrol"_ustr, *mxCtrlDial)),
+    mxFtFlip(m_xBuilder->weld_label(u"fliplabel"_ustr)),
+    mxFlipTbx(m_xBuilder->weld_toolbar(u"selectrotationtype"_ustr)),
     mxFlipDispatch(new ToolbarUnoDispatcher(*mxFlipTbx, *m_xBuilder, rxFrame)),
-    mxArrangeTbx(m_xBuilder->weld_toolbar("arrangetoolbar")),
+    mxArrangeTbx(m_xBuilder->weld_toolbar(u"arrangetoolbar"_ustr)),
     mxArrangeDispatch(new ToolbarUnoDispatcher(*mxArrangeTbx, *m_xBuilder, rxFrame)),
-    mxArrangeTbx2(m_xBuilder->weld_toolbar("arrangetoolbar2")),
+    mxArrangeTbx2(m_xBuilder->weld_toolbar(u"arrangetoolbar2"_ustr)),
     mxArrangeDispatch2(new ToolbarUnoDispatcher(*mxArrangeTbx2, *m_xBuilder, rxFrame)),
-    mxAlignTbx(m_xBuilder->weld_toolbar("aligntoolbar")),
+    mxAlignTbx(m_xBuilder->weld_toolbar(u"aligntoolbar"_ustr)),
     mxAlignDispatch(new ToolbarUnoDispatcher(*mxAlignTbx, *m_xBuilder, rxFrame)),
-    mxAlignTbx2(m_xBuilder->weld_toolbar("aligntoolbar2")),
+    mxAlignTbx2(m_xBuilder->weld_toolbar(u"aligntoolbar2"_ustr)),
     mxAlignDispatch2(new ToolbarUnoDispatcher(*mxAlignTbx2, *m_xBuilder, rxFrame)),
-    mxBtnEditOLEObject(m_xBuilder->weld_button("btnEditObject")),
+    mxBtnEditOLEObject(m_xBuilder->weld_button(u"btnEditObject"_ustr)),
     mpView(nullptr),
     mlOldWidth(1),
     mlOldHeight(1),
@@ -113,6 +119,11 @@ PosSizePropertyPanel::PosSizePropertyPanel(
     mbAutoWidth(false),
     mbAutoHeight(false),
     mbAdjustEnabled(false),
+    mbMtrPosXBlanked(false),
+    mbMtrPosYBlanked(false),
+    mbMtrWidthBlanked(false),
+    mbMtrHeightBlanked(false),
+    mbMtrAngleBlanked(false),
     mxSidebar(std::move(xSidebar))
 {
     Initialize();
@@ -126,6 +137,19 @@ PosSizePropertyPanel::PosSizePropertyPanel(
     nWidth = std::max(nWidth, mxFtWidth->get_preferred_size().Width());;
     mxFtWidth->set_label(sLabel);
     mxFtWidth->set_size_request(nWidth, -1);
+
+    // vertical alignment = fill makes the drawingarea expand the associated spinedits so we have to size it here
+    const sal_Int16 aHeight
+        = static_cast<sal_Int16>(std::max(int(mxCbxScale->get_preferred_size().getHeight() / 2
+                                              - mxMtrWidth->get_preferred_size().getHeight() / 2),
+                                          12));
+    const sal_Int16 aWidth
+        = static_cast<sal_Int16>(mxCbxScale->get_preferred_size().getWidth() / 2);
+    m_xImgRatioTop->set_size_request(aWidth, aHeight);
+    m_xImgRatioBottom->set_size_request(aWidth, aHeight);
+    //init needed for gtk3
+    m_xCbxScaleImg->set_from_icon_name(mxCbxScale->get_active() ? RID_SVXBMP_LOCKED
+                                                                : RID_SVXBMP_UNLOCKED);
 
     mpBindings->Update( SID_ATTR_METRIC );
     mpBindings->Update( SID_ATTR_TRANSFORM_WIDTH );
@@ -252,11 +276,11 @@ std::unique_ptr<PanelLayout> PosSizePropertyPanel::Create (
     const css::uno::Reference<css::ui::XSidebar>& rxSidebar)
 {
     if (pParent == nullptr)
-        throw lang::IllegalArgumentException("no parent Window given to PosSizePropertyPanel::Create", nullptr, 0);
+        throw lang::IllegalArgumentException(u"no parent Window given to PosSizePropertyPanel::Create"_ustr, nullptr, 0);
     if ( ! rxFrame.is())
-        throw lang::IllegalArgumentException("no XFrame given to PosSizePropertyPanel::Create", nullptr, 1);
+        throw lang::IllegalArgumentException(u"no XFrame given to PosSizePropertyPanel::Create"_ustr, nullptr, 1);
     if (pBindings == nullptr)
-        throw lang::IllegalArgumentException("no SfxBindings given to PosSizePropertyPanel::Create", nullptr, 2);
+        throw lang::IllegalArgumentException(u"no SfxBindings given to PosSizePropertyPanel::Create"_ustr, nullptr, 2);
 
     return std::make_unique<PosSizePropertyPanel>(pParent, rxFrame, pBindings, rxSidebar);
 }
@@ -429,6 +453,7 @@ IMPL_LINK_NOARG( PosSizePropertyPanel, ChangePosYHdl, weld::MetricSpinButton&, v
 
 IMPL_LINK_NOARG( PosSizePropertyPanel, ClickAutoHdl, weld::Toggleable&, void )
 {
+    m_xCbxScaleImg->set_from_icon_name(mxCbxScale->get_active() ? RID_SVXBMP_LOCKED : RID_SVXBMP_UNLOCKED);
     if ( mxCbxScale->get_active() )
     {
         mlOldWidth  = std::max(GetCoreValue(*mxMtrWidth,  mePoolUnit), SAL_CONST_INT64(1));
@@ -436,7 +461,7 @@ IMPL_LINK_NOARG( PosSizePropertyPanel, ClickAutoHdl, weld::Toggleable&, void )
     }
 
     // mxCbxScale must synchronized with that on Position and Size tabpage on Shape Properties dialog
-    SvtViewOptions aPageOpt(EViewType::TabPage, "cui/ui/possizetabpage/PositionAndSize");
+    SvtViewOptions aPageOpt(EViewType::TabPage, u"cui/ui/possizetabpage/PositionAndSize"_ustr);
     aPageOpt.SetUserItem( USERITEM_NAME, css::uno::Any( OUString::number( int(mxCbxScale->get_active()) ) ) );
 }
 
@@ -519,11 +544,15 @@ void PosSizePropertyPanel::NotifyItemUpdate(
                     limitWidth(*mxMtrWidth);
                     mlOldWidth = lOldWidth1;
                     mxMtrWidth->save_value();
+                    if (mbMtrWidthBlanked)
+                    {
+                        mxMtrWidth->reformat();
+                        mbMtrWidthBlanked = false;
+                    }
                     break;
                 }
             }
-
-            mxMtrWidth->set_text( "" );
+            mbMtrWidthBlanked = true;
             break;
 
         case SID_ATTR_TRANSFORM_HEIGHT:
@@ -539,11 +568,15 @@ void PosSizePropertyPanel::NotifyItemUpdate(
                     limitWidth(*mxMtrHeight);
                     mlOldHeight = nTmp;
                     mxMtrHeight->save_value();
+                    if (mbMtrHeightBlanked)
+                    {
+                        mxMtrHeight->reformat();
+                        mbMtrHeightBlanked = false;
+                    }
                     break;
                 }
             }
-
-            mxMtrHeight->set_text( "");
+            mbMtrHeightBlanked = true;
             break;
 
         case SID_ATTR_TRANSFORM_POS_X:
@@ -558,11 +591,15 @@ void PosSizePropertyPanel::NotifyItemUpdate(
                     SetMetricValue( *mxMtrPosX, nTmp, mePoolUnit );
                     limitWidth(*mxMtrPosX);
                     mxMtrPosX->save_value();
+                    if (mbMtrPosXBlanked)
+                    {
+                        mxMtrPosX->reformat();
+                        mbMtrPosXBlanked = false;
+                    }
                     break;
                 }
             }
-
-            mxMtrPosX->set_text( "" );
+            mbMtrPosXBlanked = true;
             break;
 
         case SID_ATTR_TRANSFORM_POS_Y:
@@ -577,11 +614,15 @@ void PosSizePropertyPanel::NotifyItemUpdate(
                     SetMetricValue( *mxMtrPosY, nTmp, mePoolUnit );
                     limitWidth(*mxMtrPosY);
                     mxMtrPosY->save_value();
+                    if (mbMtrPosYBlanked)
+                    {
+                        mxMtrPosY->reformat();
+                        mbMtrPosYBlanked = false;
+                    }
                     break;
                 }
             }
-
-            mxMtrPosY->set_text( "" );
+            mbMtrPosYBlanked = true;
             break;
 
         case SID_ATTR_TRANSFORM_ROT_X:
@@ -678,11 +719,16 @@ void PosSizePropertyPanel::NotifyItemUpdate(
                     mxMtrAngle->set_value(nTmp.get(), FieldUnit::DEGREE);
                     mxCtrlDial->SetRotation(nTmp);
 
+                    if (mbMtrAngleBlanked)
+                    {
+                        mxMtrAngle->reformat();
+                        mbMtrAngleBlanked = false;
+                    }
+
                     break;
                 }
             }
-
-            mxMtrAngle->set_text( "" );
+            mbMtrAngleBlanked = true;
             mxCtrlDial->SetRotation( 0_deg100 );
             break;
 
@@ -767,13 +813,14 @@ void PosSizePropertyPanel::NotifyItemUpdate(
     DisableControls();
 
     // mxCbxScale must synchronized with that on Position and Size tabpage on Shape Properties dialog
-    SvtViewOptions aPageOpt(EViewType::TabPage, "cui/ui/possizetabpage/PositionAndSize");
+    SvtViewOptions aPageOpt(EViewType::TabPage, u"cui/ui/possizetabpage/PositionAndSize"_ustr);
     OUString  sUserData;
     css::uno::Any  aUserItem = aPageOpt.GetUserItem( USERITEM_NAME );
     OUString aTemp;
     if ( aUserItem >>= aTemp )
         sUserData = aTemp;
     mxCbxScale->set_active(static_cast<bool>(sUserData.toInt32()));
+    m_xCbxScaleImg->set_from_icon_name(mxCbxScale->get_active() ? RID_SVXBMP_LOCKED : RID_SVXBMP_UNLOCKED);
 }
 
 void PosSizePropertyPanel::GetControlState(const sal_uInt16 nSID, boost::property_tree::ptree& rState)
@@ -877,28 +924,36 @@ void PosSizePropertyPanel::MetricState(SfxItemState eState, const SfxPoolItem* p
     if (mxMtrPosX->get_text().isEmpty())
         bPosXBlank = true;
     SetFieldUnit( *mxMtrPosX, meDlgUnit, true );
-    if(bPosXBlank)
-        mxMtrPosX->set_text(OUString());
+    if (bPosXBlank)
+    {
+        mbMtrPosXBlanked = true;
+    }
 
     if (mxMtrPosY->get_text().isEmpty())
         bPosYBlank = true;
     SetFieldUnit( *mxMtrPosY, meDlgUnit, true );
-    if(bPosYBlank)
-        mxMtrPosY->set_text(OUString());
+    if (bPosYBlank)
+    {
+        mbMtrPosYBlanked = true;
+    }
 
     SetPosSizeMinMax(rUIScale);
 
     if (mxMtrWidth->get_text().isEmpty())
         bWidthBlank = true;
     SetFieldUnit( *mxMtrWidth, meDlgUnit, true );
-    if(bWidthBlank)
-        mxMtrWidth->set_text(OUString());
+    if (bWidthBlank)
+    {
+        mbMtrWidthBlanked = true;
+    }
 
     if (mxMtrHeight->get_text().isEmpty())
         bHeightBlank = true;
     SetFieldUnit( *mxMtrHeight, meDlgUnit, true );
-    if(bHeightBlank)
-        mxMtrHeight->set_text(OUString());
+    if (bHeightBlank)
+    {
+        mbMtrHeightBlanked = true;
+    }
 }
 
 
@@ -921,9 +976,7 @@ FieldUnit PosSizePropertyPanel::GetCurrentUnit( SfxItemState eState, const SfxPo
             SfxModule* pModule = pSh->GetModule();
             if ( pModule )
             {
-                const SfxPoolItem* pItem = pModule->GetItem( SID_ATTR_METRIC );
-                if ( pItem )
-                    eUnit = static_cast<FieldUnit>(static_cast<const SfxUInt16Item*>(pItem)->GetValue());
+                eUnit = pModule->GetFieldUnit();
             }
             else
             {

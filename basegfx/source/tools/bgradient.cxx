@@ -9,7 +9,7 @@
 
 #include <basegfx/utils/bgradient.hxx>
 #include <basegfx/utils/gradienttools.hxx>
-#include <com/sun/star/awt/Gradient2.hpp>
+#include <basegfx/color/bcolormodifier.hxx>
 #include <boost/property_tree/json_parser.hpp>
 #include <map>
 
@@ -55,12 +55,12 @@ StringMap lcl_jsonToStringMap(std::u16string_view rJSON)
 
 basegfx::BGradient lcl_buildGradientFromStringMap(StringMap& rMap)
 {
-    basegfx::BGradient aGradient(
-        basegfx::BColorStops(ColorToBColorConverter(rMap["startcolor"].toInt32(16)).getBColor(),
-                             ColorToBColorConverter(rMap["endcolor"].toInt32(16)).getBColor()));
+    basegfx::BGradient aGradient(basegfx::BColorStops(
+        ColorToBColorConverter(rMap[u"startcolor"_ustr].toInt32(16)).getBColor(),
+        ColorToBColorConverter(rMap[u"endcolor"_ustr].toInt32(16)).getBColor()));
 
-    aGradient.SetGradientStyle(lcl_getStyleFromString(rMap["style"]));
-    aGradient.SetAngle(Degree10(rMap["angle"].toInt32()));
+    aGradient.SetGradientStyle(lcl_getStyleFromString(rMap[u"style"_ustr]));
+    aGradient.SetAngle(Degree10(rMap[u"angle"_ustr].toInt32()));
 
     return aGradient;
 }
@@ -200,8 +200,7 @@ void BColorStops::replaceStartColor(const BColor& rStart)
 
     // search for highest existing non-StartColor - CAUTION,
     // there might be none, one or multiple with StopOffset 0.0
-    while (a1stNonStartColor != end()
-           && basegfx::fTools::lessOrEqual(a1stNonStartColor->getStopOffset(), 0.0))
+    while (a1stNonStartColor != end() && a1stNonStartColor->getStopOffset() <= 0.0)
         a1stNonStartColor++;
 
     // create new ColorStops by 1st adding new one and then all
@@ -213,7 +212,7 @@ void BColorStops::replaceStartColor(const BColor& rStart)
     aNewColorStops.insert(aNewColorStops.end(), a1stNonStartColor, end());
 
     // assign & done
-    *this = aNewColorStops;
+    *this = std::move(aNewColorStops);
 }
 
 /* Tooling method that allows to replace the EndColor in a
@@ -333,13 +332,13 @@ void BColorStops::sortAndCorrect()
         // get offset of entry at read position
         double fOff((*this)[read].getStopOffset());
 
-        if (basegfx::fTools::less(fOff, 0.0) && read + 1 < size())
+        if (fOff < 0.0 && read + 1 < size())
         {
             // value < 0.0 and we have a next entry. check for gradient snippet
             // containing 0.0 resp. StartColor
             const double fOff2((*this)[read + 1].getStopOffset());
 
-            if (basegfx::fTools::more(fOff2, 0.0))
+            if (fOff2 > 0.0)
             {
                 // read is the start of a gradient snippet containing 0.0. Correct
                 // entry to StartColor, interpolate to correct StartColor
@@ -354,7 +353,7 @@ void BColorStops::sortAndCorrect()
         }
 
         // step over < 0 values, these are outside and will be removed
-        if (basegfx::fTools::less(fOff, 0.0))
+        if (fOff < 0.0)
         {
             continue;
         }
@@ -411,7 +410,7 @@ void BColorStops::sortAndCorrect()
             // no valid entries at all, but not empty. This can only happen
             // when all entries are below 0.0 or above 1.0 (else a gradient
             // snippet spawning over both would have been detected)
-            if (basegfx::fTools::less(back().getStopOffset(), 0.0))
+            if (back().getStopOffset() < 0.0)
             {
                 // all outside too low, rescue last due to being closest to content
                 const BColor aBackColor(back().getStopColor());
@@ -529,7 +528,7 @@ void BColorStops::createSpaceAtStart(double fOffset)
                                candidate.getStopColor());
     }
 
-    *this = aNewStops;
+    *this = std::move(aNewStops);
 }
 
 // removeSpaceAtStart removes fOffset space from start by
@@ -560,7 +559,7 @@ void BColorStops::removeSpaceAtStart(double fOffset)
         }
     }
 
-    *this = aNewStops;
+    *this = std::move(aNewStops);
 }
 
 // try to detect if an empty/no-color-change area exists
@@ -657,7 +656,7 @@ void BColorStops::doApplyAxial()
     }
 
     // apply color stops
-    *this = aNewColorStops;
+    *this = std::move(aNewColorStops);
 }
 
 void BColorStops::doApplySteps(sal_uInt16 nStepCount)
@@ -730,7 +729,39 @@ void BColorStops::doApplySteps(sal_uInt16 nStepCount)
     }
 
     // apply the change to color stops
-    *this = aNewColorStops;
+    *this = std::move(aNewColorStops);
+}
+
+void BColorStops::tryToApplyBColorModifierStack(const BColorModifierStack& rBColorModifierStack)
+{
+    if (0 == rBColorModifierStack.count())
+        // no content on stack, done
+        return;
+
+    for (auto& candidate : *this)
+    {
+        candidate = BColorStop(candidate.getStopOffset(),
+                               rBColorModifierStack.getModifiedColor(candidate.getStopColor()));
+    }
+}
+
+bool BColorStops::sameSizeAndDistances(const BColorStops& rComp) const
+{
+    if (size() != rComp.size())
+    {
+        return false;
+    }
+
+    BColorStops::const_iterator EntryA(begin());
+    BColorStops::const_iterator EntryB(rComp.begin());
+
+    while (EntryA != end() && fTools::equal(EntryA->getStopOffset(), EntryB->getStopOffset()))
+    {
+        EntryA++;
+        EntryB++;
+    }
+
+    return EntryA == end();
 }
 
 std::string BGradient::GradientStyleToString(css::awt::GradientStyle eStyle)
@@ -915,7 +946,7 @@ void BGradient::tryToApplyBorder()
     }
     else
     {
-        // apply border to GradientSteps
+        // apply border to GradientStops
         aColorStops.createSpaceAtStart(fOffset);
     }
 

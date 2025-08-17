@@ -68,7 +68,6 @@
 
 #include <scabstdlg.hxx>
 #include <vcl/EnumContext.hxx>
-#include <vcl/notebookbar/notebookbar.hxx>
 
 //  for mouse wheel
 #define MINZOOM_SLIDER 10
@@ -92,7 +91,7 @@ void ScPreviewShell::InitInterface_Impl()
                                             SfxVisibilityFlags::Standard|SfxVisibilityFlags::Server|SfxVisibilityFlags::ReadonlyDoc,
                                             ToolbarId::Objectbar_Preview);
 
-    GetStaticInterface()->RegisterPopupMenu("preview");
+    GetStaticInterface()->RegisterPopupMenu(u"preview"_ustr);
 }
 
 SFX_IMPL_NAMED_VIEWFACTORY( ScPreviewShell, "PrintPreview" )
@@ -130,7 +129,7 @@ void ScPreviewShell::Construct( vcl::Window* pParent )
 
     pPreview = VclPtr<ScPreview>::Create( pParent, pDocShell, this );
 
-    SetPool( &SC_MOD()->GetPool() );
+    SetPool(&ScModule::get()->GetPool());
     SetWindow( pPreview );
     StartListening(*pDocShell, DuplicateHandling::Prevent);
     StartListening(*SfxGetpApp(), DuplicateHandling::Prevent); // #i62045# #i62046# application is needed for Calc's own hints
@@ -140,7 +139,7 @@ void ScPreviewShell::Construct( vcl::Window* pParent )
 
     pHorScroll->Show( false );
     pVerScroll->Show( false );
-    SetName("Preview");
+    SetName(u"Preview"_ustr);
 }
 
 ScPreviewShell::ScPreviewShell(SfxViewFrame& rViewFrame,
@@ -544,7 +543,7 @@ void ScPreviewShell::Activate(bool bMDI)
     if (bMDI)
     {
         // InputHdl is now mostly Null, no more assertion!
-        ScInputHandler* pInputHdl = SC_MOD()->GetInputHdl();
+        ScInputHandler* pInputHdl = ScModule::get()->GetInputHdl();
         if ( pInputHdl )
             pInputHdl->NotifyChange( nullptr );
     }
@@ -626,7 +625,7 @@ void ScPreviewShell::Execute( SfxRequest& rReq )
                 }
                 else
                 {
-                    SfxItemSetFixed<SID_ATTR_ZOOM, SID_ATTR_ZOOM>  aSet( GetPool() );
+                    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<SID_ATTR_ZOOM, SID_ATTR_ZOOM>(GetPool()));
                     SvxZoomItem     aZoomItem( SvxZoomType::PERCENT, pPreview->GetZoom(), SID_ATTR_ZOOM );
 
                     aSet.Put( aZoomItem );
@@ -669,19 +668,16 @@ void ScPreviewShell::Execute( SfxRequest& rReq )
             }
             break;
         case SID_ZOOM_IN:
-            {
-                sal_uInt16 nNew = pPreview->GetZoom() + 20 ;
-                nNew -= nNew % 20;
-                pPreview->SetZoom( nNew );
-                eZoom = SvxZoomType::PERCENT;
-                rReq.Done();
-            }
-            break;
         case SID_ZOOM_OUT:
             {
-                sal_uInt16 nNew = pPreview->GetZoom() - 1;
-                nNew -= nNew % 20;
-                pPreview->SetZoom( nNew );
+                sal_uInt16 nNewZoom;
+                const sal_uInt16 nOldZoom {pPreview->GetZoom()};
+                if(SID_ZOOM_OUT == nSlot)
+                    nNewZoom = basegfx::zoomtools::zoomOut(nOldZoom);
+                else
+                    nNewZoom = basegfx::zoomtools::zoomIn(nOldZoom);
+
+                pPreview->SetZoom(nNewZoom);
                 eZoom = SvxZoomType::PERCENT;
                 rReq.Done();
             }
@@ -723,7 +719,7 @@ void ScPreviewShell::Execute( SfxRequest& rReq )
                     const sal_uInt16 nCurrentZoom   = pItem->GetValue();
                     SfxItemSet& rSet            = pStyleSheet->GetItemSet();
                     rSet.Put( SfxUInt16Item( ATTR_PAGE_SCALE, nCurrentZoom ) );
-                    ScPrintFunc aPrintFunc( pDocShell, pDocShell->GetPrinter(), nTab );
+                    ScPrintFunc aPrintFunc( *pDocShell, pDocShell->GetPrinter(), nTab );
                     aPrintFunc.UpdatePages();
                     rReq.Done();
                 }
@@ -921,7 +917,7 @@ void ScPreviewShell::ReadUserData(const OUString& rData, bool /* bBrowse */)
 void ScPreviewShell::WriteUserDataSequence(uno::Sequence < beans::PropertyValue >& rSeq)
 {
     // tdf#130559: don't export preview view data if active
-    if (comphelper::IsContextFlagActive("NoPreviewData"))
+    if (comphelper::IsContextFlagActive(u"NoPreviewData"_ustr))
         return;
 
     rSeq.realloc(3);

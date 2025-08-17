@@ -22,9 +22,11 @@
 #include "accnotextframe.hxx"
 
 #include <com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp>
+#include <cppuhelper/implbase.hxx>
 
-class SwAccessibleEmbeddedObject : public   SwAccessibleNoTextFrame
-            , public css::accessibility::XAccessibleExtendedAttributes
+class SwAccessibleEmbeddedObject
+    : public cppu::ImplInheritanceHelper<SwAccessibleNoTextFrame,
+                                         css::accessibility::XAccessibleExtendedAttributes>
 
 {
 protected:
@@ -32,41 +34,10 @@ protected:
 
 public:
     SwAccessibleEmbeddedObject(std::shared_ptr<SwAccessibleMap> const& pInitMap,
-                                const SwFlyFrame* pFlyFrame );
-
-    // XInterface
-
-    virtual css::uno::Any SAL_CALL
-        queryInterface (const css::uno::Type & rType) override;
-
-    virtual void SAL_CALL
-        acquire()
-        noexcept override;
-
-    virtual void SAL_CALL
-        release()
-        noexcept override;
-
-    // XServiceInfo
-
-    // Returns an identifier for the implementation of this object.
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    // Return whether the specified service is supported by this class.
-    virtual sal_Bool SAL_CALL
-        supportsService (const OUString& sServiceName) override;
-
-    // Returns a list of all supported services.  In this case that is just
-    // the AccessibleContext service.
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
-    // XTypeProvider
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
+                               const SwFlyFrame* pFlyFrame);
 
     // XAccessibleExtendedAttributes
-        virtual css::uno::Any SAL_CALL getExtendedAttributes() override ;
+    virtual OUString SAL_CALL getExtendedAttributes() override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

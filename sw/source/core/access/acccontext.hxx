@@ -24,7 +24,6 @@
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext3.hpp>
 #include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <unotools/resmgr.hxx>
 
@@ -39,18 +38,10 @@ namespace accessibility {
     class AccessibleShape;
 }
 
-inline constexpr OUString sAccessibleServiceName = u"com.sun.star.accessibility.Accessible"_ustr;
-
-class SwAccessibleContext :
-    public ::cppu::WeakImplHelper<
-                css::accessibility::XAccessible,
-                css::accessibility::XAccessibleContext,
-                css::accessibility::XAccessibleContext3,
-                css::accessibility::XAccessibleComponent,
-                css::accessibility::XAccessibleEventBroadcaster,
-                css::lang::XServiceInfo
-                >,
-    public SwAccessibleFrame
+class SwAccessibleContext
+    : public cppu::ImplInheritanceHelper<comphelper::OAccessible,
+                                         css::accessibility::XAccessibleContext3>,
+      public SwAccessibleFrame
 {
     // The implements for the XAccessibleSelection interface has been
     // 'externalized' and wants access to the protected members like
@@ -66,10 +57,8 @@ protected:
 private:
     OUString m_sName;  // immutable outside constructor
 
-    // The parent if it has been retrieved. This is always an
-    // SwAccessibleContext. (protected by Mutex)
-    css::uno::WeakReference <
-        css::accessibility::XAccessible > m_xWeakParent;
+    // The parent if it has been retrieved. (protected by Mutex)
+    unotools::WeakReference< SwAccessibleContext > m_xWeakParent;
 
     SwAccessibleMap *m_pMap; // must be protected by solar mutex
     /// note: the m_pMap is guaranteed to be valid until we hit the
@@ -77,7 +66,6 @@ private:
     /// alive, after locking SolarMutex (alternatively, Dispose clears m_pMap)
     std::weak_ptr<SwAccessibleMap> m_wMap;
 
-    sal_uInt32 m_nClientId;  // client id in the AccessibleEventNotifier queue
     sal_Int16 m_nRole;        // immutable outside constructor
 
     // The current states (protected by mutex)
@@ -93,8 +81,6 @@ private:
     // in general registered at the accessible map.
     bool m_isRegisteredAtAccessibleMap;
 
-    void InitStates();
-
 protected:
     void SetName( const OUString& rName ) { m_sName = rName; }
     sal_Int16 GetRole() const
@@ -104,7 +90,7 @@ protected:
     //This flag is used to mark the object's selected state.
     bool   m_isSelectedInDoc;
     void SetParent( SwAccessibleContext *pParent );
-    css::uno::Reference< css::accessibility::XAccessible> GetWeakParent() const;
+    rtl::Reference<SwAccessibleContext> GetWeakParent() const;
 
     bool IsDisposing() const { return m_isDisposing; }
 
@@ -113,11 +99,11 @@ protected:
     const SwAccessibleMap *GetMap() const { return m_pMap; }
 
     /** convenience method to get the SwViewShell through accessibility map */
-    SwViewShell* GetShell()
+    SwViewShell& GetShell()
     {
         return GetMap()->GetShell();
     }
-    const SwViewShell* GetShell() const
+    const SwViewShell& GetShell() const
     {
         return GetMap()->GetShell();
     }
@@ -166,9 +152,13 @@ protected:
     virtual void InvalidateFocus_();
 
 public:
-    void FireAccessibleEvent( css::accessibility::AccessibleEventObject& rEvent );
+    void FireAccessibleEvent(const sal_Int16 nEventId, const css::uno::Any& rOldValue,
+                             const css::uno::Any& rNewValue, sal_Int32 nIndexHint = -1);
 
 protected:
+    // OAccessible
+    virtual css::awt::Rectangle implGetBounds() override;
+
     // broadcast visual data event
     void FireVisibleDataEvent();
 
@@ -198,18 +188,11 @@ protected:
     virtual ~SwAccessibleContext() override;
 
     // Return a reference to the parent.
-    css::uno::Reference< css::accessibility::XAccessible>
-        getAccessibleParentImpl();
+    rtl::Reference<SwAccessibleContext> getAccessibleParentImpl();
 
 public:
     SwAccessibleContext( std::shared_ptr<SwAccessibleMap> const& pMap,
                          sal_Int16 nRole, const SwFrame *pFrame );
-
-    // XAccessible
-
-    // Return the XAccessibleContext.
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL
-        getAccessibleContext() override;
 
     // XAccessibleContext
 
@@ -254,40 +237,16 @@ public:
     virtual css::lang::Locale SAL_CALL
         getLocale() override;
 
-    // XAccessibleEventBroadcaster
-
-    virtual void SAL_CALL addAccessibleEventListener(
-            const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-    virtual void SAL_CALL removeAccessibleEventListener(
-            const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-
     // XAccessibleComponent
-    virtual sal_Bool SAL_CALL containsPoint(
-            const css::awt::Point& aPoint ) override;
-
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint(
                 const css::awt::Point& aPoint ) override;
 
-    virtual css::awt::Rectangle SAL_CALL getBounds() override;
-
-    virtual css::awt::Point SAL_CALL getLocation() override;
-
     virtual css::awt::Point SAL_CALL getLocationOnScreen() override;
-
-    virtual css::awt::Size SAL_CALL getSize() override;
 
     virtual void SAL_CALL grabFocus() override;
 
     virtual sal_Int32 SAL_CALL getForeground() override;
     virtual sal_Int32 SAL_CALL getBackground() override;
-
-    // XServiceInfo
-
-    // getImplementationName() and getSupportedServiceNames are abstract
-
-    /** Return whether the specified service is supported by this class. */
-    virtual sal_Bool SAL_CALL
-        supportsService (const OUString& sServiceName) override;
 
     // thread safe C++ interface
 
@@ -329,7 +288,7 @@ public:
     vcl::Window* GetAdditionalAccessibleChild( const sal_Int32 nIndex );
 
     // #i88070# - get all additional accessible children
-    void GetAdditionalAccessibleChildren( std::vector< vcl::Window* >* pChildren );
+    std::vector<vcl::Window*> GetAdditionalAccessibleChildren();
 
     const OUString& GetName() const { return m_sName; }
 

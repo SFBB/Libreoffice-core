@@ -567,6 +567,15 @@ namespace xmloff
                             OUStringToOString(m_sServiceName, RTL_TEXTENCODING_ASCII_US) +
                             ")!").getStr());
             xReturn.set(xPure, UNO_QUERY);
+            if (auto const props = Reference<css::beans::XPropertySet>(xPure, css::uno::UNO_QUERY))
+            {
+                try {
+                    props->setPropertyValue(
+                        u"Referer"_ustr, css::uno::Any(m_rFormImport.getGlobalContext().GetBaseURL()));
+                } catch (css::uno::Exception &) {
+                    TOOLS_INFO_EXCEPTION("xmloff.forms", "setPropertyValue Referer failed");
+                }
+            }
         }
         else
             OSL_FAIL("OElementImport::createElement: no service name to create an element!");
@@ -580,14 +589,14 @@ namespace xmloff
         m_rEventManager.registerEvents(m_xElement, _rEvents);
     }
 
-    void OElementImport::simulateDefaultedAttribute(sal_Int32 nElement, const OUString& _rPropertyName, const char* _pAttributeDefault)
+    void OElementImport::simulateDefaultedAttribute(sal_Int32 nElement, const OUString& _rPropertyName, const OUString& _pAttributeDefault)
     {
         OSL_ENSURE( m_xInfo.is(), "OPropertyImport::simulateDefaultedAttribute: the component should be more gossipy about it's properties!" );
 
         if ( !m_xInfo.is() || m_xInfo->hasPropertyByName( _rPropertyName ) )
         {
             if ( !encounteredAttribute( nElement ) )
-                OSL_VERIFY( handleAttribute( XML_ELEMENT(FORM, (nElement & TOKEN_MASK)), OUString::createFromAscii( _pAttributeDefault ) ) );
+                OSL_VERIFY( handleAttribute( XML_ELEMENT(FORM, (nElement & TOKEN_MASK)), _pAttributeDefault ) );
         }
     }
 
@@ -1258,7 +1267,7 @@ namespace xmloff
         OURLReferenceImport::startFastElement(nElement, _rxAttrList);
 
         // handle the target-frame attribute
-        simulateDefaultedAttribute(OAttributeMetaData::getCommonControlAttributeToken(CCAFlags::TargetFrame), PROPERTY_TARGETFRAME, "_blank");
+        simulateDefaultedAttribute(OAttributeMetaData::getCommonControlAttributeToken(CCAFlags::TargetFrame), PROPERTY_TARGETFRAME, u"_blank"_ustr);
     }
 
     //= OValueRangeImport
@@ -1353,7 +1362,7 @@ namespace xmloff
         // same XML element), though not all of them know this property.
         // So we have to do a check ...
         if (m_xElement.is() && m_xInfo.is() && m_xInfo->hasPropertyByName(PROPERTY_EMPTY_IS_NULL) )
-            simulateDefaultedAttribute(OAttributeMetaData::getDatabaseAttributeToken(DAFlags::ConvertEmpty), PROPERTY_EMPTY_IS_NULL, "false");
+            simulateDefaultedAttribute(OAttributeMetaData::getDatabaseAttributeToken(DAFlags::ConvertEmpty), PROPERTY_EMPTY_IS_NULL, u"false"_ustr);
     }
 
     namespace {
@@ -1431,7 +1440,7 @@ namespace xmloff
         PropertyValueArray::iterator aDefaultControlPropertyPos = ::std::find_if(
             m_aValues.begin(),
             m_aValues.end(),
-            EqualName( "DefaultControl" )
+            EqualName( u"DefaultControl"_ustr )
         );
         if ( aDefaultControlPropertyPos != m_aValues.end() )
         {
@@ -1514,10 +1523,10 @@ namespace xmloff
             // for the auto-completion
             // the attribute default does not equal the property default, so in case we did not read this attribute,
             // we have to simulate it
-            simulateDefaultedAttribute( OAttributeMetaData::getSpecialAttributeToken( SCAFlags::AutoCompletion ), PROPERTY_AUTOCOMPLETE, "false");
+            simulateDefaultedAttribute( OAttributeMetaData::getSpecialAttributeToken( SCAFlags::AutoCompletion ), PROPERTY_AUTOCOMPLETE, u"false"_ustr);
 
             // same for the convert-empty-to-null attribute, which's default is different from the property default
-            simulateDefaultedAttribute( OAttributeMetaData::getDatabaseAttributeToken( DAFlags::ConvertEmpty ), PROPERTY_EMPTY_IS_NULL, "false");
+            simulateDefaultedAttribute( OAttributeMetaData::getDatabaseAttributeToken( DAFlags::ConvertEmpty ), PROPERTY_EMPTY_IS_NULL, u"false"_ustr);
         }
     }
 
@@ -1925,7 +1934,7 @@ namespace xmloff
         OElementImport::startFastElement(nElement, _rxAttrList);
 
         // handle the target-frame attribute
-        simulateDefaultedAttribute(OAttributeMetaData::getCommonControlAttributeToken(CCAFlags::TargetFrame), PROPERTY_TARGETFRAME, "_blank");
+        simulateDefaultedAttribute(OAttributeMetaData::getCommonControlAttributeToken(CCAFlags::TargetFrame), PROPERTY_TARGETFRAME, u"_blank"_ustr);
     }
 
     void OFormImport::endFastElement(sal_Int32 nElement)
@@ -2018,7 +2027,7 @@ namespace xmloff
                         "OFormImport::implTranslateStringListProperty: invalid quoted element name.");
                 sElement = sElement.substr(1, nElementLength - 2);
 
-                aElements.push_back(OUString(sElement));
+                aElements.emplace_back(sElement);
 
                 // switch to the next element
                 nElementStart = 1 + nNextSep;
@@ -2065,7 +2074,7 @@ namespace xmloff
 
     OUString OFormImport::determineDefaultServiceName() const
     {
-        return "com.sun.star.form.component.Form";
+        return u"com.sun.star.form.component.Form"_ustr;
     }
 
 }   // namespace xmloff

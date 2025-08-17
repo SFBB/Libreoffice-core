@@ -19,7 +19,6 @@
 
 #include "vclpixelprocessor2d.hxx"
 #include "vclhelperbufferdevice.hxx"
-#include "helperwrongspellrenderer.hxx"
 #include <comphelper/lok.hxx>
 
 #include <sal/log.hxx>
@@ -46,7 +45,6 @@
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 #include <drawinglayer/primitive2d/markerarrayprimitive2d.hxx>
 #include <drawinglayer/primitive2d/glowprimitive2d.hxx>
-#include <drawinglayer/primitive2d/wrongspellprimitive2d.hxx>
 #include <drawinglayer/primitive2d/controlprimitive2d.hxx>
 #include <drawinglayer/primitive2d/borderlineprimitive2d.hxx>
 #include <drawinglayer/primitive2d/fillgradientprimitive2d.hxx>
@@ -71,10 +69,13 @@ using namespace com::sun::star;
 namespace drawinglayer::processor2d
 {
 VclPixelProcessor2D::VclPixelProcessor2D(const geometry::ViewInformation2D& rViewInformation,
-                                         OutputDevice& rOutDev,
-                                         const basegfx::BColorModifierStack& rInitStack)
-    : VclProcessor2D(rViewInformation, rOutDev, rInitStack)
+                                         OutputDevice& rOutDev)
+    : VclProcessor2D(rViewInformation, rOutDev)
     , m_nOrigAntiAliasing(rOutDev.GetAntialiasing())
+    , m_bRenderSimpleTextDirect(
+          officecfg::Office::Common::Drawinglayer::RenderSimpleTextDirect::get())
+    , m_bRenderDecoratedTextDirect(
+          officecfg::Office::Common::Drawinglayer::RenderDecoratedTextDirect::get())
 {
     // prepare maCurrentTransformation matrix with viewTransformation to target directly to pixels
     maCurrentTransformation = rViewInformation.getObjectToViewTransformation();
@@ -115,7 +116,11 @@ void VclPixelProcessor2D::tryDrawPolyPolygonColorPrimitive2DDirect(
     const basegfx::BColor aPolygonColor(
         maBColorModifierStack.getModifiedColor(rSource.getBColor()));
 
-    mpOutputDevice->SetFillColor(Color(aPolygonColor));
+    if (comphelper::LibreOfficeKit::isActive() && aPolygonColor.isAutomatic())
+        mpOutputDevice->SetFillColor(getViewInformation2D().getAutoColor());
+    else
+        mpOutputDevice->SetFillColor(Color(aPolygonColor));
+
     mpOutputDevice->SetLineColor();
     mpOutputDevice->DrawTransparent(maCurrentTransformation, rSource.getB2DPolyPolygon(),
                                     fTransparency);
@@ -189,12 +194,6 @@ void VclPixelProcessor2D::processBasePrimitive2D(const primitive2d::BasePrimitiv
 {
     switch (rCandidate.getPrimitive2DID())
     {
-        case PRIMITIVE2D_ID_WRONGSPELLPRIMITIVE2D:
-        {
-            processWrongSpellPrimitive2D(
-                static_cast<const primitive2d::WrongSpellPrimitive2D&>(rCandidate));
-            break;
-        }
         case PRIMITIVE2D_ID_TEXTSIMPLEPORTIONPRIMITIVE2D:
         {
             processTextSimplePortionPrimitive2D(
@@ -381,17 +380,6 @@ void VclPixelProcessor2D::processBasePrimitive2D(const primitive2d::BasePrimitiv
     }
 }
 
-void VclPixelProcessor2D::processWrongSpellPrimitive2D(
-    const primitive2d::WrongSpellPrimitive2D& rWrongSpellPrimitive)
-{
-    if (!renderWrongSpellPrimitive2D(rWrongSpellPrimitive, *mpOutputDevice, maCurrentTransformation,
-                                     maBColorModifierStack))
-    {
-        // fallback to decomposition (MetaFile)
-        process(rWrongSpellPrimitive);
-    }
-}
-
 void VclPixelProcessor2D::processTextSimplePortionPrimitive2D(
     const primitive2d::TextSimplePortionPrimitive2D& rCandidate)
 {
@@ -399,7 +387,7 @@ void VclPixelProcessor2D::processTextSimplePortionPrimitive2D(
     const DrawModeFlags nOriginalDrawMode(mpOutputDevice->GetDrawMode());
     adaptTextToFillDrawMode();
 
-    if (officecfg::Office::Common::Drawinglayer::RenderSimpleTextDirect::get())
+    if (SAL_LIKELY(m_bRenderSimpleTextDirect))
     {
         RenderTextSimpleOrDecoratedPortionPrimitive2D(rCandidate);
     }
@@ -419,7 +407,7 @@ void VclPixelProcessor2D::processTextDecoratedPortionPrimitive2D(
     const DrawModeFlags nOriginalDrawMode(mpOutputDevice->GetDrawMode());
     adaptTextToFillDrawMode();
 
-    if (officecfg::Office::Common::Drawinglayer::RenderDecoratedTextDirect::get())
+    if (SAL_LIKELY(m_bRenderDecoratedTextDirect))
     {
         RenderTextSimpleOrDecoratedPortionPrimitive2D(rCandidate);
     }
@@ -568,7 +556,7 @@ void VclPixelProcessor2D::processUnifiedTransparencePrimitive2D(
 
         if (1 == rContent.size())
         {
-            const primitive2d::BasePrimitive2D* pBasePrimitive = rContent[0].get();
+            const primitive2d::BasePrimitive2D* pBasePrimitive = rContent.front().get();
 
             switch (pBasePrimitive->getPrimitive2DID())
             {
@@ -578,8 +566,7 @@ void VclPixelProcessor2D::processUnifiedTransparencePrimitive2D(
                     const primitive2d::PolyPolygonColorPrimitive2D* pPoPoColor
                         = static_cast<const primitive2d::PolyPolygonColorPrimitive2D*>(
                             pBasePrimitive);
-                    SAL_WARN_IF(!pPoPoColor, "drawinglayer",
-                                "OOps, PrimitiveID and PrimitiveType do not match (!)");
+                    assert(pPoPoColor && "OOps, PrimitiveID and PrimitiveType do not match (!)");
                     bDrawTransparentUsed = true;
                     tryDrawPolyPolygonColorPrimitive2DDirect(
                         *pPoPoColor, rUniTransparenceCandidate.getTransparence());
@@ -637,62 +624,63 @@ void VclPixelProcessor2D::processUnifiedTransparencePrimitive2D(
 void VclPixelProcessor2D::processControlPrimitive2D(
     const primitive2d::ControlPrimitive2D& rControlPrimitive)
 {
-    // control primitive
-    const uno::Reference<awt::XControl>& rXControl(rControlPrimitive.getXControl());
+    // find out if the control is already visualized as a VCL-ChildWindow
+    bool bControlIsVisibleAsChildWindow(rControlPrimitive.isVisibleAsChildWindow());
+
+    // tdf#131281 The FormControls are not painted when using the Tiled Rendering for a simple
+    // reason: when e.g. bControlIsVisibleAsChildWindow is true. This is the case because the
+    // office is in non-layout mode (default for controls at startup). For the common office
+    // this means that there exists a real VCL-System-Window for the control, so it is *not*
+    // painted here due to being exactly obscured by that real Window (and creates danger of
+    // flickering, too).
+    // Tiled Rendering clients usually do *not* have real VCL-Windows for the controls, but
+    // exactly that would be needed on each client displaying the tiles (what would be hard
+    // to do but also would have advantages - the clients would have real controls in the
+    //  shape of their target system which could be interacted with...). It is also what the
+    // office does.
+    // For now, fallback to just render these controls when Tiled Rendering is active to just
+    // have them displayed on all clients.
+    if (bControlIsVisibleAsChildWindow && comphelper::LibreOfficeKit::isActive())
+    {
+        // Do force paint when we are in Tiled Renderer and FormControl is 'visible'
+        bControlIsVisibleAsChildWindow = false;
+    }
+
+    if (bControlIsVisibleAsChildWindow)
+    {
+        // f the control is already visualized as a VCL-ChildWindow it
+        // does not need to be painted at all
+        return;
+    }
+
+    bool bDone(false);
 
     try
     {
-        // remember old graphics and create new
-        uno::Reference<awt::XView> xControlView(rXControl, uno::UNO_QUERY_THROW);
-        const uno::Reference<awt::XGraphics> xOriginalGraphics(xControlView->getGraphics());
-        const uno::Reference<awt::XGraphics> xNewGraphics(mpOutputDevice->CreateUnoGraphics());
+        const uno::Reference<awt::XGraphics> xTargetGraphics(mpOutputDevice->CreateUnoGraphics());
 
-        if (xNewGraphics.is())
+        if (xTargetGraphics.is())
         {
-            // find out if the control is already visualized as a VCL-ChildWindow. If yes,
-            // it does not need to be painted at all.
-            uno::Reference<awt::XWindow2> xControlWindow(rXControl, uno::UNO_QUERY_THROW);
-            bool bControlIsVisibleAsChildWindow(rXControl->getPeer().is()
-                                                && xControlWindow->isVisible());
+            // Needs to be drawn. Link new graphics and view
+            const uno::Reference<awt::XControl>& rXControl(rControlPrimitive.getXControl());
+            uno::Reference<awt::XView> xControlView(rXControl, uno::UNO_QUERY_THROW);
+            const uno::Reference<awt::XGraphics> xOriginalGraphics(xControlView->getGraphics());
+            xControlView->setGraphics(xTargetGraphics);
 
-            // tdf#131281 The FormControls are not painted when using the Tiled Rendering for a simple
-            // reason: when e.g. bControlIsVisibleAsChildWindow is true. This is the case because the
-            // office is in non-layout mode (default for controls at startup). For the common office
-            // this means that there exists a real VCL-System-Window for the control, so it is *not*
-            // painted here due to being exactly obscured by that real Window (and creates danger of
-            // flickering, too).
-            // Tiled Rendering clients usually do *not* have real VCL-Windows for the controls, but
-            // exactly that would be needed on each client displaying the tiles (what would be hard
-            // to do but also would have advantages - the clients would have real controls in the
-            //  shape of their target system which could be interacted with...). It is also what the
-            // office does.
-            // For now, fallback to just render these controls when Tiled Rendering is active to just
-            // have them displayed on all clients.
-            if (bControlIsVisibleAsChildWindow && comphelper::LibreOfficeKit::isActive())
-            {
-                // Do force paint when we are in Tiled Renderer and FormControl is 'visible'
-                bControlIsVisibleAsChildWindow = false;
-            }
+            // get position
+            const basegfx::B2DHomMatrix aObjectToPixel(maCurrentTransformation
+                                                       * rControlPrimitive.getTransform());
+            const basegfx::B2DPoint aTopLeftPixel(aObjectToPixel * basegfx::B2DPoint(0.0, 0.0));
 
-            if (!bControlIsVisibleAsChildWindow)
-            {
-                // Needs to be drawn. Link new graphics and view
-                xControlView->setGraphics(xNewGraphics);
+            // Do not forget to use the evtl. offsetted origin of the target device,
+            // e.g. when used with mask/transparence buffer device
+            const Point aOrigin(mpOutputDevice->GetMapMode().GetOrigin());
+            xControlView->draw(aOrigin.X() + basegfx::fround(aTopLeftPixel.getX()),
+                               aOrigin.Y() + basegfx::fround(aTopLeftPixel.getY()));
 
-                // get position
-                const basegfx::B2DHomMatrix aObjectToPixel(maCurrentTransformation
-                                                           * rControlPrimitive.getTransform());
-                const basegfx::B2DPoint aTopLeftPixel(aObjectToPixel * basegfx::B2DPoint(0.0, 0.0));
-
-                // Do not forget to use the evtl. offsetted origin of the target device,
-                // e.g. when used with mask/transparence buffer device
-                const Point aOrigin(mpOutputDevice->GetMapMode().GetOrigin());
-                xControlView->draw(aOrigin.X() + basegfx::fround(aTopLeftPixel.getX()),
-                                   aOrigin.Y() + basegfx::fround(aTopLeftPixel.getY()));
-
-                // restore original graphics
-                xControlView->setGraphics(xOriginalGraphics);
-            }
+            // restore original graphics
+            xControlView->setGraphics(xOriginalGraphics);
+            bDone = true;
         }
     }
     catch (const uno::Exception&)
@@ -700,7 +688,10 @@ void VclPixelProcessor2D::processControlPrimitive2D(
         // #i116763# removing since there is a good alternative when the xControlView
         // is not found and it is allowed to happen
         // DBG_UNHANDLED_EXCEPTION();
+    }
 
+    if (!bDone)
+    {
         // process recursively and use the decomposition as Bitmap
         process(rControlPrimitive);
     }
@@ -800,7 +791,7 @@ void VclPixelProcessor2D::processFillHatchPrimitive2D(
             maCurrentTransformation * basegfx::B2DVector(rFillHatchAttributes.getDistance(), 0.0));
         const sal_uInt32 nDistance(basegfx::fround(aDiscreteDistance.getLength()));
         const sal_uInt32 nAngle10(
-            basegfx::rad2deg<10>(basegfx::fround(rFillHatchAttributes.getAngle())));
+            basegfx::fround(basegfx::rad2deg<10>(rFillHatchAttributes.getAngle())));
         ::Hatch aVCLHatch(eHatchStyle, Color(rFillHatchAttributes.getColor()), nDistance,
                           Degree10(nAngle10));
 
@@ -888,7 +879,7 @@ void VclPixelProcessor2D::processInvertPrimitive2D(const primitive2d::BasePrimit
     // invert primitive (currently only used for HighContrast fallback for selection in SW and SC).
     // (Not true, also used at least for the drawing of dragged column and row boundaries in SC.)
     // Set OutDev to XOR and switch AA off (XOR does not work with AA)
-    mpOutputDevice->Push();
+    auto popIt = mpOutputDevice->ScopedPush();
     mpOutputDevice->SetRasterOp(RasterOp::Xor);
     const AntialiasingFlags nAntiAliasing(mpOutputDevice->GetAntialiasing());
     mpOutputDevice->SetAntialiasing(nAntiAliasing & ~AntialiasingFlags::Enable);
@@ -897,7 +888,6 @@ void VclPixelProcessor2D::processInvertPrimitive2D(const primitive2d::BasePrimit
     process(rCandidate);
 
     // restore OutDev
-    mpOutputDevice->Pop();
     mpOutputDevice->SetAntialiasing(nAntiAliasing);
 }
 
@@ -923,6 +913,14 @@ void VclPixelProcessor2D::processMetaFilePrimitive2D(const primitive2d::BasePrim
 void VclPixelProcessor2D::processFillGradientPrimitive2D(
     const primitive2d::FillGradientPrimitive2D& rPrimitive)
 {
+    if (rPrimitive.hasAlphaGradient() || rPrimitive.hasTransparency())
+    {
+        // SDPR: As long as direct alpha is not supported by this
+        // renderer we need to work on the decomposition, so call it
+        process(rPrimitive);
+        return;
+    }
+
     const attribute::FillGradientAttribute& rFillGradient = rPrimitive.getFillGradient();
     bool useDecompose(false);
 
@@ -1049,10 +1047,9 @@ void VclPixelProcessor2D::processFillGradientPrimitive2D(
         std::floor(aFullRange.getMinX()), std::floor(aFullRange.getMinY()),
         std::ceil(aFullRange.getMaxX()), std::ceil(aFullRange.getMaxY()));
 
-    mpOutputDevice->Push(vcl::PushFlags::CLIPREGION);
+    auto popIt = mpOutputDevice->ScopedPush(vcl::PushFlags::CLIPREGION);
     mpOutputDevice->IntersectClipRegion(aOutputRectangle);
     mpOutputDevice->DrawGradient(aFullRectangle, aGradient);
-    mpOutputDevice->Pop();
 }
 
 void VclPixelProcessor2D::processPatternFillPrimitive2D(
@@ -1074,18 +1071,20 @@ void VclPixelProcessor2D::processPatternFillPrimitive2D(
     rPrimitive.getTileSize(nTileWidth, nTileHeight, getViewInformation2D());
     if (nTileWidth == 0 || nTileHeight == 0)
         return;
-    BitmapEx aTileImage = rPrimitive.createTileImage(nTileWidth, nTileHeight);
+    Bitmap aTileImage = rPrimitive.createTileImage(nTileWidth, nTileHeight);
     tools::Rectangle aMaskRect = vcl::unotools::rectangleFromB2DRectangle(aMaskRange);
 
     // Unless smooth edges are needed, simply use clipping.
     if (basegfx::utils::isRectangle(aMask) || !getViewInformation2D().getUseAntiAliasing())
     {
-        mpOutputDevice->Push(vcl::PushFlags::CLIPREGION);
+        auto popIt = mpOutputDevice->ScopedPush(vcl::PushFlags::CLIPREGION);
         mpOutputDevice->IntersectClipRegion(vcl::Region(aMask));
         Wallpaper aWallpaper(aTileImage);
         aWallpaper.SetColor(COL_TRANSPARENT);
+        Point aPaperPt(aMaskRect.getX() % nTileWidth, aMaskRect.getY() % nTileHeight);
+        tools::Rectangle aPaperRect(aPaperPt, aTileImage.GetSizePixel());
+        aWallpaper.SetRect(aPaperRect);
         mpOutputDevice->DrawWallpaper(aMaskRect, aWallpaper);
-        mpOutputDevice->Pop();
         return;
     }
 
@@ -1110,6 +1109,9 @@ void VclPixelProcessor2D::processPatternFillPrimitive2D(
     {
         Wallpaper aWallpaper(aTileImage);
         aWallpaper.SetColor(COL_TRANSPARENT);
+        Point aPaperPt(aMaskRect.getX() % nTileWidth, aMaskRect.getY() % nTileHeight);
+        tools::Rectangle aPaperRect(aPaperPt, aTileImage.GetSizePixel());
+        aWallpaper.SetRect(aPaperRect);
         mpOutputDevice->DrawWallpaper(aMaskRect, aWallpaper);
     }
 

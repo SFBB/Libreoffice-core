@@ -91,7 +91,7 @@ namespace comphelper
         std::scoped_lock aGuard( m_xImpl->aMutex );
 
         // remove all events for this processor
-        m_xImpl->aEvents.erase(std::remove_if( m_xImpl->aEvents.begin(), m_xImpl->aEvents.end(), EqualProcessor( _xProcessor ) ), m_xImpl->aEvents.end());
+        std::erase_if( m_xImpl->aEvents, EqualProcessor( _xProcessor ) );
     }
 
 
@@ -173,6 +173,8 @@ namespace comphelper
 
     static std::vector<std::weak_ptr<AsyncEventNotifierAutoJoin>> g_Notifiers;
 
+    template class EventHolder<css::document::DocumentEvent>;
+
     void JoinAsyncEventNotifiers()
     {
         std::vector<std::weak_ptr<AsyncEventNotifierAutoJoin>> notifiers;
@@ -204,18 +206,16 @@ namespace comphelper
         std::scoped_lock g(GetTheNotifiersMutex());
         // note: this doesn't happen atomically with the refcount
         // hence it's possible this deletes > 1 or 0 elements
-        g_Notifiers.erase(
-            std::remove_if(g_Notifiers.begin(), g_Notifiers.end(),
+        std::erase_if(g_Notifiers,
                 [](std::weak_ptr<AsyncEventNotifierAutoJoin> const& w) {
                     return w.expired();
-                } ),
-            g_Notifiers.end());
+                });
     }
 
     std::shared_ptr<AsyncEventNotifierAutoJoin>
     AsyncEventNotifierAutoJoin::newAsyncEventNotifierAutoJoin(char const* name)
     {
-        std::shared_ptr<AsyncEventNotifierAutoJoin> const ret(
+        std::shared_ptr<AsyncEventNotifierAutoJoin> ret(
                 new AsyncEventNotifierAutoJoin(name));
         std::scoped_lock g(GetTheNotifiersMutex());
         g_Notifiers.push_back(ret);

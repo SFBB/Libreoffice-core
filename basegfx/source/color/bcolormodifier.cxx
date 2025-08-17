@@ -18,6 +18,7 @@
  */
 
 #include <sal/config.h>
+#include <sal/mathconf.h>
 #include <algorithm>
 #include <float.h>
 #include <basegfx/color/bcolormodifier.hxx>
@@ -33,11 +34,6 @@ namespace basegfx
     {
     }
 
-    bool BColorModifier_gray::operator==(const BColorModifier& rCompare) const
-    {
-        return dynamic_cast< const BColorModifier_gray* >(&rCompare) != nullptr;
-    }
-
     ::basegfx::BColor BColorModifier_gray::getModifiedColor(const ::basegfx::BColor& aSourceColor) const
     {
         const double fLuminance(aSourceColor.luminance());
@@ -47,16 +43,11 @@ namespace basegfx
 
     OUString BColorModifier_gray::getModifierName() const
     {
-        return "gray";
+        return u"gray"_ustr;
     }
 
     BColorModifier_invert::~BColorModifier_invert()
     {
-    }
-
-    bool BColorModifier_invert::operator==(const BColorModifier& rCompare) const
-    {
-        return dynamic_cast< const BColorModifier_invert* >(&rCompare) != nullptr;
     }
 
     ::basegfx::BColor BColorModifier_invert::getModifiedColor(const ::basegfx::BColor& aSourceColor) const
@@ -66,16 +57,11 @@ namespace basegfx
 
     OUString BColorModifier_invert::getModifierName() const
     {
-        return "invert";
+        return u"invert"_ustr;
     }
 
     BColorModifier_luminance_to_alpha::~BColorModifier_luminance_to_alpha()
     {
-    }
-
-    bool BColorModifier_luminance_to_alpha::operator==(const BColorModifier& rCompare) const
-    {
-        return dynamic_cast< const BColorModifier_luminance_to_alpha* >(&rCompare) != nullptr;
     }
 
     ::basegfx::BColor BColorModifier_luminance_to_alpha::getModifiedColor(const ::basegfx::BColor& aSourceColor) const
@@ -87,7 +73,7 @@ namespace basegfx
 
     OUString BColorModifier_luminance_to_alpha::getModifierName() const
     {
-        return "luminance_to_alpha";
+        return u"luminance_to_alpha"_ustr;
     }
 
     BColorModifier_replace::~BColorModifier_replace()
@@ -96,13 +82,10 @@ namespace basegfx
 
     bool BColorModifier_replace::operator==(const BColorModifier& rCompare) const
     {
-        const BColorModifier_replace* pCompare = dynamic_cast< const BColorModifier_replace* >(&rCompare);
-
-        if(!pCompare)
-        {
+        if (!BColorModifier::operator==(rCompare))
             return false;
-        }
 
+        const BColorModifier_replace* pCompare(static_cast< const BColorModifier_replace* >(&rCompare));
         return getBColor() == pCompare->getBColor();
     }
 
@@ -113,7 +96,7 @@ namespace basegfx
 
     OUString BColorModifier_replace::getModifierName() const
     {
-        return "replace";
+        return u"replace"_ustr;
     }
 
     BColorModifier_interpolate::~BColorModifier_interpolate()
@@ -122,13 +105,10 @@ namespace basegfx
 
     bool BColorModifier_interpolate::operator==(const BColorModifier& rCompare) const
     {
-        const BColorModifier_interpolate* pCompare = dynamic_cast< const BColorModifier_interpolate* >(&rCompare);
-
-        if(!pCompare)
-        {
+        if (!BColorModifier::operator==(rCompare))
             return false;
-        }
 
+        const BColorModifier_interpolate* pCompare(static_cast< const BColorModifier_interpolate* >(&rCompare));
         return maBColor == pCompare->maBColor && mfValue == pCompare->mfValue;
     }
 
@@ -139,7 +119,7 @@ namespace basegfx
 
     OUString BColorModifier_interpolate::getModifierName() const
     {
-        return "interpolate";
+        return u"interpolate"_ustr;
     }
 
     BColorModifier_matrix::~BColorModifier_matrix()
@@ -148,13 +128,10 @@ namespace basegfx
 
     bool BColorModifier_matrix::operator==(const BColorModifier& rCompare) const
     {
-        const BColorModifier_matrix* pCompare = dynamic_cast< const BColorModifier_matrix* >(&rCompare);
-
-        if(!pCompare)
-        {
+        if (!BColorModifier::operator==(rCompare))
             return false;
-        }
 
+        const BColorModifier_matrix* pCompare(static_cast< const BColorModifier_matrix* >(&rCompare));
         return maVector == pCompare->maVector;
     }
 
@@ -194,10 +171,11 @@ namespace basegfx
 
     OUString BColorModifier_matrix::getModifierName() const
     {
-        return "matrix";
+        return u"matrix"_ustr;
     }
 
     BColorModifier_saturate::BColorModifier_saturate(double fValue)
+    : BColorModifier(basegfx::BColorModifierType::BCMType_saturate)
     {
         maSatMatrix.set(0, 0, 0.213 + 0.787 * fValue);
         maSatMatrix.set(0, 1, 0.715 - 0.715 * fValue);
@@ -216,13 +194,10 @@ namespace basegfx
 
     bool BColorModifier_saturate::operator==(const BColorModifier& rCompare) const
     {
-        const BColorModifier_saturate* pCompare = dynamic_cast< const BColorModifier_saturate* >(&rCompare);
-
-        if(!pCompare)
-        {
+        if (!BColorModifier::operator==(rCompare))
             return false;
-        }
 
+        const BColorModifier_saturate* pCompare(static_cast< const BColorModifier_saturate* >(&rCompare));
         return maSatMatrix == pCompare->maSatMatrix;
     }
 
@@ -239,10 +214,11 @@ namespace basegfx
 
     OUString BColorModifier_saturate::getModifierName() const
     {
-        return "saturate";
+        return u"saturate"_ustr;
     }
 
     BColorModifier_hueRotate::BColorModifier_hueRotate(double fRad)
+    : BColorModifier(basegfx::BColorModifierType::BCMType_hueRotate)
     {
         const double fCos = cos(fRad);
         const double fSin = sin(fRad);
@@ -264,13 +240,10 @@ namespace basegfx
 
     bool BColorModifier_hueRotate::operator==(const BColorModifier& rCompare) const
     {
-        const BColorModifier_hueRotate* pCompare = dynamic_cast< const BColorModifier_hueRotate* >(&rCompare);
-
-        if(!pCompare)
-        {
+        if (!BColorModifier::operator==(rCompare))
             return false;
-        }
 
+        const BColorModifier_hueRotate* pCompare(static_cast< const BColorModifier_hueRotate* >(&rCompare));
         return maHueMatrix == pCompare->maHueMatrix;
     }
 
@@ -290,7 +263,7 @@ namespace basegfx
 
     OUString BColorModifier_hueRotate::getModifierName() const
     {
-        return "hueRotate";
+        return u"hueRotate"_ustr;
     }
 
     BColorModifier_black_and_white::~BColorModifier_black_and_white()
@@ -299,13 +272,10 @@ namespace basegfx
 
     bool BColorModifier_black_and_white::operator==(const BColorModifier& rCompare) const
     {
-        const BColorModifier_black_and_white* pCompare = dynamic_cast< const BColorModifier_black_and_white* >(&rCompare);
-
-        if(!pCompare)
-        {
+        if (!BColorModifier::operator==(rCompare))
             return false;
-        }
 
+        const BColorModifier_black_and_white* pCompare(static_cast< const BColorModifier_black_and_white* >(&rCompare));
         return mfValue == pCompare->mfValue;
     }
 
@@ -325,13 +295,14 @@ namespace basegfx
 
     OUString BColorModifier_black_and_white::getModifierName() const
     {
-        return "black_and_white";
+        return u"black_and_white"_ustr;
     }
 
     BColorModifier_gamma::BColorModifier_gamma(double fValue)
-    :   mfValue(fValue),
-        mfInvValue(fValue),
-        mbUseIt(!basegfx::fTools::equal(fValue, 1.0) && basegfx::fTools::more(fValue, 0.0) && basegfx::fTools::lessOrEqual(fValue, 10.0))
+    : BColorModifier(basegfx::BColorModifierType::BCMType_gamma)
+    , mfValue(fValue)
+    , mfInvValue(fValue)
+    , mbUseIt(!basegfx::fTools::equal(fValue, 1.0) && fValue > 0.0 && basegfx::fTools::lessOrEqual(fValue, 10.0))
     {
         if(mbUseIt)
         {
@@ -345,15 +316,29 @@ namespace basegfx
 
     bool BColorModifier_gamma::operator==(const BColorModifier& rCompare) const
     {
-        const BColorModifier_gamma* pCompare = dynamic_cast< const BColorModifier_gamma* >(&rCompare);
-
-        if(!pCompare)
-        {
+        if (!BColorModifier::operator==(rCompare))
             return false;
-        }
 
-        // getValue is sufficient, mfInvValue and mbUseIt are only helper values
+        const BColorModifier_gamma* pCompare(static_cast< const BColorModifier_gamma* >(&rCompare));
+
+        // mfValue is sufficient, mfInvValue and mbUseIt are only helper values
         return mfValue == pCompare->mfValue;
+    }
+
+    /**
+      A fast and approximate std::pow(), good enough for gamma calculations,
+      given that the parameter a is in the range [0,1), and b is in the range (0, 0.1]
+
+      Google for "optimised power approximation". The below function is the result
+      of reducing various bit-twiddling tricks into fewer operations.
+    */
+    static double fast_pow(double a, double b)
+    {
+        sal_math_Double u;
+        u.value = a;
+        u.w32_parts.msw = static_cast<int>(b * (static_cast<int>(u.w32_parts.msw) - 1072632447) + 1072632447);
+        u.w32_parts.lsw = 0;
+        return u.value;
     }
 
     ::basegfx::BColor BColorModifier_gamma::getModifiedColor(const ::basegfx::BColor& aSourceColor) const
@@ -361,9 +346,9 @@ namespace basegfx
         if(mbUseIt)
         {
             ::basegfx::BColor aRetval(
-                pow(aSourceColor.getRed(), mfInvValue),
-                pow(aSourceColor.getGreen(), mfInvValue),
-                pow(aSourceColor.getBlue(), mfInvValue));
+                fast_pow(aSourceColor.getRed(), mfInvValue),
+                fast_pow(aSourceColor.getGreen(), mfInvValue),
+                fast_pow(aSourceColor.getBlue(), mfInvValue));
 
             aRetval.clamp();
             return aRetval;
@@ -376,20 +361,21 @@ namespace basegfx
 
     OUString BColorModifier_gamma::getModifierName() const
     {
-        return "gamma";
+        return u"gamma"_ustr;
     }
 
     BColorModifier_RGBLuminanceContrast::BColorModifier_RGBLuminanceContrast(double fRed, double fGreen, double fBlue, double fLuminance, double fContrast)
-    :   mfRed(std::clamp(fRed, -1.0, 1.0)),
-        mfGreen(std::clamp(fGreen, -1.0, 1.0)),
-        mfBlue(std::clamp(fBlue, -1.0, 1.0)),
-        mfLuminance(std::clamp(fLuminance, -1.0, 1.0)),
-        mfContrast(std::clamp(fContrast, -1.0, 1.0)),
-        mfContrastOff(1.0),
-        mfRedOff(0.0),
-        mfGreenOff(0.0),
-        mfBlueOff(0.0),
-        mbUseIt(false)
+    : BColorModifier(basegfx::BColorModifierType::BCMType_RGBLuminanceContrast)
+    , mfRed(std::clamp(fRed, -1.0, 1.0))
+    , mfGreen(std::clamp(fGreen, -1.0, 1.0))
+    , mfBlue(std::clamp(fBlue, -1.0, 1.0))
+    , mfLuminance(std::clamp(fLuminance, -1.0, 1.0))
+    , mfContrast(std::clamp(fContrast, -1.0, 1.0))
+    , mfContrastOff(1.0)
+    , mfRedOff(0.0)
+    , mfGreenOff(0.0)
+    , mfBlueOff(0.0)
+    , mbUseIt(false)
     {
         if(basegfx::fTools::equalZero(mfRed)
             && basegfx::fTools::equalZero(mfGreen)
@@ -426,12 +412,10 @@ namespace basegfx
 
     bool BColorModifier_RGBLuminanceContrast::operator==(const BColorModifier& rCompare) const
     {
-        const BColorModifier_RGBLuminanceContrast* pCompare = dynamic_cast< const BColorModifier_RGBLuminanceContrast* >(&rCompare);
-
-        if(!pCompare)
-        {
+        if (!BColorModifier::operator==(rCompare))
             return false;
-        }
+
+        const BColorModifier_RGBLuminanceContrast* pCompare(static_cast< const BColorModifier_RGBLuminanceContrast* >(&rCompare));
 
         // no need to compare other values, these are just helpers
         return mfRed == pCompare->mfRed
@@ -458,11 +442,12 @@ namespace basegfx
 
     OUString BColorModifier_RGBLuminanceContrast::getModifierName() const
     {
-        return "RGBLuminanceContrast";
+        return u"RGBLuminanceContrast"_ustr;
     }
 
     BColorModifier_randomize::BColorModifier_randomize(double fRandomPart)
-    : mfRandomPart(fRandomPart)
+    : BColorModifier(basegfx::BColorModifierType::BCMType_randomize)
+    , mfRandomPart(fRandomPart)
     {
     }
 
@@ -473,13 +458,10 @@ namespace basegfx
     // compare operator
     bool BColorModifier_randomize::operator==(const BColorModifier& rCompare) const
     {
-        const BColorModifier_randomize* pCompare = dynamic_cast< const BColorModifier_randomize* >(&rCompare);
-
-        if(!pCompare)
-        {
+        if (!BColorModifier::operator==(rCompare))
             return false;
-        }
 
+        const BColorModifier_randomize* pCompare(static_cast< const BColorModifier_randomize* >(&rCompare));
         return mfRandomPart == pCompare->mfRandomPart;
     }
 
@@ -514,7 +496,7 @@ namespace basegfx
 
     OUString BColorModifier_randomize::getModifierName() const
     {
-        return "randomize";
+        return u"randomize"_ustr;
     }
 
     ::basegfx::BColor BColorModifierStack::getModifiedColor(const ::basegfx::BColor& rSource) const
@@ -533,6 +515,27 @@ namespace basegfx
         }
 
         return aRetval;
+    }
+
+    bool BColorModifierStack::operator==(const BColorModifierStack& rComp) const
+    {
+        if (count() != rComp.count())
+            return false;
+
+        if (0 == count())
+            return true;
+
+        for (sal_uInt32 a(0); a < count(); a++)
+        {
+            // nullptrs are not allowed/expected
+            assert(maBColorModifiers[a] != nullptr);
+            assert(rComp.maBColorModifiers[a] != nullptr);
+
+            if (!(*maBColorModifiers[a] == *rComp.maBColorModifiers[a]))
+                return false;
+        }
+
+        return true;
     }
 } // end of namespace basegfx
 

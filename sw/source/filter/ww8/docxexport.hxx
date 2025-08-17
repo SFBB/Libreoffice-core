@@ -32,12 +32,6 @@
 
 class DocxAttributeOutput;
 class DocxExportFilter;
-class SwNode;
-class SwEndNode;
-class SwTableNode;
-class SwTextNode;
-class SwGrfNode;
-class SwOLENode;
 class DocxSdrExport;
 
 namespace oox {
@@ -119,6 +113,7 @@ class DocxExport : public MSWordExportBase
     bool const m_bTemplate;
 
     DocxSettingsData m_aSettings;
+    sal_Int32 m_nWordCompatibilityMode;
 
     /// Pointer to the Frame of a floating table it is nested in
     const ww8::Frame *m_pFloatingTableFrame = nullptr;
@@ -128,6 +123,8 @@ class DocxExport : public MSWordExportBase
 
     /// Storage for sdt data which need to be written to other XMLs
     std::vector<SdtData> m_SdtData;
+
+    std::set<SwNode*> m_aDummyFloatingTableAnchors;
 
 public:
 
@@ -183,8 +180,8 @@ public:
             const OUString& rFieldCmd, FieldFlags nMode = FieldFlags::All ) override;
 
     /// Write the data of the form field
-    virtual void WriteFormData( const ::sw::mark::IFieldmark& rFieldmark ) override;
-    virtual void WriteHyperlinkData( const ::sw::mark::IFieldmark& rFieldmark ) override;
+    virtual void WriteFormData( const ::sw::mark::Fieldmark& rFieldmark ) override;
+    virtual void WriteHyperlinkData( const ::sw::mark::Fieldmark& rFieldmark ) override;
 
     virtual void DoComboBox(const OUString &rName,
                     const OUString &rHelp,
@@ -205,7 +202,8 @@ public:
     /// Writes the shape using drawingML syntax.
     void OutputDML( css::uno::Reference< css::drawing::XShape > const & xShape );
 
-    sal_Int32 WriteOutliner(const OutlinerParaObject& rOutliner, sal_uInt8 nTyp, bool bNeedsLastParaId);
+    sal_Int32 WriteOutliner(const OutlinerParaObject& rOutliner, sal_uInt8 nTyp,
+                            bool bNeedsLastParaId);
 
     virtual ExportFormat GetExportFormat() const override { return ExportFormat::DOCX; }
 
@@ -244,11 +242,16 @@ private:
     /// Setup pStyles and write styles.xml
     void InitStyles();
 
+    /// write optional w:background before the w:body of word/document.xml
+    void WriteDocumentBackgroundFill();
+
     /// Write footnotes.xml and endnotes.xml.
     void WriteFootnotesEndnotes();
 
     /// Write comments.xml
     void WritePostitFields();
+
+    void CollectFloatingTables();
 
     /// Write the numbering table.
     virtual void WriteNumbering() override;
@@ -282,9 +285,6 @@ private:
     /// Writes word/vbaProject.bin.
     void WriteVBA();
 
-    /// return true if Page Layout is set as Mirrored
-    bool isMirroredMargin();
-
 public:
     /// All xml namespaces to be used at the top of any text .xml file (main doc, headers, footers,...)
     rtl::Reference<sax_fastparser::FastAttributeList> MainXmlNamespaces();
@@ -317,10 +317,16 @@ public:
     void SetFloatingTableFrame(const ww8::Frame* pF) { m_pFloatingTableFrame = pF; }
 
     // Get author id to remove personal info
-    size_t GetInfoID( const OUString sPersonalInfo ) const { return m_pAuthorIDs->GetInfoID(sPersonalInfo); }
+    size_t GetInfoID( const OUString& sPersonalInfo ) const { return m_pAuthorIDs->GetInfoID(sPersonalInfo); }
 
-    // needed in docxsdrexport.cxx and docxattributeoutput.cxx
-    sal_Int32 getWordCompatibilityModeFromGrabBag() const;
+    sal_Int32 getWordCompatibilityMode();
+
+    /// return true if Page Layout is set as Mirrored
+    bool isMirroredMargin();
+
+    const std::set<SwNode*>& GetDummyFloatingTableAnchors() const { return m_aDummyFloatingTableAnchors; }
+
+    bool IsDummyFloattableAnchor(SwNode& rNode) const override;
 
 private:
     DocxExport( const DocxExport& ) = delete;

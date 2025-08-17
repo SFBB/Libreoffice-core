@@ -50,7 +50,7 @@ void OFileDriver::disposing()
 
     for (auto const& connection : m_xConnections)
     {
-        Reference< XComponent > xComp(connection.get(), UNO_QUERY);
+        rtl::Reference< OConnection > xComp(connection);
         if (xComp.is())
             xComp->dispose();
     }
@@ -63,7 +63,7 @@ void OFileDriver::disposing()
 
 OUString SAL_CALL OFileDriver::getImplementationName(  )
 {
-    return "com.sun.star.sdbc.driver.file.Driver";
+    return u"com.sun.star.sdbc.driver.file.Driver"_ustr;
 }
 
 sal_Bool SAL_CALL OFileDriver::supportsService( const OUString& _rServiceName )
@@ -74,7 +74,7 @@ sal_Bool SAL_CALL OFileDriver::supportsService( const OUString& _rServiceName )
 
 Sequence< OUString > SAL_CALL OFileDriver::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.sdbc.Driver", "com.sun.star.sdbcx.Driver" };
+    return { u"com.sun.star.sdbc.Driver"_ustr, u"com.sun.star.sdbcx.Driver"_ustr };
 }
 
 
@@ -85,7 +85,7 @@ Reference< XConnection > SAL_CALL OFileDriver::connect( const OUString& url, con
 
     rtl::Reference<OConnection> pCon = new OConnection(this);
     pCon->construct(url,info);
-    m_xConnections.push_back(WeakReferenceHelper(*pCon));
+    m_xConnections.push_back(pCon);
 
     return pCon;
 }
@@ -100,48 +100,48 @@ Sequence< DriverPropertyInfo > SAL_CALL OFileDriver::getPropertyInfo( const OUSt
     if ( acceptsURL(url) )
     {
 
-        Sequence< OUString > aBoolean { "0", "1" };
+        Sequence< OUString > aBoolean { u"0"_ustr, u"1"_ustr };
 
         return
         {
              {
-                "CharSet"
-                ,"CharSet of the database."
+                u"CharSet"_ustr
+                ,u"CharSet of the database."_ustr
                 ,false
                 ,{}
                 ,{}
              },
              {
-                "Extension"
-                ,"Extension of the file format."
+                u"Extension"_ustr
+                ,u"Extension of the file format."_ustr
                 ,false
-                ,".*"
+                ,u".*"_ustr
                 ,{}
              },
              {
-                "ShowDeleted"
-                ,"Display inactive records."
+                u"ShowDeleted"_ustr
+                ,u"Display inactive records."_ustr
                 ,false
-                ,"0"
+                ,u"0"_ustr
                 ,aBoolean
              },
              {
-                "EnableSQL92Check"
-                ,"Use SQL92 naming constraints."
+                u"EnableSQL92Check"_ustr
+                ,u"Use SQL92 naming constraints."_ustr
                 ,false
-                ,"0"
+                ,u"0"_ustr
                 ,aBoolean
              },
              {
-                "UseRelativePath"
-                ,"Handle the connection url as relative path."
+                u"UseRelativePath"_ustr
+                ,u"Handle the connection url as relative path."_ustr
                 ,false
-                ,"0"
+                ,u"0"_ustr
                 ,aBoolean
              },
              {
-                "URL"
-                ,"The URL of the database document which is used to create an absolute path."
+                u"URL"_ustr
+                ,u"The URL of the database document which is used to create an absolute path."_ustr
                 ,false
                 ,{}
                 ,{}
@@ -153,7 +153,6 @@ Sequence< DriverPropertyInfo > SAL_CALL OFileDriver::getPropertyInfo( const OUSt
         const OUString sMessage = aResources.getResourceString(STR_URI_SYNTAX_ERROR);
         ::dbtools::throwGenericSQLException(sMessage ,*this);
     } // if ( ! acceptsURL(url) )
-    return Sequence< DriverPropertyInfo >();
 }
 
 sal_Int32 SAL_CALL OFileDriver::getMajorVersion(  )
@@ -177,7 +176,7 @@ Reference< XTablesSupplier > SAL_CALL OFileDriver::getDataDefinitionByConnection
     {
         for (auto const& elem : m_xConnections)
         {
-            if (static_cast<OConnection*>( Reference< XConnection >::query(elem.get()).get() ) == pSearchConnection)
+            if (elem.get().get() == pSearchConnection)
                 return pSearchConnection->createCatalog();
         }
     }

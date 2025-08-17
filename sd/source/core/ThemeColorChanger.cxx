@@ -9,7 +9,7 @@
 
 #include <editeng/colritem.hxx>
 #include <theme/ThemeColorChanger.hxx>
-#include <svx/theme/ThemeColorChangerCommon.hxx>
+#include <svx/theme/IThemeColorChanger.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svditer.hxx>
 #include <docmodel/theme/Theme.hxx>
@@ -58,7 +58,7 @@ void changeThemeColors(sd::DrawDocShell* pDocShell, SdrPage* pMasterPage,
     if (pUndoManager)
     {
         pUndoManager->AddUndoAction(std::make_unique<UndoThemeChange>(
-            pDocShell->GetDoc(), pMasterPage, pOldColorSet, pNewColorSet));
+            *pDocShell->GetDoc(), pMasterPage, pOldColorSet, pNewColorSet));
     }
 
     pTheme->setColorSet(pNewColorSet);
@@ -109,7 +109,7 @@ bool changeStyle(sd::DrawDocShell* pDocShell, SdStyleSheet* pStyle,
     if (bChanged)
     {
         pDocShell->GetUndoManager()->AddUndoAction(
-            std::make_unique<StyleSheetUndoAction>(pDocShell->GetDoc(), pStyle, &aItemSet));
+            std::make_unique<StyleSheetUndoAction>(*pDocShell->GetDoc(), *pStyle, &aItemSet));
         pStyle->GetItemSet().Put(aItemSet);
         pStyle->Broadcast(SfxHint(SfxHintId::DataChanged));
     }
@@ -133,7 +133,7 @@ bool changeStyles(sd::DrawDocShell* pDocShell, std::shared_ptr<model::ColorSet> 
 
 } // end anonymous ns
 
-void ThemeColorChanger::apply(std::shared_ptr<model::ColorSet> const& pColorSet)
+void ThemeColorChanger::doApply(std::shared_ptr<model::ColorSet> const& pColorSet)
 {
     auto* pUndoManager = mpDocShell->GetUndoManager();
     sd::ViewShell* pViewShell = mpDocShell->GetViewShell();
@@ -145,7 +145,7 @@ void ThemeColorChanger::apply(std::shared_ptr<model::ColorSet> const& pColorSet)
         return;
 
     ViewShellId nViewShellId = pViewShell->GetViewShellBase().GetViewShellId();
-    pUndoManager->EnterListAction(SvxResId(RID_SVXSTR_UNDO_THEME_COLOR_CHANGE), "", 0,
+    pUndoManager->EnterListAction(SvxResId(RID_SVXSTR_UNDO_THEME_COLOR_CHANGE), u""_ustr, 0,
                                   nViewShellId);
 
     changeStyles(mpDocShell, pColorSet);
@@ -183,6 +183,8 @@ void ThemeColorChanger::apply(std::shared_ptr<model::ColorSet> const& pColorSet)
         if (pCurrentPage->IsMasterPage() && pCurrentPage != mpMasterPage)
             changeThemeColors(mpDocShell, pCurrentPage, pColorSet);
     }
+
+    mpDocShell->Broadcast(SfxHint(SfxHintId::ThemeColorsChanged));
 
     pUndoManager->LeaveListAction();
 }

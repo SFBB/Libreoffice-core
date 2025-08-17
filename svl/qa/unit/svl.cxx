@@ -27,6 +27,7 @@
 
 #include <math.h>
 
+#include <o3tl/nonstaticstring.hxx>
 #include <svl/numformat.hxx>
 #include <svl/zforlist.hxx>
 #include <svl/zformat.hxx>
@@ -324,9 +325,9 @@ void Test::testNumberFormat()
 void Test::testSharedString()
 {
     // Use shared string as normal, non-shared string, which is allowed.
-    SharedString aSS1("Test"), aSS2("Test");
+    SharedString aSS1(u"Test"_ustr), aSS2(u"Test"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Equality check should return true.", bool(aSS1 == aSS2));
-    SharedString aSS3("test");
+    SharedString aSS3(u"test"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Equality check is case sensitive.", aSS1 != aSS3);
 }
 
@@ -336,15 +337,15 @@ void Test::testSharedStringPool()
     svl::SharedStringPool aPool(aSysLocale.GetCharClass());
 
     svl::SharedString p1, p2;
-    p1 = aPool.intern("Andy");
-    p2 = aPool.intern("Andy");
+    p1 = aPool.intern(u"Andy"_ustr);
+    p2 = aPool.intern(u"Andy"_ustr);
     CPPUNIT_ASSERT_EQUAL(p1.getData(), p2.getData());
 
-    p2 = aPool.intern("Bruce");
+    p2 = aPool.intern(u"Bruce"_ustr);
     CPPUNIT_ASSERT_MESSAGE("They must differ.", p1.getData() != p2.getData());
 
-    OUString aAndy("Andy");
-    p1 = aPool.intern("Andy");
+    OUString aAndy(u"Andy"_ustr);
+    p1 = aPool.intern(u"Andy"_ustr);
     p2 = aPool.intern(aAndy);
     CPPUNIT_ASSERT_MESSAGE("Identifier shouldn't be NULL.", p1.getData());
     CPPUNIT_ASSERT_MESSAGE("Identifier shouldn't be NULL.", p2.getData());
@@ -352,12 +353,12 @@ void Test::testSharedStringPool()
 
     // Test case insensitive string ID's.
     p1 = aPool.intern(aAndy);
-    p2 = aPool.intern("andy");
+    p2 = aPool.intern(u"andy"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to intern strings.", p1.getData());
     CPPUNIT_ASSERT_MESSAGE("Failed to intern strings.", p2.getData());
     CPPUNIT_ASSERT_MESSAGE("These two ID's should differ.", p1.getData() != p2.getData());
     CPPUNIT_ASSERT_EQUAL_MESSAGE("These two ID's should be equal.", p2.getDataIgnoreCase(), p1.getDataIgnoreCase());
-    p2 = aPool.intern("ANDY");
+    p2 = aPool.intern(u"ANDY"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to intern string.", p2.getData());
     CPPUNIT_ASSERT_MESSAGE("These two ID's should differ.", p1.getData() != p2.getData());
     CPPUNIT_ASSERT_EQUAL_MESSAGE("These two ID's should be equal.", p2.getDataIgnoreCase(), p1.getDataIgnoreCase());
@@ -370,9 +371,9 @@ void Test::testSharedStringPoolPurge()
     size_t extraCount = aPool.getCount(); // internal items such as SharedString::getEmptyString()
     size_t extraCountIgnoreCase = aPool.getCountIgnoreCase();
 
-    aPool.intern("Andy");
-    aPool.intern("andy");
-    aPool.intern("ANDY");
+    aPool.intern(o3tl::nonStaticString(u"Andy"));
+    aPool.intern(o3tl::nonStaticString(u"andy"));
+    aPool.intern(o3tl::nonStaticString(u"ANDY"));
 
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong string count.", 3+extraCount, aPool.getCount());
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Wrong case insensitive string count.", 1+extraCountIgnoreCase, aPool.getCountIgnoreCase());
@@ -384,10 +385,10 @@ void Test::testSharedStringPoolPurge()
     CPPUNIT_ASSERT_EQUAL(extraCountIgnoreCase, aPool.getCountIgnoreCase());
 
     // Now, create string objects using optional so we can clear them
-    std::optional<svl::SharedString> pStr1 = aPool.intern("Andy");
-    std::optional<svl::SharedString> pStr2 = aPool.intern("andy");
-    std::optional<svl::SharedString> pStr3 = aPool.intern("ANDY");
-    std::optional<svl::SharedString> pStr4 = aPool.intern("Bruce");
+    std::optional<svl::SharedString> pStr1 = aPool.intern(o3tl::nonStaticString(u"Andy"));
+    std::optional<svl::SharedString> pStr2 = aPool.intern(o3tl::nonStaticString(u"andy"));
+    std::optional<svl::SharedString> pStr3 = aPool.intern(o3tl::nonStaticString(u"ANDY"));
+    std::optional<svl::SharedString> pStr4 = aPool.intern(o3tl::nonStaticString(u"Bruce"));
 
     CPPUNIT_ASSERT_EQUAL(5+extraCount, aPool.getCount());
     CPPUNIT_ASSERT_EQUAL(2+extraCountIgnoreCase, aPool.getCountIgnoreCase());
@@ -430,8 +431,8 @@ void Test::testSharedStringPoolPurgeBug1()
     svl::SharedStringPool aPool(aSysLocale.GetCharClass());
     size_t extraCount = aPool.getCount(); // internal items such as SharedString::getEmptyString()
     size_t extraCountIgnoreCase = aPool.getCountIgnoreCase();
-    aPool.intern("Andy");
-    aPool.intern("andy");
+    aPool.intern(o3tl::nonStaticString(u"Andy"));
+    aPool.intern(o3tl::nonStaticString(u"andy"));
     aPool.purge();
     CPPUNIT_ASSERT_EQUAL(extraCount, aPool.getCount());
     CPPUNIT_ASSERT_EQUAL(extraCountIgnoreCase, aPool.getCountIgnoreCase());
@@ -442,8 +443,8 @@ void Test::testSharedStringPoolEmptyString()
     // Make sure SharedString::getEmptyString() is in the pool and matches empty strings.
     SvtSysLocale aSysLocale;
     svl::SharedStringPool aPool(aSysLocale.GetCharClass());
-    aPool.intern("");
-    CPPUNIT_ASSERT_EQUAL(SharedString::getEmptyString(), aPool.intern(""));
+    aPool.intern(u""_ustr);
+    CPPUNIT_ASSERT_EQUAL(SharedString::getEmptyString(), aPool.intern(u""_ustr));
     CPPUNIT_ASSERT_EQUAL(SharedString::getEmptyString(), aPool.intern(SharedString::EMPTY_STRING));
     // And it should still work even after purging.
     aPool.purge();
@@ -1152,6 +1153,15 @@ void Test::testIsNumberFormat()
         { "20.3", true },
         { "2", true },
         { "test", false },
+        { "$0.12", true }, // tdf#48706
+        { "$.12", true }, // tdf#48706
+        { "1 .", false }, // tdf#131562
+        { "1 .2", false }, // tdf#131562
+        { "1 . 2", false }, // tdf#131562
+        { "1. 2", false }, // tdf#131562
+        { " . 2", false }, // tdf#131562
+        { ". 2", false }, // tdf#131562
+        { " .2", true }, // tdf#131562
         { "Jan1", false }, // tdf#34724
         { "1Jan", false }, // tdf#34724
         { "Jan1 2000", true }, // tdf#91420
@@ -1160,7 +1170,7 @@ void Test::testIsNumberFormat()
         { "Sept 1", true }, //tdf#127363
         { "5/d", false }, //tdf#143165
         { "Jan 1 2000", true },
-        { "5-12-14", false },
+        { "5-12-14", true }, // tdf#164239
         { "005-12-14", true },
         { "15-10-30", true },
         { "2015-10-30", true },
@@ -1222,26 +1232,28 @@ void checkSpecificNumberFormats( SvNumberFormatter& rFormatter,
 void Test::testIsNumberFormatSpecific()
 {
     {
-        // en-US uses M/D/Y format, test that a-b-c input with a<=31 and b<=12
-        // does not lead to a/b/c date output
+        // en-US uses M/D/Y format, test that without Y-M-D pattern an a-b-c
+        // input with a<=12 leads to ISO a-b-c date output.
         SvNumberFormatter aFormatter(m_xContext, LANGUAGE_ENGLISH_US);
 
         std::vector<FormatInputOutput> aIO = {
-            {  "5-12-14", false, "", 0 },
-            { "32-12-14",  true, "1932-12-14", 0 }
+            { "005-12-14", true, "0005-12-14", 0 },
+            {   "5-12-14", true, "2005-12-14", 0 },
+            {  "32-12-14", true, "1932-12-14", 0 }
         };
 
         checkSpecificNumberFormats( aFormatter, aIO, "[en-US] date");
     }
 
     {
-        // de-DE uses D.M.Y format, test that a-b-c input with a<=31 and b<=12
-        // does not lead to a.b.c date output
+        // de-DE uses D.M.Y format, test that without Y-M-D pattern an a-b-c
+        // input with a<=31 leads to ISO a-b-c date output.
         SvNumberFormatter aFormatter(m_xContext, LANGUAGE_GERMAN);
 
         std::vector<FormatInputOutput> aIO = {
-            {  "5-12-14", false, "", 0 },
-            { "32-12-14",  true, "1932-12-14", 0 }
+            { "005-12-14", true, "0005-12-14", 0 },
+            {   "5-12-14", true, "2005-12-14", 0 },
+            {  "32-12-14", true, "1932-12-14", 0 }
         };
 
         checkSpecificNumberFormats( aFormatter, aIO, "[de-DE] date");
@@ -1253,6 +1265,7 @@ void Test::testIsNumberFormatSpecific()
         SvNumberFormatter aFormatter(m_xContext, LANGUAGE_DUTCH);
 
         std::vector<FormatInputOutput> aIO = {
+            { "001-2-11",   true, "0001-02-11", 0 },
             { "22-11-1999", true, "22-11-99", 0 },      // if default YY changes to YYYY adapt this
             { "1999-11-22", true, "1999-11-22", 0 },
             { "1-2-11",     true, "01-02-11", 0 },      // if default YY changes to YYYY adapt this
@@ -1368,6 +1381,8 @@ void Test::testUserDefinedNumberFormats()
     LanguageType eLang = LANGUAGE_ENGLISH_US;
     OUString sCode, sExpected;
     SvNumberFormatter aFormatter(m_xContext, eLang);
+    // tdf#158890 replace '?' with figure blank (0x2007)
+    static constexpr OUString sBlankDigit = u" "_ustr;
     {  // tdf#97835: suppress decimal separator
         sCode = "0.##\" m\"";
         sExpected = "12 m";
@@ -1461,7 +1476,7 @@ void Test::testUserDefinedNumberFormats()
     }
     {  // tdf#102507: left alignment of denominator
         sCode = "# ?/???";
-        sExpected = "3 1/2  ";
+        sExpected = OUString::Concat( u"3 1/2"_ustr ) + sBlankDigit + sBlankDigit;
         checkPreviewString(aFormatter, sCode, 3.5, eLang, sExpected);
     }
     {  // tdf#100594: forced denominator
@@ -1505,15 +1520,15 @@ void Test::testUserDefinedNumberFormats()
         sExpected = "15/ 12";
         checkPreviewString(aFormatter, sCode, 1.2345667, eLang, sExpected);
         sCode = "# ?/ ???";
-        sExpected = "3 1/ 2  ";
+        sExpected = OUString::Concat( u"3 1/ 2"_ustr ) + sBlankDigit + sBlankDigit;
         checkPreviewString(aFormatter, sCode, 3.5, eLang, sExpected);
     }
     {  // Display 1.96 as 2 and not 1 1/1
         sCode = "# ?/?";
-        sExpected = "2    ";
+        sExpected = OUString::Concat( u"2 "_ustr ) + sBlankDigit + u" "_ustr + sBlankDigit;
         checkPreviewString(aFormatter, sCode, 1.96, eLang, sExpected);
         sCode = "# ?/ ?";
-        sExpected = "2     ";
+        sExpected = OUString::Concat( u"2 "_ustr ) + sBlankDigit + u"  "_ustr + sBlankDigit;
         checkPreviewString(aFormatter, sCode, 1.96, eLang, sExpected);
         sCode = "# #/#";
         sExpected = "2";
@@ -1745,7 +1760,7 @@ void Test::testUserDefinedNumberFormats()
     }
     {   // tdf#156449 Use '?' in exponent of scientific number
         sCode =     "0.00E+?0";
-        sExpected = "3.14E+ 0"; // before change it was "3.14E+00"
+        sExpected = OUString::Concat( u"3.14E+"_ustr ) + sBlankDigit + u"0"_ustr; // before change it was "3.14E+00"
         checkPreviewString(aFormatter, sCode, M_PI, eLang, sExpected);
         // There should be at least one '0' in exponent
         sCode =     "0.00E+??";
@@ -1809,23 +1824,28 @@ void Test::testUserDefinedNumberFormats()
     }
     {   // tdf#117575 treat thousand separator with '?' in integer part
         sCode = "\"Value= \"?,??0.00";
-        sExpected = "Value=     3.14";
+        sExpected = OUString::Concat( u"Value= "_ustr ) + sBlankDigit + u" "_ustr + sBlankDigit + sBlankDigit + u"3.14"_ustr;
         checkPreviewString(aFormatter, sCode, M_PI, LANGUAGE_ENGLISH_US, sExpected);
-        sExpected = "Value=    12.00";
+        sExpected = OUString::Concat( u"Value= "_ustr ) + sBlankDigit + u" "_ustr + sBlankDigit + u"12.00"_ustr;
         checkPreviewString(aFormatter, sCode, 12, LANGUAGE_ENGLISH_US, sExpected);
-        sExpected = "Value=   123.00";
+        sExpected = OUString::Concat( u"Value= "_ustr ) + sBlankDigit + u" 123.00"_ustr;
         checkPreviewString(aFormatter, sCode, 123, LANGUAGE_ENGLISH_US, sExpected);
         sExpected = "Value= 1,234.00";
         checkPreviewString(aFormatter, sCode, 1234, LANGUAGE_ENGLISH_US, sExpected);
         sExpected = "Value= 12,345.00";
         checkPreviewString(aFormatter, sCode, 12345, LANGUAGE_ENGLISH_US, sExpected);
     }
+    {   // tdf#159930 no digit in integer part
+        sCode = "+.000;-.000";
+        sExpected = "+3.142"; // without the patch is would display "3+.142"
+        checkPreviewString(aFormatter, sCode, M_PI, LANGUAGE_ENGLISH_US, sExpected);
+    }
 }
 
 void Test::testNfEnglishKeywordsIntegrity()
 {
     SvNumberFormatter aFormatter(m_xContext, LANGUAGE_ENGLISH_US);
-    const NfKeywordTable& rEnglishKeywords = aFormatter.GetEnglishKeywords();
+    const NfKeywordTable& rEnglishKeywords = SvNumberFormatter::GetEnglishKeywords();
     const NfKeywordTable& sKeywords = aFormatter.GetKeywords(0);
     CPPUNIT_ASSERT_EQUAL( size_t(NF_KEYWORD_ENTRIES_COUNT), rEnglishKeywords.size() );
     for (size_t i = 0; i < size_t(NF_KEYWORD_ENTRIES_COUNT); ++i)
@@ -1833,65 +1853,65 @@ void Test::testNfEnglishKeywordsIntegrity()
         CPPUNIT_ASSERT_EQUAL( sKeywords[i], rEnglishKeywords[i] );
     }
     // Check the order of sEnglishKeyword
-    CPPUNIT_ASSERT_EQUAL( OUString("E"),     rEnglishKeywords[NF_KEY_E] );
-    CPPUNIT_ASSERT_EQUAL( OUString("AM/PM"), rEnglishKeywords[NF_KEY_AMPM] );
-    CPPUNIT_ASSERT_EQUAL( OUString("A/P"),   rEnglishKeywords[NF_KEY_AP] );
-    CPPUNIT_ASSERT_EQUAL( OUString("M"),     rEnglishKeywords[NF_KEY_MI]  );
-    CPPUNIT_ASSERT_EQUAL( OUString("MM"),    rEnglishKeywords[NF_KEY_MMI] );
-    CPPUNIT_ASSERT_EQUAL( OUString("M"),     rEnglishKeywords[NF_KEY_M] );
-    CPPUNIT_ASSERT_EQUAL( OUString("MM"),    rEnglishKeywords[NF_KEY_MM] );
-    CPPUNIT_ASSERT_EQUAL( OUString("MMM"),   rEnglishKeywords[NF_KEY_MMM] );
-    CPPUNIT_ASSERT_EQUAL( OUString("MMMM"),  rEnglishKeywords[NF_KEY_MMMM] );
-    CPPUNIT_ASSERT_EQUAL( OUString("H"),     rEnglishKeywords[NF_KEY_H] );
-    CPPUNIT_ASSERT_EQUAL( OUString("HH"),    rEnglishKeywords[NF_KEY_HH] );
-    CPPUNIT_ASSERT_EQUAL( OUString("S"),     rEnglishKeywords[NF_KEY_S] );
-    CPPUNIT_ASSERT_EQUAL( OUString("SS"),    rEnglishKeywords[NF_KEY_SS] );
-    CPPUNIT_ASSERT_EQUAL( OUString("Q"),     rEnglishKeywords[NF_KEY_Q] );
-    CPPUNIT_ASSERT_EQUAL( OUString("QQ"),    rEnglishKeywords[NF_KEY_QQ] );
-    CPPUNIT_ASSERT_EQUAL( OUString("D"),     rEnglishKeywords[NF_KEY_D] );
-    CPPUNIT_ASSERT_EQUAL( OUString("DD"),    rEnglishKeywords[NF_KEY_DD] );
-    CPPUNIT_ASSERT_EQUAL( OUString("DDD"),   rEnglishKeywords[NF_KEY_DDD] );
-    CPPUNIT_ASSERT_EQUAL( OUString("DDDD"),  rEnglishKeywords[NF_KEY_DDDD] );
-    CPPUNIT_ASSERT_EQUAL( OUString("YY"),    rEnglishKeywords[NF_KEY_YY] );
-    CPPUNIT_ASSERT_EQUAL( OUString("YYYY"),  rEnglishKeywords[NF_KEY_YYYY] );
-    CPPUNIT_ASSERT_EQUAL( OUString("NN"),    rEnglishKeywords[NF_KEY_NN] );
-    CPPUNIT_ASSERT_EQUAL( OUString("NNNN"),  rEnglishKeywords[NF_KEY_NNNN] );
-    CPPUNIT_ASSERT_EQUAL( OUString("CCC"),   rEnglishKeywords[NF_KEY_CCC] );
-    CPPUNIT_ASSERT_EQUAL( OUString("GENERAL"), rEnglishKeywords[NF_KEY_GENERAL] );
-    CPPUNIT_ASSERT_EQUAL( OUString("NNN"),     rEnglishKeywords[NF_KEY_NNN] );
-    CPPUNIT_ASSERT_EQUAL( OUString("WW"),      rEnglishKeywords[NF_KEY_WW] );
-    CPPUNIT_ASSERT_EQUAL( OUString("MMMMM"),   rEnglishKeywords[NF_KEY_MMMMM] );
-    CPPUNIT_ASSERT_EQUAL( OUString("TRUE"),    rEnglishKeywords[NF_KEY_TRUE] );
-    CPPUNIT_ASSERT_EQUAL( OUString("FALSE"),   rEnglishKeywords[NF_KEY_FALSE] );
-    CPPUNIT_ASSERT_EQUAL( OUString("BOOLEAN"), rEnglishKeywords[NF_KEY_BOOLEAN] );
-    CPPUNIT_ASSERT_EQUAL( OUString("COLOR"),   rEnglishKeywords[NF_KEY_COLOR] );
-    CPPUNIT_ASSERT_EQUAL( OUString("BLACK"),   rEnglishKeywords[NF_KEY_BLACK] );
-    CPPUNIT_ASSERT_EQUAL( OUString("BLUE"),    rEnglishKeywords[NF_KEY_BLUE] );
-    CPPUNIT_ASSERT_EQUAL( OUString("GREEN"),   rEnglishKeywords[NF_KEY_GREEN] );
-    CPPUNIT_ASSERT_EQUAL( OUString("CYAN"),    rEnglishKeywords[NF_KEY_CYAN] );
-    CPPUNIT_ASSERT_EQUAL( OUString("RED"),     rEnglishKeywords[NF_KEY_RED] );
-    CPPUNIT_ASSERT_EQUAL( OUString("MAGENTA"), rEnglishKeywords[NF_KEY_MAGENTA] );
-    CPPUNIT_ASSERT_EQUAL( OUString("BROWN"),   rEnglishKeywords[NF_KEY_BROWN] );
-    CPPUNIT_ASSERT_EQUAL( OUString("GREY"),    rEnglishKeywords[NF_KEY_GREY] );
-    CPPUNIT_ASSERT_EQUAL( OUString("YELLOW"),  rEnglishKeywords[NF_KEY_YELLOW] );
-    CPPUNIT_ASSERT_EQUAL( OUString("WHITE"),   rEnglishKeywords[NF_KEY_WHITE] );
-    CPPUNIT_ASSERT_EQUAL( OUString("AAA"),   rEnglishKeywords[NF_KEY_AAA]);
-    CPPUNIT_ASSERT_EQUAL( OUString("AAAA"),  rEnglishKeywords[NF_KEY_AAAA] );
-    CPPUNIT_ASSERT_EQUAL( OUString("E"),     rEnglishKeywords[NF_KEY_EC] );
-    CPPUNIT_ASSERT_EQUAL( OUString("EE"),    rEnglishKeywords[NF_KEY_EEC] );
-    CPPUNIT_ASSERT_EQUAL( OUString("G"),     rEnglishKeywords[NF_KEY_G] );
-    CPPUNIT_ASSERT_EQUAL( OUString("GG"),    rEnglishKeywords[NF_KEY_GG] );
-    CPPUNIT_ASSERT_EQUAL( OUString("GGG"),   rEnglishKeywords[NF_KEY_GGG] );
-    CPPUNIT_ASSERT_EQUAL( OUString("R"),     rEnglishKeywords[NF_KEY_R]  );
-    CPPUNIT_ASSERT_EQUAL( OUString("RR"),    rEnglishKeywords[NF_KEY_RR]  );
-    CPPUNIT_ASSERT_EQUAL( OUString("t"),     rEnglishKeywords[NF_KEY_THAI_T] );
+    CPPUNIT_ASSERT_EQUAL( u"E"_ustr,     rEnglishKeywords[NF_KEY_E] );
+    CPPUNIT_ASSERT_EQUAL( u"AM/PM"_ustr, rEnglishKeywords[NF_KEY_AMPM] );
+    CPPUNIT_ASSERT_EQUAL( u"A/P"_ustr,   rEnglishKeywords[NF_KEY_AP] );
+    CPPUNIT_ASSERT_EQUAL( u"M"_ustr,     rEnglishKeywords[NF_KEY_MI]  );
+    CPPUNIT_ASSERT_EQUAL( u"MM"_ustr,    rEnglishKeywords[NF_KEY_MMI] );
+    CPPUNIT_ASSERT_EQUAL( u"M"_ustr,     rEnglishKeywords[NF_KEY_M] );
+    CPPUNIT_ASSERT_EQUAL( u"MM"_ustr,    rEnglishKeywords[NF_KEY_MM] );
+    CPPUNIT_ASSERT_EQUAL( u"MMM"_ustr,   rEnglishKeywords[NF_KEY_MMM] );
+    CPPUNIT_ASSERT_EQUAL( u"MMMM"_ustr,  rEnglishKeywords[NF_KEY_MMMM] );
+    CPPUNIT_ASSERT_EQUAL( u"H"_ustr,     rEnglishKeywords[NF_KEY_H] );
+    CPPUNIT_ASSERT_EQUAL( u"HH"_ustr,    rEnglishKeywords[NF_KEY_HH] );
+    CPPUNIT_ASSERT_EQUAL( u"S"_ustr,     rEnglishKeywords[NF_KEY_S] );
+    CPPUNIT_ASSERT_EQUAL( u"SS"_ustr,    rEnglishKeywords[NF_KEY_SS] );
+    CPPUNIT_ASSERT_EQUAL( u"Q"_ustr,     rEnglishKeywords[NF_KEY_Q] );
+    CPPUNIT_ASSERT_EQUAL( u"QQ"_ustr,    rEnglishKeywords[NF_KEY_QQ] );
+    CPPUNIT_ASSERT_EQUAL( u"D"_ustr,     rEnglishKeywords[NF_KEY_D] );
+    CPPUNIT_ASSERT_EQUAL( u"DD"_ustr,    rEnglishKeywords[NF_KEY_DD] );
+    CPPUNIT_ASSERT_EQUAL( u"DDD"_ustr,   rEnglishKeywords[NF_KEY_DDD] );
+    CPPUNIT_ASSERT_EQUAL( u"DDDD"_ustr,  rEnglishKeywords[NF_KEY_DDDD] );
+    CPPUNIT_ASSERT_EQUAL( u"YY"_ustr,    rEnglishKeywords[NF_KEY_YY] );
+    CPPUNIT_ASSERT_EQUAL( u"YYYY"_ustr,  rEnglishKeywords[NF_KEY_YYYY] );
+    CPPUNIT_ASSERT_EQUAL( u"NN"_ustr,    rEnglishKeywords[NF_KEY_NN] );
+    CPPUNIT_ASSERT_EQUAL( u"NNNN"_ustr,  rEnglishKeywords[NF_KEY_NNNN] );
+    CPPUNIT_ASSERT_EQUAL( u"CCC"_ustr,   rEnglishKeywords[NF_KEY_CCC] );
+    CPPUNIT_ASSERT_EQUAL( u"GENERAL"_ustr, rEnglishKeywords[NF_KEY_GENERAL] );
+    CPPUNIT_ASSERT_EQUAL( u"NNN"_ustr,     rEnglishKeywords[NF_KEY_NNN] );
+    CPPUNIT_ASSERT_EQUAL( u"WW"_ustr,      rEnglishKeywords[NF_KEY_WW] );
+    CPPUNIT_ASSERT_EQUAL( u"MMMMM"_ustr,   rEnglishKeywords[NF_KEY_MMMMM] );
+    CPPUNIT_ASSERT_EQUAL( u"TRUE"_ustr,    rEnglishKeywords[NF_KEY_TRUE] );
+    CPPUNIT_ASSERT_EQUAL( u"FALSE"_ustr,   rEnglishKeywords[NF_KEY_FALSE] );
+    CPPUNIT_ASSERT_EQUAL( u"BOOLEAN"_ustr, rEnglishKeywords[NF_KEY_BOOLEAN] );
+    CPPUNIT_ASSERT_EQUAL( u"COLOR"_ustr,   rEnglishKeywords[NF_KEY_COLOR] );
+    CPPUNIT_ASSERT_EQUAL( u"BLACK"_ustr,   rEnglishKeywords[NF_KEY_BLACK] );
+    CPPUNIT_ASSERT_EQUAL( u"BLUE"_ustr,    rEnglishKeywords[NF_KEY_BLUE] );
+    CPPUNIT_ASSERT_EQUAL( u"GREEN"_ustr,   rEnglishKeywords[NF_KEY_GREEN] );
+    CPPUNIT_ASSERT_EQUAL( u"CYAN"_ustr,    rEnglishKeywords[NF_KEY_CYAN] );
+    CPPUNIT_ASSERT_EQUAL( u"RED"_ustr,     rEnglishKeywords[NF_KEY_RED] );
+    CPPUNIT_ASSERT_EQUAL( u"MAGENTA"_ustr, rEnglishKeywords[NF_KEY_MAGENTA] );
+    CPPUNIT_ASSERT_EQUAL( u"BROWN"_ustr,   rEnglishKeywords[NF_KEY_BROWN] );
+    CPPUNIT_ASSERT_EQUAL( u"GREY"_ustr,    rEnglishKeywords[NF_KEY_GREY] );
+    CPPUNIT_ASSERT_EQUAL( u"YELLOW"_ustr,  rEnglishKeywords[NF_KEY_YELLOW] );
+    CPPUNIT_ASSERT_EQUAL( u"WHITE"_ustr,   rEnglishKeywords[NF_KEY_WHITE] );
+    CPPUNIT_ASSERT_EQUAL( u"AAA"_ustr,   rEnglishKeywords[NF_KEY_AAA]);
+    CPPUNIT_ASSERT_EQUAL( u"AAAA"_ustr,  rEnglishKeywords[NF_KEY_AAAA] );
+    CPPUNIT_ASSERT_EQUAL( u"E"_ustr,     rEnglishKeywords[NF_KEY_EC] );
+    CPPUNIT_ASSERT_EQUAL( u"EE"_ustr,    rEnglishKeywords[NF_KEY_EEC] );
+    CPPUNIT_ASSERT_EQUAL( u"G"_ustr,     rEnglishKeywords[NF_KEY_G] );
+    CPPUNIT_ASSERT_EQUAL( u"GG"_ustr,    rEnglishKeywords[NF_KEY_GG] );
+    CPPUNIT_ASSERT_EQUAL( u"GGG"_ustr,   rEnglishKeywords[NF_KEY_GGG] );
+    CPPUNIT_ASSERT_EQUAL( u"R"_ustr,     rEnglishKeywords[NF_KEY_R]  );
+    CPPUNIT_ASSERT_EQUAL( u"RR"_ustr,    rEnglishKeywords[NF_KEY_RR]  );
+    CPPUNIT_ASSERT_EQUAL( u"t"_ustr,     rEnglishKeywords[NF_KEY_THAI_T] );
 }
 
 void Test::testStandardColorIntegrity()
 {
     SvNumberFormatter aFormatter(m_xContext, LANGUAGE_ENGLISH_US);
-    const ::std::vector<Color> & rStandardColors = aFormatter.GetStandardColors();
-    const size_t nMaxDefaultColors = aFormatter.GetMaxDefaultColors();
+    const ::std::vector<Color> & rStandardColors = SvNumberFormatter::GetStandardColors();
+    const size_t nMaxDefaultColors = SvNumberFormatter::GetMaxDefaultColors();
     CPPUNIT_ASSERT_EQUAL( size_t(NF_KEY_LASTCOLOR) - size_t(NF_KEY_FIRSTCOLOR) + 1, nMaxDefaultColors );
     CPPUNIT_ASSERT_EQUAL( nMaxDefaultColors, rStandardColors.size() );
     // Colors must follow same order as in sEnglishKeyword
@@ -1910,7 +1930,7 @@ void Test::testStandardColorIntegrity()
 void Test::testColorNamesConversion()
 {
     SvNumberFormatter aFormatter(m_xContext, LANGUAGE_GERMAN);
-    const NfKeywordTable& rEnglishKeywords = aFormatter.GetEnglishKeywords();
+    const NfKeywordTable& rEnglishKeywords = SvNumberFormatter::GetEnglishKeywords();
     const NfKeywordTable& rKeywords = aFormatter.GetKeywords(0);
 
     // Holding a reference to the NfKeywordTable doesn't help if we switch
@@ -1920,8 +1940,8 @@ void Test::testColorNamesConversion()
         aGermanKeywords[i] = rKeywords[i];
 
     // Check that we actually have German and English keywords.
-    CPPUNIT_ASSERT_EQUAL( OUString("FARBE"), aGermanKeywords[NF_KEY_COLOR]);
-    CPPUNIT_ASSERT_EQUAL( OUString("COLOR"), rEnglishKeywords[NF_KEY_COLOR]);
+    CPPUNIT_ASSERT_EQUAL( u"FARBE"_ustr, aGermanKeywords[NF_KEY_COLOR]);
+    CPPUNIT_ASSERT_EQUAL( u"COLOR"_ustr, rEnglishKeywords[NF_KEY_COLOR]);
 
     // Test each color conversion.
     // [FARBE1] -> [COLOR1] can't be tested because we have no color table link
@@ -1973,11 +1993,11 @@ void Test::testExcelExportFormats()
 
     aCode = aFormatter.GetFormatStringForExcel( nKey1, aKeywords, aTempFormatter);
     // Test that LCID is prepended.
-    CPPUNIT_ASSERT_EQUAL( OUString("[$-1C09]00.00"), aCode);
+    CPPUNIT_ASSERT_EQUAL( u"[$-1C09]00.00"_ustr, aCode);
 
     aCode = aFormatter.GetFormatStringForExcel( nKey2, aKeywords, aTempFormatter);
     // Test that LCID is not prepended. Note that literal characters are escaped.
-    CPPUNIT_ASSERT_EQUAL( OUString("[$R-1C09]\\ #,##0.0;[$R-1C09]\\-#,##0.0"), aCode);
+    CPPUNIT_ASSERT_EQUAL( u"[$R-1C09]\\ #,##0.0;[$R-1C09]\\-#,##0.0"_ustr, aCode);
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testLanguageNone)
@@ -1985,12 +2005,59 @@ CPPUNIT_TEST_FIXTURE(Test, testLanguageNone)
     SvNumberFormatter aFormatter(m_xContext, LANGUAGE_ENGLISH_US);
     NfKeywordTable keywords;
     aFormatter.FillKeywordTableForExcel(keywords);
-    OUString code("TT.MM.JJJJ");
+    OUString code(u"TT.MM.JJJJ"_ustr);
     sal_uInt32 nKey = aFormatter.GetEntryKey(code, LANGUAGE_GERMAN);
     CPPUNIT_ASSERT(nKey != NUMBERFORMAT_ENTRY_NOT_FOUND);
     SvNumberformat const*const pFormat = aFormatter.GetEntry(nKey);
-    LocaleDataWrapper ldw(m_xContext, LanguageTag(pFormat->GetLanguage()));
-    CPPUNIT_ASSERT_EQUAL(OUString("dd.mm.yyyy"), pFormat->GetMappedFormatstring(keywords, ldw));
+    const LocaleDataWrapper* ldw = LocaleDataWrapper::get(LanguageTag(pFormat->GetLanguage()));
+    CPPUNIT_ASSERT_EQUAL(u"dd.mm.yyyy"_ustr, pFormat->GetMappedFormatstring(keywords, *ldw));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf160306)
+{
+    // Check some cases, where the output of ROUND and of number formatter differed
+    SvNumberFormatter aFormatter(m_xContext, LANGUAGE_ENGLISH_US);
+    sal_uInt32 format = aFormatter.GetEntryKey(u"0.00", LANGUAGE_ENGLISH_US);
+    CPPUNIT_ASSERT(format != NUMBERFORMAT_ENTRY_NOT_FOUND);
+    OUString output;
+    const Color* color;
+    aFormatter.GetOutputString(2697.0649999999996, format, output, &color);
+    // Without the fix in place, this would fail with
+    // - Expected: 2697.07
+    // - Actual  : 2697.06
+    CPPUNIT_ASSERT_EQUAL(u"2697.07"_ustr, output);
+    aFormatter.GetOutputString(57.374999999999993, format, output, &color);
+    // Without the fix in place, this would fail with
+    // - Expected: 57.38
+    // - Actual  : 57.37
+    CPPUNIT_ASSERT_EQUAL(u"57.38"_ustr, output);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf147265)
+{
+    SvNumberFormatter aFormatter(m_xContext, LANGUAGE_ENGLISH_US);
+    bool bBanking = true;
+    const NfCurrencyEntry& rCurrencyEntryUS
+        = SvNumberFormatter::GetCurrencyEntry(LANGUAGE_ENGLISH_US);
+    const NfCurrencyEntry& rCurrencyEntryCAN
+        = SvNumberFormatter::GetCurrencyEntry(LANGUAGE_ENGLISH_CAN);
+
+    // Add US formats, and then Canadian formats, and then US formats again.
+    // The default for the US format should stay the same.
+    NfWSStringsDtor aWSStringsDtor;
+    sal_uInt16 nDefault1
+        = aFormatter.GetCurrencyFormatStrings(aWSStringsDtor, rCurrencyEntryUS, bBanking);
+    aFormatter.GetCurrencyFormatStrings(aWSStringsDtor, rCurrencyEntryCAN, bBanking);
+    sal_uInt16 nDefault2
+        = aFormatter.GetCurrencyFormatStrings(aWSStringsDtor, rCurrencyEntryUS, bBanking);
+
+    // Without the fix, we always returned the final element of the array, because we add the
+    // element that should be the default last. However, if we try to add an element that is
+    // already present in the array, then we don't add it, so the final element of the array
+    // isn't necessarily the default. In this case, the final element would actually be the
+    // Canadian default format, which is a different index in the array from the American
+    // default format.
+    CPPUNIT_ASSERT_EQUAL(nDefault1, nDefault2);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(Test);

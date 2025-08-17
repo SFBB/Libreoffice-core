@@ -25,13 +25,10 @@
 #include <ObjectIdentifier.hxx>
 #include <TitleHelper.hxx>
 #include <ChartModel.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartType.hxx>
-#include <GridProperties.hxx>
 #include <Axis.hxx>
 #include <AxisHelper.hxx>
 #include <servicenames_charttypes.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <unonames.hxx>
 #include <BaseCoordinateSystem.hxx>
@@ -138,7 +135,7 @@ rtl::Reference<ChartType> lcl_getFirstStockChartType( const rtl::Reference<::cha
 
     //iterate through all coordinate systems
 
-    const std::vector< rtl::Reference< BaseCoordinateSystem > > & aCooSysList( xDiagram->getBaseCoordinateSystems() );
+    const std::vector< rtl::Reference< BaseCoordinateSystem > > aCooSysList( xDiagram->getBaseCoordinateSystems() );
     for( rtl::Reference< BaseCoordinateSystem > const & coords : aCooSysList )
     {
         //iterate through all chart types in the current coordinate system
@@ -242,12 +239,11 @@ ObjectIdentifier::ObjectIdentifier( const Reference< drawing::XShape >& rxShape 
 
 ObjectIdentifier::ObjectIdentifier( const Any& rAny )
 {
-    const uno::Type& rType = rAny.getValueType();
-    if ( rType == cppu::UnoType<OUString>::get() )
+    if (rAny.getValueType() == cppu::UnoType<OUString>::get())
     {
         rAny >>= m_aObjectCID;
     }
-    else if ( rType == cppu::UnoType< drawing::XShape >::get() )
+    else
     {
         rAny >>= m_xAdditionalShape;
     }
@@ -257,11 +253,6 @@ bool ObjectIdentifier::operator==( const ObjectIdentifier& rOID ) const
 {
     return areIdenticalObjects( m_aObjectCID, rOID.m_aObjectCID ) &&
          ( m_xAdditionalShape == rOID.m_xAdditionalShape );
-}
-
-bool ObjectIdentifier::operator!=( const ObjectIdentifier& rOID ) const
-{
-    return !operator==( rOID );
 }
 
 bool ObjectIdentifier::operator<( const ObjectIdentifier& rOID ) const
@@ -467,7 +458,7 @@ OUString ObjectIdentifier::createClassifiedIdentifierForParticles(
 OUString ObjectIdentifier::createParticleForDiagram()
 {
     //TODO: if more than one diagram is implemented, add the correct diagram index here
-    return "D=0";
+    return u"D=0"_ustr;
 }
 
 OUString ObjectIdentifier::createParticleForCoordinateSystem(
@@ -480,7 +471,7 @@ OUString ObjectIdentifier::createParticleForCoordinateSystem(
     if( xDiagram.is() )
     {
         std::size_t nCooSysIndex = 0;
-        const std::vector< rtl::Reference< BaseCoordinateSystem > > & aCooSysList( xDiagram->getBaseCoordinateSystems() );
+        const std::vector< rtl::Reference< BaseCoordinateSystem > > aCooSysList( xDiagram->getBaseCoordinateSystems() );
         for( ; nCooSysIndex < aCooSysList.size(); ++nCooSysIndex )
         {
             if( xCooSys == aCooSysList[nCooSysIndex] )
@@ -1215,7 +1206,7 @@ Reference< beans::XPropertySet > ObjectIdentifier::getObjectPropertySet(
                             errorBar = "ErrorBarZ";
 
                         xSeries->getPropertyValue( errorBar ) >>= xErrorBarProp;
-                        xObjectProperties = xErrorBarProp;
+                        xObjectProperties = std::move(xErrorBarProp);
                     }
                     break;
                 }
@@ -1246,14 +1237,14 @@ Reference< beans::XPropertySet > ObjectIdentifier::getObjectPropertySet(
                     {
                         rtl::Reference<ChartType> xChartType( lcl_getFirstStockChartType( xChartModel ) );
                         if(xChartType.is())
-                            xChartType->getPropertyValue( "BlackDay" ) >>= xObjectProperties;
+                            xChartType->getPropertyValue( u"BlackDay"_ustr ) >>= xObjectProperties;
                     }
                     break;
             case OBJECTTYPE_DATA_STOCK_GAIN:
                     {
                         rtl::Reference<ChartType> xChartType( lcl_getFirstStockChartType( xChartModel ) );
                         if(xChartType.is())
-                            xChartType->getPropertyValue( "WhiteDay" ) >>= xObjectProperties;
+                            xChartType->getPropertyValue( u"WhiteDay"_ustr ) >>= xObjectProperties;
                     }
                     break;
             case OBJECTTYPE_DATA_TABLE:

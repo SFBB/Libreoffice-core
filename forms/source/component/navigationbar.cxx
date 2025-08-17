@@ -39,9 +39,7 @@ namespace frm
     using namespace ::com::sun::star::form;
     using namespace ::com::sun::star::awt;
     using namespace ::com::sun::star::io;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::util;
-    using namespace ::com::sun::star::container;
     using namespace ::comphelper;
 
     namespace WritingMode2 = ::com::sun::star::text::WritingMode2;
@@ -170,7 +168,7 @@ namespace frm
 
     OUString SAL_CALL ONavigationBarModel::getImplementationName()
     {
-        return "com.sun.star.comp.form.ONavigationBarModel";
+        return u"com.sun.star.comp.form.ONavigationBarModel"_ustr;
     }
 
 
@@ -425,7 +423,7 @@ namespace frm
             break;
 
         case PROPERTY_ID_DEFAULTCONTROL:
-            aDefault <<= OUString( "com.sun.star.form.control.NavigationToolBar" );
+            aDefault <<= u"com.sun.star.form.control.NavigationToolBar"_ustr;
             break;
 
         case PROPERTY_ID_HELPTEXT:

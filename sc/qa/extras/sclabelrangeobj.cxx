@@ -11,7 +11,6 @@
 #include <test/sheet/xlabelrange.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XLabelRange.hpp>
 #include <com/sun/star/sheet/XLabelRanges.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
@@ -44,7 +43,7 @@ public:
 };
 
 ScLabelRangeObj::ScLabelRangeObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -53,8 +52,8 @@ uno::Reference<uno::XInterface> ScLabelRangeObj::init()
     uno::Reference<sheet::XSpreadsheetDocument> xDoc(mxComponent, uno::UNO_QUERY_THROW);
 
     uno::Reference<beans::XPropertySet> xProp(xDoc, uno::UNO_QUERY_THROW);
-    uno::Reference<sheet::XLabelRanges> xLabelRanges(xProp->getPropertyValue("ColumnLabelRanges"),
-                                                     uno::UNO_QUERY_THROW);
+    uno::Reference<sheet::XLabelRanges> xLabelRanges(
+        xProp->getPropertyValue(u"ColumnLabelRanges"_ustr), uno::UNO_QUERY_THROW);
 
     table::CellRangeAddress aCellRanageAddr1(0, 0, 1, 0, 6);
     table::CellRangeAddress aCellRanageAddr2(0, 0, 0, 0, 1);
@@ -69,7 +68,7 @@ void ScLabelRangeObj::setUp()
 {
     UnoApiTest::setUp();
     // create calc document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScLabelRangeObj);

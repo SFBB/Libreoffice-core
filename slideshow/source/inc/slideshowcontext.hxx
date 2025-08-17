@@ -31,7 +31,6 @@ namespace box2d::utils { class box2DWorld;
 
 namespace slideshow::internal
     {
-        class ShapeManager;
         class EventQueue;
         class ActivitiesQueue;
         class UserEventQueue;
@@ -108,6 +107,7 @@ namespace slideshow::internal
             const UnoViewContainer&                         mrViewContainer;
             css::uno::Reference< css::uno::XComponentContext>   mxComponentContext;
             box2d::utils::Box2DWorldSharedPtr&              mpBox2DWorld;
+            OUString                                        maFallbackDir;
         };
 
 }

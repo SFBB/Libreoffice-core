@@ -22,40 +22,40 @@
 using namespace com::sun::star::uno;
 
 PlaceEditDialog::PlaceEditDialog(weld::Window* pParent)
-    : GenericDialogController(pParent, "svt/ui/placeedit.ui", "PlaceEditDialog")
+    : GenericDialogController(pParent, u"svt/ui/placeedit.ui"_ustr, u"PlaceEditDialog"_ustr)
     , m_xCurrentDetails()
     , m_nCurrentType( 0 )
     , m_bLabelChanged( false )
     , m_bShowPassword( true )
-    , m_xEDServerName(m_xBuilder->weld_entry("name"))
-    , m_xLBServerType(m_xBuilder->weld_combo_box("type"))
-    , m_xEDUsername(m_xBuilder->weld_entry("login"))
-    , m_xFTUsernameLabel(m_xBuilder->weld_label("loginLabel"))
-    , m_xBTOk(m_xBuilder->weld_button("ok"))
-    , m_xBTDelete(m_xBuilder->weld_button("delete"))
-    , m_xBTRepoRefresh(m_xBuilder->weld_button("repositoriesRefresh"))
-    , m_xCBPassword(m_xBuilder->weld_check_button("rememberPassword"))
-    , m_xEDPassword(m_xBuilder->weld_entry("password"))
-    , m_xFTPasswordLabel(m_xBuilder->weld_label("passwordLabel"))
-    , m_xTypeGrid(m_xBuilder->weld_widget("TypeGrid"))
+    , m_xEDServerName(m_xBuilder->weld_entry(u"name"_ustr))
+    , m_xLBServerType(m_xBuilder->weld_combo_box(u"type"_ustr))
+    , m_xEDUsername(m_xBuilder->weld_entry(u"login"_ustr))
+    , m_xFTUsernameLabel(m_xBuilder->weld_label(u"loginLabel"_ustr))
+    , m_xBTOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xBTDelete(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xBTRepoRefresh(m_xBuilder->weld_button(u"repositoriesRefresh"_ustr))
+    , m_xCBPassword(m_xBuilder->weld_check_button(u"rememberPassword"_ustr))
+    , m_xEDPassword(m_xBuilder->weld_entry(u"password"_ustr))
+    , m_xFTPasswordLabel(m_xBuilder->weld_label(u"passwordLabel"_ustr))
+    , m_xTypeGrid(m_xBuilder->weld_widget(u"TypeGrid"_ustr))
 
-    , m_xRepositoryBox(m_xBuilder->weld_widget("RepositoryDetails"))
-    , m_xFTRepository(m_xBuilder->weld_label("repositoryLabel"))
-    , m_xLBRepository(m_xBuilder->weld_combo_box("repositories"))
+    , m_xRepositoryBox(m_xBuilder->weld_widget(u"RepositoryDetails"_ustr))
+    , m_xFTRepository(m_xBuilder->weld_label(u"repositoryLabel"_ustr))
+    , m_xLBRepository(m_xBuilder->weld_combo_box(u"repositories"_ustr))
 
-    , m_xEDShare(m_xBuilder->weld_entry("share"))
-    , m_xFTShare(m_xBuilder->weld_label("shareLabel"))
+    , m_xEDShare(m_xBuilder->weld_entry(u"share"_ustr))
+    , m_xFTShare(m_xBuilder->weld_label(u"shareLabel"_ustr))
 
-    , m_xDetailsGrid(m_xBuilder->weld_widget("Details"))
-    , m_xHostBox(m_xBuilder->weld_widget("HostDetails"))
-    , m_xEDHost(m_xBuilder->weld_entry("host"))
-    , m_xFTHost(m_xBuilder->weld_label("hostLabel"))
-    , m_xEDPort(m_xBuilder->weld_spin_button("port"))
-    , m_xFTPort(m_xBuilder->weld_label("portLabel"))
-    , m_xEDRoot(m_xBuilder->weld_entry("path"))
-    , m_xFTRoot(m_xBuilder->weld_label("pathLabel"))
+    , m_xDetailsGrid(m_xBuilder->weld_widget(u"Details"_ustr))
+    , m_xHostBox(m_xBuilder->weld_widget(u"HostDetails"_ustr))
+    , m_xEDHost(m_xBuilder->weld_entry(u"host"_ustr))
+    , m_xFTHost(m_xBuilder->weld_label(u"hostLabel"_ustr))
+    , m_xEDPort(m_xBuilder->weld_spin_button(u"port"_ustr))
+    , m_xFTPort(m_xBuilder->weld_label(u"portLabel"_ustr))
+    , m_xEDRoot(m_xBuilder->weld_entry(u"path"_ustr))
+    , m_xFTRoot(m_xBuilder->weld_label(u"pathLabel"_ustr))
 
-    , m_xCBDavs(m_xBuilder->weld_check_button("webdavs"))
+    , m_xCBDavs(m_xBuilder->weld_check_button(u"webdavs"_ustr))
 {
     m_xBTOk->connect_clicked( LINK( this, PlaceEditDialog, OKHdl) );
     m_xBTOk->set_sensitive( false );
@@ -74,49 +74,43 @@ PlaceEditDialog::PlaceEditDialog(weld::Window* pParent)
 }
 
 PlaceEditDialog::PlaceEditDialog(weld::Window* pParent, const std::shared_ptr<Place>& rPlace)
-    : GenericDialogController(pParent, "svt/ui/placeedit.ui", "PlaceEditDialog")
+    : GenericDialogController(pParent, u"svt/ui/placeedit.ui"_ustr, u"PlaceEditDialog"_ustr)
     , m_xCurrentDetails( )
     , m_bLabelChanged( true )
     , m_bShowPassword( false )
-    , m_xEDServerName(m_xBuilder->weld_entry("name"))
-    , m_xLBServerType(m_xBuilder->weld_combo_box("type"))
-    , m_xEDUsername(m_xBuilder->weld_entry("login"))
-    , m_xFTUsernameLabel(m_xBuilder->weld_label("loginLabel"))
-    , m_xBTOk(m_xBuilder->weld_button("ok"))
-    , m_xBTDelete(m_xBuilder->weld_button("delete"))
-    , m_xBTRepoRefresh(m_xBuilder->weld_button("repositoriesRefresh"))
-    , m_xCBPassword(m_xBuilder->weld_check_button("rememberPassword"))
-    , m_xEDPassword(m_xBuilder->weld_entry("password"))
-    , m_xFTPasswordLabel(m_xBuilder->weld_label("passwordLabel"))
-    , m_xTypeGrid(m_xBuilder->weld_widget("TypeGrid"))
+    , m_xEDServerName(m_xBuilder->weld_entry(u"name"_ustr))
+    , m_xLBServerType(m_xBuilder->weld_combo_box(u"type"_ustr))
+    , m_xEDUsername(m_xBuilder->weld_entry(u"login"_ustr))
+    , m_xFTUsernameLabel(m_xBuilder->weld_label(u"loginLabel"_ustr))
+    , m_xBTOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xBTDelete(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xBTRepoRefresh(m_xBuilder->weld_button(u"repositoriesRefresh"_ustr))
+    , m_xCBPassword(m_xBuilder->weld_check_button(u"rememberPassword"_ustr))
+    , m_xEDPassword(m_xBuilder->weld_entry(u"password"_ustr))
+    , m_xFTPasswordLabel(m_xBuilder->weld_label(u"passwordLabel"_ustr))
+    , m_xTypeGrid(m_xBuilder->weld_widget(u"TypeGrid"_ustr))
 
-    , m_xRepositoryBox(m_xBuilder->weld_widget("RepositoryDetails"))
-    , m_xFTRepository(m_xBuilder->weld_label("repositoryLabel"))
-    , m_xLBRepository(m_xBuilder->weld_combo_box("repositories"))
+    , m_xRepositoryBox(m_xBuilder->weld_widget(u"RepositoryDetails"_ustr))
+    , m_xFTRepository(m_xBuilder->weld_label(u"repositoryLabel"_ustr))
+    , m_xLBRepository(m_xBuilder->weld_combo_box(u"repositories"_ustr))
 
-    , m_xEDShare(m_xBuilder->weld_entry("share"))
-    , m_xFTShare(m_xBuilder->weld_label("shareLabel"))
+    , m_xEDShare(m_xBuilder->weld_entry(u"share"_ustr))
+    , m_xFTShare(m_xBuilder->weld_label(u"shareLabel"_ustr))
 
-    , m_xDetailsGrid(m_xBuilder->weld_widget("Details"))
-    , m_xHostBox(m_xBuilder->weld_widget("HostDetails"))
-    , m_xEDHost(m_xBuilder->weld_entry("host"))
-    , m_xFTHost(m_xBuilder->weld_label("hostLabel"))
-    , m_xEDPort(m_xBuilder->weld_spin_button("port"))
-    , m_xFTPort(m_xBuilder->weld_label("portLabel"))
-    , m_xEDRoot(m_xBuilder->weld_entry("path"))
-    , m_xFTRoot(m_xBuilder->weld_label("pathLabel"))
+    , m_xDetailsGrid(m_xBuilder->weld_widget(u"Details"_ustr))
+    , m_xHostBox(m_xBuilder->weld_widget(u"HostDetails"_ustr))
+    , m_xEDHost(m_xBuilder->weld_entry(u"host"_ustr))
+    , m_xFTHost(m_xBuilder->weld_label(u"hostLabel"_ustr))
+    , m_xEDPort(m_xBuilder->weld_spin_button(u"port"_ustr))
+    , m_xFTPort(m_xBuilder->weld_label(u"portLabel"_ustr))
+    , m_xEDRoot(m_xBuilder->weld_entry(u"path"_ustr))
+    , m_xFTRoot(m_xBuilder->weld_label(u"pathLabel"_ustr))
 
-    , m_xCBDavs(m_xBuilder->weld_check_button("webdavs"))
+    , m_xCBDavs(m_xBuilder->weld_check_button(u"webdavs"_ustr))
 {
     m_xEDPassword->hide();
     m_xFTPasswordLabel->hide();
     m_xCBPassword->hide();
-
-    m_xBTOk->connect_clicked( LINK( this, PlaceEditDialog, OKHdl) );
-    m_xBTDelete->connect_clicked( LINK( this, PlaceEditDialog, DelHdl) );
-
-    m_xEDServerName->connect_changed( LINK( this, PlaceEditDialog, ModifyHdl) );
-    m_xLBServerType->connect_changed( LINK( this, PlaceEditDialog, SelectTypeHdl ) );
 
     InitDetails( );
 
@@ -144,6 +138,12 @@ PlaceEditDialog::PlaceEditDialog(weld::Window* pParent, const std::shared_ptr<Pl
 
     // In edit mode user can't change connection type
     m_xTypeGrid->hide();
+
+    m_xBTOk->connect_clicked(LINK(this, PlaceEditDialog, OKHdl));
+    m_xBTDelete->connect_clicked(LINK(this, PlaceEditDialog, DelHdl));
+
+    m_xEDServerName->connect_changed(LINK(this, PlaceEditDialog, ModifyHdl));
+    m_xLBServerType->connect_changed(LINK(this, PlaceEditDialog, SelectTypeHdl));
 }
 
 PlaceEditDialog::~PlaceEditDialog()
@@ -204,7 +204,7 @@ void PlaceEditDialog::InitDetails( )
 
         std::shared_ptr<DetailsContainer> xCmisDetails(std::make_shared<CmisDetailsContainer>(this, sUrl));
         xCmisDetails->setChangeHdl( LINK( this, PlaceEditDialog, EditHdl ) );
-        m_aDetailsContainers.push_back(xCmisDetails);
+        m_aDetailsContainers.push_back(std::move(xCmisDetails));
 
         ++nPos;
     }
@@ -212,22 +212,22 @@ void PlaceEditDialog::InitDetails( )
     // Create WebDAV / SSH details control
     std::shared_ptr<DetailsContainer> xDavDetails(std::make_shared<DavDetailsContainer>(this));
     xDavDetails->setChangeHdl( LINK( this, PlaceEditDialog, EditHdl ) );
-    m_aDetailsContainers.push_back(xDavDetails);
+    m_aDetailsContainers.push_back(std::move(xDavDetails));
 
     std::shared_ptr<DetailsContainer> xSshDetails(std::make_shared<HostDetailsContainer>(this, 22, "sftp"));
     xSshDetails->setChangeHdl( LINK( this, PlaceEditDialog, EditHdl ) );
-    m_aDetailsContainers.push_back(xSshDetails);
+    m_aDetailsContainers.push_back(std::move(xSshDetails));
 
     // Remove Windows Share entry from dialog on Windows OS, where it's non-functional
 #if defined(_WIN32)
     // nPos is the position of first item that is pre-defined in svtools/uiconfig/ui/placeedit.ui,
     // after other CMIS types were inserted
-    m_xLBServerType->remove(nPos + 3);
+    m_xLBServerType->remove(nPos + 2);
 #else
     // Create Windows Share control
     std::shared_ptr<DetailsContainer> xSmbDetails(std::make_shared<SmbDetailsContainer>(this));
     xSmbDetails->setChangeHdl( LINK( this, PlaceEditDialog, EditHdl ) );
-    m_aDetailsContainers.push_back(xSmbDetails);
+    m_aDetailsContainers.push_back(std::move(xSmbDetails));
 #endif
 
     // Set default to first value
@@ -294,12 +294,12 @@ IMPL_LINK_NOARG( PlaceEditDialog, EditHdl, DetailsContainer*, void )
             sLabel = sLabel.replaceFirst( "$service$", m_xLBServerType->get_active_text() );
 
             m_xEDServerName->set_text( sLabel );
-            m_bLabelChanged = false;
         }
         else
         {
             m_xEDServerName->set_text( m_xLBServerType->get_active_text( ) );
         }
+        m_bLabelChanged = false;
     }
 
     OUString sUrl = GetServerUrl( );
@@ -349,6 +349,8 @@ void PlaceEditDialog::SelectType(bool bSkipSeparator)
         m_xCurrentDetails->set_visible(false);
 
     const int nPos = m_xLBServerType->get_active( );
+    if (nPos < 0)
+        return;
     m_xCurrentDetails = m_aDetailsContainers[nPos];
     m_nCurrentType = nPos;
 

@@ -269,7 +269,13 @@ void SvMetaClass::WriteSfx( SvIdlDataBase & rBase, SvStream & rOutStm )
         return;
     }
     // write parameter array
-    rOutStm.WriteOString("static SfxFormalArgument a").WriteOString(GetName()).WriteOString("Args_Impl[] =") << endl;
+    rOutStm.WriteOString("static ");
+#if defined(_MSC_VER)
+    rOutStm.WriteOString("const");
+#else
+    rOutStm.WriteOString("constexpr");
+#endif
+    rOutStm.WriteOString(" SfxFormalArgument a").WriteOString(GetName()).WriteOString("Args_Impl[] =") << endl;
     rOutStm.WriteChar('{') << endl;
 
     std::vector<sal_uInt32> aSuperList;
@@ -292,7 +298,7 @@ void SvMetaClass::WriteSfx( SvIdlDataBase & rBase, SvStream & rOutStm )
     {
         // at least one dummy
         WriteTab( rOutStm, 1 );
-        rOutStm.WriteOString("{ (const SfxType*) &aSfxVoidItem_Impl, 0, 0 }" ) << endl;
+        rOutStm.WriteOString("{ (const SfxType*) &aSfxVoidItem_Impl, u\"\"_ustr, 0 }" ) << endl;
     }
     rOutStm << endl;
     rOutStm.WriteOString( "};" ) << endl << endl;
@@ -304,7 +310,15 @@ void SvMetaClass::WriteSfx( SvIdlDataBase & rBase, SvStream & rOutStm )
     rOutStm << endl;
 
     // write slotmap
-    rOutStm.WriteOString("static SfxSlot a").WriteOString(GetName()).WriteOString("Slots_Impl[] =") << endl;
+    rOutStm.WriteOString("static ");
+#if defined(_MSC_VER)
+    // otherwise linker error of: unresolved external symbol "struct SfxType0 const aSfxVoidItem_Impl"
+    rOutStm.WriteOString("const");
+#else
+    rOutStm.WriteOString("constexpr");
+#endif
+    rOutStm.WriteOString(" SfxSlot a").WriteOString(GetName())
+        .WriteOString("Slots_Impl[").WriteOString(OString::number(nSlotCount == 0 ? 1 : nSlotCount)).WriteOString("] =") << endl;
     rOutStm.WriteChar( '{' ) << endl;
 
     // write all attributes
@@ -319,7 +333,7 @@ void SvMetaClass::WriteSfx( SvIdlDataBase & rBase, SvStream & rOutStm )
                .WriteOString( ", 0, SfxGroupId::NONE, " )
                .WriteOString( "SFX_STUB_PTR_EXEC_NONE," )
                .WriteOString( "SFX_STUB_PTR_STATE_NONE," )
-               .WriteOString( "SfxSlotMode::NONE, SfxVoidItem, 0, 0, \"\", SfxSlotMode::NONE )" ) << endl;
+               .WriteOString( "SfxSlotMode::NONE, SfxVoidItem, 0, 0, u\"\"_ustr, SfxSlotMode::NONE )" ) << endl;
     }
     rOutStm << endl;
     rOutStm.WriteOString( "};" ) << endl;

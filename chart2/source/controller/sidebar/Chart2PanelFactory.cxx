@@ -34,6 +34,7 @@
 #include "ChartErrorBarPanel.hxx"
 #include "ChartAreaPanel.hxx"
 #include "ChartLinePanel.hxx"
+#include "ChartColorsPanel.hxx"
 
 using namespace css::uno;
 
@@ -56,9 +57,9 @@ Reference<css::ui::XUIElement> SAL_CALL ChartPanelFactory::createUIElement (
     try
     {
         const ::comphelper::NamedValueCollection aArguments (rArguments);
-        Reference<css::frame::XFrame> xFrame (aArguments.getOrDefault("Frame", Reference<css::frame::XFrame>()));
-        Reference<css::awt::XWindow> xParentWindow (aArguments.getOrDefault("ParentWindow", Reference<css::awt::XWindow>()));
-        Reference<css::frame::XController> xController (aArguments.getOrDefault("Controller", Reference<css::frame::XController>()));
+        Reference<css::frame::XFrame> xFrame(sfx2::sidebar::GetFrame(aArguments));
+        Reference<css::awt::XWindow> xParentWindow (aArguments.getOrDefault(u"ParentWindow"_ustr, Reference<css::awt::XWindow>()));
+        Reference<css::frame::XController> xController (aArguments.getOrDefault(u"Controller"_ustr, Reference<css::frame::XController>()));
 
         weld::Widget* pParent(nullptr);
         if (weld::TransportAsXWindow* pTunnel = dynamic_cast<weld::TransportAsXWindow*>(xParentWindow.get()))
@@ -66,21 +67,21 @@ Reference<css::ui::XUIElement> SAL_CALL ChartPanelFactory::createUIElement (
 
         if (!pParent)
             throw RuntimeException(
-                "PanelFactory::createUIElement called without ParentWindow",
+                u"PanelFactory::createUIElement called without ParentWindow"_ustr,
                 nullptr);
         if ( ! xFrame.is())
             throw RuntimeException(
-                "PanelFactory::createUIElement called without Frame",
+                u"PanelFactory::createUIElement called without Frame"_ustr,
                 nullptr);
         if (!xController.is())
             throw RuntimeException(
-                "ChartPanelFactory::createUIElement called without Controller",
+                u"ChartPanelFactory::createUIElement called without Controller"_ustr,
                 nullptr);
 
         ChartController* pController = dynamic_cast<ChartController*>(xController.get());
         if (!pController)
             throw RuntimeException(
-                "ChartPanelFactory::createUIElement called without valid ChartController",
+                u"ChartPanelFactory::createUIElement called without valid ChartController"_ustr,
                 nullptr);
 
         std::unique_ptr<PanelLayout> xPanel;
@@ -98,6 +99,8 @@ Reference<css::ui::XUIElement> SAL_CALL ChartPanelFactory::createUIElement (
             xPanel = ChartAreaPanel::Create(pParent, xFrame, pController);
         else if (rsResourceURL.endsWith("/LinePanel"))
             xPanel = ChartLinePanel::Create(pParent, xFrame, pController);
+        else if (rsResourceURL.endsWith("/ColorsPanel"))
+            xPanel = ChartColorsPanel::Create(pParent, xFrame, pController);
 
         if (xPanel)
             xElement = sfx2::sidebar::SidebarPanelBase::Create(
@@ -114,7 +117,7 @@ Reference<css::ui::XUIElement> SAL_CALL ChartPanelFactory::createUIElement (
     {
         css::uno::Any anyEx = cppu::getCaughtException();
         throw css::lang::WrappedTargetRuntimeException(
-            "ChartPanelFactory::createUIElement exception",
+            u"ChartPanelFactory::createUIElement exception"_ustr,
             nullptr, anyEx );
     }
 
@@ -123,7 +126,7 @@ Reference<css::ui::XUIElement> SAL_CALL ChartPanelFactory::createUIElement (
 
 OUString ChartPanelFactory::getImplementationName()
 {
-    return "org.libreoffice.comp.chart2.sidebar.ChartPanelFactory";
+    return u"org.libreoffice.comp.chart2.sidebar.ChartPanelFactory"_ustr;
 }
 
 sal_Bool ChartPanelFactory::supportsService(OUString const & ServiceName)
@@ -133,7 +136,7 @@ sal_Bool ChartPanelFactory::supportsService(OUString const & ServiceName)
 
 css::uno::Sequence<OUString> ChartPanelFactory::getSupportedServiceNames()
 {
-    return { "com.sun.star.ui.UIElementFactory" };
+    return { u"com.sun.star.ui.UIElementFactory"_ustr };
 }
 
 } // end of namespace chart::sidebar

@@ -35,13 +35,13 @@ using namespace com::sun::star::uno;
 DetailsContainer::DetailsContainer(PlaceEditDialog* pDialog)
     : m_pDialog(pDialog)
 {
-    m_pDialog->m_xEDPort->connect_output(LINK(this, DetailsContainer, FormatPortHdl));
+    m_pDialog->m_xEDPort->set_value_formatter(LINK(this, DetailsContainer, FormatPortHdl));
 }
 
 //format without thousand separator
-IMPL_STATIC_LINK(DetailsContainer, FormatPortHdl, weld::SpinButton&, rSpinButton, void)
+IMPL_STATIC_LINK(DetailsContainer, FormatPortHdl, sal_Int64, nValue, OUString)
 {
-    rSpinButton.set_text(OUString::number(rSpinButton.get_value()));
+    return OUString::number(nValue);
 }
 
 DetailsContainer::~DetailsContainer( )
@@ -149,7 +149,7 @@ bool HostDetailsContainer::verifyScheme( const OUString& sScheme )
 }
 
 DavDetailsContainer::DavDetailsContainer(PlaceEditDialog* pBuilder)
-    : HostDetailsContainer(pBuilder, 80, "http")
+    : HostDetailsContainer(pBuilder, 80, u"http"_ustr)
 {
     m_pDialog->m_xCBDavs->connect_toggled(LINK(this, DavDetailsContainer, ToggledDavsHdl));
 
@@ -193,7 +193,7 @@ IMPL_LINK( DavDetailsContainer, ToggledDavsHdl, weld::Toggleable&, rCheckBox, vo
     else if ( m_pDialog->m_xEDPort->get_value() == 443 && !bCheckedDavs )
         m_pDialog->m_xEDPort->set_value( 80 );
 
-    OUString sScheme( "http" );
+    OUString sScheme( u"http"_ustr );
     if ( bCheckedDavs )
         sScheme = "https";
     setScheme( sScheme );
@@ -281,7 +281,7 @@ CmisDetailsContainer::CmisDetailsContainer(PlaceEditDialog* pParentDialog, OUStr
     m_sBinding(std::move( sBinding )),
     m_xParentDialog(pParentDialog->getDialog()->GetXWindow())
 {
-    Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     Reference< XInteractionHandler > xGlobalInteractionHandler =
         InteractionHandler::createWithParent(xContext, m_xParentDialog);
     m_xCmdEnv = new ucbhelper::CommandEnvironment( xGlobalInteractionHandler, Reference< XProgressHandler >() );
@@ -394,13 +394,13 @@ void CmisDetailsContainer::selectRepository( )
 
 IMPL_LINK_NOARG( CmisDetailsContainer, RefreshReposHdl, weld::Button&, void  )
 {
-    Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     Reference< XPasswordContainer2 > xMasterPasswd = PasswordContainer::create( xContext );
 
 
     OUString sBindingUrl = m_pDialog->m_xEDHost->get_text().trim( );
 
-    OUString sEncodedUsername = "";
+    OUString sEncodedUsername = u""_ustr;
 
     if ( !m_sUsername.isEmpty( ) )
     {
@@ -448,7 +448,7 @@ IMPL_LINK_NOARG( CmisDetailsContainer, RefreshReposHdl, weld::Button&, void  )
     {
         // Get the Content
         ::ucbhelper::Content aCnt( sUrl, m_xCmdEnv, comphelper::getProcessComponentContext() );
-        Sequence<OUString> aProps { "Title" };
+        Sequence<OUString> aProps { u"Title"_ustr };
         Reference< XResultSet > xResultSet( aCnt.createCursor( aProps ), UNO_SET_THROW );
         Reference< XContentAccess > xAccess( xResultSet, UNO_QUERY_THROW );
         while ( xResultSet->next() )

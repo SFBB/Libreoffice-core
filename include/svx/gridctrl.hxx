@@ -35,13 +35,12 @@ namespace comphelper { class OPropertyChangeMultiplexer; }
 namespace com::sun::star::beans { struct PropertyChangeEvent; }
 namespace com::sun::star::container { class XIndexAccess; }
 namespace com::sun::star::sdbc { class XRowSet; }
-namespace com::sun::star::sdb { class XRowsChangeListener; }
 namespace com::sun::star::uno { class XComponentContext; }
 namespace com::sun::star::util { class XNumberFormatter; }
-namespace weld { class Menu; }
 
 class CursorWrapper;
 class GridFieldValueListener;
+class RowSetEventListener;
 
 bool CompareBookmark(const css::uno::Any& aLeft, const css::uno::Any& aRight);
 
@@ -161,6 +160,7 @@ enum class DbGridControlNavigationBarState
 
 class FmXGridSourcePropListener;
 class DisposeListenerGridBridge;
+class DbGridControl;
 
 // NavigationBar
 class NavigationBar final : public InterimItemWindow
@@ -195,21 +195,26 @@ class NavigationBar final : public InterimItemWindow
     std::shared_ptr<weld::ButtonPressRepeater> m_xPrevRepeater;
     std::shared_ptr<weld::ButtonPressRepeater> m_xNextRepeater;
 
+    Size                 m_aLastAllocSize;
+
     sal_Int32            m_nCurrentPos;
 
     bool                 m_bPositioning;     // protect PositionDataSource against recursion
 
 public:
-    NavigationBar(vcl::Window* pParent);
+    NavigationBar(DbGridControl* pParent);
     virtual ~NavigationBar() override;
     virtual void dispose() override;
+
+    DECL_LINK(SizeAllocHdl, const Size&, void);
 
     // Status methods for Controls
     void InvalidateAll(sal_Int32 nCurrentPos, bool bAll = false);
     void InvalidateState(DbGridControlNavigationBarState nWhich) {SetState(nWhich);}
     void SetState(DbGridControlNavigationBarState nWhich);
     bool GetState(DbGridControlNavigationBarState nWhich) const;
-    sal_uInt16 ArrangeControls();
+    void SetPointFontAndZoom(const vcl::Font& rFont, const Fraction& rZoom);
+    sal_uInt16 GetPreferredWidth() const;
 
 private:
 
@@ -218,7 +223,7 @@ private:
     void PositionDataSource(sal_Int32 nRecord);
 };
 
-class SVXCORE_DLLPUBLIC DbGridControl : public svt::EditBrowseBox
+class UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) DbGridControl : public svt::EditBrowseBox
 {
     friend class FmXGridSourcePropListener;
     friend class GridFieldValueListener;
@@ -251,8 +256,7 @@ private:
     // For that reason we have to listen to some properties of our data source.
     rtl::Reference<::comphelper::OPropertyChangeMultiplexer>  m_pDataSourcePropMultiplexer;
     FmXGridSourcePropListener*                      m_pDataSourcePropListener;
-    css::uno::Reference< css::sdb::XRowsChangeListener>
-                                                    m_xRowSetListener; // get notification when rows were changed
+    rtl::Reference<RowSetEventListener>             m_xRowSetListener; // get notification when rows were changed
 
     std::map<sal_uInt16, GridFieldValueListener*>   m_aFieldListeners;
         // property listeners for field values
@@ -277,6 +281,8 @@ private:
                                             // records. Initial value is -1
     osl::Mutex          m_aDestructionSafety;
     osl::Mutex          m_aAdjustSafety;
+
+    Idle                m_aRearrangeIdle;
 
     css::util::Date
                         m_aNullDate;        // NullDate of the Numberformatter;
@@ -401,7 +407,7 @@ public:
     // the options can restrict but not extend the update abilities
     void setDataSource(const css::uno::Reference< css::sdbc::XRowSet >& rCursor,
         DbGridControlOptions nOpts = DbGridControlOptions::Insert | DbGridControlOptions::Update | DbGridControlOptions::Delete);
-    virtual void Dispatch(sal_uInt16 nId) override;
+    virtual void Dispatch(BrowserDispatchId eId) override;
 
     CursorWrapper* getDataSource() const {return m_pDataCursor.get();}
     const std::vector< std::unique_ptr<DbGridColumn> >& GetColumns() const {return m_aColumns;}
@@ -537,20 +543,20 @@ public:
         @param _nIndex
             The 0-based index of the control.
         @return
-            The XAccessible interface of the specified control.
+            The accessible object of the specified control.
     */
-    virtual css::uno::Reference<
-        css::accessibility::XAccessible >
-    CreateAccessibleControl( sal_Int32 _nIndex ) override;
+    virtual rtl::Reference<comphelper::OAccessible>
+    CreateAccessibleControl(sal_Int32 _nIndex) override;
 
     // IAccessibleTableProvider
     /** Creates the accessible object of a data table cell.
         @param nRow  The row index of the cell.
         @param nColumnId  The column ID of the cell.
-        @return  The XAccessible interface of the specified cell. */
-    virtual css::uno::Reference<
-        css::accessibility::XAccessible >
-    CreateAccessibleCell( sal_Int32 nRow, sal_uInt16 nColumnId ) override;
+        @return  The accessible object of the specified cell. */
+    virtual rtl::Reference<comphelper::OAccessible>
+    CreateAccessibleCell(sal_Int32 nRow, sal_uInt16 nColumnId) override;
+
+    void RearrangeAtIdle();
 
 protected:
     void RecalcRows(sal_Int32 nNewTopRow, sal_uInt16 nLinesOnScreen, bool bUpdateCursor);
@@ -588,6 +594,7 @@ protected:
 protected:
     void ImplInitWindow( const InitWindowFacet _eInitWhat );
     DECL_DLLPRIVATE_LINK(OnDelete, void*, void);
+    DECL_DLLPRIVATE_LINK(RearrangeHdl, Timer*, void);
 
     DECL_DLLPRIVATE_LINK(OnAsyncAdjust, void*, void);
         // if the param is != NULL, AdjustRows will be called, else AdjustDataSource

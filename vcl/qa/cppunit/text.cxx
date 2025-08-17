@@ -10,14 +10,11 @@
 #include <osl/file.hxx>
 #include <osl/process.h>
 #include <test/bootstrapfixture.hxx>
-#include <sal/log.hxx>
 #include <tools/stream.hxx>
 
 #include <vcl/BitmapReadAccess.hxx>
 #include <comphelper/errcode.hxx>
 #include <vcl/graphicfilter.hxx>
-#include <vcl/settings.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/virdev.hxx>
 
 #include <ImplLayoutArgs.hxx>
@@ -35,7 +32,7 @@ public:
     {
         if (mbExportBitmap)
         {
-            BitmapEx aBitmapEx(device->GetBitmapEx(Point(0, 0), device->GetOutputSizePixel()));
+            BitmapEx aBitmapEx(device->GetBitmap(Point(0, 0), device->GetOutputSizePixel()));
             OUString cwd;
             CPPUNIT_ASSERT_EQUAL(osl_Process_E_None, osl_getProcessWorkingDir(&cwd.pData));
             OUString url;
@@ -52,6 +49,11 @@ public:
     {
     }
 };
+
+static std::ostream& operator<<(std::ostream& s, const ImplLayoutRuns::Run& rRun)
+{
+    return s << "{" << rRun.m_nMinRunPos << ", " << rRun.m_nEndRunPos << ", " << rRun.m_bRTL << "}";
+}
 
 // Avoid issues when colorized antialiasing generates slightly tinted rather than truly black
 // pixels:
@@ -128,7 +130,7 @@ static tools::Long getCharacterLeftSideHeight(VirtualDevice* device, const Point
 // IMPORTANT: If you modify this, check also the VclCjkTextTest::testVerticalText().
 CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleText)
 {
-    OUString text("L");
+    OUString text(u"L"_ustr);
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(100, 100));
     device->SetBackground(Wallpaper(COL_WHITE));
@@ -137,8 +139,8 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleText)
 
     // Bail out on all backends that do not work (or I didn't test). Opt-out rather than opt-in
     // to make sure new backends fail initially.
-    if (device->GetGraphics()->getRenderBackendName() == "qt5"
-        || device->GetGraphics()->getRenderBackendName() == "qt5svp"
+    if (device->GetGraphics()->getRenderBackendName() == "qt"
+        || device->GetGraphics()->getRenderBackendName() == "qtsvp"
         || device->GetGraphics()->getRenderBackendName() == "gtk3svp"
         || device->GetGraphics()->getRenderBackendName() == "aqua"
         || device->GetGraphics()->getRenderBackendName() == "gen"
@@ -147,11 +149,11 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleText)
 
     // Use Dejavu fonts, they are shipped with LO, so they should be ~always available.
     // Use Sans variant for simpler glyph shapes (no serifs).
-    vcl::Font font("DejaVu Sans", "Book", Size(0, 36));
+    vcl::Font font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 36));
     device->Erase();
     device->SetFont(font);
     device->DrawText(Point(10, 10), text);
-    exportDevice("simple-text-36.png", device);
+    exportDevice(u"simple-text-36.png"_ustr, device);
     // Height of 'L' with font 36 size should be roughly 28 pixels.
     // Use the 'doubles' variant of the test, since that one allows
     // a delta, and allow several pixels of delta to account
@@ -165,18 +167,18 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleText)
     device->Erase();
     device->SetFont(font);
     device->DrawText(Point(90, 10), text);
-    exportDevice("simple-text-36-270deg.png", device);
+    exportDevice(u"simple-text-36-270deg.png"_ustr, device);
     // Width and height here should be swapped, again allowing for some imprecisions.
     tools::Long height36Rotated = getCharacterLeftSideHeight(device, Point(0, 20));
     CPPUNIT_ASSERT_DOUBLES_EQUAL(width36, height36Rotated, 2);
     tools::Long width36Rotated = getCharacterTopWidth(device, Point(70, 0));
     CPPUNIT_ASSERT_DOUBLES_EQUAL(height36, width36Rotated, 2);
 
-    font = vcl::Font("DejaVu Sans", "Book", Size(0, 72));
+    font = vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 72));
     device->Erase();
     device->SetFont(font);
     device->DrawText(Point(10, 10), text);
-    exportDevice("simple-text-72.png", device);
+    exportDevice(u"simple-text-72.png"_ustr, device);
     // Font size is doubled, so pixel sizes should also roughly double.
     tools::Long height72 = getCharacterLeftSideHeight(device, Point(0, 30));
     CPPUNIT_ASSERT_DOUBLES_EQUAL(height36 * 2, height72, 4);
@@ -187,14 +189,14 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleText)
     device->Erase();
     device->SetFont(font);
     device->DrawText(Point(90, 10), text);
-    exportDevice("simple-text-72-270deg.png", device);
+    exportDevice(u"simple-text-72-270deg.png"_ustr, device);
     tools::Long height72Rotated = getCharacterLeftSideHeight(device, Point(0, 35));
     CPPUNIT_ASSERT_DOUBLES_EQUAL(width72, height72Rotated, 2);
     tools::Long width72Rotated = getCharacterTopWidth(device, Point(50, 0));
     CPPUNIT_ASSERT_DOUBLES_EQUAL(height72, width72Rotated, 2);
 
     // Test width scaled to 200%.
-    font = vcl::Font("DejaVu Sans", "Book", Size(72, 36));
+    font = vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(72, 36));
 #ifdef _WIN32
     // TODO: What is the proper way to draw 200%-wide text? This is needed on Windows
     // but it breaks Linux.
@@ -203,21 +205,21 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleText)
     device->Erase();
     device->SetFont(font);
     device->DrawText(Point(10, 10), text);
-    exportDevice("simple-text-36-200pct.png", device);
+    exportDevice(u"simple-text-36-200pct.png"_ustr, device);
     tools::Long height36pct200 = getCharacterLeftSideHeight(device, Point(0, 30));
     CPPUNIT_ASSERT_DOUBLES_EQUAL(height36, height36pct200, 2);
     tools::Long width36pct200 = getCharacterBaseWidth(device, Point(20, 99));
     CPPUNIT_ASSERT_DOUBLES_EQUAL(width36 * 2, width36pct200, 5);
 
     // Test width scaled to 50%.
-    font = vcl::Font("DejaVu Sans", "Book", Size(18, 36));
+    font = vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(18, 36));
 #ifdef _WIN32
     font.SetAverageFontWidth(0.5 * font.GetOrCalculateAverageFontWidth());
 #endif
     device->Erase();
     device->SetFont(font);
     device->DrawText(Point(10, 10), text);
-    exportDevice("simple-text-36-50pct.png", device);
+    exportDevice(u"simple-text-36-50pct.png"_ustr, device);
     tools::Long height36pct50 = getCharacterLeftSideHeight(device, Point(0, 40));
     CPPUNIT_ASSERT_DOUBLES_EQUAL(height36, height36pct50, 2);
     tools::Long width36pct50 = getCharacterBaseWidth(device, Point(15, 99));
@@ -228,22 +230,22 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleTextFontSpecificKerning)
 {
     OUString aAV(u"AV"_ustr);
 
-    vcl::Font aFont("DejaVu Sans", "Book", Size(0, 2048));
+    vcl::Font aFont(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 2048));
 
     ScopedVclPtrInstance<VirtualDevice> pOutDev;
     pOutDev->SetFont(aFont);
 
     // absolute character widths AKA text array.
     tools::Long nRefTextWidth = 2671;
-    std::vector<sal_Int32> aRefCharWidths = { 1270, 2671 };
+    KernArray aRefCharWidths{ 1270, 2671 };
     KernArray aCharWidths;
-    tools::Long nTextWidth = pOutDev->GetTextArray(aAV, &aCharWidths);
+    tools::Long nTextWidth = basegfx::fround<tools::Long>(pOutDev->GetTextArray(aAV, &aCharWidths));
 
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths[0], aCharWidths.get_subunit_array()[0]);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths[1], aCharWidths.get_subunit_array()[1]);
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths[0], aCharWidths[0]);
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths[1], aCharWidths[1]);
     // this sporadically returns 75 or 74 on some of the windows tinderboxes eg. tb73
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // text advance width and line height
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, pOutDev->GetTextWidth(aAV));
@@ -276,7 +278,7 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleTextNoKerning)
 {
     OUString aAV(u"AV"_ustr);
 
-    vcl::Font aFont("DejaVu Sans", "Book", Size(0, 2048));
+    vcl::Font aFont(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 2048));
     aFont.SetKerning(FontKerning::NONE);
 
     ScopedVclPtrInstance<VirtualDevice> pOutDev;
@@ -284,15 +286,15 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testSimpleTextNoKerning)
 
     // absolute character widths AKA text array.
     tools::Long nRefTextWidth = 2802;
-    std::vector<sal_Int32> aRefCharWidths = { 1401, 2802 };
+    KernArray aRefCharWidths{ 1401, 2802 };
     KernArray aCharWidths;
-    tools::Long nTextWidth = pOutDev->GetTextArray(aAV, &aCharWidths);
+    tools::Long nTextWidth = basegfx::fround<tools::Long>(pOutDev->GetTextArray(aAV, &aCharWidths));
 
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths[0], aCharWidths.get_subunit_array()[0]);
-    CPPUNIT_ASSERT_EQUAL(aRefCharWidths[1], aCharWidths.get_subunit_array()[1]);
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths[0], aCharWidths[0]);
+    CPPUNIT_ASSERT_EQUAL(aRefCharWidths[1], aCharWidths[1]);
     // this sporadically returns 75 or 74 on some of the windows tinderboxes eg. tb73
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, nTextWidth);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(nTextWidth), aCharWidths.back());
+    CPPUNIT_ASSERT_EQUAL(nTextWidth, tools::Long(aCharWidths.back()));
 
     // text advance width and line height
     CPPUNIT_ASSERT_EQUAL(nRefTextWidth, pOutDev->GetTextWidth(aAV));
@@ -520,6 +522,174 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutRuns_PosIsInAnyRun)
     CPPUNIT_ASSERT(!aRuns.PosIsInAnyRun(7));
 }
 
+CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutRuns_Normalize)
+{
+    ImplLayoutRuns aRuns;
+    aRuns.AddRun(8, 10, true);
+    aRuns.AddRun(5, 8, false);
+    aRuns.AddRun(2, 5, false);
+    aRuns.AddRun(1, 3, false);
+    aRuns.AddRun(14, 15, false);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(5), aRuns.size());
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(8, 10, true), aRuns.at(0));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(5, 8, false), aRuns.at(1));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(2, 5, false), aRuns.at(2));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(1, 3, false), aRuns.at(3));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(14, 15, false), aRuns.at(4));
+
+    aRuns.Normalize();
+
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aRuns.size());
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(1, 10, false), aRuns.at(0));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(14, 15, false), aRuns.at(1));
+}
+
+CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutRuns_PrepareFallbackRuns_LTR)
+{
+    ImplLayoutRuns aRuns;
+    aRuns.AddRun(0, 10, false); // First 5 characters excluded
+    aRuns.AddRun(11, 15, false); // Entire run included
+    aRuns.AddRun(16, 25, false); // First 4 characters included
+    aRuns.AddRun(26, 30, false); // Entire run excluded
+    aRuns.AddRun(31, 35, false); // Exact match
+
+    CPPUNIT_ASSERT_EQUAL(size_t(5), aRuns.size());
+
+    ImplLayoutRuns aFallbackRuns;
+    aFallbackRuns.AddRun(5, 20, false);
+    aFallbackRuns.AddRun(31, 35, false);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aFallbackRuns.size());
+
+    ImplLayoutRuns::PrepareFallbackRuns(&aRuns, &aFallbackRuns);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(0), aFallbackRuns.size());
+
+    CPPUNIT_ASSERT_EQUAL(size_t(4), aRuns.size());
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(5, 10, false), aRuns.at(0));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(11, 15, false), aRuns.at(1));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(16, 20, false), aRuns.at(2));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(31, 35, false), aRuns.at(3));
+}
+
+CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutRuns_PrepareFallbackRuns_LTR_PreservesOrder)
+{
+    ImplLayoutRuns aRuns;
+    aRuns.AddRun(16, 25, false); // First 4 characters included
+    aRuns.AddRun(31, 35, false); // Exact match
+    aRuns.AddRun(0, 10, false); // First 5 characters excluded
+    aRuns.AddRun(26, 30, false); // Entire run excluded
+    aRuns.AddRun(11, 15, false); // Entire run included
+
+    CPPUNIT_ASSERT_EQUAL(size_t(5), aRuns.size());
+
+    ImplLayoutRuns aFallbackRuns;
+    aFallbackRuns.AddRun(5, 20, false);
+    aFallbackRuns.AddRun(31, 35, false);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aFallbackRuns.size());
+
+    ImplLayoutRuns::PrepareFallbackRuns(&aRuns, &aFallbackRuns);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(0), aFallbackRuns.size());
+
+    CPPUNIT_ASSERT_EQUAL(size_t(4), aRuns.size());
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(16, 20, false), aRuns.at(0));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(31, 35, false), aRuns.at(1));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(5, 10, false), aRuns.at(2));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(11, 15, false), aRuns.at(3));
+}
+
+CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutRuns_PrepareFallbackRuns_RTL)
+{
+    ImplLayoutRuns aRuns;
+    aRuns.AddRun(0, 10, false);
+    aRuns.AddRun(10, 90, true);
+    aRuns.AddRun(90, 100, false);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(3), aRuns.size());
+
+    ImplLayoutRuns aFallbackRuns;
+    aFallbackRuns.AddRun(0, 5, false);
+    aFallbackRuns.AddRun(6, 10, false);
+    aFallbackRuns.AddRun(10, 20, true);
+    aFallbackRuns.AddRun(21, 30, true);
+    aFallbackRuns.AddRun(31, 40, true);
+    aFallbackRuns.AddRun(41, 50, true);
+    aFallbackRuns.AddRun(92, 95, false);
+    aFallbackRuns.AddRun(96, 98, false);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(8), aFallbackRuns.size());
+
+    ImplLayoutRuns::PrepareFallbackRuns(&aRuns, &aFallbackRuns);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(0), aFallbackRuns.size());
+
+    CPPUNIT_ASSERT_EQUAL(size_t(8), aRuns.size());
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(0, 5, false), aRuns.at(0));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(6, 10, false), aRuns.at(1));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(41, 50, true), aRuns.at(2));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(31, 40, true), aRuns.at(3));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(21, 30, true), aRuns.at(4));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(10, 20, true), aRuns.at(5));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(92, 95, false), aRuns.at(6));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(96, 98, false), aRuns.at(7));
+}
+
+CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutRuns_tdf161397)
+{
+    // Fallback run characteristic test from a particular case
+
+    ImplLayoutRuns aRuns;
+    aRuns.AddRun(0, 13, true);
+
+    ImplLayoutRuns aFallbackRuns;
+    aFallbackRuns.AddRun(12, 13, true);
+    aFallbackRuns.AddRun(7, 12, true);
+    aFallbackRuns.AddRun(5, 6, true);
+    aFallbackRuns.AddRun(0, 5, true);
+
+    ImplLayoutRuns::PrepareFallbackRuns(&aRuns, &aFallbackRuns);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aRuns.size());
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(7, 13, true), aRuns.at(0));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(0, 6, true), aRuns.at(1));
+}
+
+CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutRuns_GrowBidirectional)
+{
+    ImplLayoutRuns aRuns;
+    aRuns.AddPos(16, true);
+    aRuns.AddPos(17, true);
+    aRuns.AddPos(18, true);
+    aRuns.AddPos(15, true);
+    aRuns.AddPos(19, true);
+    aRuns.AddPos(14, true);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(1), aRuns.size());
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(14, 20, true), aRuns.at(0));
+}
+
+CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutRuns_ReverseTail)
+{
+    ImplLayoutRuns aRuns;
+    aRuns.AddRun(10, 20, true);
+    aRuns.AddRun(30, 40, false);
+    aRuns.AddRun(50, 60, true);
+    aRuns.AddRun(70, 80, true);
+    aRuns.AddRun(90, 100, false);
+
+    aRuns.ReverseTail(size_t(2));
+
+    CPPUNIT_ASSERT_EQUAL(size_t(5), aRuns.size());
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(10, 20, true), aRuns.at(0));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(30, 40, false), aRuns.at(1));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(90, 100, false), aRuns.at(2));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(70, 80, true), aRuns.at(3));
+    CPPUNIT_ASSERT_EQUAL(ImplLayoutRuns::Run(50, 60, true), aRuns.at(4));
+}
+
 CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutArgsBiDiStrong)
 {
     OUString sTestString = u"The quick brown fox\n jumped over the lazy dog"
@@ -610,7 +780,7 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutArgsRightAlign)
 CPPUNIT_TEST_FIXTURE(VclTextTest, testImplLayoutArgs_PrepareFallback_precalculatedglyphs)
 {
     // this font has no Cyrillic characters and thus needs fallback
-    const vcl::Font aFont("Amiri", Size(0, 36));
+    const vcl::Font aFont(u"Amiri"_ustr, Size(0, 36));
 
     ScopedVclPtrInstance<VirtualDevice> pVirDev;
     pVirDev->SetFont(aFont);
@@ -658,7 +828,7 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testGetStringWithCenterEllpsis)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("DejaVu Sans", "Book", Size(0, 11)));
+    device->SetFont(vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 11)));
 
     CPPUNIT_ASSERT_EQUAL(
         u"a b c d ...v w x y z"_ustr,
@@ -670,7 +840,7 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testGetStringWithEndEllpsis)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("DejaVu Sans", "Book", Size(0, 11)));
+    device->SetFont(vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 11)));
 
     CPPUNIT_ASSERT_EQUAL(u"a"_ustr, device->GetEllipsisString(u"abcde. f g h i j ..."_ustr, 10,
                                                               DrawTextFlags::EndEllipsis));
@@ -689,7 +859,7 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testGetStringWithNewsEllpsis)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("DejaVu Sans", "Book", Size(0, 11)));
+    device->SetFont(vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 11)));
 
     CPPUNIT_ASSERT_EQUAL(u"a"_ustr, device->GetEllipsisString(u"abcde. f g h i j ..."_ustr, 10,
                                                               DrawTextFlags::NewsEllipsis));
@@ -719,15 +889,30 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testGetStringWithNewsEllpsis)
         device->GetEllipsisString(u"ab. cde. x y z"_ustr, 50, DrawTextFlags::NewsEllipsis));
 }
 
+CPPUNIT_TEST_FIXTURE(VclTextTest, testGetTextBreak_invalid_index)
+{
+    ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
+    device->SetOutputSizePixel(Size(1000, 1000));
+    device->SetFont(vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 11)));
+
+    const OUString sTestStr(u"textline_ text_"_ustr);
+    const auto nLen = sTestStr.getLength();
+    const auto nTextWidth = device->GetTextWidth(u"text"_ustr);
+    const auto nInvalidIndex = sTestStr.getLength() + 2;
+
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(-1),
+                         device->GetTextBreak(sTestStr, nTextWidth, nInvalidIndex, nLen));
+}
+
 CPPUNIT_TEST_FIXTURE(VclTextTest, testGetTextBreak)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("DejaVu Sans", "Book", Size(0, 11)));
+    device->SetFont(vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 11)));
 
     const OUString sTestStr(u"textline_ text_"_ustr);
     const auto nLen = sTestStr.getLength();
-    const auto nTextWidth = device->GetTextWidth("text");
+    const auto nTextWidth = device->GetTextWidth(u"text"_ustr);
 
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(4),
                          device->GetTextBreak(sTestStr, nTextWidth, 0, nLen));
@@ -747,22 +932,22 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testGetSingleLineTextRect)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("Liberation Sans", Size(0, 11)));
+    device->SetFont(vcl::Font(u"Liberation Sans"_ustr, Size(0, 11)));
 
     CPPUNIT_ASSERT_EQUAL(
         tools::Rectangle(Point(), Size(75, 12)),
-        device->GetTextRect(tools::Rectangle(Point(), Point(100, 100)), "This is test text"));
+        device->GetTextRect(tools::Rectangle(Point(), Point(100, 100)), u"This is test text"_ustr));
 }
 
 CPPUNIT_TEST_FIXTURE(VclTextTest, testGetSingleLineTextRectWithEndEllipsis)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("Liberation Sans", Size(0, 11)));
+    device->SetFont(vcl::Font(u"Liberation Sans"_ustr, Size(0, 11)));
 
     CPPUNIT_ASSERT_EQUAL(
         tools::Rectangle(Point(), Size(52, 12)),
-        device->GetTextRect(tools::Rectangle(Point(), Point(50, 50)), "This is test text",
+        device->GetTextRect(tools::Rectangle(Point(), Point(50, 50)), u"This is test text"_ustr,
                             DrawTextFlags::WordBreak | DrawTextFlags::EndEllipsis));
 }
 
@@ -770,11 +955,11 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testGetRightBottomAlignedSingleLineTextRect)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("Liberation Sans", Size(0, 11)));
+    device->SetFont(vcl::Font(u"Liberation Sans"_ustr, Size(0, 11)));
 
     CPPUNIT_ASSERT_EQUAL(tools::Rectangle(Point(926, 989), Size(75, 12)),
                          device->GetTextRect(tools::Rectangle(Point(), Point(1000, 1000)),
-                                             "This is test text",
+                                             u"This is test text"_ustr,
                                              DrawTextFlags::Right | DrawTextFlags::Bottom));
 }
 
@@ -782,7 +967,7 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testGetRotatedSingleLineTextRect)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("Liberation Sans", Size(0, 11)));
+    device->SetFont(vcl::Font(u"Liberation Sans"_ustr, Size(0, 11)));
 
     vcl::Font aFont(device->GetFont());
     aFont.SetOrientation(45_deg10);
@@ -790,18 +975,18 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testGetRotatedSingleLineTextRect)
 
     CPPUNIT_ASSERT_EQUAL(
         tools::Rectangle(Point(0, -3), Size(75, 18)),
-        device->GetTextRect(tools::Rectangle(Point(), Point(100, 100)), "This is test text"));
+        device->GetTextRect(tools::Rectangle(Point(), Point(100, 100)), u"This is test text"_ustr));
 }
 
 CPPUNIT_TEST_FIXTURE(VclTextTest, testGetMultiLineTextRect)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("Liberation Sans", Size(0, 11)));
+    device->SetFont(vcl::Font(u"Liberation Sans"_ustr, Size(0, 11)));
 
     CPPUNIT_ASSERT_EQUAL(tools::Rectangle(Point(), Size(75, 12)),
                          device->GetTextRect(tools::Rectangle(Point(), Point(100, 100)),
-                                             "This is test text",
+                                             u"This is test text"_ustr,
                                              DrawTextFlags::WordBreak | DrawTextFlags::MultiLine));
 }
 
@@ -809,11 +994,11 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testGetMultiLineTextRectWithEndEllipsis)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("Liberation Sans", Size(0, 11)));
+    device->SetFont(vcl::Font(u"Liberation Sans"_ustr, Size(0, 11)));
 
     CPPUNIT_ASSERT_EQUAL(tools::Rectangle(Point(), Size(52, 48)),
                          device->GetTextRect(tools::Rectangle(Point(), Point(50, 50)),
-                                             "This is test text xyzabc123abcdefghijk",
+                                             u"This is test text xyzabc123abcdefghijk"_ustr,
                                              DrawTextFlags::WordBreak | DrawTextFlags::EndEllipsis
                                                  | DrawTextFlags::MultiLine));
 }
@@ -822,13 +1007,47 @@ CPPUNIT_TEST_FIXTURE(VclTextTest, testGetRightBottomAlignedMultiLineTextRect)
 {
     ScopedVclPtr<VirtualDevice> device = VclPtr<VirtualDevice>::Create(DeviceFormat::WITHOUT_ALPHA);
     device->SetOutputSizePixel(Size(1000, 1000));
-    device->SetFont(vcl::Font("Liberation Sans", Size(0, 11)));
+    device->SetFont(vcl::Font(u"Liberation Sans"_ustr, Size(0, 11)));
 
     CPPUNIT_ASSERT_EQUAL(tools::Rectangle(Point(926, 989), Size(75, 12)),
                          device->GetTextRect(tools::Rectangle(Point(), Point(1000, 1000)),
-                                             "This is test text",
+                                             u"This is test text"_ustr,
                                              DrawTextFlags::Right | DrawTextFlags::Bottom
                                                  | DrawTextFlags::MultiLine));
+}
+
+CPPUNIT_TEST_FIXTURE(VclTextTest, testPartialTextArraySizeMatch)
+{
+    OUString aWater = u"Water"_ustr;
+    vcl::Font aFont(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 2048));
+
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+    pOutDev->SetFont(aFont);
+
+    // Absolute character widths for the complete array.
+    KernArray aCompleteWidths;
+    auto nCompleteWidth = pOutDev->GetTextArray(aWater, &aCompleteWidths);
+
+    CPPUNIT_ASSERT_EQUAL(size_t{ 5 }, aCompleteWidths.size());
+
+    // Accumulate partial widths
+    double nPartialWidth = 0.0;
+
+    sal_Int32 nPrevWidth = 0;
+    for (sal_Int32 i = 0; i < 5; ++i)
+    {
+        KernArray aFragmentWidths;
+        auto nFragmentWidth
+            = pOutDev->GetPartialTextArray(aWater, &aFragmentWidths, /*nIndex*/ 0, /*nLen*/ 5,
+                                           /*nPartIndex*/ i, /*nPartLen*/ 1);
+        nPartialWidth += nFragmentWidth;
+
+        CPPUNIT_ASSERT_EQUAL(size_t{ 1 }, aFragmentWidths.size());
+        CPPUNIT_ASSERT_EQUAL(aCompleteWidths[i] - nPrevWidth, aFragmentWidths[0]);
+        nPrevWidth = aCompleteWidths[i];
+    }
+
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(nCompleteWidth, nPartialWidth, /*delta*/ 0.01);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

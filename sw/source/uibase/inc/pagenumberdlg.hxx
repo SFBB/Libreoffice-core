@@ -22,8 +22,6 @@
 #include <sfx2/basedlgs.hxx>
 #include <svx/pagenumberlistbox.hxx>
 
-class SwWrtShell;
-
 /// Page number wizard for easy header/footer page number insertion
 class SwPageNumberDlg final : public SfxDialogController
 {
@@ -33,6 +31,8 @@ class SwPageNumberDlg final : public SfxDialogController
     std::unique_ptr<weld::ComboBox> m_xPageNumberAlignment;
     std::unique_ptr<weld::CheckButton> m_xMirrorOnEvenPages;
     std::unique_ptr<weld::CheckButton> m_xIncludePageTotal;
+    std::unique_ptr<weld::CheckButton> m_xIncludePageRangeTotal;
+    std::unique_ptr<weld::CheckButton> m_xFitIntoExistingMargins;
     std::unique_ptr<SvxPageNumberListBox> m_xPageNumberTypeLB;
 
     std::unique_ptr<weld::Image> m_xPreviewImage;
@@ -43,6 +43,7 @@ class SwPageNumberDlg final : public SfxDialogController
 
     DECL_LINK(OkHdl, weld::Button&, void);
     DECL_LINK(IncludePageTotalChangeHdl, weld::Toggleable&, void);
+    DECL_LINK(IncludePageRangeTotalChangeHdl, weld::Toggleable&, void);
     DECL_LINK(PositionSelectHdl, weld::ComboBox&, void);
     DECL_LINK(AlignmentSelectHdl, weld::ComboBox&, void);
     DECL_LINK(NumberTypeSelectHdl, weld::ComboBox&, void);
@@ -53,8 +54,10 @@ public:
     SwPageNumberDlg(weld::Window* pParent);
     int GetPageNumberPosition() const { return m_aPageNumberPosition; }
     int GetPageNumberAlignment() const { return m_aPageNumberAlignment; }
-    bool GetMirrorOnEvenPages();
-    bool GetIncludePageTotal();
+    bool GetMirrorOnEvenPages() const;
+    bool GetIncludePageTotal() const;
+    bool GetIncludePageRangeTotal() const;
+    bool GetFitIntoExistingMargins() const;
     SvxNumType GetPageNumberType() const { return m_nPageNumberType; }
     void SetPageNumberType(SvxNumType nSet);
 };

@@ -23,15 +23,15 @@ using namespace ::com::sun::star;
  */
 SwVbaFormFieldCheckBox::SwVbaFormFieldCheckBox(
     const uno::Reference<ooo::vba::XHelperInterface>& rParent,
-    const uno::Reference<uno::XComponentContext>& rContext, sw::mark::IFieldmark& rFormField)
+    const uno::Reference<uno::XComponentContext>& rContext, sw::mark::Fieldmark& rFormField)
     : SwVbaFormFieldCheckBox_BASE(rParent, rContext)
-    , m_pCheckBox(dynamic_cast<sw::mark::ICheckboxFieldmark*>(&rFormField))
+    , m_pCheckBox(dynamic_cast<sw::mark::CheckboxFieldmark*>(&rFormField))
 {
 }
 
 SwVbaFormFieldCheckBox::~SwVbaFormFieldCheckBox() {}
 
-OUString SwVbaFormFieldCheckBox::getDefaultPropertyName() { return "Valid"; }
+OUString SwVbaFormFieldCheckBox::getDefaultPropertyName() { return u"Valid"_ustr; }
 
 sal_Bool SwVbaFormFieldCheckBox::getValid()
 {
@@ -106,11 +106,11 @@ void SwVbaFormFieldCheckBox::setValue(sal_Bool bSet)
     m_pCheckBox->SetChecked(bSet);
 }
 
-OUString SwVbaFormFieldCheckBox::getServiceImplName() { return "SwVbaFormFieldCheckBox"; }
+OUString SwVbaFormFieldCheckBox::getServiceImplName() { return u"SwVbaFormFieldCheckBox"_ustr; }
 
 uno::Sequence<OUString> SwVbaFormFieldCheckBox::getServiceNames()
 {
-    static uno::Sequence<OUString> const aServiceNames{ "ooo.vba.word.CheckBox" };
+    static uno::Sequence<OUString> const aServiceNames{ u"ooo.vba.word.CheckBox"_ustr };
     return aServiceNames;
 }
 

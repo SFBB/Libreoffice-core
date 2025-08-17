@@ -54,6 +54,7 @@
 #include <com/sun/star/form/XGridColumnFactory.hpp>
 #include <com/sun/star/sdb/SQLContext.hpp>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
+#include <com/sun/star/sdbcx/Privilege.hpp>
 #include <com/sun/star/sdb/XQueriesSupplier.hpp>
 #include <com/sun/star/form/ListSourceType.hpp>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
@@ -86,7 +87,6 @@
 #include <sfx2/docfilt.hxx>
 #include <sfx2/filedlghelper.hxx>
 #include <svl/ctloptions.hxx>
-#include <svtools/colrdlg.hxx>
 #include <svl/filenotation.hxx>
 #include <svl/intitem.hxx>
 #include <svl/itemset.hxx>
@@ -98,11 +98,13 @@
 #include <svx/numinf.hxx>
 #include <svx/svxdlg.hxx>
 #include <svx/svxids.hrc>
+#include <vcl/ColorDialog.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/unohelp.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <sal/macros.h>
 #include <sal/log.hxx>
+#include <vcl/svapp.hxx>
 
 #include <limits>
 #include <memory>
@@ -117,7 +119,6 @@ namespace pcr
     using namespace lang;
     using namespace beans;
     using namespace frame;
-    using namespace script;
     using namespace form;
     using namespace util;
     using namespace awt;
@@ -159,13 +160,13 @@ namespace pcr
 
     OUString FormComponentPropertyHandler::getImplementationName(  )
     {
-        return "com.sun.star.comp.extensions.FormComponentPropertyHandler";
+        return u"com.sun.star.comp.extensions.FormComponentPropertyHandler"_ustr;
     }
 
 
     Sequence< OUString > FormComponentPropertyHandler::getSupportedServiceNames(  )
     {
-        return { "com.sun.star.form.inspection.FormComponentPropertyHandler" };
+        return { u"com.sun.star.form.inspection.FormComponentPropertyHandler"_ustr };
     }
 
     namespace {
@@ -214,18 +215,18 @@ namespace pcr
               const Any& _rPropertyValue )
         {
             Reference< resource::XStringResourceResolver > xRet;
-            const TypeClass eType = _rPropertyValue.getValueType().getTypeClass();
+            const TypeClass eType = _rPropertyValue.getValueTypeClass();
             if ( (eType == TypeClass_STRING || eType == TypeClass_SEQUENCE) &&
                     lcl_isLanguageDependentProperty( _rPropertyName ) )
             {
                 Reference< resource::XStringResourceResolver > xStringResourceResolver;
                 try
                 {
-                    xStringResourceResolver.set( _xComponent->getPropertyValue( "ResourceResolver" ),UNO_QUERY);
+                    xStringResourceResolver.set( _xComponent->getPropertyValue( u"ResourceResolver"_ustr ),UNO_QUERY);
                     if( xStringResourceResolver.is() &&
                         xStringResourceResolver->getLocales().hasElements() )
                     {
-                        xRet = xStringResourceResolver;
+                        xRet = std::move(xStringResourceResolver);
                     }
                 }
                 catch(const UnknownPropertyException&)
@@ -253,7 +254,7 @@ namespace pcr
             = lcl_getStringResourceResolverForProperty( m_xComponent, _rPropertyName, aPropertyValue );
         if( xStringResourceResolver.is() )
         {
-            TypeClass eType = aPropertyValue.getValueType().getTypeClass();
+            TypeClass eType = aPropertyValue.getValueTypeClass();
             if( eType == TypeClass_STRING )
             {
                 OUString aPropStr;
@@ -278,7 +279,7 @@ namespace pcr
                 aResolvedStrings.reserve( aStrings.getLength() );
                 try
                 {
-                    for ( const OUString& rIdStr : std::as_const(aStrings) )
+                    for (const OUString& rIdStr : aStrings)
                     {
                         OUString aPureIdStr = rIdStr.copy( 1 );
                         if( xStringResourceResolver->hasEntryForId( aPureIdStr ) )
@@ -331,7 +332,7 @@ namespace pcr
             if( ! (_rValue >>= aFontPropertyValues) )
                 SAL_WARN("extensions.propctrlr", "setPropertyValue: unable to get property " << PROPERTY_ID_FONT);
 
-            for ( const NamedValue& fontPropertyValue : std::as_const(aFontPropertyValues) )
+            for (const NamedValue& fontPropertyValue : aFontPropertyValues)
                 m_xComponent->setPropertyValue( fontPropertyValue.Name, fontPropertyValue.Value );
         }
         else
@@ -347,7 +348,7 @@ namespace pcr
                 if( xStringResourceManager.is() )
                 {
                     Any aPropertyValue( m_xComponent->getPropertyValue( _rPropertyName ) );
-                    TypeClass eType = aPropertyValue.getValueType().getTypeClass();
+                    TypeClass eType = aPropertyValue.getValueTypeClass();
                     if( eType == TypeClass_STRING )
                     {
                         OUString aPropStr;
@@ -358,7 +359,7 @@ namespace pcr
                             OUString aValueStr;
                             _rValue >>= aValueStr;
                             xStringResourceManager->setString( aPureIdStr, aValueStr );
-                            aValue = aPropertyValue;    // set value to force modified
+                            aValue = std::move(aPropertyValue);    // set value to force modified
                         }
                     }
                     // StringItemList?
@@ -407,7 +408,7 @@ namespace pcr
                                     OUString aOldIdStr = pOldIdStrings[i];
                                     aOldPureIdStr = aOldIdStr.copy( 1 );
                                 }
-                                OUString aNewPureIdStr = pNewPureIds[i];
+                                const OUString& aNewPureIdStr = pNewPureIds[i];
 
                                 for ( const Locale& rLocale : aLocaleSeq )
                                 {
@@ -444,7 +445,7 @@ namespace pcr
                         aValue <<= aNewIdStrings;
 
                         // Remove old ids from resource for all locales
-                        for( const OUString& rIdStr : std::as_const(aOldIdStrings) )
+                        for (const OUString& rIdStr : aOldIdStrings)
                         {
                             OUString aPureIdStr = rIdStr.copy( 1 );
                             for ( const Locale& rLocale : aLocaleSeq )
@@ -853,13 +854,13 @@ namespace pcr
 
             case PROPERTY_ID_LISTSOURCE:
                 // no cursor source if no Base is installed.
-                if ( SvtModuleOptions().IsModuleInstalled( SvtModuleOptions::EModule::DATABASE ) )
+                if (SvtModuleOptions().IsDataBaseInstalled())
                     const_cast< FormComponentPropertyHandler* >( this )->m_bHaveListSource = true;
                 break;
 
             case PROPERTY_ID_COMMAND:
                 // no cursor source if no Base is installed.
-                if ( SvtModuleOptions().IsModuleInstalled( SvtModuleOptions::EModule::DATABASE ) )
+                if (SvtModuleOptions().IsDataBaseInstalled())
                     const_cast< FormComponentPropertyHandler* >( this )->m_bHaveCommand = true;
                 break;
             }   // switch ( nPropId )
@@ -993,8 +994,8 @@ namespace pcr
         case PROPERTY_ID_TARGET_URL:
         case PROPERTY_ID_IMAGE_URL:
         {
-            std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/urlcontrol.ui", m_xContext));
-            auto pURLBox = std::make_unique<SvtURLBox>(xBuilder->weld_combo_box("urlcontrol"));
+            std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder(u"modules/spropctrlr/ui/urlcontrol.ui"_ustr, m_xContext));
+            auto pURLBox = std::make_unique<SvtURLBox>(xBuilder->weld_combo_box(u"urlcontrol"_ustr));
             rtl::Reference<OFileUrlControl> pControl = new OFileUrlControl(std::move(pURLBox), std::move(xBuilder), false);
             pControl->SetModifyHandler();
             aDescriptor.Control = pControl;
@@ -1094,8 +1095,8 @@ namespace pcr
 
                     if ( bIsFormatKey )
                     {
-                        std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/formattedsample.ui", m_xContext));
-                        auto pContainer = xBuilder->weld_container("formattedsample");
+                        std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder(u"modules/spropctrlr/ui/formattedsample.ui"_ustr, m_xContext));
+                        auto pContainer = xBuilder->weld_container(u"formattedsample"_ustr);
                         rtl::Reference<OFormatSampleControl> pControl = new OFormatSampleControl(std::move(pContainer), std::move(xBuilder), false);
                         pControl->SetModifyHandler();
 
@@ -1107,8 +1108,8 @@ namespace pcr
                     }
                     else
                     {
-                        std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/formattedcontrol.ui", m_xContext));
-                        auto pSpinButton = xBuilder->weld_formatted_spin_button("formattedcontrol");
+                        std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder(u"modules/spropctrlr/ui/formattedcontrol.ui"_ustr, m_xContext));
+                        auto pSpinButton = xBuilder->weld_formatted_spin_button(u"formattedcontrol"_ustr);
                         rtl::Reference<OFormattedNumericControl> pControl = new OFormattedNumericControl(std::move(pSpinButton), std::move(xBuilder), false);
                         pControl->SetModifyHandler();
 
@@ -1146,8 +1147,8 @@ namespace pcr
         case PROPERTY_ID_DEFAULT_VALUE:
         case PROPERTY_ID_VALUE:
         {
-            std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/formattedcontrol.ui", m_xContext));
-            auto pSpinButton = xBuilder->weld_formatted_spin_button("formattedcontrol");
+            std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder(u"modules/spropctrlr/ui/formattedcontrol.ui"_ustr, m_xContext));
+            auto pSpinButton = xBuilder->weld_formatted_spin_button(u"formattedcontrol"_ustr);
             rtl::Reference<OFormattedNumericControl> pControl = new OFormattedNumericControl(std::move(pSpinButton), std::move(xBuilder), false);
             pControl->SetModifyHandler();
             aDescriptor.Control = pControl;
@@ -1279,8 +1280,8 @@ namespace pcr
         {
             case PROPERTY_ID_REPEAT_DELAY:
             {
-                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder("modules/spropctrlr/ui/numericfield.ui", m_xContext));
-                auto pSpinButton = xBuilder->weld_metric_spin_button("numericfield", FieldUnit::MILLISECOND);
+                std::unique_ptr<weld::Builder> xBuilder(PropertyHandlerHelper::makeBuilder(u"modules/spropctrlr/ui/numericfield.ui"_ustr, m_xContext));
+                auto pSpinButton = xBuilder->weld_metric_spin_button(u"numericfield"_ustr, FieldUnit::MILLISECOND);
                 rtl::Reference<ONumericControl> pControl = new ONumericControl(std::move(pSpinButton), std::move(xBuilder), bReadOnly);
                 pControl->SetModifyHandler();
                 pControl->setMinValue( Optional< double >( true, 0 ) );
@@ -1513,6 +1514,9 @@ namespace pcr
             if ( !_bFirstTimeInit && m_bHaveCommand )
                 lcl_rebuildAndResetCommand( _rxInspectorUI, this );
             aDependentProperties.push_back( PROPERTY_ID_COMMAND );
+            aDependentProperties.push_back(PROPERTY_ID_ALLOWADDITIONS);
+            aDependentProperties.push_back(PROPERTY_ID_ALLOWEDITS);
+            aDependentProperties.push_back(PROPERTY_ID_ALLOWDELETIONS);
             break;  // case PROPERTY_ID_COMMANDTYPE
 
         // ----- DataSourceName -----
@@ -1536,6 +1540,9 @@ namespace pcr
         case PROPERTY_ID_COMMAND:
             aDependentProperties.push_back( PROPERTY_ID_FILTER );
             aDependentProperties.push_back( PROPERTY_ID_SORT );
+            aDependentProperties.push_back(PROPERTY_ID_ALLOWADDITIONS);
+            aDependentProperties.push_back(PROPERTY_ID_ALLOWEDITS);
+            aDependentProperties.push_back(PROPERTY_ID_ALLOWDELETIONS);
             if ( m_bComponentIsSubForm )
                 aDependentProperties.push_back( PROPERTY_ID_DETAILFIELDS );
             break;
@@ -1785,7 +1792,7 @@ namespace pcr
         }
     }
 
-    void FormComponentPropertyHandler::impl_updateDependentProperty_nothrow( PropertyId _nPropId, const Reference< XObjectInspectorUI >& _rxInspectorUI ) const
+    void FormComponentPropertyHandler::impl_updateDependentProperty_nothrow( PropertyId _nPropId, const Reference< XObjectInspectorUI >& _rxInspectorUI )
     {
         try
         {
@@ -1819,6 +1826,68 @@ namespace pcr
             }
             break;  // case PROPERTY_ID_STRINGITEMLIST
 
+            case PROPERTY_ID_ALLOWADDITIONS:
+            {
+                bool bEnable = false;
+                sal_Int32 nPrivileges = 0;
+                if (m_xComponent->getPropertySetInfo()->hasPropertyByName(PROPERTY_PRIVILEGES))
+                {
+                    m_xComponent->getPropertyValue(PROPERTY_PRIVILEGES) >>= nPrivileges;
+                    bEnable = (nPrivileges & css::sdbcx::Privilege::INSERT) != 0;
+                }
+                _rxInspectorUI->enablePropertyUI(
+                    impl_getPropertyNameFromId_nothrow(PROPERTY_ID_ALLOWADDITIONS),
+                    bEnable
+                );
+                // Set value to false if disabled
+                if (!bEnable)
+                {
+                    setPropertyValue(impl_getPropertyNameFromId_nothrow(PROPERTY_ID_ALLOWADDITIONS), Any(false));
+                }
+            }
+            break;
+
+            case PROPERTY_ID_ALLOWEDITS:
+            {
+                bool bEnable = false;
+                sal_Int32 nPrivileges = 0;
+                if (m_xComponent->getPropertySetInfo()->hasPropertyByName(PROPERTY_PRIVILEGES))
+                {
+                    m_xComponent->getPropertyValue(PROPERTY_PRIVILEGES) >>= nPrivileges;
+                    bEnable = (nPrivileges & css::sdbcx::Privilege::UPDATE) != 0;
+                }
+                _rxInspectorUI->enablePropertyUI(
+                    impl_getPropertyNameFromId_nothrow(PROPERTY_ID_ALLOWEDITS),
+                    bEnable
+                );
+                // Set value to false if disabled
+                if (!bEnable)
+                {
+                    setPropertyValue(impl_getPropertyNameFromId_nothrow(PROPERTY_ID_ALLOWEDITS), Any(false));
+                }
+            }
+            break;
+
+            case PROPERTY_ID_ALLOWDELETIONS:
+            {
+                bool bEnable = false;
+                sal_Int32 nPrivileges = 0;
+                if (m_xComponent->getPropertySetInfo()->hasPropertyByName(PROPERTY_PRIVILEGES))
+                {
+                    m_xComponent->getPropertyValue(PROPERTY_PRIVILEGES) >>= nPrivileges;
+                    bEnable = (nPrivileges & css::sdbcx::Privilege::DELETE) != 0;
+                }
+                _rxInspectorUI->enablePropertyUI(
+                    impl_getPropertyNameFromId_nothrow(PROPERTY_ID_ALLOWDELETIONS),
+                    bEnable
+                );
+                // Set value to false if disabled
+                if (!bEnable)
+                {
+                    setPropertyValue(impl_getPropertyNameFromId_nothrow(PROPERTY_ID_ALLOWDELETIONS), Any(false));
+                }
+            }
+            break;
             // ----- TypedItemList -----
             case PROPERTY_ID_TYPEDITEMLIST:
             {
@@ -2283,7 +2352,7 @@ namespace pcr
 
         // no data properties if no Base is installed.
         if ( ( nPropertyUIFlags & PROP_FLAG_DATA_PROPERTY ) != 0 )
-            if ( !SvtModuleOptions().IsModuleInstalled( SvtModuleOptions::EModule::DATABASE ) )
+            if (!SvtModuleOptions().IsDataBaseInstalled())
                 return true;
 
         if ((nPropertyUIFlags & PROP_FLAG_REPORT_INVISIBLE) != 0 && isReportModel())
@@ -2381,7 +2450,7 @@ namespace pcr
         if ( !m_xRowSetConnection.is() )
         {
             uno::Reference<sdbc::XConnection> xConnection;
-            Any any = m_xContext->getValueByName( "ActiveConnection" );
+            Any any = m_xContext->getValueByName( u"ActiveConnection"_ustr );
             any >>= xConnection;
             m_xRowSetConnection.reset(xConnection,::dbtools::SharedConnection::NoTakeOwnership);
         }
@@ -2627,11 +2696,11 @@ namespace pcr
 
             // initialize the dialog
             Reference< XPropertySet > xDialogProps( xDialog, UNO_QUERY_THROW );
-            xDialogProps->setPropertyValue("QueryComposer", Any( xComposer ) );
-            xDialogProps->setPropertyValue("RowSet",        Any( m_xComponent ) );
+            xDialogProps->setPropertyValue(u"QueryComposer"_ustr, Any( xComposer ) );
+            xDialogProps->setPropertyValue(u"RowSet"_ustr,        Any( m_xComponent ) );
             if (auto pTopLevel = impl_getDefaultDialogFrame_nothrow())
-                xDialogProps->setPropertyValue("ParentWindow",  Any(pTopLevel->GetXWindow()));
-            xDialogProps->setPropertyValue("Title",         Any( sPropertyUIName ) );
+                xDialogProps->setPropertyValue(u"ParentWindow"_ustr,  Any(pTopLevel->GetXWindow()));
+            xDialogProps->setPropertyValue(u"Title"_ustr,         Any( sPropertyUIName ) );
 
             _rClearBeforeDialog.clear();
             bSuccess = ( xDialog->execute() != 0 );
@@ -2687,7 +2756,7 @@ namespace pcr
             Reference< XUnoTunnel > xTunnel( xSupplier, UNO_QUERY_THROW );
             SvNumberFormatsSupplierObj* pSupplier =
                 reinterpret_cast< SvNumberFormatsSupplierObj* >( xTunnel->getSomething( SvNumberFormatsSupplierObj::getUnoTunnelId() ) );
-            DBG_ASSERT( pSupplier != nullptr, "FormComponentPropertyHandler::impl_dialogFormatting_nothrow: invalid call !" );
+            assert(pSupplier && "FormComponentPropertyHandler::impl_dialogFormatting_nothrow: invalid call !");
 
             sal_Int32 nFormatKey = 0;
             impl_getPropertyValue_throw( PROPERTY_FORMATKEY ) >>= nFormatKey;
@@ -2700,7 +2769,7 @@ namespace pcr
 
             // a tab dialog with a single page
             SfxSingleTabDialogController aDialog(impl_getDefaultDialogFrame_nothrow(), &aCoreSet,
-                "cui/ui/formatnumberdialog.ui", "FormatNumberDialog");
+                u"cui/ui/formatnumberdialog.ui"_ustr, u"FormatNumberDialog"_ustr);
             SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
             ::CreateTabPage fnCreatePage = pFact->GetTabPageCreatorFunc( RID_SVXPAGE_NUMBERFORMAT );
             if ( !fnCreatePage )
@@ -2834,8 +2903,8 @@ namespace pcr
         // create an item set for use with the dialog
         std::unique_ptr<SfxItemSet> pSet;
         rtl::Reference<SfxItemPool> pPool;
-        std::vector<SfxPoolItem*>* pDefaults = nullptr;
-        ControlCharacterDialog::createItemSet(pSet, pPool, pDefaults);
+        FontList aFontList(Application::GetDefaultDevice());
+        ControlCharacterDialog::createItemSet(pSet, pPool, aFontList);
         ControlCharacterDialog::translatePropertiesToItems(m_xComponent, pSet.get());
 
         {   // do this in an own block. The dialog needs to be destroyed before we call
@@ -2855,7 +2924,7 @@ namespace pcr
             }
         }
 
-        ControlCharacterDialog::destroyItemSet(pSet, pPool, pDefaults);
+        ControlCharacterDialog::destroyItemSet(pSet, pPool);
         return bSuccess;
     }
 
@@ -2865,7 +2934,7 @@ namespace pcr
         weld::Window* pWin = impl_getDefaultDialogFrame_nothrow();
         ::sfx2::FileDialogHelper aFileDlg(
                 ui::dialogs::TemplateDescription::FILEOPEN_READONLY_VERSION, FileDialogFlags::NONE,
-                "sdatabase", SfxFilterFlags::NONE, SfxFilterFlags::NONE, pWin);
+                u"sdatabase"_ustr, SfxFilterFlags::NONE, SfxFilterFlags::NONE, pWin);
 
         OUString sDataSource;
         if( ! (impl_getPropertyValue_throw( PROPERTY_DATASOURCE ) >>= sDataSource) )
@@ -2876,7 +2945,7 @@ namespace pcr
             // is considered to be potentially expensive
             aFileDlg.SetDisplayDirectory( sDataSource );
 
-        std::shared_ptr<const SfxFilter> pFilter = SfxFilter::GetFilterByName("StarOffice XML (Base)");
+        std::shared_ptr<const SfxFilter> pFilter = SfxFilter::GetFilterByName(u"StarOffice XML (Base)"_ustr);
         OSL_ENSURE(pFilter,"Filter: StarOffice XML (Base) could not be found!");
         if ( pFilter )
         {
@@ -2896,12 +2965,12 @@ namespace pcr
         ::Color aColor;
         if( ! (impl_getPropertyValue_throw( impl_getPropertyNameFromId_nothrow( _nColorPropertyId )) >>= aColor) )
             SAL_WARN("extensions.propctrlr", "impl_dialogColorChooser_throw: unable to get property " << _nColorPropertyId);
-        SvColorDialog aColorDlg;
-        aColorDlg.SetColor( aColor );
 
         _rClearBeforeDialog.clear();
         weld::Window* pParent = impl_getDefaultDialogFrame_nothrow();
-        if (!aColorDlg.Execute(pParent))
+        ColorDialog aColorDlg(pParent);
+        aColorDlg.SetColor(aColor);
+        if (!aColorDlg.Execute())
             return false;
 
         _out_rNewValue <<= aColorDlg.GetColor();
@@ -2923,7 +2992,7 @@ namespace pcr
     Reference< XControlContainer > FormComponentPropertyHandler::impl_getContextControlContainer_nothrow() const
     {
         Reference< XControlContainer > xControlContext;
-        Any any = m_xContext->getValueByName( "ControlContext" );
+        Any any = m_xContext->getValueByName( u"ControlContext"_ustr );
         any >>= xControlContext;
         return xControlContext;
     }
@@ -2952,7 +3021,7 @@ namespace pcr
                 whose UI is to be disabled while the SQL command property is
                 being edited.
             */
-            virtual OUString*    getPropertiesToDisable() = 0;
+            virtual const OUString* getPropertiesToDisable() = 0;
         };
 
 
@@ -2987,7 +3056,7 @@ namespace pcr
             virtual void            setEscapeProcessing( const bool _bEscapeProcessing ) const override;
 
             // ISQLCommandPropertyUI
-            virtual OUString*    getPropertiesToDisable() override;
+            virtual const OUString* getPropertiesToDisable() override;
         };
 
 
@@ -3030,14 +3099,14 @@ namespace pcr
         }
 
 
-        OUString* FormSQLCommandUI::getPropertiesToDisable()
+        const OUString* FormSQLCommandUI::getPropertiesToDisable()
         {
-            static OUString s_aCommandProps[] = {
+            static constexpr OUString s_aCommandProps[] = {
                 PROPERTY_DATASOURCE,
                 PROPERTY_COMMAND,
                 PROPERTY_COMMANDTYPE,
                 PROPERTY_ESCAPE_PROCESSING,
-                OUString()
+                u""_ustr
             };
             return s_aCommandProps;
         }
@@ -3056,7 +3125,7 @@ namespace pcr
             virtual void            setEscapeProcessing( const bool _bEscapeProcessing ) const override;
 
             // ISQLCommandPropertyUI
-            virtual OUString*    getPropertiesToDisable() override;
+            virtual const OUString* getPropertiesToDisable() override;
         private:
             mutable bool    m_bPropertyValueIsList;
         };
@@ -3125,12 +3194,12 @@ namespace pcr
         }
 
 
-        OUString* ValueListCommandUI::getPropertiesToDisable()
+        const OUString* ValueListCommandUI::getPropertiesToDisable()
         {
-            static OUString s_aListSourceProps[] = {
+            static constexpr OUString s_aListSourceProps[] = {
                 PROPERTY_LISTSOURCETYPE,
                 PROPERTY_LISTSOURCE,
-                OUString()
+                u""_ustr
             };
             return s_aListSourceProps;
         }

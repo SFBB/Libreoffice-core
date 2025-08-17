@@ -58,9 +58,9 @@ class SwUndoInsert final : public SwUndo, private SwUndoSaveContent
     bool CanGrouping( sal_Unicode cIns );
     bool CanGrouping( const SwPosition& rPos );
 
-    SwDoc * m_pDoc;
+    SwDoc& m_rDoc;
 
-    void Init(const SwNode & rNode);
+    void Init();
     std::optional<OUString> GetTextFromDoc() const;
 
 public:
@@ -176,7 +176,7 @@ class SwUndoInsertLabel final : public SwUndo
     // #i39983# the separator is drawn with a character style
     OUString m_sSeparator;
     OUString m_sNumberSeparator;
-    OUString m_sCharacterStyle;
+    UIName m_sCharacterStyle;
     // #i26791# - re-store of drawing object position no longer needed
     sal_uInt16 m_nFieldId;
     SwLabelType m_eType;
@@ -191,9 +191,9 @@ public:
                         OUString aSeparator,
                         OUString aNumberSeparator, //#i61007# order of captions
                         const bool bBefore, const sal_uInt16 nId,
-                        OUString aCharacterStyle,
+                        UIName aCharacterStyle,
                         const bool bCpyBrd,
-                        const SwDoc* pDoc );
+                        const SwDoc& rDoc );
     virtual ~SwUndoInsertLabel() override;
 
     virtual void UndoImpl( ::sw::UndoRedoContext & ) override;

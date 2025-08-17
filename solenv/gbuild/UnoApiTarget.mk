@@ -90,9 +90,6 @@ endef
 
 # UnoApiHeadersTarget
 
-# defined by platform
-#  gb_UnoApiHeadersTarget_select_variant
-
 # Allow to redefine header variant.
 #
 # On iOS we use static linking because dynamic loading of own code
@@ -125,8 +122,10 @@ endef
 # technical reasons to get around silly limitations in the OS, sigh.
 #
 # gb_UnoApiHeadersTarget_select_variant api default-variant
-ifeq ($(origin gb_UnoApiHeadersTarget_select_variant),undefined)
-$(eval $(call gb_Output_error,gb_UnoApiHeadersTarget_select_variant must be defined by platform))
+ifeq ($(DISABLE_DYNLOADING),TRUE)
+gb_UnoApiHeadersTarget_select_variant = $(if $(filter udkapi,$(1)),comprehensive,$(2))
+else
+gb_UnoApiHeadersTarget_select_variant = $(2)
 endif
 
 gb_UnoApiHeadersTarget_CPPUMAKERDEPS := $(call gb_Executable_get_runtime_dependencies,cppumaker)
@@ -152,7 +151,7 @@ $(call gb_UnoApiHeadersTarget_get_real_comprehensive_target,%) : \
 	$(call gb_Output_announce,$*,$(true),HPC,3)
 	$(call gb_Trace_StartRange,$*,HPC)
 	$(call gb_UnoApiHeadersTarget__command,$@,$*,$(call gb_UnoApiHeadersTarget_get_comprehensive_dir,$*), \
-		-C $(if $(filter EMSCRIPTEN, $(OS)), -W))
+		-C)
 	$(call gb_Trace_EndRange,$*,HPC)
 
 $(call gb_UnoApiHeadersTarget_get_real_target,%) : \
@@ -230,21 +229,6 @@ endef
 # call gb_UnoApiHeadersTarget_add_headerfiles,unoapi,directory,headerfilenames
 define gb_UnoApiHeadersTarget_add_headerfiles
 $(foreach hdr,$(3),$(call gb_UnoApiHeadersTarget_add_headerfile,$(1),$(2)/$(hdr)))
-endef
-
-# call gb_UnoApiEmbindTarget_add_embind,unoapi,directory,headerfilenames
-define gb_UnoApiHeadersTarget_add_embind
-$(if $(filter offapi udkapi, $(1)),\
-	$(foreach hdr,$(3),$(eval $(call gb_UnoApiEmbindTarget__add_embind,$(1),$(2),$(hdr)))))
-endef
-
-# CaptionEscapeDirection contains "auto" as a variable name.. so exclude that
-define gb_UnoApiEmbindTarget__add_embind
-$(if $(filter-out CaptionEscapeDirection_embind, $(3)),\
-$(eval $(call gb_StaticLibrary_add_generated_exception_objects,unoembind,\
-	UnoApiHeadersTarget/$(1)/comprehensive/$(2)/$(3) \
-)))
-
 endef
 
 define gb_UnoApiHeadersTarget__use_api_for_target

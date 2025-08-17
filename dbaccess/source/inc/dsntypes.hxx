@@ -55,7 +55,6 @@ enum DATASOURCE_TYPE
     DST_EVOLUTION_LDAP      = 19,
     DST_KAB                 = 20,
     DST_MACAB               = 21,
-    DST_MSACCESS_2007       = 22,
     DST_EMBEDDED_HSQLDB     = 23,
     DST_MYSQL_NATIVE        = 24,
     DST_MYSQL_NATIVE_DIRECT = 25,
@@ -101,7 +100,7 @@ enum DATASOURCE_TYPE
 #define PAGE_DBSETUPWIZARD_POSTGRES                  19
 
 // ODsnTypeCollection
-class OOO_DLLPUBLIC_DBA ODsnTypeCollection final
+class UNLESS_MERGELIBS_MORE(OOO_DLLPUBLIC_DBA) ODsnTypeCollection final
 {
 
     std::vector<OUString> m_aDsnTypesDisplayNames;    /// user readable names for the datasource types
@@ -129,7 +128,7 @@ public:
     OUString getPrefix(std::u16string_view _sURL) const;
 
     /// determines whether there is a driver for the given URL prefix/pattern
-    bool    hasDriver( const char* _pAsciiPattern ) const;
+    bool hasDriver( std::u16string_view _rAsciiPattern ) const;
 
     /// on a given string, return the Java Driver Class
     OUString getJavaDriverClass(std::u16string_view _sURL) const;
@@ -187,7 +186,7 @@ public:
 };
 
 //- ODsnTypeCollection::TypeIterator
-class OOO_DLLPUBLIC_DBA ODsnTypeCollection::TypeIterator
+class UNLESS_MERGELIBS_MORE(OOO_DLLPUBLIC_DBA) ODsnTypeCollection::TypeIterator
 {
     friend class ODsnTypeCollection;
 

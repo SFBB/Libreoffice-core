@@ -56,14 +56,14 @@ sal_Bool SAL_CALL SdUnoSlideView::select (const Any& aSelection)
     rSelector.DeselectAllPages();
     Sequence<Reference<drawing::XDrawPage> > xPages;
     aSelection >>= xPages;
-    for (const auto& rPage : std::as_const(xPages))
+    for (const auto& rPage : xPages)
     {
         Reference<beans::XPropertySet> xSet (rPage, UNO_QUERY);
         if (xSet.is())
         {
             try
             {
-                Any aNumber = xSet->getPropertyValue("Number");
+                Any aNumber = xSet->getPropertyValue(u"Number"_ustr);
                 sal_Int32 nPageNumber = 0;
                 aNumber >>= nPageNumber;
                 nPageNumber -=1; // Transform 1-based page numbers to 0-based ones.
@@ -118,9 +118,9 @@ void SAL_CALL SdUnoSlideView::setCurrentPage (
     if (xProperties.is())
     {
         sal_uInt16 nPageNumber(0);
-        if (xProperties->getPropertyValue("Number") >>= nPageNumber)
+        if (xProperties->getPropertyValue(u"Number"_ustr) >>= nPageNumber)
         {
-            mrSlideSorter.GetController().GetCurrentSlideManager()->SwitchCurrentSlide(
+            mrSlideSorter.GetController().GetCurrentSlideManager().SwitchCurrentSlide(
                 nPageNumber-1);
         }
     }
@@ -129,7 +129,7 @@ void SAL_CALL SdUnoSlideView::setCurrentPage (
 css::uno::Reference<css::drawing::XDrawPage > SAL_CALL
     SdUnoSlideView::getCurrentPage()
 {
-    return mrSlideSorter.GetController().GetCurrentSlideManager()->GetCurrentSlide()->GetXDrawPage();
+    return mrSlideSorter.GetController().GetCurrentSlideManager().GetCurrentSlide()->GetXDrawPage();
 }
 
 //----- XFastPropertySet ------------------------------------------------------
@@ -153,7 +153,7 @@ Any SAL_CALL SdUnoSlideView::getFastPropertyValue (
 // XServiceInfo
 OUString SAL_CALL SdUnoSlideView::getImplementationName(  )
 {
-    return "com.sun.star.comp.sd.SdUnoSlideView";
+    return u"com.sun.star.comp.sd.SdUnoSlideView"_ustr;
 }
 
 sal_Bool SAL_CALL SdUnoSlideView::supportsService( const OUString& ServiceName )
@@ -163,7 +163,7 @@ sal_Bool SAL_CALL SdUnoSlideView::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL SdUnoSlideView::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.presentation.SlidesView" };
+    return { u"com.sun.star.presentation.SlidesView"_ustr };
 }
 
 } // end of namespace sd

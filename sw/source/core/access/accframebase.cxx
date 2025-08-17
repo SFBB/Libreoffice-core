@@ -44,9 +44,8 @@ bool SwAccessibleFrameBase::IsSelected()
     bool bRet = false;
 
     assert(GetMap());
-    const SwViewShell *pVSh = GetMap()->GetShell();
-    assert(pVSh);
-    if( auto pFESh = dynamic_cast<const SwFEShell*>(pVSh) )
+    const SwViewShell& rVSh = GetMap()->GetShell();
+    if (auto pFESh = dynamic_cast<const SwFEShell*>(&rVSh))
     {
         const SwFrame *pFlyFrame = pFESh->GetSelectedFlyFrame();
         if( pFlyFrame == GetFrame() )
@@ -60,10 +59,8 @@ void SwAccessibleFrameBase::GetStates( sal_Int64& rStateSet )
 {
     SwAccessibleContext::GetStates( rStateSet );
 
-    const SwViewShell *pVSh = GetMap()->GetShell();
-    assert(pVSh);
-
-    if (dynamic_cast<const SwFEShell*>(pVSh))
+    const SwViewShell& rVSh = GetMap()->GetShell();
+    if (dynamic_cast<const SwFEShell*>(&rVSh))
     {
         // SELECTABLE
         rStateSet |= AccessibleStateType::SELECTABLE;
@@ -90,12 +87,13 @@ void SwAccessibleFrameBase::GetStates( sal_Int64& rStateSet )
 SwNodeType SwAccessibleFrameBase::GetNodeType( const SwFlyFrame *pFlyFrame )
 {
     SwNodeType nType = SwNodeType::Text;
-    if( pFlyFrame->Lower() )
+    const SwFrame* pLower = pFlyFrame->Lower();
+    if( pLower )
     {
-        if( pFlyFrame->Lower()->IsNoTextFrame() )
+        if( pLower->IsNoTextFrame() )
         {
             const SwNoTextFrame *const pContentFrame =
-                static_cast<const SwNoTextFrame *>(pFlyFrame->Lower());
+                static_cast<const SwNoTextFrame *>(pLower);
             nType = pContentFrame->GetNode()->GetNodeType();
         }
     }
@@ -127,7 +125,7 @@ SwAccessibleFrameBase::SwAccessibleFrameBase(
 
     StartListening(const_cast<SwFrameFormat*>(pFrameFormat)->GetNotifier());
 
-    SetName( pFrameFormat->GetName() );
+    SetName( pFrameFormat->GetName().toString() );
 
     m_bIsSelected = IsSelected();
 }
@@ -162,17 +160,12 @@ void SwAccessibleFrameBase::InvalidateCursorPos_()
     if(!bNewSelected)
         return;
 
-    uno::Reference< XAccessible > xParent( GetWeakParent() );
+    rtl::Reference<SwAccessibleContext> xParent(GetWeakParent());
     if( xParent.is() )
     {
-        SwAccessibleContext *pAcc =
-            static_cast <SwAccessibleContext *>( xParent.get() );
-
-        AccessibleEventObject aEvent;
-        aEvent.EventId = AccessibleEventId::SELECTION_CHANGED;
         uno::Reference< XAccessible > xChild(this);
-        aEvent.NewValue <<= xChild;
-        pAcc->FireAccessibleEvent( aEvent );
+        xParent->FireAccessibleEvent(AccessibleEventId::SELECTION_CHANGED, uno::Any(),
+                                     uno::Any(xChild));
     }
 }
 
@@ -219,16 +212,13 @@ void SwAccessibleFrameBase::Notify(const SfxHint& rHint)
         const OUString sOldName( GetName() );
         assert( rNameChanged.m_sOld == sOldName);
 
-        SetName( pFrameFormat->GetName() );
+        SetName( pFrameFormat->GetName().toString() );
         assert( rNameChanged.m_sNew == GetName());
 
         if( sOldName != GetName() )
         {
-            AccessibleEventObject aEvent;
-            aEvent.EventId = AccessibleEventId::NAME_CHANGED;
-            aEvent.OldValue <<= sOldName;
-            aEvent.NewValue <<= GetName();
-            FireAccessibleEvent( aEvent );
+            FireAccessibleEvent(AccessibleEventId::NAME_CHANGED, uno::Any(sOldName),
+                                uno::Any(GetName()));
         }
     }
 }
@@ -251,7 +241,7 @@ SwPaM* SwAccessibleFrameBase::GetCursor()
     {
         SwFEShell *pFESh = dynamic_cast<SwFEShell*>( pCursorShell);
         if( !pFESh ||
-            !(pFESh->IsFrameSelected() || pFESh->IsObjSelected() > 0) )
+            !(pFESh->IsFrameSelected() || pFESh->GetSelectedObjCount() > 0) )
         {
             // get the selection, and test whether it affects our text node
             pCursor = pCursorShell->GetCursor( false /* ??? */ );

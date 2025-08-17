@@ -29,9 +29,6 @@ static css::uno::Reference<css::accessibility::XAccessibleTable>
 getTableParent(AtkTableCell* pTableCell)
 {
     AtkObject* pParent = atk_object_get_parent(ATK_OBJECT(pTableCell));
-    if (!pParent)
-        return css::uno::Reference<css::accessibility::XAccessibleTable>();
-
     AtkObjectWrapper* pWrap = ATK_OBJECT_WRAPPER(pParent);
     if (pWrap)
     {
@@ -253,8 +250,9 @@ static AtkObject* tablecell_wrapper_get_table(AtkTableCell* cell)
 
 } // extern "C"
 
-void tablecellIfaceInit(AtkTableCellIface* iface)
+void tablecellIfaceInit(gpointer iface_, gpointer)
 {
+    auto const iface = static_cast<AtkTableCellIface*>(iface_);
     g_return_if_fail(iface != nullptr);
 
     iface->get_column_span = tablecell_wrapper_get_column_span;

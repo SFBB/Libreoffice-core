@@ -26,7 +26,6 @@
 class SbiConstDef;
 class SbiParser;
 class SbiProcDef;
-class SbiStringPool;
 class SbiSymDef;                    // base class
 
 enum SbiSymScope { SbLOCAL, SbPARAM, SbPUBLIC, SbGLOBAL, SbRTL };
@@ -42,7 +41,7 @@ public:
     sal_uInt32 GetSize() const { return aData.size(); }
     short Add( const OUString& );
     short Add( double, SbxDataType );
-    OUString Find( sal_uInt32 ) const;
+    const OUString & Find( sal_uInt32 ) const;
 };
 
 

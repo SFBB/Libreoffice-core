@@ -98,14 +98,14 @@ bool ChartTransferable::GetData( const css::datatransfer::DataFlavor& rFlavor, c
         else if( nFormat == SotClipboardFormatId::BITMAP )
         {
             Graphic aGraphic( m_xMetaFileGraphic );
-            bResult = SetBitmapEx( aGraphic.GetBitmapEx(), rFlavor );
+            bResult = SetBitmapEx( Bitmap(aGraphic.GetBitmapEx()), rFlavor );
         }
     }
 
     return bResult;
 }
 
-bool ChartTransferable::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId,
+bool ChartTransferable::WriteObject( SvStream& rOStm, void* pUserObject, sal_uInt32 nUserObjectId,
     const datatransfer::DataFlavor& /* rFlavor */ )
 {
     // called from SetObject, put data into stream
@@ -118,12 +118,12 @@ bool ChartTransferable::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* 
                 SdrModel* pMarkedObjModel = static_cast< SdrModel* >( pUserObject );
                 if ( pMarkedObjModel )
                 {
-                    rxOStm->SetBufferSize( 0xff00 );
+                    rOStm.SetBufferSize( 0xff00 );
 
                     // for the changed pool defaults from drawing layer pool set those
                     // attributes as hard attributes to preserve them for saving
                     const SfxItemPool& rItemPool = pMarkedObjModel->GetItemPool();
-                    const SvxFontHeightItem& rDefaultFontHeight = rItemPool.GetDefaultItem( EE_CHAR_FONTHEIGHT );
+                    const SvxFontHeightItem& rDefaultFontHeight = rItemPool.GetUserOrPoolDefaultItem( EE_CHAR_FONTHEIGHT );
                     sal_uInt16 nCount = pMarkedObjModel->GetPageCount();
                     for ( sal_uInt16 i = 0; i < nCount; ++i )
                     {
@@ -140,10 +140,10 @@ bool ChartTransferable::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* 
                         }
                     }
 
-                    Reference< io::XOutputStream > xDocOut( new utl::OOutputStreamWrapper( *rxOStm ) );
+                    Reference< io::XOutputStream > xDocOut( new utl::OOutputStreamWrapper( rOStm ) );
                     SvxDrawingLayerExport( pMarkedObjModel, xDocOut );
 
-                    bRet = ( rxOStm->GetError() == ERRCODE_NONE );
+                    bRet = ( rOStm.GetError() == ERRCODE_NONE );
                 }
             }
             break;

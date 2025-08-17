@@ -30,6 +30,7 @@
 #include <com/sun/star/drawing/BitmapMode.hpp>
 #include <com/sun/star/drawing/RectanglePoint.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
+#include <com/sun/star/chart2/RelativeSize.hpp>
 #include <com/sun/star/chart2/XDataPointCustomLabelField.hpp>
 #include <com/sun/star/chart2/DataPointGeometry3D.hpp>
 #include <com/sun/star/chart2/DataPointLabel.hpp>
@@ -339,6 +340,12 @@ void DataPointProperties::AddPropertiesToVector(
                   beans::PropertyAttribute::BOUND
                   | beans::PropertyAttribute::MAYBEDEFAULT );
 
+    rOutProperties.emplace_back( "InvertNegative",
+                  PROP_DATAPOINT_INVERT_NEGATIVE,
+                  cppu::UnoType<bool>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEDEFAULT );
+
     // statistics
     rOutProperties.emplace_back( CHART_UNONAME_ERRORBAR_X,
                   PROP_DATAPOINT_ERROR_BAR_X,
@@ -447,6 +454,11 @@ void DataPointProperties::AddPropertiesToVector(
                   cppu::UnoType<chart2::RelativePosition>::get(),
                   beans::PropertyAttribute::BOUND
                   | beans::PropertyAttribute::MAYBEVOID );
+
+    rOutProperties.emplace_back("CustomLabelSize", PROP_DATAPOINT_LABEL_CUSTOM_SIZE,
+                                cppu::UnoType<chart2::RelativeSize>::get(),
+                                beans::PropertyAttribute::BOUND
+                                    | beans::PropertyAttribute::MAYBEVOID);
 }
 
 void DataPointProperties::AddDefaultsToMap(
@@ -507,6 +519,7 @@ void DataPointProperties::AddDefaultsToMap(
     PropertyHelper::setPropertyValueDefault( rOutMap, PROP_DATAPOINT_PERCENT_DIAGONAL, sal_Int16(0) );
 
     PropertyHelper::setPropertyValueDefault( rOutMap, PROP_DATAPOINT_TEXT_ROTATION, 0.0 );
+    PropertyHelper::setPropertyValueDefault( rOutMap, PROP_DATAPOINT_INVERT_NEGATIVE, false );
 
     PropertyHelper::setPropertyValueDefault(rOutMap, PROP_DATAPOINT_LINK_NUMBERFORMAT_TO_SOURCE, true);
 
@@ -523,7 +536,7 @@ void DataPointProperties::AddDefaultsToMap(
             ));
 
     PropertyHelper::setPropertyValueDefault( rOutMap, PROP_DATAPOINT_TEXT_WORD_WRAP, false );
-    PropertyHelper::setPropertyValueDefault( rOutMap, PROP_DATAPOINT_LABEL_SEPARATOR, OUString(" ") );
+    PropertyHelper::setPropertyValueDefault( rOutMap, PROP_DATAPOINT_LABEL_SEPARATOR, u" "_ustr );
     PropertyHelper::setPropertyValueDefault(rOutMap, PROP_DATAPOINT_LABEL_BORDER_STYLE, drawing::LineStyle_NONE);
     PropertyHelper::setEmptyPropertyValueDefault(rOutMap, PROP_DATAPOINT_LABEL_BORDER_COLOR);
     PropertyHelper::setEmptyPropertyValueDefault(rOutMap, PROP_DATAPOINT_LABEL_FILL_STYLE);

@@ -19,10 +19,9 @@
 
 
 #include <sal/log.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/window.hxx>
-#include <toolkit/awt/vclxaccessiblecomponent.hxx>
-#include <toolkit/awt/vclxwindow.hxx>
-
+#include <vcl/accessibility/vclxaccessiblecomponent.hxx>
 #include <vcl/sysdata.hxx>
 #include <vcl/svapp.hxx>
 
@@ -30,63 +29,53 @@
 #include <unomsaaevent.hxx>
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
+#include <com/sun/star/awt/XWindow.hpp>
 
 using namespace com::sun::star::uno;
 
 /**
  *  For the new opened window, generate all the UNO accessible's object, COM object and add
  *  accessible listener to monitor all these objects.
- *  @param pAccessible      the accessible of the new opened window
+ *  @param pWindow      the new opened window
  */
-void AccTopWindowListener::HandleWindowOpened( css::accessibility::XAccessible* pAccessible )
+void AccTopWindowListener::HandleWindowOpened(vcl::Window* pWindow)
 {
-    //get SystemData from window
-    VclPtr<vcl::Window> window;
-    if (auto pvclwindow = dynamic_cast<VCLXWindow*>(pAccessible))
-        window = pvclwindow->GetWindow();
-    else if (auto pvclxcomponent = dynamic_cast<VCLXAccessibleComponent*>(pAccessible))
-        window = pvclxcomponent->GetWindow();
-    assert(window);
-    // The SalFrame of window may be destructed at this time
-    const SystemEnvData* systemdata = nullptr;
-    try
-    {
-        systemdata = window->GetSystemData();
-    }
-    catch(...)
-    {
-        systemdata = nullptr;
-    }
-    Reference<css::accessibility::XAccessibleContext> xContext = pAccessible->getAccessibleContext();
+    assert(pWindow);
+
+    const SystemEnvData* pSystemData = pWindow->GetSystemData();
+    if (!pSystemData)
+        return;
+
+    Reference<css::accessibility::XAccessible> xAccessible = pWindow->GetAccessible();
+    if (!xAccessible.is())
+        return;
+
+    Reference<css::accessibility::XAccessibleContext> xContext = xAccessible->getAccessibleContext();
     if(!xContext.is())
         return;
 
-    css::accessibility::XAccessibleContext* pAccessibleContext = xContext.get();
-    //Only AccessibleContext exist, add all listeners
-    if(pAccessibleContext != nullptr && systemdata != nullptr)
+    // add all listeners
+    m_aAccObjectManager.SaveTopWindowHandle(pSystemData->hWnd, xAccessible.get());
+
+    AddAllListeners(xAccessible.get(), nullptr, pSystemData->hWnd);
+
+    if (pWindow->GetStyle() & WB_MOVEABLE)
+        m_aAccObjectManager.IncreaseState(xAccessible.get(), static_cast<unsigned short>(-1) /* U_MOVEBLE */ );
+
+    short role = xContext->getAccessibleRole();
+
+    if (role == css::accessibility::AccessibleRole::POPUP_MENU ||
+            role == css::accessibility::AccessibleRole::MENU )
     {
-        m_aAccObjectManager.SaveTopWindowHandle(systemdata->hWnd, pAccessible);
+        m_aAccObjectManager.NotifyAccEvent(xAccessible.get(), UnoMSAAEvent::MENUPOPUPSTART);
+    }
 
-        AddAllListeners(pAccessible,nullptr,systemdata->hWnd);
-
-        if( window->GetStyle() & WB_MOVEABLE )
-            m_aAccObjectManager.IncreaseState( pAccessible, static_cast<unsigned short>(-1) /* U_MOVEBLE */ );
-
-        short role = pAccessibleContext->getAccessibleRole();
-
-        if (role == css::accessibility::AccessibleRole::POPUP_MENU ||
-                role == css::accessibility::AccessibleRole::MENU )
-        {
-            m_aAccObjectManager.NotifyAccEvent(pAccessible, UnoMSAAEvent::MENUPOPUPSTART);
-        }
-
-        if (role == css::accessibility::AccessibleRole::FRAME ||
-                role == css::accessibility::AccessibleRole::DIALOG ||
-                role == css::accessibility::AccessibleRole::WINDOW ||
-                role == css::accessibility::AccessibleRole::ALERT)
-        {
-            m_aAccObjectManager.NotifyAccEvent(pAccessible, UnoMSAAEvent::SHOW);
-        }
+    if (role == css::accessibility::AccessibleRole::FRAME ||
+            role == css::accessibility::AccessibleRole::DIALOG ||
+            role == css::accessibility::AccessibleRole::WINDOW ||
+            role == css::accessibility::AccessibleRole::ALERT)
+    {
+        m_aAccObjectManager.NotifyAccEvent(xAccessible.get(), UnoMSAAEvent::SHOW);
     }
 }
 
@@ -109,14 +98,13 @@ void AccTopWindowListener::windowOpened( const css::lang::EventObject& e )
     if ( !e.Source.is())
         return;
 
-    Reference< css::accessibility::XAccessible > xAccessible ( e.Source, UNO_QUERY );
-    css::accessibility::XAccessible* pAccessible = xAccessible.get();
-    if ( !pAccessible )
-        return;
-
     SolarMutexGuard g;
 
-    HandleWindowOpened( pAccessible );
+    css::uno::Reference<css::awt::XWindow> xWindow(e.Source, UNO_QUERY_THROW);
+    vcl::Window* pWindow = VCLUnoHelper::GetWindow(xWindow);
+    assert(pWindow);
+
+    HandleWindowOpened(pWindow);
 }
 
 /**
@@ -132,11 +120,6 @@ void AccTopWindowListener::AddAllListeners(css::accessibility::XAccessible* pAcc
     {
         return;
     }
-    css::accessibility::XAccessibleContext* pAccessibleContext = xContext.get();
-    if(pAccessibleContext == nullptr)
-    {
-        return;
-    }
 
     m_aAccObjectManager.InsertAccObj(pAccessible, pParentXAcc, pWND);
 
@@ -146,7 +129,7 @@ void AccTopWindowListener::AddAllListeners(css::accessibility::XAccessible* pAcc
     }
 
 
-    short role = pAccessibleContext->getAccessibleRole();
+    short role = xContext->getAccessibleRole();
     if(css::accessibility::AccessibleRole::DOCUMENT == role ||
             css::accessibility::AccessibleRole::DOCUMENT_PRESENTATION == role ||
             css::accessibility::AccessibleRole::DOCUMENT_SPREADSHEET == role ||
@@ -158,21 +141,14 @@ void AccTopWindowListener::AddAllListeners(css::accessibility::XAccessible* pAcc
         }
     }
 
-    sal_Int64 nCount = pAccessibleContext->getAccessibleChildCount();
+    sal_Int64 nCount = xContext->getAccessibleChildCount();
     for (sal_Int64 i = 0; i < nCount; i++)
     {
-        Reference<css::accessibility::XAccessible> mxAccessible
-        = pAccessibleContext->getAccessibleChild(i);
+        Reference<css::accessibility::XAccessible> xAccessible
+            = xContext->getAccessibleChild(i);
 
-        css::accessibility::XAccessible* mpAccessible = mxAccessible.get();
-        if(mpAccessible != nullptr)
-        {
-            Reference<css::accessibility::XAccessibleContext> mxAccessibleContext
-            = mpAccessible->getAccessibleContext();
-            css::accessibility::XAccessibleContext* mpContext = mxAccessibleContext.get();
-            if(mpContext != nullptr)
-                AddAllListeners( mpAccessible, pAccessible, pWND);
-        }
+        if (xAccessible.is())
+            AddAllListeners(xAccessible.get(), pAccessible, pWND);
     }
 }
 
@@ -193,35 +169,27 @@ void AccTopWindowListener::windowClosed( const css::lang::EventObject& e )
     if ( !e.Source.is())
         return;
 
-    Reference< css::accessibility::XAccessible > xAccessible ( e.Source, UNO_QUERY );
-    css::accessibility::XAccessible* pAccessible = xAccessible.get();
-    if ( pAccessible == nullptr)
+    css::uno::Reference<css::awt::XWindow> xWindow(e.Source, UNO_QUERY_THROW);
+    vcl::Window* pWindow = VCLUnoHelper::GetWindow(xWindow);
+    assert(pWindow);
+
+    Reference<css::accessibility::XAccessible> xAccessible = pWindow->GetAccessible();
+    if (!xAccessible.is())
         return;
 
-    Reference<css::accessibility::XAccessibleContext> xContext = pAccessible->getAccessibleContext();
+    Reference<css::accessibility::XAccessibleContext> xContext = xAccessible->getAccessibleContext();
     if(!xContext.is())
-    {
         return;
-    }
-    css::accessibility::XAccessibleContext* pAccessibleContext = xContext.get();
 
-    short role = -1;
-    if(pAccessibleContext != nullptr)
+    short role = xContext->getAccessibleRole();
+    if (role == css::accessibility::AccessibleRole::POPUP_MENU ||
+            role == css::accessibility::AccessibleRole::MENU)
     {
-        role = pAccessibleContext->getAccessibleRole();
-
-        if (role == css::accessibility::AccessibleRole::POPUP_MENU ||
-                role == css::accessibility::AccessibleRole::MENU)
-        {
-            m_aAccObjectManager.NotifyAccEvent(pAccessible, UnoMSAAEvent::MENUPOPUPEND);
-        }
+        m_aAccObjectManager.NotifyAccEvent(xAccessible.get(), UnoMSAAEvent::MENUPOPUPEND);
     }
 
-
-    m_aAccObjectManager.DeleteChildrenAccObj( pAccessible );
-    if( role != css::accessibility::AccessibleRole::POPUP_MENU )
-        m_aAccObjectManager.DeleteAccObj( pAccessible );
-
+    m_aAccObjectManager.DeleteChildrenAccObj(xAccessible.get());
+    m_aAccObjectManager.DeleteAccObj(xAccessible.get());
 }
 
 void AccTopWindowListener::windowMinimized( const css::lang::EventObject& )

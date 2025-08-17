@@ -30,12 +30,15 @@
 #include <svx/sdr/animation/objectanimator.hxx>
 #include <svx/sdrpagewindow.hxx>
 #include <svx/sdrpaintwindow.hxx>
+#include <svtools/colorcfg.hxx>
+#include <sfx2/viewsh.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
 #include <osl/diagnose.h>
+#include <officecfg/Office/Common.hxx>
 #include <svx/unoapi.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/canvastools.hxx>
 #include <vcl/pdfextoutdevdata.hxx>
 #include <comphelper/lok.hxx>
@@ -67,8 +70,8 @@ namespace sdr::contact
 
         ObjectContactOfPageView::~ObjectContactOfPageView()
         {
-            // execute missing LazyInvalidates and stop timer
-            Invoke();
+            // stop timer
+            Stop();
         }
 
         // LazyInvalidate request. Take action.
@@ -216,7 +219,22 @@ namespace sdr::contact
             aNewViewInformation2D.setViewport(aViewRange);
             aNewViewInformation2D.setVisualizedPage(GetXDrawPageForSdrPage(GetSdrPage()));
             aNewViewInformation2D.setViewTime(fCurrentTime);
-            updateViewInformation2D(aNewViewInformation2D);
+            if (const SfxViewShell* pViewShell = SfxViewShell::Current())
+                aNewViewInformation2D.setAutoColor(pViewShell->GetColorConfigColor(svtools::DOCCOLOR));
+            if (static_cast<SdrPaintView&>(mrPageWindow.GetPageView().GetView()).IsTextEdit())
+                aNewViewInformation2D.setTextEditActive(true);
+
+            if (!isOutputToRecordingMetaFile())
+            {
+                // this is the EditView repaint, provide that information,
+                // but only if we do not export to metafile
+                aNewViewInformation2D.setEditViewActive(true);
+
+                // also copy the current DrawModeFlags
+                aNewViewInformation2D.setDrawModeFlags(rTargetOutDev.GetDrawMode());
+            }
+
+            setViewInformation2D2D(aNewViewInformation2D);
 
             drawinglayer::primitive2d::Primitive2DContainer xPrimitiveSequence;
 
@@ -360,19 +378,24 @@ namespace sdr::contact
         // check if text animation is allowed.
         bool ObjectContactOfPageView::IsTextAnimationAllowed() const
         {
-            if (utl::ConfigManager::IsFuzzing())
+            if (comphelper::IsFuzzing())
                 return true;
-            return SvtAccessibilityOptions::GetIsAllowAnimatedText();
+            // tdf#161765: Let the user choose which animation settings to use: OS's / LO's
+            // New options: "System"/"No"/"Yes".
+            // Do respect OS's animation setting if the user has selected the option "System"
+            return MiscSettings::IsAnimatedTextAllowed();
         }
 
         // check if graphic animation is allowed.
         bool ObjectContactOfPageView::IsGraphicAnimationAllowed() const
         {
-            if (utl::ConfigManager::IsFuzzing())
+            if (comphelper::IsFuzzing())
                 return true;
-
-            // Related tdf#156630 respect system animation setting
-            return SvtAccessibilityOptions::GetIsAllowAnimatedGraphics() && !MiscSettings::GetUseReducedAnimation();
+            // tdf#161765: Let the user choose which animation settings to use: OS's / LO's and
+            // don't override here LO's animation settings with OS's all-or-nothing animation setting,
+            // but do respect OS's animation setting if the user has selected the option "System".
+            // New options: "System"/"No"/"Yes"
+            return MiscSettings::IsAnimatedGraphicAllowed();
         }
 
         // print?

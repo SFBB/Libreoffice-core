@@ -99,11 +99,13 @@ ScXMLDatabaseRangeContext::ScXMLDatabaseRangeContext( ScXMLImport& rImport,
     bSubTotalsBindFormatsToContent(false),
     bSubTotalsIsCaseSensitive(false),
     bSubTotalsInsertPageBreaks(false),
+    bSubTotalsSummaryBelow(true),
     bSubTotalsSortGroups(false),
     bSubTotalsEnabledUserList(false),
     bSubTotalsAscending(true),
     bFilterConditionSourceRange(false),
     bHasHeader(true),
+    bHasFooter(false),
     bByRow(true),
     meRangeType(ScDBCollection::GlobalNamed)
 {
@@ -148,6 +150,13 @@ ScXMLDatabaseRangeContext::ScXMLDatabaseRangeContext( ScXMLImport& rImport,
                 {
                     bHasHeader = IsXMLToken( aIter, XML_TRUE );
                     mpQueryParam->bHasHeader = bHasHeader;
+                }
+                break;
+                case XML_ELEMENT( TABLE, XML_CONTAINS_FOOTER ):
+                case XML_ELEMENT( CALC_EXT, XML_CONTAINS_FOOTER ):
+                {
+                    bHasFooter = IsXMLToken( aIter, XML_TRUE );
+                    mpQueryParam->bHasTotals = bHasFooter;
                 }
                 break;
                 case XML_ELEMENT( TABLE, XML_DISPLAY_FILTER_BUTTONS ):
@@ -247,7 +256,7 @@ std::unique_ptr<ScDBData> ScXMLDatabaseRangeContext::ConvertToDBData(const OUStr
     ScDocument* pDoc = GetScImport().GetDocument();
 
     ::std::unique_ptr<ScDBData> pData(
-        new ScDBData(rName, maRange.aStart.Tab(), maRange.aStart.Col(), maRange.aStart.Row(), maRange.aEnd.Col(), maRange.aEnd.Row(), bByRow, bHasHeader));
+        new ScDBData(rName, maRange.aStart.Tab(), maRange.aStart.Col(), maRange.aStart.Row(), maRange.aEnd.Col(), maRange.aEnd.Row(), bByRow, bHasHeader, bHasFooter));
 
     pData->SetAutoFilter(bAutoFilter);
     pData->SetKeepFmt(bKeepFormats);
@@ -303,7 +312,7 @@ std::unique_ptr<ScDBData> ScXMLDatabaseRangeContext::ConvertToDBData(const OUStr
         table::TableOrientation eOrient = mpQueryParam->bByRow ?
             table::TableOrientation_ROWS : table::TableOrientation_COLUMNS;
         aProperty.Value <<= eOrient;
-        aSortSequence.getArray()[nOldSize] = aProperty;
+        aSortSequence.getArray()[nOldSize] = std::move(aProperty);
         ScSortParam aParam;
         ScSortDescriptor::FillSortParam(aParam, aSortSequence);
 
@@ -325,6 +334,7 @@ std::unique_ptr<ScDBData> ScXMLDatabaseRangeContext::ConvertToDBData(const OUStr
         aParam.bUserDef = bSubTotalsEnabledUserList;
         aParam.nUserIndex = nSubTotalsUserListIndex;
         aParam.bPagebreak = bSubTotalsInsertPageBreaks;
+        aParam.bSummaryBelow = bSubTotalsSummaryBelow;
         aParam.bCaseSens = bSubTotalsIsCaseSensitive;
         aParam.bDoSort = bSubTotalsSortGroups;
         aParam.bAscending = bSubTotalsAscending;
@@ -333,32 +343,14 @@ std::unique_ptr<ScDBData> ScXMLDatabaseRangeContext::ConvertToDBData(const OUStr
         {
             if (nPos >= MAXSUBTOTAL)
                 break;
+            auto& group = aParam.aGroups[nPos];
 
             const uno::Sequence<sheet::SubTotalColumn>& rColumns = rSubTotalRule.aSubTotalColumns;
-            sal_Int32 nColCount = rColumns.getLength();
             sal_Int16 nGroupColumn = rSubTotalRule.nSubTotalRuleGroupFieldNumber;
-            aParam.bGroupActive[nPos] = true;
-            aParam.nField[nPos] = static_cast<SCCOL>(nGroupColumn);
+            group.bActive = true;
+            group.nField = static_cast<SCCOL>(nGroupColumn);
 
-            SCCOL nCount = static_cast<SCCOL>(nColCount);
-            aParam.nSubTotals[nPos] = nCount;
-            if (nCount != 0)
-            {
-                aParam.pSubTotals[nPos].reset(new SCCOL[nCount]);
-                aParam.pFunctions[nPos].reset(new ScSubTotalFunc[nCount]);
-
-                const sheet::SubTotalColumn* pAry = rColumns.getConstArray();
-                for (SCCOL i = 0; i < nCount; ++i)
-                {
-                    aParam.pSubTotals[nPos][i] = static_cast<SCCOL>(pAry[i].Column);
-                    aParam.pFunctions[nPos][i] = ScDPUtil::toSubTotalFunc(static_cast<ScGeneralFunction>(pAry[i].Function));
-                }
-            }
-            else
-            {
-                aParam.pSubTotals[nPos].reset();
-                aParam.pFunctions[nPos].reset();
-            }
+            group.SetSubtotals(rColumns);
             ++nPos;
         }
 
@@ -634,6 +626,9 @@ ScXMLSubTotalRulesContext::ScXMLSubTotalRulesContext( ScXMLImport& rImport,
             case XML_ELEMENT( TABLE, XML_PAGE_BREAKS_ON_GROUP_CHANGE ):
                 pDatabaseRangeContext->SetSubTotalsInsertPageBreaks(IsXMLToken(aIter, XML_TRUE));
                 break;
+            case XML_ELEMENT( LO_EXT, XML_SUMMARY_BELOW ):
+                pDatabaseRangeContext->SetSubTotalsSummaryBelow(IsXMLToken(aIter, XML_TRUE));
+                break;
         }
     }
 }
@@ -681,7 +676,7 @@ ScXMLSortGroupsContext::ScXMLSortGroupsContext( ScXMLImport& rImport,
         {
             case XML_ELEMENT( TABLE, XML_DATA_TYPE ):
             {
-                const OUString &sValue = aIter.toString();
+                const OUString sValue = aIter.toString();
                 if (sValue.getLength() > 8)
                 {
                     std::u16string_view sTemp = sValue.subView(0, 8);

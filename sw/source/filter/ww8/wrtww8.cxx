@@ -27,6 +27,7 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <unotools/ucbstreamhelper.hxx>
 #include <unotools/streamwrap.hxx>
+#include <unotools/securityoptions.hxx>
 #include <algorithm>
 #include <map>
 #include <hintids.hxx>
@@ -37,7 +38,6 @@
 #include <docsh.hxx>
 #include <drawdoc.hxx>
 
-#include <unotools/fltrcfg.hxx>
 #include <sot/storage.hxx>
 #include <sfx2/docinf.hxx>
 #include <editeng/tstpitem.hxx>
@@ -88,6 +88,7 @@
 #include <fmtline.hxx>
 #include <fmtfsize.hxx>
 #include <formatflysplit.hxx>
+#include <fmtftntx.hxx>
 #include "sprmids.hxx"
 
 #include <comphelper/sequenceashashmap.hxx>
@@ -118,6 +119,8 @@
 #include <fmtclbl.hxx>
 #include <iodetect.hxx>
 #include <fmtwrapinfluenceonobjpos.hxx>
+#include <officecfg/Office/Common.hxx>
+#include <fmtanchr.hxx>
 
 using namespace css;
 using namespace sw::util;
@@ -437,7 +440,7 @@ void WW8_WrtFactoids::Write(WW8Export& rExport)
             aProperty.m_nValue = std::distance(aSet.begin(), aSet.find(rPair.second));
             aPropertyBag.m_aProperties.push_back(aProperty);
         }
-        aSmartTagData.m_aPropBags.push_back(aPropertyBag);
+        aSmartTagData.m_aPropBags.push_back(std::move(aPropertyBag));
     }
 
     aSmartTagData.Write(rExport);
@@ -463,7 +466,7 @@ static void WriteDop( WW8Export& rWrt )
 
     // write default TabStop
     const SvxTabStopItem& rTabStop =
-        rWrt.m_rDoc.GetAttrPool().GetDefaultItem(RES_PARATR_TABSTOP);
+        rWrt.m_rDoc.GetAttrPool().GetUserOrPoolDefaultItem(RES_PARATR_TABSTOP);
     rDop.dxaTab = o3tl::narrowing<sal_uInt16>(rTabStop[0].GetTabPos());
 
     // Zoom factor and type
@@ -492,6 +495,18 @@ static void WriteDop( WW8Export& rWrt )
     rDop.cParas = rDStat.nPara;
     rDop.cLines = rDStat.nPara;
 
+    SwSectionFormats& rSections = rWrt.m_rDoc.GetSections();
+    if (!rSections.empty())
+    {
+        SwSectionFormat* pFormat = rSections[0];
+        bool bEndnAtEnd = pFormat->GetEndAtTextEnd().IsAtEnd();
+        if (bEndnAtEnd)
+        {
+            // DopBase.epc: this is normally 3 (end of document), change this to end of section.
+            rDop.epc = 0;
+        }
+    }
+
     SwDocShell *pDocShell(rWrt.m_rDoc.GetDocShell());
     OSL_ENSURE(pDocShell, "no SwDocShell");
     uno::Reference<document::XDocumentProperties> xDocProps;
@@ -516,8 +531,8 @@ static void WriteDop( WW8Export& rWrt )
         // so round-trip it since protection is still enabled.
         if ( rDop.lKeyProtDoc == 0 && xProps.is() )
         {
-            comphelper::SequenceAsHashMap aPropMap( xProps->getPropertyValue("InteropGrabBag"));
-            aPropMap.getValue("FormPasswordHash") >>= rDop.lKeyProtDoc;
+            comphelper::SequenceAsHashMap aPropMap( xProps->getPropertyValue(u"InteropGrabBag"_ustr));
+            aPropMap.getValue(u"FormPasswordHash"_ustr) >>= rDop.lKeyProtDoc;
         }
     }
     else
@@ -557,6 +572,8 @@ static void WriteDop( WW8Export& rWrt )
     rDop.fDontUseHTMLAutoSpacing = rWrt.m_rDoc.getIDocumentSettingAccess().get(DocumentSettingId::PARA_SPACE_MAX);
 
     rDop.fExpShRtn = !rWrt.m_rDoc.getIDocumentSettingAccess().get(DocumentSettingId::DO_NOT_JUSTIFY_LINES_WITH_MANUAL_BREAK); // #i56856#
+    rDop.fDontAdjustLineHeightInTable = !rWrt.m_rDoc.getIDocumentSettingAccess().get(
+        DocumentSettingId::ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT);
 
     IDocumentSettingAccess& rIDSA = rWrt.m_rDoc.getIDocumentSettingAccess();
     rDop.fDontBreakWrappedTables = rIDSA.get(DocumentSettingId::DO_NOT_BREAK_WRAPPED_TABLES);
@@ -1064,8 +1081,8 @@ void WW8_WrPlcPn::WritePlc()
                                 m_Fkps[ i ]->GetStartFc() );
     }
 
-    SwWW8Writer::WriteLong( *m_rWrt.m_pTableStrm,
-                                m_Fkps[ i - 1 ]->GetEndFc() );
+    WW8_FC nEndFc = i > 0 ? m_Fkps[i - 1]->GetEndFc() : 0;
+    SwWW8Writer::WriteLong(*m_rWrt.m_pTableStrm, nEndFc);
 
     // for every FKP output the page
     for (i = 0; i < m_Fkps.size(); ++i)
@@ -1195,7 +1212,7 @@ bool WW8_WrFkp::Append( WW8_FC nEndFc, sal_uInt16 nVarLen, const sal_uInt8* pSpr
         if( nPos < 0 )
             return false;           // doesn't fit at all
         nOffset = nPos;             // save offset (can also be uneven!)
-        nPos &= 0xFFFE;             // Pos for Sprms ( gerade Pos )
+        nPos &= 0xFFFE;             // Pos for Sprms ( even Pos )
     }
 
     if( o3tl::make_unsigned(nPos) <= ( m_nIMax + 2U ) * 4U + ( m_nIMax + 1U ) * m_nItemSize )
@@ -1422,7 +1439,7 @@ WW8_CP WW8_WrPct::Fc2Cp( sal_uLong nFc ) const
 
 void WW8Export::AppendBookmarks( const SwTextNode& rNd, sal_Int32 nCurrentPos, sal_Int32 nLen, const SwRedlineData* /*pRedlineData*/ )
 {
-    std::vector< const ::sw::mark::IMark* > aArr;
+    std::vector< const ::sw::mark::MarkBase* > aArr;
     sal_Int32 nContent;
     const sal_Int32 nCurrentEnd = nCurrentPos + nLen;
     if( !GetWriter().GetBookmarks( rNd, nCurrentPos, nCurrentEnd, aArr ))
@@ -1430,10 +1447,10 @@ void WW8Export::AppendBookmarks( const SwTextNode& rNd, sal_Int32 nCurrentPos, s
 
     SwNodeOffset nNd = rNd.GetIndex();
     sal_uLong nSttCP = Fc2Cp( Strm().Tell() );
-    for(const ::sw::mark::IMark* p : aArr)
+    for(const ::sw::mark::MarkBase* p : aArr)
     {
-        const ::sw::mark::IMark& rBkmk = *p;
-        if(dynamic_cast< const ::sw::mark::IFieldmark *>(&rBkmk))
+        const ::sw::mark::MarkBase& rBkmk = *p;
+        if(dynamic_cast< const ::sw::mark::Fieldmark *>(&rBkmk))
             continue;
 
         const SwPosition* pPos = &rBkmk.GetMarkPos();
@@ -1452,14 +1469,14 @@ void WW8Export::AppendBookmarks( const SwTextNode& rNd, sal_Int32 nCurrentPos, s
             nContent < nCurrentEnd ) )
         {
             sal_uLong nCp = nSttCP + pPos->GetContentIndex() - nCurrentPos;
-            m_pBkmks->Append(nCp, BookmarkToWord(rBkmk.GetName()));
+            m_pBkmks->Append(nCp, BookmarkToWord(rBkmk.GetName().toString()) );
         }
         if( pOPos && nNd == pOPos->GetNodeIndex() &&
             ( nContent = pOPos->GetContentIndex() ) >= nCurrentPos &&
             nContent < nCurrentEnd )
         {
             sal_uLong nCp = nSttCP + pOPos->GetContentIndex() - nCurrentPos;
-            m_pBkmks->Append(nCp, BookmarkToWord(rBkmk.GetName()));
+            m_pBkmks->Append(nCp, BookmarkToWord(rBkmk.GetName().toString()));
         }
     }
 }
@@ -1469,12 +1486,12 @@ void WW8Export::AppendAnnotationMarks(const SwWW8AttrIter& rAttrs, sal_Int32 nCu
     IMarkVector aMarks;
     if (GetAnnotationMarks(rAttrs, nCurrentPos, nCurrentPos + nLen, aMarks))
     {
-        for (const sw::mark::IMark* pMark : aMarks)
+        for (const sw::mark::MarkBase* pMark : aMarks)
         {
             const sal_Int32 nStart = pMark->GetMarkStart().GetContentIndex();
             if (nStart == nCurrentPos)
             {
-                m_pAtn->AddRangeStartPosition(pMark->GetName(), Fc2Cp(Strm().Tell()),
+                m_pAtn->AddRangeStartPosition(pMark->GetName().toString(), Fc2Cp(Strm().Tell()),
                                               !rAttrs.HasFlysAt(nCurrentPos));
             }
         }
@@ -1483,7 +1500,7 @@ void WW8Export::AppendAnnotationMarks(const SwWW8AttrIter& rAttrs, sal_Int32 nCu
 
 void WW8Export::AppendSmartTags(SwTextNode& rTextNode)
 {
-    std::map<OUString, OUString> aStatements = SwRDFHelper::getTextNodeStatements("urn:bails", rTextNode);
+    std::map<OUString, OUString> aStatements = SwRDFHelper::getTextNodeStatements(u"urn:bails"_ustr, rTextNode);
     if (!aStatements.empty())
     {
         WW8_CP nCP = Fc2Cp(Strm().Tell());
@@ -1517,7 +1534,7 @@ std::unique_ptr<SvxBrushItem> MSWordExportBase::getBackground()
     if (SfxItemState::SET == eState)
     {
         // The 'color' is set for the first page style - take it and use it as the background color of the entire DOCX
-        if (aBrush->GetColor() != COL_AUTO)
+        if (aBrush->GetColor() != COL_AUTO || aBrush->GetGraphicObject())
             return aBrush;
     }
     return nullptr;
@@ -1589,7 +1606,7 @@ void WW8Export::ExportGrfBullet(const SwTextNode& rNd)
     if (nCount > 0)
     {
         SwPosition aPos(rNd);
-        OUString aPicBullets("_PictureBullets");
+        OUString aPicBullets(u"_PictureBullets"_ustr);
         AppendBookmark(aPicBullets);
         for (int i = 0; i < nCount; i++)
         {
@@ -1664,9 +1681,14 @@ sal_uInt16 WW8Export::AddRedlineAuthor( std::size_t nId )
     if( !m_pRedlAuthors )
     {
         m_pRedlAuthors.reset(new WW8_WrtRedlineAuthor);
-        m_pRedlAuthors->AddName("Unknown");
+        m_pRedlAuthors->AddName(u"Unknown"_ustr);
     }
-    return m_pRedlAuthors->AddName( SW_MOD()->GetRedlineAuthor( nId ) );
+    bool bRemovePersonalInfo
+        = SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo)
+          && !SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnKeepRedlineInfo);
+    OUString sName(SwModule::get()->GetRedlineAuthor(nId));
+    return m_pRedlAuthors->AddName(
+        bRemovePersonalInfo ? "Author" + OUString::number(mpAuthorIDs->GetInfoID(sName)) : sName);
 }
 
 void WW8Export::WriteAsStringTable(const std::vector<OUString>& rStrings,
@@ -1804,13 +1826,14 @@ void MSWordExportBase::WriteSpecialText( SwNodeOffset nStart, SwNodeOffset nEnd,
 {
     sal_uInt8 nOldTyp = m_nTextTyp;
     m_nTextTyp = nTTyp;
-    auto const pOldPam = m_pCurPam;       //!! Simply shifting the PaM without restoring should do the job too
+    auto pOldPam = m_pCurPam;       //!! Simply shifting the PaM without restoring should do the job too
     SwNodeOffset nOldStart = m_nCurStart;
     SwNodeOffset nOldEnd = m_nCurEnd;
     SwPaM* pOldEnd = m_pOrigPam;
     bool bOldPageDescs = m_bOutPageDescs;
     m_bOutPageDescs = false;
-    if ( nTTyp == TXT_FTN || nTTyp == TXT_EDN )
+    if ((nTTyp == TXT_FTN || nTTyp == TXT_EDN)
+        && !m_rDoc.getIDocumentSettingAccess().get(DocumentSettingId::NO_GAP_AFTER_NOTE_NUMBER))
         m_bAddFootnoteTab = true;   // enable one aesthetic tab for this footnote
 
     SetCurPam(nStart, nEnd);
@@ -1821,15 +1844,15 @@ void MSWordExportBase::WriteSpecialText( SwNodeOffset nStart, SwNodeOffset nEnd,
     // tdf#106261 Reset table infos, otherwise the depth of the cells will be
     // incorrect, in case the header/footer had table(s) and we try to export
     // the same table second time.
-    ww8::WW8TableInfo::Pointer_t pOldTableInfo = m_pTableInfo;
+    ww8::WW8TableInfo::Pointer_t xOldTableInfo(m_pTableInfo);
     m_pTableInfo = std::make_shared<ww8::WW8TableInfo>();
 
     WriteText();
 
-    m_pTableInfo = pOldTableInfo;
+    m_pTableInfo = std::move(xOldTableInfo);
 
     m_bOutPageDescs = bOldPageDescs;
-    m_pCurPam = pOldPam; // delete Pam
+    m_pCurPam = std::move(pOldPam); // delete Pam
     m_nCurStart = nOldStart;
     m_nCurEnd = nOldEnd;
     m_pOrigPam = pOldEnd;
@@ -2078,7 +2101,7 @@ static sal_uInt16 lcl_TCFlags(SwDoc &rDoc, const SwTableBox * pBox, sal_Int32 nR
         if(pSttNd)
         {
             SwNodeIndex aIdx( *pSttNd );
-            const SwContentNode * pCNd = pSttNd->GetNodes().GoNext( &aIdx );
+            const SwContentNode* pCNd = SwNodes::GoNext(&aIdx);
             if( pCNd && pCNd->IsTextNode())
             {
                 SfxItemSetFixed<RES_CHRATR_ROTATE, RES_CHRATR_ROTATE> aCoreSet(rDoc.GetAttrPool());
@@ -2086,11 +2109,11 @@ static sal_uInt16 lcl_TCFlags(SwDoc &rDoc, const SwTableBox * pBox, sal_Int32 nR
                     0, static_cast<const SwTextNode*>(pCNd)->GetText().getLength());
                 if ( const SvxCharRotateItem * pRotate = aCoreSet.GetItemIfSet(RES_CHRATR_ROTATE))
                 {
-                    if(pRotate && pRotate->GetValue() == 900_deg10)
+                    if(pRotate->GetValue() == 900_deg10)
                     {
                         nFlags = nFlags | 0x0004 | 0x0008;
                     }
-                    else if(pRotate && pRotate->GetValue() == 2700_deg10 )
+                    else if(pRotate->GetValue() == 2700_deg10 )
                     {
                         nFlags = nFlags | 0x0004 | 0x0010;
                     }
@@ -2198,7 +2221,7 @@ void WW8AttributeOutput::TableHeight(const ww8::WW8TableNodeInfoInner::Pointer_t
     if ( nHeight )
     {
         m_rWW8Export.InsUInt16( NS_sprm::TDyaRowHeight::val );
-        m_rWW8Export.InsUInt16( o3tl::narrowing<sal_uInt16>(nHeight) );
+        m_rWW8Export.InsUInt16( nHeight );
     }
 
 }
@@ -2303,7 +2326,7 @@ void WW8AttributeOutput::TableSpacing(const ww8::WW8TableNodeInfoInner::Pointer_
     }
 }
 
-void WW8AttributeOutput::TablePositioning(SwFrameFormat* pFlyFormat)
+void WW8AttributeOutput::TablePositioning(const SwFrameFormat* pFlyFormat)
 {
     if (!pFlyFormat || !pFlyFormat->GetFlySplit().GetValue())
     {
@@ -2403,10 +2426,10 @@ void WW8AttributeOutput::TablePositioning(SwFrameFormat* pFlyFormat)
     m_rWW8Export.InsUInt16(nDyaFromTextBottom);
 
     // Similar to WW8AttributeOutput::FormatLRSpace(), but for tables.
-    sal_uInt16 nDxaFromText = pFlyFormat->GetLRSpace().GetLeft();
+    sal_uInt16 nDxaFromText = pFlyFormat->GetLRSpace().ResolveLeft({});
     m_rWW8Export.InsUInt16(NS_sprm::TDxaFromText::val);
     m_rWW8Export.InsUInt16(nDxaFromText);
-    sal_uInt16 nDxaFromTextRight = pFlyFormat->GetLRSpace().GetRight();
+    sal_uInt16 nDxaFromTextRight = pFlyFormat->GetLRSpace().ResolveRight({});
     m_rWW8Export.InsUInt16(NS_sprm::TDxaFromTextRight::val);
     m_rWW8Export.InsUInt16(nDxaFromTextRight);
 
@@ -2480,7 +2503,7 @@ void WW8AttributeOutput::TableDefinition(const ww8::WW8TableNodeInfoInner::Point
             default:
                 nTableOffset = rHori.GetPos();
                 const SvxLRSpaceItem& rLRSp = pFormat->GetLRSpace();
-                nTableOffset += rLRSp.GetLeft();
+                nTableOffset += rLRSp.ResolveLeft({});
 
                 // convert offset to be measured from right margin in right-to-left tables
                 if ( nTableOffset && m_rWW8Export.TrueFrameDirection(*pFormat) == SvxFrameDirection::Horizontal_RL_TB )
@@ -2518,7 +2541,7 @@ void WW8AttributeOutput::TableDefinition(const ww8::WW8TableNodeInfoInner::Point
             lcl_TCFlags(m_rWW8Export.m_rDoc, pTabBox1, *aItRowSpans);
         m_rWW8Export.InsUInt16( nFlags );
 
-        static sal_uInt8 aNullBytes[] = { 0x0, 0x0 };
+        static const sal_uInt8 aNullBytes[] = { 0x0, 0x0 };
 
         m_rWW8Export.m_pO->insert( m_rWW8Export.m_pO->end(), aNullBytes, aNullBytes+2 );   // dummy
         if (pBoxFormat != nullptr)
@@ -2606,8 +2629,8 @@ void AttributeOutputBase::GetTablePageSize( ww8::WW8TableNodeInfoInner const * p
             if ( 0 == nPageSize )
             {
                 const SvxLRSpaceItem& rLR = pParentFormat->GetLRSpace();
-                nPageSize = pParentFormat->GetFrameSize().GetWidth() - rLR.GetLeft()
-                - rLR.GetRight();
+                nPageSize = pParentFormat->GetFrameSize().GetWidth() - rLR.ResolveLeft({})
+                            - rLR.ResolveRight({});
             }
         }
         else
@@ -2617,7 +2640,7 @@ void AttributeOutputBase::GetTablePageSize( ww8::WW8TableNodeInfoInner const * p
             {
                 // #i37571# For manually aligned tables
                 const SvxLRSpaceItem &rLR = pFormat->GetLRSpace();
-                nPageSize -= (rLR.GetLeft() + rLR.GetRight());
+                nPageSize -= (rLR.ResolveLeft({}) + rLR.ResolveRight({}));
             }
 
         }
@@ -3279,23 +3302,29 @@ void MSWordExportBase::AddLinkTarget(std::u16string_view rURL)
     else if( sCmp == "graphic" )
     {
         OUString aName(BookmarkToWriter(aURL.subView(0, nPos)));
-        if (const SwFlyFrameFormat* pFormat = m_rDoc.FindFlyByName(aName, SwNodeType::Grf))
-            if (const SwNodeIndex* pIdx = pFormat->GetContent().GetContentIdx())
-                m_aImplicitBookmarks.emplace_back(aURL, pIdx->GetNext()->GetIndex());
+        if (const SwFlyFrameFormat* pFormat = m_rDoc.FindFlyByName(UIName(aName), SwNodeType::Grf))
+        {
+            const SwFormatAnchor& rFormatAnchor = pFormat->GetAnchor();
+            if (SwNode* pAnchorNode = rFormatAnchor.GetAnchorNode())
+                m_aImplicitBookmarks.emplace_back(aURL, pAnchorNode->GetIndex());
+        }
     }
     else if( sCmp == "frame" )
     {
         OUString aName(BookmarkToWriter(aURL.subView(0, nPos)));
-        if (const SwFlyFrameFormat* pFormat = m_rDoc.FindFlyByName(aName, SwNodeType::Text))
+        if (const SwFlyFrameFormat* pFormat = m_rDoc.FindFlyByName(UIName(aName), SwNodeType::Text))
             if (const SwNodeIndex* pIdx = pFormat->GetContent().GetContentIdx())
                 m_aImplicitBookmarks.emplace_back(aURL, pIdx->GetIndex() + 1);
     }
     else if( sCmp == "ole" )
     {
         OUString aName(BookmarkToWriter(aURL.subView(0, nPos)));
-        if (const SwFlyFrameFormat* pFormat = m_rDoc.FindFlyByName(aName, SwNodeType::Ole))
-            if (const SwNodeIndex* pIdx = pFormat->GetContent().GetContentIdx())
-                m_aImplicitBookmarks.emplace_back(aURL, pIdx->GetNext()->GetIndex());
+        if (const SwFlyFrameFormat* pFormat = m_rDoc.FindFlyByName(UIName(aName), SwNodeType::Ole))
+        {
+            const SwFormatAnchor& rFormatAnchor = pFormat->GetAnchor();
+            if (SwNode* pAnchorNode = rFormatAnchor.GetAnchorNode())
+                m_aImplicitBookmarks.emplace_back(aURL, pAnchorNode->GetIndex());
+        }
     }
     else if( sCmp == "region" )
     {
@@ -3315,7 +3344,7 @@ void MSWordExportBase::AddLinkTarget(std::u16string_view rURL)
     else if( sCmp == "table" )
     {
         OUString aName(BookmarkToWriter(aURL.subView(0, nPos)));
-        if (const SwTable* pTable = SwTable::FindTable(m_rDoc.FindTableFormatByName(aName)))
+        if (const SwTable* pTable = SwTable::FindTable(m_rDoc.FindTableFormatByName(UIName(aName))))
             if (const SwTableNode* pTableNode = pTable->GetTabSortBoxes()[1]->GetSttNd()->FindTableNode())
                 m_aImplicitBookmarks.emplace_back(aURL, pTableNode->GetIndex() + 2);
     }
@@ -3342,45 +3371,30 @@ void MSWordExportBase::AddLinkTarget(std::u16string_view rURL)
 
 void MSWordExportBase::CollectOutlineBookmarks(const SwDoc &rDoc)
 {
-    for (const SfxPoolItem* pItem : rDoc.GetAttrPool().GetItemSurrogates(RES_TXTATR_INETFMT))
-    {
-        auto pINetFormat = dynamic_cast<const SwFormatINetFormat*>(pItem);
-        if (!pINetFormat)
-            continue;
-
-        const SwTextINetFormat* pTextAttr = pINetFormat->GetTextINetFormat();
-        if (!pTextAttr)
-            continue;
-
-        const SwTextNode* pTextNd = pTextAttr->GetpTextNode();
-        if (!pTextNd)
-            continue;
-
-        if (!pTextNd->GetNodes().IsDocNodes())
-            continue;
-
-        AddLinkTarget( pINetFormat->GetValue() );
-    }
-
-    for (const SfxPoolItem* pItem : rDoc.GetAttrPool().GetItemSurrogates(RES_URL))
-    {
-        auto pURL = dynamic_cast<const SwFormatURL*>(pItem);
-        if (!pURL)
-            continue;
-
-        AddLinkTarget(pURL->GetURL());
-        const ImageMap *pIMap = pURL->GetMap();
-        if (!pIMap)
-            continue;
-
-        for (size_t i=0; i < pIMap->GetIMapObjectCount(); ++i)
+    rDoc.ForEachINetFormat(
+        [this] (const SwFormatINetFormat& rINetFormat) -> bool
         {
-            const IMapObject* pObj = pIMap->GetIMapObject(i);
-            if (!pObj)
-                continue;
-            AddLinkTarget( pObj->GetURL() );
-        }
-    }
+            AddLinkTarget( rINetFormat.GetValue() );
+            return true;
+        });
+
+    rDoc.ForEachFormatURL(
+        [this] (const SwFormatURL& rURL) -> bool
+        {
+            AddLinkTarget(rURL.GetURL());
+            const ImageMap *pIMap = rURL.GetMap();
+            if (!pIMap)
+                return true;
+
+            for (size_t i=0; i < pIMap->GetIMapObjectCount(); ++i)
+            {
+                const IMapObject* pObj = pIMap->GetIMapObject(i);
+                if (!pObj)
+                    continue;
+                AddLinkTarget( pObj->GetURL() );
+            }
+            return true;
+        });
 }
 
 namespace
@@ -3420,6 +3434,7 @@ ErrCode MSWordExportBase::ExportDocument( bool bWriteAll )
     m_bFootnoteAtTextEnd = m_bEndAtTextEnd = true;
 
     m_pParentFrame = nullptr;
+    m_bParaInlineHeading = false;
     m_pFlyOffset = nullptr;
     m_eNewAnchorType = RndStdIds::FLY_AT_PAGE;
     m_nTextTyp = TXT_MAINTEXT;
@@ -3430,25 +3445,6 @@ ErrCode MSWordExportBase::ExportDocument( bool bWriteAll )
     m_pEscher = nullptr;
     m_pRedlAuthors = nullptr;
     m_aTOXArr.clear();
-
-    if ( !m_oOLEExp )
-    {
-        sal_uInt32 nSvxMSDffOLEConvFlags = 0;
-        const SvtFilterOptions& rOpt = SvtFilterOptions::Get();
-        if ( rOpt.IsMath2MathType() )
-            nSvxMSDffOLEConvFlags |= OLE_STARMATH_2_MATHTYPE;
-        if ( rOpt.IsWriter2WinWord() )
-            nSvxMSDffOLEConvFlags |= OLE_STARWRITER_2_WINWORD;
-        if ( rOpt.IsCalc2Excel() )
-            nSvxMSDffOLEConvFlags |= OLE_STARCALC_2_EXCEL;
-        if ( rOpt.IsImpress2PowerPoint() )
-            nSvxMSDffOLEConvFlags |= OLE_STARIMPRESS_2_POWERPOINT;
-
-        m_oOLEExp.emplace( nSvxMSDffOLEConvFlags );
-    }
-
-    if ( !m_pOCXExp && m_rDoc.GetDocShell() )
-        m_pOCXExp.reset(new SwMSConvertControls(m_rDoc.GetDocShell(), m_pCurPam.get()));
 
     // #i81405# - Collect anchored objects before changing the redline mode.
     m_aFrames = GetFrames( m_rDoc, bWriteAll? nullptr : m_pOrigPam );
@@ -3469,7 +3465,7 @@ ErrCode MSWordExportBase::ExportDocument( bool bWriteAll )
     // fix the SwPositions in m_aFrames after SetRedlineFlags
     UpdateFramePositions(m_aFrames);
 
-    m_aFontHelper.InitFontTable(m_rDoc);
+    m_aFontHelper.InitFontTable(*this);
     GatherChapterFields();
 
     CollectOutlineBookmarks(m_rDoc);
@@ -3515,11 +3511,11 @@ bool SwWW8Writer::InitStd97CodecUpdateMedium( ::msfilter::MSCodec_Std97& rCodec 
             if ( pPasswordItem && !pPasswordItem->GetValue().isEmpty() && pPasswordItem->GetValue().getLength() <= 15 )
             {
                 // Generate random number with a seed of time as salt.
-                rtlRandomPool aRandomPool = rtl_random_createPool ();
                 sal_uInt8 pDocId[ 16 ];
-                rtl_random_getBytes( aRandomPool, pDocId, 16 );
-
-                rtl_random_destroyPool( aRandomPool );
+                if (rtl_random_getBytes(nullptr, pDocId, 16) != rtl_Random_E_None)
+                {
+                    throw uno::RuntimeException(u"rtl_random_getBytes failed"_ustr);
+                }
 
                 sal_uInt16 aPassword[16] = {};
 
@@ -3548,8 +3544,11 @@ ErrCode WW8Export::ExportDocument_Impl()
 
     m_pFib.reset(new WW8Fib(8, m_bDot));
 
-    tools::SvRef<SotStorageStream> xWwStrm( GetWriter().GetStorage().OpenSotStream( m_aMainStg ) );
-    tools::SvRef<SotStorageStream> xTableStrm( xWwStrm ), xDataStrm( xWwStrm );
+    rtl::Reference<SotStorageStream> xWwStrm(GetWriter().GetStorage().OpenSotStream(m_aMainStg));
+    if (!xWwStrm->IsWritable())
+        return ERRCODE_IO_ACCESSDENIED;
+
+    rtl::Reference<SotStorageStream> xTableStrm(xWwStrm), xDataStrm(xWwStrm);
     xWwStrm->SetBufferSize( 32768 );
 
     m_pFib->m_fWhichTableStm = true;
@@ -3760,8 +3759,8 @@ void WW8Export::PrepareStorage()
 
     SvGlobalName aGName(MSO_WW8_CLASSID);
     GetWriter().GetStorage().SetClass(
-        aGName, SotClipboardFormatId::NONE, "Microsoft Word-Document");
-    tools::SvRef<SotStorageStream> xStor( GetWriter().GetStorage().OpenSotStream(sCompObj) );
+        aGName, SotClipboardFormatId::NONE, u"Microsoft Word-Document"_ustr);
+    rtl::Reference<SotStorageStream> xStor(GetWriter().GetStorage().OpenSotStream(sCompObj));
     xStor->WriteBytes(pData, sizeof(pData));
 
     SwDocShell* pDocShell = m_rDoc.GetDocShell ();
@@ -3778,7 +3777,7 @@ void WW8Export::PrepareStorage()
     if (!xDocProps.is())
         return;
 
-    if ( SvtFilterOptions::Get().IsEnableWordPreview() )
+    if (officecfg::Office::Common::Filter::Microsoft::Export::EnableWordPreview::get())
     {
         std::shared_ptr<GDIMetaFile> xMetaFile =
             pDocShell->GetPreviewMetaFile();
@@ -3792,7 +3791,7 @@ void WW8Export::PrepareStorage()
 
 ErrCodeMsg SwWW8Writer::WriteStorage()
 {
-    tools::SvRef<SotStorage> pOrigStg;
+    rtl::Reference<SotStorage> xOrigStg;
     uno::Reference< packages::XPackageEncryption > xPackageEncryption;
     std::shared_ptr<SvStream> pSotStorageStream;
     uno::Sequence< beans::NamedValue > aEncryptionData;
@@ -3803,13 +3802,13 @@ ErrCodeMsg SwWW8Writer::WriteStorage()
         if (pEncryptionDataItem && (pEncryptionDataItem->GetValue() >>= aEncryptionData))
         {
             ::comphelper::SequenceAsHashMap aHashData(aEncryptionData);
-            OUString sCryptoType = aHashData.getUnpackedValueOrDefault("CryptoType", OUString());
+            OUString sCryptoType = aHashData.getUnpackedValueOrDefault(u"CryptoType"_ustr, OUString());
 
             if (sCryptoType.getLength())
             {
-                uno::Reference<uno::XComponentContext> xComponentContext(comphelper::getProcessComponentContext());
+                const uno::Reference<uno::XComponentContext>& xComponentContext(comphelper::getProcessComponentContext());
                 uno::Sequence<uno::Any> aArguments{
-                    uno::Any(beans::NamedValue("Binary", uno::Any(true))) };
+                    uno::Any(beans::NamedValue(u"Binary"_ustr, uno::Any(true))) };
                 xPackageEncryption.set(
                     xComponentContext->getServiceManager()->createInstanceWithArgumentsAndContext(
                         "com.sun.star.comp.oox.crypto." + sCryptoType, aArguments, xComponentContext), uno::UNO_QUERY);
@@ -3818,7 +3817,7 @@ ErrCodeMsg SwWW8Writer::WriteStorage()
                 {
                     // We have an encryptor
                     // Create new temporary storage for content
-                    pOrigStg = m_pStg;
+                    xOrigStg = m_pStg;
                     pSotStorageStream = std::make_shared<SvMemoryStream>();
                     m_pStg = new SotStorage(*pSotStorageStream);
                 }
@@ -3841,12 +3840,12 @@ ErrCodeMsg SwWW8Writer::WriteStorage()
         uno::Reference<io::XInputStream > xInputStream(new utl::OSeekableInputStreamWrapper(pSotStorageStream.get(), false));
         uno::Sequence<beans::NamedValue> aStreams = xPackageEncryption->encrypt(xInputStream);
 
-        m_pStg = pOrigStg;
-        for (const beans::NamedValue & aStreamData : std::as_const(aStreams))
+        m_pStg = std::move(xOrigStg);
+        for (const beans::NamedValue& aStreamData : aStreams)
         {
             // To avoid long paths split and open substorages recursively
             // Splitting paths manually, since comphelper::string::split is trimming special characters like \0x01, \0x09
-            tools::SvRef<SotStorage> pStorage = m_pStg.get();
+            rtl::Reference<SotStorage> pStorage = m_pStg;
             OUString sFileName;
             sal_Int32 idx = 0;
             while (pStorage && idx >= 0)
@@ -3873,7 +3872,7 @@ ErrCodeMsg SwWW8Writer::WriteStorage()
                 break;
             }
 
-            tools::SvRef<SotStorageStream> pStream = pStorage->OpenSotStream(sFileName);
+            rtl::Reference<SotStorageStream> pStream = pStorage->OpenSotStream(sFileName);
             if (!pStream)
             {
                 nErrorCode = ERRCODE_IO_GENERAL;
@@ -3956,6 +3955,7 @@ MSWordExportBase::MSWordExportBase( SwDoc& rDocument, std::shared_ptr<SwUnoCurso
     , m_bFirstTOCNodeWithSection(false)
     , m_pChpIter(nullptr)
     , m_pParentFrame(nullptr)
+    , m_bParaInlineHeading(false)
     , m_pFlyOffset(nullptr)
     , m_eNewAnchorType(RndStdIds::FLY_AS_CHAR)
     , m_pStyAttr(nullptr)
@@ -3984,12 +3984,18 @@ MSWordExportBase::MSWordExportBase( SwDoc& rDocument, std::shared_ptr<SwUnoCurso
     , m_bExportModeRTF(false)
     , m_bFontSizeWritten(false)
     , m_bAddFootnoteTab(false)
+    , m_bHasBailsMetaData(false)
     , m_rDoc(rDocument)
     , m_nCurStart(pCurrentPam->GetPoint()->GetNodeIndex())
     , m_nCurEnd(pCurrentPam->GetMark()->GetNodeIndex())
     , m_pCurPam(pCurrentPam)
     , m_pOrigPam(pOriginalPam)
 {
+    if (SwDocShell* pShell = rDocument.GetDocShell())
+    {
+        m_xTextDoc = pShell->GetBaseModel();
+        m_bHasBailsMetaData = SwRDFHelper::hasMetadataGraph(m_xTextDoc, u"urn:bails"_ustr);
+    }
 }
 
 MSWordExportBase::~MSWordExportBase()
@@ -4015,6 +4021,7 @@ WW8Export::WW8Export( SwWW8Writer *pWriter,
     , m_bDot(bDot)
     , m_pWriter(pWriter)
     , m_pAttrOutput(new WW8AttributeOutput(*this))
+    , mpAuthorIDs(new SvtSecurityMapPersonalInfo)
 {
 }
 
@@ -4030,6 +4037,13 @@ AttributeOutputBase& WW8Export::AttrOutput() const
 MSWordSections& WW8Export::Sections() const
 {
     return *m_pSepx;
+}
+
+SwMSConvertControls& WW8Export::GetOCXExp()
+{
+    if (!m_pOCXExp)
+        m_pOCXExp.reset(new SwMSConvertControls(m_rDoc.GetDocShell(), GetWriter().m_pCurrentPam.get()));
+    return *m_pOCXExp;
 }
 
 SwWW8Writer::SwWW8Writer(std::u16string_view rFltName, const OUString& rBaseURL)
@@ -4165,10 +4179,10 @@ void WW8SHDLong::Write( WW8Export& rExport )
     rExport.InsUInt16( 0 ); // ipat
 }
 
-void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
+void WW8Export::WriteFormData( const ::sw::mark::Fieldmark& rFieldmark )
 {
-    const ::sw::mark::IFieldmark* pFieldmark = &rFieldmark;
-    const ::sw::mark::ICheckboxFieldmark* pAsCheckbox = dynamic_cast< const ::sw::mark::ICheckboxFieldmark* >( pFieldmark );
+    const ::sw::mark::Fieldmark* pFieldmark = &rFieldmark;
+    const ::sw::mark::CheckboxFieldmark* pAsCheckbox = dynamic_cast< const ::sw::mark::CheckboxFieldmark* >( pFieldmark );
 
     if ( ! ( rFieldmark.GetFieldname() == ODF_FORMTEXT ||
                 rFieldmark.GetFieldname() == ODF_FORMDROPDOWN ||
@@ -4184,7 +4198,7 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
     if ( rFieldmark.GetFieldname() == ODF_FORMDROPDOWN )
         type=2;
 
-    OUString ffname = rFieldmark.GetName();
+    OUString ffname = rFieldmark.GetName().toString();
     if (ffname.getLength() > 20)
         ffname = ffname.copy(0, 20);
 
@@ -4192,7 +4206,7 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
     m_pChpPlc->AppendFkpEntry(Strm().Tell());
 
     WriteChar(0x01);
-    static sal_uInt8 aArr1[] =
+    sal_uInt8 aArr1[] =
     {
         0x03, 0x6a, 0,0,0,0,    // sprmCPicLocation
 
@@ -4222,7 +4236,7 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
         ffres = 1;
     else if ( type == 2 )
     {
-        ::sw::mark::IFieldmark::parameter_map_t::const_iterator pResParameter = rFieldmark.GetParameters()->find(ODF_FORMDROPDOWN_RESULT);
+        ::sw::mark::Fieldmark::parameter_map_t::const_iterator pResParameter = rFieldmark.GetParameters()->find(ODF_FORMDROPDOWN_RESULT);
         if(pResParameter != rFieldmark.GetParameters()->end())
             pResParameter->second >>= ffres;
         else
@@ -4239,8 +4253,8 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
     OUString ffentrymcr;
     OUString ffexitmcr;
 
-    ::sw::mark::IFieldmark::parameter_map_t::const_iterator pParameter
-        = rFieldmark.GetParameters()->find("Type");
+    ::sw::mark::Fieldmark::parameter_map_t::const_iterator pParameter
+        = rFieldmark.GetParameters()->find(u"Type"_ustr);
     if (type == 0) // iTypeText
     {
         sal_uInt16 nType = 0;
@@ -4258,7 +4272,7 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
 
         if ( nType < 3 || nType == 5 )  // not currentTime or currentDate
         {
-            pParameter = rFieldmark.GetParameters()->find("Content");
+            pParameter = rFieldmark.GetParameters()->find(u"Content"_ustr);
             if ( pParameter != rFieldmark.GetParameters()->end() )
             {
                 OUString aDefaultText;
@@ -4268,7 +4282,7 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
             }
         }
 
-        pParameter = rFieldmark.GetParameters()->find("MaxLength");
+        pParameter = rFieldmark.GetParameters()->find(u"MaxLength"_ustr);
         if ( pParameter != rFieldmark.GetParameters()->end() )
         {
             sal_uInt16 nLength = 0;
@@ -4277,7 +4291,7 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
             aFieldHeader.cch = nLength;
         }
 
-        pParameter = rFieldmark.GetParameters()->find("Format");
+        pParameter = rFieldmark.GetParameters()->find(u"Format"_ustr);
         if ( pParameter != rFieldmark.GetParameters()->end() )
         {
             OUString aFormat;
@@ -4287,7 +4301,7 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
         }
     }
 
-    pParameter = rFieldmark.GetParameters()->find("Help"); //help
+    pParameter = rFieldmark.GetParameters()->find(u"Help"_ustr); //help
     if ( ffhelptext.isEmpty() && pParameter != rFieldmark.GetParameters()->end() )
     {
         OUString aHelpText;
@@ -4298,9 +4312,9 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
     if ( !ffhelptext.isEmpty() )
         aFieldHeader.bits |= 0x1<<7;
 
-    pParameter = rFieldmark.GetParameters()->find("Description"); // doc tooltip
+    pParameter = rFieldmark.GetParameters()->find(u"Description"_ustr); // doc tooltip
     if ( pParameter == rFieldmark.GetParameters()->end() )
-        pParameter = rFieldmark.GetParameters()->find("Hint"); //docx tooltip
+        pParameter = rFieldmark.GetParameters()->find(u"Hint"_ustr); //docx tooltip
     if ( pParameter != rFieldmark.GetParameters()->end() )
     {
         OUString aStatusText;
@@ -4311,7 +4325,7 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
     if ( !ffstattext.isEmpty() )
         aFieldHeader.bits |= 0x1<<8;
 
-    pParameter = rFieldmark.GetParameters()->find("EntryMacro");
+    pParameter = rFieldmark.GetParameters()->find(u"EntryMacro"_ustr);
     if ( pParameter != rFieldmark.GetParameters()->end() )
     {
         OUString aEntryMacro;
@@ -4320,7 +4334,7 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
         ffentrymcr = aEntryMacro.copy (0, nLen);
     }
 
-    pParameter = rFieldmark.GetParameters()->find("ExitMacro");
+    pParameter = rFieldmark.GetParameters()->find(u"ExitMacro"_ustr);
     if ( pParameter != rFieldmark.GetParameters()->end() )
     {
         OUString aExitMacro;
@@ -4333,8 +4347,8 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
     if (type==2)
     {
         aFieldHeader.bits |= 0x8000; // ffhaslistbox
-        const ::sw::mark::IFieldmark::parameter_map_t* const pParameters = rFieldmark.GetParameters();
-        ::sw::mark::IFieldmark::parameter_map_t::const_iterator pListEntries = pParameters->find(ODF_FORMDROPDOWN_LISTENTRY);
+        const ::sw::mark::Fieldmark::parameter_map_t* const pParameters = rFieldmark.GetParameters();
+        ::sw::mark::Fieldmark::parameter_map_t::const_iterator pListEntries = pParameters->find(ODF_FORMDROPDOWN_LISTENTRY);
         if(pListEntries != pParameters->end())
         {
             uno::Sequence< OUString > vListEntries;
@@ -4371,7 +4385,7 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
         slen += 4; // for num of list items
         const int items = aListItems.size();
         for( int i = 0; i < items; i++ ) {
-            OUString item = aListItems[i];
+            const OUString& item = aListItems[i];
             slen += 2 * item.getLength() + 2;
         }
     }
@@ -4401,13 +4415,13 @@ void WW8Export::WriteFormData( const ::sw::mark::IFieldmark& rFieldmark )
         const int items=aListItems.size();
         m_pDataStrm->WriteUInt32( items );
         for(int i=0;i<items;i++) {
-            OUString item=aListItems[i];
+            const OUString& item=aListItems[i];
             SwWW8Writer::WriteString_xstz( *m_pDataStrm, item, false );
         }
     }
 }
 
-void WW8Export::WriteHyperlinkData( const sw::mark::IFieldmark& /*rFieldmark*/ )
+void WW8Export::WriteHyperlinkData( const sw::mark::Fieldmark& /*rFieldmark*/ )
 {
     //@TODO implement me !!!
 }

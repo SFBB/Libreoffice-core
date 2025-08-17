@@ -47,7 +47,6 @@
 #include <editeng/justifyitem.hxx>
 #include <svl/intitem.hxx>
 #include <svl/numformat.hxx>
-#include <svl/whiter.hxx>
 #include <svl/zforlist.hxx>
 #include <vcl/outdev.hxx>
 #include <tools/fract.hxx>
@@ -56,7 +55,6 @@
 
 #include <attrib.hxx>
 #include <patattr.hxx>
-#include <docpool.hxx>
 #include <stlsheet.hxx>
 #include <stlpool.hxx>
 #include <document.hxx>
@@ -68,134 +66,424 @@
 #include <comphelper/lok.hxx>
 #include <tabvwsh.hxx>
 
+CellAttributeHelper::CellAttributeHelper(SfxItemPool& rSfxItemPool)
+: mrSfxItemPool(rSfxItemPool)
+, mpDefaultCellAttribute(nullptr)
+, maRegisteredCellAttributes()
+, mpLastHit(nullptr)
+, mnCurrentMaxKey(0)
+{
+}
+
+CellAttributeHelper::~CellAttributeHelper()
+{
+    delete mpDefaultCellAttribute;
+}
+
+static int CompareStringPtr(const OUString* lhs, const OUString* rhs)
+{
+    if (lhs == rhs)
+        return 0;
+    if (lhs && rhs)
+        return (*lhs).compareTo(*rhs);
+    if (!lhs && rhs)
+        return -1;
+    return 1;
+}
+
+const ScPatternAttr* CellAttributeHelper::registerAndCheck(const ScPatternAttr& rCandidate, bool bPassingOwnership) const
+{
+    if (&rCandidate == &getDefaultCellAttribute())
+        return &rCandidate;
+
+    assert(rCandidate.pCellAttributeHelper == this && "WRONG CellAttributeHelper in ScPatternAttr (!)");
+
+    if (rCandidate.isRegistered())
+    {
+        assert(!bPassingOwnership && "Trying to register an already registered CellAttribute with ownership change (!)");
+        rCandidate.mnRefCount++;
+        return &rCandidate;
+    }
+
+    if (ScPatternAttr::areSame(mpLastHit, &rCandidate))
+    {
+        // hit for single-entry cache, make use of it
+        mpLastHit->mnRefCount++;
+        if (bPassingOwnership)
+            delete &rCandidate;
+        return mpLastHit;
+    }
+    const OUString* pCandidateStyleName = rCandidate.GetStyleName();
+    auto [it, itEnd] = maRegisteredCellAttributes.equal_range(pCandidateStyleName);
+    for (; it != itEnd; ++it)
+    {
+        const ScPatternAttr* pCheck = *it;
+        if (ScPatternAttr::areSame(pCheck, &rCandidate))
+        {
+            pCheck->mnRefCount++;
+            if (bPassingOwnership)
+                delete &rCandidate;
+            mpLastHit = pCheck;
+            return pCheck;
+        }
+    }
+
+    const ScPatternAttr* pCandidate(bPassingOwnership ? &rCandidate : new ScPatternAttr(rCandidate));
+    pCandidate->mnRefCount++;
+    const_cast<ScPatternAttr*>(pCandidate)->SetPAKey(mnCurrentMaxKey++);
+    maRegisteredCellAttributes.insert(pCandidate);
+    mpLastHit = pCandidate;
+    return pCandidate;
+}
+
+void CellAttributeHelper::doUnregister(const ScPatternAttr& rCandidate)
+{
+    if (&rCandidate == mpDefaultCellAttribute)
+        return;
+
+    assert(rCandidate.isRegistered());
+    rCandidate.mnRefCount--;
+
+    if (0 != rCandidate.mnRefCount)
+        return;
+
+    if (mpLastHit == &rCandidate)
+        mpLastHit = nullptr;
+
+    assert(maRegisteredCellAttributes.find(&rCandidate) != maRegisteredCellAttributes.end());
+    maRegisteredCellAttributes.erase(&rCandidate);
+    delete &rCandidate;
+}
+
+const ScPatternAttr& CellAttributeHelper::getDefaultCellAttribute() const
+{
+    // *have* to create on-demand due to mrScDocument.GetPool() *can* be nullptr
+    // since mxPoolHelper is *only* created for SCDOCMODE_DOCUMENT and
+    // SCDOCMODE_FUNCTIONACCESS (!)
+    if (!mpDefaultCellAttribute)
+    {
+        // GetRscString only works after ScGlobal::Init (indicated by the EmptyBrushItem)
+        // TODO: Write additional method ScGlobal::IsInit() or somesuch
+        //       or detect whether this is the Secondary Pool for a MessagePool
+        if (ScGlobal::GetEmptyBrushItem())
+        {
+            const OUString aInitialStyle(ScResId(STR_STYLENAME_STANDARD));
+            mpDefaultCellAttribute = new ScPatternAttr(
+                *const_cast<CellAttributeHelper*>(this),
+                nullptr, // no SfxItemSet
+                &aInitialStyle);
+        }
+        else
+        {
+            mpDefaultCellAttribute = new ScPatternAttr(*const_cast<CellAttributeHelper*>(this));
+        }
+    }
+    return *mpDefaultCellAttribute;
+}
+
+void CellAttributeHelper::CellStyleDeleted(const ScStyleSheet& rStyle)
+{
+    const OUString& rCandidateStyleName = rStyle.GetName();
+    auto it = maRegisteredCellAttributes.lower_bound(&rCandidateStyleName);
+    for (; it != maRegisteredCellAttributes.end(); ++it)
+    {
+        const ScPatternAttr* pCheck = *it;
+        if (CompareStringPtr(pCheck->GetStyleName(), &rCandidateStyleName) != 0)
+            break;
+        if (&rStyle == pCheck->GetStyleSheet())
+            const_cast<ScPatternAttr*>(pCheck)->StyleToName();
+    }
+}
+
+void CellAttributeHelper::RenameCellStyle(ScStyleSheet& rStyle, const OUString& rNewName)
+{
+    std::vector<const ScPatternAttr*> aChanged;
+
+    const OUString& rCandidateStyleName = rStyle.GetName();
+    auto it = maRegisteredCellAttributes.lower_bound(&rCandidateStyleName);
+    while(it != maRegisteredCellAttributes.end())
+    {
+        const ScPatternAttr* pCheck = *it;
+        if (CompareStringPtr(pCheck->GetStyleName(), &rCandidateStyleName) != 0)
+            break;
+        if (&rStyle == pCheck->GetStyleSheet())
+        {
+            aChanged.push_back(pCheck);
+            // The name will change, we have to re-insert it
+            it = maRegisteredCellAttributes.erase(it);
+        }
+        else
+            ++it;
+    }
+
+    rStyle.SetName(rNewName);
+
+    for (const ScPatternAttr* p : aChanged)
+        maRegisteredCellAttributes.insert(p);
+}
+
+void CellAttributeHelper::CellStyleCreated(const ScDocument& rDoc, const OUString& rName)
+{
+    // If a style was created, don't keep any pattern with its name string in the pool,
+    // because it would compare equal to a pattern with a pointer to the new style.
+    // Calling StyleSheetChanged isn't enough because the pool may still contain items
+    // for undo or clipboard content.
+    std::vector<const ScPatternAttr*> aChanged;
+    auto it = maRegisteredCellAttributes.lower_bound(&rName);
+    while(it != maRegisteredCellAttributes.end())
+    {
+        const ScPatternAttr* pCheck = *it;
+        if (CompareStringPtr(pCheck->GetStyleName(), &rName) != 0)
+            break;
+        // tdf#163831 Invalidate cache if the style is modified/created
+        const_cast<ScPatternAttr*>(pCheck)->InvalidateCaches();
+        if (nullptr == pCheck->GetStyleSheet())
+            if (const_cast<ScPatternAttr*>(pCheck)->UpdateStyleSheet(rDoc)) // find and store style pointer
+            {
+                aChanged.push_back(pCheck);
+                // if the name changed, we have to re-insert it
+                it = maRegisteredCellAttributes.erase(it);
+            }
+            else
+                ++it;
+        else
+            ++it;
+    }
+    for (const ScPatternAttr* p : aChanged)
+        maRegisteredCellAttributes.insert(p);
+}
+
+void CellAttributeHelper::UpdateAllStyleSheets(const ScDocument& rDoc)
+{
+    bool bNameChanged = false;
+    for (const ScPatternAttr* pCheck : maRegisteredCellAttributes)
+        bNameChanged |= const_cast<ScPatternAttr*>(pCheck)->UpdateStyleSheet(rDoc);
+    if (bNameChanged)
+        ReIndexRegistered();
+
+    // force existence, then access
+    getDefaultCellAttribute();
+    mpDefaultCellAttribute->UpdateStyleSheet(rDoc);
+}
+
+void CellAttributeHelper::AllStylesToNames()
+{
+    for (const ScPatternAttr* pCheck : maRegisteredCellAttributes)
+        const_cast<ScPatternAttr*>(pCheck)->StyleToName();
+
+    // force existence, then access
+    getDefaultCellAttribute();
+    mpDefaultCellAttribute->StyleToName();
+}
+
+/// If the style name changed, we need to reindex.
+void CellAttributeHelper::ReIndexRegistered()
+{
+    RegisteredAttrSet aNewSet;
+    for (auto const & p : maRegisteredCellAttributes)
+        aNewSet.insert(p);
+    maRegisteredCellAttributes = std::move(aNewSet);
+}
+
+bool CellAttributeHelper::RegisteredAttrSetLess::operator()(const ScPatternAttr* lhs, const ScPatternAttr* rhs) const
+{
+    int cmp = CompareStringPtr(lhs->GetStyleName(), rhs->GetStyleName());
+    if (cmp < 0)
+        return true;
+    if (cmp > 0)
+        return false;
+    return lhs < rhs;
+}
+bool CellAttributeHelper::RegisteredAttrSetLess::operator()(const ScPatternAttr* lhs, const OUString* rhs) const
+{
+    int cmp = CompareStringPtr(lhs->GetStyleName(), rhs);
+    if (cmp < 0)
+        return true;
+    if (cmp > 0)
+        return false;
+    return false;
+}
+bool CellAttributeHelper::RegisteredAttrSetLess::operator()(const OUString* lhs, const ScPatternAttr* rhs) const
+{
+    int cmp = CompareStringPtr(lhs, rhs->GetStyleName());
+    if (cmp < 0)
+        return true;
+    if (cmp > 0)
+        return false;
+    return true;
+}
+
+
+CellAttributeHolder::CellAttributeHolder(const ScPatternAttr* pNew, bool bPassingOwnership)
+: mpScPatternAttr(nullptr)
+{
+    if (nullptr != pNew)
+        suppress_fun_call_w_exception(mpScPatternAttr = pNew->getCellAttributeHelper().registerAndCheck(*pNew, bPassingOwnership));
+}
+
+CellAttributeHolder::CellAttributeHolder(const CellAttributeHolder& rHolder)
+: mpScPatternAttr(nullptr)
+{
+    if (rHolder.getScPatternAttr())
+        suppress_fun_call_w_exception(mpScPatternAttr = rHolder.getScPatternAttr()->getCellAttributeHelper().registerAndCheck(*rHolder.getScPatternAttr(), false));
+}
+
+CellAttributeHolder::~CellAttributeHolder()
+{
+    if (nullptr != mpScPatternAttr)
+        suppress_fun_call_w_exception(mpScPatternAttr->getCellAttributeHelper().doUnregister(*mpScPatternAttr));
+}
+
+CellAttributeHolder& CellAttributeHolder::operator=(const CellAttributeHolder& rHolder)
+{
+    if (nullptr != mpScPatternAttr)
+    {
+        mpScPatternAttr->getCellAttributeHelper().doUnregister(*mpScPatternAttr);
+        mpScPatternAttr = nullptr;
+    }
+
+    if (rHolder.getScPatternAttr())
+        mpScPatternAttr = rHolder.getScPatternAttr()->getCellAttributeHelper().registerAndCheck(*rHolder.getScPatternAttr(), false);
+
+    return *this;
+}
+
+bool CellAttributeHolder::operator==(const CellAttributeHolder& rHolder) const
+{
+    // here we have registered entries, so no need to test for equality
+    return mpScPatternAttr == rHolder.mpScPatternAttr;
+}
+
+void CellAttributeHolder::setScPatternAttr(const ScPatternAttr* pNew, bool bPassingOwnership)
+{
+    if (nullptr != mpScPatternAttr)
+        mpScPatternAttr->getCellAttributeHelper().doUnregister(*mpScPatternAttr);
+
+    mpScPatternAttr = nullptr;
+
+    if (nullptr != pNew)
+        mpScPatternAttr = pNew->getCellAttributeHelper().registerAndCheck(*pNew, bPassingOwnership);
+}
+
+bool CellAttributeHolder::areSame(const CellAttributeHolder* p1, const CellAttributeHolder* p2)
+{
+    if (p1 == p2)
+        // pointer compare, this handles already
+        // nullptr and if indeed handed over twice
+        return true;
+
+    if (nullptr == p1 || nullptr == p2)
+        // one ptr is nullptr, not both, that would
+        // have triggered above
+        return false;
+
+    // return content compare using operator== at last
+    return *p1 == *p2;
+}
+
+#ifdef DBG_UTIL
+static size_t nUsedScPatternAttr(0);
+#endif
+
 const WhichRangesContainer aScPatternAttrSchema(svl::Items<ATTR_PATTERN_START, ATTR_PATTERN_END>);
 
-ScPatternAttr::ScPatternAttr( SfxItemSet&& pItemSet, const OUString& rStyleName )
-    :   SfxSetItem  ( ATTR_PATTERN, std::move(pItemSet) ),
-        pName       ( rStyleName ),
-        pStyle      ( nullptr ),
-        mnPAKey(0)
+ScPatternAttr::ScPatternAttr(CellAttributeHelper& rHelper, const SfxItemSet* pItemSet, const OUString* pStyleName)
+: maLocalSfxItemSet(rHelper.GetPool(), aScPatternAttrSchema)
+, mxVisible()
+, pStyle(nullptr)
+, pCellAttributeHelper(&rHelper)
+, mnPAKey(0)
+, mnRefCount(0)
+#ifdef DBG_UTIL
+, m_nSerialNumber(nUsedScPatternAttr++)
+, m_bDeleted(false)
+#endif
 {
-    setExceptionalSCItem();
+    if (nullptr != pStyleName)
+        moName = *pStyleName;
 
     // We need to ensure that ScPatternAttr is using the correct WhichRange,
     // see comments in commit message. This does transfers the items with
     // minimized overhead, too
-    if (GetItemSet().GetRanges() != aScPatternAttrSchema)
-        GetItemSet().SetRanges(aScPatternAttrSchema);
+    if (nullptr != pItemSet)
+    {
+        // CAUTION: Use bInvalidAsDefault == false for the ::Put,
+        // we *need* to take over also Items/Slots in state
+        // SfxItemState::INVALID aka IsInvalidItem, this is a precious
+        // value/information e.g. in ScDocument::CreateSelectionPattern
+        maLocalSfxItemSet.Put(*pItemSet, false);
+    }
 }
 
-ScPatternAttr::ScPatternAttr( SfxItemSet&& pItemSet )
-    :   SfxSetItem  ( ATTR_PATTERN, std::move(pItemSet) ),
-        pStyle      ( nullptr ),
-        mnPAKey(0)
+ScPatternAttr::ScPatternAttr(const ScPatternAttr& rPatternAttr)
+: maLocalSfxItemSet(rPatternAttr.maLocalSfxItemSet)
+, moName(rPatternAttr.moName)
+, mxVisible(rPatternAttr.mxVisible)
+, mxNumberFormatKey(rPatternAttr.mxNumberFormatKey)
+, mxLanguageType(rPatternAttr.mxLanguageType)
+, pStyle(rPatternAttr.pStyle)
+, pCellAttributeHelper(rPatternAttr.pCellAttributeHelper)
+, mnPAKey(rPatternAttr.mnPAKey)
+, mnRefCount(0)
+#ifdef DBG_UTIL
+, m_nSerialNumber(nUsedScPatternAttr++)
+, m_bDeleted(false)
+#endif
 {
-    setExceptionalSCItem();
-
-    // We need to ensure that ScPatternAttr is using the correct WhichRange,
-    // see comments in commit message. This does transfers the items with
-    // minimized overhead, too
-    if (GetItemSet().GetRanges() != aScPatternAttrSchema)
-        GetItemSet().SetRanges(aScPatternAttrSchema);
 }
 
-ScPatternAttr::ScPatternAttr( SfxItemPool* pItemPool )
-    :   SfxSetItem  ( ATTR_PATTERN, SfxItemSetFixed<ATTR_PATTERN_START, ATTR_PATTERN_END>( *pItemPool ) ),
-        pStyle      ( nullptr ),
-        mnPAKey(0)
+ScPatternAttr::~ScPatternAttr()
 {
-    setExceptionalSCItem();
-}
-
-ScPatternAttr::ScPatternAttr( const ScPatternAttr& rPatternAttr )
-    :   SfxSetItem  ( rPatternAttr ),
-        pName       ( rPatternAttr.pName ),
-        pStyle      ( rPatternAttr.pStyle ),
-        mnPAKey(rPatternAttr.mnPAKey)
-{
-    setExceptionalSCItem();
-}
-
-ScPatternAttr* ScPatternAttr::Clone( SfxItemPool *pPool ) const
-{
-    ScPatternAttr* pPattern = new ScPatternAttr( GetItemSet().CloneAsValue(true, pPool) );
-
-    pPattern->pStyle = pStyle;
-    pPattern->pName = pName;
-
-    return pPattern;
+#ifdef DBG_UTIL
+    m_bDeleted = true;
+#endif
+    // should no longer be referenced, complain if not so
+    assert(!isRegistered());
 }
 
 static bool StrCmp( const OUString* pStr1, const OUString* pStr2 )
 {
     if (pStr1 == pStr2)
         return true;
-    if (pStr1 && !pStr2)
-        return false;
-    if (!pStr1 && pStr2)
-        return false;
+    if (pStr1 == nullptr || pStr2 == nullptr)
+        return false; // one ptr is nullptr, not both, that would have triggered above
     return *pStr1 == *pStr2;
 }
 
-constexpr size_t compareSize = ATTR_PATTERN_END - ATTR_PATTERN_START + 1;
-
-bool ScPatternAttr::operator==( const SfxPoolItem& rCmp ) const
+bool ScPatternAttr::operator==(const ScPatternAttr& rCmp) const
 {
     // check if same incarnation
     if (this == &rCmp)
         return true;
 
-    // check SfxPoolItem base class
-    if (!SfxPoolItem::operator==(rCmp) )
-        return false;
-
     // check everything except the SfxItemSet from base class SfxSetItem
-    const ScPatternAttr& rOther(static_cast<const ScPatternAttr&>(rCmp));
-    if (!StrCmp(GetStyleName(), rOther.GetStyleName()))
+    if (!StrCmp(GetStyleName(), rCmp.GetStyleName()))
         return false;
 
-    // here we need to compare the SfxItemSet. We *know* that these are
-    // all simple (one range, same range)
-    const SfxItemSet& rSet1(GetItemSet());
-    const SfxItemSet& rSet2(rOther.GetItemSet());
-
-    // the former method 'FastEqualPatternSets' mentioned:
+    // use SfxItemSet::operator==, does the same as locally done here before,
+    // including pool compare (default). It also compares parent, not used here.
+    // There was the old comment from
     //   "Actually test_tdf133629 from UITest_calc_tests9 somehow manages to have
     //   a different range (and I don't understand enough why), so better be safe and compare fully."
-    // in that case the hash code above would already fail, too
-    if (rSet1.TotalCount() != compareSize || rSet2.TotalCount() != compareSize)
-    {
-        // assert this for now, should not happen. If it does, look for it and evtl.
-        // enable SfxItemSet::operator== below
-        assert(false);
-        return rSet1 == rSet2;
-    }
+    // that hints to different WhichRanges, but WhichRanges are not compared in
+    // the std-operator (but the Items - if needed - as was here done locally)
+    return maLocalSfxItemSet == rCmp.maLocalSfxItemSet;
+}
 
-    // check pools, do not accept different pools
-    if (rSet1.GetPool() != rSet2.GetPool())
-        return false;
-
-    // check count of set items, has to be equal
-    if (rSet1.Count() != rSet2.Count())
-        return false;
-
-    // compare each item separately
-    const SfxPoolItem **ppItem1(rSet1.GetItems_Impl());
-    const SfxPoolItem **ppItem2(rSet2.GetItems_Impl());
-
-    // are all pointers the same?
-    if (0 == memcmp(ppItem1, ppItem2, compareSize * sizeof(ppItem1[0])))
+bool ScPatternAttr::areSame(const ScPatternAttr* pItem1, const ScPatternAttr* pItem2)
+{
+    if (pItem1 == pItem2)
+        // pointer compare, this handles already
+        // nullptr and if indeed handed over twice
         return true;
 
-    for (sal_uInt16 nPos(0); nPos < compareSize; nPos++)
-    {
-        if (!SfxPoolItem::areSame(*ppItem1, *ppItem2))
-            return false;
-        ++ppItem1;
-        ++ppItem2;
-    }
+    if (nullptr == pItem1 || nullptr == pItem2)
+        // one ptr is nullptr, not both, that would
+        // have triggered above
+        return false;
 
-    return true;
+    // return content compare using operator== at last
+    return *pItem1 == *pItem2;
 }
 
 SvxCellOrientation ScPatternAttr::GetCellOrientation( const SfxItemSet& rItemSet, const SfxItemSet* pCondSet )
@@ -503,7 +791,7 @@ void ScPatternAttr::fillColor(model::ComplexColor& rComplexColor, const SfxItemS
                     aBackColor = *pBackConfigColor;
                 }
                 else
-                    aBackColor = SC_MOD()->GetColorConfig().GetColorValue(svtools::DOCCOLOR).nColor;
+                    aBackColor = ScModule::get()->GetColorConfig().GetColorValue(svtools::DOCCOLOR).nColor;
             }
             else
             {
@@ -512,9 +800,9 @@ void ScPatternAttr::fillColor(model::ComplexColor& rComplexColor, const SfxItemS
                 ScTabViewShell* pViewShell = dynamic_cast<ScTabViewShell*>(pSfxViewShell);
                 if (pViewShell)
                 {
-                    const ScViewData& pViewData = pViewShell->GetViewData();
-                    const ScViewOptions& aViewOptions = pViewData.GetOptions();
-                    aBackColor = aViewOptions.GetDocColor();
+                    const ScViewRenderingOptions& rViewRenderingOptions = pViewShell->GetViewRenderingData();
+                    aBackColor = eAutoMode == ScAutoFontColorMode::Print ? COL_WHITE :
+                        rViewRenderingOptions.GetDocColor();
                 }
             }
         }
@@ -529,31 +817,33 @@ void ScPatternAttr::fillColor(model::ComplexColor& rComplexColor, const SfxItemS
         {
             // pTextConfigColor can be used to avoid repeated lookup of the configured color
             aSysTextColor = *pTextConfigColor;
+            if (ScModule::get()->GetColorConfig().GetColorValue(svtools::FONTCOLOR, false).nColor == COL_AUTO)
+            {
+                if ( aBackColor.IsDark() && aSysTextColor.IsDark() )
+                    aSysTextColor = COL_WHITE;
+                else
+                    aSysTextColor = COL_BLACK;
+            }
         }
         else
         {
-            aSysTextColor = SC_MOD()->GetColorConfig().GetColorValue(svtools::FONTCOLOR).nColor;
+            aSysTextColor = ScModule::get()->GetColorConfig().GetColorValue(svtools::FONTCOLOR).nColor;
         }
 
-        //  select the resulting color
-        if ( aBackColor.IsDark() && aSysTextColor.IsDark() )
+        if (SfxViewShell::Current())
         {
-            //  use white instead of dark on dark
-            aColor = COL_WHITE;
-        }
-        else if ( aBackColor.IsBright() && aSysTextColor.IsBright() )
-        {
-            //  use black instead of bright on bright
-            aColor = COL_BLACK;
+            if (aBackColor.IsDark())
+                aColor = COL_WHITE;
+            else
+                aColor = COL_BLACK;
         }
         else
         {
-            //  use aSysTextColor (black for ScAutoFontColorMode::Print, from style settings otherwise)
             aColor = aSysTextColor;
         }
     }
     aComplexColor.setFinalColor(aColor);
-    rComplexColor = aComplexColor;
+    rComplexColor = std::move(aComplexColor);
 }
 
 ScDxfFont ScPatternAttr::GetDxfFont(const SfxItemSet& rItemSet, SvtScriptType nScript)
@@ -644,26 +934,26 @@ ScDxfFont ScPatternAttr::GetDxfFont(const SfxItemSet& rItemSet, SvtScriptType nS
 }
 
 template <class T>
-static void lcl_populate( std::unique_ptr<T>& rxItem, TypedWhichId<T> nWhich, const SfxItemSet& rSrcSet, const SfxItemSet* pCondSet )
+static void lcl_populate( std::optional<T>& rxItem, TypedWhichId<T> nWhich, const SfxItemSet& rSrcSet, const SfxItemSet* pCondSet )
 {
     const T* pItem = pCondSet->GetItemIfSet( nWhich );
     if ( !pItem )
         pItem = &rSrcSet.Get( nWhich );
-    rxItem.reset(pItem->Clone());
+    rxItem.emplace(*pItem);
 }
 
 void ScPatternAttr::FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& rSrcSet, const SfxItemSet* pCondSet )
 {
     //  Read Items
 
-    std::unique_ptr<SvxColorItem> aColorItem(std::make_unique<SvxColorItem>(EE_CHAR_COLOR));              // use item as-is
-    std::unique_ptr<SvxFontItem> aFontItem(std::make_unique<SvxFontItem>(EE_CHAR_FONTINFO));            // use item as-is
-    std::unique_ptr<SvxFontItem> aCjkFontItem(std::make_unique<SvxFontItem>(EE_CHAR_FONTINFO_CJK));            // use item as-is
-    std::unique_ptr<SvxFontItem> aCtlFontItem(std::make_unique<SvxFontItem>(EE_CHAR_FONTINFO_CTL));            // use item as-is
+    std::optional<SvxColorItem> oColorItem(std::in_place, EE_CHAR_COLOR);              // use item as-is
+    std::optional<SvxFontItem> oFontItem(std::in_place, EE_CHAR_FONTINFO);            // use item as-is
+    std::optional<SvxFontItem> oCjkFontItem(std::in_place, EE_CHAR_FONTINFO_CJK);            // use item as-is
+    std::optional<SvxFontItem> oCtlFontItem(std::in_place, EE_CHAR_FONTINFO_CTL);            // use item as-is
     tools::Long            nTHeight, nCjkTHeight, nCtlTHeight;     // Twips
     FontWeight      eWeight, eCjkWeight, eCtlWeight;
-    std::unique_ptr<SvxUnderlineItem> aUnderlineItem(std::make_unique<SvxUnderlineItem>(LINESTYLE_NONE, EE_CHAR_UNDERLINE));
-    std::unique_ptr<SvxOverlineItem> aOverlineItem(std::make_unique<SvxOverlineItem>(LINESTYLE_NONE, EE_CHAR_OVERLINE));
+    std::optional<SvxUnderlineItem> oUnderlineItem(std::in_place, LINESTYLE_NONE, EE_CHAR_UNDERLINE);
+    std::optional<SvxOverlineItem> oOverlineItem(std::in_place, LINESTYLE_NONE, EE_CHAR_OVERLINE);
     bool            bWordLine;
     FontStrikeout   eStrike;
     FontItalic      eItalic, eCjkItalic, eCtlItalic;
@@ -680,10 +970,10 @@ void ScPatternAttr::FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& r
 
     if ( pCondSet )
     {
-        lcl_populate(aColorItem, ATTR_FONT_COLOR, rSrcSet, pCondSet);
-        lcl_populate(aFontItem, ATTR_FONT, rSrcSet, pCondSet);
-        lcl_populate(aCjkFontItem, ATTR_CJK_FONT, rSrcSet, pCondSet);
-        lcl_populate(aCtlFontItem, ATTR_CTL_FONT, rSrcSet, pCondSet);
+        lcl_populate(oColorItem, ATTR_FONT_COLOR, rSrcSet, pCondSet);
+        lcl_populate(oFontItem, ATTR_FONT, rSrcSet, pCondSet);
+        lcl_populate(oCjkFontItem, ATTR_CJK_FONT, rSrcSet, pCondSet);
+        lcl_populate(oCtlFontItem, ATTR_CTL_FONT, rSrcSet, pCondSet);
 
         const SvxFontHeightItem* pFontHeightItem = pCondSet->GetItemIfSet( ATTR_FONT_HEIGHT );
         if (!pFontHeightItem)
@@ -724,8 +1014,8 @@ void ScPatternAttr::FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& r
             pPostureItem = &rSrcSet.Get( ATTR_CTL_FONT_POSTURE );
         eCtlItalic = pPostureItem->GetValue();
 
-        lcl_populate(aUnderlineItem, ATTR_FONT_UNDERLINE, rSrcSet, pCondSet);
-        lcl_populate(aOverlineItem, ATTR_FONT_OVERLINE, rSrcSet, pCondSet);
+        lcl_populate(oUnderlineItem, ATTR_FONT_UNDERLINE, rSrcSet, pCondSet);
+        lcl_populate(oOverlineItem, ATTR_FONT_OVERLINE, rSrcSet, pCondSet);
 
         const SvxWordLineModeItem* pWordLineModeItem = pCondSet->GetItemIfSet( ATTR_FONT_WORDLINE );
         if ( !pWordLineModeItem )
@@ -786,10 +1076,10 @@ void ScPatternAttr::FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& r
     }
     else        // Everything directly from Pattern
     {
-        aColorItem.reset(rSrcSet.Get(ATTR_FONT_COLOR).Clone());
-        aFontItem.reset(rSrcSet.Get(ATTR_FONT).Clone());
-        aCjkFontItem.reset(rSrcSet.Get(ATTR_CJK_FONT).Clone());
-        aCtlFontItem.reset(rSrcSet.Get(ATTR_CTL_FONT).Clone());
+        oColorItem.emplace(rSrcSet.Get(ATTR_FONT_COLOR));
+        oFontItem.emplace(rSrcSet.Get(ATTR_FONT));
+        oCjkFontItem.emplace(rSrcSet.Get(ATTR_CJK_FONT));
+        oCtlFontItem.emplace(rSrcSet.Get(ATTR_CTL_FONT));
         nTHeight = rSrcSet.Get( ATTR_FONT_HEIGHT ).GetHeight();
         nCjkTHeight = rSrcSet.Get( ATTR_CJK_FONT_HEIGHT ).GetHeight();
         nCtlTHeight = rSrcSet.Get( ATTR_CTL_FONT_HEIGHT ).GetHeight();
@@ -799,8 +1089,8 @@ void ScPatternAttr::FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& r
         eItalic = rSrcSet.Get( ATTR_FONT_POSTURE ).GetValue();
         eCjkItalic = rSrcSet.Get( ATTR_CJK_FONT_POSTURE ).GetValue();
         eCtlItalic = rSrcSet.Get( ATTR_CTL_FONT_POSTURE ).GetValue();
-        aUnderlineItem.reset(rSrcSet.Get(ATTR_FONT_UNDERLINE).Clone());
-        aOverlineItem.reset(rSrcSet.Get(ATTR_FONT_OVERLINE).Clone());
+        oUnderlineItem.emplace(rSrcSet.Get(ATTR_FONT_UNDERLINE));
+        oOverlineItem.emplace(rSrcSet.Get(ATTR_FONT_OVERLINE));
         bWordLine = rSrcSet.Get( ATTR_FONT_WORDLINE ).GetValue();
         eStrike = rSrcSet.Get( ATTR_FONT_CROSSEDOUT ).GetValue();
         bOutline = rSrcSet.Get( ATTR_FONT_CONTOUR ).GetValue();
@@ -823,7 +1113,7 @@ void ScPatternAttr::FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& r
 
     //  put items into EditEngine ItemSet
 
-    if ( aColorItem->GetValue() == COL_AUTO )
+    if ( oColorItem->GetValue() == COL_AUTO )
     {
         //  When cell attributes are converted to EditEngine paragraph attributes,
         //  don't create a hard item for automatic color, because that would be converted
@@ -835,13 +1125,13 @@ void ScPatternAttr::FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& r
     else
     {
         // tdf#125054 adapt WhichID
-        rEditSet.Put( std::move(aColorItem), EE_CHAR_COLOR );
+        rEditSet.PutAsTargetWhich( *oColorItem, EE_CHAR_COLOR );
     }
 
     // tdf#125054 adapt WhichID
-    rEditSet.Put( std::move(aFontItem), EE_CHAR_FONTINFO );
-    rEditSet.Put( std::move(aCjkFontItem), EE_CHAR_FONTINFO_CJK );
-    rEditSet.Put( std::move(aCtlFontItem), EE_CHAR_FONTINFO_CTL );
+    rEditSet.PutAsTargetWhich( *oFontItem, EE_CHAR_FONTINFO );
+    rEditSet.PutAsTargetWhich( *oCjkFontItem, EE_CHAR_FONTINFO_CJK );
+    rEditSet.PutAsTargetWhich( *oCtlFontItem, EE_CHAR_FONTINFO_CTL );
 
     rEditSet.Put( SvxFontHeightItem( nHeight, 100, EE_CHAR_FONTHEIGHT ) );
     rEditSet.Put( SvxFontHeightItem( nCjkHeight, 100, EE_CHAR_FONTHEIGHT_CJK ) );
@@ -851,8 +1141,8 @@ void ScPatternAttr::FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& r
     rEditSet.Put( SvxWeightItem ( eCtlWeight,   EE_CHAR_WEIGHT_CTL ) );
 
     // tdf#125054 adapt WhichID
-    rEditSet.Put( std::move(aUnderlineItem), EE_CHAR_UNDERLINE );
-    rEditSet.Put( std::move(aOverlineItem), EE_CHAR_OVERLINE );
+    rEditSet.PutAsTargetWhich( *oUnderlineItem, EE_CHAR_UNDERLINE );
+    rEditSet.PutAsTargetWhich( *oOverlineItem, EE_CHAR_OVERLINE );
 
     rEditSet.Put( SvxWordLineModeItem( bWordLine,   EE_CHAR_WLM ) );
     rEditSet.Put( SvxCrossedOutItem( eStrike,       EE_CHAR_STRIKEOUT ) );
@@ -887,14 +1177,14 @@ void ScPatternAttr::FillEditItemSet( SfxItemSet* pEditSet, const SfxItemSet* pCo
 void ScPatternAttr::GetFromEditItemSet( SfxItemSet& rDestSet, const SfxItemSet& rEditSet )
 {
     if (const SvxColorItem* pItem = rEditSet.GetItemIfSet(EE_CHAR_COLOR))
-        rDestSet.Put( *pItem, ATTR_FONT_COLOR );
+        rDestSet.PutAsTargetWhich( *pItem, ATTR_FONT_COLOR );
 
     if (const SvxFontItem* pItem = rEditSet.GetItemIfSet(EE_CHAR_FONTINFO))
-        rDestSet.Put( *pItem, ATTR_FONT );
+        rDestSet.PutAsTargetWhich( *pItem, ATTR_FONT );
     if (const SvxFontItem* pItem = rEditSet.GetItemIfSet(EE_CHAR_FONTINFO_CJK))
-        rDestSet.Put( *pItem, ATTR_CJK_FONT );
+        rDestSet.PutAsTargetWhich( *pItem, ATTR_CJK_FONT );
     if (const SvxFontItem* pItem = rEditSet.GetItemIfSet(EE_CHAR_FONTINFO_CTL))
-        rDestSet.Put( *pItem, ATTR_CTL_FONT );
+        rDestSet.PutAsTargetWhich( *pItem, ATTR_CTL_FONT );
 
     if (const SvxFontHeightItem* pItem = rEditSet.GetItemIfSet(EE_CHAR_FONTHEIGHT))
         rDestSet.Put( SvxFontHeightItem(o3tl::toTwips(pItem->GetHeight(), o3tl::Length::mm100),
@@ -918,9 +1208,9 @@ void ScPatternAttr::GetFromEditItemSet( SfxItemSet& rDestSet, const SfxItemSet& 
 
     // SvxTextLineItem contains enum and color
     if (const SvxUnderlineItem* pItem = rEditSet.GetItemIfSet(EE_CHAR_UNDERLINE))
-        rDestSet.Put( *pItem, ATTR_FONT_UNDERLINE );
+        rDestSet.PutAsTargetWhich( *pItem, ATTR_FONT_UNDERLINE );
     if (const SvxOverlineItem* pItem = rEditSet.GetItemIfSet(EE_CHAR_OVERLINE))
-        rDestSet.Put( *pItem, ATTR_FONT_OVERLINE );
+        rDestSet.PutAsTargetWhich( *pItem, ATTR_FONT_OVERLINE );
     if (const SvxWordLineModeItem* pItem = rEditSet.GetItemIfSet(EE_CHAR_WLM))
         rDestSet.Put( SvxWordLineModeItem( pItem->GetValue(),
                         ATTR_FONT_WORDLINE) );
@@ -998,8 +1288,8 @@ void ScPatternAttr::GetFromEditItemSet( const SfxItemSet* pEditSet )
 {
     if( !pEditSet )
         return;
-    GetFromEditItemSet( GetItemSet(), *pEditSet );
-    mxVisible.reset();
+    GetFromEditItemSet(maLocalSfxItemSet, *pEditSet);
+    InvalidateCaches();
 }
 
 void ScPatternAttr::FillEditParaItems( SfxItemSet* pEditSet ) const
@@ -1024,7 +1314,6 @@ void ScPatternAttr::FillEditParaItems( SfxItemSet* pEditSet ) const
 
 void ScPatternAttr::DeleteUnchanged( const ScPatternAttr* pOldAttrs )
 {
-    SfxItemSet& rThisSet = GetItemSet();
     const SfxItemSet& rOldSet = pOldAttrs->GetItemSet();
 
     const SfxPoolItem* pThisItem;
@@ -1033,7 +1322,7 @@ void ScPatternAttr::DeleteUnchanged( const ScPatternAttr* pOldAttrs )
     for ( sal_uInt16 nSubWhich=ATTR_PATTERN_START; nSubWhich<=ATTR_PATTERN_END; nSubWhich++ )
     {
         //  only items that are set are interesting
-        if ( rThisSet.GetItemState( nSubWhich, false, &pThisItem ) == SfxItemState::SET )
+        if ( maLocalSfxItemSet.GetItemState( nSubWhich, false, &pThisItem ) == SfxItemState::SET )
         {
             SfxItemState eOldState = rOldSet.GetItemState( nSubWhich, true, &pOldItem );
             if ( eOldState == SfxItemState::SET )
@@ -1041,17 +1330,17 @@ void ScPatternAttr::DeleteUnchanged( const ScPatternAttr* pOldAttrs )
                 //  item is set in OldAttrs (or its parent) -> compare pointers
                 if (SfxPoolItem::areSame( pThisItem, pOldItem ))
                 {
-                    rThisSet.ClearItem( nSubWhich );
-                    mxVisible.reset();
+                    maLocalSfxItemSet.ClearItem( nSubWhich );
+                    InvalidateCaches();
                 }
             }
-            else if ( eOldState != SfxItemState::DONTCARE )
+            else if ( eOldState != SfxItemState::INVALID )
             {
                 //  not set in OldAttrs -> compare item value to default item
-                if ( *pThisItem == rThisSet.GetPool()->GetDefaultItem( nSubWhich ) )
+                if ( *pThisItem == maLocalSfxItemSet.GetPool()->GetUserOrPoolDefaultItem( nSubWhich ) )
                 {
-                    rThisSet.ClearItem( nSubWhich );
-                    mxVisible.reset();
+                    maLocalSfxItemSet.ClearItem( nSubWhich );
+                    InvalidateCaches();
                 }
             }
         }
@@ -1060,19 +1349,17 @@ void ScPatternAttr::DeleteUnchanged( const ScPatternAttr* pOldAttrs )
 
 bool ScPatternAttr::HasItemsSet( const sal_uInt16* pWhich ) const
 {
-    const SfxItemSet& rSet = GetItemSet();
     for (sal_uInt16 i=0; pWhich[i]; i++)
-        if ( rSet.GetItemState( pWhich[i], false ) == SfxItemState::SET )
+        if ( maLocalSfxItemSet.GetItemState( pWhich[i], false ) == SfxItemState::SET )
             return true;
     return false;
 }
 
 void ScPatternAttr::ClearItems( const sal_uInt16* pWhich )
 {
-    SfxItemSet& rSet = GetItemSet();
     for (sal_uInt16 i=0; pWhich[i]; i++)
-        rSet.ClearItem(pWhich[i]);
-    mxVisible.reset();
+        maLocalSfxItemSet.ClearItem(pWhich[i]);
+    InvalidateCaches();
 }
 
 static SfxStyleSheetBase* lcl_CopyStyleToPool
@@ -1109,7 +1396,7 @@ static SfxStyleSheetBase* lcl_CopyStyleToPool
         if ( pFormatExchangeList &&
              (pSrcItem = rSrcSet.GetItemIfSet( ATTR_VALUE_FORMAT, false )) )
         {
-            sal_uLong nOldFormat = pSrcItem->GetValue();
+            sal_uInt32 nOldFormat = pSrcItem->GetValue();
             SvNumberFormatterIndexTable::const_iterator it = pFormatExchangeList->find(nOldFormat);
             if (it != pFormatExchangeList->end())
             {
@@ -1134,15 +1421,13 @@ static SfxStyleSheetBase* lcl_CopyStyleToPool
     return pDestStyle;
 }
 
-ScPatternAttr* ScPatternAttr::PutInPool( ScDocument* pDestDoc, ScDocument* pSrcDoc ) const
+CellAttributeHolder ScPatternAttr::MigrateToDocument( ScDocument* pDestDoc, ScDocument* pSrcDoc ) const
 {
     const SfxItemSet* pSrcSet = &GetItemSet();
-
-    ScPatternAttr aDestPattern( pDestDoc->GetPool() );
-    SfxItemSet* pDestSet = &aDestPattern.GetItemSet();
+    ScPatternAttr* pDestPattern(new ScPatternAttr(pDestDoc->getCellAttributeHelper()));
+    SfxItemSet* pDestSet(&pDestPattern->GetItemSetWritable());
 
     // Copy cell pattern style to other document:
-
     if ( pDestDoc != pSrcDoc )
     {
         OSL_ENSURE( pStyle, "Missing Pattern-Style! :-/" );
@@ -1155,7 +1440,7 @@ ScPatternAttr* ScPatternAttr::PutInPool( ScDocument* pDestDoc, ScDocument* pSrcD
                                                             pDestDoc->GetStyleSheetPool(),
                                                             pDestDoc->GetFormatExchangeList() );
 
-        aDestPattern.SetStyleSheet( static_cast<ScStyleSheet*>(pStyleCpy) );
+        pDestPattern->SetStyleSheet( static_cast<ScStyleSheet*>(pStyleCpy) );
     }
 
     for ( sal_uInt16 nAttrId = ATTR_PATTERN_START; nAttrId <= ATTR_PATTERN_END; nAttrId++ )
@@ -1185,7 +1470,7 @@ ScPatternAttr* ScPatternAttr::PutInPool( ScDocument* pDestDoc, ScDocument* pSrcD
             {
                 //  Number format to Exchange List
 
-                sal_uLong nOldFormat = static_cast<const SfxUInt32Item*>(pSrcItem)->GetValue();
+                sal_uInt32 nOldFormat = static_cast<const SfxUInt32Item*>(pSrcItem)->GetValue();
                 SvNumberFormatterIndexTable::const_iterator it = pDestDoc->GetFormatExchangeList()->find(nOldFormat);
                 if (it != pDestDoc->GetFormatExchangeList()->end())
                 {
@@ -1203,8 +1488,7 @@ ScPatternAttr* ScPatternAttr::PutInPool( ScDocument* pDestDoc, ScDocument* pSrcD
         }
     }
 
-    ScPatternAttr* pPatternAttr = const_cast<ScPatternAttr*>( &pDestDoc->GetPool()->DirectPutItemInPool(aDestPattern) );
-    return pPatternAttr;
+    return CellAttributeHolder(pDestPattern, true);
 }
 
 bool ScPatternAttr::IsVisible() const
@@ -1244,79 +1528,36 @@ bool ScPatternAttr::CalcVisible() const
     return false;
 }
 
+static bool OneEqual( const SfxItemSet& rSet1, const SfxItemSet& rSet2, sal_uInt16 nId )
+{
+    const SfxPoolItem* pItem1 = &rSet1.Get(nId);
+    const SfxPoolItem* pItem2 = &rSet2.Get(nId);
+    return ( pItem1 == pItem2 || *pItem1 == *pItem2 );
+}
+
 bool ScPatternAttr::IsVisibleEqual( const ScPatternAttr& rOther ) const
 {
-    // This method is hot, so we do an optimised comparison here, by
-    // walking the two itemsets in parallel, avoiding doing repeated searches.
-    auto IsInterestingWhich = [](sal_uInt16 n)
-    {
-        return n == ATTR_BORDER_TLBR || n == ATTR_BORDER_BLTR || n == ATTR_BACKGROUND
-               || n == ATTR_BORDER || n == ATTR_SHADOW;
-    };
-    SfxWhichIter aIter1(GetItemSet());
-    SfxWhichIter aIter2(rOther.GetItemSet());
-    sal_uInt16 nWhich1 = aIter1.FirstWhich();
-    sal_uInt16 nWhich2 = aIter2.FirstWhich();
-    for (;;)
-    {
-        while (nWhich1 != nWhich2)
-        {
-            SfxWhichIter* pIterToIncrement;
-            sal_uInt16* pSmallerWhich;
-            if (nWhich1 == 0 || nWhich1 > nWhich2)
-            {
-                pSmallerWhich = &nWhich2;
-                pIterToIncrement = &aIter2;
-            }
-            else
-            {
-                pSmallerWhich = &nWhich1;
-                pIterToIncrement = &aIter1;
-            }
+    const SfxItemSet& rThisSet = GetItemSet();
+    const SfxItemSet& rOtherSet = rOther.GetItemSet();
 
-            if (IsInterestingWhich(*pSmallerWhich))
-            {
-                // the iter with larger which has already passed this point, and has no interesting
-                // item available in the other - so indeed these are unequal
-                return false;
-            }
+    return OneEqual( rThisSet, rOtherSet, ATTR_BACKGROUND ) &&
+            OneEqual( rThisSet, rOtherSet, ATTR_BORDER ) &&
+            OneEqual( rThisSet, rOtherSet, ATTR_BORDER_TLBR ) &&
+            OneEqual( rThisSet, rOtherSet, ATTR_BORDER_BLTR ) &&
+            OneEqual( rThisSet, rOtherSet, ATTR_SHADOW );
 
-            *pSmallerWhich = pIterToIncrement->NextWhich();
-        }
-
-        // Here nWhich1 == nWhich2
-
-        if (!nWhich1 /* && !nWhich2*/)
-            return true;
-
-        if (IsInterestingWhich(nWhich1))
-        {
-            const SfxPoolItem* pItem1 = nullptr;
-            const SfxPoolItem* pItem2 = nullptr;
-            SfxItemState state1 = aIter1.GetItemState(true, &pItem1);
-            SfxItemState state2 = aIter2.GetItemState(true, &pItem2);
-            if (state1 != state2
-                && (state1 < SfxItemState::DEFAULT || state2 < SfxItemState::DEFAULT))
-                return false;
-            if (!SfxPoolItem::areSame(pItem1, pItem2))
-                return false;
-        }
-        nWhich1 = aIter1.NextWhich();
-        nWhich2 = aIter2.NextWhich();
-    }
     //TODO: also here only check really visible values !!!
 }
 
 const OUString* ScPatternAttr::GetStyleName() const
 {
-    return pName ? &*pName : ( pStyle ? &pStyle->GetName() : nullptr );
+    return moName ? &*moName : ( pStyle ? &pStyle->GetName() : nullptr );
 }
 
 void ScPatternAttr::SetStyleSheet( ScStyleSheet* pNewStyle, bool bClearDirectFormat )
 {
     if (pNewStyle)
     {
-        SfxItemSet&       rPatternSet = GetItemSet();
         const SfxItemSet& rStyleSet = pNewStyle->GetItemSet();
 
         if (bClearDirectFormat)
@@ -1324,27 +1565,28 @@ void ScPatternAttr::SetStyleSheet( ScStyleSheet* pNewStyle, bool bClearDirectFor
             for (sal_uInt16 i=ATTR_PATTERN_START; i<=ATTR_PATTERN_END; i++)
             {
                 if (rStyleSet.GetItemState(i) == SfxItemState::SET)
-                    rPatternSet.ClearItem(i);
+                    maLocalSfxItemSet.ClearItem(i);
             }
         }
-        rPatternSet.SetParent(&pNewStyle->GetItemSet());
+        maLocalSfxItemSet.SetParent(&pNewStyle->GetItemSet());
         pStyle = pNewStyle;
-        pName.reset();
+        moName.reset();
     }
     else
     {
         OSL_FAIL( "ScPatternAttr::SetStyleSheet( NULL ) :-|" );
-        GetItemSet().SetParent(nullptr);
+        maLocalSfxItemSet.SetParent(nullptr);
         pStyle = nullptr;
     }
-    mxVisible.reset();
+    InvalidateCaches();
 }
 
-void ScPatternAttr::UpdateStyleSheet(const ScDocument& rDoc)
+bool ScPatternAttr::UpdateStyleSheet(const ScDocument& rDoc)
 {
-    if (pName)
+    bool bNameChanged = false;
+    if (moName)
     {
-        pStyle = static_cast<ScStyleSheet*>(rDoc.GetStyleSheetPool()->Find(*pName, SfxStyleFamily::Para));
+        pStyle = static_cast<ScStyleSheet*>(rDoc.GetStyleSheetPool()->Find(*moName, SfxStyleFamily::Para));
 
         //  use Standard if Style is not found,
         //  to avoid empty display in Toolbox-Controller
@@ -1357,13 +1599,17 @@ void ScPatternAttr::UpdateStyleSheet(const ScDocument& rDoc)
 
         if (pStyle)
         {
-            GetItemSet().SetParent(&pStyle->GetItemSet());
-            pName.reset();
+            maLocalSfxItemSet.SetParent(&pStyle->GetItemSet());
+            moName.reset();
         }
     }
     else
+    {
         pStyle = nullptr;
-    mxVisible.reset();
+        bNameChanged = true;
+    }
+    InvalidateCaches();
+    return bNameChanged;
 }
 
 void ScPatternAttr::StyleToName()
@@ -1372,10 +1618,10 @@ void ScPatternAttr::StyleToName()
 
     if ( pStyle )
     {
-        pName = pStyle->GetName();
+        moName = pStyle->GetName();
         pStyle = nullptr;
-        GetItemSet().SetParent( nullptr );
-        mxVisible.reset();
+        maLocalSfxItemSet.SetParent( nullptr );
+        InvalidateCaches();
     }
 }
 
@@ -1401,14 +1647,47 @@ LanguageType getLanguageType(const SfxItemSet& rSet)
 
 }
 
+bool ScPatternAttr::HasValidNumberFormat() const
+{
+    // If either ATTR_VALUE_FORMAT or ATTR_LANGUAGE_FORMAT are invalid in the pattern,
+    // it means a multiselection with different formats
+    return GetItemSet().GetItemState(ATTR_VALUE_FORMAT) != SfxItemState::INVALID
+           && GetItemSet().GetItemState(ATTR_LANGUAGE_FORMAT) != SfxItemState::INVALID;
+}
+
+sal_uInt32 ScPatternAttr::GetNumberFormatKey() const
+{
+    if (!mxNumberFormatKey.has_value())
+        mxNumberFormatKey = getNumberFormatKey(GetItemSet());
+    return *mxNumberFormatKey;
+}
+
+LanguageType ScPatternAttr::GetLanguageType() const
+{
+    if (!mxLanguageType.has_value())
+        mxLanguageType = getLanguageType(GetItemSet());
+    return *mxLanguageType;
+}
+
 sal_uInt32 ScPatternAttr::GetNumberFormat( SvNumberFormatter* pFormatter ) const
 {
-    sal_uInt32 nFormat = getNumberFormatKey(GetItemSet());
-    LanguageType eLang = getLanguageType(GetItemSet());
+    sal_uInt32 nFormat = GetNumberFormatKey();
+    LanguageType eLang = GetLanguageType();
     if ( nFormat < SV_COUNTRY_LANGUAGE_OFFSET && eLang == LANGUAGE_SYSTEM )
         ;       // it remains as it is
     else if ( pFormatter )
         nFormat = pFormatter->GetFormatForLanguageIfBuiltIn( nFormat, eLang );
+    return nFormat;
+}
+
+sal_uInt32 ScPatternAttr::GetNumberFormat( const ScInterpreterContext& rContext ) const
+{
+    sal_uInt32 nFormat = GetNumberFormatKey();
+    LanguageType eLang = GetLanguageType();
+    if ( nFormat < SV_COUNTRY_LANGUAGE_OFFSET && eLang == LANGUAGE_SYSTEM )
+        ;       // it remains as it is
+    else
+        nFormat = rContext.NFGetFormatForLanguageIfBuiltIn( nFormat, eLang );
     return nFormat;
 }
 
@@ -1418,28 +1697,31 @@ sal_uInt32 ScPatternAttr::GetNumberFormat( SvNumberFormatter* pFormatter,
                                            const SfxItemSet* pCondSet ) const
 {
     assert(pFormatter);
-    if (!pCondSet)
+    if (!pCondSet || !pCondSet->HasItem(ATTR_VALUE_FORMAT))
         return GetNumberFormat(pFormatter);
 
     // Conditional format takes precedence over style and even hard format.
 
-    sal_uInt32 nFormat;
-    LanguageType eLang;
-    if (pCondSet->GetItemState(ATTR_VALUE_FORMAT) == SfxItemState::SET )
-    {
-        nFormat = getNumberFormatKey(*pCondSet);
-        if (pCondSet->GetItemState(ATTR_LANGUAGE_FORMAT) == SfxItemState::SET)
-            eLang = getLanguageType(*pCondSet);
-        else
-            eLang = getLanguageType(GetItemSet());
-    }
-    else
-    {
-        nFormat = getNumberFormatKey(GetItemSet());
-        eLang = getLanguageType(GetItemSet());
-    }
+    sal_uInt32 nFormat = getNumberFormatKey(*pCondSet);
+    LanguageType eLang = pCondSet->HasItem(ATTR_LANGUAGE_FORMAT) ? getLanguageType(*pCondSet)
+                                                                 : GetLanguageType();
 
     return pFormatter->GetFormatForLanguageIfBuiltIn(nFormat, eLang);
+}
+
+sal_uInt32 ScPatternAttr::GetNumberFormat( const ScInterpreterContext& rContext,
+                                           const SfxItemSet* pCondSet ) const
+{
+    if (!pCondSet || !pCondSet->HasItem(ATTR_VALUE_FORMAT))
+        return GetNumberFormat(rContext);
+
+    // Conditional format takes precedence over style and even hard format.
+
+    sal_uInt32 nFormat = getNumberFormatKey(*pCondSet);
+    LanguageType eLang = pCondSet->HasItem(ATTR_LANGUAGE_FORMAT) ? getLanguageType(*pCondSet)
+                                                                 : GetLanguageType();
+
+    return rContext.NFGetFormatForLanguageIfBuiltIn(nFormat, eLang);
 }
 
 const SfxPoolItem& ScPatternAttr::GetItem( sal_uInt16 nWhich, const SfxItemSet& rItemSet, const SfxItemSet* pCondSet )
@@ -1508,6 +1790,59 @@ void ScPatternAttr::SetPAKey(sal_uInt64 nKey)
 sal_uInt64 ScPatternAttr::GetPAKey() const
 {
     return mnPAKey;
+}
+
+void ScPatternAttr::InvalidateCaches()
+{
+    mxVisible.reset();
+    mxNumberFormatKey.reset();
+    mxLanguageType.reset();
+}
+
+SfxItemSet& ScPatternAttr::GetItemSetWritable()
+{
+    // Generally have to assume that caches are invalid
+    // after this is used.
+    InvalidateCaches();
+    return maLocalSfxItemSet;
+}
+
+void ScPatternAttr::InvalidateCacheFor(sal_uInt16 nWhich)
+{
+    switch (nWhich)
+    {
+        case ATTR_LANGUAGE_FORMAT:
+            mxLanguageType.reset();
+            break;
+        case ATTR_VALUE_FORMAT:
+            mxNumberFormatKey.reset();
+            break;
+        case ATTR_BACKGROUND:
+        case ATTR_BORDER:
+        case ATTR_BORDER_TLBR:
+        case ATTR_BORDER_BLTR:
+        case ATTR_SHADOW:
+            mxVisible.reset();
+            break;
+    }
+}
+
+void ScPatternAttr::ItemSetPut(const SfxPoolItem& rItem)
+{
+    InvalidateCacheFor(rItem.Which());
+    maLocalSfxItemSet.Put(rItem);
+}
+
+void ScPatternAttr::ItemSetPut(std::unique_ptr<SfxPoolItem> xItem)
+{
+    InvalidateCacheFor(xItem->Which());
+    maLocalSfxItemSet.Put(std::move(xItem));
+}
+
+void ScPatternAttr::ItemSetClearItem(sal_uInt16 nWhich)
+{
+    InvalidateCacheFor(nWhich);
+    maLocalSfxItemSet.ClearItem(nWhich);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

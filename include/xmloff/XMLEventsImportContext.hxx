@@ -28,7 +28,6 @@
 #include <vector>
 
 namespace com::sun::star {
-    namespace xml::sax { class XAttributeList; }
     namespace beans { struct PropertyValue; }
     namespace container { class XNameReplace; }
     namespace document { class XEventsSupplier; }
@@ -94,7 +93,7 @@ public:
 protected:
 
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
-            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
+            sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override final;
 };
 
 #endif

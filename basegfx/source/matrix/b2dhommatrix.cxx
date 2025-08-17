@@ -22,7 +22,6 @@
 #include <basegfx/tuple/b2dtuple.hxx>
 #include <basegfx/vector/b2dvector.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
-#include <memory>
 
 namespace basegfx
 {
@@ -117,7 +116,7 @@ namespace basegfx
     }
 
     /* Compute the determinant, given the adjoint matrix */
-    double B2DHomMatrix::computeDeterminant(double (&dst)[6]) const
+    double B2DHomMatrix::computeDeterminant(const double (&dst)[6]) const
     {
         return mfValues[0][0] * dst[0] + mfValues[0][1] * dst[3];
     }
@@ -180,11 +179,6 @@ namespace basegfx
             }
         }
         return true;
-    }
-
-    bool B2DHomMatrix::operator!=(const B2DHomMatrix& rMat) const
-    {
-        return !(*this == rMat);
     }
 
     void B2DHomMatrix::rotate(double fRadiant)

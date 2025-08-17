@@ -7,6 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+// Include this early, as it uses the identifier "Yield" which is defined as a macro in Windows
+// system files indirectly included via some of the later includes here:
+#include <vcl/svapp.hxx>
+
 #include "updater.hxx"
 
 #if UNX
@@ -29,7 +33,9 @@
 #include <unotools/tempfile.hxx>
 #include <unotools/configmgr.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/runtimetooustring.hxx>
 #include <osl/file.hxx>
+#include <osl/thread.h>
 #include <rtl/process.h>
 #include <sal/log.hxx>
 #include <tools/stream.hxx>
@@ -70,17 +76,11 @@ public:
 };
 
 #ifdef UNX
-static const char kUserAgent[] = "LibreOffice UpdateChecker/1.0 (Linux)";
-#else
-static const char kUserAgent[] = "LibreOffice UpdateChecker/1.0 (unknown platform)";
-#endif
-
-#ifdef UNX
-const char* const pUpdaterName = "updater";
-const char* const pSofficeExeName = "soffice";
+constexpr OUString aUpdaterName = u"updater"_ustr;
+constexpr std::u16string_view aSofficeExeName = u"soffice";
 #elif defined(_WIN32)
-const char* pUpdaterName = "updater.exe";
-const char* pSofficeExeName = "soffice.exe";
+constexpr OUString aUpdaterName = u"updater.exe"_ustr;
+constexpr std::u16string_view aSofficeExeName = u"soffice.exe";
 #else
 #error "Need implementation"
 #endif
@@ -88,7 +88,7 @@ const char* pSofficeExeName = "soffice.exe";
 OUString normalizePath(const OUString& rPath)
 {
     OUString aPath =  rPath;
-#if defined WNT
+#if defined(_WIN32)
     aPath = aPath.replace('\\', '/');
 #endif
 
@@ -114,13 +114,13 @@ OUString normalizePath(const OUString& rPath)
         aPath = aTempPath.copy(0, i) + aPath.copy(nIndex + 3);
     }
 
-#if defined WNT
+#if defined(_WIN32)
     aPath = aPath.replace('/', '\\');
 #endif
     return aPath;
 }
 
-void CopyFileToDir(const OUString& rTempDirURL, const OUString & rFileName, const OUString& rOldDir)
+bool CopyFileToDir(const OUString& rTempDirURL, const OUString & rFileName, const OUString& rOldDir)
 {
     OUString aSourceURL = rOldDir + "/" + rFileName;
     OUString aDestURL = rTempDirURL + "/" + rFileName;
@@ -129,8 +129,9 @@ void CopyFileToDir(const OUString& rTempDirURL, const OUString & rFileName, cons
     if (eError != osl::File::E_None)
     {
         SAL_WARN("desktop.updater", "could not copy the file to a temp directory: " << rFileName);
-        throw std::exception();
+        return false;
     }
+    return true;
 }
 
 OUString getPathFromURL(const OUString& rURL)
@@ -141,64 +142,62 @@ OUString getPathFromURL(const OUString& rURL)
     return normalizePath(aPath);
 }
 
-void CopyUpdaterToTempDir(const OUString& rInstallDirURL, const OUString& rTempDirURL)
+bool CopyUpdaterToTempDir(const OUString& rInstallDirURL, const OUString& rTempDirURL)
 {
-    OUString aUpdaterName = OUString::fromUtf8(pUpdaterName);
-    CopyFileToDir(rTempDirURL, aUpdaterName, rInstallDirURL);
+    return CopyFileToDir(rTempDirURL, aUpdaterName, rInstallDirURL)
+           && CopyFileToDir(rTempDirURL, u"updater.ini"_ustr, rInstallDirURL);
 }
 
 #ifdef UNX
 typedef char CharT;
-#define tstrncpy std::strncpy
 char const * toStream(char const * s) { return s; }
 #elif defined(_WIN32)
 typedef wchar_t CharT;
-#define tstrncpy std::wcsncpy
 OUString toStream(wchar_t const * s) { return OUString(o3tl::toU(s)); }
 #else
 #error "Need an implementation"
 #endif
 
-void createStr(const OUString& rStr, CharT** pArgs, size_t i)
+CharT* createStr(const OUString& rStr)
 {
 #ifdef UNX
     OString aStr = OUStringToOString(rStr, RTL_TEXTENCODING_UTF8);
 #elif defined(_WIN32)
-    OUString aStr = rStr;
+    const OUString& aStr = rStr;
 #else
 #error "Need an implementation"
 #endif
     CharT* pStr = new CharT[aStr.getLength() + 1];
-    tstrncpy(pStr, (CharT*)aStr.getStr(), aStr.getLength());
+    std::copy_n(aStr.getStr(), aStr.getLength(), pStr);
     pStr[aStr.getLength()] = '\0';
-    pArgs[i] = pStr;
+    return pStr;
 }
 
-CharT** createCommandLine(OUString const & argv0, int * argc)
+std::vector<CharT*> createCommandLine(OUString const & argv0)
 {
     OUString aInstallDir = Updater::getInstallationPath();
 
     size_t nCommandLineArgs = rtl_getAppCommandArgCount();
-    size_t nArgs = 8 + nCommandLineArgs;
-    CharT** pArgs = new CharT*[nArgs];
-    createStr(argv0, pArgs, 0);
+    std::vector<CharT*> aArgs;
+    aArgs.reserve(nCommandLineArgs + 8);
+    aArgs.push_back(createStr(argv0));
     {
         // directory with the patch log
         OUString aPatchDir = Updater::getPatchDirURL();
         rtl::Bootstrap::expandMacros(aPatchDir);
         OUString aTempDirPath = getPathFromURL(aPatchDir);
         Updater::log("Patch Dir: " + aTempDirPath);
-        createStr(aTempDirPath, pArgs, 1);
+        aArgs.push_back(createStr(aTempDirPath));
     }
     {
         // the actual update directory
         Updater::log("Install Dir: " + aInstallDir);
-        createStr(aInstallDir, pArgs, 2);
+        aArgs.push_back(createStr(aInstallDir));
     }
     {
         // the temporary updated build
         Updater::log("Working Dir: " + aInstallDir);
-        createStr(aInstallDir, pArgs, 3);
+        aArgs.push_back(createStr(aInstallDir));
     }
     {
 #ifdef UNX
@@ -211,20 +210,20 @@ CharT** createCommandLine(OUString const & argv0, int * argc)
 #else
 #error "Need an implementation"
 #endif
-        createStr(aPID, pArgs, 4);
+        aArgs.push_back(createStr(aPID));
     }
     {
         OUString aExeDir = Updater::getExecutableDirURL();
         OUString aSofficePath = getPathFromURL(aExeDir);
         Updater::log("soffice Path: " + aSofficePath);
-        createStr(aSofficePath, pArgs, 5);
+        aArgs.push_back(createStr(aSofficePath));
     }
     {
         // the executable to start after the successful update
         OUString aExeDir = Updater::getExecutableDirURL();
-        OUString aSofficePathURL = aExeDir + OUString::fromUtf8(pSofficeExeName);
+        OUString aSofficePathURL = aExeDir + aSofficeExeName;
         OUString aSofficePath = getPathFromURL(aSofficePathURL);
-        createStr(aSofficePath, pArgs, 6);
+        aArgs.push_back(createStr(aSofficePath));
     }
 
     // add the command line arguments from the soffice list
@@ -232,13 +231,12 @@ CharT** createCommandLine(OUString const & argv0, int * argc)
     {
         OUString aCommandLineArg;
         rtl_getAppCommandArg(i, &aCommandLineArg.pData);
-        createStr(aCommandLineArg, pArgs, 7 + i);
+        aArgs.push_back(createStr(aCommandLineArg));
     }
 
-    pArgs[nArgs - 1] = nullptr;
+    aArgs.push_back(nullptr);
 
-    *argc = nArgs - 1;
-    return pArgs;
+    return aArgs;
 }
 
 struct update_file
@@ -299,13 +297,13 @@ bool update()
 {
     utl::TempFileNamed aTempDir(nullptr, true);
     OUString aTempDirURL = aTempDir.GetURL();
-    CopyUpdaterToTempDir(Updater::getExecutableDirURL(), aTempDirURL);
+    if (!CopyUpdaterToTempDir(Updater::getExecutableDirURL(), aTempDirURL))
+        return false;
 
-    OUString aUpdaterPath = getPathFromURL(aTempDirURL + "/" + OUString::fromUtf8(pUpdaterName));
+    OUString aUpdaterPath = getPathFromURL(aTempDirURL + "/" + aUpdaterName);
 
     Updater::log("Calling the updater with parameters: ");
-    int argc;
-    CharT** pArgs = createCommandLine(aUpdaterPath, &argc);
+    std::vector<CharT*> aArgs = createCommandLine(aUpdaterPath);
 
     bool bSuccess = true;
     const char* pUpdaterTestReplace = std::getenv("LIBO_UPDATER_TEST_REPLACE");
@@ -313,30 +311,29 @@ bool update()
     {
 #if UNX
         OString aPath = OUStringToOString(aUpdaterPath, RTL_TEXTENCODING_UTF8);
-        if (execv(aPath.getStr(), pArgs))
+        if (execv(aPath.getStr(), aArgs.data()))
         {
             printf("execv failed with error %d %s\n",errno,strerror(errno));
             bSuccess = false;
         }
 #elif defined(_WIN32)
-        bSuccess = WinLaunchChild((wchar_t*)aUpdaterPath.getStr(), argc, pArgs);
+        bSuccess = WinLaunchChild(o3tl::toW(aUpdaterPath.getStr()), aArgs.data());
 #endif
     }
     else
     {
         SAL_WARN("desktop.updater", "Updater executable path: " << aUpdaterPath);
-        for (size_t i = 0; i < 8 + rtl_getAppCommandArgCount(); ++i)
+        for (auto arg : aArgs)
         {
-            SAL_WARN("desktop.updater", toStream(pArgs[i]));
+            SAL_WARN("desktop.updater", toStream(arg));
         }
         bSuccess = false;
     }
 
-    for (size_t i = 0; i < 8 + rtl_getAppCommandArgCount(); ++i)
+    for (auto arg : aArgs)
     {
-        delete[] pArgs[i];
+        delete[] arg;
     }
-    delete[] pArgs;
 
     return bSuccess;
 }
@@ -402,9 +399,9 @@ public:
     }
 };
 
-OUString toOUString(const std::string_view& rStr)
+OUString toOUString(std::string_view str)
 {
-    return OUString::fromUtf8(rStr);
+    return OUString::fromUtf8(str);
 }
 
 update_file parse_update_file(orcus::json::node& rNode)
@@ -546,23 +543,27 @@ size_t WriteCallbackFile(void *ptr, size_t size,
   WriteDataFile* response = static_cast<WriteDataFile *>(userp);
   size_t real_size = size * nmemb;
   response->mpStream->WriteBytes(ptr, real_size);
-  response->maHash.update(static_cast<const unsigned char*>(ptr), real_size);
+  response->maHash.update(ptr, real_size);
   return real_size;
 }
 
 std::string download_content(const OString& rURL, bool bFile, OUString& rHash)
 {
-    Updater::log("Download: " + rURL);
+    Updater::log("Download: " + OStringToOUString(rURL, osl_getThreadTextEncoding()));
     std::unique_ptr<CURL, std::function<void(CURL *)>> curl(
         curl_easy_init(), [](CURL * p) { curl_easy_cleanup(p); });
 
     if (!curl)
         return std::string();
 
+    static const OUString kUserAgent
+        = u"LibreOffice UpdateChecker/1.0 (os_version)"_ustr.replaceFirst(
+            "os_version", Application::GetOSVersion());
+
     ::InitCurl_easy(curl.get());
 
     curl_easy_setopt(curl.get(), CURLOPT_URL, rURL.getStr());
-    curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, kUserAgent);
+    curl_easy_setopt(curl.get(), CURLOPT_USERAGENT, kUserAgent.toUtf8().getStr());
     bool bUseProxy = false;
     if (bUseProxy)
     {
@@ -728,7 +729,7 @@ void update_checker()
     OUString aDownloadCheckURL = aDownloadCheckBaseURL + "update/check/1/" + aProductName +
         "/" + aBuildID + "/" + aBuildTarget + "/" + aChannel;
     OString aURL = OUStringToOString(aDownloadCheckURL, RTL_TEXTENCODING_UTF8);
-    Updater::log("Update check: " + aURL);
+    Updater::log("Update check: " + OStringToOUString(aURL, osl_getThreadTextEncoding()));
 
     try
     {
@@ -753,7 +754,7 @@ void update_checker()
                 for (auto& lang_update : aUpdateInfo.aLanguageFiles)
                 {
                     // only download the language packs for installed languages
-                    if (aInstalledLanguageSet.find(lang_update.aLangCode) != aInstalledLanguageSet.end())
+                    if (aInstalledLanguageSet.contains(lang_update.aLangCode))
                     {
                         OUString aFileName = "update_" + lang_update.aLangCode + ".mar";
                         download_file(lang_update.aUpdateFile.aURL, lang_update.aUpdateFile.nSize, lang_update.aUpdateFile.aHash, aFileName);
@@ -778,36 +779,28 @@ void update_checker()
     catch (const invalid_update_info&)
     {
         SAL_WARN("desktop.updater", "invalid update information");
-        Updater::log(OString("warning: invalid update info"));
+        Updater::log("warning: invalid update info");
     }
     catch (const error_updater& e)
     {
         SAL_WARN("desktop.updater", "error during the update check: " << e.what());
-        Updater::log(OString("warning: error by the updater") + e.what());
+        Updater::log("warning: error by the updater" + o3tl::runtimeToOUString(e.what()));
     }
     catch (const invalid_size& e)
     {
         SAL_WARN("desktop.updater", e.what());
-        Updater::log(OString("warning: invalid size"));
+        Updater::log("warning: invalid size");
     }
     catch (const invalid_hash& e)
     {
         SAL_WARN("desktop.updater", e.what());
-        Updater::log(OString("warning: invalid hash"));
+        Updater::log("warning: invalid hash");
     }
     catch (...)
     {
         SAL_WARN("desktop.updater", "unknown error during the update check");
-        Updater::log(OString("warning: unknown exception"));
+        Updater::log("warning: unknown exception");
     }
-}
-
-OUString Updater::getUpdateInfoLog()
-{
-    OUString aUpdateInfoURL("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/updates/updating.log");
-    rtl::Bootstrap::expandMacros(aUpdateInfoURL);
-
-    return aUpdateInfoURL;
 }
 
 OUString Updater::getPatchDirURL()
@@ -842,28 +835,12 @@ OUString Updater::getExecutableDirURL()
 void Updater::log(const OUString& rMessage)
 {
     SAL_INFO("desktop.updater", rMessage);
-    OUString aUpdateLog = getUpdateInfoLog();
-    SvFileStream aLog(aUpdateLog, StreamMode::STD_READWRITE);
+    OUString dir("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/updates");
+    rtl::Bootstrap::expandMacros(dir);
+    osl::Directory::create(dir);
+    SvFileStream aLog(dir + "/updating.log", StreamMode::STD_READWRITE);
     aLog.Seek(aLog.Tell() + aLog.remainingSize()); // make sure we are at the end
     aLog.WriteLine(OUStringToOString(rMessage, RTL_TEXTENCODING_UTF8));
-}
-
-void Updater::log(const OString& rMessage)
-{
-    SAL_INFO("desktop.updater", rMessage);
-    OUString aUpdateLog = getUpdateInfoLog();
-    SvFileStream aLog(aUpdateLog, StreamMode::STD_READWRITE);
-    aLog.Seek(aLog.Tell() + aLog.remainingSize()); // make sure we are at the end
-    aLog.WriteLine(rMessage);
-}
-
-void Updater::log(const char* pMessage)
-{
-    SAL_INFO("desktop.updater", pMessage);
-    OUString aUpdateLog = getUpdateInfoLog();
-    SvFileStream aLog(aUpdateLog, StreamMode::STD_READWRITE);
-    aLog.Seek(aLog.Tell() + aLog.remainingSize()); // make sure we are at the end
-    aLog.WriteOString(pMessage);
 }
 
 OUString Updater::getBuildID()

@@ -35,7 +35,7 @@ class ScEditEngineDefaulter;
 
 class ScEditUtil
 {
-    ScDocument*     pDoc;
+    ScDocument&     rDoc;
     SCCOL           nCol;
     SCROW           nRow;
     SCTAB           nTab;
@@ -54,17 +54,15 @@ public:
     static OUString GetSpaceDelimitedString( const EditEngine& rEngine );
 
     /// Retrieves string with paragraphs delimited by new lines ('\n').
-    static OUString GetMultilineString( const EditEngine& rEngine );
+    SC_DLLPUBLIC static OUString GetMultilineString( const EditEngine& rEngine );
     static OUString GetMultilineString( const EditTextObject& rEdit );
 
     /** Retrieves string with paragraphs delimited by new lines ('\n').
 
-        @param pDoc
-               If not NULL, use pDoc->GetEditEngine() to retrieve field content.
-               If NULL, a static mutex-guarded ScFieldEditEngine is used that
-               is not capable of resolving document specific fields; avoid.
+        @param rDoc
+               use rDoc.GetEditEngine() to retrieve field content.
      */
-    SC_DLLPUBLIC static OUString GetString( const EditTextObject& rEditText, const ScDocument* pDoc );
+    SC_DLLPUBLIC static OUString GetString( const EditTextObject& rEditText, const ScDocument& rDoc );
 
     static std::unique_ptr<EditTextObject> CreateURLObjectFromURL(
         ScDocument& rDoc, const OUString& rURL, const OUString& rText );
@@ -77,7 +75,7 @@ public:
         const SvxFieldData& rFieldData, const ScDocument* pDoc, std::optional<Color>* ppTextColor, std::optional<FontLineStyle>* ppFldLineStyle );
 
 public:
-                ScEditUtil( ScDocument* pDocument, SCCOL nX, SCROW nY, SCTAB nZ,
+                ScEditUtil( ScDocument& rDocument, SCCOL nX, SCROW nY, SCTAB nZ,
                             const Point& rCellPos,
                             OutputDevice* pDevice, double nScaleX, double nScaleY,
                             const Fraction& rX, const Fraction& rY, bool bPrintTwips = false );
@@ -108,10 +106,9 @@ public:
 class ScEnginePoolHelper
 {
 protected:
-    rtl::Reference<SfxItemPool> pEnginePool;
-    SfxItemSet*     pDefaults;
-    bool            bDeleteEnginePool;
-    bool            bDeleteDefaults;
+    rtl::Reference<SfxItemPool> m_pEnginePool;
+    std::optional<SfxItemSet> m_oDefaults;
+    bool            m_bDeleteEnginePool;
 
                     ScEnginePoolHelper( SfxItemPool* pEnginePool, bool bDeleteEnginePool );
                     ScEnginePoolHelper( const ScEnginePoolHelper& rOrg );
@@ -131,11 +128,11 @@ public:
                     ScEditEngineDefaulter( const ScEditEngineDefaulter& rOrg );
     virtual         ~ScEditEngineDefaulter() override;
 
-                    /// Creates a copy of SfxItemSet if bRememberCopy set
-    void            SetDefaults( const SfxItemSet& rDefaults, bool bRememberCopy = true );
+                    /// Creates a copy of SfxItemSet
+    void            SetDefaults( const SfxItemSet& rDefaults );
 
                     /// Becomes the owner of the SfxItemSet
-    void            SetDefaults( std::unique_ptr<SfxItemSet> pDefaults );
+    void            SetDefaults( SfxItemSet&& aDefaults );
 
                     /// Set the item in the default ItemSet which is created
                     /// if it doesn't exist yet.
@@ -149,13 +146,15 @@ public:
     void            SetTextCurrentDefaults( const EditTextObject& rTextObject );
                     /// Current defaults are not applied, new defaults are applied
     void            SetTextNewDefaults( const EditTextObject& rTextObject,
-                        const SfxItemSet& rDefaults, bool bRememberCopy = true );
+                        SfxItemSet&& aDefaults );
+                    /// New defaults are applied, but not stored
+    void            SetTextTempDefaults( const EditTextObject& rTextObject,
+                        const SfxItemSet& rDefaults );
 
                     /// SetText and apply defaults already set
     void            SetTextCurrentDefaults( const OUString& rText );
                     /// Current defaults are not applied, new defaults are applied
-    void            SetTextNewDefaults( const OUString& rText,
-                        const SfxItemSet& rDefaults );
+    void            SetTextNewDefaults( const OUString& rText, SfxItemSet&& aDefaults );
 
                     /// Paragraph attributes that are not defaults are copied to
                     /// character attributes and all paragraph attributes reset
@@ -164,6 +163,10 @@ public:
                     /// Re-apply existing defaults if set, same as in SetText,
                     /// but without EnableUndo/SetUpdateMode.
     void            RepeatDefaults();
+
+private:
+    /// Apply the passed defaults, without storing them
+    void ApplyDefaults(const SfxItemSet& rNewSet);
 };
 
 // for field commands (or just fields?) in a table
@@ -175,8 +178,7 @@ private:
 
 public:
     ScFieldEditEngine(
-        ScDocument* pDoc, SfxItemPool* pEnginePool, SfxItemPool* pTextObjectPool = nullptr,
-        bool bDeleteEnginePool = false);
+        ScDocument* pDoc, SfxItemPool* pEnginePool, bool bDeleteEnginePool = false);
 
     void SetExecuteURL(bool bSet)    { bExecuteURL = bSet; }
 
@@ -190,10 +192,9 @@ class SC_DLLPUBLIC ScTabEditEngine final : public ScFieldEditEngine
 private:
     void    Init(const ScPatternAttr& rPattern);
 public:
-    ScTabEditEngine( ScDocument* pDoc );            // Default
+    ScTabEditEngine( ScDocument& rDoc );            // Default
     ScTabEditEngine(const ScPatternAttr& rPattern,
-                    SfxItemPool *pEngineItemPool, ScDocument *pDoc,
-                    SfxItemPool* pTextObjectPool = nullptr );
+                    SfxItemPool *pEngineItemPool, ScDocument& rDoc );
 };
 
 struct ScHeaderFieldData
@@ -229,7 +230,7 @@ class ScNoteEditEngine final : public ScEditEngineDefaulter
 {
 
 public:
-    ScNoteEditEngine( SfxItemPool* pEnginePool, SfxItemPool* pTextObjectPool );
+    ScNoteEditEngine( SfxItemPool* pEnginePool );
 
 };
 

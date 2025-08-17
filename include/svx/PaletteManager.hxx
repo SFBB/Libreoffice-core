@@ -21,20 +21,25 @@
 #include <svx/Palette.hxx>
 #include <rtl/ustring.hxx>
 #include <svx/xtable.hxx>
-#include <svtools/colrdlg.hxx>
 #include <svx/theme/ThemeColorPaletteManager.hxx>
+#include <vcl/ColorDialog.hxx>
 
 #include <deque>
 #include <vector>
 #include <memory>
+#include <set>
 
-namespace com::sun::star::uno { class XComponentContext; }
 namespace svx { class ToolboxButtonColorUpdaterBase; }
 namespace weld { class Window; }
-namespace model { class ColorSet; }
+namespace tools { class JsonWriter; }
 
 class SVXCORE_DLLPUBLIC PaletteManager : public std::enable_shared_from_this<PaletteManager>
 {
+    struct ColorEntry {
+        OUString hexCode;
+        OUString name;
+    };
+
     const sal_uInt16        mnMaxRecentColors;
 
     sal_uInt16              mnNumOfPalettes;
@@ -43,16 +48,15 @@ class SVXCORE_DLLPUBLIC PaletteManager : public std::enable_shared_from_this<Pal
     tools::Long                    mnColorCount;
     svx::ToolboxButtonColorUpdaterBase* mpBtnUpdater;
 
-    XColorListRef           pColorList;
+    XColorListRef           mpColorList;
     std::deque<NamedColor>  maRecentColors;
     std::vector<std::unique_ptr<Palette>> m_Palettes;
 
     ColorSelectFunction maColorSelectFunction;
 
-    std::unique_ptr<SvColorDialog> m_pColorDlg;
+    std::unique_ptr<ColorDialog> m_pColorDlg;
     std::optional<svx::ThemePaletteCollection> moThemePaletteCollection;
 
-    PaletteManager(const PaletteManager* pClone);
 public:
     PaletteManager();
     ~PaletteManager();
@@ -66,7 +70,7 @@ public:
     sal_Int32   GetPalette() const;
     sal_Int32   GetPaletteCount() const { return mnNumOfPalettes; }
     OUString    GetPaletteName();
-    OUString    GetSelectedPalettePath();
+    const OUString & GetSelectedPalettePath();
 
     tools::Long        GetColorCount() const;
     tools::Long        GetRecentColorCount() const;
@@ -80,12 +84,14 @@ public:
 
     bool IsThemePaletteSelected() const;
 
-    PaletteManager* Clone() const;
-
     static bool GetThemeAndEffectIndex(sal_uInt16 nItemId, sal_uInt16& rThemeIndex, sal_uInt16& rEffectIndex);
     bool GetLumModOff(sal_uInt16 nThemeIndex, sal_uInt16 nEffect, sal_Int16& rLumMod, sal_Int16& rLumOff);
 
     static void DispatchColorCommand(const OUString& aCommand, const NamedColor& rColor);
+
+    /// Appends node for Document Colors into the ptree
+    static void generateJSON(tools::JsonWriter& aTree, const std::set<Color>& rColors);
+    static void generateColorNamesJSON(tools::JsonWriter& aTree);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

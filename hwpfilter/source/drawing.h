@@ -69,7 +69,7 @@ static int HWPDOArc2Func(int, HWPDrawingObject *, int, void *, int);
 static int HWPDOContainerFunc(int, HWPDrawingObject *, int, void *, int);
 static HWPPara *LoadParaList();
 
-HWPDOFuncType HWPDOFuncTbl[] =
+const HWPDOFuncType HWPDOFuncTbl[] =
 {
     HWPDOContainerFunc,
     HWPDOLineFunc,
@@ -491,7 +491,6 @@ int cmd, void * /*argp*/, int /*argv*/)
     return HWPDODefaultFunc(cmd);
 }
 
-#define WTMM(x)     ((double)(x) / 1800. * 25.4)
 static int
 HWPDOEllipse2Func(int /*type*/, HWPDrawingObject * hdo,
 int cmd, void * /*argp*/, int /*argv*/)

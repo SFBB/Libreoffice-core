@@ -28,6 +28,7 @@
 #include <basidesh.hxx>
 #include <basobj.hxx>
 
+#include <basctl/basctldllpublic.hxx>
 #include <basic/basmgr.hxx>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
 #include <com/sun/star/script/XLibraryContainer2.hpp>
@@ -64,8 +65,8 @@ IMPL_LINK(ObjectPage, EditingEntryHdl, const weld::TreeIter&, rEntry, bool)
         EntryDescriptor aDesc = m_xBasicBox->GetEntryDescriptor(&rEntry);
         const ScriptDocument& aDocument( aDesc.GetDocument() );
         const OUString& aLibName( aDesc.GetLibName() );
-        Reference< script::XLibraryContainer2 > xModLibContainer( aDocument.getLibraryContainer( E_SCRIPTS ), UNO_QUERY );
-        Reference< script::XLibraryContainer2 > xDlgLibContainer( aDocument.getLibraryContainer( E_DIALOGS ), UNO_QUERY );
+        Reference< script::XLibraryContainer2 > xModLibContainer( aDocument.getLibraryContainer( E_SCRIPTS ) );
+        Reference< script::XLibraryContainer2 > xDlgLibContainer( aDocument.getLibraryContainer( E_DIALOGS ) );
         if ( !( ( xModLibContainer.is() && xModLibContainer->hasByName( aLibName ) && xModLibContainer->isLibraryReadOnly( aLibName ) ) ||
                 ( xDlgLibContainer.is() && xDlgLibContainer->hasByName( aLibName ) && xDlgLibContainer->isLibraryReadOnly( aLibName ) ) ) )
         {
@@ -159,9 +160,9 @@ void Shell::CopyDialogResources(
         return;
 
     // create dialog model
-    Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
     Reference< container::XNameContainer > xDialogModel( xContext->getServiceManager()->createInstanceWithContext
-        ( "com.sun.star.awt.UnoControlDialogModel", xContext ), UNO_QUERY );
+        ( u"com.sun.star.awt.UnoControlDialogModel"_ustr, xContext ), UNO_QUERY );
     Reference< io::XInputStream > xInput( io_xISP->createInputStream() );
     ::xmlscript::importDialogModel( xInput, xDialogModel, xContext, rSourceDoc.isDocument() ? rSourceDoc.getDocument() : Reference< frame::XModel >() );
 
@@ -193,19 +194,18 @@ void OrganizeDialog::SetCurrentEntry(const css::uno::Reference<css::frame::XFram
     Reference<css::frame::XModel> xModel(xController->getModel());
     if (!xModel)
         return;
-    ScriptDocument aScriptDocument(xModel);
-    EntryDescriptor aDesc(aScriptDocument, LIBRARY_LOCATION_DOCUMENT, OUString(), OUString(), OUString(), OBJ_TYPE_DOCUMENT);
+    EntryDescriptor aDesc(ScriptDocument(xModel), LIBRARY_LOCATION_DOCUMENT, OUString(), OUString(), OUString(), OBJ_TYPE_DOCUMENT);
     m_xModulePage->SetCurrentEntry(aDesc);
     m_xDialogPage->SetCurrentEntry(aDesc);
 }
 
 // OrganizeDialog
 OrganizeDialog::OrganizeDialog(weld::Window* pParent, const css::uno::Reference<css::frame::XFrame>& xDocFrame, sal_Int16 tabId)
-    : GenericDialogController(pParent, "modules/BasicIDE/ui/organizedialog.ui", "OrganizeDialog")
-    , m_xTabCtrl(m_xBuilder->weld_notebook("tabcontrol"))
-    , m_xModulePage(new ObjectPage(m_xTabCtrl->get_page("modules"), "ModulePage", BrowseMode::Modules, this))
-    , m_xDialogPage(new ObjectPage(m_xTabCtrl->get_page("dialogs"), "DialogPage", BrowseMode::Dialogs, this))
-    , m_xLibPage(new LibPage(m_xTabCtrl->get_page("libraries"), this))
+    : GenericDialogController(pParent, u"modules/BasicIDE/ui/organizedialog.ui"_ustr, u"OrganizeDialog"_ustr)
+    , m_xTabCtrl(m_xBuilder->weld_notebook(u"tabcontrol"_ustr))
+    , m_xModulePage(new ObjectPage(m_xTabCtrl->get_page(u"modules"_ustr), u"ModulePage"_ustr, BrowseMode::Modules, this))
+    , m_xDialogPage(new ObjectPage(m_xTabCtrl->get_page(u"dialogs"_ustr), u"DialogPage"_ustr, BrowseMode::Dialogs, this))
+    , m_xLibPage(new LibPage(m_xTabCtrl->get_page(u"libraries"_ustr), this))
 {
     m_xTabCtrl->connect_enter_page(LINK(this, OrganizeDialog, ActivatePageHdl));
 
@@ -284,8 +284,8 @@ private:
                     const ScriptDocument& aDocument( aDesc.GetDocument() );
                     const OUString& aLibName( aDesc.GetLibName() );
                     // allow MOVE mode only for libraries, which are not readonly
-                    Reference< script::XLibraryContainer2 > xModLibContainer( aDocument.getLibraryContainer( E_SCRIPTS ), UNO_QUERY );
-                    Reference< script::XLibraryContainer2 > xDlgLibContainer( aDocument.getLibraryContainer( E_DIALOGS ), UNO_QUERY );
+                    Reference< script::XLibraryContainer2 > xModLibContainer( aDocument.getLibraryContainer( E_SCRIPTS ) );
+                    Reference< script::XLibraryContainer2 > xDlgLibContainer( aDocument.getLibraryContainer( E_DIALOGS ) );
                     if ( !( ( xModLibContainer.is() && xModLibContainer->hasByName( aLibName ) && xModLibContainer->isLibraryReadOnly( aLibName ) ) ||
                             ( xDlgLibContainer.is() && xDlgLibContainer->hasByName( aLibName ) && xDlgLibContainer->isLibraryReadOnly( aLibName ) ) ) )
                     {
@@ -356,7 +356,7 @@ private:
             const OUString& aDestLibName = aDestDesc.GetLibName();
 
             // check if module library is not loaded, readonly or password protected
-            Reference< script::XLibraryContainer2 > xModLibContainer( rDestDoc.getLibraryContainer( E_SCRIPTS ), UNO_QUERY );
+            Reference< script::XLibraryContainer2 > xModLibContainer( rDestDoc.getLibraryContainer( E_SCRIPTS ) );
             if ( xModLibContainer.is() && xModLibContainer->hasByName( aDestLibName ) )
             {
                 if ( !xModLibContainer->isLibraryLoaded( aDestLibName ) )
@@ -371,7 +371,7 @@ private:
             }
 
             // check if dialog library is not loaded or readonly
-            Reference< script::XLibraryContainer2 > xDlgLibContainer( rDestDoc.getLibraryContainer( E_DIALOGS ), UNO_QUERY );
+            Reference< script::XLibraryContainer2 > xDlgLibContainer( rDestDoc.getLibraryContainer( E_DIALOGS ) );
             if ( xDlgLibContainer.is() && xDlgLibContainer->hasByName( aDestLibName ) )
             {
                 if ( !xDlgLibContainer->isLibraryLoaded( aDestLibName ) )
@@ -566,11 +566,11 @@ public:
 ObjectPage::ObjectPage(weld::Container* pParent, const OUString &rName, BrowseMode nMode, OrganizeDialog* pDialog)
     : OrganizePage(pParent, "modules/BasicIDE/ui/" + rName.toAsciiLowerCase() + ".ui",
         rName, pDialog)
-    , m_xBasicBox(new SbTreeListBox(m_xBuilder->weld_tree_view("library"), pDialog->getDialog()))
-    , m_xEditButton(m_xBuilder->weld_button("edit"))
-    , m_xNewModButton(m_xBuilder->weld_button("newmodule"))
-    , m_xNewDlgButton(m_xBuilder->weld_button("newdialog"))
-    , m_xDelButton(m_xBuilder->weld_button("delete"))
+    , m_xBasicBox(new SbTreeListBox(m_xBuilder->weld_tree_view(u"library"_ustr), pDialog->getDialog()))
+    , m_xEditButton(m_xBuilder->weld_button(u"edit"_ustr))
+    , m_xNewModButton(m_xBuilder->weld_button(u"newmodule"_ustr))
+    , m_xNewDlgButton(m_xBuilder->weld_button(u"newdialog"_ustr))
+    , m_xDelButton(m_xBuilder->weld_button(u"delete"_ustr))
 {
     Size aSize(m_xBasicBox->get_approximate_digit_width() * 40,
                m_xBasicBox->get_height_rows(14));
@@ -648,8 +648,8 @@ void ObjectPage::CheckButtons()
     bool bReadOnly = false;
     if ( nDepth > 0 )
     {
-        Reference< script::XLibraryContainer2 > xModLibContainer( aDocument.getLibraryContainer( E_SCRIPTS ), UNO_QUERY );
-        Reference< script::XLibraryContainer2 > xDlgLibContainer( aDocument.getLibraryContainer( E_DIALOGS ), UNO_QUERY );
+        Reference< script::XLibraryContainer2 > xModLibContainer( aDocument.getLibraryContainer( E_SCRIPTS ) );
+        Reference< script::XLibraryContainer2 > xDlgLibContainer( aDocument.getLibraryContainer( E_DIALOGS ) );
         if ( ( xModLibContainer.is() && xModLibContainer->hasByName( aLibName ) && xModLibContainer->isLibraryReadOnly( aLibName ) ) ||
              ( xDlgLibContainer.is() && xDlgLibContainer->hasByName( aLibName ) && xDlgLibContainer->isLibraryReadOnly( aLibName ) ) )
         {
@@ -839,7 +839,7 @@ void ObjectPage::NewDialog()
         if ( !aDocument.createDialog( aLibName, aDlgName, xISP ) )
             return;
 
-        SbxItem aSbxItem( SID_BASICIDE_ARG_SBX, aDocument, aLibName, aDlgName, TYPE_DIALOG );
+        SbxItem aSbxItem( SID_BASICIDE_ARG_SBX, aDocument, aLibName, aDlgName, SBX_TYPE_DIALOG );
         if (SfxDispatcher* pDispatcher = GetDispatcher())
         {
             pDispatcher->ExecuteList( SID_BASICIDE_SBXINSERTED,
@@ -927,11 +927,11 @@ void ObjectPage::EndTabDialog()
 }
 
 LibDialog::LibDialog(weld::Window* pParent)
-    : GenericDialogController(pParent, "modules/BasicIDE/ui/importlibdialog.ui", "ImportLibDialog")
-    , m_xStorageFrame(m_xBuilder->weld_frame("storageframe"))
-    , m_xLibBox(m_xBuilder->weld_tree_view("entries"))
-    , m_xReferenceBox(m_xBuilder->weld_check_button("ref"))
-    , m_xReplaceBox(m_xBuilder->weld_check_button("replace"))
+    : GenericDialogController(pParent, u"modules/BasicIDE/ui/importlibdialog.ui"_ustr, u"ImportLibDialog"_ustr)
+    , m_xStorageFrame(m_xBuilder->weld_frame(u"storageframe"_ustr))
+    , m_xLibBox(m_xBuilder->weld_tree_view(u"entries"_ustr))
+    , m_xReferenceBox(m_xBuilder->weld_check_button(u"ref"_ustr))
+    , m_xReplaceBox(m_xBuilder->weld_check_button(u"replace"_ustr))
 {
     m_xLibBox->set_size_request(m_xLibBox->get_approximate_digit_width() * 28,
                                 m_xLibBox->get_height_rows(8));
@@ -982,12 +982,13 @@ SbModule* createModImpl(weld::Window* pWin, const ScriptDocument& rDocument,
             // the module has existed
             if( rDocument.hasModule( aLibName, aModName ) )
                 return nullptr;
-            rDocument.createModule( aLibName, aModName, bMain, sModuleCode );
+            if (!rDocument.createModule(aLibName, aModName, bMain, sModuleCode))
+                return nullptr;
             BasicManager* pBasMgr = rDocument.getBasicManager();
             StarBASIC* pBasic = pBasMgr? pBasMgr->GetLib( aLibName ) : nullptr;
             if ( pBasic )
                 pModule = pBasic->FindModule( aModName );
-            SbxItem aSbxItem( SID_BASICIDE_ARG_SBX, rDocument, aLibName, aModName, TYPE_MODULE );
+            SbxItem aSbxItem( SID_BASICIDE_ARG_SBX, rDocument, aLibName, aModName, SBX_TYPE_MODULE );
             if (SfxDispatcher* pDispatcher = GetDispatcher())
             {
                 pDispatcher->ExecuteList( SID_BASICIDE_SBXINSERTED,

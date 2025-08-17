@@ -39,10 +39,11 @@ Image TkResMgr::getImageFromURL(const OUString& i_rImageURL)
 
     try
     {
-        Reference<uno::XComponentContext> xContext(::comphelper::getProcessComponentContext());
+        const Reference<uno::XComponentContext>& xContext(
+            ::comphelper::getProcessComponentContext());
         Reference<XGraphicProvider> xProvider(graphic::GraphicProvider::create(xContext));
         ::comphelper::NamedValueCollection aMediaProperties;
-        aMediaProperties.put("URL", i_rImageURL);
+        aMediaProperties.put(u"URL"_ustr, i_rImageURL);
         Reference<XGraphic> xGraphic
             = xProvider->queryGraphic(aMediaProperties.getPropertyValues());
         return Image(xGraphic);

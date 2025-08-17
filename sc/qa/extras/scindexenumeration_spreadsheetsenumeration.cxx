@@ -11,7 +11,6 @@
 #include <test/container/xenumeration.hxx>
 
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheets.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
@@ -41,7 +40,7 @@ public:
 };
 
 ScIndexEnumeration_SpreadsheetsEnumeration::ScIndexEnumeration_SpreadsheetsEnumeration()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -59,7 +58,7 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_SpreadsheetsEnumeration::init
 void ScIndexEnumeration_SpreadsheetsEnumeration::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScIndexEnumeration_SpreadsheetsEnumeration);

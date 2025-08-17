@@ -51,6 +51,7 @@
 #include <com/sun/star/sheet/FormulaToken.hpp>
 #include <com/sun/star/sheet/ReferenceFlags.hpp>
 #include <com/sun/star/sheet/NameToken.hpp>
+#include <com/sun/star/sheet/TableRefToken.hpp>
 #include <utility>
 #include <o3tl/safeint.hxx>
 #include <o3tl/sorted_vector.hxx>
@@ -221,6 +222,10 @@ void ScRawToken::SetOpCode( OpCode e )
             eType = svJump;
             nJump[ 0 ] = FORMULA_MAXJUMPCOUNT + 1;
             break;
+        case ocLet:
+            eType = svJump;
+            nJump[ 0 ] = FORMULA_MAXPARAMS + 1;
+            break;
         case ocMissing:
             eType = svMissing;
             break;
@@ -250,6 +255,15 @@ void ScRawToken::SetOpCode( OpCode e )
 void ScRawToken::SetString( rtl_uString* pData, rtl_uString* pDataIgnoreCase )
 {
     eOp   = ocPush;
+    eType = svString;
+
+    sharedstring.mpData = pData;
+    sharedstring.mpDataIgnoreCase = pDataIgnoreCase;
+}
+
+void ScRawToken::SetStringName( rtl_uString* pData, rtl_uString* pDataIgnoreCase )
+{
+    eOp = ocStringName;
     eType = svString;
 
     sharedstring.mpData = pData;
@@ -370,15 +384,9 @@ FormulaToken* ScRawToken::CreateToken(ScSheetLimits& rLimits) const
                 return new FormulaStringOpToken(eOp, std::move(aSS));
         }
         case svSingleRef :
-            if (eOp == ocPush)
-                return new ScSingleRefToken(rLimits, aRef.Ref1 );
-            else
-                return new ScSingleRefToken(rLimits, aRef.Ref1, eOp );
+            return new ScSingleRefToken(rLimits, aRef.Ref1, eOp);
         case svDoubleRef :
-            if (eOp == ocPush)
-                return new ScDoubleRefToken(rLimits, aRef );
-            else
-                return new ScDoubleRefToken(rLimits, aRef, eOp );
+            return new ScDoubleRefToken(rLimits, aRef, eOp);
         case svMatrix :
             IF_NOT_OPCODE_ERROR( ocPush, ScMatrixToken);
             return new ScMatrixToken( pMat );
@@ -857,7 +865,7 @@ bool ScExternalNameToken::operator==( const FormulaToken& r ) const
     if (mnFileId != r.GetIndex())
         return false;
 
-    return maName.getData() == r.GetString().getData();
+    return maName == r.GetString();
 }
 
 ScTableRefToken::ScTableRefToken( sal_uInt16 nIndex, ScTableRefToken::Item eItem ) :
@@ -1083,7 +1091,7 @@ void ScMatrixFormulaCellToken::SetUpperLeftDouble( double f )
     switch (GetUpperLeftType())
     {
         case svDouble:
-            const_cast<FormulaToken*>(xUpperLeft.get())->GetDoubleAsReference() = f;
+            const_cast<FormulaToken*>(xUpperLeft.get())->SetDouble(f);
             break;
         case svString:
             xUpperLeft = new FormulaDoubleToken( f);
@@ -1188,8 +1196,36 @@ bool ScTokenArray::AddFormulaToken(
                         }
                         else if (eOpCode == ocDBArea)
                             AddDBRange(aTokenData.Index);
-                        else if (eOpCode == ocTableRef)
-                            bError = true;  /* TODO: implementation */
+                        else
+                            bError = true;
+                    }
+                    else if ( aType.equals( cppu::UnoType<sheet::TableRefToken>::get() ) )
+                    {
+                        if (eOpCode == ocTableRef)
+                        {
+                            sheet::TableRefToken aTokenData;
+                            rToken.Data >>= aTokenData;
+                            ScTableRefToken* pToken = new ScTableRefToken( aTokenData.Index,
+                                    static_cast<ScTableRefToken::Item>(aTokenData.Item));
+                            if (Add(pToken))    // else pToken is deleted
+                            {
+                                if (aTokenData.Reference.Reference1 == aTokenData.Reference.Reference2)
+                                {
+                                    ScSingleRefData aRefData;
+                                    lcl_SingleRefToCalc( aRefData, aTokenData.Reference.Reference1 );
+                                    pToken->SetAreaRefRPN( new ScSingleRefToken( *mxSheetLimits, aRefData));
+                                }
+                                else
+                                {
+                                    ScComplexRefData aRefData;
+                                    lcl_SingleRefToCalc( aRefData.Ref1, aTokenData.Reference.Reference1 );
+                                    lcl_SingleRefToCalc( aRefData.Ref2, aTokenData.Reference.Reference2 );
+                                    pToken->SetAreaRefRPN( new ScDoubleRefToken( *mxSheetLimits, aRefData));
+                                }
+                            }
+                            else
+                                bError = true;
+                        }
                         else
                             bError = true;
                     }
@@ -1387,6 +1423,11 @@ void ScTokenArray::CheckToken( const FormulaToken& r )
             case ocCount:
             case ocCount2:
             case ocVLookup:
+            case ocXLookup:
+            case ocXMatch:
+            case ocFilter:
+            case ocSort:
+            case ocSortBy:
             case ocSLN:
             case ocIRR:
             case ocMIRR:
@@ -1548,6 +1589,21 @@ void ScTokenArray::CheckToken( const FormulaToken& r )
             case ocSumIf:
             case ocNegSub:
             case ocAveDev:
+            case ocMatSequence:
+            case ocRandArray:
+            case ocChooseCols:
+            case ocChooseRows:
+            case ocDrop:
+            case ocExpand:
+            case ocHStack:
+            case ocVStack:
+            case ocTake:
+            case ocTextSplit:
+            case ocToCol:
+            case ocToRow:
+            case ocUnique:
+            case ocWrapCols:
+            case ocWrapRows:
             // Don't change the state.
             break;
             default:
@@ -1675,6 +1731,7 @@ void ScTokenArray::CheckToken( const FormulaToken& r )
             case ocIfError:
             case ocIfNA:
             case ocChoose:
+            case ocLet:
                 // Jump commands are now supported.
             break;
         }
@@ -4417,7 +4474,11 @@ sc::RefUpdateResult ScTokenArray::AdjustReferenceOnMovedTab( const sc::RefUpdate
 
     ScAddress aNewPos = rOldPos;
     if (adjustTabOnMove(aNewPos, rCxt))
+    {
         aRes.mbReferenceModified = true;
+        aRes.mbValueChanged = true;
+        aRes.mnTab = aNewPos.Tab(); // this sets the new tab position used when deleting
+    }
 
     TokenPointers aPtrs( pCode.get(), nLen, pRPN, nRPN);
     for (size_t j=0; j<2; ++j)
@@ -5008,7 +5069,7 @@ void appendTokenByType( ScSheetLimits& rLimits, sc::TokenStringContext& rCxt, OU
         case svString:
         {
             OUString aStr = rToken.GetString().getString();
-            if (eOp == ocBad || eOp == ocStringXML)
+            if (eOp == ocBad || eOp == ocStringXML || eOp == ocStringName)
             {
                 rBuf.append(aStr);
                 return;
@@ -5196,7 +5257,6 @@ void appendTokenByType( ScSheetLimits& rLimits, sc::TokenStringContext& rCxt, OU
             OpCode eOpErr;
             switch (nErr)
             {
-                break;
                 case FormulaError::DivisionByZero:
                     eOpErr = ocErrDivZero;
                 break;

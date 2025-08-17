@@ -19,13 +19,13 @@
 
 #pragma once
 
+#include <config_options.h>
 #include <basegfx/vector/b2dvector.hxx>
 #include <drawinglayer/attribute/fontattribute.hxx>
 #include <vcl/bitmapex.hxx>
 #include <sfx2/dllapi.h>
 #include <rtl/ref.hxx>
 
-namespace com::sun::star::accessibility { class XAccessible; }
 namespace drawinglayer::primitive2d { class Primitive2DContainer; }
 class ThumbnailViewItemAcc;
 
@@ -61,7 +61,7 @@ struct ThumbnailItemAttributes
     drawinglayer::attribute::FontAttribute aFontAttr;
 };
 
-class SFX2_DLLPUBLIC ThumbnailViewItem
+class UNLESS_MERGELIBS_MORE(SFX2_DLLPUBLIC) ThumbnailViewItem
 {
 public:
 
@@ -71,7 +71,7 @@ public:
     bool mbBorder;
     bool mbSelected;
     bool mbHover;
-    BitmapEx maPreview1;
+    Bitmap maPreview;
     OUString maTitle;
     OUString maHelpText;
     rtl::Reference< ThumbnailViewItemAcc > mxAcc;
@@ -110,8 +110,7 @@ public:
 
     void setTitle (const OUString& rTitle);
 
-    rtl::Reference< ThumbnailViewItemAcc > const &
-                        GetAccessible( bool bIsTransientChildrenDisabled );
+    rtl::Reference<ThumbnailViewItemAcc> const & GetAccessible(bool bCreate = true);
 
     void setDrawArea (const tools::Rectangle &area);
 

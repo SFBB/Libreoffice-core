@@ -18,7 +18,10 @@ $(eval $(call gb_CppunitTest_add_exception_objects,sw_a11y, \
 
 $(eval $(call gb_CppunitTest_use_libraries,sw_a11y, \
 	sal \
+	comphelper \
 	cppu \
+	cppuhelper \
+	cui \
 	subsequenttest \
 	test \
 	unotest \
@@ -37,5 +40,9 @@ $(eval $(call gb_CppunitTest_use_vcl,sw_a11y))
 
 $(eval $(call gb_CppunitTest_use_instdir_configuration,sw_a11y))
 $(eval $(call gb_CppunitTest_use_common_configuration,sw_a11y))
+
+$(eval $(call gb_CppunitTest_use_packages,sw_a11y, \
+    postprocess_images \
+))
 
 # vim: set noet sw=4 ts=4:

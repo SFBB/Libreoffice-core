@@ -11,7 +11,6 @@
 #pragma once
 
 #include <string_view>
-#include <memory>
 #include <vector>
 
 #include <svx/svditer.hxx>
@@ -47,7 +46,7 @@ SdrOle2Obj* findChartsByName(ScDocShell* pDocShell, SCTAB nTab,
 SdrOle2Obj* getChartByIndex(ScDocShell* pDocShell, SCTAB nTab,
                             ::tools::Long nIndex, ChartSourceType eChartSourceType);
 
-std::vector<SdrOle2Obj*> getAllPivotChartsConnectedTo(std::u16string_view sPivotTableName, ScDocShell* pDocShell);
+std::vector<SdrOle2Obj*> getAllPivotChartsConnectedTo(std::u16string_view sPivotTableName, ScDocShell& rDocShell);
 
 } // end sc::tools
 

@@ -136,7 +136,7 @@ const sal_Unicode* parseQuotedName( const sal_Unicode* p, OUString& rName )
 
 static sal_Int64 sal_Unicode_strtol ( const sal_Unicode*  p, const sal_Unicode** pEnd )
 {
-    sal_Int64 accum = 0, prev = 0;
+    sal_Int64 accum = 0;
     bool is_neg = false;
 
     if( *p == '-' )
@@ -147,20 +147,25 @@ static sal_Int64 sal_Unicode_strtol ( const sal_Unicode*  p, const sal_Unicode**
     else if( *p == '+' )
         p++;
 
+    const sal_Int64 cutoff = is_neg ? std::numeric_limits<sal_Int64>::min() / 10
+                                    : -(std::numeric_limits<sal_Int64>::max() / 10);
+    const int cutlim = is_neg ? -(std::numeric_limits<sal_Int64>::min() % 10)
+                              : std::numeric_limits<sal_Int64>::max() % 10;
+
     while (rtl::isAsciiDigit( *p ))
     {
-        accum = accum * 10 + *p - '0';
-        if( accum < prev )
+        int val = *p - '0';
+        if (accum < cutoff || (accum == cutoff && val > cutlim))
         {
             *pEnd = nullptr;
             return 0;
         }
-        prev = accum;
+        accum = accum * 10 - val;
         p++;
     }
 
     *pEnd = p;
-    return is_neg ? -accum : accum;
+    return is_neg ? accum : -accum;
 }
 
 static const sal_Unicode* lcl_eatWhiteSpace( const sal_Unicode* p )
@@ -328,7 +333,7 @@ static const sal_Unicode * lcl_XL_ParseSheetRef( const sal_Unicode* start,
             aTabName += std::u16string_view( pCurrentStart, sal::static_int_cast<sal_Int32>( p - pCurrentStart));
         if (aTabName.isEmpty())
             return nullptr;
-        if (p == pMsoxlQuoteStop)
+        if (p == pMsoxlQuoteStop && *pMsoxlQuoteStop == '\'')
             ++p;    // position on ! of ...'!...
         if( *p != '!' && ( !bAllow3D || *p != ':' ) )
             return (!bAllow3D && *p == ':') ? p : start;
@@ -490,6 +495,7 @@ const sal_Unicode* ScRange::Parse_XL_Header(
     rEndTabName.clear();
     rExternDocName.clear();
     const sal_Unicode* pMsoxlQuoteStop = nullptr;
+    const sal_Unicode* pQuoted3DStop = nullptr;
     if (*p == '[')
     {
         ++p;
@@ -526,11 +532,18 @@ const sal_Unicode* ScRange::Parse_XL_Header(
         // 'E:\[EXTDATA8.XLS]Sheet1'!$A$7  or
         // 'E:\[EXTDATA12B.XLSB]Sheet1:Sheet3'!$A$11
         // But, 'Sheet1'!B3 would also be a valid!
-        // Excel does not allow [ and ] characters in sheet names though.
+        // Then again, 'Sheet1':'Sheet2'!C4 would be logical and Calc wrote
+        // that to OOXML but Excel instead does 'Sheet1:Sheet2'!C4 which is
+        // the worse you can get.
+        // Excel does not allow [ and ] and : characters in sheet names though.
         // But, more sickness comes with MOOXML as there may be
         // '[1]Sheet 4'!$A$1  where [1] is the external doc's index.
         p = parseQuotedName(p, rExternDocName);
-        if (*p != '!')
+        if (*p == ':')
+        {
+            // The incorrect 'Sheet1':'Sheet2' case. Just fall through.
+        }
+        else if (*p != '!')
         {
             rExternDocName.clear();
             return start;
@@ -539,7 +552,24 @@ const sal_Unicode* ScRange::Parse_XL_Header(
         {
             sal_Int32 nOpen = rExternDocName.indexOf( '[');
             if (nOpen == -1)
+            {
                 rExternDocName.clear();
+                // Look for 'Sheet1:Sheet2'!
+                if (*p == '!')
+                {
+                    const sal_Unicode* pQ = start + 1;
+                    do
+                    {
+                        if (*pQ == ':')
+                        {
+                            pMsoxlQuoteStop = pQ;
+                            pQuoted3DStop = p - 1;
+                            break;
+                        }
+                    }
+                    while (++pQ < p);
+                }
+            }
             else
             {
                 sal_Int32 nClose = rExternDocName.indexOf( ']', nOpen+1);
@@ -569,7 +599,7 @@ const sal_Unicode* ScRange::Parse_XL_Header(
             }
         }
         if (rExternDocName.isEmpty())
-            p = start;
+            p = (pQuoted3DStop ? start + 1 : start);
     }
 
     startTabs = p;
@@ -585,7 +615,8 @@ const sal_Unicode* ScRange::Parse_XL_Header(
         if( *p == ':' ) // 3d ref
         {
             startEndTabs = p + 1;
-            p = lcl_XL_ParseSheetRef( startEndTabs, rEndTabName, false, pMsoxlQuoteStop, pErrRef);
+            p = lcl_XL_ParseSheetRef( startEndTabs, rEndTabName, false,
+                    (pQuoted3DStop ? pQuoted3DStop : pMsoxlQuoteStop), pErrRef);
             if( p == nullptr )
             {
                 nFlags = nSaveFlags;
@@ -662,7 +693,6 @@ static const sal_Unicode* lcl_r1c1_get_col( const ScSheetLimits& rSheetLimits,
                                             ScAddress* pAddr, ScRefFlags* nFlags )
 {
     const sal_Unicode *pEnd;
-    sal_Int64 n;
     bool isRelative;
 
     if( p[0] == '\0' )
@@ -672,7 +702,7 @@ static const sal_Unicode* lcl_r1c1_get_col( const ScSheetLimits& rSheetLimits,
     isRelative = *p == '[';
     if( isRelative )
         p++;
-    n = sal_Unicode_strtol( p, &pEnd );
+    sal_Int64 n = sal_Unicode_strtol( p, &pEnd );
     if( nullptr == pEnd )
         return nullptr;
 
@@ -681,22 +711,31 @@ static const sal_Unicode* lcl_r1c1_get_col( const ScSheetLimits& rSheetLimits,
         if( isRelative )
             return nullptr;
         n = rDetails.nCol;
+
+        if (n < 0 || n >= rSheetLimits.GetMaxColCount())
+            return nullptr;
     }
     else if( isRelative )
     {
         if( *pEnd != ']' )
             return nullptr;
         n += rDetails.nCol;
+
+        if (n < 0 || n >= rSheetLimits.GetMaxColCount())
+            return nullptr;
+
         pEnd++;
     }
     else
     {
         *nFlags |= ScRefFlags::COL_ABS;
+
+        if (n <= 0 || n > rSheetLimits.GetMaxColCount())
+            return nullptr;
+
         n--;
     }
 
-    if( n < 0 || n >= rSheetLimits.GetMaxColCount())
-        return nullptr;
     pAddr->SetCol( static_cast<SCCOL>( n ) );
     *nFlags |= ScRefFlags::COL_VALID;
 
@@ -728,6 +767,9 @@ static const sal_Unicode* lcl_r1c1_get_row(
         if( isRelative )
             return nullptr;
         n = rDetails.nRow;
+
+        if (n < 0 || n >= rSheetLimits.GetMaxRowCount())
+            return nullptr;
     }
     else if( isRelative )
     {
@@ -735,15 +777,23 @@ static const sal_Unicode* lcl_r1c1_get_row(
             return nullptr;
         n += rDetails.nRow;
         pEnd++;
+
+        if (n < 0 || n >= rSheetLimits.GetMaxRowCount())
+            return nullptr;
     }
     else
     {
         *nFlags |= ScRefFlags::ROW_ABS;
+
+        if (n <= 0)
+            return nullptr;
+
         n--;
+
+        if (n >= rSheetLimits.GetMaxRowCount())
+            return nullptr;
     }
 
-    if( n < 0 || n >= rSheetLimits.GetMaxRowCount() )
-        return nullptr;
     pAddr->SetRow( static_cast<SCROW>( n ) );
     *nFlags |= ScRefFlags::ROW_VALID;
 
@@ -955,8 +1005,11 @@ static const sal_Unicode* lcl_a1_get_row( const ScDocument& rDoc,
         return p;
     }
 
-    sal_Int64 n = sal_Unicode_strtol( p, &pEnd ) - 1;
-    if( nullptr == pEnd || p == pEnd || n < 0 || n > rDoc.MaxRow() )
+    sal_Int64 n = sal_Unicode_strtol(p, &pEnd);
+    if (nullptr == pEnd || p == pEnd || n < 1)
+        return nullptr;
+    n -= 1;
+    if (n > rDoc.MaxRow())
         return nullptr;
 
     *nFlags |= ScRefFlags::ROW_VALID;
@@ -1154,7 +1207,7 @@ static ScRefFlags lcl_ScAddress_Parse_OOo( const sal_Unicode* p, const ScDocumen
     bool    bExtDoc = false;
     bool    bExtDocInherited = false;
 
-    // Lets see if this is a reference to something in an external file.  A
+    // Let's see if this is a reference to something in an external file.  A
     // document name is always quoted and has a trailing #.
     if (*p == '\'')
     {
@@ -1463,7 +1516,7 @@ static ScRefFlags lcl_ScAddress_Parse ( const sal_Unicode* p, const ScDocument& 
         case formula::FormulaGrammar::CONV_XL_A1:
         case formula::FormulaGrammar::CONV_XL_OOX:
         {
-            ScRange rRange = rAddr;
+            ScRange rRange(rAddr);
             ScRefFlags nFlags = lcl_ScRange_Parse_XL_A1(
                     rRange, p, rDoc, true, pExtInfo,
                     (rDetails.eConv == formula::FormulaGrammar::CONV_XL_OOX ? pExternalLinks : nullptr),
@@ -1473,7 +1526,7 @@ static ScRefFlags lcl_ScAddress_Parse ( const sal_Unicode* p, const ScDocument& 
         }
         case formula::FormulaGrammar::CONV_XL_R1C1:
         {
-            ScRange rRange = rAddr;
+            ScRange rRange(rAddr);
             ScRefFlags nFlags = lcl_ScRange_Parse_XL_R1C1( rRange, p, rDoc, rDetails, true, pExtInfo, pSheetEndPos);
             rAddr = rRange.aStart;
             return nFlags;
@@ -2123,6 +2176,7 @@ static void lcl_ScRange_Format_XL_Header( OUStringBuffer& rString, const ScRange
     if( !(nFlags & ScRefFlags::TAB_3D) )
         return;
 
+    sal_Int32 nQuotePos = rString.getLength();
     OUString aTabName, aDocName;
     lcl_Split_DocTab( rDoc, rRange.aStart.Tab(), rDetails, nFlags, aTabName, aDocName );
     switch (rDetails.eConv)
@@ -2145,6 +2199,7 @@ static void lcl_ScRange_Format_XL_Header( OUStringBuffer& rString, const ScRange
             if (!aDocName.isEmpty())
             {
                 rString.append("[" + aDocName + "]");
+                nQuotePos = rString.getLength();
             }
             rString.append(aTabName);
         break;
@@ -2152,8 +2207,7 @@ static void lcl_ScRange_Format_XL_Header( OUStringBuffer& rString, const ScRange
     if( nFlags & ScRefFlags::TAB2_3D )
     {
         lcl_Split_DocTab( rDoc, rRange.aEnd.Tab(), rDetails, nFlags, aTabName, aDocName );
-        rString.append(":");
-        rString.append(aTabName);
+        ScCompiler::FormExcelSheetRange( rString, nQuotePos, aTabName);
     }
     rString.append("!");
 }
@@ -2372,17 +2426,30 @@ bool ScRange::MoveSticky( const ScDocument& rDoc, SCCOL dx, SCROW dy, SCTAB dz, 
 
 void ScRange::IncColIfNotLessThan(const ScDocument& rDoc, SCCOL nStartCol, SCCOL nOffset)
 {
-    if (aStart.Col() >= nStartCol)
+    SCCOL offset;
+    if (aStart.Col() > nStartCol)
     {
-        aStart.IncCol(nOffset);
+        offset = nOffset;
+        if (nStartCol + nOffset > aStart.Col())
+            offset = aStart.Col() - nStartCol;
+        else if (nStartCol - nOffset > aStart.Col())
+            offset = -1 * (aStart.Col() - nStartCol);
+
+        aStart.IncCol(offset);
         if (aStart.Col() < 0)
             aStart.SetCol(0);
         else if(aStart.Col() > rDoc.MaxCol())
             aStart.SetCol(rDoc.MaxCol());
     }
-    if (aEnd.Col() >= nStartCol)
+    if (aEnd.Col() > nStartCol)
     {
-        aEnd.IncCol(nOffset);
+        offset = nOffset;
+        if (nStartCol + nOffset > aEnd.Col())
+            offset = aEnd.Col() - nStartCol;
+        else if (nStartCol - nOffset > aEnd.Col())
+            offset = -1 * (aEnd.Col() - nStartCol);
+
+        aEnd.IncCol(offset);
         if (aEnd.Col() < 0)
             aEnd.SetCol(0);
         else if(aEnd.Col() > rDoc.MaxCol())
@@ -2392,17 +2459,30 @@ void ScRange::IncColIfNotLessThan(const ScDocument& rDoc, SCCOL nStartCol, SCCOL
 
 void ScRange::IncRowIfNotLessThan(const ScDocument& rDoc, SCROW nStartRow, SCROW nOffset)
 {
-    if (aStart.Row() >= nStartRow)
+    SCROW offset;
+    if (aStart.Row() > nStartRow)
     {
-        aStart.IncRow(nOffset);
+        offset = nOffset;
+        if (nStartRow + nOffset > aStart.Row())
+            offset = aStart.Row() - nStartRow;
+        else if (nStartRow - nOffset > aStart.Row())
+            offset = -1 * (aStart.Row() - nStartRow);
+
+        aStart.IncRow(offset);
         if (aStart.Row() < 0)
             aStart.SetRow(0);
         else if(aStart.Row() > rDoc.MaxRow())
             aStart.SetRow(rDoc.MaxRow());
     }
-    if (aEnd.Row() >= nStartRow)
+    if (aEnd.Row() > nStartRow)
     {
-        aEnd.IncRow(nOffset);
+        offset = nOffset;
+        if (nStartRow + nOffset > aEnd.Row())
+            offset = aEnd.Row() - nStartRow;
+        else if (nStartRow - nOffset > aEnd.Row())
+            offset = -1 * (aEnd.Row() - nStartRow);
+
+        aEnd.IncRow(offset);
         if (aEnd.Row() < 0)
             aEnd.SetRow(0);
         else if(aEnd.Row() > rDoc.MaxRow())

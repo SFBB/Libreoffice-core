@@ -69,6 +69,9 @@ public:
         Axis,
         Cell,
         Chart,
+        ChartLabel,
+        ChartLegend,
+        ChartTitle,
         ChartElements,
         Draw,
         DrawFontwork,
@@ -129,7 +132,9 @@ public:
     sal_Int32 GetCombinedContext_DI() const;
 
     Application GetApplication() const;
-    Application GetApplication_DI() const;
+    Context GetContext() const {return meContext;}
+
+    SAL_DLLPRIVATE Application GetApplication_DI() const;
 
     bool operator == (const EnumContext& rOther) const;
     bool operator != (const EnumContext& rOther) const;
@@ -151,10 +156,10 @@ private:
     Application meApplication;
     Context meContext;
 
-    static void ProvideApplicationContainers();
-    static void ProvideContextContainers();
-    static void AddEntry (const OUString& rsName, const Application eApplication);
-    static void AddEntry (const OUString& rsName, const Context eContext);
+    SAL_DLLPRIVATE static void ProvideApplicationContainers();
+    SAL_DLLPRIVATE static void ProvideContextContainers();
+    SAL_DLLPRIVATE static void AddEntry (const OUString& rsName, const Application eApplication);
+    SAL_DLLPRIVATE static void AddEntry (const OUString& rsName, const Context eContext);
 };
 
 

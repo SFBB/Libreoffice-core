@@ -31,7 +31,6 @@ $(eval $(call gb_Library_use_sdk_api,svt))
 
 $(eval $(call gb_Library_set_include,svt,\
     $$(INCLUDE) \
-    -I$(SRCDIR)/svtools/source/inc \
     -I$(SRCDIR)/svtools/inc \
 ))
 
@@ -69,6 +68,7 @@ $(eval $(call gb_Library_use_externals,svt,\
 ))
 
 $(eval $(call gb_Library_add_exception_objects,svt,\
+    svtools/source/brwbox/accessibleeditbrowseboxcell \
     svtools/source/brwbox/brwbox1 \
     svtools/source/brwbox/brwbox2 \
     svtools/source/brwbox/brwbox3 \
@@ -86,11 +86,14 @@ $(eval $(call gb_Library_add_exception_objects,svt,\
     svtools/source/config/htmlcfg \
     svtools/source/config/itemholder2 \
     svtools/source/config/miscopt \
-    svtools/source/config/slidesorterbaropt \
     svtools/source/config/optionsdrawinglayer \
     svtools/source/config/printoptions \
     svtools/source/contnr/querydelete \
     svtools/source/control/accessibleruler \
+    svtools/source/control/accessibletabbar \
+    svtools/source/control/accessibletabbarbase \
+    svtools/source/control/accessibletabbarpage \
+    svtools/source/control/accessibletabbarpagelist \
     svtools/source/control/asynclink \
     svtools/source/control/collatorres \
     svtools/source/control/ctrlbox \
@@ -105,7 +108,6 @@ $(eval $(call gb_Library_add_exception_objects,svt,\
     svtools/source/control/valueacc \
     svtools/source/control/valueset \
     svtools/source/dialogs/addresstemplate \
-    svtools/source/dialogs/colrdlg \
     svtools/source/dialogs/insdlg \
     svtools/source/dialogs/PlaceEditDialog \
     svtools/source/dialogs/prnsetup \

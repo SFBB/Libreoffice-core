@@ -118,7 +118,7 @@ void OCommonEmbeddedObject::CommonInit_Impl( const uno::Sequence< beans::NamedVa
     if ( !m_xContext.is() )
         throw uno::RuntimeException();
 
-    m_xDocHolder = new DocumentHolder( m_xContext, this );
+    m_xDocHolder = new embeddedobj::DocumentHolder( m_xContext, this );
 
     // parse configuration entries
     // TODO/LATER: in future UI names can be also provided here
@@ -140,7 +140,7 @@ void OCommonEmbeddedObject::CommonInit_Impl( const uno::Sequence< beans::NamedVa
         throw uno::RuntimeException(); // something goes really wrong
 
     // verbs table
-    for ( auto const & verb : std::as_const(m_aObjectVerbs) )
+    for (auto const& verb : m_aObjectVerbs)
     {
         if ( verb.VerbID == embed::EmbedVerbs::MS_OLEVERB_PRIMARY )
         {
@@ -563,7 +563,7 @@ uno::Reference< util::XCloseable > SAL_CALL OCommonEmbeddedObject::getComponent(
     if ( m_nObjectState == -1 )
     {
         // the object is still not loaded
-        throw uno::RuntimeException( "Can't store object without persistence!",
+        throw uno::RuntimeException( u"Can't store object without persistence!"_ustr,
                                      static_cast< ::cppu::OWeakObject* >(this) );
     }
 
@@ -736,7 +736,7 @@ void SAL_CALL OCommonEmbeddedObject::removeEventListener( const uno::Reference< 
 
 OUString SAL_CALL OCommonEmbeddedObject::getImplementationName()
 {
-    return "com.sun.star.comp.embed.OCommonEmbeddedObject";
+    return u"com.sun.star.comp.embed.OCommonEmbeddedObject"_ustr;
 }
 
 sal_Bool SAL_CALL OCommonEmbeddedObject::supportsService(const OUString& ServiceName)
@@ -746,7 +746,7 @@ sal_Bool SAL_CALL OCommonEmbeddedObject::supportsService(const OUString& Service
 
 uno::Sequence<OUString> SAL_CALL OCommonEmbeddedObject::getSupportedServiceNames()
 {
-    return { "com.sun.star.comp.embed.OCommonEmbeddedObject" };
+    return { u"com.sun.star.comp.embed.OCommonEmbeddedObject"_ustr };
 }
 
 uno::Sequence<uno::Type> SAL_CALL OCommonEmbeddedObject::getTypes()
@@ -778,7 +778,7 @@ void SAL_CALL OCommonEmbeddedObject::initialize(const uno::Sequence<uno::Any>& r
     }
 
     comphelper::SequenceAsHashMap aMap(rArguments[0]);
-    auto it = aMap.find("ReadOnly");
+    auto it = aMap.find(u"ReadOnly"_ustr);
     if (it != aMap.end())
     {
         it->second >>= m_bReadOnly;

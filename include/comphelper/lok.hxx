@@ -10,20 +10,38 @@
 #ifndef INCLUDED_COMPHELPER_LOK_HXX
 #define INCLUDED_COMPHELPER_LOK_HXX
 
+#include <functional>
+
 #include <comphelper/comphelperdllapi.h>
 #include <rtl/ustring.hxx>
 
 class LanguageTag;
+namespace com::sun::star::awt
+{
+struct Rectangle;
+}
 
 // Interface between the LibreOfficeKit implementation called by LibreOfficeKit clients and other
 // LibreOffice code.
 
 namespace comphelper::LibreOfficeKit
 {
+/// interface for allowing threads to be transiently shutdown.
+class COMPHELPER_DLLPUBLIC SAL_LOPLUGIN_ANNOTATE("crosscast") ThreadJoinable
+{
+public:
+    /// shutdown and join threads, @returns true on success
+    virtual bool joinThreads() = 0;
+    /// restart any required threads, usually are demand-restarted
+    virtual void startThreads() {}
+};
+
 // Functions to be called only from the LibreOfficeKit implementation in desktop, not from other
 // places in LibreOffice code.
 
 COMPHELPER_DLLPUBLIC void setActive(bool bActive = true);
+
+COMPHELPER_DLLPUBLIC void setForkedChild(bool bIsChild = true);
 
 enum class statusIndicatorCallbackType
 {
@@ -41,12 +59,20 @@ COMPHELPER_DLLPUBLIC void setStatusIndicatorCallback(
 // Check whether the code is running as invoked through LibreOfficeKit.
 COMPHELPER_DLLPUBLIC bool isActive();
 
+/// Is this a transient forked child process, that shares many
+/// eg. file-system resources with its parent process?
+COMPHELPER_DLLPUBLIC bool isForkedChild();
+
 /// Shift the coordinates before rendering each bitmap.
 /// Used by Calc to render each tile separately.
 /// This should be unnecessary (and removed) once Calc
 /// moves to using 100MM Unit.
 COMPHELPER_DLLPUBLIC void setLocalRendering(bool bLocalRendering = true);
 COMPHELPER_DLLPUBLIC bool isLocalRendering();
+
+/// Used by SlideshowLayerRenderer for signaling that a slide rendering is occurring.
+COMPHELPER_DLLPUBLIC void setSlideshowRendering(bool bSlideshowRendering);
+COMPHELPER_DLLPUBLIC bool isSlideshowRendering();
 
 /// Check whether clients want a part number in an invalidation payload.
 COMPHELPER_DLLPUBLIC bool isPartInInvalidation();
@@ -115,6 +141,22 @@ COMPHELPER_DLLPUBLIC void statusIndicatorSetValue(int percent);
 COMPHELPER_DLLPUBLIC void statusIndicatorFinish();
 
 COMPHELPER_DLLPUBLIC void setBlockedCommandList(const char* blockedCommandList);
+
+COMPHELPER_DLLPUBLIC void
+setAnyInputCallback(const std::function<bool(void*, int)>& pAnyInputCallback, void* pData,
+                    const std::function<int()>& pMostUrgentPriorityGetter);
+COMPHELPER_DLLPUBLIC bool anyInput();
+
+// These allow setting callbacks, so that set/get of a LOK view is possible even in code that is
+// below sfx2.
+COMPHELPER_DLLPUBLIC void setViewSetter(const std::function<void(int)>& pViewSetter);
+COMPHELPER_DLLPUBLIC void setView(int nView);
+COMPHELPER_DLLPUBLIC void setViewGetter(const std::function<int()>& pViewGetter);
+COMPHELPER_DLLPUBLIC int getView();
+
+COMPHELPER_DLLPUBLIC void
+setInitialClientVisibleArea(const css::awt::Rectangle& rClientVisibleArea);
+COMPHELPER_DLLPUBLIC css::awt::Rectangle getInitialClientVisibleArea();
 }
 
 #endif // INCLUDED_COMPHELPER_LOK_HXX

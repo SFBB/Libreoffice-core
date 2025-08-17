@@ -33,7 +33,8 @@ gb_UnoApi_get_target_for_build = $(INSTROOT_FOR_BUILD)/$(if $(filter udkapi,$(1)
 
 # workdir target patterns
 
-gb_AutoInstall_get_target = $(WORKDIR)/AutoInstall/$(1)
+gb_AutoInstall_get_target = $(error please use plain gb_AutoInstall_targetdir instead)
+gb_AutoInstall_targetdir := $(WORKDIR)/AutoInstall
 gb_AllLangHelp_get_target = $(WORKDIR)/AllLangHelp/$(1)
 gb_AllLangHelp_get_helpfiles_target = $(WORKDIR)/AllLangHelp/$(1).helpfiles
 gb_AllLangPackage_get_target = $(WORKDIR)/AllLangPackage/$(1)
@@ -55,23 +56,29 @@ gb_ComponentTarget_get_target_for_build = $(WORKDIR_FOR_BUILD)/ComponentTarget/$
 gb_Configuration_get_preparation_target = $(WORKDIR)/Configuration/$(1).prepared
 gb_CppunitTest_get_target = $(WORKDIR)/CppunitTest/$(1).test
 gb_CustomPackage_get_target = $(WORKDIR)/CustomPackage/$(1).filelist
-gb_CustomTarget_get_repo_target = $(WORKDIR)/CustomTarget/$(2)_$(1).done
 gb_CustomTarget_get_target = $(WORKDIR)/CustomTarget/$(1).done
-gb_CustomTarget_get_workdir = $(WORKDIR)/CustomTarget/$(1)
+gb_CustomTarget_get_workdir = $(error please use plain gb_CustomTarget_workdir instead)
+gb_CustomTarget_workdir := $(WORKDIR)/CustomTarget
 gb_DescriptionTranslateTarget_get_target = $(WORKDIR)/DescriptionTranslateTarget/$(1).xml
 gb_Dictionary_get_target = $(WORKDIR)/Dictionary/$(1).done
 gb_CxxObject_get_target = $(WORKDIR)/CxxObject/$(1).o
 gb_CxxObject_get_dwo_target = $(WORKDIR)/CxxObject/$(1).dwo
+gb_DotnetLibrary_get_target = $(WORKDIR)/DotnetLibrary/$(1)/$(1).dll
+gb_DotnetLibrary_workdir = $(WORKDIR)/DotnetLibrary
+gb_DotnetTest_get_target = $(WORKDIR)/DotnetTest/$(1)/done
+gb_DotnetTest_workdir = $(WORKDIR)/DotnetTest
 gb_GenCxxObject_get_target = $(WORKDIR)/GenCxxObject/$(1).o
 gb_GenCxxObject_get_dwo_target = $(WORKDIR)/GenCxxObject/$(1).dwo
+gb_GenAsmObject_get_target = $(WORKDIR)/GenAsmObject/$(1).o
+gb_GenAsmObject_get_dwo_target = $(WORKDIR)/GenAsmObject/$(1).dwo
 gb_GenNasmObject_get_target = $(WORKDIR)/GenNasmObject/$(1).o
 gb_GenNasmObject_get_dwo_target = $(WORKDIR)/GenNasmObject/$(1).dwo
 gb_Executable_get_headers_target = $(WORKDIR)/Headers/Executable/$(1)
-gb_Executable_get_linktargetfile = $(call gb_LinkTarget_get_target,$(call gb_Executable_get_linktarget,$1))
 gb_Executable_get_runtime_target = $(WORKDIR_FOR_BUILD)/Executable/$(1).run
 gb_Extension_get_target = $(WORKDIR)/Extension/$(1).oxt
 gb_Extension_get_rootdir = $(WORKDIR)/Extension/$(1)/root
-gb_Extension_get_workdir = $(WORKDIR)/Extension/$(1)
+gb_Extension_get_workdir = $(error please use plain gb_Extension_workdir instead)
+gb_Extension_workdir := $(WORKDIR)/Extension
 gb_ExtensionPackage_get_target = $(WORKDIR)/ExtensionPackage/$(1).filelist
 gb_ExtensionPackage_get_preparation_target = $(WORKDIR)/ExtensionPackage/$(1).prepare
 gb_ExtensionPackageSet_get_target = $(WORKDIR)/ExtensionPackage/$(1).set
@@ -82,7 +89,8 @@ gb_ExternalProject_get_state_target = $(WORKDIR)/ExternalProject/$(1)/$(2)
 gb_ExternalProject_get_target = $(WORKDIR)/ExternalProject/$(1).done
 gb_ExternalProject_get_target_for_build = $(WORKDIR_FOR_BUILD)/ExternalProject/$(1).done
 gb_Gallery_get_target = $(WORKDIR)/Gallery/$(1).done
-gb_Gallery_get_workdir = $(WORKDIR)/Gallery/$(1)
+gb_Gallery_get_workdir = $(error please use plain gb_Gallery_workdir instead)
+gb_Gallery_workdir := $(WORKDIR)/Gallery
 gb_GeneratedPackage_get_target = $(WORKDIR)/GeneratedPackage/$(1).filelist
 gb_GeneratedPackage_get_target_for_build = $(WORKDIR_FOR_BUILD)/GeneratedPackage/$(1).filelist
 gb_HelpIndexTarget_get_target = $(WORKDIR)/HelpIndexTarget/$(1).done
@@ -93,10 +101,12 @@ gb_HelpTarget_get_filelist = $(WORKDIR)/HelpTarget/$(1).filelist
 gb_HelpTarget_get_linked_target = $(WORKDIR)/HelpTarget/$(1).translate
 gb_HelpTarget_get_target = $(WORKDIR)/HelpTarget/$(1).zip
 gb_HelpTarget_get_translation_target = $(call gb_HelpTarget_get_filelist,$(1))
-gb_HelpTarget_get_workdir = $(WORKDIR)/HelpTarget/$(1)
+gb_HelpTarget_get_workdir = $(error please use plain gb_HelpTarget_workdir)
+gb_HelpTarget_workdir := $(WORKDIR)/HelpTarget
 gb_HelpTranslatePartTarget_get_target = $(WORKDIR)/HelpTranslatePartTarget/$(1)/done
 gb_HelpTranslatePartTarget_get_translated_target = $(WORKDIR)/HelpTranslatePartTarget/$(1)/$(2).xhp
-gb_HelpTranslatePartTarget_get_workdir = $(WORKDIR)/HelpTranslatePartTarget/$(1)
+gb_HelpTranslatePartTarget_get_workdir = $(error please use plain gb_HelpTranslatePartTarget_workdir instead)
+gb_HelpTranslatePartTarget_workdir := $(WORKDIR)/HelpTranslatePartTarget
 gb_HelpTranslateTarget_get_target = $(WORKDIR)/HelpTranslateTarget/$(1).done
 gb_HelpTreeTarget_get_target = $(WORKDIR)/HelpTreeTarget/$(1).tree
 gb_InstallModule_get_filelist = $(call gb_InstallModuleTarget_get_filelist,$(1))
@@ -109,7 +119,6 @@ gb_InternalUnoApi_get_target = $(WORKDIR)/InternalUnoApi/$(1).done
 gb_Jar_get_target = $(call gb_Jar_get_install_target,$(1))
 gb_Jar_get_classsetname = Jar/$(1)
 gb_JavaClassSet_get_classdir = $(WORKDIR)/JavaClassSet/$(1)
-gb_JavaClassSet_get_repo_target = $(WORKDIR)/JavaClassSet/$(2)/$(1).done
 gb_JavaClassSet_get_target = $(WORKDIR)/JavaClassSet/$(1)/done
 gb_JunitTest_get_classsetname = JunitTest/$(1)
 gb_JunitTest_get_target = $(WORKDIR)/JunitTest/$(1)/done
@@ -205,7 +214,8 @@ gb_UnoApiHeadersTarget_get_real_target = $(WORKDIR)/UnoApiHeadersTarget/$(1)/nor
 gb_UnoApiHeadersTarget_get_bootstrap_target = $(WORKDIR)/UnoApiHeadersTarget/$(1)/$(call gb_UnoApiHeadersTarget_select_variant,$(1),bootstrap).done
 gb_UnoApiHeadersTarget_get_comprehensive_target = $(WORKDIR)/UnoApiHeadersTarget/$(1)/$(call gb_UnoApiHeadersTarget_select_variant,$(1),comprehensive).done
 gb_UnoApiHeadersTarget_get_target = $(WORKDIR)/UnoApiHeadersTarget/$(1)/$(call gb_UnoApiHeadersTarget_select_variant,$(1),normal).done
-gb_UnpackedTarball_get_dir = $(WORKDIR)/UnpackedTarball/$(1)
+gb_UnpackedTarball_get_dir = $(error please use plain gb_UnpackedTarball_workdir instead)
+gb_UnpackedTarball_workdir := $(WORKDIR)/UnpackedTarball
 gb_UnpackedTarball_get_pristine_dir = $(WORKDIR)/UnpackedTarball/$(1).org
 gb_UnpackedTarball_get_final_target = $(WORKDIR)/UnpackedTarball/$(1).update
 # NOTE: the .done target is hardcoded in solenv/bin/concat-deps.c !
@@ -267,6 +277,8 @@ $(eval $(call gb_Helper_make_clean_targets,\
 	CustomPackage \
 	DescriptionTranslateTarget \
 	Dictionary \
+	DotnetLibrary \
+	DotnetTest \
 	Executable \
 	ExternalPackage \
 	Extension \
@@ -345,6 +357,7 @@ $(eval $(call gb_Helper_make_dep_targets,\
 	GenCxxObject \
 	GenObjCObject \
 	GenObjCxxObject \
+	GenAsmObject \
 	GenNasmObject \
 	GenCxxClrObject \
 	SdiTarget \
@@ -473,16 +486,12 @@ endef
 
 # static members declared here because they are used globally
 
-gb_StaticLibrary_WORKDIR = $(WORKDIR)/LinkTarget/StaticLibrary
-gb_Library_WORKDIR_FOR_BUILD = $(WORKDIR_FOR_BUILD)/LinkTarget/Library
-gb_Executable_BINDIR = $(WORKDIR)/LinkTarget/Executable
-gb_Executable_BINDIR_FOR_BUILD = $(WORKDIR_FOR_BUILD)/LinkTarget/Executable
-gb_Library_DLLDIR = $(WORKDIR)/LinkTarget/Library
-gb_Library_DLLDIR_FOR_BUILD = $(WORKDIR_FOR_BUILD)/LinkTarget/Library
-gb_CppunitTest_DLLDIR = $(WORKDIR)/LinkTarget/CppunitTest
-
-# static variables declared here because they are used globally
-
+gb_StaticLibrary_WORKDIR := $(WORKDIR)/LinkTarget/StaticLibrary
+gb_Executable_BINDIR := $(WORKDIR)/LinkTarget/Executable
+gb_Executable_BINDIR_FOR_BUILD := $(WORKDIR_FOR_BUILD)/LinkTarget/Executable
+gb_Library_DLLDIR := $(WORKDIR)/LinkTarget/Library
+gb_Library_DLLDIR_FOR_BUILD := $(WORKDIR_FOR_BUILD)/LinkTarget/Library
+gb_CppunitTest_DLLDIR := $(WORKDIR)/LinkTarget/CppunitTest
 gb_POLOCATION := $(SRCDIR)/translations/source
 
 # vim: set noet sw=4:

@@ -33,7 +33,6 @@
 #include "edit.hxx"
 
 class SmViewShell;
-class SmPrintUIOptions;
 class SmGraphicAccessible;
 class SmGraphicWidget;
 
@@ -125,7 +124,7 @@ public:
     }
 
     // for Accessibility
-    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     SmGraphicAccessible* GetAccessible_Impl()
     {
@@ -284,7 +283,7 @@ public:
         return static_cast<SmDocShell *>( GetViewFrame().GetObjectShell() );
     }
 
-    SmEditWindow * GetEditWindow();
+    SAL_RET_MAYBENULL SmEditWindow * GetEditWindow();
 
     SmGraphicWidget& GetGraphicWidget()
     {

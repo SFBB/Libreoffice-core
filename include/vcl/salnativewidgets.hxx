@@ -286,40 +286,6 @@ class VCL_DLLPUBLIC ImplControlValue
         void         setNumericVal( tools::Long nNumeric ) { mNumber = nNumeric; }
 };
 
-/* ScrollbarValue:
- *
- *   Value container for scrollbars.
- */
-class SAL_DLLPUBLIC_RTTI ScrollbarValue final : public ImplControlValue
-{
-    public:
-        tools::Long            mnMin;
-        tools::Long            mnMax;
-        tools::Long            mnCur;
-        tools::Long            mnVisibleSize;
-        tools::Rectangle       maThumbRect;
-        tools::Rectangle       maButton1Rect;
-        tools::Rectangle       maButton2Rect;
-        ControlState    mnButton1State;
-        ControlState    mnButton2State;
-        ControlState    mnThumbState;
-
-        ScrollbarValue()
-        : ImplControlValue( ControlType::Scrollbar, 0 )
-        {
-            mnMin = 0; mnMax = 0; mnCur = 0; mnVisibleSize = 0;
-            mnButton1State = ControlState::NONE; mnButton2State = ControlState::NONE;
-            mnThumbState = ControlState::NONE;
-        };
-        virtual ~ScrollbarValue() override;
-        virtual ScrollbarValue* clone() const override;
-
-        ScrollbarValue(ScrollbarValue const &) = default;
-        ScrollbarValue(ScrollbarValue &&) = default;
-        ScrollbarValue & operator =(ScrollbarValue const &) = delete; // due to ImplControlValue
-        ScrollbarValue & operator =(ScrollbarValue &&) = delete; // due to ImplControlValue
-};
-
 class SAL_DLLPUBLIC_RTTI SliderValue final : public ImplControlValue
 {
     public:
@@ -384,16 +350,27 @@ namespace o3tl
     template<> struct typed_flags<TabitemFlags> : is_typed_flags<TabitemFlags, 0x0f> {};
 }
 
+/* Tab bar position (relative to content on the tab page). */
+enum class TabBarPosition
+{
+    Top,
+    Left,
+    Right,
+    Bottom
+};
+
 class SAL_DLLPUBLIC_RTTI TabitemValue final : public ImplControlValue
 {
     public:
         TabitemFlags    mnAlignment;
         tools::Rectangle       maContentRect;
+        TabBarPosition meTabBarPosition;
 
-        TabitemValue(const tools::Rectangle &rContentRect)
+        TabitemValue(const tools::Rectangle &rContentRect, TabBarPosition eTabBarPosition)
             : ImplControlValue( ControlType::TabItem, 0 )
             , mnAlignment(TabitemFlags::NONE)
             , maContentRect(rContentRect)
+            , meTabBarPosition(eTabBarPosition)
         {
         }
         virtual ~TabitemValue() override;

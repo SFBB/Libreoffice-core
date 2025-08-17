@@ -23,17 +23,15 @@
 #include <svl/poolitem.hxx>
 #include <svx/svxdllapi.h>
 
-#define GRFCROP_VERSION_SWDEFAULT       0
-#define GRFCROP_VERSION_MOVETOSVX       1
-
 class SVXCORE_DLLPUBLIC SvxGrfCrop : public SfxPoolItem
 {
-    sal_Int32   nLeft, nRight, nTop, nBottom;
+    sal_Int32   m_nLeft, m_nRight, m_nTop, m_nBottom;
 public:
-    SvxGrfCrop( TypedWhichId<SvxGrfCrop>  );
+    DECLARE_ITEM_TYPE_FUNCTION(SvxGrfCrop)
+    SvxGrfCrop( TypedWhichId<SvxGrfCrop>);
     SvxGrfCrop( sal_Int32 nLeft,    sal_Int32 nRight,
                 sal_Int32 nTop,     sal_Int32 nBottom,
-                TypedWhichId<SvxGrfCrop>  );
+                TypedWhichId<SvxGrfCrop> );
     virtual ~SvxGrfCrop() override;
 
     SvxGrfCrop(SvxGrfCrop const &) = default;
@@ -43,6 +41,8 @@ public:
 
     // "pure virtual methods" from SfxPoolItem
     virtual bool                operator==( const SfxPoolItem& ) const override;
+    virtual bool supportsHashCode() const override { return true; }
+    virtual size_t hashCode() const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
@@ -53,15 +53,15 @@ public:
     virtual bool PutValue( const css::uno::Any& rVal,
                            sal_uInt8 nMemberId ) override;
 
-    void SetLeft( sal_Int32 nVal )      { nLeft = nVal; }
-    void SetRight( sal_Int32 nVal )     { nRight = nVal; }
-    void SetTop( sal_Int32 nVal )       { nTop = nVal; }
-    void SetBottom( sal_Int32 nVal )    { nBottom = nVal; }
+    void SetLeft( sal_Int32 nVal )      { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nLeft = nVal; }
+    void SetRight( sal_Int32 nVal )     { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nRight = nVal; }
+    void SetTop( sal_Int32 nVal )       { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nTop = nVal; }
+    void SetBottom( sal_Int32 nVal )    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nBottom = nVal; }
 
-    sal_Int32 GetLeft() const           { return nLeft; }
-    sal_Int32 GetRight() const          { return nRight; }
-    sal_Int32 GetTop() const            { return nTop; }
-    sal_Int32 GetBottom() const         { return nBottom; }
+    sal_Int32 GetLeft() const           { return m_nLeft; }
+    sal_Int32 GetRight() const          { return m_nRight; }
+    sal_Int32 GetTop() const            { return m_nTop; }
+    sal_Int32 GetBottom() const         { return m_nBottom; }
 };
 
 #endif  // INCLUDED_SVX_GRFCROP_HXX

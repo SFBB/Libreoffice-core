@@ -104,7 +104,7 @@ void Indexes::refresh()
 
         // see XDatabaseMetaData::getIndexInfo()
         Reference< XPreparedStatement > stmt = m_origin->prepareStatement(
-                "SELECT nspname, "      // 1
+                u"SELECT nspname, "      // 1
                    "pg_class.relname, " // 2
                    "class2.relname, "   // 3
                    "indisclustered, "   // 4
@@ -114,7 +114,7 @@ void Indexes::refresh()
                 "FROM pg_index INNER JOIN pg_class ON indrelid = pg_class.oid "
                     "INNER JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid "
                     "INNER JOIN pg_class as class2 ON pg_index.indexrelid = class2.oid "
-                "WHERE nspname = ? AND pg_class.relname = ?" );
+                "WHERE nspname = ? AND pg_class.relname = ?"_ustr );
 
         Reference< XParameters > params( stmt, UNO_QUERY);
         params->setString( 1, m_schemaName );
@@ -142,7 +142,6 @@ void Indexes::refresh()
             bool isUnique = row->getBoolean( C_IS_UNIQUE );
             bool isPrimary = row->getBoolean( C_IS_PRIMARY );
             bool isClusterd = row->getBoolean( C_IS_CLUSTERED );
-            Reference< css::beans::XPropertySet > prop = pIndex;
             pIndex->setPropertyValue_NoBroadcast_public(
                 st.IS_UNIQUE, Any( isUnique ) );
             pIndex->setPropertyValue_NoBroadcast_public(
@@ -164,7 +163,7 @@ void Indexes::refresh()
                 st.PRIVATE_COLUMN_INDEXES, Any( columnNames ));
 
             {
-                m_values.emplace_back(prop);
+                m_values.emplace_back(Reference< css::beans::XPropertySet >(pIndex));
                 map[ currentIndexName ] = index;
                 ++index;
             }

@@ -9,52 +9,19 @@
 
 $(eval $(call gb_CustomTarget_CustomTarget,i18npool/breakiterator))
 
-i18npool_BIDIR := $(call gb_CustomTarget_get_workdir,i18npool/breakiterator)
-
-ifneq ($(filter iOS ANDROID,$(OS)),)
+i18npool_BIDIR := $(gb_CustomTarget_workdir)/i18npool/breakiterator
 
 $(call gb_CustomTarget_get_target,i18npool/breakiterator) : \
-	$(i18npool_BIDIR)/dict_ja.data $(i18npool_BIDIR)/dict_zh.data $(i18npool_BIDIR)/OpenOffice_dat.c
-
-$(i18npool_BIDIR)/dict_%.data : \
-		$(SRCDIR)/i18npool/source/breakiterator/data/%.dic \
-		$(call gb_Executable_get_runtime_dependencies,gendict) \
-		| $(i18npool_BIDIR)/.dir
-	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),DIC,1)
-	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),DIC)
-	$(call gb_Helper_abbreviate_dirs,\
-		$(call gb_Helper_execute,gendict) $< $@ $(patsubst $(i18npool_BIDIR)/dict_%.cxx,%,$@))
-	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),DIC)
-
-else # !iOS ANDROID
-
-$(call gb_CustomTarget_get_target,i18npool/breakiterator) : \
-	$(i18npool_BIDIR)/dict_ja.cxx $(i18npool_BIDIR)/dict_zh.cxx $(i18npool_BIDIR)/OpenOffice_dat.c
-
-$(i18npool_BIDIR)/dict_%.cxx : \
-		$(SRCDIR)/i18npool/source/breakiterator/data/%.dic \
-		$(call gb_Executable_get_runtime_dependencies,gendict) \
-		| $(i18npool_BIDIR)/.dir
-	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),DIC,1)
-	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),DIC)
-	$(call gb_Helper_abbreviate_dirs,\
-		$(call gb_Helper_execute,gendict) $< $@ $(patsubst $(i18npool_BIDIR)/dict_%.cxx,%,$@))
-	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),DIC)
-
-endif
+	$(i18npool_BIDIR)/OpenOffice_dat.c
 
 i18npool_BRKTXTS := \
     count_word.brk \
-    $(call gb_Helper_optional_locale,he,dict_word_he.brk) \
     $(call gb_Helper_optional_locale,hu,dict_word_hu.brk) \
-    dict_word_nodash.brk \
     dict_word_prepostdash.brk \
     dict_word.brk \
-    $(call gb_Helper_optional_locale,he,edit_word_he.brk) \
     $(call gb_Helper_optional_locale,hu,edit_word_hu.brk) \
     edit_word.brk \
-    line.brk \
-    sent.brk
+    line.brk
 
 # 'gencmn', 'genbrk' and 'genccode' are tools generated and delivered by icu project to process icu breakiterator rules.
 # The output of gencmn generates warnings under Windows. We want to minimize the patches to external tools,
@@ -91,7 +58,7 @@ $(i18npool_BIDIR)/%.brk : $(SRCDIR)/i18npool/source/breakiterator/data/%.txt \
 	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),BRK)
 	$(call gb_Helper_abbreviate_dirs,\
 		$(call gb_ExternalExecutable_get_command,genbrk) \
-		$(if $(SYSTEM_ICU),,-i $(call gb_UnpackedTarball_get_dir,icu)/source/data/out/tmp) \
+		$(if $(SYSTEM_ICU),,-i $(gb_UnpackedTarball_workdir)/icu/source/data/out/tmp) \
 		-r $< -o $@ $(if $(findstring s,$(MAKEFLAGS)),> /dev/null))
 	$(call gb_Trace_EndRange,$(subst $(WORKDIR)/,,$@),BRK)
 

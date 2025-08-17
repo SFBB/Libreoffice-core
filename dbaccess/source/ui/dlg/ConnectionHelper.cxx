@@ -65,21 +65,17 @@ namespace dbaui
     using namespace ::com::sun::star::ucb;
     using namespace ::com::sun::star::ui::dialogs;
     using namespace ::com::sun::star::sdbc;
-    using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::lang;
-    using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::mozilla;
-    using namespace ::dbtools;
     using namespace ::svt;
 
     OConnectionHelper::OConnectionHelper(weld::Container* pPage, weld::DialogController* pController, const OUString& _rUIXMLDescription, const OUString& _rId, const SfxItemSet& _rCoreAttrs)
         : OGenericAdministrationPage(pPage, pController, _rUIXMLDescription, _rId, _rCoreAttrs)
         , m_bUserGrabFocus(false)
         , m_pCollection(nullptr)
-        , m_xFT_Connection(m_xBuilder->weld_label("browseurllabel"))
-        , m_xPB_Connection(m_xBuilder->weld_button("browse"))
-        , m_xPB_CreateDB(m_xBuilder->weld_button("create"))
-        , m_xConnectionURL(new OConnectionURLEdit(m_xBuilder->weld_entry("browseurl"), m_xBuilder->weld_label("browselabel")))
+        , m_xFT_Connection(m_xBuilder->weld_label(u"browseurllabel"_ustr))
+        , m_xPB_Connection(m_xBuilder->weld_button(u"browse"_ustr))
+        , m_xPB_CreateDB(m_xBuilder->weld_button(u"create"_ustr))
+        , m_xConnectionURL(new OConnectionURLEdit(m_xBuilder->weld_entry(u"browseurl"_ustr), m_xBuilder->weld_label(u"browselabel"_ustr)))
     {
         // extract the datasource type collection from the item set
         const DbuTypeCollectionItem* pCollectionItem = dynamic_cast<const DbuTypeCollectionItem*>( _rCoreAttrs.GetItem(DSID_TYPECOLLECTION) );
@@ -221,19 +217,8 @@ namespace dbaui
                 ::sfx2::FileDialogHelper aFileDlg(
                     ui::dialogs::TemplateDescription::FILEOPEN_READONLY_VERSION,
                     FileDialogFlags::NONE, GetFrameWeld());
-                aFileDlg.AddFilter(sFilterName,"*.mdb;*.mde");
+                aFileDlg.AddFilter(sFilterName,u"*.accdb;*.accde;*.mdb;*.mde"_ustr);
                 aFileDlg.SetCurrentFilter(sFilterName);
-                askForFileName(aFileDlg);
-            }
-            break;
-            case  ::dbaccess::DST_MSACCESS_2007:
-            {
-                OUString sFilterName2(DBA_RES (STR_MSACCESS_2007_FILTERNAME));
-                ::sfx2::FileDialogHelper aFileDlg(
-                    ui::dialogs::TemplateDescription::FILEOPEN_READONLY_VERSION,
-                    FileDialogFlags::NONE, GetFrameWeld());
-                aFileDlg.AddFilter(sFilterName2,"*.accdb;*.accde");
-                aFileDlg.SetCurrentFilter(sFilterName2);
                 askForFileName(aFileDlg);
             }
             break;
@@ -289,20 +274,15 @@ namespace dbaui
                 if (eType ==  ::dbaccess::DST_THUNDERBIRD)
                     profileType = MozillaProductType_Thunderbird;
 
-                Reference<XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+                const Reference<XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
                 Reference<XMozillaBootstrap> xMozillaBootstrap = MozillaBootstrap::create(xContext);
 
                 // collect all Mozilla Profiles
                 css::uno::Sequence< OUString > list;
 
                 xMozillaBootstrap->getProfileList( profileType, list );
-                const OUString * pArray = list.getConstArray();
 
-                sal_Int32 count = list.getLength();
-
-                std::set<OUString> aProfiles;
-                for (sal_Int32 index=0; index < count; index++)
-                    aProfiles.insert(pArray[index]);
+                std::set<OUString> aProfiles(list.begin(), list.end());
 
                 // execute the select dialog
                 ODatasourceSelectDialog aSelector(GetFrameWeld(), aProfiles);
@@ -323,7 +303,7 @@ namespace dbaui
                 ::sfx2::FileDialogHelper aFileDlg(
                     ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE,
                     FileDialogFlags::NONE, GetFrameWeld());
-                aFileDlg.AddFilter(sFilterName,"*.fdb");
+                aFileDlg.AddFilter(sFilterName,u"*.fdb"_ustr);
                 aFileDlg.SetCurrentFilter(sFilterName);
                 askForFileName(aFileDlg);
                 break;
@@ -347,7 +327,7 @@ namespace dbaui
                 ::sfx2::FileDialogHelper aFileDlg(
                     ui::dialogs::TemplateDescription::FILESAVE_AUTOEXTENSION,
                     FileDialogFlags::NONE, GetFrameWeld());
-                aFileDlg.AddFilter(sFilterName,"*.fdb");
+                aFileDlg.AddFilter(sFilterName,u"*.fdb"_ustr);
                 aFileDlg.SetCurrentFilter(sFilterName);
                 askForFileName(aFileDlg);
                 break;
@@ -607,12 +587,12 @@ namespace dbaui
             }
             else
             {
-                Any aContentType = aParent.getPropertyValue("ContentType");
+                Any aContentType = aParent.getPropertyValue(u"ContentType"_ustr);
                 aContentType >>= sContentType;
             }
 
             // the properties which need to be set on the new content
-            Sequence< OUString > aNewDirectoryProperties { "Title" };
+            Sequence< OUString > aNewDirectoryProperties { u"Title"_ustr };
 
             // loop
             for (   std::vector< OUString >::const_reverse_iterator aLocalName = aToBeCreated.rbegin();
@@ -663,7 +643,7 @@ namespace dbaui
 
                 const ::dbaccess::DATASOURCE_TYPE eType = m_pCollection->determineType(m_eType);
 
-                if ( ( ::dbaccess::DST_CALC == eType) || ( ::dbaccess::DST_WRITER == eType) || ( ::dbaccess::DST_MSACCESS == eType) || ( ::dbaccess::DST_MSACCESS_2007 == eType) )
+                if ( ( ::dbaccess::DST_CALC == eType) || ( ::dbaccess::DST_WRITER == eType) || ( ::dbaccess::DST_MSACCESS == eType) )
                 {
                     if( pathExists(sURL, true) == PATH_NOT_EXIST )
                     {

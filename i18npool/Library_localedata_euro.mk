@@ -50,6 +50,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,localedata_euro,\
 	CustomTarget/i18npool/localedata/localedata_fr_CH \
 	CustomTarget/i18npool/localedata/localedata_fr_CI \
 	CustomTarget/i18npool/localedata/localedata_fr_FR \
+	CustomTarget/i18npool/localedata/localedata_fr_GN \
 	CustomTarget/i18npool/localedata/localedata_fr_LU \
 	CustomTarget/i18npool/localedata/localedata_fr_MC \
 	CustomTarget/i18npool/localedata/localedata_fr_ML \
@@ -60,6 +61,7 @@ $(eval $(call gb_Library_add_generated_exception_objects,localedata_euro,\
 	CustomTarget/i18npool/localedata/localedata_fy_NL \
 	CustomTarget/i18npool/localedata/localedata_ga_IE \
 	CustomTarget/i18npool/localedata/localedata_gd_GB \
+	CustomTarget/i18npool/localedata/localedata_gos_NL \
 	CustomTarget/i18npool/localedata/localedata_gsc_FR \
 	CustomTarget/i18npool/localedata/localedata_hr_HR \
 	CustomTarget/i18npool/localedata/localedata_hsb_DE \
@@ -89,12 +91,14 @@ $(eval $(call gb_Library_add_generated_exception_objects,localedata_euro,\
 	CustomTarget/i18npool/localedata/localedata_pt_BR \
 	CustomTarget/i18npool/localedata/localedata_pt_MZ \
 	CustomTarget/i18npool/localedata/localedata_pt_PT \
+	CustomTarget/i18npool/localedata/localedata_ro_MD \
 	CustomTarget/i18npool/localedata/localedata_ro_RO \
 	CustomTarget/i18npool/localedata/localedata_rue_SK \
 	CustomTarget/i18npool/localedata/localedata_ru_RU \
 	CustomTarget/i18npool/localedata/localedata_sc_IT \
 	CustomTarget/i18npool/localedata/localedata_sk_SK \
 	CustomTarget/i18npool/localedata/localedata_sl_SI \
+	CustomTarget/i18npool/localedata/localedata_sq_AL \
 	CustomTarget/i18npool/localedata/localedata_sr_Latn_ME \
 	CustomTarget/i18npool/localedata/localedata_sr_Latn_RS \
 	CustomTarget/i18npool/localedata/localedata_sr_Latn_CS \

@@ -77,7 +77,6 @@ public:
     void AddChangeListener (const Link<MasterPageContainerChangeEvent&,void>& rLink);
     void RemoveChangeListener (const Link<MasterPageContainerChangeEvent&,void>& rLink);
     void UpdatePreviewSizePixel();
-    const Size& GetPreviewSizePixel (PreviewSize eSize) const;
 
     bool HasToken (Token aToken) const;
     SharedMasterPageDescriptor GetDescriptor (MasterPageContainer::Token aToken) const;
@@ -103,6 +102,8 @@ public:
         bool bSendEvents) override;
 
     void ReleaseDescriptor (Token aToken);
+
+    const Size& GetPreviewSizePixel(PreviewSize pPreviewSize);
 
     /** Called by the MasterPageContainerFiller to notify that all master
         pages from template documents have been added.
@@ -228,11 +229,6 @@ void MasterPageContainer::SetPreviewSize (PreviewSize eSize)
     mpImpl->FireContainerChange(
         MasterPageContainerChangeEvent::EventType::SIZE_CHANGED,
         NIL_TOKEN);
-}
-
-Size const & MasterPageContainer::GetPreviewSizePixel() const
-{
-    return mpImpl->GetPreviewSizePixel(mePreviewSize);
 }
 
 MasterPageContainer::Token MasterPageContainer::PutMasterPage (
@@ -450,6 +446,11 @@ void MasterPageContainer::InvalidatePreview (MasterPageContainer::Token aToken)
     mpImpl->InvalidatePreview(aToken);
 }
 
+const Size& MasterPageContainer::GetPreviewSizePixel()
+{
+    return mpImpl->GetPreviewSizePixel(mePreviewSize);
+}
+
 Image MasterPageContainer::GetPreviewForToken (MasterPageContainer::Token aToken)
 {
     return mpImpl->GetPreviewForToken(aToken,mePreviewSize);
@@ -580,14 +581,6 @@ void MasterPageContainer::Implementation::UpdatePreviewSizePixel()
     }
 }
 
-const Size& MasterPageContainer::Implementation::GetPreviewSizePixel (PreviewSize eSize) const
-{
-    if (eSize == SMALL)
-        return maSmallPreviewSizePixel;
-    else
-        return maLargePreviewSizePixel;
-}
-
 MasterPageContainer::Token MasterPageContainer::Implementation::PutMasterPage (
     const SharedMasterPageDescriptor& rpDescriptor)
 {
@@ -715,11 +708,6 @@ Image MasterPageContainer::Implementation::GetPreviewForToken (
                 break;
 
             case PS_PREPARING:
-                aPreview = GetPreviewSubstitution(
-                    STR_TASKPANEL_PREPARING_PREVIEW_SUBSTITUTION,
-                    ePreviewSize);
-                break;
-
             case PS_CREATABLE:
                 aPreview = GetPreviewSubstitution(
                     STR_TASKPANEL_PREPARING_PREVIEW_SUBSTITUTION,
@@ -787,7 +775,7 @@ Reference<frame::XModel> MasterPageContainer::Implementation::GetModel()
         // Create a new model.
         mxModel.set(
             ::comphelper::getProcessServiceFactory()->createInstance(
-                "com.sun.star.presentation.PresentationDocument"),
+                u"com.sun.star.presentation.PresentationDocument"_ustr),
             uno::UNO_QUERY);
 
         // Initialize the model.
@@ -814,7 +802,7 @@ Reference<frame::XModel> MasterPageContainer::Implementation::GetModel()
                 uno::Reference<beans::XPropertySet> xProperties(xNewPage, uno::UNO_QUERY);
                 if (xProperties.is())
                     xProperties->setPropertyValue(
-                        "Layout",
+                        u"Layout"_ustr,
                         Any(sal_Int16(AUTOLAYOUT_TITLE)));
             }
         }
@@ -826,6 +814,14 @@ SdDrawDocument* MasterPageContainer::Implementation::GetDocument()
 {
     GetModel();
     return mpDocument;
+}
+
+const Size& MasterPageContainer::Implementation::GetPreviewSizePixel(PreviewSize pPreviewSize)
+{
+    if (pPreviewSize == PreviewSize::SMALL)
+        return maSmallPreviewSizePixel;
+    else
+        return maLargePreviewSizePixel;
 }
 
 Image MasterPageContainer::Implementation::GetPreviewSubstitution (

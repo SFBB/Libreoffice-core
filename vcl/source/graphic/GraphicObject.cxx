@@ -58,10 +58,10 @@ void SearchForGraphics(uno::Reference<uno::XInterface> const & xInterface,
     uno::Reference<beans::XPropertySet> xPropertySet(xInterface, UNO_QUERY);
     if (xPropertySet.is())
     {
-        if (xPropertySet->getPropertySetInfo()->hasPropertyByName("ImageURL"))
+        if (xPropertySet->getPropertySetInfo()->hasPropertyByName(u"ImageURL"_ustr))
         {
             OUString sURL;
-            xPropertySet->getPropertyValue("ImageURL") >>= sURL;
+            xPropertySet->getPropertyValue(u"ImageURL"_ustr) >>= sURL;
             if (!sURL.isEmpty() && !GraphicObject::isGraphicObjectUniqueIdURL(sURL))
             {
                 Graphic aGraphic = vcl::graphic::loadFromURL(sURL);
@@ -70,10 +70,10 @@ void SearchForGraphics(uno::Reference<uno::XInterface> const & xInterface,
                     raGraphicList.push_back(aGraphic.GetXGraphic());
                 }
             }
-        } else if (xPropertySet->getPropertySetInfo()->hasPropertyByName("Graphic"))
+        } else if (xPropertySet->getPropertySetInfo()->hasPropertyByName(u"Graphic"_ustr))
         {
             uno::Reference<css::graphic::XGraphic> xGraphic;
-            xPropertySet->getPropertyValue("Graphic") >>= xGraphic;
+            xPropertySet->getPropertyValue(u"Graphic"_ustr) >>= xGraphic;
             if (xGraphic.is())
             {
                 raGraphicList.push_back(xGraphic);
@@ -385,20 +385,20 @@ bool GraphicObject::ImplGetCropParams(const OutputDevice& rOut, Point& rPt, Size
         if( !aSize100.IsEmpty() && nTotalWidth > 0 && nTotalHeight > 0 )
         {
             double fScale = static_cast<double>(aSize100.Width()) / nTotalWidth;
-            const tools::Long nNewLeft = -FRound( ( ( pAttr->GetMirrorFlags() & BmpMirrorFlags::Horizontal ) ? pAttr->GetRightCrop() : pAttr->GetLeftCrop() ) * fScale );
-            const tools::Long nNewRight = nNewLeft + FRound( aSize100.Width() * fScale ) - 1;
+            const tools::Long nNewLeft = basegfx::fround<tools::Long>( ( ( pAttr->GetMirrorFlags() & BmpMirrorFlags::Horizontal ) ? pAttr->GetRightCrop() : pAttr->GetLeftCrop() ) * -fScale );
+            const tools::Long nNewRight = nNewLeft + basegfx::fround<tools::Long>( aSize100.Width() * fScale ) - 1;
 
             fScale = static_cast<double>(rSz.Width()) / aSize100.Width();
-            rPt.AdjustX(FRound( nNewLeft * fScale ) );
-            rSz.setWidth( FRound( ( nNewRight - nNewLeft + 1 ) * fScale ) );
+            rPt.AdjustX(basegfx::fround<tools::Long>(nNewLeft * fScale));
+            rSz.setWidth(basegfx::fround<tools::Long>((nNewRight - nNewLeft + 1) * fScale));
 
             fScale = static_cast<double>(aSize100.Height()) / nTotalHeight;
-            const tools::Long nNewTop = -FRound( ( ( pAttr->GetMirrorFlags() & BmpMirrorFlags::Vertical ) ? pAttr->GetBottomCrop() : pAttr->GetTopCrop() ) * fScale );
-            const tools::Long nNewBottom = nNewTop + FRound( aSize100.Height() * fScale ) - 1;
+            const tools::Long nNewTop = basegfx::fround<tools::Long>( ( ( pAttr->GetMirrorFlags() & BmpMirrorFlags::Vertical ) ? pAttr->GetBottomCrop() : pAttr->GetTopCrop() ) * -fScale );
+            const tools::Long nNewBottom = nNewTop + basegfx::fround<tools::Long>( aSize100.Height() * fScale ) - 1;
 
             fScale = static_cast<double>(rSz.Height()) / aSize100.Height();
-            rPt.AdjustY(FRound( nNewTop * fScale ) );
-            rSz.setHeight( FRound( ( nNewBottom - nNewTop + 1 ) * fScale ) );
+            rPt.AdjustY(basegfx::fround<tools::Long>(nNewTop * fScale));
+            rSz.setHeight(basegfx::fround<tools::Long>((nNewBottom - nNewTop + 1) * fScale));
 
             if( nRot10 )
             {
@@ -743,10 +743,10 @@ Graphic GraphicObject::GetTransformedGraphic( const Size& rDestSize, const MapMo
                 const double fFactorX(static_cast<double>(aBitmapEx.GetSizePixel().Width()) / aSrcSizePixel.Width());
                 const double fFactorY(static_cast<double>(aBitmapEx.GetSizePixel().Height()) / aSrcSizePixel.Height());
 
-                aCropLeftTop.setWidth( basegfx::fround(aCropLeftTop.Width() * fFactorX) );
-                aCropLeftTop.setHeight( basegfx::fround(aCropLeftTop.Height() * fFactorY) );
-                aCropRightBottom.setWidth( basegfx::fround(aCropRightBottom.Width() * fFactorX) );
-                aCropRightBottom.setHeight( basegfx::fround(aCropRightBottom.Height() * fFactorY) );
+                aCropLeftTop.setWidth( basegfx::fround<tools::Long>(aCropLeftTop.Width() * fFactorX) );
+                aCropLeftTop.setHeight( basegfx::fround<tools::Long>(aCropLeftTop.Height() * fFactorY) );
+                aCropRightBottom.setWidth( basegfx::fround<tools::Long>(aCropRightBottom.Width() * fFactorX) );
+                aCropRightBottom.setHeight( basegfx::fround<tools::Long>(aCropRightBottom.Height() * fFactorY) );
 
                 aSrcSizePixel = aBitmapEx.GetSizePixel();
             }

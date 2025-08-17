@@ -28,9 +28,11 @@
 
 class SvGlobalName;
 class SwViewShell;
+class ItemInfoPackage;
 
 void InitCore();   // bastyp/init.cxx
 void FinitCore();
+ItemInfoPackage& getItemInfoPackageSwAttributes();
 
 namespace sw {
 
@@ -46,11 +48,8 @@ public:
 
     ~Filters();
 #ifndef DISABLE_DYNLOADING
-    oslGenericFunction GetMswordLibSymbol( const char *pSymbol );
+    static oslGenericFunction GetMswordLibSymbol( const char *pSymbol );
 #endif
-
-private:
-    osl::Module msword_;
 };
 
 }

@@ -53,19 +53,19 @@ ZipOutputStream::~ZipOutputStream()
 {
 }
 
-void ZipOutputStream::setEntry( ZipEntry *pEntry )
+void ZipOutputStream::setEntry(ZipEntry& rEntry)
 {
-    if (pEntry->nTime == -1)
-        pEntry->nTime = getCurrentDosTime();
-    if (pEntry->nMethod == -1)
-        pEntry->nMethod = DEFLATED;
-    pEntry->nVersion = 20;
-    pEntry->nFlag = 1 << 11;
-    if (pEntry->nSize == -1 || pEntry->nCompressedSize == -1 ||
-        pEntry->nCrc == -1)
+    if (rEntry.nTime == -1)
+        rEntry.nTime = getCurrentDosTime();
+    if (rEntry.nMethod == -1)
+        rEntry.nMethod = DEFLATED;
+    rEntry.nVersion = 20;
+    rEntry.nFlag = 1 << 11;
+    if (rEntry.nSize == -1 || rEntry.nCompressedSize == -1 ||
+        rEntry.nCrc == -1)
     {
-        pEntry->nSize = pEntry->nCompressedSize = 0;
-        pEntry->nFlag |= 8;
+        rEntry.nSize = rEntry.nCompressedSize = 0;
+        rEntry.nFlag |= 8;
     }
 }
 
@@ -87,7 +87,10 @@ void ZipOutputStream::rawCloseEntry( bool bEncrypt )
         writeDataDescriptor(*m_pCurrentEntry);
 
     if (bEncrypt)
+    {
         m_pCurrentEntry->nMethod = STORED;
+        assert(m_pCurrentEntry->nSize == m_pCurrentEntry->nCompressedSize);
+    }
 
     m_pCurrentEntry = nullptr;
 }
@@ -103,7 +106,7 @@ void ZipOutputStream::consumeScheduledThreadTaskEntry(std::unique_ptr<ZipOutputE
         return;
     }
 
-    writeLOC(pCandidate->getZipEntry(), pCandidate->isEncrypt());
+    writeLOC(pCandidate->moveZipEntry(), pCandidate->isEncrypt());
 
     sal_Int32 nRead;
     uno::Sequence< sal_Int8 > aSequence(n_ConstBufferSize);
@@ -142,7 +145,7 @@ void ZipOutputStream::consumeFinishedScheduledThreadTaskEntries()
     }
 
     // always reset to non-consumed entries
-    m_aEntries = aNonFinishedEntries;
+    m_aEntries = std::move(aNonFinishedEntries);
 }
 
 void ZipOutputStream::reduceScheduledThreadTasksToGivenNumberOrLess(std::size_t nThreadTasks)
@@ -174,10 +177,9 @@ void ZipOutputStream::finish()
     }
 
     sal_Int32 nOffset= static_cast < sal_Int32 > (m_aChucker.GetPosition());
-    for (ZipEntry* p : m_aZipList)
+    for (auto& p : m_aZipList)
     {
         writeCEN( *p );
-        delete p;
     }
     writeEND( nOffset, static_cast < sal_Int32 > (m_aChucker.GetPosition()) - nOffset);
     m_aZipList.clear();
@@ -219,7 +221,7 @@ static sal_uInt32 getTruncated( sal_Int64 nNum, bool *pIsTruncated )
 void ZipOutputStream::writeCEN( const ZipEntry &rEntry )
 {
     if ( !::comphelper::OStorageHelper::IsValidZipEntryFileName( rEntry.sPath, true ) )
-        throw IOException("Unexpected character is used in file name." );
+        throw IOException(u"Unexpected character is used in file name."_ustr );
 
     OString sUTF8Name = OUStringToOString( rEntry.sPath, RTL_TEXTENCODING_UTF8 );
     sal_Int16 nNameLength       = static_cast < sal_Int16 > ( sUTF8Name.getLength() );
@@ -285,15 +287,15 @@ void ZipOutputStream::writeExtraFields(const ZipEntry& rEntry)
     m_aChucker.WriteInt32( 0 );  //Number of the disk on which this file starts
 }
 
-void ZipOutputStream::writeLOC( ZipEntry *pEntry, bool bEncrypt )
+void ZipOutputStream::writeLOC(std::unique_ptr<ZipEntry>&& pEntry, bool bEncrypt)
 {
     assert(!m_pCurrentEntry && "Forgot to close an entry with rawCloseEntry()?");
-    m_pCurrentEntry = pEntry;
-    m_aZipList.push_back( m_pCurrentEntry );
+    m_aZipList.push_back(std::move(pEntry));
+    m_pCurrentEntry = m_aZipList.back().get();
     const ZipEntry &rEntry = *m_pCurrentEntry;
 
     if ( !::comphelper::OStorageHelper::IsValidZipEntryFileName( rEntry.sPath, true ) )
-        throw IOException("Unexpected character is used in file name." );
+        throw IOException(u"Unexpected character is used in file name."_ustr );
 
     OString sUTF8Name = OUStringToOString( rEntry.sPath, RTL_TEXTENCODING_UTF8 );
     sal_Int16 nNameLength       = static_cast < sal_Int16 > ( sUTF8Name.getLength() );

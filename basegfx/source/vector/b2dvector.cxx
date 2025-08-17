@@ -20,32 +20,30 @@
 #include <basegfx/vector/b2dvector.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/numeric/ftools.hxx>
+#include <cassert>
 
 namespace basegfx
 {
     B2DVector& B2DVector::normalize()
     {
-        double fLen(scalar(*this));
+        double fLen(std::hypot(mnX, mnY));
 
-        if(fTools::equalZero(fLen))
+        if(!fTools::equalZero(fLen))
         {
-            mnX = 0.0;
-            mnY = 0.0;
-        }
-        else
-        {
+            assert(fLen != 0 && "help coverity see it's not zero");
+
             const double fOne(1.0);
 
             if(!fTools::equal(fOne, fLen))
             {
-                fLen = sqrt(fLen);
-
-                if(!fTools::equalZero(fLen))
-                {
-                    mnX /= fLen;
-                    mnY /= fLen;
-                }
+                mnX /= fLen;
+                mnY /= fLen;
             }
+        }
+        else
+        {
+            mnX = 0.0;
+            mnY = 0.0;
         }
 
         return *this;
@@ -90,15 +88,17 @@ namespace basegfx
 
     B2DVector& B2DVector::setLength(double fLen)
     {
-        double fLenNow(scalar(*this));
+        double fLenNow(std::hypot(mnX, mnY));
 
         if(!fTools::equalZero(fLenNow))
         {
+            assert(fLenNow != 0 && "help coverity see it's not zero");
+
             const double fOne(1.0);
 
             if(!fTools::equal(fOne, fLenNow))
             {
-                fLen /= sqrt(fLenNow);
+                fLen /= fLenNow;
             }
 
             mnX *= fLen;

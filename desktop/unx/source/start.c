@@ -516,10 +516,11 @@ static ProgressStatus read_percent(ChildInfo const *info, int *pPercent)
     memmove(pBuffer, pNext, nNotProcessed);
 
     /* read data */
-    nRead = read(child_info_get_status_fd(info),
-                  pBuffer + nNotProcessed, BUFFER_LEN - nNotProcessed);
+    // coverity[ tainted_data_return : FALSE ] version 2023.12.2
+    ssize_t nThisRead = read(child_info_get_status_fd(info),
+                             pBuffer + nNotProcessed, BUFFER_LEN - nNotProcessed);
 
-    if (nRead < 0)
+    if (nThisRead < 0)
     {
         if (errno == EINTR)
             return ProgressContinue;
@@ -527,7 +528,7 @@ static ProgressStatus read_percent(ChildInfo const *info, int *pPercent)
         return ProgressExit;
     }
 
-    nRead += nNotProcessed;
+    nRead = nThisRead + nNotProcessed;
     pBuffer[nRead] = '\0';
 
     /* skip old data */
@@ -586,7 +587,7 @@ static void extend_library_path(const char *new_element)
     rtl_uString *pEnvName=NULL, *pOrigEnvVar=NULL, *pNewEnvVar=NULL;
 
     rtl_uString_newFromAscii(&pEnvName, "LD_LIBRARY_PATH");
-    rtl_uString_newFromAscii(&pNewEnvVar, new_element);
+    rtl_string2UString(&pNewEnvVar, new_element, strlen(new_element), RTL_TEXTENCODING_UTF8, OSTRING_TO_OUSTRING_CVTFLAGS);
 
     osl_getEnvironment(pEnvName, &pOrigEnvVar);
     if (pOrigEnvVar && pOrigEnvVar->length)
@@ -660,7 +661,7 @@ static void exec_javaldx(Args *args)
 
     if(err != osl_Process_E_None)
     {
-        fprintf (stderr, "Warning: failed to launch javaldx - java may not function correctly\n");
+        putenv("javaldx_warn=failed to launch javaldx - java may not function correctly");
 
         if (javaldx)
             osl_freeProcessHandle(javaldx);
@@ -678,7 +679,7 @@ static void exec_javaldx(Args *args)
 
         if (bytes_read <= 0)
         {
-            fprintf (stderr, "Warning: failed to read path from javaldx\n");
+            putenv("javaldx_warn=failed to read path from javaldx");
 
             if (javaldx)
                 osl_freeProcessHandle(javaldx);
@@ -785,7 +786,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         if ((fd=connect_pipe(pPipePath)) >= 0)
         {
             // Wait for answer
-            char resp[strlen("InternalIPC::SendArguments") + 1];
+            char resp[27]; // strlen("InternalIPC::SendArguments") + 1
             ssize_t n = read(fd, resp, SAL_N_ELEMENTS(resp));
             if (n == (ssize_t) SAL_N_ELEMENTS(resp) &&
                 (memcmp(resp, "InternalIPC::SendArguments",

@@ -80,7 +80,7 @@ namespace drawinglayer::processor3d
                         0,  // shadow3d doesn't have rPrimitive.getShadowBlur() yet.
                         std::move(aNewSubList));
 
-                    if(basegfx::fTools::more(rPrimitive.getShadowTransparence(), 0.0))
+                    if(rPrimitive.getShadowTransparence() > 0.0)
                     {
                         // create simpleTransparencePrimitive, add created primitives
                         primitive2d::Primitive2DContainer aNewTransPrimitiveVector { pNew };
@@ -108,7 +108,7 @@ namespace drawinglayer::processor3d
                         aLastViewInformation3D.getDeviceToView(),
                         aLastViewInformation3D.getViewTime(),
                         aLastViewInformation3D.getExtendedInformationSequence());
-                    updateViewInformation(aNewViewInformation3D);
+                    setViewInformation3D(aNewViewInformation3D);
 
                     if(mbShadowProjectionIsValid)
                     {
@@ -121,7 +121,7 @@ namespace drawinglayer::processor3d
                     process(rPrimitive.getChildren());
 
                     // restore transformations
-                    updateViewInformation(aLastViewInformation3D);
+                    setViewInformation3D(aLastViewInformation3D);
 
                     if(mbShadowProjectionIsValid)
                     {
@@ -224,7 +224,7 @@ namespace drawinglayer::processor3d
             mfLightPlaneScalar = maLightNormal.scalar(maShadowPlaneNormal);
 
             // use only when scalar is > 0.0, so the light is in front of the object
-            if(!basegfx::fTools::more(mfLightPlaneScalar, 0.0))
+            if(mfLightPlaneScalar <= 0.0 || basegfx::fTools::equalZero(mfLightPlaneScalar))
                 return;
 
             // prepare buffered WorldToEye and EyeToView

@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -9,7 +9,12 @@
 
 #pragma once
 
+#include "QtFrame.hxx"
+#include "QtInstance.hxx"
+
 #include <QtWidgets/QApplication>
+
+#include <sal/types.h>
 
 class QtGraphicsBase
 {
@@ -17,13 +22,18 @@ class QtGraphicsBase
 
 public:
     QtGraphicsBase()
-        : m_fDPR(qApp ? qApp->devicePixelRatio() : 1.0)
+        : m_fDPR(qApp ? GetQtInstance().EmscriptenLightweightRunInMainThread(
+                            [] { return qApp->devicePixelRatio(); })
+                      : 1.0)
     {
     }
 
     void setDevicePixelRatioF(qreal fDPR) { m_fDPR = fDPR; }
 
     qreal devicePixelRatioF() const { return m_fDPR; }
+
+protected:
+    static void ImplGetResolution(const QtFrame* pFrame, sal_Int32& rDPIX, sal_Int32& rDPIY);
 };
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

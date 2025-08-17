@@ -12,20 +12,20 @@
 #include <swruler.hxx>
 
 #include <viewsh.hxx>
+#include <viewopt.hxx>
 #include <edtwin.hxx>
 #include <PostItMgr.hxx>
 #include <view.hxx>
+#include <wrtsh.hxx>
 #include <cmdid.h>
 #include <sfx2/request.hxx>
-#include <tools/UnitConversion.hxx>
 #include <vcl/commandevent.hxx>
 #include <vcl/event.hxx>
+#include <vcl/ptrstyle.hxx>
 #include <vcl/window.hxx>
 #include <vcl/settings.hxx>
-#include <tools/json_writer.hxx>
 #include <strings.hrc>
 #include <comphelper/lok.hxx>
-#include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
 #define CONTROL_BORDER_WIDTH 1
 
@@ -83,6 +83,7 @@ SwCommentRuler::SwCommentRuler(SwViewShell* pViewSh, vcl::Window* pParent, SwEdi
     : SvxRuler(pParent, pWin, nRulerFlags, rBindings, nWinStyle | WB_HSCROLL)
     , mpViewShell(pViewSh)
     , mpSwWin(pWin)
+    , mbIsDrag(false)
     , mbIsHighlighted(false)
     , maFadeTimer("sw::SwCommentRuler maFadeTimer")
     , mnFadeRate(0)
@@ -102,8 +103,15 @@ SwCommentRuler::~SwCommentRuler() { disposeOnce(); }
 
 void SwCommentRuler::dispose()
 {
-    mpSwWin.clear();
+    mpSwWin.reset();
     SvxRuler::dispose();
+}
+
+sw::sidebarwindows::SidebarPosition SwCommentRuler::GetSidebarPosition()
+{
+    if (SwPostItMgr* pPostItMgr = mpViewShell->GetPostItMgr())
+        return pPostItMgr->GetSidebarPos(mpSwWin->GetView().GetWrtShell().GetCursorDocPos());
+    return sw::sidebarwindows::SidebarPosition::NONE;
 }
 
 void SwCommentRuler::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect)
@@ -152,7 +160,7 @@ void SwCommentRuler::DrawCommentControl(vcl::RenderContext& rRenderContext)
     // calculate label and arrow positions
     const OUString aLabel = SwResId(STR_COMMENTS_LABEL);
     const tools::Long nTriangleSize = maVirDev->GetTextHeight() / 2 + 1;
-    const tools::Long nTrianglePad = maVirDev->GetTextHeight() / 4;
+    const tools::Long nTrianglePad = maVirDev->GetTextHeight() / 2;
 
     Point aLabelPos(0, (aControlRect.GetHeight() - maVirDev->GetTextHeight()) / 2);
     Point aArrowPos(0, (aControlRect.GetHeight() - nTriangleSize) / 2);
@@ -160,7 +168,7 @@ void SwCommentRuler::DrawCommentControl(vcl::RenderContext& rRenderContext)
     if (!AllSettings::GetLayoutRTL()) // | > Comments |
     {
         aArrowPos.setX(nTrianglePad);
-        aLabelPos.setX(aArrowPos.X() + nTriangleSize + nTrianglePad);
+        aLabelPos.setX(aArrowPos.X() + nTriangleSize + nTrianglePad / 2);
     }
     else // RTL => | Comments < |
     {
@@ -199,6 +207,12 @@ void SwCommentRuler::Command(const CommandEvent& rCEvt)
 
 void SwCommentRuler::MouseMove(const MouseEvent& rMEvt)
 {
+    if (mbIsDrag)
+    {
+        mpSwWin->DrawCommentGuideLine(rMEvt.GetPosPixel());
+        return;
+    }
+
     SvxRuler::MouseMove(rMEvt);
     if (!mpViewShell->GetPostItMgr() || !mpViewShell->GetPostItMgr()->HasNotes())
         return;
@@ -206,6 +220,9 @@ void SwCommentRuler::MouseMove(const MouseEvent& rMEvt)
     UpdateCommentHelpText();
 
     Point aMousePos = rMEvt.GetPosPixel();
+    if (GetDragArea().Contains(aMousePos))
+        SetPointer(PointerStyle::HSizeBar);
+
     bool bWasHighlighted = mbIsHighlighted;
     mbIsHighlighted = GetCommentControlRegion().Contains(aMousePos);
     if (mbIsHighlighted != bWasHighlighted)
@@ -215,78 +232,55 @@ void SwCommentRuler::MouseMove(const MouseEvent& rMEvt)
 
 void SwCommentRuler::MouseButtonDown(const MouseEvent& rMEvt)
 {
+    // If right-click while dragging to resize the comment width, stop resizing
+    if (mbIsDrag && rMEvt.GetButtons() == MOUSE_RIGHT)
+    {
+        ReleaseMouse();
+        mpSwWin->ReleaseCommentGuideLine();
+        mbIsDrag = false;
+        return;
+    }
+
     Point aMousePos = rMEvt.GetPosPixel();
-    if (!rMEvt.IsLeft() || IsTracking() || !GetCommentControlRegion().Contains(aMousePos))
+    if (!rMEvt.IsLeft() || IsTracking()
+        || (!GetCommentControlRegion().Contains(aMousePos) && !GetDragArea().Contains(aMousePos)))
     {
         SvxRuler::MouseButtonDown(rMEvt);
         return;
     }
 
-    // Toggle notes visibility
-    SwView& rView = mpSwWin->GetView();
-    SfxRequest aRequest(rView.GetViewFrame(), SID_TOGGLE_NOTES);
-    rView.ExecViewOptions(aRequest);
+    if (GetDragArea().Contains(aMousePos))
+    {
+        mbIsDrag = true;
+        CaptureMouse();
+    }
+    else
+    {
+        // Toggle notes visibility
+        SwView& rView = mpSwWin->GetView();
+        SfxRequest aRequest(rView.GetViewFrame(), SID_TOGGLE_NOTES);
+        rView.ExecViewOptions(aRequest);
 
-    // It is inside comment control, so update help text
-    UpdateCommentHelpText();
+        // It is inside comment control, so update help text
+        UpdateCommentHelpText();
+    }
 
     Invalidate();
 }
 
-void SwCommentRuler::CreateJsonNotification(tools::JsonWriter& rJsonWriter)
+void SwCommentRuler::MouseButtonUp(const MouseEvent& rMEvt)
 {
-    // Note that GetMargin1(), GetMargin2(), GetNullOffset(), and GetPageOffset() return values in
-    // pixels. Not twips. So "converting" the returned values with convertTwipToMm100() is quite
-    // wrong. (Also, even if the return values actually were in twips, it is questionable why we
-    // would want to pass them in mm100, as all other length values in the LOKit protocol apparently
-    // are in twips.)
-
-    // Anyway, as the consuming code in Online mostly seems to work anyway, it is likely that it
-    // would work as well even if the values in pixels were passed without a bogus "conversion" to
-    // mm100. But let's keep this as is for now.
-
-    // Also note that in desktop LibreOffice, these pixel values for the ruler of course change as
-    // one changes the zoom level. (Can be seen if one temporarily modifies the NotifyKit() function
-    // below to call this CreateJsonNotification() function and print its result in all cases even
-    // without LibreOfficeKit::isActive().) But in both web-based Online and in the iOS app, the
-    // zoom level from the point of view of this code here apparently does not change even if one
-    // zooms from the Online code's point of view.
-    rJsonWriter.put("margin1", convertTwipToMm100(GetMargin1()));
-    rJsonWriter.put("margin2", convertTwipToMm100(GetMargin2()));
-    rJsonWriter.put("leftOffset", convertTwipToMm100(GetNullOffset()));
-    rJsonWriter.put("pageOffset", convertTwipToMm100(GetPageOffset()));
-
-    // GetPageWidth() on the other hand does return a value in twips.
-    // So here convertTwipToMm100() really does produce actual mm100. Fun.
-    rJsonWriter.put("pageWidth", convertTwipToMm100(GetPageWidth()));
-
+    if (!mbIsDrag)
     {
-        auto tabsNode = rJsonWriter.startNode("tabs");
-
-        // The RulerTab array elements that GetTabs() returns have their nPos field in twips. So these
-        // too are actual mm100.
-        for (auto const& tab : GetTabs())
-        {
-            auto tabNode = rJsonWriter.startNode("");
-            rJsonWriter.put("position", convertTwipToMm100(tab.nPos));
-            rJsonWriter.put("style", tab.nStyle);
-        }
+        SvxRuler::MouseButtonUp(rMEvt);
+        return;
     }
 
-    RulerUnitData aUnitData = GetCurrentRulerUnit();
-    rJsonWriter.put("unit", aUnitData.aUnitStr);
-}
-
-void SwCommentRuler::NotifyKit()
-{
-    if (!comphelper::LibreOfficeKit::isActive())
-        return;
-
-    tools::JsonWriter aJsonWriter;
-    CreateJsonNotification(aJsonWriter);
-    OString pJsonData = aJsonWriter.finishAndGetAsOString();
-    mpViewShell->GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_RULER_UPDATE,
-                                                               pJsonData);
+    mpSwWin->SetSidebarWidth(rMEvt.GetPosPixel());
+    ReleaseMouse();
+    mpSwWin->ReleaseCommentGuideLine();
+    mbIsDrag = false;
+    Invalidate();
 }
 
 void SwCommentRuler::Update()
@@ -295,7 +289,6 @@ void SwCommentRuler::Update()
     SvxRuler::Update();
     if (aPreviousControlRect != GetCommentControlRegion())
         Invalidate();
-    NotifyKit();
 }
 
 void SwCommentRuler::UpdateCommentHelpText()
@@ -306,6 +299,17 @@ void SwCommentRuler::UpdateCommentHelpText()
     else
         pTooltipResId = STR_SHOW_COMMENTS;
     SetQuickHelpText(SwResId(pTooltipResId));
+}
+
+tools::Rectangle SwCommentRuler::GetDragArea()
+{
+    tools::Rectangle base(GetCommentControlRegion());
+    if (GetSidebarPosition() == sw::sidebarwindows::SidebarPosition::LEFT)
+        base.Move(-5, 0);
+    else
+        base.Move(Size(base.GetWidth() - 5, 0));
+    base.SetWidth(10);
+    return base;
 }
 
 // TODO Make Ruler return its central rectangle instead of margins.
@@ -323,7 +327,7 @@ tools::Rectangle SwCommentRuler::GetCommentControlRegion()
 
     //FIXME When the page width is larger then screen, the ruler is misplaced by one pixel
     tools::Long nLeft = GetPageOffset();
-    if (GetTextRTL())
+    if (GetSidebarPosition() == sw::sidebarwindows::SidebarPosition::LEFT)
         nLeft += GetBorderOffset() - nSidebarWidth;
     else
         nLeft += GetWinOffset() + mpSwWin->LogicToPixel(Size(GetPageWidth(), 0)).Width();

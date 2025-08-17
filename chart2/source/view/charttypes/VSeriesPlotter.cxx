@@ -54,6 +54,7 @@
 
 //only for creation: @todo remove if all plotter are uno components and instantiated via servicefactory
 #include "BarChart.hxx"
+#include "HistogramChart.hxx"
 #include "PieChart.hxx"
 #include "AreaChart.hxx"
 #include "CandleStickChart.hxx"
@@ -400,7 +401,7 @@ rtl::Reference<SvxShapeText> VSeriesPlotter::createDataLabel( const rtl::Referen
 
     try
     {
-        const uno::Reference< css::beans::XPropertySet >& xPropertySet(
+        const uno::Reference< css::beans::XPropertySet > xPropertySet(
             rDataSeries.getPropertiesOfPoint( nPointIndex ) );
         if( xPropertySet.is() )
         {
@@ -443,7 +444,7 @@ rtl::Reference<SvxShapeText> VSeriesPlotter::createDataLabel( const rtl::Referen
         {
             uno::Reference< beans::XPropertySet > xProps( rDataSeries.getPropertiesOfPoint( nPointIndex ) );
             if( xProps.is() )
-                xProps->getPropertyValue( "CharHeight") >>= fViewFontSize;
+                xProps->getPropertyValue( u"CharHeight"_ustr) >>= fViewFontSize;
             fViewFontSize = convertPointToMm100(fViewFontSize);
         }
 
@@ -469,18 +470,18 @@ rtl::Reference<SvxShapeText> VSeriesPlotter::createDataLabel( const rtl::Referen
 
         //prepare text
         bool bTextWrap = false;
-        OUString aSeparator(" ");
+        OUString aSeparator(u" "_ustr);
         double fRotationDegrees = 0.0;
         try
         {
             uno::Reference< beans::XPropertySet > xPointProps( rDataSeries.getPropertiesOfPoint( nPointIndex ) );
             if(xPointProps.is())
             {
-                xPointProps->getPropertyValue( "TextWordWrap" ) >>= bTextWrap;
-                xPointProps->getPropertyValue( "LabelSeparator" ) >>= aSeparator;
+                xPointProps->getPropertyValue( u"TextWordWrap"_ustr ) >>= bTextWrap;
+                xPointProps->getPropertyValue( u"LabelSeparator"_ustr ) >>= aSeparator;
                 // Extract the optional text rotation through the
                 // "TextRotation" property attached to the passed data point.
-                xPointProps->getPropertyValue( "TextRotation" ) >>= fRotationDegrees;
+                xPointProps->getPropertyValue( u"TextRotation"_ustr ) >>= fRotationDegrees;
             }
         }
         catch( const uno::Exception& )
@@ -598,7 +599,7 @@ rtl::Reference<SvxShapeText> VSeriesPlotter::createDataLabel( const rtl::Referen
             }
         }
 
-        for( auto const & line : std::as_const(aTextList) )
+        for (auto const& line : aTextList)
         {
             if( !line.isEmpty() )
             {
@@ -680,7 +681,7 @@ rtl::Reference<SvxShapeText> VSeriesPlotter::createDataLabel( const rtl::Referen
 
             // set maximum text width
             uno::Any aTextMaximumFrameWidth( nTextWidth );
-            xTextShape->SvxShape::setPropertyValue( "TextMaximumFrameWidth", aTextMaximumFrameWidth );
+            xTextShape->SvxShape::setPropertyValue( u"TextMaximumFrameWidth"_ustr, aTextMaximumFrameWidth );
 
             // compute the total lines of text
             aTextSize = xTextShape->getSize();
@@ -692,7 +693,7 @@ rtl::Reference<SvxShapeText> VSeriesPlotter::createDataLabel( const rtl::Referen
         if( fRotationDegrees != 0.0 )
         {
             const double fDegreesPi( -basegfx::deg2rad(fRotationDegrees) );
-            xTextShape->SvxShape::setPropertyValue( "Transformation", ShapeFactory::makeTransformation( aScreenPosition2D, fDegreesPi ) );
+            xTextShape->SvxShape::setPropertyValue( u"Transformation"_ustr, ShapeFactory::makeTransformation( aScreenPosition2D, fDegreesPi ) );
             LabelPositionHelper::correctPositionForRotation( xTextShape, eAlignment, fRotationDegrees, true /*bRotateAroundCenter*/ );
         }
 
@@ -707,20 +708,12 @@ rtl::Reference<SvxShapeText> VSeriesPlotter::createDataLabel( const rtl::Referen
                     // "ShowCustomLeaderLines"
                     rDataSeries.getModel()->getFastPropertyValue( PROP_DATASERIES_SHOW_CUSTOM_LEADERLINES ).get<sal_Bool>())
                 {
+                    const basegfx::B2IRectangle aRect(
+                        BaseGFXHelper::makeRectangle(aRelPos, xTextShape->getSize()));
                     sal_Int32 nX1 = rScreenPosition2D.X;
                     sal_Int32 nY1 = rScreenPosition2D.Y;
-                    sal_Int32 nX2 = nX1;
-                    sal_Int32 nY2 = nY1;
-                    ::basegfx::B2IRectangle aRect(BaseGFXHelper::makeRectangle(aRelPos, xTextShape->getSize()));
-                    if (nX1 < aRelPos.X)
-                        nX2 = aRelPos.X;
-                    else if (nX1 > aRect.getMaxX())
-                        nX2 = aRect.getMaxX();
-
-                    if (nY1 < aRect.getMinY())
-                        nY2 = aRect.getMinY();
-                    else if (nY1 > aRect.getMaxY())
-                        nY2 = aRect.getMaxY();
+                    const sal_Int32 nX2 = std::clamp(nX1, aRelPos.X, aRect.getMaxX());
+                    const sal_Int32 nY2 = std::clamp(nY1, aRect.getMinY(), aRect.getMaxY());
 
                     //when the line is very short compared to the page size don't create one
                     ::basegfx::B2DVector aLength(nX1 - nX2, nY1 - nY2);
@@ -739,13 +732,11 @@ rtl::Reference<SvxShapeText> VSeriesPlotter::createDataLabel( const rtl::Referen
 
         // in case legend symbol has to be displayed, text shape position is
         // slightly changed.
-        const awt::Point aUnrotatedTextPos(xTextShape->getPosition());
         if( xSymbol.is() )
         {
-            const awt::Point aOldTextPos( xTextShape->getPosition() );
-            awt::Point aNewTextPos( aOldTextPos );
+            awt::Point aNewTextPos(xTextShape->getPosition());
 
-            awt::Point aSymbolPosition( aUnrotatedTextPos );
+            awt::Point aSymbolPosition(aNewTextPos);
             awt::Size aSymbolSize( xSymbol->getSize() );
             awt::Size aTextSize = xTextShape->getSize();
 
@@ -813,8 +804,8 @@ double lcl_getErrorBarLogicLength(
             {
                 double fPercent = 0;
                 if( xProp->getPropertyValue( bPositive
-                                             ? OUString("PositiveError")
-                                             : OUString("NegativeError") ) >>= fPercent )
+                                             ? u"PositiveError"_ustr
+                                             : u"NegativeError"_ustr ) >>= fPercent )
                 {
                     if( nIndex >=0 && nIndex < rData.getLength() &&
                         ! std::isnan( rData[nIndex] ) &&
@@ -827,16 +818,16 @@ double lcl_getErrorBarLogicLength(
             break;
             case css::chart::ErrorBarStyle::ABSOLUTE:
                 xProp->getPropertyValue( bPositive
-                                         ? OUString("PositiveError")
-                                         : OUString("NegativeError") ) >>= fResult;
+                                         ? u"PositiveError"_ustr
+                                         : u"NegativeError"_ustr ) >>= fResult;
                 break;
             case css::chart::ErrorBarStyle::ERROR_MARGIN:
             {
                 // todo: check if this is really what's called error-margin
                 double fPercent = 0;
                 if( xProp->getPropertyValue( bPositive
-                                             ? OUString("PositiveError")
-                                             : OUString("NegativeError") ) >>= fPercent )
+                                             ? u"PositiveError"_ustr
+                                             : u"NegativeError"_ustr ) >>= fPercent )
                 {
                     double fMaxValue = -std::numeric_limits<double>::infinity();
                     for(double d : rData)
@@ -956,7 +947,7 @@ void VSeriesPlotter::createErrorBar(
     , const double* pfScaledLogicX
     )
 {
-    if( !ChartTypeHelper::isSupportingStatisticProperties( m_xChartTypeModel, m_nDimension ) )
+    if (!m_xChartTypeModel->isSupportingStatisticProperties(m_nDimension))
         return;
 
     if( ! xErrorBarProperties.is())
@@ -968,9 +959,9 @@ void VSeriesPlotter::createErrorBar(
         bool bShowNegative = false;
         sal_Int32 nErrorBarStyle = css::chart::ErrorBarStyle::VARIANCE;
 
-        xErrorBarProperties->getPropertyValue( "ShowPositiveError") >>= bShowPositive;
-        xErrorBarProperties->getPropertyValue( "ShowNegativeError") >>= bShowNegative;
-        xErrorBarProperties->getPropertyValue( "ErrorBarStyle") >>= nErrorBarStyle;
+        xErrorBarProperties->getPropertyValue( u"ShowPositiveError"_ustr) >>= bShowPositive;
+        xErrorBarProperties->getPropertyValue( u"ShowNegativeError"_ustr) >>= bShowNegative;
+        xErrorBarProperties->getPropertyValue( u"ErrorBarStyle"_ustr) >>= nErrorBarStyle;
 
         if(!bShowPositive && !bShowNegative)
             return;
@@ -1148,7 +1139,7 @@ void VSeriesPlotter::createErrorRectangle(
     rtl::Reference<SvxShapeGroupAnyD> xErrorBorder_ShapesY =
         getErrorBarsGroupShape( rVDataSeries, rTarget, true );
 
-    if( !ChartTypeHelper::isSupportingStatisticProperties( m_xChartTypeModel, m_nDimension ) )
+    if (!m_xChartTypeModel->isSupportingStatisticProperties(m_nDimension))
         return;
 
     try
@@ -1163,15 +1154,15 @@ void VSeriesPlotter::createErrorRectangle(
 
         if ( bUseXErrorData )
         {
-            xErrorBorderPropX->getPropertyValue( "ErrorBarStyle" ) >>= nErrorBorderStyleX;
-            xErrorBorderPropX->getPropertyValue( "ShowPositiveError") >>= bShowXPositive;
-            xErrorBorderPropX->getPropertyValue( "ShowNegativeError") >>= bShowXNegative;
+            xErrorBorderPropX->getPropertyValue( u"ErrorBarStyle"_ustr ) >>= nErrorBorderStyleX;
+            xErrorBorderPropX->getPropertyValue( u"ShowPositiveError"_ustr) >>= bShowXPositive;
+            xErrorBorderPropX->getPropertyValue( u"ShowNegativeError"_ustr) >>= bShowXNegative;
         }
         if ( bUseYErrorData )
         {
-            xErrorBorderPropY->getPropertyValue( "ErrorBarStyle" ) >>= nErrorBorderStyleY;
-            xErrorBorderPropY->getPropertyValue( "ShowPositiveError") >>= bShowYPositive;
-            xErrorBorderPropY->getPropertyValue( "ShowNegativeError") >>= bShowYNegative;
+            xErrorBorderPropY->getPropertyValue( u"ErrorBarStyle"_ustr ) >>= nErrorBorderStyleY;
+            xErrorBorderPropY->getPropertyValue( u"ShowPositiveError"_ustr) >>= bShowYPositive;
+            xErrorBorderPropY->getPropertyValue( u"ShowNegativeError"_ustr) >>= bShowYNegative;
         }
 
         if ( bUseXErrorData && nErrorBorderStyleX == css::chart::ErrorBarStyle::NONE )
@@ -1197,8 +1188,8 @@ void VSeriesPlotter::createErrorRectangle(
         double fScaledX = fX;
         m_pPosHelper->doLogicScaling( &fScaledX, nullptr, nullptr );
 
-        uno::Sequence< double > aDataX( rVDataSeries.getAllX() );
-        uno::Sequence< double > aDataY( rVDataSeries.getAllY() );
+        const uno::Sequence< double >& aDataX( rVDataSeries.getAllX() );
+        const uno::Sequence< double >& aDataY( rVDataSeries.getAllY() );
 
         double fPosX = 0.0;
         double fPosY = 0.0;
@@ -1312,7 +1303,7 @@ void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries const & rVDataSer
 {
     if(m_nDimension!=2)
         return;
-    rtl::Reference< DataSeries > xContainer( rVDataSeries.getModel() );
+    const rtl::Reference< DataSeries >& xContainer( rVDataSeries.getModel() );
     if(!xContainer.is())
         return;
 
@@ -1340,14 +1331,14 @@ void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries const & rVDataSer
 
         if ( !bAverageLine )
         {
-            rCurve->getPropertyValue( "PolynomialDegree") >>= aDegree;
-            rCurve->getPropertyValue( "MovingAveragePeriod") >>= aPeriod;
-            rCurve->getPropertyValue( "MovingAverageType") >>= aMovingAverageType;
-            rCurve->getPropertyValue( "ExtrapolateForward") >>= aExtrapolateForward;
-            rCurve->getPropertyValue( "ExtrapolateBackward") >>= aExtrapolateBackward;
-            rCurve->getPropertyValue( "ForceIntercept") >>= bForceIntercept;
+            rCurve->getPropertyValue( u"PolynomialDegree"_ustr) >>= aDegree;
+            rCurve->getPropertyValue( u"MovingAveragePeriod"_ustr) >>= aPeriod;
+            rCurve->getPropertyValue( u"MovingAverageType"_ustr) >>= aMovingAverageType;
+            rCurve->getPropertyValue( u"ExtrapolateForward"_ustr) >>= aExtrapolateForward;
+            rCurve->getPropertyValue( u"ExtrapolateBackward"_ustr) >>= aExtrapolateBackward;
+            rCurve->getPropertyValue( u"ForceIntercept"_ustr) >>= bForceIntercept;
             if (bForceIntercept)
-                rCurve->getPropertyValue( "InterceptValue") >>= aInterceptValue;
+                rCurve->getPropertyValue( u"InterceptValue"_ustr) >>= aInterceptValue;
         }
 
         double fChartMinX = m_pPosHelper->getLogicMinX();
@@ -1432,7 +1423,7 @@ void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries const & rVDataSer
 
         drawing::PolyPolygonShape3D aClippedPoly;
         Clipping::clipPolygonAtRectangle( aRegressionPoly, m_pPosHelper->getScaledLogicClipDoubleRect(), aClippedPoly );
-        aRegressionPoly = aClippedPoly;
+        aRegressionPoly = std::move(aClippedPoly);
         m_pPosHelper->transformScaledLogicToScene( aRegressionPoly );
 
         awt::Point aDefaultPos;
@@ -1446,7 +1437,7 @@ void VSeriesPlotter::createRegressionCurvesShapes( VDataSeries const & rVDataSer
                 createGroupShape( xTarget, rVDataSeries.getDataCurveCID( nN, bAverageLine ) );
             rtl::Reference<SvxShapePolyPolygon> xShape = ShapeFactory::createLine2D(
                 xRegressionGroupShapes, PolyToPointSequence( aRegressionPoly ), &aVLineProperties );
-            ShapeFactory::setShapeName( xShape, "MarkHandles" );
+            ShapeFactory::setShapeName( xShape, u"MarkHandles"_ustr );
             aDefaultPos = xShape->getPosition();
         }
 
@@ -1494,8 +1485,8 @@ void VSeriesPlotter::createRegressionCurveEquationShapes(
 
     bool bShowEquation = false;
     bool bShowCorrCoeff = false;
-    if(!(( xEquationProperties->getPropertyValue( "ShowEquation") >>= bShowEquation ) &&
-       ( xEquationProperties->getPropertyValue( "ShowCorrelationCoefficient") >>= bShowCorrCoeff )))
+    if(!(( xEquationProperties->getPropertyValue( u"ShowEquation"_ustr) >>= bShowEquation ) &&
+       ( xEquationProperties->getPropertyValue( u"ShowCorrelationCoefficient"_ustr) >>= bShowCorrCoeff )))
         return;
 
     if( ! (bShowEquation || bShowCorrCoeff))
@@ -1510,10 +1501,10 @@ void VSeriesPlotter::createRegressionCurveEquationShapes(
     if ( bShowEquation )
     {
         OUString aXName, aYName;
-        if ( !(xEquationProperties->getPropertyValue( "XName" ) >>= aXName) )
-            aXName = OUString( "x" );
-        if ( !(xEquationProperties->getPropertyValue( "YName" ) >>= aYName) )
-            aYName = OUString( "f(x)" );
+        if ( !(xEquationProperties->getPropertyValue( u"XName"_ustr ) >>= aXName) )
+            aXName = u"x"_ustr;
+        if ( !(xEquationProperties->getPropertyValue( u"YName"_ustr ) >>= aYName) )
+            aYName = u"f(x)"_ustr;
         xRegressionCurveCalculator->setXYNames( aXName, aYName );
     }
 
@@ -1565,7 +1556,7 @@ void VSeriesPlotter::createRegressionCurveEquationShapes(
 
         awt::Point aScreenPosition2D;
         chart2::RelativePosition aRelativePosition;
-        if( xEquationProperties->getPropertyValue( "RelativePosition") >>= aRelativePosition )
+        if( xEquationProperties->getPropertyValue( u"RelativePosition"_ustr) >>= aRelativePosition )
         {
             //@todo decide whether x is primary or secondary
             double fX = aRelativePosition.Primary*m_aPageReferenceSize.Width;
@@ -1683,13 +1674,13 @@ double VSeriesPlotter::getMaximumX()
     return fMaximum;
 }
 
-double VSeriesPlotter::getMinimumYInRange( double fMinimumX, double fMaximumX, sal_Int32 nAxisIndex )
+std::pair<double, double> VSeriesPlotter::getMinimumAndMaximumYInRange( double fMinimumX, double fMaximumX, sal_Int32 nAxisIndex )
 {
     if( !m_bCategoryXAxis || ( m_pExplicitCategoriesProvider && m_pExplicitCategoriesProvider->isDateAxis() ) )
     {
         double fMinY, fMaxY;
         getMinimumAndMaximumYInContinuousXRange( fMinY, fMaxY, fMinimumX, fMaximumX, nAxisIndex );
-        return fMinY;
+        return { fMinY, fMaxY };
     }
 
     double fMinimum = std::numeric_limits<double>::infinity();
@@ -1711,40 +1702,10 @@ double VSeriesPlotter::getMinimumYInRange( double fMinimumX, double fMaximumX, s
         }
     }
     if(std::isinf(fMinimum))
-        return std::numeric_limits<double>::quiet_NaN();
-    return fMinimum;
-}
-
-double VSeriesPlotter::getMaximumYInRange( double fMinimumX, double fMaximumX, sal_Int32 nAxisIndex )
-{
-    if( !m_bCategoryXAxis || ( m_pExplicitCategoriesProvider && m_pExplicitCategoriesProvider->isDateAxis() ) )
-    {
-        double fMinY, fMaxY;
-        getMinimumAndMaximumYInContinuousXRange( fMinY, fMaxY, fMinimumX, fMaximumX, nAxisIndex );
-        return fMaxY;
-    }
-
-    double fMinimum = std::numeric_limits<double>::infinity();
-    double fMaximum = -std::numeric_limits<double>::infinity();
-    for( std::vector< VDataSeriesGroup > & rXSlots : m_aZSlots)
-    {
-        for(VDataSeriesGroup & rXSlot : rXSlots)
-        {
-            double fLocalMinimum, fLocalMaximum;
-            rXSlot.calculateYMinAndMaxForCategoryRange(
-                                static_cast<sal_Int32>(fMinimumX-1.0) //first category (index 0) matches with real number 1.0
-                                , static_cast<sal_Int32>(fMaximumX-1.0) //first category (index 0) matches with real number 1.0
-                                , isSeparateStackingForDifferentSigns( 1 )
-                                , fLocalMinimum, fLocalMaximum, nAxisIndex );
-            if(fMaximum<fLocalMaximum)
-                fMaximum=fLocalMaximum;
-            if(fMinimum>fLocalMinimum)
-                fMinimum=fLocalMinimum;
-        }
-    }
+        fMinimum = std::numeric_limits<double>::quiet_NaN();
     if(std::isinf(fMaximum))
-        return std::numeric_limits<double>::quiet_NaN();
-    return fMaximum;
+        fMaximum = std::numeric_limits<double>::quiet_NaN();
+    return { fMinimum, fMaximum };
 }
 
 double VSeriesPlotter::getMinimumZ()
@@ -1952,117 +1913,65 @@ namespace {
 class PerXMinMaxCalculator
 {
     typedef std::pair<double, double> MinMaxType;
-    typedef std::map<size_t, MinMaxType> SeriesMinMaxType;
+    typedef std::vector<MinMaxType> SeriesMinMaxType;
     typedef std::map<double, SeriesMinMaxType> GroupMinMaxType;
-    typedef std::unordered_map<double, MinMaxType> TotalStoreType;
     GroupMinMaxType m_SeriesGroup;
+    size_t mnNumSeries;
     size_t mnCurSeries;
 
 public:
-    PerXMinMaxCalculator() : mnCurSeries(0) {}
+    PerXMinMaxCalculator(size_t numSeries) : mnNumSeries(numSeries), mnCurSeries(0) {}
 
     void nextSeries() { ++mnCurSeries; }
 
     void setValue(double fX, double fY)
     {
-        SeriesMinMaxType* pStore = getByXValue(fX); // get storage for given X value.
-        if (!pStore)
-            // This shouldn't happen!
-            return;
+        SeriesMinMaxType& rStore = m_SeriesGroup[fX]; // get storage for given X value.
+        if (rStore.empty())
+            rStore.resize(mnNumSeries, { std::numeric_limits<double>::max(), std::numeric_limits<double>::min() });
 
-        SeriesMinMaxType::iterator it = pStore->lower_bound(mnCurSeries);
-        if (it != pStore->end() && !pStore->key_comp()(mnCurSeries, it->first))
-        {
-            MinMaxType& r = it->second;
-            // A min-max pair already exists for this series.  Update it.
-            if (fY < r.first)
-                r.first = fY;
-            if (r.second < fY)
-                r.second = fY;
-        }
-        else
-        {
-            // No existing pair. Insert a new one.
-            pStore->insert(
-                it, SeriesMinMaxType::value_type(
-                    mnCurSeries, MinMaxType(fY,fY)));
-        }
+        MinMaxType& r = rStore[mnCurSeries];
+        if (fY < r.first)
+            r.first = fY;
+        if (r.second < fY)
+            r.second = fY;
     }
 
     void getTotalRange(double& rfMin, double& rfMax) const
     {
-        TotalStoreType aStore;
-        getTotalStore(aStore);
-
-        if (aStore.empty())
+        if (m_SeriesGroup.empty())
         {
             rfMin = std::numeric_limits<double>::quiet_NaN();
             rfMax = std::numeric_limits<double>::quiet_NaN();
             return;
         }
 
-        TotalStoreType::const_iterator it = aStore.begin(), itEnd = aStore.end();
-        rfMin = it->second.first;
-        rfMax = it->second.second;
-        for (++it; it != itEnd; ++it)
-        {
-            if (rfMin > it->second.first)
-                rfMin = it->second.first;
-            if (rfMax < it->second.second)
-                rfMax = it->second.second;
-        }
-    }
+        rfMin = std::numeric_limits<double>::max();
+        rfMax = std::numeric_limits<double>::min();
 
-private:
-    /**
-     * Parse all data and reduce them into a set of global Y value ranges per
-     * X value.
-     */
-    void getTotalStore(TotalStoreType& rStore) const
-    {
-        TotalStoreType aStore;
+        /**
+         * For each, X value, calculate Y value range
+         */
         for (auto const& it : m_SeriesGroup)
         {
-            double fX = it.first;
-
             const SeriesMinMaxType& rSeries = it.second;
-            for (auto const& series : rSeries)
+            MinMaxType aPerXMinMax { std::numeric_limits<double>::max(), 0.0 };
+            for (MinMaxType const& series : rSeries)
             {
-                double fYMin = series.second.first, fYMax = series.second.second;
-                TotalStoreType::iterator itr = aStore.find(fX);
-                if (itr == aStore.end())
-                    // New min-max pair for give X value.
-                    aStore.emplace(fX, std::pair<double,double>(fYMin,fYMax));
-                else
-                {
-                    MinMaxType& r = itr->second;
-                    if (fYMin < r.first)
-                        r.first = fYMin; // min y-value
+                double fYMin = series.first, fYMax = series.second;
+                if (fYMin < aPerXMinMax.first)
+                    aPerXMinMax.first = fYMin; // min y-value
 
-                    r.second += fYMax; // accumulative max y-value.
-                }
+                aPerXMinMax.second += fYMax; // accumulative max y-value.
             }
+
+            if (rfMin > aPerXMinMax.first)
+                rfMin = aPerXMinMax.first;
+            if (rfMax < aPerXMinMax.second)
+                rfMax = aPerXMinMax.second;
         }
-        rStore.swap(aStore);
     }
 
-    SeriesMinMaxType* getByXValue(double fX)
-    {
-        GroupMinMaxType::iterator it = m_SeriesGroup.find(fX);
-        if (it == m_SeriesGroup.end())
-        {
-            std::pair<GroupMinMaxType::iterator,bool> r =
-                m_SeriesGroup.insert(std::make_pair(fX, SeriesMinMaxType{}));
-
-            if (!r.second)
-                // insertion failed.
-                return nullptr;
-
-            it = r.first;
-        }
-
-        return &it->second;
-    }
 };
 
 }
@@ -2077,17 +1986,26 @@ void VDataSeriesGroup::getMinimumAndMaximumYInContinuousXRange(
         // No data series.  Bail out.
         return;
 
-    PerXMinMaxCalculator aRangeCalc;
+    size_t nNumSeries = 0;
     for (const std::unique_ptr<VDataSeries> & pSeries : m_aSeriesVector)
     {
         if (!pSeries)
             continue;
+        if (nAxisIndex != pSeries->getAttachedAxisIndex())
+            continue;
+        nNumSeries++;
+    }
+
+    PerXMinMaxCalculator aRangeCalc(nNumSeries);
+    for (const std::unique_ptr<VDataSeries> & pSeries : m_aSeriesVector)
+    {
+        if (!pSeries)
+            continue;
+        if (nAxisIndex != pSeries->getAttachedAxisIndex())
+            continue;
 
         for (sal_Int32 i = 0, n = pSeries->getTotalPointCount(); i < n; ++i)
         {
-            if (nAxisIndex != pSeries->getAttachedAxisIndex())
-                continue;
-
             double fX = pSeries->getXValue(i);
             if (std::isnan(fX))
                 continue;
@@ -2307,6 +2225,49 @@ OUString VSeriesPlotter::getCategoryName( sal_Int32 nPointIndex ) const
     return OUString();
 }
 
+namespace {
+// The following it to support rendering order for combo charts. A chart type
+// with a lower rendering order is rendered before (i.e., behind) a chart with a
+// higher rendering order. The rendering orders are based on rough guesses about
+// how much one chart (type) will obscure another chart (type). The intent is to
+// minimize obscuring of data, by putting charts that generally cover more
+// pixels (e.g., area charts) behind ones that generally cover fewer (e.g., line
+// charts).
+struct ROrderPair
+{
+    ROrderPair(OUString n, sal_Int32 r) : chartName(std::move(n)), renderOrder(r) {}
+
+    OUString chartName;
+    sal_Int32 renderOrder;
+};
+
+const ROrderPair pairList[] = {
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_AREA, 0),
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_BAR, 6),   // bar & column are same
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_COLUMN, 6),
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_HISTOGRAM, 9),
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_LINE, 8),
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_SCATTER, 5),
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_PIE, 1),
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_NET, 3),
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_FILLED_NET, 2),
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK, 7),
+    ROrderPair(CHART2_SERVICE_NAME_CHARTTYPE_BUBBLE, 4)
+};
+} // unnamed
+
+sal_Int32 VSeriesPlotter::getRenderOrder() const
+{
+    OUString aChartType = m_xChartTypeModel->getChartType();
+    for (const auto& elem : pairList) {
+        if (aChartType.equalsIgnoreAsciiCase(elem.chartName)) {
+            return elem.renderOrder;
+        }
+    }
+    SAL_WARN("chart2", "Unsupported chart type in getRenderOrder()");
+    return 0;
+}
+
 std::vector<VDataSeries const*> VSeriesPlotter::getAllSeries() const
 {
     std::vector<VDataSeries const*> aAllSeries;
@@ -2407,7 +2368,7 @@ void VSeriesPlotter::setCoordinateSystemResolution( const Sequence< sal_Int32 >&
 
 bool VSeriesPlotter::WantToPlotInFrontOfAxisLine()
 {
-    return ChartTypeHelper::isSeriesInFrontOfAxisLine( m_xChartTypeModel );
+    return m_xChartTypeModel->isSeriesInFrontOfAxisLine();
 }
 
 bool VSeriesPlotter::shouldSnapRectToUsedArea()
@@ -2434,7 +2395,7 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntries(
 
         try
         {
-            xCooSys->getPropertyValue( "SwapXAndYAxis" ) >>= bSwapXAndY;
+            xCooSys->getPropertyValue( u"SwapXAndYAxis"_ustr ) >>= bSwapXAndY;
         }
         catch( const uno::Exception& )
         {
@@ -2549,7 +2510,7 @@ bool lcl_HasVisibleLine( const uno::Reference< beans::XPropertySet >& xProps, bo
     bool bHasVisibleLine = false;
     rbHasDashedLine = false;
     drawing::LineStyle aLineStyle = drawing::LineStyle_NONE;
-    if( xProps.is() && ( xProps->getPropertyValue( "LineStyle") >>= aLineStyle ) )
+    if( xProps.is() && ( xProps->getPropertyValue( u"LineStyle"_ustr) >>= aLineStyle ) )
     {
         if( aLineStyle != drawing::LineStyle_NONE )
             bHasVisibleLine = true;
@@ -2562,7 +2523,7 @@ bool lcl_HasVisibleLine( const uno::Reference< beans::XPropertySet >& xProps, bo
 bool lcl_HasRegressionCurves( const VDataSeries& rSeries, bool& rbHasDashedLine )
 {
     bool bHasRegressionCurves = false;
-    rtl::Reference< DataSeries > xRegrCont( rSeries.getModel() );
+    const rtl::Reference< DataSeries >& xRegrCont( rSeries.getModel() );
     for( const rtl::Reference< RegressionCurveModel > & rCurve : xRegrCont->getRegressionCurves2() )
     {
         bHasRegressionCurves = true;
@@ -2682,7 +2643,7 @@ rtl::Reference< SvxShapeGroup > VSeriesPlotter::createLegendSymbolForPoint(
 
     // the default properties for the data point are the data series properties.
     // If a data point has own attributes overwrite them
-    Reference< beans::XPropertySet > xSeriesProps( rSeries.getPropertiesOfSeries() );
+    const Reference< beans::XPropertySet >& xSeriesProps( rSeries.getPropertiesOfSeries() );
     Reference< beans::XPropertySet > xPointSet( xSeriesProps );
     if( rSeries.isAttributedDataPoint( nPointIndex ) )
         xPointSet.set( rSeries.getPropertiesOfPoint( nPointIndex ));
@@ -2700,7 +2661,7 @@ rtl::Reference< SvxShapeGroup > VSeriesPlotter::createLegendSymbolForPoint(
 
             OSL_ASSERT( xPointSet.is());
             xPointSet->setPropertyValue(
-                "Color", uno::Any( m_xColorScheme->getColorByIndex( nPointIndex )));
+                u"Color"_ustr, uno::Any( m_xColorScheme->getColorByIndex( nPointIndex )));
         }
     }
 
@@ -2761,7 +2722,7 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
             for( sal_Int32 nIdx=0; nIdx<aCategoryNames.getLength(); ++nIdx )
             {
                 bool deletedLegendEntry = false;
-                for (const auto& deletedLegendEntryIdx : std::as_const(deletedLegendEntries))
+                for (const auto& deletedLegendEntryIdx : deletedLegendEntries)
                 {
                     if (nIdx == deletedLegendEntryIdx)
                     {
@@ -2782,7 +2743,7 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
                 // set CID to symbol for selection
                 if( xShape.is() )
                 {
-                    aEntry.xSymbol = xSymbolGroup;
+                    aEntry.xSymbol = std::move(xSymbolGroup);
 
                     OUString aChildParticle( ObjectIdentifier::createChildParticleWithIndex( OBJECTTYPE_DATA_POINT, nIdx ) );
                     aChildParticle = ObjectIdentifier::addChildParticle( aChildParticle, ObjectIdentifier::createChildParticleWithIndex( OBJECTTYPE_LEGEND_ENTRY, 0 ) );
@@ -2811,7 +2772,7 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
             // set CID to symbol for selection
             if( xShape.is())
             {
-                aEntry.xSymbol = xSymbolGroup;
+                aEntry.xSymbol = std::move(xSymbolGroup);
 
                 OUString aChildParticle( ObjectIdentifier::createChildParticleWithIndex( OBJECTTYPE_LEGEND_ENTRY, 0 ) );
                 OUString aCID = ObjectIdentifier::createClassifiedIdentifierForParticles( rSeries.getSeriesParticle(), aChildParticle );
@@ -2819,7 +2780,7 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
             }
 
             // label
-            aLabelText = rSeries.getModel()->getLabelForRole( m_xChartTypeModel.is() ? m_xChartTypeModel->getRoleOfSequenceForSeriesLabel() : "values-y");
+            aLabelText = rSeries.getModel()->getLabelForRole( m_xChartTypeModel.is() ? m_xChartTypeModel->getRoleOfSequenceForSeriesLabel() : u"values-y"_ustr);
             aEntry.xLabel = FormattedStringHelper::createFormattedString( aLabelText, xTextProperties );
 
             aResult.push_back(aEntry);
@@ -2827,10 +2788,10 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
 
         // don't show legend entry of regression curve & friends if this type of chart
         // doesn't support statistics #i63016#, fdo#37197
-        if (!ChartTypeHelper::isSupportingStatisticProperties( m_xChartTypeModel, m_nDimension ))
+        if (!m_xChartTypeModel->isSupportingStatisticProperties(m_nDimension))
             return aResult;
 
-        rtl::Reference< DataSeries > xRegrCont = rSeries.getModel();
+        const rtl::Reference< DataSeries >& xRegrCont = rSeries.getModel();
         if( xRegrCont.is())
         {
             const std::vector< rtl::Reference< RegressionCurveModel > > & aCurves = xRegrCont->getRegressionCurves2();
@@ -2854,7 +2815,7 @@ std::vector< ViewLegendEntry > VSeriesPlotter::createLegendEntriesForSeries(
                 // set CID to symbol for selection
                 if( xShape.is())
                 {
-                    aEntry.xSymbol = xSymbolGroup;
+                    aEntry.xSymbol = std::move(xSymbolGroup);
 
                     bool bAverageLine = RegressionCurveHelper::isMeanValueLine( aCurves[i] );
                     ObjectType eObjectType = bAverageLine ? OBJECTTYPE_DATA_AVERAGE_LINE : OBJECTTYPE_DATA_CURVE;
@@ -2898,7 +2859,7 @@ std::vector<ViewLegendSymbol> VSeriesPlotter::createSymbolsForSeries(
         // set CID to symbol for selection
         if (xShape.is())
         {
-            aEntry.xSymbol = xSymbolGroup;
+            aEntry.xSymbol = std::move(xSymbolGroup);
             aResult.push_back(aEntry);
         }
     }
@@ -2924,6 +2885,8 @@ VSeriesPlotter* VSeriesPlotter::createSeriesPlotter(
         pRet = new BarChart(xChartTypeModel,nDimensionCount);
     else if( aChartType.equalsIgnoreAsciiCase( CHART2_SERVICE_NAME_CHARTTYPE_BAR ) )
         pRet = new BarChart(xChartTypeModel,nDimensionCount);
+    else if( aChartType.equalsIgnoreAsciiCase( CHART2_SERVICE_NAME_CHARTTYPE_HISTOGRAM ) )
+        pRet = new HistogramChart(xChartTypeModel, nDimensionCount);
     else if( aChartType.equalsIgnoreAsciiCase( CHART2_SERVICE_NAME_CHARTTYPE_AREA ) )
         pRet = new AreaChart(xChartTypeModel,nDimensionCount,true);
     else if( aChartType.equalsIgnoreAsciiCase( CHART2_SERVICE_NAME_CHARTTYPE_LINE ) )

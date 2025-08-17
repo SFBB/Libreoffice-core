@@ -31,7 +31,7 @@ class DrawViewShell;
 /**
  * Derivative of ::sd::View; contains also a pointer to the document
  */
-class SD_DLLPUBLIC DrawView : public ::sd::View
+class SAL_DLLPUBLIC_RTTI DrawView : public ::sd::View
 {
 public:
 
@@ -45,7 +45,7 @@ public:
     void CompleteRedraw(OutputDevice* pOutDev, const vcl::Region& rReg, sdr::contact::ViewObjectContactRedirector* pRedirector = nullptr) override;
 
     virtual bool SetAttributes(const SfxItemSet& rSet, bool bReplaceAll = false, bool bSlide = false, bool bMaster = false) override;
-    void SetMasterAttributes(SdrObject* pObject, const SdPage& rPage, SfxItemSet rSet, SfxStyleSheetBasePool* pStShPool, bool& bOk, bool bMaster, bool bSlide);
+    void SetMasterAttributes(SdrObject* pObject, const SdPage& rPage, const SfxItemSet& rSet, SfxStyleSheetBasePool* pStShPool, bool& bOk, bool bMaster, bool bSlide);
 
     virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
 
@@ -61,7 +61,6 @@ protected:
     virtual void ModelHasChanged() override;
 
 private:
-    DrawDocShell*   mpDocShell;
     DrawViewShell*  mpDrawViewShell;
 
     sal_uInt16          mnPOCHSmph; ///< for blocking PageOrderChangedHint

@@ -40,11 +40,6 @@
 #include <editeng/pgrditem.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
-class SwTextNode;
-class IntlWrapper;
-
-#define DROP_WHOLEWORD ((sal_uInt16)0x0001)
-
 class SwFormatDrop;
 
 namespace sw {
@@ -78,6 +73,7 @@ class SW_DLLPUBLIC SwFormatDrop final : public SfxPoolItem, public SwClient
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatDrop)
     SwFormatDrop();
     virtual ~SwFormatDrop() override;
 
@@ -98,6 +94,8 @@ public:
 
     /// "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
+    virtual bool            supportsHashCode() const override { return true; }
+    virtual size_t          hashCode() const override;
     virtual SwFormatDrop*   Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
@@ -108,22 +106,22 @@ public:
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     sal_uInt8 GetLines() const { return m_nLines; }
-    sal_uInt8 &GetLines() { return m_nLines; }
+    void SetLines(sal_uInt8 n) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nLines = n; }
 
     sal_uInt8 GetChars() const { return m_nChars; }
-    sal_uInt8 &GetChars() { return m_nChars; }
+    void SetChars(sal_uInt8 n) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nChars = n; }
 
     bool GetWholeWord() const { return m_bWholeWord; }
-    bool &GetWholeWord() { return m_bWholeWord; }
+    void SetWholeWord(bool b) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_bWholeWord = b; }
 
     sal_uInt16 GetDistance() const { return m_nDistance; }
-    sal_uInt16 &GetDistance() { return m_nDistance; }
+    void SetDistance(sal_uInt16 n) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nDistance = n; }
 
     const SwCharFormat *GetCharFormat() const { return static_cast<const SwCharFormat*>(GetRegisteredIn()); }
     SwCharFormat *GetCharFormat()       { return static_cast<SwCharFormat*>(GetRegisteredIn()); }
     void SetCharFormat( SwCharFormat *pNew );
     /// Get information from Client.
-    virtual bool GetInfo( SfxPoolItem& ) const override;
+    virtual bool GetInfo( SwFindNearestNode& ) const override;
 
     /// Get and set Modify pointer.
     void ChgDefinedIn( const sw::FormatDropDefiner* pDefiner )
@@ -134,7 +132,7 @@ class SwRegisterItem final : public SfxBoolItem
 {
 public:
     static SfxPoolItem* CreateDefault();
-
+    DECLARE_ITEM_TYPE_FUNCTION(SwRegisterItem)
     inline SwRegisterItem( const bool bRegister = false );
 
     /// "pure virtual methods" of SfxPoolItem
@@ -154,18 +152,21 @@ class SW_DLLPUBLIC SwNumRuleItem final : public SfxStringItem
 {
 public:
     static SfxPoolItem* CreateDefault();
-
+    DECLARE_ITEM_TYPE_FUNCTION(SwNumRuleItem)
     SwNumRuleItem()
         : SfxStringItem( RES_PARATR_NUMRULE, OUString() ) {}
 
-    SwNumRuleItem( const OUString& rRuleName )
-        : SfxStringItem( RES_PARATR_NUMRULE, rRuleName ) {}
+    SwNumRuleItem( const UIName& rRuleName )
+        : SfxStringItem( RES_PARATR_NUMRULE, rRuleName.toString() ) {}
 
     SwNumRuleItem(SwNumRuleItem const &) = default; // SfxPoolItem copy function dichotomy
 
     /// "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual SwNumRuleItem*  Clone( SfxItemPool *pPool = nullptr ) const override;
+    // Marked as false since the SfxStringItem superclass supports hashing, but
+    // this class has not been checked for safety under hashing yet.
+    virtual bool            supportsHashCode() const override { return false; }
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
@@ -174,6 +175,7 @@ public:
 
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
+    UIName GetValue() const { return UIName(SfxStringItem::GetValue()); }
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
@@ -181,7 +183,7 @@ public:
 class SwParaConnectBorderItem final : public SfxBoolItem
 {
 public:
-
+    DECLARE_ITEM_TYPE_FUNCTION(SwParaConnectBorderItem)
     inline SwParaConnectBorderItem( const bool bConnect = true );
 
     /// "pure virtual methods" of SfxPoolItem

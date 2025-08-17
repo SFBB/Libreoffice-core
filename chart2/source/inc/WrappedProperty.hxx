@@ -18,10 +18,10 @@
  */
 #pragma once
 
+#include <config_options.h>
 #include <com/sun/star/beans/PropertyState.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <rtl/ustring.hxx>
-#include "charttoolsdllapi.hxx"
 
 #include <map>
 #include <memory>
@@ -33,7 +33,7 @@ namespace com::sun::star::uno { template <class interface_type> class Reference;
 namespace chart
 {
 
-class OOO_DLLPUBLIC_CHARTTOOLS WrappedProperty
+class WrappedProperty
 {
     /** The property visible to the outer PropertySet in the PropertySetWrapper may have a different name, type and value than
     a corresponding property of the inner PropertySet. Use this class to do the conversion between the two.

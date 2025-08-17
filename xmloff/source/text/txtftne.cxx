@@ -34,21 +34,18 @@
 #include <rtl/ustrbuf.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/XPropertyState.hpp>
-#include <com/sun/star/text/XTextDocument.hpp>
+#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XFootnote.hpp>
 #include <com/sun/star/text/XFootnotesSupplier.hpp>
 #include <com/sun/star/text/XEndnotesSupplier.hpp>
 #include <com/sun/star/text/FootnoteNumbering.hpp>
-#include <com/sun/star/container/XNameReplace.hpp>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/families.hxx>
 #include "XMLTextCharStyleNamesElementExport.hxx"
-#include <xmloff/XMLEventExport.hxx>
 #include <xmloff/txtparae.hxx>
 
 
@@ -57,7 +54,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::text;
-using namespace ::com::sun::star::container;
 using namespace ::xmloff::token;
 
 

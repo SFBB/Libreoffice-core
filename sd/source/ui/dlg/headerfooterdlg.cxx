@@ -118,7 +118,7 @@ DateAndTimeFormat const nDateTimeFormats[nDateTimeFormatsCount] =
 class HeaderFooterTabPage
 {
 private:
-    SdDrawDocument*     mpDoc;
+    SdDrawDocument&     mrDoc;
     LanguageType        meOldLanguage;
     bool                mbHandoutMode;
 
@@ -151,10 +151,11 @@ private:
 
     void FillFormatList(sal_Int32 nSelectedPos);
     void GetOrSetDateTimeLanguage( LanguageType &rLanguage, bool bSet );
-    void GetOrSetDateTimeLanguage( LanguageType &rLanguage, bool bSet, SdPage* pPage );
+    // returns true if the page has a date/time field item
+    bool GetOrSetDateTimeLanguage(LanguageType& rLanguage, bool bSet, SdPage* pPage);
 
 public:
-    HeaderFooterTabPage(weld::Container* pParent, SdDrawDocument* pDoc, SdPage* pActualPage, bool bHandoutMode );
+    HeaderFooterTabPage(weld::Container* pParent, SdDrawDocument& rDoc, SdPage* pActualPage, bool bHandoutMode );
 
     void    init( const HeaderFooterSettings& rSettings, bool bNotOnTitle );
     void    getData( HeaderFooterSettings& rSettings, bool& rNotOnTitle );
@@ -165,41 +166,41 @@ public:
 
 using namespace ::sd;
 
-HeaderFooterDialog::HeaderFooterDialog(ViewShell* pViewShell, weld::Window* pParent, SdDrawDocument* pDoc, SdPage* pCurrentPage)
-    : GenericDialogController(pParent, "modules/simpress/ui/headerfooterdialog.ui", "HeaderFooterDialog")
-    , mpDoc( pDoc )
+HeaderFooterDialog::HeaderFooterDialog(ViewShell& rViewShell, weld::Window* pParent, SdDrawDocument& rDoc, SdPage* pCurrentPage)
+    : GenericDialogController(pParent, u"modules/simpress/ui/headerfooterdialog.ui"_ustr, u"HeaderFooterDialog"_ustr)
+    , mrDoc( rDoc )
     , mpCurrentPage( pCurrentPage )
-    , mpViewShell( pViewShell )
-    , mxTabCtrl(m_xBuilder->weld_notebook("tabcontrol"))
-    , mxPBApplyToAll(m_xBuilder->weld_button("apply_all"))
-    , mxPBApply(m_xBuilder->weld_button("apply"))
-    , mxPBCancel(m_xBuilder->weld_button("cancel"))
+    , mrViewShell( rViewShell )
+    , mxTabCtrl(m_xBuilder->weld_notebook(u"tabcontrol"_ustr))
+    , mxPBApplyToAll(m_xBuilder->weld_button(u"apply_all"_ustr))
+    , mxPBApply(m_xBuilder->weld_button(u"apply"_ustr))
+    , mxPBCancel(m_xBuilder->weld_button(u"cancel"_ustr))
 {
     SdPage* pSlide;
     SdPage* pNotes;
     if( pCurrentPage->GetPageKind() == PageKind::Standard )
     {
         pSlide = pCurrentPage;
-        pNotes = static_cast<SdPage*>(pDoc->GetPage( pCurrentPage->GetPageNum() + 1 ));
+        pNotes = static_cast<SdPage*>(rDoc.GetPage( pCurrentPage->GetPageNum() + 1 ));
     }
     else if( pCurrentPage->GetPageKind() == PageKind::Notes )
     {
         pNotes = pCurrentPage;
-        pSlide = static_cast<SdPage*>(pDoc->GetPage( pCurrentPage->GetPageNum() -1 ));
+        pSlide = static_cast<SdPage*>(rDoc.GetPage( pCurrentPage->GetPageNum() -1 ));
         mpCurrentPage = pSlide;
     }
     else
     {
         // handout
-        pSlide = pDoc->GetSdPage( 0, PageKind::Standard );
-        pNotes = pDoc->GetSdPage( 0, PageKind::Notes );
+        pSlide = rDoc.GetSdPage( 0, PageKind::Standard );
+        pNotes = rDoc.GetSdPage( 0, PageKind::Notes );
         mpCurrentPage = nullptr;
     }
 
-    mxSlideTabPage.reset(new HeaderFooterTabPage(mxTabCtrl->get_page("slides"), pDoc, pSlide, false));
-    mxNotesHandoutsTabPage.reset(new HeaderFooterTabPage(mxTabCtrl->get_page("notes"), pDoc, pNotes, true));
+    mxSlideTabPage.reset(new HeaderFooterTabPage(mxTabCtrl->get_page(u"slides"_ustr), rDoc, pSlide, false));
+    mxNotesHandoutsTabPage.reset(new HeaderFooterTabPage(mxTabCtrl->get_page(u"notes"_ustr), rDoc, pNotes, true));
 
-    pDoc->StopWorkStartupDelay();
+    rDoc.StopWorkStartupDelay();
     mxTabCtrl->show();
 
     ActivatePageHdl(mxTabCtrl->get_current_page_ident());
@@ -212,7 +213,7 @@ HeaderFooterDialog::HeaderFooterDialog(ViewShell* pViewShell, weld::Window* pPar
 
     maSlideSettings = pSlide->getHeaderFooterSettings();
 
-    const HeaderFooterSettings& rTitleSettings = mpDoc->GetSdPage(0, PageKind::Standard)->getHeaderFooterSettings();
+    const HeaderFooterSettings& rTitleSettings = mrDoc.GetSdPage(0, PageKind::Standard)->getHeaderFooterSettings();
     bool bNotOnTitle = !rTitleSettings.mbFooterVisible && !rTitleSettings.mbSlideNumberVisible && !rTitleSettings.mbDateTimeVisible;
 
     mxSlideTabPage->init( maSlideSettings, bNotOnTitle );
@@ -250,7 +251,7 @@ short HeaderFooterDialog::run()
 {
     short nRet = GenericDialogController::run();
     if (nRet)
-        mpViewShell->GetDocSh()->SetModified();
+        mrViewShell.GetDocSh()->SetModified();
     return nRet;
 }
 
@@ -270,7 +271,7 @@ void HeaderFooterDialog::Apply()
 
 void HeaderFooterDialog::apply( bool bToAll, bool bForceSlides )
 {
-    std::unique_ptr<SdUndoGroup> pUndoGroup(new SdUndoGroup(mpDoc));
+    std::unique_ptr<SdUndoGroup> pUndoGroup(new SdUndoGroup(mrDoc));
     OUString aComment( m_xDialog->get_title() );
     pUndoGroup->SetComment( aComment );
 
@@ -288,11 +289,11 @@ void HeaderFooterDialog::apply( bool bToAll, bool bForceSlides )
         // apply to all slides
         if( bToAll )
         {
-            int nPageCount = mpDoc->GetSdPageCount( PageKind::Standard );
+            int nPageCount = mrDoc.GetSdPageCount( PageKind::Standard );
             int nPage;
             for( nPage = 0; nPage < nPageCount; nPage++ )
             {
-                SdPage* pPage = mpDoc->GetSdPage( static_cast<sal_uInt16>(nPage), PageKind::Standard );
+                SdPage* pPage = mrDoc.GetSdPage( static_cast<sal_uInt16>(nPage), PageKind::Standard );
                 change( pUndoGroup.get(), pPage, aNewSettings );
             }
         }
@@ -311,13 +312,13 @@ void HeaderFooterDialog::apply( bool bToAll, bool bForceSlides )
     if( bNewNotOnTitle )
     {
         // just hide them, plain simple UI feature
-        HeaderFooterSettings aTempSettings = mpDoc->GetSdPage( 0, PageKind::Standard )->getHeaderFooterSettings();
+        HeaderFooterSettings aTempSettings = mrDoc.GetSdPage( 0, PageKind::Standard )->getHeaderFooterSettings();
 
         aTempSettings.mbFooterVisible = false;
         aTempSettings.mbSlideNumberVisible = false;
         aTempSettings.mbDateTimeVisible = false;
 
-        change( pUndoGroup.get(), mpDoc->GetSdPage( 0, PageKind::Standard ), aTempSettings );
+        change( pUndoGroup.get(), mrDoc.GetSdPage( 0, PageKind::Standard ), aTempSettings );
     }
 
     // now notes settings
@@ -329,58 +330,58 @@ void HeaderFooterDialog::apply( bool bToAll, bool bForceSlides )
     if( !bForceSlides || !(aNewSettings == maNotesHandoutSettings) )
     {
         // first set to all notes pages
-        int nPageCount = mpDoc->GetSdPageCount( PageKind::Notes );
+        int nPageCount = mrDoc.GetSdPageCount( PageKind::Notes );
         int nPage;
         for( nPage = 0; nPage < nPageCount; nPage++ )
         {
-            SdPage* pPage = mpDoc->GetSdPage( static_cast<sal_uInt16>(nPage), PageKind::Notes );
+            SdPage* pPage = mrDoc.GetSdPage( static_cast<sal_uInt16>(nPage), PageKind::Notes );
 
             change( pUndoGroup.get(), pPage, aNewSettings );
         }
 
         // and last but not least to the handout page
-        change( pUndoGroup.get(), mpDoc->GetMasterSdPage( 0, PageKind::Handout ), aNewSettings );
+        change( pUndoGroup.get(), mrDoc.GetMasterSdPage( 0, PageKind::Handout ), aNewSettings );
     }
 
     // give the undo group to the undo manager
-    mpViewShell->GetViewFrame()->GetObjectShell()->GetUndoManager()->AddUndoAction(std::move(pUndoGroup));
+    mrViewShell.GetViewFrame()->GetObjectShell()->GetUndoManager()->AddUndoAction(std::move(pUndoGroup));
 }
 
 void HeaderFooterDialog::change( SdUndoGroup* pUndoGroup, SdPage* pPage, const HeaderFooterSettings& rNewSettings )
 {
-    pUndoGroup->AddAction(new SdHeaderFooterUndoAction(mpDoc, pPage, rNewSettings ));
+    pUndoGroup->AddAction(new SdHeaderFooterUndoAction(mrDoc, pPage, rNewSettings ));
     pPage->setHeaderFooterSettings( rNewSettings );
 }
 
-HeaderFooterTabPage::HeaderFooterTabPage(weld::Container* pParent, SdDrawDocument* pDoc, SdPage* pActualPage, bool bHandoutMode)
-    : mpDoc(pDoc)
+HeaderFooterTabPage::HeaderFooterTabPage(weld::Container* pParent, SdDrawDocument& rDoc, SdPage* pActualPage, bool bHandoutMode)
+    : mrDoc(rDoc)
     , mbHandoutMode(bHandoutMode)
-    , mxBuilder(Application::CreateBuilder(pParent, "modules/simpress/ui/headerfootertab.ui"))
-    , mxContainer(mxBuilder->weld_container("HeaderFooterTab"))
-    , mxFTIncludeOn(mxBuilder->weld_label("include_label"))
-    , mxCBHeader(mxBuilder->weld_check_button("header_cb" ))
-    , mxHeaderBox(mxBuilder->weld_widget("header_box"))
-    , mxTBHeader(mxBuilder->weld_entry("header_text"))
-    , mxCBDateTime(mxBuilder->weld_check_button("datetime_cb"))
-    , mxRBDateTimeFixed(mxBuilder->weld_radio_button("rb_fixed"))
-    , mxRBDateTimeAutomatic(mxBuilder->weld_radio_button("rb_auto"))
-    , mxTBDateTimeFixed(mxBuilder->weld_entry("datetime_value"))
-    , mxCBDateTimeFormat(mxBuilder->weld_combo_box("datetime_format_list"))
-    , mxFTDateTimeLanguage(mxBuilder->weld_label("language_label"))
-    , mxCBDateTimeLanguage(new SvxLanguageBox(mxBuilder->weld_combo_box("language_list")))
-    , mxCBFooter(mxBuilder->weld_check_button("footer_cb"))
-    , mxFooterBox(mxBuilder->weld_widget("footer_box" ))
-    , mxTBFooter(mxBuilder->weld_entry("footer_text"))
-    , mxCBSlideNumber(mxBuilder->weld_check_button("slide_number"))
-    , mxCBNotOnTitle(mxBuilder->weld_check_button("not_on_title"))
-    , mxReplacementA(mxBuilder->weld_label("replacement_a"))
-    , mxReplacementB(mxBuilder->weld_label("replacement_b"))
+    , mxBuilder(Application::CreateBuilder(pParent, u"modules/simpress/ui/headerfootertab.ui"_ustr))
+    , mxContainer(mxBuilder->weld_container(u"HeaderFooterTab"_ustr))
+    , mxFTIncludeOn(mxBuilder->weld_label(u"include_label"_ustr))
+    , mxCBHeader(mxBuilder->weld_check_button(u"header_cb"_ustr ))
+    , mxHeaderBox(mxBuilder->weld_widget(u"header_box"_ustr))
+    , mxTBHeader(mxBuilder->weld_entry(u"header_text"_ustr))
+    , mxCBDateTime(mxBuilder->weld_check_button(u"datetime_cb"_ustr))
+    , mxRBDateTimeFixed(mxBuilder->weld_radio_button(u"rb_fixed"_ustr))
+    , mxRBDateTimeAutomatic(mxBuilder->weld_radio_button(u"rb_auto"_ustr))
+    , mxTBDateTimeFixed(mxBuilder->weld_entry(u"datetime_value"_ustr))
+    , mxCBDateTimeFormat(mxBuilder->weld_combo_box(u"datetime_format_list"_ustr))
+    , mxFTDateTimeLanguage(mxBuilder->weld_label(u"language_label"_ustr))
+    , mxCBDateTimeLanguage(new SvxLanguageBox(mxBuilder->weld_combo_box(u"language_list"_ustr)))
+    , mxCBFooter(mxBuilder->weld_check_button(u"footer_cb"_ustr))
+    , mxFooterBox(mxBuilder->weld_widget(u"footer_box"_ustr ))
+    , mxTBFooter(mxBuilder->weld_entry(u"footer_text"_ustr))
+    , mxCBSlideNumber(mxBuilder->weld_check_button(u"slide_number"_ustr))
+    , mxCBNotOnTitle(mxBuilder->weld_check_button(u"not_on_title"_ustr))
+    , mxReplacementA(mxBuilder->weld_label(u"replacement_a"_ustr))
+    , mxReplacementB(mxBuilder->weld_label(u"replacement_b"_ustr))
     , mxCTPreview(new PresLayoutPreview)
-    , mxCTPreviewWin(new weld::CustomWeld(*mxBuilder, "preview", *mxCTPreview))
+    , mxCTPreviewWin(new weld::CustomWeld(*mxBuilder, u"preview"_ustr, *mxCTPreview))
 {
     mxCTPreview->init( pActualPage ?
             (pActualPage->IsMasterPage() ? pActualPage : static_cast<SdPage*>(&(pActualPage->TRG_GetMasterPage()))) :
-            (pDoc->GetMasterSdPage( 0, bHandoutMode ? PageKind::Notes : PageKind::Standard )) );
+            (rDoc.GetMasterSdPage( 0, bHandoutMode ? PageKind::Notes : PageKind::Standard )) );
 
     if( mbHandoutMode )
     {
@@ -430,7 +431,7 @@ void HeaderFooterTabPage::FillFormatList( sal_Int32 nSelectedPos )
         OUString aStr( SvxDateTimeField::GetFormatted(
                 aDateTime, aDateTime,
                 nDateTimeFormats[nFormat].meDateFormat, nDateTimeFormats[nFormat].meTimeFormat,
-                *(SD_MOD()->GetNumberFormatter()), eLanguage ) );
+                *(SdModule::get()->GetNumberFormatter()), eLanguage ) );
         mxCBDateTimeFormat->append_text(aStr);
         if (nFormat == nSelectedPos)
             mxCBDateTimeFormat->set_active(nFormat);
@@ -522,40 +523,44 @@ void HeaderFooterTabPage::GetOrSetDateTimeLanguage( LanguageType &rLanguage, boo
         // if set, set it on all notes master pages
         if( bSet )
         {
-            sal_uInt16 nPageCount = mpDoc->GetMasterSdPageCount( PageKind::Notes );
+            sal_uInt16 nPageCount = mrDoc.GetMasterSdPageCount( PageKind::Notes );
             sal_uInt16 nPage;
             for( nPage = 0; nPage < nPageCount; nPage++ )
             {
-                GetOrSetDateTimeLanguage( rLanguage, bSet, mpDoc->GetMasterSdPage( nPage, PageKind::Notes ) );
+                GetOrSetDateTimeLanguage( rLanguage, bSet, mrDoc.GetMasterSdPage( nPage, PageKind::Notes ) );
             }
         }
 
         // #i119985# and set it, or just get it from the notes master page
-        GetOrSetDateTimeLanguage( rLanguage, bSet, mpDoc->GetMasterSdPage( 0, PageKind::Notes ) );
+        GetOrSetDateTimeLanguage( rLanguage, bSet, mrDoc.GetMasterSdPage( 0, PageKind::Notes ) );
     }
     else
     {
-        // get the language from the first master page
-        // or set it to all master pages
-        sal_uInt16 nPageCount = bSet ? mpDoc->GetMasterSdPageCount( PageKind::Notes ) : 1;
+        const sal_uInt16 nPageCount = mrDoc.GetMasterSdPageCount(PageKind::Standard);
         sal_uInt16 nPage;
         for( nPage = 0; nPage < nPageCount; nPage++ )
         {
-            GetOrSetDateTimeLanguage( rLanguage, bSet, mpDoc->GetMasterSdPage( nPage, PageKind::Standard ) );
+            SdPage* pMasterSlide = mrDoc.GetMasterSdPage(nPage, PageKind::Standard);
+            bool bHasDateFieldItem = GetOrSetDateTimeLanguage(rLanguage, bSet, pMasterSlide);
+
+            // All pages must use the same language. If getting the language, only need to find one.
+            if (!bSet && bHasDateFieldItem)
+                break;
         }
     }
 }
 
-void HeaderFooterTabPage::GetOrSetDateTimeLanguage( LanguageType &rLanguage, bool bSet, SdPage* pPage )
+bool HeaderFooterTabPage::GetOrSetDateTimeLanguage(LanguageType& rLanguage, bool bSet,
+                                                   SdPage* pPage)
 {
     if( !pPage )
-        return;
+        return false;
 
     SdrTextObj* pObj = static_cast<SdrTextObj*>(pPage->GetPresObj( PresObjKind::DateTime ));
     if( !pObj )
-        return;
+        return false;
 
-    Outliner* pOutl = mpDoc->GetInternalOutliner();
+    Outliner* pOutl = mrDoc.GetInternalOutliner();
     pOutl->Init( OutlinerMode::TextObject );
     OutlinerMode nOutlMode = pOutl->GetOutlinerMode();
 
@@ -565,24 +570,22 @@ void HeaderFooterTabPage::GetOrSetDateTimeLanguage( LanguageType &rLanguage, boo
     if( pOPO )
         pOutl->SetText( *pOPO );
 
-    EPosition aDateFieldPosition;
+    EPaM aDateFieldPosition;
     bool bHasDateFieldItem = false;
 
     sal_Int32 nParaCount = pEdit->GetParagraphCount();
     for (sal_Int32 nPara = 0; (nPara < nParaCount) && !bHasDateFieldItem; ++nPara)
     {
-        sal_uInt16 nFieldCount = pEdit->GetFieldCount(nPara);
-        for (sal_uInt16 nField = 0; (nField < nFieldCount); ++nField)
+        for (const EFieldInfo& rFieldInfo : pEdit->GetFieldInfo(nPara))
         {
-            EFieldInfo aFieldInfo = pEdit->GetFieldInfo(nPara, nField);
-            if (aFieldInfo.pFieldItem)
+            if (rFieldInfo.pFieldItem)
             {
-                const SvxFieldData* pFieldData = aFieldInfo.pFieldItem->GetField();
+                const SvxFieldData* pFieldData = rFieldInfo.pFieldItem->GetField();
                 if (dynamic_cast<const SvxDateTimeField*>(pFieldData) != nullptr ||
                     dynamic_cast<const SvxDateField*>(pFieldData) != nullptr)
                 {
                     bHasDateFieldItem = true;
-                    aDateFieldPosition = aFieldInfo.aPosition;
+                    aDateFieldPosition = rFieldInfo.aPosition;
                     break;
                 }
             }
@@ -623,6 +626,7 @@ void HeaderFooterTabPage::GetOrSetDateTimeLanguage( LanguageType &rLanguage, boo
 
     pOutl->Clear();
     pOutl->Init( nOutlMode );
+    return bHasDateFieldItem;
 }
 
 PresLayoutPreview::PresLayoutPreview()
@@ -680,12 +684,12 @@ void PresLayoutPreview::Paint(vcl::RenderContext& rRenderContext, SdrTextObj con
 
         basegfx::B2DPolyPolygon aDashed;
         basegfx::utils::applyLineDashing(aGeometry, aPattern, &aDashed);
-        aGeometry = aDashed;
+        aGeometry = std::move(aDashed);
     }
 
     // determine line color
     svtools::ColorConfig aColorConfig;
-    svtools::ColorConfigValue aColor( aColorConfig.GetColorValue( bVisible ? svtools::FONTCOLOR : svtools::OBJECTBOUNDARIES ) );
+    svtools::ColorConfigValue aColor( aColorConfig.GetColorValue( bVisible ? svtools::FONTCOLOR : svtools::DOCBOUNDARIES ) );
 
     // paint at OutDev
     rRenderContext.SetLineColor(aColor.nColor);

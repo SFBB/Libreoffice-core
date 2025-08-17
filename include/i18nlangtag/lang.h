@@ -80,6 +80,7 @@
    http://support.microsoft.com/default.aspx?scid=KB;en-us;q221435
  */
 
+#include <config_options.h>
 #include <sal/types.h>
 #include <o3tl/strong_int.hxx>
 #include <ostream>
@@ -90,10 +91,15 @@ constexpr LanguageType primary(LanguageType lt) { return LanguageType(sal_uInt16
 
 namespace o3tl
 {
+// when compiling LO on macOS, debug builds will display a linking error where, see
+// <https://lists.freedesktop.org/archives/libreoffice/2024-February/091564.html>, "Our Clang
+// --enable-pch setup is known broken":
+#if !(defined MACOSX && defined __clang__ && (__clang_major__ == 16 || __clang_major__ == 17) && ENABLE_PCH)
     // delete "sal_Int16" constructor via specialization: values > 0x7FFF are
     // actually used, and unfortunately passed around in the API as signed
     // "short", so use this to find all places where casts must be inserted
     template<> template<> constexpr strong_int<unsigned short,LanguageTypeTag>::strong_int(short, std::enable_if<std::is_integral<short>::value, int>::type) = delete;
+#endif
 }
 
 #define LANGUAGE_MASK_PRIMARY 0x03ff
@@ -615,7 +621,7 @@ namespace o3tl
 #define LANGUAGE_USER_BODO_INDIA            LanguageType(0x0643)
 #define LANGUAGE_USER_DOGRI_INDIA           LanguageType(0x0644)
 #define LANGUAGE_USER_MAITHILI_INDIA        LanguageType(0x0645)
-#define LANGUAGE_USER_SANTALI_INDIA         LanguageType(0x0646)
+#define LANGUAGE_USER_SANTALI_INDIA         LanguageType(0x0646)  /* Devanagari script */
 #define LANGUAGE_USER_TETUN_TIMOR_LESTE     LanguageType(0x0A40)  /* makeLangID( 0x20, getPrimaryLanguage( LANGUAGE_USER_TETUN)) */
 #define LANGUAGE_USER_TOK_PISIN             LanguageType(0x0647)
 #define LANGUAGE_USER_SHUSWAP               LanguageType(0x0648)
@@ -785,6 +791,11 @@ namespace o3tl
 #define LANGUAGE_USER_SARAIKI               LanguageType(0x06B0)
 #define LANGUAGE_USER_ROHINGYA_HANIFI       LanguageType(0x06B1)
 #define LANGUAGE_USER_MORISYEN              LanguageType(0x06B2)
+#define LANGUAGE_USER_SANTALI_OLCHIKI_INDIA LanguageType(0x06B3)
+#define LANGUAGE_USER_FRENCH_GUINEA         LanguageType(0x940C)  /* makeLangID( 0x25, getPrimaryLanguage( LANGUAGE_FRENCH)) */
+#define LANGUAGE_USER_ABKHAZ                LanguageType(0x06B4)
+#define LANGUAGE_USER_ENGLISH_GUYANA        LanguageType(0xBC09)  /* makeLangID( 0x2F, getPrimaryLanguage( LANGUAGE_ENGLISH_UK)) */
+#define LANGUAGE_USER_GRONINGS              LanguageType(0x06B5)
 
 
 /* XXX Add new user defined LCIDs ^^^ there.

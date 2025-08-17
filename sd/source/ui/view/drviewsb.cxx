@@ -65,7 +65,7 @@ bool DrawViewShell::RenameSlide( sal_uInt16 nPageId, const OUString & rName  )
         SfxUndoManager* pManager = GetDoc()->GetDocSh()->GetUndoManager();
         pManager->AddUndoAction(
             std::make_unique<ModifyPageUndoAction>(
-                GetDoc(), pUndoPage, rName, pUndoPage->GetAutoLayout(),
+                *GetDoc(), pUndoPage, rName, pUndoPage->GetAutoLayout(),
                 aVisibleLayers.IsSet( nBackground ),
                 aVisibleLayers.IsSet( nBgObj )));
 
@@ -83,7 +83,8 @@ bool DrawViewShell::RenameSlide( sal_uInt16 nPageId, const OUString & rName  )
     {
         // rename MasterPage -> rename LayoutTemplate
         pPageToRename = GetDoc()->GetMasterSdPage( maTabControl->GetPagePos(nPageId), ePageKind );
-        GetDoc()->RenameLayoutTemplate( pPageToRename->GetLayoutName(), rName );
+        OUString aOldPageLayoutName = pPageToRename->GetLayoutName();
+        GetDoc()->RenameLayoutTemplate(aOldPageLayoutName, rName);
     }
 
     bool bSuccess = (rName == pPageToRename->GetName());
@@ -119,8 +120,7 @@ bool DrawViewShell::RenameSlide( sal_uInt16 nPageId, const OUString & rName  )
 
 IMPL_LINK( DrawViewShell, RenameSlideHdl, AbstractSvxNameDialog&, rDialog, bool )
 {
-    OUString aNewName;
-    rDialog.GetName( aNewName );
+    OUString aNewName = rDialog.GetName();
 
     SdPage* pCurrentPage = GetDoc()->GetSdPage( maTabControl->GetCurPagePos(), GetPageKind() );
 

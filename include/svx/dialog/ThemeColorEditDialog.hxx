@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <config_options.h>
+
 #include <svx/svxdllapi.h>
 #include <vcl/weld.hxx>
 #include <docmodel/theme/ColorSet.hxx>
@@ -17,7 +19,8 @@ class ColorListBox;
 
 namespace svx
 {
-class SVX_DLLPUBLIC ThemeColorEditDialog final : public weld::GenericDialogController
+class UNLESS_MERGELIBS(SVX_DLLPUBLIC) ThemeColorEditDialog final
+    : public weld::GenericDialogController
 {
 private:
     model::ColorSet maColorSet;
@@ -37,7 +40,7 @@ private:
     std::unique_ptr<ColorListBox> mxFollowHyperlink;
 
 public:
-    ThemeColorEditDialog(weld::Window* pParent, model::ColorSet& rColorSet);
+    ThemeColorEditDialog(weld::Window* pParent, const model::ColorSet& rColorSet);
     virtual ~ThemeColorEditDialog() override;
     model::ColorSet getColorSet();
 };

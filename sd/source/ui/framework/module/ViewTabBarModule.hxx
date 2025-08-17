@@ -19,26 +19,23 @@
 
 #pragma once
 
-#include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
+#include <ResourceId.hxx>
+#include <framework/ConfigurationChangeListener.hxx>
 #include <comphelper/compbase.hxx>
 #include <rtl/ref.hxx>
 
-namespace com::sun::star::drawing::framework { class XConfigurationController; }
-namespace com::sun::star::drawing::framework { class XTabBar; }
-namespace com::sun::star::frame { class XController; }
 namespace sd { class DrawController; }
+namespace sd { class ViewTabBar; }
 
-namespace sd::framework {
-
-typedef comphelper::WeakComponentImplHelper <
-    css::drawing::framework::XConfigurationChangeListener
-    > ViewTabBarModuleInterfaceBase;
+namespace sd::framework
+{
+class ConfigurationController;
 
 /** This module is responsible for showing the ViewTabBar above the view in
     the center pane.
 */
 class ViewTabBarModule
-    : public ViewTabBarModuleInterfaceBase
+    : public sd::framework::ConfigurationChangeListener
 {
 public:
     /** Create a new module that controls the view tab bar above the view
@@ -51,16 +48,15 @@ public:
     */
     ViewTabBarModule (
         const rtl::Reference<::sd::DrawController>& rxController,
-        const css::uno::Reference<
-            css::drawing::framework::XResourceId>& rxViewTabBarId);
+        const rtl::Reference<ResourceId>& rxViewTabBarId);
     virtual ~ViewTabBarModule() override;
 
     virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    // XConfigurationChangeListener
+    // ConfigurationChangeListener
 
-    virtual void SAL_CALL notifyConfigurationChange (
-        const css::drawing::framework::ConfigurationChangeEvent& rEvent) override;
+    virtual void notifyConfigurationChange (
+        const sd::framework::ConfigurationChangeEvent& rEvent) override;
 
     // XEventListener
 
@@ -68,16 +64,15 @@ public:
         const css::lang::EventObject& rEvent) override;
 
 private:
-    css::uno::Reference<
-        css::drawing::framework::XConfigurationController> mxConfigurationController;
-    css::uno::Reference<css::drawing::framework::XResourceId> mxViewTabBarId;
+    rtl::Reference<ConfigurationController> mxConfigurationController;
+    rtl::Reference<sd::framework::ResourceId> mxViewTabBarId;
 
     /** This is the place where the view tab bar is filled.  Only missing
         buttons are added, so it is safe to call this method multiple
         times.
     */
     void UpdateViewTabBar (
-        const css::uno::Reference<css::drawing::framework::XTabBar>& rxTabBar);
+        const rtl::Reference<sd::ViewTabBar>& rxTabBar);
 };
 
 } // end of namespace sd::framework

@@ -55,6 +55,9 @@
       <prop oor:name="CTLFont" install:module="ctl">
         <value>true</value>
       </prop>
+      <prop oor:name="CTLVerticalText" install:module="ctl">
+        <value>true</value>
+      </prop>
       <prop oor:name="CTLSequenceChecking" install:module="ctlseqcheck">
         <value>true</value>
       </prop>
@@ -456,6 +459,9 @@
     </prop>
     <prop oor:name="PerformFileExtCheck">
       <value install:module="wnt">true</value>
+    </prop>
+    <prop oor:name="ShowDonation">
+     <value install:module="macosxsandbox">false</value>
     </prop>
   </node>
   <node oor:name="Save">

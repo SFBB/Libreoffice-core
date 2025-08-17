@@ -20,6 +20,25 @@
 #include "pdfioutdev_gpl.hxx"
 #include "pnghelper.hxx"
 
+#if defined __GNUC__ || defined __clang__
+# pragma GCC diagnostic push
+# pragma GCC diagnostic ignored "-Wunused-parameter"
+#elif defined _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4100) // unreferenced formal parameter
+#pragma warning(disable : 4121) // alignment of a member was sensitive to packing in Gfx.h/Operator
+#endif
+
+#include <Gfx.h>
+#include <splash/SplashBitmap.h>
+#include <SplashOutputDev.h>
+#if defined __GNUC__ || defined __clang__
+# pragma GCC diagnostic pop
+#elif defined _MSC_VER
+#pragma warning(pop)
+#endif
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
@@ -212,7 +231,12 @@ static void writeJpeg_( OutputBuffer& o_rOutputBuf, Stream* str )
 #else
     str = ((DCTStream *)str)->getRawStream();
 #endif
+#if POPPLER_CHECK_VERSION(25, 2, 0)
+    if (!str->reset())
+        return;
+#else
     str->reset();
+#endif
 
     o_rOutputBuf.clear();
     ExtractJpegData(str, o_rOutputBuf);
@@ -248,7 +272,12 @@ static void writePbm_(OutputBuffer& o_rOutputBuf, Stream* str, int width, int he
     o_rOutputBuf.resize(header_size);
 
     // initialize stream
+#if POPPLER_CHECK_VERSION(25, 2, 0)
+    if (!str->reset())
+        return;
+#else
     str->reset();
+#endif
 
     // copy the raw stream
     if( bInvert )
@@ -305,7 +334,12 @@ static void writePpm_( OutputBuffer&     o_rOutputBuf,
                         width,
                         colorMap->getNumPixelComps(),
                         colorMap->getBits()));
+#if POPPLER_CHECK_VERSION(25, 2, 0)
+    if (!imgStr->reset())
+        return;
+#else
     imgStr->reset();
+#endif
 
     for( int y=0; y<height; ++y)
     {
@@ -413,8 +447,6 @@ static void writeImage_( OutputBuffer&     o_rOutputBuf,
 }
 
 // forwarders
-
-
 static void writeImageLF( OutputBuffer&     o_rOutputBuf,
                           Stream*           str,
                           int               width,
@@ -426,6 +458,42 @@ static void writeMaskLF( OutputBuffer&     o_rOutputBuf,
                          int               height,
                          bool              bInvert ) { writeMask_(o_rOutputBuf,str,width,height,bInvert); }
 
+// Vertically flip the bitmap
+static void flipSplashBitmap(SplashBitmap *pBitmap)
+{
+    if (pBitmap->getRowSize() <= 0)
+        return;
+
+    auto nBitmapHeight = static_cast<size_t>(pBitmap->getHeight());
+    auto nRowSize = static_cast<size_t>(pBitmap->getRowSize());
+    auto nAlphaRowSize = static_cast<size_t>(pBitmap->getAlphaRowSize());
+
+    std::unique_ptr<unsigned char[]> aTmpRow(new unsigned char[nRowSize]);
+    std::unique_ptr<unsigned char[]> aTmpAlphaRow(new unsigned char[nAlphaRowSize]);
+
+    auto pBitmapData = pBitmap->getDataPtr();
+    auto pAlphaData = pBitmap->getAlphaPtr();
+
+    // Set up pairs of pointers working from each end of the bitmap
+    auto pCurRowA = pBitmapData;
+    auto pCurAlphaA = pAlphaData;
+    auto pCurRowB = pBitmapData+nRowSize*(nBitmapHeight-1);
+    auto pCurAlphaB = pAlphaData+nAlphaRowSize*(nBitmapHeight-1);
+
+    for (size_t nCur = 0;
+         nCur < nBitmapHeight/2;
+         nCur++, pCurRowA+=nRowSize, pCurRowB-=nRowSize,
+         pCurAlphaA+=nAlphaRowSize, pCurAlphaB-=nAlphaRowSize)
+    {
+        memcpy(aTmpRow.get(), pCurRowA, nRowSize);
+        memcpy(pCurRowA, pCurRowB, nRowSize);
+        memcpy(pCurRowB, aTmpRow.get(), nRowSize);
+
+        memcpy(aTmpAlphaRow.get(), pCurAlphaA, nAlphaRowSize);
+        memcpy(pCurAlphaA, pCurAlphaB, nAlphaRowSize);
+        memcpy(pCurAlphaB, aTmpAlphaRow.get(), nAlphaRowSize);
+    }
+}
 
 int PDFOutDev::parseFont( long long nNewId, GfxFont* gfxFont, const GfxState* state ) const
 {
@@ -573,7 +641,7 @@ PDFOutDev::~PDFOutDev()
 }
 
 void PDFOutDev::startPage(int /*pageNum*/, GfxState* state
-#if POPPLER_CHECK_VERSION(0, 23, 0) ||  POPPLER_CHECK_VERSION(0, 24, 0)
+#if POPPLER_CHECK_VERSION(0, 23, 0)
                           , XRef* /*xref*/
 #endif
 )
@@ -767,7 +835,7 @@ void PDFOutDev::updateStrokeColor(GfxState *state)
             normalize(colToDbl(aRGB.r)),
             normalize(colToDbl(aRGB.g)),
             normalize(colToDbl(aRGB.b)),
-            normalize(state->getFillOpacity()) );
+            normalize(state->getStrokeOpacity()) );
 }
 
 void PDFOutDev::updateFillOpacity(GfxState *state)
@@ -909,6 +977,17 @@ void PDFOutDev::eoClip(GfxState *state)
     printf( "\n" );
 }
 
+void PDFOutDev::clipToStrokePath(GfxState *state)
+{
+    if (m_bSkipImages)
+        return;
+    assert(state);
+
+    printf( "clipToStrokePath" );
+    printPath( state->getPath() );
+    printf( "\n" );
+}
+
 /** Output one glyph
 
 
@@ -956,18 +1035,18 @@ void PDFOutDev::drawChar(GfxState *state, double x, double y,
 
     double csdx = 0.0;
     double csdy = 0.0;
-    if (state->getFont()->getWMode())
-    {
-        csdy = state->getCharSpace();
-        if (*u == ' ')
-            csdy += state->getWordSpace();
-    }
-    else
+    if (!state->getFont() || !state->getFont()->getWMode())
     {
         csdx = state->getCharSpace();
         if (*u == ' ')
             csdx += state->getWordSpace();
         csdx *= state->getHorizScaling();
+    }
+    else
+    {
+        csdy = state->getCharSpace();
+        if (*u == ' ')
+            csdy += state->getWordSpace();
     }
 
     double cstdx = 0.0;
@@ -1037,7 +1116,12 @@ void PDFOutDev::drawImageMask(GfxState* pState, Object*, Stream* str,
 
     int bitsPerComponent = 1;
     StreamColorSpaceMode csMode = streamCSNone;
+#if POPPLER_CHECK_VERSION(24, 12, 0)
+    bool hasAlpha;
+    str->getImageParams( &bitsPerComponent, &csMode, &hasAlpha );
+#else
     str->getImageParams( &bitsPerComponent, &csMode );
+#endif
     if( bitsPerComponent == 1 && (csMode == streamCSNone || csMode == streamCSDeviceGray) )
     {
         GfxRGB oneColor = { dblToCol( 1.0 ), dblToCol( 1.0 ), dblToCol( 1.0 ) };
@@ -1051,6 +1135,28 @@ void PDFOutDev::drawImageMask(GfxState* pState, Object*, Stream* str,
     else
         writeMaskLF(aBuf, str, width, height, invert);
     writeBinaryBuffer(aBuf);
+}
+
+#if POPPLER_CHECK_VERSION(0, 70, 0)
+void PDFOutDev::beginTransparencyGroup(GfxState * /*state*/, const double * /*bbox*/,
+#else
+void PDFOutDev::beginTransparencyGroup(GfxState * /*state*/, double * /*bbox*/,
+#endif
+                                    GfxColorSpace * /*blendingColorSpace*/,
+                                    poppler_bool /*isolated*/,
+                                    poppler_bool /*knockout*/,
+                                    poppler_bool forSoftMask)
+{
+    // We're not doing full transparency group yet, just trying to hide the
+    // soft mask temporaries.
+    printf( "beginTransparencyGroup %d", !!forSoftMask);
+    printf("\n");
+}
+
+void PDFOutDev::endTransparencyGroup(GfxState * /* state */)
+{
+    printf( "endTransparencyGroup");
+    printf("\n");
 }
 
 #if POPPLER_CHECK_VERSION(0, 82, 0)
@@ -1163,6 +1269,143 @@ void PDFOutDev::setSkipImages( bool bSkipImages )
     m_bSkipImages = bSkipImages;
 }
 
+// This is a fudge to fixup the opacity during shaded fills,
+// there are situations where the stroke opacity is used rather than the
+// fill opacity is used, so flip it here.
+// Note that Poppler does a state save around the fill, so it restores this hack
+// See https://gitlab.freedesktop.org/poppler/poppler/-/issues/178#note_472334
+poppler_bool PDFOutDev::axialShadedFill(GfxState *state, GfxAxialShading *, double, double)
+{
+    if (state->getStrokePattern()!=nullptr)
+    {
+        state->setFillOpacity(state->getStrokeOpacity());
+    }
+    return false;
+}
+
+#if POPPLER_CHECK_VERSION(21, 3, 0)
+poppler_bool PDFOutDev::tilingPatternFill(GfxState *state, Gfx *, Catalog *,
+                                          GfxTilingPattern *tPat, const double *mat,
+                                          int x0, int y0, int x1, int y1,
+                                          double xStep, double yStep)
+{
+    const double *pBbox = tPat->getBBox();
+    const int nPaintType = tPat->getPaintType();
+    Dict *pResDict = tPat->getResDict();
+    Object *aStr = tPat->getContentStream();
+    double nWidth = pBbox[2] - pBbox[0];
+    double nHeight = pBbox[3] - pBbox[1];
+
+    // If our wrapper is skipping images then we don't need to do anything
+    // but return 'true' so that Poppler doesn't do the slow method
+    if (m_bSkipImages)
+        return true;
+
+    // Copied from the Cairo output dev; I think this is patterns
+    // with gaps, let poppler do the slow method for now.
+    if (xStep != nWidth || yStep != nHeight)
+        return false;
+
+    printf( "tilingPatternFill %d %d %d %d %f %f "
+            "%d "
+            "%f %f %f %f %f %f", // No ending space!
+
+            x0, y0, x1, y1, normalize(xStep), normalize(yStep),
+
+            nPaintType,
+
+            normalize(mat[0]), normalize(mat[1]),
+            normalize(mat[2]), normalize(mat[3]),
+            normalize(mat[4]), normalize(mat[5])
+            );
+
+    PDFRectangle aBox;
+    aBox.x1 = pBbox[0];
+    aBox.y1 = pBbox[1];
+    aBox.x2 = pBbox[2];
+    aBox.y2 = pBbox[3];
+
+    const int nDPI = 72; // GfxState seems to have 72.0 as magic for some reason
+    auto pSplashGfxState = new GfxState(nDPI, nDPI, &aBox, 0, false);
+    auto pSplashOut = new SplashOutputDev(splashModeRGB8, 1, false, nullptr);
+    pSplashOut->setEnableFreeType(false);
+    pSplashOut->startDoc(m_pDoc);
+    pSplashOut->startPage(0 /* pageNum */, pSplashGfxState, nullptr /* xref */);
+
+    auto pSplashGfx = new Gfx(m_pDoc, pSplashOut, pResDict, &aBox, nullptr);
+    pSplashGfx->display(aStr);
+    std::unique_ptr<SplashBitmap> pSplashBitmap(pSplashOut->takeBitmap());
+    // Poppler tells us to free the splash device immediately after taking the
+    // bitmap
+    delete pSplashGfxState;
+    delete pSplashGfx;
+    delete pSplashOut;
+
+    // Add a vertical flip, we can't do this in LO for an image filled poly
+    flipSplashBitmap(pSplashBitmap.get());
+
+    auto nBitmapWidth = static_cast<size_t>(pSplashBitmap->getWidth());
+    auto nBitmapHeight = static_cast<size_t>(pSplashBitmap->getHeight());
+
+    char *pBitmapData = reinterpret_cast<char *>(pSplashBitmap->getDataPtr());
+    if (nPaintType == 2)
+    {
+        // My understanding is Type 2 fills are just bitmaps of *what* to fill
+        // in the current fill colour.
+        // sending it to LO as a flat colour image with the alpha map is easiest
+        GfxRGB aCurFill;
+        unsigned char r,g,b;
+        state->getFillColorSpace()->getRGB(state->getFillColor(), &aCurFill);
+        r = colToByte(aCurFill.r);
+        g = colToByte(aCurFill.g);
+        b = colToByte(aCurFill.b);
+
+        for(size_t i=0; i < (nBitmapWidth * nBitmapHeight * 3); i+=3)
+        {
+            pBitmapData[i  ] = r;
+            pBitmapData[i+1] = g;
+            pBitmapData[i+2] = b;
+        }
+    }
+
+#if POPPLER_CHECK_VERSION(25, 5, 0)
+    std::unique_ptr<MemStream> pRgbStr(new MemStream(pBitmapData, 0,
+        nBitmapWidth * nBitmapHeight * 3, Object::null()));
+    std::unique_ptr<MemStream> pAlphaStr(new MemStream(reinterpret_cast<char *>(pSplashBitmap->getAlphaPtr()),
+        0, nBitmapWidth * nBitmapHeight, Object::null()));
+    auto aDecode = Object::null();
+#else
+    std::unique_ptr<MemStream> pRgbStr(new MemStream(pBitmapData, 0,
+        nBitmapWidth * nBitmapHeight * 3, Object(objNull)));
+    std::unique_ptr<MemStream> pAlphaStr(new MemStream(reinterpret_cast<char *>(pSplashBitmap->getAlphaPtr()),
+        0, nBitmapWidth * nBitmapHeight, Object(objNull)));
+    auto aDecode = Object(objNull);
+#endif
+#if POPPLER_CHECK_VERSION(24, 10, 0)
+    std::unique_ptr<GfxImageColorMap> pRgbIdentityColorMap(new GfxImageColorMap(8, &aDecode,
+        std::make_unique<GfxDeviceRGBColorSpace>()));
+    std::unique_ptr<GfxImageColorMap> pGrayIdentityColorMap(new GfxImageColorMap(8, &aDecode,
+        std::make_unique<GfxDeviceGrayColorSpace>()));
+#else
+    std::unique_ptr<GfxImageColorMap> pRgbIdentityColorMap(new GfxImageColorMap(8, &aDecode,
+        new GfxDeviceRGBColorSpace()));
+    std::unique_ptr<GfxImageColorMap> pGrayIdentityColorMap(new GfxImageColorMap(8, &aDecode,
+        new GfxDeviceGrayColorSpace()));
+#endif
+
+    OutputBuffer aBuf; initBuf(aBuf);
+    writePng_(aBuf, pRgbStr.get(), nBitmapWidth, nBitmapHeight, pRgbIdentityColorMap.get(),
+        pAlphaStr.get(), nBitmapWidth, nBitmapHeight, pGrayIdentityColorMap.get());
+    writeBinaryBuffer(aBuf);
+
+    // If we return false here we can fall back to the slow path
+    return true;
+}
+
+// This could be implemented for earlier versions, but the interface keeps
+// changing a little; not having it is only a problem for inputs with
+// large patterns.
+#endif
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

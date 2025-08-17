@@ -131,7 +131,7 @@ void MediatorMapping::mapInterface(
     if (*ppOut != nullptr)
     {
         uno_ExtEnvironment * env = m_to.get()->pExtEnv;
-        OSL_ASSERT( env != nullptr );
+        assert(env != nullptr);
         env->releaseInterface( env, *ppOut );
         *ppOut = nullptr;
     }
@@ -149,8 +149,7 @@ void MediatorMapping::mapInterface(
     *ppOut = ret;
 }
 
-extern "C" { static void s_MediatorMapping_free(uno_Mapping * pMapping)
-    SAL_THROW_EXTERN_C()
+extern "C" { static void s_MediatorMapping_free(uno_Mapping * pMapping) noexcept
 {
     delete static_cast<MediatorMapping *>(pMapping);
 }}
@@ -208,7 +207,7 @@ void getCascadeMapping(uno_Mapping     ** ppMapping,
     if (pAddPurpose && pAddPurpose->length)
         return;
 
-    OUString uno_envType(UNO_LB_UNO);
+    OUString uno_envType(u"" UNO_LB_UNO ""_ustr);
 
     OUString from_envType    = cppu::EnvDcp::getTypeName(pFrom->pTypeName);
     OUString to_envType      = cppu::EnvDcp::getTypeName(pTo->pTypeName);

@@ -125,12 +125,12 @@ namespace {
 
 SwFormatFootnote::SwFormatFootnote( bool bEndNote )
     : SfxPoolItem( RES_TXTATR_FTN )
-    , sw::BroadcastingModify()
     , m_pTextAttr(nullptr)
     , m_nNumber(0)
     , m_nNumberRLHidden(0)
     , m_bEndNote(bEndNote)
 {
+    setNonShareable();
 }
 
 void SwFormatFootnote::SetXFootnote(rtl::Reference<SwXFootnote> const& xNote)
@@ -155,21 +155,13 @@ SwFormatFootnote* SwFormatFootnote::Clone( SfxItemPool* ) const
     return pNew;
 }
 
-void SwFormatFootnote::SwClientNotify(const SwModify&, const SfxHint& rHint)
-{
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    CallSwClientNotify(rHint);
-    if(RES_REMOVE_UNO_OBJECT == pLegacy->GetWhich())
-        SetXFootnote(nullptr);
-}
-
 void SwFormatFootnote::InvalidateFootnote()
 {
-    SwPtrMsgPoolItem const item(RES_REMOVE_UNO_OBJECT,
-            &static_cast<sw::BroadcastingModify&>(*this)); // cast to base class (void*)
-    CallSwClientNotify(sw::LegacyModifyHint(&item, &item));
+    if (auto xUnoFootnote = m_wXFootnote.get())
+    {
+        xUnoFootnote->OnFormatFootnoteDeleted();
+        m_wXFootnote.clear();
+    }
 }
 
 void SwFormatFootnote::SetEndNote( bool b )
@@ -196,7 +188,7 @@ OUString SwFormatFootnote::GetFootnoteText(SwRootFrame const& rLayout) const
         SwNodeIndex aIdx( *m_pTextAttr->GetStartNode(), 1 );
         SwContentNode* pCNd = aIdx.GetNode().GetTextNode();
         if( !pCNd )
-            pCNd = aIdx.GetNodes().GoNext( &aIdx );
+            pCNd = SwNodes::GoNext(&aIdx);
 
         if( pCNd->IsTextNode() ) {
             buf.append(static_cast<SwTextNode*>(pCNd)->GetExpandText(&rLayout));
@@ -292,12 +284,15 @@ void SwFormatFootnote::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterEndElement(pWriter);
 }
 
-SwTextFootnote::SwTextFootnote( SwFormatFootnote& rAttr, sal_Int32 nStartPos )
+SwTextFootnote::SwTextFootnote(
+    const SfxPoolItemHolder& rAttr,
+    sal_Int32 nStartPos )
     : SwTextAttr( rAttr, nStartPos )
     , m_pTextNode( nullptr )
     , m_nSeqNo( USHRT_MAX )
 {
-    rAttr.m_pTextAttr = this;
+    SwFormatFootnote& rSwFormatFootnote(static_cast<SwFormatFootnote&>(GetAttr()));
+    rSwFormatFootnote.m_pTextAttr = this;
     SetHasDummyChar(true);
 }
 
@@ -504,7 +499,7 @@ void SwTextFootnote::DelFrames(SwRootFrame const*const pRoot)
         return;
 
     SwNodeIndex aIdx( *m_oStartNode );
-    SwContentNode* pCNd = m_pTextNode->GetNodes().GoNext( &aIdx );
+    SwContentNode* pCNd = SwNodes::GoNext(&aIdx);
     if( !pCNd )
         return;
 

@@ -28,7 +28,7 @@
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/document/XEventListener.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
+#include <framework/AbstractPane.hxx>
 #include <com/sun/star/rendering/XBitmap.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/basemutex.hxx>
@@ -68,9 +68,9 @@ public:
 
     void SAL_CALL disposing() override;
 
-    void SetParentPane (const css::uno::Reference<css::drawing::framework::XPane>& rxPane);
+    void SetParentPane (const rtl::Reference<sd::framework::AbstractPane>& rxPane);
     void SetTheme (const std::shared_ptr<PresenterTheme>& rpTheme);
-    void NotifyViewCreation (const css::uno::Reference<css::drawing::framework::XView>& rxView);
+    void NotifyViewCreation (const rtl::Reference<sd::framework::AbstractView>& rxView);
     void SetPanePosSizeAbsolute (
         const OUString& rsPaneURL,
         const double nX,
@@ -85,7 +85,7 @@ public:
     void SetHelpViewState (bool bIsActive);
     void SetPauseState (bool bIsPaused);
 
-    enum LayoutMode { LM_Standard, LM_Notes, LM_Generic };
+    enum class LayoutMode { Standard, Notes, Generic };
 private:
     void SetLayoutMode (const LayoutMode eMode);
 

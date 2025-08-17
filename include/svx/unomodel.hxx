@@ -20,6 +20,7 @@
 #ifndef INCLUDED_SVX_UNOMODEL_HXX
 #define INCLUDED_SVX_UNOMODEL_HXX
 
+#include <config_options.h>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/ucb/XAnyCompareFactory.hpp>
@@ -29,10 +30,12 @@
 #include <svx/fmdmod.hxx>
 #include <svx/svxdllapi.h>
 #include <cppuhelper/weakref.hxx>
+#include <unotools/weakref.hxx>
 
 class SdrModel;
+class SvxUnoDrawPagesAccess;
 
-class SVXCORE_DLLPUBLIC SvxUnoDrawingModel
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SvxUnoDrawingModel
 :   public SfxBaseModel, // implements SfxListener, OWEAKOBJECT & other
     public SvxFmMSFactory,
     public css::drawing::XDrawPagesSupplier,
@@ -44,7 +47,7 @@ class SVXCORE_DLLPUBLIC SvxUnoDrawingModel
 private:
     SdrModel* mpDoc;
 
-    css::uno::WeakReference< css::drawing::XDrawPages > mxDrawPagesAccess;
+    unotools::WeakReference< SvxUnoDrawPagesAccess > mxDrawPagesAccess;
 
     css::uno::Reference< css::uno::XInterface > mxDashTable;
     css::uno::Reference< css::uno::XInterface > mxGradientTable;

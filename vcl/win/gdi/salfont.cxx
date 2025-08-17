@@ -33,16 +33,11 @@
 #include <vector>
 
 #include <dwrite_3.h>
-// Currently, we build with _WIN32_WINNT=0x0601 (Windows 7), which means newer
-// declarations in dwrite_3.h will not be visible.
-#if WINVER < 0x0A00
-#  include "dw-extra.h"
-#endif
-
 #include <o3tl/lru_map.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <i18nlangtag/mslangid.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <osl/process.h>
 #include <rtl/bootstrap.hxx>
@@ -74,10 +69,8 @@
 #include <font/FontMetricData.hxx>
 #include <impglyphitem.hxx>
 
-#if HAVE_FEATURE_SKIA
 #include <vcl/skia/SkiaHelper.hxx>
 #include <skia/win/font.hxx>
-#endif
 
 using namespace vcl;
 
@@ -256,9 +249,7 @@ struct ImplEnumInfo
     HDC                 mhDC;
     vcl::font::PhysicalFontCollection* mpList;
     OUString*           mpName;
-    LOGFONTW*           mpLogFont;
     bool                mbPrinter;
-    int                 mnFontCount;
 };
 
 }
@@ -273,7 +264,8 @@ static rtl_TextEncoding ImplCharSetToSal( BYTE nCharSet )
         switch ( nCP )
         {
             // It is unclear why these two (undefined?) code page numbers are
-            // handled specially here:
+            // handled specially here. They are mentioned briefly in
+            // https://github.com/osfree-project/osfree/blob/165b89a685030c2b875aa0c7c5db420afc8db5f6/docs/dos/dos.txt
             case 1004:  eTextEncoding = RTL_TEXTENCODING_MS_1252; break;
             case 65400: eTextEncoding = RTL_TEXTENCODING_SYMBOL; break;
             default:
@@ -455,7 +447,7 @@ static FontAttributes WinFont2DevFontAttributes( const ENUMLOGFONTEXW& rEnumFont
 
     // use the face's style name only if it looks reasonable
     const wchar_t* pStyleName = rEnumFont.elfStyle;
-    const wchar_t* pEnd = pStyleName + sizeof(rEnumFont.elfStyle)/sizeof(*rEnumFont.elfStyle);
+    const wchar_t* pEnd = std::end(rEnumFont.elfStyle);
     const wchar_t* p = pStyleName;
     for(; *p && (p < pEnd); ++p )
         if( *p < 0x0020 )
@@ -478,43 +470,49 @@ static FontAttributes WinFont2DevFontAttributes( const ENUMLOGFONTEXW& rEnumFont
 void ImplSalLogFontToFontW( HDC hDC, const LOGFONTW& rLogFont, Font& rFont )
 {
     OUString aFontName( o3tl::toU(rLogFont.lfFaceName) );
-    if (!aFontName.isEmpty())
-    {
-        rFont.SetFamilyName( aFontName );
-        rFont.SetCharSet( ImplCharSetToSal( rLogFont.lfCharSet ) );
-        rFont.SetFamily( ImplFamilyToSal( rLogFont.lfPitchAndFamily ) );
-        rFont.SetPitch( ImplLogPitchToSal( rLogFont.lfPitchAndFamily ) );
-        rFont.SetWeight( ImplWeightToSal( rLogFont.lfWeight ) );
+    if (aFontName.isEmpty())
+        return;
 
-        tools::Long nFontHeight = rLogFont.lfHeight;
-        if ( nFontHeight < 0 )
-            nFontHeight = -nFontHeight;
-        tools::Long nDPIY = GetDeviceCaps( hDC, LOGPIXELSY );
-        if( !nDPIY )
-            nDPIY = 600;
-        nFontHeight *= 72;
-        nFontHeight += nDPIY/2;
-        nFontHeight /= nDPIY;
-        rFont.SetFontSize( Size( 0, nFontHeight ) );
-        rFont.SetOrientation( Degree10(static_cast<sal_Int16>(rLogFont.lfEscapement)) );
-        if ( rLogFont.lfItalic )
-            rFont.SetItalic( ITALIC_NORMAL );
-        else
-            rFont.SetItalic( ITALIC_NONE );
-        if ( rLogFont.lfUnderline )
-            rFont.SetUnderline( LINESTYLE_SINGLE );
-        else
-            rFont.SetUnderline( LINESTYLE_NONE );
-        if ( rLogFont.lfStrikeOut )
-            rFont.SetStrikeout( STRIKEOUT_SINGLE );
-        else
-            rFont.SetStrikeout( STRIKEOUT_NONE );
-    }
+    rFont.SetFamilyName( aFontName );
+    rFont.SetCharSet( ImplCharSetToSal( rLogFont.lfCharSet ) );
+    rFont.SetFamily( ImplFamilyToSal( rLogFont.lfPitchAndFamily ) );
+    rFont.SetPitch( ImplLogPitchToSal( rLogFont.lfPitchAndFamily ) );
+    rFont.SetWeight( ImplWeightToSal( rLogFont.lfWeight ) );
+
+    tools::Long nFontHeight = rLogFont.lfHeight;
+    if ( nFontHeight < 0 )
+        nFontHeight = -nFontHeight;
+    tools::Long nDPIY = GetDeviceCaps( hDC, LOGPIXELSY );
+    if( !nDPIY )
+        nDPIY = 600;
+    nFontHeight *= 72;
+    nFontHeight += nDPIY/2;
+    nFontHeight /= nDPIY;
+    rFont.SetFontSize( Size( 0, nFontHeight ) );
+    rFont.SetOrientation( Degree10(static_cast<sal_Int16>(rLogFont.lfEscapement)) );
+    if ( rLogFont.lfItalic )
+        rFont.SetItalic( ITALIC_NORMAL );
+    else
+        rFont.SetItalic( ITALIC_NONE );
+    if ( rLogFont.lfUnderline )
+        rFont.SetUnderline( LINESTYLE_SINGLE );
+    else
+        rFont.SetUnderline( LINESTYLE_NONE );
+    if ( rLogFont.lfStrikeOut )
+        rFont.SetStrikeout( STRIKEOUT_SINGLE );
+    else
+        rFont.SetStrikeout( STRIKEOUT_NONE );
+}
+
+static sal_IntPtr getNextFontId()
+{
+    static sal_IntPtr id;
+    return ++id;
 }
 
 WinFontFace::WinFontFace(const ENUMLOGFONTEXW& rEnumFont, const NEWTEXTMETRICW& rMetric)
 :   vcl::font::PhysicalFontFace(WinFont2DevFontAttributes(rEnumFont, rMetric)),
-    mnId( 0 ),
+    mnId(getNextFontId()),
     meWinCharSet(rEnumFont.elfLogFont.lfCharSet),
     mnPitchAndFamily(rMetric.tmPitchAndFamily),
     maLogFont(rEnumFont.elfLogFont)
@@ -532,11 +530,8 @@ sal_IntPtr WinFontFace::GetFontId() const
 
 rtl::Reference<LogicalFontInstance> WinFontFace::CreateFontInstance(const vcl::font::FontSelectPattern& rFSD) const
 {
-#if HAVE_FEATURE_SKIA
-    if (SkiaHelper::isVCLSkiaEnabled())
-        return new SkiaWinFontInstance(*this, rFSD);
-#endif
-    return new WinFontInstance(*this, rFSD);
+    assert(SkiaHelper::isVCLSkiaEnabled() && "Windows requires skia");
+    return new SkiaWinFontInstance(*this, rFSD);
 }
 
 const std::vector<hb_variation_t>&
@@ -653,16 +648,9 @@ hb_blob_t* WinFontFace::GetHbTable(hb_tag_t nTag) const
 
 void WinSalGraphics::SetTextColor( Color nColor )
 {
-    COLORREF aCol = PALETTERGB( nColor.GetRed(),
-                                nColor.GetGreen(),
-                                nColor.GetBlue() );
-
-    if( !mbPrinter &&
-        GetSalData()->mhDitherPal &&
-        ImplIsSysColorEntry( nColor ) )
-    {
-        aCol = PALRGB_TO_RGB( aCol );
-    }
+    COLORREF aCol = RGB( nColor.GetRed(),
+                         nColor.GetGreen(),
+                         nColor.GetBlue() );
 
     ::SetTextColor( getHDC(), aCol );
 }
@@ -675,7 +663,7 @@ static int CALLBACK SalEnumQueryFontProcExW( const LOGFONTW*, const TEXTMETRICW*
 
 void ImplGetLogFontFromFontSelect( const vcl::font::FontSelectPattern& rFont,
                                    const vcl::font::PhysicalFontFace* pFontFace,
-                                   LOGFONTW& rLogFont )
+                                   LOGFONTW& rLogFont, bool bAntiAliased)
 {
     OUString aName;
     if (pFontFace)
@@ -711,7 +699,6 @@ void ImplGetLogFontFromFontSelect( const vcl::font::FontSelectPattern& rFont,
     rLogFont.lfEscapement      = rFont.mnOrientation.get();
     rLogFont.lfOrientation     = rLogFont.lfEscapement;
     rLogFont.lfClipPrecision   = CLIP_DEFAULT_PRECIS;
-    rLogFont.lfQuality         = DEFAULT_QUALITY;
     rLogFont.lfOutPrecision    = OUT_TT_PRECIS;
     if ( rFont.mnOrientation )
         rLogFont.lfClipPrecision |= CLIP_LH_ANGLES;
@@ -719,53 +706,22 @@ void ImplGetLogFontFromFontSelect( const vcl::font::FontSelectPattern& rFont,
     // disable antialiasing if requested
     if ( rFont.mbNonAntialiased )
         rLogFont.lfQuality = NONANTIALIASED_QUALITY;
-
+    else if (Application::GetSettings().GetStyleSettings().GetUseFontAAFromSystem())
+        rLogFont.lfQuality = DEFAULT_QUALITY; // for display on screen
+    else
+        rLogFont.lfQuality = bAntiAliased ? ANTIALIASED_QUALITY : NONANTIALIASED_QUALITY;
 }
 
-std::tuple<HFONT,bool,sal_Int32> WinSalGraphics::ImplDoSetFont(HDC hDC, vcl::font::FontSelectPattern const & i_rFont,
-                                    const vcl::font::PhysicalFontFace * i_pFontFace,
-                                    HFONT& o_rOldFont)
+std::tuple<HFONT, HFONT, sal_Int32>
+WinSalGraphics::ImplDoSetFont(HDC hDC, vcl::font::FontSelectPattern const& i_rFont,
+                              const vcl::font::PhysicalFontFace* i_pFontFace, HFONT& o_rOldFont)
 {
     HFONT hNewFont = nullptr;
 
     LOGFONTW aLogFont;
-    ImplGetLogFontFromFontSelect( i_rFont, i_pFontFace, aLogFont );
-
-    bool    bIsCJKVerticalFont = false;
-    // select vertical mode for printing if requested and available
-    if ( i_rFont.mbVertical && mbPrinter )
-    {
-        constexpr size_t nLen = sizeof(aLogFont.lfFaceName) - sizeof(aLogFont.lfFaceName[0]);
-        // vertical fonts start with an '@'
-        memmove( &aLogFont.lfFaceName[1], &aLogFont.lfFaceName[0], nLen );
-        aLogFont.lfFaceName[0] = '@';
-        aLogFont.lfFaceName[LF_FACESIZE - 1] = 0;
-
-        // check availability of vertical mode for this font
-        EnumFontFamiliesExW( getHDC(), &aLogFont, SalEnumQueryFontProcExW,
-                reinterpret_cast<LPARAM>(&bIsCJKVerticalFont), 0 );
-        if( !bIsCJKVerticalFont )
-        {
-            // restore non-vertical name if not vertical mode isn't available
-            memcpy( &aLogFont.lfFaceName[0], &aLogFont.lfFaceName[1], nLen );
-            aLogFont.lfFaceName[LF_FACESIZE - 1] = 0;
-        }
-    }
+    ImplGetLogFontFromFontSelect( i_rFont, i_pFontFace, aLogFont, getAntiAlias());
 
     hNewFont = ::CreateFontIndirectW( &aLogFont );
-
-    HDC hdcScreen = nullptr;
-    if( mbVirDev )
-        // only required for virtual devices, see below for details
-        hdcScreen = GetDC(nullptr);
-    if( hdcScreen )
-    {
-        // select font into screen hdc first to get an antialiased font
-        // and instantly restore the default font!
-        // see knowledge base article 305290:
-        // "PRB: Fonts Not Drawn Antialiased on Device Context for DirectDraw Surface"
-        SelectFont( hdcScreen, SelectFont( hdcScreen , hNewFont ) );
-    }
     o_rOldFont = ::SelectFont(hDC, hNewFont);
 
     TEXTMETRICW aTextMetricW;
@@ -779,13 +735,19 @@ std::tuple<HFONT,bool,sal_Int32> WinSalGraphics::ImplDoSetFont(HDC hDC, vcl::fon
         SelectFont(hDC, hNewFont2);
         DeleteFont( hNewFont );
         hNewFont = hNewFont2;
-        bIsCJKVerticalFont = false;
     }
 
-    if( hdcScreen )
-        ::ReleaseDC( nullptr, hdcScreen );
+    // Optionally create a secondary font for non-rotated CJK glyphs in vertical context
+    HFONT hNewVerticalFont = nullptr;
+    if (i_rFont.mbVertical && mbPrinter)
+    {
+        aLogFont.lfEscapement = 0;
+        aLogFont.lfOrientation = 0;
+        hNewVerticalFont = ::CreateFontIndirectW(&aLogFont);
+    }
 
-    return std::make_tuple(hNewFont, bIsCJKVerticalFont, static_cast<sal_Int32>(aTextMetricW.tmDescent));
+    return std::make_tuple(hNewFont, hNewVerticalFont,
+                           static_cast<sal_Int32>(aTextMetricW.tmDescent));
 }
 
 void WinSalGraphics::SetFont(LogicalFontInstance* pFont, int nFallbackLevel)
@@ -890,49 +852,44 @@ static int CALLBACK SalEnumFontsProcExW( const LOGFONTW* lpelfe,
                                   const TEXTMETRICW* lpntme,
                                   DWORD nFontType, LPARAM lParam )
 {
-    ENUMLOGFONTEXW const * pLogFont
-        = reinterpret_cast<ENUMLOGFONTEXW const *>(lpelfe);
-    NEWTEXTMETRICEXW const * pMetric
-        = reinterpret_cast<NEWTEXTMETRICEXW const *>(lpntme);
     ImplEnumInfo* pInfo = reinterpret_cast<ImplEnumInfo*>(lParam);
     if ( !pInfo->mpName )
     {
         // Ignore vertical fonts
-        if ( pLogFont->elfLogFont.lfFaceName[0] != '@' )
+        if (lpelfe->lfFaceName[0] != '@')
         {
-            OUString aName(o3tl::toU(pLogFont->elfLogFont.lfFaceName));
+            OUString aName(o3tl::toU(lpelfe->lfFaceName));
             pInfo->mpName = &aName;
-            memcpy(pInfo->mpLogFont->lfFaceName, pLogFont->elfLogFont.lfFaceName, (aName.getLength()+1)*sizeof(wchar_t));
-            pInfo->mpLogFont->lfCharSet = pLogFont->elfLogFont.lfCharSet;
-            EnumFontFamiliesExW(pInfo->mhDC, pInfo->mpLogFont, SalEnumFontsProcExW,
+            LOGFONTW aLogFont{ .lfCharSet = lpelfe->lfCharSet };
+            std::copy_n(lpelfe->lfFaceName, std::size(lpelfe->lfFaceName), aLogFont.lfFaceName);
+            EnumFontFamiliesExW(pInfo->mhDC, &aLogFont, SalEnumFontsProcExW,
                                 reinterpret_cast<LPARAM>(pInfo), 0);
-            pInfo->mpLogFont->lfFaceName[0] = '\0';
-            pInfo->mpLogFont->lfCharSet = DEFAULT_CHARSET;
             pInfo->mpName = nullptr;
         }
     }
     else
     {
+        NEWTEXTMETRICW const* pMetric = reinterpret_cast<NEWTEXTMETRICW const*>(lpntme);
         // Ignore non-device fonts on printers.
         if (pInfo->mbPrinter)
         {
             if ((nFontType & RASTER_FONTTYPE) && !(nFontType & DEVICE_FONTTYPE))
             {
-                SAL_INFO("vcl.fonts", "Unsupported printer font ignored: " << OUString(o3tl::toU(pLogFont->elfLogFont.lfFaceName)));
+                SAL_INFO("vcl.fonts", "Unsupported printer font ignored: " << OUString(o3tl::toU(lpelfe->lfFaceName)));
                 return 1;
             }
         }
         // Only SFNT fonts are supported, ignore anything else.
         else if (!(nFontType & TRUETYPE_FONTTYPE) &&
-                 !(pMetric->ntmTm.ntmFlags & NTM_PS_OPENTYPE) &&
-                 !(pMetric->ntmTm.ntmFlags & NTM_TT_OPENTYPE))
+                 !(pMetric->ntmFlags & NTM_PS_OPENTYPE) &&
+                 !(pMetric->ntmFlags & NTM_TT_OPENTYPE))
         {
-            SAL_INFO("vcl.fonts", "Unsupported font ignored: " << OUString(o3tl::toU(pLogFont->elfLogFont.lfFaceName)));
+            SAL_INFO("vcl.fonts", "Unsupported font ignored: " << OUString(o3tl::toU(lpelfe->lfFaceName)));
             return 1;
         }
 
-        rtl::Reference<WinFontFace> pData = new WinFontFace(*pLogFont, pMetric->ntmTm);
-        pData->SetFontId( sal_IntPtr( pInfo->mnFontCount++ ) );
+        rtl::Reference<WinFontFace> pData
+            = new WinFontFace(*reinterpret_cast<ENUMLOGFONTEXW const*>(lpelfe), *pMetric);
 
         pInfo->mpList->Add( pData.get() );
         SAL_INFO("vcl.fonts", "SalEnumFontsProcExW: font added: " << pData->GetFamilyName() << " " << pData->GetStyleName());
@@ -947,107 +904,39 @@ struct TempFontItem
     TempFontItem* mpNextItem;
 };
 
-static int lcl_AddFontResource(SalData& rSalData, const OUString& rFontFileURL, bool bShared)
+static int lcl_AddFontResource(SalData& rSalData, const OUString& rFontFileURL)
 {
     OUString aFontSystemPath;
     OSL_VERIFY(!osl::FileBase::getSystemPathFromFileURL(rFontFileURL, aFontSystemPath));
 
     int nRet = AddFontResourceExW(o3tl::toW(aFontSystemPath.getStr()), FR_PRIVATE, nullptr);
     SAL_WARN_IF(nRet <= 0, "vcl.fonts", "AddFontResourceExW failed for " << rFontFileURL);
-    if (nRet > 0)
-    {
-        TempFontItem* pNewItem = new TempFontItem;
-        pNewItem->maFontResourcePath = aFontSystemPath;
-        if (bShared)
-        {
-            pNewItem->mpNextItem = rSalData.mpSharedTempFontItem;
-            rSalData.mpSharedTempFontItem = pNewItem;
-        }
-        else
-        {
-            pNewItem->mpNextItem = rSalData.mpOtherTempFontItem;
-            rSalData.mpOtherTempFontItem = pNewItem;
-        }
-    }
+    if (nRet <= 0)
+        return nRet;
+
+    TempFontItem* pNewItem = new TempFontItem;
+    pNewItem->maFontResourcePath = aFontSystemPath;
+
+    pNewItem->mpNextItem = rSalData.mpTempFontItem;
+    rSalData.mpTempFontItem = pNewItem;
+
     return nRet;
 }
 
-void ImplReleaseTempFonts(SalData& rSalData, bool bAll)
+void ImplReleaseTempFonts(SalData& rSalData)
 {
-    while (TempFontItem* p = rSalData.mpOtherTempFontItem)
+    while (TempFontItem* p = rSalData.mpTempFontItem)
     {
         RemoveFontResourceExW(o3tl::toW(p->maFontResourcePath.getStr()), FR_PRIVATE, nullptr);
-        rSalData.mpOtherTempFontItem = p->mpNextItem;
+        rSalData.mpTempFontItem = p->mpNextItem;
         delete p;
     }
-
-    if (!bAll)
-        return;
-
-    while (TempFontItem* p = rSalData.mpSharedTempFontItem)
-    {
-        RemoveFontResourceExW(o3tl::toW(p->maFontResourcePath.getStr()), FR_PRIVATE, nullptr);
-        rSalData.mpSharedTempFontItem = p->mpNextItem;
-        delete p;
-    }
-}
-
-static OUString lcl_GetFontFamilyName(std::u16string_view rFontFileURL)
-{
-    // Create temporary file name
-    OUString aTempFileURL;
-    if (osl::File::E_None != osl::File::createTempFile(nullptr, nullptr, &aTempFileURL))
-        return OUString();
-    osl::File::remove(aTempFileURL);
-    OUString aResSystemPath;
-    osl::FileBase::getSystemPathFromFileURL(aTempFileURL, aResSystemPath);
-
-    // Create font resource file (.fot)
-    // There is a limit of 127 characters for the full path passed via lpszFile, so we have to
-    // split the font URL and pass it as two parameters. As a result we can't use
-    // CreateScalableFontResource for renaming, as it now expects the font in the system path.
-    // But it's still good to use it for family name extraction, we're currently after.
-    // BTW: it doesn't help to prefix the lpszFile with \\?\ to support larger paths.
-    // TODO: use TTLoadEmbeddedFont (needs an EOT as input, so we have to add a header to the TTF)
-    // TODO: forward the EOT from the AddTempDevFont call side, if VCL supports it
-    INetURLObject aTTFUrl(rFontFileURL);
-    // GetBase() strips the extension
-    OUString aFilename = aTTFUrl.GetLastName(INetURLObject::DecodeMechanism::WithCharset);
-    if (!CreateScalableFontResourceW(0, o3tl::toW(aResSystemPath.getStr()),
-            o3tl::toW(aFilename.getStr()), o3tl::toW(aTTFUrl.GetPath().getStr())))
-    {
-        sal_uInt32 nError = GetLastError();
-        SAL_WARN("vcl.fonts", "CreateScalableFontResource failed for " << aResSystemPath << " "
-                              << aFilename << " " << aTTFUrl.GetPath() << " " << nError);
-        return OUString();
-    }
-
-    // Open and read the font resource file
-    osl::File aFotFile(aTempFileURL);
-    if (osl::FileBase::E_None != aFotFile.open(osl_File_OpenFlag_Read))
-        return OUString();
-
-    sal_uInt64  nBytesRead = 0;
-    char        aBuffer[4096];
-    aFotFile.read( aBuffer, sizeof( aBuffer ), nBytesRead );
-    // clean up temporary resource file
-    aFotFile.close();
-    osl::File::remove(aTempFileURL);
-
-    // retrieve font family name from byte offset 0x4F6
-    static const sal_uInt64 nNameOfs = 0x4F6;
-    sal_uInt64 nPos = nNameOfs;
-    for (; (nPos < nBytesRead) && (aBuffer[nPos] != 0); nPos++);
-    if (nPos >= nBytesRead || (nPos == nNameOfs))
-        return OUString();
-
-    return OUString(aBuffer + nNameOfs, nPos - nNameOfs, osl_getThreadTextEncoding());
 }
 
 bool WinSalGraphics::AddTempDevFont(vcl::font::PhysicalFontCollection* pFontCollection,
                                     const OUString& rFontFileURL, const OUString& rFontName)
 {
-    OUString aFontFamily = lcl_GetFontFamilyName(rFontFileURL);
+    OUString aFontFamily = getFontFamilyNameFromTTF(rFontFileURL);
     if (aFontFamily.isEmpty())
     {
         SAL_WARN("vcl.fonts", "error extracting font family from " << rFontFileURL);
@@ -1060,30 +949,47 @@ bool WinSalGraphics::AddTempDevFont(vcl::font::PhysicalFontCollection* pFontColl
         return false;
     }
 
-    int nFonts = lcl_AddFontResource(*GetSalData(), rFontFileURL, false);
+    int nFonts = lcl_AddFontResource(*GetSalData(), rFontFileURL);
     if (nFonts <= 0)
         return false;
 
-    ImplEnumInfo aInfo;
-    aInfo.mhDC = getHDC();
-    aInfo.mpList = pFontCollection;
-    aInfo.mpName = &aFontFamily;
-    aInfo.mbPrinter = mbPrinter;
-    aInfo.mnFontCount = pFontCollection->Count();
-    const int nExpectedFontCount = aInfo.mnFontCount + nFonts;
+    ImplEnumInfo aInfo{ .mhDC = getHDC(),
+                        .mpList = pFontCollection,
+                        .mpName = &aFontFamily,
+                        .mbPrinter = mbPrinter };
+    const int nExpectedFontCount = pFontCollection->Count() + nFonts;
 
-    LOGFONTW aLogFont = {};
-    aLogFont.lfCharSet = DEFAULT_CHARSET;
-    aInfo.mpLogFont = &aLogFont;
+    LOGFONTW aLogFont = { .lfCharSet = DEFAULT_CHARSET };
 
     // add the font to the PhysicalFontCollection
     EnumFontFamiliesExW(getHDC(), &aLogFont,
         SalEnumFontsProcExW, reinterpret_cast<LPARAM>(&aInfo), 0);
 
-    SAL_WARN_IF(nExpectedFontCount != pFontCollection->Count(), "vcl.fonts",
-        "temp font was registered but is not in enumeration: " << rFontFileURL);
+    SAL_WARN_IF(nExpectedFontCount != pFontCollection->Count() && !pFontCollection->FindFontFamily(aFontFamily),
+                "vcl.fonts",
+                "temp font was registered but is not in enumeration: " << rFontFileURL);
 
     return true;
+}
+
+bool WinSalGraphics::RemoveTempDevFont(const OUString& rFileURL, const OUString& /*rFontName*/)
+{
+    OUString path;
+    osl::FileBase::getSystemPathFromFileURL(rFileURL, path);
+    auto pSalData = GetSalData();
+    for (TempFontItem** pp = &pSalData->mpTempFontItem; *pp; pp = &(*pp)->mpNextItem)
+    {
+        if ((*pp)->maFontResourcePath == path)
+        {
+            RemoveFontResourceExW(o3tl::toW(path.getStr()), FR_PRIVATE, nullptr);
+            auto p = *pp;
+            *pp = p->mpNextItem;
+            delete p;
+            return true;
+        }
+    }
+    SAL_WARN("vcl.fonts", "Trying to unregister an embedded font that wasn't registered?");
+    return true; // It's still safe to delete the font file: we don't use it
 }
 
 void WinSalGraphics::GetDevFontList( vcl::font::PhysicalFontCollection* pFontCollection )
@@ -1107,7 +1013,7 @@ void WinSalGraphics::GetDevFontList( vcl::font::PhysicalFontCollection* pFontCol
                     osl::FileStatus aFileStatus(osl_FileStatus_Mask_FileURL);
                     rcOSL = aDirItem.getFileStatus(aFileStatus);
                     if (rcOSL == osl::FileBase::E_None)
-                        lcl_AddFontResource(*pSalData, aFileStatus.getFileURL(), true);
+                        lcl_AddFontResource(*pSalData, aFileStatus.getFileURL());
                 }
             }
         };
@@ -1128,16 +1034,12 @@ void WinSalGraphics::GetDevFontList( vcl::font::PhysicalFontCollection* pFontCol
         return true;
     });
 
-    ImplEnumInfo aInfo;
-    aInfo.mhDC          = getHDC();
-    aInfo.mpList        = pFontCollection;
-    aInfo.mpName        = nullptr;
-    aInfo.mbPrinter     = mbPrinter;
-    aInfo.mnFontCount   = 0;
+    ImplEnumInfo aInfo{ .mhDC = getHDC(),
+                        .mpList = pFontCollection,
+                        .mpName = nullptr,
+                        .mbPrinter = mbPrinter };
 
-    LOGFONTW aLogFont = {};
-    aLogFont.lfCharSet = DEFAULT_CHARSET;
-    aInfo.mpLogFont = &aLogFont;
+    LOGFONTW aLogFont = { .lfCharSet = DEFAULT_CHARSET };
 
     // fill the PhysicalFontCollection
     EnumFontFamiliesExW( getHDC(), &aLogFont,
@@ -1153,7 +1055,6 @@ void WinSalGraphics::GetDevFontList( vcl::font::PhysicalFontCollection* pFontCol
 void WinSalGraphics::ClearDevFontCache()
 {
     mWinSalGraphicsImplBase->ClearDevFontCache();
-    ImplReleaseTempFonts(*GetSalData(), false);
 }
 
 bool WinFontInstance::GetGlyphOutline(sal_GlyphId nId, basegfx::B2DPolyPolygon& rB2DPolyPoly, bool) const
@@ -1359,14 +1260,13 @@ IDWriteFontFace* WinFontInstance::GetDWFontFace() const
                 SelectObject(hDC, hOrigFont);
         });
 
-        IDWriteGdiInterop* pDWriteGdiInterop;
-        WinSalGraphics::getDWriteFactory(nullptr, &pDWriteGdiInterop);
+        IDWriteGdiInterop* pDWriteGdiInterop = WinSalGraphics::getDWriteGdiInterop();
 
         HRESULT hr = pDWriteGdiInterop->CreateFontFaceFromHdc(hDC, &mxDWFontFace);
         if (FAILED(hr))
         {
             SAL_WARN("vcl.fonts", "HRESULT 0x" << OUString::number(hr, 16) << ": "
-                                               << WindowsErrorStringFromHRESULT(hr));
+                                               << comphelper::WindowsErrorStringFromHRESULT(hr));
             mxDWFontFace = nullptr;
         }
     }

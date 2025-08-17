@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -21,25 +21,49 @@
 #include <QtObject.moc>
 
 #include <QtFrame.hxx>
-#include <QtWidget.hxx>
 
+#include <QtCore/QLibraryInfo>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
+#include <QtWidgets/QVBoxLayout>
 
 QtObject::QtObject(QtFrame* pParent, bool bShow)
     : m_pParent(pParent)
     , m_pQWidget(nullptr)
     , m_bForwardKey(false)
 {
-    if (!m_pParent || !pParent->GetQWidget())
+    if (!m_pParent)
         return;
 
-    m_pQWidget = new QtObjectWidget(*this);
+    if (QLibraryInfo::version().majorVersion() > 5)
+    {
+        m_pQWindow = new QWindow;
+        m_pQWidget = QWidget::createWindowContainer(m_pQWindow, &pParent->GetQWidget());
+    }
+    else
+    {
+        // with the qt5 VCL plugin, the above would cause issues with video playback (s. tdf#148864, tdf#125517),
+        // which is not a problem with the QtMultimedia approach that the qt6 VCL plugin uses;
+        // stay with the QtObjectWidget introduced in commit 4366e0605214260e55a937173b0c2e02225dc843
+        m_pQWidget = new QtObjectWidget(*this);
+
+        // invoke QWidget::winId() to ensure a native window for OpenGL rendering is available on X11,
+        // don't do it on Wayland, as that breaks rendering otherwise, s.a. QtFrame::ResolveWindowHandle
+        if (QGuiApplication::platformName() == "xcb")
+            m_pQWidget->winId();
+        m_pQWindow = m_pQWidget->windowHandle();
+    }
+
+    // set layout, used for video playback, see QtPlayer::createPlayerWindow
+    QVBoxLayout* layout = new QVBoxLayout;
+    layout->setContentsMargins(0, 0, 0, 0);
+    m_pQWidget->setLayout(layout);
+
     if (bShow)
         m_pQWidget->show();
 
-    QtFrame::FillSystemEnvData(m_aSystemData, reinterpret_cast<sal_IntPtr>(this), m_pQWidget);
+    QtFrame::FillSystemEnvData(m_aSystemData, m_pQWidget);
 }
 
 QtObject::~QtObject()
@@ -51,10 +75,7 @@ QtObject::~QtObject()
     }
 }
 
-QWindow* QtObject::windowHandle() const
-{
-    return m_pQWidget ? m_pQWidget->windowHandle() : nullptr;
-}
+QWindow* QtObject::windowHandle() const { return m_pQWindow; }
 
 void QtObject::ResetClipRegion()
 {
@@ -101,14 +122,14 @@ void QtObject::Reparent(SalFrame* pFrame)
     if (m_pParent == pNewParent)
         return;
     m_pParent = pNewParent;
-    m_pQWidget->setParent(m_pParent->GetQWidget());
+    m_pQWidget->setParent(&m_pParent->GetQWidget());
 }
 
 QtObjectWidget::QtObjectWidget(QtObject& rParent)
-    : QWidget(rParent.frame()->GetQWidget())
+    : QWidget(&rParent.frame()->GetQWidget())
     , m_rParent(rParent)
 {
-    assert(m_rParent.frame() && m_rParent.frame()->GetQWidget());
+    assert(m_rParent.frame());
     setAttribute(Qt::WA_NoSystemBackground);
     setAttribute(Qt::WA_OpaquePaintEvent);
 }
@@ -152,4 +173,4 @@ void QtObjectWidget::keyPressEvent(QKeyEvent* pEvent)
         pEvent->ignore();
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

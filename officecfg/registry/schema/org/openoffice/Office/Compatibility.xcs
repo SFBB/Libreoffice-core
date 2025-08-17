@@ -116,6 +116,12 @@
         </info>
         <value>false</value>
       </prop>
+      <prop oor:name="MsWordUlTrailSpace" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Show underline of Word-compatible trailing blanks</desc>
+        </info>
+        <value>false</value>
+      </prop>
       <prop oor:name="SubtractFlysAnchoredAtFlys" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Tolerate white lines of PDF page backgrounds for compatibility with old documents (Use LibreOffice 4.3 anchoring paint order)</desc>
@@ -124,7 +130,7 @@
       </prop>
       <prop oor:name="EmptyDbFieldHidesPara" oor:type="xs:boolean" oor:nillable="false">
         <info>
-          <desc>Hide paragraphs of database fields (e.g., mail merge) with an empty value</desc>
+          <desc>Hide paragraphs of mail merge fields with empty value when generating merged documents</desc>
         </info>
         <value>true</value>
       </prop>
@@ -133,6 +139,66 @@
           <desc>Render NBSP as having variable size, instead of having a fixed size</desc>
         </info>
         <value>false</value>
+      </prop>
+      <prop oor:name="NoGapAfterNoteNumber" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Do not add an extra space after number in footnotes with hanging first line</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="TabsRelativeToIndent" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Set tabstops relative to indent of paragraph</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="TabOverMargin" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Allow tabs to extend beyond the right margin</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="DoNotMirrorRtlDrawObjs" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Do not mirror drawing objects anchored in paragraphs with an RTL writing direction</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="ContinuousEndnotes" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Render endnotes at the end of the document inline, rather than on a separate page</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="MsWordCompGridMetrics" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Use Word-compatible font metrics for text grid</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="IgnoreTabsAndBlanksForLineCalculation" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Make whitespace character height not affect line height</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="BalanceSpacesAndIdeographicSpaces" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Adjust spaces to half the width of ideographic spaces, using Word-compatible rules</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="ForceTopAlignmentInCellWithFloatingAnchor" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Use old Word-compatible layout, forcing cell contents to be top-aligned if the cell contains a floating shape</desc>
+        </info>
+        <value>false</value>
+      </prop>
+      <prop oor:name="AdjustTableLineHeightsToGridHeight" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Fix line heights for text inside tables to the text grid line height</desc>
+        </info>
+        <value>true</value>
       </prop>
     </group>
   </templates>

@@ -48,12 +48,10 @@ using namespace ::svx;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::task;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdb::application;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::ucb;
 
 OTableCopyHelper::OTableCopyHelper(OGenericUnoController* _pController)
@@ -109,7 +107,7 @@ void OTableCopyHelper::insertTable( std::u16string_view i_rSourceDataSource, con
         bool bAppendToExisting = !sTableNameForAppend.isEmpty();
         xWizard->setOperation( bAppendToExisting ? CopyTableOperation::AppendData : CopyTableOperation::CopyDefinitionAndData );
 
-        xWizard->execute();
+        (void)xWizard->execute();
     }
     catch( const SQLException& )
     {
@@ -182,17 +180,16 @@ void OTableCopyHelper::pasteTable( SotClipboardFormatId _nFormatId
         try
         {
             DropDescriptor aTrans;
-            bool bOk;
             if ( _nFormatId != SotClipboardFormatId::RTF )
-                bOk = _rTransData.GetSotStorageStream(SotClipboardFormatId::HTML ,aTrans.aHtmlRtfStorage);
+                aTrans.aHtmlRtfStorage = _rTransData.GetSotStorageStream(SotClipboardFormatId::HTML);
             else
-                bOk = _rTransData.GetSotStorageStream(SotClipboardFormatId::RTF,aTrans.aHtmlRtfStorage);
+                aTrans.aHtmlRtfStorage = _rTransData.GetSotStorageStream(SotClipboardFormatId::RTF);
 
             aTrans.nType            = E_TABLE;
             aTrans.bHtml            = SotClipboardFormatId::HTML == _nFormatId;
             aTrans.sDefaultTableName = GetTableNameForAppend();
-            if ( !bOk || !copyTagTable(aTrans,false,_xConnection) )
-                m_pController->showError(SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, "S1000", 0, Any()));
+            if ( !aTrans.aHtmlRtfStorage || !copyTagTable(aTrans,false,_xConnection) )
+                m_pController->showError(SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, u"S1000"_ustr, 0, Any()));
         }
         catch(const SQLException&)
         {
@@ -204,7 +201,7 @@ void OTableCopyHelper::pasteTable( SotClipboardFormatId _nFormatId
         }
     }
     else
-        m_pController->showError(SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, "S1000", 0, Any()));
+        m_pController->showError(SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, u"S1000"_ustr, 0, Any()));
 }
 
 void OTableCopyHelper::pasteTable( const TransferableDataHelper& _rTransData
@@ -256,25 +253,21 @@ bool OTableCopyHelper::copyTagTable(const TransferableDataHelper& _aDroppedData
     bool bHtml = _aDroppedData.HasFormat(SotClipboardFormatId::HTML);
     if ( bHtml || _aDroppedData.HasFormat(SotClipboardFormatId::RTF) )
     {
-        bool bOk;
-        if ( bHtml )
-            bOk = _aDroppedData.GetSotStorageStream(SotClipboardFormatId::HTML ,_rAsyncDrop.aHtmlRtfStorage);
-        else
-            bOk = _aDroppedData.GetSotStorageStream(SotClipboardFormatId::RTF,_rAsyncDrop.aHtmlRtfStorage);
+        _rAsyncDrop.aHtmlRtfStorage = _aDroppedData.GetSotStorageStream(bHtml ? SotClipboardFormatId::HTML : SotClipboardFormatId::RTF);
 
         _rAsyncDrop.bHtml           = bHtml;
         _rAsyncDrop.bError          = !copyTagTable(_rAsyncDrop,true,_xConnection);
 
-        bRet = ( !_rAsyncDrop.bError && bOk && _rAsyncDrop.aHtmlRtfStorage.is() );
+        bRet = ( !_rAsyncDrop.bError && _rAsyncDrop.aHtmlRtfStorage );
         if ( bRet )
         {
             // now we need to copy the stream
             ::utl::TempFileNamed aTmp;
             _rAsyncDrop.aUrl = aTmp.GetURL();
-            ::tools::SvRef<SotTempStream> aNew = new SotTempStream( aTmp.GetFileName() );
+            std::unique_ptr<SvStream> aNew = SotTempStream::Create( aTmp.GetFileName() );
             _rAsyncDrop.aHtmlRtfStorage->Seek(STREAM_SEEK_TO_BEGIN);
-            _rAsyncDrop.aHtmlRtfStorage->CopyTo( aNew.get() );
-            _rAsyncDrop.aHtmlRtfStorage = aNew;
+            aNew->WriteStream(*_rAsyncDrop.aHtmlRtfStorage);
+            _rAsyncDrop.aHtmlRtfStorage = std::move(aNew);
         }
         else
             _rAsyncDrop.aHtmlRtfStorage = nullptr;
@@ -286,7 +279,7 @@ void OTableCopyHelper::asyncCopyTagTable(  DropDescriptor& _rDesc
                                 ,std::u16string_view i_rDestDataSource
                                 ,const SharedConnection& _xConnection)
 {
-    if ( _rDesc.aHtmlRtfStorage.is() )
+    if ( _rDesc.aHtmlRtfStorage )
     {
         copyTagTable(_rDesc,false,_xConnection);
         _rDesc.aHtmlRtfStorage = nullptr;
@@ -298,7 +291,7 @@ void OTableCopyHelper::asyncCopyTagTable(  DropDescriptor& _rDesc
     else if ( !_rDesc.bError )
         pasteTable(_rDesc.aDroppedData,i_rDestDataSource,_xConnection);
     else
-        m_pController->showError(SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, "S1000", 0, Any()));
+        m_pController->showError(SQLException(DBA_RES(STR_NO_TABLE_FORMAT_INSIDE), *m_pController, u"S1000"_ustr, 0, Any()));
 }
 
 }   // namespace dbaui

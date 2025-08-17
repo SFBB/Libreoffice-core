@@ -38,9 +38,7 @@
 #include <unomodel.hxx>
 
 using namespace com::sun::star;
-using namespace com::sun::star::document;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::lang;
 using namespace com::sun::star::xml::sax;
 using namespace com::sun::star::text;
 using namespace cppu;
@@ -122,7 +120,7 @@ SvXMLImportContext *SvxXMLXTextImportComponent::CreateFastContext(
 SvxXMLXTextImportComponent::SvxXMLXTextImportComponent(
     const css::uno::Reference< css::uno::XComponentContext >& xContext,
     uno::Reference< XText > xText )
-:   SvXMLImport(xContext, ""),
+:   SvXMLImport(xContext, u""_ustr),
     mxText(std::move( xText ))
 {
     GetTextImport()->SetCursor( mxText->createTextCursor() );
@@ -149,13 +147,13 @@ EditPaM SvxReadXML( EditEngine& rEditEngine, SvStream& rStream, const ESelection
     //get the initial para count before paste
     sal_uInt32 initialParaCount = rEditEngine.GetEditDoc().Count();
     //insert para breaks before inserting the copied text
-    rEditEngine.InsertParaBreak( rEditEngine.CreateSelection( rSel ).Max() );
-    rEditEngine.InsertParaBreak( rEditEngine.CreateSelection( rSel ).Max() );
+    rEditEngine.InsertParaBreak( EditSelection(rEditEngine.CreateSelection( rSel ).Max()) );
+    rEditEngine.InsertParaBreak( EditSelection(rEditEngine.CreateSelection( rSel ).Max()) );
 
     // Init return PaM.
     EditPaM aPaM( rEditEngine.CreateSelection( rSel ).Max());
 
-    ESelection aSel(rSel.nStartPara+1, 0, rSel.nEndPara+1, 0);
+    ESelection aSel(rSel.start.nPara + 1, 0, rSel.end.nPara + 1, 0);
     uno::Reference<text::XText > xParent;
     rtl::Reference<SvxUnoText> pUnoText = new SvxUnoText( &aEditSource, &aSvxXMLTextImportComponentPropertySet, xParent );
     pUnoText->SetSelection( aSel );
@@ -164,9 +162,10 @@ EditPaM SvxReadXML( EditEngine& rEditEngine, SvStream& rStream, const ESelection
     {
         do
         {
-            uno::Reference<uno::XComponentContext> xContext( ::comphelper::getProcessComponentContext() );
+            const uno::Reference<uno::XComponentContext>& xContext( ::comphelper::getProcessComponentContext() );
 
-            uno::Reference<io::XInputStream> xInputStream = new utl::OInputStreamWrapper( rStream );
+            xml::sax::InputSource aParserInput;
+            aParserInput.aInputStream = new utl::OInputStreamWrapper(rStream);
 
 /* testcode
             static constexpr OUStringLiteral aURL( u"file:///e:/test.xml" );
@@ -203,8 +202,6 @@ EditPaM SvxReadXML( EditEngine& rEditEngine, SvStream& rStream, const ESelection
             // uno::Reference< XDocumentHandler > xHandler( new SvxXMLXTextImportComponent( xText ) );
             rtl::Reference< SvxXMLXTextImportComponent > xImport( new SvxXMLXTextImportComponent( xContext, pUnoText ) );
 
-            xml::sax::InputSource aParserInput;
-            aParserInput.aInputStream = xInputStream;
 //          aParserInput.sSystemId = aMedium.GetName();
             xImport->parseStream( aParserInput );
         }
@@ -212,16 +209,16 @@ EditPaM SvxReadXML( EditEngine& rEditEngine, SvStream& rStream, const ESelection
 
         //remove the extra para breaks
         EditDoc& pDoc = rEditEngine.GetEditDoc();
-        rEditEngine.ParaAttribsToCharAttribs( pDoc.GetObject( rSel.nEndPara ) );
-        rEditEngine.ConnectParagraphs( pDoc.GetObject( rSel.nEndPara ),
-            pDoc.GetObject( rSel.nEndPara + 1 ), true );
-        rEditEngine.ParaAttribsToCharAttribs( pDoc.GetObject( pDoc.Count() - initialParaCount + aSel.nEndPara - 2 ) );
-        rEditEngine.ConnectParagraphs( pDoc.GetObject( pDoc.Count() - initialParaCount + aSel.nEndPara - 2 ),
-            pDoc.GetObject( pDoc.Count() - initialParaCount + aSel.nEndPara -1 ), true );
+        rEditEngine.ParaAttribsToCharAttribs(pDoc.GetObject(rSel.end.nPara));
+        rEditEngine.ConnectParagraphs(pDoc.GetObject(rSel.end.nPara),
+                                      pDoc.GetObject(rSel.end.nPara + 1), true);
+        rEditEngine.ParaAttribsToCharAttribs( pDoc.GetObject( pDoc.Count() - initialParaCount + aSel.end.nPara - 2 ) );
+        rEditEngine.ConnectParagraphs( pDoc.GetObject( pDoc.Count() - initialParaCount + aSel.end.nPara - 2 ),
+            pDoc.GetObject( pDoc.Count() - initialParaCount + aSel.end.nPara -1 ), true );
 
         // The final join is to be returned.
-        aPaM = rEditEngine.ConnectParagraphs( pDoc.GetObject( pDoc.Count() - initialParaCount + aSel.nEndPara - 2 ),
-            pDoc.GetObject( pDoc.Count() - initialParaCount + aSel.nEndPara -1 ), true );
+        aPaM = rEditEngine.ConnectParagraphs( pDoc.GetObject( pDoc.Count() - initialParaCount + aSel.end.nPara - 2 ),
+            pDoc.GetObject( pDoc.Count() - initialParaCount + aSel.end.nPara -1 ), true );
     }
     catch( const uno::Exception& )
     {

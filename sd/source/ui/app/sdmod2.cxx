@@ -24,6 +24,8 @@
 #include <svl/inethist.hxx>
 #include <svl/poolitem.hxx>
 #include <svl/flagitem.hxx>
+#include <unotools/localedatawrapper.hxx>
+#include <unotools/syslocale.hxx>
 #include <unotools/useroptions.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/viewfrm.hxx>
@@ -60,6 +62,9 @@
 #include <sdpage.hxx>
 #include <sdabstdlg.hxx>
 #include <svl/intitem.hxx>
+
+#include <officecfg/Office/Draw.hxx>
+#include <officecfg/Office/Impress.hxx>
 
 /** retrieves the page that is currently painted. This will only be the master page
     if the current drawn view only shows the master page*/
@@ -208,7 +213,7 @@ IMPL_LINK(SdModule, CalcFieldValueHdl, EditFieldInfo*, pInfo, void)
     }
     else if( dynamic_cast< const SvxPageField*  >(pField) )
     {
-        OUString aRepresentation(" ");
+        OUString aRepresentation(u" "_ustr);
 
         ::sd::ViewShell* pViewSh = pDocShell ? pDocShell->GetViewShell() : nullptr;
         if(pViewSh == nullptr)
@@ -244,7 +249,7 @@ IMPL_LINK(SdModule, CalcFieldValueHdl, EditFieldInfo*, pInfo, void)
     }
     else if( dynamic_cast< const SvxPageTitleField*  >(pField) )
     {
-        OUString aRepresentation(" ");
+        OUString aRepresentation(u" "_ustr);
 
         ::sd::ViewShell* pViewSh = pDocShell ? pDocShell->GetViewShell() : nullptr;
         if(pViewSh == nullptr)
@@ -275,7 +280,7 @@ IMPL_LINK(SdModule, CalcFieldValueHdl, EditFieldInfo*, pInfo, void)
     }
     else if( dynamic_cast< const SvxPagesField*  >(pField) )
     {
-        OUString aRepresentation(" ");
+        OUString aRepresentation(u" "_ustr);
 
         ::sd::ViewShell* pViewSh = pDocShell ? pDocShell->GetViewShell() : nullptr;
         if(pViewSh == nullptr)
@@ -451,27 +456,48 @@ std::optional<SfxItemSet> SdModule::CreateItemSet( sal_uInt16 nSlot )
     SfxItemPool& rPool = GetPool();
     rPool.SetDefaultMetric( MapUnit::Map100thMM );
 
-    SfxItemSetFixed<
-            SID_ATTR_GRID_OPTIONS, SID_ATTR_GRID_OPTIONS,
-            SID_ATTR_METRIC, SID_ATTR_METRIC,
-            SID_ATTR_DEFTABSTOP, SID_ATTR_DEFTABSTOP,
-            ATTR_OPTIONS_LAYOUT, ATTR_OPTIONS_SCALE_END>  aRet(rPool);
-
-    // TP_OPTIONS_LAYOUT:
-    aRet.Put( SdOptionsLayoutItem( pOptions, pFrameView ) );
+    SfxItemSet aRet(SfxItemSet::makeFixedSfxItemSet<
+                SID_ATTR_GRID_OPTIONS, SID_ATTR_GRID_OPTIONS,
+                SID_ATTR_METRIC, SID_ATTR_METRIC,
+                SID_ATTR_DEFTABSTOP, SID_ATTR_DEFTABSTOP,
+                ATTR_OPTIONS_LAYOUT, ATTR_OPTIONS_SCALE_END>(rPool));
 
     sal_uInt16 nDefTab = 0;
+    SvtSysLocale aSysLocale;
+
     if( pFrameView)
         nDefTab = pDoc->GetDefaultTabulator();
     else
-        nDefTab = pOptions->GetDefTab();
+    {
+        if (eDocType == DocumentType::Impress)
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                nDefTab = officecfg::Office::Impress::Layout::Other::TabStop::Metric::get();
+            else
+                nDefTab = officecfg::Office::Impress::Layout::Other::TabStop::NonMetric::get();
+        else
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                nDefTab = officecfg::Office::Draw::Layout::Other::TabStop::Metric::get();
+            else
+                nDefTab = officecfg::Office::Draw::Layout::Other::TabStop::NonMetric::get();
+    }
+
     aRet.Put( SfxUInt16Item( SID_ATTR_DEFTABSTOP, nDefTab ) );
 
     FieldUnit nMetric = FieldUnit(0xffff);
+
     if( pFrameView)
         nMetric = pDoc->GetUIUnit();
     else
-        nMetric = static_cast<FieldUnit>(pOptions->GetMetric());
+        if (eDocType == DocumentType::Impress)
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                nMetric = static_cast<FieldUnit>(officecfg::Office::Impress::Layout::Other::MeasureUnit::Metric::get());
+            else
+                nMetric = static_cast<FieldUnit>(officecfg::Office::Impress::Layout::Other::MeasureUnit::NonMetric::get());
+        else
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                nMetric = static_cast<FieldUnit>(officecfg::Office::Draw::Layout::Other::MeasureUnit::Metric::get());
+            else
+                nMetric = static_cast<FieldUnit>(officecfg::Office::Draw::Layout::Other::MeasureUnit::NonMetric::get());
 
     if( nMetric == FieldUnit(0xffff) )
         nMetric = GetFieldUnit();
@@ -488,9 +514,6 @@ std::optional<SfxItemSet> SdModule::CreateItemSet( sal_uInt16 nSlot )
     }
     aRet.Put( aSdOptionsMiscItem );
 
-    // TP_OPTIONS_SNAP:
-    aRet.Put( SdOptionsSnapItem( pOptions, pFrameView ) );
-
     // TP_SCALE:
     sal_uInt32 nW = 10;
     sal_uInt32 nH = 10;
@@ -498,6 +521,7 @@ std::optional<SfxItemSet> SdModule::CreateItemSet( sal_uInt16 nSlot )
     sal_Int32  nY;
     if( pDocSh )
     {
+        assert(pDoc);
         SdrPage* pPage = pDoc->GetSdPage(0, PageKind::Standard);
         Size aSize(pPage->GetSize());
         nW = aSize.Width();
@@ -513,7 +537,8 @@ std::optional<SfxItemSet> SdModule::CreateItemSet( sal_uInt16 nSlot )
     else
     {
         // Get options from configuration file
-        pOptions->GetScale( nX, nY );
+        nX = officecfg::Office::Draw::Zoom::ScaleX::get();
+        nY = officecfg::Office::Draw::Zoom::ScaleY::get();
     }
 
     aRet.Put( SfxInt32Item( ATTR_OPTIONS_SCALE_X, nX ) );
@@ -535,6 +560,7 @@ void SdModule::ApplyItemSet( sal_uInt16 nSlot, const SfxItemSet& rSet )
     bool bNewDefTab = false;
     bool bNewPrintOptions = false;
     bool bMiscOptions = false;
+    SvtSysLocale aSysLocale;
 
     ::sd::DrawDocShell* pDocSh = dynamic_cast< ::sd::DrawDocShell *>( SfxObjectShell::Current() );
     SdDrawDocument* pDoc = nullptr;
@@ -560,25 +586,57 @@ void SdModule::ApplyItemSet( sal_uInt16 nSlot, const SfxItemSet& rSet )
         pGridItem->SetOptions( pOptions );
     }
 
-    // Layout
-    if( const SdOptionsLayoutItem* pLayoutItem = rSet.GetItemIfSet( ATTR_OPTIONS_LAYOUT, false ))
-    {
-        pLayoutItem->SetOptions( pOptions );
-    }
-
     // Metric
     if( const SfxUInt16Item* pItem = rSet.GetItemIfSet( SID_ATTR_METRIC, false ) )
     {
         if( pDoc && eDocType == pDoc->GetDocumentType() )
             PutItem( *pItem );
-        pOptions->SetMetric( pItem->GetValue() );
+
+        std::shared_ptr<comphelper::ConfigurationChanges> batch(
+            comphelper::ConfigurationChanges::create());
+        if (eDocType == DocumentType::Impress)
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                officecfg::Office::Impress::Layout::Other::MeasureUnit::Metric::set(pItem->GetValue(), batch);
+            else
+                officecfg::Office::Impress::Layout::Other::MeasureUnit::NonMetric::set(pItem->GetValue(), batch);
+        else
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                officecfg::Office::Draw::Layout::Other::MeasureUnit::Metric::set(pItem->GetValue(), batch);
+            else
+                officecfg::Office::Draw::Layout::Other::MeasureUnit::NonMetric::set(pItem->GetValue(), batch);
+        batch->commit();
+
     }
-    sal_uInt16 nDefTab = pOptions->GetDefTab();
+    sal_uInt16 nDefTab;
+    if (eDocType == DocumentType::Impress)
+        if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+            nDefTab = officecfg::Office::Impress::Layout::Other::TabStop::Metric::get();
+        else
+            nDefTab = officecfg::Office::Impress::Layout::Other::TabStop::NonMetric::get();
+    else
+        if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+            nDefTab = officecfg::Office::Draw::Layout::Other::TabStop::Metric::get();
+        else
+            nDefTab = officecfg::Office::Draw::Layout::Other::TabStop::NonMetric::get();
+
     // Default-Tabulator
     if( const SfxUInt16Item* pItem = rSet.GetItemIfSet( SID_ATTR_DEFTABSTOP, false ) )
     {
         nDefTab = pItem->GetValue();
-        pOptions->SetDefTab( nDefTab );
+        std::shared_ptr<comphelper::ConfigurationChanges> batch(
+            comphelper::ConfigurationChanges::create());
+
+        if (eDocType == DocumentType::Impress)
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                officecfg::Office::Impress::Layout::Other::TabStop::Metric::set(nDefTab, batch);
+            else
+                officecfg::Office::Impress::Layout::Other::TabStop::NonMetric::set(nDefTab, batch);
+        else
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                officecfg::Office::Draw::Layout::Other::TabStop::Metric::set(nDefTab, batch);
+            else
+                officecfg::Office::Draw::Layout::Other::TabStop::NonMetric::set(nDefTab, batch);
+        batch->commit();
 
         bNewDefTab = true;
     }
@@ -591,7 +649,12 @@ void SdModule::ApplyItemSet( sal_uInt16 nSlot, const SfxItemSet& rSet )
         if( pItem )
         {
             sal_Int32 nY = pItem->GetValue();
-            pOptions->SetScale( nX, nY );
+            std::shared_ptr<comphelper::ConfigurationChanges> batch(
+                comphelper::ConfigurationChanges::create());
+
+            officecfg::Office::Draw::Zoom::ScaleX::set(nX, batch);
+            officecfg::Office::Draw::Zoom::ScaleY::set(nY, batch);
+            batch->commit();
 
             // Apply to document only if doc type match
             if( pDocSh && pDoc && eDocType == pDoc->GetDocumentType() )
@@ -611,16 +674,10 @@ void SdModule::ApplyItemSet( sal_uInt16 nSlot, const SfxItemSet& rSet )
         bMiscOptions = true;
     }
 
-    // Snap
-    const SdOptionsSnapItem* pSnapItem = rSet.GetItemIfSet( ATTR_OPTIONS_SNAP, false );
-    if( pSnapItem )
-    {
-        pSnapItem->SetOptions( pOptions );
-    }
-
-    SfxItemSetFixed<SID_PRINTER_NOTFOUND_WARN,  SID_PRINTER_NOTFOUND_WARN,
-                    SID_PRINTER_CHANGESTODOC,   SID_PRINTER_CHANGESTODOC,
-                    ATTR_OPTIONS_PRINT,         ATTR_OPTIONS_PRINT>  aPrintSet( GetPool() );
+    SfxItemSet aPrintSet(SfxItemSet::makeFixedSfxItemSet<
+                SID_PRINTER_NOTFOUND_WARN, SID_PRINTER_NOTFOUND_WARN,
+                SID_PRINTER_CHANGESTODOC, SID_PRINTER_CHANGESTODOC,
+                ATTR_OPTIONS_PRINT, ATTR_OPTIONS_PRINT>(GetPool()));
 
     // Print
     const SdOptionsPrintItem* pPrintItem = rSet.GetItemIfSet( ATTR_OPTIONS_PRINT, false);
@@ -699,7 +756,18 @@ void SdModule::ApplyItemSet( sal_uInt16 nSlot, const SfxItemSet& rSet )
     // Only if also the document type matches...
     if( pDocSh && pDoc && eDocType == pDoc->GetDocumentType() )
     {
-        FieldUnit eUIUnit = static_cast<FieldUnit>(pOptions->GetMetric());
+        FieldUnit eUIUnit;
+        if (eDocType == DocumentType::Impress)
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                eUIUnit = static_cast<FieldUnit>(officecfg::Office::Impress::Layout::Other::MeasureUnit::Metric::get());
+            else
+                eUIUnit = static_cast<FieldUnit>(officecfg::Office::Impress::Layout::Other::MeasureUnit::NonMetric::get());
+        else
+            if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                eUIUnit = static_cast<FieldUnit>(officecfg::Office::Draw::Layout::Other::MeasureUnit::Metric::get());
+            else
+                eUIUnit = static_cast<FieldUnit>(officecfg::Office::Draw::Layout::Other::MeasureUnit::NonMetric::get());
+
         pDoc->SetUIUnit(eUIUnit);
 
         if (pViewShell)
@@ -794,19 +862,20 @@ std::unique_ptr<SfxTabPage> SdModule::CreateTabPage( sal_uInt16 nId, weld::Conta
     return xRet;
 }
 
-std::optional<SfxStyleFamilies> SdModule::CreateStyleFamilies()
+SfxStyleFamilies SdModule::CreateStyleFamilies()
 {
     SfxStyleFamilies aStyleFamilies;
+    std::locale resLocale = SdModule::get()->GetResLocale();
 
     aStyleFamilies.emplace_back(SfxStyleFamily::Para,
                                  SdResId(STR_GRAPHICS_STYLE_FAMILY),
                                  BMP_STYLES_FAMILY_GRAPHICS,
-                                 RID_GRAPHICSTYLEFAMILY, SD_MOD()->GetResLocale());
+                                 RID_GRAPHICSTYLEFAMILY, resLocale);
 
     aStyleFamilies.emplace_back(SfxStyleFamily::Pseudo,
                                  SdResId(STR_PRESENTATIONS_STYLE_FAMILY),
                                  BMP_STYLES_FAMILY_PRESENTATIONS,
-                                 RID_PRESENTATIONSTYLEFAMILY, SD_MOD()->GetResLocale());
+                                 RID_PRESENTATIONSTYLEFAMILY, resLocale);
 
     return aStyleFamilies;
 }

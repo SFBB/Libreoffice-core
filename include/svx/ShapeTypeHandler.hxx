@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVX_SHAPETYPEHANDLER_HXX
-#define INCLUDED_SVX_SHAPETYPEHANDLER_HXX
+#pragma once
 
 #include <svx/svxdllapi.h>
 
@@ -87,15 +86,6 @@ public:
             Returns a reference to a ShapeTypeHandler object.
      */
     static ShapeTypeHandler& Instance();
-
-    /**  Determines the type id of a shape with the given service name.
-         @param aServiceName
-             Service name of the shape for which to return the type id.
-         @return
-             Returns the type id of the shape with the given service name or
-             -1 when the service name is not known.
-     */
-    ShapeTypeId GetTypeId (const OUString& aServiceName) const;
 
     /**  Determines the type id of the specified shape.
          @param xShape
@@ -173,28 +163,16 @@ private:
 
     /**  Determine the slot id of the specified shape type.  With this id
          internal methods can access the associated type descriptor.
-         @param aServiceName
-             Service name of the shape for which to return the slot id.
-         @return
-             Returns the slot id of the shape with the given service name or
-             0 when the service name is not known.
-     */
-    SVX_DLLPRIVATE tools::Long GetSlotId (const OUString& aServiceName) const;
-
-    /**  Determine the slot id of the specified shape type.  With this id
-         internal methods can access the associated type descriptor.
          @param rxShape
              Shape for which to return the slot id.
          @return
              Returns the slot id of the shape with the given service name or
              0 when the service name is not known.
      */
-    SVX_DLLPRIVATE tools::Long GetSlotId (const css::uno::Reference<
+    SVX_DLLPRIVATE ShapeTypeId GetSlotId(const css::uno::Reference<
         css::drawing::XShape>& rxShape) const;
 };
 
 } // end of namespace accessible
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -43,28 +43,26 @@ class SwParaChangeTrackingInfo; //#i108125#
 
 namespace com::sun::star {
     namespace i18n { struct Boundary; }
-    namespace accessibility { class XAccessibleHyperlink; }
     namespace style { struct TabStop; }
 }
 
 typedef std::unordered_map< OUString,
                          css::beans::PropertyValue > tAccParaPropValMap;
 
+using SwAccessibleParagraph_BASE = cppu::ImplInheritanceHelper<SwAccessibleContext,
+                                                               css::accessibility::XAccessibleEditableText,
+                                                               css::accessibility::XAccessibleSelection,
+                                                               css::accessibility::XAccessibleHypertext,
+                                                               css::accessibility::XAccessibleTextMarkup,
+                                                               css::accessibility::XAccessibleMultiLineText,
+                                                               css::accessibility::XAccessibleTextAttributes,
+                                                               css::accessibility::XAccessibleTextSelection,
+                                                               css::accessibility::XAccessibleExtendedAttributes>;
 class SwAccessibleParagraph :
         public SfxListener,
-        public SwAccessibleContext,
-        public css::accessibility::XAccessibleEditableText,
-        public css::accessibility::XAccessibleSelection,
-        public css::accessibility::XAccessibleHypertext,
-        public css::accessibility::XAccessibleTextMarkup,
-        public css::accessibility::XAccessibleMultiLineText,
-        public css::accessibility::XAccessibleTextAttributes,
-        public css::accessibility::XAccessibleTextSelection,
-        public css::accessibility::XAccessibleExtendedAttributes
+        public SwAccessibleParagraph_BASE
 {
     friend class SwAccessibleHyperlink;
-
-    OUString m_sDesc;  // protected by base classes mutex
 
     // data for this paragraph's text portions; this contains the
     // mapping from the core 'model string' to the accessible text
@@ -90,12 +88,12 @@ class SwAccessibleParagraph :
     // XAccessibleComponent
     bool m_bLastHasSelection;
 
+    const SwTextFrame* GetTextFrame() const;
+
     /// get the (accessible) text string (requires frame; check before)
     OUString const & GetString();
 
-    static OUString GetDescription();
-
-    // get the current care position
+    // get the current caret position
     sal_Int32 GetCaretPos();
 
     // determine the current selection. Fill the values with
@@ -128,7 +126,7 @@ class SwAccessibleParagraph :
     static bool IsValidPosition(sal_Int32 nPos, sal_Int32 nLength);
 
     // is nBegin...nEnd a valid range? (nEnd points past the last character)
-    static bool IsValidRange(sal_Int32 nBegin, sal_Int32 nEnd, sal_Int32 nLength);
+    bool IsValidRange(sal_Int32 nBegin, sal_Int32 nEnd);
 
     // Ensure ordered range (i.e. nBegin is smaller then nEnd)
     static void OrderRange(sal_Int32& nBegin, sal_Int32& nEnd)
@@ -232,8 +230,6 @@ public:
     SwAccessibleParagraph( std::shared_ptr<SwAccessibleMap> const& pInitMap,
                            const SwTextFrame& rTextFrame );
 
-    inline operator css::accessibility::XAccessibleText *();
-
     virtual bool HasCursor() override;   // required by map to remember that object
 
     css::uno::Sequence< css::style::TabStop > GetCurrentTabStop( sal_Int32 nIndex  );
@@ -261,40 +257,6 @@ public:
     // #i71385#
     virtual sal_Int32 SAL_CALL getForeground() override;
     virtual sal_Int32 SAL_CALL getBackground() override;
-
-    // XServiceInfo
-
-    // Returns an identifier for the implementation of this object.
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    // Return whether the specified service is supported by this class.
-    virtual sal_Bool SAL_CALL
-        supportsService (const OUString& sServiceName) override;
-
-    // Returns a list of all supported services.  In this case that is just
-    // the AccessibleContext service.
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
-    // XInterface
-
-    // (XInterface methods need to be implemented to disambiguate
-    // between those inherited through SwAccessibleContext and
-    // XAccessibleEditableText).
-
-    virtual css::uno::Any SAL_CALL queryInterface(
-        const css::uno::Type& aType ) override;
-
-    virtual void SAL_CALL acquire(  ) noexcept override
-        { SwAccessibleContext::acquire(); };
-
-    virtual void SAL_CALL release(  ) noexcept override
-        { SwAccessibleContext::release(); };
-
-    // XTypeProvider
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
 
     // XAccessibleText
     virtual sal_Int32 SAL_CALL getCaretPosition() override;
@@ -366,9 +328,9 @@ public:
     virtual sal_Int32 SAL_CALL getSeletedPositionStart( sal_Int32 nSelectedPortionIndex ) override;
     virtual sal_Int32 SAL_CALL getSeletedPositionEnd( sal_Int32 nSelectedPortionIndex ) override;
     virtual sal_Bool SAL_CALL removeSelection( sal_Int32 selectionIndex ) override;
-    virtual sal_Int32 SAL_CALL  addSelection( sal_Int32 selectionIndex, sal_Int32 startOffset, sal_Int32 endOffset) override;
+    virtual sal_Int32 SAL_CALL addSelection(sal_Int32 startOffset, sal_Int32 endOffset) override;
     // XAccessibleExtendedAttributes
-    virtual css::uno::Any SAL_CALL getExtendedAttributes() override ;
+    virtual OUString SAL_CALL getExtendedAttributes() override;
     sal_Int32 GetRealHeadingLevel();
     bool IsBlockQuote();
 
@@ -389,11 +351,6 @@ public:
     virtual css::uno::Sequence< css::beans::PropertyValue > SAL_CALL getDefaultAttributes( const css::uno::Sequence< OUString >& aRequestedAttributes ) override;
     virtual css::uno::Sequence< css::beans::PropertyValue > SAL_CALL getRunAttributes( sal_Int32 nIndex, const css::uno::Sequence< OUString >& aRequestedAttributes ) override;
 };
-
-inline SwAccessibleParagraph::operator css::accessibility::XAccessibleText *()
-{
-    return static_cast< css::accessibility::XAccessibleEditableText * >( this );
-}
 
 #endif
 

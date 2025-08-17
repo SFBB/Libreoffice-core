@@ -18,6 +18,7 @@
 #include <fmtpdsc.hxx>
 #include <frmfmt.hxx>
 #include <frmatr.hxx>
+#include <frmtool.hxx>
 #include <ndtxt.hxx>
 #include <pagedesc.hxx>
 #include <pagefrm.hxx>
@@ -40,7 +41,7 @@ DefaultToxTabStopTokenHandler::DefaultToxTabStopTokenHandler(SwNodeOffset indexO
 
 ToxTabStopTokenHandler::HandledTabStopToken
 DefaultToxTabStopTokenHandler::HandleTabStopToken(
-        const SwFormToken& aToken, const SwTextNode& targetNode, const SwRootFrame *currentLayout) const
+        const SwFormToken& aToken, const SwTextNode& targetNode) const
 {
     HandledTabStopToken result;
 
@@ -53,37 +54,71 @@ DefaultToxTabStopTokenHandler::HandleTabStopToken(
         SvxTextLeftMarginItem const& rTextLeftMargin(
             targetNode.SwContentNode::GetAttr(RES_MARGIN_TEXTLEFT));
         tools::Long nTabPosition = aToken.nTabStopPosition;
-        if (!mTabPositionIsRelativeToParagraphIndent && rTextLeftMargin.GetTextLeft() != 0)
+        if (!mTabPositionIsRelativeToParagraphIndent && rTextLeftMargin.ResolveTextLeft({}) != 0)
         {
-            nTabPosition -= rTextLeftMargin.GetTextLeft();
+            nTabPosition -= rTextLeftMargin.ResolveTextLeft({});
         }
         result.tabStop = SvxTabStop(nTabPosition, aToken.eTabAlign, cDfltDecimalChar, aToken.cTabFillChar);
         return result;
     }
 
-    SwRect aNdRect;
-    if (CanUseLayoutRectangle(targetNode, currentLayout)) {
-        aNdRect = targetNode.FindLayoutRect(true);
-    }
+    // note: this will be filled later by CalcEndStop()
+    result.tabStop = SvxTabStop(0, SvxTabAdjust::Right, cDfltDecimalChar, aToken.cTabFillChar);
+    return result;
+}
+
+auto DefaultToxTabStopTokenHandler::CalcEndStop(SwTextNode const& rNode,
+        SwRootFrame const*const pLayout) const -> tools::Long
+{
     tools::Long nRightMargin;
-    if (aNdRect.IsEmpty()) {
-        nRightMargin = CalculatePageMarginFromPageDescription(targetNode);
-    } else {
-        nRightMargin = aNdRect.Width();
+    if (CanUseLayoutRectangle(rNode, pLayout))
+    {
+        // in case it's in a header, any frame should do
+        SwContentFrame const*const pFrame(rNode.getLayoutFrame(pLayout));
+        assert(pFrame); // created in SwTOXBaseSection::Update()
+        SwRectFnSet const fnRect(pFrame->GetUpper());
+        SwRect rect = pFrame->getFramePrintArea();
+        if (fnRect.GetWidth(rect) == 0) // typically it's newly created
+        {
+            if (pFrame->GetUpper()->IsSctFrame())
+            {   // this is set in SwSectionFrame::Init()
+                rect = pFrame->GetUpper()->GetUpper()->getFramePrintArea();
+                assert(fnRect.GetWidth(rect) != 0);
+            }
+            else if (pFrame->GetUpper()->IsColBodyFrame())
+            {
+                SwFrame const*const pColFrame(pFrame->GetUpper()->GetUpper());
+                assert(pColFrame->IsColumnFrame());
+                rect = pColFrame->getFrameArea();
+                // getFramePrintArea() is not valid yet, manually subtract...
+                // (it can have a border too!)
+                SwBorderAttrAccess access(SwFrame::GetCache(), pColFrame);
+                SwBorderAttrs const& rAttrs(*access.Get());
+                auto const nLeft(rAttrs.CalcLeft(pColFrame));
+                auto const nRight(rAttrs.CalcRight(pColFrame));
+                fnRect.SetWidth(rect, fnRect.GetWidth(rect) - nLeft - nRight);
+                assert(fnRect.GetWidth(rect) != 0);
+            }
+            else assert(false);
+        }
+        nRightMargin = fnRect.GetWidth(rect);
+    }
+    else
+    {
+        nRightMargin = CalculatePageMarginFromPageDescription(rNode);
     }
     //#i24363# tab stops relative to indent
     if (mTabStopReferencePolicy == TABSTOPS_RELATIVE_TO_INDENT) {
         // left margin of paragraph style
         SvxFirstLineIndentItem const& rFirstLine(
-            targetNode.GetTextColl()->GetFirstLineIndent());
+            rNode.GetTextColl()->GetFirstLineIndent());
         SvxTextLeftMarginItem const& rTextLeftMargin(
-            targetNode.GetTextColl()->GetTextLeftMargin());
-        nRightMargin -= rTextLeftMargin.GetLeft(rFirstLine);
-        nRightMargin -= rFirstLine.GetTextFirstLineOffset();
-    }
+            rNode.GetTextColl()->GetTextLeftMargin());
 
-    result.tabStop = SvxTabStop(nRightMargin, SvxTabAdjust::Right, cDfltDecimalChar, aToken.cTabFillChar);
-    return result;
+        nRightMargin -= rTextLeftMargin.ResolveLeft(rFirstLine, /*metrics*/ {});
+        nRightMargin -= rFirstLine.ResolveTextFirstLineOffset(/*metrics*/ {});
+    }
+    return nRightMargin - 1; // subtract 1 twip to avoid equal for TabOverMargin
 }
 
 tools::Long
@@ -97,8 +132,9 @@ DefaultToxTabStopTokenHandler::CalculatePageMarginFromPageDescription(const SwTe
         pPageDesc = &mDefaultPageDescription;
     }
     const SwFrameFormat& rPgDscFormat = pPageDesc->GetMaster();
-    tools::Long result = rPgDscFormat.GetFrameSize().GetWidth() - rPgDscFormat.GetLRSpace().GetLeft()
-            - rPgDscFormat.GetLRSpace().GetRight();
+    tools::Long result = rPgDscFormat.GetFrameSize().GetWidth()
+                         - rPgDscFormat.GetLRSpace().ResolveLeft({})
+                         - rPgDscFormat.GetLRSpace().ResolveRight({});
     // Also consider borders
     const SvxBoxItem& rBox = rPgDscFormat.GetBox();
     result -= rBox.CalcLineSpace(SvxBoxItemLine::LEFT) + rBox.CalcLineSpace(SvxBoxItemLine::RIGHT);
@@ -113,7 +149,7 @@ DefaultToxTabStopTokenHandler::CanUseLayoutRectangle(const SwTextNode& targetNod
             targetNode.SwContentNode::GetAttr(RES_PAGEDESC).GetPageDesc();
 
     if (!pageDescription) {
-        return false;
+        return true;
     }
     const SwFrame* pFrame = targetNode.getLayoutFrame(currentLayout);
     if (!pFrame) {

@@ -35,8 +35,7 @@ using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::container;
 
-TVFactory::TVFactory( uno::Reference< XComponentContext > xContext )
-    : m_xContext(std::move( xContext ))
+TVFactory::TVFactory()
 {
 }
 
@@ -49,7 +48,7 @@ TVFactory::~TVFactory()
 OUString SAL_CALL
 TVFactory::getImplementationName()
 {
-    return "com.sun.star.help.TreeViewImpl";
+    return u"com.sun.star.help.TreeViewImpl"_ustr;
 }
 
 sal_Bool SAL_CALL TVFactory::supportsService( const OUString& ServiceName )
@@ -60,7 +59,7 @@ sal_Bool SAL_CALL TVFactory::supportsService( const OUString& ServiceName )
 Sequence< OUString > SAL_CALL
 TVFactory::getSupportedServiceNames()
 {
-    return { "com.sun.star.help.TreeView", "com.sun.star.ucb.HiearchyDataSource" };
+    return { u"com.sun.star.help.TreeView"_ustr, u"com.sun.star.ucb.HiearchyDataSource"_ustr };
 }
 
 // XMultiServiceFactory
@@ -84,7 +83,7 @@ TVFactory::createInstanceWithArguments(
 {
     if( ! m_xHDS.is() )
     {
-        m_xHDS = cppu::getXWeak(new TVChildTarget( m_xContext ));
+        m_xHDS = cppu::getXWeak(new TVChildTarget());
     }
 
     OUString hierview;
@@ -118,14 +117,14 @@ TVFactory::createInstanceWithArguments(
 Sequence< OUString > SAL_CALL
 TVFactory::getAvailableServiceNames( )
 {
-    return { "com.sun.star.ucb.HierarchyDataReadAccess" };
+    return { u"com.sun.star.ucb.HierarchyDataReadAccess"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 com_sun_star_help_TreeViewImpl_get_implementation(
-    css::uno::XComponentContext* context, css::uno::Sequence<css::uno::Any> const&)
+    css::uno::XComponentContext* /*context*/, css::uno::Sequence<css::uno::Any> const&)
 {
-    return cppu::acquire(new TVFactory(context));
+    return cppu::acquire(new TVFactory);
 }
 
 

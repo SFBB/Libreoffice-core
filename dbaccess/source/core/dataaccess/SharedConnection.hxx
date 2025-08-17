@@ -32,38 +32,16 @@ namespace dbaccess
     // All methods will be forwarded with exception of the set methods, which are not allowed
     // to be called on shared connections. Instances of this class will be created when the
     // datasource is asked for not isolated connection.
-    typedef ::cppu::WeakComponentImplHelper< css::sdbc::XConnection
+    typedef ::cppu::ImplInheritanceHelper<connectivity::OConnectionWrapper,
+                                          css::sdbc::XConnection
                                            > OSharedConnection_BASE;
 
-    class OSharedConnection :   public ::cppu::BaseMutex
-                              , public OSharedConnection_BASE
-                              , public ::connectivity::OConnectionWrapper
+    class OSharedConnection : public OSharedConnection_BASE
     {
     protected:
-        virtual void SAL_CALL disposing() override;
         virtual ~OSharedConnection() override;
     public:
         explicit OSharedConnection(css::uno::Reference< css::uno::XAggregation >& _rxProxyConnection);
-
-        virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
-
-        virtual void SAL_CALL acquire() noexcept override { OSharedConnection_BASE::acquire(); }
-        virtual void SAL_CALL release() noexcept override { OSharedConnection_BASE::release(); }
-        virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override
-        {
-            return ::comphelper::concatSequences(
-                OSharedConnection_BASE::getTypes(),
-                ::connectivity::OConnectionWrapper::getTypes()
-            );
-        }
-
-        virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& _rType ) override
-        {
-            css::uno::Any aReturn = OSharedConnection_BASE::queryInterface(_rType);
-            if ( !aReturn.hasValue() )
-                aReturn = ::connectivity::OConnectionWrapper::queryInterface(_rType);
-            return aReturn;
-        }
 
         // XCloseable
         virtual void SAL_CALL close(  ) override
@@ -78,23 +56,23 @@ namespace dbaccess
         // XConnection
         virtual void SAL_CALL setAutoCommit( sal_Bool /*autoCommit*/ ) override
         {
-            throw css::sdbc::SQLException("This call is not allowed when sharing connections.",*this,"S10000",0,css::uno::Any());
+            throw css::sdbc::SQLException(u"This call is not allowed when sharing connections."_ustr,*this,u"S10000"_ustr,0,css::uno::Any());
         }
         virtual void SAL_CALL setReadOnly( sal_Bool /*readOnly*/ ) override
         {
-            throw css::sdbc::SQLException("This call is not allowed when sharing connections.",*this,"S10000",0,css::uno::Any());
+            throw css::sdbc::SQLException(u"This call is not allowed when sharing connections."_ustr,*this,u"S10000"_ustr,0,css::uno::Any());
         }
         virtual void SAL_CALL setCatalog( const OUString& /*catalog*/ ) override
         {
-            throw css::sdbc::SQLException("This call is not allowed when sharing connections.",*this,"S10000",0,css::uno::Any());
+            throw css::sdbc::SQLException(u"This call is not allowed when sharing connections."_ustr,*this,u"S10000"_ustr,0,css::uno::Any());
         }
         virtual void SAL_CALL setTransactionIsolation( sal_Int32 /*level*/ ) override
         {
-            throw css::sdbc::SQLException("This call is not allowed when sharing connections.",*this,"S10000",0,css::uno::Any());
+            throw css::sdbc::SQLException(u"This call is not allowed when sharing connections."_ustr,*this,u"S10000"_ustr,0,css::uno::Any());
         }
         virtual void SAL_CALL setTypeMap( const css::uno::Reference< css::container::XNameAccess >& /*typeMap*/ ) override
         {
-            throw css::sdbc::SQLException("This call is not allowed when sharing connections.",*this,"S10000",0,css::uno::Any());
+            throw css::sdbc::SQLException(u"This call is not allowed when sharing connections."_ustr,*this,u"S10000"_ustr,0,css::uno::Any());
         }
         // XConnection
         virtual css::uno::Reference< css::sdbc::XStatement > SAL_CALL createStatement(  ) override;

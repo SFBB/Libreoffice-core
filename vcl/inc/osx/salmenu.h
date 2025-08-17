@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_OSX_SALMENU_H
-#define INCLUDED_VCL_INC_OSX_SALMENU_H
+#pragma once
 
 #include <premac.h>
 #include <Cocoa/Cocoa.h>
@@ -66,7 +65,6 @@ public:
     virtual void SetItemText( unsigned nPos, SalMenuItem* pSalMenuItem, const OUString& rText ) override;
     virtual void SetItemImage( unsigned nPos, SalMenuItem* pSalMenuItem, const Image& rImage) override;
     virtual void SetAccelerator( unsigned nPos, SalMenuItem* pSalMenuItem, const vcl::KeyCode& rKeyCode, const OUString& rKeyName ) override;
-    virtual void GetSystemMenuData( SystemMenuData* pData ) override;
     virtual bool ShowNativePopupMenu(FloatingWindow * pWin, const tools::Rectangle& rRect, FloatWinPopupFlags nFlags) override;
     virtual bool AddMenuBarButton( const SalMenuButtonItem& ) override;
     virtual void RemoveMenuBarButton( sal_uInt16 nId ) override;
@@ -106,7 +104,5 @@ public:
     AquaSalMenu*        mpSubMenu;            // Sub menu of this item (if defined)
     NSMenuItem*         mpMenuItem;           // The NSMenuItem
 };
-
-#endif // INCLUDED_VCL_INC_OSX_SALMENU_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

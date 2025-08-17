@@ -34,9 +34,7 @@ class SdrObject;
 class SfxItemSet;
 class SfxPoolItem;
 class SfxStyleSheet;
-class Fraction;
 class SfxItemPool;
-class SdrModel;
 
 namespace sdr::properties
 {
@@ -105,16 +103,21 @@ namespace sdr::properties
             // get merged ItemSet. Normally, this maps directly to GetObjectItemSet(), but may
             // be overridden e.g for group objects to return a merged ItemSet of the object.
             // When using this method the returned ItemSet may contain items in the state
-            // SfxItemState::DONTCARE which means there were several such items with different
+            // SfxItemState::INVALID which means there were several such items with different
             // values.
             virtual const SfxItemSet& GetMergedItemSet() const;
 
             // Sets all items which are on state SfxItemState::SET in rSet at the local ItemSet.
             // Uses AllowItemChange(), ItemChange(), PostItemChange() and ItemSetChanged() calls.
-            virtual void SetObjectItemSet(const SfxItemSet& rSet) = 0;
+            // @param bAdjustTextFrameWidthAndHeight pass false if you know it is safe to avoid the cost of doing
+            //              text layout right now.
+            virtual void SetObjectItemSet(const SfxItemSet& rSet, bool bAdjustTextFrameWidthAndHeight = true) = 0;
 
             // Set merged ItemSet. Normally, this maps to SetObjectItemSet().
-            virtual void SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems = false);
+            // @param bAdjustTextFrameWidthAndHeight pass false if you know it is safe to avoid the cost of doing
+            //              text layout right now.
+            virtual void SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems = false,
+                            bool bAdjustTextFrameWidthAndHeight = true);
 
             // Set single item at the local ItemSet. Uses AllowItemChange(),
             // ItemChange(), PostItemChange() and ItemSetChanged() calls.
@@ -143,8 +146,10 @@ namespace sdr::properties
 
             // Set a new StyleSheet. Registers as listener at the StyleSheet to get knowledge
             // of StyleSheet changes.
+            // @param bAdjustTextFrameWidthAndHeight pass false if you know it is safe to avoid the cost of doing
+            //              text layout right now.
             virtual void SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast) = 0;
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight = true) = 0;
 
             // Get the installed StyleSheet.
             virtual SfxStyleSheet* GetStyleSheet() const = 0;

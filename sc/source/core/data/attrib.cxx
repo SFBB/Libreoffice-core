@@ -392,7 +392,7 @@ void ScProtectionAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
  * ScPageHFItem - Dates from the Head and Foot lines
  */
 ScPageHFItem::ScPageHFItem( sal_uInt16 nWhichP )
-    :   SfxPoolItem ( nWhichP )
+    :   SfxPoolItem( nWhichP )
 {
 }
 
@@ -417,9 +417,7 @@ bool ScPageHFItem::QueryValue( uno::Any& rVal, sal_uInt8 /* nMemberId */ ) const
         new ScHeaderFooterContentObj();
     xContent->Init(pLeftArea.get(), pCenterArea.get(), pRightArea.get());
 
-    uno::Reference<sheet::XHeaderFooterContent> xCont(xContent);
-
-    rVal <<= xCont;
+    rVal <<= uno::Reference<sheet::XHeaderFooterContent>(xContent);
     return true;
 }
 
@@ -540,7 +538,7 @@ bool ScViewObjectModeItem::GetPresentation
     const IntlWrapper& /* rIntl */
 )   const
 {
-    OUString aDel(": ");
+    OUString aDel(u": "_ustr);
     rText.clear();
 
     switch ( ePres )
@@ -575,11 +573,6 @@ bool ScViewObjectModeItem::GetPresentation
     }
 
     return false;
-}
-
-sal_uInt16 ScViewObjectModeItem::GetValueCount() const
-{
-    return 2;
 }
 
 ScViewObjectModeItem* ScViewObjectModeItem::Clone( SfxItemPool* ) const
@@ -731,6 +724,19 @@ bool ScCondFormatItem::operator==( const SfxPoolItem& rCmp ) const
     // memcmp is faster than operator== on std::vector
     return maIndex.size() == other.maIndex.size()
         && memcmp(&maIndex.front(), &other.maIndex.front(), maIndex.size() * sizeof(sal_uInt32)) == 0;
+}
+
+bool ScCondFormatItem::supportsHashCode() const
+{
+    return true;
+}
+
+size_t ScCondFormatItem::hashCode() const
+{
+    std::size_t seed = 0;
+    for (const auto & rIdx : maIndex)
+        o3tl::hash_combine(seed, rIdx);
+    return seed;
 }
 
 ScCondFormatItem* ScCondFormatItem::Clone(SfxItemPool*) const

@@ -116,7 +116,7 @@ enum ExportedAttribute
 
 }
 
-static const char * ExportedTextAttributes[TEXT_ATTRIBUTE_LAST] =
+const char * const ExportedTextAttributes[TEXT_ATTRIBUTE_LAST] =
 {
     "CharBackColor",        // TEXT_ATTRIBUTE_BACKGROUND_COLOR
     "CharCaseMap",          // TEXT_ATTRIBUTE_CASEMAP
@@ -580,7 +580,7 @@ UnitString2CMM( uno::Any& rAny, const gchar * value )
 
 /*****************************************************************************/
 
-static const gchar * bool_values[] = { "true", "false" };
+const gchar* const bool_values[] = { "true", "false" };
 
 static gchar *
 Bool2String( const uno::Any& rAny )
@@ -739,7 +739,7 @@ String2Locale( uno::Any& rAny, const gchar * value )
 /*****************************************************************************/
 
 // @see http://www.w3.org/TR/2002/WD-css3-fonts-20020802/#font-effect-prop
-static const gchar * relief[] = { "none", "emboss", "engrave" };
+const gchar* const relief[] = { "none", "emboss", "engrave" };
 const gchar * const outline  = "outline";
 
 static gchar *
@@ -774,7 +774,7 @@ enum
     DECORATION_LINE_THROUGH
 };
 
-static const gchar * decorations[] = { "none", "blink", "underline", "line-through" };
+const gchar* const decorations[] = { "none", "blink", "underline", "line-through" };
 
 static gchar *
 get_text_decoration(const uno::Sequence< beans::PropertyValue >& rAttributeList,
@@ -816,7 +816,7 @@ get_text_decoration(const uno::Sequence< beans::PropertyValue >& rAttributeList,
 
 // @see http://www.w3.org/TR/REC-CSS2/text.html#propdef-text-shadow
 
-static const gchar * shadow_values[] = { "none", "black" };
+const gchar* const shadow_values[] = { "none", "black" };
 
 static gchar *
 Bool2Shadow( const uno::Any& rAny )
@@ -924,7 +924,7 @@ TabStopList2String( const uno::Any& rAny, bool default_tabs )
     {
         sal_Unicode lastFillChar = ' ';
 
-        for( const auto& rTabStop : std::as_const(theTabStops) )
+        for (const auto& rTabStop : theTabStops)
         {
             bool is_default_tab = (style::TabAlign_DEFAULT == rTabStop.Alignment);
 
@@ -1223,9 +1223,7 @@ attribute_set_new_from_extended_attributes(
 
     // extended attributes is a string of colon-separated pairs of property and value,
     // with pairs separated by semicolons. Example: "heading-level:2;weight:bold;"
-    uno::Any anyVal = rExtendedAttributes->getExtendedAttributes();
-    OUString sExtendedAttrs;
-    anyVal >>= sExtendedAttrs;
+    const OUString sExtendedAttrs = rExtendedAttributes->getExtendedAttributes();
     sal_Int32 nIndex = 0;
     do
     {
@@ -1306,42 +1304,42 @@ namespace {
 
 struct AtkTextAttrMapping
 {
-    const char *          name;
-    TextPropertyValueFunc const toPropertyValue;
+    OUString          name;
+    TextPropertyValueFunc toPropertyValue;
 };
 
 }
 
-const AtkTextAttrMapping g_TextAttrMap[] =
+constexpr AtkTextAttrMapping g_TextAttrMap[]
 {
-    { "", InvalidValue },                       // ATK_TEXT_ATTR_INVALID = 0
-    { "ParaLeftMargin", UnitString2CMM },       // ATK_TEXT_ATTR_LEFT_MARGIN
-    { "ParaRightMargin", UnitString2CMM },      // ATK_TEXT_ATTR_RIGHT_MARGIN
-    { "ParaFirstLineIndent", UnitString2CMM },  // ATK_TEXT_ATTR_INDENT
-    { "CharHidden", String2Bool },              // ATK_TEXT_ATTR_INVISIBLE
-    { "", InvalidValue },                       // ATK_TEXT_ATTR_EDITABLE
-    { "ParaTopMargin", UnitString2CMM },        // ATK_TEXT_ATTR_PIXELS_ABOVE_LINES
-    { "ParaBottomMargin", UnitString2CMM },     // ATK_TEXT_ATTR_PIXELS_BELOW_LINES
-    { "", InvalidValue },                       // ATK_TEXT_ATTR_PIXELS_INSIDE_WRAP
-    { "", InvalidValue },                       // ATK_TEXT_ATTR_BG_FULL_HEIGHT
-    { "", InvalidValue },                       // ATK_TEXT_ATTR_RISE
-    { "CharUnderline", String2Underline },      // ATK_TEXT_ATTR_UNDERLINE
-    { "CharStrikeout", String2Strikeout },      // ATK_TEXT_ATTR_STRIKETHROUGH
-    { "CharHeight", String2Float },             // ATK_TEXT_ATTR_SIZE
-    { "CharScaleWidth", String2Scale },         // ATK_TEXT_ATTR_SCALE
-    { "CharWeight", String2Weight },            // ATK_TEXT_ATTR_WEIGHT
-    { "CharLocale", String2Locale },            // ATK_TEXT_ATTR_LANGUAGE
-    { "CharFontName",  SetString },             // ATK_TEXT_ATTR_FAMILY_NAME
-    { "CharBackColor", String2Color },          // ATK_TEXT_ATTR_BG_COLOR
-    { "CharColor", String2Color },              // ATK_TEXT_ATTR_FG_COLOR
-    { "", InvalidValue },                       // ATK_TEXT_ATTR_BG_STIPPLE
-    { "", InvalidValue },                       // ATK_TEXT_ATTR_FG_STIPPLE
-    { "", InvalidValue },                       // ATK_TEXT_ATTR_WRAP_MODE
-    { "", InvalidValue },                       // ATK_TEXT_ATTR_DIRECTION
-    { "ParaAdjust", Justification2Adjust },     // ATK_TEXT_ATTR_JUSTIFICATION
-    { "", InvalidValue },                       // ATK_TEXT_ATTR_STRETCH
-    { "CharCaseMap", String2CaseMap },          // ATK_TEXT_ATTR_VARIANT
-    { "CharPosture", Style2FontSlant }          // ATK_TEXT_ATTR_STYLE
+    { u""_ustr, InvalidValue },                       // ATK_TEXT_ATTR_INVALID = 0
+    { u"ParaLeftMargin"_ustr, UnitString2CMM },       // ATK_TEXT_ATTR_LEFT_MARGIN
+    { u"ParaRightMargin"_ustr, UnitString2CMM },      // ATK_TEXT_ATTR_RIGHT_MARGIN
+    { u"ParaFirstLineIndent"_ustr, UnitString2CMM },  // ATK_TEXT_ATTR_INDENT
+    { u"CharHidden"_ustr, String2Bool },              // ATK_TEXT_ATTR_INVISIBLE
+    { u""_ustr, InvalidValue },                       // ATK_TEXT_ATTR_EDITABLE
+    { u"ParaTopMargin"_ustr, UnitString2CMM },        // ATK_TEXT_ATTR_PIXELS_ABOVE_LINES
+    { u"ParaBottomMargin"_ustr, UnitString2CMM },     // ATK_TEXT_ATTR_PIXELS_BELOW_LINES
+    { u""_ustr, InvalidValue },                       // ATK_TEXT_ATTR_PIXELS_INSIDE_WRAP
+    { u""_ustr, InvalidValue },                       // ATK_TEXT_ATTR_BG_FULL_HEIGHT
+    { u""_ustr, InvalidValue },                       // ATK_TEXT_ATTR_RISE
+    { u"CharUnderline"_ustr, String2Underline },      // ATK_TEXT_ATTR_UNDERLINE
+    { u"CharStrikeout"_ustr, String2Strikeout },      // ATK_TEXT_ATTR_STRIKETHROUGH
+    { u"CharHeight"_ustr, String2Float },             // ATK_TEXT_ATTR_SIZE
+    { u"CharScaleWidth"_ustr, String2Scale },         // ATK_TEXT_ATTR_SCALE
+    { u"CharWeight"_ustr, String2Weight },            // ATK_TEXT_ATTR_WEIGHT
+    { u"CharLocale"_ustr, String2Locale },            // ATK_TEXT_ATTR_LANGUAGE
+    { u"CharFontName"_ustr,  SetString },             // ATK_TEXT_ATTR_FAMILY_NAME
+    { u"CharBackColor"_ustr, String2Color },          // ATK_TEXT_ATTR_BG_COLOR
+    { u"CharColor"_ustr, String2Color },              // ATK_TEXT_ATTR_FG_COLOR
+    { u""_ustr, InvalidValue },                       // ATK_TEXT_ATTR_BG_STIPPLE
+    { u""_ustr, InvalidValue },                       // ATK_TEXT_ATTR_FG_STIPPLE
+    { u""_ustr, InvalidValue },                       // ATK_TEXT_ATTR_WRAP_MODE
+    { u""_ustr, InvalidValue },                       // ATK_TEXT_ATTR_DIRECTION
+    { u"ParaAdjust"_ustr, Justification2Adjust },     // ATK_TEXT_ATTR_JUSTIFICATION
+    { u""_ustr, InvalidValue },                       // ATK_TEXT_ATTR_STRETCH
+    { u"CharCaseMap"_ustr, String2CaseMap },          // ATK_TEXT_ATTR_VARIANT
+    { u"CharPosture"_ustr, Style2FontSlant }          // ATK_TEXT_ATTR_STYLE
 };
 
 /*****************************************************************************/
@@ -1368,7 +1366,7 @@ attribute_set_map_to_property_values(
                 if( ! g_TextAttrMap[text_attr].toPropertyValue( pAttributeList[nIndex].Value, attribute->value) )
                     return false;
 
-                pAttributeList[nIndex].Name = OUString::createFromAscii( g_TextAttrMap[text_attr].name );
+                pAttributeList[nIndex].Name = g_TextAttrMap[text_attr].name;
                 pAttributeList[nIndex].State = beans::PropertyState_DIRECT_VALUE;
                 ++nIndex;
             }
@@ -1381,7 +1379,7 @@ attribute_set_map_to_property_values(
     }
 
     aAttributeList.realloc( nIndex );
-    rValueList = aAttributeList;
+    rValueList = std::move(aAttributeList);
     return true;
 }
 

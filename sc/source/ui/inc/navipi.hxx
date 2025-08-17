@@ -31,9 +31,7 @@
 class SfxPoolItem;
 class ScTabViewShell;
 class ScViewData;
-class ScScenarioWindow;
 class ScNavigatorControllerItem;
-class ScNavigatorDlg;
 class ScNavigatorSettings;
 
 #define SC_DROPMODE_URL         0
@@ -114,7 +112,6 @@ private:
     OUString        aStrActiveWin;
 
     std::optional<ScArea> moMarkArea;
-    ScViewData*     pViewData;
 
     NavListMode     eListMode;
     sal_uInt16      nDropMode;
@@ -131,8 +128,8 @@ private:
     DECL_LINK(ToolBoxSelectHdl, const OUString&, void);
     DECL_LINK(ToolBoxDropdownClickHdl, const OUString&, void);
     DECL_LINK(MenuSelectHdl, const OUString&, void);
-    DECL_LINK(FormatRowOutputHdl, weld::SpinButton&, void);
-    DECL_LINK(ParseRowInputHdl, int*, bool);
+    DECL_STATIC_LINK(ScNavigatorDlg, FormatRowOutputHdl, sal_Int64, OUString);
+    DECL_STATIC_LINK(ScNavigatorDlg, ParseRowInputHdl, const OUString&, std::optional<int>);
 
     void    UpdateButtons();
     void    SetCurrentCell( SCCOL nCol, SCROW Row );
@@ -144,9 +141,9 @@ private:
     void    UpdateSelection();
     void    ContentUpdated(); // stop aContentIdle because content is up to date
 
-    static ScTabViewShell*  GetTabViewShell();
+    SAL_RET_MAYBENULL static ScTabViewShell*  GetTabViewShell();
     static ScNavigatorSettings* GetNavigatorSettings();
-    ScViewData*             GetViewData();
+    static ScViewData* GetViewData();
 
     void    UpdateSheetLimits();
 

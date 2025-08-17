@@ -23,6 +23,7 @@
 
 #include <stack>
 
+#include <DropTarget.hxx>
 #include <unx/salinst.h>
 #include <unx/gensys.h>
 #include <headless/svpinst.hxx>
@@ -124,43 +125,25 @@ public:
 
 class GtkDnDTransferable;
 
-class GtkInstDropTarget final : public cppu::WeakComponentImplHelper<css::datatransfer::dnd::XDropTarget,
-                                                           css::lang::XInitialization,
-                                                           css::lang::XServiceInfo>
+class GtkInstDropTarget final
+    : public cppu::ImplInheritanceHelper<DropTarget, css::lang::XServiceInfo>
 {
-    osl::Mutex m_aMutex;
     GtkSalFrame* m_pFrame;
     GtkDnDTransferable* m_pFormatConversionRequest;
-    bool m_bActive;
     bool m_bInDrag;
-    sal_Int8 m_nDefaultActions;
-    std::vector<css::uno::Reference<css::datatransfer::dnd::XDropTargetListener>> m_aListeners;
+
 public:
     GtkInstDropTarget();
+    GtkInstDropTarget(GtkSalFrame* pFrame);
     virtual ~GtkInstDropTarget() override;
 
-    // XInitialization
-    virtual void        SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& rArgs) override;
-            void        deinitialize();
-
-    // XDropTarget
-    virtual void        SAL_CALL addDropTargetListener(const css::uno::Reference<css::datatransfer::dnd::XDropTargetListener>&) override;
-    virtual void        SAL_CALL removeDropTargetListener(const css::uno::Reference<css::datatransfer::dnd::XDropTargetListener>&) override;
-    virtual sal_Bool    SAL_CALL isActive() override;
-    virtual void        SAL_CALL setActive(sal_Bool active) override;
-    virtual sal_Int8    SAL_CALL getDefaultActions() override;
-    virtual void        SAL_CALL setDefaultActions(sal_Int8 actions) override;
+    void deinitialize();
 
     OUString SAL_CALL getImplementationName() override;
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override;
 
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
-
-    void fire_dragEnter(const css::datatransfer::dnd::DropTargetDragEnterEvent& dtdee);
-    void fire_dragOver(const css::datatransfer::dnd::DropTargetDragEvent& dtde);
-    void fire_drop(const css::datatransfer::dnd::DropTargetDropEvent& dtde);
-    void fire_dragExit(const css::datatransfer::dnd::DropTargetEvent& dte);
 
     void SetFormatConversionRequest(GtkDnDTransferable *pRequest)
     {
@@ -182,9 +165,9 @@ public:
 #endif
 };
 
-class GtkInstDragSource final : public cppu::WeakComponentImplHelper<css::datatransfer::dnd::XDragSource,
-                                                           css::lang::XInitialization,
-                                                           css::lang::XServiceInfo>
+class GtkInstDragSource final
+    : public cppu::WeakComponentImplHelper<css::datatransfer::dnd::XDragSource,
+                                           css::lang::XServiceInfo>
 {
     osl::Mutex m_aMutex;
     GtkSalFrame* m_pFrame;
@@ -197,6 +180,7 @@ public:
         , m_pFrame(nullptr)
     {
     }
+    GtkInstDragSource(GtkSalFrame* pFrame);
 
     void set_datatransfer(const css::uno::Reference<css::datatransfer::XTransferable>& rTrans,
                           const css::uno::Reference<css::datatransfer::dnd::XDragSourceListener>& rListener);
@@ -217,9 +201,7 @@ public:
         const css::uno::Reference< css::datatransfer::XTransferable >& transferable,
         const css::uno::Reference< css::datatransfer::dnd::XDragSourceListener >& listener) override;
 
-    // XInitialization
-    virtual void        SAL_CALL initialize(const css::uno::Sequence<css::uno::Any >& rArguments) override;
-            void        deinitialize();
+    void deinitialize();
 
     OUString SAL_CALL getImplementationName() override;
 
@@ -265,9 +247,14 @@ public:
     virtual void                AddToRecentDocumentList(const OUString& rFileUrl, const OUString& rMimeType, const OUString& rDocumentService) override;
     virtual std::unique_ptr<SalVirtualDevice>
                                 CreateVirtualDevice( SalGraphics&,
+                                                     tools::Long nDX, tools::Long nDY,
+                                                     DeviceFormat eFormat,
+                                                     bool bAlphaMaskTransparent = false ) override;
+    virtual std::unique_ptr<SalVirtualDevice>
+                                CreateVirtualDevice( SalGraphics&,
                                                      tools::Long &nDX, tools::Long &nDY,
                                                      DeviceFormat eFormat,
-                                                     const SystemGraphicsData* = nullptr ) override;
+                                                     const SystemGraphicsData& ) override;
     virtual std::shared_ptr<SalBitmap> CreateSalBitmap() override;
 
     virtual bool                DoYield(bool bWait, bool bHandleAllCurrentEvents) override;
@@ -284,14 +271,19 @@ public:
     virtual css::uno::Reference< css::ui::dialogs::XFolderPicker2 >
         createFolderPicker( const css::uno::Reference< css::uno::XComponentContext >& ) override;
 
-    virtual css::uno::Reference< css::uno::XInterface > CreateClipboard( const css::uno::Sequence< css::uno::Any >& i_rArguments ) override;
-    virtual css::uno::Reference<css::uno::XInterface> ImplCreateDragSource(const SystemEnvData*) override;
-    virtual css::uno::Reference<css::uno::XInterface> ImplCreateDropTarget(const SystemEnvData*) override;
+    virtual css::uno::Reference<css::datatransfer::clipboard::XClipboard>
+    CreateClipboard(const css::uno::Sequence<css::uno::Any>& i_rArguments) override;
+    virtual css::uno::Reference<css::datatransfer::dnd::XDragSource>
+    ImplCreateDragSource(const SystemEnvData& rSysEnv) override;
+    virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget>
+    ImplCreateDropTarget(const SystemEnvData& rSysEnv) override;
     virtual OpenGLContext* CreateOpenGLContext() override;
     virtual std::unique_ptr<weld::Builder> CreateBuilder(weld::Widget* pParent, const OUString& rUIRoot, const OUString& rUIFile) override;
     virtual std::unique_ptr<weld::Builder> CreateInterimBuilder(vcl::Window* pParent, const OUString& rUIRoot, const OUString& rUIFile,
                                                 bool bAllowCycleFocusOut, sal_uInt64 nLOKWindowId = 0) override;
     virtual weld::MessageDialog* CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType, VclButtonsType eButtonType, const OUString &rPrimaryMessage) override;
+    std::unique_ptr<weld::ColorChooserDialog>
+    CreateColorChooserDialog(weld::Window* pParent, vcl::ColorPickerMode eMode) override;
     virtual weld::Window* GetFrameWeld(const css::uno::Reference<css::awt::XWindow>& rWindow) override;
 
     virtual const cairo_font_options_t* GetCairoFontOptions() override;
@@ -304,7 +296,7 @@ public:
 
 private:
     GtkSalTimer *m_pTimer;
-    css::uno::Reference<css::uno::XInterface> m_aClipboards[2];
+    css::uno::Reference<css::datatransfer::clipboard::XClipboard> m_aClipboards[2];
     bool                        IsTimerExpired();
     bool                        bNeedsInit;
     cairo_font_options_t*       m_pLastCairoFontOptions;

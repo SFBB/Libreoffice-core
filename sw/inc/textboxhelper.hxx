@@ -66,7 +66,7 @@ public:
     static void create(SwFrameFormat* pShape, SdrObject* pObject, bool bCopyText = false);
     /// Sets the given textframe as textbox for the given (group member) shape.
     static void set(SwFrameFormat* pShape, SdrObject* pObject,
-                    css::uno::Reference<css::text::XTextFrame> xNew);
+                    const css::uno::Reference<css::text::XTextFrame>& xNew);
     /// Destroy a TextBox for a shape. If the format has more textboxes
     /// like group shapes, it will destroy only that textbox what belongs
     /// to the given pObject shape.
@@ -122,10 +122,11 @@ public:
      *
      * @see isTextBox
      */
-    static SwFrameFormat* getOtherTextBoxFormat(const SwFrameFormat* pFormat, sal_uInt16 nType,
-                                                const SdrObject* pObject = nullptr);
+    SAL_RET_MAYBENULL static SwFrameFormat*
+    getOtherTextBoxFormat(const SwFrameFormat* pFormat, sal_uInt16 nType,
+                          const SdrObject* pObject = nullptr);
     /// If we have an associated TextFrame, then return that.
-    static SwFrameFormat*
+    SAL_RET_MAYBENULL static SwFrameFormat*
     getOtherTextBoxFormat(css::uno::Reference<css::drawing::XShape> const& xShape);
     /// If we have an associated TextFrame, then return its XTextFrame.
     static css::uno::Reference<css::text::XTextFrame>
@@ -186,6 +187,9 @@ public:
 
     // Compares the anchor of the first and second given formats, and decides whether sync needed.
     static bool isAnchorSyncNeeded(const SwFrameFormat* pFirst, const SwFrameFormat* pSecond);
+
+    /// Was the textbox created from a Microsoft import by a paragraph frame property (framePr)
+    static bool TextBoxIsFramePr(const SwFrameFormat& rFrameFormat);
 };
 
 /// Textboxes are basically textframe + shape pairs. This means one shape has one frame.

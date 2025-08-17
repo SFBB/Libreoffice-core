@@ -34,22 +34,16 @@
 #include <svx/AccessibleShape.hxx>
 
 namespace com::sun::star {
-    namespace accessibility { class XAccessible; }
     namespace accessibility { class XAccessibleContext; }
-    namespace accessibility { struct AccessibleEventObject; }
-    namespace accessibility { class XAccessibleRelationSet; }
     namespace awt { class XControl; }
     namespace beans { class XPropertySet; }
     namespace beans { class XPropertySetInfo; }
-    namespace beans { struct PropertyChangeEvent; }
-    namespace container { struct ContainerEvent; }
     namespace lang { class XComponent; }
     namespace lang { class XTypeProvider; }
     namespace uno { class XAggregation; }
-    namespace util { struct ModeChangeEvent; }
 }
 
-namespace comphelper
+namespace accessibility
 {
     class OWrappedAccessibleChildrenManager;
 }
@@ -71,7 +65,6 @@ class SAL_DLLPUBLIC_RTTI AccessibleControlShape final
         ,public AccessibleControlShape_Base
 {
 public:
-    //=====  internal  ========================================================
     AccessibleControlShape(
         const AccessibleShapeInfo& rShapeInfo,
         const AccessibleShapeTreeInfo& rShapeTreeInfo);
@@ -171,6 +164,9 @@ private:
     */
     void        initializeComposedState( );
 
+    /// determines whether the control is in alive mode
+    bool isControlInAliveMode();
+
     AccessibleControlShape(const AccessibleControlShape&) = delete;
     AccessibleControlShape& operator= (const AccessibleControlShape&) = delete;
 
@@ -190,7 +186,7 @@ private:
     css::uno::Reference< css::lang::XComponent >
                     m_xControlContextComponent;     // cached interface of our aggregate
 
-    rtl::Reference<::comphelper::OWrappedAccessibleChildrenManager>
+    rtl::Reference<::accessibility::OWrappedAccessibleChildrenManager>
                     m_pChildManager;
 
     bool        m_bListeningForName     : 1;    // are we currently listening for changes of the "Name" property?

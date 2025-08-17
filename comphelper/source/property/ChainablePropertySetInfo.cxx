@@ -31,7 +31,7 @@ ChainablePropertySetInfo::ChainablePropertySetInfo( PropertyInfo const * pMap )
     for( ; !pMap->maName.isEmpty(); ++pMap )
     {
         SAL_WARN_IF(
-            maMap.find(pMap->maName) != maMap.end(),
+            maMap.contains(pMap->maName),
             "comphelper", "Duplicate property name \"" << pMap->maName << "\"");
         maMap[pMap->maName] = pMap;
     }
@@ -89,7 +89,7 @@ Property SAL_CALL ChainablePropertySetInfo::getPropertyByName( const OUString& r
 
 sal_Bool SAL_CALL ChainablePropertySetInfo::hasPropertyByName( const OUString& rName )
 {
-    return maMap.find ( rName ) != maMap.end();
+    return maMap.contains( rName );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

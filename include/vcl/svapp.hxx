@@ -44,7 +44,7 @@
 #include <com/sun/star/uno/Reference.h>
 
 
-class BitmapEx;
+class Bitmap;
 namespace weld
 {
     class Builder;
@@ -59,8 +59,8 @@ class Accelerator;
 class Help;
 class OutputDevice;
 namespace vcl {
+    class DisplayConnectionDispatch;
     class KeyCode;
-    class ILibreOfficeKitNotifier;
     class Window;
 }
 
@@ -81,7 +81,6 @@ namespace com::sun::star::ui::dialogs {
 }
 namespace com::sun::star::awt {
     class XToolkit;
-    class XDisplayConnection;
     class XWindow;
 }
 
@@ -345,7 +344,7 @@ public:
 
     vcl/fpicker/test/svdem.cxx
     */
-    virtual int                 Main();
+    SAL_DLLPRIVATE virtual int  Main();
 
     /** Exit from the application
 
@@ -641,9 +640,12 @@ public:
      @param     rSettings       const reference to settings object used to
                                 change the application's settings.
 
+     @param     bTemporary      this is a temporary change (used in GraphicExporter::filter),
+                                do not notify change listeners
+
      @see OverrideSystemSettings, MergeSystemSettings, GetSettings
     */
-    static void                 SetSettings( const AllSettings& rSettings );
+    static void                 SetSettings( const AllSettings& rSettings, bool bTemporary = false );
 
     /** Gets the application's settings. If the application hasn't initialized
      it's settings, then it does so (lazy initialization).
@@ -659,7 +661,7 @@ public:
 
      @returns reference to a LocaleDataWrapper object
     */
-    static const LocaleDataWrapper& GetAppLocaleDataWrapper();
+    SAL_DLLPRIVATE static const LocaleDataWrapper& GetAppLocaleDataWrapper();
 
     ///@}
 
@@ -714,7 +716,7 @@ public:
 
      @see ImplCallEventListeners(VclSimpleEvent* pEvent)
     */
-    static void                 ImplCallEventListenersApplicationDataChanged( void* pData );
+    SAL_DLLPRIVATE static void  ImplCallEventListenersApplicationDataChanged( void* pData );
 
     /** Send event to all VCL application event listeners
 
@@ -722,7 +724,7 @@ public:
 
      @see ImplCallEventListeners(sal_uLong nEvent, Windows* pWin, void* pData);
     */
-    static void                 ImplCallEventListeners( VclSimpleEvent& rEvent );
+    SAL_DLLPRIVATE static void  ImplCallEventListeners( VclSimpleEvent& rEvent );
 
     /** Handle keypress event
 
@@ -732,7 +734,7 @@ public:
 
      @see PostKeyEvent
     */
-    static bool                 HandleKey( VclEventId nEvent, vcl::Window *pWin, KeyEvent* pKeyEvent );
+    SAL_DLLPRIVATE static bool HandleKey( VclEventId nEvent, vcl::Window *pWin, KeyEvent* pKeyEvent );
 
     /** Send keypress event
 
@@ -790,15 +792,13 @@ public:
     */
     static void                 RemoveUserEvent( ImplSVEvent * nUserEvent );
 
-    /*** Get the DisplayConnection.
+    /** Get the DisplayConnection.
 
-     It is a reference to XDisplayConnection, which allows toolkits to send display
-     events to the application.
+    It allows toolkits to send display events to the application.
 
-     @returns UNO reference to an object that implements the css:awt:XDisplayConnection
-        interface.
+    This is only used by the gen/x11 VCL plugin.
     */
-    static css::uno::Reference< css::awt::XDisplayConnection > GetDisplayConnection();
+    static rtl::Reference<vcl::DisplayConnectionDispatch> GetDisplayConnection();
 
     /** @deprecated AppEvent is used only in the Desktop class now. However, it is
      intended to notify the application that an event has occurred. It was in oldsv.cxx,
@@ -912,7 +912,7 @@ public:
 
      @returns The application name.
     */
-    static OUString             GetAppName();
+    static const OUString &     GetAppName();
 
     /**
      * Get the OS version based on the OS specific implementation.
@@ -931,11 +931,11 @@ public:
     /** Load a localized branding PNG file as a bitmap.
 
      @param     pName           Name of the bitmap to load.
-     @param     rBitmap         Reference to BitmapEx object to load PNG into
+     @param     rBitmap         Reference to Bitmap object to load PNG into
 
      @returns true if the PNG could be loaded, otherwise returns false.
     */
-    static bool                 LoadBrandBitmap (std::u16string_view pName, BitmapEx &rBitmap);
+    static bool                 LoadBrandBitmap (std::u16string_view pName, Bitmap& rBitmap);
 
     ///@}
 
@@ -961,7 +961,7 @@ public:
 
      @returns The toolkit name.
     */
-    static OUString             GetToolkitName();
+    static const OUString &     GetToolkitName();
 
     /** Get the number of screens available for the display.
 
@@ -1028,7 +1028,7 @@ public:
 
      @see RemoveAccel
     */
-    static bool                 InsertAccel( Accelerator* pAccel );
+    SAL_DLLPRIVATE static bool  InsertAccel( Accelerator* pAccel );
 
     /** Remove accelerator
 
@@ -1036,7 +1036,7 @@ public:
 
      @see InsertAccel
     */
-    static void                 RemoveAccel( Accelerator const * pAccel );
+    SAL_DLLPRIVATE static void  RemoveAccel( Accelerator const * pAccel );
 
     /** Get the number of reserved key codes used by the application.
 
@@ -1215,7 +1215,7 @@ public:
 
     /** Enable software-only bitmap rendering
      */
-    static void                 EnableBitmapRendering();
+    SAL_DLLPRIVATE static void EnableBitmapRendering();
 
     /** Determines if bitmap rendering is enabled
 
@@ -1296,11 +1296,11 @@ public:
     static css::uno::Reference< css::ui::dialogs::XFolderPicker2 >
         createFolderPicker( const css::uno::Reference< css::uno::XComponentContext >& rServiceManager );
 
-    /** Returns true, if the VCL plugin runs on the system event loop.
+    /** Returns true, if the VCL plugin should run on the system event loop.
      *
      *  AKA the VCL plugin can't handle nested event loops, like WASM or mobile.
      */
-    static bool IsOnSystemEventLoop();
+    static bool IsUseSystemEventLoop();
 
     ///@}
 
@@ -1326,7 +1326,7 @@ public:
                               const std::vector<vcl::LOKPayloadItem>& rPayload = std::vector<vcl::LOKPayloadItem>()) const override;
     virtual void libreOfficeKitViewCallback(int nType, const OString& pPayload) const override;
     virtual void notifyInvalidation(tools::Rectangle const *) const override;
-
+    virtual OString dumpNotifyState() const override;
 
 private:
     DECL_DLLPRIVATE_STATIC_LINK( Application, PostEventHandler, void*, void );
@@ -1414,8 +1414,16 @@ class SolarMutexReleaser
 {
     const sal_uInt32 mnReleased;
 public:
-    SolarMutexReleaser(): mnReleased(Application::ReleaseSolarMutex()) {}
-    ~SolarMutexReleaser() { Application::AcquireSolarMutex( mnReleased ); }
+    SolarMutexReleaser()
+        : mnReleased(
+            Application::GetSolarMutex().IsCurrentThread() ? Application::ReleaseSolarMutex() : 0)
+    {
+    }
+    ~SolarMutexReleaser()
+    {
+        if (mnReleased)
+            Application::AcquireSolarMutex(mnReleased);
+    }
 };
 
 VCL_DLLPUBLIC Application* GetpApp();
@@ -1425,8 +1433,6 @@ VCL_DLLPUBLIC bool IsVCLInit();
 // returns true if vcl successfully initializes or was already initialized
 VCL_DLLPUBLIC bool InitVCL();
 VCL_DLLPUBLIC void DeInitVCL();
-
-VCL_DLLPUBLIC bool InitAccessBridge();
 
 // only allowed to call, if no thread is running. You must call JoinMainLoopThread to free all memory.
 VCL_DLLPUBLIC void CreateMainLoopThread( oslWorkerFunction pWorker, void * pThreadData );

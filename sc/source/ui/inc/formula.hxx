@@ -47,7 +47,7 @@ class ScFormulaDlg final : public formula::FormulaDlg,
 public:
     ScFormulaDlg( SfxBindings* pB, SfxChildWindow* pCW,
         weld::Window* pParent, const ScViewData& rViewData, const formula::IFunctionManager* _pFunctionMgr);
-    virtual ~ScFormulaDlg() COVERITY_NOEXCEPT_FALSE override;
+    virtual ~ScFormulaDlg() override;
 
     // IFormulaEditorHelper
     virtual void notifyChange() override;
@@ -57,6 +57,7 @@ public:
     virtual std::unique_ptr<formula::FormulaCompiler> createCompiler( formula::FormulaTokenArray& rArray ) const override;
     virtual void doClose(bool _bOk) override;
     virtual void insertEntryToLRUList(const formula::IFunctionDescription*  pDesc) override;
+    virtual void insertOrEraseFavouritesListEntry(const formula::IFunctionDescription* pDesc, bool bInsert) override;
     virtual void showReference(const OUString& _sFormula) override;
     virtual void dispatch(bool _bOK, bool _bMatrixChecked) override;
     virtual void setDispatcherLock( bool bLock ) override;
@@ -94,11 +95,12 @@ public:
     virtual void ViewShellChanged() override;
 
 private:
+    void ImplDestroy();
     virtual void RefInputStart( formula::RefEdit* pEdit, formula::RefButton* pButton = nullptr ) override;
     static void  SaveLRUEntry(const ScFuncDesc* pFuncDesc);
 
     static bool  IsInputHdl(const ScInputHandler* pHdl);
-    static ScInputHandler* GetNextInputHandler(const ScDocShell* pDocShell, ScTabViewShell** ppViewSh);
+    static ScInputHandler* GetNextInputHandler(const ScDocShell& rDocShell, ScTabViewShell** ppViewSh);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

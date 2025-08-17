@@ -24,9 +24,7 @@
 #include <com/sun/star/i18n/CalendarDisplayCode.hpp>
 #include <com/sun/star/i18n/NativeNumberMode.hpp>
 
-using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::i18n;
-using namespace ::com::sun::star::lang;
 
 namespace i18npool {
 
@@ -35,7 +33,7 @@ namespace i18npool {
 
 Calendar_jewish::Calendar_jewish()
 {
-    cCalendar = "com.sun.star.i18n.Calendar_jewish";
+    cCalendar = u"com.sun.star.i18n.Calendar_jewish"_ustr;
 }
 
 // The following C++ code is translated from the Lisp code in

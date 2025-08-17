@@ -76,7 +76,7 @@
 #include <sharedstringpoolpurge.hxx>
 #include <formulaopt.hxx>
 
-tools::SvRef<ScDocShell>  ScGlobal::xDrawClipDocShellRef;
+rtl::Reference<ScDocShell> ScGlobal::xDrawClipDocShellRef;
 std::unique_ptr<SvxSearchItem> ScGlobal::xSearchItem;
 std::unique_ptr<ScAutoFormat> ScGlobal::xAutoFormat;
 std::atomic<LegacyFuncCollection*> ScGlobal::pLegacyFuncCollection(nullptr);
@@ -96,8 +96,8 @@ OUString        ScGlobal::aStrClipDocName;
 std::unique_ptr<SvxBrushItem> ScGlobal::xEmptyBrushItem;
 std::unique_ptr<SvxBrushItem> ScGlobal::xButtonBrushItem;
 
-std::unique_ptr<ScFunctionList> ScGlobal::xStarCalcFunctionList;
-std::unique_ptr<ScFunctionMgr> ScGlobal::xStarCalcFunctionMgr;
+std::unordered_map<OUString, std::unique_ptr<ScFunctionList>> ScGlobal::xStarCalcFunctionList;
+std::unordered_map<OUString, std::unique_ptr<ScFunctionMgr>> ScGlobal::xStarCalcFunctionMgr;
 
 std::atomic<ScUnitConverter*> ScGlobal::pUnitConverter(nullptr);
 std::unique_ptr<SvNumberFormatter> ScGlobal::xEnglishFormatter;
@@ -119,8 +119,7 @@ sal_uInt16 nScFillModeMouseModifier = 0; //FIXME: And this
 
 bool ScGlobal::bThreadedGroupCalcInProgress = false;
 
-InputHandlerFunctionNames ScGlobal::maInputHandlerFunctionNames;
-
+std::unordered_map<OUString, InputHandlerFunctionNames> ScGlobal::maInputHandlerFunctionNames;
 
 // Static functions
 
@@ -146,10 +145,10 @@ bool ScGlobal::HasAttrChanged( const SfxItemSet&  rNewAttrs,
         // Contains a Default Item
         // PoolItems, meaning Item comparison necessary
         if (!pOldItem)
-            pOldItem = &rOldAttrs.GetPool()->GetDefaultItem( nWhich );
+            pOldItem = &rOldAttrs.GetPool()->GetUserOrPoolDefaultItem( nWhich );
 
         if (!pNewItem)
-            pNewItem = &rNewAttrs.GetPool()->GetDefaultItem( nWhich );
+            pNewItem = &rNewAttrs.GetPool()->GetUserOrPoolDefaultItem( nWhich );
 
         bInvalidate = (*pNewItem != *pOldItem);
     }
@@ -157,18 +156,12 @@ bool ScGlobal::HasAttrChanged( const SfxItemSet&  rNewAttrs,
     return bInvalidate;
 }
 
-sal_uInt32 ScGlobal::GetStandardFormat( SvNumberFormatter& rFormatter,
+sal_uInt32 ScGlobal::GetStandardFormat( ScInterpreterContext& rContext,
         sal_uInt32 nFormat, SvNumFormatType nType )
 {
-    const SvNumberformat* pFormat = rFormatter.GetEntry( nFormat );
-    if ( pFormat )
-        return rFormatter.GetStandardFormat( nFormat, nType, pFormat->GetLanguage() );
-    return rFormatter.GetStandardFormat( nType, eLnge );
-}
-
-sal_uInt16 ScGlobal::GetStandardRowHeight()
-{
-    return nStdRowHeight;
+    if (const SvNumberformat* pFormat = rContext.NFGetFormatEntry(nFormat))
+        return rContext.NFGetStandardFormat( nFormat, nType, pFormat->GetLanguage() );
+    return rContext.NFGetStandardFormat( nType, eLnge );
 }
 
 SvNumberFormatter* ScGlobal::GetEnglishFormatter()
@@ -178,7 +171,7 @@ SvNumberFormatter* ScGlobal::GetEnglishFormatter()
     {
         xEnglishFormatter.reset( new SvNumberFormatter(
             ::comphelper::getProcessComponentContext(), LANGUAGE_ENGLISH_US ) );
-        xEnglishFormatter->SetEvalDateFormat( NF_EVALDATEFORMAT_INTL_FORMAT );
+        xEnglishFormatter->SetEvalDateFormat( NfEvalDateFormat::InternationalThenFormat );
     }
     return xEnglishFormatter.get();
 }
@@ -293,7 +286,7 @@ ScUnoAddInCollection* ScGlobal::GetAddInCollection()
     return comphelper::doubleCheckedInit( pAddInCollection, []() { return new ScUnoAddInCollection(); });
 }
 
-ScUserList* ScGlobal::GetUserList()
+ScUserList& ScGlobal::GetUserList()
 {
     assert(!bThreadedGroupCalcInProgress);
     // Hack: Load Cfg item at the App
@@ -301,7 +294,7 @@ ScUserList* ScGlobal::GetUserList()
 
     if (!xUserList)
         xUserList.reset(new ScUserList());
-    return xUserList.get();
+    return *xUserList;
 }
 
 void ScGlobal::SetUserList( const ScUserList* pNewList )
@@ -510,21 +503,19 @@ void ScGlobal::SetClipDocName( const OUString& rNew )
     aStrClipDocName = rNew;
 }
 
-void ScGlobal::InitTextHeight(const SfxItemPool* pPool)
+void ScGlobal::InitTextHeight(SfxItemPool& rPool)
 {
-    if (!pPool)
-    {
-        OSL_FAIL("ScGlobal::InitTextHeight: No Pool");
-        return;
-    }
-
-    const ScPatternAttr& rPattern = pPool->GetDefaultItem(ATTR_PATTERN);
+    // this gets handed over the m_pMessagePool in ScModule::ScModule, so
+    // the previously used item ScPatternAttr is unchanged. This allows to
+    // just use an temporary incarnation of a CellAttributeHelper here
+    const CellAttributeHelper aTempHelper(rPool);
+    const ScPatternAttr& rDefaultCellAttribute(aTempHelper.getDefaultCellAttribute());
 
     OutputDevice* pDefaultDev = Application::GetDefaultDevice();
     ScopedVclPtrInstance< VirtualDevice > pVirtWindow( *pDefaultDev );
     pVirtWindow->SetMapMode(MapMode(MapUnit::MapPixel));
     vcl::Font aDefFont;
-    rPattern.fillFontOnly(aDefFont, pVirtWindow); // Font color doesn't matter here
+    rDefaultCellAttribute.fillFontOnly(aDefFont, pVirtWindow); // Font color doesn't matter here
     pVirtWindow->SetFont(aDefFont);
     sal_uInt16 nTest = static_cast<sal_uInt16>(
         pVirtWindow->PixelToLogic(Size(0, pVirtWindow->GetTextHeight()), MapMode(MapUnit::MapTwip)).Height());
@@ -532,7 +523,7 @@ void ScGlobal::InitTextHeight(const SfxItemPool* pPool)
     if (nTest > nDefFontHeight)
         nDefFontHeight = nTest;
 
-    const SvxMarginItem& rMargin = rPattern.GetItem(ATTR_MARGIN);
+    const SvxMarginItem& rMargin(rDefaultCellAttribute.GetItem(ATTR_MARGIN));
 
     nTest = static_cast<sal_uInt16>(nDefFontHeight + rMargin.GetTopMargin()
                                     + rMargin.GetBottomMargin() - STD_ROWHEIGHT_DIFF);
@@ -551,8 +542,9 @@ void ScGlobal::Clear()
     delete pLegacyFuncCollection.exchange(nullptr);
     delete pAddInCollection.exchange(nullptr);
     xUserList.reset();
-    xStarCalcFunctionList.reset(); // Destroy before ResMgr!
-    xStarCalcFunctionMgr.reset();
+    xStarCalcFunctionList.clear(); // Destroy before ResMgr!
+    xStarCalcFunctionMgr.clear();
+    maInputHandlerFunctionNames.clear();
     ScParameterClassification::Exit();
     ScCompiler::DeInit();
     ScInterpreter::GlobalExit(); // Delete static Stack
@@ -628,39 +620,60 @@ OUString ScGlobal::GetCharsetString( rtl_TextEncoding eVal )
 
 bool ScGlobal::HasStarCalcFunctionList()
 {
-    return bool(xStarCalcFunctionList);
+    OUString lang = Translate::getLanguage(ScModule::get()->GetResLocale());
+    auto list = xStarCalcFunctionList.find(lang);
+    return list != xStarCalcFunctionList.end();
 }
 
 ScFunctionList* ScGlobal::GetStarCalcFunctionList()
 {
     assert(!bThreadedGroupCalcInProgress);
-    if ( !xStarCalcFunctionList )
-        xStarCalcFunctionList.reset( new ScFunctionList( SC_MOD()->GetFormulaOptions().GetUseEnglishFuncName()));
-
-    return xStarCalcFunctionList.get();
+    ScModule* mod = ScModule::get();
+    OUString lang = Translate::getLanguage(mod->GetResLocale());
+    if (auto list = xStarCalcFunctionList.find(lang); list != xStarCalcFunctionList.end())
+    {
+        return xStarCalcFunctionList[lang].get();
+    }
+    xStarCalcFunctionList.emplace(
+        lang, new ScFunctionList(mod->GetFormulaOptions().GetUseEnglishFuncName()));
+    return xStarCalcFunctionList[lang].get();
 }
 
 ScFunctionMgr* ScGlobal::GetStarCalcFunctionMgr()
 {
     assert(!bThreadedGroupCalcInProgress);
-    if ( !xStarCalcFunctionMgr )
-        xStarCalcFunctionMgr.reset(new ScFunctionMgr);
+    OUString lang = Translate::getLanguage(ScModule::get()->GetResLocale());
+    if (auto list = xStarCalcFunctionMgr.find(lang); list != xStarCalcFunctionMgr.end())
+    {
+        return xStarCalcFunctionMgr[lang].get();
+    }
+    xStarCalcFunctionMgr.emplace(lang, new ScFunctionMgr);
 
-    return xStarCalcFunctionMgr.get();
+    return xStarCalcFunctionMgr[lang].get();
 }
 
 void ScGlobal::ResetFunctionList()
 {
     // FunctionMgr has pointers into FunctionList, must also be updated
-    xStarCalcFunctionMgr.reset();
-    xStarCalcFunctionList.reset();
+    xStarCalcFunctionMgr.clear();
+    xStarCalcFunctionList.clear();
     // Building new names also needs InputHandler data to be refreshed.
-    maInputHandlerFunctionNames = InputHandlerFunctionNames();
+    maInputHandlerFunctionNames.clear();
+    maInputHandlerFunctionNames.emplace(Translate::getLanguage(ScModule::get()->GetResLocale()),
+                                        InputHandlerFunctionNames());
 }
 
 const InputHandlerFunctionNames& ScGlobal::GetInputHandlerFunctionNames()
 {
-    if (maInputHandlerFunctionNames.maFunctionData.empty())
+    OUString lang = Translate::getLanguage(ScModule::get()->GetResLocale());
+    if (maInputHandlerFunctionNames.find(lang) == maInputHandlerFunctionNames.end())
+    {
+        maInputHandlerFunctionNames.emplace(lang, InputHandlerFunctionNames());
+    }
+
+    InputHandlerFunctionNames& currentInputHandlerFunctionNames = maInputHandlerFunctionNames[lang];
+
+    if (currentInputHandlerFunctionNames.maFunctionData.empty())
     {
         const OUString aParenthesesReplacement( cParenthesesReplacement);
         const ScFunctionList* pFuncList = GetStarCalcFunctionList();
@@ -676,18 +689,18 @@ const InputHandlerFunctionNames& ScGlobal::GetInputHandlerFunctionNames()
                 OUString aFuncName(pCharClass->uppercase(*(pDesc->mxFuncName)));
                 // fdo#75264 fill maFormulaChar with all characters used in formula names
                 for (sal_Int32 j = 0; j < aFuncName.getLength(); j++)
-                    maInputHandlerFunctionNames.maFunctionChar.insert(aFuncName[j]);
-                maInputHandlerFunctionNames.maFunctionData.insert(
-                        ScTypedStrData(*(pDesc->mxFuncName) + aParenthesesReplacement, 0.0, 0.0,
-                            ScTypedStrData::Standard));
+                    currentInputHandlerFunctionNames.maFunctionChar.insert(aFuncName[j]);
+                currentInputHandlerFunctionNames.maFunctionData.insert(
+                    ScTypedStrData(*(pDesc->mxFuncName) + aParenthesesReplacement, 0.0, 0.0,
+                                   ScTypedStrData::Standard));
                 pDesc->initArgumentInfo();
                 OUString aEntry = pDesc->getSignature();
-                maInputHandlerFunctionNames.maFunctionDataPara.insert(
-                        ScTypedStrData(aEntry, 0.0, 0.0, ScTypedStrData::Standard));
+                currentInputHandlerFunctionNames.maFunctionDataPara.insert(
+                    ScTypedStrData(aEntry, 0.0, 0.0, ScTypedStrData::Standard));
             }
         }
     }
-    return maInputHandlerFunctionNames;
+    return currentInputHandlerFunctionNames;
 }
 
 ScUnitConverter* ScGlobal::GetUnitConverter()
@@ -870,7 +883,7 @@ void ScGlobal::OpenURL(const OUString& rURL, const OUString& rTarget, bool bIgno
     SfxStringItem aUrl( SID_FILE_NAME, aUrlName );
     SfxStringItem aTarget( SID_TARGETNAME, rTarget );
     if ( nScClickMouseModifier & KEY_SHIFT )     // control-click -> into new window
-        aTarget.SetValue("_blank");
+        aTarget.SetValue(u"_blank"_ustr);
 
     SfxFrameItem aFrm( SID_DOCFRAME, pFrame );
     SfxStringItem aReferer( SID_REFERER, aReferName );
@@ -1133,20 +1146,6 @@ css::lang::Locale& ScGlobal::GetLocale()
 {
     return *comphelper::doubleCheckedInit( pLocale,
         []() { return new css::lang::Locale( Application::GetSettings().GetLanguageTag().getLocale()); });
-}
-
-ScFieldEditEngine& ScGlobal::GetStaticFieldEditEngine()
-{
-    assert(!bThreadedGroupCalcInProgress);
-    if (!xFieldEditEngine)
-    {
-        // Creating a ScFieldEditEngine with pDocument=NULL leads to document
-        // specific fields not being resolvable! See
-        // ScFieldEditEngine::CalcFieldValue(). pEnginePool=NULL lets
-        // EditEngine internally create and delete a default pool.
-        xFieldEditEngine.reset(new ScFieldEditEngine( nullptr, nullptr));
-    }
-    return *xFieldEditEngine;
 }
 
 sc::SharedStringPoolPurge& ScGlobal::GetSharedStringPoolPurge()

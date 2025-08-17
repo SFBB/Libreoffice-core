@@ -21,7 +21,6 @@
 
 #include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
-#include <osl/endian.h>
 #include <tools/urlobj.hxx>
 #include <doc.hxx>
 #include <IDocumentRedlineAccess.hxx>
@@ -99,7 +98,7 @@ sal_uInt16 SwEditShell::SaveGlossaryDoc( SwTextBlocks& rBlock,
         SwPaM* pCursor = GetCursor();
 
         SwNodeIndex aStt( pMyDoc->GetNodes().GetEndOfExtras(), 1 );
-        SwContentNode* pContentNd = pMyDoc->GetNodes().GoNext( &aStt );
+        SwContentNode* pContentNd = SwNodes::GoNext(&aStt);
         const SwNode* pNd = pContentNd->FindTableNode();
         if( !pNd )
             pNd = pContentNd;
@@ -124,7 +123,7 @@ sal_uInt16 SwEditShell::SaveGlossaryDoc( SwTextBlocks& rBlock,
         if( rBlock.BeginPutDoc( rShortName, rName ) )
         {
             SwNodeIndex aStt( pMyDoc->GetNodes().GetEndOfExtras(), 1 );
-            SwContentNode* pContentNd = pMyDoc->GetNodes().GoNext( &aStt );
+            SwContentNode* pContentNd = SwNodes::GoNext(&aStt);
             const SwNode* pNd = pContentNd->FindTableNode();
             if( !pNd ) pNd = pContentNd;
             SwPaM aCpyPam( *pNd );
@@ -137,7 +136,7 @@ sal_uInt16 SwEditShell::SaveGlossaryDoc( SwTextBlocks& rBlock,
                 aCpyPam.GetPoint()->SetContent( pContentNd->Len() );
 
             aStt = pGDoc->GetNodes().GetEndOfExtras();
-            pContentNd = pGDoc->GetNodes().GoNext( &aStt );
+            pContentNd = SwNodes::GoNext(&aStt);
             SwPosition aInsPos( aStt );
             pMyDoc->getIDocumentContentOperations().CopyRange(aCpyPam, aInsPos, SwCopyFlags::CheckPosInFly);
 
@@ -178,7 +177,7 @@ bool SwEditShell::CopySelToDoc( SwDoc& rInsDoc )
             bool bCpyTableNm = aBoxes.size() == pTableNd->GetTable().GetTabSortBoxes().size();
             if( bCpyTableNm )
             {
-                const OUString rTableName = pTableNd->GetTable().GetFrameFormat()->GetName();
+                const UIName rTableName = pTableNd->GetTable().GetFrameFormat()->GetName();
                 const sw::TableFrameFormats& rTableFormats = *rInsDoc.GetTableFrameFormats();
                 for( auto n = rTableFormats.size(); n; )
                     if( rTableFormats[ --n ]->GetName() == rTableName )
@@ -197,9 +196,9 @@ bool SwEditShell::CopySelToDoc( SwDoc& rInsDoc )
         bool bColSel = GetCursor_()->IsColumnSelection();
         if( bColSel && rInsDoc.IsClipBoard() )
             rInsDoc.SetColumnSelection( true );
-        auto const oSelectAll(StartsWith_() != SwCursorShell::StartsWith::None
+        const ExtendedSelection oSelectAll(StartsWith_() != SwCursorShell::StartsWith::None
             ? ExtendedSelectedAll()
-            : ::std::optional<::std::pair<SwNode const*, ::std::vector<SwTableNode*>>>{});
+            : ExtendedSelection{});
         {
             for(SwPaM& rPaM : GetCursor()->GetRingContainer())
             {
@@ -229,6 +228,14 @@ bool SwEditShell::CopySelToDoc( SwDoc& rInsDoc )
                         // but we want to copy the table and the start node before
                         // the first cell as well.
                         aPaM.Start()->Assign(*oSelectAll->first);
+                        if (SwSectionNode const* pSection = oSelectAll->first->GetSectionNode())
+                        {
+                            if (aPaM.End()->GetNodeIndex() < pSection->EndOfSectionIndex())
+                            {
+                                // include section end so that section is copied
+                                aPaM.End()->Assign(*oSelectAll->first->GetNodes()[pSection->EndOfSectionIndex() + 1]);
+                            }
+                        }
                     }
                     bRet = GetDoc()->getIDocumentContentOperations().CopyRange( aPaM, aPos, SwCopyFlags::CheckPosInFly)
                         || bRet;
@@ -265,11 +272,7 @@ void SwEditShell::GetSelectedText( OUString &rBuf, ParaBreakType nHndlParaBrk )
     else if( IsSelection() )
     {
         SvMemoryStream aStream;
-#ifdef OSL_BIGENDIAN
-        aStream.SetEndian( SvStreamEndian::BIG );
-#else
-        aStream.SetEndian( SvStreamEndian::LITTLE );
-#endif
+        aStream.ResetEndianSwap();
         WriterRef xWrt;
         SwReaderWriter::GetWriter( FILTER_TEXT, OUString(), xWrt );
         if( xWrt.is() )
@@ -300,22 +303,10 @@ void SwEditShell::GetSelectedText( OUString &rBuf, ParaBreakType nHndlParaBrk )
 
             if ( ! aWriter.Write(xWrt).IsError() )
             {
-                aStream.WriteUInt16( '\0' );
-
                 const sal_Unicode *p = static_cast<sal_Unicode const *>(aStream.GetData());
-                if (p)
-                    rBuf = OUString(p);
-                else
-                {
-                    const sal_uInt64 nLen = aStream.GetSize();
-                    OSL_ENSURE( nLen/sizeof( sal_Unicode )<o3tl::make_unsigned(SAL_MAX_INT32), "Stream can't fit in OUString" );
-                    rtl_uString *pStr = rtl_uString_alloc(static_cast<sal_Int32>(nLen / sizeof( sal_Unicode )));
-                    aStream.Seek( 0 );
-                    aStream.ResetError();
-                    //endian specific?, yipes!
-                    aStream.ReadBytes(pStr->buffer, nLen);
-                    rBuf = OUString(pStr, SAL_NO_ACQUIRE);
-                }
+                const size_t nUniLen = aStream.GetEndOfData() / sizeof(sal_Unicode);
+                if (p && nUniLen < o3tl::make_unsigned(SAL_MAX_INT32 - 1))
+                    rBuf = OUString(p, nUniLen);
             }
         }
     }

@@ -75,8 +75,20 @@ class SwContentOptPage final : public SfxTabPage
     std::unique_ptr<weld::CheckButton> m_xFieldHiddenParaCB;
     std::unique_ptr<weld::Widget> m_xFieldHiddenParaImg;
 
+    std::unique_ptr<weld::Frame> m_xZoomFrame;
+    std::unique_ptr<weld::RadioButton> m_xZoomLatestRB;
+    std::unique_ptr<weld::RadioButton> m_xZoomPreferredRB;
+    std::unique_ptr<weld::RadioButton> m_xZoomOptimalRB;
+    std::unique_ptr<weld::RadioButton> m_xZoomWidthAndHeightRB;
+    std::unique_ptr<weld::RadioButton> m_xZoomWidthRB;
+    std::unique_ptr<weld::RadioButton> m_xZoom100RB;
+    std::unique_ptr<weld::RadioButton> m_xZoomCustomRB;
+    std::unique_ptr<weld::MetricSpinButton> m_xZoomValue;
+
     DECL_LINK(VertRulerHdl, weld::Toggleable&, void);
     DECL_LINK(ShowOutlineContentVisibilityButtonHdl, weld::Toggleable&, void);
+    DECL_LINK(ZoomHdl, weld::Toggleable&, void);
+    DECL_LINK(ZoomLatestHdl, weld::Toggleable&, void);
 public:
     SwContentOptPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SwContentOptPage() override;
@@ -300,6 +312,8 @@ class SwShdwCursorOptionsTabPage final : public SfxTabPage
     std::unique_ptr<weld::CheckButton> m_xBookmarkCB;
     std::unique_ptr<weld::Widget> m_xBookmarkImg;
     std::unique_ptr<weld::Label> m_xBookmarkLabel;
+    std::unique_ptr<weld::RadioButton> m_xTextBoundariesFull;
+    std::unique_ptr<weld::RadioButton> m_xTextBoundariesCrop;
 
     std::unique_ptr<weld::Frame> m_xDirectCursorFrame;
     std::unique_ptr<weld::CheckButton> m_xOnOffCB;
@@ -317,6 +331,16 @@ class SwShdwCursorOptionsTabPage final : public SfxTabPage
 
     std::unique_ptr<weld::CheckButton> m_xMathBaselineAlignmentCB;
     std::unique_ptr<weld::Widget> m_xMathBaselineAlignmentImg;
+
+    std::unique_ptr<weld::Frame> m_xFmtAidsAutoComplFrame;
+    std::unique_ptr<weld::CheckButton> m_xEncloseWithCharactersCB;
+    std::unique_ptr<weld::Widget> m_xEncloseWithCharactersImg;
+
+    std::unique_ptr<weld::CheckButton> m_xTextBoundariesCB;
+    std::unique_ptr<weld::CheckButton> m_xSectionBoundariesCB;
+    std::unique_ptr<weld::CheckButton> m_xTableBoundariesCB;
+
+    DECL_LINK(TextBoundariesHdl, weld::Toggleable&, void);
 
 public:
     SwShdwCursorOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
@@ -457,15 +481,10 @@ class SwCompareOptionsTabPage final : public SfxTabPage
     std::unique_ptr<weld::Widget> m_xCompareModeImg;
     std::unique_ptr<weld::CheckButton> m_xRsidCB;
     std::unique_ptr<weld::Widget> m_xRsidImg;
-    std::unique_ptr<weld::CheckButton> m_xIgnoreCB;
-    std::unique_ptr<weld::Widget> m_xIgnoreImg;
-    std::unique_ptr<weld::SpinButton> m_xLenNF;
-    std::unique_ptr<weld::Widget> m_xLenImg;
     std::unique_ptr<weld::CheckButton> m_xStoreRsidCB;
     std::unique_ptr<weld::Widget> m_xStoreRsidImg;
 
     DECL_LINK(ComparisonHdl, weld::Toggleable&, void);
-    DECL_LINK(IgnoreHdl, weld::Toggleable&, void);
 
 public:
     SwCompareOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);

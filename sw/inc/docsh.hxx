@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_DOCSH_HXX
-#define INCLUDED_SW_INC_DOCSH_HXX
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -33,7 +32,6 @@
 #include <o3tl/deleter.hxx>
 
 class SwDoc;
-class SfxDocumentInfoDialog;
 class SfxInPlaceClient;
 class FontList;
 class SwEditShell;
@@ -53,6 +51,9 @@ class SwDocShell;
 class SwDrawModel;
 class SwViewShell;
 class SwDocStyleSheetPool;
+class SwXTextDocument;
+class SwTextFormatColl;
+class UIName;
 namespace svt
 {
 class EmbeddedObjectRef;
@@ -130,8 +131,8 @@ class SW_DLLPUBLIC SwDocShell
     /// Used to activate certain dialog pane
     SAL_DLLPRIVATE void Edit(
         weld::Window* pDialogParent,
-        const OUString &rName,
-        const OUString& rParent,
+        const UIName& rName,
+        const UIName& rParent,
         const SfxStyleFamily nFamily,
         SfxStyleSearchBits nMask,
         const bool bNew,
@@ -142,13 +143,15 @@ class SW_DLLPUBLIC SwDocShell
 
     SAL_DLLPRIVATE void                  Delete(const OUString &rName, SfxStyleFamily nFamily);
     SAL_DLLPRIVATE void                  Hide(const OUString &rName, SfxStyleFamily nFamily, bool bHidden);
+    SAL_DLLPRIVATE bool                  MakeInlineHeading(SwWrtShell *pSh, SwTextFormatColl* pColl,
+                                               const sal_uInt16 nMode);
     SAL_DLLPRIVATE SfxStyleFamily        ApplyStyles(const OUString &rName,
         const SfxStyleFamily nFamily,
         SwWrtShell* pShell,
         sal_uInt16 nMode);
     SAL_DLLPRIVATE SfxStyleFamily        DoWaterCan( const OUString &rName, SfxStyleFamily nFamily);
-    SAL_DLLPRIVATE void                  UpdateStyle(const OUString &rName, SfxStyleFamily nFamily, SwWrtShell* pShell);
-    SAL_DLLPRIVATE void                  MakeByExample(const OUString &rName,
+    SAL_DLLPRIVATE void                  UpdateStyle(const UIName &rName, SfxStyleFamily nFamily, SwWrtShell* pShell);
+    SAL_DLLPRIVATE void                  MakeByExample(const UIName &rName,
                                                SfxStyleFamily nFamily, SfxStyleSearchBits nMask, SwWrtShell* pShell);
 
     SAL_DLLPRIVATE void                  SubInitNew();   ///< for InitNew and HtmlSourceMode.
@@ -174,7 +177,7 @@ private:
     static void InitInterface_Impl();
 
 public:
-    static OUString GetEventName( sal_Int32 nId );
+    static const OUString & GetEventName( sal_Int32 nId );
 
     /// Doc is required for SO data exchange!
     SwDocShell( SfxObjectCreateMode eMode = SfxObjectCreateMode::EMBEDDED );
@@ -184,6 +187,9 @@ public:
 
     /// OLE 2.0-notification.
     DECL_DLLPRIVATE_LINK( Ole2ModifiedHdl, bool, void );
+
+    /// Override SfxObjectShell::GetBaseModel and return a more accurate type
+    rtl::Reference<SwXTextDocument> GetBaseModel() const;
 
     /// OLE-stuff.
     virtual void      SetVisArea( const tools::Rectangle &rRect ) override;
@@ -268,7 +274,7 @@ public:
     /// Identifies slot by which the dialog is triggered. Used to activate certain dialog pane
     void FormatPage(
         weld::Window* pDialogParent,
-        const OUString& rPage,
+        const UIName& rPage,
         const OUString& rPageId,
         SwWrtShell& rActShell,
         SfxRequest* pRequest = nullptr);
@@ -315,9 +321,9 @@ public:
 
     /** passwword protection for Writer (derived from SfxObjectShell)
      see also:    FN_REDLINE_ON, FN_REDLINE_ON */
-    virtual bool    IsChangeRecording() const override;
+    virtual bool    IsChangeRecording(SfxViewShell* pViewShell = nullptr, bool bRecordAllViews = true) const override;
     virtual bool    HasChangeRecordProtection() const override;
-    virtual void    SetChangeRecording( bool bActivate, bool bLockAllViews = false ) override;
+    virtual void    SetChangeRecording( bool bActivate, bool bLockAllViews = false, SfxRedlineRecordingMode eRedlineRecordingMode = SfxRedlineRecordingMode::ViewAgnostic) override;
     virtual void    SetProtectionPassword( const OUString &rPassword ) override;
     virtual bool    GetProtectionHash( /*out*/ css::uno::Sequence< sal_Int8 > &rPasswordHash ) override;
 
@@ -354,7 +360,5 @@ int SwFindDocShell( SfxObjectShellRef& xDocSh,
                     const OUString& rFilter,
                     sal_Int16 nVersion,
                     SwDocShell* pDestSh );
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

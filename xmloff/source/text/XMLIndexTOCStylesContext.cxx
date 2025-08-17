@@ -26,7 +26,6 @@
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
 #include <xmloff/xmlnamespace.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <sax/tools/converter.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
@@ -96,7 +95,7 @@ void XMLIndexTOCStylesContext::endFastElement(sal_Int32 )
     }
 
     // get index replace
-    Any aAny = rTOCPropertySet->getPropertyValue("LevelParagraphStyles");
+    Any aAny = rTOCPropertySet->getPropertyValue(u"LevelParagraphStyles"_ustr);
     Reference<XIndexReplace> xIndexReplace;
     aAny >>= xIndexReplace;
 

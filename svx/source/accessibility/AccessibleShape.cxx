@@ -190,7 +190,7 @@ void AccessibleShape::UpdateStates()
                 try
                 {
                     drawing::FillStyle aFillStyle;
-                    bShapeIsOpaque =  ( xSet->getPropertyValue ("FillStyle") >>= aFillStyle)
+                    bShapeIsOpaque =  ( xSet->getPropertyValue (u"FillStyle"_ustr) >>= aFillStyle)
                                         && aFillStyle == drawing::FillStyle_SOLID;
                 }
                 catch (css::beans::UnknownPropertyException&)
@@ -277,7 +277,7 @@ bool AccessibleShape::GetState (sal_Int64 aState)
 // OverWrite the parent's getAccessibleName method
 OUString SAL_CALL AccessibleShape::getAccessibleName()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     if (m_pShape && !m_pShape->GetTitle().isEmpty())
         return CreateAccessibleName() + " " + m_pShape->GetTitle();
     else
@@ -286,11 +286,11 @@ OUString SAL_CALL AccessibleShape::getAccessibleName()
 
 OUString SAL_CALL AccessibleShape::getAccessibleDescription()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     if( m_pShape && !m_pShape->GetDescription().isEmpty())
         return m_pShape->GetDescription() ;
-    else
-        return " ";
+
+    return OUString();
 }
 
 // XAccessibleContext
@@ -300,7 +300,7 @@ OUString SAL_CALL AccessibleShape::getAccessibleDescription()
 sal_Int64 SAL_CALL
        AccessibleShape::getAccessibleChildCount ()
 {
-    if (IsDisposed())
+    if (!isAlive())
     {
         return 0;
     }
@@ -324,30 +324,30 @@ sal_Int64 SAL_CALL
 uno::Reference<XAccessible> SAL_CALL
     AccessibleShape::getAccessibleChild (sal_Int64 nIndex)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
-    uno::Reference<XAccessible> xChild;
+    rtl::Reference<comphelper::OAccessible> pChild;
 
     // Depending on the index decide whether to delegate this call to the
     // children manager or the edit engine.
     if ((mpChildrenManager != nullptr)
         && (nIndex < mpChildrenManager->GetChildCount()))
     {
-        xChild = mpChildrenManager->GetChild (nIndex);
+        pChild = mpChildrenManager->GetChild(nIndex);
     }
     else if (mpText != nullptr)
     {
         sal_Int64 nI = nIndex;
         if (mpChildrenManager != nullptr)
             nI -= mpChildrenManager->GetChildCount();
-        xChild = mpText->GetChild (nI);
+        pChild = mpText->GetChild(nI);
     }
     else
         throw lang::IndexOutOfBoundsException (
             "shape has no child with index " + OUString::number(nIndex),
             getXWeak());
 
-    return xChild;
+    return pChild;
 }
 
 uno::Reference<XAccessibleRelationSet> SAL_CALL
@@ -360,11 +360,11 @@ uno::Reference<XAccessibleRelationSet> SAL_CALL
     rtl::Reference<::utl::AccessibleRelationSetHelper> pRelationSet = new utl::AccessibleRelationSetHelper;
 
     //this mxshape is the captioned shape
-    uno::Sequence< uno::Reference< uno::XInterface > > aSequence { mpParent->GetAccessibleCaption(mxShape) };
+    uno::Sequence<uno::Reference<css::accessibility::XAccessible>> aSequence { mpParent->GetAccessibleCaption(mxShape) };
     if(aSequence[0])
     {
         pRelationSet->AddRelation(
-                                  AccessibleRelation( AccessibleRelationType::DESCRIBED_BY, aSequence ) );
+                                  AccessibleRelation(AccessibleRelationType_DESCRIBED_BY, aSequence));
     }
     return pRelationSet;
 }
@@ -380,7 +380,7 @@ sal_Int64 SAL_CALL
 {
     ::osl::MutexGuard aGuard (m_aMutex);
 
-    if (IsDisposed())
+    if (!isAlive())
     {
         // Return a minimal state set that only contains the DEFUNC state.
         return AccessibleContextBase::getAccessibleStateSet ();
@@ -463,12 +463,8 @@ uno::Reference<XAccessible > SAL_CALL
 }
 
 
-awt::Rectangle SAL_CALL AccessibleShape::getBounds()
+awt::Rectangle AccessibleShape::implGetBounds()
 {
-    SolarMutexGuard aSolarGuard;
-    ::osl::MutexGuard aGuard (m_aMutex);
-
-    ThrowIfDisposed ();
     awt::Rectangle aBoundingBox;
     if ( mxShape.is() )
     {
@@ -533,7 +529,7 @@ awt::Rectangle SAL_CALL AccessibleShape::getBounds()
         // Transform coordinates from internal to pixel.
         if (maShapeTreeInfo.GetViewForwarder() == nullptr)
             throw uno::RuntimeException (
-                "AccessibleShape has no valid view forwarder",
+                u"AccessibleShape has no valid view forwarder"_ustr,
                 getXWeak());
         ::Size aPixelSize = maShapeTreeInfo.GetViewForwarder()->LogicToPixel (
             ::Size (aBoundingBox.Width, aBoundingBox.Height));
@@ -574,48 +570,9 @@ awt::Rectangle SAL_CALL AccessibleShape::getBounds()
     return aBoundingBox;
 }
 
-
-awt::Point SAL_CALL AccessibleShape::getLocation()
-{
-    ThrowIfDisposed ();
-    awt::Rectangle aBoundingBox (getBounds());
-    return awt::Point (aBoundingBox.X, aBoundingBox.Y);
-}
-
-
-awt::Point SAL_CALL AccessibleShape::getLocationOnScreen()
-{
-    ThrowIfDisposed ();
-
-    // Get relative position...
-    awt::Point aLocation (getLocation ());
-
-    // ... and add absolute position of the parent.
-    uno::Reference<XAccessibleComponent> xParentComponent (
-        getAccessibleParent(), uno::UNO_QUERY);
-    if (xParentComponent.is())
-    {
-        awt::Point aParentLocation (xParentComponent->getLocationOnScreen());
-        aLocation.X += aParentLocation.X;
-        aLocation.Y += aParentLocation.Y;
-    }
-    else
-        SAL_WARN("svx", "parent does not support XAccessibleComponent");
-    return aLocation;
-}
-
-
-awt::Size SAL_CALL AccessibleShape::getSize()
-{
-    ThrowIfDisposed ();
-    awt::Rectangle aBoundingBox (getBounds());
-    return awt::Size (aBoundingBox.Width, aBoundingBox.Height);
-}
-
-
 sal_Int32 SAL_CALL AccessibleShape::getForeground()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     sal_Int32 nColor (0x0ffffffL);
 
     try
@@ -624,7 +581,7 @@ sal_Int32 SAL_CALL AccessibleShape::getForeground()
         if (aSet.is())
         {
             uno::Any aColor;
-            aColor = aSet->getPropertyValue ("LineColor");
+            aColor = aSet->getPropertyValue (u"LineColor"_ustr);
             aColor >>= nColor;
         }
     }
@@ -638,7 +595,7 @@ sal_Int32 SAL_CALL AccessibleShape::getForeground()
 
 sal_Int32 SAL_CALL AccessibleShape::getBackground()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     Color nColor;
 
     try
@@ -647,9 +604,9 @@ sal_Int32 SAL_CALL AccessibleShape::getBackground()
         if (aSet.is())
         {
             uno::Any aColor;
-            aColor = aSet->getPropertyValue ("FillColor");
+            aColor = aSet->getPropertyValue (u"FillColor"_ustr);
             aColor >>= nColor;
-            aColor = aSet->getPropertyValue ("FillTransparence");
+            aColor = aSet->getPropertyValue (u"FillTransparence"_ustr);
             short nTrans=0;
             aColor >>= nTrans;
             Color crBk(nColor);
@@ -676,15 +633,11 @@ sal_Int32 SAL_CALL AccessibleShape::getBackground()
 void SAL_CALL AccessibleShape::addAccessibleEventListener (
     const Reference<XAccessibleEventListener >& rxListener)
 {
-    if (rBHelper.bDisposed || rBHelper.bInDispose)
+    AccessibleContextBase::addAccessibleEventListener(rxListener);
+
+    if (isAlive())
     {
-        uno::Reference<uno::XInterface> xThis (
-            static_cast<lang::XComponent *>(this), uno::UNO_QUERY);
-        rxListener->disposing (lang::EventObject (xThis));
-    }
-    else
-    {
-        AccessibleContextBase::addAccessibleEventListener (rxListener);
+
         if (mpText != nullptr)
             mpText->AddEventListener (rxListener);
     }
@@ -814,33 +767,30 @@ void SAL_CALL AccessibleShape::deselectAccessibleChild( sal_Int64 )
 }
 
 // XAccessibleExtendedAttributes
-uno::Any SAL_CALL AccessibleShape::getExtendedAttributes()
+OUString SAL_CALL AccessibleShape::getExtendedAttributes()
 {
-    uno::Any strRet;
-    OUString style;
-    if( getAccessibleRole() != AccessibleRole::SHAPE ) return strRet;
-    if( m_pShape )
-    {
-        style = "style:" + GetStyle();
-    }
-    style += ";";
-    strRet <<= style;
-    return strRet;
+    if (getAccessibleRole() != AccessibleRole::SHAPE)
+        return OUString();
+
+    if (m_pShape)
+        return "style:" + GetStyle() + ";";
+
+    return OUString();
 }
 
 // XServiceInfo
 OUString SAL_CALL
     AccessibleShape::getImplementationName()
 {
-    return "AccessibleShape";
+    return u"AccessibleShape"_ustr;
 }
 
 
 uno::Sequence<OUString> SAL_CALL
     AccessibleShape::getSupportedServiceNames()
 {
-    ThrowIfDisposed ();
-    const css::uno::Sequence<OUString> vals { "com.sun.star.drawing.AccessibleShape" };
+    ensureAlive();
+    const css::uno::Sequence<OUString> vals { u"com.sun.star.drawing.AccessibleShape"_ustr };
     return comphelper::concatSequences(AccessibleContextBase::getSupportedServiceNames(), vals);
 }
 
@@ -848,11 +798,9 @@ uno::Sequence<OUString> SAL_CALL
 uno::Sequence<uno::Type> SAL_CALL
     AccessibleShape::getTypes()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     // Get list of types from the context base implementation, ...
     uno::Sequence<uno::Type> aTypeList (AccessibleContextBase::getTypes());
-    // ... get list of types from component base implementation, ...
-    uno::Sequence<uno::Type> aComponentTypeList (AccessibleComponentBase::getTypes());
     // ... define local types
     uno::Sequence<uno::Type> localTypesList = {
         cppu::UnoType<lang::XEventListener>::get(),
@@ -860,7 +808,7 @@ uno::Sequence<uno::Type> SAL_CALL
         cppu::UnoType<lang::XUnoTunnel>::get()
     };
 
-    return comphelper::concatSequences(aTypeList, aComponentTypeList, localTypesList);
+    return comphelper::concatSequences(aTypeList, localTypesList);
 }
 
 // lang::XEventListener
@@ -972,17 +920,17 @@ OUString AccessibleShape::GetFullAccessibleName (AccessibleShape *shape)
 
     //If the new produced name if not the same with last,notify name changed
     //Event
-    if (aAccName != sName && !aAccName.isEmpty())
+    if (m_aAccName != sName && !m_aAccName.isEmpty())
     {
         uno::Any aOldValue, aNewValue;
-        aOldValue <<= aAccName;
+        aOldValue <<= m_aAccName;
         aNewValue <<= sName;
         CommitChange(
             AccessibleEventId::NAME_CHANGED,
             aNewValue,
             aOldValue, -1);
     }
-    aAccName = sName;
+    m_aAccName = sName;
     return sName;
 }
 
@@ -1018,19 +966,17 @@ void AccessibleShape::disposing()
     maShapeTreeInfo.dispose();
 
     // Call base classes.
-    AccessibleContextBase::dispose ();
+    AccessibleContextBase::disposing();
 }
 
-sal_Int64 SAL_CALL
-       AccessibleShape::getAccessibleIndexInParent()
+sal_Int64 SAL_CALL AccessibleShape::getAccessibleIndexInParent()
 {
-    ThrowIfDisposed ();
-    //  Use a simple but slow solution for now.  Optimize later.
+    ensureAlive();
 
-    sal_Int64 nIndex = m_nIndexInParent;
-    if ( -1 == nIndex )
-        nIndex = AccessibleContextBase::getAccessibleIndexInParent();
-    return nIndex;
+    if (m_nIndexInParent != -1)
+        return m_nIndexInParent;
+
+    return AccessibleContextBase::getAccessibleIndexInParent();
 }
 
 
@@ -1043,20 +989,20 @@ void AccessibleShape::UpdateNameAndDescription()
         Reference<beans::XPropertySet> xSet (mxShape, uno::UNO_QUERY_THROW);
 
         // Get the accessible name.
-        OUString sString = GetOptionalProperty(xSet, "Title");
+        OUString sString = GetOptionalProperty(xSet, u"Title"_ustr);
         if (!sString.isEmpty())
         {
             SetAccessibleName(sString, AccessibleContextBase::FromShape);
         }
         else
         {
-            sString = GetOptionalProperty(xSet, "Name");
+            sString = GetOptionalProperty(xSet, u"Name"_ustr);
             if (!sString.isEmpty())
                 SetAccessibleName(sString, AccessibleContextBase::FromShape);
         }
 
         // Get the accessible description.
-        sString = GetOptionalProperty(xSet, "Description");
+        sString = GetOptionalProperty(xSet, u"Description"_ustr);
         if (!sString.isEmpty())
             SetAccessibleDescription(sString, AccessibleContextBase::FromShape);
     }

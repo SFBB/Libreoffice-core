@@ -25,16 +25,12 @@
 
 using namespace connectivity::sdbcx;
 using namespace connectivity;
-using namespace ::comphelper;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace connectivity::evoab;
 
 
-sdbcx::ObjectType OEvoabColumns::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OEvoabColumns::createObject(const OUString& _rName)
 {
     const Any aCatalog;
     const OUString sCatalogName;
@@ -46,33 +42,32 @@ sdbcx::ObjectType OEvoabColumns::createObject(const OUString& _rName)
         sTableName,
         _rName);
 
-    sdbcx::ObjectType xRet;
-    if (xResult.is())
-    {
-        Reference< XRow > xRow(xResult,UNO_QUERY);
+    if (!xResult.is())
+        return nullptr;
 
-        while (xResult->next())
+    rtl::Reference< OColumn > xRet;
+    Reference< XRow > xRow(xResult,UNO_QUERY);
+    while (xResult->next())
+    {
+        if (xRow->getString(4) == _rName)
         {
-            if (xRow->getString(4) == _rName)
-            {
-                xRet = new OColumn(
-                        _rName,
-                        xRow->getString(6),
-                        xRow->getString(13),
-                        xRow->getString(12),
-                        xRow->getInt(11),
-                        xRow->getInt(7),
-                        xRow->getInt(9),
-                        xRow->getInt(5),
-                        false,
-                        false,
-                        false,
-                        true,
-                        sCatalogName,
-                        sSchemaName,
-                        sTableName);
-                break;
-            }
+            xRet = new OColumn(
+                    _rName,
+                    xRow->getString(6),
+                    xRow->getString(13),
+                    xRow->getString(12),
+                    xRow->getInt(11),
+                    xRow->getInt(7),
+                    xRow->getInt(9),
+                    xRow->getInt(5),
+                    false,
+                    false,
+                    false,
+                    true,
+                    sCatalogName,
+                    sSchemaName,
+                    sTableName);
+            break;
         }
     }
 

@@ -118,7 +118,7 @@ namespace abp
         if (xContext.is())
         {
             //  xDynamicContext->registerObject( _rName, xNewDataSource );
-            _rxNewDataSource = xNewDataSource;
+            _rxNewDataSource = std::move(xNewDataSource);
         }
     }
 
@@ -140,7 +140,7 @@ namespace abp
             if (xNewDataSource.is())
             {
                 xNewDataSource->setPropertyValue(
-                    "URL",
+                    u"URL"_ustr,
                     Any( OUString::createFromAscii( _pInitialAsciiURL ) )
                 );
             }
@@ -199,12 +199,8 @@ namespace abp
             m_pImpl->xContext.set( lcl_getDataSourceContext( _rxORB ), UNO_QUERY_THROW );
 
             // collect the data source names
-            Sequence< OUString > aDSNames = m_pImpl->xContext->getElementNames();
-            const OUString* pDSNames = aDSNames.getConstArray();
-            const OUString* pDSNamesEnd = pDSNames + aDSNames.getLength();
-
-            for ( ;pDSNames != pDSNamesEnd; ++pDSNames )
-                m_pImpl->aDataSourceNames.insert( *pDSNames );
+            for (auto& rDSName : m_pImpl->xContext->getElementNames())
+                m_pImpl->aDataSourceNames.insert(rDSName);
         }
         catch( const Exception& )
         {
@@ -349,8 +345,8 @@ namespace abp
                 else
                 {
                     // Embed.
-                    OUString aStreamRelPath = "EmbeddedDatabase";
-                    auto xContext(comphelper::getProcessComponentContext());
+                    OUString aStreamRelPath = u"EmbeddedDatabase"_ustr;
+                    const auto& xContext(comphelper::getProcessComponentContext());
                     auto xUri = css::uri::UriReferenceFactory::create(xContext)->parse(aOwnURL);
                     assert(xUri.is());
                     xUri = css::uri::VndSunStarPkgUrlReferenceFactory::create(xContext)->createVndSunStarPkgUrlReference(xUri);
@@ -370,8 +366,8 @@ namespace abp
                     // Refer to the sub-storage name in the document settings, so
                     // we can load it again next time the file is imported.
                     uno::Reference<lang::XMultiServiceFactory> xFactory(pObjectShell->GetModel(), uno::UNO_QUERY);
-                    uno::Reference<beans::XPropertySet> xPropertySet(xFactory->createInstance("com.sun.star.document.Settings"), uno::UNO_QUERY);
-                    xPropertySet->setPropertyValue("EmbeddedDatabaseName", uno::Any(aStreamRelPath));
+                    uno::Reference<beans::XPropertySet> xPropertySet(xFactory->createInstance(u"com.sun.star.document.Settings"_ustr), uno::UNO_QUERY);
+                    xPropertySet->setPropertyValue(u"EmbeddedDatabaseName"_ustr, uno::Any(aStreamRelPath));
                 }
             }
         }
@@ -445,10 +441,10 @@ namespace abp
     }
 
 
-    OUString ODataSource::getName() const
+    const OUString & ODataSource::getName() const
     {
         if ( !isValid() )
-            return OUString();
+            return EMPTY_OUSTRING;
         return m_pImpl->sName;
     }
 
@@ -487,10 +483,8 @@ namespace abp
                     aTableNames = xTables->getElementNames( );
 
                 // copy the names
-                const OUString* pTableNames = aTableNames.getConstArray();
-                const OUString* pTableNamesEnd = pTableNames + aTableNames.getLength();
-                for (;pTableNames < pTableNamesEnd; ++pTableNames)
-                    m_pImpl->aTables.insert( *pTableNames );
+                for (auto& rTableName : aTableNames)
+                    m_pImpl->aTables.insert(rTableName);
             }
             catch(const Exception&)
             {

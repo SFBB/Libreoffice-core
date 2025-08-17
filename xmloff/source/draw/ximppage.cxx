@@ -170,7 +170,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > DrawAnnotationContext:
                 }
             }
 
-            // if we have a text cursor, lets  try to import some text
+            // if we have a text cursor, let's try to import some text
             if( mxCursor.is() )
             {
                 auto p = GetImport().GetTextImport()->CreateTextChildContext( GetImport(), nElement, xAttrList );
@@ -190,7 +190,7 @@ void DrawAnnotationContext::endFastElement(sal_Int32)
         // delete addition newline
         mxCursor->gotoEnd( false );
         mxCursor->goLeft( 1, true );
-        mxCursor->setString( "" );
+        mxCursor->setString( u""_ustr );
 
         // reset cursor
         GetImport().GetTextImport()->ResetCursor();
@@ -227,6 +227,27 @@ SdXMLGenericPageContext::SdXMLGenericPageContext(
             break;
         }
     }
+}
+
+SdXMLGenericPageContext::SdXMLGenericPageContext(
+    SvXMLImport& rImport,
+    const Reference< xml::sax::XFastAttributeList>& xAttrList)
+: SvXMLImportContext( rImport )
+{
+    for (auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ))
+    {
+        if( aIter.getToken() == XML_ELEMENT(DRAW, XML_NAV_ORDER) )
+        {
+            msNavOrder = aIter.toString();
+            break;
+        }
+    }
+}
+
+void SdXMLGenericPageContext::SetShapes(Reference< drawing::XShapes > const & rShapes)
+{
+    mxShapes = rShapes;
+    mxAnnotationAccess.set( rShapes, UNO_QUERY );
 }
 
 SdXMLGenericPageContext::~SdXMLGenericPageContext()
@@ -309,7 +330,7 @@ void SdXMLGenericPageContext::endFastElement(sal_Int32 )
                     OUString aDateTimeFormat;
                     const OUString aText( GetSdImport().GetDateTimeDecl( maUseDateTimeDeclName, bFixed, aDateTimeFormat ) );
 
-                    xSet->setPropertyValue("IsDateTimeFixed",
+                    xSet->setPropertyValue(u"IsDateTimeFixed"_ustr,
                                         Any( bFixed ) );
 
                     if( bFixed )
@@ -329,7 +350,7 @@ void SdXMLGenericPageContext::endFastElement(sal_Int32 )
 
                             if( pSdNumStyle )
                             {
-                                xSet->setPropertyValue("DateTimeFormat",
+                                xSet->setPropertyValue(u"DateTimeFormat"_ustr,
                                                                     Any( pSdNumStyle->GetDrawKey() ) );
                             }
                         }
@@ -378,7 +399,7 @@ void SdXMLGenericPageContext::SetStyle( OUString const & rStyleName )
                             Reference< lang::XMultiServiceFactory > xServiceFact(GetSdImport().GetModel(), uno::UNO_QUERY);
                             if(xServiceFact.is())
                             {
-                                xBackgroundSet.set(xServiceFact->createInstance("com.sun.star.drawing.Background"), UNO_QUERY);
+                                xBackgroundSet.set(xServiceFact->createInstance(u"com.sun.star.drawing.Background"_ustr), UNO_QUERY);
                             }
                         }
 
@@ -439,7 +460,7 @@ void SdXMLGenericPageContext::SetLayout()
         Reference <beans::XPropertySet> xPropSet(mxShapes, uno::UNO_QUERY);
         if(xPropSet.is())
         {
-            OUString aPropName("Layout");
+            OUString aPropName(u"Layout"_ustr);
             Reference< beans::XPropertySetInfo > xInfo( xPropSet->getPropertySetInfo() );
             if( xInfo.is() && xInfo->hasPropertyByName( aPropName ) )
                 xPropSet->setPropertyValue(aPropName, uno::Any( static_cast<sal_Int16>(nType) ) );
@@ -494,13 +515,13 @@ void SdXMLGenericPageContext::SetPageMaster( OUString const & rsPageMasterName )
     Reference <beans::XPropertySet> xPropSet(xMasterPage, uno::UNO_QUERY);
     if (xPropSet.is())
     {
-        xPropSet->setPropertyValue("BorderBottom", Any(pPageMasterContext->GetBorderBottom()));
-        xPropSet->setPropertyValue("BorderLeft", Any(pPageMasterContext->GetBorderLeft()));
-        xPropSet->setPropertyValue("BorderRight", Any(pPageMasterContext->GetBorderRight()));
-        xPropSet->setPropertyValue("BorderTop", Any(pPageMasterContext->GetBorderTop()));
-        xPropSet->setPropertyValue("Width", Any(pPageMasterContext->GetWidth()));
-        xPropSet->setPropertyValue("Height", Any(pPageMasterContext->GetHeight()));
-        xPropSet->setPropertyValue("Orientation", Any(pPageMasterContext->GetOrientation()));
+        xPropSet->setPropertyValue(u"BorderBottom"_ustr, Any(pPageMasterContext->GetBorderBottom()));
+        xPropSet->setPropertyValue(u"BorderLeft"_ustr, Any(pPageMasterContext->GetBorderLeft()));
+        xPropSet->setPropertyValue(u"BorderRight"_ustr, Any(pPageMasterContext->GetBorderRight()));
+        xPropSet->setPropertyValue(u"BorderTop"_ustr, Any(pPageMasterContext->GetBorderTop()));
+        xPropSet->setPropertyValue(u"Width"_ustr, Any(pPageMasterContext->GetWidth()));
+        xPropSet->setPropertyValue(u"Height"_ustr, Any(pPageMasterContext->GetHeight()));
+        xPropSet->setPropertyValue(u"Orientation"_ustr, Any(pPageMasterContext->GetOrientation()));
     }
 }
 
@@ -588,7 +609,7 @@ void SdXMLGenericPageContext::SetNavigationOrder()
         }
 
         Reference< XPropertySet > xSet( mxShapes, UNO_QUERY_THROW );
-        xSet->setPropertyValue("NavigationOrder", Any( Reference< XIndexAccess >( new XoNavigationOrderAccess( aShapes ) ) ) );
+        xSet->setPropertyValue(u"NavigationOrder"_ustr, Any( Reference< XIndexAccess >( new XoNavigationOrderAccess( aShapes ) ) ) );
     }
     catch(const uno::Exception&)
     {

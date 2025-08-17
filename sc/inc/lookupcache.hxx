@@ -28,6 +28,7 @@
 class ScDocument;
 struct ScLookupCacheMap;
 struct ScQueryEntry;
+enum class LookupSearchMode;
 
 /** Lookup cache for one range used with interpreter functions such as VLOOKUP
     and MATCH. Caches query for a specific row and the resulting address looked
@@ -35,7 +36,6 @@ struct ScQueryEntry;
     performed, which usually occur to obtain a different offset column of the
     same query.
  */
-
 class ScLookupCache final : public SvtListener
 {
 public:
@@ -66,6 +66,7 @@ public:
         bool                mbAlloc;
         bool                mbString;
         QueryOp             meOp;
+        LookupSearchMode    meSearchMode;
 
         void deleteString()
         {
@@ -77,11 +78,12 @@ public:
 
     public:
 
-        explicit QueryCriteria( const ScQueryEntry & rEntry );
+        explicit QueryCriteria( const ScQueryEntry & rEntry, LookupSearchMode nSearchMode );
         QueryCriteria( const QueryCriteria & r );
         ~QueryCriteria();
 
         QueryOp getQueryOp() const { return meOp; }
+        LookupSearchMode getSearchMode() const { return meSearchMode; }
 
         void setDouble( double fVal )
         {
@@ -99,7 +101,7 @@ public:
 
         bool operator==( const QueryCriteria & r ) const
         {
-            return meOp == r.meOp && mbString == r.mbString &&
+            return meOp == r.meOp && meSearchMode == r.meSearchMode && mbString == r.mbString &&
                 (mbString ? (*mpStr == *r.mpStr) : (mfVal == r.mfVal));
         }
 
@@ -153,17 +155,20 @@ private:
         SCROW           mnRow;
         SCTAB           mnTab;
         QueryOp         meOp;
+        LookupSearchMode meSearchMode;
 
-        QueryKey( const ScAddress & rAddress, const QueryOp eOp ) :
+        QueryKey( const ScAddress & rAddress, const QueryOp eOp, LookupSearchMode eSearchMode ) :
             mnRow( rAddress.Row()),
             mnTab( rAddress.Tab()),
-            meOp( eOp)
+            meOp( eOp),
+            meSearchMode( eSearchMode)
         {
         }
 
         bool operator==( const QueryKey & r ) const
         {
-            return mnRow == r.mnRow && mnTab == r.mnTab && meOp == r.meOp && meOp != UNKNOWN;
+            return mnRow == r.mnRow && mnTab == r.mnTab && meOp == r.meOp && meOp != UNKNOWN &&
+                meSearchMode == r.meSearchMode;
         }
 
         struct Hash
@@ -172,6 +177,7 @@ private:
             {
                 return (static_cast<size_t>(r.mnTab) << 24) ^
                     (static_cast<size_t>(r.meOp) << 22) ^
+                    (static_cast<size_t>(r.meSearchMode) << 20) ^
                     static_cast<size_t>(r.mnRow);
             }
         };
@@ -189,7 +195,8 @@ private:
         }
     };
 
-    std::unordered_map< QueryKey, QueryCriteriaAndResult, QueryKey::Hash > maQueryMap;
+    typedef std::unordered_map<QueryKey, QueryCriteriaAndResult, QueryKey::Hash> QueryMap;
+    QueryMap maQueryMap;
     ScRange         maRange;
     ScDocument *    mpDoc;
     ScLookupCacheMap & mCacheMap;

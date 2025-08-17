@@ -61,6 +61,7 @@
 #include <sfx2/docfile.hxx>
 #include <sfx2/notebookbar/SfxNotebookBar.hxx>
 #include <osl/diagnose.h>
+#include <svl/cryptosign.hxx>
 
 #include <DrawViewShell.hxx>
 #include <slideshow.hxx>
@@ -96,6 +97,13 @@
 #include <fuzoom.hxx>
 #include <sdmod.hxx>
 #include <basegfx/utils/zoomtools.hxx>
+#include <officecfg/Office/Draw.hxx>
+#include <officecfg/Office/Impress.hxx>
+#include <sfx2/lokhelper.hxx>
+#include <SlideSorter.hxx>
+#include <SlideSorterViewShell.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsClipboard.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -142,7 +150,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
 {
     // We do not execute a thing during a native slide show
 
-    if (SlideShow::IsRunning(GetViewShellBase()))
+    if (SlideShow::IsRunning(GetViewShellBase()) && !SlideShow::IsInteractiveSlideshow(&GetViewShellBase())) // IASS
         return;
 
     sal_uInt16 nSId = rReq.GetSlot();
@@ -226,6 +234,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
 
     // for LibreOfficeKit - choosing a shape should construct it directly
     bool bCreateDirectly = false;
+    bool bRectangle = false;
 
     switch ( nSId )
     {
@@ -235,7 +244,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
         case SID_TEXT_FITTOSIZE:
         case SID_TEXT_FITTOSIZE_VERTICAL:
         {
-            SetCurrentFunction( FuText::Create(this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
+            SetCurrentFunction( FuText::Create(*this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
             GetCurrentFunction()->DoExecute(rReq);
 
             SfxBindings& rBindings = GetViewFrame()->GetBindings();
@@ -258,7 +267,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
 
         case SID_FM_CREATE_CONTROL:
         {
-            SetCurrentFunction( FuConstructUnoControl::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq, bPermanent ) );
+            SetCurrentFunction( FuConstructUnoControl::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq, bPermanent ) );
             rReq.Done();
         }
         break;
@@ -319,11 +328,12 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
                 rReq.SetSlot( nSlotId );
             }
 
+            const SdrMarkList&  rMarkList = mpDrawView->GetMarkedObjectList();
             if (nSlotId == SID_OBJECT_CROOK_ROTATE ||
                 nSlotId == SID_OBJECT_CROOK_SLANT ||
                 nSlotId == SID_OBJECT_CROOK_STRETCH)
             {
-                if ( mpDrawView->GetMarkedObjectList().GetMarkCount() > 0 &&
+                if ( rMarkList.GetMarkCount() > 0 &&
                     !mpDrawView->IsCrookAllowed( mpDrawView->IsCrookNoContortion() ) )
                 {
                     if ( mpDrawView->IsPresObjSelected() )
@@ -350,7 +360,6 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
             else if (nSlotId == SID_OBJECT_SHEAR)
             {
                 size_t i = 0;
-                const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
                 const size_t nMarkCnt = rMarkList.GetMarkCount();
                 bool b3DObjMarked = false;
 
@@ -391,7 +400,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
                 }
             }
 
-            SetCurrentFunction( FuSelection::Create(this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
+            SetCurrentFunction( FuSelection::Create(*this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
             rReq.Done();
             Invalidate( SID_OBJECT_SELECT );
         }
@@ -452,8 +461,49 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
         case SID_CONNECTOR_LINES_CIRCLES:
         case SID_INSERT_SIGNATURELINE:
         {
+            if (nSId == SID_INSERT_SIGNATURELINE)
+            {
+                // See if a signing cert is passed as a parameter: if so, parse that.
+                std::string aSignatureCert;
+                std::string aSignatureKey;
+                const SfxStringItem* pSignatureCert = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
+                if (pSignatureCert)
+                {
+                    aSignatureCert = pSignatureCert->GetValue().toUtf8();
+                }
+                const SfxStringItem* pSignatureKey = rReq.GetArg<SfxStringItem>(FN_PARAM_2);
+                if (pSignatureKey)
+                {
+                    aSignatureKey = pSignatureKey->GetValue().toUtf8();
+                }
+                bool bExternal = false;
+                const SfxBoolItem* pExternal = rReq.GetArg<SfxBoolItem>(FN_PARAM_3);
+                if (pExternal)
+                {
+                    bExternal = pExternal->GetValue();
+                }
+
+                SfxViewFrame* pFrame = GetFrame();
+                SfxViewShell* pViewShell = pFrame ? pFrame->GetViewShell() : nullptr;
+                if (pViewShell)
+                {
+                    svl::crypto::CertificateOrName aCertificateOrName;
+                    if (!aSignatureCert.empty() && !aSignatureKey.empty())
+                    {
+                        aCertificateOrName.m_xCertificate = SfxLokHelper::getSigningCertificate(aSignatureCert, aSignatureKey);
+                    }
+                    else if (bExternal)
+                    {
+                        aCertificateOrName.m_aName = mpDrawView->GetAuthor();
+                    }
+                    // Always set the signing certificate, to clear data from a previous dispatch.
+                    pViewShell->SetSigningCertificate(aCertificateOrName);
+                }
+            }
+
             bCreateDirectly = comphelper::LibreOfficeKit::isActive();
-            SetCurrentFunction( FuConstructRectangle::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq, bPermanent ) );
+            bRectangle = true;
+            SetCurrentFunction( FuConstructRectangle::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq, bPermanent ) );
             rReq.Done();
         }
         break;
@@ -466,7 +516,11 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
         case SID_DRAW_BEZIER_FILL:          // BASIC
         case SID_DRAW_BEZIER_NOFILL:        // BASIC
         {
-            SetCurrentFunction( FuConstructBezierPolygon::Create(this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq, bPermanent) );
+            // Direct mode means no interactive drawing, just insert the shape with reasonable
+            // defaults -- to be consistent with the line insert case above.
+            bCreateDirectly = comphelper::LibreOfficeKit::isActive();
+
+            SetCurrentFunction( FuConstructBezierPolygon::Create(*this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq, bPermanent) );
             rReq.Done();
         }
         break;
@@ -475,7 +529,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
         {
             if (nOldSId != SID_GLUE_EDITMODE)
             {
-                SetCurrentFunction( FuEditGluePoints::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq, bPermanent ) );
+                SetCurrentFunction( FuEditGluePoints::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq, bPermanent ) );
             }
             else
             {
@@ -497,7 +551,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
         case SID_DRAW_CIRCLECUT:
         case SID_DRAW_CIRCLECUT_NOFILL:
         {
-            SetCurrentFunction( FuConstructArc::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq, bPermanent) );
+            SetCurrentFunction( FuConstructArc::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq, bPermanent) );
             rReq.Done();
         }
         break;
@@ -511,7 +565,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
         case SID_3D_CONE:
         case SID_3D_PYRAMID:
         {
-            SetCurrentFunction( FuConstruct3dObject::Create(this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq, bPermanent ) );
+            SetCurrentFunction( FuConstruct3dObject::Create(*this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq, bPermanent ) );
             rReq.Done();
         }
         break;
@@ -524,7 +578,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
         case SID_DRAWTBX_CS_STAR :
         case SID_DRAW_CS_ID :
         {
-            SetCurrentFunction( FuConstructCustomShape::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq, bPermanent ) );
+            SetCurrentFunction( FuConstructCustomShape::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq, bPermanent ) );
             rReq.Done();
 
             bCreateDirectly = comphelper::LibreOfficeKit::isActive();
@@ -545,7 +599,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
 
         case SID_FORMATPAINTBRUSH:
         {
-            SetCurrentFunction( FuFormatPaintBrush::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+            SetCurrentFunction( FuFormatPaintBrush::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             rReq.Done();
             SfxBindings& rBind = GetViewFrame()->GetBindings();
             rBind.Invalidate( nSId );
@@ -559,7 +613,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
             if (nOldSId != nSId)
             {
                 mbZoomOnPage = false;
-                SetCurrentFunction( FuZoom::Create(this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq ) );
+                SetCurrentFunction( FuZoom::Create(*this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq ) );
             }
             else
             {
@@ -598,14 +652,15 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
     // CTRL-SID_OBJECT_SELECT -> select first draw object if none is selected yet
     if(SID_OBJECT_SELECT == nSId && HasCurrentFunction() && (rReq.GetModifier() & KEY_MOD1))
     {
-        if(!GetView()->AreObjectsMarked())
+        const SdrMarkList&  rMarkList = GetView()->GetMarkedObjectList();
+        if(rMarkList.GetMarkCount() == 0)
         {
             // select first object
             GetView()->UnmarkAllObj();
             GetView()->MarkNextObj(true);
 
             // ...and make it visible
-            if(GetView()->AreObjectsMarked())
+            if(rMarkList.GetMarkCount() != 0)
                 GetView()->MakeVisible(GetView()->GetAllMarkedRect(), *GetActiveWindow());
         }
     }
@@ -614,14 +669,17 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
     if(!(HasCurrentFunction() && ((rReq.GetModifier() & KEY_MOD1) || bCreateDirectly)))
         return;
 
-    // disable interactive drawing for LOK
-    if (bCreateDirectly)
-            GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
-
     // get SdOptions
-    SdOptions* pOptions = SD_MOD()->GetSdOptions(GetDoc()->GetDocumentType());
+    SdOptions* pOptions = SdModule::get()->GetSdOptions(GetDoc()->GetDocumentType());
     sal_uInt32 nDefaultObjectSizeWidth(pOptions->GetDefaultObjectSizeWidth());
     sal_uInt32 nDefaultObjectSizeHeight(pOptions->GetDefaultObjectSizeHeight());
+    if (nSId == SID_INSERT_SIGNATURELINE)
+    {
+        // Half of the default to better match the space available for signatures in many real-world
+        // documents.
+        nDefaultObjectSizeWidth *= 0.5;
+        nDefaultObjectSizeHeight *= 0.5;
+    }
 
     // calc position and size
     ::tools::Rectangle aVisArea = GetActiveWindow()->PixelToLogic(::tools::Rectangle(Point(0,0), GetActiveWindow()->GetOutputSizePixel()));
@@ -656,6 +714,10 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
     {
         case SID_DRAW_CAPTION:
         case SID_DRAW_CAPTION_VERTICAL:
+        case SID_ATTR_CHAR:
+        case SID_ATTR_CHAR_VERTICAL:
+        case SID_TEXT_FITTOSIZE:
+        case SID_TEXT_FITTOSIZE_VERTICAL:
         {
             // Make FuText the current function.
             SfxUInt16Item aItem (SID_TEXTEDIT, 1);
@@ -666,6 +728,11 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
             GetView()->SdrBeginTextEdit(static_cast<SdrTextObj*>(pObjTmp), pPageView);
             break;
         }
+    }
+
+    if (bRectangle && !bPermanent)
+    {
+        GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
     }
 }
 
@@ -738,9 +805,9 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
         GetDocSh()->SetStyleFamily(static_cast<SfxStyleFamily>(rReq.GetArgs()->Get( SID_STYLE_FAMILY ).GetValue()));
 
     // We do not execute a thing during a native slide show
-    if(SlideShow::IsRunning(GetViewShellBase()) &&
-        (rReq.GetSlot() != SID_PRESENTATION_END &&
-         rReq.GetSlot() != SID_SIZE_PAGE))
+    if((SlideShow::IsRunning(GetViewShellBase())
+        && !SlideShow::IsInteractiveSlideshow(&GetViewShellBase())) // IASS
+        && (rReq.GetSlot() != SID_PRESENTATION_END && rReq.GetSlot() != SID_SIZE_PAGE))
         return;
 
     CheckLineTo (rReq);
@@ -887,6 +954,18 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
         }
         break;
 
+        case SID_PASTE_SLIDE:
+        case SID_COPY_SLIDE:
+        {
+            sd::slidesorter::SlideSorterViewShell::GetSlideSorter(GetViewShellBase())
+                ->GetSlideSorter()
+                .GetController()
+                .FuSupport(rReq);
+            Cancel();
+            rReq.Done();
+        }
+        break;
+
         case SID_UNICODE_NOTATION_TOGGLE:
         {
             if( mpDrawView->IsTextEdit() )
@@ -896,18 +975,18 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
                 {
                     OUString sInput = pOLV->GetSurroundingText();
                     ESelection aSel( pOLV->GetSelection() );
-                    if( aSel.nStartPos > aSel.nEndPos )
-                        aSel.nEndPos = aSel.nStartPos;
+                    if (aSel.start.nIndex > aSel.end.nIndex)
+                        aSel.end.nIndex = aSel.start.nIndex;
 
                     //calculate a valid end-position by reading logical characters
                     sal_Int32 nUtf16Pos=0;
-                    while( (nUtf16Pos < sInput.getLength()) && (nUtf16Pos < aSel.nEndPos) )
+                    while ((nUtf16Pos < sInput.getLength()) && (nUtf16Pos < aSel.end.nIndex))
                     {
                         sInput.iterateCodePoints(&nUtf16Pos);
                         //The mouse can set the cursor in the middle of a multi-unit character,
                         //    so reset to the proper end of the logical characters
-                        if( nUtf16Pos > aSel.nEndPos )
-                            aSel.nEndPos = nUtf16Pos;
+                        if (nUtf16Pos > aSel.end.nIndex)
+                            aSel.end.nIndex = nUtf16Pos;
                     }
 
                     ToggleUnicodeCodepoint aToggle;
@@ -918,7 +997,7 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
                     {
                         OUString sStringToReplace = aToggle.StringToReplace();
                         mpDrawView->BegUndo(sStringToReplace +"->"+ sReplacement);
-                        aSel.nStartPos = aSel.nEndPos - sStringToReplace.getLength();
+                        aSel.start.nIndex = aSel.end.nIndex - sStringToReplace.getLength();
                         pOLV->SetSelection( aSel );
                         pOLV->InsertText(sReplacement, true);
                         mpDrawView->EndUndo();
@@ -973,7 +1052,7 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
                                           GetActiveWindow()->PixelToLogic( ::tools::Rectangle( Point(), GetActiveWindow()->GetOutputSizePixel() ).Center() ),
                                           nAction, false, nFormat ) )
                 {
-                    INetBookmark    aINetBookmark( "", "" );
+                    INetBookmark    aINetBookmark( u""_ustr, u""_ustr );
 
                     if( ( aDataHelper.HasFormat( SotClipboardFormatId::NETSCAPE_BOOKMARK ) &&
                           aDataHelper.GetINetBookmark( SotClipboardFormatId::NETSCAPE_BOOKMARK, aINetBookmark ) ) ||
@@ -982,7 +1061,7 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
                         ( aDataHelper.HasFormat( SotClipboardFormatId::UNIFORMRESOURCELOCATOR ) &&
                           aDataHelper.GetINetBookmark( SotClipboardFormatId::UNIFORMRESOURCELOCATOR, aINetBookmark ) ) )
                     {
-                        InsertURLField( aINetBookmark.GetURL(), aINetBookmark.GetDescription(), "" );
+                        InsertURLField(aINetBookmark.GetURL(), aINetBookmark.GetDescription(), u""_ustr, u""_ustr);
                     }
                 }
             }
@@ -1033,10 +1112,6 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
 
         case SID_MASTERPAGE:          // BASIC
         {
-            if (comphelper::LibreOfficeKit::isActive())
-                GetViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED,
-                                                           ".uno:SlideMasterPage=true"_ostr);
-
             // AutoLayouts needs to be finished
             GetDoc()->StopWorkStartupDelay();
 
@@ -1071,11 +1146,6 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
 
         case SID_CLOSE_MASTER_VIEW:
         {
-            // Notify of disabling master view, which is enabled in DrawViewShell::ChangeEditMode.
-            if (comphelper::LibreOfficeKit::isActive())
-                GetViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED,
-                                                           ".uno:SlideMasterPage=false"_ostr);
-
             Broadcast (
                 ViewShellHint(ViewShellHint::HINT_CHANGE_EDIT_MODE_START));
 
@@ -1117,12 +1187,19 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
 
             if(bOldHasRuler != bHasRuler)
             {
-                SdOptions* pOptions = SD_MOD()->GetSdOptions(GetDoc()->GetDocumentType());
+                std::shared_ptr<comphelper::ConfigurationChanges> batch(
+                    comphelper::ConfigurationChanges::create());
 
-                if(pOptions && pOptions->IsRulerVisible() != bHasRuler)
+                if (GetDoc()->GetDocumentType() == DocumentType::Impress)
                 {
-                    pOptions->SetRulerVisible(bHasRuler);
+                    officecfg::Office::Impress::Layout::Display::Ruler::set(bHasRuler, batch);
                 }
+                else
+                {
+                    officecfg::Office::Draw::Layout::Display::Ruler::set(bHasRuler, batch);
+                }
+
+                batch->commit();
             }
 
             Invalidate (SID_RULER);
@@ -1244,7 +1321,8 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
         case SID_SIZE_OPTIMAL:  // BASIC
         {
             mbZoomOnPage = false;
-            if ( mpDrawView->AreObjectsMarked() )
+            const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
+            if ( rMarkList.GetMarkCount() != 0 )
             {
                 maMarkRect = mpDrawView->GetAllMarkedRect();
                 ::tools::Long nW = static_cast<::tools::Long>(maMarkRect.GetWidth()  * 1.03);
@@ -1474,24 +1552,34 @@ void DrawViewShell::FuSupportRotate(SfxRequest const &rReq)
 
     if (!pOLV)
         return;
-
-    pOLV->TransliterateText( m_aRotateCase.getNextMode() );
+    TransliterationFlags transFlags = m_aRotateCase.getNextMode();
+    if (TransliterationFlags::SENTENCE_CASE == transFlags)
+    {
+        OUString SelectedText = pOLV->GetSelected().trim();
+        if (SelectedText.getLength() <= 2 || (SelectedText.indexOf(' ') < 0 && SelectedText.indexOf('\t') < 0))
+            transFlags = m_aRotateCase.getNextMode();
+    }
+    pOLV->TransliterateText( transFlags );
 }
 
 void DrawViewShell::InsertURLField(const OUString& rURL, const OUString& rText,
-                                   const OUString& rTarget)
+                                   const OUString& rTarget, OUString const& rAltText)
 {
     OutlinerView* pOLV = mpDrawView->GetTextEditOutlinerView();
+
+    SvxURLField aURLField(rURL, rText, SvxURLFormat::Repr);
+    aURLField.SetTargetFrame(rTarget);
+    aURLField.SetName(rAltText);
 
     if (pOLV)
     {
         ESelection aSel( pOLV->GetSelection() );
-        SvxFieldItem aURLItem( SvxURLField( rURL, rText, SvxURLFormat::Repr ), EE_FEATURE_FIELD );
+        SvxFieldItem const aURLItem(aURLField, EE_FEATURE_FIELD);
         pOLV->InsertField( aURLItem );
-        if ( aSel.nStartPos <= aSel.nEndPos )
-            aSel.nEndPos = aSel.nStartPos + 1;
+        if (aSel.start.nIndex <= aSel.end.nIndex)
+            aSel.end.nIndex = aSel.start.nIndex + 1;
         else
-            aSel.nStartPos = aSel.nEndPos + 1;
+            aSel.start.nIndex = aSel.end.nIndex + 1;
         pOLV->SetSelection( aSel );
     }
     else
@@ -1500,15 +1588,12 @@ void DrawViewShell::InsertURLField(const OUString& rURL, const OUString& rText,
         pOutl->Init( OutlinerMode::TextObject );
         OutlinerMode nOutlMode = pOutl->GetOutlinerMode();
 
-        SvxURLField aURLField(rURL, rText, SvxURLFormat::Repr);
-        aURLField.SetTargetFrame(rTarget);
         SvxFieldItem aURLItem(aURLField, EE_FEATURE_FIELD);
         pOutl->QuickInsertField( aURLItem, ESelection() );
         std::optional<OutlinerParaObject> pOutlParaObject = pOutl->CreateParaObject();
 
         rtl::Reference<SdrRectObj> pRectObj = new SdrRectObj(
-            GetView()->getSdrModelFromSdrView(),
-            SdrObjKind::Text);
+            GetView()->getSdrModelFromSdrView(), ::tools::Rectangle(), SdrObjKind::Text);
 
         pOutl->UpdateFields();
         pOutl->SetUpdateLayout( true );
@@ -1541,9 +1626,10 @@ void DrawViewShell::InsertURLButton(const OUString& rURL, const OUString& rText,
     const OUString sTargetURL( ::URIHelper::SmartRel2Abs( INetURLObject( GetDocSh()->GetMedium()->GetBaseURL() ), rURL, URIHelper::GetMaybeFileHdl(), true, false,
                                                                 INetURLObject::EncodeMechanism::WasEncoded,
                                                                 INetURLObject::DecodeMechanism::Unambiguous ) );
-    if (mpDrawView->GetMarkedObjectList().GetMarkCount() > 0)
+    const SdrMarkList&  rMarkList = mpDrawView->GetMarkedObjectList();
+    if (rMarkList.GetMarkCount() > 0)
     {
-        SdrObject* pMarkedObj = mpDrawView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
+        SdrObject* pMarkedObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
         if( pMarkedObj ) try
         {
             // change first marked object
@@ -1558,25 +1644,25 @@ void DrawViewShell::InsertURLButton(const OUString& rURL, const OUString& rText,
                 if (!bIsButton && pMarkedObj->GetObjIdentifier() == SdrObjKind::UNO)
                 {
                     const Reference<beans::XPropertySetInfo> xInfo(xPropSet->getPropertySetInfo());
-                    bIsButton = xInfo.is() && xInfo->hasPropertyByName("ButtonType")
-                                && xInfo->hasPropertyByName("Label")
-                                && xInfo->hasPropertyByName("TargetURL");
+                    bIsButton = xInfo.is() && xInfo->hasPropertyByName(u"ButtonType"_ustr)
+                                && xInfo->hasPropertyByName(u"Label"_ustr)
+                                && xInfo->hasPropertyByName(u"TargetURL"_ustr);
                 }
                 if (bIsButton)
                 {
                     bNewObj = false;
 
-                    xPropSet->setPropertyValue("Label", Any(rText));
-                    xPropSet->setPropertyValue("TargetURL", Any(sTargetURL));
+                    xPropSet->setPropertyValue(u"Label"_ustr, Any(rText));
+                    xPropSet->setPropertyValue(u"TargetURL"_ustr, Any(sTargetURL));
 
                     if (!rTarget.isEmpty())
-                        xPropSet->setPropertyValue("TargetFrame", Any(rTarget));
+                        xPropSet->setPropertyValue(u"TargetFrame"_ustr, Any(rTarget));
 
-                    xPropSet->setPropertyValue("ButtonType", Any(form::FormButtonType_URL));
+                    xPropSet->setPropertyValue(u"ButtonType"_ustr, Any(form::FormButtonType_URL));
 #if HAVE_FEATURE_AVMEDIA
-                    if (::avmedia::MediaWindow::isMediaURL(rURL, ""/*TODO?*/))
+                    if (::avmedia::MediaWindow::isMediaURL(rURL, u""_ustr/*TODO?*/))
                     {
-                        xPropSet->setPropertyValue("DispatchURLInternal", Any(true));
+                        xPropSet->setPropertyValue(u"DispatchURLInternal"_ustr, Any(true));
                     }
 #endif
                 }
@@ -1611,16 +1697,16 @@ void DrawViewShell::InsertURLButton(const OUString& rURL, const OUString& rText,
         Reference< awt::XControlModel > xControlModel( pUnoCtrl->GetUnoControlModel(), uno::UNO_SET_THROW );
         Reference< beans::XPropertySet > xPropSet( xControlModel, uno::UNO_QUERY_THROW );
 
-        xPropSet->setPropertyValue( "Label" , Any( rText ) );
-        xPropSet->setPropertyValue( "TargetURL" , Any( sTargetURL ) );
+        xPropSet->setPropertyValue( u"Label"_ustr , Any( rText ) );
+        xPropSet->setPropertyValue( u"TargetURL"_ustr , Any( sTargetURL ) );
 
         if( !rTarget.isEmpty() )
-            xPropSet->setPropertyValue( "TargetFrame" , Any( rTarget ) );
+            xPropSet->setPropertyValue( u"TargetFrame"_ustr , Any( rTarget ) );
 
-        xPropSet->setPropertyValue( "ButtonType" , Any(  form::FormButtonType_URL ) );
+        xPropSet->setPropertyValue( u"ButtonType"_ustr , Any(  form::FormButtonType_URL ) );
 #if HAVE_FEATURE_AVMEDIA
-        if ( ::avmedia::MediaWindow::isMediaURL( rURL, ""/*TODO?*/ ) )
-            xPropSet->setPropertyValue( "DispatchURLInternal" , Any( true ) );
+        if ( ::avmedia::MediaWindow::isMediaURL( rURL, u""_ustr/*TODO?*/ ) )
+            xPropSet->setPropertyValue( u"DispatchURLInternal"_ustr , Any( true ) );
 #endif
 
         Point aPos;
@@ -1694,8 +1780,13 @@ namespace slideshowhelp
         {
             //Start at page 0, this would blow away any custom
             //show settings if any were set
-            Sequence< PropertyValue > aArguments{ comphelper::makePropertyValue("FirstPage",
-                                                                                OUString("0")) };
+            const SfxUInt16Item* pStartingSlide = rReq.GetArg<SfxUInt16Item>(FN_PARAM_1);
+            const sal_uInt16 nStartingSlide = pStartingSlide ? pStartingSlide->GetValue() - 1 : 0;
+            SdPage* pSlide = rDoc.GetSdPage(nStartingSlide, PageKind::Standard);
+            const OUString aStartingSlide = pSlide ? pSlide->GetName() : OUString();
+
+            Sequence< PropertyValue > aArguments{ comphelper::makePropertyValue(u"FirstPage"_ustr,
+                                                                                aStartingSlide) };
             xPresentation->startWithArguments( aArguments );
         }
         sfx2::SfxNotebookBar::UnlockNotebookBar();

@@ -61,14 +61,14 @@ private:
     DECL_DLLPRIVATE_LINK(ClickHdl, MenuBarButtonCallbackArg&, bool);
     DECL_DLLPRIVATE_LINK(HighlightHdl, MenuBarButtonCallbackArg&, bool);
 
-    VclPtr<BubbleWindow> GetBubbleWindow();
-    void SetBubbleChanged();
+    SAL_DLLPRIVATE VclPtr<BubbleWindow> GetBubbleWindow();
+    SAL_DLLPRIVATE void SetBubbleChanged();
 
-    sal_uInt16 GetIconID(MenuBar* pMenuBar) const;
+    SAL_DLLPRIVATE sal_uInt16 GetIconID(MenuBar* pMenuBar) const;
 
-    void AddMenuBarIcon(SystemWindow& rSysWin, bool bAddEventHdl);
-    void RemoveMenuBarIcon(MenuBar* pMenuBar);
-    void RemoveMenuBarIcons();
+    SAL_DLLPRIVATE void AddMenuBarIcon(SystemWindow& rSysWin, bool bAddEventHdl);
+    SAL_DLLPRIVATE void RemoveMenuBarIcon(MenuBar* pMenuBar);
+    SAL_DLLPRIVATE void RemoveMenuBarIcons();
 
 public:
     MenuBarUpdateIconManager();

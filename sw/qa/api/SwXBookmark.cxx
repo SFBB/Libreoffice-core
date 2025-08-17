@@ -34,34 +34,27 @@ class SwXBookmark final : public UnoApiTest,
 {
 public:
     SwXBookmark()
-        : UnoApiTest("")
-        , XNamed("Bookmark")
+        : UnoApiTest(u""_ustr)
+        , XNamed(u"Bookmark"_ustr)
     {
-    }
-
-    virtual void setUp() override
-    {
-        UnoApiTest::setUp();
-        mxDesktop.set(frame::Desktop::create(mxComponentContext));
-        mxComponent = loadFromDesktop("private:factory/swriter");
-        CPPUNIT_ASSERT(mxComponent.is());
     }
 
     Reference<XInterface> init() override
     {
+        loadFromURL(u"private:factory/swriter"_ustr);
         Reference<text::XTextDocument> xTextDocument(mxComponent, UNO_QUERY_THROW);
         Reference<lang::XMultiServiceFactory> xMSF(mxComponent, UNO_QUERY_THROW);
 
         Reference<text::XText> xText = xTextDocument->getText();
         Reference<text::XTextCursor> xCursor = xText->createTextCursor();
 
-        Reference<text::XTextContent> xBookmark(xMSF->createInstance("com.sun.star.text.Bookmark"),
-                                                UNO_QUERY_THROW);
+        Reference<text::XTextContent> xBookmark(
+            xMSF->createInstance(u"com.sun.star.text.Bookmark"_ustr), UNO_QUERY_THROW);
 
         xText->insertTextContent(xCursor, xBookmark, false);
         mxTextRange = Reference<text::XTextRange>(xCursor, UNO_QUERY_THROW);
         mxTextContent = Reference<text::XTextContent>(
-            xMSF->createInstance("com.sun.star.text.Bookmark"), UNO_QUERY_THROW);
+            xMSF->createInstance(u"com.sun.star.text.Bookmark"_ustr), UNO_QUERY_THROW);
 
         return Reference<XInterface>(xBookmark, UNO_QUERY_THROW);
     }

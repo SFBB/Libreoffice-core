@@ -19,26 +19,57 @@
 
 
 #include "basdoc.hxx"
+#include <basidesh.hxx>
 #include <iderdll.hxx>
 #include <com/sun/star/io/IOException.hpp>
-#include <comphelper/sequence.hxx>
-#include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <sfx2/objsh.hxx>
 #include <vcl/svapp.hxx>
 
 #include "unomodel.hxx"
 
+
+namespace {
+
+// Implements XEnumeration to hold a single selected portion of text
+// This will actually only hold a single string value
+class SelectionEnumeration : public ::cppu::WeakImplHelper<css::container::XEnumeration>
+{
+private:
+    OUString m_sText;
+    bool m_bHasElements;
+
+public:
+    explicit SelectionEnumeration(const OUString& sSelectedText)
+        : m_sText(sSelectedText)
+        , m_bHasElements(true) {}
+
+    virtual sal_Bool SAL_CALL hasMoreElements() override
+    {
+        return m_bHasElements;
+    }
+
+    virtual css::uno::Any SAL_CALL nextElement() override
+    {
+        if (m_bHasElements)
+        {
+            m_bHasElements = false;
+            return css::uno::Any(m_sText);
+        }
+
+        throw css::container::NoSuchElementException();
+    }
+};
+
+} // End of unnamed namespace
+
 namespace basctl
 {
 
-using namespace ::cppu;
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 
 SIDEModel::SIDEModel( SfxObjectShell *pObjSh )
-: SfxBaseModel(pObjSh)
+    : cppu::ImplInheritanceHelper<SfxBaseModel, css::lang::XServiceInfo>(pObjSh)
 {
 }
 
@@ -46,40 +77,9 @@ SIDEModel::~SIDEModel()
 {
 }
 
-uno::Any SAL_CALL SIDEModel::queryInterface( const uno::Type& rType )
-{
-    uno::Any aRet =  ::cppu::queryInterface ( rType,
-                                    // OWeakObject interfaces
-                                    static_cast< XInterface* >( static_cast< OWeakObject* >( this ) ),
-                                    static_cast< XWeak* > ( this ),
-                                    static_cast< XServiceInfo*  > ( this ) );
-    if (!aRet.hasValue())
-        aRet = SfxBaseModel::queryInterface ( rType );
-    return aRet;
-}
-
-void SAL_CALL SIDEModel::acquire() noexcept
-{
-    SolarMutexGuard aGuard;
-    OWeakObject::acquire();
-}
-
-void SAL_CALL SIDEModel::release() noexcept
-{
-    SolarMutexGuard aGuard;
-    OWeakObject::release();
-}
-
-uno::Sequence< uno::Type > SAL_CALL SIDEModel::getTypes(  )
-{
-    return comphelper::concatSequences(
-            SfxBaseModel::getTypes(),
-            uno::Sequence {  cppu::UnoType<XServiceInfo>::get() });
-}
-
 OUString SIDEModel::getImplementationName()
 {
-    return "com.sun.star.comp.basic.BasicIDE";
+    return u"com.sun.star.comp.basic.BasicIDE"_ustr;
 }
 
 sal_Bool SIDEModel::supportsService(const OUString& rServiceName)
@@ -89,7 +89,7 @@ sal_Bool SIDEModel::supportsService(const OUString& rServiceName)
 
 uno::Sequence< OUString > SIDEModel::getSupportedServiceNames()
 {
-    return { "com.sun.star.script.BasicIDE" };
+    return { u"com.sun.star.script.BasicIDE"_ustr };
 }
 
 //  XStorable
@@ -111,7 +111,18 @@ void SAL_CALL SIDEModel::storeToURL( const OUString&,
 
 void  SIDEModel::notImplemented()
 {
-    throw io::IOException("Can't store IDE model" );
+    throw io::IOException(u"Can't store IDE model"_ustr );
+}
+
+// XModel
+css::uno::Reference< css::uno::XInterface > SAL_CALL SIDEModel::getCurrentSelection()
+{
+    SolarMutexGuard aGuard;
+    Shell* pShell = GetShell();
+    if (!pShell)
+        return nullptr;
+    OUString sText = GetShell()->GetSelectionText(false);
+    return uno::Reference<container::XEnumeration>(new SelectionEnumeration(sText));
 }
 
 } // namespace basctl
@@ -122,7 +133,7 @@ com_sun_star_comp_basic_BasicID_get_implementation(
 {
     SolarMutexGuard aGuard;
     basctl::EnsureIde();
-    SfxObjectShell* pShell = new basctl::DocShell();
+    rtl::Reference<SfxObjectShell> pShell = new basctl::DocShell();
     auto pModel = pShell->GetModel();
     pModel->acquire();
     return pModel.get();

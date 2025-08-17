@@ -22,6 +22,7 @@
 #include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
+#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <utility>
@@ -32,7 +33,7 @@ using namespace com::sun::star;
 
 namespace drawinglayer::primitive2d
 {
-        void SdrRectanglePrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*aViewInformation*/) const
+        Primitive2DReference SdrRectanglePrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& /*aViewInformation*/) const
         {
             Primitive2DContainer aRetval;
 
@@ -88,10 +89,25 @@ namespace drawinglayer::primitive2d
                         getTransform()));
             }
 
+            // Soft edges should be before text, since text is not affected by soft edges
+            if (!aRetval.empty() && getSdrLFSTAttribute().getSoftEdgeRadius())
+            {
+                aRetval = createEmbeddedSoftEdgePrimitive(std::move(aRetval),
+                    getSdrLFSTAttribute().getSoftEdgeRadius());
+            }
+
+            // tdf#132199: put glow before shadow, to have shadow of the glow, not the opposite
+            if (!aRetval.empty() && !getSdrLFSTAttribute().getGlow().isDefault())
+            {
+                // glow
+                aRetval = createEmbeddedGlowPrimitive(std::move(aRetval), getSdrLFSTAttribute().getGlow());
+            }
+
             // add text
             if(!getSdrLFSTAttribute().getText().isDefault())
             {
-                aRetval.push_back(
+                Primitive2DContainer aTempContentText;
+                aTempContentText.push_back(
                     createTextPrimitive(
                         basegfx::B2DPolyPolygon(aUnitOutline),
                         getTransform(),
@@ -99,6 +115,14 @@ namespace drawinglayer::primitive2d
                         getSdrLFSTAttribute().getLine(),
                         false,
                         false));
+
+                // put text glow before, shape glow and shadow
+                if (!getSdrLFSTAttribute().getGlowText().isDefault())
+                {
+                    // add text glow
+                    aTempContentText = createEmbeddedTextGlowPrimitive(std::move(aTempContentText), getSdrLFSTAttribute().getGlowText());
+                }
+                aRetval.append(std::move(aTempContentText));
             }
 
             // add shadow
@@ -109,7 +133,7 @@ namespace drawinglayer::primitive2d
                     getSdrLFSTAttribute().getShadow());
             }
 
-            rContainer.append(std::move(aRetval));
+            return new GroupPrimitive2D(std::move(aRetval));
         }
 
         SdrRectanglePrimitive2D::SdrRectanglePrimitive2D(

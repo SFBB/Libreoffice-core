@@ -605,12 +605,6 @@ interface BaseTextSelection
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
     ]
 
-    FN_XFORMS_DESIGN_MODE
-    [
-        ExecMethod = Execute;
-        StateMethod = GetState;
-    ]
-
     SID_GRAPHIC_SIZE_CHECK
     [
         ExecMethod = ExecDlg;
@@ -623,5 +617,16 @@ interface BaseTextSelection
         ExecMethod = ExecDlg;
         StateMethod = GetState;
         DisableFlags="SfxDisableFlags::SwOnProtectedCursor";
+    ]
+
+    SID_PROTECTPOS
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
+    ]
+    SID_PROTECTSIZE
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState ;
     ]
 }

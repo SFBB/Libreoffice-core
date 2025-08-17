@@ -34,12 +34,8 @@
 #include <o3tl/string_view.hxx>
 
 using namespace css::uno;
-using namespace css::i18n;
 using namespace ::svxform;
 using namespace css::sdbc;
-using namespace css::util;
-
-#define MAX_HISTORY_ENTRIES     50
 
 void FmSearchDialog::initCommon( const Reference< XResultSet >& _rxCursor )
 {
@@ -70,35 +66,35 @@ void FmSearchDialog::initCommon( const Reference< XResultSet >& _rxCursor )
 
 FmSearchDialog::FmSearchDialog(weld::Window* pParent, const OUString& sInitialText, const std::vector< OUString >& _rContexts, sal_Int16 nInitialContext,
     const Link<FmSearchContext&,sal_uInt32>& lnkContextSupplier)
-    : GenericDialogController(pParent, "cui/ui/fmsearchdialog.ui", "RecordSearchDialog")
+    : GenericDialogController(pParent, u"cui/ui/fmsearchdialog.ui"_ustr, u"RecordSearchDialog"_ustr)
     , m_sCancel( GetStandardText( StandardButtonType::Cancel ) )
     , m_lnkContextSupplier(lnkContextSupplier)
-    , m_prbSearchForText(m_xBuilder->weld_radio_button("rbSearchForText"))
-    , m_prbSearchForNull(m_xBuilder->weld_radio_button("rbSearchForNull"))
-    , m_prbSearchForNotNull(m_xBuilder->weld_radio_button("rbSearchForNotNull"))
-    , m_pcmbSearchText(m_xBuilder->weld_combo_box("cmbSearchText"))
-    , m_pftForm(m_xBuilder->weld_label("ftForm"))
-    , m_plbForm(m_xBuilder->weld_combo_box("lbForm"))
-    , m_prbAllFields(m_xBuilder->weld_radio_button("rbAllFields"))
-    , m_prbSingleField(m_xBuilder->weld_radio_button("rbSingleField"))
-    , m_plbField(m_xBuilder->weld_combo_box("lbField"))
-    , m_pftPosition(m_xBuilder->weld_label("ftPosition"))
-    , m_plbPosition(m_xBuilder->weld_combo_box("lbPosition"))
-    , m_pcbUseFormat(m_xBuilder->weld_check_button("cbUseFormat"))
-    , m_pcbCase(m_xBuilder->weld_check_button("cbCase"))
-    , m_pcbBackwards(m_xBuilder->weld_check_button("cbBackwards"))
-    , m_pcbStartOver(m_xBuilder->weld_check_button("cbStartOver"))
-    , m_pcbWildCard(m_xBuilder->weld_check_button("cbWildCard"))
-    , m_pcbRegular(m_xBuilder->weld_check_button("cbRegular"))
-    , m_pcbApprox(m_xBuilder->weld_check_button("cbApprox"))
-    , m_ppbApproxSettings(m_xBuilder->weld_button("pbApproxSettings"))
-    , m_pHalfFullFormsCJK(m_xBuilder->weld_check_button("HalfFullFormsCJK"))
-    , m_pSoundsLikeCJK(m_xBuilder->weld_check_button("SoundsLikeCJK"))
-    , m_pSoundsLikeCJKSettings(m_xBuilder->weld_button("SoundsLikeCJKSettings"))
-    , m_pftRecord(m_xBuilder->weld_label("ftRecord"))
-    , m_pftHint(m_xBuilder->weld_label("ftHint"))
-    , m_pbSearchAgain(m_xBuilder->weld_button("pbSearchAgain"))
-    , m_pbClose(m_xBuilder->weld_button("close"))
+    , m_prbSearchForText(m_xBuilder->weld_radio_button(u"rbSearchForText"_ustr))
+    , m_prbSearchForNull(m_xBuilder->weld_radio_button(u"rbSearchForNull"_ustr))
+    , m_prbSearchForNotNull(m_xBuilder->weld_radio_button(u"rbSearchForNotNull"_ustr))
+    , m_pcmbSearchText(m_xBuilder->weld_combo_box(u"cmbSearchText"_ustr))
+    , m_pftForm(m_xBuilder->weld_label(u"ftForm"_ustr))
+    , m_plbForm(m_xBuilder->weld_combo_box(u"lbForm"_ustr))
+    , m_prbAllFields(m_xBuilder->weld_radio_button(u"rbAllFields"_ustr))
+    , m_prbSingleField(m_xBuilder->weld_radio_button(u"rbSingleField"_ustr))
+    , m_plbField(m_xBuilder->weld_combo_box(u"lbField"_ustr))
+    , m_pftPosition(m_xBuilder->weld_label(u"ftPosition"_ustr))
+    , m_plbPosition(m_xBuilder->weld_combo_box(u"lbPosition"_ustr))
+    , m_pcbUseFormat(m_xBuilder->weld_check_button(u"cbUseFormat"_ustr))
+    , m_pcbCase(m_xBuilder->weld_check_button(u"cbCase"_ustr))
+    , m_pcbBackwards(m_xBuilder->weld_check_button(u"cbBackwards"_ustr))
+    , m_pcbStartOver(m_xBuilder->weld_check_button(u"cbStartOver"_ustr))
+    , m_pcbWildCard(m_xBuilder->weld_check_button(u"cbWildCard"_ustr))
+    , m_pcbRegular(m_xBuilder->weld_check_button(u"cbRegular"_ustr))
+    , m_pcbApprox(m_xBuilder->weld_check_button(u"cbApprox"_ustr))
+    , m_ppbApproxSettings(m_xBuilder->weld_button(u"pbApproxSettings"_ustr))
+    , m_pHalfFullFormsCJK(m_xBuilder->weld_check_button(u"HalfFullFormsCJK"_ustr))
+    , m_pSoundsLikeCJK(m_xBuilder->weld_check_button(u"SoundsLikeCJK"_ustr))
+    , m_pSoundsLikeCJKSettings(m_xBuilder->weld_button(u"SoundsLikeCJKSettings"_ustr))
+    , m_pftRecord(m_xBuilder->weld_label(u"ftRecord"_ustr))
+    , m_pftHint(m_xBuilder->weld_label(u"ftHint"_ustr))
+    , m_pbSearchAgain(m_xBuilder->weld_button(u"pbSearchAgain"_ustr))
+    , m_pbClose(m_xBuilder->weld_button(u"close"_ustr))
 {
     m_pcmbSearchText->set_size_request(m_pcmbSearchText->get_approximate_digit_width() * 38, -1);
     m_plbForm->set_size_request(m_plbForm->get_approximate_digit_width() * 38, -1);
@@ -275,6 +271,7 @@ IMPL_LINK_NOARG(FmSearchDialog, OnClickedSearchAgain, weld::Button&, void)
         m_pcmbSearchText->insert_text(0, strThisRoundText);
         // the remove/insert makes sure that a) the OUString does not appear twice and
         // that b) the last searched strings are at the beginning and limit the list length
+        constexpr int MAX_HISTORY_ENTRIES = 50;
         while (m_pcmbSearchText->get_count() > MAX_HISTORY_ENTRIES)
             m_pcmbSearchText->remove(m_pcmbSearchText->get_count()-1);
 
@@ -298,6 +295,8 @@ IMPL_LINK_NOARG(FmSearchDialog, OnClickedSearchAgain, weld::Button&, void)
             else
                 m_pSearchEngine->SearchNextSpecial(m_prbSearchForNull->get_active());
         }
+        // tdf#155308: explicitly keep the focus by default for non gtk renderings
+        m_pbSearchAgain->grab_focus();
     }
     else
     {   // the button has the function 'cancel'
@@ -634,10 +633,8 @@ void FmSearchDialog::LoadParams()
 {
     FmSearchParams aParams(m_pConfig->getParams());
 
-    const OUString* pHistory     =                   aParams.aHistory.getConstArray();
-    const OUString* pHistoryEnd  =   pHistory    +   aParams.aHistory.getLength();
-    for (; pHistory != pHistoryEnd; ++pHistory)
-        m_pcmbSearchText->append_text( *pHistory );
+    for (auto& historystr : aParams.aHistory)
+        m_pcmbSearchText->append_text(historystr);
 
     // I do the settings at my UI-elements and then I simply call the respective change-handler,
     // that way the data is handed on to the SearchEngine and all dependent settings are done

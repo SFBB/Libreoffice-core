@@ -40,16 +40,17 @@ void SAL_CALL SdUnoModule::dispatchWithNotification( const util::URL& aURL, cons
 
     SolarMutexGuard aGuard;
     SdDLL::Init();
-    const SfxSlot* pSlot = SD_MOD()->GetInterface()->GetSlot( aURL.Complete );
+    SdModule* mod = SdModule::get();
+    const SfxSlot* pSlot = mod->GetInterface()->GetSlot( aURL.Complete );
 
     sal_Int16 aState = frame::DispatchResultState::DONTKNOW;
     if ( !pSlot )
         aState = frame::DispatchResultState::FAILURE;
     else
     {
-        SfxRequest aReq( pSlot, aArgs, SfxCallMode::SYNCHRON, SD_MOD()->GetPool() );
-        const SfxPoolItemHolder aResult(SD_MOD()->ExecuteSlot(aReq));
-        if (nullptr != aResult.getItem())
+        SfxRequest aReq( pSlot, aArgs, SfxCallMode::SYNCHRON, mod->GetPool() );
+        const SfxPoolItemHolder aResult(mod->ExecuteSlot(aReq));
+        if (aResult)
             aState = frame::DispatchResultState::SUCCESS;
         else
             aState = frame::DispatchResultState::FAILURE;
@@ -93,7 +94,7 @@ uno::Reference< frame::XDispatch > SAL_CALL SdUnoModule::queryDispatch( const ut
 {
     SolarMutexGuard aGuard;
     SdDLL::Init();
-    const SfxSlot* pSlot = SD_MOD()->GetInterface()->GetSlot( aURL.Complete );
+    const SfxSlot* pSlot = SdModule::get()->GetInterface()->GetSlot(aURL.Complete);
 
     uno::Reference< frame::XDispatch > xSlot;
     if ( pSlot )
@@ -105,7 +106,7 @@ uno::Reference< frame::XDispatch > SAL_CALL SdUnoModule::queryDispatch( const ut
 // XServiceInfo
 OUString SAL_CALL SdUnoModule::getImplementationName(  )
 {
-    return "com.sun.star.comp.Draw.DrawingModule";
+    return u"com.sun.star.comp.Draw.DrawingModule"_ustr;
 }
 
 sal_Bool SAL_CALL SdUnoModule::supportsService( const OUString& sServiceName )
@@ -115,7 +116,7 @@ sal_Bool SAL_CALL SdUnoModule::supportsService( const OUString& sServiceName )
 
 uno::Sequence< OUString > SAL_CALL SdUnoModule::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.drawing.ModuleDispatcher" };
+    return { u"com.sun.star.drawing.ModuleDispatcher"_ustr };
 }
 
 

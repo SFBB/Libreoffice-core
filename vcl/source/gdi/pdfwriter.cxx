@@ -20,6 +20,7 @@
 #include <vcl/bitmapex.hxx>
 
 #include <pdf/pdfwriter_impl.hxx>
+#include <vcl/pdf/PDFEncryptionInitialization.hxx>
 
 using namespace vcl;
 
@@ -78,15 +79,13 @@ void PDFWriter::DrawTextLine(
     xImplementation->drawTextLine( rPos, nWidth, eStrikeout, eUnderline, eOverline, false/*bUnderlineAbove*/ );
 }
 
-void PDFWriter::DrawTextArray(
-                              const Point& rStartPt,
-                              const OUString& rStr,
-                              KernArraySpan pDXAry,
-                              std::span<const sal_Bool> pKashidaAry,
-                              sal_Int32 nIndex,
-                              sal_Int32 nLen )
+void PDFWriter::DrawTextArray(const Point& rStartPt, const OUString& rStr, KernArraySpan pDXAry,
+                              std::span<const sal_Bool> pKashidaAry, sal_Int32 nIndex,
+                              sal_Int32 nLen, sal_Int32 nLayoutContextIndex,
+                              sal_Int32 nLayoutContextLen)
 {
-    xImplementation->drawTextArray( rStartPt, rStr, pDXAry, pKashidaAry, nIndex, nLen );
+    xImplementation->drawTextArray(rStartPt, rStr, pDXAry, pKashidaAry, nIndex, nLen,
+                                   nLayoutContextIndex, nLayoutContextLen);
 }
 
 void PDFWriter::DrawStretchText(
@@ -182,7 +181,7 @@ void PDFWriter::DrawBitmap( const Point& rDestPt, const Size& rDestSize, const B
     xImplementation->drawBitmap( rDestPt, rDestSize, rBitmap, rGraphic );
 }
 
-void PDFWriter::DrawBitmapEx( const Point& rDestPt, const Size& rDestSize, const BitmapEx& rBitmap )
+void PDFWriter::DrawBitmapEx( const Point& rDestPt, const Size& rDestSize, const Bitmap& rBitmap )
 {
     xImplementation->drawBitmap( rDestPt, rDestSize, rBitmap );
 }
@@ -384,9 +383,10 @@ sal_Int32 PDFWriter::CreateOutlineItem( sal_Int32 nParent, std::u16string_view r
     return xImplementation->createOutlineItem( nParent, rText, nDestID );
 }
 
-void PDFWriter::CreateNote( const tools::Rectangle& rRect, const PDFNote& rNote, sal_Int32 nPageNr )
+sal_Int32 PDFWriter::CreateNote(const tools::Rectangle& rRect, const tools::Rectangle& rPopupRect,
+                                const PDFNote& rNote, sal_Int32 nPageNr)
 {
-    xImplementation->createNote( rRect, rNote, nPageNr );
+    return xImplementation->createNote(rRect, rPopupRect, rNote, nPageNr);
 }
 
 sal_Int32 PDFWriter::EnsureStructureElement()
@@ -395,7 +395,7 @@ sal_Int32 PDFWriter::EnsureStructureElement()
 }
 
 void PDFWriter::InitStructureElement(sal_Int32 const id,
-        PDFWriter::StructElement const eType, std::u16string_view const rAlias)
+        vcl::pdf::StructElement const eType, std::u16string_view const rAlias)
 {
     return xImplementation->initStructureElement(id, eType, rAlias);
 }
@@ -467,14 +467,6 @@ void PDFWriter::AddAttachedFile(OUString const& rFileName, OUString const& rMime
 std::set< PDFWriter::ErrorCode > const & PDFWriter::GetErrors() const
 {
     return xImplementation->getErrors();
-}
-
-css::uno::Reference< css::beans::XMaterialHolder >
-PDFWriter::InitEncryption( const OUString& i_rOwnerPassword,
-                           const OUString& i_rUserPassword
-                          )
-{
-    return PDFWriterImpl::initEncryption( i_rOwnerPassword, i_rUserPassword );
 }
 
 void PDFWriter::PlayMetafile( const GDIMetaFile& i_rMTF, const vcl::PDFWriter::PlayMetafileContext& i_rPlayContext, PDFExtOutDevData* i_pData )

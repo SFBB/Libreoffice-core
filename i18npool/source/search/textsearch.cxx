@@ -93,6 +93,30 @@ bool isSimpleRegexTrans( TransliterationFlags n )
 {
     return bool(maskSimpleRegexTrans(n));
 }
+
+bool isReplacePunctuation( std::u16string_view rStr )
+{
+    return rStr.find(u'\u2018') != std::u16string_view::npos ||
+           rStr.find(u'\u2019') != std::u16string_view::npos ||
+           rStr.find(u'\u201A') != std::u16string_view::npos ||
+           rStr.find(u'\u201B') != std::u16string_view::npos ||
+           rStr.find(u'\u201C') != std::u16string_view::npos ||
+           rStr.find(u'\u201D') != std::u16string_view::npos ||
+           rStr.find(u'\u201E') != std::u16string_view::npos ||
+           rStr.find(u'\u201F') != std::u16string_view::npos;
+}
+
+OUString replacePunctuation( const OUString &rStr )
+{
+    return rStr.replace(u'\u2018', '\'')
+               .replace(u'\u2019', '\'')
+               .replace(u'\u201A', '\'')
+               .replace(u'\u201B', '\'')
+               .replace(u'\u201C', '"')
+               .replace(u'\u201D', '"')
+               .replace(u'\u201E', '"')
+               .replace(u'\u201F', '"');
+}
 };
 
 TextSearch::TextSearch(const Reference < XComponentContext > & rxContext)
@@ -139,10 +163,10 @@ void TextSearch::setOptions2( const SearchOptions2& rOptions )
         // match is not case-altered, leave case-(in)sensitive to regex engine.
         transliterateFlags &= ~TransliterationFlags::IGNORE_CASE;
     }
-    else if ( aSrchPara.searchString.indexOf('\'') > - 1 )
+    else if ( aSrchPara.searchString.indexOf('\'') > - 1 || aSrchPara.searchString.indexOf('"') > - 1 )
     {
         bSearchApostrophe = true;
-        bReplaceApostrophe = aSrchPara.searchString.indexOf(u'\u2019') > -1;
+        bReplaceApostrophe = isReplacePunctuation(aSrchPara.searchString);
     }
 
     // Create Transliteration class
@@ -215,7 +239,7 @@ void TextSearch::setOptions2( const SearchOptions2& rOptions )
     }
 
     if ( bReplaceApostrophe )
-        sSrchStr = sSrchStr.replace(u'\u2019', '\'');
+        sSrchStr = replacePunctuation(sSrchStr);
 
     // Take the new SearchOptions2::AlgorithmType2 field and ignore
     // SearchOptions::algorithmType
@@ -308,7 +332,7 @@ SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 sta
 
     // in non-regex mode, allow searching typographical apostrophe with the ASCII one
     // to avoid regression after using automatic conversion to U+2019 during typing in Writer
-    bool bReplaceApostrophe = bSearchApostrophe && in_str.indexOf(u'\u2019') > -1;
+    bool bReplaceApostrophe = bSearchApostrophe && isReplacePunctuation(in_str);
 
     bUsePrimarySrchStr = true;
 
@@ -340,7 +364,7 @@ SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 sta
         in_str = xTranslit->transliterate(searchStr, nInStartPos, nInEndPos - nInStartPos, offset);
 
         if ( bReplaceApostrophe )
-            in_str = in_str.replace(u'\u2019', '\'');
+            in_str = replacePunctuation(in_str);
 
         // JP 20.6.2001: also the start and end positions must be corrected!
         sal_Int32 newStartPos =
@@ -350,7 +374,7 @@ SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 sta
             ? FindPosInSeq_Impl( offset, endPos )
             : in_str.getLength();
 
-        sres = (this->*fnForward)( in_str, newStartPos, newEndPos );
+        sres = (this->*fnForward)( g, in_str, newStartPos, newEndPos );
 
         // Map offsets back to untransliterated string.
         const sal_Int32 nOffsets = offset.getLength();
@@ -388,7 +412,7 @@ SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 sta
         if ( bReplaceApostrophe )
             in_str = in_str.replace(u'\u2019', '\'');
 
-        sres = (this->*fnForward)( in_str, startPos, endPos );
+        sres = (this->*fnForward)( g, in_str, startPos, endPos );
     }
 
     if ( xTranslit2.is() && aSrchPara.AlgorithmType2 != SearchAlgorithms2::REGEXP)
@@ -409,7 +433,7 @@ SearchResult TextSearch::searchForward( const OUString& searchStr, sal_Int32 sta
             endPos = in_str.getLength();
 
         bUsePrimarySrchStr = false;
-        sres2 = (this->*fnForward)( in_str, startPos, endPos );
+        sres2 = (this->*fnForward)( g, in_str, startPos, endPos );
         auto sres2_startOffsetRange = asNonConstRange(sres2.startOffset);
         auto sres2_endOffsetRange = asNonConstRange(sres2.endOffset);
 
@@ -447,7 +471,7 @@ SearchResult TextSearch::searchBackward( const OUString& searchStr, sal_Int32 st
 
     // in non-regex mode, allow searching typographical apostrophe with the ASCII one
     // to avoid regression after using automatic conversion to U+2019 during typing in Writer
-    bool bReplaceApostrophe = bSearchApostrophe && in_str.indexOf(u'\u2019') > -1;
+    bool bReplaceApostrophe = bSearchApostrophe && isReplacePunctuation(in_str);
 
     bUsePrimarySrchStr = true;
 
@@ -458,7 +482,7 @@ SearchResult TextSearch::searchBackward( const OUString& searchStr, sal_Int32 st
         in_str = xTranslit->transliterate( searchStr, endPos, startPos - endPos, offset );
 
         if ( bReplaceApostrophe )
-            in_str = in_str.replace(u'\u2019', '\'');
+            in_str = replacePunctuation(in_str);
 
         // JP 20.6.2001: also the start and end positions must be corrected!
         sal_Int32 const newStartPos = (startPos < searchStr.getLength())
@@ -472,7 +496,7 @@ SearchResult TextSearch::searchBackward( const OUString& searchStr, sal_Int32 st
         // if (pRegexMatcher && startPos < searchStr.getLength())
         // but that appears to be impossible with ICU regex
 
-        sres = (this->*fnBackward)( in_str, newStartPos, newEndPos );
+        sres = (this->*fnBackward)( g, in_str, newStartPos, newEndPos );
 
         // Map offsets back to untransliterated string.
         const sal_Int32 nOffsets = offset.getLength();
@@ -508,9 +532,9 @@ SearchResult TextSearch::searchBackward( const OUString& searchStr, sal_Int32 st
     else
     {
         if ( bReplaceApostrophe )
-            in_str = in_str.replace(u'\u2019', '\'');
+            in_str = replacePunctuation(in_str);
 
-        sres = (this->*fnBackward)( in_str, startPos, endPos );
+        sres = (this->*fnBackward)( g, in_str, startPos, endPos );
     }
 
     if ( xTranslit2.is() && aSrchPara.AlgorithmType2 != SearchAlgorithms2::REGEXP )
@@ -531,7 +555,7 @@ SearchResult TextSearch::searchBackward( const OUString& searchStr, sal_Int32 st
             endPos = FindPosInSeq_Impl( offset, endPos );
 
         bUsePrimarySrchStr = false;
-        sres2 = (this->*fnBackward)( in_str, startPos, endPos );
+        sres2 = (this->*fnBackward)( g, in_str, startPos, endPos );
         auto sres2_startOffsetRange = asNonConstRange(sres2.startOffset);
         auto sres2_endOffsetRange = asNonConstRange(sres2.endOffset);
 
@@ -696,7 +720,7 @@ sal_Int32 TextSearch::GetDiff( const sal_Unicode cChr ) const
 }
 
 
-SearchResult TextSearch::NSrchFrwrd( const OUString& searchStr, sal_Int32 startPos, sal_Int32 endPos )
+SearchResult TextSearch::NSrchFrwrd( std::unique_lock<std::mutex>& /*rGuard*/, const OUString& searchStr, sal_Int32 startPos, sal_Int32 endPos )
 {
     SearchResult aRet;
     aRet.subRegExpressions = 0;
@@ -759,7 +783,7 @@ SearchResult TextSearch::NSrchFrwrd( const OUString& searchStr, sal_Int32 startP
     return aRet;
 }
 
-SearchResult TextSearch::NSrchBkwrd( const OUString& searchStr, sal_Int32 startPos, sal_Int32 endPos )
+SearchResult TextSearch::NSrchBkwrd( std::unique_lock<std::mutex>& /*rGuard*/,const OUString& searchStr, sal_Int32 startPos, sal_Int32 endPos )
 {
     SearchResult aRet;
     aRet.subRegExpressions = 0;
@@ -919,7 +943,7 @@ static bool lcl_findRegex(std::unique_ptr<icu::RegexMatcher> const& pRegexMatche
     return true;
 }
 
-SearchResult TextSearch::RESrchFrwrd( const OUString& searchStr,
+SearchResult TextSearch::RESrchFrwrd( std::unique_lock<std::mutex>& /*rGuard*/, const OUString& searchStr,
                                       sal_Int32 startPos, sal_Int32 endPos )
 {
     SearchResult aRet;
@@ -973,7 +997,7 @@ SearchResult TextSearch::RESrchFrwrd( const OUString& searchStr,
     return aRet;
 }
 
-SearchResult TextSearch::RESrchBkwrd( const OUString& searchStr,
+SearchResult TextSearch::RESrchBkwrd( std::unique_lock<std::mutex>& /*rGuard*/, const OUString& searchStr,
                                       sal_Int32 startPos, sal_Int32 endPos )
 {
     // NOTE: for backwards search callers provide startPos/endPos inverted!
@@ -1048,7 +1072,7 @@ SearchResult TextSearch::RESrchBkwrd( const OUString& searchStr,
 
 
 // search for words phonetically
-SearchResult TextSearch::ApproxSrchFrwrd( const OUString& searchStr,
+SearchResult TextSearch::ApproxSrchFrwrd( std::unique_lock<std::mutex>& /*rGuard*/, const OUString& searchStr,
                                           sal_Int32 startPos, sal_Int32 endPos )
 {
     SearchResult aRet;
@@ -1090,7 +1114,7 @@ SearchResult TextSearch::ApproxSrchFrwrd( const OUString& searchStr,
     return aRet;
 }
 
-SearchResult TextSearch::ApproxSrchBkwrd( const OUString& searchStr,
+SearchResult TextSearch::ApproxSrchBkwrd( std::unique_lock<std::mutex>& /*rGuard*/, const OUString& searchStr,
                                           sal_Int32 startPos, sal_Int32 endPos )
 {
     SearchResult aRet;
@@ -1139,7 +1163,7 @@ void setWildcardMatch( css::util::SearchResult& rRes, sal_Int32 nStartOffset, sa
 }
 }
 
-SearchResult TextSearch::WildcardSrchFrwrd( const OUString& searchStr, sal_Int32 nStartPos, sal_Int32 nEndPos )
+SearchResult TextSearch::WildcardSrchFrwrd( std::unique_lock<std::mutex>& /*rGuard*/, const OUString& searchStr, sal_Int32 nStartPos, sal_Int32 nEndPos )
 {
     SearchResult aRes;
     aRes.subRegExpressions = 0;     // no match
@@ -1310,7 +1334,7 @@ SearchResult TextSearch::WildcardSrchFrwrd( const OUString& searchStr, sal_Int32
     return aRes;
 }
 
-SearchResult TextSearch::WildcardSrchBkwrd( const OUString& searchStr, sal_Int32 nStartPos, sal_Int32 nEndPos )
+SearchResult TextSearch::WildcardSrchBkwrd( std::unique_lock<std::mutex>& /*rGuard*/, const OUString& searchStr, sal_Int32 nStartPos, sal_Int32 nEndPos )
 {
     SearchResult aRes;
     aRes.subRegExpressions = 0;     // no match
@@ -1543,7 +1567,7 @@ SearchResult TextSearch::WildcardSrchBkwrd( const OUString& searchStr, sal_Int32
 OUString SAL_CALL
 TextSearch::getImplementationName()
 {
-    return "com.sun.star.util.TextSearch_i18n";
+    return u"com.sun.star.util.TextSearch_i18n"_ustr;
 }
 
 sal_Bool SAL_CALL TextSearch::supportsService(const OUString& rServiceName)
@@ -1554,7 +1578,7 @@ sal_Bool SAL_CALL TextSearch::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 TextSearch::getSupportedServiceNames()
 {
-    return { "com.sun.star.util.TextSearch", "com.sun.star.util.TextSearch2" };
+    return { u"com.sun.star.util.TextSearch"_ustr, u"com.sun.star.util.TextSearch2"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

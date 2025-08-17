@@ -49,21 +49,18 @@ void GoStartDoc( SwPosition*);
 void GoEndDoc( SwPosition*);
 void GoStartSection( SwPosition*);
 void GoEndSection( SwPosition*);
-void GoStartOfSection( SwPosition*);
-void GoEndOfSection( SwPosition*);
+void GoStartOfSection( SwPosition& );
+void GoEndOfSection( SwPosition& );
 const SwTextAttr* GetFrwrdTextHint( const SwpHints&, size_t&, sal_Int32 );
 const SwTextAttr* GetBkwrdTextHint( const SwpHints&, size_t&, sal_Int32 );
 
-bool GoNext(SwNode* pNd, SwContentIndex * pIdx, SwCursorSkipMode nMode );
-bool GoPrevious(SwNode* pNd, SwContentIndex * pIdx, SwCursorSkipMode nMode );
-SwContentNode* GoNextNds( SwNodeIndex * pIdx, bool );
-SwContentNode* GoPreviousNds( SwNodeIndex * pIdx, bool );
+bool GoNext(SwNode& rNd, SwContentIndex& rIdx, SwCursorSkipMode nMode );
+bool GoPrevious(SwNode& rNd, SwContentIndex& rIdx, SwCursorSkipMode nMode );
 SwContentNode* GoNextPos( SwPosition * pIdx, bool );
 SwContentNode* GoPreviousPos( SwPosition * pIdx, bool );
 
 // type definitions of functions
-typedef bool (*GoNd)( SwNode*, SwContentIndex*, SwCursorSkipMode );
-typedef SwContentNode* (*GoNds)( SwNodeIndex*, bool );
+typedef bool (*GoNd)( SwNode&, SwContentIndex&, SwCursorSkipMode );
 typedef SwContentNode* (*GoPos)( SwPosition*, bool );
 typedef void (*GoDoc)( SwPosition* );
 typedef void (*GoSection)( SwPosition* );
@@ -71,12 +68,11 @@ typedef bool (SwPosition::*CmpOp)( const SwPosition& ) const;
 typedef const SwTextAttr* (*GetHint)( const SwpHints&, size_t&, sal_Int32 );
 typedef bool (utl::TextSearch::*SearchText)( const OUString&, sal_Int32*,
                     sal_Int32*, css::util::SearchResult* );
-typedef void (*MvSection)( SwPosition * );
+typedef void (*MvSection)( SwPosition& );
 
 struct SwMoveFnCollection
 {
     GoNd      fnNd;
-    GoNds     fnNds;
     GoPos     fnPos;
     GoDoc     fnDoc;
     GoSection fnSections;

@@ -49,7 +49,7 @@ getResultSet(const css::uno::Reference<css::ucb::XContent>& xPackageContent)
             ucbhelper::Content packageContent(xPackageContent,
                                               uno::Reference<ucb::XCommandEnvironment>(),
                                               comphelper::getProcessComponentContext());
-            uno::Sequence<OUString> lPropNames{ "Title" };
+            uno::Sequence<OUString> lPropNames{ u"Title"_ustr };
             uno::Reference<sdbc::XResultSet> xResultSet(
                 packageContent.createCursor(lPropNames, ucbhelper::INCLUDE_DOCUMENTS_ONLY));
             return xResultSet;
@@ -117,12 +117,16 @@ public:
     /** returns true if a substream with name exists */
     bool existsSubStream(const char* name) override
     {
-        return name && m_nameToPathMap.find(name) != m_nameToPathMap.end();
+        return name && m_nameToPathMap.contains(name);
     }
     /** return a new stream for an OLE zone */
     librevenge::RVNGInputStream* getSubStreamByName(const char* name) override
     {
-        if (m_nameToPathMap.find(name) == m_nameToPathMap.end() || !m_xContent.is())
+        if (!m_xContent.is())
+            return nullptr;
+
+        auto aIter = m_nameToPathMap.find(name);
+        if (aIter == m_nameToPathMap.end())
             return nullptr;
 
         try
@@ -133,7 +137,7 @@ public:
                 const uno::Reference<ucb::XContentAccess> xContentAccess(xResultSet,
                                                                          uno::UNO_QUERY_THROW);
                 const uno::Reference<sdbc::XRow> xRow(xResultSet, uno::UNO_QUERY_THROW);
-                OUString lPath = m_nameToPathMap.find(name)->second;
+                OUString lPath = aIter->second;
                 do
                 {
                     const OUString aTitle(xRow->getString(1));
@@ -376,12 +380,12 @@ MSWorksCalcImportFilter::filter(const css::uno::Sequence<css::beans::PropertyVal
                     sWM3Name = aTmpUrl.getName(INetURLObject::LAST_SEGMENT, true,
                                                INetURLObject::DecodeMechanism::WithCharset);
                     aTmpUrl.setExtension(u"FM3");
-                    const OUString& sTestFM3Name
+                    const OUString sTestFM3Name
                         = aTmpUrl.getName(INetURLObject::LAST_SEGMENT, true,
                                           INetURLObject::DecodeMechanism::WithCharset);
                     do
                     {
-                        const OUString& aTitle(xRow->getString(1));
+                        const OUString aTitle(xRow->getString(1));
                         if (aTitle.equalsIgnoreAsciiCase(sTestFM3Name))
                             sFM3Name = aTitle;
                     } while (xResultSet->next() && sFM3Name.isEmpty());
@@ -452,7 +456,7 @@ void MSWorksCalcImportFilter::doRegisterHandlers(OdsGenerator&) {}
 // XServiceInfo
 OUString SAL_CALL MSWorksCalcImportFilter::getImplementationName()
 {
-    return "com.sun.star.comp.Calc.MSWorksCalcImportFilter";
+    return u"com.sun.star.comp.Calc.MSWorksCalcImportFilter"_ustr;
 }
 
 sal_Bool SAL_CALL MSWorksCalcImportFilter::supportsService(const OUString& rServiceName)
@@ -462,7 +466,8 @@ sal_Bool SAL_CALL MSWorksCalcImportFilter::supportsService(const OUString& rServ
 
 css::uno::Sequence<OUString> SAL_CALL MSWorksCalcImportFilter::getSupportedServiceNames()
 {
-    return { "com.sun.star.document.ImportFilter", "com.sun.star.document.ExtendedTypeDetection" };
+    return { u"com.sun.star.document.ImportFilter"_ustr,
+             u"com.sun.star.document.ExtendedTypeDetection"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

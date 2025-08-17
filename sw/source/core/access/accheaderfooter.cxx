@@ -18,7 +18,6 @@
  */
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <cppuhelper/supportsservice.hxx>
 #include <vcl/svapp.hxx>
 #include <hffrm.hxx>
 #include "accheaderfooter.hxx"
@@ -28,11 +27,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::accessibility;
-
-constexpr OUStringLiteral sImplementationNameHeader
-    = u"com.sun.star.comp.Writer.SwAccessibleHeaderView";
-constexpr OUStringLiteral sImplementationNameFooter
-    = u"com.sun.star.comp.Writer.SwAccessibleFooterView";
 
 SwAccessibleHeaderFooter::SwAccessibleHeaderFooter(
         std::shared_ptr<SwAccessibleMap> const& pInitMap,
@@ -69,30 +63,6 @@ OUString SAL_CALL SwAccessibleHeaderFooter::getAccessibleDescription()
     OUString sArg( GetFormattedPageNumber() );
 
     return GetResource(pResId, &sArg);
-}
-
-OUString SAL_CALL SwAccessibleHeaderFooter::getImplementationName()
-{
-    if( AccessibleRole::HEADER == GetRole() )
-        return sImplementationNameHeader;
-    else
-        return sImplementationNameFooter;
-}
-
-sal_Bool SAL_CALL SwAccessibleHeaderFooter::supportsService(const OUString& sTestServiceName)
-{
-    return cppu::supportsService(this, sTestServiceName);
-}
-
-Sequence< OUString > SAL_CALL SwAccessibleHeaderFooter::getSupportedServiceNames()
-{
-    return { (AccessibleRole::HEADER == GetRole())?OUString("com.sun.star.text.AccessibleHeaderView"):OUString("com.sun.star.text.AccessibleFooterView"),
-             sAccessibleServiceName };
-}
-
-Sequence< sal_Int8 > SAL_CALL SwAccessibleHeaderFooter::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
 }
 
 sal_Int32 SAL_CALL SwAccessibleHeaderFooter::getBackground()

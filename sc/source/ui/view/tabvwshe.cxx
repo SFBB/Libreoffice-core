@@ -18,7 +18,6 @@
  */
 
 #include <comphelper/string.hxx>
-#include <comphelper/lok.hxx>
 #include <editeng/eeitem.hxx>
 #include <osl/diagnose.h>
 
@@ -144,7 +143,7 @@ void ScTabViewShell::InsertURL( const OUString& rName, const OUString& rURL, con
     }
     else
     {
-        SC_MOD()->InputEnterHandler();
+        ScModule::get()->InputEnterHandler();
         InsertURLButton( rName, rURL, rTarget, nullptr );
     }
 }
@@ -152,11 +151,11 @@ void ScTabViewShell::InsertURL( const OUString& rName, const OUString& rURL, con
 static void lcl_SelectFieldAfterInsert( EditView& rView )
 {
     ESelection aSel = rView.GetSelection();
-    if ( aSel.nStartPos == aSel.nEndPos && aSel.nStartPos > 0 )
+    if (aSel.start.nIndex == aSel.end.nIndex && aSel.start.nIndex > 0)
     {
         //  Cursor is behind the inserted field -> extend selection to the left
 
-        --aSel.nStartPos;
+        --aSel.start.nIndex;
         rView.SetSelection( aSel );
     }
 }
@@ -168,7 +167,7 @@ void ScTabViewShell::InsertURLField( const OUString& rName, const OUString& rURL
     SvxFieldItem aURLItem( aURLField, EE_FEATURE_FIELD );
 
     ScViewData&     rViewData   = GetViewData();
-    ScModule*       pScMod      = SC_MOD();
+    ScModule*       pScMod      = ScModule::get();
     ScInputHandler* pHdl        = pScMod->GetInputHdl( rViewData.GetViewShell() );
 
     bool bSelectFirst = false;

@@ -30,6 +30,7 @@
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/ucb/XContent.hpp>
+#include <com/sun/star/beans/StringPair.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <com/sun/star/document/XDocumentRevisionListPersistence.hpp>
@@ -76,7 +77,9 @@
 #include <tools/fileutil.hxx>
 #include <unotools/configmgr.hxx>
 #include <unotools/tempfile.hxx>
+#include <comphelper/lok.hxx>
 #include <comphelper/fileurl.hxx>
+#include <comphelper/memorystream.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/interaction.hxx>
@@ -124,14 +127,15 @@
 #include <openflag.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <comphelper/propertysequence.hxx>
+#include <vcl/embeddedfontsmanager.hxx>
 #include <vcl/weld.hxx>
 #include <vcl/svapp.hxx>
 #include <comphelper/diagnose_ex.hxx>
-#include <unotools/fltrcfg.hxx>
 #include <sfx2/digitalsignatures.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <comphelper/threadpool.hxx>
 #include <o3tl/string_view.hxx>
+#include <svl/cryptosign.hxx>
 #include <condition_variable>
 
 #include <com/sun/star/io/WrongFormatException.hpp>
@@ -258,6 +262,11 @@ bool IsFileMovable(const INetURLObject& rURL)
     // Hardlink or symlink: osl::File::move() doesn't play with these nicely.
     if (buf.st_nlink > 1 || S_ISLNK(buf.st_mode))
         return false;
+
+    // Read-only target path: this would be silently replaced.
+    if (access(sPath.toUtf8().getStr(), W_OK) == -1)
+        return false;
+
 #elif defined _WIN32
     if (tools::IsMappedWebDAVPath(rURL.GetMainURL(INetURLObject::DecodeMechanism::NONE)))
         return false;
@@ -344,6 +353,32 @@ CheckReadOnlyTaskTerminateListener::notifyTermination(const css::lang::EventObje
     lock.unlock();
     mCond.notify_one();
 }
+
+/// Temporary file wrapper to handle tmp file lifecycle
+/// for lok fork a background saving worker issues.
+class MediumTempFile : public ::utl::TempFileNamed
+{
+    bool m_bWasChild;
+public:
+    MediumTempFile(const OUString *pParent )
+        : ::utl::TempFileNamed(pParent)
+        , m_bWasChild(comphelper::LibreOfficeKit::isForkedChild())
+    {
+    }
+
+    MediumTempFile(const MediumTempFile &rFrom ) = delete;
+
+    ~MediumTempFile()
+    {
+        bool isForked = comphelper::LibreOfficeKit::isForkedChild();
+
+        // avoid deletion of files created by the parent
+        if (isForked && ! m_bWasChild)
+        {
+            EnableKillingFile(false);
+        }
+    }
+};
 }
 
 class SfxMedium_Impl
@@ -380,6 +415,13 @@ public:
     /// if true, xStorage is an inner package and not directly from xStream
     bool m_bODFWholesomeEncryption = false;
 
+    /// If there are such fonts, the document can't be set into editing mode;
+    /// these can't be embedded on save.
+    bool hasRestrictedFonts = false;
+    /// font family, file URL
+    std::vector<std::pair<OUString, OUString>> m_aEmbeddedFonts;
+    std::vector<std::pair<OUString, OUString>> m_aEmbeddedFontsToActivate;
+
     OUString m_aName;
     OUString m_aLogicName;
     OUString m_aLongName;
@@ -406,7 +448,7 @@ public:
 
     uno::Sequence < util::RevisionTag > aVersions;
 
-    std::unique_ptr<::utl::TempFileNamed> pTempFile;
+    std::unique_ptr<MediumTempFile> pTempFile;
 
     uno::Reference<embed::XStorage> xStorage;
     uno::Reference<embed::XStorage> m_xZipStorage;
@@ -415,7 +457,7 @@ public:
     uno::Reference<io::XStream> xStream;
     uno::Reference<io::XStream> m_xLockingStream;
     uno::Reference<task::XInteractionHandler> xInteraction;
-    uno::Reference<io::XStream> m_xODFDecryptedInnerPackageStream;
+    rtl::Reference< comphelper::UNOMemoryStream > m_xODFDecryptedInnerPackageStream;
     uno::Reference<embed::XStorage> m_xODFEncryptedOuterStorage;
     uno::Reference<embed::XStorage> m_xODFDecryptedInnerZipStorage;
 
@@ -507,10 +549,10 @@ ErrCodeMsg const & SfxMedium::GetLastStorageCreationState() const
     return pImpl->nLastStorageError;
 }
 
-void SfxMedium::SetError(ErrCodeMsg nError)
+void SfxMedium::SetError(const ErrCodeMsg& rError)
 {
-    if (pImpl->m_eError == ERRCODE_NONE || (pImpl->m_eError.IsWarning() && nError.IsError()))
-        pImpl->m_eError = nError;
+    if (pImpl->m_eError == ERRCODE_NONE || (pImpl->m_eError.IsWarning() && rError.IsError()))
+        pImpl->m_eError = rError;
 }
 
 void SfxMedium::SetWarningError(const ErrCodeMsg& nWarningError)
@@ -557,7 +599,7 @@ void SfxMedium::CheckFileDate( const util::DateTime& aInitDate )
         xHandler->handle( xInteractionRequestImpl );
 
         ::rtl::Reference< ::ucbhelper::InteractionContinuation > xSelected = xInteractionRequestImpl->getSelection();
-        if ( uno::Reference< task::XInteractionAbort >( xSelected.get(), uno::UNO_QUERY ).is() )
+        if ( uno::Reference< task::XInteractionAbort >( cppu::getXWeak(xSelected.get()), uno::UNO_QUERY ).is() )
         {
             SetError(ERRCODE_ABORT);
         }
@@ -584,7 +626,7 @@ util::DateTime const & SfxMedium::GetInitFileDate( bool bIgnoreOldValue )
                                            utl::UCBContentHelper::getDefaultCommandEnvironment(),
                                            comphelper::getProcessComponentContext() );
 
-            aContent.getPropertyValue("DateModified") >>= pImpl->m_aDateTime;
+            aContent.getPropertyValue(u"DateModified"_ustr) >>= pImpl->m_aDateTime;
             pImpl->m_bGotDateTime = true;
         }
         catch ( const css::uno::Exception& )
@@ -654,11 +696,11 @@ OUString SfxMedium::GetBaseURL( bool bForSaving )
         return pBaseURLItem->GetValue();
 
     OUString aBaseURL;
-    if (!utl::ConfigManager::IsFuzzing() && GetContent().is())
+    if (!comphelper::IsFuzzing() && GetContent().is())
     {
         try
         {
-            Any aAny = pImpl->aContent.getPropertyValue("BaseURI");
+            Any aAny = pImpl->aContent.getPropertyValue(u"BaseURI"_ustr);
             aAny >>= aBaseURL;
         }
         catch ( const css::uno::Exception& )
@@ -1138,11 +1180,11 @@ SfxMedium::ShowLockResult SfxMedium::ShowLockedDocumentDialog(const LockFileEntr
 
         bool bOpenReadOnly = false;
         ::rtl::Reference< ::ucbhelper::InteractionContinuation > xSelected = xInteractionRequestImpl->getSelection();
-        if ( uno::Reference< task::XInteractionAbort >( xSelected.get(), uno::UNO_QUERY ).is() )
+        if ( uno::Reference< task::XInteractionAbort >( cppu::getXWeak(xSelected.get()), uno::UNO_QUERY ).is() )
         {
             SetError(ERRCODE_ABORT);
         }
-        else if ( uno::Reference< task::XInteractionDisapprove >( xSelected.get(), uno::UNO_QUERY ).is() )
+        else if ( uno::Reference< task::XInteractionDisapprove >( cppu::getXWeak(xSelected.get()), uno::UNO_QUERY ).is() )
         {
             // own lock on loading, user has selected to ignore the lock
             // own lock on saving, user has selected to ignore the lock
@@ -1156,12 +1198,12 @@ SfxMedium::ShowLockResult SfxMedium::ShowLockedDocumentDialog(const LockFileEntr
             else
                 nResult = ShowLockResult::Succeeded;
         }
-        else if (uno::Reference< task::XInteractionRetry >(xSelected.get(), uno::UNO_QUERY).is())
+        else if (uno::Reference< task::XInteractionRetry >(cppu::getXWeak(xSelected.get()), uno::UNO_QUERY).is())
         {
             // User decided to ignore the alien (stale?) lock file without filesystem lock
             nResult = ShowLockResult::Succeeded;
         }
-        else if (uno::Reference< task::XInteractionApprove >( xSelected.get(), uno::UNO_QUERY ).is())
+        else if (uno::Reference< task::XInteractionApprove >( cppu::getXWeak(xSelected.get()), uno::UNO_QUERY ).is())
         {
             bOpenReadOnly = true;
         }
@@ -1232,12 +1274,12 @@ bool SfxMedium::ShowLockFileProblemDialog(MessageDlg nWhichDlg)
         ::rtl::Reference< ::ucbhelper::InteractionContinuation > xSelected = xIgnoreRequestImpl->getSelection();
         bool bReadOnly = true;
 
-        if (uno::Reference<task::XInteractionAbort>(xSelected.get(), uno::UNO_QUERY).is())
+        if (uno::Reference<task::XInteractionAbort>(cppu::getXWeak(xSelected.get()), uno::UNO_QUERY).is())
         {
             SetError(ERRCODE_ABORT);
             bReadOnly = false;
         }
-        else if (!uno::Reference<task::XInteractionApprove>(xSelected.get(), uno::UNO_QUERY).is())
+        else if (!uno::Reference<task::XInteractionApprove>(cppu::getXWeak(xSelected.get()), uno::UNO_QUERY).is())
         {
             // user selected "Notify"
             pImpl->m_bNotifyWhenEditable = true;
@@ -1386,10 +1428,10 @@ SfxMedium::LockFileResult SfxMedium::LockOrigFileOnDemand(bool bLoading, bool bN
 
                                 uno::Sequence<css::ucb::Lock> aLocks;
                                 // getting the property, send a PROPFIND to the server over the net
-                                if ((aContentToLock.getPropertyValue("DAV:lockdiscovery") >>= aLocks) && aLocks.hasElements())
+                                if ((aContentToLock.getPropertyValue(u"DAV:lockdiscovery"_ustr) >>= aLocks) && aLocks.hasElements())
                                 {
                                     // got at least a lock, show the owner of the first lock returned
-                                    css::ucb::Lock aLock = aLocks[0];
+                                    const css::ucb::Lock& aLock = aLocks[0];
                                     OUString aOwner;
                                     if (aLock.Owner >>= aOwner)
                                     {
@@ -1499,7 +1541,7 @@ SfxMedium::LockFileResult SfxMedium::LockOrigFileOnDemand(bool bLoading, bool bN
                     // MediaDescriptor does this check also, the duplication should be avoided in future
                     Reference< css::ucb::XCommandEnvironment > xDummyEnv;
                     ::ucbhelper::Content aContent( GetURLObject().GetMainURL( INetURLObject::DecodeMechanism::NONE ), xDummyEnv, comphelper::getProcessComponentContext() );
-                    aContent.getPropertyValue("IsReadOnly") >>= bContentReadonly;
+                    aContent.getPropertyValue(u"IsReadOnly"_ustr) >>= bContentReadonly;
                 }
                 catch( const uno::Exception& ) {}
             }
@@ -1553,8 +1595,7 @@ SfxMedium::LockFileResult SfxMedium::LockOrigFileOnDemand(bool bLoading, bool bN
                             ::svt::DocumentLockFile aLockFile( pImpl->m_aLogicName );
 
                             std::unique_ptr<svt::MSODocumentLockFile> pMSOLockFile;
-                            const SvtFilterOptions& rOpt = SvtFilterOptions::Get();
-                            if (rOpt.IsMSOLockFileCreationIsEnabled() && svt::MSODocumentLockFile::IsMSOSupportedFileFormat(pImpl->m_aLogicName))
+                            if (officecfg::Office::Common::Filter::Microsoft::Import::CreateMSOLockFiles::get()  && svt::MSODocumentLockFile::IsMSOSupportedFileFormat(pImpl->m_aLogicName))
                             {
                                 pMSOLockFile.reset(new svt::MSODocumentLockFile(pImpl->m_aLogicName));
                                 pImpl->m_bMSOLockFileCreated = true;
@@ -1714,23 +1755,20 @@ SfxMedium::LockFileResult SfxMedium::LockOrigFileOnDemand(bool bLoading, bool bN
 
 // this either returns non-null or throws exception
 uno::Reference<embed::XStorage>
-SfxMedium::TryEncryptedInnerPackage(uno::Reference<embed::XStorage> const xStorage)
+SfxMedium::TryEncryptedInnerPackage(uno::Reference<embed::XStorage> const & xStorage)
 {
     uno::Reference<embed::XStorage> xRet;
-    if (xStorage->hasByName("encrypted-package"))
+    if (xStorage->hasByName(u"encrypted-package"_ustr))
     {
         uno::Reference<io::XStream> const
             xDecryptedInnerPackage = xStorage->openStreamElement(
-                "encrypted-package",
+                u"encrypted-package"_ustr,
                 embed::ElementModes::READ | embed::ElementModes::NOCREATE);
         // either this throws due to wrong password or IO error, or returns stream
         assert(xDecryptedInnerPackage.is());
         // need a seekable stream => copy
-        Reference<uno::XComponentContext> const xContext(::comphelper::getProcessComponentContext());
-        uno::Reference<io::XStream> const xDecryptedInnerPackageStream(
-            xContext->getServiceManager()->createInstanceWithContext(
-                "com.sun.star.comp.MemoryStream", xContext),
-            UNO_QUERY_THROW);
+        Reference<uno::XComponentContext> const& xContext(::comphelper::getProcessComponentContext());
+        rtl::Reference< comphelper::UNOMemoryStream > xDecryptedInnerPackageStream = new comphelper::UNOMemoryStream();
         comphelper::OStorageHelper::CopyInputToOutput(xDecryptedInnerPackage->getInputStream(), xDecryptedInnerPackageStream->getOutputStream());
         xDecryptedInnerPackageStream->getOutputStream()->closeOutput();
 #if 0
@@ -1750,20 +1788,26 @@ SfxMedium::TryEncryptedInnerPackage(uno::Reference<embed::XStorage> const xStora
         assert(xRet.is());
         // consistency check: outer and inner package must have same mimetype
         OUString const outerMediaType(uno::Reference<beans::XPropertySet>(pImpl->xStorage,
-            uno::UNO_QUERY_THROW)->getPropertyValue("MediaType").get<OUString>());
+            uno::UNO_QUERY_THROW)->getPropertyValue(u"MediaType"_ustr).get<OUString>());
         OUString const innerMediaType(uno::Reference<beans::XPropertySet>(xRet,
-            uno::UNO_QUERY_THROW)->getPropertyValue("MediaType").get<OUString>());
+            uno::UNO_QUERY_THROW)->getPropertyValue(u"MediaType"_ustr).get<OUString>());
         if (outerMediaType.isEmpty() || outerMediaType != innerMediaType)
         {
-            throw io::WrongFormatException("MediaType inconsistent in encrypted ODF package");
+            throw io::WrongFormatException(u"MediaType inconsistent in encrypted ODF package"_ustr);
         }
         // success:
         pImpl->m_bODFWholesomeEncryption = true;
-        pImpl->m_xODFDecryptedInnerPackageStream = xDecryptedInnerPackageStream;
+        pImpl->m_xODFDecryptedInnerPackageStream = std::move(xDecryptedInnerPackageStream);
         pImpl->m_xODFEncryptedOuterStorage = xStorage;
         pImpl->xStorage = xRet;
     }
     return xRet;
+}
+
+bool SfxMedium::IsRepairPackage() const
+{
+    const SfxBoolItem* pRepairItem = GetItemSet().GetItem(SID_REPAIRPACKAGE, false);
+    return pRepairItem && pRepairItem->GetValue();
 }
 
 uno::Reference < embed::XStorage > SfxMedium::GetStorage( bool bCreateTempFile )
@@ -1786,8 +1830,7 @@ uno::Reference < embed::XStorage > SfxMedium::GetStorage( bool bCreateTempFile )
     if ( GetErrorIgnoreWarning() )
         return pImpl->xStorage;
 
-    const SfxBoolItem* pRepairItem = GetItemSet().GetItem(SID_REPAIRPACKAGE, false);
-    if ( pRepairItem && pRepairItem->GetValue() )
+    if (IsRepairPackage())
     {
         // the storage should be created for repairing mode
         CreateTempFile( false );
@@ -1801,8 +1844,8 @@ uno::Reference < embed::XStorage > SfxMedium::GetStorage( bool bCreateTempFile )
             xProgressHandler.set( new utl::ProgressHandlerWrap( xStatusIndicator ) );
 
         uno::Sequence< beans::PropertyValue > aAddProps{
-            comphelper::makePropertyValue("RepairPackage", true),
-            comphelper::makePropertyValue("StatusIndicator", xProgressHandler)
+            comphelper::makePropertyValue(u"RepairPackage"_ustr, true),
+            comphelper::makePropertyValue(u"StatusIndicator"_ustr, xProgressHandler)
         };
 
         // the first arguments will be filled later
@@ -1912,7 +1955,7 @@ uno::Reference < embed::XStorage > SfxMedium::GetStorage( bool bCreateTempFile )
             const util::RevisionTag& rTag = pImpl->aVersions[nVersion];
             {
                 // Open SubStorage for all versions
-                uno::Reference < embed::XStorage > xSub = pImpl->xStorage->openStorageElement( "Versions",
+                uno::Reference < embed::XStorage > xSub = pImpl->xStorage->openStorageElement( u"Versions"_ustr,
                         embed::ElementModes::READ );
 
                 DBG_ASSERT( xSub.is(), "Version list, but no Versions!" );
@@ -1964,7 +2007,7 @@ uno::Reference < embed::XStorage > SfxMedium::GetStorage( bool bCreateTempFile )
     return pImpl->xStorage;
 }
 
-uno::Reference<embed::XStorage> SfxMedium::GetScriptingStorageToSign_Impl()
+const uno::Reference<embed::XStorage> & SfxMedium::GetScriptingStorageToSign_Impl()
 {
     // this was set when it was initially loaded
     if (pImpl->m_bODFWholesomeEncryption)
@@ -1984,7 +2027,8 @@ uno::Reference<embed::XStorage> SfxMedium::GetScriptingStorageToSign_Impl()
                 pImpl->m_xODFDecryptedInnerZipStorage =
                     ::comphelper::OStorageHelper::GetStorageOfFormatFromInputStream(
                         ZIP_STORAGE_FORMAT_STRING,
-                        pImpl->m_xODFDecryptedInnerPackageStream->getInputStream());
+                        pImpl->m_xODFDecryptedInnerPackageStream->getInputStream(), {},
+                        IsRepairPackage());
             }
         }
         return pImpl->m_xODFDecryptedInnerZipStorage;
@@ -2009,11 +2053,15 @@ uno::Reference< embed::XStorage > const & SfxMedium::GetZipStorageToSign_Impl( b
             // should it be possible at all?
             if ( !bReadOnly && pImpl->xStream.is() )
             {
-                pImpl->m_xZipStorage = ::comphelper::OStorageHelper::GetStorageOfFormatFromStream( ZIP_STORAGE_FORMAT_STRING, pImpl->xStream );
+                pImpl->m_xZipStorage = ::comphelper::OStorageHelper::GetStorageOfFormatFromStream(
+                    ZIP_STORAGE_FORMAT_STRING, pImpl->xStream, css::embed::ElementModes::READWRITE,
+                    {}, IsRepairPackage());
             }
             else if ( pImpl->xInputStream.is() )
             {
-                pImpl->m_xZipStorage = ::comphelper::OStorageHelper::GetStorageOfFormatFromInputStream( ZIP_STORAGE_FORMAT_STRING, pImpl->xInputStream );
+                pImpl->m_xZipStorage
+                    = ::comphelper::OStorageHelper::GetStorageOfFormatFromInputStream(
+                        ZIP_STORAGE_FORMAT_STRING, pImpl->xInputStream, {}, IsRepairPackage());
             }
         }
         catch( const uno::Exception& )
@@ -2271,7 +2319,7 @@ void SfxMedium::TransactedTransferForFS_Impl( const INetURLObject& aSource,
                     {
                         Reference< XInputStream > aTempInput = aTempCont.openStream();
                         bTransactStarted = true;
-                        aOriginalContent.setPropertyValue( "Size", uno::Any( sal_Int64(0) ) );
+                        aOriginalContent.setPropertyValue( u"Size"_ustr, uno::Any( sal_Int64(0) ) );
                         aOriginalContent.writeStream( aTempInput, bOverWrite );
                         bResult = true;
                     }
@@ -2368,7 +2416,7 @@ bool SfxMedium::TryDirectTransfer( const OUString& aURL, SfxItemSet const & aTar
                     ::ucbhelper::Content aTargetContent( aURL, xEnv, comphelper::getProcessComponentContext() );
 
                     InsertCommandArgument aInsertArg;
-                    aInsertArg.Data = xInStream;
+                    aInsertArg.Data = std::move(xInStream);
                     const SfxBoolItem* pOverWrite = aTargetSet.GetItem<SfxBoolItem>(SID_OVERWRITE, false);
                     if ( pOverWrite && !pOverWrite->GetValue() ) // argument says: never overwrite
                         aInsertArg.ReplaceExisting = false;
@@ -2377,7 +2425,7 @@ bool SfxMedium::TryDirectTransfer( const OUString& aURL, SfxItemSet const & aTar
 
                     Any aCmdArg;
                     aCmdArg <<= aInsertArg;
-                    aTargetContent.executeCommand( "insert",
+                    aTargetContent.executeCommand( u"insert"_ustr,
                                                     aCmdArg );
 
                     if ( xSeek.is() )
@@ -2555,9 +2603,9 @@ void SfxMedium::Transfer_Impl()
         OUString sObjectId;
         try
         {
-            Any aAny = aDestContent.getPropertyValue("Title");
+            Any aAny = aDestContent.getPropertyValue(u"Title"_ustr);
             aAny >>= aFileName;
-            aAny = aDestContent.getPropertyValue("ObjectId");
+            aAny = aDestContent.getPropertyValue(u"ObjectId"_ustr);
             aAny >>= sObjectId;
         }
         catch (uno::Exception const&)
@@ -2800,7 +2848,7 @@ void SfxMedium::DoBackup_Impl(bool bForceUsingBackupPath)
             INetURLObject aDest( aBakDir );
             aDest.insertName( aSource.getName() );
             const OUString sExt
-                = aSource.hasExtension() ? aSource.getExtension() + ".bak" : OUString("bak");
+                = aSource.hasExtension() ? aSource.getExtension() + ".bak" : u"bak"_ustr;
             aDest.setExtension(sExt);
             OUString aFileName = aDest.getName( INetURLObject::LAST_SEGMENT, true, INetURLObject::DecodeMechanism::WithCharset );
 
@@ -2895,7 +2943,7 @@ void SfxMedium::GetLockingStream_Impl()
             pImpl->xStream = pImpl->m_xLockingStream;
 
         if ( xInputStream.is() )
-            pImpl->xInputStream = xInputStream;
+            pImpl->xInputStream = std::move(xInputStream);
 
         if ( !pImpl->xInputStream.is() && pImpl->xStream.is() )
             pImpl->xInputStream = pImpl->xStream->getInputStream();
@@ -3034,7 +3082,8 @@ void SfxMedium::GetMedium_Impl()
     pImpl->bDownloadDone = true;
     pImpl->aDoneLink.ClearPendingCall();
     ErrCodeMsg nError = GetErrorIgnoreWarning();
-    pImpl->aDoneLink.Call( reinterpret_cast<void*>(sal_uInt32(nError.GetCode())) );
+    sal_uIntPtr nErrorCode = sal_uInt32(nError.GetCode());
+    pImpl->aDoneLink.Call( reinterpret_cast<void*>(nErrorCode) );
 }
 
 bool SfxMedium::IsRemote() const
@@ -3221,7 +3270,7 @@ SfxMedium::GetInteractionHandler( bool bGetAlways )
         return pImpl->xInteraction;
 
     // create default handler and cache it!
-    Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     pImpl->xInteraction.set(
         task::InteractionHandler::createWithParent(xContext, nullptr), UNO_QUERY_THROW );
     return pImpl->xInteraction;
@@ -3516,7 +3565,7 @@ void SfxMedium::CompleteReOpen()
     bool bUseInteractionHandler = pImpl->bUseInteractionHandler;
     pImpl->bUseInteractionHandler = false;
 
-    std::unique_ptr<::utl::TempFileNamed> pTmpFile;
+    std::unique_ptr<MediumTempFile> pTmpFile;
     if ( pImpl->pTempFile )
     {
         pTmpFile = std::move(pImpl->pTempFile);
@@ -3639,11 +3688,10 @@ SfxMedium::SfxMedium( const uno::Sequence<beans::PropertyValue>& aArgs ) :
 
 void SfxMedium::SetArgs(const uno::Sequence<beans::PropertyValue>& rArgs)
 {
-    static constexpr OUStringLiteral sStream(u"Stream");
-    static constexpr OUStringLiteral sInputStream(u"InputStream");
     comphelper::SequenceAsHashMap aArgsMap(rArgs);
-    aArgsMap.erase(sStream);
-    aArgsMap.erase(sInputStream);
+    aArgsMap.erase(u"Stream"_ustr);
+    aArgsMap.erase(u"InputStream"_ustr);
+
     pImpl->m_aArgs = aArgsMap.getAsConstPropertyValueList();
 }
 
@@ -3693,6 +3741,8 @@ SfxMedium::~SfxMedium()
 
     Close(/*bInDestruction*/true);
 
+    ReleaseEmbeddedFonts();
+
     if( !pImpl->bIsTemp || pImpl->m_aName.isEmpty() )
         return;
 
@@ -3707,6 +3757,15 @@ SfxMedium::~SfxMedium()
     {
         SAL_WARN( "sfx.doc", "Couldn't remove temporary file!");
     }
+}
+
+void SfxMedium::ReleaseEmbeddedFonts()
+{
+    std::vector<std::pair<OUString, OUString>> toRelease(std::move(pImpl->m_aEmbeddedFonts));
+    toRelease.insert(toRelease.end(), pImpl->m_aEmbeddedFontsToActivate.begin(),
+                     pImpl->m_aEmbeddedFontsToActivate.end());
+    pImpl->m_aEmbeddedFontsToActivate.clear();
+    EmbeddedFontsManager::releaseFonts(toRelease);
 }
 
 const OUString& SfxMedium::GetName() const
@@ -3787,11 +3846,11 @@ SvKeyValueIterator* SfxMedium::GetHeaderAttributes_Impl()
         {
             try
             {
-                Any aAny = pImpl->aContent.getPropertyValue("MediaType");
+                Any aAny = pImpl->aContent.getPropertyValue(u"MediaType"_ustr);
                 OUString aContentType;
                 aAny >>= aContentType;
 
-                pImpl->xAttributes->Append( SvKeyValue( "content-type", aContentType ) );
+                pImpl->xAttributes->Append( SvKeyValue( u"content-type"_ustr, aContentType ) );
             }
             catch ( const css::uno::Exception& )
             {
@@ -3855,7 +3914,7 @@ void SfxMedium::AddVersion_Impl( util::RevisionTag& rRevision )
     // To determine a unique name for the stream
     std::vector<sal_uInt32> aLongs;
     sal_Int32 nLength = pImpl->aVersions.getLength();
-    for ( const auto& rVersion : std::as_const(pImpl->aVersions) )
+    for (const auto& rVersion : pImpl->aVersions)
     {
         sal_uInt32 nVer = static_cast<sal_uInt32>( o3tl::toInt32(rVersion.Identifier.subView(7)));
         size_t n;
@@ -3922,6 +3981,10 @@ void SfxMedium::SaveVersionList_Impl()
 
 bool SfxMedium::IsReadOnly() const
 {
+    // Application-wide read-only mode first
+    if (officecfg::Office::Common::Misc::ViewerAppMode::get())
+        return true;
+
     // a) ReadOnly filter can't produce read/write contents!
     bool bReadOnly = pImpl->m_pFilter && (pImpl->m_pFilter->GetFilterFlags() & SfxFilterFlags::OPENREADONLY);
 
@@ -3936,6 +3999,10 @@ bool SfxMedium::IsReadOnly() const
         if (pItem)
             bReadOnly = pItem->GetValue();
     }
+
+    // d) Embedded fonts may disallow editing
+    if (!bReadOnly)
+        bReadOnly = HasRestrictedFonts();
 
     return bReadOnly;
 }
@@ -3953,6 +4020,40 @@ void SfxMedium::SetOriginallyReadOnly(bool val)
 bool SfxMedium::IsOriginallyLoadedReadOnly() const
 {
     return pImpl->m_bOriginallyLoadedReadOnly;
+}
+
+bool SfxMedium::HasRestrictedFonts() const { return pImpl->hasRestrictedFonts; }
+
+void SfxMedium::TransferEmbeddedFontsTo(SfxMedium& target)
+{
+    target.pImpl->hasRestrictedFonts = target.pImpl->hasRestrictedFonts || pImpl->hasRestrictedFonts;
+    target.pImpl->m_aEmbeddedFonts.insert(target.pImpl->m_aEmbeddedFonts.end(),
+                                          pImpl->m_aEmbeddedFonts.begin(),
+                                          pImpl->m_aEmbeddedFonts.end());
+    pImpl->m_aEmbeddedFonts.clear();
+    target.pImpl->m_aEmbeddedFontsToActivate.insert(target.pImpl->m_aEmbeddedFontsToActivate.end(),
+                                                    pImpl->m_aEmbeddedFontsToActivate.begin(),
+                                                    pImpl->m_aEmbeddedFontsToActivate.end());
+    pImpl->m_aEmbeddedFontsToActivate.clear();
+}
+
+void SfxMedium::AddEmbeddedFonts(
+    const css::uno::Sequence<css::beans::StringPair>& fonts)
+{
+    for (const auto& [ name, url ] : fonts)
+        pImpl->m_aEmbeddedFontsToActivate.emplace_back(name, url);
+}
+
+void SfxMedium::activateEmbeddedFonts()
+{
+    bool bActivatedRestrictedFonts;
+    EmbeddedFontsManager::activateFonts(pImpl->m_aEmbeddedFontsToActivate, IsReadOnly(),
+                                       GetInteractionHandler(), bActivatedRestrictedFonts);
+    pImpl->hasRestrictedFonts = pImpl->hasRestrictedFonts || bActivatedRestrictedFonts;
+    pImpl->m_aEmbeddedFonts.insert(pImpl->m_aEmbeddedFonts.end(),
+                                   pImpl->m_aEmbeddedFontsToActivate.begin(),
+                                   pImpl->m_aEmbeddedFontsToActivate.end());
+    pImpl->m_aEmbeddedFontsToActivate.clear();
 }
 
 bool SfxMedium::SetWritableForUserOnly( const OUString& aURL )
@@ -3998,6 +4099,8 @@ OUString GetLogicBase(const INetURLObject& rURL, std::unique_ptr<SfxMedium_Impl>
     (void) rURL;
     (void) pImpl;
 #else
+    if (!officecfg::Office::Common::Misc::TempFileNextToLocalFile::get())
+        return aLogicBase;
 
     if (!pImpl->m_bHasEmbeddedObjects // Embedded objects would mean a special base, ignore that.
         && rURL.GetProtocol() == INetProtocol::File && !pImpl->m_pInStream)
@@ -4026,7 +4129,9 @@ void SfxMedium::CreateTempFile( bool bReplace )
     }
 
     OUString aLogicBase = GetLogicBase(GetURLObject(), pImpl);
-    pImpl->pTempFile.reset(new ::utl::TempFileNamed(&aLogicBase));
+    pImpl->pTempFile.reset(new MediumTempFile(&aLogicBase));
+    if (!aLogicBase.isEmpty() && pImpl->pTempFile->GetFileName().isEmpty())
+        pImpl->pTempFile.reset(new MediumTempFile(nullptr));
     pImpl->pTempFile->EnableKillingFile();
     pImpl->m_aName = pImpl->pTempFile->GetFileName();
     OUString aTmpURL = pImpl->pTempFile->GetURL();
@@ -4122,7 +4227,9 @@ void SfxMedium::CreateTempFileNoCopy()
     pImpl->pTempFile.reset();
 
     OUString aLogicBase = GetLogicBase(GetURLObject(), pImpl);
-    pImpl->pTempFile.reset(new ::utl::TempFileNamed(&aLogicBase));
+    pImpl->pTempFile.reset(new MediumTempFile(&aLogicBase));
+    if (!aLogicBase.isEmpty() && pImpl->pTempFile->GetFileName().isEmpty())
+        pImpl->pTempFile.reset(new MediumTempFile(nullptr));
     pImpl->pTempFile->EnableKillingFile();
     pImpl->m_aName = pImpl->pTempFile->GetFileName();
     if ( pImpl->m_aName.isEmpty() )
@@ -4137,7 +4244,7 @@ void SfxMedium::CreateTempFileNoCopy()
 
 bool SfxMedium::SignDocumentContentUsingCertificate(
     const css::uno::Reference<css::frame::XModel>& xModel, bool bHasValidDocumentSignature,
-    const Reference<XCertificate>& xCertificate)
+    svl::crypto::SigningContext& rSigningContext)
 {
     bool bChanges = false;
 
@@ -4187,66 +4294,64 @@ bool SfxMedium::SignDocumentContentUsingCertificate(
             throw uno::RuntimeException();
 
         uno::Reference< embed::XStorage > xMetaInf;
-        if (xWriteableZipStor.is() && xWriteableZipStor->hasByName("META-INF"))
+        if (xWriteableZipStor.is() && xWriteableZipStor->hasByName(u"META-INF"_ustr))
         {
             xMetaInf = xWriteableZipStor->openStorageElement(
-                                            "META-INF",
+                                            u"META-INF"_ustr,
                                             embed::ElementModes::READWRITE );
             if ( !xMetaInf.is() )
                 throw uno::RuntimeException();
         }
 
+        if (xMetaInf.is())
         {
-            if (xMetaInf.is())
+            // ODF.
+            uno::Reference< io::XStream > xStream;
+            if (GetFilter() && GetFilter()->IsOwnFormat())
+                xStream.set(xMetaInf->openStreamElement(xSigner->getDocumentContentSignatureDefaultStreamName(), embed::ElementModes::READWRITE), uno::UNO_SET_THROW);
+
+            bool bSuccess = xModelSigner->SignModelWithCertificate(
+                xModel, rSigningContext, GetZipStorageToSign_Impl(), xStream);
+
+            if (bSuccess)
             {
-                // ODF.
-                uno::Reference< io::XStream > xStream;
-                if (GetFilter() && GetFilter()->IsOwnFormat())
-                    xStream.set(xMetaInf->openStreamElement(xSigner->getDocumentContentSignatureDefaultStreamName(), embed::ElementModes::READWRITE), uno::UNO_SET_THROW);
+                uno::Reference< embed::XTransactedObject > xTransact( xMetaInf, uno::UNO_QUERY_THROW );
+                xTransact->commit();
+                xTransact.set( xWriteableZipStor, uno::UNO_QUERY_THROW );
+                xTransact->commit();
 
-                bool bSuccess = xModelSigner->SignModelWithCertificate(
-                    xModel, xCertificate, GetZipStorageToSign_Impl(), xStream);
-
-                if (bSuccess)
-                {
-                    uno::Reference< embed::XTransactedObject > xTransact( xMetaInf, uno::UNO_QUERY_THROW );
-                    xTransact->commit();
-                    xTransact.set( xWriteableZipStor, uno::UNO_QUERY_THROW );
-                    xTransact->commit();
-
-                    // the temporary file has been written, commit it to the original file
-                    Commit();
-                    bChanges = true;
-                }
+                // the temporary file has been written, commit it to the original file
+                Commit();
+                bChanges = true;
             }
-            else if (xWriteableZipStor.is())
+        }
+        else if (xWriteableZipStor.is())
+        {
+            // OOXML.
+            uno::Reference<io::XStream> xStream;
+
+                // We need read-write to be able to add the signature relation.
+            bool bSuccess = xModelSigner->SignModelWithCertificate(
+                xModel, rSigningContext, GetZipStorageToSign_Impl(/*bReadOnly=*/false), xStream);
+
+            if (bSuccess)
             {
-                // OOXML.
-                uno::Reference<io::XStream> xStream;
+                uno::Reference<embed::XTransactedObject> xTransact(xWriteableZipStor, uno::UNO_QUERY_THROW);
+                xTransact->commit();
 
-                    // We need read-write to be able to add the signature relation.
-                bool bSuccess = xModelSigner->SignModelWithCertificate(
-                    xModel, xCertificate, GetZipStorageToSign_Impl(/*bReadOnly=*/false), xStream);
-
-                if (bSuccess)
-                {
-                    uno::Reference<embed::XTransactedObject> xTransact(xWriteableZipStor, uno::UNO_QUERY_THROW);
-                    xTransact->commit();
-
-                    // the temporary file has been written, commit it to the original file
-                    Commit();
-                    bChanges = true;
-                }
+                // the temporary file has been written, commit it to the original file
+                Commit();
+                bChanges = true;
             }
-            else
-            {
-                // Something not ZIP based: e.g. PDF.
-                std::unique_ptr<SvStream> pStream(utl::UcbStreamHelper::CreateStream(GetName(), StreamMode::READ | StreamMode::WRITE));
-                uno::Reference<io::XStream> xStream(new utl::OStreamWrapper(*pStream));
-                if (xModelSigner->SignModelWithCertificate(
-                        xModel, xCertificate, uno::Reference<embed::XStorage>(), xStream))
-                    bChanges = true;
-            }
+        }
+        else
+        {
+            // Something not ZIP based: e.g. PDF.
+            std::unique_ptr<SvStream> pStream(utl::UcbStreamHelper::CreateStream(GetName(), StreamMode::READ | StreamMode::WRITE));
+            uno::Reference<io::XStream> xStream(new utl::OStreamWrapper(*pStream));
+            if (xModelSigner->SignModelWithCertificate(
+                    xModel, rSigningContext, uno::Reference<embed::XStorage>(), xStream))
+                bChanges = true;
         }
     }
     catch ( const uno::Exception& )
@@ -4262,9 +4367,11 @@ bool SfxMedium::SignDocumentContentUsingCertificate(
 }
 
 // note: this is the only function creating scripting signature
-bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
+void SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
                                   bool bSignScriptingContent,
                                   bool bHasValidDocumentSignature,
+                                  SfxViewShell* pViewShell,
+                                  const std::function<void(bool)>& rCallback,
                                   const OUString& aSignatureLineId,
                                   const Reference<XCertificate>& xCert,
                                   const Reference<XGraphic>& xValidGraphic,
@@ -4276,7 +4383,8 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
     if (IsOpen() || GetErrorIgnoreWarning())
     {
         SAL_WARN("sfx.doc", "The medium must be closed by the signer!");
-        return bChanges;
+        rCallback(bChanges);
+        return;
     }
 
     // The component should know if there was a valid document signature, since
@@ -4293,6 +4401,14 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
     // we can reuse the temporary file if there is one already
     CreateTempFile( false );
     GetMedium_Impl();
+
+    auto onSignDocumentContentFinished = [this, rCallback](bool bRet) {
+        CloseAndRelease();
+
+        ResetError();
+
+        rCallback(bRet);
+    };
 
     try
     {
@@ -4327,15 +4443,17 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
             throw uno::RuntimeException();
 
         uno::Reference< embed::XStorage > xMetaInf;
-        if (xWriteableZipStor.is() && xWriteableZipStor->hasByName("META-INF"))
+        if (xWriteableZipStor.is() && xWriteableZipStor->hasByName(u"META-INF"_ustr))
         {
             xMetaInf = xWriteableZipStor->openStorageElement(
-                                            "META-INF",
+                                            u"META-INF"_ustr,
                                             embed::ElementModes::READWRITE );
             if ( !xMetaInf.is() )
                 throw uno::RuntimeException();
         }
 
+        auto xModelSigner = dynamic_cast<sfx2::DigitalSignatures*>(xSigner.get());
+        assert(xModelSigner);
         if ( bSignScriptingContent )
         {
             // If the signature has already the document signature it will be removed
@@ -4349,8 +4467,10 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
             // xWriteableZipStor because a writable storage can't have 2
             // instances of sub-storage for the same directory open, but with
             // independent storages it somehow works
-            if (xSigner->signScriptingContent(GetScriptingStorageToSign_Impl(), xStream))
-            {
+            xModelSigner->SignScriptingContentAsync(
+                GetScriptingStorageToSign_Impl(), xStream,
+                [this, xSigner, xMetaInf, xWriteableZipStor,
+                 onSignDocumentContentFinished=std::move(onSignDocumentContentFinished)](bool bRet) {
                 // remove the document signature if any
                 OUString aDocSigName = xSigner->getDocumentContentSignatureDefaultStreamName();
                 if ( !aDocSigName.isEmpty() && xMetaInf->hasByName( aDocSigName ) )
@@ -4363,10 +4483,10 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
 
                 if (pImpl->m_bODFWholesomeEncryption)
                 {   // manually copy the inner package to the outer one
-                    uno::Reference<io::XSeekable>(pImpl->m_xODFDecryptedInnerPackageStream, uno::UNO_QUERY_THROW)->seek(0);
+                    pImpl->m_xODFDecryptedInnerPackageStream->seek(0);
                     uno::Reference<io::XStream> const xEncryptedPackage =
                         pImpl->m_xODFEncryptedOuterStorage->openStreamElement(
-                            "encrypted-package",
+                            u"encrypted-package"_ustr,
                             embed::ElementModes::WRITE|embed::ElementModes::TRUNCATE);
                     comphelper::OStorageHelper::CopyInputToOutput(pImpl->m_xODFDecryptedInnerPackageStream->getInputStream(), xEncryptedPackage->getOutputStream());
                     xTransact.set(pImpl->m_xODFEncryptedOuterStorage, uno::UNO_QUERY_THROW);
@@ -4377,29 +4497,48 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
                     || !uno::Reference<util::XModifiable>(pImpl->xStorage, uno::UNO_QUERY_THROW)->isModified());
                 // the temporary file has been written, commit it to the original file
                 Commit();
-                bChanges = true;
-            }
+                onSignDocumentContentFinished(bRet);
+            });
+            return;
         }
         else
         {
+            // Signing the entire document.
             if (xMetaInf.is())
             {
                 // ODF.
                 uno::Reference< io::XStream > xStream;
+                uno::Reference< io::XStream > xScriptingStream;
                 if (GetFilter() && GetFilter()->IsOwnFormat())
+                {
+                    bool bImplicitScriptSign = officecfg::Office::Common::Security::Scripting::ImplicitScriptSign::get();
+                    if (comphelper::LibreOfficeKit::isActive())
+                    {
+                        bImplicitScriptSign = true;
+                    }
+
+                    OUString aDocSigName = xSigner->getDocumentContentSignatureDefaultStreamName();
+                    bool bHasSignatures = xMetaInf->hasByName(aDocSigName);
+
+                    // C.f. DocumentSignatureHelper::CreateElementList() for the
+                    // DocumentSignatureMode::Macros case.
+                    bool bHasMacros = xWriteableZipStor->hasByName(u"Basic"_ustr)
+                                      || xWriteableZipStor->hasByName(u"Dialogs"_ustr)
+                                      || xWriteableZipStor->hasByName(u"Scripts"_ustr);
+
                     xStream.set(xMetaInf->openStreamElement(xSigner->getDocumentContentSignatureDefaultStreamName(), embed::ElementModes::READWRITE), uno::UNO_SET_THROW);
+                    if (bImplicitScriptSign && bHasMacros && !bHasSignatures)
+                    {
+                        xScriptingStream.set(
+                            xMetaInf->openStreamElement(
+                                xSigner->getScriptingContentSignatureDefaultStreamName(),
+                                embed::ElementModes::READWRITE),
+                            uno::UNO_SET_THROW);
+                    }
+                }
 
                 bool bSuccess = false;
-                if (xCert.is())
-                    bSuccess = xSigner->signSignatureLine(
-                        GetZipStorageToSign_Impl(), xStream, aSignatureLineId, xCert,
-                        xValidGraphic, xInvalidGraphic, aComment);
-                else
-                    bSuccess = xSigner->signDocumentContent(GetZipStorageToSign_Impl(),
-                                                            xStream);
-
-                if (bSuccess)
-                {
+                auto onODFSignDocumentContentFinished = [this, xMetaInf, xWriteableZipStor]() {
                     uno::Reference< embed::XTransactedObject > xTransact( xMetaInf, uno::UNO_QUERY_THROW );
                     xTransact->commit();
                     xTransact.set( xWriteableZipStor, uno::UNO_QUERY_THROW );
@@ -4407,6 +4546,35 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
 
                     // the temporary file has been written, commit it to the original file
                     Commit();
+                };
+                if (xCert.is())
+                    bSuccess = xSigner->signSignatureLine(
+                        GetZipStorageToSign_Impl(), xStream, aSignatureLineId, xCert,
+                        xValidGraphic, xInvalidGraphic, aComment);
+                else
+                {
+                    if (xScriptingStream.is())
+                    {
+                        xModelSigner->SetSignScriptingContent(xScriptingStream);
+                    }
+
+                    // Async, all code before return has to go into the callback.
+                    xModelSigner->SignDocumentContentAsync(GetZipStorageToSign_Impl(), xStream, pViewShell,
+                                                           [onODFSignDocumentContentFinished,
+                                                            onSignDocumentContentFinished=std::move(onSignDocumentContentFinished)](bool bRet) {
+                        if (bRet)
+                        {
+                            onODFSignDocumentContentFinished();
+                        }
+
+                        onSignDocumentContentFinished(bRet);
+                    });
+                    return;
+                }
+
+                if (bSuccess)
+                {
+                    onODFSignDocumentContentFinished();
                     bChanges = true;
                 }
             }
@@ -4415,6 +4583,13 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
                 // OOXML.
                 uno::Reference<io::XStream> xStream;
 
+                auto onOOXMLSignDocumentContentFinished = [this, xWriteableZipStor]() {
+                    uno::Reference<embed::XTransactedObject> xTransact(xWriteableZipStor, uno::UNO_QUERY_THROW);
+                    xTransact->commit();
+
+                    // the temporary file has been written, commit it to the original file
+                    Commit();
+                };
                 bool bSuccess = false;
                 if (xCert.is())
                 {
@@ -4425,17 +4600,23 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
                 else
                 {
                     // We need read-write to be able to add the signature relation.
-                    bSuccess =xSigner->signDocumentContent(
-                        GetZipStorageToSign_Impl(/*bReadOnly=*/false), xStream);
+                    xModelSigner->SignDocumentContentAsync(
+                        GetZipStorageToSign_Impl(/*bReadOnly=*/false), xStream, pViewShell,
+                        [onOOXMLSignDocumentContentFinished,
+                         onSignDocumentContentFinished=std::move(onSignDocumentContentFinished)](bool bRet) {
+                        if (bRet)
+                        {
+                            onOOXMLSignDocumentContentFinished();
+                        }
+
+                        onSignDocumentContentFinished(bRet);
+                    });
+                    return;
                 }
 
                 if (bSuccess)
                 {
-                    uno::Reference<embed::XTransactedObject> xTransact(xWriteableZipStor, uno::UNO_QUERY_THROW);
-                    xTransact->commit();
-
-                    // the temporary file has been written, commit it to the original file
-                    Commit();
+                    onOOXMLSignDocumentContentFinished();
                     bChanges = true;
                 }
             }
@@ -4443,9 +4624,12 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
             {
                 // Something not ZIP based: e.g. PDF.
                 std::unique_ptr<SvStream> pStream(utl::UcbStreamHelper::CreateStream(GetName(), StreamMode::READ | StreamMode::WRITE));
-                uno::Reference<io::XStream> xStream(new utl::OStreamWrapper(*pStream));
-                if (xSigner->signDocumentContent(uno::Reference<embed::XStorage>(), xStream))
-                    bChanges = true;
+                uno::Reference<io::XStream> xStream(new utl::OStreamWrapper(std::move(pStream)));
+                xModelSigner->SignDocumentContentAsync(uno::Reference<embed::XStorage>(), xStream, pViewShell,
+                                                       [onSignDocumentContentFinished=std::move(onSignDocumentContentFinished)](bool bRet) {
+                    onSignDocumentContentFinished(bRet);
+                });
+                return;
             }
         }
     }
@@ -4454,11 +4638,7 @@ bool SfxMedium::SignContents_Impl(weld::Window* pDialogParent,
         TOOLS_WARN_EXCEPTION("sfx.doc", "Couldn't use signing functionality!");
     }
 
-    CloseAndRelease();
-
-    ResetError();
-
-    return bChanges;
+    onSignDocumentContentFinished(bChanges);
 }
 
 
@@ -4625,7 +4805,7 @@ OUString SfxMedium::SwitchDocumentToTempFile()
                     SetPhysicalName_Impl( OUString() );
                     SetName( aOrigURL );
                     GetMedium_Impl();
-                    pImpl->xStorage = xStorage;
+                    pImpl->xStorage = std::move(xStorage);
                 }
             }
         }
@@ -4661,12 +4841,15 @@ bool SfxMedium::SwitchDocumentToFile( const OUString& aURL )
         {
             try
             {
-                uno::Reference< io::XTruncate > xTruncate( pImpl->xStream, uno::UNO_QUERY_THROW );
-                xTruncate->truncate();
-                if ( xOptStorage.is() )
-                    xOptStorage->writeAndAttachToStream( pImpl->xStream );
-                pImpl->xStorage = xStorage;
-                bResult = true;
+                uno::Reference< io::XTruncate > xTruncate( pImpl->xStream, uno::UNO_QUERY );
+                if (xTruncate)
+                {
+                    xTruncate->truncate();
+                    if ( xOptStorage.is() )
+                        xOptStorage->writeAndAttachToStream( pImpl->xStream );
+                    pImpl->xStorage = xStorage;
+                    bResult = true;
+                }
             }
             catch( const uno::Exception& )
             {}
@@ -4678,7 +4861,7 @@ bool SfxMedium::SwitchDocumentToFile( const OUString& aURL )
             SetPhysicalName_Impl( OUString() );
             SetName( aOrigURL );
             GetMedium_Impl();
-            pImpl->xStorage = xStorage;
+            pImpl->xStorage = std::move(xStorage);
         }
     }
 
@@ -4758,7 +4941,7 @@ void SfxMedium::AddToCheckEditableWorkerList()
 
             if (newEntry != nullptr)
             {
-                g_newReadOnlyDocs[this] = newEntry;
+                g_newReadOnlyDocs[this] = std::move(newEntry);
             }
         }
     }
@@ -4818,7 +5001,7 @@ IMPL_STATIC_LINK(SfxMedium, ShowReloadEditableDialog, void*, p, void)
             xHandler->handle(xInteractionRequestImpl);
             ::rtl::Reference<::ucbhelper::InteractionContinuation> xSelected
                 = xInteractionRequestImpl->getSelection();
-            if (uno::Reference<task::XInteractionApprove>(xSelected.get(), uno::UNO_QUERY).is())
+            if (uno::Reference<task::XInteractionApprove>(cppu::getXWeak(xSelected.get()), uno::UNO_QUERY).is())
             {
                 for (SfxViewFrame* pFrame = SfxViewFrame::GetFirst(); pFrame;
                      pFrame = SfxViewFrame::GetNext(*pFrame))
@@ -4924,11 +5107,10 @@ void CheckReadOnlyTask::doWork()
         std::unique_lock<std::mutex> globalLock(g_chkReadOnlyGlobalMutex);
         for (auto it = g_newReadOnlyDocs.begin(); it != g_newReadOnlyDocs.end(); )
         {
-            auto [pMed, roEntry] = *it;
-            g_existingReadOnlyDocs[pMed] = roEntry;
+            g_existingReadOnlyDocs[it->first] = it->second;
             it = g_newReadOnlyDocs.erase(it);
         }
-        if (g_existingReadOnlyDocs.size() == 0)
+        if (g_existingReadOnlyDocs.empty())
         {
             g_bChkReadOnlyTaskRunning = false;
             return;

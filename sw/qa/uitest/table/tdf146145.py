@@ -8,24 +8,26 @@
 #
 
 from uitest.framework import UITestCase
-from uitest.uihelper.common import get_url_for_data_file
+from uitest.uihelper.common import get_state_as_dict, get_url_for_data_file
 import time
-
-from com.sun.star.accessibility.AccessibleStateType import ENABLED
 
 class tdf146145(UITestCase):
 
-   # access to the private:resource changes toolbar via accessibility API
-   def is_enabled_Accept_Track_Change(self):
-       xFrame = self.document.getCurrentController().getFrame()
+    def is_enabled_Accept_Track_Change(self):
+        xFrame = self.document.getCurrentController().getFrame()
 
-       for i in xFrame.getPropertyValue("LayoutManager").getElements():
-           if i.getPropertyValue('ResourceURL') == 'private:resource/toolbar/changes':
-               return (ENABLED & i.getRealInterface().getAccessibleContext().getAccessibleChild(5).getAccessibleStateSet()) == ENABLED
+        for i in xFrame.getPropertyValue("LayoutManager").getElements():
+            if i.getPropertyValue('ResourceURL') == 'private:resource/toolbar/changes':
+                xToolBox = self.xUITest.getWindow(i.getRealInterface())
+                for child_name in xToolBox.getChildren():
+                    child = xToolBox.getChild(child_name)
+                    states = get_state_as_dict(child)
+                    if states['Text'] == 'Accept':
+                        return states['Enabled'] == 'true'
 
-       return False
+        return False
 
-   def test_tdf146145(self):
+    def test_tdf146145(self):
         with self.ui_test.load_file(get_url_for_data_file("TC-table-del-add.docx")) as self.document:
 
             # Check enabling Accept/Reject Track Change icons
@@ -107,7 +109,7 @@ class tdf146145(UITestCase):
             xToolkit.processEventsToIdle()
             self.assertEqual(len(tables[0].getRows()), 3)
 
-   def test_Related_tdf147182(self):
+    def test_Related_tdf147182(self):
         with self.ui_test.load_file(get_url_for_data_file("TC-table-del-add.docx")) as self.document:
 
             # Check enabling Accept/Reject Track Change icons
@@ -154,7 +156,7 @@ class tdf146145(UITestCase):
             # disabled Accept Track Change
             self.assertFalse(self.is_enabled_Accept_Track_Change())
 
-   def test_tdf155344(self):
+    def test_tdf155344(self):
         with self.ui_test.load_file(get_url_for_data_file("TC-table-del-add.docx")) as self.document:
 
             # accept all tracked changes
@@ -252,7 +254,7 @@ class tdf146145(UITestCase):
             xToolkit.processEventsToIdle()
             self.assertEqual(len(tables[0].getColumns()), 5)
 
-   def test_crashWithHiddenFirstTableColumn(self):
+    def test_crashWithHiddenFirstTableColumn(self):
         with self.ui_test.load_file(get_url_for_data_file("TC-table-del-add.docx")) as self.document:
 
             # accept all tracked changes

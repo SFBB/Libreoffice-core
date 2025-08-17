@@ -19,6 +19,7 @@
 #include <dialmgr.hxx>
 #include <strings.hrc>
 
+#include <o3tl/test_info.hxx>
 #include <sal/log.hxx>
 
 #include <com/sun/star/graphic/GraphicProvider.hpp>
@@ -71,11 +72,12 @@ using namespace ::com::sun::star::beans;
 namespace
 {
 // Gets the content of the given URL and returns as a standard string
-std::string ucbGet(const OUString& rURL)
+std::string ucbGet(const OUString& rURL, const css::uno::Reference<css::awt::XWindow>& xParentWin)
 {
     try
     {
-        auto const s = utl::UcbStreamHelper::CreateStream(rURL, StreamMode::STD_READ);
+        auto const s
+            = utl::UcbStreamHelper::CreateStream(rURL, StreamMode::STD_READ, xParentWin, false);
         if (!s)
         {
             SAL_WARN("cui.dialogs", "CreateStream <" << rURL << "> failed");
@@ -202,8 +204,8 @@ bool getPreviewFile(const AdditionInfo& aAdditionInfo, OUString& sPreviewFile)
         = ucb::SimpleFileAccess::create(comphelper::getProcessComponentContext());
 
     // copy the images to the user's additions folder
-    OUString userFolder = "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER
-                          "/" SAL_CONFIGFILE("bootstrap") "::UserInstallation}";
+    OUString userFolder = u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER
+                          "/" SAL_CONFIGFILE("bootstrap") "::UserInstallation}"_ustr;
     rtl::Bootstrap::expandMacros(userFolder);
     userFolder += "/user/additions/" + aAdditionInfo.sExtensionID + "/";
 
@@ -277,9 +279,7 @@ SearchAndParseThread::SearchAndParseThread(AdditionsDialog* pDialog, const bool 
 {
     // if we are running a UITest, e.g. UITest_sw_options then
     // don't attempt to downloading anything
-    static const bool bUITest = getenv("LIBO_TEST_UNIT");
-
-    m_bUITest = bUITest;
+    m_bUITest = o3tl::IsRunningUITest();
 }
 
 SearchAndParseThread::~SearchAndParseThread() {}
@@ -300,9 +300,9 @@ void SearchAndParseThread::Append(AdditionInfo& additionInfo)
 
     SolarMutexGuard aGuard;
 
-    auto newItem = std::make_shared<AdditionsItem>(m_pAdditionsDialog->m_xContentGrid.get(),
-                                                   m_pAdditionsDialog, additionInfo);
-    m_pAdditionsDialog->m_aAdditionsItems.push_back(newItem);
+    m_pAdditionsDialog->m_aAdditionsItems.push_back(std::make_shared<AdditionsItem>(
+        m_pAdditionsDialog->m_xContentGrid.get(), m_pAdditionsDialog, additionInfo));
+
     std::shared_ptr<AdditionsItem> aCurrentItem = m_pAdditionsDialog->m_aAdditionsItems.back();
 
     LoadImage(aPreviewFile, aCurrentItem);
@@ -404,7 +404,10 @@ void SearchAndParseThread::execute()
 
     if (m_bIsFirstLoading)
     {
-        std::string sResponse = !m_bUITest ? ucbGet(m_pAdditionsDialog->m_sURL) : "";
+        const auto pDialog = m_pAdditionsDialog->getDialog();
+        std::string sResponse = !m_bUITest ? ucbGet(m_pAdditionsDialog->m_sURL,
+                                                    pDialog ? pDialog->GetXWindow() : nullptr)
+                                           : "";
         parseResponse(sResponse, m_pAdditionsDialog->m_aAllExtensionsVector);
         std::sort(m_pAdditionsDialog->m_aAllExtensionsVector.begin(),
                   m_pAdditionsDialog->m_aAllExtensionsVector.end(),
@@ -425,17 +428,17 @@ void SearchAndParseThread::execute()
 }
 
 AdditionsDialog::AdditionsDialog(weld::Window* pParent, const OUString& sAdditionsTag)
-    : GenericDialogController(pParent, "cui/ui/additionsdialog.ui", "AdditionsDialog")
+    : GenericDialogController(pParent, u"cui/ui/additionsdialog.ui"_ustr, u"AdditionsDialog"_ustr)
     , m_aSearchDataTimer("AdditionsDialog SearchDataTimer")
-    , m_xEntrySearch(m_xBuilder->weld_entry("entrySearch"))
-    , m_xButtonClose(m_xBuilder->weld_button("buttonClose"))
-    , m_xContentWindow(m_xBuilder->weld_scrolled_window("contentWindow"))
-    , m_xContentGrid(m_xBuilder->weld_container("contentGrid"))
-    , m_xLabelProgress(m_xBuilder->weld_label("labelProgress"))
-    , m_xGearBtn(m_xBuilder->weld_menu_button("buttonGear"))
+    , m_xEntrySearch(m_xBuilder->weld_entry(u"entrySearch"_ustr))
+    , m_xButtonClose(m_xBuilder->weld_button(u"buttonClose"_ustr))
+    , m_xContentWindow(m_xBuilder->weld_scrolled_window(u"contentWindow"_ustr))
+    , m_xContentGrid(m_xBuilder->weld_grid(u"contentGrid"_ustr))
+    , m_xLabelProgress(m_xBuilder->weld_label(u"labelProgress"_ustr))
+    , m_xGearBtn(m_xBuilder->weld_menu_button(u"buttonGear"_ustr))
 {
     m_xGearBtn->connect_selected(LINK(this, AdditionsDialog, GearHdl));
-    m_xGearBtn->set_item_active("gear_sort_voting", true);
+    m_xGearBtn->set_item_active(u"gear_sort_voting"_ustr, true);
 
     m_aSearchDataTimer.SetInvokeHandler(LINK(this, AdditionsDialog, ImplUpdateDataHdl));
     m_aSearchDataTimer.SetTimeout(EDIT_UPDATEDATA_TIMEOUT);
@@ -451,7 +454,7 @@ AdditionsDialog::AdditionsDialog(weld::Window* pParent, const OUString& sAdditio
     OUString titlePrefix = CuiResId(RID_CUISTR_ADDITIONS_DIALOG_TITLE_PREFIX);
     if (!m_sTag.isEmpty())
     { // tdf#142564 localize extension category names
-        OUString sDialogTitle = "";
+        OUString sDialogTitle = u""_ustr;
         if (sAdditionsTag == "Templates")
         {
             sDialogTitle = CuiResId(RID_CUISTR_ADDITIONS_TEMPLATES);
@@ -471,6 +474,10 @@ AdditionsDialog::AdditionsDialog(weld::Window* pParent, const OUString& sAdditio
         else if (sAdditionsTag == "Color Palette")
         {
             sDialogTitle = CuiResId(RID_CUISTR_ADDITIONS_PALETTES);
+        }
+        else if (sAdditionsTag == "Themes")
+        {
+            sDialogTitle = CuiResId(RID_CUISTR_ADDITIONS_THEMES);
         }
         this->set_title(sDialogTitle);
     }
@@ -595,35 +602,35 @@ bool AdditionsDialog::sortByDownload(const AdditionInfo& a, const AdditionInfo& 
     return a.sDownloadNumber.toUInt32() > b.sDownloadNumber.toUInt32();
 }
 
-AdditionsItem::AdditionsItem(weld::Widget* pParent, AdditionsDialog* pParentDialog,
+AdditionsItem::AdditionsItem(weld::Grid* pParentGrid, AdditionsDialog* pParentDialog,
                              const AdditionInfo& additionInfo)
-    : m_xBuilder(Application::CreateBuilder(pParent, "cui/ui/additionsfragment.ui"))
-    , m_xContainer(m_xBuilder->weld_widget("additionsEntry"))
-    , m_xImageScreenshot(m_xBuilder->weld_image("imageScreenshot"))
-    , m_xButtonInstall(m_xBuilder->weld_button("buttonInstall"))
-    , m_xLinkButtonWebsite(m_xBuilder->weld_link_button("btnWebsite"))
-    , m_xLabelName(m_xBuilder->weld_label("lbName"))
-    , m_xLabelAuthor(m_xBuilder->weld_label("labelAuthor"))
-    , m_xLabelDescription(m_xBuilder->weld_label("labelDescription"))
-    , m_xLabelLicense(m_xBuilder->weld_label("lbLicenseText"))
-    , m_xLabelVersion(m_xBuilder->weld_label("lbVersionText"))
-    , m_xLinkButtonComments(m_xBuilder->weld_link_button("linkButtonComments"))
-    , m_xImageVoting1(m_xBuilder->weld_image("imageVoting1"))
-    , m_xImageVoting2(m_xBuilder->weld_image("imageVoting2"))
-    , m_xImageVoting3(m_xBuilder->weld_image("imageVoting3"))
-    , m_xImageVoting4(m_xBuilder->weld_image("imageVoting4"))
-    , m_xImageVoting5(m_xBuilder->weld_image("imageVoting5"))
-    , m_xLabelDownloadNumber(m_xBuilder->weld_label("labelDownloadNumber"))
-    , m_xButtonShowMore(m_xBuilder->weld_button("buttonShowMore"))
+    : m_xBuilder(Application::CreateBuilder(pParentGrid, u"cui/ui/additionsfragment.ui"_ustr))
+    , m_xContainer(m_xBuilder->weld_widget(u"additionsEntry"_ustr))
+    , m_xImageScreenshot(m_xBuilder->weld_image(u"imageScreenshot"_ustr))
+    , m_xButtonInstall(m_xBuilder->weld_button(u"buttonInstall"_ustr))
+    , m_xLinkButtonWebsite(m_xBuilder->weld_link_button(u"btnWebsite"_ustr))
+    , m_xLabelName(m_xBuilder->weld_label(u"lbName"_ustr))
+    , m_xLabelAuthor(m_xBuilder->weld_label(u"labelAuthor"_ustr))
+    , m_xLabelDescription(m_xBuilder->weld_label(u"labelDescription"_ustr))
+    , m_xLabelLicense(m_xBuilder->weld_label(u"lbLicenseText"_ustr))
+    , m_xLabelVersion(m_xBuilder->weld_label(u"lbVersionText"_ustr))
+    , m_xLinkButtonComments(m_xBuilder->weld_link_button(u"linkButtonComments"_ustr))
+    , m_xImageVoting1(m_xBuilder->weld_image(u"imageVoting1"_ustr))
+    , m_xImageVoting2(m_xBuilder->weld_image(u"imageVoting2"_ustr))
+    , m_xImageVoting3(m_xBuilder->weld_image(u"imageVoting3"_ustr))
+    , m_xImageVoting4(m_xBuilder->weld_image(u"imageVoting4"_ustr))
+    , m_xImageVoting5(m_xBuilder->weld_image(u"imageVoting5"_ustr))
+    , m_xLabelDownloadNumber(m_xBuilder->weld_label(u"labelDownloadNumber"_ustr))
+    , m_xButtonShowMore(m_xBuilder->weld_button(u"buttonShowMore"_ustr))
     , m_pParentDialog(pParentDialog)
-    , m_sDownloadURL("")
-    , m_sExtensionID("")
+    , m_sDownloadURL(u""_ustr)
+    , m_sExtensionID(u""_ustr)
 {
     SolarMutexGuard aGuard;
 
     // AdditionsItem set location
-    m_xContainer->set_grid_left_attach(0);
-    m_xContainer->set_grid_top_attach(pParentDialog->m_aAdditionsItems.size());
+    pParentGrid->set_child_left_attach(*m_xContainer, 0);
+    pParentGrid->set_child_top_attach(*m_xContainer, pParentDialog->m_aAdditionsItems.size());
 
     // Set maximum length of the extension title
     OUString sExtensionName;
@@ -687,8 +694,8 @@ bool AdditionsItem::getExtensionFile(OUString& sExtensionFile)
         = ucb::SimpleFileAccess::create(comphelper::getProcessComponentContext());
 
     // copy the extensions' files to the user's additions folder
-    OUString userFolder = "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER
-                          "/" SAL_CONFIGFILE("bootstrap") "::UserInstallation}";
+    OUString userFolder = u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER
+                          "/" SAL_CONFIGFILE("bootstrap") "::UserInstallation}"_ustr;
     rtl::Bootstrap::expandMacros(userFolder);
     userFolder += "/user/additions/" + m_sExtensionID + "/";
 
@@ -763,8 +770,9 @@ IMPL_LINK_NOARG(AdditionsItem, InstallHdl, weld::Button&, void)
     uno::Reference<task::XAbortChannel> xAbortChannel;
     try
     {
-        m_pParentDialog->m_xExtensionManager->addExtension(
-            aExtensionFile, uno::Sequence<beans::NamedValue>(), "user", xAbortChannel, pCmdEnv);
+        m_pParentDialog->m_xExtensionManager->addExtension(aExtensionFile,
+                                                           uno::Sequence<beans::NamedValue>(),
+                                                           u"user"_ustr, xAbortChannel, pCmdEnv);
         m_xButtonInstall->set_label(CuiResId(RID_CUISTR_ADDITIONS_INSTALLEDBUTTON));
     }
     catch (const ucb::CommandFailedException)
@@ -821,15 +829,11 @@ void TmpRepositoryCommandEnv::handle(uno::Reference<task::XInteractionRequest> c
     bool approve = true;
 
     // select:
-    uno::Sequence<Reference<task::XInteractionContinuation>> conts(xRequest->getContinuations());
-    Reference<task::XInteractionContinuation> const* pConts = conts.getConstArray();
-    sal_Int32 len = conts.getLength();
-    for (sal_Int32 pos = 0; pos < len; ++pos)
+    for (const auto& cont : xRequest->getContinuations())
     {
         if (approve)
         {
-            uno::Reference<task::XInteractionApprove> xInteractionApprove(pConts[pos],
-                                                                          uno::UNO_QUERY);
+            uno::Reference<task::XInteractionApprove> xInteractionApprove(cont, uno::UNO_QUERY);
             if (xInteractionApprove.is())
             {
                 xInteractionApprove->select();

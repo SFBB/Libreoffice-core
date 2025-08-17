@@ -39,22 +39,43 @@
 #include "vbasections.hxx"
 #include "vbafield.hxx"
 #include "wordvbahelper.hxx"
+#include <unotxdoc.hxx>
+#include <unostyle.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-SwVbaRange::SwVbaRange( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, uno::Reference< text::XTextDocument > xTextDocument, const uno::Reference< text::XTextRange >& rStart ) : SwVbaRange_BASE( rParent, rContext ), mxTextDocument(std::move( xTextDocument ))
+SwVbaRange::SwVbaRange( const uno::Reference< ooo::vba::XHelperInterface >& rParent,
+                        const uno::Reference< uno::XComponentContext >& rContext,
+                        rtl::Reference< SwXTextDocument > xTextDocument,
+                        const uno::Reference< text::XTextRange >& rStart )
+: SwVbaRange_BASE( rParent, rContext ),
+  mxTextDocument(std::move( xTextDocument ))
 {
     uno::Reference< text::XTextRange > xEnd;
     initialize( rStart, xEnd );
 }
 
-SwVbaRange::SwVbaRange( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, uno::Reference< text::XTextDocument > xTextDocument, const uno::Reference< text::XTextRange >& rStart, const uno::Reference< text::XTextRange >& rEnd ) : SwVbaRange_BASE( rParent, rContext ), mxTextDocument(std::move( xTextDocument ))
+SwVbaRange::SwVbaRange( const uno::Reference< ooo::vba::XHelperInterface >& rParent,
+                        const uno::Reference< uno::XComponentContext >& rContext,
+                        rtl::Reference< SwXTextDocument > xTextDocument,
+                        const uno::Reference< text::XTextRange >& rStart,
+                        const uno::Reference< text::XTextRange >& rEnd )
+: SwVbaRange_BASE( rParent, rContext ),
+  mxTextDocument(std::move( xTextDocument ))
 {
     initialize( rStart, rEnd );
 }
 
-SwVbaRange::SwVbaRange( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, uno::Reference< text::XTextDocument > xTextDocument, const uno::Reference< text::XTextRange >& rStart, const uno::Reference< text::XTextRange >& rEnd, uno::Reference< text::XText > xText ) : SwVbaRange_BASE( rParent, rContext ),mxTextDocument(std::move( xTextDocument )), mxText(std::move( xText ))
+SwVbaRange::SwVbaRange( const uno::Reference< ooo::vba::XHelperInterface >& rParent,
+                        const uno::Reference< uno::XComponentContext >& rContext,
+                        rtl::Reference< SwXTextDocument > xTextDocument,
+                        const uno::Reference< text::XTextRange >& rStart,
+                        const uno::Reference< text::XTextRange >& rEnd,
+                        uno::Reference< text::XText > xText )
+: SwVbaRange_BASE( rParent, rContext ),
+  mxTextDocument(std::move( xTextDocument )),
+  mxText(std::move( xText ))
 {
     initialize( rStart, rEnd );
 }
@@ -72,7 +93,7 @@ void SwVbaRange::initialize( const uno::Reference< text::XTextRange >& rStart, c
 
     mxTextCursor = SwVbaRangeHelper::initCursor( rStart, mxText );
     if( !mxTextCursor.is() )
-        throw uno::RuntimeException("Fails to create text cursor" );
+        throw uno::RuntimeException(u"Fails to create text cursor"_ustr );
     mxTextCursor->collapseToStart();
 
     if( rEnd.is() )
@@ -134,8 +155,9 @@ SwVbaRange::setText( const OUString& rText )
         uno::Reference< text::XTextContent > xBookmark = SwVbaRangeHelper::findBookmarkByPosition( mxTextDocument, xRange->getStart() );
         if( xBookmark.is() )
         {
-            uno::Reference< container::XNamed > xNamed( xBookmark, uno::UNO_QUERY_THROW );
-            sName = xNamed->getName();
+            uno::Reference< container::XNamed > xNamed( xBookmark, uno::UNO_QUERY );
+            if (xNamed)
+                sName = xNamed->getName();
         }
     }
     catch (const uno::Exception&)
@@ -157,12 +179,10 @@ SwVbaRange::setText( const OUString& rText )
     // insert the bookmark if the bookmark is deleted during setting text string
     if( !sName.isEmpty() )
     {
-        uno::Reference< text::XBookmarksSupplier > xBookmarksSupplier( mxTextDocument, uno::UNO_QUERY_THROW );
-        uno::Reference< container::XNameAccess > xNameAccess( xBookmarksSupplier->getBookmarks(), uno::UNO_SET_THROW );
+        uno::Reference< container::XNameAccess > xNameAccess( mxTextDocument->getBookmarks(), uno::UNO_SET_THROW );
         if( !xNameAccess->hasByName( sName ) )
         {
-            uno::Reference< frame::XModel > xModel( mxTextDocument, uno::UNO_QUERY_THROW );
-            SwVbaBookmarks::addBookmarkByName( xModel, sName, xRange->getStart() );
+            SwVbaBookmarks::addBookmarkByName( mxTextDocument, sName, xRange->getStart() );
         }
     }
 }
@@ -207,15 +227,14 @@ void SAL_CALL SwVbaRange::InsertBreak(const uno::Any& _breakType)
         }
 
         uno::Reference< beans::XPropertySet > xProp( mxTextCursor, uno::UNO_QUERY_THROW );
-        xProp->setPropertyValue("BreakType", uno::Any( eBreakType ) );
+        xProp->setPropertyValue(u"BreakType"_ustr, uno::Any( eBreakType ) );
     }
 }
 
 void SAL_CALL
 SwVbaRange::Select()
 {
-    uno::Reference< frame::XModel > xModel( mxTextDocument, uno::UNO_QUERY_THROW );
-    uno::Reference< text::XTextViewCursor > xTextViewCursor = word::getXTextViewCursor( xModel );
+    uno::Reference< text::XTextViewCursor > xTextViewCursor = word::getXTextViewCursor( mxTextDocument );
     xTextViewCursor->gotoRange( mxTextCursor->getStart(), false );
     xTextViewCursor->gotoRange( mxTextCursor->getEnd(), true );
 }
@@ -223,7 +242,7 @@ SwVbaRange::Select()
 void SAL_CALL
 SwVbaRange::InsertParagraph()
 {
-    mxTextCursor->setString( "" );
+    mxTextCursor->setString( u""_ustr );
     InsertParagraphBefore();
 }
 
@@ -252,17 +271,17 @@ SwVbaRange::getParagraphFormat()
 void SAL_CALL
 SwVbaRange::setParagraphFormat( const uno::Reference< word::XParagraphFormat >& /*rParagraphFormat*/ )
 {
-    throw uno::RuntimeException("Not implemented" );
+    throw uno::RuntimeException(u"Not implemented"_ustr );
 }
 
 void SwVbaRange::GetStyleInfo(OUString& aStyleName, OUString& aStyleType )
 {
     uno::Reference< beans::XPropertySet > xProp( mxTextCursor, uno::UNO_QUERY_THROW );
-    if( ( xProp->getPropertyValue("CharStyleName") >>= aStyleName ) && !aStyleName.isEmpty() )
+    if( ( xProp->getPropertyValue(u"CharStyleName"_ustr) >>= aStyleName ) && !aStyleName.isEmpty() )
     {
         aStyleType = "CharacterStyles";
     }
-    else if( ( xProp->getPropertyValue("ParaStyleName") >>= aStyleName ) && !aStyleName.isEmpty() )
+    else if( ( xProp->getPropertyValue(u"ParaStyleName"_ustr) >>= aStyleName ) && !aStyleName.isEmpty() )
     {
         aStyleType = "ParagraphStyles";
     }
@@ -278,11 +297,9 @@ SwVbaRange::getStyle()
     OUString aStyleName;
     OUString aStyleType;
     GetStyleInfo( aStyleName, aStyleType );
-    uno::Reference< style::XStyleFamiliesSupplier > xStyleSupplier( mxTextDocument, uno::UNO_QUERY_THROW);
-    uno::Reference< container::XNameAccess > xStylesAccess( xStyleSupplier->getStyleFamilies()->getByName( aStyleType ), uno::UNO_QUERY_THROW );
+    uno::Reference< container::XNameAccess > xStylesAccess( mxTextDocument->getStyleFamilies()->getByName( aStyleType ), uno::UNO_QUERY_THROW );
     uno::Reference< beans::XPropertySet > xStyleProps( xStylesAccess->getByName( aStyleName ), uno::UNO_QUERY_THROW );
-    uno::Reference< frame::XModel > xModel( mxTextDocument, uno::UNO_QUERY_THROW );
-    return uno::Any( uno::Reference< word::XStyle >( new SwVbaStyle( this, mxContext, xModel, xStyleProps ) ) );
+    return uno::Any( uno::Reference< word::XStyle >( new SwVbaStyle( this, mxContext, mxTextDocument, xStyleProps ) ) );
 }
 
 void SAL_CALL
@@ -303,8 +320,7 @@ uno::Reference< word::XFind > SAL_CALL
 SwVbaRange::getFind()
 {
     uno::Reference< text::XTextRange > xTextRange = getXTextRange();
-    uno::Reference< frame::XModel > xModel( mxTextDocument, uno::UNO_QUERY_THROW );
-    return SwVbaFind::GetOrCreateFind(this, mxContext, xModel, xTextRange);
+    return SwVbaFind::GetOrCreateFind(this, mxContext, mxTextDocument, xTextRange);
 }
 
 uno::Reference< word::XListFormat > SAL_CALL
@@ -329,14 +345,12 @@ uno::Any SAL_CALL
 SwVbaRange::PageSetup( )
 {
     uno::Reference< beans::XPropertySet > xParaProps( mxTextCursor, uno::UNO_QUERY_THROW );
-    uno::Reference< frame::XModel > xModel( mxTextDocument, uno::UNO_QUERY_THROW );
     OUString aPageStyleName;
-    xParaProps->getPropertyValue("PageStyleName") >>= aPageStyleName;
-    uno::Reference< style::XStyleFamiliesSupplier > xSytleFamSupp( xModel, uno::UNO_QUERY_THROW );
-    uno::Reference< container::XNameAccess > xSytleFamNames( xSytleFamSupp->getStyleFamilies(), uno::UNO_SET_THROW );
-    uno::Reference< container::XNameAccess > xPageStyles( xSytleFamNames->getByName("PageStyles"), uno::UNO_QUERY_THROW );
+    xParaProps->getPropertyValue(u"PageStyleName"_ustr) >>= aPageStyleName;
+    rtl::Reference< SwXStyleFamilies > xSytleFamNames( mxTextDocument->getSwStyleFamilies() );
+    uno::Reference< container::XNameAccess > xPageStyles( xSytleFamNames->getByName(u"PageStyles"_ustr), uno::UNO_QUERY_THROW );
     uno::Reference< beans::XPropertySet > xPageProps( xPageStyles->getByName( aPageStyleName ), uno::UNO_QUERY_THROW );
-    return uno::Any( uno::Reference< word::XPageSetup >( new SwVbaPageSetup( this, mxContext, xModel, xPageProps ) ) );
+    return uno::Any( uno::Reference< word::XPageSetup >( new SwVbaPageSetup( this, mxContext, mxTextDocument, xPageProps ) ) );
 }
 
 ::sal_Int32 SAL_CALL SwVbaRange::getStart()
@@ -386,8 +400,7 @@ uno::Any SAL_CALL
 SwVbaRange::Revisions( const uno::Any& index )
 {
     uno::Reference< text::XTextRange > xTextRange = getXTextRange();
-    uno::Reference< frame::XModel > xModel( mxTextDocument, uno::UNO_QUERY_THROW );
-    uno::Reference< XCollection > xCol( new SwVbaRevisions( mxParent, mxContext, xModel, xTextRange ) );
+    uno::Reference< XCollection > xCol( new SwVbaRevisions( mxParent, mxContext, mxTextDocument, xTextRange ) );
     if ( index.hasValue() )
         return xCol->Item( index, uno::Any() );
     return uno::Any( xCol );
@@ -397,8 +410,7 @@ uno::Any SAL_CALL
 SwVbaRange::Sections( const uno::Any& index )
 {
     uno::Reference< text::XTextRange > xTextRange = getXTextRange();
-    uno::Reference< frame::XModel > xModel( mxTextDocument, uno::UNO_QUERY_THROW );
-    uno::Reference< XCollection > xCol( new SwVbaSections( mxParent, mxContext, xModel, xTextRange ) );
+    uno::Reference< XCollection > xCol( new SwVbaSections( mxParent, mxContext, mxTextDocument, xTextRange ) );
     if ( index.hasValue() )
         return xCol->Item( index, uno::Any() );
     return uno::Any( xCol );
@@ -408,8 +420,7 @@ uno::Any SAL_CALL
 SwVbaRange::Fields( const uno::Any& index )
 {
     //FIXME: should be get the field in current range
-    uno::Reference< frame::XModel > xModel( mxTextDocument, uno::UNO_QUERY_THROW );
-    uno::Reference< XCollection > xCol( new SwVbaFields( mxParent, mxContext, xModel ) );
+    uno::Reference< XCollection > xCol( new SwVbaFields( mxParent, mxContext, mxTextDocument ) );
     if ( index.hasValue() )
         return xCol->Item( index, uno::Any() );
     return uno::Any( xCol );
@@ -418,7 +429,7 @@ SwVbaRange::Fields( const uno::Any& index )
 OUString
 SwVbaRange::getServiceImplName()
 {
-    return "SwVbaRange";
+    return u"SwVbaRange"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -426,7 +437,7 @@ SwVbaRange::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.word.Range"
+        u"ooo.vba.word.Range"_ustr
     };
     return aServiceNames;
 }

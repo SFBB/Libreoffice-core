@@ -18,6 +18,11 @@
           <value xml:lang="en-US">Line Numbers</value>
         </prop>
       </node>
+      <node oor:name=".uno:ToggleComment" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Toggle Comment</value>
+        </prop>
+      </node>
       <node oor:name=".uno:InsertFormRadio" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Form Option Button</value>
@@ -97,6 +102,14 @@
       <node oor:name=".uno:HideCurPage" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Hide</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:BasicColorSchemeDialog" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Color Scheme...</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
         </prop>
       </node>
     </node>

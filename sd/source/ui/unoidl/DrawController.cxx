@@ -25,6 +25,7 @@
 #include <ViewShellManager.hxx>
 #include <FormShellManager.hxx>
 #include <Window.hxx>
+#include <ResourceId.hxx>
 #include <framework/ConfigurationController.hxx>
 #include <framework/ModuleController.hxx>
 
@@ -61,7 +62,6 @@ DrawController::DrawController (ViewShellBase& rBase) noexcept
     : DrawControllerInterfaceBase(&rBase),
       BroadcastHelperOwner(SfxBaseController::m_aMutex),
       OPropertySetHelper(BroadcastHelperOwner::maBroadcastHelper),
-      mpCurrentLayer(nullptr),
       m_aSelectionTypeIdentifier(
         cppu::UnoType<view::XSelectionChangeListener>::get()),
       mpBase(&rBase),
@@ -70,7 +70,17 @@ DrawController::DrawController (ViewShellBase& rBase) noexcept
       mbLayerMode(false),
       mbDisposing(false)
 {
-    ProvideFrameworkControllers();
+    SolarMutexGuard aGuard;
+    try
+    {
+        mxConfigurationController = new sd::framework::ConfigurationController(this);
+        mxModuleController = new sd::framework::ModuleController(this);
+    }
+    catch (const RuntimeException&)
+    {
+        mxConfigurationController = nullptr;
+        mxModuleController = nullptr;
+    }
 }
 
 DrawController::~DrawController() noexcept
@@ -182,8 +192,27 @@ sal_Bool SAL_CALL DrawController::suspend( sal_Bool Suspend )
         {
             // do not allow suspend if a slideshow needs this controller!
             rtl::Reference< SlideShow > xSlideShow( SlideShow::GetSlideShow( *pViewShellBase ) );
-            if( xSlideShow.is() && xSlideShow->dependsOn(pViewShellBase) )
-                return false;
+            if (xSlideShow.is())
+            {
+                if (xSlideShow->IsInteractiveSlideshow())
+                {
+                    // IASS mode: If preview mode, end it
+                    if (xSlideShow->isInteractiveSetup())
+                        xSlideShow->endInteractivePreview();
+
+                    // end the SlideShow
+                    xSlideShow->end();
+
+                    // use SfxBaseController::suspend( Suspend ) below
+                    // for normal processing and return value
+                }
+                else
+                {
+                    // original reaction - prevent exit
+                    if (xSlideShow->dependsOn(pViewShellBase))
+                        return false;
+                }
+            }
         }
     }
 
@@ -196,7 +225,7 @@ OUString SAL_CALL DrawController::getImplementationName(  )
     // Do not throw an exception at the moment.  This leads to a crash
     // under Solaris on reload.  See issue i70929 for details.
     //    ThrowIfDisposed();
-    return "DrawController" ;
+    return u"DrawController"_ustr ;
 }
 
 constexpr OUString ssServiceName = u"com.sun.star.drawing.DrawingDocumentDrawView"_ustr;
@@ -433,19 +462,19 @@ void DrawController::NotifyAccUpdate()
     fire (&nHandle, &aNewValue, &aOldValue, 1, false);
 }
 
-void DrawController::fireChangeLayer( css::uno::Reference< css::drawing::XLayer>* pCurrentLayer ) noexcept
+void DrawController::fireChangeLayer( const css::uno::Reference< css::drawing::XLayer>& xNewLayer ) noexcept
 {
-    if( pCurrentLayer != mpCurrentLayer )
+    if( xNewLayer != mxCurrentLayer )
     {
         sal_Int32 nHandle = PROPERTY_ACTIVE_LAYER;
 
-        Any aNewValue ( *pCurrentLayer);
+        Any aNewValue ( *xNewLayer);
 
         Any aOldValue ;
 
         fire (&nHandle, &aNewValue, &aOldValue, 1, false);
 
-        mpCurrentLayer = pCurrentLayer;
+        mxCurrentLayer = xNewLayer;
     }
 }
 
@@ -532,9 +561,7 @@ void DrawController::ReleaseViewShellBase()
     mpBase = nullptr;
 }
 
-//===== XControllerManager ==============================================================
-
-Reference<XConfigurationController> SAL_CALL
+const rtl::Reference<framework::ConfigurationController> &
     DrawController::getConfigurationController()
 {
     ThrowIfDisposed();
@@ -542,12 +569,38 @@ Reference<XConfigurationController> SAL_CALL
     return mxConfigurationController;
 }
 
-Reference<XModuleController> SAL_CALL
-    DrawController::getModuleController()
+rtl::Reference<framework::ModuleController> DrawController::getModuleController()
 {
     ThrowIfDisposed();
 
     return mxModuleController;
+}
+//===== XSlideSorterSelectionSupplier ==============================================================
+
+Any SAL_CALL DrawController::getSlideSorterSelection()
+{
+    ThrowIfDisposed();
+
+    // * traverse Impress resources to find slide preview pane, grab selection from there
+    const std::vector<rtl::Reference<framework::ResourceId>> aResIds(
+        mxConfigurationController->getCurrentConfiguration()->getResources(
+            {}, u"", drawing::framework::AnchorBindingMode_INDIRECT));
+
+    for (const rtl::Reference<framework::ResourceId>& rResId : aResIds)
+    {
+        // can we somehow obtain the slidesorter from the Impress framework?
+        if (rResId->getResourceURL() == "private:resource/view/SlideSorter")
+        {
+            // got it, grab current selection from there
+            uno::Reference<view::XSelectionSupplier> xSelectionSupplier(
+                cppu::getXWeak(mxConfigurationController->getResource(rResId).get()), uno::UNO_QUERY);
+            if (!xSelectionSupplier)
+                continue;
+
+            return xSelectionSupplier->getSelection();
+        }
+    }
+    return {};
 }
 
 //===== Properties ============================================================
@@ -752,21 +805,6 @@ void DrawController::getFastPropertyValue (
     }
 }
 
-void DrawController::ProvideFrameworkControllers()
-{
-    SolarMutexGuard aGuard;
-    try
-    {
-        mxConfigurationController = new sd::framework::ConfigurationController(this);
-        mxModuleController = new sd::framework::ModuleController(this);
-    }
-    catch (const RuntimeException&)
-    {
-        mxConfigurationController = nullptr;
-        mxModuleController = nullptr;
-    }
-}
-
 void DrawController::DisposeFrameworkControllers()
 {
     if (mxModuleController.is())
@@ -782,7 +820,7 @@ void DrawController::ThrowIfDisposed() const
     {
         SAL_WARN("sd", "Calling disposed DrawController object. Throwing exception.");
         throw lang::DisposedException (
-            "DrawController object has already been disposed",
+            u"DrawController object has already been disposed"_ustr,
             const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
     }
 }

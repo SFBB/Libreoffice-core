@@ -34,7 +34,6 @@
 
 #include <com/sun/star/sheet/XMultiFormulaTokens.hpp>
 #include <com/sun/star/sheet/FormulaToken.hpp>
-#include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include "address.hxx"
@@ -76,7 +75,7 @@ private:
     void                        AddEntry_Impl(const ScCondFormatEntryItem& aEntry);
 public:
                             ScTableConditionalFormat() = delete;
-                            ScTableConditionalFormat(const ScDocument* pDoc, sal_uLong nKey,
+                            ScTableConditionalFormat(const ScDocument& rDoc, sal_uLong nKey,
                                     SCTAB nTab, formula::FormulaGrammar::Grammar eGrammar);
     virtual                 ~ScTableConditionalFormat() override;
 
@@ -148,7 +147,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ScTableValidationObj final : public cppu::WeakImplHelper<
+class SC_DLLPUBLIC ScTableValidationObj final : public cppu::WeakImplHelper<
                             css::sheet::XSheetCondition2,
                             css::sheet::XMultiFormulaTokens,
                             css::beans::XPropertySet,
@@ -169,6 +168,7 @@ private:
     OUString            aPosString;     // formula position as text
     sal_uInt16          nValMode;       // enum ScValidationMode
     bool                bIgnoreBlank;
+    bool                bCaseSensitive;
     sal_Int16           nShowList;
     bool                bShowInput;
     OUString            aInputTitle;

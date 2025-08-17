@@ -109,10 +109,13 @@ excludelist:
     - cppuhelper/typeprovider.hxx
     - cppuhelper/supportsservice.hxx
     - cppuhelper/factory.hxx
+    include/ucbhelper/propertyvalueset.hxx:
+    # needed in --fwdecl mode
+    - namespace ucbhelper_impl { struct PropertyValue; }
     include/comphelper/accessiblekeybindinghelper.hxx:
     # base class has to be a complete type
     - com/sun/star/accessibility/XAccessibleKeyBinding.hpp
-    include/comphelper/accessiblecomponenthelper.hxx:
+    include/comphelper/OAccessible.hxx:
     # base class has to be a complete type
     - com/sun/star/accessibility/XAccessibleContext.hpp
     - com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp
@@ -123,11 +126,6 @@ excludelist:
     include/comphelper/accessibletexthelper.hxx:
     # base class has to be a complete type
     - com/sun/star/accessibility/XAccessibleText.hpp
-    include/comphelper/accessiblewrapper.hxx:
-    # base class has to be a complete type
-    - com/sun/star/accessibility/XAccessibleContext.hpp
-    - com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp
-    - com/sun/star/accessibility/XAccessibleEventListener.hpp
     include/comphelper/attributelist.hxx:
     # base class has to be a complete type
     - com/sun/star/util/XCloneable.hpp
@@ -243,6 +241,12 @@ excludelist:
     include/sot/exchange.hxx:
     # Used in a macro #define
     - com/sun/star/datatransfer/dnd/DNDConstants.hpp
+    include/package/Inflater.hxx:
+    # Needed in --fwdecl mode
+    - struct z_stream_s
+    include/package/Deflater.hxx:
+    # Needed in --fwdecl mode
+    - struct z_stream_s
     include/tools/debug.hxx:
     # Used behind #ifndef
     - tools/toolsdllapi.h
@@ -281,9 +285,6 @@ excludelist:
     - com/sun/star/io/XOutputStream.hpp
     - com/sun/star/io/XStream.hpp
     - com/sun/star/io/XTruncate.hpp
-    include/sax/fshelper.hxx:
-    # base class has to be a complete type
-    - com/sun/star/xml/sax/XFastAttributeList.hpp
     include/sax/fastattribs.hxx:
     # base class has to be a complete type
     - com/sun/star/xml/sax/XFastAttributeList.hpp
@@ -337,10 +338,6 @@ excludelist:
     - com/sun/star/datatransfer/dnd/XDragGestureListener.hpp
     - com/sun/star/datatransfer/dnd/XDropTargetListener.hpp
     include/vcl/weld.hxx:
-    # base class has to be a complete type
-    - com/sun/star/accessibility/XAccessibleRelationSet.hpp
-    - com/sun/star/accessibility/XAccessible.hpp
-    include/toolkit/awt/vclxaccessiblecomponent.hxx:
     # base class has to be a complete type
     - com/sun/star/lang/XServiceInfo.hpp
     include/toolkit/awt/vclxwindow.hxx:
@@ -424,13 +421,11 @@ excludelist:
     - com/sun/star/lang/XInitialization.hpp
     - com/sun/star/lang/XServiceInfo.hpp
     - com/sun/star/lang/XUnoTunnel.hpp
-    - com/sun/star/xml/sax/XExtendedDocumentHandler.hpp
     - com/sun/star/xml/sax/XFastDocumentHandler.hpp
     - com/sun/star/xml/sax/XFastParser.hpp
-    include/svtools/asynclink.hxx:
-    # unique_ptr needs complete type
-    - osl/mutex.hxx
-    - vcl/idle.hxx
+    include/xmloff/XMLTextMasterPageContext.hxx:
+    # needed in --fwdecl mode
+    - struct ContextID_Index_Pair
     include/svtools/cliplistener.hxx:
     # base class has to be a complete type
     - com/sun/star/datatransfer/clipboard/XClipboardListener.hpp
@@ -572,7 +567,6 @@ excludelist:
     # base class has to be a complete type
     - com/sun/star/container/XNamed.hpp
     - com/sun/star/lang/XServiceInfo.hpp
-    - com/sun/star/sdbcx/XDataDescriptorFactory.hpp
     include/drawinglayer/primitive2d/baseprimitive2d.hxx:
     # base class has to be a complete type
     - com/sun/star/graphic/XPrimitive2D.hpp
@@ -618,7 +612,6 @@ excludelist:
     - com/sun/star/rdf/XDocumentMetadataAccess.hpp
     - com/sun/star/document/XDocumentRecovery.hpp
     - com/sun/star/document/XUndoManagerSupplier.hpp
-    - com/sun/star/document/XEventBroadcaster.hpp
     - com/sun/star/document/XDocumentEventBroadcaster.hpp
     - com/sun/star/lang/XEventListener.hpp
     - com/sun/star/document/XEventsSupplier.hpp
@@ -828,6 +821,12 @@ excludelist:
     include/svx/svxids.hrc:
     # Used in macro definition
     - svl/typedwhich.hxx
+    include/svx/sdr/properties/properties.hxx:
+    # Needed for fwdecl mode
+    - struct _xmlTextWriter
+    include/svx/sdr/properties/defaultproperties.hxx:
+    # Needed for fwdecl mode
+    - struct _xmlTextWriter
     include/svx/unopage.hxx:
     # Don't propose hxx -> h change in URE libs
     - cppuhelper/interfacecontainer.hxx

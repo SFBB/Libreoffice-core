@@ -31,14 +31,11 @@ class SwWrtShell;
 class SwTOXMgr;
 class SwTOXMark;
 
-// insert mark for index entry
-class SwIndexMarkFloatDlg;
-class SwIndexMarkModalDlg;
-
 class SwIndexMarkPane
 {
     std::shared_ptr<weld::Dialog> m_xDialog;
 
+    // insert mark for index entry
     friend class SwIndexMarkFloatDlg;
     friend class SwIndexMarkModalDlg;
 
@@ -46,6 +43,7 @@ class SwIndexMarkPane
     bool            m_bDel;
     bool const      m_bNewMark;
     bool            m_bSelected;
+    bool            m_bModified;
 
     bool            m_bPhoneticED0_ChangedByUser;
     bool            m_bPhoneticED1_ChangedByUser;
@@ -82,6 +80,7 @@ class SwIndexMarkPane
     std::unique_ptr<weld::CheckButton> m_xSearchCaseWordOnlyCB;
     std::unique_ptr<weld::Button> m_xOKBT;
     std::unique_ptr<weld::Button> m_xCloseBT;
+    std::unique_ptr<weld::Button> m_xResetBT;
     std::unique_ptr<weld::Button> m_xDelBT;
     std::unique_ptr<weld::Button> m_xPrevSameBT;
     std::unique_ptr<weld::Button> m_xNextSameBT;
@@ -96,6 +95,9 @@ class SwIndexMarkPane
 
     DECL_LINK(InsertHdl, weld::Button&, void);
     DECL_LINK(CloseHdl, weld::Button&, void);
+    DECL_LINK(ResetHdl, weld::Button&, void);
+    DECL_LINK(GenericEntryModifiedHdl, weld::Entry&, void);
+    DECL_LINK(GenericToggleModifiedHdl, weld::Toggleable&, void);
     DECL_LINK(SyncSelectionHdl, weld::Button&, void);
     DECL_LINK(DelHdl, weld::Button&, void);
     DECL_LINK( NextHdl, weld::Button&, void );
@@ -122,6 +124,9 @@ class SwIndexMarkPane
     void            InsertUpdate();
 
     void            Activate();
+    void            SetModified(bool bModified);
+
+    short           ShowWarning4Modifications();
 
 public:
 
@@ -156,8 +161,6 @@ public:
     virtual ~SwIndexMarkModalDlg() override;
     virtual short int run() override;
 };
-
-class SwAuthMarkModalDlg;
 
 class SwAuthorMarkPane
 {

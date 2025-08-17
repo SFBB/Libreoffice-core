@@ -36,16 +36,15 @@ using namespace com::sun::star::lang;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::linguistic2;
 using namespace linguistic;
-using namespace i18n;
 
 
 constexpr OUString SN_HH_CONV_DICTIONARY = u"com.sun.star.linguistic2.HangulHanjaConversionDictionary"_ustr;
 
 
 
-#define SCRIPT_OTHERS   0
-#define SCRIPT_HANJA    1
-#define SCRIPT_HANGUL   2
+constexpr sal_Int16 SCRIPT_OTHERS = 0;
+constexpr sal_Int16 SCRIPT_HANJA  = 1;
+constexpr sal_Int16 SCRIPT_HANGUL = 2;
 
 // from i18npool/source/textconversion/textconversion_ko.cxx
 /// @throws RuntimeException
@@ -100,7 +99,7 @@ void SAL_CALL HHConvDic::addEntry(
 
 OUString SAL_CALL HHConvDic::getImplementationName(  )
 {
-    return "com.sun.star.lingu2.HHConvDic";
+    return u"com.sun.star.lingu2.HHConvDic"_ustr;
 }
 
 

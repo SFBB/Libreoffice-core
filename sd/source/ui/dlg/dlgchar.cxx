@@ -27,40 +27,49 @@
 #include <svx/svxids.hrc>
 #include <svl/intitem.hxx>
 
+#include <vcl/tabs.hrc>
+
 /**
  * Constructor of tab dialog: append pages to dialog
  */
 SdCharDlg::SdCharDlg(weld::Window* pParent, const SfxItemSet* pAttr,
                     const SfxObjectShell* pDocShell)
-    : SfxTabDialogController(pParent, "modules/sdraw/ui/drawchardialog.ui",
-                             "DrawCharDialog", pAttr)
+    : SfxTabDialogController(pParent, u"modules/sdraw/ui/drawchardialog.ui"_ustr,
+                             u"DrawCharDialog"_ustr, pAttr)
     , rDocShell(*pDocShell)
 {
     SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
 
-    AddTabPage("RID_SVXPAGE_CHAR_NAME", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_NAME), nullptr);
-    AddTabPage("RID_SVXPAGE_CHAR_EFFECTS", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_EFFECTS), nullptr);
-    AddTabPage("RID_SVXPAGE_CHAR_POSITION", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_POSITION), nullptr);
-    AddTabPage("RID_SVXPAGE_BKG", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BKG), nullptr);
+    AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_NAME), RID_L + RID_TAB_FONT.sIconName);
+    AddTabPage(u"fonteffects"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_EFFECTS),
+               RID_L + RID_TAB_FONTEFFECTS.sIconName);
+    AddTabPage(u"position"_ustr, TabResId(RID_TAB_POSITION.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_POSITION),
+               RID_L + RID_TAB_POSITION.sIconName);
+    AddTabPage(u"background"_ustr, TabResId(RID_TAB_HIGHLIGHTING.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BKG),
+               RID_L + RID_TAB_HIGHLIGHTING.sIconName);
 }
 
 void SdCharDlg::PageCreated(const OUString& rId, SfxTabPage &rPage)
 {
     SfxAllItemSet aSet(*(GetInputSetImpl()->GetPool()));
-    if (rId == "RID_SVXPAGE_CHAR_NAME")
+    if (rId == "font")
     {
         SvxFontListItem aItem(* static_cast<const SvxFontListItem*>( rDocShell.GetItem( SID_ATTR_CHAR_FONTLIST) ) );
 
         aSet.Put (SvxFontListItem( aItem.GetFontList(), SID_ATTR_CHAR_FONTLIST));
         rPage.PageCreated(aSet);
     }
-    else if (rId == "RID_SVXPAGE_CHAR_EFFECTS")
+    else if (rId == "fonteffects")
     {
         // Opt in for character transparency.
         aSet.Put(SfxUInt32Item(SID_FLAG_TYPE, SVX_ENABLE_CHAR_TRANSPARENCY));
         rPage.PageCreated(aSet);
     }
-    else if (rId == "RID_SVXPAGE_BKG")
+    else if (rId == "background")
     {
         aSet.Put(SfxUInt32Item(SID_FLAG_TYPE,static_cast<sal_uInt32>(SvxBackgroundTabFlags::SHOW_CHAR_BKGCOLOR)));
         rPage.PageCreated(aSet);

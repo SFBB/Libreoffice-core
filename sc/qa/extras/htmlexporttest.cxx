@@ -9,59 +9,47 @@
 
 #include <sal/config.h>
 
-#include <string_view>
-
-#include <com/sun/star/frame/Desktop.hpp>
-#include <com/sun/star/frame/XStorable.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-
 #include <test/htmltesttools.hxx>
 #include <test/unoapixml_test.hxx>
-#include <comphelper/processfactory.hxx>
-
-using namespace css::uno;
-using namespace css::lang;
-using namespace css::frame;
-using namespace utl;
 
 class ScHTMLExportTest : public UnoApiXmlTest, public HtmlTestTools
 {
 public:
     ScHTMLExportTest()
-        : UnoApiXmlTest("/sc/qa/extras/testdocuments/")
+        : UnoApiXmlTest(u"/sc/qa/extras/testdocuments/"_ustr)
     {}
 
     void testHtmlSkipImage()
     {
-        loadFromURL(u"BaseForHTMLExport.ods");
-        save("HTML (StarCalc)");
+        loadFromFile(u"BaseForHTMLExport.ods");
+        save(u"HTML (StarCalc)"_ustr);
         htmlDocUniquePtr pDoc = parseHtml(maTempFile);
         CPPUNIT_ASSERT (pDoc);
 
-        assertXPath(pDoc, "/html/body"_ostr, 1);
-        assertXPath(pDoc, "/html/body/table/tr/td/img"_ostr, 1);
+        assertXPath(pDoc, "/html/body", 1);
+        assertXPath(pDoc, "/html/body/table/tr/td/img", 1);
 
-        setFilterOptions("SkipImages");
-        save("HTML (StarCalc)");
+        setFilterOptions(u"SkipImages"_ustr);
+        save(u"HTML (StarCalc)"_ustr);
 
         pDoc = parseHtml(maTempFile);
         CPPUNIT_ASSERT (pDoc);
-        assertXPath(pDoc, "/html/body"_ostr, 1);
-        assertXPath(pDoc, "/html/body/table/tr/td/img"_ostr, 0);
+        assertXPath(pDoc, "/html/body", 1);
+        assertXPath(pDoc, "/html/body/table/tr/td/img", 0);
     }
 
     void testTdf155244()
     {
-        loadFromURL(u"default-styles.ods");
-        save("XHTML Calc File");
+        loadFromFile(u"default-styles.ods");
+        save(u"XHTML Calc File"_ustr);
 
         xmlDocUniquePtr pXmlDoc = parseXml(maTempFile);
         CPPUNIT_ASSERT(pXmlDoc);
 
-        assertXPath(pXmlDoc, "/xhtml:html"_ostr, 1);
+        assertXPath(pXmlDoc, "/xhtml:html", 1);
         // the problem was that there were 2 CSS styles named "Default"
-        assertXPath(pXmlDoc, "/xhtml:html/xhtml:body/xhtml:table/xhtml:tr/xhtml:td"_ostr, "class"_ostr, "cell-Default");
-        OUString const styles = getXPathContent(pXmlDoc, "/xhtml:html/xhtml:head/xhtml:style"_ostr);
+        assertXPath(pXmlDoc, "/xhtml:html/xhtml:body/xhtml:table/xhtml:tr/xhtml:td", "class", u"cell-Default");
+        OUString const styles = getXPathContent(pXmlDoc, "/xhtml:html/xhtml:head/xhtml:style");
         CPPUNIT_ASSERT(styles.indexOf(".graphic-Default{ background-color:#729fcf;") != -1);
         CPPUNIT_ASSERT(styles.indexOf(".cell-Default{ font-size:10pt; font-family:'Liberation Sans'; }") != -1);
         CPPUNIT_ASSERT_EQUAL(sal_Int32(-1), styles.indexOf(".Default"));

@@ -41,6 +41,11 @@
                         <property name="truncate-multiline">True</property>
                       </object>
                     </child>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="fontnamecombobox-atkobject">
+                        <property name="AtkObject::accessible-name" translatable="yes" context="font|fontnamecombobox">Font</property>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>
@@ -76,6 +81,11 @@
                       <object class="GtkEntry">
                         <property name="can-focus">True</property>
                         <property name="truncate-multiline">True</property>
+                      </object>
+                    </child>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="fontsizecombobox-atkobject">
+                        <property name="AtkObject::accessible-name" translatable="yes" context="font|fontsizecombobox">Font size</property>
                       </object>
                     </child>
                   </object>
@@ -223,6 +233,16 @@
                     <property name="homogeneous">False</property>
                   </packing>
                 </child>
+                <child>
+                  <object class="GtkToolButton" id=".uno:NoBreak">
+                    <property name="visible">True</property>
+                    <property name="use-underline">True</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="homogeneous">False</property>
+                  </packing>
+                </child>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -242,6 +262,30 @@
             <property name="can-focus">False</property>
             <property name="halign">end</property>
             <property name="spacing">6</property>
+            <child>
+              <object class="GtkToolbar" id="hyphenation">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="toolbar-style">icons</property>
+                <property name="show-arrow">False</property>
+                <property name="icon_size">2</property>
+                <child>
+                  <object class="GtkToolButton" id=".uno:Hyphenate">
+                    <property name="visible">True</property>
+                    <property name="use-underline">True</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="homogeneous">False</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
             <child>
               <object class="GtkToolbar" id="position">
                 <property name="visible">True</property>

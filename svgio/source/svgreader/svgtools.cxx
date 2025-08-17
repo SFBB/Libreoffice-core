@@ -153,6 +153,7 @@ namespace svgio::svgreader
             { u"plum", Color(221, 160, 221) },
             { u"powderblue", Color(176, 224, 230) },
             { u"purple", Color(128, 0, 128) },
+            { u"rebeccapurple", Color(102, 51, 153) },
             { u"red", Color(255, 0, 0) },
             { u"rosybrown", Color(188, 143, 143) },
             { u"royalblue", Color( 65, 105, 225) },
@@ -406,7 +407,7 @@ namespace svgio::svgreader
                         // by error. First try if there are numbers after the 'e',
                         // safe current state
                         nPos++;
-                        const OUStringBuffer aNum2(aNum);
+                        const OUString aNum2(aNum);
                         const sal_Int32 nPosAfterE(nPos);
 
                         aNum.append(aChar);
@@ -1147,7 +1148,8 @@ namespace svgio::svgreader
                 }
                 else
                 {
-                    if(o3tl::equalsIgnoreAsciiCase(o3tl::trim(rCandidate), u"none"))
+                    if(o3tl::equalsIgnoreAsciiCase(o3tl::trim(rCandidate), u"none") ||
+                        o3tl::equalsIgnoreAsciiCase(o3tl::trim(rCandidate), u"transparent"))
                     {
                         rSvgPaint = SvgPaint(aColor, true, false, false);
                         return true;
@@ -1313,7 +1315,7 @@ namespace svgio::svgreader
             return SvgAspectRatio();
         }
 
-        bool readSvgStringVector(std::u16string_view rCandidate, SvgStringVector& rSvgStringVector)
+        bool readSvgStringVector(std::u16string_view rCandidate, SvgStringVector& rSvgStringVector, sal_Unicode nSeparator)
         {
             rSvgStringVector.clear();
             const sal_Int32 nLen(rCandidate.size());
@@ -1326,8 +1328,8 @@ namespace svgio::svgreader
 
                 while(nPos < nLen)
                 {
-                    copyToLimiter(rCandidate, ',', nPos, aTokenValue, nLen);
-                    skip_char(rCandidate, ',', ' ', nPos, nLen);
+                    copyToLimiter(rCandidate, nSeparator, nPos, aTokenValue, nLen);
+                    skip_char(rCandidate, nSeparator, nPos, nLen);
                     const OUString aString = aTokenValue.makeStringAndClear();
 
                     if(!aString.isEmpty())

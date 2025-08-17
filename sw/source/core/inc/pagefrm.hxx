@@ -31,7 +31,6 @@ class SwFlyFrameFormat;
 class SwPageDesc;
 class SwContentFrame;
 struct SwPosition;
-struct SwCursorMoveState;
 class SwAttrSetChg;
 namespace vcl { class Font; }
 class SwSortedObjs;
@@ -87,6 +86,7 @@ class SW_DLLPUBLIC SwPageFrame final: public SwFootnoteBossFrame
 
     void UpdateAttr_( const SfxPoolItem*, const SfxPoolItem*, SwPageFrameInvFlags &,
                       SwAttrSetChg *pa = nullptr, SwAttrSetChg *pb = nullptr );
+    void UpdateAttrForFormatChange( SwFormat* pOldFormat, SwFormat* pNewFormat, SwPageFrameInvFlags & );
 
     /// Adapt the max. footnote height in each single column
     void SetColMaxFootnoteHeight();
@@ -204,6 +204,7 @@ public:
     bool IsEndNotePage() const                      { return m_bEndNotePage; }
     void SetFootnotePage( bool b )                       { m_bFootnotePage = b; }
     void SetEndNotePage( bool b )                   { m_bEndNotePage = b; }
+    SwSectionFrame* GetEndNoteSection();
 
     sal_uInt16 GetPhyPageNum() const        { return m_nPhyPageNum;}
     void SetPhyPageNum( sal_uInt16 nNum )   { m_nPhyPageNum = nNum;}

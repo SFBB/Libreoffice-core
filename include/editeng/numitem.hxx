@@ -26,6 +26,7 @@
 #include <editeng/numdef.hxx>
 #include <tools/color.hxx>
 #include <com/sun/star/style/NumberingType.hpp>
+#include <com/sun/star/util/MeasureUnit.hpp>
 #include <unotools/fontcvt.hxx>
 #include <editeng/editengdllapi.h>
 #include <o3tl/typed_flags_set.hxx>
@@ -82,7 +83,7 @@ public:
                                css::style::NumberingType::BITMAP != nNumType;
                     }
 
-    void dumpAsXml(xmlTextWriterPtr w) const;
+    virtual void dumpAsXml(xmlTextWriterPtr w) const;
 };
 
 class EDITENG_DLLPUBLIC SvxNumberFormat : public SvxNumberType
@@ -104,7 +105,7 @@ public:
 private:
     OUString            sPrefix;
     OUString            sSuffix;
-    std::optional<OUString> sListFormat;        // Format string ">%1.%2<" can be used instead of prefix/suffix
+    std::optional<OUString> sListFormat;        // Format string ">%1%.%2%<" can be used instead of prefix/suffix
                                                 // Right now it is optional value to distinguish empty list format
                                                 // and not set list format when we need to fallback to prefix/suffix.
 
@@ -129,6 +130,7 @@ private:
     SvxNumPositionAndSpaceMode mePositionAndSpaceMode;
 
     sal_Int32           nFirstLineOffset;   // First line indent
+    sal_Int16 nFirstLineOffsetUnit = css::util::MeasureUnit::TWIP;
     sal_Int32           nAbsLSpace;         // Distance Border<->Number
     short               nCharTextDistance;  // Distance Number<->Text
 
@@ -139,6 +141,7 @@ private:
     tools::Long                mnListtabPos;
     // specifies the first line indent
     tools::Long                mnFirstLineIndent;
+    sal_Int16 mnFirstLineIndentUnit = css::util::MeasureUnit::TWIP;
     // specifies the indent before the text, e.g. in L2R-layout the left margin
     tools::Long                mnIndentAt;
 
@@ -210,6 +213,7 @@ public:
     sal_Int32       GetAbsLSpace() const;
     void            SetFirstLineOffset(sal_Int32 nSet) { nFirstLineOffset = nSet;}
     sal_Int32       GetFirstLineOffset() const;
+    sal_Int16 GetFirstLineOffsetUnit() const { return nFirstLineOffsetUnit; }
     void            SetCharTextDistance(short nSet) { nCharTextDistance = nSet; }
     short           GetCharTextDistance() const;
 
@@ -220,6 +224,7 @@ public:
     tools::Long GetListtabPos() const { return mnListtabPos;}
     void SetFirstLineIndent( const tools::Long nFirstLineIndent );
     tools::Long GetFirstLineIndent() const { return mnFirstLineIndent;}
+    sal_Int16 GetFirstLineIndentUnit() const { return mnFirstLineIndentUnit; }
     void SetIndentAt( const tools::Long nIndentAt );
     tools::Long GetIndentAt() const { return mnIndentAt;}
 
@@ -228,6 +233,8 @@ public:
 
     bool GetIsLegal() const { return mbIsLegal; }
     void SetIsLegal(bool val) { mbIsLegal = val; }
+
+    void dumpAsXml(xmlTextWriterPtr w) const override;
 };
 
 //Feature-Flags (only sal_uInt16!)
@@ -312,6 +319,7 @@ class EDITENG_DLLPUBLIC SvxNumBulletItem final : public SfxPoolItem
 {
     SvxNumRule maNumRule;
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SvxNumBulletItem)
     explicit SvxNumBulletItem(SvxNumRule const & rRule);
     explicit SvxNumBulletItem(SvxNumRule && rRule);
     SvxNumBulletItem(SvxNumRule const & rRule, sal_uInt16 nWhich );

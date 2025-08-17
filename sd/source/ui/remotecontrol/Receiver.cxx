@@ -20,7 +20,6 @@
 #include <comphelper/diagnose_ex.hxx>
 
 using namespace sd;
-using namespace ::osl;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
@@ -150,7 +149,7 @@ void Receiver::executeCommand( const std::vector<OString> &aCommand )
             try
             {
                 // std::cerr << "pointer_coordination in the is" << std::endl;
-                xSlideShow->setProperty(beans::PropertyValue("PointerPosition", -1, Any(pos),
+                xSlideShow->setProperty(beans::PropertyValue(u"PointerPosition"_ustr, -1, Any(pos),
                                                              beans::PropertyState_DIRECT_VALUE));
             }
             catch (Exception&)
@@ -160,7 +159,7 @@ void Receiver::executeCommand( const std::vector<OString> &aCommand )
 
             try
             {
-                xSlideShow->setProperty(beans::PropertyValue("PointerVisible", -1, Any(true),
+                xSlideShow->setProperty(beans::PropertyValue(u"PointerVisible"_ustr, -1, Any(true),
                                                              beans::PropertyState_DIRECT_VALUE));
             }
             catch (Exception&)
@@ -177,7 +176,7 @@ void Receiver::executeCommand( const std::vector<OString> &aCommand )
         if (xSlideShow.is()) try
         {
             xSlideShow->setProperty(
-                        beans::PropertyValue( "PointerVisible" ,
+                        beans::PropertyValue( u"PointerVisible"_ustr ,
                             -1,
                             Any( false ),
                             beans::PropertyState_DIRECT_VALUE ) );
@@ -206,7 +205,7 @@ void Receiver::executeCommand( const std::vector<OString> &aCommand )
         if (xSlideShow.is()) try
         {
             xSlideShow->setProperty(
-                        beans::PropertyValue( "PointerPosition" ,
+                        beans::PropertyValue( u"PointerPosition"_ustr ,
                             -1,
                             Any( pos ),
                             beans::PropertyState_DIRECT_VALUE ) );

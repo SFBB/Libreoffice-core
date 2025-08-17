@@ -24,8 +24,8 @@
 namespace chart
 {
 BarGeometryResources::BarGeometryResources(weld::Builder* pBuilder)
-    : m_xFT_Geometry(pBuilder->weld_label("shapeft"))
-    , m_xLB_Geometry(pBuilder->weld_tree_view("shape"))
+    : m_xFT_Geometry(pBuilder->weld_label(u"shapeft"_ustr))
+    , m_xLB_Geometry(pBuilder->weld_tree_view(u"shape"_ustr))
 {
     for (size_t i = 0; i < std::size(CHART_TYPE); ++i)
         m_xLB_Geometry->append_text(SchResId(CHART_TYPE[i]));
@@ -34,7 +34,7 @@ BarGeometryResources::BarGeometryResources(weld::Builder* pBuilder)
 
 void BarGeometryResources::connect_changed(const Link<weld::TreeView&, void>& rLink)
 {
-    m_xLB_Geometry->connect_changed(rLink);
+    m_xLB_Geometry->connect_selection_changed(rLink);
 }
 
 void BarGeometryResources::set_visible(bool bShow)

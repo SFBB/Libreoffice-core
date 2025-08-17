@@ -62,13 +62,12 @@ VCLXPrinterPropertySet::~VCLXPrinterPropertySet()
     mxPrinter.reset();
 }
 
-css::uno::Reference< css::awt::XDevice > const &  VCLXPrinterPropertySet::GetDevice()
+rtl::Reference< VCLXDevice > const &  VCLXPrinterPropertySet::GetDevice()
 {
     if ( !mxPrnDevice.is() )
     {
-        rtl::Reference<VCLXDevice> pDev = new VCLXDevice;
-        pDev->SetOutputDevice( GetPrinter() );
-        mxPrnDevice = pDev;
+        mxPrnDevice = new VCLXDevice;
+        mxPrnDevice->SetOutputDevice(GetPrinter());
     }
     return mxPrnDevice;
 }
@@ -83,8 +82,8 @@ css::uno::Reference< css::beans::XPropertySetInfo > VCLXPrinterPropertySet::getP
 {
     static ::cppu::OPropertyArrayHelper s_PropertyArrayHelper(
             css::uno::Sequence<css::beans::Property>{
-                    css::beans::Property( "Orientation", PROPERTY_Orientation, cppu::UnoType<sal_Int16>::get(), 0 ),
-                    css::beans::Property( "Horizontal", PROPERTY_Horizontal, cppu::UnoType<bool>::get(), 0 )},
+                    css::beans::Property( u"Orientation"_ustr, PROPERTY_Orientation, cppu::UnoType<sal_Int16>::get(), 0 ),
+                    css::beans::Property( u"Horizontal"_ustr, PROPERTY_Horizontal, cppu::UnoType<bool>::get(), 0 )},
             false);
 
     return s_PropertyArrayHelper;
@@ -188,10 +187,8 @@ css::uno::Sequence< OUString > VCLXPrinterPropertySet::getFormDescriptions(  )
     for ( sal_uInt16 n = 0; n < nPaperBinCount; n++ )
     {
         // Format: <DisplayFormName;FormNameId;DisplayPaperBinName;PaperBinNameId;DisplayPaperName;PaperNameId>
-        OUString aDescr =  "*;*;" + GetPrinter()->GetPaperBinName( n ) + ";" +
-            OUString::number(n) + ";*;*";
-
-        aDescriptions.getArray()[n] = aDescr;
+        aDescriptions.getArray()[n] = "*;*;" + GetPrinter()->GetPaperBinName( n ) + ";" +
+                                      OUString::number(n) + ";*;*";
     }
     return aDescriptions;
 }
@@ -354,7 +351,7 @@ css::uno::Reference< css::awt::XInfoPrinter > VCLXPrinterServer::createInfoPrint
 
 OUString VCLXPrinterServer::getImplementationName()
 {
-    return "stardiv.Toolkit.VCLXPrinterServer";
+    return u"stardiv.Toolkit.VCLXPrinterServer"_ustr;
 }
 
 sal_Bool VCLXPrinterServer::supportsService(OUString const & ServiceName)
@@ -365,7 +362,7 @@ sal_Bool VCLXPrinterServer::supportsService(OUString const & ServiceName)
 css::uno::Sequence<OUString> VCLXPrinterServer::getSupportedServiceNames()
 {
     return css::uno::Sequence<OUString>{
-        "com.sun.star.awt.PrinterServer", "stardiv.vcl.PrinterServer"};
+        u"com.sun.star.awt.PrinterServer"_ustr, u"stardiv.vcl.PrinterServer"_ustr};
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *

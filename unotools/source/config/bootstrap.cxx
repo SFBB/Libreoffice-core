@@ -60,7 +60,7 @@ namespace utl
 static OUString makeImplName()
 {
     OUString uri;
-    rtl::Bootstrap::get( "BRAND_BASE_DIR", uri);
+    rtl::Bootstrap::get( u"BRAND_BASE_DIR"_ustr, uri);
     return uri + "/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap");
 }
 
@@ -126,7 +126,7 @@ const Bootstrap::Impl& Bootstrap::data()
 bool Bootstrap::getProcessWorkingDir(OUString &rUrl)
 {
     rUrl.clear();
-    OUString s("$OOO_CWD");
+    OUString s(u"$OOO_CWD"_ustr);
     rtl::Bootstrap::expandMacros(s);
     if (s.isEmpty())
     {
@@ -415,7 +415,9 @@ char const PERIOD[] = ". ";
 
 static void addFileError(OUStringBuffer& _rBuf, std::u16string_view _aPath, AsciiString _sWhat)
 {
-    std::u16string_view sSimpleFileName = _aPath.substr(1 +_aPath.rfind(cURLSeparator));
+    const std::string_view::size_type nLastSep = _aPath.rfind(cURLSeparator);
+    const auto nAfterSep = (nLastSep != std::string_view::npos) ? (nLastSep + 1) : 0;
+    std::u16string_view sSimpleFileName = _aPath.substr(nAfterSep);
 
     _rBuf.append("The configuration file");
     _rBuf.append(OUString::Concat(" '") + sSimpleFileName + "' ");
@@ -549,7 +551,7 @@ OUString Bootstrap::getBuildIdData(OUString const& _sDefault)
 {
     // try to open version.ini (versionrc)
     OUString uri;
-    rtl::Bootstrap::get( "BRAND_BASE_DIR", uri);
+    rtl::Bootstrap::get( u"BRAND_BASE_DIR"_ustr, uri);
     rtl::Bootstrap aData( uri + "/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("version") );
     if ( aData.getHandle() == nullptr )
         // version.ini (versionrc) doesn't exist

@@ -9,6 +9,7 @@
 
 #include <xepivotxml.hxx>
 #include <dpcache.hxx>
+#include <pivot/PivotTableFormats.hxx>
 #include <dpdimsave.hxx>
 #include <dpitemdata.hxx>
 #include <dpobject.hxx>
@@ -27,6 +28,7 @@
 #include <sal/log.hxx>
 #include <sax/tools/converter.hxx>
 #include <sax/fastattribs.hxx>
+#include <sax/fshelper.hxx>
 #include <svl/numformat.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -721,16 +723,16 @@ void WriteGrabBagItemToStream(XclExpXmlStream& rStrm, sal_Int32 tokenId, const c
 
     css::uno::Sequence<css::xml::FastAttribute> aFastSeq;
     css::uno::Sequence<css::xml::Attribute> aUnkSeq;
-    for (const auto& a : std::as_const(aSeqs))
+    for (const auto& a : aSeqs)
     {
         if (a >>= aFastSeq)
         {
-            for (const auto& rAttr : std::as_const(aFastSeq))
+            for (const auto& rAttr : aFastSeq)
                 rStrm.WriteAttributes(rAttr.Token, rAttr.Value);
         }
         else if (a >>= aUnkSeq)
         {
-            for (const auto& rAttr : std::as_const(aUnkSeq))
+            for (const auto& rAttr : aUnkSeq)
                 pStrm->write(" ")
                     ->write(rAttr.Name)
                     ->write("=\"")
@@ -774,6 +776,11 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
     std::vector<tools::Long> aPageFields;
     std::vector<DataField> aDataFields;
 
+    // we should always export <rowItems> and <colItems>, even if the pivot table
+    // does not contain col/row items. otherwise, in Excel, pivot table will not
+    // have all context menu items.
+    tools::Long nRowItemsCount = 1; // for <rowItems count="..."> of pivotTable*.xml
+    tools::Long nColItemsCount = 1; // for <colItems count="..."> of pivotTable*.xml
     tools::Long nDataDimCount = rSaveData.GetDataDimensionCount();
     // Use dimensions in the save data to get their correct ordering.
     // Dimension order here is significant as they specify the order of
@@ -856,8 +863,14 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
     // NB: Excel's range does not include page field area (if any).
     ScRange aOutRange = rDPObj.GetOutputRangeByType(sheet::DataPilotOutputRangeType::TABLE);
 
-    sal_Int32 nFirstHeaderRow = rDPObj.GetHeaderLayout() ? 2 : 1;
-    sal_Int32 nFirstDataRow = 2;
+    // normalize the order to prevent negative row/col counts - just in case.
+    aOutRange.PutInOrder();
+    // both start and end cells are included. subtraction excludes the start cells, therefore add +1.
+    SCROW pivotTableRowCount = aOutRange.aEnd.Row() - aOutRange.aStart.Row() + 1;
+    SCCOL pivotTableColCount = aOutRange.aEnd.Col() - aOutRange.aStart.Col() + 1;
+
+    sal_Int32 nFirstHeaderRow = rDPObj.GetHideHeader() ? 0 : (rDPObj.GetHeaderLayout() ? 2 : 1);
+    sal_Int32 nFirstDataRow = rDPObj.GetHideHeader() ? 1 : 2;
     sal_Int32 nFirstDataCol = 1;
     ScRange aResRange = rDPObj.GetOutputRangeByType(sheet::DataPilotOutputRangeType::RESULT);
 
@@ -1065,6 +1078,11 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
             pPivotStrm->singleElement(XML_item, pItemAttList);
         }
 
+        if (strcmp(toOOXMLAxisType(eOrient), "axisCol") == 0)
+            nColItemsCount = pivotTableColCount - nFirstDataCol;
+        else if (strcmp(toOOXMLAxisType(eOrient), "axisRow") == 0)
+            nRowItemsCount = pivotTableRowCount - nFirstDataRow;
+
         for (const OString& sSubtotal : aSubtotalSequence)
         {
             pPivotStrm->singleElement(XML_item, XML_t, sSubtotal);
@@ -1092,6 +1110,31 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
     }
 
     // <rowItems>
+    if (nRowItemsCount > 0)
+    {
+        pPivotStrm->startElement(XML_rowItems, XML_count, OString::number(nRowItemsCount));
+
+        // export nRowItemsCount times <i> and <x> elements
+        for (tools::Long nCount = 0; nCount < nRowItemsCount; ++nCount)
+        {
+            /* we should add t="grand" to the last <i> element. Otherwise, Excel will not
+            have all functions in the context menu of the pivot table. Especially for the
+            "Grand Total" column/row cells.
+
+            note: it is not completely clear that the last <i> element always gets t="grand".
+            however, testing on the same docs indicate that t="grand" should be
+            in the last element, so let's try this here. */
+            if (nCount == nRowItemsCount - 1)
+                pPivotStrm->startElement(XML_i, XML_t, "grand");
+            else
+                pPivotStrm->startElement(XML_i);
+
+            pPivotStrm->singleElement(XML_x, XML_v, OString::number(nCount));
+            pPivotStrm->endElement(XML_i);
+        }
+
+        pPivotStrm->endElement(XML_rowItems);
+    }
 
     // <colFields>
 
@@ -1109,6 +1152,31 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
     }
 
     // <colItems>
+    if (nColItemsCount > 0)
+    {
+        pPivotStrm->startElement(XML_colItems, XML_count, OString::number(nColItemsCount));
+
+        // export nColItemsCount times <i> and <x> elements
+        for (tools::Long nCount = 0; nCount < nColItemsCount; ++nCount)
+        {
+            /* we should add t="grand" to the last <i> element. Otherwise, Excel will not
+            have all functions in the context menu of the pivot table. Especially for the
+            "Grand Total" column/row cells.
+
+            note: it is not completely clear that the last <i> element always gets t="grand".
+            however, testing on the some docs indicate that t="grand" should be
+            in the last element, so let's try this here. */
+            if (nCount == nColItemsCount - 1)
+                pPivotStrm->startElement(XML_i, XML_t, "grand");
+            else
+                pPivotStrm->startElement(XML_i);
+
+            pPivotStrm->singleElement(XML_x, XML_v, OString::number(nCount));
+            pPivotStrm->endElement(XML_i);
+        }
+
+        pPivotStrm->endElement(XML_colItems);
+    }
 
     // <pageFields>
 
@@ -1181,8 +1249,11 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
         pPivotStrm->endElement(XML_dataFields);
     }
 
+    // <formats>
+    savePivotTableFormats(rStrm, rDPObj);
+
     // Now add style info (use grab bag, or just a set which is default on Excel 2007 through 2016)
-    if (const auto [bHas, aVal] = rDPObj.GetInteropGrabBagValue("pivotTableStyleInfo"); bHas)
+    if (const auto [bHas, aVal] = rDPObj.GetInteropGrabBagValue(u"pivotTableStyleInfo"_ustr); bHas)
         WriteGrabBagItemToStream(rStrm, XML_pivotTableStyleInfo, aVal);
     else
         pPivotStrm->singleElement(XML_pivotTableStyleInfo, XML_name, "PivotStyleLight16",
@@ -1200,6 +1271,71 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
         aBuf);
 
     pPivotStrm->endElement(XML_pivotTableDefinition);
+}
+
+void XclExpXmlPivotTables::savePivotTableFormats(XclExpXmlStream& rStream, ScDPObject const& rDPObject)
+{
+    sax_fastparser::FSHelperPtr& pPivotStream = rStream.GetCurrentStream();
+
+    ScDPSaveData* pSaveData = rDPObject.GetSaveData();
+    if (pSaveData && pSaveData->hasFormats())
+    {
+        sc::PivotTableFormats const& rFormats = pSaveData->getFormats();
+        if (rFormats.size() > 0)
+        {
+            pPivotStream->startElement(XML_formats, XML_count, OString::number(rFormats.size()));
+
+            for (auto const& rFormat : rFormats.getVector())
+            {
+                if (!rFormat.pPattern)
+                    continue;
+
+                sal_Int32 nDxf = GetDxfs().GetDxfIdForPattern(rFormat.pPattern.get());
+                if (nDxf == -1)
+                    continue;
+
+                pPivotStream->startElement(XML_format, XML_dxfId, OString::number(nDxf));
+                {
+                    auto pAttributeList = sax_fastparser::FastSerializerHelper::createAttrList();
+                    if (!rFormat.bDataOnly) // default is true
+                        pAttributeList->add(XML_dataOnly, "0");
+                    if (rFormat.bLabelOnly) // default is false
+                        pAttributeList->add(XML_labelOnly, "1");
+                    if (!rFormat.bOutline) // default is true
+                        pAttributeList->add(XML_outline, "0");
+                    if (rFormat.oFieldPosition)
+                        pAttributeList->add(XML_fieldPosition, OString::number(*rFormat.oFieldPosition));
+                    pPivotStream->startElement(XML_pivotArea, pAttributeList);
+                }
+                if (rFormat.aSelections.size())
+                {
+                    pPivotStream->startElement(XML_references, XML_count, OString::number(rFormat.aSelections.size()));
+                    for (sc::Selection const& rSelection : rFormat.getSelections())
+                    {
+                        {
+                            auto pRefAttributeList = sax_fastparser::FastSerializerHelper::createAttrList();
+                            pRefAttributeList->add(XML_field, OString::number(sal_uInt32(rSelection.nField)));
+                            pRefAttributeList->add(XML_count, "1");
+                            if (!rSelection.bSelected) // default is true
+                                pRefAttributeList->add(XML_selected, "0");
+                            pPivotStream->startElement(XML_reference, pRefAttributeList);
+                        }
+
+                        for (sal_uInt32 nIndex : rSelection.nIndices)
+                        {
+                            pPivotStream->singleElement(XML_x, XML_v, OString::number(nIndex));
+                        }
+                        pPivotStream->endElement(XML_reference);
+                    }
+                    pPivotStream->endElement(XML_references);
+                }
+                pPivotStream->endElement(XML_pivotArea);
+
+                pPivotStream->endElement(XML_format);
+            }
+            pPivotStream->endElement(XML_formats);
+        }
+    }
 }
 
 void XclExpXmlPivotTables::AppendTable( const ScDPObject* pTable, sal_Int32 nCacheId, sal_Int32 nPivotId )

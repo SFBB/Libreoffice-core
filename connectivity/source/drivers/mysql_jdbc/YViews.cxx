@@ -32,14 +32,11 @@ using namespace connectivity;
 using namespace connectivity::mysql;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace dbtools;
 typedef connectivity::sdbcx::OCollection OCollection_TYPE;
 
-sdbcx::ObjectType OViews::createObject(const OUString& _rName)
+css::uno::Reference<css::beans::XPropertySet> OViews::createObject(const OUString& _rName)
 {
     OUString sCatalog, sSchema, sTable;
     ::dbtools::qualifiedNameComponents(m_xMetaData, _rName, sCatalog, sSchema, sTable,
@@ -65,8 +62,8 @@ Reference<XPropertySet> OViews::createDescriptor()
 }
 
 // XAppend
-sdbcx::ObjectType OViews::appendObject(const OUString& _rForName,
-                                       const Reference<XPropertySet>& descriptor)
+css::uno::Reference<css::beans::XPropertySet>
+OViews::appendObject(const OUString& _rForName, const Reference<XPropertySet>& descriptor)
 {
     createView(descriptor);
     return createObject(_rForName);
@@ -83,7 +80,7 @@ void OViews::dropObject(sal_Int32 _nPos, const OUString& /*_sElementName*/)
     if (bIsNew)
         return;
 
-    OUString aSql("DROP VIEW");
+    OUString aSql(u"DROP VIEW"_ustr);
 
     Reference<XPropertySet> xProp(xObject, UNO_QUERY);
     aSql += ::dbtools::composeTableName(m_xMetaData, xProp,
@@ -106,7 +103,7 @@ void OViews::createView(const Reference<XPropertySet>& descriptor)
 {
     Reference<XConnection> xConnection = static_cast<OMySQLCatalog&>(m_rParent).getConnection();
 
-    OUString aSql("CREATE VIEW ");
+    OUString aSql(u"CREATE VIEW "_ustr);
     OUString sCommand;
 
     aSql += ::dbtools::composeTableName(m_xMetaData, descriptor,

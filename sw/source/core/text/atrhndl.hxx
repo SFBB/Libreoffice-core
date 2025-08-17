@@ -18,7 +18,7 @@
  */
 
 #pragma once
-#define NUM_ATTRIBUTE_STACKS 45
+#define NUM_ATTRIBUTE_STACKS 46
 
 #include <vector>
 #include <swfntcch.hxx>
@@ -45,6 +45,8 @@ private:
     // This is the base font for the paragraph. It is stored in order to have
     // a template, if we have to restart the attribute evaluation
     std::optional<SwFont> m_oFnt;
+
+    int m_nINETFMT = 0; // for font's SetURL
 
     bool m_bVertLayout;
     bool m_bVertLayoutLRBT;

@@ -22,13 +22,6 @@
 #include <svx/svdobj.hxx>
 #include <svx/svxdllapi.h>
 
-//   Initial Declarations
-class SfxPoolItem;
-class SfxSetItem;
-class SdrOutliner;
-class SfxItemSet;
-class SfxItemPool;
-
 //   SdrAttrObj. This is an abstract class, we only instantiate its subclasses.
 class SVXCORE_DLLPUBLIC SdrAttrObj : public SdrObject
 {
@@ -40,23 +33,23 @@ protected:
 
 protected:
     /// Detects the width of the line. No line ->0.
-    sal_Int32 ImpGetLineWdt() const;
+    SAL_DLLPRIVATE sal_Int32 ImpGetLineWdt() const;
 
     /// Detects when a stylesheet is changed
     virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
 
-    SdrAttrObj(SdrModel& rSdrModel);
+    SAL_DLLPRIVATE SdrAttrObj(SdrModel& rSdrModel);
     // Copy constructor
-    SdrAttrObj(SdrModel& rSdrModel, SdrAttrObj const &);
-    virtual ~SdrAttrObj() override;
+    SAL_DLLPRIVATE SdrAttrObj(SdrModel& rSdrModel, SdrAttrObj const &);
+    SAL_DLLPRIVATE virtual ~SdrAttrObj() override;
 
 public:
 
     // Detects if bFilledObj && Fill != FillNone
-    bool HasFill() const;
+    SAL_DLLPRIVATE bool HasFill() const;
 
     // Detects if Line != LineNone
-    bool HasLine() const;
+    SAL_DLLPRIVATE bool HasLine() const;
 
     virtual const tools::Rectangle& GetSnapRect() const override;
 };

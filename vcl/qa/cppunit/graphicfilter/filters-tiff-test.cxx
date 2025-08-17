@@ -9,7 +9,6 @@
 
 #include <unotest/filters-test.hxx>
 #include <test/bootstrapfixture.hxx>
-#include <vcl/FilterConfigItem.hxx>
 #include <tools/stream.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/graphicfilter.hxx>
@@ -231,7 +230,7 @@ void TiffFilterTest::testRoundtrip()
     }
 
     aStream.Seek(STREAM_SEEK_TO_BEGIN);
-    vcl::GraphicFormatDetector aDetector(aStream, "");
+    vcl::GraphicFormatDetector aDetector(aStream, u""_ustr);
 
     CPPUNIT_ASSERT_EQUAL(true, aDetector.detect());
     CPPUNIT_ASSERT_EQUAL(true, aDetector.checkTIF());

@@ -38,8 +38,8 @@
 
 using namespace com::sun::star;
 
-ConstCustomShape::ConstCustomShape( SwWrtShell* pWrtShell, SwEditWin* pEditWin, SwView* pSwView, SfxRequest const & rReq )
-    : SwDrawBase( pWrtShell, pEditWin, pSwView )
+ConstCustomShape::ConstCustomShape( SwWrtShell* pWrtShell, SwEditWin* pEditWin, SwView& rSwView, SfxRequest const & rReq )
+    : SwDrawBase( pWrtShell, pEditWin, rSwView )
 {
     m_aCustomShape = ConstCustomShape::GetShapeTypeFromRequest( rReq );
 }
@@ -77,7 +77,7 @@ bool ConstCustomShape::MouseButtonDown(const MouseEvent& rMEvt)
                 if ( static_cast<SdrObjCustomShape*>(pObj)->UseNoFillStyle() )
                     bForceNoFillStyle = true;
 
-                SfxItemSet aAttr( m_pView->GetPool() );
+                SfxItemSet aAttr( m_rView.GetPool() );
                 if ( bForceNoFillStyle )
                     aAttr.Put( XFillStyleItem( drawing::FillStyle_NONE ) );
                 pObj->SetMergedItemSet(aAttr);
@@ -110,8 +110,6 @@ void ConstCustomShape::SetAttributes( SdrObject* pObj )
                 if ( aObjList[ i ].equalsIgnoreAsciiCase( m_aCustomShape ) )
                 {
                     FmFormModel aFormModel;
-                    SfxItemPool& rPool(aFormModel.GetItemPool());
-                    rPool.FreezeIdRanges();
 
                     if ( GalleryExplorer::GetSdrObj( GALLERY_THEME_POWERPOINT, i, &aFormModel ) )
                     {

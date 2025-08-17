@@ -29,6 +29,7 @@
 #include "vbapane.hxx"
 #include "wordvbahelper.hxx"
 #include <view.hxx>
+#include <unotxdoc.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
@@ -36,9 +37,10 @@ using namespace ::ooo::vba;
 SwVbaWindow::SwVbaWindow(
         const uno::Reference< XHelperInterface >& xParent,
         const uno::Reference< uno::XComponentContext >& xContext,
-        const uno::Reference< frame::XModel >& xModel,
+        const rtl::Reference< SwXTextDocument >& xModel,
         const uno::Reference< frame::XController >& xController ) :
-    WindowImpl_BASE( xParent, xContext, xModel, xController )
+    WindowImpl_BASE( xParent, xContext, xController ),
+    m_xModel(xModel)
 {
 }
 
@@ -118,14 +120,14 @@ SwVbaWindow::getCaption()
 {
     SwView* pView = word::getView( m_xModel );
     if( !pView )
-        return "";
+        return u""_ustr;
 
     uno::Reference< css::beans::XPropertySet > xFrameProps( pView->GetViewFrame().GetFrame().GetFrameInterface()->getController()->getFrame(), uno::UNO_QUERY );
     if( !xFrameProps.is() )
-        return "";
+        return u""_ustr;
 
     OUString sTitle;
-    xFrameProps->getPropertyValue( "Title" ) >>= sTitle;
+    xFrameProps->getPropertyValue( u"Title"_ustr ) >>= sTitle;
 
     return sTitle;
 }
@@ -141,7 +143,7 @@ SwVbaWindow::setCaption( const OUString& _caption )
     if( !xFrameProps.is() )
         return;
 
-    xFrameProps->setPropertyValue( "Title", uno::Any( _caption ) );
+    xFrameProps->setPropertyValue( u"Title"_ustr, uno::Any( _caption ) );
 }
 
 uno::Any SAL_CALL
@@ -163,7 +165,7 @@ SwVbaWindow::ActivePane()
 OUString
 SwVbaWindow::getServiceImplName()
 {
-    return "SwVbaWindow";
+    return u"SwVbaWindow"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -171,7 +173,7 @@ SwVbaWindow::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.word.Window"
+        u"ooo.vba.word.Window"_ustr
     };
     return aServiceNames;
 }

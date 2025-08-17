@@ -35,23 +35,32 @@ class SwXAutoTextContainer final : public UnoApiTest,
 {
 public:
     SwXAutoTextContainer()
-        : UnoApiTest("")
+        : UnoApiTest(u""_ustr)
         , XElementAccess(cppu::UnoType<text::XAutoTextGroup>::get())
         , XIndexAccess(3)
-        , XNameAccess("crdbus50")
+        , XNameAccess(u"crdbus50"_ustr)
     {
     }
 
     virtual void setUp() override
     {
         UnoApiTest::setUp();
-        mxDesktop.set(frame::Desktop::create(mxComponentContext));
+        mxDesktop.set(frame::Desktop::create(m_xContext));
     }
 
     Reference<XInterface> init() override
     {
         Reference<text::XAutoTextContainer> xAutoTextContainer
             = text::AutoTextContainer::create(comphelper::getProcessComponentContext());
+
+        try
+        {
+            // See qadevOOo/tests/java/mod/_sw/SwXAutoTextGroup.java.
+            xAutoTextContainer->removeByName(u"myNewGroup2*1"_ustr);
+        }
+        catch (const container::NoSuchElementException&)
+        {
+        }
 
         Reference<container::XNameAccess> xNA(xAutoTextContainer, UNO_QUERY_THROW);
         Sequence<rtl::OUString> aNames = xNA->getElementNames();

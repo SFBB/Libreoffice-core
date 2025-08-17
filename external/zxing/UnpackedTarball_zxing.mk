@@ -11,12 +11,20 @@ $(eval $(call gb_UnpackedTarball_UnpackedTarball,zxing))
 
 $(eval $(call gb_UnpackedTarball_set_tarball,zxing,$(ZXING_TARBALL)))
 
-$(eval $(call gb_UnpackedTarball_set_patchlevel,zxing,1))
+# external/zxing/0001-const-up-some-symbols.patch
+# upstream effort at: https://github.com/zxing-cpp/zxing-cpp/pull/979
 
-# patch 0001-android-Fix-build-with-NDK-26.patch is backport of
-# upstream commit https://github.com/zxing-cpp/zxing-cpp/commit/295b193b0105e68bb24747aefbff2653df892b4c
+ifneq ($(MSYSTEM),)
+# the 2.3.0 tarball contains dangling symlinks (to a submodule component/experimental backend)
+# git-bash/msys tar fails when extracting since MSYS defaults to not create those
+ifeq ($(filter winsymlinks%,$(MSYS)),)
+$(call gb_UnpackedTarball_get_target,zxing): export MSYS:=$(MSYS) winsymlinks
+endif
+endif
+
 $(eval $(call gb_UnpackedTarball_add_patches,zxing, \
-	external/zxing/0001-android-Fix-build-with-NDK-26.patch \
+	external/zxing/0001-add-ZXVersion-h.patch \
+	external/zxing/0001-const-up-some-symbols.patch \
 ))
 
 # vim: set noet sw=4 ts=4:

@@ -154,14 +154,19 @@ void VirtualDevice::ImplInitVirDev( const OutputDevice* pOutDev,
         (void)pOutDev->AcquireGraphics();
     pGraphics = pOutDev->mpGraphics;
     if ( pGraphics )
-        mpVirDev = pSVData->mpDefInst->CreateVirtualDevice(*pGraphics, nDX, nDY, meFormatAndAlpha, pData);
+    {
+        if (pData)
+            mpVirDev = pSVData->mpDefInst->CreateVirtualDevice(*pGraphics, nDX, nDY, meFormatAndAlpha, *pData);
+        else
+            mpVirDev = pSVData->mpDefInst->CreateVirtualDevice(*pGraphics, nDX, nDY, meFormatAndAlpha);
+    }
     else
         mpVirDev = nullptr;
     if ( !mpVirDev )
     {
         // do not abort but throw an exception, may be the current thread terminates anyway (plugin-scenario)
         throw css::uno::RuntimeException(
-            "Could not create system bitmap!",
+            u"Could not create system bitmap!"_ustr,
             css::uno::Reference< css::uno::XInterface >() );
     }
 
@@ -249,8 +254,7 @@ void VirtualDevice::dispose()
     OutputDevice::dispose();
 }
 
-bool VirtualDevice::InnerImplSetOutputSizePixel( const Size& rNewSize, bool bErase,
-                                                 sal_uInt8 *const pBuffer)
+bool VirtualDevice::InnerImplSetOutputSizePixel( const Size& rNewSize, bool bErase, bool bAlphaMaskTransparent)
 {
     SAL_INFO( "vcl.virdev",
               "VirtualDevice::InnerImplSetOutputSizePixel( " << rNewSize.Width() << ", "
@@ -277,16 +281,20 @@ bool VirtualDevice::InnerImplSetOutputSizePixel( const Size& rNewSize, bool bEra
 
     if ( bErase )
     {
-        if ( pBuffer )
-            bRet = mpVirDev->SetSizeUsingBuffer( nNewWidth, nNewHeight, pBuffer );
-        else
-            bRet = mpVirDev->SetSize( nNewWidth, nNewHeight );
-
+        bRet = mpVirDev->SetSize( nNewWidth, nNewHeight, bAlphaMaskTransparent );
         if ( bRet )
         {
             mnOutWidth  = rNewSize.Width();
             mnOutHeight = rNewSize.Height();
-            Erase();
+            // So, in theory, the bAlphaMaskTransparent param to the SetSize() call just above should
+            // be initialising the data to transparent. But this only works on Linux. On Windows and macOS we
+            // have two different kinds of problems in the VirtualDevice subclasses,
+            // which means that it ends up being completely ineffective.
+            // So just take the heavy handed approach here and force the data to transparent.
+            if (bAlphaMaskTransparent)
+                DrawWallpaper(tools::Rectangle(0, 0, mnOutWidth, mnOutHeight), Wallpaper(COL_TRANSPARENT));
+            else
+                Erase();
         }
     }
     else
@@ -300,7 +308,7 @@ bool VirtualDevice::InnerImplSetOutputSizePixel( const Size& rNewSize, bool bEra
 
         assert(mpGraphics);
 
-        pNewVirDev = pSVData->mpDefInst->CreateVirtualDevice(*mpGraphics, nNewWidth, nNewHeight, meFormatAndAlpha);
+        pNewVirDev = pSVData->mpDefInst->CreateVirtualDevice(*mpGraphics, nNewWidth, nNewHeight, meFormatAndAlpha, bAlphaMaskTransparent);
         if ( pNewVirDev )
         {
             SalGraphics* pGraphics = pNewVirDev->AcquireGraphics();
@@ -337,57 +345,9 @@ bool VirtualDevice::InnerImplSetOutputSizePixel( const Size& rNewSize, bool bEra
     return bRet;
 }
 
-// #i32109#: Fill opaque areas correctly (without relying on
-// fill/linecolor state)
-void VirtualDevice::ImplFillOpaqueRectangle( const tools::Rectangle& rRect )
+bool VirtualDevice::SetOutputSizePixel( const Size& rNewSize, bool bErase, bool bAlphaMaskTransparent )
 {
-    // Set line and fill color to opaque,
-    // fill rect with that (linecolor, too, because of
-    // those pesky missing pixel problems)
-    Push( vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR );
-    SetLineColor( COL_ALPHA_OPAQUE );
-    SetFillColor( COL_ALPHA_OPAQUE );
-    DrawRect( rRect );
-    Pop();
-}
-
-bool VirtualDevice::ImplSetOutputSizePixel( const Size& rNewSize, bool bErase,
-                                            sal_uInt8 *const pBuffer, bool bAlphaMaskTransparent )
-{
-    if( InnerImplSetOutputSizePixel(rNewSize, bErase, pBuffer) )
-    {
-        if (meFormatAndAlpha != DeviceFormat::WITHOUT_ALPHA)
-        {
-            // #110958# Setup alpha bitmap
-            if(mpAlphaVDev && mpAlphaVDev->GetOutputSizePixel() != rNewSize)
-            {
-                mpAlphaVDev.disposeAndClear();
-            }
-
-            if( !mpAlphaVDev )
-            {
-                mpAlphaVDev = VclPtr<VirtualDevice>::Create(*this, meFormatAndAlpha);
-                mpAlphaVDev->InnerImplSetOutputSizePixel(rNewSize, bErase, nullptr);
-                mpAlphaVDev->SetBackground( Wallpaper(bAlphaMaskTransparent ? COL_ALPHA_TRANSPARENT : COL_ALPHA_OPAQUE) );
-                mpAlphaVDev->Erase();
-            }
-
-            // TODO: copy full outdev state to new one, here. Also needed in outdev2.cxx:DrawOutDev
-            if( GetLineColor() != COL_TRANSPARENT )
-                mpAlphaVDev->SetLineColor( COL_ALPHA_OPAQUE );
-
-            if( GetFillColor() != COL_TRANSPARENT )
-                mpAlphaVDev->SetFillColor( COL_ALPHA_OPAQUE );
-
-            mpAlphaVDev->SetMapMode( GetMapMode() );
-
-            mpAlphaVDev->SetAntialiasing( GetAntialiasing() );
-        }
-
-        return true;
-    }
-
-    return false;
+    return InnerImplSetOutputSizePixel(rNewSize, bErase, bAlphaMaskTransparent);
 }
 
 void VirtualDevice::EnableRTL( bool bEnable )
@@ -400,11 +360,6 @@ void VirtualDevice::EnableRTL( bool bEnable )
         mpGraphics->SetLayout( bEnable ? SalLayoutFlags::BiDiRtl : SalLayoutFlags::NONE );
 
     OutputDevice::EnableRTL(bEnable);
-}
-
-bool VirtualDevice::SetOutputSizePixel( const Size& rNewSize, bool bErase, bool bAlphaMaskTransparent )
-{
-    return ImplSetOutputSizePixel(rNewSize, bErase, nullptr, bAlphaMaskTransparent);
 }
 
 bool VirtualDevice::SetOutputSizePixelScaleOffsetAndLOKBuffer(
@@ -420,7 +375,22 @@ bool VirtualDevice::SetOutputSizePixelScaleOffsetAndLOKBuffer(
     mm.SetScaleX( rScale );
     mm.SetScaleY( rScale );
     SetMapMode( mm );
-    return ImplSetOutputSizePixel(rNewSize, true, pBuffer);
+
+    assert(meFormatAndAlpha == DeviceFormat::WITHOUT_ALPHA);
+    assert(mpVirDev);
+    assert( rNewSize != GetOutputSizePixel() &&  "Trying to re-use a VirtualDevice but this time using a pre-allocated buffer");
+    assert( rNewSize.Width() >= 1 );
+    assert( rNewSize.Height() >= 1 );
+
+    bool bRet = mpVirDev->SetSizeUsingBuffer( rNewSize.Width(), rNewSize.Height(), pBuffer );
+    if ( bRet )
+    {
+        mnOutWidth  = rNewSize.Width();
+        mnOutHeight = rNewSize.Height();
+    }
+
+    return bRet;
+
 }
 
 void VirtualDevice::SetReferenceDevice( RefDevMode i_eRefDevMode )

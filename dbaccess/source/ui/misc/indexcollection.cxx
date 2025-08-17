@@ -124,7 +124,7 @@ namespace dbaui
             // set the properties
             static constexpr OUString s_sNamePropertyName = u"Name"_ustr;
             // the index' own props
-            xIndexDescriptor->setPropertyValue("IsUnique", css::uno::Any(_rPos->bUnique));
+            xIndexDescriptor->setPropertyValue(u"IsUnique"_ustr, css::uno::Any(_rPos->bUnique));
             xIndexDescriptor->setPropertyValue(s_sNamePropertyName, Any(_rPos->sName));
 
             // the fields
@@ -136,7 +136,7 @@ namespace dbaui
                 OSL_ENSURE(xColDescriptor.is(), "OIndexCollection::commitNewIndex: invalid column descriptor!");
                 if (xColDescriptor.is())
                 {
-                    xColDescriptor->setPropertyValue("IsAscending", css::uno::Any(field.bSortAscending));
+                    xColDescriptor->setPropertyValue(u"IsAscending"_ustr, css::uno::Any(field.bSortAscending));
                     xColDescriptor->setPropertyValue(s_sNamePropertyName, Any(field.sFieldName));
                     xAppendCols->appendByDescriptor(xColDescriptor);
                 }
@@ -219,9 +219,9 @@ namespace dbaui
 
     void OIndexCollection::implFillIndexInfo(OIndex& _rIndex, const Reference< XPropertySet >& _rxDescriptor)
     {
-        _rIndex.bPrimaryKey = ::cppu::any2bool(_rxDescriptor->getPropertyValue("IsPrimaryKeyIndex"));
-        _rIndex.bUnique = ::cppu::any2bool(_rxDescriptor->getPropertyValue("IsUnique"));
-        _rxDescriptor->getPropertyValue("Catalog") >>= _rIndex.sDescription;
+        _rIndex.bPrimaryKey = ::cppu::any2bool(_rxDescriptor->getPropertyValue(u"IsPrimaryKeyIndex"_ustr));
+        _rIndex.bUnique = ::cppu::any2bool(_rxDescriptor->getPropertyValue(u"IsUnique"_ustr));
+        _rxDescriptor->getPropertyValue(u"Catalog"_ustr) >>= _rIndex.sDescription;
 
         // the columns
         Reference< XColumnsSupplier > xSuppCols(_rxDescriptor, UNO_QUERY);
@@ -233,32 +233,25 @@ namespace dbaui
             return;
 
         Sequence< OUString > aFieldNames = xCols->getElementNames();
-        _rIndex.aFields.resize(aFieldNames.getLength());
+        _rIndex.aFields.clear();
+        _rIndex.aFields.reserve(aFieldNames.getLength());
 
-        const OUString* pFieldNames = aFieldNames.getConstArray();
-        const OUString* pFieldNamesEnd = pFieldNames + aFieldNames.getLength();
-        IndexFields::iterator aCopyTo = _rIndex.aFields.begin();
-
-        Reference< XPropertySet > xIndexColumn;
-        for (;pFieldNames < pFieldNamesEnd; ++pFieldNames, ++aCopyTo)
+        for (auto& fieldName : aFieldNames)
         {
             // extract the column
-            xIndexColumn.clear();
-            xCols->getByName(*pFieldNames) >>= xIndexColumn;
+            Reference<XPropertySet> xIndexColumn;
+            xCols->getByName(fieldName) >>= xIndexColumn;
             if (!xIndexColumn.is())
             {
                 OSL_FAIL("OIndexCollection::implFillIndexInfo: invalid index column!");
-                --aCopyTo;
                 continue;
             }
 
             // get the relevant properties
-            aCopyTo->sFieldName = *pFieldNames;
-            aCopyTo->bSortAscending = ::cppu::any2bool(xIndexColumn->getPropertyValue("IsAscending"));
+            _rIndex.aFields.push_back({ .sFieldName = fieldName,
+                                        .bSortAscending = cppu::any2bool(
+                                            xIndexColumn->getPropertyValue(u"IsAscending"_ustr)) });
         }
-
-        _rIndex.aFields.resize(aCopyTo - _rIndex.aFields.begin());
-            // (just in case some fields were invalid ...)
     }
 
     void OIndexCollection::resetIndex(const Indexes::iterator& _rPos)
@@ -289,7 +282,7 @@ namespace dbaui
         OSL_ENSURE(end() == find(_rName), "OIndexCollection::insert: invalid new name!");
         OIndex aNewIndex((OUString()));  // the empty string indicates the index is a new one
         aNewIndex.sName = _rName;
-        m_aIndexes.push_back(aNewIndex);
+        m_aIndexes.push_back(std::move(aNewIndex));
         return m_aIndexes.end() - 1;    // the last element is the new one ...
     }
 
@@ -302,14 +295,11 @@ namespace dbaui
             return;
 
         // loop through all the indexes
-        Sequence< OUString > aNames = m_xIndexes->getElementNames();
-        const OUString* pNames = aNames.getConstArray();
-        const OUString* pEnd = pNames + aNames.getLength();
-        for (; pNames < pEnd; ++pNames)
+        for (auto& name : m_xIndexes->getElementNames())
         {
             // extract the index object
             Reference< XPropertySet > xIndex;
-            m_xIndexes->getByName(*pNames) >>= xIndex;
+            m_xIndexes->getByName(name) >>= xIndex;
             if (!xIndex.is())
             {
                 OSL_FAIL("OIndexCollection::implConstructFrom: got an invalid index object ... ignoring!");
@@ -317,9 +307,9 @@ namespace dbaui
             }
 
             // fill the OIndex structure
-            OIndex aCurrentIndex(*pNames);
-            implFillIndexInfo(aCurrentIndex);
-            m_aIndexes.push_back(aCurrentIndex);
+            OIndex aCurrentIndex(name);
+            implFillIndexInfo(aCurrentIndex, xIndex);
+            m_aIndexes.push_back(std::move(aCurrentIndex));
         }
     }
 

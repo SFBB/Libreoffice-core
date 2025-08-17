@@ -129,7 +129,7 @@ BackendImpl::BackendImpl(
     Sequence<Any> const & args,
     Reference<XComponentContext> const & xComponentContext )
     : PackageRegistryBackend( args, xComponentContext ),
-      m_xHelpTypeInfo( new Package::TypeInfo("application/vnd.sun.star.help",
+      m_xHelpTypeInfo( new Package::TypeInfo(u"application/vnd.sun.star.help"_ustr,
                                OUString(),
                                DpResId(RID_STR_HELP)
                                ) ),
@@ -138,7 +138,7 @@ BackendImpl::BackendImpl(
     if (transientMode())
         return;
 
-    OUString dbFile = makeURL(getCachePath(), "backenddb.xml");
+    OUString dbFile = makeURL(getCachePath(), u"backenddb.xml"_ustr);
     m_backendDb.reset(
         new HelpBackendDb(getComponentContext(), dbFile));
 
@@ -154,7 +154,7 @@ BackendImpl::BackendImpl(
 // XServiceInfo
 OUString BackendImpl::getImplementationName()
 {
-    return "com.sun.star.comp.deployment.help.PackageRegistryBackend";
+    return u"com.sun.star.comp.deployment.help.PackageRegistryBackend"_ustr;
 }
 
 sal_Bool BackendImpl::supportsService( const OUString& ServiceName )
@@ -265,7 +265,7 @@ BackendImpl * BackendImpl::PackageImpl::getMyBackend() const
         //May throw a DisposedException
         check();
         //We should never get here...
-        throw RuntimeException("Failed to get the BackendImpl",
+        throw RuntimeException(u"Failed to get the BackendImpl"_ustr,
             static_cast<OWeakObject*>(const_cast<PackageImpl *>(this)));
     }
     return pBackend;
@@ -396,12 +396,8 @@ void BackendImpl::implProcessHelp(
                 }
 
                 // Scan languages
-                Sequence< OUString > aLanguageFolderSeq = xSFA->getFolderContents( aExpandedHelpURL, true );
-                sal_Int32 nLangCount = aLanguageFolderSeq.getLength();
-                const OUString* pSeq = aLanguageFolderSeq.getConstArray();
-                for( sal_Int32 iLang = 0 ; iLang < nLangCount ; ++iLang )
+                for (auto& aLangURL : xSFA->getFolderContents(aExpandedHelpURL, true))
                 {
-                    OUString aLangURL = pSeq[iLang];
                     if( xSFA->isFolder( aLangURL ) )
                     {
                         std::vector< OUString > aXhpFileVector;
@@ -436,12 +432,8 @@ void BackendImpl::implProcessHelp(
 
                         sal_Int32 nLenLangFolderURL = aLangURL.getLength() + 1;
 
-                        Sequence< OUString > aSubLangSeq = xSFA->getFolderContents( aLangURL, true );
-                        sal_Int32 nSubLangCount = aSubLangSeq.getLength();
-                        const OUString* pSubLangSeq = aSubLangSeq.getConstArray();
-                        for( sal_Int32 iSubLang = 0 ; iSubLang < nSubLangCount ; ++iSubLang )
+                        for (auto& aSubFolderURL : xSFA->getFolderContents(aLangURL, true))
                         {
-                            OUString aSubFolderURL = pSubLangSeq[iSubLang];
                             if( !xSFA->isFolder( aSubFolderURL ) )
                                 continue;
 
@@ -458,9 +450,8 @@ void BackendImpl::implProcessHelp(
                         std::unique_ptr<OUString[]> pXhpFiles(new OUString[nXhpFileCount]);
                         for( sal_Int32 iXhp = 0 ; iXhp < nXhpFileCount ; ++iXhp )
                         {
-                            OUString aXhpFile = aXhpFileVector[iXhp];
-                            OUString aXhpRelFile = aXhpFile.copy( nLenLangFolderURL );
-                            pXhpFiles[iXhp] = aXhpRelFile;
+                            const OUString& aXhpFile = aXhpFileVector[iXhp];
+                            pXhpFiles[iXhp] = aXhpFile.copy( nLenLangFolderURL );
                         }
 
                         OUString aOfficeHelpPath( SvtPathOptions().GetHelpPath() );
@@ -484,7 +475,7 @@ void BackendImpl::implProcessHelp(
                             else
                                 aLang = "en";
 
-                            HelpIndexer aIndexer(aLang, "help", langFolderDestExpanded, langFolderDestExpanded);
+                            HelpIndexer aIndexer(aLang, u"help"_ustr, langFolderDestExpanded, langFolderDestExpanded);
                             aIndexer.indexDocuments();
                         }
 
@@ -565,12 +556,8 @@ void BackendImpl::implCollectXhpFiles( const OUString& aDir,
     Reference< ucb::XSimpleFileAccess3 > xSFA = getFileAccess();
 
     // Scan xhp files recursively
-    Sequence< OUString > aSeq = xSFA->getFolderContents( aDir, true );
-    sal_Int32 nCount = aSeq.getLength();
-    const OUString* pSeq = aSeq.getConstArray();
-    for( sal_Int32 i = 0 ; i < nCount ; ++i )
+    for (auto& aURL : xSFA->getFolderContents(aDir, true))
     {
-        OUString aURL = pSeq[i];
         if( xSFA->isFolder( aURL ) )
         {
             implCollectXhpFiles( aURL, o_rXhpFileVector );
@@ -600,8 +587,8 @@ Reference< ucb::XSimpleFileAccess3 > const & BackendImpl::getFileAccess()
         if( !m_xSFA.is() )
         {
             throw RuntimeException(
-                "dp_registry::backend::help::BackendImpl::getFileAccess(), "
-                "could not instantiate SimpleFileAccess."  );
+                u"dp_registry::backend::help::BackendImpl::getFileAccess(), "
+                "could not instantiate SimpleFileAccess."_ustr  );
         }
     }
     return m_xSFA;

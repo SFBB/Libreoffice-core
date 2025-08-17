@@ -21,13 +21,14 @@
 
 #include <rtl/ustring.hxx>
 #include <svx/svxdllapi.h>
-#include <vcl/bitmapex.hxx>
+#include <vcl/bitmap.hxx>
 
 class SVXCORE_DLLPUBLIC XPropertyEntry
 {
 private:
     OUString maPropEntryName;
-    BitmapEx maUiBitmap;
+    Bitmap maUiBitmap;
+    bool mbSavingAllowed;
 
 protected:
     XPropertyEntry(OUString aPropEntryName);
@@ -40,11 +41,14 @@ public:
 
     XPropertyEntry& operator=(XPropertyEntry const&) = default;
     XPropertyEntry& operator=(XPropertyEntry&&) = default;
+    virtual std::unique_ptr<XPropertyEntry> Clone() const = 0;
 
     void SetName(const OUString& rPropEntryName) { maPropEntryName = rPropEntryName; }
     const OUString& GetName() const { return maPropEntryName; }
-    void SetUiBitmap(const BitmapEx& rUiBitmap) { maUiBitmap = rUiBitmap; }
-    const BitmapEx& GetUiBitmap() const { return maUiBitmap; }
+    void SetUiBitmap(const Bitmap& rUiBitmap) { maUiBitmap = rUiBitmap; }
+    const Bitmap& GetUiBitmap() const { return maUiBitmap; }
+    void SetSavingAllowed(bool bSet) { mbSavingAllowed = bSet; }
+    bool GetSavingAllowed() const { return mbSavingAllowed; }
 };
 
 #endif // INCLUDED_SVX_XPROPERTYENTRY_HXX

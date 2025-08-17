@@ -66,10 +66,6 @@ public:
 
     virtual ~WinSalGraphicsImpl() override;
 
-    virtual void Init() override;
-
-    virtual void freeResources() override;
-
     virtual OUString getRenderBackendName() const override { return "gdi"; }
 
     virtual void setClipRegion( const vcl::Region& ) override;
@@ -174,7 +170,7 @@ public:
                 const SalBitmap& rSalBitmap,
                 Color nMaskColor ) override;
 
-    virtual std::shared_ptr<SalBitmap> getBitmap( tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight ) override;
+    virtual std::shared_ptr<SalBitmap> getBitmap( tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight, bool bWithoutAlpha ) override;
 
     virtual Color getPixel( tools::Long nX, tools::Long nY ) override;
 
@@ -185,22 +181,6 @@ public:
                 SalInvert nFlags) override;
 
     virtual void invert( sal_uInt32 nPoints, const Point* pPtAry, SalInvert nFlags ) override;
-
-    virtual bool drawEPS(
-                tools::Long nX, tools::Long nY,
-                tools::Long nWidth, tools::Long nHeight,
-                void* pPtr,
-                sal_uInt32 nSize ) override;
-
-    virtual bool blendBitmap(
-                const SalTwoRect&,
-                const SalBitmap& rBitmap ) override;
-
-    virtual bool blendAlphaBitmap(
-                const SalTwoRect&,
-                const SalBitmap& rSrcBitmap,
-                const SalBitmap& rMaskBitmap,
-                const SalBitmap& rAlphaBitmap ) override;
 
     /** Render bitmap with alpha channel
 

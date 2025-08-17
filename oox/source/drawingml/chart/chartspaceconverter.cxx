@@ -28,6 +28,7 @@
 #include <com/sun/star/chart2/XDataSeriesContainer.hpp>
 #include <com/sun/star/chart2/XTitled.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
+#include <com/sun/star/util/DateTime.hpp>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/drawingml/chart/chartconverter.hxx>
 #include <oox/token/properties.hxx>
@@ -38,6 +39,7 @@
 #include <drawingml/chart/titleconverter.hxx>
 #include <ooxresid.hxx>
 #include <strings.hrc>
+#include <drawingml/textbody.hxx>
 
 using namespace ::com::sun::star;
 using ::com::sun::star::uno::Reference;
@@ -57,7 +59,6 @@ using namespace ::com::sun::star::chart2;
 using namespace ::com::sun::star::chart2::data;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::util;
 
 ChartSpaceConverter::ChartSpaceConverter( const ConverterRoot& rParent, ChartSpaceModel& rModel ) :
     ConverterBase< ChartSpaceModel >( rParent, rModel )
@@ -122,7 +123,7 @@ static bool lcl_useWorkaroundForNoGapInOOXML( Reference< chart2::XChartDocument 
                 continue;
 
             OUString aRoleName;
-            xPropSet->getPropertyValue("Role") >>= aRoleName;
+            xPropSet->getPropertyValue(u"Role"_ustr) >>= aRoleName;
             if (aRoleName == "values-y")
             {
                 const uno::Sequence<uno::Any> aData = xValues->getData();
@@ -157,7 +158,8 @@ void ChartSpaceConverter::convertFromModel( const Reference< XShapes >& rxExtern
     bool bMSO2007Doc = getFilter().isMSO2007Document();
     // convert plot area (container of all chart type groups)
     PlotAreaConverter aPlotAreaConv( *this, mrModel.mxPlotArea.getOrCreate() );
-    aPlotAreaConv.convertFromModel( mrModel.mxView3D.getOrCreate(bMSO2007Doc) );
+    aPlotAreaConv.convertFromModel( mrModel.mxView3D.getOrCreate(bMSO2007Doc),
+            mrModel.maCxData.getOrCreate());
 
     // plot area converter has created the diagram object
     Reference< XDiagram > xDiagram = getChartDocument()->getFirstDiagram();
@@ -183,7 +185,19 @@ void ChartSpaceConverter::convertFromModel( const Reference< XShapes >& rxExtern
         OUString aAutoTitle = aPlotAreaConv.getAutomaticTitle();
         if( mrModel.mxTitle.is() || !aAutoTitle.isEmpty() )
         {
-            if( aAutoTitle.isEmpty() )
+            // tdf#146487 In some cases, we need to show the empty title
+            bool bShowEmptyTitle = aAutoTitle.isEmpty() && !mrModel.mbAutoTitleDel
+                                   && aPlotAreaConv.isSingleSeriesTitle()
+                                   && mrModel.mxTitle->mxShapeProp.is()
+                                   && mrModel.mxTitle->mxTextProp.is()
+                                   && mrModel.mxTitle->mxTextProp->isEmpty();
+            // Also for tdf#146487
+            bool bEmptyRichText = mrModel.mxTitle
+                && mrModel.mxTitle->mxText.is()
+                && mrModel.mxTitle->mxText->mxTextBody.is()
+                && mrModel.mxTitle->mxText->mxTextBody->isEmpty();
+
+            if (aAutoTitle.isEmpty() && !bShowEmptyTitle && !bEmptyRichText)
                 aAutoTitle = OoxResId(STR_DIAGRAM_TITLE);
             Reference< XTitled > xTitled( getChartDocument(), UNO_QUERY_THROW );
             TitleConverter aTitleConv( *this, mrModel.mxTitle.getOrCreate() );
@@ -228,11 +242,18 @@ void ChartSpaceConverter::convertFromModel( const Reference< XShapes >& rxExtern
 
         PropertySet aDiaProp( xDiagram );
         aDiaProp.setProperty( PROP_MissingValueTreatment, nMissingValues );
+
+        if (mrModel.mbExplicitStyle) {
+            // The <c:style> value, now in mrModel.mnStyle, is handled in the
+            // ObjectFormatter code. Set it here as a property just so it can be
+            // stored for output.
+            aDiaProp.setProperty( PROP_StyleIndex, mrModel.mnStyle);
+        }
     }
 
     /*  Following all conversions needing the old Chart1 API that involves full
         initialization of the chart view. */
-    namespace cssc = ::com::sun::star::chart;
+    namespace cssc = css::chart;
     Reference< cssc::XChartDocument > xChart1Doc( getChartDocument(), UNO_QUERY );
     if( xChart1Doc.is() )
     {
@@ -300,6 +321,15 @@ void ChartSpaceConverter::convertFromModel( const Reference< XShapes >& rxExtern
         Reference< css::chart::XChartDocument > xChartDoc( getChartDocument(), UNO_QUERY );
         PropertySet aProps( xChartDoc->getDiagram() );
         aProps.setProperty( PROP_ExternalData , uno::Any(mrModel.maSheetPath) );
+    }
+
+    if (mrModel.mbDate1904) {
+        util::DateTime aNullDate(0,0,0,0,1,1,1904, false);
+        Any aAny;
+        aAny <<= aNullDate;
+        Reference< css::chart::XChartDocument > xChartDoc( getChartDocument(), UNO_QUERY );
+        Reference< beans::XPropertySet > xDocPropSet(xChartDoc, UNO_QUERY );
+        xDocPropSet->setPropertyValue(u"NullDate"_ustr, aAny);
     }
 }
 

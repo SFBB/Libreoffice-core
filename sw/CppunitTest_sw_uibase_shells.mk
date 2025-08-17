@@ -14,8 +14,10 @@ $(eval $(call gb_CppunitTest_CppunitTest,sw_uibase_shells))
 $(eval $(call gb_CppunitTest_use_common_precompiled_header,sw_uibase_shells))
 
 $(eval $(call gb_CppunitTest_add_exception_objects,sw_uibase_shells, \
+    sw/qa/uibase/shells/basesh \
     sw/qa/uibase/shells/textfld \
     sw/qa/uibase/shells/textsh \
+    sw/qa/uibase/shells/textsh1 \
     sw/qa/uibase/shells/shells \
 ))
 
@@ -74,5 +76,9 @@ $(eval $(call gb_CppunitTest_use_uiconfigs,sw_uibase_shells, \
 ))
 
 $(eval $(call gb_CppunitTest_use_more_fonts,sw_uibase_shells))
+
+ifneq ($(filter MORE_FONTS,$(BUILD_TYPE)),)
+$(eval $(call gb_CppunitTest_set_non_application_font_use,sw_uibase_shells,abort))
+endif
 
 # vim: set noet sw=4 ts=4:

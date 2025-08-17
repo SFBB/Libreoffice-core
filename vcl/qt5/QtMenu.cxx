@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -7,6 +7,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#include <QtCustomStyle.hxx>
+#include <vcl/themecolors.hxx>
 #include <QtMenu.hxx>
 #include <QtMenu.moc>
 
@@ -33,11 +35,11 @@
 
 #include <o3tl/safeint.hxx>
 #include <vcl/svapp.hxx>
-#include <sal/log.hxx>
 
 #include <strings.hrc>
 #include <bitmaps.hlst>
 
+#include <vcl/qt/QtUtils.hxx>
 #include <vcl/toolkit/floatwin.hxx>
 #include <window.h>
 
@@ -70,141 +72,147 @@ bool QtMenu::VisibleMenuBar() { return true; }
 
 void QtMenu::InsertMenuItem(QtMenuItem* pSalMenuItem, unsigned nPos)
 {
-    sal_uInt16 nId = pSalMenuItem->mnId;
-    OUString aText = mpVCLMenu->GetItemText(nId);
-    NativeItemText(aText);
-    vcl::KeyCode nAccelKey = mpVCLMenu->GetAccelKey(nId);
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        sal_uInt16 nId = pSalMenuItem->mnId;
+        const QString aText = vclToQtStringWithAccelerator(mpVCLMenu->GetItemText(nId));
+        vcl::KeyCode nAccelKey = mpVCLMenu->GetAccelKey(nId);
 
-    pSalMenuItem->mpAction.reset();
-    pSalMenuItem->mpMenu.reset();
+        pSalMenuItem->mpAction.reset();
+        pSalMenuItem->mpMenu.reset();
 
-    if (mbMenuBar)
-    {
-        // top-level menu
-        if (validateQMenuBar())
+        if (mbMenuBar)
         {
-            QMenu* pQMenu = new QMenu(toQString(aText), nullptr);
-            connectHelpSignalSlots(pQMenu, pSalMenuItem);
-            pSalMenuItem->mpMenu.reset(pQMenu);
-
-            if ((nPos != MENU_APPEND)
-                && (static_cast<size_t>(nPos) < o3tl::make_unsigned(mpQMenuBar->actions().size())))
+            // top-level menu
+            if (validateQMenuBar())
             {
-                mpQMenuBar->insertMenu(mpQMenuBar->actions()[nPos], pQMenu);
+                QMenu* pQMenu = new QMenu(aText, nullptr);
+                connectHelpSignalSlots(pQMenu, pSalMenuItem);
+                pSalMenuItem->mpMenu.reset(pQMenu);
+
+                if ((nPos != MENU_APPEND)
+                    && (static_cast<size_t>(nPos)
+                        < o3tl::make_unsigned(mpQMenuBar->actions().size())))
+                {
+                    mpQMenuBar->insertMenu(mpQMenuBar->actions()[nPos], pQMenu);
+                }
+                else
+                {
+                    mpQMenuBar->addMenu(pQMenu);
+                }
+
+                // correct parent menu for generated menu
+                if (pSalMenuItem->mpSubMenu)
+                {
+                    pSalMenuItem->mpSubMenu->mpQMenu = pQMenu;
+                }
+
+                connect(pQMenu, &QMenu::aboutToShow, this,
+                        [pSalMenuItem] { slotMenuAboutToShow(pSalMenuItem); });
+                connect(pQMenu, &QMenu::aboutToHide, this,
+                        [pSalMenuItem] { slotMenuAboutToHide(pSalMenuItem); });
             }
-            else
-            {
-                mpQMenuBar->addMenu(pQMenu);
-            }
-
-            // correct parent menu for generated menu
-            if (pSalMenuItem->mpSubMenu)
-            {
-                pSalMenuItem->mpSubMenu->mpQMenu = pQMenu;
-            }
-
-            connect(pQMenu, &QMenu::aboutToShow, this,
-                    [pSalMenuItem] { slotMenuAboutToShow(pSalMenuItem); });
-            connect(pQMenu, &QMenu::aboutToHide, this,
-                    [pSalMenuItem] { slotMenuAboutToHide(pSalMenuItem); });
-        }
-    }
-    else
-    {
-        if (!mpQMenu)
-        {
-            // no QMenu set, instantiate own one
-            mpOwnedQMenu.reset(new QMenu);
-            mpQMenu = mpOwnedQMenu.get();
-            connectHelpSignalSlots(mpQMenu, pSalMenuItem);
-        }
-
-        if (pSalMenuItem->mpSubMenu)
-        {
-            // submenu
-            QMenu* pQMenu = new QMenu(toQString(aText), nullptr);
-            connectHelpSignalSlots(pQMenu, pSalMenuItem);
-            pSalMenuItem->mpMenu.reset(pQMenu);
-
-            if ((nPos != MENU_APPEND)
-                && (static_cast<size_t>(nPos) < o3tl::make_unsigned(mpQMenu->actions().size())))
-            {
-                mpQMenu->insertMenu(mpQMenu->actions()[nPos], pQMenu);
-            }
-            else
-            {
-                mpQMenu->addMenu(pQMenu);
-            }
-
-            // correct parent menu for generated menu
-            pSalMenuItem->mpSubMenu->mpQMenu = pQMenu;
-
-            ReinitializeActionGroup(nPos);
-
-            // clear all action groups since menu is recreated
-            pSalMenuItem->mpSubMenu->ResetAllActionGroups();
-
-            connect(pQMenu, &QMenu::aboutToShow, this,
-                    [pSalMenuItem] { slotMenuAboutToShow(pSalMenuItem); });
-            connect(pQMenu, &QMenu::aboutToHide, this,
-                    [pSalMenuItem] { slotMenuAboutToHide(pSalMenuItem); });
         }
         else
         {
-            if (pSalMenuItem->mnType == MenuItemType::SEPARATOR)
+            if (!mpQMenu)
             {
-                QAction* pAction = new QAction(nullptr);
-                pSalMenuItem->mpAction.reset(pAction);
-                pAction->setSeparator(true);
+                // no QMenu set, instantiate own one
+                mpOwnedQMenu.reset(new QMenu);
+                mpQMenu = mpOwnedQMenu.get();
+                connectHelpSignalSlots(mpQMenu, pSalMenuItem);
+            }
+
+            if (pSalMenuItem->mpSubMenu)
+            {
+                // submenu
+                QMenu* pQMenu = new QMenu(aText, nullptr);
+                connectHelpSignalSlots(pQMenu, pSalMenuItem);
+                pSalMenuItem->mpMenu.reset(pQMenu);
 
                 if ((nPos != MENU_APPEND)
                     && (static_cast<size_t>(nPos) < o3tl::make_unsigned(mpQMenu->actions().size())))
                 {
-                    mpQMenu->insertAction(mpQMenu->actions()[nPos], pAction);
+                    mpQMenu->insertMenu(mpQMenu->actions()[nPos], pQMenu);
                 }
                 else
                 {
-                    mpQMenu->addAction(pAction);
+                    mpQMenu->addMenu(pQMenu);
                 }
 
+                // correct parent menu for generated menu
+                pSalMenuItem->mpSubMenu->mpQMenu = pQMenu;
+
                 ReinitializeActionGroup(nPos);
+
+                // clear all action groups since menu is recreated
+                pSalMenuItem->mpSubMenu->ResetAllActionGroups();
+
+                connect(pQMenu, &QMenu::aboutToShow, this,
+                        [pSalMenuItem] { slotMenuAboutToShow(pSalMenuItem); });
+                connect(pQMenu, &QMenu::aboutToHide, this,
+                        [pSalMenuItem] { slotMenuAboutToHide(pSalMenuItem); });
             }
             else
             {
-                // leaf menu
-                QAction* pAction = new QAction(toQString(aText), nullptr);
-                pSalMenuItem->mpAction.reset(pAction);
-
-                if ((nPos != MENU_APPEND)
-                    && (static_cast<size_t>(nPos) < o3tl::make_unsigned(mpQMenu->actions().size())))
+                if (pSalMenuItem->mnType == MenuItemType::SEPARATOR)
                 {
-                    mpQMenu->insertAction(mpQMenu->actions()[nPos], pAction);
+                    QAction* pAction = new QAction(nullptr);
+                    pSalMenuItem->mpAction.reset(pAction);
+                    pAction->setSeparator(true);
+
+                    if ((nPos != MENU_APPEND)
+                        && (static_cast<size_t>(nPos)
+                            < o3tl::make_unsigned(mpQMenu->actions().size())))
+                    {
+                        mpQMenu->insertAction(mpQMenu->actions()[nPos], pAction);
+                    }
+                    else
+                    {
+                        mpQMenu->addAction(pAction);
+                    }
+
+                    ReinitializeActionGroup(nPos);
                 }
                 else
                 {
-                    mpQMenu->addAction(pAction);
+                    // leaf menu
+                    QAction* pAction = new QAction(aText, nullptr);
+                    pAction->setToolTip(toQString(mpVCLMenu->GetTipHelpText(nId)));
+                    pSalMenuItem->mpAction.reset(pAction);
+
+                    if ((nPos != MENU_APPEND)
+                        && (static_cast<size_t>(nPos)
+                            < o3tl::make_unsigned(mpQMenu->actions().size())))
+                    {
+                        mpQMenu->insertAction(mpQMenu->actions()[nPos], pAction);
+                    }
+                    else
+                    {
+                        mpQMenu->addAction(pAction);
+                    }
+
+                    ReinitializeActionGroup(nPos);
+
+                    UpdateActionGroupItem(pSalMenuItem);
+
+                    pAction->setShortcut(toQString(nAccelKey.GetName()));
+
+                    connect(pAction, &QAction::triggered, this,
+                            [pSalMenuItem] { slotMenuTriggered(pSalMenuItem); });
+                    connect(pAction, &QAction::hovered, this,
+                            [pSalMenuItem] { slotMenuHovered(pSalMenuItem); });
                 }
-
-                ReinitializeActionGroup(nPos);
-
-                UpdateActionGroupItem(pSalMenuItem);
-
-                pAction->setShortcut(toQString(nAccelKey.GetName()));
-
-                connect(pAction, &QAction::triggered, this,
-                        [pSalMenuItem] { slotMenuTriggered(pSalMenuItem); });
-                connect(pAction, &QAction::hovered, this,
-                        [pSalMenuItem] { slotMenuHovered(pSalMenuItem); });
             }
         }
-    }
 
-    QAction* pAction = pSalMenuItem->getAction();
-    if (pAction)
-    {
-        pAction->setEnabled(pSalMenuItem->mbEnabled);
-        pAction->setVisible(pSalMenuItem->mbVisible);
-    }
+        QAction* pAction = pSalMenuItem->getAction();
+        if (pAction)
+        {
+            pAction->setEnabled(pSalMenuItem->mbEnabled);
+            pAction->setVisible(pSalMenuItem->mbVisible);
+        }
+    });
 }
 
 void QtMenu::ReinitializeActionGroup(unsigned nPos)
@@ -333,39 +341,42 @@ void QtMenu::ResetAllActionGroups()
 
 void QtMenu::UpdateActionGroupItem(const QtMenuItem* pSalMenuItem)
 {
-    QAction* pAction = pSalMenuItem->getAction();
-    if (!pAction)
-        return;
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        QAction* pAction = pSalMenuItem->getAction();
+        if (!pAction)
+            return;
 
-    bool bChecked = mpVCLMenu->IsItemChecked(pSalMenuItem->mnId);
-    MenuItemBits itemBits = mpVCLMenu->GetItemBits(pSalMenuItem->mnId);
+        bool bChecked = mpVCLMenu->IsItemChecked(pSalMenuItem->mnId);
+        MenuItemBits itemBits = mpVCLMenu->GetItemBits(pSalMenuItem->mnId);
 
-    if (itemBits & MenuItemBits::RADIOCHECK)
-    {
-        pAction->setCheckable(true);
-
-        if (pSalMenuItem->mpActionGroup)
-        {
-            pSalMenuItem->mpActionGroup->addAction(pAction);
-        }
-
-        pAction->setChecked(bChecked);
-    }
-    else
-    {
-        pAction->setActionGroup(nullptr);
-
-        if (itemBits & MenuItemBits::CHECKABLE)
+        if (itemBits & MenuItemBits::RADIOCHECK)
         {
             pAction->setCheckable(true);
+
+            if (pSalMenuItem->mpActionGroup)
+            {
+                pSalMenuItem->mpActionGroup->addAction(pAction);
+            }
+
             pAction->setChecked(bChecked);
         }
         else
         {
-            pAction->setChecked(false);
-            pAction->setCheckable(false);
+            pAction->setActionGroup(nullptr);
+
+            if (itemBits & MenuItemBits::CHECKABLE)
+            {
+                pAction->setCheckable(true);
+                pAction->setChecked(bChecked);
+            }
+            else
+            {
+                pAction->setChecked(false);
+                pAction->setCheckable(false);
+            }
         }
-    }
+    });
 }
 
 void QtMenu::InsertItem(SalMenuItem* pSalMenuItem, unsigned nPos)
@@ -385,24 +396,25 @@ void QtMenu::InsertItem(SalMenuItem* pSalMenuItem, unsigned nPos)
 
 void QtMenu::RemoveItem(unsigned nPos)
 {
-    SolarMutexGuard aGuard;
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        if (nPos >= maItems.size())
+            return;
 
-    if (nPos >= maItems.size())
-        return;
+        QtMenuItem* pItem = maItems[nPos];
+        pItem->mpAction.reset();
+        pItem->mpMenu.reset();
 
-    QtMenuItem* pItem = maItems[nPos];
-    pItem->mpAction.reset();
-    pItem->mpMenu.reset();
+        maItems.erase(maItems.begin() + nPos);
 
-    maItems.erase(maItems.begin() + nPos);
-
-    // Recalculate action groups if necessary:
-    // if separator between two QActionGroups was removed,
-    // it may be needed to merge them
-    if (nPos > 0)
-    {
-        ReinitializeActionGroup(nPos - 1);
-    }
+        // Recalculate action groups if necessary:
+        // if separator between two QActionGroups was removed,
+        // it may be needed to merge them
+        if (nPos > 0)
+        {
+            ReinitializeActionGroup(nPos - 1);
+        }
+    });
 }
 
 void QtMenu::SetSubMenu(SalMenuItem* pSalMenuItem, SalMenu* pSubMenu, unsigned nPos)
@@ -437,11 +449,10 @@ void QtMenu::SetSubMenu(SalMenuItem* pSalMenuItem, SalMenu* pSubMenu, unsigned n
 
 void QtMenu::SetFrame(const SalFrame* pFrame)
 {
-    auto* pSalInst(GetQtInstance());
-    assert(pSalInst);
-    if (!pSalInst->IsMainThread())
+    QtInstance& rQtInstance = GetQtInstance();
+    if (!rQtInstance.IsMainThread())
     {
-        pSalInst->RunInMainThread([this, pFrame]() { SetFrame(pFrame); });
+        rQtInstance.RunInMainThread([this, pFrame]() { SetFrame(pFrame); });
         return;
     }
 
@@ -456,7 +467,13 @@ void QtMenu::SetFrame(const SalFrame* pFrame)
         return;
 
     mpQMenuBar = new QMenuBar();
+    mpQMenuBar->installEventFilter(this);
     pMainWindow->setMenuBar(mpQMenuBar);
+
+    // open menu bar on F10, as is common in KF 6 and other toolkits:
+    // https://wordsmith.social/felix-ernst/f10-for-accessibility-in-kf6
+    QShortcut* pQShortcut = new QShortcut(QKeySequence(Qt::Key_F10), mpQMenuBar->window());
+    connect(pQShortcut, &QShortcut::activated, this, &QtMenu::slotShortcutF10);
 
     QWidget* pWidget = mpQMenuBar->cornerWidget(Qt::TopRightCorner);
     if (pWidget)
@@ -478,6 +495,12 @@ void QtMenu::SetFrame(const SalFrame* pFrame)
 
 void QtMenu::DoFullMenuUpdate(Menu* pMenuBar)
 {
+    if (mpQMenuBar && ThemeColors::VclPluginCanUseThemeColors())
+        mpQMenuBar->setPalette(QtCustomStyle::GetMenuBarPalette());
+
+    if (mpQMenu && ThemeColors::VclPluginCanUseThemeColors())
+        mpQMenu->setPalette(QtCustomStyle::GetMenuPalette());
+
     // clear action groups since menu is rebuilt
     ResetAllActionGroups();
     ShowCloseButton(false);
@@ -505,14 +528,17 @@ void QtMenu::DoFullMenuUpdate(Menu* pMenuBar)
 
 void QtMenu::ShowItem(unsigned nPos, bool bShow)
 {
-    if (nPos < maItems.size())
-    {
-        QtMenuItem* pSalMenuItem = GetItemAtPos(nPos);
-        QAction* pAction = pSalMenuItem->getAction();
-        if (pAction)
-            pAction->setVisible(bShow);
-        pSalMenuItem->mbVisible = bShow;
-    }
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        if (nPos < maItems.size())
+        {
+            QtMenuItem* pSalMenuItem = GetItemAtPos(nPos);
+            QAction* pAction = pSalMenuItem->getAction();
+            if (pAction)
+                pAction->setVisible(bShow);
+            pSalMenuItem->mbVisible = bShow;
+        }
+    });
 }
 
 void QtMenu::SetItemBits(unsigned nPos, MenuItemBits)
@@ -526,66 +552,86 @@ void QtMenu::SetItemBits(unsigned nPos, MenuItemBits)
 
 void QtMenu::CheckItem(unsigned nPos, bool bChecked)
 {
-    if (nPos < maItems.size())
-    {
-        QtMenuItem* pSalMenuItem = GetItemAtPos(nPos);
-        QAction* pAction = pSalMenuItem->getAction();
-        if (pAction)
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        if (nPos < maItems.size())
         {
-            pAction->setCheckable(true);
-            pAction->setChecked(bChecked);
+            QtMenuItem* pSalMenuItem = GetItemAtPos(nPos);
+            QAction* pAction = pSalMenuItem->getAction();
+            if (pAction)
+            {
+                pAction->setCheckable(true);
+                pAction->setChecked(bChecked);
+            }
         }
-    }
+    });
 }
 
 void QtMenu::EnableItem(unsigned nPos, bool bEnable)
 {
-    if (nPos < maItems.size())
-    {
-        QtMenuItem* pSalMenuItem = GetItemAtPos(nPos);
-        QAction* pAction = pSalMenuItem->getAction();
-        if (pAction)
-            pAction->setEnabled(bEnable);
-        pSalMenuItem->mbEnabled = bEnable;
-    }
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        if (nPos < maItems.size())
+        {
+            QtMenuItem* pSalMenuItem = GetItemAtPos(nPos);
+            QAction* pAction = pSalMenuItem->getAction();
+            if (pAction)
+                pAction->setEnabled(bEnable);
+            pSalMenuItem->mbEnabled = bEnable;
+        }
+    });
 }
 
 void QtMenu::SetItemText(unsigned, SalMenuItem* pItem, const OUString& rText)
 {
-    QtMenuItem* pSalMenuItem = static_cast<QtMenuItem*>(pItem);
-    QAction* pAction = pSalMenuItem->getAction();
-    if (pAction)
-    {
-        OUString aText(rText);
-        NativeItemText(aText);
-        pAction->setText(toQString(aText));
-    }
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        QtMenuItem* pSalMenuItem = static_cast<QtMenuItem*>(pItem);
+        QAction* pAction = pSalMenuItem->getAction();
+        if (pAction)
+            pAction->setText(vclToQtStringWithAccelerator(rText));
+    });
 }
 
 void QtMenu::SetItemImage(unsigned, SalMenuItem* pItem, const Image& rImage)
 {
-    QtMenuItem* pSalMenuItem = static_cast<QtMenuItem*>(pItem);
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        QtMenuItem* pSalMenuItem = static_cast<QtMenuItem*>(pItem);
 
-    // Save new image to use it in DoFullMenuUpdate
-    pSalMenuItem->maImage = rImage;
+        // Save new image to use it in DoFullMenuUpdate
+        pSalMenuItem->maImage = rImage;
 
-    QAction* pAction = pSalMenuItem->getAction();
-    if (!pAction)
-        return;
+        QAction* pAction = pSalMenuItem->getAction();
+        if (!pAction)
+            return;
 
-    pAction->setIcon(QPixmap::fromImage(toQImage(rImage)));
+        pAction->setIcon(QPixmap::fromImage(toQImage(rImage)));
+    });
+}
+
+void QtMenu::SetItemTooltip(SalMenuItem* pItem, const OUString& rTooltip)
+{
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        QtMenuItem* pSalMenuItem = static_cast<QtMenuItem*>(pItem);
+
+        if (QAction* pAction = pSalMenuItem->getAction())
+            pAction->setToolTip(toQString(rTooltip));
+    });
 }
 
 void QtMenu::SetAccelerator(unsigned, SalMenuItem* pItem, const vcl::KeyCode&,
                             const OUString& rText)
 {
-    QtMenuItem* pSalMenuItem = static_cast<QtMenuItem*>(pItem);
-    QAction* pAction = pSalMenuItem->getAction();
-    if (pAction)
-        pAction->setShortcut(QKeySequence(toQString(rText), QKeySequence::PortableText));
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        QtMenuItem* pSalMenuItem = static_cast<QtMenuItem*>(pItem);
+        QAction* pAction = pSalMenuItem->getAction();
+        if (pAction)
+            pAction->setShortcut(QKeySequence(toQString(rText), QKeySequence::PortableText));
+    });
 }
-
-void QtMenu::GetSystemMenuData(SystemMenuData*) {}
 
 QtMenu* QtMenu::GetTopLevel()
 {
@@ -613,12 +659,15 @@ bool QtMenu::validateQMenuBar() const
 
 void QtMenu::ShowMenuBar(bool bVisible)
 {
-    if (!validateQMenuBar())
-        return;
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        if (!validateQMenuBar())
+            return;
 
-    mpQMenuBar->setVisible(bVisible);
-    if (bVisible)
-        lcl_force_menubar_layout_update(*mpQMenuBar);
+        mpQMenuBar->setVisible(bVisible);
+        if (bVisible)
+            lcl_force_menubar_layout_update(*mpQMenuBar);
+    });
 }
 
 void QtMenu::slotMenuHovered(QtMenuItem* pItem)
@@ -683,14 +732,6 @@ void QtMenu::slotMenuAboutToHide(QtMenuItem* pQItem)
     }
 }
 
-void QtMenu::NativeItemText(OUString& rItemText)
-{
-    // preserve literal '&'s in menu texts
-    rItemText = rItemText.replaceAll("&", "&&");
-
-    rItemText = rItemText.replace('~', '&');
-}
-
 void QtMenu::slotCloseDocument()
 {
     MenuBar* pVclMenuBar = static_cast<MenuBar*>(mpVCLMenu.get());
@@ -708,6 +749,15 @@ void QtMenu::slotMenuBarButtonClicked(QAbstractButton* pButton)
     }
 }
 
+void QtMenu::slotShortcutF10()
+{
+    SolarMutexGuard aGuard;
+
+    // focus menu bar and select first item
+    if (mpQMenuBar && !mpQMenuBar->actions().empty())
+        mpQMenuBar->setActiveAction(mpQMenuBar->actions().at(0));
+}
+
 QPushButton* QtMenu::ImplAddMenuBarButton(const QIcon& rIcon, const QString& rToolTip, int nId)
 {
     if (!validateQMenuBar())
@@ -718,19 +768,24 @@ QPushButton* QtMenu::ImplAddMenuBarButton(const QIcon& rIcon, const QString& rTo
     if (!pWidget)
     {
         assert(!m_pButtonGroup);
-        pWidget = new QWidget(mpQMenuBar);
+        pWidget = GetQtInstance().EmscriptenLightweightRunInMainThread(
+            [this] { return new QWidget(mpQMenuBar); });
         assert(!pWidget->layout());
-        pLayout = new QHBoxLayout();
+        pLayout = GetQtInstance().EmscriptenLightweightRunInMainThread(
+            [] { return new QHBoxLayout(); });
         pLayout->setContentsMargins(QMargins());
         pLayout->setSpacing(0);
         pWidget->setLayout(pLayout);
-        m_pButtonGroup = new QButtonGroup(pLayout);
+        m_pButtonGroup = GetQtInstance().EmscriptenLightweightRunInMainThread(
+            [pLayout] { return new QButtonGroup(pLayout); });
         m_pButtonGroup->setObjectName(gButtonGroupKey);
         m_pButtonGroup->setExclusive(false);
         connect(m_pButtonGroup, QOverload<QAbstractButton*>::of(&QButtonGroup::buttonClicked), this,
                 &QtMenu::slotMenuBarButtonClicked);
-        pWidget->show();
-        mpQMenuBar->setCornerWidget(pWidget, Qt::TopRightCorner);
+        GetQtInstance().EmscriptenLightweightRunInMainThread([this, pWidget] {
+            pWidget->show();
+            mpQMenuBar->setCornerWidget(pWidget, Qt::TopRightCorner);
+        });
     }
     else
         pLayout = static_cast<QHBoxLayout*>(pWidget->layout());
@@ -739,9 +794,10 @@ QPushButton* QtMenu::ImplAddMenuBarButton(const QIcon& rIcon, const QString& rTo
 
     QPushButton* pButton = static_cast<QPushButton*>(m_pButtonGroup->button(nId));
     if (pButton)
-        ImplRemoveMenuBarButton(nId);
+        RemoveMenuBarButton(nId);
 
-    pButton = new QPushButton();
+    pButton
+        = GetQtInstance().EmscriptenLightweightRunInMainThread([] { return new QPushButton(); });
     // we don't want the button to increase the QMenuBar height, so a fixed size square it is
     const int nFixedLength
         = mpQMenuBar->height() - 2 * mpQMenuBar->style()->pixelMetric(QStyle::PM_MenuBarVMargin);
@@ -773,29 +829,13 @@ bool QtMenu::AddMenuBarButton(const SalMenuButtonItem& rItem)
                                   toQString(rItem.maToolTipText), rItem.mnId);
 }
 
-void QtMenu::ImplRemoveMenuBarButton(int nId)
-{
-    if (!validateQMenuBar())
-        return;
-
-    assert(m_pButtonGroup);
-    auto* pButton = m_pButtonGroup->button(nId);
-    assert(pButton);
-    QWidget* pWidget = mpQMenuBar->cornerWidget(Qt::TopRightCorner);
-    assert(pWidget);
-    QLayout* pLayout = pWidget->layout();
-    m_pButtonGroup->removeButton(pButton);
-    pLayout->removeWidget(pButton);
-    delete pButton;
-
-    lcl_force_menubar_layout_update(*mpQMenuBar);
-}
-
 void QtMenu::connectHelpShortcut(QMenu* pMenu)
 {
     assert(pMenu);
     QKeySequence sequence(QKeySequence::HelpContents);
-    QShortcut* pQShortcut = new QShortcut(sequence, pMenu);
+    QShortcut* pQShortcut;
+    pQShortcut = GetQtInstance().EmscriptenLightweightRunInMainThread(
+        [&sequence, pMenu] { return new QShortcut(sequence, pMenu); });
     connect(pQShortcut, &QShortcut::activated, this, QtMenu::slotShowHelp);
     connect(pQShortcut, &QShortcut::activatedAmbiguously, this, QtMenu::slotShowHelp);
 }
@@ -809,9 +849,31 @@ void QtMenu::connectHelpSignalSlots(QMenu* pMenu, QtMenuItem* pSalMenuItem)
 
     // connect slot to handle Help key (F1)
     connectHelpShortcut(pMenu);
+
+    // enable tooltips, Qt doesn't show them for menu entries by default
+    pMenu->setToolTipsVisible(true);
 }
 
-void QtMenu::RemoveMenuBarButton(sal_uInt16 nId) { ImplRemoveMenuBarButton(nId); }
+void QtMenu::RemoveMenuBarButton(sal_uInt16 nId)
+{
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        if (!validateQMenuBar())
+            return;
+
+        assert(m_pButtonGroup);
+        auto* pButton = m_pButtonGroup->button(nId);
+        assert(pButton);
+        QWidget* pWidget = mpQMenuBar->cornerWidget(Qt::TopRightCorner);
+        assert(pWidget);
+        QLayout* pLayout = pWidget->layout();
+        m_pButtonGroup->removeButton(pButton);
+        pLayout->removeWidget(pButton);
+        delete pButton;
+
+        lcl_force_menubar_layout_update(*mpQMenuBar);
+    });
+}
 
 tools::Rectangle QtMenu::GetMenuBarButtonRectPixel(sal_uInt16 nId, SalFrame* pFrame)
 {
@@ -835,37 +897,40 @@ tools::Rectangle QtMenu::GetMenuBarButtonRectPixel(sal_uInt16 nId, SalFrame* pFr
 
 void QtMenu::ShowCloseButton(bool bShow)
 {
-    if (!validateQMenuBar())
-        return;
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] {
+        if (!validateQMenuBar())
+            return;
 
-    if (!bShow && !m_pButtonGroup)
-        return;
+        if (!bShow && !m_pButtonGroup)
+            return;
 
-    QPushButton* pButton = nullptr;
-    if (m_pButtonGroup)
-        pButton = static_cast<QPushButton*>(m_pButtonGroup->button(CLOSE_BUTTON_ID));
-    if (!bShow && !pButton)
-        return;
+        QPushButton* pButton = nullptr;
+        if (m_pButtonGroup)
+            pButton = static_cast<QPushButton*>(m_pButtonGroup->button(CLOSE_BUTTON_ID));
+        if (!bShow && !pButton)
+            return;
 
-    if (!pButton)
-    {
-        QIcon aIcon;
-        if (QIcon::hasThemeIcon("window-close-symbolic"))
-            aIcon = QIcon::fromTheme("window-close-symbolic");
+        if (!pButton)
+        {
+            QIcon aIcon;
+            if (QIcon::hasThemeIcon("window-close-symbolic"))
+                aIcon = QIcon::fromTheme("window-close-symbolic");
+            else
+                aIcon = QIcon(
+                    QPixmap::fromImage(toQImage(Image(StockImage::Yes, SV_RESID_BITMAP_CLOSEDOC))));
+            pButton = ImplAddMenuBarButton(aIcon, toQString(VclResId(SV_HELPTEXT_CLOSEDOCUMENT)),
+                                           CLOSE_BUTTON_ID);
+            connect(pButton, &QPushButton::clicked, this, &QtMenu::slotCloseDocument);
+        }
+
+        if (bShow)
+            pButton->show();
         else
-            aIcon = QIcon(
-                QPixmap::fromImage(toQImage(Image(StockImage::Yes, SV_RESID_BITMAP_CLOSEDOC))));
-        pButton = ImplAddMenuBarButton(aIcon, toQString(VclResId(SV_HELPTEXT_CLOSEDOCUMENT)),
-                                       CLOSE_BUTTON_ID);
-        connect(pButton, &QPushButton::clicked, this, &QtMenu::slotCloseDocument);
-    }
+            pButton->hide();
 
-    if (bShow)
-        pButton->show();
-    else
-        pButton->hide();
-
-    lcl_force_menubar_layout_update(*mpQMenuBar);
+        lcl_force_menubar_layout_update(*mpQMenuBar);
+    });
 }
 
 bool QtMenu::ShowNativePopupMenu(FloatingWindow* pWin, const tools::Rectangle& rRect,
@@ -878,10 +943,8 @@ bool QtMenu::ShowNativePopupMenu(FloatingWindow* pWin, const tools::Rectangle& r
     const VclPtr<vcl::Window> xParent = pWin->ImplGetWindowImpl()->mpRealParent;
     AbsoluteScreenPixelRectangle aFloatRect = FloatingWindow::ImplConvertToAbsPos(xParent, rRect);
 
-    // tdf#154447 Menu bar height has to be added
     QtFrame* pFrame = static_cast<QtFrame*>(pWin->ImplGetFrame());
     assert(pFrame);
-    aFloatRect.SetPosY(aFloatRect.getY() + pFrame->menuBarOffset());
 
     const QRect aRect = toQRect(aFloatRect, 1 / pFrame->devicePixelRatioF());
     mpQMenu->exec(aRect.bottomLeft());
@@ -895,6 +958,12 @@ int QtMenu::GetMenuBarHeight() const
         return 0;
 
     return mpQMenuBar->height();
+}
+
+QtMenu::~QtMenu()
+{
+    SolarMutexGuard g;
+    GetQtInstance().RunInMainThread([&] { mpOwnedQMenu.reset(); });
 }
 
 QtMenuItem::QtMenuItem(const SalItemParams* pItemData)
@@ -917,4 +986,4 @@ QAction* QtMenuItem::getAction() const
     return nullptr;
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

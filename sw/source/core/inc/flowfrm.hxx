@@ -31,7 +31,6 @@ class SwRect;
 class SwBorderAttrs;
 class SwDoc;
 class SwNode;
-class SwNodeIndex;
 
 /** Base class that provides the general functionalities for frames that are
     allowed at page breaks (flow) and shall continue on the next page (can be
@@ -48,7 +47,7 @@ class SwNodeIndex;
     multiple base classes since the class tree splits exactly at the branch
     from SwFrame to SwContentFrame and SwLayoutFrame) also virtually from SwFrame as
     well. Unfortunately, this leads - besides problems with compilers and
-    debugging programs - to high additional costs, that we IMHO are not able to
+    debugging programs - too high additional costs, that we IMHO are not able to
     afford nowadays.
 
     Hence, we use another technique: A FlowFrame keeps a reference to a SwFrame
@@ -70,7 +69,7 @@ class SAL_DLLPUBLIC_RTTI SAL_LOPLUGIN_ANNOTATE("crosscast") SwFlowFrame
     // TableSel is allowed to reset the follow-bit
     friend inline void UnsetFollow( SwFlowFrame *pFlow );
 
-    friend void MakeFrames( SwDoc *, SwNode &, SwNode & );
+    friend void MakeFrames( SwDoc &, const SwNode &, const SwNode & );
 
     friend class SwNode2LayImpl;
 
@@ -183,6 +182,9 @@ public:
     bool IsKeep(SvxFormatKeepItem const& rKeep,
                 SvxFormatBreakItem const& rBreak,
                 bool bBreakCheck = false ) const;
+
+    SwFrame * FindPrevIgnoreHidden() const;
+    SwFrame * FindNextIgnoreHidden() const;
 
     bool HasLockedFollow() const;
 

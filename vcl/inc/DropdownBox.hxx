@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SFX2_NOTEBOOKBAR_DROPDOWNBOX_HXX
-#define INCLUDED_SFX2_NOTEBOOKBAR_DROPDOWNBOX_HXX
+#pragma once
 
 #include <vcl/layout.hxx>
 #include "IPrioritable.hxx"
@@ -40,12 +39,9 @@ public:
 
     void HideContent() override;
     void ShowContent() override;
-    bool IsHidden() override;
 
 private:
     DECL_LINK(PBClickHdl, Button*, void);
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

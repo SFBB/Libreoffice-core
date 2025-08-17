@@ -33,7 +33,7 @@ namespace tools {
 /** T must be a class that extends SvRefBase */
 template<typename T> class SAL_DLLPUBLIC_RTTI SvRef final {
 public:
-    SvRef(): pObj(nullptr) {}
+    constexpr SvRef(): pObj(nullptr) {}
 
     SvRef(SvRef&& rObj) noexcept
     {
@@ -134,9 +134,6 @@ public:
 
     SvRefBase &     operator=(const SvRefBase &) { return *this; }
 
-    void            RestoreNoDelete()
-                    { bNoDelete = 1; }
-
     void            AddNextRef()
                     {
                         assert( nRefCount < (1 << 30) && "Do not add refs to dead objects" );
@@ -215,9 +212,6 @@ public:
     SvCompatWeakRef( ) {}
     SvCompatWeakRef( T* pObj )
                          {  if( pObj ) _xHdl = pObj->GetHdl(); }
-#if defined(__COVERITY__)
-    ~SvCompatWeakRef() COVERITY_NOEXCEPT_FALSE {}
-#endif
     SvCompatWeakRef& operator = ( T * pObj )
                          {  _xHdl = pObj ? pObj->GetHdl() : nullptr; return *this; }
     bool          is() const

@@ -27,8 +27,8 @@
 
 
 SmSym::SmSym() :
-    m_aUiName(OUString("unknown")),
-    m_aSetName(OUString("unknown")),
+    m_aUiName(u"unknown"_ustr),
+    m_aSetName(u"unknown"_ustr),
     m_cChar('\0'),
     m_bPredefined(false)
 {
@@ -49,7 +49,7 @@ SmSym::SmSym(const OUString& rName, const vcl::Font& rFont, sal_UCS4 cChar,
 {
     m_aUiName   = m_aExportName   = rName;
 
-    m_aFace     = rFont;
+    m_aFace     = SmFace(rFont);
     m_aFace.SetTransparent(true);
     m_aFace.SetAlignment(ALIGN_BASELINE);
 
@@ -68,7 +68,7 @@ SmSym& SmSym::operator = (const SmSym& rSymbol)
     m_aSetName      = rSymbol.m_aSetName;
     m_bPredefined   = rSymbol.m_bPredefined;
 
-    SM_MOD()->GetSymbolManager().SetModified(true);
+    SmModule::get()->GetSymbolManager().SetModified(true);
 
     return *this;
 }
@@ -86,7 +86,7 @@ const vcl::Font& SmSym::GetFace(const SmFormat* pFormat) const
     if (m_aFace.GetFamilyName().isEmpty())
     {
         if (!pFormat)
-            pFormat = &SM_MOD()->GetConfig()->GetStandardFormat();
+            pFormat = &SmModule::get()->GetConfig()->GetStandardFormat();
         return pFormat->GetFont(FNT_VARIABLE);
     }
     return m_aFace;
@@ -239,8 +239,7 @@ SymbolPtrVec_t SmSymbolManager::GetSymbolSet( std::u16string_view rSymbolSetName
 void SmSymbolManager::Load()
 {
     std::vector< SmSym > aSymbols;
-    SmMathConfig &rCfg = *SM_MOD()->GetConfig();
-    rCfg.GetSymbols( aSymbols );
+    SmModule::get()->GetConfig()->GetSymbols(aSymbols);
     size_t nSymbolCount = aSymbols.size();
 
     m_aSymbols.clear();
@@ -269,7 +268,7 @@ void SmSymbolManager::Load()
         // make the new symbol a copy but with ITALIC_NORMAL, and add it to iGreek
         const SmSym &rSym = *aGreekSymbols[i];
         vcl::Font aFont( rSym.GetFace() );
-        OSL_ENSURE( aFont.GetItalic() == ITALIC_NONE, "expected Font with ITALIC_NONE, failed." );
+        OSL_ENSURE( aFont.GetItalicMaybeAskConfig() == ITALIC_NONE, "expected Font with ITALIC_NONE, failed." );
         aFont.SetItalic( ITALIC_NORMAL );
         OUString aSymbolName = "i" + rSym.GetUiName();
         SmSym aSymbol( aSymbolName, aFont, rSym.GetCharacter(),
@@ -285,8 +284,6 @@ void SmSymbolManager::Save()
     if (!m_bModified)
         return;
 
-    SmMathConfig &rCfg = *SM_MOD()->GetConfig();
-
     // prepare to skip symbols from iGreek on saving
     OUString aSymbolSetName = "i" +
         SmLocalizedSymbolData::GetUiSymbolSetName(u"Greek");
@@ -300,7 +297,7 @@ void SmSymbolManager::Save()
         if (i->GetSymbolSetName() != aSymbolSetName)
             aSymbols.push_back( *i );
     }
-    rCfg.SetSymbols( aSymbols );
+    SmModule::get()->GetConfig()->SetSymbols(aSymbols);
 
     m_bModified = false;
 }

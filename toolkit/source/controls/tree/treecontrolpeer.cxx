@@ -24,7 +24,6 @@
 #include <com/sun/star/util/VetoException.hpp>
 #include <o3tl/any.hxx>
 #include <helper/property.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
 
 #include <com/sun/star/awt/tree/XMutableTreeNode.hpp>
 #include <controls/treecontrolpeer.hxx>
@@ -39,6 +38,7 @@
 #include <vcl/toolkit/treelistentry.hxx>
 #include <vcl/toolkit/viewdataentry.hxx>
 #include <vcl/toolkit/svlbitm.hxx>
+#include <vcl/unohelp.hxx>
 
 #include <map>
 #include <memory>
@@ -94,7 +94,7 @@ public:
     virtual ~UnoTreeListBoxImpl() override;
     virtual void dispose() override;
 
-    void            insert( SvTreeListEntry* pEntry, SvTreeListEntry* pParent, sal_uLong nPos );
+    void            insert( SvTreeListEntry* pEntry, SvTreeListEntry* pParent, sal_uInt32 nPos );
 
     virtual void    RequestingChildren( SvTreeListEntry* pParent ) override;
 
@@ -218,7 +218,7 @@ void TreeControlPeer::disposeControl()
 }
 
 
-UnoTreeListEntry* TreeControlPeer::createEntry( const Reference< XTreeNode >& xNode, UnoTreeListEntry* pParent, sal_uLong nPos /* = TREELIST_APPEND */ )
+UnoTreeListEntry* TreeControlPeer::createEntry( const Reference< XTreeNode >& xNode, UnoTreeListEntry* pParent, sal_uInt32 nPos /* = TREELIST_APPEND */ )
 {
     UnoTreeListEntry* pEntry = nullptr;
     if( mpTreeImpl )
@@ -503,7 +503,7 @@ Any SAL_CALL TreeControlPeer::getSelection()
 
     Any aRet;
 
-    sal_uLong nSelectionCount = rTree.GetSelectionCount();
+    sal_uInt32 nSelectionCount = rTree.GetSelectionCount();
     if( nSelectionCount == 1 )
     {
         UnoTreeListEntry* pEntry = dynamic_cast< UnoTreeListEntry* >( rTree.FirstSelected() );
@@ -538,7 +538,7 @@ void SAL_CALL TreeControlPeer::addSelectionChangeListener( const Reference< XSel
 
 void SAL_CALL TreeControlPeer::removeSelectionChangeListener( const Reference< XSelectionChangeListener >& xListener )
 {
-    maSelectionListeners.addInterface( xListener );
+    maSelectionListeners.removeInterface( xListener );
 }
 
 
@@ -843,7 +843,7 @@ awt::Rectangle SAL_CALL TreeControlPeer::getNodeRect( const Reference< XTreeNode
     UnoTreeListEntry* pEntry = getEntry( i_Node );
 
     ::tools::Rectangle aEntryRect( rTree.GetFocusRect( pEntry, rTree.GetEntryPosition( pEntry ).Y() ) );
-    return VCLUnoHelper::ConvertToAWTRect( aEntryRect );
+    return vcl::unohelper::ConvertToAWTRect( aEntryRect );
 }
 
 
@@ -1017,7 +1017,7 @@ void TreeControlPeer::updateNode( UnoTreeListBoxImpl const & rTree, const Refere
     {
         Reference< XTreeNode > xParentNode( xNode->getParent() );
         UnoTreeListEntry* pParentEntry = nullptr;
-        sal_uLong nChild = TREELIST_APPEND;
+        sal_uInt32 nChild = TREELIST_APPEND;
 
         if( xParentNode.is() )
         {
@@ -1188,7 +1188,7 @@ css::awt::Size TreeControlPeer::getMinimumSize()
 /* todo
     MultiLineEdit* pEdit = (MultiLineEdit*) GetWindow();
     if ( pEdit )
-        aSz = AWTSize(pEdit->CalcMinimumSize());
+        aSz = vcl::unohelper::ConvertToAWTSize(pEdit->CalcMinimumSize());
 */
     return aSz;
 }
@@ -1206,7 +1206,7 @@ css::awt::Size TreeControlPeer::calcAdjustedSize( const css::awt::Size& rNewSize
 /* todo
     MultiLineEdit* pEdit = (MultiLineEdit*) GetWindow();
     if ( pEdit )
-        aSz = AWTSize(pEdit->CalcAdjustedSize( VCLSize(rNewSize )));
+        aSz = vcl::unohelper::ConvertToAWTSize(pEdit->CalcAdjustedSize(vcl::unohelper::ConvertToVCLSize(rNewSize)));
 */
     return aSz;
 }
@@ -1388,7 +1388,7 @@ bool TreeControlPeer::loadImage( const OUString& rURL, Image& rImage )
 
     try
     {
-        css::beans::PropertyValues aProps{ comphelper::makePropertyValue("URL", rURL) };
+        css::beans::PropertyValues aProps{ comphelper::makePropertyValue(u"URL"_ustr, rURL) };
         Reference< XGraphic > xGraphic( mxGraphicProvider->queryGraphic( aProps ) );
 
         Graphic aGraphic( xGraphic );
@@ -1463,7 +1463,7 @@ IMPL_LINK_NOARG(UnoTreeListBoxImpl, OnExpandedHdl, SvTreeListBox*, void)
 }
 
 
-void UnoTreeListBoxImpl::insert( SvTreeListEntry* pEntry,SvTreeListEntry* pParent,sal_uLong nPos )
+void UnoTreeListBoxImpl::insert( SvTreeListEntry* pEntry,SvTreeListEntry* pParent,sal_uInt32 nPos )
 {
     if( pParent )
         SvTreeListBox::Insert( pEntry, pParent, nPos );

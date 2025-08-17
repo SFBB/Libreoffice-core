@@ -68,6 +68,7 @@
 #define STR_FORMAT_ID_STAROBJECT_PAINTDOC       NC_("STR_FORMAT_ID_STAROBJECT_PAINTDOC", "StarObject Paint object")
 #define STR_FORMAT_ID_HTML                      NC_("STR_FORMAT_ID_HTML", "HyperText Markup Language (HTML)")
 #define STR_FORMAT_ID_HTML_SIMPLE               NC_("STR_FORMAT_ID_HTML_SIMPLE", "Stripped HyperText Markup Language (Simple HTML)")
+#define STR_FORMAT_ID_MARKDOWN                  NC_("STR_FORMAT_ID_MARKDOWN", "Markdown")
 #define STR_FORMAT_ID_BIFF_5                    NC_("STR_FORMAT_ID_BIFF_5", "Microsoft Excel Binary Interchange Format 5.0/95 (Biff5)")
 #define STR_FORMAT_ID_BIFF_8                    NC_("STR_FORMAT_ID_BIFF_8", "Microsoft Excel Binary Interchange Format 97/2000/XP/2003 (Biff8)")
 #define STR_FORMAT_ID_SYLK                      NC_("STR_FORMAT_ID_SYLK", "Sylk")
@@ -278,6 +279,9 @@
 #define STR_WARNING_INVALIDJAVASETTINGS_TITLE   NC_("STR_WARNING_INVALIDJAVASETTINGS_TITLE", "Select JRE")
 #define STR_ERROR_JVMCREATIONFAILED_TITLE       NC_("STR_ERROR_JVMCREATIONFAILED_TITLE", "JRE is Defective")
 
+#define STR_ACC_COLUMN_NUM                      NC_("STR_ACC_COLUMN_NUM", "Column %COLUMNNUMBER")
+#define STR_ACC_ROW_NUM                         NC_("STR_ACC_ROW_NUM", "Row %ROWNUMBER")
+
 // accessibility descriptions that use %PRODUCTNAME, we set these explicitly because querying a11y descs
 // in order to change %PRODUCTNAME at runtime is expensive, so limit doing that as much as possible.
 #define STR_A11Y_DESC_OPTIONS                   NC_("printersetupdialog|extended_tip|options", "Opens the Printer Options dialog where you can override the global printer options set on the Tools - Options - %PRODUCTNAME Writer/Web - Print panel for the current document.")
@@ -350,5 +354,8 @@
 #define STR_DESCRIPTION_MYTHES                  NC_("STR_DESCRIPTION_MYTHES", "MyThes Thesaurus")
 #define STR_DESCRIPTION_IGNOREALLLIST           NC_("STR_DESCRIPTION_IGNOREALLLIST", "List of Ignored Words")
 #define STR_DESCRIPTION_LANGUAGETOOL            NC_("STR_DESCRIPTION_LANGUAGETOOL", "LanguageTool Remote Grammar Checker")
+#define STR_DESCRIPTION_SPELLING_ERROR          NC_("STR_DESCRIPTION_SPELLING_ERROR", "Spelling error")
+#define STR_DESCRIPTION_GRAMMAR_ERROR           NC_("STR_DESCRIPTION_GRAMMAR_ERROR_LONG", "Grammar error")
+#define STR_DESCRIPTION_STYLE_ERROR             NC_("STR_DESCRIPTION_STYLE_ERROR", "Bad style")
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

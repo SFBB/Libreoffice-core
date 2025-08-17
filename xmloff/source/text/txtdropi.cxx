@@ -25,9 +25,7 @@
 #include <sal/log.hxx>
 #include <sax/tools/converter.hxx>
 
-#include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmltoken.hxx>
@@ -70,9 +68,9 @@ void XMLTextDropCapImportContext::ProcessAttrs(
 
         case XML_ELEMENT(STYLE, XML_DISTANCE):
             if (GetImport().GetMM100UnitConverter().convertMeasureToCore(
-                        nTmp, aIter.toView(), 0 ))
+                        nTmp, aIter.toView(), 0, SAL_MAX_INT16 ))
             {
-                aFormat.Distance = static_cast<sal_uInt16>(nTmp);
+                aFormat.Distance = static_cast<sal_Int16>(nTmp);
             }
             break;
 

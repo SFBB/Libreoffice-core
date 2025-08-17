@@ -12,12 +12,11 @@
 #include <vector>
 
 #include <com/sun/star/uno/Reference.hxx>
-
+#include <ucbhelper/commandenvironment.hxx>
 #include <tools/link.hxx>
 #include <tools/urlobj.hxx>
 #include <vcl/weld.hxx>
 
-namespace com :: sun :: star :: ucb { class XCommandEnvironment; }
 namespace com :: sun :: star :: awt { class XWindow; }
 
 namespace weld {
@@ -25,7 +24,6 @@ namespace weld {
     class ComboBox;
     class Entry;
     class SpinButton;
-    class ToggleButton;
 }
 
 class PlaceEditDialog;
@@ -60,7 +58,7 @@ class DetailsContainer
     protected:
         void notifyChange( );
         DECL_LINK(ValueChangeHdl, weld::Entry&, void);
-        DECL_STATIC_LINK(DetailsContainer, FormatPortHdl, weld::SpinButton&, void);
+        DECL_STATIC_LINK(DetailsContainer, FormatPortHdl, sal_Int64, OUString);
 };
 
 class HostDetailsContainer : public DetailsContainer
@@ -118,7 +116,7 @@ class CmisDetailsContainer final : public DetailsContainer
     private:
         OUString m_sUsername;
         OUString m_sPassword;
-        css::uno::Reference< css::ucb::XCommandEnvironment > m_xCmdEnv;
+        rtl::Reference< ucbhelper::CommandEnvironment > m_xCmdEnv;
         std::vector< OUString > m_aRepoIds;
         OUString m_sRepoId;
         OUString m_sBinding;

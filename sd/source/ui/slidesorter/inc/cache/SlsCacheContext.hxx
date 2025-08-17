@@ -24,12 +24,8 @@
 #include <memory>
 #include <vector>
 
-namespace com::sun::star::uno
-{
-class XInterface;
-}
-
 class SdrPage;
+class SdXImpressDocument;
 
 namespace sd::slidesorter::cache
 {
@@ -88,7 +84,7 @@ public:
         same model but have different preview sizes may access previews of
         each other in order to create fast previews of the previews.
     */
-    virtual css::uno::Reference<css::uno::XInterface> GetModel() = 0;
+    virtual SdXImpressDocument* GetModel() = 0;
 };
 
 typedef std::shared_ptr<CacheContext> SharedCacheContext;

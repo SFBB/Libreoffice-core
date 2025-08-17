@@ -111,7 +111,7 @@
 #define SID_PAGEMODE                        (SID_SD_START+46)
 #define SID_LAYERMODE                       (SID_SD_START+47)
 #define SID_TOGGLELAYERVISIBILITY           (SID_SD_START+48)
-    // FREE
+#define SID_SETLAYER                        (SID_SD_START+49)
 #define SID_MASTERPAGE                      (SID_SD_START+50)
 // Navigation between slides
 #define SID_GO_TO_NEXT_PAGE                 (SID_SD_START+51)
@@ -217,7 +217,7 @@
 #define SID_PICK_THROUGH                    (SID_SD_START+159)
     // FREE 160 - 168
 #define SID_DOUBLECLICK_TEXTEDIT            (SID_SD_START+169)
-#define SID_CLICK_CHANGE_ROTATION           (SID_SD_START+170)
+// In svxids.hrc: #define SID_CLICK_CHANGE_ROTATION           (SID_SD_START+170)
 #define SID_HELPLINES_VISIBLE               (SID_SD_START+179)
 #define SID_HELPLINES_FRONT                 (SID_SD_START+180)
 #define SID_BEFORE_OBJ                      (SID_SD_START+181)
@@ -368,6 +368,8 @@
 #define SID_EXPAND_PAGE                     (SID_SD_START+343)
 #define SID_SUMMARY_PAGE                    (SID_SD_START+344)
 #define SID_LEAVE_ALL_GROUPS                (SID_SD_START+345)
+#define SID_COPY_SLIDE                      (SID_SD_START+346)
+#define SID_PASTE_SLIDE                     (SID_SD_START+347)
     // FREE
 #define SID_SLIDE_MASTER_MODE               TypedWhichId<SfxBoolItem>(SID_SD_START+348)
     // FREE
@@ -421,8 +423,7 @@
 
 #define SID_LEFT_PANE_IMPRESS               (SID_SD_START+414)
 #define SID_LEFT_PANE_DRAW                  (SID_SD_START+415)
-        // FREE
-#define SID_NOTES_WINDOW                    (SID_SD_START+417)
+#define SID_BOTTOM_PANE_IMPRESS             (SID_SD_START+416)
         // FREE
 #define SID_NORMAL_MULTI_PANE_GUI           TypedWhichId<SfxBoolItem>(SID_SD_START+420)
 #define SID_SLIDE_SORTER_MULTI_PANE_GUI     (SID_SD_START+421)
@@ -452,5 +453,8 @@
 #define SID_HIDE_LAST_LEVEL                 (SID_SD_START+448)
 #define SID_SHOW_NEXT_LEVEL                 (SID_SD_START+449)
 #define SID_PRESENTATION_MINIMIZER          (SID_SD_START+450)
+#define SID_ALIGN_PAGE                      (SID_SD_START+451)
+
+#define FN_TRANSFORM_DOCUMENT_STRUCTURE     (SID_SD_START+452)
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

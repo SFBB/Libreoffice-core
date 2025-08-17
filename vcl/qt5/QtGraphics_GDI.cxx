@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -22,12 +22,7 @@
 #include <QtBitmap.hxx>
 #include <QtPainter.hxx>
 
-#include <sal/log.hxx>
-
 #include <QtGui/QPainter>
-#include <QtGui/QScreen>
-#include <QtGui/QWindow>
-#include <QtWidgets/QWidget>
 
 #include <numeric>
 #include <basegfx/polygon/b2dpolygontools.hxx>
@@ -385,7 +380,7 @@ bool QtGraphicsBackend::drawPolyLine(const basegfx::B2DHomMatrix& rObjectToDevic
     // but this NEEDS to be checked/verified
     for (sal_uInt32 a(0); a < aPolyPolygonLine.count(); a++)
     {
-        const basegfx::B2DPolygon aPolyLine(aPolyPolygonLine.getB2DPolygon(a));
+        const basegfx::B2DPolygon& aPolyLine(aPolyPolygonLine.getB2DPolygon(a));
         AddPolygonToPath(aPath, aPolyLine, aPolyLine.isClosed(), !getAntiAlias(), true);
     }
 
@@ -528,8 +523,11 @@ void QtGraphicsBackend::drawMask(const SalTwoRect& rPosAry, const SalBitmap& /*r
 }
 
 std::shared_ptr<SalBitmap> QtGraphicsBackend::getBitmap(tools::Long nX, tools::Long nY,
-                                                        tools::Long nWidth, tools::Long nHeight)
+                                                        tools::Long nWidth, tools::Long nHeight,
+                                                        bool bWithoutAlpha)
 {
+    assert(!bWithoutAlpha && "not supported here");
+    (void)bWithoutAlpha;
     return std::make_shared<QtBitmap>(m_pQImage->copy(nX, nY, nWidth, nHeight));
 }
 
@@ -570,24 +568,6 @@ void QtGraphicsBackend::invert(tools::Long nX, tools::Long nY, tools::Long nWidt
 void QtGraphicsBackend::invert(sal_uInt32 /*nPoints*/, const Point* /*pPtAry*/,
                                SalInvert /*nFlags*/)
 {
-}
-
-bool QtGraphicsBackend::drawEPS(tools::Long /*nX*/, tools::Long /*nY*/, tools::Long /*nWidth*/,
-                                tools::Long /*nHeight*/, void* /*pPtr*/, sal_uInt32 /*nSize*/)
-{
-    return false;
-}
-
-bool QtGraphicsBackend::blendBitmap(const SalTwoRect&, const SalBitmap& /*rBitmap*/)
-{
-    return false;
-}
-
-bool QtGraphicsBackend::blendAlphaBitmap(const SalTwoRect&, const SalBitmap& /*rSrcBitmap*/,
-                                         const SalBitmap& /*rMaskBitmap*/,
-                                         const SalBitmap& /*rAlphaBitmap*/)
-{
-    return false;
 }
 
 static QImage getAlphaImage(const SalBitmap& rSourceBitmap, const SalBitmap& rAlphaBitmap)
@@ -635,8 +615,6 @@ bool QtGraphicsBackend::drawTransformedBitmap(const basegfx::B2DPoint& rNull,
     return true;
 }
 
-bool QtGraphicsBackend::hasFastDrawTransformedBitmap() const { return false; }
-
 bool QtGraphicsBackend::drawAlphaRect(tools::Long nX, tools::Long nY, tools::Long nWidth,
                                       tools::Long nHeight, sal_uInt8 nTransparency)
 {
@@ -678,33 +656,6 @@ void QtGraphicsBackend::SetROPLineColor(SalROPColor /*nROPColor*/) {}
 
 void QtGraphicsBackend::SetROPFillColor(SalROPColor /*nROPColor*/) {}
 
-bool QtGraphicsBackend::supportsOperation(OutDevSupportType eType) const
-{
-    switch (eType)
-    {
-        case OutDevSupportType::TransparentRect:
-            return true;
-        default:
-            return false;
-    }
-}
+bool QtGraphicsBackend::supportsOperation(OutDevSupportType /*eType*/) const { return false; }
 
-void QtGraphics::GetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY)
-{
-    char* pForceDpi;
-    if ((pForceDpi = getenv("SAL_FORCEDPI")))
-    {
-        OString sForceDPI(pForceDpi);
-        rDPIX = rDPIY = sForceDPI.toInt32();
-        return;
-    }
-
-    if (!m_pFrame)
-        return;
-
-    QScreen* pScreen = m_pFrame->GetQWidget()->screen();
-    rDPIX = pScreen->logicalDotsPerInchX() * pScreen->devicePixelRatio() + 0.5;
-    rDPIY = pScreen->logicalDotsPerInchY() * pScreen->devicePixelRatio() + 0.5;
-}
-
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

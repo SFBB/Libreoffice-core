@@ -50,6 +50,7 @@ SwFormatContentControl::SwFormatContentControl(sal_uInt16 nWhich)
     : SfxPoolItem(nWhich)
     , m_pTextAttr(nullptr)
 {
+    setNonShareable();
 }
 
 SwFormatContentControl::SwFormatContentControl(
@@ -58,6 +59,7 @@ SwFormatContentControl::SwFormatContentControl(
     , m_pContentControl(pContentControl)
     , m_pTextAttr(nullptr)
 {
+    setNonShareable();
     if (!pContentControl)
     {
         SAL_WARN("sw.core", "SwFormatContentControl ctor: no pContentControl?");
@@ -245,7 +247,7 @@ void SwContentControl::NotifyChangeTextNode(SwTextNode* pTextNode)
     m_pTextNode = pTextNode;
     if (m_pTextNode && (GetRegisteredIn() != m_pTextNode))
     {
-        m_pTextNode->Add(this);
+        m_pTextNode->Add(*this);
     }
     else if (!m_pTextNode)
     {
@@ -260,18 +262,22 @@ void SwContentControl::NotifyChangeTextNode(SwTextNode* pTextNode)
 
 void SwContentControl::SwClientNotify(const SwModify&, const SfxHint& rHint)
 {
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    CallSwClientNotify(rHint);
-    GetNotifier().Broadcast(SfxHint(SfxHintId::DataChanged));
-
-    if (pLegacy->GetWhich() == RES_REMOVE_UNO_OBJECT)
+    if (SfxHintId::SwRemoveUnoObject == rHint.GetId())
     {
+        CallSwClientNotify(rHint);
+        GetNotifier().Broadcast(SfxHint(SfxHintId::DataChanged));
         // Invalidate cached uno object.
         SetXContentControl(nullptr);
         GetNotifier().Broadcast(SfxHint(SfxHintId::Deinitializing));
+    }
+    else if (rHint.GetId() == SfxHintId::SwLegacyModify
+             || rHint.GetId() == SfxHintId::SwFormatChange
+             || rHint.GetId() == SfxHintId::SwAttrSetChange
+             || rHint.GetId() == SfxHintId::SwObjectDying
+             || rHint.GetId() == SfxHintId::SwUpdateAttr)
+    {
+        CallSwClientNotify(rHint);
+        GetNotifier().Broadcast(SfxHint(SfxHintId::DataChanged));
     }
 }
 
@@ -284,10 +290,10 @@ std::optional<size_t> SwContentControl::GetSelectedListItem(bool bCheckDocModel)
     if (GetShowingPlaceHolder() || !nLen || !GetTextAttr())
         return std::nullopt;
 
-    const OUString& rText = GetTextAttr()->ToString();
+    const OUString aText = GetTextAttr()->ToString();
     for (size_t i = 0; i < nLen; ++i)
     {
-        if (GetTextAttr()[i].ToString() == rText)
+        if (GetTextAttr()[i].ToString() == aText)
             return i;
     }
     assert(!GetDropDown() && "DropDowns must always have an associated list item");
@@ -662,8 +668,8 @@ void SwContentControlListItem::ItemsToAny(const std::vector<SwContentControlList
     {
         const SwContentControlListItem& rItem = rItems[i];
         pRet[i] = {
-            comphelper::makePropertyValue("DisplayText", rItem.m_aDisplayText),
-            comphelper::makePropertyValue("Value", rItem.m_aValue),
+            comphelper::makePropertyValue(u"DisplayText"_ustr, rItem.m_aDisplayText),
+            comphelper::makePropertyValue(u"Value"_ustr, rItem.m_aValue),
         };
     }
 
@@ -681,12 +687,12 @@ SwContentControlListItem::ItemsFromAny(const css::uno::Any& rVal)
     {
         comphelper::SequenceAsHashMap aMap(rItem);
         SwContentControlListItem aItem;
-        auto it = aMap.find("DisplayText");
+        auto it = aMap.find(u"DisplayText"_ustr);
         if (it != aMap.end())
         {
             it->second >>= aItem.m_aDisplayText;
         }
-        it = aMap.find("Value");
+        it = aMap.find(u"Value"_ustr);
         if (it != aMap.end())
         {
             it->second >>= aItem.m_aValue;
@@ -697,35 +703,35 @@ SwContentControlListItem::ItemsFromAny(const css::uno::Any& rVal)
     return aRet;
 }
 
-SwTextContentControl* SwTextContentControl::CreateTextContentControl(SwDoc& rDoc,
-                                                                     SwTextNode* pTargetTextNode,
-                                                                     SwFormatContentControl& rAttr,
-                                                                     sal_Int32 nStart,
-                                                                     sal_Int32 nEnd, bool bIsCopy)
+SwTextContentControl*
+SwTextContentControl::CreateTextContentControl(SwDoc& rDoc, SwTextNode* pTargetTextNode,
+                                               const SfxPoolItemHolder& rHolder, sal_Int32 nStart,
+                                               sal_Int32 nEnd, bool bIsCopy)
 {
     if (bIsCopy)
     {
-        // rAttr is already cloned, now call DoCopy to copy the SwContentControl
-        if (!pTargetTextNode)
-        {
-            SAL_WARN("sw.core",
-                     "SwTextContentControl ctor: cannot copy content control without target node");
-        }
-        rAttr.DoCopy(*pTargetTextNode);
+        // the item in rHolder is already cloned, now call DoCopy to copy the SwContentControl
+        assert(pTargetTextNode
+               && "SwTextContentControl ctor: cannot copy content control without target node");
+        SwFormatContentControl* pSwFormatContentControl(
+            static_cast<SwFormatContentControl*>(const_cast<SfxPoolItem*>(rHolder.getItem())));
+        pSwFormatContentControl->DoCopy(*pTargetTextNode);
     }
     SwContentControlManager* pManager = &rDoc.GetContentControlManager();
-    auto pTextContentControl(new SwTextContentControl(pManager, rAttr, nStart, nEnd));
+    auto pTextContentControl(new SwTextContentControl(pManager, rHolder, nStart, nEnd));
     return pTextContentControl;
 }
 
 SwTextContentControl::SwTextContentControl(SwContentControlManager* pManager,
-                                           SwFormatContentControl& rAttr, sal_Int32 nStart,
+                                           const SfxPoolItemHolder& rAttr, sal_Int32 nStart,
                                            sal_Int32 nEnd)
     : SwTextAttr(rAttr, nStart)
     , SwTextAttrNesting(rAttr, nStart, nEnd)
     , m_pManager(pManager)
 {
-    rAttr.SetTextAttr(this);
+    SwFormatContentControl& rSwFormatContentControl(
+        static_cast<SwFormatContentControl&>(GetAttr()));
+    rSwFormatContentControl.SetTextAttr(this);
     SetHasDummyChar(true);
     m_pManager->Insert(this);
 }

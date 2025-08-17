@@ -19,6 +19,7 @@
 
 #include <drawinglayer/primitive2d/texthierarchyprimitive2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
+#include <comphelper/lok.hxx>
 
 
 using namespace com::sun::star;
@@ -137,15 +138,36 @@ namespace drawinglayer::primitive2d
 
 
         TextHierarchyEditPrimitive2D::TextHierarchyEditPrimitive2D(Primitive2DContainer&& aContent)
-        :   BasePrimitive2D()
-        ,   maContent(std::move(aContent))
+        :   GroupPrimitive2D(std::move(aContent))
         {
+        }
+
+        void TextHierarchyEditPrimitive2D::get2DDecomposition(
+            Primitive2DDecompositionVisitor& rVisitor,
+            const geometry::ViewInformation2D& rViewInformation) const
+        {
+            // check if TextEdit is active. If not, process. If yes, suppress the content
+            // lok case: always decompose it when we're rendering a slide show
+            if (!rViewInformation.getTextEditActive() || comphelper::LibreOfficeKit::isSlideshowRendering())
+                GroupPrimitive2D::get2DDecomposition(rVisitor, rViewInformation);
         }
 
         // provide unique ID
         sal_uInt32 TextHierarchyEditPrimitive2D::getPrimitive2DID() const
         {
             return PRIMITIVE2D_ID_TEXTHIERARCHYEDITPRIMITIVE2D;
+        }
+
+
+        TextHierarchyEmphasisMarkPrimitive2D::TextHierarchyEmphasisMarkPrimitive2D(Primitive2DContainer&& aContent)
+        :   GroupPrimitive2D(std::move(aContent))
+        {
+        }
+
+        // provide unique ID
+        sal_uInt32 TextHierarchyEmphasisMarkPrimitive2D::getPrimitive2DID() const
+        {
+            return PRIMITIVE2D_ID_TEXTHIERARCHYEMPHASISMARKPRIMITIVE2D;
         }
 
 } // end of namespace

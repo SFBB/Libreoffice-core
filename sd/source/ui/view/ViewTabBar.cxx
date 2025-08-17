@@ -20,9 +20,12 @@
 #include <ViewTabBar.hxx>
 
 #include <ViewShellBase.hxx>
+#include <framework/ConfigurationController.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
 #include <framework/FrameworkHelper.hxx>
 #include <framework/Pane.hxx>
 #include <DrawController.hxx>
+#include <ResourceId.hxx>
 
 #include <Client.hxx>
 #include <utility>
@@ -30,10 +33,9 @@
 #include <vcl/svapp.hxx>
 
 #include <sfx2/viewfrm.hxx>
-#include <com/sun/star/drawing/framework/ResourceId.hpp>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
+#include <com/sun/star/uno/DeploymentException.hpp>
+#include <framework/AbstractView.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/servicehelper.hxx>
@@ -58,9 +60,10 @@ bool IsEqual (const TabBarButton& rButton1, const TabBarButton& rButton2)
 } // end of anonymous namespace
 
 ViewTabBar::ViewTabBar (
-    const Reference<XResourceId>& rxViewTabBarId,
+    const rtl::Reference<framework::ResourceId>& rxViewTabBarId,
     const rtl::Reference<::sd::DrawController>& rxController)
-    : mpTabControl(VclPtr<TabBarControl>::Create(GetAnchorWindow(rxViewTabBarId,rxController), this)),
+    : mxListener(new Listener(*this)),
+      mpTabControl(VclPtr<TabBarControl>::Create(GetAnchorWindow(rxViewTabBarId,rxController), this)),
       mxController(rxController),
       mxViewTabBarId(rxViewTabBarId),
       mpViewShellBase(nullptr),
@@ -74,16 +77,15 @@ ViewTabBar::ViewTabBar (
     if (mxController)
         mpViewShellBase = mxController->GetViewShellBase();
 
-    // Register as listener at XConfigurationController.
+    // Register as listener at ConfigurationController.
     if (mxController.is())
     {
         mxConfigurationController = mxController->getConfigurationController();
         if (mxConfigurationController.is())
         {
             mxConfigurationController->addConfigurationChangeListener(
-                this,
-                    FrameworkHelper::msResourceActivationEvent,
-                Any());
+                mxListener,
+                    framework::ConfigurationChangeEventType::ResourceActivation);
         }
     }
 
@@ -114,10 +116,10 @@ void ViewTabBar::disposing(std::unique_lock<std::mutex>&)
 
     if (mxConfigurationController.is())
     {
-        // Unregister listener from XConfigurationController.
+        // Unregister listener from ConfigurationController.
         try
         {
-            mxConfigurationController->removeConfigurationChangeListener(this);
+            mxConfigurationController->removeConfigurationChangeListener(mxListener);
         }
         catch (const lang::DisposedException&)
         {
@@ -136,7 +138,7 @@ void ViewTabBar::disposing(std::unique_lock<std::mutex>&)
 }
 
 vcl::Window* ViewTabBar::GetAnchorWindow(
-    const Reference<XResourceId>& rxViewTabBarId,
+    const rtl::Reference<framework::ResourceId>& rxViewTabBarId,
     const rtl::Reference<::sd::DrawController>& rxController)
 {
     vcl::Window* pWindow = nullptr;
@@ -159,13 +161,13 @@ vcl::Window* ViewTabBar::GetAnchorWindow(
     // The rest is (at the moment) just for the emergency case.
     if (pWindow == nullptr)
     {
-        Reference<XPane> xPane;
+        rtl::Reference<framework::AbstractPane> xPane;
         try
         {
-            Reference<XConfigurationController> xCC (
+            rtl::Reference<framework::ConfigurationController> xCC (
                 rxController->getConfigurationController());
             if (xCC.is())
-                xPane.set(xCC->getResource(rxViewTabBarId->getAnchor()), UNO_QUERY);
+                xPane = dynamic_cast<framework::AbstractPane*>(xCC->getResource(rxViewTabBarId->getAnchor()).get());
         }
         catch (const RuntimeException&)
         {
@@ -185,34 +187,32 @@ vcl::Window* ViewTabBar::GetAnchorWindow(
     return pWindow;
 }
 
-//----- XConfigurationChangeListener ------------------------------------------
+//----- ConfigurationChangeListener ------------------------------------------
 
-void SAL_CALL  ViewTabBar::notifyConfigurationChange (
-    const ConfigurationChangeEvent& rEvent)
+void ViewTabBar::Listener::notifyConfigurationChange (
+    const sd::framework::ConfigurationChangeEvent& rEvent)
 {
-    if (rEvent.Type == FrameworkHelper::msResourceActivationEvent
+    if (rEvent.Type == framework::ConfigurationChangeEventType::ResourceActivation
         && rEvent.ResourceId->getResourceURL().match(FrameworkHelper::msViewURLPrefix)
-        && rEvent.ResourceId->isBoundTo(mxViewTabBarId->getAnchor(), AnchorBindingMode_DIRECT))
+        && rEvent.ResourceId->isBoundTo(mrParent.mxViewTabBarId->getAnchor(), AnchorBindingMode_DIRECT))
     {
-        UpdateActiveButton();
+        mrParent.UpdateActiveButton();
     }
 }
 
 //----- XEventListener --------------------------------------------------------
 
-void SAL_CALL ViewTabBar::disposing(
+void SAL_CALL ViewTabBar::Listener::disposing(
     const lang::EventObject& rEvent)
 {
-    if (rEvent.Source == mxConfigurationController)
+    if (rEvent.Source == cppu::getXWeak(mrParent.mxConfigurationController.get()))
     {
-        mxConfigurationController = nullptr;
-        mxController = nullptr;
+        mrParent.mxConfigurationController = nullptr;
+        mrParent.mxController = nullptr;
     }
 }
 
-//----- XTabBar ---------------------------------------------------------------
-
-void SAL_CALL ViewTabBar::addTabBarButtonAfter (
+void ViewTabBar::addTabBarButtonAfter (
     const TabBarButton& rButton,
     const TabBarButton& rAnchor)
 {
@@ -220,38 +220,20 @@ void SAL_CALL ViewTabBar::addTabBarButtonAfter (
     AddTabBarButton(rButton, rAnchor);
 }
 
-void SAL_CALL ViewTabBar::appendTabBarButton (const TabBarButton& rButton)
-{
-    const SolarMutexGuard aSolarGuard;
-    AddTabBarButton(rButton);
-}
-
-void SAL_CALL ViewTabBar::removeTabBarButton (const TabBarButton& rButton)
-{
-    const SolarMutexGuard aSolarGuard;
-    RemoveTabBarButton(rButton);
-}
-
-sal_Bool SAL_CALL ViewTabBar::hasTabBarButton (const TabBarButton& rButton)
+bool ViewTabBar::hasTabBarButton (const TabBarButton& rButton)
 {
     const SolarMutexGuard aSolarGuard;
     return HasTabBarButton(rButton);
 }
 
-Sequence<TabBarButton> SAL_CALL ViewTabBar::getTabBarButtons()
-{
-    const SolarMutexGuard aSolarGuard;
-    return GetTabBarButtons();
-}
+//----- AbstractResource -------------------------------------------------------------
 
-//----- XResource -------------------------------------------------------------
-
-Reference<XResourceId> SAL_CALL ViewTabBar::getResourceId()
+rtl::Reference<framework::ResourceId> ViewTabBar::getResourceId()
 {
     return mxViewTabBarId;
 }
 
-sal_Bool SAL_CALL ViewTabBar::isAnchorOnly()
+bool ViewTabBar::isAnchorOnly()
 {
     return false;
 }
@@ -260,18 +242,16 @@ bool ViewTabBar::ActivatePage(size_t nIndex)
 {
     try
     {
-        Reference<XConfigurationController> xConfigurationController (
+        rtl::Reference<framework::ConfigurationController> xConfigurationController (
             mxController->getConfigurationController());
         if ( ! xConfigurationController.is())
             throw RuntimeException();
-        Reference<XView> xView;
+        rtl::Reference<sd::framework::AbstractView> xView;
         try
         {
-            xView.set(xConfigurationController->getResource(
-                          ResourceId::create(
-                              ::comphelper::getProcessComponentContext(),
-                              FrameworkHelper::msCenterPaneURL)),
-                      UNO_QUERY);
+            xView = dynamic_cast<framework::AbstractView*>(xConfigurationController->getResource(
+                          new sd::framework::ResourceId(
+                              FrameworkHelper::msCenterPaneURL)).get());
         }
         catch (const DeploymentException&)
         {
@@ -286,7 +266,7 @@ bool ViewTabBar::ActivatePage(size_t nIndex)
             {
                 xConfigurationController->requestResourceActivation(
                     maTabBarButtons[nIndex].ResourceId,
-                    ResourceActivationMode_REPLACE);
+                    sd::framework::ResourceActivationMode::REPLACE);
             }
 
             return true;
@@ -337,8 +317,8 @@ int ViewTabBar::GetHeight() const
 }
 
 void ViewTabBar::AddTabBarButton (
-    const css::drawing::framework::TabBarButton& rButton,
-    const css::drawing::framework::TabBarButton& rAnchor)
+    const TabBarButton& rButton,
+    const TabBarButton& rAnchor)
 {
     TabBarButtonList::size_type nIndex;
 
@@ -364,13 +344,7 @@ void ViewTabBar::AddTabBarButton (
 }
 
 void ViewTabBar::AddTabBarButton (
-    const css::drawing::framework::TabBarButton& rButton)
-{
-    AddTabBarButton(rButton, maTabBarButtons.size());
-}
-
-void ViewTabBar::AddTabBarButton (
-    const css::drawing::framework::TabBarButton& rButton,
+    const TabBarButton& rButton,
     sal_Int32 nPosition)
 {
     if (nPosition >= 0 &&
@@ -383,27 +357,12 @@ void ViewTabBar::AddTabBarButton (
     }
 }
 
-void ViewTabBar::RemoveTabBarButton (
-    const css::drawing::framework::TabBarButton& rButton)
-{
-    for (TabBarButtonList::size_type nIndex=0; nIndex<maTabBarButtons.size(); ++nIndex)
-    {
-        if (IsEqual(maTabBarButtons[nIndex], rButton))
-        {
-            maTabBarButtons.erase(maTabBarButtons.begin()+nIndex);
-            UpdateTabBarButtons();
-            UpdateActiveButton();
-            break;
-        }
-    }
-}
-
 bool ViewTabBar::HasTabBarButton (
-    const css::drawing::framework::TabBarButton& rButton)
+    const TabBarButton& rButton)
 {
     bool bResult (false);
 
-    for (const css::drawing::framework::TabBarButton & r : maTabBarButtons)
+    for (const TabBarButton & r : maTabBarButtons)
     {
         if (IsEqual(r, rButton))
         {
@@ -415,22 +374,16 @@ bool ViewTabBar::HasTabBarButton (
     return bResult;
 }
 
-css::uno::Sequence<css::drawing::framework::TabBarButton>
-    ViewTabBar::GetTabBarButtons()
-{
-    return comphelper::containerToSequence(maTabBarButtons);
-}
-
 void ViewTabBar::UpdateActiveButton()
 {
-    Reference<XView> xView;
+    rtl::Reference<sd::framework::AbstractView> xView;
     if (mpViewShellBase != nullptr)
         xView = FrameworkHelper::Instance(*mpViewShellBase)->GetView(
             mxViewTabBarId->getAnchor());
     if (!xView.is())
         return;
 
-    Reference<XResourceId> xViewId (xView->getResourceId());
+    rtl::Reference<framework::ResourceId> xViewId (xView->getResourceId());
     for (size_t nIndex=0; nIndex<maTabBarButtons.size(); ++nIndex)
     {
         if (maTabBarButtons[nIndex].ResourceId->compareTo(xViewId) == 0)
@@ -486,8 +439,8 @@ void ViewTabBar::UpdateTabBarButtons()
 TabBarControl::TabBarControl (
     vcl::Window* pParentWindow,
     ::rtl::Reference<ViewTabBar> pViewTabBar)
-    : InterimItemWindow(pParentWindow, "modules/simpress/ui/tabviewbar.ui", "TabViewBar")
-    , mxTabControl(m_xBuilder->weld_notebook("tabcontrol"))
+    : InterimItemWindow(pParentWindow, u"modules/simpress/ui/tabviewbar.ui"_ustr, u"TabViewBar"_ustr)
+    , mxTabControl(m_xBuilder->weld_notebook(u"tabcontrol"_ustr))
     , mpViewTabBar(std::move(pViewTabBar))
     , mnAllocatedWidth(0)
 {

@@ -22,7 +22,9 @@
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 
 #include <xml/imagesconfiguration.hxx>
+#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
+#include <comphelper/attributelist.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <unordered_map>
@@ -85,14 +87,10 @@ class OReadImagesDocumentHandler final : public ::cppu::WeakImplHelper< css::xml
     private:
         OUString getErrorLineString();
 
-        class ImageHashMap : public std::unordered_map< OUString, Image_XML_Entry >
-        {
-        };
-
         bool                                                m_bImageContainerStartFound;
         bool                                                m_bImageContainerEndFound;
         bool                                                m_bImagesStartFound;
-        ImageHashMap                                        m_aImageMap;
+        std::unordered_map< OUString, Image_XML_Entry >     m_aImageMap;
         ImageItemDescriptorList&                            m_rImageList;
         css::uno::Reference< css::xml::sax::XLocator >      m_xLocator;
 };
@@ -121,7 +119,6 @@ class OWriteImagesDocumentHandler final
 
         const ImageItemDescriptorList&                            m_rImageItemList;
         css::uno::Reference< css::xml::sax::XDocumentHandler >    m_xWriteDocumentHandler;
-        css::uno::Reference< css::xml::sax::XAttributeList >      m_xEmptyList;
         OUString                                                  m_aXMLImageNS;
         OUString                                                  m_aAttributeXlinkType;
         OUString                                                  m_aAttributeValueSimple;

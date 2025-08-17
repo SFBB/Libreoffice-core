@@ -377,12 +377,12 @@ sal_Bool SAL_CALL FmXGridControl::supportsService(const OUString& ServiceName)
 
 OUString SAL_CALL FmXGridControl::getImplementationName()
 {
-    return "com.sun.star.form.FmXGridControl";
+    return u"com.sun.star.form.FmXGridControl"_ustr;
 }
 
 css::uno::Sequence<OUString> SAL_CALL FmXGridControl::getSupportedServiceNames()
 {
-    return { FM_SUN_CONTROL_GRIDCONTROL, "com.sun.star.awt.UnoControl" };
+    return { FM_SUN_CONTROL_GRIDCONTROL, u"com.sun.star.awt.UnoControl"_ustr };
 }
 
 
@@ -402,7 +402,7 @@ void SAL_CALL FmXGridControl::dispose()
 
 OUString FmXGridControl::GetComponentServiceName() const
 {
-    return "DBGrid";
+    return u"DBGrid"_ustr;
 }
 
 
@@ -1037,7 +1037,7 @@ void FmXGridPeer::columnChanged()
 
 FmXGridPeer::FmXGridPeer(const Reference< XComponentContext >& _rxContext)
             :m_xContext(_rxContext)
-            ,m_aMode("DataMode")
+            ,m_aMode(u"DataMode"_ustr)
             ,m_nCursorListening(0)
             ,m_bInterceptingDispatch(false)
 {
@@ -1113,9 +1113,6 @@ void FmXGridPeer::disposing(const EventObject& e)
             }
         }
     }
-
-    if ( !bKnownSender )
-        VCLXWindow::disposing(e);
 }
 
 
@@ -1189,8 +1186,6 @@ Sequence< sal_Bool > SAL_CALL FmXGridPeer::queryFieldDataType( const Type& xType
     bool bRequestedAsAny = (xType.getTypeClass() == TypeClass_ANY);
 
     DbGridColumn* pCol;
-    Reference< css::sdb::XColumn >  xFieldContent;
-    Reference< XPropertySet >  xCurrentColumn;
     for (sal_Int32 i=0; i<nColumns; ++i)
     {
         if (bRequestedAsAny)
@@ -1206,12 +1201,14 @@ Sequence< sal_Bool > SAL_CALL FmXGridPeer::queryFieldDataType( const Type& xType
 
         pCol = aColumns[ nModelPos ].get();
         const DbGridRowRef xRow = pGrid->GetSeekRow();
-        xFieldContent = (xRow.is() && xRow->HasField(pCol->GetFieldPos())) ? xRow->GetField(pCol->GetFieldPos()).getColumn() : Reference< css::sdb::XColumn > ();
+        Reference<css::sdb::XColumn> xFieldContent =
+            (xRow.is() && xRow->HasField(pCol->GetFieldPos())) ? xRow->GetField(pCol->GetFieldPos()).getColumn() : Reference< css::sdb::XColumn > ();
         if (!xFieldContent.is())
             // can't supply anything without a field content
             // FS - 07.12.99 - 54391
             continue;
 
+        Reference<XPropertySet> xCurrentColumn;
         xColumns->getByIndex(nModelPos) >>= xCurrentColumn;
         if (!::comphelper::hasProperty(FM_PROP_CLASSID, xCurrentColumn))
             continue;
@@ -1258,7 +1255,6 @@ Sequence< Any > SAL_CALL FmXGridPeer::queryFieldData( sal_Int32 nRow, const Type
     Any* pReturnArray = aReturnSequence.getArray();
 
     bool bRequestedAsAny = (xType.getTypeClass() == TypeClass_ANY);
-    Reference< css::sdb::XColumn >  xFieldContent;
     for (sal_Int32 i=0; i < nColumnCount; ++i)
     {
         sal_uInt16 nModelPos = pGrid->GetModelColumnPos(pGrid->GetColumnIdFromViewPos(static_cast<sal_uInt16>(i)));
@@ -1267,7 +1263,7 @@ Sequence< Any > SAL_CALL FmXGridPeer::queryFieldData( sal_Int32 nRow, const Type
         // don't use GetCurrentFieldValue to determine the field content as this isn't affected by the above SeekRow
         // FS - 30.09.99 - 68644
         DbGridColumn* pCol = aColumns[ nModelPos ].get();
-        xFieldContent = xPaintRow->HasField( pCol->GetFieldPos() )
+        Reference<css::sdb::XColumn> xFieldContent = xPaintRow->HasField(pCol->GetFieldPos())
                     ?   xPaintRow->GetField( pCol->GetFieldPos() ).getColumn()
                     :   Reference< XColumn > ();
 
@@ -1362,7 +1358,7 @@ void FmXGridPeer::propertyChange(const PropertyChangeEvent& evt)
         else if (evt.PropertyName == FM_PROP_WIDTH)
         {
             sal_Int32 nWidth = 0;
-            if (evt.NewValue.getValueType().getTypeClass() == TypeClass_VOID)
+            if (evt.NewValue.getValueTypeClass() == TypeClass_VOID)
                 nWidth = pGrid->GetDefaultColumnWidth(pGrid->GetColumnTitle(nId));
                 // GetDefaultColumnWidth already considered the zoom factor
             else
@@ -1387,7 +1383,7 @@ void FmXGridPeer::propertyChange(const PropertyChangeEvent& evt)
         }
         else if (evt.PropertyName == FM_PROP_HIDDEN)
         {
-            DBG_ASSERT(evt.NewValue.getValueType().getTypeClass() == TypeClass_BOOLEAN,
+            DBG_ASSERT(evt.NewValue.getValueTypeClass() == TypeClass_BOOLEAN,
                 "FmXGridPeer::propertyChange : the property 'hidden' should be of type boolean !");
             if (::comphelper::getBOOL(evt.NewValue))
                 pGrid->HideColumn(nId);
@@ -1958,36 +1954,6 @@ void FmXGridPeer::setProperty( const OUString& PropertyName, const Any& Value)
         VCLXWindow::setProperty( PropertyName, Value );
 }
 
-
-Reference< XAccessibleContext > FmXGridPeer::CreateAccessibleContext()
-{
-    Reference< XAccessibleContext > xContext;
-
-    // use the AccessibleContext provided by the VCL window
-    VclPtr<vcl::Window> pGrid = GetWindow();
-    if ( pGrid )
-    {
-        Reference< XAccessible > xAcc( pGrid->GetAccessible() );
-        if ( xAcc.is() )
-            xContext = xAcc->getAccessibleContext();
-        // TODO: this has a slight conceptual problem:
-
-        // We know that the XAccessible and XAccessibleContext implementation of the browse
-        // box is the same (the class implements both interfaces), which, speaking strictly,
-        // is bad here (means when a browse box acts as UnoControl): We (the FmXGridPeer) are
-        // the XAccessible here, and the browse box should be able to provide us an XAccessibleContext,
-        // but it should _not_ be the XAccessible itself.
-        // However, as long as no client implementation uses dirty hacks such as querying an
-        // XAccessibleContext for XAccessible, this should not be a problem.
-    }
-
-    if ( !xContext.is() )
-        xContext = VCLXWindow::CreateAccessibleContext( );
-
-    return xContext;
-}
-
-
 Any FmXGridPeer::getProperty( const OUString& _rPropertyName )
 {
     Any aProp;
@@ -2246,7 +2212,7 @@ void FmXGridPeer::selectionChanged(const EventObject& evt)
 
     Reference< css::view::XSelectionSupplier >  xSelSupplier(evt.Source, UNO_QUERY);
     Any aSelection = xSelSupplier->getSelection();
-    DBG_ASSERT(aSelection.getValueType().getTypeClass() == TypeClass_INTERFACE, "FmXGridPeer::selectionChanged : invalid selection !");
+    DBG_ASSERT(aSelection.getValueTypeClass() == TypeClass_INTERFACE, "FmXGridPeer::selectionChanged : invalid selection !");
     Reference< XPropertySet >  xSelection;
     aSelection >>= xSelection;
     if (xSelection.is())
@@ -2371,8 +2337,8 @@ css::uno::Sequence<OUString> FmXGridPeer::getSupportedModes()
 {
     static css::uno::Sequence<OUString> const aModes
     {
-        "DataMode",
-        "FilterMode"
+        u"DataMode"_ustr,
+        u"FilterMode"_ustr
     };
     return aModes;
 }
@@ -2530,7 +2496,7 @@ void FmXGridPeer::releaseDispatchProviderInterceptor(const Reference< css::frame
             }
         }
 
-        xChainWalk = xSlave;
+        xChainWalk = std::move(xSlave);
     }
     // our interceptor chain has changed and we're alive ?
     if (!isDesignMode())

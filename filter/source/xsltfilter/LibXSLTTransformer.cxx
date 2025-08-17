@@ -29,6 +29,7 @@
 #include <cppuhelper/factory.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/beans/NamedValue.hpp>
@@ -295,7 +296,7 @@ namespace XSLT
 
         if (!styleSheet)
         {
-            m_transformer->error("No stylesheet was created");
+            m_transformer->error(u"No stylesheet was created"_ustr);
         }
 
         xmlDocPtr result = nullptr;
@@ -314,10 +315,10 @@ namespace XSLT
                 std::scoped_lock<std::mutex> g(m_mutex);
                 m_tcontext = tcontext;
             }
-            oh->registercontext(m_tcontext);
-            xsltQuoteUserParams(m_tcontext, params.data());
+            oh->registercontext(tcontext);
+            xsltQuoteUserParams(tcontext, params.data());
             result = xsltApplyStylesheetUser(styleSheet, doc, nullptr, nullptr, nullptr,
-                                             m_tcontext);
+                                             tcontext);
         }
 
         if (result)
@@ -398,11 +399,11 @@ namespace XSLT
     }
     OUString LibXSLTTransformer::getImplementationName()
     {
-        return "com.sun.star.comp.documentconversion.XSLTFilter";
+        return u"com.sun.star.comp.documentconversion.XSLTFilter"_ustr;
     }
     css::uno::Sequence< OUString > LibXSLTTransformer::getSupportedServiceNames()
     {
-        return { "com.sun.star.documentconversion.XSLTFilter" };
+        return { u"com.sun.star.documentconversion.XSLTFilter"_ustr };
     }
 
     void
@@ -441,7 +442,7 @@ namespace XSLT
     LibXSLTTransformer::removeListener(
             const css::uno::Reference<XStreamListener>& listener)
     {
-        m_listeners.erase( std::remove(m_listeners.begin(), m_listeners.end(), listener ), m_listeners.end() );
+        std::erase(m_listeners,listener);
     }
 
     void
@@ -503,9 +504,13 @@ namespace XSLT
         {   // backward compatibility for old clients using createInstance
             params = args;
         }
+
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
         xmlSubstituteEntitiesDefault(0);
+SAL_WNODEPRECATED_DECLARATIONS_POP
+
         m_parameters.clear();
-        for (const Any& p : std::as_const(params))
+        for (const Any& p : params)
         {
             NamedValue nv;
             p >>= nv;

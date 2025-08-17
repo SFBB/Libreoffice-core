@@ -74,7 +74,6 @@ one go*/
 #include <cfgitem.hxx>
 
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
@@ -97,7 +96,8 @@ ErrCode SmXMLImportWrapper::Import(SfxMedium& rMedium)
 {
     ErrCode nError = ERRCODE_SFX_DOLOADFAILED;
 
-    uno::Reference<uno::XComponentContext> xContext(comphelper::getProcessComponentContext());
+    const uno::Reference<uno::XComponentContext>& xContext(
+        comphelper::getProcessComponentContext());
 
     OSL_ENSURE(m_xModel.is(), "XMLReader::Read: got no model");
 
@@ -121,13 +121,13 @@ ErrCode SmXMLImportWrapper::Import(SfxMedium& rMedium)
     }
 
     static const comphelper::PropertyMapEntry aInfoMap[]
-        = { { OUString("PrivateData"), 0, cppu::UnoType<XInterface>::get(),
+        = { { u"PrivateData"_ustr, 0, cppu::UnoType<XInterface>::get(),
               beans::PropertyAttribute::MAYBEVOID, 0 },
-            { OUString("BaseURI"), 0, ::cppu::UnoType<OUString>::get(),
+            { u"BaseURI"_ustr, 0, ::cppu::UnoType<OUString>::get(),
               beans::PropertyAttribute::MAYBEVOID, 0 },
-            { OUString("StreamRelPath"), 0, ::cppu::UnoType<OUString>::get(),
+            { u"StreamRelPath"_ustr, 0, ::cppu::UnoType<OUString>::get(),
               beans::PropertyAttribute::MAYBEVOID, 0 },
-            { OUString("StreamName"), 0, ::cppu::UnoType<OUString>::get(),
+            { u"StreamName"_ustr, 0, ::cppu::UnoType<OUString>::get(),
               beans::PropertyAttribute::MAYBEVOID, 0 } };
     uno::Reference<beans::XPropertySet> xInfoSet(
         comphelper::GenericPropertySet_CreateInstance(new comphelper::PropertySetInfo(aInfoMap)));
@@ -137,7 +137,7 @@ ErrCode SmXMLImportWrapper::Import(SfxMedium& rMedium)
     // needed for relative URLs; but it's OK to import e.g. MathML from the
     // clipboard without one
     SAL_INFO_IF(baseURI.isEmpty(), "starmath", "SmXMLImportWrapper: no base URL");
-    xInfoSet->setPropertyValue("BaseURI", Any(baseURI));
+    xInfoSet->setPropertyValue(u"BaseURI"_ustr, Any(baseURI));
 
     sal_Int32 nSteps = 3;
     if (!(rMedium.IsStorage()))
@@ -158,7 +158,7 @@ ErrCode SmXMLImportWrapper::Import(SfxMedium& rMedium)
         // TODO/LATER: handle the case of embedded links gracefully
         if (bEmbedded) // && !rMedium.GetStorage()->IsRoot() )
         {
-            OUString aName("dummyObjName");
+            OUString aName(u"dummyObjName"_ustr);
             const SfxStringItem* pDocHierarchItem
                 = rMedium.GetItemSet().GetItem(SID_DOC_HIERARCHICALNAME);
             if (pDocHierarchItem)
@@ -166,7 +166,7 @@ ErrCode SmXMLImportWrapper::Import(SfxMedium& rMedium)
 
             if (!aName.isEmpty())
             {
-                xInfoSet->setPropertyValue("StreamRelPath", Any(aName));
+                xInfoSet->setPropertyValue(u"StreamRelPath"_ustr, Any(aName));
             }
         }
 
@@ -300,7 +300,7 @@ ErrCode SmXMLImportWrapper::ReadThroughComponent(const Reference<io::XInputStrea
         {
             xml::sax::SAXException aTmp;
             if (aSaxEx.WrappedException >>= aTmp)
-                aSaxEx = aTmp;
+                aSaxEx = std::move(aTmp);
             else
                 bTryChild = false;
         }
@@ -356,7 +356,7 @@ ErrCode SmXMLImportWrapper::ReadThroughComponent(const uno::Reference<embed::XSt
 
         // determine if stream is encrypted or not
         uno::Reference<beans::XPropertySet> xProps(xEventsStream, uno::UNO_QUERY);
-        Any aAny = xProps->getPropertyValue("Encrypted");
+        Any aAny = xProps->getPropertyValue(u"Encrypted"_ustr);
         bool bEncrypted = false;
         if (aAny.getValueType() == cppu::UnoType<bool>::get())
             aAny >>= bEncrypted;
@@ -364,7 +364,7 @@ ErrCode SmXMLImportWrapper::ReadThroughComponent(const uno::Reference<embed::XSt
         // set Base URL
         if (rPropSet.is())
         {
-            rPropSet->setPropertyValue("StreamName", Any(sStreamName));
+            rPropSet->setPropertyValue(u"StreamName"_ustr, Any(sStreamName));
         }
 
         Reference<io::XInputStream> xStream = xEventsStream->getInputStream();
@@ -391,7 +391,7 @@ SmXMLImport::SmXMLImport(const css::uno::Reference<css::uno::XComponentContext>&
     : SvXMLImport(rContext, implementationName, nImportFlags)
     , bSuccess(false)
     , nParseDepth(0)
-    , mnSmSyntaxVersion(SM_MOD()->GetConfig()->GetDefaultSmSyntaxVersion())
+    , mnSmSyntaxVersion(SmModule::get()->GetConfig()->GetDefaultSmSyntaxVersion())
 {
 }
 
@@ -400,14 +400,14 @@ Math_XMLImporter_get_implementation(uno::XComponentContext* pCtx,
                                     uno::Sequence<uno::Any> const& /*rSeq*/)
 {
     return cppu::acquire(
-        new SmXMLImport(pCtx, "com.sun.star.comp.Math.XMLImporter", SvXMLImportFlags::ALL));
+        new SmXMLImport(pCtx, u"com.sun.star.comp.Math.XMLImporter"_ustr, SvXMLImportFlags::ALL));
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
 Math_XMLOasisMetaImporter_get_implementation(uno::XComponentContext* pCtx,
                                              uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    return cppu::acquire(new SmXMLImport(pCtx, "com.sun.star.comp.Math.XMLOasisMetaImporter",
+    return cppu::acquire(new SmXMLImport(pCtx, u"com.sun.star.comp.Math.XMLOasisMetaImporter"_ustr,
                                          SvXMLImportFlags::META));
 }
 
@@ -415,8 +415,8 @@ extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
 Math_XMLOasisSettingsImporter_get_implementation(uno::XComponentContext* pCtx,
                                                  uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    return cppu::acquire(new SmXMLImport(pCtx, "com.sun.star.comp.Math.XMLOasisSettingsImporter",
-                                         SvXMLImportFlags::SETTINGS));
+    return cppu::acquire(new SmXMLImport(
+        pCtx, u"com.sun.star.comp.Math.XMLOasisSettingsImporter"_ustr, SvXMLImportFlags::SETTINGS));
 }
 
 void SmXMLImport::endDocument()
@@ -497,9 +497,9 @@ void SmXMLImportContext::characters(const OUString& rChars)
     1 or more whitespace characters is replaced with one blank character).
     */
     //collapsing not done yet!
-    const OUString& rChars2 = rChars.trim();
-    if (!rChars2.isEmpty())
-        TCharacters(rChars2 /*.collapse()*/);
+    const OUString aChars2 = rChars.trim();
+    if (!aChars2.isEmpty())
+        TCharacters(aChars2 /*.collapse()*/);
 }
 
 namespace
@@ -572,8 +572,6 @@ void SmXMLContext_Helper::RetrieveAttrs(
                 sFontFamily = aIter.toString();
                 break;
             case XML_COLOR:
-                sColor = aIter.toString();
-                break;
             case XML_MATHCOLOR:
                 sColor = aIter.toString();
                 break;
@@ -736,6 +734,10 @@ void SmXMLTokenAttrHelper::ApplyAttrs(MathMLMathvariantValue eDefaultMv)
             vVariant.push_back(TNITALIC);
             break;
         case MathMLMathvariantValue::Bold:
+        case MathMLMathvariantValue::BoldFraktur:
+            // TODO: Fraktur
+        case MathMLMathvariantValue::BoldScript:
+            // TODO: Script
             vVariant.push_back(TBOLD);
             break;
         case MathMLMathvariantValue::Italic:
@@ -748,16 +750,8 @@ void SmXMLTokenAttrHelper::ApplyAttrs(MathMLMathvariantValue eDefaultMv)
         case MathMLMathvariantValue::DoubleStruck:
             // TODO
             break;
-        case MathMLMathvariantValue::BoldFraktur:
-            // TODO: Fraktur
-            vVariant.push_back(TBOLD);
-            break;
         case MathMLMathvariantValue::Script:
             // TODO
-            break;
-        case MathMLMathvariantValue::BoldScript:
-            // TODO: Script
-            vVariant.push_back(TBOLD);
             break;
         case MathMLMathvariantValue::Fraktur:
             // TODO
@@ -1063,14 +1057,14 @@ void SmXMLFencedContext_Impl::endFastElement(sal_Int32 /*nElement*/)
     else
         aToken = starmathdatabase::Identify_Prefix_SmXMLOperatorContext_Impl(cBegin);
     if (aToken.eType == TERROR)
-        aToken = SmToken(TLPARENT, MS_LPARENT, "(", TG::LBrace, 5);
+        aToken = SmToken(TLPARENT, MS_LPARENT, u"("_ustr, TG::LBrace, 5);
     std::unique_ptr<SmNode> pLeft(new SmMathSymbolNode(aToken));
     if (bIsStretchy)
         aToken = starmathdatabase::Identify_PrefixPostfix_SmXMLOperatorContext_Impl(cEnd);
     else
         aToken = starmathdatabase::Identify_Postfix_SmXMLOperatorContext_Impl(cEnd);
     if (aToken.eType == TERROR)
-        aToken = SmToken(TRPARENT, MS_RPARENT, ")", TG::LBrace, 5);
+        aToken = SmToken(TRPARENT, MS_RPARENT, u")"_ustr, TG::LBrace, 5);
     std::unique_ptr<SmNode> pRight(new SmMathSymbolNode(aToken));
 
     SmNodeArray aRelationArray;
@@ -1384,7 +1378,7 @@ void SmXMLOperatorContext_Impl::TCharacters(const OUString& rChars)
         if (isPrefix)
             bToken = starmathdatabase::Identify_Prefix_SmXMLOperatorContext_Impl(aToken.cMathChar);
         else if (isInfix)
-            bToken = SmToken(TMLINE, MS_VERTLINE, "mline", TG::NONE, 0);
+            bToken = SmToken(TMLINE, MS_VERTLINE, u"mline"_ustr, TG::NONE, 0);
         else if (isPostfix)
             bToken = starmathdatabase::Identify_Postfix_SmXMLOperatorContext_Impl(aToken.cMathChar);
         else
@@ -1395,7 +1389,7 @@ void SmXMLOperatorContext_Impl::TCharacters(const OUString& rChars)
         bToken
             = starmathdatabase::Identify_SmXMLOperatorContext_Impl(aToken.cMathChar, bIsStretchy);
     if (bToken.eType != TERROR)
-        aToken = bToken;
+        aToken = std::move(bToken);
 }
 
 void SmXMLOperatorContext_Impl::endFastElement(sal_Int32)
@@ -1947,8 +1941,6 @@ uno::Reference<xml::sax::XFastContextHandler> SmXMLDocContext_Impl::createFastCh
     {
         //Consider semantics a dummy except for any starmath annotations
         case XML_ELEMENT(MATH, XML_SEMANTICS):
-            xContext = new SmXMLRowContext_Impl(GetSmImport());
-            break;
         /*General Layout Schemata*/
         case XML_ELEMENT(MATH, XML_MROW):
             xContext = new SmXMLRowContext_Impl(GetSmImport());
@@ -2642,7 +2634,8 @@ extern "C" SAL_DLLPUBLIC_EXPORT bool TestImportMML(SvStream& rStream)
     uno::Reference<frame::XModel> xModel(xDocSh->GetModel());
 
     uno::Reference<beans::XPropertySet> xInfoSet;
-    uno::Reference<uno::XComponentContext> xContext(comphelper::getProcessComponentContext());
+    const uno::Reference<uno::XComponentContext>& xContext(
+        comphelper::getProcessComponentContext());
     uno::Reference<io::XInputStream> xStream(new utl::OSeekableInputStreamWrapper(rStream));
 
     //SetLoading hack because the document properties will be re-initted

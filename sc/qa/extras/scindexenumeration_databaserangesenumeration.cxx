@@ -12,7 +12,6 @@
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XDatabaseRanges.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/table/CellRangeAddress.hpp>
@@ -43,7 +42,7 @@ public:
 };
 
 ScIndexEnumeration_DatabaseRangesEnumeration::ScIndexEnumeration_DatabaseRangesEnumeration()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -54,8 +53,8 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_DatabaseRangesEnumeration::in
 
     uno::Reference<beans::XPropertySet> xPropertySet(xDoc, uno::UNO_QUERY_THROW);
     uno::Reference<sheet::XDatabaseRanges> xDR;
-    CPPUNIT_ASSERT(xPropertySet->getPropertyValue("DatabaseRanges") >>= xDR);
-    xDR->addNewByName("DatabaseRange", table::CellRangeAddress(0, 2, 4, 5, 6));
+    CPPUNIT_ASSERT(xPropertySet->getPropertyValue(u"DatabaseRanges"_ustr) >>= xDR);
+    xDR->addNewByName(u"DatabaseRange"_ustr, table::CellRangeAddress(0, 2, 4, 5, 6));
 
     uno::Reference<container::XEnumerationAccess> xEA(xDR, uno::UNO_QUERY_THROW);
 
@@ -65,7 +64,7 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_DatabaseRangesEnumeration::in
 void ScIndexEnumeration_DatabaseRangesEnumeration::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScIndexEnumeration_DatabaseRangesEnumeration);

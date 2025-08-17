@@ -325,7 +325,7 @@ void SvxRTFParser::ReadAttr( int nToken, SfxItemSet* pSet )
                             CalcValue();
                         nSz = sal_uInt16(nTokenValue);
                     }
-                    aLR.SetTextFirstLineOffset( nSz );
+                    aLR.SetTextFirstLineOffset(SvxIndentValue::twips(nSz));
                     pSet->Put( aLR );
                 }
                 break;
@@ -342,7 +342,7 @@ void SvxRTFParser::ReadAttr( int nToken, SfxItemSet* pSet )
                             CalcValue();
                         nSz = sal_uInt16(nTokenValue);
                     }
-                    aLR.SetTextLeft( nSz );
+                    aLR.SetTextLeft(SvxIndentValue::twips(nSz));
                     pSet->Put( aLR );
                 }
                 break;
@@ -359,7 +359,7 @@ void SvxRTFParser::ReadAttr( int nToken, SfxItemSet* pSet )
                             CalcValue();
                         nSz = sal_uInt16(nTokenValue);
                     }
-                    aLR.SetRight( nSz );
+                    aLR.SetRight(SvxIndentValue::twips(nSz));
                     pSet->Put( aLR );
                 }
                 break;
@@ -1094,7 +1094,7 @@ ATTR_SETEMPHASIS:
                                 SvxHyphenZoneItem aHypenZone(
                                             (nTokenValue & 1) != 0,
                                             aPardMap[SID_ATTR_PARA_HYPHENZONE]);
-                                aHypenZone.SetPageEnd((nTokenValue & 2) != 0);
+                                aHypenZone.SetKeep((nTokenValue & 2) != 0);
 
                                 if( aPardMap[SID_ATTR_PARA_HYPHENZONE] &&
                                     RTF_HYPHLEAD == GetNextToken() &&
@@ -1829,7 +1829,7 @@ void SvxRTFParser::SetDefault( int nToken, int nValue )
             // Calculate the ratio of default TabWidth / Tabs and
             // calculate the corresponding new number.
             // ?? how did one come up with 13 ??
-            sal_uInt16 nTabCount = (SVX_TAB_DEFDIST * 13 ) / sal_uInt16(nValue);
+            int nTabCount = (SVX_TAB_DEFDIST * 13 ) / nValue;
             /*
              cmc, make sure we have at least one, or all hell breaks loose in
              everybody exporters, #i8247#
@@ -1839,10 +1839,10 @@ void SvxRTFParser::SetDefault( int nToken, int nValue )
 
             // we want Defaulttabs
             SvxTabStopItem aNewTab(nTabCount, sal_uInt16(nValue), SvxTabAdjust::Default, wid);
-            while( nTabCount )
+            while (nTabCount > 0)
                 const_cast<SvxTabStop&>(aNewTab[ --nTabCount ]).GetAdjustment() = SvxTabAdjust::Default;
 
-            pAttrPool->SetPoolDefaultItem( aNewTab );
+            pAttrPool->SetUserDefaultItem( aNewTab );
         }
         break;
     }
@@ -1854,7 +1854,7 @@ void SvxRTFParser::SetDefault( int nToken, int nValue )
         const SfxPoolItem* pItem = aIter.GetCurItem();
         do
         {
-            pAttrPool->SetPoolDefaultItem( *pItem );
+            pAttrPool->SetUserDefaultItem( *pItem );
             pItem = aIter.NextItem();
         } while (pItem);
     }

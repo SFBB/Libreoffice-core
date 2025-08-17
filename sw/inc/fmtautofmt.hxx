@@ -23,6 +23,8 @@
 #include <svl/poolitem.hxx>
 #include <memory>
 
+class SfxItemSet;
+
 /// Has a shared reference to an "auto-style", i.e. a not named collection of character formats. It
 /// is owned by an SwTextAttrEnd, which is then stored in the SwpHints of an SwTextNode.
 ///
@@ -32,10 +34,8 @@ class SW_DLLPUBLIC SwFormatAutoFormat final : public SfxPoolItem
     std::shared_ptr<SfxItemSet> mpHandle;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatAutoFormat)
     SwFormatAutoFormat( sal_uInt16 nWhich = RES_TXTATR_AUTOFMT );
-
-public:
-
 
     /// "pure virtual methods" of SfxPoolItem
     virtual bool            operator==( const SfxPoolItem& ) const override;

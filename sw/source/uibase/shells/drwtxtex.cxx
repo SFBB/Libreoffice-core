@@ -23,6 +23,7 @@
 #include <comphelper/string.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/namedcolor.hxx>
 #include <sfx2/request.hxx>
 #include <svx/svdview.hxx>
 #include <editeng/spltitem.hxx>
@@ -55,7 +56,7 @@
 #include <svx/svxdlg.hxx>
 #include <sfx2/htmlmode.hxx>
 #include <editeng/langitem.hxx>
-#include <editeng/scripttypeitem.hxx>
+#include <editeng/scriptsetitem.hxx>
 #include <editeng/writingmodeitem.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/editdata.hxx>
@@ -91,7 +92,7 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
 
     const sal_uInt16 nSlot = rReq.GetSlot();
 
-    const sal_uInt16 nWhich = GetPool().GetWhich(nSlot);
+    const sal_uInt16 nWhich = GetPool().GetWhichIDFromSlotID(nSlot);
     std::unique_ptr<SfxItemSet> pNewAttrs(rReq.GetArgs() ? rReq.GetArgs()->Clone() : nullptr);
 
     bool bRestoreSelection = false;
@@ -147,13 +148,48 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
         break;
 
         case SID_ATTR_CHAR_COLOR: nEEWhich = EE_CHAR_COLOR; break;
-        case SID_ATTR_CHAR_BACK_COLOR: nEEWhich = EE_CHAR_BKGCOLOR; break;
 
+        case SID_ATTR_CHAR_COLOR2:
+        {
+            if (!rReq.GetArgs())
+            {
+                const std::optional<NamedColor> oColor
+                    = GetView().GetDocShell()->GetRecentColor(SID_ATTR_CHAR_COLOR);
+                if (oColor.has_value())
+                {
+                    nEEWhich = GetPool().GetWhichIDFromSlotID(SID_ATTR_CHAR_COLOR);
+                    const model::ComplexColor aCol = (*oColor).getComplexColor();
+                    aNewAttr.Put(SvxColorItem(aCol.getFinalColor(), aCol, nEEWhich));
+                    rReq.SetArgs(aNewAttr);
+                    rReq.SetSlot(SID_ATTR_CHAR_COLOR);
+                }
+            }
+            else
+            {
+                nEEWhich = EE_CHAR_COLOR;
+            }
+        }
+        break;
+        case SID_ATTR_CHAR_BACK_COLOR:
+        {
+            nEEWhich = GetPool().GetWhichIDFromSlotID(nSlot);
+            if (!rReq.GetArgs())
+            {
+                const std::optional<NamedColor> oColor
+                    = m_rView.GetDocShell()->GetRecentColor(nSlot);
+                if (oColor.has_value())
+                {
+                    const model::ComplexColor aCol = (*oColor).getComplexColor();
+                    aNewAttr.Put(SvxColorItem(aCol.getFinalColor(), aCol, nEEWhich));
+                }
+            }
+            break;
+        }
         case SID_ATTR_CHAR_UNDERLINE:
         {
             if ( pNewAttrs )
             {
-                const SvxTextLineItem& rTextLineItem = static_cast< const SvxTextLineItem& >( pNewAttrs->Get( pNewAttrs->GetPool()->GetWhich(nSlot) ) );
+                const SvxTextLineItem& rTextLineItem = static_cast< const SvxTextLineItem& >( pNewAttrs->Get( pNewAttrs->GetPool()->GetWhichIDFromSlotID(nSlot) ) );
                 aNewAttr.Put( SvxUnderlineItem( rTextLineItem.GetLineStyle(), EE_CHAR_UNDERLINE ) );
             }
             else
@@ -209,10 +245,20 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
                 {
                     SvxLRSpaceItem aParaMargin = aEditAttr.Get( EE_PARA_LRSPACE );
                     aParaMargin.SetWhich( EE_PARA_LRSPACE );
-                    short int nFirstLineOffset = aParaMargin.GetTextFirstLineOffset();
-                    aParaMargin.SetTextLeft( aParaMargin.GetTextLeft() + nFirstLineOffset );
-                    aParaMargin.SetRight( aParaMargin.GetRight() );
-                    aParaMargin.SetTextFirstLineOffset( nFirstLineOffset * -1 );
+
+                    tools::Long nIndentDist = aParaMargin.ResolveTextFirstLineOffset({});
+
+                    if (nIndentDist == 0)
+                    {
+                        const SvxTabStopItem& rDefTabItem = rSh.GetDefault(RES_PARATR_TABSTOP);
+                        nIndentDist = ::GetTabDist(rDefTabItem);
+                    }
+
+                    aParaMargin.SetTextLeft(
+                        SvxIndentValue::twips(aParaMargin.ResolveTextLeft({}) + nIndentDist));
+                    aParaMargin.SetRight(aParaMargin.GetRight());
+                    aParaMargin.SetTextFirstLineOffset(SvxIndentValue::twips(nIndentDist * -1));
+
                     aNewAttr.Put(aParaMargin);
                     rReq.Done();
                 }
@@ -222,7 +268,7 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
             if (pNewAttrs)
             {
                 SvxLineSpacingItem aLineSpace = static_cast<const SvxLineSpacingItem&>(pNewAttrs->Get(
-                                                            GetPool().GetWhich(nSlot)));
+                                                            GetPool().GetWhichIDFromSlotID(nSlot)));
                 aLineSpace.SetWhich( EE_PARA_SBL );
                 aNewAttr.Put( aLineSpace );
                 rReq.Done();
@@ -232,7 +278,7 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
             if (pNewAttrs)
             {
                 SvxULSpaceItem aULSpace = static_cast<const SvxULSpaceItem&>(pNewAttrs->Get(
-                    GetPool().GetWhich(nSlot)));
+                    GetPool().GetWhichIDFromSlotID(nSlot)));
                 aULSpace.SetWhich( EE_PARA_ULSPACE );
                 aNewAttr.Put( aULSpace );
                 rReq.Done();
@@ -294,7 +340,7 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
         case FN_SET_SUPER_SCRIPT:
         {
             SvxEscapementItem aItem(EE_CHAR_ESCAPEMENT);
-            SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+            SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
 
             if( eEsc == SvxEscapement::Superscript )
                 aItem.SetEscapement( SvxEscapement::Off );
@@ -306,7 +352,7 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
         case FN_SET_SUB_SCRIPT:
         {
             SvxEscapementItem aItem(EE_CHAR_ESCAPEMENT);
-            SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+            SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
 
             if( eEsc == SvxEscapement::Subscript )
                 aItem.SetEscapement( SvxEscapement::Off );
@@ -335,9 +381,9 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
                     bRestoreSelection = true;
                 }
 
-                SwView* pView = &GetView();
-                FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebView*>( pView) !=  nullptr );
-                SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)) );
+                SwView& rView = GetView();
+                FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebView*>(&rView) != nullptr);
+                SwModule::get()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)) );
                 SfxItemSetFixed<XATTR_FILLSTYLE, XATTR_FILLCOLOR, EE_ITEMS_START, EE_ITEMS_END> aDlgAttr(GetPool());
 
                 // util::Language does not exists in the EditEngine! That is why not in set.
@@ -346,32 +392,40 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
                 aDlgAttr.Put( SvxKerningItem(0, RES_CHRATR_KERNING) );
 
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSwCharDlg(pView->GetFrameWeld(), *pView, aDlgAttr, SwCharDlgMode::Draw));
+                VclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSwCharDlg(rView.GetFrameWeld(), rView, aDlgAttr, SwCharDlgMode::Draw));
                 if (nSlot == SID_CHAR_DLG_EFFECT)
                 {
-                    pDlg->SetCurPageId("fonteffects");
+                    pDlg->SetCurPageId(u"fonteffects"_ustr);
                 }
                 else if (nSlot == SID_CHAR_DLG_POSITION)
                 {
-                    pDlg->SetCurPageId("position");
+                    pDlg->SetCurPageId(u"position"_ustr);
                 }
                 else if (nSlot == SID_CHAR_DLG_FOR_PARAGRAPH)
                 {
-                    pDlg->SetCurPageId("font");
+                    pDlg->SetCurPageId(u"font"_ustr);
                 }
                 else if (pItem)
                 {
                     pDlg->SetCurPageId(pItem->GetValue());
                 }
 
-                sal_uInt16 nRet = pDlg->Execute();
-                if(RET_OK == nRet )
-                {
-                    rReq.Done( *( pDlg->GetOutputItemSet() ) );
-                    aNewAttr.Put(*pDlg->GetOutputItemSet());
-                }
-                if(RET_OK != nRet)
-                    return ;
+                auto xRequest = std::make_shared<SfxRequest>(rReq);
+                rReq.Ignore(); // the 'old' request is not relevant any more
+                pDlg->StartExecuteAsync(
+                    [this, pDlg, xRequest=std::move(xRequest), nEEWhich,
+                     aNewAttr2=std::move(aNewAttr), pOLV, bRestoreSelection, aOldSelection] (sal_Int32 nResult) mutable ->void
+                    {
+                        if (nResult == RET_OK)
+                        {
+                            xRequest->Done( *( pDlg->GetOutputItemSet() ) );
+                            aNewAttr2.Put(*pDlg->GetOutputItemSet());
+                            ExecutePost(*xRequest, nEEWhich, aNewAttr2, pOLV, bRestoreSelection, aOldSelection);
+                        }
+                        pDlg->disposeOnce();
+                    }
+                );
+                return;
             }
             else
                 aNewAttr.Put(*pArgs);
@@ -404,9 +458,9 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
 
             if (!pArgs)
             {
-                SwView* pView = &GetView();
-                FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebView*>( pView) !=  nullptr );
-                SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)) );
+                SwView& rView = GetView();
+                FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebView*>(&rView) !=  nullptr);
+                SwModule::get()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)) );
                 SfxItemSetFixed<
                         EE_ITEMS_START, EE_ITEMS_END,
                         SID_ATTR_PARA_HYPHENZONE, SID_ATTR_PARA_WIDOWS>  aDlgAttr( GetPool() );
@@ -470,7 +524,7 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
                 {
                     // Select field so that it will be deleted during insert
                     ESelection aSel = pOLV->GetSelection();
-                    aSel.nEndPos++;
+                    aSel.end.nIndex++;
                     pOLV->SetSelection(aSel);
                 }
                 pOLV->InsertField(SvxFieldItem(aField, EE_FEATURE_FIELD));
@@ -600,9 +654,21 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
             assert(false && "wrong dispatcher");
             return;
     }
+
+    ExecutePost(rReq, nEEWhich, aNewAttr, pOLV, bRestoreSelection, aOldSelection);
+}
+
+void SwDrawTextShell::ExecutePost( const SfxRequest& rReq, sal_uInt16 nEEWhich, SfxItemSet& rNewAttr,
+        const OutlinerView* pOLV, bool bRestoreSelection, const ESelection& rOldSelection )
+{
+    SwWrtShell &rSh = GetShell();
+    const SfxItemSet *pNewAttrs = rReq.GetArgs();
+    const sal_uInt16 nSlot = rReq.GetSlot();
+    const sal_uInt16 nWhich = GetPool().GetWhichIDFromSlotID(nSlot);
+
     if (nEEWhich && pNewAttrs)
     {
-        aNewAttr.Put(pNewAttrs->Get(nWhich).CloneSetWhich(nEEWhich));
+        rNewAttr.Put(pNewAttrs->Get(nWhich).CloneSetWhich(nEEWhich));
     }
     else if (nEEWhich == EE_CHAR_COLOR)
     {
@@ -614,17 +680,17 @@ void SwDrawTextShell::Execute( SfxRequest &rReq )
     }
 
 
-    SetAttrToMarked(aNewAttr);
+    SetAttrToMarked(rNewAttr);
 
     GetView().GetViewFrame().GetBindings().InvalidateAll(false);
 
-    if (IsTextEdit() && pOLV->GetOutliner()->IsModified())
+    if (IsTextEdit() && pOLV->GetOutliner().IsModified())
         rSh.SetModified();
 
     if (bRestoreSelection)
     {
         // restore selection
-        pOLV->GetEditView().SetSelection( aOldSelection );
+        pOLV->GetEditView().SetSelection( rOldSelection );
     }
 }
 
@@ -991,6 +1057,7 @@ void SwDrawTextShell::GetDrawTextCtrlState(SfxItemSet& rSet)
                     rSet.InvalidateItem( nWhich );
             }
             break;
+            case SID_ATTR_CHAR_COLOR2:
             case SID_ATTR_CHAR_COLOR: nEEWhich = EE_CHAR_COLOR; break;
             case SID_ATTR_CHAR_BACK_COLOR: nEEWhich = EE_CHAR_BKGCOLOR; break;
             case SID_ATTR_CHAR_UNDERLINE: nEEWhich = EE_CHAR_UNDERLINE;break;
@@ -1001,7 +1068,7 @@ void SwDrawTextShell::GetDrawTextCtrlState(SfxItemSet& rSet)
             case SID_AUTOSPELL_CHECK:
             {
                 const SfxPoolItemHolder aResult(m_rView.GetSlotState(nWhich));
-                if (nullptr != aResult.getItem())
+                if (aResult)
                     rSet.Put(SfxBoolItem(nWhich, static_cast<const SfxBoolItem*>(aResult.getItem())->GetValue()));
                 else
                     rSet.DisableItem( nWhich );
@@ -1052,7 +1119,7 @@ void SwDrawTextShell::ExecClpbrd(SfxRequest const &rReq)
     OutlinerView* pOLV = m_pSdrView->GetTextEditOutlinerView();
 
     ESelection aSel(pOLV->GetSelection());
-    const bool bCopy = (aSel.nStartPara != aSel.nEndPara) || (aSel.nStartPos != aSel.nEndPos);
+    const bool bCopy = aSel.HasRange();
     sal_uInt16 nId = rReq.GetSlot();
     switch( nId )
     {
@@ -1132,8 +1199,7 @@ void SwDrawTextShell::StateClpbrd(SfxItemSet &rSet)
 
     OutlinerView* pOLV = m_pSdrView->GetTextEditOutlinerView();
     ESelection aSel(pOLV->GetSelection());
-    const bool bCopy = (aSel.nStartPara != aSel.nEndPara) ||
-        (aSel.nStartPos != aSel.nEndPos);
+    const bool bCopy = aSel.HasRange();
 
     TransferableDataHelper aDataHelper( TransferableDataHelper::CreateFromSystemClipboard( &GetView().GetEditWin() ) );
     const bool bPaste = aDataHelper.HasFormat( SotClipboardFormatId::STRING ) ||

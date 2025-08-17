@@ -34,12 +34,12 @@ namespace sd {
 
 
 FuEditGluePoints::FuEditGluePoints (
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window* pWin,
     ::sd::View* pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest& rReq)
-    : FuDraw(pViewSh, pWin, pView, pDoc, rReq)
+    : FuDraw(rViewSh, pWin, pView, rDoc, rReq)
      //Add Shift+UP/DOWN/LEFT/RIGHT key to move the position of insert point,
      //and SHIFT+ENTER key to decide the position and draw the new insert point
      ,bBeginInsertPoint(false),
@@ -47,10 +47,10 @@ FuEditGluePoints::FuEditGluePoints (
 {
 }
 
-rtl::Reference<FuPoor> FuEditGluePoints::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq, bool bPermanent )
+rtl::Reference<FuPoor> FuEditGluePoints::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq, bool bPermanent )
 {
     FuEditGluePoints* pFunc;
-    rtl::Reference<FuPoor> xFunc( pFunc = new FuEditGluePoints( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( pFunc = new FuEditGluePoints( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     pFunc->SetPermanent( bPermanent );
     return xFunc;
@@ -60,7 +60,7 @@ void FuEditGluePoints::DoExecute( SfxRequest& rReq )
 {
     FuDraw::DoExecute( rReq );
     mpView->SetInsGluePointMode(false);
-    mpViewShell->GetViewShellBase().GetToolBarManager()->AddToolBar(
+    mrViewShell.GetViewShellBase().GetToolBarManager()->AddToolBar(
         ToolBarManager::ToolBarGroup::Function,
         ToolBarManager::msGluePointsToolBar);
 }
@@ -167,13 +167,14 @@ bool FuEditGluePoints::MouseButtonDown(const MouseEvent& rMEvt)
                 }
             }
 
+            const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
             if (bMarked &&
                 (!rMEvt.IsShift() || eHit == SdrHitKind::MarkedObject))
             {
                 // move object
                 mpView->BegDragObj(aMDPos, nullptr, aVEvt.mpHdl, nDrgLog);
             }
-            else if (mpView->AreObjectsMarked())
+            else if (rMarkList.GetMarkCount() != 0)
             {
                 // select gluepoint
                 if (!rMEvt.IsShift())

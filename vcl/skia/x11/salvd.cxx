@@ -26,21 +26,35 @@ void X11SalGraphics::Init(X11SkiaSalVirtualDevice* pDevice)
     m_pVDev = pDevice;
     m_pFrame = nullptr;
 
-    mxImpl->Init();
+    mxImpl->UpdateX11GeometryProvider();
 }
 
 X11SkiaSalVirtualDevice::X11SkiaSalVirtualDevice(const SalGraphics& rGraphics, tools::Long nDX,
-                                                 tools::Long nDY, const SystemGraphicsData* pData,
+                                                 tools::Long nDY,
                                                  std::unique_ptr<X11SalGraphics> pNewGraphics)
     : mpGraphics(std::move(pNewGraphics))
-    , mbGraphics(false)
+    , mbGraphicsAcquired(false)
     , mnXScreen(0)
 {
     assert(mpGraphics);
 
+    mpDisplay = vcl_sal::getSalDisplay(GetGenericUnixSalData());
+    mnXScreen = static_cast<const X11SalGraphics&>(rGraphics).GetScreenNumber();
+    mnWidth = nDX;
+    mnHeight = nDY;
+    mpGraphics->Init(this);
+}
+
+X11SkiaSalVirtualDevice::X11SkiaSalVirtualDevice(const SalGraphics& rGraphics, tools::Long nDX,
+                                                 tools::Long nDY,
+                                                 const SystemGraphicsData& /*rData*/,
+                                                 std::unique_ptr<X11SalGraphics> pNewGraphics)
+    : mpGraphics(std::move(pNewGraphics))
+    , mbGraphicsAcquired(false)
+    , mnXScreen(0)
+{
     // TODO Check where a VirtualDevice is created from SystemGraphicsData
-    assert(pData == nullptr);
-    (void)pData;
+    assert(false);
 
     mpDisplay = vcl_sal::getSalDisplay(GetGenericUnixSalData());
     mnXScreen = static_cast<const X11SalGraphics&>(rGraphics).GetScreenNumber();
@@ -53,19 +67,21 @@ X11SkiaSalVirtualDevice::~X11SkiaSalVirtualDevice() {}
 
 SalGraphics* X11SkiaSalVirtualDevice::AcquireGraphics()
 {
-    if (mbGraphics)
+    if (mbGraphicsAcquired)
         return nullptr;
 
     if (mpGraphics)
-        mbGraphics = true;
+        mbGraphicsAcquired = true;
 
     return mpGraphics.get();
 }
 
-void X11SkiaSalVirtualDevice::ReleaseGraphics(SalGraphics*) { mbGraphics = false; }
+void X11SkiaSalVirtualDevice::ReleaseGraphics(SalGraphics*) { mbGraphicsAcquired = false; }
 
-bool X11SkiaSalVirtualDevice::SetSize(tools::Long nDX, tools::Long nDY)
+bool X11SkiaSalVirtualDevice::SetSize(tools::Long nDX, tools::Long nDY, bool bAlphaMaskTransparent)
 {
+    assert(!bAlphaMaskTransparent && "TODO");
+    (void)bAlphaMaskTransparent;
     if (!nDX)
         nDX = 1;
     if (!nDY)

@@ -25,6 +25,7 @@
 #include "calbck.hxx"
 #include "hintids.hxx"
 #include "swatrset.hxx"
+#include "names.hxx"
 #include <memory>
 
 class IDocumentSettingAccess;
@@ -47,13 +48,13 @@ class SW_DLLPUBLIC SwFormat : public sw::BorderCacheOwner, public sw::Broadcasti
 {
     friend class SwFrameFormat;
 
-    OUString m_aFormatName;
+    UIName m_aFormatName;
     SwAttrSet m_aSet;
 
     sal_uInt16 m_nWhichId;
     sal_uInt16 m_nPoolFormatId;        /**< Id for "automatically" created formats.
                                        (is not hard attribution!!!) */
-    sal_uInt16 m_nPoolHelpId;       ///< HelpId for this Pool-style.
+    sal_uInt32 m_nPoolHelpId;       ///< HelpId for this Pool-style.
     sal_uInt8 m_nPoolHlpFileId;     ///< FilePos to Doc to these style helps.
     bool   m_bAutoFormat : 1;      /**< FALSE: it is a template.
                                        default is true! */
@@ -64,14 +65,14 @@ class SW_DLLPUBLIC SwFormat : public sw::BorderCacheOwner, public sw::Broadcasti
     bool m_bHidden : 1;
     std::shared_ptr<SfxGrabBagItem> m_pGrabBagItem; ///< Style InteropGrabBag.
     virtual void InvalidateInSwFntCache(sal_uInt16) {};
+    virtual void InvalidateInSwFntCache() {};
 
 protected:
-    SwFormat( SwAttrPool& rPool, const char* pFormatNm,
+    SwFormat( SwAttrPool& rPool, const UIName& rFormatNm,
             const WhichRangesContainer& pWhichRanges, SwFormat *pDrvdFrame, sal_uInt16 nFormatWhich );
-    SwFormat( SwAttrPool& rPool, OUString aFormatNm, const WhichRangesContainer& pWhichRanges,
-            SwFormat *pDrvdFrame, sal_uInt16 nFormatWhich );
     SwFormat( const SwFormat& rFormat );
     virtual void SwClientNotify(const SwModify&, const SfxHint&) override;
+    void Destr();
 
 public:
 
@@ -128,16 +129,16 @@ public:
     SwFormat* DerivedFrom() const { return const_cast<SwFormat*>(static_cast<const SwFormat*>(GetRegisteredIn())); }
     bool IsDefault() const { return DerivedFrom() == nullptr; }
 
-    const OUString& GetName() const                  { return m_aFormatName; }
+    const UIName& GetName() const                  { return m_aFormatName; }
     bool HasName(std::u16string_view rName) const { return m_aFormatName == rName; }
-    virtual void SetFormatName( const OUString& rNewName, bool bBroadcast=false );
+    virtual void SetFormatName( const UIName& rNewName, bool bBroadcast=false );
 
     /// For querying the attribute array.
     const SwAttrSet& GetAttrSet() const { return m_aSet; }
 
     /** The document is set in SwAttrPool now, therefore you always can access it. */
-    const SwDoc *GetDoc() const         { return m_aSet.GetDoc(); }
-          SwDoc *GetDoc()               { return m_aSet.GetDoc(); }
+    const SwDoc &GetDoc() const         { return m_aSet.GetDoc(); }
+          SwDoc &GetDoc()               { return m_aSet.GetDoc(); }
 
     /// Provides access to the document settings interface.
     const IDocumentSettingAccess& getIDocumentSettingAccess() const;
@@ -164,8 +165,8 @@ public:
     void SetPoolFormatId( sal_uInt16 nId ) { m_nPoolFormatId = nId; }
 
     /// Get and set Help-IDs for document templates.
-    sal_uInt16 GetPoolHelpId() const { return m_nPoolHelpId; }
-    void SetPoolHelpId( sal_uInt16 nId ) { m_nPoolHelpId = nId; }
+    sal_uInt32 GetPoolHelpId() const { return m_nPoolHelpId; }
+    void SetPoolHelpId( sal_uInt32 nId ) { m_nPoolHelpId = nId; }
     sal_uInt8 GetPoolHlpFileId() const { return m_nPoolHlpFileId; }
     void SetPoolHlpFileId( sal_uInt8 nId ) { m_nPoolHlpFileId = nId; }
 
@@ -282,6 +283,8 @@ public:
     virtual bool supportsFullDrawingLayerFillAttributeSet() const;
     void RemoveAllUnos();
     bool IsUsed() const;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
+
 };
 
 #endif // INCLUDED_SW_INC_FORMAT_HXX

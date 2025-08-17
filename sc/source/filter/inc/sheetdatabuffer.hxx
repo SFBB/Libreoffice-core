@@ -139,7 +139,7 @@ private:
     /** Inserts the passed array formula into the sheet. */
     void                finalizeArrayFormula(
                             const ScRange& rRange,
-                            const ApiTokenSequence& rTokens ) const;
+                            const ApiTokenSequence& rTokens );
     /** Inserts the passed table operation into the sheet. */
     void finalizeTableOperation(
         const ScRange& rRange, const DataTableModel& rModel );
@@ -217,7 +217,7 @@ private:
     MergedRangeVector   maMergedRanges;         /// Merged cell ranges.
     MergedRangeVector   maCenterFillRanges;     /// Merged cell ranges from 'center across' or 'fill' alignment.
     bool                mbPendingSharedFmla;    /// True = maSharedFmlaAddr and maSharedBaseAddr are valid.
-    std::map< sal_Int32, std::vector< ValueRange > > maXfIdRowRangeList; /// Cached XF identifiers for a ranges of rows, we try and process rowranges with the same XF id together
+    std::vector< XfIdRowRange > maXfIdRowRangeList; /// row ranges with style ids
 };
 
 } // namespace oox::xls

@@ -31,9 +31,9 @@
 #include <com/sun/star/container/XNamed.hpp>
 #include <cppuhelper/implbase.hxx>
 #include "unobaseclass.hxx"
+#include "names.hxx"
 
 class SwDoc;
-class SwFormatCol;
 class SwDocShell;
 class SwNumRule;
 class SwNumFormat;
@@ -130,7 +130,7 @@ public:
     void            Invalidate() {m_pDoc = nullptr;}
 };
 
-class SwXNumberingRules : public cppu::WeakImplHelper
+class SAL_DLLPUBLIC_RTTI SwXNumberingRules : public cppu::WeakImplHelper
 <
     css::container::XIndexReplace,
     css::beans::XPropertySet,
@@ -142,9 +142,9 @@ private:
     class Impl;
     ::sw::UnoImplPtr<Impl> m_pImpl;
 
-    OUString                    m_sNewCharStyleNames[MAXLEVEL];
-    OUString                    m_sNewBulletFontNames[MAXLEVEL];
-    OUString                    m_sCreatedNumRuleName; //connects to a numbering in SwDoc
+    UIName                      m_sNewCharStyleNames[MAXLEVEL];
+    UIName                      m_sNewBulletFontNames[MAXLEVEL];
+    UIName                      m_sCreatedNumRuleName; //connects to a numbering in SwDoc
     SwDoc*                      m_pDoc; // Only if *not* used as chapter numbering.
     SwDocShell*                 m_pDocShell; // Only if used as chapter numbering.
     SwNumRule*                  m_pNumRule;
@@ -194,27 +194,34 @@ public:
     void    SetNumberingRuleByIndex(SwNumRule& rNumRule,
                 const css::uno::Sequence< css::beans::PropertyValue>& rProperties, sal_Int32 nIndex);
 
-    const OUString*         GetNewCharStyleNames() const {return m_sNewCharStyleNames;}
-    const OUString*         GetBulletFontNames() const {return m_sNewBulletFontNames;}
+    const UIName*           GetNewCharStyleNames() const {return m_sNewCharStyleNames;}
+    const UIName*           GetBulletFontNames() const {return m_sNewBulletFontNames;}
     const SwNumRule*        GetNumRule() const {return m_pNumRule;}
 
-    static bool             isInvalidStyle(std::u16string_view rName);
+    static bool             isInvalidStyle(const UIName& rName);
     void    Invalidate()    {m_pDocShell = nullptr;}
-    const OUString&   GetCreatedNumRuleName() const {return m_sCreatedNumRuleName;}
+    const UIName&   GetCreatedNumRuleName() const {return m_sCreatedNumRuleName;}
+
+    SW_DLLPUBLIC css::uno::Any getPropertyByIndex(sal_Int32 nIndex, const OUString& rPropName);
 
     static css::uno::Sequence<css::beans::PropertyValue> GetPropertiesForNumFormat(
-            const SwNumFormat& rFormat, OUString const& rCharFormatName,
-            OUString const* pHeadingStyleName, OUString const & referer);
+            const SwNumFormat& rFormat, UIName const& rCharFormatName,
+            ProgName const* pHeadingStyleName, OUString const & referer);
     static void SetPropertiesToNumFormat(
             SwNumFormat & aFormat,
-            OUString & rCharStyleName,
-            OUString *const pBulletFontName,
-            OUString *const pHeadingStyleName,
+            UIName & rCharStyleName,
+            UIName *const pBulletFontName,
+            UIName *const pHeadingStyleName,
             OUString *const pParagraphStyleName,
             SwDoc *const pDoc,
             SwDocShell *const pDocShell,
             css::uno::Sequence<css::beans::PropertyValue> const& rProperties);
 
+private:
+    css::uno::Any GetNumberingRuleByIndex(const SwNumRule& rNumRule, sal_Int32 nIndex, const OUString& rPropName) const;
+    static css::uno::Any GetPropertyForNumFormat(
+            const SwNumFormat& rFormat, UIName const& rCharFormatName,
+            ProgName const* pHeadingStyleName, OUString const & referer, OUString const & rPropName);
 };
 
 class SwXChapterNumbering final : public SwXNumberingRules

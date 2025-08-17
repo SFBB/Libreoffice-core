@@ -47,13 +47,13 @@ CellAppearancePropertyPanel::CellAppearancePropertyPanel(
     weld::Widget* pParent,
     const css::uno::Reference<css::frame::XFrame>& rxFrame,
     SfxBindings* pBindings)
-:   PanelLayout(pParent, "CellAppearancePropertyPanel", "modules/scalc/ui/sidebarcellappearance.ui"),
+:   PanelLayout(pParent, u"CellAppearancePropertyPanel"_ustr, u"modules/scalc/ui/sidebarcellappearance.ui"_ustr),
 
-    mxTBCellBorder(m_xBuilder->weld_toolbar("cellbordertype")),
-    mxTBCellBackground(m_xBuilder->weld_toolbar("cellbackgroundcolor")),
+    mxTBCellBorder(m_xBuilder->weld_toolbar(u"cellbordertype"_ustr)),
+    mxTBCellBackground(m_xBuilder->weld_toolbar(u"cellbackgroundcolor"_ustr)),
     mxBackColorDispatch(new ToolbarUnoDispatcher(*mxTBCellBackground, *m_xBuilder, rxFrame)),
-    mxTBLineStyle(m_xBuilder->weld_toolbar("borderlinestyle")),
-    mxTBLineColor(m_xBuilder->weld_toolbar("borderlinecolor")),
+    mxTBLineStyle(m_xBuilder->weld_toolbar(u"borderlinestyle"_ustr)),
+    mxTBLineColor(m_xBuilder->weld_toolbar(u"borderlinecolor"_ustr)),
     mxLineColorDispatch(new ToolbarUnoDispatcher(*mxTBLineColor, *m_xBuilder, rxFrame)),
 
     mbCellBorderPopoverCreated(false),
@@ -182,11 +182,11 @@ std::unique_ptr<PanelLayout> CellAppearancePropertyPanel::Create (
     SfxBindings* pBindings)
 {
     if (pParent == nullptr)
-        throw lang::IllegalArgumentException("no parent Window given to CellAppearancePropertyPanel::Create", nullptr, 0);
+        throw lang::IllegalArgumentException(u"no parent Window given to CellAppearancePropertyPanel::Create"_ustr, nullptr, 0);
     if ( ! rxFrame.is())
-        throw lang::IllegalArgumentException("no XFrame given to CellAppearancePropertyPanel::Create", nullptr, 1);
+        throw lang::IllegalArgumentException(u"no XFrame given to CellAppearancePropertyPanel::Create"_ustr, nullptr, 1);
     if (pBindings == nullptr)
-        throw lang::IllegalArgumentException("no SfxBindings given to CellAppearancePropertyPanel::Create", nullptr, 2);
+        throw lang::IllegalArgumentException(u"no SfxBindings given to CellAppearancePropertyPanel::Create"_ustr, nullptr, 2);
 
     return std::make_unique<CellAppearancePropertyPanel>(pParent, rxFrame, pBindings);
 }
@@ -211,7 +211,7 @@ void CellAppearancePropertyPanel::NotifyItemUpdate(
     {
     case SID_FRAME_LINESTYLE:
         mbBorderStyleAvailable = false;
-        if( eState == SfxItemState::DONTCARE )
+        if( eState == SfxItemState::INVALID )
         {
             mbBorderStyleAvailable = true;
             mnInWidth = 0;
@@ -315,7 +315,7 @@ void CellAppearancePropertyPanel::NotifyItemUpdate(
         break;
     case SID_ATTR_BORDER_DIAG_TLBR:
         mbDiagTLBR = false;
-        if( eState == SfxItemState::DONTCARE )
+        if( eState == SfxItemState::INVALID )
         {
             mbDiagTLBR = true;
             mnDiagTLBRInWidth = mnDiagTLBROutWidth = mnDiagTLBRDistance = 0;
@@ -341,7 +341,7 @@ void CellAppearancePropertyPanel::NotifyItemUpdate(
         break;
     case SID_ATTR_BORDER_DIAG_BLTR:
         mbDiagBLTR = false;
-        if( eState == SfxItemState::DONTCARE )
+        if( eState == SfxItemState::INVALID )
         {
             mbDiagBLTR = true;
             mnDiagBLTRInWidth = mnDiagBLTROutWidth = mnDiagBLTRDistance = 0;
@@ -468,7 +468,7 @@ void CellAppearancePropertyPanel::UpdateControlState()
 void CellAppearancePropertyPanel::UpdateCellBorder(bool bTop, bool bBot, bool bLeft, bool bRight,
                                                    bool bVer, bool bHor, bool bTLBR, bool bBLTR)
 {
-    const Size aBmpSize = maIMGCellBorder.GetBitmapEx().GetSizePixel();
+    const Size aBmpSize = maIMGCellBorder.GetBitmap().GetSizePixel();
 
     if (aBmpSize.Width() == 43 && aBmpSize.Height() == 43)
     {

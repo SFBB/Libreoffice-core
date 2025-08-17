@@ -37,9 +37,7 @@ namespace dbaui
 {
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::sdbc;
-    using namespace ::com::sun::star::sdbcx;
 
     // OUserAdminDlg
     OUserAdminDlg::OUserAdminDlg(weld::Window* pParent,
@@ -47,7 +45,7 @@ namespace dbaui
                                  const Reference< XComponentContext >& rxORB,
                                  const css::uno::Any& rDataSourceName,
                                  const Reference< XConnection >& xConnection)
-        : SfxTabDialogController(pParent, "dbaccess/ui/useradmindialog.ui", "UserAdminDialog", pItems)
+        : SfxTabDialogController(pParent, u"dbaccess/ui/useradmindialog.ui"_ustr, u"UserAdminDialog"_ustr, pItems)
         , m_pParent(pParent)
         , m_pItemSet(pItems)
         , m_xConnection(xConnection)
@@ -61,7 +59,7 @@ namespace dbaui
         // propagate this set as our new input set and reset the example set
         m_xExampleSet.reset(new SfxItemSet(*GetInputSetImpl()));
 
-        AddTabPage("settings", OUserAdmin::Create, nullptr);
+        AddTabPage(u"settings"_ustr, OUserAdmin::Create, nullptr);
 
         // remove the reset button - it's meaning is much too ambiguous in this dialog
         RemoveResetButton();
@@ -91,7 +89,7 @@ namespace dbaui
             if ( !aMetaData.supportsUserAdministration( getORB() ) )
             {
                 OUString sError(DBA_RES(STR_USERADMIN_NOT_AVAILABLE));
-                throw SQLException(sError, nullptr, "S1000", 0, Any());
+                throw SQLException(sError, nullptr, u"S1000"_ustr, 0, Any());
             }
         }
         catch(const SQLException&)

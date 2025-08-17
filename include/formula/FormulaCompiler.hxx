@@ -23,6 +23,7 @@
 #include <memory>
 #include <unordered_map>
 #include <vector>
+#include <optional>
 
 #include <com/sun/star/uno/Sequence.hxx>
 #include <formula/formuladllapi.h>
@@ -35,6 +36,7 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 #include <tools/debug.hxx>
+#include <unotools/saveopt.hxx>
 
 #define FORMULA_MAXJUMPCOUNT    32  /* maximum number of jumps (ocChoose) */
 #define FORMULA_MAXTOKENS     8192  /* maximum number of tokens in formula */
@@ -195,7 +197,7 @@ public:
 
             Does NOT check eOp range!
          */
-        void putCopyOpCode( const OUString& rSymbol, OpCode eOp );
+        void putCopyOpCode( const OUString& rSymbol, OpCode eOp, const CharClass* pCharClass );
     };
 
 public:
@@ -339,11 +341,13 @@ protected:
     virtual void fillFromAddInCollectionUpperName( const NonConstOpCodeMapPtr& xMap ) const;
     virtual void fillFromAddInMap( const NonConstOpCodeMapPtr& xMap, FormulaGrammar::Grammar _eGrammar ) const;
     virtual void fillFromAddInCollectionEnglishName( const NonConstOpCodeMapPtr& xMap ) const;
+    virtual void fillFromAddInCollectionExcelName( const NonConstOpCodeMapPtr& xMap ) const;
     virtual void fillAddInToken(::std::vector< css::sheet::FormulaOpCodeMapEntry >& _rVec, bool _bIsEnglish) const;
 
     virtual void SetError(FormulaError nError);
     virtual FormulaTokenRef ExtendRangeReference( FormulaToken & rTok1, FormulaToken & rTok2 );
     virtual bool HandleExternalReference(const FormulaToken& _aToken);
+    virtual bool HandleStringName();
     virtual bool HandleRange();
     virtual bool HandleColRowName();
     virtual bool HandleDbData();
@@ -355,6 +359,7 @@ protected:
     virtual void CreateStringFromMatrix( OUStringBuffer& rBuffer, const FormulaToken* pToken ) const;
     virtual void CreateStringFromIndex( OUStringBuffer& rBuffer, const FormulaToken* pToken ) const;
     virtual void LocalizeString( OUString& rName ) const;   // modify rName - input: exact name
+    virtual bool GetExcelName( OUString& rName ) const;     // modify rName - input: exact name
 
     bool   GetToken();
     OpCode NextToken();
@@ -418,6 +423,18 @@ protected:
 
     bool mbComputeII;  // whether to attempt computing implicit intersection ranges while building the RPN array.
     bool mbMatrixFlag; // whether the formula is a matrix formula (needed for II computation)
+
+    struct LambdaFunc
+    {
+        bool bInLambdaFunction = false;
+        short nBracketPos = 0;
+        short nParaPos = 0;
+        short nParaCount = 3; // minimum required parameter count: 3
+        std::unordered_set<OUString> aNameSet;
+    } m_aLambda;
+
+    // ODF version at time of saving. Set by ScXMLExport::WriteCell().
+    std::optional< SvtSaveOptions::ODFSaneDefaultVersion > m_oODFSavingVersion;
 
 public:
     enum InitSymbols

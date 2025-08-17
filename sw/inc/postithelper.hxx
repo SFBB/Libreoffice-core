@@ -26,6 +26,7 @@
 #include "SidebarWindowsTypes.hxx"
 #include "nodeoffset.hxx"
 
+class Outliner;
 class SfxBroadcaster;
 class SwRootFrame;
 class SwPostItMgr;
@@ -33,7 +34,7 @@ class SwEditWin;
 class SwFrame;
 class IDocumentRedlineAccess;
 namespace sw::annotation { class SwAnnotationWin; }
-namespace sw::mark { class IMark; }
+namespace sw::mark { class MarkBase; }
 
 struct SwPosition;
 
@@ -84,70 +85,50 @@ namespace SwPostItHelper
     SwLayoutStatus getLayoutInfos(
         SwLayoutInfo& o_rInfo,
         const SwPosition& rAnchorPos,
-        const sw::mark::IMark* pAnnotationMark = nullptr );
+        const sw::mark::MarkBase* pAnnotationMark = nullptr );
 
     tools::Long getLayoutHeight( const SwRootFrame* pRoot );
     void setSidebarChanged( SwRootFrame* pRoot, bool bBrowseMode );
     tools::ULong getPageInfo( SwRect& rPageFrame, const SwRootFrame* , const Point& );
+
+    void ImportHTML(Outliner& rOutliner, const OUString& rHtml);
 }
 
-class SAL_DLLPUBLIC_RTTI SwSidebarItem
+class SAL_DLLPUBLIC_RTTI SwAnnotationItem final
 {
 public:
     VclPtr<sw::annotation::SwAnnotationWin> mpPostIt;
     bool mbShow;
     bool mbFocus;
     bool mbPendingLayout;
-
     SwPostItHelper::SwLayoutStatus mLayoutStatus;
     SwLayoutInfo maLayoutInfo;
 
-    SwSidebarItem( const bool aFocus);
-
-    virtual ~SwSidebarItem();
-
-    SwSidebarItem(SwSidebarItem const &) = default;
-    SwSidebarItem(SwSidebarItem &&) = default;
-    SwSidebarItem & operator =(SwSidebarItem const &) = default;
-    SwSidebarItem & operator =(SwSidebarItem &&) = default;
-
-    virtual SwPosition GetAnchorPosition() const = 0;
-    virtual bool UseElement(SwRootFrame const&, IDocumentRedlineAccess const&) = 0;
-    virtual const SwFormatField& GetFormatField() const = 0;
-    virtual SwFormatField& GetFormatField() = 0;
-    virtual const SfxBroadcaster* GetBroadcaster() const = 0;
-    virtual VclPtr<sw::annotation::SwAnnotationWin> GetSidebarWindow( SwEditWin& rEditWin,
-                                                                SwPostItMgr& aMgr) = 0;
-};
-
-class SwAnnotationItem final : public SwSidebarItem
-{
-public:
     SwAnnotationItem(
         SwFormatField& rFormatField,
-        const bool aFocus)
-        : SwSidebarItem( aFocus )
-        , mrFormatField( rFormatField )
-    {
-    }
+        const bool aFocus);
+    ~SwAnnotationItem();
 
-    virtual SwPosition GetAnchorPosition() const override;
-    virtual bool UseElement(SwRootFrame const&, IDocumentRedlineAccess const&) override;
-    virtual const SwFormatField& GetFormatField() const override
+    SwAnnotationItem(SwAnnotationItem const &) = default;
+    SwAnnotationItem(SwAnnotationItem &&) = default;
+
+    SwPosition GetAnchorPosition() const;
+    bool UseElement(SwRootFrame const&, IDocumentRedlineAccess const&);
+    const SwFormatField& GetFormatField() const
     {
         return mrFormatField;
     }
-    SwFormatField& GetFormatField() override
+    SwFormatField& GetFormatField()
     {
         return mrFormatField;
     }
-    virtual const SfxBroadcaster* GetBroadcaster() const override
+    const SfxBroadcaster* GetBroadcaster() const
     {
         return &mrFormatField;
     }
-    virtual VclPtr<sw::annotation::SwAnnotationWin> GetSidebarWindow(
+    VclPtr<sw::annotation::SwAnnotationWin> GetSidebarWindow(
         SwEditWin& rEditWin,
-        SwPostItMgr& aMgr ) override;
+        SwPostItMgr& aMgr );
 
 private:
     SwFormatField& mrFormatField;

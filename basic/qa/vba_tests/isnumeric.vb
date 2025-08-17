@@ -22,9 +22,17 @@ Sub verify_testIsNumeric()
     TestUtil.Assert(IsNumeric(-123),    "IsNumeric(-123)")
     TestUtil.Assert(IsNumeric(123.8),   "IsNumeric(123.8)")
     TestUtil.Assert(Not IsNumeric("a"), "Not IsNumeric(""a"")")
-rem    TestUtil.Assert(IsNumeric(True), "IsNumeric(True)")
+    TestUtil.Assert(IsNumeric(True), "IsNumeric(True)")
     TestUtil.Assert(IsNumeric("123"),   "IsNumeric(""123"")")
     TestUtil.Assert(IsNumeric("+123"),  "IsNumeric(""+123"")")
+
+    TestUtil.Assert(Not IsNumeric(""), "Not IsNumeric("""")")
+    TestUtil.Assert(Not IsNumeric(" "), "Not IsNumeric("" "")")
+    TestUtil.Assert(Not IsNumeric(" + "), "Not IsNumeric("" + "")")
+    TestUtil.Assert(Not IsNumeric(" - "), "Not IsNumeric("" - "")")
+
+    TestUtil.Assert(IsNumeric(" + 0 "), "IsNumeric("" + 0 "")")
+    TestUtil.Assert(IsNumeric(" - 0 "), "IsNumeric("" - 0 "")")
 
     Exit Sub
 errorHandler:

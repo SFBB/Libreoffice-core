@@ -23,6 +23,7 @@
 #error "don't use this in new code"
 #endif
 
+#include <map>
 #include <memory>
 #include <vcl/dllapi.h>
 #include <tools/link.hxx>
@@ -36,12 +37,12 @@ class SvLBoxButton;
 
 enum class SvBmp
 {
-    UNCHECKED        = 0,
-    CHECKED          = 1,
-    TRISTATE         = 2,
-    HIUNCHECKED      = 3,
-    HICHECKED        = 4,
-    HITRISTATE       = 5
+    UNCHECKED,
+    CHECKED,
+    TRISTATE,
+    HIUNCHECKED,
+    HICHECKED,
+    HITRISTATE,
 };
 
 enum class SvItemStateFlags
@@ -57,29 +58,27 @@ namespace o3tl
     template<> struct typed_flags<SvItemStateFlags> : is_typed_flags<SvItemStateFlags, 0x0f> {};
 }
 
-struct SvLBoxButtonData_Impl;
-
 class SvLBoxButtonData
 {
 private:
     Link<SvLBoxButtonData*,void> aLink;
-    tools::Long                    nWidth;
-    tools::Long                    nHeight;
-    std::unique_ptr<SvLBoxButtonData_Impl> pImpl;
+    Size                    m_aSize;
     bool                    bDataOk;
-    std::vector<Image>      aBmps;  // indices s. constants BMP_...
+    std::map<SvBmp, Image> aBmps;
+
+    SvTreeListEntry* m_pEntry;
+    SvLBoxButton* m_pBox;
+    bool m_bShowRadioButton;
 
     void                    SetWidthAndHeight();
-    void                    InitData( bool _bRadioBtn, const Control* pControlForSettings );
 public:
                             // include creating default images (CheckBox or RadioButton)
-                            SvLBoxButtonData( const Control* pControlForSettings, bool _bRadioBtn );
+                            SvLBoxButtonData(const Control& rControlForSettings, bool _bRadioBtn);
 
                             ~SvLBoxButtonData();
 
     static SvBmp            GetIndex( SvItemStateFlags nItemState );
-    tools::Long                    Width();
-    tools::Long                    Height();
+    Size                    GetSize();
     void                    SetLink( const Link<SvLBoxButtonData*,void>& rLink) { aLink=rLink; }
     bool                    IsRadio() const;
     // as buttons are not derived from LinkHdl
@@ -91,18 +90,15 @@ public:
     SvTreeListEntry*        GetActEntry() const;
     SvLBoxButton*           GetActBox() const;
 
-    void                    SetImage(SvBmp nIndex, const Image& aImage) { aBmps[static_cast<int>(nIndex)] = aImage; }
-    Image&                  GetImage(SvBmp nIndex) { return aBmps[static_cast<int>(nIndex)]; }
+    Image&                  GetImage(SvBmp eIndex) { return aBmps.at(eIndex); }
 
-    void                    SetDefaultImages( const Control* pControlForSettings );
+    void                    SetDefaultImages(const Control& rControlForSettings);
                                 // set images according to the color scheme of the Control
-                                // pControlForSettings == NULL: settings are taken from Application
-    bool                    HasDefaultImages() const;
 };
 
 // **********************************************************************
 
-class VCL_DLLPUBLIC SvLBoxString : public SvLBoxItem
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) SvLBoxString : public SvLBoxItem
 {
 private:
     bool mbEmphasized;
@@ -229,7 +225,7 @@ inline void SvLBoxButton::SetStateHilighted( bool bHilight )
 
 struct SvLBoxContextBmp_Impl;
 
-class VCL_DLLPUBLIC SvLBoxContextBmp : public SvLBoxItem
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) SvLBoxContextBmp : public SvLBoxItem
 {
     std::unique_ptr<SvLBoxContextBmp_Impl>  m_pImpl;
 public:

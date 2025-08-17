@@ -25,6 +25,7 @@
 #include <vcl/scheduler.hxx>
 #include <comphelper/configuration.hxx>
 #include <officecfg/Office/Writer.hxx>
+#include <officecfg/Office/Common.hxx>
 
 #include <IDocumentLayoutAccess.hxx>
 #include <docsh.hxx>
@@ -36,7 +37,7 @@
 
 using namespace css;
 
-void SwModelTestBase::paste(std::u16string_view aFilename, OUString aInstance,
+void SwModelTestBase::paste(std::u16string_view aFilename, const OUString& aInstance,
                             uno::Reference<text::XTextRange> const& xTextRange)
 {
     uno::Reference<document::XFilter> xFilter(m_xSFactory->createInstance(aInstance),
@@ -47,29 +48,18 @@ void SwModelTestBase::paste(std::u16string_view aFilename, OUString aInstance,
         m_directories.getURLFromSrc(u"/sw/qa/extras/") + aFilename, StreamMode::STD_READ);
     CPPUNIT_ASSERT_EQUAL(ERRCODE_NONE, pStream->GetError());
     uno::Reference<io::XStream> xStream(new utl::OStreamWrapper(std::move(pStream)));
-    uno::Sequence aDescriptor{ comphelper::makePropertyValue("InputStream", xStream),
-                               comphelper::makePropertyValue("InsertMode", true),
-                               comphelper::makePropertyValue("TextInsertModeRange", xTextRange) };
+    uno::Sequence aDescriptor{ comphelper::makePropertyValue(u"InputStream"_ustr, xStream),
+                               comphelper::makePropertyValue(u"InsertMode"_ustr, true),
+                               comphelper::makePropertyValue(u"TextInsertModeRange"_ustr,
+                                                             xTextRange) };
     CPPUNIT_ASSERT(xFilter->filter(aDescriptor));
 }
 
 SwModelTestBase::SwModelTestBase(const OUString& pTestDocumentPath, const OUString& pFilter)
     : UnoApiXmlTest(pTestDocumentPath)
-    , mbExported(false)
     , mpXmlBuffer(nullptr)
     , mpFilter(pFilter)
-    , mnStartTime(0)
 {
-}
-
-void SwModelTestBase::executeImportTest(const char* filename, const char* pPassword)
-{
-    maTempFile.EnableKillingFile(false);
-    header();
-    loadURL(createFileURL(OUString::createFromAscii(filename)), pPassword);
-    verify();
-    finish();
-    maTempFile.EnableKillingFile();
 }
 
 void SwModelTestBase::executeLoadVerifyReloadVerify(const char* filename, const char* pPassword)
@@ -78,37 +68,12 @@ void SwModelTestBase::executeLoadVerifyReloadVerify(const char* filename, const 
     header();
     loadURL(createFileURL(OUString::createFromAscii(filename)), pPassword);
     verify();
-    postLoad(filename);
     saveAndReload(mpFilter, pPassword);
     verify();
-    finish();
     maTempFile.EnableKillingFile();
 }
 
-void SwModelTestBase::executeLoadReloadVerify(const char* filename, const char* pPassword)
-{
-    maTempFile.EnableKillingFile(false);
-    header();
-    loadURL(createFileURL(OUString::createFromAscii(filename)), pPassword);
-    postLoad(filename);
-    saveAndReload(mpFilter, pPassword);
-    verify();
-    finish();
-    maTempFile.EnableKillingFile();
-}
-
-void SwModelTestBase::executeImportExport(const char* filename, const char* pPassword)
-{
-    maTempFile.EnableKillingFile(false);
-    header();
-    loadAndSave(filename, pPassword);
-    maTempFile.EnableKillingFile(false);
-    verify();
-    finish();
-    maTempFile.EnableKillingFile();
-}
-
-void SwModelTestBase::dumpLayout(const uno::Reference<lang::XComponent>& rComponent)
+void SwModelTestBase::dumpLayout(SwDoc* pDoc)
 {
     // create the xml writer
     mpXmlBuffer = xmlBufferCreate();
@@ -116,9 +81,6 @@ void SwModelTestBase::dumpLayout(const uno::Reference<lang::XComponent>& rCompon
     (void)xmlTextWriterStartDocument(pXmlWriter, nullptr, nullptr, nullptr);
 
     // create the dump
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(rComponent.get());
-    CPPUNIT_ASSERT(pTextDoc);
-    SwDoc* pDoc = pTextDoc->GetDocShell()->GetDoc();
     SwRootFrame* pLayout = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
     pLayout->dumpAsXml(pXmlWriter);
 
@@ -127,21 +89,12 @@ void SwModelTestBase::dumpLayout(const uno::Reference<lang::XComponent>& rCompon
     xmlFreeTextWriter(pXmlWriter);
 }
 
-void SwModelTestBase::discardDumpedLayout()
+void SwModelTestBase::calcLayout(bool bRecalc)
 {
-    if (mpXmlBuffer)
-    {
-        xmlBufferFree(mpXmlBuffer);
-        mpXmlBuffer = nullptr;
-    }
-}
-
-void SwModelTestBase::calcLayout()
-{
+    if (bRecalc)
+        getSwDoc()->getIDocumentLayoutAccess().GetCurrentViewShell()->Reformat();
     getSwDoc()->getIDocumentLayoutAccess().GetCurrentViewShell()->CalcLayout();
 }
-
-int SwModelTestBase::getLength() const { return getBodyText().getLength(); }
 
 OUString SwModelTestBase::getBodyText() const
 {
@@ -184,53 +137,26 @@ uno::Reference<style::XAutoStyleFamily> SwModelTestBase::getAutoStyles(const OUS
     return xAutoStyleFamily;
 }
 
-xmlDocUniquePtr SwModelTestBase::parseLayoutDump()
+xmlDocUniquePtr SwModelTestBase::parseLayoutDump(const uno::Reference<lang::XComponent>& xComponent)
 {
-    if (!mpXmlBuffer)
-        dumpLayout(mxComponent);
+    if (xComponent)
+    {
+        SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(xComponent.get());
+        CPPUNIT_ASSERT(pTextDoc);
+        dumpLayout(pTextDoc->GetDocShell()->GetDoc());
+    }
+    else
+        dumpLayout(getSwDoc());
 
     auto pBuffer = reinterpret_cast<const char*>(xmlBufferContent(mpXmlBuffer));
     SAL_INFO("sw.qa", "SwModelTestBase::parseLayoutDump: pBuffer is '" << pBuffer << "'");
-    return xmlDocUniquePtr(xmlParseMemory(pBuffer, xmlBufferLength(mpXmlBuffer)));
-}
+    xmlDocUniquePtr pXmlDoc(xmlParseMemory(pBuffer, xmlBufferLength(mpXmlBuffer)));
 
-OUString SwModelTestBase::parseDump(const OString& aXPath, const OString& aAttribute)
-{
-    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    // Discard dumped layout
+    xmlBufferFree(mpXmlBuffer);
+    mpXmlBuffer = nullptr;
 
-    xmlXPathContextPtr pXmlXpathCtx = xmlXPathNewContext(pXmlDoc.get());
-    xmlXPathObjectPtr pXmlXpathObj
-        = xmlXPathEvalExpression(BAD_CAST(aXPath.getStr()), pXmlXpathCtx);
-    CPPUNIT_ASSERT_MESSAGE("xpath evaluation failed", pXmlXpathObj);
-    xmlChar* pXpathStrResult;
-    if (pXmlXpathObj->type == XPATH_NODESET)
-    {
-        xmlNodeSetPtr pXmlNodes = pXmlXpathObj->nodesetval;
-        int nNodes = xmlXPathNodeSetGetLength(pXmlNodes);
-        OString aMessage("xpath ('" + aXPath + "') should match exactly 1 node");
-        CPPUNIT_ASSERT_EQUAL_MESSAGE(aMessage.getStr(), 1, nNodes);
-        xmlNodePtr pXmlNode = pXmlNodes->nodeTab[0];
-        if (aAttribute.getLength())
-            pXpathStrResult = xmlGetProp(pXmlNode, BAD_CAST(aAttribute.getStr()));
-        else
-            pXpathStrResult = xmlNodeGetContent(pXmlNode);
-    }
-    else
-    {
-        // the xpath expression evaluated to a value, not a node
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("attr name should not be supplied when xpath evals to a value",
-                                     sal_Int32(0), aAttribute.getLength());
-        pXpathStrResult = xmlXPathCastToString(pXmlXpathObj);
-        CPPUNIT_ASSERT_MESSAGE("xpath result cannot be cast to string", pXpathStrResult);
-    }
-
-    OUString aRet(reinterpret_cast<char*>(pXpathStrResult), xmlStrlen(pXpathStrResult),
-                  RTL_TEXTENCODING_UTF8);
-    xmlFree(pXpathStrResult);
-    xmlFree(pXmlXpathObj);
-    xmlFree(pXmlXpathCtx);
-
-    return aRet;
+    return pXmlDoc;
 }
 
 bool SwModelTestBase::hasProperty(const uno::Reference<uno::XInterface>& obj,
@@ -245,7 +171,7 @@ xml::AttributeData SwModelTestBase::getUserDefineAttribute(const uno::Any& obj,
                                                            const OUString& rValue) const
 {
     uno::Reference<container::XNameContainer> attrsCnt(
-        getProperty<uno::Any>(obj, "UserDefinedAttributes"), uno::UNO_QUERY_THROW);
+        getProperty<uno::Any>(obj, u"UserDefinedAttributes"_ustr), uno::UNO_QUERY_THROW);
 
     xml::AttributeData aValue;
     attrsCnt->getByName(name) >>= aValue;
@@ -314,13 +240,13 @@ sal_Int16 SwModelTestBase::getNumberingTypeOfParagraph(int nPara)
     uno::Reference<text::XTextRange> xPara(getParagraph(nPara));
     uno::Reference<beans::XPropertySet> properties(xPara, uno::UNO_QUERY);
     bool isNumber = false;
-    properties->getPropertyValue("NumberingIsNumber") >>= isNumber;
+    properties->getPropertyValue(u"NumberingIsNumber"_ustr) >>= isNumber;
     if (isNumber)
     {
         uno::Reference<container::XIndexAccess> xLevels(
-            properties->getPropertyValue("NumberingRules"), uno::UNO_QUERY);
+            properties->getPropertyValue(u"NumberingRules"_ustr), uno::UNO_QUERY);
         sal_Int16 nNumberingLevel = -1;
-        properties->getPropertyValue("NumberingLevel") >>= nNumberingLevel;
+        properties->getPropertyValue(u"NumberingLevel"_ustr) >>= nNumberingLevel;
         if (nNumberingLevel >= 0 && nNumberingLevel < xLevels->getCount())
         {
             uno::Sequence<beans::PropertyValue> aPropertyValue;
@@ -354,7 +280,7 @@ SwModelTestBase::getParagraphAnchoredObject(int const index,
 {
     uno::Reference<container::XContentEnumerationAccess> xContentEnumAccess(xPara, uno::UNO_QUERY);
     uno::Reference<container::XEnumeration> xContentEnum
-        = xContentEnumAccess->createContentEnumeration("com.sun.star.text.TextContent");
+        = xContentEnumAccess->createContentEnumeration(u"com.sun.star.text.TextContent"_ustr);
     for (int i = 1; i < index; ++i)
     {
         xContentEnum->nextElement();
@@ -381,10 +307,10 @@ OUString SwModelTestBase::getFormula(uno::Reference<text::XTextRange> const& xRu
 {
     uno::Reference<container::XContentEnumerationAccess> xContentEnumAccess(xRun, uno::UNO_QUERY);
     uno::Reference<container::XEnumeration> xContentEnum
-        = xContentEnumAccess->createContentEnumeration("");
+        = xContentEnumAccess->createContentEnumeration(u""_ustr);
     uno::Reference<beans::XPropertySet> xFormula(xContentEnum->nextElement(), uno::UNO_QUERY);
     return getProperty<OUString>(
-        getProperty<uno::Reference<beans::XPropertySet>>(xFormula, "Model"), "Formula");
+        getProperty<uno::Reference<beans::XPropertySet>>(xFormula, u"Model"_ustr), u"Formula"_ustr);
 }
 
 uno::Reference<table::XCell>
@@ -412,14 +338,12 @@ uno::Reference<drawing::XShape> SwModelTestBase::getShape(int number)
 
 void SwModelTestBase::selectShape(int number)
 {
-    SwXTextDocument* pXTextDocument = dynamic_cast<SwXTextDocument*>(mxComponent.get());
     uno::Reference<view::XSelectionSupplier> xSelectionSupplier(
-        pXTextDocument->getCurrentController(), uno::UNO_QUERY);
+        getSwTextDoc()->getCurrentController(), uno::UNO_QUERY);
     xSelectionSupplier->select(uno::Any(getShape(number)));
     CPPUNIT_ASSERT(xSelectionSupplier->getSelection().hasValue());
 
-    SwDoc* pDoc = pXTextDocument->GetDocShell()->GetDoc();
-    SwView* pView = pDoc->GetDocShell()->GetView();
+    SwView* pView = getSwDocShell()->GetView();
     // Make sure SwTextShell is replaced with SwDrawShell right now, not after 120 ms, as set in the
     // SwView ctor.
     pView->StopShellTimer();
@@ -457,24 +381,18 @@ void SwModelTestBase::header() {}
 void SwModelTestBase::loadURL(OUString const& rURL, const char* pPassword)
 {
     // Output name at load time, so in the case of a hang, the name of the hanging input file is visible.
-    if (!isExported())
-    {
-        std::cout << rURL << ":\n";
-        mnStartTime = osl_getGlobalTimer();
-    }
+    std::cout << rURL << ":\n";
 
-    UnoApiXmlTest::load(rURL, pPassword);
+    loadFromURL(rURL, pPassword);
 
     CPPUNIT_ASSERT(!getSwDocShell()->GetMedium()->GetWarningError());
 
-    discardDumpedLayout();
     calcLayout();
 }
 
 void SwModelTestBase::saveAndReload(const OUString& pFilter, const char* pPassword)
 {
     save(pFilter, pPassword);
-    mbExported = true;
 
     loadURL(maTempFile.GetURL(), pPassword);
 }
@@ -483,20 +401,12 @@ void SwModelTestBase::loadAndSave(const char* pName, const char* pPassword)
 {
     loadURL(createFileURL(OUString::createFromAscii(pName)), pPassword);
     save(mpFilter);
-    mbExported = true;
 }
 
 void SwModelTestBase::loadAndReload(const char* pName)
 {
     loadURL(createFileURL(OUString::createFromAscii(pName)));
     saveAndReload(mpFilter);
-}
-
-void SwModelTestBase::finish()
-{
-    sal_uInt32 nEndTime = osl_getGlobalTimer();
-    std::cout << (nEndTime - mnStartTime) << std::endl;
-    discardDumpedLayout();
 }
 
 int SwModelTestBase::getPages() const
@@ -517,53 +427,53 @@ int SwModelTestBase::getShapes() const
     return xDraws->getCount();
 }
 
-xmlDocUniquePtr SwModelTestBase::parseExportedFile()
-{
-    auto stream(SvFileStream(maTempFile.GetURL(), StreamMode::READ | StreamMode::TEMPORARY));
-    return parseXmlStream(&stream);
-}
-
 void SwModelTestBase::createSwDoc(const char* pName, const char* pPassword)
 {
     if (!pName)
-        loadURL("private:factory/swriter");
+        loadURL(u"private:factory/swriter"_ustr);
     else
         loadURL(createFileURL(OUString::createFromAscii(pName)), pPassword);
 
     uno::Reference<lang::XServiceInfo> xServiceInfo(mxComponent, uno::UNO_QUERY_THROW);
-    CPPUNIT_ASSERT(xServiceInfo->supportsService("com.sun.star.text.TextDocument"));
+    CPPUNIT_ASSERT(xServiceInfo->supportsService(u"com.sun.star.text.TextDocument"_ustr));
 }
 
 void SwModelTestBase::createSwWebDoc(const char* pName)
 {
     if (!pName)
-        loadURL("private:factory/swriter/web");
+        loadURL(u"private:factory/swriter/web"_ustr);
     else
         loadURL(createFileURL(OUString::createFromAscii(pName)));
 
     uno::Reference<lang::XServiceInfo> xServiceInfo(mxComponent, uno::UNO_QUERY_THROW);
-    CPPUNIT_ASSERT(xServiceInfo->supportsService("com.sun.star.text.WebDocument"));
+    CPPUNIT_ASSERT(xServiceInfo->supportsService(u"com.sun.star.text.WebDocument"_ustr));
 }
 
 void SwModelTestBase::createSwGlobalDoc(const char* pName)
 {
     if (!pName)
-        loadURL("private:factory/swriter/GlobalDocument");
+        loadURL(u"private:factory/swriter/GlobalDocument"_ustr);
     else
         loadURL(createFileURL(OUString::createFromAscii(pName)));
 
     uno::Reference<lang::XServiceInfo> xServiceInfo(mxComponent, uno::UNO_QUERY_THROW);
-    CPPUNIT_ASSERT(xServiceInfo->supportsService("com.sun.star.text.GlobalDocument"));
+    CPPUNIT_ASSERT(xServiceInfo->supportsService(u"com.sun.star.text.GlobalDocument"_ustr));
 }
 
-SwDoc* SwModelTestBase::getSwDoc() { return getSwDocShell()->GetDoc(); }
+SwDoc* SwModelTestBase::getSwDoc()
+{
+    SwDoc* pDoc = getSwDocShell()->GetDoc();
+    CPPUNIT_ASSERT(pDoc);
+    return pDoc;
+}
 
-SwDocShell* SwModelTestBase::getSwDocShell()
+SwDocShell* SwModelTestBase::getSwDocShell() { return getSwTextDoc()->GetDocShell(); }
+
+SwXTextDocument* SwModelTestBase::getSwTextDoc()
 {
     SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
     CPPUNIT_ASSERT(pTextDoc);
-
-    return pTextDoc->GetDocShell();
+    return pTextDoc;
 }
 
 xmlDocUniquePtr SwModelTestBase::WrapReqifFromTempFile()
@@ -580,21 +490,29 @@ xmlDocUniquePtr SwModelTestBase::WrapReqifFromTempFile()
     return pXmlDoc;
 }
 
-void SwModelTestBase::WrapFromTempFile(SvMemoryStream& rStream)
+void SwModelTestBase::emulateTyping(std::u16string_view rStr)
 {
-    SvFileStream aFileStream(maTempFile.GetURL(), StreamMode::READ);
-    rStream.WriteStream(aFileStream);
-    rStream.Seek(0);
-}
-
-void SwModelTestBase::emulateTyping(SwXTextDocument& rTextDoc, const std::u16string_view& rStr)
-{
+    SwXTextDocument* pTextDoc = getSwTextDoc();
     for (const char16_t c : rStr)
     {
-        rTextDoc.postKeyEvent(LOK_KEYEVENT_KEYINPUT, c, 0);
-        rTextDoc.postKeyEvent(LOK_KEYEVENT_KEYUP, c, 0);
+        pTextDoc->postKeyEvent(LOK_KEYEVENT_KEYINPUT, c, 0);
+        pTextDoc->postKeyEvent(LOK_KEYEVENT_KEYUP, c, 0);
         Scheduler::ProcessEventsToIdle();
     }
+}
+
+SwExportFormFieldsGuard::SwExportFormFieldsGuard()
+{
+    m_pBatch = comphelper::ConfigurationChanges::create();
+    m_bValue = officecfg::Office::Common::Filter::PDF::Export::ExportFormFields::get();
+    officecfg::Office::Common::Filter::PDF::Export::ExportFormFields::set(true, m_pBatch);
+    m_pBatch->commit();
+}
+
+SwExportFormFieldsGuard::~SwExportFormFieldsGuard()
+{
+    officecfg::Office::Common::Filter::PDF::Export::ExportFormFields::set(m_bValue, m_pBatch);
+    m_pBatch->commit();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

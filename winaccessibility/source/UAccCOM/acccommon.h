@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "stdafx.h"
+
 //for MAccessible.cxx
 struct ltComp
 {
@@ -43,20 +45,6 @@ struct ltComp
         return false;
     }
 };
-
-enum DM_NIR {
-    DM_FIRSTCHILD = 0x00,
-    DM_LASTCHILD = 0x01,
-    DM_NEXTCHILD = 0x02,
-    DM_PREVCHILD = 0x03
-};
-
-
-#define SELECT_STR       L"Select"
-#define PRESS_STR        L"Press"
-#define UNCHECK_STR      L"UnCheck"
-#define CHECK_STR        L"Check"
-//End
 
 template<typename T, typename Ifc> HRESULT
 createInstance(REFIID iid, Ifc ** ppIfc)

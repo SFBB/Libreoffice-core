@@ -32,7 +32,6 @@
 
 using namespace dbaui;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::form;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
@@ -44,7 +43,7 @@ namespace
     {
         bool bGrabFocus = false;
         SbaGridControl* pVclControl = _pView->getVclControl();
-        const Reference< css::awt::XControl >& xGrid = _pView->getGridControl();
+        const rtl::Reference< SbaXGridControl > xGrid = _pView->getGridControl();
         if (pVclControl && xGrid.is())
         {
             bGrabFocus = true;
@@ -88,10 +87,8 @@ void UnoDataBrowserView::Construct(const Reference< css::awt::XControlModel >& x
         OSL_ENSURE(m_xGrid.is(), "UnoDataBrowserView::Construct : could not create a grid control !");
         // in design mode (for the moment)
         m_xGrid->setDesignMode(true);
-
-        Reference< css::awt::XWindow >  xGridWindow(m_xGrid, UNO_QUERY);
-        xGridWindow->setVisible(true);
-        xGridWindow->setEnable(true);
+        m_xGrid->setVisible(true);
+        m_xGrid->setEnable(true);
 
         // introduce the model to the grid
         m_xGrid->setModel(xModel);
@@ -129,8 +126,8 @@ void UnoDataBrowserView::dispose()
     }
     catch(const Exception&)
     {}
-    m_pTreeView.clear();
-    m_pVclControl.clear();
+    m_pTreeView.reset();
+    m_pVclControl.reset();
     ODataView::dispose();
 }
 
@@ -226,9 +223,8 @@ void UnoDataBrowserView::resizeDocumentView(tools::Rectangle& _rPlayground)
     }
 
     // set the size of grid control
-    Reference< css::awt::XWindow >  xGridAsWindow(m_xGrid, UNO_QUERY);
-    if (xGridAsWindow.is())
-        xGridAsWindow->setPosSize( aSplitPos.X() + aSplitSize.Width(), aPlaygroundPos.Y(),
+    if (m_xGrid.is())
+        m_xGrid->setPosSize( aSplitPos.X() + aSplitSize.Width(), aPlaygroundPos.Y(),
                                    aPlaygroundSize.Width() - aSplitSize.Width() - aSplitPos.X(), aPlaygroundSize.Height(), css::awt::PosSize::POSSIZE);
 
     // just for completeness: there is no space left, we occupied it all ...

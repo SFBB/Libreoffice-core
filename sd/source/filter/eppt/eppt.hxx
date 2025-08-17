@@ -24,6 +24,7 @@
 #include "escherex.hxx"
 #include <sal/types.h>
 #include <sot/storage.hxx>
+#include <unotools/securityoptions.hxx>
 #include "pptexsoundcollection.hxx"
 
 #include "text.hxx"
@@ -35,7 +36,6 @@
 
 namespace com::sun::star::awt { class XControlModel; }
 namespace com::sun::star::beans { class XPropertySet; }
-namespace com::sun::star::beans { struct PropertyValue; }
 namespace com::sun::star::drawing { class XShape; }
 namespace com::sun::star::frame { class XModel; }
 namespace com::sun::star::task { class XStatusIndicator; }
@@ -127,10 +127,10 @@ class PPTWriter final : public PPTWriterBase, public PPTExBulletProvider
         bool                mbFontIndependentLineSpacing;
         sal_uInt32          mnTextSize;
 
-        tools::SvRef<SotStorage>        mrStg;
-        tools::SvRef<SotStorageStream>  mpCurUserStrm;
-        tools::SvRef<SotStorageStream>  mpStrm;
-        tools::SvRef<SotStorageStream>  mpPicStrm;
+        rtl::Reference<SotStorage>        mrStg;
+        rtl::Reference<SotStorageStream>  mpCurUserStrm;
+        rtl::Reference<SotStorageStream>  mpStrm;
+        rtl::Reference<SotStorageStream>  mpPicStrm;
         std::unique_ptr<PptEscherEx>    mpPptEscherEx;
 
         std::vector<std::unique_ptr<PPTExOleObjEntry>> maExOleObj;
@@ -138,6 +138,7 @@ class PPTWriter final : public PPTWriterBase, public PPTExBulletProvider
         SvMemoryStream*     mpVBA;
         sal_uInt32          mnExEmbed;
         std::unique_ptr<SvMemoryStream> mpExEmbed;
+        std::unique_ptr<SvtSecurityMapPersonalInfo> mpAuthorIDs; // map authors to remove personal info
 
         sal_uInt32          mnPagesWritten;
         sal_uInt32          mnTxId;             // Identifier determined by the HOST (PP) ????
@@ -211,14 +212,16 @@ class PPTWriter final : public PPTWriterBase, public PPTExBulletProvider
 
         bool                ImplCloseDocument();        // we write the font, hyper and sound list
 
+        void                ImplExportComments(const css::uno::Reference<css::drawing::XDrawPage>& xPage,
+                                               SvMemoryStream& rBinaryTagData10Atom);
         virtual void        ImplWriteSlide( sal_uInt32 nPageNum, sal_uInt32 nMasterID, sal_uInt16 nMode,
                                             bool bHasBackground, css::uno::Reference< css::beans::XPropertySet > const & aXBackgroundPropSet ) override;
         virtual void        ImplWriteNotes( sal_uInt32 nPageNum ) override;
         virtual void        ImplWriteSlideMaster( sal_uInt32 nPageNum, css::uno::Reference< css::beans::XPropertySet > const & aXBackgroundPropSet ) override;
 
     public:
-                                PPTWriter( tools::SvRef<SotStorage> xSvStorage,
-                                            css::uno::Reference< css::frame::XModel > const & rModel,
+                                PPTWriter( rtl::Reference<SotStorage> xSvStorage,
+                                            rtl::Reference< SdXImpressDocument > const & rModel,
                                             css::uno::Reference< css::task::XStatusIndicator > const & rStatInd,
                                             SvMemoryStream* pVBA, sal_uInt32 nCnvrtFlags );
 

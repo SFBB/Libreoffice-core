@@ -26,6 +26,7 @@
 #include <com/sun/star/chart2/PolarCoordinateSystem3d.hpp>
 #include <com/sun/star/chart2/CurveStyle.hpp>
 #include <com/sun/star/chart2/DataPointGeometry3D.hpp>
+#include <com/sun/star/chart2/PieChartSubType.hpp>
 #include <com/sun/star/chart2/StackingDirection.hpp>
 #include <com/sun/star/chart2/Symbol.hpp>
 #include <com/sun/star/chart2/XChartTypeContainer.hpp>
@@ -38,6 +39,7 @@
 #include <comphelper/sequence.hxx>
 #include <osl/diagnose.h>
 #include <drawingml/lineproperties.hxx>
+#include <drawingml/chart/seriesmodel.hxx>
 #include <drawingml/chart/seriesconverter.hxx>
 #include <drawingml/chart/typegroupmodel.hxx>
 #include <oox/core/xmlfilterbase.hxx>
@@ -66,14 +68,17 @@ const char SERVICE_CHART2_PIE[]       = "com.sun.star.chart2.PieChartType";
 const char SERVICE_CHART2_SCATTER[]   = "com.sun.star.chart2.ScatterChartType";
 const char SERVICE_CHART2_BUBBLE[]    = "com.sun.star.chart2.BubbleChartType";
 const char SERVICE_CHART2_SURFACE[]   = "com.sun.star.chart2.ColumnChartType";    // Todo
+const char SERVICE_CHART2_FUNNEL[]    = "com.sun.star.chart2.FunnelChartType";
+const char SERVICE_CHART2_HISTO[]     = "com.sun.star.chart2.HistogramChartType";
 
-namespace csscd = ::com::sun::star::chart::DataLabelPlacement;
+namespace csscd = css::chart::DataLabelPlacement;
 
 const TypeGroupInfo spTypeInfos[] =
 {
     // type-id          type-category         service                   varied-point-color   default label pos     polar  area2d 1stvis xcateg swap   stack  picopt
     { TYPEID_BAR,       TYPECATEGORY_BAR,     SERVICE_CHART2_COLUMN,    VARPOINTMODE_SINGLE, csscd::OUTSIDE,       false, true,  false, true,  false, true,  true  },
     { TYPEID_HORBAR,    TYPECATEGORY_BAR,     SERVICE_CHART2_COLUMN,    VARPOINTMODE_SINGLE, csscd::OUTSIDE,       false, true,  false, true,  true,  true,  true  },
+    { TYPEID_HISTO,     TYPECATEGORY_HISTO,   SERVICE_CHART2_HISTO,     VARPOINTMODE_SINGLE, csscd::OUTSIDE,       false, true,  false, true,  true,  true,  true  },
     { TYPEID_LINE,      TYPECATEGORY_LINE,    SERVICE_CHART2_LINE,      VARPOINTMODE_SINGLE, csscd::RIGHT,         false, false, false, true,  false, true,  false },
     { TYPEID_AREA,      TYPECATEGORY_LINE,    SERVICE_CHART2_AREA,      VARPOINTMODE_NONE,   csscd::CENTER,        false, true,  false, true,  false, true,  false },
     { TYPEID_STOCK,     TYPECATEGORY_LINE,    SERVICE_CHART2_CANDLE,    VARPOINTMODE_NONE,   csscd::RIGHT,         false, false, false, true,  false, true,  false },
@@ -84,7 +89,8 @@ const TypeGroupInfo spTypeInfos[] =
     { TYPEID_OFPIE,     TYPECATEGORY_PIE,     SERVICE_CHART2_PIE,       VARPOINTMODE_MULTI,  csscd::AVOID_OVERLAP, true,  true,  true,  true,  false, false, false },
     { TYPEID_SCATTER,   TYPECATEGORY_SCATTER, SERVICE_CHART2_SCATTER,   VARPOINTMODE_SINGLE, csscd::RIGHT,         false, false, false, false, false, false, false },
     { TYPEID_BUBBLE,    TYPECATEGORY_SCATTER, SERVICE_CHART2_BUBBLE,    VARPOINTMODE_SINGLE, csscd::RIGHT,         false, true,  false, false, false, false, false },
-    { TYPEID_SURFACE,   TYPECATEGORY_SURFACE, SERVICE_CHART2_SURFACE,   VARPOINTMODE_NONE,   csscd::RIGHT,         false, true,  false, true,  false, false, false }
+    { TYPEID_SURFACE,   TYPECATEGORY_SURFACE, SERVICE_CHART2_SURFACE,   VARPOINTMODE_NONE,   csscd::RIGHT,         false, true,  false, true,  false, false, false },
+    { TYPEID_FUNNEL,    TYPECATEGORY_FUNNEL,  SERVICE_CHART2_FUNNEL,    VARPOINTMODE_SINGLE, csscd::OUTSIDE,       false, true,  false, true,  false, false, false }
 };
 
 const TypeGroupInfo saUnknownTypeInfo =
@@ -152,6 +158,7 @@ TypeGroupConverter::TypeGroupConverter( const ConverterRoot& rParent, TypeGroupM
         case C_TOKEN( barChart ):       ENSURE_AXESCOUNT( 2, 2 ); eTypeId = TYPEID_BAR;       mb3dChart = false;  break;
         case C_TOKEN( bubbleChart ):    ENSURE_AXESCOUNT( 2, 2 ); eTypeId = TYPEID_BUBBLE;    mb3dChart = false;  break;
         case C_TOKEN( doughnutChart ):  ENSURE_AXESCOUNT( 0, 0 ); eTypeId = TYPEID_DOUGHNUT;  mb3dChart = false;  break;
+        case CX_TOKEN( funnel ):        ENSURE_AXESCOUNT( 2, 2 ); eTypeId = TYPEID_FUNNEL;    mb3dChart = false;  break;
         case C_TOKEN( line3DChart ):    ENSURE_AXESCOUNT( 3, 3 ); eTypeId = TYPEID_LINE;      mb3dChart = true;   break;
         case C_TOKEN( lineChart ):      ENSURE_AXESCOUNT( 2, 2 ); eTypeId = TYPEID_LINE;      mb3dChart = false;  break;
         case C_TOKEN( ofPieChart ):     ENSURE_AXESCOUNT( 0, 0 ); eTypeId = TYPEID_OFPIE;     mb3dChart = false;  break;
@@ -234,6 +241,15 @@ OUString TypeGroupConverter::getSingleSeriesTitle() const
     return aSeriesTitle;
 }
 
+bool TypeGroupConverter::isSingleSeriesTitle() const
+{
+    if (!mrModel.maSeries.empty() && (maTypeInfo.mbSingleSeriesVis || (mrModel.maSeries.size() == 1)) &&
+        mrModel.maSeries.front()->mxText.is())
+        return true;
+
+    return false;
+}
+
 Reference< XCoordinateSystem > TypeGroupConverter::createCoordinateSystem()
 {
     // create the coordinate system object
@@ -273,16 +289,16 @@ Reference< XLabeledDataSequence > TypeGroupConverter::createCategorySequence()
         first series, even if it was empty. */
     for (auto const& elem : mrModel.maSeries)
     {
-        if( elem->maSources.has( SeriesModel::CATEGORIES ) )
+        if( elem->maSources.has( DataSourceType::CATEGORIES ) )
         {
             SeriesConverter aSeriesConv(*this, *elem);
-            xLabeledSeq = aSeriesConv.createCategorySequence( "categories" );
+            xLabeledSeq = aSeriesConv.createCategorySequence( u"categories"_ustr );
             if (xLabeledSeq.is())
                 break;
         }
-        else if( nMaxValues <= 0 && elem->maSources.has( SeriesModel::VALUES ) )
+        else if( nMaxValues <= 0 && elem->maSources.has( DataSourceType::VALUES ) )
         {
-            DataSourceModel *pValues = elem->maSources.get( SeriesModel::VALUES ).get();
+            DataSourceModel *pValues = elem->maSources.get( DataSourceType::VALUES ).get();
             if( pValues->mxDataSeq.is() )
                 nMaxValues = pValues->mxDataSeq->maData.size();
         }
@@ -291,24 +307,26 @@ Reference< XLabeledDataSequence > TypeGroupConverter::createCategorySequence()
     if( !xLabeledSeq.is() && !mrModel.maSeries.empty() ) {
         if( nMaxValues < 0 )
             nMaxValues = 2;
-        SeriesModel &aModel = *mrModel.maSeries.get(0);
-        if (!aModel.maSources.has(SeriesModel::CATEGORIES))
+        typedef RefVector<SeriesModel> SeriesModelVector;
+        SeriesModelVector::value_type aModel = mrModel.maSeries.get(0);
+        if (!aModel->maSources.has(DataSourceType::CATEGORIES))
         {
-            DataSourceModel &aSrc = aModel.maSources.create( SeriesModel::CATEGORIES );
+            DataSourceModel &aSrc = aModel->maSources.create( DataSourceType::CATEGORIES );
             DataSequenceModel &aSeq = aSrc.mxDataSeq.create();
             aSeq.mnPointCount = nMaxValues;
             for( sal_Int32 i = 0; i < nMaxValues; i++ )
                 aSeq.maData[ i ] <<= OUString::number( i + 1 );
         }
-        SeriesConverter aSeriesConv( *this,  aModel );
-        xLabeledSeq = aSeriesConv.createCategorySequence( "categories" );
+        SeriesConverter aSeriesConv( *this,  *aModel );
+        xLabeledSeq = aSeriesConv.createCategorySequence( u"categories"_ustr );
     }
     return xLabeledSeq;
 }
 
 void TypeGroupConverter::convertFromModel( const Reference< XDiagram >& rxDiagram,
         const Reference< XCoordinateSystem >& rxCoordSystem,
-        sal_Int32 nAxesSetIdx, bool bSupportsVaryColorsByPoint )
+        sal_Int32 nAxesSetIdx,
+        bool bSupportsVaryColorsByPoint )
 {
     try
     {
@@ -341,6 +359,17 @@ void TypeGroupConverter::convertFromModel( const Reference< XDiagram >& rxDiagra
                     not support pie rotation. */
                 if( !is3dChart() && (maTypeInfo.meTypeId != TYPEID_OFPIE) )
                     convertPieRotation( aDiaProp, mrModel.mnFirstAngle );
+
+                if (maTypeInfo.meTypeId == TYPEID_OFPIE) {
+                    aDiaProp.setProperty(PROP_SubPieType,
+                            convertOfPieType(mrModel.mnOfPieType));
+                    if (mrModel.mnSplitType == XML_auto ||
+                            mrModel.mnSplitType == XML_pos) {
+                        aDiaProp.setProperty(PROP_SplitPos, mrModel.mfSplitPos);
+                    }
+                } else {
+                    aDiaProp.setProperty(PROP_SubPieType, PieChartSubType_NONE);
+                }
             }
             break;
             default:;
@@ -366,7 +395,7 @@ void TypeGroupConverter::convertFromModel( const Reference< XDiagram >& rxDiagra
         if( maTypeInfo.meTypeId == TYPEID_STOCK )
         {
             // create the data series object
-            Reference< XDataSeries > xDataSeries( createInstance( "com.sun.star.chart2.DataSeries" ), UNO_QUERY );
+            Reference< XDataSeries > xDataSeries( createInstance( u"com.sun.star.chart2.DataSeries"_ustr ), UNO_QUERY );
             Reference< XDataSink > xDataSink( xDataSeries, UNO_QUERY );
             if( xDataSink.is() )
             {
@@ -472,7 +501,7 @@ void TypeGroupConverter::convertMarker( PropertySet& rPropSet, sal_Int32 nOoxSym
     if( isSeriesFrameFormat() )
         return;
 
-    namespace cssc = ::com::sun::star::chart2;
+    namespace cssc = css::chart2;
 
     // symbol style
     cssc::Symbol aSymbol;
@@ -519,7 +548,7 @@ void TypeGroupConverter::convertLineSmooth( PropertySet& rPropSet, bool bOoxSmoo
 {
     if( !isSeriesFrameFormat() && (maTypeInfo.meTypeCategory != TYPECATEGORY_RADAR) )
     {
-        namespace cssc = ::com::sun::star::chart2;
+        namespace cssc = css::chart2;
         cssc::CurveStyle eCurveStyle = bOoxSmooth ? cssc::CurveStyle_CUBIC_SPLINES : cssc::CurveStyle_LINES;
         rPropSet.setProperty( PROP_CurveStyle, eCurveStyle );
     }
@@ -530,7 +559,7 @@ void TypeGroupConverter::convertBarGeometry( PropertySet& rPropSet, sal_Int32 nO
     if( !(mb3dChart && (maTypeInfo.meTypeCategory == TYPECATEGORY_BAR)) )
         return;
 
-    namespace cssc = ::com::sun::star::chart2;
+    namespace cssc = css::chart2;
 
     sal_Int32 nGeom3d = cssc::DataPointGeometry3D::CUBOID;
     switch( nOoxShape )
@@ -566,6 +595,42 @@ void TypeGroupConverter::convertPieExplosion( PropertySet& rPropSet, sal_Int32 n
     }
 }
 
+PieChartSubType TypeGroupConverter::convertOfPieType(sal_Int32 nOoxOfPieType ) const
+{
+    if( maTypeInfo.meTypeCategory == TYPECATEGORY_PIE ) {
+        switch (nOoxOfPieType) {
+        case XML_pie:
+            return PieChartSubType_PIE;
+            break;
+        case XML_bar:
+            return PieChartSubType_BAR;
+            break;
+        default:
+            OSL_FAIL( "TypeGroupConverter::convertOfPieType - unknown of-pie type" );
+            return PieChartSubType_NONE;
+        }
+    } else {
+        return PieChartSubType_NONE;
+    }
+}
+
+void TypeGroupConverter::moveDataToSeries(DataSourceCxModel::DataMap& raDataMap)
+{
+    // For chartex, move data from rDataMap to the appropriate series. In
+    // chartex the data is given outside the series, in a child element of
+    // <cx:chartSpace>. Pre-2016 charts have the data inside the series, and
+    // SeriesModel and subsequent handling reflects this. So here we get the
+    // data to the right place for processing.
+    if (!raDataMap.empty()) {
+        // should only happen for chartex
+        for (auto const& elem : mrModel.maSeries) {
+            // This ID must be present in the map
+            assert(raDataMap.find(elem->mnDataId) != raDataMap.end());
+            elem->maSources = *(raDataMap[elem->mnDataId]);
+        }
+    }
+}
+
 // private --------------------------------------------------------------------
 
 void TypeGroupConverter::insertDataSeries( const Reference< XChartType >& rxChartType, const Reference< XDataSeries >& rxSeries, sal_Int32 nAxesSetIdx )
@@ -576,7 +641,7 @@ void TypeGroupConverter::insertDataSeries( const Reference< XChartType >& rxChar
     PropertySet aSeriesProp( rxSeries );
 
     // series stacking mode
-    namespace cssc = ::com::sun::star::chart2;
+    namespace cssc = css::chart2;
     cssc::StackingDirection eStacking = cssc::StackingDirection_NO_STACKING;
     // stacked overrides deep-3d
     if( isStacked() || isPercent() )

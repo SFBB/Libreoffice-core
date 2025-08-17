@@ -26,12 +26,12 @@
 #include "PresenterScrollBar.hxx"
 #include "PresenterTextView.hxx"
 #include <DrawController.hxx>
+#include <framework/ConfigurationController.hxx>
 #include <com/sun/star/accessibility/AccessibleTextType.hpp>
 #include <com/sun/star/awt/Key.hpp>
 #include <com/sun/star/awt/KeyModifier.hpp>
 #include <com/sun/star/awt/PosSize.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
+#include <framework/AbstractPane.hxx>
 #include <com/sun/star/lang/XServiceName.hpp>
 #include <com/sun/star/presentation/XPresentationPage.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
@@ -52,11 +52,10 @@ namespace sdext::presenter {
 
 PresenterNotesView::PresenterNotesView (
     const Reference<XComponentContext>& rxComponentContext,
-    const Reference<XResourceId>& rxViewId,
+    const rtl::Reference<sd::framework::ResourceId>& rxViewId,
     const ::rtl::Reference<::sd::DrawController>& rxController,
     const ::rtl::Reference<PresenterController>& rpPresenterController)
-    : PresenterNotesViewInterfaceBase(m_aMutex),
-      mxViewId(rxViewId),
+    : mxViewId(rxViewId),
       mpPresenterController(rpPresenterController),
       maSeparatorColor(0xffffff),
       mnSeparatorYLocation(0),
@@ -64,8 +63,8 @@ PresenterNotesView::PresenterNotesView (
 {
     try
     {
-        Reference<XConfigurationController> xCC (rxController->getConfigurationController(), UNO_SET_THROW);
-        Reference<XPane> xPane (xCC->getResource(rxViewId->getAnchor()), UNO_QUERY_THROW);
+        rtl::Reference<sd::framework::ConfigurationController> xCC (rxController->getConfigurationController());
+        rtl::Reference<sd::framework::AbstractPane> xPane = dynamic_cast<sd::framework::AbstractPane*>(xCC->getResource(rxViewId->getAnchor()).get());
 
         mxParentWindow = xPane->getWindow();
         mxCanvas = xPane->getCanvas();
@@ -88,7 +87,7 @@ PresenterNotesView::PresenterNotesView (
             mpPresenterController->GetTheme(),
             mxParentWindow,
             mxCanvas,
-            "NotesViewCloser");
+            u"NotesViewCloser"_ustr);
 
         if (mxParentWindow.is())
         {
@@ -112,7 +111,10 @@ PresenterNotesView::PresenterNotesView (
     }
     catch (RuntimeException&)
     {
-        PresenterNotesView::disposing();
+        {
+            std::unique_lock l(m_aMutex);
+            PresenterNotesView::disposing(l);
+        }
         throw;
     }
 }
@@ -121,7 +123,7 @@ PresenterNotesView::~PresenterNotesView()
 {
 }
 
-void SAL_CALL PresenterNotesView::disposing()
+void PresenterNotesView::disposing(std::unique_lock<std::mutex>&)
 {
     if (mxParentWindow.is())
     {
@@ -133,8 +135,7 @@ void SAL_CALL PresenterNotesView::disposing()
 
     // Dispose tool bar.
     {
-        Reference<XComponent> xComponent = mpToolBar;
-        mpToolBar = nullptr;
+        rtl::Reference<PresenterToolBar> xComponent = std::move(mpToolBar);
         if (xComponent.is())
             xComponent->dispose();
     }
@@ -153,7 +154,7 @@ void SAL_CALL PresenterNotesView::disposing()
 
     // Dispose close button
     {
-        Reference<XComponent> xComponent = mpCloseButton;
+        rtl::Reference<XComponent> xComponent = mpCloseButton;
         mpCloseButton = nullptr;
         if (xComponent.is())
             xComponent->dispose();
@@ -173,19 +174,10 @@ void PresenterNotesView::CreateToolBar (
     if (!rpPresenterController)
         return;
 
-    Reference<drawing::XPresenterHelper> xPresenterHelper (
-        rpPresenterController->GetPresenterHelper());
-    if ( ! xPresenterHelper.is())
-        return;
-
     // Create a new window as container of the tool bar.
-    mxToolBarWindow = xPresenterHelper->createWindow(
-        mxParentWindow,
-        false,
-        true,
-        false,
-        false);
-    mxToolBarCanvas = xPresenterHelper->createSharedCanvas (
+    mxToolBarWindow = sd::presenter::PresenterHelper::createWindow(
+        mxParentWindow, true);
+    mxToolBarCanvas = sd::presenter::PresenterHelper::createSharedCanvas (
         Reference<rendering::XSpriteCanvas>(mxCanvas, UNO_QUERY),
         mxParentWindow,
         mxCanvas,
@@ -200,7 +192,7 @@ void PresenterNotesView::CreateToolBar (
         rpPresenterController,
         PresenterToolBar::Left);
     mpToolBar->Initialize(
-        "PresenterScreenSettings/ToolBars/NotesToolBar");
+        u"PresenterScreenSettings/ToolBars/NotesToolBar"_ustr);
 }
 
 void PresenterNotesView::SetSlide (const Reference<drawing::XDrawPage>& rxNotesPage)
@@ -280,11 +272,9 @@ void SAL_CALL PresenterNotesView::windowHidden (const lang::EventObject&) {}
 
 void SAL_CALL PresenterNotesView::windowPaint (const awt::PaintEvent& rEvent)
 {
-    if (rBHelper.bDisposed || rBHelper.bInDispose)
     {
-        throw lang::DisposedException (
-            "PresenterNotesView object has already been disposed",
-            static_cast<uno::XWeak*>(this));
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
     }
 
     if ( ! mbIsPresenterViewActive)
@@ -294,14 +284,14 @@ void SAL_CALL PresenterNotesView::windowPaint (const awt::PaintEvent& rEvent)
     Paint(rEvent.UpdateRect);
 }
 
-//----- XResourceId -----------------------------------------------------------
+//----- AbstractResource -----------------------------------------------------------
 
-Reference<XResourceId> SAL_CALL PresenterNotesView::getResourceId()
+rtl::Reference<sd::framework::ResourceId> PresenterNotesView::getResourceId()
 {
     return mxViewId;
 }
 
-sal_Bool SAL_CALL PresenterNotesView::isAnchorOnly()
+bool PresenterNotesView::isAnchorOnly()
 {
     return false;
 }
@@ -420,32 +410,30 @@ void PresenterNotesView::Layout()
                 {
                     OSL_ASSERT(false);
                 }
+
+            mpScrollBar->SetVisible(bShowVerticalScrollbar);
             if(AllSettings::GetLayoutRTL())
             {
-                    mpScrollBar->SetVisible(bShowVerticalScrollbar);
+
                     mpScrollBar->SetPosSize(
                                             geometry::RealRectangle2D(
                                                                       aNewTextBoundingBox.X1 - mpScrollBar->GetSize(),
                                                                       aNewTextBoundingBox.Y1,
                                                                       aNewTextBoundingBox.X1,
                                                                       aNewTextBoundingBox.Y2));
-                    if( ! bShowVerticalScrollbar)
-                        mpScrollBar->SetThumbPosition(0, false);
-                    UpdateScrollBar();
             }
             else
             {
-                    mpScrollBar->SetVisible(bShowVerticalScrollbar);
                     mpScrollBar->SetPosSize(
                                             geometry::RealRectangle2D(
                                                                       aWindowBox.Width - mpScrollBar->GetSize(),
                                                                       aNewTextBoundingBox.Y1,
                                                                       aNewTextBoundingBox.X2 + mpScrollBar->GetSize(),
                                                                       aNewTextBoundingBox.Y2));
-                    if( ! bShowVerticalScrollbar)
-                        mpScrollBar->SetThumbPosition(0, false);
-                    UpdateScrollBar();
             }
+            if (!bShowVerticalScrollbar)
+                mpScrollBar->SetThumbPosition(0, false);
+            UpdateScrollBar();
     }
     // Has the text area has changed it position or size?
     if (aNewTextBoundingBox.X1 != maTextBoundingBox.X1
@@ -608,8 +596,8 @@ void PresenterNotesView::ChangeFontSize (const sal_Int32 nSizeChange)
         if (pConfiguration == nullptr || !pConfiguration->IsValid())
             return;
 
-        pConfiguration->GoToChild("Font");
-        pConfiguration->SetProperty("Size", Any(static_cast<sal_Int32>(nNewSize+0.5)));
+        pConfiguration->GoToChild(u"Font"_ustr);
+        pConfiguration->SetProperty(u"Size"_ustr, Any(static_cast<sal_Int32>(nNewSize+0.5)));
         pConfiguration->CommitChanges();
     }
     catch (Exception&)

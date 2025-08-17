@@ -32,10 +32,8 @@
 #include "reffld.hxx"
 #include "nodeoffset.hxx"
 
-class SwField;
 class SwTextField;
 class SwView;
-class SwFieldType;
 class SwDDETable;
 class SwFormatField;
 class SwXTextField;
@@ -76,8 +74,8 @@ namespace sw {
     };
     struct GatherRefFieldsHint final : SfxHint {
         std::vector<SwGetRefField*>& m_rvRFields;
-        const sal_uInt16 m_nType;
-        GatherRefFieldsHint(std::vector<SwGetRefField*>& rvRFields, const sal_uInt16 nType)
+        const ReferencesSubtype m_nType;
+        GatherRefFieldsHint(std::vector<SwGetRefField*>& rvRFields, const ReferencesSubtype nType)
             : SfxHint(SfxHintId::SwGatherRefFields),
               m_rvRFields(rvRFields), m_nType(nType) {};
     };
@@ -90,7 +88,7 @@ namespace sw {
     };
     struct GatherDdeTablesHint final : SfxHint {
         std::vector<SwDDETable*>& m_rvTables;
-        GatherDdeTablesHint(std::vector<SwDDETable*>& rvTables) : m_rvTables(rvTables) {};
+        GatherDdeTablesHint(std::vector<SwDDETable*>& rvTables) : SfxHint(SfxHintId::SwGatherDdeTables), m_rvTables(rvTables) {};
     };
 }
 
@@ -102,6 +100,8 @@ class SW_DLLPUBLIC SwFormatField final
     , public sw::BroadcastingModify
     , public SfxBroadcaster
 {
+    friend SwFormatField* createSwFormatFieldForItemInfoPackage(sal_uInt16);
+    // friend class ItemInfoPackageSwAttributes;
     friend void InitCore();
     SwFormatField( sal_uInt16 nWhich ); // for default-Attribute
 
@@ -115,6 +115,7 @@ class SW_DLLPUBLIC SwFormatField final
 public:
 
     /// Single argument constructors shall be explicit.
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatField)
     explicit SwFormatField( const SwField &rField );
 
     SwFormatField( const SwFormatField& rAttr );
@@ -177,7 +178,8 @@ enum class SwFormatFieldHintWhich
     REMOVED    = 2,
     FOCUS      = 3,
     CHANGED    = 4,
-    RESOLVED   = 5
+    RESOLVED   = 5,
+    REDLINED_DELETION = 6
 };
 
 /// This SfxHint subclass is produced by code that changes the doc model (e.g. SwNodes::ChgNode()),
@@ -193,7 +195,8 @@ class SW_DLLPUBLIC SwFormatFieldHint final : public SfxHint
 
 public:
     SwFormatFieldHint( const SwFormatField* pField, SwFormatFieldHintWhich nWhich, const SwView* pView = nullptr)
-        : m_pField(pField)
+        : SfxHint(SfxHintId::SwFormatField)
+        , m_pField(pField)
         , m_nWhich(nWhich)
         , m_pView(pView)
     {}

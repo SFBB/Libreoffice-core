@@ -26,6 +26,7 @@
 #include <com/sun/star/ui/dialogs/WizardTravelType.hpp>
 
 using vcl::RoadmapWizardTypes::WizardPath;
+using vcl::RoadmapWizardTypes::PathId;
 
 namespace svt::uno
 {
@@ -66,7 +67,7 @@ namespace svt::uno
             WizardPath aPath( rPath.getLength() );
             std::transform(rPath.begin(), rPath.end(), aPath.begin(),
                 [this](const sal_Int16 nPageId) -> WizardPath::value_type { return impl_pageIdToState(nPageId); });
-            declarePath( i, aPath );
+            declarePath( static_cast<PathId>(i), aPath );
         }
 
         // create the first page, to know the page size
@@ -182,7 +183,7 @@ namespace svt::uno
         {
         public:
             EmptyPage(weld::Widget* pParent, weld::DialogController* pController)
-                : BuilderPage(pParent, pController, "svt/ui/emptypage.ui", "EmptyPage")
+                : BuilderPage(pParent, pController, u"svt/ui/emptypage.ui"_ustr, u"EmptyPage"_ustr)
             {
                 m_xContainer->set_size_request(m_xContainer->get_approximate_digit_width() * 70,
                                                m_xContainer->get_text_height() * 10);
@@ -201,9 +202,8 @@ namespace svt::uno
         weld::Container* pPageContainer = m_xAssistant->append_page(sIdent);
 
         auto xPage = std::make_unique<EmptyPage>(pPageContainer, this);
-        auto pController = std::make_shared<WizardPageController>(xPage->GetContainer(), m_xController, nPageId);
-
-        m_aPageControllers[xPage.get()] = pController;
+        m_aPageControllers[xPage.get()] =
+            std::make_shared<WizardPageController>(xPage->GetContainer(), m_xController, nPageId);
 
         return xPage;
     }

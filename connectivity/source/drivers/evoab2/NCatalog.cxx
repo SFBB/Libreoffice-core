@@ -26,11 +26,8 @@
 
 using namespace connectivity::evoab;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 
 OEvoabCatalog::OEvoabCatalog(OEvoabConnection* _pCon) :
     connectivity::sdbcx::OCatalog(_pCon)
@@ -40,9 +37,9 @@ OEvoabCatalog::OEvoabCatalog(OEvoabConnection* _pCon) :
 void OEvoabCatalog::refreshTables()
 {
     ::std::vector< OUString> aVector;
-    Sequence< OUString > aTypes { "TABLE" };
+    Sequence< OUString > aTypes { u"TABLE"_ustr };
     Reference< XResultSet > xResult = m_xMetaData->getTables(
-        Any(), "%", "%", aTypes);
+        Any(), u"%"_ustr, u"%"_ustr, aTypes);
 
     if(xResult.is())
     {

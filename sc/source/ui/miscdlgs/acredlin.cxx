@@ -68,13 +68,13 @@ ScRedlinData::~ScRedlinData()
 
 
 ScAcceptChgDlg::ScAcceptChgDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent,
-    ScViewData* ptrViewData)
+    ScViewData& rViewData)
     : SfxModelessDialogController(pB, pCW, pParent,
-        "svx/ui/acceptrejectchangesdialog.ui", "AcceptRejectChangesDialog")
+        u"svx/ui/acceptrejectchangesdialog.ui"_ustr, u"AcceptRejectChangesDialog"_ustr)
     , aSelectionIdle( "ScAcceptChgDlg  aSelectionIdle" )
     , aReOpenIdle("ScAcceptChgDlg ReOpenIdle")
-    , pViewData( ptrViewData )
-    , pDoc( &ptrViewData->GetDocument() )
+    , pViewData( &rViewData )
+    , pDoc( &rViewData.GetDocument() )
     , aStrInsertCols(ScResId(STR_CHG_INSERT_COLS))
     , aStrInsertRows(ScResId(STR_CHG_INSERT_ROWS))
     , aStrInsertTabs(ScResId(STR_CHG_INSERT_TABS))
@@ -91,14 +91,14 @@ ScAcceptChgDlg::ScAcceptChgDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Windo
     , aStrChildContent(ScResId(STR_CHG_CHILD_CONTENT))
     , aStrChildOrgContent(ScResId(STR_CHG_CHILD_ORGCONTENT))
     , aStrEmpty(ScResId(STR_CHG_EMPTY))
-    , aUnknown("Unknown")
+    , aUnknown(u"Unknown"_ustr)
     , bIgnoreMsg(false)
     , bNoSelection(false)
     , bHasFilterEntry(false)
     , bUseColor(false)
     , m_xContentArea(m_xDialog->weld_content_area())
-    , m_xPopup(m_xBuilder->weld_menu("calcmenu"))
-    , m_xSortMenu(m_xBuilder->weld_menu("calcsortmenu"))
+    , m_xPopup(m_xBuilder->weld_menu(u"calcmenu"_ustr))
+    , m_xSortMenu(m_xBuilder->weld_menu(u"calcsortmenu"_ustr))
 {
     m_xAcceptChgCtr.reset(new SvxAcceptChgCtr(m_xContentArea.get()));
     nAcceptCount=0;
@@ -126,7 +126,7 @@ ScAcceptChgDlg::ScAcceptChgDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Windo
 
     weld::TreeView& rTreeView = pTheView->GetWidget();
     rTreeView.connect_expanding(LINK(this, ScAcceptChgDlg, ExpandingHandle));
-    rTreeView.connect_changed(LINK(this, ScAcceptChgDlg, SelectHandle));
+    rTreeView.connect_selection_changed(LINK(this, ScAcceptChgDlg, SelectHandle));
     rTreeView.connect_popup_menu(LINK(this, ScAcceptChgDlg, CommandHdl));
     rTreeView.set_sort_func([this](const weld::TreeIter& rLeft, const weld::TreeIter& rRight){
         return ColCompareHdl(rLeft, rRight);
@@ -154,13 +154,10 @@ ScAcceptChgDlg::~ScAcceptChgDlg()
     }
 }
 
-void ScAcceptChgDlg::ReInit(ScViewData* ptrViewData)
+void ScAcceptChgDlg::ReInit(ScViewData& rViewData)
 {
-    pViewData=ptrViewData;
-    if (pViewData)
-        pDoc = &ptrViewData->GetDocument();
-    else
-        pDoc = nullptr;
+    pViewData = &rViewData;
+    pDoc = &rViewData.GetDocument();
 
     bNoSelection=false;
     bIgnoreMsg=false;
@@ -172,18 +169,13 @@ void ScAcceptChgDlg::ReInit(ScViewData* ptrViewData)
     ClearView();
     UpdateView();
 
-    if ( pDoc )
-    {
-        ScChangeTrack* pChanges = pDoc->GetChangeTrack();
-        if ( pChanges )
-            pChanges->SetModifiedLink( LINK( this, ScAcceptChgDlg, ChgTrackModHdl ) );
-    }
+    ScChangeTrack* pChanges = pDoc->GetChangeTrack();
+    if ( pChanges )
+        pChanges->SetModifiedLink( LINK( this, ScAcceptChgDlg, ChgTrackModHdl ) );
 }
 
 void ScAcceptChgDlg::Init()
 {
-    OSL_ENSURE( pViewData && pDoc, "ViewData or Document not found!" );
-
     ScChangeTrack* pChanges=pDoc->GetChangeTrack();
 
     if(pChanges!=nullptr)
@@ -317,7 +309,7 @@ bool ScAcceptChgDlg::IsValidAction(const ScChangeAction* pScChangeAction)
     bool bFlag = false;
 
     ScRange aRef=pScChangeAction->GetBigRange().MakeRange(*pDoc);
-    OUString aUser=pScChangeAction->GetUser();
+    const OUString& aUser=pScChangeAction->GetUser();
     DateTime aDateTime=pScChangeAction->GetDateTime();
 
     ScChangeActionType eType=pScChangeAction->GetType();
@@ -513,7 +505,7 @@ std::unique_ptr<weld::TreeIter> ScAcceptChgDlg::AppendFilteredAction(
     bool bFlag = false;
 
     ScRange aRef=pScChangeAction->GetBigRange().MakeRange(*pDoc);
-    OUString aUser=pScChangeAction->GetUser();
+    const OUString& aUser=pScChangeAction->GetUser();
     DateTime aDateTime=pScChangeAction->GetDateTime();
 
     if (pTheView->IsValidEntry(aUser, aDateTime) || bIsGenerated)
@@ -652,14 +644,14 @@ std::unique_ptr<weld::TreeIter> ScAcceptChgDlg::InsertChangeActionContent(const 
 
     if(nSpecial==RD_SPECIAL_CONTENT)
     {
-        aContent = pScChangeAction->GetOldString(pDoc);
+        aContent = pScChangeAction->GetOldString(*pDoc);
         if (aContent.isEmpty())
             aContent = aStrEmpty;
         aDesc = aStrChildOrgContent + ": " + aContent;
     }
     else
     {
-        const OUString aTmp( pScChangeAction->GetNewString(pDoc));
+        const OUString aTmp( pScChangeAction->GetNewString(*pDoc));
         if (aTmp.isEmpty())
             aContent = aStrEmpty;
         else
@@ -731,12 +723,9 @@ void ScAcceptChgDlg::UpdateView()
 
     bUseColor = bFilterFlag;
 
-    if(pDoc!=nullptr)
-    {
-        pChanges=pDoc->GetChangeTrack();
-        if(pChanges!=nullptr)
-            pScChangeAction=pChanges->GetFirst();
-    }
+    pChanges=pDoc->GetChangeTrack();
+    if(pChanges!=nullptr)
+        pScChangeAction=pChanges->GetFirst();
     bool bTheFlag = false;
 
     while(pScChangeAction!=nullptr)
@@ -805,7 +794,7 @@ IMPL_LINK_NOARG(ScAcceptChgDlg, RefHandle, SvxTPFilter*, void)
 {
     sal_uInt16 nId  =ScSimpleRefDlgWrapper::GetChildWindowId();
 
-    SC_MOD()->SetRefDialog( nId, true );
+    ScModule::get()->SetRefDialog(nId, true);
 
     SfxViewFrame& rViewFrm = pViewData->GetViewShell()->GetViewFrame();
     ScSimpleRefDlgWrapper* pWnd = static_cast<ScSimpleRefDlgWrapper*>(rViewFrm.GetChildWindow( nId ));
@@ -876,11 +865,11 @@ IMPL_LINK( ScAcceptChgDlg, RejectHandle, SvxTPView*, pRef, void )
             }
             return false;
         });
-        ScDocShell* pDocSh=pViewData->GetDocShell();
-        pDocSh->PostPaintExtras();
-        pDocSh->PostPaintGridAll();
-        pDocSh->GetUndoManager()->Clear();
-        pDocSh->SetDocumentModified();
+        ScDocShell& rDocSh=pViewData->GetDocShell();
+        rDocSh.PostPaintExtras();
+        rDocSh.PostPaintGridAll();
+        rDocSh.GetUndoManager()->Clear();
+        rDocSh.SetDocumentModified();
         ClearView();
         UpdateView();
     }
@@ -916,10 +905,10 @@ IMPL_LINK( ScAcceptChgDlg, AcceptHandle, SvxTPView*, pRef, void )
             }
             return false;
         });
-        ScDocShell* pDocSh=pViewData->GetDocShell();
-        pDocSh->PostPaintExtras();
-        pDocSh->PostPaintGridAll();
-        pDocSh->SetDocumentModified();
+        ScDocShell& rDocSh=pViewData->GetDocShell();
+        rDocSh.PostPaintExtras();
+        rDocSh.PostPaintGridAll();
+        rDocSh.SetDocumentModified();
         ClearView();
         UpdateView();
     }
@@ -929,7 +918,6 @@ IMPL_LINK( ScAcceptChgDlg, AcceptHandle, SvxTPView*, pRef, void )
 
 void ScAcceptChgDlg::RejectFiltered()
 {
-    if(pDoc==nullptr) return;
     ScChangeTrack* pChanges=pDoc->GetChangeTrack();
     const ScChangeAction* pScChangeAction=nullptr;
 
@@ -949,7 +937,6 @@ void ScAcceptChgDlg::RejectFiltered()
 }
 void ScAcceptChgDlg::AcceptFiltered()
 {
-    if(pDoc==nullptr) return;
     ScChangeTrack* pChanges=pDoc->GetChangeTrack();
     const ScChangeAction* pScChangeAction=nullptr;
 
@@ -980,11 +967,11 @@ IMPL_LINK_NOARG(ScAcceptChgDlg, RejectAllHandle, SvxTPView*, void)
 
         pViewData->SetTabNo(0);
 
-        ScDocShell* pDocSh=pViewData->GetDocShell();
-        pDocSh->PostPaintExtras();
-        pDocSh->PostPaintGridAll();
-        pDocSh->GetUndoManager()->Clear();
-        pDocSh->SetDocumentModified();
+        ScDocShell& rDocSh=pViewData->GetDocShell();
+        rDocSh.PostPaintExtras();
+        rDocSh.PostPaintGridAll();
+        rDocSh.GetUndoManager()->Clear();
+        rDocSh.SetDocumentModified();
         ClearView();
         UpdateView();
     }
@@ -1006,10 +993,10 @@ IMPL_LINK_NOARG(ScAcceptChgDlg, AcceptAllHandle, SvxTPView*, void)
         else
             pChanges->AcceptAll();
 
-        ScDocShell* pDocSh=pViewData->GetDocShell();
-        pDocSh->PostPaintExtras();
-        pDocSh->PostPaintGridAll();
-        pDocSh->SetDocumentModified();
+        ScDocShell& rDocSh=pViewData->GetDocShell();
+        rDocSh.PostPaintExtras();
+        rDocSh.PostPaintGridAll();
+        rDocSh.SetDocumentModified();
         ClearView();
         UpdateView();
     }
@@ -1602,7 +1589,7 @@ IMPL_LINK(ScAcceptChgDlg, CommandHdl, const CommandEvent&, rCEvt, bool)
     for (sal_Int32 i = 0; i < 5; ++i)
         m_xSortMenu->set_active("calcsort" + OUString::number(i), i == nSortedCol);
 
-    m_xPopup->set_sensitive("calcedit", false);
+    m_xPopup->set_sensitive(u"calcedit"_ustr, false);
 
     if (pDoc->IsDocEditable() && bEntry)
     {
@@ -1611,7 +1598,7 @@ IMPL_LINK(ScAcceptChgDlg, CommandHdl, const CommandEvent&, rCEvt, bool)
         {
             ScChangeAction* pScChangeAction = static_cast<ScChangeAction*>(pEntryData->pData);
             if (pScChangeAction && !rTreeView.get_iter_depth(*xEntry))
-                m_xPopup->set_sensitive("calcedit", true);
+                m_xPopup->set_sensitive(u"calcedit"_ustr, true);
         }
     }
 
@@ -1627,7 +1614,7 @@ IMPL_LINK(ScAcceptChgDlg, CommandHdl, const CommandEvent&, rCEvt, bool)
                 if (pEntryData)
                 {
                     ScChangeAction* pScChangeAction = static_cast<ScChangeAction*>(pEntryData->pData);
-                    pViewData->GetDocShell()->ExecuteChangeCommentDialog(pScChangeAction, m_xDialog.get(), false);
+                    pViewData->GetDocShell().ExecuteChangeCommentDialog(pScChangeAction, m_xDialog.get(), false);
                 }
             }
         }

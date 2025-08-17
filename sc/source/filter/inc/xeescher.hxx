@@ -26,6 +26,7 @@
 #include "xlformula.hxx"
 #include <svx/sdtaitm.hxx>
 #include <rtl/ustring.hxx>
+#include <unotools/securityoptions.hxx>
 #include <unotools/tempfile.hxx>
 #include <memory>
 #include <optional>
@@ -275,6 +276,8 @@ private:
     void                WriteCellLinkSubRec( XclExpStream& rStrm, sal_uInt16 nSubRecId );
     /** Writes the ftSbs sub structure containing scrollbar data. */
     void                WriteSbs( XclExpStream& rStrm );
+    /** Writes an anchor, if empty calculates one form XShape */
+    void                WriteAnchor( sax_fastparser::FSHelperPtr& rTarget, bool bIsDrawing ) const;
 
 private:
     const css::uno::Reference< css::drawing::XShape > mxShape;
@@ -382,6 +385,8 @@ private:
     bool                mbRowHidden;    /// Row containing the comment is hidden
     tools::Rectangle           maCommentFrom;  /// From and From Offset
     tools::Rectangle           maCommentTo;    /// To and To Offsets
+    /// map authors to remove personal info
+    std::unique_ptr<SvtSecurityMapPersonalInfo> mpAuthorIDs;
 };
 
 class XclExpComments : public XclExpRecord

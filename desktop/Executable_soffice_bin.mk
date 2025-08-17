@@ -27,7 +27,13 @@ $(eval $(call gb_Executable_add_cobjects,soffice_bin,\
     desktop/source/app/main \
 ))
 
-$(eval $(call gb_Executable_add_prejs,soffice_bin,$(SRCDIR)/static/emscripten/soffice_args.js))
+ifeq ($(OS),EMSCRIPTEN)
+$(call gb_LinkTarget_get_target,$(call gb_Executable_get_linktarget,soffice_bin)) : $(gb_CustomTarget_workdir)/static/emscripten_fs_image/soffice.data.js.link
+
+# don't sort; later can override previous settings!
+$(eval $(call gb_Executable_add_prejs,soffice_bin,$(SRCDIR)/static/emscripten/environment.js))
+$(eval $(call gb_Executable_add_prejs,soffice_bin,$(gb_CustomTarget_workdir)/static/emscripten_fs_image/soffice.data.js.link))
+endif
 
 ifeq ($(OS),WNT)
 
@@ -52,9 +58,46 @@ $(call gb_LinkTarget_get_target,$(call gb_Executable_get_linktarget,soffice_bin)
 $(call gb_LinkTarget_get_headers_target,$(call gb_Executable_get_linktarget,soffice_bin)) : $(call gb_StaticLibrary_get_headers_target,unoembind)
 $(call gb_LinkTarget__static_lib_dummy_depend,unoembind)
 
+$(call gb_Executable_get_linktarget_target,soffice_bin): \
+    $(gb_CustomTarget_workdir)/desktop/soffice_bin-emscripten-exports/exports
+
 $(eval $(call gb_Executable_add_ldflags,soffice_bin,\
-	-s EXPORTED_FUNCTIONS=["_main"$(COMMA)"_libreofficekit_hook"$(COMMA)"_libreofficekit_hook_2"$(COMMA)"_lok_preinit"$(COMMA)"_lok_preinit_2"] -Wl$(COMMA)--whole-archive $(call gb_StaticLibrary_get_target,unoembind) -Wl$(COMMA)--no-whole-archive \
+	-s EXPORTED_FUNCTIONS=@$(gb_CustomTarget_workdir)/desktop/soffice_bin-emscripten-exports/exports -Wl$(COMMA)--whole-archive $(call gb_StaticLibrary_get_target,unoembind) -Wl$(COMMA)--no-whole-archive \
+	$(if $(ENABLE_EMSCRIPTEN_PROXY_TO_PTHREAD), \
+	    -sPROXY_TO_PTHREAD=1 \
+	    $(if $(DISABLE_GUI),, \
+	        -sOFFSCREENCANVAS_SUPPORT=1 -sOFFSCREENCANVASES_TO_PTHREAD=\#qtcanvas)) \
 ))
+ifeq ($(ENABLE_QT6),TRUE)
+$(eval $(call gb_Executable_add_ldflags,soffice_bin, \
+    -s MODULARIZE=1 \
+    -s EXPORT_NAME=soffice_entry \
+))
+endif
+
+$(call gb_Executable_get_linktarget_target,soffice_bin): \
+    $(gb_CustomTarget_workdir)/static/unoembind/bindings_uno.js \
+    $(SRCDIR)/static/emscripten/uno.js \
+    $(EMSCRIPTEN_EXTRA_SOFFICE_PRE_JS)
+
+$(eval $(call gb_Executable_add_prejs,soffice_bin,$(SRCDIR)/static/emscripten/script.js))
+
+$(eval $(call gb_Executable_add_ldflags,soffice_bin, \
+    --post-js $(gb_CustomTarget_workdir)/static/unoembind/bindings_uno.js \
+    --post-js $(SRCDIR)/static/emscripten/uno.js \
+    $(foreach i,$(EMSCRIPTEN_EXTRA_SOFFICE_PRE_JS),--pre-js $(i)) \
+))
+
+ifeq ($(ENABLE_EMBINDTEST_UNO)-$(gb_SUPPRESS_TESTS),TRUE-)
+
+$(call gb_Executable_get_linktarget_target,soffice_bin): \
+    $(SRCDIR)/unotest/source/embindtest/embindtest.js
+
+$(eval $(call gb_Executable_add_ldflags,soffice_bin, \
+    --post-js $(SRCDIR)/unotest/source/embindtest/embindtest.js \
+))
+
+endif
 
 endif
 

@@ -130,9 +130,10 @@ SdStyleSheetPool::~SdStyleSheetPool()
     DBG_ASSERT( mpDoc == nullptr, "sd::SdStyleSheetPool::~SdStyleSheetPool(), dispose me first!" );
 }
 
-rtl::Reference<SfxStyleSheetBase> SdStyleSheetPool::Create(const OUString& rName, SfxStyleFamily eFamily, SfxStyleSearchBits _nMask )
+rtl::Reference<SfxStyleSheetBase> SdStyleSheetPool::Create(const OUString& rName, SfxStyleFamily eFamily,
+            SfxStyleSearchBits _nMask, const OUString& rParentStyleSheetName )
 {
-    return new SdStyleSheet(rName, *this, eFamily, _nMask);
+    return new SdStyleSheet(rName, *this, eFamily, _nMask, rParentStyleSheetName);
 }
 
 SfxStyleSheetBase* SdStyleSheetPool::GetTitleSheet(std::u16string_view rLayoutName)
@@ -184,13 +185,13 @@ void SdStyleSheetPool::CreateLayoutStyleSheets(std::u16string_view rLayoutName, 
     mpDoc->getDefaultFonts( aLatinFont, aCJKFont, aCTLFont );
 
     // Font for title and outline
-    SvxFontItem aSvxFontItem( aLatinFont.GetFamilyType(), aLatinFont.GetFamilyName(), aLatinFont.GetStyleName(), aLatinFont.GetPitch(),
+    SvxFontItem aSvxFontItem( aLatinFont.GetFamilyTypeMaybeAskConfig(), aLatinFont.GetFamilyName(), aLatinFont.GetStyleName(), aLatinFont.GetPitchMaybeAskConfig(),
                               aLatinFont.GetCharSet(), EE_CHAR_FONTINFO );
 
-    SvxFontItem aSvxFontItemCJK( aCJKFont.GetFamilyType(), aCJKFont.GetFamilyName(), aCJKFont.GetStyleName(), aCJKFont.GetPitch(),
+    SvxFontItem aSvxFontItemCJK( aCJKFont.GetFamilyTypeMaybeAskConfig(), aCJKFont.GetFamilyName(), aCJKFont.GetStyleName(), aCJKFont.GetPitchMaybeAskConfig(),
                                  aCJKFont.GetCharSet(), EE_CHAR_FONTINFO_CJK );
 
-    SvxFontItem aSvxFontItemCTL( aCTLFont.GetFamilyType(), aCTLFont.GetFamilyName(), aCTLFont.GetStyleName(), aCTLFont.GetPitch(),
+    SvxFontItem aSvxFontItemCTL( aCTLFont.GetFamilyTypeMaybeAskConfig(), aCTLFont.GetFamilyName(), aCTLFont.GetStyleName(), aCTLFont.GetPitchMaybeAskConfig(),
                                  aCTLFont.GetCharSet(), EE_CHAR_FONTINFO_CTL );
 
     vcl::Font aBulletFont( GetBulletFont() );
@@ -211,10 +212,11 @@ void SdStyleSheetPool::CreateLayoutStyleSheets(std::u16string_view rLayoutName, 
         if (!Find(aLevelName, SfxStyleFamily::Page))
         {
             bCreated = true;
+
             pSheet = &Make(aLevelName, SfxStyleFamily::Page,nUsedMask);
             pSheet->SetHelpId( aHelpFile, HID_PSEUDOSHEET_OUTLINE + nLevel );
-
             pSheet->SetParent( OUString() );
+
 
             // attributing for level 1, the others levels inherit
             if (nLevel == 1)
@@ -304,11 +306,8 @@ void SdStyleSheetPool::CreateLayoutStyleSheets(std::u16string_view rLayoutName, 
         for (sal_Int32 nLevel = 1; nLevel < 10; nLevel++)
         {
             OUString aLevelName( aPrefix + aName + " " + OUString::number( nLevel ) );
-
             pSheet = Find(aLevelName, SfxStyleFamily::Page);
-
             DBG_ASSERT( pSheet, "missing layout style!");
-
             if( pSheet )
             {
                 if (pParent)
@@ -405,7 +404,7 @@ void SdStyleSheetPool::CreateLayoutStyleSheets(std::u16string_view rLayoutName, 
         rSubtitleSet.Put( SdrTextVertAdjustItem( SDRTEXTVERTADJUST_CENTER ) );
         // #i16874# enable kerning by default but only for new documents
         rSubtitleSet.Put( SvxAutoKernItem( true, EE_CHAR_PAIRKERNING ) );
-        aSvxLRSpaceItem.SetTextLeft(0);
+        aSvxLRSpaceItem.SetTextLeft(SvxIndentValue::zero());
         rSubtitleSet.Put(aSvxLRSpaceItem);
 
         vcl::Font aTmpFont( GetBulletFont() );
@@ -450,7 +449,8 @@ void SdStyleSheetPool::CreateLayoutStyleSheets(std::u16string_view rLayoutName, 
         rNotesSet.Put( SvxCharReliefItem(FontRelief::NONE, EE_CHAR_RELIEF) );
         rNotesSet.Put( SvxColorItem( COL_AUTO, EE_CHAR_COLOR ) );
         rNotesSet.Put( SvxColorItem( COL_AUTO, EE_CHAR_BKGCOLOR ) );
-        rNotesSet.Put( SvxLRSpaceItem( 0, 0, -600, EE_PARA_LRSPACE  ) );
+        rNotesSet.Put(SvxLRSpaceItem(SvxIndentValue::zero(), SvxIndentValue::zero(),
+                                     SvxIndentValue::twips(-600.0), EE_PARA_LRSPACE));
         // #i16874# enable kerning by default but only for new documents
         rNotesSet.Put( SvxAutoKernItem( true, EE_CHAR_PAIRKERNING ) );
 
@@ -923,7 +923,7 @@ void SdStyleSheetPool::UpdateStdNames()
         if( !pStyle->IsUserDefined() )
         {
             OUString aOldName   = pStyle->GetName();
-            sal_uLong nHelpId   = pStyle->GetHelpId( aHelpFile );
+            sal_uInt32 nHelpId   = pStyle->GetHelpId( aHelpFile );
             SfxStyleFamily eFam = pStyle->GetFamily();
 
             bool bHelpKnown = true;
@@ -978,12 +978,10 @@ void SdStyleSheetPool::UpdateStdNames()
             if( bHelpKnown )
             {
                 OUString aNewName;
-                if (pNameId)
+                if (pNameId && pNameId == STR_PSEUDOSHEET_OUTLINE)
                 {
-                    if (pNameId == STR_PSEUDOSHEET_OUTLINE)
-                    {
-                        aNewName += " " + OUString::number( sal_Int32( nHelpId - HID_PSEUDOSHEET_OUTLINE ) );
-                    }
+                    assert(nHelpId >= HID_PSEUDOSHEET_OUTLINE1 && nHelpId <= HID_PSEUDOSHEET_OUTLINE9);
+                    aNewName += " " + OUString::number( sal_Int32( nHelpId - HID_PSEUDOSHEET_OUTLINE ) );
                 }
 
                 if( !aNewName.isEmpty() && aNewName != aOldName )
@@ -1060,7 +1058,7 @@ void SdStyleSheetPool::PutNumBulletItem( SfxStyleSheetBase* pSheet,
                                          vcl::Font& rBulletFont )
 {
     OUString aHelpFile;
-    sal_uLong nHelpId = pSheet->GetHelpId( aHelpFile );
+    sal_uInt32 nHelpId = pSheet->GetHelpId( aHelpFile );
     SfxItemSet& rSet = pSheet->GetItemSet();
 
     switch ( nHelpId )
@@ -1097,7 +1095,7 @@ void SdStyleSheetPool::PutNumBulletItem( SfxStyleSheetBase* pSheet,
         {
             // Subtitle template
             SvxNumBulletItem const*const pItem(
-                    rSet.GetPool()->GetSecondaryPool()->GetPoolDefaultItem(EE_PARA_NUMBULLET));
+                    rSet.GetPool()->GetSecondaryPool()->GetUserDefaultItem(EE_PARA_NUMBULLET));
             const SvxNumRule *const pDefaultRule = pItem ? &pItem->GetNumRule() : nullptr;
             DBG_ASSERT( pDefaultRule, "Where is my default template? [CL]" );
 
@@ -1109,7 +1107,7 @@ void SdStyleSheetPool::PutNumBulletItem( SfxStyleSheetBase* pSheet,
                     SvxNumberFormat aFrmt( pDefaultRule->GetLevel(i) );
                     aFrmt.SetNumberingType(SVX_NUM_CHAR_SPECIAL);
                     // #i93908# clear suffix for bullet lists
-                    aFrmt.SetListFormat("", "", i);
+                    aFrmt.SetListFormat(u""_ustr, u""_ustr, i);
                     aFrmt.SetStart(1);
                     aFrmt.SetBulletRelSize(45);
                     aFrmt.SetBulletChar( 0x25CF );  // StarBats: 0xF000 + 34
@@ -1156,7 +1154,7 @@ void SdStyleSheetPool::PutNumBulletItem( SfxStyleSheetBase* pSheet,
 
 vcl::Font SdStyleSheetPool::GetBulletFont()
 {
-    vcl::Font aBulletFont( "OpenSymbol", Size(0, 1000) );
+    vcl::Font aBulletFont( u"OpenSymbol"_ustr, Size(0, 1000) );
     aBulletFont.SetCharSet(RTL_TEXTENCODING_UNICODE);
     aBulletFont.SetWeight(WEIGHT_NORMAL);
     aBulletFont.SetUnderline(LINESTYLE_NONE);
@@ -1204,7 +1202,7 @@ void SdStyleSheetPool::throwIfDisposed()
 // XServiceInfo
 OUString SAL_CALL SdStyleSheetPool::getImplementationName()
 {
-    return "SdStyleSheetPool";
+    return u"SdStyleSheetPool"_ustr;
 }
 
 sal_Bool SAL_CALL SdStyleSheetPool::supportsService( const OUString& ServiceName )
@@ -1214,7 +1212,7 @@ sal_Bool SAL_CALL SdStyleSheetPool::supportsService( const OUString& ServiceName
 
 Sequence< OUString > SAL_CALL SdStyleSheetPool::getSupportedServiceNames()
 {
-    return { "com.sun.star.style.StyleFamilies" };
+    return { u"com.sun.star.style.StyleFamilies"_ustr };
 }
 
 // XNameAccess

@@ -28,7 +28,7 @@ namespace comphelper
 
 OEnumerationByName::OEnumerationByName(css::uno::Reference<css::container::XNameAccess> _xAccess)
     :m_aNames(_xAccess->getElementNames())
-    ,m_xAccess(_xAccess)
+    ,m_xAccess(std::move(_xAccess))
     ,m_nPos(0)
     ,m_bListening(false)
 {
@@ -142,7 +142,7 @@ sal_Int32 OEnumerationByName::getLength() const
 const OUString& OEnumerationByName::getElement(sal_Int32 nIndex) const
 {
     if (m_aNames.index() == 0)
-        return std::get<css::uno::Sequence<OUString>>(m_aNames).getConstArray()[nIndex];
+        return std::get<css::uno::Sequence<OUString>>(m_aNames)[nIndex];
     else
         return std::get<std::vector<OUString>>(m_aNames)[nIndex];
 }

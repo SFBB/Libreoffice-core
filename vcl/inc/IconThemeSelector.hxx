@@ -7,8 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_VCL_ICONTHEMESELECTOR_HXX
-#define INCLUDED_VCL_ICONTHEMESELECTOR_HXX
+#pragma once
 
 #include <rtl/ustring.hxx>
 
@@ -67,10 +66,10 @@ public:
     SetPreferredIconTheme(const OUString&, bool bDarkIconTheme);
 
     bool
-    operator==(const vcl::IconThemeSelector&) const;
+    operator==(const vcl::IconThemeSelector&) const = default;
 
-    bool
-    operator!=(const vcl::IconThemeSelector&) const;
+    static OUString
+    GetIconThemeForDesktopEnvironment(const OUString& desktopEnvironment, bool bPreferDarkIconTheme);
 
 private:
     /** Return the first element of the themes, or the fallback if the vector is empty */
@@ -81,9 +80,6 @@ private:
     static constexpr OUString FALLBACK_LIGHT_ICON_THEME_ID = u"colibre"_ustr;
     static constexpr OUString FALLBACK_DARK_ICON_THEME_ID = u"colibre_dark"_ustr;
 
-    static OUString
-    GetIconThemeForDesktopEnvironment(const OUString& desktopEnvironment, bool bPreferDarkIconTheme);
-
     OUString mPreferredIconTheme;
     bool mUseHighContrastTheme;
     bool mPreferDarkIconTheme;
@@ -92,7 +88,5 @@ private:
 };
 
 } /* namespace vcl */
-
-#endif // INCLUDED_VCL_ICONTHEMESELECTOR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

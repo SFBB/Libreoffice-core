@@ -20,16 +20,12 @@
 #ifndef INCLUDED_VCL_ACCESSIBLETABLEPROVIDER_HXX
 #define INCLUDED_VCL_ACCESSIBLETABLEPROVIDER_HXX
 
-#include <vcl/AccessibleBrowseBoxObjType.hxx>
+#include <vcl/accessibility/AccessibleBrowseBoxObjType.hxx>
 #include <vcl/window.hxx>
-#include <cppuhelper/implbase.hxx>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 
 namespace vcl
 {
-
-#define OFFSET_DEFAULT  (sal_Int32(-1))
-#define OFFSET_NONE     (sal_Int32(0))
 
 enum AccessibleTableChildIndex
 {
@@ -86,16 +82,18 @@ public:
     virtual bool                    IsCellVisible( sal_Int32 _nRow, sal_uInt16 _nColumnPos ) const = 0;
     virtual OUString                GetAccessibleCellText( sal_Int32 _nRow, sal_uInt16 _nColumnPos ) const = 0;
 
-    virtual tools::Rectangle               calcHeaderRect( bool _bIsColumnBar, bool _bOnScreen = true ) = 0;
-    virtual tools::Rectangle               calcTableRect( bool _bOnScreen = true ) = 0;
-    virtual tools::Rectangle               GetFieldRectPixel( sal_Int32 _nRow, sal_uInt16 _nColumnPos, bool _bIsHeader, bool _bOnScreen ) = 0;
+    virtual tools::Rectangle calcHeaderRect(bool _bIsColumnBar) = 0;
+    virtual tools::Rectangle calcTableRect() = 0;
+    virtual tools::Rectangle calcFieldRectPixel(sal_Int32 _nRow, sal_uInt16 _nColumnPos, bool _bIsHeader) = 0;
 
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleCell( sal_Int32 _nRow, sal_uInt16 _nColumnPos ) = 0;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessibleCell(sal_Int32 _nRow,
+                                                                         sal_uInt16 _nColumnPos)
+        = 0;
     virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleRowHeader( sal_Int32 _nRow ) = 0;
     virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessibleColumnHeader( sal_uInt16 _nColumnPos ) = 0;
 
     virtual sal_Int32               GetAccessibleControlCount() const = 0;
-    virtual css::uno::Reference< css::accessibility::XAccessible >                    CreateAccessibleControl( sal_Int32 _nIndex ) = 0;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessibleControl(sal_Int32 _nIndex) = 0;
     virtual bool                    ConvertPointToControlIndex( sal_Int32& _rnIndex, const Point& _rPoint ) = 0;
 
     virtual bool                    ConvertPointToCellAddress( sal_Int32& _rnRow, sal_uInt16& _rnColPos, const Point& _rPoint ) = 0;
@@ -113,10 +111,9 @@ public:
     virtual bool                    GetGlyphBoundRects( const Point& rOrigin, const OUString& rStr, int nIndex, int nLen, std::vector< tools::Rectangle >& rVector ) = 0;
 
     // Window
-    virtual AbsoluteScreenPixelRectangle GetWindowExtentsAbsolute() const = 0;
     virtual tools::Rectangle        GetWindowExtentsRelative(const vcl::Window& rRelativeWindow) const = 0;
     virtual void                    GrabFocus() = 0;
-    virtual css::uno::Reference< css::accessibility::XAccessible > GetAccessible() = 0;
+    virtual rtl::Reference<comphelper::OAccessible> GetAccessible() = 0;
     virtual vcl::Window*                 GetAccessibleParentWindow() const = 0;
     virtual vcl::Window*                 GetWindowInstance() = 0;
 
@@ -125,99 +122,6 @@ public:
 
 protected:
     ~IAccessibleTableProvider() {}
-};
-
-
-/** interface for an implementation of a table control's Accessible component
-*/
-class IAccessibleTabListBox
-{
-public:
-    /** returns the XAccessible object itself
-
-        The reference returned here can be used to control the life time of the
-        IAccessibleTableImplementation object.
-
-        The returned reference is guaranteed to not be <NULL/>.
-    */
-    virtual css::uno::Reference< css::accessibility::XAccessible >
-        getMyself() = 0;
-
-    /** returns the accessible object for the column header bar
-    */
-    virtual css::uno::Reference< css::accessibility::XAccessible >
-        getHeaderBar() = 0;
-
-    /** Returns the accessible object for the table.
-     */
-    virtual css::uno::Reference< css::accessibility::XAccessible> getTable() = 0;
-
-protected:
-    ~IAccessibleTabListBox() {}
-};
-
-/** interface for an implementation of a browse box's Accessible component
-*/
-class IAccessibleBrowseBox : public cppu::WeakImplHelper<css::accessibility::XAccessible>
-{
-public:
-    /** disposes the accessible implementation, so that it becomes defunc
-    */
-    virtual void dispose() = 0;
-
-    /** checks whether the accessible implementation, and its context, are still alive
-        @return  <TRUE/>, if the object is not disposed or disposing.
-    */
-    virtual bool isAlive() const = 0;
-
-    /** returns the accessible object for the row or the column header bar
-    */
-    virtual css::uno::Reference< css::accessibility::XAccessible >
-        getHeaderBar( AccessibleBrowseBoxObjType _eObjType ) = 0;
-
-    /** returns the accessible object for the table representation
-    */
-    virtual css::uno::Reference< css::accessibility::XAccessible >
-        getTable() = 0;
-
-    /** commits the event at all listeners of the column/row header bar
-        @param nEventId
-            the event id
-        @param rNewValue
-            the new value
-        @param rOldValue
-            the old value
-    */
-    virtual void commitHeaderBarEvent(
-        sal_Int16 nEventId,
-        const css::uno::Any& rNewValue,
-        const css::uno::Any& rOldValue,
-        bool _bColumnHeaderBar
-    ) = 0;
-
-    /** commits the event at all listeners of the table
-        @param nEventId
-            the event id
-        @param rNewValue
-            the new value
-        @param rOldValue
-            the old value
-    */
-    virtual void commitTableEvent(
-        sal_Int16 nEventId,
-        const css::uno::Any& rNewValue,
-        const css::uno::Any& rOldValue
-    ) = 0;
-
-    /** Commits an event to all listeners. */
-    virtual void commitEvent(
-        sal_Int16 nEventId,
-        const css::uno::Any& rNewValue,
-        const css::uno::Any& rOldValue
-    ) = 0;
-
-protected:
-    ~IAccessibleBrowseBox() {}
 };
 
 } // namespace vcl

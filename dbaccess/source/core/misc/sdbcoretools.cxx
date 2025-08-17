@@ -35,10 +35,8 @@ namespace dbaccess
 {
 
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::util;
     using namespace ::com::sun::star::io;
-    using namespace ::com::sun::star::sdbc;
     using namespace ::com::sun::star::sdb;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::task;
@@ -113,7 +111,7 @@ namespace dbaccess
         try
         {
             Reference< XPropertySet > xStorageProps( _rxStorage, UNO_QUERY_THROW );
-            xStorageProps->getPropertyValue( "OpenMode" ) >>= nMode;
+            xStorageProps->getPropertyValue( u"OpenMode"_ustr ) >>= nMode;
         }
         catch( const Exception& )
         {

@@ -19,16 +19,13 @@
 
 #include "ximpcustomshape.hxx"
 #include <o3tl/any.hxx>
-#include <rtl/math.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <xmloff/xmltoken.hxx>
 #include <EnhancedCustomShapeToken.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlement.hxx>
 #include <xexptran.hxx>
@@ -46,7 +43,6 @@
 #include <sax/tools/converter.hxx>
 #include <comphelper/sequence.hxx>
 #include <o3tl/string_view.hxx>
-#include <memory>
 #include <string_view>
 #include <unordered_map>
 
@@ -886,7 +882,7 @@ void XMLEnhancedCustomShapeContext::startFastElement(
     sal_Int32               nAttrNumber;
     std::optional<std::string_view> oSpecularityValue; // for postpone extrusion-specularity
     std::optional<OUString> oPathValue; // for postpone GetEnhancedPath;
-    OUString sType("non-primitive"); // default in ODF
+    OUString sType(u"non-primitive"_ustr); // default in ODF
     for( auto& aIter : sax_fastparser::castToFastAttributeList(xAttrList) )
     {
         switch( EASGet( aIter.getToken() ) )
@@ -1154,7 +1150,7 @@ void XMLEnhancedCustomShapeContext::startFastElement(
         }
     }
     if (oSpecularityValue)
-        GetDoublePercentage( maExtrusion, *oSpecularityValue, EAS_Specularity );
+        GetDouble( maExtrusion, *oSpecularityValue, EAS_Specularity );
     if (oPathValue)
         GetEnhancedPath(maPath, *oPathValue, sType);
 }
@@ -1370,6 +1366,17 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLEnhancedCustomShape
     }
     else if ( aTokenEnum == EAS_handle )
     {
+        // handle-position and handle-polar too is as pair in LO, ODF 1.4 has single values for
+        // x-coordinate, y-coordinate, angle and radius. Postpone creation until all attributes
+        // are examined.
+        OUString sPosition;
+        OUString sPositionX;
+        OUString sPositionY;
+        OUString sPolar;
+        OUString sPolarRadius;
+        OUString sPolarAngle;
+        OUString sPolarPoleX;
+        OUString sPolarPoleY;
         std::vector< css::beans::PropertyValue > aHandle;
         for( auto& aIter : sax_fastparser::castToFastAttributeList(xAttrList) )
         {
@@ -1385,7 +1392,13 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLEnhancedCustomShape
                     GetBool( aHandle, aIter.toView(), EAS_Switched );
                 break;
                 case EAS_handle_position :
-                    GetEnhancedParameterPair( aHandle, aIter.toString(), EAS_Position );
+                    sPosition = aIter.toString();
+                break;
+                case EAS_handle_position_x :
+                    sPositionX = aIter.toString();
+                break;
+                case EAS_handle_position_y :
+                    sPositionY = aIter.toString();
                 break;
                 case EAS_handle_range_x_minimum :
                     GetEnhancedParameter( aHandle, aIter.toString(), EAS_RangeXMinimum );
@@ -1400,7 +1413,19 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLEnhancedCustomShape
                     GetEnhancedParameter( aHandle, aIter.toString(), EAS_RangeYMaximum );
                 break;
                 case EAS_handle_polar :
-                    GetEnhancedParameterPair( aHandle, aIter.toString(), EAS_Polar );
+                    sPolar = aIter.toString();
+                break;
+                case EAS_handle_polar_angle:
+                    sPolarAngle = aIter.toString();
+                break;
+                case EAS_handle_polar_radius:
+                    sPolarRadius = aIter.toString();
+                break;
+                case EAS_handle_polar_pole_x:
+                    sPolarPoleX = aIter.toString();
+                break;
+                case EAS_handle_polar_pole_y:
+                    sPolarPoleY = aIter.toString();
                 break;
                 case EAS_handle_radius_range_minimum :
                     GetEnhancedParameter( aHandle, aIter.toString(), EAS_RadiusRangeMinimum );
@@ -1412,6 +1437,28 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLEnhancedCustomShape
                     break;
             }
         }
+
+        // Use the new handle attributes if exists and ignore the old ones in that case.
+        if (!sPositionX.isEmpty() && !sPositionY.isEmpty())
+        {
+            // an XY-handle
+            sPosition = sPositionX + u" " + sPositionY; // XY-handle
+        }
+        if (!sPolarAngle.isEmpty() && !sPolarRadius.isEmpty())
+        {
+            // a polar handle. It has attributes handle-position and handle-polar.
+            sPosition = sPolarRadius + u" " + sPolarAngle;
+            sPolar = sPolarPoleX + u" " + sPolarPoleY;
+        }
+        if (!sPolar.isEmpty())
+        {
+            GetEnhancedParameterPair( aHandle, sPolar, EAS_Polar );
+        }
+        if (!sPosition.isEmpty())
+        {
+            GetEnhancedParameterPair( aHandle, sPosition, EAS_Position );
+        }
+
         maHandles.push_back( comphelper::containerToSequence(aHandle) );
     }
     return nullptr;

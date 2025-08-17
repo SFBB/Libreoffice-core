@@ -29,6 +29,7 @@
 #include "GlowSoftEgdeShadowTools.hxx"
 
 #ifdef DBG_UTIL
+#include <o3tl/environment.hxx>
 #include <tools/stream.hxx>
 #include <vcl/filter/PngImageWriter.hxx>
 #endif
@@ -51,7 +52,7 @@ ShadowPrimitive2D::ShadowPrimitive2D(basegfx::B2DHomMatrix aShadowTransform,
     , maLastClippedRange()
 {
     // activate callback to flush buffered decomposition content
-    setCallbackSeconds(15);
+    activateFlushOnTimer();
 }
 
 bool ShadowPrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
@@ -78,10 +79,10 @@ void ShadowPrimitive2D::getFullyEmbeddedShadowPrimitives(Primitive2DContainer& r
         return;
 
     // create a modifiedColorPrimitive containing the shadow color and the content
-    const basegfx::BColorModifierSharedPtr aBColorModifier
+    basegfx::BColorModifierSharedPtr aBColorModifier
         = std::make_shared<basegfx::BColorModifier_replace>(getShadowColor());
-    const Primitive2DReference xRefA(
-        new ModifiedColorPrimitive2D(Primitive2DContainer(getChildren()), aBColorModifier));
+    Primitive2DReference xRefA(new ModifiedColorPrimitive2D(Primitive2DContainer(getChildren()),
+                                                            std::move(aBColorModifier)));
     Primitive2DContainer aSequenceB{ xRefA };
 
     // build transformed primitiveVector with shadow offset and add to target
@@ -224,22 +225,22 @@ void ShadowPrimitive2D::create2DDecomposition(
     if (aAlpha.IsEmpty())
         return;
 
-    const Size& rBitmapExSizePixel(aAlpha.GetSizePixel());
-    if (!(rBitmapExSizePixel.Width() > 0 && rBitmapExSizePixel.Height() > 0))
+    const Size aBitmapExSizePixel(aAlpha.GetSizePixel());
+    if (!(aBitmapExSizePixel.Width() > 0 && aBitmapExSizePixel.Height() > 0))
         return;
 
     // We may have to take a corrective scaling into account when the
     // MaximumQuadraticPixel limit was used/triggered
     double fScale(1.0);
 
-    if (static_cast<sal_uInt32>(rBitmapExSizePixel.Width()) != nDiscreteClippedWidth
-        || static_cast<sal_uInt32>(rBitmapExSizePixel.Height()) != nDiscreteClippedHeight)
+    if (static_cast<sal_uInt32>(aBitmapExSizePixel.Width()) != nDiscreteClippedWidth
+        || static_cast<sal_uInt32>(aBitmapExSizePixel.Height()) != nDiscreteClippedHeight)
     {
         // scale in X and Y should be the same (see fReduceFactor in createAlphaMask),
         // so adapt numerically to a single scale value, they are integer rounded values
-        const double fScaleX(static_cast<double>(rBitmapExSizePixel.Width())
+        const double fScaleX(static_cast<double>(aBitmapExSizePixel.Width())
                              / static_cast<double>(nDiscreteClippedWidth));
-        const double fScaleY(static_cast<double>(rBitmapExSizePixel.Height())
+        const double fScaleY(static_cast<double>(aBitmapExSizePixel.Height())
                              / static_cast<double>(nDiscreteClippedHeight));
 
         fScale = (fScaleX + fScaleY) * 0.5;
@@ -259,8 +260,7 @@ void ShadowPrimitive2D::create2DDecomposition(
     if (bDoSaveForVisualControl)
     {
         // VCL_DUMP_BMP_PATH should be like C:/path/ or ~/path/
-        static const OUString sDumpPath(
-            OUString::createFromAscii(std::getenv("VCL_DUMP_BMP_PATH")));
+        static const OUString sDumpPath(o3tl::getEnvironment(u"VCL_DUMP_BMP_PATH"_ustr));
         if (!sDumpPath.isEmpty())
         {
             SvFileStream aNew(sDumpPath + "test_shadowblur.png",
@@ -274,10 +274,10 @@ void ShadowPrimitive2D::create2DDecomposition(
     // Independent from discrete sizes of blur alpha creation, always
     // map and project blur result to geometry range extended by blur
     // radius, but to the eventually clipped instance (ClippedRange)
-    const primitive2d::Primitive2DReference xEmbedRefBitmap(
-        new BitmapPrimitive2D(result, basegfx::utils::createScaleTranslateB2DHomMatrix(
-                                          aClippedRange.getWidth(), aClippedRange.getHeight(),
-                                          aClippedRange.getMinX(), aClippedRange.getMinY())));
+    const primitive2d::Primitive2DReference xEmbedRefBitmap(new BitmapPrimitive2D(
+        Bitmap(result), basegfx::utils::createScaleTranslateB2DHomMatrix(
+                            aClippedRange.getWidth(), aClippedRange.getHeight(),
+                            aClippedRange.getMinX(), aClippedRange.getMinY())));
 
     rContainer = primitive2d::Primitive2DContainer{ xEmbedRefBitmap };
 }
@@ -313,7 +313,7 @@ void ShadowPrimitive2D::get2DDecomposition(
                                        fDiscreteBlurRadius, rViewInformation))
         return;
 
-    if (!getBuffered2DDecomposition().empty())
+    if (hasBuffered2DDecomposition())
     {
         // First check is to detect if the last created decompose is capable
         // to represent the now requested visualization (see similar
@@ -340,7 +340,7 @@ void ShadowPrimitive2D::get2DDecomposition(
         }
     }
 
-    if (!getBuffered2DDecomposition().empty())
+    if (hasBuffered2DDecomposition())
     {
         // Second check is to react on changes of the DiscreteSoftRadius when
         // zooming in/out (see similar implementation at ShadowPrimitive2D).
@@ -365,7 +365,7 @@ void ShadowPrimitive2D::get2DDecomposition(
         }
     }
 
-    if (getBuffered2DDecomposition().empty())
+    if (!hasBuffered2DDecomposition())
     {
         // refresh last used DiscreteBlurRadius and ClippedRange to new remembered values
         const_cast<ShadowPrimitive2D*>(this)->mfLastDiscreteBlurRadius = fDiscreteBlurRadius;

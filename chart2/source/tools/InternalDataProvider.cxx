@@ -28,11 +28,10 @@
 #include <UncachedDataSequence.hxx>
 #include <DataSourceHelper.hxx>
 #include <ChartModel.hxx>
-#include <ChartModelHelper.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <ExplicitCategoriesProvider.hxx>
 #include <BaseCoordinateSystem.hxx>
+#include <DataBrowserModel.hxx>
 #include <DataSeries.hxx>
 
 #include <com/sun/star/chart2/data/XDataSequence.hpp>
@@ -46,8 +45,6 @@
 #include <limits>
 #include <vector>
 #include <algorithm>
-
-namespace com::sun::star::chart2 { class XChartDocument; }
 
 using namespace ::com::sun::star;
 
@@ -70,23 +67,11 @@ constexpr OUString lcl_aCompleteRange = u"all"_ustr;
 typedef std::multimap< OUString, uno::WeakReference< chart2::data::XDataSequence > >
     lcl_tSequenceMap;
 
-std::vector< OUString > lcl_AnyToStringSequence( const std::vector< uno::Any >& aAnySeq )
-{
-    std::vector< OUString > aResult;
-    aResult.resize( aAnySeq.size() );
-    int i = 0;
-    for (const uno::Any& aAny : aAnySeq)
-       aResult[i++] = CommonFunctors::AnyToString()(aAny);
-    return aResult;
-}
-
 std::vector< uno::Any > lcl_StringToAnyVector( const css::uno::Sequence< OUString >& aStringSeq )
 {
     std::vector< uno::Any > aResult;
-    aResult.resize( aStringSeq.getLength() );
-    int i = 0;
-    for (const OUString& aStr : aStringSeq)
-       aResult[i++] = CommonFunctors::makeAny<OUString>()(aStr);
+    aResult.reserve(aStringSeq.getLength());
+    std::transform(aStringSeq.begin(), aStringSeq.end(), std::back_inserter(aResult), CommonFunctors::makeAny());
     return aResult;
 }
 
@@ -207,7 +192,7 @@ public:
     {
         OUString aString;
         if( m_nLevel < static_cast< sal_Int32 >(rVector.size()) )
-            aString = CommonFunctors::AnyToString()(rVector[m_nLevel]);
+            aString = CommonFunctors::ToString()(rVector[m_nLevel]);
         return aString;
     }
 
@@ -311,6 +296,7 @@ InternalDataProvider::InternalDataProvider(
 {
     if (!xModel.is())
         return;
+    m_xChartModel = xModel.get();
     try
     {
         rtl::Reference< Diagram > xDiagram( xModel->getFirstChartDiagram() );
@@ -337,13 +323,13 @@ InternalDataProvider::InternalDataProvider(
             {
                 std::vector< std::vector< uno::Any > > aNewCategories;//inner count is level
                 {
-                    ExplicitCategoriesProvider aExplicitCategoriesProvider(ChartModelHelper::getFirstCoordinateSystem(xModel), *xModel);
+                    ExplicitCategoriesProvider aExplicitCategoriesProvider(xModel->getFirstCoordinateSystem(), *xModel);
 
                     const std::vector< Reference< chart2::data::XLabeledDataSequence> >& rSplitCategoriesList( aExplicitCategoriesProvider.getSplitCategoriesList() );
                     sal_Int32 nLevelCount = rSplitCategoriesList.size();
                     for( sal_Int32 nL = 0; nL<nLevelCount; nL++ )
                     {
-                        Reference< chart2::data::XLabeledDataSequence > xLDS( rSplitCategoriesList[nL] );
+                        const Reference< chart2::data::XLabeledDataSequence >& xLDS( rSplitCategoriesList[nL] );
                         if( !xLDS.is() )
                             continue;
                         Sequence< uno::Any > aDataSeq;
@@ -356,7 +342,7 @@ InternalDataProvider::InternalDataProvider(
                             aNewCategories.resize( nLength );
                         else if( nLength < nCatLength )
                             aDataSeq.realloc( nCatLength );
-                        transform( aNewCategories.begin(), aNewCategories.end(), aDataSeq.getConstArray(),
+                        transform( aNewCategories.begin(), aNewCategories.end(), aDataSeq.begin(),
                             aNewCategories.begin(), lcl_setAnyAtLevel(nL) );
                     }
                     if( !nLevelCount )
@@ -383,7 +369,7 @@ InternalDataProvider::InternalDataProvider(
             }
 
             // data series
-            std::vector< rtl::Reference< DataSeries > > aSeriesVector( ChartModelHelper::getDataSeries( xModel ));
+            std::vector< rtl::Reference< DataSeries > > aSeriesVector( xModel->getDataSeries());
             lcl_internalizeSeries ftor( m_aInternalData, *this, bConnectToModel, m_bDataInColumns );
             for( const auto& rxScreen : aSeriesVector )
                 ftor( rxScreen );
@@ -405,6 +391,11 @@ InternalDataProvider::InternalDataProvider( const InternalDataProvider & rOther 
 
 InternalDataProvider::~InternalDataProvider()
 {}
+
+void InternalDataProvider::setChartModel(ChartModel* pChartModel)
+{
+    m_xChartModel = pChartModel;
+}
 
 void InternalDataProvider::addDataSequenceToMap(
     const OUString & rRangeRepresentation,
@@ -634,7 +625,7 @@ InternalDataProvider::createDataSequenceFromArray( const OUString& rArrayStr, st
             }
             std::vector<uno::Any> aLabels(1,
                 bStoreNumeric ? uno::Any(fValue) : uno::Any(aRawElems[i]));
-            m_aInternalData.setComplexRowLabel(i, std::move(aLabels));
+            m_aInternalData.setComplexCategoryLabel(i, std::move(aLabels));
         }
 
         xSeq.set(new UncachedDataSequence(this, lcl_aCategoriesRangeName));
@@ -787,19 +778,19 @@ Sequence< beans::PropertyValue > SAL_CALL InternalDataProvider::detectArguments(
 {
     Sequence< beans::PropertyValue > aArguments{
         beans::PropertyValue(
-            "CellRangeRepresentation", -1, uno::Any( lcl_aCompleteRange ),
+            u"CellRangeRepresentation"_ustr, -1, uno::Any( lcl_aCompleteRange ),
             beans::PropertyState_DIRECT_VALUE ),
         beans::PropertyValue(
-            "DataRowSource", -1, uno::Any(
+            u"DataRowSource"_ustr, -1, uno::Any(
                 m_bDataInColumns
                 ? css::chart::ChartDataRowSource_COLUMNS
                 : css::chart::ChartDataRowSource_ROWS ),
             beans::PropertyState_DIRECT_VALUE ),
         // internal data always contains labels and categories
         beans::PropertyValue(
-            "FirstCellAsLabel", -1, uno::Any( true ), beans::PropertyState_DIRECT_VALUE ),
+            u"FirstCellAsLabel"_ustr, -1, uno::Any( true ), beans::PropertyState_DIRECT_VALUE ),
         beans::PropertyValue(
-            "HasCategories", -1, uno::Any( true ), beans::PropertyState_DIRECT_VALUE )
+            u"HasCategories"_ustr, -1, uno::Any( true ), beans::PropertyState_DIRECT_VALUE )
     };
     // #i85913# Sequence Mapping is not needed for internal data, as it is
     // applied to the data when the data source is created.
@@ -908,11 +899,7 @@ Sequence< uno::Any > SAL_CALL InternalDataProvider::getDataByRangeRepresentation
         sal_Int32 nLevel = o3tl::toInt32(aRange.subView( strlen(lcl_aCategoriesLevelRangeNamePrefix) ));
         const std::vector< std::vector< uno::Any > > & aCategories( m_bDataInColumns ? m_aInternalData.getComplexRowLabels() : m_aInternalData.getComplexColumnLabels());
         if( nLevel < lcl_getInnerLevelCount( aCategories ) )
-        {
-            aResult.realloc( aCategories.size() );
-            transform( aCategories.begin(), aCategories.end(),
-                       aResult.getArray(), lcl_copyFromLevel(nLevel) );
-        }
+            aResult = CommonFunctors::convertToSequence(aCategories, lcl_copyFromLevel(nLevel));
     }
     else if( aRange == lcl_aCategoriesRangeName )
     {
@@ -926,9 +913,7 @@ Sequence< uno::Any > SAL_CALL InternalDataProvider::getDataByRangeRepresentation
         {
             // Maybe this 'else' part and the functions is not necessary anymore.
             const Sequence< OUString > aLabels = m_bDataInColumns ? getRowDescriptions() : getColumnDescriptions();
-            aResult.realloc( aLabels.getLength() );
-            std::transform( aLabels.begin(), aLabels.end(),
-                       aResult.getArray(), CommonFunctors::makeAny< OUString >() );
+            aResult = CommonFunctors::convertToSequence(aLabels, CommonFunctors::makeAny());
         }
     }
     else
@@ -940,11 +925,7 @@ Sequence< uno::Any > SAL_CALL InternalDataProvider::getDataByRangeRepresentation
                                                  ? m_aInternalData.getColumnValues(nIndex)
                                                  : m_aInternalData.getRowValues(nIndex);
             if( aData.hasElements() )
-            {
-                aResult.realloc( aData.getLength());
-                std::transform( aData.begin(), aData.end(),
-                           aResult.getArray(), CommonFunctors::makeAny< double >());
-            }
+                aResult = CommonFunctors::convertToSequence(aData, CommonFunctors::makeAny());
         }
     }
 
@@ -1007,8 +988,9 @@ void SAL_CALL InternalDataProvider::setDataByRangeRepresentation(
         if( nIndex>=0 )
         {
             std::vector< double > aNewDataVec;
+            aNewDataVec.reserve(aNewData.getLength());
             transform( aNewData.begin(), aNewData.end(),
-                       back_inserter( aNewDataVec ), CommonFunctors::AnyToDouble());
+                       back_inserter( aNewDataVec ), CommonFunctors::ToDouble());
             if( m_bDataInColumns )
                 m_aInternalData.setColumnValues( nIndex, aNewDataVec );
             else
@@ -1103,7 +1085,7 @@ void SAL_CALL InternalDataProvider::insertDataPointForAllSequences( ::sal_Int32 
     }
 
     // notify change to all affected ranges
-    tSequenceMap::const_iterator aBegin( m_aSequenceMap.lower_bound( "0"));
+    tSequenceMap::const_iterator aBegin( m_aSequenceMap.lower_bound( u"0"_ustr));
     tSequenceMap::const_iterator aEnd( m_aSequenceMap.upper_bound( OUString::number( nMaxRep )));
     std::for_each( aBegin, aEnd, lcl_setModified());
 
@@ -1126,7 +1108,7 @@ void SAL_CALL InternalDataProvider::deleteDataPointForAllSequences( ::sal_Int32 
     }
 
     // notify change to all affected ranges
-    tSequenceMap::const_iterator aBegin( m_aSequenceMap.lower_bound( "0"));
+    tSequenceMap::const_iterator aBegin( m_aSequenceMap.lower_bound( u"0"_ustr));
     tSequenceMap::const_iterator aEnd( m_aSequenceMap.upper_bound( OUString::number( nMaxRep )));
     std::for_each( aBegin, aEnd, lcl_setModified());
 
@@ -1145,7 +1127,7 @@ void SAL_CALL InternalDataProvider::swapDataPointWithNextOneForAllSequences( ::s
                          : m_aInternalData.getRowCount());
 
     // notify change to all affected ranges
-    tSequenceMap::const_iterator aBegin( m_aSequenceMap.lower_bound( "0"));
+    tSequenceMap::const_iterator aBegin( m_aSequenceMap.lower_bound( u"0"_ustr));
     tSequenceMap::const_iterator aEnd( m_aSequenceMap.upper_bound( OUString::number( nMaxRep )));
     std::for_each( aBegin, aEnd, lcl_setModified());
 
@@ -1157,6 +1139,13 @@ void SAL_CALL InternalDataProvider::registerDataSequenceForChanges( const Refere
 {
     if( xSeq.is())
         addDataSequenceToMap( xSeq->getSourceRangeRepresentation(), xSeq );
+}
+
+void SAL_CALL InternalDataProvider::insertDataSeries(::sal_Int32 nAfterIndex)
+{
+    // call the dialog insertion
+    DataBrowserModel aDBM(m_xChartModel);
+    aDBM.insertDataSeries(nAfterIndex);
 }
 
 // ____ XRangeXMLConversion ____
@@ -1242,7 +1231,7 @@ OUString SAL_CALL InternalDataProvider::convertRangeFromXML( const OUString& aXM
     // <https://bugs.documentfoundation.org/show_bug.cgi?id=112783> "PIVOT CHARTS: Save produces
     // invalid file because of invalid cell address":
     if (aXMLRange == "PivotChart") {
-        return "";
+        return u""_ustr;
     }
 
     static constexpr OUString aPivotTableID(u"PT@"_ustr);
@@ -1293,52 +1282,33 @@ namespace
 template< class Type >
 Sequence< Sequence< Type > > lcl_convertVectorVectorToSequenceSequence( const std::vector< std::vector< Type > >& rIn )
 {
-    Sequence< Sequence< Type > > aRet;
-    sal_Int32 nOuterCount = rIn.size();
-    if( nOuterCount )
-    {
-        aRet.realloc(nOuterCount);
-        auto pRet = aRet.getArray();
-        for( sal_Int32 nN=0; nN<nOuterCount; nN++)
-            pRet[nN]= comphelper::containerToSequence( rIn[nN] );
-    }
-    return aRet;
+    return CommonFunctors::convertToSequence(rIn, [](auto& v)
+                                             { return comphelper::containerToSequence(v); });
 }
 
 template< class Type >
 std::vector< std::vector< Type > > lcl_convertSequenceSequenceToVectorVector( const Sequence< Sequence< Type > >& rIn )
 {
     std::vector< std::vector< Type > > aRet;
-    sal_Int32 nOuterCount = rIn.getLength();
-    if( nOuterCount )
-    {
-        aRet.resize(nOuterCount);
-        for( sal_Int32 nN=0; nN<nOuterCount; nN++)
-            aRet[nN]= comphelper::sequenceToContainer<std::vector< Type >>( rIn[nN] );
-    }
+    aRet.reserve(rIn.getLength());
+    std::transform(rIn.begin(), rIn.end(), std::back_inserter(aRet),
+                   [](auto& s) { return comphelper::sequenceToContainer<std::vector<Type>>(s); });
     return aRet;
 }
 
-std::vector< Sequence< OUString > > lcl_convertComplexAnyVectorToStringSequence( const std::vector< std::vector< uno::Any > >& rIn )
+Sequence< Sequence< OUString > > lcl_convertComplexAnyVectorToStringSequence( const std::vector< std::vector< uno::Any > >& rIn )
 {
-    std::vector< Sequence< OUString > > aRet;
-    sal_Int32 nOuterCount = rIn.size();
-    if( nOuterCount )
-    {
-        aRet.resize(nOuterCount);
-        for( sal_Int32 nN=0; nN<nOuterCount; nN++)
-            aRet[nN] = comphelper::containerToSequence(lcl_AnyToStringSequence( rIn[nN] ));
-    }
-    return aRet;
+    return CommonFunctors::convertToSequence(
+        rIn,
+        [](auto& v) { return CommonFunctors::convertToSequence(v, CommonFunctors::ToString()); });
 }
 
 std::vector< std::vector< uno::Any > > lcl_convertComplexStringSequenceToAnyVector( const Sequence< Sequence< OUString > >& rIn )
 {
     std::vector< std::vector< uno::Any > > aRet;
-    sal_Int32 nOuterCount = rIn.getLength();
-    aRet.reserve(nOuterCount);
-    for (sal_Int32 nN = 0; nN < nOuterCount; nN++)
-        aRet.push_back( lcl_StringToAnyVector( rIn[nN] ) );
+    aRet.reserve(rIn.getLength());
+    std::transform(rIn.begin(), rIn.end(), std::back_inserter(aRet),
+                   [](auto& s) { return lcl_StringToAnyVector(s); });
     return aRet;
 }
 
@@ -1363,14 +1333,9 @@ sal_Int32 SplitCategoriesProvider_ForComplexDescriptions::getLevelCount() const
 }
 uno::Sequence< OUString > SplitCategoriesProvider_ForComplexDescriptions::getStringsForLevel( sal_Int32 nLevel ) const
 {
-    uno::Sequence< OUString > aResult;
     if( nLevel < lcl_getInnerLevelCount( m_rComplexDescriptions ) )
-    {
-        aResult.realloc( m_rComplexDescriptions.size() );
-        transform( m_rComplexDescriptions.begin(), m_rComplexDescriptions.end(),
-                   aResult.getArray(), lcl_getStringFromLevelVector(nLevel) );
-    }
-    return aResult;
+        return CommonFunctors::convertToSequence(m_rComplexDescriptions, lcl_getStringFromLevelVector(nLevel));
+    return {};
 }
 
 }//anonymous namespace
@@ -1433,7 +1398,7 @@ void SAL_CALL InternalDataProvider::setAnyColumnDescriptions( const Sequence< Se
 // ____ XComplexDescriptionAccess ____
 Sequence< Sequence< OUString > > SAL_CALL InternalDataProvider::getComplexRowDescriptions()
 {
-    return comphelper::containerToSequence(lcl_convertComplexAnyVectorToStringSequence( m_aInternalData.getComplexRowLabels() ));
+    return lcl_convertComplexAnyVectorToStringSequence( m_aInternalData.getComplexRowLabels() );
 }
 void SAL_CALL InternalDataProvider::setComplexRowDescriptions( const Sequence< Sequence< OUString > >& aRowDescriptions )
 {
@@ -1441,7 +1406,7 @@ void SAL_CALL InternalDataProvider::setComplexRowDescriptions( const Sequence< S
 }
 Sequence< Sequence< OUString > > SAL_CALL InternalDataProvider::getComplexColumnDescriptions()
 {
-    return comphelper::containerToSequence(lcl_convertComplexAnyVectorToStringSequence( m_aInternalData.getComplexColumnLabels() ));
+    return lcl_convertComplexAnyVectorToStringSequence( m_aInternalData.getComplexColumnLabels() );
 }
 void SAL_CALL InternalDataProvider::setComplexColumnDescriptions( const Sequence< Sequence< OUString > >& aColumnDescriptions )
 {
@@ -1462,7 +1427,7 @@ void SAL_CALL InternalDataProvider::setData( const Sequence< Sequence< double > 
 void SAL_CALL InternalDataProvider::setRowDescriptions( const Sequence< OUString >& aRowDescriptions )
 {
     std::vector< std::vector< uno::Any > > aComplexDescriptions( aRowDescriptions.getLength() );
-    transform( aComplexDescriptions.begin(), aComplexDescriptions.end(), aRowDescriptions.getConstArray(),
+    transform( aComplexDescriptions.begin(), aComplexDescriptions.end(), aRowDescriptions.begin(),
                aComplexDescriptions.begin(), lcl_setAnyAtLevelFromStringSequence(0) );
     m_aInternalData.setComplexRowLabels( std::move(aComplexDescriptions) );
 }
@@ -1470,7 +1435,7 @@ void SAL_CALL InternalDataProvider::setRowDescriptions( const Sequence< OUString
 void SAL_CALL InternalDataProvider::setColumnDescriptions( const Sequence< OUString >& aColumnDescriptions )
 {
     std::vector< std::vector< uno::Any > > aComplexDescriptions( aColumnDescriptions.getLength() );
-    transform( aComplexDescriptions.begin(), aComplexDescriptions.end(), aColumnDescriptions.getConstArray(),
+    transform( aComplexDescriptions.begin(), aComplexDescriptions.end(), aColumnDescriptions.begin(),
                aComplexDescriptions.begin(), lcl_setAnyAtLevelFromStringSequence(0) );
     m_aInternalData.setComplexColumnLabels( std::move(aComplexDescriptions) );
 }
@@ -1514,7 +1479,7 @@ sal_Bool SAL_CALL InternalDataProvider::isNotANumber( double nNumber )
 void SAL_CALL InternalDataProvider::initialize(const uno::Sequence< uno::Any > & _aArguments)
 {
     comphelper::SequenceAsHashMap aArgs(_aArguments);
-    if ( aArgs.getUnpackedValueOrDefault( "CreateDefaultData", false ) )
+    if ( aArgs.getUnpackedValueOrDefault( u"CreateDefaultData"_ustr, false ) )
             m_aInternalData.createDefaultData();
 }
 
@@ -1527,7 +1492,7 @@ Reference< util::XCloneable > SAL_CALL InternalDataProvider::createClone()
 OUString SAL_CALL InternalDataProvider::getImplementationName()
 {
     // note: in xmloff this name is used to indicate usage of own data
-    return "com.sun.star.comp.chart.InternalDataProvider";
+    return u"com.sun.star.comp.chart.InternalDataProvider"_ustr;
 }
 
 sal_Bool SAL_CALL InternalDataProvider::supportsService( const OUString& rServiceName )
@@ -1537,7 +1502,7 @@ sal_Bool SAL_CALL InternalDataProvider::supportsService( const OUString& rServic
 
 css::uno::Sequence< OUString > SAL_CALL InternalDataProvider::getSupportedServiceNames()
 {
-    return { "com.sun.star.chart2.data.DataProvider" };
+    return { u"com.sun.star.chart2.data.DataProvider"_ustr };
 }
 
 } //  namespace chart

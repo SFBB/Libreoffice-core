@@ -131,7 +131,7 @@ double LwpVirtualLayout::GetColGap(sal_uInt16 /*nIndex*/)
 {
     //return DEFAULTGAPSIZE;
     //return LwpTools::ConvertToMetric(0.17);//DEFAULTGAPSIZE=0.17
-    return LwpTools::ConvertToMetric(0.17);
+    return o3tl::convert(0.17, o3tl::Length::in, o3tl::Length::cm);
 }
 
 /**
@@ -662,7 +662,7 @@ double LwpMiddleLayout::GetGeometryHeight()
     LwpLayoutGeometry* pGeo = GetGeometry();
     if (pGeo)
     {
-        return LwpTools::ConvertFromUnitsToMetric(pGeo->GetHeight());
+        return LwpTools::ConvertFromUnits(pGeo->GetHeight());
     }
     else
         return -1;
@@ -677,7 +677,7 @@ double LwpMiddleLayout::GetGeometryWidth()
     LwpLayoutGeometry* pGeo = GetGeometry();
     if (pGeo)
     {
-        return LwpTools::ConvertFromUnitsToMetric(pGeo->GetWidth());
+        return LwpTools::ConvertFromUnits(pGeo->GetWidth());
     }
     else
         return -1;
@@ -872,10 +872,6 @@ enumXFTextDir LwpMiddleLayout::GetTextDirection()
             break;
         }
         case TEXT_ORIENT_RLBT: // not supported now
-        {
-            eTextDir = enumXFTextDirNone;
-            break;
-        }
         case TEXT_ORIENT_BTLR: // not supported now
         {
             eTextDir = enumXFTextDirNone;
@@ -1959,13 +1955,8 @@ void LwpPlacableLayout::Read()
             sal_uInt16 count = pStrm->QuickReaduInt16();
             if (count)
             {
-                // temporarily added by  to avoid assertion
-                while (count)
-                {
-                    LwpPoint aPoint;
-                    aPoint.Read(pStrm);
-                    count--;
-                }
+                // skip 'count' of LwpPoints, each of which is 2 Int32s
+                pStrm->SeekRel(count * 8);
             }
             pStrm->SkipExtra();
         }

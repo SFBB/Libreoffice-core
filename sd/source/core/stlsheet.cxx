@@ -140,8 +140,11 @@ void ModifyListenerForwarder::Notify(SfxBroadcaster& /*rBC*/, const SfxHint& /*r
         mpStyleSheet->notifyModifyListener();
 }
 
-SdStyleSheet::SdStyleSheet(const OUString& rDisplayName, SfxStyleSheetBasePool& _rPool, SfxStyleFamily eFamily, SfxStyleSearchBits _nMask)
-: SdStyleSheetBase( rDisplayName, _rPool, eFamily, _nMask)
+SdStyleSheet::SdStyleSheet(const OUString& rDisplayName, SfxStyleSheetBasePool& _rPool,
+                           SfxStyleFamily eFamily,
+                           SfxStyleSearchBits _nMask,
+                           const OUString& rParentStyleSheetName)
+: SdStyleSheetBase( rDisplayName, _rPool, eFamily, _nMask, rParentStyleSheetName)
 , msApiName( rDisplayName )
 , mxPool( &_rPool )
 {
@@ -149,6 +152,10 @@ SdStyleSheet::SdStyleSheet(const OUString& rDisplayName, SfxStyleSheetBasePool& 
 
 SdStyleSheet::~SdStyleSheet()
 {
+    // restore reference count, prevent double-delete from calling dispose
+    osl_atomic_increment( &m_refCount );
+    dispose();
+
     delete pSet;
     pSet = nullptr;    // that following destructors also get a change
 }
@@ -211,14 +218,14 @@ SfxItemSet& SdStyleSheet::GetItemSet()
         // we create the ItemSet 'on demand' if necessary
         if (!pSet)
         {
-            pSet = new SfxItemSetFixed<
-                    XATTR_LINE_FIRST, XATTR_LINE_LAST,
-                    XATTR_FILL_FIRST, XATTR_FILL_LAST,
-                    SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST,
-                    SDRATTR_TEXT_MINFRAMEHEIGHT, SDRATTR_TEXT_WORDWRAP,
-                    SDRATTR_EDGE_FIRST, SDRATTR_MEASURE_LAST,
-                    SDRATTR_3D_FIRST, SDRATTR_3D_LAST,
-                    EE_PARA_START, EE_CHAR_END>(GetPool()->GetPool());
+            pSet = new SfxItemSet(GetPool()->GetPool(), WhichRangesContainer(svl::Items<
+                        XATTR_LINE_FIRST, XATTR_LINE_LAST,
+                        XATTR_FILL_FIRST, XATTR_FILL_LAST,
+                        SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST,
+                        SDRATTR_TEXT_MINFRAMEHEIGHT, SDRATTR_TEXT_WORDWRAP,
+                        SDRATTR_EDGE_FIRST, SDRATTR_MEASURE_LAST,
+                        SDRATTR_3D_FIRST, SDRATTR_3D_LAST,
+                        EE_PARA_START, EE_CHAR_END>));
             bMySet = true;
         }
 
@@ -229,15 +236,14 @@ SfxItemSet& SdStyleSheet::GetItemSet()
     {
         if (!pSet)
         {
-            pSet = new SfxItemSetFixed<
-                    XATTR_LINE_FIRST, XATTR_LINE_LAST,
-                    XATTR_FILL_FIRST, XATTR_FILL_LAST,
-                    SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST,
-                    SDRATTR_TEXT_MINFRAMEHEIGHT, SDRATTR_XMLATTRIBUTES,
-                    SDRATTR_TEXT_WORDWRAP, SDRATTR_TEXT_WORDWRAP,
-                    SDRATTR_TABLE_FIRST, SDRATTR_TABLE_LAST,
-                    EE_PARA_START, EE_CHAR_END>(GetPool()->GetPool());
-
+            pSet = new SfxItemSet(GetPool()->GetPool(), WhichRangesContainer(svl::Items<
+                        XATTR_LINE_FIRST, XATTR_LINE_LAST,
+                        XATTR_FILL_FIRST, XATTR_FILL_LAST,
+                        SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST,
+                        SDRATTR_TEXT_MINFRAMEHEIGHT, SDRATTR_XMLATTRIBUTES,
+                        SDRATTR_TEXT_WORDWRAP, SDRATTR_TEXT_WORDWRAP,
+                        SDRATTR_TABLE_FIRST, SDRATTR_TABLE_LAST,
+                        EE_PARA_START, EE_CHAR_END>));
             bMySet = true;
         }
 
@@ -259,14 +265,14 @@ SfxItemSet& SdStyleSheet::GetItemSet()
         {
             if (!pSet)
             {
-                pSet = new SfxItemSetFixed<
-                        XATTR_LINE_FIRST, XATTR_LINE_LAST,
-                        XATTR_FILL_FIRST, XATTR_FILL_LAST,
-                        SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST,
-                        SDRATTR_TEXT_MINFRAMEHEIGHT, SDRATTR_TEXT_WORDWRAP,
-                        SDRATTR_EDGE_FIRST, SDRATTR_MEASURE_LAST,
-                        SDRATTR_3D_FIRST, SDRATTR_3D_LAST,
-                        EE_PARA_START, EE_CHAR_END>(GetPool()->GetPool());
+                pSet = new SfxItemSet(GetPool()->GetPool(), WhichRangesContainer(svl::Items<
+                            XATTR_LINE_FIRST, XATTR_LINE_LAST,
+                            XATTR_FILL_FIRST, XATTR_FILL_LAST,
+                            SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST,
+                            SDRATTR_TEXT_MINFRAMEHEIGHT, SDRATTR_TEXT_WORDWRAP,
+                            SDRATTR_EDGE_FIRST, SDRATTR_MEASURE_LAST,
+                            SDRATTR_3D_FIRST, SDRATTR_3D_LAST,
+                            EE_PARA_START, EE_CHAR_END>));
                 bMySet = true;
             }
 
@@ -310,7 +316,7 @@ bool SdStyleSheet::IsUsed() const
                     try
                     {
                         Reference<XPropertySet> xPropertySet(xStyle, UNO_QUERY_THROW);
-                        if (xPropertySet->getPropertyValue("IsPhysical").get<bool>())
+                        if (xPropertySet->getPropertyValue(u"IsPhysical"_ustr).get<bool>())
                             return true;
                     }
                     catch (const Exception&)
@@ -572,11 +578,12 @@ void SdStyleSheet::AdjustToFontHeight(SfxItemSet& rSet, bool bOnlyMissingItems)
     if (rSet.GetItemState(EE_PARA_LRSPACE) != SfxItemState::SET || !bOnlyMissingItems)
     {
         const SvxLRSpaceItem& rLRItem = pCurSet->Get(EE_PARA_LRSPACE);
-        double fIndentFraction = double(rLRItem.GetTextLeft()) / nOldHeight;
+        double fIndentFraction = double(rLRItem.ResolveTextLeft({})) / nOldHeight;
         SvxLRSpaceItem aNewLRItem(rLRItem);
-        aNewLRItem.SetTextLeft(fIndentFraction * nNewHeight);
-        double fFirstIndentFraction = double(rLRItem.GetTextFirstLineOffset()) / nOldHeight;
-        aNewLRItem.SetTextFirstLineOffset(static_cast<short>(fFirstIndentFraction * nNewHeight));
+        aNewLRItem.SetTextLeft(SvxIndentValue::twips(fIndentFraction * nNewHeight));
+        double fFirstIndentFraction = rLRItem.GetTextFirstLineOffset().m_dValue / nOldHeight;
+        aNewLRItem.SetTextFirstLineOffset(SvxIndentValue{ fFirstIndentFraction * nNewHeight,
+                                                          rLRItem.GetTextFirstLineOffset().m_nUnit });
         rSet.Put(aNewLRItem);
     }
 
@@ -650,7 +657,7 @@ struct ApiNameMap
         { std::u16string_view(u"Arrow Dashed"), HID_POOLSHEET_LINES_DASHED }
       };
 
-OUString GetApiNameForHelpId(sal_uLong nId)
+OUString GetApiNameForHelpId(sal_uInt32 nId)
 {
     if ((nId >= HID_PSEUDOSHEET_OUTLINE1) && (nId <= HID_PSEUDOSHEET_OUTLINE9))
         return "outline" + OUStringChar(sal_Unicode('1' + (nId - HID_PSEUDOSHEET_OUTLINE1)));
@@ -685,7 +692,7 @@ sal_uInt32 GetHelpIdForApiName(std::u16string_view sName)
 }
 }
 
-void SdStyleSheet::SetHelpId( const OUString& r, sal_uLong nId )
+void SdStyleSheet::SetHelpId( const OUString& r, sal_uInt32 nId )
 {
     SfxStyleSheet::SetHelpId( r, nId );
 
@@ -699,12 +706,12 @@ OUString SdStyleSheet::GetFamilyString( SfxStyleFamily eFamily )
     switch( eFamily )
     {
     case SfxStyleFamily::Frame:
-        return "cell";
+        return u"cell"_ustr;
     default:
         OSL_FAIL( "SdStyleSheet::GetFamilyString(), illegal family!" );
         [[fallthrough]];
     case SfxStyleFamily::Para:
-        return "graphics";
+        return u"graphics"_ustr;
     }
 }
 
@@ -725,28 +732,6 @@ rtl::Reference<SdStyleSheet> SdStyleSheet::CreateEmptyUserStyle( SfxStyleSheetBa
     while( rPool.Find( aName, eFamily ) != nullptr );
 
     return new SdStyleSheet(aName, rPool, eFamily, SfxStyleSearchBits::UserDefined);
-}
-
-// XInterface
-
-void SAL_CALL SdStyleSheet::release(  ) noexcept
-{
-    if (osl_atomic_decrement( &m_refCount ) != 0)
-        return;
-
-    // restore reference count:
-    osl_atomic_increment( &m_refCount );
-    if (! m_bDisposed) try
-    {
-        dispose();
-    }
-    catch (RuntimeException const&)
-    {
-        // don't break throw ()
-        TOOLS_WARN_EXCEPTION( "sd", "" );
-    }
-    OSL_ASSERT( m_bDisposed );
-    SdStyleSheetBase::release();
 }
 
 // XComponent
@@ -867,7 +852,7 @@ void SdStyleSheet::notifyModifyListener()
 // XServiceInfo
 OUString SAL_CALL SdStyleSheet::getImplementationName()
 {
-    return "SdStyleSheet";
+    return u"SdStyleSheet"_ustr;
 }
 
 sal_Bool SAL_CALL SdStyleSheet::supportsService( const OUString& ServiceName )
@@ -877,16 +862,16 @@ sal_Bool SAL_CALL SdStyleSheet::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL SdStyleSheet::getSupportedServiceNames()
 {
-    return { "com.sun.star.style.Style",
-             "com.sun.star.drawing.FillProperties",
-             "com.sun.star.drawing.LineProperties",
-             "com.sun.star.drawing.ShadowProperties",
-             "com.sun.star.drawing.ConnectorProperties",
-             "com.sun.star.drawing.MeasureProperties",
-             "com.sun.star.style.ParagraphProperties",
-             "com.sun.star.style.CharacterProperties",
-             "com.sun.star.drawing.TextProperties",
-             "com.sun.star.drawing.Text" };
+    return { u"com.sun.star.style.Style"_ustr,
+             u"com.sun.star.drawing.FillProperties"_ustr,
+             u"com.sun.star.drawing.LineProperties"_ustr,
+             u"com.sun.star.drawing.ShadowProperties"_ustr,
+             u"com.sun.star.drawing.ConnectorProperties"_ustr,
+             u"com.sun.star.drawing.MeasureProperties"_ustr,
+             u"com.sun.star.style.ParagraphProperties"_ustr,
+             u"com.sun.star.style.CharacterProperties"_ustr,
+             u"com.sun.star.drawing.TextProperties"_ustr,
+             u"com.sun.star.drawing.Text"_ustr };
 }
 
 bool SdStyleSheet::SetName(const OUString& rNewName, bool bReindexNow)
@@ -953,21 +938,26 @@ void SAL_CALL SdStyleSheet::setParentStyle( const OUString& rParentName  )
 
     if( !rParentName.isEmpty() )
     {
-        OUString const name(GetName());
+        OUString const& name(GetName());
         sal_Int32 const sep(name.indexOf(SD_LT_SEPARATOR));
         OUString const master((sep == -1) ? OUString() : name.copy(0, sep));
-        std::shared_ptr<SfxStyleSheetIterator> aSSSI = std::make_shared<SfxStyleSheetIterator>(mxPool.get(), nFamily);
-        for (SfxStyleSheetBase *pStyle = aSSSI->First(); pStyle; pStyle = aSSSI->Next())
+        SfxStyleSheetIterator aSSSI(mxPool.get(), nFamily);
+        for (SfxStyleSheetBase *pStyle = aSSSI.First(); pStyle; pStyle = aSSSI.Next())
         {
             // we hope that we have only sd style sheets
             SdStyleSheet* pSdStyleSheet = static_cast<SdStyleSheet*>(pStyle);
-            OUString const curName(pStyle->GetName());
+
+            // check that the master msApiName matches, as msApiName exists once per
+            // master page
+            if (pSdStyleSheet->msApiName != rParentName)
+                continue;
+
+            OUString const& curName(pStyle->GetName());
             sal_Int32 const curSep(curName.indexOf(SD_LT_SEPARATOR));
             OUString const curMaster((curSep == -1)
                     ? OUString() : curName.copy(0, curSep));
-            // check that the master matches, as msApiName exists once per
-            // master page
-            if (pSdStyleSheet->msApiName == rParentName && master == curMaster)
+            // check that the master matches
+            if (master == curMaster)
             {
                 if( pStyle != this )
                 {
@@ -1040,7 +1030,7 @@ void SdStyleSheet::setPropertyValue_Impl(const OUString& aPropertyName, const cs
             if (css::uno::Reference<css::beans::XPropertySet> xPropSet{ xColumns,
                                                                         css::uno::UNO_QUERY })
             {
-                auto aVal = xPropSet->getPropertyValue("AutomaticDistance");
+                auto aVal = xPropSet->getPropertyValue(u"AutomaticDistance"_ustr);
                 if (sal_Int32 nSpacing; aVal >>= nSpacing)
                     rStyleSet.Put(SdrMetricItem(SDRATTR_TEXTCOLUMNS_SPACING, nSpacing));
             }
@@ -1062,7 +1052,7 @@ void SdStyleSheet::setPropertyValue_Impl(const OUString& aPropertyName, const cs
         }
         else
         {
-            aSet.Put( GetPool()->GetPool().GetDefaultItem( pEntry->nWID ) );
+            aSet.Put( GetPool()->GetPool().GetUserOrPoolDefaultItem( pEntry->nWID ) );
         }
     }
 
@@ -1157,7 +1147,7 @@ css::uno::Any SdStyleSheet::getPropertyValue_Impl(const OUString& PropertyName)
         xCols->setColumnCount(rStyleSet.Get(SDRATTR_TEXTCOLUMNS_NUMBER).GetValue());
         css::uno::Reference<css::beans::XPropertySet> xProp(xIf, css::uno::UNO_QUERY_THROW);
         xProp->setPropertyValue(
-            "AutomaticDistance",
+            u"AutomaticDistance"_ustr,
             css::uno::Any(rStyleSet.Get(SDRATTR_TEXTCOLUMNS_SPACING).GetValue()));
         aAny <<= xIf;
     }
@@ -1172,7 +1162,7 @@ css::uno::Any SdStyleSheet::getPropertyValue_Impl(const OUString& PropertyName)
             aSet.Put(  *pItem );
 
         if( !aSet.Count() )
-            aSet.Put( GetPool()->GetPool().GetDefaultItem( pEntry->nWID ) );
+            aSet.Put( GetPool()->GetPool().GetUserOrPoolDefaultItem( pEntry->nWID ) );
 
         if(SvxUnoTextRangeBase::GetPropertyValueHelper( aSet, pEntry, aAny ))
             return aAny;
@@ -1495,7 +1485,7 @@ Any SAL_CALL SdStyleSheet::getPropertyDefault( const OUString& aPropertyName )
     {
         SfxItemPool& rMyPool = GetPool()->GetPool();
         SfxItemSet aSet( rMyPool, pEntry->nWID, pEntry->nWID);
-        aSet.Put( rMyPool.GetDefaultItem( pEntry->nWID ) );
+        aSet.Put( rMyPool.GetUserOrPoolDefaultItem( pEntry->nWID ) );
         aRet = SvxItemPropertySet_getPropertyValue( pEntry, aSet );
     }
     return aRet;

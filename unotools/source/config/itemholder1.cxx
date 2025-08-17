@@ -39,7 +39,7 @@ ItemHolder1::ItemHolder1()
 {
     try
     {
-        css::uno::Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const css::uno::Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         css::uno::Reference< css::lang::XComponent > xCfg(
             css::configuration::theDefaultProvider::get( xContext ),
             css::uno::UNO_QUERY_THROW );
@@ -111,10 +111,6 @@ void ItemHolder1::impl_newItem(TItemInfo& rItem)
     {
         case EItem::CmdOptions :
             rItem.pItem.reset( new SvtCommandOptions() );
-            break;
-
-        case EItem::Compatibility :
-            rItem.pItem.reset( new SvtCompatibilityOptions() );
             break;
 
         case EItem::EventConfig :

@@ -46,9 +46,9 @@
 #define BUTTON_WIDTH 12
 
 UnfloatTableButton::UnfloatTableButton(SwEditWin* pEditWin, const SwFrame* pFrame)
-    : SwFrameMenuButtonBase(pEditWin, pFrame, "modules/swriter/ui/unfloatbutton.ui",
-                            "UnfloatButton")
-    , m_xPushButton(m_xBuilder->weld_button("button"))
+    : SwFrameMenuButtonBase(pEditWin, pFrame, u"modules/swriter/ui/unfloatbutton.ui"_ustr,
+                            u"UnfloatButton"_ustr)
+    , m_xPushButton(m_xBuilder->weld_button(u"button"_ustr))
     , m_sLabel(SwResId(STR_UNFLOAT_TABLE))
 {
     m_xPushButton->set_accessible_name(m_sLabel);
@@ -136,11 +136,13 @@ IMPL_LINK_NOARG(UnfloatTableButton, ClickHdl, weld::Button&, void)
     assert(pTableFormat);
     if (const SfxGrabBagItem* pGrabBagItem = pTableFormat->GetAttrSet().GetItem(RES_FRMATR_GRABBAG))
     {
-        SfxGrabBagItem aGrabBagItem(*pGrabBagItem); // Editable copy
-        if (aGrabBagItem.GetGrabBag().erase("TablePosition"))
+        std::map<OUString, css::uno::Any> aGrabBagMap = pGrabBagItem->GetGrabBag(); // Editable copy
+        if (aGrabBagMap.erase(u"TablePosition"_ustr))
         {
+            SfxGrabBagItem aNewGrabBagItem(RES_FRMATR_GRABBAG, std::move(aGrabBagMap));
             css::uno::Any aVal;
-            aGrabBagItem.QueryValue(aVal);
+            aNewGrabBagItem.QueryValue(aVal);
+            pTableFormat->SetFormatAttr(aNewGrabBagItem);
             const rtl::Reference<SwXTextTable> xTable
                 = SwXTextTable::CreateXTextTable(pTableFormat);
             xTable->setPropertyValue(UNO_NAME_TABLE_INTEROP_GRAB_BAG, aVal);
@@ -214,10 +216,9 @@ void UnfloatTableButton::PaintButton()
         aFontSize.getX(), aFontSize.getY(), static_cast<double>(aTextPos.X()),
         static_cast<double>(aTextPos.Y())));
 
-    aSeq.push_back(drawinglayer::primitive2d::Primitive2DReference(
-        new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
-            aTextMatrix, m_sLabel, 0, m_sLabel.getLength(), std::vector<double>(), {},
-            std::move(aFontAttr), css::lang::Locale(), aLineColor)));
+    aSeq.push_back(new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
+        aTextMatrix, m_sLabel, 0, m_sLabel.getLength(), std::vector<double>(), {},
+        std::move(aFontAttr), css::lang::Locale(), aLineColor));
 
     // Create the processor and process the primitives
     const drawinglayer::geometry::ViewInformation2D aNewViewInfos;

@@ -35,15 +35,11 @@
 #include <sal/types.h>
 
 namespace com::sun::star {
-    namespace beans { struct PropertyValue; }
     namespace uno { class XComponentContext; }
 }
 
 namespace oox {
-    class GraphicHelper;
     namespace drawingml::chart { class ChartConverter; }
-    namespace ole { class VbaProject; }
-    namespace vml { class Drawing; }
 }
 
 namespace oox::ppt {
@@ -74,6 +70,7 @@ public:
 
     virtual sal_Bool SAL_CALL filter( const css::uno::Sequence<   css::beans::PropertyValue >& rDescriptor ) override;
 
+    void getSchemeColorToken(sal_Int32& nToken) const;
     ::Color getSchemeColor( sal_Int32 nToken ) const;
     virtual std::shared_ptr<::oox::drawingml::Theme> getCurrentThemePtr() const override;
 

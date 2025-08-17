@@ -221,11 +221,11 @@ namespace
         rTarget.AddAction(
             new MetaBmpExScaleAction(
                 Point(
-                    basegfx::fround(aLogicBitmapRange.getMinX()),
-                    basegfx::fround(aLogicBitmapRange.getMinY())),
+                    basegfx::fround<tools::Long>(aLogicBitmapRange.getMinX()),
+                    basegfx::fround<tools::Long>(aLogicBitmapRange.getMinY())),
                 Size(
-                    basegfx::fround(aLogicBitmapRange.getWidth()),
-                    basegfx::fround(aLogicBitmapRange.getHeight())),
+                    basegfx::fround<tools::Long>(aLogicBitmapRange.getWidth()),
+                    basegfx::fround<tools::Long>(aLogicBitmapRange.getHeight())),
                 BitmapEx(rBitmapEx.GetBitmap(), aAlpha)));
 
         return true;
@@ -357,10 +357,7 @@ void clipMetafileContentAgainstOwnRegions(GDIMetaFile& rSource)
 
                 if((aHorMove || aVerMove) && !aClips.empty() && aClips.back().count())
                 {
-                    aClips.back().transform(
-                        basegfx::utils::createTranslateB2DHomMatrix(
-                            aHorMove,
-                            aVerMove));
+                    aClips.back().translate(aHorMove, aVerMove);
                 }
                 break;
             }

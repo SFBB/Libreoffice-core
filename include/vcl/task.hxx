@@ -32,12 +32,14 @@ enum class TaskPriority
     HIGH_IDLE,     ///< Important idle events to be run before processing drawing events
     RESIZE,        ///< Resize runs before repaint, so we won't paint twice
     REPAINT,       ///< All repaint events should go in here
+    SKIA_FLUSH,    ///< tdf#165277 Skia needs to flush immediately before POST_PAINT tasks on macOS
     POST_PAINT,    ///< Everything running directly after painting
     DEFAULT_IDLE,  ///< Default idle priority
-    LOWEST         ///< Low, very idle cleanup tasks
+    LOWEST,        ///< Low, very idle cleanup tasks
+    TOOLKIT_DEBUG  ///< Do not use. Solely for IdleTask::waitUntilIdleDispatched
 };
 
-#define PRIO_COUNT (static_cast<int>(TaskPriority::LOWEST) + 1)
+#define PRIO_COUNT (static_cast<int>(TaskPriority::TOOLKIT_DEBUG) + 1)
 
 class VCL_DLLPUBLIC Task
 {
@@ -80,6 +82,8 @@ public:
     TaskPriority    GetPriority() const { return mePriority; }
 
     const char     *GetDebugName() const { return mpDebugName; }
+
+    virtual bool DecideTransferredExecution();
 
     // Call handler
     virtual void    Invoke() = 0;

@@ -274,8 +274,7 @@ TypeDescriptor_Init_Impl& Init()
 }
 
 extern "C" void SAL_CALL typelib_typedescription_registerCallback(
-    void * pContext, typelib_typedescription_Callback pCallback )
-    SAL_THROW_EXTERN_C()
+    void * pContext, typelib_typedescription_Callback pCallback ) noexcept
 {
     // todo mt safe: guard is no solution, can not acquire while calling callback!
     TypeDescriptor_Init_Impl &rInit = Init();
@@ -285,8 +284,7 @@ extern "C" void SAL_CALL typelib_typedescription_registerCallback(
 
 
 extern "C" void SAL_CALL typelib_typedescription_revokeCallback(
-    void * pContext, typelib_typedescription_Callback pCallback )
-    SAL_THROW_EXTERN_C()
+    void * pContext, typelib_typedescription_Callback pCallback ) noexcept
 {
     TypeDescriptor_Init_Impl &rInit = Init();
     {
@@ -471,8 +469,7 @@ bool complete(typelib_TypeDescription ** ppTypeDescr, bool initTables) {
 
 extern "C" void typelib_typedescription_newEmpty(
     typelib_TypeDescription ** ppRet,
-    typelib_TypeClass eTypeClass, rtl_uString * pTypeName )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeClass eTypeClass, rtl_uString * pTypeName ) noexcept
 {
     if( *ppRet )
     {
@@ -689,7 +686,7 @@ void newTypeDescription(
                 pTmp->ppMemberNames = new rtl_uString *[ nMembers ];
                 bool polymorphic = eTypeClass == typelib_TypeClass_STRUCT
                     && OUString::unacquired(&pTypeName).indexOf('<') >= 0;
-                OSL_ASSERT(!polymorphic || pStructMembers != nullptr);
+                assert(!polymorphic || pStructMembers != nullptr);
                 if (polymorphic) {
                     reinterpret_cast< typelib_StructTypeDescription * >(pTmp)->
                         pParameterizedTypes = new sal_Bool[nMembers];
@@ -714,6 +711,7 @@ void newTypeDescription(
                             = pStructMembers[i].aBase.pMemberName;
                         rtl_uString_acquire(pTmp->ppMemberNames[i]);
                     }
+                    assert(pTmp->ppTypeRefs[i]);
                     // write offset
                     sal_Int32 size;
                     sal_Int32 alignment;
@@ -767,8 +765,7 @@ extern "C" void SAL_CALL typelib_typedescription_new(
     rtl_uString * pTypeName,
     typelib_TypeDescriptionReference * pType,
     sal_Int32 nMembers,
-    typelib_CompoundMember_Init * pMembers )
-    SAL_THROW_EXTERN_C()
+    typelib_CompoundMember_Init * pMembers ) noexcept
 {
     newTypeDescription(
         ppRet, eTypeClass, pTypeName, pType, nMembers, pMembers, nullptr);
@@ -779,8 +776,7 @@ extern "C" void SAL_CALL typelib_typedescription_newStruct(
     rtl_uString * pTypeName,
     typelib_TypeDescriptionReference * pType,
     sal_Int32 nMembers,
-    typelib_StructMember_Init * pMembers )
-    SAL_THROW_EXTERN_C()
+    typelib_StructMember_Init * pMembers ) noexcept
 {
     newTypeDescription(
         ppRet, typelib_TypeClass_STRUCT, pTypeName, pType, nMembers, nullptr,
@@ -794,8 +790,7 @@ extern "C" void SAL_CALL typelib_typedescription_newEnum(
     sal_Int32 nDefaultValue,
     sal_Int32 nEnumValues,
     rtl_uString ** ppEnumNames,
-    sal_Int32 * pEnumValues )
-    SAL_THROW_EXTERN_C()
+    sal_Int32 * pEnumValues ) noexcept
 {
     typelib_typedescription_newEmpty( ppRet, typelib_TypeClass_ENUM, pTypeName );
     typelib_EnumTypeDescription * pEnum = reinterpret_cast<typelib_EnumTypeDescription *>(*ppRet);
@@ -827,10 +822,8 @@ extern "C" void SAL_CALL typelib_typedescription_newInterface(
     SAL_UNUSED_PARAMETER sal_uInt32,
     typelib_TypeDescriptionReference * pBaseInterface,
     sal_Int32 nMembers,
-    typelib_TypeDescriptionReference ** ppMembers )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescriptionReference ** ppMembers ) noexcept
 {
-    // coverity[callee_ptr_arith] - not a bug
     typelib_typedescription_newMIInterface(
         ppRet, pTypeName, 0, 0, 0, 0, 0, pBaseInterface == nullptr ? 0 : 1,
         &pBaseInterface, nMembers, ppMembers);
@@ -917,8 +910,7 @@ extern "C" void SAL_CALL typelib_typedescription_newMIInterface(
     sal_Int32 nBaseInterfaces,
     typelib_TypeDescriptionReference ** ppBaseInterfaces,
     sal_Int32 nMembers,
-    typelib_TypeDescriptionReference ** ppMembers )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescriptionReference ** ppMembers ) noexcept
 {
     if (*ppRet != nullptr) {
         typelib_typedescription_release(&(*ppRet)->aBase);
@@ -1048,8 +1040,7 @@ extern "C" void SAL_CALL typelib_typedescription_newInterfaceMethod(
     sal_Int32 nParams,
     typelib_Parameter_Init * pParams,
     sal_Int32 nExceptions,
-    rtl_uString ** ppExceptionNames )
-    SAL_THROW_EXTERN_C()
+    rtl_uString ** ppExceptionNames ) noexcept
 {
     if (*ppRet != nullptr) {
         typelib_typedescription_release(&(*ppRet)->aBase.aBase);
@@ -1122,8 +1113,7 @@ extern "C" void SAL_CALL typelib_typedescription_newInterfaceAttribute(
     rtl_uString * pTypeName,
     typelib_TypeClass eAttributeTypeClass,
     rtl_uString * pAttributeTypeName,
-    sal_Bool bReadOnly )
-    SAL_THROW_EXTERN_C()
+    sal_Bool bReadOnly ) noexcept
 {
     typelib_typedescription_newExtendedInterfaceAttribute(
         ppRet, nAbsolutePosition, pTypeName, eAttributeTypeClass,
@@ -1139,8 +1129,7 @@ extern "C" void SAL_CALL typelib_typedescription_newExtendedInterfaceAttribute(
     rtl_uString * pAttributeTypeName,
     sal_Bool bReadOnly,
     sal_Int32 nGetExceptions, rtl_uString ** ppGetExceptionNames,
-    sal_Int32 nSetExceptions, rtl_uString ** ppSetExceptionNames )
-    SAL_THROW_EXTERN_C()
+    sal_Int32 nSetExceptions, rtl_uString ** ppSetExceptionNames ) noexcept
 {
     if (*ppRet != nullptr) {
         typelib_typedescription_release(&(*ppRet)->aBase.aBase);
@@ -1194,8 +1183,7 @@ extern "C" void SAL_CALL typelib_typedescription_newExtendedInterfaceAttribute(
 
 
 extern "C" void SAL_CALL typelib_typedescription_acquire(
-    typelib_TypeDescription * pTypeDescription )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescription * pTypeDescription ) noexcept
 {
     osl_atomic_increment( &pTypeDescription->nRefCount );
 }
@@ -1322,8 +1310,7 @@ static void typelib_typedescription_destructExtendedMembers(
 
 
 extern "C" void SAL_CALL typelib_typedescription_release(
-    typelib_TypeDescription * pTD )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescription * pTD ) noexcept
 {
     sal_Int32 ref = osl_atomic_decrement( &pTD->nRefCount );
     OSL_ASSERT(ref >= 0);
@@ -1390,8 +1377,7 @@ extern "C" void SAL_CALL typelib_typedescription_release(
 
 
 extern "C" void SAL_CALL typelib_typedescription_register(
-    typelib_TypeDescription ** ppNewDescription )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescription ** ppNewDescription ) noexcept
 {
     // connect the description with the weak reference
     TypeDescriptor_Init_Impl &rInit = Init();
@@ -1553,7 +1539,6 @@ extern "C" void SAL_CALL typelib_typedescription_register(
                 {
                     // switch from !OnDemand to OnDemand, so the description must be released
                     assert(pTDR->pType->nRefCount > 1);
-                    // coverity[freed_arg] - pType's nRefCount is > 1 here
                     typelib_typedescription_release( pTDR->pType );
                 }
 
@@ -1606,8 +1591,7 @@ static bool type_equals(
              rtl_ustr_compare( p1->pTypeName->buffer, p2->pTypeName->buffer ) == 0));
 }
 extern "C" sal_Bool SAL_CALL typelib_typedescription_equals(
-    const typelib_TypeDescription * p1, const typelib_TypeDescription * p2 )
-    SAL_THROW_EXTERN_C()
+    const typelib_TypeDescription * p1, const typelib_TypeDescription * p2 ) noexcept
 {
     return type_equals(
         reinterpret_cast<typelib_TypeDescriptionReference const *>(p1), reinterpret_cast<typelib_TypeDescriptionReference const *>(p2) );
@@ -1616,8 +1600,7 @@ extern "C" sal_Bool SAL_CALL typelib_typedescription_equals(
 
 extern "C" sal_Int32 typelib_typedescription_getAlignedUnoSize(
     const typelib_TypeDescription * pTypeDescription,
-    sal_Int32 nOffset, sal_Int32 & rMaxIntegralTypeSize )
-    SAL_THROW_EXTERN_C()
+    sal_Int32 nOffset, sal_Int32 & rMaxIntegralTypeSize ) noexcept
 {
     sal_Int32 nSize;
     if( pTypeDescription->nSize )
@@ -1857,8 +1840,7 @@ bool createDerivedInterfaceMemberDescription(
 }
 
 extern "C" void SAL_CALL typelib_typedescription_getByName(
-    typelib_TypeDescription ** ppRet, rtl_uString * pName )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescription ** ppRet, rtl_uString * pName ) noexcept
 {
     if( *ppRet )
     {
@@ -1879,35 +1861,35 @@ extern "C" void SAL_CALL typelib_typedescription_getByName(
             bInited = true;
 
             typelib_TypeDescription * pType = nullptr;
-            typelib_typedescription_new( &pType, typelib_TypeClass_TYPE, OUString("type").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_TYPE, u"type"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_VOID, OUString("void").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_VOID, u"void"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_BOOLEAN, OUString("boolean").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_BOOLEAN, u"boolean"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_CHAR, OUString("char").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_CHAR, u"char"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_BYTE, OUString("byte").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_BYTE, u"byte"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_STRING, OUString("string").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_STRING, u"string"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_SHORT, OUString("short").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_SHORT, u"short"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_UNSIGNED_SHORT, OUString("unsigned short").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_UNSIGNED_SHORT, u"unsigned short"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_LONG, OUString("long").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_LONG, u"long"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_UNSIGNED_LONG, OUString("unsigned long").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_UNSIGNED_LONG, u"unsigned long"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_HYPER, OUString("hyper").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_HYPER, u"hyper"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_UNSIGNED_HYPER, OUString("unsigned hyper").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_UNSIGNED_HYPER, u"unsigned hyper"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_FLOAT, OUString("float").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_FLOAT, u"float"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_DOUBLE, OUString("double").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_DOUBLE, u"double"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
-            typelib_typedescription_new( &pType, typelib_TypeClass_ANY, OUString("any").pData, nullptr, 0, nullptr );
+            typelib_typedescription_new( &pType, typelib_TypeClass_ANY, u"any"_ustr.pData, nullptr, 0, nullptr );
             typelib_typedescription_register( &pType );
             typelib_typedescription_release( pType );
         }
@@ -2031,8 +2013,7 @@ extern "C" void SAL_CALL typelib_typedescription_getByName(
 extern "C" void SAL_CALL typelib_typedescriptionreference_newByAsciiName(
     typelib_TypeDescriptionReference ** ppTDR,
     typelib_TypeClass eTypeClass,
-    const char * pTypeName )
-    SAL_THROW_EXTERN_C()
+    const char * pTypeName ) noexcept
 {
     OUString aTypeName( OUString::createFromAscii( pTypeName ) );
     typelib_typedescriptionreference_new( ppTDR, eTypeClass, aTypeName.pData );
@@ -2040,8 +2021,7 @@ extern "C" void SAL_CALL typelib_typedescriptionreference_newByAsciiName(
 
 extern "C" void SAL_CALL typelib_typedescriptionreference_new(
     typelib_TypeDescriptionReference ** ppTDR,
-    typelib_TypeClass eTypeClass, rtl_uString * pTypeName )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeClass eTypeClass, rtl_uString * pTypeName ) noexcept
 {
     TypeDescriptor_Init_Impl &rInit = Init();
     if( eTypeClass == typelib_TypeClass_TYPEDEF )
@@ -2130,16 +2110,14 @@ extern "C" void SAL_CALL typelib_typedescriptionreference_new(
 
 
 extern "C" void SAL_CALL typelib_typedescriptionreference_acquire(
-    typelib_TypeDescriptionReference * pRef )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescriptionReference * pRef ) noexcept
 {
     osl_atomic_increment( &pRef->nRefCount );
 }
 
 
 extern "C" void SAL_CALL typelib_typedescriptionreference_release(
-    typelib_TypeDescriptionReference * pRef )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescriptionReference * pRef ) noexcept
 {
     // Is it a type description?
     if( TYPELIB_TYPEDESCRIPTIONREFERENCE_ISREALLYWEAK( pRef->eTypeClass ) )
@@ -2171,8 +2149,7 @@ extern "C" void SAL_CALL typelib_typedescriptionreference_release(
 
 
 extern "C" void SAL_CALL typelib_typedescriptionreference_getDescription(
-    typelib_TypeDescription ** ppRet, typelib_TypeDescriptionReference * pRef )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescription ** ppRet, typelib_TypeDescriptionReference * pRef ) noexcept
 {
     if( *ppRet )
     {
@@ -2217,8 +2194,7 @@ extern "C" void SAL_CALL typelib_typedescriptionreference_getDescription(
 
 
 extern "C" void typelib_typedescriptionreference_getByName(
-    typelib_TypeDescriptionReference ** ppRet, rtl_uString const * pName )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescriptionReference ** ppRet, rtl_uString const * pName ) noexcept
 {
     if( *ppRet )
     {
@@ -2250,8 +2226,7 @@ extern "C" void typelib_typedescriptionreference_getByName(
 
 extern "C" sal_Bool SAL_CALL typelib_typedescriptionreference_equals(
     const typelib_TypeDescriptionReference * p1,
-    const typelib_TypeDescriptionReference * p2 )
-    SAL_THROW_EXTERN_C()
+    const typelib_TypeDescriptionReference * p2 ) noexcept
 {
     return (p1 == p2 ||
             (p1->eTypeClass == p2->eTypeClass &&
@@ -2262,8 +2237,7 @@ extern "C" sal_Bool SAL_CALL typelib_typedescriptionreference_equals(
 
 extern "C" void SAL_CALL typelib_typedescriptionreference_assign(
     typelib_TypeDescriptionReference ** ppDest,
-    typelib_TypeDescriptionReference * pSource )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescriptionReference * pSource ) noexcept
 {
     if (*ppDest != pSource)
     {
@@ -2274,8 +2248,7 @@ extern "C" void SAL_CALL typelib_typedescriptionreference_assign(
 }
 
 
-extern "C" void SAL_CALL typelib_setCacheSize( sal_Int32 )
-    SAL_THROW_EXTERN_C()
+extern "C" void SAL_CALL typelib_setCacheSize( sal_Int32 ) noexcept
 {
 }
 
@@ -2299,8 +2272,7 @@ const bool s_aAssignableFromTab[11][11] =
 
 extern "C" sal_Bool SAL_CALL typelib_typedescriptionreference_isAssignableFrom(
     typelib_TypeDescriptionReference * pAssignable,
-    typelib_TypeDescriptionReference * pFrom )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescriptionReference * pFrom ) noexcept
 {
     if (!pAssignable || !pFrom)
         return false;
@@ -2367,8 +2339,7 @@ extern "C" sal_Bool SAL_CALL typelib_typedescriptionreference_isAssignableFrom(
 
 extern "C" sal_Bool SAL_CALL typelib_typedescription_isAssignableFrom(
     typelib_TypeDescription * pAssignable,
-    typelib_TypeDescription * pFrom )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescription * pFrom ) noexcept
 {
     return typelib_typedescriptionreference_isAssignableFrom(
         pAssignable->pWeakRef, pFrom->pWeakRef );
@@ -2376,8 +2347,7 @@ extern "C" sal_Bool SAL_CALL typelib_typedescription_isAssignableFrom(
 
 
 extern "C" sal_Bool SAL_CALL typelib_typedescription_complete(
-    typelib_TypeDescription ** ppTypeDescr )
-    SAL_THROW_EXTERN_C()
+    typelib_TypeDescription ** ppTypeDescr ) noexcept
 {
     return complete(ppTypeDescr, true);
 }

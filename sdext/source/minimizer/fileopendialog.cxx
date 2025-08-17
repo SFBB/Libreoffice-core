@@ -35,7 +35,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::view;
 using namespace ::com::sun::star::ui::dialogs;
 
 FileOpenDialog::FileOpenDialog( const Reference< XComponentContext >& rxContext )
@@ -56,7 +55,7 @@ FileOpenDialog::FileOpenDialog( const Reference< XComponentContext >& rxContext 
 
     // collecting a list of impress filters
     Reference< XNameAccess > xFilters( rxContext->getServiceManager()->createInstanceWithContext(
-        "com.sun.star.document.FilterFactory", rxContext ), UNO_QUERY_THROW );
+        u"com.sun.star.document.FilterFactory"_ustr, rxContext ), UNO_QUERY_THROW );
     const Sequence< OUString > aFilterList( xFilters->getElementNames() );
     for ( const auto& rFilter : aFilterList )
     {
@@ -67,7 +66,7 @@ FileOpenDialog::FileOpenDialog( const Reference< XComponentContext >& rxContext 
             {
                 FilterEntry aFilterEntry;
                 bool bImpressFilter = false;
-                for ( const PropertyValue& rProperty : std::as_const(aFilterProperties) )
+                for (const PropertyValue& rProperty : aFilterProperties)
                 {
                     bool bStop = false;
                     switch( TKGet( rProperty.Name ) )
@@ -104,7 +103,7 @@ FileOpenDialog::FileOpenDialog( const Reference< XComponentContext >& rxContext 
     }
 
     Reference< XNameAccess > xTypes( rxContext->getServiceManager()->createInstanceWithContext(
-        "com.sun.star.document.TypeDetection", rxContext ), UNO_QUERY_THROW );
+        u"com.sun.star.document.TypeDetection"_ustr, rxContext ), UNO_QUERY_THROW );
 
     for (auto& rFilterEntry : aFilterEntryList)
     {

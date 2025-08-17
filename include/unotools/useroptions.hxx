@@ -24,8 +24,6 @@
 #include <unotools/options.hxx>
 #include <memory>
 
-namespace osl { class Mutex; }
-
 // define ----------------------------------------------------------------
 enum class UserOptToken
 {
@@ -49,7 +47,9 @@ enum class UserOptToken
     SigningKey         = 17,
     EncryptionKey      = 18,
     EncryptToSelf      = 19,
-    LAST               = EncryptToSelf,
+    SigningKeyDisplayName = 20,
+    EncryptionKeyDisplayName = 21,
+    LAST               = EncryptionKeyDisplayName,
 };
 
 // class SvtUserOptions --------------------------------------------------
@@ -79,6 +79,8 @@ public:
     OUString GetSigningKey     () const;
     OUString GetEncryptionKey  () const;
     bool GetEncryptToSelf      () const;
+    OUString GetSigningKeyDisplayName () const;
+    OUString GetEncryptionKeyDisplayName () const;
 
     OUString GetFullName       () const;
 

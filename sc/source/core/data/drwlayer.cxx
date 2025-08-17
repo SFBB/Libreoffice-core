@@ -85,9 +85,9 @@
 #include <charthelper.hxx>
 #include <table.hxx>
 #include <stlpool.hxx>
-#include <docpool.hxx>
 #include <detfunc.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <clipcontext.hxx>
 #include <clipparam.hxx>
 
 #include <memory>
@@ -203,6 +203,7 @@ void ScUndoAnchorData::Redo()
 }
 
 ScTabDeletedHint::ScTabDeletedHint( SCTAB nTabNo ) :
+    SfxHint(SfxHintId::ScTabDeleted),
     nTab( nTabNo )
 {
 }
@@ -212,6 +213,7 @@ ScTabDeletedHint::~ScTabDeletedHint()
 }
 
 ScTabSizeChangedHint::ScTabSizeChangedHint( SCTAB nTabNo ) :
+    SfxHint(SfxHintId::ScTabSizeChanged),
     nTab( nTabNo )
 {
 }
@@ -239,7 +241,7 @@ static ScRange lcl_getClipRangeFromClipDoc(ScDocument* pClipDoc, SCTAB nClipTab)
     SCROW nClipEndY;
     pClipDoc->GetClipStart(nClipStartX, nClipStartY);
     pClipDoc->GetClipArea(nClipEndX, nClipEndY, true);
-    nClipEndX = nClipEndX + nClipStartX;
+    nClipEndX += nClipStartX;
     nClipEndY += nClipStartY; // GetClipArea returns the difference
 
     return ScRange(nClipStartX, nClipStartY, nClipTab, nClipEndX, nClipEndY, nClipTab);
@@ -279,35 +281,33 @@ ScDrawLayer::ScDrawLayer( ScDocument* pDocument, OUString _aName ) :
     SfxItemPool& rPool = GetItemPool();
     rPool.SetDefaultMetric(MapUnit::Map100thMM);
     SvxFrameDirectionItem aModeItem( SvxFrameDirection::Environment, EE_PARA_WRITINGDIR );
-    rPool.SetPoolDefaultItem( aModeItem );
+    rPool.SetUserDefaultItem( aModeItem );
 
     // #i33700#
     // Set shadow distance defaults as PoolDefaultItems. Details see bug.
-    rPool.SetPoolDefaultItem(makeSdrShadowXDistItem(300));
-    rPool.SetPoolDefaultItem(makeSdrShadowYDistItem(300));
+    rPool.SetUserDefaultItem(makeSdrShadowXDistItem(300));
+    rPool.SetUserDefaultItem(makeSdrShadowYDistItem(300));
 
     // default for script spacing depends on locale, see SdDrawDocument ctor in sd
     LanguageType eOfficeLanguage = Application::GetSettings().GetLanguageTag().getLanguageType();
     if (MsLangId::isKorean(eOfficeLanguage) || eOfficeLanguage == LANGUAGE_JAPANESE)
     {
         // secondary is edit engine pool
-        rPool.GetSecondaryPool()->SetPoolDefaultItem( SvxScriptSpaceItem( false, EE_PARA_ASIANCJKSPACING ) );
+        rPool.GetSecondaryPool()->SetUserDefaultItem( SvxScriptSpaceItem( false, EE_PARA_ASIANCJKSPACING ) );
     }
-
-    rPool.FreezeIdRanges();                         // the pool is also used directly
 
     SetStyleSheetPool(pDocument ? pDocument->GetStyleSheetPool() : new ScStyleSheetPool(rPool, pDocument));
 
     SdrLayerAdmin& rAdmin = GetLayerAdmin();
-    rAdmin.NewLayer("vorne",    SC_LAYER_FRONT.get());
-    rAdmin.NewLayer("hinten",   SC_LAYER_BACK.get());
-    rAdmin.NewLayer("intern",   SC_LAYER_INTERN.get());
+    rAdmin.NewLayer(u"vorne"_ustr,    SC_LAYER_FRONT.get());
+    rAdmin.NewLayer(u"hinten"_ustr,   SC_LAYER_BACK.get());
+    rAdmin.NewLayer(u"intern"_ustr,   SC_LAYER_INTERN.get());
     // tdf#140252 use same name as in ctor of SdrLayerAdmin
     rAdmin.NewLayer(rAdmin.GetControlLayerName(), SC_LAYER_CONTROLS.get());
-    rAdmin.NewLayer("hidden",   SC_LAYER_HIDDEN.get());
+    rAdmin.NewLayer(u"hidden"_ustr,   SC_LAYER_HIDDEN.get());
 
     // Set link for URL-Fields
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     Outliner& rOutliner = GetDrawOutliner();
     rOutliner.SetCalcFieldValueHdl( LINK( pScMod, ScModule, CalcFieldValueHdl ) );
     rOutliner.SetStyleSheetPool(static_cast<SfxStyleSheetPool*>(GetStyleSheetPool()));
@@ -317,19 +317,19 @@ ScDrawLayer::ScDrawLayer( ScDocument* pDocument, OUString _aName ) :
     rHitOutliner.SetStyleSheetPool(static_cast<SfxStyleSheetPool*>(GetStyleSheetPool()));
 
     // set FontHeight pool defaults without changing static SdrEngineDefaults
-    SfxItemPool* pOutlinerPool = rOutliner.GetEditTextObjectPool();
+    SfxItemPool* pOutlinerPool = rOutliner.GetEditEnginePool();
     if ( pOutlinerPool )
     {
-         m_pItemPool->SetPoolDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT ));           // 12Pt
-         m_pItemPool->SetPoolDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT_CJK ));           // 12Pt
-         m_pItemPool->SetPoolDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT_CTL ));           // 12Pt
+         m_pItemPool->SetUserDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT ));           // 12Pt
+         m_pItemPool->SetUserDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT_CJK ));           // 12Pt
+         m_pItemPool->SetUserDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT_CTL ));           // 12Pt
     }
-    SfxItemPool* pHitOutlinerPool = rHitOutliner.GetEditTextObjectPool();
+    SfxItemPool* pHitOutlinerPool = rHitOutliner.GetEditEnginePool();
     if ( pHitOutlinerPool )
     {
-         pHitOutlinerPool->SetPoolDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT ));    // 12Pt
-         pHitOutlinerPool->SetPoolDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT_CJK ));    // 12Pt
-         pHitOutlinerPool->SetPoolDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT_CTL ));    // 12Pt
+         pHitOutlinerPool->SetUserDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT ));    // 12Pt
+         pHitOutlinerPool->SetUserDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT_CJK ));    // 12Pt
+         pHitOutlinerPool->SetUserDefaultItem(SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT_CTL ));    // 12Pt
     }
 
     // initial undo mode as in Calc document
@@ -375,7 +375,7 @@ void ScDrawLayer::CreateDefaultStyles()
     aTriangle.setClosed(true);
 
     auto pSet = &pSheet->GetItemSet();
-    pSet->Put(XLineStartItem(OUString(), ::basegfx::B2DPolyPolygon(aTriangle)).checkForUniqueItem(this));
+    pSet->Put(XLineStartItem(OUString(), ::basegfx::B2DPolyPolygon(aTriangle)).checkForUniqueItem(*this));
     pSet->Put(XLineStartWidthItem(200));
     pSet->Put(XLineStartCenterItem(false));
     pSet->Put(XLineStyleItem(drawing::LineStyle_SOLID));
@@ -398,7 +398,7 @@ void ScDrawLayer::CreateDefaultStyles()
 
     // text formatting
     SfxItemSet aEditSet(GetItemPool());
-    ScPatternAttr::FillToEditItemSet(aEditSet, pDoc->GetPool()->GetDefaultItem(ATTR_PATTERN).GetItemSet());
+    ScPatternAttr::FillToEditItemSet(aEditSet, pDoc->getCellAttributeHelper().getDefaultCellAttribute().GetItemSet());
 
     pSet->Put(aEditSet.Get(EE_CHAR_FONTINFO));
     pSet->Put(aEditSet.Get(EE_CHAR_FONTINFO_CJK));
@@ -513,8 +513,7 @@ void ScDrawLayer::ScCopyPage( sal_uInt16 nOldPos, sal_uInt16 nNewPos )
         SCTAB nNewTab = static_cast<SCTAB>(nNewPos);
 
         SdrObjListIter aIter( pOldPage, SdrIterMode::Flat );
-        SdrObject* pOldObject = aIter.Next();
-        while (pOldObject)
+        while (SdrObject* pOldObject = aIter.Next())
         {
             ScDrawObjData* pOldData = GetObjData(pOldObject);
             if (pOldData)
@@ -536,8 +535,6 @@ void ScDrawLayer::ScCopyPage( sal_uInt16 nOldPos, sal_uInt16 nNewPos )
 
             if (bRecording)
                 AddCalcUndo( std::make_unique<SdrUndoInsertObj>( *pNewObject ) );
-
-            pOldObject = aIter.Next();
         }
     }
 
@@ -562,7 +559,7 @@ void ScDrawLayer::ResetTab( SCTAB nStart, SCTAB nEnd )
             continue;
 
         SdrObjListIter aIter(pPage, SdrIterMode::Flat);
-        for (SdrObject* pObj = aIter.Next(); pObj; pObj = aIter.Next())
+        while (SdrObject* pObj = aIter.Next())
         {
             ScDrawObjData* pData = GetObjData(pObj);
             if (!pData)
@@ -663,7 +660,7 @@ void ScDrawLayer::SetPageSize(sal_uInt16 nPageNo, const Size& rSize, bool bUpdat
     //  even if size is still the same
     //  (individual rows/columns can have been changed))
 
-    bool bNegativePage = pDoc && pDoc->IsNegativePage( static_cast<SCTAB>(nPageNo) );
+    bool bNegativePage = pDoc->IsNegativePage( static_cast<SCTAB>(nPageNo) );
 
     // Disable mass broadcasts from drawing objects' position changes.
     bool bWasLocked = isLocked();
@@ -961,8 +958,8 @@ void ScDrawLayer::ResizeLastRectFromAnchor(const SdrObject* pObj, ScDrawObjData&
 
                     // apply to aRect
                     aRect = tools::Rectangle(
-                        basegfx::fround(aNewRange.getMinX()), basegfx::fround(aNewRange.getMinY()),
-                        basegfx::fround(aNewRange.getMaxX()), basegfx::fround(aNewRange.getMaxY()));
+                        basegfx::fround<tools::Long>(aNewRange.getMinX()), basegfx::fround<tools::Long>(aNewRange.getMinY()),
+                        basegfx::fround<tools::Long>(aNewRange.getMaxX()), basegfx::fround<tools::Long>(aNewRange.getMaxY()));
                 }
             }
         }
@@ -1025,10 +1022,10 @@ void ScDrawLayer::InitializeCellAnchoredObj(SdrObject* pObj, ScDrawObjData& rDat
                 static_cast<SdrPathObj*>(pObj)->GetPathPoly().getB2DPolygon(0));
             const basegfx::B2DPoint aB2DPoint0(aPoly.getB2DPoint(0));
             const basegfx::B2DPoint aB2DPoint1(aPoly.getB2DPoint(1));
-            const Point aPointLT(FRound(std::min(aB2DPoint0.getX(), aB2DPoint1.getX())),
-                                 FRound(std::min(aB2DPoint0.getY(), aB2DPoint1.getY())));
-            const Point aPointRB(FRound(std::max(aB2DPoint0.getX(), aB2DPoint1.getX())),
-                                 FRound(std::max(aB2DPoint0.getY(), aB2DPoint1.getY())));
+            const Point aPointLT(basegfx::fround<tools::Long>(std::min(aB2DPoint0.getX(), aB2DPoint1.getX())),
+                                 basegfx::fround<tools::Long>(std::min(aB2DPoint0.getY(), aB2DPoint1.getY())));
+            const Point aPointRB(basegfx::fround<tools::Long>(std::max(aB2DPoint0.getX(), aB2DPoint1.getX())),
+                                 basegfx::fround<tools::Long>(std::max(aB2DPoint0.getY(), aB2DPoint1.getY())));
             const tools::Rectangle aObjRect(aPointLT, aPointRB);
             GetCellAnchorFromPosition(aObjRect, rNoRotatedAnchor, *pDoc, nTab1,
                                       false /*bHiddenAsZero*/);
@@ -1053,6 +1050,10 @@ void ScDrawLayer::InitializeCellAnchoredObj(SdrObject* pObj, ScDrawObjData& rDat
             rData.mbResizeWithCell = false;
             UpdateCellAnchorFromPositionEnd(*pObj, rNoRotatedAnchor, *pDoc, nTab1,
                                             true /*bUseLogicRect*/);
+        }
+        else if (pObj->GetObjIdentifier() == SdrObjKind::Group)
+        {
+            // nothing to do.
         }
         else
         {
@@ -1391,8 +1392,7 @@ bool ScDrawLayer::GetPrintArea( ScRange& rRange, bool bSetHor, bool bSetVer ) co
     if (pPage)
     {
         SdrObjListIter aIter( pPage, SdrIterMode::Flat );
-        SdrObject* pObject = aIter.Next();
-        while (pObject)
+        while (SdrObject* pObject = aIter.Next())
         {
                             //TODO: test Flags (hidden?)
 
@@ -1417,8 +1417,6 @@ bool ScDrawLayer::GetPrintArea( ScRange& rRange, bool bSetHor, bool bSetVer ) co
                 }
                 bAny = true;
             }
-
-            pObject = aIter.Next();
         }
     }
 
@@ -1475,10 +1473,9 @@ bool ScDrawLayer::GetPrintArea( ScRange& rRange, bool bSetHor, bool bSetVer ) co
             nStartY = o3tl::toTwips(nStartY, o3tl::Length::mm100);
             nEndY = o3tl::toTwips(nEndY, o3tl::Length::mm100);
             SCROW nRow = pDoc->GetRowForHeight( nTab, nStartY);
-            rRange.aStart.SetRow( nRow>0 ? (nRow-1) : 0);
+            rRange.aStart.SetRow( nRow);
             nRow = pDoc->GetRowForHeight( nTab, nEndY);
-            rRange.aEnd.SetRow( nRow == pDoc->MaxRow() ? pDoc->MaxRow() :
-                    (nRow>0 ? (nRow-1) : 0));
+            rRange.aEnd.SetRow( nRow );
         }
     }
     else
@@ -1606,21 +1603,16 @@ bool ScDrawLayer::HasObjectsInRows( SCTAB nTab, SCROW nStartRow, SCROW nEndRow )
     if ( bNegativePage )
         MirrorRectRTL( aTestRect );
 
-    bool bFound = false;
-
     tools::Rectangle aObjRect;
     SdrObjListIter aIter( pPage );
-    SdrObject* pObject = aIter.Next();
-    while ( pObject && !bFound )
+    while (SdrObject* pObject = aIter.Next())
     {
         aObjRect = pObject->GetSnapRect();  //TODO: GetLogicRect ?
         if (aTestRect.Contains(aObjRect.TopLeft()) || aTestRect.Contains(aObjRect.BottomLeft()))
-            bFound = true;
-
-        pObject = aIter.Next();
+            return true;
     }
 
-    return bFound;
+    return false;
 }
 
 void ScDrawLayer::DeleteObjectsInArea( SCTAB nTab, SCCOL nCol1,SCROW nRow1,
@@ -1652,8 +1644,7 @@ void ScDrawLayer::DeleteObjectsInArea( SCTAB nTab, SCCOL nCol1,SCROW nRow1,
     ppObj.reserve(nObjCount);
 
     SdrObjListIter aIter( pPage, SdrIterMode::Flat );
-    SdrObject* pObject = aIter.Next();
-    while (pObject)
+    while (SdrObject* pObject = aIter.Next())
     {
         // do not delete note caption, they are always handled by the cell note
         // TODO: detective objects are still deleted, is this desired?
@@ -1683,8 +1674,6 @@ void ScDrawLayer::DeleteObjectsInArea( SCTAB nTab, SCCOL nCol1,SCROW nRow1,
                 }
             }
         }
-
-        pObject = aIter.Next();
     }
 
     if (bRecording)
@@ -1728,8 +1717,7 @@ void ScDrawLayer::DeleteObjectsInSelection( const ScMarkData& rMark )
                 ppObj.reserve(nObjCount);
 
                 SdrObjListIter aIter( pPage, SdrIterMode::Flat );
-                SdrObject* pObject = aIter.Next();
-                while (pObject)
+                while (SdrObject* pObject = aIter.Next())
                 {
                     // do not delete note caption, they are always handled by the cell note
                     // TODO: detective objects are still deleted, is this desired?
@@ -1751,8 +1739,6 @@ void ScDrawLayer::DeleteObjectsInSelection( const ScMarkData& rMark )
                             ppObj.push_back(pObject);
                         }
                     }
-
-                    pObject = aIter.Next();
                 }
 
                 //  Delete objects (backwards)
@@ -1786,76 +1772,104 @@ void ScDrawLayer::CopyToClip( ScDocument* pClipDoc, SCTAB nTab, const tools::Rec
     ScRange aClipRange = lcl_getClipRangeFromClipDoc(pClipDoc, nTab);
 
     SdrObjListIter aIter( pSrcPage, SdrIterMode::Flat );
-    SdrObject* pOldObject = aIter.Next();
-    while (pOldObject)
+    while (SdrObject* pOldObject = aIter.Next())
     {
+        // do not copy internal objects (detective) and note captions
+        if (pOldObject->GetLayer() == SC_LAYER_INTERN)
+            continue;
+
+        const ScDrawObjData* pObjData = ScDrawLayer::GetObjData(pOldObject);
+        if (IsNoteCaption(pObjData))
+            continue;
+
         // Catch objects where the object itself is inside the rectangle to be copied.
         bool bObjectInArea = rRange.Contains(pOldObject->GetCurrentBoundRect());
         // Catch objects whose anchor is inside the rectangle to be copied.
-        const ScDrawObjData* pObjData = ScDrawLayer::GetObjData(pOldObject);
-        if (pObjData)
-            bObjectInArea = bObjectInArea || aClipRange.Contains(pObjData->maStart);
+        if (!bObjectInArea && pObjData)
+            bObjectInArea = aClipRange.Contains(pObjData->maStart);
+        if (!bObjectInArea)
+            continue;
 
-        // do not copy internal objects (detective) and note captions
-        if (bObjectInArea && pOldObject->GetLayer() != SC_LAYER_INTERN
-            && !IsNoteCaption(pOldObject))
+        if (!pDestModel)
         {
-            if ( !pDestModel )
+            pDestModel = pClipDoc->GetDrawLayer();      // does the document already have a drawing layer?
+            if (!pDestModel)
             {
-                pDestModel = pClipDoc->GetDrawLayer();      // does the document already have a drawing layer?
-                if ( !pDestModel )
-                {
-                    //  allocate drawing layer in clipboard document only if there are objects to copy
+                //  allocate drawing layer in clipboard document only if there are objects to copy
 
-                    pClipDoc->InitDrawLayer();                  //TODO: create contiguous pages
-                    pDestModel = pClipDoc->GetDrawLayer();
-                }
-                if (pDestModel)
-                    pDestPage = pDestModel->GetPage( static_cast<sal_uInt16>(nTab) );
+                pClipDoc->InitDrawLayer(); //TODO: create contiguous pages
+                pDestModel = pClipDoc->GetDrawLayer();
             }
-
-            OSL_ENSURE( pDestPage, "no page" );
-            if (pDestPage)
-            {
-                // Clone to target SdrModel
-                rtl::Reference<SdrObject> pNewObject(pOldObject->CloneSdrObject(*pDestModel));
-                uno::Reference< chart2::XChartDocument > xOldChart( ScChartHelper::GetChartFromSdrObject( pOldObject ) );
-                if(!xOldChart.is())//#i110034# do not move charts as they lose all their data references otherwise
-                {
-                    if (pObjData)
-                    {
-                        // The object is anchored to cell. The position is determined by the start
-                        // address. Copying into the clipboard does not change the anchor.
-                        // ToDo: Adapt Offset relative to anchor cell size for cell anchored.
-                        // ToDo: Adapt Offset and size for cell-anchored with resize objects.
-                        // ToDo: Exclude object from resize if disallowed at object.
-                    }
-                    else
-                    {
-                        // The object is anchored to page. We make its position so, that the
-                        // cell behind the object will have the same address in clipboard document as
-                        // in source document. So we will be able to reconstruct the original cell
-                        // address from position when pasting the object.
-                        tools::Rectangle aObjRect = pOldObject->GetSnapRect();
-                        ScRange aPseudoAnchor
-                            = pDoc->GetRange(nTab, aObjRect, true /*bHiddenAsZero*/);
-                        tools::Rectangle aSourceCellRect
-                            = GetCellRect(*pDoc, aPseudoAnchor.aStart, false /*bMergedCell*/);
-                        tools::Rectangle aDestCellRect
-                            = GetCellRect(*pClipDoc, aPseudoAnchor.aStart, false);
-                        Point aMove = aDestCellRect.TopLeft() - aSourceCellRect.TopLeft();
-                        pNewObject->NbcMove(Size(aMove.getX(), aMove.getY()));
-                    }
-                }
-
-                pDestPage->InsertObject( pNewObject.get() );
-
-                //  no undo needed in clipboard document
-                //  charts are not updated
-            }
+            if (pDestModel)
+                pDestPage = pDestModel->GetPage(static_cast<sal_uInt16>(nTab));
         }
 
-        pOldObject = aIter.Next();
+        OSL_ENSURE(pDestPage, "no page");
+        if (pDestPage)
+        {
+            // Clone to target SdrModel
+            rtl::Reference<SdrObject> pNewObject(pOldObject->CloneSdrObject(*pDestModel));
+            uno::Reference< chart2::XChartDocument > xOldChart( ScChartHelper::GetChartFromSdrObject( pOldObject ) );
+            if(!xOldChart.is())//#i110034# do not move charts as they lose all their data references otherwise
+            {
+                if (pObjData)
+                {
+                    // The object is anchored to cell. The position is determined by the start
+                    // address. Copying into the clipboard does not change the anchor.
+                    // ToDo: Adapt Offset relative to anchor cell size for cell anchored.
+                    // ToDo: Adapt Offset and size for cell-anchored with resize objects.
+                    // ToDo: Exclude object from resize if disallowed at object.
+                }
+                else
+                {
+                    // The object is anchored to page. We make its position so, that the
+                    // cell behind the object will have the same address in clipboard document as
+                    // in source document. So we will be able to reconstruct the original cell
+                    // address from position when pasting the object.
+                    tools::Rectangle aObjRect = pOldObject->GetSnapRect();
+                    ScRange aPseudoAnchor = pDoc->GetRange(nTab, aObjRect, true /*bHiddenAsZero*/);
+                    tools::Rectangle aSourceCellRect
+                        = GetCellRect(*pDoc, aPseudoAnchor.aStart, false /*bMergedCell*/);
+                    tools::Rectangle aDestCellRect
+                        = GetCellRect(*pClipDoc, aPseudoAnchor.aStart, false);
+                    Point aMove = aDestCellRect.TopLeft() - aSourceCellRect.TopLeft();
+                    pNewObject->NbcMove(Size(aMove.getX(), aMove.getY()));
+                }
+            }
+
+            pDestPage->InsertObject(pNewObject.get());
+
+            // Store the chart's source data to the clipboard document, even when it's out of the
+            // copied range. It will be ignored when pasted to the same document; when pasted to
+            // another document, ScDocument::mpClipParam will provide the actually copied ranges,
+            // and the data copied here will be used to break connection and switch to own data
+            // in ScDrawLayer::CopyFromClip.
+            if (xOldChart && !xOldChart->hasInternalDataProvider())
+            {
+                sc::CopyToClipContext aCxt(*pClipDoc, false, true);
+                OUString aChartName = static_cast<SdrOle2Obj*>(pOldObject)->GetPersistName();
+                std::vector<ScRangeList> aRangesVector;
+                pDoc->GetChartRanges(aChartName, aRangesVector, *pDoc);
+                for (const ScRangeList& ranges : aRangesVector)
+                {
+                    for (const ScRange& r : ranges)
+                    {
+                        for (SCTAB i = r.aStart.Tab(); i <= r.aEnd.Tab(); ++i)
+                        {
+                            ScTable* pTab = pDoc->FetchTable(i);
+                            ScTable* pClipTab = pClipDoc->FetchTable(i);
+                            if (!pTab || !pClipTab)
+                                continue;
+                            pTab->CopyToClip(aCxt, r.aStart.Col(), r.aStart.Row(), r.aEnd.Col(),
+                                             r.aEnd.Row(), pClipTab);
+                        }
+                    }
+                }
+            }
+
+            //  no undo needed in clipboard document
+            //  charts are not updated
+        }
     }
 }
 
@@ -1936,8 +1950,7 @@ void ScDrawLayer::CopyFromClip(ScDrawLayer* pClipModel, SCTAB nSourceTab,
         return; // Can this happen? And if yes, what to do?
 
     SdrObjListIter aIter( pSrcPage, SdrIterMode::Flat );
-    SdrObject* pOldObject = aIter.Next();
-    if (!pOldObject)
+    if (!aIter.Count())
         return; // no objects at all. Nothing to do.
 
     //  a clipboard document and its source share the same document item pool,
@@ -1967,15 +1980,12 @@ void ScDrawLayer::CopyFromClip(ScDrawLayer* pClipModel, SCTAB nSourceTab,
     bool bSourceRTL = pClipDoc->IsLayoutRTL(nSourceTab);
     bool bDestRTL = pDoc->IsLayoutRTL(nDestTab);
 
-    while (pOldObject)
+    while (SdrObject* pOldObject = aIter.Next())
     {
         // ToDO: Can this happen? Such objects should not be in the clipboard document.
         // do not copy internal objects (detective) and note captions
         if ((pOldObject->GetLayer() == SC_LAYER_INTERN) || IsNoteCaption(pOldObject))
-        {
-            pOldObject = aIter.Next();
             continue;
-        }
 
         // 'aIter' considers all objects on pSrcPage. But ScDocument::CopyBlockFromClip, which is used
         // for filtered data, acts not on the total range but only on parts of it. So we need to look,
@@ -1990,21 +2000,15 @@ void ScDrawLayer::CopyFromClip(ScDrawLayer* pClipModel, SCTAB nSourceTab,
         }
         else // Object is anchored to page.
         {
-            aSrcObjStart = pClipDoc->GetRange(nClipTab, pOldObject->GetCurrentBoundRect()).aStart;
+            aSrcObjStart = pClipDoc->GetRange(nSourceTab, pOldObject->GetCurrentBoundRect()).aStart;
         }
         if (!rSourceRange.Contains(aSrcObjStart))
-        {
-            pOldObject = aIter.Next();
             continue;
-        }
         // If object is anchored to a filtered cell, we will not copy it, because filtered rows are
         // eliminated in paste. Copying would produce hidden objects which can only be accessed per
         // macro.
         if (pObjData && pClipDoc->RowFiltered((*pObjData).maStart.Row(), nSourceTab))
-        {
-            pOldObject = aIter.Next();
             continue;
-        }
 
         // Copy style sheet
         auto pStyleSheet = pOldObject->GetStyleSheet();
@@ -2259,7 +2263,6 @@ void ScDrawLayer::CopyFromClip(ScDrawLayer* pClipModel, SCTAB nSourceTab,
                 }
             }
         }
-        pOldObject = aIter.Next();
     }
 
     if( bRestoreDestTabName )
@@ -2454,8 +2457,7 @@ SdrObject* ScDrawLayer::GetNamedObject( std::u16string_view rName, SdrObjKind nI
         if (pPage)
         {
             SdrObjListIter aIter( pPage, SdrIterMode::DeepWithGroups );
-            SdrObject* pObject = aIter.Next();
-            while (pObject)
+            while (SdrObject* pObject = aIter.Next())
             {
                 if ( nId == SdrObjKind::NONE || pObject->GetObjIdentifier() == nId )
                     if ( IsNamedObject( pObject, rName ) )
@@ -2463,8 +2465,6 @@ SdrObject* ScDrawLayer::GetNamedObject( std::u16string_view rName, SdrObjKind nI
                         rFoundTab = static_cast<SCTAB>(nTab);
                         return pObject;
                     }
-
-                pObject = aIter.Next();
             }
         }
     }
@@ -2505,20 +2505,15 @@ void ScDrawLayer::EnsureGraphicNames()
         if (pPage)
         {
             SdrObjListIter aIter( pPage, SdrIterMode::DeepWithGroups );
-            SdrObject* pObject = aIter.Next();
 
             /* The index passed to GetNewGraphicName() will be set to
                 the used index in each call. This prevents the repeated search
                 for all names from 1 to current index. */
             tools::Long nCounter = 0;
 
-            while (pObject)
-            {
+            while (SdrObject* pObject = aIter.Next())
                 if ( pObject->GetObjIdentifier() == SdrObjKind::Graphic && pObject->GetName().isEmpty())
                     pObject->SetName( GetNewGraphicName( &nCounter ) );
-
-                pObject = aIter.Next();
-            }
         }
     }
 }
@@ -2744,14 +2739,12 @@ ScDrawLayer::GetObjectsAnchoredToRows(SCTAB nTab, SCROW nStartRow, SCROW nEndRow
 
     std::vector<SdrObject*> aObjects;
     SdrObjListIter aIter( pPage, SdrIterMode::Flat );
-    SdrObject* pObject = aIter.Next();
     ScRange aRange( 0, nStartRow, nTab, pDoc->MaxCol(), nEndRow, nTab);
-    while (pObject)
+    while (SdrObject* pObject = aIter.Next())
     {
         ScDrawObjData* pObjData = GetObjData(pObject);
         if (pObjData && aRange.Contains(pObjData->maStart))
             aObjects.push_back(pObject);
-        pObject = aIter.Next();
     }
     return aObjects;
 }
@@ -2765,9 +2758,8 @@ ScDrawLayer::GetObjectsAnchoredToRange(SCTAB nTab, SCCOL nCol, SCROW nStartRow, 
 
     std::map<SCROW, std::vector<SdrObject*>> aRowObjects;
     SdrObjListIter aIter( pPage, SdrIterMode::Flat );
-    SdrObject* pObject = aIter.Next();
     ScRange aRange( nCol, nStartRow, nTab, nCol, nEndRow, nTab);
-    while (pObject)
+    while (SdrObject* pObject = aIter.Next())
     {
         if (!dynamic_cast<SdrCaptionObj*>(pObject)) // Caption objects are handled differently
         {
@@ -2775,7 +2767,6 @@ ScDrawLayer::GetObjectsAnchoredToRange(SCTAB nTab, SCCOL nCol, SCROW nStartRow, 
             if (pObjData && aRange.Contains(pObjData->maStart))
                 aRowObjects[pObjData->maStart.Row()].push_back(pObject);
         }
-        pObject = aIter.Next();
     }
     return aRowObjects;
 }
@@ -2790,8 +2781,7 @@ bool ScDrawLayer::HasObjectsAnchoredInRange(const ScRange& rRange)
         return false;
 
     SdrObjListIter aIter( pPage, SdrIterMode::Flat );
-    SdrObject* pObject = aIter.Next();
-    while (pObject)
+    while (SdrObject* pObject = aIter.Next())
     {
         if (!dynamic_cast<SdrCaptionObj*>(pObject)) // Caption objects are handled differently
         {
@@ -2799,7 +2789,6 @@ bool ScDrawLayer::HasObjectsAnchoredInRange(const ScRange& rRange)
             if (pObjData && rRange.Contains(pObjData->maStart)) // Object is in given range
                 return true;
         }
-        pObject = aIter.Next();
     }
     return false;
 }
@@ -2813,14 +2802,12 @@ std::vector<SdrObject*> ScDrawLayer::GetObjectsAnchoredToCols(SCTAB nTab, SCCOL 
 
     std::vector<SdrObject*> aObjects;
     SdrObjListIter aIter(pPage, SdrIterMode::Flat);
-    SdrObject* pObject = aIter.Next();
     ScRange aRange(nStartCol, 0, nTab, nEndCol, pDoc->MaxRow(), nTab);
-    while (pObject)
+    while (SdrObject* pObject = aIter.Next())
     {
         ScDrawObjData* pObjData = GetObjData(pObject);
         if (pObjData && aRange.Contains(pObjData->maStart))
             aObjects.push_back(pObject);
-        pObject = aIter.Next();
     }
     return aObjects;
 }
@@ -2895,16 +2882,15 @@ ScDrawObjData* ScDrawLayer::GetObjDataTab( SdrObject* pObj, SCTAB nTab )
     return pData;
 }
 
-bool ScDrawLayer::IsNoteCaption( SdrObject* pObj )
+bool ScDrawLayer::IsNoteCaption(const ScDrawObjData* pData)
 {
-    ScDrawObjData* pData = pObj ? GetObjData( pObj ) : nullptr;
     return pData && pData->meType == ScDrawObjData::CellNote;
 }
 
 ScDrawObjData* ScDrawLayer::GetNoteCaptionData( SdrObject* pObj, SCTAB nTab )
 {
-    ScDrawObjData* pData = pObj ? GetObjDataTab( pObj, nTab ) : nullptr;
-    return (pData && pData->meType == ScDrawObjData::CellNote) ? pData : nullptr;
+    ScDrawObjData* pData = GetObjDataTab(pObj, nTab);
+    return IsNoteCaption(pData) ? pData : nullptr;
 }
 
 ScMacroInfo* ScDrawLayer::GetMacroInfo( SdrObject* pObj, bool bCreate )

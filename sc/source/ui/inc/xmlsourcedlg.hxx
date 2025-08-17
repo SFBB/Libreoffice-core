@@ -16,7 +16,6 @@
 #include <memory>
 
 class ScDocument;
-class ScRange;
 class ScOrcusXMLContext;
 
 struct CustomCompare
@@ -41,7 +40,7 @@ class ScXMLSourceDlg : public ScAnyRefDlgController
     std::unique_ptr<weld::TreeIter> mxCurRefEntry;
     std::unique_ptr<ScOrcusXMLContext> mpXMLContext;
 
-    ScDocument* mpDoc;
+    ScDocument& mrDoc;
     bool mbDlgLostFocus;
 
     formula::RefEdit* mpActiveEdit;
@@ -63,7 +62,7 @@ class ScXMLSourceDlg : public ScAnyRefDlgController
     std::set<std::unique_ptr<weld::TreeIter>, CustomCompare> maRangeLinks;
 
 public:
-    ScXMLSourceDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent, ScDocument* pDoc);
+    ScXMLSourceDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent, ScDocument& rDoc);
     virtual ~ScXMLSourceDlg() override;
 
     virtual bool IsRefInputMode() const override;

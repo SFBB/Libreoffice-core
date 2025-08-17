@@ -17,25 +17,29 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_DISPLAYCONNECTIONDISPATCH_HXX
-#define INCLUDED_VCL_INC_DISPLAYCONNECTIONDISPATCH_HXX
+#pragma once
 
 #include <sal/config.h>
-#include <com/sun/star/awt/XDisplayConnection.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/uno/Reference.hxx>
+#include <rtl/ref.hxx>
+#include <vcl/dllapi.h>
 #include <mutex>
 #include <vector>
 
 namespace vcl {
 
-class DisplayConnectionDispatch final :
-    public cppu::WeakImplHelper< css::awt::XDisplayConnection >
+class DisplayEventHandler : public cppu::WeakImplHelper<>
+{
+public:
+    virtual bool handleEvent(const void* pEvent) = 0;
+    virtual void shutdown() noexcept = 0;
+};
+
+class VCL_DLLPUBLIC DisplayConnectionDispatch final : public cppu::OWeakObject
 {
     std::mutex                      m_aMutex;
-    ::std::vector< css::uno::Reference< css::awt::XEventHandler > >
-                                    m_aHandlers;
-    OUString                        m_ConnectionIdentifier;
+    std::vector<rtl::Reference<DisplayEventHandler>> m_aHandlers;
 public:
     DisplayConnectionDispatch();
     ~DisplayConnectionDispatch() override;
@@ -43,21 +47,12 @@ public:
     void start();
     void terminate();
 
-    bool dispatchEvent( void const * pData, int nBytes );
+    bool dispatchEvent(const void* pEvent);
 
-    // XDisplayConnection
-    virtual void SAL_CALL addEventHandler( const css::uno::Any& window, const css::uno::Reference< css::awt::XEventHandler >& handler, sal_Int32 eventMask ) override;
-    virtual void SAL_CALL removeEventHandler( const css::uno::Any& window, const css::uno::Reference< css::awt::XEventHandler >& handler ) override;
-    virtual void SAL_CALL addErrorHandler( const css::uno::Reference< css::awt::XEventHandler >& handler ) override;
-    virtual void SAL_CALL removeErrorHandler( const css::uno::Reference< css::awt::XEventHandler >& handler ) override;
-    virtual css::uno::Any SAL_CALL getIdentifier() override;
-
+    void addEventHandler(const rtl::Reference<DisplayEventHandler>& handler);
+    void removeEventHandler(const rtl::Reference<DisplayEventHandler>& handler);
 };
 
 }
-
-
-
-#endif // INCLUDED_VCL_INC_DISPLAYCONNECTIONDISPATCH_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

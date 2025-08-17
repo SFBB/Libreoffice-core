@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <span>
 
 /**
@@ -74,16 +75,17 @@ void BigInt::Normalize()
 
         if (nLen < 2)
         {
-            constexpr sal_uInt32 maxForPosInt32 = std::numeric_limits<sal_Int32>::max();
-            constexpr sal_uInt32 maxForNegInt32 = -sal_Int64(std::numeric_limits<sal_Int32>::min());
-            if (bIsNeg && nNum[0] <= maxForNegInt32)
+            static constexpr sal_uInt32 maxForPosInt32 = std::numeric_limits<sal_Int32>::max();
+            static constexpr sal_uInt32 maxForNegInt32 = -sal_Int64(std::numeric_limits<sal_Int32>::min());
+            sal_uInt32 nNum0 = nNum[0];
+            if (bIsNeg && nNum0 <= maxForNegInt32)
             {
-                nVal = -sal_Int64(nNum[0]);
+                nVal = -sal_Int64(nNum0);
                 nLen = 0;
             }
-            else if (!bIsNeg && nNum[0] <= maxForPosInt32)
+            else if (!bIsNeg && nNum0 <= maxForPosInt32)
             {
-                nVal = nNum[0];
+                nVal = nNum0;
                 nLen = 0;
             }
         }
@@ -460,7 +462,9 @@ BigInt::BigInt( sal_Int64 nValue )
     }
     else
     {
-        for (sal_uInt64 n = static_cast<sal_uInt64>(bIsNeg ? -nValue : nValue); n != 0; n >>= 32)
+        for (sal_uInt64 n = static_cast<sal_uInt64>(
+                 (bIsNeg && nValue != std::numeric_limits<sal_Int64>::min()) ? -nValue : nValue);
+             n != 0; n >>= 32)
             nNum[nLen++] = static_cast<sal_uInt32>(n);
     }
 }

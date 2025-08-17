@@ -29,13 +29,10 @@ namespace drawinglayer::primitive2d
 class PolyPolygonColorPrimitive2D;
 class PolygonHairlinePrimitive2D;
 class PolygonStrokePrimitive2D;
-class WrongSpellPrimitive2D;
-class TextSimplePortionPrimitive;
 class BitmapPrimitive2D;
 class PolyPolygonGradientPrimitive2D;
 class UnifiedTransparencePrimitive2D;
 class ControlPrimitive2D;
-class PolygonStrokePrimitive2D;
 class FillHatchPrimitive2D;
 class BackgroundColorPrimitive2D;
 class BorderLinePrimitive2D;
@@ -55,6 +52,9 @@ class VclPixelProcessor2D final : public VclProcessor2D
 {
     AntialiasingFlags m_nOrigAntiAliasing;
 
+    bool m_bRenderSimpleTextDirect;
+    bool m_bRenderDecoratedTextDirect;
+
     /*  the local processor for BasePrimitive2D-Implementation based primitives,
         called from the common process()-implementation
      */
@@ -69,8 +69,6 @@ class VclPixelProcessor2D final : public VclProcessor2D
     bool tryDrawPolygonStrokePrimitive2DDirect(const primitive2d::PolygonStrokePrimitive2D& rSource,
                                                double fTransparency);
 
-    void
-    processWrongSpellPrimitive2D(const primitive2d::WrongSpellPrimitive2D& rWrongSpellPrimitive);
     void processTextSimplePortionPrimitive2D(
         const primitive2d::TextSimplePortionPrimitive2D& rCandidate);
     void processTextDecoratedPortionPrimitive2D(
@@ -99,9 +97,7 @@ class VclPixelProcessor2D final : public VclProcessor2D
 
 public:
     /// constructor/destructor
-    VclPixelProcessor2D(const geometry::ViewInformation2D& rViewInformation, OutputDevice& rOutDev,
-                        const basegfx::BColorModifierStack& rInitStack
-                        = basegfx::BColorModifierStack());
+    VclPixelProcessor2D(const geometry::ViewInformation2D& rViewInformation, OutputDevice& rOutDev);
     virtual ~VclPixelProcessor2D() override;
 };
 } // end of namespace drawinglayer::processor2d

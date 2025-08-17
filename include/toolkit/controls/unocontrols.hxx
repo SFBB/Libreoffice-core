@@ -70,7 +70,7 @@ public:
     // appropriately ( e.g. NULL if non GraphicObject scheme ) or a valid
     // object if the rURL points to a valid object
     static css::uno::Reference< css::graphic::XGraphic > getGraphicAndGraphicObjectFromURL_nothrow( css::uno::Reference< css::graphic::XGraphicObject >& xOutGraphicObject, const OUString& _rURL );
-    static css::uno::Reference< css::graphic::XGraphic > getGraphicFromURL_nothrow( const OUString& _rURL );
+    static css::uno::Reference< css::graphic::XGraphic > getGraphicFromURL_nothrow( const OUString& _rURL, OUString const & referer );
 
 };
 
@@ -245,7 +245,7 @@ private:
 
 
 
-class UnoControlButtonModel final : public GraphicControlModel
+class TOOLKIT_DLLPUBLIC UnoControlButtonModel final : public GraphicControlModel
 {
     css::uno::Any      ImplGetDefaultValue( sal_uInt16 nPropId ) const override;
     ::cppu::IPropertyArrayHelper& getInfoHelper() override;
@@ -276,7 +276,7 @@ typedef ::cppu::AggImplInheritanceHelper4   <   UnoControlBase
                                             ,   css::awt::XLayoutConstrains
                                             ,   css::awt::XItemListener
                                             >   UnoButtonControl_Base;
-class UnoButtonControl final : public UnoButtonControl_Base
+class TOOLKIT_DLLPUBLIC UnoButtonControl final : public UnoButtonControl_Base
 {
 private:
     ActionListenerMultiplexer   maActionListeners;
@@ -612,7 +612,7 @@ public:
 
 
 
-class UnoControlFixedTextModel final : public UnoControlModel
+class TOOLKIT_DLLPUBLIC UnoControlFixedTextModel final : public UnoControlModel
 {
     css::uno::Any      ImplGetDefaultValue( sal_uInt16 nPropId ) const override;
     ::cppu::IPropertyArrayHelper& getInfoHelper() override;
@@ -637,7 +637,7 @@ public:
 
 
 
-class UnoFixedTextControl final : public UnoControlBase,
+class TOOLKIT_DLLPUBLIC UnoFixedTextControl final : public UnoControlBase,
                             public css::awt::XFixedText,
                             public css::awt::XLayoutConstrains
 {

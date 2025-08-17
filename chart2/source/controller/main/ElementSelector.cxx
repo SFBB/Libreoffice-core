@@ -27,6 +27,7 @@
 #include <ObjectIdentifier.hxx>
 #include <ChartController.hxx>
 #include <ChartModel.hxx>
+#include <ChartView.hxx>
 
 #include <cppuhelper/supportsservice.hxx>
 #include <o3tl/safeint.hxx>
@@ -51,8 +52,8 @@ constexpr OUStringLiteral lcl_aServiceName
 }
 
 SelectorListBox::SelectorListBox(vcl::Window* pParent)
-    : InterimItemWindow(pParent, "modules/schart/ui/combobox.ui", "ComboBox")
-    , m_xWidget(m_xBuilder->weld_combo_box("combobox"))
+    : InterimItemWindow(pParent, u"modules/schart/ui/combobox.ui"_ustr, u"ComboBox"_ustr)
+    , m_xWidget(m_xBuilder->weld_combo_box(u"combobox"_ustr))
     , m_bReleaseFocus(true)
 {
     InitControlBase(m_xWidget.get());
@@ -107,7 +108,7 @@ void SelectorListBox::UpdateChartElementsListAndSelection()
     if( xChartController.is() )
     {
         ObjectIdentifier aSelectedOID( xChartController->getSelection() );
-        OUString aSelectedCID = aSelectedOID.getObjectCID();
+        const OUString& aSelectedCID = aSelectedOID.getObjectCID();
 
         rtl::Reference<::chart::ChartModel> xChartDoc = xChartController->getChartModel();
         ObjectType eType( aSelectedOID.getObjectType() );
@@ -115,11 +116,11 @@ void SelectorListBox::UpdateChartElementsListAndSelection()
         if ( eType == OBJECTTYPE_DATA_POINT || eType == OBJECTTYPE_DATA_LABEL || eType == OBJECTTYPE_SHAPE )
             bAddSelectionToList = true;
 
-        Reference< uno::XInterface > xChartView;
+        rtl::Reference< ChartView > xChartView;
         rtl::Reference< ChartModel > xFact = xChartController->getChartModel();
         if( xFact.is() )
-            xChartView = xFact->createInstance( CHART_VIEW_SERVICE_NAME );
-        ExplicitValueProvider* pExplicitValueProvider = nullptr; //ExplicitValueProvider::getExplicitValueProvider(xChartView); this creates all visible data points, that's too much
+            xChartView = xFact->createChartView();
+        ChartView* pExplicitValueProvider = nullptr; //ExplicitValueProvider::getExplicitValueProvider(xChartView); this creates all visible data points, that's too much
         ObjectHierarchy aHierarchy( xChartDoc, pExplicitValueProvider, true /*bFlattenDiagram*/, true /*bOrderingForElementSelector*/ );
         lcl_addObjectsToList( aHierarchy, ::chart::ObjectHierarchy::getRootNodeOID(), m_aEntries, 0, xChartDoc );
 
@@ -251,7 +252,7 @@ sal_Bool SAL_CALL ElementSelectorToolbarController::supportsService( const OUStr
 
 css::uno::Sequence< OUString > SAL_CALL ElementSelectorToolbarController::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.ToolbarController" };
+    return { u"com.sun.star.frame.ToolbarController"_ustr };
 }
 ElementSelectorToolbarController::ElementSelectorToolbarController()
 {

@@ -19,12 +19,16 @@
 #include "vbaframe.hxx"
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <unotxdoc.hxx>
 #include <utility>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
 
-SwVbaFrame::SwVbaFrame( const uno::Reference< ooo::vba::XHelperInterface >& rParent, const uno::Reference< uno::XComponentContext >& rContext, css::uno::Reference< frame::XModel > xModel, css::uno::Reference< text::XTextFrame >  xTextFrame ) :
+SwVbaFrame::SwVbaFrame( const uno::Reference< ooo::vba::XHelperInterface >& rParent,
+                        const uno::Reference< uno::XComponentContext >& rContext,
+                        rtl::Reference< SwXTextDocument > xModel,
+                        css::uno::Reference< text::XTextFrame >  xTextFrame ) :
     SwVbaFrame_BASE( rParent, rContext ), mxModel(std::move( xModel )), mxTextFrame(std::move( xTextFrame ))
 {
 }
@@ -42,7 +46,7 @@ void SAL_CALL SwVbaFrame::Select()
 OUString
 SwVbaFrame::getServiceImplName()
 {
-    return "SwVbaFrame";
+    return u"SwVbaFrame"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -50,7 +54,7 @@ SwVbaFrame::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.word.Frame"
+        u"ooo.vba.word.Frame"_ustr
     };
     return aServiceNames;
 }

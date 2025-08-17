@@ -238,8 +238,7 @@ namespace cppcanvas::internal
         void VectorOfOutDevStates::clearStateStack()
         {
             m_aStates.clear();
-            const OutDevState aDefaultState;
-            m_aStates.push_back(aDefaultState);
+            m_aStates.push_back(OutDevState());
         }
 
         OutDevState& VectorOfOutDevStates::getState()
@@ -370,7 +369,7 @@ namespace cppcanvas::internal
                 aCalculatedNewState.pushFlags = rNewState.pushFlags;
 
                 // flush to stack
-                getState() = aCalculatedNewState;
+                getState() = std::move(aCalculatedNewState);
             }
             else
             {
@@ -474,8 +473,11 @@ namespace cppcanvas::internal
 
             // rewind metafile to previous position (this method must
             // not change the current metaaction)
-            while( nPos-- )
+            while (nPos)
+            {
+                --nPos;
                 rMtf.WindPrev();
+            }
 
             if( !pCurrAct )
             {
@@ -830,7 +832,7 @@ namespace cppcanvas::internal
             if (rFont.GetEmphasisMark() != FontEmphasisMark::NONE)
             {
                 uno::Sequence< beans::PropertyValue > aProperties{ comphelper::makePropertyValue(
-                    "EmphasisMark", sal_uInt32(rFont.GetEmphasisMark())) };
+                    u"EmphasisMark"_ustr, sal_uInt32(rFont.GetEmphasisMark())) };
                 return rParms.mrCanvas->getUNOCanvas()->createFont(aFontRequest,
                                                                 aProperties,
                                                                 aFontMatrix);
@@ -988,15 +990,8 @@ namespace cppcanvas::internal
                     nStrikeoutWidth += nInterval;
                     KernArray aStrikeoutCharWidths;
 
-                    for ( int i = 0;i<nLen; i++)
-                    {
-                        aStrikeoutCharWidths.push_back(nStrikeoutWidth);
-                    }
-
-                    for ( int i = 1;i< nLen; i++ )
-                    {
-                        aStrikeoutCharWidths.adjust(i, aStrikeoutCharWidths[i - 1]);
-                    }
+                    for ( int i = 0;i< nLen; i++ )
+                        aStrikeoutCharWidths.push_back(nStrikeoutWidth * (i + 1));
 
                     pStrikeoutTextAction =
                         TextActionFactory::createTextAction(
@@ -1592,13 +1587,13 @@ namespace cppcanvas::internal
                         rVDev.Push();
                         rVDev.SetMapMode( rSubstitute.GetPrefMapMode() );
 
-                        const ::Point& rPos( rVDev.LogicToPixel( pAct->GetPoint() ) );
-                        const ::Size&  rSize( rVDev.LogicToPixel( pAct->GetSize() ) );
+                        const ::Point aPos( rVDev.LogicToPixel( pAct->GetPoint() ) );
+                        const ::Size  aSize( rVDev.LogicToPixel( pAct->GetSize() ) );
 
-                        rStates.getState().transform.translate( rPos.X(),
-                                                                 rPos.Y() );
-                        rStates.getState().transform.scale( static_cast<double>(rSize.Width()) / aMtfSizePix.Width(),
-                                                             static_cast<double>(rSize.Height()) / aMtfSizePix.Height() );
+                        rStates.getState().transform.translate( aPos.X(),
+                                                                aPos.Y() );
+                        rStates.getState().transform.scale( static_cast<double>(aSize.Width()) / aMtfSizePix.Width(),
+                                                             static_cast<double>(aSize.Height()) / aMtfSizePix.Height() );
 
                         createActions( const_cast<GDIMetaFile&>(pAct->GetSubstitute()),
                                        rFactoryParms,
@@ -1688,8 +1683,8 @@ namespace cppcanvas::internal
                                     Graphic aGraphic;
                                     aFill.getGraphic( aGraphic );
 
-                                    BitmapEx     aBmpEx( aGraphic.GetBitmapEx() );
-                                    const ::Size aBmpSize( aBmpEx.GetSizePixel() );
+                                    Bitmap aBmp( aGraphic.GetBitmapEx() );
+                                    const ::Size aBmpSize( aBmp.GetSizePixel() );
 
                                     ::SvtGraphicFill::Transform aTransform;
                                     aFill.getTransform( aTransform );
@@ -1728,7 +1723,7 @@ namespace cppcanvas::internal
                                         aMatrix );
 
                                     aTexture.Alpha = 1.0 - aFill.getTransparency();
-                                    aTexture.Bitmap = vcl::unotools::xBitmapFromBitmapEx( aBmpEx );
+                                    aTexture.Bitmap = vcl::unotools::xBitmapFromBitmap( aBmp );
                                     if( aFill.isTiling() )
                                     {
                                         aTexture.RepeatModeX = rendering::TexturingMode::REPEAT;
@@ -2116,7 +2111,7 @@ namespace cppcanvas::internal
 
                         std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
-                                    BitmapEx(pAct->GetBitmap()),
+                                    pAct->GetBitmap(),
                                     rStates.getState().mapModeTransform *
                                     vcl::unotools::b2DPointFromPoint( pAct->GetPoint() ),
                                     rCanvas,
@@ -2139,7 +2134,7 @@ namespace cppcanvas::internal
 
                         std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
-                                    BitmapEx(pAct->GetBitmap()),
+                                    pAct->GetBitmap(),
                                     rStates.getState().mapModeTransform * vcl::unotools::b2DPointFromPoint( pAct->GetPoint() ),
                                     rStates.getState().mapModeTransform * vcl::unotools::b2DVectorFromSize( pAct->GetSize() ),
                                     rCanvas,
@@ -2169,7 +2164,7 @@ namespace cppcanvas::internal
 
                         std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
-                                    BitmapEx(aBmp),
+                                    aBmp,
                                     rStates.getState().mapModeTransform *
                                     vcl::unotools::b2DPointFromPoint( pAct->GetDestPoint() ),
                                     rStates.getState().mapModeTransform *
@@ -2194,7 +2189,7 @@ namespace cppcanvas::internal
 
                         std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
-                                    pAct->GetBitmapEx(),
+                                    Bitmap(pAct->GetBitmapEx()),
                                     rStates.getState().mapModeTransform *
                                     vcl::unotools::b2DPointFromPoint( pAct->GetPoint() ),
                                     rCanvas,
@@ -2217,7 +2212,7 @@ namespace cppcanvas::internal
 
                         std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
-                                    pAct->GetBitmapEx(),
+                                    Bitmap(pAct->GetBitmapEx()),
                                     rStates.getState().mapModeTransform *
                                     vcl::unotools::b2DPointFromPoint( pAct->GetPoint() ),
                                     rStates.getState().mapModeTransform *
@@ -2242,7 +2237,7 @@ namespace cppcanvas::internal
 
                         // crop bitmap to given source rectangle (no
                         // need to copy and convert the whole bitmap)
-                        BitmapEx aBmp( pAct->GetBitmapEx() );
+                        Bitmap aBmp( pAct->GetBitmapEx() );
                         const ::tools::Rectangle aCropRect( pAct->GetSrcPoint(),
                                                    pAct->GetSrcSize() );
                         aBmp.Crop( aCropRect );
@@ -2275,7 +2270,7 @@ namespace cppcanvas::internal
                         // create masked BitmapEx right here, as the
                         // canvas does not provide equivalent
                         // functionality
-                        BitmapEx aBmp( createMaskBmpEx( pAct->GetBitmap(),
+                        Bitmap aBmp( createMaskBmpEx( pAct->GetBitmap(),
                                                         pAct->GetColor() ));
 
                         std::shared_ptr<Action> pBmpAction(
@@ -2304,7 +2299,7 @@ namespace cppcanvas::internal
                         // create masked BitmapEx right here, as the
                         // canvas does not provide equivalent
                         // functionality
-                        BitmapEx aBmp( createMaskBmpEx( pAct->GetBitmap(),
+                        Bitmap aBmp( createMaskBmpEx( pAct->GetBitmap(),
                                                         pAct->GetColor() ));
 
                         std::shared_ptr<Action> pBmpAction(
@@ -2335,7 +2330,7 @@ namespace cppcanvas::internal
                         // create masked BitmapEx right here, as the
                         // canvas does not provide equivalent
                         // functionality
-                        BitmapEx aBmp( createMaskBmpEx( pAct->GetBitmap(),
+                        Bitmap aBmp( createMaskBmpEx( pAct->GetBitmap(),
                                                         pAct->GetColor() ));
 
                         // crop bitmap to given source rectangle (no
@@ -2563,7 +2558,7 @@ namespace cppcanvas::internal
                         rVDev.GetTextArray( pAct->GetText(), &aDXArray,
                                             pAct->GetIndex(), pAct->GetLen() );
 
-                        const sal_Int32 nWidthDifference( pAct->GetWidth() - aDXArray[ nLen-1 ] );
+                        const double nWidthDifferencePerDx = ( pAct->GetWidth() - aDXArray[ nLen-1 ] ) / nLen;
 
                         // Last entry of pDXArray contains total width of the text
                         for (sal_Int32 i = 1; i <= nLen; ++i)
@@ -2574,7 +2569,7 @@ namespace cppcanvas::internal
                             // entry represents the 'end' position of
                             // the corresponding character, thus, we
                             // let i run from 1 to nLen.
-                            aDXArray.adjust(i - 1, i * nWidthDifference / nLen);
+                            aDXArray[i - 1] += i * nWidthDifferencePerDx;
                         }
 
                         createTextAction(
@@ -2984,9 +2979,7 @@ namespace cppcanvas::internal
                 // render subset of actions
                 // ========================
 
-                ::basegfx::B2DHomMatrix aMatrix;
-                ::canvas::tools::getRenderStateTransform( aMatrix,
-                                                          getRenderState() );
+                ::basegfx::B2DHomMatrix aMatrix = ::canvas::tools::getRenderStateTransform( getRenderState() );
 
                 ActionRenderer aRenderer( aMatrix );
 
@@ -3028,8 +3021,7 @@ namespace cppcanvas::internal
             // query bounds for subset of actions
             // ==================================
 
-            ::basegfx::B2DHomMatrix aMatrix;
-            ::canvas::tools::getRenderStateTransform( aMatrix,
+            ::basegfx::B2DHomMatrix aMatrix = ::canvas::tools::getRenderStateTransform(
                                                       getRenderState() );
 
             AreaQuery aQuery( aMatrix );
@@ -3047,8 +3039,7 @@ namespace cppcanvas::internal
         {
             SAL_INFO( "cppcanvas.emf", "::cppcanvas::internal::ImplRenderer::draw()" );
 
-            ::basegfx::B2DHomMatrix aMatrix;
-            ::canvas::tools::getRenderStateTransform( aMatrix,
+            ::basegfx::B2DHomMatrix aMatrix = ::canvas::tools::getRenderStateTransform(
                                                       getRenderState() );
 
             try

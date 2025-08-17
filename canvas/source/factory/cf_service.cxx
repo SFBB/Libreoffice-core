@@ -38,7 +38,8 @@
 #include <o3tl/functional.hxx>
 #include <o3tl/string_view.hxx>
 #include <vcl/skia/SkiaHelper.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
+#include <officecfg/Office/Canvas.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -60,7 +61,6 @@ class CanvasFactory
 
     mutable std::mutex                m_mutex;
     Reference<XComponentContext>      m_xContext;
-    Reference<container::XNameAccess> m_xCanvasConfigNameAccess;
     AvailVector                       m_aAvailableImplementations;
     AvailVector                       m_aAcceleratedImplementations;
     AvailVector                       m_aAAImplementations;
@@ -71,7 +71,7 @@ class CanvasFactory
 
     void checkConfigFlag( bool& r_bFlag,
                           bool& r_CacheFlag,
-                          const OUString& nodeName ) const;
+                          bool bCurrentConfigValue ) const;
     Reference<XInterface> use(
         OUString const & serviceName,
         Sequence<Any> const & args,
@@ -113,63 +113,39 @@ CanvasFactory::CanvasFactory( Reference<XComponentContext> const & xContext ) :
     m_bCacheHasUseAcceleratedEntry(),
     m_bCacheHasUseAAEntry()
 {
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         try
         {
             // read out configuration for preferred services:
-            Reference<lang::XMultiServiceFactory> xConfigProvider(
-                configuration::theDefaultProvider::get( m_xContext ) );
 
-            uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
-            {
-                {"nodepath", uno::Any(OUString("/org.openoffice.Office.Canvas"))}
-            }));
-            m_xCanvasConfigNameAccess.set(
-                xConfigProvider->createInstanceWithArguments(
-                    "com.sun.star.configuration.ConfigurationAccess",
-                    aArgs ),
-                UNO_QUERY_THROW );
-
-            uno::Sequence<uno::Any> aArgs2(comphelper::InitAnyPropertySequence(
-            {
-                {"nodepath", uno::Any(OUString("/org.openoffice.Office.Canvas/CanvasServiceList"))}
-            }));
-            Reference<container::XNameAccess> xNameAccess(
-                xConfigProvider->createInstanceWithArguments(
-                    "com.sun.star.configuration.ConfigurationAccess",
-                    aArgs2 ), UNO_QUERY_THROW );
+            Reference<container::XNameAccess> xNameAccess = officecfg::Office::Canvas::CanvasServiceList::get();
             Reference<container::XHierarchicalNameAccess> xHierarchicalNameAccess(
                 xNameAccess, UNO_QUERY_THROW);
 
-            Sequence<OUString> serviceNames = xNameAccess->getElementNames();
-            const OUString* pCurr = serviceNames.getConstArray();
-            const OUString* const pEnd = pCurr + serviceNames.getLength();
-            while( pCurr != pEnd )
+
+            for (auto& serviceName : xNameAccess->getElementNames())
             {
                 Reference<container::XNameAccess> xEntryNameAccess(
-                    xHierarchicalNameAccess->getByHierarchicalName(*pCurr),
+                    xHierarchicalNameAccess->getByHierarchicalName(serviceName),
                     UNO_QUERY );
 
                 if( xEntryNameAccess.is() )
                 {
                     Sequence<OUString> implementationList;
-                    if( xEntryNameAccess->getByName("PreferredImplementations") >>= implementationList )
+                    if( xEntryNameAccess->getByName(u"PreferredImplementations"_ustr) >>= implementationList )
                     {
-                        m_aAvailableImplementations.emplace_back(*pCurr,implementationList );
+                        m_aAvailableImplementations.emplace_back(serviceName, implementationList);
                     }
-                    if( xEntryNameAccess->getByName("AcceleratedImplementations") >>= implementationList )
+                    if( xEntryNameAccess->getByName(u"AcceleratedImplementations"_ustr) >>= implementationList )
                     {
-                        m_aAcceleratedImplementations.emplace_back(*pCurr,implementationList );
+                        m_aAcceleratedImplementations.emplace_back(serviceName, implementationList);
                     }
-                    if( xEntryNameAccess->getByName("AntialiasingImplementations") >>= implementationList )
+                    if( xEntryNameAccess->getByName(u"AntialiasingImplementations"_ustr) >>= implementationList )
                     {
-                        m_aAAImplementations.emplace_back(*pCurr,implementationList );
+                        m_aAAImplementations.emplace_back(serviceName, implementationList);
                     }
-
                 }
-
-                ++pCurr;
             }
         }
         catch (const RuntimeException &)
@@ -185,11 +161,11 @@ CanvasFactory::CanvasFactory( Reference<XComponentContext> const & xContext ) :
     {
         // Ugh. Looks like configuration is borked. Fake minimal
         // setup.
-        m_aAvailableImplementations.emplace_back(OUString("com.sun.star.rendering.Canvas"),
-            Sequence<OUString>{ "com.sun.star.comp.rendering.Canvas.VCL" } );
+        m_aAvailableImplementations.emplace_back(u"com.sun.star.rendering.Canvas"_ustr,
+            Sequence<OUString>{ u"com.sun.star.comp.rendering.Canvas.VCL"_ustr } );
 
-        m_aAvailableImplementations.emplace_back(OUString("com.sun.star.rendering.SpriteCanvas"),
-            Sequence<OUString>{ "com.sun.star.comp.rendering.SpriteCanvas.VCL" } );
+        m_aAvailableImplementations.emplace_back(u"com.sun.star.rendering.SpriteCanvas"_ustr,
+            Sequence<OUString>{ u"com.sun.star.comp.rendering.SpriteCanvas.VCL"_ustr } );
     }
 }
 
@@ -201,7 +177,7 @@ CanvasFactory::~CanvasFactory()
 // XServiceInfo
 OUString CanvasFactory::getImplementationName()
 {
-    return "com.sun.star.comp.rendering.CanvasFactory";
+    return u"com.sun.star.comp.rendering.CanvasFactory"_ustr;
 }
 
 sal_Bool CanvasFactory::supportsService( OUString const & serviceName )
@@ -211,7 +187,7 @@ sal_Bool CanvasFactory::supportsService( OUString const & serviceName )
 
 Sequence<OUString> CanvasFactory::getSupportedServiceNames()
 {
-    return { "com.sun.star.rendering.CanvasFactory" };
+    return { u"com.sun.star.rendering.CanvasFactory"_ustr };
 }
 
 // XMultiComponentFactory
@@ -259,19 +235,16 @@ Reference<XInterface> CanvasFactory::use(
 
 void CanvasFactory::checkConfigFlag( bool& r_bFlag,
                                      bool& r_CacheFlag,
-                                     const OUString& nodeName ) const
+                                     bool bCurrentConfigValue ) const
 {
-    if( m_xCanvasConfigNameAccess.is() )
-    {
-        m_xCanvasConfigNameAccess->getByName( nodeName ) >>= r_bFlag;
+    r_bFlag = bCurrentConfigValue;
 
-        if( r_CacheFlag != r_bFlag )
-        {
-            // cache is invalid, because of different order of
-            // elements
-            r_CacheFlag = r_bFlag;
-            m_aCachedImplementations.clear();
-        }
+    if( r_CacheFlag != r_bFlag )
+    {
+        // cache is invalid, because of different order of
+        // elements
+        r_CacheFlag = r_bFlag;
+        m_aCachedImplementations.clear();
     }
 }
 
@@ -286,19 +259,19 @@ Reference<XInterface> CanvasFactory::lookupAndUse(
     bool bForceLastEntry(false);
     checkConfigFlag( bForceLastEntry,
                      m_bCacheHasForcedLastImpl,
-                     "ForceSafeServiceImpl" );
+                     officecfg::Office::Canvas::ForceSafeServiceImpl::get() );
 
     // use anti-aliasing canvas, if config flag set (or not existing)
     bool bUseAAEntry(true);
     checkConfigFlag( bUseAAEntry,
                      m_bCacheHasUseAAEntry,
-                     "UseAntialiasingCanvas" );
+                     officecfg::Office::Canvas::UseAntialiasingCanvas::get() );
 
     // use accelerated canvas, if config flag set (or not existing)
     bool bUseAcceleratedEntry(true);
     checkConfigFlag( bUseAcceleratedEntry,
                      m_bCacheHasUseAcceleratedEntry,
-                     "UseAcceleratedCanvas" );
+                     officecfg::Office::Canvas::UseAcceleratedCanvas::get() );
 
     // try to reuse last working implementation for given service name
     const CacheVector::iterator aEnd(m_aCachedImplementations.end());
@@ -430,7 +403,7 @@ Reference<XInterface> CanvasFactory::createInstanceWithArgumentsAndContext(
     {
         Reference<lang::XServiceName> xServiceName(xCanvas, uno::UNO_QUERY);
         SAL_INFO("canvas", "using " << (xServiceName.is() ? xServiceName->getServiceName()
-                                                          : OUString("(unknown)")));
+                                                          : u"(unknown)"_ustr));
     }
     return xCanvas;
 }

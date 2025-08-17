@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SW_INC_CELLATR_HXX
-#define INCLUDED_SW_INC_CELLATR_HXX
+#pragma once
 
 #include <svl/intitem.hxx>
 #include <svl/zforlist.hxx>
@@ -39,6 +38,7 @@ constexpr sal_uInt32 getSwDefaultTextFormat() { return NF_STANDARD_FORMAT_TEXT; 
 class SW_DLLPUBLIC SwTableBoxNumFormat final : public SfxUInt32Item
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwTableBoxNumFormat)
     SwTableBoxNumFormat( sal_uInt32 nFormat = getSwDefaultTextFormat() );
 
     // "pure virtual methods" of SfxPoolItem
@@ -58,6 +58,7 @@ class SW_DLLPUBLIC SwTableBoxFormula final : public SfxPoolItem, public SwTableF
                             // can only be TableBoxFormat
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwTableBoxFormula)
     SwTableBoxFormula( const OUString& rFormula );
 
     // "pure virtual methods" of SfxPoolItem
@@ -97,6 +98,7 @@ class SW_DLLPUBLIC SwTableBoxValue final : public SfxPoolItem
 {
     double m_nValue;
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwTableBoxValue)
     SwTableBoxValue();
     SwTableBoxValue( const double aVal );
 
@@ -126,7 +128,5 @@ inline const SwTableBoxFormula        &SwFormat::GetTableBoxFormula(bool bInP) c
     {   return m_aSet.GetTableBoxFormula(bInP); }
 inline const SwTableBoxValue          &SwFormat::GetTableBoxValue(bool bInP) const
     {   return m_aSet.GetTableBoxValue(bInP); }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

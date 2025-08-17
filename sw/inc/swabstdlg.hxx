@@ -41,7 +41,6 @@ class SwDoc;
 class SwDocShell;
 class SvStream;
 class SwWrtShell;
-class SfxRequest;
 class SwView;
 class SwTableAutoFormat;
 class SwTOXMgr;
@@ -51,13 +50,11 @@ class SwSectionData;
 struct SwDBData;
 class Printer;
 class SwLabItem;
-class SwTableFUNC;
 class SwChildWinWrapper;
 struct SfxChildWinInfo;
 class SwTOXMark;
 struct SwDocStat;
 struct SwInsertTableOptions;
-class SwInsTableDlg;
 enum class SwBorderModes;
 enum class SwCharDlgMode;
 enum class SfxStyleFamily;
@@ -81,7 +78,7 @@ namespace com::sun::star{
 }
 
 
-namespace sw::mark { class IFieldmark; class IDateFieldmark; }
+namespace sw::mark { class Fieldmark; class DateFieldmark; }
 
 typedef   void (*SwLabDlgMethod) (css::uno::Reference< css::frame::XModel> const & xModel, const SwLabItem& rItem);
 
@@ -93,6 +90,7 @@ class AbstractGlossaryDlg : public VclAbstractDialog
 protected:
     virtual ~AbstractGlossaryDlg() override = default;
 public:
+    virtual void Apply() = 0;
     virtual OUString        GetCurrGrpName() const = 0;
     virtual OUString        GetCurrShortName() const = 0;
 };
@@ -112,6 +110,7 @@ class AbstractInsFootNoteDlg : public VclAbstractDialog
 protected:
     virtual ~AbstractInsFootNoteDlg() override = default;
 public:
+    virtual void Apply() = 0;
     virtual OUString    GetFontName() = 0;
     virtual bool        IsEndNote() = 0;
     virtual OUString    GetStr() = 0;
@@ -240,6 +239,8 @@ public:
     virtual int GetPageNumberAlignment() const = 0;
     virtual bool GetMirrorOnEvenPages() const = 0;
     virtual bool GetIncludePageTotal() const = 0;
+    virtual bool GetIncludePageRangeTotal() const = 0;
+    virtual bool GetFitIntoExistingMargins() const = 0;
     virtual SvxNumType GetPageNumberType() const = 0;
     virtual void SetPageNumberType(SvxNumType nSet) = 0;
 };
@@ -325,6 +326,7 @@ protected:
     virtual ~AbstractSwAutoFormatDlg() override = default;
 public:
     virtual std::unique_ptr<SwTableAutoFormat> FillAutoFormatOfIndex() const = 0;
+    virtual void Apply() = 0;
 };
 
 class AbstractSwFieldDlg : public SfxAbstractTabDialog
@@ -333,7 +335,6 @@ protected:
     virtual ~AbstractSwFieldDlg() override = default;
 public:
     virtual void                Initialize(SfxChildWinInfo *pInfo) = 0;
-    virtual void                ReInitDlg() = 0;
     virtual void                ActivateDatabasePage() = 0;
     virtual void                ShowReferencePage() = 0;
     virtual std::shared_ptr<SfxDialogController> GetController() = 0;
@@ -358,9 +359,16 @@ protected:
     virtual ~AbstractSwRenameXNamedDlg() override = default;
 public:
     virtual void    SetForbiddenChars( const OUString& rSet ) = 0;
-    virtual void SetAlternativeAccess(
-             css::uno::Reference< css::container::XNameAccess > & xSecond,
-             css::uno::Reference< css::container::XNameAccess > & xThird ) = 0;
+};
+
+/**
+ * Interface for copy field value dialog in read only documents. It's implemented by
+ * AbstractCopyFieldDlg_Impl
+ */
+class AbstractCopyFieldDlg : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractCopyFieldDlg() override = default;
 };
 
 /**
@@ -417,6 +425,53 @@ public:
     virtual std::optional<SwLanguageListItem> GetSelectedLanguage() = 0;
 };
 
+class AbstractSwSortDlg : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractSwSortDlg() override = default;
+public:
+    virtual void Apply() = 0;
+};
+
+class AbstractSwTableWidthDlg : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractSwTableWidthDlg() override = default;
+public:
+    virtual void Apply() = 0;
+};
+
+class AbstractSwTableHeightDlg : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractSwTableHeightDlg() override = default;
+public:
+    virtual void Apply() = 0;
+};
+
+class AbstractDropDownFormFieldDialog : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractDropDownFormFieldDialog() override = default;
+public:
+    virtual void Apply() = 0;
+};
+
+class AbstractChangeDbDialog : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractChangeDbDialog() override = default;
+public:
+    virtual void UpdateFields() = 0;
+};
+
+class AbstractDateFormFieldDialog : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractDateFormFieldDialog() override = default;
+public:
+    virtual void Apply() = 0;
+};
 
 class SwAbstractDialogFactory
 {
@@ -442,8 +497,8 @@ public:
 
     virtual std::shared_ptr<AbstractSwBreakDlg> CreateSwBreakDlg(weld::Window *pParent, SwWrtShell &rSh) = 0;
     virtual std::shared_ptr<AbstractSwTranslateLangSelectDlg> CreateSwTranslateLangSelectDlg(weld::Window *pParent, SwWrtShell &rSh) = 0;
-    virtual VclPtr<VclAbstractDialog> CreateSwChangeDBDlg(SwView& rVw) = 0;
-    virtual VclPtr<SfxAbstractTabDialog>  CreateSwCharDlg(weld::Window* pParent, SwView& pVw, const SfxItemSet& rCoreSet,
+    virtual VclPtr<AbstractChangeDbDialog> CreateSwChangeDBDlg(SwView& rVw) = 0;
+    virtual VclPtr<SfxAbstractTabDialog>  CreateSwCharDlg(weld::Window* pParent, SwView& rView, const SfxItemSet& rCoreSet,
         SwCharDlgMode nDialogMode, const OUString* pFormatStr = nullptr) = 0;
     virtual VclPtr<AbstractSwConvertTableDlg> CreateSwConvertTableDlg(SwView& rView, bool bToTable) = 0;
     virtual VclPtr<VclAbstractDialog> CreateSwCaptionDialog(weld::Window *pParent, SwView &rV) = 0;
@@ -456,9 +511,9 @@ public:
 
     virtual VclPtr<AbstractDropDownFieldDialog> CreateDropDownFieldDialog(weld::Widget* pParent, SwWrtShell &rSh,
         SwField* pField, bool bPrevButton, bool bNextButton) = 0;
-    virtual VclPtr<VclAbstractDialog> CreateDropDownFormFieldDialog(weld::Widget* pParent, sw::mark::IFieldmark* pDropDownField) = 0;
+    virtual VclPtr<AbstractDropDownFormFieldDialog> CreateDropDownFormFieldDialog(weld::Widget* pParent, sw::mark::Fieldmark* pDropDownField) = 0;
 
-    virtual VclPtr<VclAbstractDialog> CreateDateFormFieldDialog(weld::Widget* pParent, sw::mark::IDateFieldmark* pDateField, SwDoc& rDoc) = 0;
+    virtual VclPtr<AbstractDateFormFieldDialog> CreateDateFormFieldDialog(weld::Widget* pParent, sw::mark::DateFieldmark* pDateField, SwDoc& rDoc) = 0;
 
     virtual VclPtr<SfxAbstractTabDialog> CreateSwEnvDlg(weld::Window* pParent, const SfxItemSet& rSet, SwWrtShell* pWrtSh, Printer* pPrt, bool bInsert) = 0;
 
@@ -477,8 +532,8 @@ public:
 
     virtual VclPtr<AbstractSwSelGlossaryDlg> CreateSwSelGlossaryDlg(weld::Window *pParent, const OUString &rShortName) = 0;
 
-    virtual VclPtr<VclAbstractDialog> CreateSwSortingDialog(weld::Window *pParent, SwWrtShell &rSh) = 0;
-    virtual VclPtr<VclAbstractDialog> CreateSwTableHeightDialog(weld::Window *pParent, SwWrtShell &rSh) = 0;
+    virtual VclPtr<AbstractSwSortDlg> CreateSwSortingDialog(weld::Window *pParent, SwWrtShell &rSh) = 0;
+    virtual VclPtr<AbstractSwTableHeightDlg> CreateSwTableHeightDialog(weld::Window *pParent, SwWrtShell &rSh) = 0;
     virtual VclPtr<VclAbstractDialog> CreateSwColumnDialog(weld::Window *pParent, SwWrtShell &rSh) = 0;
     virtual VclPtr<AbstractSplitTableDialog> CreateSplitTableDialog(weld::Window* pParent, SwWrtShell &rSh) = 0;
 
@@ -486,9 +541,9 @@ public:
                                                                   bool bSetAutoFormat = true,
                                                                   const SwTableAutoFormat* pSelFormat = nullptr ) = 0;
     virtual VclPtr<SfxAbstractDialog> CreateSwBorderDlg(weld::Window* pParent, SfxItemSet& rSet, SwBorderModes nType) = 0;
-    virtual VclPtr<SfxAbstractDialog> CreateSwWrapDlg(weld::Window* pParent, SfxItemSet& rSet, SwWrtShell* pSh) = 0;
+    virtual VclPtr<SfxAbstractDialog> CreateSwWrapDlg(weld::Window* pParent, const SfxItemSet& rSet, SwWrtShell* pSh) = 0;
 
-    virtual VclPtr<VclAbstractDialog> CreateSwTableWidthDlg(weld::Window *pParent, SwTableFUNC &rFnc) = 0;
+    virtual VclPtr<AbstractSwTableWidthDlg> CreateSwTableWidthDlg(weld::Window *pParent, SwWrtShell *pShell) = 0;
     virtual VclPtr<SfxAbstractTabDialog> CreateSwTableTabDlg(weld::Window* pParent,
         const SfxItemSet* pItemSet, SwWrtShell* pSh) = 0;
 
@@ -497,6 +552,9 @@ public:
     virtual VclPtr<AbstractSwRenameXNamedDlg> CreateSwRenameXNamedDlg(weld::Widget* pParent,
         css::uno::Reference< css::container::XNamed > & xNamed,
         css::uno::Reference< css::container::XNameAccess > & xNameAccess) = 0;
+
+    virtual VclPtr<AbstractCopyFieldDlg> CreateCopyFieldDlg(weld::Widget* pParent, const rtl::OUString& rFieldValue ) = 0;
+
     virtual VclPtr<AbstractSwModalRedlineAcceptDlg> CreateSwModalRedlineAcceptDlg(weld::Window *pParent) = 0;
     virtual VclPtr<AbstractSwPageNumberDlg> CreateSwPageNumberDlg(weld::Window* pParent) = 0;
 

@@ -1,287 +1,255 @@
-BitmapAlphaClampFilter
-BitmapColorQuantizationFilter
-BitmapConvolutionMatrixFilter
-BitmapEmbossGreyFilter
-BitmapMedianFilter
-BitmapMonochromeFilter
-BitmapMosaicFilter
-BitmapPopArtFilter
-BitmapSepiaFilter
-BitmapShadowFilter
-BitmapSimpleColorQuantizationFilter
-BitmapSmoothenFilter
-BitmapSobelGreyFilter
-BitmapSolarizeFilter
-BuilderUtils
-ConditionEditDropTarget
-CurrencyFormatter
-DdeGetPutItem
-DdeLink
-DdeService
-DevelopmentToolDockingWindow
-E3dCompoundObject
-EditUndo
-FmDesignModeChangedHint
-FocusListenerMultiplexer
-FontSubsetInfo
-GalleryBinaryStorageLocations
-GalleryStorageLocations
-GrBackendFormat
-GrBackendRenderTarget
-GrBackendSurfaceMutableState
-GrBackendTexture
-GrContextThreadSafeProxy
-GrContext_Base
-GrDirectContext::DirectContextID
-GrImageContext
-GrRecordingContext
-GrVkExtensions
-GrVkSecondaryCBDrawContext
-GrYUVABackendTextureInfo
-GrYUVABackendTextures
-HelpLinker
-Hunspell
-Hunzip
-ImplJobSetup
-IndexerPreProcessor
-KeyListenerMultiplexer
-LongCurrencyFormatter
-MenuBarUpdateIconManager
-MetaAction
-MetaEPSAction
-MetaGradientExAction
-MetaPointAction
-MouseListenerMultiplexer
-MouseMotionListenerMultiplexer
-MyThes
-NotifyEvent
-OpenGLZone
-PaintListenerMultiplexer
-ProcessData
-QtSvpGraphics
-SalData
-SalDisplay
-SalInfoPrinter
-SalPrinter
-SalSystem
-SbClassModuleObject
-ScFormatEntry
-ScMultiBlockUndo
-ScPaintHint
-ScPreviewShell
-ScRefUndoData
-ScRefreshTimer
-ScSimpleUndo
-ScUndoCut
-ScUndoPaste
-SdAbstractDialogFactory
-SdOptionsItem
-SdOptionsLayout
-SdOptionsMisc
-SdOptionsPrint
-SdOptionsSnap
-SdrCaptionEscDirItem
-SdrCaptionTypeItem
-SdrEdgeNode1HorzDistItem
-SdrEdgeNode1VertDistItem
-SdrEdgeNode2HorzDistItem
-SdrEdgeNode2VertDistItem
-SdrEmbedObjectLink
-SdrGrafBlueItem
-SdrGrafContrastItem
-SdrGrafCropItem
-SdrGrafGamma100Item
-SdrGrafGreenItem
-SdrGrafLuminanceItem
-SdrGrafModeItem
-SdrGrafRedItem
-SdrGrafTransparenceItem
-SdrMeasureTextHPosItem
-SdrMeasureTextVPosItem
-SdrMeasureUnitItem
-SdrOnOffItem
-SdrPercentItem
-SdrSignedPercentItem
-SdrTextAniAmountItem
-SdrTextAniDelayItem
-SdrTextAniDirectionItem
-SdrTextAniKindItem
-SdrTextHorzAdjustItem
-SdrUndoInsertObj
-SdrUndoNewPage
-SdrUndoPageMasterPage
-SdrYesNoItem
-SfxStyleSheetModifiedHint
-SfxViewFrameItem
-SfxVisibilityItem
-SpinListenerMultiplexer
-SvxPrintItem
-SvxRsidItem
-SvxShowText
-SvxTPage
-SwAnchoredObject
-SwAuthenticator
-SwColExample
-SwConnectionListener
-SwContrastGrf
-SwDocShell::LockAllViewsGuard_Impl
-SwDrawFrameFormat
-SwDrawModeGrf
-SwExtraRedline
-SwFltRedline
-SwFormatEditInReadonly
-SwFormatEndAtTextEnd
-SwFormatFollowTextFlow
-SwFormatFootnoteAtTextEnd
-SwFormatLayoutSplit
-SwFormatNoBalancedColumns
-SwFormatRowSplit
-SwGammaGrf
-SwHeaderAndFooterEatSpacingItem
-SwLayoutFrame
-SwLuminanceGrf
-SwMirrorGrf
-SwNumRuleItem
-SwPagePreview
-SwRect
-SwRedlineExtraData
-SwRedlineExtraData_FormatColl
-SwShellCursor
-SwTableCellInfo::Impl
-SwTableCellRedline
-SwTableRowRedline
-SwTestItem
-SwWebDocShell
-SwWebView
-SwWrtShellItem
-SwXTextRange::Impl
-SwXTextTableCursor
-SyntaxHighlighter::Tokenizer
-SystemWindow::ImplData
-TBCExtraInfo
-TBCGeneralInfo
-TranslateNId
-VclBin
-VclBuilder::MenuAndId
-VclBuilder::ParserState
-VclBuilder::sortIntoBestTabTraversalOrder
-VclDrawingArea
-VclGrid
-VclWindowEvent
-WString
-WindowListenerMultiplexer
-X11SalObject
-X11SkiaSalGraphicsImpl
-XMLCellStyleExport
-XMLConstantsPropertyHandler
-XMLEnumPropertyHdl
-XMLShapeStyleContext
-basegfx::B2DTrapezoid
-basegfx::BColorModifier
-canvas
-chart::PopupRequest
-comphelper::RefCountedMutex
-comphelper::service_decl
-comphelper::service_decl::ServiceDecl
-comphelper::service_decl::ServiceDecl::Factory
-connectivity::component::OComponentPreparedStatement
-connectivity::component::OComponentStatement
-connectivity::file::OBoolOperator
-connectivity::file::OOp_ISNOTNULL
-connectivity::file::OOp_ISNULL
-connectivity::file::OOp_LIKE
-connectivity::odbc::OConnection
-connectivity::odbc::ODBCDriver
-connectivity::odbc::ODatabaseMetaData
-connectivity::odbc::ODatabaseMetaDataResultSet
-connectivity::odbc::OPreparedStatement
-connectivity::odbc::OResultSet
-connectivity::odbc::OResultSetMetaData
-connectivity::odbc::OStatement
-connectivity::odbc::OStatement_BASE2
-connectivity::odbc::OStatement_Base
-connectivity::odbc::OTools
-connectivity::sdbcx::IObjectCollection
-connectivity::sdbcx::OGroup
-connectivity::sdbcx::OKey
-covariant return thunk to ScEditWindow
-dbtools::param::ParameterWrapper
-desktop::CallbackFlushHandler
-desktop::CallbackFlushHandler::CallbackData
-desktop::CallbackFlushHandler::TimeoutIdle
-desktop::LibLODocument_Impl
-desktop::LibLibreOffice_Impl
-dp_misc::AbortChannel
-drawinglayer
-drawinglayer::animation::AnimationEntry
-drawinglayer::primitive2d::AnimatedSwitchPrimitive2D
-drawinglayer::primitive2d::ObjectAndViewTransformationDependentPrimitive2D
-drawinglayer::primitive2d::SdrFrameBorderData::SdrConnectStyleData
-drawinglayer::primitive2d::ViewTransformationDependentPrimitive2D
-drawinglayer::primitive3d
-drawinglayer::primitive3d::BasePrimitive3D
-drawinglayer::primitive3d::BufferedDecompositionPrimitive3D
-drawinglayer::primitive3d::GroupPrimitive3D
-drawinglayer::primitive3d::PolyPolygonMaterialPrimitive3D
-drawinglayer::primitive3d::PolygonHairlinePrimitive3D
-drawinglayer::primitive3d::SdrPrimitive3D
-formula::FormulaByteToken
-formula::FormulaDoubleToken
-formula::FormulaErrorToken
-formula::FormulaExternalToken
-formula::FormulaFAPToken
-formula::FormulaIndexToken
-formula::FormulaJumpToken
-formula::FormulaMissingToken
-formula::FormulaSpaceToken
-formula::FormulaTokenIterator::Item
-formula::FormulaTypedDoubleToken
-formula::FormulaUnknownToken
-jvmaccess::UnoVirtualMachine::CreationException
-jvmaccess::VirtualMachine::AttachGuard::CreationException
-linguistic::PropertyChgHelper
-linguistic::PropertyHelper_Spell
-oox::IProgressBar
-oox::ole::AxContainerModelBase
-oox::ole::AxControlModelBase
-oox::ole::AxFontDataModel
-oox::ole::AxImageModel
-oox::ole::AxMorphDataModelBase
-oox::ole::AxMultiPageModel
-oox::ole::AxPageModel
-oox::ole::AxTabStripModel
-oox::ole::AxToggleButtonModel
-oox::ole::AxUserFormModel
-sc::CopyFromClipContext
-sc::SwapRowsTransformation
-sd::DrawView
-sdr::SelectionController
-sdr::ViewSelection
-sdr::animation::primitiveAnimator
-sdr::contact::ObjectContactPainter
-sk_app::WindowContext
-svx::CommonStyleManager
-svx::PropertyValueProvider
-sw::BroadcastingModify
-sw::UnoCursorHint
-ucbhelper::ActiveDataSink
-ucbhelper::InteractionAbort
-ucbhelper::InteractionApprove
-ucbhelper::InteractionDisapprove
-ucbhelper::InteractionRetry
-ucbhelper::InteractionSupplyAuthentication
-utl::OInputStreamHelper
-vcl::ExtOutDevData
-vcl::ScriptRun
-vcl::filter::PDFBooleanElement
-vcl::filter::PDFCommentElement
-vcl::filter::PDFEndObjectElement
-vcl::filter::PDFEndStreamElement
-vcl::filter::PDFHexStringElement
-vcl::filter::PDFLiteralStringElement
-vcl::filter::PDFNullElement
-vcl::printer::Options
-writerperfect::DirectoryStream::Impl
-xmloff::OControlBorderHandler
-xmloff::OFontWidthHandler
-xmloff::ORotationAngleHandler
+117 SkCanvas
+92 SkPath
+72 accessibility::AccessibleEditableTextPara
+72 SvTreeListBox
+72 ScDocument
+70 lucene::index::IndexWriter
+66 QtFrame
+65 SkMatrix
+59 SdrTextObj
+57 sdr::table::SdrTableObj
+57 SvxRuler
+57 SdPage
+50 SvHeaderTabListBox
+49 lucene::queryParser::QueryParser
+45 GrDirectContext
+43 SmDocShell
+43 SdrPathObj
+41 SdXImpressDocument
+41 E3dScene
+39 SvTreeList
+39 SfxObjectShell
+38 sd::DrawDocShell
+38 SvxEditEngineForwarder
+37 SfxMedium
+37 DbGridControl
+36 SkTypeface
+36 SkBitmap
+34 chart::ChartModel
+34 SkString
+34 SkNWayCanvas
+33 XMLTextImportHelper
+33 SkPathBuilder
+33 SdrObjGroup
+32 lucene::queryParser::QueryParserTokenManager
+32 framework::Desktop
+32 SvxShape
+32 SkRegion
+32 ScVbaShapeRange
+31 lucene::util::Misc
+31 ScConditionEntry
+30 SdrPaintView
+30 SdrObject
+30 SdrObjEditView
+29 lucene::util::StringBuffer
+27 lucene::index::MultiReader
+27 libepubgen::EPUBTextGenerator
+27 SvxRTFParser
+27 SvXMLImport
+27 SkiaSalBitmap
+26 lucene::index::IndexReader
+26 lucene::document::Field
+26 lucene::analysis::Token
+26 E3dObject
+25 sd::DrawController
+25 lucene::store::FSDirectory
+25 SvtIconChoiceCtrl
+25 SkFont
+25 ScPatternAttr
+24 sfx2::sidebar::SidebarController
+24 SkPaintFilterCanvas
+23 oox::drawingml::Color
+23 VCLXMenu
+23 SkTDStorage
+23 SkPaint
+23 SkMemoryStream
+23 SkColorSpace
+22 vcl::ORoadmap
+22 SwXTextTableCursor
+22 SvListView
+22 Hunspell
+21 lucene::index::IndexModifier
+21 formula::FormulaCompiler
+21 SvxMSDffManager
+20 sdr::contact::ObjectContact
+20 chart::ChartView
+20 SkiaSalGraphicsImpl
+20 SkPathRef
+20 SkImage
+20 SdrPageView
+19 lucene::analysis::PorterStemmer
+19 SkSurface
+19 SkOverdrawCanvas
+18 svx::frame::Array
+18 ooo::vba::UserFormGeometryHelper
+18 lucene::search::BooleanQuery
+18 ThumbnailView
+18 SvxUnoTextRangeBase
+18 Svx3DLightControl
+18 StarBASIC
+18 SkM44
+18 SkGraphics
+18 SkData
+18 SfxViewFrame
+18 SfxTemplateManagerDlg
+18 ScrollBar
+18 ScCellRangesObj
+17 dbaui::DBSubComponentController
+17 chart::Diagram
+17 chart::ChartType
+17 Storage
+17 SkRRect
+17 SkPicture
+17 GrBackendFormat
+17 BrowseBox
+16 sdr::properties::DefaultProperties
+16 chart::Axis
+16 VCLXScrollBar
+16 SkImages
+16 SbxValue
+15 sdr::SelectionController
+15 oox::drawingml::Shape
+15 lucene::util::ScorerDocQueue
+15 lucene::search::Explanation
+15 connectivity::sdbcx::OKey
+15 SvTreeListEntry
+15 SkImageInfo
+15 SkFILEStream
+15 SkDynamicMemoryWStream
+15 SdrOle2Obj
+15 ScSingleRefData
+15 SbxVariable
+15 SbxObject
+15 NumericFormatter
+15 FixedText
+14 sfx2::sidebar::Panel
+14 lucene::store::RAMDirectory
+14 lucene::queryParser::legacy::QueryParserBase
+14 dbaui::OGenericUnoController
+14 SwContentIndex
+14 SvxPixelCtl
+14 SvTabListBox
+14 SkPixmap
+14 SfxInterface
+14 SdrSnapView
+14 ScImportExport
+14 SVTXNumericField
+14 LanguageTag
+14 GrBackendRenderTarget
+14 Dialog
+13 svx::FrameSelector
+13 lucene::index::MultipleTermPositions
+13 lucene::index::LogMergePolicy
+13 lucene::index::FieldInfos
+13 connectivity::sdbcx::OGroup
+13 chart::DataSeries
+13 SvxBmpMask
+13 SvNumberformat
+13 SpinButton
+13 SkTextBlobBuilder
+13 SkCodec
+13 SfxViewShell
+13 SfxApplication
+13 ScPostIt
+13 QtInstance
+13 MyThes
+13 ImplJobSetup
+12 sdr::table::SdrTableObjImpl
+12 sdr::properties::BaseProperties
+12 lucene::store::RAMOutputStream
+12 lucene::store::RAMInputStream
+12 lucene::store::IndexInput
+12 lucene::search::spans::SpanNearQuery
+12 chart::Title
+12 avmedia::MediaWindow
+12 SwMailMergeConfigItem
+12 SvxShapeText
+12 SvxShapeGroup
+12 SvxSearchCharSet
+12 SkPixelRef
+12 SkOrderedFontMgr
+12 SkFontMgr
+12 SkColorInfo
+12 SkColorFilters
+12 SfxListUndoAction
+12 SdrVirtObj
+12 SdrRectObj
+12 ScVbaShapes
+12 ScSheetDPData
+12 NotebookBar
+12 MenuButton
+12 GrBackendTexture
+12 FmXGridPeer
+12 FmFormShell
+11 sfx2::sidebar::Theme
+11 rptui::OOle2Obj
+11 property::OPropertySet
+11 oox::shape::ShapeContextHandler
+11 lucene::store::BufferedIndexInput
+11 lucene::search::SortField
+11 lucene::search::PhraseQuery
+11 lucene::index::Payload
+11 framework::AddonsOptions
+11 drawinglayer::attribute::Sdr3DObjectAttribute
+11 connectivity::file::OResultSet
+11 chart::Legend
+11 chart::GridProperties
+11 chart::DataTable
+11 TabPage
+11 SvxUnoTextField
+11 SvxColorToolBoxControl
+11 SvXMLNumFormatContext
+11 SkParse
+11 SkAndroidCodec
+11 Sk3DView
+11 SfxRequest
+11 SfxDispatcher
+11 SdrPageObj
+11 ScSimpleUndo
+11 ScRefCellValue
+11 ScRangePairList
+11 GrContext_Base
+11 Formatter
+11 CompressGraphicsDialog
+10 svx::DialControl
+10 sdr::contact::ViewContactOfE3dScene
+10 sd::DrawView
+10 oox::shape::ShapeFilterBase
+10 lucene::util::AStringReader
+10 lucene::store::RAMFile
+10 lucene::search::spans::SpanOrQuery
+10 lucene::search::Sort
+10 lucene::search::RangeQuery
+10 lucene::search::FuzzyTermEnum
+10 lucene::index::DirectoryIndexReader
+10 drawinglayer::attribute::FontAttribute
+10 XMLTextParagraphExport
+10 Writer
+10 VclMultiLineEdit
+10 VCLXWindow
+10 ToolBox
+10 TabControl
+10 SwUserField
+10 SvxZoomSliderControl
+10 SvXMLExport
+10 SkWStream
+10 SkUTF
+10 SkTextBlob
+10 SkRuntimeEffect
+10 SkPathMeasure
+10 SkDrawable
+10 SfxDocumentInfoItem
+10 SdrText
+10 SdrPage
+10 SdrModel
+10 SdNavigatorWin
+10 ScViewUtil
+10 ScRangeList
+10 ScAutoFormatData
+10 SbxDimArray
+10 SbxArray
+10 FormattedField
+10 E3dCompoundObject
+10 DffPropertyReader
+10 DdeService
+10 BasicManager

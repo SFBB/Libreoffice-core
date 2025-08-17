@@ -71,12 +71,12 @@ public:
 
 class AddressWalkerWriter : public AddressWalker
 {
-    ScDocShell*                         mpDocShell;
+    ScDocShell&                         mrDocShell;
     ScDocument&                         mrDocument;
     formula::FormulaGrammar::Grammar    meGrammar;
 
 public:
-    AddressWalkerWriter(const ScAddress& aInitialAddress, ScDocShell* pDocShell, ScDocument& rDocument,
+    AddressWalkerWriter(const ScAddress& aInitialAddress, ScDocShell& rDocShell, ScDocument& rDocument,
             formula::FormulaGrammar::Grammar eGrammar );
 
     void writeFormula(const OUString& aFormula);
@@ -86,6 +86,8 @@ public:
     void writeString(const char* aCharArray);
     void writeBoldString(const OUString& aString);
     void writeValue(double aValue);
+    void formatAsColumnHeader(SCCOL nCols = 1);
+    void formatTableBottom(SCCOL nCols = 1);
 };
 
 class DataCellIterator final

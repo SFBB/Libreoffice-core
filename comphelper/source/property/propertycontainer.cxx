@@ -26,7 +26,6 @@ namespace comphelper
 
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 
 OPropertyContainer::OPropertyContainer(::cppu::OBroadcastHelper& _rBHelper)
@@ -43,12 +42,7 @@ OPropertyContainer::~OPropertyContainer()
 Sequence< Type > OPropertyContainer::getBaseTypes()
 {
     // just the types from our one and only base class
-    ::cppu::OTypeCollection aTypes(
-        cppu::UnoType<XPropertySet>::get(),
-        cppu::UnoType<XFastPropertySet>::get(),
-        cppu::UnoType<XMultiPropertySet>::get()
-    );
-    return aTypes.getTypes();
+    return cppu::OPropertySetHelper::getTypes();
 }
 
 sal_Bool OPropertyContainer::convertFastPropertyValue(

@@ -74,8 +74,6 @@ namespace frm
     using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::ui::dialogs;
 
-    using namespace ::connectivity;
-
     OFilterControl::OFilterControl( const Reference< XComponentContext >& _rxORB )
         :m_aTextListeners( *this )
         ,m_xContext( _rxORB )
@@ -284,7 +282,7 @@ namespace frm
 
                     bool bSelected = ( rEvent.Selected == TRISTATE_TRUE );
 
-                    OUString sExpressionMarker( "$expression$" );
+                    OUString sExpressionMarker( u"$expression$"_ustr );
                     ::dbtools::getBooleanComparisonPredicate(
                         sExpressionMarker,
                         bSelected,
@@ -389,7 +387,7 @@ namespace frm
 
             // create a query composer
             Reference< XColumnsSupplier > xSuppColumns;
-            xFormProps->getPropertyValue("SingleSelectQueryComposer") >>= xSuppColumns;
+            xFormProps->getPropertyValue(u"SingleSelectQueryComposer"_ustr) >>= xSuppColumns;
 
             const Reference< XConnection > xConnection( ::dbtools::getConnection( xForm ), UNO_SET_THROW );
             const Reference< XNameAccess > xFieldNames( xSuppColumns->getColumns(), UNO_SET_THROW );
@@ -722,7 +720,7 @@ namespace frm
     {
         try
         {
-            Reference< XExecutableDialog > xErrorDialog = ErrorMessageDialog::create( m_xContext, "",  m_xMessageParent, Any(_rExcept));
+            Reference< XExecutableDialog > xErrorDialog = ErrorMessageDialog::create( m_xContext, u""_ustr,  m_xMessageParent, Any(_rExcept));
             xErrorDialog->execute();
         }
         catch( const Exception& )
@@ -857,7 +855,7 @@ namespace frm
 
     OUString SAL_CALL OFilterControl::getImplementationName(  )
     {
-        return "com.sun.star.comp.forms.OFilterControl";
+        return u"com.sun.star.comp.forms.OFilterControl"_ustr;
     }
 
     sal_Bool SAL_CALL OFilterControl::supportsService( const OUString& ServiceName )
@@ -867,8 +865,8 @@ namespace frm
 
     Sequence< OUString > SAL_CALL OFilterControl::getSupportedServiceNames(  )
     {
-        return { "com.sun.star.form.control.FilterControl",
-                 "com.sun.star.awt.UnoControl" };
+        return { u"com.sun.star.form.control.FilterControl"_ustr,
+                 u"com.sun.star.awt.UnoControl"_ustr };
     }
 }   // namespace frm
 

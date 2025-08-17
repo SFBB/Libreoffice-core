@@ -35,8 +35,8 @@ using namespace sw::access;
 SwAccessibleChildMap::SwAccessibleChildMap( const SwRect& rVisArea,
                                             const SwFrame& rFrame,
                                             SwAccessibleMap& rAccMap )
-    : mnHellId( rAccMap.GetShell()->GetDoc()->getIDocumentDrawModelAccess().GetHellId() )
-    , mnControlsId( rAccMap.GetShell()->GetDoc()->getIDocumentDrawModelAccess().GetControlsId() )
+    : mnHellId(rAccMap.GetShell().GetDoc()->getIDocumentDrawModelAccess().GetHellId())
+    , mnControlsId(rAccMap.GetShell().GetDoc()->getIDocumentDrawModelAccess().GetControlsId())
 {
     const bool bVisibleChildrenOnly = SwAccessibleChild( &rFrame ).IsVisibleChildrenOnly();
 
@@ -99,8 +99,7 @@ SwAccessibleChildMap::SwAccessibleChildMap( const SwRect& rVisArea,
                 if ( pAccImpl &&
                      pAccImpl->HasAdditionalAccessibleChildren() )
                 {
-                    std::vector< vcl::Window* > aAdditionalChildren;
-                    pAccImpl->GetAdditionalAccessibleChildren( &aAdditionalChildren );
+                    std::vector<vcl::Window*> aAdditionalChildren = pAccImpl->GetAdditionalAccessibleChildren();
 
                     sal_Int32 nCounter( 0 );
                     for ( const auto& rpChild : aAdditionalChildren )

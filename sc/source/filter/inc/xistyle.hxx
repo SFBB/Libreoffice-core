@@ -22,6 +22,7 @@
 #include <tools/solar.h>
 #include <vector>
 #include <memory>
+#include <optional>
 #include <rangelst.hxx>
 #include "xlstyle.hxx"
 #include "xiroot.hxx"
@@ -29,7 +30,7 @@
 class ScPatternAttr;
 
 struct XclRange;
-struct ScAttrEntry;
+class ScAttrEntry;
 enum class SvxBoxItemLine;
 
 /* ============================================================================
@@ -565,11 +566,7 @@ inline bool XclImpXFRange::Contains( SCROW nScRow ) const
 class XclImpXFRangeColumn
 {
 public:
-    /** make noncopyable */
-    XclImpXFRangeColumn(const XclImpXFRangeColumn&) = delete;
-    const XclImpXFRangeColumn& operator=(const XclImpXFRangeColumn&) = delete;
-
-    typedef std::vector< std::unique_ptr<XclImpXFRange> > IndexList;
+    typedef std::vector< XclImpXFRange > IndexList;
 
     explicit     XclImpXFRangeColumn() {}
 
@@ -597,7 +594,7 @@ private:
     void                TryConcatPrev( sal_uLong nIndex );
 
     /** Insert a range into the list at the specified index. */
-    void                Insert(XclImpXFRange* pXFRange, sal_uLong nIndex);
+    void                Insert(XclImpXFRange aXFRange, sal_uLong nIndex);
 
 private:
     IndexList maIndexList;    /// The list of XF index range.
@@ -660,7 +657,7 @@ private:
 
 private:
 
-    std::vector< std::shared_ptr< XclImpXFRangeColumn > >
+    std::vector< std::optional<XclImpXFRangeColumn> >
                         maColumns;        /// Array of column XF index buffers.
     std::vector< std::pair< XclRange, OUString > >
                         maHyperlinks;     /// Maps URLs to hyperlink cells.

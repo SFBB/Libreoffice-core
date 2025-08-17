@@ -68,6 +68,7 @@
 #include <editeng/frmdiritem.hxx>
 #include <svx/xfltrit.hxx>
 #include <filter/msfilter/msdffimp.hxx>
+#include <frmatr.hxx>
 #include <grfatr.hxx>
 #include <fmtornt.hxx>
 #include <fmtcntnt.hxx>
@@ -168,17 +169,17 @@ void wwFrameNamer::SetUniqueGraphName(SwFrameFormat *pFrameFormat, std::u16strin
     if (mbIsDisabled || rFixed.empty())
         return;
 
-    pFrameFormat->SetFormatName(msSeed+OUString::number(++mnImportedGraphicsCount) + ": " + rFixed);
+    pFrameFormat->SetFormatName(UIName(msSeed+OUString::number(++mnImportedGraphicsCount) + ": " + rFixed));
 }
 
 // ReadGrafStart reads object data and if necessary creates an anchor
 bool SwWW8ImplReader::ReadGrafStart(void* pData, short nDataSiz,
     WW8_DPHEAD const * pHd, SfxAllItemSet &rSet)
 {
-    if (SVBT16ToUInt16(pHd->cb) < sizeof(WW8_DPHEAD) + nDataSiz)
+    if (sal_uInt16 n = SVBT16ToUInt16(pHd->cb); n < sizeof(WW8_DPHEAD) + nDataSiz)
     {
         OSL_ENSURE( false, "+graphic element: too short?" );
-        m_pStrm->SeekRel(SVBT16ToUInt16(pHd->cb) - sizeof(WW8_DPHEAD));
+        m_pStrm->SeekRel(n - sizeof(WW8_DPHEAD));
         return false;
     }
 
@@ -201,19 +202,19 @@ bool SwWW8ImplReader::ReadGrafStart(void* pData, short nDataSiz,
 static void SetStdAttr( SfxItemSet& rSet, WW8_DP_LINETYPE& rL,
                         WW8_DP_SHADOW const & rSh )
 {
-    if( SVBT16ToUInt16( rL.lnps ) == 5 ){            // invisible
+    if( sal_uInt16 n = SVBT16ToUInt16( rL.lnps ); n == 5 ){            // invisible
         rSet.Put( XLineStyleItem( drawing::LineStyle_NONE ) );
     }else{                                          // visible
         Color aCol( WW8TransCol( rL.lnpc ) );           // line color
         rSet.Put( XLineColorItem( OUString(), aCol ) );
-        rSet.Put( XLineWidthItem( SVBT16ToUInt16( rL.lnpw ) ) );
+        sal_uInt16 nLen = SVBT16ToUInt16( rL.lnpw );
+        rSet.Put( XLineWidthItem( nLen ) );
                                                     // line thickness
-        if( SVBT16ToUInt16( rL.lnps ) >= 1
-            && SVBT16ToUInt16(rL.lnps ) <= 4 ){      // line style
+        if( n >= 1
+            && n <= 4 ){      // line style
             rSet.Put( XLineStyleItem( drawing::LineStyle_DASH ) );
-            sal_Int16 nLen = SVBT16ToUInt16( rL.lnpw );
             XDash aD( css::drawing::DashStyle_RECT, 1, 2 * nLen, 1, 5 * nLen, 5 * nLen );
-            switch( SVBT16ToUInt16( rL.lnps ) ){
+            switch( n ){
             case 1: aD.SetDots( 0 );            // Dash
                     aD.SetDashLen( 6 * nLen );
                     aD.SetDistance( 4 * nLen );
@@ -321,13 +322,13 @@ rtl::Reference<SdrObject> SwWW8ImplReader::ReadLine(WW8_DPHEAD const * pHd, SfxA
         Point& rP0 = aP[0];
         Point& rP1 = aP[1];
 
-        rP0.setX( static_cast<sal_Int16>(SVBT16ToUInt16( pHd->xa )) + m_nDrawXOfs2 );
-        rP0.setY( static_cast<sal_Int16>(SVBT16ToUInt16( pHd->ya )) + m_nDrawYOfs2 );
+        rP0.setX(SVBT16ToInt16(pHd->xa) + m_nDrawXOfs2);
+        rP0.setY(SVBT16ToInt16(pHd->ya) + m_nDrawYOfs2);
         rP1 = rP0;
-        rP0.AdjustX(static_cast<sal_Int16>(SVBT16ToUInt16( aLine.xaStart )) );
-        rP0.AdjustY(static_cast<sal_Int16>(SVBT16ToUInt16( aLine.yaStart )) );
-        rP1.AdjustX(static_cast<sal_Int16>(SVBT16ToUInt16( aLine.xaEnd )) );
-        rP1.AdjustY(static_cast<sal_Int16>(SVBT16ToUInt16( aLine.yaEnd )) );
+        rP0.AdjustX(SVBT16ToInt16(aLine.xaStart));
+        rP0.AdjustY(SVBT16ToInt16(aLine.yaStart));
+        rP1.AdjustX(SVBT16ToInt16(aLine.xaEnd));
+        rP1.AdjustY(SVBT16ToInt16(aLine.yaEnd));
     }
 
     ::basegfx::B2DPolygon aPolygon;
@@ -351,11 +352,10 @@ rtl::Reference<SdrObject> SwWW8ImplReader::ReadRect(WW8_DPHEAD const * pHd, SfxA
     if( !ReadGrafStart( static_cast<void*>(&aRect), sizeof( aRect ), pHd, rSet ) )
         return nullptr;
 
-    Point aP0( static_cast<sal_Int16>(SVBT16ToUInt16( pHd->xa )) + m_nDrawXOfs2,
-               static_cast<sal_Int16>(SVBT16ToUInt16( pHd->ya )) + m_nDrawYOfs2 );
+    Point aP0(SVBT16ToInt16(pHd->xa) + m_nDrawXOfs2, SVBT16ToInt16(pHd->ya) + m_nDrawYOfs2);
     Point aP1( aP0 );
-    aP1.AdjustX(static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dxa )) );
-    aP1.AdjustY(static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dya )) );
+    aP1.AdjustX(SVBT16ToInt16(pHd->dxa));
+    aP1.AdjustY(SVBT16ToInt16(pHd->dya));
 
     rtl::Reference<SdrObject> pObj = new SdrRectObj(
         *m_pDrawModel,
@@ -374,11 +374,10 @@ rtl::Reference<SdrObject> SwWW8ImplReader::ReadEllipse(WW8_DPHEAD const * pHd, S
     if( !ReadGrafStart( static_cast<void*>(&aEllipse), sizeof( aEllipse ), pHd, rSet ) )
         return nullptr;
 
-    Point aP0( static_cast<sal_Int16>(SVBT16ToUInt16( pHd->xa )) + m_nDrawXOfs2,
-               static_cast<sal_Int16>(SVBT16ToUInt16( pHd->ya )) + m_nDrawYOfs2 );
+    Point aP0(SVBT16ToInt16(pHd->xa) + m_nDrawXOfs2, SVBT16ToInt16(pHd->ya) + m_nDrawYOfs2);
     Point aP1( aP0 );
-    aP1.AdjustX(static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dxa )) );
-    aP1.AdjustY(static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dya )) );
+    aP1.AdjustX(SVBT16ToInt16(pHd->dxa));
+    aP1.AdjustY(SVBT16ToInt16(pHd->dya));
 
     rtl::Reference<SdrObject> pObj = new SdrCircObj(
         *m_pDrawModel,
@@ -398,21 +397,20 @@ rtl::Reference<SdrObject> SwWW8ImplReader::ReadArc(WW8_DPHEAD const * pHd, SfxAl
     if( !ReadGrafStart( static_cast<void*>(&aArc), sizeof( aArc ), pHd, rSet ) )
         return nullptr;
 
-    Point aP0( static_cast<sal_Int16>(SVBT16ToUInt16( pHd->xa )) + m_nDrawXOfs2,
-               static_cast<sal_Int16>(SVBT16ToUInt16( pHd->ya )) + m_nDrawYOfs2 );
+    Point aP0(SVBT16ToInt16(pHd->xa) + m_nDrawXOfs2, SVBT16ToInt16(pHd->ya) + m_nDrawYOfs2);
     Point aP1( aP0 );
-    aP1.AdjustX(static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dxa )) * 2 );
-    aP1.AdjustY(static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dya )) * 2 );
+    aP1.AdjustX(SVBT16ToInt16(pHd->dxa) * 2);
+    aP1.AdjustY(SVBT16ToInt16(pHd->dya) * 2);
 
     short nA[] = { 2, 3, 1, 0 };
     short nW = nA[ ( ( aArc.fLeft & 1 ) << 1 ) + ( aArc.fUp & 1 ) ];
     if( !aArc.fLeft ){
-        aP0.AdjustY( -static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dya )) );
-        aP1.AdjustY( -static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dya )) );
+        aP0.AdjustY(-SVBT16ToInt16(pHd->dya));
+        aP1.AdjustY(-SVBT16ToInt16(pHd->dya));
     }
     if( aArc.fUp ){
-        aP0.AdjustX( -static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dxa )) );
-        aP1.AdjustX( -static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dxa )) );
+        aP0.AdjustX(-SVBT16ToInt16(pHd->dxa));
+        aP1.AdjustX(-SVBT16ToInt16(pHd->dxa));
     }
 
     rtl::Reference<SdrObject> pObj = new SdrCircObj(
@@ -447,10 +445,8 @@ rtl::Reference<SdrObject> SwWW8ImplReader::ReadPolyLine(WW8_DPHEAD const * pHd, 
     Point aPt;
     for (sal_uInt16 i=0; i<nCount; ++i)
     {
-        aPt.setX( SVBT16ToUInt16( xP[i << 1] ) + m_nDrawXOfs2
-                  + static_cast<sal_Int16>(SVBT16ToUInt16( pHd->xa )) );
-        aPt.setY( SVBT16ToUInt16( xP[( i << 1 ) + 1] ) + m_nDrawYOfs2
-                  + static_cast<sal_Int16>(SVBT16ToUInt16( pHd->ya )) );
+        aPt.setX(SVBT16ToUInt16(xP[i << 1]) + m_nDrawXOfs2 + SVBT16ToInt16(pHd->xa));
+        aPt.setY(SVBT16ToUInt16(xP[(i << 1) + 1]) + m_nDrawYOfs2 + SVBT16ToInt16(pHd->ya));
         aP[i] = aPt;
     }
     xP.reset();
@@ -495,7 +491,7 @@ static ESelection GetESelection(EditEngine const &rDrawEditEngine, tools::Long n
 // Which-IDs are changed according to the aDstTab table so that the
 // EditEngine will not ignore them.
 // Both Paragraph and character attributes are stuffed into the ItemSet.
-void SwWW8ImplReader::InsertTxbxStyAttrs( SfxItemSet& rS, sal_uInt16 nColl )
+void SwWW8ImplReader::InsertTxbxStyAttrs(SfxItemSet& rS, sal_uInt16 nColl, ManTypes eType)
 {
     SwWW8StyInf * pStyInf = GetStyle(nColl);
     if( !(pStyInf != nullptr && pStyInf->m_pFormat && pStyInf->m_bColl) )
@@ -512,12 +508,33 @@ void SwWW8ImplReader::InsertTxbxStyAttrs( SfxItemSet& rS, sal_uInt16 nColl )
             SfxItemPool *pEditPool = rS.GetPool();
             sal_uInt16 nWhich = i;
             sal_uInt16 nSlotId = m_rDoc.GetAttrPool().GetSlotId(nWhich);
-            if (
-                nSlotId && nWhich != nSlotId &&
-                0 != (nWhich = pEditPool->GetWhich(nSlotId)) &&
-                nWhich != nSlotId &&
-                ( SfxItemState::SET != rS.GetItemState(nWhich, false) )
-               )
+
+            if (nWhich == RES_MARGIN_FIRSTLINE || nWhich == RES_MARGIN_TEXTLEFT
+                || nWhich == RES_MARGIN_RIGHT)
+            {
+                // MSO ignores paragraph indents for comments in DOC format
+                if (eType == MAN_AND)
+                    continue;
+
+                if (SfxItemState::SET == rS.GetItemState(EE_PARA_LRSPACE, false))
+                    continue;
+
+                // LO7.6 split SW RES_LR_SPACE into three pieces,
+                // but EditEng still uses the combined SvxLRSpaceItem, so recombine
+                assert(!pEditPool->GetTrueWhichIDFromSlotID(nSlotId)
+                       && "unnecessary when EditEng learns about the separate pieces");
+
+                SvxLRSpaceItem aLR(rS.Get(EE_PARA_LRSPACE));
+                const auto& rFirstLine = pStyInf->m_pFormat->GetFirstLineIndent();
+                aLR.SetTextFirstLineOffset(rFirstLine.GetTextFirstLineOffset());
+                aLR.SetTextLeft(pStyInf->m_pFormat->GetTextLeftMargin().GetTextLeft());
+                aLR.SetRight(pStyInf->m_pFormat->GetRightMargin().GetRight());
+                rS.Put(aLR);
+            }
+            else if (nSlotId && nWhich != nSlotId
+                     && 0 != (nWhich = pEditPool->GetTrueWhichIDFromSlotID(nSlotId))
+                     && SfxItemState::SET != rS.GetItemState(nWhich, false))
+
             {
                 rS.Put( pItem->CloneSetWhich(nWhich) );
             }
@@ -585,8 +602,8 @@ public:
     bool IsValidSel(const EditEngine& rEngine, const ESelection& rSel)
     {
         const auto nParaCount = rEngine.GetParagraphCount();
-        if (rSel.nStartPara < nParaCount && rSel.nEndPara < nParaCount)
-            return rSel.nStartPos >= 0 && rSel.nEndPos >= 0;
+        if (rSel.start.nPara < nParaCount && rSel.end.nPara < nParaCount)
+            return rSel.start.nIndex >= 0 && rSel.end.nIndex >= 0;
         return false;
     }
 }
@@ -668,7 +685,7 @@ void SwWW8ImplReader::InsertAttrsAsDrawingAttrs(WW8_CP nStartCp, WW8_CP nEndCp,
                             nTextStart - nStartCp));
 
                         sal_Int32 nParaCount = m_pDrawEditEngine->GetParagraphCount();
-                        bool bBadSelection = aReplaceSel.nStartPara >= nParaCount || aReplaceSel.nEndPara >= nParaCount;
+                        bool bBadSelection = aReplaceSel.start.nPara >= nParaCount || aReplaceSel.end.nPara >= nParaCount;
 
                         SAL_WARN_IF(bBadSelection, "sw.ww8", "editengine has different amount of text than expected");
 
@@ -739,11 +756,39 @@ void SwWW8ImplReader::InsertAttrsAsDrawingAttrs(WW8_CP nStartCp, WW8_CP nEndCp,
                             Color aColor(static_cast<const SvxBrushItem*>(pItem)->GetColor());
                             pS->Put(SvxColorItem(aColor, EE_CHAR_BKGCOLOR));
                         }
-                        else if (
-                            nSlotId && nWhich != nSlotId &&
-                            0 != (nWhich = pEditPool->GetWhich(nSlotId)) &&
-                            nWhich != nSlotId
-                        )
+                        else if (nWhich == RES_MARGIN_FIRSTLINE || nWhich == RES_MARGIN_TEXTLEFT
+                                 || nWhich == RES_MARGIN_RIGHT)
+                        {
+                            // MSO ignores paragraph indents for comments in DOC format
+                            if (eType == MAN_AND)
+                                continue;
+
+                            // LO7.6 split SW RES_LR_SPACE into three pieces,
+                            // but EE still uses the combined SvxLRSpaceItem, so recombine
+                            assert(!pEditPool->GetTrueWhichIDFromSlotID(nSlotId)
+                                   && "unnecessary when EditEng learns about the separate pieces");
+
+                            SvxLRSpaceItem aLR(pS->Get(EE_PARA_LRSPACE));
+                            if (nWhich == RES_MARGIN_FIRSTLINE)
+                            {
+                                const auto* pFirstLine
+                                    = static_cast<const SvxFirstLineIndentItem*>(pItem);
+                                aLR.SetTextFirstLineOffset(pFirstLine->GetTextFirstLineOffset());
+                            }
+                            else if (nWhich == RES_MARGIN_TEXTLEFT)
+                            {
+                                aLR.SetTextLeft(static_cast<const SvxTextLeftMarginItem*>(pItem)
+                                                    ->GetTextLeft());
+                            }
+                            else
+                            {
+                                aLR.SetRight(
+                                    static_cast<const SvxRightMarginItem*>(pItem)->GetRight());
+                            }
+                            pS->Put(aLR);
+                        }
+                        else if (nSlotId && nWhich != nSlotId
+                                 && 0 != (nWhich = pEditPool->GetTrueWhichIDFromSlotID(nSlotId)))
                         {
                             pS->Put( pItem->CloneSetWhich(nWhich) );
                         }
@@ -751,7 +796,7 @@ void SwWW8ImplReader::InsertAttrsAsDrawingAttrs(WW8_CP nStartCp, WW8_CP nEndCp,
                 }
             }
             // Fill in the remainder from the style
-            InsertTxbxStyAttrs(*pS, m_nCurrentColl);
+            InsertTxbxStyAttrs(*pS, m_nCurrentColl, eType);
 
             if( pS->Count() )
             {
@@ -1255,20 +1300,16 @@ rtl::Reference<SdrObject> SwWW8ImplReader::ReadTextBox(WW8_DPHEAD const * pHd, S
     if( !ReadGrafStart( static_cast<void*>(&aTextB), sizeof( aTextB ), pHd, rSet ) )
         return nullptr;
 
-    Point aP0( static_cast<sal_Int16>(SVBT16ToUInt16( pHd->xa )) + m_nDrawXOfs2,
-               static_cast<sal_Int16>(SVBT16ToUInt16( pHd->ya )) + m_nDrawYOfs2 );
+    Point aP0(SVBT16ToInt16(pHd->xa) + m_nDrawXOfs2, SVBT16ToInt16(pHd->ya) + m_nDrawYOfs2);
     Point aP1( aP0 );
-    aP1.AdjustX(static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dxa )) );
-    aP1.AdjustY(static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dya )) );
+    aP1.AdjustX(SVBT16ToInt16(pHd->dxa));
+    aP1.AdjustY(SVBT16ToInt16(pHd->dya));
 
     rtl::Reference<SdrRectObj> pObj = new SdrRectObj(
-        *m_pDrawModel,
-        SdrObjKind::Text,
-        tools::Rectangle(aP0, aP1));
+        *m_pDrawModel, tools::Rectangle(aP0, aP1), SdrObjKind::Text);
 
     pObj->NbcSetSnapRect(tools::Rectangle(aP0, aP1));
-    Size aSize( static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dxa )) ,
-        static_cast<sal_Int16>(SVBT16ToUInt16( pHd->dya )) );
+    Size aSize(SVBT16ToInt16(pHd->dxa), SVBT16ToInt16(pHd->dya));
 
     tools::Long nStartCpFly,nEndCpFly;
     bool bContainsGraphics;
@@ -1319,19 +1360,17 @@ rtl::Reference<SdrObject> SwWW8ImplReader::ReadCaptionBox(WW8_DPHEAD const * pHd
     if( nTyp == 1 && SVBT16ToUInt16( xP[0] ) == SVBT16ToUInt16( xP[2] ) )
         nTyp = 0;
 
-    Point aP0( static_cast<sal_Int16>(SVBT16ToUInt16( pHd->xa )) +
-               static_cast<sal_Int16>(SVBT16ToUInt16( aCallB.dpheadTxbx.xa )) + m_nDrawXOfs2,
-               static_cast<sal_Int16>(SVBT16ToUInt16( pHd->ya ))
-               + static_cast<sal_Int16>(SVBT16ToUInt16( aCallB.dpheadTxbx.ya )) + m_nDrawYOfs2 );
+    Point aP0(SVBT16ToInt16(pHd->xa) + SVBT16ToInt16(aCallB.dpheadTxbx.xa) + m_nDrawXOfs2,
+              SVBT16ToInt16(pHd->ya) + SVBT16ToInt16(aCallB.dpheadTxbx.ya) + m_nDrawYOfs2);
     Point aP1( aP0 );
-    aP1.AdjustX(static_cast<sal_Int16>(SVBT16ToUInt16( aCallB.dpheadTxbx.dxa )) );
-    aP1.AdjustY(static_cast<sal_Int16>(SVBT16ToUInt16( aCallB.dpheadTxbx.dya )) );
-    Point aP2( static_cast<sal_Int16>(SVBT16ToUInt16( pHd->xa ))
-                + static_cast<sal_Int16>(SVBT16ToUInt16( aCallB.dpheadPolyLine.xa ))
-                + m_nDrawXOfs2 + static_cast<sal_Int16>(SVBT16ToUInt16( xP[0] )),
-               static_cast<sal_Int16>(SVBT16ToUInt16( pHd->ya ))
-               + static_cast<sal_Int16>(SVBT16ToUInt16( aCallB.dpheadPolyLine.ya ))
-               + m_nDrawYOfs2 + static_cast<sal_Int16>(SVBT16ToUInt16( xP[1] )) );
+    aP1.AdjustX(SVBT16ToInt16(aCallB.dpheadTxbx.dxa));
+    aP1.AdjustY(SVBT16ToInt16(aCallB.dpheadTxbx.dya));
+    Point aP2( SVBT16ToInt16( pHd->xa )
+                + SVBT16ToInt16( aCallB.dpheadPolyLine.xa )
+                + m_nDrawXOfs2 + SVBT16ToInt16( xP[0] ),
+               SVBT16ToInt16( pHd->ya )
+               + SVBT16ToInt16( aCallB.dpheadPolyLine.ya )
+               + m_nDrawYOfs2 + SVBT16ToInt16( xP[1] ) );
     xP.reset();
 
     rtl::Reference<SdrCaptionObj> pObj = new SdrCaptionObj(
@@ -1340,8 +1379,7 @@ rtl::Reference<SdrObject> SwWW8ImplReader::ReadCaptionBox(WW8_DPHEAD const * pHd
         aP2);
 
     pObj->NbcSetSnapRect(tools::Rectangle(aP0, aP1));
-    Size aSize( static_cast<sal_Int16>(SVBT16ToUInt16( aCallB.dpheadTxbx.dxa )),
-                           static_cast<sal_Int16>(SVBT16ToUInt16(  aCallB.dpheadTxbx.dya )) );
+    Size aSize(SVBT16ToInt16(aCallB.dpheadTxbx.dxa), SVBT16ToInt16(aCallB.dpheadTxbx.dya));
     bool bEraseThisObject;
 
     InsertTxbxText(pObj.get(), &aSize, 0, 0, 0, nullptr, false, bEraseThisObject );
@@ -1367,12 +1405,12 @@ rtl::Reference<SdrObject> SwWW8ImplReader::ReadGroup(WW8_DPHEAD const * pHd, Sfx
     nGrouped = (sal_Int16)OSL_SWAPWORD( nGrouped );
 #endif
 
-    m_nDrawXOfs = m_nDrawXOfs + static_cast<sal_Int16>(SVBT16ToUInt16( pHd->xa ));
-    m_nDrawYOfs = m_nDrawYOfs + static_cast<sal_Int16>(SVBT16ToUInt16( pHd->ya ));
+    m_nDrawXOfs = m_nDrawXOfs + SVBT16ToInt16(pHd->xa);
+    m_nDrawYOfs = m_nDrawYOfs + SVBT16ToInt16(pHd->ya);
 
     rtl::Reference<SdrObject> pObj = new SdrObjGroup(*m_pDrawModel);
 
-    short nLeft = static_cast<sal_Int16>(SVBT16ToUInt16( pHd->cb )) - sizeof( WW8_DPHEAD );
+    short nLeft = SVBT16ToInt16(pHd->cb) - sizeof(WW8_DPHEAD);
     for (int i = 0; i < nGrouped && nLeft >= static_cast<short>(sizeof(WW8_DPHEAD)); ++i)
     {
         SfxAllItemSet aSet(m_pDrawModel->GetItemPool());
@@ -1387,8 +1425,8 @@ rtl::Reference<SdrObject> SwWW8ImplReader::ReadGroup(WW8_DPHEAD const * pHd, Sfx
         }
     }
 
-    m_nDrawXOfs = m_nDrawXOfs - static_cast<sal_Int16>(SVBT16ToUInt16( pHd->xa ));
-    m_nDrawYOfs = m_nDrawYOfs - static_cast<sal_Int16>(SVBT16ToUInt16( pHd->ya ));
+    m_nDrawXOfs = m_nDrawXOfs - SVBT16ToInt16(pHd->xa);
+    m_nDrawYOfs = m_nDrawYOfs - SVBT16ToInt16(pHd->ya);
 
     return pObj;
 }
@@ -1952,7 +1990,7 @@ void SwWW8ImplReader::AdjustLRWrapForWordMargins(
     if (rRecord.nXAlign == 1)
     {
         if ((nXRelTo == 0) || (nXRelTo == 2))
-            rLR.SetLeft(sal_uInt16(0));
+            rLR.SetLeft(SvxIndentValue::zero());
     }
 
     // Right adjustments - if horizontally aligned to right of
@@ -1960,19 +1998,19 @@ void SwWW8ImplReader::AdjustLRWrapForWordMargins(
     if (rRecord.nXAlign == 3)
     {
         if ((nXRelTo == 0) || (nXRelTo == 2))
-            rLR.SetRight(sal_uInt16(0));
+            rLR.SetRight(SvxIndentValue::zero());
     }
 
     // Inside margin, remove left wrapping
     if ((rRecord.nXAlign == 4) && (nXRelTo == 0))
     {
-        rLR.SetLeft(sal_uInt16(0));
+        rLR.SetLeft(SvxIndentValue::zero());
     }
 
     // Outside margin, remove left wrapping
     if ((rRecord.nXAlign == 5) && (nXRelTo == 0))
     {
-        rLR.SetRight(sal_uInt16(0));
+        rLR.SetRight(SvxIndentValue::zero());
     }
 }
 
@@ -2011,8 +2049,9 @@ void SwWW8ImplReader::MapWrapIntoFlyFormat(const SvxMSDffImportRec& rRecord,
 {
     if (rRecord.nDxWrapDistLeft || rRecord.nDxWrapDistRight)
     {
-        SvxLRSpaceItem aLR(writer_cast<sal_uInt16>(rRecord.nDxWrapDistLeft),
-                           writer_cast<sal_uInt16>(rRecord.nDxWrapDistRight), 0, RES_LR_SPACE);
+        SvxLRSpaceItem aLR(SvxIndentValue::twips(writer_cast<sal_uInt16>(rRecord.nDxWrapDistLeft)),
+                           SvxIndentValue::twips(writer_cast<sal_uInt16>(rRecord.nDxWrapDistRight)),
+                           SvxIndentValue::zero(), RES_LR_SPACE);
         AdjustLRWrapForWordMargins(rRecord, aLR);
         rFlyFormat.SetFormatAttr(aLR);
     }
@@ -2076,14 +2115,14 @@ void SwWW8ImplReader::MapWrapIntoFlyFormat(const SvxMSDffImportRec& rRecord,
             */
 
             tools::PolyPolygon aPoly(*rRecord.pWrapPolygon);
-            const Size &rSize = pNd->GetTwipSize();
+            const Size aSize = pNd->GetTwipSize();
             /*
              Move to the left by 15twips, and rescale to
              a) shrink right bound back to orig position
              b) stretch bottom bound to where I think it should have been
              in the first place
             */
-            Fraction aMoveHack(ww::nWrap100Percent, rSize.Width());
+            Fraction aMoveHack(ww::nWrap100Percent, aSize.Width());
             aMoveHack *= Fraction(15, 1);
             tools::Long nMove(aMoveHack);
             aPoly.Move(nMove, 0);
@@ -2093,9 +2132,9 @@ void SwWW8ImplReader::MapWrapIntoFlyFormat(const SvxMSDffImportRec& rRecord,
             aPoly.Scale(double(aHackX), double(aHackY));
 
             // Turn polygon back into units that match the graphic's
-            const Size &rOrigSize = pNd->GetGraphic().GetPrefSize();
-            Fraction aMapPolyX(rOrigSize.Width(), ww::nWrap100Percent);
-            Fraction aMapPolyY(rOrigSize.Height(), ww::nWrap100Percent);
+            const Size aOrigSize = pNd->GetGraphic().GetPrefSize();
+            Fraction aMapPolyX(aOrigSize.Width(), ww::nWrap100Percent);
+            Fraction aMapPolyY(aOrigSize.Height(), ww::nWrap100Percent);
             aPoly.Scale(double(aMapPolyX), double(aMapPolyY));
 
             // #i47277# - contour is already in unit of the
@@ -2272,6 +2311,8 @@ RndStdIds SwWW8ImplReader::ProcessEscherAlign(SvxMSDffImportRec& rRecord, WW8_FS
                                               SfxItemSet &rFlySet)
 {
     bool bCurSectionVertical = m_aSectionManager.CurrentSectionIsVertical();
+    bool bIsObjectLayoutInTableCell
+        = m_nInTable && IsObjectLayoutInTableCell(rRecord.nGroupShapeBooleanProperties);
 
     if (!rRecord.nXRelTo)
     {
@@ -2293,8 +2334,8 @@ RndStdIds SwWW8ImplReader::ProcessEscherAlign(SvxMSDffImportRec& rRecord, WW8_FS
 
     const sal_uInt32 nCntRelTo  = 4;
 
-    sal_uInt32 nXAlign = nCntXAlign > rRecord.nXAlign ? rRecord.nXAlign : 1;
-    sal_uInt32 nYAlign = nCntYAlign > rRecord.nYAlign ? rRecord.nYAlign : 1;
+    const sal_uInt32 nXAlign = nCntXAlign > rRecord.nXAlign ? rRecord.nXAlign : 1;
+    const sal_uInt32 nYAlign = nCntYAlign > rRecord.nYAlign ? rRecord.nYAlign : 1;
 
     // #i52565# - try to handle special case for objects in tables regarding its X Rel
 
@@ -2307,10 +2348,13 @@ RndStdIds SwWW8ImplReader::ProcessEscherAlign(SvxMSDffImportRec& rRecord, WW8_FS
             rRecord.nYRelTo = sal_uInt32(rFSPA.nby);
     }
 
-    sal_uInt32 nXRelTo = (rRecord.nXRelTo && nCntRelTo > rRecord.nXRelTo) ? *rRecord.nXRelTo : 1;
-    sal_uInt32 nYRelTo = (rRecord.nYRelTo && nCntRelTo > rRecord.nYRelTo) ? *rRecord.nYRelTo : 1;
+    const sal_uInt32 nXRelTo
+        = (rRecord.nXRelTo && nCntRelTo > rRecord.nXRelTo) ? *rRecord.nXRelTo : 1;
+    const sal_uInt32 nYRelTo
+        = (rRecord.nYRelTo && nCntRelTo > rRecord.nYRelTo) ? *rRecord.nYRelTo : 1;
 
-    RndStdIds eAnchor = IsInlineEscherHack() ? RndStdIds::FLY_AS_CHAR : RndStdIds::FLY_AT_CHAR; // #i43718#
+    const RndStdIds eAnchor
+        = IsInlineEscherHack() ? RndStdIds::FLY_AS_CHAR : RndStdIds::FLY_AT_CHAR; // #i43718#
 
     SwFormatAnchor aAnchor( eAnchor );
     aAnchor.SetAnchor( m_pPaM->GetPoint() );
@@ -2374,6 +2418,20 @@ RndStdIds SwWW8ImplReader::ProcessEscherAlign(SvxMSDffImportRec& rRecord, WW8_FS
         text::RelOrientation::TEXT_LINE   // 3 is relative to line
     };
 
+    if (!bIsObjectLayoutInTableCell && m_nInTable && eAnchor == RndStdIds::FLY_AT_CHAR)
+    {
+        // Microsoft apparently forces layoutInCell behaviour
+        // if either horizontal orientation is based on character
+        // or vertical orientation is based on line
+        // so make it explicit instead of trying to hack in tons of adjustments.
+        if (aVertRelOriTab[nYRelTo] == text::RelOrientation::TEXT_LINE
+            || aHoriRelOriTab[nXRelTo] == text::RelOrientation::CHAR)
+        {
+            bIsObjectLayoutInTableCell = true;
+            rFlySet.Put(SwFormatFollowTextFlow(true));
+        }
+    }
+
     // If the image is inline, then the relative orientation means nothing,
     // so set it up so that if the user changes it into an anchor, it positions usefully.
     sal_Int16 eHoriOri
@@ -2400,6 +2458,14 @@ RndStdIds SwWW8ImplReader::ProcessEscherAlign(SvxMSDffImportRec& rRecord, WW8_FS
         rFSPA.nXaLeft = 0;
         rFSPA.nXaRight = nWidth;
     }
+    else if ((eHoriOri == text::HoriOrientation::LEFT || eHoriOri == text::HoriOrientation::RIGHT)
+             && eHoriRel == text::RelOrientation::FRAME)
+    {
+        // relative left/right honors paragraph margins, but not with center or none/absolute offset
+
+        if (bIsObjectLayoutInTableCell || !m_nInTable)
+            eHoriRel = text::RelOrientation::PRINT_AREA;
+    }
 
     // #i24255# - position of floating screen objects in
     // R2L layout are given in L2R layout, thus convert them of all
@@ -2416,14 +2482,12 @@ RndStdIds SwWW8ImplReader::ProcessEscherAlign(SvxMSDffImportRec& rRecord, WW8_FS
         }
     }
 
-    // if the object is anchored inside a table cell, is horizontal aligned
-    // at frame|character and has wrap through, but its attribute
-    // 'layout in table cell' isn't set, convert its horizontal alignment to page text area.
-    // #i84783# - use new method <IsObjectLayoutInTableCell()>
-    if (m_nInTable &&
-            (eHoriRel == text::RelOrientation::FRAME || eHoriRel == text::RelOrientation::CHAR) &&
-            rFSPA.nwr == 3 &&
-            !IsObjectLayoutInTableCell(rRecord.nGroupShapeBooleanProperties))
+    // if the object is anchored inside a table cell, is horizontally aligned to the paragraph,
+    // but it is not being forced to 'layout in table cell',
+    // then convert its horizontal alignment to page text area
+    // because MSO strangely doesn't orient the object to the cell paragraph it is anchored to
+    // but to the paragraph that contains the entire table (which is equivalent to page margins).
+    if (!bIsObjectLayoutInTableCell && m_nInTable && eHoriRel == text::RelOrientation::FRAME)
     {
         eHoriRel = text::RelOrientation::PAGE_PRINT_AREA;
     }
@@ -2451,6 +2515,19 @@ RndStdIds SwWW8ImplReader::ProcessEscherAlign(SvxMSDffImportRec& rRecord, WW8_FS
         eVertOri = aVertOriTab[ nYAlign ];
     }
 
+    if (bIsObjectLayoutInTableCell && eAnchor == RndStdIds::FLY_AT_CHAR)
+    {
+        // Microsoft is buggy and inconsistent in how they handle layoutInCell.
+        // Map wrongly-implemented settings to the closest implemented setting
+
+        // "page" is implemented as if it was "margin" - to cell spacing, not edge
+        if (eVertRel == text::RelOrientation::PAGE_FRAME)
+            eVertRel = text::RelOrientation::PAGE_PRINT_AREA;
+        // only "from top" and "top" are appropriate. Others are implemented as Top
+        if (eVertOri != text::VertOrientation::NONE)
+            eVertOri = text::VertOrientation::TOP;
+    }
+
     // Below line in word is a positive value, while in writer its
     // negative
     tools::Long nYPos = rFSPA.nYaTop;
@@ -2473,6 +2550,8 @@ RndStdIds SwWW8ImplReader::ProcessEscherAlign(SvxMSDffImportRec& rRecord, WW8_FS
 }
 
 // #i84783#
+// Return whether the fly specifies layoutInCell.
+// (NOTE: there are circumstances where layoutInCell is implemented even when set to false)
 bool SwWW8ImplReader::IsObjectLayoutInTableCell(const sal_uInt32 nGroupShapeBooleanProperties) const
 {
     bool bIsObjectLayoutInTableCell = false;
@@ -2845,7 +2924,7 @@ SwFrameFormat* SwWW8ImplReader::Read_GrafLayer( tools::Long nGrafAnchorCp )
     if (pRetFrameFormat /*#i52825# */)
     {
         if (!aObjName.isEmpty())
-            pRetFrameFormat->SetFormatName( aObjName );
+            pRetFrameFormat->SetFormatName( UIName(aObjName) );
         if (pRetFrameFormat->GetName().isEmpty())
         {
             if (bDrawObj)
@@ -2885,9 +2964,7 @@ SwFrameFormat* SwWW8ImplReader::MungeTextIntoDrawBox(SvxMSDffImportRec& rRecord,
         // Group objects don't have text. Insert a text object into
         // the group for holding the text.
         pSdrTextObj = new SdrRectObj(
-            *m_pDrawModel,
-            SdrObjKind::Text,
-            pThisGroup->GetCurrentBoundRect());
+            *m_pDrawModel, pThisGroup->GetCurrentBoundRect(), SdrObjKind::Text);
 
         SfxItemSet aSet(m_pDrawModel->GetItemPool());
         aSet.Put(XFillStyleItem(drawing::FillStyle_NONE));
@@ -3231,12 +3308,12 @@ void SwWW8FltAnchorStack::AddAnchor(const SwPosition& rPos, SwFrameFormat *pForm
 void SwWW8FltAnchorStack::Flush()
 {
     size_t nCnt = size();
-    for (size_t i=0; i < nCnt; ++i)
+    while (nCnt)
     {
-        SwFltStackEntry &rEntry = (*this)[i];
+        SwFltStackEntry &rEntry = (*this)[0];
         SwPosition aDummy(rEntry.m_aMkPos.m_nNode);
         SetAttrInDoc(aDummy, rEntry);
-        DeleteAndDestroy(i--);
+        DeleteAndDestroy(0);
         --nCnt;
     }
 }

@@ -28,8 +28,6 @@
 #include <optional>
 #include <vector>
 
-class GalleryObjectStorage;
-
 struct SVXCORE_DLLPUBLIC GalleryObject
 {
     std::optional<INetURLObject> m_oStorageUrl;
@@ -38,13 +36,13 @@ struct SVXCORE_DLLPUBLIC GalleryObject
     bool mbDelete;
 
     //UI visualization buffering
-    BitmapEx maPreviewBitmapEx;
+    Bitmap maPreviewBitmap;
     Size maPreparedSize;
     OUString maTitle;
     OUString maPath;
 };
 
-class SVXCORE_DLLPUBLIC GalleryObjectCollection
+class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) GalleryObjectCollection
 {
 private:
     std::vector<std::unique_ptr<GalleryObject>> m_aObjectList;

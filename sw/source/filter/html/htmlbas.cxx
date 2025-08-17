@@ -30,7 +30,7 @@
 
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/script/XLibraryContainer.hpp>
+#include <com/sun/star/script/XStorageBasedLibraryContainer.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 
 #include <fmtfld.hxx>
@@ -114,7 +114,7 @@ void SwHTMLParser::EndScript()
             aLibName = "Standard";
 
         // get module library container
-        Reference< script::XLibraryContainer > xModLibContainer = pDocSh->GetBasicContainer();
+        Reference< script::XStorageBasedLibraryContainer > xModLibContainer = pDocSh->GetBasicContainer();
 
         if ( xModLibContainer.is() )
         {
@@ -156,7 +156,7 @@ void SwHTMLParser::EndScript()
         }
 
         // get dialog library container
-        Reference< script::XLibraryContainer > xDlgLibContainer = pDocSh->GetDialogContainer();
+        Reference< script::XStorageBasedLibraryContainer > xDlgLibContainer = pDocSh->GetDialogContainer();
 
         if ( xDlgLibContainer.is() )
         {
@@ -253,7 +253,11 @@ void SwHTMLWriter::OutBasic(const SwHTMLWriter & rHTMLWrt)
     if( !m_bCfgStarBasic )
         return;
 
-    BasicManager *pBasicMan = m_pDoc->GetDocShell()->GetBasicManager();
+    SwDocShell* pShell = m_pDoc->GetDocShell();
+    if (!pShell)
+        return;
+
+    BasicManager *pBasicMan = pShell->GetBasicManager();
     OSL_ENSURE( pBasicMan, "Where is the Basic-Manager?" );
     // Only write DocumentBasic
     if( !pBasicMan || pBasicMan == SfxApplication::GetBasicManager() )
@@ -298,9 +302,9 @@ void SwHTMLWriter::OutBasic(const SwHTMLWriter & rHTMLWrt)
 #endif
 }
 
-static const char* aEventNames[] =
+constexpr OUString aEventNames[] =
 {
-    "OnLoad", "OnPrepareUnload", "OnFocus", "OnUnfocus"
+    u"OnLoad"_ustr, u"OnPrepareUnload"_ustr, u"OnFocus"_ustr, u"OnUnfocus"_ustr
 };
 
 void SwHTMLWriter::OutBasicBodyEvents()
@@ -315,7 +319,7 @@ void SwHTMLWriter::OutBasicBodyEvents()
     uno::Reference < container::XNameReplace > xEvents = xSup->getEvents();
     for ( sal_Int32 i=0; i<4; i++ )
     {
-        std::unique_ptr<SvxMacro> pMacro = SfxEventConfiguration::ConvertToMacro( xEvents->getByName( OUString::createFromAscii(aEventNames[i]) ), pDocSh );
+        std::unique_ptr<SvxMacro> pMacro = SfxEventConfiguration::ConvertToMacro( xEvents->getByName( aEventNames[i] ), pDocSh );
         if ( pMacro )
         {
             aDocTable.Insert( aBodyEventTable[i].nEvent, *pMacro );

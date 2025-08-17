@@ -26,6 +26,8 @@
 
 #include "mgetempl.hxx"
 
+#include <vcl/tabs.hrc>
+
 /*  [Description]
 
     Constructor: Add Manage TabPage, set ExampleSet from style.
@@ -43,11 +45,12 @@ SfxStyleDialogController::SfxStyleDialogController
     if (!rStyle.HasParentSupport())
         RemoveStandardButton();
 
-    AddTabPage("organizer", SfxManageStyleSheetPage::Create, nullptr);
+    AddTabPage(u"organizer"_ustr, TabResId(RID_TAB_ORGANIZER.aLabel),
+               SfxManageStyleSheetPage::Create, RID_M + RID_TAB_ORGANIZER.sIconName);
 
     // With new template always set the management page as the current page
     if (rStyle.GetName().isEmpty())
-        SetCurPageId("organizer");
+        SetCurPageId(u"organizer"_ustr);
     else
     {
         OUString sTxt = m_xDialog->get_title() + ": " + rStyle.GetName();

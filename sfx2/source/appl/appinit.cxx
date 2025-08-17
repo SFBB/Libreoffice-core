@@ -27,6 +27,7 @@
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
 #include <basic/sbdef.hxx>
+#include <comphelper/configuration.hxx>
 #include <tools/svlibrary.h>
 #include <svtools/soerr.hxx>
 #include <unotools/configmgr.hxx>
@@ -91,7 +92,7 @@ void SAL_CALL SfxTerminateListener_Impl::notifyTermination( const EventObject& a
     pApp->Get_Impl()->mxAppDispatch->ReleaseAll();
     pApp->Get_Impl()->mxAppDispatch.clear();
 
-    css::uno::Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const css::uno::Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     css::uno::Reference< css::document::XDocumentEventListener > xGlobalBroadcaster(css::frame::theGlobalEventBroadcaster::get(xContext), css::uno::UNO_QUERY_THROW);
 
     css::document::DocumentEvent aEvent2;
@@ -104,7 +105,7 @@ void SAL_CALL SfxTerminateListener_Impl::notifyTermination( const EventObject& a
 
 OUString SAL_CALL SfxTerminateListener_Impl::getImplementationName()
 {
-    return "com.sun.star.comp.sfx2.SfxTerminateListener";
+    return u"com.sun.star.comp.sfx2.SfxTerminateListener"_ustr;
 }
 
 sal_Bool SAL_CALL SfxTerminateListener_Impl::supportsService( const OUString& sServiceName )
@@ -120,7 +121,7 @@ Sequence< OUString > SAL_CALL SfxTerminateListener_Impl::getSupportedServiceName
     // The desktop must know, which listener will terminate the SfxApplication in real !
     // It must call this special listener as last one ... otherwise we shutdown the SfxApplication BEFORE other listener
     // can react ...
-    return { "com.sun.star.frame.TerminateListener" };
+    return { u"com.sun.star.frame.TerminateListener"_ustr };
 }
 
 
@@ -194,7 +195,7 @@ void SfxApplication::Initialize_Impl()
         RID_BASIC_START, ErrCodeArea::Sbx, ErrCodeArea::Sbx, BasResLocale());
 #endif
 
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         SolarMutexGuard aGuard;
         //ensure instantiation of listener that manages the internal recently-used

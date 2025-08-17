@@ -31,20 +31,14 @@
 #include "SidebarWindowsTypes.hxx"
 #include <annotationmark.hxx>
 
-class EditView;
-class PopupMenu;
 class OutlinerParaObject;
 class SwPostItMgr;
 class SwPostItField;
 class OutlinerView;
 class Outliner;
-class ScrollBar;
 class SwEditWin;
 class SwView;
-class FixedText;
-class MenuButton;
 class SwFrame;
-class SvxLanguageItem;
 namespace sw::overlay { class OverlayRanges; }
 namespace sw::sidebarwindows {
     class SidebarTextControl;
@@ -61,7 +55,7 @@ class SAL_DLLPUBLIC_RTTI SwAnnotationWin final : public InterimItemWindow
     public:
         SwAnnotationWin( SwEditWin& rEditWin,
                          SwPostItMgr& aMgr,
-                         SwSidebarItem& rSidebarItem,
+                         SwAnnotationItem& rSidebarItem,
                          SwFormatField* aField );
         virtual ~SwAnnotationWin() override;
         virtual void dispose() override;
@@ -71,11 +65,14 @@ class SAL_DLLPUBLIC_RTTI SwAnnotationWin final : public InterimItemWindow
         void    Delete();
         void    GotoPos();
         const SwPostItField* GetPostItField() const { return mpField; }
-        void UpdateText(const OUString& aText);
+        SwFormatField* GetFormatField() const { return mpFormatField; }
+        void UpdateText(const OUString& rText);
+        void UpdateHTML(const OUString& rHtml);
 
         OUString GetAuthor() const;
         Date     GetDate() const;
         tools::Time GetTime() const;
+        OString GetSimpleHtml() const;
         void GeneratePostItName();
 
         sal_uInt32 MoveCaret();
@@ -94,6 +91,7 @@ class SAL_DLLPUBLIC_RTTI SwAnnotationWin final : public InterimItemWindow
         void SetPosAndSize();
         void TranslateTopPosition(const tools::Long aAmount);
         void CheckMetaText();
+        void UpdateColors();
 
         Point const & GetAnchorPos() { return mAnchorRect.Pos(); }
         const SwRect& GetAnchorRect() const { return mAnchorRect; }
@@ -101,9 +99,10 @@ class SAL_DLLPUBLIC_RTTI SwAnnotationWin final : public InterimItemWindow
         void ResetAnchorRectChanged() { mbAnchorRectChanged = false; }
         const std::vector<basegfx::B2DRange>& GetAnnotationTextRanges() const { return maAnnotationTextRanges; }
         SwEditWin& EditWin();
-        SwSidebarItem& GetSidebarItem() { return mrSidebarItem; }
+        SwAnnotationItem& GetSidebarItem() { return *mpSidebarItem; }
 
         OutlinerView* GetOutlinerView() { return mpOutlinerView.get();}
+        const OutlinerView* GetOutlinerView() const { return mpOutlinerView.get();}
         Outliner* GetOutliner() { return mpOutliner.get();}
         bool HasScrollbar() const;
         bool IsScrollbarVisible() const;
@@ -135,10 +134,7 @@ class SAL_DLLPUBLIC_RTTI SwAnnotationWin final : public InterimItemWindow
 
         void            SetSidebarPosition(sw::sidebarwindows::SidebarPosition eSidebarPosition);
         void            SetReadonly(bool bSet);
-        bool            IsReadOnly() const
-        {
-            return mbReadonly;
-        }
+        bool            IsReadOnly() const;
 
         void         SetColor(Color aColorDark,Color aColorLight, Color aColorAnchor);
         const Color& ColorDark() { return mColorDark; }
@@ -170,8 +166,8 @@ class SAL_DLLPUBLIC_RTTI SwAnnotationWin final : public InterimItemWindow
 
         bool IsMouseOverSidebarWin() const { return mbMouseOver; }
 
-        void ChangeSidebarItem( SwSidebarItem const & rSidebarItem );
-        virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+        void ChangeSidebarItem( SwAnnotationItem & rSidebarItem );
+        virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
         void DrawForPage(OutputDevice* pDev, const Point& rPos);
 
@@ -206,11 +202,17 @@ class SAL_DLLPUBLIC_RTTI SwAnnotationWin final : public InterimItemWindow
 
         virtual FactoryFunction GetUITestFactory() const override;
 
+        bool IsRootNote() const;
+        void SetAsRoot();
+
+        void queue_draw();
+
     private:
 
         virtual void    LoseFocus() override;
         virtual void    GetFocus() override;
 
+        virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
         void        SetSizePixel( const Size& rNewSize ) override;
 
         DECL_DLLPRIVATE_LINK(ModifyHdl, LinkParamNone*, void);
@@ -268,7 +270,7 @@ class SAL_DLLPUBLIC_RTTI SwAnnotationWin final : public InterimItemWindow
         bool            mbReadonly;
         bool            mbIsFollow;
 
-        SwSidebarItem& mrSidebarItem;
+        SwAnnotationItem* mpSidebarItem;
         const SwFrame* mpAnchorFrame;
 
         SwFormatField*       mpFormatField;

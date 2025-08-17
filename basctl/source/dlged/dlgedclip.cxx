@@ -43,7 +43,7 @@ DlgEdTransferableImpl::~DlgEdTransferableImpl()
 bool DlgEdTransferableImpl::compareDataFlavors( const DataFlavor& lFlavor, const DataFlavor& rFlavor )
 {
     // compare mime content types
-    Reference< uno::XComponentContext >  xContext = getProcessComponentContext();
+    const Reference< uno::XComponentContext >&  xContext = getProcessComponentContext();
     Reference< datatransfer::XMimeContentTypeFactory >
         xMCntTypeFactory = MimeContentTypeFactory::create(xContext);
 
@@ -90,7 +90,7 @@ sal_Bool SAL_CALL DlgEdTransferableImpl::isDataFlavorSupported( const DataFlavor
 {
     const SolarMutexGuard aGuard;
 
-    for ( auto const & i : std::as_const(m_SeqFlavors) )
+    for (auto const& i : m_SeqFlavors)
         if ( compareDataFlavors( i, rFlavor ) )
             return true;
     return false;

@@ -484,7 +484,7 @@ void ToolBox::ImplDrawBackground(vcl::RenderContext& rRenderContext, const tools
     if (IsInPaint())
         aPaintRegion.Intersect(GetOutDev()->GetActiveClipRegion());
 
-    rRenderContext.Push(vcl::PushFlags::CLIPREGION);
+    auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::CLIPREGION);
     rRenderContext.IntersectClipRegion( aPaintRegion );
 
     if (!pWrapper)
@@ -506,9 +506,7 @@ void ToolBox::ImplDrawBackground(vcl::RenderContext& rRenderContext, const tools
         if (!bNativeOk)
         {
             const StyleSettings rSetting = Application::GetSettings().GetStyleSettings();
-            const bool isHeader = GetAlign() == WindowAlign::Top && !rSetting.GetPersonaHeader().IsEmpty();
-            const bool isFooter = GetAlign() == WindowAlign::Bottom && !rSetting.GetPersonaFooter().IsEmpty();
-            if (!IsBackground() || isHeader || isFooter)
+            if (!IsBackground())
             {
                 if (!IsInPaint())
                     ImplDrawTransparentBackground(aPaintRegion);
@@ -517,9 +515,6 @@ void ToolBox::ImplDrawBackground(vcl::RenderContext& rRenderContext, const tools
                 ImplDrawGradientBackground(rRenderContext);
         }
     }
-
-    // restore clip region
-    rRenderContext.Pop();
 }
 
 void ToolBox::ImplErase(vcl::RenderContext& rRenderContext, const tools::Rectangle &rRect, bool bHighlight, bool bHasOpenPopup)
@@ -532,7 +527,7 @@ void ToolBox::ImplErase(vcl::RenderContext& rRenderContext, const tools::Rectang
     {
         if (GetStyle() & WB_3DLOOK)
         {
-            rRenderContext.Push(vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR);
+            auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR);
             rRenderContext.SetLineColor();
             if (bHasOpenPopup)
                 // choose the same color as the popup will use
@@ -541,7 +536,6 @@ void ToolBox::ImplErase(vcl::RenderContext& rRenderContext, const tools::Rectang
                 rRenderContext.SetFillColor(rRenderContext.GetSettings().GetStyleSettings().GetWindowColor());
 
             rRenderContext.DrawRect(rRect);
-            rRenderContext.Pop();
         }
         else
             ImplDrawBackground(rRenderContext, rRect);
@@ -1200,9 +1194,7 @@ void ToolBox::ApplyBackgroundSettings(vcl::RenderContext& rRenderContext, const 
     }
     else
     {
-        if (rRenderContext.IsNativeControlSupported(ControlType::Toolbar, ControlPart::Entire)
-            || (GetAlign() == WindowAlign::Top && !Application::GetSettings().GetStyleSettings().GetPersonaHeader().IsEmpty())
-            || (GetAlign() == WindowAlign::Bottom && !Application::GetSettings().GetStyleSettings().GetPersonaFooter().IsEmpty()))
+        if (rRenderContext.IsNativeControlSupported(ControlType::Toolbar, ControlPart::Entire))
         {
             rRenderContext.SetBackground();
             rRenderContext.SetTextColor(rStyleSettings.GetToolTextColor());
@@ -1315,7 +1307,7 @@ void ToolBox::dispose()
     delete pSVData->maCtrlData.mpTBDragMgr;
     pSVData->maCtrlData.mpTBDragMgr = nullptr;
 
-    mpFloatWin.clear();
+    mpFloatWin.reset();
 
     mpIdle.reset();
 
@@ -2372,10 +2364,7 @@ static void ImplDrawMoreIndicator(vcl::RenderContext& rRenderContext, const tool
 
 static void ImplDrawDropdownArrow(vcl::RenderContext& rRenderContext, const tools::Rectangle& rDropDownRect, bool bSetColor, bool bRotate )
 {
-    bool bLineColor = rRenderContext.IsLineColor();
-    bool bFillColor = rRenderContext.IsFillColor();
-    Color aOldFillColor = rRenderContext.GetFillColor();
-    Color aOldLineColor = rRenderContext.GetLineColor();
+    auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR);
     rRenderContext.SetLineColor();
 
     if ( bSetColor )
@@ -2412,15 +2401,6 @@ static void ImplDrawDropdownArrow(vcl::RenderContext& rRenderContext, const tool
     rRenderContext.SetAntialiasing(AntialiasingFlags::Enable);
     rRenderContext.DrawPolygon( aPoly );
     rRenderContext.SetAntialiasing(aaflags);
-
-    if( bFillColor )
-        rRenderContext.SetFillColor(aOldFillColor);
-    else
-        rRenderContext.SetFillColor();
-    if( bLineColor )
-        rRenderContext.SetLineColor(aOldLineColor);
-    else
-        rRenderContext.SetLineColor();
 }
 
 void ToolBox::ImplDrawMenuButton(vcl::RenderContext& rRenderContext, bool bHighlight)
@@ -2435,7 +2415,7 @@ void ToolBox::ImplDrawMenuButton(vcl::RenderContext& rRenderContext, bool bHighl
     // execute pending paint requests
     ImplCheckUpdate();
 
-    rRenderContext.Push(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR);
+    auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR);
 
     // draw the 'more' indicator / button (>>)
     ImplErase(rRenderContext, mpData->maMenubuttonItem.maRect, bHighlight);
@@ -2448,9 +2428,6 @@ void ToolBox::ImplDrawMenuButton(vcl::RenderContext& rRenderContext, bool bHighl
 
     // store highlight state
     mpData->mbMenubuttonSelected = bHighlight;
-
-    // restore colors
-    rRenderContext.Pop();
 }
 
 void ToolBox::ImplDrawSpin(vcl::RenderContext& rRenderContext)
@@ -3222,7 +3199,7 @@ void ToolBox::MouseButtonDown( const MouseEvent& rMEvt )
 
             // update actual data
             StartTrackingFlags nTrackFlags = StartTrackingFlags::NONE;
-            mnCurPos         = i;
+            mnCurPos         = nNewPos;
             mnCurItemId      = mpData->m_aItems[nNewPos].mnId;
             mnDownItemId     = mnCurItemId;
             mnMouseModifier  = rMEvt.GetModifier();
@@ -3601,9 +3578,9 @@ const OUString& ToolBox::ImplGetHelpText( ToolBoxItemId nItemId ) const
         if ( pHelp )
         {
             if (DispatchableCommand(pItem->maCommandStr))
-                pItem->maHelpText = pHelp->GetHelpText( pItem->maCommandStr, this );
+                pItem->maHelpText = pHelp->GetHelpText( pItem->maCommandStr );
             if ( pItem->maHelpText.isEmpty() && !pItem->maHelpId.isEmpty() )
-                pItem->maHelpText = pHelp->GetHelpText( pItem->maHelpId, this );
+                pItem->maHelpText = pHelp->GetHelpText( pItem->maHelpId );
         }
     }
 
@@ -4153,6 +4130,28 @@ void ToolBox::TriggerItem( ToolBoxItemId nItemId )
     ImplActivateItem( aKeyCode );
 }
 
+bool ToolBox::ItemHasDropdown( ToolBoxItemId nItemId )
+{
+    ImplToolItem* pItem = ImplGetItem( nItemId );
+    return pItem && pItem->mnBits & ToolBoxItemBits::DROPDOWN;
+}
+
+void ToolBox::TriggerItemDropdown( ToolBoxItemId nItemId )
+{
+    if( mpFloatWin || !ItemHasDropdown( nItemId ) )
+        return;
+
+    // Prevent highlighting of triggered item
+    mnHighItemId = ToolBoxItemId(0);
+
+    mnDownItemId = mnCurItemId = nItemId;
+    mnCurPos = GetItemPos( mnCurItemId );
+    mnMouseModifier = 0;
+
+    mpData->mbDropDownByKeyboard = false;
+    mpData->maDropdownClickHdl.Call( this );
+}
+
 // calls the button's action handler
 // returns true if action was called
 bool ToolBox::ImplActivateItem( vcl::KeyCode aKeyCode )
@@ -4435,7 +4434,9 @@ void ToolBox::KeyInput( const KeyEvent& rKEvt )
                 // do nothing to avoid key presses going into the document
                 // while the toolbox has the focus
                 // just forward function and special keys and combinations with Alt-key
-                if( aKeyGroup == KEYGROUP_FKEYS || aKeyGroup == KEYGROUP_MISC || aKeyCode.IsMod2() )
+                // and Ctrl-key
+                if( aKeyGroup == KEYGROUP_FKEYS || aKeyGroup == KEYGROUP_MISC || aKeyCode.IsMod2()
+                        || aKeyCode.IsMod1() )
                     bForwardKey = true;
             }
         }

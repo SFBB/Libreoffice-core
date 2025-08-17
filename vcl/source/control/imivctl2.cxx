@@ -329,122 +329,37 @@ SvxIconChoiceCtrlEntry* IcnCursor_Impl::GoLeftRight( SvxIconChoiceCtrlEntry* pCt
     return nullptr;
 }
 
-SvxIconChoiceCtrlEntry* IcnCursor_Impl::GoPageUpDown( SvxIconChoiceCtrlEntry* pStart, bool bDown)
+SvxIconChoiceCtrlEntry* IcnCursor_Impl::GoPageUpDown( const SvxIconChoiceCtrlEntry* pStart, bool bDown)
 {
-    if( pView->IsAutoArrange() && !(pView->nWinBits & WB_ALIGN_TOP) )
-    {
-        const tools::Long nPos = static_cast<tools::Long>(pView->GetEntryListPos( pStart ));
-        tools::Long nEntriesInView = pView->aOutputSize.Height() / pView->nGridDY;
-        nEntriesInView *=
-            ((pView->aOutputSize.Width()+(pView->nGridDX/2)) / pView->nGridDX );
-        tools::Long nNewPos = nPos;
-        if( bDown )
-        {
-            nNewPos += nEntriesInView;
-            if( nNewPos >= static_cast<tools::Long>(pView->maEntries.size()) )
-                nNewPos = pView->maEntries.size() - 1;
-        }
-        else
-        {
-            nNewPos -= nEntriesInView;
-            if( nNewPos < 0 )
-                nNewPos = 0;
-        }
-        if( nPos != nNewPos )
-            return pView->maEntries[ static_cast<size_t>(nNewPos) ].get();
-        return nullptr;
-    }
-    tools::Long nOpt = pView->GetEntryBoundRect( pStart ).Top();
+    const tools::Long nPos = static_cast<tools::Long>(pView->GetEntryListPos( pStart ));
+    tools::Long nEntriesInView = pView->aOutputSize.Height() / pView->nGridDY;
+    nEntriesInView *=
+        ((pView->aOutputSize.Width()+(pView->nGridDX/2)) / pView->nGridDX );
+    tools::Long nNewPos = nPos;
     if( bDown )
     {
-        nOpt += pView->aOutputSize.Height();
-        nOpt -= pView->nGridDY;
+        nNewPos += nEntriesInView;
+        if( nNewPos >= static_cast<tools::Long>(pView->maEntries.size()) )
+            nNewPos = pView->maEntries.size() - 1;
     }
     else
     {
-        nOpt -= pView->aOutputSize.Height();
-        nOpt += pView->nGridDY;
+        nNewPos -= nEntriesInView;
+        if( nNewPos < 0 )
+            nNewPos = 0;
     }
-    if( nOpt < 0 )
-        nOpt = 0;
-
-    tools::Long nPrevErr = LONG_MAX;
-
-    SvxIconChoiceCtrlEntry* pPrev = pStart;
-    SvxIconChoiceCtrlEntry* pNext = GoUpDown( pStart, bDown );
-    while( pNext )
-    {
-        tools::Long nCur = pView->GetEntryBoundRect( pNext ).Top();
-        tools::Long nErr = nOpt - nCur;
-        if( nErr < 0 )
-            nErr *= -1;
-        if( nErr > nPrevErr )
-            return pPrev;
-        nPrevErr = nErr;
-        pPrev = pNext;
-        pNext = GoUpDown( pNext, bDown );
-    }
-    if( pPrev != pStart )
-        return pPrev;
+    if( nPos != nNewPos )
+        return pView->maEntries[ static_cast<size_t>(nNewPos) ].get();
     return nullptr;
 }
 
-SvxIconChoiceCtrlEntry* IcnCursor_Impl::GoUpDown( SvxIconChoiceCtrlEntry* pCtrlEntry, bool bDown)
+SvxIconChoiceCtrlEntry* IcnCursor_Impl::GoUpDown( const SvxIconChoiceCtrlEntry* pCtrlEntry, bool bDown)
 {
-    if( pView->IsAutoArrange() && !(pView->nWinBits & WB_ALIGN_TOP) )
-    {
-        sal_uLong nPos = pView->GetEntryListPos( pCtrlEntry );
-        if( bDown && nPos < (pView->maEntries.size() - 1) )
-            return pView->maEntries[ nPos + 1 ].get();
-        else if( !bDown && nPos > 0 )
-            return pView->maEntries[ nPos - 1 ].get();
-        return nullptr;
-    }
-
-    SvxIconChoiceCtrlEntry* pResult;
-    pCurEntry = pCtrlEntry;
-    Create();
-    sal_uInt16 nY = pCtrlEntry->nY;
-    sal_uInt16 nX = pCtrlEntry->nX;
-    DBG_ASSERT(nY<nRows,"GoUpDown:Bad column");
-    DBG_ASSERT(nX<nCols,"GoUpDown:Bad row");
-
-    // neighbor in same column?
-    if( bDown )
-        pResult = SearchCol(
-            nX, nY, sal::static_int_cast< sal_uInt16 >(nRows-1), true, true );
-    else
-        pResult = SearchCol( nX, 0, nY, false, true );
-    if( pResult )
-        return pResult;
-
-    tools::Long nCurRow = nY;
-
-    tools::Long nRowOffs, nLastRow;
-    if( bDown )
-    {
-        nRowOffs = 1;
-        nLastRow = nRows;
-    }
-    else
-    {
-        nRowOffs = -1;
-        nLastRow = -1;   // 0-1
-    }
-
-    sal_uInt16 nColMin = nX;
-    sal_uInt16 nColMax = nX;
-    do
-    {
-        SvxIconChoiceCtrlEntry* pEntry = SearchRow(static_cast<sal_uInt16>(nCurRow), nColMin, nColMax, true, false);
-        if( pEntry )
-            return pEntry;
-        if( nColMin )
-            nColMin--;
-        if( nColMax < (nCols-1))
-            nColMax++;
-        nCurRow += nRowOffs;
-    } while( nCurRow != nLastRow );
+    sal_uLong nPos = pView->GetEntryListPos( pCtrlEntry );
+    if( bDown && nPos < (pView->maEntries.size() - 1) )
+        return pView->maEntries[ nPos + 1 ].get();
+    else if( !bDown && nPos > 0 )
+        return pView->maEntries[ nPos - 1 ].get();
     return nullptr;
 }
 
@@ -491,10 +406,7 @@ void IcnGridMap_Impl::Expand()
     {
         sal_uInt16 nNewGridRows = _nGridRows;
         sal_uInt16 nNewGridCols = _nGridCols;
-        if( _pView->nWinBits & WB_ALIGN_TOP )
-            nNewGridRows += 50;
-        else
-            nNewGridCols += 50;
+        nNewGridCols += 50;
 
         size_t nNewCellCount = static_cast<size_t>(nNewGridRows) * nNewGridCols;
         bool* pNewGridMap = new bool[nNewCellCount];
@@ -513,10 +425,7 @@ void IcnGridMap_Impl::Create_Impl()
     if( _pGridMap )
         return;
     GetMinMapSize( _nGridCols, _nGridRows );
-    if( _pView->nWinBits & WB_ALIGN_TOP )
-        _nGridRows += 50;  // avoid resize of gridmap too often
-    else
-        _nGridCols += 50;
+    _nGridCols += 50;
 
     size_t nCellCount = static_cast<size_t>(_nGridRows) * _nGridCols;
     _pGridMap.reset( new bool[nCellCount] );
@@ -529,28 +438,14 @@ void IcnGridMap_Impl::Create_Impl()
 
 void IcnGridMap_Impl::GetMinMapSize( sal_uInt16& rDX, sal_uInt16& rDY ) const
 {
-    tools::Long nX, nY;
-    if( _pView->nWinBits & WB_ALIGN_TOP )
-    {
-        // The view grows in vertical direction. Its max. width is _pView->nMaxVirtWidth
-        nX = _pView->nMaxVirtWidth;
-        if( !nX )
-            nX = _pView->pView->GetOutputSizePixel().Width();
-        if( !(_pView->nFlags & IconChoiceFlags::Arranging) )
-            nX -= _pView->nVerSBarWidth;
+    // The view grows in horizontal direction. Its max. height is _pView->nMaxVirtHeight
+    tools::Long nY = _pView->nMaxVirtHeight;
+    if( !nY )
+        nY = _pView->pView->GetOutputSizePixel().Height();
+    if( !(_pView->nFlags & IconChoiceFlags::Arranging) )
+        nY -= _pView->nHorSBarHeight;
 
-        nY = _pView->aVirtOutputSize.Height();
-    }
-    else
-    {
-        // The view grows in horizontal direction. Its max. height is _pView->nMaxVirtHeight
-        nY = _pView->nMaxVirtHeight;
-        if( !nY )
-            nY = _pView->pView->GetOutputSizePixel().Height();
-        if( !(_pView->nFlags & IconChoiceFlags::Arranging) )
-            nY -= _pView->nHorSBarHeight;
-        nX = _pView->aVirtOutputSize.Width();
-    }
+    tools::Long nX = _pView->aVirtOutputSize.Width();
 
     if( !nX )
         nX = DEFAULT_MAX_VIRT_WIDTH;
@@ -572,10 +467,7 @@ void IcnGridMap_Impl::GetMinMapSize( sal_uInt16& rDX, sal_uInt16& rDY ) const
 GridId IcnGridMap_Impl::GetGrid( sal_uInt16 nGridX, sal_uInt16 nGridY )
 {
     Create();
-    if( _pView->nWinBits & WB_ALIGN_TOP )
-        return nGridX + ( static_cast<GridId>(nGridY) * _nGridCols );
-    else
-        return nGridY + ( static_cast<GridId>(nGridX) * _nGridRows );
+    return nGridY + ( static_cast<GridId>(nGridX) * _nGridRows );
 }
 
 GridId IcnGridMap_Impl::GetGrid( const Point& rDocPos )
@@ -677,38 +569,18 @@ void IcnGridMap_Impl::OutputSizeChanged()
 
     sal_uInt16 nCols, nRows;
     GetMinMapSize( nCols, nRows );
-    if( _pView->nWinBits & WB_ALIGN_TOP )
-    {
-        if( nCols != _nGridCols )
-            Clear();
-        else if( nRows >= _nGridRows )
-            Expand();
-    }
-    else
-    {
-        if( nRows != _nGridRows )
-            Clear();
-        else if( nCols >= _nGridCols )
-            Expand();
-    }
+    if( nRows != _nGridRows )
+        Clear();
+    else if( nCols >= _nGridCols )
+        Expand();
 }
 
-// Independently of the view's alignment (TOP or LEFT), the gridmap
-// should contain the data in a continuous region, to make it possible
+// the gridmap should contain the data in a continuous region, to make it possible
 // to copy the whole block if the gridmap needs to be expanded.
 void IcnGridMap_Impl::GetGridCoord( GridId nId, sal_uInt16& rGridX, sal_uInt16& rGridY )
 {
-    Create();
-    if( _pView->nWinBits & WB_ALIGN_TOP )
-    {
-        rGridX = static_cast<sal_uInt16>(nId % _nGridCols);
-        rGridY = static_cast<sal_uInt16>(nId / _nGridCols);
-    }
-    else
-    {
-        rGridX = static_cast<sal_uInt16>(nId / _nGridRows);
-        rGridY = static_cast<sal_uInt16>(nId % _nGridRows);
-    }
+    rGridX = static_cast<sal_uInt16>(nId / _nGridRows);
+    rGridY = static_cast<sal_uInt16>(nId % _nGridRows);
 }
 
 

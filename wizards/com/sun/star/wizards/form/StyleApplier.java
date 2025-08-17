@@ -66,15 +66,15 @@ public class StyleApplier
             this.curFormDocument = _curFormDocument;
             xMSF = curFormDocument.xMSF;
 
-            TextStyleHandler oTextStyleHandler = new TextStyleHandler(curFormDocument.xTextDocument);
+            TextStyleHandler oTextStyleHandler = new TextStyleHandler(curFormDocument.getTextDocument());
             xPageStylePropertySet = oTextStyleHandler.getStyleByName("PageStyles", "Standard");
             short curtabindex = (short) (FormWizard.SOSTYLE_PAGE * 100);
             Integer IStyleStep = Integer.valueOf(FormWizard.SOSTYLE_PAGE);
-            String sPageStyles = CurUnoDialog.m_oResource.getResText("RID_FORM_86");
-            String sNoBorder = CurUnoDialog.m_oResource.getResText("RID_FORM_29");
-            String s3DLook = CurUnoDialog.m_oResource.getResText("RID_FORM_30");
-            String sFlat = CurUnoDialog.m_oResource.getResText("RID_FORM_31");
-            String sFieldBorder = CurUnoDialog.m_oResource.getResText("RID_FORM_28");
+            String sPageStyles = CurUnoDialog.getResource().getResText("RID_FORM_86");
+            String sNoBorder = CurUnoDialog.getResource().getResText("RID_FORM_29");
+            String s3DLook = CurUnoDialog.getResource().getResText("RID_FORM_30");
+            String sFlat = CurUnoDialog.getResource().getResText("RID_FORM_31");
+            String sFieldBorder = CurUnoDialog.getResource().getResText("RID_FORM_28");
             setStyles();
             short[] SelLayoutPos;
             SelLayoutPos = new short[]
@@ -239,7 +239,7 @@ public class StyleApplier
     {
         try
         {
-            curFormDocument.xTextDocument.lockControllers();
+            curFormDocument.getTextDocument().lockControllers();
 
             if (optNoBorder.getState())
             {
@@ -266,7 +266,7 @@ public class StyleApplier
                     DatabaseControl[] DBControls = curControlForm.getDatabaseControls();
                     for (int n = 0; n < DBControls.length; n++)
                     {
-                        if (DBControls[n].xServiceInfo.supportsService("com.sun.star.drawing.ShapeCollection"))
+                        if (DBControls[n].getServiceInfo().supportsService("com.sun.star.drawing.ShapeCollection"))
                         {
                             TimeStampControl oTimeStampControl = (TimeStampControl) DBControls[n];
                             for (int i = 0; i < 2; i++)
@@ -283,9 +283,9 @@ public class StyleApplier
                         }
                         else
                         {
-                            if (DBControls[n].xPropertySet.getPropertySetInfo().hasPropertyByName(PropertyNames.PROPERTY_BORDER))
+                            if (DBControls[n].getPropertySet().getPropertySetInfo().hasPropertyByName(PropertyNames.PROPERTY_BORDER))
                             {
-                                DBControls[n].xPropertySet.setPropertyValue(PropertyNames.PROPERTY_BORDER, IBorderValue);
+                                DBControls[n].getPropertySet().setPropertyValue(PropertyNames.PROPERTY_BORDER, IBorderValue);
                             }
                         }
                     }
@@ -405,7 +405,7 @@ public class StyleApplier
                             DatabaseControl aDBControl = DBControls[n];
                             if (aDBControl != null)
                             {
-                                if (aDBControl.xServiceInfo.supportsService("com.sun.star.drawing.ShapeCollection"))
+                                if (aDBControl.getServiceInfo().supportsService("com.sun.star.drawing.ShapeCollection"))
                                 {
                                     TimeStampControl oTimeStampControl = (TimeStampControl) aDBControl;
                                     for (int i = 0; i < 2; i++)
@@ -419,7 +419,7 @@ public class StyleApplier
                                 }
                                 else
                                 {
-                                    setDBControlColors(aDBControl.xPropertySet, _iStyleColors);
+                                    setDBControlColors(aDBControl.getPropertySet(), _iStyleColors);
                                 }
                             }
                         }
@@ -429,7 +429,7 @@ public class StyleApplier
                     {
                         if (_iStyleColors[SOLABELTEXTCOLOR] > -1)
                         {
-                            LabelControls[n].xPropertySet.setPropertyValue("TextColor", Integer.valueOf(_iStyleColors[SOLABELTEXTCOLOR]));
+                            LabelControls[n].getPropertySet().setPropertyValue("TextColor", Integer.valueOf(_iStyleColors[SOLABELTEXTCOLOR]));
                         }
                     }
                 }

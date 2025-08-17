@@ -40,15 +40,16 @@
 #include <autoform.hxx>
 #include <cellsh.hxx>
 #include <inputhdl.hxx>
+#include <inputopt.hxx>
 #include <editable.hxx>
 #include <funcdesc.hxx>
 #include <markdata.hxx>
 #include <scabstdlg.hxx>
-#include <condformateasydlg.hxx>
 #include <columnspanset.hxx>
 #include <comphelper/lok.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <inputwin.hxx>
+#include <officecfg/Office/Calc.hxx>
 
 #include <memory>
 
@@ -155,7 +156,7 @@ void ScCellShell::Execute( SfxRequest& rReq )
 {
     ScTabViewShell* pTabViewShell   = GetViewData().GetViewShell();
     SfxBindings&        rBindings   = pTabViewShell->GetViewFrame().GetBindings();
-    ScModule*           pScMod      = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     const SfxItemSet*   pReqArgs    = rReq.GetArgs();
     sal_uInt16              nSlot       = rReq.GetSlot();
 
@@ -270,42 +271,38 @@ void ScCellShell::Execute( SfxRequest& rReq )
                     // Enter
                     // NOTE: This also means we want to set the modified state
                     // regardless of the DontCommit parameter's value.
-                    if (comphelper::LibreOfficeKit::isActive() && !GetViewData().GetDocShell()->IsModified())
+                    if (comphelper::LibreOfficeKit::isActive() && !GetViewData().GetDocShell().IsModified())
                     {
-                        GetViewData().GetDocShell()->SetModified();
+                        GetViewData().GetDocShell().SetModified();
                         rBindings.Invalidate(SID_SAVEDOC);
                         rBindings.Invalidate(SID_DOC_MODIFIED);
                     }
 
-                    OUString aStr( pReqArgs->Get( SID_ENTER_STRING ).GetValue() );
+                    OUString aInputString = pReqArgs->Get(SID_ENTER_STRING).GetValue();
                     const SfxPoolItem* pDontCommitItem;
                     bool bCommit = true;
                     if (pReqArgs->HasItem(FN_PARAM_1, &pDontCommitItem))
                         bCommit = !(static_cast<const SfxBoolItem*>(pDontCommitItem)->GetValue());
 
-                    ScInputHandler* pHdl = SC_MOD()->GetInputHdl( pTabViewShell );
+                    ScInputHandler* pInputHandler = pScMod->GetInputHdl(pTabViewShell);
                     if (bCommit)
                     {
-                        pTabViewShell->EnterData( GetViewData().GetCurX(),
-                                                  GetViewData().GetCurY(),
-                                                  GetViewData().GetTabNo(),
-                                                  aStr, nullptr,
-                                                  true /*bMatrixExpand*/);
+                        pTabViewShell->EnterDataToCurrentCell(aInputString, nullptr, true /*bMatrixExpand*/);
                     }
-                    else if (pHdl)
+                    else if (pInputHandler)
                     {
-                        SC_MOD()->SetInputMode(SC_INPUT_TABLE);
+                        pScMod->SetInputMode(SC_INPUT_TABLE);
 
-                        EditView* pTableView = pHdl->GetActiveView();
-                        pHdl->DataChanging();
+                        EditView* pTableView = pInputHandler->GetActiveView();
+                        pInputHandler->DataChanging();
                         if (pTableView)
-                            pTableView->GetEditEngine()->SetText(aStr);
-                        pHdl->DataChanged();
+                            pTableView->getEditEngine().SetText(aInputString);
+                        pInputHandler->DataChanged();
 
-                        SC_MOD()->SetInputMode(SC_INPUT_NONE);
+                        pScMod->SetInputMode(SC_INPUT_NONE);
                     }
 
-                    if ( !pHdl || !pHdl->IsInEnterHandler() )
+                    if (!pInputHandler || !pInputHandler->IsInEnterHandler())
                     {
                         //  UpdateInputHandler is needed after the cell content
                         //  has changed, but if called from EnterHandler, UpdateInputHandler
@@ -458,8 +455,10 @@ void ScCellShell::Execute( SfxRequest& rReq )
                         sal_Int16 nFormat = static_cast<const SfxInt16Item*>(pFormat)->GetValue();
                         sal_uInt16 nId = sc::ConditionalFormatEasyDialogWrapper::GetChildWindowId();
                         SfxViewFrame& rViewFrame = pTabViewShell->GetViewFrame();
-                        SfxChildWindow* pWindow = rViewFrame.GetChildWindow( nId );
-                        GetViewData().GetDocument().SetEasyConditionalFormatDialogData(std::make_unique<ScConditionMode>(static_cast<ScConditionMode>(nFormat)));
+                        SfxChildWindow* pWindow = rViewFrame.GetChildWindow(nId);
+                        GetViewData().GetDocument().SetEasyConditionalFormatDialogData(
+                            std::make_unique<ScConditionMode>(
+                                static_cast<ScConditionMode>(nFormat)));
 
                         pScMod->SetRefDialog( nId, pWindow == nullptr );
                     }
@@ -471,12 +470,10 @@ void ScCellShell::Execute( SfxRequest& rReq )
             {
                 if ( pReqArgs != nullptr )
                 {
-
                     // set cell attribute without dialog:
+                    SfxItemSet aEmptySet(SfxItemSet::makeFixedSfxItemSet<ATTR_PATTERN_START, ATTR_PATTERN_END>(*pReqArgs->GetPool()));
 
-                    SfxItemSetFixed<ATTR_PATTERN_START, ATTR_PATTERN_END>  aEmptySet( *pReqArgs->GetPool() );
-
-                    SfxItemSetFixed<ATTR_PATTERN_START, ATTR_PATTERN_END>  aNewSet( *pReqArgs->GetPool() );
+                    SfxItemSet aNewSet(SfxItemSet::makeFixedSfxItemSet<ATTR_PATTERN_START, ATTR_PATTERN_END>(*pReqArgs->GetPool()));
 
                     const SfxPoolItem*  pAttr = nullptr;
                     sal_uInt16              nWhich = 0;
@@ -491,25 +488,25 @@ void ScCellShell::Execute( SfxRequest& rReq )
                 }
                 else
                 {
-                    pTabViewShell->ExecuteCellFormatDlg( rReq, "" );
+                    pTabViewShell->ExecuteCellFormatDlg( rReq, u""_ustr );
                 }
             }
             break;
 
         case SID_ENABLE_HYPHENATION:
-            pTabViewShell->ExecuteCellFormatDlg(rReq, "alignment");
+            pTabViewShell->ExecuteCellFormatDlg(rReq, u"alignment"_ustr);
             break;
 
         case SID_PROPERTY_PANEL_CELLTEXT_DLG:
-            pTabViewShell->ExecuteCellFormatDlg( rReq, "font" );
+            pTabViewShell->ExecuteCellFormatDlg( rReq, u"font"_ustr );
             break;
 
         case SID_CELL_FORMAT_BORDER:
-            pTabViewShell->ExecuteCellFormatDlg( rReq, "borders" );
+            pTabViewShell->ExecuteCellFormatDlg( rReq, u"borders"_ustr );
             break;
 
         case SID_CHAR_DLG_EFFECT:
-            pTabViewShell->ExecuteCellFormatDlg( rReq, "fonteffects" );
+            pTabViewShell->ExecuteCellFormatDlg( rReq, u"fonteffects"_ustr );
             break;
 
         case SID_OPENDLG_SOLVE:
@@ -658,7 +655,31 @@ void ScCellShell::Execute( SfxRequest& rReq )
 
         case SID_SELECTALL:
             {
-                pTabViewShell->SelectAll();
+                SCTAB nTab = GetViewData().GetTabNo();
+                SCCOL nStartCol = GetViewData().GetCurX();
+                SCROW nStartRow = GetViewData().GetCurY();
+                SCCOL nEndCol = nStartCol;
+                SCROW nEndRow = nStartRow;
+                bool bCanMark = false;
+
+                ScMarkData& rMarkdata = GetViewData().GetMarkData();
+                const bool bSelectFirst(officecfg::Office::Calc::Input::SelectRangeBeforeAll::get());
+
+                if (bSelectFirst && !rMarkdata.IsMarked())
+                {
+                    const ScDocument& rDoc = GetViewData().GetDocument();
+                    rDoc.GetDataArea( nTab, nStartCol, nStartRow, nEndCol, nEndRow, true, false );
+                    bCanMark = nStartCol != nEndCol || nStartRow != nEndRow;
+                }
+
+                if (bCanMark)
+                {
+                    const ScRange aRange(nStartCol, nStartRow, nTab, nEndCol, nEndRow, nTab);
+                    pTabViewShell->MarkRange(aRange, false);
+                }
+                else
+                    pTabViewShell->SelectAll();
+
                 rReq.Done();
             }
             break;
@@ -701,13 +722,13 @@ void ScCellShell::Execute( SfxRequest& rReq )
                 else
                 {
                     ScViewData& rData      = GetViewData();
-                    FieldUnit   eMetric    = SC_MOD()->GetAppOptions().GetAppMetric();
+                    FieldUnit eMetric = pScMod->GetMetric();
                     sal_uInt16      nCurHeight = rData.GetDocument().
                                                 GetRowHeight( rData.GetCurY(),
                                                               rData.GetTabNo() );
                     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
                     VclPtr<AbstractScMetricInputDlg> pDlg(pFact->CreateScMetricInputDlg(
-                        pTabViewShell->GetFrameWeld(), "RowHeightDialog", nCurHeight,
+                        pTabViewShell->GetFrameWeld(), u"RowHeightDialog"_ustr, nCurHeight,
                         rData.GetDocument().GetSheetOptimalMinRowHeight(rData.GetTabNo()),
                         eMetric, 2, MAX_ROW_HEIGHT));
 
@@ -744,11 +765,11 @@ void ScCellShell::Execute( SfxRequest& rReq )
                 }
                 else
                 {
-                    FieldUnit eMetric = SC_MOD()->GetAppOptions().GetAppMetric();
+                    FieldUnit eMetric = pScMod->GetMetric();
 
                     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
                     VclPtr<AbstractScMetricInputDlg> pDlg(pFact->CreateScMetricInputDlg(
-                        pTabViewShell->GetFrameWeld(), "OptimalRowHeightDialog",
+                        pTabViewShell->GetFrameWeld(), u"OptimalRowHeightDialog"_ustr,
                         ScGlobal::nLastRowHeightExtra, 0, eMetric, 2, MAX_EXTRA_HEIGHT));
 
                     pDlg->StartExecuteAsync([pDlg, pTabViewShell](sal_Int32 nResult){
@@ -806,14 +827,14 @@ void ScCellShell::Execute( SfxRequest& rReq )
                 }
                 else
                 {
-                    FieldUnit   eMetric    = SC_MOD()->GetAppOptions().GetAppMetric();
+                    FieldUnit eMetric = pScMod->GetMetric();
                     ScViewData& rData      = GetViewData();
                     sal_uInt16      nCurHeight = rData.GetDocument().
                                                 GetColWidth( rData.GetCurX(),
                                                              rData.GetTabNo() );
                     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
                     VclPtr<AbstractScMetricInputDlg> pDlg(pFact->CreateScMetricInputDlg(
-                        pTabViewShell->GetFrameWeld(), "ColWidthDialog", nCurHeight,
+                        pTabViewShell->GetFrameWeld(), u"ColWidthDialog"_ustr, nCurHeight,
                         STD_COL_WIDTH, eMetric, 2, MAX_COL_WIDTH));
 
                     pDlg->StartExecuteAsync([pDlg, pTabViewShell](sal_Int32 nResult){
@@ -849,11 +870,11 @@ void ScCellShell::Execute( SfxRequest& rReq )
                 }
                 else
                 {
-                    FieldUnit eMetric = SC_MOD()->GetAppOptions().GetAppMetric();
+                    FieldUnit eMetric = pScMod->GetMetric();
 
                     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
                     VclPtr<AbstractScMetricInputDlg> pDlg(pFact->CreateScMetricInputDlg(
-                        pTabViewShell->GetFrameWeld(), "OptimalColWidthDialog",
+                        pTabViewShell->GetFrameWeld(), u"OptimalColWidthDialog"_ustr,
                         ScGlobal::nLastColWidthExtra, STD_EXTRA_WIDTH, eMetric, 2, MAX_EXTRA_WIDTH));
 
                     pDlg->StartExecuteAsync([pDlg, pTabViewShell](sal_Int32 nResult){
@@ -1086,6 +1107,25 @@ void ScCellShell::Execute( SfxRequest& rReq )
             // called from Basic at the hidden view to select a range in the visible view
             OSL_FAIL("old slot SID_MARKAREA");
             break;
+
+        case FID_MOVE_KEEP_INSERT_MODE:
+        {
+            const SfxBoolItem* pEnabledArg = rReq.GetArg<SfxBoolItem>(FID_MOVE_KEEP_INSERT_MODE);
+            if (!pEnabledArg) {
+                SAL_WARN("sfx.appl", "FID_MOVE_KEEP_INSERT_MODE: must specify if you would like this to be enabled");
+                break;
+            }
+
+            ScInputOptions aInputOptions = pScMod->GetInputOptions();
+
+            aInputOptions.SetMoveKeepEdit(pEnabledArg->GetValue());
+            pScMod->SetInputOptions(aInputOptions);
+
+            if (comphelper::LibreOfficeKit::isActive())
+                pTabViewShell->SetMoveKeepEdit(pEnabledArg->GetValue());
+
+            break;
+        }
 
         default:
             OSL_FAIL("ScCellShell::Execute: unknown slot");

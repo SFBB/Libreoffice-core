@@ -194,12 +194,6 @@ excludelist:
     - com/sun/star/util/XCloneable.hpp
     - com/sun/star/util/XModifyBroadcaster.hpp
     - com/sun/star/util/XModifyListener.hpp
-    chart2/source/model/main/GridProperties.hxx:
-    # base class has to be a complete type
-    - com/sun/star/lang/XServiceInfo.hpp
-    - com/sun/star/util/XCloneable.hpp
-    - com/sun/star/util/XModifyBroadcaster.hpp
-    - com/sun/star/util/XModifyListener.hpp
     chart2/source/model/main/Legend.cxx:
     # Needed for template
     - com/sun/star/awt/Size.hpp
@@ -207,13 +201,6 @@ excludelist:
     - com/sun/star/chart2/RelativeSize.hpp
     chart2/source/model/main/PageBackground.hxx:
     # base class has to be a complete type
-    - com/sun/star/lang/XServiceInfo.hpp
-    - com/sun/star/util/XCloneable.hpp
-    - com/sun/star/util/XModifyBroadcaster.hpp
-    - com/sun/star/util/XModifyListener.hpp
-    chart2/source/model/main/Title.hxx:
-    # base class has to be a complete type
-    - com/sun/star/chart2/XTitle.hpp
     - com/sun/star/lang/XServiceInfo.hpp
     - com/sun/star/util/XCloneable.hpp
     - com/sun/star/util/XModifyBroadcaster.hpp
@@ -380,9 +367,6 @@ excludelist:
     chart2/source/view/axes/VCartesianGrid.hxx:
     # base class has to be a complete type
     - com/sun/star/beans/XPropertySet.hpp
-    chart2/source/view/charttypes/BarChart.cxx:
-    # comphelper::ScopeGuard being used
-    - comphelper/scopeguard.hxx
     chart2/source/view/diagram/VDiagram.cxx:
     # Needed for implicit dtor
     - ChartType.hxx
@@ -399,9 +383,6 @@ excludelist:
     - com/sun/star/graphic/XGraphic.hpp
     # Actually used
     - com/sun/star/chart2/XFormattedString.hpp
-    chart2/source/view/main/ChartView.cxx:
-    # comphelper::ScopeGuard being used
-    - comphelper/scopeguard.hxx
     chart2/source/view/main/VLineProperties.cxx:
     # Actually used
     - com/sun/star/beans/XPropertySet.hpp

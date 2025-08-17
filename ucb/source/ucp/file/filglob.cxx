@@ -41,6 +41,7 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <o3tl/string_view.hxx>
+#include <o3tl/underlyingenumvalue.hxx>
 #include <osl/diagnose.h>
 #include <rtl/uri.hxx>
 #include <rtl/ustring.hxx>
@@ -122,25 +123,25 @@ namespace {
         auto pArguments = aArguments.getArray();
         sal_Int32 i = 0;
         pArguments[i++]
-            <<= PropertyValue("Uri",
+            <<= PropertyValue(u"Uri"_ustr,
                               -1,
                               Any(rPhysicalUrl),
                               PropertyState_DIRECT_VALUE);
         if (bResourceName)
             pArguments[i++]
-                <<= PropertyValue("ResourceName",
+                <<= PropertyValue(u"ResourceName"_ustr,
                                   -1,
                                   Any(aResourceName),
                                   PropertyState_DIRECT_VALUE);
         if (bResourceType)
             pArguments[i++]
-                <<= PropertyValue("ResourceType",
+                <<= PropertyValue(u"ResourceType"_ustr,
                                   -1,
                                   Any(aResourceType),
                                   PropertyState_DIRECT_VALUE);
         if (bRemoveProperty)
             pArguments[i++]
-                <<= PropertyValue("Removable",
+                <<= PropertyValue(u"Removable"_ustr,
                                   -1,
                                   Any(bRemovable),
                                   PropertyState_DIRECT_VALUE);
@@ -187,7 +188,7 @@ namespace fileaccess {
     std::u16string_view getTitle( std::u16string_view aPath )
     {
         size_t lastIndex = aPath.rfind( '/' );
-        return aPath.substr( lastIndex + 1 );
+        return aPath.substr((lastIndex != std::u16string_view::npos) ? lastIndex + 1 : 0);
     }
 
 
@@ -236,7 +237,7 @@ namespace fileaccess {
     }
 
     void throw_handler(
-        sal_Int32 errorCode,
+        TaskHandlerErr errorCode,
         sal_Int32 minorCode,
         const Reference< XCommandEnvironment >& xEnv,
         const OUString& aUncPath,
@@ -247,46 +248,46 @@ namespace fileaccess {
         Any aAny;
         IOErrorCode ioErrorCode;
 
-        if( errorCode ==  TASKHANDLER_UNSUPPORTED_COMMAND )
+        if( errorCode ==  TaskHandlerErr::UNSUPPORTED_COMMAND )
         {
             aAny <<= UnsupportedCommandException( OSL_LOG_PREFIX );
             cancelCommandExecution( aAny,xEnv );
         }
-        else if( errorCode == TASKHANDLING_WRONG_SETPROPERTYVALUES_ARGUMENT ||
-                 errorCode == TASKHANDLING_WRONG_GETPROPERTYVALUES_ARGUMENT ||
-                 errorCode == TASKHANDLING_WRONG_OPEN_ARGUMENT              ||
-                 errorCode == TASKHANDLING_WRONG_DELETE_ARGUMENT            ||
-                 errorCode == TASKHANDLING_WRONG_TRANSFER_ARGUMENT          ||
-                 errorCode == TASKHANDLING_WRONG_INSERT_ARGUMENT            ||
-                 errorCode == TASKHANDLING_WRONG_CREATENEWCONTENT_ARGUMENT )
+        else if( errorCode == TaskHandlerErr::WRONG_SETPROPERTYVALUES_ARGUMENT ||
+                 errorCode == TaskHandlerErr::WRONG_GETPROPERTYVALUES_ARGUMENT ||
+                 errorCode == TaskHandlerErr::WRONG_OPEN_ARGUMENT              ||
+                 errorCode == TaskHandlerErr::WRONG_DELETE_ARGUMENT            ||
+                 errorCode == TaskHandlerErr::WRONG_TRANSFER_ARGUMENT          ||
+                 errorCode == TaskHandlerErr::WRONG_INSERT_ARGUMENT            ||
+                 errorCode == TaskHandlerErr::WRONG_CREATENEWCONTENT_ARGUMENT )
         {
             IllegalArgumentException excep;
             excep.ArgumentPosition = 0;
             cancelCommandExecution(Any(excep), xEnv);
         }
-        else if( errorCode == TASKHANDLING_UNSUPPORTED_OPEN_MODE )
+        else if( errorCode == TaskHandlerErr::UNSUPPORTED_OPEN_MODE )
         {
             UnsupportedOpenModeException excep;
             excep.Mode = sal::static_int_cast< sal_Int16 >(minorCode);
             cancelCommandExecution( Any(excep),xEnv );
         }
-        else if(errorCode == TASKHANDLING_DELETED_STATE_IN_OPEN_COMMAND  ||
-                errorCode == TASKHANDLING_INSERTED_STATE_IN_OPEN_COMMAND ||
-                errorCode == TASKHANDLING_NOFRESHINSERT_IN_INSERT_COMMAND )
+        else if(errorCode == TaskHandlerErr::DELETED_STATE_IN_OPEN_COMMAND  ||
+                errorCode == TaskHandlerErr::INSERTED_STATE_IN_OPEN_COMMAND ||
+                errorCode == TaskHandlerErr::NOFRESHINSERT_IN_INSERT_COMMAND )
         {
             // What to do here?
         }
         else if(
             // error in opening file
-            errorCode == TASKHANDLING_NO_OPEN_FILE_FOR_OVERWRITE ||
+            errorCode == TaskHandlerErr::NO_OPEN_FILE_FOR_OVERWRITE ||
             // error in opening file
-            errorCode == TASKHANDLING_NO_OPEN_FILE_FOR_WRITE     ||
+            errorCode == TaskHandlerErr::NO_OPEN_FILE_FOR_WRITE     ||
             // error in opening file
-            errorCode == TASKHANDLING_OPEN_FOR_STREAM            ||
+            errorCode == TaskHandlerErr::OPEN_FOR_STREAM            ||
             // error in opening file
-            errorCode == TASKHANDLING_OPEN_FOR_INPUTSTREAM       ||
+            errorCode == TaskHandlerErr::OPEN_FOR_INPUTSTREAM       ||
             // error in opening file
-            errorCode == TASKHANDLING_OPEN_FILE_FOR_PAGING )
+            errorCode == TaskHandlerErr::OPEN_FILE_FOR_PAGING )
         {
             switch( minorCode )
             {
@@ -335,14 +336,8 @@ namespace fileaccess {
                     // not enough memory for allocating structures
                     ioErrorCode = IOErrorCode_OUT_OF_MEMORY;
                     break;
-                case FileBase::E_BUSY:
-                    // Text file busy
-                    ioErrorCode = IOErrorCode_LOCKING_VIOLATION;
-                    break;
-                case FileBase::E_AGAIN:
-                    // Operation would block
-                    ioErrorCode = IOErrorCode_LOCKING_VIOLATION;
-                    break;
+                case FileBase::E_BUSY:   // Text file busy
+                case FileBase::E_AGAIN:  // Operation would block
                 case FileBase::E_NOLCK:  // No record locks available
                     ioErrorCode = IOErrorCode_LOCKING_VIOLATION;
                     break;
@@ -365,11 +360,13 @@ namespace fileaccess {
                 ioErrorCode,
                 generateErrorArguments(aUncPath),
                 xEnv,
-                "an error occurred during file opening",
+                "an error occurred during file opening ("
+                    + OUString::number(o3tl::to_underlying(errorCode)) + "/"
+                    + OUString::number(minorCode) + ")",
                 xComProc);
         }
-        else if( errorCode == TASKHANDLING_OPEN_FOR_DIRECTORYLISTING  ||
-                 errorCode == TASKHANDLING_OPENDIRECTORY_FOR_REMOVE )
+        else if( errorCode == TaskHandlerErr::OPEN_FOR_DIRECTORYLISTING  ||
+                 errorCode == TaskHandlerErr::OPENDIRECTORY_FOR_REMOVE )
         {
             switch( minorCode )
             {
@@ -418,36 +415,36 @@ namespace fileaccess {
                 ioErrorCode,
                 generateErrorArguments(aUncPath),
                 xEnv,
-                "an error occurred during opening a directory",
+                u"an error occurred during opening a directory"_ustr,
                 xComProc);
         }
-        else if( errorCode == TASKHANDLING_NOTCONNECTED_FOR_WRITE          ||
-                 errorCode == TASKHANDLING_BUFFERSIZEEXCEEDED_FOR_WRITE    ||
-                 errorCode == TASKHANDLING_IOEXCEPTION_FOR_WRITE           ||
-                 errorCode == TASKHANDLING_NOTCONNECTED_FOR_PAGING         ||
-                 errorCode == TASKHANDLING_BUFFERSIZEEXCEEDED_FOR_PAGING   ||
-                 errorCode == TASKHANDLING_IOEXCEPTION_FOR_PAGING         )
+        else if( errorCode == TaskHandlerErr::NOTCONNECTED_FOR_WRITE          ||
+                 errorCode == TaskHandlerErr::BUFFERSIZEEXCEEDED_FOR_WRITE    ||
+                 errorCode == TaskHandlerErr::IOEXCEPTION_FOR_WRITE           ||
+                 errorCode == TaskHandlerErr::NOTCONNECTED_FOR_PAGING         ||
+                 errorCode == TaskHandlerErr::BUFFERSIZEEXCEEDED_FOR_PAGING   ||
+                 errorCode == TaskHandlerErr::IOEXCEPTION_FOR_PAGING         )
         {
             ioErrorCode = IOErrorCode_UNKNOWN;
             cancelCommandExecution(
                 ioErrorCode,
                 generateErrorArguments(aUncPath),
                 xEnv,
-                "an error occurred writing or reading from a file",
+                u"an error occurred writing or reading from a file"_ustr,
                 xComProc );
         }
-        else if( errorCode == TASKHANDLING_FILEIOERROR_FOR_NO_SPACE )
+        else if( errorCode == TaskHandlerErr::FILEIOERROR_FOR_NO_SPACE )
         {
             ioErrorCode = IOErrorCode_OUT_OF_DISK_SPACE;
             cancelCommandExecution(
                 ioErrorCode,
                 generateErrorArguments(aUncPath),
                 xEnv,
-                "device full",
+                u"device full"_ustr,
                 xComProc);
         }
-        else if( errorCode == TASKHANDLING_FILEIOERROR_FOR_WRITE ||
-                 errorCode == TASKHANDLING_READING_FILE_FOR_PAGING )
+        else if( errorCode == TaskHandlerErr::FILEIOERROR_FOR_WRITE ||
+                 errorCode == TaskHandlerErr::READING_FILE_FOR_PAGING )
         {
             switch( minorCode )
             {
@@ -473,15 +470,12 @@ namespace fileaccess {
                     // Is a directory
                     ioErrorCode = IOErrorCode_NO_FILE;
                     break;
-                case FileBase::E_AGAIN:
-                    // Operation would block
+                case FileBase::E_AGAIN:  // Operation would block
+                case FileBase::E_NOLCK:  // No record locks available
                     ioErrorCode = IOErrorCode_LOCKING_VIOLATION;
                     break;
                 case FileBase::E_TIMEDOUT:
                     ioErrorCode = IOErrorCode_DEVICE_NOT_READY;
-                    break;
-                case FileBase::E_NOLCK:  // No record locks available
-                    ioErrorCode = IOErrorCode_LOCKING_VIOLATION;
                     break;
                 case FileBase::E_IO:     // I/O error
                 case FileBase::E_BADF:   // Bad file
@@ -495,25 +489,25 @@ namespace fileaccess {
                 ioErrorCode,
                 generateErrorArguments(aUncPath),
                 xEnv,
-                "an error occurred during opening a file",
+                u"an error occurred during opening a file"_ustr,
                 xComProc);
         }
-        else if( errorCode == TASKHANDLING_NONAMESET_INSERT_COMMAND ||
-                 errorCode == TASKHANDLING_NOCONTENTTYPE_INSERT_COMMAND )
+        else if( errorCode == TaskHandlerErr::NONAMESET_INSERT_COMMAND ||
+                 errorCode == TaskHandlerErr::NOCONTENTTYPE_INSERT_COMMAND )
         {
             static constexpr OUString sTitle = u"Title"_ustr;
             static constexpr OUString sContentType = u"ContentType"_ustr;
-            Sequence< OUString > aSeq{ (errorCode == TASKHANDLING_NONAMESET_INSERT_COMMAND)
+            Sequence< OUString > aSeq{ (errorCode == TaskHandlerErr::NONAMESET_INSERT_COMMAND)
                                            ? sTitle
                                            : sContentType };
 
             aAny <<= MissingPropertiesException(
-                "a property is missing, necessary to create a content",
+                u"a property is missing, necessary to create a content"_ustr,
                 xComProc,
                 aSeq);
             cancelCommandExecution(aAny,xEnv);
         }
-        else if( errorCode == TASKHANDLING_FILESIZE_FOR_WRITE )
+        else if( errorCode == TaskHandlerErr::FILESIZE_FOR_WRITE )
         {
             switch( minorCode )
             {
@@ -532,26 +526,26 @@ namespace fileaccess {
                 ioErrorCode,
                 generateErrorArguments(aUncPath),
                 xEnv,
-                "there were problems with the filesize",
+                u"there were problems with the filesize"_ustr,
                 xComProc);
         }
-        else if(errorCode == TASKHANDLING_INPUTSTREAM_FOR_WRITE)
+        else if(errorCode == TaskHandlerErr::INPUTSTREAM_FOR_WRITE)
         {
             aAny <<=
                 MissingInputStreamException(
-                    "the inputstream is missing, necessary to create a content",
+                    u"the inputstream is missing, necessary to create a content"_ustr,
                     xComProc);
             cancelCommandExecution(aAny,xEnv);
         }
-        else if( errorCode == TASKHANDLING_NOREPLACE_FOR_WRITE )
+        else if( errorCode == TaskHandlerErr::NOREPLACE_FOR_WRITE )
             // Overwrite = false and file exists
         {
-            NameClashException excep("file exists and overwrite forbidden",
+            NameClashException excep(u"file exists and overwrite forbidden"_ustr,
                                      Reference<XInterface>(xComProc, UNO_QUERY),
                                      InteractionClassification_ERROR, OUString(getTitle(aUncPath)));
             cancelCommandExecution( Any(excep), xEnv );
         }
-        else if( errorCode == TASKHANDLING_INVALID_NAME_MKDIR )
+        else if( errorCode == TaskHandlerErr::INVALID_NAME_MKDIR )
         {
             PropertyValue prop;
             prop.Name = "ResourceName";
@@ -563,7 +557,7 @@ namespace fileaccess {
                     RTL_TEXTENCODING_UTF8));
             prop.Value <<= aClashingName;
             InteractiveAugmentedIOException excep(
-                "the name contained invalid characters", Reference<XInterface>(xComProc, UNO_QUERY),
+                u"the name contained invalid characters"_ustr, Reference<XInterface>(xComProc, UNO_QUERY),
                 InteractionClassification_ERROR, IOErrorCode_INVALID_CHARACTER, { Any(prop) });
             if(isHandled)
                 throw excep;
@@ -576,9 +570,9 @@ namespace fileaccess {
 //                  OUString( "the name contained invalid characters"),
 //                  xComProc );
         }
-        else if( errorCode == TASKHANDLING_FOLDER_EXISTS_MKDIR )
+        else if( errorCode == TaskHandlerErr::FOLDER_EXISTS_MKDIR )
         {
-            NameClashException excep("folder exists and overwrite forbidden", xComProc,
+            NameClashException excep(u"folder exists and overwrite forbidden"_ustr, xComProc,
                                      InteractionClassification_ERROR, OUString(getTitle(aUncPath)));
             if(isHandled)
                 throw excep;
@@ -591,8 +585,8 @@ namespace fileaccess {
 //                  OUString( "the folder exists"),
 //                  xComProc );
         }
-        else if( errorCode == TASKHANDLING_ENSUREDIR_FOR_WRITE  ||
-                 errorCode == TASKHANDLING_CREATEDIRECTORY_MKDIR )
+        else if( errorCode == TaskHandlerErr::ENSUREDIR_FOR_WRITE  ||
+                 errorCode == TaskHandlerErr::CREATEDIRECTORY_MKDIR )
         {
             switch( minorCode )
             {
@@ -614,12 +608,12 @@ namespace fileaccess {
                 generateErrorArguments(getParentName(aUncPath)),
                 //TODO! ok to supply physical URL to getParentName()?
                 xEnv,
-                "a folder could not be created",
+                u"a folder could not be created"_ustr,
                 xComProc  );
         }
-        else if( errorCode == TASKHANDLING_VALIDFILESTATUSWHILE_FOR_REMOVE  ||
-                 errorCode == TASKHANDLING_VALIDFILESTATUS_FOR_REMOVE       ||
-                 errorCode == TASKHANDLING_NOSUCHFILEORDIR_FOR_REMOVE )
+        else if( errorCode == TaskHandlerErr::VALIDFILESTATUSWHILE_FOR_REMOVE  ||
+                 errorCode == TaskHandlerErr::VALIDFILESTATUS_FOR_REMOVE       ||
+                 errorCode == TaskHandlerErr::NOSUCHFILEORDIR_FOR_REMOVE )
         {
             switch( minorCode )
             {
@@ -665,11 +659,11 @@ namespace fileaccess {
                 ioErrorCode,
                 generateErrorArguments(aUncPath),
                 xEnv,
-                "a file status object could not be filled",
+                u"a file status object could not be filled"_ustr,
                 xComProc  );
         }
-        else if( errorCode == TASKHANDLING_DELETEFILE_FOR_REMOVE  ||
-                 errorCode == TASKHANDLING_DELETEDIRECTORY_FOR_REMOVE )
+        else if( errorCode == TaskHandlerErr::DELETEFILE_FOR_REMOVE  ||
+                 errorCode == TaskHandlerErr::DELETEDIRECTORY_FOR_REMOVE )
         {
             switch( minorCode )
             {
@@ -683,6 +677,8 @@ namespace fileaccess {
                     ioErrorCode = IOErrorCode_ACCESS_DENIED;
                     break;
                 case FileBase::E_PERM:          // Operation not permitted
+                case FileBase::E_ISDIR:         // Is a directory
+                case FileBase::E_ROFS:          // Read-only file system
                     ioErrorCode = IOErrorCode_NOT_SUPPORTED;
                     break;
                 case FileBase::E_NAMETOOLONG:   // File name too long
@@ -691,10 +687,6 @@ namespace fileaccess {
                 case FileBase::E_NOLINK:        // Link has been severed
                 case FileBase::E_NOENT:         // No such file or directory
                     ioErrorCode = IOErrorCode_NOT_EXISTING;
-                    break;
-                case FileBase::E_ISDIR:         // Is a directory
-                case FileBase::E_ROFS:          // Read-only file system
-                    ioErrorCode = IOErrorCode_NOT_SUPPORTED;
                     break;
                 case FileBase::E_BUSY:          // Device or resource busy
                     ioErrorCode = IOErrorCode_LOCKING_VIOLATION;
@@ -712,26 +704,26 @@ namespace fileaccess {
                 ioErrorCode,
                 generateErrorArguments(aUncPath),
                 xEnv,
-                "a file or directory could not be deleted",
+                u"a file or directory could not be deleted"_ustr,
                 xComProc );
         }
-        else if( errorCode == TASKHANDLING_TRANSFER_BY_COPY_SOURCE         ||
-                 errorCode == TASKHANDLING_TRANSFER_BY_COPY_SOURCESTAT     ||
-                 errorCode == TASKHANDLING_TRANSFER_BY_MOVE_SOURCE         ||
-                 errorCode == TASKHANDLING_TRANSFER_BY_MOVE_SOURCESTAT     ||
-                 errorCode == TASKHANDLING_TRANSFER_DESTFILETYPE           ||
-                 errorCode == TASKHANDLING_FILETYPE_FOR_REMOVE             ||
-                 errorCode == TASKHANDLING_DIRECTORYEXHAUSTED_FOR_REMOVE   ||
-                 errorCode == TASKHANDLING_TRANSFER_INVALIDURL )
+        else if( errorCode == TaskHandlerErr::TRANSFER_BY_COPY_SOURCE         ||
+                 errorCode == TaskHandlerErr::TRANSFER_BY_COPY_SOURCESTAT     ||
+                 errorCode == TaskHandlerErr::TRANSFER_BY_MOVE_SOURCE         ||
+                 errorCode == TaskHandlerErr::TRANSFER_BY_MOVE_SOURCESTAT     ||
+                 errorCode == TaskHandlerErr::TRANSFER_DESTFILETYPE           ||
+                 errorCode == TaskHandlerErr::FILETYPE_FOR_REMOVE             ||
+                 errorCode == TaskHandlerErr::DIRECTORYEXHAUSTED_FOR_REMOVE   ||
+                 errorCode == TaskHandlerErr::TRANSFER_INVALIDURL )
         {
             OUString aMsg;
             switch( minorCode )
             {
                 case FileBase::E_NOENT:         // No such file or directory
-                    if ( errorCode == TASKHANDLING_TRANSFER_BY_COPY_SOURCE         ||
-                         errorCode == TASKHANDLING_TRANSFER_BY_COPY_SOURCESTAT     ||
-                         errorCode == TASKHANDLING_TRANSFER_BY_MOVE_SOURCE         ||
-                         errorCode == TASKHANDLING_TRANSFER_BY_MOVE_SOURCESTAT )
+                    if ( errorCode == TaskHandlerErr::TRANSFER_BY_COPY_SOURCE         ||
+                         errorCode == TaskHandlerErr::TRANSFER_BY_COPY_SOURCESTAT     ||
+                         errorCode == TaskHandlerErr::TRANSFER_BY_MOVE_SOURCE         ||
+                         errorCode == TaskHandlerErr::TRANSFER_BY_MOVE_SOURCESTAT )
                     {
                         ioErrorCode = IOErrorCode_NOT_EXISTING;
                         aMsg = "source file/folder does not exist";
@@ -755,36 +747,26 @@ namespace fileaccess {
                 aMsg,
                 xComProc );
         }
-        else if( errorCode == TASKHANDLING_TRANSFER_ACCESSINGROOT )
-        {
-            ioErrorCode = IOErrorCode_WRITE_PROTECTED;
-            cancelCommandExecution(
-                ioErrorCode,
-                generateErrorArguments(aUncPath),
-                xEnv,
-                "accessing the root during transfer",
-                xComProc );
-        }
-        else if( errorCode == TASKHANDLING_TRANSFER_INVALIDSCHEME )
+        else if( errorCode == TaskHandlerErr::TRANSFER_INVALIDSCHEME )
         {
             aAny <<= InteractiveBadTransferURLException(
-                        "bad transfer url",
+                        u"bad transfer url"_ustr,
                         xComProc);
             cancelCommandExecution( aAny,xEnv );
         }
-        else if( errorCode == TASKHANDLING_OVERWRITE_FOR_MOVE      ||
-                 errorCode == TASKHANDLING_OVERWRITE_FOR_COPY      ||
-                 errorCode == TASKHANDLING_NAMECLASHMOVE_FOR_MOVE  ||
-                 errorCode == TASKHANDLING_NAMECLASHMOVE_FOR_COPY  ||
-                 errorCode == TASKHANDLING_KEEPERROR_FOR_MOVE      ||
-                 errorCode == TASKHANDLING_KEEPERROR_FOR_COPY      ||
-                 errorCode == TASKHANDLING_RENAME_FOR_MOVE         ||
-                 errorCode == TASKHANDLING_RENAME_FOR_COPY         ||
-                 errorCode == TASKHANDLING_RENAMEMOVE_FOR_MOVE     ||
-                 errorCode == TASKHANDLING_RENAMEMOVE_FOR_COPY    )
+        else if( errorCode == TaskHandlerErr::OVERWRITE_FOR_MOVE      ||
+                 errorCode == TaskHandlerErr::OVERWRITE_FOR_COPY      ||
+                 errorCode == TaskHandlerErr::NAMECLASHMOVE_FOR_MOVE  ||
+                 errorCode == TaskHandlerErr::NAMECLASHMOVE_FOR_COPY  ||
+                 errorCode == TaskHandlerErr::KEEPERROR_FOR_MOVE      ||
+                 errorCode == TaskHandlerErr::KEEPERROR_FOR_COPY      ||
+                 errorCode == TaskHandlerErr::RENAME_FOR_MOVE         ||
+                 errorCode == TaskHandlerErr::RENAME_FOR_COPY         ||
+                 errorCode == TaskHandlerErr::RENAMEMOVE_FOR_MOVE     ||
+                 errorCode == TaskHandlerErr::RENAMEMOVE_FOR_COPY    )
         {
             OUString aMsg(
-                        "general error during transfer");
+                        u"general error during transfer"_ustr);
 
             switch( minorCode )
             {
@@ -824,27 +806,27 @@ namespace fileaccess {
                 aMsg,
                 xComProc );
         }
-        else if( errorCode == TASKHANDLING_NAMECLASH_FOR_COPY   ||
-                 errorCode == TASKHANDLING_NAMECLASH_FOR_MOVE )
+        else if( errorCode == TaskHandlerErr::NAMECLASH_FOR_COPY   ||
+                 errorCode == TaskHandlerErr::NAMECLASH_FOR_MOVE )
         {
-            NameClashException excep("name clash during copy or move",
+            NameClashException excep(u"name clash during copy or move"_ustr,
                                      Reference<XInterface>(xComProc, UNO_QUERY),
                                      InteractionClassification_ERROR, OUString(getTitle(aUncPath)));
 
             cancelCommandExecution(Any(excep), xEnv);
         }
-        else if( errorCode == TASKHANDLING_NAMECLASHSUPPORT_FOR_MOVE   ||
-                 errorCode == TASKHANDLING_NAMECLASHSUPPORT_FOR_COPY )
+        else if( errorCode == TaskHandlerErr::NAMECLASHSUPPORT_FOR_MOVE   ||
+                 errorCode == TaskHandlerErr::NAMECLASHSUPPORT_FOR_COPY )
         {
             UnsupportedNameClashException excep(
-                "name clash value not supported during copy or move",
+                u"name clash value not supported during copy or move"_ustr,
                 Reference<XInterface>(xComProc, UNO_QUERY), minorCode);
 
             cancelCommandExecution(Any(excep), xEnv);
         }
         else
         {
-            // case TASKHANDLER_NO_ERROR:
+            // case TaskHandlerErr::NO_ERROR:
             return;
         }
     }

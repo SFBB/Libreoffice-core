@@ -26,10 +26,10 @@
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
+#include <comphelper/OAccessible.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <svl/lstner.hxx>
 
@@ -39,13 +39,6 @@
 #include <svx/IAccessibleViewForwarder.hxx>
 #include <svx/AccessibleShape.hxx>
 
-namespace com::sun::star::awt {
-    struct Point;
-    struct Rectangle;
-    struct Size;
-    class XFocusListener;
-}
-namespace tools { class Rectangle; }
 class GraphCtrl;
 class SdrObject;
 class SdrModel;
@@ -57,19 +50,12 @@ class SdrView;
         <code>AccessibleContext</code> service.
 */
 
-typedef ::cppu::WeakComponentImplHelper<
-                css::accessibility::XAccessible,
-                css::accessibility::XAccessibleComponent,
-                css::accessibility::XAccessibleContext,
-                css::accessibility::XAccessibleEventBroadcaster,
-                css::accessibility::XAccessibleSelection,
-                css::lang::XServiceInfo,
-                css::lang::XServiceName >
-                SvxGraphCtrlAccessibleContext_Base;
-
-class SvxGraphCtrlAccessibleContext final :
-    private cppu::BaseMutex, public SvxGraphCtrlAccessibleContext_Base,
-    public SfxListener, public ::accessibility::IAccessibleViewForwarder
+class SvxGraphCtrlAccessibleContext final
+    : public cppu::ImplInheritanceHelper<comphelper::OAccessible,
+                                         css::accessibility::XAccessibleSelection,
+                                         css::lang::XServiceInfo, css::lang::XServiceName>,
+      public SfxListener,
+      public ::accessibility::IAccessibleViewForwarder
 {
 public:
     friend class GraphCtrl;
@@ -79,18 +65,8 @@ public:
 
     void Notify( SfxBroadcaster& aBC, const SfxHint& aHint ) override;
 
-    // XAccessible
-    /// Return the XAccessibleContext.
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL
-        getAccessibleContext() override;
-
     // XAccessibleComponent
-    virtual sal_Bool SAL_CALL containsPoint( const css::awt::Point& rPoint ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint( const css::awt::Point& rPoint ) override;
-    virtual css::awt::Rectangle SAL_CALL getBounds() override;
-    virtual css::awt::Point SAL_CALL getLocation() override;
-    virtual css::awt::Point SAL_CALL getLocationOnScreen() override;
-    virtual css::awt::Size SAL_CALL getSize() override;
     virtual void SAL_CALL grabFocus() override;
 
     virtual sal_Int32 SAL_CALL getForeground() override;
@@ -101,7 +77,6 @@ public:
     virtual sal_Int64 SAL_CALL getAccessibleChildCount() override;
     virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL getAccessibleChild (sal_Int64 nIndex) override;
     virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL getAccessibleParent() override;
-    virtual sal_Int64 SAL_CALL getAccessibleIndexInParent() override;
     virtual sal_Int16 SAL_CALL getAccessibleRole() override;
     virtual OUString SAL_CALL getAccessibleDescription() override;
     virtual OUString SAL_CALL getAccessibleName() override;
@@ -109,17 +84,10 @@ public:
     virtual sal_Int64 SAL_CALL getAccessibleStateSet() override;
     virtual css::lang::Locale SAL_CALL getLocale() override;
 
-    // XAccessibleEventBroadcaster
-    virtual void SAL_CALL addAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener>& xListener) override;
-    virtual void SAL_CALL removeAccessibleEventListener(  const css::uno::Reference< css::accessibility::XAccessibleEventListener>& xListener) override;
-
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService (const OUString& sServiceName) override;
     virtual css::uno::Sequence< OUString> SAL_CALL getSupportedServiceNames() override;
-
-    // XTypeProvider
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL getImplementationId() override;
 
     // XServiceName
     virtual OUString SAL_CALL getServiceName() override;
@@ -143,8 +111,10 @@ public:
     */
     void setModelAndView (SdrModel* pModel, SdrView* pView);
 
+protected:
+    virtual css::awt::Rectangle implGetBounds() override;
+
 private:
-    virtual ~SvxGraphCtrlAccessibleContext() override;
     /// @throws css::lang::IndexOutOfBoundsException
     void checkChildIndexOnSelection(sal_Int64 nIndexOfChild );
 
@@ -154,11 +124,7 @@ private:
     /// @throws css::lang::IndexOutOfBoundsException
     SdrObject* getSdrObject( sal_Int64 nIndex );
 
-    void CommitChange (sal_Int16 aEventId, const css::uno::Any& rNewValue, const css::uno::Any& rOldValue);
-
     css::uno::Reference< css::accessibility::XAccessible > getAccessible( const SdrObject* pObj );
-
-    ::accessibility::AccessibleShapeTreeInfo maTreeInfo;
 
     /** Description of this object.  This is not a constant because it can
         be set from the outside.
@@ -175,14 +141,8 @@ private:
 
     GraphCtrl*  mpControl;
 
-    SdrModel* mpModel;
     SdrPage* mpPage;
     SdrView* mpView;
-
-    /// client id in the AccessibleEventNotifier queue
-    sal_uInt32 mnClientId;
-
-    bool mbDisposed;
 };
 
 #endif

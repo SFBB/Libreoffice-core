@@ -37,12 +37,11 @@
 #include <utility>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::uno;
 
 SwUndoOverwrite::SwUndoOverwrite( SwDoc& rDoc, SwPosition& rPos,
                                     sal_Unicode cIns )
-    : SwUndo(SwUndoId::OVERWRITE, &rDoc),
+    : SwUndo(SwUndoId::OVERWRITE, rDoc),
       m_bGroup( false )
 {
     SwTextNode *const pTextNd = rPos.GetNode().GetTextNode();
@@ -229,7 +228,7 @@ void SwUndoOverwrite::UndoImpl(::sw::UndoRedoContext & rContext)
     {
         if( pTextNd->GetpSwpHints() )
             pTextNd->ClearSwpHintsArr( false );
-        m_pHistory->TmpRollback( &rDoc, 0, false );
+        m_pHistory->TmpRollback( rDoc, 0, false );
     }
 
     if( rCurrentPam.GetMark()->GetContentIndex() != m_nStartContent )
@@ -341,7 +340,7 @@ struct UndoTransliterate_Data
 SwUndoTransliterate::SwUndoTransliterate(
     const SwPaM& rPam,
     const utl::TransliterationWrapper& rTrans )
-    : SwUndo( SwUndoId::TRANSLITERATE, &rPam.GetDoc() ), SwUndRng( rPam ), m_nType( rTrans.getType() )
+    : SwUndo( SwUndoId::TRANSLITERATE, rPam.GetDoc() ), SwUndRng( rPam ), m_nType( rTrans.getType() )
 {
 }
 
@@ -467,7 +466,7 @@ void UndoTransliterate_Data::SetChangeAtNode( SwDoc& rDoc )
     {
         if( pTNd->GetpSwpHints() )
             pTNd->ClearSwpHintsArr( false );
-        pHistory->TmpRollback( &rDoc, 0, false );
+        pHistory->TmpRollback( rDoc, 0, false );
         pHistory->SetTmpEnd( pHistory->Count() );
     }
 }

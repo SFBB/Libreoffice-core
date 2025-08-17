@@ -28,6 +28,7 @@ fuzzer_externals = \
     icuuc \
     icudata \
     lcms2 \
+    libeot \
     librdf \
     libexttextcat \
     liblangtag \
@@ -37,6 +38,7 @@ fuzzer_externals = \
     libpng \
     libtiff \
     libwebp \
+    md4c \
     openssl \
     expat \
     mythes \
@@ -57,7 +59,6 @@ fuzzer_core_libraries = \
         basctl \
         basprov \
     ) \
-    bib \
     canvastools \
     configmgr \
     cppcanvas \
@@ -96,6 +97,7 @@ fuzzer_core_libraries = \
     svt \
     svx \
     svxcore \
+    textconversiondlgs \
     emboleobj \
     svgfilter \
     svgio \
@@ -114,9 +116,7 @@ fuzzer_core_libraries = \
     xmlscript \
     xo \
     xstor \
-    cui \
-    chartcontroller \
-    chartcore \
+    chart2 \
     sm \
     oox \
     proxyfac \
@@ -148,12 +148,9 @@ fuzzer_core_libraries = \
     i18nlangtag \
     xmlreader \
     unoidl \
-    reg \
-    store \
     gcc3_uno \
     salhelper \
     sal \
-    index_data \
     localedata_en \
     localedata_others \
 
@@ -177,7 +174,7 @@ fuzzer_writer_libraries = \
     msword \
     sw \
     swd \
-    writerfilter \
+    sw_writerfilter \
     wpftwriter \
     textfd \
     guesslang \

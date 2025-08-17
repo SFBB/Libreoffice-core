@@ -299,7 +299,7 @@ namespace frm
         switch (_nHandle)
         {
         case PROPERTY_ID_BOUNDCOLUMN :
-            DBG_ASSERT((_rValue.getValueType().getTypeClass() == TypeClass_SHORT) || (_rValue.getValueType().getTypeClass() == TypeClass_VOID),
+            DBG_ASSERT((_rValue.getValueTypeClass() == TypeClass_SHORT) || (_rValue.getValueTypeClass() == TypeClass_VOID),
                 "OListBoxModel::setFastPropertyValue_NoBroadcast : invalid type !" );
             m_aBoundColumn = _rValue;
             break;
@@ -428,10 +428,10 @@ namespace frm
         case PROPERTY_ID_SELECT_VALUE :
         {
             // Any from connectivity::ORowSetValue
-            Any _rCurrentValue = getCurrentSingleValue();
-            if (_rCurrentValue != _rValue)
+            Any aCurrentValue = getCurrentSingleValue();
+            if (aCurrentValue != _rValue)
             {
-                _rOldValue = _rCurrentValue;
+                _rOldValue = std::move(aCurrentValue);
                 _rConvertedValue = _rValue;
                 bModified = true;
             }
@@ -474,7 +474,7 @@ namespace frm
         if ( ( pSelectedItemsPos != _rPropertyNames.end() ) && aStringItemListExists )
         {
             if (_rPropertyNames.getLength() != _rValues.getLength())
-                throw css::lang::IllegalArgumentException("lengths do not match",
+                throw css::lang::IllegalArgumentException(u"lengths do not match"_ustr,
                                                           static_cast<cppu::OWeakObject*>(this), -1);
 
             // both properties are present
@@ -570,7 +570,7 @@ namespace frm
 
         // Masking for any
         sal_uInt16 nAnyMask = 0;
-        if (m_aBoundColumn.getValueType().getTypeClass() != TypeClass_VOID)
+        if (m_aBoundColumn.getValueTypeClass() != TypeClass_VOID)
             nAnyMask |= BOUNDCOLUMN;
 
         _rxOutStream << nAnyMask;
@@ -745,7 +745,7 @@ namespace frm
         }
 
         ::std::optional< sal_Int16 > aBoundColumn(std::nullopt);
-        if ( m_aBoundColumn.getValueType().getTypeClass() == TypeClass_SHORT )
+        if ( m_aBoundColumn.getValueTypeClass() == TypeClass_SHORT )
         {
             sal_Int16 nBoundColumn( 0 );
             m_aBoundColumn >>= nBoundColumn;
@@ -795,7 +795,7 @@ namespace frm
                         {
                             // otherwise look for the alias
                             Reference< XColumnsSupplier > xSupplyFields;
-                            xFormProps->getPropertyValue("SingleSelectQueryComposer") >>= xSupplyFields;
+                            xFormProps->getPropertyValue(u"SingleSelectQueryComposer"_ustr) >>= xSupplyFields;
 
                             // search the field
                             DBG_ASSERT(xSupplyFields.is(), "OListBoxModel::loadData : invalid query composer !");
@@ -815,7 +815,7 @@ namespace frm
 
                     Reference<XDatabaseMetaData> xMeta = xConnection->getMetaData();
                     OUString aQuote = xMeta->getIdentifierQuoteString();
-                    OUString aStatement("SELECT ");
+                    OUString aStatement(u"SELECT "_ustr);
                     if (aBoundFieldName.isEmpty())   // act like a combobox
                         aStatement += "DISTINCT ";
 
@@ -920,7 +920,7 @@ namespace frm
                         try
                         {
                             Reference< XPropertySet > xBoundField( xColumns->getByIndex( *aBoundColumn ), UNO_QUERY_THROW );
-                            OSL_VERIFY( xBoundField->getPropertyValue("Type") >>= m_nBoundColumnType );
+                            OSL_VERIFY( xBoundField->getPropertyValue(u"Type"_ustr) >>= m_nBoundColumnType );
                         }
                         catch( const Exception& )
                         {
@@ -1416,7 +1416,7 @@ namespace frm
             ::std::set< sal_Int16 > aSelectionSet;
 
             // find the selection entries in our item list
-            for ( OUString const & selectEntry : std::as_const(aSelectEntries) )
+            for (OUString const& selectEntry : aSelectEntries)
             {
                 int idx = 0;
                 for(const OUString& s : getStringItemList())
@@ -1465,12 +1465,12 @@ namespace frm
         public:
             explicit ExtractStringFromSequence_Safe( const std::vector< OUString >& _rList ) : m_rList( _rList ) { }
 
-            OUString operator ()( sal_Int16 _nIndex )
+            const OUString & operator ()( sal_Int16 _nIndex )
             {
                 OSL_ENSURE( _nIndex < static_cast<sal_Int32>(m_rList.size()), "ExtractStringFromSequence_Safe: inconsistence!" );
                 if ( _nIndex < static_cast<sal_Int32>(m_rList.size()) )
                     return m_rList[ _nIndex ];
-                return OUString();
+                return EMPTY_OUSTRING;
             }
         };
 
@@ -1818,8 +1818,7 @@ namespace frm
         osl_atomic_increment(&m_refCount);
         {
             // Register as FocusListener
-            Reference<XWindow> xComp;
-            if (query_aggregation(m_xAggregate, xComp))
+            if (auto xComp = query_aggregation<XWindow>(m_xAggregate))
                 xComp->addFocusListener(this);
 
             // Register as ItemListener
@@ -1944,7 +1943,7 @@ namespace frm
 
                     if (bModified)
                     {
-                        m_aCurrentSelection = aValue;
+                        m_aCurrentSelection = std::move(aValue);
                         m_aChangeIdle.Start();
                     }
                 }
@@ -2098,7 +2097,7 @@ namespace frm
     {
         if ( m_xAggregateListBox.is() )
             return m_xAggregateListBox->getSelectedItemPos();
-        return 0;
+        return -1;
     }
 
 

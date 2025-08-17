@@ -74,7 +74,6 @@ using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::ucb;
-using namespace ::com::sun::star::util;
 
 void OApplicationController::deleteTables(const std::vector< OUString>& _rList)
 {
@@ -93,7 +92,7 @@ void OApplicationController::deleteTables(const std::vector< OUString>& _rList)
         std::vector< OUString>::const_iterator aEnd = _rList.end();
         for (std::vector< OUString>::const_iterator aIter = _rList.begin(); aIter != aEnd; ++aIter)
         {
-            OUString sTableName = *aIter;
+            const OUString& sTableName = *aIter;
 
             sal_Int32 nResult = RET_YES;
             if ( bConfirm )
@@ -314,7 +313,8 @@ const SharedConnection& OApplicationController::ensureConnection( ::dbtools::SQL
         SolarMutexGuard aSolarGuard;
 
         OUString sConnectingContext(DBA_RES(STR_COULDNOTCONNECT_DATASOURCE));
-        sConnectingContext = sConnectingContext.replaceFirst("$name$", getStrippedDatabaseName());
+        OUString sDatabaseName;
+        sConnectingContext = sConnectingContext.replaceFirst("$name$", ::dbaui::getStrippedDatabaseName(m_xDataSource, sDatabaseName));
 
         // do the connection *without* holding getMutex() to avoid deadlock
         // when we are not in the main thread and we need username/password
@@ -363,7 +363,7 @@ const SharedConnection& OApplicationController::ensureConnection( ::dbtools::SQL
             {
                 if ( _pErrorInfo )
                 {
-                    *_pErrorInfo = aError;
+                    *_pErrorInfo = std::move(aError);
                 }
                 else
                 {
@@ -764,12 +764,9 @@ bool OApplicationController::paste( ElementType _eType, const svx::ODataAccessDe
                             {
                                 Reference<XPropertySet> xDstProp(xFac->createDataDescriptor());
 
-                                Sequence< OUString> aSeq = xSrcNameAccess->getElementNames();
-                                const OUString* pIter = aSeq.getConstArray();
-                                const OUString* pEnd   = pIter + aSeq.getLength();
-                                for( ; pIter != pEnd ; ++pIter)
+                                for (auto& name : xSrcNameAccess->getElementNames())
                                 {
-                                    Reference<XPropertySet> xSrcProp(xSrcNameAccess->getByName(*pIter),UNO_QUERY);
+                                    Reference<XPropertySet> xSrcProp(xSrcNameAccess->getByName(name),UNO_QUERY);
                                     ::comphelper::copyProperties(xSrcProp,xDstProp);
                                     xAppend->appendByDescriptor(xDstProp);
                                 }

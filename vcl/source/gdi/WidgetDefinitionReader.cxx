@@ -8,6 +8,10 @@
  *
  */
 
+#include <frozen/bits/defines.h>
+#include <frozen/bits/elsa_std.h>
+#include <frozen/unordered_map.h>
+
 #include <utility>
 #include <widgetdraw/WidgetDefinitionReader.hxx>
 
@@ -15,7 +19,7 @@
 #include <osl/file.hxx>
 #include <tools/stream.hxx>
 #include <o3tl/string_view.hxx>
-#include <unordered_map>
+#include <o3tl/numeric.hxx>
 
 namespace vcl
 {
@@ -26,35 +30,6 @@ bool lcl_fileExists(OUString const& sFilename)
     osl::File aFile(sFilename);
     osl::FileBase::RC eRC = aFile.open(osl_File_OpenFlag_Read);
     return osl::FileBase::E_None == eRC;
-}
-
-int lcl_gethex(char aChar)
-{
-    if (aChar >= '0' && aChar <= '9')
-        return aChar - '0';
-    else if (aChar >= 'a' && aChar <= 'f')
-        return aChar - 'a' + 10;
-    else if (aChar >= 'A' && aChar <= 'F')
-        return aChar - 'A' + 10;
-    else
-        return 0;
-}
-
-bool readColor(OString const& rString, Color& rColor)
-{
-    if (rString.getLength() != 7)
-        return false;
-
-    const char aChar(rString[0]);
-
-    if (aChar != '#')
-        return false;
-
-    rColor.SetRed((lcl_gethex(rString[1]) << 4) | lcl_gethex(rString[2]));
-    rColor.SetGreen((lcl_gethex(rString[3]) << 4) | lcl_gethex(rString[4]));
-    rColor.SetBlue((lcl_gethex(rString[5]) << 4) | lcl_gethex(rString[6]));
-
-    return true;
 }
 
 bool readSetting(OString const& rInputString, OString& rOutputString)
@@ -146,9 +121,9 @@ ControlPart xmlStringToControlPart(std::string_view sPart)
     return ControlPart::NONE;
 }
 
-bool getControlTypeForXmlString(OString const& rString, ControlType& reType)
+bool getControlTypeForXmlString(std::string_view rString, ControlType& reType)
 {
-    static std::unordered_map<OString, ControlType> aPartMap = {
+    static constexpr auto aPartMap = frozen::make_unordered_map<std::string_view, ControlType>({
         { "pushbutton", ControlType::Pushbutton },
         { "radiobutton", ControlType::Radiobutton },
         { "checkbox", ControlType::Checkbox },
@@ -174,12 +149,12 @@ bool getControlTypeForXmlString(OString const& rString, ControlType& reType)
         { "menubar", ControlType::Menubar },
         { "menupopup", ControlType::MenuPopup },
         { "tooltip", ControlType::Tooltip },
-    };
+    });
 
-    auto const& rIterator = aPartMap.find(rString);
-    if (rIterator != aPartMap.end())
+    auto const aIterator = aPartMap.find(rString);
+    if (aIterator != aPartMap.end())
     {
-        reType = rIterator->second;
+        reType = aIterator->second;
         return true;
     }
     return false;
@@ -202,9 +177,9 @@ void WidgetDefinitionReader::readDrawingDefinition(
         if (rWalker.name() == "rect")
         {
             Color aStrokeColor;
-            readColor(rWalker.attribute("stroke"_ostr), aStrokeColor);
+            color::createFromString(rWalker.attribute("stroke"_ostr), aStrokeColor);
             Color aFillColor;
-            readColor(rWalker.attribute("fill"_ostr), aFillColor);
+            color::createFromString(rWalker.attribute("fill"_ostr), aFillColor);
             OString sStrokeWidth = rWalker.attribute("stroke-width"_ostr);
             sal_Int32 nStrokeWidth = -1;
             if (!sStrokeWidth.isEmpty())
@@ -238,7 +213,7 @@ void WidgetDefinitionReader::readDrawingDefinition(
         else if (rWalker.name() == "line")
         {
             Color aStrokeColor;
-            readColor(rWalker.attribute("stroke"_ostr), aStrokeColor);
+            color::createFromString(rWalker.attribute("stroke"_ostr), aStrokeColor);
 
             OString sStrokeWidth = rWalker.attribute("stroke-width"_ostr);
             sal_Int32 nStrokeWidth = -1;
@@ -332,7 +307,7 @@ void WidgetDefinitionReader::readDefinition(tools::XmlWalker& rWalker,
 }
 
 void WidgetDefinitionReader::readPart(tools::XmlWalker& rWalker,
-                                      std::shared_ptr<WidgetDefinitionPart> rpPart)
+                                      const std::shared_ptr<WidgetDefinitionPart>& rpPart)
 {
     rWalker.children();
     while (rWalker.isValid())
@@ -364,79 +339,79 @@ bool WidgetDefinitionReader::read(WidgetDefinition& rWidgetDefinition)
     if (!lcl_fileExists(m_rDefinitionFile))
         return false;
 
-    auto pStyle = std::make_shared<WidgetDefinitionStyle>();
+    rWidgetDefinition.mpStyle = std::make_shared<WidgetDefinitionStyle>();
 
-    std::unordered_map<OString, Color*> aStyleColorMap = {
-        { "faceColor", &pStyle->maFaceColor },
-        { "checkedColor", &pStyle->maCheckedColor },
-        { "lightColor", &pStyle->maLightColor },
-        { "lightBorderColor", &pStyle->maLightBorderColor },
-        { "shadowColor", &pStyle->maShadowColor },
-        { "darkShadowColor", &pStyle->maDarkShadowColor },
-        { "buttonTextColor", &pStyle->maButtonTextColor },
-        { "defaultActionButtonTextColor", &pStyle->maDefaultActionButtonTextColor },
-        { "actionButtonTextColor", &pStyle->maActionButtonTextColor },
-        { "actionButtonRolloverTextColor", &pStyle->maActionButtonRolloverTextColor },
-        { "buttonRolloverTextColor", &pStyle->maButtonRolloverTextColor },
-        { "radioCheckTextColor", &pStyle->maRadioCheckTextColor },
-        { "groupTextColor", &pStyle->maGroupTextColor },
-        { "labelTextColor", &pStyle->maLabelTextColor },
-        { "windowColor", &pStyle->maWindowColor },
-        { "windowTextColor", &pStyle->maWindowTextColor },
-        { "dialogColor", &pStyle->maDialogColor },
-        { "dialogTextColor", &pStyle->maDialogTextColor },
-        { "workspaceColor", &pStyle->maWorkspaceColor },
-        { "monoColor", &pStyle->maMonoColor },
-        { "fieldColor", &pStyle->maFieldColor },
-        { "fieldTextColor", &pStyle->maFieldTextColor },
-        { "fieldRolloverTextColor", &pStyle->maFieldRolloverTextColor },
-        { "activeColor", &pStyle->maActiveColor },
-        { "activeTextColor", &pStyle->maActiveTextColor },
-        { "activeBorderColor", &pStyle->maActiveBorderColor },
-        { "deactiveColor", &pStyle->maDeactiveColor },
-        { "deactiveTextColor", &pStyle->maDeactiveTextColor },
-        { "deactiveBorderColor", &pStyle->maDeactiveBorderColor },
-        { "menuColor", &pStyle->maMenuColor },
-        { "menuBarColor", &pStyle->maMenuBarColor },
-        { "menuBarRolloverColor", &pStyle->maMenuBarRolloverColor },
-        { "menuBorderColor", &pStyle->maMenuBorderColor },
-        { "menuTextColor", &pStyle->maMenuTextColor },
-        { "menuBarTextColor", &pStyle->maMenuBarTextColor },
-        { "menuBarRolloverTextColor", &pStyle->maMenuBarRolloverTextColor },
-        { "menuBarHighlightTextColor", &pStyle->maMenuBarHighlightTextColor },
-        { "menuHighlightColor", &pStyle->maMenuHighlightColor },
-        { "menuHighlightTextColor", &pStyle->maMenuHighlightTextColor },
-        { "highlightColor", &pStyle->maHighlightColor },
-        { "highlightTextColor", &pStyle->maHighlightTextColor },
-        { "activeTabColor", &pStyle->maActiveTabColor },
-        { "inactiveTabColor", &pStyle->maInactiveTabColor },
-        { "tabTextColor", &pStyle->maTabTextColor },
-        { "tabRolloverTextColor", &pStyle->maTabRolloverTextColor },
-        { "tabHighlightTextColor", &pStyle->maTabHighlightTextColor },
-        { "disableColor", &pStyle->maDisableColor },
-        { "helpColor", &pStyle->maHelpColor },
-        { "helpTextColor", &pStyle->maHelpTextColor },
-        { "linkColor", &pStyle->maLinkColor },
-        { "visitedLinkColor", &pStyle->maVisitedLinkColor },
-        { "toolTextColor", &pStyle->maToolTextColor },
-    };
+    auto aStyleColorMap = frozen::make_unordered_map<std::string_view, Color*>({
+        { "faceColor", &rWidgetDefinition.mpStyle->maFaceColor },
+        { "checkedColor", &rWidgetDefinition.mpStyle->maCheckedColor },
+        { "lightColor", &rWidgetDefinition.mpStyle->maLightColor },
+        { "lightBorderColor", &rWidgetDefinition.mpStyle->maLightBorderColor },
+        { "shadowColor", &rWidgetDefinition.mpStyle->maShadowColor },
+        { "darkShadowColor", &rWidgetDefinition.mpStyle->maDarkShadowColor },
+        { "buttonTextColor", &rWidgetDefinition.mpStyle->maButtonTextColor },
+        { "defaultActionButtonTextColor",
+          &rWidgetDefinition.mpStyle->maDefaultActionButtonTextColor },
+        { "actionButtonTextColor", &rWidgetDefinition.mpStyle->maActionButtonTextColor },
+        { "actionButtonRolloverTextColor",
+          &rWidgetDefinition.mpStyle->maActionButtonRolloverTextColor },
+        { "buttonRolloverTextColor", &rWidgetDefinition.mpStyle->maButtonRolloverTextColor },
+        { "radioCheckTextColor", &rWidgetDefinition.mpStyle->maRadioCheckTextColor },
+        { "groupTextColor", &rWidgetDefinition.mpStyle->maGroupTextColor },
+        { "labelTextColor", &rWidgetDefinition.mpStyle->maLabelTextColor },
+        { "windowColor", &rWidgetDefinition.mpStyle->maWindowColor },
+        { "windowTextColor", &rWidgetDefinition.mpStyle->maWindowTextColor },
+        { "dialogColor", &rWidgetDefinition.mpStyle->maDialogColor },
+        { "dialogTextColor", &rWidgetDefinition.mpStyle->maDialogTextColor },
+        { "workspaceColor", &rWidgetDefinition.mpStyle->maWorkspaceColor },
+        { "monoColor", &rWidgetDefinition.mpStyle->maMonoColor },
+        { "fieldColor", &rWidgetDefinition.mpStyle->maFieldColor },
+        { "fieldTextColor", &rWidgetDefinition.mpStyle->maFieldTextColor },
+        { "fieldRolloverTextColor", &rWidgetDefinition.mpStyle->maFieldRolloverTextColor },
+        { "activeColor", &rWidgetDefinition.mpStyle->maActiveColor },
+        { "activeTextColor", &rWidgetDefinition.mpStyle->maActiveTextColor },
+        { "activeBorderColor", &rWidgetDefinition.mpStyle->maActiveBorderColor },
+        { "deactiveColor", &rWidgetDefinition.mpStyle->maDeactiveColor },
+        { "deactiveTextColor", &rWidgetDefinition.mpStyle->maDeactiveTextColor },
+        { "deactiveBorderColor", &rWidgetDefinition.mpStyle->maDeactiveBorderColor },
+        { "menuColor", &rWidgetDefinition.mpStyle->maMenuColor },
+        { "menuBarColor", &rWidgetDefinition.mpStyle->maMenuBarColor },
+        { "menuBarRolloverColor", &rWidgetDefinition.mpStyle->maMenuBarRolloverColor },
+        { "menuBorderColor", &rWidgetDefinition.mpStyle->maMenuBorderColor },
+        { "menuTextColor", &rWidgetDefinition.mpStyle->maMenuTextColor },
+        { "menuBarTextColor", &rWidgetDefinition.mpStyle->maMenuBarTextColor },
+        { "menuBarRolloverTextColor", &rWidgetDefinition.mpStyle->maMenuBarRolloverTextColor },
+        { "menuBarHighlightTextColor", &rWidgetDefinition.mpStyle->maMenuBarHighlightTextColor },
+        { "menuHighlightColor", &rWidgetDefinition.mpStyle->maMenuHighlightColor },
+        { "menuHighlightTextColor", &rWidgetDefinition.mpStyle->maMenuHighlightTextColor },
+        { "highlightColor", &rWidgetDefinition.mpStyle->maHighlightColor },
+        { "highlightTextColor", &rWidgetDefinition.mpStyle->maHighlightTextColor },
+        { "activeTabColor", &rWidgetDefinition.mpStyle->maActiveTabColor },
+        { "inactiveTabColor", &rWidgetDefinition.mpStyle->maInactiveTabColor },
+        { "tabTextColor", &rWidgetDefinition.mpStyle->maTabTextColor },
+        { "tabRolloverTextColor", &rWidgetDefinition.mpStyle->maTabRolloverTextColor },
+        { "tabHighlightTextColor", &rWidgetDefinition.mpStyle->maTabHighlightTextColor },
+        { "disableColor", &rWidgetDefinition.mpStyle->maDisableColor },
+        { "helpColor", &rWidgetDefinition.mpStyle->maHelpColor },
+        { "helpTextColor", &rWidgetDefinition.mpStyle->maHelpTextColor },
+        { "linkColor", &rWidgetDefinition.mpStyle->maLinkColor },
+        { "visitedLinkColor", &rWidgetDefinition.mpStyle->maVisitedLinkColor },
+        { "toolTextColor", &rWidgetDefinition.mpStyle->maToolTextColor },
+    });
 
-    rWidgetDefinition.mpStyle = pStyle;
+    rWidgetDefinition.mpSettings = std::make_shared<WidgetDefinitionSettings>();
 
-    auto pSettings = std::make_shared<WidgetDefinitionSettings>();
-
-    std::unordered_map<OString, OString*> aSettingMap = {
-        { "noActiveTabTextRaise", &pSettings->msNoActiveTabTextRaise },
-        { "centeredTabs", &pSettings->msCenteredTabs },
-        { "listBoxEntryMargin", &pSettings->msListBoxEntryMargin },
-        { "defaultFontSize", &pSettings->msDefaultFontSize },
-        { "titleHeight", &pSettings->msTitleHeight },
-        { "floatTitleHeight", &pSettings->msFloatTitleHeight },
-        { "listBoxPreviewDefaultLogicWidth", &pSettings->msListBoxPreviewDefaultLogicWidth },
-        { "listBoxPreviewDefaultLogicHeight", &pSettings->msListBoxPreviewDefaultLogicHeight },
-    };
-
-    rWidgetDefinition.mpSettings = pSettings;
+    auto aSettingMap = frozen::make_unordered_map<std::string_view, OString*>({
+        { "noActiveTabTextRaise", &rWidgetDefinition.mpSettings->msNoActiveTabTextRaise },
+        { "centeredTabs", &rWidgetDefinition.mpSettings->msCenteredTabs },
+        { "listBoxEntryMargin", &rWidgetDefinition.mpSettings->msListBoxEntryMargin },
+        { "defaultFontSize", &rWidgetDefinition.mpSettings->msDefaultFontSize },
+        { "titleHeight", &rWidgetDefinition.mpSettings->msTitleHeight },
+        { "floatTitleHeight", &rWidgetDefinition.mpSettings->msFloatTitleHeight },
+        { "listBoxPreviewDefaultLogicWidth",
+          &rWidgetDefinition.mpSettings->msListBoxPreviewDefaultLogicWidth },
+        { "listBoxPreviewDefaultLogicHeight",
+          &rWidgetDefinition.mpSettings->msListBoxPreviewDefaultLogicHeight },
+    });
 
     SvFileStream aFileStream(m_rDefinitionFile, StreamMode::READ);
 
@@ -459,7 +434,7 @@ bool WidgetDefinitionReader::read(WidgetDefinition& rWidgetDefinition)
                 auto pair = aStyleColorMap.find(aWalker.name());
                 if (pair != aStyleColorMap.end())
                 {
-                    readColor(aWalker.attribute("value"_ostr), *pair->second);
+                    color::createFromString(aWalker.attribute("value"_ostr), *pair->second);
                 }
                 aWalker.next();
             }

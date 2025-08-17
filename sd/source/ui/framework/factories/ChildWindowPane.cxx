@@ -33,12 +33,11 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing::framework;
 
 namespace sd::framework {
 
 ChildWindowPane::ChildWindowPane (
-    const Reference<XResourceId>& rxPaneId,
+    const rtl::Reference<ResourceId>& rxPaneId,
     sal_uInt16 nChildWindowId,
     ViewShellBase& rViewShellBase,
     ::std::unique_ptr<SfxShell> && pShell)
@@ -48,7 +47,9 @@ ChildWindowPane::ChildWindowPane (
       mpShell(std::move(pShell)),
       mbHasBeenActivated(false)
 {
-    mrViewShellBase.GetViewShellManager()->ActivateShell(mpShell.get());
+    // ChildWindowPane shells don't implement dispatch slots, so activate them
+    // at the bottom of the shellstack.
+    mrViewShellBase.GetViewShellManager()->ActivateLowPriorityShell(mpShell.get());
 
     SfxViewFrame& rViewFrame = mrViewShellBase.GetViewFrame();
 
@@ -100,10 +101,8 @@ void ChildWindowPane::Hide()
     mxWindow = nullptr;
 }
 
-void SAL_CALL ChildWindowPane::disposing()
+void ChildWindowPane::disposing(std::unique_lock<std::mutex>& l)
 {
-    ::osl::MutexGuard aGuard (m_aMutex);
-
     mrViewShellBase.GetViewShellManager()->DeactivateShell(mpShell.get());
     mpShell.reset();
 
@@ -112,7 +111,7 @@ void SAL_CALL ChildWindowPane::disposing()
         mxWindow->removeEventListener(this);
     }
 
-    Pane::disposing();
+    Pane::disposing(l);
 }
 
 vcl::Window* ChildWindowPane::GetWindow()
@@ -178,27 +177,21 @@ vcl::Window* ChildWindowPane::GetWindow()
     return mpWindow;
 }
 
-Reference<awt::XWindow> SAL_CALL ChildWindowPane::getWindow()
+Reference<awt::XWindow> ChildWindowPane::getWindow()
 {
     if (mpWindow == nullptr || ! mxWindow.is())
         GetWindow();
     return Pane::getWindow();
 }
 
-IMPLEMENT_FORWARD_XINTERFACE2(
-    ChildWindowPane,
-    ChildWindowPaneInterfaceBase,
-    Pane);
-IMPLEMENT_FORWARD_XTYPEPROVIDER2(
-    ChildWindowPane,
-    ChildWindowPaneInterfaceBase,
-    Pane);
-
 //----- XEventListener --------------------------------------------------------
 
 void SAL_CALL ChildWindowPane::disposing (const lang::EventObject& rEvent)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
 
     if (rEvent.Source == mxWindow)
     {

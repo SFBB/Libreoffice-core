@@ -276,7 +276,7 @@ OUString ScDBData::GetOperations() const
         aBuf.append(ScResId(STR_OPERATION_SORT));
     }
 
-    if (mpSubTotal->bGroupActive[0] && !mpSubTotal->bRemoveOnly)
+    if (mpSubTotal->aGroups[0].bActive && !mpSubTotal->bRemoveOnly)
     {
         if (!aBuf.isEmpty())
             aBuf.append(", ");
@@ -377,13 +377,13 @@ void ScDBData::MoveTo(SCTAB nTab, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW n
             rEntry.bDoQuery = false;
         }
     }
-    for (sal_uInt16 i=0; i<MAXSUBTOTAL; i++)
+    for (auto& group : mpSubTotal->aGroups)
     {
-        mpSubTotal->nField[i] = sal::static_int_cast<SCCOL>( mpSubTotal->nField[i] + nDifX );
-        if (mpSubTotal->nField[i] > nCol2)
+        group.nField += nDifX;
+        if (group.nField > nCol2)
         {
-            mpSubTotal->nField[i] = 0;
-            mpSubTotal->bGroupActive[i] = false;
+            group.nField = 0;
+            group.bActive = false;
         }
     }
 
@@ -423,7 +423,7 @@ void ScDBData::GetQueryParam( ScQueryParam& rQueryParam ) const
     rQueryParam.nTab  = nTable;
     rQueryParam.bByRow = bByRow;
     rQueryParam.bHasHeader = bHasHeader;
-    /* TODO: add Totals to ScQueryParam? */
+    rQueryParam.bHasTotals = bHasTotals;
 }
 
 void ScDBData::SetQueryParam(const ScQueryParam& rQueryParam)
@@ -533,7 +533,7 @@ bool ScDBData::HasSortParam() const
 
 bool ScDBData::HasSubTotalParam() const
 {
-    return mpSubTotal && mpSubTotal->bGroupActive[0];
+    return mpSubTotal && mpSubTotal->aGroups[0].bActive;
 }
 
 void ScDBData::UpdateMoveTab(SCTAB nOldPos, SCTAB nNewPos)
@@ -578,7 +578,7 @@ void ScDBData::UpdateMoveTab(SCTAB nOldPos, SCTAB nNewPos)
     SetModified(bChanged);
 }
 
-bool ScDBData::UpdateReference(const ScDocument* pDoc, UpdateRefMode eUpdateRefMode,
+bool ScDBData::UpdateReference(const ScDocument& rDoc, UpdateRefMode eUpdateRefMode,
                                 SCCOL nCol1, SCROW nRow1, SCTAB nTab1,
                                 SCCOL nCol2, SCROW nRow2, SCTAB nTab2,
                                 SCCOL nDx, SCROW nDy, SCTAB nDz)
@@ -594,7 +594,7 @@ bool ScDBData::UpdateReference(const ScDocument* pDoc, UpdateRefMode eUpdateRefM
     SCCOL nOldCol1 = theCol1, nOldCol2 = theCol2;
 
     ScRefUpdateRes eRet
-        = ScRefUpdate::Update(pDoc, eUpdateRefMode, nCol1, nRow1, nTab1, nCol2, nRow2, nTab2, nDx,
+        = ScRefUpdate::Update(rDoc, eUpdateRefMode, nCol1, nRow1, nTab1, nCol2, nRow2, nTab2, nDx,
                               nDy, nDz, theCol1, theRow1, theTab1, theCol2, theRow2, theTab2);
 
     bool bDoUpdate = eRet != UR_NOTHING;
@@ -621,7 +621,7 @@ bool ScDBData::UpdateReference(const ScDocument* pDoc, UpdateRefMode eUpdateRefM
     if ( GetAdvancedQuerySource(aRangeAdvSource) )
     {
         aRangeAdvSource.GetVars( theCol1,theRow1,theTab1, theCol2,theRow2,theTab2 );
-        if ( ScRefUpdate::Update( pDoc, eUpdateRefMode,
+        if ( ScRefUpdate::Update( rDoc, eUpdateRefMode,
                                     nCol1,nRow1,nTab1, nCol2,nRow2,nTab2, nDx,nDy,nDz,
                                     theCol1,theRow1,theTab1, theCol2,theRow2,theTab2 ) )
         {
@@ -700,6 +700,11 @@ void ScDBData::SetTableColumnNames( ::std::vector< OUString >&& rNames )
 void ScDBData::SetTableColumnAttributes( ::std::vector< TableColumnAttributes >&& rAttributes )
 {
     maTableColumnAttributes = std::move(rAttributes);
+}
+
+void ScDBData::SetXmlColumnPrAttributes( const XmlColumnPrAttributes& rAttributes )
+{
+    maXmlColumnPrAttributes.push_back(rAttributes);
 }
 
 void ScDBData::AdjustTableColumnAttributes( UpdateRefMode eUpdateRefMode, SCCOL nDx, SCCOL nCol1,
@@ -838,12 +843,12 @@ void ScDBData::RefreshTableColumnNames( ScDocument* pDoc )
         {
             if (pCell->hasString())
             {
-                const OUString& rStr = pCell->getString( pDoc);
-                if (rStr.isEmpty())
+                const OUString aStr = pCell->getString(*pDoc);
+                if (aStr.isEmpty())
                     bHaveEmpty = true;
                 else
                 {
-                    SetTableColumnName( aNewNames, nCol-nStartCol, rStr, 0);
+                    SetTableColumnName( aNewNames, nCol-nStartCol, aStr, 0);
                     if (nLastColFilled < nCol-1)
                         bHaveEmpty = true;
                 }
@@ -890,12 +895,12 @@ void ScDBData::RefreshTableColumnNames( ScDocument* pDoc )
     mbTableColumnNamesDirty = false;
 }
 
-void ScDBData::RefreshTableColumnNames( ScDocument* pDoc, const ScRange& rRange )
+void ScDBData::RefreshTableColumnNames( ScDocument& rDoc, const ScRange& rRange )
 {
     // Header-less tables get names generated, completely empty a full refresh.
     if (mbTableColumnNamesDirty && (!HasHeader() || maTableColumnNames.empty()))
     {
-        RefreshTableColumnNames( pDoc);
+        RefreshTableColumnNames( &rDoc);
         return;
     }
 
@@ -908,7 +913,7 @@ void ScDBData::RefreshTableColumnNames( ScDocument* pDoc, const ScRange& rRange 
     // listener if multiple cells were affected. We don't know if there were
     // more. Also, we need the full check anyway in case a duplicated name was
     // entered.
-    RefreshTableColumnNames( pDoc);
+    RefreshTableColumnNames( &rDoc);
 }
 
 sal_Int32 ScDBData::GetColumnNameOffset( const OUString& rName ) const
@@ -924,14 +929,14 @@ sal_Int32 ScDBData::GetColumnNameOffset( const OUString& rName ) const
     return -1;
 }
 
-OUString ScDBData::GetTableColumnName( SCCOL nCol ) const
+const OUString & ScDBData::GetTableColumnName( SCCOL nCol ) const
 {
     if (maTableColumnNames.empty())
-        return OUString();
+        return EMPTY_OUSTRING;
 
     SCCOL nOffset = nCol - nStartCol;
     if (nOffset <  0 || maTableColumnNames.size() <= o3tl::make_unsigned(nOffset))
-        return OUString();
+        return EMPTY_OUSTRING;
 
     return maTableColumnNames[nOffset];
 }
@@ -965,7 +970,7 @@ void ScDBData::Notify( const SfxHint& rHint )
             {
                 aHintAddress.SetRow( aHeaderRange.aStart.Row());
                 if (!aHeaderRange.Contains( aHintAddress))
-                    mpContainer->GetDirtyTableColumnNames().Join( aHintAddress);
+                    mpContainer->GetDirtyTableColumnNames().Join( ScRange(aHintAddress) );
             }
         }
         else
@@ -973,7 +978,7 @@ void ScDBData::Notify( const SfxHint& rHint )
             // We need *some* range in the dirty list even without header area,
             // otherwise the container would not attempt to call a refresh.
             aHintAddress.SetRow( nStartRow);
-            mpContainer->GetDirtyTableColumnNames().Join( aHintAddress);
+            mpContainer->GetDirtyTableColumnNames().Join( ScRange(aHintAddress) );
         }
     }
 
@@ -1505,7 +1510,7 @@ void ScDBCollection::RefreshDirtyTableColumnNames()
         for (auto const& it : maNamedDBs)
         {
             if (it->AreTableColumnNamesDirty())
-                it->RefreshTableColumnNames( &maNamedDBs.mrDoc, rRange);
+                it->RefreshTableColumnNames( maNamedDBs.mrDoc, rRange);
         }
     }
     maNamedDBs.maDirtyTableColumnNames.RemoveAll();
@@ -1543,7 +1548,7 @@ void ScDBCollection::UpdateReference(UpdateRefMode eUpdateRefMode,
         if (nTab1 == nTab2 && nDz == 0)
         {
             // Delete the database range, if some part of the reference became invalid.
-            if (pData->UpdateReference(&rDoc, eUpdateRefMode, nCol1, nRow1, nTab1, nCol2, nRow2,
+            if (pData->UpdateReference(rDoc, eUpdateRefMode, nCol1, nRow1, nTab1, nCol2, nRow2,
                                        nTab2, nDx, nDy, nDz))
                 rDoc.SetAnonymousDBData(nTab1, nullptr);
         }
@@ -1556,7 +1561,7 @@ void ScDBCollection::UpdateReference(UpdateRefMode eUpdateRefMode,
     for (auto it = maNamedDBs.begin(); it != maNamedDBs.end(); )
     {
         // Delete the database range, if some part of the reference became invalid.
-        if (it->get()->UpdateReference(&rDoc, eUpdateRefMode, nCol1, nRow1, nTab1, nCol2, nRow2,
+        if (it->get()->UpdateReference(rDoc, eUpdateRefMode, nCol1, nRow1, nTab1, nCol2, nRow2,
                                        nTab2, nDx, nDy, nDz))
             it = maNamedDBs.erase(it);
         else
@@ -1565,7 +1570,7 @@ void ScDBCollection::UpdateReference(UpdateRefMode eUpdateRefMode,
     for (auto it = maAnonDBs.begin(); it != maAnonDBs.end(); )
     {
         // Delete the database range, if some part of the reference became invalid.
-        if (it->get()->UpdateReference(&rDoc, eUpdateRefMode, nCol1, nRow1, nTab1, nCol2, nRow2,
+        if (it->get()->UpdateReference(rDoc, eUpdateRefMode, nCol1, nRow1, nTab1, nCol2, nRow2,
                                        nTab2, nDx, nDy, nDz))
             it = maAnonDBs.erase(it);
         else
@@ -1598,7 +1603,7 @@ void ScDBCollection::CopyToTable(SCTAB nOldPos, SCTAB nNewPos)
         std::unique_ptr<ScDBData> pDataCopy = std::make_unique<ScDBData>(newName, *rxNamedDB);
         pDataCopy->UpdateMoveTab(nOldPos, nNewPos);
         pDataCopy->SetIndex(0);
-        maNamedDBs.insert(std::move(pDataCopy));
+        (void)maNamedDBs.insert(std::move(pDataCopy));
     }
 }
 

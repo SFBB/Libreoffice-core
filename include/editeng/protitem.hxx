@@ -39,6 +39,7 @@ class EDITENG_DLLPUBLIC SvxProtectItem final : public SfxPoolItem
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxProtectItem)
     explicit inline SvxProtectItem( const sal_uInt16 nId  );
     SvxProtectItem(SvxProtectItem const &) = default; // SfxPoolItem copy function dichotomy
 

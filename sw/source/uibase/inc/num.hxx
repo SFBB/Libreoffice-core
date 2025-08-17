@@ -24,7 +24,6 @@
 #include <numrule.hxx>
 
 class SwWrtShell;
-class SvxBrushItem;
 class SwOutlineTabDialog;
 
 class SwNumPositionTabPage final : public SfxTabPage
@@ -124,6 +123,7 @@ class SwSvxNumBulletTabDialog final : public SfxTabDialogController
     virtual short   Ok() override;
     virtual void    PageCreated(const OUString& rPageId, SfxTabPage& rPage) override;
     DECL_LINK(RemoveNumberingHdl, weld::Button&, void);
+    DECL_LINK(CancelHdl, weld::Button&, void);
 
     std::unique_ptr<weld::ComboBox> m_xDummyCombo;
 

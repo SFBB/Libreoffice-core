@@ -19,7 +19,6 @@
 
 #include <vcl/svapp.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <cppuhelper/supportsservice.hxx>
 #include <flyfrm.hxx>
 #include <fmturl.hxx>
 #include "accgraphic.hxx"
@@ -38,26 +37,6 @@ SwAccessibleGraphic::SwAccessibleGraphic(
 
 SwAccessibleGraphic::~SwAccessibleGraphic()
 {
-}
-
-OUString SAL_CALL SwAccessibleGraphic::getImplementationName()
-{
-    return "com.sun.star.comp.Writer.SwAccessibleGraphic";
-}
-
-sal_Bool SAL_CALL SwAccessibleGraphic::supportsService(const OUString& sTestServiceName)
-{
-    return cppu::supportsService(this, sTestServiceName);
-}
-
-Sequence< OUString > SAL_CALL SwAccessibleGraphic::getSupportedServiceNames()
-{
-    return { "com.sun.star.text.AccessibleTextGraphicObject", sAccessibleServiceName };
-}
-
-Sequence< sal_Int8 > SAL_CALL SwAccessibleGraphic::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
 }
 
 //  Return this object's role.

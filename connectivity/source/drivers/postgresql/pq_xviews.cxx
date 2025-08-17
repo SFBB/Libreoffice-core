@@ -85,7 +85,7 @@ void Views::refresh()
 
         Reference< XStatement > stmt = m_origin->createStatement();
 
-        Reference< XResultSet > rs = stmt->executeQuery("SELECT "
+        Reference< XResultSet > rs = stmt->executeQuery(u"SELECT "
                                                         "DISTINCT ON( pg_namespace.nspname, relname) " // needed because of duplicates
                                                         "pg_namespace.nspname,"    // 1
                                                         "relname,"                 // 2
@@ -93,7 +93,7 @@ void Views::refresh()
                                                         "FROM pg_namespace, pg_class, pg_rewrite "
                                                        "WHERE pg_namespace.oid = relnamespace "
                                                          "AND pg_class.oid = ev_class "
-                                                         "AND relkind=\'v\'" );
+                                                         "AND relkind=\'v\'"_ustr );
 
         Reference< XRow > xRow( rs , UNO_QUERY );
 
@@ -109,14 +109,13 @@ void Views::refresh()
             command = xRow->getString( 3 );
 
             rtl::Reference<View> pView = new View (m_xMutex, m_origin, m_pSettings );
-            Reference< css::beans::XPropertySet > prop = pView;
 
             pView->setPropertyValue_NoBroadcast_public(st.NAME , Any(table) );
             pView->setPropertyValue_NoBroadcast_public(st.SCHEMA_NAME, Any(schema) );
             pView->setPropertyValue_NoBroadcast_public(st.COMMAND, Any(command) );
 
             {
-                m_values.push_back( Any( prop ) );
+                m_values.push_back( Any( Reference< css::beans::XPropertySet >(pView) ) );
                 map[ schema + "." + table ] = viewIndex;
                 ++viewIndex;
             }

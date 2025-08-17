@@ -28,33 +28,14 @@
 
 class PDFiumLibraryTest : public test::BootstrapFixtureBase
 {
+protected:
     OUString getFullUrl(std::u16string_view sFileName)
     {
         return m_directories.getURLFromSrc(u"/vcl/qa/cppunit/data/") + sFileName;
     }
-
-    void testDocument();
-    void testPages();
-    void testPageObjects();
-    void testAnnotationsMadeInEvince();
-    void testAnnotationsMadeInAcrobat();
-    void testAnnotationsDifferentTypes();
-    void testTools();
-    void testFormFields();
-
-    CPPUNIT_TEST_SUITE(PDFiumLibraryTest);
-    CPPUNIT_TEST(testDocument);
-    CPPUNIT_TEST(testPages);
-    CPPUNIT_TEST(testPageObjects);
-    CPPUNIT_TEST(testAnnotationsMadeInEvince);
-    CPPUNIT_TEST(testAnnotationsMadeInAcrobat);
-    CPPUNIT_TEST(testAnnotationsDifferentTypes);
-    CPPUNIT_TEST(testTools);
-    CPPUNIT_TEST(testFormFields);
-    CPPUNIT_TEST_SUITE_END();
 };
 
-void PDFiumLibraryTest::testDocument()
+CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testDocument)
 {
     OUString aURL = getFullUrl(u"Pangram.pdf");
     SvFileStream aStream(aURL, StreamMode::READ);
@@ -81,7 +62,7 @@ void PDFiumLibraryTest::testDocument()
     CPPUNIT_ASSERT_EQUAL(792.0, aSize.getHeight());
 }
 
-void PDFiumLibraryTest::testPages()
+CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testPages)
 {
     OUString aURL = getFullUrl(u"Pangram.pdf");
     SvFileStream aStream(aURL, StreamMode::READ);
@@ -106,7 +87,7 @@ void PDFiumLibraryTest::testPages()
     CPPUNIT_ASSERT(pPage);
 }
 
-void PDFiumLibraryTest::testPageObjects()
+CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testPageObjects)
 {
     OUString aURL = getFullUrl(u"Pangram.pdf");
     SvFileStream aStream(aURL, StreamMode::READ);
@@ -137,12 +118,12 @@ void PDFiumLibraryTest::testPageObjects()
 
     CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFPageObjectType::Text, pPageObject->getType());
 
-    CPPUNIT_ASSERT_EQUAL(OUString("The quick, brown fox jumps over a lazy dog. DJs flock by when "
-                                  "MTV ax quiz prog. Junk MTV quiz "),
+    CPPUNIT_ASSERT_EQUAL(u"The quick, brown fox jumps over a lazy dog. DJs flock by when "
+                         "MTV ax quiz prog. Junk MTV quiz "_ustr,
                          pPageObject->getText(pTextPage));
 
     CPPUNIT_ASSERT_EQUAL(12.0, pPageObject->getFontSize());
-    CPPUNIT_ASSERT_EQUAL(OUString("Liberation Serif"), pPageObject->getFontName());
+    CPPUNIT_ASSERT_EQUAL(u"Liberation Serif"_ustr, pPageObject->getFontName());
     CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFTextRenderMode::Fill, pPageObject->getTextRenderMode());
     CPPUNIT_ASSERT_EQUAL(COL_BLACK, pPageObject->getFillColor());
     CPPUNIT_ASSERT_EQUAL(COL_BLACK, pPageObject->getStrokeColor());
@@ -159,7 +140,7 @@ void PDFiumLibraryTest::testPageObjects()
     CPPUNIT_ASSERT_DOUBLES_EQUAL(732.54, pPageObject->getBounds().getMaxY(), 1E-2);
 }
 
-void PDFiumLibraryTest::testAnnotationsMadeInEvince()
+CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testAnnotationsMadeInEvince)
 {
     OUString aURL = getFullUrl(u"PangramWithAnnotations.pdf");
     SvFileStream aStream(aURL, StreamMode::READ);
@@ -191,10 +172,10 @@ void PDFiumLibraryTest::testAnnotationsMadeInEvince()
         CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Text, pAnnotation->getSubType());
 
         OUString aPopupString = pAnnotation->getString(vcl::pdf::constDictionaryKeyTitle);
-        CPPUNIT_ASSERT_EQUAL(OUString("quikee"), aPopupString);
+        CPPUNIT_ASSERT_EQUAL(u"quikee"_ustr, aPopupString);
 
         OUString aContentsString = pAnnotation->getString(vcl::pdf::constDictionaryKeyContents);
-        CPPUNIT_ASSERT_EQUAL(OUString("Annotation test"), aContentsString);
+        CPPUNIT_ASSERT_EQUAL(u"Annotation test"_ustr, aContentsString);
 
         CPPUNIT_ASSERT_EQUAL(true, pAnnotation->hasKey(vcl::pdf::constDictionaryKeyPopup));
         auto pPopupAnnotation = pAnnotation->getLinked(vcl::pdf::constDictionaryKeyPopup);
@@ -205,7 +186,7 @@ void PDFiumLibraryTest::testAnnotationsMadeInEvince()
 
         OUString sDateTimeString
             = pAnnotation->getString(vcl::pdf::constDictionaryKeyModificationDate);
-        CPPUNIT_ASSERT_EQUAL(OUString("D:20200612201322+02'00"), sDateTimeString);
+        CPPUNIT_ASSERT_EQUAL(u"D:20200612201322+02'00"_ustr, sDateTimeString);
     }
 
     {
@@ -215,7 +196,7 @@ void PDFiumLibraryTest::testAnnotationsMadeInEvince()
     }
 }
 
-void PDFiumLibraryTest::testAnnotationsMadeInAcrobat()
+CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testAnnotationsMadeInAcrobat)
 {
     OUString aURL = getFullUrl(u"PangramAcrobatAnnotations.pdf");
     SvFileStream aStream(aURL, StreamMode::READ);
@@ -247,10 +228,10 @@ void PDFiumLibraryTest::testAnnotationsMadeInAcrobat()
         CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Text, pAnnotation->getSubType());
 
         OUString aPopupString = pAnnotation->getString(vcl::pdf::constDictionaryKeyTitle);
-        CPPUNIT_ASSERT_EQUAL(OUString("quikee"), aPopupString);
+        CPPUNIT_ASSERT_EQUAL(u"quikee"_ustr, aPopupString);
 
         OUString aContentsString = pAnnotation->getString(vcl::pdf::constDictionaryKeyContents);
-        CPPUNIT_ASSERT_EQUAL(OUString("YEEEY"), aContentsString);
+        CPPUNIT_ASSERT_EQUAL(u"YEEEY"_ustr, aContentsString);
 
         CPPUNIT_ASSERT_EQUAL(true, pAnnotation->hasKey(vcl::pdf::constDictionaryKeyPopup));
         auto pPopupAnnotation = pAnnotation->getLinked(vcl::pdf::constDictionaryKeyPopup);
@@ -272,10 +253,10 @@ void PDFiumLibraryTest::testAnnotationsMadeInAcrobat()
         CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Text, pAnnotation->getSubType());
 
         OUString aPopupString = pAnnotation->getString(vcl::pdf::constDictionaryKeyTitle);
-        CPPUNIT_ASSERT_EQUAL(OUString("quikee"), aPopupString);
+        CPPUNIT_ASSERT_EQUAL(u"quikee"_ustr, aPopupString);
 
         OUString aContentsString = pAnnotation->getString(vcl::pdf::constDictionaryKeyContents);
-        CPPUNIT_ASSERT_EQUAL(OUString("Note"), aContentsString);
+        CPPUNIT_ASSERT_EQUAL(u"Note"_ustr, aContentsString);
 
         CPPUNIT_ASSERT_EQUAL(true, pAnnotation->hasKey(vcl::pdf::constDictionaryKeyPopup));
         auto pPopupAnnotation = pAnnotation->getLinked(vcl::pdf::constDictionaryKeyPopup);
@@ -292,7 +273,7 @@ void PDFiumLibraryTest::testAnnotationsMadeInAcrobat()
     }
 }
 
-void PDFiumLibraryTest::testFormFields()
+CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testFormFields)
 {
     // Given a document with a form field that looks like plain text:
     OUString aURL = getFullUrl(u"form-fields.pdf");
@@ -302,13 +283,13 @@ void PDFiumLibraryTest::testFormFields()
     aMemory.Seek(0);
 
     // When rendering its first (and only) page to a bitmap:
-    std::vector<BitmapEx> aBitmaps;
+    std::vector<Bitmap> aBitmaps;
     int nRet = vcl::RenderPDFBitmaps(aMemory.GetData(), aMemory.GetSize(), aBitmaps);
     CPPUNIT_ASSERT(nRet);
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aBitmaps.size());
 
     // Then make sure the bitmap contains that text:
-    Bitmap aBitmap = aBitmaps[0].GetBitmap();
+    Bitmap aBitmap = aBitmaps[0];
     BitmapReadAccess aAccess(aBitmap);
     Size aSize = aBitmap.GetSizePixel();
     std::set<sal_uInt32> aColors;
@@ -327,7 +308,7 @@ void PDFiumLibraryTest::testFormFields()
     CPPUNIT_ASSERT_GREATER(static_cast<size_t>(1), aColors.size());
 }
 
-void PDFiumLibraryTest::testAnnotationsDifferentTypes()
+CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testAnnotationsDifferentTypes)
 {
     OUString aURL = getFullUrl(u"PangramWithMultipleTypeOfAnnotations.pdf");
     SvFileStream aStream(aURL, StreamMode::READ);
@@ -359,9 +340,9 @@ void PDFiumLibraryTest::testAnnotationsDifferentTypes()
         CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::FreeText, pAnnotation->getSubType());
         CPPUNIT_ASSERT_EQUAL(0, pAnnotation->getObjectCount());
         OUString aContentsString = pAnnotation->getString(vcl::pdf::constDictionaryKeyContents);
-        CPPUNIT_ASSERT_EQUAL(OUString("Inline Note"), aContentsString);
-        auto const& rLineGeometry = pAnnotation->getLineGeometry();
-        CPPUNIT_ASSERT_EQUAL(true, rLineGeometry.empty());
+        CPPUNIT_ASSERT_EQUAL(u"Inline Note"_ustr, aContentsString);
+        auto const aLineGeometry = pAnnotation->getLineGeometry();
+        CPPUNIT_ASSERT_EQUAL(true, aLineGeometry.empty());
     }
 
     {
@@ -370,14 +351,14 @@ void PDFiumLibraryTest::testAnnotationsDifferentTypes()
         CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Ink, pAnnotation->getSubType());
         CPPUNIT_ASSERT_EQUAL(0, pAnnotation->getObjectCount());
         OUString aContentsString = pAnnotation->getString(vcl::pdf::constDictionaryKeyContents);
-        CPPUNIT_ASSERT_EQUAL(OUString("Freehand Text"), aContentsString);
+        CPPUNIT_ASSERT_EQUAL(u"Freehand Text"_ustr, aContentsString);
         CPPUNIT_ASSERT_EQUAL(size_t(1), pAnnotation->getInkStrokes().size());
-        auto const& aInkStrokes = pAnnotation->getInkStrokes();
+        auto const aInkStrokes = pAnnotation->getInkStrokes();
         auto const& aPoints = aInkStrokes[0];
         CPPUNIT_ASSERT_EQUAL(size_t(74), aPoints.size());
         CPPUNIT_ASSERT_DOUBLES_EQUAL(2.0f, pAnnotation->getBorderWidth(), 1E-2);
-        auto const& rLineGeometry = pAnnotation->getLineGeometry();
-        CPPUNIT_ASSERT_EQUAL(true, rLineGeometry.empty());
+        auto const aLineGeometry = pAnnotation->getLineGeometry();
+        CPPUNIT_ASSERT_EQUAL(true, aLineGeometry.empty());
     }
 
     {
@@ -386,9 +367,9 @@ void PDFiumLibraryTest::testAnnotationsDifferentTypes()
         CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Line, pAnnotation->getSubType());
         CPPUNIT_ASSERT_EQUAL(0, pAnnotation->getObjectCount());
         OUString aContentsString = pAnnotation->getString(vcl::pdf::constDictionaryKeyContents);
-        CPPUNIT_ASSERT_EQUAL(OUString("Line Text"), aContentsString);
-        auto const& rLineGeometry = pAnnotation->getLineGeometry();
-        CPPUNIT_ASSERT_EQUAL(false, rLineGeometry.empty());
+        CPPUNIT_ASSERT_EQUAL(u"Line Text"_ustr, aContentsString);
+        auto const aLineGeometry = pAnnotation->getLineGeometry();
+        CPPUNIT_ASSERT_EQUAL(false, aLineGeometry.empty());
     }
 
     {
@@ -398,12 +379,12 @@ void PDFiumLibraryTest::testAnnotationsDifferentTypes()
         CPPUNIT_ASSERT_EQUAL(0, pAnnotation->getObjectCount());
         CPPUNIT_ASSERT_EQUAL(true, pAnnotation->hasKey("Vertices"_ostr));
         OUString aContentsString = pAnnotation->getString(vcl::pdf::constDictionaryKeyContents);
-        CPPUNIT_ASSERT_EQUAL(OUString("Polygon Text"), aContentsString);
-        auto const& aVertices = pAnnotation->getVertices();
+        CPPUNIT_ASSERT_EQUAL(u"Polygon Text"_ustr, aContentsString);
+        auto const aVertices = pAnnotation->getVertices();
         CPPUNIT_ASSERT_EQUAL(size_t(3), aVertices.size());
         CPPUNIT_ASSERT_DOUBLES_EQUAL(2.0f, pAnnotation->getBorderWidth(), 1E-2);
-        auto const& rLineGeometry = pAnnotation->getLineGeometry();
-        CPPUNIT_ASSERT_EQUAL(true, rLineGeometry.empty());
+        auto const aLineGeometry = pAnnotation->getLineGeometry();
+        CPPUNIT_ASSERT_EQUAL(true, aLineGeometry.empty());
     }
 
     {
@@ -412,9 +393,9 @@ void PDFiumLibraryTest::testAnnotationsDifferentTypes()
         CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Circle, pAnnotation->getSubType());
         CPPUNIT_ASSERT_EQUAL(0, pAnnotation->getObjectCount());
         OUString aContentsString = pAnnotation->getString(vcl::pdf::constDictionaryKeyContents);
-        CPPUNIT_ASSERT_EQUAL(OUString("Ellipse Text"), aContentsString);
-        auto const& rLineGeometry = pAnnotation->getLineGeometry();
-        CPPUNIT_ASSERT_EQUAL(true, rLineGeometry.empty());
+        CPPUNIT_ASSERT_EQUAL(u"Ellipse Text"_ustr, aContentsString);
+        auto const aLineGeometry = pAnnotation->getLineGeometry();
+        CPPUNIT_ASSERT_EQUAL(true, aLineGeometry.empty());
     }
 
     {
@@ -423,15 +404,73 @@ void PDFiumLibraryTest::testAnnotationsDifferentTypes()
         CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Square, pAnnotation->getSubType());
         CPPUNIT_ASSERT_EQUAL(0, pAnnotation->getObjectCount());
         OUString aContentsString = pAnnotation->getString(vcl::pdf::constDictionaryKeyContents);
-        CPPUNIT_ASSERT_EQUAL(OUString("Rectangle Text"), aContentsString);
+        CPPUNIT_ASSERT_EQUAL(u"Rectangle Text"_ustr, aContentsString);
         CPPUNIT_ASSERT_EQUAL(Color(0xFF, 0xE0, 0x00), pAnnotation->getColor());
         CPPUNIT_ASSERT_EQUAL(false, pAnnotation->hasKey(vcl::pdf::constDictionaryKeyInteriorColor));
-        auto const& rLineGeometry = pAnnotation->getLineGeometry();
-        CPPUNIT_ASSERT_EQUAL(true, rLineGeometry.empty());
+        auto const aLineGeometry = pAnnotation->getLineGeometry();
+        CPPUNIT_ASSERT_EQUAL(true, aLineGeometry.empty());
     }
 }
 
-void PDFiumLibraryTest::testTools()
+CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testAnnotationsFreeText)
+{
+    OUString aURL = getFullUrl(u"Annotations_Adobe_FreeText.pdf");
+    SvFileStream aStream(aURL, StreamMode::READ);
+
+    std::vector<vcl::PDFGraphicResult> aResults;
+    CPPUNIT_ASSERT_EQUAL(size_t(1), vcl::ImportPDFUnloaded(aURL, aResults));
+
+    vcl::PDFGraphicResult& rResult = aResults[0];
+
+    Graphic aGraphic = rResult.GetGraphic();
+    aGraphic.makeAvailable();
+
+    OUString aDefaultStyle;
+    OUString aRichContent;
+
+    {
+        auto pVectorGraphicData = aGraphic.getVectorGraphicData();
+        CPPUNIT_ASSERT(pVectorGraphicData);
+        CPPUNIT_ASSERT_EQUAL(VectorGraphicDataType::Pdf, pVectorGraphicData->getType());
+
+        auto& rDataContainer = pVectorGraphicData->getBinaryDataContainer();
+
+        auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+        auto pDocument
+            = pPdfium->openDocument(rDataContainer.getData(), rDataContainer.getSize(), OString());
+        CPPUNIT_ASSERT(pDocument);
+
+        CPPUNIT_ASSERT_EQUAL(1, pDocument->getPageCount());
+
+        auto pPage = pDocument->openPage(0);
+        CPPUNIT_ASSERT(pPage);
+
+        CPPUNIT_ASSERT_EQUAL(1, pPage->getAnnotationCount());
+
+        auto pAnnotation = pPage->getAnnotation(0);
+        CPPUNIT_ASSERT(pAnnotation);
+        CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::FreeText, pAnnotation->getSubType());
+
+        aDefaultStyle = pAnnotation->getString(vcl::pdf::constDictionaryKey_DefaultStyle);
+        CPPUNIT_ASSERT_EQUAL(false, aDefaultStyle.isEmpty());
+
+        aRichContent = pAnnotation->getString(vcl::pdf::constDictionaryKey_RichContent);
+        CPPUNIT_ASSERT_EQUAL(false, aRichContent.isEmpty());
+    }
+
+    auto const& rAnnotations = rResult.GetAnnotations();
+    CPPUNIT_ASSERT_EQUAL(size_t(1), rAnnotations.size());
+
+    CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::FreeText, rAnnotations[0].meSubType);
+
+    auto* pMarker
+        = static_cast<vcl::pdf::PDFAnnotationMarkerFreeText*>(rAnnotations[0].mpMarker.get());
+
+    CPPUNIT_ASSERT_EQUAL(aDefaultStyle, pMarker->maDefaultStyle);
+    CPPUNIT_ASSERT_EQUAL(aRichContent, pMarker->maRichContent);
+}
+
+CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testTools)
 {
     OUString sConverted = vcl::pdf::convertPdfDateToISO8601(u"D:20200612201322+02'00");
 
@@ -447,7 +486,150 @@ void PDFiumLibraryTest::testTools()
     CPPUNIT_ASSERT_EQUAL(false, bool(aDateTime.IsUTC));
 }
 
-CPPUNIT_TEST_SUITE_REGISTRATION(PDFiumLibraryTest);
+CPPUNIT_TEST_FIXTURE(PDFiumLibraryTest, testStructureTree)
+{
+    OUString aURL = getFullUrl(u"StructureTreeExampleDocument.pdf");
+    SvFileStream aStream(aURL, StreamMode::READ);
+    GraphicFilter& rGraphicFilter = GraphicFilter::GetGraphicFilter();
+    Graphic aGraphic = rGraphicFilter.ImportUnloadedGraphic(aStream);
+    auto pVectorGraphicData = aGraphic.getVectorGraphicData();
+    CPPUNIT_ASSERT(pVectorGraphicData);
+    CPPUNIT_ASSERT_EQUAL(VectorGraphicDataType::Pdf, pVectorGraphicData->getType());
+    auto& rDataContainer = pVectorGraphicData->getBinaryDataContainer();
+
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    CPPUNIT_ASSERT(pPdfium);
+
+    auto pDocument
+        = pPdfium->openDocument(rDataContainer.getData(), rDataContainer.getSize(), OString());
+    CPPUNIT_ASSERT(pDocument);
+
+    CPPUNIT_ASSERT_EQUAL(1, pDocument->getPageCount());
+
+    auto pPage = pDocument->openPage(0);
+    CPPUNIT_ASSERT(pPage);
+
+    auto pTree = pPage->getStructureTree();
+    CPPUNIT_ASSERT(pTree);
+    CPPUNIT_ASSERT_EQUAL(1, pTree->getNumberOfChildren());
+
+    // Check the structure
+    {
+        auto pChildDocument = pTree->getChild(0);
+        CPPUNIT_ASSERT(pChildDocument);
+        CPPUNIT_ASSERT_EQUAL(5, pChildDocument->getNumberOfChildren());
+
+        CPPUNIT_ASSERT_EQUAL(u""_ustr, pChildDocument->getAltText());
+        CPPUNIT_ASSERT_EQUAL(u""_ustr, pChildDocument->getActualText());
+        CPPUNIT_ASSERT_EQUAL(u""_ustr, pChildDocument->getID());
+        CPPUNIT_ASSERT_EQUAL(u""_ustr, pChildDocument->getLang());
+        CPPUNIT_ASSERT_EQUAL(u""_ustr, pChildDocument->getTitle());
+        CPPUNIT_ASSERT_EQUAL(u"Document"_ustr, pChildDocument->getType());
+        CPPUNIT_ASSERT_EQUAL(u"StructElem"_ustr, pChildDocument->getObjectType());
+
+        {
+            auto pThis = pChildDocument->getChild(0);
+            CPPUNIT_ASSERT(pThis);
+            CPPUNIT_ASSERT_EQUAL(u"P"_ustr, pThis->getType());
+            CPPUNIT_ASSERT_EQUAL(1, pThis->getNumberOfChildren());
+            CPPUNIT_ASSERT_EQUAL(0, pThis->getChildMarkedContentID(0));
+        }
+
+        {
+            auto pThis = pChildDocument->getChild(1);
+            CPPUNIT_ASSERT(pThis);
+            CPPUNIT_ASSERT_EQUAL(u"H1"_ustr, pThis->getType());
+            CPPUNIT_ASSERT_EQUAL(2, pThis->getNumberOfChildren());
+            CPPUNIT_ASSERT_EQUAL(1, pThis->getChildMarkedContentID(0));
+            CPPUNIT_ASSERT_EQUAL(2, pThis->getChildMarkedContentID(1));
+        }
+
+        {
+            auto pThis = pChildDocument->getChild(2);
+            CPPUNIT_ASSERT(pThis);
+            CPPUNIT_ASSERT_EQUAL(u"P"_ustr, pThis->getType());
+            CPPUNIT_ASSERT_EQUAL(13, pThis->getNumberOfChildren());
+            CPPUNIT_ASSERT_EQUAL(3, pThis->getChildMarkedContentID(0));
+            {
+                auto pChild = pThis->getChild(1);
+                CPPUNIT_ASSERT_EQUAL(u"Code"_ustr, pChild->getType());
+                CPPUNIT_ASSERT_EQUAL(4, pChild->getChildMarkedContentID(0));
+
+                // Check getParent
+                auto pThis2 = pChild->getParent();
+                CPPUNIT_ASSERT_EQUAL(u"P"_ustr, pThis2->getType());
+                CPPUNIT_ASSERT_EQUAL(13, pThis2->getNumberOfChildren());
+            }
+            CPPUNIT_ASSERT_EQUAL(5, pThis->getChildMarkedContentID(2));
+            CPPUNIT_ASSERT_EQUAL(6, pThis->getChildMarkedContentID(3));
+            {
+                auto pChild = pThis->getChild(4);
+                CPPUNIT_ASSERT_EQUAL(u"Span"_ustr, pChild->getType());
+                CPPUNIT_ASSERT_EQUAL(7, pChild->getChildMarkedContentID(0));
+            }
+            CPPUNIT_ASSERT_EQUAL(8, pThis->getChildMarkedContentID(5));
+            CPPUNIT_ASSERT_EQUAL(9, pThis->getChildMarkedContentID(6));
+            {
+                auto pChild = pThis->getChild(7);
+                CPPUNIT_ASSERT_EQUAL(u"Span"_ustr, pChild->getType());
+                CPPUNIT_ASSERT_EQUAL(10, pChild->getChildMarkedContentID(0));
+            }
+            CPPUNIT_ASSERT_EQUAL(11, pThis->getChildMarkedContentID(8));
+            CPPUNIT_ASSERT_EQUAL(12, pThis->getChildMarkedContentID(9));
+            {
+                auto pChild = pThis->getChild(10);
+                CPPUNIT_ASSERT_EQUAL(u"Span"_ustr, pChild->getType());
+                CPPUNIT_ASSERT_EQUAL(13, pChild->getChildMarkedContentID(0));
+            }
+            CPPUNIT_ASSERT_EQUAL(14, pThis->getChildMarkedContentID(11));
+            {
+                auto pChild = pThis->getChild(12);
+                CPPUNIT_ASSERT_EQUAL(u"Span"_ustr, pChild->getType());
+                CPPUNIT_ASSERT_EQUAL(15, pChild->getChildMarkedContentID(0));
+            }
+        }
+
+        {
+            auto pThis = pChildDocument->getChild(3);
+            CPPUNIT_ASSERT(pThis);
+            CPPUNIT_ASSERT_EQUAL(u"P"_ustr, pThis->getType());
+            CPPUNIT_ASSERT_EQUAL(4, pThis->getNumberOfChildren());
+            CPPUNIT_ASSERT_EQUAL(16, pThis->getChildMarkedContentID(0));
+            {
+                auto pChild = pThis->getChild(1);
+                CPPUNIT_ASSERT_EQUAL(u"Quote"_ustr, pChild->getType());
+                CPPUNIT_ASSERT_EQUAL(17, pChild->getChildMarkedContentID(0));
+            }
+            CPPUNIT_ASSERT_EQUAL(18, pThis->getChildMarkedContentID(2));
+            {
+                auto pChild = pThis->getChild(3);
+                // Rectangle
+                CPPUNIT_ASSERT_EQUAL(u"Div"_ustr, pChild->getType());
+                CPPUNIT_ASSERT_EQUAL(u"Only Text! - The Alt Text!"_ustr, pChild->getAltText());
+                CPPUNIT_ASSERT_EQUAL(20, pChild->getChildMarkedContentID(0));
+                {
+                    // Text in rectangle
+                    auto pRectangleElement = pChild->getChild(1);
+                    CPPUNIT_ASSERT_EQUAL(u"P"_ustr, pRectangleElement->getType());
+                    CPPUNIT_ASSERT_EQUAL(21, pRectangleElement->getChildMarkedContentID(0));
+                }
+            }
+        }
+
+        {
+            auto pThis = pChildDocument->getChild(4);
+            CPPUNIT_ASSERT(pThis);
+            CPPUNIT_ASSERT_EQUAL(u"P"_ustr, pThis->getType());
+            CPPUNIT_ASSERT_EQUAL(1, pThis->getNumberOfChildren());
+            CPPUNIT_ASSERT_EQUAL(19, pThis->getChildMarkedContentID(0));
+        }
+
+        {
+            auto pThis = pChildDocument->getChild(5);
+            CPPUNIT_ASSERT(!pThis);
+        }
+    }
+}
 
 CPPUNIT_PLUGIN_IMPLEMENT();
 

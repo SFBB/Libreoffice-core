@@ -14,6 +14,12 @@
       <column type="gboolean"/>
       <!-- column-name checktri1 -->
       <column type="gboolean"/>
+      <!-- column-name weight1 -->
+      <column type="gint"/>
+      <!-- column-name sensitive1 -->
+      <column type="gboolean"/>
+      <!-- column-name sensitive2 -->
+      <column type="gboolean"/>
     </columns>
   </object>
   <object class="GtkBox" id="OptCompatPage">
@@ -33,7 +39,7 @@
         <property name="label-xalign">0</property>
         <property name="shadow-type">none</property>
         <child>
-          <!-- n-columns=1 n-rows=3 -->
+          <!-- n-columns=1 n-rows=2 -->
           <object class="GtkGrid" id="grid1">
             <property name="visible">True</property>
             <property name="can-focus">False</property>
@@ -71,6 +77,7 @@
                             <attribute name="visible">3</attribute>
                             <attribute name="active">0</attribute>
                             <attribute name="inconsistent">4</attribute>
+                            <attribute name="sensitive">7</attribute>
                           </attributes>
                         </child>
                       </object>
@@ -82,6 +89,7 @@
                         <child>
                           <object class="GtkCellRendererText" id="cellrenderer4"/>
                           <attributes>
+                            <attribute name="sensitive">7</attribute>
                             <attribute name="text">1</attribute>
                           </attributes>
                         </child>
@@ -93,34 +101,6 @@
               <packing>
                 <property name="left-attach">0</property>
                 <property name="top-attach">0</property>
-              </packing>
-            </child>
-            <child>
-              <object class="GtkComboBoxText" id="format">
-                <property name="can-focus">False</property>
-                <property name="no-show-all">True</property>
-                <items>
-                  <item translatable="yes" context="optcompatpage|format">Add spacing between paragraphs and tables</item>
-                  <item translatable="yes" context="optcompatpage|format">Add paragraph and table spacing at top of first page and page breaks</item>
-                  <item translatable="yes" context="optcompatpage|format">Use OpenOffice.org 1.1 tabstop formatting</item>
-                  <item translatable="yes" context="optcompatpage|format">Do not add leading (extra space) between lines of text</item>
-                  <item translatable="yes" context="optcompatpage|format">Use OpenOffice.org 1.1 line spacing</item>
-                  <item translatable="yes" context="optcompatpage|format">Add paragraph and table spacing at bottom of table cells</item>
-                  <item translatable="yes" context="optcompatpage|format">Use OpenOffice.org 1.1 object positioning</item>
-                  <item translatable="yes" context="optcompatpage|format">Use OpenOffice.org 1.1 text wrapping around objects</item>
-                  <item translatable="yes" context="optcompatpage|format">Consider wrapping style when positioning objects</item>
-                  <item translatable="yes" context="optcompatpage|format">Justify lines with a manual line break in justified paragraphs</item>
-                  <item translatable="yes" context="optcompatpage|format">Protect form (no longer protects whole document. Insert write protected section instead)</item>
-                  <item translatable="yes" context="optcompatpage|format">Word-compatible trailing blanks</item>
-                  <item translatable="yes" context="optcompatpage|format">Tolerate white lines that may appear in PDF page backgrounds</item>
-                  <item translatable="yes" context="optcompatpage|format">Hide paragraphs of database fields (e.g., mail merge) with an empty value</item>
-                  <item translatable="yes" context="optcompatpage|format">Render non-breaking spaces (NBSP) as standard-space-width (off for fixed size)</item>
-                  <item translatable="yes" context="optcompatpage|format">&lt;User settings&gt;</item>
-                </items>
-              </object>
-              <packing>
-                <property name="left-attach">0</property>
-                <property name="top-attach">1</property>
               </packing>
             </child>
             <child>
@@ -139,7 +119,7 @@
               </object>
               <packing>
                 <property name="left-attach">0</property>
-                <property name="top-attach">2</property>
+                <property name="top-attach">1</property>
               </packing>
             </child>
           </object>

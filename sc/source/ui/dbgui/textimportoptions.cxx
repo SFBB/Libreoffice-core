@@ -26,14 +26,13 @@
 #include <i18nlangtag/languagetag.hxx>
 
 ScTextImportOptionsDlg::ScTextImportOptionsDlg(weld::Window* pParent)
-    : GenericDialogController(pParent, "modules/scalc/ui/textimportoptions.ui", "TextImportOptionsDialog")
-    , m_xBtnOk(m_xBuilder->weld_button("ok"))
-    , m_xRbAutomatic(m_xBuilder->weld_radio_button("automatic"))
-    , m_xRbCustom(m_xBuilder->weld_radio_button("custom"))
-    , m_xCkbConvertDate(m_xBuilder->weld_check_button("convertdata"))
-    , m_xCkbConvertScientific(m_xBuilder->weld_check_button("convertscientificnotation"))
-    , m_xCkbKeepAsking(m_xBuilder->weld_check_button("keepasking"))
-    , m_xLbCustomLang(new SvxLanguageBox(m_xBuilder->weld_combo_box("lang")))
+    : GenericDialogController(pParent, u"modules/scalc/ui/textimportoptions.ui"_ustr, u"TextImportOptionsDialog"_ustr)
+    , m_xBtnOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xRbAutomatic(m_xBuilder->weld_radio_button(u"automatic"_ustr))
+    , m_xRbCustom(m_xBuilder->weld_radio_button(u"custom"_ustr))
+    , m_xCkbConvertDate(m_xBuilder->weld_check_button(u"convertdata"_ustr))
+    , m_xCkbConvertScientific(m_xBuilder->weld_check_button(u"convertscientificnotation"_ustr))
+    , m_xLbCustomLang(new SvxLanguageBox(m_xBuilder->weld_combo_box(u"lang"_ustr)))
 {
     init();
 }
@@ -58,11 +57,6 @@ bool ScTextImportOptionsDlg::isDateConversionSet() const
 bool ScTextImportOptionsDlg::isScientificConversionSet() const
 {
     return m_xCkbConvertScientific->get_active();
-}
-
-bool ScTextImportOptionsDlg::isKeepAskingSet() const
-{
-    return m_xCkbKeepAsking->get_active();
 }
 
 void ScTextImportOptionsDlg::init()

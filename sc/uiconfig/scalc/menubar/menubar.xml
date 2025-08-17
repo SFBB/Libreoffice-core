@@ -149,7 +149,7 @@
       <menu:menuitem menu:id=".uno:NormalViewMode" menu:style="radio"/>
       <menu:menuitem menu:id=".uno:PagebreakMode"  menu:style="radio"/>
       <menu:menuseparator/>
-      <menu:menuitem menu:id=".uno:ToolbarModeUI"/>
+      <menu:menuitem menu:id=".uno:UIPicker"/>
       <menu:menuitem menu:id=".uno:AvailableToolbars" menu:style="text"/>
       <menu:menuitem menu:id=".uno:InputLineVisible" menu:style="text"/>
       <menu:menuitem menu:id=".uno:StatusBarVisible" menu:style="text"/>
@@ -602,8 +602,10 @@
           <menu:menuseparator/>
           <menu:menuitem menu:id=".uno:DataFilterRemoveFilter"/>
           <menu:menuitem menu:id=".uno:DataFilterHideAutoFilter"/>
+          <menu:menuitem menu:id=".uno:ClearAutoFilter"/>
         </menu:menupopup>
       </menu:menu>
+      <menu:menuitem menu:id=".uno:HandleDuplicateRecords"/>
       <menu:menuseparator/>
       <menu:menuitem menu:id=".uno:DefineDBName"/>
       <menu:menuitem menu:id=".uno:SelectDB"/>
@@ -632,6 +634,8 @@
       <menu:menuseparator/>
       <menu:menuitem menu:id=".uno:DataStreams"/>
       <menu:menuitem menu:id=".uno:ManageXMLSource" menu:style="text"/>
+      <menu:menuitem menu:id=".uno:DataProvider"/>
+      <menu:menuitem menu:id=".uno:DataProviderRefresh"/>
       <menu:menuseparator/>
       <menu:menuitem menu:id=".uno:TableOperationDialog"/>
       <menu:menuitem menu:id=".uno:TextToColumns"/>
@@ -719,6 +723,8 @@
       <menu:menuseparator/>
       <menu:menu menu:id=".uno:MacrosMenu">
         <menu:menupopup>
+          <menu:menuitem menu:id=".uno:MacroManager"/>
+          <menu:menuseparator/>
           <menu:menuitem menu:id=".uno:MacroRecorder"/>
           <menu:menuitem menu:id=".uno:RunMacro"/>
           <menu:menuitem menu:id=".uno:BasicIDEAppear"/>

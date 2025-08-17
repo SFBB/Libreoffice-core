@@ -58,7 +58,7 @@ std::vector<std::shared_ptr<SparklineGroup>> SparklineList::getSparklineGroups()
         auto pWeakGroup = *iterator;
         if (auto pSparklineGroup = pWeakGroup.lock())
         {
-            toReturn.push_back(pSparklineGroup);
+            toReturn.push_back(std::move(pSparklineGroup));
             iterator++;
         }
         else
@@ -86,7 +86,7 @@ SparklineList::getSparklinesFor(std::shared_ptr<SparklineGroup> const& pSparklin
     {
         if (auto aSparkline = iterator->lock())
         {
-            toReturn.push_back(aSparkline);
+            toReturn.push_back(std::move(aSparkline));
             iterator++;
         }
         else

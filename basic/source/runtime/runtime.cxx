@@ -49,9 +49,7 @@
 #include <svl/numformat.hxx>
 #include <svl/zforlist.hxx>
 
-#include <i18nutil/searchopt.hxx>
-#include <unotools/syslocale.hxx>
-#include <unotools/textsearch.hxx>
+#include <unicode/regex.h>
 
 #include <basic/sbuno.hxx>
 
@@ -76,10 +74,11 @@ using com::sun::star::uno::Reference;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::container;
 using namespace com::sun::star::lang;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::script;
 
 using namespace ::com::sun::star;
+
+#if HAVE_FEATURE_SCRIPTING
 
 static void lcl_clearImpl( SbxVariableRef const & refVar, SbxDataType const & eType );
 static void lcl_eraseImpl( SbxVariableRef const & refVar, bool bVBAEnabled );
@@ -90,17 +89,16 @@ class ScopedWritableGuard
 {
 public:
     ScopedWritableGuard(const SbxVariableRef& rVar, bool bMakeWritable)
-        : m_rVar(rVar)
-        , m_bReset(bMakeWritable && !rVar->CanWrite())
+        : m_rVar(bMakeWritable && !rVar->CanWrite() ? rVar : SbxVariableRef())
     {
-        if (m_bReset)
+        if (m_rVar)
         {
             m_rVar->SetFlag(SbxFlagBits::Write);
         }
     }
     ~ScopedWritableGuard()
     {
-        if (m_bReset)
+        if (m_rVar)
         {
             m_rVar->ResetFlag(SbxFlagBits::Write);
         }
@@ -108,7 +106,6 @@ public:
 
 private:
     SbxVariableRef m_rVar;
-    bool m_bReset;
 };
 }
 
@@ -281,7 +278,7 @@ const SbiRuntime::pStep2 SbiRuntime::aStep2[] = {// all opcodes with two operand
 //                              SbiRTLData
 
 SbiRTLData::SbiRTLData()
-    : nDirFlags(SbAttributes::NONE)
+    : nDirFlags(SbAttributes::NORMAL)
     , nCurDirPos(0)
 {
 }
@@ -376,6 +373,8 @@ SbiDllMgr* SbiInstance::GetDllMgr()
     return pDllMgr.get();
 }
 
+#endif
+
 // #39629 create NumberFormatter with the help of a static method now
 std::shared_ptr<SvNumberFormatter> const & SbiInstance::GetNumberFormatter()
 {
@@ -431,11 +430,11 @@ std::shared_ptr<SvNumberFormatter> SbiInstance::PrepareNumberFormatter( sal_uInt
     // Several parser methods pass SvNumberFormatter::IsNumberFormat() a number
     // format index to parse against. Tell the formatter the proper date
     // evaluation order, which also determines the date acceptance patterns to
-    // use if a format was passed. NF_EVALDATEFORMAT_FORMAT restricts to the
+    // use if a format was passed. NfEvalDateFormat::Format restricts to the
     // format's locale's date patterns/order (no init/system locale match
-    // tried) and falls back to NF_EVALDATEFORMAT_INTL if no specific (i.e. 0)
+    // tried) and falls back to NfEvalDateFormat::International if no specific (i.e. 0)
     // (or an unknown) format index was passed.
-    pNumberFormatter->SetEvalDateFormat( NF_EVALDATEFORMAT_FORMAT);
+    pNumberFormatter->SetEvalDateFormat( NfEvalDateFormat::Format);
 
     sal_Int32 nCheckPos = 0;
     SvNumFormatType nType;
@@ -468,6 +467,7 @@ std::shared_ptr<SvNumberFormatter> SbiInstance::PrepareNumberFormatter( sal_uInt
     return pNumberFormatter;
 }
 
+#if HAVE_FEATURE_SCRIPTING
 
 // Let engine run. If Flags == BasicDebugFlags::Continue, take Flags over
 
@@ -680,6 +680,7 @@ void SbiRuntime::SetParameters( SbxArray* pParams )
             }
 
             SbxVariable* v = pParams->Get(i);
+            assert(v);
             // methods are always byval!
             bool bByVal = dynamic_cast<const SbxMethod *>(v) != nullptr;
             SbxDataType t = v->GetType();
@@ -1128,6 +1129,17 @@ void SbiRuntime::PushFor()
 
     p->refInc = PopVar();
     p->refEnd = PopVar();
+    if (isVBAEnabled())
+    {
+        // tdf#150458: only calculate these once, coercing to double
+        // tdf#150460: shouldn't we do it in non-VBA / compat mode, too?
+        SbxVariableRef incCopy(new SbxVariable(SbxDOUBLE));
+        *incCopy = *p->refInc;
+        p->refInc = std::move(incCopy);
+        SbxVariableRef endCopy(new SbxVariable(SbxDOUBLE));
+        *endCopy = *p->refEnd;
+        p->refEnd = std::move(endCopy);
+    }
     SbxVariableRef xBgn = PopVar();
     p->refVar = PopVar();
     // tdf#85371 - grant explicitly write access to the index variable
@@ -1193,7 +1205,7 @@ void SbiRuntime::PushForEach()
         else if (aAny >>= xIndexAccess)
         {
             p->eForType = ForType::EachXIndexAccess;
-            p->xIndexAccess = xIndexAccess;
+            p->xIndexAccess = std::move(xIndexAccess);
             p->nCurCollectionIndex = 0;
         }
         else if ( isVBAEnabled() && pUnoObj->isNativeCOMObject() )
@@ -1434,103 +1446,68 @@ void SbiRuntime::StepGE()       { StepCompare( SbxGE );     }
 
 namespace
 {
-    bool NeedEsc(sal_Unicode cCode)
+    OUString VBALikeToRegexp(std::u16string_view sIn)
     {
-        if(!rtl::isAscii(cCode))
+        OUStringBuffer sResult("\\A"); // Match at the beginning of the input
+
+        for (auto start = sIn.begin(), end = sIn.end(); start < end;)
         {
-            return false;
-        }
-        switch(cCode)
-        {
-        case '.':
-        case '^':
-        case '$':
-        case '+':
-        case '\\':
-        case '|':
-        case '{':
-        case '}':
-        case '(':
-        case ')':
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    OUString VBALikeToRegexp(const OUString &rIn)
-    {
-        OUStringBuffer sResult;
-        const sal_Unicode *start = rIn.getStr();
-        const sal_Unicode *end = start + rIn.getLength();
-
-        int seenright = 0;
-
-        sResult.append('^');
-
-        while (start < end)
-        {
-            switch (*start)
+            switch (auto ch = *start++)
             {
             case '?':
                 sResult.append('.');
-                start++;
                 break;
             case '*':
                 sResult.append(".*");
-                start++;
                 break;
             case '#':
                 sResult.append("[0-9]");
-                start++;
-                break;
-            case ']':
-                sResult.append('\\');
-                sResult.append(*start++);
                 break;
             case '[':
-                sResult.append(*start++);
-                seenright = 0;
-                if (start < end && *start == '!')
+                sResult.append(ch);
+                if (start < end)
                 {
-                    sResult.append('^');
-                    start++;
+                    if (*start == '!')
+                    {
+                        sResult.append('^');
+                        ++start;
+                    }
+                    else if (*start == '^')
+                        sResult.append('\\');
                 }
-                while (start < end && !seenright)
+                for (bool seenright = false; start < end && !seenright; ++start)
                 {
                     switch (*start)
                     {
                     case '[':
-                    case '?':
-                    case '*':
+                    case '\\':
                         sResult.append('\\');
-                        sResult.append(*start);
                         break;
                     case ']':
-                        sResult.append(*start);
-                        seenright = 1;
-                        break;
-                    default:
-                        if (NeedEsc(*start))
-                        {
-                            sResult.append('\\');
-                        }
-                        sResult.append(*start);
+                        seenright = true;
                         break;
                     }
-                    start++;
+                    sResult.append(*start);
                 }
                 break;
+            case '.':
+            case '^':
+            case '$':
+            case '+':
+            case '\\':
+            case '|':
+            case '{':
+            case '}':
+            case '(':
+            case ')':
+                sResult.append('\\');
+                [[fallthrough]];
             default:
-                if (NeedEsc(*start))
-                {
-                    sResult.append('\\');
-                }
-                sResult.append(*start++);
+                sResult.append(ch);
             }
         }
 
-        sResult.append('$');
+        sResult.append("\\z"); // Match if the current position is at the end of input
 
         return sResult.makeStringAndClear();
     }
@@ -1542,13 +1519,7 @@ void SbiRuntime::StepLIKE()
     SbxVariableRef refVar2 = PopVar();
 
     OUString value = refVar2->GetOUString();
-
-    i18nutil::SearchOptions2 aSearchOpt;
-
-    aSearchOpt.AlgorithmType2 = css::util::SearchAlgorithms2::REGEXP;
-
-    aSearchOpt.Locale = Application::GetSettings().GetLanguageTag().getLocale();
-    aSearchOpt.searchString = VBALikeToRegexp(refVar1->GetOUString());
+    OUString regex = VBALikeToRegexp(refVar1->GetOUString());
 
     bool bTextMode(true);
     bool bCompatibility = ( GetSbData()->pInst && GetSbData()->pInst->IsCompatibility() );
@@ -1556,14 +1527,35 @@ void SbiRuntime::StepLIKE()
     {
         bTextMode = IsImageFlag( SbiImageFlags::COMPARETEXT );
     }
+    sal_uInt32 searchFlags = UREGEX_UWORD | UREGEX_DOTALL; // Dot matches newline
     if( bTextMode )
     {
-        aSearchOpt.transliterateFlags |= TransliterationFlags::IGNORE_CASE;
+        searchFlags |= UREGEX_CASE_INSENSITIVE;
+    }
+
+    static sal_uInt32 cachedSearchFlags = 0;
+    static OUString cachedRegex;
+    static std::optional<icu::RegexMatcher> oRegexMatcher;
+    UErrorCode nIcuErr = U_ZERO_ERROR;
+    if (regex != cachedRegex || searchFlags != cachedSearchFlags || !oRegexMatcher)
+    {
+        cachedRegex = regex;
+        cachedSearchFlags = searchFlags;
+        icu::UnicodeString sRegex(false, reinterpret_cast<const UChar*>(cachedRegex.getStr()),
+                                  cachedRegex.getLength());
+        oRegexMatcher.emplace(sRegex, cachedSearchFlags, nIcuErr);
+    }
+
+    icu::UnicodeString sSource(false, reinterpret_cast<const UChar*>(value.getStr()),
+                               value.getLength());
+    oRegexMatcher->reset(sSource);
+
+    bool bRes = oRegexMatcher->matches(nIcuErr);
+    if (nIcuErr)
+    {
+        Error(ERRCODE_BASIC_INTERNAL_ERROR);
     }
     SbxVariable* pRes = new SbxVariable;
-    utl::TextSearch aSearch( aSearchOpt);
-    sal_Int32 nStart=0, nEnd=value.getLength();
-    bool bRes = aSearch.SearchForward(value, &nStart, &nEnd);
     pRes->PutBool( bRes );
 
     PushVar( pRes );
@@ -1650,7 +1642,7 @@ static bool checkUnoStructCopy( bool bVBA, SbxVariableRef const & refVal, SbxVar
         aAny = pUnoVal ? pUnoVal->getUnoAny() : pUnoStructVal->getUnoAny();
     else
         return false;
-    if (  aAny.getValueType().getTypeClass() != TypeClass_STRUCT )
+    if (  aAny.getValueTypeClass() != TypeClass_STRUCT )
         return false;
 
     refVar->SetType( SbxOBJECT );
@@ -1658,7 +1650,7 @@ static bool checkUnoStructCopy( bool bVBA, SbxVariableRef const & refVal, SbxVar
     // There are some circumstances when calling GetObject
     // will trigger an error, we need to squash those here.
     // Alternatively it is possible that the same scenario
-    // could overwrite and existing error. Lets prevent that
+    // could overwrite and existing error. Let's prevent that
     SbxObjectRef xVarObj = static_cast<SbxObject*>(refVar->GetObject());
     if ( eOldErr != ERRCODE_NONE )
         SbxBase::SetError( eOldErr );
@@ -1833,7 +1825,7 @@ void SbiRuntime::StepSET_Impl( SbxVariableRef& refVal, SbxVariableRef& refVar, b
 
             if( refObjVal.is() )
             {
-                refVal = refObjVal;
+                refVal = std::move(refObjVal);
             }
             else if( !(eValType & SbxARRAY) )
             {
@@ -1968,7 +1960,7 @@ void SbiRuntime::StepSET_Impl( SbxVariableRef& refVal, SbxVariableRef& refVar, b
                             const DimAsNewRecoverItem& rItem = it->second;
                             if( rItem.m_pClassModule != nullptr )
                             {
-                                SbClassModuleObject* pNewObj = new SbClassModuleObject( rItem.m_pClassModule );
+                                SbClassModuleObject* pNewObj = new SbClassModuleObject(*rItem.m_pClassModule);
                                 pNewObj->SetName( rItem.m_aObjName );
                                 pNewObj->SetParent( rItem.m_pObjParent );
                                 refVar->PutObject( pNewObj );
@@ -1998,9 +1990,9 @@ void SbiRuntime::StepSET_Impl( SbxVariableRef& refVal, SbxVariableRef& refVar, b
                             SbClassModuleObject* pClassModuleObj = dynamic_cast<SbClassModuleObject*>( pValObjBase );
                             if( pClassModuleObj != nullptr )
                             {
-                                SbModule* pClassModule = pClassModuleObj->getClassModule();
+                                SbModule& rClassModule = pClassModuleObj->getClassModule();
                                 gaDimAsNewRecoverHash[refVar.get()] =
-                                    DimAsNewRecoverItem( aObjClass, pValObj->GetName(), pValObj->GetParent(), pClassModule );
+                                    DimAsNewRecoverItem( aObjClass, pValObj->GetName(), pValObj->GetParent(), &rClassModule );
                             }
                             else if( aObjClass.equalsIgnoreAsciiCase( "Collection" ) )
                             {
@@ -2529,7 +2521,7 @@ void SbiRuntime::StepINPUT()
         // then with a string value
         if( !pVar->IsFixed() || pVar->IsNumeric() )
         {
-            sal_uInt16 nLen = 0;
+            sal_Int32 nLen = 0;
             if( !pVar->Scan( s, &nLen ) )
             {
                 err = SbxBase::GetError();
@@ -2781,8 +2773,7 @@ void SbiRuntime::StepRENAME()       // Rename Tos+1 to Tos
 void SbiRuntime::StepPROMPT()
 {
     SbxVariableRef p = PopVar();
-    OString aStr(OUStringToOString(p->GetOUString(), osl_getThreadTextEncoding()));
-    pIosys->SetPrompt( aStr );
+    pIosys->SetPrompt(p->GetOUString());
 }
 
 // Set Restart point
@@ -2983,6 +2974,11 @@ void SbiRuntime::StepPAD( sal_uInt32 nOp1 )
         comphelper::string::padToLength(aBuf, nLen, ' ');
     }
     s = aBuf.makeStringAndClear();
+    // Do not modify the original variable inadvertently
+    PopVar();
+    p = new SbxVariable;
+    p->PutString(s);
+    PushVar(p);
 }
 
 // jump (+target)
@@ -3060,13 +3056,16 @@ void SbiRuntime::StepONJUMP( sal_uInt32 nOp1 )
 {
     SbxVariableRef p = PopVar();
     sal_Int16 n = p->GetInteger();
-    if( nOp1 & 0x8000 )
-    {
+
+    if (nOp1 & 0x8000)
         nOp1 &= 0x7FFF;
-        PushGosub( pCode + 5 * nOp1 );
-    }
-    if( n < 1 || o3tl::make_unsigned(n) > nOp1 )
-        n = static_cast<sal_Int16>( nOp1 + 1 );
+
+    // tdf#160321 - do not execute the jump statement if the expression is out of range
+    if (n < 1 || o3tl::make_unsigned(n) > nOp1)
+        n = static_cast<sal_Int16>(nOp1 + 1);
+    else if (nOp1 & 0x8000)
+        PushGosub(pCode + 5 * nOp1);
+
     nOp1 = static_cast<sal_uInt32>(pCode - pImg->GetCode()) + 5 * --n;
     StepJUMP( nOp1 );
 }
@@ -3712,7 +3711,7 @@ SbxVariable* SbiRuntime::FindElement( SbxObject* pObj, sal_uInt32 nOp1, sal_uInt
         }
         // consider index-access for UnoObjects
         // definitely we want this for VBA where properties are often
-        // collections ( which need index access ), but lets only do
+        // collections ( which need index access ), but let's only do
         // this if we actually have params following
         else if( bVBAEnabled && dynamic_cast<const SbUnoProperty*>( pElem) != nullptr && pElem->GetParameters() )
         {
@@ -3776,7 +3775,7 @@ SbxBase* SbiRuntime::FindElementExtern( const OUString& rName )
                     {
                         // Parameter is missing
                         pElem = new SbxVariable( SbxSTRING );
-                        pElem->PutString( "<missing parameter>");
+                        pElem->PutString( u"<missing parameter>"_ustr);
                     }
                     else
                     {
@@ -3866,7 +3865,7 @@ void SbiRuntime::SetupArgs( SbxVariable* p, sal_uInt32 nOp1 )
                     {
                         Any aAny = pUnoObj->getUnoAny();
 
-                        if( aAny.getValueType().getTypeClass() == TypeClass_INTERFACE )
+                        if( aAny.getValueTypeClass() == TypeClass_INTERFACE )
                         {
                             Reference< XDefaultMethod > xDfltMethod( aAny, UNO_QUERY );
 
@@ -3942,33 +3941,44 @@ void SbiRuntime::SetupArgs( SbxVariable* p, sal_uInt32 nOp1 )
 
 SbxVariable* SbiRuntime::CheckArray( SbxVariable* pElem )
 {
-    SbxArray* pPar;
+    assert(pElem);
     if( ( pElem->GetType() & SbxARRAY ) && refRedim.get() != pElem )
     {
         SbxBase* pElemObj = pElem->GetObject();
-        SbxDimArray* pDimArray = dynamic_cast<SbxDimArray*>( pElemObj );
-        pPar = pElem->GetParameters();
-        if( pDimArray )
+        SbxArray* pPar = pElem->GetParameters();
+        if (SbxDimArray* pDimArray = dynamic_cast<SbxDimArray*>(pElemObj))
         {
             // parameters may be missing, if an array is
             // passed as an argument
             if( pPar )
-                pElem = pDimArray->Get( pPar );
-        }
-        else
-        {
-            SbxArray* pArray = dynamic_cast<SbxArray*>( pElemObj );
-            if( pArray )
             {
-                if( !pPar )
+                bool parIsArrayIndex = true;
+                if (dynamic_cast<const SbxMethod*>(pElem))
                 {
-                    Error( ERRCODE_BASIC_OUT_OF_RANGE );
-                    pElem = new SbxVariable;
+                    // If this was a method, then there are two possibilities:
+                    // 1. pPar is this method's parameters.
+                    // 2. pPar is the indexes into the array returned from the method.
+                    // To disambiguate, check the 0th element of pPar.
+                    if (dynamic_cast<const SbxMethod*>(pPar->Get(0)))
+                    {
+                        // pPar was the parameters to the method, not indexes into the array
+                        parIsArrayIndex = false;
+                    }
                 }
-                else
-                {
-                    pElem = pArray->Get(pPar->Get(1)->GetInteger());
-                }
+                if (parIsArrayIndex)
+                    pElem = pDimArray->Get(pPar);
+            }
+        }
+        else if (SbxArray* pArray = dynamic_cast<SbxArray*>(pElemObj))
+        {
+            if( !pPar )
+            {
+                Error( ERRCODE_BASIC_OUT_OF_RANGE );
+                pElem = new SbxVariable;
+            }
+            else
+            {
+                pElem = pArray->Get(pPar->Get(1)->GetInteger());
             }
         }
 
@@ -3983,8 +3993,7 @@ SbxVariable* SbiRuntime::CheckArray( SbxVariable* pElem )
             dynamic_cast<const SbxMethod*>( pElem) == nullptr &&
             ( !bVBAEnabled || dynamic_cast<const SbxProperty*>( pElem) == nullptr ) )
     {
-        pPar = pElem->GetParameters();
-        if ( pPar )
+        if (SbxArray* pPar = pElem->GetParameters())
         {
             // is it a uno-object?
             SbxBaseRef pObj = pElem->GetObject();
@@ -3994,7 +4003,7 @@ SbxVariable* SbiRuntime::CheckArray( SbxVariable* pElem )
                 {
                     Any aAny = pUnoObj->getUnoAny();
 
-                    if( aAny.getValueType().getTypeClass() == TypeClass_INTERFACE )
+                    if( aAny.getValueTypeClass() == TypeClass_INTERFACE )
                     {
                         Reference< XIndexAccess > xIndexAccess( aAny, UNO_QUERY );
                         if ( !bVBAEnabled )
@@ -4060,8 +4069,8 @@ SbxVariable* SbiRuntime::CheckArray( SbxVariable* pElem )
                                         pUnoObj = pSbObj;
                                         Any aUnoAny = pUnoObj->getUnoAny();
 
-                                        if( aUnoAny.getValueType().getTypeClass() == TypeClass_INTERFACE )
-                                            x = aUnoAny;
+                                        if( aUnoAny.getValueTypeClass() == TypeClass_INTERFACE )
+                                            x = std::move(aUnoAny);
                                         pElem = pDflt;
                                     }
                                 }
@@ -4440,7 +4449,7 @@ void SbiRuntime::StepOPEN( sal_uInt32 nOp1, sal_uInt32 nOp2 )
     SbxVariableRef pLen  = PopVar();
     short nBlkLen = pLen->GetInteger();
     short nChan   = pChan->GetInteger();
-    OString aName(OUStringToOString(pName->GetOUString(), osl_getThreadTextEncoding()));
+    OUString aName = pName->GetOUString();
     pIosys->Open( nChan, aName, static_cast<StreamMode>( nOp1 ),
                   static_cast<SbiStreamFlags>( nOp2 ), nBlkLen );
     Error( pIosys->GetError() );
@@ -4761,5 +4770,7 @@ void SbiRuntime::StepSTATIC( sal_uInt32 nOp1, sal_uInt32 nOp2 )
     SbxDataType t = static_cast<SbxDataType>(nOp2 & 0xffff);
     StepSTATIC_Impl( aName, t, nOp2 );
 }
+
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

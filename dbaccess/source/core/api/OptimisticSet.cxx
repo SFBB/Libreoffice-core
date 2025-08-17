@@ -36,22 +36,19 @@
 #include <algorithm>
 #include <com/sun/star/sdbcx/XTablesSupplier.hpp>
 #include <composertools.hxx>
+#include "PrivateRow.hxx"
 
 using namespace dbaccess;
 using namespace ::connectivity;
 using namespace ::dbtools;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star;
-using namespace ::cppu;
-using namespace ::osl;
 
 typedef std::map<OUString, OUStringBuffer> TSQLStatements;
 namespace
@@ -100,19 +97,16 @@ void OptimisticSet::construct(const Reference< XResultSet>& _xDriverSet,const OU
     const Reference<XNameAccess> xQueryColumns = xQueryColSup->getColumns();
     const Reference<XTablesSupplier> xTabSup(m_xComposer,UNO_QUERY);
     const Reference<XNameAccess> xTables = xTabSup->getTables();
-    const Sequence< OUString> aTableNames = xTables->getElementNames();
-    const OUString* pTableNameIter = aTableNames.getConstArray();
-    const OUString* pTableNameEnd = pTableNameIter + aTableNames.getLength();
-    for( ; pTableNameIter != pTableNameEnd ; ++pTableNameIter)
+    for (auto& tableName : xTables->getElementNames())
     {
-        std::unique_ptr<SelectColumnsMetaData> pKeyColumNames(new SelectColumnsMetaData(bCase));
-        findTableColumnsMatching_throw(xTables->getByName(*pTableNameIter),*pTableNameIter,xMeta,xQueryColumns,pKeyColumNames);
+        std::unique_ptr<SelectColumnsMetaData> pKeyColumNames(new SelectColumnsMetaData(comphelper::UStringMixLess(bCase)));
+        findTableColumnsMatching_throw(xTables->getByName(tableName),tableName,xMeta,xQueryColumns,pKeyColumNames);
         m_pKeyColumnNames->insert(pKeyColumNames->begin(),pKeyColumNames->end());
     }
 
     // the first row is empty because it's now easier for us to distinguish when we are beforefirst or first
     // without extra variable to be set
-    OKeySetValue keySetValue(nullptr,std::pair<sal_Int32,Reference<XRow> >(0,Reference<XRow>()));
+    OKeySetValue keySetValue{nullptr,0,nullptr};
     m_aKeyMap.emplace(0,keySetValue);
     m_aKeyIter = m_aKeyMap.begin();
 

@@ -232,6 +232,7 @@ class OWriteStream : public css::lang::XTypeProvider
             , public css::embed::XTransactionBroadcaster
             , public css::beans::XPropertySet
             , public ::cppu::OWeakObject
+            , public comphelper::ByteReader
             , public comphelper::ByteWriter
 {
     friend struct OWriteStream_Impl;
@@ -267,9 +268,6 @@ protected:
 public:
 
     virtual ~OWriteStream() override;
-
-    void CheckInitOnDemand();
-    void DeInit();
 
     // XInterface
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& rType ) override;
@@ -348,9 +346,16 @@ public:
     virtual void SAL_CALL removeTransactionListener(
             const css::uno::Reference< css::embed::XTransactionListener >& aListener ) override;
 
+    // comphelper::ByteReader
+    virtual sal_Int32 readSomeBytes(sal_Int8* aData, sal_Int32 nBytesToRead) override;
+
     // comphelper::ByteWriter
     virtual void writeBytes(const sal_Int8* aData, sal_Int32 nBytesToWrite) override;
 
+private:
+    void CheckInitOnDemand();
+    void CheckInitOnWriteDemand(sal_Int32 dataSize);
+    void DeInit();
 };
 
 #endif

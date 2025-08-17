@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include <svl/zforlist.hxx>
+#include <svl/numformat.hxx>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimppr.hxx>
 #include <xmloff/xmlnumfi.hxx>
@@ -27,11 +27,9 @@
 #include "ximppage.hxx"
 #include <xmloff/xmlstyle.hxx>
 #include <com/sun/star/view/PaperOrientation.hpp>
+#include <com/sun/star/drawing/XDrawPages2.hpp>
 #include <memory>
 #include <vector>
-
-class SvNumberFormatter;
-class SvXMLNumFmtHelper;
 
 // special style:style context inside style:page-master context
 
@@ -96,6 +94,13 @@ class SdXMLMasterPageContext: public SdXMLGenericPageContext
 
 public:
 
+    // called for normal master page
+    SdXMLMasterPageContext(
+        SdXMLImport& rImport,
+        sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList,
+        css::uno::Reference< css::drawing::XDrawPages2 > const & xMasterPages);
+    // Called for handout master page
     SdXMLMasterPageContext(
         SdXMLImport& rImport,
         sal_Int32 nElement,
@@ -164,7 +169,6 @@ public:
 
 class SdXMLStylesContext : public SvXMLStylesContext
 {
-    rtl::Reference< SvXMLImportPropertyMapper > xPresImpPropMapper;
     bool                    mbIsAutoStyle;
     std::unique_ptr<SvXMLNumFmtHelper> mpNumFmtHelper;
     std::unique_ptr<SvNumberFormatter> mpNumFormatter;
@@ -175,7 +179,7 @@ class SdXMLStylesContext : public SvXMLStylesContext
     void ImpSetGraphicStyles() const;
     void ImpSetCellStyles() const;
     void ImpSetGraphicStyles( css::uno::Reference< css::container::XNameAccess > const & xPageStyles,
-        XmlStyleFamily nFamily, std::u16string_view rPrefix) const;
+        XmlStyleFamily nFamily, const OUString& rPrefix) const;
 
 protected:
     using SvXMLStylesContext::CreateStyleChildContext;
@@ -201,7 +205,7 @@ public:
         bool bIsAutoStyle);
 
     virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
-    virtual rtl::Reference< SvXMLImportPropertyMapper > GetImportPropertyMapper(XmlStyleFamily nFamily) const override;
+    virtual SvXMLImportPropertyMapper* GetImportPropertyMapper(XmlStyleFamily nFamily) const override;
 
     void SetMasterPageStyles(SdXMLMasterPageContext const & rMaster) const;
 

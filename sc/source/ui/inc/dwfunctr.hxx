@@ -20,6 +20,8 @@
 
 #include <comphelper/configurationlistener.hxx>
 #include <sfx2/sidebar/PanelLayout.hxx>
+#include <unordered_map>
+#include <sfx2/bindings.hxx>
 
 class ScFuncDesc;
 namespace formula { class IFunctionDescription; }
@@ -33,7 +35,7 @@ protected:
     virtual void setProperty(const css::uno::Any &rProperty) override;
 public:
     EnglishFunctionNameChange(const rtl::Reference<comphelper::ConfigurationListener> &rListener, ScFunctionWin* pFunctionWin)
-        : ConfigurationListenerProperty(rListener, "EnglishFunctionName")
+        : ConfigurationListenerProperty(rListener, u"EnglishFunctionName"_ustr)
         , m_pFunctionWin(pFunctionWin)
     {
     }
@@ -45,37 +47,50 @@ class ScFunctionWin : public PanelLayout
 private:
     std::unique_ptr<weld::ComboBox> xCatBox;
     std::unique_ptr<weld::TreeView> xFuncList;
+    std::unique_ptr<weld::TreeIter> xScratchIter;
     std::unique_ptr<weld::Button> xInsertButton;
+    std::unique_ptr<weld::Button> xHelpButton;
+    std::unique_ptr<weld::CheckButton> xSimilaritySearch;
     std::unique_ptr<weld::TextView> xFiFuncDesc;
     std::unique_ptr<weld::Entry> m_xSearchString;
+    SfxBindings* m_pBindings;
 
     rtl::Reference<comphelper::ConfigurationListener> xConfigListener;
     std::unique_ptr<EnglishFunctionNameChange> xConfigChange;
     const ScFuncDesc*   pFuncDesc;
-    sal_uInt16          nArgs;
     OUString m_aListHelpId;
     OUString m_aSearchHelpId;
 
+    ::std::set<std::pair<std::pair<sal_Int32, sal_Int32>, std::pair<OUString, const ScFuncDesc*>>>
+                     sFuncScores;
     ::std::vector< const formula::IFunctionDescription*> aLRUList;
+    ::std::unordered_set<sal_uInt16> aFavouritesList;
+    ::std::unordered_map<OUString, std::unique_ptr<weld::TreeIter>> mCategories;
 
     void            UpdateLRUList();
-    void            DoEnter();
+    void            UpdateFavouritesList();
+    void            DoEnter(bool bDouble_or_Enter = false);
     void            SetDescription();
+    SfxBindings&    GetBindings() const { return *m_pBindings; }
+    weld::TreeIter* FillCategoriesMap(const OUString&, bool);
 
                     DECL_LINK( SetRowActivatedHdl, weld::TreeView&, bool );
                     DECL_LINK( SetSelectionClickHdl, weld::Button&, void );
+                    DECL_LINK( SetHelpClickHdl, weld::Button&, void );
+                    DECL_LINK( SetSimilarityToggleHdl, weld::Toggleable&, void );
                     DECL_LINK( SelComboHdl, weld::ComboBox&, void );
                     DECL_LINK( SelTreeHdl, weld::TreeView&, void );
                     DECL_LINK( ModifyHdl, weld::Entry&, void );
                     DECL_LINK( KeyInputHdl, const KeyEvent&, bool);
 
 public:
-    ScFunctionWin(weld::Widget* pParent);
+    ScFunctionWin(weld::Widget* pParent, SfxBindings* pBindings);
 
     virtual ~ScFunctionWin() override;
 
     void            InitLRUList();
     void            UpdateFunctionList(const OUString&);
+    void            SearchFunction(const OUString&, const OUString&, const ScFuncDesc*, const bool);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

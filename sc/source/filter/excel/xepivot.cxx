@@ -48,8 +48,6 @@
 #include <generalfunction.hxx>
 #include <svl/numformat.hxx>
 
-using namespace ::oox;
-
 using ::com::sun::star::sheet::DataPilotFieldOrientation;
 using ::com::sun::star::sheet::DataPilotFieldOrientation_ROW;
 using ::com::sun::star::sheet::DataPilotFieldOrientation_COLUMN;
@@ -810,8 +808,8 @@ void XclExpPivotCache::WriteDConName( XclExpStream& rStrm ) const
 
 void XclExpPivotCache::WriteCacheStream()
 {
-    tools::SvRef<SotStorage> xSvStrg = OpenStorage( EXC_STORAGE_PTCACHE );
-    tools::SvRef<SotStorageStream> xSvStrm = OpenStream( xSvStrg, ScfTools::GetHexStr( maPCInfo.mnStrmId ) );
+    rtl::Reference<SotStorage> xSvStrg = OpenStorage(EXC_STORAGE_PTCACHE);
+    rtl::Reference<SotStorageStream> xSvStrm = OpenStream( xSvStrg, ScfTools::GetHexStr( maPCInfo.mnStrmId ) );
     if( !xSvStrm.is() )
         return;
 

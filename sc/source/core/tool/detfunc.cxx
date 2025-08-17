@@ -373,6 +373,7 @@ void ScDetectiveFunc::InsertArrow( SCCOL nCol, SCROW nRow,
         pBox->NbcSetStyleSheet(nullptr, true);
         pBox->SetMergedItemSetAndBroadcast(rData.GetBoxSet());
 
+        pBox->SetDecorative(true);
         pBox->SetLayer( SC_LAYER_INTERN );
         pPage->InsertObject( pBox.get() );
         pModel->AddCalcUndo( std::make_unique<SdrUndoInsertObj>( *pBox ) );
@@ -418,6 +419,7 @@ void ScDetectiveFunc::InsertArrow( SCCOL nCol, SCROW nRow,
     pArrow->NbcSetLogicRect(tools::Rectangle::Normalize(aStartPos,aEndPos));  //TODO: needed ???
     pArrow->SetMergedItemSetAndBroadcast(rAttrSet);
 
+    pArrow->SetDecorative(true);
     pArrow->SetLayer( SC_LAYER_INTERN );
     pPage->InsertObject( pArrow.get() );
     pModel->AddCalcUndo( std::make_unique<SdrUndoInsertObj>( *pArrow ) );
@@ -561,6 +563,7 @@ void ScDetectiveFunc::DrawCircle( SCCOL nCol, SCROW nRow, ScDetectiveData& rData
     pCircle->NbcSetStyleSheet(nullptr, true);
     pCircle->SetMergedItemSetAndBroadcast(rAttrSet);
 
+    pCircle->SetDecorative(true);
     pCircle->SetLayer( SC_LAYER_INTERN );
     pPage->InsertObject( pCircle.get() );
     pModel->AddCalcUndo( std::make_unique<SdrUndoInsertObj>( *pCircle ) );
@@ -579,7 +582,7 @@ void ScDetectiveFunc::DeleteArrowsAt( SCCOL nCol, SCROW nRow, bool bDestPnt )
 
     ScDrawLayer* pModel = rDoc.GetDrawLayer();
     SdrPage* pPage = pModel->GetPage(static_cast<sal_uInt16>(nTab));
-    OSL_ENSURE(pPage,"Page ?");
+    assert(pPage && "Page ?");
 
     pPage->RecalcObjOrdNums();
 
@@ -650,7 +653,7 @@ void ScDetectiveFunc::DeleteBox( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nR
 
     ScDrawLayer* pModel = rDoc.GetDrawLayer();
     SdrPage* pPage = pModel->GetPage(static_cast<sal_uInt16>(nTab));
-    OSL_ENSURE(pPage,"Page ?");
+    assert(pPage && "Page ?");
 
     pPage->RecalcObjOrdNums();
 
@@ -1161,7 +1164,7 @@ bool ScDetectiveFunc::DeleteCirclesAt( SCCOL nCol, SCROW nRow )
         return false;
 
     SdrPage* pPage = pModel->GetPage(static_cast<sal_uInt16>(nTab));
-    OSL_ENSURE(pPage, "Page ?");
+    assert(pPage && "Page ?");
 
     pPage->RecalcObjOrdNums();
 
@@ -1207,7 +1210,7 @@ bool ScDetectiveFunc::DeleteAll( ScDetectiveDelete eWhat )
         return false;
 
     SdrPage* pPage = pModel->GetPage(static_cast<sal_uInt16>(nTab));
-    OSL_ENSURE(pPage,"Page ?");
+    assert(pPage && "Page ?");
 
     pPage->RecalcObjOrdNums();
 
@@ -1397,7 +1400,7 @@ void ScDetectiveFunc::UpdateAllComments( ScDocument& rDoc )
 
     ScDocShell* pDocSh = rDoc.GetDocumentShell();
     pDocSh->GetUndoManager()->AddUndoAction(
-        std::make_unique<ScUndoModifyStyle>(pDocSh, pStyleSheet->GetFamily(), aOldData, aNewData));
+        std::make_unique<ScUndoModifyStyle>(*pDocSh, pStyleSheet->GetFamily(), aOldData, aNewData));
 }
 
 void ScDetectiveFunc::UpdateAllArrowColors()
@@ -1632,7 +1635,7 @@ void ScDetectiveFunc::InitializeColors()
 {
     // may be called several times to update colors from configuration
 
-    const svtools::ColorConfig& rColorCfg = SC_MOD()->GetColorConfig();
+    const svtools::ColorConfig& rColorCfg = ScModule::get()->GetColorConfig();
     nArrowColor   = rColorCfg.GetColorValue(svtools::CALCDETECTIVE).nColor;
     nErrorColor   = rColorCfg.GetColorValue(svtools::CALCDETECTIVEERROR).nColor;
     nCommentColor = rColorCfg.GetColorValue(svtools::CALCNOTESBACKGROUND).nColor;

@@ -38,7 +38,6 @@
 using namespace ::com::sun::star;
 
 
-class SfxPoolItem;
 class SwTextFormatColl;
 class SwNode;
 class SwPageDescs;
@@ -141,7 +140,7 @@ class SW_DLLPUBLIC SwPageDesc final
     friend class SwDoc;
     friend class SwPageDescs;
 
-    OUString    m_StyleName;
+    UIName    m_StyleName;
     SvxNumberType m_NumType;
     SwFrameFormat    m_Master;
     SwFrameFormat    m_Left;
@@ -151,19 +150,19 @@ class SW_DLLPUBLIC SwPageDesc final
 
     struct StashedPageDesc
     {
-        std::shared_ptr<SwFrameFormat> m_pStashedFirst;
-        std::shared_ptr<SwFrameFormat> m_pStashedLeft;
-        std::shared_ptr<SwFrameFormat> m_pStashedFirstLeft;
+        std::optional<SwFrameFormat> m_oStashedFirst;
+        std::optional<SwFrameFormat> m_oStashedLeft;
+        std::optional<SwFrameFormat> m_oStashedFirstLeft;
     };
 
     mutable StashedPageDesc m_aStashedHeader;
     mutable StashedPageDesc m_aStashedFooter;
 
-    sw::WriterMultiListener m_aDepends; ///< Because of grid alignment (Registerhaltigkeit).
+    sw::WriterMultiListener m_aDepends; ///< Because of grid alignment (register accuracy / register-true).
     mutable const SwTextFormatColl* m_pTextFormatColl;
     SwPageDesc *m_pFollow;
     sal_uInt16  m_nRegHeight; ///< Sentence spacing and fontascent of style.
-    sal_uInt16  m_nRegAscent; ///< For grid alignment (Registerhaltigkeit).
+    sal_uInt16  m_nRegAscent; ///< For grid alignment (register accuracy / register-true).
     drawing::TextVerticalAdjust   m_nVerticalAdjustment; // doc/docx: vertically center / justify / bottom
     UseOnPage   m_eUse;
     bool        m_IsLandscape;
@@ -181,20 +180,21 @@ class SW_DLLPUBLIC SwPageDesc final
 
     SAL_DLLPRIVATE void ResetAllAttr();
 
-    SAL_DLLPRIVATE SwPageDesc(const OUString&, SwFrameFormat*, SwDoc *pDc );
+    SAL_DLLPRIVATE SwPageDesc(const UIName&, SwFrameFormat*, SwDoc &rDc );
 
     struct change_name
     {
-        change_name(const OUString &rName) : mName(rName) {}
+        change_name(const UIName &rName) : mName(rName) {}
         void operator()(SwPageDesc *pPageDesc) { pPageDesc->m_StyleName = mName; }
-        const OUString &mName;
+        const UIName &mName;
     };
 
     virtual void SwClientNotify(const SwModify&, const SfxHint&) override;
 
 public:
-    const OUString& GetName() const { return m_StyleName; }
-    bool SetName(const OUString& rNewName);
+    bool IsUsed() const;
+    const UIName& GetName() const { return m_StyleName; }
+    bool SetName(const UIName& rNewName);
 
     bool GetLandscape() const { return m_IsLandscape; }
     void SetLandscape( bool bNew ) { m_IsLandscape = bNew; }
@@ -275,12 +275,12 @@ public:
     sal_uInt16 GetPoolFormatId() const         { return m_Master.GetPoolFormatId(); }
     void SetPoolFormatId(sal_uInt16 const nId) { m_Master.SetPoolFormatId(nId); }
     sal_uInt16 GetPoolHelpId() const        { return m_Master.GetPoolHelpId(); }
-    void SetPoolHelpId(sal_uInt16 const nId){ m_Master.SetPoolHelpId(nId); }
+    void SetPoolHelpId(sal_uInt32 const nId){ m_Master.SetPoolHelpId(nId); }
     sal_uInt8 GetPoolHlpFileId() const      { return m_Master.GetPoolHlpFileId(); }
     void SetPoolHlpFileId(sal_uInt8 const nId) { m_Master.SetPoolHlpFileId(nId); }
 
     /// Query information from Client.
-    virtual bool GetInfo( SfxPoolItem& ) const override;
+    virtual bool GetInfo( SwFindNearestNode& ) const override;
 
     const SwFrameFormat* GetPageFormatOfNode( const SwNode& rNd,
                                     bool bCheckForThisPgDc = true ) const;
@@ -289,7 +289,7 @@ public:
     /// Given a SwNode return the pagedesc in use at that location.
     static const SwPageDesc* GetPageDescOfNode(const SwNode& rNd);
 
-    static SwPageDesc* GetByName(SwDoc& rDoc, std::u16string_view rName);
+    static SwPageDesc* GetByName(SwDoc& rDoc, const UIName& rName);
 
     SwPageDesc& operator=( const SwPageDesc& );
 
@@ -302,9 +302,9 @@ public:
 namespace std {
     template<>
     struct less<SwPageDesc*> {
-        bool operator()(const SwPageDesc *pPageDesc, std::u16string_view rName) const
+        bool operator()(const SwPageDesc *pPageDesc, const UIName& rName) const
             { return pPageDesc->GetName() < rName; }
-        bool operator()(std::u16string_view rName, const SwPageDesc *pPageDesc) const
+        bool operator()(const UIName& rName, const SwPageDesc *pPageDesc) const
             { return rName < pPageDesc->GetName(); }
         bool operator()(const SwPageDesc *lhs, const SwPageDesc *rhs) const
             { return lhs->GetName() < rhs->GetName(); }
@@ -378,28 +378,32 @@ class SwPageDescExt
 public:
     SwPageDesc m_PageDesc;
 private:
-    SwDoc * m_pDoc;
-    OUString m_sFollow;
+    SwDoc& m_rDoc;
+    UIName m_sFollow;
 
     void SetPageDesc(const SwPageDesc & rPageDesc);
 
 public:
-    SwPageDescExt(const SwPageDesc & rPageDesc, SwDoc * pDoc);
+    SwPageDescExt(const SwPageDesc & rPageDesc, SwDoc& rDoc);
     SwPageDescExt(const SwPageDescExt & rSrc);
     ~SwPageDescExt();
 
     SwPageDescExt & operator = (const SwPageDescExt & rSrc);
     SwPageDescExt & operator = (const SwPageDesc & rSrc);
 
-    OUString const & GetName() const;
+    UIName const & GetName() const;
 
-    operator SwPageDesc() const; // #i7983#
+    explicit operator SwPageDesc() const; // #i7983#
 };
 
 namespace sw {
-    class PageFootnoteHint final : public SfxHint {};
+    class PageFootnoteHint final : public SfxHint
+    {
+    public:
+        PageFootnoteHint() : SfxHint(SfxHintId::SwPageFootnote) {}
+    };
 
-    SW_DLLPUBLIC SwTwips FootnoteSeparatorHeight(SwPageFootnoteInfo const&);
+    SW_DLLPUBLIC SwTwips FootnoteSeparatorHeight(SwDoc& rDoc, SwPageFootnoteInfo const&);
 }
 
 typedef boost::multi_index_container<
@@ -415,13 +419,13 @@ typedef boost::multi_index_container<
 class SwPageDescs final
 {
     // function updating ByName index via modify
-    friend bool SwPageDesc::SetName( const OUString& rNewName );
+    friend bool SwPageDesc::SetName( const UIName& rNewName );
 
     typedef SwPageDescsBase::nth_index<0>::type ByPos;
     typedef SwPageDescsBase::nth_index<1>::type ByName;
     typedef ByPos::iterator iterator;
 
-    iterator find_( const OUString &name ) const;
+    iterator find_( const UIName &name ) const;
 
     SwPageDescsBase   m_Array;
     ByPos            &m_PosIndex;
@@ -446,7 +450,7 @@ public:
     void erase( size_type index );
     void erase( const_iterator const& position );
 
-    const_iterator find( const OUString &name ) const
+    const_iterator find( const UIName &name ) const
         { return find_( name ); }
     const value_type& operator[]( size_t index_ ) const
         { return m_PosIndex.operator[]( index_ ); }

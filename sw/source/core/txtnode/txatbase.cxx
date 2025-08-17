@@ -23,8 +23,8 @@
 #include <txatbase.hxx>
 #include <fmtfld.hxx>
 
-SwTextAttr::SwTextAttr( SfxPoolItem& rAttr, sal_Int32 nStart )
-    : m_pAttr( &rAttr )
+SwTextAttr::SwTextAttr( const SfxPoolItemHolder& rAttr, sal_Int32 nStart )
+    : m_aAttr( rAttr )
     , m_nStart( nStart )
     , m_bDontExpand( false )
     , m_bLockExpandFlag( false )
@@ -39,6 +39,7 @@ SwTextAttr::SwTextAttr( SfxPoolItem& rAttr, sal_Int32 nStart )
     , m_bFormatIgnoreEnd(false)
     , m_bHasContent( false )
 {
+    assert(!m_aAttr.getItem()->isStaticDefault());
 }
 
 SwTextAttr::~SwTextAttr() COVERITY_NOEXCEPT_FALSE
@@ -55,12 +56,10 @@ void SwTextAttr::SetEnd(sal_Int32 )
     assert(false);
 }
 
-void SwTextAttr::Destroy( SwTextAttr * pToDestroy, SfxItemPool& rPool )
+void SwTextAttr::Destroy( SwTextAttr * pToDestroy )
 {
     if (!pToDestroy) return;
-    SfxPoolItem * const pAttr = pToDestroy->m_pAttr;
     delete pToDestroy;
-    rPool.DirectRemoveItemFromPool( *pAttr );
 }
 
 bool SwTextAttr::operator==( const SwTextAttr& rAttr ) const
@@ -68,8 +67,10 @@ bool SwTextAttr::operator==( const SwTextAttr& rAttr ) const
     return GetAttr() == rAttr.GetAttr();
 }
 
-SwTextAttrEnd::SwTextAttrEnd( SfxPoolItem& rAttr,
-        sal_Int32 nStart, sal_Int32 nEnd ) :
+SwTextAttrEnd::SwTextAttrEnd(
+    const SfxPoolItemHolder& rAttr,
+    sal_Int32 nStart,
+    sal_Int32 nEnd ) :
     SwTextAttr( rAttr, nStart ), m_nEnd( nEnd )
 {
 }
@@ -81,9 +82,13 @@ const sal_Int32* SwTextAttrEnd::GetEnd() const
 
 void SwTextAttrEnd::SetEnd(sal_Int32 n)
 {
-    m_nEnd = n;
-    if (m_pHints)
-        m_pHints->EndPosChanged();
+    if (m_nEnd != n)
+    {
+        sal_Int32 nOldEndPos = m_nEnd;
+        m_nEnd = n;
+        if (m_pHints)
+            m_pHints->EndPosChanged(Which(), GetStart(), nOldEndPos, m_nEnd);
+    }
 }
 
 void SwTextAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -99,7 +104,7 @@ void SwTextAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
     if (End())
         (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("end"), BAD_CAST(OString::number(*End()).getStr()));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
-    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("m_pAttr"), "%p", m_pAttr);
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("attr-item"), "%p", m_aAttr.getItem());
     const char* pWhich = nullptr;
     std::optional<OString> oValue;
     switch (Which())
@@ -113,13 +118,6 @@ void SwTextAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
     case RES_TXTATR_FLYCNT:
         pWhich = "fly content";
         break;
-    case RES_TXTATR_INETFMT:
-        {
-            pWhich = "inet format";
-            const SwFormatINetFormat& rFormat = GetINetFormat();
-            oValue = OString("url: " + rFormat.GetValue().toUtf8());
-            break;
-        }
     case RES_TXTATR_CJK_RUBY:
         {
             pWhich = "ruby";
@@ -150,6 +148,7 @@ void SwTextAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
             GetAutoFormat().dumpAsXml(pWriter);
             break;
         case RES_TXTATR_FIELD:
+        case RES_TXTATR_ANNOTATION:
         case RES_TXTATR_INPUTFIELD:
             GetFormatField().dumpAsXml(pWriter);
             break;

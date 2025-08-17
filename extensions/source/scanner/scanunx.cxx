@@ -83,7 +83,7 @@ namespace {
 struct SaneHolder
 {
     Sane                m_aSane;
-    Reference< css::awt::XBitmap > m_xBitmap;
+    rtl::Reference< BitmapTransporter > m_xBitmap;
     osl::Mutex          m_aProtector;
     ScanError           m_nError;
     bool                m_bBusy;
@@ -220,12 +220,12 @@ Sequence< ScannerContext > ScannerManager::getAvailableScanners()
     {
         auto pSaneHolder = std::make_shared<SaneHolder>();
         if( Sane::IsSane() )
-            rSanes.push_back( pSaneHolder );
+            rSanes.push_back(std::move(pSaneHolder));
     }
 
     if( Sane::IsSane() )
     {
-        Sequence< ScannerContext > aRet{ { /* ScannerName */ "SANE", /* InternalData */ 0 } };
+        Sequence< ScannerContext > aRet{ { /* ScannerName */ u"SANE"_ustr, /* InternalData */ 0 } };
         return aRet;
     }
 
@@ -246,7 +246,7 @@ sal_Bool ScannerManager::configureScannerAndScan( ScannerContext& scanner_contex
 
         if( scanner_context.InternalData < 0 || o3tl::make_unsigned(scanner_context.InternalData) >= rSanes.size() )
             throw ScannerException(
-                "Scanner does not exist",
+                u"Scanner does not exist"_ustr,
                 Reference< XScannerManager >( this ),
                 ScanError_InvalidContext
             );
@@ -254,7 +254,7 @@ sal_Bool ScannerManager::configureScannerAndScan( ScannerContext& scanner_contex
         std::shared_ptr<SaneHolder> pHolder = rSanes[scanner_context.InternalData];
         if( pHolder->m_bBusy )
             throw ScannerException(
-                "Scanner is busy",
+                u"Scanner is busy"_ustr,
                 Reference< XScannerManager >( this ),
                 ScanError_ScanInProgress
             );
@@ -282,20 +282,20 @@ void ScannerManager::startScan( const ScannerContext& scanner_context,
 
     if( scanner_context.InternalData < 0 || o3tl::make_unsigned(scanner_context.InternalData) >= rSanes.size() )
         throw ScannerException(
-            "Scanner does not exist",
+            u"Scanner does not exist"_ustr,
             Reference< XScannerManager >( this ),
             ScanError_InvalidContext
             );
     std::shared_ptr<SaneHolder> pHolder = rSanes[scanner_context.InternalData];
     if( pHolder->m_bBusy )
         throw ScannerException(
-            "Scanner is busy",
+            u"Scanner is busy"_ustr,
             Reference< XScannerManager >( this ),
             ScanError_ScanInProgress
             );
     pHolder->m_bBusy = true;
 
-    ScannerThread* pThread = new ScannerThread( pHolder, listener, this );
+    ScannerThread* pThread = new ScannerThread( std::move(pHolder), listener, this );
     pThread->create();
 }
 
@@ -307,7 +307,7 @@ ScanError ScannerManager::getError( const ScannerContext& scanner_context )
 
     if( scanner_context.InternalData < 0 || o3tl::make_unsigned(scanner_context.InternalData) >= rSanes.size() )
         throw ScannerException(
-            "Scanner does not exist",
+            u"Scanner does not exist"_ustr,
             Reference< XScannerManager >( this ),
             ScanError_InvalidContext
             );
@@ -325,7 +325,7 @@ Reference< css::awt::XBitmap > ScannerManager::getBitmap( const ScannerContext& 
 
     if( scanner_context.InternalData < 0 || o3tl::make_unsigned(scanner_context.InternalData) >= rSanes.size() )
         throw ScannerException(
-            "Scanner does not exist",
+            u"Scanner does not exist"_ustr,
             Reference< XScannerManager >( this ),
             ScanError_InvalidContext
             );
@@ -333,8 +333,7 @@ Reference< css::awt::XBitmap > ScannerManager::getBitmap( const ScannerContext& 
 
     osl::MutexGuard aProtGuard( pHolder->m_aProtector );
 
-    Reference< css::awt::XBitmap > xRet( pHolder->m_xBitmap );
-    pHolder->m_xBitmap.clear();
+    rtl::Reference< BitmapTransporter > xRet = std::move( pHolder->m_xBitmap );
 
     return xRet;
 }

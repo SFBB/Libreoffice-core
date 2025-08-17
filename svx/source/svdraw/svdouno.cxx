@@ -66,7 +66,7 @@ void SAL_CALL SdrControlEventListenerImpl::disposing( const css::lang::EventObje
 {
     if (pObj)
     {
-        pObj->xUnoControlModel = nullptr;
+        pObj->m_xUnoControlModel = nullptr;
     }
 }
 
@@ -94,7 +94,7 @@ namespace
 {
     void lcl_ensureControlVisibility( SdrView const * _pView, const SdrUnoObj* _pObject, bool _bVisible )
     {
-        OSL_PRECOND( _pObject, "lcl_ensureControlVisibility: no object -> no survival!" );
+        assert(_pObject && "lcl_ensureControlVisibility: no object -> no survival!");
 
         SdrPageView* pPageView = _pView ? _pView->GetSdrPageView() : nullptr;
         DBG_ASSERT( pPageView, "lcl_ensureControlVisibility: no view found!" );
@@ -150,17 +150,17 @@ SdrUnoObj::SdrUnoObj( SdrModel& rSdrModel, SdrUnoObj const & rSource)
 
     m_pImpl->pEventListener = new SdrControlEventListenerImpl(this);
 
-    aUnoControlModelTypeName = rSource.aUnoControlModelTypeName;
-    aUnoControlTypeName = rSource.aUnoControlTypeName;
+    m_aUnoControlModelTypeName = rSource.m_aUnoControlModelTypeName;
+    m_aUnoControlTypeName = rSource.m_aUnoControlTypeName;
 
     // copy the uno control model
-    const uno::Reference< awt::XControlModel > xSourceControlModel = rSource.GetUnoControlModel();
+    const uno::Reference< awt::XControlModel >& xSourceControlModel = rSource.GetUnoControlModel();
     if ( xSourceControlModel.is() )
     {
         try
         {
             uno::Reference< util::XCloneable > xClone( xSourceControlModel, uno::UNO_QUERY_THROW );
-            xUnoControlModel.set( xClone->createClone(), uno::UNO_QUERY_THROW );
+            m_xUnoControlModel.set( xClone->createClone(), uno::UNO_QUERY_THROW );
         }
         catch( const uno::Exception& )
         {
@@ -169,17 +169,17 @@ SdrUnoObj::SdrUnoObj( SdrModel& rSdrModel, SdrUnoObj const & rSource)
     }
 
     // get service name of the control from the control model
-    uno::Reference< beans::XPropertySet > xSet(xUnoControlModel, uno::UNO_QUERY);
+    uno::Reference< beans::XPropertySet > xSet(m_xUnoControlModel, uno::UNO_QUERY);
     if (xSet.is())
     {
-        uno::Any aValue( xSet->getPropertyValue("DefaultControl") );
+        uno::Any aValue( xSet->getPropertyValue(u"DefaultControl"_ustr) );
         OUString aStr;
 
         if( aValue >>= aStr )
-            aUnoControlTypeName = aStr;
+            m_aUnoControlTypeName = aStr;
     }
 
-    uno::Reference< lang::XComponent > xComp(xUnoControlModel, uno::UNO_QUERY);
+    uno::Reference< lang::XComponent > xComp(m_xUnoControlModel, uno::UNO_QUERY);
     if (xComp.is())
         m_pImpl->pEventListener->StartListening(xComp);
 }
@@ -205,11 +205,11 @@ SdrUnoObj::~SdrUnoObj()
     try
     {
         // clean up the control model
-        uno::Reference< lang::XComponent > xComp(xUnoControlModel, uno::UNO_QUERY);
+        uno::Reference< lang::XComponent > xComp(m_xUnoControlModel, uno::UNO_QUERY);
         if (xComp.is())
         {
             // is the control model owned by its environment?
-            uno::Reference< container::XChild > xContent(xUnoControlModel, uno::UNO_QUERY);
+            uno::Reference< container::XChild > xContent(m_xUnoControlModel, uno::UNO_QUERY);
             if (xContent.is() && !xContent->getParent().is())
                 xComp->dispose();
             else
@@ -250,7 +250,7 @@ void SdrUnoObj::SetContextWritingMode( const sal_Int16 _nContextWritingMode )
     try
     {
         uno::Reference< beans::XPropertySet > xModelProperties( GetUnoControlModel(), uno::UNO_QUERY_THROW );
-        xModelProperties->setPropertyValue( "ContextWritingMode", uno::Any( _nContextWritingMode ) );
+        xModelProperties->setPropertyValue( u"ContextWritingMode"_ustr, uno::Any( _nContextWritingMode ) );
     }
     catch( const uno::Exception& )
     {
@@ -366,16 +366,16 @@ void SdrUnoObj::NbcSetLayer( SdrLayerID _nLayer )
 
 void SdrUnoObj::CreateUnoControlModel(const OUString& rModelName)
 {
-    DBG_ASSERT(!xUnoControlModel.is(), "model already exists");
+    DBG_ASSERT(!m_xUnoControlModel.is(), "model already exists");
 
-    aUnoControlModelTypeName = rModelName;
+    m_aUnoControlModelTypeName = rModelName;
 
     uno::Reference< awt::XControlModel >   xModel;
-    uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
-    if (!aUnoControlModelTypeName.isEmpty() )
+    const uno::Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
+    if (!m_aUnoControlModelTypeName.isEmpty() )
     {
         xModel.set(xContext->getServiceManager()->createInstanceWithContext(
-            aUnoControlModelTypeName, xContext), uno::UNO_QUERY);
+            m_aUnoControlModelTypeName, xContext), uno::UNO_QUERY);
 
         if (xModel.is())
             SetChanged();
@@ -387,14 +387,14 @@ void SdrUnoObj::CreateUnoControlModel(const OUString& rModelName)
 void SdrUnoObj::CreateUnoControlModel(const OUString& rModelName,
                                       const uno::Reference< lang::XMultiServiceFactory >& rxSFac)
 {
-    DBG_ASSERT(!xUnoControlModel.is(), "model already exists");
+    DBG_ASSERT(!m_xUnoControlModel.is(), "model already exists");
 
-    aUnoControlModelTypeName = rModelName;
+    m_aUnoControlModelTypeName = rModelName;
 
     uno::Reference< awt::XControlModel >   xModel;
-    if (!aUnoControlModelTypeName.isEmpty() && rxSFac.is() )
+    if (!m_aUnoControlModelTypeName.isEmpty() && rxSFac.is() )
     {
-        xModel.set(rxSFac->createInstance(aUnoControlModelTypeName), uno::UNO_QUERY);
+        xModel.set(rxSFac->createInstance(m_aUnoControlModelTypeName), uno::UNO_QUERY);
 
         if (xModel.is())
             SetChanged();
@@ -405,28 +405,28 @@ void SdrUnoObj::CreateUnoControlModel(const OUString& rModelName,
 
 void SdrUnoObj::SetUnoControlModel( const uno::Reference< awt::XControlModel >& xModel)
 {
-    if (xUnoControlModel.is())
+    if (m_xUnoControlModel.is())
     {
-        uno::Reference< lang::XComponent > xComp(xUnoControlModel, uno::UNO_QUERY);
+        uno::Reference< lang::XComponent > xComp(m_xUnoControlModel, uno::UNO_QUERY);
         if (xComp.is())
             m_pImpl->pEventListener->StopListening(xComp);
     }
 
-    xUnoControlModel = xModel;
+    m_xUnoControlModel = xModel;
 
     // control model has to contain service name of the control
-    if (xUnoControlModel.is())
+    if (m_xUnoControlModel.is())
     {
-        uno::Reference< beans::XPropertySet > xSet(xUnoControlModel, uno::UNO_QUERY);
+        uno::Reference< beans::XPropertySet > xSet(m_xUnoControlModel, uno::UNO_QUERY);
         if (xSet.is())
         {
-            uno::Any aValue( xSet->getPropertyValue("DefaultControl") );
+            uno::Any aValue( xSet->getPropertyValue(u"DefaultControl"_ustr) );
             OUString aStr;
             if( aValue >>= aStr )
-                aUnoControlTypeName = aStr;
+                m_aUnoControlTypeName = aStr;
         }
 
-        uno::Reference< lang::XComponent > xComp(xUnoControlModel, uno::UNO_QUERY);
+        uno::Reference< lang::XComponent > xComp(m_xUnoControlModel, uno::UNO_QUERY);
         if (xComp.is())
             m_pImpl->pEventListener->StartListening(xComp);
     }

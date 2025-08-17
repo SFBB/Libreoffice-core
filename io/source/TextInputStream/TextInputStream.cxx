@@ -36,7 +36,6 @@
 
 namespace com::sun::star::uno { class XComponentContext; }
 
-using namespace ::osl;
 using namespace ::cppu;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
@@ -129,7 +128,7 @@ OTextInputStream::~OTextInputStream()
 void OTextInputStream::checkNull()
 {
     if (mxStream==nullptr){
-        throw RuntimeException("Uninitialized object");
+        throw RuntimeException(u"Uninitialized object"_ustr);
     }
 }
 
@@ -164,30 +163,25 @@ OUString OTextInputStream::implReadString( const Sequence< sal_Unicode >& Delimi
     OUString aRetStr;
     if( !mbEncodingInitialized )
     {
-        setEncoding( "utf8" );
+        setEncoding( u"utf8"_ustr );
     }
     if( !mbEncodingInitialized )
         return aRetStr;
 
     // Only for bFindLineEnd
-    sal_Unicode cLineEndChar1 = 0x0D;
-    sal_Unicode cLineEndChar2 = 0x0A;
+    constexpr sal_Unicode cLineEndChar1 = '\r';
+    constexpr sal_Unicode cLineEndChar2 = '\n';
 
     sal_Int32 nBufferReadPos = 0;
-    sal_Int32 nCopyLen = 0;
-    bool bFound = false;
-    bool bFoundFirstLineEndChar = false;
+    sal_Int32 nCopyLen = -1;
     sal_Unicode cFirstLineEndChar = 0;
-    while( !bFound )
+    while (true)
     {
         // Still characters available?
         if( nBufferReadPos == mnCharsInBuffer )
         {
             // Already reached EOF? Then we can't read any more
-            if( mbReachedEOF )
-                break;
-
-            // No, so read new characters
+            // Or no, so read new characters
             if( !implReadNext() )
                 break;
         }
@@ -198,41 +192,35 @@ OUString OTextInputStream::implReadString( const Sequence< sal_Unicode >& Delimi
 
         if( bFindLineEnd )
         {
-            if( bFoundFirstLineEndChar )
+            if (cFirstLineEndChar != 0)
             {
-                bFound = true;
-                nCopyLen = nBufferReadPos - 2;
-                if( c == cLineEndChar1 || c == cLineEndChar2 )
+                assert(nCopyLen >= 0);
+                // This is a check if the next character after a line end char is its second half
+                // Same line end char -> new line break; non-line-end char -> new line start
+                if ((c == cFirstLineEndChar) || (c != cLineEndChar1 && c != cLineEndChar2))
                 {
-                    // Same line end char -> new line break
-                    if( c == cFirstLineEndChar )
-                    {
-                        nBufferReadPos--;
-                    }
-                }
-                else
-                {
-                    // No second line end char
+                    // Not a two-char line end
                     nBufferReadPos--;
                 }
+                break;
             }
             else if( c == cLineEndChar1 || c == cLineEndChar2 )
             {
-                bFoundFirstLineEndChar = true;
-                cFirstLineEndChar = c;
+                nCopyLen = nBufferReadPos - 1; // we know what to copy
+                cFirstLineEndChar = c; // take one more loop, to check if it's a two-char line end
             }
         }
         else if( comphelper::findValue(Delimiters, c) != -1 )
         {
-            bFound = true;
             nCopyLen = nBufferReadPos;
             if( bRemoveDelimiter )
                 nCopyLen--;
+            break;
         }
     }
 
     // Nothing found? Return all
-    if( !nCopyLen && !bFound && mbReachedEOF )
+    if (nCopyLen < 0)
         nCopyLen = nBufferReadPos;
 
     // Create string
@@ -240,8 +228,7 @@ OUString OTextInputStream::implReadString( const Sequence< sal_Unicode >& Delimi
         aRetStr = OUString( mvBuffer.data(), nCopyLen );
 
     // Copy rest of buffer
-    memmove( mvBuffer.data(), mvBuffer.data() + nBufferReadPos,
-        (mnCharsInBuffer - nBufferReadPos) * sizeof( sal_Unicode ) );
+    std::copy(mvBuffer.data() + nBufferReadPos, mvBuffer.data() + mnCharsInBuffer, mvBuffer.data());
     mnCharsInBuffer -= nBufferReadPos;
 
     return aRetStr;
@@ -250,35 +237,40 @@ OUString OTextInputStream::implReadString( const Sequence< sal_Unicode >& Delimi
 
 sal_Int32 OTextInputStream::implReadNext()
 {
-    sal_Int32 nFreeBufferSize = mvBuffer.size() - mnCharsInBuffer;
-    if( nFreeBufferSize < READ_BYTE_COUNT )
-        mvBuffer.resize(mvBuffer.size() * 2);
-    nFreeBufferSize = mvBuffer.size() - mnCharsInBuffer;
+    // Already reached EOF? Then we can't read any more
+    if (mbReachedEOF)
+        return 0;
 
     try
     {
-        sal_Int32 nRead = mxStream->readSomeBytes( mSeqSource, READ_BYTE_COUNT );
-        sal_Int32 nTotalRead = nRead;
-        if( nRead == 0 )
+        if (mxStream->readSomeBytes(mSeqSource, READ_BYTE_COUNT) == 0)
+        {
             mbReachedEOF = true;
+            return 0;
+        }
 
         // Try to convert
-        sal_uInt32 uiInfo;
-        sal_Size nSrcCvtBytes = 0;
-        sal_Size nTargetCount = 0;
+        sal_uInt32 uiInfo = mvBuffer.size() - mnCharsInBuffer < o3tl::make_unsigned(mSeqSource.getLength())
+                                ? RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL
+                                : 0;
+        const sal_Int32 nOldCharsInBuffer = mnCharsInBuffer;
         sal_Size nSourceCount = 0;
         while( true )
         {
-            const sal_Int8 *pbSource = mSeqSource.getConstArray();
+            if (uiInfo & RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL)
+            {
+                mvBuffer.resize(mvBuffer.size() * 2);
+            }
 
             // All invalid characters are transformed to the unicode undefined char
-            nTargetCount += rtl_convertTextToUnicode(
+            sal_Size nSrcCvtBytes = 0;
+            mnCharsInBuffer += rtl_convertTextToUnicode(
                                 mConvText2Unicode,
                                 mContextText2Unicode,
-                                reinterpret_cast<const char*>(&( pbSource[nSourceCount] )),
-                                nTotalRead - nSourceCount,
-                                mvBuffer.data() + mnCharsInBuffer + nTargetCount,
-                                nFreeBufferSize - nTargetCount,
+                                reinterpret_cast<const char*>(mSeqSource.getConstArray() + nSourceCount),
+                                mSeqSource.getLength() - nSourceCount,
+                                mvBuffer.data() + mnCharsInBuffer,
+                                mvBuffer.size() - mnCharsInBuffer,
                                 RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_DEFAULT   |
                                 RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_DEFAULT |
                                 RTL_TEXTTOUNICODE_FLAGS_INVALID_DEFAULT,
@@ -286,50 +278,30 @@ sal_Int32 OTextInputStream::implReadNext()
                                 &nSrcCvtBytes );
             nSourceCount += nSrcCvtBytes;
 
-            bool bCont = false;
-            if( uiInfo & RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL )
-            {
-                mvBuffer.resize(mvBuffer.size() * 2);
-                bCont = true;
-            }
-
             if( uiInfo & RTL_TEXTTOUNICODE_INFO_SRCBUFFERTOOSMALL )
             {
                 // read next byte
-                static Sequence< sal_Int8 > aOneByteSeq( 1 );
-                nRead = mxStream->readSomeBytes( aOneByteSeq, 1 );
-                if( nRead == 0 )
+                Sequence<sal_Int8> aOneByteSeq(1);
+                if (mxStream->readSomeBytes(aOneByteSeq, 1) == 0)
                 {
                     mbReachedEOF = true;
-                    break;
+                    return mnCharsInBuffer - nOldCharsInBuffer;
                 }
 
-                sal_Int32 nOldLen = mSeqSource.getLength();
-                nTotalRead++;
-                if( nTotalRead > nOldLen )
-                {
-                    mSeqSource.realloc( nTotalRead );
-                }
-                mSeqSource.getArray()[ nOldLen ] = aOneByteSeq.getConstArray()[ 0 ];
-                bCont = true;
+                mSeqSource = comphelper::concatSequences(mSeqSource, aOneByteSeq);
             }
-
-            if( bCont )
-                continue;
-            break;
+            else if (!(uiInfo & RTL_TEXTTOUNICODE_INFO_DESTBUFFERTOOSMALL))
+                return mnCharsInBuffer - nOldCharsInBuffer; // finished
         }
-
-        mnCharsInBuffer += nTargetCount;
-        return nTargetCount;
     }
     catch( NotConnectedException& )
     {
-        throw IOException("Not connected");
+        throw IOException(u"Not connected"_ustr);
         //throw IOException( L"OTextInputStream::implReadString failed" );
     }
     catch( BufferSizeExceededException& )
     {
-        throw IOException("Buffer size exceeded");
+        throw IOException(u"Buffer size exceeded"_ustr);
     }
 }
 
@@ -393,7 +365,7 @@ Reference< XInputStream > OTextInputStream::getInputStream()
 
 OUString OTextInputStream::getImplementationName()
 {
-    return "com.sun.star.comp.io.TextInputStream";
+    return u"com.sun.star.comp.io.TextInputStream"_ustr;
 }
 
 sal_Bool OTextInputStream::supportsService(const OUString& ServiceName)
@@ -403,7 +375,7 @@ sal_Bool OTextInputStream::supportsService(const OUString& ServiceName)
 
 Sequence< OUString > OTextInputStream::getSupportedServiceNames()
 {
-    return { "com.sun.star.io.TextInputStream" };
+    return { u"com.sun.star.io.TextInputStream"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

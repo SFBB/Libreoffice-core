@@ -125,10 +125,10 @@ sal_Int32 getDefaultNumberFormat(const Reference< XPropertySet >& _xColumn,
     try
     {
         // determine the datatype of the column
-        _xColumn->getPropertyValue("Type") >>= nDataType;
+        _xColumn->getPropertyValue(u"Type"_ustr) >>= nDataType;
 
         if (DataType::NUMERIC == nDataType || DataType::DECIMAL == nDataType)
-            _xColumn->getPropertyValue("Scale") >>= nScale;
+            _xColumn->getPropertyValue(u"Scale"_ustr) >>= nScale;
     }
     catch (Exception&)
     {
@@ -136,7 +136,7 @@ sal_Int32 getDefaultNumberFormat(const Reference< XPropertySet >& _xColumn,
     }
     return getDefaultNumberFormat(nDataType,
                     nScale,
-                    ::cppu::any2bool(_xColumn->getPropertyValue("IsCurrency")),
+                    ::cppu::any2bool(_xColumn->getPropertyValue(u"IsCurrency"_ustr)),
                     _xTypes,
                     _rLocale);
 }
@@ -278,7 +278,7 @@ static Reference< XConnection > getConnection_allowException(
         Reference<XInitialization> xIni(xDataSource, UNO_QUERY);
         if (xIni.is())
         {
-            Sequence< Any > aArgs{ Any(NamedValue( "ParentWindow", Any(_rxParent) )) };
+            Sequence< Any > aArgs{ Any(NamedValue( u"ParentWindow"_ustr, Any(_rxParent) )) };
             xIni->initialize(aArgs);
         }
 
@@ -291,8 +291,8 @@ static Reference< XConnection > getConnection_allowException(
             try
             {
                 xProp->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_PASSWORD)) >>= sPwd;
-                bPwdReq = ::cppu::any2bool(xProp->getPropertyValue("IsPasswordRequired"));
-                xProp->getPropertyValue("User") >>= sUser;
+                bPwdReq = ::cppu::any2bool(xProp->getPropertyValue(u"IsPasswordRequired"_ustr));
+                xProp->getPropertyValue(u"User"_ustr) >>= sUser;
             }
             catch(Exception&)
             {
@@ -316,7 +316,7 @@ static Reference< XConnection > getConnection_allowException(
 
         if (xIni.is())
         {
-            Sequence< Any > aArgs{ Any(NamedValue( "ParentWindow", Any(Reference<XWindow>()) )) };
+            Sequence< Any > aArgs{ Any(NamedValue( u"ParentWindow"_ustr, Any(Reference<XWindow>()) )) };
             xIni->initialize(aArgs);
         }
 
@@ -350,7 +350,7 @@ Reference< XConnection> getConnection(const Reference< XRowSet>& _rxRowSet)
     Reference< XConnection> xReturn;
     Reference< XPropertySet> xRowSetProps(_rxRowSet, UNO_QUERY);
     if (xRowSetProps.is())
-        xRowSetProps->getPropertyValue("ActiveConnection") >>= xReturn;
+        xRowSetProps->getPropertyValue(u"ActiveConnection"_ustr) >>= xReturn;
     return xReturn;
 }
 
@@ -370,7 +370,7 @@ static SharedConnection lcl_connectRowSet(const Reference< XRowSet>& _rxRowSet, 
 
         // 1. already connected?
         Reference< XConnection > xExistingConn(
-            xRowSetProps->getPropertyValue("ActiveConnection"),
+            xRowSetProps->getPropertyValue(u"ActiveConnection"_ustr),
             UNO_QUERY );
 
         if  (   xExistingConn.is()
@@ -380,7 +380,7 @@ static SharedConnection lcl_connectRowSet(const Reference< XRowSet>& _rxRowSet, 
             ||  ( xExistingConn = findConnection( _rxRowSet ) ).is()
             )
         {
-            xRowSetProps->setPropertyValue("ActiveConnection", Any( xExistingConn ) );
+            xRowSetProps->setPropertyValue(u"ActiveConnection"_ustr, Any( xExistingConn ) );
             // no auto disposer needed, since we did not create the connection
 
             xConnection.reset( xExistingConn, SharedConnection::NoTakeOwnership );
@@ -391,9 +391,9 @@ static SharedConnection lcl_connectRowSet(const Reference< XRowSet>& _rxRowSet, 
 
         static constexpr OUString sUserProp( u"User"_ustr );
         OUString sDataSourceName;
-        xRowSetProps->getPropertyValue("DataSourceName") >>= sDataSourceName;
+        xRowSetProps->getPropertyValue(u"DataSourceName"_ustr) >>= sDataSourceName;
         OUString sURL;
-        xRowSetProps->getPropertyValue("URL") >>= sURL;
+        xRowSetProps->getPropertyValue(u"URL"_ustr) >>= sURL;
 
         Reference< XConnection > xPureConnection;
         if (!sDataSourceName.isEmpty())
@@ -452,7 +452,7 @@ static SharedConnection lcl_connectRowSet(const Reference< XRowSet>& _rxRowSet, 
                 }
                 else
                     xRowSetProps->setPropertyValue(
-                        "ActiveConnection",
+                        u"ActiveConnection"_ustr,
                         Any( xConnection.getTyped() )
                     );
             }
@@ -653,14 +653,14 @@ Reference< XNameAccess > getFieldsByCommandDescriptor( const Reference< XConnect
 
                         if ( xComposerFac.is() )
                         {
-                            Reference< XSingleSelectQueryComposer > xComposer(xComposerFac->createInstance("com.sun.star.sdb.SingleSelectQueryComposer"),UNO_QUERY);
+                            Reference< XSingleSelectQueryComposer > xComposer(xComposerFac->createInstance(u"com.sun.star.sdb.SingleSelectQueryComposer"_ustr),UNO_QUERY);
                             if ( xComposer.is() )
                             {
                                 xComposer->setQuery( sStatementToExecute );
 
                                 // Now set the filter to a dummy restriction which will result in an empty
                                 // result set.
-                                xComposer->setFilter( "0=1" );
+                                xComposer->setFilter( u"0=1"_ustr );
                                 sStatementToExecute = xComposer->getQuery( );
                             }
                         }
@@ -683,7 +683,7 @@ Reference< XNameAccess > getFieldsByCommandDescriptor( const Reference< XConnect
                     try
                     {
                         if ( xStatementProps.is() )
-                            xStatementProps->setPropertyValue( "MaxRows",  Any( sal_Int32( 0 ) ) );
+                            xStatementProps->setPropertyValue( u"MaxRows"_ustr,  Any( sal_Int32( 0 ) ) );
                     }
                     catch( const Exception& )
                     {
@@ -1030,7 +1030,7 @@ try
         {   // Unlike the ValueMin the EffectiveMin can be void
             if (hasProperty(sPropValueMin, xNewProps))
             {
-                OSL_ENSURE(aEffectiveMin.getValueType().getTypeClass() == TypeClass_DOUBLE,
+                OSL_ENSURE(aEffectiveMin.getValueTypeClass() == TypeClass_DOUBLE,
                     "TransferFormComponentProperties : invalid property type !");
                 xNewProps->setPropertyValue(sPropValueMin, aEffectiveMin);
             }
@@ -1040,7 +1040,7 @@ try
         {   // analog
             if (hasProperty(sPropValueMax, xNewProps))
             {
-                OSL_ENSURE(aEffectiveMax.getValueType().getTypeClass() == TypeClass_DOUBLE,
+                OSL_ENSURE(aEffectiveMax.getValueTypeClass() == TypeClass_DOUBLE,
                     "TransferFormComponentProperties : invalid property type !");
                 xNewProps->setPropertyValue(sPropValueMax, aEffectiveMax);
             }
@@ -1050,8 +1050,8 @@ try
         Any aEffectiveDefault( xOldProps->getPropertyValue(sPropEffectiveDefault) );
         if (aEffectiveDefault.hasValue())
         {
-            bool bIsString = aEffectiveDefault.getValueType().getTypeClass() == TypeClass_STRING;
-            OSL_ENSURE(bIsString || aEffectiveDefault.getValueType().getTypeClass() == TypeClass_DOUBLE,
+            bool bIsString = aEffectiveDefault.getValueTypeClass() == TypeClass_STRING;
+            OSL_ENSURE(bIsString || aEffectiveDefault.getValueTypeClass() == TypeClass_DOUBLE,
                 "TransferFormComponentProperties : invalid property type !");
                 // The Effective-Properties should always be void or string or double...
 
@@ -1181,17 +1181,17 @@ catch(const Exception&)
 
 bool canInsert(const Reference< XPropertySet>& _rxCursorSet)
 {
-    return (_rxCursorSet.is() && (getINT32(_rxCursorSet->getPropertyValue("Privileges")) & Privilege::INSERT) != 0);
+    return (_rxCursorSet.is() && (getINT32(_rxCursorSet->getPropertyValue(u"Privileges"_ustr)) & Privilege::INSERT) != 0);
 }
 
 bool canUpdate(const Reference< XPropertySet>& _rxCursorSet)
 {
-    return (_rxCursorSet.is() && (getINT32(_rxCursorSet->getPropertyValue("Privileges")) & Privilege::UPDATE) != 0);
+    return (_rxCursorSet.is() && (getINT32(_rxCursorSet->getPropertyValue(u"Privileges"_ustr)) & Privilege::UPDATE) != 0);
 }
 
 bool canDelete(const Reference< XPropertySet>& _rxCursorSet)
 {
-    return (_rxCursorSet.is() && (getINT32(_rxCursorSet->getPropertyValue("Privileges")) & Privilege::DELETE) != 0);
+    return (_rxCursorSet.is() && (getINT32(_rxCursorSet->getPropertyValue(u"Privileges"_ustr)) & Privilege::DELETE) != 0);
 }
 
 Reference< XDataSource> findDataSource(const Reference< XInterface >& _xParent)
@@ -1226,21 +1226,21 @@ static Reference< XSingleSelectQueryComposer > getComposedRowSetStatement( const
             OUString sCommand;
             bool bEscapeProcessing = false;
 
-            OSL_VERIFY( _rxRowSet->getPropertyValue("CommandType") >>= nCommandType      );
-            OSL_VERIFY( _rxRowSet->getPropertyValue("Command") >>= sCommand          );
-            OSL_VERIFY( _rxRowSet->getPropertyValue("EscapeProcessing") >>= bEscapeProcessing );
+            OSL_VERIFY( _rxRowSet->getPropertyValue(u"CommandType"_ustr) >>= nCommandType      );
+            OSL_VERIFY( _rxRowSet->getPropertyValue(u"Command"_ustr) >>= sCommand          );
+            OSL_VERIFY( _rxRowSet->getPropertyValue(u"EscapeProcessing"_ustr) >>= bEscapeProcessing );
 
             StatementComposer aComposer( xConn, sCommand, nCommandType, bEscapeProcessing );
             // append sort
-            aComposer.setOrder( getString( _rxRowSet->getPropertyValue("Order") ) );
+            aComposer.setOrder( getString( _rxRowSet->getPropertyValue(u"Order"_ustr) ) );
 
             // append filter
             bool bApplyFilter = true;
-            _rxRowSet->getPropertyValue("ApplyFilter") >>= bApplyFilter;
+            _rxRowSet->getPropertyValue(u"ApplyFilter"_ustr) >>= bApplyFilter;
             if ( bApplyFilter )
             {
-                aComposer.setFilter( getString( _rxRowSet->getPropertyValue("Filter") ) );
-                aComposer.setHavingClause( getString( _rxRowSet->getPropertyValue("HavingClause") ) );
+                aComposer.setFilter( getString( _rxRowSet->getPropertyValue(u"Filter"_ustr) ) );
+                aComposer.setHavingClause( getString( _rxRowSet->getPropertyValue(u"HavingClause"_ustr) ) );
             }
 
             aComposer.getQuery();
@@ -1296,8 +1296,8 @@ OUString composeTableName( const Reference< XDatabaseMetaData >& _rxMetaData,
 OUString composeTableNameForSelect( const Reference< XConnection >& _rxConnection,
     const OUString& _rCatalog, const OUString& _rSchema, const OUString& _rName )
 {
-    bool bUseCatalogInSelect = isDataSourcePropertyEnabled( _rxConnection, "UseCatalogInSelect", true );
-    bool bUseSchemaInSelect = isDataSourcePropertyEnabled( _rxConnection, "UseSchemaInSelect", true );
+    bool bUseCatalogInSelect = isDataSourcePropertyEnabled( _rxConnection, u"UseCatalogInSelect"_ustr, true );
+    bool bUseSchemaInSelect = isDataSourcePropertyEnabled( _rxConnection, u"UseSchemaInSelect"_ustr, true );
 
     return impl_doComposeTableName(
         _rxConnection->getMetaData(),
@@ -1414,7 +1414,7 @@ void showError(const SQLExceptionInfo& _rInfo,
     {
         try
         {
-            Reference< XExecutableDialog > xErrorDialog = ErrorMessageDialog::create( _rxContext, "", _xParent, _rInfo.get() );
+            Reference< XExecutableDialog > xErrorDialog = ErrorMessageDialog::create( _rxContext, u""_ustr, _xParent, _rInfo.get() );
             xErrorDialog->execute();
         }
         catch(const Exception&)
@@ -1603,10 +1603,8 @@ bool implSetObject( const Reference< XParameters >& _rxParameters,
             break;
 
         case TypeClass_INTERFACE:
-            if (_rValue.getValueType() == cppu::UnoType<XInputStream>::get())
+            if (Reference<XInputStream> xStream; _rValue >>= xStream)
             {
-                Reference< XInputStream >  xStream;
-                _rValue >>= xStream;
                 _rxParameters->setBinaryStream(_nColumnIndex, xStream, xStream->available());
                 break;
             }
@@ -1732,15 +1730,14 @@ void askForParameters(const Reference< XSingleSelectQueryComposer >& _xComposer,
 
     // now transfer the values from the continuation object to the parameter columns
     Sequence< PropertyValue > aFinalValues = pParams->getValues();
-    const PropertyValue* pFinalValues = aFinalValues.getConstArray();
-    for (sal_Int32 i=0; i<aFinalValues.getLength(); ++i, ++pFinalValues)
+    for (sal_Int32 i = 0; i < aFinalValues.getLength(); ++i)
     {
         Reference< XPropertySet > xParamColumn(xWrappedParameters->getByIndex(i),UNO_QUERY);
         if (xParamColumn.is())
         {
             OUString sName;
             xParamColumn->getPropertyValue(PROPERTY_NAME) >>= sName;
-            OSL_ENSURE(sName == pFinalValues->Name, "::dbaui::askForParameters: inconsistent parameter names!");
+            OSL_ENSURE(sName == aFinalValues[i].Name, "::dbaui::askForParameters: inconsistent parameter names!");
 
             // determine the field type and ...
             sal_Int32 nParamType = 0;
@@ -1750,12 +1747,12 @@ void askForParameters(const Reference< XSingleSelectQueryComposer >& _xComposer,
             if (hasProperty(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_SCALE), xParamColumn))
                 xParamColumn->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_SCALE)) >>= nScale;
                 // (the index of the parameters is one-based)
-            TParameterPositions::const_iterator aFind = aParameterNames.find(pFinalValues->Name);
+            TParameterPositions::const_iterator aFind = aParameterNames.find(aFinalValues[i].Name);
             for(const auto& rItem : aFind->second)
             {
                 if ( _aParametersSet.empty() || !_aParametersSet[rItem-1] )
                 {
-                    _xParameters->setObjectWithInfo(rItem, pFinalValues->Value, nParamType, nScale);
+                    _xParameters->setObjectWithInfo(rItem, aFinalValues[i].Value, nParamType, nScale);
                 }
             }
         }

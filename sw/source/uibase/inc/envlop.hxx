@@ -24,9 +24,6 @@
 #include <vcl/customweld.hxx>
 #include "envimg.hxx"
 
-#define GetFieldVal(rField) (rField).Denormalize((rField).GetValue(FieldUnit::TWIP))
-#define SetFieldVal(rField, lValue) (rField).SetValue((rField).Normalize(lValue), FieldUnit::TWIP)
-
 inline int getfieldval(const weld::MetricSpinButton& rField)
 {
     return rField.denormalize(rField.get_value(FieldUnit::TWIP));
@@ -38,8 +35,6 @@ inline void setfieldval(weld::MetricSpinButton& rField, int lValue)
 }
 
 class SwEnvDlg;
-class SwEnvPage;
-class SwEnvFormatPage;
 class SwWrtShell;
 class Printer;
 

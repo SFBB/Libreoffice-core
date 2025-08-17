@@ -25,9 +25,6 @@
 
 #include <officecfg/Office/Common.hxx>
 
-using namespace utl;
-using namespace com::sun::star::uno;
-
 void SetODFDefaultVersion( SvtSaveOptions::ODFDefaultVersion eVersion, const std::shared_ptr<comphelper::ConfigurationChanges>& xChanges )
 {
     sal_Int16 nTmp = (eVersion == SvtSaveOptions::ODFVER_LATEST) ? sal_Int16( 3 ) : sal_Int16( eVersion );
@@ -87,6 +84,10 @@ SvtSaveOptions::ODFSaneDefaultVersion GetODFSaneDefaultVersion(SvtSaveOptions::O
             return SvtSaveOptions::ODFSVER_012_EXTENDED;
         case SvtSaveOptions::ODFVER_013:
             return SvtSaveOptions::ODFSVER_013;
+        case SvtSaveOptions::ODFVER_013_EXTENDED:
+            return SvtSaveOptions::ODFSVER_013_EXTENDED;
+        case SvtSaveOptions::ODFVER_014:
+            return SvtSaveOptions::ODFSVER_014;
     }
     return SvtSaveOptions::ODFSVER_LATEST_EXTENDED;
 }

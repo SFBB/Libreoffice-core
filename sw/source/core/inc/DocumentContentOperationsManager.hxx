@@ -24,7 +24,6 @@
 
 class SwDoc;
 class SwNoTextNode;
-class SwFormatColl;
 class SwHistory;
 
 namespace sw
@@ -111,7 +110,8 @@ public:
                             SwPaM const*const pCopiedPaM,
                             SwNode& rStartIdx,
                             const bool bCopyFlyAtFly = false,
-                            SwCopyFlags flags = SwCopyFlags::Default) const;
+                            SwCopyFlags flags = SwCopyFlags::Default,
+                            bool bMakeNewFrames = true) const;
 
     /// Parameters for _Rst and lcl_SetTextFormatColl
     //originallyfrom docfmt.cxx
@@ -126,16 +126,17 @@ public:
         bool bReset;
         bool bResetListAttrs; // #i62575#
         bool bResetAll;
+        bool bResetAllCharAttrs;
         bool bInclRefToxMark;
         /// From the attributes included in the range, delete only the ones which have exactly same range. Don't delete the ones which are simply included in the range.
         bool bExactRange;
 
-        ParaRstFormat(const SwPosition* pStt, const SwPosition* pEnd,
+        ParaRstFormat(const SwPosition* pStart, const SwPosition* pEnd,
                    SwHistory* pHst, const SfxItemSet* pSet = nullptr,
                    SwRootFrame const*const pLay = nullptr)
             : pFormatColl(nullptr)
             , pHistory(pHst)
-            , pSttNd(pStt)
+            , pSttNd(pStart)
             , pEndNd(pEnd)
             , pDelSet(pSet)
             , pLayout(pLay)
@@ -143,13 +144,14 @@ public:
             , bReset(false) // #i62675#
             , bResetListAttrs(false)
             , bResetAll(true)
+            , bResetAllCharAttrs(false)
             , bInclRefToxMark(false)
             , bExactRange(false)
         {
         }
     };
     static bool lcl_RstTextAttr( SwNode* pNd, void* pArgs ); //originally from docfmt.cxx
-
+    static std::shared_ptr<SfxItemSet> lcl_createDelSet(SwDoc& rDoc);
 
     virtual ~DocumentContentOperationsManager() override;
 

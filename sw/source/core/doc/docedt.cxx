@@ -40,6 +40,7 @@
 #include <ndtxt.hxx>
 #include <undobj.hxx>
 #include <frameformats.hxx>
+#include <unotxdoc.hxx>
 
 #include <vector>
 #include <com/sun/star/linguistic2/XProofreadingIterator.hpp>
@@ -47,7 +48,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::linguistic2;
-using namespace ::com::sun::star::i18n;
 
 
 void RestFlyInRange( SaveFlyArr & rArr, const SwPosition& rStartPos,
@@ -93,11 +93,11 @@ void RestFlyInRange( SaveFlyArr & rArr, const SwPosition& rStartPos,
         }
 
         aAnchor.SetAnchor( &aPos );
-        pFormat->GetDoc()->GetSpzFrameFormats()->push_back(static_cast<sw::SpzFrameFormat*>(pFormat));
+        pFormat->GetDoc().GetSpzFrameFormats()->push_back(static_cast<sw::SpzFrameFormat*>(pFormat));
         // SetFormatAttr should call Modify() and add it to the node
         pFormat->SetFormatAttr( aAnchor );
         SwContentNode* pCNd = aPos.GetNode().GetContentNode();
-        if (pCNd && pCNd->getLayoutFrame(pFormat->GetDoc()->getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, nullptr))
+        if (pCNd && pCNd->getLayoutFrame(pFormat->GetDoc().getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, nullptr))
             pFormat->MakeFrames();
     }
     sw::CheckAnchoredFlyConsistency(rStartPos.GetNode().GetDoc());
@@ -106,7 +106,8 @@ void RestFlyInRange( SaveFlyArr & rArr, const SwPosition& rStartPos,
 void SaveFlyInRange( const SwNodeRange& rRg, SaveFlyArr& rArr )
 {
     sw::SpzFrameFormats& rSpzs = *rRg.aStart.GetNode().GetDoc().GetSpzFrameFormats();
-    for(sw::FrameFormats<sw::SpzFrameFormat*>::size_type n = 0; n < rSpzs.size(); ++n )
+    sw::FrameFormats<sw::SpzFrameFormat*>::size_type n = 0;
+    while (n < rSpzs.size())
     {
         auto pSpz = rSpzs[n];
         SwFormatAnchor const*const pAnchor = &pSpz->GetAnchor();
@@ -127,8 +128,10 @@ void SaveFlyInRange( const SwNodeRange& rRg, SaveFlyArr& rArr )
             SwFormatAnchor aAnchor( pSpz->GetAnchor() );
             aAnchor.SetAnchor(nullptr);
             pSpz->SetFormatAttr(aAnchor);
-            rSpzs.erase( rSpzs.begin() + n-- );
+            rSpzs.erase( rSpzs.begin() + n );
+            continue;
         }
+        ++n;
     }
     sw::CheckAnchoredFlyConsistency(rRg.aStart.GetNode().GetDoc());
 }
@@ -330,8 +333,8 @@ void sw_GetJoinFlags( SwPaM& rPam, bool& rJoinText, bool& rJoinPrev )
     if( rPam.GetPoint()->GetNode() == rPam.GetMark()->GetNode() )
         return;
 
-    auto [pStt, pEnd] = rPam.StartEnd(); // SwPosition*
-    SwTextNode *pSttNd = pStt->GetNode().GetTextNode();
+    auto [pStart, pEnd] = rPam.StartEnd(); // SwPosition*
+    SwTextNode *pSttNd = pStart->GetNode().GetTextNode();
     if( !pSttNd )
         return;
 
@@ -340,14 +343,14 @@ void sw_GetJoinFlags( SwPaM& rPam, bool& rJoinText, bool& rJoinPrev )
     if( !rJoinText )
         return;
 
-    bool bExchange = pStt == rPam.GetPoint();
-    if( !pStt->GetContentIndex() &&
+    bool bExchange = pStart == rPam.GetPoint();
+    if( !pStart->GetContentIndex() &&
         pEndNd->GetText().getLength() != pEnd->GetContentIndex())
         bExchange = !bExchange;
     if( bExchange )
         rPam.Exchange();
-    rJoinPrev = rPam.GetPoint() == pStt;
-    OSL_ENSURE( !pStt->GetContentIndex() &&
+    rJoinPrev = rPam.GetPoint() == pStart;
+    OSL_ENSURE( !pStart->GetContentIndex() &&
         pEndNd->GetText().getLength() != pEnd->GetContentIndex()
         ? (rPam.GetPoint()->GetNode() < rPam.GetMark()->GetNode())
         : (rPam.GetPoint()->GetNode() > rPam.GetMark()->GetNode()),
@@ -425,7 +428,7 @@ bool sw_JoinText( SwPaM& rPam, bool bJoinPrev )
                 if( pOldTextNd == rPam.GetBound().GetContentNode() )
                     rPam.GetBound() = aAlphaPos;
                 if( pOldTextNd == rPam.GetBound( false ).GetContentNode() )
-                    rPam.GetBound( false ) = aAlphaPos;
+                    rPam.GetBound( false ) = std::move(aAlphaPos);
             }
             // delete the Node, at last!
             SwNode::Merge const eOldMergeFlag(pOldTextNd->GetRedlineMergeFlag());
@@ -535,6 +538,11 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
     SwNodeOffset nCurrNd = pSttPos->GetNodeIndex();
     SwNodeOffset nEndNd = pEndPos->GetNodeIndex();
 
+    bool bIsReadOnly = false;
+    const SfxObjectShell* pObjShell = GetDocShell();
+    if (pObjShell && pObjShell->IsReadOnly())
+        bIsReadOnly = true;
+
     uno::Any aRet;
     if( nCurrNd <= nEndNd )
     {
@@ -553,7 +561,7 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
                     {
                         nCurrNd = pNd->EndOfSectionIndex();
                     }
-                    else if( !static_cast<SwTextFrame*>(pContentFrame)->IsHiddenNow() )
+                    else if( !pContentFrame->IsHiddenNow() )
                     {
                         if( pPageCnt && *pPageCnt && pPageSt )
                         {
@@ -597,8 +605,8 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
                         }
 
                         sal_Int32 nSpellErrorPosition = pNd->GetTextNode()->GetText().getLength();
-                        if( (!pConvArgs && pNd->GetTextNode()->Spell( pSpellArgs.get() )) ||
-                            ( pConvArgs && pNd->GetTextNode()->Convert( *pConvArgs )))
+                        if ((!pConvArgs && pNd->GetTextNode()->Spell(pSpellArgs.get(), bIsReadOnly))
+                            || (pConvArgs && pNd->GetTextNode()->Convert(*pConvArgs)))
                         {
                             // Cancel and remember position
                             if( pSpellArgs )
@@ -618,45 +626,48 @@ uno::Any SwDoc::Spell( SwPaM& rPaM,
                             uno::Reference< linguistic2::XProofreadingIterator >  xGCIterator( GetGCIterator() );
                             if (xGCIterator.is())
                             {
-                                uno::Reference< lang::XComponent > xDoc = GetDocShell()->GetBaseModel();
-                                // Expand the string:
-                                const ModelToViewHelper aConversionMap(*pNd->GetTextNode(), pLayout);
-                                const OUString& aExpandText = aConversionMap.getViewText();
-
-                                // get XFlatParagraph to use...
-                                uno::Reference< text::XFlatParagraph > xFlatPara = new SwXFlatParagraph( *pNd->GetTextNode(), aExpandText, aConversionMap );
-
-                                // get error position of cursor in XFlatParagraph
-                                linguistic2::ProofreadingResult aResult;
-                                bool bGrammarErrors;
-                                do
+                                if (const SwDocShell* pShell = GetDocShell())
                                 {
-                                    aConversionMap.ConvertToViewPosition( nBeginGrammarCheck );
-                                    aResult = xGCIterator->checkSentenceAtPosition(
-                                            xDoc, xFlatPara, aExpandText, lang::Locale(), nBeginGrammarCheck, -1, -1 );
+                                    uno::Reference<uno::XInterface> xDoc = pShell->GetModel();
+                                    // Expand the string:
+                                    const ModelToViewHelper aConversionMap(*pNd->GetTextNode(), pLayout);
+                                    const OUString& aExpandText = aConversionMap.getViewText();
 
-                                    lcl_syncGrammarError( *pNd->GetTextNode(), aResult, aConversionMap );
+                                    // get XFlatParagraph to use...
+                                    uno::Reference< text::XFlatParagraph > xFlatPara = new SwXFlatParagraph( *pNd->GetTextNode(), aExpandText, aConversionMap );
 
-                                    // get suggestions to use for the specific error position
-                                    bGrammarErrors = aResult.aErrors.hasElements();
-                                    // if grammar checking doesn't have any progress then quit
-                                    if( aResult.nStartOfNextSentencePosition <= nBeginGrammarCheck )
-                                        break;
-                                    // prepare next iteration
-                                    nBeginGrammarCheck = aResult.nStartOfNextSentencePosition;
-                                }
-                                while( nSpellErrorPosition > aResult.nBehindEndOfSentencePosition && !bGrammarErrors && aResult.nBehindEndOfSentencePosition < nEndGrammarCheck );
+                                    // get error position of cursor in XFlatParagraph
+                                    linguistic2::ProofreadingResult aResult;
+                                    bool bGrammarErrors;
+                                    do
+                                    {
+                                        aConversionMap.ConvertToViewPosition( nBeginGrammarCheck );
+                                        aResult = xGCIterator->checkSentenceAtPosition(
+                                                xDoc, xFlatPara, aExpandText, lang::Locale(), nBeginGrammarCheck, -1, -1 );
 
-                                if( bGrammarErrors && nSpellErrorPosition >= aResult.nBehindEndOfSentencePosition )
-                                {
-                                    aRet <<= aResult;
-                                    //put the cursor to the current error
-                                    const linguistic2::SingleProofreadingError &rError = aResult.aErrors[0];
-                                    pSttPos->Assign(nCurrNd, pSttPos->GetContentIndex());
-                                    pEndPos->Assign(nCurrNd, pEndPos->GetContentIndex());
-                                    pSpellArgs->pStartPos->Assign(*pNd->GetTextNode(), aConversionMap.ConvertToModelPosition( rError.nErrorStart ).mnPos );
-                                    pSpellArgs->pEndPos->Assign(*pNd->GetTextNode(), aConversionMap.ConvertToModelPosition( rError.nErrorStart + rError.nErrorLength ).mnPos );
-                                    nCurrNd = nEndNd;
+                                        lcl_syncGrammarError( *pNd->GetTextNode(), aResult, aConversionMap );
+
+                                        // get suggestions to use for the specific error position
+                                        bGrammarErrors = aResult.aErrors.hasElements();
+                                        // if grammar checking doesn't have any progress then quit
+                                        if( aResult.nStartOfNextSentencePosition <= nBeginGrammarCheck )
+                                            break;
+                                        // prepare next iteration
+                                        nBeginGrammarCheck = aResult.nStartOfNextSentencePosition;
+                                    }
+                                    while( nSpellErrorPosition > aResult.nBehindEndOfSentencePosition && !bGrammarErrors && aResult.nBehindEndOfSentencePosition < nEndGrammarCheck );
+
+                                    if( bGrammarErrors && nSpellErrorPosition >= aResult.nBehindEndOfSentencePosition )
+                                    {
+                                        aRet <<= aResult;
+                                        //put the cursor to the current error
+                                        const linguistic2::SingleProofreadingError &rError = aResult.aErrors[0];
+                                        pSttPos->Assign(nCurrNd, pSttPos->GetContentIndex());
+                                        pEndPos->Assign(nCurrNd, pEndPos->GetContentIndex());
+                                        pSpellArgs->pStartPos->Assign(*pNd->GetTextNode(), aConversionMap.ConvertToModelPosition( rError.nErrorStart ).mnPos );
+                                        pSpellArgs->pEndPos->Assign(*pNd->GetTextNode(), aConversionMap.ConvertToModelPosition( rError.nErrorStart + rError.nErrorLength ).mnPos );
+                                        nCurrNd = nEndNd;
+                                    }
                                 }
                             }
                         }
@@ -708,7 +719,7 @@ public:
     SwHyphArgs( const SwPaM *pPam, const Point &rPoint,
                 sal_uInt16* pPageCount, sal_uInt16* pPageStart );
     void SetPam( SwPaM *pPam ) const;
-    void SetNode( SwNode& rNew ) { m_aNodeIdx.Assign(rNew); }
+    void SetNode( const SwNode& rNew ) { m_aNodeIdx.Assign(rNew); }
     inline void SetRange( const SwNode *pNew );
     void NextNode() { ++m_aNodeIdx; }
     sal_uInt16 *GetPageCnt() { return m_pPageCnt; }
@@ -766,7 +777,7 @@ static bool lcl_HyphenateNode( SwNode* pNd, void* pArgs )
         // sw_redlinehide: this will be called once per node for merged nodes;
         // the fully deleted ones won't have frames so are skipped.
         SwContentFrame* pContentFrame = pNode->getLayoutFrame( pNode->GetDoc().getIDocumentLayoutAccess().GetCurrentLayout() );
-        if( pContentFrame && !static_cast<SwTextFrame*>(pContentFrame)->IsHiddenNow() )
+        if( pContentFrame && !pContentFrame->IsHiddenNow() )
         {
             sal_uInt16 *pPageSt = pHyphArgs->GetPageSt();
             sal_uInt16 *pPageCnt = pHyphArgs->GetPageCnt();
@@ -826,16 +837,16 @@ void SwDoc::DeleteAutoCorrExceptWord()
 void SwDoc::CountWords( const SwPaM& rPaM, SwDocStat& rStat )
 {
     // This is a modified version of SwDoc::TransliterateText
-    auto [pStt, pEnd] = rPaM.StartEnd(); // SwPosition*
+    auto [pStart, pEnd] = rPaM.StartEnd(); // SwPosition*
 
-    const SwNodeOffset nSttNd = pStt->GetNodeIndex();
+    const SwNodeOffset nSttNd = pStart->GetNodeIndex();
     const SwNodeOffset nEndNd = pEnd->GetNodeIndex();
 
-    const sal_Int32 nSttCnt = pStt->GetContentIndex();
+    const sal_Int32 nSttCnt = pStart->GetContentIndex();
     const sal_Int32 nEndCnt = pEnd->GetContentIndex();
 
-    const SwTextNode* pTNd = pStt->GetNode().GetTextNode();
-    if( pStt == pEnd && pTNd )                  // no region ?
+    const SwTextNode* pTNd = pStart->GetNode().GetTextNode();
+    if( pStart == pEnd && pTNd )                  // no region ?
     {
         // do nothing
         return;
@@ -843,7 +854,7 @@ void SwDoc::CountWords( const SwPaM& rPaM, SwDocStat& rStat )
 
     if( nSttNd != nEndNd )
     {
-        SwNodeIndex aIdx( pStt->GetNode() );
+        SwNodeIndex aIdx( pStart->GetNode() );
         if( nSttCnt )
         {
             ++aIdx;

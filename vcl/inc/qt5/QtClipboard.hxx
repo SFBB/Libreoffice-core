@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -50,7 +50,7 @@ class QtClipboard final
     css::uno::Reference<css::datatransfer::clipboard::XClipboardOwner> m_aOwner;
     std::vector<css::uno::Reference<css::datatransfer::clipboard::XClipboardListener>> m_aListeners;
 
-    static bool isOwner(const QClipboard::Mode aMode);
+    bool isOwner(const QClipboard::Mode aMode);
     static bool isSupported(const QClipboard::Mode aMode);
 
     explicit QtClipboard(OUString aModeString, const QClipboard::Mode aMode);
@@ -64,7 +64,8 @@ signals:
 
 public:
     // factory function to construct only valid QtClipboard objects by name
-    static css::uno::Reference<css::uno::XInterface> create(const OUString& aModeString);
+    static css::uno::Reference<css::datatransfer::clipboard::XClipboard>
+    create(const OUString& aModeString);
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
@@ -94,4 +95,4 @@ public:
         override;
 };
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -67,7 +67,7 @@ OUString enumValueToEnumName(uno::Any const& aValue,
                  uno::UNO_QUERY);
 
     uno::Reference<reflection::XEnumTypeDescription> xTypeDescription;
-    xTypeDescription.set(xManager->getByHierarchicalName(aValue.getValueType().getTypeName()),
+    xTypeDescription.set(xManager->getByHierarchicalName(aValue.getValueTypeName()),
                          uno::UNO_QUERY);
 
     const uno::Sequence<sal_Int32> aValues = xTypeDescription->getEnumValues();
@@ -201,9 +201,9 @@ OUString getInterfaceName(uno::Reference<uno::XInterface> const& xInterface,
     if (xInvocationInterface.is())
     {
         uno::Reference<script::XInvocation2> xInvocation(xInvocationInterface, uno::UNO_QUERY);
-        if (xInvocation.is() && xInvocation->hasProperty("Name"))
+        if (xInvocation.is() && xInvocation->hasProperty(u"Name"_ustr))
         {
-            uno::Any aAny = xInvocation->getValue("Name");
+            uno::Any aAny = xInvocation->getValue(u"Name"_ustr);
             if (aAny.hasValue() && aAny.getValueTypeClass() == uno::TypeClass_STRING)
                 return aAny.get<OUString>();
         }
@@ -300,7 +300,7 @@ OUString convertAnyToShortenedString(const uno::Any& aValue,
 /** converts an any's type to a string (in a short form) */
 OUString getAnyType(const uno::Any& aValue)
 {
-    OUString aTypeName = aValue.getValueType().getTypeName();
+    OUString aTypeName = aValue.getValueTypeName();
     return aTypeName.replaceAll("com.sun.star", "css");
 }
 
@@ -349,8 +349,8 @@ public:
 };
 
 // appends the node to the root of the tree view
-OUString lclAppendNode(const std::unique_ptr<weld::TreeView>& pTree,
-                       ObjectInspectorNodeInterface* pEntry)
+void lclAppendNode(const std::unique_ptr<weld::TreeView>& pTree,
+                   ObjectInspectorNodeInterface* pEntry)
 {
     OUString sName = pEntry->getObjectName();
     OUString sId(weld::toId(pEntry));
@@ -363,13 +363,11 @@ OUString lclAppendNode(const std::unique_ptr<weld::TreeView>& pTree,
     {
         pTree->set_text(*pCurrent, rPair.second, rPair.first);
     }
-
-    return sId;
 }
 
 // appends the node to the parent
-OUString lclAppendNodeToParent(const std::unique_ptr<weld::TreeView>& pTree,
-                               const weld::TreeIter* pParent, ObjectInspectorNodeInterface* pEntry)
+void lclAppendNodeToParent(const std::unique_ptr<weld::TreeView>& pTree,
+                           const weld::TreeIter* pParent, ObjectInspectorNodeInterface* pEntry)
 {
     OUString sName = pEntry->getObjectName();
     OUString sId(weld::toId(pEntry));
@@ -382,8 +380,6 @@ OUString lclAppendNodeToParent(const std::unique_ptr<weld::TreeView>& pTree,
     {
         pTree->set_text(*pCurrent, rPair.second, rPair.first);
     }
-
-    return sId;
 }
 
 /** Node that represent just a simple string with no children or columns */
@@ -511,7 +507,7 @@ public:
 
     bool shouldShowExpander() override
     {
-        auto const& xSuperClasses = mxClass->getSuperclasses();
+        auto const xSuperClasses = mxClass->getSuperclasses();
         return xSuperClasses.getLength() > 2
                || (xSuperClasses.getLength() == 1 && !isXInterface(xSuperClasses[0]));
     }
@@ -522,7 +518,7 @@ public:
     void fillChildren(std::unique_ptr<weld::TreeView>& rTree,
                       const weld::TreeIter* pParent) override
     {
-        auto const& xSuperClasses = mxClass->getSuperclasses();
+        auto const xSuperClasses = mxClass->getSuperclasses();
         for (auto const& xSuper : xSuperClasses)
         {
             if (!isXInterface(xSuper))
@@ -558,7 +554,7 @@ public:
     {
         if (maAny.hasValue())
         {
-            switch (maAny.getValueType().getTypeClass())
+            switch (maAny.getValueTypeClass())
             {
                 case uno::TypeClass_INTERFACE:
                 {
@@ -644,7 +640,7 @@ public:
             uno::Any aArrayValue = mxIdlArray->get(maAny, i);
 
             auto* pObjectInspectorNode
-                = createNodeObjectForAny(OUString::number(i), aArrayValue, "");
+                = createNodeObjectForAny(OUString::number(i), aArrayValue, u""_ustr);
             if (pObjectInspectorNode)
                 lclAppendNodeToParent(pTree, pParent, pObjectInspectorNode);
         }
@@ -745,7 +741,7 @@ void GenericPropertiesNode::fillChildren(std::unique_ptr<weld::TreeView>& pTree,
     if (!xInvocation.is())
         return;
 
-    auto const& xInvocationAccess = xInvocation->getIntrospection();
+    auto const xInvocationAccess = xInvocation->getIntrospection();
     if (!xInvocationAccess.is())
         return;
 
@@ -758,7 +754,7 @@ void GenericPropertiesNode::fillChildren(std::unique_ptr<weld::TreeView>& pTree,
     {
     }
 
-    for (auto const& aInvocationInfo : std::as_const(aInvocationInfoSequence))
+    for (auto const& aInvocationInfo : aInvocationInfoSequence)
     {
         if (aInvocationInfo.eMemberType == script::MemberType_PROPERTY)
         {
@@ -853,8 +849,7 @@ void GenericPropertiesNode::fillChildren(std::unique_ptr<weld::TreeView>& pTree,
 void StructNode::fillChildren(std::unique_ptr<weld::TreeView>& pTree, const weld::TreeIter* pParent)
 {
     auto xReflection = reflection::theCoreReflection::get(mxContext);
-    uno::Reference<reflection::XIdlClass> xClass
-        = xReflection->forName(maAny.getValueType().getTypeName());
+    uno::Reference<reflection::XIdlClass> xClass = xReflection->forName(maAny.getValueTypeName());
 
     const auto xFields = xClass->getFields();
 
@@ -863,7 +858,7 @@ void StructNode::fillChildren(std::unique_ptr<weld::TreeView>& pTree, const weld
         OUString aFieldName = xField->getName();
         uno::Any aFieldValue = xField->get(maAny);
 
-        auto* pObjectInspectorNode = createNodeObjectForAny(aFieldName, aFieldValue, "");
+        auto* pObjectInspectorNode = createNodeObjectForAny(aFieldName, aFieldValue, u""_ustr);
         if (pObjectInspectorNode)
         {
             lclAppendNodeToParent(pTree, pParent, pObjectInspectorNode);
@@ -875,7 +870,7 @@ ObjectInspectorNodeInterface* BasicValueNode::createNodeObjectForAny(OUString co
                                                                      const uno::Any& rAny,
                                                                      OUString const& rInfo)
 {
-    switch (rAny.getValueType().getTypeClass())
+    switch (rAny.getValueTypeClass())
     {
         case uno::TypeClass_INTERFACE:
             return new GenericPropertiesNode(rName, rAny, rInfo, mxContext);
@@ -946,13 +941,13 @@ ObjectInspectorTreeHandler::ObjectInspectorTreeHandler(
     mpObjectInspectorWidgets->mpPropertiesTreeView->connect_popup_menu(
         LINK(this, ObjectInspectorTreeHandler, PopupMenuHandler));
 
-    mpObjectInspectorWidgets->mpInterfacesTreeView->connect_changed(
+    mpObjectInspectorWidgets->mpInterfacesTreeView->connect_selection_changed(
         LINK(this, ObjectInspectorTreeHandler, SelectionChanged));
-    mpObjectInspectorWidgets->mpServicesTreeView->connect_changed(
+    mpObjectInspectorWidgets->mpServicesTreeView->connect_selection_changed(
         LINK(this, ObjectInspectorTreeHandler, SelectionChanged));
-    mpObjectInspectorWidgets->mpPropertiesTreeView->connect_changed(
+    mpObjectInspectorWidgets->mpPropertiesTreeView->connect_selection_changed(
         LINK(this, ObjectInspectorTreeHandler, SelectionChanged));
-    mpObjectInspectorWidgets->mpMethodsTreeView->connect_changed(
+    mpObjectInspectorWidgets->mpMethodsTreeView->connect_selection_changed(
         LINK(this, ObjectInspectorTreeHandler, SelectionChanged));
 
     mpObjectInspectorWidgets->mpInterfacesTreeView->make_sorted();
@@ -976,8 +971,8 @@ ObjectInspectorTreeHandler::ObjectInspectorTreeHandler(
 
     mpObjectInspectorWidgets->mpToolbar->connect_clicked(
         LINK(this, ObjectInspectorTreeHandler, ToolbarButtonClicked));
-    mpObjectInspectorWidgets->mpToolbar->set_item_sensitive("inspect", false);
-    mpObjectInspectorWidgets->mpToolbar->set_item_sensitive("back", false);
+    mpObjectInspectorWidgets->mpToolbar->set_item_sensitive(u"inspect"_ustr, false);
+    mpObjectInspectorWidgets->mpToolbar->set_item_sensitive(u"back"_ustr, false);
 
     mpObjectInspectorWidgets->mpNotebook->connect_leave_page(
         LINK(this, ObjectInspectorTreeHandler, NotebookLeavePage));
@@ -1008,7 +1003,7 @@ void ObjectInspectorTreeHandler::setSortFunction(std::unique_ptr<weld::TreeView>
         });
 }
 
-sal_Int32 ObjectInspectorTreeHandler::compare(std::unique_ptr<weld::TreeView>& pTreeView,
+sal_Int32 ObjectInspectorTreeHandler::compare(const std::unique_ptr<weld::TreeView>& pTreeView,
                                               const weld::TreeIter& rLeft,
                                               const weld::TreeIter& rRight)
 {
@@ -1062,7 +1057,7 @@ IMPL_LINK(ObjectInspectorTreeHandler, ExpandingHandlerMethods, weld::TreeIter co
 IMPL_LINK(ObjectInspectorTreeHandler, SelectionChanged, weld::TreeView&, rTreeView, void)
 {
     bool bHaveNodeWithObject = false;
-    mpObjectInspectorWidgets->mpTextView->set_text("");
+    mpObjectInspectorWidgets->mpTextView->set_text(u""_ustr);
     if (mpObjectInspectorWidgets->mpPropertiesTreeView.get() == &rTreeView)
     {
         auto* pNode = getSelectedNode(rTreeView);
@@ -1075,7 +1070,7 @@ IMPL_LINK(ObjectInspectorTreeHandler, SelectionChanged, weld::TreeView&, rTreeVi
         }
     }
 
-    mpObjectInspectorWidgets->mpToolbar->set_item_sensitive("inspect", bHaveNodeWithObject);
+    mpObjectInspectorWidgets->mpToolbar->set_item_sensitive(u"inspect"_ustr, bHaveNodeWithObject);
 }
 
 static void updateOrder(const std::unique_ptr<weld::TreeView>& pTreeView, sal_Int32 nColumn)
@@ -1110,8 +1105,8 @@ IMPL_LINK(ObjectInspectorTreeHandler, PopupMenuHandler, const CommandEvent&, rCo
     if (xInterface.is())
     {
         std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(
-            mpObjectInspectorWidgets->mpPropertiesTreeView.get(), "sfx/ui/devtoolsmenu.ui"));
-        std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu("inspect_menu"));
+            mpObjectInspectorWidgets->mpPropertiesTreeView.get(), u"sfx/ui/devtoolsmenu.ui"_ustr));
+        std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu(u"inspect_menu"_ustr));
 
         OUString sCommand(
             xMenu->popup_at_rect(mpObjectInspectorWidgets->mpPropertiesTreeView.get(),
@@ -1280,6 +1275,9 @@ void ObjectInspectorTreeHandler::appendServices(uno::Reference<uno::XInterface> 
         return;
 
     auto xServiceInfo = uno::Reference<lang::XServiceInfo>(xInterface, uno::UNO_QUERY);
+    if (!xServiceInfo)
+        return;
+
     const uno::Sequence<OUString> aServiceNames(xServiceInfo->getSupportedServiceNames());
     for (auto const& aServiceName : aServiceNames)
     {
@@ -1293,7 +1291,7 @@ void ObjectInspectorTreeHandler::appendProperties(uno::Reference<uno::XInterface
 {
     if (!xInterface.is())
         return;
-    GenericPropertiesNode aNode("", uno::Any(xInterface), "", mxContext);
+    GenericPropertiesNode aNode(u""_ustr, uno::Any(xInterface), u""_ustr, mxContext);
     aNode.fillChildren(mpObjectInspectorWidgets->mpPropertiesTreeView, nullptr);
 }
 
@@ -1316,7 +1314,8 @@ void ObjectInspectorTreeHandler::appendMethods(uno::Reference<uno::XInterface> c
 // Update the back button state depending if there are objects in the stack
 void ObjectInspectorTreeHandler::updateBackButtonState()
 {
-    mpObjectInspectorWidgets->mpToolbar->set_item_sensitive("back", maInspectionStack.size() > 1);
+    mpObjectInspectorWidgets->mpToolbar->set_item_sensitive(u"back"_ustr,
+                                                            maInspectionStack.size() > 1);
 }
 
 // Clears all the objects from the stack

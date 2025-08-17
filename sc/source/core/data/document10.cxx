@@ -22,7 +22,7 @@
 
 #include <refupdatecontext.hxx>
 #include <sal/log.hxx>
-#include <editeng/colritem.hxx>
+#include <svx/DocumentColorHelper.hxx>
 #include <scitems.hxx>
 #include <datamapper.hxx>
 #include <docsh.hxx>
@@ -59,7 +59,7 @@ void ScDocument::DeleteBeforeCopyFromClip(
     sc::CopyFromClipContext& rCxt, const ScMarkData& rMark, sc::ColumnSpanSet& rBroadcastSpans )
 {
     SCTAB nClipTab = 0;
-    const TableContainer& rClipTabs = rCxt.getClipDoc()->maTabs;
+    std::vector<ScTableUniquePtr> const& rClipTabs = rCxt.getClipDoc()->maTabs;
     SCTAB nClipTabCount = rClipTabs.size();
 
     for (SCTAB nTab = rCxt.getTabStart(); nTab <= rCxt.getTabEnd(); ++nTab)
@@ -188,17 +188,10 @@ std::set<Color> ScDocument::GetDocColors()
 {
     std::set<Color> aDocColors;
     ScDocumentPool *pPool = GetPool();
-    const sal_uInt16 pAttribs[] = {ATTR_BACKGROUND, ATTR_FONT_COLOR};
-    for (sal_uInt16 nAttrib : pAttribs)
-    {
-        for (const SfxPoolItem* pItem : pPool->GetItemSurrogates(nAttrib))
-        {
-            const SvxColorItem *pColorItem = static_cast<const SvxColorItem*>(pItem);
-            Color aColor( pColorItem->GetValue() );
-            if (COL_AUTO != aColor)
-                aDocColors.insert(aColor);
-        }
-    }
+
+    svx::DocumentColorHelper::queryColors<SvxBrushItem>(ATTR_BACKGROUND, pPool, aDocColors);
+    svx::DocumentColorHelper::queryColors<SvxColorItem>(ATTR_FONT_COLOR, pPool, aDocColors);
+
     return aDocColors;
 }
 
@@ -232,9 +225,9 @@ void ScDocument::SwapNonEmpty( sc::TableValues& rValues )
     if (!rRange.IsValid())
         return;
 
-    auto pPosSet = std::make_shared<sc::ColumnBlockPositionSet>(*this);
-    sc::StartListeningContext aStartCxt(*this, pPosSet);
-    sc::EndListeningContext aEndCxt(*this, pPosSet);
+    auto xPosSet = std::make_shared<sc::ColumnBlockPositionSet>(*this);
+    sc::StartListeningContext aStartCxt(*this, xPosSet);
+    sc::EndListeningContext aEndCxt(*this, std::move(xPosSet));
 
     for (SCTAB nTab = rRange.aStart.Tab(); nTab <= rRange.aEnd.Tab(); ++nTab)
     {
@@ -264,7 +257,7 @@ void ScDocument::PreprocessAllRangeNamesUpdate( const std::map<OUString, ScRange
         if (!pOldRangeNames)
             continue;
 
-        const auto& itNewTab( rRangeMap.find( itTab.first));
+        const auto itNewTab( rRangeMap.find( itTab.first));
         if (itNewTab == rRangeMap.end())
             continue;
 
@@ -332,6 +325,10 @@ void ScDocument::SharePooledResources( const ScDocument* pSrcDoc )
     ScMutationGuard aGuard(*this, ScMutationGuardFlags::CORE);
     mxPoolHelper = pSrcDoc->mxPoolHelper;
     mpCellStringPool = pSrcDoc->mpCellStringPool;
+
+    // force lazy creation/existence in source document *before* sharing
+    pSrcDoc->getCellAttributeHelper();
+    mpCellAttributeHelper = pSrcDoc->mpCellAttributeHelper;
 }
 
 void ScDocument::UpdateScriptTypes( const ScAddress& rPos, SCCOL nColSize, SCROW nRowSize )
@@ -395,7 +392,7 @@ void ScDocument::DelayFormulaGrouping( bool delay )
 void ScDocument::AddDelayedFormulaGroupingCell( const ScFormulaCell* cell )
 {
     if( !pDelayedFormulaGrouping->Contains( cell->aPos ))
-        pDelayedFormulaGrouping->ExtendTo( cell->aPos );
+        pDelayedFormulaGrouping->ExtendTo( ScRange(cell->aPos) );
 }
 
 void ScDocument::EnableDelayStartListeningFormulaCells( ScColumn* column, bool delay )
@@ -412,9 +409,9 @@ void ScDocument::EnableDelayStartListeningFormulaCells( ScColumn* column, bool d
         {
             if( it->second.first != -1 )
             {
-                auto pPosSet = std::make_shared<sc::ColumnBlockPositionSet>(*this);
-                sc::StartListeningContext aStartCxt(*this, pPosSet);
-                sc::EndListeningContext aEndCxt(*this, pPosSet);
+                auto xPosSet = std::make_shared<sc::ColumnBlockPositionSet>(*this);
+                sc::StartListeningContext aStartCxt(*this, xPosSet);
+                sc::EndListeningContext aEndCxt(*this, std::move(xPosSet));
                 column->StartListeningFormulaCells(aStartCxt, aEndCxt, it->second.first, it->second.second);
             }
             pDelayedStartListeningFormulaCells.erase( it );
@@ -566,9 +563,9 @@ void ScDocument::StartAllListeners( const ScRange& rRange )
     if (IsClipOrUndo() || GetNoListening())
         return;
 
-    auto pPosSet = std::make_shared<sc::ColumnBlockPositionSet>(*this);
-    sc::StartListeningContext aStartCxt(*this, pPosSet);
-    sc::EndListeningContext aEndCxt(*this, pPosSet);
+    auto xPosSet = std::make_shared<sc::ColumnBlockPositionSet>(*this);
+    sc::StartListeningContext aStartCxt(*this, xPosSet);
+    sc::EndListeningContext aEndCxt(*this, std::move(xPosSet));
 
     for (SCTAB nTab = rRange.aStart.Tab(); nTab <= rRange.aEnd.Tab(); ++nTab)
     {
@@ -964,20 +961,21 @@ bool ScDocument::CopyAdjustRangeName( SCTAB& rSheet, sal_uInt16& rIndex, ScRange
 }
 
 bool ScDocument::IsEditActionAllowed(
-    sc::ColRowEditAction eAction, SCTAB nTab, SCCOLROW nStart, SCCOLROW nEnd ) const
+    sc::EditAction eAction, SCTAB nTab, SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow ) const
 {
     const ScTable* pTab = FetchTable(nTab);
     if (!pTab)
         return false;
 
-    return pTab->IsEditActionAllowed(eAction, nStart, nEnd);
+    return pTab->IsEditActionAllowed(eAction, nStartCol, nStartRow, nEndCol, nEndRow);
 }
 
 bool ScDocument::IsEditActionAllowed(
-    sc::ColRowEditAction eAction, const ScMarkData& rMark, SCCOLROW nStart, SCCOLROW nEnd ) const
+    sc::EditAction eAction, const ScMarkData& rMark, SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow ) const
 {
     return std::all_of(rMark.begin(), rMark.end(),
-        [this, &eAction, &nStart, &nEnd](const SCTAB& rTab) { return IsEditActionAllowed(eAction, rTab, nStart, nEnd); });
+        [this, &eAction, &nStartCol, &nStartRow, &nEndCol, &nEndRow](const SCTAB& rTab)
+        { return IsEditActionAllowed(eAction, rTab, nStartCol, nStartRow, nEndCol, nEndRow); });
 }
 
 std::optional<sc::ColumnIterator> ScDocument::GetColumnIterator( SCTAB nTab, SCCOL nCol, SCROW nRow1, SCROW nRow2 ) const

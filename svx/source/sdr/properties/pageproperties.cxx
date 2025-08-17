@@ -72,7 +72,7 @@ namespace sdr::properties
         }
 
         void PageProperties::SetStyleSheet(SfxStyleSheet* /*pStyleSheet*/, bool /*bDontRemoveHardAttr*/,
-                bool /*bBroadcast*/)
+                bool /*bBroadcast*/, bool /*bAdjustTextFrameWidthAndHeight*/)
         {
             // override to legally ignore the StyleSheet here
         }
@@ -97,9 +97,9 @@ namespace sdr::properties
             assert(!"PageProperties::ClearObjectItemDirect() should never be called");
         }
 
-        void PageProperties::SetObjectItemSet(const SfxItemSet& /*rSet*/)
+        void PageProperties::SetObjectItemSet(const SfxItemSet& /*rSet*/, bool /*bAdjustTextFrameWidthAndHeight*/)
         {
-            assert(!"PageProperties::SetObjectItemSet() should never be called");
+            // This can be called e.g. when positioning the slide using dialog in Notes view
         }
 } // end of namespace
 

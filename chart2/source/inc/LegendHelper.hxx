@@ -18,13 +18,11 @@
  */
 #pragma once
 
+#include <config_options.h>
 #include <com/sun/star/uno/Reference.hxx>
 #include <rtl/ref.hxx>
-#include "charttoolsdllapi.hxx"
 
 namespace chart { class ChartModel; }
-namespace com::sun::star::chart2 { class XDiagram; }
-namespace com::sun::star::chart2 { class XLegend; }
 namespace com::sun::star::uno { class XComponentContext; }
 
 namespace chart
@@ -32,7 +30,7 @@ namespace chart
 class Diagram;
 class Legend;
 
-class OOO_DLLPUBLIC_CHARTTOOLS LegendHelper
+class LegendHelper
 {
 public:
     static rtl::Reference< ::chart::Legend >

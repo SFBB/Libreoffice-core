@@ -11,7 +11,6 @@
 #include <test/beans/xpropertyset.hxx>
 #include <test/sheet/spreadsheetdocumentsettings.hxx>
 
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 
@@ -47,11 +46,12 @@ public:
 };
 
 ScSpreadsheetSettingsObj::ScSpreadsheetSettingsObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
-    , XPropertySet({ "AreaLinks", "CharLocale", "CharLocaleAsian", "CharLocaleComplex",
-                     "ColumnLabelRanges", "DDELinks", "DatabaseRanges", "ExternalDocLinks",
-                     "InteropGrabBag", "NamedRanges", "NullDate", "RowLabelRanges", "SheetLinks",
-                     "Theme" })
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
+    , XPropertySet({ u"AreaLinks"_ustr, u"CharLocale"_ustr, u"CharLocaleAsian"_ustr,
+                     u"CharLocaleComplex"_ustr, u"ColumnLabelRanges"_ustr, u"DDELinks"_ustr,
+                     u"DatabaseRanges"_ustr, u"ExternalDocLinks"_ustr, u"InteropGrabBag"_ustr,
+                     u"NamedRanges"_ustr, u"NullDate"_ustr, u"RowLabelRanges"_ustr,
+                     u"SheetLinks"_ustr, u"Theme"_ustr })
 {
 }
 
@@ -65,7 +65,7 @@ void ScSpreadsheetSettingsObj::setUp()
 {
     UnoApiTest::setUp();
     // create a calc document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScSpreadsheetSettingsObj);

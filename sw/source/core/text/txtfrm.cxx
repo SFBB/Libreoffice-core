@@ -25,8 +25,9 @@
 #include <editeng/lspcitem.hxx>
 #include <editeng/lrspitem.hxx>
 #include <editeng/brushitem.hxx>
+#include <editeng/charhiddenitem.hxx>
 #include <editeng/pgrditem.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <swmodule.hxx>
 #include <SwSmartTagMgr.hxx>
 #include <doc.hxx>
@@ -721,21 +722,20 @@ void SwLayoutModeModifier::SetAuto()
     const_cast<OutputDevice&>(m_rOut).SetLayoutMode( nNewLayoutMode );
 }
 
-SwDigitModeModifier::SwDigitModeModifier( const OutputDevice& rOutp, LanguageType eCurLang ) :
+SwDigitModeModifier::SwDigitModeModifier( const OutputDevice& rOutp, LanguageType eCurLang,
+                                          SvtCTLOptions::TextNumerals eCTLTextNumerals ) :
         rOut( rOutp ), nOldLanguageType( rOutp.GetDigitLanguage() )
 {
     LanguageType eLang = eCurLang;
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         eLang = LANGUAGE_ENGLISH_US;
     else
     {
-        const SvtCTLOptions::TextNumerals nTextNumerals = SvtCTLOptions::GetCTLTextNumerals();
-
-        if ( SvtCTLOptions::NUMERALS_HINDI == nTextNumerals )
+        if ( SvtCTLOptions::NUMERALS_HINDI == eCTLTextNumerals )
             eLang = LANGUAGE_ARABIC_SAUDI_ARABIA;
-        else if ( SvtCTLOptions::NUMERALS_ARABIC == nTextNumerals )
+        else if ( SvtCTLOptions::NUMERALS_ARABIC == eCTLTextNumerals )
             eLang = LANGUAGE_ENGLISH;
-        else if ( SvtCTLOptions::NUMERALS_SYSTEM == nTextNumerals )
+        else if ( SvtCTLOptions::NUMERALS_SYSTEM == eCTLTextNumerals )
             eLang = ::GetAppLanguage();
     }
 
@@ -773,6 +773,8 @@ SwTextFrame::SwTextFrame(SwTextNode * const pNode, SwFrame* pSib,
     , mnHeightOfLastLine( 0 )
     , mnAdditionalFirstLineOffset( 0 )
     , mnOffset( 0 )
+    , mnNoHyphOffset( COMPLETE_STRING )
+    , mnNoHyphEndZone( 0 )
     , mnCacheIndex( USHRT_MAX )
     , mbLocked( false )
     , mbWidow( false )
@@ -933,7 +935,7 @@ void RemoveFootnotesForNode(
     rFootnoteIdxs.SeekEntry( rTextNode, &nPos );
     if (nPos < rFootnoteIdxs.size())
     {
-        while (nPos && rTextNode == (rFootnoteIdxs[ nPos ]->GetTextNode()))
+        while (nPos > 0 && rTextNode == (rFootnoteIdxs[ nPos ]->GetTextNode()))
             --nPos;
         if (nPos || rTextNode != (rFootnoteIdxs[ nPos ]->GetTextNode()))
             ++nPos;
@@ -1017,6 +1019,7 @@ namespace sw {
 // 1. if real insert => correct nStart/nEnd for full nLen
 // 2. if rl un-delete => do not correct nStart/nEnd but just include un-deleted
 static TextFrameIndex UpdateMergedParaForInsert(MergedPara & rMerged,
+        sw::ParagraphBreakMode const eMode, SwScriptInfo *const pScriptInfo,
         bool const isRealInsert,
         SwTextNode const& rNode, sal_Int32 const nIndex, sal_Int32 const nLen)
 {
@@ -1128,13 +1131,6 @@ static TextFrameIndex UpdateMergedParaForInsert(MergedPara & rMerged,
         rMerged.extents.emplace(itInsert, const_cast<SwTextNode*>(&rNode), nIndex, nIndex + nLen);
         text.insert(nTFIndex, rNode.GetText().subView(nIndex, nLen));
         nInserted = nLen;
-        if (rMerged.extents.size() == 1 // also if it was empty!
-            || rMerged.pParaPropsNode->GetIndex() < rNode.GetIndex())
-        {   // text inserted after current para-props node
-            rMerged.pParaPropsNode->RemoveFromListRLHidden();
-            rMerged.pParaPropsNode = &const_cast<SwTextNode&>(rNode);
-            rMerged.pParaPropsNode->AddToListRLHidden();
-        }
         // called from SwRangeRedline::InvalidateRange()
         if (rNode.GetRedlineMergeFlag() == SwNode::Merge::Hidden)
         {
@@ -1142,12 +1138,24 @@ static TextFrameIndex UpdateMergedParaForInsert(MergedPara & rMerged,
         }
     }
     rMerged.mergedText = text.makeStringAndClear();
+    if ((!bInserted && rMerged.extents.size() == 1) // also if it was empty!
+        || rNode.GetIndex() <= rMerged.pParaPropsNode->GetIndex())
+    {   // text inserted before current para-props node
+        SwTextNode *const pOldParaPropsNode{rMerged.pParaPropsNode};
+        FindParaPropsNodeIgnoreHidden(rMerged, eMode, pScriptInfo);
+        if (rMerged.pParaPropsNode != pOldParaPropsNode)
+        {
+            pOldParaPropsNode->RemoveFromListRLHidden();
+            rMerged.pParaPropsNode->AddToListRLHidden();
+        }
+    }
     return TextFrameIndex(nInserted);
 }
 
 // 1. if real delete => correct nStart/nEnd for full nLen
 // 2. if rl delete => do not correct nStart/nEnd but just exclude deleted
 TextFrameIndex UpdateMergedParaForDelete(MergedPara & rMerged,
+        sw::ParagraphBreakMode const eMode, SwScriptInfo *const pScriptInfo,
         bool const isRealDelete,
         SwTextNode const& rNode, sal_Int32 nIndex, sal_Int32 const nLen)
 {
@@ -1158,7 +1166,7 @@ TextFrameIndex UpdateMergedParaForDelete(MergedPara & rMerged,
     sal_Int32 nToDelete(nLen);
     sal_Int32 nDeleted(0);
     size_t nFoundNode(0);
-    size_t nErased(0);
+//    size_t nErased(0);
     auto it = rMerged.extents.begin();
     for (; it != rMerged.extents.end(); )
     {
@@ -1194,7 +1202,7 @@ TextFrameIndex UpdateMergedParaForDelete(MergedPara & rMerged,
                     bErase = nDeleteHere == it->nEnd - it->nStart;
                     if (bErase)
                     {
-                        ++nErased;
+//                        ++nErased;
                         assert(it->nStart == nIndex);
                         it = rMerged.extents.erase(it);
                     }
@@ -1260,21 +1268,23 @@ TextFrameIndex UpdateMergedParaForDelete(MergedPara & rMerged,
 // can't do: might be last one in node was erased   assert(nLen == 0 || rMerged.empty() || (it-1)->nEnd <= nIndex);
     // note: if first node gets deleted then that must call DelFrames as
     // pFirstNode is never updated
-    if (nErased && nErased == nFoundNode)
+    rMerged.mergedText = text.makeStringAndClear();
+// could be all-hidden now so always check!    if (nErased && nErased == nFoundNode)
     {   // all visible text from node was erased
 #if 1
         if (rMerged.pParaPropsNode == &rNode)
         {
-            rMerged.pParaPropsNode->RemoveFromListRLHidden();
-            rMerged.pParaPropsNode = rMerged.extents.empty()
-                ? const_cast<SwTextNode*>(rMerged.pLastNode)
-                : rMerged.extents.front().pNode;
-            rMerged.pParaPropsNode->AddToListRLHidden();
+            SwTextNode *const pOldParaPropsNode{rMerged.pParaPropsNode};
+            FindParaPropsNodeIgnoreHidden(rMerged, eMode, pScriptInfo);
+            if (rMerged.pParaPropsNode != pOldParaPropsNode)
+            {
+                pOldParaPropsNode->RemoveFromListRLHidden();
+                rMerged.pParaPropsNode->AddToListRLHidden();
+            }
         }
 #endif
 // NOPE must listen on all non-hidden nodes; particularly on pLastNode        rMerged.listener.EndListening(&const_cast<SwTextNode&>(rNode));
     }
-    rMerged.mergedText = text.makeStringAndClear();
     return TextFrameIndex(nDeleted);
 }
 
@@ -1377,7 +1387,6 @@ TextFrameIndex SwTextFrame::MapModelToView(SwTextNode const*const pNode, sal_Int
     }
     else
     {
-        assert(static_cast<const SwTextNode*>(SwFrame::GetDep()) == pNode);
         return TextFrameIndex(nIndex);
     }
 }
@@ -1401,7 +1410,7 @@ void SwTextFrame::SetMergedPara(std::unique_ptr<sw::MergedPara> p)
         }
         else
         {
-            pFirst->Add(this); // must register at node again
+            pFirst->Add(*this); // must register at node again
         }
     }
     // postcondition: frame must be listening somewhere
@@ -1459,11 +1468,11 @@ SwDoc const& SwTextFrame::GetDoc() const
 }
 
 LanguageType SwTextFrame::GetLangOfChar(TextFrameIndex const nIndex,
-        sal_uInt16 const nScript, bool const bNoChar) const
+        sal_uInt16 const nScript, bool const bNoChar, bool const bNoneIfNoHyphenation) const
 {
     // a single character can be mapped uniquely!
     std::pair<SwTextNode const*, sal_Int32> const pos(MapViewToModel(nIndex));
-    return pos.first->GetLang(pos.second, bNoChar ? 0 : 1, nScript);
+    return pos.first->GetLang(pos.second, bNoChar ? 0 : 1, nScript, bNoneIfNoHyphenation);
 }
 
 void SwTextFrame::ResetPreps()
@@ -1473,6 +1482,19 @@ void SwTextFrame::ResetPreps()
         if (SwParaPortion *pPara = GetPara())
             pPara->ResetPreps();
     }
+}
+
+static auto FindCellFrame(SwFrame const* pLower) -> SwLayoutFrame const*
+{
+    while (pLower)
+    {
+        if (pLower->IsCellFrame())
+        {
+            return static_cast<SwLayoutFrame const*>(pLower);
+        }
+        pLower = pLower->GetUpper();
+    }
+    return nullptr;
 }
 
 bool SwTextFrame::IsHiddenNow() const
@@ -1485,26 +1507,40 @@ bool SwTextFrame::IsHiddenNow() const
         return true;
     }
 
+    // TODO: what is the above check good for and can it be removed?
+    return IsHiddenNowImpl();
+}
+
+bool SwTextFrame::IsHiddenNowImpl() const
+{
+    if (SwContentFrame::IsHiddenNow())
+        return true;
+
     bool bHiddenCharsHidePara(false);
     bool bHiddenParaField(false);
     if (m_pMergedPara)
     {
         TextFrameIndex nHiddenStart(COMPLETE_STRING);
         TextFrameIndex nHiddenEnd(0);
+        bool hasHidden{false};
         if (auto const pScriptInfo = GetScriptInfo())
         {
-            pScriptInfo->GetBoundsOfHiddenRange(TextFrameIndex(0),
+            hasHidden = pScriptInfo->GetBoundsOfHiddenRange(TextFrameIndex(0),
                     nHiddenStart, nHiddenEnd);
         }
         else // ParaPortion is created in Format, but this is called earlier
         {
             SwScriptInfo aInfo;
-            aInfo.InitScriptInfo(*m_pMergedPara->pFirstNode, m_pMergedPara.get(), IsRightToLeft());
-            aInfo.GetBoundsOfHiddenRange(TextFrameIndex(0),
+            aInfo.InitScriptInfoHidden(*m_pMergedPara->pFirstNode, m_pMergedPara.get());
+            hasHidden = aInfo.GetBoundsOfHiddenRange(TextFrameIndex(0),
                         nHiddenStart, nHiddenEnd);
         }
-        if (TextFrameIndex(0) == nHiddenStart &&
-            TextFrameIndex(GetText().getLength()) <= nHiddenEnd)
+        if ((TextFrameIndex(0) == nHiddenStart
+                && TextFrameIndex(GetText().getLength()) <= nHiddenEnd)
+            // special case: GetBoundsOfHiddenRange doesn't assign!
+            // but it does return that there *is* something hidden, in case
+            // the frame is empty then the whole thing must be hidden
+            || (hasHidden && m_pMergedPara->mergedText.isEmpty()))
         {
             bHiddenCharsHidePara = true;
         }
@@ -1538,6 +1574,46 @@ bool SwTextFrame::IsHiddenNow() const
         bHiddenCharsHidePara = static_cast<SwTextNode const*>(SwFrame::GetDep())->HasHiddenCharAttribute( true );
         bHiddenParaField = static_cast<SwTextNode const*>(SwFrame::GetDep())->IsHiddenByParaField();
     }
+    if (bHiddenCharsHidePara && GetDoc().getIDocumentSettingAccess().get(
+            DocumentSettingId::APPLY_PARAGRAPH_MARK_FORMAT_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH))
+    {
+        // apparently in Word it's always the last para marker that determines hidden?
+        // even in case when they are merged by delete redline (it's obvious when they are merged by hidden-attribute
+        SwTextNode const*const pNode{ m_pMergedPara
+            ? m_pMergedPara->pLastNode
+            : static_cast<SwTextNode const*>(SwFrame::GetDep()) };
+        // Word ignores hidden formatting on the cell end marker
+        bool isLastInCell{false};
+        if (SwLayoutFrame const*const pCellFrame{FindCellFrame(this)})
+        {
+            SwContentFrame const* pNext{GetNextContentFrame()};
+            // skip frame in hidden section ("this" is *not* in hidden section!)
+            while (pNext && pNext->SwContentFrame::IsHiddenNow())
+            {
+                pNext = pNext->GetNextContentFrame();
+            }
+            isLastInCell = pNext == nullptr || !pCellFrame->IsAnLower(pNext);
+        }
+        if (!isLastInCell)
+        {
+            SwFormatAutoFormat const& rListAutoFormat{pNode->GetAttr(RES_PARATR_LIST_AUTOFMT)};
+            std::shared_ptr<SfxItemSet> const pSet{rListAutoFormat.GetStyleHandle()};
+            SvxCharHiddenItem const* pItem{pSet ? pSet->GetItemIfSet(RES_CHRATR_HIDDEN) : nullptr};
+            if (!pItem)
+            {
+                // don't use node's mpAttrSet, it doesn't apply to para marker
+                SwFormatColl const*const pStyle{pNode->GetFormatColl()};
+                if (pStyle)
+                {
+                    pItem = &pStyle->GetFormatAttr(RES_CHRATR_HIDDEN);
+                }
+            }
+            if (!pItem || !pItem->GetValue())
+            {
+                bHiddenCharsHidePara = false;
+            }
+        }
+    }
     const SwViewShell* pVsh = getRootFrame()->GetCurrShell();
 
     if ( pVsh && ( bHiddenCharsHidePara || bHiddenParaField ) )
@@ -1554,22 +1630,14 @@ bool SwTextFrame::IsHiddenNow() const
             // be visible - check this for the 1st body paragraph
             if (IsInDocBody() && FindPrevCnt() == nullptr)
             {
-                bool isAllHidden(true);
                 for (SwContentFrame const* pNext = FindNextCnt(true);
                         pNext != nullptr; pNext = pNext->FindNextCnt(true))
                 {
-                    if (!pNext->IsTextFrame()
-                        || !static_cast<SwTextFrame const*>(pNext)->IsHiddenNow())
-                    {
-                        isAllHidden = false;
-                        break;
-                    }
+                    if (!pNext->IsHiddenNow())
+                        return true;
                 }
-                if (isAllHidden)
-                {
-                    SAL_INFO("sw.core", "unhiding one body paragraph");
-                    return false;
-                }
+                SAL_INFO("sw.core", "unhiding one body paragraph");
+                return false;
             }
             return true;
         }
@@ -1734,8 +1802,13 @@ void SwTextFrame::HideAndShowObjects()
                     sal_Int32 nHiddenStart;
                     sal_Int32 nHiddenEnd;
                     const SwFormatAnchor& rAnchorFormat = pContact->GetAnchorFormat();
+                    const SwNode* pNode = rAnchorFormat.GetAnchorNode();
+                    // When the object was already removed from text, but the layout hasn't been
+                    // updated yet, this can be nullptr:
+                    if (!pNode)
+                        continue;
                     SwScriptInfo::GetBoundsOfHiddenRange(
-                        *rAnchorFormat.GetAnchorNode()->GetTextNode(),
+                        *pNode->GetTextNode(),
                         rAnchorFormat.GetAnchorContentOffset(), nHiddenStart, nHiddenEnd);
                     // Under certain conditions
                     if ( nHiddenStart != COMPLETE_STRING && bShouldBeHidden &&
@@ -1761,6 +1834,18 @@ void SwTextFrame::HideAndShowObjects()
         if (pMaster)
             pMaster->HideAndShowObjects();
     }
+}
+
+void SwLayoutFrame::HideAndShowObjects()
+{
+    for (SwFrame * pLower = Lower(); pLower; pLower = pLower->GetNext())
+    {
+        pLower->HideAndShowObjects();
+    }
+}
+
+void SwFrame::HideAndShowObjects()
+{
 }
 
 /**
@@ -2069,8 +2154,9 @@ void UpdateMergedParaForMove(sw::MergedPara & rMerged,
     for (auto const& it : deleted)
     {
         sal_Int32 const nStart(it.first - nSourceStart + nDestStart);
-        TextFrameIndex const nDeleted = UpdateMergedParaForDelete(rMerged, false,
-            rDestNode, nStart, it.second - it.first);
+        TextFrameIndex const nDeleted = UpdateMergedParaForDelete(rMerged,
+            rTextFrame.getRootFrame()->GetParagraphBreakMode(), rTextFrame.GetScriptInfo(),
+            false, rDestNode, nStart, it.second - it.first);
 //FIXME asserts valid for join - but if called from split, the new node isn't there yet and it will be added later...       assert(nDeleted);
 //            assert(nDeleted == it.second - it.first);
         if(nDeleted)
@@ -2121,6 +2207,9 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
     sw::DeleteChar const* pDeleteChar(nullptr);
     sw::RedlineDelText const* pRedlineDelText(nullptr);
     sw::RedlineUnDelText const* pRedlineUnDelText(nullptr);
+    SwFormatChangeHint const * pFormatChangedHint(nullptr);
+    sw::AttrSetChangeHint const* pAttrSetChangeHint(nullptr);
+    sw::UpdateAttrHint const* pUpdateAttrHint(nullptr);
 
     sal_uInt16 nWhich = 0;
     if (rHint.GetId() == SfxHintId::SwLegacyModify)
@@ -2129,6 +2218,10 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
         pOld = pHint->m_pOld;
         pNew = pHint->m_pNew;
         nWhich = pHint->GetWhich();
+    }
+    else if (rHint.GetId() == SfxHintId::SwUpdateAttr)
+    {
+        pUpdateAttrHint = static_cast<const sw::UpdateAttrHint*>(&rHint);
     }
     else if (rHint.GetId() == SfxHintId::SwInsertText)
     {
@@ -2165,17 +2258,25 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
             pPage->UpdateVirtPageNumInfo(rVirtPageNumHint, this);
         return;
     }
-    else if (auto const pHt = dynamic_cast<sw::MoveText const*>(&rHint))
+    else if (rHint.GetId() == SfxHintId::SwMoveText)
     {
-        pMoveText = pHt;
+        pMoveText = static_cast<sw::MoveText const*>(&rHint);
     }
-    else if (auto const pHynt = dynamic_cast<sw::RedlineDelText const*>(&rHint))
+    else if (rHint.GetId() == SfxHintId::SwRedlineDelText)
     {
-        pRedlineDelText = pHynt;
+        pRedlineDelText = static_cast<sw::RedlineDelText const*>(&rHint);
     }
-    else if (auto const pHnt = dynamic_cast<sw::RedlineUnDelText const*>(&rHint))
+    else if (rHint.GetId() == SfxHintId::SwRedlineUnDelText)
     {
-        pRedlineUnDelText = pHnt;
+        pRedlineUnDelText = static_cast<sw::RedlineUnDelText const*>(&rHint);
+    }
+    else if (rHint.GetId() == SfxHintId::SwFormatChange)
+    {
+        pFormatChangedHint = static_cast<const SwFormatChangeHint*>(&rHint);
+    }
+    else if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        pAttrSetChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
     }
     else
     {
@@ -2190,7 +2291,7 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
     SwTextNode const& rNode(static_cast<SwTextNode const&>(rModify));
 
     // modifications concerning frame attributes are processed by the base class
-    if( IsInRange( aFrameFormatSetRange, nWhich ) || RES_FMT_CHG == nWhich )
+    if( IsInRange( aFrameFormatSetRange, nWhich ) || pFormatChangedHint )
     {
         if (m_pMergedPara)
         {   // ignore item set changes that don't apply
@@ -2203,8 +2304,8 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
                 return;
             }
         }
-        SwContentFrame::SwClientNotify(rModify, sw::LegacyModifyHint(pOld, pNew));
-        if( nWhich == RES_FMT_CHG && getRootFrame()->GetCurrShell() )
+        SwContentFrame::SwClientNotify(rModify, rHint);
+        if( pFormatChangedHint && getRootFrame()->GetCurrShell() )
         {
             // collection has changed
             Prepare();
@@ -2248,7 +2349,9 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
             sal_Int32 const nNLen = pRedlineDelText->nLen;
             nPos = MapModelToView(&rNode, nNPos);
             // update merged before doing anything else
-            nLen = UpdateMergedParaForDelete(*m_pMergedPara, false, rNode, nNPos, nNLen);
+            nLen = UpdateMergedParaForDelete(*m_pMergedPara,
+                    getRootFrame()->GetParagraphBreakMode(), GetScriptInfo(),
+                    false, rNode, nNPos, nNLen);
             const sal_Int32 m = -nNLen;
             if (nLen && IsIdxInside(nPos, nLen))
             {
@@ -2270,7 +2373,9 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
             sal_Int32 const nNPos = pRedlineUnDelText->nStart;
             sal_Int32 const nNLen = pRedlineUnDelText->nLen;
             nPos = MapModelToView(&rNode, nNPos);
-            nLen = UpdateMergedParaForInsert(*m_pMergedPara, false, rNode, nNPos, nNLen);
+            nLen = UpdateMergedParaForInsert(*m_pMergedPara,
+                    getRootFrame()->GetParagraphBreakMode(), GetScriptInfo(),
+                    false, rNode, nNPos, nNLen);
             if (IsIdxInside(nPos, nLen))
             {
                 if (!nLen)
@@ -2332,7 +2437,9 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
             nLen = TextFrameIndex(pInsertText->nLen);
             if (m_pMergedPara)
             {
-                UpdateMergedParaForInsert(*m_pMergedPara, true, rNode, pInsertText->nPos, pInsertText->nLen);
+                UpdateMergedParaForInsert(*m_pMergedPara,
+                    getRootFrame()->GetParagraphBreakMode(), GetScriptInfo(),
+                    true, rNode, pInsertText->nPos, pInsertText->nLen);
             }
             if( IsIdxInside( nPos, nLen ) )
             {
@@ -2358,7 +2465,9 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
         nPos = MapModelToView(&rNode, pDeleteText->nStart);
         if (m_pMergedPara)
         {   // update merged before doing anything else
-            nLen = UpdateMergedParaForDelete(*m_pMergedPara, true, rNode, pDeleteText->nStart, pDeleteText->nLen);
+            nLen = UpdateMergedParaForDelete(*m_pMergedPara,
+                getRootFrame()->GetParagraphBreakMode(), GetScriptInfo(),
+                true, rNode, pDeleteText->nStart, pDeleteText->nLen);
         }
         else
         {
@@ -2385,7 +2494,9 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
         nPos = MapModelToView(&rNode, pDeleteChar->m_nPos);
         if (m_pMergedPara)
         {
-            nLen = UpdateMergedParaForDelete(*m_pMergedPara, true, rNode, pDeleteChar->m_nPos, 1);
+            nLen = UpdateMergedParaForDelete(*m_pMergedPara,
+                getRootFrame()->GetParagraphBreakMode(), GetScriptInfo(),
+                true, rNode, pDeleteChar->m_nPos, 1);
         }
         else
         {
@@ -2400,6 +2511,285 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
             lcl_ModifyOfst(*this, nPos, nLen, &o3tl::operator-<sal_Int32, Tag_TextFrameIndex>);
         }
     }
+    else if (pAttrSetChangeHint)
+    {
+        InvalidateLineNum();
+
+        const SwAttrSet& rNewSet = *pAttrSetChangeHint->m_pNew->GetChgSet();
+        int nClear = 0;
+        sal_uInt16 nCount = rNewSet.Count();
+
+        if( const SwFormatFootnote* pItem = rNewSet.GetItemIfSet( RES_TXTATR_FTN, false ) )
+        {
+            nPos = MapModelToView(&rNode, pItem->GetTextFootnote()->GetStart());
+            if (IsIdxInside(nPos, TextFrameIndex(1)))
+                Prepare( PrepareHint::FootnoteInvalidation, pAttrSetChangeHint->m_pNew );
+            nClear = 0x01;
+            --nCount;
+        }
+
+        if( const SwFormatField* pItem = rNewSet.GetItemIfSet( RES_TXTATR_FIELD, false ) )
+        {
+            nPos = MapModelToView(&rNode, pItem->GetTextField()->GetStart());
+            if (IsIdxInside(nPos, TextFrameIndex(1)))
+            {
+                const SwFormatField* pOldItem = pAttrSetChangeHint->m_pOld ?
+                    &(pAttrSetChangeHint->m_pOld->GetChgSet()->Get(RES_TXTATR_FIELD)) : nullptr;
+                if (SfxPoolItem::areSame( pItem, pOldItem ))
+                {
+                    InvalidatePage();
+                    SetCompletePaint();
+                }
+                else
+                    InvalidateRange_(SwCharRange(nPos, TextFrameIndex(1)));
+            }
+            nClear |= 0x02;
+            --nCount;
+        }
+        bool bLineSpace = SfxItemState::SET == rNewSet.GetItemState(
+                                        RES_PARATR_LINESPACING, false ),
+                 bRegister  = SfxItemState::SET == rNewSet.GetItemState(
+                                        RES_PARATR_REGISTER, false );
+        if ( bLineSpace || bRegister )
+        {
+            if (!m_pMergedPara || m_pMergedPara->pParaPropsNode == &rModify)
+            {
+                Prepare( bRegister ? PrepareHint::Register : PrepareHint::AdjustSizeWithoutFormatting );
+                CalcLineSpace();
+                InvalidateSize();
+                InvalidatePrt_();
+
+                // i#11859
+                //  (1) Also invalidate next frame on next page/column.
+                //  (2) Skip empty sections and hidden paragraphs
+                //  Thus, use method <InvalidateNextPrtArea()>
+                InvalidateNextPrtArea();
+
+                SetCompletePaint();
+            }
+            nClear |= 0x04;
+            if ( bLineSpace )
+            {
+                --nCount;
+                if ((!m_pMergedPara || m_pMergedPara->pParaPropsNode == &rModify)
+                    && IsInSct() && !GetPrev())
+                {
+                    SwSectionFrame *pSect = FindSctFrame();
+                    if( pSect->ContainsAny() == this )
+                        pSect->InvalidatePrt();
+                }
+            }
+            if ( bRegister )
+                --nCount;
+        }
+        if ( SfxItemState::SET == rNewSet.GetItemState( RES_PARATR_SPLIT,
+                                                   false ))
+        {
+            if (!m_pMergedPara || m_pMergedPara->pParaPropsNode == &rModify)
+            {
+                if (GetPrev())
+                    CheckKeep();
+                Prepare();
+                InvalidateSize();
+            }
+            nClear |= 0x08;
+            --nCount;
+        }
+
+        if( SfxItemState::SET == rNewSet.GetItemState( RES_BACKGROUND, false)
+            && (!m_pMergedPara || m_pMergedPara->pParaPropsNode == &rModify)
+            && !IsFollow() && GetDrawObjs() )
+        {
+            SwSortedObjs *pObjs = GetDrawObjs();
+            for ( size_t i = 0; GetDrawObjs() && i < pObjs->size(); ++i )
+            {
+                SwAnchoredObject* pAnchoredObj = (*pObjs)[i];
+                if ( auto pFly = pAnchoredObj->DynCastFlyFrame() )
+                {
+                    if( !pFly->IsFlyInContentFrame() )
+                    {
+                        const SvxBrushItem &rBack =
+                            pFly->GetAttrSet()->GetBackground();
+                        //     #GetTransChg#
+                        //     following condition determines, if the fly frame
+                        //     "inherites" the background color of text frame.
+                        //     This is the case, if fly frame background
+                        //     color is "no fill"/"auto fill" and if the fly frame
+                        //     has no background graphic.
+                        //     Thus, check complete fly frame background
+                        //     color and *not* only its transparency value
+                        if ( (rBack.GetColor() == COL_TRANSPARENT)  &&
+                            rBack.GetGraphicPos() == GPOS_NONE )
+                        {
+                            pFly->SetCompletePaint();
+                            pFly->InvalidatePage();
+                        }
+                    }
+                }
+            }
+        }
+
+        if ( SfxItemState::SET ==
+             rNewSet.GetItemState( RES_TXTATR_CHARFMT, false ) )
+        {
+            lcl_SetWrong( *this, rNode, 0, COMPLETE_STRING, false );
+            lcl_SetScriptInval( *this, TextFrameIndex(0) );
+        }
+        else if ( SfxItemState::SET ==
+                  rNewSet.GetItemState( RES_CHRATR_LANGUAGE, false ) ||
+                  SfxItemState::SET ==
+                  rNewSet.GetItemState( RES_CHRATR_CJK_LANGUAGE, false ) ||
+                  SfxItemState::SET ==
+                  rNewSet.GetItemState( RES_CHRATR_CTL_LANGUAGE, false ) )
+            lcl_SetWrong( *this, rNode, 0, COMPLETE_STRING, false );
+        else if ( SfxItemState::SET ==
+                  rNewSet.GetItemState( RES_CHRATR_FONT, false ) ||
+                  SfxItemState::SET ==
+                  rNewSet.GetItemState( RES_CHRATR_CJK_FONT, false ) ||
+                  SfxItemState::SET ==
+                  rNewSet.GetItemState( RES_CHRATR_CTL_FONT, false ) )
+            lcl_SetScriptInval( *this, TextFrameIndex(0) );
+        else if ( SfxItemState::SET ==
+                  rNewSet.GetItemState( RES_FRAMEDIR, false )
+            && (!m_pMergedPara || m_pMergedPara->pParaPropsNode == &rModify))
+        {
+            SetDerivedR2L( false );
+            CheckDirChange();
+            // Force complete paint due to existing indents.
+            SetCompletePaint();
+        }
+
+        if( nCount )
+        {
+            if( getRootFrame()->GetCurrShell() )
+            {
+                Prepare();
+                InvalidatePrt_();
+            }
+
+            if (nClear || (m_pMergedPara &&
+                    (m_pMergedPara->pParaPropsNode != &rModify ||
+                     m_pMergedPara->pFirstNode != &rModify)))
+            {
+                assert(pAttrSetChangeHint->m_pOld);
+                SwAttrSetChg aOldSet( *pAttrSetChangeHint->m_pOld );
+                SwAttrSetChg aNewSet( *pAttrSetChangeHint->m_pNew );
+
+                if (m_pMergedPara && m_pMergedPara->pParaPropsNode != &rModify)
+                {
+                    for (sal_uInt16 i = RES_PARATR_BEGIN; i != RES_FRMATR_END; ++i)
+                    {
+                        if (i != RES_BREAK && i != RES_PAGEDESC)
+                        {
+                            aOldSet.ClearItem(i);
+                            aNewSet.ClearItem(i);
+                        }
+                    }
+                    for (sal_uInt16 i = XATTR_FILL_FIRST; i <= XATTR_FILL_LAST; ++i)
+                    {
+                        aOldSet.ClearItem(i);
+                        aNewSet.ClearItem(i);
+                    }
+                }
+                if (m_pMergedPara && m_pMergedPara->pFirstNode != &rModify)
+                {
+                    aOldSet.ClearItem(RES_BREAK);
+                    aNewSet.ClearItem(RES_BREAK);
+                    aOldSet.ClearItem(RES_PAGEDESC);
+                    aNewSet.ClearItem(RES_PAGEDESC);
+                }
+
+                if( 0x01 & nClear )
+                {
+                    aOldSet.ClearItem( RES_TXTATR_FTN );
+                    aNewSet.ClearItem( RES_TXTATR_FTN );
+                }
+                if( 0x02 & nClear )
+                {
+                    aOldSet.ClearItem( RES_TXTATR_FIELD );
+                    aNewSet.ClearItem( RES_TXTATR_FIELD );
+                }
+                if ( 0x04 & nClear )
+                {
+                    if ( bLineSpace )
+                    {
+                        aOldSet.ClearItem( RES_PARATR_LINESPACING );
+                        aNewSet.ClearItem( RES_PARATR_LINESPACING );
+                    }
+                    if ( bRegister )
+                    {
+                        aOldSet.ClearItem( RES_PARATR_REGISTER );
+                        aNewSet.ClearItem( RES_PARATR_REGISTER );
+                    }
+                }
+                if ( 0x08 & nClear )
+                {
+                    aOldSet.ClearItem( RES_PARATR_SPLIT );
+                    aNewSet.ClearItem( RES_PARATR_SPLIT );
+                }
+                if (aOldSet.Count() || aNewSet.Count())
+                {
+                    SwContentFrame::SwClientNotify(rModify, sw::AttrSetChangeHint(&aOldSet, &aNewSet));
+                }
+            }
+            else
+                SwContentFrame::SwClientNotify(rModify, rHint);
+        }
+
+#if !ENABLE_WASM_STRIP_ACCESSIBILITY
+        if (isA11yRelevantAttribute(nWhich))
+        {
+            SwViewShell* pViewSh = getRootFrame() ? getRootFrame()->GetCurrShell() : nullptr;
+            if ( pViewSh  )
+            {
+                pViewSh->InvalidateAccessibleParaAttrs( *this );
+            }
+        }
+#endif
+    }
+    else if (rHint.GetId() == SfxHintId::SwObjectDying)
+        ; // do nothing
+    else if (pUpdateAttrHint)
+    {
+        const SwUpdateAttr* pNewUpdate = pUpdateAttrHint->m_pNew;
+
+        sal_Int32 const nNPos = pNewUpdate->getStart();
+        sal_Int32 const nNLen = pNewUpdate->getEnd() - nNPos;
+        nPos = MapModelToView(&rNode, nNPos);
+        nLen = MapModelToView(&rNode, nNPos + nNLen) - nPos;
+        if( IsIdxInside( nPos, nLen ) )
+        {
+            // We need to reformat anyways, even if the invalidated
+            // range is empty.
+            // E.g.: empty line, set 14 pt!
+
+            // FootnoteNumbers need to be formatted
+            if( !nLen )
+                nLen = TextFrameIndex(1);
+
+            InvalidateRange_( SwCharRange( nPos, nLen) );
+            const sal_uInt16 nTmp = pNewUpdate->getWhichAttr();
+
+            if( ! nTmp || RES_TXTATR_CHARFMT == nTmp || RES_TXTATR_INETFMT == nTmp || RES_TXTATR_AUTOFMT == nTmp ||
+                RES_UPDATEATTR_FMT_CHG == nTmp || RES_UPDATEATTR_ATTRSET_CHG == nTmp )
+            {
+                lcl_SetWrong( *this, rNode, nNPos, nNPos + nNLen, false );
+                lcl_SetScriptInval( *this, nPos );
+            }
+        }
+
+#if !ENABLE_WASM_STRIP_ACCESSIBILITY
+        if( isA11yRelevantAttribute( pNewUpdate->getWhichAttr() ) &&
+            hasA11yRelevantAttribute( pNewUpdate->getFmtAttrs() ) )
+        {
+            SwViewShell* pViewSh = getRootFrame() ? getRootFrame()->GetCurrShell() : nullptr;
+            if ( pViewSh  )
+            {
+                pViewSh->InvalidateAccessibleParaAttrs( *this );
+            }
+        }
+#endif
+    }
     else switch (nWhich)
     {
         case RES_LINENUMBER:
@@ -2407,50 +2797,6 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
             assert(false); // should have been forwarded to SwContentFrame
             InvalidateLineNum();
         }
-        break;
-        case RES_UPDATE_ATTR:
-        {
-            const SwUpdateAttr* pNewUpdate = static_cast<const SwUpdateAttr*>(pNew);
-
-            sal_Int32 const nNPos = pNewUpdate->getStart();
-            sal_Int32 const nNLen = pNewUpdate->getEnd() - nNPos;
-            nPos = MapModelToView(&rNode, nNPos);
-            nLen = MapModelToView(&rNode, nNPos + nNLen) - nPos;
-            if( IsIdxInside( nPos, nLen ) )
-            {
-                // We need to reformat anyways, even if the invalidated
-                // range is empty.
-                // E.g.: empty line, set 14 pt!
-
-                // FootnoteNumbers need to be formatted
-                if( !nLen )
-                    nLen = TextFrameIndex(1);
-
-                InvalidateRange_( SwCharRange( nPos, nLen) );
-                const sal_uInt16 nTmp = pNewUpdate->getWhichAttr();
-
-                if( ! nTmp || RES_TXTATR_CHARFMT == nTmp || RES_TXTATR_INETFMT == nTmp || RES_TXTATR_AUTOFMT == nTmp ||
-                    RES_FMT_CHG == nTmp || RES_ATTRSET_CHG == nTmp )
-                {
-                    lcl_SetWrong( *this, rNode, nNPos, nNPos + nNLen, false );
-                    lcl_SetScriptInval( *this, nPos );
-                }
-            }
-
-#if !ENABLE_WASM_STRIP_ACCESSIBILITY
-            if( isA11yRelevantAttribute( pNewUpdate->getWhichAttr() ) &&
-                hasA11yRelevantAttribute( pNewUpdate->getFmtAttrs() ) )
-            {
-                SwViewShell* pViewSh = getRootFrame() ? getRootFrame()->GetCurrShell() : nullptr;
-                if ( pViewSh  )
-                {
-                    pViewSh->InvalidateAccessibleParaAttrs( *this );
-                }
-            }
-#endif
-        }
-        break;
-        case RES_OBJECTDYING:
         break;
 
         case RES_PARATR_LINESPACING:
@@ -2517,243 +2863,6 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
             break;
         }
 
-        case RES_ATTRSET_CHG:
-        {
-            InvalidateLineNum();
-
-            const SwAttrSet& rNewSet = *static_cast<const SwAttrSetChg*>(pNew)->GetChgSet();
-            int nClear = 0;
-            sal_uInt16 nCount = rNewSet.Count();
-
-            if( const SwFormatFootnote* pItem = rNewSet.GetItemIfSet( RES_TXTATR_FTN, false ) )
-            {
-                nPos = MapModelToView(&rNode, pItem->GetTextFootnote()->GetStart());
-                if (IsIdxInside(nPos, TextFrameIndex(1)))
-                    Prepare( PrepareHint::FootnoteInvalidation, pNew );
-                nClear = 0x01;
-                --nCount;
-            }
-
-            if( const SwFormatField* pItem = rNewSet.GetItemIfSet( RES_TXTATR_FIELD, false ) )
-            {
-                nPos = MapModelToView(&rNode, pItem->GetTextField()->GetStart());
-                if (IsIdxInside(nPos, TextFrameIndex(1)))
-                {
-                    const SfxPoolItem* pOldItem = pOld ?
-                        &(static_cast<const SwAttrSetChg*>(pOld)->GetChgSet()->Get(RES_TXTATR_FIELD)) : nullptr;
-                    if (SfxPoolItem::areSame( pItem, pOldItem ))
-                    {
-                        InvalidatePage();
-                        SetCompletePaint();
-                    }
-                    else
-                        InvalidateRange_(SwCharRange(nPos, TextFrameIndex(1)));
-                }
-                nClear |= 0x02;
-                --nCount;
-            }
-            bool bLineSpace = SfxItemState::SET == rNewSet.GetItemState(
-                                            RES_PARATR_LINESPACING, false ),
-                     bRegister  = SfxItemState::SET == rNewSet.GetItemState(
-                                            RES_PARATR_REGISTER, false );
-            if ( bLineSpace || bRegister )
-            {
-                if (!m_pMergedPara || m_pMergedPara->pParaPropsNode == &rModify)
-                {
-                    Prepare( bRegister ? PrepareHint::Register : PrepareHint::AdjustSizeWithoutFormatting );
-                    CalcLineSpace();
-                    InvalidateSize();
-                    InvalidatePrt_();
-
-                    // i#11859
-                    //  (1) Also invalidate next frame on next page/column.
-                    //  (2) Skip empty sections and hidden paragraphs
-                    //  Thus, use method <InvalidateNextPrtArea()>
-                    InvalidateNextPrtArea();
-
-                    SetCompletePaint();
-                }
-                nClear |= 0x04;
-                if ( bLineSpace )
-                {
-                    --nCount;
-                    if ((!m_pMergedPara || m_pMergedPara->pParaPropsNode == &rModify)
-                        && IsInSct() && !GetPrev())
-                    {
-                        SwSectionFrame *pSect = FindSctFrame();
-                        if( pSect->ContainsAny() == this )
-                            pSect->InvalidatePrt();
-                    }
-                }
-                if ( bRegister )
-                    --nCount;
-            }
-            if ( SfxItemState::SET == rNewSet.GetItemState( RES_PARATR_SPLIT,
-                                                       false ))
-            {
-                if (!m_pMergedPara || m_pMergedPara->pParaPropsNode == &rModify)
-                {
-                    if (GetPrev())
-                        CheckKeep();
-                    Prepare();
-                    InvalidateSize();
-                }
-                nClear |= 0x08;
-                --nCount;
-            }
-
-            if( SfxItemState::SET == rNewSet.GetItemState( RES_BACKGROUND, false)
-                && (!m_pMergedPara || m_pMergedPara->pParaPropsNode == &rModify)
-                && !IsFollow() && GetDrawObjs() )
-            {
-                SwSortedObjs *pObjs = GetDrawObjs();
-                for ( size_t i = 0; GetDrawObjs() && i < pObjs->size(); ++i )
-                {
-                    SwAnchoredObject* pAnchoredObj = (*pObjs)[i];
-                    if ( auto pFly = pAnchoredObj->DynCastFlyFrame() )
-                    {
-                        if( !pFly->IsFlyInContentFrame() )
-                        {
-                            const SvxBrushItem &rBack =
-                                pFly->GetAttrSet()->GetBackground();
-                            //     #GetTransChg#
-                            //     following condition determines, if the fly frame
-                            //     "inherites" the background color of text frame.
-                            //     This is the case, if fly frame background
-                            //     color is "no fill"/"auto fill" and if the fly frame
-                            //     has no background graphic.
-                            //     Thus, check complete fly frame background
-                            //     color and *not* only its transparency value
-                            if ( (rBack.GetColor() == COL_TRANSPARENT)  &&
-                                rBack.GetGraphicPos() == GPOS_NONE )
-                            {
-                                pFly->SetCompletePaint();
-                                pFly->InvalidatePage();
-                            }
-                        }
-                    }
-                }
-            }
-
-            if ( SfxItemState::SET ==
-                 rNewSet.GetItemState( RES_TXTATR_CHARFMT, false ) )
-            {
-                lcl_SetWrong( *this, rNode, 0, COMPLETE_STRING, false );
-                lcl_SetScriptInval( *this, TextFrameIndex(0) );
-            }
-            else if ( SfxItemState::SET ==
-                      rNewSet.GetItemState( RES_CHRATR_LANGUAGE, false ) ||
-                      SfxItemState::SET ==
-                      rNewSet.GetItemState( RES_CHRATR_CJK_LANGUAGE, false ) ||
-                      SfxItemState::SET ==
-                      rNewSet.GetItemState( RES_CHRATR_CTL_LANGUAGE, false ) )
-                lcl_SetWrong( *this, rNode, 0, COMPLETE_STRING, false );
-            else if ( SfxItemState::SET ==
-                      rNewSet.GetItemState( RES_CHRATR_FONT, false ) ||
-                      SfxItemState::SET ==
-                      rNewSet.GetItemState( RES_CHRATR_CJK_FONT, false ) ||
-                      SfxItemState::SET ==
-                      rNewSet.GetItemState( RES_CHRATR_CTL_FONT, false ) )
-                lcl_SetScriptInval( *this, TextFrameIndex(0) );
-            else if ( SfxItemState::SET ==
-                      rNewSet.GetItemState( RES_FRAMEDIR, false )
-                && (!m_pMergedPara || m_pMergedPara->pParaPropsNode == &rModify))
-            {
-                SetDerivedR2L( false );
-                CheckDirChange();
-                // Force complete paint due to existing indents.
-                SetCompletePaint();
-            }
-
-            if( nCount )
-            {
-                if( getRootFrame()->GetCurrShell() )
-                {
-                    Prepare();
-                    InvalidatePrt_();
-                }
-
-                if (nClear || (m_pMergedPara &&
-                        (m_pMergedPara->pParaPropsNode != &rModify ||
-                         m_pMergedPara->pFirstNode != &rModify)))
-                {
-                    assert(pOld);
-                    SwAttrSetChg aOldSet( *static_cast<const SwAttrSetChg*>(pOld) );
-                    SwAttrSetChg aNewSet( *static_cast<const SwAttrSetChg*>(pNew) );
-
-                    if (m_pMergedPara && m_pMergedPara->pParaPropsNode != &rModify)
-                    {
-                        for (sal_uInt16 i = RES_PARATR_BEGIN; i != RES_FRMATR_END; ++i)
-                        {
-                            if (i != RES_BREAK && i != RES_PAGEDESC)
-                            {
-                                aOldSet.ClearItem(i);
-                                aNewSet.ClearItem(i);
-                            }
-                        }
-                        for (sal_uInt16 i = XATTR_FILL_FIRST; i <= XATTR_FILL_LAST; ++i)
-                        {
-                            aOldSet.ClearItem(i);
-                            aNewSet.ClearItem(i);
-                        }
-                    }
-                    if (m_pMergedPara && m_pMergedPara->pFirstNode != &rModify)
-                    {
-                        aOldSet.ClearItem(RES_BREAK);
-                        aNewSet.ClearItem(RES_BREAK);
-                        aOldSet.ClearItem(RES_PAGEDESC);
-                        aNewSet.ClearItem(RES_PAGEDESC);
-                    }
-
-                    if( 0x01 & nClear )
-                    {
-                        aOldSet.ClearItem( RES_TXTATR_FTN );
-                        aNewSet.ClearItem( RES_TXTATR_FTN );
-                    }
-                    if( 0x02 & nClear )
-                    {
-                        aOldSet.ClearItem( RES_TXTATR_FIELD );
-                        aNewSet.ClearItem( RES_TXTATR_FIELD );
-                    }
-                    if ( 0x04 & nClear )
-                    {
-                        if ( bLineSpace )
-                        {
-                            aOldSet.ClearItem( RES_PARATR_LINESPACING );
-                            aNewSet.ClearItem( RES_PARATR_LINESPACING );
-                        }
-                        if ( bRegister )
-                        {
-                            aOldSet.ClearItem( RES_PARATR_REGISTER );
-                            aNewSet.ClearItem( RES_PARATR_REGISTER );
-                        }
-                    }
-                    if ( 0x08 & nClear )
-                    {
-                        aOldSet.ClearItem( RES_PARATR_SPLIT );
-                        aNewSet.ClearItem( RES_PARATR_SPLIT );
-                    }
-                    if (aOldSet.Count() || aNewSet.Count())
-                    {
-                        SwContentFrame::SwClientNotify(rModify, sw::LegacyModifyHint(&aOldSet, &aNewSet));
-                    }
-                }
-                else
-                    SwContentFrame::SwClientNotify(rModify, sw::LegacyModifyHint(pOld, pNew));
-            }
-
-#if !ENABLE_WASM_STRIP_ACCESSIBILITY
-            if (isA11yRelevantAttribute(nWhich))
-            {
-                SwViewShell* pViewSh = getRootFrame() ? getRootFrame()->GetCurrShell() : nullptr;
-                if ( pViewSh  )
-                {
-                    pViewSh->InvalidateAccessibleParaAttrs( *this );
-                }
-            }
-#endif
-        }
-        break;
         case RES_PARATR_SPLIT:
             if ( GetPrev() )
                 CheckKeep();
@@ -2928,12 +3037,17 @@ bool SwTextFrame::Prepare( const PrepareHint ePrep, const void* pVoid,
 
     if( !HasPara() && !bSplitFlyAnchor && PrepareHint::MustFit != ePrep )
     {
-        SetInvalidVert( true ); // Test
         OSL_ENSURE( !IsLocked(), "SwTextFrame::Prepare: three of a perfect pair" );
-        if ( bNotify )
-            InvalidateSize();
-        else
-            InvalidateSize_();
+        // check while ignoring frame width (testParagraphMarkInCell)
+        // because it's called from InvalidateAllContent()
+        if (!IsHiddenNowImpl())
+        {
+            SetInvalidVert( true ); // Test
+            if ( bNotify )
+                InvalidateSize();
+            else
+                InvalidateSize_();
+        }
         return bParaPossiblyInvalid;
     }
 
@@ -3104,7 +3218,7 @@ bool SwTextFrame::Prepare( const PrepareHint ePrep, const void* pVoid,
                             SwAnchoredObject* pAnchoredObj = (*GetDrawObjs())[i];
                             // i#28701 - consider all
                             // to-character anchored objects
-                            if ( pAnchoredObj->GetFrameFormat().GetAnchor().GetAnchorId()
+                            if ( pAnchoredObj->GetFrameFormat()->GetAnchor().GetAnchorId()
                                     == RndStdIds::FLY_AT_CHAR )
                             {
                                 bFormat = true;
@@ -3273,7 +3387,7 @@ bool SwTextFrame::Prepare( const PrepareHint ePrep, const void* pVoid,
 class SwTestFormat
 {
     SwTextFrame *pFrame;
-    SwParaPortion *pOldPara;
+    std::unique_ptr<SwParaPortion> xOldPara;
     SwRect aOldFrame, aOldPrt;
 public:
     SwTestFormat( SwTextFrame* pTextFrame, const SwFrame* pPrv, SwTwips nMaxHeight );
@@ -3325,8 +3439,7 @@ SwTestFormat::SwTestFormat( SwTextFrame* pTextFrame, const SwFrame* pPre, SwTwip
         aRectFnSet.SetWidth( aPrt, aRectFnSet.GetWidth(pFrame->getFrameArea()) - ( rAttrs.CalcLeft( pFrame ) + rAttrs.CalcRight( pFrame ) ) );
     }
 
-    pOldPara = pFrame->HasPara() ? pFrame->GetPara() : nullptr;
-    pFrame->SetPara( new SwParaPortion(), false );
+    xOldPara = pFrame->SetPara(std::make_unique<SwParaPortion>());
     OSL_ENSURE( ! pFrame->IsSwapped(), "A frame is swapped before Format_" );
 
     if ( pFrame->IsVertical() )
@@ -3355,7 +3468,7 @@ SwTestFormat::~SwTestFormat()
         aPrt.setSwRect(aOldPrt);
     }
 
-    pFrame->SetPara( pOldPara );
+    pFrame->SetPara(std::move(xOldPara));
 }
 
 bool SwTextFrame::TestFormat( const SwFrame* pPrv, SwTwips &rMaxHeight, bool &bSplit )
@@ -3487,11 +3600,11 @@ SwTwips SwTextFrame::GetParHeight() const
     if( !HasPara() )
     {   // For non-empty paragraphs this is a special case
         // For UnderSized we can simply just ask 1 Twip more
-        sal_uInt16 nRet = o3tl::narrowing<sal_uInt16>(getFramePrintArea().SSize().Height());
+        SwTwips nRet = getFramePrintArea().SSize().Height();
         if( IsUndersized() )
         {
             if( IsEmpty() || GetText().isEmpty() )
-                nRet = o3tl::narrowing<sal_uInt16>(EmptyHeight());
+                nRet = EmptyHeight();
             else
                 ++nRet;
         }
@@ -3552,9 +3665,8 @@ SwTwips SwTextFrame::CalcFitToContent()
     if ( IsLocked() )
         return getFramePrintArea().Width();
 
-    SwParaPortion* pOldPara = GetPara();
-    SwParaPortion *pDummy = new SwParaPortion();
-    SetPara( pDummy, false );
+    //Swap old para for a dummy
+    std::unique_ptr<SwParaPortion> xOldPara = SetPara(std::make_unique<SwParaPortion>());
     const SwPageFrame* pPage = FindPageFrame();
 
     const Point   aOldFramePos   = getFrameArea().Pos();
@@ -3607,9 +3719,29 @@ SwTwips SwTextFrame::CalcFitToContent()
         aPrt.Width( nOldPrtWidth );
     }
 
-    SetPara( pOldPara );
+    //restore original para
+    SetPara(std::move(xOldPara));
 
-    return nMax;
+    // tdf#164932 handle numbering list offset
+    const SwTextNode* pTextNode( GetTextNodeForParaProps() );
+    SwTwips nNumOffset = 0;
+    if ( pTextNode->IsNumbered(getRootFrame()) &&
+        pTextNode->IsCountedInList() && pTextNode->GetNumRule() )
+    {
+        sal_uInt16 nListLevel = std::clamp(pTextNode->GetActualListLevel(), 0, MAXLEVEL - 1);
+        const SwNumFormat& rNumFormat = pTextNode->GetNumRule()->Get(nListLevel);
+        if ( rNumFormat.GetPositionAndSpaceMode() == SvxNumberFormat::LABEL_ALIGNMENT )
+        {
+            const SwAttrSet& rSet = pTextNode->GetSwAttrSet();
+            ::sw::ListLevelIndents const indents(pTextNode->AreListLevelIndentsApplicable());
+            SvxTextLeftMarginItem leftMargin(rSet.GetTextLeftMargin());
+            if (indents & ::sw::ListLevelIndents::LeftMargin)
+                leftMargin.SetTextLeft(SvxIndentValue::twips(rNumFormat.GetAbsLSpace()));
+            nNumOffset = leftMargin.ResolveTextLeft(/*metrics*/ {});
+        }
+    }
+
+    return nMax + nNumOffset;
 }
 
 /**
@@ -3633,23 +3765,13 @@ void SwTextFrame::CalcAdditionalFirstLineOffset()
         pTextNode->IsCountedInList() && pTextNode->GetNumRule()))
         return;
 
-    int nListLevel = pTextNode->GetActualListLevel();
-
-    if (nListLevel < 0)
-        nListLevel = 0;
-
-    if (nListLevel >= MAXLEVEL)
-        nListLevel = MAXLEVEL - 1;
-
-    const SwNumFormat& rNumFormat =
-            pTextNode->GetNumRule()->Get( o3tl::narrowing<sal_uInt16>(nListLevel) );
+    sal_uInt16 nListLevel = std::clamp(pTextNode->GetActualListLevel(), 0, MAXLEVEL - 1);
+    const SwNumFormat& rNumFormat = pTextNode->GetNumRule()->Get(nListLevel);
     if ( rNumFormat.GetPositionAndSpaceMode() != SvxNumberFormat::LABEL_ALIGNMENT )
         return;
 
     // keep current paragraph portion and apply dummy paragraph portion
-    SwParaPortion* pOldPara = GetPara();
-    SwParaPortion *pDummy = new SwParaPortion();
-    SetPara( pDummy, false );
+    std::unique_ptr<SwParaPortion> xOldPara = SetPara(std::make_unique<SwParaPortion>());
 
     // lock paragraph
     TextFrameLockGuard aLock( this );
@@ -3689,7 +3811,7 @@ void SwTextFrame::CalcAdditionalFirstLineOffset()
     }
 
     // restore paragraph portion
-    SetPara( pOldPara );
+    SetPara(std::move(xOldPara));
 }
 
 /**
@@ -3884,24 +4006,24 @@ tools::Long SwTextFrame::GetLineSpace( const bool _bNoPropLineSpace ) const
     return nRet;
 }
 
-sal_uInt16 SwTextFrame::FirstLineHeight() const
+SwTwips SwTextFrame::FirstLineHeight() const
 {
     if ( !HasPara() )
     {
         if( IsEmpty() && isFrameAreaDefinitionValid() )
-            return IsVertical() ? o3tl::narrowing<sal_uInt16>(getFramePrintArea().Width()) : o3tl::narrowing<sal_uInt16>(getFramePrintArea().Height());
-        return USHRT_MAX;
+            return IsVertical() ? getFramePrintArea().Width() : getFramePrintArea().Height();
+        return std::numeric_limits<SwTwips>::max();
     }
     const SwParaPortion *pPara = GetPara();
     if ( !pPara )
-        return USHRT_MAX;
+        return std::numeric_limits<SwTwips>::max();
 
     // tdf#146500 Lines with only fly overlap cannot be "moved", so the idea
     // here is to continue until there's some text.
     // FIXME ideally we want to count a fly to the line in which it is anchored
     // - it may even be anchored in some other paragraph! SwFlyPortion doesn't
     // have a pointer sadly so no way to find out.
-    sal_uInt16 nHeight(0);
+    SwTwips nHeight(0);
     for (SwLineLayout const* pLine = pPara; pLine; pLine = pLine->GetNext())
     {
         nHeight += pLine->Height();
@@ -4074,6 +4196,12 @@ void SwTextFrame::VisitPortions( SwPortionHandler& rPH ) const
 const SwScriptInfo* SwTextFrame::GetScriptInfo() const
 {
     const SwParaPortion* pPara = GetPara();
+    return pPara ? &pPara->GetScriptInfo() : nullptr;
+}
+
+SwScriptInfo* SwTextFrame::GetScriptInfo()
+{
+    SwParaPortion* pPara = GetPara();
     return pPara ? &pPara->GetScriptInfo() : nullptr;
 }
 

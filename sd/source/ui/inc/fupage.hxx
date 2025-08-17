@@ -22,6 +22,7 @@
 #include <memory>
 #include "fupoor.hxx"
 #include <vcl/weld.hxx>
+#include <stlsheet.hxx>
 
 class SfxItemSet;
 class SdBackgroundObjUndoAction;
@@ -35,29 +36,29 @@ class FuPage final
 {
  public:
 
-    static rtl::Reference<FuPoor> Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq );
+    static rtl::Reference<FuPoor> Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq );
     virtual void DoExecute( SfxRequest& rReq ) override;
 
     virtual void Activate() override;
     virtual void Deactivate() override;
 
-    const SfxItemSet* ExecuteDialog(weld::Window* pParent, const SfxRequest& rReq);
+    void ExecuteAsyncDialog(weld::Window* pParent, const SfxRequest& rReq);
 
 protected:
     virtual ~FuPage() override;
 
 private:
     FuPage (
-        ViewShell* pViewSh,
+        ViewShell& rViewSh,
         ::sd::Window* pWin,
         ::sd::View* pView,
-        SdDrawDocument* pDoc,
+        SdDrawDocument& rDoc,
         SfxRequest& rReq );
 
+    void ApplyItemSet(SdStyleSheet& styleSheet, const std::shared_ptr<SfxItemSet>& newAttr,
+                      SfxItemSet& tempSet, const std::shared_ptr<SfxItemSet>& rMergedAttr);
     void ApplyItemSet( const SfxItemSet* pArgs );
 
-    SfxRequest&                 mrReq;
-    const SfxItemSet*           mpArgs;
     std::unique_ptr<SdBackgroundObjUndoAction>
                                 mpBackgroundObjUndoAction;
     Size                        maSize;

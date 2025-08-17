@@ -87,11 +87,14 @@ ScXMLNamedRangeContext::ScXMLNamedRangeContext(
     if (!pInserter)
         return;
 
+    ScDocument* pDoc = GetScImport().GetDocument();
+    if (!pDoc)
+        return;
     ScMyNamedExpression aNamedExpression;
     // A simple table:cell-range-address is not a formula expression, stored
     // without [] brackets but with dot, .A1
     aNamedExpression.eGrammar = formula::FormulaGrammar::mergeToGrammar(
-            GetScImport().GetDocument()->GetStorageGrammar(),
+            pDoc->GetStorageGrammar(),
             formula::FormulaGrammar::CONV_OOO);
 
     if ( rAttrList.is() )
@@ -150,6 +153,10 @@ ScXMLNamedExpressionContext::ScXMLNamedExpressionContext(
                     break;
                 case XML_ELEMENT( TABLE, XML_BASE_CELL_ADDRESS ):
                     aNamedExpression.sBaseCellAddress = aIter.toString();
+                    break;
+                case XML_ELEMENT(LO_EXT, XML_HIDDEN):
+                    if (aIter.toString() == GetXMLToken(XML_TRUE))
+                        aNamedExpression.sRangeType = GetXMLToken(XML_HIDDEN);
                     break;
             }
         }

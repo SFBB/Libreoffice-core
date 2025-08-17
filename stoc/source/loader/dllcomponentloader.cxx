@@ -40,7 +40,6 @@ using namespace css::loader;
 using namespace css::lang;
 using namespace css::registry;
 using namespace cppu;
-using namespace osl;
 
 namespace {
 
@@ -76,7 +75,7 @@ DllComponentLoader::DllComponentLoader( const Reference<XComponentContext> & xCt
 
 OUString SAL_CALL DllComponentLoader::getImplementationName(  )
 {
-    return "com.sun.star.comp.stoc.DLLComponentLoader";
+    return u"com.sun.star.comp.stoc.DLLComponentLoader"_ustr;
 }
 
 sal_Bool SAL_CALL DllComponentLoader::supportsService( const OUString& ServiceName )
@@ -86,7 +85,7 @@ sal_Bool SAL_CALL DllComponentLoader::supportsService( const OUString& ServiceNa
 
 Sequence<OUString> SAL_CALL DllComponentLoader::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.loader.SharedLibrary" };
+    return { u"com.sun.star.loader.SharedLibrary"_ustr };
 }
 
 
@@ -100,7 +99,7 @@ void DllComponentLoader::initialize( const css::uno::Sequence< css::uno::Any >& 
 
 //      Reference< XMultiServiceFactory > rServiceManager;
 
-//      if( aArgs.getConstArray()[0].getValueType().getTypeClass() == TypeClass_INTERFACE )
+//      if( aArgs.getConstArray()[0].getValueTypeClass() == TypeClass_INTERFACE )
 //      {
 //          aArgs.getConstArray()[0] >>= rServiceManager;
 //      }

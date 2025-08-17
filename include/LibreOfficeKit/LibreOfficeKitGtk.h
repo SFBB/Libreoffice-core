@@ -13,10 +13,11 @@
 #include <gtk/gtk.h>
 #include <gdk/gdk.h>
 
-#include <LibreOfficeKit/LibreOfficeKit.h>
+#include "LibreOfficeKit.h"
 
  // Avoid "error C2375: 'foo': redefinition; different linkage" on MSVC
 #if defined LOK_DOC_VIEW_IMPLEMENTATION
+#include <sal/types.h>
 #define LOK_DOC_VIEW_DLLPUBLIC SAL_DLLPUBLIC_EXPORT
 #else
 #define LOK_DOC_VIEW_DLLPUBLIC

@@ -23,14 +23,12 @@
 using namespace connectivity;
 using namespace connectivity::file;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
 
-sdbcx::ObjectType OTables::createObject(const OUString& /*_rName*/)
+css::uno::Reference< css::beans::XPropertySet > OTables::createObject(const OUString& /*_rName*/)
 {
-    return sdbcx::ObjectType();
+    return nullptr;
 }
 
 void OTables::impl_refresh(  )

@@ -30,13 +30,10 @@
 #include <comphelper/diagnose_ex.hxx>
 
 using namespace dbaui;
-using namespace connectivity;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
 
 
@@ -44,16 +41,16 @@ DlgOrderCrit::DlgOrderCrit(weld::Window * pParent,
     const Reference< XConnection>& _rxConnection,
     const Reference< XSingleSelectQueryComposer >& _rxComposer,
     const Reference< XNameAccess>& _rxCols)
-    : GenericDialogController(pParent, "dbaccess/ui/sortdialog.ui", "SortDialog")
+    : GenericDialogController(pParent, u"dbaccess/ui/sortdialog.ui"_ustr, u"SortDialog"_ustr)
     , m_xQueryComposer(_rxComposer)
     , m_xColumns(_rxCols)
     , m_xConnection(_rxConnection)
-    , m_xLB_ORDERFIELD1(m_xBuilder->weld_combo_box("field1"))
-    , m_xLB_ORDERVALUE1(m_xBuilder->weld_combo_box("value1"))
-    , m_xLB_ORDERFIELD2(m_xBuilder->weld_combo_box("field2"))
-    , m_xLB_ORDERVALUE2(m_xBuilder->weld_combo_box("value2"))
-    , m_xLB_ORDERFIELD3(m_xBuilder->weld_combo_box("field3"))
-    , m_xLB_ORDERVALUE3(m_xBuilder->weld_combo_box("value3"))
+    , m_xLB_ORDERFIELD1(m_xBuilder->weld_combo_box(u"field1"_ustr))
+    , m_xLB_ORDERVALUE1(m_xBuilder->weld_combo_box(u"value1"_ustr))
+    , m_xLB_ORDERFIELD2(m_xBuilder->weld_combo_box(u"field2"_ustr))
+    , m_xLB_ORDERVALUE2(m_xBuilder->weld_combo_box(u"value2"_ustr))
+    , m_xLB_ORDERFIELD3(m_xBuilder->weld_combo_box(u"field3"_ustr))
+    , m_xLB_ORDERVALUE3(m_xBuilder->weld_combo_box(u"value3"_ustr))
 {
     m_aColumnList[0] = m_xLB_ORDERFIELD1.get();
     m_aColumnList[1] = m_xLB_ORDERFIELD2.get();
@@ -77,13 +74,10 @@ DlgOrderCrit::DlgOrderCrit(weld::Window * pParent,
     try
     {
         // ... also the remaining fields
-        Sequence< OUString> aNames = m_xColumns->getElementNames();
-        const OUString* pIter = aNames.getConstArray();
-        const OUString* pEnd   = pIter + aNames.getLength();
         Reference<XPropertySet> xColumn;
-        for(;pIter != pEnd;++pIter)
+        for (auto& name : m_xColumns->getElementNames())
         {
-            xColumn.set(m_xColumns->getByName(*pIter),UNO_QUERY);
+            xColumn.set(m_xColumns->getByName(name), UNO_QUERY);
             OSL_ENSURE(xColumn.is(),"Column is null!");
             if ( xColumn.is() )
             {
@@ -94,7 +88,7 @@ DlgOrderCrit::DlgOrderCrit(weld::Window * pParent,
                 {
                     for (auto j : m_aColumnList)
                     {
-                        j->append_text(*pIter);
+                        j->append_text(name);
                     }
                 }
             }

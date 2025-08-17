@@ -66,7 +66,6 @@ namespace comphelper
 }
 
 using namespace ::comphelper;
-using namespace ::osl;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
@@ -82,11 +81,11 @@ void SAL_CALL NameContainer::insertByName( const OUString& aName, const Any& aEl
 {
     std::scoped_lock aGuard( maMutex );
 
-    if( maProperties.find( aName ) != maProperties.end() )
+    if( maProperties.contains( aName ) )
         throw ElementExistException();
 
     if( aElement.getValueType() != maType )
-        throw IllegalArgumentException("element is wrong type", static_cast<cppu::OWeakObject*>(this), 2);
+        throw IllegalArgumentException(u"element is wrong type"_ustr, static_cast<cppu::OWeakObject*>(this), 2);
 
     maProperties.emplace(aName,aElement);
 }
@@ -113,7 +112,7 @@ void SAL_CALL NameContainer::replaceByName( const OUString& aName, const Any& aE
         throw NoSuchElementException();
 
     if( aElement.getValueType() != maType )
-        throw IllegalArgumentException("element is wrong type", static_cast<cppu::OWeakObject*>(this), 2);
+        throw IllegalArgumentException(u"element is wrong type"_ustr, static_cast<cppu::OWeakObject*>(this), 2);
 
     (*aIter).second = aElement;
 }

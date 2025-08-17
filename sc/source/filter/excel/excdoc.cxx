@@ -27,6 +27,8 @@
 #include <tabprotection.hxx>
 #include <postit.hxx>
 #include <root.hxx>
+#include <connectionsbuffer.hxx>
+#include <connectionsfragment.hxx>
 
 #include <excdoc.hxx>
 #include <xeextlst.hxx>
@@ -584,8 +586,9 @@ void ExcTable::FillAsTableXml()
     XclExtLstRef xExtLst = new XclExtLst( GetRoot() );
     bool bFitToPages = xPageSett->GetPageData().mbFitToPages;
 
+    bool bSummaryBelow = GetRoot().GetDoc().GetTotalsRowBelow(mnScTab);
     Color aTabColor = GetRoot().GetDoc().GetTabBgColor(mnScTab);
-    Add(new XclExpXmlSheetPr(bFitToPages, mnScTab, aTabColor, &GetFilterManager()));
+    Add(new XclExpXmlSheetPr(bFitToPages, mnScTab, aTabColor, bSummaryBelow, &GetFilterManager()));
 
     // GUTS (count & size of outline icons)
     aRecList.AppendRecord( mxCellTable->CreateRecord( EXC_ID_GUTS ) );
@@ -841,7 +844,14 @@ void ExcDocument::WriteXml( XclExpXmlStream& rStrm )
     sax_fastparser::FSHelperPtr& rWorkbook = rStrm.GetCurrentStream();
     rWorkbook->startElement( XML_workbook,
             XML_xmlns, rStrm.getNamespaceURL(OOX_NS(xls)),
-            FSNS(XML_xmlns, XML_r), rStrm.getNamespaceURL(OOX_NS(officeRel)) );
+            FSNS(XML_xmlns, XML_r), rStrm.getNamespaceURL(OOX_NS(officeRel)),
+            // the following are for chartex
+            FSNS(XML_xmlns, XML_mc), rStrm.getNamespaceURL(OOX_NS(mce)),
+            FSNS(XML_xmlns, XML_x15), rStrm.getNamespaceURL(OOX_NS(x15)),
+            FSNS(XML_xmlns, XML_xr), rStrm.getNamespaceURL(OOX_NS(xr)),
+            FSNS(XML_xmlns, XML_xr6), rStrm.getNamespaceURL(OOX_NS(xr6)),
+            FSNS(XML_xmlns, XML_xr10), rStrm.getNamespaceURL(OOX_NS(xr10)),
+            FSNS(XML_xmlns, XML_xr2), rStrm.getNamespaceURL(OOX_NS(xr2)) );
     rWorkbook->singleElement( XML_fileVersion,
             XML_appName, "Calc"
             // OOXTODO: XML_codeName
@@ -872,12 +882,14 @@ void ExcDocument::WriteXml( XclExpXmlStream& rStrm )
             std::shared_ptr<model::Theme> pTheme = pDrawLayer->getTheme();
             if (pTheme)
             {
-                OUString sThemeRelationshipPath = "theme/theme1.xml";
+                OUString sThemeRelationshipPath = u"theme/theme1.xml"_ustr;
                 OUString sThemeDocumentPath = "xl/" + sThemeRelationshipPath;
 
                 oox::ThemeExport aThemeExport(&rStrm, oox::drawingml::DOCUMENT_XLSX);
                 aThemeExport.write(sThemeDocumentPath, *pTheme);
 
+                // xl/_rels/workbook.xml.rels
+                // TODO: check if Theme import & export work correctly
                 rStrm.addRelation(rStrm.GetCurrentStream()->getOutputStream(),
                                   oox::getRelationship(Relationship::THEME),
                                   sThemeRelationshipPath);
@@ -910,6 +922,385 @@ void ExcDocument::WriteXml( XclExpXmlStream& rStrm )
         eConv = GetDoc().GetAddressConvention();
     }
 
+    ScDocument& rDoc = GetDoc();
+    bool connectionXml = rDoc.hasConnectionXml();
+    const ConnectionVector& vConnVector = rDoc.getConnectionVector();
+
+    if (connectionXml && !vConnVector.empty())
+    {
+        // save xl/connections.xml reference into [Content_Types].xml and open stream to xl/connections.xml
+        sax_fastparser::FSHelperPtr aConnectionsXml = rStrm.CreateOutputStream(
+            "xl/connections.xml", u"connections.xml", rStrm.GetCurrentStream()->getOutputStream(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml",
+            oox::getRelationship(Relationship::CONNECTIONS));
+        rStrm.PushStream(aConnectionsXml);
+
+        /*
+            <connections
+            xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+            xmlns:xr16="http://schemas.microsoft.com/office/spreadsheetml/2017/revision16"
+            mc:Ignorable="xr16">
+        */
+
+        // write into xl/connections.xml
+        // export <connections>
+        aConnectionsXml->startElement(
+            XML_connections, XML_xmlns, rStrm.getNamespaceURL(OOX_NS(xls)), FSNS(XML_xmlns, XML_mc),
+            rStrm.getNamespaceURL(OOX_NS(mce)), FSNS(XML_xmlns, XML_xr16),
+            rStrm.getNamespaceURL(OOX_NS(xr16)), FSNS(XML_mc, XML_Ignorable), "xr16");
+
+        // get a list of <connection> element and export it with its child elements
+        for (const auto& rConnection : vConnVector)
+        {
+            const oox::xls::ConnectionModel& rModel = rConnection->getModel();
+
+            if (rModel.mnId == -1 || rModel.mnRefreshedVersion == -1)
+                continue; // incorrect values, skip
+
+            rtl::Reference<sax_fastparser::FastAttributeList> pAttrList
+                = sax_fastparser::FastSerializerHelper::createAttrList();
+
+            pAttrList->add(XML_id, OUString::number(rModel.mnId));
+
+            if (!rModel.maXr16Uid.isEmpty())
+                pAttrList->add(FSNS(XML_xr16, XML_uid), rModel.maXr16Uid);
+            if (!rModel.maSourceFile.isEmpty())
+                pAttrList->add(XML_sourceFile, rModel.maSourceFile);
+            if (!rModel.maSourceConnFile.isEmpty())
+                pAttrList->add(XML_odcFile, rModel.maSourceConnFile);
+
+            pAttrList->add(XML_keepAlive, ToPsz10(rModel.mbKeepAlive));
+            pAttrList->add(XML_interval, OUString::number(rModel.mnInterval));
+
+            if (!rModel.maName.isEmpty())
+                pAttrList->add(XML_name, rModel.maName);
+            if (!rModel.maDescription.isEmpty())
+                pAttrList->add(XML_description, rModel.maDescription);
+            if (OUString::number(rModel.mnType).length > 0)
+                pAttrList->add(XML_type, OUString::number(rModel.mnType));
+
+            pAttrList->add(XML_reconnectionMethod, OUString::number(rModel.mnReconnectMethod));
+            pAttrList->add(XML_refreshedVersion, OUString::number(rModel.mnRefreshedVersion));
+            pAttrList->add(XML_minRefreshableVersion,
+                           OUString::number(rModel.mnMinRefreshableVersion));
+            pAttrList->add(XML_savePassword, ToPsz10(rModel.mbSavePassword));
+            pAttrList->add(XML_new, ToPsz10(rModel.mbNew));
+            pAttrList->add(XML_deleted, ToPsz10(rModel.mbDeleted));
+            pAttrList->add(XML_onlyUseConnectionFile, ToPsz10(rModel.mbOnlyUseConnFile));
+            pAttrList->add(XML_background, ToPsz10(rModel.mbBackground));
+            pAttrList->add(XML_refreshOnLoad, ToPsz10(rModel.mbRefreshOnLoad));
+            pAttrList->add(XML_saveData, ToPsz10(rModel.mbSaveData));
+
+            // import credentials="" attribute of <connection> element
+            if (rModel.mnCredentials != -1)
+            {
+                sal_Int32 nToken = rModel.mnCredentials;
+                OUString nValue;
+
+                switch (nToken)
+                {
+                    case XML_none:
+                        nValue = "none";
+                        break;
+                    case XML_stored:
+                        nValue = "stored";
+                        break;
+                    case XML_prompt:
+                        nValue = "prompt";
+                        break;
+                    default:
+                        nValue = "integrated";
+                        break;
+                }
+
+                pAttrList->add(XML_credentials, nValue);
+            }
+
+            if (!rModel.maSsoId.isEmpty())
+                pAttrList->add(XML_singleSignOnId, rModel.maSsoId);
+
+            // export <connection> with attributes
+            rStrm.GetCurrentStream()->startElement(XML_connection, pAttrList);
+
+            /*
+                start export child elements of <connection>
+
+                <xsd:sequence>
+                    <xsd:element name="dbPr" minOccurs="0" maxOccurs="1" type="CT_DbPr"/>
+                    <xsd:element name="olapPr" minOccurs="0" maxOccurs="1" type="CT_OlapPr"/>
+                    <xsd:element name="webPr" minOccurs="0" maxOccurs="1" type="CT_WebPr"/>
+                    <xsd:element name="textPr" minOccurs="0" maxOccurs="1" type="CT_TextPr"/>
+                    <xsd:element name="parameters" minOccurs="0" maxOccurs="1" type="CT_Parameters"/>
+                    <xsd:element name="extLst" minOccurs="0" maxOccurs="1" type="CT_ExtensionList"/>
+                </xsd:sequence>
+            */
+
+            css::uno::Sequence<css::uno::Any> aSeqs;
+            aSeqs = rConnection->getDbPrSequenceAny();
+            // export <dbPr> if not empty
+            if (aSeqs.hasElements())
+            {
+                rtl::Reference<sax_fastparser::FastAttributeList> pAttrListDbPr
+                    = sax_fastparser::FastSerializerHelper::createAttrList();
+
+                addElemensToAttrList(pAttrListDbPr, aSeqs);
+
+                rStrm.GetCurrentStream()->singleElement(XML_dbPr, pAttrListDbPr);
+            }
+
+            aSeqs = rConnection->getOlapPrSequenceAny();
+            // export <olapPr> if not empty
+            if (aSeqs.hasElements())
+            {
+                rtl::Reference<sax_fastparser::FastAttributeList> pAttrListOlapPr
+                    = sax_fastparser::FastSerializerHelper::createAttrList();
+
+                addElemensToAttrList(pAttrListOlapPr, aSeqs);
+
+                rStrm.GetCurrentStream()->singleElement(XML_olapPr, pAttrListOlapPr);
+            }
+
+            { // export <webPr> and its child elements
+                rtl::Reference<sax_fastparser::FastAttributeList> pAttrListWebPr
+                    = sax_fastparser::FastSerializerHelper::createAttrList();
+
+                if (rModel.mxWebPr)
+                {
+                    pAttrListWebPr->add(XML_xml, ToPsz10(rModel.mxWebPr->mbXml));
+                    pAttrListWebPr->add(XML_sourceData, ToPsz10(rModel.mxWebPr->mbSourceData));
+                    pAttrListWebPr->add(XML_parsePre, ToPsz10(rModel.mxWebPr->mbParsePre));
+                    pAttrListWebPr->add(XML_consecutive, ToPsz10(rModel.mxWebPr->mbConsecutive));
+                    pAttrListWebPr->add(XML_firstRow, ToPsz10(rModel.mxWebPr->mbFirstRow));
+                    pAttrListWebPr->add(XML_xl97, ToPsz10(rModel.mxWebPr->mbXl97Created));
+                    pAttrListWebPr->add(XML_textDates, ToPsz10(rModel.mxWebPr->mbTextDates));
+                    pAttrListWebPr->add(XML_xl2000, ToPsz10(rModel.mxWebPr->mbXl2000Refreshed));
+                    pAttrListWebPr->add(XML_htmlTables, ToPsz10(rModel.mxWebPr->mbHtmlTables));
+
+                    if (!rModel.mxWebPr->maUrl.isEmpty())
+                        pAttrListWebPr->add(XML_url, rModel.mxWebPr->maUrl);
+                    if (!rModel.mxWebPr->maPostMethod.isEmpty())
+                        pAttrListWebPr->add(XML_post, rModel.mxWebPr->maPostMethod);
+                    if (!rModel.mxWebPr->maEditPage.isEmpty())
+                        pAttrListWebPr->add(XML_editPage, rModel.mxWebPr->maEditPage);
+
+                    // import htmlFormat="" attribute of <webPr> element
+                    if (rModel.mxWebPr->mnHtmlFormat != -1)
+                    {
+                        sal_Int32 nToken = rModel.mxWebPr->mnHtmlFormat;
+                        OUString nValue;
+
+                        switch (nToken)
+                        {
+                            case XML_all:
+                                nValue = "all";
+                                break;
+                            case XML_rtf:
+                                nValue = "rtf";
+                                break;
+                            default:
+                                nValue = "none";
+                                break;
+                        }
+
+                        pAttrListWebPr->add(XML_htmlFormat, nValue);
+                    }
+
+                    // export <webPr> with attributes
+                    rStrm.GetCurrentStream()->startElement(XML_webPr, pAttrListWebPr);
+
+                    { // export <tables> and its child elements
+
+                        rtl::Reference<sax_fastparser::FastAttributeList> pAttrListTables
+                            = sax_fastparser::FastSerializerHelper::createAttrList();
+
+                        // <tables count="<xsd:unsignedInt>">
+                        if (rModel.mxWebPr->mnCount >= 0)
+                        {
+                            pAttrListTables->add(XML_count,
+                                                 OUString::number(rModel.mxWebPr->mnCount));
+
+                            // export <tables> with attributes
+                            rStrm.GetCurrentStream()->startElement(XML_tables, pAttrListTables);
+
+                            { // export <m>, <s> and <x> elements
+                                for (auto& tableElement : rModel.mxWebPr->maTables)
+                                {
+                                    OUString sElement;
+                                    tableElement >>= sElement;
+                                    OUString token = sElement.getToken(0, ',');
+                                    OUString attributeValue = sElement.getToken(1, ',');
+
+                                    if (token == "s")
+                                        rStrm.GetCurrentStream()->singleElement(XML_s, XML_v,
+                                                                                attributeValue);
+                                    else if (token == "x")
+                                        rStrm.GetCurrentStream()->singleElement(XML_x, XML_v,
+                                                                                attributeValue);
+                                    else
+                                        rStrm.GetCurrentStream()->singleElement(XML_m);
+                                }
+                            }
+
+                            // put </tables>
+                            rStrm.GetCurrentStream()->endElement(XML_tables);
+                        }
+                    }
+
+                    // put </webPr>
+                    rStrm.GetCurrentStream()->endElement(XML_webPr);
+                }
+            }
+
+            { // export <textPr>
+
+                rtl::Reference<sax_fastparser::FastAttributeList> pAttrListTextPr
+                    = sax_fastparser::FastSerializerHelper::createAttrList();
+
+                if (rModel.mxTextPr)
+                {
+                    addElemensToAttrList(pAttrListTextPr, rModel.mxTextPr->maTextPrSequenceAny);
+
+                    rStrm.GetCurrentStream()->startElement(XML_textPr, pAttrListTextPr);
+
+                    { // export <textFields>
+                        rtl::Reference<sax_fastparser::FastAttributeList> pAttrListTextFields
+                            = sax_fastparser::FastSerializerHelper::createAttrList();
+
+                        addElemensToAttrList(pAttrListTextFields,
+                                             rModel.mxTextPr->maTextFieldsSequenceAny);
+
+                        rStrm.GetCurrentStream()->startElement(XML_textFields, pAttrListTextFields);
+
+                        { // export <textField>
+
+                            for (auto& textFieldAttr : rModel.mxTextPr->vTextField)
+                            {
+                                rtl::Reference<sax_fastparser::FastAttributeList> pAttrListTextField
+                                    = sax_fastparser::FastSerializerHelper::createAttrList();
+
+                                addElemensToAttrList(pAttrListTextField, textFieldAttr);
+
+                                rStrm.GetCurrentStream()->singleElement(XML_textField,
+                                                                        pAttrListTextField);
+                            }
+                        }
+
+                        // put </textFields>
+                        rStrm.GetCurrentStream()->endElement(XML_textFields);
+                    }
+
+                    // put </textPr>
+                    rStrm.GetCurrentStream()->endElement(XML_textPr);
+                }
+            }
+
+            { // export <parameters>
+
+                rtl::Reference<sax_fastparser::FastAttributeList> pAttrListParameters
+                    = sax_fastparser::FastSerializerHelper::createAttrList();
+
+                if (rModel.mxParameters && rModel.mxParameters->mnCount > -1)
+                {
+                    pAttrListParameters->add(XML_count,
+                                             OUString::number(rModel.mxParameters->mnCount));
+
+                    rStrm.GetCurrentStream()->startElement(XML_parameters, pAttrListParameters);
+
+                    // export <parameter>
+                    for (auto& parameterAttr : rModel.mxParameters->vParameter)
+                    {
+                        rtl::Reference<sax_fastparser::FastAttributeList> pAttrListParameter
+                            = sax_fastparser::FastSerializerHelper::createAttrList();
+
+                        addElemensToAttrList(pAttrListParameter, parameterAttr);
+
+                        rStrm.GetCurrentStream()->singleElement(XML_parameter, pAttrListParameter);
+                    }
+
+                    // put </parameters>
+                    rStrm.GetCurrentStream()->endElement(XML_parameters);
+                }
+            }
+
+            // export <extLst>
+            if (rModel.mxExtensionList)
+            {
+                // put <extLst>, it has no attributes
+                rStrm.GetCurrentStream()->startElement(XML_extLst);
+
+                // export uri attribute of <ext> element
+                for (auto& uriValue : rModel.mxExtensionList->vExtension)
+                {
+                    // export <ext> with uri attribute.
+                    rStrm.GetCurrentStream()->startElement(XML_ext, XML_uri, uriValue);
+
+                /*
+                    TODO: export child elements of <ext>. We should export "any element in any namespace", which seems challenging.
+
+                    <extLst>
+                        <ext>
+                            (Any element in any namespace)
+                        </ext>
+                    </extLst>
+                */
+
+                    // put </ext>
+                    rStrm.GetCurrentStream()->endElement(XML_ext);
+                }
+
+                // put </extLst>
+                rStrm.GetCurrentStream()->endElement(XML_extLst);
+            }
+
+            // put </connection>
+            rStrm.GetCurrentStream()->endElement(XML_connection);
+        }
+
+        // put </connections>
+        aConnectionsXml->endElement(XML_connections);
+        rStrm.PopStream();
+    }
+
+    if (rDoc.hasCustomXml())
+    {
+        // export customXml/item1.xml into xl/_rels/workbook.xml.rels
+        OUString sCustomXmlPath = OUString::Concat("../") + rDoc.getCustomXmlItems();
+
+        // FIXME: what if there are customXml/item2.xml, customXml/item3.xml etc?
+        // we need to save all customXml/item*.xml paths into ScDocument from XmlFilterBase::importCustomFragments
+        // then we should get them with rDoc here.
+        rStrm.addRelation(rStrm.GetCurrentStream()->getOutputStream(),
+                          oox::getRelationship(Relationship::CUSTOMXML), sCustomXmlPath);
+    }
+
+    if (rDoc.hasXmlMaps())
+    {
+        // save xl/xmlMaps.xml relationship into xl/_rels/workbook.xml.rels
+        // save xl/xmlMaps.xml reference into [Content_Types].xml and open stream to xl/xmlMaps.xml
+        sax_fastparser::FSHelperPtr aXmlMapsXml = rStrm.CreateOutputStream(
+            "xl/xmlMaps.xml", u"/xl/xmlMaps.xml", rStrm.GetCurrentStream()->getOutputStream(),
+            "application/xml", oox::getRelationship(Relationship::XMLMAPS));
+
+        // start exporting xl/xmlMaps.xml
+        /* this adds <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        XML declaration automatically at the top of the file. */
+        rStrm.PushStream(aXmlMapsXml);
+
+        // get xmlMaps.xml content as string
+        std::string sXmlMapsContent = rDoc.getXmlMapsItem();
+
+        /* we should remove <?xml version="1.0" encoding="UTF-8"?>
+        XML declaration from the string as rStrm.PushStream() already adds it. */
+        sal_uInt32 nXmlDeclarationLocation = sXmlMapsContent.find(">");
+        sXmlMapsContent = sXmlMapsContent.substr(nXmlDeclarationLocation + 1);
+
+        // write contents into xl/xmlMaps.xml
+        rStrm.GetCurrentStream()->write(sXmlMapsContent);
+
+        rStrm.PopStream();
+    }
+
     // write if it has been read|imported or explicitly changed
     // or if ref syntax isn't what would be native for our file format
     // i.e. ExcelA1 in this case
@@ -923,6 +1314,30 @@ void ExcDocument::WriteXml( XclExpXmlStream& rStrm )
 
     rWorkbook->endElement( XML_workbook );
     rWorkbook.reset();
+}
+
+void ExcDocument::addElemensToAttrList(const rtl::Reference<sax_fastparser::FastAttributeList>& pAttrList,
+                                       css::uno::Sequence<css::uno::Any>& aSeqs)
+{
+    css::uno::Sequence<css::xml::FastAttribute> aFastSeq;
+    css::uno::Sequence<css::xml::Attribute> aUnkSeq;
+
+    // TODO: check if aSeqs is empty or not
+    for (const auto& a : aSeqs)
+    {
+        if (a >>= aFastSeq)
+        {
+            for (const auto& rAttr : aFastSeq)
+                pAttrList->add(rAttr.Token, rAttr.Value);
+        }
+        else if (a >>= aUnkSeq)
+        {
+            for (const auto& rAttr : aUnkSeq)
+                pAttrList->addUnknown(rAttr.NamespaceURL,
+                                      OUStringToOString(rAttr.Name, RTL_TEXTENCODING_UTF8),
+                                      OUStringToOString(rAttr.Value, RTL_TEXTENCODING_UTF8));
+        }
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

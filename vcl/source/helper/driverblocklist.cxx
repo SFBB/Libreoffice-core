@@ -28,12 +28,6 @@ static OperatingSystem getOperatingSystem(std::string_view rString)
 {
     if (rString == "all")
         return DRIVER_OS_ALL;
-    else if (rString == "7")
-        return DRIVER_OS_WINDOWS_7;
-    else if (rString == "8")
-        return DRIVER_OS_WINDOWS_8;
-    else if (rString == "8_1")
-        return DRIVER_OS_WINDOWS_8_1;
     else if (rString == "10")
         return DRIVER_OS_WINDOWS_10;
     else if (rString == "windows")
@@ -101,23 +95,23 @@ static OUString GetVendorId(std::string_view rString)
 {
     if (rString == "all")
     {
-        return "";
+        return u""_ustr;
     }
     else if (rString == "intel")
     {
-        return "0x8086";
+        return u"0x8086"_ustr;
     }
     else if (rString == "nvidia")
     {
-        return "0x10de";
+        return u"0x10de"_ustr;
     }
     else if (rString == "amd")
     {
-        return "0x1002";
+        return u"0x1002"_ustr;
     }
     else if (rString == "microsoft")
     {
-        return "0x1414";
+        return u"0x1414"_ustr;
     }
     else
     {
@@ -133,15 +127,15 @@ OUString GetVendorId(DeviceVendor id)
     switch (id)
     {
         case VendorAll:
-            return "";
+            return u""_ustr;
         case VendorIntel:
-            return "0x8086";
+            return u"0x8086"_ustr;
         case VendorNVIDIA:
-            return "0x10de";
+            return u"0x10de"_ustr;
         case VendorAMD:
-            return "0x1002";
+            return u"0x1002"_ustr;
         case VendorMicrosoft:
-            return "0x1414";
+            return u"0x1414"_ustr;
     }
     abort();
 }
@@ -466,13 +460,13 @@ void Parser::handleList(xmlreader::XmlReader& rReader)
             {
                 DriverInfo aDriver;
                 handleEntry(aDriver, rReader);
-                mrDriverList.push_back(aDriver);
+                mrDriverList.push_back(std::move(aDriver));
             }
             else if (name == "entryRange")
             {
                 DriverInfo aDriver;
                 handleEntry(aDriver, rReader);
-                mrDriverList.push_back(aDriver);
+                mrDriverList.push_back(std::move(aDriver));
             }
             else
             {
@@ -537,12 +531,6 @@ static OperatingSystem getOperatingSystem()
     // based on http://msdn.microsoft.com/en-us/library/ms724834(VS.85).aspx
     switch (DriverBlocklist::GetWindowsVersion())
     {
-        case 0x00060001:
-            return DRIVER_OS_WINDOWS_7;
-        case 0x00060002:
-            return DRIVER_OS_WINDOWS_8;
-        case 0x00060003:
-            return DRIVER_OS_WINDOWS_8_1;
         case 0x000A0000: // Major 10 Minor 0
             return DRIVER_OS_WINDOWS_10;
         default:
@@ -611,69 +599,69 @@ bool FindBlocklistedDeviceInList(std::vector<DriverInfo>& aDeviceInfos, VersionT
     ParseDriverVersion(sDriverVersion, driverVersion, versionType);
 
     bool match = false;
-    for (std::vector<DriverInfo>::size_type i = 0; i < aDeviceInfos.size(); i++)
+    for (const auto& rDeviceInfo : aDeviceInfos)
     {
         bool osMatch = false;
-        if (aDeviceInfos[i].meOperatingSystem == DRIVER_OS_ALL)
+        if (rDeviceInfo.meOperatingSystem == DRIVER_OS_ALL)
             osMatch = true;
-        else if (aDeviceInfos[i].meOperatingSystem == system)
+        else if (rDeviceInfo.meOperatingSystem == system)
             osMatch = true;
-        else if (aDeviceInfos[i].meOperatingSystem == DRIVER_OS_WINDOWS_ALL
+        else if (rDeviceInfo.meOperatingSystem == DRIVER_OS_WINDOWS_ALL
                  && system >= DRIVER_OS_WINDOWS_FIRST && system <= DRIVER_OS_WINDOWS_LAST)
             osMatch = true;
-        else if (aDeviceInfos[i].meOperatingSystem == DRIVER_OS_OSX_ALL
-                 && system >= DRIVER_OS_OSX_FIRST && system <= DRIVER_OS_OSX_LAST)
+        else if (rDeviceInfo.meOperatingSystem == DRIVER_OS_OSX_ALL && system >= DRIVER_OS_OSX_FIRST
+                 && system <= DRIVER_OS_OSX_LAST)
             osMatch = true;
         if (!osMatch)
         {
             continue;
         }
 
-        if (!aDeviceInfos[i].maAdapterVendor.equalsIgnoreAsciiCase(GetVendorId(VendorAll))
-            && !aDeviceInfos[i].maAdapterVendor.equalsIgnoreAsciiCase(sAdapterVendorID))
+        if (!rDeviceInfo.maAdapterVendor.equalsIgnoreAsciiCase(GetVendorId(VendorAll))
+            && !rDeviceInfo.maAdapterVendor.equalsIgnoreAsciiCase(sAdapterVendorID))
         {
             continue;
         }
 
-        if (std::none_of(aDeviceInfos[i].maDevices.begin(), aDeviceInfos[i].maDevices.end(),
-                         compareIgnoreAsciiCase("all"))
-            && std::none_of(aDeviceInfos[i].maDevices.begin(), aDeviceInfos[i].maDevices.end(),
+        if (std::none_of(rDeviceInfo.maDevices.begin(), rDeviceInfo.maDevices.end(),
+                         compareIgnoreAsciiCase(u"all"_ustr))
+            && std::none_of(rDeviceInfo.maDevices.begin(), rDeviceInfo.maDevices.end(),
                             compareIgnoreAsciiCase(sAdapterDeviceID)))
         {
             continue;
         }
 
-        switch (aDeviceInfos[i].meComparisonOp)
+        switch (rDeviceInfo.meComparisonOp)
         {
             case DRIVER_LESS_THAN:
-                match = driverVersion < aDeviceInfos[i].mnDriverVersion;
+                match = driverVersion < rDeviceInfo.mnDriverVersion;
                 break;
             case DRIVER_LESS_THAN_OR_EQUAL:
-                match = driverVersion <= aDeviceInfos[i].mnDriverVersion;
+                match = driverVersion <= rDeviceInfo.mnDriverVersion;
                 break;
             case DRIVER_GREATER_THAN:
-                match = driverVersion > aDeviceInfos[i].mnDriverVersion;
+                match = driverVersion > rDeviceInfo.mnDriverVersion;
                 break;
             case DRIVER_GREATER_THAN_OR_EQUAL:
-                match = driverVersion >= aDeviceInfos[i].mnDriverVersion;
+                match = driverVersion >= rDeviceInfo.mnDriverVersion;
                 break;
             case DRIVER_EQUAL:
-                match = driverVersion == aDeviceInfos[i].mnDriverVersion;
+                match = driverVersion == rDeviceInfo.mnDriverVersion;
                 break;
             case DRIVER_NOT_EQUAL:
-                match = driverVersion != aDeviceInfos[i].mnDriverVersion;
+                match = driverVersion != rDeviceInfo.mnDriverVersion;
                 break;
             case DRIVER_BETWEEN_EXCLUSIVE:
-                match = driverVersion > aDeviceInfos[i].mnDriverVersion
-                        && driverVersion < aDeviceInfos[i].mnDriverVersionMax;
+                match = driverVersion > rDeviceInfo.mnDriverVersion
+                        && driverVersion < rDeviceInfo.mnDriverVersionMax;
                 break;
             case DRIVER_BETWEEN_INCLUSIVE:
-                match = driverVersion >= aDeviceInfos[i].mnDriverVersion
-                        && driverVersion <= aDeviceInfos[i].mnDriverVersionMax;
+                match = driverVersion >= rDeviceInfo.mnDriverVersion
+                        && driverVersion <= rDeviceInfo.mnDriverVersionMax;
                 break;
             case DRIVER_BETWEEN_INCLUSIVE_START:
-                match = driverVersion >= aDeviceInfos[i].mnDriverVersion
-                        && driverVersion < aDeviceInfos[i].mnDriverVersionMax;
+                match = driverVersion >= rDeviceInfo.mnDriverVersion
+                        && driverVersion < rDeviceInfo.mnDriverVersionMax;
                 break;
             case DRIVER_COMPARISON_IGNORED:
                 // We don't have a comparison op, so we match everything.
@@ -684,19 +672,19 @@ bool FindBlocklistedDeviceInList(std::vector<DriverInfo>& aDeviceInfos, VersionT
                 break;
         }
 
-        if (match || aDeviceInfos[i].mnDriverVersion == allDriverVersions)
+        if (match || rDeviceInfo.mnDriverVersion == allDriverVersions)
         {
             // white listed drivers
-            if (aDeviceInfos[i].mbAllowlisted)
+            if (rDeviceInfo.mbAllowlisted)
             {
                 SAL_INFO("vcl.driver", "allowlisted driver");
                 return false;
             }
 
             match = true;
-            if (!aDeviceInfos[i].maSuggestedVersion.isEmpty())
+            if (!rDeviceInfo.maSuggestedVersion.isEmpty())
             {
-                SAL_WARN("vcl.driver", "use : " << aDeviceInfos[i].maSuggestedVersion);
+                SAL_WARN("vcl.driver", "use : " << rDeviceInfo.maSuggestedVersion);
             }
             break;
         }

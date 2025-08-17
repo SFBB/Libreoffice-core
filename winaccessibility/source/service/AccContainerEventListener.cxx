@@ -21,7 +21,6 @@
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 
 #include <vcl/svapp.hxx>
 
@@ -60,7 +59,7 @@ void  AccContainerEventListener::notifyEvent( const css::accessibility::Accessib
         break;
     case AccessibleEventId::TEXT_CHANGED:
         HandleTextChangedEvent(aEvent.OldValue, aEvent.NewValue);
-        [[fallthrough]]; //TODO ???
+        break;
     case AccessibleEventId::VISIBLE_DATA_CHANGED:
         HandleVisibleDataChangedEvent();
         break;
@@ -471,28 +470,6 @@ void AccContainerEventListener::HandleSectionChangedEvent(const Any& /*oldValue*
 void AccContainerEventListener::HandleColumnChangedEvent(const Any& /*oldValue*/, const Any& /*newValue*/)
 {
     m_rObjManager.NotifyAccEvent(m_xAccessible.get(), UnoMSAAEvent::COLUMN_CHANGED);
-}
-
-void  AccContainerEventListener::HandleNameChangedEvent( Any name )
-{
-    if (GetRole() == AccessibleRole::COMBO_BOX)
-    {
-        Reference<XAccessibleContext> mxContext(m_xAccessible->getAccessibleContext());
-        if(mxContext.is())
-        {
-            Reference<XAccessible> mxChild = mxContext->getAccessibleChild(0);
-            if(mxChild.is())
-            {
-                Reference<XAccessibleContext> mxChildContext = mxChild->getAccessibleContext();
-                short childrole = mxChildContext->getAccessibleRole();
-                if (childrole == AccessibleRole::TEXT)
-                {
-                    m_rObjManager.SetAccName(mxChild.get(), name);
-                }
-            }
-        }
-    }
-    AccEventListener::HandleNameChangedEvent(name);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

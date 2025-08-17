@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_COMPHELPER_ACCESSIBLECONTEXTHELPER_HXX
-#define INCLUDED_COMPHELPER_ACCESSIBLECONTEXTHELPER_HXX
+#pragma once
 
-#include <comphelper/accessiblecomponenthelper.hxx>
+#include <comphelper/OAccessible.hxx>
 #include <comphelper/solarmutex.hxx>
 
 
@@ -30,11 +29,11 @@ namespace comphelper
 
     //= OContextEntryGuard
 
-    /** helper class for guarding the entry into OCommonAccessibleComponent methods.
+    /** helper class for guarding the entry into OAccessible methods.
 
         <p>The class has two responsibilities:
-        <ul><li>it locks the mutex of an OCommonAccessibleComponent instance, as long as the guard lives</li>
-            <li>it checks if a given OCommonAccessibleComponent instance is alive, else an exception is thrown
+        <ul><li>it locks the mutex of an OAccessible instance, as long as the guard lives</li>
+            <li>it checks if a given OAccessible instance is alive, else an exception is thrown
                 our of the constructor of the guard</li>
         </ul>
         <br/>
@@ -54,11 +53,10 @@ namespace comphelper
             the context which shall be guarded
         @precond <arg>_pContext</arg> != NULL
         */
-        inline OContextEntryGuard( OCommonAccessibleComponent* _pContext );
+        inline OContextEntryGuard(OAccessible* _pContext);
     };
 
-
-    inline OContextEntryGuard::OContextEntryGuard( OCommonAccessibleComponent* _pContext  )
+    inline OContextEntryGuard::OContextEntryGuard(OAccessible* _pContext)
         : ::osl::ClearableMutexGuard( _pContext->GetMutex() )
     {
         _pContext->ensureAlive();
@@ -72,16 +70,15 @@ namespace comphelper
             ,public OContextEntryGuard
     {
     public:
-        inline OExternalLockGuard( OCommonAccessibleComponent* _pContext );
+        inline OExternalLockGuard(OAccessible* _pContext);
     };
 
-
-    inline OExternalLockGuard::OExternalLockGuard( OCommonAccessibleComponent* _pContext )
-        :osl::Guard<SolarMutex>( SolarMutex::get() )
-        ,OContextEntryGuard( _pContext )
+    inline OExternalLockGuard::OExternalLockGuard(OAccessible* _pContext)
+        : osl::Guard<SolarMutex>(SolarMutex::get())
+        , OContextEntryGuard(_pContext)
     {
         // Only lock the external mutex,
-        // release the ::osl::Mutex of the OCommonAccessibleComponent instance.
+        // release the ::osl::Mutex of the OAccessible instance.
         // If you call into another UNO object with locked ::osl::Mutex,
         // this may lead to dead locks.
         clear();
@@ -89,9 +86,5 @@ namespace comphelper
 
 
 }   // namespace comphelper
-
-
-#endif // INCLUDED_COMPHELPER_ACCESSIBLECONTEXTHELPER_HXX
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

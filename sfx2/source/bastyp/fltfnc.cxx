@@ -153,7 +153,7 @@ std::shared_ptr<const SfxFilter> SfxFilterContainer::GetDefaultFilter_Impl( std:
         return nullptr;
 
     // For the following code we need some additional information.
-    OUString sServiceName   = aOpt.GetFactoryName(eFactory);
+    const OUString& sServiceName   = aOpt.GetFactoryName(eFactory);
     OUString sDefaultFilter = aOpt.GetFactoryDefaultFilter(eFactory);
 
     // Try to get the default filter. Don't forget to verify it.
@@ -315,7 +315,7 @@ ErrCode  SfxFilterMatcher::GuessFilterIgnoringContent(
     std::shared_ptr<const SfxFilter>& rpFilter ) const
 {
     uno::Reference<document::XTypeDetection> xDetection(
-        comphelper::getProcessServiceFactory()->createInstance("com.sun.star.document.TypeDetection"), uno::UNO_QUERY);
+        comphelper::getProcessServiceFactory()->createInstance(u"com.sun.star.document.TypeDetection"_ustr), uno::UNO_QUERY);
 
     OUString sTypeName;
     try
@@ -350,7 +350,7 @@ ErrCode  SfxFilterMatcher::GuessFilterControlDefaultUI( SfxMedium& rMedium, std:
 
     // no detection service -> nothing to do !
     uno::Reference<document::XTypeDetection> xDetection(
-        comphelper::getProcessServiceFactory()->createInstance("com.sun.star.document.TypeDetection"), uno::UNO_QUERY);
+        comphelper::getProcessServiceFactory()->createInstance(u"com.sun.star.document.TypeDetection"_ustr), uno::UNO_QUERY);
 
     if (!xDetection.is())
         return ERRCODE_ABORT;
@@ -391,7 +391,7 @@ ErrCode  SfxFilterMatcher::GuessFilterControlDefaultUI( SfxMedium& rMedium, std:
             uno::Sequence< beans::PropertyValue > lDescriptor = aDescriptor.getAsConstPropertyValueList();
             sTypeName = xDetection->queryTypeByDescriptor(lDescriptor, true); // lDescriptor is used as In/Out param ... don't use aDescriptor.getAsConstPropertyValueList() directly!
 
-            for (const auto& rProp : std::as_const(lDescriptor))
+            for (const auto& rProp : lDescriptor)
             {
                 if (rProp.Name == "FilterName")
                     // Type detection picked a preferred filter for this format.
@@ -404,28 +404,28 @@ ErrCode  SfxFilterMatcher::GuessFilterControlDefaultUI( SfxMedium& rMedium, std:
 
         if (!sTypeName.isEmpty())
         {
-            std::shared_ptr<const SfxFilter> pNewFilter;
+            std::shared_ptr<const SfxFilter> xNewFilter;
             if (!aFilterName.isEmpty())
                 // Type detection returned a suitable filter for this.  Use it.
-                pNewFilter = SfxFilter::GetFilterByName(aFilterName);
+                xNewFilter = SfxFilter::GetFilterByName(aFilterName);
 
             // fdo#78742 respect requested document service if set
-            if (!pNewFilter || (!m_rImpl.aName.isEmpty()
-                             && m_rImpl.aName != pNewFilter->GetServiceName()))
+            if (!xNewFilter || (!m_rImpl.aName.isEmpty()
+                             && m_rImpl.aName != xNewFilter->GetServiceName()))
             {
                 // detect filter by given type
                 // In case of this matcher is bound to a particular document type:
                 // If there is no acceptable type for this document at all, the type detection has possibly returned something else.
                 // The DocumentService property is only a preselection, and all preselections are considered as optional!
                 // This "wrong" type will be sorted out now because we match only allowed filters to the detected type
-                uno::Sequence< beans::NamedValue > lQuery { { "Name", css::uno::Any(sTypeName) } };
+                uno::Sequence< beans::NamedValue > lQuery { { u"Name"_ustr, css::uno::Any(sTypeName) } };
 
-                pNewFilter = GetFilterForProps(lQuery, nMust, nDont);
+                xNewFilter = GetFilterForProps(lQuery, nMust, nDont);
             }
 
-            if (pNewFilter)
+            if (xNewFilter)
             {
-                rpFilter = pNewFilter;
+                rpFilter = std::move(xNewFilter);
                 return ERRCODE_NONE;
             }
         }
@@ -456,7 +456,7 @@ bool SfxFilterMatcher::IsFilterInstalled_Impl( const std::shared_ptr<const SfxFi
             // Start Setup
             std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(nullptr,
                                                           VclMessageType::Info, VclButtonsType::Ok,
-                                                          "Here should the Setup now be starting!"));
+                                                          u"Here should the Setup now be starting!"_ustr));
             xInfoBox->run();
 #endif
             // Installation must still give feedback if it worked or not,
@@ -487,21 +487,19 @@ ErrCode SfxFilterMatcher::DetectFilter( SfxMedium& rMedium, std::shared_ptr<cons
  */
 
 {
-    std::shared_ptr<const SfxFilter> pOldFilter = rMedium.GetFilter();
-    if ( pOldFilter )
+    std::shared_ptr<const SfxFilter> pFilter = rMedium.GetFilter();
+    if ( pFilter )
     {
-        if( !IsFilterInstalled_Impl( pOldFilter ) )
-            pOldFilter = nullptr;
+        if( !IsFilterInstalled_Impl( pFilter ) )
+            pFilter = nullptr;
         else
         {
             const SfxStringItem* pSalvageItem = rMedium.GetItemSet().GetItem(SID_DOC_SALVAGE, false);
-            if ( ( pOldFilter->GetFilterFlags() & SfxFilterFlags::PACKED ) && pSalvageItem )
+            if ( ( pFilter->GetFilterFlags() & SfxFilterFlags::PACKED ) && pSalvageItem )
                 // Salvage is always done without packing
-                pOldFilter = nullptr;
+                pFilter = nullptr;
         }
     }
-
-    std::shared_ptr<const SfxFilter> pFilter = pOldFilter;
 
     bool bPreview = rMedium.IsPreview_Impl();
     const SfxStringItem* pReferer = rMedium.GetItemSet().GetItem(SID_REFERER, false);
@@ -514,7 +512,7 @@ ErrCode SfxFilterMatcher::DetectFilter( SfxMedium& rMedium, std::shared_ptr<cons
 
     if ( nErr == ERRCODE_IO_PENDING )
     {
-        rpFilter = pFilter;
+        rpFilter = std::move(pFilter);
         return nErr;
     }
 
@@ -527,8 +525,10 @@ ErrCode SfxFilterMatcher::DetectFilter( SfxMedium& rMedium, std::shared_ptr<cons
         if ( pInstallFilter )
         {
             if ( IsFilterInstalled_Impl( pInstallFilter ) )
+            {
                 // Maybe the filter was installed afterwards.
-                pFilter = pInstallFilter;
+                pFilter = std::move(pInstallFilter);
+            }
         }
         else
         {
@@ -630,7 +630,7 @@ std::shared_ptr<const SfxFilter> SfxFilterMatcher::GetFilter4Mime( const OUStrin
         return nullptr;
     }
 
-    css::uno::Sequence < css::beans::NamedValue > aSeq { { "MediaType", css::uno::Any(rMediaType) } };
+    css::uno::Sequence < css::beans::NamedValue > aSeq { { u"MediaType"_ustr, css::uno::Any(rMediaType) } };
     return GetFilterForProps( aSeq, nMust, nDont );
 }
 
@@ -656,7 +656,7 @@ std::shared_ptr<const SfxFilter> SfxFilterMatcher::GetFilter4EA( const OUString&
         return nullptr;
     }
 
-    css::uno::Sequence < css::beans::NamedValue > aSeq { { "Name", css::uno::Any(rType) } };
+    css::uno::Sequence < css::beans::NamedValue > aSeq { { u"Name"_ustr, css::uno::Any(rType) } };
     return GetFilterForProps( aSeq, nMust, nDont );
 }
 
@@ -692,7 +692,7 @@ std::shared_ptr<const SfxFilter> SfxFilterMatcher::GetFilter4Extension( const OU
         sExt = sExt.copy(1);
 
     css::uno::Sequence < css::beans::NamedValue > aSeq
-        { { "Extensions", css::uno::Any(uno::Sequence < OUString > { sExt } ) } };
+        { { u"Extensions"_ustr, css::uno::Any(uno::Sequence < OUString > { sExt } ) } };
     return GetFilterForProps( aSeq, nMust, nDont );
 }
 
@@ -702,7 +702,7 @@ std::shared_ptr<const SfxFilter> SfxFilterMatcher::GetFilter4ClipBoardId( SotCli
         return nullptr;
 
     css::uno::Sequence < css::beans::NamedValue > aSeq
-        { { "ClipboardFormat", css::uno::Any(SotExchange::GetFormatName( nId )) } };
+        { { u"ClipboardFormat"_ustr, css::uno::Any(SotExchange::GetFormatName( nId )) } };
     return GetFilterForProps( aSeq, nMust, nDont );
 }
 
@@ -895,7 +895,7 @@ void SfxFilterContainer::ReadSingleFilter_Impl(
     bool bEnabled = true         ;
 
     // first get directly available properties
-    for( const auto& rFilterProperty : std::as_const(lFilterProperties) )
+    for (const auto& rFilterProperty : lFilterProperties)
     {
         if ( rFilterProperty.Name == "FileFormatVersion" )
         {
@@ -951,7 +951,7 @@ void SfxFilterContainer::ReadSingleFilter_Impl(
             if( aResult >>= lTypeProperties )
             {
                 // get indirect available properties then (types)
-                for( const auto& rTypeProperty : std::as_const(lTypeProperties) )
+                for (const auto& rTypeProperty : lTypeProperties)
                 {
                     if ( rTypeProperty.Name == "ClipboardFormat" )
                     {
@@ -1047,7 +1047,10 @@ void SfxFilterContainer::ReadSingleFilter_Impl(
 void SfxFilterContainer::ReadFilters_Impl( bool bUpdate )
 {
     if ( !pFilterArr )
+    {
         CreateFilterArr();
+        assert(pFilterArr);
+    }
 
     bFirstRead = false;
     SfxFilterList_Impl& rList = *pFilterArr;
@@ -1060,8 +1063,8 @@ void SfxFilterContainer::ReadFilters_Impl( bool bUpdate )
         uno::Reference< container::XNameAccess >     xTypeCFG                                                  ;
         if( xServiceManager.is() )
         {
-            xFilterCFG.set( xServiceManager->createInstance(  "com.sun.star.document.FilterFactory" ), uno::UNO_QUERY );
-            xTypeCFG.set( xServiceManager->createInstance(  "com.sun.star.document.TypeDetection" ), uno::UNO_QUERY );
+            xFilterCFG.set( xServiceManager->createInstance(  u"com.sun.star.document.FilterFactory"_ustr ), uno::UNO_QUERY );
+            xTypeCFG.set( xServiceManager->createInstance(  u"com.sun.star.document.TypeDetection"_ustr ), uno::UNO_QUERY );
         }
 
         if( xFilterCFG.is() && xTypeCFG.is() )

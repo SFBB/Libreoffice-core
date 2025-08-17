@@ -41,8 +41,8 @@ namespace vcl { class Window; }
         <code>AccessibleCell</code> service.
 */
 class ScAccessibleEditObject
-    :   public  ScAccessibleContextBase,
-        public css::accessibility::XAccessibleSelection
+    : public cppu::ImplInheritanceHelper<ScAccessibleContextBase,
+                                         css::accessibility::XAccessibleSelection>
 {
 public:
     enum EditObjectType
@@ -53,12 +53,12 @@ public:
     };
 
     ScAccessibleEditObject(
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
+        const rtl::Reference<comphelper::OAccessible>& rpParent,
         EditView* pEditView, vcl::Window* pWin, const OUString& rName,
         const OUString& rDescription, EditObjectType eObjectType);
 
     void InitAcc(
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
+        const rtl::Reference<comphelper::OAccessible>& rpParent,
         EditView* pEditView, const OUString& rName, const OUString& rDescription);
 
 protected:
@@ -76,14 +76,7 @@ public:
     void LostFocus();
 
     void GotFocus();
-///=====  XInterface  =====================================================
 
-    virtual css::uno::Any SAL_CALL queryInterface(
-        css::uno::Type const & rType ) override;
-
-    virtual void SAL_CALL acquire() noexcept override;
-
-    virtual void SAL_CALL release() noexcept override;
     ///=====  XAccessibleComponent  ============================================
 
     virtual css::uno::Reference< css::accessibility::XAccessible >
@@ -94,10 +87,10 @@ public:
 
 protected:
     /// Return the object's current bounding box relative to the desktop.
-    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() const override;
+    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() override;
 
     /// Return the object's current bounding box relative to the parent object.
-    virtual tools::Rectangle GetBoundingBox() const override;
+    virtual tools::Rectangle GetBoundingBox() override;
 
 public:
     ///=====  XAccessibleContext  ==============================================
@@ -153,20 +146,6 @@ public:
         removeAccessibleEventListener(
             const css::uno::Reference<css::accessibility::XAccessibleEventListener>& xListener) override;
 
-    ///=====  XServiceInfo  ====================================================
-
-    /** Returns an identifier for the implementation of this object.
-    */
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    ///=====  XTypeProvider  ===================================================
-
-    /** Returns an implementation id.
-    */
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL
-        getImplementationId() override;
-
 private:
     std::unique_ptr<accessibility::AccessibleTextHelper> mpTextHelper;
     EditView*      mpEditView;
@@ -198,10 +177,10 @@ private:
 
 protected:
     /// Return the object's current bounding box relative to the desktop.
-    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() const override;
+    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() override;
 
     /// Return the object's current bounding box relative to the parent object.
-    virtual tools::Rectangle GetBoundingBox() const override;
+    virtual tools::Rectangle GetBoundingBox() override;
 
 public:
     ScAccessibleEditControlObject(weld::CustomWidgetController* pController, EditObjectType eObjectType)
@@ -219,7 +198,7 @@ public:
     virtual void SAL_CALL disposing() override;
 };
 
-class ScAccessibleEditLineObject : public ScAccessibleEditControlObject
+class ScAccessibleEditLineObject final : public ScAccessibleEditControlObject
 {
 public:
     ScAccessibleEditLineObject(ScTextWnd* pTextWnd);

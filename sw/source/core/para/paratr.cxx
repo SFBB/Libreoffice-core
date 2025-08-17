@@ -27,6 +27,8 @@
 #include <libxml/xmlwriter.h>
 #include <osl/diagnose.h>
 #include <tools/UnitConversion.hxx>
+#include <o3tl/hash_combine.hxx>
+#include <names.hxx>
 
 using namespace ::com::sun::star;
 
@@ -44,6 +46,7 @@ SwFormatDrop::SwFormatDrop()
     m_nChars( 0 ),
     m_bWholeWord( false )
 {
+    setNonShareable();
 }
 
 SwFormatDrop::SwFormatDrop( const SwFormatDrop &rCpy )
@@ -55,6 +58,7 @@ SwFormatDrop::SwFormatDrop( const SwFormatDrop &rCpy )
     m_nChars( rCpy.GetChars() ),
     m_bWholeWord( rCpy.GetWholeWord() )
 {
+    setNonShareable();
 }
 
 SwFormatDrop::~SwFormatDrop()
@@ -63,14 +67,15 @@ SwFormatDrop::~SwFormatDrop()
 
 void SwFormatDrop::SetCharFormat( SwCharFormat *pNew )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     assert(!pNew || !pNew->IsDefault()); // expose cases that lead to use-after-free
     // Rewire
     EndListeningAll();
     if(pNew)
-        pNew->Add( this );
+        pNew->Add(*this);
 }
 
-bool SwFormatDrop::GetInfo( SfxPoolItem& ) const
+bool SwFormatDrop::GetInfo( SwFindNearestNode& ) const
 {
     return true; // Continue
 }
@@ -84,6 +89,18 @@ bool SwFormatDrop::operator==( const SfxPoolItem& rAttr ) const
              m_bWholeWord == static_cast<const SwFormatDrop&>(rAttr).GetWholeWord() &&
              GetCharFormat() == static_cast<const SwFormatDrop&>(rAttr).GetCharFormat() &&
              m_pDefinedIn == static_cast<const SwFormatDrop&>(rAttr).m_pDefinedIn );
+}
+
+size_t SwFormatDrop::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, m_nLines);
+    o3tl::hash_combine(seed, m_nChars);
+    o3tl::hash_combine(seed, m_nDistance);
+    o3tl::hash_combine(seed, m_bWholeWord);
+    o3tl::hash_combine(seed, GetCharFormat());
+    // note that we cannot use m_pDefinedIn, that is updated on items already in a pool
+    return seed;
 }
 
 SwFormatDrop* SwFormatDrop::Clone( SfxItemPool* ) const
@@ -112,11 +129,11 @@ bool SwFormatDrop::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
         break;
         case MID_DROPCAP_CHAR_STYLE_NAME :
         {
-            OUString sName;
+            ProgName sName;
             if(GetCharFormat())
                 sName = SwStyleNameMapper::GetProgName(
                         GetCharFormat()->GetName(), SwGetPoolIdFromName::ChrFmt );
-            rVal <<= sName;
+            rVal <<= sName.toString();
         }
         break;
     }
@@ -125,6 +142,7 @@ bool SwFormatDrop::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 
 bool SwFormatDrop::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     switch(nMemberId&~CONVERT_TWIPS)
     {
         case MID_DROPCAP_LINES :
@@ -192,8 +210,8 @@ bool SwNumRuleItem::operator==( const SfxPoolItem& rAttr ) const
 
 bool    SwNumRuleItem::QueryValue( uno::Any& rVal, sal_uInt8 ) const
 {
-    OUString sRet = SwStyleNameMapper::GetProgName(GetValue(), SwGetPoolIdFromName::NumRule );
-    rVal <<= sRet;
+    ProgName sRet = SwStyleNameMapper::GetProgName(GetValue(), SwGetPoolIdFromName::NumRule );
+    rVal <<= sRet.toString();
     return true;
 }
 
@@ -201,7 +219,7 @@ bool    SwNumRuleItem::PutValue( const uno::Any& rVal, sal_uInt8 )
 {
     OUString uName;
     rVal >>= uName;
-    SetValue(SwStyleNameMapper::GetUIName(uName, SwGetPoolIdFromName::NumRule));
+    SetValue(SwStyleNameMapper::GetUIName(ProgName(uName), SwGetPoolIdFromName::NumRule).toString());
     return true;
 }
 
@@ -209,7 +227,7 @@ void SwNumRuleItem::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwNumRuleItem"));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"), BAD_CAST(GetValue().toUtf8().getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"), BAD_CAST(GetValue().toString().toUtf8().getStr()));
     (void)xmlTextWriterEndElement(pWriter);
 }
 

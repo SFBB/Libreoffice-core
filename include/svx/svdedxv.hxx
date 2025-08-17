@@ -33,7 +33,6 @@ class SdrOutliner;
 class OutlinerView;
 class EditStatus;
 class EditFieldInfo;
-class ImpSdrEditPara;
 struct PasteOrDropInfos;
 class SdrUndoManager;
 class TextChainCursorManager;
@@ -76,8 +75,15 @@ class SVXCORE_DLLPUBLIC SdrObjEditView : public SdrGlueEditView, public EditView
     virtual void EditViewCursorRect(const tools::Rectangle& rRect, int nExtTextInputWidth) override;
 
     // The OverlayObjects used for visualizing active TextEdit (currently
-    // using TextEditOverlayObject, but not limited to it
+    // using TextEditOverlayObject, but not limited to it)
     sdr::overlay::OverlayObjectList maTEOverlayGroup;
+    Timer                           maTextEditUpdateTimer;
+
+    // IASS: allow reaction to active TextEdit changes
+    DECL_DLLPRIVATE_LINK(ImpModifyHdl, LinkParamNone*, void);
+
+    // IASS: timer-based reaction on TextEdit changes
+    DECL_DLLPRIVATE_LINK(TextEditUpdate, Timer*, void);
 
 protected:
     // TextEdit
@@ -87,26 +93,31 @@ protected:
     OutlinerView* mpTextEditOutlinerView; // current view of the outliners
     VclPtr<vcl::Window> mpTextEditWin; // matching window to pTextEditOutlinerView
 
-    vcl::Cursor*                pTextEditCursorBuffer; // to restore the cursor in each window
-    SdrObject*                  pMacroObj;
-    SdrPageView*                pMacroPV;
-    VclPtr<vcl::Window>         pMacroWin;
+    vcl::Cursor*                m_pTextEditCursorBuffer; // to restore the cursor in each window
+    SdrObject*                  m_pMacroObj;
+    SdrPageView*                m_pMacroPV;
+    VclPtr<vcl::Window>         m_pMacroWin;
 
-    tools::Rectangle            aTextEditArea;
-    tools::Rectangle            aMinTextEditArea;
-    Link<EditFieldInfo*,void>   aOldCalcFieldValueLink; // for call the old handler
-    Point                       aMacroDownPos;
+    tools::Rectangle            m_aTextEditArea;
+    tools::Rectangle            m_aMinTextEditArea;
+    Link<EditFieldInfo*,void>   m_aOldCalcFieldValueLink; // for call the old handler
+    Point                       m_aMacroDownPos;
 
-    sal_uInt16                  nMacroTol;
+    sal_uInt16                  m_nMacroTol;
 
     bool mbTextEditDontDelete : 1;  // do not delete outliner and view of SdrEndTextEdit (f. spellchecking)
     bool mbTextEditOnlyOneView : 1; // a single OutlinerView (f. spellchecking)
     bool mbTextEditNewObj : 1;      // current edited object was just recreated
     bool mbQuickTextEditMode : 1;   // persistent(->CrtV). Default=TRUE
     bool mbMacroDown : 1;
+    bool mbInteractiveSlideShow : 1; // IASS
 
     rtl::Reference< sdr::SelectionController > mxSelectionController;
     rtl::Reference< sdr::SelectionController > mxLastSelectionController;
+
+    // check/set if we are in IASS and need to refresh evtl.
+    void setInteractiveSlideShow(bool bNew) { mbInteractiveSlideShow = bNew; }
+    bool isInteractiveSlideShow() const { return mbInteractiveSlideShow; }
 
 private:
     EditUndoManager* mpOldTextEditUndoManager;
@@ -241,19 +252,19 @@ public:
 
     // Now at this outliner, events can be send, attributes can be set,
     // call Cut/Copy/Paste, call Undo/Redo, and so on...
-    const SdrOutliner* GetTextEditOutliner() const
+    virtual const SdrOutliner* GetTextEditOutliner() const
     {
         return mpTextEditOutliner.get();
     }
-    SdrOutliner* GetTextEditOutliner()
+    virtual SdrOutliner* GetTextEditOutliner()
     {
         return mpTextEditOutliner.get();
     }
-    const OutlinerView* GetTextEditOutlinerView() const
+    virtual const OutlinerView* GetTextEditOutlinerView() const
     {
         return mpTextEditOutlinerView;
     }
-    OutlinerView* GetTextEditOutlinerView()
+    virtual OutlinerView* GetTextEditOutlinerView()
     {
         return mpTextEditOutlinerView;
     }
@@ -288,7 +299,7 @@ public:
     void MovMacroObj(const Point& rPnt);
     void BrkMacroObj();
     bool EndMacroObj();
-    bool IsMacroObj() const { return pMacroObj!=nullptr; }
+    bool IsMacroObj() const { return m_pMacroObj!=nullptr; }
 
     /** fills the given any with a XTextCursor for the current text selection.
         Leaves the any untouched if there currently is no text selected */
@@ -301,17 +312,17 @@ public:
     /** returns true if the shape identified by its inventor and identifier supports format paint brush operation */
     static bool SupportsFormatPaintbrush( SdrInventor nObjectInventor, SdrObjKind nObjectIdentifier );
 
-    /** returns a format paint brush set from the current selection */
-    void TakeFormatPaintBrush( std::shared_ptr< SfxItemSet >& rFormatSet  );
+    /** fills a format paint brush set from the current selection and returns the numbering depth */
+    sal_Int32 TakeFormatPaintBrush( std::shared_ptr< SfxItemSet >& rFormatSet  );
 
     /** applies a format paint brush set from the current selection.
         if bNoCharacterFormats is true, no character attributes are changed.
         if bNoParagraphFormats is true, no paragraph attributes are changed.
     */
-    void ApplyFormatPaintBrush( SfxItemSet& rFormatSet, bool bNoCharacterFormats, bool bNoParagraphFormats );
+    void ApplyFormatPaintBrush( SfxItemSet& rFormatSet, sal_Int16 nDepth, bool bNoCharacterFormats, bool bNoParagraphFormats );
 
     /** helper function for selections with multiple SdrText for one SdrTextObj (f.e. tables ) */
-    static void ApplyFormatPaintBrushToText( SfxItemSet const & rFormatSet, SdrTextObj& rTextObj, SdrText* pText, bool bNoCharacterFormats, bool bNoParagraphFormats );
+    static void ApplyFormatPaintBrushToText( SfxItemSet const & rFormatSet, SdrTextObj& rTextObj, SdrText* pText, sal_Int16 nDepth, bool bNoCharacterFormats, bool bNoParagraphFormats );
 
     void DisposeUndoManager();
 

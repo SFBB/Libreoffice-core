@@ -24,14 +24,9 @@
 #include <undobj.hxx>
 #include "rolbck.hxx"
 
-class SwHistoryBookmark;
-class SwHistoryNoTextFieldmark;
-class SwHistoryTextFieldmark;
-
 namespace sw::mark
 {
-class IMark;
-class IFieldmark;
+class Fieldmark;
 }
 
 class SwDoc;
@@ -41,9 +36,9 @@ class SwUndoBookmark : public SwUndo
     const std::unique_ptr<SwHistoryBookmark> m_pHistoryBookmark;
 
 protected:
-    SwUndoBookmark(SwUndoId nUndoId, const ::sw::mark::IMark&);
+    SwUndoBookmark(SwUndoId nUndoId, const ::sw::mark::MarkBase&);
 
-    void SetInDoc(SwDoc*);
+    void SetInDoc(SwDoc&);
     void ResetInDoc(SwDoc&);
 
 public:
@@ -67,7 +62,7 @@ public:
 class SwUndoInsBookmark final : public SwUndoBookmark
 {
 public:
-    SwUndoInsBookmark(const ::sw::mark::IMark&);
+    SwUndoInsBookmark(const ::sw::mark::MarkBase&);
 
     virtual void UndoImpl(::sw::UndoRedoContext&) override;
     virtual void RedoImpl(::sw::UndoRedoContext&) override;
@@ -76,7 +71,7 @@ public:
 class SwUndoDeleteBookmark final : public SwUndoBookmark
 {
 public:
-    SwUndoDeleteBookmark(const ::sw::mark::IMark&);
+    SwUndoDeleteBookmark(const ::sw::mark::MarkBase&);
 
     virtual void UndoImpl(::sw::UndoRedoContext&) override;
     virtual void RedoImpl(::sw::UndoRedoContext&) override;
@@ -84,16 +79,17 @@ public:
 
 class SwUndoRenameBookmark final : public SwUndo
 {
-    const OUString m_sOldName;
-    const OUString m_sNewName;
+    const SwMarkName m_sOldName;
+    const SwMarkName m_sNewName;
 
 public:
-    SwUndoRenameBookmark(OUString aOldName, OUString aNewName, const SwDoc& rDoc);
+    SwUndoRenameBookmark(SwMarkName aOldName, SwMarkName aNewName, const SwDoc& rDoc);
     virtual ~SwUndoRenameBookmark() override;
 
 private:
     virtual SwRewriter GetRewriter() const override;
-    static void Rename(::sw::UndoRedoContext const&, const OUString& sFrom, const OUString& sTo);
+    static void Rename(::sw::UndoRedoContext const&, const SwMarkName& sFrom,
+                       const SwMarkName& sTo);
     virtual void UndoImpl(::sw::UndoRedoContext&) override;
     virtual void RedoImpl(::sw::UndoRedoContext&) override;
 };
@@ -105,7 +101,7 @@ private:
     const std::unique_ptr<SwHistoryNoTextFieldmark> m_pHistoryNoTextFieldmark;
 
 public:
-    SwUndoInsNoTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark);
+    SwUndoInsNoTextFieldmark(const ::sw::mark::Fieldmark& rFieldmark);
 
     virtual void UndoImpl(::sw::UndoRedoContext&) override;
     virtual void RedoImpl(::sw::UndoRedoContext&) override;
@@ -118,7 +114,7 @@ private:
     const std::unique_ptr<SwHistoryNoTextFieldmark> m_pHistoryNoTextFieldmark;
 
 public:
-    SwUndoDelNoTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark);
+    SwUndoDelNoTextFieldmark(const ::sw::mark::Fieldmark& rFieldmark);
     ~SwUndoDelNoTextFieldmark();
 
     virtual void UndoImpl(::sw::UndoRedoContext&) override;
@@ -132,7 +128,7 @@ private:
     const std::unique_ptr<SwHistoryTextFieldmark> m_pHistoryTextFieldmark;
 
 public:
-    SwUndoInsTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark);
+    SwUndoInsTextFieldmark(const ::sw::mark::Fieldmark& rFieldmark);
 
     virtual void UndoImpl(::sw::UndoRedoContext&) override;
     virtual void RedoImpl(::sw::UndoRedoContext&) override;
@@ -145,7 +141,7 @@ private:
     const std::unique_ptr<SwHistoryTextFieldmark> m_pHistoryTextFieldmark;
 
 public:
-    SwUndoDelTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark);
+    SwUndoDelTextFieldmark(const ::sw::mark::Fieldmark& rFieldmark);
     ~SwUndoDelTextFieldmark();
 
     virtual void UndoImpl(::sw::UndoRedoContext&) override;

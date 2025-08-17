@@ -20,35 +20,28 @@
 #ifndef INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERPANEFACTORY_HXX
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERPANEFACTORY_HXX
 
-#include <cppuhelper/compbase.hxx>
-#include <cppuhelper/basemutex.hxx>
 #include <com/sun/star/frame/XController.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
-#include <com/sun/star/drawing/framework/XResourceFactory.hpp>
+#include <framework/AbstractPane.hxx>
+#include <framework/ResourceFactory.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <rtl/ref.hxx>
+#include <unotools/weakref.hxx>
 #include <map>
 #include <memory>
 
 namespace sd { class DrawController; }
+namespace sd::framework { class ConfigurationController; }
 
 namespace sdext::presenter {
 
 class PresenterController;
-
-typedef ::cppu::WeakComponentImplHelper <
-    css::drawing::framework::XResourceFactory
-> PresenterPaneFactoryInterfaceBase;
 
 /** The PresenterPaneFactory provides a fixed set of panes.
 
     In order to make the presenter screen more easily extendable in the
     future the set of supported panes could be made extendable on demand.
 */
-class PresenterPaneFactory
-    : public ::cppu::BaseMutex,
-      public PresenterPaneFactoryInterfaceBase
+class PresenterPaneFactory : public sd::framework::ResourceFactory
 {
 public:
     static constexpr OUString msCurrentSlidePreviewPaneURL
@@ -66,32 +59,31 @@ public:
         shut down and releases its reference to the factory then the factory
         is destroyed.
     */
-    static css::uno::Reference<css::drawing::framework::XResourceFactory> Create (
+    static rtl::Reference<sd::framework::ResourceFactory> Create (
         const css::uno::Reference<css::uno::XComponentContext>& rxContext,
         const rtl::Reference<::sd::DrawController>& rxController,
         const ::rtl::Reference<PresenterController>& rpPresenterController);
     virtual ~PresenterPaneFactory() override;
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    // XResourceFactory
+    // ResourceFactory
 
-    virtual css::uno::Reference<css::drawing::framework::XResource>
-        SAL_CALL createResource (
-            const css::uno::Reference<
-                css::drawing::framework::XResourceId>& rxPaneId) override;
+    virtual rtl::Reference<sd::framework::AbstractResource>
+        createResource (
+            const rtl::Reference<sd::framework::ResourceId>& rxPaneId) override;
 
-    virtual void SAL_CALL
+    virtual void
         releaseResource (
-            const css::uno::Reference<css::drawing::framework::XResource>&
+            const rtl::Reference<sd::framework::AbstractResource>&
                 rxPane) override;
 
 private:
     css::uno::WeakReference<css::uno::XComponentContext> mxComponentContextWeak;
-    css::uno::WeakReference<css::drawing::framework::XConfigurationController>
+    unotools::WeakReference<sd::framework::ConfigurationController>
         mxConfigurationControllerWeak;
     ::rtl::Reference<PresenterController> mpPresenterController;
-    typedef ::std::map<OUString, css::uno::Reference<css::drawing::framework::XResource> >
+    typedef ::std::map<OUString, rtl::Reference<sd::framework::AbstractResource> >
         ResourceContainer;
     std::unique_ptr<ResourceContainer> mpResourceCache;
 
@@ -101,15 +93,12 @@ private:
 
     void Register (const rtl::Reference<::sd::DrawController>& rxController);
 
-    css::uno::Reference<css::drawing::framework::XResource> CreatePane (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId);
-    css::uno::Reference<css::drawing::framework::XResource> CreatePane (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId,
-        const css::uno::Reference<css::drawing::framework::XPane>& rxParentPane,
+    rtl::Reference<sd::framework::AbstractResource> CreatePane (
+        const rtl::Reference<sd::framework::ResourceId>& rxPaneId);
+    rtl::Reference<sd::framework::AbstractResource> CreatePane (
+        const rtl::Reference<sd::framework::ResourceId>& rxPaneId,
+        const rtl::Reference<sd::framework::AbstractPane>& rxParentPane,
         const bool bIsSpritePane);
-
-    /// @throws css::lang::DisposedException
-    void ThrowIfDisposed() const;
 };
 
 }

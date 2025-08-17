@@ -102,7 +102,7 @@ static bool lcl_getWindowState( const uno::Reference< container::XNameAccess >& 
         a = xWindowStateMgr->getByName( rResourceURL );
         if ( a >>= aWindowState )
         {
-            for ( const auto& rProp : std::as_const(aWindowState) )
+            for (const auto& rProp : aWindowState)
             {
                 if ( rProp.Name == "UIName" )
                 {
@@ -127,7 +127,7 @@ SfxDockingWrapper::SfxDockingWrapper( vcl::Window* pParentWnd ,
                                       SfxChildWinInfo* pInfo )
                     : SfxChildWindow( pParentWnd , nId )
 {
-    uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
 
     VclPtr<SfxTitleDockingWindow> pTitleDockWindow = VclPtr<SfxTitleDockingWindow>::Create( pBindings, this, pParentWnd,
         WB_STDDOCKWIN | WB_CLIPCHILDREN | WB_SIZEABLE | WB_3DLOOK);

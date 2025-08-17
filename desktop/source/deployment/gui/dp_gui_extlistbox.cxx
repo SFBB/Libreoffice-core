@@ -148,7 +148,7 @@ void Entry_Impl::checkDependencies()
         if ( e.Cause >>= depExc )
         {
             OUStringBuffer aMissingDep( DpResId( RID_STR_ERROR_MISSING_DEPENDENCIES ) );
-            for ( const auto& i : std::as_const(depExc.UnsatisfiedDependencies) )
+            for (const auto& i : depExc.UnsatisfiedDependencies)
             {
                 aMissingDep.append("\n"
                     + dp_misc::Dependencies::getErrorText(i));
@@ -201,7 +201,7 @@ ExtensionBox_Impl::ExtensionBox_Impl(std::unique_ptr<weld::ScrolledWindow> xScro
 
 void ExtensionBox_Impl::Init()
 {
-    m_xScrollBar->connect_vadjustment_changed( LINK( this, ExtensionBox_Impl, ScrollHdl ) );
+    m_xScrollBar->connect_vadjustment_value_changed( LINK( this, ExtensionBox_Impl, ScrollHdl ) );
 
     auto nIconHeight = 2*TOP_OFFSET + SMALL_ICON_SIZE;
     auto nTitleHeight = 2*TOP_OFFSET + GetTextHeight();
@@ -433,6 +433,7 @@ void ExtensionBox_Impl::DrawRow(vcl::RenderContext& rRenderContext, const tools:
     auto aTextHeight = rRenderContext.GetTextHeight();
 
     // Get max title width
+    // coverity[ tainted_data_return : FALSE ] version 2023.12.2
     auto nMaxTitleWidth = rRect.GetWidth() - ICON_OFFSET;
     nMaxTitleWidth -= (2 * SMALL_ICON_SIZE) + (4 * SPACE_BETWEEN);
     rRenderContext.SetFont(aStdFont);
@@ -681,9 +682,8 @@ void ExtensionBox_Impl::SetupScrollBar()
         if ( m_nTopIndex + aSize.Height() > nTotalHeight )
             m_nTopIndex = nTotalHeight - aSize.Height();
 
-        m_xScrollBar->vadjustment_configure(m_nTopIndex, 0, nTotalHeight,
-                                            m_nStdHeight, ( aSize.Height() * 4 ) / 5,
-                                            aSize.Height());
+        m_xScrollBar->vadjustment_configure(m_nTopIndex, nTotalHeight, m_nStdHeight,
+                                            (aSize.Height() * 4) / 5, aSize.Height());
 
         if (!m_bHasScrollBar)
             m_xScrollBar->set_vpolicy(VclPolicyType::ALWAYS);

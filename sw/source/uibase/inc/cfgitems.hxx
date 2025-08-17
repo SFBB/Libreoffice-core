@@ -24,17 +24,9 @@
 #include <printdata.hxx>
 
 #include <cmdid.h>
+#include <sfx2/zoomitem.hxx>
 
-class SwModule;
-#ifdef DBG_UTIL
-class SwTestTabPage;
-#endif
-class SwAddPrinterTabPage;
-class SfxPrinter;
-class SwViewShell;
 class SwViewOption;
-class SwContentOptPage;
-class SwShdwCursorOptionsTabPage;
 enum class SwFillMode;
 
 /// Item for settings dialog - document view
@@ -51,9 +43,15 @@ class SW_DLLPUBLIC SwDocDisplayItem final : public SfxPoolItem
     bool m_bCharHiddenText    :1;
     bool m_bBookmarks         :1;
     bool m_bManualBreak       :1;
+    bool m_bTextBoundariesFull :1;
+    bool m_bTextBoundaries    :1;
+    bool m_bSectionBoundaries :1;
+    bool m_bTableBoundaries   :1;
+
     sal_Int32 m_xDefaultAnchor;
 
 public:
+                                DECLARE_ITEM_TYPE_FUNCTION(SwDocDisplayItem)
                                 SwDocDisplayItem();
                                 SwDocDisplayItem( const SwViewOption& rVOpt );
 
@@ -83,10 +81,14 @@ class SW_DLLPUBLIC SwElemItem final : public SfxPoolItem
     bool m_bShowChangesInMargin :1;
     bool m_bFieldHiddenText   :1;
     bool m_bShowHiddenPara    :1;
+    bool m_bDefaultZoom       :1;
+    SvxZoomType m_eDefaultZoomType;
+    sal_uInt16  m_nDefaultZoomValue;
 
     friend class SwContentOptPage;
 
 public:
+                            DECLARE_ITEM_TYPE_FUNCTION(SwElemItem)
                             SwElemItem();
                             SwElemItem(const SwViewOption& rVOpt);
 
@@ -94,6 +96,15 @@ public:
     virtual bool            operator==( const SfxPoolItem& ) const override;
 
     void                    FillViewOptions( SwViewOption& rVOpt) const;
+
+    bool IsDefaultZoom() const {return m_bDefaultZoom; }
+    void SetDefaultZoom(bool bSet) { m_bDefaultZoom = bSet; }
+
+    SvxZoomType GetDefaultZoomType() const { return m_eDefaultZoomType; }
+    void SetDefaultZoomType(SvxZoomType eType) { m_eDefaultZoomType = eType; }
+
+    sal_uInt16  GetDefaultZoomValue() const { return m_nDefaultZoomValue;}
+    void SetDefaultZoomValue(sal_Int16 nValue){ m_nDefaultZoomValue = nValue; }
 
 };
 
@@ -104,6 +115,7 @@ class SW_DLLPUBLIC SwAddPrinterItem final : public SfxPoolItem, public SwPrintDa
     using  SwPrintData::operator ==;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwAddPrinterItem)
     SwAddPrinterItem();
     SwAddPrinterItem( const SwPrintData& rPrtData );
 
@@ -118,6 +130,7 @@ class SW_DLLPUBLIC SwShadowCursorItem final : public SfxPoolItem
     SwFillMode m_eMode;
     bool m_bOn;
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwShadowCursorItem)
     SwShadowCursorItem();
     SwShadowCursorItem( const SwViewOption& rVOpt );
 
@@ -131,6 +144,26 @@ public:
 
     void SetMode( SwFillMode eM )       { m_eMode = eM; }
     void SetOn( bool bFlag )            { m_bOn = bFlag; }
+};
+
+class SW_DLLPUBLIC SwFmtAidsAutoComplItem final : public SfxPoolItem
+{
+    friend class SwShdwCursorOptionsTabPage;
+    friend class SwModule;
+
+    bool m_bEncloseWithCharactersOn;
+
+public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFmtAidsAutoComplItem)
+    SwFmtAidsAutoComplItem();
+    SwFmtAidsAutoComplItem(const SwViewOption& rVOpt);
+
+    virtual SwFmtAidsAutoComplItem* Clone(SfxItemPool* pPool = nullptr) const override;
+    virtual bool operator==(const SfxPoolItem&) const override;
+
+    bool IsEncloseWithCharactersOn() const { return m_bEncloseWithCharactersOn; }
+
+    void SetEncloseWithCharactersOn(bool bFlag) { m_bEncloseWithCharactersOn = bFlag; }
 };
 
 #ifdef DBG_UTIL
@@ -153,6 +186,7 @@ class SW_DLLPUBLIC SwTestItem final : public SfxPoolItem
     bool    m_bTest10:1;
 
 public:
+                            DECLARE_ITEM_TYPE_FUNCTION(SwTestItem)
                             SwTestItem() : SfxPoolItem(FN_PARAM_SWTEST) {};
 
     virtual SwTestItem*     Clone( SfxItemPool *pPool = nullptr ) const override;

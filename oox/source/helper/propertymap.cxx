@@ -171,7 +171,7 @@ Property SAL_CALL GenericPropertySet::getPropertyByName( const OUString& rProper
 
 sal_Bool SAL_CALL GenericPropertySet::hasPropertyByName( const OUString& rPropertyName )
 {
-    return maPropMap.find( rPropertyName ) != maPropMap.end();
+    return maPropMap.contains(rPropertyName);
 }
 
 } // namespace
@@ -391,7 +391,7 @@ static void lclDumpAnyValue( const Any& value)
                     Sequence< PropertyValue > aBulletPropSeq;
                     fprintf (stderr, "level %d\n", k);
                     if (xNumRule->getByIndex (k) >>= aBulletPropSeq) {
-                        for (const PropertyValue& rProp : std::as_const(aBulletPropSeq)) {
+                        for (const PropertyValue& rProp : aBulletPropSeq) {
                             fprintf(stderr, "%46s = ", USS (rProp.Name));
                             lclDumpAnyValue (rProp.Value);
                         }
@@ -538,7 +538,7 @@ static const char *lclGetEnhancedParameterType( sal_uInt16 nType )
 
 static void printParameterPairData(int level, EnhancedCustomShapeParameterPair const &pp)
 {
-    // These are always sal_Int32s so lets depend on that for our packing ...
+    // These are always sal_Int32s so let's depend on that for our packing...
     sal_Int32 nFirstValue = {};
     sal_Int32 nSecondValue = {}; // spurious -Werror=maybe-uninitialized
     if (!(pp.First.Value >>= nFirstValue))
@@ -820,7 +820,7 @@ static const char* lclDumpAnyValueCode( const Any& value, int level)
             Sequence< PropertyValue > aBulletPropSeq;
             fprintf (stderr, "level %d\n", k);
             if (xNumRule->getByIndex (k) >>= aBulletPropSeq) {
-                for (const PropertyValue& rProp : std::as_const(aBulletPropSeq)) {
+                for (const PropertyValue& rProp : aBulletPropSeq) {
                     fprintf(stderr, "%46s = ", USS (rProp.Name));
                     lclDumpAnyValue (rProp.Value);
                 }

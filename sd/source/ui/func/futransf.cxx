@@ -34,15 +34,15 @@
 
 using namespace sd;
 
-FuTransform::FuTransform(ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView,
-                         SdDrawDocument* pDoc, SfxRequest& rReq)
-    : FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+FuTransform::FuTransform(ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView,
+                         SdDrawDocument& rDoc, SfxRequest& rReq)
+    : FuPoor(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuTransform::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuTransform::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuTransform( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuTransform( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
@@ -52,7 +52,8 @@ namespace {
 void setUndo(::sd::View* pView, const SfxItemSet* pArgs, bool addPageMargin)
 {
     // Undo
-    OUString aString = pView->GetDescriptionOfMarkedObjects() +
+    const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+    OUString aString = rMarkList.GetMarkDescription() +
         " " + SdResId(STR_TRANSFORM);
     pView->BegUndo(aString);
     pView->SetGeoAttrToMarked(*pArgs, addPageMargin);
@@ -64,7 +65,8 @@ void setUndo(::sd::View* pView, const SfxItemSet* pArgs, bool addPageMargin)
 
 void FuTransform::DoExecute( SfxRequest& rReq )
 {
-    if (!mpView->AreObjectsMarked())
+    const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
+    if (rMarkList.GetMarkCount() == 0)
         return;
 
     const SfxItemSet* pArgs = rReq.GetArgs();
@@ -82,21 +84,19 @@ void FuTransform::DoExecute( SfxRequest& rReq )
     VclPtr<SfxAbstractTabDialog> pDlg;
 
     bool bWelded = false;
-    const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
     SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
     if( rMarkList.GetMarkCount() == 1 &&
         pObj->GetObjInventor() == SdrInventor::Default &&
         pObj->GetObjIdentifier() == SdrObjKind::Caption )
     {
         // --------- itemset for caption --------
-        SfxItemSet aNewAttr( mpDoc->GetPool() );
+        SfxItemSet aNewAttr( mrDoc.GetPool() );
         mpView->GetAttributes( aNewAttr );
 
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        pDlg.reset(pFact->CreateCaptionDialog(mpViewShell->GetFrameWeld(), mpView));
+        pDlg.reset(pFact->CreateCaptionDialog(mrViewShell.GetFrameWeld(), mpView));
 
-        const WhichRangesContainer& pRange = pDlg->GetInputRanges( *aNewAttr.GetPool() );
-        SfxItemSet aCombSet( *aNewAttr.GetPool(), pRange );
+        SfxItemSet aCombSet(*aNewAttr.GetPool(), pDlg->GetInputRanges(*aNewAttr.GetPool()));
         aCombSet.Put( aNewAttr );
         aCombSet.Put( aSet );
         pDlg->SetInputSet( &aCombSet );
@@ -104,7 +104,7 @@ void FuTransform::DoExecute( SfxRequest& rReq )
     else
     {
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        pDlg.reset(pFact->CreateSvxTransformTabDialog(mpViewShell->GetFrameWeld(), &aSet, mpView));
+        pDlg.reset(pFact->CreateSvxTransformTabDialog(mrViewShell.GetFrameWeld(), &aSet, mpView));
         bWelded = true;
     }
 
@@ -122,8 +122,8 @@ void FuTransform::DoExecute( SfxRequest& rReq )
         }
 
         // deferred until the dialog ends
-        mpViewShell->Invalidate(SID_RULER_OBJECT);
-        mpViewShell->Cancel();
+        mrViewShell.Invalidate(SID_RULER_OBJECT);
+        mrViewShell.Cancel();
         if (bWelded)
             pDlg->disposeOnce();
     });

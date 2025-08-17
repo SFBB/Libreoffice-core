@@ -57,10 +57,6 @@ namespace oox::vml {
     struct OleObjectInfo;
 }
 
-namespace svx::diagram {
-    class IDiagramHelper;
-}
-
 namespace oox::drawingml {
 
 class Theme;
@@ -110,14 +106,15 @@ class OOX_DLLPUBLIC Shape
 {
 public:
 
-    explicit Shape( const char* pServiceType = nullptr, bool bDefaultHeight = true );
-    explicit Shape( const ShapePtr& pSourceShape );
+    Shape();
+    explicit Shape( const OUString& rServiceType, bool bDefaultHeight = true );
+    SAL_DLLPRIVATE explicit Shape( const ShapePtr& pSourceShape );
     Shape(Shape const &) = default;
     virtual ~Shape();
     Shape & operator =(Shape const &) = default;
 
-    OUString&                  getServiceName(){ return msServiceName; }
-    void                            setServiceName( const char* pServiceName );
+    const OUString&            getServiceName() const { return msServiceName; }
+    void                       setServiceName( const OUString& rServiceName ) { msServiceName = rServiceName; }
 
     const OUString& getDiagramDataModelID() const { return msDiagramDataModelID; }
     void setDiagramDataModelID( const OUString& rDiagramDataModelID ) { msDiagramDataModelID = rDiagramDataModelID; }
@@ -144,7 +141,7 @@ public:
     Shape3DProperties&              get3DProperties() { return *mp3DPropertiesPtr; }
     const Shape3DProperties&        get3DProperties() const { return *mp3DPropertiesPtr; }
 
-    table::TablePropertiesPtr const & getTableProperties();
+    SAL_DLLPRIVATE table::TablePropertiesPtr const & getTableProperties();
 
     EffectProperties&               getEffectProperties() const { return *mpEffectPropertiesPtr; }
 
@@ -174,6 +171,11 @@ public:
     const OUString&                 getId() const { return msId; }
     void                            setDescription( const OUString& rDescr ) { msDescription = rDescr; }
     void                            setDecorative(bool const isDecorative) { m_isDecorative = isDecorative; }
+    void                            setMacro(const OUString& rMacro) { msMacro = rMacro; }
+    void                            setTextLinkAttr(const OUString& rTextLink) { msTextLink = rTextLink; }
+    void                            setFLocksText(bool bFLocksText) { mbFLocksText = bFLocksText; }
+    void                            setFPublished(bool bFPublished) { mbFPublished = bFPublished; }
+    void                            setTitle(const OUString& rTitle) { msTitle = rTitle; }
     void                            setHidden( bool bHidden ) { mbHidden = bHidden; }
     void                            setHiddenMasterShape( bool bHiddenMasterShape ) { mbHiddenMasterShape = bHiddenMasterShape; }
     void                            setLocked( bool bLocked ) { mbLocked = bLocked; }
@@ -183,19 +185,19 @@ public:
     const std::optional< sal_Int32 >& getSubTypeIndex() const { return moSubTypeIndex; }
 
     // setDefaults has to be called if styles are imported (OfficeXML is not storing properties having the default value)
-    void                            setDefaults(bool bHeight);
+    SAL_DLLPRIVATE void             setDefaults(bool bHeight);
 
-    ::oox::vml::OleObjectInfo&      setOleObjectType();
-    ChartShapeInfo&                 setChartType( bool bEmbedShapes );
-    void                            setDiagramType();
-    void                            setTableType();
+    SAL_DLLPRIVATE ::oox::vml::OleObjectInfo& setOleObjectType();
+    SAL_DLLPRIVATE ChartShapeInfo&  setChartType( bool bEmbedShapes );
+    SAL_DLLPRIVATE void             setDiagramType();
+    SAL_DLLPRIVATE void             setTableType();
 
-    void                setTextBody(const TextBodyPtr & pTextBody);
+    SAL_DLLPRIVATE void setTextBody(const TextBodyPtr & pTextBody);
     const TextBodyPtr&  getTextBody() const { return mpTextBody;}
-    void                setMasterTextListStyle( const TextListStylePtr& pMasterTextListStyle );
+    SAL_DLLPRIVATE void setMasterTextListStyle( const TextListStylePtr& pMasterTextListStyle );
     const TextListStylePtr&  getMasterTextListStyle() const { return mpMasterTextListStyle; }
 
-    ShapeStyleRefMap&        getShapeStyleRefs() { return maShapeStyleRefs; }
+    SAL_DLLPRIVATE ShapeStyleRefMap&        getShapeStyleRefs() { return maShapeStyleRefs; }
     const ShapeStyleRefMap&  getShapeStyleRefs() const { return maShapeStyleRefs; }
     const ShapeStyleRef*            getShapeStyleRef( sal_Int32 nRefType ) const;
     bool hasShapeStyleRefs() const { return !maShapeStyleRefs.empty(); }
@@ -208,36 +210,38 @@ public:
                             const basegfx::B2DHomMatrix& aTransformation,
                             const FillProperties& rShapeOrParentShapeFillProps,
                             ShapeIdMap* pShapeMap = nullptr,
-                            oox::drawingml::ShapePtr pParentGroupShape = nullptr);
+                            const oox::drawingml::ShapePtr& pParentGroupShape = nullptr);
 
     const css::uno::Reference< css::drawing::XShape > &
                         getXShape() const { return mxShape; }
 
-    void                applyShapeReference( const Shape& rReferencedShape, bool bUseText = true );
+    SAL_DLLPRIVATE void applyShapeReference( const Shape& rReferencedShape, bool bUseText = true );
     const ::std::vector<OUString>&
                         getExtDrawings() const { return maExtDrawings; }
     void                addExtDrawingRelId( const OUString &rRelId ) { maExtDrawings.push_back( rRelId ); }
     // Set font color only for extdrawings.
     void                setFontRefColorForNodes(const Color& rColor) { maFontRefColorForNodes = rColor; }
     const Color&        getFontRefColorForNodes() const { return maFontRefColorForNodes; }
-    void                setLockedCanvas(bool bLockedCanvas);
+    SAL_DLLPRIVATE void setLockedCanvas(bool bLockedCanvas);
     bool                getLockedCanvas() const { return mbLockedCanvas;}
-    void                setWordprocessingCanvas(bool bWordprocessingCanvas);
+    SAL_DLLPRIVATE void setWordprocessingCanvas(bool bWordprocessingCanvas);
     bool                isInWordprocessingCanvas() const {return mbWordprocessingCanvas;}
-    void                setWPGChild(bool bWPG);
+    SAL_DLLPRIVATE void setWPGChild(bool bWPG);
     bool                isWPGChild() const { return mbWPGChild;}
-    void                setWps(bool bWps);
+    SAL_DLLPRIVATE void setWps(bool bWps);
     bool                getWps() const { return mbWps;}
-    void                setTextBox(bool bTextBox);
+    SAL_DLLPRIVATE void setTextBox(bool bTextBox);
     const css::uno::Sequence<css::beans::PropertyValue> &
                         getDiagramDoms() const { return maDiagramDoms; }
     void                setDiagramDoms(const css::uno::Sequence<css::beans::PropertyValue>& rDiagramDoms) { maDiagramDoms = rDiagramDoms; }
-    css::uno::Sequence< css::uno::Sequence< css::uno::Any > >resolveRelationshipsOfTypeFromOfficeDoc(
+    SAL_DLLPRIVATE css::uno::Sequence< css::uno::Sequence< css::uno::Any > >resolveRelationshipsOfTypeFromOfficeDoc(
                                                                           core::XmlFilterBase& rFilter, const OUString& sFragment, std::u16string_view sType );
     void                setLinkedTxbxAttributes(const LinkedTxbxAttr& rhs){ maLinkedTxbxAttr = rhs; };
     void                setTxbxHasLinkedTxtBox( const bool rhs){ mbHasLinkedTxbx = rhs; };
     const LinkedTxbxAttr&     getLinkedTxbxAttributes() const { return maLinkedTxbxAttr; };
     bool                isLinkedTxbx() const { return mbHasLinkedTxbx; };
+    void                setCustomPrompt( bool bValue ) { mbHasCustomPrompt = bValue; }
+    bool                getCustomPrompt() const { return mbHasCustomPrompt; }
 
     void setZOrder(sal_Int32 nZOrder) { mnZOrder = nZOrder; }
 
@@ -259,17 +263,20 @@ public:
     sal_Int32 getVerticalShapesCount() const { return mnVerticalShapesCount; }
 
     /// Changes reference semantics to value semantics for fill properties.
-    void cloneFillProperties();
+    SAL_DLLPRIVATE void cloneFillProperties();
 
-    void keepDiagramDrawing(::oox::core::XmlFilterBase& rFilterBase, const OUString& rFragmentPath);
+    SAL_DLLPRIVATE void keepDiagramDrawing(::oox::core::XmlFilterBase& rFilterBase, const OUString& rFragmentPath);
 
     // Allows preparation of a local Diagram helper && propagate an eventually
     // existing one to the data holder object later
-    void prepareDiagramHelper(const std::shared_ptr< Diagram >& rDiagramPtr, const std::shared_ptr<::oox::drawingml::Theme>& rTheme);
-    void propagateDiagramHelper();
+    SAL_DLLPRIVATE void prepareDiagramHelper(
+        const std::shared_ptr< Diagram >& rDiagramPtr,
+        const std::shared_ptr<::oox::drawingml::Theme>& rTheme,
+        bool bSelfCreated);
+    SAL_DLLPRIVATE void propagateDiagramHelper();
 
     // for Writer it is necessary to migrate an existing helper to a new Shape
-    void migrateDiagramHelperToNewShape(const ShapePtr& pTarget);
+    SAL_DLLPRIVATE void migrateDiagramHelperToNewShape(const ShapePtr& pTarget);
 
 protected:
 
@@ -282,20 +289,20 @@ protected:
         FRAMETYPE_TABLE ///< A table embedded in a shape.
     };
 
-    css::uno::Reference< css::drawing::XShape > const &
+    SAL_DLLPRIVATE css::uno::Reference< css::drawing::XShape > const &
                         createAndInsert(
                             ::oox::core::XmlFilterBase& rFilterBase,
                             const OUString& rServiceName,
                             const Theme* pTheme,
                             const css::uno::Reference< css::drawing::XShapes >& rxShapes,
                             bool bClearText,
-                            bool bDoNotInsertEmptyTextBody,
+                            const oox::drawingml::ShapePtr& pPlaceholder,
                             basegfx::B2DHomMatrix& aTransformation,
                             const FillProperties& rShapeOrParentShapeFillProps,
-                            oox::drawingml::ShapePtr pParentGroupShape = nullptr
+                            const oox::drawingml::ShapePtr& pParentGroupShape = nullptr
                              );
 
-    void                addChildren(
+    SAL_DLLPRIVATE void addChildren(
                             ::oox::core::XmlFilterBase& rFilterBase,
                             Shape& rMaster,
                             const Theme* pTheme,
@@ -303,13 +310,13 @@ protected:
                             ShapeIdMap* pShapeMap,
                             const basegfx::B2DHomMatrix& aTransformation );
 
-    void                keepDiagramCompatibilityInfo();
-    void                convertSmartArtToMetafile( ::oox::core::XmlFilterBase const& rFilterBase );
+    SAL_DLLPRIVATE void keepDiagramCompatibilityInfo();
+    SAL_DLLPRIVATE void convertSmartArtToMetafile( ::oox::core::XmlFilterBase const& rFilterBase );
 
-    css::uno::Reference< css::drawing::XShape >
+    SAL_DLLPRIVATE css::uno::Reference< css::drawing::XShape >
                         renderDiagramToGraphic( ::oox::core::XmlFilterBase const & rFilterBase );
 
-    OUString finalizeServiceName(
+    SAL_DLLPRIVATE OUString finalizeServiceName(
                             ::oox::core::XmlFilterBase& rFilter,
                             const OUString& rServiceName,
                             const css::awt::Rectangle& rShapeRect );
@@ -318,16 +325,16 @@ protected:
                             ::oox::core::XmlFilterBase& rFilter,
                             const css::uno::Reference< css::drawing::XShapes >& rxShapes );
 
-    void                putPropertyToGrabBag(
+    SAL_DLLPRIVATE void putPropertyToGrabBag(
                             const OUString& sPropertyName, const css::uno::Any& aPropertyValue );
-    void                putPropertyToGrabBag(
+    SAL_DLLPRIVATE void putPropertyToGrabBag(
                             const css::beans::PropertyValue& pProperty );
-    void                putPropertiesToGrabBag(
+    SAL_DLLPRIVATE void putPropertiesToGrabBag(
                             const css::uno::Sequence< css::beans::PropertyValue >& aProperties );
 
-    FillProperties      getActualFillProperties(const Theme* pTheme, const FillProperties* pParentShapeFillProps) const;
-    LineProperties      getActualLineProperties(const Theme* pTheme) const;
-    EffectProperties    getActualEffectProperties(const Theme* pTheme) const;
+    SAL_DLLPRIVATE FillProperties      getActualFillProperties(const Theme* pTheme, const FillProperties* pParentShapeFillProps) const;
+    SAL_DLLPRIVATE LineProperties      getActualLineProperties(const Theme* pTheme) const;
+    SAL_DLLPRIVATE EffectProperties    getActualEffectProperties(const Theme* pTheme) const;
 
     std::vector< ShapePtr >     maChildren;               // only used for group shapes
     css::awt::Size   maChSize;                 // only used for group shapes
@@ -358,7 +365,33 @@ protected:
     OUString                    msInternalName; // used by diagram; not displayed in UI
     OUString                    msId;
     OUString                    msDescription;
+    OUString                    msTitle;
     bool                        m_isDecorative = false;
+
+    /* <sp> (Shape) : This element specifies the existence of a single shape.
+
+        Attributes:
+            - macro (Reference to Custom Function)
+            - textlink (Text Link)
+            - fLocksText (Lock Text Flag)
+            - fPublished (Publish to Server Flag)
+
+        <sp> element can exist as a namespace format like <xdr:sp>, <cdr:sp> etc...
+    */
+
+    /* specifies the custom function associated with the object.
+       "macro" attribute for <sp> element */
+    OUString                    msMacro;
+    /* specifies a formula linking to spreadsheet cell data.
+       "textlink" attribute for <sp> element */
+    OUString                    msTextLink;
+    /* indicates whether to allow text editing within this drawing object when the parent worksheet is protected.
+      "fLocksText" attribute for <sp> element */
+    bool                        mbFLocksText = true; // default="true"
+    /* indicates whether the shape shall be published with the worksheet when sent to the server.
+       "fPublished" attribute for <sp> element */
+    bool                        mbFPublished = false;
+
     sal_Int32                   mnSubType;      // if this type is not zero, then the shape is a placeholder
     std::optional< sal_Int32 >  moSubTypeIndex;
 
@@ -395,6 +428,7 @@ private:
     bool mbTextBox; ///< This shape has a textbox.
     LinkedTxbxAttr                  maLinkedTxbxAttr;
     bool                            mbHasLinkedTxbx; // this text box has linked text box ?
+    bool                            mbHasCustomPrompt; // indicates that it's not a generic placeholder
 
     css::uno::Sequence<css::beans::PropertyValue> maDiagramDoms;
 

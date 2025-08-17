@@ -19,9 +19,15 @@
 #include <ooo/vba/word/XDialog.hpp>
 #include "vbadialogs.hxx"
 #include "vbadialog.hxx"
+#include <unotxdoc.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
+
+SwVbaDialogs::SwVbaDialogs( const css::uno::Reference< ov::XHelperInterface >& xParent,
+                  const css::uno::Reference< css::uno::XComponentContext > &xContext,
+                  const rtl::Reference< SwXTextDocument >& xModel )
+        : SwVbaDialogs_BASE( xParent, xContext ), m_xModel(xModel) {}
 
 uno::Any
 SwVbaDialogs::Item( const uno::Any &aItem )
@@ -35,7 +41,7 @@ SwVbaDialogs::Item( const uno::Any &aItem )
 OUString
 SwVbaDialogs::getServiceImplName()
 {
-    return "SwVbaDialogs";
+    return u"SwVbaDialogs"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -43,7 +49,7 @@ SwVbaDialogs::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.word.Dialogs"
+        u"ooo.vba.word.Dialogs"_ustr
     };
     return aServiceNames;
 }

@@ -21,16 +21,19 @@
 
 #include <optional>
 
-#include <svl/setitem.hxx>
 #include <svl/itemset.hxx>
 #include <svl/languageoptions.hxx>
 #include <tools/degree.hxx>
 #include <editeng/svxenum.hxx>
 #include "scdllapi.h"
 #include "fonthelper.hxx"
+#include "scitems.hxx"
+#include "attrib.hxx"
+#include <set>
 
 namespace vcl { class Font; }
 namespace model { class ComplexColor; }
+struct ScInterpreterContext;
 class OutputDevice;
 class Fraction;
 class ScStyleSheet;
@@ -50,46 +53,138 @@ enum class ScAutoFontColorMode
     IgnoreAll    ///< like DISPLAY, but ignore stored font and background colors
 };
 
-class SC_DLLPUBLIC ScPatternAttr final : public SfxSetItem
+class ScPatternAttr;
+
+class SC_DLLPUBLIC CellAttributeHelper final
 {
-    std::optional<OUString>  pName;
-    mutable std::optional<bool> mxVisible;
-    ScStyleSheet*              pStyle;
-    sal_uInt64                 mnPAKey;
+    friend class CellAttributeHolder;
+
+    // Data structure chosen so that
+    // (a) we can find by name
+    // (b) we can erase quickly, by using name and pointer.
+    // so we sort the set first by name, and then by pointer.
+    struct RegisteredAttrSetLess
+    {
+        bool operator()(const ScPatternAttr* lhs, const ScPatternAttr* rhs) const;
+        // so we can search in std::set without a ScPatternAttr
+        using is_transparent = void;
+        bool operator()(const ScPatternAttr* lhs, const OUString* rhs) const;
+        bool operator()(const OUString* lhs, const ScPatternAttr* rhs) const;
+    };
+    typedef std::set<const ScPatternAttr*, RegisteredAttrSetLess> RegisteredAttrSet;
+
+    SfxItemPool&                                        mrSfxItemPool;
+    mutable ScPatternAttr*                              mpDefaultCellAttribute;
+    mutable RegisteredAttrSet                           maRegisteredCellAttributes;
+    mutable const ScPatternAttr*                        mpLastHit;
+    mutable sal_uInt64                                  mnCurrentMaxKey;
+
+    // only to be used from CellAttributeHolder, so private
+    const ScPatternAttr* registerAndCheck(const ScPatternAttr& rCandidate, bool bPassingOwnership) const;
+    void doUnregister(const ScPatternAttr& rCandidate);
+
 public:
-                            ScPatternAttr(SfxItemSet&& pItemSet, const OUString& rStyleName);
-                            ScPatternAttr(SfxItemSet&& pItemSet);
-                            ScPatternAttr(SfxItemPool* pItemPool);
-                            ScPatternAttr(const ScPatternAttr& rPatternAttr);
+    explicit CellAttributeHelper(SfxItemPool& rSfxItemPool);
+    ~CellAttributeHelper();
 
-    virtual ScPatternAttr*  Clone( SfxItemPool *pPool = nullptr ) const override;
+    const ScPatternAttr& getDefaultCellAttribute() const;
+    SfxItemPool& GetPool() const { return mrSfxItemPool; }
 
-    virtual bool            operator==(const SfxPoolItem& rCmp) const override;
+    void CellStyleDeleted(const ScStyleSheet& rStyle);
+    void CellStyleCreated(const ScDocument& rDoc, const OUString& rName);
+    void RenameCellStyle(ScStyleSheet& rStyle, const OUString& rNewName);
+    void UpdateAllStyleSheets(const ScDocument& rDoc);
+    void AllStylesToNames();
+    void ReIndexRegistered();
+};
 
-    const SfxPoolItem&      GetItem( sal_uInt16 nWhichP ) const
-                                        { return GetItemSet().Get(nWhichP); }
+class SC_DLLPUBLIC CellAttributeHolder final
+{
+    const ScPatternAttr*    mpScPatternAttr;
+
+public:
+    CellAttributeHolder() : mpScPatternAttr(nullptr) {}
+    CellAttributeHolder(const ScPatternAttr* pScPatternAttr, bool bPassingOwnership = false);
+    CellAttributeHolder(const CellAttributeHolder& rHolder);
+    CellAttributeHolder(CellAttributeHolder&& rHolder) noexcept
+        : mpScPatternAttr(rHolder.mpScPatternAttr)
+    { rHolder.mpScPatternAttr = nullptr; }
+    ~CellAttributeHolder();
+
+    CellAttributeHolder& operator=(const CellAttributeHolder& rHolder);
+    CellAttributeHolder& operator=(CellAttributeHolder&& rHolder) { std::swap(mpScPatternAttr, rHolder.mpScPatternAttr); return *this; }
+    bool operator==(const CellAttributeHolder& rHolder) const;
+
+    const ScPatternAttr* getScPatternAttr() const { return mpScPatternAttr; }
+    void setScPatternAttr(const ScPatternAttr* pNew, bool bPassingOwnership = false);
+
+    bool operator!() const { return nullptr == mpScPatternAttr; }
+    explicit operator bool() const { return nullptr != mpScPatternAttr; }
+
+    // version that allows nullptrs
+    static bool areSame(const CellAttributeHolder* p1, const CellAttributeHolder* p2);
+};
+
+class SAL_DLLPUBLIC_RTTI ScPatternAttr final
+{
+    friend class CellAttributeHelper;
+
+    SfxItemSet                  maLocalSfxItemSet;
+    std::optional<OUString>     moName;
+    mutable std::optional<bool> mxVisible;
+    mutable std::optional<sal_uInt32> mxNumberFormatKey;
+    mutable std::optional<LanguageType> mxLanguageType;
+    ScStyleSheet*               pStyle;
+    CellAttributeHelper*        pCellAttributeHelper;
+    sal_uInt64                  mnPAKey;
+    mutable size_t              mnRefCount;
+#ifdef DBG_UTIL
+    [[maybe_unused]] sal_uInt32 m_nSerialNumber;
+    bool                        m_bDeleted;
+#endif
+
+public:
+    SC_DLLPUBLIC ScPatternAttr(CellAttributeHelper& rHelper, const SfxItemSet* pItemSet = nullptr, const OUString* pStyleName = nullptr);
+    SC_DLLPUBLIC ScPatternAttr(const ScPatternAttr& rPatternAttr);
+    SC_DLLPUBLIC ~ScPatternAttr();
+
+    bool operator==(const ScPatternAttr& rCmp) const;
+
+    // version that allows nullptrs
+    SC_DLLPUBLIC static bool areSame(const ScPatternAttr* pItem1, const ScPatternAttr* pItem2);
+    bool isRegistered() const { return 0 != mnRefCount; }
+    bool isDefault() const { return this == &pCellAttributeHelper->getDefaultCellAttribute(); }
+    CellAttributeHelper& getCellAttributeHelper() const { return *pCellAttributeHelper; }
+
+    const SfxItemSet& GetItemSet() const { return maLocalSfxItemSet; }
+    SC_DLLPUBLIC SfxItemSet& GetItemSetWritable();
+    SC_DLLPUBLIC void ItemSetPut(const SfxPoolItem& rItem);
+    void ItemSetPut(std::unique_ptr<SfxPoolItem> xItem);
+    void ItemSetClearItem(sal_uInt16 nWhich);
+
+    const SfxPoolItem& GetItem(sal_uInt16 nWhichP) const
+    {
+        return maLocalSfxItemSet.Get(nWhichP, true); // GetByOffset used bSrchInParent==true
+    }
     template<class T> const T& GetItem( TypedWhichId<T> nWhich ) const
-    { return static_cast<const T&>(GetItem(sal_uInt16(nWhich))); }
+        { return static_cast<const T&>(GetItem(sal_uInt16(nWhich))); }
+    static const SfxPoolItem& GetItem(sal_uInt16 nWhich, const SfxItemSet& rItemSet, const SfxItemSet* pCondSet);
+    template<class T> static const T& GetItem(TypedWhichId<T> nWhich, const SfxItemSet& rItemSet, const SfxItemSet* pCondSet)
+        { return static_cast<const T&>(GetItem(sal_uInt16(nWhich), rItemSet, pCondSet)); }
+    SC_DLLPUBLIC const SfxPoolItem& GetItem( sal_uInt16 nWhich, const SfxItemSet* pCondSet ) const;
+    template<class T> const T& GetItem(TypedWhichId<T> nWhich, const SfxItemSet* pCondSet) const
+        { return static_cast<const T&>(GetItem(sal_uInt16(nWhich), pCondSet)); }
 
-    static const SfxPoolItem& GetItem( sal_uInt16 nWhich, const SfxItemSet& rItemSet, const SfxItemSet* pCondSet );
-    template<class T> static const T& GetItem( TypedWhichId<T> nWhich, const SfxItemSet& rItemSet, const SfxItemSet* pCondSet )
-    { return static_cast<const T&>(GetItem(sal_uInt16(nWhich), rItemSet, pCondSet)); }
-
-    const SfxPoolItem&      GetItem( sal_uInt16 nWhich, const SfxItemSet* pCondSet ) const;
-    template<class T> const T& GetItem( TypedWhichId<T> nWhich, const SfxItemSet* pCondSet  ) const
-    { return static_cast<const T&>(GetItem(sal_uInt16(nWhich), pCondSet)); }
-
-                            /// @param pWhich are no ranges, but single IDs, 0-terminated
-    bool                    HasItemsSet( const sal_uInt16* pWhich ) const;
-    void                    ClearItems( const sal_uInt16* pWhich );
-
-    void                    DeleteUnchanged( const ScPatternAttr* pOldAttrs );
+    /// @param pWhich are no ranges, but single IDs, 0-terminated
+    bool HasItemsSet( const sal_uInt16* pWhich ) const;
+    void ClearItems( const sal_uInt16* pWhich );
+    void DeleteUnchanged( const ScPatternAttr* pOldAttrs );
 
     static SvxCellOrientation GetCellOrientation( const SfxItemSet& rItemSet, const SfxItemSet* pCondSet );
-    SvxCellOrientation      GetCellOrientation( const SfxItemSet* pCondSet = nullptr ) const;
+    SvxCellOrientation GetCellOrientation( const SfxItemSet* pCondSet = nullptr ) const;
 
     /** Static helper function to fill a font object from the passed item set. */
-    static void fillFontOnly(vcl::Font& rFont, const SfxItemSet& rItemSet,
+    SC_DLLPUBLIC static void fillFontOnly(vcl::Font& rFont, const SfxItemSet& rItemSet,
                                         const OutputDevice* pOutDev = nullptr,
                                         const Fraction* pScale = nullptr,
                                         const SfxItemSet* pCondSet = nullptr,
@@ -103,7 +198,7 @@ public:
                                         SvtScriptType nScript = SvtScriptType::NONE, const Color* pBackConfigColor = nullptr,
                                         const Color* pTextConfigColor = nullptr);
 
-    static void fillColor(model::ComplexColor& rComplexColor,
+    SC_DLLPUBLIC static void fillColor(model::ComplexColor& rComplexColor,
                             const SfxItemSet& rItemSet,
                             ScAutoFontColorMode eAutoMode,
                             const SfxItemSet* pCondSet = nullptr,
@@ -111,7 +206,7 @@ public:
                             const Color* pTextConfigColor = nullptr);
 
 
-    static ScDxfFont        GetDxfFont(const SfxItemSet& rSet, SvtScriptType nScript);
+    SC_DLLPUBLIC static ScDxfFont        GetDxfFont(const SfxItemSet& rSet, SvtScriptType nScript);
 
     void fillColor(model::ComplexColor& rComplexColor,
                     ScAutoFontColorMode eAutoMode,
@@ -119,7 +214,7 @@ public:
                     const Color* pBackConfigColor = nullptr,
                     const Color* pTextConfigColor = nullptr) const
     {
-        fillColor(rComplexColor, GetItemSet(), eAutoMode, pCondSet, pBackConfigColor, pTextConfigColor);
+        fillColor(rComplexColor, maLocalSfxItemSet, eAutoMode, pCondSet, pBackConfigColor, pTextConfigColor);
     }
 
     void fillFontOnly(vcl::Font& rFont,
@@ -128,7 +223,7 @@ public:
                     const SfxItemSet* pCondSet = nullptr,
                     SvtScriptType nScript = SvtScriptType::NONE) const
     {
-        fillFontOnly(rFont, GetItemSet(), pOutDev, pScale, pCondSet, nScript);
+        fillFontOnly(rFont, maLocalSfxItemSet, pOutDev, pScale, pCondSet, nScript);
     }
 
     /** Fills a font object from the own item set. */
@@ -140,27 +235,27 @@ public:
                     const Color* pBackConfigColor = nullptr,
                     const Color* pTextConfigColor = nullptr) const
     {
-        fillFont(rFont, GetItemSet(), eAutoMode, pOutDev, pScale, pCondSet, nScript, pBackConfigColor, pTextConfigColor);
+        fillFont(rFont, maLocalSfxItemSet, eAutoMode, pOutDev, pScale, pCondSet, nScript, pBackConfigColor, pTextConfigColor);
     }
 
     /** Converts all Calc items contained in rSrcSet to edit engine items and puts them into rEditSet. */
-    static void             FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& rSrcSet, const SfxItemSet* pCondSet = nullptr );
+    SC_DLLPUBLIC static void             FillToEditItemSet( SfxItemSet& rEditSet, const SfxItemSet& rSrcSet, const SfxItemSet* pCondSet = nullptr );
     /** Converts all Calc items contained in the own item set to edit engine items and puts them into pEditSet. */
-    void                    FillEditItemSet( SfxItemSet* pEditSet, const SfxItemSet* pCondSet = nullptr ) const;
+    SC_DLLPUBLIC void                    FillEditItemSet( SfxItemSet* pEditSet, const SfxItemSet* pCondSet = nullptr ) const;
 
     /** Converts all edit engine items contained in rEditSet to Calc items and puts them into rDestSet. */
-    static void             GetFromEditItemSet( SfxItemSet& rDestSet, const SfxItemSet& rEditSet );
+    SC_DLLPUBLIC static void             GetFromEditItemSet( SfxItemSet& rDestSet, const SfxItemSet& rEditSet );
     /** Converts all edit engine items contained in pEditSet to Calc items and puts them into the own item set. */
-    void                    GetFromEditItemSet( const SfxItemSet* pEditSet );
+    SC_DLLPUBLIC void                    GetFromEditItemSet( const SfxItemSet* pEditSet );
 
     void                    FillEditParaItems( SfxItemSet* pSet ) const;
 
-    ScPatternAttr*          PutInPool( ScDocument* pDestDoc, ScDocument* pSrcDoc ) const;
+    CellAttributeHolder     MigrateToDocument( ScDocument* pDestDoc, ScDocument* pSrcDoc ) const;
 
-    void                    SetStyleSheet(ScStyleSheet* pNewStyle, bool bClearDirectFormat = true);
+    SC_DLLPUBLIC void                    SetStyleSheet(ScStyleSheet* pNewStyle, bool bClearDirectFormat = true);
     const ScStyleSheet*     GetStyleSheet() const  { return pStyle; }
-    const OUString*         GetStyleName() const;
-    void                    UpdateStyleSheet(const ScDocument& rDoc);
+    SC_DLLPUBLIC const OUString*         GetStyleName() const;
+    bool                    UpdateStyleSheet(const ScDocument& rDoc);
     void                    StyleToName();
 
     bool                    IsVisible() const;
@@ -170,8 +265,12 @@ public:
                                 with text encoding RTL_TEXTENC_SYMBOL */
     bool                    IsSymbolFont() const;
 
-    sal_uInt32              GetNumberFormat( SvNumberFormatter* ) const;
+    bool                    HasValidNumberFormat() const; // Returns false e.g. for multiformat selection
+    SC_DLLPUBLIC sal_uInt32              GetNumberFormat( SvNumberFormatter* ) const;
+    sal_uInt32              GetNumberFormat( const ScInterpreterContext& rContext ) const;
     sal_uInt32              GetNumberFormat( SvNumberFormatter* pFormatter,
+                                             const SfxItemSet* pCondSet ) const;
+    SC_DLLPUBLIC sal_uInt32              GetNumberFormat( const ScInterpreterContext& rContext,
                                              const SfxItemSet* pCondSet ) const;
 
     Degree100               GetRotateVal( const SfxItemSet* pCondSet ) const;
@@ -180,14 +279,12 @@ public:
     void                    SetPAKey(sal_uInt64 nKey);
     sal_uInt64              GetPAKey() const;
 
-    // TODO: tdf#135215: This is a band-aid to detect changes and invalidate the hash,
-    // a proper way would be probably to override SfxItemSet::Changed(), but 6cb400f41df0dd10
-    // hardcoded SfxSetItem to contain SfxItemSet.
-    SfxItemSet& GetItemSet() { mxVisible.reset(); return SfxSetItem::GetItemSet(); }
-    using SfxSetItem::GetItemSet;
-
 private:
     bool                    CalcVisible() const;
+    sal_uInt32              GetNumberFormatKey() const;
+    LanguageType            GetLanguageType() const;
+    void                    InvalidateCaches();
+    void                    InvalidateCacheFor(sal_uInt16 nWhich);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

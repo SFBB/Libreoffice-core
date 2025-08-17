@@ -64,7 +64,7 @@ ScAccessiblePageHeader::~ScAccessiblePageHeader()
 {
     if (!ScAccessibleContextBase::IsDefunc() && !rBHelper.bInDispose)
     {
-        // increment refcount to prevent double call off dtor
+        // increment refcount to prevent double call of dtor
         osl_atomic_increment( &m_refCount );
         dispose();
     }
@@ -107,34 +107,23 @@ void ScAccessiblePageHeader::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
             {
                 if (aOldAreas[i].is() && aOldAreas[i]->GetEditTextObject())
                 {
-                    AccessibleEventObject aEvent;
-                    aEvent.EventId = AccessibleEventId::CHILD;
-                    aEvent.Source = uno::Reference< XAccessibleContext >(this);
-                    aEvent.OldValue <<= uno::Reference<XAccessible>(aOldAreas[i]);
-                    aEvent.IndexHint = -1;
-
-                    CommitChange(aEvent); // child gone - event
+                    // child gone - event
+                    CommitChange(AccessibleEventId::CHILD,
+                                 uno::Any(uno::Reference<XAccessible>(aOldAreas[i])), uno::Any());
                     aOldAreas[i]->dispose();
                 }
                 if (maAreas[i].is() && maAreas[i]->GetEditTextObject())
                 {
-                    AccessibleEventObject aEvent;
-                    aEvent.EventId = AccessibleEventId::CHILD;
-                    aEvent.Source = uno::Reference< XAccessibleContext >(this);
-                    aEvent.NewValue <<= uno::Reference<XAccessible>(maAreas[i]);
-                    aEvent.IndexHint = -1;
-
-                    CommitChange(aEvent); // new child - event
+                    // new child - event
+                    CommitChange(AccessibleEventId::CHILD, uno::Any(),
+                                 uno::Any(uno::Reference<XAccessible>(maAreas[i])));
                 }
             }
         }
     }
     else if (rHint.GetId() == SfxHintId::ScAccVisAreaChanged)
     {
-        AccessibleEventObject aEvent;
-        aEvent.EventId = AccessibleEventId::VISIBLE_DATA_CHANGED;
-        aEvent.Source = uno::Reference< XAccessibleContext >(this);
-        CommitChange(aEvent);
+        CommitChange(AccessibleEventId::VISIBLE_DATA_CHANGED, uno::Any(), uno::Any());
     }
 
     ScAccessibleContextBase::Notify(rBC, rHint);
@@ -149,7 +138,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeader::getAccessibleAtPo
     if (containsPoint(aPoint))
     {
         SolarMutexGuard aGuard;
-        IsObjectValid();
+        ensureAlive();
 
         sal_Int64 nCount(getAccessibleChildCount()); // fill the areas
 
@@ -173,7 +162,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeader::getAccessibleAtPo
 void SAL_CALL ScAccessiblePageHeader::grabFocus()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     if (getAccessibleParent().is())
     {
         uno::Reference<XAccessibleComponent> xAccessibleComponent(getAccessibleParent()->getAccessibleContext(), uno::UNO_QUERY);
@@ -187,7 +176,7 @@ void SAL_CALL ScAccessiblePageHeader::grabFocus()
 sal_Int64 SAL_CALL ScAccessiblePageHeader::getAccessibleChildCount()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
 
     if((mnChildCount < 0) && mpViewShell)
     {
@@ -217,7 +206,7 @@ sal_Int64 SAL_CALL ScAccessiblePageHeader::getAccessibleChildCount()
 uno::Reference< XAccessible > SAL_CALL ScAccessiblePageHeader::getAccessibleChild( sal_Int64 nIndex )
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
 
     uno::Reference<XAccessible> xRet;
 
@@ -274,21 +263,6 @@ sal_Int64 SAL_CALL ScAccessiblePageHeader::getAccessibleStateSet()
     return nStateSet;
 }
 
-//=====  XServiceInfo  ====================================================
-
-OUString SAL_CALL ScAccessiblePageHeader::getImplementationName()
-{
-    return "ScAccessiblePageHeader";
-}
-
-uno::Sequence<OUString> SAL_CALL ScAccessiblePageHeader::getSupportedServiceNames()
-{
-    const css::uno::Sequence<OUString> vals { "com.sun.star.text.AccessibleHeaderFooterView" };
-    return comphelper::concatSequences(ScAccessibleContextBase::getSupportedServiceNames(), vals);
-}
-
-//====  internal  =========================================================
-
 OUString ScAccessiblePageHeader::createAccessibleDescription()
 {
     OUString sDesc(mbHeader ? STR_ACC_HEADER_DESCR : STR_ACC_FOOTER_DESCR);
@@ -301,7 +275,7 @@ OUString ScAccessiblePageHeader::createAccessibleName()
     return sName.replaceFirst("%1", ScResId(SCSTR_UNKNOWN));
 }
 
-AbsoluteScreenPixelRectangle ScAccessiblePageHeader::GetBoundingBoxOnScreen() const
+AbsoluteScreenPixelRectangle ScAccessiblePageHeader::GetBoundingBoxOnScreen()
 {
     tools::Rectangle aCellRect(GetBoundingBox());
     if (mpViewShell)
@@ -316,7 +290,7 @@ AbsoluteScreenPixelRectangle ScAccessiblePageHeader::GetBoundingBoxOnScreen() co
     return AbsoluteScreenPixelRectangle(aCellRect);
 }
 
-tools::Rectangle ScAccessiblePageHeader::GetBoundingBox() const
+tools::Rectangle ScAccessiblePageHeader::GetBoundingBox()
 {
     tools::Rectangle aRect;
     if (mpViewShell)
@@ -348,7 +322,7 @@ bool ScAccessiblePageHeader::IsDefunc( sal_Int64 nParentStates )
 
 void ScAccessiblePageHeader::AddChild(const EditTextObject* pArea, sal_uInt32 nIndex, SvxAdjust eAdjust)
 {
-    if (pArea && (!pArea->GetText(0).isEmpty() || (pArea->GetParagraphCount() > 1)))
+    if (pArea && ((pArea->GetParagraphCount() > 1) || pArea->HasText(0)))
     {
         if (maAreas[nIndex].is())
         {

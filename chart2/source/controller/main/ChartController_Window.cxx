@@ -28,7 +28,6 @@
 #include <ChartWindow.hxx>
 #include <ResId.hxx>
 #include <ChartModel.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartType.hxx>
 #include <DiagramHelper.hxx>
 #include <Diagram.hxx>
@@ -40,7 +39,6 @@
 #include "DragMethod_PieSegment.hxx"
 #include "DragMethod_RotateDiagram.hxx"
 #include <ObjectHierarchy.hxx>
-#include <chartview/ExplicitValueProvider.hxx>
 #include <RelativePositionHelper.hxx>
 #include <chartview/DrawModelWrapper.hxx>
 #include <RegressionCurveHelper.hxx>
@@ -55,7 +53,7 @@
 #include <servicenames_charttypes.hxx>
 #include "DrawCommandDispatch.hxx"
 #include <PopupRequest.hxx>
-#include "ControllerCommandDispatch.hxx"
+#include <ControllerCommandDispatch.hxx>
 
 #include <com/sun/star/chart2/RelativePosition.hpp>
 #include <com/sun/star/chart2/RelativeSize.hpp>
@@ -65,13 +63,11 @@
 #include <com/sun/star/frame/DispatchHelper.hpp>
 #include <com/sun/star/frame/FrameSearchFlag.hpp>
 #include <com/sun/star/frame/XPopupMenuController.hpp>
-#include <com/sun/star/util/XUpdatable.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
 
 #include <comphelper/lok.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/propertyvalue.hxx>
-#include <comphelper/sequence.hxx>
 
 #include <sfx2/viewsh.hxx>
 #include <svx/ActionDescriptionProvider.hxx>
@@ -148,13 +144,13 @@ void lcl_insertMenuCommand(
     const uno::Reference< awt::XPopupMenu > & xMenu,
     sal_Int16 nId, const OUString & rCommand )
 {
-    xMenu->insertItem( nId, "", 0, -1 );
+    xMenu->insertItem( nId, u""_ustr, 0, -1 );
     xMenu->setCommand( nId, rCommand );
 }
 
 OUString lcl_getFormatCommandForObjectCID( std::u16string_view rCID )
 {
-    OUString aDispatchCommand( ".uno:FormatSelection" );
+    OUString aDispatchCommand( u".uno:FormatSelection"_ustr );
 
     ObjectType eObjectType = ObjectIdentifier::getObjectType( rCID );
 
@@ -177,6 +173,7 @@ OUString lcl_getFormatCommandForObjectCID( std::u16string_view rCID )
             aDispatchCommand = ".uno:FormatTitle";
             break;
         case OBJECTTYPE_LEGEND_ENTRY:
+        case OBJECTTYPE_DATA_SERIES:
             aDispatchCommand = ".uno:FormatDataSeries";
             break;
         case OBJECTTYPE_AXIS:
@@ -191,9 +188,6 @@ OUString lcl_getFormatCommandForObjectCID( std::u16string_view rCID )
             break;
         case OBJECTTYPE_DATA_LABELS:
             aDispatchCommand = ".uno:FormatDataLabels";
-            break;
-        case OBJECTTYPE_DATA_SERIES:
-            aDispatchCommand = ".uno:FormatDataSeries";
             break;
         case OBJECTTYPE_DATA_LABEL:
             aDispatchCommand = ".uno:FormatDataLabel";
@@ -245,17 +239,16 @@ void SAL_CALL ChartController::setPosSize(
     sal_Int16 Flags )
 {
     SolarMutexGuard aGuard;
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
     auto pChartWindow(GetChartWindow());
 
-    if(!(xWindow.is() && pChartWindow))
+    if(!(m_xViewWindow.is() && pChartWindow))
         return;
 
     Size aLogicSize = pChartWindow->PixelToLogic( Size( Width, Height ), MapMode( MapUnit::Map100thMM )  );
 
     //todo: for standalone chart: detect whether we are standalone
     //change map mode to fit new size
-    awt::Size aModelPageSize = ChartModelHelper::getPageSize( getChartModel() );
+    awt::Size aModelPageSize = getChartModel()->getPageSize();
     sal_Int32 nScaleXNumerator = aLogicSize.Width();
     sal_Int32 nScaleXDenominator = aModelPageSize.Width;
     sal_Int32 nScaleYNumerator = aLogicSize.Height();
@@ -277,7 +270,7 @@ void SAL_CALL ChartController::setPosSize(
             { "ScaleYNumerator", uno::Any( nScaleYNumerator ) },
             { "ScaleYDenominator", uno::Any( nScaleYDenominator ) }
         }));
-        m_xChartView->setPropertyValue( "ZoomFactors", uno::Any( aZoomFactors ));
+        m_xChartView->setPropertyValue( u"ZoomFactors"_ustr, uno::Any( aZoomFactors ));
     }
 
     //a correct work area is at least necessary for correct values in the position and  size dialog and for dragging area
@@ -291,161 +284,114 @@ void SAL_CALL ChartController::setPosSize(
 
 awt::Rectangle SAL_CALL ChartController::getPosSize()
 {
-    //@todo
     awt::Rectangle aRet(0, 0, 0, 0);
 
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-    if(xWindow.is())
-        aRet = xWindow->getPosSize();
+    if (m_xViewWindow.is())
+        aRet = m_xViewWindow->getPosSize();
 
     return aRet;
 }
 
 void SAL_CALL ChartController::setVisible( sal_Bool Visible )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->setVisible( Visible );
+    if (m_xViewWindow.is())
+        m_xViewWindow->setVisible(Visible);
 }
 
 void SAL_CALL ChartController::setEnable( sal_Bool Enable )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->setEnable( Enable );
+    if (m_xViewWindow.is())
+        m_xViewWindow->setEnable(Enable);
 }
 
 void SAL_CALL ChartController::setFocus()
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->setFocus();
+    if (m_xViewWindow.is())
+        m_xViewWindow->setFocus();
 }
 
 void SAL_CALL ChartController::addWindowListener(
     const uno::Reference< awt::XWindowListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->addWindowListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->addWindowListener(xListener);
 }
 
 void SAL_CALL ChartController::removeWindowListener(
     const uno::Reference< awt::XWindowListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->removeWindowListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->removeWindowListener(xListener);
 }
 
 void SAL_CALL ChartController::addFocusListener(
     const uno::Reference< awt::XFocusListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->addFocusListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->addFocusListener(xListener);
 }
 
 void SAL_CALL ChartController::removeFocusListener(
     const uno::Reference< awt::XFocusListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->removeFocusListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->removeFocusListener(xListener);
 }
 
 void SAL_CALL ChartController::addKeyListener(
     const uno::Reference< awt::XKeyListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->addKeyListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->addKeyListener(xListener);
 }
 
 void SAL_CALL ChartController::removeKeyListener(
     const uno::Reference< awt::XKeyListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->removeKeyListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->removeKeyListener(xListener);
 }
 
 void SAL_CALL ChartController::addMouseListener(
     const uno::Reference< awt::XMouseListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->addMouseListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->addMouseListener(xListener);
 }
 
 void SAL_CALL ChartController::removeMouseListener(
     const uno::Reference< awt::XMouseListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->removeMouseListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->removeMouseListener(xListener);
 }
 
 void SAL_CALL ChartController::addMouseMotionListener(
     const uno::Reference< awt::XMouseMotionListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->addMouseMotionListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->addMouseMotionListener(xListener);
 }
 
 void SAL_CALL ChartController::removeMouseMotionListener(
     const uno::Reference< awt::XMouseMotionListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->removeMouseMotionListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->removeMouseMotionListener(xListener);
 }
 
 void SAL_CALL ChartController::addPaintListener(
     const uno::Reference< awt::XPaintListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->addPaintListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->addPaintListener(xListener);
 }
 
 void SAL_CALL ChartController::removePaintListener(
     const uno::Reference< awt::XPaintListener >& xListener )
 {
-    //@todo
-    uno::Reference<awt::XWindow> xWindow = m_xViewWindow;
-
-    if(xWindow.is())
-        xWindow->removePaintListener( xListener );
+    if (m_xViewWindow.is())
+        m_xViewWindow->removePaintListener(xListener);
 }
 
 // impl vcl window controller methods
@@ -482,7 +428,7 @@ void ChartController::execute_Paint(vcl::RenderContext& rRenderContext, const to
                     aResolution.Height = pChartWindow->GetSizePixel().Height();
                 }
             }
-            m_xChartView->setPropertyValue( "Resolution", uno::Any( aResolution ));
+            m_xChartView->setPropertyValue( u"Resolution"_ustr, uno::Any( aResolution ));
         }
 
         if (m_xChartView.is())
@@ -745,6 +691,7 @@ void ChartController::execute_MouseButtonUp( const MouseEvent& rMEvt )
     bool bMouseUpWithoutMouseDown = !m_bWaitingForMouseUp;
     m_bWaitingForMouseUp = false;
     bool bNotifySelectionChange = false;
+    bool bEditText = false;
     {
         SolarMutexGuard aGuard;
 
@@ -786,7 +733,7 @@ void ChartController::execute_MouseButtonUp( const MouseEvent& rMEvt )
                     // don't want the positioning Undo action to appear in the UI
                 impl_switchDiagramPositioningToExcludingPositioning();
             }
-            if ( pDrawViewWrapper->AreObjectsMarked() )
+            if ( pDrawViewWrapper->GetMarkedObjectList().GetMarkCount() != 0 )
             {
                 if ( pDrawViewWrapper->GetCurrentObjIdentifier() == SdrObjKind::Text )
                 {
@@ -841,7 +788,7 @@ void ChartController::execute_MouseButtonUp( const MouseEvent& rMEvt )
                     {
                         tools::Rectangle aObjectRect = pObj->GetSnapRect();
                         tools::Rectangle aOldObjectRect = pObj->GetLastBoundRect();
-                        awt::Size aPageSize( ChartModelHelper::getPageSize( getChartModel() ) );
+                        awt::Size aPageSize( getChartModel()->getPageSize() );
                         tools::Rectangle aPageRect( 0,0,aPageSize.Width,aPageSize.Height );
 
                         const E3dObject* pE3dObject(DynCastE3dObject(pObj));
@@ -921,7 +868,7 @@ void ChartController::execute_MouseButtonUp( const MouseEvent& rMEvt )
         if( isDoubleClick(rMEvt) && !bMouseUpWithoutMouseDown /*#i106966#*/ )
         {
             Point aMousePixel = rMEvt.GetPosPixel();
-            execute_DoubleClick( &aMousePixel );
+            execute_DoubleClick( &aMousePixel, bEditText );
         }
 
         if( m_aSelection.isSelectionDifferentFromBeforeMouseDown() )
@@ -930,18 +877,17 @@ void ChartController::execute_MouseButtonUp( const MouseEvent& rMEvt )
 
     impl_SetMousePointer( rMEvt );
 
-    if(bNotifySelectionChange)
+    if(bNotifySelectionChange || bEditText)
         impl_notifySelectionChangeListeners();
 }
 
-void ChartController::execute_DoubleClick( const Point* pMousePixel )
+void ChartController::execute_DoubleClick( const Point* pMousePixel, bool &bEditText )
 {
     const SfxViewShell* pViewShell = SfxViewShell::Current();
-    bool isMobilePhone = pViewShell && pViewShell->isLOKMobilePhone();
-    if (isMobilePhone)
+    bool notAllowed = pViewShell && (pViewShell->isLOKMobilePhone() || pViewShell->IsLokReadOnlyView());
+    if (notAllowed)
         return;
 
-    bool bEditText = false;
     if ( m_aSelection.hasSelection() )
     {
         OUString aCID( m_aSelection.getSelectedCID() );
@@ -986,21 +932,15 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
 {
     SolarMutexGuard aGuard;
     auto pChartWindow(GetChartWindow());
-    bool bIsAction = false;
-    {
-        DrawViewWrapper* pDrawViewWrapper = m_pDrawViewWrapper.get();
-        if(!pChartWindow || !pDrawViewWrapper)
-            return;
-        bIsAction = m_pDrawViewWrapper->IsAction();
-    }
+    DrawViewWrapper* pDrawViewWrapper = m_pDrawViewWrapper.get();
+    if(!pChartWindow || !pDrawViewWrapper)
+        return;
+    bool bIsAction = m_pDrawViewWrapper->IsAction();
 
     // pop-up menu
     if(rCEvt.GetCommand() == CommandEventId::ContextMenu && !bIsAction)
     {
-        {
-            if(pChartWindow)
-                pChartWindow->ReleaseMouse();
-        }
+        pChartWindow->ReleaseMouse();
 
         if( m_aSelection.isSelectionDifferentFromBeforeMouseDown() )
             impl_notifySelectionChangeListeners();
@@ -1010,8 +950,7 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
         Point aPos( rCEvt.GetMousePosPixel() );
         if( !rCEvt.IsMouseEvent() )
         {
-            if(pChartWindow)
-                aPos = pChartWindow->GetPointerState().maPos;
+            aPos = pChartWindow->GetPointerState().maPos;
         }
 
         OUString aMenuName;
@@ -1026,9 +965,9 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
             sal_Int16 nUniqueId = 1;
             if (eObjectType != OBJECTTYPE_DATA_TABLE)
             {
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:Cut" );
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:Copy" );
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:Paste" );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:Cut"_ustr );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:Copy"_ustr );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:Paste"_ustr );
                 xPopupMenu->insertSeparator( -1 );
             }
 
@@ -1036,6 +975,8 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
 
             OUString aFormatCommand( lcl_getFormatCommandForObjectCID( m_aSelection.getSelectedCID() ) );
             lcl_insertMenuCommand( xPopupMenu, nUniqueId++, aFormatCommand );
+            if (eObjectType == OBJECTTYPE_TITLE && m_pDrawViewWrapper->IsTextEdit())
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FontDialog"_ustr );
 
             //some commands for dataseries and points:
 
@@ -1048,14 +989,14 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
                 rtl::Reference< RegressionCurveModel > xMeanValue = RegressionCurveHelper::getMeanValueLine( xSeries );
                 bool bHasYErrorBars = StatisticsHelper::hasErrorBars( xSeries );
                 bool bHasXErrorBars = StatisticsHelper::hasErrorBars( xSeries, false );
-                bool bHasDataLabelsAtSeries = DataSeriesHelper::hasDataLabelsAtSeries( xSeries );
-                bool bHasDataLabelsAtPoints = DataSeriesHelper::hasDataLabelsAtPoints( xSeries );
+                bool bHasDataLabelsAtSeries = xSeries->hasDataLabelsAtSeries();
+                bool bHasDataLabelsAtPoints = xSeries->hasDataLabelsAtPoints();
                 bool bHasDataLabelAtPoint = false;
                 sal_Int32 nPointIndex = -1;
                 if( bIsPoint )
                 {
                     nPointIndex = ObjectIdentifier::getIndexFromParticleOrCID( m_aSelection.getSelectedCID() );
-                    bHasDataLabelAtPoint = DataSeriesHelper::hasDataLabelAtPoint( xSeries, nPointIndex );
+                    bHasDataLabelAtPoint = xSeries->hasDataLabelAtPoint( nPointIndex );
                 }
                 bool bSelectedPointIsFormatted = false;
                 bool bHasFormattedDataPointsOtherThanSelected = false;
@@ -1070,8 +1011,8 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
                         {
                             if( bIsPoint )
                             {
-                                auto aIt = std::find( std::as_const(aAttributedDataPointIndexList).begin(), std::as_const(aAttributedDataPointIndexList).end(), nPointIndex );
-                                if( aIt != std::as_const(aAttributedDataPointIndexList).end())
+                                auto aIt = std::find( aAttributedDataPointIndexList.begin(), aAttributedDataPointIndexList.end(), nPointIndex );
+                                if (aIt != aAttributedDataPointIndexList.end())
                                     bSelectedPointIsFormatted = true;
                                 else
                                     bHasFormattedDataPointsOtherThanSelected = true;
@@ -1085,17 +1026,17 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
                 if( bIsPoint )
                 {
                     if( bHasDataLabelAtPoint )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatDataLabel" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatDataLabel"_ustr );
                     if( !bHasDataLabelAtPoint )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertDataLabel" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertDataLabel"_ustr );
                     else
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteDataLabel" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteDataLabel"_ustr );
                     if( bSelectedPointIsFormatted )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:ResetDataPoint" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:ResetDataPoint"_ustr );
 
                     xPopupMenu->insertSeparator( -1 );
 
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatDataSeries" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatDataSeries"_ustr );
                 }
 
                 rtl::Reference< ChartType > xChartType( xDiagram->getChartTypeOfSeries( xSeries ) );
@@ -1104,12 +1045,12 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
                     try
                     {
                         bool bJapaneseStyle = false;
-                        xChartType->getPropertyValue( "Japanese" ) >>= bJapaneseStyle;
+                        xChartType->getPropertyValue( u"Japanese"_ustr ) >>= bJapaneseStyle;
 
                         if( bJapaneseStyle )
                         {
-                            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatStockLoss" );
-                            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatStockGain" );
+                            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatStockLoss"_ustr );
+                            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatStockGain"_ustr );
                         }
                     }
                     catch( const uno::Exception & )
@@ -1119,68 +1060,68 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
                 }
 
                 if( bHasDataLabelsAtSeries )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatDataLabels" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatDataLabels"_ustr );
                 if( bHasEquation )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatTrendlineEquation" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatTrendlineEquation"_ustr );
                 if( xMeanValue.is() )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatMeanValue" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatMeanValue"_ustr );
                 if( bHasXErrorBars )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatXErrorBars" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatXErrorBars"_ustr );
                 if( bHasYErrorBars )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatYErrorBars" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatYErrorBars"_ustr );
 
                 xPopupMenu->insertSeparator( -1 );
 
                 if( !bHasDataLabelsAtSeries )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertDataLabels" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertDataLabels"_ustr );
 
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertTrendline" );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertTrendline"_ustr );
 
                 if( !xMeanValue.is() )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertMeanValue" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertMeanValue"_ustr );
                 if( !bHasXErrorBars )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertXErrorBars" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertXErrorBars"_ustr );
                 if( !bHasYErrorBars )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertYErrorBars" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertYErrorBars"_ustr );
                 if( bHasDataLabelsAtSeries || ( bHasDataLabelsAtPoints && bHasFormattedDataPointsOtherThanSelected ) )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteDataLabels" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteDataLabels"_ustr );
                 if( bHasEquation )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteTrendlineEquation" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteTrendlineEquation"_ustr );
                 if( xMeanValue.is() )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteMeanValue" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteMeanValue"_ustr );
                 if( bHasXErrorBars )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteXErrorBars" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteXErrorBars"_ustr );
                 if( bHasYErrorBars )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteYErrorBars" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteYErrorBars"_ustr );
 
                 if( bHasFormattedDataPointsOtherThanSelected )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:ResetAllDataPoints" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:ResetAllDataPoints"_ustr );
 
                 xPopupMenu->insertSeparator( -1 );
 
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId, ".uno:ArrangeRow" );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId, u".uno:ArrangeRow"_ustr );
                 rtl::Reference< VCLXPopupMenu > xArrangePopupMenu = new VCLXPopupMenu();
                 sal_Int16 nSubId = nUniqueId + 1;
-                lcl_insertMenuCommand( xArrangePopupMenu, nSubId++, ".uno:Forward" );
-                lcl_insertMenuCommand( xArrangePopupMenu, nSubId, ".uno:Backward" );
+                lcl_insertMenuCommand( xArrangePopupMenu, nSubId++, u".uno:Forward"_ustr );
+                lcl_insertMenuCommand( xArrangePopupMenu, nSubId, u".uno:Backward"_ustr );
                 xPopupMenu->setPopupMenu( nUniqueId, xArrangePopupMenu );
                 nUniqueId = nSubId;
                 ++nUniqueId;
             }
             else if( eObjectType == OBJECTTYPE_DATA_CURVE )
             {
-                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, ".uno:DeleteTrendline" );
-                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, ".uno:FormatTrendlineEquation" );
-                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, ".uno:InsertTrendlineEquation" );
-                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, ".uno:InsertTrendlineEquationAndR2" );
-                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, ".uno:InsertR2Value" );
-                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, ".uno:DeleteTrendlineEquation" );
-                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, ".uno:DeleteR2Value" );
+                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, u".uno:DeleteTrendline"_ustr );
+                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, u".uno:FormatTrendlineEquation"_ustr );
+                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, u".uno:InsertTrendlineEquation"_ustr );
+                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, u".uno:InsertTrendlineEquationAndR2"_ustr );
+                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, u".uno:InsertR2Value"_ustr );
+                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, u".uno:DeleteTrendlineEquation"_ustr );
+                lcl_insertMenuCommand( xPopupMenu,  nUniqueId++, u".uno:DeleteR2Value"_ustr );
             }
             else if( eObjectType == OBJECTTYPE_DATA_CURVE_EQUATION )
             {
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertR2Value" );
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteR2Value" );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertR2Value"_ustr );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteR2Value"_ustr );
             }
 
             //some commands for axes: and grids
@@ -1201,44 +1142,44 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
                     bool bHasTitle = !TitleHelper::getCompleteString( xAxis->getTitleObject2() ).isEmpty();
 
                     if( eObjectType  != OBJECTTYPE_AXIS && bIsAxisVisible )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatAxis" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatAxis"_ustr );
                     if( eObjectType != OBJECTTYPE_GRID && bIsMajorGridVisible && !bIsSecondaryAxis )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatMajorGrid" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatMajorGrid"_ustr );
                     if( eObjectType != OBJECTTYPE_SUBGRID && bIsMinorGridVisible && !bIsSecondaryAxis )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatMinorGrid" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatMinorGrid"_ustr );
 
                     xPopupMenu->insertSeparator( -1 );
 
                     if( eObjectType  != OBJECTTYPE_AXIS && !bIsAxisVisible )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertAxis" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertAxis"_ustr );
                     if( eObjectType != OBJECTTYPE_GRID && !bIsMajorGridVisible && !bIsSecondaryAxis )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertMajorGrid" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertMajorGrid"_ustr );
                     if( eObjectType != OBJECTTYPE_SUBGRID && !bIsMinorGridVisible && !bIsSecondaryAxis )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertMinorGrid" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertMinorGrid"_ustr );
                     if( !bHasTitle )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertAxisTitle" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertAxisTitle"_ustr );
 
                     if( bIsAxisVisible )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteAxis" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteAxis"_ustr );
                     if( bIsMajorGridVisible && !bIsSecondaryAxis )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteMajorGrid" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteMajorGrid"_ustr );
                     if( bIsMinorGridVisible && !bIsSecondaryAxis )
-                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteMinorGrid" );
+                        lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteMinorGrid"_ustr );
                     if (bIsAxisVisible)
-                        lcl_insertMenuCommand(xPopupMenu,  nUniqueId++, ".uno:InsertDataTable");
+                        lcl_insertMenuCommand(xPopupMenu,  nUniqueId++, u".uno:InsertDataTable"_ustr);
                 }
             }
             else if (eObjectType == OBJECTTYPE_DATA_TABLE)
             {
-                lcl_insertMenuCommand(xPopupMenu,  nUniqueId++, ".uno:DeleteDataTable");
+                lcl_insertMenuCommand(xPopupMenu,  nUniqueId++, u".uno:DeleteDataTable"_ustr);
             }
 
             if( eObjectType == OBJECTTYPE_DATA_STOCK_LOSS )
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatStockGain" );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatStockGain"_ustr );
             else if( eObjectType == OBJECTTYPE_DATA_STOCK_GAIN )
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:FormatStockLoss" );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:FormatStockLoss"_ustr );
 
-            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:TransformDialog" );
+            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:TransformDialog"_ustr );
 
             if( eObjectType == OBJECTTYPE_PAGE || eObjectType == OBJECTTYPE_DIAGRAM
                 || eObjectType == OBJECTTYPE_DIAGRAM_WALL
@@ -1248,30 +1189,30 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
                 if( eObjectType != OBJECTTYPE_UNKNOWN )
                     xPopupMenu->insertSeparator( -1 );
                 bool bHasLegend = LegendHelper::hasLegend( xDiagram );
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertTitles" );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertTitles"_ustr );
                 if( !bHasLegend )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertLegend" );
-                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:InsertRemoveAxes" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertLegend"_ustr );
+                lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:InsertRemoveAxes"_ustr );
                 if( bHasLegend )
-                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DeleteLegend" );
+                    lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DeleteLegend"_ustr );
             }
 
             xPopupMenu->insertSeparator( -1 );
-            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DiagramType" );
-            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DataRanges" );
-            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:DiagramData" );
-            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, ".uno:View3D" );
+            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DiagramType"_ustr );
+            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DataRanges"_ustr );
+            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:DiagramData"_ustr );
+            lcl_insertMenuCommand( xPopupMenu, nUniqueId++, u".uno:View3D"_ustr );
         }
 
         css::uno::Sequence< css::uno::Any > aArgs{
-            css::uno::Any(comphelper::makePropertyValue( "IsContextMenu", true )),
-            css::uno::Any(comphelper::makePropertyValue( "Frame", m_xFrame )),
-            css::uno::Any(comphelper::makePropertyValue( "Value", aMenuName ))
+            css::uno::Any(comphelper::makePropertyValue( u"IsContextMenu"_ustr, true )),
+            css::uno::Any(comphelper::makePropertyValue( u"Frame"_ustr, m_xFrame )),
+            css::uno::Any(comphelper::makePropertyValue( u"Value"_ustr, aMenuName ))
         };
 
         css::uno::Reference< css::frame::XPopupMenuController > xPopupController(
             m_xCC->getServiceManager()->createInstanceWithArgumentsAndContext(
-            "com.sun.star.comp.framework.ResourceMenuController", aArgs, m_xCC ), css::uno::UNO_QUERY );
+            u"com.sun.star.comp.framework.ResourceMenuController"_ustr, aArgs, m_xCC ), css::uno::UNO_QUERY );
 
         if ( !xPopupController.is() || !xPopupMenu.is() )
             return;
@@ -1282,7 +1223,7 @@ void ChartController::execute_Command( const CommandEvent& rCEvt )
         {
             if (SfxViewShell* pViewShell = SfxViewShell::Current())
             {
-                ControllerCommandDispatch* pCommandDispatch = dynamic_cast<ControllerCommandDispatch*>(m_aDispatchContainer.getChartDispatcher().get());
+                const ControllerCommandDispatch* pCommandDispatch = m_aDispatchContainer.getChartDispatcher();
                 if (pCommandDispatch)
                 {
                     for (int nPos = 0, nCount = xPopupMenu->getItemCount(); nPos < nCount; ++nPos)
@@ -1353,16 +1294,14 @@ bool ChartController::execute_KeyInput( const KeyEvent& rKEvt )
     if( bReturn )
         return bReturn;
 
+    if( pDrawViewWrapper->IsTextEdit() )
     {
-        if( pDrawViewWrapper->IsTextEdit() )
+        if( pDrawViewWrapper->KeyInput(rKEvt, pChartWindow) )
         {
-            if( pDrawViewWrapper->KeyInput(rKEvt, pChartWindow) )
+            bReturn = true;
+            if( nCode == KEY_ESCAPE )
             {
-                bReturn = true;
-                if( nCode == KEY_ESCAPE )
-                {
-                    EndTextEdit();
-                }
+                EndTextEdit();
             }
         }
     }
@@ -1512,7 +1451,7 @@ bool ChartController::execute_KeyInput( const KeyEvent& rKEvt )
                             if (pObj)
                             {
                                 tools::Rectangle aRect = pObj->GetSnapRect();
-                                awt::Size aPageSize(ChartModelHelper::getPageSize(getChartModel()));
+                                awt::Size aPageSize(getChartModel()->getPageSize());
                                 if ((fShiftAmountX > 0.0 && (aRect.Right() + fShiftAmountX > aPageSize.Width)) ||
                                     (fShiftAmountX < 0.0 && (aRect.Left() + fShiftAmountX < 0)) ||
                                     (fShiftAmountY > 0.0 && (aRect.Bottom() + fShiftAmountY > aPageSize.Height)) ||
@@ -1538,7 +1477,7 @@ bool ChartController::execute_KeyInput( const KeyEvent& rKEvt )
                         {
                             awt::Point aPos( xShape->getPosition() );
                             awt::Size aSize( xShape->getSize() );
-                            awt::Size aPageSize( ChartModelHelper::getPageSize( getChartModel() ) );
+                            awt::Size aPageSize( getChartModel()->getPageSize() );
                             aPos.X = static_cast< tools::Long >( static_cast< double >( aPos.X ) + fShiftAmountX );
                             aPos.Y = static_cast< tools::Long >( static_cast< double >( aPos.Y ) + fShiftAmountY );
                             if( aPos.X + aSize.Width > aPageSize.Width )
@@ -1564,7 +1503,7 @@ bool ChartController::execute_KeyInput( const KeyEvent& rKEvt )
         rtl::Reference< ChartModel > xChartModel = getChartModel();
         if(xChartModel.is())
         {
-            OUString aDump = xChartModel->dump("shapes");
+            OUString aDump = xChartModel->dump(u"shapes"_ustr);
             SAL_WARN("chart2", aDump);
         }
     }
@@ -1589,8 +1528,8 @@ bool ChartController::execute_KeyInput( const KeyEvent& rKEvt )
         uno::Sequence< beans::PropertyValue > aArgs;
         xDispatchHelper->executeDispatch(
             uno::Reference< frame::XDispatchProvider >( m_xFrame, uno::UNO_QUERY ),
-            ".uno:TerminateInplaceActivation",
-            "_parent",
+            u".uno:TerminateInplaceActivation"_ustr,
+            u"_parent"_ustr,
             frame::FrameSearchFlag::PARENT,
             aArgs );
         bReturn = true;
@@ -1602,10 +1541,10 @@ bool ChartController::execute_KeyInput( const KeyEvent& rKEvt )
         bReturn = executeDispatch_Delete();
         if( ! bReturn )
         {
-            std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(pChartWindow->GetFrameWeld(),
+            std::shared_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(pChartWindow->GetFrameWeld(),
                                                           VclMessageType::Info, VclButtonsType::Ok,
                                                           SchResId(STR_ACTION_NOTPOSSIBLE)));
-            xInfoBox->run();
+            xInfoBox->runAsync(xInfoBox, [] (int) {});
         }
     }
 
@@ -1653,8 +1592,7 @@ sal_Bool SAL_CALL ChartController::select( const uno::Any& rSelection )
 
     if ( rSelection.hasValue() )
     {
-        const uno::Type& rType = rSelection.getValueType();
-        if ( rType == cppu::UnoType< OUString >::get() )
+        if (rSelection.getValueType() == cppu::UnoType<OUString>::get())
         {
             OUString aNewCID;
             if ( ( rSelection >>= aNewCID ) && m_aSelection.setSelection( aNewCID ) )
@@ -1662,10 +1600,9 @@ sal_Bool SAL_CALL ChartController::select( const uno::Any& rSelection )
                 bSuccess = true;
             }
         }
-        else if ( rType == cppu::UnoType<drawing::XShape>::get() )
+        else if (uno::Reference<drawing::XShape> xShape; rSelection >>= xShape)
         {
-            uno::Reference< drawing::XShape > xShape;
-            if ( ( rSelection >>= xShape ) && m_aSelection.setSelection( xShape ) )
+            if (m_aSelection.setSelection(xShape))
             {
                 bSuccess = true;
             }
@@ -1779,17 +1716,17 @@ bool ChartController::impl_moveOrResizeObject(
         ObjectIdentifier::getObjectPropertySet( rCID, xChartModel ));
     if( xObjProp.is())
     {
-        awt::Size aRefSize = ChartModelHelper::getPageSize( xChartModel );
+        awt::Size aRefSize = xChartModel->getPageSize();
 
         chart2::RelativePosition aRelPos;
         chart2::RelativeSize     aRelSize;
-        bool bDeterminePos  = !(xObjProp->getPropertyValue( "RelativePosition") >>= aRelPos);
-        bool bDetermineSize = !bNeedResize || !(xObjProp->getPropertyValue( "RelativeSize") >>= aRelSize);
+        bool bDeterminePos  = !(xObjProp->getPropertyValue( u"RelativePosition"_ustr) >>= aRelPos);
+        bool bDetermineSize = !bNeedResize || !(xObjProp->getPropertyValue( u"RelativeSize"_ustr) >>= aRelSize);
 
         if( ( bDeterminePos || bDetermineSize ) &&
             ( aRefSize.Width > 0 && aRefSize.Height > 0 ) )
         {
-            ExplicitValueProvider * pValueProvider( m_xChartView.get() );
+            ChartView * pValueProvider( m_xChartView.get() );
             if( pValueProvider )
             {
                 awt::Rectangle aRect( pValueProvider->getRectangleOfObject( rCID ));
@@ -1836,9 +1773,9 @@ bool ChartController::impl_moveOrResizeObject(
                     eActionType, ObjectNameProvider::getName( eObjectType )), m_xUndoManager );
             {
                 ControllerLockGuardUNO aCLGuard( xChartModel );
-                xObjProp->setPropertyValue( "RelativePosition", uno::Any( aRelPos ));
+                xObjProp->setPropertyValue( u"RelativePosition"_ustr, uno::Any( aRelPos ));
                 if( bNeedResize || (eObjectType == OBJECTTYPE_DIAGRAM) )//Also set an explicit size at the diagram when an explicit position is set
-                    xObjProp->setPropertyValue( "RelativeSize", uno::Any( aRelSize ));
+                    xObjProp->setPropertyValue( u"RelativeSize"_ustr, uno::Any( aRelSize ));
             }
             aUndoGuard.commit();
         }
@@ -1862,7 +1799,7 @@ bool ChartController::impl_DragDataPoint( std::u16string_view rCID, double fAddi
             uno::Reference< beans::XPropertySet > xPointProp( xSeries->getDataPointByIndex( nDataPointIndex ));
             double fOffset = 0.0;
             if( xPointProp.is() &&
-                (xPointProp->getPropertyValue( "Offset" ) >>= fOffset ) &&
+                (xPointProp->getPropertyValue( u"Offset"_ustr ) >>= fOffset ) &&
                 (( fAdditionalOffset > 0.0 && fOffset < 1.0 ) || (fOffset > 0.0)) )
             {
                 fOffset += fAdditionalOffset;
@@ -1870,7 +1807,7 @@ bool ChartController::impl_DragDataPoint( std::u16string_view rCID, double fAddi
                     fOffset = 1.0;
                 else if( fOffset < 0.0 )
                     fOffset = 0.0;
-                xPointProp->setPropertyValue( "Offset", uno::Any( fOffset ));
+                xPointProp->setPropertyValue( u"Offset"_ustr, uno::Any( fOffset ));
                 bResult = true;
             }
         }
@@ -2076,7 +2013,7 @@ void ChartController::sendPopupRequest(std::u16string_view rCID, tools::Rectangl
 
     // Get dimension index from CID
     size_t nStartPos = rCID.rfind('.');
-    nStartPos++;
+    nStartPos = (nStartPos == std::u16string_view::npos) ? 0 : (nStartPos + 1);
     sal_Int32 nEndPos = rCID.size();
     std::u16string_view sDimensionIndex = rCID.substr(nStartPos, nEndPos - nStartPos);
     sal_Int32 nDimensionIndex = o3tl::toInt32(sDimensionIndex);

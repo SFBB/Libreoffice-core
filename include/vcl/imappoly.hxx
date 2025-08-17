@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_IMAPPOLY_HXX
-#define INCLUDED_VCL_IMAPPOLY_HXX
+#pragma once
 
 #include <vcl/dllapi.h>
 #include <vcl/imapobj.hxx>
@@ -26,13 +25,13 @@
 
 class Fraction;
 
-class VCL_DLLPUBLIC IMapPolygonObject final : public IMapObject
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) IMapPolygonObject final : public IMapObject
 {
     tools::Polygon aPoly;
     tools::Rectangle           aEllipse;
     bool                bEllipse;
 
-    VCL_DLLPRIVATE void ImpConstruct( const tools::Polygon& rPoly, bool bPixel );
+    SAL_DLLPRIVATE void ImpConstruct( const tools::Polygon& rPoly, bool bPixel );
 
     // binary import/export
     virtual void        WriteIMapObject( SvStream& rOStm ) const override;
@@ -67,7 +66,5 @@ public:
     void                WriteCERN( SvStream& rOStm ) const;
     void                WriteNCSA( SvStream& rOStm ) const;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

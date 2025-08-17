@@ -29,13 +29,13 @@ UpdateRequest::UpdateRequest() noexcept {}
 
 UpdateRequest::~UpdateRequest() noexcept {}
 
-void SAL_CALL UpdateRequest::execute(const Reference<XConfiguration>&)
+void UpdateRequest::execute(const rtl::Reference<Configuration>&)
 {
     // Do nothing here.  The configuration is updated when the request queue
     // becomes empty.
 }
 
-OUString SAL_CALL UpdateRequest::getName() { return "UpdateRequest"; }
+OUString SAL_CALL UpdateRequest::getName() { return u"UpdateRequest"_ustr; }
 
 void SAL_CALL UpdateRequest::setName(const OUString&)
 {

@@ -17,21 +17,26 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <basctl/basctldllpublic.hxx>
 #include <comphelper/string.hxx>
 #include <editeng/editview.hxx>
 #include <sfx2/viewsh.hxx>
 #include <formula/funcvarargs.h>
 #include <unotools/charclass.hxx>
+#include <unotools/textsearch.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/help.hxx>
 
 #include <global.hxx>
 #include <scmod.hxx>
+#include <sc.hrc>
+#include <svl/stritem.hxx>
 #include <inputhdl.hxx>
 #include <tabvwsh.hxx>
 #include <funcdesc.hxx>
+#include <compiler.hxx>
 
 #include <dwfunctr.hxx>
-#include <scresid.hxx>
-#include <strings.hrc>
 
 /*************************************************************************
 #*  Member:     ScFunctionWin
@@ -47,20 +52,24 @@
 #*
 #************************************************************************/
 
-ScFunctionWin::ScFunctionWin(weld::Widget* pParent)
-    : PanelLayout(pParent, "FunctionPanel", "modules/scalc/ui/functionpanel.ui")
-    , xCatBox(m_xBuilder->weld_combo_box("category"))
-    , xFuncList(m_xBuilder->weld_tree_view("funclist"))
-    , xInsertButton(m_xBuilder->weld_button("insert"))
-    , xFiFuncDesc(m_xBuilder->weld_text_view("funcdesc"))
-    , m_xSearchString(m_xBuilder->weld_entry("search"))
-    , xConfigListener(new comphelper::ConfigurationListener("/org.openoffice.Office.Calc/Formula/Syntax"))
+ScFunctionWin::ScFunctionWin(weld::Widget* pParent, SfxBindings* pBindings)
+    : PanelLayout(pParent, u"FunctionPanel"_ustr, u"modules/scalc/ui/functionpanel.ui"_ustr)
+    , xCatBox(m_xBuilder->weld_combo_box(u"category"_ustr))
+    , xFuncList(m_xBuilder->weld_tree_view(u"funclist"_ustr))
+    , xScratchIter(xFuncList->make_iterator())
+    , xInsertButton(m_xBuilder->weld_button(u"insert"_ustr))
+    , xHelpButton(m_xBuilder->weld_button(u"help"_ustr))
+    , xSimilaritySearch(m_xBuilder->weld_check_button(u"similaritysearch"_ustr))
+    , xFiFuncDesc(m_xBuilder->weld_text_view(u"funcdesc"_ustr))
+    , m_xSearchString(m_xBuilder->weld_entry(u"search"_ustr))
+    , m_pBindings(pBindings)
+    , xConfigListener(new comphelper::ConfigurationListener(u"/org.openoffice.Office.Calc/Formula/Syntax"_ustr))
     , xConfigChange(std::make_unique<EnglishFunctionNameChange>(xConfigListener, this))
     , pFuncDesc(nullptr)
 {
     InitLRUList();
+    UpdateFavouritesList();
 
-    nArgs=0;
     m_aListHelpId = xFuncList->get_help_id();
     m_aSearchHelpId = m_xSearchString->get_help_id();
 
@@ -71,10 +80,12 @@ ScFunctionWin::ScFunctionWin(weld::Widget* pParent)
     m_xSearchString->connect_key_press(LINK(this, ScFunctionWin, KeyInputHdl));
 
     xCatBox->connect_changed(LINK( this, ScFunctionWin, SelComboHdl));
-    xFuncList->connect_changed(LINK( this, ScFunctionWin, SelTreeHdl));
+    xFuncList->connect_selection_changed(LINK(this, ScFunctionWin, SelTreeHdl));
 
     xFuncList->connect_row_activated(LINK( this, ScFunctionWin, SetRowActivatedHdl));
     xInsertButton->connect_clicked(LINK( this, ScFunctionWin, SetSelectionClickHdl));
+    xHelpButton->connect_clicked(LINK( this, ScFunctionWin, SetHelpClickHdl));
+    xSimilaritySearch->connect_toggled(LINK(this, ScFunctionWin, SetSimilarityToggleHdl));
 
     xCatBox->set_active(0);
 
@@ -104,6 +115,8 @@ ScFunctionWin::~ScFunctionWin()
     xCatBox.reset();
     xFuncList.reset();
     xInsertButton.reset();
+    xHelpButton.reset();
+    xSimilaritySearch.reset();
     xFiFuncDesc.reset();
 }
 
@@ -129,7 +142,44 @@ void ScFunctionWin::InitLRUList()
     sal_Int32 nSelPos  = xCatBox->get_active();
 
     if (nSelPos == 0)
-        UpdateFunctionList("");
+        UpdateFunctionList(u""_ustr);
+}
+
+void ScFunctionWin::UpdateFavouritesList()
+{
+    ScFunctionMgr* pFuncMgr = ScGlobal::GetStarCalcFunctionMgr();
+    pFuncMgr->fillFavouriteFunctions(aFavouritesList);
+
+    if (xCatBox->get_active() == 0)
+        UpdateFunctionList(u""_ustr);
+}
+
+/*************************************************************************
+#*  Member:     FillCategoriesMap
+#*------------------------------------------------------------------------
+#*
+#*  Class:      ScFunctionWin
+#*
+#*  Function:   Fills the categories map.
+#*
+#*  Input:      ---
+#*
+#*  Output:     ---
+#*
+#************************************************************************/
+
+weld::TreeIter* ScFunctionWin::FillCategoriesMap(const OUString& aCategory, bool bFill)
+{
+    if (!bFill)
+        return nullptr;
+
+    if (mCategories.find(aCategory) == mCategories.end())
+    {
+        mCategories[aCategory] = xFuncList->make_iterator();
+        xFuncList->insert(nullptr, -1, &aCategory, nullptr, nullptr, nullptr, false,
+            mCategories[aCategory].get());
+    }
+    return mCategories[aCategory].get();
 }
 
 /*************************************************************************
@@ -150,9 +200,21 @@ void ScFunctionWin::UpdateLRUList()
 {
     if (pFuncDesc && pFuncDesc->nFIndex!=0)
     {
-        ScModule* pScMod = SC_MOD();
-        pScMod->InsertEntryToLRUList(pFuncDesc->nFIndex);
+        ScModule::get()->InsertEntryToLRUList(pFuncDesc->nFIndex);
     }
+}
+
+void ScFunctionWin::SearchFunction(const OUString& rFuncName, const OUString& rSearchString,
+                                   const ScFuncDesc* pDesc, const bool bSimilaritySearch)
+{
+    std::pair<sal_Int32, sal_Int32> score = std::make_pair(0, 0);
+    if (bSimilaritySearch && !utl::TextSearch::SimilaritySearch(rFuncName, rSearchString, score))
+        return;
+    if (!bSimilaritySearch && rFuncName.indexOf(rSearchString) < 0
+        && rSearchString.indexOf(rFuncName) < 0)
+        return;
+
+    sFuncScores.insert(std::make_pair(score, std::make_pair(rFuncName, pDesc)));
 }
 
 /*************************************************************************
@@ -213,54 +275,95 @@ void ScFunctionWin::UpdateFunctionList(const OUString& rSearchString)
 {
     sal_Int32  nSelPos   = xCatBox->get_active();
     sal_Int32  nCategory = ( -1 != nSelPos )
-                            ? (nSelPos-1) : 0;
+                            ? (nSelPos-ALL_CATEGORY) : 0;
 
     xFuncList->clear();
     xFuncList->freeze();
+    mCategories.clear();
+    sFuncScores.clear();
 
-    if ( nSelPos > 0 )
+    bool bCollapse = nSelPos == ALL_CATEGORY;
+    bool bFilter = !rSearchString.isEmpty();
+    if (nSelPos >= ALL_CATEGORY)
     {
         ScFunctionMgr* pFuncMgr = ScGlobal::GetStarCalcFunctionMgr();
 
-        SvtSysLocale aSysLocale;
-        const CharClass& rCharClass = aSysLocale.GetCharClass();
-        const OUString aSearchStr(rCharClass.uppercase(rSearchString));
+        // Use the corresponding CharClass for uppercase() depending on whether
+        // English function names are used, or localized names.
+        const CharClass* pCharClass = (ScGlobal::GetStarCalcFunctionList()->IsEnglishFunctionNames()
+                ? ScCompiler::GetCharClassEnglish()
+                : ScCompiler::GetCharClassLocalized());
 
-        // First add the functions that start with the search string
-        const ScFuncDesc* pDesc = pFuncMgr->First( nCategory );
-        while ( pDesc )
+        const OUString aSearchStr(pCharClass->uppercase(rSearchString));
+
+        const ScFuncDesc* pDesc = pFuncMgr->First(nCategory);
+        while (pDesc)
         {
-            if (rSearchString.isEmpty()
-                || (rCharClass.uppercase(pDesc->getFunctionName()).startsWith(aSearchStr)))
-                xFuncList->append(weld::toId(pDesc), *(pDesc->mxFuncName));
+            const OUString aCategory(pDesc->getCategory()->getName());
+            const OUString aFunction(pCharClass->uppercase(pDesc->getFunctionName()));
+            const OUString aFuncDescId(weld::toId(pDesc));
+
+            if (bFilter)
+                SearchFunction(aFunction, aSearchStr, pDesc, xSimilaritySearch->get_active());
+            else
+            {
+                weld::TreeIter* pCategory = FillCategoriesMap(aCategory, bCollapse);
+                xFuncList->insert(pCategory, -1, &aFunction, &aFuncDescId, nullptr, nullptr,
+                            false, xScratchIter.get());
+            }
             pDesc = pFuncMgr->Next();
         }
 
-        // Now add the functions that have the search string in the middle of the function name
-        // Note that this will only be necessary if the search string is not empty
-        if (!rSearchString.isEmpty())
+        for (const auto& func : sFuncScores)
         {
-            pDesc = pFuncMgr->First( nCategory );
-            while ( pDesc )
-            {
-                if (rCharClass.uppercase(pDesc->getFunctionName()).indexOf(aSearchStr) > 0)
-                    xFuncList->append(weld::toId(pDesc), *(pDesc->mxFuncName));
-                pDesc = pFuncMgr->Next();
-            }
+            pDesc = func.second.second;
+            const OUString aCategory(pDesc->getCategory()->getName());
+            const OUString aFunction(func.second.first);
+            const OUString aFuncDescId(weld::toId(pDesc));
+            weld::TreeIter* pCategory = FillCategoriesMap(aCategory, bCollapse);
+
+            xFuncList->insert(pCategory, -1, &aFunction, &aFuncDescId, nullptr, nullptr, false,
+                              xScratchIter.get());
         }
     }
-    else // LRU list
+    else if (nSelPos == LRU_CATEGORY) // LRU list
     {
         for (const formula::IFunctionDescription* pDesc : aLRUList)
         {
             if (pDesc)
             {
-                xFuncList->append(weld::toId(pDesc), pDesc->getFunctionName());
+                OUString aFunction = pDesc->getFunctionName();
+                OUString aFuncDescId = weld::toId(pDesc);
+
+                xFuncList->insert(nullptr, -1, &aFunction, &aFuncDescId, nullptr, nullptr,
+                        false, xScratchIter.get());
+            }
+        }
+    }
+    else // Favourites List
+    {
+        ScFunctionMgr* pFuncMgr = ScGlobal::GetStarCalcFunctionMgr();
+        for (const auto& elem : aFavouritesList)
+        {
+            const formula::IFunctionDescription* pDesc(pFuncMgr->Get(elem));
+            if (pDesc)
+            {
+                OUString aFunction(pDesc->getFunctionName());
+                OUString aFuncDescId(weld::toId(pDesc));
+
+                xFuncList->insert(nullptr, -1, &aFunction, &aFuncDescId, nullptr, nullptr, false,
+                                  xScratchIter.get());
             }
         }
     }
 
     xFuncList->thaw();
+
+    if (bCollapse && bFilter)
+    {
+        for (const auto& category : mCategories)
+            xFuncList->expand_row(*category.second);
+    }
 
     if (xFuncList->n_children() > 0)
     {
@@ -282,100 +385,50 @@ void ScFunctionWin::UpdateFunctionList(const OUString& rSearchString)
 #*  Function:   Save input into document. Is called after clicking the
 #*              Apply button or a double-click on the function list.
 #*
-#*  Input:      ---
+#*  Input:      Boolean to know if I double-clicked/press-enter or not
 #*
 #*  Output:     ---
 #*
 #************************************************************************/
 
-void ScFunctionWin::DoEnter()
+void ScFunctionWin::DoEnter(bool bDoubleOrEnter)
 {
-    OUStringBuffer aArgStr;
     OUString aString=xFuncList->get_selected_text();
+    const bool isCategory = mCategories.find(aString) != mCategories.end();
+    if (isCategory && !bDoubleOrEnter)
+        return;
+
+    if (isCategory)
+    {
+        const auto& categoryRow = *(mCategories[aString]);
+        if (xFuncList->get_row_expanded(categoryRow))
+            xFuncList->collapse_row(categoryRow);
+        else
+            xFuncList->expand_row(categoryRow);
+        return;
+    }
+
     SfxViewShell* pCurSh = SfxViewShell::Current();
-    nArgs=0;
 
     if(!aString.isEmpty())
     {
-        OUString aFirstArgStr;
-        ScModule* pScMod = SC_MOD();
-        ScTabViewShell* pViewSh = dynamic_cast<ScTabViewShell*>( pCurSh );
-        ScInputHandler* pHdl = pScMod->GetInputHdl( pViewSh );
-        if(!pScMod->IsEditMode())
-        {
-            rtl::Reference<comphelper::ConfigurationListener> xDetectDisposed(xConfigListener);
-            pScMod->SetInputMode(SC_INPUT_TABLE);
-            // the above call can result in us being disposed
-            if (xDetectDisposed->isDisposed())
-                return;
-            aString = "=" + xFuncList->get_selected_text();
-            if (pHdl)
-                pHdl->ClearText();
-        }
         const ScFuncDesc* pDesc =
              weld::fromId<const ScFuncDesc*>(xFuncList->get_selected_id());
         if (pDesc)
         {
             pFuncDesc=pDesc;
             UpdateLRUList();
-            nArgs = pDesc->nArgCount;
-            if(nArgs>0)
-            {
-                // NOTE: Theoretically the first parameter could have the
-                // suppress flag as well, but practically it doesn't.
-                aFirstArgStr = pDesc->maDefArgNames[0];
-                aFirstArgStr = comphelper::string::strip(aFirstArgStr, ' ');
-                aFirstArgStr = aFirstArgStr.replaceAll(" ", "_");
-                aArgStr = aFirstArgStr;
-                if ( nArgs != VAR_ARGS && nArgs != PAIRED_VAR_ARGS )
-                {   // no VarArgs or Fix plus VarArgs, but not VarArgs only
-                    sal_uInt16 nFix;
-                    if (nArgs >= PAIRED_VAR_ARGS)
-                        nFix = nArgs - PAIRED_VAR_ARGS + 2;
-                    else if (nArgs >= VAR_ARGS)
-                        nFix = nArgs - VAR_ARGS + 1;
-                    else
-                        nFix = nArgs;
-                    for ( sal_uInt16 nArg = 1;
-                            nArg < nFix && !pDesc->pDefArgFlags[nArg].bOptional; nArg++ )
-                    {
-                        aArgStr.append("; ");
-                        OUString sTmp = pDesc->maDefArgNames[nArg];
-                        sTmp = comphelper::string::strip(sTmp, ' ');
-                        sTmp = sTmp.replaceAll(" ", "_");
-                        aArgStr.append(sTmp);
-                    }
-                }
-            }
-        }
-        if (pHdl)
-        {
-            if (pHdl->GetEditString().isEmpty())
-            {
-                aString = "=" + xFuncList->get_selected_text();
-            }
-            EditView *pEdView=pHdl->GetActiveView();
-            if(pEdView!=nullptr) // @ needed because of crash during setting a name
-            {
-                if(nArgs>0)
-                {
-                    pHdl->InsertFunction(aString);
-                    pEdView->InsertText(aArgStr.makeStringAndClear(),true);
-                    ESelection  aESel=pEdView->GetSelection();
-                    aESel.nEndPos = aESel.nStartPos + aFirstArgStr.getLength();
-                    pEdView->SetSelection(aESel);
-                    pHdl->DataChanged();
-                }
-                else
-                {
-                    aString += "()";
-                    pEdView->InsertText(aString);
-                    pHdl->DataChanged();
-                }
-            }
         }
         InitLRUList();
     }
+
+    const SfxStringItem aFunction(FN_PARAM_1, aString);
+    // -1 when function-id is available, category index otherwise
+    const SfxInt16Item nCategory(FN_PARAM_2, -1);
+    const SfxStringItem aFunctionId(FN_PARAM_3, xFuncList->get_selected_id());
+    GetBindings().GetDispatcher()->ExecuteList(SID_INS_FUNCTION, SfxCallMode::SYNCHRON,
+                                               { &aFunction, &nCategory, &aFunctionId });
+
     if ( pCurSh )
     {
         vcl::Window* pShellWnd = pCurSh->GetWindow();
@@ -398,8 +451,11 @@ void ScFunctionWin::DoEnter()
 
 IMPL_LINK_NOARG(ScFunctionWin, ModifyHdl, weld::Entry&, void)
 {
-    // Switch to the "All" category when searching a function
-    xCatBox->set_active(1);
+    if (xCatBox->get_active() == LRU_CATEGORY || xCatBox->get_active() == FAVOURITES_CATEGORY)
+    {
+        xCatBox->set_active(ALL_CATEGORY);
+        xHelpButton->set_sensitive(false);
+    }
     OUString searchStr = m_xSearchString->get_text();
     UpdateFunctionList(searchStr);
     SetDescription();
@@ -411,7 +467,7 @@ IMPL_LINK_NOARG(ScFunctionWin, ModifyHdl, weld::Entry&, void)
 #*
 #*  Class:      ScFunctionWin
 #*
-#*  Function:   Processes key inputs when the serch entry has focus
+#*  Function:   Processes key inputs when the search entry has focus
 #*
 #************************************************************************/
 
@@ -423,7 +479,7 @@ IMPL_LINK(ScFunctionWin, KeyInputHdl, const KeyEvent&, rEvent, bool)
     {
     case KEY_RETURN:
         {
-            DoEnter();
+            DoEnter(true);
             bHandled = true;
         }
         break;
@@ -445,8 +501,22 @@ IMPL_LINK(ScFunctionWin, KeyInputHdl, const KeyEvent&, rEvent, bool)
         break;
     case KEY_ESCAPE:
         {
-            m_xSearchString->set_text("");
-            UpdateFunctionList("");
+            // Escape in an empty search field should move focus to the document,
+            // adhering to Sidebar guidelines
+            if (m_xSearchString->get_text().isEmpty())
+            {
+                if (SfxViewShell* pCurSh = SfxViewShell::Current())
+                {
+                    vcl::Window* pShellWnd = pCurSh->GetWindow();
+
+                    if (pShellWnd)
+                        pShellWnd->GrabFocusToDocument();
+                }
+                bHandled = true;
+                break;
+            }
+            m_xSearchString->set_text(u""_ustr);
+            UpdateFunctionList(u""_ustr);
             bHandled = true;
         }
         break;
@@ -485,14 +555,19 @@ IMPL_LINK(ScFunctionWin, KeyInputHdl, const KeyEvent&, rEvent, bool)
 
 IMPL_LINK_NOARG(ScFunctionWin, SelComboHdl, weld::ComboBox&, void)
 {
-    UpdateFunctionList("");
+    if (xCatBox->get_active() == LRU_CATEGORY || xCatBox->get_active() == FAVOURITES_CATEGORY)
+        m_xSearchString->set_text(u""_ustr);
+    xHelpButton->set_sensitive(xCatBox->get_active() != ALL_CATEGORY);
+    OUString searchStr = m_xSearchString->get_text();
+    UpdateFavouritesList();
+    UpdateFunctionList(searchStr);
     SetDescription();
-    m_xSearchString->set_text("");
-    m_xSearchString->grab_focus();
 }
 
 IMPL_LINK_NOARG(ScFunctionWin, SelTreeHdl, weld::TreeView&, void)
 {
+    bool bSensitivity = weld::fromId<const ScFuncDesc*>(xFuncList->get_selected_id());
+    xHelpButton->set_sensitive(bSensitivity);
     SetDescription();
 }
 
@@ -515,9 +590,45 @@ IMPL_LINK_NOARG( ScFunctionWin, SetSelectionClickHdl, weld::Button&, void )
     DoEnter();          // saves the input
 }
 
+/*************************************************************************
+#*  Handle:     SetHelpClickHdl
+#*------------------------------------------------------------------------
+#*
+#*  Class:      ScFunctionWin
+#*
+#*  Function:   Get selected function's official help.
+#*
+#*  Input:      ---
+#*
+#*  Output:     ---
+#*
+#************************************************************************/
+
+IMPL_LINK_NOARG( ScFunctionWin, SetHelpClickHdl, weld::Button&, void )
+{
+    if (const auto pDesc = weld::fromId<const ScFuncDesc*>(xFuncList->get_selected_id()))
+    {
+        if (Help* pHelp = Application::GetHelp())
+        {
+            const OUString sHelpId = pDesc->getHelpId();
+            if (!sHelpId.isEmpty())
+            {
+                pHelp->Start(sHelpId);
+            }
+        }
+    }
+}
+
+IMPL_LINK_NOARG(ScFunctionWin, SetSimilarityToggleHdl, weld::Toggleable&, void)
+{
+    OUString searchStr = m_xSearchString->get_text();
+    UpdateFunctionList(searchStr);
+    SetDescription();
+}
+
 IMPL_LINK_NOARG( ScFunctionWin, SetRowActivatedHdl, weld::TreeView&, bool )
 {
-    DoEnter();          // saves the input
+    DoEnter(true);      // saves the input
     return true;
 }
 
@@ -525,7 +636,7 @@ void EnglishFunctionNameChange::setProperty(const css::uno::Any &rProperty)
 {
     ConfigurationListenerProperty::setProperty(rProperty);
     m_pFunctionWin->InitLRUList();
-    m_pFunctionWin->UpdateFunctionList("");
+    m_pFunctionWin->UpdateFunctionList(u""_ustr);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

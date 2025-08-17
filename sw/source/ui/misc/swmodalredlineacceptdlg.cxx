@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <o3tl/deleter.hxx>
 #include <svx/ctredlin.hxx>
 #include <unotools/viewoptions.hxx>
 
@@ -24,8 +25,8 @@
 #include <swmodalredlineacceptdlg.hxx>
 
 SwModalRedlineAcceptDlg::SwModalRedlineAcceptDlg(weld::Window *pParent)
-    : SfxDialogController(pParent, "svx/ui/acceptrejectchangesdialog.ui",
-                          "AcceptRejectChangesDialog")
+    : SfxDialogController(pParent, u"svx/ui/acceptrejectchangesdialog.ui"_ustr,
+                          u"AcceptRejectChangesDialog"_ustr)
     , m_xContentArea(m_xDialog->weld_content_area())
 {
     m_xDialog->set_modal(true);
@@ -35,7 +36,7 @@ SwModalRedlineAcceptDlg::SwModalRedlineAcceptDlg(weld::Window *pParent)
     SvtViewOptions aDlgOpt(EViewType::Dialog, m_xDialog->get_help_id());
     if (aDlgOpt.Exists())
     {
-        css::uno::Any aUserItem = aDlgOpt.GetUserItem("UserItem");
+        css::uno::Any aUserItem = aDlgOpt.GetUserItem(u"UserItem"_ustr);
         OUString sExtraData;
         aUserItem >>= sExtraData;
         m_xImplDlg->Initialize(sExtraData);
@@ -43,16 +44,21 @@ SwModalRedlineAcceptDlg::SwModalRedlineAcceptDlg(weld::Window *pParent)
     m_xImplDlg->Activate();   // for data's initialisation
 }
 
-SwModalRedlineAcceptDlg::~SwModalRedlineAcceptDlg()
+void SwModalRedlineAcceptDlg::ImplDestroy()
 {
     AcceptAll(false);   // refuse everything remaining
 
     OUString sExtraData;
     m_xImplDlg->FillInfo(sExtraData);
     SvtViewOptions aDlgOpt(EViewType::Dialog, m_xDialog->get_help_id());
-    aDlgOpt.SetUserItem("UserItem", css::uno::Any(sExtraData));
+    aDlgOpt.SetUserItem(u"UserItem"_ustr, css::uno::Any(sExtraData));
 
     m_xDialog->set_modal(false);
+}
+
+SwModalRedlineAcceptDlg::~SwModalRedlineAcceptDlg()
+{
+    suppress_fun_call_w_exception(ImplDestroy());
 }
 
 void SwModalRedlineAcceptDlg::Activate()

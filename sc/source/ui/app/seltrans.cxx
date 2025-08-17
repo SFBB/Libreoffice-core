@@ -53,7 +53,7 @@ static bool lcl_IsURLButton( SdrObject* pObject )
             uno::Reference< beans::XPropertySet > xPropSet( xControlModel, uno::UNO_QUERY );
             uno::Reference< beans::XPropertySetInfo > xInfo = xPropSet->getPropertySetInfo();
 
-            OUString sPropButtonType( "ButtonType" );
+            OUString sPropButtonType( u"ButtonType"_ustr );
             if(xInfo->hasPropertyByName( sPropButtonType ))
             {
                 uno::Any aAny = xPropSet->getPropertyValue( sPropButtonType );
@@ -149,7 +149,7 @@ ScSelectionTransferObj::ScSelectionTransferObj( ScTabView* pSource, ScSelectionT
 
 ScSelectionTransferObj::~ScSelectionTransferObj()
 {
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     if (pScMod && pScMod->GetSelectionTransfer() == this)
     {
         //  this is reached when the object wasn't really copied to the selection
@@ -262,11 +262,11 @@ void ScSelectionTransferObj::CreateCellData()
         //  similar to ScViewFunctionSet::BeginDrag
         if ( aNewMark.IsMarked() && !aNewMark.IsMultiMarked() )
         {
-            ScDocShell* pDocSh = rViewData.GetDocShell();
+            ScDocShell& rDocSh = rViewData.GetDocShell();
 
             const ScRange& aSelRange = aNewMark.GetMarkArea();
             ScDocShellRef aDragShellRef;
-            if ( pDocSh->GetDocument().HasOLEObjectsInArea( aSelRange, &aNewMark ) )
+            if ( rDocSh.GetDocument().HasOLEObjectsInArea( aSelRange, &aNewMark ) )
             {
                 aDragShellRef = new ScDocShell;     // DocShell needs a Ref immediately
                 aDragShellRef->DoInitNew();
@@ -284,21 +284,20 @@ void ScSelectionTransferObj::CreateCellData()
             if ( bCopied )
             {
                 TransferableObjectDescriptor aObjDesc;
-                pDocSh->FillTransferableObjectDescriptor( aObjDesc );
-                aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
+                rDocSh.FillTransferableObjectDescriptor( aObjDesc );
+                aObjDesc.maDisplayName = rDocSh.GetMedium()->GetURLObject().GetURLNoPass();
                 // maSize is set in ScTransferObj ctor
 
-                rtl::Reference<ScTransferObj> pTransferObj = new ScTransferObj( std::move(pClipDoc), std::move(aObjDesc) );
+                rtl::Reference<ScTransferObj> xTransferObj = new ScTransferObj( std::move(pClipDoc), std::move(aObjDesc) );
 
                 // SetDragHandlePos is not used - there is no mouse position
-                //? pTransferObj->SetVisibleTab( nTab );
+                //? xTransferObj->SetVisibleTab( nTab );
 
-                SfxObjectShellRef aPersistRef( aDragShellRef.get() );
-                pTransferObj->SetDrawPersist( aPersistRef );    // keep persist for ole objects alive
+                xTransferObj->SetDrawPersist(aDragShellRef); // keep persist for ole objects alive
 
-                pTransferObj->SetDragSource( pDocSh, aNewMark );
+                xTransferObj->SetDragSource( &rDocSh, aNewMark );
 
-                mxCellData = pTransferObj;
+                mxCellData = std::move(xTransferObj);
             }
         }
     }
@@ -331,20 +330,19 @@ void ScSelectionTransferObj::CreateDrawData()
             ScDrawLayer::SetGlobalDrawPersist(nullptr);
 
             ScViewData& rViewData = pView->GetViewData();
-            ScDocShell* pDocSh = rViewData.GetDocShell();
+            ScDocShell& rDocSh = rViewData.GetDocShell();
 
             TransferableObjectDescriptor aObjDesc;
-            pDocSh->FillTransferableObjectDescriptor( aObjDesc );
-            aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
+            rDocSh.FillTransferableObjectDescriptor( aObjDesc );
+            aObjDesc.maDisplayName = rDocSh.GetMedium()->GetURLObject().GetURLNoPass();
             // maSize is set in ScDrawTransferObj ctor
 
-            rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( std::move(pModel), pDocSh, std::move(aObjDesc) );
+            rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( std::move(pModel), rDocSh, std::move(aObjDesc) );
 
-            SfxObjectShellRef aPersistRef( aDragShellRef.get() );
-            pTransferObj->SetDrawPersist( aPersistRef );    // keep persist for ole objects alive
+            pTransferObj->SetDrawPersist(aDragShellRef); // keep persist for ole objects alive
             pTransferObj->SetDragSource( pDrawView );       // copies selection
 
-            mxDrawData = pTransferObj;
+            mxDrawData = std::move(pTransferObj);
         }
     }
     OSL_ENSURE( mxDrawData.is(), "can't create DrawData" );
@@ -407,7 +405,7 @@ void ScSelectionTransferObj::ObjectReleased()
 
     ForgetView();
 
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     if ( pScMod->GetSelectionTransfer() == this )
         pScMod->SetSelectionTransfer( nullptr );
 

@@ -1,8 +1,6 @@
 package org.libreoffice;
 
 import android.app.AlertDialog;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -13,13 +11,15 @@ import android.graphics.RectF;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.preference.PreferenceManager;
 import android.provider.DocumentsContract;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.snackbar.Snackbar;
+
+import androidx.activity.OnBackPressedCallback;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.preference.PreferenceManager;
 import android.text.InputType;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -57,7 +57,7 @@ import java.util.UUID;
 /**
  * Main activity of the LibreOffice App. It is started in the UI thread.
  */
-public class LibreOfficeMainActivity extends AppCompatActivity implements SettingsListenerModel.OnSettingsPreferenceChangedListener {
+public class LibreOfficeMainActivity extends AppCompatActivity implements SharedPreferences.OnSharedPreferenceChangeListener {
 
     private static final String LOGTAG = "LibreOfficeMainActivity";
     public static final String ENABLE_EXPERIMENTAL_PREFS_KEY = "ENABLE_EXPERIMENTAL";
@@ -73,7 +73,7 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
 
     private static boolean mIsExperimentalMode;
     private static boolean mIsDeveloperMode;
-    private static boolean mbISReadOnlyMode;
+    private static boolean mbReadOnlyDoc;
 
     private DrawerLayout mDrawerLayout;
     Toolbar toolbarTop;
@@ -125,8 +125,9 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
         Log.w(LOGTAG, "onCreate..");
         super.onCreate(savedInstanceState);
 
-        SettingsListenerModel.getInstance().setListener(this);
         updatePreferences();
+        PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
+            .registerOnSharedPreferenceChangeListener(this);
 
         setContentView(R.layout.activity_main);
 
@@ -168,21 +169,20 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
         // create TextCursorLayer
         mDocumentOverlay = new DocumentOverlay(this, layerView);
 
-        mbISReadOnlyMode = !isExperimentalMode();
+        mbReadOnlyDoc = false;
 
         final Uri docUri = getIntent().getData();
         if (docUri != null) {
             if (docUri.getScheme().equals(ContentResolver.SCHEME_CONTENT)
                     || docUri.getScheme().equals(ContentResolver.SCHEME_ANDROID_RESOURCE)) {
-                final boolean isReadOnlyDoc  = (getIntent().getFlags() & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == 0;
-                mbISReadOnlyMode = !isExperimentalMode() || isReadOnlyDoc;
+                mbReadOnlyDoc  = (getIntent().getFlags() & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == 0;
                 Log.d(LOGTAG, "SCHEME_CONTENT: getPath(): " + docUri.getPath());
 
                 String displayName = FileUtilities.retrieveDisplayNameForDocumentUri(getContentResolver(), docUri);
                 toolbarTop.setTitle(displayName);
 
             } else if (docUri.getScheme().equals(ContentResolver.SCHEME_FILE)) {
-                mbISReadOnlyMode = true;
+                mbReadOnlyDoc = true;
                 Log.d(LOGTAG, "SCHEME_FILE: getPath(): " + docUri.getPath());
                 toolbarTop.setTitle(docUri.getLastPathSegment());
             }
@@ -261,6 +261,53 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
         bottomToolbarSheetBehavior.setHideable(true);
         toolbarColorPickerBottomSheetBehavior.setHideable(true);
         toolbarBackColorPickerBottomSheetBehavior.setHideable(true);
+
+        getOnBackPressedDispatcher().addCallback(new OnBackPressedCallback(true) {
+            private void forwardBackPress()
+            {
+                setEnabled(false);
+                LibreOfficeMainActivity.this.getOnBackPressedDispatcher().onBackPressed();
+                setEnabled(true);
+            }
+
+            @Override
+            public void handleOnBackPressed() {
+                if (!isDocumentChanged) {
+                    forwardBackPress();
+                    return;
+                }
+
+
+                DialogInterface.OnClickListener dialogClickListener = new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        switch (which){
+                            case DialogInterface.BUTTON_POSITIVE:
+                                mTileProvider.saveDocument();
+                                isDocumentChanged=false;
+                                forwardBackPress();
+                                break;
+                            case DialogInterface.BUTTON_NEGATIVE:
+                                //CANCEL
+                                break;
+                            case DialogInterface.BUTTON_NEUTRAL:
+                                //NO
+                                isDocumentChanged=false;
+                                forwardBackPress();
+                                break;
+                        }
+                    }
+                };
+
+                AlertDialog.Builder builder = new AlertDialog.Builder(LibreOfficeMainActivity.this);
+                builder.setMessage(R.string.save_alert_dialog_title)
+                    .setPositiveButton(R.string.save_document, dialogClickListener)
+                    .setNegativeButton(R.string.action_cancel, dialogClickListener)
+                    .setNeutralButton(R.string.no_save_document, dialogClickListener)
+                    .show();
+
+            }
+        });
     }
 
     private void updatePreferences() {
@@ -344,7 +391,7 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
 
         String displayName = FileUtilities.retrieveDisplayNameForDocumentUri(getContentResolver(), mDocumentUri);
         toolbarTop.setTitle(displayName);
-        mbISReadOnlyMode = !isExperimentalMode();
+        mbReadOnlyDoc = false;
         getToolbarController().setupToolbars();
     }
 
@@ -458,8 +505,6 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
     protected void onResume() {
         super.onResume();
         Log.i(LOGTAG, "onResume..");
-        // check for config change
-        updatePreferences();
         if (mToolbarController.getEditModeStatus() && isExperimentalMode()) {
             mToolbarController.switchToEditMode();
         } else {
@@ -493,6 +538,9 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
     @Override
     protected void onDestroy() {
         Log.i(LOGTAG, "onDestroy..");
+        PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
+            .unregisterOnSharedPreferenceChangeListener(this);
+
         LOKitShell.sendCloseEvent();
         mLayerClient.destroy();
         super.onDestroy();
@@ -507,43 +555,6 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
                 mTempSlideShowFile.delete();
             }
         }
-    }
-    @Override
-    public void onBackPressed() {
-        if (!isDocumentChanged) {
-            super.onBackPressed();
-            return;
-        }
-
-
-        DialogInterface.OnClickListener dialogClickListener = new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                switch (which){
-                    case DialogInterface.BUTTON_POSITIVE:
-                        mTileProvider.saveDocument();
-                        isDocumentChanged=false;
-                        onBackPressed();
-                        break;
-                    case DialogInterface.BUTTON_NEGATIVE:
-                        //CANCEL
-                        break;
-                    case DialogInterface.BUTTON_NEUTRAL:
-                        //NO
-                        isDocumentChanged=false;
-                        onBackPressed();
-                        break;
-                }
-            }
-        };
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setMessage(R.string.save_alert_dialog_title)
-                .setPositiveButton(R.string.save_document, dialogClickListener)
-                .setNegativeButton(R.string.action_cancel, dialogClickListener)
-                .setNeutralButton(R.string.no_save_document, dialogClickListener)
-                .show();
-
     }
 
     public List<DocumentPartView> getDocumentPartView() {
@@ -843,11 +854,8 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
     }
 
     @Override
-    public void settingsPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-        if (key.matches(ENABLE_EXPERIMENTAL_PREFS_KEY)) {
-            Log.d(LOGTAG, "Editing Preference Changed");
-            mIsExperimentalMode = sharedPreferences.getBoolean(ENABLE_EXPERIMENTAL_PREFS_KEY, false);
-        }
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+        updatePreferences();
     }
 
     public void promptForPassword() {
@@ -901,7 +909,7 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Settin
     }
 
     public static boolean isReadOnlyMode() {
-        return mbISReadOnlyMode;
+        return !isExperimentalMode() || mbReadOnlyDoc;
     }
 
     public boolean hasLocationForSave() {

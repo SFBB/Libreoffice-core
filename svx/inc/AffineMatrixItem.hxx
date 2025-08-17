@@ -22,14 +22,13 @@
 #include <sal/types.h>
 #include <svl/poolitem.hxx>
 
-class SfxItemPool;
-
 class AffineMatrixItem final : public SfxPoolItem
 {
 private:
     css::geometry::AffineMatrix2D maMatrix;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(AffineMatrixItem)
     AffineMatrixItem(const css::geometry::AffineMatrix2D* pMatrix);
     AffineMatrixItem(const AffineMatrixItem&);
     virtual ~AffineMatrixItem() override;

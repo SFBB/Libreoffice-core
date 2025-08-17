@@ -29,7 +29,6 @@
 
 #include <vcl/status.hxx>
 
-#include <comphelper/attributelist.hxx>
 #include <comphelper/propertyvalue.hxx>
 
 using namespace ::com::sun::star::uno;
@@ -45,18 +44,15 @@ constexpr OUStringLiteral XMLNS_XLINK_PREFIX = u"xlink:";
 
 constexpr OUString XMLNS_FILTER_SEPARATOR = u"^"_ustr;
 
-#define ELEMENT_STATUSBAR           "statusbar"
-#define ELEMENT_STATUSBARITEM       "statusbaritem"
-
-#define ATTRIBUTE_ALIGN             "align"
-#define ATTRIBUTE_STYLE             "style"
-#define ATTRIBUTE_URL               "href"
-#define ATTRIBUTE_WIDTH             "width"
-#define ATTRIBUTE_OFFSET            "offset"
-#define ATTRIBUTE_AUTOSIZE          "autosize"
-#define ATTRIBUTE_OWNERDRAW         "ownerdraw"
-#define ATTRIBUTE_HELPURL           "helpid"
-#define ATTRIBUTE_MANDATORY         "mandatory"
+constexpr OUString ATTRIBUTE_ALIGN = u"align"_ustr;
+constexpr OUString ATTRIBUTE_STYLE = u"style"_ustr;
+constexpr OUString ATTRIBUTE_URL = u"href"_ustr;
+constexpr OUString ATTRIBUTE_WIDTH = u"width"_ustr;
+constexpr OUString ATTRIBUTE_OFFSET = u"offset"_ustr;
+constexpr OUString ATTRIBUTE_AUTOSIZE = u"autosize"_ustr;
+constexpr OUString ATTRIBUTE_OWNERDRAW = u"ownerdraw"_ustr;
+constexpr OUString ATTRIBUTE_HELPURL = u"helpid"_ustr;
+constexpr OUString ATTRIBUTE_MANDATORY = u"mandatory"_ustr;
 
 constexpr OUString ELEMENT_NS_STATUSBAR = u"statusbar:statusbar"_ustr;
 constexpr OUString ELEMENT_NS_STATUSBARITEM = u"statusbar:statusbaritem"_ustr;
@@ -126,15 +122,15 @@ namespace {
 struct StatusBarEntryProperty
 {
     OReadStatusBarDocumentHandler::StatusBar_XML_Namespace  nNamespace;
-    char                                                    aEntryName[20];
+    OUString aEntryName;
 };
 
 }
 
-StatusBarEntryProperty const StatusBarEntries[OReadStatusBarDocumentHandler::SB_XML_ENTRY_COUNT] =
+StatusBarEntryProperty constexpr StatusBarEntries[OReadStatusBarDocumentHandler::SB_XML_ENTRY_COUNT] =
 {
-    { OReadStatusBarDocumentHandler::SB_NS_STATUSBAR,   ELEMENT_STATUSBAR       },
-    { OReadStatusBarDocumentHandler::SB_NS_STATUSBAR,   ELEMENT_STATUSBARITEM   },
+    { OReadStatusBarDocumentHandler::SB_NS_STATUSBAR,   u"statusbar"_ustr       },
+    { OReadStatusBarDocumentHandler::SB_NS_STATUSBAR,   u"statusbaritem"_ustr   },
     { OReadStatusBarDocumentHandler::SB_NS_XLINK,       ATTRIBUTE_URL           },
     { OReadStatusBarDocumentHandler::SB_NS_STATUSBAR,   ATTRIBUTE_ALIGN         },
     { OReadStatusBarDocumentHandler::SB_NS_STATUSBAR,   ATTRIBUTE_STYLE         },
@@ -156,13 +152,13 @@ OReadStatusBarDocumentHandler::OReadStatusBarDocumentHandler(
         if ( StatusBarEntries[i].nNamespace == SB_NS_STATUSBAR )
         {
             OUString temp = XMLNS_STATUSBAR + XMLNS_FILTER_SEPARATOR +
-                OUString::createFromAscii( StatusBarEntries[i].aEntryName );
+                StatusBarEntries[i].aEntryName;
             m_aStatusBarMap.emplace( temp, static_cast<StatusBar_XML_Entry>(i) );
         }
         else
         {
             OUString temp = XMLNS_XLINK + XMLNS_FILTER_SEPARATOR +
-                OUString::createFromAscii( StatusBarEntries[i].aEntryName );
+                StatusBarEntries[i].aEntryName;
             m_aStatusBarMap.emplace( temp, static_cast<StatusBar_XML_Entry>(i) );
         }
     }
@@ -192,7 +188,7 @@ void SAL_CALL OReadStatusBarDocumentHandler::endDocument()
 void SAL_CALL OReadStatusBarDocumentHandler::startElement(
     const OUString& aName, const Reference< XAttributeList > &xAttribs )
 {
-    StatusBarHashMap::const_iterator pStatusBarEntry = m_aStatusBarMap.find( aName );
+    auto pStatusBarEntry = m_aStatusBarMap.find( aName );
     if ( pStatusBarEntry == m_aStatusBarMap.end() )
         return;
 
@@ -388,7 +384,7 @@ void SAL_CALL OReadStatusBarDocumentHandler::startElement(
 
 void SAL_CALL OReadStatusBarDocumentHandler::endElement(const OUString& aName)
 {
-    StatusBarHashMap::const_iterator pStatusBarEntry = m_aStatusBarMap.find( aName );
+    auto pStatusBarEntry = m_aStatusBarMap.find( aName );
     if ( pStatusBarEntry == m_aStatusBarMap.end() )
         return;
 
@@ -457,7 +453,6 @@ OWriteStatusBarDocumentHandler::OWriteStatusBarDocumentHandler(
     m_aStatusBarItems( aStatusBarItems ),
     m_xWriteDocumentHandler( rWriteDocumentHandler )
 {
-    m_xEmptyList = new ::comphelper::AttributeList;
     m_aXMLXlinkNS       = XMLNS_XLINK_PREFIX;
     m_aXMLStatusBarNS   = XMLNS_STATUSBAR_PREFIX;
 }

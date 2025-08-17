@@ -71,13 +71,16 @@
 #include <calbck.hxx>
 #include <pagedesc.hxx>
 #include <calc.hxx>
+#include <scriptinfo.hxx>
+#include <rubylist.hxx>
+#include <txatbase.hxx>
 
 #include <tblafmt.hxx>
 #include <unotbl.hxx>
 #include <IDocumentMarkAccess.hxx>
 #include <itabenum.hxx>
 
-typedef tools::SvRef<SwDocShell> SwDocShellRef;
+typedef rtl::Reference<SwDocShell> SwDocShellRef;
 
 using namespace ::com::sun::star;
 
@@ -128,6 +131,8 @@ public:
     void test64kPageDescs();
     void testTdf92308();
     void testTableCellComparison();
+    void testFillRubyList();
+    void testSetRubyList();
 
     CPPUNIT_TEST_SUITE(SwDocTest);
 
@@ -165,6 +170,8 @@ public:
     CPPUNIT_TEST(test64kPageDescs);
     CPPUNIT_TEST(testTdf92308);
     CPPUNIT_TEST(testTableCellComparison);
+    CPPUNIT_TEST(testFillRubyList);
+    CPPUNIT_TEST(testSetRubyList);
     CPPUNIT_TEST_SUITE_END();
 
 private:
@@ -217,20 +224,20 @@ void SwDocTest::testFileNameFields()
     SwFileNameFieldType aNameField(*m_pDoc);
 
     {
-        OUString sResult(aNameField.Expand(FF_NAME));
+        OUString sResult(aNameField.Expand(SwFileNameFormat::Name));
         OUString sExpected(rUrlObj.getName(INetURLObject::LAST_SEGMENT,
             true,INetURLObject::DecodeMechanism::WithCharset));
         CPPUNIT_ASSERT_EQUAL_MESSAGE("Expected Readable FileName", sExpected, sResult);
     }
 
     {
-        OUString sResult(aNameField.Expand(FF_PATHNAME));
+        OUString sResult(aNameField.Expand(SwFileNameFormat::PathName));
         OUString sExpected(rUrlObj.GetFull());
         CPPUNIT_ASSERT_EQUAL_MESSAGE("Expected Readable FileName", sExpected, sResult);
     }
 
     {
-        OUString sResult(aNameField.Expand(FF_PATH));
+        OUString sResult(aNameField.Expand(SwFileNameFormat::Path));
         INetURLObject aTemp(rUrlObj);
         aTemp.removeSegment();
         OUString sExpected(aTemp.PathToFileName());
@@ -238,7 +245,7 @@ void SwDocTest::testFileNameFields()
     }
 
     {
-        OUString sResult(aNameField.Expand(FF_NAME_NOEXT));
+        OUString sResult(aNameField.Expand(SwFileNameFormat::NameNoExt));
         OUString sExpected(rUrlObj.getName(INetURLObject::LAST_SEGMENT,
             true,INetURLObject::DecodeMechanism::WithCharset));
         //Chop off .tmp
@@ -259,7 +266,7 @@ void SwDocTest::testDocStat()
     SwNodeIndex aIdx(m_pDoc->GetNodes().GetEndOfContent(), -1);
     SwPaM aPaM(aIdx);
 
-    OUString sText("Hello World");
+    OUString sText(u"Hello World"_ustr);
     m_pDoc->getIDocumentContentOperations().InsertString(aPaM, sText);
 
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Should still be non-updated 0 count", static_cast<sal_uLong>(0), m_pDoc->getIDocumentStatistics().GetDocStat().nChar);
@@ -298,17 +305,17 @@ static SwTextNode* getModelToViewTestDocument(SwDoc *pDoc)
     SwPaM aPaM(aIdx);
 
     SwFormatFootnote aFootnote;
-    aFootnote.SetNumStr("foo");
+    aFootnote.SetNumStr(u"foo"_ustr);
 
     pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
-    pDoc->getIDocumentContentOperations().InsertString(aPaM, "AAAAA BBBBB ");
+    pDoc->getIDocumentContentOperations().InsertString(aPaM, u"AAAAA BBBBB "_ustr);
     SwTextNode* pTextNode = aPaM.GetPointNode().GetTextNode();
     sal_Int32 nPos = aPaM.GetPoint()->GetContentIndex();
     pTextNode->InsertItem(aFootnote, nPos, nPos);
-    pDoc->getIDocumentContentOperations().InsertString(aPaM, " CCCCC ");
+    pDoc->getIDocumentContentOperations().InsertString(aPaM, u" CCCCC "_ustr);
     nPos = aPaM.GetPoint()->GetContentIndex();
     pTextNode->InsertItem(aFootnote, nPos, nPos);
-    pDoc->getIDocumentContentOperations().InsertString(aPaM, " DDDDD");
+    pDoc->getIDocumentContentOperations().InsertString(aPaM, u" DDDDD"_ustr);
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>((4*5) + 5 + 2), pTextNode->GetText().getLength());
 
     //set start of selection to first B
@@ -345,15 +352,15 @@ static SwTextNode* getModelToViewTestDocument2(SwDoc *pDoc)
     SwPaM aPaM(aIdx);
 
     pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
-    pDoc->getIDocumentContentOperations().InsertString(aPaM, "AAAAA");
+    pDoc->getIDocumentContentOperations().InsertString(aPaM, u"AAAAA"_ustr);
     IDocumentMarkAccess* pMarksAccess = pDoc->getIDocumentMarkAccess();
-    sw::mark::IFieldmark *pFieldmark =
-            pMarksAccess->makeNoTextFieldBookmark(aPaM, "test", ODF_FORMDROPDOWN);
+    sw::mark::Fieldmark *pFieldmark =
+            pMarksAccess->makeNoTextFieldBookmark(aPaM, SwMarkName(u"test"_ustr), ODF_FORMDROPDOWN);
     CPPUNIT_ASSERT(pFieldmark);
-    uno::Sequence< OUString > vListEntries { "BBBBB" };
+    uno::Sequence< OUString > vListEntries { u"BBBBB"_ustr };
     (*pFieldmark->GetParameters())[ODF_FORMDROPDOWN_LISTENTRY] <<= vListEntries;
     (*pFieldmark->GetParameters())[ODF_FORMDROPDOWN_RESULT] <<= sal_Int32(0);
-    pDoc->getIDocumentContentOperations().InsertString(aPaM, "CCCCC");
+    pDoc->getIDocumentContentOperations().InsertString(aPaM, u"CCCCC"_ustr);
     SwTextNode* pTextNode = aPaM.GetPointNode().GetTextNode();
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(11),
             pTextNode->GetText().getLength());
@@ -379,7 +386,7 @@ void SwDocTest::testModelToViewHelperExpandFieldsExpandFootnote()
             ExpandMode::ExpandFields | ExpandMode::ExpandFootnote);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
-        OUString("AAAAA BBBBB foo CCCCC foo DDDDD"), sViewText);
+        u"AAAAA BBBBB foo CCCCC foo DDDDD"_ustr, sViewText);
 }
 
 void SwDocTest::testModelToViewHelperExpandFieldsExpandFootnoteReplaceMode()
@@ -409,7 +416,7 @@ void SwDocTest::testModelToViewHelperExpandFields()
     ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr, ExpandMode::ExpandFields);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
-        OUString("AAAAA BBBBB  CCCCC  DDDDD"), sViewText);
+        u"AAAAA BBBBB  CCCCC  DDDDD"_ustr, sViewText);
 }
 
 void SwDocTest::testModelToViewHelperExpandFieldsReplaceMode()
@@ -419,7 +426,7 @@ void SwDocTest::testModelToViewHelperExpandFieldsReplaceMode()
     ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
         ExpandMode::ExpandFields | ExpandMode::ReplaceMode);
     OUString sViewText = aModelToViewHelper.getViewText();
-    CPPUNIT_ASSERT_EQUAL(OUString("AAAAA BBBBB  CCCCC  DDDDD"),
+    CPPUNIT_ASSERT_EQUAL(u"AAAAA BBBBB  CCCCC  DDDDD"_ustr,
         sViewText);
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(0),
         aModelToViewHelper.getFootnotePositions().size());
@@ -456,7 +463,7 @@ void SwDocTest::testModelToViewHelperExpandFieldsHideInvisibleExpandFootnote()
     ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
         ExpandMode::ExpandFields | ExpandMode::HideInvisible | ExpandMode::ExpandFootnote);
     OUString sViewText = aModelToViewHelper.getViewText();
-    CPPUNIT_ASSERT_EQUAL(OUString("AAAAA CCCCC foo DDDDD"), sViewText);
+    CPPUNIT_ASSERT_EQUAL(u"AAAAA CCCCC foo DDDDD"_ustr, sViewText);
 }
 
 void SwDocTest::testModelToViewHelperExpandFieldsHideInvisibleExpandFootnoteReplaceMode()
@@ -485,7 +492,7 @@ void SwDocTest::testModelToViewHelperExpandFieldsHideHideRedlinedExpandFootnote(
         ExpandMode::ExpandFields | ExpandMode::HideDeletions | ExpandMode::ExpandFootnote);
     OUString sViewText = aModelToViewHelper.getViewText();
     CPPUNIT_ASSERT_EQUAL(
-        OUString("AAAABB foo CCCCC foo DDDDD"), sViewText);
+        u"AAAABB foo CCCCC foo DDDDD"_ustr, sViewText);
 }
 
 void SwDocTest::testModelToViewHelperExpandFieldsHideHideRedlinedExpandFootnoteReplaceMode()
@@ -528,7 +535,7 @@ void SwDocTest::testModelToViewHelperExpandFieldsHideInvisibleHideRedlinedExpand
     ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
         ExpandMode::ExpandFields | ExpandMode::HideInvisible | ExpandMode::HideDeletions | ExpandMode::ExpandFootnote);
     OUString sViewText = aModelToViewHelper.getViewText();
-    CPPUNIT_ASSERT_EQUAL(OUString("AAAACCCCC foo DDDDD"), sViewText);
+    CPPUNIT_ASSERT_EQUAL(u"AAAACCCCC foo DDDDD"_ustr, sViewText);
 }
 
 void SwDocTest::testModelToViewHelperExpandFieldsHideInvisibleHideRedlinedExpandFootnoteReplaceMode()
@@ -555,7 +562,7 @@ void SwDocTest::testModelToViewHelperExpandFieldsExpandFootnote2()
     ModelToViewHelper aModelToViewHelper(*pTextNode, nullptr,
         ExpandMode::ExpandFields | ExpandMode::ExpandFootnote);
     OUString sViewText = aModelToViewHelper.getViewText();
-    CPPUNIT_ASSERT_EQUAL(OUString("AAAAABBBBBCCCCC"), sViewText);
+    CPPUNIT_ASSERT_EQUAL(u"AAAAABBBBBCCCCC"_ustr, sViewText);
 }
 
 void SwDocTest::testModelToViewHelperExpandFieldsExpandFootnoteReplaceMode2()
@@ -591,19 +598,19 @@ void SwDocTest::testSwScanner()
     //fdo#40449 and fdo#39365
     {
         SwScanner aScanner(*pTextNode,
-            "Hello World",
+            u"Hello World"_ustr,
             nullptr, ModelToViewHelper(), i18n::WordType::DICTIONARY_WORD, 0,
             RTL_CONSTASCII_LENGTH("Hello World"));
 
         bool bFirstOk = aScanner.NextWord();
         CPPUNIT_ASSERT_MESSAGE("First Token", bFirstOk);
         const OUString &rHello = aScanner.GetWord();
-        CPPUNIT_ASSERT_EQUAL(OUString("Hello"), rHello);
+        CPPUNIT_ASSERT_EQUAL(u"Hello"_ustr, rHello);
 
         bool bSecondOk = aScanner.NextWord();
         CPPUNIT_ASSERT_MESSAGE("Second Token", bSecondOk);
         const OUString &rWorld = aScanner.GetWord();
-        CPPUNIT_ASSERT_EQUAL(OUString("World"), rWorld);
+        CPPUNIT_ASSERT_EQUAL(u"World"_ustr, rWorld);
     }
 
     //See https://www.libreoffice.org/bugzilla/show_bug.cgi?id=45271
@@ -654,7 +661,7 @@ void SwDocTest::testSwScanner()
         pTextNode = aPaM.GetPointNode().GetTextNode();
         pTextNode->CountWords(aDocStat, 0, test.getLength());
         CPPUNIT_ASSERT_EQUAL_MESSAGE("words", static_cast<sal_uLong>(58), aDocStat.nWord);
-        CPPUNIT_ASSERT_EQUAL_MESSAGE("Asian characters and Korean syllables", static_cast<sal_uLong>(43), aDocStat.nAsianWord);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Asian characters and Korean words", static_cast<sal_uLong>(43), aDocStat.nAsianWord);
         CPPUNIT_ASSERT_EQUAL_MESSAGE("non-whitespace chars", static_cast<sal_uLong>(105), aDocStat.nCharExcludingSpaces);
         CPPUNIT_ASSERT_EQUAL_MESSAGE("characters", static_cast<sal_uLong>(128), aDocStat.nChar);
     }
@@ -697,11 +704,11 @@ void SwDocTest::testSwScanner()
         SwDocStat aDocStat;
 
         m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
-        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Apple");
+        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"Apple"_ustr);
         pTextNode = aPaM.GetPointNode().GetTextNode();
         sal_Int32 nPos = aPaM.GetPoint()->GetContentIndex();
         SwFormatFootnote aFootnote;
-        aFootnote.SetNumStr("banana");
+        aFootnote.SetNumStr(u"banana"_ustr);
         SwTextAttr* pTA = pTextNode->InsertItem(aFootnote, nPos, nPos);
         CPPUNIT_ASSERT(pTA);
         CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(6), pTextNode->Len()); //Apple + 0x02
@@ -711,7 +718,7 @@ void SwDocTest::testSwScanner()
 
         const sal_Int32 nNextPos = aPaM.GetPoint()->GetContentIndex();
         CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(nPos+1), nNextPos);
-        SwFormatRefMark aRef("refmark");
+        SwFormatRefMark aRef(SwMarkName(u"refmark"_ustr));
         pTA = pTextNode->InsertItem(aRef, nNextPos, nNextPos);
         CPPUNIT_ASSERT(pTA);
 
@@ -722,15 +729,15 @@ void SwDocTest::testSwScanner()
         CPPUNIT_ASSERT_EQUAL_MESSAGE("refmark anchor should not be counted", static_cast<sal_uLong>(11), aDocStat.nChar);
 
         m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
-        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Apple");
+        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"Apple"_ustr);
 
         DateTime aDate(DateTime::SYSTEM);
         SwPostItField aPostIt(
-            static_cast<SwPostItFieldType*>(m_pDoc->getIDocumentFieldsAccess().GetSysFieldType(SwFieldIds::Postit)), "An Author",
-            "Some Text", "Initials", "Name", aDate );
+            static_cast<SwPostItFieldType*>(m_pDoc->getIDocumentFieldsAccess().GetSysFieldType(SwFieldIds::Postit)), u"An Author"_ustr,
+            u"Some Text"_ustr, u"Initials"_ustr, SwMarkName(u"Name"_ustr), aDate );
         m_pDoc->getIDocumentContentOperations().InsertPoolItem(aPaM, SwFormatField(aPostIt));
 
-        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Apple");
+        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"Apple"_ustr);
         pTextNode = aPaM.GetPointNode().GetTextNode();
         aDocStat.Reset();
         pTextNode->CountWords(aDocStat, 0, pTextNode->Len());
@@ -781,7 +788,7 @@ void SwDocTest::testSwScanner()
         CPPUNIT_ASSERT_EQUAL(static_cast<sal_uLong>(1), aDocStat.nWord);
 
         OUString sLorem = pTextNode->GetText();
-        CPPUNIT_ASSERT_EQUAL(OUString("Lorem"), sLorem);
+        CPPUNIT_ASSERT_EQUAL(u"Lorem"_ustr, sLorem);
 
         const SwRedlineTable& rTable = m_pDoc->getIDocumentRedlineAccess().GetRedlineTable();
 
@@ -795,7 +802,7 @@ void SwDocTest::testSwScanner()
         CPPUNIT_ASSERT(pTextNode);
 
         OUString sIpsum = pTextNode->GetText();
-        CPPUNIT_ASSERT_EQUAL(OUString(" ipsum"), sIpsum);
+        CPPUNIT_ASSERT_EQUAL(u" ipsum"_ustr, sIpsum);
 
         aDocStat.Reset();
         pTextNode->CountWords(aDocStat, 0, pTextNode->Len()); //word-counting the text should only count the non-deleted text, and this whole chunk should be ignored
@@ -807,7 +814,7 @@ void SwDocTest::testSwScanner()
         m_pDoc->getIDocumentRedlineAccess().SetRedlineFlags(RedlineFlags::On | RedlineFlags::ShowDelete|RedlineFlags::ShowInsert);
         aPaM.DeleteMark();
         aPaM.GetPoint()->nContent.Assign(aPaM.GetPointContentNode(), 0);
-        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "redline-new-text ");
+        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"redline-new-text "_ustr);
         aDocStat.Reset();
         pTextNode = aPaM.GetPointNode().GetTextNode();
         pTextNode->SetWordCountDirty(true);
@@ -825,7 +832,7 @@ void SwDocTest::testSwScanner()
     {
         SwDocStat aDocStat;
 
-        OUString sTemplate("ThisXis a test.");
+        OUString sTemplate(u"ThisXis a test."_ustr);
 
         m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
         m_pDoc->getIDocumentContentOperations().InsertString(aPaM, sTemplate.replace('X', ' '));
@@ -929,18 +936,58 @@ void SwDocTest::testSwScanner()
         CPPUNIT_ASSERT_EQUAL(sal_uLong(17), aDocStat.nChar);
         aDocStat.Reset();
     }
+
+    // tdf#150621 Korean words should be counted individually, rather than by syllable.
+    //
+    // Per i#80815, the intention for the word count feature is to emulate the behavior of MS Word.
+    {
+        auto fnAssertWords = [&](const OUString& aStr, sal_uLong nWords, sal_uLong nAsianWords)
+        {
+            m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
+
+            SvxLanguageItem aCJKLangItem(LANGUAGE_KOREAN, RES_CHRATR_CJK_LANGUAGE);
+            SvxLanguageItem aWestLangItem(LANGUAGE_ENGLISH_US, RES_CHRATR_LANGUAGE);
+            m_pDoc->getIDocumentContentOperations().InsertPoolItem(aPaM, aCJKLangItem);
+            m_pDoc->getIDocumentContentOperations().InsertPoolItem(aPaM, aWestLangItem);
+
+            m_pDoc->getIDocumentContentOperations().InsertString(aPaM, aStr);
+
+            SwDocStat aDocStat;
+            pTextNode = aPaM.GetPointNode().GetTextNode();
+            pTextNode->CountWords(aDocStat, 0, aStr.getLength());
+            CPPUNIT_ASSERT_EQUAL_MESSAGE("words", nWords, aDocStat.nWord);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE("Asian characters and Korean words", nAsianWords,
+                                         aDocStat.nAsianWord);
+        };
+
+        // Basic case: Korean words are counted as space-delimited. In particular, grammatical
+        // particles are treated as part of the previous word.
+        fnAssertWords(u"저는 영화를 봤어요"_ustr, 3, 3);
+
+        // Mixed script: Korean is mostly written in hangul, but hanja are still used in certain
+        // situations (e.g. abbreviations in newspaper articles). For Chinese and Japanese, such
+        // ideographs would be counted individually as words. In Korean, however, they are treated
+        // no differently than hangul characters.
+        fnAssertWords(u"尹탄핵"_ustr, 1, 1);
+        fnAssertWords(u"尹 탄핵"_ustr, 2, 2);
+
+        // These mixed-script results are anomalous, but reflect the behavior of MSW.
+        fnAssertWords(u"불렀다...與"_ustr, 1, 1);
+        fnAssertWords(u"불렀다 ...與"_ustr, 2, 1);
+        fnAssertWords(u"불렀다 ... 與"_ustr, 3, 2);
+    }
 }
 
 void SwDocTest::testMergePortionsDeleteNotSorted()
 {
     SwNodeIndex aIdx(m_pDoc->GetNodes().GetEndOfContent(), -1);
     SwPaM aPaM(aIdx);
-    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "  AABBCC");
+    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"  AABBCC"_ustr);
 
-    SwCharFormat *const pCharFormat(m_pDoc->MakeCharFormat("foo", nullptr));
+    SwCharFormat *const pCharFormat(m_pDoc->MakeCharFormat(UIName(u"foo"_ustr), nullptr));
     SwFormatCharFormat const charFormat(pCharFormat);
 
-    SwFormatINetFormat const inetFormat("http://example.com", "");
+    SwFormatINetFormat const inetFormat(u"http://example.com"_ustr, u""_ustr);
 
     IDocumentContentOperations & rIDCO(m_pDoc->getIDocumentContentOperations());
     aPaM.SetMark();
@@ -967,14 +1014,14 @@ void SwDocTest::testGraphicAnchorDeletion()
     SwNodeIndex aIdx(m_pDoc->GetNodes().GetEndOfContent(), -1);
     SwPaM aPaM(aIdx);
 
-    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Paragraph 1");
+    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"Paragraph 1"_ustr);
     m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
 
-    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "graphic anchor>><<graphic anchor");
+    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"graphic anchor>><<graphic anchor"_ustr);
     SwNodeIndex nPara2(aPaM.GetPoint()->GetNode());
     m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
 
-    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Paragraph 3");
+    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"Paragraph 3"_ustr);
 
     aPaM.GetPoint()->Assign(nPara2);
     aPaM.GetPoint()->SetContent(RTL_CONSTASCII_LENGTH("graphic anchor>>"));
@@ -1026,126 +1073,127 @@ void SwDocTest::testTableAutoFormats()
     CPPUNIT_ASSERT_EQUAL( size_t(1),  aTableAFT.size() );
 
     //create new style
-    SwTableAutoFormat aTableAF( "TestItemStyle" );
+    SwTableAutoFormat aTableAF( TableStyleName(u"TestItemStyle"_ustr) );
 
     //create new AutoFormat
     SwBoxAutoFormat aBoxAF;
+    SwAutoFormatProps& rBoxFP = aBoxAF.GetProps();
 
     //SetFont
     SvxFontItem aFont( RES_CHRATR_FONT );
     aFont.SetFamily( FontFamily::FAMILY_DECORATIVE );
     aFont.SetPitch( FontPitch::PITCH_VARIABLE );
     aFont.SetCharSet( RTL_TEXTENCODING_MS_1251 );
-    aBoxAF.SetFont( aFont );
+    rBoxFP.SetFont( aFont );
     //SetHeight
     SvxFontHeightItem aHeight( 280, 120, RES_CHRATR_FONTSIZE );
-    aBoxAF.SetHeight( aHeight );
+    rBoxFP.SetHeight( aHeight );
     //SetWeight
     SvxWeightItem aWeight( FontWeight::WEIGHT_BOLD, RES_CHRATR_WEIGHT );
-    aBoxAF.SetWeight( aWeight );
+    rBoxFP.SetWeight( aWeight );
     //SetPosture
     SvxPostureItem aPosture( FontItalic::ITALIC_NORMAL, RES_CHRATR_POSTURE );
-    aBoxAF.SetPosture( aPosture );
+    rBoxFP.SetPosture( aPosture );
     //SetCJKFont
     SvxFontItem aCJKFont( RES_CHRATR_FONT );
     aCJKFont.SetFamily( FontFamily::FAMILY_MODERN );
     aCJKFont.SetPitch( FontPitch::PITCH_FIXED );
     aCJKFont.SetCharSet( RTL_TEXTENCODING_MS_1251 );
-    aBoxAF.SetCJKFont( aCJKFont );
+    rBoxFP.SetCJKFont( aCJKFont );
     //SetCJKHeight
     SvxFontHeightItem aCJKHeight( 230, 110, RES_CHRATR_FONTSIZE );
-    aBoxAF.SetCJKHeight( aCJKHeight );
+    rBoxFP.SetCJKHeight( aCJKHeight );
     //SetCJKWeight
     SvxWeightItem aCJKWeight( FontWeight::WEIGHT_SEMIBOLD, RES_CHRATR_WEIGHT );
-    aBoxAF.SetCJKWeight( aCJKWeight );
+    rBoxFP.SetCJKWeight( aCJKWeight );
     //SetCJKPosture
     SvxPostureItem aCJKPosture( FontItalic::ITALIC_OBLIQUE, RES_CHRATR_POSTURE );
-    aBoxAF.SetCJKPosture( aCJKPosture );
+    rBoxFP.SetCJKPosture( aCJKPosture );
     //SetCTLFont
     SvxFontItem aCTLFont( RES_CHRATR_FONT );
     aCTLFont.SetFamily( FontFamily::FAMILY_ROMAN );
     aCTLFont.SetPitch( FontPitch::PITCH_FIXED );
     aCTLFont.SetCharSet( RTL_TEXTENCODING_MS_1251 );
-    aBoxAF.SetCTLFont( aCTLFont );
+    rBoxFP.SetCTLFont( aCTLFont );
     //SetCTLHeight
     SvxFontHeightItem aCTLHeight( 215, 105, RES_CHRATR_FONTSIZE );
-    aBoxAF.SetCTLHeight( aCTLHeight );
+    rBoxFP.SetCTLHeight( aCTLHeight );
     //SetCTLWeight
     SvxWeightItem aCTLWeight( FontWeight::WEIGHT_ULTRABOLD, RES_CHRATR_WEIGHT );
-    aBoxAF.SetCTLWeight( aCTLWeight );
+    rBoxFP.SetCTLWeight( aCTLWeight );
     //SetCTLPosture
     SvxPostureItem aCTLPosture( FontItalic::ITALIC_OBLIQUE, RES_CHRATR_POSTURE );
-    aBoxAF.SetCTLPosture( aCTLPosture );
+    rBoxFP.SetCTLPosture( aCTLPosture );
     //SetUnderline
     SvxUnderlineItem aUnderline( FontLineStyle::LINESTYLE_DOTTED, RES_CHRATR_UNDERLINE );
-    aBoxAF.SetUnderline( aUnderline );
+    rBoxFP.SetUnderline( aUnderline );
     //SetOverline
     SvxOverlineItem aOverline( FontLineStyle::LINESTYLE_DASH, RES_CHRATR_OVERLINE );
-    aBoxAF.SetOverline( aOverline );
+    rBoxFP.SetOverline( aOverline );
     //SetCrossedOut
     SvxCrossedOutItem aCrossedOut( FontStrikeout::STRIKEOUT_BOLD, RES_CHRATR_CROSSEDOUT );
-    aBoxAF.SetCrossedOut( aCrossedOut );
+    rBoxFP.SetCrossedOut( aCrossedOut );
     //SetContour
     SvxContourItem aContour( true, RES_CHRATR_CONTOUR );
-    aBoxAF.SetContour( aContour );
+    rBoxFP.SetContour( aContour );
     //SetShadowed
     SvxShadowedItem aShadowed( false, RES_CHRATR_SHADOWED );
-    aBoxAF.SetShadowed( aShadowed );
+    rBoxFP.SetShadowed( aShadowed );
     //SetColor
     SvxColorItem aColor( Color(0xFF23FF), RES_CHRATR_COLOR );
-    aBoxAF.SetColor( aColor );
+    rBoxFP.SetColor( aColor );
     //SetAdjust
     SvxAdjustItem aAdjust( SvxAdjust::Center, RES_PARATR_ADJUST );
-    aBoxAF.SetAdjust( aAdjust );
+    rBoxFP.SetAdjust( aAdjust );
     //SetTextOrientation
     SvxFrameDirectionItem aTOrientation( SvxFrameDirection::Vertical_RL_TB, RES_FRAMEDIR );
-    aBoxAF.SetTextOrientation( aTOrientation );
+    rBoxFP.SetTextOrientation( aTOrientation );
     //SetVerticalAlignment
     SwFormatVertOrient aVAlignment( 3, css::text::VertOrientation::CENTER, css::text::RelOrientation::PAGE_LEFT );
-    aBoxAF.SetVerticalAlignment( aVAlignment );
+    rBoxFP.SetVerticalAlignment( aVAlignment );
     //SetBox
     SvxBoxItem aBox( RES_BOX );
     aBox.SetAllDistances( 5 );
-    aBoxAF.SetBox( aBox );
+    rBoxFP.SetBox( aBox );
     //SetBackground
     SvxBrushItem aBackground( Color(0xFF11FF), RES_BACKGROUND );
-    aBoxAF.SetBackground( aBackground );
+    rBoxFP.SetBackground( aBackground );
     //Set m_aTLBR
     SvxLineItem aTLBRLine(0); aTLBRLine.ScaleMetrics( 11,12 );
-    aBoxAF.SetTLBR(aTLBRLine);
+    rBoxFP.SetTLBR(aTLBRLine);
     //Set m_aBLTR
     SvxLineItem aBLTRLine(0); aBLTRLine.ScaleMetrics( 13,14 );
-    aBoxAF.SetBLTR(aBLTRLine);
+    rBoxFP.SetBLTR(aBLTRLine);
     //Set m_aHorJustify
     SvxHorJustifyItem aHJustify( SvxCellHorJustify::Center, 0 );
-    aBoxAF.SetHorJustify(aHJustify);
+    rBoxFP.SetHorJustify(aHJustify);
     //Set m_aVerJustify
     SvxVerJustifyItem aVJustify( SvxCellVerJustify::Center , 0 );
-    aBoxAF.SetVerJustify(aVJustify);
+    rBoxFP.SetVerJustify(aVJustify);
     //Set m_aStacked
     SfxBoolItem aStacked(0, true);
-    aBoxAF.SetStacked(aStacked);
+    rBoxFP.SetStacked(aStacked);
     //Set m_aMargin
     SvxMarginItem aSvxMarginItem(sal_Int16(4), sal_Int16(2), sal_Int16(3), sal_Int16(3), TypedWhichId<SvxMarginItem>(0));
-    aBoxAF.SetMargin(aSvxMarginItem);
+    rBoxFP.SetMargin(aSvxMarginItem);
     //Set m_aLinebreak
     SfxBoolItem aLBreak(0, true);
-    aBoxAF.SetLinebreak(aLBreak);
+    rBoxFP.SetLinebreak(aLBreak);
     //Set m_aRotateAngle
     SfxInt32Item aRAngle(sal_Int32(5));
-    aBoxAF.SetRotateAngle(aRAngle);
+    rBoxFP.SetRotateAngle(aRAngle);
     //Set m_aRotateMode
     SvxRotateModeItem aSvxRotateModeItem(SVX_ROTATE_MODE_CENTER, TypedWhichId<SvxRotateModeItem>(0));
-    aBoxAF.SetRotateMode(aSvxRotateModeItem);
+    rBoxFP.SetRotateMode(aSvxRotateModeItem);
     //Set m_sNumFormatString
-    OUString aNFString = "UnitTestFormat";
-    aBoxAF.SetNumFormatString(aNFString);
+    OUString aNFString = u"UnitTestFormat"_ustr;
+    rBoxFP.SetNumFormatString(aNFString);
     //Set m_eSysLanguage
     LanguageType aSLang( LANGUAGE_ENGLISH_INDIA );
-    aBoxAF.SetSysLanguage(aSLang);
+    rBoxFP.SetSysLanguage(aSLang);
     //Set m_eNumFormatLanguage
     LanguageType aNFLang( LANGUAGE_GERMAN );
-    aBoxAF.SetNumFormatLanguage(aNFLang);
+    rBoxFP.SetNumFormatLanguage(aNFLang);
     //Set m_aKeepWithNextPara
     SvxFormatKeepItem aKWNPara( true, 0 );
     aTableAF.SetKeepWithNextPara(aKWNPara);
@@ -1197,89 +1245,84 @@ void SwDocTest::testTableAutoFormats()
     //create new AutoFormatTable
     SwTableAutoFormatTable aLoadTAFT;
 
-    //check the style size
-    CPPUNIT_ASSERT_EQUAL( size_t(1),  aLoadTAFT.size() );
-
-    //load the saved styles
-    aLoadTAFT.Load();
-
     //check the style size after load
     CPPUNIT_ASSERT_EQUAL( size_t(2),  aLoadTAFT.size() );
 
     //assert the values
-    SwTableAutoFormat* pLoadAF = aLoadTAFT.FindAutoFormat( u"TestItemStyle" );
+    SwTableAutoFormat* pLoadAF = aLoadTAFT.FindAutoFormat( TableStyleName(u"TestItemStyle"_ustr) );
     CPPUNIT_ASSERT( pLoadAF );
+    const SwAutoFormatProps& rLoadFP = pLoadAF->GetBoxFormat(0).GetProps();
     //GetFont
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetFont() == aFont ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetFont() == aFont ) );
     //GetHeight
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetHeight() == aHeight ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetHeight() == aHeight ) );
     //GetWeight
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetWeight() == aWeight ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetWeight() == aWeight ) );
     //GetPosture
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetPosture() == aPosture ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetPosture() == aPosture ) );
     //GetCJKFont
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCJKFont() == aCJKFont ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetCJKFont() == aCJKFont ) );
     //GetCJKHeight
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCJKHeight() == aCJKHeight ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetCJKHeight() == aCJKHeight ) );
     //GetCJKWeight
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCJKWeight() == aCJKWeight ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetCJKWeight() == aCJKWeight ) );
     //GetCJKPosture
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCJKPosture() == aCJKPosture ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetCJKPosture() == aCJKPosture ) );
     //GetCTLFont
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCTLFont() == aCTLFont ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetCTLFont() == aCTLFont ) );
     //GetCTLHeight
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCTLHeight() == aCTLHeight ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetCTLHeight() == aCTLHeight ) );
     //GetCTLWeight
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCTLWeight() == aCTLWeight ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetCTLWeight() == aCTLWeight ) );
     //GetCTLPosture
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCTLPosture() == aCTLPosture ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetCTLPosture() == aCTLPosture ) );
     //GetUnderline
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetUnderline() == aUnderline ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetUnderline() == aUnderline ) );
     //GetOverline
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetOverline() == aOverline ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetOverline() == aOverline ) );
     //GetCrossedOut
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetCrossedOut() == aCrossedOut ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetCrossedOut() == aCrossedOut ) );
     //GetContour
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetContour() == aContour ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetContour() == aContour ) );
     //GetShadowed
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetShadowed() == aShadowed ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetShadowed() == aShadowed ) );
     //GetColor
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetColor() == aColor) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetColor() == aColor) );
     //GetAdjust
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetAdjust() == aAdjust ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetAdjust() == aAdjust ) );
     //GetTextOrientation
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetTextOrientation() == aTOrientation ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetTextOrientation() == aTOrientation ) );
     //GetVerticalAlignment
-    CPPUNIT_ASSERT (bool( pLoadAF->GetBoxFormat(0).GetVerticalAlignment() == aVAlignment ) );
+    CPPUNIT_ASSERT (bool( rLoadFP.GetVerticalAlignment() == aVAlignment ) );
     //GetBox
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetBox() == aBox ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetBox() == aBox ) );
     //GetBackground
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetBackground() == aBackground ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetBackground() == aBackground ) );
     //Get m_aTLBR
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetTLBR() == aTLBRLine ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetTLBR() == aTLBRLine ) );
     //Get m_aBLTR
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetBLTR() == aBLTRLine ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetBLTR() == aBLTRLine ) );
     //Get m_aHorJustify
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetHorJustify() == aHJustify ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetHorJustify() == aHJustify ) );
     //Get m_aVerJustify
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetVerJustify() == aVJustify ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetVerJustify() == aVJustify ) );
     //Get m_aStacked
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetStacked() == aStacked ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetStacked() == aStacked ) );
     //Get m_aMargin
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetMargin() == aSvxMarginItem ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetMargin() == aSvxMarginItem ) );
     //Get m_aLinebreak
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetLinebreak() == aLBreak ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetLinebreak() == aLBreak ) );
     //Get m_aRotateAngle
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetRotateAngle() == aRAngle ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetRotateAngle() == aRAngle ) );
     //Get m_aRotateMode
-    //SvxRotateModeItem aRMode = aBoxAF.m_aRotateMode;GetRotateMode
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetRotateMode() == aSvxRotateModeItem ) );
+    //SvxRotateModeItem aRMode = rBoxFP.m_aRotateMode;GetRotateMode
+    CPPUNIT_ASSERT( bool( rLoadFP.GetRotateMode() == aSvxRotateModeItem ) );
     //Get m_sNumFormatString
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetNumFormatString() == aNFString ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetNumFormatString() == aNFString ) );
     //Get m_eSysLanguage
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetSysLanguage() == aSLang ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetSysLanguage() == aSLang ) );
     //Get m_eNumFormatLanguage
-    CPPUNIT_ASSERT( bool( pLoadAF->GetBoxFormat(0).GetNumFormatLanguage() == aNFLang ) );
+    CPPUNIT_ASSERT( bool( rLoadFP.GetNumFormatLanguage() == aNFLang ) );
     //Get m_aKeepWithNextPara
     CPPUNIT_ASSERT( bool( pLoadAF->GetKeepWithNextPara() == aKWNPara ) );
     //Get m_aRepeatHeading
@@ -1318,35 +1361,35 @@ void SwDocTest::testTransliterate()
     // just some simple test to see if it's totally broken
     SwNodeIndex aIdx(m_pDoc->GetNodes().GetEndOfContent(), -1);
     SwPaM aPaM(aIdx);
-    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "foobar");
+    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"foobar"_ustr);
     aPaM.SetMark();
     aPaM.GetPoint()->nContent = 0;
-    CPPUNIT_ASSERT_EQUAL(OUString("foobar"), aPaM.GetText());
+    CPPUNIT_ASSERT_EQUAL(u"foobar"_ustr, aPaM.GetText());
 
-    CPPUNIT_ASSERT_EQUAL(OUString("FOOBAR"),
+    CPPUNIT_ASSERT_EQUAL(u"FOOBAR"_ustr,
             translitTest(*m_pDoc, aPaM,
                 TransliterationFlags::LOWERCASE_UPPERCASE));
-    CPPUNIT_ASSERT_EQUAL(OUString("Foobar"),
+    CPPUNIT_ASSERT_EQUAL(u"Foobar"_ustr,
             translitTest(*m_pDoc, aPaM,
                 TransliterationFlags::TITLE_CASE));
-    CPPUNIT_ASSERT_EQUAL(OUString("fOOBAR"),
+    CPPUNIT_ASSERT_EQUAL(u"fOOBAR"_ustr,
             translitTest(*m_pDoc, aPaM,
                 TransliterationFlags::TOGGLE_CASE));
-    CPPUNIT_ASSERT_EQUAL(OUString("foobar"),
+    CPPUNIT_ASSERT_EQUAL(u"foobar"_ustr,
             translitTest(*m_pDoc, aPaM,
                 TransliterationFlags::UPPERCASE_LOWERCASE));
-    CPPUNIT_ASSERT_EQUAL(OUString("Foobar"),
+    CPPUNIT_ASSERT_EQUAL(u"Foobar"_ustr,
             translitTest(*m_pDoc, aPaM,
                 TransliterationFlags::SENTENCE_CASE));
-    CPPUNIT_ASSERT_EQUAL(OUString("Foobar"),
+    CPPUNIT_ASSERT_EQUAL(u"Foobar"_ustr,
             translitTest(*m_pDoc, aPaM,
                 TransliterationFlags::HIRAGANA_KATAKANA));
 
     m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
-    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "one (two) three");
+    m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"one (two) three"_ustr);
     aPaM.SetMark();
     aPaM.GetMark()->nContent = 0;
-    CPPUNIT_ASSERT_EQUAL(OUString("One (Two) Three"),
+    CPPUNIT_ASSERT_EQUAL(u"One (Two) Three"_ustr,
             translitTest(*m_pDoc, aPaM,
                 TransliterationFlags::TITLE_CASE));
 }
@@ -1379,21 +1422,21 @@ void SwDocTest::testFormulas()
     const SwTable *pTable = m_pDoc->InsertTable(
         SwInsertTableOptions(SwInsertTableFlags::HeadlineNoBorder, 0), aPos, 1, 3, 0);
     SwTableNode* pTableNode = pTable->GetTableNode();
-    SwTableFormulaTest aFormula("<\x12-1,0>+<Table1.A1>", pTableNode);
+    SwTableFormulaTest aFormula(u"<\x12-1,0>+<Table1.A1>"_ustr, pTableNode);
 
     aFormula.PtrToBoxNm(pTable);
 
-    CPPUNIT_ASSERT_EQUAL(OUString("<?>+<Table1.?>"), aFormula.GetFormula());
+    CPPUNIT_ASSERT_EQUAL(u"<?>+<Table1.?>"_ustr, aFormula.GetFormula());
 
     // tdf#61228: Evaluating non-defined function should return an error
     SwCalc aCalc(*m_pDoc);
-    SwSbxValue val = aCalc.Calculate("foobar()");
+    SwSbxValue val = aCalc.Calculate(u"foobar()"_ustr);
     CPPUNIT_ASSERT(aCalc.IsCalcError());
     CPPUNIT_ASSERT(val.IsVoidValue());
     CPPUNIT_ASSERT(val.IsDouble());
     CPPUNIT_ASSERT_EQUAL(DBL_MAX, val.GetDouble());
     // Evaluating non-defined variable should return 0 without an error
-    val = aCalc.Calculate("foobar");
+    val = aCalc.Calculate(u"foobar"_ustr);
     CPPUNIT_ASSERT(!aCalc.IsCalcError());
     CPPUNIT_ASSERT(val.IsVoidValue());
     CPPUNIT_ASSERT(val.IsLong());
@@ -1407,24 +1450,24 @@ void SwDocTest::testMarkMove()
     {
         SwNodeIndex aIdx(m_pDoc->GetNodes().GetEndOfContent(), -1);
         SwPaM aPaM(aIdx);
-        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Paragraph 1");
+        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"Paragraph 1"_ustr);
         aPaM.SetMark();
         aPaM.GetMark()->nContent -= aPaM.GetMark()->GetContentIndex();
-        pMarksAccess->makeMark(aPaM, "Para1",
+        pMarksAccess->makeMark(aPaM, SwMarkName(u"Para1"_ustr),
             IDocumentMarkAccess::MarkType::BOOKMARK, sw::mark::InsertMode::New);
 
         m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
-        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Paragraph 2");
+        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"Paragraph 2"_ustr);
         aPaM.SetMark();
         aPaM.GetMark()->nContent -= aPaM.GetMark()->GetContentIndex();
-        pMarksAccess->makeMark(aPaM, "Para2",
+        pMarksAccess->makeMark(aPaM, SwMarkName(u"Para2"_ustr),
             IDocumentMarkAccess::MarkType::BOOKMARK, sw::mark::InsertMode::New);
 
         m_pDoc->getIDocumentContentOperations().AppendTextNode(*aPaM.GetPoint());
-        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, "Paragraph 3");
+        m_pDoc->getIDocumentContentOperations().InsertString(aPaM, u"Paragraph 3"_ustr);
         aPaM.SetMark();
         aPaM.GetMark()->nContent -= aPaM.GetMark()->GetContentIndex();
-        pMarksAccess->makeMark(aPaM, "Para3",
+        pMarksAccess->makeMark(aPaM, SwMarkName(u"Para3"_ustr),
             IDocumentMarkAccess::MarkType::BOOKMARK, sw::mark::InsertMode::New);
     }
 
@@ -1434,9 +1477,9 @@ void SwDocTest::testMarkMove()
         SwTextNode& rParaNode2 = dynamic_cast<SwTextNode&>(aIdx.GetNode());
         rParaNode2.JoinNext();
     }
-    ::sw::mark::IMark* pBM1 = *pMarksAccess->findMark("Para1");
-    ::sw::mark::IMark* pBM2 = *pMarksAccess->findMark("Para2");
-    ::sw::mark::IMark* pBM3 = *pMarksAccess->findMark("Para3");
+    ::sw::mark::MarkBase* pBM1 = *pMarksAccess->findMark(SwMarkName(u"Para1"_ustr));
+    ::sw::mark::MarkBase* pBM2 = *pMarksAccess->findMark(SwMarkName(u"Para2"_ustr));
+    ::sw::mark::MarkBase* pBM3 = *pMarksAccess->findMark(SwMarkName(u"Para3"_ustr));
 
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0) , pBM1->GetMarkStart().GetContentIndex());
     CPPUNIT_ASSERT_EQUAL(sal_Int32(11), pBM1->GetMarkEnd().GetContentIndex());
@@ -1471,9 +1514,9 @@ void SwDocTest::testMarkMove()
         aPaM.GetMark()->nContent += 6;
         m_pDoc->getIDocumentContentOperations().DeleteAndJoin(aPaM);
     }
-    pBM1 = *pMarksAccess->findMark("Para1");
-    pBM2 = *pMarksAccess->findMark("Para2");
-    pBM3 = *pMarksAccess->findMark("Para3");
+    pBM1 = *pMarksAccess->findMark(SwMarkName(u"Para1"_ustr));
+    pBM2 = *pMarksAccess->findMark(SwMarkName(u"Para2"_ustr));
+    pBM3 = *pMarksAccess->findMark(SwMarkName(u"Para3"_ustr));
 
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0), pBM1->GetMarkStart().GetContentIndex());
     CPPUNIT_ASSERT_EQUAL(sal_Int32(6), pBM1->GetMarkEnd().GetContentIndex());
@@ -1507,9 +1550,9 @@ void SwDocTest::testMarkMove()
         aPos.nContent += 8;
         m_pDoc->getIDocumentContentOperations().SplitNode(aPos, false);
     }
-    pBM1 = *pMarksAccess->findMark("Para1");
-    pBM2 = *pMarksAccess->findMark("Para2");
-    pBM3 = *pMarksAccess->findMark("Para3");
+    pBM1 = *pMarksAccess->findMark(SwMarkName(u"Para1"_ustr));
+    pBM2 = *pMarksAccess->findMark(SwMarkName(u"Para2"_ustr));
+    pBM3 = *pMarksAccess->findMark(SwMarkName(u"Para3"_ustr));
 
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0), pBM1->GetMarkStart().GetContentIndex());
     CPPUNIT_ASSERT_EQUAL(sal_Int32(6), pBM1->GetMarkEnd().GetContentIndex());
@@ -1632,6 +1675,8 @@ namespace
                 ++m_nNotifyCount;
             else if(dynamic_cast<const sw::LegacyModifyHint*>(&rHint))
                 ++m_nModifyCount;
+            else if(dynamic_cast<const sw::AttrSetChangeHint*>(&rHint))
+                ++m_nModifyCount;
             else if(auto pModifyChangedHint = dynamic_cast<const sw::ModifyChangedHint*>(&rHint))
             {
                 ++m_nModifyChangedCount;
@@ -1646,6 +1691,8 @@ namespace
         virtual void SwClientNotify(const SwModify&, const SfxHint& rHint) override
         {
             if(dynamic_cast<const sw::LegacyModifyHint*>(&rHint))
+                ++m_nModifyCount;
+            else if(dynamic_cast<const sw::AttrSetChangeHint*>(&rHint))
                 ++m_nModifyCount;
         }
     };
@@ -1671,10 +1718,10 @@ void SwDocTest::testClientModify()
     CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(nullptr),aClient1.GetRegisteredIn());
     CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(nullptr),aClient2.GetRegisteredIn());
     CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(nullptr),aClient2.GetRegisteredIn());
-    aMod.Add(&aClient1);
+    aMod.Add(aClient1);
     CPPUNIT_ASSERT(aMod.HasWriterListeners());
     CPPUNIT_ASSERT(aMod.HasOnlyOneListener());
-    aMod.Add(&aClient2);
+    aMod.Add(aClient2);
     CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(&aMod),aClient1.GetRegisteredIn());
     CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(&aMod), aClient2.GetRegisteredIn());
     CPPUNIT_ASSERT(aMod.HasWriterListeners());
@@ -1716,7 +1763,7 @@ void SwDocTest::testClientModify()
         }
         CPPUNIT_ASSERT_EQUAL(2,nCount);
     }
-    aMod.Add(&aOtherClient1);
+    aMod.Add(aOtherClient1);
     CPPUNIT_ASSERT_EQUAL(0,aOtherClient1.m_nModifyCount);
     {
         int nCount = 0;
@@ -1729,7 +1776,7 @@ void SwDocTest::testClientModify()
         CPPUNIT_ASSERT_EQUAL(2,nCount);
     }
     CPPUNIT_ASSERT_EQUAL(0,aOtherClient1.m_nModifyCount);
-    aMod.Remove(&aOtherClient1);
+    aMod.Remove(aOtherClient1);
     CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(&aMod),aClient1.GetRegisteredIn());
     CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(&aMod),aClient2.GetRegisteredIn());
     CPPUNIT_ASSERT_EQUAL(static_cast<SwModify*>(nullptr),aOtherClient1.GetRegisteredIn());
@@ -1739,7 +1786,7 @@ void SwDocTest::testClientModify()
         SwIterator<TestClient,SwModify> aIter(aMod);
         for(TestClient* pClient = aIter.First(); pClient ; pClient = aIter.Next())
         {
-            aMod.Remove(pClient);
+            aMod.Remove(*pClient);
             ++nCount;
         }
         CPPUNIT_ASSERT_EQUAL(2,nCount);
@@ -1765,7 +1812,7 @@ void SwDocTest::testBroadcastingModify()
     TestClient aClient;
     TestListener aListener;
 
-    aMod.Add(&aClient);
+    aMod.Add(aClient);
     aListener.StartListening(aMod.GetNotifier());
 
     aMod.CallSwClientNotify(sw::LegacyModifyHint(nullptr, nullptr));
@@ -1789,7 +1836,7 @@ void SwDocTest::testWriterMultiListener()
     int nPreDeathChangedCount;
     {
         TestModify aTempMod;
-        aMod.Add(&aTempMod);
+        aMod.Add(aTempMod);
         aMulti.StartListening(&aTempMod);
         nPreDeathChangedCount = aClient.m_nModifyChangedCount;
     }
@@ -1805,7 +1852,7 @@ void SwDocTest::test64kPageDescs()
     for (size_t i = 0; i < nPageDescCount; ++i)
     {
         OUString aName = "Page" + OUString::number(i);
-        m_pDoc->MakePageDesc( aName );
+        m_pDoc->MakePageDesc( UIName(aName) );
     }
 
     size_t nCount = m_pDoc->GetPageDescCnt();
@@ -1815,26 +1862,26 @@ void SwDocTest::test64kPageDescs()
 
     const SwPageDesc &rDesc = m_pDoc->GetPageDesc( nPageDescCount );
     SwPageDesc &rZeroDesc = m_pDoc->GetPageDesc( 0 );
-    CPPUNIT_ASSERT_EQUAL( OUString("Page65535"), rDesc.GetName() );
+    CPPUNIT_ASSERT_EQUAL( u"Page65535"_ustr, rDesc.GetName().toString() );
 
     SwPageDesc aDesc( rDesc );
     static constexpr OUString aChanged(u"Changed01"_ustr);
-    aDesc.SetName( aChanged );
+    aDesc.SetName( UIName(aChanged) );
     m_pDoc->ChgPageDesc( nPageDescCount, aDesc );
 
     size_t nPos;
-    SwPageDesc *pDesc = m_pDoc->FindPageDesc( aChanged, &nPos );
+    SwPageDesc *pDesc = m_pDoc->FindPageDesc( UIName(aChanged), &nPos );
     CPPUNIT_ASSERT( pDesc != nullptr );
     CPPUNIT_ASSERT_EQUAL( nPageDescCount, nPos );
 
     // check if we didn't mess up PageDesc at pos 0
     // (happens with 16bit int overflow)
-    OUString aZeroName = rZeroDesc.GetName();
+    UIName aZeroName = rZeroDesc.GetName();
     rZeroDesc = m_pDoc->GetPageDesc( 0 );
-    CPPUNIT_ASSERT_EQUAL( aZeroName, rZeroDesc.GetName() );
+    CPPUNIT_ASSERT_EQUAL( aZeroName.toString(), rZeroDesc.GetName().toString() );
 
-    m_pDoc->DelPageDesc( aChanged, /*bBroadcast*/true );
-    pDesc = m_pDoc->FindPageDesc( aChanged, &nPos );
+    m_pDoc->DelPageDesc( UIName(aChanged), /*bBroadcast*/true );
+    pDesc = m_pDoc->FindPageDesc( UIName(aChanged), &nPos );
     // not there anymore
     CPPUNIT_ASSERT( !pDesc );
     CPPUNIT_ASSERT_EQUAL( std::numeric_limits<size_t>::max(), nPos);
@@ -1882,27 +1929,27 @@ void SwDocTest::testTableCellComparison()
     CPPUNIT_ASSERT_EQUAL( +1, sw_CompareCellRanges(u"A2", u"Z2", u"A1", u"Z1", true) );
     CPPUNIT_ASSERT_EQUAL( +1, sw_CompareCellRanges(u"A6", u"Z2", u"A1", u"Z1", true) );
 
-    OUString rCell1("A1");
-    OUString rCell2("C5");
+    OUString rCell1(u"A1"_ustr);
+    OUString rCell2(u"C5"_ustr);
 
     sw_NormalizeRange(rCell1, rCell2);
-    CPPUNIT_ASSERT_EQUAL( OUString("A1"), rCell1 );
-    CPPUNIT_ASSERT_EQUAL( OUString("C5"), rCell2 );
+    CPPUNIT_ASSERT_EQUAL( u"A1"_ustr, rCell1 );
+    CPPUNIT_ASSERT_EQUAL( u"C5"_ustr, rCell2 );
 
     sw_NormalizeRange(rCell2, rCell1);
-    CPPUNIT_ASSERT_EQUAL( OUString("C5"), rCell1 );
-    CPPUNIT_ASSERT_EQUAL( OUString("A1"), rCell2 );
+    CPPUNIT_ASSERT_EQUAL( u"C5"_ustr, rCell1 );
+    CPPUNIT_ASSERT_EQUAL( u"A1"_ustr, rCell2 );
 
-    rCell1 = OUString("A5");
-    rCell2 = OUString("C1");
+    rCell1 = u"A5"_ustr;
+    rCell2 = u"C1"_ustr;
 
     sw_NormalizeRange(rCell1, rCell2);
-    CPPUNIT_ASSERT_EQUAL( OUString("A1"), rCell1 );
-    CPPUNIT_ASSERT_EQUAL( OUString("C5"), rCell2 );
+    CPPUNIT_ASSERT_EQUAL( u"A1"_ustr, rCell1 );
+    CPPUNIT_ASSERT_EQUAL( u"C5"_ustr, rCell2 );
 
     sw_NormalizeRange(rCell2, rCell1);
-    CPPUNIT_ASSERT_EQUAL( OUString("C5"), rCell1 );
-    CPPUNIT_ASSERT_EQUAL( OUString("A1"), rCell2 );
+    CPPUNIT_ASSERT_EQUAL( u"C5"_ustr, rCell1 );
+    CPPUNIT_ASSERT_EQUAL( u"A1"_ustr, rCell2 );
 
     CPPUNIT_ASSERT_EQUAL( OUString(), sw_GetCellName(-1, -1) );
 }
@@ -1924,6 +1971,594 @@ void SwDocTest::tearDown()
     m_xDocShRef.clear();
 
     BootstrapFixture::tearDown();
+}
+
+void SwDocTest::testFillRubyList()
+{
+    SwNodeIndex aIdx(m_pDoc->GetNodes().GetEndOfContent(), -1);
+    SwPaM aPaM(aIdx);
+
+    SwTextNode* pTextNode = aPaM.GetPointNode().GetTextNode();
+    CPPUNIT_ASSERT(pTextNode);
+
+    auto& rOps = m_pDoc->getIDocumentContentOperations();
+
+    auto fnAppendJapanese = [&](const OUString& rText)
+    {
+        rOps.AppendTextNode(*aPaM.GetPoint());
+
+        SvxLanguageItem aCJKLangItem(LANGUAGE_JAPANESE, RES_CHRATR_CJK_LANGUAGE);
+        SvxLanguageItem aWestLangItem(LANGUAGE_ENGLISH_US, RES_CHRATR_LANGUAGE);
+        rOps.InsertPoolItem(aPaM, aCJKLangItem);
+        rOps.InsertPoolItem(aPaM, aWestLangItem);
+
+        rOps.InsertString(aPaM, rText);
+
+        aPaM.SetMark();
+        aPaM.GetPoint()->nContent = 0;
+
+        CPPUNIT_ASSERT_EQUAL(rText, aPaM.GetText());
+    };
+
+    auto fnAppendRuby = [](SwRubyList* rList, OUString aBase, OUString aRuby)
+    {
+        auto pEnt = std::make_unique<SwRubyListEntry>();
+        pEnt->SetText(std::move(aBase));
+        pEnt->SetRubyAttr(SwFormatRuby{ std::move(aRuby) });
+
+        rList->push_back(std::move(pEnt));
+    };
+
+    auto fnGetCombinedString = [](SwPaM& rPaM)
+    {
+        SwRubyList aRubies;
+        SwDoc::FillRubyList(rPaM, aRubies);
+
+        OUStringBuffer aTemp;
+
+        for (auto const& rRuby : aRubies)
+        {
+            aTemp.append(rRuby->GetText() + u"["_ustr + rRuby->GetRubyAttr().GetText() + u"]"_ustr);
+        }
+
+        return aTemp.toString();
+    };
+
+    // Single word without existing rubies
+    {
+        fnAppendJapanese(u"学校"_ustr);
+        CPPUNIT_ASSERT_EQUAL(u"学校[]"_ustr, fnGetCombinedString(aPaM));
+    }
+
+    // Compound word without existing rubies
+    {
+        fnAppendJapanese(u"自動販売機"_ustr);
+        CPPUNIT_ASSERT_EQUAL(u"自動[]販売[]機[]"_ustr, fnGetCombinedString(aPaM));
+    }
+
+    // Single word with existing rubies
+    {
+        fnAppendJapanese(u"学校"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学校"_ustr, u"がっこう"_ustr);
+
+        m_pDoc->SetRubyList(aPaM, rList);
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]"_ustr, fnGetCombinedString(aPaM));
+    }
+
+    // Compound word with existing rubies
+    {
+        fnAppendJapanese(u"自動販売機"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"自動"_ustr, u"じどう"_ustr);
+        fnAppendRuby(&rList, u"販売"_ustr, u"はんばい"_ustr);
+        fnAppendRuby(&rList, u"機"_ustr, u"き"_ustr);
+
+        m_pDoc->SetRubyList(aPaM, rList);
+
+        CPPUNIT_ASSERT_EQUAL(u"自動[じどう]販売[はんばい]機[き]"_ustr, fnGetCombinedString(aPaM));
+    }
+
+    // Compound word with existing rubies treated as a single word
+    {
+        fnAppendJapanese(u"自動販売機"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"自動販売機"_ustr, u"じどうはんばいき"_ustr);
+        fnAppendRuby(&rList, u""_ustr, u""_ustr);
+        fnAppendRuby(&rList, u""_ustr, u""_ustr);
+
+        m_pDoc->SetRubyList(aPaM, rList);
+
+        CPPUNIT_ASSERT_EQUAL(u"自動販売機[じどうはんばいき]"_ustr, fnGetCombinedString(aPaM));
+    }
+
+    // tdf#141466: Characteristic test from bug
+    {
+        fnAppendJapanese(u"学校に行きます。"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学校"_ustr, u"がっこう"_ustr);
+        fnAppendRuby(&rList, u"に"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"行"_ustr, u"い"_ustr);
+        fnAppendRuby(&rList, u"きます"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"。"_ustr, u""_ustr);
+
+        m_pDoc->SetRubyList(aPaM, rList);
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]に[]行[い]き[]ます[]。[]"_ustr,
+                             fnGetCombinedString(aPaM));
+    }
+
+    // tdf#107184: Characteristic test for ruby group mode editing
+    {
+        fnAppendJapanese(u"学校に行きます"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学校に行きます"_ustr, u"がっこうにいきます"_ustr);
+
+        m_pDoc->SetRubyList(aPaM, rList);
+
+        CPPUNIT_ASSERT_EQUAL(u"学校に行きます[がっこうにいきます]"_ustr, fnGetCombinedString(aPaM));
+    }
+
+    // tdf#156543: Characteristic test for ruby mono mode editing
+    {
+        fnAppendJapanese(u"学校に行きます"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学"_ustr, u"がっ"_ustr);
+        fnAppendRuby(&rList, u"校"_ustr, u"こう"_ustr);
+        fnAppendRuby(&rList, u"に"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"行"_ustr, u"い"_ustr);
+        fnAppendRuby(&rList, u"き"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"ま"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"す"_ustr, u""_ustr);
+
+        m_pDoc->SetRubyList(aPaM, rList);
+
+        CPPUNIT_ASSERT_EQUAL(u"学[がっ]校[こう]に[]行[い]き[]ます[]"_ustr,
+                             fnGetCombinedString(aPaM));
+    }
+
+    // tdf#156543: Characteristic test for ruby mono mode editing
+    {
+        fnAppendJapanese(u"学校に行きます"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学"_ustr, u"がっ"_ustr);
+        fnAppendRuby(&rList, u"校"_ustr, u"こう"_ustr);
+        fnAppendRuby(&rList, u"に"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"行"_ustr, u"い"_ustr);
+        fnAppendRuby(&rList, u"き"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"ま"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"す"_ustr, u""_ustr);
+
+        m_pDoc->SetRubyList(aPaM, rList);
+
+        CPPUNIT_ASSERT_EQUAL(u"学[がっ]校[こう]に[]行[い]き[]ます[]"_ustr,
+                             fnGetCombinedString(aPaM));
+    }
+
+    // Partial PaM
+    {
+        fnAppendJapanese(u"学校に行こう。"_ustr);
+
+        SwPaM aAdjPaM{ *aPaM.GetPoint(), *aPaM.GetMark() };
+        aAdjPaM.Normalize();
+        aAdjPaM.GetMark()->AdjustContent(-1);
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[]に[]行[]こう[]"_ustr, fnGetCombinedString(aAdjPaM));
+    }
+
+    // Empty PaM
+    {
+        fnAppendJapanese(u"学校"_ustr);
+
+        aPaM.DeleteMark();
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[]"_ustr, fnGetCombinedString(aPaM));
+    }
+}
+
+void SwDocTest::testSetRubyList()
+{
+    SwNodeIndex aIdx(m_pDoc->GetNodes().GetEndOfContent(), -1);
+    SwPaM aPaM(aIdx);
+
+    SwTextNode* pTextNode = aPaM.GetPointNode().GetTextNode();
+    CPPUNIT_ASSERT(pTextNode);
+
+    auto& rOps = m_pDoc->getIDocumentContentOperations();
+
+    auto fnAppendJapanese = [&](const OUString& rText)
+    {
+        rOps.AppendTextNode(*aPaM.GetPoint());
+
+        SvxLanguageItem aCJKLangItem(LANGUAGE_JAPANESE, RES_CHRATR_CJK_LANGUAGE);
+        SvxLanguageItem aWestLangItem(LANGUAGE_ENGLISH_US, RES_CHRATR_LANGUAGE);
+        rOps.InsertPoolItem(aPaM, aCJKLangItem);
+        rOps.InsertPoolItem(aPaM, aWestLangItem);
+
+        rOps.InsertString(aPaM, rText);
+
+        aPaM.SetMark();
+        aPaM.GetPoint()->nContent = 0;
+
+        CPPUNIT_ASSERT_EQUAL(rText, aPaM.GetText());
+    };
+
+    auto fnAppendRuby = [](SwRubyList* rList, OUString aBase, OUString aRuby)
+    {
+        auto pEnt = std::make_unique<SwRubyListEntry>();
+        pEnt->SetText(std::move(aBase));
+        pEnt->SetRubyAttr(SwFormatRuby{ std::move(aRuby) });
+
+        rList->push_back(std::move(pEnt));
+    };
+
+    auto fnGetCombinedString = [&]
+    {
+        OUStringBuffer aTemp;
+
+        auto* pPos = aPaM.GetPoint();
+        const auto* pTNd = pPos->GetNode().GetTextNode();
+        const auto& rText = pTNd->GetText();
+        const auto* pHts = pTNd->GetpSwpHints();
+
+        for (sal_Int32 i = 0; i < rText.getLength(); ++i)
+        {
+            aTemp.append(rText[i]);
+
+            if (pHts)
+            {
+                for (size_t j = 0; j < pHts->Count(); ++j)
+                {
+                    const auto* pHt = pHts->Get(j);
+                    if (pHt->Which() == RES_TXTATR_CJK_RUBY && pHt->GetAnyEnd() == (i + 1))
+                    {
+                        aTemp.append(u"["_ustr + pHt->GetRuby().GetText() + u"]"_ustr);
+                    }
+                }
+            }
+        }
+
+        return aTemp.toString();
+    };
+
+    // Trivial characteristic test
+    {
+        fnAppendJapanese(u"学校"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学校"_ustr, u"がっこう"_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]"_ustr, fnGetCombinedString());
+
+        // Operation should be idempotent
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]"_ustr, fnGetCombinedString());
+    }
+
+    // tdf#141466: Characteristic test from bug
+    {
+        fnAppendJapanese(u"学校に行きます。"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学校"_ustr, u"がっこう"_ustr);
+        fnAppendRuby(&rList, u"に"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"行"_ustr, u"い"_ustr);
+        fnAppendRuby(&rList, u"きます"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"。"_ustr, u""_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(8), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(8), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]に行[い]きます。"_ustr, fnGetCombinedString());
+
+        // Operation should be idempotent
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(8), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(8), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]に行[い]きます。"_ustr, fnGetCombinedString());
+    }
+
+    // Base text merging/deletion at end of selection
+    {
+        fnAppendJapanese(u"学校に行こう。"_ustr);
+
+        SwPaM aAdjPaM{ *aPaM.GetPoint(), *aPaM.GetMark() };
+        aAdjPaM.GetPoint()->AdjustContent(-1);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学校"_ustr, u"がっこう"_ustr);
+        fnAppendRuby(&rList, u"に"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"行こう"_ustr, u"いこう"_ustr);
+        fnAppendRuby(&rList, u""_ustr, u""_ustr);
+        fnAppendRuby(&rList, u""_ustr, u"this ruby should not appear"_ustr);
+        fnAppendRuby(&rList, u""_ustr, u""_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(6), aAdjPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aAdjPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aAdjPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aAdjPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(6), aAdjPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]に行こう[いこう]。"_ustr, fnGetCombinedString());
+
+        // Operation should be idempotent
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aAdjPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(6), aAdjPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aAdjPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aAdjPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(6), aAdjPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]に行こう[いこう]。"_ustr, fnGetCombinedString());
+    }
+
+    // Base text deletion
+    {
+        fnAppendJapanese(u"学校に行きます。"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学校"_ustr, u"がっこう"_ustr);
+        fnAppendRuby(&rList, u"に"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"行"_ustr, u"い"_ustr);
+        fnAppendRuby(&rList, u"きます"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"。"_ustr, u""_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(8), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(8), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]に行[い]きます。"_ustr, fnGetCombinedString());
+
+        SwRubyList rList2;
+        fnAppendRuby(&rList2, u"学校"_ustr, u"がっこう"_ustr);
+        fnAppendRuby(&rList2, u"に"_ustr, u""_ustr);
+        fnAppendRuby(&rList2, u""_ustr, u"い"_ustr);
+        fnAppendRuby(&rList2, u"来"_ustr, u"き"_ustr);
+        fnAppendRuby(&rList2, u"ます"_ustr, u""_ustr);
+        fnAppendRuby(&rList2, u"。"_ustr, u""_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(8), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList2);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]に来[き]ます。"_ustr, fnGetCombinedString());
+
+        // Operation should be idempotent
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList2);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校[がっこう]に来[き]ます。"_ustr, fnGetCombinedString());
+    }
+
+    // tdf#107184: Characteristic test for ruby group mode editing
+    {
+        fnAppendJapanese(u"学校に行きます"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学校に行きます"_ustr, u"がっこうにいきます"_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校に行きます[がっこうにいきます]"_ustr, fnGetCombinedString());
+
+        // Operation should be idempotent
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校に行きます[がっこうにいきます]"_ustr, fnGetCombinedString());
+    }
+
+    // tdf#107184: Delete ruby in group mode after populating
+    {
+        fnAppendJapanese(u"学校に行きます"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学校に行きます"_ustr, u"がっこうにいきます"_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校に行きます[がっこうにいきます]"_ustr, fnGetCombinedString());
+
+        SwRubyList rList2;
+        fnAppendRuby(&rList2, u"学校に行きます"_ustr, u""_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList2);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校に行きます"_ustr, fnGetCombinedString());
+
+        // Operation should be idempotent
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList2);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学校に行きます"_ustr, fnGetCombinedString());
+    }
+
+    // tdf#156543: Characteristic test for ruby mono mode editing
+    {
+        fnAppendJapanese(u"学校に行きます"_ustr);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学"_ustr, u"がっ"_ustr);
+        fnAppendRuby(&rList, u"校"_ustr, u"こう"_ustr);
+        fnAppendRuby(&rList, u"に"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"行"_ustr, u"い"_ustr);
+        fnAppendRuby(&rList, u"き"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"ま"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"す"_ustr, u"す"_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学[がっ]校[こう]に行[い]きます[す]"_ustr, fnGetCombinedString());
+
+        // Operation should be idempotent
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学[がっ]校[こう]に行[い]きます[す]"_ustr, fnGetCombinedString());
+    }
+
+    // Offset PaM - Combination of insert and replace
+    {
+        fnAppendJapanese(u"学校員"_ustr);
+
+        SwPosition aNewPos{ aPaM.GetPoint()->nNode, aPaM.GetPoint()->nContent };
+        const SwTextNode* pTNd = aNewPos.GetNode().GetTextNode();
+        pTNd->GoNext(aNewPos, SwCursorSkipMode::Chars);
+
+        SwPaM aEmptyPaM{ aNewPos };
+        aEmptyPaM.SetMark();
+        aEmptyPaM.GetMark()->AdjustContent(1);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"森林"_ustr, u"しんりん"_ustr);
+        fnAppendRuby(&rList, u"海上"_ustr, u"かいじょう"_ustr);
+        fnAppendRuby(&rList, u"地面"_ustr, u"じめん"_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aEmptyPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aEmptyPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aEmptyPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aEmptyPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aEmptyPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学森林[しんりん]海上[かいじょう]地面[じめん]員"_ustr,
+                             fnGetCombinedString());
+
+        // Operation should be idempotent
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aEmptyPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aEmptyPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aEmptyPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aEmptyPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aEmptyPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学森林[しんりん]海上[かいじょう]地面[じめん]員"_ustr,
+                             fnGetCombinedString());
+    }
+
+    // Partial PaM with mono replacement
+    {
+        fnAppendJapanese(u"学校に行こう。"_ustr);
+
+        SwPaM aAdjPaM{ *aPaM.GetPoint(), *aPaM.GetMark() };
+        aAdjPaM.Normalize();
+        aAdjPaM.GetMark()->AdjustContent(-1);
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"学"_ustr, u"がっ"_ustr);
+        fnAppendRuby(&rList, u"校"_ustr, u"こう"_ustr);
+        fnAppendRuby(&rList, u"に"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"行"_ustr, u"い"_ustr);
+        fnAppendRuby(&rList, u"こ"_ustr, u""_ustr);
+        fnAppendRuby(&rList, u"う"_ustr, u""_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aAdjPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(6), aAdjPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aAdjPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aAdjPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(6), aAdjPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学[がっ]校[こう]に行[い]こう。"_ustr, fnGetCombinedString());
+
+        // Operation should be idempotent
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aAdjPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(6), aAdjPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aAdjPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(0), aAdjPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(6), aAdjPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学[がっ]校[こう]に行[い]こう。"_ustr, fnGetCombinedString());
+    }
+
+    // Empty PaM - Should insert
+    {
+        fnAppendJapanese(u"学校"_ustr);
+
+        SwPosition aNewPos{ aPaM.GetPoint()->nNode, aPaM.GetPoint()->nContent };
+        const SwTextNode* pTNd = aNewPos.GetNode().GetTextNode();
+        pTNd->GoNext(aNewPos, SwCursorSkipMode::Chars);
+
+        SwPaM aEmptyPaM{ aNewPos };
+        aEmptyPaM.SetMark();
+
+        SwRubyList rList;
+        fnAppendRuby(&rList, u"森林"_ustr, u"しんりん"_ustr);
+        fnAppendRuby(&rList, u"海上"_ustr, u"かいじょう"_ustr);
+        fnAppendRuby(&rList, u"地面"_ustr, u"じめん"_ustr);
+
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aEmptyPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aEmptyPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aEmptyPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aEmptyPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aEmptyPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学森林[しんりん]海上[かいじょう]地面[じめん]校"_ustr,
+                             fnGetCombinedString());
+
+        // Operation should be idempotent
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aEmptyPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aEmptyPaM.GetMark()->GetContentIndex());
+        m_pDoc->SetRubyList(aEmptyPaM, rList);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aEmptyPaM.GetPoint()->GetContentIndex());
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(7), aEmptyPaM.GetMark()->GetContentIndex());
+
+        CPPUNIT_ASSERT_EQUAL(u"学森林[しんりん]海上[かいじょう]地面[じめん]校"_ustr,
+                             fnGetCombinedString());
+    }
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(SwDocTest);

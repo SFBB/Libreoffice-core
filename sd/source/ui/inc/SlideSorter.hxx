@@ -20,6 +20,7 @@
 #pragma once
 
 #include <cppuhelper/weakref.hxx>
+#include <o3tl/deleter.hxx>
 #include <svtools/scrolladaptor.hxx>
 #include <sddllapi.h>
 #include <memory>
@@ -27,6 +28,8 @@
 namespace vcl { class Window; }
 namespace com::sun::star::frame { class XController; }
 namespace rtl { template <class reference_type> class Reference; }
+
+#define MAX_PAGES_PER_ROW 15
 
 namespace sd {
 class ViewShell;
@@ -79,7 +82,7 @@ public:
         @param rpVerticalScrollBar
             Typically the vertical scroll bar of the ViewShell.
     */
-    static std::shared_ptr<SlideSorter> CreateSlideSorter (
+    static std::unique_ptr<SlideSorter, o3tl::default_delete<SlideSorter>> CreateSlideSorter (
         ViewShell& rViewShell,
         sd::Window* pContentWindow,
         ScrollAdaptor* pHorizontalScrollBar,
@@ -109,7 +112,7 @@ public:
         @return
             May be empty.
     */
-    ViewShell* GetViewShell() const { return mpViewShell;}
+    ViewShell& GetViewShell() const { return mrViewShell;}
 
     /** Return the XController object of the main view.
     */
@@ -166,7 +169,7 @@ private:
     std::unique_ptr<model::SlideSorterModel> mpSlideSorterModel;
     std::unique_ptr<view::SlideSorterView> mpSlideSorterView;
     css::uno::WeakReference<css::frame::XController> mxControllerWeak;
-    ViewShell* mpViewShell;
+    ViewShell& mrViewShell;
     ViewShellBase* mpViewShellBase;
     VclPtr<sd::Window> mpContentWindow;
     VclPtr<ScrollAdaptor> mpHorizontalScrollBar;

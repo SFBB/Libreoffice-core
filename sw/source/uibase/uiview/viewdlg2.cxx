@@ -46,7 +46,7 @@
 
 using namespace css;
 
-void SwView::ExecDlgExt(SfxRequest const& rReq)
+void SwView::ExecDlgExt(SfxRequest& rReq)
 {
     switch (rReq.GetSlot())
     {
@@ -65,9 +65,19 @@ void SwView::ExecDlgExt(SfxRequest const& rReq)
         {
             VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
             const uno::Reference<frame::XModel> xModel(GetCurrentDocument());
-            ScopedVclPtr<AbstractSignatureLineDialog> pDialog(pFact->CreateSignatureLineDialog(
+            VclPtr<AbstractSignatureLineDialog> pDialog(pFact->CreateSignatureLineDialog(
                 GetFrameWeld(), xModel, rReq.GetSlot() == SID_EDIT_SIGNATURELINE));
-            pDialog->Execute();
+            auto xRequest = std::make_shared<SfxRequest>(rReq);
+            rReq.Ignore(); // the 'old' request is not relevant any more
+            pDialog->StartExecuteAsync(
+                [pDialog, xRequest=std::move(xRequest)] (sal_Int32 nResult)->void
+                {
+                    if (nResult == RET_OK)
+                        pDialog->Apply();
+                    pDialog->disposeOnce();
+                    xRequest->Done();
+                }
+            );
             break;
         }
         case SID_INSERT_QRCODE:
@@ -82,38 +92,39 @@ void SwView::ExecDlgExt(SfxRequest const& rReq)
             });
             break;
         }
-        case SID_ADDITIONS_DIALOG:
-        {
-            OUString sAdditionsTag = "";
 
-            const SfxStringItem* pStringArg = rReq.GetArg<SfxStringItem>(FN_PARAM_ADDITIONS_TAG);
-            if (pStringArg)
-                sAdditionsTag = pStringArg->GetValue();
-
-            VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
-            ScopedVclPtr<AbstractAdditionsDialog> pDialog(
-                pFact->CreateAdditionsDialog(GetFrameWeld(), sAdditionsTag));
-            pDialog->Execute();
-            break;
-        }
         case SID_SIGN_SIGNATURELINE:
         {
             VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
             const uno::Reference<frame::XModel> xModel(GetCurrentDocument());
-            ScopedVclPtr<AbstractSignSignatureLineDialog> pDialog(
+            VclPtr<AbstractSignSignatureLineDialog> pDialog(
                 pFact->CreateSignSignatureLineDialog(GetFrameWeld(), xModel));
-            pDialog->Execute();
+            pDialog->StartExecuteAsync(
+                [pDialog] (sal_Int32 nResult)->void
+                {
+                    if (nResult == RET_OK)
+                        pDialog->Apply();
+                    pDialog->disposeOnce();
+                }
+            );
             break;
         }
         case  FN_EDIT_FOOTNOTE:
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            ScopedVclPtr<AbstractInsFootNoteDlg> pDlg(pFact->CreateInsFootNoteDlg(
+            VclPtr<AbstractInsFootNoteDlg> pDlg(pFact->CreateInsFootNoteDlg(
                 GetFrameWeld(), *m_pWrtShell, true));
 
             pDlg->SetHelpId(GetStaticInterface()->GetSlot(FN_EDIT_FOOTNOTE)->GetCommand());
             pDlg->SetText( SwResId(STR_EDIT_FOOTNOTE) );
-            pDlg->Execute();
+            pDlg->StartExecuteAsync(
+                [pDlg] (sal_Int32 nResult)->void
+                {
+                    if (nResult == RET_OK)
+                        pDlg->Apply();
+                    pDlg->disposeOnce();
+                }
+            );
             break;
         }
     }
@@ -126,10 +137,10 @@ bool SwView::isSignatureLineSelected() const
     if (!pSdrView)
         return false;
 
-    if (pSdrView->GetMarkedObjectCount() != 1)
+    if (pSdrView->GetMarkedObjectList().GetMarkCount() != 1)
         return false;
 
-    SdrObject* pPickObj = pSdrView->GetMarkedObjectByIndex(0);
+    SdrObject* pPickObj = pSdrView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
     if (!pPickObj)
         return false;
 
@@ -147,10 +158,10 @@ bool SwView::isSignatureLineSigned() const
     if (!pSdrView)
         return false;
 
-    if (pSdrView->GetMarkedObjectCount() != 1)
+    if (pSdrView->GetMarkedObjectList().GetMarkCount() != 1)
         return false;
 
-    SdrObject* pPickObj = pSdrView->GetMarkedObjectByIndex(0);
+    SdrObject* pPickObj = pSdrView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
     if (!pPickObj)
         return false;
 
@@ -168,10 +179,10 @@ bool SwView::isQRCodeSelected() const
     if (!pSdrView)
         return false;
 
-    if (pSdrView->GetMarkedObjectCount() != 1)
+    if (pSdrView->GetMarkedObjectList().GetMarkCount() != 1)
         return false;
 
-    SdrObject* pPickObj = pSdrView->GetMarkedObjectByIndex(0);
+    SdrObject* pPickObj = pSdrView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
     if (!pPickObj)
         return false;
 
@@ -184,7 +195,7 @@ bool SwView::isQRCodeSelected() const
 
 void SwView::AutoCaption(const sal_uInt16 nType, const SvGlobalName *pOleId)
 {
-    SwModuleOptions* pModOpt = SW_MOD()->GetModuleConfig();
+    SwModuleOptions* pModOpt = SwModule::get()->GetModuleConfig();
 
     bool bWeb = dynamic_cast<SwWebView*>( this ) !=  nullptr;
     if (pModOpt->IsInsWithCaption(bWeb))
@@ -206,15 +217,15 @@ void SwView::InsertCaption(const InsCaptionOpt *pOpt)
     SwWrtShell &rSh = GetWrtShell();
     if(!rName.isEmpty())
     {
-        sal_uInt16 nPoolId = SwStyleNameMapper::GetPoolIdFromUIName(rName, SwGetPoolIdFromName::TxtColl);
+        sal_uInt16 nPoolId = SwStyleNameMapper::GetPoolIdFromUIName(UIName(rName), SwGetPoolIdFromName::TxtColl);
         if( USHRT_MAX != nPoolId )
             rSh.GetTextCollFromPool(nPoolId);
             // Pool template does not exist: Does it exist on the document?
-        else if( !rSh.GetParaStyle(rName) )
+        else if( !rSh.GetParaStyle(UIName(rName)) )
         {
             // It also does not exist in the document: generate
             SwTextFormatColl* pDerivedFrom = rSh.GetTextCollFromPool(RES_POOLCOLL_LABEL);
-            rSh.MakeTextFormatColl(rName, pDerivedFrom);
+            rSh.MakeTextFormatColl(UIName(rName), pDerivedFrom);
         }
     }
 
@@ -234,7 +245,7 @@ void SwView::InsertCaption(const InsCaptionOpt *pOpt)
     if (!pFieldType && !rName.isEmpty() )
     {
         // Create new field types
-        SwSetExpFieldType aSwSetExpFieldType(rSh.GetDoc(), rName, nsSwGetSetExpType::GSE_SEQ);
+        SwSetExpFieldType aSwSetExpFieldType(rSh.GetDoc(), UIName(rName), SwGetSetExpType::Sequence);
         aMgr.InsertFieldType(aSwSetExpFieldType);
         pFieldType = static_cast<SwSetExpFieldType*>(aMgr.GetFieldType(SwFieldIds::SetExp, rName));
     }
@@ -256,7 +267,7 @@ void SwView::InsertCaption(const InsCaptionOpt *pOpt)
         for (size_t i = 0; i < nCount; ++i)
         {
             pType = aMgr.GetFieldType(SwFieldIds::Unknown, i);
-            OUString aTmpName( pType->GetName() );
+            UIName aTmpName( pType->GetName() );
             if (aTmpName == rName && pType->Which() == SwFieldIds::SetExp)
             {
                 nID = i;

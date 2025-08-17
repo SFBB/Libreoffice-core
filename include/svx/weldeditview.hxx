@@ -59,6 +59,8 @@ protected:
 
     void InitAccessible();
 
+    static void PaintSelection(vcl::RenderContext& rRenderContext, tools::Rectangle const& rRect,
+                               std::vector<tools::Rectangle> const& rLogicRects, Color const color);
     void DoPaint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect);
 
 public:
@@ -83,7 +85,7 @@ public:
     void SetAcceptsTab(bool bAcceptsTab) { m_bAcceptsTab = bAcceptsTab; }
 
 protected:
-    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     virtual void EditViewInvalidate(const tools::Rectangle& rRect) override { Invalidate(rRect); }
 

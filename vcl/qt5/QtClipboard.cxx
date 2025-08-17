@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -18,11 +18,15 @@
 
 #include <QtInstance.hxx>
 #include <QtTransferable.hxx>
-#include <QtTools.hxx>
 
 #include <cassert>
 #include <map>
 #include <utility>
+
+#if defined EMSCRIPTEN && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+#include <comphelper/diagnose_ex.hxx>
+#include <emscripten.h>
+#endif
 
 QtClipboard::QtClipboard(OUString aModeString, const QClipboard::Mode aMode)
     : cppu::WeakComponentImplHelper<css::datatransfer::clipboard::XSystemClipboard,
@@ -43,7 +47,8 @@ QtClipboard::QtClipboard(OUString aModeString, const QClipboard::Mode aMode)
             Qt::QueuedConnection);
 }
 
-css::uno::Reference<css::uno::XInterface> QtClipboard::create(const OUString& aModeString)
+css::uno::Reference<css::datatransfer::clipboard::XClipboard>
+QtClipboard::create(const OUString& aModeString)
 {
     static const std::map<OUString, QClipboard::Mode> aNameToClipboardMap
         = { { "CLIPBOARD", QClipboard::Clipboard }, { "PRIMARY", QClipboard::Selection } };
@@ -52,22 +57,22 @@ css::uno::Reference<css::uno::XInterface> QtClipboard::create(const OUString& aM
 
     auto iter = aNameToClipboardMap.find(aModeString);
     if (iter != aNameToClipboardMap.end() && isSupported(iter->second))
-        return cppu::getXWeak(new QtClipboard(aModeString, iter->second));
+        return new QtClipboard(aModeString, iter->second);
     SAL_WARN("vcl.qt", "Ignoring unrecognized clipboard type: '" << aModeString << "'");
-    return css::uno::Reference<css::uno::XInterface>();
+    return nullptr;
 }
 
 void QtClipboard::flushClipboard()
 {
-    auto* pSalInst(GetQtInstance());
     SolarMutexGuard g;
-    pSalInst->RunInMainThread([this]() {
+    QtInstance& rQtInstance = GetQtInstance();
+    rQtInstance.RunInMainThread([this]() {
         if (!isOwner(m_aClipboardMode))
             return;
 
         QClipboard* pClipboard = QApplication::clipboard();
         const QtMimeData* pQtMimeData
-            = dynamic_cast<const QtMimeData*>(pClipboard->mimeData(m_aClipboardMode));
+            = qobject_cast<const QtMimeData*>(pClipboard->mimeData(m_aClipboardMode));
         assert(pQtMimeData);
 
         QMimeData* pMimeCopy = nullptr;
@@ -103,7 +108,7 @@ css::uno::Reference<css::datatransfer::XTransferable> QtClipboard::getContents()
     {
         const auto* pTrans = dynamic_cast<QtClipboardTransferable*>(m_aContents.get());
         assert(pTrans);
-        if (pTrans && pTrans->mimeData() == pMimeData)
+        if (pTrans && pTrans->hasMimeData(pMimeData))
             return m_aContents;
     }
 
@@ -145,6 +150,41 @@ void QtClipboard::setContents(
 
     aGuard.clear();
 
+#if defined EMSCRIPTEN && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    // At least Qt5, in QWasmEventTranslator::processKeyboard in qbase
+    // src/plugins/platforms/wasm/qwasmeventtranslator.cpp, listens for Ctrl-C and initiates a
+    // browser Clipboard API writeText call, but (a) calls it before LO has sent the to-be-copied
+    // data to Qt (so calls it with old data), and (b) only works for Ctrl-C, not for Ctrl-X nor for
+    // cut/copy operations not initiated via the keyboard; so always do a writeText call here, and
+    // hope that the browser gives permission:
+    OUString textContents;
+    css::datatransfer::DataFlavor flav{ u"text/plain;charset=utf-16"_ustr, u""_ustr,
+                                        cppu::UnoType<OUString>::get() };
+    if (xTrans->isDataFlavorSupported(flav))
+    {
+        try
+        {
+            xTrans->getTransferData(flav) >>= textContents;
+        }
+        catch (css::io::IOException)
+        {
+            TOOLS_WARN_EXCEPTION("vcl.qt", "");
+        }
+    }
+    MAIN_THREAD_EM_ASM(
+        {
+            // clang-format off
+            try {
+                //TODO: Support embedded NULs:
+                navigator.clipboard.writeText(Module.UTF16ToString($0, 2 * $1));
+            } catch (e) {
+                console.warn("clipboard.writeText failed:", e);
+            }
+            // clang-format on
+        },
+        textContents.getStr(), textContents.getLength());
+#endif
+
     // we have to notify only an owner change, since handleChanged can't
     // access the previous owner anymore and can just handle lost ownership.
     if (xOldOwner.is() && xOldOwner != xClipboardOwner)
@@ -158,14 +198,31 @@ void QtClipboard::handleChanged(QClipboard::Mode aMode)
 
     osl::ClearableMutexGuard aGuard(m_aMutex);
 
-    // QtWayland will send a second change notification (seemingly without any
-    // trigger). And any C'n'P operation in the Qt file picker emits a signal,
-    // with LO still holding the clipboard ownership, but internally having lost
-    // it. So ignore any signal, which still delivers the internal QtMimeData
-    // as the clipboard content and is no "advertised" change.
-    if (!m_bOwnClipboardChange && isOwner(aMode)
-        && dynamic_cast<const QtMimeData*>(QApplication::clipboard()->mimeData(aMode)))
-        return;
+    if (!m_bOwnClipboardChange && isOwner(aMode))
+    {
+        auto const mimeData = QApplication::clipboard()->mimeData(aMode);
+
+        // QtWayland will send a second change notification (seemingly without any
+        // trigger). And any C'n'P operation in the Qt file picker emits a signal,
+        // with LO still holding the clipboard ownership, but internally having lost
+        // it. So ignore any signal, which still delivers the internal QtMimeData
+        // as the clipboard content and is no "advertised" change.
+        if (qobject_cast<const QtMimeData*>(mimeData))
+            return;
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0) && defined EMSCRIPTEN
+        // At least for the Qt5 Wasm backend, copying text from LO and then pasting it back into LO
+        // will, for whatever reason, call here with an empty text/plain mimeData; while that
+        // doesn't seem to be an issue at least with the current upstream Qt6 dev branch (again, for
+        // whatever reason), for at least our Qt 5.15.2+wasm branch the below m_aContents.clear()
+        // would make us lose the text just copied from LO into the clipboard and thus make us paste
+        // an empty text into LO, so, as a hack, filter out this unhelpful event here:
+        if (mimeData != nullptr && mimeData->hasText() && mimeData->text().isEmpty())
+        {
+            return;
+        }
+#endif
+    }
 
     css::uno::Reference<css::datatransfer::clipboard::XClipboardOwner> xOldOwner(m_aOwner);
     css::uno::Reference<css::datatransfer::XTransferable> xOldContents(m_aContents);
@@ -189,11 +246,14 @@ void QtClipboard::handleChanged(QClipboard::Mode aMode)
         listener->changedContents(aEv);
 }
 
-OUString QtClipboard::getImplementationName() { return "com.sun.star.datatransfer.QtClipboard"; }
+OUString QtClipboard::getImplementationName()
+{
+    return u"com.sun.star.datatransfer.QtClipboard"_ustr;
+}
 
 css::uno::Sequence<OUString> QtClipboard::getSupportedServiceNames()
 {
-    return { "com.sun.star.datatransfer.clipboard.SystemClipboard" };
+    return { u"com.sun.star.datatransfer.clipboard.SystemClipboard"_ustr };
 }
 
 sal_Bool QtClipboard::supportsService(const OUString& ServiceName)
@@ -251,9 +311,24 @@ bool QtClipboard::isOwner(const QClipboard::Mode aMode)
             return pClipboard->ownsFindBuffer();
 
         case QClipboard::Clipboard:
-            return pClipboard->ownsClipboard();
+            if (pClipboard->ownsClipboard())
+            {
+                return true;
+            }
+#if defined EMSCRIPTEN
+            // QWasmClipboard::ownsMode (in qtbase/src/plugins/platforms/wasm/qwasmclipboard.cpp,
+            // which is the actual implementation of the above ownsClipboard call) unconditionally
+            // returns false, so as a hack use "m_aContents is a LO-internal XTransferable type" as
+            // a poor approximation of "LO owns the clipboard":
+            if (m_aContents.is()
+                && dynamic_cast<QtClipboardTransferable*>(m_aContents.get()) == nullptr)
+            {
+                return true;
+            }
+#endif
+            return false;
     }
     return false;
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

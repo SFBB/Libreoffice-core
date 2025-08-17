@@ -15,24 +15,17 @@ $(eval $(call gb_Module_add_targets,i18npool,\
 	CustomTarget_indexentry \
 	CustomTarget_localedata \
 	CustomTarget_textconversion \
-	Library_collator_data \
-	$(if $(filter-out iOS ANDROID,$(OS)), \
-		Library_dict_ja \
-		Library_dict_zh) \
 	Library_i18npool \
 	Library_i18nsearch \
-	Library_index_data \
 	Library_localedata_en \
 	Library_localedata_es \
 	Library_localedata_euro \
 	Library_localedata_others \
-	Library_textconv_dict \
 ))
 
 $(eval $(call gb_Module_add_targets_for_build,i18npool,\
 	Executable_gencoll_rule \
 	Executable_genconv_dict \
-	Executable_gendict \
 	Executable_genindex_data \
 	Executable_saxparser \
 	Rdb_saxparser \

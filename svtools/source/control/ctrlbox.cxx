@@ -22,6 +22,7 @@
 
 #include <comphelper/lok.hxx>
 #include <i18nutil/unicode.hxx>
+#include <o3tl/test_info.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <tools/stream.hxx>
 #include <vcl/customweld.hxx>
@@ -463,7 +464,7 @@ void FontNameBox::LoadMRUEntries( const OUString& aFontMRUEntriesFile )
         return;
     }
 
-    OString aLine;
+    OStringBuffer aLine;
     aStream.ReadLine( aLine );
     OUString aEntries = OStringToOUString(aLine,
         RTL_TEXTENCODING_UTF8);
@@ -472,7 +473,7 @@ void FontNameBox::LoadMRUEntries( const OUString& aFontMRUEntriesFile )
 
 void FontNameBox::InitFontMRUEntriesFile()
 {
-    OUString sUserConfigDir("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE( "bootstrap") "::UserInstallation}");
+    OUString sUserConfigDir(u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE( "bootstrap") "::UserInstallation}"_ustr);
     rtl::Bootstrap::expandMacros(sUserConfigDir);
 
     maFontMRUEntriesFile = sUserConfigDir;
@@ -528,11 +529,9 @@ void FontNameBox::Fill( const FontList* pList )
         set_active_or_entry_text(aOldText);
 }
 
-static bool IsRunningUnitTest() { return getenv("LO_TESTNAME") != nullptr; }
-
 void FontNameBox::EnableWYSIWYG(bool bEnable)
 {
-    if (IsRunningUnitTest())
+    if (o3tl::IsRunningUnitTest())
         return;
     if (mbWYSIWYG == bEnable)
         return;
@@ -900,6 +899,7 @@ void FontNameBox::set_active_or_entry_text(const OUString& rText)
 
 FontStyleBox::FontStyleBox(std::unique_ptr<weld::ComboBox> p)
     : m_xComboBox(std::move(p))
+    , m_aLastStyle(m_xComboBox->get_active_text())
 {
     //Use the standard texts to get an optimal size and stick to that size.
     //That should stop the character dialog dancing around.
@@ -912,12 +912,19 @@ FontStyleBox::FontStyleBox(std::unique_ptr<weld::ComboBox> p)
     nMaxLen = std::max(nMaxLen, m_xComboBox->get_pixel_size(SvtResId(STR_SVT_STYLE_BLACK)).Width());
     nMaxLen = std::max(nMaxLen, m_xComboBox->get_pixel_size(SvtResId(STR_SVT_STYLE_BLACK_ITALIC)).Width());
     m_xComboBox->set_entry_width_chars(std::ceil(nMaxLen / m_xComboBox->get_approximate_digit_width()));
+    m_xComboBox->connect_changed(LINK(this, FontStyleBox, ChangeHdl));
+}
+
+IMPL_LINK(FontStyleBox, ChangeHdl, weld::ComboBox&, rComboBox, void)
+{
+    // update m_aLastStyle to whatever is explicitly selected by the user
+    m_aLastStyle = rComboBox.get_active_text();
+    m_aChangedLink.Call(rComboBox);
 }
 
 void FontStyleBox::Fill( std::u16string_view rName, const FontList* pList )
 {
     OUString aOldText = m_xComboBox->get_active_text();
-    int nPos = m_xComboBox->get_active();
 
     m_xComboBox->freeze();
     m_xComboBox->clear();
@@ -940,9 +947,9 @@ void FontStyleBox::Fill( std::u16string_view rName, const FontList* pList )
         {
             aFontMetric = FontList::GetFontMetric( hFontMetric );
 
-            FontWeight  eWeight = aFontMetric.GetWeight();
-            FontItalic  eItalic = aFontMetric.GetItalic();
-            FontWidth   eWidth = aFontMetric.GetWidthType();
+            FontWeight  eWeight = aFontMetric.GetWeightMaybeAskConfig();
+            FontItalic  eItalic = aFontMetric.GetItalicMaybeAskConfig();
+            FontWidth   eWidth = aFontMetric.GetWidthTypeMaybeAskConfig();
             // Only if the attributes are different, we insert the
             // Font to avoid double Entries in different languages
             if ( (eWeight != eLastWeight) || (eItalic != eLastItalic) ||
@@ -1034,19 +1041,32 @@ void FontStyleBox::Fill( std::u16string_view rName, const FontList* pList )
 
     m_xComboBox->thaw();
 
+    // tdf#162113 prefer restoring the last explicitly set
+    // style if that is possible
+    if (!m_aLastStyle.isEmpty())
+    {
+        int nFound = m_xComboBox->find_text(m_aLastStyle);
+        if (nFound != -1)
+        {
+            m_xComboBox->set_active(nFound);
+            return;
+        }
+    }
+
+    // otherwise, restore the style that was last selected
+    // if that is possible
     if (!aOldText.isEmpty())
     {
         int nFound = m_xComboBox->find_text(aOldText);
         if (nFound != -1)
-            m_xComboBox->set_active(nFound);
-        else
         {
-            if (nPos >= m_xComboBox->get_count())
-                m_xComboBox->set_active(0);
-            else
-                m_xComboBox->set_active(nPos);
+            m_xComboBox->set_active(nFound);
+            return;
         }
     }
+
+    // otherwise, just pick something
+    m_xComboBox->set_active(0);
 }
 
 FontSizeBox::FontSizeBox(std::unique_ptr<weld::ComboBox> p)
@@ -1411,7 +1431,7 @@ namespace
 
 void SvtLineListBox::ImpGetLine( tools::Long nLine1, tools::Long nLine2, tools::Long nDistance,
                             Color aColor1, Color aColor2, Color aColorDist,
-                            SvxBorderLineStyle nStyle, BitmapEx& rBmp )
+                            SvxBorderLineStyle nStyle, Bitmap& rBmp )
 {
     Size aSize(getPreviewSize(*m_xControl));
 
@@ -1462,15 +1482,15 @@ void SvtLineListBox::ImpGetLine( tools::Long nLine1, tools::Long nLine2, tools::
         aVirDev->SetFillColor( aColor2 );
         svtools::DrawLine( *aVirDev, basegfx::B2DPoint( 0, y2 ), basegfx::B2DPoint( aSize.Width(), y2 ), n2, SvxBorderLineStyle::SOLID );
     }
-    rBmp = aVirDev->GetBitmapEx( Point(), Size( aSize.Width(), n1+nDist+n2 ) );
+    rBmp = aVirDev->GetBitmap( Point(), Size( aSize.Width(), n1+nDist+n2 ) );
 }
 
 SvtLineListBox::SvtLineListBox(std::unique_ptr<weld::MenuButton> pControl)
-    : WeldToolbarPopup(css::uno::Reference<css::frame::XFrame>(), pControl.get(), "svt/ui/linewindow.ui", "line_popup_window")
+    : WeldToolbarPopup(css::uno::Reference<css::frame::XFrame>(), pControl.get(), u"svt/ui/linewindow.ui"_ustr, u"line_popup_window"_ustr)
     , m_xControl(std::move(pControl))
-    , m_xNoneButton(m_xBuilder->weld_button("none_line_button"))
+    , m_xNoneButton(m_xBuilder->weld_button(u"none_line_button"_ustr))
     , m_xLineSet(new ValueSet(nullptr))
-    , m_xLineSetWin(new weld::CustomWeld(*m_xBuilder, "lineset", *m_xLineSet))
+    , m_xLineSetWin(new weld::CustomWeld(*m_xBuilder, u"lineset"_ustr, *m_xLineSet))
     , m_nWidth( 5 )
     , aVirDev(VclPtr<VirtualDevice>::Create())
     , aColor(COL_BLACK)
@@ -1490,7 +1510,7 @@ SvtLineListBox::SvtLineListBox(std::unique_ptr<weld::MenuButton> pControl)
     // lock size to these maxes height/width so it doesn't jump around in size
     m_xControl->set_label(GetLineStyleName(SvxBorderLineStyle::NONE));
     Size aNonePrefSize = m_xControl->get_preferred_size();
-    m_xControl->set_label("");
+    m_xControl->set_label(u""_ustr);
     aVirDev->SetOutputSizePixel(getPreviewSize(*m_xControl));
     m_xControl->set_image(aVirDev);
     Size aSolidPrefSize = m_xControl->get_preferred_size();
@@ -1580,7 +1600,7 @@ void SvtLineListBox::UpdateEntries()
     while ( n < nCount )
     {
         auto& pData = m_vLineList[ n ];
-        BitmapEx aBmp;
+        Bitmap aBmp;
         ImpGetLine( pData->GetLine1ForWidth( m_nWidth ),
                 pData->GetLine2ForWidth( m_nWidth ),
                 pData->GetDistForWidth( m_nWidth ),
@@ -1626,7 +1646,7 @@ void SvtLineListBox::UpdatePreview()
     else
     {
         Image aImage(m_xLineSet->GetItemImage(m_xLineSet->GetSelectedItemId()));
-        m_xControl->set_label("");
+        m_xControl->set_label(u""_ustr);
         const auto nPos = (aVirDev->GetOutputSizePixel().Height() - aImage.GetSizePixel().Height()) / 2;
         aVirDev->Push(vcl::PushFlags::MAPMODE);
         aVirDev->SetMapMode(MapMode(MapUnit::MapPixel));
@@ -1642,9 +1662,9 @@ void SvtLineListBox::UpdatePreview()
 SvtCalendarBox::SvtCalendarBox(std::unique_ptr<weld::MenuButton> pControl, bool bUseLabel)
     : m_bUseLabel(bUseLabel)
     , m_xControl(std::move(pControl))
-    , m_xBuilder(Application::CreateBuilder(m_xControl.get(), "svt/ui/datewindow.ui"))
-    , m_xTopLevel(m_xBuilder->weld_popover("date_popup_window"))
-    , m_xCalendar(m_xBuilder->weld_calendar("date_picker"))
+    , m_xBuilder(Application::CreateBuilder(m_xControl.get(), u"svt/ui/datewindow.ui"_ustr))
+    , m_xTopLevel(m_xBuilder->weld_popover(u"date_popup_window"_ustr))
+    , m_xCalendar(m_xBuilder->weld_calendar(u"date_picker"_ustr))
 {
     m_xControl->set_popover(m_xTopLevel.get());
     m_xCalendar->connect_selected(LINK(this, SvtCalendarBox, SelectHdl));

@@ -38,18 +38,22 @@
 #include <comphelper/sequence.hxx>
 #include <optsolver.hxx>
 #include <table.hxx>
+#include <TableFillingAndNavigationTools.hxx>
+#include <tabvwsh.hxx>
 
+#include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/sheet/SolverConstraint.hpp>
 #include <com/sun/star/sheet/SolverConstraintOperator.hpp>
 #include <com/sun/star/sheet/XSolverDescription.hpp>
 #include <com/sun/star/sheet/XSolver.hpp>
+#include <com/sun/star/sheet/SensitivityReport.hpp>
 
 using namespace com::sun::star;
 
 ScSolverProgressDialog::ScSolverProgressDialog(weld::Window* pParent)
-    : GenericDialogController(pParent, "modules/scalc/ui/solverprogressdialog.ui",
-                              "SolverProgressDialog")
-    , m_xFtTime(m_xBuilder->weld_label("progress"))
+    : GenericDialogController(pParent, u"modules/scalc/ui/solverprogressdialog.ui"_ustr,
+                              u"SolverProgressDialog"_ustr)
+    , m_xFtTime(m_xBuilder->weld_label(u"progress"_ustr))
 {
 }
 
@@ -70,8 +74,8 @@ void ScSolverProgressDialog::SetTimeLimit( sal_Int32 nSeconds )
 }
 
 ScSolverNoSolutionDialog::ScSolverNoSolutionDialog(weld::Window* pParent, const OUString& rErrorText)
-    : GenericDialogController(pParent, "modules/scalc/ui/nosolutiondialog.ui", "NoSolutionDialog")
-    , m_xFtErrorText(m_xBuilder->weld_label("error"))
+    : GenericDialogController(pParent, u"modules/scalc/ui/nosolutiondialog.ui"_ustr, u"NoSolutionDialog"_ustr)
+    , m_xFtErrorText(m_xBuilder->weld_label(u"error"_ustr))
 {
     m_xFtErrorText->set_label(rErrorText);
 }
@@ -81,10 +85,10 @@ ScSolverNoSolutionDialog::~ScSolverNoSolutionDialog()
 }
 
 ScSolverSuccessDialog::ScSolverSuccessDialog(weld::Window* pParent, std::u16string_view rSolution)
-    : GenericDialogController(pParent, "modules/scalc/ui/solversuccessdialog.ui", "SolverSuccessDialog")
-    , m_xFtResult(m_xBuilder->weld_label("result"))
-    , m_xBtnOk(m_xBuilder->weld_button("ok"))
-    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
+    : GenericDialogController(pParent, u"modules/scalc/ui/solversuccessdialog.ui"_ustr, u"SolverSuccessDialog"_ustr)
+    , m_xFtResult(m_xBuilder->weld_label(u"result"_ustr))
+    , m_xBtnOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xBtnCancel(m_xBuilder->weld_button(u"cancel"_ustr))
 {
     m_xBtnOk->connect_clicked(LINK(this, ScSolverSuccessDialog, ClickHdl));
     m_xBtnCancel->connect_clicked(LINK(this, ScSolverSuccessDialog, ClickHdl));
@@ -107,8 +111,8 @@ IMPL_LINK(ScSolverSuccessDialog, ClickHdl, weld::Button&, rBtn, void)
 ScCursorRefEdit::ScCursorRefEdit(std::unique_ptr<weld::Entry> xControl)
     : formula::RefEdit(std::move(xControl))
 {
-    xEntry->connect_key_press(Link<const KeyEvent&, bool>()); //acknowledge we first remove the old one
-    xEntry->connect_key_press(LINK(this, ScCursorRefEdit, KeyInputHdl));
+    mxEntry->connect_key_press(Link<const KeyEvent&, bool>()); //acknowledge we first remove the old one
+    mxEntry->connect_key_press(LINK(this, ScCursorRefEdit, KeyInputHdl));
 }
 
 void ScCursorRefEdit::SetCursorLinks( const Link<ScCursorRefEdit&,void>& rUp, const Link<ScCursorRefEdit&,void>& rDown )
@@ -134,61 +138,61 @@ IMPL_LINK(ScCursorRefEdit, KeyInputHdl, const KeyEvent&, rKEvt, bool)
 }
 
 ScOptSolverDlg::ScOptSolverDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent,
-                               ScDocShell* pDocSh, const ScAddress& aCursorPos)
-    : ScAnyRefDlgController(pB, pCW, pParent, "modules/scalc/ui/solverdlg.ui", "SolverDialog")
+                               ScDocShell& rDocSh, const ScAddress& aCursorPos)
+    : ScAnyRefDlgController(pB, pCW, pParent, u"modules/scalc/ui/solverdlg.ui"_ustr, u"SolverDialog"_ustr)
     , maInputError(ScResId(STR_INVALIDINPUT))
     , maConditionError(ScResId(STR_INVALIDCONDITION))
 
-    , mpDocShell(pDocSh)
-    , mrDoc(pDocSh->GetDocument())
+    , mrDocShell(rDocSh)
+    , mrDoc(rDocSh.GetDocument())
     , mnCurTab(aCursorPos.Tab())
     , mbDlgLostFocus(false)
     , nScrollPos(0)
     , mpEdActive(nullptr)
-    , m_xFtObjectiveCell(m_xBuilder->weld_label("targetlabel"))
-    , m_xEdObjectiveCell(new formula::RefEdit(m_xBuilder->weld_entry("targetedit")))
-    , m_xRBObjectiveCell(new formula::RefButton(m_xBuilder->weld_button("targetbutton")))
-    , m_xRbMax(m_xBuilder->weld_radio_button("max"))
-    , m_xRbMin(m_xBuilder->weld_radio_button("min"))
-    , m_xRbValue(m_xBuilder->weld_radio_button("value"))
-    , m_xEdTargetValue(new formula::RefEdit(m_xBuilder->weld_entry("valueedit")))
-    , m_xRBTargetValue(new formula::RefButton(m_xBuilder->weld_button("valuebutton")))
-    , m_xFtVariableCells(m_xBuilder->weld_label("changelabel"))
-    , m_xEdVariableCells(new formula::RefEdit(m_xBuilder->weld_entry("changeedit")))
-    , m_xRBVariableCells(new formula::RefButton(m_xBuilder->weld_button("changebutton")))
-    , m_xFtCellRef(m_xBuilder->weld_label("cellreflabel"))
-    , m_xEdLeft1(new ScCursorRefEdit(m_xBuilder->weld_entry("ref1edit")))
-    , m_xRBLeft1(new formula::RefButton(m_xBuilder->weld_button("ref1button")))
-    , m_xLbOp1(m_xBuilder->weld_combo_box("op1list"))
-    , m_xFtConstraint(m_xBuilder->weld_label("constraintlabel"))
-    , m_xEdRight1(new ScCursorRefEdit(m_xBuilder->weld_entry("val1edit")))
-    , m_xRBRight1(new formula::RefButton(m_xBuilder->weld_button("val1button")))
-    , m_xBtnDel1(m_xBuilder->weld_button("del1"))
-    , m_xEdLeft2(new ScCursorRefEdit(m_xBuilder->weld_entry("ref2edit")))
-    , m_xRBLeft2(new formula::RefButton(m_xBuilder->weld_button("ref2button")))
-    , m_xLbOp2(m_xBuilder->weld_combo_box("op2list"))
-    , m_xEdRight2(new ScCursorRefEdit(m_xBuilder->weld_entry("val2edit")))
-    , m_xRBRight2(new formula::RefButton(m_xBuilder->weld_button("val2button")))
-    , m_xBtnDel2(m_xBuilder->weld_button("del2"))
-    , m_xEdLeft3(new ScCursorRefEdit(m_xBuilder->weld_entry("ref3edit")))
-    , m_xRBLeft3(new formula::RefButton(m_xBuilder->weld_button("ref3button")))
-    , m_xLbOp3(m_xBuilder->weld_combo_box("op3list"))
-    , m_xEdRight3(new ScCursorRefEdit(m_xBuilder->weld_entry("val3edit")))
-    , m_xRBRight3(new formula::RefButton(m_xBuilder->weld_button("val3button")))
-    , m_xBtnDel3(m_xBuilder->weld_button("del3"))
-    , m_xEdLeft4(new ScCursorRefEdit(m_xBuilder->weld_entry("ref4edit")))
-    , m_xRBLeft4(new formula::RefButton(m_xBuilder->weld_button("ref4button")))
-    , m_xLbOp4(m_xBuilder->weld_combo_box("op4list"))
-    , m_xEdRight4(new ScCursorRefEdit(m_xBuilder->weld_entry("val4edit")))
-    , m_xRBRight4(new formula::RefButton(m_xBuilder->weld_button("val4button")))
-    , m_xBtnDel4(m_xBuilder->weld_button("del4"))
-    , m_xScrollBar(m_xBuilder->weld_scrolled_window("scrollbar", true))
-    , m_xBtnOpt(m_xBuilder->weld_button("options"))
-    , m_xBtnClose(m_xBuilder->weld_button("close"))
-    , m_xBtnSolve(m_xBuilder->weld_button("ok"))
-    , m_xBtnResetAll(m_xBuilder->weld_button("resetall"))
-    , m_xResultFT(m_xBuilder->weld_label("result"))
-    , m_xContents(m_xBuilder->weld_widget("grid"))
+    , m_xFtObjectiveCell(m_xBuilder->weld_label(u"targetlabel"_ustr))
+    , m_xEdObjectiveCell(new formula::RefEdit(m_xBuilder->weld_entry(u"targetedit"_ustr)))
+    , m_xRBObjectiveCell(new formula::RefButton(m_xBuilder->weld_button(u"targetbutton"_ustr)))
+    , m_xRbMax(m_xBuilder->weld_radio_button(u"max"_ustr))
+    , m_xRbMin(m_xBuilder->weld_radio_button(u"min"_ustr))
+    , m_xRbValue(m_xBuilder->weld_radio_button(u"value"_ustr))
+    , m_xEdTargetValue(new formula::RefEdit(m_xBuilder->weld_entry(u"valueedit"_ustr)))
+    , m_xRBTargetValue(new formula::RefButton(m_xBuilder->weld_button(u"valuebutton"_ustr)))
+    , m_xFtVariableCells(m_xBuilder->weld_label(u"changelabel"_ustr))
+    , m_xEdVariableCells(new formula::RefEdit(m_xBuilder->weld_entry(u"changeedit"_ustr)))
+    , m_xRBVariableCells(new formula::RefButton(m_xBuilder->weld_button(u"changebutton"_ustr)))
+    , m_xFtCellRef(m_xBuilder->weld_label(u"cellreflabel"_ustr))
+    , m_xEdLeft1(new ScCursorRefEdit(m_xBuilder->weld_entry(u"ref1edit"_ustr)))
+    , m_xRBLeft1(new formula::RefButton(m_xBuilder->weld_button(u"ref1button"_ustr)))
+    , m_xLbOp1(m_xBuilder->weld_combo_box(u"op1list"_ustr))
+    , m_xFtConstraint(m_xBuilder->weld_label(u"constraintlabel"_ustr))
+    , m_xEdRight1(new ScCursorRefEdit(m_xBuilder->weld_entry(u"val1edit"_ustr)))
+    , m_xRBRight1(new formula::RefButton(m_xBuilder->weld_button(u"val1button"_ustr)))
+    , m_xBtnDel1(m_xBuilder->weld_button(u"del1"_ustr))
+    , m_xEdLeft2(new ScCursorRefEdit(m_xBuilder->weld_entry(u"ref2edit"_ustr)))
+    , m_xRBLeft2(new formula::RefButton(m_xBuilder->weld_button(u"ref2button"_ustr)))
+    , m_xLbOp2(m_xBuilder->weld_combo_box(u"op2list"_ustr))
+    , m_xEdRight2(new ScCursorRefEdit(m_xBuilder->weld_entry(u"val2edit"_ustr)))
+    , m_xRBRight2(new formula::RefButton(m_xBuilder->weld_button(u"val2button"_ustr)))
+    , m_xBtnDel2(m_xBuilder->weld_button(u"del2"_ustr))
+    , m_xEdLeft3(new ScCursorRefEdit(m_xBuilder->weld_entry(u"ref3edit"_ustr)))
+    , m_xRBLeft3(new formula::RefButton(m_xBuilder->weld_button(u"ref3button"_ustr)))
+    , m_xLbOp3(m_xBuilder->weld_combo_box(u"op3list"_ustr))
+    , m_xEdRight3(new ScCursorRefEdit(m_xBuilder->weld_entry(u"val3edit"_ustr)))
+    , m_xRBRight3(new formula::RefButton(m_xBuilder->weld_button(u"val3button"_ustr)))
+    , m_xBtnDel3(m_xBuilder->weld_button(u"del3"_ustr))
+    , m_xEdLeft4(new ScCursorRefEdit(m_xBuilder->weld_entry(u"ref4edit"_ustr)))
+    , m_xRBLeft4(new formula::RefButton(m_xBuilder->weld_button(u"ref4button"_ustr)))
+    , m_xLbOp4(m_xBuilder->weld_combo_box(u"op4list"_ustr))
+    , m_xEdRight4(new ScCursorRefEdit(m_xBuilder->weld_entry(u"val4edit"_ustr)))
+    , m_xRBRight4(new formula::RefButton(m_xBuilder->weld_button(u"val4button"_ustr)))
+    , m_xBtnDel4(m_xBuilder->weld_button(u"del4"_ustr))
+    , m_xScrollBar(m_xBuilder->weld_scrolled_window(u"scrollbar"_ustr, true))
+    , m_xBtnOpt(m_xBuilder->weld_button(u"options"_ustr))
+    , m_xBtnClose(m_xBuilder->weld_button(u"close"_ustr))
+    , m_xBtnSolve(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xBtnResetAll(m_xBuilder->weld_button(u"resetall"_ustr))
+    , m_xResultFT(m_xBuilder->weld_label(u"result"_ustr))
+    , m_xContents(m_xBuilder->weld_widget(u"grid"_ustr))
     , m_pSolverSettings(mrDoc.FetchTable(mnCurTab)->GetSolverSettings())
 {
     m_xEdObjectiveCell->SetReferences(this, m_xFtObjectiveCell.get());
@@ -252,7 +256,7 @@ ScOptSolverDlg::~ScOptSolverDlg()
 void ScOptSolverDlg::Init(const ScAddress& rCursorPos)
 {
     uno::Reference<frame::XFrame> xFrame = GetBindings().GetActiveFrame();
-    auto xDelNm = vcl::CommandInfoProvider::GetXGraphicForCommand(".uno:DeleteRows", xFrame);
+    auto xDelNm = vcl::CommandInfoProvider::GetXGraphicForCommand(u".uno:DeleteRows"_ustr, xFrame);
     for (weld::Button* pButton : mpDelButton)
         pButton->set_image(xDelNm);
 
@@ -312,7 +316,7 @@ void ScOptSolverDlg::Init(const ScAddress& rCursorPos)
 
     Size aSize(m_xContents->get_preferred_size());
     m_xContents->set_size_request(aSize.Width(), aSize.Height());
-    m_xScrollBar->connect_vadjustment_changed( LINK( this, ScOptSolverDlg, ScrollHdl ) );
+    m_xScrollBar->connect_vadjustment_value_changed( LINK( this, ScOptSolverDlg, ScrollHdl ) );
 
     m_xScrollBar->vadjustment_set_page_increment( EDIT_ROW_COUNT );
     m_xScrollBar->vadjustment_set_page_size( EDIT_ROW_COUNT );
@@ -353,7 +357,7 @@ void ScOptSolverDlg::ReadConditions()
             m_aConditions.resize( nVecPos + 1 );
 
         if ( nVecPos < static_cast<tools::Long>(m_aConditions.size()) )
-            m_aConditions[nVecPos] = aRowEntry;
+            m_aConditions[nVecPos] = std::move(aRowEntry);
 
         // remove default entries at the end
         size_t nSize = m_aConditions.size();
@@ -381,8 +385,8 @@ void ScOptSolverDlg::ShowConditions()
     // allow to scroll one page behind the visible or stored rows
     tools::Long nVisible = nScrollPos + EDIT_ROW_COUNT;
     tools::Long nMax = std::max( nVisible, static_cast<tools::Long>(m_aConditions.size()) );
-    m_xScrollBar->vadjustment_configure(nScrollPos, 0, nMax + EDIT_ROW_COUNT, 1,
-                                        EDIT_ROW_COUNT - 1, EDIT_ROW_COUNT);
+    m_xScrollBar->vadjustment_configure(nScrollPos, nMax + EDIT_ROW_COUNT, 1, EDIT_ROW_COUNT - 1,
+                                        EDIT_ROW_COUNT);
 
     EnableButtons();
 }
@@ -508,34 +512,93 @@ void ScOptSolverDlg::LoadSolverSettings()
     m_pSolverSettings->GetEngineOptions(maProperties);
 }
 
-// Set solver settings and save them
+// Set solver settings and save them to the file
+// But first, checks if the settings have changed
 void ScOptSolverDlg::SaveSolverSettings()
 {
-    m_pSolverSettings->SetParameter(sc::SP_OBJ_CELL, m_xEdObjectiveCell->GetText());
-    m_pSolverSettings->SetParameter(sc::SP_OBJ_VAL, m_xEdTargetValue->GetText());
-    m_pSolverSettings->SetParameter(sc::SP_VAR_CELLS, m_xEdVariableCells->GetText());
+    // tdf#160104 If file does not have a solver model and the Solver dialog is set to its
+    // default initial values (maximize is selected; no variable cells; no target value
+    // and no constraints defined) then nothing needs to be saved
+    if (!m_pSolverSettings->TabHasSolverModel() && m_xRbMax->get_active()
+        && m_xEdTargetValue->GetText().isEmpty() && m_xEdVariableCells->GetText().isEmpty()
+        && m_aConditions.size() == 0)
+        return;
 
-    // Objective type
-    if (m_xRbMax->get_active())
-        m_pSolverSettings->SetObjectiveType(sc::OT_MAXIMIZE);
-    else if (m_xRbMin->get_active())
-        m_pSolverSettings->SetObjectiveType(sc::OT_MINIMIZE);
+    // The current tab has a model; now we need to determined if it has been modified
+    bool bModified = false;
+
+    // Check objective cell, objective value and variable cells
+    if (m_pSolverSettings->GetParameter(sc::SP_OBJ_CELL) != m_xEdObjectiveCell->GetText()
+        || m_pSolverSettings->GetParameter(sc::SP_OBJ_VAL) != m_xEdTargetValue->GetText()
+        || m_pSolverSettings->GetParameter(sc::SP_VAR_CELLS) != m_xEdVariableCells->GetText())
+        bModified = true;
+
+    // Check selected objective type and save it if changed
+    sc::ObjectiveType aType = sc::OT_MAXIMIZE;
+    if (m_xRbMin->get_active())
+        aType = sc::OT_MINIMIZE;
     else if (m_xRbValue->get_active())
-        m_pSolverSettings->SetObjectiveType(sc::OT_VALUE);
+        aType = sc::OT_VALUE;
 
-    // Model constraints
-    m_pSolverSettings->SetConstraints(m_aConditions);
+    if (m_pSolverSettings->GetObjectiveType() != aType)
+        bModified = true;
 
-    // Solver engine name
-    m_pSolverSettings->SetParameter(sc::SP_LO_ENGINE, maEngine);
+    // Check if model constraints changed
+    std::vector<sc::ModelConstraint> vCurConditions = m_pSolverSettings->GetConstraints();
+    if (!bModified && vCurConditions.size() != m_aConditions.size())
+        bModified = true;
+    else
+    {
+        // Here the size of both vectors is the same
+        // Now it needs to check the contents of the constraints
+        for (size_t i = 0; i < vCurConditions.size(); i++)
+        {
+            if (vCurConditions[i].aLeftStr != m_aConditions[i].aLeftStr
+                || vCurConditions[i].nOperator != m_aConditions[i].nOperator
+                || vCurConditions[i].aRightStr != m_aConditions[i].aRightStr)
+                bModified = true;
 
-    // Solver engine options
-    m_pSolverSettings->SetEngineOptions(maProperties);
+            if (bModified)
+                break;
+        }
+    }
 
-    // Effectively save settings to file
-    m_pSolverSettings->SaveSolverSettings();
+    // Check if the solver engine name and its options have changed
+    if (m_pSolverSettings->GetParameter(sc::SP_LO_ENGINE) != maEngine)
+    {
+        bModified = true;
+    }
+    else
+    {
+        // The solver engine hasn't changed, so we need to check if engine options changed
+        // Query current engine options; here we start by creating a copy of maProperties
+        // to ensure the order is the same
+        css::uno::Sequence<css::beans::PropertyValue> vCurOptions(maProperties);
+        m_pSolverSettings->GetEngineOptions(vCurOptions);
+
+        for (sal_Int32 i = 0; i < vCurOptions.getLength(); i++)
+        {
+            if (vCurOptions[i].Value != maProperties[i].Value)
+            {
+                bModified = true;
+                break;
+            }
+        }
+    }
+
+    // Effectively save settings to file if modifications were made
+    if (bModified)
+    {
+        m_pSolverSettings->SetParameter(sc::SP_OBJ_CELL, m_xEdObjectiveCell->GetText());
+        m_pSolverSettings->SetParameter(sc::SP_OBJ_VAL, m_xEdTargetValue->GetText());
+        m_pSolverSettings->SetParameter(sc::SP_VAR_CELLS, m_xEdVariableCells->GetText());
+        m_pSolverSettings->SetObjectiveType(aType);
+        m_pSolverSettings->SetConstraints(m_aConditions);
+        m_pSolverSettings->SetParameter(sc::SP_LO_ENGINE, maEngine);
+        m_pSolverSettings->SetEngineOptions(maProperties);
+        m_pSolverSettings->SaveSolverSettings();
+    }
 }
-
 // Test if a LO engine implementation exists
 bool ScOptSolverDlg::IsEngineAvailable(std::u16string_view sEngineName)
 {
@@ -857,6 +920,14 @@ bool ScOptSolverDlg::FindTimeout( sal_Int32& rTimeout )
     return bFound;
 }
 
+OUString ScOptSolverDlg::GetCellStrAddress(css::table::CellAddress aUnoAddress)
+{
+    ScAddress aScAddr;
+    ScUnoConversion::FillScAddress(aScAddr, aUnoAddress);
+    ScRange aRange(aScAddr);
+    return aRange.Format(mrDoc, ScRefFlags::RANGE_ABS);
+}
+
 bool ScOptSolverDlg::CallSolver()       // return true -> close dialog after calling
 {
     // show progress dialog
@@ -877,7 +948,7 @@ bool ScOptSolverDlg::CallSolver()       // return true -> close dialog after cal
 
     ReadConditions();
 
-    rtl::Reference<ScModelObj> xDocument( mpDocShell->GetModel() );
+    rtl::Reference<ScModelObj> xDocument( mrDocShell.GetModel() );
 
     ScRange aObjRange;
     if ( !ParseRef( aObjRange, m_xEdObjectiveCell->GetText(), false ) )
@@ -1013,7 +1084,7 @@ bool ScOptSolverDlg::CallSolver()       // return true -> close dialog after cal
         }
 
         aConstraints.realloc( nConstrPos + 1 );
-        aConstraints.getArray()[nConstrPos++] = aConstraint;
+        aConstraints.getArray()[nConstrPos++] = std::move(aConstraint);
     }
 
     // copy old document values
@@ -1044,7 +1115,7 @@ bool ScOptSolverDlg::CallSolver()       // return true -> close dialog after cal
     uno::Reference<beans::XPropertySet> xOptProp(xSolver, uno::UNO_QUERY);
     if ( xOptProp.is() )
     {
-        for (const beans::PropertyValue& rValue : std::as_const(maProperties))
+        for (const beans::PropertyValue& rValue : maProperties)
         {
             try
             {
@@ -1057,8 +1128,20 @@ bool ScOptSolverDlg::CallSolver()       // return true -> close dialog after cal
         }
     }
 
-    xSolver->solve();
-    bool bSuccess = xSolver->getSuccess();
+    // tdf#162760 The solver engine may crash unexpectedly, so we need a try...catch here
+    bool bSuccess(false);
+    try
+    {
+        xSolver->solve();
+        bSuccess = xSolver->getSuccess();
+    }
+    catch (const uno::RuntimeException&)
+    {
+        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(),
+                                                  VclMessageType::Error, VclButtonsType::Ok,
+                                                  ScResId(STR_SOLVER_ENGINE_ERROR)));
+        xBox->run();
+    }
 
     xProgress->response(RET_CLOSE);
 
@@ -1070,15 +1153,15 @@ bool ScOptSolverDlg::CallSolver()       // return true -> close dialog after cal
         uno::Sequence<double> aSolution = xSolver->getSolution();
         if ( aSolution.getLength() == nVarCount )
         {
-            mpDocShell->LockPaint();
-            ScDocFunc &rFunc = mpDocShell->GetDocFunc();
+            mrDocShell.LockPaint();
+            ScDocFunc &rFunc = mrDocShell.GetDocFunc();
             for (nVarPos=0; nVarPos<nVarCount; ++nVarPos)
             {
                 ScAddress aCellPos;
-                ScUnoConversion::FillScAddress( aCellPos, std::as_const(aVariables)[nVarPos] );
+                ScUnoConversion::FillScAddress(aCellPos, aVariables[nVarPos]);
                 rFunc.SetValueCell(aCellPos, aSolution[nVarPos], false);
             }
-            mpDocShell->UnlockPaint();
+            mrDocShell.UnlockPaint();
         }
         //! else error?
 
@@ -1107,15 +1190,179 @@ bool ScOptSolverDlg::CallSolver()       // return true -> close dialog after cal
 
     if ( bRestore )         // restore old values
     {
-        mpDocShell->LockPaint();
-        ScDocFunc &rFunc = mpDocShell->GetDocFunc();
+        mrDocShell.LockPaint();
+        ScDocFunc &rFunc = mrDocShell.GetDocFunc();
         for (nVarPos=0; nVarPos<nVarCount; ++nVarPos)
         {
             ScAddress aCellPos;
             ScUnoConversion::FillScAddress( aCellPos, aVariables[nVarPos] );
-            rFunc.SetValueCell(aCellPos, std::as_const(aOldValues)[nVarPos], false);
+            rFunc.SetValueCell(aCellPos, aOldValues[nVarPos], false);
         }
-        mpDocShell->UnlockPaint();
+        mrDocShell.UnlockPaint();
+    }
+
+    // Generate sensitivity report if user wants it
+    uno::Reference<css::beans::XPropertySetInfo> xInfo = xOptProp->getPropertySetInfo();
+    bool bUserWantsReport = false;
+    if (xInfo->hasPropertyByName("GenSensitivityReport"))
+        xOptProp->getPropertyValue("GenSensitivityReport") >>= bUserWantsReport;
+
+    if (bSuccess && bUserWantsReport)
+    {
+        // Retrieve the sensitivity analysis report
+        css::sheet::SensitivityReport aSensitivity;
+        bool bHasReportObj = xOptProp->getPropertyValue("SensitivityReport") >>= aSensitivity;
+
+        if (bHasReportObj && aSensitivity.HasReport)
+        {
+            // Define the Tab name where the sensitivity analysis will be written to
+            OUString sNewTabName;
+            SCTAB nNewTab;
+            mrDoc.GetName(mnCurTab, sNewTabName);
+            sNewTabName += "_" + ScResId(STR_SENSITIVITY);
+            // Check if the new Tab name exists
+            if (mrDoc.GetTable(sNewTabName, nNewTab))
+            {
+                // Add numbers to the end of the Tab name to make it unique
+                SCTAB i = 1;
+                OUString aName;
+                do
+                {
+                    i++;
+                    aName = sNewTabName + "_" + OUString::number(static_cast<sal_Int32>(i));
+                }
+                while(mrDoc.GetTable(aName, nNewTab));
+                sNewTabName = aName;
+            }
+
+            // Insert new sheet to the document and start writing the report
+            ScDocFunc &rFunc = mrDocShell.GetDocFunc();
+            rFunc.InsertTable(mnCurTab + 1, sNewTabName, false, false);
+            SCTAB nReportTab;
+            if (!mrDoc.GetTable(sNewTabName, nReportTab))
+            {
+                SAL_WARN("sc", "Could not get the just inserted table!");
+                return false;
+            }
+
+            // Used to input data in the new sheet
+            ScAddress aOutputAddress(0, 0, nReportTab);
+            ScAddress::Details mAddressDetails(mrDoc, aOutputAddress);
+            AddressWalkerWriter aOutput(aOutputAddress, mrDocShell, mrDoc,
+                                        formula::FormulaGrammar::mergeToGrammar(formula::FormulaGrammar::GRAM_ENGLISH, mAddressDetails.eConv));
+            aOutput.writeBoldString(ScResId(STR_SENSITIVITY_TITLE));
+            aOutput.newLine();
+            aOutput.writeString(ScResId(STR_SOLVER_ENGINE) + " " + maEngine);
+            aOutput.newLine();
+            aOutput.newLine();
+
+            // Objective cell section
+            aOutput.writeBoldString(ScResId(STR_SENSITIVITY_OBJCELL));
+            aOutput.newLine();
+            aOutput.formatAsColumnHeader(2);
+            aOutput.writeString(ScResId(STR_SENSITIVITY_CELL));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_FINALVALUE));
+            aOutput.newLine();
+            aOutput.formatTableBottom(2);
+            aOutput.writeString(GetCellStrAddress(xSolver->getObjective()));
+            aOutput.nextColumn();
+            aOutput.writeValue(xSolver->getResultValue());
+            aOutput.newLine();
+            aOutput.newLine();
+
+            // Variable cell section
+            aOutput.writeBoldString(ScResId(STR_SENSITIVITY_VARCELLS));
+            aOutput.newLine();
+            aOutput.formatAsColumnHeader(6);
+            aOutput.writeString(ScResId(STR_SENSITIVITY_CELL));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_FINALVALUE));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_REDUCED));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_OBJCOEFF));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_DECREASE));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_INCREASE));
+            aOutput.newLine();
+
+            uno::Sequence<double> aSolution = xSolver->getSolution();
+            uno::Sequence<double> aObjCoefficients = aSensitivity.ObjCoefficients;
+            uno::Sequence<double> aObjReducedCosts = aSensitivity.ObjReducedCosts;
+            uno::Sequence<double> aObjAllowableDecreases = aSensitivity.ObjAllowableDecreases;
+            uno::Sequence<double> aObjAllowableIncreases = aSensitivity.ObjAllowableIncreases;
+            sal_Int32 nRows = aVariables.getLength();
+            for (sal_Int32 i = 0; i < nRows; i++)
+            {
+                if (i == nRows - 1)
+                    aOutput.formatTableBottom(6);
+                aOutput.writeString(GetCellStrAddress(aVariables[i]));
+                aOutput.nextColumn();
+                aOutput.writeValue(aSolution[i]);
+                aOutput.nextColumn();
+                aOutput.writeValue(aObjReducedCosts[i]);
+                aOutput.nextColumn();
+                aOutput.writeValue(aObjCoefficients[i]);
+                aOutput.nextColumn();
+                aOutput.writeValue(aObjAllowableDecreases[i]);
+                aOutput.nextColumn();
+                aOutput.writeValue(aObjAllowableIncreases[i]);
+                aOutput.newLine();
+            }
+            aOutput.newLine();
+
+            // Constraints section
+            aOutput.writeBoldString(ScResId(STR_SENSITIVITY_CONSTRAINTS));
+            aOutput.newLine();
+            aOutput.formatAsColumnHeader(6);
+            aOutput.writeString(ScResId(STR_SENSITIVITY_CELL));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_FINALVALUE));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_SHADOWPRICE));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_RHS));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_DECREASE));
+            aOutput.nextColumn();
+            aOutput.writeString(ScResId(STR_SENSITIVITY_INCREASE));
+            aOutput.newLine();
+
+            uno::Sequence<double> aConstrValues = aSensitivity.ConstrValues;
+            uno::Sequence<double> aConstrRHS = aSensitivity.ConstrRHS;
+            uno::Sequence<double> aConstrShadowPrices = aSensitivity.ConstrShadowPrices;
+            uno::Sequence<double> aConstrAllowableDecreases = aSensitivity.ConstrAllowableDecreases;
+            uno::Sequence<double> aConstrAllowableIncreases = aSensitivity.ConstrAllowableIncreases;
+            nRows = aConstraints.getLength();
+            for (sal_Int32 i = 0; i < nRows; i++)
+            {
+                if (i == nRows - 1)
+                    aOutput.formatTableBottom(6);
+                aOutput.writeString(GetCellStrAddress(aConstraints[i].Left));
+                aOutput.nextColumn();
+                aOutput.writeValue(aConstrValues[i]);
+                aOutput.nextColumn();
+                aOutput.writeValue(aConstrShadowPrices[i]);
+                aOutput.nextColumn();
+                aOutput.writeValue(aConstrRHS[i]);
+                aOutput.nextColumn();
+                aOutput.writeValue(aConstrAllowableDecreases[i]);
+                aOutput.nextColumn();
+                aOutput.writeValue(aConstrAllowableIncreases[i]);
+                aOutput.newLine();
+            }
+
+            // Disable grid lines in the sensitivity report
+            if (ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell())
+            {
+                ScViewData& rData = pViewSh->GetViewData();
+                rData.SetTabNo(nReportTab);
+                rData.SetShowGrid(false);
+                rData.SetTabNo(mnCurTab);
+            }
+        }
     }
 
     return bClose;

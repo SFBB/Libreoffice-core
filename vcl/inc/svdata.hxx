@@ -23,10 +23,13 @@
 
 #include <o3tl/lru_map.hxx>
 #include <o3tl/hash_combine.hxx>
+#include <o3tl/sorted_vector.hxx>
+#include <osl/conditn.hxx>
 #include <tools/fldunit.hxx>
 #include <unotools/options.hxx>
 #include <vcl/bitmapex.hxx>
 #include <vcl/cvtgrf.hxx>
+#include <vcl/dropcache.hxx>
 #include <vcl/image.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
@@ -68,6 +71,7 @@ namespace vcl::font
     class DirectFontSubstitution;
     class PhysicalFontCollection;
 }
+struct BlendFrameCache;
 struct ImplHotKey;
 struct ImplEventHook;
 class Point;
@@ -126,8 +130,6 @@ namespace com::sun::star::datatransfer::clipboard { class XClipboard; }
 namespace vcl
 {
     class DisplayConnectionDispatch;
-    class SettingsConfigItem;
-    class DeleteOnDeinitBase;
     class Window;
 }
 
@@ -214,7 +216,7 @@ template <> struct hash<ScaleCacheKey>
 
 } // end std namespace
 
-typedef o3tl::lru_map<ScaleCacheKey, BitmapEx> lru_scale_cache;
+typedef o3tl::lru_map<ScaleCacheKey, Bitmap> lru_scale_cache;
 
 struct ImplSVGDIData
 {
@@ -239,7 +241,7 @@ struct ImplSVGDIData
     tools::Long                    mnAppFontY = 0;                 // AppFont Y-Numenator for 80/tel Height
     bool                    mbFontSubChanged = false;       // true: FontSubstitution was changed between Begin/End
 
-    o3tl::lru_map<OUString, BitmapEx> maThemeImageCache = o3tl::lru_map<OUString, BitmapEx>(10);
+    o3tl::lru_map<OUString, Bitmap> maThemeImageCache = o3tl::lru_map<OUString, Bitmap>(10);
     o3tl::lru_map<OUString, gfx::DrawRoot> maThemeDrawCommandsCache = o3tl::lru_map<OUString, gfx::DrawRoot>(50);
 };
 
@@ -274,6 +276,7 @@ struct ImplSVWinData
     bool                    mbNoDeactivate = false;         // true: do not execute Deactivate
     bool                    mbNoSaveFocus = false;          // true: menus must not save/restore focus
     bool                    mbIsLiveResize = false;         // true: skip waiting for events and low priority timers
+    bool                    mbIsWaitingForNativeEvent = false; // true: code is executing via a native callback while waiting for the next native event
 };
 
 typedef std::vector< std::pair< OUString, FieldUnit > > FieldUnitStringList;
@@ -354,27 +357,6 @@ struct ImplSVNWFData
     int mnListBoxEntryMargin = 0;
 };
 
-struct BlendFrameCache
-{
-    Size m_aLastSize;
-    sal_uInt8 m_nLastAlpha;
-    Color m_aLastColorTopLeft;
-    Color m_aLastColorTopRight;
-    Color m_aLastColorBottomRight;
-    Color m_aLastColorBottomLeft;
-    BitmapEx m_aLastResult;
-
-    BlendFrameCache()
-        : m_aLastSize(0, 0)
-        , m_nLastAlpha(0)
-        , m_aLastColorTopLeft(COL_BLACK)
-        , m_aLastColorTopRight(COL_BLACK)
-        , m_aLastColorBottomRight(COL_BLACK)
-        , m_aLastColorBottomLeft(COL_BLACK)
-    {
-    }
-};
-
 struct ImplSchedulerContext
 {
     ImplSchedulerData*      mpFirstSchedulerData[PRIO_COUNT] = { nullptr, }; ///< list of all active tasks per priority
@@ -387,6 +369,7 @@ struct ImplSchedulerContext
     std::mutex              maMutex;                        ///< the "scheduler mutex" (see
                                                             ///< vcl/README.scheduler)
     bool                    mbActive = true;                ///< is the scheduler active?
+    oslInterlockedCount     mnIdlesLockCount = 0;           ///< temporary ignore idles
 };
 
 struct ImplSVData
@@ -418,15 +401,17 @@ struct ImplSVData
     rtl::Reference< vcl::DisplayConnectionDispatch > mxDisplayConnection;
 
     css::uno::Reference< css::lang::XComponent > mxAccessBridge;
-    std::unique_ptr<vcl::SettingsConfigItem> mpSettingsConfigItem;
-    std::vector< vcl::DeleteOnDeinitBase* > maDeinitDeleteList;
     std::unordered_map< int, OUString > maPaperNames;
+    o3tl::sorted_vector<CacheOwner*> maCacheOwners;
 
     css::uno::Reference<css::i18n::XCharacterClassification> m_xCharClass;
 
 #if defined _WIN32
     css::uno::Reference<css::datatransfer::clipboard::XClipboard> m_xSystemClipboard;
 #endif
+
+    osl::Condition m_inExecuteCondtion; // Set when code returns to Application::Execute,
+                                        // i.e. no nested message loops run
 
     Link<LinkParamNone*,void> maDeInitHook;
 
@@ -435,6 +420,8 @@ struct ImplSVData
     LibreOfficeKitWakeCallback mpWakeCallback = nullptr;
     void *mpPollClosure = nullptr;
 
+    void registerCacheOwner(CacheOwner&);
+    void deregisterCacheOwner(CacheOwner&);
     void dropCaches();
     void dumpState(rtl::OStringBuffer &rState);
 };
@@ -448,7 +435,6 @@ vcl::Window* ImplGetDefaultContextWindow();
 const std::locale& ImplGetResLocale();
 VCL_PLUGIN_PUBLIC OUString VclResId(TranslateId sContextAndId);
 DockingManager*     ImplGetDockingManager();
-BlendFrameCache*    ImplGetBlendFrameCache();
 void GenerateAutoMnemonicsOnHierarchy(const vcl::Window* pWindow);
 
 VCL_PLUGIN_PUBLIC ImplSVHelpData& ImplGetSVHelpData();
@@ -457,10 +443,6 @@ VCL_DLLPUBLIC bool        ImplCallPreNotify( NotifyEvent& rEvt );
 
 VCL_PLUGIN_PUBLIC ImplSVData* ImplGetSVData();
 VCL_PLUGIN_PUBLIC void ImplHideSplash();
-
-#ifdef _WIN32
-bool ImplInitAccessBridge();
-#endif
 
 const FieldUnitStringList& ImplGetFieldUnits();
 const FieldUnitStringList& ImplGetCleanedFieldUnits();

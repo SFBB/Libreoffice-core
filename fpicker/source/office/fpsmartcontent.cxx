@@ -38,7 +38,6 @@ namespace svt
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::task;
     using namespace ::com::sun::star::ucb;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::container;
 
 
@@ -76,7 +75,7 @@ namespace svt
 
     void SmartContent::enableOwnInteractionHandler(::svt::OFilePickerInteractionHandler::EInterceptedInteractions eInterceptions)
     {
-        Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         Reference< XInteractionHandler > xGlobalInteractionHandler(
             InteractionHandler::createWithParent(xContext, nullptr), UNO_QUERY_THROW );
 
@@ -91,7 +90,7 @@ namespace svt
     {
         m_xOwnInteraction.clear();
 
-        Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         Reference< XInteractionHandler > xGlobalInteractionHandler(
             InteractionHandler::createWithParent(xContext, nullptr), UNO_QUERY_THROW );
         m_xCmdEnv = new ucbhelper::CommandEnvironment( xGlobalInteractionHandler, Reference< XProgressHandler >() );
@@ -209,7 +208,7 @@ namespace svt
         try
         {
             OUString sTitle;
-            m_oContent->getPropertyValue("Title") >>= sTitle;
+            m_oContent->getPropertyValue(u"Title"_ustr) >>= sTitle;
             _rTitle =  sTitle;
 
             // from here on, we definitely know that the content is valid
@@ -305,7 +304,7 @@ namespace svt
             if ( !sFolderType.isEmpty() )
             {
                 ucbhelper::Content aCreated;
-                Sequence< OUString > aNames { "Title" };
+                Sequence< OUString > aNames { u"Title"_ustr };
                 Sequence< Any > aValues { Any(_rTitle) };
                 m_oContent->insertNewContent( sFolderType, aNames, aValues, aCreated );
 

@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "SlideRenderer.hxx"
+#include <SlideRenderer.hxx>
 #include <sdpage.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/svapp.hxx>
@@ -39,48 +39,6 @@ SlideRenderer::~SlideRenderer()
 {
 }
 
-//----- XInitialization -------------------------------------------------------
-
-void SAL_CALL SlideRenderer::initialize (const Sequence<Any>& rArguments)
-{
-    ThrowIfDisposed();
-
-    if (rArguments.hasElements())
-    {
-        throw RuntimeException("SlideRenderer: invalid number of arguments",
-                static_cast<XWeak*>(this));
-    }
-}
-
-OUString SlideRenderer::getImplementationName()
-{
-    return "com.sun.star.comp.Draw.SlideRenderer";
-}
-
-sal_Bool SlideRenderer::supportsService(OUString const & ServiceName)
-{
-    return cppu::supportsService(this, ServiceName);
-}
-
-css::uno::Sequence<OUString> SlideRenderer::getSupportedServiceNames()
-{
-    return {"com.sun.star.drawing.SlideRenderer"};
-}
-
-//----- XSlideRenderer --------------------------------------------------------
-
-Reference<awt::XBitmap> SlideRenderer::createPreview (
-    const Reference<drawing::XDrawPage>& rxSlide,
-    const awt::Size& rMaximalSize,
-    sal_Int16 nSuperSampleFactor)
-{
-    ThrowIfDisposed();
-    SolarMutexGuard aGuard;
-
-    return VCLUnoHelper::CreateBitmap(
-        CreatePreview(rxSlide, rMaximalSize, nSuperSampleFactor));
-}
-
 Reference<rendering::XBitmap> SlideRenderer::createPreviewForCanvas (
     const Reference<drawing::XDrawPage>& rxSlide,
     const awt::Size& rMaximalSize,
@@ -95,12 +53,13 @@ Reference<rendering::XBitmap> SlideRenderer::createPreviewForCanvas (
     if (pCanvas)
         return cppcanvas::VCLFactory::createBitmap(
             pCanvas,
-            CreatePreview(rxSlide, rMaximalSize, nSuperSampleFactor))->getUNOBitmap();
+            Bitmap(CreatePreview(rxSlide, rMaximalSize, nSuperSampleFactor)))->getUNOBitmap();
     else
         return nullptr;
 }
 
-awt::Size SAL_CALL SlideRenderer::calculatePreviewSize (
+// static
+awt::Size SlideRenderer::calculatePreviewSize (
     double nSlideAspectRatio,
     const awt::Size& rMaximalSize)
 {
@@ -129,14 +88,14 @@ BitmapEx SlideRenderer::CreatePreview (
 {
     const SdPage* pPage = SdPage::getImplementation(rxSlide);
     if (pPage == nullptr)
-        throw lang::IllegalArgumentException("SlideRenderer::createPreview() called with invalid slide",
+        throw lang::IllegalArgumentException(u"SlideRenderer::createPreview() called with invalid slide"_ustr,
             static_cast<XWeak*>(this),
             0);
 
     // Determine the size of the current slide and its aspect ratio.
     Size aPageSize = pPage->GetSize();
     if (aPageSize.Height() <= 0)
-        throw lang::IllegalArgumentException("SlideRenderer::createPreview() called with invalid size",
+        throw lang::IllegalArgumentException(u"SlideRenderer::createPreview() called with invalid size"_ustr,
             static_cast<XWeak*>(this),
             1);
 
@@ -167,14 +126,14 @@ BitmapEx SlideRenderer::CreatePreview (
         Size(aPreviewSize.Width*nFactor, aPreviewSize.Height*nFactor),
         true);
     if (nFactor == 1)
-        return aPreview.GetBitmapEx();
+        return BitmapEx(aPreview.GetBitmap());
     else
     {
-        BitmapEx aScaledPreview = aPreview.GetBitmapEx();
+        Bitmap aScaledPreview = aPreview.GetBitmap();
         aScaledPreview.Scale(
             Size(aPreviewSize.Width,aPreviewSize.Height),
             BmpScaleFlag::BestQuality);
-        return aScaledPreview;
+        return BitmapEx(aScaledPreview);
     }
 }
 
@@ -182,20 +141,12 @@ void SlideRenderer::ThrowIfDisposed()
 {
     if (m_bDisposed)
     {
-        throw lang::DisposedException ("SlideRenderer object has already been disposed",
+        throw lang::DisposedException (u"SlideRenderer object has already been disposed"_ustr,
             static_cast<uno::XWeak*>(this));
     }
 }
 
 } // end of namespace ::sd::presenter
-
-
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
-com_sun_star_comp_Draw_SlideRenderer_get_implementation(css::uno::XComponentContext*,
-                                                        css::uno::Sequence<css::uno::Any> const &)
-{
-    return cppu::acquire(new sd::presenter::SlideRenderer);
-}
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

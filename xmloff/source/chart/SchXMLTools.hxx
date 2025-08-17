@@ -28,7 +28,6 @@
 namespace com::sun::star {
     namespace chart2 {
         class XChartDocument;
-        class XRegressionCurve;
         namespace data {
             class XDataProvider;
         }
@@ -38,6 +37,7 @@ namespace com::sun::star {
 class XMLPropStyleContext;
 class SvXMLStylesContext;
 class SvXMLExport;
+class SvXMLImport;
 
 namespace SchXMLTools
 {
@@ -98,6 +98,9 @@ namespace SchXMLTools
     css::uno::Any getPropertyFromContext( std::u16string_view rPropertyName, const XMLPropStyleContext * pPropStyleContext, const SvXMLStylesContext* pStylesCtxt );
 
     void exportText( SvXMLExport& rExport, const OUString& rText, bool bConvertTabsLFs );
+    void exportFormattedText( SvXMLExport& rExport, const css::uno::Reference< css::beans::XPropertySet >& xTitleProps );
+    void importFormattedText( SvXMLImport& rImport, const std::vector<std::pair<OUString, OUString>>& rTitle,
+        const css::uno::Reference< css::beans::XPropertySet >& xTitleProp);
 
     void exportRangeToSomewhere( SvXMLExport& rExport, const OUString& rValue );
 

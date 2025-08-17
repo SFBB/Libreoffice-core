@@ -17,19 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "DataBrowserModel.hxx"
 #include "DialogModel.hxx"
-#include <ChartModelHelper.hxx>
+#include <DataBrowserModel.hxx>
 #include <ChartType.hxx>
 #include <ChartTypeManager.hxx>
-#include <DiagramHelper.hxx>
+#include <ChartView.hxx>
 #include <Diagram.hxx>
 #include <DataSeries.hxx>
 #include <DataSeriesHelper.hxx>
 #include <ControllerLockGuard.hxx>
 #include <StatisticsHelper.hxx>
 #include <ChartTypeHelper.hxx>
-#include <chartview/ExplicitValueProvider.hxx>
 #include <ExplicitCategoriesProvider.hxx>
 #include <BaseCoordinateSystem.hxx>
 #include <ChartModel.hxx>
@@ -68,7 +66,7 @@ OUString lcl_getRole(
     {
         try
         {
-            xProp->getPropertyValue( "Role" ) >>= aResult;
+            xProp->getPropertyValue( u"Role"_ustr ) >>= aResult;
         }
         catch( const uno::Exception & )
         {
@@ -709,12 +707,12 @@ sal_Int32 DataBrowserModel::getMaxRowCount() const
     return nResult;
 }
 
-OUString DataBrowserModel::getRoleOfColumn( sal_Int32 nColumnIndex ) const
+const OUString & DataBrowserModel::getRoleOfColumn( sal_Int32 nColumnIndex ) const
 {
     if( nColumnIndex != -1 &&
         o3tl::make_unsigned( nColumnIndex ) < m_aColumns.size())
         return m_aColumns[ nColumnIndex ].m_aUIRoleName;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 bool DataBrowserModel::isCategoriesColumn( sal_Int32 nColumnIndex ) const
@@ -763,13 +761,13 @@ void DataBrowserModel::updateFromModel()
     sal_Int32 nHeaderStart = 0;
     sal_Int32 nHeaderEnd   = 0;
     {
-        ExplicitCategoriesProvider aExplicitCategoriesProvider( ChartModelHelper::getFirstCoordinateSystem(m_xChartDocument), *m_xChartDocument );
+        ExplicitCategoriesProvider aExplicitCategoriesProvider( m_xChartDocument->getFirstCoordinateSystem(), *m_xChartDocument );
 
         const std::vector< Reference< chart2::data::XLabeledDataSequence> >& rSplitCategoriesList = aExplicitCategoriesProvider.getSplitCategoriesList();
         sal_Int32 nLevelCount = rSplitCategoriesList.size();
         for( sal_Int32 nL = 0; nL<nLevelCount; nL++ )
         {
-            Reference< chart2::data::XLabeledDataSequence > xCategories( rSplitCategoriesList[nL] );
+            const Reference< chart2::data::XLabeledDataSequence >& xCategories( rSplitCategoriesList[nL] );
             if( !xCategories.is() )
                 continue;
 
@@ -795,7 +793,7 @@ void DataBrowserModel::updateFromModel()
 
         for( auto const & CT: aChartTypes )
         {
-            rtl::Reference< ChartType > xSeriesCnt( CT );
+            const rtl::Reference< ChartType >& xSeriesCnt( CT );
             OUString aRoleForDataLabelNumberFormat = ChartTypeHelper::getRoleOfSequenceForDataLabelNumberFormatDetection( CT );
 
             const std::vector< rtl::Reference< DataSeries > > & aSeries( xSeriesCnt->getDataSeries2());
@@ -816,7 +814,7 @@ void DataBrowserModel::updateFromModel()
             for( rtl::Reference< DataSeries > const & dataSeries : aSeries )
             {
                 tDataColumnVector::size_type nStartColIndex = m_aColumns.size();
-                rtl::Reference< DataSeries > xSeries( dataSeries );
+                const rtl::Reference< DataSeries >& xSeries( dataSeries );
                 if( xSeries.is())
                 {
                     const std::vector< uno::Reference< chart2::data::XLabeledDataSequence > > & aLSeqs( xSeries->getDataSequences2());
@@ -837,8 +835,7 @@ void DataBrowserModel::updateFromModel()
 
                         if( aRole == aRoleForDataLabelNumberFormat )
                         {
-                            nSequenceNumberFormatKey = ExplicitValueProvider::getExplicitNumberFormatKeyForDataLabel(
-                                xSeries);
+                            nSequenceNumberFormatKey = xSeries->getExplicitNumberFormatKeyForDataLabel();
                         }
                         else if( aRole == "values-x" )
                             nSequenceNumberFormatKey = nXAxisNumberFormat;
@@ -860,7 +857,7 @@ void DataBrowserModel::updateFromModel()
                     bool bSwapXAndYAxis = false;
                     try
                     {
-                        coords->getPropertyValue( "SwapXAndYAxis" ) >>= bSwapXAndYAxis;
+                        coords->getPropertyValue( u"SwapXAndYAxis"_ustr ) >>= bSwapXAndYAxis;
                     }
                     catch( const beans::UnknownPropertyException & ) {}
 

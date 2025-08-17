@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -10,13 +10,6 @@
 #include <QtXAccessible.hxx>
 #include <QtXAccessible.moc>
 
-#include <QtFrame.hxx>
-#include <QtTools.hxx>
-#include <QtWidget.hxx>
-
-#include <com/sun/star/accessibility/XAccessible.hpp>
-
-#include <sal/log.hxx>
 #include <utility>
 
 using namespace css::accessibility;
@@ -27,4 +20,4 @@ QtXAccessible::QtXAccessible(Reference<XAccessible> xAccessible)
 {
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

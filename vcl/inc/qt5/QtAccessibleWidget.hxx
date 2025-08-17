@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -11,7 +11,13 @@
 
 #include <vclpluginapi.h>
 
+#include <com/sun/star/accessibility/XAccessible.hpp>
+#include <comphelper/OAccessible.hxx>
+#include <rtl/ref.hxx>
+
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
 #include <QtCore/QObject>
+SAL_WNODEPRECATED_DECLARATIONS_POP
 #include <QtCore/QPair>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
@@ -26,8 +32,6 @@
 #include <QtGui/QColor>
 #include <QtGui/QWindow>
 
-#include <com/sun/star/accessibility/XAccessible.hpp>
-
 namespace com::sun::star::accessibility
 {
 class XAccessibleTable;
@@ -36,20 +40,30 @@ class XAccessibleTable;
 class QtFrame;
 class QtWidget;
 
-class QtAccessibleWidget final : public QAccessibleInterface,
+class QtAccessibleWidget final : public QObject,
+                                 public QAccessibleInterface,
                                  public QAccessibleActionInterface,
+#ifndef Q_MOC_RUN
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+                                 public QAccessibleAttributesInterface,
+#endif
+#endif
                                  public QAccessibleTextInterface,
                                  public QAccessibleEditableTextInterface,
+#ifndef Q_MOC_RUN
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
                                  public QAccessibleSelectionInterface,
+#endif
 #endif
                                  public QAccessibleTableCellInterface,
                                  public QAccessibleTableInterface,
                                  public QAccessibleValueInterface
 {
+    Q_OBJECT
+
 public:
-    QtAccessibleWidget(const css::uno::Reference<css::accessibility::XAccessible> xAccessible,
-                       QObject* pObject);
+    QtAccessibleWidget(const css::uno::Reference<css::accessibility::XAccessible>& xAccessible,
+                       QObject& rObject);
 
     void invalidate();
 
@@ -84,6 +98,17 @@ public:
     QStringList actionNames() const override;
     void doAction(const QString& actionName) override;
     QStringList keyBindingsForAction(const QString& actionName) const override;
+
+#ifndef Q_MOC_RUN
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    // helper method for QAccessibleAttributesInterface
+    QHash<QAccessible::Attribute, QVariant> attributes() const;
+
+    // QAccessibleAttributesInterface
+    QList<QAccessible::Attribute> attributeKeys() const override;
+    QVariant attributeValue(QAccessible::Attribute key) const override;
+#endif
+#endif
 
     // QAccessibleTextInterface
     void addSelection(int startOffset, int endOffset) override;
@@ -168,6 +193,8 @@ public:
 
     // Factory
     static QAccessibleInterface* customFactory(const QString& classname, QObject* object);
+    static void setCustomAccessible(QObject& rObject,
+                                    const rtl::Reference<comphelper::OAccessible>& rAccessible);
 
 private:
     css::uno::Reference<css::accessibility::XAccessible> m_xAccessible;
@@ -182,7 +209,7 @@ private:
         return xInterface.is();
     }
 
-    QObject* m_pObject;
+    QObject& m_rObject;
 };
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

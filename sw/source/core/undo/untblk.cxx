@@ -38,7 +38,7 @@
 namespace sw {
 
 std::optional<std::vector<SwFrameFormat*>>
-GetFlysAnchoredAt(SwDoc & rDoc, SwNodeOffset const nSttNode)
+GetFlysAnchoredAt(SwDoc & rDoc, SwNodeOffset const nSttNode, bool const isAtPageIncluded)
 {
     std::optional<std::vector<SwFrameFormat*>> pFrameFormats;
     const size_t nArrLen = rDoc.GetSpzFrameFormats()->size();
@@ -47,10 +47,11 @@ GetFlysAnchoredAt(SwDoc & rDoc, SwNodeOffset const nSttNode)
         SwFrameFormat *const pFormat = (*rDoc.GetSpzFrameFormats())[n];
         SwFormatAnchor const*const pAnchor = &pFormat->GetAnchor();
         SwNode const*const pAnchorNode = pAnchor->GetAnchorNode();
-        if (pAnchorNode
-             && nSttNode == pAnchorNode->GetIndex()
-             && ((pAnchor->GetAnchorId() == RndStdIds::FLY_AT_PARA)
-                 || (pAnchor->GetAnchorId() == RndStdIds::FLY_AT_CHAR)))
+        if ((pAnchorNode
+                && nSttNode == pAnchorNode->GetIndex()
+                && ((pAnchor->GetAnchorId() == RndStdIds::FLY_AT_PARA)
+                    || (pAnchor->GetAnchorId() == RndStdIds::FLY_AT_CHAR)))
+            || (isAtPageIncluded && pAnchor->GetAnchorId() == RndStdIds::FLY_AT_PAGE))
         {
             if (!pFrameFormats)
                 pFrameFormats.emplace();
@@ -64,7 +65,7 @@ GetFlysAnchoredAt(SwDoc & rDoc, SwNodeOffset const nSttNode)
 
 //note: parameter is SwPam just so we can init SwUndRng, the End is ignored!
 SwUndoInserts::SwUndoInserts( SwUndoId nUndoId, const SwPaM& rPam )
-    : SwUndo( nUndoId, &rPam.GetDoc() )
+    : SwUndo( nUndoId, rPam.GetDoc() )
     , SwUndRng( rPam )
     , m_pTextFormatColl(nullptr)
     , m_pLastNodeColl(nullptr)
@@ -89,7 +90,7 @@ SwUndoInserts::SwUndoInserts( SwUndoId nUndoId, const SwPaM& rPam )
         // These flys will be saved in pFrameFormats array (only flys which exist BEFORE insertion!)
         // Then in SwUndoInserts::SetInsertRange the flys saved in pFrameFormats will NOT create Undos.
         // m_FlyUndos will only be filled with newly inserted flys.
-        m_pFrameFormats = sw::GetFlysAnchoredAt(rDoc, m_nSttNode);
+        m_pFrameFormats = sw::GetFlysAnchoredAt(rDoc, m_nSttNode, true);
     }
     // consider Redline
     if( rDoc.getIDocumentRedlineAccess().IsRedlineOn() )
@@ -128,10 +129,6 @@ void SwUndoInserts::SetInsertRange( const SwPaM& rPam, bool bScanFlys,
         m_nSttContent = pTmpPos->GetContentIndex();
 
         m_nDeleteTextNodes = nDeleteTextNodes;
-        if (m_nDeleteTextNodes == SwNodeOffset(0)) // if a table selection is added...
-        {
-            ++m_nSttNode;         // ... then the CopyPam is not fully correct
-        }
     }
 
     // Fill m_FlyUndos with flys anchored to first and last paragraphs
@@ -175,6 +172,11 @@ bool SwUndoInserts::IsCreateUndoForNewFly(SwFormatAnchor const& rAnchor,
     SwNodeOffset const nStartNode, SwNodeOffset const nEndNode)
 {
     assert(nStartNode <= nEndNode);
+
+    if (rAnchor.GetAnchorId() == RndStdIds::FLY_AT_PAGE)
+    {
+        return true; // needed for SwUndoInserts/SwReader::Read()
+    }
 
     // check all at-char flys at the start/end nodes:
     // ExcludeFlyAtStartEnd will exclude them!
@@ -361,7 +363,7 @@ void SwUndoInserts::UndoImpl(::sw::UndoRedoContext & rContext)
             m_pTextFormatColl = static_cast<SwTextFormatColl*>(pTextNode->ChgFormatColl( m_pTextFormatColl )) ;
 
         m_pHistory->SetTmpEnd( m_nSetPos );
-        m_pHistory->TmpRollback(&rDoc, 0, false);
+        m_pHistory->TmpRollback(rDoc, 0, false);
     }
 }
 
@@ -387,9 +389,13 @@ void SwUndoInserts::RedoImpl(::sw::UndoRedoContext & rContext)
     if( ( m_nSttNode != m_nEndNode || m_nSttContent != m_nEndContent ) && m_oUndoNodeIndex)
     {
         auto const pFlysAtInsPos(sw::GetFlysAnchoredAt(rDoc,
-            rPam.GetPoint()->GetNodeIndex()));
+            rPam.GetPoint()->GetNodeIndex(), false));
 
         ::std::optional<SwNodeIndex> oMvBkwrd = MovePtBackward(rPam);
+        bool const isMoveFlyAnchors(!oMvBkwrd // equivalent to bCanMoveBack
+            || m_oUndoNodeIndex->GetNode().IsTextNode()
+            || (oMvBkwrd->GetNode().IsStartNode()
+                && m_oUndoNodeIndex->GetNode().IsSectionNode()));
 
         // re-insert content again (first detach m_oUndoNodeIndex!)
         SwNodeOffset const nMvNd = m_oUndoNodeIndex->GetIndex();
@@ -403,7 +409,7 @@ void SwUndoInserts::RedoImpl(::sw::UndoRedoContext & rContext)
 
         // at-char anchors post SplitNode are on index 0 of 2nd node and will
         // remain there - move them back to the start (end would also work?)
-        if (pFlysAtInsPos)
+        if (pFlysAtInsPos && isMoveFlyAnchors)
         {
             for (SwFrameFormat * pFly : *pFlysAtInsPos)
             {
@@ -436,7 +442,7 @@ void SwUndoInserts::RedoImpl(::sw::UndoRedoContext & rContext)
 
     // tdf#108124 the SwHistoryChangeFlyAnchor/SwHistoryFlyCnt must run before
     // m_FlyUndos as they were created by DelContentIndex()
-    m_pHistory->Rollback( &rDoc, m_nSetPos );
+    m_pHistory->Rollback( rDoc, m_nSetPos );
 
     // tdf#108124 (10/25/2017)
     // During UNDO we call SwUndoInsLayFormat::UndoImpl in reverse order,

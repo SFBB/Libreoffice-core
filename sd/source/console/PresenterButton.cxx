@@ -25,7 +25,6 @@
 #include "PresenterUIPainter.hxx"
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/awt/XWindowPeer.hpp>
-#include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 #include <com/sun/star/rendering/TextDirection.hpp>
 #include <utility>
@@ -53,25 +52,24 @@ const double gnVerticalBorder (5);
     {
         OUString sText;
         OUString sAction;
-        PresenterConfigurationAccess::GetProperty(xProperties, "Text") >>= sText;
-        PresenterConfigurationAccess::GetProperty(xProperties, "Action") >>= sAction;
+        PresenterConfigurationAccess::GetProperty(xProperties, u"Text"_ustr) >>= sText;
+        PresenterConfigurationAccess::GetProperty(xProperties, u"Action"_ustr) >>= sAction;
 
         PresenterTheme::SharedFontDescriptor pFont;
         if (rpTheme != nullptr)
-            pFont = rpTheme->GetFont("ButtonFont");
+            pFont = rpTheme->GetFont(u"ButtonFont"_ustr);
 
         PresenterTheme::SharedFontDescriptor pMouseOverFont;
         if (rpTheme != nullptr)
-            pMouseOverFont = rpTheme->GetFont("ButtonMouseOverFont");
+            pMouseOverFont = rpTheme->GetFont(u"ButtonMouseOverFont"_ustr);
 
         rtl::Reference<PresenterButton> pButton (
             new PresenterButton(
-                rxComponentContext,
                 rpPresenterController,
                 rpTheme,
                 rxParentWindow,
-                pFont,
-                pMouseOverFont,
+                std::move(pFont),
+                std::move(pMouseOverFont),
                 sText,
                 sAction));
         pButton->SetCanvas(rxParentCanvas, rxParentWindow);
@@ -81,8 +79,7 @@ const double gnVerticalBorder (5);
         return nullptr;
 }
 
-PresenterButton::PresenterButton (
-    const css::uno::Reference<css::uno::XComponentContext>& rxComponentContext,
+PresenterButton::PresenterButton(
     ::rtl::Reference<PresenterController> xPresenterController,
     std::shared_ptr<PresenterTheme> xTheme,
     const css::uno::Reference<css::awt::XWindow>& rxParentWindow,
@@ -102,22 +99,7 @@ PresenterButton::PresenterButton (
 {
     try
     {
-        Reference<lang::XMultiComponentFactory> xFactory (rxComponentContext->getServiceManager());
-        if ( ! xFactory.is())
-            throw RuntimeException();
-
-        mxPresenterHelper.set(
-            xFactory->createInstanceWithContext(
-                "com.sun.star.comp.Draw.PresenterHelper",
-                rxComponentContext),
-            UNO_QUERY_THROW);
-
-        if (mxPresenterHelper.is())
-            mxWindow = mxPresenterHelper->createWindow(rxParentWindow,
-                false,
-                false,
-                false,
-                false);
+        mxWindow = sd::presenter::PresenterHelper::createWindow(rxParentWindow, false);
 
         // Make the background transparent.
         Reference<awt::XWindowPeer> xPeer (mxWindow, UNO_QUERY_THROW);
@@ -192,10 +174,10 @@ void PresenterButton::SetCanvas (
             xComponent->dispose();
     }
 
-    if (!(mxPresenterHelper.is() && rxParentCanvas.is() && rxParentWindow.is()))
+    if (!(rxParentCanvas.is() && rxParentWindow.is()))
         return;
 
-    mxCanvas = mxPresenterHelper->createSharedCanvas (
+    mxCanvas = sd::presenter::PresenterHelper::createSharedCanvas (
         Reference<rendering::XSpriteCanvas>(rxParentCanvas, UNO_QUERY),
         rxParentWindow,
         rxParentCanvas,
@@ -376,9 +358,9 @@ void PresenterButton::SetupButtonBitmaps()
         return;
 
     // Get the bitmaps for the button border.
-    SharedBitmapDescriptor pLeftBitmap (mpTheme->GetBitmap("ButtonFrameLeft"));
-    SharedBitmapDescriptor pCenterBitmap(mpTheme->GetBitmap("ButtonFrameCenter"));
-    SharedBitmapDescriptor pRightBitmap(mpTheme->GetBitmap("ButtonFrameRight"));
+    SharedBitmapDescriptor pLeftBitmap (mpTheme->GetBitmap(u"ButtonFrameLeft"_ustr));
+    SharedBitmapDescriptor pCenterBitmap(mpTheme->GetBitmap(u"ButtonFrameCenter"_ustr));
+    SharedBitmapDescriptor pRightBitmap(mpTheme->GetBitmap(u"ButtonFrameRight"_ustr));
 
     maButtonSize = CalculateButtonSize();
 
@@ -423,12 +405,12 @@ Reference<beans::XPropertySet> PresenterButton::GetConfigurationProperties (
     return Reference<beans::XPropertySet>(
         PresenterConfigurationAccess::Find (
             Reference<container::XNameAccess>(
-                aConfiguration.GetConfigurationNode("PresenterScreenSettings/Buttons"),
+                aConfiguration.GetConfigurationNode(u"PresenterScreenSettings/Buttons"_ustr),
                 UNO_QUERY),
             [&rsConfigurationName](OUString const&, uno::Reference<beans::XPropertySet> const& xProps) -> bool
             {
                 return PresenterConfigurationAccess::IsStringPropertyEqual(
-                        rsConfigurationName, "Name", xProps);
+                        rsConfigurationName, u"Name"_ustr, xProps);
             }),
         UNO_QUERY);
 }
@@ -438,7 +420,7 @@ void PresenterButton::ThrowIfDisposed() const
     if (rBHelper.bDisposed || rBHelper.bInDispose)
     {
         throw lang::DisposedException (
-            "PresenterButton object has already been disposed",
+            u"PresenterButton object has already been disposed"_ustr,
             const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
     }
 }

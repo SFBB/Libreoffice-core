@@ -9,50 +9,18 @@
  */
 #pragma once
 
-#include <officecfg/Setup.hxx>
-#include <unotools/configmgr.hxx>
-#include <o3tl/string_view.hxx>
-#include <rtl/ustring.hxx>
-#include <sal/log.hxx>
+#include <sal/config.h>
 
-#include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <unotools/unotoolsdllapi.h>
 
 namespace utl
 {
 /** This method is called when there's a need to determine if the
  * current version of LibreOffice has been upgraded to a newer one.
-
-    @param aUpdateVersion This variable is used to determine if
-    LibreOffice's previous version should be updated.
  */
-static bool isProductVersionUpgraded(bool aUpdateVersion)
-{
-    OUString sSetupVersion = utl::ConfigManager::getProductVersion();
-    sal_Int32 iCurrent = o3tl::toInt32(o3tl::getToken(sSetupVersion, 0, '.')) * 10
-                         + o3tl::toInt32(o3tl::getToken(sSetupVersion, 1, '.'));
-    OUString sLastVersion = officecfg::Setup::Product::ooSetupLastVersion::get().value_or("0.0");
-    sal_Int32 iLast = o3tl::toInt32(o3tl::getToken(sLastVersion, 0, '.')) * 10
-                      + o3tl::toInt32(o3tl::getToken(sLastVersion, 1, '.'));
-    if (iCurrent > iLast)
-    {
-        if (aUpdateVersion)
-        { //update lastversion
-            try
-            {
-                std::shared_ptr<comphelper::ConfigurationChanges> batch(
-                    comphelper::ConfigurationChanges::create());
-                officecfg::Setup::Product::ooSetupLastVersion::set(sSetupVersion, batch);
-                batch->commit();
-            }
-            catch (css::lang::IllegalArgumentException&)
-            { //If the value was readOnly.
-                SAL_WARN("desktop.updater", "Updating property ooSetupLastVersion to version "
-                                                << sSetupVersion
-                                                << " failed (read-only property?)");
-            }
-        }
-        return true;
-    }
-    return false;
-}
+bool UNOTOOLS_DLLPUBLIC isProductVersionUpgraded();
+/** This method is called to detect if the program is started the
+ *  very first time after a clean installation or a profile reset.
+ */
+bool UNOTOOLS_DLLPUBLIC isProductVersionNew();
 }

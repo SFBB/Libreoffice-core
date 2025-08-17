@@ -21,6 +21,28 @@ class ScTabEditEngine;
 
 namespace sc
 {
+typedef std::vector<editeng::MisspellRanges> MisspellRangesVec;
+
+struct MisspellRangeResult
+{
+    const MisspellRangesVec* mpRanges;
+    LanguageType meCellLang;
+
+    MisspellRangeResult()
+        : mpRanges(nullptr)
+        , meCellLang(LANGUAGE_DONTKNOW)
+    {
+    }
+
+    MisspellRangeResult(const MisspellRangesVec* pRanges, LanguageType eCellLang)
+        : mpRanges(pRanges)
+        , meCellLang(eCellLang)
+    {
+    }
+
+    bool HasRanges() const { return mpRanges != nullptr; }
+};
+
 /**
  * Class shared between grid windows to cache
  * spelling results.
@@ -33,21 +55,20 @@ class SpellCheckContext
 
     std::unique_ptr<SpellCheckCache> mpCache;
     std::unique_ptr<SpellCheckResult> mpResult;
-    ScDocument* pDoc;
+    ScDocument& rDoc;
     std::unique_ptr<ScTabEditEngine> mpEngine;
     std::unique_ptr<SpellCheckStatus> mpStatus;
     SCTAB mnTab;
     LanguageType meLanguage;
 
 public:
-    SpellCheckContext(ScDocument* pDocument, SCTAB nTab);
+    SpellCheckContext(ScDocument& rDocument, SCTAB nTab);
     ~SpellCheckContext();
     void dispose();
 
     bool isMisspelled(SCCOL nCol, SCROW nRow) const;
-    const std::vector<editeng::MisspellRanges>* getMisspellRanges(SCCOL nCol, SCROW nRow) const;
-    void setMisspellRanges(SCCOL nCol, SCROW nRow,
-                           const std::vector<editeng::MisspellRanges>* pRanges);
+    MisspellRangeResult getMisspellRanges(SCCOL nCol, SCROW nRow) const;
+    void setMisspellRanges(SCCOL nCol, SCROW nRow, const MisspellRangeResult& rRangeResult);
 
     void reset();
     void resetForContentChange();

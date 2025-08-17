@@ -625,6 +625,7 @@ void SAXEventKeeperImpl::releaseElementMarkBuffer()
                  * Delete the TH from the buffer node.
                  */
                 BufferNode *pBufferNode = pElementMark->getBufferNode();
+                assert(pBufferNode);
                 pBufferNode->setBlocker(nullptr);
 
                 /*
@@ -648,6 +649,7 @@ void SAXEventKeeperImpl::releaseElementMarkBuffer()
                         BufferNode* pTempCurrentBlockingBufferNode = m_pCurrentBlockingBufferNode;
 
                         m_pCurrentBufferNode = pBufferNode;
+                        assert(pBufferNode);
                         m_pCurrentBlockingBufferNode = nullptr;
 
                         m_bIsForwarding = true;
@@ -1125,12 +1127,12 @@ void SAL_CALL SAXEventKeeperImpl::initialize( const css::uno::Sequence< css::uno
 
 OUString SAXEventKeeperImpl_getImplementationName ()
 {
-    return "com.sun.star.xml.security.framework.SAXEventKeeperImpl";
+    return u"com.sun.star.xml.security.framework.SAXEventKeeperImpl"_ustr;
 }
 
 css::uno::Sequence< OUString > SAXEventKeeperImpl_getSupportedServiceNames(  )
 {
-    return { "com.sun.star.xml.crypto.sax.SAXEventKeeper" };
+    return { u"com.sun.star.xml.crypto.sax.SAXEventKeeper"_ustr };
 }
 
 /* XServiceInfo */

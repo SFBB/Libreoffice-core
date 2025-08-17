@@ -26,7 +26,7 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <comphelper/stl_types.hxx>
 #include "TypeInfo.hxx"
-#include <vcl/roadmapwizard.hxx>
+#include <vcl/roadmapwizardmachine.hxx>
 #include "DExport.hxx"
 #include "WTabPage.hxx"
 #include "FieldDescriptions.hxx"
@@ -61,7 +61,7 @@ namespace dbaui
 
         bool operator()(const OUString& _sColumnName) const override
         {
-            return m_pColumns->find(_sColumnName) != m_pColumns->end();
+            return m_pColumns->contains(_sColumnName);
         }
     };
 

@@ -24,6 +24,8 @@
 #include <vcl/gfxlink.hxx>
 #include <vcl/metaact.hxx>
 #include <vcl/graphicfilter.hxx>
+#include <vcl/graphic/GraphicMetadata.hxx>
+#include <vcl/pdf/PDFNote.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <sal/log.hxx>
@@ -88,20 +90,24 @@ struct CreateOutlineItem {
     sal_Int32 mnParent;
     sal_Int32 mnDestID;
 };
+
 struct CreateNote {
     MapMode maParaMapMode;
-    PDFNote maParaPDFNote;
+    vcl::pdf::PDFNote maParaPDFNote;
     tools::Rectangle maParaRect;
+    tools::Rectangle maPopupRect;
     sal_Int32 mnPage;
 };
+
 struct SetPageTransition {
     PDFWriter::PageTransition maParaPageTransition;
     sal_uInt32 mnMilliSec;
     sal_Int32 mnPage;
 };
 struct EnsureStructureElement { sal_Int32 mnId; };
-struct InitStructureElement {
-    PDFWriter::StructElement mParaStructElement;
+struct InitStructureElement
+{
+    vcl::pdf::StructElement mParaStructElement;
     OUString maAlias;
     sal_Int32 mnId;
 };
@@ -303,7 +309,9 @@ void GlobalSyncData::PlayGlobalActions( PDFWriter& rWriter )
             const vcl::CreateNote& rCreateNote = std::get<CreateNote>(action);
             rWriter.Push( PushFlags::MAPMODE );
             rWriter.SetMapMode( rCreateNote.maParaMapMode );
-            rWriter.CreateNote( rCreateNote.maParaRect, rCreateNote.maParaPDFNote, rCreateNote.mnPage );
+            mParaIds.push_back(rWriter.CreateNote(rCreateNote.maParaRect, rCreateNote.maPopupRect, rCreateNote.maParaPDFNote, rCreateNote.mnPage));
+            rWriter.SetLinkPropertyID(mParaIds.back(), sal_Int32(mParaIds.size() - 1));
+            rWriter.Pop();
         }
         else if (std::holds_alternative<SetPageTransition>(action)) {
             const vcl::SetPageTransition& rSetPageTransition = std::get<SetPageTransition>(action);
@@ -493,7 +501,7 @@ bool PageSyncData::PlaySyncPageAct( PDFWriter& rWriter, sal_uInt32& rCurGDIMtfAc
                                 aOutputRect.SetSize(pA->GetSize());
                             }
                         }
-                        auto ePixelFormat = aGraphic.GetBitmapEx().getPixelFormat();
+                        auto ePixelFormat = aGraphic.GetBitmap().getPixelFormat();
                         rWriter.DrawJPGBitmap(aTmp, ePixelFormat > vcl::PixelFormat::N8_BPP, aGraphic.GetSizePixel(), aOutputRect, aAlphaMask, aGraphic);
                     }
 
@@ -528,7 +536,7 @@ PDFExtOutDevData::PDFExtOutDevData( const OutputDevice& rOutDev ) :
     mbSinglePageSheets      ( false ),
     mbExportNDests          ( false ),
     mnPage                  ( -1 ),
-    mnCompressionQuality    ( 90 ),
+    mnCompressionQuality    ( DefaultPDFJPEGQuality ),
     mpGlobalSyncData        ( new GlobalSyncData() )
 {
     mpPageSyncData.reset( new PageSyncData( mpGlobalSyncData.get() ) );
@@ -657,7 +665,7 @@ void PDFExtOutDevData::DescribeRegisteredDest( sal_Int32 nDestId, const tools::R
     aLinkDestination.mMapMode = mrOutDev.GetMapMode();
     aLinkDestination.mPageNr = nPageNr == -1 ? mnPage : nPageNr;
     aLinkDestination.mAreaType = eType;
-    mpGlobalSyncData->mFutureDestinations[ nDestId ] = aLinkDestination;
+    mpGlobalSyncData->mFutureDestinations[ nDestId ] = std::move(aLinkDestination);
 }
 sal_Int32 PDFExtOutDevData::CreateDest( const tools::Rectangle& rRect, sal_Int32 nPageNr, PDFWriter::DestAreaType eType )
 {
@@ -720,10 +728,13 @@ sal_Int32 PDFExtOutDevData::CreateOutlineItem( sal_Int32 nParent, const OUString
     mpGlobalSyncData->mActions.push_back( vcl::CreateOutlineItem{ rText, nParent, nDestID } );
     return mpGlobalSyncData->mCurId++;
 }
-void PDFExtOutDevData::CreateNote( const tools::Rectangle& rRect, const PDFNote& rNote, sal_Int32 nPageNr )
+sal_Int32 PDFExtOutDevData::CreateNote(const tools::Rectangle& rRect,
+                                       const vcl::pdf::PDFNote& rNote,
+                                       const tools::Rectangle& rPopupRect, sal_Int32 nPageNr)
 {
-    mpGlobalSyncData->mActions.push_back(
-        vcl::CreateNote{ mrOutDev.GetMapMode(), rNote, rRect, nPageNr == -1 ? mnPage : nPageNr } );
+    mpGlobalSyncData->mActions.push_back(vcl::CreateNote{
+        mrOutDev.GetMapMode(), rNote, rRect, rPopupRect, nPageNr == -1 ? mnPage : nPageNr });
+    return mpGlobalSyncData->mCurId++;
 }
 void PDFExtOutDevData::SetPageTransition( PDFWriter::PageTransition eType, sal_uInt32 nMilliSec )
 {
@@ -758,7 +769,7 @@ sal_Int32 PDFExtOutDevData::EnsureStructureElement(void const*const key)
 }
 
 void PDFExtOutDevData::InitStructureElement(sal_Int32 const id,
-        PDFWriter::StructElement const eType, const OUString& rAlias)
+        vcl::pdf::StructElement const eType, const OUString& rAlias)
 {
     mpPageSyncData->PushAction(mrOutDev, vcl::InitStructureElement{ eType, rAlias, id });
     // update parent: required for hell fly anchor frames in sw, so that on the actual
@@ -773,7 +784,7 @@ void PDFExtOutDevData::BeginStructureElement(sal_Int32 const id)
 }
 
 sal_Int32 PDFExtOutDevData::WrapBeginStructureElement(
-        PDFWriter::StructElement const eType, const OUString& rAlias)
+        vcl::pdf::StructElement const eType, const OUString& rAlias)
 {
     sal_Int32 const id = EnsureStructureElement(nullptr);
     InitStructureElement(id, eType, rAlias);

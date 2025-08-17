@@ -31,6 +31,8 @@
 #include "swdllapi.h"
 #include "swtypes.hxx"
 #include "shellid.hxx"
+#include "viewsh.hxx"
+#include "names.hxx"
 
 #include <svx/sdr/overlay/overlayobject.hxx>
 
@@ -49,7 +51,6 @@ class Ruler;
 class SvxSearchItem;
 class SearchAttrItemList;
 class SvxSearchDialog;
-class SdrView;
 class SdrPageView;
 class SwEditWin;
 class SwWrtShell;
@@ -58,7 +59,6 @@ struct SwSearchOptions;
 class CommandEvent;
 class InsCaptionOpt;
 class SvGlobalName;
-class SvtAccessibilityOptions;
 class SwTransferable;
 class SwMailMergeConfigItem;
 class SwTextNode; // #i23726#
@@ -67,14 +67,13 @@ struct SwConversionArgs;
 class GraphicFilter;
 class SwPostItMgr;
 enum class SotExchangeDest;
-class SwCursorShell;
 enum class SvxSearchCmd;
 enum class SelectionType : sal_Int32;
 class SwNode;
+class SwMarkName;
 
 namespace com::sun::star::view { class XSelectionSupplier; }
 namespace sfx2 { class FileDialogHelper; }
-namespace sw::mark { class IFieldmark; }
 namespace weld { class Scrollbar; }
 
 const tools::Long nLeftOfst = -370;
@@ -185,7 +184,7 @@ class SW_DLLPUBLIC SwView: public SfxViewShell
     sal_uInt16              m_nNewPage;
 
     sal_uInt16          m_nOldPageNum;
-    OUString            m_sOldSectionName;
+    UIName              m_sOldSectionName;
 
     Point               m_aTabColFromDocPos;  // moving table columns out of the document
     SwTextNode           * m_pNumRuleNodeFromDoc; // Moving indent of numrule #i23726#
@@ -285,8 +284,8 @@ class SW_DLLPUBLIC SwView: public SfxViewShell
     // methods for searching
     // set search context
     SAL_DLLPRIVATE bool          SearchAndWrap(bool bApi);
-    SAL_DLLPRIVATE sal_uInt16 SearchAll();
-    SAL_DLLPRIVATE sal_uLong     FUNC_Search( const SwSearchOptions& rOptions );
+    SAL_DLLPRIVATE sal_Int32 SearchAll();
+    SAL_DLLPRIVATE sal_Int32     FUNC_Search( const SwSearchOptions& rOptions );
     SAL_DLLPRIVATE void          Replace();
 
     bool                        IsDocumentBorder();
@@ -295,12 +294,16 @@ class SW_DLLPUBLIC SwView: public SfxViewShell
 
     DECL_DLLPRIVATE_LINK( TimeoutHdl, Timer*, void );
 
-    inline tools::Long                  GetXScroll() const;
-    inline tools::Long                  GetYScroll() const;
+    // coverity[ tainted_data_return : FALSE ] version 2023.12.2
+    tools::Long GetXScroll() const { return (m_aVisArea.GetWidth() * nScrollX) / 100; }
+    // coverity[ tainted_data_return : FALSE ] version 2023.12.2
+    tools::Long GetYScroll() const { return (m_aVisArea.GetHeight() * nScrollY) / 100; }
+
     SAL_DLLPRIVATE Point         AlignToPixel(const Point& rPt) const;
     SAL_DLLPRIVATE void          CalcPt( Point* pPt,const tools::Rectangle& rRect,
                                     sal_uInt16 nRangeX,
-                                    sal_uInt16 nRangeY);
+                                    sal_uInt16 nRangeY,
+                                    ScrollSizeMode eScrollSizeMode);
 
     SAL_DLLPRIVATE bool          GetPageScrollUpOffset(SwTwips& rOff) const;
     SAL_DLLPRIVATE bool          GetPageScrollDownOffset(SwTwips& rOff) const;
@@ -316,7 +319,7 @@ class SW_DLLPUBLIC SwView: public SfxViewShell
     SAL_DLLPRIVATE void           CreateScrollbar( bool bHori );
     DECL_DLLPRIVATE_LINK(HoriScrollHdl, weld::Scrollbar&, void);
     DECL_DLLPRIVATE_LINK(VertScrollHdl, weld::Scrollbar&, void);
-    SAL_DLLPRIVATE void EndScrollHdl(weld::Scrollbar& rScrollbar, bool bHorizontal);
+    SAL_DLLPRIVATE void EndScrollHdl(const weld::Scrollbar& rScrollbar, bool bHorizontal);
     SAL_DLLPRIVATE bool          UpdateScrollbars();
     DECL_DLLPRIVATE_LINK( WindowChildEventListener, VclWindowEvent&, void );
     SAL_DLLPRIVATE void          CalcVisArea( const Size &rPixelSz );
@@ -354,6 +357,9 @@ class SW_DLLPUBLIC SwView: public SfxViewShell
     SAL_DLLPRIVATE void          CalcAndSetBorderPixel( SvBorder &rToFill );
 
     SAL_DLLPRIVATE void          ShowAtResize();
+
+    // XForms mode: change XForms mode, based on design mode
+    SAL_DLLPRIVATE void          UpdateXformsViewOption(bool bDesignMode);
 
     SAL_DLLPRIVATE virtual void  Move() override;
 
@@ -445,13 +451,14 @@ public:
     bool            IsScroll(const tools::Rectangle& rRect) const;
     void            Scroll( const tools::Rectangle& rRect,
                             sal_uInt16 nRangeX = USHRT_MAX,
-                            sal_uInt16 nRangeY = USHRT_MAX);
+                            sal_uInt16 nRangeY = USHRT_MAX,
+                            ScrollSizeMode eScrollSizeMode = ScrollSizeMode::ScrollSizeDefault);
 
     tools::Long            SetVScrollMax(tools::Long lMax);
     tools::Long            SetHScrollMax(tools::Long lMax);
 
     void            SpellError(LanguageType eLang);
-    bool            ExecSpellPopup( const Point& rPt );
+    bool            ExecSpellPopup(const Point& rPt, bool bIsMouseEvent);
     void            ExecSmartTagPopup( const Point& rPt );
 
     DECL_DLLPRIVATE_LINK( OnlineSpellCallback, SpellCallbackInfo&, void );
@@ -482,6 +489,7 @@ public:
 
     bool            HandleWheelCommands( const CommandEvent& );
     bool            HandleGestureZoomCommand(const CommandEvent&);
+    bool            HandleGesturePanCommand(const CommandEvent&);
 
     // insert frames
     void            InsFrameMode(sal_uInt16 nCols);
@@ -519,7 +527,7 @@ public:
     void            Execute(SfxRequest&);
     void            ExecLingu(SfxRequest&);
     void            ExecDlg(SfxRequest const &);
-    void            ExecDlgExt(SfxRequest const &);
+    void            ExecDlgExt(SfxRequest&);
     void            ExecColl(SfxRequest const &);
     void            ExecutePrint(SfxRequest&);
     void            ExecDraw(const SfxRequest&);
@@ -528,6 +536,7 @@ public:
     DECL_DLLPRIVATE_LINK( ExecRulerClick, Ruler *, void );
     void            ExecSearch(SfxRequest&);
     void            ExecViewOptions(SfxRequest &);
+    void            ExecNavigatorWin(SfxRequest &);
 
     virtual bool    IsConditionalFastCall( const SfxRequest &rReq ) override;
 
@@ -550,6 +559,8 @@ public:
     void            SetSelDrawSlot();
     void     FlipDrawSelMode()   { m_bDrawSelMode = !m_bDrawSelMode; }
     void            NoRotate();     // turn off rotate mode
+    void            ToggleRotate();     // switch between move and rotate mode
+
     bool            EnterDrawTextMode(const Point& aDocPos);
     /// Same as EnterDrawTextMode(), but takes an SdrObject instead of guessing it by document position.
     bool EnterShapeDrawTextMode(SdrObject* pObject);
@@ -590,9 +601,10 @@ public:
     }
 
     // hand over Shell
-                 SfxShell       *GetCurShell()  { return m_pShell; }
-                 SwDocShell     *GetDocShell();
-    inline const SwDocShell     *GetDocShell() const;
+    SfxShell       *GetCurShell()  { return m_pShell; }
+    SwDocShell     *GetDocShell();
+    const SwDocShell *GetDocShell() const { return const_cast<SwView*>(this)->GetDocShell(); }
+
     virtual       FmFormShell    *GetFormShell()       override { return m_pFormShell; }
     virtual const FmFormShell    *GetFormShell() const override { return m_pFormShell; }
 
@@ -607,7 +619,7 @@ public:
     void SetCursorAtTop( bool bFlag, bool bCenter = false )
         { m_bTopCursor = bFlag; m_bCenterCursor = bCenter; }
 
-    bool JumpToSwMark( std::u16string_view rMark );
+    bool JumpToSwMark( const SwMarkName& rMark );
 
     tools::Long InsertDoc( sal_uInt16 nSlotId, const OUString& rFileName,
                     const OUString& rFilterName, sal_Int16 nVersion = 0 );
@@ -624,8 +636,6 @@ public:
 
     // Enable mail merge - mail merge field dialog enabled
     void EnableMailMerge();
-    //apply Accessibility options
-    void ApplyAccessibilityOptions();
 
     SwView(SfxViewFrame& rFrame, SfxViewShell*);
     virtual ~SwView() override;
@@ -645,7 +655,7 @@ public:
     std::shared_ptr<SwMailMergeConfigItem> EnsureMailMergeConfigItem(const SfxItemSet* pArgs = nullptr);
 
     OUString GetDataSourceName() const;
-    static bool IsDataSourceAvailable(const OUString sDataSourceName);
+    static bool IsDataSourceAvailable(const OUString& sDataSourceName);
 
     void ExecFormatPaintbrush(SfxRequest const &);
     void StateFormatPaintbrush(SfxItemSet &);
@@ -673,6 +683,8 @@ public:
     SAL_DLLPRIVATE virtual std::unique_ptr<SfxTabPage> CreatePrintOptionsPage(weld::Container* pPage, weld::DialogController* pController,
                                                     const SfxItemSet& rSet) override;
     static SvxSearchItem* GetSearchItem() { return s_pSrchItem; }
+    static void SetSearchItem(SvxSearchItem* pSearchItem) { s_pSrchItem = pSearchItem; }
+
     /// See SfxViewShell::getPart().
     int getPart() const override;
     /// See SfxViewShell::dumpAsXml().
@@ -685,8 +697,10 @@ public:
     void NotifyCursor(SfxViewShell* pViewShell) const override;
     /// See SfxViewShell::GetColorConfigColor().
     ::Color GetColorConfigColor(svtools::ColorConfigEntry nColorType) const override;
-    void ShowUIElement(const OUString& sElementURL) const;
 
+    void SetUIElementVisibility(const OUString& sElementURL, bool bShow) const;
+    void ShowUIElement(const OUString& sElementURL) const;
+    void HideUIElement(const OUString& sElementURL) const;
 
     enum CachedStringID
     {
@@ -722,7 +736,9 @@ public:
     virtual void flushPendingLOKInvalidateTiles() override;
     virtual std::optional<OString> getLOKPayload(int nType, int nViewId) const override;
 
-    bool IsHighlightCharDF() { return m_bIsHighlightCharDF; }
+    bool IsHighlightCharDF() const { return m_bIsHighlightCharDF; }
+    bool IsSpotlightParaStyles() const { return m_bIsSpotlightParaStyles; }
+    bool IsSpotlightCharStyles() const { return m_bIsSpotlightCharStyles; }
 
 private:
     AutoTimer m_aBringToAttentionBlinkTimer;
@@ -737,21 +753,6 @@ public:
     void BringToAttention(const tools::Rectangle& rRect);
     void BringToAttention(const SwNode* pNode);
 };
-
-inline tools::Long SwView::GetXScroll() const
-{
-    return (m_aVisArea.GetWidth() * nScrollX) / 100;
-}
-
-inline tools::Long SwView::GetYScroll() const
-{
-    return (m_aVisArea.GetHeight() * nScrollY) / 100;
-}
-
-inline const SwDocShell *SwView::GetDocShell() const
-{
-    return const_cast<SwView*>(this)->GetDocShell();
-}
 
 std::unique_ptr<SfxTabPage> CreatePrintOptionsPage(weld::Container* pPage, weld::DialogController* pController,
                                           const SfxItemSet &rOptions,

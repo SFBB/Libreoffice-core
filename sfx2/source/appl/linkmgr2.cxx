@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <comphelper/lok.hxx>
 #include <comphelper/string.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <sfx2/sfxsids.hrc>
@@ -259,13 +262,14 @@ bool LinkManager::GetDisplayNames( const SvBaseLink * pLink,
                     sal_Int32 nTmp = 0;
                     OUString sServer( sLNm.getToken( 0, cTokenSeparator, nTmp ) );
                     OUString sTopic( sLNm.getToken( 0, cTokenSeparator, nTmp ) );
+                    OUString sLinkStr( sLNm.getToken(0, cTokenSeparator, nTmp) );
 
                     if( pType )
                         *pType = sServer;
                     if( pFile )
                         *pFile = sTopic;
                     if( pLinkStr )
-                        *pLinkStr = nTmp != -1 ? sLNm.copy(nTmp) : OUString();
+                        *pLinkStr = sLinkStr;
                     bRet = true;
                 }
                 break;
@@ -277,14 +281,22 @@ bool LinkManager::GetDisplayNames( const SvBaseLink * pLink,
     return bRet;
 }
 
+static void disallowAllLinksUpdate(SvBaseLink* pShellProvider)
+{
+    if (SfxObjectShell* pShell = pShellProvider->GetLinkManager()->GetPersist())
+        pShell->getEmbeddedObjectContainer().setUserAllowsLinkUpdate(false);
+}
+
 void LinkManager::UpdateAllLinks(
     bool bAskUpdate,
     bool bUpdateGrfLinks,
-    weld::Window* pParentWin )
+    weld::Window* pParentWin,
+    OUString const & referer )
 {
     // when active content is disabled don't bother updating all links
     // also (when bAskUpdate == true) don't show the pop up.
-    if(officecfg::Office::Common::Security::Scripting::DisableActiveContent::get())
+    if(officecfg::Office::Common::Security::Scripting::DisableActiveContent::get()
+       || SvtSecurityOptions::isUntrustedReferer(referer))
         return;
 
     // First make a copy of the array in order to update links
@@ -322,6 +334,13 @@ void LinkManager::UpdateAllLinks(
 
         if( bAskUpdate )
         {
+            if (comphelper::LibreOfficeKit::isActive())
+            {
+                // only one document in jail, no update possible
+                disallowAllLinksUpdate(pLink);
+                return;
+            }
+
             OUString aMsg = SfxResId(STR_QUERY_UPDATE_LINKS);
             INetURLObject aURL(pPersist->getDocumentBaseURL());
             aMsg = aMsg.replaceFirst("%{filename}", aURL.GetLastName());
@@ -333,14 +352,7 @@ void LinkManager::UpdateAllLinks(
             int nRet = xQueryBox->run();
             if( RET_YES != nRet )
             {
-                SfxObjectShell* pShell = pLink->GetLinkManager()->GetPersist();
-
-                if(pShell)
-                {
-                    comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = pShell->getEmbeddedObjectContainer();
-                    rEmbeddedObjectContainer.setUserAllowsLinkUpdate(false);
-                }
-
+                disallowAllLinksUpdate(pLink);
                 return ;        // nothing should be updated
             }
             bAskUpdate = false;  // once is enough
@@ -511,7 +523,7 @@ SotClipboardFormatId LinkManager::RegisterStatusInfoId()
     if( nFormat == SotClipboardFormatId::NONE )
     {
         nFormat = SotExchange::RegisterFormatName(
-                    "StatusInfo from SvxInternalLink");
+                    u"StatusInfo from SvxInternalLink"_ustr);
     }
     return nFormat;
 }
@@ -534,8 +546,11 @@ bool LinkManager::GetGraphicFromAny(std::u16string_view rMimeType,
             sReferer = sh->GetMedium()->GetName();
 
         OUString sURL = rValue.get<OUString>();
-        if (!SvtSecurityOptions::isUntrustedReferer(sReferer))
+        if (!SvtSecurityOptions::isUntrustedReferer(sReferer) &&
+            !INetURLObject(sURL).IsExoticProtocol())
+        {
             rGraphic = vcl::graphic::loadFromURL(sURL, pParentWin);
+        }
         if (rGraphic.IsNone())
             rGraphic.SetDefaultType();
         rGraphic.setOriginURL(sURL);
@@ -684,7 +699,7 @@ bool SvxInternalLink::Connect( sfx2::SvBaseLink* pLink )
             SfxStringItem aName( SID_FILE_NAME, sTopic );
             SfxBoolItem aMinimized(SID_MINIMIZED, true);
             SfxBoolItem aHidden(SID_HIDDEN, true);
-            SfxStringItem aTarget( SID_TARGETNAME, "_blank" );
+            SfxStringItem aTarget( SID_TARGETNAME, u"_blank"_ustr );
             SfxStringItem aReferer( SID_REFERER, sReferer );
             SfxUInt16Item aUpdate( SID_UPDATEDOCMODE, nUpdateMode );
             SfxBoolItem aReadOnly(SID_DOC_READONLY, false);

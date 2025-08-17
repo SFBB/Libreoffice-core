@@ -24,13 +24,6 @@
 
 namespace com::sun::star {
     namespace container { class XNameAccess; }
-    namespace frame { class XModel; }
-    namespace lang { class XMultiServiceFactory; }
-    namespace uno { template<class X> class Reference; }
-    namespace uno { template<class X> class Sequence; }
-    namespace uno { class XInterface; }
-    namespace uno { class Exception; }
-    namespace xml::sax { class XDocumentHandler; }
 }
 
 
@@ -59,7 +52,7 @@ public:
 
 private:
 
-    /// export the events off all autotexts
+    /// export the events of all autotexts
     virtual ErrCode exportDoc(
         enum ::xmloff::token::XMLTokenEnum eClass = xmloff::token::XML_TOKEN_INVALID ) override;
 

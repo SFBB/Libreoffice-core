@@ -55,7 +55,7 @@ namespace slideshow::internal
         ViewAppletShape::ViewAppletShape( ViewLayerSharedPtr                              xViewLayer,
                                           const uno::Reference< drawing::XShape >&        rxShape,
                                           const OUString&                          rServiceName,
-                                          const char**                                    pPropCopyTable,
+                                          const char* const*                              pPropCopyTable,
                                           std::size_t                                     nNumPropEntries,
                                           uno::Reference< uno::XComponentContext >        xContext ) :
             mpViewLayer(std::move( xViewLayer )),
@@ -121,7 +121,7 @@ namespace slideshow::internal
                                                                 uno::UNO_QUERY_THROW );
 
                 uno::Reference< awt::XWindow2 > xParentWindow(
-                    xPropSet->getPropertyValue("Window"),
+                    xPropSet->getPropertyValue(u"Window"_ustr),
                     uno::UNO_QUERY_THROW );
 
                 uno::Reference<lang::XMultiComponentFactory> xFactory(
@@ -164,26 +164,25 @@ namespace slideshow::internal
                     // resize surrounding window and applet to current shape size
                     // ==========================================================
 
-                    ::basegfx::B2DRange aTmpRange;
-                    ::canvas::tools::calcTransformedRectBounds( aTmpRange,
+                    ::basegfx::B2DRange aTmpRange = ::canvas::tools::calcTransformedRectBounds(
                                                                 rBounds,
                                                                 mpViewLayer->getTransformation() );
-                    const ::basegfx::B2IRange& rPixelBounds(
+                    const ::basegfx::B2IRange aPixelBounds(
                         ::basegfx::unotools::b2ISurroundingRangeFromB2DRange( aTmpRange ));
 
                     uno::Reference< awt::XWindow > xSurroundingWindow( mxFrame->getContainerWindow() );
                     if( xSurroundingWindow.is() )
-                        xSurroundingWindow->setPosSize( rPixelBounds.getMinX(),
-                                                        rPixelBounds.getMinY(),
-                                                        static_cast<sal_Int32>(rPixelBounds.getWidth()),
-                                                        static_cast<sal_Int32>(rPixelBounds.getHeight()),
+                        xSurroundingWindow->setPosSize( aPixelBounds.getMinX(),
+                                                        aPixelBounds.getMinY(),
+                                                        static_cast<sal_Int32>(aPixelBounds.getWidth()),
+                                                        static_cast<sal_Int32>(aPixelBounds.getHeight()),
                                                         awt::PosSize::POSSIZE );
 
                     uno::Reference< awt::XWindow > xAppletWindow( mxFrame->getComponentWindow() );
                     if( xAppletWindow.is() )
                         xAppletWindow->setPosSize( 0, 0,
-                                                   static_cast<sal_Int32>(rPixelBounds.getWidth()),
-                                                   static_cast<sal_Int32>(rPixelBounds.getHeight()),
+                                                   static_cast<sal_Int32>(aPixelBounds.getWidth()),
+                                                   static_cast<sal_Int32>(aPixelBounds.getHeight()),
                                                    awt::PosSize::POSSIZE );
                 }
             }
@@ -230,26 +229,25 @@ namespace slideshow::internal
             if( !mxFrame.is() )
                 return false;
 
-            ::basegfx::B2DRange aTmpRange;
-            ::canvas::tools::calcTransformedRectBounds( aTmpRange,
+            ::basegfx::B2DRange aTmpRange = ::canvas::tools::calcTransformedRectBounds(
                                                         rBounds,
                                                         mpViewLayer->getTransformation() );
-            const ::basegfx::B2IRange& rPixelBounds(
+            const ::basegfx::B2IRange aPixelBounds(
                 ::basegfx::unotools::b2ISurroundingRangeFromB2DRange( aTmpRange ));
 
             uno::Reference< awt::XWindow > xFrameWindow( mxFrame->getContainerWindow() );
             if( xFrameWindow.is() )
-                xFrameWindow->setPosSize( rPixelBounds.getMinX(),
-                                          rPixelBounds.getMinY(),
-                                          static_cast<sal_Int32>(rPixelBounds.getWidth()),
-                                          static_cast<sal_Int32>(rPixelBounds.getHeight()),
+                xFrameWindow->setPosSize( aPixelBounds.getMinX(),
+                                          aPixelBounds.getMinY(),
+                                          static_cast<sal_Int32>(aPixelBounds.getWidth()),
+                                          static_cast<sal_Int32>(aPixelBounds.getHeight()),
                                           awt::PosSize::POSSIZE );
 
             uno::Reference< awt::XWindow > xAppletWindow( mxFrame->getComponentWindow() );
             if( xAppletWindow.is() )
                 xAppletWindow->setPosSize( 0, 0,
-                                           static_cast<sal_Int32>(rPixelBounds.getWidth()),
-                                           static_cast<sal_Int32>(rPixelBounds.getHeight()),
+                                           static_cast<sal_Int32>(aPixelBounds.getWidth()),
+                                           static_cast<sal_Int32>(aPixelBounds.getHeight()),
                                            awt::PosSize::POSSIZE );
 
             return true;

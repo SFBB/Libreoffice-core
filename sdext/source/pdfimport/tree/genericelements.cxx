@@ -115,6 +115,12 @@ void FrameElement::visitedBy( ElementTreeVisitor&                          rVisi
     rVisitor.visit(*this,rParentIt);
 }
 
+void GroupElement::visitedBy( ElementTreeVisitor&                          rVisitor,
+                              const std::list< std::unique_ptr<Element> >::const_iterator& rParentIt )
+{
+    rVisitor.visit(*this,rParentIt);
+}
+
 void ImageElement::visitedBy( ElementTreeVisitor&                          rVisitor,
                               const std::list< std::unique_ptr<Element> >::const_iterator& rParentIt)
 {
@@ -124,10 +130,16 @@ void ImageElement::visitedBy( ElementTreeVisitor&                          rVisi
 PolyPolyElement::PolyPolyElement( Element*                       pParent,
                                   sal_Int32                      nGCId,
                                   const basegfx::B2DPolyPolygon& rPolyPoly,
-                                  sal_Int8                       nAction )
+                                  sal_Int8                       nAction,
+                                  ImageId                        nFillImage,
+                                  double                         nTileWidth,
+                                  double                         nTileHeight )
     : DrawElement( pParent, nGCId ),
       PolyPoly( rPolyPoly ),
-      Action( nAction )
+      Action( nAction ),
+      FillImage( nFillImage ),
+      TileWidth( nTileWidth ),
+      TileHeight( nTileHeight )
 {
 }
 
@@ -431,7 +443,7 @@ void DocumentElement::visitedBy( ElementTreeVisitor&                          rV
     rVisitor.visit(*this, rParentIt);
 }
 
-bool isComplex(const css::uno::Reference<css::i18n::XBreakIterator>& rBreakIterator, TextElement* const pTextElem) {
+bool isComplex(const css::uno::Reference<css::i18n::XBreakIterator>& rBreakIterator, const TextElement* pTextElem) {
     OUString str(pTextElem->Text.toString());
     for(int i=0; i< str.getLength(); i++)
     {

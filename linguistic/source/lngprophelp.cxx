@@ -189,7 +189,7 @@ void PropertyChgHelper::AddAsPropListener()
 {
     if (xPropSet.is())
     {
-        for (const OUString& rPropName : std::as_const(aPropNames))
+        for (const OUString& rPropName : aPropNames)
         {
             if (!rPropName.isEmpty())
                 xPropSet->addPropertyChangeListener( rPropName, this );
@@ -201,7 +201,7 @@ void PropertyChgHelper::RemoveAsPropListener()
 {
     if (xPropSet.is())
     {
-        for (const OUString& rPropName : std::as_const(aPropNames))
+        for (const OUString& rPropName : aPropNames)
         {
             if (!rPropName.isEmpty())
                 xPropSet->removePropertyChangeListener( rPropName, this );
@@ -291,7 +291,6 @@ PropertyHelper_Spell::PropertyHelper_Spell(
     auto& rPropNames = GetPropNames();
     rPropNames.push_back(UPN_IS_SPELL_UPPER_CASE);
     rPropNames.push_back(UPN_IS_SPELL_WITH_DIGITS);
-    rPropNames.push_back(UPN_IS_SPELL_CAPITALIZATION);
     rPropNames.push_back(UPN_IS_SPELL_CLOSED_COMPOUND);
     rPropNames.push_back(UPN_IS_SPELL_HYPHENATED_COMPOUND);
     SetDefaultValues();
@@ -310,7 +309,6 @@ void PropertyHelper_Spell::SetDefaultValues()
 
     bResIsSpellUpperCase        = bIsSpellUpperCase         = false;
     bResIsSpellWithDigits       = bIsSpellWithDigits        = false;
-    bResIsSpellCapitalization   = bIsSpellCapitalization    = true;
     bResIsSpellClosedCompound   = bIsSpellClosedCompound    = true;
     bResIsSpellHyphenatedCompound = bIsSpellHyphenatedCompound = true;
 }
@@ -338,11 +336,6 @@ void PropertyHelper_Spell::GetCurrentValues()
         {
             pbVal    = &bIsSpellWithDigits;
             pbResVal = &bResIsSpellWithDigits;
-        }
-        else if ( rPropName == UPN_IS_SPELL_CAPITALIZATION )
-        {
-            pbVal    = &bIsSpellCapitalization;
-            pbResVal = &bResIsSpellCapitalization;
         }
         else if ( rPropName == UPN_IS_SPELL_CLOSED_COMPOUND )
         {
@@ -386,13 +379,6 @@ bool PropertyHelper_Spell::propertyChange_Impl( const PropertyChangeEvent& rEvt 
             case UPH_IS_SPELL_WITH_DIGITS         :
             {
                 pbVal = &bIsSpellWithDigits;
-                bSCWA = ! *pbVal;    // sal_False->sal_True change?
-                bSWWA = !bSCWA;             // sal_True->sal_False change?
-                break;
-            }
-            case UPH_IS_SPELL_CAPITALIZATION      :
-            {
-                pbVal = &bIsSpellCapitalization;
                 bSCWA = ! *pbVal;    // sal_False->sal_True change?
                 bSWWA = !bSCWA;             // sal_True->sal_False change?
                 break;
@@ -452,7 +438,6 @@ void PropertyHelper_Spell::SetTmpPropVals( const PropertyValues &rPropVals )
     // return value is default value unless there is an explicitly supplied
     // temporary value
     bResIsSpellWithDigits       = bIsSpellWithDigits;
-    bResIsSpellCapitalization   = bIsSpellCapitalization;
     bResIsSpellClosedCompound   = bIsSpellClosedCompound;
     bResIsSpellHyphenatedCompound = bIsSpellHyphenatedCompound;
     bResIsSpellUpperCase        = bIsSpellUpperCase;
@@ -470,7 +455,6 @@ void PropertyHelper_Spell::SetTmpPropVals( const PropertyValues &rPropVals )
             {
                 case UPH_IS_SPELL_UPPER_CASE     : pbResVal = &bResIsSpellUpperCase; break;
                 case UPH_IS_SPELL_WITH_DIGITS    : pbResVal = &bResIsSpellWithDigits; break;
-                case UPH_IS_SPELL_CAPITALIZATION : pbResVal = &bResIsSpellCapitalization; break;
                 case UPH_IS_SPELL_CLOSED_COMPOUND : pbResVal = &bResIsSpellClosedCompound; break;
                 case UPH_IS_SPELL_HYPHENATED_COMPOUND : pbResVal = &bResIsSpellHyphenatedCompound; break;
                 default:
@@ -507,7 +491,9 @@ void PropertyHelper_Hyphen::SetDefaultValues()
 
     nResHyphMinLeading      = nHyphMinLeading       = 2;
     nResHyphMinTrailing     = nHyphMinTrailing      = 2;
+    nResHyphCompoundMinLeading = nHyphCompoundMinLeading = 2;
     nResHyphMinWordLength   = nHyphMinWordLength    = 0;
+    nResHyphTextHyphenZone  = nHyphTextHyphenZone   = 0;
     bResNoHyphenateCaps = bNoHyphenateCaps = false;
 }
 
@@ -537,10 +523,20 @@ void PropertyHelper_Hyphen::GetCurrentValues()
             pnVal    = &nHyphMinTrailing;
             pnResVal = &nResHyphMinTrailing;
         }
+        if ( rPropName == UPN_HYPH_COMPOUND_MIN_LEADING )
+        {
+            pnVal    = &nHyphCompoundMinLeading;
+            pnResVal = &nResHyphCompoundMinLeading;
+        }
         else if ( rPropName == UPN_HYPH_MIN_WORD_LENGTH )
         {
             pnVal    = &nHyphMinWordLength;
             pnResVal = &nResHyphMinWordLength;
+        }
+        else if ( rPropName == UPN_HYPH_ZONE )
+        {
+            pnVal    = &nHyphTextHyphenZone;
+            pnResVal = &nResHyphTextHyphenZone;
         }
         else if ( rPropName == UPN_HYPH_NO_CAPS )
         {
@@ -574,7 +570,9 @@ bool PropertyHelper_Hyphen::propertyChange_Impl( const PropertyChangeEvent& rEvt
         {
             case UPH_HYPH_MIN_LEADING     : pnVal = &nHyphMinLeading; break;
             case UPH_HYPH_MIN_TRAILING    : pnVal = &nHyphMinTrailing; break;
+            case UPH_HYPH_COMPOUND_MIN_LEADING : pnVal = &nHyphCompoundMinLeading; break;
             case UPH_HYPH_MIN_WORD_LENGTH : pnVal = &nHyphMinWordLength; break;
+            case UPH_HYPH_ZONE            : pnVal = &nHyphTextHyphenZone; break;
             case UPH_HYPH_NO_CAPS : pbVal = &bNoHyphenateCaps; break;
             default:
                 SAL_WARN( "linguistic", "unknown property handle " << rEvt.PropertyHandle << " (check in include/unotools/linguprops.hxx)");
@@ -612,7 +610,9 @@ void PropertyHelper_Hyphen::SetTmpPropVals( const PropertyValues &rPropVals )
     // temporary value
     nResHyphMinLeading      = nHyphMinLeading;
     nResHyphMinTrailing     = nHyphMinTrailing;
+    nResHyphCompoundMinLeading = nHyphCompoundMinLeading;
     nResHyphMinWordLength   = nHyphMinWordLength;
+    nResHyphTextHyphenZone  = nHyphTextHyphenZone;
     bResNoHyphenateCaps = bNoHyphenateCaps;
 
     for (const PropertyValue& rVal : rPropVals)
@@ -624,10 +624,22 @@ void PropertyHelper_Hyphen::SetTmpPropVals( const PropertyValues &rPropVals )
             pnResVal = &nResHyphMinLeading;
         else if ( rVal.Name == UPN_HYPH_MIN_TRAILING )
             pnResVal = &nResHyphMinTrailing;
+        if ( rVal.Name == UPN_HYPH_COMPOUND_MIN_LEADING )
+            pnResVal = &nResHyphCompoundMinLeading;
         else if ( rVal.Name == UPN_HYPH_MIN_WORD_LENGTH )
             pnResVal = &nResHyphMinWordLength;
+        else if ( rVal.Name == UPN_HYPH_ZONE )
+            pnResVal = &nResHyphTextHyphenZone;
         else if ( rVal.Name == UPN_HYPH_NO_CAPS )
             pbResVal = &bResNoHyphenateCaps;
+        else if (rVal.Name == UPN_HYPH_NO_LAST_WORD ||
+                 rVal.Name == UPN_HYPH_KEEP ||
+                 rVal.Name == UPN_HYPH_KEEP_LINE ||
+                 rVal.Name == UPN_HYPH_KEEP_TYPE)
+        {
+            // skip these known ones without warnings
+            continue;
+        }
 
         SAL_WARN_IF( !(pnResVal || pbResVal), "linguistic", "unknown property '" << rVal.Name << "'");
 
@@ -700,6 +712,11 @@ sal_Int16 PropertyHelper_Hyphenation::GetMinTrailing() const
     return mxPropHelper->GetMinTrailing();
 }
 
+sal_Int16 PropertyHelper_Hyphenation::GetCompoundMinLeading() const
+{
+    return mxPropHelper->GetCompoundMinLeading();
+}
+
 sal_Int16 PropertyHelper_Hyphenation::GetMinWordLength() const
 {
     return mxPropHelper->GetMinWordLength();
@@ -756,11 +773,6 @@ bool PropertyHelper_Spelling::IsSpellUpperCase() const
 bool PropertyHelper_Spelling::IsSpellWithDigits() const
 {
     return mxPropHelper->IsSpellWithDigits();
-}
-
-bool PropertyHelper_Spelling::IsSpellCapitalization() const
-{
-    return mxPropHelper->IsSpellCapitalization();
 }
 
 bool PropertyHelper_Spelling::IsSpellClosedCompound() const

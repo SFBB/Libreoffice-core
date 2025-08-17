@@ -97,6 +97,7 @@ void AnimatedExtractingProcessor2D::processBasePrimitive2D(const drawinglayer::p
         case PRIMITIVE2D_ID_ANIMATEDSWITCHPRIMITIVE2D :
         case PRIMITIVE2D_ID_ANIMATEDBLINKPRIMITIVE2D :
         case PRIMITIVE2D_ID_ANIMATEDINTERPOLATEPRIMITIVE2D :
+        case PRIMITIVE2D_ID_ANIMATEDGRAPHICPRIMITIVE2D :
         {
             const drawinglayer::primitive2d::AnimatedSwitchPrimitive2D& rSwitchPrimitive = static_cast< const drawinglayer::primitive2d::AnimatedSwitchPrimitive2D& >(rCandidate);
 
@@ -127,7 +128,6 @@ void AnimatedExtractingProcessor2D::processBasePrimitive2D(const drawinglayer::p
         // #121194# With Graphic as Bitmap FillStyle, also check
         // for primitives filled with animated graphics
         case PRIMITIVE2D_ID_POLYPOLYGONGRAPHICPRIMITIVE2D:
-        case PRIMITIVE2D_ID_FILLGRAPHICPRIMITIVE2D:
         case PRIMITIVE2D_ID_TRANSFORMPRIMITIVE2D:
 
         // decompose evtl. animated text contained in MaskPrimitive2D
@@ -250,6 +250,17 @@ void ViewObjectContact::ActionChanged()
     GetObjectContact().setLazyInvalidate(*this);
 }
 
+// IASS: helper for IASS invalidates
+void ViewObjectContact::ActionChangedIfDifferentPageView(const SdrPageView& rSdrPageView)
+{
+    SdrPageView* pSdrPageView(GetObjectContact().TryToGetSdrPageView());
+
+    // if there is no SdrPageView or different from given one, force
+    // invalidate/repaint
+    if (nullptr == pSdrPageView || pSdrPageView != &rSdrPageView)
+        ActionChanged();
+}
+
 void ViewObjectContact::triggerLazyInvalidate()
 {
     if(!mbLazyInvalidate)
@@ -317,27 +328,26 @@ void ViewObjectContact::createPrimitive2DSequence(const DisplayInfo& rDisplayInf
         // handle GluePoint
         if(!GetObjectContact().isOutputToPrinter() && GetObjectContact().AreGluePointsVisible())
         {
-            const drawinglayer::primitive2d::Primitive2DContainer xGlue(GetViewContact().createGluePointPrimitive2DSequence());
+            drawinglayer::primitive2d::Primitive2DContainer xGlue(GetViewContact().createGluePointPrimitive2DSequence());
 
             if(!xGlue.empty())
             {
-                xRetval.append(xGlue);
+                xRetval.append(std::move(xGlue));
             }
         }
 
         // handle ghosted
         if(isPrimitiveGhosted(rDisplayInfo))
         {
-            const basegfx::BColor aRGBWhite(1.0, 1.0, 1.0);
-            const basegfx::BColorModifierSharedPtr aBColorModifier =
+            basegfx::BColor aRGBWhite(1.0, 1.0, 1.0);
+            basegfx::BColorModifierSharedPtr aBColorModifier =
                 std::make_shared<basegfx::BColorModifier_interpolate>(
                     aRGBWhite,
                     0.5);
             xRetval = drawinglayer::primitive2d::Primitive2DContainer{
-                drawinglayer::primitive2d::Primitive2DReference(
                     new drawinglayer::primitive2d::ModifiedColorPrimitive2D(
                         std::move(xRetval),
-                        aBColorModifier))
+                        std::move(aBColorModifier))
             };
         }
     }
@@ -365,7 +375,7 @@ void ViewObjectContact::createStructureTag(drawinglayer::primitive2d::Primitive2
     {
         if (nullptr != pSdrObj && !pSdrObj->IsDecorative())
         {
-            vcl::PDFWriter::StructElement eElement(vcl::PDFWriter::NonStructElement);
+            vcl::pdf::StructElement eElement(vcl::pdf::StructElement::NonStructElement);
             const SdrInventor nInventor(pSdrObj->GetObjInventor());
             const SdrObjKind nIdentifier(pSdrObj->GetObjIdentifier());
             const bool bIsTextObj(nullptr != DynCastSdrTextObj(pSdrObj));
@@ -377,22 +387,22 @@ void ViewObjectContact::createStructureTag(drawinglayer::primitive2d::Primitive2
             if ( nInventor == SdrInventor::Default )
             {
                 if ( nIdentifier == SdrObjKind::Group )
-                    eElement = vcl::PDFWriter::Figure;
+                    eElement = vcl::pdf::StructElement::Figure;
                 else if (nIdentifier == SdrObjKind::Table)
-                    eElement = vcl::PDFWriter::Table;
+                    eElement = vcl::pdf::StructElement::Table;
                 else if (nIdentifier == SdrObjKind::Media)
-                    eElement = vcl::PDFWriter::Annot;
+                    eElement = vcl::pdf::StructElement::Annot;
                 else if ( nIdentifier == SdrObjKind::TitleText )
-                    eElement = vcl::PDFWriter::Heading;
+                    eElement = vcl::pdf::StructElement::Heading;
                 else if ( nIdentifier == SdrObjKind::OutlineText )
-                    eElement = vcl::PDFWriter::Division;
+                    eElement = vcl::pdf::StructElement::Division;
                 else if ( !bIsTextObj || !static_cast<const SdrTextObj&>(*pSdrObj).HasText() )
-                    eElement = vcl::PDFWriter::Figure;
+                    eElement = vcl::pdf::StructElement::Figure;
                 else
-                    eElement = vcl::PDFWriter::Division;
+                    eElement = vcl::pdf::StructElement::Division;
             }
 
-            if(vcl::PDFWriter::NonStructElement != eElement)
+            if(vcl::pdf::StructElement::NonStructElement != eElement)
             {
                 SdrPage* pSdrPage(pSdrObj->getSdrPageFromSdrObject());
 
@@ -408,7 +418,7 @@ void ViewObjectContact::createStructureTag(drawinglayer::primitive2d::Primitive2
                     }
 
                     ::std::vector<sal_Int32> annotIds;
-                    if (eElement == vcl::PDFWriter::Annot
+                    if (eElement == vcl::pdf::StructElement::Annot
                         && !static_cast<SdrMediaObj*>(pSdrObj)->getURL().isEmpty())
                     {
                         auto const pPDFExtOutDevData(GetObjectContact().GetPDFExtOutDevData());
@@ -417,14 +427,14 @@ void ViewObjectContact::createStructureTag(drawinglayer::primitive2d::Primitive2
                     }
 
                     rNewPrimitiveSequence = drawinglayer::primitive2d::Primitive2DContainer {
-                        drawinglayer::primitive2d::Primitive2DReference(
                             new drawinglayer::primitive2d::StructureTagPrimitive2D(
                                 eElement,
                                 bBackground,
                                 bImage,
+                                false, // Decorative
                                 std::move(rNewPrimitiveSequence),
                                 pAnchorKey,
-                                &annotIds))
+                                &annotIds)
                     };
                 }
             }
@@ -435,9 +445,10 @@ void ViewObjectContact::createStructureTag(drawinglayer::primitive2d::Primitive2
             rNewPrimitiveSequence = drawinglayer::primitive2d::Primitive2DContainer {
                     new drawinglayer::primitive2d::StructureTagPrimitive2D(
                         // lies to force silly VclMetafileProcessor2D to emit NonStructElement
-                        vcl::PDFWriter::Division,
+                        vcl::pdf::StructElement::Division,
                         true,
                         true,
+                        true, // Decorative
                         std::move(rNewPrimitiveSequence))
                 };
         }
@@ -481,10 +492,9 @@ drawinglayer::primitive2d::Primitive2DContainer const & ViewObjectContact::getPr
                 basegfx::utils::createTranslateB2DHomMatrix(
                     rGridOffset));
             xNewPrimitiveSequence = drawinglayer::primitive2d::Primitive2DContainer {
-                drawinglayer::primitive2d::Primitive2DReference(
                     new drawinglayer::primitive2d::TransformPrimitive2D(
                         aTranslateGridOffset,
-                        std::move(xNewPrimitiveSequence)))
+                        std::move(xNewPrimitiveSequence))
             };
         }
     }

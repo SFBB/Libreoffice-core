@@ -37,6 +37,8 @@
 #include <svl/intitem.hxx>
 #include <svx/flagsdef.hxx>
 
+#include <vcl/tabs.hrc>
+
 #define IS_OUTLINE(x) (x >= PresentationObjects::Outline_1 && x <= PresentationObjects::Outline_9)
 
 /**
@@ -48,7 +50,7 @@ SdPresLayoutTemplateDlg::SdPresLayoutTemplateDlg(SfxObjectShell const * pDocSh,
                                 SfxStyleSheetBase& rStyleBase,
                                 PresentationObjects _ePO,
                                 SfxStyleSheetBasePool* pSSPool)
-    : SfxTabDialogController(pParent, "modules/sdraw/ui/drawprtldialog.ui", "DrawPRTLDialog")
+    : SfxTabDialogController(pParent, u"modules/sdraw/ui/drawprtldialog.ui"_ustr, u"DrawPRTLDialog"_ustr)
     , mpDocShell(pDocSh)
     , ePO(_ePO)
     , aInputSet(*rStyleBase.GetItemSet().GetPool(), svl::Items<SID_PARAM_NUM_PRESET, SID_PARAM_CUR_NUM_LEVEL>)
@@ -124,43 +126,56 @@ SdPresLayoutTemplateDlg::SdPresLayoutTemplateDlg(SfxObjectShell const * pDocSh,
 
     SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
 
-    AddTabPage( "RID_SVXPAGE_LINE", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_LINE ), nullptr );
-    AddTabPage( "RID_SVXPAGE_AREA", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_AREA ), nullptr );
-    AddTabPage( "RID_SVXPAGE_SHADOW", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_SHADOW ), nullptr );
-    AddTabPage( "RID_SVXPAGE_TRANSPARENCE", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_TRANSPARENCE ), nullptr );
-    AddTabPage( "RID_SVXPAGE_CHAR_NAME", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_CHAR_NAME ), nullptr );
-    AddTabPage( "RID_SVXPAGE_CHAR_EFFECTS", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_CHAR_EFFECTS ), nullptr );
-    AddTabPage( "RID_SVXPAGE_STD_PARAGRAPH", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_STD_PARAGRAPH ), nullptr );
-    AddTabPage( "RID_SVXPAGE_TEXTATTR", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_TEXTATTR ), nullptr );
-    AddTabPage( "RID_SVXPAGE_PICK_BULLET", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_PICK_BULLET ), nullptr );
-    AddTabPage( "RID_SVXPAGE_PICK_SINGLE_NUM", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_PICK_SINGLE_NUM ), nullptr );
-    AddTabPage( "RID_SVXPAGE_PICK_BMP", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_PICK_BMP ), nullptr );
-    AddTabPage( "RID_SVXPAGE_NUM_OPTIONS", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_NUM_OPTIONS ), nullptr );
-    AddTabPage( "RID_SVXPAGE_TABULATOR", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_TABULATOR ), nullptr );
-    AddTabPage( "RID_SVXPAGE_PARA_ASIAN", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_PARA_ASIAN ), nullptr );
-    AddTabPage( "RID_SVXPAGE_ALIGN_PARAGRAPH", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_ALIGN_PARAGRAPH ), nullptr );
-    AddTabPage( "RID_SVXPAGE_BKG", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BKG ), nullptr);
-
-    if (!SvtCJKOptions::IsAsianTypographyEnabled() || bBackground)
-        RemoveTabPage( "RID_SVXPAGE_PARA_ASIAN" );
-
-    if (bBackground)
+    if (!bBackground)
+        AddTabPage(u"line"_ustr, TabResId(RID_TAB_LINE.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_LINE), RID_M + RID_TAB_LINE.sIconName);
+    AddTabPage(u"area"_ustr, TabResId(RID_TAB_AREA.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_AREA), RID_M + RID_TAB_AREA.sIconName);
+    if (!bBackground)
     {
-        RemoveTabPage( "RID_SVXPAGE_LINE");
-
-        RemoveTabPage( "RID_SVXPAGE_SHADOW");
-        RemoveTabPage( "RID_SVXPAGE_TRANSPARENCE");
-        RemoveTabPage( "RID_SVXPAGE_CHAR_NAME");
-        RemoveTabPage( "RID_SVXPAGE_CHAR_EFFECTS");
-        RemoveTabPage( "RID_SVXPAGE_STD_PARAGRAPH");
-        RemoveTabPage( "RID_SVXPAGE_TEXTATTR");
-        RemoveTabPage( "RID_SVXPAGE_PICK_BULLET");
-        RemoveTabPage( "RID_SVXPAGE_PICK_SINGLE_NUM");
-        RemoveTabPage( "RID_SVXPAGE_PICK_BMP");
-        RemoveTabPage( "RID_SVXPAGE_NUM_OPTIONS");
-        RemoveTabPage( "RID_SVXPAGE_TABULATOR");
-        RemoveTabPage( "RID_SVXPAGE_ALIGN_PARAGRAPH");
-        RemoveTabPage( "RID_SVXPAGE_BKG" );
+        AddTabPage(u"shadowing"_ustr, TabResId(RID_TAB_SHADOW.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_SHADOW),
+                   RID_M + RID_TAB_SHADOW.sIconName);
+        AddTabPage(u"transparency"_ustr, TabResId(RID_TAB_TRANSPARENCE.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_TRANSPARENCE),
+                   RID_M + RID_TAB_TRANSPARENCE.sIconName);
+        AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_NAME),
+                   RID_M + RID_TAB_FONT.sIconName);
+        AddTabPage(u"fonteffect"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_EFFECTS),
+                   RID_M + RID_TAB_FONTEFFECTS.sIconName);
+        AddTabPage(u"indents"_ustr, TabResId(RID_TAB_INDENTS.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_STD_PARAGRAPH),
+                   RID_M + RID_TAB_INDENTS.sIconName);
+        AddTabPage(u"text"_ustr, TabResId(RID_TAB_TEXT.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_TEXTATTR),
+                   RID_M + RID_TAB_TEXT.sIconName);
+        AddTabPage(u"bullets"_ustr, TabResId(RID_TAB_BULLETS.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PICK_BULLET),
+                   RID_M + RID_TAB_BULLETS.sIconName);
+        AddTabPage(u"numbering"_ustr, TabResId(RID_TAB_NUMBERING.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PICK_SINGLE_NUM),
+                   RID_M + RID_TAB_NUMBERING.sIconName);
+        AddTabPage(u"image"_ustr, TabResId(RID_TAB_IMAGE.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PICK_BMP),
+                   RID_M + RID_TAB_IMAGE.sIconName);
+        AddTabPage(u"customize"_ustr, TabResId(RID_TAB_CUSTOMIZE.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_NUM_OPTIONS),
+                   RID_M + RID_TAB_CUSTOMIZE.sIconName);
+        AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_ALIGN_PARAGRAPH),
+                   RID_M + RID_TAB_ALIGNMENT.sIconName);
+        if (SvtCJKOptions::IsAsianTypographyEnabled())
+            AddTabPage(u"asiantypo"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel),
+                       pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PARA_ASIAN),
+                       RID_M + RID_TAB_ASIANTYPO.sIconName);
+        AddTabPage(u"tabs"_ustr, TabResId(RID_TAB_TABS.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_TABULATOR),
+                   RID_M + RID_TAB_TABS.sIconName);
+        AddTabPage(u"background"_ustr, TabResId(RID_TAB_HIGHLIGHTING.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BKG),
+                   RID_M + RID_TAB_HIGHLIGHTING.sIconName);
     }
 
     // set title and add corresponding pages to dialog
@@ -212,7 +227,7 @@ void SdPresLayoutTemplateDlg::PageCreated(const OUString& rId, SfxTabPage &rPage
 {
     SfxAllItemSet aSet(*(aInputSet.GetPool()));
 
-    if (rId == "RID_SVXPAGE_LINE")
+    if (rId == "line")
     {
         aSet.Put (SvxColorListItem(pColorTab,SID_COLOR_TABLE));
         aSet.Put (SvxDashListItem(pDashList,SID_DASH_LIST));
@@ -220,7 +235,7 @@ void SdPresLayoutTemplateDlg::PageCreated(const OUString& rId, SfxTabPage &rPage
         aSet.Put (SfxUInt16Item(SID_DLG_TYPE,1));
         rPage.PageCreated(aSet);
     }
-    else if (rId == "RID_SVXPAGE_AREA")
+    else if (rId == "area")
     {
         aSet.Put (SvxColorListItem(pColorTab,SID_COLOR_TABLE));
         aSet.Put (SvxGradientListItem(pGradientList,SID_GRADIENT_LIST));
@@ -232,35 +247,35 @@ void SdPresLayoutTemplateDlg::PageCreated(const OUString& rId, SfxTabPage &rPage
         aSet.Put (SfxUInt16Item(SID_TABPAGE_POS,0));
         rPage.PageCreated(aSet);
     }
-    else if (rId == "RID_SVXPAGE_SHADOW")
+    else if (rId == "shadowing")
     {
         aSet.Put (SvxColorListItem(pColorTab,SID_COLOR_TABLE));
         aSet.Put (SfxUInt16Item(SID_PAGE_TYPE,0));
         aSet.Put (SfxUInt16Item(SID_DLG_TYPE,1));
         rPage.PageCreated(aSet);
     }
-    else if (rId == "RID_SVXPAGE_TRANSPARENCE")
+    else if (rId == "transparency")
     {
         aSet.Put (SfxUInt16Item(SID_PAGE_TYPE,0));
         aSet.Put (SfxUInt16Item(SID_DLG_TYPE,1));
         rPage.PageCreated(aSet);
     }
-    else if (rId == "RID_SVXPAGE_CHAR_NAME")
+    else if (rId == "font")
     {
         SvxFontListItem aItem(*static_cast<const SvxFontListItem*>(mpDocShell->GetItem( SID_ATTR_CHAR_FONTLIST) ) );
         aSet.Put (SvxFontListItem( aItem.GetFontList(), SID_ATTR_CHAR_FONTLIST));
         rPage.PageCreated(aSet);
     }
-    else if (rId == "RID_SVXPAGE_CHAR_EFFECTS")
+    else if (rId == "fonteffect")
     {
         rPage.PageCreated(aSet);
     }
-    else if (rId == "RID_SVXPAGE_TEXTATTR")
+    else if (rId == "text")
     {
         aSet.Put(CntUInt16Item(SID_SVXTEXTATTRPAGE_OBJKIND, static_cast<sal_uInt16>(SdrObjKind::Text)));
         rPage.PageCreated(aSet);
     }
-    else if (rId == "RID_SVXPAGE_BKG")
+    else if (rId == "background")
     {
         aSet.Put(SfxUInt32Item(SID_FLAG_TYPE,static_cast<sal_uInt32>(SvxBackgroundTabFlags::SHOW_CHAR_BKGCOLOR)));
         rPage.PageCreated(aSet);

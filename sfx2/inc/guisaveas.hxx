@@ -28,7 +28,7 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/container/XContainerQuery.hpp>
-#include <com/sun/star/frame/XModel.hpp>
+#include <com/sun/star/frame/XModel2.hpp>
 #include <com/sun/star/frame/XModuleManager2.hpp>
 
 #include <comphelper/sequenceashashmap.hxx>
@@ -38,6 +38,8 @@
 
 #include <svtools/dialogclosedlistener.hxx>
 
+#include <unotools/saveopt.hxx>
+
 #include <tools/urlobj.hxx>
 
 
@@ -45,6 +47,10 @@ namespace com::sun::star::document { class XDocumentProperties; }
 
 namespace weld { class Window; }
 class ModelData_Impl;
+
+namespace sfx2 {
+    bool UseODFWholesomeEncryption(SvtSaveOptions::ODFSaneDefaultVersion const nODFVersion);
+} // namespace sfx2
 
 class SfxStoringHelper
 {
@@ -67,14 +73,16 @@ private:
     bool m_bDialogUsed;
     bool m_bSetStandardName;
     sal_Int16 m_nStoreMode;
+    SignatureState m_nScriptingSignatureState{SignatureState::UNKNOWN};
 
     static bool FinishGUIStoreModel(::comphelper::SequenceAsHashMap::const_iterator& aFileNameIter,
                              ModelData_Impl& aModelData, bool bRemote, sal_Int16 nStoreMode,
-                             css::uno::Sequence< css::beans::PropertyValue >& aFilterProps,
+                             const css::uno::Sequence< css::beans::PropertyValue >& aFilterProps,
                              bool bSetStandardName, bool bPreselectPassword, bool bDialogUsed,
                              std::u16string_view aFilterFromMediaDescr, std::u16string_view aOldFilterName,
                              css::uno::Sequence< css::beans::PropertyValue >& aArgsSequence,
-                             OUString aFilterName);
+                             OUString aFilterName,
+                             SignatureState nScriptingSignatureState);
 
     void CallFinishGUIStoreModel();
 
@@ -82,11 +90,12 @@ public:
     SfxStoringHelper();
 
     bool GUIStoreModel(
-                    const css::uno::Reference< css::frame::XModel >& xModel,
+                    const css::uno::Reference< css::frame::XModel2 >& xModel,
                     std::u16string_view aSlotName,
                     css::uno::Sequence< css::beans::PropertyValue >& aArgsSequence,
                     bool bPreselectPassword,
                     SignatureState nDocumentSignatureState,
+                    SignatureState nScriptingSignatureState,
                     bool bIsAsync );
 
     static bool CheckFilterOptionsAppearance(
@@ -95,17 +104,18 @@ public:
 
 
     static void SetDocInfoState(
-        const css::uno::Reference< css::frame::XModel >& xModel,
+        const css::uno::Reference< css::frame::XModel2 >& xModel,
         const css::uno::Reference< css::document::XDocumentProperties>& i_xOldDocInfo );
 
     static bool WarnUnacceptableFormat(
-                                    const css::uno::Reference< css::frame::XModel >& xModel,
+                                    const css::uno::Reference< css::frame::XModel2 >& xModel,
                                     std::u16string_view aOldUIName,
+                                    std::u16string_view aExtension,
                                     const OUString& aDefExtension,
                                     bool rDefaultIsAlien );
 
-    static css::uno::Reference<css::awt::XWindow> GetModelXWindow(const css::uno::Reference<css::frame::XModel>& rModel);
-    static weld::Window* GetModelWindow( const css::uno::Reference< css::frame::XModel >& xModel );
+    static css::uno::Reference<css::awt::XWindow> GetModelXWindow(const css::uno::Reference<css::frame::XModel2>& rModel);
+    static weld::Window* GetModelWindow( const css::uno::Reference< css::frame::XModel2 >& xModel );
 
 };
 

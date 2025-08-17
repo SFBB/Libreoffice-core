@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SFX2_PASSWD_HXX
-#define INCLUDED_SFX2_PASSWD_HXX
+#pragma once
 
 #include <sal/config.h>
 #include <sfx2/dllapi.h>
@@ -68,6 +67,8 @@ private:
 
     std::unique_ptr<weld::Button> m_xOKBtn;
 
+    std::array<std::unique_ptr<weld::ToggleButton>, 4> m_xPass;
+
     std::shared_ptr<weld::MessageDialog> m_xConfirmFailedDialog;
 
     OUString        maMinLenPwdStr;
@@ -80,6 +81,7 @@ private:
 
     bool            mbAsciiOnly;
     DECL_DLLPRIVATE_LINK(OKHdl, weld::Button&, void);
+    DECL_DLLPRIVATE_LINK(ShowHdl, weld::Toggleable&, void);
     DECL_DLLPRIVATE_LINK(InsertTextHdl, OUString&, bool);
     DECL_DLLPRIVATE_LINK(EditModifyHdl, weld::Entry&, void);
     void            ModifyHdl();
@@ -135,7 +137,5 @@ public:
 
     ~SfxPasswordDialog();
 };
-
-#endif // INCLUDED_SFX2_PASSWD_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -40,7 +40,7 @@ class sorted_vector_test : public CppUnit::TestFixture
 public:
     void testBasics()
     {
-        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to<SwContent> > aVec;
+        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to> aVec;
 
         // create 4 test elements
         std::unique_ptr<SwContent> p1( new SwContent(1) );
@@ -85,7 +85,7 @@ public:
 
     void testErase()
     {
-        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to<SwContent> > aVec;
+        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to> aVec;
         SwContent *p1 = new SwContent(1);
         SwContent *p2 = new SwContent(2);
         SwContent *p3 = new SwContent(3);
@@ -115,7 +115,7 @@ public:
 
     void testInsertRange()
     {
-        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to<SwContent> > aVec1;
+        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to> aVec1;
         std::unique_ptr<SwContent> p1( new SwContent(1) );
         std::unique_ptr<SwContent> p2( new SwContent(2) );
         std::unique_ptr<SwContent> p3( new SwContent(3) );
@@ -124,7 +124,7 @@ public:
         aVec1.insert(p2.get());
         aVec1.insert(p3.get());
 
-        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to<SwContent> > aVec2;
+        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to> aVec2;
         aVec2.insert( aVec1 );
 
         CPPUNIT_ASSERT_EQUAL( static_cast<size_t>(3), aVec2.size() );
@@ -132,7 +132,7 @@ public:
 
     void testLowerBound()
     {
-        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to<SwContent> > aVec;
+        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to> aVec;
         std::unique_ptr<SwContent> p1( new SwContent(1) );
         std::unique_ptr<SwContent> p2( new SwContent(2) );
         std::unique_ptr<SwContent> p3( new SwContent(3) );
@@ -148,7 +148,7 @@ public:
 
     void testBasics_FindPtr()
     {
-        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to<SwContent>,
+        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to,
             o3tl::find_partialorder_ptrequals> aVec;
         std::unique_ptr<SwContent> p1( new SwContent(1) );
         std::unique_ptr<SwContent> p2( new SwContent(2) );
@@ -206,7 +206,7 @@ public:
 
     void testErase_FindPtr()
     {
-        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to<SwContent>,
+        o3tl::sorted_vector<SwContent*, o3tl::less_ptr_to,
             o3tl::find_partialorder_ptrequals> aVec;
         std::unique_ptr<SwContent> p1( new SwContent(1) );
         SwContent *p1_2 = new SwContent(1);
@@ -256,29 +256,29 @@ public:
 
     void testUniquePtr1()
     {
-        o3tl::sorted_vector<std::unique_ptr<OUString>, o3tl::less_uniqueptr_to<OUString>> aVec;
+        o3tl::sorted_vector<std::unique_ptr<OUString>, o3tl::less_ptr_to> aVec;
 
         auto str_c = aVec.insert(std::make_unique<OUString>("c")).first->get();
         auto str_b1 = aVec.insert(std::make_unique<OUString>("b")).first->get();
         CPPUNIT_ASSERT(!aVec.insert(std::make_unique<OUString>("b")).second);
         aVec.insert(std::make_unique<OUString>("a"));
         CPPUNIT_ASSERT_EQUAL( static_cast<size_t>(3), aVec.size() );
-        CPPUNIT_ASSERT_EQUAL( OUString("a"), *aVec[0] );
-        CPPUNIT_ASSERT_EQUAL( OUString("b"), *aVec[1] );
-        CPPUNIT_ASSERT_EQUAL( OUString("c"), *aVec[2] );
+        CPPUNIT_ASSERT_EQUAL( u"a"_ustr, *aVec[0] );
+        CPPUNIT_ASSERT_EQUAL( u"b"_ustr, *aVec[1] );
+        CPPUNIT_ASSERT_EQUAL( u"c"_ustr, *aVec[2] );
 
         CPPUNIT_ASSERT( aVec.find(str_c) != aVec.end() );
         CPPUNIT_ASSERT( aVec.find(str_b1) != aVec.end() );
 
-        OUString tmp("b");
+        OUString tmp(u"b"_ustr);
         CPPUNIT_ASSERT( aVec.find(&tmp) != aVec.end() );
-        OUString tmp2("z");
+        OUString tmp2(u"z"_ustr);
         CPPUNIT_ASSERT( bool(aVec.find(&tmp2) == aVec.end()) );
     }
 
     void testUniquePtr2()
     {
-        o3tl::sorted_vector<std::unique_ptr<OUString>, o3tl::less_uniqueptr_to<OUString>,
+        o3tl::sorted_vector<std::unique_ptr<OUString>, o3tl::less_ptr_to,
                             o3tl::find_partialorder_ptrequals> aVec;
 
         auto str_c = aVec.insert(std::make_unique<OUString>("c")).first->get();
@@ -286,16 +286,16 @@ public:
         auto str_b2 = aVec.insert(std::make_unique<OUString>("b")).first->get();
         aVec.insert(std::make_unique<OUString>("a"));
         CPPUNIT_ASSERT_EQUAL( static_cast<size_t>(4), aVec.size() );
-        CPPUNIT_ASSERT_EQUAL( OUString("a"), *aVec[0] );
-        CPPUNIT_ASSERT_EQUAL( OUString("b"), *aVec[1] );
-        CPPUNIT_ASSERT_EQUAL( OUString("b"), *aVec[2] );
-        CPPUNIT_ASSERT_EQUAL( OUString("c"), *aVec[3] );
+        CPPUNIT_ASSERT_EQUAL( u"a"_ustr, *aVec[0] );
+        CPPUNIT_ASSERT_EQUAL( u"b"_ustr, *aVec[1] );
+        CPPUNIT_ASSERT_EQUAL( u"b"_ustr, *aVec[2] );
+        CPPUNIT_ASSERT_EQUAL( u"c"_ustr, *aVec[3] );
 
         CPPUNIT_ASSERT( aVec.find(str_c) != aVec.end() );
         CPPUNIT_ASSERT( aVec.find(str_b1) != aVec.end() );
         CPPUNIT_ASSERT( aVec.find(str_b2) != aVec.end() );
 
-        OUString tmp2("z");
+        OUString tmp2(u"z"_ustr);
         CPPUNIT_ASSERT( bool(aVec.find(&tmp2) == aVec.end()) );
     }
 

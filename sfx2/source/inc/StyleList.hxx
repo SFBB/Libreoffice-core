@@ -31,7 +31,6 @@
 #include <vcl/weld.hxx>
 
 class SfxObjectShell;
-class SfxStyleFamilyItem;
 class SfxTemplateItem;
 class SfxCommonTemplateDialog_Impl;
 class SfxTemplateControllerItem;
@@ -63,7 +62,7 @@ class StyleList final : public SfxListener
 public:
     // Constructor
     StyleList(weld::Builder* pBuilder, SfxBindings* pBindings, SfxCommonTemplateDialog_Impl* Parent,
-              weld::Container* pC, OUString treeviewname, OUString flatviewname);
+              weld::Container* pC, const OUString& treeviewname, const OUString& flatviewname);
 
     // Destructor
     ~StyleList();
@@ -129,12 +128,13 @@ public:
     void FilterSelect(sal_uInt16 nActFilter, bool bsetFilter);
 
     DECL_LINK(NewMenuExecuteAction, void*, void);
+    DECL_LINK(OnPopupEnd, const OUString&, void);
 
-    bool HasStylesHighlighterFeature() { return m_bModuleHasStylesHighlighterFeature; }
-    void SetHighlightParaStyles(bool bSet) { m_bHighlightParaStyles = bSet; }
-    bool IsHighlightParaStyles() { return m_bHighlightParaStyles; }
-    void SetHighlightCharStyles(bool bSet) { m_bHighlightCharStyles = bSet; }
-    bool IsHighlightCharStyles() { return m_bHighlightCharStyles; }
+    bool HasStylesSpotlightFeature() { return m_bModuleHasStylesSpotlightFeature; }
+    void SetSpotlightParaStyles(bool bSet) { m_bSpotlightParaStyles = bSet; }
+    bool IsSpotlightParaStyles() { return m_bSpotlightParaStyles; }
+    void SetSpotlightCharStyles(bool bSet) { m_bSpotlightCharStyles = bSet; }
+    bool IsSpotlightCharStyles() { return m_bSpotlightCharStyles; }
 
 private:
     void FillTreeBox(SfxStyleFamily eFam);
@@ -222,7 +222,7 @@ private:
     std::unique_ptr<weld::Builder> mxMenuBuilder;
     std::unique_ptr<weld::Menu> mxMenu;
 
-    std::optional<SfxStyleFamilies> m_xStyleFamilies;
+    SfxStyleFamilies m_aStyleFamilies;
     std::array<std::unique_ptr<SfxTemplateItem>, MAX_FAMILIES> m_pFamilyState;
     SfxObjectShell* m_pCurObjShell;
     sal_uInt16 m_nActFamily;
@@ -242,7 +242,7 @@ private:
     sal_uInt16 m_nModifier;
     weld::Container* m_pContainer;
 
-    bool m_bModuleHasStylesHighlighterFeature = false;
-    bool m_bHighlightParaStyles = false;
-    bool m_bHighlightCharStyles = false;
+    bool m_bModuleHasStylesSpotlightFeature = false;
+    bool m_bSpotlightParaStyles = false;
+    bool m_bSpotlightCharStyles = false;
 };

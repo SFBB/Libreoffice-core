@@ -24,7 +24,7 @@ using namespace com::sun::star;
 
 namespace vcl
 {
-size_t RenderPDFBitmaps(const void* pBuffer, int nSize, std::vector<BitmapEx>& rBitmaps,
+size_t RenderPDFBitmaps(const void* pBuffer, int nSize, std::vector<Bitmap>& rBitmaps,
                         const size_t nFirstPage, int nPages, const basegfx::B2DTuple* pSizeHint)
 {
     auto pPdfium = vcl::pdf::PDFiumLibrary::get();
@@ -86,65 +86,34 @@ size_t RenderPDFBitmaps(const void* pBuffer, int nSize, std::vector<BitmapEx>& r
         pPdfBitmap->fillRect(0, 0, nPageWidth, nPageHeight, nColor);
         pPdfBitmap->renderPageBitmap(pPdfDocument.get(), pPdfPage.get(), /*nStartX=*/0,
                                      /*nStartY=*/0, nPageWidth, nPageHeight);
-
-        // Save the buffer as a bitmap.
-        Bitmap aBitmap(Size(nPageWidth, nPageHeight), vcl::PixelFormat::N24_BPP);
-        AlphaMask aMask(Size(nPageWidth, nPageHeight));
-        {
-            BitmapScopedWriteAccess pWriteAccess(aBitmap);
-            BitmapScopedWriteAccess pMaskAccess(aMask);
-            ConstScanline pPdfBuffer = pPdfBitmap->getBuffer();
-            const int nStride = pPdfBitmap->getStride();
-            std::vector<sal_uInt8> aScanlineAlpha(nPageWidth);
-            for (int nRow = 0; nRow < nPageHeight; ++nRow)
-            {
-                ConstScanline pPdfLine = pPdfBuffer + (nStride * nRow);
-                // pdfium byte order is BGRA.
-                pWriteAccess->CopyScanline(nRow, pPdfLine, ScanlineFormat::N32BitTcBgra, nStride);
-                for (int nCol = 0; nCol < nPageWidth; ++nCol)
-                {
-                    aScanlineAlpha[nCol] = pPdfLine[3];
-                    pPdfLine += 4;
-                }
-                pMaskAccess->CopyScanline(nRow, aScanlineAlpha.data(), ScanlineFormat::N8BitPal,
-                                          nPageWidth);
-            }
-        }
+        Bitmap aBitmap = pPdfBitmap->createBitmapFromBuffer();
 
         if (bTransparent)
         {
-            rBitmaps.emplace_back(aBitmap, aMask);
+            rBitmaps.emplace_back(std::move(aBitmap));
         }
         else
         {
-            rBitmaps.emplace_back(std::move(aBitmap));
+            rBitmaps.emplace_back(BitmapEx(aBitmap).GetBitmap());
         }
     }
 
     return rBitmaps.size();
 }
 
-bool importPdfVectorGraphicData(SvStream& rStream,
-                                std::shared_ptr<VectorGraphicData>& rVectorGraphicData)
+bool ImportPDF(SvStream& rStream, Graphic& rGraphic, sal_Int32 nPageIndex,
+               const css::uno::Reference<css::task::XInteractionHandler>& xInteractionHandler,
+               bool& bEncrypted)
 {
-    BinaryDataContainer aDataContainer = vcl::pdf::createBinaryDataContainer(rStream);
+    BinaryDataContainer aDataContainer
+        = vcl::pdf::createBinaryDataContainer(rStream, bEncrypted, xInteractionHandler);
     if (aDataContainer.isEmpty())
     {
         SAL_WARN("vcl.filter", "ImportPDF: empty PDF data array");
         return false;
     }
-
-    rVectorGraphicData
-        = std::make_shared<VectorGraphicData>(aDataContainer, VectorGraphicDataType::Pdf);
-
-    return true;
-}
-
-bool ImportPDF(SvStream& rStream, Graphic& rGraphic)
-{
-    std::shared_ptr<VectorGraphicData> pVectorGraphicData;
-    if (!importPdfVectorGraphicData(rStream, pVectorGraphicData))
-        return false;
+    std::shared_ptr<VectorGraphicData> pVectorGraphicData = std::make_shared<VectorGraphicData>(
+        aDataContainer, VectorGraphicDataType::Pdf, nPageIndex);
     rGraphic = Graphic(pVectorGraphicData);
     return true;
 }
@@ -182,7 +151,8 @@ findAnnotations(const std::unique_ptr<vcl::pdf::PDFiumPage>& pPage, basegfx::B2D
                 || eSubtype == vcl::pdf::PDFAnnotationSubType::Square
                 || eSubtype == vcl::pdf::PDFAnnotationSubType::Ink
                 || eSubtype == vcl::pdf::PDFAnnotationSubType::Highlight
-                || eSubtype == vcl::pdf::PDFAnnotationSubType::Line)
+                || eSubtype == vcl::pdf::PDFAnnotationSubType::Line
+                || eSubtype == vcl::pdf::PDFAnnotationSubType::Stamp)
             {
                 basegfx::B2DRectangle rRectangle = pAnnotation->getRectangle();
                 basegfx::B2DRectangle rRectangleHMM(
@@ -217,12 +187,12 @@ findAnnotations(const std::unique_ptr<vcl::pdf::PDFiumPage>& pPage, basegfx::B2D
 
                 if (eSubtype == vcl::pdf::PDFAnnotationSubType::Polygon)
                 {
-                    auto const& rVertices = pAnnotation->getVertices();
-                    if (!rVertices.empty())
+                    auto const aVertices = pAnnotation->getVertices();
+                    if (!aVertices.empty())
                     {
                         auto pMarker = std::make_shared<vcl::pdf::PDFAnnotationMarkerPolygon>();
                         rPDFGraphicAnnotation.mpMarker = pMarker;
-                        for (auto const& rVertex : rVertices)
+                        for (auto const& rVertex : aVertices)
                         {
                             auto aPoint = convertFromPDFInternalToHMM(rVertex, aPageSize);
                             pMarker->maPolygon.append(aPoint);
@@ -251,12 +221,12 @@ findAnnotations(const std::unique_ptr<vcl::pdf::PDFiumPage>& pPage, basegfx::B2D
                 }
                 else if (eSubtype == vcl::pdf::PDFAnnotationSubType::Ink)
                 {
-                    auto const& rStrokesList = pAnnotation->getInkStrokes();
-                    if (!rStrokesList.empty())
+                    auto const aStrokesList = pAnnotation->getInkStrokes();
+                    if (!aStrokesList.empty())
                     {
                         auto pMarker = std::make_shared<vcl::pdf::PDFAnnotationMarkerInk>();
                         rPDFGraphicAnnotation.mpMarker = pMarker;
-                        for (auto const& rStrokes : rStrokesList)
+                        for (auto const& rStrokes : aStrokesList)
                         {
                             basegfx::B2DPolygon aPolygon;
                             for (auto const& rVertex : rStrokes)
@@ -308,20 +278,57 @@ findAnnotations(const std::unique_ptr<vcl::pdf::PDFiumPage>& pPage, basegfx::B2D
                 }
                 else if (eSubtype == vcl::pdf::PDFAnnotationSubType::Line)
                 {
-                    auto const& rLineGeometry = pAnnotation->getLineGeometry();
-                    if (!rLineGeometry.empty())
+                    auto const aLineGeometry = pAnnotation->getLineGeometry();
+                    if (!aLineGeometry.empty())
                     {
                         auto pMarker = std::make_shared<vcl::pdf::PDFAnnotationMarkerLine>();
                         rPDFGraphicAnnotation.mpMarker = pMarker;
 
-                        auto aPoint1 = convertFromPDFInternalToHMM(rLineGeometry[0], aPageSize);
+                        auto aPoint1 = convertFromPDFInternalToHMM(aLineGeometry[0], aPageSize);
                         pMarker->maLineStart = aPoint1;
 
-                        auto aPoint2 = convertFromPDFInternalToHMM(rLineGeometry[1], aPageSize);
+                        auto aPoint2 = convertFromPDFInternalToHMM(aLineGeometry[1], aPageSize);
                         pMarker->maLineEnd = aPoint2;
 
                         float fWidth = pAnnotation->getBorderWidth();
                         pMarker->mnWidth = convertPointToMm100(fWidth);
+                    }
+                }
+                else if (eSubtype == vcl::pdf::PDFAnnotationSubType::FreeText)
+                {
+                    auto pMarker = std::make_shared<vcl::pdf::PDFAnnotationMarkerFreeText>();
+                    rPDFGraphicAnnotation.mpMarker = pMarker;
+                    if (pAnnotation->hasKey(vcl::pdf::constDictionaryKey_DefaultStyle))
+                    {
+                        pMarker->maDefaultStyle
+                            = pAnnotation->getString(vcl::pdf::constDictionaryKey_DefaultStyle);
+                    }
+                    if (pAnnotation->hasKey(vcl::pdf::constDictionaryKey_RichContent))
+                    {
+                        pMarker->maRichContent
+                            = pAnnotation->getString(vcl::pdf::constDictionaryKey_RichContent);
+                    }
+                }
+                else if (eSubtype == vcl::pdf::PDFAnnotationSubType::Stamp)
+                {
+                    auto pMarker = std::make_shared<vcl::pdf::PDFAnnotationMarkerStamp>();
+                    rPDFGraphicAnnotation.mpMarker = pMarker;
+
+                    auto nObjects = pAnnotation->getObjectCount();
+
+                    for (int nIndex = 0; nIndex < nObjects; nIndex++)
+                    {
+                        auto pPageObject = pAnnotation->getObject(nIndex);
+                        if (pPageObject->getType() == vcl::pdf::PDFPageObjectType::Image)
+                        {
+                            std::unique_ptr<vcl::pdf::PDFiumBitmap> pBitmap
+                                = pPageObject->getImageBitmap();
+                            if (!pBitmap)
+                            {
+                                continue;
+                            }
+                            pMarker->maBitmapEx = pBitmap->createBitmapFromBuffer();
+                        }
                     }
                 }
             }
@@ -336,9 +343,10 @@ size_t ImportPDFUnloaded(const OUString& rURL, std::vector<PDFGraphicResult>& rG
 {
     std::unique_ptr<SvStream> xStream(
         ::utl::UcbStreamHelper::CreateStream(rURL, StreamMode::READ | StreamMode::SHARE_DENYNONE));
+    bool bEncrypted;
 
     // Save the original PDF stream for later use.
-    BinaryDataContainer aDataContainer = vcl::pdf::createBinaryDataContainer(*xStream);
+    BinaryDataContainer aDataContainer = vcl::pdf::createBinaryDataContainer(*xStream, bEncrypted);
     if (aDataContainer.isEmpty())
         return 0;
 

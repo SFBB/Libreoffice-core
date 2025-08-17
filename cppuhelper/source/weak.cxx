@@ -27,11 +27,11 @@
 
 #include <com/sun/star/lang/DisposedException.hpp>
 
+#include <atomic>
 #include <algorithm>
 #include <vector>
 #include <mutex>
 
-using namespace osl;
 using namespace com::sun::star::uno;
 
 namespace cppu
@@ -233,7 +233,7 @@ void SAL_CALL OWeakObject::release() noexcept
 
 void OWeakObject::disposeWeakConnectionPoint()
 {
-    OSL_PRECOND( m_refCount == 0, "OWeakObject::disposeWeakConnectionPoint: only to be called with a ref count of 0!" );
+    OSL_PRECOND( (atomic_thread_fence(std::memory_order_acquire), m_refCount == 0), "OWeakObject::disposeWeakConnectionPoint: only to be called with a ref count of 0!" );
     if (m_pWeakConnectionPoint != nullptr) {
         OWeakConnectionPoint * const p = m_pWeakConnectionPoint;
         m_pWeakConnectionPoint = nullptr;
@@ -254,16 +254,12 @@ OWeakObject::~OWeakObject() COVERITY_NOEXCEPT_FALSE
 // XWeak
 Reference< XAdapter > SAL_CALL OWeakObject::queryAdapter()
 {
-    if (!m_pWeakConnectionPoint)
+    std::scoped_lock aGuard( *gpWeakMutex );
+    if( !m_pWeakConnectionPoint )
     {
-        // only acquire mutex if member is not created
-        std::scoped_lock aGuard( *gpWeakMutex );
-        if( !m_pWeakConnectionPoint )
-        {
-            OWeakConnectionPoint * p = new OWeakConnectionPoint(this);
-            p->acquire();
-            m_pWeakConnectionPoint = p;
-        }
+        OWeakConnectionPoint * p = new OWeakConnectionPoint(this);
+        p->acquire();
+        m_pWeakConnectionPoint = p;
     }
 
     return m_pWeakConnectionPoint;
@@ -332,7 +328,7 @@ class OWeakRefListener final : public XReference
 public:
     explicit OWeakRefListener(const Reference< XInterface >& xInt);
     explicit OWeakRefListener(const Reference< XWeak >& xInt);
-    virtual ~OWeakRefListener();
+    ~OWeakRefListener();
 
     // noncopyable
     OWeakRefListener(const OWeakRefListener&) = delete;

@@ -35,7 +35,6 @@
 #include <osl/diagnose.h>
 #include <officecfg/Office/Writer.hxx>
 #include <unotools/transliterationwrapper.hxx>
-#include <unotools/charclass.hxx>
 #include <sal/log.hxx>
 #include <swmodule.hxx>
 #include <splargs.hxx>
@@ -123,7 +122,7 @@ static bool lcl_IsDelim( const sal_Unicode c )
 
 // allow to check normal text with hyperlink by recognizing (parts of) URLs
 static bool lcl_IsURL(std::u16string_view rWord,
-    SwTextNode &rNode, sal_Int32 nBegin, sal_Int32 nLen)
+    const SwTextNode &rNode, sal_Int32 nBegin, sal_Int32 nLen)
 {
     // not a text with hyperlink
     if ( !rNode.GetTextAttrAt(nBegin, RES_TXTATR_INETFMT) )
@@ -228,7 +227,7 @@ lcl_MaskRedlinesAndHiddenText( const SwTextNode& rNode, OUStringBuffer& rText,
         nRedlinesMasked = lcl_MaskRedlines( rNode, rText, nStt, nEnd, cChar );
     }
 
-    const bool bHideHidden = !SW_MOD()->GetViewOption(rDoc.GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE))->IsShowHiddenChar();
+    const bool bHideHidden = !SwModule::get()->GetViewOption(rDoc.GetDocumentSettingManager().get(DocumentSettingId::HTML_MODE))->IsShowHiddenChar();
 
     // If called from word count, we want to mask the hidden ranges even
     // if they are visible:
@@ -381,7 +380,7 @@ static bool lcl_HaveCommonAttributes( IStyleAccess& rStyleAccess,
  *
  * @param nStt starting position
  * @param nLen length of the deletion
- * @param nthat ???
+ * @param nWhich ???
  * @param pSet ???
  * @param bInclRefToxMark ???
  */
@@ -668,9 +667,8 @@ void SwTextNode::RstTextAttr(
         nMax,
         0);
 
-    CallSwClientNotify(sw::LegacyModifyHint(nullptr, &aHint));
-    SwFormatChg aNew( GetFormatColl() );
-    CallSwClientNotify(sw::LegacyModifyHint(nullptr, &aNew));
+    CallSwClientNotify(sw::UpdateAttrHint(nullptr, &aHint));
+    CallSwClientNotify(SwFormatChangeHint(nullptr, GetFormatColl()));
 }
 
 static sal_Int32 clipIndexBounds(std::u16string_view aStr, sal_Int32 nPos)
@@ -779,62 +777,88 @@ SwScanner::SwScanner(std::function<LanguageType(sal_Int32, sal_Int32, bool)> aGe
 
     assert(m_aPreDashReplacementText.getLength() == m_aText.getLength());
 
+    LanguageType aNewLang;
     if ( m_pLanguage )
     {
-        m_aCurrentLang = *m_pLanguage;
+        aNewLang = *m_pLanguage;
     }
     else
     {
         ModelToViewHelper::ModelPosition aModelBeginPos =
             m_ModelToView.ConvertToModelPosition( m_nBegin );
-        m_aCurrentLang = m_pGetLangOfChar(aModelBeginPos.mnPos, 0, true);
+        aNewLang = m_pGetLangOfChar(aModelBeginPos.mnPos, 0, true);
+    }
+    if (m_aCurrentLang != aNewLang)
+    {
+        m_aCurrentLang = aNewLang;
+        moCharClass.reset();
     }
 }
 
 namespace
 {
-    //fdo#45271 for Asian words count characters instead of words
-    sal_Int32 forceEachAsianCodePointToWord(const OUString &rText, sal_Int32 nBegin, sal_Int32 nLen)
+// tdf#45271 For Chinese and Japanese, count characters instead of words
+sal_Int32
+forceEachCJCodePointToWord(const OUString& rText, sal_Int32 nBegin, sal_Int32 nLen,
+                           const ModelToViewHelper* pModelToView,
+                           const std::function<LanguageType(sal_Int32, sal_Int32, bool)>& fnGetLangOfChar)
+{
+    if (nLen > 1)
     {
-        if (nLen > 1)
+        const uno::Reference<XBreakIterator>& rxBreak = g_pBreakIt->GetBreakIter();
+
+        sal_uInt16 nCurrScript = rxBreak->getScriptType(rText, nBegin);
+
+        sal_Int32 indexUtf16 = nBegin;
+        rText.iterateCodePoints(&indexUtf16);
+
+        // First character is Asian
+        if (nCurrScript == i18n::ScriptType::ASIAN)
         {
-            const uno::Reference< XBreakIterator > &rxBreak = g_pBreakIt->GetBreakIter();
+            auto aModelBeginPos = pModelToView->ConvertToModelPosition(nBegin);
+            auto aCurrentLang = fnGetLangOfChar(aModelBeginPos.mnPos, nCurrScript, false);
 
-            sal_uInt16 nCurrScript = rxBreak->getScriptType( rText, nBegin );
-
-            sal_Int32 indexUtf16 = nBegin;
-            rText.iterateCodePoints(&indexUtf16);
-
-            //First character is Asian, consider it a word :-(
-            if (nCurrScript == i18n::ScriptType::ASIAN)
+            // tdf#150621 Korean words must be counted as-is
+            if (primary(aCurrentLang) == primary(LANGUAGE_KOREAN))
             {
-                nLen = indexUtf16 - nBegin;
                 return nLen;
             }
 
-            //First character was not Asian, consider appearance of any Asian character
-            //to be the end of the word
-            while (indexUtf16 < nBegin + nLen)
+            // Word is Chinese or Japanese, and must be truncated to a single character
+            return indexUtf16 - nBegin;
+        }
+
+        // First character was not Asian, consider appearance of any Asian character
+        // to be the end of the word
+        while (indexUtf16 < nBegin + nLen)
+        {
+            nCurrScript = rxBreak->getScriptType(rText, indexUtf16);
+            if (nCurrScript == i18n::ScriptType::ASIAN)
             {
-                nCurrScript = rxBreak->getScriptType( rText, indexUtf16 );
-                if (nCurrScript == i18n::ScriptType::ASIAN)
+                auto aModelBeginPos = pModelToView->ConvertToModelPosition(indexUtf16);
+                auto aCurrentLang = fnGetLangOfChar(aModelBeginPos.mnPos, nCurrScript, false);
+
+                // tdf#150621 Korean words must be counted as-is.
+                // Note that script changes intentionally do not delimit words for counting.
+                if (primary(aCurrentLang) == primary(LANGUAGE_KOREAN))
                 {
-                    nLen = indexUtf16 - nBegin;
                     return nLen;
                 }
-                rText.iterateCodePoints(&indexUtf16);
+
+                // Word tail contains Chinese or Japanese, and must be truncated
+                return indexUtf16 - nBegin;
             }
+            rText.iterateCodePoints(&indexUtf16);
         }
-        return nLen;
     }
+    return nLen;
+}
 }
 
 bool SwScanner::NextWord()
 {
     m_nBegin = m_nBegin + m_nLength;
     Boundary aBound;
-
-    std::optional<CharClass> xLocalCharClass;
 
     while ( true )
     {
@@ -848,13 +872,19 @@ bool SwScanner::NextWord()
                     const sal_uInt16 nNextScriptType = g_pBreakIt->GetBreakIter()->getScriptType( m_aText, m_nBegin );
                     ModelToViewHelper::ModelPosition aModelBeginPos =
                         m_ModelToView.ConvertToModelPosition( m_nBegin );
-                    m_aCurrentLang = m_pGetLangOfChar(aModelBeginPos.mnPos, nNextScriptType, false);
+                    LanguageType aNewLang = m_pGetLangOfChar(aModelBeginPos.mnPos, nNextScriptType, false);
+                    if (aNewLang != m_aCurrentLang)
+                    {
+                        m_aCurrentLang = aNewLang;
+                        moCharClass.reset();
+                    }
                 }
 
                 if ( m_nWordType != i18n::WordType::WORD_COUNT )
                 {
-                    xLocalCharClass.emplace(LanguageTag( g_pBreakIt->GetLocale( m_aCurrentLang ) ));
-                    if ( xLocalCharClass->isLetterNumeric(OUString(m_aText[m_nBegin])) )
+                    if (!moCharClass)
+                        moCharClass.emplace(LanguageTag( g_pBreakIt->GetLocale( m_aCurrentLang ) ));
+                    if ( moCharClass->isLetterNumeric(OUString(m_aText[m_nBegin])) )
                         break;
                 }
                 else
@@ -959,8 +989,11 @@ bool SwScanner::NextWord()
     if( ! m_nLength )
         return false;
 
-    if ( m_nWordType == i18n::WordType::WORD_COUNT )
-        m_nLength = forceEachAsianCodePointToWord(m_aText, m_nBegin, m_nLength);
+    if (m_nWordType == i18n::WordType::WORD_COUNT)
+    {
+        m_nLength = forceEachCJCodePointToWord(m_aText, m_nBegin, m_nLength, &m_ModelToView,
+                                               m_pGetLangOfChar);
+    }
 
     m_aPrevWord = m_aWord;
     m_aWord = m_aPreDashReplacementText.copy( m_nBegin, m_nLength );
@@ -969,7 +1002,7 @@ bool SwScanner::NextWord()
 }
 
 // Note: this is a clone of SwTextFrame::AutoSpell_, so keep them in sync when fixing things!
-bool SwTextNode::Spell(SwSpellArgs* pArgs)
+bool SwTextNode::Spell(SwSpellArgs* pArgs, bool bIsReadOnly)
 {
     // modify string according to redline information and hidden text
     const OUString aOldText( m_Text );
@@ -992,6 +1025,16 @@ bool SwTextNode::Spell(SwSpellArgs* pArgs)
 
     pArgs->xSpellAlt = nullptr;
 
+    bool bIsEditableSect = false;
+    if (bIsReadOnly)
+    {
+        // Enable spell checking in editable sections in read-only mode.
+        if (SwSectionNode* pSectNode = GetTextNode()->FindSectionNode())
+        {
+            bIsEditableSect = pSectNode->GetSection().IsEditInReadonly();
+        }
+    }
+
     // 4 cases:
 
     // 1. IsWrongDirty = 0 and GetWrong = 0
@@ -1004,7 +1047,7 @@ bool SwTextNode::Spell(SwSpellArgs* pArgs)
     //      Text has been checked but there is an invalid range in the wrong list
 
     // Nothing has to be done for case 1.
-    if ( ( IsWrongDirty() || GetWrong() ) && m_Text.getLength() )
+    if ((IsWrongDirty() || GetWrong()) && (!bIsReadOnly || bIsEditableSect) && m_Text.getLength())
     {
         if (nBegin > m_Text.getLength())
         {
@@ -1490,6 +1533,14 @@ SwRect SwTextFrame::AutoSpell_(SwTextNode & rNode, sal_Int32 nActPos)
                 : sw::WrongState::DONE);
         if( !pNode->GetWrong()->Count() && ! pNode->IsWrongDirty() )
             pNode->ClearWrong();
+
+        if (bPending && getRootFrame())
+        {
+            if (SwViewShell* pViewSh = getRootFrame()->GetCurrShell())
+            {
+                pViewSh->OnSpellWrongStatePending();
+            }
+        }
     }
     else
         pNode->SetWrongDirty(sw::WrongState::DONE);
@@ -1859,7 +1910,7 @@ void SwTextNode::TransliterateText(
                 aChgData.nStart     = nStt;
                 aChgData.nLen       = nLen;
                 aChgData.sChanged   = sChgd;
-                aChgData.aOffsets   = aOffsets;
+                aChgData.aOffsets   = std::move(aOffsets);
                 aChanges.push_back( aChgData );
             }
 
@@ -1949,7 +2000,7 @@ void SwTextNode::TransliterateText(
                 aChgData.nStart     = nCurrentStart;
                 aChgData.nLen       = nLen;
                 aChgData.sChanged   = sChgd;
-                aChgData.aOffsets   = aOffsets;
+                aChgData.aOffsets   = std::move(aOffsets);
                 aChanges.push_back( aChgData );
             }
 
@@ -2001,7 +2052,7 @@ void SwTextNode::TransliterateText(
                 aChgData.nStart     = nStt;
                 aChgData.nLen       = nLen;
                 aChgData.sChanged   = sChgd;
-                aChgData.aOffsets   = aOffsets;
+                aChgData.aOffsets   = std::move(aOffsets);
                 aChanges.push_back( aChgData );
             }
 

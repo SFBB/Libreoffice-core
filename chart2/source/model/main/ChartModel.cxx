@@ -23,20 +23,24 @@
 #include <servicenames.hxx>
 #include <DataSource.hxx>
 #include <DataSourceHelper.hxx>
-#include <ChartModelHelper.hxx>
+#include <ChartType.hxx>
 #include <DisposeHelper.hxx>
 #include <ControllerLockGuard.hxx>
 #include <InternalDataProvider.hxx>
 #include <ObjectIdentifier.hxx>
+#include <BaseCoordinateSystem.hxx>
 #include "PageBackground.hxx"
 #include <CloneHelper.hxx>
 #include <NameContainer.hxx>
 #include "UndoManager.hxx"
+
+#include <ChartColorPaletteHelper.hxx>
 #include <ChartView.hxx>
 #include <PopupRequest.hxx>
 #include <ModifyListenerHelper.hxx>
 #include <RangeHighlighter.hxx>
 #include <Diagram.hxx>
+#include <ChartDocumentWrapper.hxx>
 #include <comphelper/dumpxmltostring.hxx>
 
 #include <com/sun/star/chart/ChartDataRowSource.hpp>
@@ -54,8 +58,12 @@
 #include <com/sun/star/embed/Aspects.hpp>
 #include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
 #include <com/sun/star/datatransfer/XTransferable.hpp>
+#include <com/sun/star/drawing/XDrawPageSupplier.hpp>
+#include <com/sun/star/drawing/XDrawPage.hpp>
+#include <com/sun/star/drawing/FillStyle.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
 #include <com/sun/star/document/DocumentProperties.hpp>
+#include <com/sun/star/text/XTextDocument.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/util/XModifyBroadcaster.hpp>
 
@@ -64,6 +72,11 @@
 #include <comphelper/diagnose_ex.hxx>
 #include <libxml/xmlwriter.h>
 
+#include <sfx2/objsh.hxx>
+#include <com/sun/star/util/XTheme.hpp>
+#include <docmodel/uno/UnoTheme.hxx>
+#include <docmodel/theme/Theme.hxx>
+
 using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::Any;
@@ -71,7 +84,6 @@ using ::osl::MutexGuard;
 
 using namespace ::com::sun::star;
 using namespace ::apphelper;
-using namespace ::chart::CloneHelper;
 
 namespace
 {
@@ -87,6 +99,19 @@ constexpr OUString lcl_aGDIMetaFileMIMETypeHighContrast(
 namespace chart
 {
 
+namespace
+{
+SfxObjectShell* getParentShell(const uno::Reference<frame::XModel>& xDocModel)
+{
+    uno::Reference<lang::XUnoTunnel> xUnoTunnel(xDocModel, uno::UNO_QUERY);
+    if (xUnoTunnel.is())
+    {
+        return comphelper::getFromUnoTunnel<SfxObjectShell>(xUnoTunnel);
+    }
+    return nullptr;
+}
+}
+
 ChartModel::ChartModel(uno::Reference<uno::XComponentContext > xContext)
     : m_aLifeTimeManager( this, this )
     , m_bReadOnly( false )
@@ -97,18 +122,17 @@ ChartModel::ChartModel(uno::Reference<uno::XComponentContext > xContext)
     , m_aControllers( m_aModelMutex )
     , m_nControllerLockCount(0)
     , m_xContext(std::move( xContext ))
-    , m_aVisualAreaSize( ChartModelHelper::getDefaultPageSize() )
+    , m_aVisualAreaSize( ChartModel::getDefaultPageSize() )
     , m_xPageBackground( new PageBackground )
     , m_xXMLNamespaceMap( new NameContainer() )
+    , m_eColorPaletteType(ChartColorPaletteType::Unknown)
+    , m_nColorPaletteIndex(0)
     , mnStart(0)
     , mnEnd(0)
 {
     osl_atomic_increment(&m_refCount);
     {
-        m_xOldModelAgg.set(
-            m_xContext->getServiceManager()->createInstanceWithContext(
-            CHART_CHARTAPIWRAPPER_SERVICE_NAME,
-            m_xContext ), uno::UNO_QUERY_THROW );
+        m_xOldModelAgg = new wrapper::ChartDocumentWrapper(m_xContext);
         m_xOldModelAgg->setDelegator( *this );
     }
 
@@ -121,6 +145,8 @@ ChartModel::ChartModel(uno::Reference<uno::XComponentContext > xContext)
 
 ChartModel::ChartModel( const ChartModel & rOther )
     : impl::ChartModel_Base(rOther)
+    // not copy the listener
+    , SfxListener()
     , m_aLifeTimeManager( this, this )
     , m_bReadOnly( rOther.m_bReadOnly )
     , m_bModified( rOther.m_bModified )
@@ -140,15 +166,14 @@ ChartModel::ChartModel( const ChartModel & rOther )
     , m_aGraphicObjectVector( rOther.m_aGraphicObjectVector )
     , m_xDataProvider( rOther.m_xDataProvider )
     , m_xInternalDataProvider( rOther.m_xInternalDataProvider )
+    , m_eColorPaletteType(ChartColorPaletteType::Unknown)
+    , m_nColorPaletteIndex(0)
     , mnStart(rOther.mnStart)
     , mnEnd(rOther.mnEnd)
 {
     osl_atomic_increment(&m_refCount);
     {
-        m_xOldModelAgg.set(
-            m_xContext->getServiceManager()->createInstanceWithContext(
-            CHART_CHARTAPIWRAPPER_SERVICE_NAME,
-            m_xContext ), uno::UNO_QUERY_THROW );
+        m_xOldModelAgg = new wrapper::ChartDocumentWrapper(m_xContext);
         m_xOldModelAgg->setDelegator( *this );
 
         Reference< util::XModifyListener > xListener;
@@ -159,17 +184,20 @@ ChartModel::ChartModel( const ChartModel & rOther )
         if (rOther.m_xDiagram.is())
             xNewDiagram = new ::chart::Diagram( *rOther.m_xDiagram );
         rtl::Reference< ::chart::PageBackground > xNewPageBackground = new PageBackground( *rOther.m_xPageBackground );
-        rtl::Reference< ::chart::ChartTypeManager > xChartTypeManager; // does not implement XCloneable
-        rtl::Reference< ::chart::NameContainer > xXMLNamespaceMap = new NameContainer( *rOther.m_xXMLNamespaceMap );
 
         {
-            MutexGuard aGuard( m_aModelMutex );
-            xListener = this;
-            m_xTitle = xNewTitle;
-            m_xDiagram = xNewDiagram;
-            m_xPageBackground = xNewPageBackground;
-            m_xChartTypeManager = xChartTypeManager;
-            m_xXMLNamespaceMap = xXMLNamespaceMap;
+            rtl::Reference< ::chart::ChartTypeManager > xChartTypeManager; // does not implement XCloneable
+            rtl::Reference< ::chart::NameContainer > xXMLNamespaceMap = new NameContainer( *rOther.m_xXMLNamespaceMap );
+
+            {
+                MutexGuard aGuard( m_aModelMutex );
+                xListener = this;
+                m_xTitle = xNewTitle;
+                m_xDiagram = xNewDiagram;
+                m_xPageBackground = xNewPageBackground;
+                m_xChartTypeManager = std::move(xChartTypeManager);
+                m_xXMLNamespaceMap = std::move(xXMLNamespaceMap);
+            }
         }
 
         ModifyListenerHelper::addListener( xNewTitle, xListener );
@@ -184,6 +212,8 @@ ChartModel::ChartModel( const ChartModel & rOther )
 
 ChartModel::~ChartModel()
 {
+    if (SfxObjectShell* pShell = getParentShell(m_xParent))
+        EndListening(*pShell);
     if( m_xOldModelAgg.is())
         m_xOldModelAgg->setDelegator( nullptr );
 }
@@ -268,7 +298,7 @@ void ChartModel::impl_adjustAdditionalShapesPositionAndSize( const awt::Size& aV
         return;
 
     uno::Reference< drawing::XShapes > xShapes;
-    xProperties->getPropertyValue( "AdditionalShapes" ) >>= xShapes;
+    xProperties->getPropertyValue( u"AdditionalShapes"_ustr ) >>= xShapes;
     if ( !xShapes.is() )
         return;
 
@@ -302,7 +332,7 @@ void ChartModel::impl_adjustAdditionalShapesPositionAndSize( const awt::Size& aV
 
 OUString SAL_CALL ChartModel::getImplementationName()
 {
-    return CHART_MODEL_SERVICE_IMPLEMENTATION_NAME;
+    return u"com.sun.star.comp.chart2.ChartModel"_ustr;
 }
 
 sal_Bool SAL_CALL ChartModel::supportsService( const OUString& rServiceName )
@@ -313,9 +343,9 @@ sal_Bool SAL_CALL ChartModel::supportsService( const OUString& rServiceName )
 css::uno::Sequence< OUString > SAL_CALL ChartModel::getSupportedServiceNames()
 {
     return {
-        CHART_MODEL_SERVICE_NAME,
-        "com.sun.star.document.OfficeDocument",
-        "com.sun.star.chart.ChartDocument"
+        u"com.sun.star.chart2.ChartDocument"_ustr,
+        u"com.sun.star.document.OfficeDocument"_ustr,
+        u"com.sun.star.chart.ChartDocument"_ustr
     };
 }
 
@@ -462,7 +492,7 @@ uno::Reference< frame::XController > SAL_CALL ChartModel::getCurrentController()
     LifeTimeGuard aGuard(m_aLifeTimeManager);
     if(!aGuard.startApiCall())
         throw lang::DisposedException(
-                "getCurrentController was called on an already disposed or closed model",
+                u"getCurrentController was called on an already disposed or closed model"_ustr,
                 static_cast< ::cppu::OWeakObject* >(this) );
 
     return impl_getCurrentController();
@@ -473,13 +503,13 @@ void SAL_CALL ChartModel::setCurrentController( const uno::Reference< frame::XCo
     LifeTimeGuard aGuard(m_aLifeTimeManager);
     if(!aGuard.startApiCall())
         throw lang::DisposedException(
-                "setCurrentController was called on an already disposed or closed model",
+                u"setCurrentController was called on an already disposed or closed model"_ustr,
                 static_cast< ::cppu::OWeakObject* >(this) );
 
     //OSL_ENSURE( impl_isControllerConnected(xController), "setCurrentController is called with a Controller which is not connected" );
     if(!impl_isControllerConnected(xController))
         throw container::NoSuchElementException(
-                "setCurrentController is called with a Controller which is not connected",
+                u"setCurrentController is called with a Controller which is not connected"_ustr,
                 static_cast< ::cppu::OWeakObject* >(this) );
 
     m_xCurrentController = xController;
@@ -497,7 +527,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartModel::getCurrentSelection()
     LifeTimeGuard aGuard(m_aLifeTimeManager);
     if(!aGuard.startApiCall())
         throw lang::DisposedException(
-                "getCurrentSelection was called on an already disposed or closed model",
+                u"getCurrentSelection was called on an already disposed or closed model"_ustr,
                 static_cast< ::cppu::OWeakObject* >(this) );
 
     uno::Reference< uno::XInterface > xReturn;
@@ -631,7 +661,7 @@ void SAL_CALL ChartModel::close( sal_Bool bDeliverOwnership )
     //check whether we self can close
     {
         util::CloseVetoException aVetoException(
-                        "the model itself could not be closed",
+                        u"the model itself could not be closed"_ustr,
                         static_cast< ::cppu::OWeakObject* >(this) );
 
         m_aLifeTimeManager.g_close_isNeedToCancelLongLastingCalls( bDeliverOwnership, aVetoException );
@@ -713,13 +743,13 @@ Reference< chart2::data::XDataSource > ChartModel::impl_createDefaultData()
     {
         //init internal dataprovider
         {
-            beans::NamedValue aParam( "CreateDefaultData" ,uno::Any(true) );
+            beans::NamedValue aParam( u"CreateDefaultData"_ustr ,uno::Any(true) );
             uno::Sequence< uno::Any > aArgs{ uno::Any(aParam) };
             m_xInternalDataProvider->initialize(aArgs);
         }
         //create data
         uno::Sequence<beans::PropertyValue> aArgs( comphelper::InitPropertySequence({
-            { "CellRangeRepresentation", uno::Any( OUString("all") ) },
+            { "CellRangeRepresentation", uno::Any( u"all"_ustr ) },
             { "HasCategories", uno::Any( true ) },
             { "FirstCellAsLabel", uno::Any( true ) },
             { "DataRowSource", uno::Any( css::chart::ChartDataRowSource_COLUMNS ) }
@@ -738,9 +768,12 @@ void SAL_CALL ChartModel::createInternalDataProvider( sal_Bool bCloneExistingDat
     if( !hasInternalDataProvider() )
     {
         if( bCloneExistingData )
-            m_xInternalDataProvider = ChartModelHelper::createInternalDataProvider( this, true );
+            m_xInternalDataProvider = new InternalDataProvider( this, /*bConnectToModel*/true, /*bDefaultDataInColumns*/ true );
         else
-            m_xInternalDataProvider = ChartModelHelper::createInternalDataProvider( nullptr, true );
+        {
+            m_xInternalDataProvider = new InternalDataProvider( nullptr, /*bConnectToModel*/true, /*bDefaultDataInColumns*/ true );
+            m_xInternalDataProvider->setChartModel(this);
+        }
         m_xDataProvider.set( m_xInternalDataProvider );
     }
     setModified( true );
@@ -789,8 +822,8 @@ void SAL_CALL ChartModel::attachDataProvider( const uno::Reference< chart2::data
         {
             try
             {
-                bool bIncludeHiddenCells = ChartModelHelper::isIncludeHiddenCells( this );
-                xProp->setPropertyValue("IncludeHiddenCells", uno::Any(bIncludeHiddenCells));
+                bool bIncludeHiddenCells = isIncludeHiddenCells();
+                xProp->setPropertyValue(u"IncludeHiddenCells"_ustr, uno::Any(bIncludeHiddenCells));
             }
             catch (const beans::UnknownPropertyException&)
             {
@@ -814,6 +847,7 @@ void SAL_CALL ChartModel::attachDataProvider( const uno::Reference< chart2::data
 void SAL_CALL ChartModel::attachNumberFormatsSupplier( const uno::Reference< util::XNumberFormatsSupplier >& xNewSupplier )
 {
     {
+        // Mostly the supplier is SvNumberFormatsSupplierObj, but sometimes it is reportdesign::OReportDefinition
         MutexGuard aGuard( m_aModelMutex );
         if( xNewSupplier == m_xNumberFormatsSupplier )
             return;
@@ -879,7 +913,7 @@ void SAL_CALL ChartModel::setArguments( const Sequence< beans::PropertyValue >& 
 
 Sequence< OUString > SAL_CALL ChartModel::getUsedRangeRepresentations()
 {
-    return DataSourceHelper::getUsedDataRanges( this );
+    return comphelper::containerToSequence(DataSourceHelper::getUsedDataRanges( this ));
 }
 
 Reference< chart2::data::XDataSource > SAL_CALL ChartModel::getUsedData()
@@ -905,7 +939,7 @@ rtl::Reference< ::chart::ChartTypeTemplate > ChartModel::impl_createDefaultChart
 {
     rtl::Reference< ::chart::ChartTypeTemplate > xTemplate;
     if( m_xChartTypeManager.is() )
-        xTemplate = m_xChartTypeManager->createTemplate( "com.sun.star.chart2.template.Column" );
+        xTemplate = m_xChartTypeManager->createTemplate( u"com.sun.star.chart2.template.Column"_ustr );
     return xTemplate;
 }
 
@@ -993,6 +1027,7 @@ uno::Any SAL_CALL ChartModel::queryInterface( const uno::Type& aType )
 // ____ XCloneable ____
 Reference< util::XCloneable > SAL_CALL ChartModel::createClone()
 {
+    std::unique_lock aGuard(m_aLifeTimeManager.m_aAccessMutex);
     return Reference< util::XCloneable >( new ChartModel( *this ));
 }
 
@@ -1043,12 +1078,11 @@ embed::VisualRepresentation SAL_CALL ChartModel::getPreferredVisualRepresentatio
         Sequence< sal_Int8 > aMetafile;
 
         //get view from old api wrapper
-        Reference< datatransfer::XTransferable > xTransferable(
-            createInstance( CHART_VIEW_SERVICE_NAME ), uno::UNO_QUERY );
+        Reference< datatransfer::XTransferable > xTransferable( createChartView() );
         if( xTransferable.is() )
         {
             datatransfer::DataFlavor aDataFlavor( lcl_aGDIMetaFileMIMEType,
-                    "GDIMetaFile",
+                    u"GDIMetaFile"_ustr,
                     cppu::UnoType<uno::Sequence< sal_Int8 >>::get() );
 
             uno::Any aData( xTransferable->getTransferData( aDataFlavor ) );
@@ -1086,8 +1120,7 @@ uno::Any SAL_CALL ChartModel::getTransferData( const datatransfer::DataFlavor& a
     try
     {
         //get view from old api wrapper
-        Reference< datatransfer::XTransferable > xTransferable(
-            createInstance( CHART_VIEW_SERVICE_NAME ), uno::UNO_QUERY );
+        Reference< datatransfer::XTransferable > xTransferable( createChartView() );
         if( xTransferable.is() &&
             xTransferable->isDataFlavorSupported( aFlavor ))
         {
@@ -1105,7 +1138,7 @@ uno::Any SAL_CALL ChartModel::getTransferData( const datatransfer::DataFlavor& a
 Sequence< datatransfer::DataFlavor > SAL_CALL ChartModel::getTransferDataFlavors()
 {
     return { datatransfer::DataFlavor( lcl_aGDIMetaFileMIMETypeHighContrast,
-        "GDIMetaFile",
+        u"GDIMetaFile"_ustr,
         cppu::UnoType<uno::Sequence< sal_Int8 >>::get() ) };
 }
 
@@ -1172,12 +1205,7 @@ Reference< uno::XInterface > SAL_CALL ChartModel::createInstance( const OUString
     }
     else if(rServiceSpecifier == CHART_VIEW_SERVICE_NAME)
     {
-        if(!mxChartView.is())
-        {
-            mxChartView = new ChartView( m_xContext, *this);
-        }
-
-        return static_cast< ::cppu::OWeakObject* >( mxChartView.get() );
+        return static_cast< ::cppu::OWeakObject* >( createChartView().get() );
     }
     else
     {
@@ -1192,6 +1220,13 @@ Reference< uno::XInterface > SAL_CALL ChartModel::createInstance( const OUString
         }
     }
     return nullptr;
+}
+
+const rtl::Reference<ChartView>& ChartModel::createChartView()
+{
+    if(!mxChartView.is())
+        mxChartView = new ChartView( m_xContext, *this);
+    return mxChartView;
 }
 
 Reference< uno::XInterface > SAL_CALL ChartModel::createInstanceWithArguments(
@@ -1224,6 +1259,10 @@ Reference< util::XNumberFormatsSupplier > const & ChartModel::getNumberFormatsSu
         if( !m_xOwnNumberFormatsSupplier.is() )
         {
             m_apSvNumberFormatter.reset( new SvNumberFormatter( m_xContext, LANGUAGE_SYSTEM ) );
+            if (m_aNullDate)
+            {
+                m_apSvNumberFormatter->ChangeNullDate(m_aNullDate->Day, m_aNullDate->Month, m_aNullDate->Year);
+            }
             m_xOwnNumberFormatsSupplier = new SvNumberFormatsSupplierObj( m_apSvNumberFormatter.get() );
             //pOwnNumberFormatter->ChangeStandardPrec( 15 ); todo?
         }
@@ -1270,7 +1309,13 @@ Reference< uno::XInterface > SAL_CALL ChartModel::getParent()
 void SAL_CALL ChartModel::setParent( const Reference< uno::XInterface >& Parent )
 {
     if( Parent != m_xParent )
+    {
+        if (SfxObjectShell* pShell = getParentShell(m_xParent))
+            EndListening(*pShell);
         m_xParent.set( Parent, uno::UNO_QUERY );
+        if (SfxObjectShell* pShell = getParentShell(m_xParent))
+            StartListening(*pShell);
+    }
 }
 
 // ____ XDataSource ____
@@ -1291,8 +1336,7 @@ OUString SAL_CALL ChartModel::dump(OUString const & kind)
     }
 
     // kind == "shapes":
-    uno::Reference< qa::XDumper > xDumper(
-            createInstance( CHART_VIEW_SERVICE_NAME ), uno::UNO_QUERY );
+    uno::Reference< qa::XDumper > xDumper( createChartView() );
     if (xDumper.is())
         return xDumper->dump(kind);
 
@@ -1325,6 +1369,255 @@ bool ChartModel::isDataFromPivotTable() const
 {
     uno::Reference<chart2::data::XPivotTableDataProvider> xPivotTableDataProvider(m_xDataProvider, uno::UNO_QUERY);
     return xPivotTableDataProvider.is();
+}
+
+rtl::Reference< BaseCoordinateSystem > ChartModel::getFirstCoordinateSystem()
+{
+    if( m_xDiagram )
+    {
+        auto aCooSysSeq( m_xDiagram->getBaseCoordinateSystems() );
+        if( !aCooSysSeq.empty() )
+            return aCooSysSeq[0];
+    }
+    return nullptr;
+}
+
+std::vector< rtl::Reference< DataSeries > > ChartModel::getDataSeries()
+{
+    if( m_xDiagram)
+        return m_xDiagram->getDataSeries();
+
+    return {};
+}
+
+rtl::Reference< ChartType > ChartModel::getChartTypeOfSeries( const rtl::Reference< DataSeries >& xGivenDataSeries )
+{
+    return m_xDiagram ? m_xDiagram->getChartTypeOfSeries( xGivenDataSeries ) : nullptr;
+}
+
+// static
+awt::Size ChartModel::getDefaultPageSize()
+{
+    return awt::Size( 16000, 9000 );
+}
+
+awt::Size ChartModel::getPageSize()
+{
+    return getVisualAreaSize( embed::Aspects::MSOLE_CONTENT );
+}
+
+void ChartModel::triggerRangeHighlighting()
+{
+    getRangeHighlighter();
+    uno::Reference< view::XSelectionChangeListener > xSelectionChangeListener( m_xRangeHighlighter );
+    //trigger selection of cell range
+    lang::EventObject aEvent( xSelectionChangeListener );
+    xSelectionChangeListener->selectionChanged( aEvent );
+}
+
+bool ChartModel::isIncludeHiddenCells()
+{
+    bool bIncluded = true;  // hidden cells are included by default.
+
+    if (!m_xDiagram)
+        return bIncluded;
+
+    try
+    {
+        m_xDiagram->getPropertyValue(u"IncludeHiddenCells"_ustr) >>= bIncluded;
+    }
+    catch( const beans::UnknownPropertyException& )
+    {
+    }
+
+    return bIncluded;
+}
+
+bool ChartModel::setIncludeHiddenCells( bool bIncludeHiddenCells )
+{
+    bool bChanged = false;
+    try
+    {
+        ControllerLockGuard aLockedControllers( *this );
+
+        uno::Reference< beans::XPropertySet > xDiagramProperties( getFirstDiagram(), uno::UNO_QUERY );
+        if (!xDiagramProperties)
+            return false;
+
+        bool bOldValue = bIncludeHiddenCells;
+        xDiagramProperties->getPropertyValue( u"IncludeHiddenCells"_ustr ) >>= bOldValue;
+        if( bOldValue == bIncludeHiddenCells )
+            bChanged = true;
+
+        //set the property on all instances in all cases to get the different objects in sync!
+
+        uno::Any aNewValue(bIncludeHiddenCells);
+
+        try
+        {
+            uno::Reference< beans::XPropertySet > xDataProviderProperties( getDataProvider(), uno::UNO_QUERY );
+            if( xDataProviderProperties.is() )
+                xDataProviderProperties->setPropertyValue(u"IncludeHiddenCells"_ustr, aNewValue );
+        }
+        catch( const beans::UnknownPropertyException& )
+        {
+            //the property is optional!
+        }
+
+        try
+        {
+            rtl::Reference< DataSource > xUsedData = DataSourceHelper::getUsedData( *this );
+            if( xUsedData.is() )
+            {
+                uno::Reference< beans::XPropertySet > xProp;
+                const uno::Sequence< uno::Reference< chart2::data::XLabeledDataSequence > > aData( xUsedData->getDataSequences());
+                for( uno::Reference< chart2::data::XLabeledDataSequence > const & labeledData : aData )
+                {
+                    xProp.set( uno::Reference< beans::XPropertySet >( labeledData->getValues(), uno::UNO_QUERY ) );
+                    if(xProp.is())
+                        xProp->setPropertyValue(u"IncludeHiddenCells"_ustr, aNewValue );
+                    xProp.set( uno::Reference< beans::XPropertySet >( labeledData->getLabel(), uno::UNO_QUERY ) );
+                    if(xProp.is())
+                        xProp->setPropertyValue(u"IncludeHiddenCells"_ustr, aNewValue );
+                }
+            }
+        }
+        catch( const beans::UnknownPropertyException& )
+        {
+            //the property is optional!
+        }
+
+        xDiagramProperties->setPropertyValue( u"IncludeHiddenCells"_ustr, aNewValue);
+    }
+    catch (const uno::Exception&)
+    {
+        TOOLS_WARN_EXCEPTION("chart2", "" );
+    }
+    return bChanged;
+}
+
+void ChartModel::Notify(SfxBroadcaster& /*rBC*/, const SfxHint& rHint)
+{
+    if (rHint.GetId() == SfxHintId::ThemeColorsChanged)
+    {
+        onDocumentThemeChanged();
+    }
+}
+
+std::shared_ptr<model::Theme> ChartModel::getDocumentTheme() const
+{
+    std::shared_ptr<model::Theme> pTheme;
+    uno::Any aThemeValue;
+
+    auto pParent = const_cast<ChartModel*>(this)->getParent();
+    uno::Reference<frame::XModel> xDocModel(pParent, uno::UNO_QUERY);
+    uno::Reference<text::XTextDocument> xTextDoc(xDocModel, uno::UNO_QUERY);
+
+    if (!xTextDoc.is()) // Calc, Impress
+    {
+        uno::Reference<beans::XPropertySet> xPropSet(xDocModel, uno::UNO_QUERY);
+        if (xPropSet.is())
+        {
+            aThemeValue = xPropSet->getPropertyValue("Theme");
+        }
+    }
+    else // Writer
+    {
+        uno::Reference<drawing::XDrawPageSupplier> xDrawPageSupplier(xDocModel, uno::UNO_QUERY);
+        if (xDrawPageSupplier.is())
+        {
+            uno::Reference<drawing::XDrawPage> xDrawPage = xDrawPageSupplier->getDrawPage();
+            if (xDrawPage.is())
+            {
+                uno::Reference<beans::XPropertySet> xPropSet(xDrawPage, uno::UNO_QUERY);
+                if (xPropSet.is())
+                {
+                    aThemeValue = xPropSet->getPropertyValue("Theme");
+                }
+            }
+        }
+    }
+
+    uno::Reference<util::XTheme> xTheme(aThemeValue, uno::UNO_QUERY);
+    if (xTheme.is())
+    {
+        if (auto* pUnoTheme = dynamic_cast<UnoTheme*>(xTheme.get()))
+        {
+            pTheme = pUnoTheme->getTheme();
+        }
+    }
+    else
+    {
+        pTheme = model::Theme::FromAny(aThemeValue);
+    }
+
+    return pTheme;
+}
+
+void ChartModel::setColorPalette(ChartColorPaletteType eType, sal_uInt32 nIndex)
+{
+    m_eColorPaletteType = eType;
+    m_nColorPaletteIndex = nIndex;
+}
+
+void ChartModel::clearColorPalette() { setColorPalette(ChartColorPaletteType::Unknown, 0); }
+
+bool ChartModel::usesColorPalette() const
+{
+    return m_eColorPaletteType != ChartColorPaletteType::Unknown;
+}
+
+std::optional<ChartColorPalette> ChartModel::getCurrentColorPalette() const
+{
+    if (!usesColorPalette())
+    {
+        SAL_WARN("chart2", "ChartModel::getCurrentColorPalette: no palette is in use");
+        return std::nullopt;
+    }
+
+    const std::shared_ptr<model::Theme> pTheme = getDocumentTheme();
+    // when pTheme is null, ChartColorPaletteHelper uses a default theme
+    const ChartColorPaletteHelper aColorPaletteHelper(pTheme);
+    return aColorPaletteHelper.getColorPalette(getColorPaletteType(), getColorPaletteIndex());
+}
+
+void ChartModel::applyColorPaletteToDataSeries(const ChartColorPalette& rColorPalette)
+{
+    const rtl::Reference<Diagram> xDiagram = getFirstChartDiagram();
+    const auto xDataSeriesArray = xDiagram->getDataSeries();
+    for (size_t i = 0; i < xDataSeriesArray.size(); ++i)
+    {
+        const uno::Reference<beans::XPropertySet> xPropSet = xDataSeriesArray[i];
+        const size_t nPaletteIndex = i % rColorPalette.size();
+        xPropSet->setPropertyValue("FillStyle", uno::Any(drawing::FillStyle_SOLID));
+        xPropSet->setPropertyValue("FillColor", uno::Any(rColorPalette[nPaletteIndex]));
+    }
+}
+
+void ChartModel::onDocumentThemeChanged()
+{
+    if (const auto oColorPalette = getCurrentColorPalette())
+    {
+        applyColorPaletteToDataSeries(*oColorPalette);
+        setModified(true);
+    }
+}
+
+void ChartModel::changeNullDate(const css::util::DateTime& aNullDate)
+{
+    if (m_aNullDate == aNullDate)
+        return;
+
+    m_aNullDate = aNullDate;
+    if (m_apSvNumberFormatter)
+    {
+        m_apSvNumberFormatter->ChangeNullDate(aNullDate.Day, aNullDate.Month, aNullDate.Year);
+    }
+}
+
+std::optional<css::util::DateTime> ChartModel::getNullDate() const
+{
+    return m_aNullDate;
 }
 
 }  // namespace chart

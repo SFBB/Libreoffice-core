@@ -33,18 +33,18 @@ namespace sd {
 
 
 FuCustomShowDlg::FuCustomShowDlg (
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window*    pWin,
     ::sd::View* pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest& rReq)
-    : FuPoor( pViewSh, pWin, pView, pDoc, rReq )
+    : FuPoor( rViewSh, pWin, pView, rDoc, rReq )
 {
 }
 
-rtl::Reference<FuPoor> FuCustomShowDlg::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuCustomShowDlg::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuCustomShowDlg( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuCustomShowDlg( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
@@ -52,11 +52,11 @@ rtl::Reference<FuPoor> FuCustomShowDlg::Create( ViewShell* pViewSh, ::sd::Window
 void FuCustomShowDlg::DoExecute( SfxRequest& )
 {
     SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
-    vcl::Window* pWin = mpViewShell->GetActiveWindow();
-    ScopedVclPtr<AbstractSdCustomShowDlg> pDlg( pFact->CreateSdCustomShowDlg(pWin ? pWin->GetFrameWeld() : nullptr, *mpDoc) );
+    vcl::Window* pWin = mrViewShell.GetActiveWindow();
+    ScopedVclPtr<AbstractSdCustomShowDlg> pDlg( pFact->CreateSdCustomShowDlg(pWin ? pWin->GetFrameWeld() : nullptr, mrDoc) );
     sal_uInt16 nRet = pDlg->Execute();
-    mpDoc->SetChanged();
-    sd::PresentationSettings& rSettings = mpDoc->getPresentationSettings();
+    mrDoc.SetChanged();
+    sd::PresentationSettings& rSettings = mrDoc.getPresentationSettings();
 
     if( nRet == RET_YES )
     {
@@ -67,14 +67,14 @@ void FuCustomShowDlg::DoExecute( SfxRequest& )
             rSettings.mbCustomShow = pDlg->IsCustomShow();
         }
 
-        mpViewShell->SetStartShowWithDialog(true);
+        mrViewShell.SetStartShowWithDialog(true);
 
-        mpViewShell->GetViewFrame()->GetDispatcher()->Execute( SID_PRESENTATION,
+        mrViewShell.GetViewFrame()->GetDispatcher()->Execute( SID_PRESENTATION,
                 SfxCallMode::ASYNCHRON | SfxCallMode::RECORD );
     }
     if (nRet == RET_OK)
     {
-        if (mpDoc->GetCustomShowList())
+        if (mrDoc.GetCustomShowList())
         {
             if (!pDlg->IsCustomShow())
             {

@@ -142,10 +142,10 @@ namespace slideshow::internal
 
             sal_Int32 nDocWidth=0;
             sal_Int32 nDocHeight=0;
-            xPropSet->getPropertyValue("Width") >>= nDocWidth;
-            xPropSet->getPropertyValue("Height") >>= nDocHeight;
+            xPropSet->getPropertyValue(u"Width"_ustr) >>= nDocWidth;
+            xPropSet->getPropertyValue(u"Height"_ustr) >>= nDocHeight;
 
-            mpMtf = xMtf;
+            mpMtf = std::move(xMtf);
             maBounds = ::basegfx::B2DRectangle( 0,0,nDocWidth, nDocHeight );
         }
 
@@ -259,9 +259,9 @@ namespace slideshow::internal
             SAL_INFO( "slideshow", "::presentation::internal::BackgroundShape: 0x" << std::hex << this );
 
             // gcc again...
-            const ::basegfx::B2DRectangle& rCurrBounds( BackgroundShape::getBounds() );
+            const ::basegfx::B2DRectangle aCurrBounds( BackgroundShape::getBounds() );
 
-            if( rCurrBounds.getRange().equalZero() )
+            if( aCurrBounds.getRange().equalZero() )
             {
                 // zero-sized shapes are effectively invisible,
                 // thus, we save us the rendering...

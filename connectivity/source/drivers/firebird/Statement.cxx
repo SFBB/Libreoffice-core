@@ -55,7 +55,7 @@ Sequence< sal_Int32 > SAL_CALL OStatement::executeBatch()
     return Sequence< sal_Int32 >();
 }
 
-IMPLEMENT_SERVICE_INFO(OStatement,"com.sun.star.sdbcx.OStatement","com.sun.star.sdbc.Statement");
+IMPLEMENT_SERVICE_INFO(OStatement,u"com.sun.star.sdbcx.OStatement"_ustr,u"com.sun.star.sdbc.Statement"_ustr);
 
 void SAL_CALL OStatement::acquire() noexcept
 {
@@ -126,11 +126,6 @@ uno::Reference< XResultSet > SAL_CALL OStatement::executeQuery(const OUString& s
     if (isDDLStatement())
     {
         m_pConnection->commit();
-        m_pConnection->notifyDatabaseModified();
-    }
-    else if (getStatementChangeCount() > 0)
-    {
-        m_pConnection->notifyDatabaseModified();
     }
 
     return m_xResultSet;

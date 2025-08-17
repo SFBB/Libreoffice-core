@@ -7,17 +7,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <test/unoapixml_test.hxx>
+#include <sdtiledrenderingtest.hxx>
 
 #include <app.hrc>
 #include <test/helper/transferable.hxx>
 #include <boost/property_tree/json_parser.hpp>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <sal/log.hxx>
-#include <sfx2/lokhelper.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/string.hxx>
+#include <comphelper/hash.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/editids.hrc>
 #include <editeng/editobj.hxx>
@@ -31,20 +31,21 @@
 #include <sfx2/viewfrm.hxx>
 #include <svl/stritem.hxx>
 #include <svl/intitem.hxx>
-#include <comphelper/lok.hxx>
+#include <svx/unoapi.hxx>
 #include <svx/svdotable.hxx>
 #include <svx/svdoutl.hxx>
 #include <unotools/datetime.hxx>
-#include <test/lokcallback.hxx>
 
 #include <DrawDocShell.hxx>
 #include <ViewShellBase.hxx>
 #include <ViewShell.hxx>
+#include <SlideshowLayerRenderer.hxx>
 #include <sdpage.hxx>
 #include <unomodel.hxx>
 #include <drawdoc.hxx>
 #include <undo/undomanager.hxx>
 #include <sfx2/request.hxx>
+
 #include <svx/svxids.hrc>
 #include <pres.hxx>
 #include <navigatr.hxx>
@@ -53,7 +54,10 @@
 #include <vcl/vclevent.hxx>
 #include <vcl/BitmapReadAccess.hxx>
 #include <vcl/virdev.hxx>
-#include <o3tl/string_view.hxx>
+#include <sfx2/sidebar/Sidebar.hxx>
+#include <vcl/BitmapTools.hxx>
+#include <vcl/filter/PngImageWriter.hxx>
+#include <sfx2/lokhelper.hxx>
 
 #include <chrono>
 #include <cstdlib>
@@ -65,207 +69,6 @@ static std::ostream& operator<<(std::ostream& os, ViewShellId id)
 {
     os << static_cast<sal_Int32>(id);
     return os;
-}
-
-class SdTiledRenderingTest : public UnoApiXmlTest
-{
-public:
-    SdTiledRenderingTest();
-    virtual void setUp() override;
-    virtual void tearDown() override;
-
-protected:
-    SdXImpressDocument* createDoc(const char* pName, const uno::Sequence<beans::PropertyValue>& rArguments = uno::Sequence<beans::PropertyValue>());
-    void setupLibreOfficeKitViewCallback(SfxViewShell& pViewShell);
-    static void callback(int nType, const char* pPayload, void* pData);
-    void callbackImpl(int nType, const char* pPayload);
-    xmlDocUniquePtr parseXmlDump();
-
-    ::tools::Rectangle m_aInvalidation;
-    std::vector<::tools::Rectangle> m_aSelection;
-    bool m_bFound;
-    sal_Int32 m_nPart;
-    std::vector<OString> m_aSearchResultSelection;
-    std::vector<int> m_aSearchResultPart;
-    int m_nSelectionBeforeSearchResult;
-    int m_nSelectionAfterSearchResult;
-
-    /// For document size changed callback.
-    osl::Condition m_aDocumentSizeCondition;
-    xmlBufferPtr m_pXmlBuffer;
-    TestLokCallbackWrapper m_callbackWrapper;
-};
-
-SdTiledRenderingTest::SdTiledRenderingTest()
-    : UnoApiXmlTest("/sd/qa/unit/tiledrendering/data/"),
-      m_bFound(true),
-      m_nPart(0),
-      m_nSelectionBeforeSearchResult(0),
-      m_nSelectionAfterSearchResult(0),
-      m_pXmlBuffer(nullptr),
-      m_callbackWrapper(&callback, this)
-{
-}
-
-void SdTiledRenderingTest::setUp()
-{
-    UnoApiXmlTest::setUp();
-
-    // prevent showing warning message box
-    setenv("OOX_NO_SMARTART_WARNING", "1", 1);
-    comphelper::LibreOfficeKit::setActive(true);
-}
-
-void SdTiledRenderingTest::tearDown()
-{
-    if (mxComponent.is())
-    {
-        mxComponent->dispose();
-        mxComponent.clear();
-    }
-
-    if (m_pXmlBuffer)
-        xmlBufferFree(m_pXmlBuffer);
-
-    m_callbackWrapper.clear();
-    comphelper::LibreOfficeKit::setActive(false);
-
-    UnoApiXmlTest::tearDown();
-}
-
-SdXImpressDocument* SdTiledRenderingTest::createDoc(const char* pName, const uno::Sequence<beans::PropertyValue>& rArguments)
-{
-    loadFromURL(OUString::createFromAscii(pName));
-    SdXImpressDocument* pImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pImpressDocument);
-    pImpressDocument->initializeForTiledRendering(rArguments);
-    return pImpressDocument;
-}
-
-void SdTiledRenderingTest::setupLibreOfficeKitViewCallback(SfxViewShell& pViewShell)
-{
-    pViewShell.setLibreOfficeKitViewCallback(&m_callbackWrapper);
-    m_callbackWrapper.setLOKViewId(SfxLokHelper::getView(&pViewShell));
-}
-
-void SdTiledRenderingTest::callback(int nType, const char* pPayload, void* pData)
-{
-    static_cast<SdTiledRenderingTest*>(pData)->callbackImpl(nType, pPayload);
-}
-
-namespace
-{
-
-std::vector<OUString> lcl_convertSeparated(std::u16string_view rString, sal_Unicode nSeparator)
-{
-    std::vector<OUString> aRet;
-
-    sal_Int32 nIndex = 0;
-    do
-    {
-        OUString aToken( o3tl::trim(o3tl::getToken(rString, 0, nSeparator, nIndex)) );
-        if (!aToken.isEmpty())
-            aRet.push_back(aToken);
-    }
-    while (nIndex >= 0);
-
-    return aRet;
-}
-
-void lcl_convertRectangle(std::u16string_view rString, ::tools::Rectangle& rRectangle)
-{
-    uno::Sequence<OUString> aSeq = comphelper::string::convertCommaSeparated(rString);
-    CPPUNIT_ASSERT(aSeq.getLength() == 4 || aSeq.getLength() == 5);
-    rRectangle.SetLeft(aSeq[0].toInt32());
-    rRectangle.SetTop(aSeq[1].toInt32());
-    rRectangle.setWidth(aSeq[2].toInt32());
-    rRectangle.setHeight(aSeq[3].toInt32());
-}
-
-} // end anonymous namespace
-
-void SdTiledRenderingTest::callbackImpl(int nType, const char* pPayload)
-{
-    switch (nType)
-    {
-    case LOK_CALLBACK_INVALIDATE_TILES:
-    {
-        OUString aPayload = OUString::createFromAscii(pPayload);
-        if (aPayload != "EMPTY" && m_aInvalidation.IsEmpty())
-            lcl_convertRectangle(aPayload, m_aInvalidation);
-    }
-    break;
-    case LOK_CALLBACK_TEXT_SELECTION:
-    {
-        OUString aPayload = OUString::createFromAscii(pPayload);
-        m_aSelection.clear();
-        for (const OUString& rString : lcl_convertSeparated(aPayload, u';'))
-        {
-            ::tools::Rectangle aRectangle;
-            lcl_convertRectangle(rString, aRectangle);
-            m_aSelection.push_back(aRectangle);
-        }
-        if (m_aSearchResultSelection.empty())
-            ++m_nSelectionBeforeSearchResult;
-        else
-            ++m_nSelectionAfterSearchResult;
-    }
-    break;
-    case LOK_CALLBACK_SEARCH_NOT_FOUND:
-    {
-        m_bFound = false;
-    }
-    break;
-    case LOK_CALLBACK_DOCUMENT_SIZE_CHANGED:
-    {
-        m_aDocumentSizeCondition.set();
-    }
-    break;
-    case LOK_CALLBACK_SET_PART:
-    {
-        OUString aPayload = OUString::createFromAscii(pPayload);
-        m_nPart = aPayload.toInt32();
-    }
-    break;
-    case LOK_CALLBACK_SEARCH_RESULT_SELECTION:
-    {
-        m_aSearchResultSelection.clear();
-        m_aSearchResultPart.clear();
-        boost::property_tree::ptree aTree;
-        std::stringstream aStream(pPayload);
-        boost::property_tree::read_json(aStream, aTree);
-        for (const boost::property_tree::ptree::value_type& rValue : aTree.get_child("searchResultSelection"))
-        {
-            m_aSearchResultSelection.emplace_back(rValue.second.get<std::string>("rectangles").c_str());
-            m_aSearchResultPart.push_back(std::atoi(rValue.second.get<std::string>("part").c_str()));
-        }
-    }
-    break;
-    }
-}
-
-xmlDocUniquePtr SdTiledRenderingTest::parseXmlDump()
-{
-    if (m_pXmlBuffer)
-        xmlBufferFree(m_pXmlBuffer);
-
-    // Create the xml writer.
-    m_pXmlBuffer = xmlBufferCreate();
-    xmlTextWriterPtr pXmlWriter = xmlNewTextWriterMemory(m_pXmlBuffer, 0);
-    (void)xmlTextWriterStartDocument(pXmlWriter, nullptr, nullptr, nullptr);
-
-    // Create the dump.
-    SdXImpressDocument* pImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
-    CPPUNIT_ASSERT(pImpressDocument);
-    pImpressDocument->GetDoc()->dumpAsXml(pXmlWriter);
-
-    // Delete the xml writer.
-    (void)xmlTextWriterEndDocument(pXmlWriter);
-    xmlFreeTextWriter(pXmlWriter);
-
-    auto pCharBuffer = xmlBufferContent(m_pXmlBuffer);
-    SAL_INFO("test", "SdTiledRenderingTest::parseXmlDump: pCharBuffer is '" << pCharBuffer << "'");
-    return xmlDocUniquePtr(xmlParseDoc(pCharBuffer));
 }
 
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCreateDestroy)
@@ -310,7 +113,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPostKeyEvent)
     SdrTextObj* pTextObj = static_cast<SdrTextObj*>(pObject);
     SdrView* pView = pViewShell->GetView();
     pView->MarkObj(pTextObj, pView->GetSdrPageView());
-    SfxStringItem aInputString(SID_ATTR_CHAR, "x");
+    SfxStringItem aInputString(SID_ATTR_CHAR, u"x"_ustr);
     pViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(SID_ATTR_CHAR,
             SfxCallMode::SYNCHRON, { &aInputString });
 
@@ -321,11 +124,11 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPostKeyEvent)
     CPPUNIT_ASSERT(pView->GetTextEditObject());
     EditView& rEditView = pView->GetTextEditOutlinerView()->GetEditView();
     // Did we manage to enter a second character?
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(2), rEditView.GetSelection().nStartPos);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(2), rEditView.GetSelection().start.nIndex);
     ESelection aWordSelection(0, 0, 0, 2); // start para, start char, end para, end char.
     rEditView.SetSelection(aWordSelection);
     // Did we enter the expected character?
-    CPPUNIT_ASSERT_EQUAL(OUString("xx"), rEditView.GetSelected());
+    CPPUNIT_ASSERT_EQUAL(u"xx"_ustr, rEditView.GetSelected());
 }
 
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPostMouseEvent)
@@ -338,13 +141,13 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPostMouseEvent)
     SdrTextObj* pTextObj = static_cast<SdrTextObj*>(pObject);
     SdrView* pView = pViewShell->GetView();
     pView->MarkObj(pTextObj, pView->GetSdrPageView());
-    SfxStringItem aInputString(SID_ATTR_CHAR, "x");
+    SfxStringItem aInputString(SID_ATTR_CHAR, u"x"_ustr);
     pViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(SID_ATTR_CHAR,
             SfxCallMode::SYNCHRON, { &aInputString });
     CPPUNIT_ASSERT(pView->GetTextEditObject());
     EditView& rEditView = pView->GetTextEditOutlinerView()->GetEditView();
     // Did we manage to go after the first character?
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1), rEditView.GetSelection().nStartPos);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1), rEditView.GetSelection().start.nIndex);
 
     vcl::Cursor* pCursor = rEditView.GetCursor();
     Point aPosition(pCursor->GetPos().getX(), pCursor->GetPos().getY() + pCursor->GetSize().Height() / 2);
@@ -358,7 +161,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPostMouseEvent)
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT(pView->GetTextEditObject());
     // The new cursor position must be before the first word.
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), rEditView.GetSelection().nStartPos);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), rEditView.GetSelection().start.nIndex);
 }
 
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSetTextSelection)
@@ -366,7 +169,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSetTextSelection)
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
     uno::Reference<container::XIndexAccess> xDrawPage(pXImpressDocument->getDrawPages()->getByIndex(0), uno::UNO_QUERY);
     uno::Reference<text::XTextRange> xShape(xDrawPage->getByIndex(0), uno::UNO_QUERY);
-    xShape->setString("Aaa bbb.");
+    xShape->setString(u"Aaa bbb."_ustr);
     // Create a selection on the second word.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
     SdPage* pActualPage = pViewShell->GetActualPage();
@@ -378,7 +181,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSetTextSelection)
     ESelection aWordSelection(0, 4, 0, 7);
     rEditView.SetSelection(aWordSelection);
     // Did we indeed manage to select the second word?
-    CPPUNIT_ASSERT_EQUAL(OUString("bbb"), rEditView.GetSelected());
+    CPPUNIT_ASSERT_EQUAL(u"bbb"_ustr, rEditView.GetSelected());
 
     // Now use setTextSelection() to move the end of the selection 1000 twips right.
     vcl::Cursor* pCursor = rEditView.GetCursor();
@@ -386,7 +189,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSetTextSelection)
     aEnd.setX(aEnd.getX() + 1000);
     pXImpressDocument->setTextSelection(LOK_SETTEXTSELECTION_END, aEnd.getX(), aEnd.getY());
     // The new selection must include the ending dot, too -- but not the first word.
-    CPPUNIT_ASSERT_EQUAL(OUString("bbb."), rEditView.GetSelected());
+    CPPUNIT_ASSERT_EQUAL(u"bbb."_ustr, rEditView.GetSelected());
 }
 
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testGetTextSelection)
@@ -394,7 +197,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testGetTextSelection)
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
     uno::Reference<container::XIndexAccess> xDrawPage(pXImpressDocument->getDrawPages()->getByIndex(0), uno::UNO_QUERY);
     uno::Reference<text::XTextRange> xShape(xDrawPage->getByIndex(0), uno::UNO_QUERY);
-    xShape->setString("Shape");
+    xShape->setString(u"Shape"_ustr);
     // Create a selection on the shape text.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
     SdPage* pActualPage = pViewShell->GetActualPage();
@@ -431,7 +234,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSetGraphicSelection)
     pXImpressDocument->setGraphicSelection(LOK_SETGRAPHICSELECTION_END, o3tl::toTwips(pHdl->GetPos().getX(), o3tl::Length::mm100), o3tl::toTwips(pHdl->GetPos().getY() + 1000, o3tl::Length::mm100));
 
     // Assert that view shell ID tracking works.
-    sal_Int32 nView1 = SfxLokHelper::getView();
+    sal_Int32 nView1 = SfxLokHelper::getCurrentView();
     SdDrawDocument* pDocument = pXImpressDocument->GetDoc();
     sd::UndoManager* pUndoManager = pDocument->GetUndoManager();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pUndoManager->GetUndoActionCount());
@@ -456,13 +259,13 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testUndoShells)
         {"AttributePageSize.Width", uno::Any(static_cast<sal_Int32>(10000))},
         {"AttributePageSize.Height", uno::Any(static_cast<sal_Int32>(10000))},
     }));
-    dispatchCommand(mxComponent, ".uno:AttributePageSize", aPropertyValues);
+    dispatchCommand(mxComponent, u".uno:AttributePageSize"_ustr, aPropertyValues);
 
     // Assert that view shell ID tracking works for SdUndoAction subclasses.
     SdDrawDocument* pDocument = pXImpressDocument->GetDoc();
     sd::UndoManager* pUndoManager = pDocument->GetUndoManager();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pUndoManager->GetUndoActionCount());
-    sal_Int32 nView1 = SfxLokHelper::getView();
+    sal_Int32 nView1 = SfxLokHelper::getCurrentView();
     // This was -1, SdUndoGroup did not track what view shell created it.
     CPPUNIT_ASSERT_EQUAL(ViewShellId(nView1), pUndoManager->GetUndoAction()->GetViewShellId());
 }
@@ -472,7 +275,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testResetSelection)
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
     uno::Reference<container::XIndexAccess> xDrawPage(pXImpressDocument->getDrawPages()->getByIndex(0), uno::UNO_QUERY);
     uno::Reference<text::XTextRange> xShape(xDrawPage->getByIndex(0), uno::UNO_QUERY);
-    xShape->setString("Aaa bbb.");
+    xShape->setString(u"Aaa bbb."_ustr);
     // Create a selection on the second word.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
     SdPage* pActualPage = pViewShell->GetActualPage();
@@ -484,7 +287,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testResetSelection)
     ESelection aWordSelection(0, 4, 0, 7);
     rEditView.SetSelection(aWordSelection);
     // Did we indeed manage to select the second word?
-    CPPUNIT_ASSERT_EQUAL(OUString("bbb"), rEditView.GetSelected());
+    CPPUNIT_ASSERT_EQUAL(u"bbb"_ustr, rEditView.GetSelected());
 
     // Now use resetSelection() to reset the selection.
     pXImpressDocument->resetSelection();
@@ -521,13 +324,13 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testInsertDeletePage)
 
     std::vector<OUString> aInserted =
     {
-        "Slide 1", "Slide 2", "Slide 3", "Slide 4", "Slide 5",
-        "Slide 6", "Slide 7", "Slide 8", "Slide 9", "Slide 10", "Slide 11"
+        u"Slide 1"_ustr, u"Slide 2"_ustr, u"Slide 3"_ustr, u"Slide 4"_ustr, u"Slide 5"_ustr,
+        u"Slide 6"_ustr, u"Slide 7"_ustr, u"Slide 8"_ustr, u"Slide 9"_ustr, u"Slide 10"_ustr, u"Slide 11"_ustr
     };
 
     std::vector<OUString> aDeleted =
     {
-        "Slide 1"
+        u"Slide 1"_ustr
     };
 
     // the document has 1 slide
@@ -538,7 +341,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testInsertDeletePage)
     // Insert slides
     m_aDocumentSizeCondition.reset();
     for (unsigned it = 1; it <= 10; it++)
-        dispatchCommand(mxComponent, ".uno:InsertPage", aArgs);
+        dispatchCommand(mxComponent, u".uno:InsertPage"_ustr, aArgs);
 
     osl::Condition::Result aResult = m_aDocumentSizeCondition.wait(std::chrono::seconds(2));
     CPPUNIT_ASSERT_EQUAL(osl::Condition::result_ok, aResult);
@@ -555,7 +358,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testInsertDeletePage)
     // Delete slides
     m_aDocumentSizeCondition.reset();
     for (unsigned it = 1; it <= 10; it++)
-        dispatchCommand(mxComponent, ".uno:DeletePage", aArgs);
+        dispatchCommand(mxComponent, u".uno:DeletePage"_ustr, aArgs);
 
     aResult = m_aDocumentSizeCondition.wait(std::chrono::seconds(2));
     CPPUNIT_ASSERT_EQUAL(osl::Condition::result_ok, aResult);
@@ -571,7 +374,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testInsertDeletePage)
     // Undo deleted slides
     m_aDocumentSizeCondition.reset();
     for (unsigned it = 1; it <= 10; it++)
-        dispatchCommand(mxComponent, ".uno:Undo", aArgs);
+        dispatchCommand(mxComponent, u".uno:Undo"_ustr, aArgs);
 
     aResult = m_aDocumentSizeCondition.wait(std::chrono::seconds(2));
     CPPUNIT_ASSERT_EQUAL(osl::Condition::result_ok, aResult);
@@ -587,7 +390,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testInsertDeletePage)
     // Redo deleted slides
     m_aDocumentSizeCondition.reset();
     for (unsigned it = 1; it <= 10; it++)
-        dispatchCommand(mxComponent, ".uno:Redo", aArgs);
+        dispatchCommand(mxComponent, u".uno:Redo"_ustr, aArgs);
 
     aResult = m_aDocumentSizeCondition.wait(std::chrono::seconds(2));
     CPPUNIT_ASSERT_EQUAL(osl::Condition::result_ok, aResult);
@@ -614,7 +417,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testInsertTable)
         { "Columns", uno::Any(sal_Int32(5)) }
     }));
 
-    dispatchCommand(mxComponent, ".uno:InsertTable", aArgs);
+    dispatchCommand(mxComponent, u".uno:InsertTable"_ustr, aArgs);
 
     // get the table
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
@@ -639,7 +442,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testDeleteTable)
         { "Columns", uno::Any(sal_Int32(5)) }
     }));
 
-    dispatchCommand(mxComponent, ".uno:InsertTable", aArgs);
+    dispatchCommand(mxComponent, u".uno:InsertTable"_ustr, aArgs);
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
     SdrView* pSdrView = pViewShell->GetView();
     const SdrMarkList& rMarkList = pSdrView->GetMarkedObjectList();
@@ -686,9 +489,9 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testResizeTable)
     uno::Reference<table::XColumnRowRange> xTable = pTableObject->getTable();
     uno::Reference<container::XIndexAccess> xRows = xTable->getRows();
     uno::Reference<beans::XPropertySet> xRow1(xRows->getByIndex(0), uno::UNO_QUERY);
-    sal_Int32 nExpectedRow1 = xRow1->getPropertyValue("Size").get<sal_Int32>();
+    sal_Int32 nExpectedRow1 = xRow1->getPropertyValue(u"Size"_ustr).get<sal_Int32>();
     uno::Reference<beans::XPropertySet> xRow2(xRows->getByIndex(1), uno::UNO_QUERY);
-    sal_Int32 nExpectedRow2 = xRow2->getPropertyValue("Size").get<sal_Int32>();
+    sal_Int32 nExpectedRow2 = xRow2->getPropertyValue(u"Size"_ustr).get<sal_Int32>();
 
     // Resize the upper row, decrease its height by 1 cm.
     Point aInnerRowEdge = pObject->GetSnapRect().Center();
@@ -696,18 +499,18 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testResizeTable)
     pXImpressDocument->setGraphicSelection(LOK_SETGRAPHICSELECTION_END, o3tl::toTwips(aInnerRowEdge.getX(), o3tl::Length::mm100), o3tl::toTwips(aInnerRowEdge.getY() - 1000, o3tl::Length::mm100));
 
     // Remember the resized row heights.
-    sal_Int32 nResizedRow1 = xRow1->getPropertyValue("Size").get<sal_Int32>();
+    sal_Int32 nResizedRow1 = xRow1->getPropertyValue(u"Size"_ustr).get<sal_Int32>();
     CPPUNIT_ASSERT(nResizedRow1 < nExpectedRow1);
-    sal_Int32 nResizedRow2 = xRow2->getPropertyValue("Size").get<sal_Int32>();
+    sal_Int32 nResizedRow2 = xRow2->getPropertyValue(u"Size"_ustr).get<sal_Int32>();
     CPPUNIT_ASSERT_EQUAL(nExpectedRow2, nResizedRow2);
 
     // Now undo the resize.
     pXImpressDocument->GetDocShell()->GetUndoManager()->Undo();
 
     // Check the undo result.
-    sal_Int32 nActualRow1 = xRow1->getPropertyValue("Size").get<sal_Int32>();
+    sal_Int32 nActualRow1 = xRow1->getPropertyValue(u"Size"_ustr).get<sal_Int32>();
     CPPUNIT_ASSERT_EQUAL(nExpectedRow1, nActualRow1);
-    sal_Int32 nActualRow2 = xRow2->getPropertyValue("Size").get<sal_Int32>();
+    sal_Int32 nActualRow2 = xRow2->getPropertyValue(u"Size"_ustr).get<sal_Int32>();
     // Expected was 4000, actual was 4572, i.e. the second row after undo was larger than expected.
     CPPUNIT_ASSERT_EQUAL(nExpectedRow2, nActualRow2);
 }
@@ -731,8 +534,8 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testResizeTableColumn)
     // Remember the original cell widths.
     xmlDocUniquePtr pXmlDoc = parseXmlDump();
     OString aPrefix = "/SdDrawDocument/SdrModel/maPages/SdPage/SdrPage/SdrObjList/SdrTableObj/SdrTableObjImpl/TableLayouter/columns/"_ostr;
-    sal_Int32 nExpectedColumn1 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[1]", "size"_ostr).toInt32();
-    sal_Int32 nExpectedColumn2 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[2]", "size"_ostr).toInt32();
+    sal_Int32 nExpectedColumn1 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[1]", "size").toInt32();
+    sal_Int32 nExpectedColumn2 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[2]", "size").toInt32();
     pXmlDoc = nullptr;
 
     // Resize the left column, decrease its width by 1 cm.
@@ -742,9 +545,9 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testResizeTableColumn)
 
     // Remember the resized column widths.
     pXmlDoc = parseXmlDump();
-    sal_Int32 nResizedColumn1 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[1]", "size"_ostr).toInt32();
+    sal_Int32 nResizedColumn1 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[1]", "size").toInt32();
     CPPUNIT_ASSERT(nResizedColumn1 < nExpectedColumn1);
-    sal_Int32 nResizedColumn2 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[2]", "size"_ostr).toInt32();
+    sal_Int32 nResizedColumn2 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[2]", "size").toInt32();
     CPPUNIT_ASSERT(nResizedColumn2 > nExpectedColumn2);
     pXmlDoc = nullptr;
 
@@ -753,161 +556,21 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testResizeTableColumn)
 
     // Check the undo result.
     pXmlDoc = parseXmlDump();
-    sal_Int32 nActualColumn1 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[1]", "size"_ostr).toInt32();
+    sal_Int32 nActualColumn1 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[1]", "size").toInt32();
     // Expected was 7049, actual was 6048, i.e. the first column width after undo was 1cm smaller than expected.
     CPPUNIT_ASSERT_EQUAL(nExpectedColumn1, nActualColumn1);
-    sal_Int32 nActualColumn2 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[2]", "size"_ostr).toInt32();
+    sal_Int32 nActualColumn2 = getXPath(pXmlDoc, aPrefix + "TableLayouter_Layout[2]", "size").toInt32();
     CPPUNIT_ASSERT_EQUAL(nExpectedColumn2, nActualColumn2);
     pXmlDoc = nullptr;
-}
-
-namespace {
-
-/// A view callback tracks callbacks invoked on one specific view.
-class ViewCallback final
-{
-    SfxViewShell* mpViewShell;
-    int mnView;
-public:
-    bool m_bGraphicSelectionInvalidated;
-    bool m_bGraphicViewSelectionInvalidated;
-    /// Our current part, to be able to decide if a view cursor/selection is relevant for us.
-    int m_nPart;
-    bool m_bCursorVisibleChanged;
-    bool m_bCursorVisible;
-    bool m_bViewLock;
-    bool m_bTilesInvalidated;
-    std::vector<tools::Rectangle> m_aInvalidations;
-    std::map<int, bool> m_aViewCursorInvalidations;
-    std::map<int, bool> m_aViewCursorVisibilities;
-    bool m_bViewSelectionSet;
-    boost::property_tree::ptree m_aCommentCallbackResult;
-    OString m_ShapeSelection;
-    TestLokCallbackWrapper m_callbackWrapper;
-
-    ViewCallback()
-        : m_bGraphicSelectionInvalidated(false),
-          m_bGraphicViewSelectionInvalidated(false),
-          m_nPart(0),
-          m_bCursorVisibleChanged(false),
-          m_bCursorVisible(false),
-          m_bViewLock(false),
-          m_bTilesInvalidated(false),
-          m_bViewSelectionSet(false),
-          m_callbackWrapper(&callback, this)
-    {
-        mpViewShell = SfxViewShell::Current();
-        mpViewShell->setLibreOfficeKitViewCallback(&m_callbackWrapper);
-        mnView = SfxLokHelper::getView();
-        m_callbackWrapper.setLOKViewId( mnView );
-    }
-
-    ~ViewCallback()
-    {
-        SfxLokHelper::setView(mnView);
-        mpViewShell->setLibreOfficeKitViewCallback(nullptr);
-    }
-
-    static void callback(int nType, const char* pPayload, void* pData)
-    {
-        static_cast<ViewCallback*>(pData)->callbackImpl(nType, pPayload);
-    }
-
-    void callbackImpl(int nType, const char* pPayload)
-    {
-        switch (nType)
-        {
-        case LOK_CALLBACK_INVALIDATE_TILES:
-        {
-            m_bTilesInvalidated = true;
-            OString text(pPayload);
-            if (!text.startsWith("EMPTY"))
-            {
-                uno::Sequence<OUString> aSeq = comphelper::string::convertCommaSeparated(OUString::createFromAscii(pPayload));
-                CPPUNIT_ASSERT(aSeq.getLength() == 4 || aSeq.getLength() == 5);
-                tools::Rectangle aInvalidationRect;
-                aInvalidationRect.SetLeft(aSeq[0].toInt32());
-                aInvalidationRect.SetTop(aSeq[1].toInt32());
-                aInvalidationRect.setWidth(aSeq[2].toInt32());
-                aInvalidationRect.setHeight(aSeq[3].toInt32());
-                m_aInvalidations.push_back(aInvalidationRect);
-            }
-        }
-        break;
-        case LOK_CALLBACK_GRAPHIC_SELECTION:
-        {
-            m_bGraphicSelectionInvalidated = true;
-            m_ShapeSelection = OString(pPayload);
-        }
-        break;
-        case LOK_CALLBACK_GRAPHIC_VIEW_SELECTION:
-        {
-            std::stringstream aStream(pPayload);
-            boost::property_tree::ptree aTree;
-            boost::property_tree::read_json(aStream, aTree);
-            if (aTree.get_child("part").get_value<int>() == m_nPart)
-                // Ignore callbacks which are for a different part.
-                m_bGraphicViewSelectionInvalidated = true;
-        }
-        break;
-        case LOK_CALLBACK_CURSOR_VISIBLE:
-        {
-            m_bCursorVisibleChanged = true;
-            m_bCursorVisible = (std::string_view("true") == pPayload);
-        }
-        break;
-        case LOK_CALLBACK_VIEW_LOCK:
-        {
-            std::stringstream aStream(pPayload);
-            boost::property_tree::ptree aTree;
-            boost::property_tree::read_json(aStream, aTree);
-            m_bViewLock = aTree.get_child("rectangle").get_value<std::string>() != "EMPTY";
-        }
-        break;
-        case LOK_CALLBACK_INVALIDATE_VIEW_CURSOR:
-        {
-            std::stringstream aStream(pPayload);
-            boost::property_tree::ptree aTree;
-            boost::property_tree::read_json(aStream, aTree);
-            int nViewId = aTree.get_child("viewId").get_value<int>();
-            m_aViewCursorInvalidations[nViewId] = true;
-        }
-        break;
-        case LOK_CALLBACK_VIEW_CURSOR_VISIBLE:
-        {
-            std::stringstream aStream(pPayload);
-            boost::property_tree::ptree aTree;
-            boost::property_tree::read_json(aStream, aTree);
-            const int nViewId = aTree.get_child("viewId").get_value<int>();
-            m_aViewCursorVisibilities[nViewId] = std::string_view("true") == pPayload;
-        }
-        break;
-        case LOK_CALLBACK_TEXT_VIEW_SELECTION:
-        {
-            m_bViewSelectionSet = true;
-        }
-        break;
-        case LOK_CALLBACK_COMMENT:
-        {
-            m_aCommentCallbackResult.clear();
-            std::stringstream aStream(pPayload);
-            boost::property_tree::read_json(aStream, m_aCommentCallbackResult);
-            m_aCommentCallbackResult = m_aCommentCallbackResult.get_child("comment");
-        }
-        break;
-        }
-    }
-};
-
 }
 
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testViewCursors)
 {
     // Create two views.
     SdXImpressDocument* pXImpressDocument = createDoc("shape.odp");
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
     SfxLokHelper::createView();
-    ViewCallback aView2;
+    SdTestViewCallback aView2;
 
     // Select the shape in the second view.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
@@ -927,10 +590,10 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testViewCursorParts)
 {
     // Create two views.
     SdXImpressDocument* pXImpressDocument = createDoc("shape.odp");
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
     SfxLokHelper::createView();
     pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    ViewCallback aView2;
+    SdTestViewCallback aView2;
 
     // Select the shape in the second view.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
@@ -960,8 +623,8 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCursorViews)
 {
     // Create the first view.
     SdXImpressDocument* pXImpressDocument = createDoc("title-shape.odp");
-    int nView1 = SfxLokHelper::getView();
-    ViewCallback aView1;
+    int nView1 = SfxLokHelper::getCurrentView();
+    SdTestViewCallback aView1;
 
     // Begin text edit on the only object on the slide.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
@@ -983,7 +646,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCursorViews)
     // Make sure that typing in the first view causes an invalidation in the
     // second view as well, even if the second view was created after begin
     // text edit in the first view.
-    ViewCallback aView2;
+    SdTestViewCallback aView2;
     // This failed: the second view didn't get a lock notification, even if the
     // first view already started text edit.
     CPPUNIT_ASSERT(aView2.m_bViewLock);
@@ -1004,7 +667,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCursorVisibility_SingleClick)
 
     // Load doc.
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
 
     // Begin text edit on the only object on the slide.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
@@ -1053,7 +716,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCursorVisibility_DoubleClick)
 
     // Create the first view.
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
 
     // Begin text edit on the only object on the slide.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
@@ -1084,8 +747,8 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCursorVisibility_MultiView)
 {
     // Create the first view.
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
-    const int nView1 = SfxLokHelper::getView();
-    ViewCallback aView1;
+    const int nView1 = SfxLokHelper::getCurrentView();
+    SdTestViewCallback aView1;
 
     // Begin text edit on the only object on the slide.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
@@ -1098,13 +761,13 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCursorVisibility_MultiView)
     // Make sure that cursor state is not changed just because we create a second view.
     SfxLokHelper::createView();
     pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
-    const int nView2 = SfxLokHelper::getView();
+    const int nView2 = SfxLokHelper::getCurrentView();
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT_EQUAL(false, aView1.m_bCursorVisibleChanged);
     CPPUNIT_ASSERT_EQUAL(false, aView1.m_aViewCursorVisibilities[nView2]);
 
     // Also check that the second view gets the notifications.
-    ViewCallback aView2;
+    SdTestViewCallback aView2;
 
     SfxLokHelper::setView(nView1);
 
@@ -1133,7 +796,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCursorVisibility_Escape)
 {
     // Load doc.
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
 
     // Begin text edit on the only object on the slide.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
@@ -1173,7 +836,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testViewLock)
 {
     // Load a document that has a shape and create two views.
     SdXImpressDocument* pXImpressDocument = createDoc("shape.odp");
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
     SfxLokHelper::createView();
     pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
 
@@ -1198,7 +861,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testUndoLimiting)
     // Create the first view.
     SdXImpressDocument* pXImpressDocument = createDoc("title-shape.odp");
     sd::ViewShell* pViewShell1 = pXImpressDocument->GetDocShell()->GetViewShell();
-    int nView1 = SfxLokHelper::getView();
+    int nView1 = SfxLokHelper::getCurrentView();
     SfxLokHelper::createView();
     sd::ViewShell* pViewShell2 = pXImpressDocument->GetDocShell()->GetViewShell();
     CPPUNIT_ASSERT(pViewShell1 != pViewShell2);
@@ -1267,7 +930,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCreateViewGraphicSelection)
 {
     // Load a document and register a callback.
     SdXImpressDocument* pXImpressDocument = createDoc("shape.odp");
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
 
     // Select the only shape in the document and assert that the graphic selection is changed.
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
@@ -1288,7 +951,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCreateViewGraphicSelection)
 
     // Check that when the first view has a shape selected and we register a
     // callback on the second view, then it gets a "graphic view selection".
-    ViewCallback aView2;
+    SdTestViewCallback aView2;
     // This failed, the created new view had no "view selection" of the first
     // view's selected shape.
     CPPUNIT_ASSERT(aView2.m_bGraphicViewSelectionInvalidated);
@@ -1298,7 +961,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCreateViewTextCursor)
 {
     // Load a document and register a callback.
     SdXImpressDocument* pXImpressDocument = createDoc("title-shape.odp");
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
 
     // Begin text edit.
     pXImpressDocument->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::TAB);
@@ -1322,7 +985,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCreateViewTextCursor)
     aView1.m_aViewCursorVisibilities.clear();
     SfxLokHelper::createView();
     pXImpressDocument->initializeForTiledRendering({});
-    ViewCallback aView2;
+    SdTestViewCallback aView2;
     bool bFoundCursor = false;
     for (const auto& rInvalidation : aView1.m_aViewCursorInvalidations)
     {
@@ -1365,13 +1028,13 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf102223)
     CPPUNIT_ASSERT(pView->GetTextEditObject());
     EditView& rEditView = pView->GetTextEditOutlinerView()->GetEditView();
     rEditView.SetSelection(ESelection(0, 0, 0, 3)); // start para, start char, end para, end char.
-    CPPUNIT_ASSERT_EQUAL(OUString("Red"), rEditView.GetSelected());
+    CPPUNIT_ASSERT_EQUAL(u"Red"_ustr, rEditView.GetSelected());
     CPPUNIT_ASSERT_EQUAL(
         int(1411), static_cast<int>(rEditView.GetAttribs().Get(EE_CHAR_FONTHEIGHT).GetHeight()));
 
     // cut contents of cell
     uno::Sequence<beans::PropertyValue> aArgs;
-    dispatchCommand(mxComponent, ".uno:Cut", aArgs);
+    dispatchCommand(mxComponent, u".uno:Cut"_ustr, aArgs);
 
     pView->SdrEndTextEdit(false);
     pView->SdrBeginTextEdit(pTableObject);
@@ -1406,7 +1069,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf118354)
     Scheduler::ProcessEventsToIdle();
 
     SdrView* pView = pViewShell->GetView();
-    auto pMarkedObj = dynamic_cast<sdr::table::SdrTableObj*>(pView->GetMarkedObjectByIndex(0));
+    auto pMarkedObj = dynamic_cast<sdr::table::SdrTableObj*>(pView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj());
     CPPUNIT_ASSERT_EQUAL(pMarkedObj, pTableObject);
 }
 
@@ -1415,7 +1078,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPostKeyEventInvalidation)
     // Load a document and begin text edit on the first slide.
     SdXImpressDocument* pXImpressDocument = createDoc("2slides.odp");
     CPPUNIT_ASSERT_EQUAL(0, pXImpressDocument->getPart());
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
     SdrView* pView = pViewShell->GetView();
     pXImpressDocument->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, KEY_TAB);
@@ -1428,7 +1091,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPostKeyEventInvalidation)
     // Create a second view and begin text edit there as well, in parallel.
     SfxLokHelper::createView();
     pXImpressDocument->initializeForTiledRendering({});
-    ViewCallback aView2;
+    SdTestViewCallback aView2;
     pXImpressDocument->setPart(1);
     sd::ViewShell* pViewShell2 = pXImpressDocument->GetDocShell()->GetViewShell();
     SdrView* pView2 = pViewShell2->GetView();
@@ -1450,73 +1113,80 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPostKeyEventInvalidation)
 }
 
 /**
- * tests a cut/paste bug around bullet items in a list
+ * tests a cut/paste bug around bullet items in a list and
+ * graphic (bitmap) bullet items in a list (Tdf103083, Tdf166882)
  */
-CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf103083)
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testClipNumRules)
 {
-    // Load the document.
-    SdXImpressDocument* pXImpressDocument = createDoc("tdf103083.fodp");
-    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
-    SdPage* pActualPage = pViewShell->GetActualPage();
+    std::vector<const char*> aFileNames = { "tdf103083.fodp", "tdf166882.odp" };
+    for (const char* pFileName : aFileNames)
+    {
+        // Load the document.
+        SdXImpressDocument* pXImpressDocument = createDoc(pFileName);
+        CPPUNIT_ASSERT(pXImpressDocument);
 
-    SdrObject* pObject1 = pActualPage->GetObj(1);
-    CPPUNIT_ASSERT_EQUAL(SdrObjKind::OutlineText, pObject1->GetObjIdentifier());
-    SdrTextObj* pTextObject = static_cast<SdrTextObj*>(pObject1);
+        sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+        SdPage* pActualPage = pViewShell->GetActualPage();
 
-    SdrView* pView = pViewShell->GetView();
+        SdrObject* pObject1 = pActualPage->GetObj(1);
+        CPPUNIT_ASSERT_EQUAL(SdrObjKind::OutlineText, pObject1->GetObjIdentifier());
+        SdrTextObj* pTextObject = static_cast<SdrTextObj*>(pObject1);
 
-    // select contents of bullet item
-    ::tools::Rectangle aRect = pTextObject->GetCurrentBoundRect();
-    pXImpressDocument->postMouseEvent(LOK_MOUSEEVENT_MOUSEBUTTONDOWN,
-                                      o3tl::toTwips(aRect.Left() + 2, o3tl::Length::mm100), o3tl::toTwips(aRect.Top() + 2, o3tl::Length::mm100),
-                                      1, MOUSE_LEFT, 0);
-    pXImpressDocument->postMouseEvent(LOK_MOUSEEVENT_MOUSEBUTTONUP,
-                                      o3tl::toTwips(aRect.Left() + 2, o3tl::Length::mm100), o3tl::toTwips(aRect.Top() + 2, o3tl::Length::mm100),
-                                      1, MOUSE_LEFT, 0);
-    Scheduler::ProcessEventsToIdle();
-    pView->SdrBeginTextEdit(pTextObject);
-    CPPUNIT_ASSERT(pView->GetTextEditObject());
-    EditView& rEditView = pView->GetTextEditOutlinerView()->GetEditView();
-    rEditView.SetSelection(ESelection(2, 0, 2, 33)); // start para, start char, end para, end char.
-    CPPUNIT_ASSERT_EQUAL(OUString("They have all the same formatting"), rEditView.GetSelected());
-    SdrOutliner* pOutliner = pView->GetTextEditOutliner();
-    CPPUNIT_ASSERT_EQUAL(OUString("No-Logo Content~LT~Gliederung 2"),
-                         pOutliner->GetStyleSheet(2)->GetName());
-    const EditTextObject& aEdit = pTextObject->GetOutlinerParaObject()->GetTextObject();
-    const SvxNumBulletItem* pNumFmt = aEdit.GetParaAttribs(2).GetItem(EE_PARA_NUMBULLET);
-    SvxNumberFormat aNumFmt(pNumFmt->GetNumRule().GetLevel(2));
+        SdrView* pView = pViewShell->GetView();
 
-    // cut contents of bullet item
-    dispatchCommand(mxComponent, ".uno:Cut", uno::Sequence<beans::PropertyValue>());
+        // select contents of bullet item
+        ::tools::Rectangle aRect = pTextObject->GetCurrentBoundRect();
+        pXImpressDocument->postMouseEvent(LOK_MOUSEEVENT_MOUSEBUTTONDOWN,
+            o3tl::toTwips(aRect.Left() + 2, o3tl::Length::mm100), o3tl::toTwips(aRect.Top() + 2, o3tl::Length::mm100),
+            1, MOUSE_LEFT, 0);
+        pXImpressDocument->postMouseEvent(LOK_MOUSEEVENT_MOUSEBUTTONUP,
+            o3tl::toTwips(aRect.Left() + 2, o3tl::Length::mm100), o3tl::toTwips(aRect.Top() + 2, o3tl::Length::mm100),
+            1, MOUSE_LEFT, 0);
+        Scheduler::ProcessEventsToIdle();
+        pView->SdrBeginTextEdit(pTextObject);
+        CPPUNIT_ASSERT(pView->GetTextEditObject());
+        EditView& rEditView = pView->GetTextEditOutlinerView()->GetEditView();
+        rEditView.SetSelection(ESelection(2, 0, 2, 33)); // start para, start char, end para, end char.
+        CPPUNIT_ASSERT_EQUAL(u"They have all the same formatting"_ustr, rEditView.GetSelected());
+        SdrOutliner* pOutliner = pView->GetTextEditOutliner();
+        CPPUNIT_ASSERT_EQUAL(u"No-Logo Content~LT~Gliederung 2"_ustr,
+            pOutliner->GetStyleSheet(2)->GetName());
+        const EditTextObject& aEdit = pTextObject->GetOutlinerParaObject()->GetTextObject();
+        const SvxNumBulletItem* pNumFmt = aEdit.GetParaAttribs(2).GetItem(EE_PARA_NUMBULLET);
+        SvxNumberFormat aNumFmt(pNumFmt->GetNumRule().GetLevel(2));
 
-    CPPUNIT_ASSERT(pView->GetTextEditObject());
-    EditView& rEditView2 = pView->GetTextEditOutlinerView()->GetEditView();
-    rEditView2.SetSelection(ESelection(2, 0, 2, 10)); // start para, start char, end para, end char.
-    CPPUNIT_ASSERT_EQUAL(OUString(), rEditView2.GetSelected());
+        // cut contents of bullet item
+        dispatchCommand(mxComponent, u".uno:Cut"_ustr, uno::Sequence<beans::PropertyValue>());
 
-    // paste contents of bullet item
-    dispatchCommand(mxComponent, ".uno:Paste", uno::Sequence<beans::PropertyValue>());
+        CPPUNIT_ASSERT(pView->GetTextEditObject());
+        EditView& rEditView2 = pView->GetTextEditOutlinerView()->GetEditView();
+        rEditView2.SetSelection(ESelection(2, 0, 2, 10)); // start para, start char, end para, end char.
+        CPPUNIT_ASSERT_EQUAL(OUString(), rEditView2.GetSelected());
 
-    // send an ESC key to trigger the commit of the edit to the main model
-    pXImpressDocument->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::ESCAPE);
-    pXImpressDocument->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::ESCAPE);
-    Scheduler::ProcessEventsToIdle();
+        // paste contents of bullet item
+        dispatchCommand(mxComponent, u".uno:Paste"_ustr, uno::Sequence<beans::PropertyValue>());
 
-    pView->SdrBeginTextEdit(pTextObject);
-    CPPUNIT_ASSERT(pView->GetTextEditObject());
-    pOutliner = pView->GetTextEditOutliner();
-    EditView& rEditView3 = pView->GetTextEditOutlinerView()->GetEditView();
-    rEditView3.SetSelection(ESelection(2, 0, 2, 33)); // start para, start char, end para, end char.
-    CPPUNIT_ASSERT_EQUAL(OUString("They have all the same formatting"), rEditView3.GetSelected());
-    CPPUNIT_ASSERT_EQUAL(OUString("No-Logo Content~LT~Gliederung 2"),
-                         pOutliner->GetStyleSheet(2)->GetName());
+        // send an ESC key to trigger the commit of the edit to the main model
+        pXImpressDocument->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::ESCAPE);
+        pXImpressDocument->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::ESCAPE);
+        Scheduler::ProcessEventsToIdle();
 
-    const EditTextObject& aEdit2 = pTextObject->GetOutlinerParaObject()->GetTextObject();
-    const SvxNumBulletItem* pNumFmt2 = aEdit2.GetParaAttribs(2).GetItem(EE_PARA_NUMBULLET);
-    SvxNumberFormat aNumFmt2(pNumFmt2->GetNumRule().GetLevel(2));
+        pView->SdrBeginTextEdit(pTextObject);
+        CPPUNIT_ASSERT(pView->GetTextEditObject());
+        pOutliner = pView->GetTextEditOutliner();
+        EditView& rEditView3 = pView->GetTextEditOutlinerView()->GetEditView();
+        rEditView3.SetSelection(ESelection(2, 0, 2, 33)); // start para, start char, end para, end char.
+        CPPUNIT_ASSERT_EQUAL(u"They have all the same formatting"_ustr, rEditView3.GetSelected());
+        CPPUNIT_ASSERT_EQUAL(u"No-Logo Content~LT~Gliederung 2"_ustr,
+            pOutliner->GetStyleSheet(2)->GetName());
 
-    bool bEqual(aNumFmt2 == aNumFmt);
-    CPPUNIT_ASSERT_MESSAGE("Bullet properties changed after paste", bEqual);
+        const EditTextObject& aEdit2 = pTextObject->GetOutlinerParaObject()->GetTextObject();
+        const SvxNumBulletItem* pNumFmt2 = aEdit2.GetParaAttribs(2).GetItem(EE_PARA_NUMBULLET);
+        SvxNumberFormat aNumFmt2(pNumFmt2->GetNumRule().GetLevel(2));
+
+        bool bEqual(aNumFmt2 == aNumFmt);
+        CPPUNIT_ASSERT_MESSAGE("Bullet properties changed after paste", bEqual);
+    }
 }
 
 /**
@@ -1541,8 +1211,8 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf104405)
     rEditView.SetSelection(ESelection(0, 0, 0, 3)); // start para, start char, end para, end char.
 
     // trigger the clone-formatting/paintbrush command to copy formatting contents of cell
-    uno::Sequence aArgs{ comphelper::makePropertyValue("PersistentCopy", true) };
-    dispatchCommand(mxComponent, ".uno:FormatPaintbrush", aArgs);
+    uno::Sequence aArgs{ comphelper::makePropertyValue(u"PersistentCopy"_ustr, true) };
+    dispatchCommand(mxComponent, u".uno:FormatPaintbrush"_ustr, aArgs);
 
     // now click on the table
     pView->MarkObj(pTableObject, pView->GetSdrPageView());
@@ -1565,12 +1235,12 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf104405)
     xmlDocUniquePtr pXmlDoc = parseXmlDump();
     // the following name has a compiler-dependent part
     CPPUNIT_ASSERT_EQUAL(
-        OUString("2"),
+        u"2"_ustr,
         getXPath(
             pXmlDoc,
             "/SdDrawDocument/SdrModel/maPages/SdPage/SdrPage/SdrObjList/SdrTableObj/SdrTableObjImpl"
-                "/TableModel/Cell[1]/DefaultProperties/SfxItemSet/SdrTextVertAdjustItem"_ostr,
-            "value"_ostr));
+                "/TableModel/Cell[1]/DefaultProperties/SfxItemSet/SdrTextVertAdjustItem",
+            "value"));
 }
 
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf81754)
@@ -1583,7 +1253,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf81754)
     SdrTextObj* pTextObj = static_cast<SdrTextObj*>(pObject);
     SdrView* pView = pViewShell->GetView();
     pView->MarkObj(pTextObj, pView->GetSdrPageView());
-    SfxStringItem aInputString(SID_ATTR_CHAR, "x");
+    SfxStringItem aInputString(SID_ATTR_CHAR, u"x"_ustr);
     pViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(SID_ATTR_CHAR,
             SfxCallMode::SYNCHRON, { &aInputString });
 
@@ -1592,7 +1262,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf81754)
     Scheduler::ProcessEventsToIdle();
 
     // now save, reload, and assert that we did not lose the edit
-    saveAndReload("Impress Office Open XML");
+    saveAndReload(u"Impress Office Open XML"_ustr);
 
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
@@ -1633,13 +1303,13 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf105502)
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), aLastCell.mnRow);
 
     // Grow font size for the selection.
-    dispatchCommand(mxComponent, ".uno:Grow", {});
+    dispatchCommand(mxComponent, u".uno:Grow"_ustr, {});
 
     // Assert that the selected A1 has now a larger font than the unselected
     // A2.
     xmlDocUniquePtr pXmlDoc = parseXmlDump();
-    sal_Int32 nA1Height = getXPath(pXmlDoc, "//Cell[1]/SdrText/OutlinerParaObject/EditTextObject/ContentInfo/SfxItemSet/SvxFontHeightItem[1]"_ostr, "height"_ostr).toInt32();
-    sal_Int32 nA2Height = getXPath(pXmlDoc, "//Cell[3]/SdrText/OutlinerParaObject/EditTextObject/ContentInfo/attribs[1]/SvxFontHeightItem"_ostr, "height"_ostr).toInt32();
+    sal_Int32 nA1Height = getXPath(pXmlDoc, "//Cell[1]/SdrText/OutlinerParaObject/EditTextObject/ContentInfo/SfxItemSet/SvxFontHeightItem[1]", "height").toInt32();
+    sal_Int32 nA2Height = getXPath(pXmlDoc, "//Cell[3]/SdrText/OutlinerParaObject/EditTextObject/ContentInfo/attribs[1]/SvxFontHeightItem", "height").toInt32();
     // This failed when FuText::ChangeFontSize() never did "continue" in the
     // text loop, instead of doing so depending on what IsInSelection() returns.
     CPPUNIT_ASSERT(nA1Height > nA2Height);
@@ -1653,6 +1323,32 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf105502)
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), aLastCell.mnRow);
 }
 
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testShowAndUseGridCallbacks)
+{
+    /*
+        Showing and hiding grid is done via one command. Command toggles the grid state.
+        Also "snapping the objects to grid" feature is toggled via one command.
+        Here we switch on and off these 2 features and check the callbacks.
+    */
+
+    SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+
+    SdTestViewCallback aView;
+
+    dispatchCommand(mxComponent, ".uno:GridVisible", uno::Sequence<beans::PropertyValue>());
+    CPPUNIT_ASSERT(std::find(aView.m_aStateChanged.begin(), aView.m_aStateChanged.end(), ".uno:GridVisible=true") != aView.m_aStateChanged.end());
+
+    dispatchCommand(mxComponent, ".uno:GridVisible", uno::Sequence<beans::PropertyValue>());
+    CPPUNIT_ASSERT(std::find(aView.m_aStateChanged.begin(), aView.m_aStateChanged.end(), ".uno:GridVisible=false") != aView.m_aStateChanged.end());
+
+    dispatchCommand(mxComponent, ".uno:GridUse", uno::Sequence<beans::PropertyValue>());
+    CPPUNIT_ASSERT(std::find(aView.m_aStateChanged.begin(), aView.m_aStateChanged.end(), ".uno:GridUse=false") != aView.m_aStateChanged.end());
+
+    dispatchCommand(mxComponent, ".uno:GridUse", uno::Sequence<beans::PropertyValue>());
+    CPPUNIT_ASSERT(std::find(aView.m_aStateChanged.begin(), aView.m_aStateChanged.end(), ".uno:GridUse=true") != aView.m_aStateChanged.end());
+}
+
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentCallbacks)
 {
     // Load the document.
@@ -1661,28 +1357,28 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentCallbacks)
 
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp", comphelper::InitPropertySequence(
     {
-        {".uno:Author", uno::Any(OUString("LOK User1"))},
+        {".uno:Author", uno::Any(u"LOK User1"_ustr)},
     }));
-    ViewCallback aView1;
-    int nView1 = SfxLokHelper::getView();
+    SdTestViewCallback aView1;
+    int nView1 = SfxLokHelper::getCurrentView();
 
     SfxLokHelper::createView();
     uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence(
     {
-        {".uno:Author", uno::Any(OUString("LOK User2"))},
+        {".uno:Author", uno::Any(u"LOK User2"_ustr)},
     }));
     pXImpressDocument->initializeForTiledRendering(aArgs);
-    ViewCallback aView2;
-    int nView2 = SfxLokHelper::getView();
+    SdTestViewCallback aView2;
+    int nView2 = SfxLokHelper::getCurrentView();
 
     SfxLokHelper::setView(nView1);
 
     // Add a new comment
     aArgs = comphelper::InitPropertySequence(
     {
-        {"Text", uno::Any(OUString("Comment"))},
+        {"Text", uno::Any(u"Comment"_ustr)},
     });
-    dispatchCommand(mxComponent, ".uno:InsertAnnotation", aArgs);
+    dispatchCommand(mxComponent, u".uno:InsertAnnotation"_ustr, aArgs);
 
     // We received a LOK_CALLBACK_COMMENT callback with comment 'Add' action
     CPPUNIT_ASSERT_EQUAL(std::string("Add"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
@@ -1704,9 +1400,9 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentCallbacks)
     aArgs = comphelper::InitPropertySequence(
     {
         {"Id", uno::Any(OUString::number(nComment1))},
-        {"Text", uno::Any(OUString("Reply to comment"))},
+        {"Text", uno::Any(u"Reply to comment"_ustr)},
     });
-    dispatchCommand(mxComponent, ".uno:ReplyToAnnotation", aArgs);
+    dispatchCommand(mxComponent, u".uno:ReplyToAnnotation"_ustr, aArgs);
 
     // We received a LOK_CALLBACK_COMMENT callback with comment 'Modify' action
     CPPUNIT_ASSERT_EQUAL(std::string("Modify"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
@@ -1728,9 +1424,9 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentCallbacks)
     aArgs = comphelper::InitPropertySequence(
     {
         {"Id", uno::Any(OUString::number(nComment1))},
-        {"Text", uno::Any(OUString("Edited comment"))},
+        {"Text", uno::Any(u"Edited comment"_ustr)},
     });
-    dispatchCommand(mxComponent, ".uno:EditAnnotation", aArgs);
+    dispatchCommand(mxComponent, u".uno:EditAnnotation"_ustr, aArgs);
 
     // We received a LOK_CALLBACK_COMMENT callback with comment 'Modify' action
     CPPUNIT_ASSERT_EQUAL(std::string("Modify"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
@@ -1747,7 +1443,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentCallbacks)
     {
         {"Id", uno::Any(OUString::number(nComment1))},
     });
-    dispatchCommand(mxComponent, ".uno:DeleteAnnotation", aArgs);
+    dispatchCommand(mxComponent, u".uno:DeleteAnnotation"_ustr, aArgs);
 
     // We received a LOK_CALLBACK_COMMENT callback with comment 'Remove' action
     CPPUNIT_ASSERT_EQUAL(std::string("Remove"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
@@ -1768,17 +1464,17 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentChangeImpress)
 
     createDoc("dummy.odp", comphelper::InitPropertySequence(
     {
-        {".uno:Author", uno::Any(OUString("LOK User1"))},
+        {".uno:Author", uno::Any(u"LOK User1"_ustr)},
     }));
 
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
 
     // Add a new comment
     aArgs = comphelper::InitPropertySequence(
     {
-        {"Text", uno::Any(OUString("Comment"))},
+        {"Text", uno::Any(u"Comment"_ustr)},
     });
-    dispatchCommand(mxComponent, ".uno:InsertAnnotation", aArgs);
+    dispatchCommand(mxComponent, u".uno:InsertAnnotation"_ustr, aArgs);
 
     CPPUNIT_ASSERT_EQUAL(std::string("Add"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
 
@@ -1786,7 +1482,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentChangeImpress)
 
     CPPUNIT_ASSERT(!aView1.m_aCommentCallbackResult.get<std::string>("parthash").empty());
     CPPUNIT_ASSERT_EQUAL(std::string("Comment"), aView1.m_aCommentCallbackResult.get<std::string>("text"));
-    CPPUNIT_ASSERT_EQUAL(std::string("0, 0, 0, 0"), aView1.m_aCommentCallbackResult.get<std::string>("rectangle"));
+    CPPUNIT_ASSERT_EQUAL(std::string("0, 0, 478, 280"), aView1.m_aCommentCallbackResult.get<std::string>("rectangle"));
 
     // Edit this annotation now
     aArgs = comphelper::InitPropertySequence(
@@ -1795,11 +1491,11 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentChangeImpress)
         {"PositionX", uno::Any(sal_Int32(10))},
         {"PositionY", uno::Any(sal_Int32(20))}
     });
-    dispatchCommand(mxComponent, ".uno:EditAnnotation", aArgs);
+    dispatchCommand(mxComponent, u".uno:EditAnnotation"_ustr, aArgs);
 
     CPPUNIT_ASSERT_EQUAL(std::string("Modify"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
     CPPUNIT_ASSERT_EQUAL(std::string("Comment"), aView1.m_aCommentCallbackResult.get<std::string>("text"));
-    CPPUNIT_ASSERT_EQUAL(std::string("10, 20, 0, 0"), aView1.m_aCommentCallbackResult.get<std::string>("rectangle"));
+    CPPUNIT_ASSERT_EQUAL(std::string("10, 20, 478, 280"), aView1.m_aCommentCallbackResult.get<std::string>("rectangle"));
 
     comphelper::LibreOfficeKit::setTiledAnnotations(true);
 }
@@ -1814,17 +1510,17 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentChangeDraw)
 
     createDoc("dummy.odg", comphelper::InitPropertySequence(
     {
-        {".uno:Author", uno::Any(OUString("LOK User1"))},
+        {".uno:Author", uno::Any(u"LOK User1"_ustr)},
     }));
 
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
 
     // Add a new comment
     aArgs = comphelper::InitPropertySequence(
     {
-        {"Text", uno::Any(OUString("Comment"))},
+        {"Text", uno::Any(u"Comment"_ustr)},
     });
-    dispatchCommand(mxComponent, ".uno:InsertAnnotation", aArgs);
+    dispatchCommand(mxComponent, u".uno:InsertAnnotation"_ustr, aArgs);
 
     CPPUNIT_ASSERT_EQUAL(std::string("Add"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
 
@@ -1832,7 +1528,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentChangeDraw)
 
     CPPUNIT_ASSERT(!aView1.m_aCommentCallbackResult.get<std::string>("parthash").empty());
     CPPUNIT_ASSERT_EQUAL(std::string("Comment"), aView1.m_aCommentCallbackResult.get<std::string>("text"));
-    CPPUNIT_ASSERT_EQUAL(std::string("0, 0, 0, 0"), aView1.m_aCommentCallbackResult.get<std::string>("rectangle"));
+    CPPUNIT_ASSERT_EQUAL(std::string("0, 0, 478, 280"), aView1.m_aCommentCallbackResult.get<std::string>("rectangle"));
 
     // Edit this annotation now
     aArgs = comphelper::InitPropertySequence(
@@ -1841,11 +1537,11 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCommentChangeDraw)
         {"PositionX", uno::Any(sal_Int32(10))},
         {"PositionY", uno::Any(sal_Int32(20))}
     });
-    dispatchCommand(mxComponent, ".uno:EditAnnotation", aArgs);
+    dispatchCommand(mxComponent, u".uno:EditAnnotation"_ustr, aArgs);
 
     CPPUNIT_ASSERT_EQUAL(std::string("Modify"), aView1.m_aCommentCallbackResult.get<std::string>("action"));
     CPPUNIT_ASSERT_EQUAL(std::string("Comment"), aView1.m_aCommentCallbackResult.get<std::string>("text"));
-    CPPUNIT_ASSERT_EQUAL(std::string("10, 20, 0, 0"), aView1.m_aCommentCallbackResult.get<std::string>("rectangle"));
+    CPPUNIT_ASSERT_EQUAL(std::string("10, 20, 478, 280"), aView1.m_aCommentCallbackResult.get<std::string>("rectangle"));
 
     comphelper::LibreOfficeKit::setTiledAnnotations(true);
 }
@@ -1854,16 +1550,16 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testMultiViewInsertDeletePage)
 {
     // Load the document.
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
-    ViewCallback aView1;
-    int nView1 = SfxLokHelper::getView();
+    SdTestViewCallback aView1;
+    int nView1 = SfxLokHelper::getCurrentView();
     uno::Sequence<beans::PropertyValue> aArgs;
     SdDrawDocument* pDoc = pXImpressDocument->GetDocShell()->GetDoc();
 
     // Create second view
     SfxLokHelper::createView();
     pXImpressDocument->initializeForTiledRendering(aArgs);
-    ViewCallback aView2;
-    int nView2 = SfxLokHelper::getView();
+    SdTestViewCallback aView2;
+    int nView2 = SfxLokHelper::getCurrentView();
 
     // the document has 8 slides
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(8), pDoc->GetSdPageCount(PageKind::Standard));
@@ -1873,7 +1569,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testMultiViewInsertDeletePage)
 
     // Insert slide in 1st view
     SfxLokHelper::setView(nView1);
-    dispatchCommand(mxComponent, ".uno:InsertPage", aArgs);
+    dispatchCommand(mxComponent, u".uno:InsertPage"_ustr, aArgs);
 
     // See if the current slide number changed in 2nd view too
     SfxLokHelper::setView(nView2);
@@ -1881,7 +1577,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testMultiViewInsertDeletePage)
 
     // Delete the page in 1st view now
     SfxLokHelper::setView(nView1);
-    dispatchCommand(mxComponent, ".uno:DeletePage", aArgs);
+    dispatchCommand(mxComponent, u".uno:DeletePage"_ustr, aArgs);
 
     // See if current slide number changed in 2nd view too
     SfxLokHelper::setView(nView2);
@@ -1892,16 +1588,16 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testMultiViewInsertDeletePage2)
 {
     // Load the document.
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
-    ViewCallback aView1;
-    int nView1 = SfxLokHelper::getView();
+    SdTestViewCallback aView1;
+    int nView1 = SfxLokHelper::getCurrentView();
     uno::Sequence<beans::PropertyValue> aArgs;
     SdDrawDocument* pDoc = pXImpressDocument->GetDocShell()->GetDoc();
 
     // Create second view
     SfxLokHelper::createView();
     pXImpressDocument->initializeForTiledRendering(aArgs);
-    ViewCallback aView2;
-    int nView2 = SfxLokHelper::getView();
+    SdTestViewCallback aView2;
+    int nView2 = SfxLokHelper::getCurrentView();
 
     // the document has 8 slides
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(8), pDoc->GetSdPageCount(PageKind::Standard));
@@ -1934,7 +1630,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testMultiViewInsertDeletePage2)
 
     // Insert slide in 1st view
     SfxLokHelper::setView(nView1);
-    dispatchCommand(mxComponent, ".uno:InsertPage", aArgs);
+    dispatchCommand(mxComponent, u".uno:InsertPage"_ustr, aArgs);
 
     // See if the current slide number changed in 2nd view too
     SfxLokHelper::setView(nView2);
@@ -1942,7 +1638,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testMultiViewInsertDeletePage2)
 
     // Delete the page in 1st view now
     SfxLokHelper::setView(nView1);
-    dispatchCommand(mxComponent, ".uno:DeletePage", aArgs);
+    dispatchCommand(mxComponent, u".uno:DeletePage"_ustr, aArgs);
 
     // See if current slide number changed in 2nd view too
     SfxLokHelper::setView(nView2);
@@ -1960,13 +1656,13 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testDisableUndoRepair)
     // Create View 1
     SfxViewShell* pView1 = SfxViewShell::Current();
     sd::ViewShell* pViewShell1 = pXImpressDocument->GetDocShell()->GetViewShell();
-    int nView1 = SfxLokHelper::getView();
+    int nView1 = SfxLokHelper::getCurrentView();
 
     // Create View 2
     SfxLokHelper::createView();
     SfxViewShell* pView2 = SfxViewShell::Current();
     sd::ViewShell* pViewShell2 = pXImpressDocument->GetDocShell()->GetViewShell();
-    int nView2 = SfxLokHelper::getView();
+    int nView2 = SfxLokHelper::getCurrentView();
 
     // Check UNDO is disabled
     {
@@ -2043,7 +1739,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testDocumentRepair)
     // view #2
     SfxLokHelper::createView();
     SfxViewShell* pView2 = SfxViewShell::Current();
-    int nView2 = SfxLokHelper::getView();
+    int nView2 = SfxLokHelper::getCurrentView();
     sd::ViewShell* pViewShell2 = pXImpressDocument->GetDocShell()->GetViewShell();
 
     CPPUNIT_ASSERT(pView1 != pView2);
@@ -2101,7 +1797,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testLanguageStatus)
         auto pStringItem = dynamic_cast<const SfxStringItem*>(xItem1.get());
         CPPUNIT_ASSERT(pStringItem);
 
-        CPPUNIT_ASSERT_EQUAL(OUString("English (USA);en-US"), pStringItem->GetValue());
+        CPPUNIT_ASSERT_EQUAL(u"English (USA);en-US"_ustr, pStringItem->GetValue());
 
         CPPUNIT_ASSERT(dynamic_cast< const SfxStringItem* >(xItem2.get()));
     }
@@ -2114,9 +1810,9 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testLanguageAllText)
 
     // Set the language to English for all text.
     uno::Sequence<beans::PropertyValue> aArgs = comphelper::InitPropertySequence({
-        { "Language", uno::Any(OUString("Default_English (USA)")) },
+        { "Language", uno::Any(u"Default_English (USA)"_ustr) },
     });
-    dispatchCommand(mxComponent, ".uno:LanguageStatus", aArgs);
+    dispatchCommand(mxComponent, u".uno:LanguageStatus"_ustr, aArgs);
 
     // Assert that the shape text language was changed.
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
@@ -2125,10 +1821,10 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testLanguageAllText)
     uno::Reference<text::XTextRange> xShape(xPage->getByIndex(0), uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xRun(xShape, uno::UNO_QUERY_THROW);
     lang::Locale aLocale;
-    xRun->getPropertyValue("CharLocale") >>= aLocale;
+    xRun->getPropertyValue(u"CharLocale"_ustr) >>= aLocale;
     // Without the accompanying fix in place, this test would have failed with 'Expected: en;
     // Actual: hu', as the shape text language was not set.
-    CPPUNIT_ASSERT_EQUAL(OUString("en"), aLocale.Language);
+    CPPUNIT_ASSERT_EQUAL(u"en"_ustr, aLocale.Language);
 }
 
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testDefaultView)
@@ -2158,7 +1854,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testIMESupport)
     SdrTextObj* pTextObj = static_cast<SdrTextObj*>(pObject);
     SdrView* pView = pViewShell->GetView();
     pView->MarkObj(pTextObj, pView->GetSdrPageView());
-    SfxStringItem aInputString(SID_ATTR_CHAR, "x");
+    SfxStringItem aInputString(SID_ATTR_CHAR, u"x"_ustr);
     pViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(SID_ATTR_CHAR,
                                                              SfxCallMode::SYNCHRON, { &aInputString });
 
@@ -2173,11 +1869,11 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testIMESupport)
     {
         pDocWindow->PostExtTextInputEvent(VclEventId::ExtTextInput, aInput);
     }
-    pDocWindow->PostExtTextInputEvent(VclEventId::EndExtTextInput, "");
+    pDocWindow->PostExtTextInputEvent(VclEventId::EndExtTextInput, u""_ustr);
 
     // the cursor should be at position 3rd
     EditView& rEditView = pView->GetTextEditOutlinerView()->GetEditView();
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(3), rEditView.GetSelection().nStartPos);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(3), rEditView.GetSelection().start.nIndex);
 
     ESelection aWordSelection(0, 0, 0, 3); // start para, start char, end para, end char.
     rEditView.SetSelection(aWordSelection);
@@ -2208,7 +1904,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf115783)
     uno::Sequence<beans::PropertyValue> aArgs = comphelper::InitPropertySequence({
         { "FontHeight.Height", uno::Any(static_cast<float>(12)) },
     });
-    dispatchCommand(mxComponent, ".uno:FontHeight", aArgs);
+    dispatchCommand(mxComponent, u".uno:FontHeight"_ustr, aArgs);
 
     // Create a text selection on the B1 cell.
     pTableObject->setActiveCell(sdr::table::CellPos(1, 0));
@@ -2216,14 +1912,14 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf115783)
     EditView& rEditView = pView->GetTextEditOutlinerView()->GetEditView();
     // Start para, start char, end para, end char.
     rEditView.SetSelection(ESelection(0, 0, 0, 5));
-    CPPUNIT_ASSERT_EQUAL(OUString("hello"), rEditView.GetSelected());
+    CPPUNIT_ASSERT_EQUAL(u"hello"_ustr, rEditView.GetSelected());
 
     // Copy selection, paste at the start of the cell.
     aArgs = {};
-    dispatchCommand(mxComponent, ".uno:Copy", aArgs);
+    dispatchCommand(mxComponent, u".uno:Copy"_ustr, aArgs);
     rEditView.SetSelection(ESelection(0, 0, 0, 0));
     aArgs = {};
-    dispatchCommand(mxComponent, ".uno:Paste", aArgs);
+    dispatchCommand(mxComponent, u".uno:Paste"_ustr, aArgs);
     pView->SdrEndTextEdit();
 
     // And now verify that the cell has the correct font size.
@@ -2241,9 +1937,9 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testTdf115783)
     CPPUNIT_ASSERT(xPortion.is());
     // This failed, it was only "hello" as the paragraph had 2 portions: a
     // "hello" with 12pt size and a "hello" with 18pt.
-    CPPUNIT_ASSERT_EQUAL(OUString("hellohello"), xPortion->getString());
+    CPPUNIT_ASSERT_EQUAL(u"hellohello"_ustr, xPortion->getString());
     uno::Reference<beans::XPropertySet> xPropertySet(xPortion, uno::UNO_QUERY);
-    int nHeight = xPropertySet->getPropertyValue("CharHeight").get<float>();
+    int nHeight = xPropertySet->getPropertyValue(u"CharHeight"_ustr).get<float>();
     // Make sure that the single font size for the cell is the expected one.
     CPPUNIT_ASSERT_EQUAL(12, nHeight);
 }
@@ -2282,14 +1978,14 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPasteTextOnSlide)
     Scheduler::ProcessEventsToIdle();
 
     // Copy some text
-    dispatchCommand(mxComponent, ".uno:Copy", uno::Sequence<beans::PropertyValue>());
+    dispatchCommand(mxComponent, u".uno:Copy"_ustr, uno::Sequence<beans::PropertyValue>());
 
     pXImpressDocument->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::ESCAPE);
     pXImpressDocument->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::ESCAPE);
     Scheduler::ProcessEventsToIdle();
 
     // Paste onto the slide
-    dispatchCommand(mxComponent, ".uno:Paste", uno::Sequence<beans::PropertyValue>());
+    dispatchCommand(mxComponent, u".uno:Paste"_ustr, uno::Sequence<beans::PropertyValue>());
 
     pXImpressDocument->postKeyEvent(LOK_KEYEVENT_KEYINPUT, 0, awt::Key::ESCAPE);
     pXImpressDocument->postKeyEvent(LOK_KEYEVENT_KEYUP, 0, awt::Key::ESCAPE);
@@ -2387,7 +2083,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCutSelectionChange)
     CPPUNIT_ASSERT_EQUAL(static_cast<std::size_t>(1), m_aSelection.size());
 
     // Cut the selected text
-    dispatchCommand(mxComponent, ".uno:Cut", uno::Sequence<beans::PropertyValue>());
+    dispatchCommand(mxComponent, u".uno:Cut"_ustr, uno::Sequence<beans::PropertyValue>());
 
     // Selection is removed
     CPPUNIT_ASSERT_EQUAL(static_cast<std::size_t>(0), m_aSelection.size());
@@ -2395,27 +2091,32 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testCutSelectionChange)
 
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testGetViewRenderState)
 {
+    // Add a pair of schemes, last added is the default
+    svtools::EditableColorConfig aColorConfig;
+    aColorConfig.AddScheme(u"Dark"_ustr);
+    aColorConfig.AddScheme(u"Light"_ustr);
+
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
-    int nFirstViewId = SfxLokHelper::getView();
-    ViewCallback aView1;
-    CPPUNIT_ASSERT_EQUAL(";Default"_ostr, pXImpressDocument->getViewRenderState());
+    int nFirstViewId = SfxLokHelper::getCurrentView();
+    SdTestViewCallback aView1;
+    CPPUNIT_ASSERT_EQUAL("S;Default"_ostr, pXImpressDocument->getViewRenderState());
     // Create a second view
     SfxLokHelper::createView();
-    ViewCallback aView2;
-    CPPUNIT_ASSERT_EQUAL(";Default"_ostr, pXImpressDocument->getViewRenderState());
+    SdTestViewCallback aView2;
+    CPPUNIT_ASSERT_EQUAL("S;Default"_ostr, pXImpressDocument->getViewRenderState());
     // Set to dark scheme
     {
         uno::Sequence<beans::PropertyValue> aPropertyValues = comphelper::InitPropertySequence(
             {
-                { "NewTheme", uno::Any(OUString("Dark")) },
+                { "NewTheme", uno::Any(u"Dark"_ustr) },
             }
         );
-        dispatchCommand(mxComponent, ".uno:ChangeTheme", aPropertyValues);
+        dispatchCommand(mxComponent, u".uno:ChangeTheme"_ustr, aPropertyValues);
     }
-    CPPUNIT_ASSERT_EQUAL(";Dark"_ostr, pXImpressDocument->getViewRenderState());
+    CPPUNIT_ASSERT_EQUAL("S;Dark"_ostr, pXImpressDocument->getViewRenderState());
     // Switch back to the first view, and check that the options string is the same
     SfxLokHelper::setView(nFirstViewId);
-    CPPUNIT_ASSERT_EQUAL(";Default"_ostr, pXImpressDocument->getViewRenderState());
+    CPPUNIT_ASSERT_EQUAL("S;Default"_ostr, pXImpressDocument->getViewRenderState());
 }
 
 // Helper function to get a tile to a bitmap and check the pixel color
@@ -2459,31 +2160,31 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testThemeViewSeparation)
         aColorConfig.AddScheme(u"Light"_ustr);
     }
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
-    int nFirstViewId = SfxLokHelper::getView();
-    ViewCallback aView1;
+    int nFirstViewId = SfxLokHelper::getCurrentView();
+    SdTestViewCallback aView1;
     // Switch first view to light scheme
     {
         uno::Sequence<beans::PropertyValue> aPropertyValues = comphelper::InitPropertySequence(
             {
-                { "NewTheme", uno::Any(OUString("Light")) },
+                { "NewTheme", uno::Any(u"Light"_ustr) },
             }
         );
-        dispatchCommand(mxComponent, ".uno:ChangeTheme", aPropertyValues);
+        dispatchCommand(mxComponent, u".uno:ChangeTheme"_ustr, aPropertyValues);
     }
     // First view is at light scheme
     assertTilePixelColor(pXImpressDocument, 255, 255, COL_WHITE);
     // Create second view
     SfxLokHelper::createView();
-    int nSecondViewId = SfxLokHelper::getView();
-    ViewCallback aView2;
+    int nSecondViewId = SfxLokHelper::getCurrentView();
+    SdTestViewCallback aView2;
     // Set second view to dark scheme
     {
         uno::Sequence<beans::PropertyValue> aPropertyValues = comphelper::InitPropertySequence(
             {
-                { "NewTheme", uno::Any(OUString("Dark")) },
+                { "NewTheme", uno::Any(u"Dark"_ustr) },
             }
         );
-        dispatchCommand(mxComponent, ".uno:ChangeTheme", aPropertyValues);
+        dispatchCommand(mxComponent, u".uno:ChangeTheme"_ustr, aPropertyValues);
     }
     assertTilePixelColor(pXImpressDocument, 255, 255, aDarkColor);
     // First view still in light scheme
@@ -2496,10 +2197,10 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testThemeViewSeparation)
     {
         uno::Sequence<beans::PropertyValue> aPropertyValues = comphelper::InitPropertySequence(
             {
-                { "NewTheme", uno::Any(OUString("Light")) },
+                { "NewTheme", uno::Any(u"Light"_ustr) },
             }
         );
-        dispatchCommand(mxComponent, ".uno:ChangeTheme", aPropertyValues);
+        dispatchCommand(mxComponent, u".uno:ChangeTheme"_ustr, aPropertyValues);
     }
     // Now in light scheme
     assertTilePixelColor(pXImpressDocument, 255, 255, COL_WHITE);
@@ -2528,7 +2229,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testRegenerateDiagram)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), pActualPage->GetObj(0)->GetSubList()->GetObjCount());
 
     // regenerate diagram
-    dispatchCommand(mxComponent, ".uno:RegenerateDiagram", uno::Sequence<beans::PropertyValue>());
+    dispatchCommand(mxComponent, u".uno:RegenerateDiagram"_ustr, uno::Sequence<beans::PropertyValue>());
 
     // diagram content (child shape count) should be the same as in the beginning
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(4), pActualPage->GetObj(0)->GetSubList()->GetObjCount());
@@ -2538,13 +2239,13 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testInsertDeletePageInvalidation)
 {
     // Load the document.
     SdXImpressDocument* pXImpressDocument = createDoc("dummy.odp");
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
     CPPUNIT_ASSERT_EQUAL(8, pXImpressDocument->getParts());
 
     // Insert slide
     aView1.m_bTilesInvalidated = false;
     aView1.m_aInvalidations.clear();
-    dispatchCommand(mxComponent, ".uno:InsertPage", uno::Sequence<beans::PropertyValue>());
+    dispatchCommand(mxComponent, u".uno:InsertPage"_ustr, uno::Sequence<beans::PropertyValue>());
     CPPUNIT_ASSERT(aView1.m_bTilesInvalidated);
     CPPUNIT_ASSERT_EQUAL(9, pXImpressDocument->getParts());
     CPPUNIT_ASSERT_EQUAL(size_t(9), aView1.m_aInvalidations.size());
@@ -2552,7 +2253,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testInsertDeletePageInvalidation)
     // Delete slide
     aView1.m_bTilesInvalidated = false;
     aView1.m_aInvalidations.clear();
-    dispatchCommand(mxComponent, ".uno:DeletePage", uno::Sequence<beans::PropertyValue>());
+    dispatchCommand(mxComponent, u".uno:DeletePage"_ustr, uno::Sequence<beans::PropertyValue>());
     CPPUNIT_ASSERT(aView1.m_bTilesInvalidated);
     CPPUNIT_ASSERT_EQUAL(8, pXImpressDocument->getParts());
     CPPUNIT_ASSERT_EQUAL(size_t(8), aView1.m_aInvalidations.size());
@@ -2576,10 +2277,10 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideDuplicateUndo)
 {
     // Create two views.
     SdXImpressDocument* pXImpressDocument = createDoc("duplicate-undo.odp");
-    int nView0 = SfxLokHelper::getView();
+    int nView0 = SfxLokHelper::getCurrentView();
     SfxLokHelper::createView();
     pXImpressDocument->initializeForTiledRendering({});
-    int nView1 = SfxLokHelper::getView();
+    int nView1 = SfxLokHelper::getCurrentView();
     SfxLokHelper::setView(nView0);
 
     // Switch to the 3rd slide on view 0, and start text editing.
@@ -2591,7 +2292,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideDuplicateUndo)
         SdrObject* pObject = pActualPage->GetObj(1);
         SdrTextObj* pTextObj = static_cast<SdrTextObj*>(pObject);
         pView->MarkObj(pTextObj, pView->GetSdrPageView());
-        SfxStringItem aInputString(SID_ATTR_CHAR, "x");
+        SfxStringItem aInputString(SID_ATTR_CHAR, u"x"_ustr);
         pViewShell0->GetViewFrame()->GetDispatcher()->ExecuteList(SID_ATTR_CHAR,
                 SfxCallMode::SYNCHRON, { &aInputString });
         CPPUNIT_ASSERT(pView->IsTextEdit());
@@ -2600,7 +2301,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideDuplicateUndo)
 
     // Duplicate the first slide on view 1 and undo it.
     SfxLokHelper::setView(nView1);
-    dispatchCommand(mxComponent, ".uno:DuplicatePage", {});
+    dispatchCommand(mxComponent, u".uno:DuplicatePage"_ustr, {});
     pXImpressDocument->setPart(0, /*bAllowChangeFocus=*/false);
     pXImpressDocument->setPart(1, /*bAllowChangeFocus=*/false);
     SfxLokHelper::setView(nView0);
@@ -2638,6 +2339,9 @@ void lcl_extractHandleParameters(std::string_view selection, sal_uInt32& id, sal
     id = handle0.get_child("id").get_value<int>();
     x = handle0.get_child("point").get_child("x").get_value<int>();
     y = handle0.get_child("point").get_child("y").get_value<int>();
+
+    CPPUNIT_ASSERT(aTree.get_child("OrdNum").get_value<int>() >= 0);
+    CPPUNIT_ASSERT(aTree.get_child("ObjectRectangles").size() >= 1);
 }
 
 }
@@ -2645,7 +2349,7 @@ void lcl_extractHandleParameters(std::string_view selection, sal_uInt32& id, sal
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testMoveShapeHandle)
 {
     SdXImpressDocument* pXImpressDocument = createDoc("shape.odp");
-    ViewCallback aView1;
+    SdTestViewCallback aView1;
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
     SdPage* pPage = pViewShell->GetActualPage();
     SdrObject* pObject = pPage->GetObj(0);
@@ -2665,7 +2369,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testMoveShapeHandle)
             {"NewPosX", uno::Any(x+1)},
             {"NewPosY", uno::Any(y+1)}
         }));
-        dispatchCommand(mxComponent, ".uno:MoveShapeHandle", aPropertyValues);
+        dispatchCommand(mxComponent, u".uno:MoveShapeHandle"_ustr, aPropertyValues);
         CPPUNIT_ASSERT(!aView1.m_ShapeSelection.isEmpty());
         lcl_extractHandleParameters(aView1.m_ShapeSelection, id, x ,y);
         CPPUNIT_ASSERT_EQUAL(x-1, oldX);
@@ -2688,11 +2392,11 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPasteUndo)
     EditView& rEditView = pView->GetTextEditOutlinerView()->GetEditView();
     ESelection aWordSelection(0, 0, 0, 1); // "w" of "world"
     rEditView.SetSelection(aWordSelection);
-    dispatchCommand(mxComponent, ".uno:Cut", {});
+    dispatchCommand(mxComponent, u".uno:Cut"_ustr, {});
 
     // When undoing a paste:
-    dispatchCommand(mxComponent, ".uno:Paste", {});
-    dispatchCommand(mxComponent, ".uno:Undo", {});
+    dispatchCommand(mxComponent, u".uno:Paste"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:Undo"_ustr, {});
 
     // Then make sure the cursor position is still at the beginning:
     ESelection aSelection = rEditView.GetSelection();
@@ -2701,7 +2405,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPasteUndo)
     // - Actual  : 4
     // i.e. the cursor position after undo was at the end of the line, not at the start, as
     // expected.
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), aSelection.nStartPos);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), aSelection.start.nIndex);
 }
 
 CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testShapeEditInMultipleViews)
@@ -2711,14 +2415,14 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testShapeEditInMultipleViews)
     SdDrawDocument* pDocument = pXImpressDocument->GetDoc();
 
     // Create view 1
-    const int nView1 = SfxLokHelper::getView();
+    const int nView1 = SfxLokHelper::getCurrentView();
     sd::ViewShell* pViewShell1 = pXImpressDocument->GetDocShell()->GetViewShell();
     SdrView* pView1 = pViewShell1->GetView();
     Scheduler::ProcessEventsToIdle();
 
     // Create view 2
     SfxLokHelper::createView();
-    const int nView2 = SfxLokHelper::getView();
+    const int nView2 = SfxLokHelper::getCurrentView();
     CPPUNIT_ASSERT(nView1 != nView2);
 
     sd::ViewShell* pViewShell2 = pXImpressDocument->GetDocShell()->GetViewShell();
@@ -2731,13 +2435,13 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testShapeEditInMultipleViews)
     SdPage* pPage1 = pViewShell1->GetActualPage();
 
     SdrObject* pTextBoxObject = pPage1->GetObj(0);
-    CPPUNIT_ASSERT_EQUAL(OUString("Text Box"), pTextBoxObject->GetName());
+    CPPUNIT_ASSERT_EQUAL(u"Text Box"_ustr, pTextBoxObject->GetName());
 
     SdrObject* pRectangleObject = pPage1->GetObj(1);
-    CPPUNIT_ASSERT_EQUAL(OUString("Rect"), pRectangleObject->GetName());
+    CPPUNIT_ASSERT_EQUAL(u"Rect"_ustr, pRectangleObject->GetName());
 
     SdrObject* pTableObject = pPage1->GetObj(2);
-    CPPUNIT_ASSERT_EQUAL(OUString("Table1"), pTableObject->GetName());
+    CPPUNIT_ASSERT_EQUAL(u"Table1"_ustr, pTableObject->GetName());
 
     // Scenario 1
     // 2 shapes - "Text Box" and "Rect"
@@ -2753,7 +2457,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testShapeEditInMultipleViews)
         // Local undo count for View1 is 0
         CPPUNIT_ASSERT_EQUAL(size_t(0), pView1->getViewLocalUndoManager()->GetUndoActionCount());
         // Write 'test' in View1
-        SfxStringItem aInputString(SID_ATTR_CHAR, "test");
+        SfxStringItem aInputString(SID_ATTR_CHAR, u"test"_ustr);
         pViewShell1->GetViewFrame()->GetDispatcher()->ExecuteList(SID_ATTR_CHAR, SfxCallMode::SYNCHRON, { &aInputString });
         // Local undo count for View1 is now 1
         CPPUNIT_ASSERT_EQUAL(size_t(1), pView1->getViewLocalUndoManager()->GetUndoActionCount());
@@ -2826,7 +2530,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testShapeEditInMultipleViews)
         // Local undo count for View1 is 0
         CPPUNIT_ASSERT_EQUAL(size_t(0), pView1->getViewLocalUndoManager()->GetUndoActionCount());
         // Write 'test' in View1
-        SfxStringItem aInputString(SID_ATTR_CHAR, "test");
+        SfxStringItem aInputString(SID_ATTR_CHAR, u"test"_ustr);
         pViewShell1->GetViewFrame()->GetDispatcher()->ExecuteList(SID_ATTR_CHAR, SfxCallMode::SYNCHRON, { &aInputString });
         // Local undo count for View1 is now 1
         CPPUNIT_ASSERT_EQUAL(size_t(1), pView1->getViewLocalUndoManager()->GetUndoActionCount());
@@ -2899,7 +2603,7 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testShapeEditInMultipleViews)
         // Local undo count for View1 is 0
         CPPUNIT_ASSERT_EQUAL(size_t(0), pView1->getViewLocalUndoManager()->GetUndoActionCount());
         // Write 'test' in View1
-        SfxStringItem aInputString(SID_ATTR_CHAR, "test");
+        SfxStringItem aInputString(SID_ATTR_CHAR, u"test"_ustr);
         pViewShell1->GetViewFrame()->GetDispatcher()->ExecuteList(SID_ATTR_CHAR, SfxCallMode::SYNCHRON, { &aInputString });
         // Local undo count for View1 is now 1
         CPPUNIT_ASSERT_EQUAL(size_t(1), pView1->getViewLocalUndoManager()->GetUndoActionCount());
@@ -2940,6 +2644,1710 @@ CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testShapeEditInMultipleViews)
         CPPUNIT_ASSERT_EQUAL(false, pView1->IsTextEdit());
         CPPUNIT_ASSERT_EQUAL(false, pView2->IsTextEdit());
     }
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSidebarHide)
+{
+    // Given an impress document, with a visible sidebar:
+    createDoc("dummy.odp");
+    SdTestViewCallback aView;
+    sfx2::sidebar::Sidebar::Setup(u"");
+    Scheduler::ProcessEventsToIdle();
+    aView.m_aStateChanges.clear();
+
+    // When hiding the slide layout deck:
+    dispatchCommand(mxComponent, u".uno:ModifyPage"_ustr, {});
+
+    // Then make sure we get a state change for this, in JSON format:
+    auto it = aView.m_aStateChanges.find(".uno:ModifyPage");
+    // Without the accompanying fix in place, this test would have failed, we got the state change
+    // in plain text, which was inconsistent (show was JSON, hide was plain text).
+    CPPUNIT_ASSERT(it != aView.m_aStateChanges.end());
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testStartPresentation)
+{
+    SdXImpressDocument* pXImpressDocument = createDoc("test.ppsx");
+    SdTestViewCallback aView;
+    CPPUNIT_ASSERT(pXImpressDocument->GetDoc()->GetStartWithPresentation());
+    Scheduler::ProcessEventsToIdle();
+
+    const auto it = aView.m_aStateChanges.find(".uno:StartWithPresentation");
+    CPPUNIT_ASSERT(it != aView.m_aStateChanges.end());
+
+    const auto value = it->second;
+    CPPUNIT_ASSERT(value.get_child_optional("state").has_value());
+    CPPUNIT_ASSERT_EQUAL(std::string("true"), value.get_child("state").get_value<std::string>());
+}
+
+namespace
+{
+
+void debugWriteImageToFile(unsigned step, const std::vector<sal_uInt8>& pBuffer,
+    unsigned nViewWidth, unsigned nViewHeight, const char* sJSON)
+{
+    (void)step;
+    (void)pBuffer;
+    (void)nViewWidth;
+    (void)nViewHeight;
+    (void)sJSON;
+
+#if false
+    printf ("%u %s\n\n", step, sJSON);
+
+    BitmapEx aBitmapEx = vcl::bitmap::CreateFromData(pBuffer.data(), nViewWidth, nViewHeight, nViewWidth * 4, /*nBitsPerPixel*/32, true, true);
+
+    OUString sFileName = "/tmp/slideshow_" + OUString::number(step) + ".png";
+    SvFileStream aStream(sFileName, StreamMode::WRITE | StreamMode::TRUNC);
+    vcl::PngImageWriter aPNGWriter(aStream);
+    aPNGWriter.write(aBitmapEx);
+#endif
+}
+
+template <typename T>
+bool is_unique(std::vector<T> vec)
+{
+    std::sort(vec.begin(), vec.end());
+    return std::unique(vec.begin(), vec.end()) == vec.end();
+}
+
+boost::property_tree::ptree const& child_at(boost::property_tree::ptree const& rTree, std::string_view aName, size_t nIndex)
+{
+    return std::next(rTree.get_child(std::string(aName)).find(""), nIndex)->second;
+}
+
+bool has_child(boost::property_tree::ptree const& rTree, std::string_view aName)
+{
+    return rTree.count(std::string(aName)) > 0;
+}
+
+void readJSON(boost::property_tree::ptree& rTree, OUString const& rJson)
+{
+    std::stringstream aStream((std::string(rJson.toUtf8())));
+    boost::property_tree::read_json(aStream, rTree);
+}
+
+} // end anonymous ns
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testPresentationInfo)
+{
+    SdXImpressDocument* pXImpressDocument = createDoc("PresentationInfoTest.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    CPPUNIT_ASSERT(pViewShell);
+
+    Scheduler::ProcessEventsToIdle();
+
+    SdPage* pPage = pViewShell->GetActualPage();
+    CPPUNIT_ASSERT(pPage);
+
+    OString aString = pXImpressDocument->getPresentationInfo();
+
+    boost::property_tree::ptree aTree;
+    std::stringstream aStream((std::string(aString)));
+    boost::property_tree::read_json(aStream, aTree);
+
+    CPPUNIT_ASSERT_EQUAL(15875, aTree.get_child("docWidth").get_value<int>());
+    CPPUNIT_ASSERT_EQUAL(8930,  aTree.get_child("docHeight").get_value<int>());
+
+    CPPUNIT_ASSERT_EQUAL(size_t(5),  aTree.get_child("slides").size());
+
+    // Slide Index 0
+    {
+        const boost::property_tree::ptree& rChild = child_at(aTree, "slides", 0);
+        CPPUNIT_ASSERT_EQUAL(0, rChild.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(false, rChild.get_child("empty").get_value<bool>());
+        // Check only that these exist
+        CPPUNIT_ASSERT(has_child(rChild, "hash"));
+        CPPUNIT_ASSERT(has_child(rChild, "masterPage"));
+        CPPUNIT_ASSERT(has_child(rChild, "masterPageObjectsVisibility"));
+
+        // Transitions
+        CPPUNIT_ASSERT_EQUAL(std::string("BarWipe"), rChild.get_child("transitionType").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("TopToBottom"), rChild.get_child("transitionSubtype").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(false, rChild.get_child("transitionDirection").get_value<bool>());
+    }
+
+    // Slide Index 1
+    {
+        const boost::property_tree::ptree& rChild = child_at(aTree, "slides", 1);
+        CPPUNIT_ASSERT_EQUAL(1, rChild.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(false, rChild.get_child("empty").get_value<bool>());
+        // Check only that these exist
+        CPPUNIT_ASSERT(has_child(rChild, "hash"));
+        CPPUNIT_ASSERT(has_child(rChild, "masterPage"));
+        CPPUNIT_ASSERT(has_child(rChild, "masterPageObjectsVisibility"));
+
+        // Transitions
+        CPPUNIT_ASSERT_EQUAL(std::string("FanWipe"), rChild.get_child("transitionType").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("CenterTop"), rChild.get_child("transitionSubtype").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, rChild.get_child("transitionDirection").get_value<bool>());
+
+    }
+
+    // Slide Index 2
+    {
+        const boost::property_tree::ptree& rChild = child_at(aTree, "slides", 2);
+        CPPUNIT_ASSERT_EQUAL(2, rChild.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(false, rChild.get_child("empty").get_value<bool>());
+        // Check only that these exist
+        CPPUNIT_ASSERT(has_child(rChild, "hash"));
+        CPPUNIT_ASSERT(has_child(rChild, "masterPage"));
+        CPPUNIT_ASSERT(has_child(rChild, "masterPageObjectsVisibility"));
+
+        // Transitions
+        CPPUNIT_ASSERT_EQUAL(std::string("BlindWipe"), rChild.get_child("transitionType").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("Vertical"), rChild.get_child("transitionSubtype").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, rChild.get_child("transitionDirection").get_value<bool>());
+    }
+
+    // Slide Index 3 - Hidden
+    {
+        const boost::property_tree::ptree& rChild = child_at(aTree, "slides", 3);
+        CPPUNIT_ASSERT_EQUAL(3, rChild.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(true, rChild.get_child("hidden").get_value<bool>());
+    }
+
+    // Slide Index 4
+    {
+        const boost::property_tree::ptree& rChild = child_at(aTree, "slides", 4);
+        CPPUNIT_ASSERT_EQUAL(4, rChild.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(false, rChild.get_child("empty").get_value<bool>());
+        // Check only that these exist
+        CPPUNIT_ASSERT(has_child(rChild, "hash"));
+        CPPUNIT_ASSERT(has_child(rChild, "masterPage"));
+        CPPUNIT_ASSERT(has_child(rChild, "masterPageObjectsVisibility"));
+
+        // Transitions
+        CPPUNIT_ASSERT_EQUAL(std::string("Fade"), rChild.get_child("transitionType").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("FadeOverColor"), rChild.get_child("transitionSubtype").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, rChild.get_child("transitionDirection").get_value<bool>());
+    }
+}
+
+namespace
+{
+class SlideRendererChecker
+{
+private:
+    SdXImpressDocument* mpXImpressDocument;
+    sal_Int32 mnViewWidth;
+    sal_Int32 mnViewHeight;
+    sal_Int32 mnSlideNumber;
+    int mnImageFileStep;
+
+public:
+    SlideRendererChecker(SdXImpressDocument* pXImpressDocument,
+                         sal_Int32 nSlideNumber, sal_Int32 nViewWidth, sal_Int32 nViewHeight,
+                         bool bRenderBackground = true, bool bRenderMasterPage = true)
+        : mpXImpressDocument(pXImpressDocument)
+        , mnViewWidth(nViewWidth)
+        , mnViewHeight(nViewHeight)
+        , mnSlideNumber(nSlideNumber)
+        , mnImageFileStep(0)
+    {
+        CPPUNIT_ASSERT(mpXImpressDocument);
+        SdDrawDocument* pDoc = mpXImpressDocument->GetDoc();
+        CPPUNIT_ASSERT(pDoc);
+        SdPage* pPage = pDoc->GetSdPage(sal_uInt16(mnSlideNumber), PageKind::Standard);
+        CPPUNIT_ASSERT(pPage);
+
+        std::string sHash = GetInterfaceHash(GetXDrawPageForSdrPage(pPage));
+        CPPUNIT_ASSERT(mpXImpressDocument->createSlideRenderer(
+            sHash.c_str(), mnSlideNumber, mnViewWidth, mnViewHeight, bRenderBackground,
+            bRenderMasterPage));
+    }
+
+    void checkSlideSize(sal_Int32 nViewWidth, sal_Int32 nViewHeight) const
+    {
+        CPPUNIT_ASSERT_EQUAL(nViewWidth, mnViewWidth);
+        CPPUNIT_ASSERT_EQUAL(nViewHeight, mnViewHeight);
+    }
+
+    void checkBackgroundLayer()
+    {
+        std::vector<sal_uInt8> pBuffer(mnViewWidth * mnViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(
+            !mpXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        debugWriteImageToFile(mnImageFileStep++, pBuffer, mnViewWidth, mnViewHeight,
+                              aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("Background"),
+                             aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"),
+                             aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+    }
+
+    void checkTextFieldLayer(int nIndex, const std::string& rTextFieldType)
+    {
+        const std::string sMsg
+            = "TextField Layer Type: " + rTextFieldType + " Index: " + std::to_string(nIndex);
+
+        std::vector<sal_uInt8> pBuffer(mnViewWidth * mnViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT_MESSAGE(
+            sMsg, !mpXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT_MESSAGE(sMsg, bIsBitmapLayer);
+
+        debugWriteImageToFile(mnImageFileStep++, pBuffer, mnViewWidth, mnViewHeight,
+                              aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, std::string("TextFields"),
+                                     aTree.get_child("group").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, std::string("TextFields"),
+                                     aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, nIndex, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, true, has_child(aTree, "content"));
+        {
+            auto aContentChild = aTree.get_child("content");
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, rTextFieldType,
+                                         aContentChild.get_child("type").get_value<std::string>());
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, true, has_child(aContentChild, "content"));
+            auto aContentChildChild = aContentChild.get_child("content");
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(
+                sMsg, std::string("%IMAGETYPE%"),
+                aContentChildChild.get_child("type").get_value<std::string>());
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(
+                sMsg, std::string("%IMAGECHECKSUM%"),
+                aContentChildChild.get_child("checksum").get_value<std::string>());
+        }
+    }
+
+    void checkPlaceholderLayer(int nIndex, const std::string& rTextFieldType)
+    {
+        const std::string sMsg
+            = "Placeholder Layer Type: " + rTextFieldType + " Index: " + std::to_string(nIndex);
+
+        std::vector<sal_uInt8> pBuffer(mnViewWidth * mnViewHeight * 4);
+        bool bIsBitmapLayer = true;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT_MESSAGE(
+            sMsg, !mpXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT_MESSAGE(sMsg, !bIsBitmapLayer);
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, std::string("MasterPage"),
+                                     aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, nIndex, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, std::string("placeholder"),
+                                     aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, true, has_child(aTree, "content"));
+        {
+            auto aContentChild = aTree.get_child("content");
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, rTextFieldType,
+                                         aContentChild.get_child("type").get_value<std::string>());
+        }
+    }
+
+    void checkPageLayer(int nIndex, const std::string& rGroup, bool bIsAnimated = false)
+    {
+        const std::string sMsg = rGroup + " Layer Index: " + std::to_string(nIndex);
+
+        std::vector<sal_uInt8> pBuffer(mnViewWidth * mnViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT_MESSAGE(
+            sMsg, !mpXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT_MESSAGE(sMsg, bIsBitmapLayer);
+
+        debugWriteImageToFile(mnImageFileStep++, pBuffer, mnViewWidth, mnViewHeight,
+                              aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, rGroup,
+                                     aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, nIndex, aTree.get_child("index").get_value<int>());
+
+        if (!bIsAnimated)
+        {
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, std::string("bitmap"),
+                                         aTree.get_child("type").get_value<std::string>());
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, true, has_child(aTree, "content"));
+        }
+        else
+        {
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, std::string("animated"),
+                                         aTree.get_child("type").get_value<std::string>());
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, true, has_child(aTree, "content"));
+
+            auto aContentChild = aTree.get_child("content");
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, true, has_child(aContentChild, "hash"));
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, true, has_child(aContentChild, "initVisible"));
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, std::string("bitmap"),
+                                         aContentChild.get_child("type").get_value<std::string>());
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMsg, true, has_child(aContentChild, "content"));
+
+            auto aContentChildChild = aContentChild.get_child("content");
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(
+                sMsg, std::string("%IMAGETYPE%"),
+                aContentChildChild.get_child("type").get_value<std::string>());
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(
+                sMsg, std::string("%IMAGECHECKSUM%"),
+                aContentChildChild.get_child("checksum").get_value<std::string>());
+        }
+    }
+
+    void checkFinalEmptyLayer()
+    {
+        std::vector<sal_uInt8> pBuffer(mnViewWidth * mnViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(
+            mpXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(aJson.isEmpty());
+    }
+};
+} // end anonymous ns
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering)
+{
+    // Check rendering of slideshow layers (as in the document):
+    // - master slide layer
+    // - main slide layer
+
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    CPPUNIT_ASSERT(pViewShell);
+    SdPage* pPage = pViewShell->GetActualPage();
+    CPPUNIT_ASSERT(pPage);
+    std::string sHash = GetInterfaceHash(GetXDrawPageForSdrPage(pPage));
+    sal_Int32 nViewWidth = 2000;
+    sal_Int32 nViewHeight = 2000;
+    CPPUNIT_ASSERT(pXImpressDocument->createSlideRenderer(sHash.c_str(), 0, nViewWidth, nViewHeight, true, true));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2000), nViewWidth);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1125), nViewHeight);
+
+    const Color aTransparentColor(ColorAlpha, 0x00000000);
+    const tools::Long nLeft = 20;
+    const tools::Long nRight = nViewWidth - 20;
+    const tools::Long nTop = 20;
+    const tools::Long nBottom = nViewHeight - 20;
+
+    // Background Layer - TODO
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        debugWriteImageToFile(0, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("Background"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+        // TODO - check JSON content
+
+        Bitmap aBitmapEx = vcl::bitmap::CreateFromData(pBuffer.data(), nViewWidth, nViewHeight, nViewWidth * 4, /*nBitsPerPixel*/32, true, true);
+        debugWriteImageToFile(1, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        // top-left corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nLeft, nTop));
+
+        // bottom-left corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nLeft, nBottom));
+
+        // bottom-right corner
+        CPPUNIT_ASSERT_EQUAL(Color(0xff, 0xd0, 0x40), aBitmapEx.GetPixelColor(nRight, nBottom));
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("MasterPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+        // TODO - check JSON content
+        debugWriteImageToFile(2, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        Bitmap aBitmapEx = vcl::bitmap::CreateFromData(pBuffer.data(), nViewWidth, nViewHeight, nViewWidth * 4, /*nBitsPerPixel*/32, true, true);
+
+        // top-left corner
+        CPPUNIT_ASSERT_EQUAL(Color(0x00, 0x50, 0x90), aBitmapEx.GetPixelColor(nLeft, nTop));
+
+        // bottom-left corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nLeft, nBottom));
+
+        // bottom-right corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nRight, nBottom));
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(aJson.isEmpty());
+    }
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_WithFields)
+{
+    // Check rendering of fields - each in own layer
+
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_WithFields.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    CPPUNIT_ASSERT(pViewShell);
+    SdPage* pPage = pViewShell->GetActualPage();
+
+    CPPUNIT_ASSERT(pPage);
+    std::string sHash = GetInterfaceHash(GetXDrawPageForSdrPage(pPage));
+    sal_Int32 nViewWidth = 2000;
+    sal_Int32 nViewHeight = 2000;
+    CPPUNIT_ASSERT(pXImpressDocument->createSlideRenderer(sHash.c_str(), 0, nViewWidth, nViewHeight, true, true));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2000), nViewWidth);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1125), nViewHeight);
+
+    const Color aTransparentColor(ColorAlpha, 0x00000000);
+    const tools::Long nLeft = 20;
+    const tools::Long nRight = nViewWidth - 20;
+    const tools::Long nTop = 20;
+    const tools::Long nBottom = nViewHeight - 20;
+    const tools::Long nCenterX = nViewWidth / 2;
+
+    // Background Layer
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        debugWriteImageToFile(0, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("Background"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+
+        debugWriteImageToFile(2, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        Bitmap aBitmapEx = vcl::bitmap::CreateFromData(pBuffer.data(), nViewWidth, nViewHeight, nViewWidth * 4, /*nBitsPerPixel*/32, true, true);
+
+        // top-left corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nLeft, nTop));
+
+        // bottom-left corner
+        CPPUNIT_ASSERT_EQUAL(Color(0x90, 0x80, 0xff), aBitmapEx.GetPixelColor(nLeft, nBottom));
+
+        // bottom-right corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nRight, nBottom));
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("TextFields"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+        // TODO - check JSON content
+        debugWriteImageToFile(3, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        Bitmap aBitmapEx = vcl::bitmap::CreateFromData(pBuffer.data(), nViewWidth, nViewHeight, nViewWidth * 4, /*nBitsPerPixel*/32, true, true);
+
+        // top-left corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nLeft, nTop));
+
+        // bottom-left corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nLeft, nBottom));
+
+        // bottom-right corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nRight, nBottom));
+
+        // bottom-center
+        CPPUNIT_ASSERT_EQUAL(Color(0x20, 0xaa, 0x00), aBitmapEx.GetPixelColor(nCenterX, nBottom));
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("TextFields"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(1, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+
+        debugWriteImageToFile(4, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        Bitmap aBitmapEx = vcl::bitmap::CreateFromData(pBuffer.data(), nViewWidth, nViewHeight, nViewWidth * 4, /*nBitsPerPixel*/32, true, true);
+
+        // top-left corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nLeft, nTop));
+
+        // bottom-left corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nLeft, nBottom));
+
+        // bottom-right corner
+        CPPUNIT_ASSERT_EQUAL(Color(0xff, 0xd0, 0x40), aBitmapEx.GetPixelColor(nRight, nBottom));
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("MasterPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = true;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(
+            !pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(!bIsBitmapLayer);
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("MasterPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(1, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("placeholder"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = true;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(
+            !pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(!bIsBitmapLayer);
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("MasterPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(2, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("placeholder"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+
+        debugWriteImageToFile(5, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        Bitmap aBitmapEx = vcl::bitmap::CreateFromData(pBuffer.data(), nViewWidth, nViewHeight, nViewWidth * 4, /*nBitsPerPixel*/32, true, true);
+
+        // top-left corner
+        CPPUNIT_ASSERT_EQUAL(Color(0x00, 0x50, 0x90), aBitmapEx.GetPixelColor(nLeft, nTop));
+
+        // bottom-left corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nLeft, nBottom));
+
+        // bottom-right corner
+        CPPUNIT_ASSERT_EQUAL(aTransparentColor, aBitmapEx.GetPixelColor(nRight, nBottom));
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(aJson.isEmpty());
+    }
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_SlideNumber_Header_DateTime)
+{
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_SlideNumber_Header_DateTime.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    SlideRendererChecker aSlideRendererChecker(pXImpressDocument, 0, 2000, 2000);
+    aSlideRendererChecker.checkSlideSize(2000, 1125);
+
+    aSlideRendererChecker.checkBackgroundLayer();
+
+    aSlideRendererChecker.checkTextFieldLayer(0, "SlideNumber");
+    aSlideRendererChecker.checkTextFieldLayer(1, "Footer");
+    aSlideRendererChecker.checkTextFieldLayer(2, "DateTime");
+
+    aSlideRendererChecker.checkPlaceholderLayer(0, "DateTime");
+    aSlideRendererChecker.checkPlaceholderLayer(1, "Footer");
+    aSlideRendererChecker.checkPlaceholderLayer(2, "SlideNumber");
+
+    aSlideRendererChecker.checkPageLayer(0, "DrawPage");
+
+    aSlideRendererChecker.checkFinalEmptyLayer();
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Skip_Background)
+{
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_SlideNumber_Header_DateTime.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    SlideRendererChecker aSlideRendererChecker(pXImpressDocument, 0, 2000, 2000, false, true);
+    aSlideRendererChecker.checkSlideSize(2000, 1125);
+
+    aSlideRendererChecker.checkTextFieldLayer(0, "SlideNumber");
+    aSlideRendererChecker.checkTextFieldLayer(1, "Footer");
+    aSlideRendererChecker.checkTextFieldLayer(2, "DateTime");
+
+    aSlideRendererChecker.checkPlaceholderLayer(0, "DateTime");
+    aSlideRendererChecker.checkPlaceholderLayer(1, "Footer");
+    aSlideRendererChecker.checkPlaceholderLayer(2, "SlideNumber");
+
+    aSlideRendererChecker.checkPageLayer(0, "DrawPage");
+
+    aSlideRendererChecker.checkFinalEmptyLayer();
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Skip_MasterPage)
+{
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_SlideNumber_Header_DateTime.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    SlideRendererChecker aSlideRendererChecker(pXImpressDocument, 0, 2000, 2000, true, false);
+    aSlideRendererChecker.checkSlideSize(2000, 1125);
+
+    aSlideRendererChecker.checkBackgroundLayer();
+
+    aSlideRendererChecker.checkTextFieldLayer(0, "SlideNumber");
+    aSlideRendererChecker.checkTextFieldLayer(1, "Footer");
+    aSlideRendererChecker.checkTextFieldLayer(2, "DateTime");
+
+    aSlideRendererChecker.checkPageLayer(0, "DrawPage");
+
+    aSlideRendererChecker.checkFinalEmptyLayer();
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Skip_Background_And_MasterPage)
+{
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_SlideNumber_Header_DateTime.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    SlideRendererChecker aSlideRendererChecker(pXImpressDocument, 0, 2000, 2000, false, false);
+    aSlideRendererChecker.checkSlideSize(2000, 1125);
+
+    aSlideRendererChecker.checkTextFieldLayer(0, "SlideNumber");
+    aSlideRendererChecker.checkTextFieldLayer(1, "Footer");
+    aSlideRendererChecker.checkTextFieldLayer(2, "DateTime");
+
+    aSlideRendererChecker.checkPageLayer(0, "DrawPage");
+
+    aSlideRendererChecker.checkFinalEmptyLayer();
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Animated_Shape_Inside_A_Group)
+{
+    // 1 not animated groups made up by 2 shapes
+    // one of the 2 shapes is animated
+
+    SdXImpressDocument* pXImpressDocument
+        = createDoc("SlideRenderingTest_Animated_Shape_Inside_A_Group.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    SlideRendererChecker aSlideRendererChecker(pXImpressDocument, 0, 2000, 2000, false, false);
+    aSlideRendererChecker.checkSlideSize(2000, 1125);
+
+    // not animated group, no layer should be created for the animated shape
+    aSlideRendererChecker.checkPageLayer(0, "DrawPage", /*bIsAnimated=*/ false);
+
+    aSlideRendererChecker.checkFinalEmptyLayer();
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Animated_Group)
+{
+    // 1 animated groups made up by 2 not animated shapes
+    // a single not animated shape
+
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_Animated_Group.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    SlideRendererChecker aSlideRendererChecker(pXImpressDocument, 0, 2000, 2000, false, false);
+    aSlideRendererChecker.checkSlideSize(2000, 1125);
+
+    // animated group
+    aSlideRendererChecker.checkPageLayer(0, "DrawPage", /*bIsAnimated=*/ true);
+
+    // not animated shape
+    aSlideRendererChecker.checkPageLayer(1, "DrawPage", /*bIsAnimated=*/ false);
+
+    aSlideRendererChecker.checkFinalEmptyLayer();
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Animated_Groups)
+{
+    // 2 animated groups made up by 2 shapes each
+
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_Animated_Groups.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    SlideRendererChecker aSlideRendererChecker(pXImpressDocument, 0, 2000, 2000, false, false);
+    aSlideRendererChecker.checkSlideSize(2000, 1125);
+
+    // 1st group
+    aSlideRendererChecker.checkPageLayer(0, "DrawPage", /*bIsAnimated=*/ true);
+
+    // 2nd group
+    aSlideRendererChecker.checkPageLayer(1, "DrawPage", /*bIsAnimated=*/ true);
+
+    aSlideRendererChecker.checkFinalEmptyLayer();
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Animated_MultiLevel_Group)
+{
+    // 3 1st level groups made up by 2 shapes each
+    // the 1st group is not animated but one of its shape is
+    // the 2nd group is animated, none of its shapes is
+    // the 3rd group is animated with a color based effect
+    // 1st and 2nd group are grouped together and the 2nd level group is animated
+
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_Animated_MultiLevel_Group.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    SlideRendererChecker aSlideRendererChecker(pXImpressDocument, 0, 2000, 2000, false, false);
+    aSlideRendererChecker.checkSlideSize(2000, 1125);
+
+    // a single layer should be created for the highest level group,
+    // embedded animated groups or animated shapes should be ignored
+    aSlideRendererChecker.checkPageLayer(0, "DrawPage", /*bIsAnimated=*/ true);
+
+    // a group with applied an effect based on color animations should not be animated
+    aSlideRendererChecker.checkPageLayer(1, "DrawPage", /*bIsAnimated=*/ false);
+
+    aSlideRendererChecker.checkFinalEmptyLayer();
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Animations)
+{
+    // Check rendering of animated objects - each in own layer
+
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_Animations.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    CPPUNIT_ASSERT(pViewShell);
+    SdPage* pPage = pViewShell->GetActualPage();
+    CPPUNIT_ASSERT(pPage);
+    std::string sHash = GetInterfaceHash(GetXDrawPageForSdrPage(pPage));
+    sal_Int32 nViewWidth = 2000;
+    sal_Int32 nViewHeight = 2000;
+    CPPUNIT_ASSERT(pXImpressDocument->createSlideRenderer(sHash.c_str(), 0, nViewWidth, nViewHeight, true, true));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2000), nViewWidth);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1125), nViewHeight);
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+        debugWriteImageToFile(0, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("Background"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "initVisible"));
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = true;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(
+            !pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(!bIsBitmapLayer);
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("MasterPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("placeholder"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("DateTime"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = true;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(
+            !pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(!bIsBitmapLayer);
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("MasterPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(1, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("placeholder"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("Footer"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = true;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(
+            !pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(!bIsBitmapLayer);
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("MasterPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(2, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("placeholder"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("SlideNumber"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+        debugWriteImageToFile(1, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("animated"), aTree.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(std::string("true"), aContentChild.get_child("initVisible").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aContentChild.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "content"));
+        auto aContentChildChild = aContentChild.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChildChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChildChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+        debugWriteImageToFile(2, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(1, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("animated"), aTree.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(std::string("false"), aContentChild.get_child("initVisible").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aContentChild.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "content"));
+        auto aContentChildChild = aContentChild.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChildChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChildChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(aJson.isEmpty());
+    }
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Animations2)
+{
+    SdXImpressDocument* pXImpressDocument = createDoc("anim.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    CPPUNIT_ASSERT(pViewShell);
+    SdPage* pPage = pViewShell->GetActualPage();
+    CPPUNIT_ASSERT(pPage);
+    sal_Int32 nViewWidth = 2000;
+    sal_Int32 nViewHeight = 2000;
+    std::string sHash = GetInterfaceHash(GetXDrawPageForSdrPage(pPage));
+    CPPUNIT_ASSERT(pXImpressDocument->createSlideRenderer(sHash.c_str(), 0, nViewWidth, nViewHeight, true, true));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2000), nViewWidth);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1125), nViewHeight);
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+
+        debugWriteImageToFile(0, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("Background"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "initVisible"));
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "bounds"));
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = true;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(
+            !pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(!bIsBitmapLayer);
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("MasterPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("placeholder"), aTree.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("DateTime"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = true;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(
+            !pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(!bIsBitmapLayer);
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("MasterPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(1, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("placeholder"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("Footer"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = true;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(
+            !pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(!bIsBitmapLayer);
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("MasterPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(2, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("placeholder"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("SlideNumber"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+
+        debugWriteImageToFile(1, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "initVisible"));
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "bounds"));
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+
+        debugWriteImageToFile(2, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(1, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("animated"), aTree.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(std::string("false"), aContentChild.get_child("initVisible").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "bounds"));
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aContentChild.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "content"));
+        auto aContentChildChild = aContentChild.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChildChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChildChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+
+        debugWriteImageToFile(3, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(2, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("animated"), aTree.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(std::string("true"), aContentChild.get_child("initVisible").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "bounds"));
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aContentChild.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "content"));
+        auto aContentChildChild = aContentChild.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChildChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChildChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+
+        debugWriteImageToFile(4, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(3, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "initVisible"));
+        CPPUNIT_ASSERT_EQUAL(false, has_child(aContentChild, "bounds"));
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(bIsBitmapLayer);
+
+        debugWriteImageToFile(5, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(4, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("animated"), aTree.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(std::string("false"), aContentChild.get_child("initVisible").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "bounds"));
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aContentChild.get_child("type").get_value<std::string>());
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "content"));
+        auto aContentChildChild = aContentChild.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChildChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChildChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(aJson.isEmpty());
+    }
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Animation_TextBox)
+{
+    // Check rendering of animated paragraphs in a text box
+
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_TextBox.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    CPPUNIT_ASSERT(pViewShell);
+    SdPage* pPage = pViewShell->GetActualPage();
+    CPPUNIT_ASSERT(pPage);
+    sal_Int32 nViewWidth = 2000;
+    sal_Int32 nViewHeight = 2000;
+
+    std::string sHash = GetInterfaceHash(GetXDrawPageForSdrPage(pPage));
+    CPPUNIT_ASSERT(pXImpressDocument->createSlideRenderer(sHash.c_str(), 0, nViewWidth, nViewHeight, true, true));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2000), nViewWidth);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1125), nViewHeight);
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        debugWriteImageToFile(0, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("Background"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        debugWriteImageToFile(21, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        debugWriteImageToFile(2, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(1, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("animated"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(std::string("false"), aContentChild.get_child("initVisible").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "bounds"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "content"));
+        auto aContentChildChild = aContentChild.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChildChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChildChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        debugWriteImageToFile(3, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(2, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("animated"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(std::string("false"), aContentChild.get_child("initVisible").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "bounds"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "content"));
+        auto aContentChildChild = aContentChild.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChildChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChildChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        debugWriteImageToFile(4, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(3, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("animated"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(std::string("false"), aContentChild.get_child("initVisible").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "bounds"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "content"));
+        auto aContentChildChild = aContentChild.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChildChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChildChild.get_child("checksum").get_value<std::string>());
+    }
+
+    // Check we are done
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(aJson.isEmpty());
+    }
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Animation_TextBox_SecondParagraphMultipleEffects)
+{
+    // Check rendering of animated paragraphs in a text box when there are multiple effects for one paragraph
+
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_Animations_SecondParagraphMultipleEffects.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    CPPUNIT_ASSERT(pViewShell);
+    SdPage* pPage = pViewShell->GetActualPage();
+    CPPUNIT_ASSERT(pPage);
+    sal_Int32 nViewWidth = 2000;
+    sal_Int32 nViewHeight = 2000;
+
+    std::string sHash = GetInterfaceHash(GetXDrawPageForSdrPage(pPage));
+    CPPUNIT_ASSERT(pXImpressDocument->createSlideRenderer(sHash.c_str(), 0, nViewWidth, nViewHeight, true, true));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2000), nViewWidth);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1125), nViewHeight);
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        debugWriteImageToFile(1, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("Background"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        debugWriteImageToFile(2, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        debugWriteImageToFile(3, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(1, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("animated"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(std::string("false"), aContentChild.get_child("initVisible").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "bounds"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "content"));
+        auto aContentChildChild = aContentChild.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChildChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChildChild.get_child("checksum").get_value<std::string>());
+    }
+
+    // Check we are done
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(aJson.isEmpty());
+    }
+
+    pXImpressDocument->postSlideshowCleanup();
+}
+
+CPPUNIT_TEST_FIXTURE(SdTiledRenderingTest, testSlideshowLayeredRendering_Animation_DifferentKindOfTextBox)
+{
+    SdXImpressDocument* pXImpressDocument = createDoc("SlideRenderingTest_Animations_DifferentKindOfTextBox.odp");
+    pXImpressDocument->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    CPPUNIT_ASSERT(pViewShell);
+    SdPage* pPage = pViewShell->GetActualPage();
+    CPPUNIT_ASSERT(pPage);
+    sal_Int32 nViewWidth = 2000;
+    sal_Int32 nViewHeight = 2000;
+
+    std::string sHash = GetInterfaceHash(GetXDrawPageForSdrPage(pPage));
+    CPPUNIT_ASSERT(pXImpressDocument->createSlideRenderer(sHash.c_str(), 0, nViewWidth, nViewHeight, true, true));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2000), nViewWidth);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1500), nViewHeight);
+
+    std::vector<std::string> aBufferHashes;
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        // Remember the hash of the buffer for uniqueness check
+        auto aBufferHash = comphelper::Hash::calculateHash(pBuffer.data(), pBuffer.size(), comphelper::HashType::SHA1);
+        aBufferHashes.push_back(comphelper::hashToString(aBufferHash));
+
+        debugWriteImageToFile(1, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("Background"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        // Remember the hash of the buffer for uniqueness check
+        auto aBufferHash = comphelper::Hash::calculateHash(pBuffer.data(), pBuffer.size(), comphelper::HashType::SHA1);
+        aBufferHashes.push_back(comphelper::hashToString(aBufferHash));
+
+        debugWriteImageToFile(2, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(0, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChild.get_child("checksum").get_value<std::string>());
+    }
+
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(!pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+
+        // Remember the hash of the buffer for uniqueness check
+        auto aBufferHash = comphelper::Hash::calculateHash(pBuffer.data(), pBuffer.size(), comphelper::HashType::SHA1);
+        aBufferHashes.push_back(comphelper::hashToString(aBufferHash));
+
+        debugWriteImageToFile(3, pBuffer, nViewWidth, nViewHeight, aJson.toUtf8().getStr());
+
+        boost::property_tree::ptree aTree;
+        readJSON(aTree, aJson);
+
+        CPPUNIT_ASSERT_EQUAL(std::string("DrawPage"), aTree.get_child("group").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(1, aTree.get_child("index").get_value<int>());
+        CPPUNIT_ASSERT_EQUAL(std::string("animated"), aTree.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "slideHash"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aTree, "content"));
+        auto aContentChild = aTree.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "hash"));
+        CPPUNIT_ASSERT_EQUAL(std::string("false"), aContentChild.get_child("initVisible").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("bitmap"), aContentChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "bounds"));
+
+        CPPUNIT_ASSERT_EQUAL(true, has_child(aContentChild, "content"));
+        auto aContentChildChild = aContentChild.get_child("content");
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGETYPE%"), aContentChildChild.get_child("type").get_value<std::string>());
+        CPPUNIT_ASSERT_EQUAL(std::string("%IMAGECHECKSUM%"), aContentChildChild.get_child("checksum").get_value<std::string>());
+    }
+
+    // check if all hashes are unique
+    CPPUNIT_ASSERT(is_unique(aBufferHashes));
+
+    // Check we are done
+    {
+        std::vector<sal_uInt8> pBuffer(nViewWidth * nViewHeight * 4);
+        bool bIsBitmapLayer = false;
+        double dScale = 1.0;
+        OUString aJson;
+        CPPUNIT_ASSERT(pXImpressDocument->renderNextSlideLayer(pBuffer.data(), bIsBitmapLayer, dScale, aJson));
+        CPPUNIT_ASSERT(aJson.isEmpty());
+    }
+
+    pXImpressDocument->postSlideshowCleanup();
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

@@ -41,6 +41,7 @@
 #include <svtools/strings.hrc>
 #include <unotools/lingucfg.hxx>
 #include <unotools/resmgr.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/textenc.h>
@@ -52,7 +53,6 @@
 #include <set>
 #include <string.h>
 
-using namespace utl;
 using namespace osl;
 using namespace com::sun::star;
 using namespace com::sun::star::beans;
@@ -119,9 +119,9 @@ Sequence< Locale > SAL_CALL SpellChecker::getLocales()
         // new configuration entries).
         std::vector< SvtLinguConfigDictionaryEntry > aDics;
         uno::Sequence< OUString > aFormatList;
-        aLinguCfg.GetSupportedDictionaryFormatsFor( "SpellCheckers",
-                "org.openoffice.lingu.MySpellSpellChecker", aFormatList );
-        for (auto const& format : std::as_const(aFormatList))
+        aLinguCfg.GetSupportedDictionaryFormatsFor( u"SpellCheckers"_ustr,
+                u"org.openoffice.lingu.MySpellSpellChecker"_ustr, aFormatList );
+        for (auto const& format : aFormatList)
         {
             std::vector< SvtLinguConfigDictionaryEntry > aTmpDic(
                     aLinguCfg.GetActiveDictionariesByFormat(format) );
@@ -142,7 +142,7 @@ Sequence< Locale > SAL_CALL SpellChecker::getLocales()
         if (!aDics.empty())
         {
             uno::Reference< lang::XMultiServiceFactory > xServiceFactory(comphelper::getProcessServiceFactory());
-            uno::Reference< ucb::XSimpleFileAccess > xAccess(xServiceFactory->createInstance("com.sun.star.ucb.SimpleFileAccess"), uno::UNO_QUERY);
+            uno::Reference< ucb::XSimpleFileAccess > xAccess(xServiceFactory->createInstance(u"com.sun.star.ucb.SimpleFileAccess"_ustr), uno::UNO_QUERY);
             // get supported locales from the dictionaries-to-use...
             std::set<OUString> aLocaleNamesSet;
             for (auto const& dict : aDics)
@@ -232,7 +232,7 @@ sal_Bool SAL_CALL SpellChecker::hasLocale(const Locale& rLocale)
     if (!m_aSuppLocales.hasElements())
         getLocales();
 
-    for (auto const& suppLocale : std::as_const(m_aSuppLocales))
+    for (auto const& suppLocale : m_aSuppLocales)
     {
         if (rLocale == suppLocale)
         {
@@ -404,8 +404,7 @@ sal_Bool SAL_CALL SpellChecker::isValid( const OUString& rWord, const Locale& rL
         // postprocess result for errors that should be ignored
         const bool bIgnoreError =
                 (!rHelper.IsSpellUpperCase()  && IsUpper( rWord, nLang )) ||
-                (!rHelper.IsSpellWithDigits() && HasDigits( rWord )) ||
-                (!rHelper.IsSpellCapitalization()  &&  nFailure == SpellFailure::CAPTION_ERROR);
+                (!rHelper.IsSpellWithDigits() && HasDigits( rWord ));
         if (bIgnoreError)
             nFailure = -1;
     }
@@ -479,8 +478,7 @@ Reference< XSpellAlternatives >
                     OUString *pStr = aStr.getArray();
                     for (size_t ii = 0; ii < suglst.size(); ++ii)
                     {
-                        OUString cvtwrd(suglst[ii].c_str(), suglst[ii].size(), eEnc);
-                        pStr[numsug + ii] = cvtwrd;
+                        pStr[numsug + ii] = OUString(suglst[ii].c_str(), suglst[ii].size(), eEnc);
                     }
                     numsug += suglst.size();
                 }
@@ -624,7 +622,7 @@ void SAL_CALL SpellChecker::removeEventListener( const Reference< XEventListener
 // Service specific part
 OUString SAL_CALL SpellChecker::getImplementationName()
 {
-    return "org.openoffice.lingu.MySpellSpellChecker";
+    return u"org.openoffice.lingu.MySpellSpellChecker"_ustr;
 }
 
 sal_Bool SAL_CALL SpellChecker::supportsService( const OUString& ServiceName )

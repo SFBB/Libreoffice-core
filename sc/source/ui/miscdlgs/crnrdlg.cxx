@@ -60,28 +60,27 @@ ScColRowNameRangesDlg::ScColRowNameRangesDlg( SfxBindings* pB,
                                 weld::Window* pParent,
                                 ScViewData& rViewData )
 
-    : ScAnyRefDlgController(pB, pCW, pParent, "modules/scalc/ui/namerangesdialog.ui", "NameRangesDialog")
+    : ScAnyRefDlgController(pB, pCW, pParent, u"modules/scalc/ui/namerangesdialog.ui"_ustr, u"NameRangesDialog"_ustr)
     , m_rViewData(rViewData)
     , rDoc(rViewData.GetDocument())
     , bDlgLostFocus(false)
     , m_pEdActive(nullptr)
-    , m_xLbRange(m_xBuilder->weld_tree_view("range"))
-    , m_xEdAssign(new formula::RefEdit(m_xBuilder->weld_entry("edassign")))
-    , m_xRbAssign(new formula::RefButton(m_xBuilder->weld_button("rbassign")))
-    , m_xBtnColHead(m_xBuilder->weld_radio_button("colhead"))
-    , m_xBtnRowHead(m_xBuilder->weld_radio_button("rowhead"))
-    , m_xEdAssign2(new formula::RefEdit(m_xBuilder->weld_entry("edassign2")))
-    , m_xRbAssign2(new formula::RefButton(m_xBuilder->weld_button("rbassign2")))
-    , m_xBtnOk(m_xBuilder->weld_button("ok"))
-    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
-    , m_xBtnAdd(m_xBuilder->weld_button("add"))
-    , m_xBtnRemove(m_xBuilder->weld_button("delete"))
-    , m_xRangeFrame(m_xBuilder->weld_frame("rangeframe"))
-    , m_xRangeFT(m_xRangeFrame->weld_label_widget())
-    , m_xDataFT(m_xBuilder->weld_label("datarange"))
+    , m_xLbRange(m_xBuilder->weld_tree_view(u"range"_ustr))
+    , m_xEdAssign(new formula::RefEdit(m_xBuilder->weld_entry(u"edassign"_ustr)))
+    , m_xRbAssign(new formula::RefButton(m_xBuilder->weld_button(u"rbassign"_ustr)))
+    , m_xBtnColHead(m_xBuilder->weld_radio_button(u"colhead"_ustr))
+    , m_xBtnRowHead(m_xBuilder->weld_radio_button(u"rowhead"_ustr))
+    , m_xEdAssign2(new formula::RefEdit(m_xBuilder->weld_entry(u"edassign2"_ustr)))
+    , m_xRbAssign2(new formula::RefButton(m_xBuilder->weld_button(u"rbassign2"_ustr)))
+    , m_xBtnOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xBtnCancel(m_xBuilder->weld_button(u"cancel"_ustr))
+    , m_xBtnAdd(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xBtnRemove(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xRangeFrame(m_xBuilder->weld_frame(u"rangeframe"_ustr))
+    , m_xDataFT(m_xBuilder->weld_label(u"datarange"_ustr))
 {
     m_xRbAssign->SetReferences(this, m_xEdAssign.get());
-    m_xEdAssign->SetReferences(this, m_xRangeFT.get());
+    m_xEdAssign->SetReferences(this, m_xRangeFrame.get());
     m_xRbAssign2->SetReferences(this, m_xEdAssign2.get());
     m_xEdAssign2->SetReferences(this, m_xDataFT.get());
 
@@ -101,7 +100,7 @@ void ScColRowNameRangesDlg::Init()
     m_xBtnCancel->connect_clicked  ( LINK( this, ScColRowNameRangesDlg, CancelBtnHdl ) );
     m_xBtnAdd->connect_clicked     ( LINK( this, ScColRowNameRangesDlg, AddBtnHdl ) );
     m_xBtnRemove->connect_clicked  ( LINK( this, ScColRowNameRangesDlg, RemoveBtnHdl ) );
-    m_xLbRange->connect_changed( LINK( this, ScColRowNameRangesDlg, Range1SelectHdl ) );
+    m_xLbRange->connect_selection_changed(LINK(this, ScColRowNameRangesDlg, Range1SelectHdl));
     m_xEdAssign->SetModifyHdl  ( LINK( this, ScColRowNameRangesDlg, Range1DataModifyHdl ) );
     m_xBtnColHead->connect_toggled ( LINK( this, ScColRowNameRangesDlg, ColRowToggleHdl ) );
     m_xEdAssign2->SetModifyHdl ( LINK( this, ScColRowNameRangesDlg, Range2DataModifyHdl ) );
@@ -353,7 +352,7 @@ void ScColRowNameRangesDlg::UpdateNames()
     OUString rString;
     const ScAddress::Details aDetails(rDoc.GetAddressConvention());
 
-    OUString strDelim(" --- ");
+    OUString strDelim(u" --- "_ustr);
     OUString aString = strDelim + ScResId( STR_COLUMN ) + strDelim;
     m_xLbRange->append(OUString::number(nEntryDataDelim), aString);
     if ( xColNameRanges->size() > 0 )
@@ -486,9 +485,9 @@ IMPL_LINK_NOARG(ScColRowNameRangesDlg, OkBtnHdl, weld::Button&, void)
     rDoc.GetRowNameRangesRef() = xRowNameRanges;
     // changed ranges need to take effect
     rDoc.CompileColRowNameFormula();
-    ScDocShell* pDocShell = m_rViewData.GetDocShell();
-    pDocShell->PostPaint(ScRange(0, 0, 0, rDoc.MaxCol(), rDoc.MaxRow(), MAXTAB), PaintPartFlags::Grid);
-    pDocShell->SetDocumentModified();
+    ScDocShell& rDocShell = m_rViewData.GetDocShell();
+    rDocShell.PostPaint(ScRange(0, 0, 0, rDoc.MaxCol(), rDoc.MaxRow(), MAXTAB), PaintPartFlags::Grid);
+    rDocShell.SetDocumentModified();
 
     response(RET_OK);
 }
@@ -741,7 +740,7 @@ IMPL_LINK_NOARG(ScColRowNameRangesDlg, ColRowToggleHdl, weld::Toggleable&, void)
             m_xEdAssign->SetText( aStr );
         }
         ScRange aRange( theCurData );
-        aRange.aStart.SetRow( std::min( static_cast<tools::Long>(theCurArea.aEnd.Row() + 1), static_cast<tools::Long>(rDoc.MaxRow()) ) );
+        aRange.aStart.SetRow( std::min( static_cast<tools::Long>(theCurArea.aEnd.Row()) + 1, static_cast<tools::Long>(rDoc.MaxRow()) ) );
         aRange.aEnd.SetRow( rDoc.MaxRow() );
         AdjustColRowData( aRange );
     }
@@ -755,7 +754,7 @@ IMPL_LINK_NOARG(ScColRowNameRangesDlg, ColRowToggleHdl, weld::Toggleable&, void)
             m_xEdAssign->SetText( aStr );
         }
         ScRange aRange( theCurData );
-        aRange.aStart.SetCol( static_cast<SCCOL>(std::min( static_cast<tools::Long>(theCurArea.aEnd.Col() + 1), static_cast<tools::Long>(rDoc.MaxCol()) )) );
+        aRange.aStart.SetCol( static_cast<SCCOL>(std::min( static_cast<tools::Long>(theCurArea.aEnd.Col()) + 1, static_cast<tools::Long>(rDoc.MaxCol()) )) );
         aRange.aEnd.SetCol( rDoc.MaxCol() );
         AdjustColRowData( aRange );
     }

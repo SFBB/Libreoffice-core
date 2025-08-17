@@ -27,12 +27,10 @@
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/odffields.hxx>
 #include <xmloff/xmlement.hxx>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/text/ControlCharacter.hpp>
 #include <com/sun/star/text/XTextContent.hpp>
 #include <com/sun/star/text/XTextRangeCompare.hpp>
@@ -128,7 +126,7 @@ SvXMLEnumMapEntry<lcl_MarkType> const lcl_aMarkTypeMap[] =
 };
 
 
-static OUString lcl_getFormFieldmarkName(std::u16string_view name)
+static const OUString & lcl_getFormFieldmarkName(std::u16string_view name)
 {
     if (name == ODF_FORMCHECKBOX ||
         name == u"msoffice.field.FORMCHECKBOX" ||
@@ -138,7 +136,7 @@ static OUString lcl_getFormFieldmarkName(std::u16string_view name)
              name == u"ecma.office-open-xml.field.FORMDROPDOWN")
         return ODF_FORMDROPDOWN;
     else
-        return OUString();
+        return EMPTY_OUSTRING;
 }
 
 static OUString lcl_getFieldmarkName(OUString const& name)
@@ -202,7 +200,7 @@ static auto InsertFieldmark(SvXMLImport & rImport,
     xCursor->gotoRange(rHelper.GetCursorAsRange(), true);
 
     Reference<XTextContent> const xContent = XMLTextMarkImportContext::CreateAndInsertMark(
-            rImport, "com.sun.star.text.Fieldmark", name, xCursor,
+            rImport, u"com.sun.star.text.Fieldmark"_ustr, name, xCursor,
             OUString(), isFieldmarkSeparatorMissing);
 
     if (!xContent.is())
@@ -278,7 +276,7 @@ void XMLTextMarkImportContext::endFastElement(sal_Int32 nElement)
         case TypeReference:
             // export point reference mark
             CreateAndInsertMark(GetImport(),
-                "com.sun.star.text.ReferenceMark",
+                u"com.sun.star.text.ReferenceMark"_ustr,
                 m_sBookmarkName,
                 m_rHelper.GetCursorAsRange()->getStart());
             break;
@@ -306,7 +304,7 @@ void XMLTextMarkImportContext::endFastElement(sal_Int32 nElement)
                 // export point bookmark
                 const Reference<XInterface> xContent(
                     CreateAndInsertMark(GetImport(),
-                                (bImportAsField ? OUString("com.sun.star.text.FormFieldmark") : sAPI_bookmark),
+                                (bImportAsField ? u"com.sun.star.text.FormFieldmark"_ustr : sAPI_bookmark),
                         m_sBookmarkName,
                         m_rHelper.GetCursorAsRange()->getStart(),
                         m_sXmlId) );
@@ -412,13 +410,13 @@ void XMLTextMarkImportContext::endFastElement(sal_Int32 nElement)
                     const Reference<XPropertySet> xPropertySet(xContent, UNO_QUERY);
                     if (xPropertySet.is())
                     {
-                        xPropertySet->setPropertyValue("BookmarkHidden",    uno::Any(m_rHelper.getBookmarkHidden(m_sBookmarkName)));
-                        xPropertySet->setPropertyValue("BookmarkCondition", uno::Any(m_rHelper.getBookmarkCondition(m_sBookmarkName)));
+                        xPropertySet->setPropertyValue(u"BookmarkHidden"_ustr,    uno::Any(m_rHelper.getBookmarkHidden(m_sBookmarkName)));
+                        xPropertySet->setPropertyValue(u"BookmarkCondition"_ustr, uno::Any(m_rHelper.getBookmarkCondition(m_sBookmarkName)));
                     }
                     if (m_sBookmarkName.startsWith("__RefHeading__"))
                     {
                         assert(xContent.is());
-                        m_rxCrossRefHeadingBookmark = xContent;
+                        m_rxCrossRefHeadingBookmark = std::move(xContent);
                     }
                 }
                 // else: beginning/end in different XText -> ignore!
@@ -504,7 +502,7 @@ Reference<XTextContent> XMLTextMarkImportContext::CreateAndInsertMark(
         if (isFieldmarkSeparatorMissing)
         {
             uno::Reference<beans::XPropertySet> const xProps(xIfc, uno::UNO_QUERY_THROW);
-            xProps->setPropertyValue("PrivateSeparatorAtStart", uno::Any(true));
+            xProps->setPropertyValue(u"PrivateSeparatorAtStart"_ustr, uno::Any(true));
         }
 
         // cast to XTextContent and attach to document

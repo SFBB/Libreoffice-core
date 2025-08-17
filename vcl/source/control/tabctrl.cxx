@@ -18,25 +18,19 @@
  */
 
 #include <sal/config.h>
-#include <sal/log.hxx>
 
-#include <vcl/notebookbar/notebookbar.hxx>
-#include <vcl/svapp.hxx>
 #include <vcl/help.hxx>
-#include <vcl/event.hxx>
-#include <vcl/menu.hxx>
-#include <vcl/toolkit/button.hxx>
-#include <vcl/tabpage.hxx>
-#include <vcl/tabctrl.hxx>
-#include <vcl/toolbox.hxx>
 #include <vcl/layout.hxx>
+#include <vcl/notebookbar/notebookbar.hxx>
+#include <vcl/tabctrl.hxx>
+#include <vcl/tabpage.hxx>
+#include <vcl/toolbox.hxx>
+#include <vcl/toolkit/button.hxx>
 #include <vcl/mnemonic.hxx>
 #include <vcl/toolkit/lstbox.hxx>
-#include <vcl/settings.hxx>
 #include <vcl/uitest/uiobject.hxx>
-#include <bitmaps.hlst>
-#include <tools/json_writer.hxx>
 
+#include <bitmaps.hlst>
 #include <svdata.hxx>
 #include <window.h>
 
@@ -171,18 +165,18 @@ void TabControl::ImplInitSettings( bool bBackground )
         SetPaintTransparent( true );
         SetBackground();
         ImplGetWindowImpl()->mbUseNativeFocus = ImplGetSVData()->maNWFData.mbNoFocusRects;
-    }
-    else
-    {
-        EnableChildTransparentMode( false );
-        SetParentClipMode();
-        SetPaintTransparent( false );
 
-        if ( IsControlBackground() )
-            SetBackground( GetControlBackground() );
-        else
-            SetBackground( pParent->GetBackground() );
+        return;
     }
+
+    EnableChildTransparentMode( false );
+    SetParentClipMode();
+    SetPaintTransparent( false );
+
+    if ( IsControlBackground() )
+        SetBackground( GetControlBackground() );
+    else
+        SetBackground( pParent->GetBackground() );
 }
 
 TabControl::TabControl( vcl::Window* pParent, WinBits nStyle ) :
@@ -242,8 +236,9 @@ Size TabControl::ImplGetItemSize( ImplTabItem* pItem, tools::Long nMaxWidth )
     tools::Rectangle aCtrlRegion( Point( 0, 0 ), aSize );
     tools::Rectangle aBoundingRgn, aContentRgn;
     const TabitemValue aControlValue(tools::Rectangle(TAB_ITEM_OFFSET_X, TAB_ITEM_OFFSET_Y,
-                                               aSize.Width() - TAB_ITEM_OFFSET_X * 2,
-                                               aSize.Height() - TAB_ITEM_OFFSET_Y * 2));
+                                                      aSize.Width() - TAB_ITEM_OFFSET_X * 2,
+                                                      aSize.Height() - TAB_ITEM_OFFSET_Y * 2),
+                                     TabBarPosition::Top);
     if(GetNativeControlRegion( ControlType::TabItem, ControlPart::Entire, aCtrlRegion,
                                            ControlState::ENABLED, aControlValue,
                                            aBoundingRgn, aContentRgn ) )
@@ -259,7 +254,7 @@ Size TabControl::ImplGetItemSize( ImplTabItem* pItem, tools::Long nMaxWidth )
     // shorten Text if needed
     if ( aSize.Width()+4 >= nMaxWidth )
     {
-        OUString aAppendStr("...");
+        OUString aAppendStr(u"..."_ustr);
         pItem->maFormatText += aAppendStr;
         do
         {
@@ -875,9 +870,10 @@ void TabControl::ImplDrawItem(vcl::RenderContext& rRenderContext, ImplTabItem co
     if ( bNativeOK )
     {
         TabitemValue tiValue(tools::Rectangle(pItem->maRect.Left() + TAB_ITEM_OFFSET_X,
-                                       pItem->maRect.Top() + TAB_ITEM_OFFSET_Y,
-                                       pItem->maRect.Right() - TAB_ITEM_OFFSET_X,
-                                       pItem->maRect.Bottom() - TAB_ITEM_OFFSET_Y));
+                                              pItem->maRect.Top() + TAB_ITEM_OFFSET_Y,
+                                              pItem->maRect.Right() - TAB_ITEM_OFFSET_X,
+                                              pItem->maRect.Bottom() - TAB_ITEM_OFFSET_Y),
+                             TabBarPosition::Top);
         if (pItem->maRect.Left() < 5)
             tiValue.mnAlignment |= TabitemFlags::LeftAligned;
         if (pItem->maRect.Right() > mnLastWidth - 5)
@@ -1127,7 +1123,7 @@ void TabControl::Paint( vcl::RenderContext& rRenderContext, const tools::Rectang
         const bool bPaneWithHeader = mbShowTabs && rRenderContext.IsNativeControlSupported(ControlType::TabPane, ControlPart::TabPaneWithHeader);
         tools::Rectangle aHeaderRect(aRect.Left(), 0, aRect.Right(), aRect.Top());
 
-        if (mpTabCtrlData->maItemList.size())
+        if (!mpTabCtrlData->maItemList.empty())
         {
             tools::Long nLeft = LONG_MAX;
             tools::Long nRight = 0;
@@ -1211,7 +1207,8 @@ void TabControl::Paint( vcl::RenderContext& rRenderContext, const tools::Rectang
         }
     }
 
-    if (mbShowTabs && !mpTabCtrlData->maItemList.empty() && mpTabCtrlData->mpListBox == nullptr)
+    const size_t nItemListSize = mpTabCtrlData->maItemList.size();
+    if (mbShowTabs && nItemListSize > 0 && mpTabCtrlData->mpListBox == nullptr)
     {
         // Some native toolkits (GTK+) draw tabs right-to-left, with an
         // overlap between adjacent tabs
@@ -1225,17 +1222,17 @@ void TabControl::Paint( vcl::RenderContext& rRenderContext, const tools::Rectang
         if (bDrawTabsRTL)
         {
             pFirstTab = mpTabCtrlData->maItemList.data();
-            pLastTab = pFirstTab + mpTabCtrlData->maItemList.size() - 1;
-            idx = mpTabCtrlData->maItemList.size() - 1;
+            pLastTab = pFirstTab + nItemListSize - 1;
+            idx = nItemListSize - 1;
         }
         else
         {
             pLastTab = mpTabCtrlData->maItemList.data();
-            pFirstTab = pLastTab + mpTabCtrlData->maItemList.size() - 1;
+            pFirstTab = pLastTab + nItemListSize - 1;
             idx = 0;
         }
 
-        while (idx < mpTabCtrlData->maItemList.size())
+        while (idx < nItemListSize)
         {
             ImplTabItem* pItem = &mpTabCtrlData->maItemList[idx];
 
@@ -2264,7 +2261,7 @@ void NotebookbarTabControlBase::dispose()
 
 void NotebookbarTabControlBase::SetToolBox( ToolBox* pToolBox )
 {
-    m_pShortcuts.set( pToolBox );
+    m_pShortcuts.reset( pToolBox );
 }
 
 void NotebookbarTabControlBase::SetIconClickHdl( Link<NotebookBar*, void> aHdl )
@@ -2272,40 +2269,35 @@ void NotebookbarTabControlBase::SetIconClickHdl( Link<NotebookBar*, void> aHdl )
     m_aIconClickHdl = aHdl;
 }
 
-static bool lcl_isValidPage(const ImplTabItem& rItem, bool& bFound)
+static bool lcl_isValidPage(const ImplTabItem& rItem)
 {
-    if (rItem.m_bVisible && rItem.m_bEnabled)
-        bFound = true;
-    return bFound;
+    return rItem.m_bVisible && rItem.m_bEnabled;
 }
 
 void NotebookbarTabControlBase::ImplActivateTabPage( bool bNext )
 {
-    const sal_uInt16 nOldPos = GetPagePos(GetCurPageId());
-    bool bFound = false;
-    sal_Int32 nCurPos = nOldPos;
+    sal_Int32 nCurPos = GetPagePos(GetCurPageId());
 
     if (bNext)
     {
-        for (nCurPos++; nCurPos < GetPageCount(); nCurPos++)
-            if (lcl_isValidPage(mpTabCtrlData->maItemList[nCurPos], bFound))
+        for (sal_Int32 nPos = nCurPos + 1; nPos < GetPageCount(); nPos++)
+            if (lcl_isValidPage(mpTabCtrlData->maItemList[nPos]))
+            {
+                nCurPos = nPos;
                 break;
+            }
     }
     else
     {
-        for (nCurPos--; nCurPos >= 0; nCurPos--)
-            if (lcl_isValidPage(mpTabCtrlData->maItemList[nCurPos], bFound))
+        for (sal_Int32 nPos = nCurPos - 1; nPos >= 0; nPos--)
+            if (lcl_isValidPage(mpTabCtrlData->maItemList[nPos]))
+            {
+                nCurPos = nPos;
                 break;
+            }
     }
 
-    if (!bFound)
-        nCurPos = nOldPos;
     SelectTabPage( TabControl::GetPageId( nCurPos ) );
-}
-
-sal_uInt16 NotebookbarTabControlBase::GetHeaderHeight()
-{
-    return m_nHeaderHeight;
 }
 
 bool NotebookbarTabControlBase::ImplPlaceTabs( tools::Long nWidth )
@@ -2373,7 +2365,8 @@ bool NotebookbarTabControlBase::ImplPlaceTabs( tools::Long nWidth )
     }
 
     // we always have only one line of tabs
-    lcl_AdjustSingleLineTabs(nMaxWidth, mpTabCtrlData.get());
+    // tdf#127610 subtract width of shortcuts from width available for tab items
+    lcl_AdjustSingleLineTabs(nMaxWidth - nShortcutsWidth, mpTabCtrlData.get());
 
     // position the shortcutbox
     if (m_pShortcuts)

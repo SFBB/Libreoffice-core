@@ -28,6 +28,8 @@
 #include "address.hxx"
 
 #include "dptypes.hxx"
+#include "pivot/PivotTableFormats.hxx"
+#include "pivot/PivotTableFormatOutput.hxx"
 
 #include <memory>
 #include <vector>
@@ -42,49 +44,51 @@ namespace com::sun::star::sheet {
 namespace tools { class Rectangle; }
 class ScDocument;
 struct ScDPOutLevelData;
+class ScDPOutputImpl;
+class ScDPObject;
 
 class ScDPOutput
 {
 private:
-    ScDocument*             pDoc;
-    css::uno::Reference< css::sheet::XDimensionsSupplier> xSource;
-    ScAddress               aStartPos;
-    std::vector<ScDPOutLevelData>       pColFields;
-    std::vector<ScDPOutLevelData>       pRowFields;
-    std::vector<ScDPOutLevelData>       pPageFields;
-    css::uno::Sequence< css::uno::Sequence< css::sheet::DataResult> > aData;
-    OUString                aDataDescription;
+    ScDocument* mpDocument;
+    sc::FormatOutput maFormatOutput;
+    css::uno::Reference<css::sheet::XDimensionsSupplier> mxSource;
+    ScAddress maStartPos;
+    std::vector<ScDPOutLevelData> mpColFields;
+    std::vector<ScDPOutLevelData> mpRowFields;
+    std::vector<ScDPOutLevelData> mpPageFields;
+    css::uno::Sequence<css::uno::Sequence<css::sheet::DataResult>> maData;
+    OUString maDataDescription;
 
     // Number format related parameters
-    std::unique_ptr<sal_uInt32[]>
-                            pColNumFmt;
-    std::unique_ptr<sal_uInt32[]>
-                            pRowNumFmt;
-    std::vector<bool>       aRowCompactFlags;
-    sal_Int32               nColFmtCount;
-    sal_Int32               nRowFmtCount;
-    sal_uInt32              nSingleNumFmt;
-    size_t                  nRowDims; // Including empty ones.
+    std::unique_ptr<sal_uInt32[]> mpColNumberFormat;
+    std::unique_ptr<sal_uInt32[]> mpRowNumberFormat;
+    std::vector<bool> maRowCompactFlags;
+    sal_Int32 mnColFormatCount;
+    sal_Int32 mnRowFormatCount;
+    sal_uInt32 mnSingleNumberFormat;
+    size_t mnRowDims; // Including empty ones.
 
     // Output geometry related parameters
-    sal_Int32               nColCount;
-    sal_Int32               nRowCount;
-    sal_Int32               nHeaderSize;
-    SCCOL                   nTabStartCol;
-    SCROW                   nTabStartRow;
-    SCCOL                   nMemberStartCol;
-    SCROW                   nMemberStartRow;
-    SCCOL                   nDataStartCol;
-    SCROW                   nDataStartRow;
-    SCCOL                   nTabEndCol;
-    SCROW                   nTabEndRow;
-    bool                    bDoFilter:1;
-    bool                    bResultsError:1;
-    bool                    bSizesValid:1;
-    bool                    bSizeOverflow:1;
-    bool                    mbHeaderLayout:1;  // true : grid, false : standard
-    bool                    mbHasCompactRowField:1; // true: at least one of the row fields has compact layout.
-    bool                    mbExpandCollapse:1; // true: show expand/collapse buttons
+    sal_Int32 mnColCount;
+    sal_Int32 mnRowCount;
+    sal_Int32 mnHeaderSize;
+    SCCOL mnTabStartCol;
+    SCROW mnTabStartRow;
+    SCCOL mnMemberStartCol;
+    SCROW mnMemberStartRow;
+    SCCOL mnDataStartCol;
+    SCROW mnDataStartRow;
+    SCCOL mnTabEndCol;
+    SCROW mnTabEndRow;
+    bool mbDoFilter:1;
+    bool mbResultsError:1;
+    bool mbSizesValid:1;
+    bool mbSizeOverflow:1;
+    bool mbHeaderLayout:1;  // true : grid, false : standard
+    bool mbHasCompactRowField:1; // true: at least one of the row fields has compact layout.
+    bool mbExpandCollapse:1; // true: show expand/collapse buttons
+    bool mbHideHeader : 1;
 
     void            DataCell( SCCOL nCol, SCROW nRow, SCTAB nTab,
                                 const css::sheet::DataResult& rData );
@@ -108,11 +112,17 @@ private:
     /// Find row field index from row position in case of compact layout.
     sal_Int32       GetRowFieldCompact(SCCOL nColQuery, SCROW nRowQuery) const;
 
+    void outputPageFields(SCTAB nTab);
+    void outputColumnHeaders(SCTAB nTab, ScDPOutputImpl& rOutputImpl);
+    void outputRowHeader(SCTAB nTab, ScDPOutputImpl& rOutputImpl);
+    void outputDataResults(SCTAB nTab);
+
 public:
-                    ScDPOutput( ScDocument* pD,
-                                css::uno::Reference< css::sheet::XDimensionsSupplier> xSrc,
-                                const ScAddress& rPos, bool bFilter, bool bExpandCollapse );
-                    ~ScDPOutput();
+    ScDPOutput(ScDocument* pDocument,
+               css::uno::Reference<css::sheet::XDimensionsSupplier> xSource,
+               const ScAddress& rPosition, bool bFilter, bool bExpandCollapse,
+               ScDPObject& rObject, bool bHideHeader);
+    ~ScDPOutput();
 
     void            SetPosition( const ScAddress& rPos );
 
@@ -137,6 +147,11 @@ public:
 
     void            SetHeaderLayout(bool bUseGrid);
     bool            GetHeaderLayout() const { return mbHeaderLayout;}
+
+    void setFormats(sc::PivotTableFormats const& rPivotTableFormats)
+    {
+        maFormatOutput.setFormats(rPivotTableFormats);
+    }
 
     static void GetDataDimensionNames(
         OUString& rSourceName, OUString& rGivenName,

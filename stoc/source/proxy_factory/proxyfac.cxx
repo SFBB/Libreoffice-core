@@ -181,7 +181,7 @@ static void binuno_proxy_acquire( uno_Interface * pUnoI )
     // rebirth of zombie
     uno_ExtEnvironment * uno_env =
         that->m_root->m_factory->m_uno_env.get()->pExtEnv;
-    OSL_ASSERT( uno_env != nullptr );
+    assert(uno_env != nullptr);
     (*uno_env->registerProxyInterface)(
         uno_env, reinterpret_cast< void ** >( &pUnoI ), binuno_proxy_free,
         that->m_oid.pData,
@@ -198,7 +198,7 @@ static void binuno_proxy_release( uno_Interface * pUnoI )
     {
         uno_ExtEnvironment * uno_env =
             that->m_root->m_factory->m_uno_env.get()->pExtEnv;
-        OSL_ASSERT( uno_env != nullptr );
+        assert(uno_env != nullptr);
         (*uno_env->revokeInterface)( uno_env, pUnoI );
     }
 }
@@ -289,7 +289,7 @@ Any ProxyRoot::queryAggregation( Type const & rType )
         {
             Reference< XInterface > xProxy;
             uno_ExtEnvironment * cpp_env = m_factory->m_cpp_env.get()->pExtEnv;
-            OSL_ASSERT( cpp_env != nullptr );
+            assert(cpp_env != nullptr);
 
             // mind a new delegator, calculate current root:
             Reference< XInterface > xRoot(
@@ -319,11 +319,11 @@ Any ProxyRoot::queryAggregation( Type const & rType )
 
                     UnoInterfaceReference proxy(
                         // ref count initially 1:
-                        new binuno_Proxy( this, proxy_target, oid, pTypeDescr ),
+                        new binuno_Proxy( this, std::move(proxy_target), oid, pTypeDescr ),
                         SAL_NO_ACQUIRE );
                     uno_ExtEnvironment * uno_env =
                         m_factory->m_uno_env.get()->pExtEnv;
-                    OSL_ASSERT( uno_env != nullptr );
+                    assert(uno_env != nullptr);
                     (*uno_env->registerProxyInterface)(
                         uno_env, reinterpret_cast< void ** >( &proxy.m_pUnoI ),
                         binuno_proxy_free, oid.pData,
@@ -351,7 +351,7 @@ Any ProxyRoot::queryAggregation( Type const & rType )
 
 FactoryImpl::FactoryImpl()
 {
-    OUString uno = UNO_LB_UNO;
+    OUString uno = u"" UNO_LB_UNO ""_ustr;
     OUString cpp = CPPU_CURRENT_LANGUAGE_BINDING_NAME;
 
     uno_getEnvironment(
@@ -385,7 +385,7 @@ Reference< XAggregation > FactoryImpl::createProxy(
 
 OUString FactoryImpl::getImplementationName()
 {
-    return "com.sun.star.comp.reflection.ProxyFactory";
+    return u"com.sun.star.comp.reflection.ProxyFactory"_ustr;
 }
 
 sal_Bool FactoryImpl::supportsService( const OUString & rServiceName )
@@ -395,7 +395,7 @@ sal_Bool FactoryImpl::supportsService( const OUString & rServiceName )
 
 Sequence< OUString > FactoryImpl::getSupportedServiceNames()
 {
-    return { "com.sun.star.reflection.ProxyFactory" };
+    return { u"com.sun.star.reflection.ProxyFactory"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

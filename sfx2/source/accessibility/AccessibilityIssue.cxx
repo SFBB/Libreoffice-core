@@ -12,8 +12,11 @@
 
 namespace sfx
 {
-AccessibilityIssue::AccessibilityIssue(AccessibilityIssueID eIssueID)
+AccessibilityIssue::AccessibilityIssue(AccessibilityIssueID eIssueID,
+                                       AccessibilityIssueLevel eIssueLvl)
     : m_eIssueID(eIssueID)
+    , m_eIssueLvl(eIssueLvl)
+    , m_bHidden(false)
     , m_pParent(nullptr)
 {
 }

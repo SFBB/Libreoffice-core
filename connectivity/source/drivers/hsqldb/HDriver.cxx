@@ -52,6 +52,7 @@
 #include <i18nlangtag/languagetag.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <o3tl/string_view.hxx>
+#include <vcl/svapp.hxx>
 
 #include <memory>
 
@@ -69,7 +70,6 @@ namespace connectivity
     using namespace css::embed;
     using namespace css::io;
     using namespace css::util;
-    using namespace css::reflection;
 
     constexpr OUString IMPL_NAME = u"com.sun.star.sdbcx.comp.hsqldb.Driver"_ustr;
 
@@ -103,7 +103,7 @@ namespace connectivity
         {
             for (const auto& rConnection : m_aConnections)
             {
-                Reference<XInterface > xTemp = rConnection.first.get();
+                Reference<XConnection> xTemp(rConnection.xOrigConn);
                 ::comphelper::disposeComponent(xTemp);
             }
         }
@@ -112,7 +112,6 @@ namespace connectivity
             // not interested in
         }
         m_aConnections.clear();
-        TWeakPairVector().swap(m_aConnections);
 
         cppu::WeakComponentImplHelperBase::disposing();
     }
@@ -122,7 +121,7 @@ namespace connectivity
         if ( !m_xDriver.is() )
         {
             Reference<XDriverManager2> xDriverAccess = DriverManager::create( m_xContext );
-            m_xDriver = xDriverAccess->getDriverByURL("jdbc:hsqldb:db");
+            m_xDriver = xDriverAccess->getDriverByURL(u"jdbc:hsqldb:db"_ustr);
         }
 
         return m_xDriver;
@@ -204,41 +203,38 @@ namespace connectivity
 
                 // properties for accessing the embedded storage
                 OUString sKey = StorageContainer::registerStorage( xStorage, sSystemPath );
-                aProperties.put( "storage_key", sKey );
-                aProperties.put( "storage_class_name",
-                    OUString(  "com.sun.star.sdbcx.comp.hsqldb.StorageAccess"  ) );
-                aProperties.put( "fileaccess_class_name",
-                    OUString(  "com.sun.star.sdbcx.comp.hsqldb.StorageFileAccess"  ) );
+                aProperties.put( u"storage_key"_ustr, sKey );
+                aProperties.put( u"storage_class_name"_ustr,
+                    u"com.sun.star.sdbcx.comp.hsqldb.StorageAccess"_ustr );
+                aProperties.put( u"fileaccess_class_name"_ustr,
+                    u"com.sun.star.sdbcx.comp.hsqldb.StorageFileAccess"_ustr );
 
                 // JDBC driver and driver's classpath
-                aProperties.put( "JavaDriverClass",
-                    OUString(  "org.hsqldb.jdbcDriver"  ) );
-                aProperties.put( "JavaDriverClassPath",
-                    OUString(
+                aProperties.put( u"JavaDriverClass"_ustr, u"org.hsqldb.jdbcDriver"_ustr );
+                aProperties.put( u"JavaDriverClassPath"_ustr,
 #ifdef SYSTEM_HSQLDB
-                        HSQLDB_JAR
+                        u"" HSQLDB_JAR
 #else
-                        "vnd.sun.star.expand:$LO_JAVA_DIR/hsqldb.jar"
+                        u"vnd.sun.star.expand:$LO_JAVA_DIR/hsqldb.jar"
 #endif
-                        " vnd.sun.star.expand:$LO_JAVA_DIR/sdbc_hsqldb.jar"
-                        ) );
+                        " vnd.sun.star.expand:$LO_JAVA_DIR/sdbc_hsqldb.jar"_ustr );
 
                 // auto increment handling
-                aProperties.put( "IsAutoRetrievingEnabled", true );
-                aProperties.put( "AutoRetrievingStatement",
-                    OUString(  "CALL IDENTITY()" ) );
-                aProperties.put( "IgnoreDriverPrivileges", true );
+                aProperties.put( u"IsAutoRetrievingEnabled"_ustr, true );
+                aProperties.put( u"AutoRetrievingStatement"_ustr,
+                    u"CALL IDENTITY()"_ustr );
+                aProperties.put( u"IgnoreDriverPrivileges"_ustr, true );
 
                 // don't want to expose HSQLDB's schema capabilities which exist since 1.8.0RC10
-                aProperties.put( "default_schema",
-                    OUString(  "true"  ) );
+                aProperties.put( u"default_schema"_ustr,
+                    u"true"_ustr );
 
                 // security: permitted Java classes
                 NamedValue aPermittedClasses(
-                    "hsqldb.method_class_names",
+                    u"hsqldb.method_class_names"_ustr,
                     Any( lcl_getPermittedJavaMethods_nothrow( m_xContext ) )
                 );
-                aProperties.put( "SystemProperties", Sequence< NamedValue >( &aPermittedClasses, 1 ) );
+                aProperties.put( u"SystemProperties"_ustr, Sequence< NamedValue >( &aPermittedClasses, 1 ) );
 
                 OUString sMessage;
                 try
@@ -336,10 +332,10 @@ namespace connectivity
                 if ( xProp.is() )
                 {
                     sal_Int32 nMode = 0;
-                    xProp->getPropertyValue("OpenMode") >>= nMode;
+                    xProp->getPropertyValue(u"OpenMode"_ustr) >>= nMode;
                     if ( (nMode & ElementModes::WRITE) != ElementModes::WRITE )
                     {
-                        aProperties.put( "readonly", OUString(  "true"  ) );
+                        aProperties.put( u"readonly"_ustr, u"true"_ustr );
                     }
                 }
 
@@ -374,7 +370,7 @@ namespace connectivity
                         xComp->addEventListener(this);
 
                     // we want to close all connections when the office shuts down
-                    static Reference< XTerminateListener> s_xTerminateListener = [&]()
+                    static rtl::Reference< OConnectionController > s_xTerminateListener = [&]()
                     {
                         Reference< XDesktop2 > xDesktop = Desktop::create( m_xContext );
 
@@ -384,7 +380,7 @@ namespace connectivity
                     }();
                     Reference< XComponent> xIfc = new OHsqlConnection( this, xOrig, m_xContext );
                     xConnection.set(xIfc,UNO_QUERY);
-                    m_aConnections.push_back(TWeakPair(WeakReferenceHelper(xOrig),TWeakConnectionPair(sKey,TWeakRefPair(WeakReferenceHelper(xConnection),WeakReferenceHelper()))));
+                    m_aConnections.push_back( { xOrig, sKey, xConnection, nullptr } );
 
                     Reference<XTransactionBroadcaster> xBroad(xStorage,UNO_QUERY);
                     if ( xBroad.is() )
@@ -427,24 +423,24 @@ namespace connectivity
         return
         {
             {
-                "Storage",
-                "Defines the storage where the database will be stored.",
+                u"Storage"_ustr,
+                u"Defines the storage where the database will be stored."_ustr,
                 true,
                 {},
                 {}
             },
             {
-                "URL",
-                "Defines the url of the data source.",
+                u"URL"_ustr,
+                u"Defines the url of the data source."_ustr,
                 true,
                 {},
                 {}
             },
             {
-                "AutoRetrievingStatement",
-                "Defines the statement which will be executed to retrieve auto increment values.",
+                u"AutoRetrievingStatement"_ustr,
+                u"Defines the statement which will be executed to retrieve auto increment values."_ustr,
                 false,
-                "CALL IDENTITY()",
+                u"CALL IDENTITY()"_ustr,
                 {}
             }
         };
@@ -468,18 +464,18 @@ namespace connectivity
         ::osl::MutexGuard aGuard( m_aMutex );
         checkDisposed(ODriverDelegator_BASE::rBHelper.bDisposed);
 
-        Reference< XTablesSupplier > xTab;
+        rtl::Reference< OHCatalog > xTab;
 
-        TWeakPairVector::iterator i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
-            [&connection](const TWeakPairVector::value_type& rConnection) {
-                return rConnection.second.second.first.get() == connection.get(); });
+        auto i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
+            [&connection](const TConnectionInfo& rConnection) {
+                return rConnection.xConn.get() == connection.get(); });
         if (i != m_aConnections.end())
         {
-            xTab.set(i->second.second.second,UNO_QUERY);
+            xTab = i->xCatalog.get();
             if ( !xTab.is() )
             {
                 xTab = new OHCatalog(connection);
-                i->second.second.second = WeakReferenceHelper(xTab);
+                i->xCatalog = xTab.get();
             }
         }
 
@@ -513,33 +509,40 @@ namespace connectivity
 
     Sequence< OUString > SAL_CALL ODriverDelegator::getSupportedServiceNames(  )
     {
-        return { "com.sun.star.sdbc.Driver", "com.sun.star.sdbcx.Driver" };
+        return { u"com.sun.star.sdbc.Driver"_ustr, u"com.sun.star.sdbcx.Driver"_ustr };
     }
 
     void SAL_CALL ODriverDelegator::createCatalog( const Sequence< PropertyValue >& /*info*/ )
     {
-        ::dbtools::throwFeatureNotImplementedSQLException( "XCreateCatalog::createCatalog", *this );
+        ::dbtools::throwFeatureNotImplementedSQLException( u"XCreateCatalog::createCatalog"_ustr, *this );
     }
 
-    void ODriverDelegator::shutdownConnection(const TWeakPairVector::iterator& _aIter )
+    void ODriverDelegator::shutdownConnection(const std::vector<TConnectionInfo>::iterator& _aIter )
     {
         OSL_ENSURE(m_aConnections.end() != _aIter,"Iterator equals .end()");
         bool bLastOne = true;
         try
         {
-            Reference<XConnection> _xConnection(_aIter->first.get(),UNO_QUERY);
+            Reference<XConnection> _xConnection(_aIter->xOrigConn);
 
             if ( _xConnection.is() )
             {
                 Reference<XStatement> xStmt = _xConnection->createStatement();
                 if ( xStmt.is() )
                 {
-                    Reference<XResultSet> xRes = xStmt->executeQuery("SELECT COUNT(*) FROM INFORMATION_SCHEMA.SYSTEM_SESSIONS WHERE USER_NAME ='SA'");
+                    Reference<XResultSet> xRes = xStmt->executeQuery(u"SELECT COUNT(*) FROM INFORMATION_SCHEMA.SYSTEM_SESSIONS WHERE USER_NAME ='SA'"_ustr);
                     Reference<XRow> xRow(xRes,UNO_QUERY);
                     if ( xRow.is() && xRes->next() )
                         bLastOne = xRow->getInt(1) == 1;
                     if ( bLastOne )
-                        xStmt->execute("SHUTDOWN");
+                    {
+                        // during shutdown, we are running on the main thread, and if we call this,
+                        // it might trigger dbaccess::DocumentEventNotifier_Impl::impl_notifyEvent_nothrow
+                        // which is running on a different thread, and that will call other code that tries
+                        // to take the solar mutex.
+                        SolarMutexReleaser aReleaser;
+                        xStmt->execute(u"SHUTDOWN"_ustr);
+                    }
                 }
             }
         }
@@ -550,7 +553,7 @@ namespace connectivity
         {
             // Reference<XTransactionListener> xListener(*this,UNO_QUERY);
             // a shutdown should commit all changes to the db files
-            StorageContainer::revokeStorage(_aIter->second.first,nullptr);
+            StorageContainer::revokeStorage(_aIter->sKey,nullptr);
         }
         if ( !m_bInShutDownConnections )
             m_aConnections.erase(_aIter);
@@ -562,8 +565,8 @@ namespace connectivity
         Reference<XConnection> xCon(Source.Source,UNO_QUERY);
         if ( xCon.is() )
         {
-            TWeakPairVector::iterator i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
-                [&xCon](const TWeakPairVector::value_type& rConnection) { return rConnection.first.get() == xCon.get(); });
+            auto i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
+                [&xCon](const TConnectionInfo& rConnection) { return rConnection.xOrigConn.get() == xCon.get(); });
 
             if (i != m_aConnections.end())
                 shutdownConnection(i);
@@ -574,9 +577,9 @@ namespace connectivity
             if ( xStorage.is() )
             {
                 OUString sKey = StorageContainer::getRegisteredKey(xStorage);
-                TWeakPairVector::iterator i = std::find_if(m_aConnections.begin(),m_aConnections.end(),
-                    [&sKey] (const TWeakPairVector::value_type& conn) {
-                        return conn.second.first == sKey;
+                auto i = std::find_if(m_aConnections.begin(),m_aConnections.end(),
+                    [&sKey] (const TConnectionInfo& conn) {
+                        return conn.sKey == sKey;
                     });
 
                 if ( i != m_aConnections.end() )
@@ -592,7 +595,7 @@ namespace connectivity
         {
             try
             {
-                Reference<XConnection> xCon(rConnection.first,UNO_QUERY);
+                Reference<XConnection> xCon(rConnection.xOrigConn);
                 ::comphelper::disposeComponent(xCon);
             }
             catch(Exception&)
@@ -609,7 +612,7 @@ namespace connectivity
         {
             try
             {
-                Reference<XFlushable> xCon(rConnection.second.second.first.get(),UNO_QUERY);
+                Reference<XFlushable> xCon(rConnection.xConn.get(),UNO_QUERY);
                 if (xCon.is())
                     xCon->flush();
             }
@@ -629,9 +632,9 @@ namespace connectivity
         if ( sKey.isEmpty() )
             return;
 
-        TWeakPairVector::const_iterator i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
-            [&sKey] (const TWeakPairVector::value_type& conn) {
-                return conn.second.first == sKey;
+        auto i = std::find_if(m_aConnections.begin(), m_aConnections.end(),
+            [&sKey] (const TConnectionInfo& conn) {
+                return conn.sKey == sKey;
             });
 
         OSL_ENSURE( i != m_aConnections.end(), "ODriverDelegator::preCommit: they're committing a storage which I do not know!" );
@@ -640,13 +643,13 @@ namespace connectivity
 
         try
         {
-            Reference<XConnection> xConnection(i->first,UNO_QUERY);
+            Reference<XConnection> xConnection(i->xOrigConn);
             if ( xConnection.is() )
             {
                 Reference< XStatement> xStmt = xConnection->createStatement();
                 OSL_ENSURE( xStmt.is(), "ODriverDelegator::preCommit: no statement!" );
                 if ( xStmt.is() )
-                    xStmt->execute( "SET WRITE_DELAY 0" );
+                    xStmt->execute( u"SET WRITE_DELAY 0"_ustr );
 
                 bool bPreviousAutoCommit = xConnection->getAutoCommit();
                 xConnection->setAutoCommit( false );
@@ -654,7 +657,7 @@ namespace connectivity
                 xConnection->setAutoCommit( bPreviousAutoCommit );
 
                 if ( xStmt.is() )
-                    xStmt->execute( "SET WRITE_DELAY 60" );
+                    xStmt->execute( u"SET WRITE_DELAY 60"_ustr );
             }
         }
         catch(Exception&)
@@ -680,7 +683,7 @@ namespace connectivity
 
         const char* lcl_getCollationForLocale( const OUString& _rLocaleString, bool _bAcceptCountryMismatch = false )
         {
-            static const char* pTranslations[] =
+            static const char* const pTranslations[] =
             {
                 "af-ZA", "Afrikaans",
                 "am-ET", "Amharic",
@@ -793,7 +796,7 @@ namespace connectivity
                 nCompareTermination = '-';
             }
 
-            const char** pLookup = pTranslations;
+            const char* const* pLookup = pTranslations;
             for ( ; *pLookup; pLookup +=2 )
             {
                 sal_Int32 nCompareUntil = 0;
@@ -815,7 +818,7 @@ namespace connectivity
 
         OUString lcl_getSystemLocale( const Reference< XComponentContext >& _rxContext )
         {
-            OUString sLocaleString = "en-US";
+            OUString sLocaleString = u"en-US"_ustr;
             try
             {
 
@@ -826,13 +829,13 @@ namespace connectivity
                 // arguments for creating the config access
                 Sequence<Any> aArguments(comphelper::InitAnyPropertySequence(
                 {
-                    {"nodepath", Any(OUString("/org.openoffice.Setup/L10N" ))}, // the path to the node to open
+                    {"nodepath", Any(u"/org.openoffice.Setup/L10N"_ustr)}, // the path to the node to open
                     {"depth", Any(sal_Int32(-1))}, // the depth: -1 means unlimited
                 }));
                 // create the access
                 Reference< XPropertySet > xNode(
                     xConfigProvider->createInstanceWithArguments(
-                        "com.sun.star.configuration.ConfigurationAccess",
+                        u"com.sun.star.configuration.ConfigurationAccess"_ustr,
                         aArguments ),
                     UNO_QUERY );
                 OSL_ENSURE( xNode.is(), "lcl_getSystemLocale: invalid access returned (should throw an exception instead)!" );
@@ -840,7 +843,7 @@ namespace connectivity
 
                 // ask for the system locale setting
                 if ( xNode.is() )
-                    xNode->getPropertyValue("ooSetupSystemLocale") >>= sLocaleString;
+                    xNode->getPropertyValue(u"ooSetupSystemLocale"_ustr) >>= sLocaleString;
             }
             catch( const Exception& )
             {

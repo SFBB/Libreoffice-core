@@ -29,19 +29,10 @@ namespace oox::core {
 
 using namespace ::com::sun::star::uno;
 
-FastTokenHandler::FastTokenHandler() :
-    mrTokenMap( StaticTokenMap() )
-{
-}
-
-FastTokenHandler::~FastTokenHandler()
-{
-}
-
 // XServiceInfo
 OUString SAL_CALL FastTokenHandler::getImplementationName()
 {
-    return "com.sun.star.comp.oox.core.FastTokenHandler";
+    return u"com.sun.star.comp.oox.core.FastTokenHandler"_ustr;
 }
 
 sal_Bool SAL_CALL FastTokenHandler::supportsService( const OUString& rServiceName )
@@ -51,23 +42,24 @@ sal_Bool SAL_CALL FastTokenHandler::supportsService( const OUString& rServiceNam
 
 Sequence< OUString > SAL_CALL FastTokenHandler::getSupportedServiceNames()
 {
-    Sequence<OUString> aServiceNames { "com.sun.star.xml.sax.FastTokenHandler" };
+    Sequence<OUString> aServiceNames { u"com.sun.star.xml.sax.FastTokenHandler"_ustr };
     return aServiceNames;
 }
 
 Sequence< sal_Int8 > FastTokenHandler::getUTF8Identifier( sal_Int32 nToken )
 {
-    return mrTokenMap.getUtf8TokenName( nToken );
+    return TokenMap::getUtf8TokenName(nToken);
 }
 
 sal_Int32 FastTokenHandler::getTokenFromUTF8( const Sequence< sal_Int8 >& rIdentifier )
 {
-    return mrTokenMap.getTokenFromUtf8( rIdentifier );
+    return TokenMap::getTokenFromUtf8(std::string_view(
+        reinterpret_cast<const char*>(rIdentifier.getConstArray()), rIdentifier.getLength()));
 }
 
-sal_Int32 FastTokenHandler::getTokenDirect( const char *pToken, sal_Int32 nLength ) const
+sal_Int32 FastTokenHandler::getTokenDirect(std::string_view token) const
 {
-    return mrTokenMap.getTokenFromUTF8( pToken, nLength );
+    return TokenMap::getTokenFromUtf8(token);
 }
 
 } // namespace oox::core
@@ -76,7 +68,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*
 com_sun_star_comp_oox_core_FastTokenHandler_get_implementation(
     uno::XComponentContext* /*pCtx*/, uno::Sequence<uno::Any> const& /*rSeq*/)
 {
-    return cppu::acquire(new oox::core::FastTokenHandler());
+    return cppu::acquire(new oox::core::FastTokenHandler);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

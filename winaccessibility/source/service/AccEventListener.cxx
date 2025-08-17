@@ -63,7 +63,7 @@ void AccEventListener::notifyEvent(const css::accessibility::AccessibleEventObje
             HandleChildChangedEvent(aEvent.OldValue, aEvent.NewValue);
             break;
         case AccessibleEventId::NAME_CHANGED:
-            HandleNameChangedEvent(aEvent.NewValue);
+            HandleNameChangedEvent();
             break;
         case AccessibleEventId::DESCRIPTION_CHANGED:
             HandleDescriptionChangedEvent();
@@ -78,21 +78,16 @@ void AccEventListener::notifyEvent(const css::accessibility::AccessibleEventObje
 
 /**
  *  handle the NAME_CHANGED event
- *  @param  name        the new name with changed.
  */
-void AccEventListener::HandleNameChangedEvent(Any name)
+void AccEventListener::HandleNameChangedEvent()
 {
     if (m_rObjManager.IsTopWinAcc(m_xAccessible.get()))
     {
         XAccessible* pAccDoc = m_rObjManager.GetAccDocByAccTopWin(m_xAccessible.get());
         if (pAccDoc)
-        {
-            m_rObjManager.UpdateAccName(pAccDoc);
             m_rObjManager.NotifyAccEvent(pAccDoc, UnoMSAAEvent::OBJECT_NAMECHANGE);
-        }
     }
 
-    m_rObjManager.SetAccName(m_xAccessible.get(), name);
     m_rObjManager.NotifyAccEvent(m_xAccessible.get(), UnoMSAAEvent::OBJECT_NAMECHANGE);
 }
 
@@ -101,8 +96,7 @@ void AccEventListener::HandleNameChangedEvent(Any name)
  * @param oldValue the child to be deleted
  * @param newValue the child to be added
  */
-void AccEventListener::HandleChildChangedEvent(com::sun::star::uno::Any oldValue,
-                                               com::sun::star::uno::Any newValue)
+void AccEventListener::HandleChildChangedEvent(css::uno::Any oldValue, css::uno::Any newValue)
 {
     Reference<XAccessible> xChild;
     if (newValue >>= xChild)
@@ -233,7 +227,7 @@ short AccEventListener::GetRole()
     {
         return xContext->getAccessibleRole();
     }
-    return -1;
+    return AccessibleRole::UNKNOWN;
 }
 
 /**
@@ -250,47 +244,36 @@ short AccEventListener::GetParentRole()
 /**
  *  remove the listener from accessible object
  */
-void AccEventListener::RemoveMeFromBroadcaster(bool const isNotifyDestroy)
+void AccEventListener::RemoveMeFromBroadcaster()
 {
+    if (!m_xAccessible.is())
+        return;
+
     try
     {
-        if (!m_xAccessible.is())
+        css::uno::Reference<XAccessibleEventBroadcaster> const xBroadcaster(
+            m_xAccessible->getAccessibleContext(), UNO_QUERY);
+        if (xBroadcaster.is())
         {
-            return;
+            //remove the lister from accessible object
+            xBroadcaster->removeAccessibleEventListener(this);
         }
-        try
-        {
-            css::uno::Reference<XAccessibleEventBroadcaster> const xBroadcaster(
-                m_xAccessible->getAccessibleContext(), UNO_QUERY);
-            if (xBroadcaster.is())
-            {
-                //remove the lister from accessible object
-                xBroadcaster->removeAccessibleEventListener(this);
-            }
-        }
-        catch (Exception const&)
-        { // may throw if it's already disposed - ignore that
-        }
-        if (isNotifyDestroy)
-        {
-            m_rObjManager.NotifyDestroy(m_xAccessible.get());
-        }
-        m_xAccessible.clear(); // release cyclic reference
     }
-    catch (...)
-    {
-        return;
+    catch (Exception const&)
+    { // may throw if it's already disposed - ignore that
     }
+
+    m_xAccessible.clear(); // release cyclic reference
 }
 
 /**
- *  this method is invoked before listener is disposed
+ *  this method is invoked before broadcaster is disposed
  */
 void AccEventListener::disposing(const css::lang::EventObject& /*Source*/)
 {
     SolarMutexGuard g;
-
-    RemoveMeFromBroadcaster(true);
+    // No method should be invoked anymore on broadcaster!
+    m_xAccessible.clear();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -40,7 +40,6 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 
 
 OKeysHelper::OKeysHelper(   OTableHelper* _pTable,
@@ -51,9 +50,9 @@ OKeysHelper::OKeysHelper(   OTableHelper* _pTable,
 {
 }
 
-sdbcx::ObjectType OKeysHelper::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OKeysHelper::createObject(const OUString& _rName)
 {
-    sdbcx::ObjectType xRet;
+    rtl::Reference< OTableKeyHelper > xRet;
 
     if(!_rName.isEmpty())
     {
@@ -106,7 +105,9 @@ static OUString getKeyRuleString(bool _bUpdate,sal_Int32 _nKeyRule)
     return sRet;
 }
 
-void OKeysHelper::cloneDescriptorColumns( const sdbcx::ObjectType& _rSourceDescriptor, const sdbcx::ObjectType& _rDestDescriptor )
+void OKeysHelper::cloneDescriptorColumns(
+    const css::uno::Reference< css::beans::XPropertySet >& _rSourceDescriptor,
+    const css::uno::Reference< css::beans::XPropertySet >& _rDestDescriptor )
 {
     Reference< XColumnsSupplier > xColSupp( _rSourceDescriptor, UNO_QUERY_THROW );
     Reference< XIndexAccess > xSourceCols( xColSupp->getColumns(), UNO_QUERY_THROW );
@@ -123,7 +124,7 @@ void OKeysHelper::cloneDescriptorColumns( const sdbcx::ObjectType& _rSourceDescr
 }
 
 // XAppend
-sdbcx::ObjectType OKeysHelper::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > OKeysHelper::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     Reference< XConnection> xConnection = m_pTable->getConnection();
     if ( !xConnection.is() )
@@ -254,7 +255,7 @@ sdbcx::ObjectType OKeysHelper::appendObject( const OUString& _rForName, const Re
 
 OUString OKeysHelper::getDropForeignKey() const
 {
-    return " DROP CONSTRAINT ";
+    return u" DROP CONSTRAINT "_ustr;
 }
 
 // XDrop
@@ -264,7 +265,7 @@ void OKeysHelper::dropObject(sal_Int32 _nPos, const OUString& _sElementName)
     if ( !xConnection.is() || m_pTable->isNew() )
         return;
 
-    Reference<XPropertySet> xKey(getObject(_nPos),UNO_QUERY);
+    Reference<XPropertySet> xKey(getObject(_nPos));
     if ( m_pTable->getKeyService().is() )
     {
         m_pTable->getKeyService()->dropKey(m_pTable,xKey);

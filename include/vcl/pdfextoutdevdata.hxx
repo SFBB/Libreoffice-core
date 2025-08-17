@@ -32,6 +32,7 @@ class Graphic;
 class GDIMetaFile;
 class SdrObject;
 struct SwEnhancedPDFState;
+struct ScEnhancedPDFState;
 
 namespace vcl
 {
@@ -98,6 +99,7 @@ class VCL_DLLPUBLIC PDFExtOutDevData final : public ExtOutDevData
     ::std::map<SdrObject const*, ::std::vector<sal_Int32>> m_ScreenAnnotations;
 
     SwEnhancedPDFState * m_pSwPDFState = nullptr;
+    ScEnhancedPDFState * m_pScPDFState = nullptr;
 
 public:
 
@@ -158,6 +160,9 @@ public:
 
     SwEnhancedPDFState * GetSwPDFState() { return m_pSwPDFState; }
     void SetSwPDFState(SwEnhancedPDFState *const pSwPDFState) { m_pSwPDFState = pSwPDFState; }
+
+    ScEnhancedPDFState* GetScPDFState() { return m_pScPDFState; }
+    void SetScPDFState(ScEnhancedPDFState* const pScPDFState) { m_pScPDFState = pScPDFState; }
 
     const Graphic& GetCurrentGraphic() const;
 
@@ -337,11 +342,14 @@ public:
     @param rNote
     specifies the contents of the note
 
+    @param rPopupRect
+    specifies the rectangle of the popup window for the note
+
     @param nPageNr
     number of page the note is on (as returned by NewPage)
     or -1 in which case the current page is used
     */
-    void CreateNote( const tools::Rectangle& rRect, const PDFNote& rNote, sal_Int32 nPageNr = -1 );
+    sal_Int32 CreateNote(const tools::Rectangle& rRect, const vcl::pdf::PDFNote& rNote, const tools::Rectangle& rPopupRect, sal_Int32 nPageNr = -1);
 
     /** begin a new logical structure element
 
@@ -383,9 +391,9 @@ public:
     @returns
     the id of the newly created structural element
      */
-    sal_Int32 WrapBeginStructureElement(PDFWriter::StructElement eType, const OUString& rAlias = OUString());
+    sal_Int32 WrapBeginStructureElement(vcl::pdf::StructElement eType, const OUString& rAlias = OUString());
     sal_Int32 EnsureStructureElement(void const* key);
-    void InitStructureElement(sal_Int32 id, PDFWriter::StructElement eType, const OUString& rAlias);
+    void InitStructureElement(sal_Int32 id, vcl::pdf::StructElement eType, const OUString& rAlias);
     void BeginStructureElement(sal_Int32 id);
 
     /** end a logical structure element

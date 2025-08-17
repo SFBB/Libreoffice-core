@@ -18,7 +18,7 @@
  */
 #pragma once
 
-#include "charttoolsdllapi.hxx"
+#include <config_options.h>
 #include <unotools/weakref.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Sequence.h>
@@ -27,7 +27,7 @@
 #include <vector>
 
 namespace chart { class ChartModel; }
-namespace com::sun::star::chart2 { class XCoordinateSystem; }
+namespace com::sun::star::chart2::data { class XDataProvider; }
 namespace com::sun::star::chart2::data { class XDataSequence; }
 namespace com::sun::star::chart2::data { class XLabeledDataSequence; }
 namespace com::sun::star::uno { class Any; }
@@ -35,9 +35,8 @@ namespace com::sun::star::uno { class Any; }
 namespace chart
 {
 class BaseCoordinateSystem;
-class LabeledDataSequence;
 
-struct OOO_DLLPUBLIC_CHARTTOOLS ComplexCategory
+struct ComplexCategory
 {
     OUString Text;
     sal_Int32 Count;
@@ -55,7 +54,7 @@ public:
     virtual css::uno::Sequence< OUString > getStringsForLevel( sal_Int32 nIndex ) const = 0;
 };
 
-class OOO_DLLPUBLIC_CHARTTOOLS ExplicitCategoriesProvider final
+class ExplicitCategoriesProvider final
 {
 public:
     ExplicitCategoriesProvider( const rtl::Reference< ::chart::BaseCoordinateSystem >& xCooSysModel
@@ -94,6 +93,8 @@ public:
 private:
     ExplicitCategoriesProvider(ExplicitCategoriesProvider const &) = delete;
     ExplicitCategoriesProvider& operator =(ExplicitCategoriesProvider const &) = delete;
+
+    void implInitSplit();
 
     bool volatile m_bDirty;
     unotools::WeakReference< ::chart::BaseCoordinateSystem >   m_xCooSysModel;

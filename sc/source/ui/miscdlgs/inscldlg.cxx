@@ -26,23 +26,37 @@
 
 static sal_uInt8 nInsItemChecked = 0;
 
-ScInsertCellDlg::ScInsertCellDlg(weld::Window* pParent, bool bDisallowCellMove)
-    : GenericDialogController(pParent, "modules/scalc/ui/insertcells.ui", "InsertCellsDialog")
-    , m_xBtnCellsDown(m_xBuilder->weld_radio_button("down"))
-    , m_xBtnCellsRight(m_xBuilder->weld_radio_button("right"))
-    , m_xBtnInsRow(m_xBuilder->weld_radio_button("rows"))
-    , m_xBtnInsCol(m_xBuilder->weld_radio_button("cols"))
+ScInsertCellDlg::ScInsertCellDlg(weld::Window* pParent, ScViewData& rViewData,
+                                 bool bDisallowCellMove)
+    : GenericDialogController(pParent, u"modules/scalc/ui/insertcells.ui"_ustr,
+                              u"InsertCellsDialog"_ustr)
+    , m_xBtnCellsDown(m_xBuilder->weld_radio_button(u"down"_ustr))
+    , m_xBtnCellsRight(m_xBuilder->weld_radio_button(u"right"_ustr))
+    , m_xBtnInsRow(m_xBuilder->weld_radio_button(u"rows"_ustr))
+    , m_xBtnInsCol(m_xBuilder->weld_radio_button(u"cols"_ustr))
+    , m_xNumberOfRows(m_xBuilder->weld_spin_button(u"number_of_rows"_ustr))
+    , m_xNumberOfCols(m_xBuilder->weld_spin_button(u"number_of_columns"_ustr))
 {
-    const ScViewData* pViewData = ScDocShell::GetViewData();
-    if (pViewData && pViewData->GetDocument().IsLayoutRTL(pViewData->GetTabNo()))
+    if (rViewData.GetDocument().IsLayoutRTL(rViewData.GetTabNo()))
         m_xBtnCellsRight->set_label(ScResId(SCSTR_INSERT_RTL));
 
+    m_xNumberOfRows->set_range(1, MAX_INS_ROWS);
+    m_xNumberOfRows->set_value(1);
+    m_xNumberOfCols->set_range(1, MAX_INS_COLS);
+    m_xNumberOfCols->set_value(1);
+
+    m_xBtnInsRow->connect_toggled(LINK(this, ScInsertCellDlg, RadioButtonsHdl));
+    m_xBtnInsCol->connect_toggled(LINK(this, ScInsertCellDlg, RadioButtonsHdl));
+
+    bool bColCount = false;
+    bool bRowsCount = false;
     if (bDisallowCellMove)
     {
         m_xBtnCellsDown->set_sensitive(false);
         m_xBtnCellsRight->set_sensitive(false);
         m_xBtnInsRow->set_active(true);
 
+        bRowsCount = true;
         switch (nInsItemChecked)
         {
             case 2:
@@ -50,6 +64,8 @@ ScInsertCellDlg::ScInsertCellDlg(weld::Window* pParent, bool bDisallowCellMove)
                 break;
             case 3:
                 m_xBtnInsCol->set_active(true);
+                bRowsCount = false;
+                bColCount = true;
                 break;
             default:
                 m_xBtnInsRow->set_active(true);
@@ -68,12 +84,21 @@ ScInsertCellDlg::ScInsertCellDlg(weld::Window* pParent, bool bDisallowCellMove)
                 break;
             case 2:
                 m_xBtnInsRow->set_active(true);
+                bRowsCount = true;
+                bColCount = false;
                 break;
             case 3:
                 m_xBtnInsCol->set_active(true);
+                bRowsCount = false;
+                bColCount = true;
                 break;
         }
     }
+
+    // if some cells are selected, then disable the SpinButtons
+    const bool bMarked = rViewData.GetMarkData().IsMarked();
+    m_xNumberOfCols->set_sensitive(bColCount && !bMarked);
+    m_xNumberOfRows->set_sensitive(bRowsCount && !bMarked);
 }
 
 ScInsertCellDlg::~ScInsertCellDlg() {}
@@ -104,6 +129,25 @@ InsCellCmd ScInsertCellDlg::GetInsCellCmd() const
     }
 
     return nReturn;
+}
+
+size_t ScInsertCellDlg::GetCount() const
+{
+    switch (nInsItemChecked)
+    {
+        case 2:
+            return m_xNumberOfRows->get_value() - 1;
+        case 3:
+            return m_xNumberOfCols->get_value() - 1;
+        default:
+            return 0;
+    }
+}
+
+IMPL_LINK_NOARG(ScInsertCellDlg, RadioButtonsHdl, weld::Toggleable&, void)
+{
+    m_xNumberOfRows->set_sensitive(m_xBtnInsRow->get_active());
+    m_xNumberOfCols->set_sensitive(m_xBtnInsCol->get_active());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

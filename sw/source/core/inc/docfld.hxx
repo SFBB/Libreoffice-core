@@ -29,8 +29,6 @@
 #include <optional>
 
 class SwTextField;
-class SwContentIndex;
-class SwNodeIndex;
 class SwContentFrame;
 class SwSectionNode;
 class SwSection;
@@ -56,7 +54,7 @@ class SetGetExpField
         const SwTableBox* pTBox;
         const SwTextINetFormat* pTextINet;
         const SwFlyFrameFormat* pFlyFormat;
-        ::sw::mark::IBookmark const* pBookmark;
+        ::sw::mark::Bookmark const* pBookmark;
     } m_CNTNT;
     sal_Int32 m_nContent;
     enum SetGetExpFieldType
@@ -76,7 +74,7 @@ public:
                     const SwPosition* pPos = nullptr,
                     sal_uInt16 nPageNumber = 0);
 
-    SetGetExpField( ::sw::mark::IBookmark const& rBookmark,
+    SetGetExpField( ::sw::mark::Bookmark const& rBookmark,
                     SwPosition const* pPos = nullptr,
                     sal_uInt16 nPageNumber = 0);
 
@@ -95,7 +93,7 @@ public:
         { return TEXTFIELD == m_eSetGetExpFieldType ? m_CNTNT.pTextField : nullptr; }
     const SwSection* GetSection() const
         { return SECTIONNODE == m_eSetGetExpFieldType ? m_CNTNT.pSection : nullptr; }
-    ::sw::mark::IBookmark const* GetBookmark() const
+    ::sw::mark::Bookmark const* GetBookmark() const
         { return BOOKMARK == m_eSetGetExpFieldType ? m_CNTNT.pBookmark : nullptr; }
     const SwTextINetFormat* GetINetFormat() const
         { return TEXTINET == m_eSetGetExpFieldType ? m_CNTNT.pTextINet : nullptr; }
@@ -114,7 +112,7 @@ public:
     void SetBodyPos( const SwContentFrame& rFrame );
 };
 
-class SetGetExpFields : public o3tl::sorted_vector<std::unique_ptr<SetGetExpField>, o3tl::less_uniqueptr_to<SetGetExpField> >
+class SetGetExpFields : public o3tl::sorted_vector<std::unique_ptr<SetGetExpField>, o3tl::less_ptr_to >
 {
 };
 

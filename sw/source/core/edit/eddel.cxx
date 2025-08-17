@@ -33,11 +33,12 @@
 #include <strings.hrc>
 #include <vector>
 
-void SwEditShell::DeleteSel(SwPaM& rPam, bool const isArtificialSelection, bool *const pUndo)
+void SwEditShell::DeleteSel(SwPaM& rPam, bool const isArtificialSelection, bool goLeft,
+                            bool* const pUndo)
 {
-    auto const oSelectAll(StartsWith_() != SwCursorShell::StartsWith::None
+    const ExtendedSelection oSelectAll(StartsWith_() != SwCursorShell::StartsWith::None
         ? ExtendedSelectedAll()
-        : ::std::optional<::std::pair<SwNode const*, ::std::vector<SwTableNode *>>>{});
+        : ExtendedSelection{});
     // only for selections
     if (!rPam.HasMark()
         || (*rPam.GetPoint() == *rPam.GetMark()
@@ -127,11 +128,12 @@ void SwEditShell::DeleteSel(SwPaM& rPam, bool const isArtificialSelection, bool 
         }
     }
 
+    rPam.Normalize(goLeft); // change tracking case: will make sure to end up in the correct point
     // Selection is not needed anymore
     rPam.DeleteMark();
 }
 
-bool SwEditShell::Delete(bool const isArtificialSelection)
+bool SwEditShell::Delete(bool const isArtificialSelection, bool goLeft)
 {
     CurrShell aCurr( this );
     bool bRet = false;
@@ -159,7 +161,7 @@ bool SwEditShell::Delete(bool const isArtificialSelection)
 
         for(SwPaM& rPaM : GetCursor()->GetRingContainer())
         {
-            DeleteSel(rPaM, isArtificialSelection, &bUndo);
+            DeleteSel(rPaM, isArtificialSelection, goLeft, &bUndo);
         }
 
         // If undo container then close here

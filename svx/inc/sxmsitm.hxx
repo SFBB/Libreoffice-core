@@ -28,6 +28,7 @@
 class SdrMeasureScaleItem final : public SdrScaleItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SdrMeasureScaleItem)
     SdrMeasureScaleItem()
         : SdrScaleItem(SDRATTR_MEASURESCALE, Fraction(1, 1))
     {

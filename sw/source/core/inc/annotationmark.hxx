@@ -32,7 +32,7 @@ namespace sw::mark
     public:
         AnnotationMark(
             const SwPaM& rPaM,
-            const OUString& rName );
+            const SwMarkName& rName );
 
         virtual ~AnnotationMark() override;
 

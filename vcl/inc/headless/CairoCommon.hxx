@@ -20,7 +20,7 @@
 #pragma once
 
 #include <sal/config.h>
-
+#include <config_options.h>
 #include <cairo.h>
 
 #include <vcl/dllapi.h>
@@ -85,11 +85,7 @@ public:
     virtual sal_Int64 estimateUsageInBytes() const override;
 };
 
-VCL_DLLPUBLIC size_t AddPolygonToPath(cairo_t* cr, const basegfx::B2DPolygon& rPolygon,
-                                      const basegfx::B2DHomMatrix& rObjectToDevice, bool bPixelSnap,
-                                      bool bPixelSnapHairline);
-
-class VCL_DLLPUBLIC PixelSnapper
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) PixelSnapper
 {
 public:
     basegfx::B2DPoint snap(const basegfx::B2DPolygon& rPolygon,
@@ -151,10 +147,12 @@ struct VCL_DLLPUBLIC CairoCommon
     cairo_t* getCairoContext(bool bXorModeAllowed, bool bAntiAlias) const;
     void releaseCairoContext(cairo_t* cr, bool bXorModeAllowed,
                              const basegfx::B2DRange& rExtents) const;
+    void applyFullDamage() const;
 
     cairo_t* createTmpCompatibleCairoContext() const;
 
     static void applyColor(cairo_t* cr, Color rColor, double fTransparency = 0.0);
+    static void applyColor2(cairo_t* cr, Color rColor);
     void clipRegion(cairo_t* cr);
     static void clipRegion(cairo_t* cr, const vcl::Region& rClipRegion);
 
@@ -227,12 +225,11 @@ struct VCL_DLLPUBLIC CairoCommon
                   bool bAntiAlias);
 
     std::shared_ptr<SalBitmap> getBitmap(tools::Long nX, tools::Long nY, tools::Long nWidth,
-                                         tools::Long nHeight);
+                                         tools::Long nHeight, bool bWithoutAlpha);
 
     static cairo_surface_t* createCairoSurface(const BitmapBuffer* pBuffer);
 
     static bool supportsOperation(OutDevSupportType eType);
-    static bool hasFastDrawTransformedBitmap();
 
 private:
     void doXorOnRelease(sal_Int32 nExtentsLeft, sal_Int32 nExtentsTop, sal_Int32 nExtentsRight,
@@ -240,7 +237,7 @@ private:
                         sal_Int32 nWidth) const;
 };
 
-class VCL_DLLPUBLIC SurfaceHelper
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) SurfaceHelper
 {
 private:
     cairo_surface_t* pSurface;

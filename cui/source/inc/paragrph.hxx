@@ -46,7 +46,6 @@ private:
     tools::Long                    nWidth;
     tools::Long                    nMinFixDist;
     bool                    bRelativeMode;
-    OUString                sAbsDist;
 
     SvxParaPrevWindow m_aExampleWin;
 
@@ -103,7 +102,7 @@ public:
 
     DECL_LINK(ELRLoseFocusHdl, weld::MetricSpinButton&, void);
 
-    static WhichRangesContainer GetRanges() { return pStdRanges; }
+    static const WhichRangesContainer & GetRanges() { return pStdRanges; }
 
     virtual bool            FillItemSet( SfxItemSet* rSet ) override;
     virtual void            Reset( const SfxItemSet* rSet ) override;
@@ -113,7 +112,6 @@ public:
     void                    EnableRegisterMode();
     void                    EnableContextualMode();
     void                    EnableAutoFirstLine();
-    void                    EnableAbsLineDist(tools::Long nMinTwip);
     void                    EnableNegativeMode();
     virtual void            PageCreated(const SfxAllItemSet& aSet) override;
 };
@@ -152,9 +150,30 @@ class SvxParaAlignTabPage : public SfxTabPage
 
     std::unique_ptr<svx::FrameDirectionListBox>  m_xTextDirectionLB;
 
+    /// word spacing
+    std::unique_ptr<weld::Label> m_xLabelWordSpacing;
+    std::unique_ptr<weld::Label> m_xLabelMinimum;
+    std::unique_ptr<weld::Label> m_xLabelDesired;
+    std::unique_ptr<weld::Label> m_xLabelMaximum;
+    std::unique_ptr<weld::MetricSpinButton> m_xWordSpacing;
+    std::unique_ptr<weld::MetricSpinButton> m_xWordSpacingMinimum;
+    std::unique_ptr<weld::MetricSpinButton> m_xWordSpacingMaximum;
+
+    /// letter spacing
+    std::unique_ptr<weld::Label> m_xLabelLetterSpacing;
+    std::unique_ptr<weld::MetricSpinButton> m_xLetterSpacing;
+    std::unique_ptr<weld::MetricSpinButton> m_xLetterSpacingMinimum;
+    std::unique_ptr<weld::MetricSpinButton> m_xLetterSpacingMaximum;
+
     DECL_LINK(AlignHdl_Impl, weld::Toggleable&, void);
     DECL_LINK(LastLineHdl_Impl, weld::ComboBox&, void);
     DECL_LINK(TextDirectionHdl_Impl, weld::ComboBox&, void);
+    DECL_LINK(WordSpacingHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(WordSpacingMinimumHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(WordSpacingMaximumHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(LetterSpacingHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(LetterSpacingMinimumHdl_Impl, weld::MetricSpinButton&, void);
+    DECL_LINK(LetterSpacingMaximumHdl_Impl, weld::MetricSpinButton&, void);
 
     void                    UpdateExample_Impl();
 
@@ -167,8 +186,8 @@ public:
     static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet );
     virtual ~SvxParaAlignTabPage() override;
 
-    static WhichRangesContainer GetRanges() { return pAlignRanges; }
-    static WhichRangesContainer GetSdrRanges() { return pSdrAlignRanges; }
+    static const WhichRangesContainer & GetRanges() { return pAlignRanges; }
+    static const WhichRangesContainer & GetSdrRanges() { return pSdrAlignRanges; }
 
     virtual bool            FillItemSet( SfxItemSet* rSet ) override;
     virtual void            Reset( const SfxItemSet* rSet ) override;
@@ -203,7 +222,7 @@ public:
                                 const SfxItemSet* rSet );
     virtual ~SvxExtParagraphTabPage() override;
 
-    static WhichRangesContainer GetRanges() { return pExtRanges; }
+    static const WhichRangesContainer & GetRanges() { return pExtRanges; }
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
@@ -223,6 +242,10 @@ private:
     weld::TriStateEnabled aKeepParaState;
     weld::TriStateEnabled aOrphanState;
     weld::TriStateEnabled aWidowState;
+    weld::TriStateEnabled aAcrossParagraphState;
+    weld::TriStateEnabled aAcrossColumnState;
+    weld::TriStateEnabled aAcrossPageState;
+    weld::TriStateEnabled aAcrossSpreadState;
 
     bool                bPageBreak;
     bool                bHtmlMode;
@@ -236,12 +259,22 @@ private:
     std::unique_ptr<weld::SpinButton> m_xExtHyphenBeforeBox;
     std::unique_ptr<weld::Label> m_xAfterText;
     std::unique_ptr<weld::SpinButton> m_xExtHyphenAfterBox;
+    std::unique_ptr<weld::Label> m_xCompoundBeforeText;
+    std::unique_ptr<weld::SpinButton> m_xExtCompoundHyphenBeforeBox;
     std::unique_ptr<weld::Label> m_xMaxHyphenLabel;
     std::unique_ptr<weld::SpinButton> m_xMaxHyphenEdit;
     std::unique_ptr<weld::Label> m_xMinWordLabel;
     std::unique_ptr<weld::SpinButton> m_xMinWordLength;
     std::unique_ptr<weld::Label> m_xHyphenZoneLabel;
     SvxRelativeField m_aHyphenZone;
+    std::unique_ptr<weld::Label> m_xParagraphEndZoneLabel;
+    SvxRelativeField m_aParagraphEndZone;
+    std::unique_ptr<weld::Label> m_xColumnEndZoneLabel;
+    SvxRelativeField m_aColumnEndZone;
+    std::unique_ptr<weld::Label> m_xPageEndZoneLabel;
+    SvxRelativeField m_aPageEndZone;
+    std::unique_ptr<weld::Label> m_xSpreadEndZoneLabel;
+    SvxRelativeField m_aSpreadEndZone;
 
     // pagebreak
     std::unique_ptr<weld::CheckButton> m_xPageBreakBox;
@@ -267,6 +300,14 @@ private:
     std::unique_ptr<weld::SpinButton> m_xWidowRowNo;
     std::unique_ptr<weld::Label> m_xWidowRowLabel;
 
+    // avoid hyphenation across
+    std::unique_ptr<weld::Label> m_xAcrossText;
+    std::unique_ptr<weld::CheckButton> m_xAcrossParagraphBox;
+    std::unique_ptr<weld::CheckButton> m_xAcrossColumnBox;
+    std::unique_ptr<weld::CheckButton> m_xAcrossPageBox;
+    std::unique_ptr<weld::CheckButton> m_xAcrossSpreadBox;
+    std::unique_ptr<weld::CheckButton> m_xAcrossMoveLineBox;
+
     void HyphenClickHdl();
     void PageNumBoxClickHdl();
     void ApplyCollClickHdl();
@@ -285,6 +326,10 @@ private:
     DECL_LINK(PageBreakTypeHdl_Impl, weld::ComboBox&, void);
     DECL_LINK(PageNumBoxClickHdl_Impl, weld::Toggleable&, void);
     DECL_LINK(KeepParaBoxClickHdl_Impl, weld::Toggleable&, void);
+    DECL_LINK(AcrossParagraphHdl_Impl, weld::Toggleable&, void);
+    DECL_LINK(AcrossColumnHdl_Impl, weld::Toggleable&, void);
+    DECL_LINK(AcrossPageHdl_Impl, weld::Toggleable&, void);
+    DECL_LINK(AcrossSpreadHdl_Impl, weld::Toggleable&, void);
 
     virtual void            PageCreated(const SfxAllItemSet& aSet) override;
 };
@@ -300,7 +345,7 @@ public:
     static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet);
     virtual ~SvxAsianTabPage() override;
 
-    static WhichRangesContainer GetRanges();
+    static const WhichRangesContainer & GetRanges();
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;

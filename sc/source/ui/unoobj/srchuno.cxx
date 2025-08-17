@@ -49,6 +49,8 @@ static std::span<const SfxItemPropertyMapEntry> lcl_GetSearchPropertyMap()
         { SC_UNO_SRCHSTYLES,   0,      cppu::UnoType<bool>::get(),       0, 0},
         { SC_UNO_SRCHTYPE,     0,      cppu::UnoType<sal_Int16>::get(), 0, 0}, // enum TableSearch is gone
         { SC_UNO_SRCHWORDS,    0,      cppu::UnoType<bool>::get(),       0, 0},
+        { SC_UNO_SRCHFILTERED,  0,     cppu::UnoType<bool>::get(),      0, 0 },
+        { SC_UNO_SRCHFORMATTED, 0,     cppu::UnoType<bool>::get(),      0, 0 },
         { SC_UNO_SRCHWCESCCHAR, 0,     cppu::UnoType<sal_Int32>::get(), 0, 0 },
     };
     return aSearchPropertyMap_Impl;
@@ -179,7 +181,7 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScCellSearchObj )
 
 OUString SAL_CALL ScCellSearchObj::getImplementationName()
 {
-    return "ScCellSearchObj";
+    return u"ScCellSearchObj"_ustr;
 }
 
 sal_Bool SAL_CALL ScCellSearchObj::supportsService( const OUString& rServiceName )

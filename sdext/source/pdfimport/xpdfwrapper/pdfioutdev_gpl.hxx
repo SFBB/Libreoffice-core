@@ -179,7 +179,7 @@ namespace pdfi
 
         // Start a page.
         virtual void startPage(int pageNum, GfxState *state
-#if POPPLER_CHECK_VERSION(0, 23, 0) || POPPLER_CHECK_VERSION(0, 24, 0)
+#if POPPLER_CHECK_VERSION(0, 23, 0)
                                , XRef *xref
 #endif
         ) override;
@@ -227,6 +227,7 @@ namespace pdfi
         //----- path clipping
         virtual void clip(GfxState *state) override;
         virtual void eoClip(GfxState *state) override;
+        virtual void clipToStrokePath(GfxState *state) override;
 
         //----- text drawing
 #if POPPLER_CHECK_VERSION(0, 82, 0)
@@ -283,6 +284,34 @@ namespace pdfi
 
         static void setPageNum( int nNumPages );
         void setSkipImages ( bool bSkipImages );
+
+        // This is a fudge to allow us to do a fixup in axialShadedFill for
+        // opacity, which may need extending to other types, see axialShadedFill
+        // definition for details
+        poppler_bool useShadedFills(int type) override
+        {
+            return type == 2; // Axial
+        };
+        poppler_bool axialShadedFill(GfxState *state, GfxAxialShading *, double, double) override;
+
+#if POPPLER_CHECK_VERSION(21, 3, 0)
+        poppler_bool useTilingPatternFill() override { return true; };
+        poppler_bool tilingPatternFill(GfxState *state, Gfx *gfx, Catalog *cat,
+                                       GfxTilingPattern *tPat, const double *mat,
+                                       int x0, int y0, int x1, int y1,
+                                       double xStep, double yStep) override;
+#endif
+
+#if POPPLER_CHECK_VERSION(0, 70, 0)
+        void beginTransparencyGroup(GfxState *state, const double *bbox,
+#else
+        void beginTransparencyGroup(GfxState *state, double *bbox,
+#endif
+                                    GfxColorSpace *blendingColorSpace,
+                                    poppler_bool isolated,
+                                    poppler_bool knockout,
+                                    poppler_bool forSoftMask) override;
+        void endTransparencyGroup(GfxState *state) override;
     };
 }
 

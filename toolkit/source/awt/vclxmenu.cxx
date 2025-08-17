@@ -18,7 +18,6 @@
  */
 
 #include <toolkit/awt/vclxmenu.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -32,6 +31,7 @@
 #include <vcl/keycod.hxx>
 #include <vcl/image.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/unohelp.hxx>
 #include <vcl/window.hxx>
 
 #include <com/sun/star/awt/KeyModifier.hpp>
@@ -171,7 +171,7 @@ OUString SAL_CALL VCLXMenu::getImplementationName(  )
     const bool bIsPopupMenu = IsPopupMenu();
     aGuard.unlock();
 
-    OUString implName( "stardiv.Toolkit." );
+    OUString implName( u"stardiv.Toolkit."_ustr );
     if ( bIsPopupMenu )
         implName += "VCLXPopupMenu";
     else
@@ -188,12 +188,12 @@ css::uno::Sequence< OUString > SAL_CALL VCLXMenu::getSupportedServiceNames(  )
 
     if ( bIsPopupMenu )
         return css::uno::Sequence<OUString>{
-            "com.sun.star.awt.PopupMenu",
-            "stardiv.vcl.PopupMenu"};
+            u"com.sun.star.awt.PopupMenu"_ustr,
+            u"stardiv.vcl.PopupMenu"_ustr};
     else
         return css::uno::Sequence<OUString>{
-            "com.sun.star.awt.MenuBar",
-            "stardiv.vcl.MenuBar"};
+            u"com.sun.star.awt.MenuBar"_ustr,
+            u"stardiv.vcl.MenuBar"_ustr};
 }
 
 sal_Bool SAL_CALL VCLXMenu::supportsService(const OUString& rServiceName )
@@ -399,27 +399,44 @@ css::uno::Reference< css::awt::XPopupMenu > VCLXMenu::getPopupMenu(
     SolarMutexGuard aSolarGuard;
     std::unique_lock aGuard( maMutex );
 
-    css::uno::Reference< css::awt::XPopupMenu >  aRef;
-    Menu* pMenu = mpMenu ? mpMenu->GetPopupMenu( nItemId ) : nullptr;
-    if ( pMenu )
+    if ( !mpMenu )
+        return nullptr;
+    Menu* pMenu = mpMenu->GetPopupMenu( nItemId );
+    if ( !pMenu )
+        return nullptr;
+
+    for ( size_t n = maPopupMenuRefs.size(); n; )
     {
-        for ( size_t n = maPopupMenuRefs.size(); n; )
+        css::uno::Reference< css::awt::XPopupMenu >& rRef = maPopupMenuRefs[ --n ];
+        Menu* pM = static_cast<VCLXMenu*>(rRef.get())->GetMenu();
+        if ( pM == pMenu )
         {
-            css::uno::Reference< css::awt::XPopupMenu >& rRef = maPopupMenuRefs[ --n ];
-            Menu* pM = static_cast<VCLXMenu*>(rRef.get())->GetMenu();
-            if ( pM == pMenu )
-            {
-                aRef = rRef;
-                break;
-            }
-        }
-        // it seems the popup menu is not insert into maPopupMenuRefs
-        // if the popup men is not created by stardiv.Toolkit.VCLXPopupMenu
-        if( !aRef.is() )
-        {
-            aRef = new VCLXPopupMenu( static_cast<PopupMenu*>(pMenu) );
+            return rRef;
         }
     }
+
+    /*
+       If the popup menu is not inserted via setPopupMenu then
+       maPopupMenuRefs won't have an entry for it, so create an XPopupMenu
+       for it now.
+
+       This means that this vcl PopupMenu "pMenu" either existed as a child
+       of the vcl Menu "mpMenu" before the VCLXMenu was created for that or
+       it was added directly via vcl.
+    */
+    rtl::Reference< VCLXPopupMenu > aRef = new VCLXPopupMenu( static_cast<PopupMenu*>(pMenu) );
+    /*
+       In any case, the VCLXMenu has ownership of "mpMenu" and will
+       destroy it in the VCLXMenu dtor.
+
+       Similarly because VCLXPopupMenu takes ownership of the vcl
+       PopupMenu "pMenu", the underlying vcl popup will be destroyed
+       when VCLXPopupMenu is, so we should add it now to
+       maPopupMenuRefs to ensure its lifecycle is at least bound to
+       the VCLXMenu that owns the parent "mpMenu" similarly to
+       PopupMenus added via the more conventional setPopupMenu.
+    */
+    maPopupMenuRefs.push_back( aRef );
     return aRef;
 }
 
@@ -481,11 +498,15 @@ sal_Int16 VCLXMenu::execute(
         if ( !mpMenu || !IsPopupMenu() )
             return 0;
     }
+    PopupMenu* pPopupMenu = static_cast<PopupMenu*>(pMenu.get());
+    MenuFlags nMenuFlags = pPopupMenu->GetMenuFlags();
+    // #102790# context menus shall never show disabled entries
+    nMenuFlags |= MenuFlags::HideDisabledEntries;
+    pPopupMenu->SetMenuFlags(nMenuFlags);
     // cannot call this with mutex locked because it will call back into us
-    return static_cast<PopupMenu*>(pMenu.get())->Execute(
-                VCLUnoHelper::GetWindow( rxWindowPeer ),
-                VCLRectangle( rPos ),
-                static_cast<PopupMenuFlags>(nFlags) | PopupMenuFlags::NoMouseUpClose );
+    return pPopupMenu->Execute(
+        VCLUnoHelper::GetWindow(rxWindowPeer), vcl::unohelper::ConvertToVCLRect(rPos),
+        static_cast<PopupMenuFlags>(nFlags) | PopupMenuFlags::NoMouseUpClose);
 }
 
 
@@ -562,7 +583,7 @@ namespace
                 ::Size aNewSize( nIdealWidth, nIdealHeight );
 
                 bool bModified( false );
-                BitmapEx aBitmapEx = aImage.GetBitmapEx();
+                Bitmap aBitmapEx = aImage.GetBitmap();
                 bModified = aBitmapEx.Scale( aNewSize, BmpScaleFlag::BestQuality );
 
                 if ( bModified )
@@ -810,7 +831,7 @@ VCLXMenu::getItemImage(
     {
         Image aImage = mpMenu->GetItemImage( nItemId );
         if ( !!aImage )
-            rxGraphic = Graphic(aImage.GetBitmapEx()).GetXGraphic();
+            rxGraphic = Graphic(aImage.GetBitmap()).GetXGraphic();
     }
     return rxGraphic;
 }
@@ -857,6 +878,8 @@ VCLXPopupMenu::VCLXPopupMenu( PopupMenu* pPopMenu ) : VCLXMenu( static_cast<Menu
 {
     ImplAddListener();
 }
+
+VCLXPopupMenu::~VCLXPopupMenu() = default;
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
 stardiv_Toolkit_VCLXPopupMenu_get_implementation(

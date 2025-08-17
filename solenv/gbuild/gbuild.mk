@@ -70,8 +70,6 @@ include $(GBUILDDIR)/Helper.mk
 
 include $(GBUILDDIR)/Conditions.mk
 
-include $(SRCDIR)/solenv/inc/langlist.mk
-
 # optional extensions that should never be essential
 ifneq ($(wildcard $(GBUILDDIR)/extensions/pre_*.mk),)
 include $(wildcard $(GBUILDDIR)/extensions/pre_*.mk)
@@ -84,56 +82,30 @@ ifneq ($(strip $(TIMELOG)$(timelog)),)
 gb_TIMELOG := 1
 endif
 
-ifneq ($(ENABLE_DBGUTIL),)
-gb_ENABLE_DBGUTIL := $(true)
+ifeq ($(strip $(dbglevel)),)
+ifeq ($(debug),)
+dbglevel := 0
 else
-gb_ENABLE_DBGUTIL := $(false)
+dbglevel := 1
+endif
 endif
 
 gb_ENABLE_SYMBOLS_FOR := $(ENABLE_SYMBOLS_FOR)
 
-# ENABLE_SYMBOLS (presumably from the command line)
-ifneq ($(strip $(ENABLE_SYMBOLS)),)
-gb_ENABLE_SYMBOLS_FOR := $(ENABLE_SYMBOLS)
-endif
+# enable_symbols (presumably from the command line)
 ifneq ($(strip $(enable_symbols)),)
 gb_ENABLE_SYMBOLS_FOR := $(enable_symbols)
+endif
+ifeq ($(origin debug),command line)
+gb_ENABLE_SYMBOLS_FOR := all
+endif
+ifeq ($(origin dbglevel),command line)
+gb_ENABLE_SYMBOLS_FOR := all
 endif
 
 # note: ENABLE_BREAKPAD turns on symbols
 ifneq ($(strip $(ENABLE_BREAKPAD)),)
 gb_ENABLE_SYMBOLS_FOR := all
-endif
-
-gb_DEBUGLEVEL := 0
-ifneq ($(strip $(DEBUG)),)
-gb_DEBUGLEVEL := 1
-# make DEBUG=true should force -g
-ifeq ($(origin DEBUG),command line)
-gb_ENABLE_SYMBOLS_FOR := all
-endif
-endif
-ifneq ($(strip $(debug)),)
-gb_DEBUGLEVEL := 1
-ifeq ($(origin debug),command line)
-gb_ENABLE_SYMBOLS_FOR := all
-endif
-endif
-ifeq ($(gb_ENABLE_DBGUTIL),$(true))
-gb_DEBUGLEVEL := 1
-endif
-
-ifneq ($(strip $(DBGLEVEL)),)
-gb_DEBUGLEVEL := $(strip $(DBGLEVEL))
-ifeq ($(origin DBGLEVEL),command line)
-gb_ENABLE_SYMBOLS_FOR := all
-endif
-endif
-ifneq ($(strip $(dbglevel)),)
-gb_DEBUGLEVEL := $(strip $(dbglevel))
-ifeq ($(origin dbglevel),command line)
-gb_ENABLE_SYMBOLS_FOR := all
-endif
 endif
 
 # handle special cases
@@ -192,8 +164,17 @@ ifneq ($(strip $(ENVCFLAGSCXX)),)
 gb__ENV_CXXFLAGS := $(ENVCFLAGSCXX)
 endif
 
+ifeq ($(CROSS_COMPILING),)
+gb_CAN_EXECUTE_HOST_CODE := $(true)
+else ifeq ($(OS),EMSCRIPTEN)
+gb_CAN_EXECUTE_HOST_CODE := $(true)
+else
+gb_CAN_EXECUTE_HOST_CODE := $(false)
+endif
+
 include $(GBUILDDIR)/ExternalExecutable.mk
 include $(GBUILDDIR)/TargetLocations.mk
+include $(SRCDIR)/solenv/inc/langlist.mk
 
 define gb_var2file
 $(file >$(1),$(2))$(1)
@@ -231,12 +212,12 @@ gb_CPUDEFS += -D$(CPUNAME)
 
 gb_GLOBALDEFS := \
 	-D_REENTRANT \
-	-DOSL_DEBUG_LEVEL=$(gb_DEBUGLEVEL) \
+	-DOSL_DEBUG_LEVEL=$(dbglevel) \
 	$(gb_OSDEFS) \
 	$(gb_COMPILERDEFS) \
 	$(gb_CPUDEFS) \
 
-ifeq ($(gb_ENABLE_DBGUTIL),$(true))
+ifeq ($(ENABLE_DBGUTIL),TRUE)
 gb_GLOBALDEFS += -DDBG_UTIL
 
 ifneq ($(COM)-$(MSVC_USE_DEBUG_RUNTIME),MSC-)
@@ -258,13 +239,6 @@ ifeq ($(ENABLE_SAL_LOG),TRUE)
 gb_GLOBALDEFS += -DSAL_LOG_INFO \
 				 -DSAL_LOG_WARN \
 
-endif
-
-ifneq ($(gb_DEBUGLEVEL),0)
-ifneq ($(gb_DEBUGLEVEL),1) # 2 or more
-gb_GLOBALDEFS += -DDEBUG \
-
-endif
 endif
 
 gb_GLOBALDEFS += \
@@ -356,6 +330,8 @@ include $(foreach class, \
 	CliLibrary \
 	CliNativeLibrary \
 	CliUnoApi \
+	DotnetLibrary \
+	DotnetTest \
 	Zip \
 	AllLangPackage \
 	Configuration \
@@ -405,5 +381,8 @@ endif
 ifneq ($(CCACHE_DEPEND_MODE),)
 gb_COMPILER_SETUP += CCACHE_DEPEND=1
 endif
+
+$(WORKDIR)/%/.dir:
+	mkdir -p $(@D) && touch $@
 
 # vim: set noet sw=4:

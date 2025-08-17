@@ -65,11 +65,11 @@ void BitmapWriteAccess::CopyScanline(tools::Long nY, const BitmapReadAccess& rRe
 void BitmapWriteAccess::CopyScanline(tools::Long nY, ConstScanline aSrcScanline,
                                      ScanlineFormat nSrcScanlineFormat, sal_uInt32 nSrcScanlineSize)
 {
-    const ScanlineFormat nFormat = RemoveScanline(nSrcScanlineFormat);
+    const ScanlineFormat eFormat = nSrcScanlineFormat;
 
     assert(nY >= 0 && nY < mpBuffer->mnHeight && "y-coordinate in destination out of range!");
-    DBG_ASSERT((HasPalette() && nFormat <= ScanlineFormat::N8BitPal)
-                   || (!HasPalette() && nFormat > ScanlineFormat::N8BitPal),
+    DBG_ASSERT((HasPalette() && eFormat <= ScanlineFormat::N8BitPal)
+                   || (!HasPalette() && eFormat > ScanlineFormat::N8BitPal),
                "No copying possible between palette and non palette scanlines!");
 
     const sal_uInt32 nCount = std::min(GetScanlineSize(), nSrcScanlineSize);
@@ -77,7 +77,7 @@ void BitmapWriteAccess::CopyScanline(tools::Long nY, ConstScanline aSrcScanline,
     if (!nCount)
         return;
 
-    if (GetScanlineFormat() == RemoveScanline(nSrcScanlineFormat))
+    if (GetScanlineFormat() == eFormat)
         memcpy(GetScanline(nY), aSrcScanline, nCount);
     else
     {
@@ -85,10 +85,8 @@ void BitmapWriteAccess::CopyScanline(tools::Long nY, ConstScanline aSrcScanline,
                                  nSrcScanlineSize))
             return;
 
-        DBG_ASSERT(nFormat != ScanlineFormat::N32BitTcMask,
-                   "No support for pixel formats with color masks yet!");
         FncGetPixel pFncGetPixel;
-        switch (nFormat)
+        switch (eFormat)
         {
             case ScanlineFormat::N1BitMsbPal:
                 pFncGetPixel = GetPixelForN1BitMsbPal;
@@ -103,31 +101,28 @@ void BitmapWriteAccess::CopyScanline(tools::Long nY, ConstScanline aSrcScanline,
                 pFncGetPixel = GetPixelForN24BitTcRgb;
                 break;
             case ScanlineFormat::N32BitTcAbgr:
-                if (Bitmap32IsPreMultipled())
-                    pFncGetPixel = GetPixelForN32BitTcAbgr;
-                else
-                    pFncGetPixel = GetPixelForN32BitTcXbgr;
+                pFncGetPixel = GetPixelForN32BitTcAbgr;
+                break;
+            case ScanlineFormat::N32BitTcXbgr:
+                pFncGetPixel = GetPixelForN32BitTcXbgr;
                 break;
             case ScanlineFormat::N32BitTcArgb:
-                if (Bitmap32IsPreMultipled())
-                    pFncGetPixel = GetPixelForN32BitTcArgb;
-                else
-                    pFncGetPixel = GetPixelForN32BitTcXrgb;
+                pFncGetPixel = GetPixelForN32BitTcArgb;
+                break;
+            case ScanlineFormat::N32BitTcXrgb:
+                pFncGetPixel = GetPixelForN32BitTcXrgb;
                 break;
             case ScanlineFormat::N32BitTcBgra:
-                if (Bitmap32IsPreMultipled())
-                    pFncGetPixel = GetPixelForN32BitTcBgra;
-                else
-                    pFncGetPixel = GetPixelForN32BitTcBgrx;
+                pFncGetPixel = GetPixelForN32BitTcBgra;
+                break;
+            case ScanlineFormat::N32BitTcBgrx:
+                pFncGetPixel = GetPixelForN32BitTcBgrx;
                 break;
             case ScanlineFormat::N32BitTcRgba:
-                if (Bitmap32IsPreMultipled())
-                    pFncGetPixel = GetPixelForN32BitTcRgba;
-                else
-                    pFncGetPixel = GetPixelForN32BitTcRgbx;
+                pFncGetPixel = GetPixelForN32BitTcRgba;
                 break;
-            case ScanlineFormat::N32BitTcMask:
-                pFncGetPixel = GetPixelForN32BitTcMask;
+            case ScanlineFormat::N32BitTcRgbx:
+                pFncGetPixel = GetPixelForN32BitTcRgbx;
                 break;
 
             default:
@@ -138,10 +133,9 @@ void BitmapWriteAccess::CopyScanline(tools::Long nY, ConstScanline aSrcScanline,
 
         if (pFncGetPixel)
         {
-            const ColorMask aDummyMask;
             Scanline pScanline = GetScanline(nY);
             for (tools::Long nX = 0, nWidth = mpBuffer->mnWidth; nX < nWidth; ++nX)
-                SetPixelOnData(pScanline, nX, pFncGetPixel(aSrcScanline, nX, aDummyMask));
+                SetPixelOnData(pScanline, nX, pFncGetPixel(aSrcScanline, nX));
         }
     }
 }

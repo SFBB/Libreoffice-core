@@ -83,10 +83,12 @@ bool Bitmap::Invert()
     if (pWriteAcc->HasPalette())
     {
         const sal_uInt16 nActColors = pWriteAcc->GetPaletteEntryCount();
-        const sal_uInt16 nMaxColors = 1 << pWriteAcc->GetBitCount();
 
         if (pWriteAcc->GetPalette().IsGreyPalette8Bit())
         {
+            // For alpha masks, we need to actually invert the underlying data
+            // or the optimisations elsewhere do not always work right. If this is a bottleneck,
+            // probably better to try improving it inside the mxSalBmp->Invert() call above.
             for (tools::Long nY = 0; nY < nHeight; nY++)
             {
                 Scanline pScanline = pWriteAcc->GetScanline(nY);
@@ -100,18 +102,11 @@ bool Bitmap::Invert()
         }
         else
         {
-            for (tools::Long nY = 0; nY < nHeight; nY++)
+            for (sal_uInt16 i = 0; i < nActColors; ++i)
             {
-                Scanline pScanline = pWriteAcc->GetScanline(nY);
-                for (tools::Long nX = 0; nX < nWidth; nX++)
-                {
-                    BitmapColor aBmpColor = pWriteAcc->GetPixelFromData(pScanline, nX);
-                    aBmpColor = pWriteAcc->GetPaletteColor(aBmpColor.GetIndex());
-                    aBmpColor.Invert();
-                    BitmapColor aReplace = UpdatePaletteForNewColor(
-                        pWriteAcc, nActColors, nMaxColors, nHeight, nWidth, aBmpColor);
-                    pWriteAcc->SetPixelOnData(pScanline, nX, aReplace);
-                }
+                BitmapColor aBmpColor = pWriteAcc->GetPaletteColor(i);
+                aBmpColor.Invert();
+                pWriteAcc->SetPaletteColor(i, aBmpColor);
             }
         }
     }
@@ -374,7 +369,7 @@ bool Bitmap::Rotate(Degree10 nAngle10, const Color& rFillColor)
             pWriteAcc.reset();
         }
 
-        aRotatedBmp = aNewBmp;
+        aRotatedBmp = std::move(aNewBmp);
     }
     else
     {
@@ -445,7 +440,7 @@ bool Bitmap::Rotate(Degree10 nAngle10, const Color& rFillColor)
             pWriteAcc.reset();
         }
 
-        aRotatedBmp = aNewBmp;
+        aRotatedBmp = std::move(aNewBmp);
     }
 
     pReadAcc.reset();
@@ -874,7 +869,7 @@ vcl::Region Bitmap::CreateRegion(const Color& rColor, const tools::Rectangle& rR
             }
 
             // copy line as new line
-            aLine = aNewLine;
+            aLine = std::move(aNewLine);
             nYStart = nY;
         }
     }
@@ -919,8 +914,8 @@ bool Bitmap::ReplaceMask(const AlphaMask& rMask, const Color& rReplaceColor)
         const sal_uInt16 nActColors = pAcc->GetPaletteEntryCount();
         const sal_uInt16 nMaxColors = 1 << pAcc->GetBitCount();
 
-        aReplace
-            = UpdatePaletteForNewColor(pAcc, nActColors, nMaxColors, nHeight, nWidth, aReplace);
+        aReplace = UpdatePaletteForNewColor(pAcc, nActColors, nMaxColors, nHeight, nWidth,
+                                            BitmapColor(rReplaceColor));
     }
     else
         aReplace = rReplaceColor;
@@ -972,7 +967,7 @@ bool Bitmap::Replace(const AlphaMask& rAlpha, const Color& rMergeColor)
     const MapMode aMap(maPrefMapMode);
     const Size aSize(maPrefSize);
 
-    *this = aNewBmp;
+    *this = std::move(aNewBmp);
 
     maPrefMapMode = aMap;
     maPrefSize = aSize;

@@ -27,7 +27,7 @@ class Test : public SwModelTestBase
 {
 public:
     Test()
-        : SwModelTestBase("/sw/qa/core/text/data/")
+        : SwModelTestBase(u"/sw/qa/core/text/data/"_ustr)
     {
     }
 };
@@ -91,10 +91,10 @@ CPPUNIT_TEST_FIXTURE(Test, testFloattableAvoidLastManipOfst)
     createSwDoc("floattable-avoid-last-manip-ofst.docx");
     SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->SttEndDoc(/*bStt=*/false);
-    pWrtShell->Insert2("dt");
+    pWrtShell->Insert2(u"dt"_ustr);
 
     // When expanding dummy text on the last page:
-    dispatchCommand(mxComponent, ".uno:ExpandGlossary", {});
+    dispatchCommand(mxComponent, u".uno:ExpandGlossary"_ustr, {});
 
     // Then make sure the expanded text starts on page 5:
     SwDoc* pDoc = getSwDocShell()->GetDoc();
@@ -148,6 +148,46 @@ CPPUNIT_TEST_FIXTURE(Test, testFloattableBadFlyPos)
     CPPUNIT_ASSERT(pPage4);
     CPPUNIT_ASSERT(pPage4->GetSortedObjs());
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pPage4->GetSortedObjs()->size());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testFullPageShapeWrap)
+{
+    // Given a conflicting doc model: full page shape wants to wrap but leaves no space for the body
+    // text:
+    // When loading this document:
+    // Without the accompanying fix in place, this test would have resulted in a layout loop:
+    // content on page 2 did not fit the space, so move to page 3, then page 2 was empty, so we
+    // moved back -> loop.
+    createSwDoc("full-page-shape-wrap.docx");
+
+    // Check the import result:
+    SwDoc* pDoc = getSwDoc();
+    SwRootFrame* pLayout = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
+    // No anchored objects on page 1:
+    auto pPage1 = pLayout->Lower()->DynCastPageFrame();
+    CPPUNIT_ASSERT(pPage1);
+    CPPUNIT_ASSERT(!pPage1->GetSortedObjs());
+    // One group shape on page 2, and several fly frames (visually) inside that:
+    auto pPage2 = pPage1->GetNext()->DynCastPageFrame();
+    CPPUNIT_ASSERT(pPage2);
+    CPPUNIT_ASSERT(pPage2->GetSortedObjs());
+    int nFlyCount = 0;
+    int nDrawCount = 0;
+    for (const auto& pAnchoredObject : *pPage2->GetSortedObjs())
+    {
+        if (pAnchoredObject->GetFrameFormat()->Which() == RES_FLYFRMFMT)
+        {
+            ++nFlyCount;
+        }
+        else
+        {
+            ++nDrawCount;
+        }
+    }
+    CPPUNIT_ASSERT_EQUAL(1, nDrawCount);
+    CPPUNIT_ASSERT_GREATER(1, nFlyCount);
+    // No page 3.
+    CPPUNIT_ASSERT(!pPage2->GetNext());
 }
 }
 

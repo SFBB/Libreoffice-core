@@ -31,7 +31,7 @@
 #include <svx/svdmodel.hxx>
 #include <svl/asiancfg.hxx>
 #include <unotools/compatibility.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <drawdoc.hxx>
 #include <swmodule.hxx>
 #include <linkenum.hxx>
@@ -107,37 +107,50 @@ sw::DocumentSettingManager::DocumentSettingManager(SwDoc &rDoc)
     mbAutoFirstLineIndentDisregardLineSpace(true),
     mbNoNumberingShowFollowBy(false),
     mbDropCapPunctuation(true),
-    mbUseVariableWidthNBSP(false)
+    mbUseVariableWidthNBSP(false),
+    mbPaintHellOverHeaderFooter(false),
+    mbMinRowHeightInclBorder(false),
+    mbMsWordCompGridMetrics(false), // tdf#129808
+    mbNoClippingWithWrapPolygon(false),
+    mbBalanceSpacesAndIdeographicSpaces(false),
+    mbAdjustTableLineHeightsToGridHeight(true) // tdf#167583
 
     // COMPATIBILITY FLAGS END
 {
     // COMPATIBILITY FLAGS START
 
     // Note: Any non-hidden compatibility flag should obtain its default
-    // by asking SvtCompatibilityOptions, see below.
+    // by asking SvtCompatibilityDefault, see below.
 
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
-        const SvtCompatibilityOptions aOptions;
-        mbParaSpaceMax                      = aOptions.GetDefault( SvtCompatibilityEntry::Index::AddSpacing );
-        mbParaSpaceMaxAtPages               = aOptions.GetDefault( SvtCompatibilityEntry::Index::AddSpacingAtPages );
-        mbTabCompat                         = !aOptions.GetDefault( SvtCompatibilityEntry::Index::UseOurTabStops );
+        const SvtCompatibilityDefault aOptions;
+        mbParaSpaceMax                      = aOptions.get(u"AddSpacing"_ustr);
+        mbParaSpaceMaxAtPages               = aOptions.get(u"AddSpacingAtPages"_ustr);
+        mbTabCompat                         = !aOptions.get(u"UseOurTabStopFormat"_ustr);
         mbUseVirtualDevice                  = true;
-        mbAddExternalLeading                = !aOptions.GetDefault( SvtCompatibilityEntry::Index::NoExtLeading );
-        mbOldLineSpacing                    = aOptions.GetDefault( SvtCompatibilityEntry::Index::UseLineSpacing );
-        mbAddParaSpacingToTableCells        = aOptions.GetDefault( SvtCompatibilityEntry::Index::AddTableSpacing );
-        mbAddParaLineSpacingToTableCells    = aOptions.GetDefault( SvtCompatibilityEntry::Index::AddTableLineSpacing );
-        mbUseFormerObjectPos                = aOptions.GetDefault( SvtCompatibilityEntry::Index::UseObjectPositioning );
-        mbUseFormerTextWrapping             = aOptions.GetDefault( SvtCompatibilityEntry::Index::UseOurTextWrapping );
-        mbConsiderWrapOnObjPos              = aOptions.GetDefault( SvtCompatibilityEntry::Index::ConsiderWrappingStyle );
-        mbDoNotJustifyLinesWithManualBreak  = !aOptions.GetDefault( SvtCompatibilityEntry::Index::ExpandWordSpace );
-        mbProtectForm                       = aOptions.GetDefault( SvtCompatibilityEntry::Index::ProtectForm );
-        mbMsWordCompTrailingBlanks          = aOptions.GetDefault( SvtCompatibilityEntry::Index::MsWordTrailingBlanks );
-        mbSubtractFlys                      = aOptions.GetDefault( SvtCompatibilityEntry::Index::SubtractFlysAnchoredAtFlys );
-        mbEmptyDbFieldHidesPara
-            = aOptions.GetDefault(SvtCompatibilityEntry::Index::EmptyDbFieldHidesPara);
-        mbUseVariableWidthNBSP
-            = aOptions.GetDefault(SvtCompatibilityEntry::Index::UseVariableWidthNBSP);
+        mbAddExternalLeading                = !aOptions.get(u"NoExternalLeading"_ustr);
+        mbOldLineSpacing                    = aOptions.get(u"UseLineSpacing"_ustr);
+        mbAddParaSpacingToTableCells        = aOptions.get(u"AddTableSpacing"_ustr);
+        mbAddParaLineSpacingToTableCells    = aOptions.get(u"AddTableLineSpacing"_ustr);
+        mbUseFormerObjectPos                = aOptions.get(u"UseObjectPositioning"_ustr);
+        mbUseFormerTextWrapping             = aOptions.get(u"UseOurTextWrapping"_ustr);
+        mbConsiderWrapOnObjPos              = aOptions.get(u"ConsiderWrappingStyle"_ustr);
+        mbDoNotJustifyLinesWithManualBreak  = !aOptions.get(u"ExpandWordSpace"_ustr);
+        mbProtectForm                       = aOptions.get(u"ProtectForm"_ustr);
+        mbMsWordCompTrailingBlanks          = aOptions.get(u"MsWordCompTrailingBlanks"_ustr);
+        mbSubtractFlys                      = aOptions.get(u"SubtractFlysAnchoredAtFlys"_ustr);
+        mbEmptyDbFieldHidesPara             = aOptions.get(u"EmptyDbFieldHidesPara"_ustr);
+        mbUseVariableWidthNBSP              = aOptions.get(u"UseVariableWidthNBSP"_ustr);
+        mbNoGapAfterNoteNumber              = aOptions.get(u"NoGapAfterNoteNumber"_ustr);
+        mbTabRelativeToIndent               = aOptions.get(u"TabsRelativeToIndent"_ustr);
+        mbTabOverMargin                     = aOptions.get(u"TabOverMargin"_ustr);
+        mbDoNotMirrorRtlDrawObjs            = aOptions.get(u"DoNotMirrorRtlDrawObjs"_ustr);
+        mbContinuousEndnotes                = aOptions.get(u"ContinuousEndnotes"_ustr);
+        mbMsWordCompGridMetrics             = aOptions.get(u"MsWordCompGridMetrics"_ustr);
+        mbIgnoreTabsAndBlanksForLineCalculation = aOptions.get(u"IgnoreTabsAndBlanksForLineCalculation"_ustr);
+        mbBalanceSpacesAndIdeographicSpaces = aOptions.get(u"BalanceSpacesAndIdeographicSpaces"_ustr);
+        mbAdjustTableLineHeightsToGridHeight = aOptions.get(u"AdjustTableLineHeightsToGridHeight"_ustr);
     }
     else
     {
@@ -158,6 +171,7 @@ sw::DocumentSettingManager::DocumentSettingManager(SwDoc &rDoc)
         mbSubtractFlys                      = false;
         mbEmptyDbFieldHidesPara             = true;
         mbUseVariableWidthNBSP              = false;
+        mbAdjustTableLineHeightsToGridHeight = true;
     }
 
     // COMPATIBILITY FLAGS END
@@ -192,8 +206,10 @@ bool sw::DocumentSettingManager::get(/*[in]*/ DocumentSettingId id) const
         case DocumentSettingId::CONSIDER_WRAP_ON_OBJECT_POSITION: return mbConsiderWrapOnObjPos;
         case DocumentSettingId::DO_NOT_JUSTIFY_LINES_WITH_MANUAL_BREAK: return mbDoNotJustifyLinesWithManualBreak;
         case DocumentSettingId::IGNORE_FIRST_LINE_INDENT_IN_NUMBERING: return mbIgnoreFirstLineIndentInNumbering;
+        case DocumentSettingId::NO_GAP_AFTER_NOTE_NUMBER: return mbNoGapAfterNoteNumber;
         case DocumentSettingId::TABLE_ROW_KEEP: return mbTableRowKeep;
         case DocumentSettingId::IGNORE_TABS_AND_BLANKS_FOR_LINE_CALCULATION: return mbIgnoreTabsAndBlanksForLineCalculation;
+        case DocumentSettingId::IGNORE_HIDDEN_CHARS_FOR_LINE_CALCULATION: return mbIgnoreHiddenCharsForLineCalculation;
         case DocumentSettingId::DO_NOT_CAPTURE_DRAW_OBJS_ON_PAGE: return mbDoNotCaptureDrawObjsOnPage;
         // #i68949#
         case DocumentSettingId::CLIP_AS_CHARACTER_ANCHORED_WRITER_FLY_FRAME: return mbClipAsCharacterAnchoredWriterFlyFrames;
@@ -249,15 +265,32 @@ bool sw::DocumentSettingManager::get(/*[in]*/ DocumentSettingId id) const
         case DocumentSettingId::AUTO_FIRST_LINE_INDENT_DISREGARD_LINE_SPACE:
             return mbAutoFirstLineIndentDisregardLineSpace;
         case DocumentSettingId::HYPHENATE_URLS: return mbHyphenateURLs;
+        case DocumentSettingId::APPLY_TEXT_ATTR_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH:
+            return mbApplyTextAttrToEmptyLineAtEndOfParagraph;
+        case DocumentSettingId::APPLY_PARAGRAPH_MARK_FORMAT_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH:
+            return mbApplyParagraphMarkFormatToEmptyLineAtEndOfParagraph;
         case DocumentSettingId::DO_NOT_BREAK_WRAPPED_TABLES:
             return mbDoNotBreakWrappedTables;
         case DocumentSettingId::ALLOW_TEXT_AFTER_FLOATING_TABLE_BREAK:
             return mbAllowTextAfterFloatingTableBreak;
+        case DocumentSettingId::DO_NOT_MIRROR_RTL_DRAW_OBJS:
+            return mbDoNotMirrorRtlDrawObjs;
         case DocumentSettingId::JUSTIFY_LINES_WITH_SHRINKING:
             return mbJustifyLinesWithShrinking;
         case DocumentSettingId::NO_NUMBERING_SHOW_FOLLOWBY: return mbNoNumberingShowFollowBy;
         case DocumentSettingId::DROP_CAP_PUNCTUATION: return mbDropCapPunctuation;
         case DocumentSettingId::USE_VARIABLE_WIDTH_NBSP: return mbUseVariableWidthNBSP;
+        case DocumentSettingId::PAINT_HELL_OVER_HEADER_FOOTER: return mbPaintHellOverHeaderFooter;
+        case DocumentSettingId::MIN_ROW_HEIGHT_INCL_BORDER: return mbMinRowHeightInclBorder;
+        case DocumentSettingId::MS_WORD_COMP_GRID_METRICS: return mbMsWordCompGridMetrics;
+        case DocumentSettingId::NO_CLIPPING_WITH_WRAP_POLYGON: return mbNoClippingWithWrapPolygon;
+        case DocumentSettingId::MS_WORD_UL_TRAIL_SPACE: return mbMsWordUlTrailSpace;
+        case DocumentSettingId::BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES:
+            return mbBalanceSpacesAndIdeographicSpaces;
+        case DocumentSettingId::FORCE_TOP_ALIGNMENT_IN_CELL_WITH_FLOATING_ANCHOR:
+            return mbForceTopAlignmentInCellWithFloatingAnchor;
+        case DocumentSettingId::ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT:
+            return mbAdjustTableLineHeightsToGridHeight;
         default:
             OSL_FAIL("Invalid setting id");
     }
@@ -300,7 +333,7 @@ void sw::DocumentSettingManager::set(/*[in]*/ DocumentSettingId id, /*[in]*/ boo
 
                 const SwNumRuleTable& rNmTable = m_rDoc.GetNumRuleTable();
                 for( SwNumRuleTable::size_type n = 0; n < rNmTable.size(); ++n )
-                    rNmTable[n]->SetInvalidRule(true);
+                    rNmTable[n]->Invalidate();
 
                 m_rDoc.UpdateNumRule();
 
@@ -337,6 +370,9 @@ void sw::DocumentSettingManager::set(/*[in]*/ DocumentSettingId id, /*[in]*/ boo
         case DocumentSettingId::IGNORE_FIRST_LINE_INDENT_IN_NUMBERING:
             mbIgnoreFirstLineIndentInNumbering = value;
             break;
+        case DocumentSettingId::NO_GAP_AFTER_NOTE_NUMBER:
+            mbNoGapAfterNoteNumber = value;
+            break;
 
         case DocumentSettingId::TABLE_ROW_KEEP:
             mbTableRowKeep = value;
@@ -344,6 +380,10 @@ void sw::DocumentSettingManager::set(/*[in]*/ DocumentSettingId id, /*[in]*/ boo
 
         case DocumentSettingId::IGNORE_TABS_AND_BLANKS_FOR_LINE_CALCULATION:
             mbIgnoreTabsAndBlanksForLineCalculation = value;
+            break;
+
+        case DocumentSettingId::IGNORE_HIDDEN_CHARS_FOR_LINE_CALCULATION:
+            mbIgnoreHiddenCharsForLineCalculation = value;
             break;
 
         case DocumentSettingId::DO_NOT_CAPTURE_DRAW_OBJS_ON_PAGE:
@@ -440,6 +480,19 @@ void sw::DocumentSettingManager::set(/*[in]*/ DocumentSettingId id, /*[in]*/ boo
             mbHyphenateURLs = value;
             break;
 
+        case DocumentSettingId::APPLY_TEXT_ATTR_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH:
+            mbApplyTextAttrToEmptyLineAtEndOfParagraph = value;
+            break;
+
+        case DocumentSettingId::APPLY_PARAGRAPH_MARK_FORMAT_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH:
+            mbApplyParagraphMarkFormatToEmptyLineAtEndOfParagraph = value;
+            break;
+
+
+        case DocumentSettingId::DO_NOT_MIRROR_RTL_DRAW_OBJS:
+            mbDoNotMirrorRtlDrawObjs = value;
+            break;
+
         case DocumentSettingId::DO_NOT_BREAK_WRAPPED_TABLES:
             mbDoNotBreakWrappedTables = value;
             break;
@@ -462,6 +515,14 @@ void sw::DocumentSettingManager::set(/*[in]*/ DocumentSettingId id, /*[in]*/ boo
 
         case DocumentSettingId::USE_VARIABLE_WIDTH_NBSP:
             mbUseVariableWidthNBSP = value;
+            break;
+
+        case DocumentSettingId::PAINT_HELL_OVER_HEADER_FOOTER:
+            mbPaintHellOverHeaderFooter = value;
+            break;
+
+        case DocumentSettingId::MIN_ROW_HEIGHT_INCL_BORDER:
+            mbMinRowHeightInclBorder = value;
             break;
 
         // COMPATIBILITY FLAGS END
@@ -555,6 +616,24 @@ void sw::DocumentSettingManager::set(/*[in]*/ DocumentSettingId id, /*[in]*/ boo
         case DocumentSettingId::FOOTNOTE_IN_COLUMN_TO_PAGEEND:
             mbFootnoteInColumnToPageEnd = value;
             break;
+        case DocumentSettingId::MS_WORD_COMP_GRID_METRICS:
+            mbMsWordCompGridMetrics = value;
+            break;
+        case DocumentSettingId::NO_CLIPPING_WITH_WRAP_POLYGON:
+            mbNoClippingWithWrapPolygon = value;
+            break;
+        case DocumentSettingId::MS_WORD_UL_TRAIL_SPACE:
+            mbMsWordUlTrailSpace = value;
+            break;
+        case DocumentSettingId::BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES:
+            mbBalanceSpacesAndIdeographicSpaces = value;
+            break;
+        case DocumentSettingId::FORCE_TOP_ALIGNMENT_IN_CELL_WITH_FLOATING_ANCHOR:
+            mbForceTopAlignmentInCellWithFloatingAnchor = value;
+            break;
+        case DocumentSettingId::ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT:
+            mbAdjustTableLineHeightsToGridHeight = value;
+            break;
         default:
             OSL_FAIL("Invalid setting id");
     }
@@ -613,7 +692,7 @@ sal_uInt16 sw::DocumentSettingManager::getLinkUpdateMode( /*[in]*/bool bGlobalSe
 {
     sal_uInt16 nRet = mnLinkUpdMode;
     if( bGlobalSettings && GLOBALSETTING == nRet )
-        nRet = SW_MOD()->GetLinkUpdMode();
+        nRet = SwModule::get()->GetLinkUpdMode();
     return nRet;
 }
 
@@ -626,7 +705,7 @@ SwFieldUpdateFlags sw::DocumentSettingManager::getFieldUpdateFlags( /*[in]*/bool
 {
     SwFieldUpdateFlags eRet = meFieldUpdMode;
     if( bGlobalSettings && AUTOUPD_GLOBALSETTING == eRet )
-        eRet = SW_MOD()->GetFieldUpdateFlags();
+        eRet = SwModule::get()->GetFieldUpdateFlags();
     return eRet;
 }
 
@@ -697,6 +776,7 @@ void sw::DocumentSettingManager::ReplaceCompatibilityOptions(const DocumentSetti
     mbStylesNoDefault = rSource.mbStylesNoDefault;
     mbOldNumbering = rSource.mbOldNumbering;
     mbIgnoreFirstLineIndentInNumbering = rSource.mbIgnoreFirstLineIndentInNumbering;
+    mbNoGapAfterNoteNumber = rSource.mbNoGapAfterNoteNumber;
     mbDoNotJustifyLinesWithManualBreak = rSource.mbDoNotJustifyLinesWithManualBreak;
     mbDoNotResetParaAttrsForNumFont = rSource.mbDoNotResetParaAttrsForNumFont;
     mbTableRowKeep = rSource.mbTableRowKeep;
@@ -733,6 +813,12 @@ void sw::DocumentSettingManager::ReplaceCompatibilityOptions(const DocumentSetti
     mbFootnoteInColumnToPageEnd = rSource.mbFootnoteInColumnToPageEnd;
     mbDropCapPunctuation = rSource.mbDropCapPunctuation;
     mbUseVariableWidthNBSP = rSource.mbUseVariableWidthNBSP;
+    mbMsWordCompGridMetrics = rSource.mbMsWordCompGridMetrics;
+    mbNoClippingWithWrapPolygon = rSource.mbNoClippingWithWrapPolygon;
+    mbMsWordUlTrailSpace = rSource.mbMsWordUlTrailSpace;
+    mbBalanceSpacesAndIdeographicSpaces = rSource.mbBalanceSpacesAndIdeographicSpaces;
+    mbForceTopAlignmentInCellWithFloatingAnchor = rSource.mbForceTopAlignmentInCellWithFloatingAnchor;
+    mbAdjustTableLineHeightsToGridHeight = rSource.mbAdjustTableLineHeightsToGridHeight;
 }
 
 sal_uInt32 sw::DocumentSettingManager::Getn32DummyCompatibilityOptions1() const
@@ -880,6 +966,12 @@ void sw::DocumentSettingManager::dumpAsXml(xmlTextWriterPtr pWriter) const
         BAD_CAST(OString::boolean(mbIgnoreFirstLineIndentInNumbering).getStr()));
     (void)xmlTextWriterEndElement(pWriter);
 
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbNoGapAfterNoteNumber"));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("value"),
+        BAD_CAST(OString::boolean(mbNoGapAfterNoteNumber).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbDoNotJustifyLinesWithManualBreak"));
     (void)xmlTextWriterWriteAttribute(
         pWriter, BAD_CAST("value"),
@@ -901,6 +993,12 @@ void sw::DocumentSettingManager::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterWriteAttribute(
         pWriter, BAD_CAST("value"),
         BAD_CAST(OString::boolean(mbIgnoreTabsAndBlanksForLineCalculation).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbIgnoreHiddenCharsForLineCalculation"));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("value"),
+        BAD_CAST(OString::boolean(mbIgnoreHiddenCharsForLineCalculation).getStr()));
     (void)xmlTextWriterEndElement(pWriter);
 
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbDoNotCaptureDrawObjsOnPage"));
@@ -1032,6 +1130,16 @@ void sw::DocumentSettingManager::dumpAsXml(xmlTextWriterPtr pWriter) const
                                 BAD_CAST(OString::boolean(mbUseVariableWidthNBSP).getStr()));
     (void)xmlTextWriterEndElement(pWriter);
 
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbPaintHellOverHeaderFooter"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(mbPaintHellOverHeaderFooter).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbMinRowHeightInclBorder"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(mbMinRowHeightInclBorder).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbContinuousEndnotes"));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
                                 BAD_CAST(OString::boolean(mbContinuousEndnotes).getStr()));
@@ -1080,7 +1188,55 @@ void sw::DocumentSettingManager::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mnImagePreferredDPI"));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
                                 BAD_CAST(OString::number(mnImagePreferredDPI).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
 
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbApplyTextAttrToEmptyLineAtEndOfParagraph"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(mbApplyTextAttrToEmptyLineAtEndOfParagraph).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbApplyParagraphMarkFormatToEmptyLineAtEndOfParagraph"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(mbApplyParagraphMarkFormatToEmptyLineAtEndOfParagraph).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbDoNotMirrorRtlDrawObjs"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(mbDoNotMirrorRtlDrawObjs).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbMsWordCompGridMetrics"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                      BAD_CAST(OString::boolean(mbMsWordCompGridMetrics).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbNoClippingWithWrapPolygon"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(mbNoClippingWithWrapPolygon).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbMsWordUlTrailSpace"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(mbMsWordUlTrailSpace).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbBalanceSpacesAndIdeographicSpaces"));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("value"),
+        BAD_CAST(OString::boolean(mbBalanceSpacesAndIdeographicSpaces).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter,
+                                    BAD_CAST("mbForceTopAlignmentInCellWithFloatingAnchor"));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("value"),
+        BAD_CAST(OString::boolean(mbForceTopAlignmentInCellWithFloatingAnchor).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("mbAdjustTableLineHeightsToGridHeight"));
+    (void)xmlTextWriterWriteAttribute(
+        pWriter, BAD_CAST("value"),
+        BAD_CAST(OString::boolean(mbAdjustTableLineHeightsToGridHeight).getStr()));
     (void)xmlTextWriterEndElement(pWriter);
 
     (void)xmlTextWriterEndElement(pWriter);

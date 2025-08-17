@@ -36,8 +36,11 @@
 
 #define SLIDER_VIEW_STYLE           (WB_3DLOOK | WB_HORZ | WB_VERT)
 
-void Slider::ImplInit( vcl::Window* pParent, WinBits nStyle )
+Slider::Slider(vcl::Window* pParent, WinBits nStyle)
+    : Control(WindowType::SLIDER)
 {
+    mnStartPos          = 0;
+    mnMouseOff          = 0;
     mnThumbPixOffset    = 0;
     mnThumbPixRange     = 0;
     mnThumbPixPos       = 0;    // between mnThumbPixOffset and mnThumbPixOffset+mnThumbPixRange
@@ -61,12 +64,6 @@ void Slider::ImplInit( vcl::Window* pParent, WinBits nStyle )
     SetSizePixel( CalcWindowSizePixel() );
 }
 
-Slider::Slider( vcl::Window* pParent, WinBits nStyle ) :
-    Control(WindowType::SLIDER)
-{
-    ImplInit( pParent, nStyle );
-}
-
 Slider::~Slider()
 {
     disposeOnce();
@@ -81,18 +78,18 @@ void Slider::ImplInitSettings()
         SetParentClipMode( ParentClipMode::NoClip );
         SetPaintTransparent( true );
         SetBackground();
-    }
-    else
-    {
-        EnableChildTransparentMode( false );
-        SetParentClipMode();
-        SetPaintTransparent( false );
 
-        if ( IsControlBackground() )
-            SetBackground( GetControlBackground() );
-        else
-            SetBackground( pParent->GetBackground() );
+        return;
     }
+
+    EnableChildTransparentMode( false );
+    SetParentClipMode();
+    SetPaintTransparent( false );
+
+    if ( IsControlBackground() )
+        SetBackground( GetControlBackground() );
+    else
+        SetBackground( pParent->GetBackground() );
 }
 
 void Slider::ImplUpdateRects( bool bUpdate )

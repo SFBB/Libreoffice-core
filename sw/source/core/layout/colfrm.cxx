@@ -41,7 +41,7 @@ SwColumnFrame::SwColumnFrame( SwFrameFormat *pFormat, SwFrame* pSib ):
     SwFootnoteBossFrame( pFormat, pSib )
 {
     mnFrameType = SwFrameType::Column;
-    SwBodyFrame* pColBody = new SwBodyFrame( pFormat->GetDoc()->GetDfltFrameFormat(), pSib );
+    SwBodyFrame* pColBody = new SwBodyFrame( pFormat->GetDoc().GetDfltFrameFormat(), pSib );
     pColBody->InsertBehind( this, nullptr ); // ColumnFrames now with BodyFrame
     SetMaxFootnoteHeight( LONG_MAX );
 }
@@ -49,16 +49,16 @@ SwColumnFrame::SwColumnFrame( SwFrameFormat *pFormat, SwFrame* pSib ):
 void SwColumnFrame::DestroyImpl()
 {
     SwFrameFormat *pFormat = GetFormat();
-    SwDoc *pDoc;
-    if ( !(pDoc = pFormat->GetDoc())->IsInDtor() && pFormat->HasOnlyOneListener() )
+    SwDoc& rDoc = pFormat->GetDoc();
+    if ( !rDoc.IsInDtor() && pFormat->HasOnlyOneListener() )
     {
         //I'm the only one, delete the format.
         //Get default format before, so the base class can cope with it.
-        pDoc->GetDfltFrameFormat()->Add( this );
+        rDoc.GetDfltFrameFormat()->Add(*this);
         // tdf#134009, like #i32968# avoid SwUndoFrameFormatDelete creation,
         // the format is owned by the SwColumnFrame, see lcl_AddColumns()
-        ::sw::UndoGuard const ug(pDoc->GetIDocumentUndoRedo());
-        pDoc->DelFrameFormat( pFormat );
+        ::sw::UndoGuard const ug(rDoc.GetIDocumentUndoRedo());
+        rDoc.DelFrameFormat( pFormat );
     }
 
     SwFootnoteBossFrame::DestroyImpl();
@@ -81,12 +81,13 @@ void SwColumnFrame::dumpAsXml(xmlTextWriterPtr writer) const
     (void)xmlTextWriterEndElement(writer);
 }
 
-static void lcl_RemoveColumns( SwLayoutFrame *pCont, sal_uInt16 nCnt )
+static void lcl_RemoveColumns( SwLayoutFrame &rCont, sal_uInt16 nCnt )
 {
-    OSL_ENSURE( pCont && pCont->Lower() && pCont->Lower()->IsColumnFrame(),
+    SwFrame* pLower = rCont.Lower();
+    assert( pLower && pLower->IsColumnFrame() &&
             "no columns to remove." );
 
-    SwColumnFrame *pColumn = static_cast<SwColumnFrame*>(pCont->Lower());
+    SwColumnFrame *pColumn = static_cast<SwColumnFrame*>(pLower);
     sw_RemoveFootnotes( pColumn, true, true );
     while ( pColumn->GetNext() )
     {
@@ -106,6 +107,7 @@ static void lcl_RemoveColumns( SwLayoutFrame *pCont, sal_uInt16 nCnt )
 static SwLayoutFrame * lcl_FindColumns( SwLayoutFrame *pLay, sal_uInt16 nCount )
 {
     SwFrame *pCol = pLay->Lower();
+
     if ( pLay->IsPageFrame() )
         pCol = static_cast<SwPageFrame*>(pLay)->FindBodyCont()->Lower();
 
@@ -122,8 +124,8 @@ static SwLayoutFrame * lcl_FindColumns( SwLayoutFrame *pLay, sal_uInt16 nCount )
 
 static bool lcl_AddColumns( SwLayoutFrame *pCont, sal_uInt16 nCount )
 {
-    SwDoc *pDoc = pCont->GetFormat()->GetDoc();
-    const bool bMod = pDoc->getIDocumentState().IsModified();
+    SwDoc& rDoc = pCont->GetFormat()->GetDoc();
+    const bool bMod = rDoc.getIDocumentState().IsModified();
 
     //Formats should be shared whenever possible. If a neighbour already has
     //the same column settings we can add them to the same format.
@@ -175,10 +177,10 @@ static bool lcl_AddColumns( SwLayoutFrame *pCont, sal_uInt16 nCount )
         bRet = true;
         // tdf#103359, like #i32968# Inserting columns in the section causes MakeFrameFormat to put
         // nCount objects of type SwUndoFrameFormat on the undo stack. We don't want them.
-        ::sw::UndoGuard const undoGuard(pDoc->GetIDocumentUndoRedo());
+        ::sw::UndoGuard const undoGuard(rDoc.GetIDocumentUndoRedo());
         for ( sal_uInt16 i = 0; i < nCount; ++i )
         {
-            SwFrameFormat *pFormat = pDoc->MakeFrameFormat(OUString(), pDoc->GetDfltFrameFormat());
+            SwFrameFormat *pFormat = rDoc.MakeFrameFormat(UIName(), rDoc.GetDfltFrameFormat());
             SwColumnFrame *pTmp = new SwColumnFrame( pFormat, pCont );
             pTmp->SetMaxFootnoteHeight( nMax );
             pTmp->Paste( pCont );
@@ -186,7 +188,7 @@ static bool lcl_AddColumns( SwLayoutFrame *pCont, sal_uInt16 nCount )
     }
 
     if ( !bMod )
-        pDoc->getIDocumentState().ResetModified();
+        rDoc.getIDocumentState().ResetModified();
     return bRet;
 }
 
@@ -236,20 +238,19 @@ void SwLayoutFrame::ChgColumns( const SwFormatCol &rOld, const SwFormatCol &rNew
     SwFrame *pSave = nullptr;
     if( nOldNum != nNewNum || bChgFootnote )
     {
-        SwDoc *pDoc = GetFormat()->GetDoc();
-        OSL_ENSURE( pDoc, "FrameFormat doesn't return a document." );
+        SwDoc& rDoc = GetFormat()->GetDoc();
         // SaveContent would also suck up the content of the footnote container
         // and store it within the normal text flow.
         if( IsPageBodyFrame() )
-            pDoc->getIDocumentLayoutAccess().GetCurrentLayout()->RemoveFootnotes( static_cast<SwPageFrame*>(GetUpper()) );
+            rDoc.getIDocumentLayoutAccess().GetCurrentLayout()->RemoveFootnotes( static_cast<SwPageFrame*>(GetUpper()) );
         pSave = ::SaveContent( this );
 
         //If columns exist, they get deleted if a column count of 0 or 1 is requested.
         if ( nNewNum == 1 && !bAtEnd )
         {
-            ::lcl_RemoveColumns( this, nOldNum );
+            ::lcl_RemoveColumns( *this, nOldNum );
             if ( IsBodyFrame() )
-                SetFrameFormat( pDoc->GetDfltFrameFormat() );
+                SetFrameFormat( rDoc.GetDfltFrameFormat() );
             else
                 GetFormat()->SetFormatAttr( SwFormatFillOrder() );
             if ( pSave )
@@ -259,7 +260,7 @@ void SwLayoutFrame::ChgColumns( const SwFormatCol &rOld, const SwFormatCol &rNew
         if ( nOldNum == 1 )
         {
             if ( IsBodyFrame() )
-                SetFrameFormat( pDoc->GetColumnContFormat() );
+                SetFrameFormat( rDoc.GetColumnContFormat() );
             else
                 GetFormat()->SetFormatAttr( SwFormatFillOrder( ATT_LEFT_TO_RIGHT ) );
             if( !Lower() || !Lower()->IsColumnFrame() )
@@ -267,7 +268,7 @@ void SwLayoutFrame::ChgColumns( const SwFormatCol &rOld, const SwFormatCol &rNew
         }
         if ( nOldNum > nNewNum )
         {
-            ::lcl_RemoveColumns( this, nOldNum - nNewNum );
+            ::lcl_RemoveColumns( *this, nOldNum - nNewNum );
             bAdjustAttributes = true;
         }
         else if( nOldNum < nNewNum )
@@ -302,25 +303,27 @@ void SwLayoutFrame::ChgColumns( const SwFormatCol &rOld, const SwFormatCol &rNew
     //actions during setup.
     if ( pSave )
     {
-        OSL_ENSURE( Lower() && Lower()->IsLayoutFrame() &&
-                static_cast<SwLayoutFrame*>(Lower())->Lower() &&
-                static_cast<SwLayoutFrame*>(Lower())->Lower()->IsLayoutFrame(),
-                "no column body." );   // ColumnFrames contain BodyFrames
-        ::RestoreContent( pSave, static_cast<SwLayoutFrame*>(static_cast<SwLayoutFrame*>(Lower())->Lower()), nullptr );
+        SwFrame* pLower = Lower();
+        assert(pLower && pLower->IsLayoutFrame());
+        SwFrame* pLowerLower = static_cast<SwLayoutFrame*>(pLower)->Lower();
+        assert(pLowerLower && pLowerLower->IsLayoutFrame() && "no column body.");   // ColumnFrames contain BodyFrames
+        ::RestoreContent( pSave, static_cast<SwLayoutFrame*>(pLowerLower), nullptr );
     }
 }
 
 void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttributes )
 {
-    if( !Lower()->GetNext() )
+    SwFrame* pLower = Lower();
+    if (!pLower)
+        return;
+
+    if( !pLower->GetNext() )
     {
-        Lower()->ChgSize( getFramePrintArea().SSize() );
+        pLower->ChgSize( getFramePrintArea().SSize() );
         return;
     }
 
-    const bool bVert = IsVertical();
-
-    SwRectFn fnRect = bVert ? ( IsVertLR() ? (IsVertLRBT() ? fnRectVertL2RB2T : fnRectVertL2R) : fnRectVert ) : fnRectHori;
+    SwRectFnSet fnRect(this);
 
     //If we have a pointer or we have to configure an attribute, we set the
     //column widths in any case. Otherwise we check if a configuration is needed.
@@ -329,11 +332,11 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
         pAttr = &GetFormat()->GetCol();
         if ( !bAdjustAttributes )
         {
-            tools::Long nAvail = (getFramePrintArea().*fnRect->fnGetWidth)();
-            for ( SwLayoutFrame *pCol = static_cast<SwLayoutFrame*>(Lower());
+            tools::Long nAvail = fnRect.GetWidth(getFramePrintArea());
+            for ( SwLayoutFrame *pCol = static_cast<SwLayoutFrame*>(pLower);
                   pCol;
                   pCol = static_cast<SwLayoutFrame*>(pCol->GetNext()) )
-                nAvail -= (pCol->getFrameArea().*fnRect->fnGetWidth)();
+                nAvail -= fnRect.GetWidth(pCol->getFrameArea());
             if ( !nAvail )
                 return;
         }
@@ -341,12 +344,12 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
 
     //The columns can now be easily adjusted.
     //The widths get counted so we can give the reminder to the last one.
-    SwTwips nAvail = (getFramePrintArea().*fnRect->fnGetWidth)();
+    SwTwips nAvail = fnRect.GetWidth(getFramePrintArea());
     const bool bLine = pAttr->GetLineAdj() != COLADJ_NONE;
     const sal_uInt16 nMin = bLine ? sal_uInt16( 20 + ( pAttr->GetLineWidth() / 2) ) : 0;
 
     const bool bR2L = IsRightToLeft();
-    SwFrame *pCol = bR2L ? GetLastLower() : Lower();
+    SwFrame *pCol = bR2L ? GetLastLower() : pLower;
 
     // #i27399#
     // bOrtho means we have to adjust the column frames manually. Otherwise
@@ -360,9 +363,9 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
         {
             const SwTwips nWidth = i == (pAttr->GetNumCols() - 1) ?
                                    nAvail :
-                                   pAttr->CalcColWidth( i, sal_uInt16( (getFramePrintArea().*fnRect->fnGetWidth)() ) );
+                                   pAttr->CalcColWidth( i, sal_uInt16( fnRect.GetWidth(getFramePrintArea()) ) );
 
-            const Size aColSz = bVert ?
+            const Size aColSz = fnRect.IsVert() ?
                                 Size( getFramePrintArea().Width(), nWidth ) :
                                 Size( nWidth, getFramePrintArea().Height() );
 
@@ -391,23 +394,23 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
             const sal_uInt16 nLeft = pC->GetLeft();
             const sal_uInt16 nRight = pC->GetRight();
 
-            aLR.SetLeft ( nLeft );
-            aLR.SetRight( nRight );
+            aLR.SetLeft(SvxIndentValue::twips(nLeft));
+            aLR.SetRight(SvxIndentValue::twips(nRight));
 
             if ( bLine )
             {
                 if ( i == 0 )
                 {
-                    aLR.SetRight( std::max( nRight, nMin ) );
+                    aLR.SetRight(SvxIndentValue::twips(std::max(nRight, nMin)));
                 }
                 else if ( i == pAttr->GetNumCols() - 1 )
                 {
-                    aLR.SetLeft ( std::max( nLeft, nMin ) );
+                    aLR.SetLeft(SvxIndentValue::twips(std::max(nLeft, nMin)));
                 }
                 else
                 {
-                    aLR.SetLeft ( std::max( nLeft,  nMin ) );
-                    aLR.SetRight( std::max( nRight, nMin ) );
+                    aLR.SetLeft(SvxIndentValue::twips(std::max(nLeft, nMin)));
+                    aLR.SetRight(SvxIndentValue::twips(std::max(nRight, nMin)));
                 }
             }
 
@@ -421,7 +424,7 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
                 static_cast<SwLayoutFrame*>(pCol)->GetFormat()->SetFormatAttr( aUL );
             }
 
-            nGutter += aLR.GetLeft() + aLR.GetRight();
+            nGutter += aLR.ResolveLeft({}) + aLR.ResolveRight({});
         }
 
         pCol = bR2L ? pCol->GetPrev() : pCol->GetNext();
@@ -431,7 +434,7 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
         return;
 
     tools::Long nInnerWidth = ( nAvail - nGutter ) / pAttr->GetNumCols();
-    pCol = Lower();
+    pCol = pLower;
     for( sal_uInt16 i = 0; i < pAttr->GetNumCols() && pCol; pCol = pCol->GetNext(), ++i ) //i118878, value returned by GetNumCols() can't be trusted
     {
         SwTwips nWidth;
@@ -440,12 +443,12 @@ void SwLayoutFrame::AdjustColumns( const SwFormatCol *pAttr, bool bAdjustAttribu
         else
         {
             SvxLRSpaceItem aLR( pCol->GetAttrSet()->GetLRSpace() );
-            nWidth = nInnerWidth + aLR.GetLeft() + aLR.GetRight();
+            nWidth = nInnerWidth + aLR.ResolveLeft({}) + aLR.ResolveRight({});
         }
         if( nWidth < 0 )
             nWidth = 0;
 
-        const Size aColSz = bVert ?
+        const Size aColSz = fnRect.IsVert() ?
                             Size( getFramePrintArea().Width(), nWidth ) :
                             Size( nWidth, getFramePrintArea().Height() );
 

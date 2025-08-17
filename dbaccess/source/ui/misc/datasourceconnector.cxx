@@ -120,7 +120,7 @@ namespace dbaui
 
                 Reference< XModel > xModel( getDataSourceOrModel( _xDataSource ), UNO_QUERY_THROW );
                 ::comphelper::NamedValueCollection aArgs( xModel->getArgs() );
-                Reference< XInteractionHandler > xHandler( aArgs.getOrDefault( "InteractionHandler", Reference< XInteractionHandler >() ) );
+                Reference< XInteractionHandler > xHandler( aArgs.getOrDefault( u"InteractionHandler"_ustr, Reference< XInteractionHandler >() ) );
 
                 if ( !xHandler.is() )
                 {
@@ -184,7 +184,7 @@ namespace dbaui
         {
             if ( _pErrorInfo )
             {
-                *_pErrorInfo = aInfo;
+                *_pErrorInfo = std::move(aInfo);
             }
             else
             {

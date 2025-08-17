@@ -51,8 +51,8 @@ AccObjectWinManager complete the functions:
 class AccObjectWinManager
 {
 private:
-    typedef std::map<com::sun::star::accessibility::XAccessible*, AccObject> XIdToAccObjHash;
-    typedef std::map<HWND, com::sun::star::accessibility::XAccessible*> XHWNDToXAccHash;
+    typedef std::map<css::accessibility::XAccessible*, AccObject> XIdToAccObjHash;
+    typedef std::map<HWND, css::accessibility::XAccessible*> XHWNDToXAccHash;
     typedef std::map<const long, AccObject*> XResIdToAccObjHash;
 
     typedef std::map<const HWND, css::accessibility::XAccessible* >
@@ -113,11 +113,7 @@ public:
     void  SetValue( css::accessibility::XAccessible* pXAcc, css::uno::Any pAny );
     void  UpdateValue( css::accessibility::XAccessible* pXAcc );
 
-    void  SetAccName( css::accessibility::XAccessible* pXAcc, css::uno::Any newName);
-    void  UpdateAccName( css::accessibility::XAccessible* pXAcc );
-
     void  UpdateAccFocus( css::accessibility::XAccessible* newFocus );
-    void  UpdateAction( css::accessibility::XAccessible* pXAcc );
 
     static bool IsContainer( css::accessibility::XAccessible* pAccessible );
 
@@ -131,10 +127,6 @@ public:
     void SaveTopWindowHandle(HWND hWnd, css::accessibility::XAccessible* pXAcc);
 
     void UpdateChildState(css::accessibility::XAccessible* pXAcc);
-
-    bool IsSpecialToolbarItem(css::accessibility::XAccessible* pXAcc);
-
-    static short GetRole(css::accessibility::XAccessible* pXAcc);
 
     css::accessibility::XAccessible* GetAccDocByAccTopWin( css::accessibility::XAccessible* pXAcc );
     bool IsTopWinAcc( css::accessibility::XAccessible* pXAcc );

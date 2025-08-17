@@ -23,12 +23,11 @@
 #include <svx/xtable.hxx>
 
 class SfxObjectShell;
-enum class ChangeType;
 
 /**
  * Page configuration-tab-dialog
  */
-class SdPageDlg : public SfxTabDialogController
+class SdPageDlg final : public SfxTabDialogController
 {
 private:
     bool mbIsImpressDoc;

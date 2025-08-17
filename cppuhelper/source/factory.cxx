@@ -76,14 +76,14 @@ public:
         const Sequence< OUString > * pServiceNames_,
         bool bOneInstance_ )
         : WeakComponentImplHelper( m_aMutex )
-        , bOneInstance( bOneInstance_ )
-        , xSMgr( rServiceManager )
-        , pCreateFunction( pCreateFunction_ )
+        , m_bOneInstance( bOneInstance_ )
+        , m_xSMgr( rServiceManager )
+        , m_pCreateFunction( pCreateFunction_ )
         , m_fptr( fptr )
-        , aImplementationName(std::move( aImplementationName_ ))
+        , m_aImplementationName(std::move( aImplementationName_ ))
         {
             if( pServiceNames_ )
-                aServiceNames = *pServiceNames_;
+                m_aServiceNames = *pServiceNames_;
         }
 
     // XSingleServiceFactory
@@ -115,12 +115,12 @@ private:
         css::uno::Sequence<css::uno::Any> const & rArguments,
         css::uno::Reference<css::uno::XComponentContext> const & xContext);
 
-    Reference<XInterface >  xTheInstance;
-    bool                bOneInstance;
+    Reference<XInterface >  m_xTheInstance;
+    bool                m_bOneInstance;
 protected:
     // needed for implementing XUnloadingPreference in inheriting classes
-    bool isOneInstance() const {return bOneInstance;}
-    bool isInstance() const {return xTheInstance.is();}
+    bool isOneInstance() const {return m_bOneInstance;}
+    bool isInstance() const {return m_xTheInstance.is();}
 
     /**
      * Create an instance specified by the factory. The one instance logic is implemented
@@ -132,11 +132,11 @@ protected:
     virtual Reference<XInterface >  createInstanceEveryTime(
         Reference< XComponentContext > const & xContext );
 
-    Reference<XMultiServiceFactory > xSMgr;
-    ComponentInstantiation           pCreateFunction;
+    Reference<XMultiServiceFactory > m_xSMgr;
+    ComponentInstantiation           m_pCreateFunction;
     ComponentFactoryFunc             m_fptr;
-    Sequence< OUString >             aServiceNames;
-    OUString                         aImplementationName;
+    Sequence< OUString >             m_aServiceNames;
+    OUString                         m_aImplementationName;
 };
 
 }
@@ -163,16 +163,16 @@ Reference<XInterface > OFactoryComponentHelper::createInstanceEveryTime(
     {
         return (*m_fptr)( xContext );
     }
-    if( pCreateFunction )
+    if( m_pCreateFunction )
     {
         if (xContext.is())
         {
             Reference< lang::XMultiServiceFactory > xContextMgr(
                 xContext->getServiceManager(), UNO_QUERY );
             if (xContextMgr.is())
-                return (*pCreateFunction)( xContextMgr );
+                return (*m_pCreateFunction)( xContextMgr );
         }
-        return (*pCreateFunction)( xSMgr );
+        return (*m_pCreateFunction)( m_xSMgr );
     }
     return Reference< XInterface >();
 }
@@ -180,15 +180,15 @@ Reference<XInterface > OFactoryComponentHelper::createInstanceEveryTime(
 // XSingleServiceFactory
 Reference<XInterface > OFactoryComponentHelper::createInstance()
 {
-    if( bOneInstance )
+    if ( m_bOneInstance )
     {
-        if( !xTheInstance.is() )
+        if( !m_xTheInstance.is() )
         {
             MutexGuard aGuard( m_aMutex );
-            if( !xTheInstance.is() )
-                xTheInstance = createInstanceEveryTime( Reference< XComponentContext >() );
+            if( !m_xTheInstance.is() )
+                m_xTheInstance = createInstanceEveryTime( Reference< XComponentContext >() );
         }
-        return xTheInstance;
+        return m_xTheInstance;
     }
     return createInstanceEveryTime( Reference< XComponentContext >() );
 }
@@ -196,17 +196,17 @@ Reference<XInterface > OFactoryComponentHelper::createInstance()
 Reference<XInterface > OFactoryComponentHelper::createInstanceWithArguments(
     const Sequence<Any>& Arguments )
 {
-    if( bOneInstance )
+    if ( m_bOneInstance )
     {
-        if( !xTheInstance.is() )
+        if( !m_xTheInstance.is() )
         {
             MutexGuard aGuard( m_aMutex );
 //          OSL_ENSURE( !xTheInstance.is(), "### arguments will be ignored!" );
-            if( !xTheInstance.is() )
-                xTheInstance = createInstanceWithArgumentsEveryTime(
+            if( !m_xTheInstance.is() )
+                m_xTheInstance = createInstanceWithArgumentsEveryTime(
                     Arguments, Reference< XComponentContext >() );
         }
-        return xTheInstance;
+        return m_xTheInstance;
     }
     return createInstanceWithArgumentsEveryTime( Arguments, Reference< XComponentContext >() );
 }
@@ -216,16 +216,16 @@ Reference<XInterface > OFactoryComponentHelper::createInstanceWithArguments(
 Reference< XInterface > OFactoryComponentHelper::createInstanceWithContext(
     Reference< XComponentContext > const & xContext )
 {
-    if( bOneInstance )
+    if ( m_bOneInstance )
     {
-        if( !xTheInstance.is() )
+        if( !m_xTheInstance.is() )
         {
             MutexGuard aGuard( m_aMutex );
 //          OSL_ENSURE( !xTheInstance.is(), "### context will be ignored!" );
-            if( !xTheInstance.is() )
-                xTheInstance = createInstanceEveryTime( xContext );
+            if( !m_xTheInstance.is() )
+                m_xTheInstance = createInstanceEveryTime( xContext );
         }
-        return xTheInstance;
+        return m_xTheInstance;
     }
     return createInstanceEveryTime( xContext );
 }
@@ -234,16 +234,16 @@ Reference< XInterface > OFactoryComponentHelper::createInstanceWithArgumentsAndC
     Sequence< Any > const & rArguments,
     Reference< XComponentContext > const & xContext )
 {
-    if( bOneInstance )
+    if ( m_bOneInstance )
     {
-        if( !xTheInstance.is() )
+        if( !m_xTheInstance.is() )
         {
             MutexGuard aGuard( m_aMutex );
 //          OSL_ENSURE( !xTheInstance.is(), "### context and arguments will be ignored!" );
-            if( !xTheInstance.is() )
-                xTheInstance = createInstanceWithArgumentsEveryTime( rArguments, xContext );
+            if( !m_xTheInstance.is() )
+                m_xTheInstance = createInstanceWithArgumentsEveryTime( rArguments, xContext );
         }
-        return xTheInstance;
+        return m_xTheInstance;
     }
     return createInstanceWithArgumentsEveryTime( rArguments, xContext );
 }
@@ -272,7 +272,7 @@ OFactoryComponentHelper::createInstanceWithArgumentsEveryTime(
                 xComp->dispose();
 
             throw lang::IllegalArgumentException(
-                "cannot pass arguments to component => no XInitialization implemented!",
+                u"cannot pass arguments to component => no XInitialization implemented!"_ustr,
                 Reference< XInterface >(), 0 );
         }
     }
@@ -288,8 +288,8 @@ void OFactoryComponentHelper::disposing()
     {
         // do not delete in the guard section
         MutexGuard aGuard( m_aMutex );
-        x = xTheInstance;
-        xTheInstance.clear();
+        x = m_xTheInstance;
+        m_xTheInstance.clear();
     }
     // if it is a component call dispose at the component
     Reference<XComponent > xComp( x, UNO_QUERY );
@@ -300,7 +300,7 @@ void OFactoryComponentHelper::disposing()
 // XServiceInfo
 OUString OFactoryComponentHelper::getImplementationName()
 {
-    return aImplementationName;
+    return m_aImplementationName;
 }
 
 // XServiceInfo
@@ -313,7 +313,7 @@ sal_Bool OFactoryComponentHelper::supportsService(
 // XServiceInfo
 Sequence< OUString > OFactoryComponentHelper::getSupportedServiceNames()
 {
-    return aServiceNames;
+    return m_aServiceNames;
 }
 
 // XUnloadingPreference
@@ -325,7 +325,7 @@ Sequence< OUString > OFactoryComponentHelper::getSupportedServiceNames()
 // component factory: sal_True
 sal_Bool SAL_CALL OFactoryComponentHelper::releaseOnNotification()
 {
-    if( bOneInstance)
+    if (m_bOneInstance)
         return false;
     return true;
 }
@@ -459,7 +459,7 @@ IPropertyArrayHelper & ORegistryFactoryHelper::getInfoHelper()
     if (m_property_array_helper == nullptr)
     {
         beans::Property prop(
-            "ImplementationKey" /* name */,
+            u"ImplementationKey"_ustr /* name */,
             0 /* handle */,
             cppu::UnoType<decltype(xImplementationKey)>::get(),
             beans::PropertyAttribute::READONLY |
@@ -483,7 +483,7 @@ void ORegistryFactoryHelper::setFastPropertyValue_NoBroadcast(
     sal_Int32, Any const & )
 {
     throw beans::PropertyVetoException(
-        "unexpected: only readonly properties!",
+        u"unexpected: only readonly properties!"_ustr,
         static_cast< OWeakObject * >(this) );
 }
 
@@ -499,7 +499,7 @@ void ORegistryFactoryHelper::getFastPropertyValue(
     {
         rValue.clear();
         throw beans::UnknownPropertyException(
-            "unknown property!", static_cast< OWeakObject * >(
+            u"unknown property!"_ustr, static_cast< OWeakObject * >(
                 const_cast< ORegistryFactoryHelper * >(this) ) );
     }
 }
@@ -599,7 +599,7 @@ Reference< XInterface > ORegistryFactoryHelper::createModuleFactory()
     OUString aLocation;
 
     Reference<XRegistryKey > xActivatorKey = xImplementationKey->openKey(
-        "/UNO/ACTIVATOR" );
+        u"/UNO/ACTIVATOR"_ustr );
     if( xActivatorKey.is() && xActivatorKey->getValueType() == RegistryValueType_ASCII )
     {
         aActivatorUrl = xActivatorKey->getAsciiValue();
@@ -607,7 +607,7 @@ Reference< XInterface > ORegistryFactoryHelper::createModuleFactory()
         aActivatorName = o3tl::getToken(aActivatorUrl, 0, ':');
 
         Reference<XRegistryKey > xLocationKey = xImplementationKey->openKey(
-            "/UNO/LOCATION" );
+            u"/UNO/LOCATION"_ustr );
         if( xLocationKey.is() && xLocationKey->getValueType() == RegistryValueType_ASCII )
             aLocation = xLocationKey->getAsciiValue();
     }
@@ -616,7 +616,7 @@ Reference< XInterface > ORegistryFactoryHelper::createModuleFactory()
         // old style"url"
         // the location of the program code of the implementation
         Reference<XRegistryKey > xLocationKey = xImplementationKey->openKey(
-            "/UNO/URL" );
+            u"/UNO/URL"_ustr );
         // is the key of the right type ?
         if( xLocationKey.is() && xLocationKey->getValueType() == RegistryValueType_ASCII )
         {
@@ -640,11 +640,11 @@ Reference< XInterface > ORegistryFactoryHelper::createModuleFactory()
     Reference< XInterface > xFactory;
     if( !aActivatorName.isEmpty() )
     {
-        Reference<XInterface > x = xSMgr->createInstance( aActivatorName );
+        Reference<XInterface > x = m_xSMgr->createInstance( aActivatorName );
         Reference<XImplementationLoader > xLoader( x, UNO_QUERY );
         if (xLoader.is())
         {
-            xFactory = xLoader->activate( aImplementationName, aActivatorUrl, aLocation, xImplementationKey );
+            xFactory = xLoader->activate( m_aImplementationName, aActivatorUrl, aLocation, xImplementationKey );
         }
     }
     return xFactory;
@@ -654,12 +654,12 @@ Reference< XInterface > ORegistryFactoryHelper::createModuleFactory()
 Sequence< OUString > ORegistryFactoryHelper::getSupportedServiceNames()
 {
     MutexGuard aGuard( m_aMutex );
-    if( !aServiceNames.hasElements() )
+    if( !m_aServiceNames.hasElements() )
     {
         // not yet loaded
         try
         {
-            Reference<XRegistryKey > xKey = xImplementationKey->openKey( "UNO/SERVICES" );
+            Reference<XRegistryKey > xKey = xImplementationKey->openKey( u"UNO/SERVICES"_ustr );
 
             if (xKey.is())
             {
@@ -671,14 +671,14 @@ Sequence< OUString > ORegistryFactoryHelper::getSupportedServiceNames()
                 for( OUString & key : asNonConstRange(seqKeys) )
                     key = key.copy(nPrefixLen);
 
-                aServiceNames = seqKeys;
+                m_aServiceNames = std::move(seqKeys);
             }
         }
         catch (InvalidRegistryException &)
         {
         }
     }
-    return aServiceNames;
+    return m_aServiceNames;
 }
 
 sal_Bool SAL_CALL ORegistryFactoryHelper::releaseOnNotification()

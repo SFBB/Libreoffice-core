@@ -32,16 +32,16 @@ using namespace com::sun::star;
 namespace oox::shape
 {
 WordprocessingCanvasContext::WordprocessingCanvasContext(FragmentHandler2 const& rParent,
-                                                         css::awt::Size& rSize)
+                                                         const css::awt::Size& rSize)
     : FragmentHandler2(rParent)
     , m_bFullWPGSupport(true)
 {
-    mpShapePtr = std::make_shared<oox::drawingml::Shape>("com.sun.star.drawing.GroupShape");
+    mpShapePtr = std::make_shared<oox::drawingml::Shape>(u"com.sun.star.drawing.GroupShape"_ustr);
     mpShapePtr->setSize(rSize);
     mpShapePtr->setWordprocessingCanvas(true); // will be "WordprocessingCanvas" in InteropGrabBag
     mpShapePtr->setWps(true);
     oox::drawingml::ShapePtr pBackground
-        = std::make_shared<oox::drawingml::Shape>("com.sun.star.drawing.CustomShape");
+        = std::make_shared<oox::drawingml::Shape>(u"com.sun.star.drawing.CustomShape"_ustr);
     pBackground->getCustomShapeProperties()->setShapePresetType(XML_rect);
     pBackground->setSize(rSize);
     pBackground->setWordprocessingCanvas(true);
@@ -73,14 +73,15 @@ WordprocessingCanvasContext::onCreateContext(sal_Int32 nElementToken,
         case XML_wsp: // CT_WordprocessingShape
         {
             oox::drawingml::ShapePtr pShape = std::make_shared<oox::drawingml::Shape>(
-                "com.sun.star.drawing.CustomShape", /*bDefaultHeight=*/false);
+                u"com.sun.star.drawing.CustomShape"_ustr, /*bDefaultHeight=*/false);
             return new oox::shape::WpsContext(*this, uno::Reference<drawing::XShape>(), mpShapePtr,
                                               pShape);
         }
         case XML_pic: // CT_Picture
             return new oox::drawingml::GraphicShapeContext(
                 *this, mpShapePtr,
-                std::make_shared<oox::drawingml::Shape>("com.sun.star.drawing.GraphicObjectShape"));
+                std::make_shared<oox::drawingml::Shape>(
+                    u"com.sun.star.drawing.GraphicObjectShape"_ustr));
             break;
         case XML_graphicFrame: // CT_GraphicFrame
             SAL_INFO("oox",

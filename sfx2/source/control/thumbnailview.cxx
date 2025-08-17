@@ -15,9 +15,11 @@
 #include <utility>
 
 #include "thumbnailviewacc.hxx"
+#include "thumbnailviewitemacc.hxx"
 
 #include <basegfx/color/bcolortools.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/propertyvalue.hxx>
 #include <drawinglayer/attribute/fontattribute.hxx>
 #include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
@@ -34,12 +36,17 @@
 #include <vcl/settings.hxx>
 #include <vcl/event.hxx>
 #include <vcl/filter/PngImageReader.hxx>
+#include <vcl/graphicfilter.hxx>
 #include <vcl/weldutils.hxx>
 
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <com/sun/star/embed/StorageFactory.hpp>
+#include <com/sun/star/embed/StorageFormats.hpp>
+#include <com/sun/star/embed/XHierarchicalStorageAccess.hpp>
+#include <com/sun/star/embed/XRelationshipAccess.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
+#include <com/sun/star/packages/zip/ZipFileAccess.hpp>
 
 #include <memory>
 #if !ENABLE_WASM_STRIP_RECENT
@@ -47,19 +54,85 @@
 #endif
 
 using namespace basegfx;
-using namespace basegfx::utils;
 using namespace drawinglayer::attribute;
 using namespace drawinglayer::primitive2d;
 
 constexpr int gnFineness = 5;
 
-bool ThumbnailView::renameItem(ThumbnailViewItem*, const OUString&)
+bool ThumbnailView::renameItem(ThumbnailViewItem&, const OUString&)
 {
     // Do nothing by default
     return false;
 }
 
-BitmapEx ThumbnailView::readThumbnail(const OUString &msURL)
+static css::uno::Reference<css::embed::XHierarchicalStorageAccess>
+getStorageAccess(const OUString& URL, sal_Int32 format)
+{
+    auto xFactory = css::embed::StorageFactory::create(comphelper::getProcessComponentContext());
+    css::uno::Sequence descriptor{ comphelper::makePropertyValue(u"StorageFormat"_ustr, format) };
+    css::uno::Sequence args{ css::uno::Any(URL), css::uno::Any(css::embed::ElementModes::READ),
+                             css::uno::Any(descriptor) };
+    return xFactory->createInstanceWithArguments(args)
+        .queryThrow<css::embed::XHierarchicalStorageAccess>();
+}
+
+static css::uno::Reference<css::io::XInputStream>
+getHierarchicalStream(const css::uno::Reference<css::embed::XHierarchicalStorageAccess>& xStorage,
+                      const OUString& name)
+{
+    auto xStream
+        = xStorage->openStreamElementByHierarchicalName(name, css::embed::ElementModes::READ);
+    return xStream->getInputStream();
+}
+
+static css::uno::Reference<css::io::XInputStream>
+getFirstHierarchicalStream(const OUString& URL, sal_Int32 format,
+                           std::initializer_list<OUString> names)
+{
+    auto xStorage(getStorageAccess(URL, format));
+    for (const auto& name : names)
+    {
+        try
+        {
+            return getHierarchicalStream(xStorage, name);
+        }
+        catch (const css::uno::Exception&)
+        {
+            TOOLS_WARN_EXCEPTION("sfx", "caught exception while trying to access " << name << " of "
+                                                                                   << URL);
+        }
+    }
+    return {};
+}
+
+static css::uno::Reference<css::io::XInputStream>
+getFirstStreamByRelType(const OUString& URL, std::initializer_list<OUString> types)
+{
+    auto xStorage(getStorageAccess(URL, css::embed::StorageFormats::OFOPXML));
+    if (auto xRelationshipAccess = xStorage.query<css::embed::XRelationshipAccess>())
+    {
+        for (const auto& type : types)
+        {
+            auto rels = xRelationshipAccess->getRelationshipsByType(type);
+            if (rels.hasElements())
+            {
+                // ISO/IEC 29500-1:2016(E) 15.2.16 Thumbnail Part: "Packages shall not contain
+                // more than one thumbnail relationship associated with the package as a whole"
+                for (const auto& [tag, value] : rels[0])
+                {
+                    if (tag == "Id")
+                    {
+                        return getHierarchicalStream(xStorage,
+                                                     xRelationshipAccess->getTargetByID(value));
+                    }
+                }
+            }
+        }
+    }
+    return {};
+}
+
+Bitmap ThumbnailView::readThumbnail(const OUString &msURL)
 {
     using namespace ::com::sun::star;
     using namespace ::com::sun::star::uno;
@@ -67,64 +140,15 @@ BitmapEx ThumbnailView::readThumbnail(const OUString &msURL)
     // Load the thumbnail from a template document.
     uno::Reference<io::XInputStream> xIStream;
 
-    uno::Reference< uno::XComponentContext > xContext(::comphelper::getProcessComponentContext());
     try
     {
-        uno::Reference<lang::XSingleServiceFactory> xStorageFactory = embed::StorageFactory::create(xContext);
-
-        uno::Sequence<uno::Any> aArgs{ uno::Any(msURL), uno::Any(embed::ElementModes::READ) };
-        uno::Reference<embed::XStorage> xDocStorage (
-            xStorageFactory->createInstanceWithArguments(aArgs),
-            uno::UNO_QUERY);
-
-        try
-        {
-            if (xDocStorage.is())
-            {
-                uno::Reference<embed::XStorage> xStorage (
-                    xDocStorage->openStorageElement(
-                        "Thumbnails",
-                        embed::ElementModes::READ));
-                if (xStorage.is())
-                {
-                    uno::Reference<io::XStream> xThumbnailCopy (
-                        xStorage->cloneStreamElement("thumbnail.png"));
-                    if (xThumbnailCopy.is())
-                        xIStream = xThumbnailCopy->getInputStream();
-                }
-            }
-        }
-        catch (const uno::Exception&)
-        {
-            TOOLS_WARN_EXCEPTION("sfx",
-                "caught exception while trying to access Thumbnail/thumbnail.png of " << msURL);
-        }
-
-        try
-        {
-            // An (older) implementation had a bug - The storage
-            // name was "Thumbnail" instead of "Thumbnails".  The
-            // old name is still used as fallback but this code can
-            // be removed soon.
-            if ( ! xIStream.is())
-            {
-                uno::Reference<embed::XStorage> xStorage (
-                    xDocStorage->openStorageElement( "Thumbnail",
-                        embed::ElementModes::READ));
-                if (xStorage.is())
-                {
-                    uno::Reference<io::XStream> xThumbnailCopy (
-                        xStorage->cloneStreamElement("thumbnail.png"));
-                    if (xThumbnailCopy.is())
-                        xIStream = xThumbnailCopy->getInputStream();
-                }
-            }
-        }
-        catch (const uno::Exception&)
-        {
-            TOOLS_WARN_EXCEPTION("sfx",
-                "caught exception while trying to access Thumbnails/thumbnail.png of " << msURL);
-        }
+        // An (older) implementation had a bug - The storage
+        // name was "Thumbnail" instead of "Thumbnails".  The
+        // old name is still used as fallback but this code can
+        // be removed soon.
+        xIStream = getFirstHierarchicalStream(
+            msURL, embed::StorageFormats::PACKAGE,
+            { u"Thumbnails/thumbnail.png"_ustr, u"Thumbnail/thumbnail.png"_ustr });
     }
     catch (const uno::Exception&)
     {
@@ -133,20 +157,35 @@ BitmapEx ThumbnailView::readThumbnail(const OUString &msURL)
             << msURL);
     }
 
+    if (!xIStream.is())
+    {
+        // OOXML?
+        try
+        {
+            // Check both Transitional and Strict relationships
+            xIStream = getFirstStreamByRelType(
+                msURL,
+                { u"http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail"_ustr,
+                  u"http://purl.oclc.org/ooxml/officeDocument/relationships/metadata/thumbnail"_ustr });
+        }
+        catch (const uno::Exception&)
+        {
+            // Not an OOXML; fine
+        }
+    }
+
     // Extract the image from the stream.
     BitmapEx aThumbnail;
-    if (xIStream.is())
+    if (auto pStream = utl::UcbStreamHelper::CreateStream(xIStream, /*CloseStream=*/true))
     {
-        std::unique_ptr<SvStream> pStream (
-            ::utl::UcbStreamHelper::CreateStream (xIStream));
-        vcl::PngImageReader aReader (*pStream);
-        aThumbnail = aReader.read ();
+        Graphic aGraphic = GraphicFilter::GetGraphicFilter().ImportUnloadedGraphic(*pStream);
+        aThumbnail = aGraphic.GetBitmapEx();
     }
 
     // Note that the preview is returned without scaling it to the desired
     // width.  This gives the caller the chance to take advantage of a
     // possibly larger resolution then was asked for.
-    return aThumbnail;
+    return Bitmap(aThumbnail);
 }
 
 ThumbnailView::ThumbnailView(std::unique_ptr<weld::ScrolledWindow> xWindow, std::unique_ptr<weld::Menu> xMenu)
@@ -160,17 +199,17 @@ ThumbnailView::ThumbnailView(std::unique_ptr<weld::ScrolledWindow> xWindow, std:
     , mxContextMenu(std::move(xMenu))
 {
     ImplInit();
-    mxScrolledWindow->connect_vadjustment_changed(LINK(this, ThumbnailView, ImplScrollHdl));
+    mxScrolledWindow->connect_vadjustment_value_changed(LINK(this, ThumbnailView, ImplScrollHdl));
 }
 
 ThumbnailView::~ThumbnailView()
 {
+    ImplDeleteItems();
+
     if (mxAccessible.is())
         mxAccessible->dispose();
 
     mpItemAttrs.reset();
-
-    ImplDeleteItems();
 }
 
 bool ThumbnailView::MouseMove(const MouseEvent& rMEvt)
@@ -202,7 +241,7 @@ OUString ThumbnailView::RequestHelp(tools::Rectangle& rHelpRect)
         if (!pItem->mbVisible)
             continue;
         const tools::Rectangle& rDrawArea = pItem->getDrawArea();
-        if (pItem->mbVisible && rDrawArea.Contains(aPos))
+        if (rDrawArea.Contains(aPos))
         {
             rHelpRect = rDrawArea;
             return pItem->getHelpText();
@@ -290,12 +329,14 @@ void ThumbnailView::ImplDeleteItems()
             // fire accessible event???
         }
 
-        if ( pItem->isVisible() && ImplHasAccessibleListeners() )
+        rtl::Reference<ThumbnailViewItemAcc> xItemAcc = pItem->GetAccessible(false);
+        if (xItemAcc.is())
         {
             css::uno::Any aOldAny, aNewAny;
-
-            aOldAny <<= css::uno::Reference<css::accessibility::XAccessible>(pItem->GetAccessible( false ));
+            aOldAny <<= css::uno::Reference<css::accessibility::XAccessible>(pItem->GetAccessible());
             ImplFireAccessibleEvent( css::accessibility::AccessibleEventId::CHILD, aOldAny, aNewAny );
+
+            xItemAcc->dispose();
         }
 
         mItemList[i].reset();
@@ -322,7 +363,7 @@ void ThumbnailView::OnItemDblClicked (ThumbnailViewItem*)
 {
 }
 
-css::uno::Reference< css::accessibility::XAccessible > ThumbnailView::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> ThumbnailView::CreateAccessible()
 {
     mxAccessible.set(new ThumbnailViewAcc(this));
     return mxAccessible;
@@ -372,9 +413,28 @@ void ThumbnailView::CalculateItemPositions(bool bScrollBarUsed)
     if (nVItemSpace == -1) // auto, split up extra space to use as vertical spacing
         nVItemSpace = nVSpace / (mnVisLines+1);
 
+    // tdf#162510 - calculate maximum number of rows
+    size_t nItemCountPinned = 0;
+#if !ENABLE_WASM_STRIP_RECENT
+    bool bPinnedItems = true;
+    for (size_t i = 0; bPinnedItems && i < nItemCount; ++i)
+    {
+        ThumbnailViewItem& rItem = *mFilteredItemList[i];
+        if (auto const pRecentDocsItem = dynamic_cast<RecentDocsViewItem*>(&rItem))
+        {
+            if (pRecentDocsItem->isPinned())
+                ++nItemCountPinned;
+            else
+                bPinnedItems = false;
+        }
+    }
+#endif
+
     // calculate maximum number of rows
     // Floor( (M+N-1)/N )==Ceiling( M/N )
-    mnLines = (static_cast<tools::Long>(nItemCount)+mnCols-1) / mnCols;
+    mnLines = (static_cast<tools::Long>(nItemCount - nItemCountPinned) + mnCols - 1) / mnCols;
+    // tdf#162510 - add pinned items to number of lines
+    mnLines += (static_cast<tools::Long>(nItemCountPinned) + mnCols - 1) / mnCols;
 
     if ( !mnLines )
         mnLines = 1;
@@ -408,85 +468,76 @@ void ThumbnailView::CalculateItemPositions(bool bScrollBarUsed)
     size_t nFirstItem = (bScrollBarUsed ? nHiddenLines : mnFirstLine) * mnCols;
     size_t nLastItem = nFirstItem + (mnVisLines + 1) * mnCols;
 
-    // If want also draw parts of items in the last line,
-    // then we add one more line if parts of this line are visible
-
-    bool bPinnedItems = true;
-    size_t nCurCount = 0;
-    for ( size_t i = 0; i < nItemCount; i++ )
+    // tdf#162510 - helper for in order to handle accessibility events
+    auto handleAccessibleEvent = [&](ThumbnailViewItem& rItem, bool bIsVisible)
     {
-        ThumbnailViewItem *const pItem = mFilteredItemList[i];
-
-#if !ENABLE_WASM_STRIP_RECENT
-        // tdf#38742 - show pinned items in a separate line
-        if (auto const pRecentDocsItem = dynamic_cast<RecentDocsViewItem*>(pItem))
+        if (ImplHasAccessibleListeners())
         {
-            if (bPinnedItems && !pRecentDocsItem->isPinned())
-            {
-                bPinnedItems = false;
-                // Start a new line only if the entire line is not filled
-                if (nCurCount % mnCols && nCurCount > nFirstItem)
-                {
-                    x = nStartX;
-                    y += mnItemHeight + nVItemSpace;
-                }
-                nCurCount = 0;
-            }
+            css::uno::Any aOldAny, aNewAny;
+            if (bIsVisible)
+                aNewAny <<= css::uno::Reference<css::accessibility::XAccessible>(rItem.GetAccessible());
+            else
+                aOldAny <<= css::uno::Reference<css::accessibility::XAccessible>(rItem.GetAccessible());
+            ImplFireAccessibleEvent(css::accessibility::AccessibleEventId::CHILD, aOldAny, aNewAny);
         }
-#endif
+    };
 
-        if ((nCurCount >= nFirstItem) && (nCurCount < nLastItem))
+    // tdf#162510 - helper to set visibility and update layout
+    auto updateItemLayout = [&](ThumbnailViewItem& rItem, bool bIsVisible, size_t& nVisibleCount)
+    {
+        if (bIsVisible != rItem.isVisible())
         {
-            if( !pItem->isVisible())
-            {
-                if ( ImplHasAccessibleListeners() )
-                {
-                    css::uno::Any aOldAny, aNewAny;
+            handleAccessibleEvent(rItem, bIsVisible);
+            rItem.show(bIsVisible);
+            maItemStateHdl.Call(&rItem);
+        }
 
-                    aNewAny <<= css::uno::Reference<css::accessibility::XAccessible>(pItem->GetAccessible( false ));
-                    ImplFireAccessibleEvent( css::accessibility::AccessibleEventId::CHILD, aOldAny, aNewAny );
-                }
+        if (bIsVisible)
+        {
+            rItem.setDrawArea(::tools::Rectangle(Point(x, y), Size(mnItemWidth, mnItemHeight)));
+            rItem.calculateItemsPosition(mnThumbnailHeight, mnItemPadding,
+                                         mpItemAttrs->nMaxTextLength, mpItemAttrs.get());
 
-                pItem->show(true);
-
-                maItemStateHdl.Call(pItem);
-            }
-
-            pItem->setDrawArea(::tools::Rectangle( Point(x,y), Size(mnItemWidth, mnItemHeight) ));
-            pItem->calculateItemsPosition(mnThumbnailHeight,mnItemPadding,mpItemAttrs->nMaxTextLength,mpItemAttrs.get());
-
-            if ( !((nCurCount+1) % mnCols) )
+            if ((nVisibleCount + 1) % mnCols)
+                x += mnItemWidth + nHItemSpace;
+            else
             {
                 x = nStartX;
-                y += mnItemHeight+nVItemSpace;
+                y += mnItemHeight + nVItemSpace;
             }
-            else
-                x += mnItemWidth+nHItemSpace;
+            ++nVisibleCount;
         }
-        else
-        {
-            if( pItem->isVisible())
-            {
-                if ( ImplHasAccessibleListeners() )
-                {
-                    css::uno::Any aOldAny, aNewAny;
+    };
 
-                    aOldAny <<= css::uno::Reference<css::accessibility::XAccessible>(pItem->GetAccessible( false ));
-                    ImplFireAccessibleEvent( css::accessibility::AccessibleEventId::CHILD, aOldAny, aNewAny );
-                }
+    size_t nCurCountVisible = 0;
+#if !ENABLE_WASM_STRIP_RECENT
+    // tdf#162510 - process pinned items
+    for (size_t i = 0; i < nItemCountPinned; i++)
+        updateItemLayout(*mFilteredItemList[i], nFirstItem <= i && i < nLastItem, nCurCountVisible);
 
-                pItem->show(false);
-
-                maItemStateHdl.Call(pItem);
-            }
-
-        }
-
-        ++nCurCount;
+    // tdf#162510 - start a new line only if the entire line is not filled with pinned items
+    if (nCurCountVisible && nCurCountVisible % mnCols)
+    {
+        x = nStartX;
+        y += mnItemHeight + nVItemSpace;
     }
 
-    // arrange ScrollBar, set values and show it
-    mnLines = (nCurCount+mnCols-1)/mnCols;
+    // tdf#164102 - adjust first item only if there are any pinned items
+    if (const auto nRemainingPinnedSlots = nItemCountPinned % mnCols)
+    {
+        // tdf#162510 - adjust first item to take into account the new line after pinned items
+        const auto nFirstItemAdjustment = mnCols - nRemainingPinnedSlots;
+        if (nFirstItemAdjustment <= nFirstItem)
+            nFirstItem -= nFirstItemAdjustment;
+    }
+
+#endif
+
+    // If want also draw parts of items in the last line,
+    // then we add one more line if parts of this line are visible
+    nCurCountVisible = 0;
+    for (size_t i = nItemCountPinned; i < nItemCount; i++)
+        updateItemLayout(*mFilteredItemList[i], nFirstItem <= i && i < nLastItem, nCurCountVisible);
 
     // check if scroll is needed
     mbScroll = mnLines > mnVisLines;
@@ -697,14 +748,20 @@ bool ThumbnailView::KeyInput( const KeyEvent& rKEvt )
                         aRange = std::make_pair(nLastPos,nNextPos-1);
                 }
                 else
+                {
+                    assert(nLastPos > 0);
                     aRange = std::make_pair(nNextPos,nLastPos-1);
+                }
             }
             else if (nLastPos == nSelPos)
             {
                 if (nNextPos > nLastPos)
                     aRange = std::make_pair(nLastPos+1,nNextPos);
                 else
+                {
+                    assert(nLastPos > 0);
                     aRange = std::make_pair(nNextPos,nLastPos-1);
+                }
             }
             else
             {
@@ -1124,7 +1181,7 @@ void ThumbnailView::SelectItem( sal_uInt16 nItemId )
         return;
 
     // focus event (select)
-    const rtl::Reference<ThumbnailViewItemAcc> & pItemAcc = pItem->GetAccessible( false );
+    const rtl::Reference<ThumbnailViewItemAcc>& pItemAcc = pItem->GetAccessible();
 
     if( pItemAcc )
     {
@@ -1207,7 +1264,7 @@ void ThumbnailView::filterItems(const std::function<bool (const ThumbnailViewIte
                 {
                     css::uno::Any aOldAny, aNewAny;
 
-                    aOldAny <<= css::uno::Reference<css::accessibility::XAccessible>(pItem->GetAccessible( false ));
+                    aOldAny <<= css::uno::Reference<css::accessibility::XAccessible>(pItem->GetAccessible());
                     ImplFireAccessibleEvent( css::accessibility::AccessibleEventId::CHILD, aOldAny, aNewAny );
                 }
 

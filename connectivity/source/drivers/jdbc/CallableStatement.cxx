@@ -33,13 +33,12 @@
 
 using namespace connectivity;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 
 
-IMPLEMENT_SERVICE_INFO(java_sql_CallableStatement,"com.sun.star.sdbcx.ACallableStatement","com.sun.star.sdbc.CallableStatement");
+IMPLEMENT_SERVICE_INFO(java_sql_CallableStatement,u"com.sun.star.sdbcx.ACallableStatement"_ustr,u"com.sun.star.sdbc.CallableStatement"_ustr);
 
 
 //************ Class: java.sql.CallableStatement
@@ -62,10 +61,10 @@ Any SAL_CALL java_sql_CallableStatement::queryInterface( const Type & rType )
 
 css::uno::Sequence< css::uno::Type > SAL_CALL java_sql_CallableStatement::getTypes(  )
 {
-    ::cppu::OTypeCollection aTypes( cppu::UnoType<css::sdbc::XRow>::get(),
-                                    cppu::UnoType<css::sdbc::XOutParameters>::get());
+    css::uno::Type aTypes[] { cppu::UnoType<css::sdbc::XRow>::get(),
+                              cppu::UnoType<css::sdbc::XOutParameters>::get() };
 
-    return ::comphelper::concatSequences(aTypes.getTypes(),java_sql_PreparedStatement::getTypes());
+    return ::comphelper::concatSequences(java_sql_PreparedStatement::getTypes(), aTypes);
 }
 
 sal_Bool SAL_CALL java_sql_CallableStatement::wasNull(  )

@@ -24,8 +24,13 @@
 #include <toolkit/helper/vclunohelper.hxx>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/util/URL.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
+#include <ResourceId.hxx>
+#include <strings.hrc>
+#include <sdresid.hxx>
+#include <DrawDocShell.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -35,8 +40,9 @@ namespace sd::framework {
 
 FullScreenPane::FullScreenPane (
     const Reference<XComponentContext>& rxComponentContext,
-    const Reference<XResourceId>& rxPaneId,
-    const vcl::Window* pViewShellWindow)
+    const rtl::Reference<ResourceId>& rxPaneId,
+    const vcl::Window* pViewShellWindow,
+    const DrawDocShell* pDrawDocShell)
     : FrameWindowPane(rxPaneId,nullptr),
       mxComponentContext(rxComponentContext)
 {
@@ -53,9 +59,6 @@ FullScreenPane::FullScreenPane (
 
     if ( ! rxPaneId.is())
         throw lang::IllegalArgumentException();
-
-    if (!mpWorkWindow)
-        return;
 
     // Create a new top-level window that is displayed full screen.
     if (bFullScreen)
@@ -76,10 +79,12 @@ FullScreenPane::FullScreenPane (
 
     // Set title and icon of the new window to those of the current window
     // of the view shell.
-    if (pViewShellWindow != nullptr)
+    if (pViewShellWindow != nullptr && pDrawDocShell != nullptr)
     {
-        const SystemWindow* pSystemWindow = pViewShellWindow->GetSystemWindow();
-        mpWorkWindow->SetText(pSystemWindow->GetText());
+        SystemWindow* pSystemWindow = pViewShellWindow->GetSystemWindow();
+        OUString Title(SdResId(STR_FULLSCREEN_CONSOLE));
+        Title = Title.replaceFirst("%s", pDrawDocShell->GetTitle(SFX_TITLE_DETECT));
+        mpWorkWindow->SetText(Title);
         mpWorkWindow->SetIcon(pSystemWindow->GetIcon());
     }
 
@@ -101,7 +106,7 @@ FullScreenPane::~FullScreenPane() noexcept
 {
 }
 
-void SAL_CALL FullScreenPane::disposing()
+void FullScreenPane::disposing(std::unique_lock<std::mutex>& l)
 {
     mpWindow.disposeAndClear();
 
@@ -112,60 +117,20 @@ void SAL_CALL FullScreenPane::disposing()
         mpWorkWindow.disposeAndClear();
     }
 
-    FrameWindowPane::disposing();
+    FrameWindowPane::disposing(l);
 }
 
-//----- XPane -----------------------------------------------------------------
-
-sal_Bool SAL_CALL FullScreenPane::isVisible()
+void FullScreenPane::setVisible (const bool bIsVisible)
 {
-    ThrowIfDisposed();
-
-    if (mpWindow != nullptr)
-        return mpWindow->IsReallyVisible();
-    else
-        return false;
-}
-
-void SAL_CALL FullScreenPane::setVisible (const sal_Bool bIsVisible)
-{
-    ThrowIfDisposed();
+    {
+        std::unique_lock aGuard (m_aMutex);
+        throwIfDisposed(aGuard);
+    }
 
     if (mpWindow != nullptr)
         mpWindow->Show(bIsVisible);
     if (mpWorkWindow != nullptr)
         mpWorkWindow->Show(bIsVisible);
-}
-
-Reference<css::accessibility::XAccessible> SAL_CALL FullScreenPane::getAccessible()
-{
-    ThrowIfDisposed();
-
-    if (mpWorkWindow != nullptr)
-        return mpWorkWindow->GetAccessible(false);
-    else
-        return nullptr;
-}
-
-void SAL_CALL FullScreenPane::setAccessible (
-    const Reference<css::accessibility::XAccessible>& rxAccessible)
-{
-    ThrowIfDisposed();
-
-    if (mpWindow == nullptr)
-        return;
-
-    Reference<lang::XInitialization> xInitializable (rxAccessible, UNO_QUERY);
-    if (xInitializable.is())
-    {
-        vcl::Window* pParentWindow = mpWindow->GetParent();
-        Reference<css::accessibility::XAccessible> xAccessibleParent;
-        if (pParentWindow != nullptr)
-            xAccessibleParent = pParentWindow->GetAccessible();
-        Sequence<Any> aArguments{ Any(xAccessibleParent) };
-        xInitializable->initialize(aArguments);
-    }
-    GetWindow()->SetAccessible(rxAccessible);
 }
 
 IMPL_LINK(FullScreenPane, WindowEventHandler, VclWindowEvent&, rEvent, void)
@@ -203,13 +168,13 @@ Reference<rendering::XCanvas> FullScreenPane::CreateCanvas()
     Reference<lang::XMultiServiceFactory> xFactory (
         mxComponentContext->getServiceManager(), UNO_QUERY_THROW);
     return Reference<rendering::XCanvas>(
-        xFactory->createInstanceWithArguments("com.sun.star.rendering.SpriteCanvas.VCL",
+        xFactory->createInstanceWithArguments(u"com.sun.star.rendering.SpriteCanvas.VCL"_ustr,
             aArg),
         UNO_QUERY);
 }
 
 void FullScreenPane::ExtractArguments (
-    const Reference<XResourceId>& rxPaneId,
+    const rtl::Reference<ResourceId>& rxPaneId,
     sal_Int32& rnScreenNumberReturnValue,
     bool& rbFullScreen)
 {

@@ -250,6 +250,7 @@ void SwPagePreviewLayout::ApplyNewZoomAtViewShell( sal_uInt8 _aNewZoom )
 */
 void SwPagePreviewLayout::ReInit()
 {
+    mbPrintEmptyPages = mrParentViewShell.getIDocumentDeviceAccess().getPrintData().IsPrintEmptyPages();
     // check environment and parameters
     {
         bool bLayoutSettingsValid = mbLayoutInfoValid && mbLayoutSizesValid;
@@ -388,6 +389,9 @@ bool SwPagePreviewLayout::Prepare( const sal_uInt16 _nProposedStartPageNum,
                 mnPaintPhyStartPageNum = mnPages;
                 mbNoPageVisible = true;
             }
+
+            mnPaintPhyStartPageNum = ConvertRelativeToAbsolutePageNum(
+                mnPaintPhyStartPageNum );
         }
         // set starting column and starting row
         mnPaintStartCol = nColOfProposed;
@@ -932,7 +936,10 @@ SwTwips SwPagePreviewLayout::GetWinPagesScrollAmount(
         nScrollAmount = (mnPreviewLayoutHeight - gnYFree) * _nWinPagesToScroll;
     }
     else
+    {
+        // coverity[ tainted_data_return : FALSE ] version 2023.12.2
         nScrollAmount = _nWinPagesToScroll * maPaintedPreviewDocRect.GetHeight();
+    }
 
     // check, if preview layout size values are valid.
     // If not, the checks for an adjustment of the scroll amount aren't useful.
@@ -1207,11 +1214,8 @@ void SwPagePreviewLayout::PaintSelectMarkAtPage(vcl::RenderContext& rRenderConte
 {
     OutputDevice* pOutputDev = &rRenderContext;
     MapMode aMapMode( pOutputDev->GetMapMode() );
-    // save mapping mode of output device
-    MapMode aSavedMapMode = aMapMode;
-    // save fill and line color of output device
-    Color aFill( pOutputDev->GetFillColor() );
-    Color aLine( pOutputDev->GetLineColor() );
+    // save fill and line color and mapping mode of output device
+    pOutputDev->Push(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR | vcl::PushFlags::MAPMODE);
 
     // determine selection mark color
     Color aSelPgLineColor(117, 114, 106);
@@ -1246,12 +1250,8 @@ void SwPagePreviewLayout::PaintSelectMarkAtPage(vcl::RenderContext& rRenderConte
     aRect = pOutputDev->PixelToLogic( aRect );
     pOutputDev->DrawRect( aRect );
 
-    // reset fill and line color of output device
-    pOutputDev->SetFillColor( aFill );
-    pOutputDev->SetLineColor( aLine );
-
-    // reset mapping mode of output device
-    pOutputDev->SetMapMode( aSavedMapMode );
+    // reset fill and line color and mapping mode of output device
+    pOutputDev->Pop();
 }
 
 /** paint to mark new selected page
@@ -1458,6 +1458,8 @@ sal_uInt16 SwPagePreviewLayout::ConvertRelativeToAbsolutePageNum( sal_uInt16 _nR
         pRet = pTmpPage;
         pTmpPage = static_cast<const SwPageFrame*>( pTmpPage->GetNext() );
     }
+
+    assert(pRet);
 
     return pRet->GetPhyPageNum();
 }

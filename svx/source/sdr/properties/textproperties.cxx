@@ -54,6 +54,7 @@ namespace sdr::properties
                 svl::Items<SDRATTR_START, SDRATTR_SHADOW_LAST,
                 SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST,
                 SDRATTR_TEXTDIRECTION, SDRATTR_TEXTDIRECTION,
+                SDRATTR_GLOW_FIRST, SDRATTR_GLOW_TEXT_LAST,
                 SDRATTR_TEXTCOLUMNS_FIRST, SDRATTR_TEXTCOLUMNS_LAST,
 
                 // range from SdrTextObj
@@ -81,7 +82,7 @@ namespace sdr::properties
             return std::unique_ptr<BaseProperties>(new TextProperties(*this, rObj));
         }
 
-        void TextProperties::ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich)
+        void TextProperties::ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich, bool bAdjustTextFrameWidthAndHeight)
         {
             SdrTextObj& rObj = static_cast<SdrTextObj&>(GetSdrObject());
 
@@ -141,7 +142,7 @@ namespace sdr::properties
                         std::optional<OutlinerParaObject> pTemp = pOutliner->CreateParaObject(0, nParaCount);
                         pOutliner->Clear();
 
-                        rObj.NbcSetOutlinerParaObjectForText(std::move(pTemp),pText);
+                        rObj.NbcSetOutlinerParaObjectForText(std::move(pTemp), pText, bAdjustTextFrameWidthAndHeight);
                     }
                 }
             }
@@ -157,7 +158,7 @@ namespace sdr::properties
                 }
 
             // call parent
-            AttributeProperties::ItemSetChanged(aChangedItems, nDeletedWhich);
+            AttributeProperties::ItemSetChanged(aChangedItems, nDeletedWhich, bAdjustTextFrameWidthAndHeight);
         }
 
         void TextProperties::ItemChange(const sal_uInt16 nWhich, const SfxPoolItem* pNewItem)
@@ -196,7 +197,7 @@ namespace sdr::properties
 
                         if(nParaCount)
                         {
-                            ESelection aSelection( 0, 0, EE_PARA_ALL, EE_TEXTPOS_ALL);
+                            auto aSelection = ESelection::All();
                             rOutliner.RemoveAttribs(aSelection, true, 0);
 
                             std::optional<OutlinerParaObject> pTemp = rOutliner.CreateParaObject(0, nParaCount);
@@ -243,10 +244,10 @@ namespace sdr::properties
         }
 
         void TextProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast)
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight)
         {
             // call parent (always first thing to do, may create the SfxItemSet)
-            AttributeProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr, bBroadcast);
+            AttributeProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr, bBroadcast, bAdjustTextFrameWidthAndHeight);
 
             // #i101556# StyleSheet has changed -> new version
             SdrTextObj& rObj = static_cast<SdrTextObj&>(GetSdrObject());
@@ -349,15 +350,13 @@ namespace sdr::properties
 
                         std::optional<OutlinerParaObject> pTemp = rOutliner.CreateParaObject(0, nParaCount);
                         rOutliner.Clear();
-                        rObj.NbcSetOutlinerParaObjectForText(std::move(pTemp), pText);
+                        rObj.NbcSetOutlinerParaObjectForText(std::move(pTemp), pText, bAdjustTextFrameWidthAndHeight);
                     }
                 }
             }
 
-            if(rObj.IsTextFrame())
-            {
+            if(rObj.IsTextFrame() && !rObj.getSdrModelFromSdrObject().isLocked() && bAdjustTextFrameWidthAndHeight)
                 rObj.NbcAdjustTextFrameWidthAndHeight();
-            }
         }
 
         void TextProperties::ForceDefaultAttributes()
@@ -397,12 +396,18 @@ namespace sdr::properties
             // using existing functionality
             GetObjectItemSet(); // force ItemSet
             std::vector<const SfxPoolItem*> aChangedItems;
-            SfxItemIter aIter(*moItemSet);
-            for (const SfxPoolItem* pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem())
-            {
-                if(!IsInvalidItem(pItem))
-                    aChangedItems.push_back(pItem);
+
+            { // own scope to get SfxItemIter aIter destroyed ASAP - it maybe detected
+              // as reading source to the ItemSet when Items get changed below, but it
+              // is no longer active/needed
+                SfxItemIter aIter(*moItemSet);
+                for (const SfxPoolItem* pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem())
+                {
+                    if(!IsInvalidItem(pItem))
+                        aChangedItems.push_back(pItem);
+                }
             }
+
             ItemSetChanged(aChangedItems, 0);
 
             // now the standard TextProperties stuff
@@ -496,18 +501,18 @@ namespace sdr::properties
                                     {
                                         if(EE_FEATURE_FIELD == rAttrib.pAttr->Which())
                                         {
-                                            aSel.nEndPos = rAttrib.nStart;
+                                            aSel.end.nIndex = rAttrib.nStart;
 
-                                            if(aSel.nStartPos != aSel.nEndPos)
+                                            if (aSel.start.nIndex != aSel.end.nIndex)
                                                 pEditEngine->QuickSetAttribs(aColorSet, aSel);
 
-                                            aSel.nStartPos = rAttrib.nEnd;
+                                            aSel.start.nIndex = rAttrib.nEnd;
                                         }
                                     }
 
-                                    aSel.nEndPos = pEditEngine->GetTextLen(nPara);
+                                    aSel.end.nIndex = pEditEngine->GetTextLen(nPara);
 
-                                    if(aSel.nStartPos != aSel.nEndPos)
+                                    if (aSel.start.nIndex != aSel.end.nIndex)
                                     {
                                         pEditEngine->QuickSetAttribs( aColorSet, aSel );
                                     }
@@ -550,68 +555,66 @@ namespace sdr::properties
             // call parent
             AttributeProperties::Notify(rBC, rHint);
 
-            SdrTextObj& rObj = static_cast<SdrTextObj&>(GetSdrObject());
-            if(!rObj.HasText())
-                return;
+            SfxHintId nId(rHint.GetId());
 
-            const svx::ITextProvider& rTextProvider(getTextProvider());
-            if(dynamic_cast<const SfxStyleSheet *>(&rBC) != nullptr)
+            if(SfxHintId::DataChanged == nId && rBC.IsSfxStyleSheet())
             {
-                SfxHintId nId(rHint.GetId());
+                SdrTextObj& rObj = static_cast<SdrTextObj&>(GetSdrObject());
+                if(!rObj.HasText())
+                    return;
 
-                if(SfxHintId::DataChanged == nId)
+                const svx::ITextProvider& rTextProvider(getTextProvider());
+                sal_Int32 nText = rTextProvider.getTextCount();
+                while (nText--)
                 {
-                    sal_Int32 nText = rTextProvider.getTextCount();
-                    while (nText--)
-                    {
-                        OutlinerParaObject* pParaObj = rTextProvider.getText( nText )->GetOutlinerParaObject();
-                        if( pParaObj )
-                            pParaObj->ClearPortionInfo();
-                    }
-                    rObj.SetTextSizeDirty();
+                    OutlinerParaObject* pParaObj = rTextProvider.getText( nText )->GetOutlinerParaObject();
+                    if( pParaObj )
+                        pParaObj->ClearPortionInfo();
+                }
+                rObj.SetTextSizeDirty();
 
-                    if(rObj.IsTextFrame() && rObj.NbcAdjustTextFrameWidthAndHeight())
-                    {
-                        // here only repaint wanted
-                        rObj.ActionChanged();
-                        //rObj.BroadcastObjectChange();
-                    }
-
-                    // #i101556# content of StyleSheet has changed -> new version
-                    maVersion++;
+                if(rObj.IsTextFrame() && rObj.NbcAdjustTextFrameWidthAndHeight())
+                {
+                    // here only repaint wanted
+                    rObj.ActionChanged();
+                    //rObj.BroadcastObjectChange();
                 }
 
-                if(SfxHintId::Dying == nId)
+                // #i101556# content of StyleSheet has changed -> new version
+                maVersion++;
+            }
+            else if(SfxHintId::Dying == nId && rBC.IsSfxStyleSheet())
+            {
+                SdrTextObj& rObj = static_cast<SdrTextObj&>(GetSdrObject());
+                if(!rObj.HasText())
+                    return;
+
+                const svx::ITextProvider& rTextProvider(getTextProvider());
+                sal_Int32 nText = rTextProvider.getTextCount();
+                while (nText--)
                 {
-                    sal_Int32 nText = rTextProvider.getTextCount();
-                    while (nText--)
-                    {
-                        OutlinerParaObject* pParaObj = rTextProvider.getText( nText )->GetOutlinerParaObject();
-                        if( pParaObj )
-                            pParaObj->ClearPortionInfo();
-                    }
+                    OutlinerParaObject* pParaObj = rTextProvider.getText( nText )->GetOutlinerParaObject();
+                    if( pParaObj )
+                        pParaObj->ClearPortionInfo();
                 }
             }
-            else if(dynamic_cast<const SfxStyleSheetBasePool *>(&rBC) != nullptr)
+            else if (nId == SfxHintId::StyleSheetModifiedExtended)
             {
-                const SfxStyleSheetModifiedHint* pExtendedHint = dynamic_cast<const SfxStyleSheetModifiedHint*>(&rHint);
+                assert(dynamic_cast<const SfxStyleSheetBasePool *>(&rBC) != nullptr);
+                const SfxStyleSheetModifiedHint& rExtendedHint = static_cast<const SfxStyleSheetModifiedHint&>(rHint);
+                const OUString& aOldName(rExtendedHint.GetOldName());
+                OUString aNewName(rExtendedHint.GetStyleSheet()->GetName());
+                SfxStyleFamily eFamily = rExtendedHint.GetStyleSheet()->GetFamily();
 
-                if(pExtendedHint
-                    && SfxHintId::StyleSheetModified == pExtendedHint->GetId())
+                if(aOldName != aNewName)
                 {
-                    const OUString& aOldName(pExtendedHint->GetOldName());
-                    OUString aNewName(pExtendedHint->GetStyleSheet()->GetName());
-                    SfxStyleFamily eFamily = pExtendedHint->GetStyleSheet()->GetFamily();
-
-                    if(aOldName != aNewName)
+                    const svx::ITextProvider& rTextProvider(getTextProvider());
+                    sal_Int32 nText = rTextProvider.getTextCount();
+                    while (nText--)
                     {
-                        sal_Int32 nText = rTextProvider.getTextCount();
-                        while (nText--)
-                        {
-                            OutlinerParaObject* pParaObj = rTextProvider.getText( nText )->GetOutlinerParaObject();
-                            if( pParaObj )
-                                pParaObj->ChangeStyleSheetName(eFamily, aOldName, aNewName);
-                        }
+                        OutlinerParaObject* pParaObj = rTextProvider.getText( nText )->GetOutlinerParaObject();
+                        if( pParaObj )
+                            pParaObj->ChangeStyleSheetName(eFamily, aOldName, aNewName);
                     }
                 }
             }

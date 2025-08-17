@@ -73,7 +73,7 @@ static PyObject *PyUNOStruct_repr( PyObject *self )
     PyUNO *me = reinterpret_cast<PyUNO*>( self );
     PyObject *ret = nullptr;
 
-    if( me->members->wrappedObject.getValueType().getTypeClass()
+    if( me->members->wrappedObject.getValueTypeClass()
         == css::uno::TypeClass_EXCEPTION )
     {
         Reference< XMaterialHolder > rHolder(me->members->xInvocation,UNO_QUERY);
@@ -125,7 +125,6 @@ static PyObject* PyUNOStruct_getattr( PyObject* self, char* name )
     {
         Runtime runtime;
 
-        me = reinterpret_cast<PyUNO*>(self);
         if (strcmp (name, "__dict__") == 0)
         {
             Py_INCREF (Py_TYPE(me)->tp_dict);
@@ -134,7 +133,7 @@ static PyObject* PyUNOStruct_getattr( PyObject* self, char* name )
         if( strcmp( name, "__class__" ) == 0 )
         {
             return getClass(
-                me->members->wrappedObject.getValueType().getTypeName(), runtime ).getAcquired();
+                me->members->wrappedObject.getValueTypeName(), runtime ).getAcquired();
         }
 
         PyObject *pRet = PyObject_GenericGetAttr( self, PyUnicode_FromString( name ) );
@@ -185,9 +184,7 @@ static PyObject* PyUNOStruct_getattr( PyObject* self, char* name )
 
 static int PyUNOStruct_setattr (PyObject* self, char* name, PyObject* value)
 {
-    PyUNO* me;
-
-    me = reinterpret_cast<PyUNO*>(self);
+    PyUNO* me = reinterpret_cast<PyUNO*>(self);
     try
     {
         Runtime runtime;
@@ -281,11 +278,29 @@ static PyObject* PyUNOStruct_cmp( PyObject *self, PyObject *that, int op )
     return result;
 }
 
+#if defined __GNUC__ && !defined __clang__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#endif
 static PyMethodDef PyUNOStructMethods[] =
 {
+#if defined __clang__
+#if __has_warning("-Wcast-function-type-mismatch")
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcast-function-type-mismatch"
+#endif
+#endif
     {"__dir__",    reinterpret_cast<PyCFunction>(PyUNOStruct_dir),    METH_NOARGS,  nullptr},
+#if defined __clang__
+#if __has_warning("-Wcast-function-type-mismatch")
+#pragma clang diagnostic pop
+#endif
+#endif
     {nullptr,         nullptr,                                              0,            nullptr}
 };
+#if defined __GNUC__ && !defined __clang__
+#pragma GCC diagnostic pop
+#endif
 
 static PyTypeObject PyUNOStructType =
 {
@@ -354,6 +369,12 @@ static PyTypeObject PyUNOStructType =
 #pragma clang diagnostic pop
 #endif
 #endif
+#if PY_VERSION_HEX >= 0x030C00A1
+    , 0 // tp_watched
+#endif
+#if PY_VERSION_HEX >= 0x030D00A4
+    , 0 // tp_versions_used
+#endif
 #endif
 #endif
 };
@@ -386,7 +407,7 @@ PyRef PyUNOStruct_new (
     if (self == nullptr)
         return PyRef(); // == error
     self->members = new PyUNOInternals;
-    self->members->xInvocation = xInvocation;
+    self->members->xInvocation = std::move(xInvocation);
     self->members->wrappedObject = targetInterface;
     return PyRef( reinterpret_cast<PyObject*>(self), SAL_NO_ACQUIRE );
 

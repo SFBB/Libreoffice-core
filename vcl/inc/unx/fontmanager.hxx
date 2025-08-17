@@ -41,28 +41,23 @@
  *  friends are PostScript afm style, that is they are 1/1000 font height
  */
 
-class FontAttributes;
 class FontConfigFontOptions;
 namespace vcl::font
 {
 class FontSelectPattern;
 }
-namespace vcl { struct NameRecord; }
 class GenericUnixSalData;
 
 namespace psp {
-class PPDParser;
-
 typedef int fontID;
 
 // a class to manage printable fonts
 
 class VCL_PLUGIN_PUBLIC PrintFontManager
 {
-    struct PrintFont;
     friend struct PrintFont;
 
-    struct VCL_DLLPRIVATE PrintFont
+    struct SAL_DLLPRIVATE PrintFont
     {
         FontAttributes    m_aFontAttributes;
 
@@ -87,7 +82,7 @@ class VCL_PLUGIN_PUBLIC PrintFontManager
 
     OString getFontFile(const PrintFont& rFont) const;
 
-    std::vector<PrintFont> analyzeFontFile(int nDirID, const OString& rFileName, const char *pFormat=nullptr) const;
+    std::vector<PrintFont> analyzeFontFile(int nDirID, const OString& rFileName) const;
     bool analyzeSfntFile(PrintFont& rFont) const;
     // finds the font id for the nFaceIndex face in this font file
     // There may be multiple font ids for font collections
@@ -122,6 +117,9 @@ class VCL_PLUGIN_PUBLIC PrintFontManager
     /* register an application specific font file for libfontconfig */
     static void addFontconfigFile(const OString& rFile);
 
+    /* deregister an application specific font file from libfontconfig */
+    static void removeFontconfigFile(std::string_view aFile);
+
     std::set<OString> m_aPreviousLangSupportRequests;
     std::vector<OUString> m_aCurrentRequests;
     Timer m_aFontInstallerTimer;
@@ -134,7 +132,12 @@ public:
     static PrintFontManager& get(); // one instance only
 
     // There may be multiple font ids for font collections
+    std::vector<fontID> findFontFileIDs( std::u16string_view rFileUrl ) const;
+
+    // There may be multiple font ids for font collections
     std::vector<fontID> addFontFile( std::u16string_view rFileUrl );
+
+    void removeFontFile( std::u16string_view rFileUrl );
 
     void initialize();
 

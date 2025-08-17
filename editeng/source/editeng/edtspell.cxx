@@ -32,7 +32,6 @@
 #include <com/sun/star/linguistic2/XDictionary.hpp>
 
 using namespace com::sun::star::uno;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::linguistic2;
 
 
@@ -49,9 +48,9 @@ EditSpellWrapper::EditSpellWrapper(weld::Widget* pWindow,
 
 void EditSpellWrapper::SpellStart( SvxSpellArea eArea )
 {
-    EditEngine* pEE = pEditView->GetEditEngine();
-    ImpEditEngine* pImpEE = pEditView->GetImpEditEngine();
-    SpellInfo* pSpellInfo = pImpEE->GetSpellInfo();
+    EditEngine& rEditEngine = pEditView->getEditEngine();
+    ImpEditEngine& rImpEditEngine = pEditView->getImpEditEngine();
+    SpellInfo* pSpellInfo = rImpEditEngine.GetSpellInfo();
 
     if ( eArea == SvxSpellArea::BodyStart )
     {
@@ -62,14 +61,13 @@ void EditSpellWrapper::SpellStart( SvxSpellArea eArea )
         {
             pSpellInfo->bSpellToEnd = false;
             pSpellInfo->aSpellTo = pSpellInfo->aSpellStart;
-            pEditView->GetImpEditView()->SetEditSelection(
-                    pEE->GetEditDoc().GetStartPaM() );
+            pEditView->getImpl().SetEditSelection(rEditEngine.GetEditDoc().GetStartPaM());
         }
         else
         {
             pSpellInfo->bSpellToEnd = true;
-            pSpellInfo->aSpellTo = pImpEE->CreateEPaM(
-                    pEE->GetEditDoc().GetStartPaM() );
+            pSpellInfo->aSpellTo = rImpEditEngine.CreateEPaM(
+                    rEditEngine.GetEditDoc().GetStartPaM() );
         }
     }
     else if ( eArea == SvxSpellArea::BodyEnd )
@@ -80,15 +78,14 @@ void EditSpellWrapper::SpellStart( SvxSpellArea eArea )
         if ( !IsStartDone() )
         {
             pSpellInfo->bSpellToEnd = true;
-            pSpellInfo->aSpellTo = pImpEE->CreateEPaM(
-                    pEE->GetEditDoc().GetEndPaM() );
+            pSpellInfo->aSpellTo = rImpEditEngine.CreateEPaM(
+                    rEditEngine.GetEditDoc().GetEndPaM() );
         }
         else
         {
             pSpellInfo->bSpellToEnd = false;
             pSpellInfo->aSpellTo = pSpellInfo->aSpellStart;
-            pEditView->GetImpEditView()->SetEditSelection(
-                    pEE->GetEditDoc().GetEndPaM() );
+            pEditView->getImpl().SetEditSelection(rEditEngine.GetEditDoc().GetEndPaM());
         }
     }
     else if ( eArea == SvxSpellArea::Body )
@@ -103,24 +100,23 @@ void EditSpellWrapper::SpellStart( SvxSpellArea eArea )
 
 void EditSpellWrapper::SpellContinue()
 {
-    SetLast( pEditView->GetImpEditEngine()->ImpSpell( pEditView ) );
+    SetLast(pEditView->getImpEditEngine().ImpSpell(pEditView));
 }
 
 bool EditSpellWrapper::SpellMore()
 {
-    EditEngine* pEE = pEditView->GetEditEngine();
-    ImpEditEngine* pImpEE = pEditView->GetImpEditEngine();
-    SpellInfo* pSpellInfo = pImpEE->GetSpellInfo();
+    EditEngine& rEditEngine = pEditView->getEditEngine();
+    ImpEditEngine& rImpEditEngine = pEditView->getImpEditEngine();
+    SpellInfo* pSpellInfo = rImpEditEngine.GetSpellInfo();
     bool bMore = false;
     if ( pSpellInfo->bMultipleDoc )
     {
-        bMore = pEE->SpellNextDocument();
+        bMore = rEditEngine.SpellNextDocument();
         if ( bMore )
         {
             // The text has been entered into the engine, when backwards then
             // it must be behind the selection.
-            pEditView->GetImpEditView()->SetEditSelection(
-                        pEE->GetEditDoc().GetStartPaM() );
+            pEditView->getImpl().SetEditSelection(rEditEngine.GetEditDoc().GetStartPaM());
         }
     }
     return bMore;
@@ -135,10 +131,10 @@ void EditSpellWrapper::ReplaceAll( const OUString &rNewText )
 
 void EditSpellWrapper::CheckSpellTo()
 {
-    ImpEditEngine* pImpEE = pEditView->GetImpEditEngine();
-    SpellInfo* pSpellInfo = pImpEE->GetSpellInfo();
-    EditPaM aPaM( pEditView->GetImpEditView()->GetEditSelection().Max() );
-    EPaM aEPaM = pImpEE->CreateEPaM( aPaM );
+    ImpEditEngine& rImpEditEngine = pEditView->getImpEditEngine();
+    SpellInfo* pSpellInfo = rImpEditEngine.GetSpellInfo();
+    EditPaM aPaM( pEditView->getImpl().GetEditSelection().Max() );
+    EPaM aEPaM = rImpEditEngine.CreateEPaM( aPaM );
     if ( aEPaM.nPara == pSpellInfo->aSpellTo.nPara )
     {
         // Check if SpellToEnd still has a valid Index, if replace has been
@@ -521,7 +517,7 @@ bool EdtAutoCorrDoc::Delete(sal_Int32 nStt, sal_Int32 nEnd)
 
 bool EdtAutoCorrDoc::Insert(sal_Int32 nPos, const OUString& rTxt)
 {
-    EditSelection aSel = EditPaM( pCurNode, nPos );
+    EditSelection aSel(EditPaM( pCurNode, nPos ));
     mpEditEngine->InsertText(aSel, rTxt);
     SAL_WARN_IF(nCursor < nPos, "editeng",
             "Cursor in the heart of the action?!");
@@ -572,7 +568,7 @@ void EdtAutoCorrDoc::SetAttr(sal_Int32 nStt, sal_Int32 nEnd,
         pPool = pPool->GetSecondaryPool();
 
     }
-    sal_uInt16 nWhich = pPool->GetWhich( nSlotId );
+    sal_uInt16 nWhich = pPool->GetWhichIDFromSlotID( nSlotId );
     if ( nWhich )
     {
         rItem.SetWhich( nWhich );
@@ -613,8 +609,8 @@ OUString const* EdtAutoCorrDoc::GetPrevPara(bool const)
 
     bAllowUndoAction = false;   // Not anymore ...
 
-    EditDoc& rNodes = mpEditEngine->GetEditDoc();
-    sal_Int32 nPos = rNodes.GetPos( pCurNode );
+    EditDoc& rEditDoc = mpEditEngine->GetEditDoc();
+    sal_Int32 nPos = rEditDoc.GetPos( pCurNode );
 
     // Special case: Bullet => Paragraph start => simply return NULL...
     const SfxBoolItem& rBulletState = mpEditEngine->GetParaAttrib( nPos, EE_PARA_BULLETSTATE );
@@ -632,7 +628,7 @@ OUString const* EdtAutoCorrDoc::GetPrevPara(bool const)
     for ( sal_Int32 n = nPos; n; )
     {
         n--;
-        ContentNode* pNode = rNodes[n];
+        ContentNode* pNode = rEditDoc.GetObject(n);
         if ( pNode->Len() )
             return & pNode->GetString();
     }
@@ -651,31 +647,51 @@ bool EdtAutoCorrDoc::ChgAutoCorrWord( sal_Int32& rSttPos,
     OUString aShort( pCurNode->Copy( rSttPos, nEndPos - rSttPos ) );
     bool bRet = false;
 
-    if( aShort.isEmpty() )
+    if( aShort.isEmpty() ) {
         return bRet;
+    }
 
     LanguageTag aLanguageTag( mpEditEngine->GetLanguage( EditPaM( pCurNode, rSttPos+1 ) ).nLang );
-    const SvxAutocorrWord* pFnd = rACorrect.SearchWordsInList(
-            pCurNode->GetString(), rSttPos, nEndPos, *this, aLanguageTag);
-    if( pFnd && pFnd->IsTextOnly() )
-    {
-
-        // replace also last colon of keywords surrounded by colons (for example, ":name:")
-        bool replaceLastChar = pFnd->GetShort()[0] == ':' && pFnd->GetShort().endsWith(":");
-
-        // then replace
-        EditSelection aSel( EditPaM( pCurNode, rSttPos ),
-                            EditPaM( pCurNode, nEndPos + (replaceLastChar ? 1 : 0) ));
-        aSel = mpEditEngine->DeleteSelection(aSel);
-        SAL_WARN_IF(nCursor < nEndPos, "editeng",
-                "Cursor in the heart of the action?!");
-        nCursor -= ( nEndPos-rSttPos );
-        mpEditEngine->InsertText(aSel, pFnd->GetLong());
-        nCursor = nCursor + pFnd->GetLong().getLength();
-        if( pPara )
-            *pPara = pCurNode->GetString();
-        bRet = true;
+    sal_Int32 sttPos = rSttPos;
+    auto pStatus = rACorrect.SearchWordsInList(pCurNode->GetString(),
+                                               sttPos, nEndPos,
+                                               *this, aLanguageTag);
+    if( !pStatus ) {
+        return bRet;
     }
+
+    sal_Int32 minSttPos = sttPos;
+    do {
+        const SvxAutocorrWord* pFnd = pStatus->GetAutocorrWord();
+        if( pFnd && pFnd->IsTextOnly() )
+        {
+            // replace also last colon of keywords surrounded by colons
+            // (for example, ":name:")
+            bool replaceLastChar = pFnd->GetShort()[0] == ':'
+                                   && pFnd->GetShort().endsWith(":");
+
+            // then replace
+            EditSelection aSel( EditPaM( pCurNode, sttPos ),
+                                EditPaM( pCurNode, nEndPos + (replaceLastChar ? 1 : 0) ));
+            aSel = mpEditEngine->DeleteSelection(aSel);
+            SAL_WARN_IF(nCursor < nEndPos, "editeng",
+                    "Cursor in the heart of the action?!");
+            nCursor -= ( nEndPos-sttPos );
+            mpEditEngine->InsertText(aSel, pFnd->GetLong());
+            nCursor = nCursor + pFnd->GetLong().getLength();
+            nEndPos = sttPos + pFnd->GetLong().getLength();
+            if( pPara ) {
+                *pPara = pCurNode->GetString();
+            }
+            bRet = true;
+            if( sttPos < minSttPos ) {
+                minSttPos = sttPos;
+            }
+        }
+        sttPos = rSttPos;
+    } while( SvxAutoCorrect::SearchWordsNext(pCurNode->GetString(),
+                                             sttPos, nEndPos, *pStatus) );
+    rSttPos = minSttPos;
 
     return bRet;
 }
@@ -699,7 +715,7 @@ LanguageType EdtAutoCorrDoc::GetLanguage( sal_Int32 nPos ) const
 void EdtAutoCorrDoc::ImplStartUndoAction()
 {
     sal_Int32 nPara = mpEditEngine->GetEditDoc().GetPos( pCurNode );
-    ESelection aSel( nPara, nCursor, nPara, nCursor );
+    ESelection aSel(nPara, nCursor);
     mpEditEngine->UndoActionStart( EDITUNDO_INSERT, aSel );
     bUndoAction = true;
     bAllowUndoAction = false;

@@ -34,6 +34,8 @@
 #include <idxmrk.hxx>
 #include <toxmgr.hxx>
 #include <swabstdlg.hxx>
+#include <strings.hrc>
+#include <svl/whiter.hxx>
 
 #include <ndtxt.hxx>
 #include <fmtfld.hxx>
@@ -178,14 +180,13 @@ void SwTextShell::ExecIdx(SfxRequest const &rReq)
         }
         case FN_INSERT_MULTI_TOX:
         {
-            SfxItemSetFixed<
-                    RES_FRM_SIZE, RES_FRM_SIZE,
-                    RES_LR_SPACE, RES_LR_SPACE,
-                    RES_BACKGROUND, RES_BACKGROUND,
-                    RES_COL, RES_COL,
-                    XATTR_FILL_FIRST, XATTR_FILL_LAST,
-                    SID_ATTR_PAGE_SIZE, SID_ATTR_PAGE_SIZE,
-                    FN_PARAM_TOX_TYPE, FN_PARAM_TOX_TYPE>  aSet( GetPool() );
+            SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_FRM_SIZE, RES_FRM_SIZE,
+                                                            RES_LR_SPACE, RES_LR_SPACE,
+                                                            RES_BACKGROUND, RES_BACKGROUND,
+                                                            RES_COL, RES_COL,
+                                                            XATTR_FILL_FIRST, XATTR_FILL_LAST,
+                                                            SID_ATTR_PAGE_SIZE, SID_ATTR_PAGE_SIZE,
+                                                            FN_PARAM_TOX_TYPE, FN_PARAM_TOX_TYPE>(GetPool()));
             SwWrtShell& rSh = GetShell();
             SwRect aRect;
             rSh.CalcBoundRect(aRect, RndStdIds::FLY_AS_CHAR);
@@ -270,6 +271,15 @@ void SwTextShell::GetIdxState(SfxItemSet &rSet)
         else
             rSet.Put(SfxBoolItem(FN_INSERT_AUTH_ENTRY_DLG, true));
 
+        if (pBase)
+        {
+            SfxWhichIter aIter(rSet);
+            if (aIter.FirstWhich() == FN_REMOVE_CUR_TOX)
+            {
+                const OUString sLabel = SwResId(STR_DELETEINDEX).replaceAll("%1", pBase->GetTypeName());
+                rSet.Put(SfxStringItem(FN_REMOVE_CUR_TOX, sLabel));
+            }
+        }
     }
     else if ( rSh.CursorInsideInputField() )
     {

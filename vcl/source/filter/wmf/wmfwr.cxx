@@ -647,27 +647,25 @@ void WMFWriter::WMFRecord_PolyLine(const tools::Polygon & rPoly)
 
 void WMFWriter::WMFRecord_PolyPolygon(const tools::PolyPolygon & rPolyPoly)
 {
-    const tools::Polygon * pPoly;
-    sal_uInt16 nCount,nSize,i,j;
+    sal_uInt16 nCount,nSize;
 
     nCount=rPolyPoly.Count();
     tools::PolyPolygon aSimplePolyPoly( rPolyPoly );
-    for ( i = 0; i < nCount; i++ )
+    for ( auto& rSimplePolyPolyItm : aSimplePolyPoly )
     {
-        if ( aSimplePolyPoly[ i ].HasFlags() )
+        if ( rSimplePolyPolyItm.HasFlags() )
         {
             tools::Polygon aSimplePoly;
-            aSimplePolyPoly[ i ].AdaptiveSubdivide( aSimplePoly );
-            aSimplePolyPoly[ i ] = aSimplePoly;
+            rSimplePolyPolyItm.AdaptiveSubdivide( aSimplePoly );
+            rSimplePolyPolyItm = std::move(aSimplePoly);
         }
     }
     WriteRecordHeader(0,W_META_POLYPOLYGON);
     pWMF->WriteUInt16( nCount );
-    for (i=0; i<nCount; i++) pWMF->WriteUInt16( aSimplePolyPoly.GetObject(i).GetSize() );
-    for (i=0; i<nCount; i++) {
-        pPoly=&(aSimplePolyPoly.GetObject(i));
-        nSize=pPoly->GetSize();
-        for (j=0; j<nSize; j++) WritePointXY(pPoly->GetPoint(j));
+    for ( auto const& aPoly : aSimplePolyPoly ) pWMF->WriteUInt16( aPoly.GetSize() );
+    for ( auto const& aPoly : aSimplePolyPoly ) {
+        nSize = aPoly.GetSize();
+        for ( sal_uInt16 j = 0; j < nSize; j++ ) WritePointXY( aPoly.GetPoint( j ) );
     }
     UpdateRecordHeader();
 }
@@ -1198,15 +1196,17 @@ void WMFWriter::WriteRecords( const GDIMetaFile & rMTF )
                 pVirDev->SetFont( aSrcFont );
                 const sal_Int32 nLen = aTemp.getLength();
                 KernArray aDXAry;
-                const sal_Int32 nNormSize = pVirDev->GetTextArray( aTemp, nLen ? &aDXAry : nullptr );
+                const sal_Int32 nNormSize = basegfx::fround(
+                    pVirDev->GetTextArray(aTemp, nLen ? &aDXAry : nullptr));
                 if (nLen && nNormSize == 0)
                 {
                     OSL_FAIL("Impossible div by 0 action: MetaStretchTextAction!");
                 }
                 else
                 {
+                    const double fAdjust = static_cast<double>(pA->GetWidth()) / nNormSize;
                     for ( sal_Int32 i = 0; i < ( nLen - 1 ); i++ )
-                        aDXAry.set(i, aDXAry[i] * static_cast<sal_Int32>(pA->GetWidth()) / nNormSize);
+                        aDXAry[i] *= fAdjust;
                     if ( ( nLen <= 1 ) || ( static_cast<sal_Int32>(pA->GetWidth()) == nNormSize ) )
                         aDXAry.clear();
                     aSrcLineInfo = LineInfo();
@@ -1571,8 +1571,8 @@ void WMFWriter::WriteRecords( const GDIMetaFile & rMTF )
                 if( fScaleX != 1.0 || fScaleY != 1.0 )
                 {
                     aTmpMtf.Scale( fScaleX, fScaleY );
-                    aSrcPt.setX( FRound( aSrcPt.X() * fScaleX ) );
-                    aSrcPt.setY( FRound( aSrcPt.Y() * fScaleY ) );
+                    aSrcPt.setX(basegfx::fround<tools::Long>(aSrcPt.X() * fScaleX));
+                    aSrcPt.setY(basegfx::fround<tools::Long>(aSrcPt.Y() * fScaleY));
                 }
 
                 nMoveX = aDestPt.X() - aSrcPt.X();
@@ -1692,7 +1692,7 @@ bool WMFWriter::WriteWMF( const GDIMetaFile& rMTF, SvStream& rTargetStream,
         }
 
         comphelper::SequenceAsHashMap aMap(pFConfigItem->GetFilterData());
-        auto it = aMap.find("EmbedEMF");
+        auto it = aMap.find(u"EmbedEMF"_ustr);
         if (it != aMap.end())
         {
             it->second >>= bEmbedEMF;
@@ -1766,10 +1766,10 @@ bool WMFWriter::WriteWMF( const GDIMetaFile& rMTF, SvStream& rTargetStream,
     aDstClipRegion = aSrcClipRegion = vcl::Region();
 
     vcl::Font aFont;
-    aFont.SetCharSet( GetExtendedTextEncoding( RTL_TEXTENCODING_MS_1252 ) );
+    aFont.SetCharSet(RTL_TEXTENCODING_MS_1252);
     aFont.SetColor( COL_WHITE );
     aFont.SetAlignment( ALIGN_BASELINE );
-    aDstFont = aSrcFont = aFont;
+    aDstFont = aSrcFont = std::move(aFont);
     CreateSelectDeleteFont(aDstFont);
 
     eDstTextAlign = eSrcTextAlign = ALIGN_BASELINE;

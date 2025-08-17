@@ -78,12 +78,12 @@ namespace sd {
 
 
 FuConstructRectangle::FuConstructRectangle (
-    ViewShell*  pViewSh,
+    ViewShell&  rViewSh,
     ::sd::Window*       pWin,
     ::sd::View*         pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest&     rReq)
-    : FuConstruct(pViewSh, pWin, pView, pDoc, rReq)
+    : FuConstruct(rViewSh, pWin, pView, rDoc, rReq)
     , mnFillTransparence(0)
     , mnLineStyle(SAL_MAX_UINT16)
 {
@@ -108,10 +108,10 @@ bool isSticky(const SfxRequest& rReq)
 
 }
 
-rtl::Reference<FuPoor> FuConstructRectangle::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq, bool bPermanent )
+rtl::Reference<FuPoor> FuConstructRectangle::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq, bool bPermanent )
 {
     FuConstructRectangle* pFunc;
-    rtl::Reference<FuPoor> xFunc( pFunc = new FuConstructRectangle( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( pFunc = new FuConstructRectangle( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     pFunc->SetPermanent(bPermanent || isSticky(rReq));
     return xFunc;
@@ -121,7 +121,7 @@ void FuConstructRectangle::DoExecute( SfxRequest& rReq )
 {
     FuConstruct::DoExecute( rReq );
 
-    mpViewShell->GetViewShellBase().GetToolBarManager()->SetToolBar(
+    mrViewShell.GetViewShellBase().GetToolBarManager()->SetToolBar(
         ToolBarManager::ToolBarGroup::Function,
         ToolBarManager::msDrawingObjectToolBar);
 
@@ -267,7 +267,7 @@ bool FuConstructRectangle::MouseButtonDown(const MouseEvent& rMEvt)
 
         if (pObj)
         {
-            SfxItemSet aAttr(mpDoc->GetPool());
+            SfxItemSet aAttr(mrDoc.GetPool());
             SetStyleSheet(aAttr, pObj);
             SetAttributes(aAttr, pObj);
             SetLineEnds(aAttr, *pObj);
@@ -295,7 +295,7 @@ bool FuConstructRectangle::MouseButtonUp(const MouseEvent& rMEvt)
         {
             if(SID_DRAW_MEASURELINE == nSlotId)
             {
-                SdrLayerAdmin& rAdmin = mpDoc->GetLayerAdmin();
+                SdrLayerAdmin& rAdmin = mrDoc.GetLayerAdmin();
                 pObj->SetLayer(rAdmin.GetLayerID(sUNO_LayerName_measurelines));
             }
 
@@ -334,14 +334,14 @@ bool FuConstructRectangle::MouseButtonUp(const MouseEvent& rMEvt)
             ::tools::Rectangle aNewObjectRectangle(aClickPos, Size(nDefaultObjectSize, nDefaultObjectSize));
             rtl::Reference<SdrObject> pObjDefault = CreateDefaultObject(nSlotId, aNewObjectRectangle);
 
-            bReturn = mpView->InsertObjectAtView(pObjDefault.get(), *pPV);
+            bReturn = mpView->InsertObjectAtView(pObjDefault.get(), *pPV, SdrInsertFlags::SETDEFLAYER | SdrInsertFlags::SETDEFATTR);
         }
     }
 
     bReturn = FuConstruct::MouseButtonUp (rMEvt) || bReturn;
 
     if (!bPermanent)
-        mpViewShell->GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
+        mrViewShell.GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
 
     return bReturn;
 }
@@ -507,23 +507,23 @@ void FuConstructRectangle::Deactivate()
     }
 
     // Finished drawing a signature rectangle, now set it up.
-    if (!mpViewShell)
+    SfxViewShell* pViewShell = mrViewShell.GetViewShell();
+    svl::crypto::CertificateOrName aCertificateOrName = pViewShell->GetSigningCertificate();
+    if (aCertificateOrName.m_aName.isEmpty())
     {
-        return;
+        aCertificateOrName.m_xCertificate = svx::SignatureLineHelper::getSignatureCertificate(
+            mrViewShell.GetObjectShell(), mrViewShell.GetViewShell(),
+            mrViewShell.GetFrameWeld());
+        if (!aCertificateOrName.m_xCertificate.is())
+        {
+            return;
+        }
     }
 
-    uno::Reference<security::XCertificate> xCertificate
-        = svx::SignatureLineHelper::getSignatureCertificate(mpViewShell->GetObjectShell(),
-                mpViewShell->GetFrameWeld());
-    if (!xCertificate.is())
-    {
-        return;
-    }
-
-    svx::SignatureLineHelper::setShapeCertificate(mpView, xCertificate);
+    svx::SignatureLineHelper::setShapeCertificate(pViewShell, aCertificateOrName);
 
     // Update infobar to offer "finish signing".
-    SfxViewFrame* pFrame = mpViewShell->GetViewFrame();
+    SfxViewFrame* pFrame = mrViewShell.GetViewFrame();
     if (pFrame && pFrame->HasInfoBarWithID(u"readonly"))
     {
         pFrame->RemoveInfoBar(u"readonly");
@@ -631,7 +631,7 @@ void FuConstructRectangle::SetAttributes(SfxItemSet& rAttr, SdrObject* pObj)
             pObj->SetStyleSheet(pSheet, false);
         }
 
-        SdrLayerAdmin& rAdmin = mpDoc->GetLayerAdmin();
+        SdrLayerAdmin& rAdmin = mrDoc.GetLayerAdmin();
         pObj->SetLayer(rAdmin.GetLayerID(sUNO_LayerName_measurelines));
     }
     else if (nSlotId == SID_DRAW_RECT)
@@ -723,7 +723,7 @@ void FuConstructRectangle::SetLineEnds(SfxItemSet& rAttr, SdrObject const & rObj
         aSquare.append(aNewSquare);
     }
 
-    SfxItemSet aSet( mpDoc->GetPool() );
+    SfxItemSet aSet( mrDoc.GetPool() );
     mpView->GetAttributes( aSet );
 
     // #i3908# Here, the default Line Start/End width for arrow construction is
@@ -732,7 +732,7 @@ void FuConstructRectangle::SetLineEnds(SfxItemSet& rAttr, SdrObject const & rObj
     ::tools::Long nWidth = 300; // (1/100th mm)
 
     // determine line width and calculate with it the line end width
-    if( aSet.GetItemState( XATTR_LINEWIDTH ) != SfxItemState::DONTCARE )
+    if( aSet.GetItemState( XATTR_LINEWIDTH ) != SfxItemState::INVALID )
     {
         ::tools::Long nValue = aSet.Get( XATTR_LINEWIDTH ).GetValue();
         if( nValue > 0 )
@@ -778,7 +778,7 @@ void FuConstructRectangle::SetLineEnds(SfxItemSet& rAttr, SdrObject const & rObj
         case SID_LINE_SQUARE_ARROW:
         {
             // connector with arrow end
-            rAttr.Put(XLineEndItem(SvxResId(RID_SVXSTR_ARROW), aArrow));
+            rAttr.Put(XLineEndItem(SvxResId(RID_SVXSTR_ARROW), std::move(aArrow)));
             rAttr.Put(XLineEndWidthItem(nWidth));
         }
         break;
@@ -833,7 +833,7 @@ void FuConstructRectangle::SetLineEnds(SfxItemSet& rAttr, SdrObject const & rObj
         case SID_LINE_CIRCLE_ARROW:
         {
             // circle start
-            rAttr.Put(XLineStartItem(SvxResId(RID_SVXSTR_CIRCLE), aCircle));
+            rAttr.Put(XLineStartItem(SvxResId(RID_SVXSTR_CIRCLE), std::move(aCircle)));
             rAttr.Put(XLineStartWidthItem(nWidth));
         }
         break;
@@ -849,7 +849,7 @@ void FuConstructRectangle::SetLineEnds(SfxItemSet& rAttr, SdrObject const & rObj
         case SID_LINE_SQUARE_ARROW:
         {
             // square start
-            rAttr.Put(XLineStartItem(SvxResId(RID_SVXSTR_SQUARE), aSquare));
+            rAttr.Put(XLineStartItem(SvxResId(RID_SVXSTR_SQUARE), std::move(aSquare)));
             rAttr.Put(XLineStartWidthItem(nWidth));
         }
         break;
@@ -1061,7 +1061,7 @@ rtl::Reference<SdrObject> FuConstructRectangle::CreateDefaultObject(const sal_uI
             }
         }
 
-        SfxItemSet aAttr(mpDoc->GetPool());
+        SfxItemSet aAttr(mrDoc.GetPool());
         SetStyleSheet(aAttr, pObj.get());
         SetAttributes(aAttr, pObj.get());
         SetLineEnds(aAttr, *pObj);

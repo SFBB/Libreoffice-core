@@ -171,7 +171,8 @@ component_wrapper_ref_accessible_at_point (AtkComponent *component,
         {
             uno::Reference< accessibility::XAccessible > xAccessible = pComponent->getAccessibleAtPoint(
                 translatePoint(component, pComponent, x, y, coord_type));
-            return atk_object_wrapper_ref( xAccessible );
+            if (xAccessible.is())
+                return atk_object_wrapper_ref(xAccessible);
         }
     }
     catch( const uno::Exception & )
@@ -409,8 +410,9 @@ component_wrapper_remove_focus_handler (AtkComponent  *component,
 } // extern "C"
 
 void
-componentIfaceInit (AtkComponentIface *iface)
+componentIfaceInit (gpointer iface_, gpointer)
 {
+  auto const iface = static_cast<AtkComponentIface *>(iface_);
   g_return_if_fail (iface != nullptr);
 
   iface->add_focus_handler = component_wrapper_add_focus_handler;

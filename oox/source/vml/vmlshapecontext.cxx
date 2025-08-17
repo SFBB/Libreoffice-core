@@ -251,6 +251,7 @@ ContextHandlerRef ShapeContextBase::createShapeContext( ContextHandler2Helper co
                 return new ShapeContext( rParent, rShapes.createShape< BezierShape >(), rAttribs );
             else
                 return new ShapeContext( rParent, rShapes.createShape< ComplexShape >(), rAttribs );
+        case VML_TOKEN(background):
         case VML_TOKEN( rect ):
             return new RectangleShapeContext( rParent, rAttribs, rShapes.createShape< RectangleShape >() );
         case VML_TOKEN( roundrect ):
@@ -296,7 +297,7 @@ ShapeTypeContext::ShapeTypeContext(ContextHandler2Helper const & rParent,
         mrTypeModel.maShapeName = rAttribs.getXString( XML_id, OUString() );
         // get ShapeType and ShapeId from name for compatibility
         static constexpr OUString sShapeTypePrefix = u"shapetype_"_ustr;
-        OUString tmp;
+        std::u16string_view tmp;
         if( mrTypeModel.maShapeName.startsWith( sShapeTypePrefix ) )
         {
             mrTypeModel.maShapeId = mrTypeModel.maShapeName;
@@ -305,7 +306,7 @@ ShapeTypeContext::ShapeTypeContext(ContextHandler2Helper const & rParent,
         else if (mrTypeModel.maShapeName.startsWith("_x0000_t", &tmp))
         {
             mrTypeModel.maShapeId = mrTypeModel.maShapeName;
-            mrTypeModel.moShapeType = tmp.toInt32();
+            mrTypeModel.moShapeType = o3tl::toInt32(tmp);
         }
     }
 
@@ -318,12 +319,12 @@ ShapeTypeContext::ShapeTypeContext(ContextHandler2Helper const & rParent,
         // - o:hrpct is not in % but in 0.1%
         // - if o:hrpct is not given, 100% width is assumed
         // - given width is used only if explicit o:hrpct="0" is given
-        OUString hrpct = rAttribs.getString( O_TOKEN( hrpct ), "1000" );
+        OUString hrpct = rAttribs.getString( O_TOKEN( hrpct ), u"1000"_ustr );
         if( hrpct != "0" )
             mrTypeModel.maWidthPercent = OUString::number( hrpct.toInt32() );
         mrTypeModel.maWrapDistanceLeft = "0";
         mrTypeModel.maWrapDistanceRight = "0";
-        mrTypeModel.maPositionHorizontal = rAttribs.getString( O_TOKEN( hralign ), "left" );
+        mrTypeModel.maPositionHorizontal = rAttribs.getString( O_TOKEN( hralign ), u"left"_ustr );
         mrTypeModel.moWrapType = "topAndBottom";
     }
 
@@ -547,10 +548,17 @@ ContextHandlerRef ShapeContext::onCreateContext( sal_Int32 nElement, const Attri
                 if (mrShapeModel.mbInGroup)
                     // FIXME: without this a text will be added into the group-shape instead of its
                     // parent shape
-                    dynamic_cast<SimpleShape&>(mrShape).setService("com.sun.star.drawing.TextShape");
+                {
+                    if (mrShape.isTextBox())
+                        dynamic_cast<SimpleShape&>(mrShape).setService(
+                            u"com.sun.star.drawing.CustomShape"_ustr);
+                    else
+                        dynamic_cast<SimpleShape&>(mrShape).setService(
+                            u"com.sun.star.drawing.TextShape"_ustr);
+                }
                 else
                     // FIXME: without this we does not handle some properties like shadow
-                    dynamic_cast<SimpleShape&>(mrShape).setService("com.sun.star.text.TextFrame");
+                    dynamic_cast<SimpleShape&>(mrShape).setService(u"com.sun.star.text.TextFrame"_ustr);
             }
             return new TextBoxContext( *this, mrShapeModel.createTextBox(mrShape.getTypeModel()), rAttribs,
                 mrShape.getDrawing().getFilter().getGraphicHelper());
@@ -558,13 +566,13 @@ ContextHandlerRef ShapeContext::onCreateContext( sal_Int32 nElement, const Attri
         case VMLX_TOKEN( ClientData ):
             // tdf#41466 ActiveX control shapes with a textbox are transformed into a frame
             // (see unit test testActiveXOptionButtonGroup)
-            dynamic_cast<SimpleShape&>(mrShape).setService("com.sun.star.text.TextFrame");
+            dynamic_cast<SimpleShape&>(mrShape).setService(u"com.sun.star.text.TextFrame"_ustr);
             return new ClientDataContext( *this, mrShapeModel.createClientData(), rAttribs );
         case VMLPPT_TOKEN( textdata ):
             // Force RectangleShape, this is ugly :(
             // and is there because of the lines above which change it to TextFrame
             dynamic_cast< SimpleShape& >( mrShape ).setService(
-                    "com.sun.star.drawing.RectangleShape");
+                    u"com.sun.star.drawing.RectangleShape"_ustr);
             mrShapeModel.maLegacyDiagramPath = getFragmentPathFromRelId(rAttribs.getStringDefaulted(XML_id));
             break;
         case O_TOKEN( signatureline ):
@@ -579,9 +587,9 @@ ContextHandlerRef ShapeContext::onCreateContext( sal_Int32 nElement, const Attri
             mrShapeModel.maSignatureLineSigningInstructions
                 = rAttribs.getStringDefaulted(O_TOKEN(signinginstructions));
             mrShapeModel.mbSignatureLineShowSignDate = ConversionHelper::decodeBool(
-                rAttribs.getString(XML_showsigndate, "t")); // default is true
+                rAttribs.getString(XML_showsigndate, u"t"_ustr)); // default is true
             mrShapeModel.mbSignatureLineCanAddComment = ConversionHelper::decodeBool(
-                rAttribs.getString(XML_allowcomments, "f")); // default is false
+                rAttribs.getString(XML_allowcomments, u"f"_ustr)); // default is false
             break;
         case O_TOKEN( lock ):
             // TODO
@@ -589,6 +597,10 @@ ContextHandlerRef ShapeContext::onCreateContext( sal_Int32 nElement, const Attri
     }
     // handle remaining stuff in base class
     return ShapeTypeContext::onCreateContext( nElement, rAttribs );
+}
+void ShapeContext::setWriterShape()
+{
+    mrShape.setTextBox(true);
 }
 
 void ShapeContext::setPoints(std::u16string_view rPoints)

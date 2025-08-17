@@ -22,62 +22,26 @@
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 
 #include <com/sun/star/uno/Reference.hxx>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/interfacecontainer.h>
-#include <cppuhelper/compbase.hxx>
-#include <cppuhelper/basemutex.hxx>
+#include <comphelper/OAccessible.hxx>
+#include <comphelper/compbase.hxx>
 #include <vcl/vclptr.hxx>
 
 namespace tools { class Rectangle; }
 class Ruler;
 
-
-typedef ::cppu::WeakComponentImplHelper<
-            css::accessibility::XAccessible,
-            css::accessibility::XAccessibleComponent,
-            css::accessibility::XAccessibleContext,
-            css::accessibility::XAccessibleEventBroadcaster,
-            css::lang::XServiceInfo >
-            SvtRulerAccessible_Base;
-
-class SvtRulerAccessible final : public ::cppu::BaseMutex, public SvtRulerAccessible_Base
+class SvtRulerAccessible final : public comphelper::OAccessible
 {
 public:
-    //=====  internal  ========================================================
     SvtRulerAccessible(
         css::uno::Reference< css::accessibility::XAccessible> xParent, Ruler& rRepresentation, OUString aName );
 
-    /// @throws css::uno::RuntimeException
-    bool
-        isVisible();
-
-    //=====  XAccessible  =====================================================
-
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL
-        getAccessibleContext() override;
-
     //=====  XAccessibleComponent  ============================================
-
-    virtual sal_Bool SAL_CALL
-        containsPoint( const css::awt::Point& rPoint ) override;
 
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
         getAccessibleAtPoint( const css::awt::Point& rPoint ) override;
-
-    virtual css::awt::Rectangle SAL_CALL
-        getBounds() override;
-
-    virtual css::awt::Point SAL_CALL
-        getLocation() override;
-
-    virtual css::awt::Point SAL_CALL
-        getLocationOnScreen() override;
-
-    virtual css::awt::Size SAL_CALL
-        getSize() override;
 
     virtual void SAL_CALL
         grabFocus() override;
@@ -98,9 +62,6 @@ public:
     virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL
         getAccessibleParent() override;
 
-    virtual sal_Int64 SAL_CALL
-        getAccessibleIndexInParent() override;
-
     virtual sal_Int16 SAL_CALL
         getAccessibleRole() override;
 
@@ -116,53 +77,11 @@ public:
     virtual sal_Int64 SAL_CALL
         getAccessibleStateSet() override;
 
-    virtual css::lang::Locale SAL_CALL
-        getLocale() override;
-    //=====  XAccessibleEventBroadcaster  =====================================
-
-    virtual void SAL_CALL
-        addAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-
-    virtual void SAL_CALL
-        removeAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-
-    //=====  XServiceInfo  ====================================================
-
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    virtual sal_Bool SAL_CALL
-        supportsService( const OUString& sServiceName ) override;
-
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
-    //=====  XTypeProvider  ===================================================
-
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL
-        getImplementationId() override;
+protected:
+    virtual css::awt::Rectangle implGetBounds() override;
 
 private:
-
-    virtual ~SvtRulerAccessible() override;
-
     virtual void SAL_CALL disposing() override;
-
-    /// @returns true if it's disposed or in disposing
-    inline bool IsAlive() const;
-
-    /// @throws DisposedException if it's not alive
-    void ThrowExceptionIfNotAlive();
-
-    /// @Return the object's current bounding box relative to the desktop.
-    ///
-    /// @throws css::uno::RuntimeException
-    tools::Rectangle GetBoundingBoxOnScreen();
-
-    /// @Return the object's current bounding box relative to the parent object.
-    ///
-    /// @throws css::uno::RuntimeException
-    tools::Rectangle GetBoundingBox();
 
     /// Name of this object.
     OUString                            msName;
@@ -173,15 +92,7 @@ private:
 
     /// pointer to internal representation
     VclPtr<Ruler>                       mpRepr;
-
-    /// client id in the AccessibleEventNotifier queue
-    sal_uInt32 mnClientId;
 };
-
-inline bool SvtRulerAccessible::IsAlive() const
-{
-    return !rBHelper.bDisposed && !rBHelper.bInDispose;
-}
 
 #endif
 

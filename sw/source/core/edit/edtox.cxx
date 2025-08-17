@@ -45,7 +45,6 @@
 #include <iodetect.hxx>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
 
@@ -57,13 +56,13 @@ void SwEditShell::Insert(const SwTOXMark& rMark)
     StartAllAction();
     for(SwPaM& rPaM : GetCursor()->GetRingContainer())
     {
-        auto [pStt, pEnd] = rPaM.StartEnd(); // SwPosition*
+        auto [pStart, pEnd] = rPaM.StartEnd(); // SwPosition*
         if( bInsAtPos )
         {
-            SwPaM aTmp( *pStt );
+            SwPaM aTmp( *pStart );
             GetDoc()->getIDocumentContentOperations().InsertPoolItem( aTmp, rMark );
         }
-        else if( *pEnd != *pStt )
+        else if( *pEnd != *pStart )
         {
             GetDoc()->getIDocumentContentOperations().InsertPoolItem(
                 rPaM, rMark, SetAttrMode::DONTEXPAND );
@@ -130,7 +129,7 @@ void SwEditShell::InsertTableOf( const SwTOXBase& rTOX, const SfxItemSet* pSet )
     // Insert listing
     const SwTOXBaseSection* pTOX = mxDoc->InsertTableOf(
                 *GetCursor()->GetPoint(), rTOX, pSet, true, GetLayout() );
-    OSL_ENSURE(pTOX, "No current TOX");
+    assert(pTOX && "No current TOX");
 
     // start formatting
     CalcLayout();
@@ -307,7 +306,7 @@ void SwEditShell::ApplyAutoMark()
 
         i18nutil::SearchOptions2 aSearchOpt(
                             SearchFlags::LEV_RELAXED,
-                            "", "",
+                            u""_ustr, u""_ustr,
                             SvtSysLocale().GetLanguageTag().getLocale(),
                             nLEV_Other, nLEV_Longer, nLEV_Shorter,
                             TransliterationFlags::NONE,

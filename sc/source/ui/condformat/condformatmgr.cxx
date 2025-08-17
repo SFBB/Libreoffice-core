@@ -43,7 +43,8 @@ void ScCondFormatManagerWindow::Init()
             const ScRangeList& aRange = rItem->GetRange();
             aRange.Format(sRangeStr, ScRefFlags::VALID, mrDoc, mrDoc.GetAddressConvention());
             mrTreeView.append(OUString::number(rItem->GetKey()), sRangeStr);
-            mrTreeView.set_text(nRow, ScCondFormatHelper::GetExpression(*rItem, aRange.GetTopLeftCorner()), 1);
+            mrTreeView.set_text(
+                nRow, ScCondFormatHelper::GetExpression(*rItem, aRange.GetTopLeftCorner()), 1);
             ++nRow;
         }
     }
@@ -85,14 +86,16 @@ void ScCondFormatManagerWindow::setColSizes()
     mrTreeView.set_column_fixed_widths(aWidths);
 }
 
-ScCondFormatManagerDlg::ScCondFormatManagerDlg(weld::Window* pParent, ScDocument& rDoc, const ScConditionalFormatList* pFormatList)
-    : GenericDialogController(pParent, "modules/scalc/ui/condformatmanager.ui", "CondFormatManager")
+ScCondFormatManagerDlg::ScCondFormatManagerDlg(weld::Window* pParent, ScDocument& rDoc,
+                                               const ScConditionalFormatList* pFormatList)
+    : GenericDialogController(pParent, u"modules/scalc/ui/condformatmanager.ui"_ustr,
+                              u"CondFormatManager"_ustr)
     , m_bModified(false)
-    , m_xFormatList( pFormatList ? new ScConditionalFormatList(*pFormatList) : nullptr)
-    , m_xBtnAdd(m_xBuilder->weld_button("add"))
-    , m_xBtnRemove(m_xBuilder->weld_button("remove"))
-    , m_xBtnEdit(m_xBuilder->weld_button("edit"))
-    , m_xTreeView(m_xBuilder->weld_tree_view("CONTAINER"))
+    , m_xFormatList(pFormatList ? new ScConditionalFormatList(*pFormatList) : nullptr)
+    , m_xBtnAdd(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xBtnRemove(m_xBuilder->weld_button(u"remove"_ustr))
+    , m_xBtnEdit(m_xBuilder->weld_button(u"edit"_ustr))
+    , m_xTreeView(m_xBuilder->weld_tree_view(u"CONTAINER"_ustr))
     , m_xCtrlManager(new ScCondFormatManagerWindow(*m_xTreeView, rDoc, m_xFormatList.get()))
 {
     m_xBtnRemove->connect_clicked(LINK(this, ScCondFormatManagerDlg, RemoveBtnHdl));
@@ -100,7 +103,7 @@ ScCondFormatManagerDlg::ScCondFormatManagerDlg(weld::Window* pParent, ScDocument
     m_xBtnAdd->connect_clicked(LINK(this, ScCondFormatManagerDlg, AddBtnHdl));
     m_xTreeView->connect_row_activated(LINK(this, ScCondFormatManagerDlg, EditBtnHdl));
 
-    SvtViewOptions aDlgOpt(EViewType::Dialog, "CondFormatDialog");
+    SvtViewOptions aDlgOpt(EViewType::Dialog, u"CondFormatDialog"_ustr);
     if (aDlgOpt.Exists())
         m_xDialog->set_window_state(aDlgOpt.GetWindowState());
 
@@ -110,7 +113,7 @@ ScCondFormatManagerDlg::ScCondFormatManagerDlg(weld::Window* pParent, ScDocument
 ScCondFormatManagerDlg::~ScCondFormatManagerDlg()
 {
    // tdf#101285 - Remember position of dialog
-    SvtViewOptions aDlgOpt(EViewType::Dialog, "CondFormatDialog");
+    SvtViewOptions aDlgOpt(EViewType::Dialog, u"CondFormatDialog"_ustr);
     aDlgOpt.SetWindowState(m_xDialog->get_window_state(vcl::WindowDataMask::Pos));
 }
 
@@ -121,7 +124,7 @@ std::unique_ptr<ScConditionalFormatList> ScCondFormatManagerDlg::GetConditionalF
 
 void ScCondFormatManagerDlg::UpdateButtonSensitivity()
 {
-    bool bNewSensitivity = !m_xFormatList->empty();
+    bool bNewSensitivity = m_xFormatList && !m_xFormatList->empty();
     m_xBtnRemove->set_sensitive(bNewSensitivity);
     m_xBtnEdit->set_sensitive(bNewSensitivity);
 }

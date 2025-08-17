@@ -61,6 +61,7 @@
 #include <IDocumentDrawModelAccess.hxx>
 #include <drawdoc.hxx>
 #include <o3tl/string_view.hxx>
+#include <officecfg/Office/Common.hxx>
 
 using namespace ::com::sun::star;
 
@@ -83,9 +84,9 @@ void WW8Export::OutputGrfNode( const SwGrfNode& /*rNode*/ )
     }
 }
 
-bool WW8Export::TestOleNeedsGraphic(const SwAttrSet& rSet, tools::SvRef<SotStorage> const& xOleStg,
-                                    const tools::SvRef<SotStorage>& xObjStg,
-                                    OUString const& rStorageName, SwOLENode* pOLENd)
+bool WW8Export::TestOleNeedsGraphic(const SwAttrSet& rSet, rtl::Reference<SotStorage> const& xOleStg,
+                                    const rtl::Reference<SotStorage>& xObjStg,
+                                    OUString const& rStorageName, SwOLENode& rOLENd)
 {
     bool bGraphicNeeded = false;
     SfxItemIter aIter( rSet );
@@ -127,11 +128,9 @@ bool WW8Export::TestOleNeedsGraphic(const SwAttrSet& rSet, tools::SvRef<SotStora
         Graphic aGraph(aWMF);
 
         ErrCode nErr = ERRCODE_NONE;
-        sal_Int64 nAspect = embed::Aspects::MSOLE_CONTENT;
-        if ( pOLENd )
-            nAspect = pOLENd->GetAspect();
+        sal_Int64 nAspect = rOLENd.GetAspect();
         rtl::Reference<SdrOle2Obj> pRet = SvxMSDffManager::CreateSdrOLEFromStorage(
-            *m_rDoc.getIDocumentDrawModelAccess().GetOrCreateDrawModel(),
+            m_rDoc.getIDocumentDrawModelAccess().GetOrCreateDrawModel(),
             rStorageName,
             xObjStg,
             m_rDoc.GetDocStorage(),
@@ -146,21 +145,21 @@ bool WW8Export::TestOleNeedsGraphic(const SwAttrSet& rSet, tools::SvRef<SotStora
 
         if (pRet)
         {
-            uno::Reference< embed::XEmbeddedObject > xObj = pOLENd->GetOLEObj().GetOleRef();
+            uno::Reference< embed::XEmbeddedObject > xObj = rOLENd.GetOLEObj().GetOleRef();
             if ( xObj.is() )
             {
                 std::unique_ptr<SvStream> pGraphicStream;
                 comphelper::EmbeddedObjectContainer aCnt( m_rDoc.GetDocStorage() );
                 try
                 {
-                    uno::Reference< embed::XEmbedPersist > xPersist(
-                            xObj,
-                            uno::UNO_QUERY_THROW );
-
-                    // it makes no sense to search the object in the container by reference since the object was created
-                    // outside of the container and was not inserted there, only the name makes sense
-                    pGraphicStream =
-                            ::utl::UcbStreamHelper::CreateStream( aCnt.GetGraphicStream( xPersist->getEntryName() ) );
+                    uno::Reference< embed::XEmbedPersist > xPersist(xObj, uno::UNO_QUERY );
+                    if (xPersist)
+                    {
+                        // it makes no sense to search the object in the container by reference since the object was created
+                        // outside of the container and was not inserted there, only the name makes sense
+                        pGraphicStream =
+                                ::utl::UcbStreamHelper::CreateStream( aCnt.GetGraphicStream( xPersist->getEntryName() ) );
+                    }
                 }
                 catch( const uno::Exception& )
                 {}
@@ -196,7 +195,7 @@ void WW8Export::OutputOLENode( const SwOLENode& rOLENode )
     sal_uInt8 *pSpecOLE;
     sal_uInt8 *pDataAdr;
     short nSize;
-    static sal_uInt8 aSpecOLE_WW8[] = {
+    sal_uInt8 aSpecOLE_WW8[] = {
             0x03, 0x6a, 0, 0, 0, 0, // sprmCPicLocation
             0x0a, 0x08, 1,          // sprmCFOLE2
             0x56, 0x08, 1           // sprmCFObj
@@ -206,7 +205,7 @@ void WW8Export::OutputOLENode( const SwOLENode& rOLENode )
     nSize = sizeof( aSpecOLE_WW8 );
     pDataAdr = pSpecOLE + 2; //WW6 sprm is 1 but has 1 byte len as well.
 
-    tools::SvRef<SotStorage> xObjStg = GetWriter().GetStorage().OpenSotStorage(SL::aObjectPool);
+    rtl::Reference<SotStorage> xObjStg = GetWriter().GetStorage().OpenSotStorage(SL::aObjectPool);
 
     if( !xObjStg.is()  )
         return;
@@ -227,7 +226,7 @@ void WW8Export::OutputOLENode( const SwOLENode& rOLENode )
     nPictureId = aRes.first->second;
     Set_UInt32(pDataAdr, nPictureId);
     OUString sStorageName = "_" + OUString::number( nPictureId );
-    tools::SvRef<SotStorage> xOleStg = xObjStg->OpenSotStorage( sStorageName );
+    rtl::Reference<SotStorage> xOleStg = xObjStg->OpenSotStorage(sStorageName);
     if( !xOleStg.is() )
         return;
 
@@ -239,14 +238,30 @@ void WW8Export::OutputOLENode( const SwOLENode& rOLENode )
     {
         sal_Int64 nAspect = rOLENode.GetAspect();
         svt::EmbeddedObjectRef aObjRef( xObj, nAspect );
+
+        if ( !m_oOLEExp )
+        {
+            sal_uInt32 nSvxMSDffOLEConvFlags = 0;
+            if (officecfg::Office::Common::Filter::Microsoft::Export::MathToMathType::get())
+                nSvxMSDffOLEConvFlags |= OLE_STARMATH_2_MATHTYPE;
+            if (officecfg::Office::Common::Filter::Microsoft::Export::WriterToWinWord::get())
+                nSvxMSDffOLEConvFlags |= OLE_STARWRITER_2_WINWORD;
+            if (officecfg::Office::Common::Filter::Microsoft::Export::CalcToExcel::get())
+                nSvxMSDffOLEConvFlags |= OLE_STARCALC_2_EXCEL;
+            if (officecfg::Office::Common::Filter::Microsoft::Export::ImpressToPowerPoint::get())
+                nSvxMSDffOLEConvFlags |= OLE_STARIMPRESS_2_POWERPOINT;
+
+            m_oOLEExp.emplace( nSvxMSDffOLEConvFlags );
+        }
+
         m_oOLEExp->ExportOLEObject( aObjRef, *xOleStg );
         if ( nAspect == embed::Aspects::MSOLE_ICON )
         {
-            OUString aObjInfo( "\3ObjInfo" );
+            OUString aObjInfo( u"\3ObjInfo"_ustr );
             if ( !xOleStg->IsStream( aObjInfo ) )
             {
                 const sal_uInt8 pObjInfoData[] = { 0x40, 0x00, 0x03, 0x00 };
-                tools::SvRef<SotStorageStream> rObjInfoStream = xOleStg->OpenSotStream( aObjInfo );
+                rtl::Reference<SotStorageStream> rObjInfoStream = xOleStg->OpenSotStream(aObjInfo);
                 if ( rObjInfoStream.is() && !rObjInfoStream->GetError() )
                 {
                     rObjInfoStream->WriteBytes(pObjInfoData, sizeof(pObjInfoData));
@@ -288,7 +303,7 @@ void WW8Export::OutputOLENode( const SwOLENode& rOLENode )
                 m_pParentFrame->GetFrameFormat().GetAttrSet();
             bEndCR = false;
             bGraphicNeeded = TestOleNeedsGraphic(rSet,
-                xOleStg, xObjStg, sStorageName, const_cast<SwOLENode*>(&rOLENode));
+                xOleStg, xObjStg, sStorageName, const_cast<SwOLENode&>(rOLENode));
         }
     }
 
@@ -316,15 +331,15 @@ void WW8Export::OutputOLENode( const SwOLENode& rOLENode )
 void WW8Export::OutputLinkedOLE( const OUString& rOleId )
 {
     uno::Reference< embed::XStorage > xDocStg = m_rDoc.GetDocStorage();
-    uno::Reference< embed::XStorage > xOleStg = xDocStg->openStorageElement( "OLELinks", embed::ElementModes::READ );
-    tools::SvRef<SotStorage> xObjSrc = SotStorage::OpenOLEStorage( xOleStg, rOleId, StreamMode::READ );
+    uno::Reference< embed::XStorage > xOleStg = xDocStg->openStorageElement( u"OLELinks"_ustr, embed::ElementModes::READ );
+    rtl::Reference<SotStorage> xObjSrc = SotStorage::OpenOLEStorage( xOleStg, rOleId, StreamMode::READ );
 
-    tools::SvRef<SotStorage> xObjStg = GetWriter().GetStorage().OpenSotStorage(SL::aObjectPool);
+    rtl::Reference<SotStorage> xObjStg = GetWriter().GetStorage().OpenSotStorage(SL::aObjectPool);
 
     if( !(xObjStg.is() && xObjSrc.is()) )
         return;
 
-    tools::SvRef<SotStorage> xOleDst = xObjStg->OpenSotStorage( rOleId );
+    rtl::Reference<SotStorage> xOleDst = xObjStg->OpenSotStorage(rOleId);
     if ( xOleDst.is() )
         xObjSrc->CopyTo( xOleDst.get() );
 

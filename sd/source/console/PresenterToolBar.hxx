@@ -31,8 +31,8 @@
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
+#include <framework/AbstractView.hxx>
+#include <ResourceId.hxx>
 #include <com/sun/star/frame/XController.hpp>
 
 #include <functional>
@@ -47,9 +47,9 @@ typedef cppu::WeakComponentImplHelper<
     css::drawing::XDrawView
     > PresenterToolBarInterfaceBase;
 
-typedef cppu::WeakComponentImplHelper<
+typedef cppu::ImplInheritanceHelper<
+    sd::framework::AbstractView,
     css::awt::XPaintListener,
-    css::drawing::framework::XView,
     css::drawing::XDrawView
     > PresenterToolBarViewInterfaceBase;
 
@@ -133,13 +133,12 @@ public:
         const css::uno::Reference<css::drawing::XDrawPage>& rxSlide) override;
 
     virtual css::uno::Reference<css::drawing::XDrawPage> SAL_CALL getCurrentPage() override;
-
-    class Context;
+    class Element;
 
 private:
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
 
-    class ElementContainerPart;
+    using ElementContainerPart = std::vector<rtl::Reference<Element>>;
     typedef std::shared_ptr<ElementContainerPart> SharedElementContainerPart;
     typedef ::std::vector<SharedElementContainerPart> ElementContainer;
     ElementContainer maElementContainer;
@@ -158,13 +157,11 @@ private:
 
     void CreateControls (
         const OUString& rsConfigurationPath);
-    void Layout (const css::uno::Reference<css::rendering::XCanvas>& rxCanvas);
-    css::geometry::RealSize2D CalculatePartSize (
-        const css::uno::Reference<css::rendering::XCanvas>& rxCanvas,
+    void Layout();
+    css::geometry::RealSize2D CalculatePartSize(
         const SharedElementContainerPart& rpPart,
         const bool bIsHorizontal);
-    static void LayoutPart (
-        const css::uno::Reference<css::rendering::XCanvas>& rxCanvas,
+    void LayoutPart(
         const SharedElementContainerPart& rpPart,
         const css::geometry::RealRectangle2D& rBoundingBox,
         const css::geometry::RealSize2D& rPartSize,
@@ -180,9 +177,7 @@ private:
         const bool bOverWindow,
         const bool bMouseDown=false);
 
-    void ProcessEntry (
-        const css::uno::Reference<css::beans::XPropertySet>& rProperties,
-        Context const & rContext);
+    void ProcessEntry(const css::uno::Reference<css::beans::XPropertySet>& rProperties);
 
     /** @throws css::lang::DisposedException when the object has already been
         disposed.
@@ -193,20 +188,19 @@ private:
 /** View for the PresenterToolBar.
 */
 class PresenterToolBarView
-    : private ::cppu::BaseMutex,
-      public PresenterToolBarViewInterfaceBase
+    : public PresenterToolBarViewInterfaceBase
 {
 public:
     explicit PresenterToolBarView (
         const css::uno::Reference<css::uno::XComponentContext>& rxContext,
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
         const ::rtl::Reference<::sd::DrawController>& rxController,
         const ::rtl::Reference<PresenterController>& rpPresenterController);
     virtual ~PresenterToolBarView() override;
     PresenterToolBarView(const PresenterToolBarView&) = delete;
     PresenterToolBarView& operator=(const PresenterToolBarView&) = delete;
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     const ::rtl::Reference<PresenterToolBar>& GetPresenterToolBar() const;
 
@@ -216,14 +210,15 @@ public:
 
     // lang::XEventListener
 
+    using WeakComponentImplHelperBase::disposing;
     virtual void SAL_CALL
         disposing (const css::lang::EventObject& rEventObject) override;
 
-    // XResourceId
+    // AbstractResource
 
-    virtual css::uno::Reference<css::drawing::framework::XResourceId> SAL_CALL getResourceId() override;
+    virtual rtl::Reference<sd::framework::ResourceId> getResourceId() override;
 
-    virtual sal_Bool SAL_CALL isAnchorOnly() override;
+    virtual bool isAnchorOnly() override;
 
     // XDrawView
 
@@ -234,8 +229,8 @@ public:
 
 private:
     //    css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
-    css::uno::Reference<css::drawing::framework::XPane> mxPane;
-    css::uno::Reference<css::drawing::framework::XResourceId> mxViewId;
+    rtl::Reference<sd::framework::AbstractPane> mxPane;
+    rtl::Reference<sd::framework::ResourceId> mxViewId;
     css::uno::Reference<css::awt::XWindow> mxWindow;
     css::uno::Reference<css::rendering::XCanvas> mxCanvas;
     ::rtl::Reference<PresenterController> mpPresenterController;

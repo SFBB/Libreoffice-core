@@ -10,7 +10,7 @@
 #pragma once
 
 #include <rangelst.hxx>
-#include "condformatdlgitem.hxx"
+#include "condformatdlgdata.hxx"
 #include "condformatdlgentry.hxx"
 
 #include "anyrefdg.hxx"
@@ -30,7 +30,7 @@ class ScCondFormatList
 {
 private:
     std::unique_ptr<weld::ScrolledWindow> mxScrollWindow;
-    std::unique_ptr<weld::Container> mxGrid;
+    std::unique_ptr<weld::Grid> mxGrid;
 
     typedef std::vector<std::unique_ptr<ScCondFrmtEntry>> EntryContainer;
     EntryContainer maEntries;
@@ -38,19 +38,20 @@ private:
     bool mbFrozen;
     bool mbNewEntry;
 
-    ScDocument* mpDoc;
+    ScDocument& mrDoc;
     ScAddress maPos;
     ScRangeList maRanges;
     ScCondFormatDlg* mpDialogParent;
 
 public:
     ScCondFormatList(ScCondFormatDlg* pParent,
+                     ScDocument& rDoc,
                      std::unique_ptr<weld::ScrolledWindow> xWindow,
-                     std::unique_ptr<weld::Container> xGrid);
-    weld::Container* GetContainer() { return mxGrid.get(); }
+                     std::unique_ptr<weld::Grid> xGrid);
+    weld::Grid* GetGrid() { return mxGrid.get(); }
     ~ScCondFormatList();
 
-    void init(ScDocument& rDoc, const ScConditionalFormat* pFormat,
+    void init(const ScConditionalFormat* pFormat,
         const ScRangeList& rRanges, const ScAddress& rPos,
         condformat::dialog::ScCondFormatDialogType eType);
 
@@ -77,12 +78,12 @@ public:
 class ScCondFormatDlg : public ScAnyRefDlgController
 {
 private:
-    sal_Int32 mnKey;
+    sal_uInt32 mnKey;
 
     ScAddress maPos;
-    ScViewData* mpViewData;
+    ScViewData& mrViewData;
 
-    std::shared_ptr<ScCondFormatDlgItem> mpDlgItem;
+    std::shared_ptr<ScCondFormatDlgData> mpDlgData;
 
     OUString msBaseTitle;
 
@@ -108,7 +109,7 @@ protected:
 
 public:
     ScCondFormatDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pWindow,
-                                 ScViewData* pViewData, const ScCondFormatDlgItem* pDlgItem);
+                                 ScViewData& rViewData, const std::shared_ptr<ScCondFormatDlgData>& rItem);
     virtual ~ScCondFormatDlg() override;
 
     std::unique_ptr<ScConditionalFormat> GetConditionalFormat() const;

@@ -19,7 +19,6 @@
 
 
 #include "filterdet.hxx"
-#include "inc/pdfihelper.hxx"
 #include "inc/pdfparse.hxx"
 
 #include <osl/file.h>
@@ -37,6 +36,8 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <tools/stream.hxx>
+#include <vcl/filter/PDFiumLibrary.hxx>
+#include <vcl/pdf/pwdinteract.hxx>
 #include <memory>
 #include <utility>
 #include <string.h>
@@ -197,7 +198,7 @@ sal_Int32 fillAttributes(uno::Sequence<beans::PropertyValue> const& rFilterData,
     sal_Int32 nAttribs = rFilterData.getLength();
     for (sal_Int32 i = 0; i < nAttribs; i++)
     {
-        OUString aVal( "<no string>" );
+        OUString aVal( u"<no string>"_ustr );
         pAttribs[i].Value >>= aVal;
         SAL_INFO("sdext.pdfimport", "doDetection: Attrib: " + pAttribs[i].Name + " = " + aVal);
 
@@ -282,8 +283,156 @@ bool copyToTemp(uno::Reference<io::XInputStream> const& xInput, oslFileHandle& r
     return false;
 }
 
+struct FilenameMime {
+    OUString aFilename;
+    OUString aMimetype;
+};
+
+constexpr FilenameMime aFilenameMimeMap[] = {
+    { u"Original.odt"_ustr, u"application/vnd.oasis.opendocument.text"_ustr },
+    { u"Original.odp"_ustr, u"application/vnd.oasis.opendocument.presentation"_ustr },
+    { u"Original.ods"_ustr, u"application/vnd.oasis.opendocument.spreadsheet"_ustr },
+    { u"Original.odg"_ustr, u"application/vnd.oasis.opendocument.graphics"_ustr },
+};
+
 } // end anonymous namespace
 
+// Check for a hybrid that is stored using the newer method, the standard PDF embedded file
+// with a name of Original.o** and the matching MIME type.  For this to match there must
+// be exactly one embedded file.
+// This uses PDFium to do the legwork.
+uno::Reference<io::XStream> getEmbeddedFile(const OUString& rInPDFFileURL,
+                                            OUString& rOutMimetype,
+                                            OUString& io_rPwd,
+                                            const uno::Reference<uno::XComponentContext>& xContext,
+                                            const uno::Sequence<beans::PropertyValue>& rFilterData,
+                                            bool bMayUseUI)
+{
+    uno::Reference<io::XStream> xEmbed;
+    OUString aSysUPath;
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    if (pPdfium)
+    {
+        // Needs rewriting more C++ with autocleanup
+        // Start by mmapping the file because our pdfium wrapper only wraps the LoadMemDocument
+        oslFileHandle fileHandle = nullptr;
+        SAL_INFO("sdext.pdfimport", "getEmbeddedFile prior to openFile" << aSysUPath);
+        if (osl_openFile(rInPDFFileURL.pData, &fileHandle, osl_File_OpenFlag_Read)
+            != osl_File_E_None)
+        {
+            return xEmbed;
+        }
+
+        sal_uInt64 nFileSize;
+        if (osl_getFileSize(fileHandle, &nFileSize) != osl_File_E_None)
+        {
+            osl_closeFile(fileHandle);
+            return xEmbed;
+        }
+
+        void* pMemRawPdf;
+        if (osl_mapFile(fileHandle, &pMemRawPdf, nFileSize, 0, osl_File_MapFlag_RandomAccess)
+            != osl_File_E_None)
+        {
+            osl_closeFile(fileHandle);
+            return xEmbed;
+        }
+
+        bool bAgain = false;
+        do {
+            OString aIsoPwd = OUStringToOString(io_rPwd, RTL_TEXTENCODING_ISO_8859_1);
+            auto pPdfiumDoc = pPdfium->openDocument(pMemRawPdf, nFileSize, aIsoPwd);
+            SAL_INFO("sdext.pdfimport", "getEmbeddedFile pdfium docptr: " << pPdfiumDoc);
+
+            auto nPdfiumErr = pPdfium->getLastErrorCode();
+            if (pPdfiumDoc == nullptr
+                && (nPdfiumErr != vcl::pdf::PDFErrorType::Success
+                    && nPdfiumErr != vcl::pdf::PDFErrorType::Password))
+            {
+                SAL_WARN("sdext.pdfimport",
+                         "getEmbeddedFile pdfium err: " << pPdfium->getLastError());
+                break;
+            }
+            if (pPdfiumDoc == nullptr && nPdfiumErr == vcl::pdf::PDFErrorType::Password)
+            {
+                uno::Reference<task::XInteractionHandler> xIntHdl;
+                for (const beans::PropertyValue& rAttrib : rFilterData)
+                {
+                    if (rAttrib.Name == "InteractionHandler")
+                        rAttrib.Value >>= xIntHdl;
+                }
+                SAL_INFO("sdext.pdfimport",
+                         "getEmbeddedFile pdfium Pass needed: UI: " << bMayUseUI);
+                if (bMayUseUI && xIntHdl.is())
+                {
+                    OUString aDocName(rInPDFFileURL.copy(rInPDFFileURL.lastIndexOf('/') + 1));
+                    bAgain = vcl::pdf::getPassword(xIntHdl, io_rPwd, !bAgain, aDocName);
+                    SAL_INFO("sdext.pdfimport", "getEmbeddedFile pdfium Pass result: " << bAgain);
+                    continue;
+                }
+                break;
+            }
+            bAgain = false;
+            // The new style hybrids have exactly one embedded file
+            if (!pPdfiumDoc || pPdfiumDoc->getAttachmentCount() != 1)
+            {
+                SAL_INFO("sdext.pdfimport", "getEmbeddedFile incorrect attachment count");
+                break;
+            }
+            auto pAttachment = pPdfiumDoc->getAttachment(0);
+            auto aName = pAttachment->getName();
+            // pdfium currently has no way to read the MIME type (aka Subtype field)
+            // see https://issues.chromium.org/issues/408241034
+            // When it does we can check the filename matches the expected mimetype
+            SAL_INFO("sdext.pdfimport", "getEmbeddedFile attachment name: " << aName);
+
+            // Find the mimetype for the filename
+            OUString aMimetype;
+
+            for (auto& rFM : aFilenameMimeMap)
+            {
+                if (rFM.aFilename == aName)
+                {
+                    aMimetype = rFM.aMimetype;
+                    break;
+                }
+            }
+            SAL_INFO("sdext.pdfimport", "getEmbeddedFile mimetype: " << aMimetype);
+            // If we don't match, then this is a non-hybrid file with a normal attachment
+            if (aMimetype.isEmpty())
+            {
+                break;
+            }
+
+            SAL_INFO("sdext.pdfimport", "getEmbeddedFile pdfium open");
+            std::vector<sal_uInt8> aExtractedFileBuf;
+            if (!pAttachment->getFile(aExtractedFileBuf))
+            {
+                break;
+            }
+            SAL_INFO("sdext.pdfimport", "getEmbeddedFile file buffer length: " << aExtractedFileBuf.size());
+            // Based on FileEmitContext above, we want to stash the data in a TempFile
+            // but need an XStream
+            uno::Reference<io::XStream> xContextStream;
+            uno::Reference<io::XSeekable> xSeek;
+            xContextStream.set(io::TempFile::create(xContext), uno::UNO_QUERY_THROW);
+            auto xOut = xContextStream->getOutputStream();
+            xSeek.set(xOut, uno::UNO_QUERY_THROW);
+            // writeBytes wants a Uno::Sequence rather than the std::vector above, convert again
+            uno::Sequence<sal_Int8> aExtractedFileSeq(reinterpret_cast<sal_Int8 *>(aExtractedFileBuf.data()), aExtractedFileBuf.size());
+            xOut->writeBytes(aExtractedFileSeq);
+
+            xEmbed = std::move(xContextStream);
+            rOutMimetype = aMimetype;
+            SAL_INFO("sdext.pdfimport", "getEmbeddedFile returning stream");
+        } while (bAgain);
+
+        osl_unmapMappedFile(fileHandle, pMemRawPdf, nFileSize);
+        osl_closeFile(fileHandle);
+    }
+
+    return xEmbed;
+}
 // XExtendedFilterDetection
 OUString SAL_CALL PDFDetector::detect( uno::Sequence< beans::PropertyValue >& rFilterData )
 {
@@ -316,7 +465,7 @@ OUString SAL_CALL PDFDetector::detect( uno::Sequence< beans::PropertyValue >& rF
     oslFileHandle aFileHandle = nullptr;
 
     // check for hybrid PDF
-    if (bSuccess && (aURL.isEmpty() || !comphelper::isFileUrl(aURL)))
+    if (aURL.isEmpty() || !comphelper::isFileUrl(aURL))
     {
         if (osl_createTempFile(nullptr, &aFileHandle, &aURL.pData) != osl_File_E_None)
         {
@@ -338,8 +487,20 @@ OUString SAL_CALL PDFDetector::detect( uno::Sequence< beans::PropertyValue >& rF
     }
 
     OUString aEmbedMimetype;
-    xEmbedStream = getAdditionalStream(aURL, aEmbedMimetype, aPassword, m_xContext, rFilterData, false);
 
+    SAL_INFO( "sdext.pdfimport", "PDFDetector::detect before getEmbeddedFile" );
+    // Try testing for the newer embedded file format
+    xEmbedStream = getEmbeddedFile(aURL, aEmbedMimetype, aPassword, m_xContext, rFilterData, true);
+
+    if (aEmbedMimetype.isEmpty())
+    {
+        SAL_INFO( "sdext.pdfimport", "PDFDetector::detect before getAdditionalStream" );
+        // No success with embedded file, try the older trailer based AdditionalStream
+        xEmbedStream =
+            getAdditionalStream(aURL, aEmbedMimetype, aPassword, m_xContext, rFilterData, false);
+    }
+
+    SAL_INFO( "sdext.pdfimport", "PDFDetector::detect after emb/addit: "  << aEmbedMimetype);
     if (aFileHandle)
         osl_removeFile(aURL.pData);
 
@@ -355,6 +516,19 @@ OUString SAL_CALL PDFDetector::detect( uno::Sequence< beans::PropertyValue >& rF
             aOutFilterName = "draw_pdf_addstream_import";
         else if ( aEmbedMimetype == "application/vnd.oasis.opendocument.spreadsheet" )
             aOutFilterName = "calc_pdf_addstream_import";
+    }
+
+    // Stash the password so that the importer can use it, even if we came to the
+    // conclusion that it's not a hybrid, the PDF import side can use it.
+    if (!aPassword.isEmpty())
+    {
+        if (nPasswordPos == -1)
+        {
+            nPasswordPos = nAttribs;
+            rFilterData.realloc(++nAttribs);
+            rFilterData.getArray()[nPasswordPos].Name = "Password";
+        }
+        rFilterData.getArray()[nPasswordPos].Value <<= aPassword;
     }
 
     if (!aOutFilterName.isEmpty())
@@ -375,17 +549,6 @@ OUString SAL_CALL PDFDetector::detect( uno::Sequence< beans::PropertyValue >& rF
             pFilterData = rFilterData.getArray();
             pFilterData[nAttribs-1].Name = "EmbeddedSubstream";
             pFilterData[nAttribs-1].Value <<= xEmbedStream;
-        }
-        if (!aPassword.isEmpty())
-        {
-            if (nPasswordPos == -1)
-            {
-                nPasswordPos = nAttribs;
-                rFilterData.realloc(++nAttribs);
-                pFilterData = rFilterData.getArray();
-                pFilterData[nPasswordPos].Name = "Password";
-            }
-            pFilterData[nPasswordPos].Value <<= aPassword;
         }
     }
     else
@@ -411,15 +574,15 @@ OUString SAL_CALL PDFDetector::detect( uno::Sequence< beans::PropertyValue >& rF
             switch (nDocumentType)
             {
                 case 0:
-                    pFilterData[nFilterNamePos].Value <<= OUString( "draw_pdf_import" );
+                    pFilterData[nFilterNamePos].Value <<= u"draw_pdf_import"_ustr;
                     break;
 
                 case 1:
-                    pFilterData[nFilterNamePos].Value <<= OUString( "impress_pdf_import" );
+                    pFilterData[nFilterNamePos].Value <<= u"impress_pdf_import"_ustr;
                     break;
 
                 case 2:
-                    pFilterData[nFilterNamePos].Value <<= OUString( "writer_pdf_import" );
+                    pFilterData[nFilterNamePos].Value <<= u"writer_pdf_import"_ustr;
                     break;
 
                 default:
@@ -435,7 +598,7 @@ OUString SAL_CALL PDFDetector::detect( uno::Sequence< beans::PropertyValue >& rF
 
 OUString PDFDetector::getImplementationName()
 {
-    return "org.libreoffice.comp.documents.PDFDetector";
+    return u"org.libreoffice.comp.documents.PDFDetector"_ustr;
 }
 
 sal_Bool PDFDetector::supportsService(OUString const & ServiceName)
@@ -445,7 +608,7 @@ sal_Bool PDFDetector::supportsService(OUString const & ServiceName)
 
 css::uno::Sequence<OUString> PDFDetector::getSupportedServiceNames()
 {
-    return {"com.sun.star.document.ImportFilter"};
+    return {u"com.sun.star.document.ImportFilter"_ustr};
 }
 
 bool checkDocChecksum( const OUString& rInPDFFileURL,
@@ -530,9 +693,9 @@ static bool detectHasAdditionalStreams(const OUString& rSysUPath)
     std::vector<OString> aTrailingLines;
     const sal_uInt64 nLen = aHybridDetect.remainingSize();
     aHybridDetect.Seek(nLen - std::min<sal_uInt64>(nLen, 4096));
-    OString aLine;
+    OStringBuffer aLine;
     while (aHybridDetect.ReadLine(aLine))
-        aTrailingLines.push_back(aLine);
+        aTrailingLines.push_back(aLine.toString()); // produces minimal string, and keeps buffer
     bool bAdditionalStreams(false);
     for (auto it = aTrailingLines.rbegin(); it != aTrailingLines.rend(); ++it)
     {
@@ -629,7 +792,7 @@ uno::Reference< io::XStream > getAdditionalStream( const OUString&              
                                                                                    RTL_TEXTENCODING_ISO_8859_1 );
                                     bAuthenticated = pPDFFile->setupDecryptionData( aIsoPwd );
                                 }
-                                if( ! bAuthenticated )
+                                else
                                 {
                                     uno::Reference< task::XInteractionHandler > xIntHdl;
                                     for( const beans::PropertyValue& rAttrib : rFilterData )
@@ -649,7 +812,7 @@ uno::Reference< io::XStream > getAdditionalStream( const OUString&              
                                     bool bEntered = false;
                                     do
                                     {
-                                        bEntered = getPassword( xIntHdl, io_rPwd, ! bEntered, aDocName );
+                                        bEntered = vcl::pdf::getPassword( xIntHdl, io_rPwd, ! bEntered, aDocName );
                                         OString aIsoPwd = OUStringToOString( io_rPwd,
                                                                                        RTL_TEXTENCODING_ISO_8859_1 );
                                         bAuthenticated = pPDFFile->setupDecryptionData( aIsoPwd );

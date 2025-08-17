@@ -31,6 +31,7 @@
 #include <o3tl/safeint.hxx>
 
 #include <pdf/objectcopier.hxx>
+#include <pdf/COSWriter.hxx>
 
 using namespace com::sun::star;
 
@@ -112,17 +113,18 @@ sal_uInt32 PDFDocument::GetNextSignature()
             continue;
 
         const OString& rValue = pT->GetValue();
-        static constexpr std::string_view aPrefix = "Signature";
-        if (!rValue.startsWith(aPrefix))
+        std::string_view rest;
+        if (!rValue.startsWith("Signature", &rest))
             continue;
 
-        nRet = std::max(nRet, o3tl::toUInt32(rValue.subView(aPrefix.size())));
+        nRet = std::max(nRet, o3tl::toUInt32(rest));
     }
 
     return nRet + 1;
 }
 
-sal_Int32 PDFDocument::WriteSignatureObject(const OUString& rDescription, bool bAdES,
+sal_Int32 PDFDocument::WriteSignatureObject(svl::crypto::SigningContext& rSigningContext,
+                                            const OUString& rDescription, bool bAdES,
                                             sal_uInt64& rLastByteRangeOffset,
                                             sal_Int64& rContentOffset)
 {
@@ -132,6 +134,7 @@ sal_Int32 PDFDocument::WriteSignatureObject(const OUString& rDescription, bool b
     aSignatureEntry.SetOffset(m_aEditBuffer.Tell());
     aSignatureEntry.SetDirty(true);
     m_aXRef[nSignatureId] = aSignatureEntry;
+
     OStringBuffer aSigBuffer(OString::number(nSignatureId)
                              + " 0 obj\n"
                                "<</Contents <");
@@ -146,7 +149,7 @@ sal_Int32 PDFDocument::WriteSignatureObject(const OUString& rDescription, bool b
         aSigBuffer.append("/adbe.pkcs7.detached");
 
     // Time of signing.
-    aSigBuffer.append(" /M (" + vcl::PDFWriter::GetDateTime()
+    aSigBuffer.append(" /M (" + vcl::PDFWriter::GetDateTime(&rSigningContext)
                       + ")"
 
                         // Byte range: we can write offset1-length1 and offset2 right now, will
@@ -166,9 +169,9 @@ sal_Int32 PDFDocument::WriteSignatureObject(const OUString& rDescription, bool b
 
     if (!rDescription.isEmpty())
     {
-        aSigBuffer.append("/Reason<");
-        vcl::PDFWriter::AppendUnicodeTextString(rDescription, aSigBuffer);
-        aSigBuffer.append(">");
+        pdf::COSWriter aWriter;
+        aWriter.writeKeyAndUnicode("/Reason", rDescription);
+        aSigBuffer.append(aWriter.getLine());
     }
 
     aSigBuffer.append(" >>\nendobj\n\n");
@@ -855,17 +858,19 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement const* p
     }
 }
 
-bool PDFDocument::Sign(const uno::Reference<security::XCertificate>& xCertificate,
-                       const OUString& rDescription, bool bAdES)
+bool PDFDocument::Sign(svl::crypto::SigningContext& rSigningContext, const OUString& rDescription,
+                       bool bAdES)
 {
     m_aEditBuffer.Seek(STREAM_SEEK_TO_END);
     m_aEditBuffer.WriteOString("\n");
 
     sal_uInt64 nSignatureLastByteRangeOffset = 0;
     sal_Int64 nSignatureContentOffset = 0;
-    sal_Int32 nSignatureId = WriteSignatureObject(
-        rDescription, bAdES, nSignatureLastByteRangeOffset, nSignatureContentOffset);
-
+    sal_Int32 nSignatureId
+        = WriteSignatureObject(rSigningContext, rDescription, bAdES, nSignatureLastByteRangeOffset,
+                               nSignatureContentOffset);
+    assert(nSignatureContentOffset > 0
+           && "WriteSignatureObject guarantees a length for nSignatureContentOffset");
     tools::Rectangle aSignatureRectangle;
     sal_Int32 nAppearanceId = WriteAppearanceObject(aSignatureRectangle);
 
@@ -922,11 +927,14 @@ bool PDFDocument::Sign(const uno::Reference<security::XCertificate>& xCertificat
     m_aEditBuffer.WriteOString(aByteRangeBuffer);
 
     // Create the PKCS#7 object.
-    css::uno::Sequence<sal_Int8> aDerEncoded = xCertificate->getEncoded();
-    if (!aDerEncoded.hasElements())
+    if (rSigningContext.m_xCertificate)
     {
-        SAL_WARN("vcl.filter", "PDFDocument::Sign: empty certificate");
-        return false;
+        css::uno::Sequence<sal_Int8> aDerEncoded = rSigningContext.m_xCertificate->getEncoded();
+        if (!aDerEncoded.hasElements())
+        {
+            SAL_WARN("vcl.filter", "PDFDocument::Sign: empty certificate");
+            return false;
+        }
     }
 
     m_aEditBuffer.Seek(0);
@@ -940,13 +948,28 @@ bool PDFDocument::Sign(const uno::Reference<security::XCertificate>& xCertificat
     m_aEditBuffer.ReadBytes(aBuffer2.get(), nBufferSize2);
 
     OStringBuffer aCMSHexBuffer;
-    svl::crypto::Signing aSigning(xCertificate);
-    aSigning.AddDataRange(aBuffer1.get(), nBufferSize1);
-    aSigning.AddDataRange(aBuffer2.get(), nBufferSize2);
-    if (!aSigning.Sign(aCMSHexBuffer))
+    if (rSigningContext.m_aSignatureValue.empty())
     {
-        SAL_WARN("vcl.filter", "PDFDocument::Sign: PDFWriter::Sign() failed");
-        return false;
+        svl::crypto::Signing aSigning(rSigningContext);
+        aSigning.AddDataRange(aBuffer1.get(), nBufferSize1);
+        aSigning.AddDataRange(aBuffer2.get(), nBufferSize2);
+        if (!aSigning.Sign(aCMSHexBuffer))
+        {
+            if (rSigningContext.m_xCertificate.is())
+            {
+                SAL_WARN("vcl.filter", "PDFDocument::Sign: PDFWriter::Sign() failed");
+            }
+            return false;
+        }
+    }
+    else
+    {
+        // The signature value provided by the context: use that instead of building a new
+        // signature.
+        for (unsigned char ch : rSigningContext.m_aSignatureValue)
+        {
+            svl::crypto::Signing::appendHex(ch, aCMSHexBuffer);
+        }
     }
 
     assert(aCMSHexBuffer.getLength() <= MAX_SIGNATURE_CONTENT_LENGTH);
@@ -1102,6 +1125,14 @@ bool PDFDocument::Tokenize(SvStream& rStream, TokenizeMode eMode,
                     pObjectStream = pObject;
                 else
                     pObjectKey = pNameElement;
+
+                if (bInObject && !nDepth && pObject)
+                {
+                    // Name element inside an object, but outside a
+                    // dictionary / array: remember it.
+                    pObject->SetNameElement(pNameElement);
+                }
+
                 break;
             }
             case '(':
@@ -1353,7 +1384,9 @@ bool PDFDocument::ReadWithPossibleFixup(SvStream& rStream)
     // Read failed, try a roundtrip through pdfium and then retry.
     rStream.Seek(0);
     SvMemoryStream aStandardizedStream;
-    vcl::pdf::convertToHighestSupported(rStream, aStandardizedStream);
+    bool bEncrypted;
+    vcl::pdf::convertToHighestSupported(rStream, aStandardizedStream, nullptr, true /* force */,
+                                        bEncrypted);
     return Read(aStandardizedStream);
 }
 
@@ -1373,6 +1406,12 @@ bool PDFDocument::Read(SvStream& rStream)
     // Allow later editing of the contents in-memory.
     rStream.Seek(0);
     m_aEditBuffer.WriteStream(rStream);
+
+    // clear out key items that may have been filled with info from any previous read attempt
+    m_aOffsetTrailers.clear();
+    m_aTrailerOffsets.clear();
+    m_pTrailer = nullptr;
+    m_pXRefStream = nullptr;
 
     // Look up the offset of the xref table.
     size_t nStartXRef = FindStartXRef(rStream);
@@ -1419,6 +1458,7 @@ bool PDFDocument::Read(SvStream& rStream)
             nStartXRef = pPrev->GetValue();
 
         // Reset state, except the edit buffer.
+        m_aOffsetTrailers.clear(); // contents are lifecycle managed by m_aElements
         m_aElements.clear();
         m_aOffsetObjects.clear();
         m_aIDObjects.clear();
@@ -2291,6 +2331,7 @@ PDFObjectElement::PDFObjectElement(PDFDocument& rDoc, double fObjectValue, doubl
     , m_fObjectValue(fObjectValue)
     , m_fGenerationValue(fGenerationValue)
     , m_pNumberElement(nullptr)
+    , m_pNameElement(nullptr)
     , m_nDictionaryOffset(0)
     , m_nDictionaryLength(0)
     , m_pDictionaryElement(nullptr)
@@ -2461,6 +2502,13 @@ void PDFObjectElement::SetNumberElement(PDFNumberElement* pNumberElement)
 }
 
 PDFNumberElement* PDFObjectElement::GetNumberElement() const { return m_pNumberElement; }
+
+void PDFObjectElement::SetNameElement(PDFNameElement* pNameElement)
+{
+    m_pNameElement = pNameElement;
+}
+
+PDFNameElement* PDFObjectElement::GetNameElement() const { return m_pNameElement; }
 
 const std::vector<PDFReferenceElement*>& PDFObjectElement::GetDictionaryReferences() const
 {

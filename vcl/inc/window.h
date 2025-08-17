@@ -48,6 +48,8 @@ class VCLXWindow;
 namespace vcl { class WindowData; }
 class SalFrame;
 class SalObject;
+class DNDEventDispatcher;
+class DNDListenerContainer;
 enum class MouseEventModifiers;
 enum class NotifyEventType;
 enum class ActivateModeFlags;
@@ -168,11 +170,12 @@ struct ImplFrameData
     bool                mbInSysObjFocusHdl;     //< within a SysChildren's GetFocus handler
     bool                mbInSysObjToTopHdl;     //< within a SysChildren's ToTop handler
     bool                mbSysObjFocus;          //< does a SysChild have focus
-    sal_Int32           mnTouchPanPosition;
+    sal_Int32           mnTouchPanPositionX;
+    sal_Int32           mnTouchPanPositionY;
 
     css::uno::Reference< css::datatransfer::dnd::XDragSource > mxDragSource;
     css::uno::Reference< css::datatransfer::dnd::XDropTarget > mxDropTarget;
-    css::uno::Reference< css::datatransfer::dnd::XDropTargetListener > mxDropTargetListener;
+    rtl::Reference< DNDEventDispatcher > mxDropTargetListener; // css::datatransfer::dnd::XDropTargetListener
     css::uno::Reference< css::datatransfer::clipboard::XClipboard > mxClipboard;
 
     bool                mbInternalDragGestureRecognizer;
@@ -191,6 +194,7 @@ struct ImplAccessibleInfos
                         pAccessibleName;
     std::optional<OUString>
                         pAccessibleDescription;
+    rtl::Reference<comphelper::OAccessible> pAccessibleParent;
     VclPtr<vcl::Window> pLabeledByWindow;
     VclPtr<vcl::Window> pLabelForWindow;
 
@@ -281,7 +285,7 @@ public:
     OUString            maID;
     InputContext        maInputContext;
     css::uno::Reference< css::awt::XVclWindowPeer > mxWindowPeer;
-    css::uno::Reference< css::accessibility::XAccessible > mxAccessible;
+    rtl::Reference<comphelper::OAccessible> mpAccessible;
     std::shared_ptr< VclSizeGroup > m_xSizeGroup;
     std::vector<VclPtr<FixedText>> m_aMnemonicLabels;
     std::unique_ptr<ImplAccessibleInfos> mpAccessibleInfos;
@@ -294,7 +298,7 @@ public:
     WinBits             mnStyle;
     WinBits             mnPrevStyle;
     WindowExtendedStyle mnExtendedStyle;
-    WindowType          mnType;
+    WindowType          meType;
     ControlPart         mnNativeBackground;
     sal_uInt16          mnWaitCount;
     ImplPaintFlags      mnPaintFlags;
@@ -380,7 +384,6 @@ public:
                         mbMenuFloatingWindow:1,
                         mbDrawSelectionBackground:1,
                         mbIsInTaskPaneList:1,
-                        mbToolbarFloatingWindow:1,
                         mbHelpTextDynamic:1,
                         mbFakeFocusSet:1,
                         mbHexpand:1,
@@ -391,7 +394,7 @@ public:
                         mbNonHomogeneous:1,
                         mbDoubleBufferingRequested:1;
 
-    css::uno::Reference< css::uno::XInterface > mxDNDListenerContainer;
+    rtl::Reference< DNDListenerContainer > mxDNDListenerContainer;
 
     const vcl::ILibreOfficeKitNotifier* mpLOKNotifier; ///< To emit the LOK callbacks eg. for dialog tunneling.
     vcl::LOKWindowId mnLOKWindowId; ///< ID of this specific window.

@@ -48,7 +48,7 @@ using namespace com::sun::star::container;
 using namespace com::sun::star::io;
 using namespace com::sun::star::util;
 
-IMPLEMENT_SERVICE_INFO(OPreparedStatement,"com.sun.star.sdbcx.firebird.PreparedStatement","com.sun.star.sdbc.PreparedStatement");
+IMPLEMENT_SERVICE_INFO(OPreparedStatement,u"com.sun.star.sdbcx.firebird.PreparedStatement"_ustr,u"com.sun.star.sdbc.PreparedStatement"_ustr);
 
 constexpr size_t MAX_SIZE_SEGMENT = 65535; // max value of a segment of CLOB, if we want more than 65535 bytes, we need more segments
 
@@ -77,6 +77,7 @@ void OPreparedStatement::ensurePrepared()
     if (!m_pInSqlda)
     {
         m_pInSqlda = static_cast<XSQLDA*>(calloc(1, XSQLDA_LENGTH(10)));
+        assert(m_pInSqlda && "Don't handle OOM conditions");
         m_pInSqlda->version = SQLDA_VERSION1;
         m_pInSqlda->sqln = 10;
     }
@@ -97,6 +98,7 @@ void OPreparedStatement::ensurePrepared()
         short nItems = m_pInSqlda->sqld;
         free(m_pInSqlda);
         m_pInSqlda = static_cast<XSQLDA*>(calloc(1, XSQLDA_LENGTH(nItems)));
+        assert(m_pInSqlda && "Don't handle OOM conditions");
         m_pInSqlda->version = SQLDA_VERSION1;
         m_pInSqlda->sqln = nItems;
         aErr = isc_dsql_describe_bind(m_statusVector,
@@ -191,79 +193,81 @@ void SAL_CALL OPreparedStatement::setString(sal_Int32 nParameterIndex,
     checkParameterIndex(nParameterIndex);
     setParameterNull(nParameterIndex, false);
 
-    OString str = OUStringToOString(sInput , RTL_TEXTENCODING_UTF8 );
-
     XSQLVAR* pVar = m_pInSqlda->sqlvar + (nParameterIndex - 1);
+    ColumnTypeInfo columnType(*pVar);
 
-    int dtype = (pVar->sqltype & ~1); // drop flag bit for now
-
-    if (str.getLength() > pVar->sqllen)
-        str = str.copy(0, pVar->sqllen);
-
-    switch (dtype) {
-    case SQL_VARYING:
+    switch (auto sdbcType = columnType.getSdbcType()) {
+    case DataType::VARCHAR:
+    case DataType::CHAR:
     {
-        const sal_Int32 max_varchar_len = 0xFFFF;
-        // First 2 bytes indicate string size
-        if (str.getLength() > max_varchar_len)
+        OString str = OUStringToOString(sInput, RTL_TEXTENCODING_UTF8);
+        const ISC_SHORT nLength = std::min(str.getLength(), static_cast<sal_Int32>(pVar->sqllen));
+        int offset = 0;
+        if (sdbcType == DataType::VARCHAR)
         {
-            str = str.copy(0, max_varchar_len);
+            // First 2 bytes indicate string size
+            static_assert(sizeof(nLength) == 2, "must match dest memcpy len");
+            memcpy(pVar->sqldata, &nLength, 2);
+            offset = 2;
         }
-        const sal_uInt16 nLength = str.getLength();
-        static_assert(sizeof(nLength) == 2, "must match dest memcpy len");
-        memcpy(pVar->sqldata, &nLength, 2);
         // Actual data
-        memcpy(pVar->sqldata + 2, str.getStr(), str.getLength());
+        memcpy(pVar->sqldata + offset, str.getStr(), nLength);
+        if (sdbcType == DataType::CHAR)
+        {
+            // Fill remainder with spaces
+            memset(pVar->sqldata + offset + nLength, ' ', pVar->sqllen - nLength);
+        }
         break;
     }
-    case SQL_TEXT:
-        memcpy(pVar->sqldata, str.getStr(), str.getLength());
-        // Fill remainder with spaces
-        memset(pVar->sqldata + str.getLength(), ' ', pVar->sqllen - str.getLength());
-        break;
-    case SQL_BLOB: // Clob
-        assert( pVar->sqlsubtype == static_cast<short>(BlobSubtype::Clob) );
+    case DataType::CLOB:
         setClob(nParameterIndex, sInput );
         break;
-    case SQL_SHORT:
+    case DataType::SMALLINT:
     {
         sal_Int32 int32Value = sInput.toInt32();
         if ( (int32Value < std::numeric_limits<sal_Int16>::min()) ||
              (int32Value > std::numeric_limits<sal_Int16>::max()) )
         {
             ::dbtools::throwSQLException(
-                "Value out of range for SQL_SHORT type",
+                u"Value out of range for SQL_SHORT type"_ustr,
                 ::dbtools::StandardSQLState::INVALID_SQL_DATA_TYPE,
                 *this);
         }
         setShort(nParameterIndex, int32Value);
         break;
     }
-    case SQL_LONG:
+    case DataType::INTEGER:
     {
         sal_Int32 int32Value = sInput.toInt32();
         setInt(nParameterIndex, int32Value);
         break;
     }
-    case SQL_INT64:
+    case DataType::BIGINT:
     {
         sal_Int64 int64Value = sInput.toInt64();
         setLong(nParameterIndex, int64Value);
         break;
     }
-    case SQL_FLOAT:
+    case DataType::FLOAT:
     {
         float floatValue = sInput.toFloat();
         setFloat(nParameterIndex, floatValue);
         break;
     }
-    case SQL_BOOLEAN:
+    case DataType::DOUBLE:
+        setDouble(nParameterIndex, sInput.toDouble());
+        break;
+    case DataType::NUMERIC:
+    case DataType::DECIMAL:
+        return setObjectWithInfo(nParameterIndex, Any{ sInput }, sdbcType, 0);
+        break;
+    case DataType::BOOLEAN:
     {
         bool boolValue = sInput.toBoolean();
         setBoolean(nParameterIndex, boolValue);
         break;
     }
-    case SQL_NULL:
+    case DataType::SQLNULL:
     {
         // See https://www.firebirdsql.org/file/documentation/html/en/refdocs/fblangref25/firebird-25-language-reference.html#fblangref25-datatypes-special-sqlnull
         pVar->sqldata = nullptr;
@@ -271,7 +275,7 @@ void SAL_CALL OPreparedStatement::setString(sal_Int32 nParameterIndex,
     }
     default:
         ::dbtools::throwSQLException(
-            "Incorrect type for setString",
+            u"Incorrect type for setString"_ustr,
             ::dbtools::StandardSQLState::INVALID_SQL_DATA_TYPE,
             *this);
     }
@@ -334,9 +338,6 @@ sal_Bool SAL_CALL OPreparedStatement::execute()
                                   m_aStatementHandle,
                                   m_pOutSqlda);
 
-    if (getStatementChangeCount() > 0)
-        m_pConnection->notifyDatabaseModified();
-
     return m_xResultSet.is();
     // TODO: implement handling of multiple ResultSets.
 }
@@ -355,44 +356,97 @@ Reference< XResultSet > SAL_CALL OPreparedStatement::executeQuery()
 
 namespace {
 
+sal_Int64 toPowOf10AndRound(double n, int powOf10)
+{
+    static constexpr sal_Int64 powers[] = {
+        1,
+        10,
+        100,
+        1000,
+        10000,
+        100000,
+        1000000,
+        10000000,
+        100000000,
+        1000000000,
+        10000000000,
+        100000000000,
+        1000000000000,
+        10000000000000,
+        100000000000000,
+        1000000000000000,
+        10000000000000000,
+        100000000000000000,
+        1000000000000000000,
+    };
+    powOf10 = std::clamp(powOf10, 0, int(std::size(powers) - 1));
+    return n * powers[powOf10] + (n >= 0 ? 0.5 : -0.5);
+}
+
 /**
  * Take out the number part of a fix point decimal without
  * the information of where is the fractional part from a
  * string representation of a number. (e.g. 54.654 -> 54654)
  */
-sal_Int64 toNumericWithoutDecimalPlace(const OUString& sSource)
+sal_Int64 toNumericWithoutDecimalPlace(const Any& x, sal_Int32 scale)
 {
-    OUString sNumber(sSource);
+    if (double value = 0; x >>= value)
+        return toPowOf10AndRound(value, scale);
 
-    // cut off leading 0 eventually ( eg. 0.567 -> .567)
-    (void)sSource.startsWith("0", &sNumber);
+    // Can't use conversion of string to double, because it could be not representable in double
 
-    sal_Int32 nDotIndex = sNumber.indexOf('.');
-
-    if( nDotIndex < 0)
+    OUString s;
+    x >>= s;
+    std::u16string_view num(o3tl::trim(s));
+    size_t end = num.starts_with('-') ? 1 : 0;
+    for (bool seenDot = false; end < num.size(); ++end)
     {
-        return sNumber.toInt64(); // no dot -> it's an integer
-    }
-    else
-    {
-        // remove dot
-        OUStringBuffer sBuffer(15);
-        if(nDotIndex > 0)
+        if (num[end] == '.')
         {
-            sBuffer.append(sNumber.subView(0, nDotIndex));
+            if (seenDot)
+                break;
+            seenDot = true;
         }
-        sBuffer.append(sNumber.subView(nDotIndex + 1));
-        return o3tl::toInt64(sBuffer);
+        else if (!rtl::isAsciiDigit(num[end]))
+            break;
     }
+    num = num.substr(0, end);
+
+    // fill in the number with nulls in fractional part.
+    // We need this because  e.g. 0.450 != 0.045 despite
+    // their scale is equal
+    OUStringBuffer buffer(num);
+    if (auto dotPos = num.find('.'); dotPos != std::u16string_view::npos) // there is a dot
+    {
+        scale -= num.substr(dotPos + 1).size();
+        buffer.remove(dotPos, 1);
+        if (scale < 0)
+        {
+            const sal_Int32 n = std::min(buffer.getLength(), -scale);
+            buffer.truncate(buffer.getLength() - n);
+            scale = 0;
+        }
+    }
+    for (sal_Int32 i = 0; i < scale; ++i)
+        buffer.append('0');
+
+    return OUString::unacquired(buffer).toInt64();
 }
 
+double toDouble(const Any& x)
+{
+    if (double value = 0; x >>= value)
+        return value;
+    OUString s;
+    x >>= s;
+    return s.toDouble();
+}
 }
 
 //----- XParameters -----------------------------------------------------------
 void SAL_CALL OPreparedStatement::setNull(sal_Int32 nIndex, sal_Int32 /*nSqlType*/)
 {
     MutexGuard aGuard( m_aMutex );
-    checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
     ensurePrepared();
 
     checkParameterIndex(nIndex);
@@ -408,7 +462,6 @@ template <typename T>
 void OPreparedStatement::setValue(sal_Int32 nIndex, const T& nValue, ISC_SHORT nType)
 {
     MutexGuard aGuard( m_aMutex );
-    checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
     ensurePrepared();
 
     checkParameterIndex(nIndex);
@@ -419,7 +472,7 @@ void OPreparedStatement::setValue(sal_Int32 nIndex, const T& nValue, ISC_SHORT n
     if ((pVar->sqltype & ~1) != nType)
     {
        ::dbtools::throwSQLException(
-            "Incorrect type for setValue",
+            u"Incorrect type for setValue"_ustr,
             ::dbtools::StandardSQLState::INVALID_SQL_DATA_TYPE,
             *this);
     }
@@ -427,20 +480,48 @@ void OPreparedStatement::setValue(sal_Int32 nIndex, const T& nValue, ISC_SHORT n
     memcpy(pVar->sqldata, &nValue, sizeof(nValue));
 }
 
+// Integral type setters convert transparently to bigger types
+
 void SAL_CALL OPreparedStatement::setByte(sal_Int32 nIndex, sal_Int8 nValue)
 {
     // there's no TINYINT or equivalent on Firebird,
     // so do the same as setShort
-    setValue< sal_Int16 >(nIndex, nValue, SQL_SHORT);
+    setShort(nIndex, nValue);
 }
 
 void SAL_CALL OPreparedStatement::setShort(sal_Int32 nIndex, sal_Int16 nValue)
 {
+    MutexGuard aGuard(m_aMutex);
+    ensurePrepared();
+
+    ColumnTypeInfo columnType{ m_pInSqlda, nIndex };
+    switch (columnType.getSdbcType())
+    {
+        case DataType::INTEGER:
+            return setValue<sal_Int32>(nIndex, nValue, columnType.getType());
+        case DataType::BIGINT:
+            return setValue<sal_Int64>(nIndex, nValue, columnType.getType());
+        case DataType::FLOAT:
+            return setValue<float>(nIndex, nValue, columnType.getType());
+        case DataType::DOUBLE:
+            return setValue<double>(nIndex, nValue, columnType.getType());
+    }
     setValue< sal_Int16 >(nIndex, nValue, SQL_SHORT);
 }
 
 void SAL_CALL OPreparedStatement::setInt(sal_Int32 nIndex, sal_Int32 nValue)
 {
+    MutexGuard aGuard(m_aMutex);
+    ensurePrepared();
+
+    ColumnTypeInfo columnType{ m_pInSqlda, nIndex };
+    switch (columnType.getSdbcType())
+    {
+        case DataType::BIGINT:
+            return setValue<sal_Int64>(nIndex, nValue, columnType.getType());
+        case DataType::DOUBLE:
+            return setValue<double>(nIndex, nValue, columnType.getType());
+    }
     setValue< sal_Int32 >(nIndex, nValue, SQL_LONG);
 }
 
@@ -457,51 +538,34 @@ void SAL_CALL OPreparedStatement::setFloat(sal_Int32 nIndex, float nValue)
 void SAL_CALL OPreparedStatement::setDouble(sal_Int32 nIndex, double nValue)
 {
     MutexGuard aGuard( m_aMutex );
-    checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
     ensurePrepared();
 
-    XSQLVAR* pVar = m_pInSqlda->sqlvar + (nIndex - 1);
-    short dType = (pVar->sqltype & ~1); // drop flag bit for now
-    short dSubType = pVar->sqlsubtype;
+    ColumnTypeInfo columnType{ m_pInSqlda, nIndex };
     // Assume it is a sub type of a number.
-    if(dSubType < 0 || dSubType > 2)
+    if (columnType.getSubType() < 0 || columnType.getSubType() > 2)
     {
         ::dbtools::throwSQLException(
-            "Incorrect number sub type",
+            u"Incorrect number sub type"_ustr,
             ::dbtools::StandardSQLState::INVALID_SQL_DATA_TYPE,
             *this);
     }
-    // firebird stores scale as a negative number
-    ColumnTypeInfo columnType{ dType, dSubType,
-        static_cast<short>(-pVar->sqlscale) };
 
     // Caller might try to set an integer type here. It makes sense to convert
     // it instead of throwing an error.
-    switch(columnType.getSdbcType())
+    switch(auto sdbcType = columnType.getSdbcType())
     {
         case DataType::SMALLINT:
-            setValue< sal_Int16 >(nIndex,
-                    static_cast<sal_Int16>(nValue),
-                    dType);
-            break;
+            return setValue(nIndex, static_cast<sal_Int16>(nValue), columnType.getType());
         case DataType::INTEGER:
-            setValue< sal_Int32 >(nIndex,
-                    static_cast<sal_Int32>(nValue),
-                    dType);
-            break;
+            return setValue(nIndex, static_cast<sal_Int32>(nValue), columnType.getType());
         case DataType::BIGINT:
-            setValue< sal_Int64 >(nIndex,
-                    static_cast<sal_Int64>(nValue),
-                    dType);
-            break;
+            return setValue(nIndex, static_cast<sal_Int64>(nValue), columnType.getType());
         case DataType::NUMERIC:
         case DataType::DECIMAL:
-            // take decimal places into account, later on they are removed in makeNumericString
-            setObjectWithInfo(nIndex,Any{nValue}, columnType.getSdbcType(), columnType.getScale());
-            break;
-        default:
-            setValue< double >(nIndex, nValue, SQL_DOUBLE); // TODO: SQL_D_FLOAT?
+            return setObjectWithInfo(nIndex, Any{ nValue }, sdbcType, 0);
+        // TODO: SQL_D_FLOAT?
     }
+    setValue<double>(nIndex, nValue, SQL_DOUBLE);
 }
 
 void SAL_CALL OPreparedStatement::setDate(sal_Int32 nIndex, const Date& rDate)
@@ -596,11 +660,8 @@ void SAL_CALL OPreparedStatement::setClob(sal_Int32 nParameterIndex, const Refer
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
 
-#if SAL_TYPES_SIZEOFPOINTER == 8
-    isc_blob_handle aBlobHandle = 0;
-#else
-    isc_blob_handle aBlobHandle = nullptr;
-#endif
+    // value-initialization: isc_blob_handle may be either a pointer of an integer
+    isc_blob_handle aBlobHandle{};
     ISC_QUAD aBlobId;
 
     openBlobForWriting(aBlobHandle, aBlobId);
@@ -645,17 +706,14 @@ void SAL_CALL OPreparedStatement::setClob(sal_Int32 nParameterIndex, const Refer
     setValue< ISC_QUAD >(nParameterIndex, aBlobId, SQL_BLOB);
 }
 
-void OPreparedStatement::setClob( sal_Int32 nParameterIndex, const OUString& rStr )
+void OPreparedStatement::setClob(sal_Int32 nParameterIndex, std::u16string_view rStr)
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
     checkParameterIndex(nParameterIndex);
 
-#if SAL_TYPES_SIZEOFPOINTER == 8
-    isc_blob_handle aBlobHandle = 0;
-#else
-    isc_blob_handle aBlobHandle = nullptr;
-#endif
+    // value-initialization: isc_blob_handle may be either a pointer of an integer
+    isc_blob_handle aBlobHandle{};
     ISC_QUAD aBlobId;
 
     openBlobForWriting(aBlobHandle, aBlobId);
@@ -721,11 +779,8 @@ void SAL_CALL OPreparedStatement::setBlob(sal_Int32 nParameterIndex,
     checkDisposed(OStatementCommonBase_Base::rBHelper.bDisposed);
     checkParameterIndex(nParameterIndex);
 
-#if SAL_TYPES_SIZEOFPOINTER == 8
-    isc_blob_handle aBlobHandle = 0;
-#else
-    isc_blob_handle aBlobHandle = nullptr;
-#endif
+    // value-initialization: isc_blob_handle may be either a pointer of an integer
+    isc_blob_handle aBlobHandle{};
     ISC_QUAD aBlobId;
 
     openBlobForWriting(aBlobHandle, aBlobId);
@@ -792,62 +847,28 @@ void SAL_CALL OPreparedStatement::setObjectWithInfo( sal_Int32 parameterIndex, c
     checkParameterIndex(parameterIndex);
     setParameterNull(parameterIndex, false);
 
-    XSQLVAR* pVar = m_pInSqlda->sqlvar + (parameterIndex - 1);
-    int dType = (pVar->sqltype & ~1); // drop null flag
+    ColumnTypeInfo columnType{ m_pInSqlda, parameterIndex };
+    int dType = columnType.getType() & ~1; // drop null flag
 
     if(sqlType == DataType::DECIMAL || sqlType == DataType::NUMERIC)
     {
-        double dbValue =0.0;
-        OUString sValue;
-        if( x >>= dbValue )
-        {
-            // truncate and round to 'scale' number of decimal places
-            sValue = OUString::number( std::floor((dbValue * pow10Integer(scale)) + .5) / pow10Integer(scale) );
-        }
-        else
-        {
-            x >>= sValue;
-        }
-
-        // fill in the number with nulls in fractional part.
-        // We need this because  e.g. 0.450 != 0.045 despite
-        // their scale is equal
-        OUStringBuffer sBuffer(15);
-        sBuffer.append(sValue);
-        if(sValue.indexOf('.') != -1) // there is a dot
-        {
-            for(sal_Int32 i=sValue.subView(sValue.indexOf('.')+1).size(); i<scale;i++)
-            {
-                sBuffer.append('0');
-            }
-        }
-        else
-        {
-            for (sal_Int32 i=0; i<scale; i++)
-            {
-                sBuffer.append('0');
-            }
-        }
-
-        sValue = sBuffer.makeStringAndClear();
         switch(dType)
         {
             case SQL_SHORT:
-                setValue< sal_Int16 >(parameterIndex,
-                        static_cast<sal_Int16>( toNumericWithoutDecimalPlace(sValue) ),
-                        dType);
-                break;
+                return setValue(
+                    parameterIndex,
+                    static_cast<sal_Int16>(toNumericWithoutDecimalPlace(x, columnType.getScale())),
+                    dType);
             case SQL_LONG:
-            case SQL_DOUBLE:
-                setValue< sal_Int32 >(parameterIndex,
-                        static_cast<sal_Int32>( toNumericWithoutDecimalPlace(sValue) ),
-                        dType);
-                break;
+                return setValue(
+                    parameterIndex,
+                    static_cast<sal_Int32>(toNumericWithoutDecimalPlace(x, columnType.getScale())),
+                    dType);
             case SQL_INT64:
-                setValue< sal_Int64 >(parameterIndex,
-                        toNumericWithoutDecimalPlace(sValue),
-                        dType);
-                break;
+                return setValue(parameterIndex,
+                                toNumericWithoutDecimalPlace(x, columnType.getScale()), dType);
+            case SQL_DOUBLE:
+                return setValue(parameterIndex, toDouble(x), dType);
             default:
                 SAL_WARN("connectivity.firebird",
                         "No Firebird sql type found for numeric or decimal types");
@@ -889,11 +910,8 @@ void SAL_CALL OPreparedStatement::setBytes(sal_Int32 nParameterIndex,
 
     if( dType == SQL_BLOB )
     {
-#if SAL_TYPES_SIZEOFPOINTER == 8
-        isc_blob_handle aBlobHandle = 0;
-#else
-        isc_blob_handle aBlobHandle = nullptr;
-#endif
+        // value-initialization: isc_blob_handle may be either a pointer of an integer
+        isc_blob_handle aBlobHandle{};
         ISC_QUAD aBlobId;
 
         openBlobForWriting(aBlobHandle, aBlobId);
@@ -937,12 +955,7 @@ void SAL_CALL OPreparedStatement::setBytes(sal_Int32 nParameterIndex,
     {
             setParameterNull(nParameterIndex, false);
             const sal_Int32 nMaxSize = 0xFFFF;
-            Sequence<sal_Int8> xBytesCopy(xBytes);
-            if (xBytesCopy.getLength() > nMaxSize)
-            {
-                xBytesCopy.realloc( nMaxSize );
-            }
-            const sal_uInt16 nSize = xBytesCopy.getLength();
+            const sal_uInt16 nSize = std::min(xBytes.getLength(), nMaxSize);
             // 8000 corresponds to value from lcl_addDefaultParameters
             // in dbaccess/source/filter/hsqldb/createparser.cxx
             if (nSize > 8000)
@@ -954,12 +967,12 @@ void SAL_CALL OPreparedStatement::setBytes(sal_Int32 nParameterIndex,
             // First 2 bytes indicate string size
             memcpy(pVar->sqldata, &nSize, 2);
             // Actual data
-            memcpy(pVar->sqldata + 2, xBytesCopy.getConstArray(), nSize);
+            memcpy(pVar->sqldata + 2, xBytes.getConstArray(), nSize);
     }
     else if( dType == SQL_TEXT )
     {
             if (pVar->sqllen < xBytes.getLength())
-                dbtools::throwSQLException("Data too big for this field",
+                dbtools::throwSQLException(u"Data too big for this field"_ustr,
                                            dbtools::StandardSQLState::INVALID_SQL_DATA_TYPE, *this);
             setParameterNull(nParameterIndex, false);
             memcpy(pVar->sqldata, xBytes.getConstArray(), xBytes.getLength() );
@@ -969,7 +982,7 @@ void SAL_CALL OPreparedStatement::setBytes(sal_Int32 nParameterIndex,
     else
     {
         ::dbtools::throwSQLException(
-            "Incorrect type for setBytes",
+            u"Incorrect type for setBytes"_ustr,
             ::dbtools::StandardSQLState::INVALID_SQL_DATA_TYPE,
             *this);
     }

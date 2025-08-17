@@ -22,7 +22,6 @@
 #include <vcl/toolkit/viewdataentry.hxx>
 #include <iconview.hxx>
 #include "iconviewimpl.hxx"
-#include <vcl/accessiblefactory.hxx>
 #include <vcl/uitest/uiobject.hxx>
 #include <tools/json_writer.hxx>
 #include <vcl/toolkit/svlbitm.hxx>
@@ -40,7 +39,7 @@ const int nSpacing = 5; // 5 pixels from top, from bottom, between icon and labe
 IconView::IconView(vcl::Window* pParent, WinBits nBits)
     : SvTreeListBox(pParent, nBits)
 {
-    nColumns = 1;
+    m_nColumnCount = 1;
     mbCenterAndClipText = true;
     SetEntryWidth(100);
 
@@ -49,9 +48,34 @@ IconView::IconView(vcl::Window* pParent, WinBits nBits)
 
 Size IconView::GetEntrySize(const SvTreeListEntry& entry) const
 {
-    if (entry.GetFlags() & SvTLEntryFlags::IS_SEPARATOR)
-        return { GetEntryWidth() * GetColumnsCount(), separatorHeight };
+    if (entry.IsSeparator())
+        return { GetEntryWidth() * GetColumnCount(), separatorHeight };
     return { GetEntryWidth(), GetEntryHeight() };
+}
+
+void IconView::SetFixedColumnCount(short nColumnCount)
+{
+    m_nFixedColumnCount = nColumnCount;
+    m_nColumnCount = nColumnCount;
+}
+
+void IconView::UpdateEntrySize(const Image& pImage)
+{
+    int spacing = nSpacing * 2;
+    SetEntryHeight(pImage.GetSizePixel().getHeight() + spacing);
+    SetEntryWidth(pImage.GetSizePixel().getWidth() + spacing);
+}
+
+bool IconView::HasSeparatorEntry() const
+{
+    for (sal_uInt32 i = 0; i < GetEntryCount(); i++)
+    {
+        SvTreeListEntry* pEntry = GetEntry(i);
+        if (pEntry && pEntry->IsSeparator())
+            return true;
+    }
+
+    return false;
 }
 
 void IconView::CalcEntryHeight(SvTreeListEntry const* pEntry)
@@ -86,9 +110,27 @@ void IconView::Resize()
     if (!aBoxSize.Width())
         return;
 
-    nColumns = nEntryWidth ? aBoxSize.Width() / nEntryWidth : 1;
+    if (m_nFixedColumnCount == -1)
+        m_nColumnCount = nEntryWidth ? aBoxSize.Width() / nEntryWidth : 1;
 
     SvTreeListBox::Resize();
+}
+
+Size IconView::GetOptimalSize() const
+{
+    if (m_nFixedColumnCount != -1 && !HasSeparatorEntry())
+    {
+        // if a fixed amount of columns has been set and only icons (no separators) are used,
+        // calculate size needed for those
+        const short nRowCount = std::ceil(double(GetEntryCount()) / GetColumnCount());
+        Size aSize(GetColumnCount() * nEntryWidth, nRowCount * nEntryHeight);
+        if (GetStyle() & WB_VSCROLL)
+            aSize.AdjustWidth(GetSettings().GetStyleSettings().GetScrollBarSize());
+
+        return aSize;
+    }
+
+    return SvTreeListBox::GetOptimalSize();
 }
 
 tools::Rectangle IconView::GetFocusRect(const SvTreeListEntry* pEntry, tools::Long)
@@ -107,8 +149,8 @@ void IconView::PaintEntry(SvTreeListEntry& rEntry, tools::Long nX, tools::Long n
 
     Point aEntryPos(nX, nY);
 
-    const Color aBackupTextColor(rRenderContext.GetTextColor());
-    const vcl::Font aBackupFont(rRenderContext.GetFont());
+    auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR
+                                           | vcl::PushFlags::FONT);
     const Color aBackupColor = rRenderContext.GetFillColor();
 
     const StyleSettings& rSettings = rRenderContext.GetSettings().GetStyleSettings();
@@ -119,7 +161,6 @@ void IconView::PaintEntry(SvTreeListEntry& rEntry, tools::Long nX, tools::Long n
 
     const SvViewDataEntry* pViewDataEntry = GetViewDataEntry(&rEntry);
 
-    bool bCurFontIsSel = false;
     if (pViewDataEntry->IsHighlighted())
     {
         vcl::Font aHighlightFont(rRenderContext.GetFont());
@@ -129,7 +170,6 @@ void IconView::PaintEntry(SvTreeListEntry& rEntry, tools::Long nX, tools::Long n
         // set font color to highlight
         rRenderContext.SetTextColor(aHighlightTextColor);
         rRenderContext.SetFont(aHighlightFont);
-        bCurFontIsSel = true;
     }
 
     bool bFillColorSet = false;
@@ -222,47 +262,17 @@ void IconView::PaintEntry(SvTreeListEntry& rEntry, tools::Long nX, tools::Long n
 
         rItem.Paint(aEntryPos, *this, rRenderContext, pViewDataEntry, rEntry);
     }
-
-    if (bCurFontIsSel)
-    {
-        rRenderContext.SetTextColor(aBackupTextColor);
-        rRenderContext.SetFont(aBackupFont);
-    }
-}
-
-css::uno::Reference<css::accessibility::XAccessible> IconView::CreateAccessible()
-{
-    if (vcl::Window* pParent = GetAccessibleParentWindow())
-    {
-        if (auto xAccParent = pParent->GetAccessible())
-        {
-            // need to be done here to get the vclxwindow later on in the accessible
-            css::uno::Reference<css::awt::XVclWindowPeer> xHoldAlive(GetComponentInterface());
-            return pImpl->m_aFactoryAccess.getFactory().createAccessibleIconView(*this, xAccParent);
-        }
-    }
-    return {};
-}
-
-OUString IconView::GetEntryAccessibleDescription(SvTreeListEntry* pEntry) const
-{
-    assert(pEntry);
-
-    if (maEntryAccessibleDescriptionHdl.IsSet())
-        return maEntryAccessibleDescriptionHdl.Call(pEntry);
-
-    return SvTreeListBox::GetEntryAccessibleDescription(pEntry);
 }
 
 FactoryFunction IconView::GetUITestFactory() const { return IconViewUIObject::create; }
 
 static OString extractPngString(const SvLBoxContextBmp* pBmpItem)
 {
-    BitmapEx aImage = pBmpItem->GetBitmap1().GetBitmapEx();
+    Bitmap aImage = pBmpItem->GetBitmap1().GetBitmap();
     SvMemoryStream aOStm(65535, 65535);
     // Use fastest compression "1"
     css::uno::Sequence<css::beans::PropertyValue> aFilterData{
-        comphelper::makePropertyValue("Compression", sal_Int32(1)),
+        comphelper::makePropertyValue(u"Compression"_ustr, sal_Int32(1)),
     };
     vcl::PngImageWriter aPNGWriter(aOStm);
     aPNGWriter.setParameters(aFilterData);
@@ -278,6 +288,30 @@ static OString extractPngString(const SvLBoxContextBmp* pBmpItem)
     return ""_ostr;
 }
 
+OUString IconView::renderEntry(int pos, int /*dpix*/, int /*dpiy*/) const
+{
+    // TODO: support various DPI
+    SvTreeListEntry* pEntry = GetEntry(pos);
+    if (!pEntry)
+        return "";
+
+    OUString sResult;
+    const bool bHandled
+        = maDumpImageHdl.IsSet() && maDumpImageHdl.Call(encoded_image_query(sResult, pEntry));
+
+    if (!bHandled)
+    {
+        if (const SvLBoxItem* pIt = pEntry->GetFirstItem(SvLBoxItemType::ContextBmp))
+        {
+            const SvLBoxContextBmp* pBmpItem = static_cast<const SvLBoxContextBmp*>(pIt);
+            if (pBmpItem)
+                return OStringToOUString(extractPngString(pBmpItem), RTL_TEXTENCODING_ASCII_US);
+        }
+    }
+
+    return sResult;
+}
+
 void IconView::DumpEntryAndSiblings(tools::JsonWriter& rJsonWriter, SvTreeListEntry* pEntry)
 {
     while (pEntry)
@@ -289,18 +323,12 @@ void IconView::DumpEntryAndSiblings(tools::JsonWriter& rJsonWriter, SvTreeListEn
         if (pIt)
             rJsonWriter.put("text", static_cast<const SvLBoxString*>(pIt)->GetText());
 
-        const bool bHandled
-            = maDumpElemToPropertyTreeHdl.IsSet()
-              && maDumpElemToPropertyTreeHdl.Call(json_prop_query(rJsonWriter, pEntry, "image"));
-        if (!bHandled)
+        pIt = pEntry->GetFirstItem(SvLBoxItemType::ContextBmp);
+        if (pIt)
         {
-            pIt = pEntry->GetFirstItem(SvLBoxItemType::ContextBmp);
-            if (pIt)
-            {
-                const SvLBoxContextBmp* pBmpItem = static_cast<const SvLBoxContextBmp*>(pIt);
-                if (pBmpItem)
-                    rJsonWriter.put("image", extractPngString(pBmpItem));
-            }
+            const SvLBoxContextBmp* pBmpItem = static_cast<const SvLBoxContextBmp*>(pIt);
+            if (pBmpItem)
+                rJsonWriter.put("ondemand", true);
         }
 
         if (const OUString tooltip = GetEntryTooltip(pEntry); !tooltip.isEmpty())
@@ -309,7 +337,7 @@ void IconView::DumpEntryAndSiblings(tools::JsonWriter& rJsonWriter, SvTreeListEn
         if (IsSelected(pEntry))
             rJsonWriter.put("selected", true);
 
-        if (pEntry->GetFlags() & SvTLEntryFlags::IS_SEPARATOR)
+        if (pEntry->IsSeparator())
             rJsonWriter.put("separator", true);
 
         rJsonWriter.put("row", GetModel()->GetAbsPos(pEntry));
@@ -323,6 +351,7 @@ void IconView::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
     SvTreeListBox::DumpAsPropertyTree(rJsonWriter);
     rJsonWriter.put("type", "iconview");
     rJsonWriter.put("singleclickactivate", GetActivateOnSingleClick());
+    rJsonWriter.put("textWithIconEnabled", IsTextColumnEnabled());
     auto aNode = rJsonWriter.startArray("entries");
     DumpEntryAndSiblings(rJsonWriter, First());
 }

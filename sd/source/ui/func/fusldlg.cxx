@@ -32,6 +32,11 @@
 #include <Window.hxx>
 #include <optsitem.hxx>
 #include <sdabstdlg.hxx>
+#include <slideshow.hxx>
+#include <ViewShell.hxx>
+
+using namespace ::com::sun::star::uno;
+using namespace ::com::sun::star::presentation;
 
 namespace sd {
 
@@ -39,36 +44,36 @@ namespace sd {
 
 
 FuSlideShowDlg::FuSlideShowDlg (
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window* pWin,
     ::sd::View* pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest& rReq)
-    : FuPoor( pViewSh, pWin, pView, pDoc, rReq )
+    : FuPoor( rViewSh, pWin, pView, rDoc, rReq )
 {
 }
 
-rtl::Reference<FuPoor> FuSlideShowDlg::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuSlideShowDlg::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuSlideShowDlg( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuSlideShowDlg( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
 
 void FuSlideShowDlg::DoExecute( SfxRequest& )
 {
-    PresentationSettings& rPresentationSettings = mpDoc->getPresentationSettings();
+    PresentationSettings& rPresentationSettings = mrDoc.getPresentationSettings();
 
-    SfxItemSetFixed<ATTR_PRESENT_START, ATTR_PRESENT_END> aDlgSet( mpDoc->GetPool() );
-    std::vector<OUString> aPageNameList(mpDoc->GetSdPageCount( PageKind::Standard ));
+    SfxItemSetFixed<ATTR_PRESENT_START, ATTR_PRESENT_END> aDlgSet( mrDoc.GetPool() );
+    std::vector<OUString> aPageNameList(mrDoc.GetSdPageCount( PageKind::Standard ));
     const OUString& rPresPage = rPresentationSettings.maPresPage;
     OUString        aFirstPage;
     SdPage*         pPage = nullptr;
     ::tools::Long            nPage;
 
-    for( nPage = mpDoc->GetSdPageCount( PageKind::Standard ) - 1; nPage >= 0; nPage-- )
+    for( nPage = mrDoc.GetSdPageCount( PageKind::Standard ) - 1; nPage >= 0; nPage-- )
     {
-        pPage = mpDoc->GetSdPage( static_cast<sal_uInt16>(nPage), PageKind::Standard );
+        pPage = mrDoc.GetSdPage( static_cast<sal_uInt16>(nPage), PageKind::Standard );
         OUString aStr( pPage->GetName() );
 
         if ( aStr.isEmpty() )
@@ -84,7 +89,7 @@ void FuSlideShowDlg::DoExecute( SfxRequest& )
         else if ( pPage->IsSelected() && aFirstPage.isEmpty() )
             aFirstPage = aStr;
     }
-    SdCustomShowList* pCustomShowList = mpDoc->GetCustomShowList(); // No Create
+    SdCustomShowList* pCustomShowList = mrDoc.GetCustomShowList(); // No Create
 
     if( aFirstPage.isEmpty() && pPage )
         aFirstPage = pPage->GetName();
@@ -102,8 +107,9 @@ void FuSlideShowDlg::DoExecute( SfxRequest& )
     aDlgSet.Put( SfxBoolItem( ATTR_PRESENT_FULLSCREEN, rPresentationSettings.mbFullScreen ) );
     aDlgSet.Put( SfxUInt32Item( ATTR_PRESENT_PAUSE_TIMEOUT, rPresentationSettings.mnPauseTimeout ) );
     aDlgSet.Put( SfxBoolItem( ATTR_PRESENT_SHOW_PAUSELOGO, rPresentationSettings.mbShowPauseLogo ) );
+    aDlgSet.Put( SfxBoolItem( ATTR_PRESENT_INTERACTIVE, rPresentationSettings.mbInteractive ) );
 
-    SdOptions* pOptions = SD_MOD()->GetSdOptions(DocumentType::Impress);
+    SdOptions* pOptions = SdModule::get()->GetSdOptions(DocumentType::Impress);
     aDlgSet.Put( SfxInt32Item( ATTR_PRESENT_DISPLAY, pOptions->GetDisplay() ) );
 
     SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
@@ -165,13 +171,6 @@ void FuSlideShowDlg::DoExecute( SfxRequest& )
         rPresentationSettings.mbMouseVisible = bValue;
     }
 
-    bValue = ITEMVALUE( aDlgSet, ATTR_PRESENT_PEN, SfxBoolItem );
-    if ( bValue != rPresentationSettings.mbMouseAsPen )
-    {
-        bValuesChanged = true;
-        rPresentationSettings.mbMouseAsPen = bValue;
-    }
-
     bValue = !ITEMVALUE( aDlgSet, ATTR_PRESENT_CHANGE_PAGE, SfxBoolItem );
     if ( bValue != rPresentationSettings.mbLockedPages )
     {
@@ -214,11 +213,32 @@ void FuSlideShowDlg::DoExecute( SfxRequest& )
         rPresentationSettings.mbShowPauseLogo = bValue;
     }
 
+    bValue = ITEMVALUE( aDlgSet, ATTR_PRESENT_INTERACTIVE, SfxBoolItem );
+    if ( bValue != rPresentationSettings.mbInteractive )
+    {
+        bValuesChanged = true;
+        rPresentationSettings.mbInteractive = bValue;
+    }
+
+    bValue = ITEMVALUE( aDlgSet, ATTR_PRESENT_PEN, SfxBoolItem );
+    if ( bValue != rPresentationSettings.mbMouseAsPen )
+    {
+        bValuesChanged = true;
+        rPresentationSettings.mbMouseAsPen = bValue;
+
+        // live slideshow? pass pen state on immediately
+        Reference< XSlideShowController > xSlideShowController(
+            SlideShow::GetSlideShowController(mrViewShell.GetViewShellBase() ) );
+        if( xSlideShowController.is() )
+            if(rPresentationSettings.mbInteractive)
+                xSlideShowController->setUsePen( bValue );
+    }
+
     pOptions->SetDisplay( aDlgSet.Get(ATTR_PRESENT_DISPLAY).GetValue() );
 
     // is something has changed, we set the modified flag
     if ( bValuesChanged )
-        mpDoc->SetChanged();
+        mrDoc.SetChanged();
 }
 
 } // end of namespace sd

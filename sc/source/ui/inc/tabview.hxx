@@ -31,10 +31,6 @@
 #include "gridwin.hxx"
 #include "drawview.hxx"
 
-namespace editeng {
-    struct MisspellRanges;
-}
-
 class ScEditEngineDefaulter;
 class ScOutlineWindow;
 class ScRowBar;
@@ -46,7 +42,6 @@ class SvBorder;
 class FuPoor;
 class Splitter;
 class ScTabSplitter;
-class SdrView;
 class SdrObject;
 class ScPageBreakData;
 class SdrHdlList;
@@ -66,14 +61,14 @@ enum HeaderType
 class ScCornerButton : public vcl::Window
 {
 private:
-    ScViewData*     pViewData;
+    ScViewData&     rViewData;
 
 protected:
     virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
     virtual void    Resize() override;
     virtual void    MouseButtonDown( const MouseEvent& rMEvt ) override;
 public:
-                    ScCornerButton( vcl::Window* pParent, ScViewData* pData );
+                    ScCornerButton( vcl::Window* pParent, ScViewData& pData );
                     virtual ~ScCornerButton() override;
 
     virtual void    StateChanged( StateChangedType nType ) override;
@@ -120,6 +115,7 @@ private:
 
     VclPtr<vcl::Window>             pFrameWin;              // First !!!
     ScViewData          aViewData;              // must be at the front !
+    ScViewRenderingOptions aViewRenderingData;
 
     std::unique_ptr<ScViewSelectionEngine> pSelEngine;
     ScViewFunctionSet       aFunctionSet;
@@ -128,6 +124,7 @@ private:
     ScHeaderFunctionSet      aHdrFunc;
 
     std::unique_ptr<ScDrawView> pDrawView;
+    sdr::overlay::OverlayObjectList maTextEditOverlayGroup;
 
     Size                aFrameSize;             // passed on as for DoResize
     Point               aBorderPos;
@@ -217,6 +214,8 @@ private:
 
     double              mfLastZoomScale = 0;
     double              mfAccumulatedZoom = 0;
+    tools::Long         mnPendingaHScrollLeftDelta = 0;
+    tools::Long         mnPendingaHScrollRightDelta = 0;
 
     void            Init();
 
@@ -239,7 +238,7 @@ private:
     void            UpdateVarZoom();
 
     static void     SetScrollBar( ScrollAdaptor& rScroll, tools::Long nRangeMax, tools::Long nVisible, tools::Long nPos, bool bLayoutRTL );
-    static tools::Long     GetScrollBarPos( const ScrollAdaptor& rScroll );
+    static tools::Long     GetScrollBarPos( const ScrollAdaptor& rScroll, bool bLayoutRTL );
 
     void            GetAreaMoveEndPosition(SCCOL nMovX, SCROW nMovY, ScFollowMode eMode,
                                            SCCOL& rAreaX, SCROW& rAreaY, ScFollowMode& rMode,
@@ -265,6 +264,7 @@ private:
     DECL_STATIC_LINK(ScTabView, InstallLOKNotifierHdl, void*, vcl::ILibreOfficeKitNotifier*);
 
     void            UpdateHighlightOverlay();
+    void            ImplTabChanged(bool bSameTabButMoved);
 
 protected:
     void            UpdateHeaderWidth( const ScVSplitPos* pWhich = nullptr,
@@ -284,7 +284,7 @@ protected:
 
     void            MakeDrawView( TriState nForceDesignMode );
 
-    void            HideNoteMarker();
+    void            HideNoteOverlay();
 
     void            UpdateIMap( SdrObject* pObj );
 
@@ -347,6 +347,9 @@ public:
     ScViewData&         GetViewData()       { return aViewData; }
     const ScViewData&   GetViewData() const { return aViewData; }
 
+    const ScViewRenderingOptions& GetViewRenderingData() const { return aViewRenderingData; }
+    void SetViewRenderingData(const ScViewRenderingOptions& rViewRenderingData) { aViewRenderingData = rViewRenderingData; }
+
     ScViewFunctionSet&      GetFunctionSet()    { return aFunctionSet; }
     ScViewSelectionEngine*  GetSelEngine()      { return pSelEngine.get(); }
 
@@ -363,7 +366,7 @@ public:
      */
     void            TabChanged( bool bSameTabButMoved = false );
     void            SetZoom( const Fraction& rNewX, const Fraction& rNewY, bool bAll );
-    SC_DLLPUBLIC void            RefreshZoom();
+    SC_DLLPUBLIC void RefreshZoom(bool bRecalcScale = true);
     void            SetPagebreakMode( bool bSet );
 
     void            UpdateLayerLocks();
@@ -469,6 +472,7 @@ public:
     SC_DLLPUBLIC void           ScrollLines( tools::Long nDeltaX, tools::Long nDeltaY );              // active
 
     bool            ScrollCommand( const CommandEvent& rCEvt, ScSplitPos ePos );
+    bool            GesturePanCommand(const CommandEvent& rCEvt);
     bool            GestureZoomCommand(const CommandEvent& rCEvt);
 
     void            ScrollToObject( const SdrObject* pDrawObj );
@@ -477,7 +481,8 @@ public:
                                     // Drawing
 
     void            PaintArea( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow,
-                                        ScUpdateMode eMode = ScUpdateMode::All );
+                               ScUpdateMode eMode = ScUpdateMode::All,
+                               tools::Long nMaxWidthAffectedHint = -1 );
 
     void            PaintGrid();
 
@@ -522,9 +527,10 @@ public:
     void            OnLibreOfficeKitTabChanged();
     void            AddWindowToForeignEditView(SfxViewShell* pViewShell, ScSplitPos eWhich);
     void            RemoveWindowFromForeignEditView(SfxViewShell* pViewShell, ScSplitPos eWhich);
-    void            MakeEditView( ScEditEngineDefaulter* pEngine, SCCOL nCol, SCROW nRow );
+    void            MakeEditView( ScEditEngineDefaulter& rEngine, SCCOL nCol, SCROW nRow );
     void            KillEditView( bool bNoPaint );
     void            UpdateEditView();
+    void            RefeshTextEditOverlay();
 
                                     //  Blocks
 
@@ -609,10 +615,11 @@ public:
     void            SetDrawBrushSet( std::unique_ptr<SfxItemSet> pNew, bool bLock );
     void            ResetBrushDocument();
 
+    SC_DLLPUBLIC bool IsAutoSpell() const;
     void EnableAutoSpell( bool bEnable );
     void ResetAutoSpell();
     void ResetAutoSpellForContentChange();
-    void SetAutoSpellData( SCCOL nPosX, SCROW nPosY, const std::vector<editeng::MisspellRanges>* pRanges );
+    void SetAutoSpellData( SCCOL nPosX, SCROW nPosY, const sc::MisspellRangeResult& rRangeResult );
     /// @see ScModelObj::getRowColumnHeaders().
     void getRowColumnHeaders(const tools::Rectangle& rRectangle, tools::JsonWriter& rJsonWriter);
     /// @see ScModelObj::getSheetGeometryData()
@@ -626,6 +633,10 @@ public:
     SCROW GetLOKEndHeaderRow() const { return mnLOKEndHeaderRow; }
     SCCOL GetLOKStartHeaderCol() const { return mnLOKStartHeaderCol; }
     SCCOL GetLOKEndHeaderCol() const { return mnLOKEndHeaderCol; }
+
+    void SyncGridWindowMapModeFromDrawMapMode();
+
+    void SwitchRotateMode();
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

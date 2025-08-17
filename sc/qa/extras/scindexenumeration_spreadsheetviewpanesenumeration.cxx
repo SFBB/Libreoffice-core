@@ -14,7 +14,6 @@
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 
@@ -45,7 +44,7 @@ public:
 
 ScIndexEnumeration_SpreadsheetViewPanesEnumeration::
     ScIndexEnumeration_SpreadsheetViewPanesEnumeration()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -68,7 +67,7 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_SpreadsheetViewPanesEnumerati
 void ScIndexEnumeration_SpreadsheetViewPanesEnumeration::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScIndexEnumeration_SpreadsheetViewPanesEnumeration);

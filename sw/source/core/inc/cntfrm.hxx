@@ -70,6 +70,7 @@ class SW_DLLPUBLIC SwContentFrame: public SwFrame, public SwFlowFrame
 
     void UpdateAttr_( const SfxPoolItem*, const SfxPoolItem*, SwContentFrameInvFlags &,
                       SwAttrSetChg *pa = nullptr, SwAttrSetChg *pb = nullptr );
+    void UpdateAttrForFormatChange( SwFormat*, SwFormat*, SwContentFrameInvFlags & );
 
     virtual bool ShouldBwdMoved( SwLayoutFrame *pNewUpper, bool& ) override;
 
@@ -80,7 +81,8 @@ protected:
 
     virtual void SwClientNotify(const SwModify&, const SfxHint&) override;
     virtual SwTwips ShrinkFrame( SwTwips, bool bTst = false, bool bInfo = false ) override;
-    virtual SwTwips GrowFrame  ( SwTwips, bool bTst = false, bool bInfo = false ) override;
+    using SwFrame::GrowFrame;
+    virtual SwTwips GrowFrame(SwTwips, SwResizeLimitReason&, bool bTst, bool bInfo) override;
 
     SwContentFrame( SwContentNode * const, SwFrame* );
 
@@ -115,6 +117,9 @@ public:
     inline  SwContentFrame* GetPrevContentFrame() const;
     static bool CalcLowers(SwLayoutFrame & rLay, SwLayoutFrame const& rDontLeave,
             tools::Long nBottom, bool bSkipRowSpanCells);
+
+    /// Returns bValue as is, unless this frame has split fly draw objects.
+    bool IgnoringSplitFlyAnchor(bool bValue) const;
 };
 
 inline SwContentFrame* SwContentFrame::GetNextContentFrame() const

@@ -81,7 +81,7 @@ void SAL_CALL ScAccessibleCsvControl::disposing()
 {
     SolarMutexGuard aGuard;
     mpControl = nullptr;
-    comphelper::OAccessibleComponentHelper::disposing();
+    comphelper::OAccessible::disposing();
 }
 
 // XAccessibleComponent -------------------------------------------------------
@@ -237,13 +237,13 @@ static void lcl_FillFontAttributes( Sequence< PropertyValue >& rSeq, const vcl::
 
     sal_Int32 nIndex = lcl_ExpandSequence( rSeq, 7 );
     auto pSeq = rSeq.getArray();
-    lcl_FillProperty( pSeq[ nIndex++ ], "CharFontName",      aFontItem,   MID_FONT_FAMILY_NAME );
-    lcl_FillProperty( pSeq[ nIndex++ ], "CharFontFamily",    aFontItem,   MID_FONT_FAMILY );
-    lcl_FillProperty( pSeq[ nIndex++ ], "CharFontStyleName", aFontItem,   MID_FONT_STYLE_NAME );
-    lcl_FillProperty( pSeq[ nIndex++ ], "CharFontCharSet",   aFontItem,   MID_FONT_PITCH );
-    lcl_FillProperty( pSeq[ nIndex++ ], "CharFontPitch",     aFontItem,   MID_FONT_CHAR_SET );
-    lcl_FillProperty( pSeq[ nIndex++ ], "CharHeight",        aHeightItem, MID_FONTHEIGHT );
-    lcl_FillProperty( pSeq[ nIndex++ ], "CharLocale",        aLangItem,   MID_LANG_LOCALE );
+    lcl_FillProperty( pSeq[ nIndex++ ], u"CharFontName"_ustr,      aFontItem,   MID_FONT_FAMILY_NAME );
+    lcl_FillProperty( pSeq[ nIndex++ ], u"CharFontFamily"_ustr,    aFontItem,   MID_FONT_FAMILY );
+    lcl_FillProperty( pSeq[ nIndex++ ], u"CharFontStyleName"_ustr, aFontItem,   MID_FONT_STYLE_NAME );
+    lcl_FillProperty( pSeq[ nIndex++ ], u"CharFontCharSet"_ustr,   aFontItem,   MID_FONT_PITCH );
+    lcl_FillProperty( pSeq[ nIndex++ ], u"CharFontPitch"_ustr,     aFontItem,   MID_FONT_CHAR_SET );
+    lcl_FillProperty( pSeq[ nIndex++ ], u"CharHeight"_ustr,        aHeightItem, MID_FONTHEIGHT );
+    lcl_FillProperty( pSeq[ nIndex++ ], u"CharLocale"_ustr,        aLangItem,   MID_LANG_LOCALE );
 }
 
 ScAccessibleCsvRuler::ScAccessibleCsvRuler(ScCsvRuler& rRuler)
@@ -297,11 +297,11 @@ Reference< XAccessibleRelationSet > SAL_CALL ScAccessibleCsvRuler::getAccessible
     ScCsvTableBox* pTableBox = rRuler.GetTableBox();
     ScCsvGrid& rGrid = pTableBox->GetGrid();
 
-    css::uno::Reference<css::accessibility::XAccessible> xAccObj(static_cast<ScAccessibleCsvGrid*>(rGrid.GetAccessible()));
+    css::uno::Reference<css::accessibility::XAccessible> xAccObj = rGrid.GetAccessible();
     if( xAccObj.is() )
     {
-        Sequence< Reference< XInterface > > aSeq{ xAccObj };
-        pRelationSet->AddRelation( AccessibleRelation( AccessibleRelationType::CONTROLLER_FOR, aSeq ) );
+        Sequence<Reference<css::accessibility::XAccessible>> aSeq{ xAccObj };
+        pRelationSet->AddRelation( AccessibleRelation( AccessibleRelationType_CONTROLLER_FOR, aSeq ) );
     }
 
     return pRelationSet;
@@ -421,7 +421,9 @@ OUString SAL_CALL ScAccessibleCsvRuler::getText()
 {
     SolarMutexGuard aGuard;
     ensureAlive();
-    return OUString(maBuffer.subView( 0, implGetTextLength() ));
+    // OUStringBuffer.subView asserts on count being not more than available characters;
+    // better use u16string_view::substr, which allows count greater than available
+    return OUString(std::u16string_view(maBuffer).substr(0, implGetTextLength()));
 }
 
 OUString SAL_CALL ScAccessibleCsvRuler::getTextRange( sal_Int32 nStartIndex, sal_Int32 nEndIndex )
@@ -429,7 +431,7 @@ OUString SAL_CALL ScAccessibleCsvRuler::getTextRange( sal_Int32 nStartIndex, sal
     SolarMutexGuard aGuard;
     ensureAlive();
     ensureValidRange( nStartIndex, nEndIndex );
-    return OUString( maBuffer.getStr() + nStartIndex, nEndIndex - nStartIndex );
+    return OUString(std::u16string_view(maBuffer).substr(nStartIndex, nEndIndex - nStartIndex ));
 }
 
 TextSegment SAL_CALL ScAccessibleCsvRuler::getTextAtIndex( sal_Int32 nIndex, sal_Int16 nTextType )
@@ -662,7 +664,8 @@ void ScAccessibleCsvRuler::ensureValidRange( sal_Int32& rnStartIndex, sal_Int32&
 {
     if( rnStartIndex > rnEndIndex )
         ::std::swap( rnStartIndex, rnEndIndex );
-    if( (rnStartIndex < 0) || (rnEndIndex > implGetTextLength()) )
+    if ((rnStartIndex < 0) || (rnStartIndex > maBuffer.getLength())
+        || (rnEndIndex > implGetTextLength()) || (rnEndIndex > maBuffer.getLength()))
         throw IndexOutOfBoundsException();
 }
 
@@ -787,7 +790,7 @@ sal_Int32 SAL_CALL ScAccessibleCsvGrid::getBackground(  )
 {
     SolarMutexGuard aGuard;
     ensureAlive();
-    return sal_Int32(SC_MOD()->GetColorConfig().GetColorValue( ::svtools::DOCCOLOR ).nColor);
+    return sal_Int32(ScModule::get()->GetColorConfig().GetColorValue(::svtools::DOCCOLOR).nColor);
 }
 
 // XAccessibleContext ---------------------------------------------------------
@@ -836,11 +839,11 @@ Reference< XAccessibleRelationSet > SAL_CALL ScAccessibleCsvGrid::getAccessibleR
 
     if (rRuler.IsVisible())
     {
-        css::uno::Reference<css::accessibility::XAccessible> xAccObj(static_cast<ScAccessibleCsvGrid*>(rRuler.GetAccessible()));
+        css::uno::Reference<css::accessibility::XAccessible> xAccObj = rRuler.GetAccessible();
         if( xAccObj.is() )
         {
-            Sequence< Reference< XInterface > > aSeq{ xAccObj };
-            pRelationSet->AddRelation( AccessibleRelation( AccessibleRelationType::CONTROLLED_BY, aSeq ) );
+            Sequence<Reference<css::accessibility::XAccessible>> aSeq{ xAccObj };
+            pRelationSet->AddRelation( AccessibleRelation( AccessibleRelationType_CONTROLLED_BY, aSeq ) );
         }
     }
 
@@ -1229,7 +1232,7 @@ ScAccessibleCsvCell::ScAccessibleCsvCell(
         ScCsvGrid& rGrid,
         OUString aCellText,
         sal_Int32 nRow, sal_Int32 nColumn ) :
-    ImplInheritanceHelper( rGrid ),
+    ScAccessibleCsvControl( rGrid ),
     AccessibleStaticTextBase( SvxEditSourcePtr() ),
     maCellText(std::move( aCellText )),
     mnLine( nRow ? (nRow + rGrid.GetFirstVisLine() - 1) : CSV_LINE_HEADER ),
@@ -1271,7 +1274,7 @@ sal_Int32 SAL_CALL ScAccessibleCsvCell::getBackground(  )
 {
     SolarMutexGuard aGuard;
     ensureAlive();
-    return sal_Int32(SC_MOD()->GetColorConfig().GetColorValue( ::svtools::DOCCOLOR ).nColor);
+    return sal_Int32(ScModule::get()->GetColorConfig().GetColorValue(::svtools::DOCCOLOR).nColor);
 }
 
 // XAccessibleContext -----------------------------------------------------
@@ -1320,11 +1323,12 @@ sal_Int64 SAL_CALL ScAccessibleCsvCell::getAccessibleStateSet()
 
 // XInterface -----------------------------------------------------------------
 
-IMPLEMENT_FORWARD_XINTERFACE2( ScAccessibleCsvCell, ImplInheritanceHelper, AccessibleStaticTextBase )
+IMPLEMENT_FORWARD_XINTERFACE2(ScAccessibleCsvCell, ScAccessibleCsvControl, AccessibleStaticTextBase)
 
 // XTypeProvider --------------------------------------------------------------
 
-IMPLEMENT_FORWARD_XTYPEPROVIDER2( ScAccessibleCsvCell, ImplInheritanceHelper, AccessibleStaticTextBase )
+IMPLEMENT_FORWARD_XTYPEPROVIDER2(ScAccessibleCsvCell, ScAccessibleCsvControl,
+                                 AccessibleStaticTextBase)
 
 // helpers --------------------------------------------------------------------
 
@@ -1396,10 +1400,7 @@ css::awt::Rectangle ScAccessibleCsvCell::implGetBounds()
 css::uno::Reference<css::accessibility::XAccessible> SAL_CALL ScAccessibleCsvCell::getAccessibleParent()
 {
     ScCsvGrid& rGrid = implGetGrid();
-
-    ScAccessibleCsvGrid* pAcc = static_cast<ScAccessibleCsvGrid*>(rGrid.GetAccessible());
-
-    return pAcc;
+    return rGrid.GetAccessible();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

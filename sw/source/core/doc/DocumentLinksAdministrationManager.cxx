@@ -79,7 +79,7 @@ namespace
     {
         //Iterating over all bookmarks, checking DdeBookmarks
         const OUString sNameLc = bCaseSensitive ? rName : GetAppCharClass().lowercase(rName);
-        for(IDocumentMarkAccess::const_iterator_t ppMark = rMarkAccess.getAllMarksBegin();
+        for(auto ppMark = rMarkAccess.getAllMarksBegin();
             ppMark != rMarkAccess.getAllMarksEnd();
             ++ppMark)
         {
@@ -87,7 +87,7 @@ namespace
             {
                 if (
                     (bCaseSensitive && (pBkmk->GetName() == sNameLc)) ||
-                    (!bCaseSensitive && GetAppCharClass().lowercase(pBkmk->GetName()) == sNameLc)
+                    (!bCaseSensitive && GetAppCharClass().lowercase(pBkmk->GetName().toString()) == sNameLc)
                    )
                 {
                     return pBkmk;
@@ -106,13 +106,13 @@ namespace
             SwSection* pSect = pSectFormat->GetSection();
             if (pSect)
             {
-                OUString sNm(bCaseSensitive ? pSect->GetSectionName()
-                                            : GetAppCharClass().lowercase(pSect->GetSectionName()));
+                OUString sNm(bCaseSensitive ? pSect->GetSectionName().toString()
+                                            : GetAppCharClass().lowercase(pSect->GetSectionName().toString()));
                 if (sNm == sCompare)
                 {
                     // found, so get the data
                     const SwNodeIndex* pIdx = pSectFormat->GetContent().GetContentIdx();
-                    if (pIdx && &pSectFormat->GetDoc()->GetNodes() == &pIdx->GetNodes())
+                    if (pIdx && &pSectFormat->GetDoc().GetNodes() == &pIdx->GetNodes())
                     {
                         // a table in the normal NodesArr
                         return pIdx->GetNode().GetSectionNode();
@@ -127,10 +127,10 @@ namespace
 
     SwTableNode* lcl_FindTable(const SwDoc& rDoc, const OUString& rItem)
     {
-        const OUString& aItem = GetAppCharClass().lowercase(rItem);
+        const OUString aItem = GetAppCharClass().lowercase(rItem);
         for (const SwFrameFormat* pTableFormat : *rDoc.GetTableFrameFormats())
         {
-            OUString sNm(GetAppCharClass().lowercase(pTableFormat->GetName()));
+            OUString sNm(GetAppCharClass().lowercase(pTableFormat->GetName().toString()));
             if (sNm == aItem)
             {
                 SwTable* pTmpTable = SwTable::FindTable(pTableFormat);
@@ -138,7 +138,7 @@ namespace
                 {
                     SwTableBox* pFBox = pTmpTable->GetTabSortBoxes()[0];
                     if (pFBox && pFBox->GetSttNd()
-                        && &pTableFormat->GetDoc()->GetNodes() == &pFBox->GetSttNd()->GetNodes())
+                        && &pTableFormat->GetDoc().GetNodes() == &pFBox->GetSttNd()->GetNodes())
                     {
                         // a table in the normal NodesArr
                         return const_cast<SwTableNode*>(pFBox->GetSttNd()->FindTableNode());
@@ -189,19 +189,20 @@ const sfx2::LinkManager& DocumentLinksAdministrationManager::GetLinkManager() co
 // to new SwDoc::UpdateLinks():
 void DocumentLinksAdministrationManager::UpdateLinks()
 {
-    if (!m_rDoc.GetDocShell())
+    SwDocShell* pShell = m_rDoc.GetDocShell();
+    if (!pShell)
         return;
-    SfxObjectCreateMode eMode = m_rDoc.GetDocShell()->GetCreateMode();
+    SfxObjectCreateMode eMode = pShell->GetCreateMode();
     if (eMode == SfxObjectCreateMode::INTERNAL)
         return;
     if (eMode == SfxObjectCreateMode::ORGANIZER)
         return;
-    if (m_rDoc.GetDocShell()->IsPreview())
+    if (pShell->IsPreview())
         return;
     if (GetLinkManager().GetLinks().empty())
         return;
     sal_uInt16 nLinkMode = m_rDoc.GetDocumentSettingManager().getLinkUpdateMode(true);
-    sal_uInt16 nUpdateDocMode = m_rDoc.GetDocShell()->GetUpdateDocMode();
+    sal_uInt16 nUpdateDocMode = pShell->GetUpdateDocMode();
     if (nLinkMode == NEVER && nUpdateDocMode != document::UpdateDocMode::FULL_UPDATE)
         return;
 
@@ -215,20 +216,22 @@ void DocumentLinksAdministrationManager::UpdateLinks()
     }
     if (nLinkMode == AUTOMATIC && !bAskUpdate)
     {
-        SfxMedium * medium = m_rDoc.GetDocShell()->GetMedium();
+        SfxMedium * medium = pShell->GetMedium();
         if (!SvtSecurityOptions::isTrustedLocationUriForUpdatingLinks(
                 medium == nullptr ? OUString() : medium->GetName()))
         {
             bAskUpdate = true;
         }
     }
-    comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = m_rDoc.GetDocShell()->getEmbeddedObjectContainer();
+    comphelper::EmbeddedObjectContainer& rEmbeddedObjectContainer = pShell->getEmbeddedObjectContainer();
     if (bUpdate)
     {
         rEmbeddedObjectContainer.setUserAllowsLinkUpdate(true);
 
-        weld::Window* pDlgParent = GetFrameWeld(m_rDoc.GetDocShell());
-        GetLinkManager().UpdateAllLinks(bAskUpdate, false, pDlgParent);
+        weld::Window* pDlgParent = GetFrameWeld(pShell);
+        SfxMedium * medium = pShell->GetMedium();
+        GetLinkManager().UpdateAllLinks(
+            bAskUpdate, false, pDlgParent, medium == nullptr ? OUString() : medium->GetName());
     }
     else
     {
@@ -421,7 +424,7 @@ bool DocumentLinksAdministrationManager::SelectServerObj( std::u16string_view rS
         }
         else if( sCmp == u"frame" )
         {
-            const SwFlyFrameFormat* pFlyFormat = m_rDoc.FindFlyByName( sName );
+            const SwFlyFrameFormat* pFlyFormat = m_rDoc.FindFlyByName( UIName(sName) );
             if( pFlyFormat )
             {
                 SwNodeIndex* pIdx = const_cast<SwNodeIndex*>(pFlyFormat->GetContent().GetContentIdx());

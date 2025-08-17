@@ -19,10 +19,17 @@
 
 #pragma once
 
-#include <stack>
+#include <rtl/ustring.hxx>
+#include <vcl/builderpage.hxx>
+#include <vcl/roadmapwizardmachine.hxx>
+#include <vcl/wizardmachine.hxx>
+
 #include <map>
 #include <set>
-#include <vcl/toolkit/roadmap.hxx>
+#include <stack>
+
+constexpr OUString HID_WIZARD_NEXT = u"SVT_HID_WIZARD_NEXT"_ustr;
+constexpr OUString HID_WIZARD_PREVIOUS = u"SVT_HID_WIZARD_PREVIOUS"_ustr;
 
 struct WizPageData
 {
@@ -30,15 +37,40 @@ struct WizPageData
     std::unique_ptr<BuilderPage> mxPage;
 };
 
-struct ImplWizButtonData
-{
-    ImplWizButtonData*  mpNext;
-    VclPtr<Button>      mpButton;
-    tools::Long                mnOffset;
-};
-
 namespace vcl
 {
+    using namespace RoadmapWizardTypes;
+    namespace
+    {
+    typedef ::std::set< WizardTypes::WizardState > StateSet;
+
+    typedef ::std::map<
+        PathId,
+        WizardPath
+        > Paths;
+    }
+
+    struct RoadmapWizardImpl
+    {
+        Paths               aPaths;
+        PathId              nActivePath;
+        StateSet            aDisabledStates;
+        bool                bActivePathIsDefinite;
+
+        RoadmapWizardImpl()
+            :nActivePath( PathId::INVALID )
+            ,bActivePathIsDefinite( false )
+        {
+        }
+
+        /// returns the index of the current state in given path, or -1
+        static sal_Int32 getStateIndexInPath( WizardTypes::WizardState _nState, const WizardPath& _rPath );
+        /// returns the index of the current state in the path with the given id, or -1
+        sal_Int32 getStateIndexInPath( WizardTypes::WizardState _nState, PathId _nPathId );
+        /// returns the index of the first state in which the two given paths differ
+        static sal_Int32 getFirstDifferentIndex( const WizardPath& _rLHS, const WizardPath& _rRHS );
+    };
+
     struct WizardMachineImplData
     {
         OUString                        sTitleBase;         // the base for the title
@@ -59,50 +91,6 @@ namespace vcl
         {
         }
     };
-
-    using namespace RoadmapWizardTypes;
-    namespace
-    {
-        typedef ::std::set< WizardTypes::WizardState > StateSet;
-
-        typedef ::std::map<
-                    PathId,
-                    WizardPath
-                > Paths;
-
-        typedef ::std::map<
-                    WizardTypes::WizardState,
-                    ::std::pair<
-                        OUString,
-                        RoadmapPageFactory
-                    >
-                > StateDescriptions;
-    }
-
-    struct RoadmapWizardImpl
-    {
-        ScopedVclPtr<ORoadmap> pRoadmap;
-        std::map<VclPtr<vcl::Window>, short> maResponses;
-        Paths               aPaths;
-        PathId              nActivePath;
-        StateDescriptions   aStateDescriptors;
-        StateSet            aDisabledStates;
-        bool                bActivePathIsDefinite;
-
-        RoadmapWizardImpl()
-            :pRoadmap( nullptr )
-            ,nActivePath( -1 )
-            ,bActivePathIsDefinite( false )
-        {
-        }
-
-        /// returns the index of the current state in given path, or -1
-        static sal_Int32 getStateIndexInPath( WizardTypes::WizardState _nState, const WizardPath& _rPath );
-        /// returns the index of the current state in the path with the given id, or -1
-        sal_Int32 getStateIndexInPath( WizardTypes::WizardState _nState, PathId _nPathId );
-        /// returns the index of the first state in which the two given paths differ
-        static sal_Int32 getFirstDifferentIndex( const WizardPath& _rLHS, const WizardPath& _rRHS );
-    };
-}   // namespace svt
+}   // namespace vcl
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -34,10 +34,8 @@ using namespace connectivity;
 using namespace dbtools;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 
 namespace connectivity
 {
@@ -45,7 +43,7 @@ namespace connectivity
     {
     public:
         explicit OColumnsHelperImpl(bool _bCase)
-            : m_aColumnInfo(_bCase)
+            : m_aColumnInfo(UStringMixLess(_bCase))
         {
         }
         ColumnInformationMap m_aColumnInfo;
@@ -66,10 +64,9 @@ OColumnsHelper::~OColumnsHelper()
 {
 }
 
-
-sdbcx::ObjectType OColumnsHelper::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OColumnsHelper::createObject(const OUString& _rName)
 {
-    OSL_ENSURE(m_pTable,"NO Table set. Error!");
+    assert(m_pTable && "NO Table set. Error!");
     Reference<XConnection> xConnection = m_pTable->getConnection();
 
     if ( !m_pImpl )
@@ -95,7 +92,7 @@ sdbcx::ObjectType OColumnsHelper::createObject(const OUString& _rName)
         nDataType       = aFind->second.second;
     } // if ( aFind != m_pImpl->m_aColumnInfo.end() )
 
-    sdbcx::ObjectType xRet;
+    css::uno::Reference< css::beans::XPropertySet > xRet;
     const ColumnDesc* pColDesc = m_pTable->getColumnDescription(_rName);
     if ( pColDesc )
     {
@@ -144,7 +141,6 @@ sdbcx::ObjectType OColumnsHelper::createObject(const OUString& _rName)
     return xRet;
 }
 
-
 void OColumnsHelper::impl_refresh()
 {
     if ( m_pTable )
@@ -160,7 +156,7 @@ Reference< XPropertySet > OColumnsHelper::createDescriptor()
 }
 
 // XAppend
-sdbcx::ObjectType OColumnsHelper::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > OColumnsHelper::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     ::osl::MutexGuard aGuard(m_rMutex);
     OSL_ENSURE(m_pTable,"OColumnsHelper::appendByDescriptor: Table is null!");

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_IMPLIMAGETREE_HXX
-#define INCLUDED_VCL_INC_IMPLIMAGETREE_HXX
+#pragma once
 
 #include <sal/config.h>
 
@@ -45,13 +44,13 @@ struct ImageRequestParameters
 {
     OUString msName;
     OUString msStyle;
-    BitmapEx& mrBitmap;
+    Bitmap& mrBitmap;
     bool mbLocalized;
     ImageLoadFlags meFlags;
     bool mbWriteImageToCache;
     sal_Int32 mnScalePercentage;
 
-    ImageRequestParameters(OUString aName, OUString aStyle, BitmapEx& rBitmap, bool bLocalized,
+    ImageRequestParameters(OUString aName, OUString aStyle, Bitmap& rBitmap, bool bLocalized,
                            ImageLoadFlags eFlags, sal_Int32 nScalePercentage)
         : msName(std::move(aName))
         , msStyle(std::move(aStyle))
@@ -83,7 +82,7 @@ public:
 
     bool loadImage(
         OUString const & name, OUString const & style,
-        BitmapEx & bitmap, bool localized,
+        Bitmap & bitmap, bool localized,
         const ImageLoadFlags eFlags,
         sal_Int32 nScalePercentage = -1);
 
@@ -98,7 +97,7 @@ private:
     ImplImageTree(const ImplImageTree&) = delete;
     ImplImageTree& operator=(const ImplImageTree&) = delete;
 
-    typedef std::unordered_map<OUString, std::pair<bool,BitmapEx>> IconCache;
+    typedef std::unordered_map<OUString, std::pair<bool,Bitmap>> IconCache;
     typedef std::unordered_map<sal_Int32, IconCache> ScaledIconCache;
     typedef std::unordered_map<OUString, OUString> IconLinkHash;
 
@@ -163,7 +162,5 @@ private:
     */
     static OUString fallbackStyle(std::u16string_view rStyle);
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

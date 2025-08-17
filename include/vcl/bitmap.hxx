@@ -20,6 +20,9 @@
 #ifndef INCLUDED_VCL_BITMAP_HXX
 #define INCLUDED_VCL_BITMAP_HXX
 
+#include <sal/config.h>
+
+#include <basegfx/numeric/ftools.hxx>
 #include <tools/degree.hxx>
 #include <tools/helpers.hxx>
 #include <vcl/checksum.hxx>
@@ -33,14 +36,18 @@
 #include <algorithm>
 #include <memory>
 
+class BitmapEx;
+namespace basegfx { class BColorModifierStack; }
+namespace com::sun::star::rendering {
+    class XBitmapCanvas;
+}
+
 inline sal_uInt8 GAMMA(double _def_cVal, double _def_InvGamma)
 {
-    return FRound(std::clamp(pow(_def_cVal / 255.0, _def_InvGamma) * 255.0, 0.0, 255.0));
+    return basegfx::fround<sal_uInt8>(pow(_def_cVal / 255.0, _def_InvGamma) * 255.0);
 }
 
 class Color;
-
-template <typename Arg, typename Ret> class Link;
 
 enum class BmpMirrorFlags
 {
@@ -82,11 +89,7 @@ enum class BmpConversion
     N8BitNoConversion // make 8bit without color conversion (e.g. take the red channel)
 };
 
-class   BitmapInfoAccess;
-class   BitmapReadAccess;
-class   BitmapWriteAccess;
 class   BitmapPalette;
-class   GDIMetaFile;
 class   AlphaMask;
 class   OutputDevice;
 class   SalBitmap;
@@ -111,9 +114,11 @@ class SAL_WARN_UNUSED VCL_DLLPUBLIC Bitmap final
 public:
 
                             Bitmap();
+    explicit                Bitmap( const OUString& rIconName );
                             Bitmap( const Bitmap& rBitmap );
+    explicit                Bitmap( const BitmapEx& rBitmapEx );
                             Bitmap( const Size& rSizePixel, vcl::PixelFormat ePixelFormat, const BitmapPalette* pPal = nullptr );
-    explicit                Bitmap( std::shared_ptr<SalBitmap> xSalBitmap );
+    SAL_DLLPRIVATE explicit Bitmap( std::shared_ptr<SalBitmap> xSalBitmap );
                             ~Bitmap();
 
     Bitmap&                 operator=( const Bitmap& rBitmap );
@@ -136,6 +141,14 @@ public:
     inline sal_Int64        GetSizeBytes() const;
     bool                    HasGreyPalette8Bit() const;
     bool                    HasGreyPaletteAny() const;
+    // does this bitmap have alpha information?
+    inline bool             HasAlpha() const { return getPixelFormat() == vcl::PixelFormat::N32_BPP; }
+
+    /** return the alpha data, copied into an AlphaMask. Will assert if this Bitmap has no alpha. */
+    AlphaMask               CreateAlphaMask() const;
+    /** return the color data, copied into a new Bitmap. If this Bitmap does not have alpha, will return a copy of itself. */
+    Bitmap                  CreateColorBitmap() const;
+
     /** get system dependent bitmap data
 
         @param rData
@@ -147,12 +160,22 @@ public:
 
     BitmapChecksum          GetChecksum() const;
 
-    Bitmap                  CreateDisplayBitmap( OutputDevice* pDisplay ) const;
+    SAL_DLLPRIVATE Bitmap   CreateDisplayBitmap( OutputDevice* pDisplay ) const;
 
     static const BitmapPalette&
                             GetGreyPalette( int nEntries );
 
-public:
+    /** Get pixel color (including alpha) at given position
+
+        @param nX
+        integer X-Position in Bitmap
+
+        @param nY
+        integer Y-Position in Bitmap
+     */
+    ::Color             GetPixelColor(
+                            sal_Int32 nX,
+                            sal_Int32 nY) const;
 
     /** Convert bitmap format
 
@@ -196,6 +219,19 @@ public:
         @param nDY
         Number of scanlines to pad at the bottom border of the bitmap
 
+        @param bExpandTransparent
+        Whether to expand the transparency color or not.
+     */
+    void Expand( sal_Int32 nDX, sal_Int32 nDY, bool bExpandTransparent = false );
+
+    /** Expand the bitmap by pixel padding
+
+        @param nDX
+        Number of pixel to pad at the right border of the bitmap
+
+        @param nDY
+        Number of scanlines to pad at the bottom border of the bitmap
+
         @param pInitColor
         Color to use for padded pixel
 
@@ -203,9 +239,7 @@ public:
         not only returned when the operation failed, but also if
         nothing had to be done, e.g. because nDX and nDY were zero.
      */
-    bool                    Expand(
-                                sal_Int32 nDX, sal_Int32 nDY,
-                                const Color* pInitColor = nullptr );
+    bool Expand( sal_Int32 nDX, sal_Int32 nDY, const Color* pInitColor = nullptr );
 
     /** Copy a rectangular area from another bitmap
 
@@ -229,10 +263,9 @@ public:
         nothing had to be done, e.g. because one of the rectangles are
         empty.
      */
-    bool                    CopyPixel(
-                                const tools::Rectangle& rRectDst,
-                                const tools::Rectangle& rRectSrc,
-                                const Bitmap& rBmpSrc );
+    bool CopyPixel( const tools::Rectangle& rRectDst,
+                    const tools::Rectangle& rRectSrc,
+                    const Bitmap& rBmpSrc );
 
     /** Copy a rectangular area inside this bitmap.
 
@@ -251,16 +284,16 @@ public:
         nothing had to be done, e.g. because one of the rectangles are
         empty.
      */
-    bool                    CopyPixel(
+    SAL_DLLPRIVATE bool CopyPixel(
                                 const tools::Rectangle& rRectDst,
                                 const tools::Rectangle& rRectSrc );
 
-    bool                    CopyPixel_AlphaOptimized(
+    SAL_DLLPRIVATE bool CopyPixel_AlphaOptimized(
                                 const tools::Rectangle& rRectDst,
                                 const tools::Rectangle& rRectSrc,
                                 const AlphaMask& rBmpSrc );
 
-    bool                    CopyPixel_AlphaOptimized(
+    SAL_DLLPRIVATE bool CopyPixel_AlphaOptimized(
                                 const tools::Rectangle& rRectDst,
                                 const tools::Rectangle& rRectSrc );
 
@@ -280,7 +313,7 @@ public:
 
         @return true, if blending was successful, false otherwise
      */
-    bool                    Blend(
+    SAL_DLLPRIVATE bool Blend(
                                 const AlphaMask& rAlpha,
                                 const Color& rBackgroundColor );
 
@@ -346,7 +379,7 @@ public:
 
     // Adapt the BitCount of rNew to BitCount of total, including grey or color palette
     // Can be used to create alpha/mask bitmaps after their processing in 24bit
-    void AdaptBitCount(Bitmap& rNew) const;
+    SAL_DLLPRIVATE void AdaptBitCount(Bitmap& rNew) const;
 
     /** Rotate bitmap by the specified angle
 
@@ -361,7 +394,7 @@ public:
 
         @return true, if the operation was completed successfully.
      */
-    bool                    Rotate( Degree10 nAngle10, const Color& rFillColor );
+    bool Rotate( Degree10 nAngle10, const Color& rFillColor );
 
     /** Create on-off mask from bitmap
 
@@ -436,7 +469,7 @@ public:
 
         @return the generated region.
      */
-    vcl::Region                  CreateRegion( const Color& rColor, const tools::Rectangle& rRect ) const;
+    SAL_DLLPRIVATE vcl::Region CreateRegion( const Color& rColor, const tools::Rectangle& rRect ) const;
 
     /** Merge bitmap with given background color according to specified alpha mask
 
@@ -448,7 +481,7 @@ public:
 
         @return true, if the operation was completed successfully.
      */
-    bool                    Replace( const AlphaMask& rAlpha, const Color& rMergeColor );
+    SAL_DLLPRIVATE bool Replace( const AlphaMask& rAlpha, const Color& rMergeColor );
 
     /** Replace all pixel where the given mask/alpha layer is on with the specified color
 
@@ -460,7 +493,7 @@ public:
 
         @return true, if the operation was completed successfully.
      */
-    bool                    ReplaceMask( const AlphaMask& rMask, const Color& rReplaceColor );
+    SAL_DLLPRIVATE bool ReplaceMask( const AlphaMask& rMask, const Color& rReplaceColor );
 
     /** Replace all pixel having the search color with the specified color
 
@@ -477,7 +510,7 @@ public:
 
         @return true, if the operation was completed successfully.
      */
-    bool                    Replace( const Color& rSearchColor, const Color& rReplaceColor, sal_uInt8 nTol = 0 );
+    bool Replace( const Color& rSearchColor, const Color& rReplaceColor, sal_uInt8 nTol = 0 );
 
     /** Replace all pixel having one the search colors with the corresponding replace color
 
@@ -497,31 +530,10 @@ public:
 
         @return true, if the operation was completed successfully.
      */
-    bool                    Replace(
-                                const Color* pSearchColors,
+    bool Replace(const Color* pSearchColors,
                                 const Color* rReplaceColors,
                                 size_t nColorCount,
                                 sal_uInt8 const * pTols );
-
-    /** Convert the bitmap to a meta file
-
-        This works by putting continuous areas of the same color into
-        polygons painted in this color, by tracing the area's bounding
-        line.
-
-        @param rMtf
-        The resulting meta file
-
-        @param cReduce
-        If non-null, minimal size of bound rects for individual polygons. Smaller ones are ignored.
-
-        @param pProgress
-        A callback for showing the progress of the vectorization
-     */
-    void                    Vectorize(
-                                GDIMetaFile& rMtf,
-                                sal_uInt8 cReduce,
-                                const Link<tools::Long,void>* pProgress );
 
     /** Change various global color characteristics
 
@@ -553,7 +565,7 @@ public:
 
         @return true, if the operation was completed successfully.
      */
-    bool                    Adjust(
+    SAL_DLLPRIVATE bool Adjust(
                                 short nLuminancePercent,
                                 short nContrastPercent = 0,
                                 short nChannelRPercent = 0,
@@ -562,6 +574,18 @@ public:
                                 double fGamma = 1.0,
                                 bool bInvert = false,
                                 bool msoBrightness = false );
+
+    /// populate from a canvas implementation
+    bool                Create(
+                            const css::uno::Reference< css::rendering::XBitmapCanvas > &xBitmapCanvas,
+                            const Size &rSize );
+
+    SAL_DLLPRIVATE void ChangeColorAlpha( sal_uInt8 cIndexFrom, sal_Int8 nAlphaTo );
+
+    /**
+     * Adds a constant value to the alpha layer
+     */
+    SAL_DLLPRIVATE void AdjustTransparency( sal_uInt8 cTrans );
 
     /** Remove existing blending against COL_WHITE based on given AlphaMask
 
@@ -589,7 +613,25 @@ public:
     // access to SystemDependentDataHolder, to support overload in derived class(es)
     const basegfx::SystemDependentDataHolder* accessSystemDependentDataHolder() const;
 
-public:
+
+    /**
+      Can only be called on 32-bit bitmaps. Returns data split into color bitmap and alpha bitmap.
+    */
+    std::pair<Bitmap, AlphaMask> SplitIntoColorAndAlpha() const;
+
+   /** Create ColorStack-modified version of this BitmapEx
+
+        @param rBColorModifierStack
+        A ColrModifierStack which defines how each pixel has to be modified
+    */
+    [[nodiscard]]
+    Bitmap            Modify( const basegfx::BColorModifierStack& rBColorModifierStack) const;
+
+    SAL_DLLPRIVATE void Draw( OutputDevice* pOutDev,
+                              const Point& rDestPt ) const;
+    void                Draw( OutputDevice* pOutDev,
+                              const Point& rDestPt, const Size& rDestSize ) const;
+
     /** ReassignWithSize and recalculate bitmap.
 
       ReassignWithSizes the bitmap, and recalculates the bitmap size based on the new bitmap.
@@ -603,10 +645,12 @@ public:
     SAL_DLLPRIVATE void     ImplSetSalBitmap( const std::shared_ptr<SalBitmap>& xImpBmp );
 
     SAL_DLLPRIVATE bool     ImplMakeGreyscales();
+    SAL_DLLPRIVATE bool     ImplMake8BitNoConversion();
 
 private:
     SAL_DLLPRIVATE bool ImplConvertUp(vcl::PixelFormat ePixelFormat, Color const* pExtColor = nullptr);
     SAL_DLLPRIVATE bool ImplConvertDown8BPP(Color const* pExtColor = nullptr);
+    SAL_DLLPRIVATE void loadFromIconTheme( const OUString& rIconName );
 
 private:
     std::shared_ptr<SalBitmap> mxSalBmp;

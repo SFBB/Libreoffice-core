@@ -51,7 +51,6 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/certdialog \
 	cui/uiconfig/ui/chapterfragment \
 	cui/uiconfig/ui/charnamepage \
-	cui/uiconfig/ui/colorconfigwin \
 	cui/uiconfig/ui/colorfragment \
 	cui/uiconfig/ui/colorpage \
 	cui/uiconfig/ui/colorpickerdialog \
@@ -116,6 +115,7 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/listdialog \
 	cui/uiconfig/ui/macroassigndialog \
 	cui/uiconfig/ui/macroassignpage \
+        cui/uiconfig/ui/macromanagerdialog \
 	cui/uiconfig/ui/macroselectordialog \
 	cui/uiconfig/ui/menuassignpage \
 	cui/uiconfig/ui/mosaicdialog \
@@ -133,7 +133,6 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/objecttitledescdialog \
 	cui/uiconfig/ui/optaccessibilitypage \
 	cui/uiconfig/ui/optadvancedpage \
-	cui/uiconfig/ui/optappearancepage \
 	cui/uiconfig/ui/optasianpage \
 	cui/uiconfig/ui/optbasicidepage \
 	cui/uiconfig/ui/optctlpage \
@@ -169,7 +168,7 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/pastespecial \
 	cui/uiconfig/ui/patterntabpage \
 	cui/uiconfig/ui/percentdialog \
-	cui/uiconfig/ui/personalization_tab \
+	cui/uiconfig/ui/appearance \
 	cui/uiconfig/ui/pickbulletpage \
 	cui/uiconfig/ui/pickgraphicpage \
 	cui/uiconfig/ui/picknumberingpage \
@@ -188,12 +187,12 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/querydeletehatchdialog \
 	cui/uiconfig/ui/querydeletelineenddialog \
 	cui/uiconfig/ui/querydeletelinestyledialog \
+	cui/uiconfig/ui/querydialog \
 	cui/uiconfig/ui/queryduplicatedialog \
 	cui/uiconfig/ui/querynoloadedfiledialog \
 	cui/uiconfig/ui/querynosavefiledialog \
 	cui/uiconfig/ui/querysavelistdialog \
 	cui/uiconfig/ui/queryupdategalleryfilelistdialog \
-	cui/uiconfig/ui/querysetinsmodedialog \
 	cui/uiconfig/ui/recordnumberdialog \
 	cui/uiconfig/ui/rotationtabpage \
 	cui/uiconfig/ui/scriptorganizer \
@@ -222,7 +221,9 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/textdialog \
 	cui/uiconfig/ui/textflowpage \
 	cui/uiconfig/ui/thesaurus \
-	cui/uiconfig/ui/toolbarmodedialog \
+	cui/uiconfig/ui/uipickerdialog \
+	cui/uiconfig/ui/uitabpage \
+	cui/uiconfig/ui/toolbartabpage \
 	cui/uiconfig/ui/transparencytabpage \
 	cui/uiconfig/ui/tsaurldialog \
 	cui/uiconfig/ui/twolinespage \
@@ -230,6 +231,8 @@ $(eval $(call gb_UIConfig_add_uifiles,cui,\
 	cui/uiconfig/ui/spinbox \
 	cui/uiconfig/ui/zoomdialog \
 	cui/uiconfig/ui/widgettestdialog \
+	cui/uiconfig/ui/welcomedialog \
+	cui/uiconfig/ui/whatsnewtabpage \
 ))
 
 # vim: set noet sw=4 ts=4:

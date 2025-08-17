@@ -80,7 +80,7 @@ protected:
         fillProperties is called. getInfoService and getFirstAggregateId may be overwritten to determine
         the additional parameters of the OPropertyArrayAggregationHelper.
     */
-    virtual ::cppu::IPropertyArrayHelper* createArrayHelper( ) const;
+    virtual ::cppu::IPropertyArrayHelper* createArrayHelper( ) const final;
 };
 
 template<class TYPE>
@@ -112,14 +112,11 @@ template <class TYPE>
 ::cppu::IPropertyArrayHelper* OPropertyArrayUsageHelper<TYPE>::getArrayHelper()
 {
     OSL_ENSURE(s_nRefCount, "OPropertyArrayUsageHelper::getArrayHelper : suspicious call : have a refcount of 0 !");
+    std::unique_lock aGuard(theMutex());
     if (!s_pProps)
     {
-        std::unique_lock aGuard(theMutex());
-        if (!s_pProps)
-        {
-            s_pProps = createArrayHelper();
-            OSL_ENSURE(s_pProps, "OPropertyArrayUsageHelper::getArrayHelper : createArrayHelper returned nonsense !");
-        }
+        s_pProps = createArrayHelper();
+        OSL_ENSURE(s_pProps, "OPropertyArrayUsageHelper::getArrayHelper : createArrayHelper returned nonsense !");
     }
     return s_pProps;
 }

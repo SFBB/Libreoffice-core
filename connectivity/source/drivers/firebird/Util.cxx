@@ -186,57 +186,57 @@ OUString firebird::ColumnTypeInfo::getColumnTypeName() const
     switch (nDataType)
     {
         case DataType::BIT:
-            return "BIT";
+            return u"BIT"_ustr;
         case DataType::TINYINT:
-            return "TINYINT";
+            return u"TINYINT"_ustr;
         case DataType::SMALLINT:
-            return "SMALLINT";
+            return u"SMALLINT"_ustr;
         case DataType::INTEGER:
-            return "INTEGER";
+            return u"INTEGER"_ustr;
         case DataType::BIGINT:
-            return "BIGINT";
+            return u"BIGINT"_ustr;
         case DataType::FLOAT:
-            return "FLOAT";
+            return u"FLOAT"_ustr;
         case DataType::REAL:
-            return "REAL";
+            return u"REAL"_ustr;
         case DataType::DOUBLE:
-            return "DOUBLE";
+            return u"DOUBLE"_ustr;
         case DataType::NUMERIC:
-            return "NUMERIC";
+            return u"NUMERIC"_ustr;
         case DataType::DECIMAL:
-            return "DECIMAL";
+            return u"DECIMAL"_ustr;
         case DataType::CHAR:
-            return "CHAR";
+            return u"CHAR"_ustr;
         case DataType::VARCHAR:
-            return "VARCHAR";
+            return u"VARCHAR"_ustr;
         case DataType::LONGVARCHAR:
-            return "LONGVARCHAR";
+            return u"LONGVARCHAR"_ustr;
         case DataType::DATE:
-            return "DATE";
+            return u"DATE"_ustr;
         case DataType::TIME:
-            return "TIME";
+            return u"TIME"_ustr;
         case DataType::TIMESTAMP:
-            return "TIMESTAMP";
+            return u"TIMESTAMP"_ustr;
         case DataType::BINARY:
             // in Firebird, that is the same datatype "CHAR" as DataType::CHAR,
             // only with CHARACTER SET OCTETS; we use the synonym CHARACTER
             // to fool LO into seeing it as different types.
-            return "CHARACTER";
+            return u"CHARACTER"_ustr;
         case DataType::VARBINARY:
             // see above comment about DataType::BINARY.
-            return "CHARACTER VARYING";
+            return u"CHARACTER VARYING"_ustr;
         case DataType::LONGVARBINARY:
             return "BLOB SUB_TYPE " + OUString::number(static_cast<short>(BlobSubtype::Image));
         case DataType::ARRAY:
-            return "ARRAY";
+            return u"ARRAY"_ustr;
         case DataType::BLOB:
-            return "BLOB SUB_TYPE BINARY";
+            return u"BLOB SUB_TYPE BINARY"_ustr;
         case DataType::CLOB:
-            return "BLOB SUB_TYPE TEXT";
+            return u"BLOB SUB_TYPE TEXT"_ustr;
         case DataType::BOOLEAN:
-            return "BOOLEAN";
+            return u"BOOLEAN"_ustr;
         case DataType::SQLNULL:
-            return "NULL";
+            return u"NULL"_ustr;
         default:
             assert(false); // Should never happen
             return OUString();
@@ -317,8 +317,6 @@ void firebird::mallocSQLVAR(XSQLDA* pSqlda)
             pVar->sqldata = static_cast<char *>(malloc(sizeof(float)));
             break;
         case SQL_DOUBLE:
-            pVar->sqldata = static_cast<char *>(malloc(sizeof(double)));
-            break;
         case SQL_D_FLOAT:
             pVar->sqldata = static_cast<char *>(malloc(sizeof(double)));
             break;
@@ -408,17 +406,6 @@ void firebird::freeSQLVAR(XSQLDA* pSqlda)
             pVar->sqlind = nullptr;
         }
     }
-}
-
-
-sal_Int64 firebird::pow10Integer(int nDecimalCount)
-{
-    sal_Int64 nRet = 1;
-    for(int i=0; i< nDecimalCount; i++)
-    {
-        nRet *= 10;
-    }
-    return nRet;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

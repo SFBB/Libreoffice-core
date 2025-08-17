@@ -23,7 +23,6 @@
 #include <vcl/svapp.hxx>
 
 #include <cppuhelper/supportsservice.hxx>
-#include <com/sun/star/awt/PopupMenu.hpp>
 #include <com/sun/star/awt/PopupMenuDirection.hpp>
 #include <svtools/langtab.hxx>
 #include <svtools/statusbarcontroller.hxx>
@@ -42,6 +41,7 @@
 #include <helper/mischelper.hxx>
 
 #include <rtl/ustrbuf.hxx>
+#include <toolkit/awt/vclxmenu.hxx>
 
 #include <map>
 #include <set>
@@ -51,8 +51,6 @@ using namespace ::com::sun::star;
 using namespace css::uno;
 using namespace css::lang;
 using namespace css::frame;
-using namespace css::i18n;
-using namespace css::document;
 using namespace framework;
 
 namespace {
@@ -120,12 +118,12 @@ void LangSelectionStatusbarController::LangMenu(
         return;
 
     const Reference<XServiceInfo> xService(m_xFrame->getController()->getModel(), UNO_QUERY);
-    bool bCalc   = xService.is() && xService->supportsService("com.sun.star.sheet.SpreadsheetDocument");
-    bool bWriter = xService.is() && xService->supportsService("com.sun.star.text.GenericTextDocument");
+    bool bCalc   = xService.is() && xService->supportsService(u"com.sun.star.sheet.SpreadsheetDocument"_ustr);
+    bool bWriter = xService.is() && xService->supportsService(u"com.sun.star.text.GenericTextDocument"_ustr);
     //add context menu
-    Reference< awt::XPopupMenu > xPopupMenu( awt::PopupMenu::create( m_xContext ) );
+    rtl::Reference< VCLXPopupMenu > xPopupMenu( new VCLXPopupMenu() );
     //sub menu that contains all items except the last two items: Separator + Set Language for Paragraph
-    Reference< awt::XPopupMenu > subPopupMenu( awt::PopupMenu::create( m_xContext ) );
+    rtl::Reference< VCLXPopupMenu > subPopupMenu( new VCLXPopupMenu() );
 
     // get languages to be displayed in the menu
     std::set< OUString > aLangItems;
@@ -190,7 +188,10 @@ void LangSelectionStatusbarController::LangMenu(
     }
     else
     {
-        xPopupMenu->insertItem( MID_LANG_DEF_NONE,  FwkResId(STR_LANGSTATUS_NONE), 0, MID_LANG_DEF_NONE );
+        if (bCalc)
+            xPopupMenu->insertItem( MID_LANG_SEL_NONE,  FwkResId(STR_LANGSTATUS_NONE), 0, MID_LANG_SEL_NONE );
+        else
+            xPopupMenu->insertItem( MID_LANG_DEF_NONE,  FwkResId(STR_LANGSTATUS_NONE), 0, MID_LANG_DEF_NONE );
         if ( sNone == m_aCurLang )
             xPopupMenu->checkItem( MID_LANG_DEF_NONE, true );
         xPopupMenu->insertItem( MID_LANG_DEF_RESET, FwkResId(STR_RESET_TO_DEFAULT_LANGUAGE), 0, MID_LANG_DEF_RESET );
@@ -212,7 +213,7 @@ void LangSelectionStatusbarController::LangMenu(
 
     if (MID_LANG_SEL_1 <= nId && nId <= MID_LANG_SEL_9)
     {
-        if (bWriter)
+        if (bWriter || bCalc)
             aBuff.append( ".uno:LanguageStatus?Language:string=Current_" );
         else
             aBuff.append( ".uno:LanguageStatus?Language:string=Default_" );
@@ -244,10 +245,7 @@ void LangSelectionStatusbarController::LangMenu(
     }
     else if (nId == MID_LANG_DEF_MORE)
     {
-        if (bCalc)
-            aBuff.append( ".uno:FormatCellDialog" );
-        else
-            aBuff.append( ".uno:LanguageStatus?Language:string=*" );
+        aBuff.append( ".uno:LanguageStatus?Language:string=*" );
     }
     else if (MID_LANG_PARA_1 <= nId && nId <= MID_LANG_PARA_9)
     {

@@ -45,6 +45,7 @@ $(eval $(call gb_Module_add_targets,vcl,\
                 Executable_vcldemo \
                 Executable_svdemo \
                 Executable_minvcl \
+                Executable_minweld \
                 Executable_svptest \
                 Executable_icontest \
                 Executable_visualbackendtest \
@@ -72,7 +73,6 @@ $(eval $(call gb_Module_add_l10n_targets,vcl,\
 ifeq ($(USING_X11),TRUE)
 $(eval $(call gb_Module_add_targets,vcl,\
     $(if $(ENABLE_GEN),Library_vclplug_gen) \
-    Library_desktop_detector \
     Package_fontunxppds \
     Package_fontunxpsprint \
 ))
@@ -85,6 +85,7 @@ $(eval $(call gb_Module_add_targets,vcl,\
 
 ifneq ($(ENABLE_ATSPI_TESTS),)
 $(eval $(call gb_Module_add_check_targets,vcl,\
+    CppunitTest_vcl_a11y \
     CppunitTest_vcl_gtk3_a11y \
 ))
 endif
@@ -184,6 +185,7 @@ $(eval $(call gb_Module_add_targets,vcl,\
     Executable_olefuzzer \
     Executable_pptfuzzer \
     Executable_rtffuzzer \
+    Executable_rtf2pdffuzzer \
     Executable_cgmfuzzer \
     Executable_ww2fuzzer \
     Executable_ww6fuzzer \
@@ -192,9 +194,11 @@ $(eval $(call gb_Module_add_targets,vcl,\
     Executable_slkfuzzer \
     Executable_fodtfuzzer \
     Executable_fodt2pdffuzzer \
+    Executable_fods2xlsfuzzer \
     Executable_fodsfuzzer \
     Executable_fodpfuzzer \
     Executable_xlsfuzzer \
+    Executable_schtmlfuzzer \
     Executable_scrtffuzzer \
     Executable_wksfuzzer \
     Executable_diffuzzer \
@@ -205,6 +209,7 @@ $(eval $(call gb_Module_add_targets,vcl,\
     Executable_mtpfuzzer \
     Executable_htmlfuzzer \
     Executable_sftfuzzer \
+    Executable_eotfuzzer \
     Executable_dbffuzzer \
     Executable_webpfuzzer \
     Executable_zipfuzzer \
@@ -224,6 +229,8 @@ $(eval $(call gb_Module_add_check_targets,vcl,\
     CppunitTest_vcl_fontfeature \
     CppunitTest_vcl_fontmetric \
     CppunitTest_vcl_text \
+    CppunitTest_vcl_textlayout \
+    CppunitTest_vcl_font_ttf_structure_test \
     CppunitTest_vcl_filters_test \
     CppunitTest_vcl_mnemonic \
     CppunitTest_vcl_outdev \
@@ -287,8 +294,17 @@ ifneq (,$(filter PDFIUM,$(BUILD_TYPE)))
 $(eval $(call gb_Module_add_slowcheck_targets,vcl,\
     CppunitTest_vcl_pdfexport \
     CppunitTest_vcl_pdfexport2 \
+    CppunitTest_vcl_pdf_encryption \
     CppunitTest_vcl_filter_ipdf \
 ))
+endif
+
+ifneq ($(filter MORE_FONTS,$(BUILD_TYPE)),)
+ifeq ($(OS),LINUX)
+$(eval $(call gb_Module_add_slowcheck_targets,vcl,\
+    CppunitTest_vcl_unx_generic \
+))
+endif
 endif
 
 # vim: set noet sw=4 ts=4:

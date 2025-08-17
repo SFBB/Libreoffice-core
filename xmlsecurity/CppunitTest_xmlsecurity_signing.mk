@@ -22,10 +22,12 @@ $(eval $(call gb_CppunitTest_use_libraries,xmlsecurity_signing, \
 	sal \
 	sax \
 	sfx \
+	svl \
 	svx \
 	subsequenttest \
 	test \
 	tl \
+	ucbhelper \
 	unotest \
 	utl \
 	vcl \
@@ -42,6 +44,7 @@ ifneq ($(OS),WNT)
 ifneq (,$(ENABLE_NSS))
 $(eval $(call gb_CppunitTest_use_externals,xmlsecurity_signing,\
     nssutil3 \
+    nss3 \
 ))
 endif
 endif

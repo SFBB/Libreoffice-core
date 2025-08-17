@@ -66,11 +66,9 @@
 #include <vcl/svapp.hxx>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::datatransfer;
-using namespace ::com::sun::star::datatransfer::clipboard;
 
 constexpr sal_uInt32 SDTRANSFER_OBJECTTYPE_DRAWMODEL = 1;
 constexpr sal_uInt32 SDTRANSFER_OBJECTTYPE_DRAWOLE   = 2;
@@ -191,14 +189,14 @@ void SdTransferable::CreateObjectReplacement( SdrObject* pObj )
                 return;
 
             css::form::FormButtonType  eButtonType;
-            Any                                     aTmp( xPropSet->getPropertyValue( "ButtonType" ) );
+            Any                                     aTmp( xPropSet->getPropertyValue( u"ButtonType"_ustr ) );
 
             if( aTmp >>= eButtonType )
             {
                 OUString aLabel, aURL;
 
-                xPropSet->getPropertyValue( "Label" ) >>= aLabel;
-                xPropSet->getPropertyValue( "TargetURL" ) >>= aURL;
+                xPropSet->getPropertyValue( u"Label"_ustr ) >>= aLabel;
+                xPropSet->getPropertyValue( u"TargetURL"_ustr ) >>= aURL;
 
                 moBookmark.emplace( aURL, aLabel );
             }
@@ -438,7 +436,7 @@ void SdTransferable::AddSupportedFormats()
 
 bool SdTransferable::GetData( const DataFlavor& rFlavor, const OUString& rDestDoc )
 {
-    if (SD_MOD()==nullptr)
+    if (SdModule::get() == nullptr)
         return false;
 
     SotClipboardFormatId nFormat = SotExchange::GetFormat( rFlavor );
@@ -489,7 +487,7 @@ bool SdTransferable::GetData( const DataFlavor& rFlavor, const OUString& rDestDo
                 }
             }
 
-            maDocShellRef = aOldRef;
+            maDocShellRef = std::move(aOldRef);
         }
         else if( nFormat == SotClipboardFormatId::GDIMETAFILE )
         {
@@ -510,7 +508,7 @@ bool SdTransferable::GetData( const DataFlavor& rFlavor, const OUString& rDestDo
                 const bool bToggleOnlineSpell = mpSdDrawDocumentIntern && mpSdDrawDocumentIntern->GetOnlineSpell();
                 if (bToggleOnlineSpell)
                     mpSdDrawDocumentIntern->SetOnlineSpell(false);
-                bOK = SetBitmapEx( mpSdViewIntern->GetMarkedObjBitmapEx(true), rFlavor );
+                bOK = SetBitmapEx( mpSdViewIntern->GetMarkedObjBitmap(true), rFlavor );
                 if (bToggleOnlineSpell)
                     mpSdDrawDocumentIntern->SetOnlineSpell(true);
             }
@@ -555,7 +553,7 @@ bool SdTransferable::GetData( const DataFlavor& rFlavor, const OUString& rDestDo
     return bOK;
 }
 
-bool SdTransferable::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pObject, sal_uInt32 nObjectType, const DataFlavor& )
+bool SdTransferable::WriteObject( SvStream& rOStm, void* pObject, sal_uInt32 nObjectType, const DataFlavor& )
 {
     bool bRet = false;
 
@@ -569,18 +567,18 @@ bool SdTransferable::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pOb
                 SdDrawDocument* pDoc = static_cast<SdDrawDocument*>(pObject);
                 if ( !bDontBurnInStyleSheet )
                     pDoc->BurnInStyleSheetAttributes();
-                rxOStm->SetBufferSize( 16348 );
+                rOStm.SetBufferSize( 16348 );
 
                 rtl::Reference< SdXImpressDocument > xComponent( new SdXImpressDocument( pDoc, true ) );
                 pDoc->setUnoModel( xComponent );
 
                 {
-                    css::uno::Reference<css::io::XOutputStream> xDocOut( new utl::OOutputStreamWrapper( *rxOStm ) );
+                    css::uno::Reference<css::io::XOutputStream> xDocOut( new utl::OOutputStreamWrapper( rOStm ) );
                     SvxDrawingLayerExport( pDoc, xDocOut, xComponent, (pDoc->GetDocumentType() == DocumentType::Impress) ? "com.sun.star.comp.Impress.XMLClipboardExporter" : "com.sun.star.comp.DrawingLayer.XMLExporter" );
                 }
 
                 xComponent->dispose();
-                bRet = ( rxOStm->GetError() == ERRCODE_NONE );
+                bRet = ( rOStm.GetError() == ERRCODE_NONE );
             }
             catch( Exception& )
             {
@@ -612,8 +610,8 @@ bool SdTransferable::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pOb
                 if ( xTransact.is() )
                     xTransact->commit();
 
-                rxOStm->SetBufferSize( 0xff00 );
-                rxOStm->WriteStream( *pTempStream );
+                rOStm.SetBufferSize( 0xff00 );
+                rOStm.WriteStream( *pTempStream );
 
                 bRet = true;
             }
@@ -638,7 +636,7 @@ void SdTransferable::DragFinished( sal_Int8 nDropAction )
 
 void SdTransferable::ObjectReleased()
 {
-    SdModule *pModule = SD_MOD();
+    SdModule* pModule = SdModule::get();
     if (!pModule)
         return;
 
@@ -658,7 +656,7 @@ void SdTransferable::SetObjectDescriptor( std::unique_ptr<TransferableObjectDesc
     PrepareOLE( *mpObjDesc );
 }
 
-void SdTransferable::SetPageBookmarks( std::vector<OUString> && rPageBookmarks, bool bPersistent )
+void SdTransferable::SetPageBookmarks( std::vector<OUString> && rPageBookmarks, bool bPersistent, bool bMergeMasterPagesOnly )
 {
     if( !mpSourceDoc )
         return;
@@ -675,8 +673,7 @@ void SdTransferable::SetPageBookmarks( std::vector<OUString> && rPageBookmarks, 
     if( bPersistent )
     {
         mpSdDrawDocument->CreateFirstPages(mpSourceDoc);
-        mpSdDrawDocument->InsertBookmarkAsPage( rPageBookmarks, nullptr, false, true, 1, true,
-                                                mpSourceDoc->GetDocSh(), true, true, false );
+        mpSdDrawDocument->ImportDocumentPages(rPageBookmarks, 1, mpSourceDoc->GetDocSh(), bMergeMasterPagesOnly);
     }
     else
     {

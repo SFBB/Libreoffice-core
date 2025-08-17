@@ -41,11 +41,8 @@
 #include <vcl/uitest/logger.hxx>
 #include <vcl/uitest/eventdescription.hxx>
 
-#include <vcl/weld.hxx>
-#include <vcl/builder.hxx>
 #include <officecfg/Office/Common.hxx>
-#include <unotools/configmgr.hxx>
-#include <bitmaps.hlst>
+#include <strings.hrc>
 
 #include <svx/svdview.hxx>
 
@@ -79,13 +76,13 @@ bool SwWrtShell::SelNearestWrd()
     return SelWrd();
 }
 
-bool SwWrtShell::SelWrd(const Point *pPt )
+bool SwWrtShell::SelWrd(const Point *pPt, sal_Int16 nWordType )
 {
     bool bRet;
     {
         SwMvContext aMvContext(this);
         SttSelect();
-        bRet = SwCursorShell::SelectWord( pPt );
+        bRet = SwCursorShell::SelectWordWT( pPt, nWordType );
     }
     EndSelect();
     if( bRet )
@@ -245,9 +242,9 @@ sal_Int32 SwWrtShell::SearchPattern( const i18nutil::SearchOptions2& rSearchOpt,
 
 // Description: search for templates
 
-sal_Int32 SwWrtShell::SearchTempl( const OUString &rTempl,
+sal_Int32 SwWrtShell::SearchTempl( const UIName &rTempl,
                                SwDocPositions eStt, SwDocPositions eEnd,
-                               FindRanges eFlags, const OUString* pReplTempl )
+                               FindRanges eFlags, const UIName* pReplTempl )
 {
         // no enhancement of existing selections
     if(!(eFlags & FindRanges::InSel))
@@ -318,7 +315,7 @@ void SwWrtShell::PopMode()
 // eponymous methods in the CursorShell, the second removes
 // all selections at first.
 
-tools::Long SwWrtShell::SetCursor(const Point *pPt, bool bTextOnly)
+tools::Long SwWrtShell::SetCursor(const Point *pPt, bool bTextOnly, ScrollSizeMode eScrollSizeMode)
 {
         // Remove a possibly present selection at the position
         // of the mouseclick
@@ -327,14 +324,14 @@ tools::Long SwWrtShell::SetCursor(const Point *pPt, bool bTextOnly)
         ClearMark();
     }
 
-    return SwCursorShell::SetCursor(*pPt, bTextOnly);
+    return SwCursorShell::SetCursor(*pPt, bTextOnly, true, false, eScrollSizeMode );
 }
 
-tools::Long SwWrtShell::SetCursorKillSel(const Point *pPt, bool bTextOnly )
+tools::Long SwWrtShell::SetCursorKillSel(const Point *pPt, bool bTextOnly, ScrollSizeMode eScrollSizeMode )
 {
     SwActContext aActContext(this);
-    ResetSelect(pPt,false);
-    return SwCursorShell::SetCursor(*pPt, bTextOnly);
+    ResetSelect(pPt, false, ScrollSizeMode::ScrollSizeDefault);
+    return SwCursorShell::SetCursor(*pPt, bTextOnly, true, false, eScrollSizeMode);
 }
 
 void SwWrtShell::UnSelectFrame()
@@ -347,7 +344,7 @@ void SwWrtShell::UnSelectFrame()
 
 // Remove of all selections
 
-tools::Long SwWrtShell::ResetSelect(const Point *,bool)
+tools::Long SwWrtShell::ResetSelect(const Point *, bool, ScrollSizeMode)
 {
     if(IsSelFrameMode())
     {
@@ -393,7 +390,8 @@ void SwWrtShell::SetSplitVerticalByDefault(bool value)
 
 // Do nothing
 
-tools::Long SwWrtShell::Ignore(const Point *, bool ) {
+tools::Long SwWrtShell::Ignore(const Point *, bool, ScrollSizeMode )
+{
     return 1;
 }
 
@@ -612,7 +610,7 @@ void SwWrtShell::AssureStdMode()
         Point aPt(LONG_MIN, LONG_MIN);
         SelectObj(aPt, SW_LEAVE_FRAME);
     }
-    if (IsSelFrameMode() || IsObjSelected())
+    if (IsSelFrameMode() || GetSelectedObjCount())
     {
         UnSelectFrame();
         LeaveSelFrameMode();
@@ -674,7 +672,6 @@ void SwWrtShell::EnterAddMode()
     if(IsTableMode()) return;
     if(m_bBlockMode)
         LeaveBlockMode();
-    m_fnKillSel = &SwWrtShell::Ignore;
     m_fnSetCursor = &SwWrtShell::SetCursor;
     m_bAddMode = true;
     m_bBlockMode = false;
@@ -713,27 +710,8 @@ void SwWrtShell::LeaveBlockMode()
 
 // Insert mode
 
-void SwWrtShell::SetInsMode( bool bOn )
+void SwWrtShell::ImplSetInsMode(bool bOn)
 {
-    const bool bDoAsk = officecfg::Office::Common::Misc::QuerySetInsMode::get();
-    if (!bOn && bDoAsk) {
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetView().GetFrameWeld(), "cui/ui/querysetinsmodedialog.ui"));
-        std::unique_ptr<weld::Dialog> xQuery(xBuilder->weld_dialog("SetInsModeDialog"));
-        std::unique_ptr<weld::Image> xImage(xBuilder->weld_image("imSetInsMode"));
-        std::unique_ptr<weld::CheckButton> xCheckBox(xBuilder->weld_check_button("cbDontShowAgain"));
-
-        xImage->set_from_icon_name(RID_BMP_QUERYINSMODE);
-
-        const int nResult = xQuery->run();
-
-        std::shared_ptr<comphelper::ConfigurationChanges> xChanges(
-            comphelper::ConfigurationChanges::create());
-        officecfg::Office::Common::Misc::QuerySetInsMode::set(!xCheckBox->get_active(), xChanges);
-        xChanges->commit();
-
-        if ( nResult == static_cast<int>(RET_NO) )
-            return;
-    }
     m_bIns = bOn;
     SwCursorShell::SetOverwriteCursor( !m_bIns );
     const SfxBoolItem aTmp( SID_ATTR_INSERT, m_bIns );
@@ -742,10 +720,38 @@ void SwWrtShell::SetInsMode( bool bOn )
     EndAction();
     Invalidate();
 }
-//Overwrite mode is incompatible with red-lining
-void SwWrtShell::SetRedlineFlagsAndCheckInsMode( RedlineFlags eMode )
+
+void SwWrtShell::SetInsMode( bool bOn )
 {
-   SetRedlineFlags( eMode );
+    const bool bDoAsk = officecfg::Office::Common::Misc::QuerySetInsMode::get();
+    if (!bOn && bDoAsk)
+    {
+        VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
+        auto pDlg = pFact->CreateQueryDialog(
+            GetView().GetFrameWeld(), SwResId(STR_QUERY_INSMODE_TITLE),
+            SwResId(STR_QUERY_INSMODE_TEXT), SwResId(STR_QUERY_INSMODE_QUESTION), true);
+        pDlg->StartExecuteAsync( [this, pDlg] (sal_Int32 nResult)->void
+        {
+            if (pDlg->ShowAgain() == false)
+            {
+                std::shared_ptr<comphelper::ConfigurationChanges> xChanges(
+                    comphelper::ConfigurationChanges::create());
+                officecfg::Office::Common::Misc::QuerySetInsMode::set(false, xChanges);
+                xChanges->commit();
+            }
+            if (nResult == RET_YES)
+                ImplSetInsMode(false);
+            pDlg->disposeOnce();
+        });
+        return;
+    }
+    ImplSetInsMode(bOn);
+}
+
+//Overwrite mode is incompatible with red-lining
+void SwWrtShell::SetRedlineFlagsAndCheckInsMode( RedlineFlags eMode, SfxRedlineRecordingMode eRedlineRecordingMode )
+{
+   SetRedlineFlags( eMode, eRedlineRecordingMode );
    if (IsRedlineOn())
        SetInsMode();
 }
@@ -798,7 +804,7 @@ void SwWrtShell::LeaveSelFrameMode()
 IMPL_LINK( SwWrtShell, ExecFlyMac, const SwFlyFrameFormat*, pFlyFormat, void )
 {
     const SwFrameFormat *pFormat = pFlyFormat ? static_cast<const SwFrameFormat*>(pFlyFormat) : GetFlyFrameFormat();
-    OSL_ENSURE(pFormat, "no frame format");
+    assert(pFormat && "no frame format");
     const SvxMacroItem &rFormatMac = pFormat->GetMacro();
 
     if(rFormatMac.HasMacro(SvMacroItemId::SwObjectSelect))
@@ -1020,7 +1026,7 @@ void SwWrtShell::SelectNextPrevHyperlink( bool bNext )
     EndAction();
 
     bool bCreateXSelection = false;
-    const bool bFrameSelected = IsFrameSelected() || IsObjSelected();
+    const bool bFrameSelected = IsFrameSelected() || GetSelectedObjCount();
     if( IsSelection() )
     {
         if ( bFrameSelected )

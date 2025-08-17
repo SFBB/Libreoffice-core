@@ -360,7 +360,7 @@ static bool lcl_MergeGCBox(SwTableBox* pTableBox, GCLinePara* pPara)
                 pTabBox->SetUpper( pInsLine );
 
             SfxPoolItem const* pRowBrush(nullptr);
-            pCpyLine->GetFrameFormat()->GetItemState(RES_BACKGROUND, true, &pRowBrush);
+            (void)pCpyLine->GetFrameFormat()->GetItemState(RES_BACKGROUND, true, &pRowBrush);
             if (pRowBrush)
             {
                 for (auto pBox : pCpyLine->GetTabBoxes())
@@ -441,9 +441,18 @@ static bool lcl_MergeGCLine(SwTableLine* pLn, GCLinePara* pGCPara)
         }
 
         // ATTENTION: The number of boxes can change!
-        for( SwTableBoxes::size_type nLen = 0; nLen < pLn->GetTabBoxes().size(); ++nLen )
+        SwTableBoxes::size_type nLen = 0;
+        while (nLen < pLn->GetTabBoxes().size())
+        {
             if( !lcl_MergeGCBox( pLn->GetTabBoxes()[nLen], pGCPara ))
+            {
+                if (nLen == 0)
+                    break;
                 --nLen;
+                continue;
+            }
+            ++nLen;
+        }
     }
     return true;
 }

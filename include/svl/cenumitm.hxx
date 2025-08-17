@@ -31,6 +31,7 @@ protected:
     SfxEnumItemInterface(const SfxEnumItemInterface &) = default;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SfxEnumItemInterface)
 
     virtual bool operator ==(const SfxPoolItem & rItem) const override;
 
@@ -41,8 +42,6 @@ public:
     virtual bool QueryValue(css::uno::Any & rVal, sal_uInt8 = 0) const override;
 
     virtual bool PutValue(const css::uno::Any & rVal, sal_uInt8 ) override;
-
-    virtual sal_uInt16 GetValueCount() const = 0;
 
     virtual sal_uInt16 GetEnumValue() const = 0;
 

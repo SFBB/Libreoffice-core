@@ -129,7 +129,9 @@ bool XcsParser::startElement(
     // illegal content):
     if (ignoring_ > 0
         || (nsId == xmlreader::XmlReader::NAMESPACE_NONE
-            && (name == "import" || name == "uses" || name == "constraints" || name == "desc")))
+            && (name == "import" || name == "uses" || name == "constraints" || name == "desc"
+                // the following are unused by LO but valid
+                || name == "deprecated" || name == "author" || name == "label")))
     {
         assert(ignoring_ < LONG_MAX);
         ++ignoring_;
@@ -174,7 +176,7 @@ bool XcsParser::startElement(
                 assert(elements_.empty());
                 elements_.push(
                     Element(
-                        new GroupNode(valueParser_.getLayer(), false, ""),
+                        new GroupNode(valueParser_.getLayer(), false, u""_ustr),
                         componentName_));
                 return true;
             }
@@ -340,7 +342,7 @@ void XcsParser::endElement(xmlreader::XmlReader const & reader) {
                 default:
                     assert(false);
                     throw css::uno::RuntimeException(
-                        "this cannot happen");
+                        u"this cannot happen"_ustr);
                 }
             } else {
                 if (!elements_.top().node->getMembers().insert(
@@ -650,7 +652,7 @@ void XcsParser::handleSetItem(xmlreader::XmlReader & reader, SetNode * set) {
     }
     set->getAdditionalTemplateNames().push_back(
         xmldata::parseTemplateReference(component, hasNodeType, nodeType, nullptr));
-    elements_.push(Element(rtl::Reference< Node >(), ""));
+    elements_.push(Element(rtl::Reference< Node >(), u""_ustr));
 }
 
 }

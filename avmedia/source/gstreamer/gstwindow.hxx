@@ -20,14 +20,11 @@
 #pragma once
 
 #include <cppuhelper/implbase.hxx>
-#include <cppuhelper/interfacecontainer.h>
 
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/media/XPlayerWindow.hpp>
 
 namespace avmedia::gstreamer {
-
-class Player;
 
 class Window : public ::cppu::WeakImplHelper< css::media::XPlayerWindow,
                                               css::lang::XServiceInfo >

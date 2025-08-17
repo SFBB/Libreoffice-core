@@ -17,7 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
 
+#include <o3tl/test_info.hxx>
 #include <vcl/svapp.hxx>
 #include <dndhelper.hxx>
 #include <vcl/sysdata.hxx>
@@ -36,27 +38,34 @@ using namespace ::cppu;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::datatransfer::clipboard;
 
-uno::Reference< XInterface > AquaSalInstance::CreateClipboard( const Sequence< Any >& i_rArguments )
+uno::Reference<css::datatransfer::clipboard::XClipboard>
+AquaSalInstance::CreateClipboard(const Sequence<Any>& i_rArguments)
 {
-    if ( Application::IsHeadlessModeEnabled() || IsRunningUnitTest() )
+    if ( Application::IsHeadlessModeEnabled() || o3tl::IsRunningUnitTest() || o3tl::IsRunningUITest() )
         return SalInstance::CreateClipboard( i_rArguments );
 
     SalData* pSalData = GetSalData();
     if( ! pSalData->mxClipboard.is() )
-        pSalData->mxClipboard.set(static_cast< XClipboard* >(new AquaClipboard(nullptr, true)), UNO_QUERY);
+        pSalData->mxClipboard = new AquaClipboard(nullptr, true);
     return pSalData->mxClipboard;
 }
 
-uno::Reference<XInterface> AquaSalInstance::ImplCreateDragSource(const SystemEnvData* pSysEnv)
+css::uno::Reference<css::datatransfer::dnd::XDragSource>
+AquaSalInstance::ImplCreateDragSource(const SystemEnvData& rSysEnv)
 {
-    return vcl::OleDnDHelper(new DragSource(), reinterpret_cast<sal_IntPtr>(pSysEnv->mpNSView),
-                             vcl::DragOrDrop::Drag);
+    rtl::Reference<DragSource> xDragSource = new DragSource();
+    vcl::OleDnDHelper(xDragSource, reinterpret_cast<sal_IntPtr>(rSysEnv.mpNSView),
+                      vcl::DragOrDrop::Drag);
+    return xDragSource;
 }
 
-uno::Reference<XInterface> AquaSalInstance::ImplCreateDropTarget(const SystemEnvData* pSysEnv)
+css::uno::Reference<css::datatransfer::dnd::XDropTarget>
+AquaSalInstance::ImplCreateDropTarget(const SystemEnvData& rSysEnv)
 {
-    return vcl::OleDnDHelper(new DropTarget(), reinterpret_cast<sal_IntPtr>(pSysEnv->mpNSView),
-                             vcl::DragOrDrop::Drop);
+    rtl::Reference<DropTarget> xDropTarget = new DropTarget();
+    vcl::OleDnDHelper(xDropTarget, reinterpret_cast<sal_IntPtr>(rSysEnv.mpNSView),
+                      vcl::DragOrDrop::Drop);
+    return xDropTarget;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

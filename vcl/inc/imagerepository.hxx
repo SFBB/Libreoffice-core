@@ -17,12 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_IMAGEREPOSITORY_HXX
-#define INCLUDED_VCL_IMAGEREPOSITORY_HXX
+#pragma once
 
 #include <rtl/ustring.hxx>
 
-class BitmapEx;
+class Bitmap;
 
 
 namespace vcl
@@ -45,14 +44,11 @@ namespace vcl
         */
         static bool loadImage(
             const OUString& _rName,
-            BitmapEx& _out_rImage
+            Bitmap& _out_rImage
         );
     };
 
 
 } // namespace vcl
-
-
-#endif // INCLUDED_VCL_IMAGEREPOSITORY_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

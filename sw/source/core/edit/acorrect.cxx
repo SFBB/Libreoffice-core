@@ -151,7 +151,7 @@ bool SwAutoCorrDoc::Delete( sal_Int32 nStt, sal_Int32 nEnd )
                pFrame->MapViewToModelPos(TextFrameIndex(nEnd)));
     DeleteSel( aSel );
 
-    if( m_bUndoIdInitialized )
+    if( !m_bUndoIdInitialized )
         m_bUndoIdInitialized = true;
     return true;
 }
@@ -267,7 +267,7 @@ bool SwAutoCorrDoc::ReplaceRange( sal_Int32 nPos, sal_Int32 nSourceLength, const
             pPam->DeleteMark();
         }
 
-        if( m_bUndoIdInitialized )
+        if( !m_bUndoIdInitialized )
         {
             m_bUndoIdInitialized = true;
             if( 1 == rText.getLength() )
@@ -295,7 +295,7 @@ void SwAutoCorrDoc::SetAttr( sal_Int32 nStt, sal_Int32 nEnd, sal_uInt16 nSlotId,
                pFrame->MapViewToModelPos(TextFrameIndex(nEnd)));
 
     SfxItemPool& rPool = m_rEditSh.GetDoc()->GetAttrPool();
-    sal_uInt16 nWhich = rPool.GetWhich( nSlotId, false );
+    sal_uInt16 nWhich = rPool.GetWhichIDFromSlotID( nSlotId, false );
     if( nWhich )
     {
         rItem.SetWhich( nWhich );
@@ -305,7 +305,7 @@ void SwAutoCorrDoc::SetAttr( sal_Int32 nStt, sal_Int32 nEnd, sal_uInt16 nSlotId,
 
         m_rEditSh.GetDoc()->SetFormatItemByAutoFormat( aPam, aSet );
 
-        if( m_bUndoIdInitialized )
+        if( !m_bUndoIdInitialized )
             m_bUndoIdInitialized = true;
     }
 }
@@ -323,7 +323,7 @@ bool SwAutoCorrDoc::SetINetAttr( sal_Int32 nStt, sal_Int32 nEnd, const OUString&
         aSet( m_rEditSh.GetDoc()->GetAttrPool() );
     aSet.Put( SwFormatINetFormat( rURL, OUString() ));
     m_rEditSh.GetDoc()->SetFormatItemByAutoFormat( aPam, aSet );
-    if( m_bUndoIdInitialized )
+    if( !m_bUndoIdInitialized )
         m_bUndoIdInitialized = true;
     return true;
 }
@@ -362,7 +362,7 @@ OUString const* SwAutoCorrDoc::GetPrevPara(bool const bAtNormalPos)
         pStr = & pFrame->GetText();
     }
 
-    if( m_bUndoIdInitialized )
+    if( !m_bUndoIdInitialized )
         m_bUndoIdInitialized = true;
 
     return pStr;
@@ -372,7 +372,7 @@ bool SwAutoCorrDoc::ChgAutoCorrWord( sal_Int32& rSttPos, sal_Int32 nEndPos,
                                          SvxAutoCorrect& rACorrect,
                                          OUString* pPara )
 {
-    if( m_bUndoIdInitialized )
+    if( !m_bUndoIdInitialized )
         m_bUndoIdInitialized = true;
 
     // Found a beginning of a paragraph or a Blank,
@@ -393,110 +393,122 @@ bool SwAutoCorrDoc::ChgAutoCorrWord( sal_Int32& rSttPos, sal_Int32 nEndPos,
                 pTextNd->getLayoutFrame(m_rEditSh.GetLayout())));
     assert(pFrame);
 
-    const OUString sFrameText = pFrame->GetText();
-    const SvxAutocorrWord* pFnd = rACorrect.SearchWordsInList(
-                sFrameText, rSttPos, nEndPos, *this, aLanguageTag);
+    OUString sFrameText = pFrame->GetText();
+    sal_Int32 sttPos = rSttPos;
+    auto pStatus = rACorrect.SearchWordsInList(sFrameText, sttPos, nEndPos,
+                                               *this, aLanguageTag);
+
     SwDoc* pDoc = m_rEditSh.GetDoc();
-    if( pFnd )
+    if( pStatus )
     {
-        // replace also last colon of keywords surrounded by colons (for example, ":name:")
-        const bool replaceLastChar = sFrameText.getLength() > nEndPos && pFnd->GetShort()[0] == ':'
-                                     && pFnd->GetShort().endsWith(":");
+        sal_Int32 minSttPos = sttPos;
+        do {
+            const SvxAutocorrWord* pFnd = pStatus->GetAutocorrWord();
+            // replace also last colon of keywords surrounded by colons
+            // (for example, ":name:")
+            const bool replaceLastChar = sFrameText.getLength() > nEndPos
+                                         && pFnd->GetShort()[0] == ':'
+                                         && pFnd->GetShort().endsWith(":");
 
-        SwPosition aStartPos( pFrame->MapViewToModelPos(TextFrameIndex(rSttPos) ));
-        SwPosition aEndPos( pFrame->MapViewToModelPos(TextFrameIndex(nEndPos + (replaceLastChar ? 1 : 0))) );
-        SwPaM aPam(aStartPos, aEndPos);
+            SwPosition aStartPos( pFrame->MapViewToModelPos(TextFrameIndex(sttPos)) );
+            SwPosition aEndPos( pFrame->MapViewToModelPos(TextFrameIndex(nEndPos + (replaceLastChar ? 1 : 0))) );
+            SwPaM aPam(aStartPos, aEndPos);
 
-        // don't replace, if a redline starts or ends within the original text
-        if ( pDoc->getIDocumentRedlineAccess().HasRedline( aPam, RedlineType::Any, /*bStartOrEndInRange=*/true ) )
-        {
-            return bRet;
-        }
-
-        if( pFnd->IsTextOnly() )
-        {
-            //JP 22.04.99: Bug 63883 - Special treatment for dots.
-            const bool bLastCharIsPoint
-                = nEndPos < sFrameText.getLength() && ('.' == sFrameText[nEndPos]);
-            if( !bLastCharIsPoint || pFnd->GetLong().isEmpty() ||
-                '.' != pFnd->GetLong()[ pFnd->GetLong().getLength() - 1 ] )
+            // don't replace, if a redline starts or ends within the original text
+            if ( pDoc->getIDocumentRedlineAccess().HasRedline( aPam, RedlineType::Any, /*bStartOrEndInRange=*/true ) )
             {
-                // replace the selection
-                std::vector<std::shared_ptr<SwUnoCursor>> ranges;
-                if (sw::GetRanges(ranges, *m_rEditSh.GetDoc(), aPam))
+                return bRet;
+            }
+
+            if( pFnd->IsTextOnly() )
+            {
+                //JP 22.04.99: Bug 63883 - Special treatment for dots.
+                const bool bLastCharIsPoint
+                    = nEndPos < sFrameText.getLength() && ('.' == sFrameText[nEndPos]);
+                if( !bLastCharIsPoint || pFnd->GetLong().isEmpty() ||
+                    '.' != pFnd->GetLong()[ pFnd->GetLong().getLength() - 1 ] )
                 {
-                    pDoc->getIDocumentContentOperations().ReplaceRange(aPam, pFnd->GetLong(), false);
-                    bRet = true;
-                }
-                else if (!ranges.empty())
-                {
-                    assert(ranges.front()->GetPoint()->GetNode() == ranges.front()->GetMark()->GetNode());
+                    // replace the selection
+                    std::vector<std::shared_ptr<SwUnoCursor>> ranges;
+                    bool noRedlines = sw::GetRanges(ranges,
+                                                    *m_rEditSh.GetDoc(), aPam);
+                    OSL_ENSURE(noRedlines, "redlines should have been blocked.");
+                    OSL_ENSURE(ranges.empty(), "no redlines expected here.");
+
                     pDoc->getIDocumentContentOperations().ReplaceRange(
-                            *ranges.front(), pFnd->GetLong(), false);
-                    for (auto it = ranges.begin() + 1; it != ranges.end(); ++it)
+                            aPam, pFnd->GetLong(), false);
+                    nEndPos = sttPos + pFnd->GetLong().getLength();
+                    bRet = true;
+
+                    // tdf#83260 After calling sw::DocumentContentOperationsManager::ReplaceRange
+                    // pTextNd may become invalid when change tracking is on and Edit -> Track Changes -> Show == OFF.
+                    // ReplaceRange shows changes, this moves deleted nodes from special section to document.
+                    // Then Show mode is disabled again. As a result pTextNd may be invalidated.
+                    pTextNd = m_rCursor.GetPointNode().GetTextNode();
+                }
+            }
+            else
+            {
+                SwTextBlocks aTBlks( rACorrect.GetAutoCorrFileName( aLanguageTag, false, true ));
+                sal_uInt16 nPos = aTBlks.GetIndex( pFnd->GetShort() );
+                if( USHRT_MAX != nPos && aTBlks.BeginGetDoc( nPos ) )
+                {
+                    DeleteSel( aPam );
+                    pDoc->DontExpandFormat( *aPam.GetPoint() );
+
+                    if( pPara )
                     {
-                        DeleteSelImpl(**it);
+                        OSL_ENSURE( !m_oIndex, "who has not deleted his Index?" );
+                        m_oIndex.emplace(m_rCursor.GetPoint()->GetNode());
+                        sw::GotoPrevLayoutTextFrame(*m_oIndex, m_rEditSh.GetLayout());
                     }
+
+                    SwDoc* pAutoDoc = aTBlks.GetDoc();
+                    SwNodeIndex aSttIdx( pAutoDoc->GetNodes().GetEndOfExtras(), 1 );
+                    SwContentNode* pContentNd = SwNodes::GoNext(&aSttIdx);
+                    SwPaM aCpyPam( aSttIdx );
+
+                    const SwTableNode* pTableNd = pContentNd->FindTableNode();
+                    if( pTableNd )
+                    {
+                        aCpyPam.GetPoint()->Assign( *pTableNd );
+                    }
+                    aCpyPam.SetMark();
+
+                    // then until the end of the Nodes Array
+                    aCpyPam.GetPoint()->Assign( pAutoDoc->GetNodes().GetEndOfContent(), SwNodeOffset(-1) );
+                    pContentNd = aCpyPam.GetPointContentNode();
+                    if (pContentNd)
+                        aCpyPam.GetPoint()->SetContent( pContentNd->Len() );
+
+                    SwDontExpandItem aExpItem;
+                    aExpItem.SaveDontExpandItems( *aPam.GetPoint() );
+
+                    pAutoDoc->getIDocumentContentOperations().CopyRange(aCpyPam, *aPam.GetPoint(), SwCopyFlags::CheckPosInFly);
+
+                    aExpItem.RestoreDontExpandItems( *aPam.GetPoint() );
+
+                    if( pPara )
+                    {
+                        sw::GotoNextLayoutTextFrame(*m_oIndex, m_rEditSh.GetLayout());
+                        pTextNd = m_oIndex->GetNode().GetTextNode();
+                    }
+                    // hmm... the inserted text can have multiple text nodes
+                    // - not sure what the "pos" should point to, but pFrame
+                    // is not changed so try the first node?
+                    nEndPos = sttPos + aCpyPam.GetMark()->GetContentIndex();
                     bRet = true;
                 }
-
-                // tdf#83260 After calling sw::DocumentContentOperationsManager::ReplaceRange
-                // pTextNd may become invalid when change tracking is on and Edit -> Track Changes -> Show == OFF.
-                // ReplaceRange shows changes, this moves deleted nodes from special section to document.
-                // Then Show mode is disabled again. As a result pTextNd may be invalidated.
-                pTextNd = m_rCursor.GetPointNode().GetTextNode();
+                aTBlks.EndGetDoc();
             }
-        }
-        else
-        {
-            SwTextBlocks aTBlks( rACorrect.GetAutoCorrFileName( aLanguageTag, false, true ));
-            sal_uInt16 nPos = aTBlks.GetIndex( pFnd->GetShort() );
-            if( USHRT_MAX != nPos && aTBlks.BeginGetDoc( nPos ) )
-            {
-                DeleteSel( aPam );
-                pDoc->DontExpandFormat( *aPam.GetPoint() );
-
-                if( pPara )
-                {
-                    OSL_ENSURE( !m_oIndex, "who has not deleted his Index?" );
-                    m_oIndex.emplace(m_rCursor.GetPoint()->GetNode());
-                    sw::GotoPrevLayoutTextFrame(*m_oIndex, m_rEditSh.GetLayout());
-                }
-
-                SwDoc* pAutoDoc = aTBlks.GetDoc();
-                SwNodeIndex aSttIdx( pAutoDoc->GetNodes().GetEndOfExtras(), 1 );
-                SwContentNode* pContentNd = pAutoDoc->GetNodes().GoNext( &aSttIdx );
-                SwPaM aCpyPam( aSttIdx );
-
-                const SwTableNode* pTableNd = pContentNd->FindTableNode();
-                if( pTableNd )
-                {
-                    aCpyPam.GetPoint()->Assign( *pTableNd );
-                }
-                aCpyPam.SetMark();
-
-                // then until the end of the Nodes Array
-                aCpyPam.GetPoint()->Assign( pAutoDoc->GetNodes().GetEndOfContent(), SwNodeOffset(-1) );
-                pContentNd = aCpyPam.GetPointContentNode();
-                if (pContentNd)
-                    aCpyPam.GetPoint()->SetContent( pContentNd->Len() );
-
-                SwDontExpandItem aExpItem;
-                aExpItem.SaveDontExpandItems( *aPam.GetPoint() );
-
-                pAutoDoc->getIDocumentContentOperations().CopyRange(aCpyPam, *aPam.GetPoint(), SwCopyFlags::CheckPosInFly);
-
-                aExpItem.RestoreDontExpandItems( *aPam.GetPoint() );
-
-                if( pPara )
-                {
-                    sw::GotoNextLayoutTextFrame(*m_oIndex, m_rEditSh.GetLayout());
-                    pTextNd = m_oIndex->GetNode().GetTextNode();
-                }
-                bRet = true;
+            if( sttPos < minSttPos) {
+                minSttPos = sttPos;
             }
-            aTBlks.EndGetDoc();
-        }
+            sttPos = rSttPos;
+            sFrameText = pFrame->GetText();
+        } while( SvxAutoCorrect::SearchWordsNext(sFrameText, sttPos, nEndPos,
+                                                 *pStatus) );
+        rSttPos = minSttPos;
     }
 
     if( bRet && pPara && pTextNd )
@@ -511,7 +523,7 @@ bool SwAutoCorrDoc::ChgAutoCorrWord( sal_Int32& rSttPos, sal_Int32 nEndPos,
 
 bool SwAutoCorrDoc::TransliterateRTLWord( sal_Int32& rSttPos, sal_Int32 nEndPos, bool bApply )
 {
-    if( m_bUndoIdInitialized )
+    if( !m_bUndoIdInitialized )
         m_bUndoIdInitialized = true;
 
     SwTextNode* pTextNd = m_rCursor.GetPointNode().GetTextNode();

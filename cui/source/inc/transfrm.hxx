@@ -19,6 +19,7 @@
 #pragma once
 
 #include <svx/dlgctrl.hxx>
+#include <svx/dlgutil.hxx>
 #include <svx/dialcontrol.hxx>
 #include <svx/anchorid.hxx>
 #include <basegfx/range/b2drange.hxx>
@@ -91,28 +92,34 @@ private:
     SvxRectCtl          m_aCtlPos;
     SvxRectCtl          m_aCtlSize;
 
+    SvxRatioConnector m_aRatioTop;
+    SvxRatioConnector m_aRatioBottom;
+
     // position
-    std::unique_ptr<weld::Widget> m_xFlPosition;
+    std::unique_ptr<weld::Container> m_xFlPosition;
     std::unique_ptr<weld::MetricSpinButton> m_xMtrPosX;
     std::unique_ptr<weld::MetricSpinButton> m_xMtrPosY;
     std::unique_ptr<weld::CustomWeld> m_xCtlPos;
 
     // size
-    std::unique_ptr<weld::Widget> m_xFlSize;
+    std::unique_ptr<weld::Container> m_xFlSize;
     std::unique_ptr<weld::Label> m_xFtWidth;
     std::unique_ptr<weld::MetricSpinButton> m_xMtrWidth;
     std::unique_ptr<weld::Label> m_xFtHeight;
     std::unique_ptr<weld::MetricSpinButton> m_xMtrHeight;
     std::unique_ptr<weld::CheckButton> m_xCbxScale;
+    std::unique_ptr<weld::Image> m_xCbxScaleImg;
+    std::unique_ptr<weld::CustomWeld> m_xImgRatioTop;
+    std::unique_ptr<weld::CustomWeld> m_xImgRatioBottom;
     std::unique_ptr<weld::CustomWeld> m_xCtlSize;
 
     // protect
-    std::unique_ptr<weld::Widget> m_xFlProtect;
+    std::unique_ptr<weld::Container> m_xFlProtect;
     std::unique_ptr<weld::CheckButton> m_xTsbPosProtect;
     std::unique_ptr<weld::CheckButton> m_xTsbSizeProtect;
 
     // adjust
-    std::unique_ptr<weld::Widget> m_xFlAdjust;
+    std::unique_ptr<weld::Container> m_xFlAdjust;
     std::unique_ptr<weld::CheckButton> m_xTsbAutoGrowWidth;
     std::unique_ptr<weld::CheckButton> m_xTsbAutoGrowHeight;
 
@@ -132,7 +139,7 @@ public:
     virtual ~SvxPositionSizeTabPage() override;
 
     static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
-    static WhichRangesContainer GetRanges() {  return pPosSizeRanges; }
+    static const WhichRangesContainer & GetRanges() {  return pPosSizeRanges; }
 
     virtual bool FillItemSet( SfxItemSet* ) override;
     virtual void Reset( const SfxItemSet * ) override;
@@ -188,7 +195,7 @@ public:
     virtual ~SvxAngleTabPage() override;
 
     static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
-    static WhichRangesContainer GetRanges() { return pAngleRanges; }
+    static const WhichRangesContainer & GetRanges() { return pAngleRanges; }
 
     virtual bool FillItemSet( SfxItemSet* ) override;
     virtual void Reset( const SfxItemSet * ) override;
@@ -232,7 +239,7 @@ public:
     virtual ~SvxSlantTabPage() override;
 
     static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
-    static WhichRangesContainer GetRanges() {  return pSlantRanges; }
+    static const WhichRangesContainer & GetRanges() {  return pSlantRanges; }
 
     virtual bool FillItemSet( SfxItemSet* ) override;
     virtual void Reset( const SfxItemSet * ) override;

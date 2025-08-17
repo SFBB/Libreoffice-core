@@ -79,9 +79,9 @@ bool XLineEndList::Create()
     return true;
 }
 
-BitmapEx XLineEndList::CreateBitmapForUI( tools::Long nIndex )
+Bitmap XLineEndList::CreateBitmapForUI( tools::Long nIndex )
 {
-    BitmapEx aRetval;
+    Bitmap aRetval;
     OSL_ENSURE(nIndex < Count(), "OOps, access out of range (!)");
 
     if(nIndex < Count())
@@ -154,7 +154,7 @@ BitmapEx XLineEndList::CreateBitmapForUI( tools::Long nIndex )
         pProcessor2D.reset();
 
         // get result bitmap and scale
-        aRetval = pVirtualDevice->GetBitmapEx(Point(0, 0), pVirtualDevice->GetOutputSizePixel());
+        aRetval = pVirtualDevice->GetBitmap(Point(0, 0), pVirtualDevice->GetOutputSizePixel());
     }
 
     return aRetval;

@@ -44,110 +44,173 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
-SdTpOptionsSnap::SdTpOptionsSnap(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
+SdTpOptionsSnap::SdTpOptionsSnap(weld::Container* pPage, weld::DialogController* pController,
+                                 const SfxItemSet& rInAttrs)
     : SvxGridTabPage(pPage, pController, rInAttrs)
 {
     m_xSnapFrames->show();
 }
 
-SdTpOptionsSnap::~SdTpOptionsSnap()
-{
-}
+SdTpOptionsSnap::~SdTpOptionsSnap() {}
 
-bool SdTpOptionsSnap::FillItemSet( SfxItemSet* rAttrs )
+bool SdTpOptionsSnap::FillItemSet(SfxItemSet* rAttrs)
 {
     SvxGridTabPage::FillItemSet(rAttrs);
-    SdOptionsSnapItem aOptsItem;
+    bool bDrawMode = SvxGridTabPage::IsDrawMode();
 
-    aOptsItem.GetOptionsSnap().SetSnapHelplines( m_xCbxSnapHelplines->get_active() );
-    aOptsItem.GetOptionsSnap().SetSnapBorder( m_xCbxSnapBorder->get_active() );
-    aOptsItem.GetOptionsSnap().SetSnapFrame( m_xCbxSnapFrame->get_active() );
-    aOptsItem.GetOptionsSnap().SetSnapPoints( m_xCbxSnapPoints->get_active() );
-    aOptsItem.GetOptionsSnap().SetOrtho( m_xCbxOrtho->get_active() );
-    aOptsItem.GetOptionsSnap().SetBigOrtho( m_xCbxBigOrtho->get_active() );
-    aOptsItem.GetOptionsSnap().SetRotate( m_xCbxRotate->get_active() );
-    aOptsItem.GetOptionsSnap().SetSnapArea(static_cast<sal_Int16>(m_xMtrFldSnapArea->get_value(FieldUnit::PIXEL)));
-    aOptsItem.GetOptionsSnap().SetAngle(Degree100(m_xMtrFldAngle->get_value(FieldUnit::DEGREE)));
-    aOptsItem.GetOptionsSnap().SetEliminatePolyPointLimitAngle(Degree100(m_xMtrFldBezAngle->get_value(FieldUnit::DEGREE)));
+    std::shared_ptr<comphelper::ConfigurationChanges> batch(
+        comphelper::ConfigurationChanges::create());
 
-    rAttrs->Put( aOptsItem );
+    if (bDrawMode)
+    {
+        officecfg::Office::Draw::Snap::Object::SnapLine::set(m_xCbxSnapHelplines->get_active(),
+                                                             batch);
+        officecfg::Office::Draw::Snap::Object::PageMargin::set(m_xCbxSnapBorder->get_active(),
+                                                               batch);
+        officecfg::Office::Draw::Snap::Object::ObjectFrame::set(m_xCbxSnapFrame->get_active(),
+                                                                batch);
+        officecfg::Office::Draw::Snap::Object::ObjectPoint::set(m_xCbxSnapPoints->get_active(),
+                                                                batch);
+        officecfg::Office::Draw::Snap::Position::CreatingMoving::set(m_xCbxOrtho->get_active(),
+                                                                     batch);
+        officecfg::Office::Draw::Snap::Position::ExtendEdges::set(m_xCbxBigOrtho->get_active(),
+                                                                  batch);
+        officecfg::Office::Draw::Snap::Position::Rotating::set(m_xCbxRotate->get_active(), batch);
+        officecfg::Office::Draw::Snap::Object::Range::set(
+            static_cast<sal_Int16>(m_xMtrFldSnapArea->get_value(FieldUnit::PIXEL)), batch);
+        officecfg::Office::Draw::Snap::Position::RotatingValue::set(
+            static_cast<sal_Int32>(Degree100(m_xMtrFldAngle->get_value(FieldUnit::DEGREE))), batch);
+        officecfg::Office::Draw::Snap::Position::PointReduction::set(
+            static_cast<sal_Int32>(Degree100(m_xMtrFldBezAngle->get_value(FieldUnit::DEGREE))),
+            batch);
+    }
+    else
+    {
+        officecfg::Office::Impress::Snap::Object::SnapLine::set(m_xCbxSnapHelplines->get_active(),
+                                                                batch);
+        officecfg::Office::Impress::Snap::Object::PageMargin::set(m_xCbxSnapBorder->get_active(),
+                                                                  batch);
+        officecfg::Office::Impress::Snap::Object::ObjectFrame::set(m_xCbxSnapFrame->get_active(),
+                                                                   batch);
+        officecfg::Office::Impress::Snap::Object::ObjectPoint::set(m_xCbxSnapPoints->get_active(),
+                                                                   batch);
+        officecfg::Office::Impress::Snap::Position::CreatingMoving::set(m_xCbxOrtho->get_active(),
+                                                                        batch);
+        officecfg::Office::Impress::Snap::Position::ExtendEdges::set(m_xCbxBigOrtho->get_active(),
+                                                                     batch);
+        officecfg::Office::Impress::Snap::Position::Rotating::set(m_xCbxRotate->get_active(),
+                                                                  batch);
+        officecfg::Office::Impress::Snap::Object::Range::set(
+            static_cast<sal_Int16>(m_xMtrFldSnapArea->get_value(FieldUnit::PIXEL)), batch);
+        officecfg::Office::Impress::Snap::Position::RotatingValue::set(
+            static_cast<sal_Int32>(Degree100(m_xMtrFldAngle->get_value(FieldUnit::DEGREE))), batch);
+        officecfg::Office::Impress::Snap::Position::PointReduction::set(
+            static_cast<sal_Int32>(Degree100(m_xMtrFldBezAngle->get_value(FieldUnit::DEGREE))),
+            batch);
+    }
+
+    batch->commit();
 
     // we get a possible existing GridItem, this ensures that we do not set
     // some default values by accident
     return true;
 }
 
-void SdTpOptionsSnap::Reset( const SfxItemSet* rAttrs )
+void SdTpOptionsSnap::Reset(const SfxItemSet* rAttrs)
 {
     SvxGridTabPage::Reset(rAttrs);
 
-    SdOptionsSnapItem aOptsItem( rAttrs->Get( ATTR_OPTIONS_SNAP ) );
-
     bool bDrawMode = SvxGridTabPage::IsDrawMode();
-    bool bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Object::SnapLine::isReadOnly() :
-        officecfg::Office::Impress::Snap::Object::SnapLine::isReadOnly();
-    m_xCbxSnapHelplines->set_active( aOptsItem.GetOptionsSnap().IsSnapHelplines() );
+    if (bDrawMode)
+    {
+        m_xCbxSnapHelplines->set_active(officecfg::Office::Draw::Snap::Object::SnapLine::get());
+        m_xCbxSnapBorder->set_active(officecfg::Office::Draw::Snap::Object::PageMargin::get());
+        m_xCbxSnapFrame->set_active(officecfg::Office::Draw::Snap::Object::ObjectFrame::get());
+        m_xCbxSnapPoints->set_active(officecfg::Office::Draw::Snap::Object::ObjectPoint::get());
+        m_xCbxOrtho->set_active(officecfg::Office::Draw::Snap::Position::CreatingMoving::get());
+        m_xCbxBigOrtho->set_active(officecfg::Office::Draw::Snap::Position::ExtendEdges::get());
+        m_xCbxRotate->set_active(officecfg::Office::Draw::Snap::Position::Rotating::get());
+        m_xMtrFldSnapArea->set_value(officecfg::Office::Draw::Snap::Object::Range::get(),
+                                     FieldUnit::PIXEL);
+        m_xMtrFldAngle->set_value(officecfg::Office::Draw::Snap::Position::RotatingValue::get(),
+                                  FieldUnit::DEGREE);
+        m_xMtrFldBezAngle->set_value(officecfg::Office::Draw::Snap::Position::PointReduction::get(),
+                                     FieldUnit::DEGREE);
+    }
+    else
+    {
+        m_xCbxSnapHelplines->set_active(officecfg::Office::Impress::Snap::Object::SnapLine::get());
+        m_xCbxSnapBorder->set_active(officecfg::Office::Impress::Snap::Object::PageMargin::get());
+        m_xCbxSnapFrame->set_active(officecfg::Office::Impress::Snap::Object::ObjectFrame::get());
+        m_xCbxSnapPoints->set_active(officecfg::Office::Impress::Snap::Object::ObjectPoint::get());
+        m_xCbxOrtho->set_active(officecfg::Office::Impress::Snap::Position::CreatingMoving::get());
+        m_xCbxBigOrtho->set_active(officecfg::Office::Impress::Snap::Position::ExtendEdges::get());
+        m_xCbxRotate->set_active(officecfg::Office::Impress::Snap::Position::Rotating::get());
+        m_xMtrFldSnapArea->set_value(officecfg::Office::Impress::Snap::Object::Range::get(),
+                                     FieldUnit::PIXEL);
+        m_xMtrFldAngle->set_value(officecfg::Office::Impress::Snap::Position::RotatingValue::get(),
+                                  FieldUnit::DEGREE);
+        m_xMtrFldBezAngle->set_value(
+            officecfg::Office::Impress::Snap::Position::PointReduction::get(), FieldUnit::DEGREE);
+    }
+
+    bool bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Object::SnapLine::isReadOnly()
+                               : officecfg::Office::Impress::Snap::Object::SnapLine::isReadOnly();
     m_xCbxSnapHelplines->set_sensitive(!bReadOnly);
     m_xCbxSnapHelplinesImg->set_visible(bReadOnly);
 
-    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Object::PageMargin::isReadOnly() :
-        officecfg::Office::Impress::Snap::Object::PageMargin::isReadOnly();
-    m_xCbxSnapBorder->set_active( aOptsItem.GetOptionsSnap().IsSnapBorder() );
+    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Object::PageMargin::isReadOnly()
+                          : officecfg::Office::Impress::Snap::Object::PageMargin::isReadOnly();
     m_xCbxSnapBorder->set_sensitive(!bReadOnly);
     m_xCbxSnapBorderImg->set_visible(bReadOnly);
 
-    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Object::ObjectFrame::isReadOnly() :
-        officecfg::Office::Impress::Snap::Object::ObjectFrame::isReadOnly();
-    m_xCbxSnapFrame->set_active( aOptsItem.GetOptionsSnap().IsSnapFrame() );
+    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Object::ObjectFrame::isReadOnly()
+                          : officecfg::Office::Impress::Snap::Object::ObjectFrame::isReadOnly();
     m_xCbxSnapFrame->set_sensitive(!bReadOnly);
     m_xCbxSnapFrameImg->set_visible(bReadOnly);
 
-    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Object::ObjectPoint::isReadOnly() :
-        officecfg::Office::Impress::Snap::Object::ObjectPoint::isReadOnly();
-    m_xCbxSnapPoints->set_active( aOptsItem.GetOptionsSnap().IsSnapPoints() );
+    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Object::ObjectPoint::isReadOnly()
+                          : officecfg::Office::Impress::Snap::Object::ObjectPoint::isReadOnly();
     m_xCbxSnapPoints->set_sensitive(!bReadOnly);
     m_xCbxSnapPointsImg->set_visible(bReadOnly);
 
-    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Position::CreatingMoving::isReadOnly() :
-        officecfg::Office::Impress::Snap::Position::CreatingMoving::isReadOnly();
-    m_xCbxOrtho->set_active( aOptsItem.GetOptionsSnap().IsOrtho() );
+    bReadOnly = bDrawMode
+                    ? officecfg::Office::Draw::Snap::Position::CreatingMoving::isReadOnly()
+                    : officecfg::Office::Impress::Snap::Position::CreatingMoving::isReadOnly();
     m_xCbxOrtho->set_sensitive(!bReadOnly);
     m_xCbxOrthoImg->set_visible(bReadOnly);
 
-    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Position::ExtendEdges::isReadOnly() :
-        officecfg::Office::Impress::Snap::Position::ExtendEdges::isReadOnly();
-    m_xCbxBigOrtho->set_active( aOptsItem.GetOptionsSnap().IsBigOrtho() );
+    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Position::ExtendEdges::isReadOnly()
+                          : officecfg::Office::Impress::Snap::Position::ExtendEdges::isReadOnly();
     m_xCbxBigOrtho->set_sensitive(!bReadOnly);
     m_xCbxBigOrthoImg->set_visible(bReadOnly);
 
-    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Position::Rotating::isReadOnly() :
-        officecfg::Office::Impress::Snap::Position::Rotating::isReadOnly();
-    m_xCbxRotate->set_active( aOptsItem.GetOptionsSnap().IsRotate() );
+    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Position::Rotating::isReadOnly()
+                          : officecfg::Office::Impress::Snap::Position::Rotating::isReadOnly();
     m_xCbxRotate->set_sensitive(!bReadOnly);
     m_xCbxRotateImg->set_visible(bReadOnly);
 
-    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Object::Range::isReadOnly() :
-        officecfg::Office::Impress::Snap::Object::Range::isReadOnly();
-    m_xMtrFldSnapArea->set_value(aOptsItem.GetOptionsSnap().GetSnapArea(), FieldUnit::PIXEL);
+    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Object::Range::isReadOnly()
+                          : officecfg::Office::Impress::Snap::Object::Range::isReadOnly();
     m_xMtrFldSnapArea->set_sensitive(!bReadOnly);
     m_xMtrFldSnapAreaImg->set_visible(bReadOnly);
 
-    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Position::RotatingValue::isReadOnly() :
-        officecfg::Office::Impress::Snap::Position::RotatingValue::isReadOnly();
-    m_xMtrFldAngle->set_value(aOptsItem.GetOptionsSnap().GetAngle().get(), FieldUnit::DEGREE);
+    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Position::RotatingValue::isReadOnly()
+                          : officecfg::Office::Impress::Snap::Position::RotatingValue::isReadOnly();
     m_xMtrFldAngle->set_sensitive(!bReadOnly);
 
-    bReadOnly = bDrawMode ? officecfg::Office::Draw::Snap::Position::PointReduction::isReadOnly() :
-        officecfg::Office::Impress::Snap::Position::PointReduction::isReadOnly();
-    m_xMtrFldBezAngle->set_value(aOptsItem.GetOptionsSnap().GetEliminatePolyPointLimitAngle().get(), FieldUnit::DEGREE);
+    bReadOnly = bDrawMode
+                    ? officecfg::Office::Draw::Snap::Position::PointReduction::isReadOnly()
+                    : officecfg::Office::Impress::Snap::Position::PointReduction::isReadOnly();
     m_xMtrFldBezAngle->set_sensitive(!bReadOnly);
     m_xMtrFldBezAngleImg->set_visible(bReadOnly);
 
     ClickRotateHdl_Impl(*m_xCbxRotate);
 }
 
-std::unique_ptr<SfxTabPage> SdTpOptionsSnap::Create( weld::Container* pPage, weld::DialogController* pController,
-                                            const SfxItemSet* rAttrs )
+std::unique_ptr<SfxTabPage> SdTpOptionsSnap::Create(weld::Container* pPage,
+                                                    weld::DialogController* pController,
+                                                    const SfxItemSet* rAttrs)
 {
     return std::make_unique<SdTpOptionsSnap>(pPage, pController, *rAttrs);
 }
@@ -157,94 +220,122 @@ std::unique_ptr<SfxTabPage> SdTpOptionsSnap::Create( weld::Container* pPage, wel
 |*  TabPage to adjust the content options
 |*
 \************************************************************************/
-SdTpOptionsContents::SdTpOptionsContents(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SfxTabPage(pPage, pController, "modules/simpress/ui/sdviewpage.ui", "SdViewPage", &rInAttrs)
+SdTpOptionsContents::SdTpOptionsContents(weld::Container* pPage,
+                                         weld::DialogController* pController,
+                                         const SfxItemSet& rInAttrs)
+    : SfxTabPage(pPage, pController, u"modules/simpress/ui/sdviewpage.ui"_ustr, u"SdViewPage"_ustr,
+                 &rInAttrs)
     , m_bDrawMode(false)
-    , m_xCbxRuler(m_xBuilder->weld_check_button("ruler"))
-    , m_xCbxRulerImg(m_xBuilder->weld_widget("lockruler"))
-    , m_xCbxDragStripes(m_xBuilder->weld_check_button("dragstripes"))
-    , m_xCbxDragStripesImg(m_xBuilder->weld_widget("lockdragstripes"))
-    , m_xCbxHandlesBezier(m_xBuilder->weld_check_button("handlesbezier"))
-    , m_xCbxHandlesBezierImg(m_xBuilder->weld_widget("lockhandlesbezier"))
-    , m_xCbxMoveOutline(m_xBuilder->weld_check_button("moveoutline"))
-    , m_xCbxMoveOutlineImg(m_xBuilder->weld_widget("lockmoveoutline"))
+    , m_xCbxRuler(m_xBuilder->weld_check_button(u"ruler"_ustr))
+    , m_xCbxRulerImg(m_xBuilder->weld_widget(u"lockruler"_ustr))
+    , m_xCbxDragStripes(m_xBuilder->weld_check_button(u"dragstripes"_ustr))
+    , m_xCbxDragStripesImg(m_xBuilder->weld_widget(u"lockdragstripes"_ustr))
+    , m_xCbxHandlesBezier(m_xBuilder->weld_check_button(u"handlesbezier"_ustr))
+    , m_xCbxHandlesBezierImg(m_xBuilder->weld_widget(u"lockhandlesbezier"_ustr))
+    , m_xCbxMoveOutline(m_xBuilder->weld_check_button(u"moveoutline"_ustr))
+    , m_xCbxMoveOutlineImg(m_xBuilder->weld_widget(u"lockmoveoutline"_ustr))
 {
 }
 
-SdTpOptionsContents::~SdTpOptionsContents()
-{
-}
+SdTpOptionsContents::~SdTpOptionsContents() {}
 
 OUString SdTpOptionsContents::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label1" };
+    OUString labels[] = { u"label1"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString checkButton[] = { "ruler", "dragstripes", "handlesbezier", "moveoutline" };
+    OUString checkButton[]
+        = { u"ruler"_ustr, u"dragstripes"_ustr, u"handlesbezier"_ustr, u"moveoutline"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
     return sAllStrings.replaceAll("_", "");
 }
 
-bool SdTpOptionsContents::FillItemSet( SfxItemSet* rAttrs )
+bool SdTpOptionsContents::FillItemSet(SfxItemSet*)
 {
     bool bModified = false;
 
-    if( m_xCbxRuler->get_state_changed_from_saved() ||
-        m_xCbxMoveOutline->get_state_changed_from_saved() ||
-        m_xCbxDragStripes->get_state_changed_from_saved() ||
-        m_xCbxHandlesBezier->get_state_changed_from_saved() )
+    if (m_xCbxRuler->get_state_changed_from_saved()
+        || m_xCbxMoveOutline->get_state_changed_from_saved()
+        || m_xCbxDragStripes->get_state_changed_from_saved()
+        || m_xCbxHandlesBezier->get_state_changed_from_saved())
     {
-        SdOptionsLayoutItem aOptsItem;
+        std::shared_ptr<comphelper::ConfigurationChanges> batch(
+            comphelper::ConfigurationChanges::create());
 
-        aOptsItem.GetOptionsLayout().SetRulerVisible( m_xCbxRuler->get_active() );
-        aOptsItem.GetOptionsLayout().SetMoveOutline( m_xCbxMoveOutline->get_active() );
-        aOptsItem.GetOptionsLayout().SetDragStripes( m_xCbxDragStripes->get_active() );
-        aOptsItem.GetOptionsLayout().SetHandlesBezier( m_xCbxHandlesBezier->get_active() );
-
-        rAttrs->Put( aOptsItem );
+        if (m_bDrawMode)
+        {
+            officecfg::Office::Draw::Layout::Display::Ruler::set(m_xCbxRuler->get_active(), batch);
+            officecfg::Office::Draw::Layout::Display::Contour::set(m_xCbxMoveOutline->get_active(),
+                                                                   batch);
+            officecfg::Office::Draw::Layout::Display::Guide::set(m_xCbxDragStripes->get_active(),
+                                                                 batch);
+            officecfg::Office::Draw::Layout::Display::Bezier::set(m_xCbxHandlesBezier->get_active(),
+                                                                  batch);
+            batch->commit();
+        }
+        else
+        {
+            officecfg::Office::Impress::Layout::Display::Ruler::set(m_xCbxRuler->get_active(),
+                                                                    batch);
+            officecfg::Office::Impress::Layout::Display::Contour::set(
+                m_xCbxMoveOutline->get_active(), batch);
+            officecfg::Office::Impress::Layout::Display::Guide::set(m_xCbxDragStripes->get_active(),
+                                                                    batch);
+            officecfg::Office::Impress::Layout::Display::Bezier::set(
+                m_xCbxHandlesBezier->get_active(), batch);
+            batch->commit();
+        }
         bModified = true;
     }
     return bModified;
 }
 
-void SdTpOptionsContents::Reset( const SfxItemSet* rAttrs )
+void SdTpOptionsContents::Reset(const SfxItemSet*)
 {
-    SdOptionsLayoutItem aLayoutItem( rAttrs->Get( ATTR_OPTIONS_LAYOUT ) );
+    if (m_bDrawMode)
+    {
+        m_xCbxRuler->set_active(officecfg::Office::Draw::Layout::Display::Ruler::get());
+        m_xCbxMoveOutline->set_active(officecfg::Office::Draw::Layout::Display::Contour::get());
+        m_xCbxDragStripes->set_active(officecfg::Office::Draw::Layout::Display::Guide::get());
+        m_xCbxHandlesBezier->set_active(officecfg::Office::Draw::Layout::Display::Bezier::get());
+    }
+    else
+    {
+        m_xCbxRuler->set_active(officecfg::Office::Impress::Layout::Display::Ruler::get());
+        m_xCbxMoveOutline->set_active(officecfg::Office::Impress::Layout::Display::Contour::get());
+        m_xCbxDragStripes->set_active(officecfg::Office::Impress::Layout::Display::Guide::get());
+        m_xCbxHandlesBezier->set_active(officecfg::Office::Impress::Layout::Display::Bezier::get());
+    }
 
-    m_xCbxRuler->set_active( aLayoutItem.GetOptionsLayout().IsRulerVisible() );
-    m_xCbxMoveOutline->set_active( aLayoutItem.GetOptionsLayout().IsMoveOutline() );
-    m_xCbxDragStripes->set_active( aLayoutItem.GetOptionsLayout().IsDragStripes() );
-    m_xCbxHandlesBezier->set_active( aLayoutItem.GetOptionsLayout().IsHandlesBezier() );
-
-    bool bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Display::Ruler::isReadOnly() :
-        officecfg::Office::Impress::Layout::Display::Ruler::isReadOnly();
+    bool bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Display::Ruler::isReadOnly()
+                                 : officecfg::Office::Impress::Layout::Display::Ruler::isReadOnly();
     m_xCbxRuler->set_sensitive(!bReadOnly);
     m_xCbxRulerImg->set_visible(bReadOnly);
 
-    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Display::Contour::isReadOnly() :
-        officecfg::Office::Impress::Layout::Display::Contour::isReadOnly();
+    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Display::Contour::isReadOnly()
+                            : officecfg::Office::Impress::Layout::Display::Contour::isReadOnly();
     m_xCbxMoveOutline->set_sensitive(!bReadOnly);
     m_xCbxMoveOutlineImg->set_visible(bReadOnly);
 
-    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Display::Guide::isReadOnly() :
-        officecfg::Office::Impress::Layout::Display::Guide::isReadOnly();
+    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Display::Guide::isReadOnly()
+                            : officecfg::Office::Impress::Layout::Display::Guide::isReadOnly();
     m_xCbxDragStripes->set_sensitive(!bReadOnly);
     m_xCbxDragStripesImg->set_visible(bReadOnly);
 
-    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Display::Bezier::isReadOnly() :
-        officecfg::Office::Impress::Layout::Display::Bezier::isReadOnly();
+    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Display::Bezier::isReadOnly()
+                            : officecfg::Office::Impress::Layout::Display::Bezier::isReadOnly();
     m_xCbxHandlesBezier->set_sensitive(!bReadOnly);
     m_xCbxHandlesBezierImg->set_visible(bReadOnly);
 
@@ -254,13 +345,14 @@ void SdTpOptionsContents::Reset( const SfxItemSet* rAttrs )
     m_xCbxHandlesBezier->save_state();
 }
 
-std::unique_ptr<SfxTabPage> SdTpOptionsContents::Create( weld::Container* pPage, weld::DialogController* pController,
-                                                const SfxItemSet* rAttrs )
+std::unique_ptr<SfxTabPage> SdTpOptionsContents::Create(weld::Container* pPage,
+                                                        weld::DialogController* pController,
+                                                        const SfxItemSet* rAttrs)
 {
     return std::make_unique<SdTpOptionsContents>(pPage, pController, *rAttrs);
 }
 
-void SdTpOptionsContents::PageCreated( const SfxAllItemSet& aSet )
+void SdTpOptionsContents::PageCreated(const SfxAllItemSet& aSet)
 {
     const SfxUInt32Item* pFlagItem = aSet.GetItem<SfxUInt32Item>(SID_SDMODE_FLAG, false);
     if (pFlagItem)
@@ -276,63 +368,67 @@ void SdTpOptionsContents::PageCreated( const SfxAllItemSet& aSet )
 |*  TabPage to adjust the misc options
 |*
 \************************************************************************/
-#define TABLE_COUNT 12
+#define TABLE_COUNT 9
 #define TOKEN ':'
 
-SdTpOptionsMisc::SdTpOptionsMisc(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SfxTabPage(pPage, pController, "modules/simpress/ui/optimpressgeneralpage.ui", "OptSavePage", &rInAttrs)
+SdTpOptionsMisc::SdTpOptionsMisc(weld::Container* pPage, weld::DialogController* pController,
+                                 const SfxItemSet& rInAttrs)
+    : SfxTabPage(pPage, pController, u"modules/simpress/ui/optimpressgeneralpage.ui"_ustr,
+                 u"OptSavePage"_ustr, &rInAttrs)
     , nWidth(0)
     , nHeight(0)
     , m_bDrawMode(false)
-    , m_xCbxQuickEdit(m_xBuilder->weld_check_button("qickedit"))
-    , m_xCbxQuickEditImg(m_xBuilder->weld_widget("lockqickedit"))
-    , m_xCbxPickThrough(m_xBuilder->weld_check_button("textselected"))
-    , m_xCbxPickThroughImg(m_xBuilder->weld_widget("locktextselected"))
-    , m_xNewDocumentFrame(m_xBuilder->weld_frame("newdocumentframe"))
-    , m_xCbxStartWithTemplate(m_xBuilder->weld_check_button("startwithwizard"))
-    , m_xCbxStartWithTemplateImg(m_xBuilder->weld_widget("lockstartwithwizard"))
-    , m_xCbxMasterPageCache(m_xBuilder->weld_check_button("backgroundback"))
-    , m_xCbxMasterPageCacheImg(m_xBuilder->weld_widget("lockbackgroundback"))
-    , m_xCbxCopy(m_xBuilder->weld_check_button("copywhenmove"))
-    , m_xCbxCopyImg(m_xBuilder->weld_widget("lockcopywhenmove"))
-    , m_xCbxMarkedHitMovesAlways(m_xBuilder->weld_check_button("objalwymov"))
-    , m_xCbxMarkedHitMovesAlwaysImg(m_xBuilder->weld_widget("lockobjalwymov"))
-    , m_xLbMetric(m_xBuilder->weld_combo_box("units"))
-    , m_xLbMetricImg(m_xBuilder->weld_widget("lockunits"))
-    , m_xMtrFldTabstop(m_xBuilder->weld_metric_spin_button("metricFields", FieldUnit::MM))
-    , m_xMtrFldTabstopImg(m_xBuilder->weld_widget("locktabstop"))
-    , m_xCbxCompatibility(m_xBuilder->weld_check_button("cbCompatibility"))
-    , m_xCbxCompatibilityImg(m_xBuilder->weld_widget("lockcbCompatibility"))
-    , m_xScaleFrame(m_xBuilder->weld_frame("scaleframe"))
-    , m_xCbScale(m_xBuilder->weld_combo_box("scaleBox"))
-    , m_xCbScaleImg(m_xBuilder->weld_widget("lockscaleBox"))
-    , m_xNewDocLb(m_xBuilder->weld_label("newdoclbl"))
-    , m_xFiInfo1(m_xBuilder->weld_label("info1"))
-    , m_xMtrFldOriginalWidth(m_xBuilder->weld_metric_spin_button("metricWidthFields", FieldUnit::MM))
-    , m_xWidthLb(m_xBuilder->weld_label("widthlbl"))
-    , m_xHeightLb(m_xBuilder->weld_label("heightlbl"))
-    , m_xFiInfo2(m_xBuilder->weld_label("info2"))
-    , m_xMtrFldOriginalHeight(m_xBuilder->weld_metric_spin_button("metricHeightFields", FieldUnit::MM))
-    , m_xCbxDistort(m_xBuilder->weld_check_button("distortcb"))
-    , m_xCbxDistortImg(m_xBuilder->weld_widget("lockdistortcb"))
-    , m_xMtrFldInfo1(m_xBuilder->weld_metric_spin_button("metricInfo1Fields", FieldUnit::MM))
-    , m_xMtrFldInfo2(m_xBuilder->weld_metric_spin_button("metricInfo2Fields", FieldUnit::MM))
+    , m_xCbxQuickEdit(m_xBuilder->weld_check_button(u"qickedit"_ustr))
+    , m_xCbxQuickEditImg(m_xBuilder->weld_widget(u"lockqickedit"_ustr))
+    , m_xCbxPickThrough(m_xBuilder->weld_check_button(u"textselected"_ustr))
+    , m_xCbxPickThroughImg(m_xBuilder->weld_widget(u"locktextselected"_ustr))
+    , m_xNewDocumentFrame(m_xBuilder->weld_frame(u"newdocumentframe"_ustr))
+    , m_xCbxStartWithTemplate(m_xBuilder->weld_check_button(u"startwithwizard"_ustr))
+    , m_xCbxStartWithTemplateImg(m_xBuilder->weld_widget(u"lockstartwithwizard"_ustr))
+    , m_xCbxMasterPageCache(m_xBuilder->weld_check_button(u"backgroundback"_ustr))
+    , m_xCbxMasterPageCacheImg(m_xBuilder->weld_widget(u"lockbackgroundback"_ustr))
+    , m_xCbxCopy(m_xBuilder->weld_check_button(u"copywhenmove"_ustr))
+    , m_xCbxCopyImg(m_xBuilder->weld_widget(u"lockcopywhenmove"_ustr))
+    , m_xCbxMarkedHitMovesAlways(m_xBuilder->weld_check_button(u"objalwymov"_ustr))
+    , m_xCbxMarkedHitMovesAlwaysImg(m_xBuilder->weld_widget(u"lockobjalwymov"_ustr))
+    , m_xLbMetric(m_xBuilder->weld_combo_box(u"units"_ustr))
+    , m_xLbMetricImg(m_xBuilder->weld_widget(u"lockunits"_ustr))
+    , m_xMtrFldTabstop(m_xBuilder->weld_metric_spin_button(u"metricFields"_ustr, FieldUnit::MM))
+    , m_xMtrFldTabstopImg(m_xBuilder->weld_widget(u"locktabstop"_ustr))
+    , m_xCbxCompatibility(m_xBuilder->weld_check_button(u"cbCompatibility"_ustr))
+    , m_xCbxCompatibilityImg(m_xBuilder->weld_widget(u"lockcbCompatibility"_ustr))
+    , m_xScaleFrame(m_xBuilder->weld_frame(u"scaleframe"_ustr))
+    , m_xCbScale(m_xBuilder->weld_combo_box(u"scaleBox"_ustr))
+    , m_xCbScaleImg(m_xBuilder->weld_widget(u"lockscaleBox"_ustr))
+    , m_xNewDocLb(m_xBuilder->weld_label(u"newdoclbl"_ustr))
+    , m_xFiInfo1(m_xBuilder->weld_label(u"info1"_ustr))
+    , m_xMtrFldOriginalWidth(
+          m_xBuilder->weld_metric_spin_button(u"metricWidthFields"_ustr, FieldUnit::MM))
+    , m_xWidthLb(m_xBuilder->weld_label(u"widthlbl"_ustr))
+    , m_xHeightLb(m_xBuilder->weld_label(u"heightlbl"_ustr))
+    , m_xFiInfo2(m_xBuilder->weld_label(u"info2"_ustr))
+    , m_xMtrFldOriginalHeight(
+          m_xBuilder->weld_metric_spin_button(u"metricHeightFields"_ustr, FieldUnit::MM))
+    , m_xCbxDistort(m_xBuilder->weld_check_button(u"distortcb"_ustr))
+    , m_xCbxDistortImg(m_xBuilder->weld_widget(u"lockdistortcb"_ustr))
+    , m_xMtrFldInfo1(m_xBuilder->weld_metric_spin_button(u"metricInfo1Fields"_ustr, FieldUnit::MM))
+    , m_xMtrFldInfo2(m_xBuilder->weld_metric_spin_button(u"metricInfo2Fields"_ustr, FieldUnit::MM))
 {
     SetExchangeSupport();
 
     // set metric
     FieldUnit eFUnit;
 
-    sal_uInt16 nWhich = GetWhich( SID_ATTR_METRIC );
-    if ( rInAttrs.GetItemState( nWhich ) >= SfxItemState::DEFAULT )
+    sal_uInt16 nWhich = GetWhich(SID_ATTR_METRIC);
+    if (rInAttrs.GetItemState(nWhich) >= SfxItemState::DEFAULT)
     {
-        const SfxUInt16Item& rItem = static_cast<const SfxUInt16Item&>(rInAttrs.Get( nWhich ));
+        const SfxUInt16Item& rItem = static_cast<const SfxUInt16Item&>(rInAttrs.Get(nWhich));
         eFUnit = static_cast<FieldUnit>(rItem.GetValue());
     }
     else
         eFUnit = SfxModule::GetCurrentFieldUnit();
 
-    SetFieldUnit( *m_xMtrFldTabstop , eFUnit );
+    SetFieldUnit(*m_xMtrFldTabstop, eFUnit);
     // tdf#148292 - avoid right frame to change position depending on width of this control
     m_xMtrFldTabstop->set_size_request(150, -1);
     // Impress is default mode, let' hide the entire scale frame etc.
@@ -346,99 +442,98 @@ SdTpOptionsMisc::SdTpOptionsMisc(weld::Container* pPage, weld::DialogController*
         sal_uInt32 nFieldUnit = sal_uInt32(SvxFieldUnitTable::GetValue(i));
         m_xLbMetric->append(OUString::number(nFieldUnit), sMetric);
     }
-    m_xLbMetric->connect_changed( LINK( this, SdTpOptionsMisc, SelectMetricHdl_Impl ) );
+    m_xLbMetric->connect_changed(LINK(this, SdTpOptionsMisc, SelectMetricHdl_Impl));
 
-    SetFieldUnit( *m_xMtrFldOriginalWidth, eFUnit );
-    SetFieldUnit( *m_xMtrFldOriginalHeight, eFUnit );
+    SetFieldUnit(*m_xMtrFldOriginalWidth, eFUnit);
+    SetFieldUnit(*m_xMtrFldOriginalHeight, eFUnit);
     m_xMtrFldOriginalWidth->set_max(999999999, FieldUnit::NONE);
     m_xMtrFldOriginalHeight->set_max(999999999, FieldUnit::NONE);
 
     // temporary fields for info texts (for formatting/calculation)
-    m_xMtrFldInfo1->set_unit( eFUnit );
+    m_xMtrFldInfo1->set_unit(eFUnit);
     m_xMtrFldInfo1->set_max(999999999, FieldUnit::NONE);
-    m_xMtrFldInfo1->set_digits( 2 );
-    m_xMtrFldInfo2->set_unit( eFUnit );
+    m_xMtrFldInfo1->set_digits(2);
+    m_xMtrFldInfo2->set_unit(eFUnit);
     m_xMtrFldInfo2->set_max(999999999, FieldUnit::NONE);
-    m_xMtrFldInfo2->set_digits( 2 );
+    m_xMtrFldInfo2->set_digits(2);
 
     // determine PoolUnit
     SfxItemPool* pPool = rInAttrs.GetPool();
-    DBG_ASSERT( pPool, "Where is the Pool?" );
-    ePoolUnit = pPool->GetMetric( SID_ATTR_FILL_HATCH );
+    assert(pPool && "Where is the Pool?");
+    ePoolUnit = pPool->GetMetric(SID_ATTR_FILL_HATCH);
 
     // Fill the CB
-    sal_uInt16 aTable[ TABLE_COUNT ] =
-        { 1, 2, 4, 5, 8, 10, 16, 20, 30, 40, 50, 100 };
+    sal_uInt16 aTable[TABLE_COUNT] = { 1, 2, 5, 10, 12, 24, 48, 50, 100 };
 
-    for( sal_uInt16 i = TABLE_COUNT-1; i > 0 ; i-- )
-        m_xCbScale->append_text( GetScale( 1, aTable[i] ) );
-    for( sal_uInt16 i = 0; i < TABLE_COUNT; i++ )
-        m_xCbScale->append_text( GetScale(  aTable[i], 1 ) );
+    for (sal_uInt16 i = TABLE_COUNT - 1; i > 0; i--)
+        m_xCbScale->append_text(GetScale(1, aTable[i]));
+    for (sal_uInt16 i = 0; i < TABLE_COUNT; i++)
+        m_xCbScale->append_text(GetScale(aTable[i], 1));
 }
 
-SdTpOptionsMisc::~SdTpOptionsMisc()
-{
-}
+SdTpOptionsMisc::~SdTpOptionsMisc() {}
 
-void SdTpOptionsMisc::ActivatePage( const SfxItemSet& rSet )
+void SdTpOptionsMisc::ActivatePage(const SfxItemSet& rSet)
 {
     // We have to call save_state again since it can happen that the value
     // has no effect on other TabPages
     m_xLbMetric->save_value();
     // change metric if necessary (since TabPage is in the Dialog where
     // the metric is set)
-    const SfxUInt16Item* pAttr = rSet.GetItemIfSet( SID_ATTR_METRIC , false );
-    if( !pAttr )
+    const SfxUInt16Item* pAttr = rSet.GetItemIfSet(SID_ATTR_METRIC, false);
+    if (!pAttr)
         return;
 
     FieldUnit eFUnit = static_cast<FieldUnit>(static_cast<tools::Long>(pAttr->GetValue()));
 
-    if( eFUnit == m_xMtrFldOriginalWidth->get_unit() )
+    if (eFUnit == m_xMtrFldOriginalWidth->get_unit())
         return;
 
     // set metrics
-    sal_Int64 nVal = m_xMtrFldOriginalWidth->denormalize( m_xMtrFldOriginalWidth->get_value( FieldUnit::TWIP ) );
-    SetFieldUnit( *m_xMtrFldOriginalWidth, eFUnit, true );
-    m_xMtrFldOriginalWidth->set_value( m_xMtrFldOriginalWidth->normalize( nVal ), FieldUnit::TWIP );
+    sal_Int64 nVal
+        = m_xMtrFldOriginalWidth->denormalize(m_xMtrFldOriginalWidth->get_value(FieldUnit::TWIP));
+    SetFieldUnit(*m_xMtrFldOriginalWidth, eFUnit, true);
+    m_xMtrFldOriginalWidth->set_value(m_xMtrFldOriginalWidth->normalize(nVal), FieldUnit::TWIP);
 
-    nVal = m_xMtrFldOriginalHeight->denormalize( m_xMtrFldOriginalHeight->get_value( FieldUnit::TWIP ) );
-    SetFieldUnit( *m_xMtrFldOriginalHeight, eFUnit, true );
-    m_xMtrFldOriginalHeight->set_value( m_xMtrFldOriginalHeight->normalize( nVal ), FieldUnit::TWIP );
+    nVal
+        = m_xMtrFldOriginalHeight->denormalize(m_xMtrFldOriginalHeight->get_value(FieldUnit::TWIP));
+    SetFieldUnit(*m_xMtrFldOriginalHeight, eFUnit, true);
+    m_xMtrFldOriginalHeight->set_value(m_xMtrFldOriginalHeight->normalize(nVal), FieldUnit::TWIP);
 
-    if( nWidth == 0 || nHeight == 0 )
+    if (nWidth == 0 || nHeight == 0)
         return;
 
-    m_xMtrFldInfo1->set_unit( eFUnit );
-    m_xMtrFldInfo2->set_unit( eFUnit );
+    m_xMtrFldInfo1->set_unit(eFUnit);
+    m_xMtrFldInfo2->set_unit(eFUnit);
 
-    SetMetricValue( *m_xMtrFldInfo1, nWidth, ePoolUnit );
+    SetMetricValue(*m_xMtrFldInfo1, nWidth, ePoolUnit);
     aInfo1 = m_xMtrFldInfo1->get_text();
-    m_xFiInfo1->set_label( aInfo1 );
+    m_xFiInfo1->set_label(aInfo1);
 
-    SetMetricValue( *m_xMtrFldInfo2, nHeight, ePoolUnit );
+    SetMetricValue(*m_xMtrFldInfo2, nHeight, ePoolUnit);
     aInfo2 = m_xMtrFldInfo2->get_text();
-    m_xFiInfo2->set_label( aInfo2 );
+    m_xFiInfo2->set_label(aInfo2);
 }
 
-DeactivateRC SdTpOptionsMisc::DeactivatePage( SfxItemSet* pActiveSet )
+DeactivateRC SdTpOptionsMisc::DeactivatePage(SfxItemSet* pActiveSet)
 {
     // check parser
     sal_Int32 nX, nY;
-    if( SetScale( m_xCbScale->get_active_text(), nX, nY ) )
+    if (SetScale(m_xCbScale->get_active_text(), nX, nY))
     {
-        if( pActiveSet )
-            FillItemSet( pActiveSet );
+        if (pActiveSet)
+            FillItemSet(pActiveSet);
         return DeactivateRC::LeavePage;
     }
 
-    std::unique_ptr<weld::MessageDialog> xWarn(Application::CreateMessageDialog(GetFrameWeld(),
-                                               VclMessageType::Warning, VclButtonsType::YesNo,
-                                               SdResId(STR_WARN_SCALE_FAIL)));
+    std::unique_ptr<weld::MessageDialog> xWarn(
+        Application::CreateMessageDialog(GetFrameWeld(), VclMessageType::Warning,
+                                         VclButtonsType::YesNo, SdResId(STR_WARN_SCALE_FAIL)));
     if (xWarn->run() == RET_YES)
         return DeactivateRC::KeepPage;
 
-    if( pActiveSet )
-        FillItemSet( pActiveSet );
+    if (pActiveSet)
+        FillItemSet(pActiveSet);
 
     return DeactivateRC::LeavePage;
 }
@@ -446,53 +541,56 @@ DeactivateRC SdTpOptionsMisc::DeactivatePage( SfxItemSet* pActiveSet )
 OUString SdTpOptionsMisc::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[]
-        = { "newdoclbl", "label4", "label6",   "tabstoplabel", "label1",    "label7", "label2",
-            "label5",    "label8", "widthlbl", "info1",        "heightlbl", "info2" };
+    OUString labels[] = { u"newdoclbl"_ustr, u"label4"_ustr,   u"label6"_ustr, u"tabstoplabel"_ustr,
+                          u"label1"_ustr,    u"label7"_ustr,   u"label2"_ustr, u"label5"_ustr,
+                          u"label8"_ustr,    u"widthlbl"_ustr, u"info1"_ustr,  u"heightlbl"_ustr,
+                          u"info2"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString checkButton[] = { "startwithwizard", "copywhenmove", "backgroundback",
-                               "objalwymov",      "distortcb",    "cbCompatibility",
-                               "qickedit",     "textselected"};
+    OUString checkButton[]
+        = { u"startwithwizard"_ustr, u"copywhenmove"_ustr, u"backgroundback"_ustr,
+            u"objalwymov"_ustr,      u"distortcb"_ustr,    u"cbCompatibility"_ustr,
+            u"qickedit"_ustr,        u"textselected"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
     return sAllStrings.replaceAll("_", "");
 }
 
-bool SdTpOptionsMisc::FillItemSet( SfxItemSet* rAttrs )
+bool SdTpOptionsMisc::FillItemSet(SfxItemSet* rAttrs)
 {
     bool bModified = false;
 
-    if( m_xCbxStartWithTemplate->get_state_changed_from_saved()         ||
-        m_xCbxMarkedHitMovesAlways->get_state_changed_from_saved()      ||
-        m_xCbxQuickEdit->get_state_changed_from_saved()                 ||
-        m_xCbxPickThrough->get_state_changed_from_saved()               ||
-        m_xCbxMasterPageCache->get_state_changed_from_saved()           ||
-        m_xCbxCopy->get_state_changed_from_saved()                      ||
-        m_xCbxCompatibility->get_state_changed_from_saved()             ||
-        m_xCbxDistort->get_state_changed_from_saved())
+    if (m_xCbxStartWithTemplate->get_state_changed_from_saved()
+        || m_xCbxMarkedHitMovesAlways->get_state_changed_from_saved()
+        || m_xCbxQuickEdit->get_state_changed_from_saved()
+        || m_xCbxPickThrough->get_state_changed_from_saved()
+        || m_xCbxMasterPageCache->get_state_changed_from_saved()
+        || m_xCbxCopy->get_state_changed_from_saved()
+        || m_xCbxCompatibility->get_state_changed_from_saved()
+        || m_xCbxDistort->get_state_changed_from_saved())
     {
         SdOptionsMiscItem aOptsItem;
-
-        aOptsItem.GetOptionsMisc().SetStartWithTemplate( m_xCbxStartWithTemplate->get_active() );
-        aOptsItem.GetOptionsMisc().SetMarkedHitMovesAlways( m_xCbxMarkedHitMovesAlways->get_active() );
-        aOptsItem.GetOptionsMisc().SetQuickEdit( m_xCbxQuickEdit->get_active() );
-        aOptsItem.GetOptionsMisc().SetPickThrough( m_xCbxPickThrough->get_active() );
-        aOptsItem.GetOptionsMisc().SetMasterPagePaintCaching( m_xCbxMasterPageCache->get_active() );
-        aOptsItem.GetOptionsMisc().SetDragWithCopy( m_xCbxCopy->get_active() );
-        aOptsItem.GetOptionsMisc().SetSummationOfParagraphs( m_xCbxCompatibility->get_active() );
-        aOptsItem.GetOptionsMisc().SetCrookNoContortion( m_xCbxDistort->get_active() );
-        rAttrs->Put( aOptsItem );
+        //all settings here need to be reflected in SdOptionsMiscItem::SetOptions()
+        aOptsItem.GetOptionsMisc().SetStartWithTemplate(m_xCbxStartWithTemplate->get_active());
+        aOptsItem.GetOptionsMisc().SetMarkedHitMovesAlways(
+            m_xCbxMarkedHitMovesAlways->get_active());
+        aOptsItem.GetOptionsMisc().SetQuickEdit(m_xCbxQuickEdit->get_active());
+        aOptsItem.GetOptionsMisc().SetPickThrough(m_xCbxPickThrough->get_active());
+        aOptsItem.GetOptionsMisc().SetMasterPagePaintCaching(m_xCbxMasterPageCache->get_active());
+        aOptsItem.GetOptionsMisc().SetDragWithCopy(m_xCbxCopy->get_active());
+        aOptsItem.GetOptionsMisc().SetSummationOfParagraphs(m_xCbxCompatibility->get_active());
+        aOptsItem.GetOptionsMisc().SetCrookNoContortion(m_xCbxDistort->get_active());
+        rAttrs->Put(aOptsItem);
 
         bModified = true;
     }
@@ -502,24 +600,25 @@ bool SdTpOptionsMisc::FillItemSet( SfxItemSet* rAttrs )
     {
         const sal_Int32 nMPos = m_xLbMetric->get_active();
         sal_uInt16 nFieldUnit = m_xLbMetric->get_id(nMPos).toUInt32();
-        rAttrs->Put( SfxUInt16Item( GetWhich( SID_ATTR_METRIC ), nFieldUnit ) );
+        rAttrs->Put(SfxUInt16Item(GetWhich(SID_ATTR_METRIC), nFieldUnit));
         bModified = true;
     }
 
     // tabulator space
-    if( m_xMtrFldTabstop->get_value_changed_from_saved() )
+    if (m_xMtrFldTabstop->get_value_changed_from_saved())
     {
-        MapUnit eUnit = rAttrs->GetPool()->GetMetric( SID_ATTR_DEFTABSTOP );
-        SfxUInt16Item aDef( SID_ATTR_DEFTABSTOP, static_cast<sal_uInt16>(GetCoreValue( *m_xMtrFldTabstop, eUnit )) );
-        rAttrs->Put( aDef );
+        MapUnit eUnit = rAttrs->GetPool()->GetMetric(SID_ATTR_DEFTABSTOP);
+        SfxUInt16Item aDef(SID_ATTR_DEFTABSTOP,
+                           static_cast<sal_uInt16>(GetCoreValue(*m_xMtrFldTabstop, eUnit)));
+        rAttrs->Put(aDef);
         bModified = true;
     }
 
     sal_Int32 nX, nY;
-    if( SetScale( m_xCbScale->get_active_text(), nX, nY ) )
+    if (SetScale(m_xCbScale->get_active_text(), nX, nY))
     {
-        rAttrs->Put( SfxInt32Item( ATTR_OPTIONS_SCALE_X, nX ) );
-        rAttrs->Put( SfxInt32Item( ATTR_OPTIONS_SCALE_Y, nY ) );
+        rAttrs->Put(SfxInt32Item(ATTR_OPTIONS_SCALE_X, nX));
+        rAttrs->Put(SfxInt32Item(ATTR_OPTIONS_SCALE_Y, nY));
 
         bModified = true;
     }
@@ -527,51 +626,56 @@ bool SdTpOptionsMisc::FillItemSet( SfxItemSet* rAttrs )
     return bModified;
 }
 
-void SdTpOptionsMisc::Reset( const SfxItemSet* rAttrs )
+void SdTpOptionsMisc::Reset(const SfxItemSet* rAttrs)
 {
-    SdOptionsMiscItem aOptsItem( rAttrs->Get( ATTR_OPTIONS_MISC ) );
+    SdOptionsMiscItem aOptsItem(rAttrs->Get(ATTR_OPTIONS_MISC));
 
-    bool bReadOnly = m_bDrawMode ? false : officecfg::Office::Impress::Misc::NewDoc::AutoPilot::isReadOnly();
-    m_xCbxStartWithTemplate->set_active( aOptsItem.GetOptionsMisc().IsStartWithTemplate() );
+    bool bReadOnly
+        = m_bDrawMode ? false : officecfg::Office::Impress::Misc::NewDoc::AutoPilot::isReadOnly();
+    m_xCbxStartWithTemplate->set_active(aOptsItem.GetOptionsMisc().IsStartWithTemplate());
     m_xCbxStartWithTemplate->set_sensitive(!bReadOnly);
     m_xCbxStartWithTemplateImg->set_visible(bReadOnly);
 
-    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Misc::ObjectMoveable::isReadOnly() :
-        officecfg::Office::Impress::Misc::ObjectMoveable::isReadOnly();
-    m_xCbxMarkedHitMovesAlways->set_active( aOptsItem.GetOptionsMisc().IsMarkedHitMovesAlways() );
+    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Misc::ObjectMoveable::isReadOnly()
+                            : officecfg::Office::Impress::Misc::ObjectMoveable::isReadOnly();
+    m_xCbxMarkedHitMovesAlways->set_active(aOptsItem.GetOptionsMisc().IsMarkedHitMovesAlways());
     m_xCbxMarkedHitMovesAlways->set_sensitive(!bReadOnly);
     m_xCbxMarkedHitMovesAlwaysImg->set_visible(bReadOnly);
 
-    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Misc::TextObject::QuickEditing::isReadOnly() :
-        officecfg::Office::Impress::Misc::TextObject::QuickEditing::isReadOnly();
-    m_xCbxQuickEdit->set_active( aOptsItem.GetOptionsMisc().IsQuickEdit() );
+    bReadOnly = m_bDrawMode
+                    ? officecfg::Office::Draw::Misc::TextObject::QuickEditing::isReadOnly()
+                    : officecfg::Office::Impress::Misc::TextObject::QuickEditing::isReadOnly();
+    m_xCbxQuickEdit->set_active(aOptsItem.GetOptionsMisc().IsQuickEdit());
     m_xCbxQuickEdit->set_sensitive(!bReadOnly);
     m_xCbxQuickEditImg->set_visible(bReadOnly);
 
-    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Misc::TextObject::Selectable::isReadOnly() :
-        officecfg::Office::Impress::Misc::TextObject::Selectable::isReadOnly();
-    m_xCbxPickThrough->set_active( aOptsItem.GetOptionsMisc().IsPickThrough() );
+    bReadOnly = m_bDrawMode
+                    ? officecfg::Office::Draw::Misc::TextObject::Selectable::isReadOnly()
+                    : officecfg::Office::Impress::Misc::TextObject::Selectable::isReadOnly();
+    m_xCbxPickThrough->set_active(aOptsItem.GetOptionsMisc().IsPickThrough());
     m_xCbxPickThrough->set_sensitive(!bReadOnly);
     m_xCbxPickThroughImg->set_visible(bReadOnly);
 
-    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Misc::BackgroundCache::isReadOnly() :
-        officecfg::Office::Impress::Misc::BackgroundCache::isReadOnly();
-    m_xCbxMasterPageCache->set_active( aOptsItem.GetOptionsMisc().IsMasterPagePaintCaching() );
+    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Misc::BackgroundCache::isReadOnly()
+                            : officecfg::Office::Impress::Misc::BackgroundCache::isReadOnly();
+    m_xCbxMasterPageCache->set_active(aOptsItem.GetOptionsMisc().IsMasterPagePaintCaching());
     m_xCbxMasterPageCache->set_sensitive(!bReadOnly);
     m_xCbxMasterPageCacheImg->set_visible(bReadOnly);
 
-    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Misc::CopyWhileMoving::isReadOnly() :
-        officecfg::Office::Impress::Misc::CopyWhileMoving::isReadOnly();
-    m_xCbxCopy->set_active( aOptsItem.GetOptionsMisc().IsDragWithCopy() );
+    bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Misc::CopyWhileMoving::isReadOnly()
+                            : officecfg::Office::Impress::Misc::CopyWhileMoving::isReadOnly();
+    m_xCbxCopy->set_active(aOptsItem.GetOptionsMisc().IsDragWithCopy());
     m_xCbxCopy->set_sensitive(!bReadOnly);
     m_xCbxCopyImg->set_visible(bReadOnly);
 
-    bReadOnly = m_bDrawMode ? false : officecfg::Office::Impress::Misc::Compatibility::AddBetween::isReadOnly();
-    m_xCbxCompatibility->set_active( aOptsItem.GetOptionsMisc().IsSummationOfParagraphs() );
+    bReadOnly = m_bDrawMode
+                    ? false
+                    : officecfg::Office::Impress::Misc::Compatibility::AddBetween::isReadOnly();
+    m_xCbxCompatibility->set_active(aOptsItem.GetOptionsMisc().IsSummationOfParagraphs());
     m_xCbxCompatibility->set_sensitive(!bReadOnly);
     m_xCbxCompatibilityImg->set_visible(bReadOnly);
 
-    m_xCbxDistort->set_active( aOptsItem.GetOptionsMisc().IsCrookNoContortion() );
+    m_xCbxDistort->set_active(aOptsItem.GetOptionsMisc().IsCrookNoContortion());
     if (m_bDrawMode)
     {
         bReadOnly = officecfg::Office::Draw::Misc::NoDistort::isReadOnly();
@@ -590,19 +694,19 @@ void SdTpOptionsMisc::Reset( const SfxItemSet* rAttrs )
     m_xCbxDistort->save_state();
 
     // metric
-    sal_uInt16 nWhich = GetWhich( SID_ATTR_METRIC );
+    sal_uInt16 nWhich = GetWhich(SID_ATTR_METRIC);
     m_xLbMetric->set_active(-1);
 
-    if ( rAttrs->GetItemState( nWhich ) >= SfxItemState::DEFAULT )
+    if (rAttrs->GetItemState(nWhich) >= SfxItemState::DEFAULT)
     {
-        const SfxUInt16Item& rItem = static_cast<const SfxUInt16Item&>(rAttrs->Get( nWhich ));
+        const SfxUInt16Item& rItem = static_cast<const SfxUInt16Item&>(rAttrs->Get(nWhich));
         sal_uInt32 nFieldUnit = static_cast<sal_uInt32>(rItem.GetValue());
 
         for (sal_Int32 i = 0, nEntryCount = m_xLbMetric->get_count(); i < nEntryCount; ++i)
         {
             if (m_xLbMetric->get_id(i).toUInt32() == nFieldUnit)
             {
-                m_xLbMetric->set_active( i );
+                m_xLbMetric->set_active(i);
                 break;
             }
         }
@@ -610,35 +714,42 @@ void SdTpOptionsMisc::Reset( const SfxItemSet* rAttrs )
 
     // tabulator space
     constexpr auto nWhich2 = SID_ATTR_DEFTABSTOP;
-    if( rAttrs->GetItemState( nWhich2 ) >= SfxItemState::DEFAULT )
+    if (rAttrs->GetItemState(nWhich2) >= SfxItemState::DEFAULT)
     {
-        MapUnit eUnit = rAttrs->GetPool()->GetMetric( nWhich2 );
-        const SfxUInt16Item& rItem = rAttrs->Get( nWhich2 );
-        SetMetricValue( *m_xMtrFldTabstop, rItem.GetValue(), eUnit );
+        MapUnit eUnit = rAttrs->GetPool()->GetMetric(nWhich2);
+        const SfxUInt16Item& rItem = rAttrs->Get(nWhich2);
+        SetMetricValue(*m_xMtrFldTabstop, rItem.GetValue(), eUnit);
     }
 
     if (SdOptionsGeneric::isMetricSystem())
     {
-        bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Other::MeasureUnit::Metric::isReadOnly() :
-            officecfg::Office::Impress::Layout::Other::MeasureUnit::Metric::isReadOnly();
+        bReadOnly
+            = m_bDrawMode
+                  ? officecfg::Office::Draw::Layout::Other::MeasureUnit::Metric::isReadOnly()
+                  : officecfg::Office::Impress::Layout::Other::MeasureUnit::Metric::isReadOnly();
     }
     else
     {
-        bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Other::MeasureUnit::NonMetric::isReadOnly() :
-            officecfg::Office::Impress::Layout::Other::MeasureUnit::NonMetric::isReadOnly();
+        bReadOnly
+            = m_bDrawMode
+                  ? officecfg::Office::Draw::Layout::Other::MeasureUnit::NonMetric::isReadOnly()
+                  : officecfg::Office::Impress::Layout::Other::MeasureUnit::NonMetric::isReadOnly();
     }
     m_xLbMetric->set_sensitive(!bReadOnly);
     m_xLbMetricImg->set_visible(bReadOnly);
 
     if (SdOptionsGeneric::isMetricSystem())
     {
-        bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Other::TabStop::Metric::isReadOnly() :
-            officecfg::Office::Impress::Layout::Other::TabStop::Metric::isReadOnly();
+        bReadOnly = m_bDrawMode
+                        ? officecfg::Office::Draw::Layout::Other::TabStop::Metric::isReadOnly()
+                        : officecfg::Office::Impress::Layout::Other::TabStop::Metric::isReadOnly();
     }
     else
     {
-        bReadOnly = m_bDrawMode ? officecfg::Office::Draw::Layout::Other::TabStop::NonMetric::isReadOnly() :
-            officecfg::Office::Impress::Layout::Other::TabStop::NonMetric::isReadOnly();
+        bReadOnly
+            = m_bDrawMode
+                  ? officecfg::Office::Draw::Layout::Other::TabStop::NonMetric::isReadOnly()
+                  : officecfg::Office::Impress::Layout::Other::TabStop::NonMetric::isReadOnly();
     }
     m_xMtrFldTabstop->set_sensitive(!bReadOnly);
     m_xMtrFldTabstopImg->set_visible(bReadOnly);
@@ -646,34 +757,35 @@ void SdTpOptionsMisc::Reset( const SfxItemSet* rAttrs )
     m_xLbMetric->save_value();
     m_xMtrFldTabstop->save_value();
     //Scale
-    sal_Int32 nX = rAttrs->Get( ATTR_OPTIONS_SCALE_X ).GetValue();
-    sal_Int32 nY = rAttrs->Get( ATTR_OPTIONS_SCALE_Y ).GetValue();
-    nWidth = rAttrs->Get( ATTR_OPTIONS_SCALE_WIDTH ).GetValue();
-    nHeight = rAttrs->Get( ATTR_OPTIONS_SCALE_HEIGHT ).GetValue();
+    sal_Int32 nX = rAttrs->Get(ATTR_OPTIONS_SCALE_X).GetValue();
+    sal_Int32 nY = rAttrs->Get(ATTR_OPTIONS_SCALE_Y).GetValue();
+    nWidth = rAttrs->Get(ATTR_OPTIONS_SCALE_WIDTH).GetValue();
+    nHeight = rAttrs->Get(ATTR_OPTIONS_SCALE_HEIGHT).GetValue();
 
-    m_xCbScale->set_entry_text( GetScale( nX, nY ) );
+    m_xCbScale->set_entry_text(GetScale(nX, nY));
     if (m_bDrawMode)
     {
-        bReadOnly = officecfg::Office::Draw::Zoom::ScaleX::isReadOnly() &&
-            officecfg::Office::Draw::Zoom::ScaleY::isReadOnly();
+        bReadOnly = officecfg::Office::Draw::Zoom::ScaleX::isReadOnly()
+                    && officecfg::Office::Draw::Zoom::ScaleY::isReadOnly();
         m_xCbScale->set_sensitive(!bReadOnly);
         m_xCbScaleImg->set_visible(bReadOnly);
     }
 
     m_xMtrFldOriginalWidth->hide();
-    m_xMtrFldOriginalWidth->set_text( aInfo1 ); // empty
+    m_xMtrFldOriginalWidth->set_text(aInfo1); // empty
     m_xMtrFldOriginalHeight->hide();
-    m_xMtrFldOriginalHeight->set_text( aInfo2 ); //empty
+    m_xMtrFldOriginalHeight->set_text(aInfo2); //empty
     m_xFiInfo1->hide();
     m_xFiInfo2->hide();
 
-    UpdateCompatibilityControls ();
+    UpdateCompatibilityControls();
 }
 
-std::unique_ptr<SfxTabPage> SdTpOptionsMisc::Create( weld::Container* pPage, weld::DialogController* pController,
-                                            const SfxItemSet* rAttrs )
+std::unique_ptr<SfxTabPage> SdTpOptionsMisc::Create(weld::Container* pPage,
+                                                    weld::DialogController* pController,
+                                                    const SfxItemSet* rAttrs)
 {
-    return std::make_unique<SdTpOptionsMisc>( pPage, pController, *rAttrs );
+    return std::make_unique<SdTpOptionsMisc>(pPage, pController, *rAttrs);
 }
 
 IMPL_LINK_NOARG(SdTpOptionsMisc, SelectMetricHdl_Impl, weld::ComboBox&, void)
@@ -682,10 +794,10 @@ IMPL_LINK_NOARG(SdTpOptionsMisc, SelectMetricHdl_Impl, weld::ComboBox&, void)
     if (nPos != -1)
     {
         FieldUnit eUnit = static_cast<FieldUnit>(m_xLbMetric->get_id(nPos).toUInt32());
-        sal_Int64 nVal =
-            m_xMtrFldTabstop->denormalize(m_xMtrFldTabstop->get_value(FieldUnit::TWIP));
-        SetFieldUnit( *m_xMtrFldTabstop, eUnit );
-        m_xMtrFldTabstop->set_value( m_xMtrFldTabstop->normalize( nVal ), FieldUnit::TWIP );
+        sal_Int64 nVal
+            = m_xMtrFldTabstop->denormalize(m_xMtrFldTabstop->get_value(FieldUnit::TWIP));
+        SetFieldUnit(*m_xMtrFldTabstop, eUnit);
+        m_xMtrFldTabstop->set_value(m_xMtrFldTabstop->normalize(nVal), FieldUnit::TWIP);
     }
 }
 
@@ -710,31 +822,31 @@ void SdTpOptionsMisc::SetDrawMode()
     m_bDrawMode = true;
 }
 
-OUString SdTpOptionsMisc::GetScale( sal_Int32 nX, sal_Int32 nY )
+OUString SdTpOptionsMisc::GetScale(sal_Int32 nX, sal_Int32 nY)
 {
     return OUString::number(nX) + OUStringChar(TOKEN) + OUString::number(nY);
 }
 
-bool SdTpOptionsMisc::SetScale( std::u16string_view aScale, sal_Int32& rX, sal_Int32& rY )
+bool SdTpOptionsMisc::SetScale(std::u16string_view aScale, sal_Int32& rX, sal_Int32& rY)
 {
     if (aScale.empty())
         return false;
 
-    sal_Int32 nIdx {0};
+    sal_Int32 nIdx{ 0 };
 
     std::u16string_view aTmp(o3tl::getToken(aScale, 0, TOKEN, nIdx));
-    if (nIdx<0)
+    if (nIdx < 0)
         return false; // we expect another token!
 
     if (!comphelper::string::isdigitAsciiString(aTmp))
         return false;
 
     rX = static_cast<tools::Long>(o3tl::toInt32(aTmp));
-    if( rX == 0 )
+    if (rX == 0)
         return false;
 
     aTmp = o3tl::getToken(aScale, 0, TOKEN, nIdx);
-    if (nIdx>=0)
+    if (nIdx >= 0)
         return false; // we require just 2 tokens!
 
     if (!comphelper::string::isdigitAsciiString(aTmp))
@@ -753,24 +865,23 @@ void SdTpOptionsMisc::UpdateCompatibilityControls()
     try
     {
         // Get a component enumeration from the desktop and search it for documents.
-        Reference<uno::XComponentContext> xContext( ::comphelper::getProcessComponentContext());
+        const Reference<uno::XComponentContext>& xContext(
+            ::comphelper::getProcessComponentContext());
         do
         {
             Reference<frame::XDesktop2> xDesktop = frame::Desktop::create(xContext);
 
-            Reference<container::XEnumerationAccess> xComponents =
-                xDesktop->getComponents();
-            if ( ! xComponents.is())
+            Reference<container::XEnumerationAccess> xComponents = xDesktop->getComponents();
+            if (!xComponents.is())
                 break;
 
-            Reference<container::XEnumeration> xEnumeration (
-                xComponents->createEnumeration());
-            if ( ! xEnumeration.is())
+            Reference<container::XEnumeration> xEnumeration(xComponents->createEnumeration());
+            if (!xEnumeration.is())
                 break;
 
             while (xEnumeration->hasMoreElements())
             {
-                Reference<frame::XModel> xModel (xEnumeration->nextElement(), UNO_QUERY);
+                Reference<frame::XModel> xModel(xEnumeration->nextElement(), UNO_QUERY);
                 if (xModel.is())
                 {
                     // There is at least one model/document: Enable the compatibility controls.
@@ -779,8 +890,7 @@ void SdTpOptionsMisc::UpdateCompatibilityControls()
                 }
             }
 
-        }
-        while (false); // One 'loop'.
+        } while (false); // One 'loop'.
     }
     catch (const uno::Exception&)
     {
@@ -788,7 +898,8 @@ void SdTpOptionsMisc::UpdateCompatibilityControls()
         // bIsEnabled and disable the controls.
     }
 
-    m_xCbxCompatibility->set_sensitive(bIsEnabled && !officecfg::Office::Impress::Misc::Compatibility::AddBetween::isReadOnly());
+    m_xCbxCompatibility->set_sensitive(
+        bIsEnabled && !officecfg::Office::Impress::Misc::Compatibility::AddBetween::isReadOnly());
 }
 
 void SdTpOptionsMisc::PageCreated(const SfxAllItemSet& aSet)
@@ -796,8 +907,8 @@ void SdTpOptionsMisc::PageCreated(const SfxAllItemSet& aSet)
     const SfxUInt32Item* pFlagItem = aSet.GetItem<SfxUInt32Item>(SID_SDMODE_FLAG, false);
     if (pFlagItem)
     {
-        sal_uInt32 nFlags=pFlagItem->GetValue();
-        if ( ( nFlags & SD_DRAW_MODE ) == SD_DRAW_MODE )
+        sal_uInt32 nFlags = pFlagItem->GetValue();
+        if ((nFlags & SD_DRAW_MODE) == SD_DRAW_MODE)
             SetDrawMode();
     }
 }

@@ -27,10 +27,11 @@ class SwCellFrame;
 class SwAccessibleTable;
 class SwFrameFormat;
 
-class SwAccessibleCell : public SwAccessibleContext,
-                  public css::accessibility::XAccessibleValue,
-                  public css::accessibility::XAccessibleSelection,
-                  public  css::accessibility::XAccessibleExtendedAttributes
+using SwAccessibleCell_BASE = cppu::ImplInheritanceHelper<SwAccessibleContext,
+                                                          css::accessibility::XAccessibleValue,
+                                                          css::accessibility::XAccessibleSelection,
+                                                          css::accessibility::XAccessibleExtendedAttributes>;
+class SwAccessibleCell : public SwAccessibleCell_BASE
 {
     // Implementation for XAccessibleSelection interface
     SwAccessibleSelectionHelper m_aSelectionHelper;
@@ -64,45 +65,12 @@ public:
     virtual OUString SAL_CALL
         getAccessibleDescription() override;
 
-    // XServiceInfo
-
-    // Returns an identifier for the implementation of this object.
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    // Return whether the specified service is supported by this class.
-    virtual sal_Bool SAL_CALL
-        supportsService (const OUString& sServiceName) override;
-
-    // Returns a list of all supported services.  In this case that is just
-    // the AccessibleContext service.
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
     virtual void Dispose(bool bRecursive, bool bCanSkipInvisible = true) override;
 
     virtual void InvalidatePosOrSize( const SwRect& rFrame ) override;
 
-    // XInterface
-
-    // (XInterface methods need to be implemented to disambiguate
-    // between those inherited through SwAccessibleContext and
-    // XAccessibleValue).
-
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
-
-    virtual void SAL_CALL acquire(  ) noexcept override
-        { SwAccessibleContext::acquire(); };
-
-    virtual void SAL_CALL release(  ) noexcept override
-        { SwAccessibleContext::release(); };
-
-    // XTypeProvider
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
-
     // XAccessibleExtendedAttributes
-    css::uno::Any SAL_CALL getExtendedAttributes() override ;
+    OUString SAL_CALL getExtendedAttributes() override;
 private:
     SwFrameFormat* GetTableBoxFormat() const;
 

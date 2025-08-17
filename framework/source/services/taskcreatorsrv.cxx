@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <services/taskcreatorsrv.hxx>
 #include <helper/persistentwindowstate.hxx>
 #include <helper/tagwindowasmodified.hxx>
 #include <helper/titlebarupdate.hxx>
@@ -24,19 +25,14 @@
 #include <taskcreatordefs.hxx>
 
 #include <com/sun/star/frame/Frame.hpp>
-#include <com/sun/star/frame/XFrame2.hpp>
 #include <com/sun/star/frame/XDesktop.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/awt/Toolkit.hpp>
 #include <com/sun/star/awt/WindowDescriptor.hpp>
 #include <com/sun/star/awt/WindowAttribute.hpp>
 #include <com/sun/star/awt/VclWindowPeerAttribute.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XSingleServiceFactory.hpp>
 
 #include <comphelper/sequenceashashmap.hxx>
-#include <comphelper/compbase.hxx>
-#include <cppuhelper/supportsservice.hxx>
 #include <svtools/colorcfg.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <utility>
@@ -44,65 +40,6 @@
 #include <vcl/window.hxx>
 
 using namespace framework;
-
-namespace {
-
-typedef comphelper::WeakComponentImplHelper<
-    css::lang::XServiceInfo,
-    css::lang::XSingleServiceFactory> TaskCreatorService_BASE;
-
-class TaskCreatorService : public TaskCreatorService_BASE
-{
-private:
-
-    /** @short  the global uno service manager.
-        @descr  Must be used to create own needed services.
-     */
-    css::uno::Reference< css::uno::XComponentContext > m_xContext;
-
-public:
-
-    explicit TaskCreatorService(css::uno::Reference< css::uno::XComponentContext >  xContext);
-
-    virtual OUString SAL_CALL getImplementationName() override
-    {
-        return "com.sun.star.comp.framework.TaskCreator";
-    }
-
-    virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
-    {
-        return cppu::supportsService(this, ServiceName);
-    }
-
-    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
-    {
-        return {"com.sun.star.frame.TaskCreator"};
-    }
-
-    // XSingleServiceFactory
-    virtual css::uno::Reference< css::uno::XInterface > SAL_CALL createInstance() override;
-
-    virtual css::uno::Reference< css::uno::XInterface > SAL_CALL createInstanceWithArguments(const css::uno::Sequence< css::uno::Any >& lArguments) override;
-
-private:
-
-    css::uno::Reference< css::awt::XWindow > implts_createContainerWindow( const css::uno::Reference< css::awt::XWindow >& xParentWindow ,
-                                                                           const css::awt::Rectangle&                      aPosSize      ,
-                                                                                 bool                                  bTopWindow    );
-
-    void implts_applyDocStyleToWindow(const css::uno::Reference< css::awt::XWindow >& xWindow) const;
-
-    css::uno::Reference< css::frame::XFrame2 > implts_createFrame( const css::uno::Reference< css::frame::XFrame >& xParentFrame     ,
-                                                                  const css::uno::Reference< css::awt::XWindow >&  xContainerWindow ,
-                                                                  const OUString&                           sName            );
-
-    void implts_establishWindowStateListener( const css::uno::Reference< css::frame::XFrame2 >& xFrame );
-    void implts_establishTitleBarUpdate( const css::uno::Reference< css::frame::XFrame2 >& xFrame );
-
-    void implts_establishDocModifyListener( const css::uno::Reference< css::frame::XFrame2 >& xFrame );
-
-    OUString impl_filterNames( const OUString& sName );
-};
 
 TaskCreatorService::TaskCreatorService(css::uno::Reference< css::uno::XComponentContext >  xContext)
     : m_xContext         (std::move(xContext                     ))
@@ -203,7 +140,8 @@ css::uno::Reference< css::uno::XInterface > SAL_CALL TaskCreatorService::createI
     return css::uno::Reference< css::uno::XInterface >(xFrame, css::uno::UNO_QUERY_THROW);
 }
 
-void TaskCreatorService::implts_applyDocStyleToWindow(const css::uno::Reference< css::awt::XWindow >& xWindow) const
+// static
+void TaskCreatorService::implts_applyDocStyleToWindow(const css::uno::Reference< css::awt::XWindow >& xWindow)
 {
     // SYNCHRONIZED ->
     SolarMutexGuard aSolarGuard;
@@ -250,7 +188,7 @@ css::uno::Reference< css::awt::XWindow > TaskCreatorService::implts_createContai
         aDescriptor.Type                =   css::awt::WindowClass_TOP;
         aDescriptor.WindowServiceName   =   "dockingwindow";
         aDescriptor.ParentIndex         =   1;
-        aDescriptor.Parent              =   xParentWindowPeer;
+        aDescriptor.Parent              =   std::move(xParentWindowPeer);
         aDescriptor.Bounds              =   aPosSize;
         aDescriptor.WindowAttributes    =   css::awt::VclWindowPeerAttribute::CLIPCHILDREN;
     }
@@ -317,6 +255,7 @@ void TaskCreatorService::implts_establishWindowStateListener( const css::uno::Re
     pPersistentStateHandler->initialize(lInitData);
 }
 
+// static
 void TaskCreatorService::implts_establishDocModifyListener( const css::uno::Reference< css::frame::XFrame2 >& xFrame )
 {
     // Special feature: It's allowed for frames using a top level window only!
@@ -336,14 +275,13 @@ void TaskCreatorService::implts_establishTitleBarUpdate( const css::uno::Referen
     pHelper->initialize(lInitData);
 }
 
+// static
 OUString TaskCreatorService::impl_filterNames( const OUString& sName )
 {
     OUString sFiltered;
     if (TargetHelper::isValidNameForFrame(sName))
         sFiltered = sName;
     return sFiltered;
-}
-
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *

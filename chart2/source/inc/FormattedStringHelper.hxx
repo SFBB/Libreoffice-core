@@ -20,10 +20,8 @@
 
 #include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
-#include <vector>
 
 namespace com::sun::star::beans { class XPropertySet; }
-namespace com::sun::star::chart2 { class XFormattedString2; }
 namespace com::sun::star::uno { template <class interface_type> class Reference; }
 
 namespace chart

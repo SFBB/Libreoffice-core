@@ -125,7 +125,9 @@ static void initAppMenu()
     NSMenu* pAppMenu = nil;
     NSMenuItem* pNewItem = nil;
 
-    NSMenu* pMainMenu = [[[NSMenu alloc] initWithTitle: @"Main Menu"] autorelease];
+    // Related: tdf#126638 use NSMenu subclass to catch and redirect key
+    // shortcuts when a modal window is displayed
+    SalNSMainMenu* pMainMenu = [[[SalNSMainMenu alloc] initWithTitle: @"Main Menu"] autorelease];
     pNewItem = [pMainMenu addItemWithTitle: @"Application"
         action: nil
         keyEquivalent: @""];
@@ -161,6 +163,7 @@ static void initAppMenu()
     pNewItem = [pAppMenu addItemWithTitle: pString
         action: nil
         keyEquivalent: @""];
+    [pString release];
     NSMenu *servicesMenu = [[[NSMenu alloc] initWithTitle:@"Services"] autorelease];
     [pNewItem setSubmenu: servicesMenu];
     [NSApp setServicesMenu: servicesMenu];
@@ -230,12 +233,19 @@ AquaSalMenu::AquaSalMenu( bool bMenuBar ) :
     {
         mpMenu = [[SalNSMenu alloc] initWithMenu: this];
         [mpMenu setDelegate: reinterpret_cast< id<NSMenuDelegate> >(mpMenu)];
+
+        // Related: tdf#126638 enable the menu's "autoenabledItems" property
+        // Enable the menu's "autoenabledItems" property so that
+        // -[SalNSMenuItem validateMenuItem:] will be called before handling
+        // a key shortcut and the menu item can be temporarily disabled if a
+        // modal window is displayed.
+        [mpMenu setAutoenablesItems: YES];
     }
     else
     {
         mpMenu = [NSApp mainMenu];
+        [mpMenu setAutoenablesItems: NO];
     }
-    [mpMenu setAutoenablesItems: NO];
 }
 
 AquaSalMenu::~AquaSalMenu()
@@ -302,8 +312,8 @@ bool AquaSalMenu::ShowNativePopupMenu(FloatingWindow * pWin, const tools::Rectan
     // in mirrored UI case; best done by actually executing the same code
     sal_uInt16 nArrangeIndex;
     pWin->SetPosPixel( FloatingWindow::ImplCalcPos( pWin, rRect, nFlags, nArrangeIndex ) );
-    displayPopupFrame.origin.x = pWin->ImplGetFrame()->maGeometry.x() - pParentAquaSalFrame->maGeometry.x() + offset;
-    displayPopupFrame.origin.y = pWin->ImplGetFrame()->maGeometry.y() - pParentAquaSalFrame->maGeometry.y() + offset;
+    displayPopupFrame.origin.x = pWin->ImplGetFrame()->GetUnmirroredGeometry().x() - pParentAquaSalFrame->GetUnmirroredGeometry().x() + offset;
+    displayPopupFrame.origin.y = pWin->ImplGetFrame()->GetUnmirroredGeometry().y() - pParentAquaSalFrame->GetUnmirroredGeometry().y() + offset;
     pParentAquaSalFrame->VCLToCocoa(displayPopupFrame, false);
 
     // #i111992# if this menu was opened due to a key event, prevent dispatching that yet again
@@ -326,9 +336,49 @@ int AquaSalMenu::getItemIndexByPos( sal_uInt16 nPos ) const
 {
     int nIndex = 0;
     if( nPos == MENU_APPEND )
+    {
         nIndex = [mpMenu numberOfItems];
+    }
     else
+    {
         nIndex = sal::static_int_cast<int>( mbMenuBar ? nPos+1 : nPos );
+
+        // Related: tdf#165448 adjust index for menu items inserted by macOS
+        if( mpMenu == [NSApp windowsMenu] )
+        {
+            int nItems = [mpMenu numberOfItems];
+            bool bLastItemIsNative = false;
+            for( int n = mbMenuBar ? 1 : 0; n < nItems; n++ )
+            {
+                NSMenuItem* pItem = [mpMenu itemAtIndex: n];
+                if( [pItem isKindOfClass: [SalNSMenuItem class]] )
+                {
+                    bLastItemIsNative = false;
+                    if( n == nIndex )
+                        break;
+                }
+                else if( [pItem isSeparatorItem] )
+                {
+                    if ( bLastItemIsNative )
+                    {
+                        // Assume that macOS does not insert more than one
+                        // separator item in a row
+                        bLastItemIsNative = false;
+                        nIndex++;
+                    }
+                    else if( n == nIndex )
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    bLastItemIsNative = true;
+                    nIndex++;
+                }
+            }
+        }
+    }
     return nIndex;
 }
 
@@ -363,6 +413,18 @@ void AquaSalMenu::setMainMenu()
             {
                 NSMenuItem* pItem = maItems[i]->mpMenuItem;
                 [mpMenu insertItem: pItem atIndex: i+1];
+
+                // tdf#165448 Allow macOS to add menu items in LibreOffice windows menu
+                // macOS will automatically insert menu items in NSApp's
+                // windows menu so set that menu to LibreOffice's windows menu.
+                if( maItems[i]->mpVCLMenu && maItems[i]->mpVCLMenu->GetItemCommand( maItems[i]->mnId ) == u".uno:WindowList"_ustr )
+                {
+                    // Avoid macOS inserting duplicate menu items in the
+                    // windows menu
+                    NSMenu *pWindowsMenu = [pItem submenu];
+                    if( [NSApp windowsMenu] != pWindowsMenu )
+                        [NSApp setWindowsMenu: pWindowsMenu];
+                }
             }
             pCurrentMenuBar = this;
 
@@ -375,6 +437,9 @@ void AquaSalMenu::setMainMenu()
 
 void AquaSalMenu::setDefaultMenu()
 {
+    // tdf#160427 native menu changes can only be done on the main thread
+    OSX_SALDATA_RUNINMAIN(AquaSalMenu::setDefaultMenu())
+
     NSMenu* pMenu = [NSApp mainMenu];
 
     unsetMainMenu();
@@ -387,6 +452,19 @@ void AquaSalMenu::setDefaultMenu()
         if( [pItem menu] == nil )
             [pMenu insertItem: pItem atIndex: i+1];
     }
+
+    // Related: tdf#128186 force key window to a native full screen window
+    // AquaSalMenu::setDefaultMenu() is generally called when the key
+    // window has been closed. When not in native full screen mode,
+    // macOS appears to automatically set the key window.
+    // However, closing a native full screen window sometimes causes
+    // the application to drop out of full screen mode even if there
+    // are still native full screen windows open. So, if the application
+    // is active, activate all windows to force macOS to set the key
+    // to a window rather than leaving the application in a state where
+    // the key window is nil.
+    if( [NSApp isActive] )
+        [[NSRunningApplication currentApplication] activateWithOptions: NSApplicationActivateAllWindows];
 }
 
 void AquaSalMenu::enableMainMenu( bool bEnable )
@@ -399,7 +477,10 @@ void AquaSalMenu::enableMainMenu( bool bEnable )
         for( int n = 1; n < nItems; n++ )
         {
             NSMenuItem* pItem = [pMainMenu itemAtIndex: n];
-            [pItem setEnabled: bEnable ? YES : NO];
+            if( [pItem isKindOfClass: [SalNSMenuItem class]])
+                [static_cast<SalNSMenuItem*>(pItem) setReallyEnabled: bEnable];
+            else
+                [pItem setEnabled: bEnable];
         }
     }
 }
@@ -488,6 +569,9 @@ void AquaSalMenu::InsertItem( SalMenuItem* pSalMenuItem, unsigned nPos )
 
 void AquaSalMenu::RemoveItem( unsigned nPos )
 {
+    // tdf#160427 native menu changes can only be done on the main thread
+    OSX_SALDATA_RUNINMAIN(RemoveItem(nPos))
+
     AquaSalMenuItem* pRemoveItem = nullptr;
     if( nPos == MENU_APPEND || nPos == (maItems.size()-1) )
     {
@@ -565,7 +649,10 @@ void AquaSalMenu::EnableItem( unsigned nPos, bool bEnable )
     if( nPos < maItems.size() )
     {
         NSMenuItem* pItem = maItems[nPos]->mpMenuItem;
-        [pItem setEnabled: bEnable ? YES : NO];
+        if( [pItem isKindOfClass: [SalNSMenuItem class]])
+            [static_cast<SalNSMenuItem*>(pItem) setReallyEnabled: bEnable];
+        else
+            [pItem setEnabled: bEnable];
     }
 }
 
@@ -722,10 +809,6 @@ void AquaSalMenu::SetAccelerator( unsigned /*nPos*/, SalMenuItem* pSalMenuItem, 
         [pString release];
 }
 
-void AquaSalMenu::GetSystemMenuData( SystemMenuData* )
-{
-}
-
 AquaSalMenu::MenuBarButtonEntry* AquaSalMenu::findButtonItem( sal_uInt16 i_nItemId )
 {
     for( size_t i = 0; i < maButtons.size(); ++i )
@@ -825,8 +908,8 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
 
     // make coordinates relative to reference frame
     static_cast<AquaSalFrame*>(i_pReferenceFrame)->CocoaToVCL( aRect.origin );
-    aRect.origin.x -= i_pReferenceFrame->maGeometry.x();
-    aRect.origin.y -= i_pReferenceFrame->maGeometry.y() + aRect.size.height;
+    aRect.origin.x -= i_pReferenceFrame->GetUnmirroredGeometry().x();
+    aRect.origin.y -= i_pReferenceFrame->GetUnmirroredGeometry().y() + aRect.size.height;
 
     return tools::Rectangle( Point(static_cast<tools::Long>(aRect.origin.x),
                 static_cast<tools::Long>(aRect.origin.y)
@@ -858,7 +941,7 @@ AquaSalMenuItem::AquaSalMenuItem( const SalItemParams* pItemData ) :
     else
     {
         mpMenuItem = [[SalNSMenuItem alloc] initWithMenuItem: this];
-        [mpMenuItem setEnabled: YES];
+        [static_cast<SalNSMenuItem*>(mpMenuItem) setReallyEnabled: YES];
 
         // peel mnemonics because on mac there are no such things for menu items
         // Delete CJK-style mnemonics for the dropdown menu of the 'New button' and lower menu of 'File > New'

@@ -20,10 +20,8 @@
 #include <TitleHelper.hxx>
 #include <Title.hxx>
 #include <ChartModel.hxx>
-#include <ChartModelHelper.hxx>
 #include <Axis.hxx>
 #include <AxisHelper.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <ReferenceSizeProvider.hxx>
 #include <com/sun/star/chart2/FormattedString.hpp>
@@ -187,7 +185,7 @@ rtl::Reference< Title > TitleHelper::createOrShowTitle(
     rtl::Reference< Title > xTitled( TitleHelper::getTitle( eTitleType, xModel ) );
     if( xTitled.is())
     {
-        xTitled->setPropertyValue("Visible",css::uno::Any(true));
+        xTitled->setPropertyValue(u"Visible"_ustr,css::uno::Any(true));
         return xTitled;
     }
     else
@@ -223,7 +221,7 @@ rtl::Reference< Title > TitleHelper::createTitle(
         }
         if( xAxis.is() )
         {
-            xAxis->setPropertyValue( "Show", uno::Any( false ) );
+            xAxis->setPropertyValue( u"Show"_ustr, uno::Any( false ) );
             xTitled = lcl_getTitleParent( eTitleType, xModel );
         }
     }
@@ -281,7 +279,7 @@ rtl::Reference< Title > TitleHelper::createTitle(
                     || (!bIsVertical && eTitleType == TitleHelper::SECONDARY_Y_AXIS_TITLE)
                     || (bIsVertical && eTitleType == TitleHelper::SECONDARY_X_AXIS_TITLE) )
                 {
-                    xTitle->setPropertyValue( "TextRotation", uno::Any( 90.0 ));
+                    xTitle->setPropertyValue( u"TextRotation"_ustr, uno::Any( 90.0 ));
                 }
             }
             catch( const uno::Exception & )
@@ -305,52 +303,89 @@ OUString TitleHelper::getCompleteString( const rtl::Reference< Title >& xTitle )
     return aRet.makeStringAndClear();
 }
 
+OUString TitleHelper::getUnstackedStr(const OUString& rNewText)
+{
+    //#i99841# remove linebreaks that were added for vertical stacking
+    OUStringBuffer aUnstackedStr;
+    OUStringBuffer aSource(rNewText);
+
+    bool bBreakIgnored = false;
+    sal_Int32 nLen = rNewText.getLength();
+    for (sal_Int32 nPos = 0; nPos < nLen; ++nPos)
+    {
+        sal_Unicode aChar = aSource[nPos];
+        if (aChar != '\n')
+        {
+            aUnstackedStr.append(aChar);
+            bBreakIgnored = false;
+        }
+        else if (aChar == '\n' && bBreakIgnored)
+            aUnstackedStr.append(aChar);
+        else
+            bBreakIgnored = true;
+    }
+    return aUnstackedStr.makeStringAndClear();
+}
+
+void TitleHelper::setFormattedString( const rtl::Reference< Title >& xTitle,
+    const css::uno::Sequence< css::uno::Reference< css::chart2::XFormattedString > >& aNewFormattedTitle )
+{
+    if (!xTitle.is() || !aNewFormattedTitle.hasElements())
+        return;
+
+    bool bStacked = false;
+    xTitle->getPropertyValue(u"StackCharacters"_ustr) >>= bStacked;
+
+    if (bStacked)
+    {
+        for (uno::Reference< chart2::XFormattedString >const& formattedStr : aNewFormattedTitle)
+        {
+            formattedStr->setString(TitleHelper::getUnstackedStr(formattedStr->getString()));
+        }
+    }
+
+    xTitle->setText(aNewFormattedTitle);
+}
+
 void TitleHelper::setCompleteString( const OUString& rNewText
                     , const rtl::Reference< Title >& xTitle
                     , const uno::Reference< uno::XComponentContext > & xContext
-                    , const float * pDefaultCharHeight /* = 0 */ )
+                    , const float * pDefaultCharHeight /* = 0 */
+                    , bool bDialogTitle /*= false*/ )
 {
-    //the format of the first old text portion will be maintained if there is any
-    if(!xTitle.is())
+    if (!xTitle.is())
         return;
-
-    OUString aNewText = rNewText;
 
     bool bStacked = false;
     if( xTitle.is() )
-        xTitle->getPropertyValue( "StackCharacters" ) >>= bStacked;
+        xTitle->getPropertyValue( u"StackCharacters"_ustr ) >>= bStacked;
 
+    OUString aNewText = rNewText;
     if( bStacked )
     {
-        //#i99841# remove linebreaks that were added for vertical stacking
-        OUStringBuffer aUnstackedStr;
-        OUStringBuffer aSource(rNewText);
-
-        bool bBreakIgnored = false;
-        sal_Int32 nLen = rNewText.getLength();
-        for( sal_Int32 nPos = 0; nPos < nLen; ++nPos )
-        {
-            sal_Unicode aChar = aSource[nPos];
-            if( aChar != '\n' )
-            {
-                aUnstackedStr.append( aChar );
-                bBreakIgnored = false;
-            }
-            else if( aChar == '\n' && bBreakIgnored )
-                aUnstackedStr.append( aChar );
-            else
-                bBreakIgnored = true;
-        }
-        aNewText = aUnstackedStr.makeStringAndClear();
+        aNewText = getUnstackedStr(rNewText);
     }
 
     uno::Sequence< uno::Reference< XFormattedString > > aNewStringList;
-
-    uno::Sequence< uno::Reference< XFormattedString > >  aOldStringList = xTitle->getText();
-    if( aOldStringList.hasElements() )
+    uno::Sequence< uno::Reference< XFormattedString > > aOldStringList = xTitle->getText();
+    if( aOldStringList.hasElements())
     {
-        aNewStringList = { aOldStringList[0] };
-        aNewStringList[0]->setString( aNewText );
+        const OUString aFullString = getCompleteString(xTitle);
+        if (bDialogTitle && aNewText.equals(getUnstackedStr(aFullString)))
+        {
+            // If the new title setted from a dialog window to a new string
+            // the first old text portion will be maintained if it's a new string,
+            // otherwise we use the original one.
+            aNewStringList = std::move(aOldStringList);
+        }
+        else
+        {
+            // If the new title setted from a dialog to a new string the first
+            // old text portion will be maintained if there was any. Also in case of ODF
+            // import which still not support non-uniform formatted titles
+            aNewStringList = { aOldStringList[0] };
+            aNewStringList[0]->setString(aNewText);
+        }
     }
     else
     {
@@ -364,9 +399,9 @@ void TitleHelper::setCompleteString( const OUString& rNewText
             try
             {
                 uno::Any aFontSize( *pDefaultCharHeight );
-                xFormattedString->setPropertyValue( "CharHeight", aFontSize );
-                xFormattedString->setPropertyValue( "CharHeightAsian", aFontSize );
-                xFormattedString->setPropertyValue( "CharHeightComplex", aFontSize );
+                xFormattedString->setPropertyValue( u"CharHeight"_ustr, aFontSize );
+                xFormattedString->setPropertyValue( u"CharHeightAsian"_ustr, aFontSize );
+                xFormattedString->setPropertyValue( u"CharHeightComplex"_ustr, aFontSize );
             }
             catch( const uno::Exception & )
             {
@@ -411,12 +446,9 @@ bool TitleHelper::getTitleType( eTitleType& rType
 void TitleHelper::hideTitle( TitleHelper::eTitleType nTitleIndex
         , const rtl::Reference<ChartModel>& xModel)
 {
-    uno::Reference< chart2::XTitle > xTitled( TitleHelper::getTitle( nTitleIndex, xModel ) );
+    rtl::Reference< Title > xTitled( TitleHelper::getTitle( nTitleIndex, xModel ) );
     if( xTitled.is())
-    {
-        css::uno::Reference<css::beans::XPropertySet> xProps(xTitled, css::uno::UNO_QUERY_THROW);
-        xProps->setPropertyValue("Visible",css::uno::Any(false));
-    }
+        xTitled->setPropertyValue(u"Visible"_ustr,css::uno::Any(false));
 }
 
 } //namespace chart

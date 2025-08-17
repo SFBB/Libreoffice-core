@@ -31,6 +31,7 @@
 #include <editeng/txtrange.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/mieclip.hxx>
+#include <sfx2/viewsh.hxx>
 #include <svtools/colorcfg.hxx>
 #include <svl/ctloptions.hxx>
 #include <unotools/securityoptions.hxx>
@@ -41,6 +42,7 @@
 #include <editeng/frmdiritem.hxx>
 #include <editeng/justifyitem.hxx>
 #include <editeng/udlnitem.hxx>
+#include <editeng/scripthintitem.hxx>
 
 #include <com/sun/star/i18n/CharacterIteratorMode.hpp>
 #include <com/sun/star/i18n/WordType.hpp>
@@ -62,11 +64,12 @@
 #include <svl/asiancfg.hxx>
 #include <svl/voiditem.hxx>
 #include <i18nutil/unicode.hxx>
+#include <i18nutil/scriptchangescanner.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <comphelper/flagguard.hxx>
 #include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <unicode/ubidi.h>
 #include <algorithm>
@@ -74,6 +77,7 @@
 #include <memory>
 #include <string_view>
 #include <fstream>
+#include <outleeng.hxx>
 
 using namespace ::com::sun::star;
 
@@ -88,32 +92,28 @@ static sal_uInt16 lcl_CalcExtraSpace( const SvxLineSpacingItem& rLSItem )
     return nExtra;
 }
 
+constexpr tools::Long constMaxPaperSize = 0x7FFFFFFF;
+
 ImpEditEngine::ImpEditEngine( EditEngine* pEE, SfxItemPool* pItemPool ) :
     pSharedVCL(EditDLL::Get().GetSharedVclResources()),
-    maPaperSize( 0x7FFFFFFF, 0x7FFFFFFF ),
-    maMinAutoPaperSize( 0x0, 0x0 ),
-    maMaxAutoPaperSize( 0x7FFFFFFF, 0x7FFFFFFF ),
+    maPaperSize(constMaxPaperSize, constMaxPaperSize),
+    maMinAutoPaperSize(0, 0),
+    maMaxAutoPaperSize(constMaxPaperSize, constMaxPaperSize),
     maEditDoc( pItemPool ),
-    pEditEngine(pEE),
-    pActiveView(nullptr),
-    pStylePool(nullptr),
-    pTextObjectPool(nullptr),
-    pUndoManager(nullptr),
-    aWordDelimiters(" .,;:-`'?!_=\"{}()[]"),
+    mpEditEngine(pEE),
+    mpActiveView(nullptr),
+    mpStylePool(nullptr),
+    mpUndoManager(nullptr),
+    maWordDelimiters(u" .,;:-`'?!_=\"{}()[]"_ustr),
     maBackgroundColor(COL_AUTO),
-    mfFontScaleX(100.0),
-    mfFontScaleY(100.0),
-    mfSpacingScaleX(100.0),
-    mfSpacingScaleY(100.0),
     mbRoundToNearestPt(false),
     mnAsianCompressionMode(CharCompressType::NONE),
-    eDefaultHorizontalTextDirection(EEHorizontalTextDirection::Default),
+    meDefaultHorizontalTextDirection(EEHorizontalTextDirection::Default),
     mnBigTextObjectStart(20),
     meDefLanguage(LANGUAGE_DONTKNOW),
-    nCurTextHeight(0),
-    nCurTextHeightNTP(0),
-    aOnlineSpellTimer( "editeng::ImpEditEngine aOnlineSpellTimer" ),
-    aStatusTimer( "editeng::ImpEditEngine aStatusTimer" ),
+    mnCurTextHeight(0),
+    maOnlineSpellTimer("editeng::ImpEditEngine aOnlineSpellTimer"),
+    maStatusTimer("editeng::ImpEditEngine aStatusTimer"),
     mbKernAsianPunctuation(false),
     mbAddExtLeading(false),
     mbIsFormatting(false),
@@ -130,24 +130,23 @@ ImpEditEngine::ImpEditEngine( EditEngine* pEE, SfxItemPool* pItemPool ) :
     mbLastTryMerge(false),
     mbReplaceLeadingSingleQuotationMark(true),
     mbSkipOutsideFormat(false),
-    mbFuzzing(utl::ConfigManager::IsFuzzing()),
+    mbFuzzing(comphelper::IsFuzzing()),
     mbNbspRunNext(false)
 {
     maStatus.GetControlWord() =  EEControlBits::USECHARATTRIBS | EEControlBits::DOIDLEFORMAT |
                                 EEControlBits::PASTESPECIAL | EEControlBits::UNDOATTRIBS |
-                                EEControlBits::ALLOWBIGOBJS | EEControlBits::RTFSTYLESHEETS |
-                                EEControlBits::FORMAT100;
+                                EEControlBits::ALLOWBIGOBJS | EEControlBits::RTFSTYLESHEETS;
 
-    aSelEngine.SetFunctionSet( &aSelFuncSet );
+    maSelEngine.SetFunctionSet(&maSelFuncSet);
 
-    aStatusTimer.SetTimeout( 200 );
-    aStatusTimer.SetInvokeHandler( LINK( this, ImpEditEngine, StatusTimerHdl ) );
+    maStatusTimer.SetTimeout(200);
+    maStatusTimer.SetInvokeHandler(LINK(this, ImpEditEngine, StatusTimerHdl));
 
-    aIdleFormatter.SetPriority( TaskPriority::REPAINT );
-    aIdleFormatter.SetInvokeHandler( LINK( this, ImpEditEngine, IdleFormatHdl ) );
+    maIdleFormatter.SetPriority(TaskPriority::REPAINT);
+    maIdleFormatter.SetInvokeHandler(LINK(this, ImpEditEngine, IdleFormatHdl));
 
-    aOnlineSpellTimer.SetTimeout( 100 );
-    aOnlineSpellTimer.SetInvokeHandler( LINK( this, ImpEditEngine, OnlineSpellHdl ) );
+    maOnlineSpellTimer.SetTimeout(100);
+    maOnlineSpellTimer.SetInvokeHandler(LINK( this, ImpEditEngine, OnlineSpellHdl));
 
     // Access data already from here on!
     SetRefDevice( nullptr );
@@ -165,16 +164,16 @@ void ImpEditEngine::Dispose()
     auto pApp = SfxApplication::Get();
     if(pApp)
         EndListening(*pApp);
-    pVirtDev.disposeAndClear();
+    mpVirtDev.disposeAndClear();
     mpOwnDev.disposeAndClear();
     pSharedVCL.reset();
 }
 
 ImpEditEngine::~ImpEditEngine()
 {
-    aStatusTimer.Stop();
-    aOnlineSpellTimer.Stop();
-    aIdleFormatter.Stop();
+    maStatusTimer.Stop();
+    maOnlineSpellTimer.Stop();
+    maIdleFormatter.Stop();
 
     // Destroying templates may otherwise cause unnecessary formatting,
     // when a parent template is destroyed.
@@ -183,24 +182,24 @@ ImpEditEngine::~ImpEditEngine()
     SetUpdateLayout( false );
 
     Dispose();
-    // it's only legal to delete the pUndoManager if it was created by
+    // it's only legal to delete the mpUndoManager if it was created by
     // ImpEditEngine; if it was set by SetUndoManager() it must be cleared
     // before destroying the ImpEditEngine!
-    assert(!pUndoManager || typeid(*pUndoManager) == typeid(EditUndoManager));
-    delete pUndoManager;
-    pTextRanger.reset();
+    assert(!mpUndoManager || typeid(*mpUndoManager) == typeid(EditUndoManager));
+    delete mpUndoManager;
+    mpTextRanger.reset();
     mpIMEInfos.reset();
-    pSpellInfo.reset();
+    mpSpellInfo.reset();
 }
 
-void ImpEditEngine::SetRefDevice( OutputDevice* pRef )
+void ImpEditEngine::SetRefDevice(OutputDevice* pRef)
 {
     if (pRef)
-        pRefDev = pRef;
+        mpRefDev = pRef;
     else
-        pRefDev = pSharedVCL->GetVirtualDevice();
+        mpRefDev = pSharedVCL->GetVirtualDevice();
 
-    nOnePixelInRef = static_cast<sal_uInt16>(pRefDev->PixelToLogic( Size( 1, 0 ) ).Width());
+    mnOnePixelInRef = static_cast<sal_uInt16>(mpRefDev->PixelToLogic( Size( 1, 0 ) ).Width());
 
     if ( IsFormatted() )
     {
@@ -216,12 +215,12 @@ void ImpEditEngine::SetRefMapMode( const MapMode& rMapMode )
 
     mpOwnDev.disposeAndClear();
     mpOwnDev = VclPtr<VirtualDevice>::Create();
-    pRefDev = mpOwnDev;
-    pRefDev->SetMapMode(MapMode(MapUnit::MapTwip));
-    SetRefDevice( pRefDev );
+    mpRefDev = mpOwnDev;
+    mpRefDev->SetMapMode(MapMode(MapUnit::MapTwip));
+    SetRefDevice(mpRefDev);
 
-    pRefDev->SetMapMode( rMapMode );
-    nOnePixelInRef = static_cast<sal_uInt16>(pRefDev->PixelToLogic( Size( 1, 0 ) ).Width());
+    mpRefDev->SetMapMode( rMapMode );
+    mnOnePixelInRef = static_cast<sal_uInt16>(mpRefDev->PixelToLogic(Size(1, 0)).Width());
     if ( IsFormatted() )
     {
         FormatFullDoc();
@@ -234,8 +233,8 @@ void ImpEditEngine::InitDoc(bool bKeepParaAttribs)
     sal_Int32 nParas = maEditDoc.Count();
     for ( sal_Int32 n = bKeepParaAttribs ? 1 : 0; n < nParas; n++ )
     {
-        if ( maEditDoc[n]->GetStyleSheet() )
-            EndListening( *maEditDoc[n]->GetStyleSheet() );
+        if (maEditDoc.GetObject(n)->GetStyleSheet())
+            EndListening( *maEditDoc.GetObject(n)->GetStyleSheet() );
     }
 
     if ( bKeepParaAttribs )
@@ -245,13 +244,13 @@ void ImpEditEngine::InitDoc(bool bKeepParaAttribs)
 
     GetParaPortions().Reset();
 
-    GetParaPortions().Insert(0, std::make_unique<ParaPortion>( maEditDoc[0] ));
+    GetParaPortions().Insert(0, std::make_unique<ParaPortion>(maEditDoc.GetObject(0)));
 
     mbFormatted = false;
 
     if ( IsCallParaInsertedOrDeleted() )
     {
-        GetEditEnginePtr()->ParagraphDeleted( EE_PARA_ALL );
+        GetEditEnginePtr()->ParagraphDeleted(EE_PARA_MAX);
         GetEditEnginePtr()->ParagraphInserted( 0 );
     }
 
@@ -263,6 +262,11 @@ EditPaM ImpEditEngine::DeleteSelected(const EditSelection& rSel)
 {
     EditPaM aPaM (ImpDeleteSelection(rSel));
     return aPaM;
+}
+
+OUString ImpEditEngine::GetText( const ESelection& rESelection )
+{
+    return GetSelected(CreateSel(rESelection));
 }
 
 OUString ImpEditEngine::GetSelected( const EditSelection& rSel  ) const
@@ -280,7 +284,13 @@ OUString ImpEditEngine::GetSelected( const EditSelection& rSel  ) const
 
     OSL_ENSURE( nStartNode <= nEndNode, "Selection not sorted ?" );
 
-    OUStringBuffer aText(256);
+    // calculate buffer size we need
+    sal_Int32 nBufSize = (aSel.Max().GetIndex() - aSel.Min().GetIndex() + 1)
+                         + (nEndNode - nStartNode + 1);
+    // protect against sometimes whacky selection
+    if (nBufSize < 0 || nBufSize > 64 * 1024)
+        nBufSize = 256;
+    OUStringBuffer aText(nBufSize);
     const OUString aSep = EditDoc::GetSepStr( LINEEND_LF );
 
     // iterate over the paragraphs ...
@@ -309,32 +319,32 @@ bool ImpEditEngine::MouseButtonDown( const MouseEvent& rMEvt, EditView* pView )
 
     GetSelEngine().SelMouseButtonDown( rMEvt );
     // Special treatment
-    EditSelection aCurSel( pView->pImpEditView->GetEditSelection() );
+    EditSelection aCurSel( pView->getImpl().GetEditSelection() );
     if ( rMEvt.IsShift() )
         return true;
 
     if ( rMEvt.GetClicks() == 2 )
     {
         // So that the SelectionEngine knows about the anchor.
-        aSelEngine.CursorPosChanging( true, false );
+        maSelEngine.CursorPosChanging( true, false );
 
         EditSelection aNewSelection( SelectWord( aCurSel ) );
-        pView->pImpEditView->DrawSelectionXOR();
-        pView->pImpEditView->SetEditSelection( aNewSelection );
-        pView->pImpEditView->DrawSelectionXOR();
+        pView->getImpl().DrawSelectionXOR();
+        pView->getImpl().SetEditSelection( aNewSelection );
+        pView->getImpl().DrawSelectionXOR();
         pView->ShowCursor();
     }
     else if ( rMEvt.GetClicks() == 3 )
     {
         // So that the SelectionEngine knows about the anchor.
-        aSelEngine.CursorPosChanging( true, false );
+        maSelEngine.CursorPosChanging( true, false );
 
         EditSelection aNewSelection( aCurSel );
         aNewSelection.Min().SetIndex( 0 );
         aNewSelection.Max().SetIndex( aCurSel.Min().GetNode()->Len() );
-        pView->pImpEditView->DrawSelectionXOR();
-        pView->pImpEditView->SetEditSelection( aNewSelection );
-        pView->pImpEditView->DrawSelectionXOR();
+        pView->getImpl().DrawSelectionXOR();
+        pView->getImpl().SetEditSelection( aNewSelection );
+        pView->getImpl().DrawSelectionXOR();
         pView->ShowCursor();
     }
     return true;
@@ -348,63 +358,69 @@ bool ImpEditEngine::Command( const CommandEvent& rCEvt, EditView* pView )
     SetActiveView( pView );
     if ( rCEvt.GetCommand() == CommandEventId::StartExtTextInput )
     {
-        pView->DeleteSelected();
-        mpIMEInfos.reset();
-        EditPaM aPaM = pView->GetImpEditView()->GetEditSelection().Max();
-        OUString aOldTextAfterStartPos = aPaM.GetNode()->Copy( aPaM.GetIndex() );
-        sal_Int32 nMax = aOldTextAfterStartPos.indexOf( CH_FEATURE );
-        if ( nMax != -1 )  // don't overwrite features!
-            aOldTextAfterStartPos = aOldTextAfterStartPos.copy( 0, nMax );
-        mpIMEInfos.reset( new ImplIMEInfos( aPaM, aOldTextAfterStartPos ) );
-        mpIMEInfos->bWasCursorOverwrite = !pView->IsInsertMode();
-        UndoActionStart( EDITUNDO_INSERT );
+        if (!pView->IsReadOnly())
+        {
+            pView->DeleteSelected();
+            mpIMEInfos.reset();
+            EditPaM aPaM = pView->getImpl().GetEditSelection().Max();
+            OUString aOldTextAfterStartPos = aPaM.GetNode()->Copy( aPaM.GetIndex() );
+            sal_Int32 nMax = aOldTextAfterStartPos.indexOf( CH_FEATURE );
+            if ( nMax != -1 )  // don't overwrite features!
+                aOldTextAfterStartPos = aOldTextAfterStartPos.copy( 0, nMax );
+            mpIMEInfos.reset( new ImplIMEInfos( aPaM, aOldTextAfterStartPos ) );
+            mpIMEInfos->bWasCursorOverwrite = !pView->IsInsertMode();
+            UndoActionStart( EDITUNDO_INSERT );
+        }
     }
     else if ( rCEvt.GetCommand() == CommandEventId::EndExtTextInput )
     {
-        OSL_ENSURE( mpIMEInfos, "CommandEventId::EndExtTextInput => No start ?" );
-        if( mpIMEInfos )
+        if (!pView->IsReadOnly())
         {
-            // #102812# convert quotes in IME text
-            // works on the last input character, this is especially in Korean text often done
-            // quotes that are inside of the string are not replaced!
-            // Borrowed from sw: edtwin.cxx
-            if ( mpIMEInfos->nLen )
+            OSL_ENSURE( mpIMEInfos, "CommandEventId::EndExtTextInput => No start ?" );
+            if( mpIMEInfos )
             {
-                EditSelection aSel( mpIMEInfos->aPos );
-                aSel.Min().SetIndex( aSel.Min().GetIndex() + mpIMEInfos->nLen-1 );
-                aSel.Max().SetIndex( aSel.Max().GetIndex() + mpIMEInfos->nLen );
                 // #102812# convert quotes in IME text
                 // works on the last input character, this is especially in Korean text often done
                 // quotes that are inside of the string are not replaced!
-                // See also tdf#155350
-                const sal_Unicode nCharCode = aSel.Min().GetNode()->GetChar( aSel.Min().GetIndex() );
-                if ( ( GetStatus().DoAutoCorrect() ) && SvxAutoCorrect::IsAutoCorrectChar(nCharCode) )
+                // Borrowed from sw: edtwin.cxx
+                if ( mpIMEInfos->nLen )
                 {
-                    aSel = DeleteSelected( aSel );
-                    aSel = AutoCorrect( aSel, nCharCode, mpIMEInfos->bWasCursorOverwrite );
-                    pView->pImpEditView->SetEditSelection( aSel );
+                    EditSelection aSel( mpIMEInfos->aPos );
+                    aSel.Min().SetIndex( aSel.Min().GetIndex() + mpIMEInfos->nLen-1 );
+                    aSel.Max().SetIndex( aSel.Max().GetIndex() + mpIMEInfos->nLen );
+                    // #102812# convert quotes in IME text
+                    // works on the last input character, this is especially in Korean text often done
+                    // quotes that are inside of the string are not replaced!
+                    // See also tdf#155350
+                    const sal_Unicode nCharCode = aSel.Min().GetNode()->GetChar( aSel.Min().GetIndex() );
+                    if ( ( GetStatus().DoAutoCorrect() ) && SvxAutoCorrect::IsAutoCorrectChar(nCharCode) )
+                    {
+                        aSel = DeleteSelected( aSel );
+                        aSel = AutoCorrect( aSel, nCharCode, mpIMEInfos->bWasCursorOverwrite );
+                        pView->getImpl().SetEditSelection( aSel );
+                    }
                 }
+
+                ParaPortion* pPortion = FindParaPortion( mpIMEInfos->aPos.GetNode() );
+                if (pPortion)
+                    pPortion->MarkSelectionInvalid( mpIMEInfos->aPos.GetIndex() );
+
+                bool bWasCursorOverwrite = mpIMEInfos->bWasCursorOverwrite;
+
+                mpIMEInfos.reset();
+
+                FormatAndLayout( pView );
+
+                pView->SetInsertMode( !bWasCursorOverwrite );
             }
-
-            ParaPortion* pPortion = FindParaPortion( mpIMEInfos->aPos.GetNode() );
-            if (pPortion)
-                pPortion->MarkSelectionInvalid( mpIMEInfos->aPos.GetIndex() );
-
-            bool bWasCursorOverwrite = mpIMEInfos->bWasCursorOverwrite;
-
-            mpIMEInfos.reset();
-
-            FormatAndLayout( pView );
-
-            pView->SetInsertMode( !bWasCursorOverwrite );
+            UndoActionEnd();
         }
-        UndoActionEnd();
     }
     else if ( rCEvt.GetCommand() == CommandEventId::ExtTextInput )
     {
-        OSL_ENSURE( mpIMEInfos, "CommandEventId::ExtTextInput => No Start ?" );
-        if( mpIMEInfos )
+        if( mpIMEInfos && !pView->IsReadOnly())
         {
+            OSL_ENSURE( mpIMEInfos, "CommandEventId::ExtTextInput => No Start ?" );
             const CommandExtTextInputData* pData = rCEvt.GetExtTextInputData();
 
             if ( !pData->IsOnlyCursorChanged() )
@@ -426,7 +442,7 @@ bool ImpEditEngine::Command( const CommandEvent& rCEvt, EditView* pView )
                         sal_Int32 nRestore = nOldIMETextLen - nNewIMETextLen;
                         EditPaM aPaM( mpIMEInfos->aPos );
                         aPaM.SetIndex( aPaM.GetIndex() + nNewIMETextLen );
-                        ImpInsertText( aPaM, mpIMEInfos->aOldTextAfterStartPos.copy( nNewIMETextLen, nRestore ) );
+                        ImpInsertText( EditSelection(aPaM), mpIMEInfos->aOldTextAfterStartPos.copy( nNewIMETextLen, nRestore ) );
                     }
                     else if ( ( nOldIMETextLen < nNewIMETextLen ) &&
                               ( nOldIMETextLen < mpIMEInfos->aOldTextAfterStartPos.getLength() ) )
@@ -458,7 +474,8 @@ bool ImpEditEngine::Command( const CommandEvent& rCEvt, EditView* pView )
                 FormatAndLayout( pView );
             }
 
-            EditSelection aNewSel = EditPaM( mpIMEInfos->aPos.GetNode(), mpIMEInfos->aPos.GetIndex()+pData->GetCursorPos() );
+            UpdateSelections(); // other views
+            EditSelection aNewSel( EditPaM( mpIMEInfos->aPos.GetNode(), mpIMEInfos->aPos.GetIndex()+pData->GetCursorPos() ) );
             pView->SetSelection( CreateESel( aNewSel ) );
             pView->SetInsertMode( !pData->IsCursorOverwrite() );
 
@@ -473,36 +490,33 @@ bool ImpEditEngine::Command( const CommandEvent& rCEvt, EditView* pView )
     }
     else if ( rCEvt.GetCommand() == CommandEventId::CursorPos )
     {
-        if (mpIMEInfos)
+        EditPaM aPaM( pView->getImpl().GetEditSelection().Max() );
+        tools::Rectangle aR1 = PaMtoEditCursor( aPaM );
+
+        if ( !IsFormatted() )
+            FormatDoc();
+
+        ParaPortion* pParaPortion = GetParaPortions().SafeGetObject( GetEditDoc().GetPos( aPaM.GetNode() ) );
+        if (pParaPortion)
         {
-            EditPaM aPaM( pView->pImpEditView->GetEditSelection().Max() );
-            tools::Rectangle aR1 = PaMtoEditCursor( aPaM );
+            sal_Int32 nLine = pParaPortion->GetLines().FindLine( aPaM.GetIndex(), true );
+            const EditLine& rLine = pParaPortion->GetLines()[nLine];
 
-            sal_Int32 nInputEnd = mpIMEInfos->aPos.GetIndex() + mpIMEInfos->nLen;
+            sal_Int32 nInputEnd;
+            if (mpIMEInfos)
+                nInputEnd = mpIMEInfos->aPos.GetIndex() + mpIMEInfos->nLen;
+            else
+                nInputEnd = aPaM.GetIndex();
 
-            if ( !IsFormatted() )
-                FormatDoc();
-
-            ParaPortion* pParaPortion = GetParaPortions().SafeGetObject( GetEditDoc().GetPos( aPaM.GetNode() ) );
-            if (pParaPortion)
-            {
-                sal_Int32 nLine = pParaPortion->GetLines().FindLine( aPaM.GetIndex(), true );
-                const EditLine& rLine = pParaPortion->GetLines()[nLine];
-                if ( nInputEnd > rLine.GetEnd() )
-                    nInputEnd = rLine.GetEnd();
-                tools::Rectangle aR2 = PaMtoEditCursor( EditPaM( aPaM.GetNode(), nInputEnd ), GetCursorFlags::EndOfLine );
-                tools::Rectangle aRect = pView->GetImpEditView()->GetWindowPos( aR1 );
-                auto nExtTextInputWidth = aR2.Left() - aR1.Right();
-                if (EditViewCallbacks* pEditViewCallbacks = pView->getEditViewCallbacks())
-                    pEditViewCallbacks->EditViewCursorRect(aRect, nExtTextInputWidth);
-                else if (vcl::Window* pWindow = pView->GetWindow())
-                    pWindow->SetCursorRect(&aRect, nExtTextInputWidth);
-            }
-        }
-        else
-        {
-            if (vcl::Window* pWindow = pView->GetWindow())
-              pWindow->SetCursorRect();
+            if ( nInputEnd > rLine.GetEnd() )
+                nInputEnd = rLine.GetEnd();
+            tools::Rectangle aR2 = PaMtoEditCursor( EditPaM( aPaM.GetNode(), nInputEnd ), CursorFlags{ .bEndOfLine = true });
+            tools::Rectangle aRect = pView->getImpl().GetWindowPos( aR1 );
+            auto nExtTextInputWidth = aR2.Left() - aR1.Right();
+            if (EditViewCallbacks* pEditViewCallbacks = pView->getEditViewCallbacks())
+                pEditViewCallbacks->EditViewCursorRect(aRect, nExtTextInputWidth);
+            else if (vcl::Window* pWindow = pView->GetWindow())
+                pWindow->SetCursorRect(&aRect, nExtTextInputWidth);
         }
     }
     else if ( rCEvt.GetCommand() == CommandEventId::SelectionChange )
@@ -514,14 +528,14 @@ bool ImpEditEngine::Command( const CommandEvent& rCEvt, EditView* pView )
 
         if( pView->HasSelection() )
         {
-            aSelection.nEndPos = aSelection.nStartPos;
-            aSelection.nStartPos += pData->GetStart();
-            aSelection.nEndPos += pData->GetEnd();
+            aSelection.end.nIndex = aSelection.start.nIndex;
+            aSelection.start.nIndex += pData->GetStart();
+            aSelection.end.nIndex += pData->GetEnd();
         }
         else
         {
-            aSelection.nStartPos = pData->GetStart();
-            aSelection.nEndPos = pData->GetEnd();
+            aSelection.start.nIndex = pData->GetStart();
+            aSelection.end.nIndex = pData->GetEnd();
         }
         pView->SetSelection( aSelection );
     }
@@ -532,11 +546,11 @@ bool ImpEditEngine::Command( const CommandEvent& rCEvt, EditView* pView )
             ESelection aSelection = pView->GetSelection();
             aSelection.Adjust();
 
-            if ( aSelection.nStartPara != aSelection.nEndPara )
+            if ( aSelection.start.nPara != aSelection.end.nPara )
             {
-                sal_Int32 aParaLen = pEditEngine->GetTextLen( aSelection.nStartPara );
-                aSelection.nEndPara = aSelection.nStartPara;
-                aSelection.nEndPos = aParaLen;
+                sal_Int32 aParaLen = mpEditEngine->GetTextLen( aSelection.start.nPara );
+                aSelection.end.nPara = aSelection.start.nPara;
+                aSelection.end.nIndex = aParaLen;
                 pView->SetSelection( aSelection );
             }
         }
@@ -545,7 +559,7 @@ bool ImpEditEngine::Command( const CommandEvent& rCEvt, EditView* pView )
     {
         if (mpIMEInfos)
         {
-            EditPaM aPaM( pView->pImpEditView->GetEditSelection().Max() );
+            EditPaM aPaM( pView->getImpl().GetEditSelection().Max() );
             if ( !IsFormatted() )
                 FormatDoc();
 
@@ -576,10 +590,9 @@ bool ImpEditEngine::Command( const CommandEvent& rCEvt, EditView* pView )
                         {
                             if (rInfo.pLine->IsIn(n))
                             {
-                                tools::Rectangle aR = GetEditCursor(pParaPortion, rInfo.pLine, n,
-                                                                    GetCursorFlags::NONE);
+                                tools::Rectangle aR = GetEditCursor(*pParaPortion, *rInfo.pLine, n, CursorFlags());
                                 aR.Move(getTopLeftDocOffset(rInfo.aArea));
-                                aRects[n - nMinPos] = pView->GetImpEditView()->GetWindowPos(aR);
+                                aRects[n - nMinPos] = pView->getImpl().GetWindowPos(aR);
                             }
                         }
                     }
@@ -612,7 +625,7 @@ bool ImpEditEngine::MouseButtonUp( const MouseEvent& rMEvt, EditView* pView )
         mbInSelection = false;
 
     // Special treatments
-    EditSelection aCurSel( pView->pImpEditView->GetEditSelection() );
+    EditSelection aCurSel( pView->getImpl().GetEditSelection() );
     if ( aCurSel.HasRange() )
         return true;
 
@@ -674,15 +687,14 @@ void ImpEditEngine::Clear()
     EditPaM aPaM = maEditDoc.GetStartPaM();
     EditSelection aSel( aPaM );
 
-    nCurTextHeight = 0;
-    nCurTextHeightNTP = 0;
+    mnCurTextHeight = 0;
 
     ResetUndoManager();
 
-    for (size_t nView = aEditViews.size(); nView; )
+    for (size_t nView = maEditViews.size(); nView; )
     {
-        EditView* pView = aEditViews[--nView];
-        pView->pImpEditView->SetEditSelection( aSel );
+        EditView* pView = maEditViews[--nView];
+        pView->getImpl().SetEditSelection( aSel );
     }
 
     // Related: tdf#82115 Fix crash when handling input method events.
@@ -698,9 +710,9 @@ EditPaM ImpEditEngine::RemoveText()
 
     EditPaM aStartPaM = maEditDoc.GetStartPaM();
     EditSelection aEmptySel( aStartPaM, aStartPaM );
-    for (EditView* pView : aEditViews)
+    for (EditView* pView : maEditViews)
     {
-        pView->pImpEditView->SetEditSelection( aEmptySel );
+        pView->getImpl().SetEditSelection( aEmptySel );
     }
     ResetUndoManager();
     return maEditDoc.GetStartPaM();
@@ -720,23 +732,21 @@ void ImpEditEngine::SetText(const OUString& rText)
     if (!rText.isEmpty())
         aPaM = ImpInsertText( aEmptySel, rText );
 
-    for (EditView* pView : aEditViews)
+    for (EditView* pView : maEditViews)
     {
-        pView->pImpEditView->SetEditSelection( EditSelection( aPaM, aPaM ) );
+        pView->getImpl().SetEditSelection( EditSelection( aPaM, aPaM ) );
         //  If no text then also no Format&Update
         // => The text remains.
         if (rText.isEmpty() && IsUpdateLayout())
         {
             tools::Rectangle aTmpRect( pView->GetOutputArea().TopLeft(),
-                                Size( maPaperSize.Width(), nCurTextHeight ) );
+                                Size( maPaperSize.Width(), mnCurTextHeight ) );
             aTmpRect.Intersection( pView->GetOutputArea() );
             pView->InvalidateWindow( aTmpRect );
         }
     }
-    if (rText.isEmpty()) {    // otherwise it must be invalidated later, !bFormatted is enough.
-        nCurTextHeight = 0;
-        nCurTextHeightNTP = 0;
-    }
+    if (rText.isEmpty())     // otherwise it must be invalidated later, !bFormatted is enough.
+        mnCurTextHeight = 0;
     EnableUndo( bUndoCurrentlyEnabled );
     OSL_ENSURE( !HasUndoManager() || !GetUndoManager().GetUndoActionCount(), "Undo after SetText?" );
 }
@@ -746,7 +756,8 @@ const SfxItemSet& ImpEditEngine::GetEmptyItemSet() const
 {
     if ( !pEmptyItemSet )
     {
-        pEmptyItemSet = std::make_unique<SfxItemSetFixed<EE_ITEMS_START, EE_ITEMS_END>>(const_cast<SfxItemPool&>(maEditDoc.GetItemPool()));
+        pEmptyItemSet = std::make_unique<SfxItemSet>(SfxItemSet::makeFixedSfxItemSet<
+                            EE_ITEMS_START, EE_ITEMS_END>(const_cast<SfxItemPool&>(maEditDoc.GetItemPool())));
         for ( sal_uInt16 nWhich = EE_ITEMS_START; nWhich <= EE_CHAR_END; nWhich++)
         {
             pEmptyItemSet->ClearItem( nWhich );
@@ -782,27 +793,62 @@ void ImpEditEngine::ParaAttribsChanged( ContentNode const * pNode, bool bIgnoreU
     pPortion->MarkSelectionInvalid( 0 );
 
     sal_Int32 nPara = maEditDoc.GetPos( pNode );
-    if ( bIgnoreUndoCheck || pEditEngine->IsInUndo() )
-        pEditEngine->ParaAttribsChanged( nPara );
+    assert(nPara != EE_PARA_MAX);
+    if (bIgnoreUndoCheck || mpEditEngine->IsInUndo())
+        mpEditEngine->ParaAttribsChanged( nPara );
 
     ParaPortion* pNextPortion = GetParaPortions().SafeGetObject( nPara+1 );
     // => is formatted again anyway, if Invalid.
     if ( pNextPortion && !pNextPortion->IsInvalid() )
-        CalcHeight( pNextPortion );
+        CalcHeight(*pNextPortion);
 }
 
 
 //  Cursor movements
 
-
-EditSelection const & ImpEditEngine::MoveCursor( const KeyEvent& rKeyEvent, EditView* pEditView )
+EditSelection const& ImpEditEngine::MoveCursor(const KeyEvent& rKeyEvent, EditView* pEditView,
+                                               CursorFlags* pOutCursorFlags)
 {
     // Actually, only necessary for up/down, but whatever.
     CheckIdleFormatter();
 
-    EditPaM aPaM( pEditView->pImpEditView->GetEditSelection().Max() );
+    EditPaM aPaM(pEditView->getImpl().GetEditSelection().Max());
 
     EditPaM aOldPaM( aPaM );
+
+    // tdf#151336: Moving the cursor may advance to another paragraph. When that happens,
+    // special handling is needed for correct visual cursor placement in RTL text.
+    auto fnSetStartOfLineFlag = [&]
+    {
+        if (pOutCursorFlags)
+        {
+            pOutCursorFlags->bStartOfLine = true;
+        }
+    };
+
+    auto fnSetParaChangeStartOfLineFlag = [&]
+    {
+        if (pOutCursorFlags && aPaM.GetNode() != aOldPaM.GetNode())
+        {
+            pOutCursorFlags->bStartOfLine = true;
+        }
+    };
+
+    auto fnSetEndOfLineFlag = [&]
+    {
+        if (pOutCursorFlags)
+        {
+            pOutCursorFlags->bEndOfLine = true;
+        }
+    };
+
+    auto fnSetParaChangeEndOfLineFlag = [&]
+    {
+        if (pOutCursorFlags && aPaM.GetNode() != aOldPaM.GetNode())
+        {
+            pOutCursorFlags->bEndOfLine = true;
+        }
+    };
 
     TextDirectionality eTextDirection = TextDirectionality::LeftToRight_TopToBottom;
     if (IsEffectivelyVertical() && IsTopToBottom())
@@ -835,12 +881,16 @@ EditSelection const & ImpEditEngine::MoveCursor( const KeyEvent& rKeyEvent, Edit
         case KEY_DOWN:      aPaM = CursorDown( aPaM, pEditView );
                             break;
         case KEY_LEFT:      aPaM = bCtrl ? WordLeft( aPaM ) : CursorLeft( aPaM, aTranslatedKeyEvent.GetKeyCode().IsMod2() ? i18n::CharacterIteratorMode::SKIPCHARACTER : i18n::CharacterIteratorMode::SKIPCELL );
+                            fnSetParaChangeEndOfLineFlag();
                             break;
         case KEY_RIGHT:     aPaM = bCtrl ? WordRight( aPaM ) : CursorRight( aPaM, aTranslatedKeyEvent.GetKeyCode().IsMod2() ? i18n::CharacterIteratorMode::SKIPCHARACTER : i18n::CharacterIteratorMode::SKIPCELL );
+                            fnSetParaChangeStartOfLineFlag();
                             break;
         case KEY_HOME:      aPaM = bCtrl ? CursorStartOfDoc() : CursorStartOfLine( aPaM );
+                            fnSetStartOfLineFlag();
                             break;
         case KEY_END:       aPaM = bCtrl ? CursorEndOfDoc() : CursorEndOfLine( aPaM );
+                            fnSetEndOfLineFlag();
                             break;
         case KEY_PAGEUP:    aPaM = bCtrl ? CursorStartOfDoc() : PageUp( aPaM, pEditView );
                             break;
@@ -848,10 +898,12 @@ EditSelection const & ImpEditEngine::MoveCursor( const KeyEvent& rKeyEvent, Edit
                             break;
         case css::awt::Key::MOVE_TO_BEGIN_OF_LINE:
                             aPaM = CursorStartOfLine( aPaM );
+                            fnSetStartOfLineFlag();
                             bKeyModifySelection = false;
                             break;
         case css::awt::Key::MOVE_TO_END_OF_LINE:
                             aPaM = CursorEndOfLine( aPaM );
+                            fnSetEndOfLineFlag();
                             bKeyModifySelection = false;
                             break;
         case css::awt::Key::MOVE_WORD_BACKWARD:
@@ -946,35 +998,35 @@ EditSelection const & ImpEditEngine::MoveCursor( const KeyEvent& rKeyEvent, Edit
     }
 
     // May cause, a CreateAnchor or deselection all
-    aSelEngine.SetCurView( pEditView );
-    aSelEngine.CursorPosChanging( bKeyModifySelection, aTranslatedKeyEvent.GetKeyCode().IsMod1() );
-    EditPaM aOldEnd( pEditView->pImpEditView->GetEditSelection().Max() );
+    maSelEngine.SetCurView(pEditView);
+    maSelEngine.CursorPosChanging( bKeyModifySelection, aTranslatedKeyEvent.GetKeyCode().IsMod1() );
+    EditPaM aOldEnd(pEditView->getImpl().GetEditSelection().Max());
 
     {
-        EditSelection aNewSelection(pEditView->pImpEditView->GetEditSelection());
+        EditSelection aNewSelection(pEditView->getImpl().GetEditSelection());
         aNewSelection.Max() = aPaM;
-        pEditView->pImpEditView->SetEditSelection(aNewSelection);
-        // const_cast<EditPaM&>(pEditView->pImpEditView->GetEditSelection().Max()) = aPaM;
+        pEditView->getImpl().SetEditSelection(aNewSelection);
+        // const_cast<EditPaM&>(pEditView->getImpl().GetEditSelection().Max()) = aPaM;
     }
 
     if ( bKeyModifySelection )
     {
         // Then the selection is expanded ... or the whole selection is painted in case of tiled rendering.
-        EditSelection aTmpNewSel( comphelper::LibreOfficeKit::isActive() ? pEditView->pImpEditView->GetEditSelection().Min() : aOldEnd, aPaM );
-        pEditView->pImpEditView->DrawSelectionXOR( aTmpNewSel );
+        EditSelection aTmpNewSel( comphelper::LibreOfficeKit::isActive() ? pEditView->getImpl().GetEditSelection().Min() : aOldEnd, aPaM );
+        pEditView->getImpl().DrawSelectionXOR( aTmpNewSel );
     }
     else
     {
-        EditSelection aNewSelection(pEditView->pImpEditView->GetEditSelection());
+        EditSelection aNewSelection(pEditView->getImpl().GetEditSelection());
         aNewSelection.Min() = aPaM;
-        pEditView->pImpEditView->SetEditSelection(aNewSelection);
-        // const_cast<EditPaM&>(pEditView->pImpEditView->GetEditSelection().Min()) = aPaM;
+        pEditView->getImpl().SetEditSelection(aNewSelection);
+        // const_cast<EditPaM&>(pEditView->getImpl().GetEditSelection().Min()) = aPaM;
     }
 
-    return pEditView->pImpEditView->GetEditSelection();
+    return pEditView->getImpl().GetEditSelection();
 }
 
-EditPaM ImpEditEngine::CursorVisualStartEnd( EditView const * pEditView, const EditPaM& rPaM, bool bStart )
+EditPaM ImpEditEngine::CursorVisualStartEnd( EditView const * mpEditView, const EditPaM& rPaM, bool bStart )
 {
     EditPaM aPaM( rPaM );
 
@@ -987,7 +1039,7 @@ EditPaM ImpEditEngine::CursorVisualStartEnd( EditView const * pEditView, const E
     const EditLine& rLine = pParaPortion->GetLines()[nLine];
     bool bEmptyLine = rLine.GetStart() == rLine.GetEnd();
 
-    pEditView->pImpEditView->nExtraCursorFlags = GetCursorFlags::NONE;
+    mpEditView->getImpl().maExtraCursorFlags = CursorFlags();
 
     if ( !bEmptyLine )
     {
@@ -1013,15 +1065,15 @@ EditPaM ImpEditEngine::CursorVisualStartEnd( EditView const * pEditView, const E
 
         if ( bStart )
         {
-            pEditView->pImpEditView->SetCursorBidiLevel( bPortionRTL ? 0 : 1 );
+            mpEditView->getImpl().SetCursorBidiLevel( bPortionRTL ? 0 : 1 );
             // Maybe we must be *behind* the character
-            if ( bPortionRTL && pEditView->IsInsertMode() )
+            if (bPortionRTL && mpEditView->IsInsertMode())
                 aPaM.SetIndex( aPaM.GetIndex()+1 );
         }
         else
         {
-            pEditView->pImpEditView->SetCursorBidiLevel( bPortionRTL ? 1 : 0 );
-            if ( !bPortionRTL && pEditView->IsInsertMode() )
+            mpEditView->getImpl().SetCursorBidiLevel( bPortionRTL ? 1 : 0 );
+            if ( !bPortionRTL && mpEditView->IsInsertMode() )
                 aPaM.SetIndex( aPaM.GetIndex()+1 );
         }
     }
@@ -1042,7 +1094,7 @@ EditPaM ImpEditEngine::CursorVisualLeftRight( EditView const * pEditView, const 
     const EditLine& rLine = pParaPortion->GetLines()[nLine];
     bool bEmptyLine = rLine.GetStart() == rLine.GetEnd();
 
-    pEditView->pImpEditView->nExtraCursorFlags = GetCursorFlags::NONE;
+    pEditView->getImpl().maExtraCursorFlags = CursorFlags();
 
     bool bParaRTL = IsRightToLeft( nPara );
 
@@ -1093,12 +1145,12 @@ EditPaM ImpEditEngine::CursorVisualLeftRight( EditView const * pEditView, const 
             if (bVisualToLeft != bool(nRTLLevel % 2))
             {
                 aPaM = CursorLeft( aPaM, nCharacterIteratorMode );
-                pEditView->pImpEditView->SetCursorBidiLevel( 1 );
+                pEditView->getImpl().SetCursorBidiLevel( 1 );
             }
             else
             {
                 aPaM = CursorRight( aPaM, nCharacterIteratorMode );
-                pEditView->pImpEditView->SetCursorBidiLevel( 0 );
+                pEditView->getImpl().SetCursorBidiLevel( 0 );
             }
             bDone = true;
         }
@@ -1138,13 +1190,13 @@ EditPaM ImpEditEngine::CursorVisualLeftRight( EditView const * pEditView, const 
             if ( !bGotoEndOfPrevLine && !bGotoStartOfNextLine )
             {
                 aPaM.SetIndex( rLine.GetStart() + ubidi_getLogicalIndex( pBidi, nVisPos, &nError ) );
-                pEditView->pImpEditView->SetCursorBidiLevel( 0 );
+                pEditView->getImpl().SetCursorBidiLevel( 0 );
             }
         }
         else
         {
             bool bWasBehind = false;
-            bool bBeforePortion = !nPosInLine || pEditView->pImpEditView->GetCursorBidiLevel() == 1;
+            bool bBeforePortion = !nPosInLine || pEditView->getImpl().GetCursorBidiLevel() == 1;
             if ( nPosInLine && ( !bBeforePortion ) ) // before the next portion
                 bWasBehind = true;  // step one back, otherwise visual will be unusable when rtl portion follows.
 
@@ -1183,7 +1235,7 @@ EditPaM ImpEditEngine::CursorVisualLeftRight( EditView const * pEditView, const 
                 else if ( !bVisualToLeft && bRTLPortion && ( bWasBehind || !_rTextPortion.IsRightToLeft() ) )
                     aPaM.SetIndex( aPaM.GetIndex()+1 );
 
-                pEditView->pImpEditView->SetCursorBidiLevel( _nPortionStart );
+                pEditView->getImpl().SetCursorBidiLevel( _nPortionStart );
             }
         }
 
@@ -1267,22 +1319,24 @@ EditPaM ImpEditEngine::CursorUp( const EditPaM& rPaM, EditView const * pView )
     const ParaPortion* pPPortion = FindParaPortion( rPaM.GetNode() );
     assert(pPPortion);
     sal_Int32 nLine = pPPortion->GetLineNumber( rPaM.GetIndex() );
+    assert(nLine >= 0);
     const EditLine& rLine = pPPortion->GetLines()[nLine];
 
     tools::Long nX;
-    if ( pView->pImpEditView->nTravelXPos == TRAVEL_X_DONTKNOW )
+    if ( pView->getImpl().mnTravelXPos == TRAVEL_X_DONTKNOW )
     {
-        nX = GetXPos( pPPortion, &rLine, rPaM.GetIndex() );
-        pView->pImpEditView->nTravelXPos = nX+nOnePixelInRef;
+        nX = GetXPos(*pPPortion, rLine, rPaM.GetIndex());
+        pView->getImpl().mnTravelXPos = nX + mnOnePixelInRef;
     }
     else
-        nX = pView->pImpEditView->nTravelXPos;
+        nX = pView->getImpl().mnTravelXPos;
 
     EditPaM aNewPaM( rPaM );
     if ( nLine )    // same paragraph
     {
+        assert(nLine >= 1);
         const EditLine& rPrevLine = pPPortion->GetLines()[nLine-1];
-        aNewPaM.SetIndex( GetChar( pPPortion, &rPrevLine, nX ) );
+        aNewPaM.SetIndex(GetChar(*pPPortion, rPrevLine, nX));
         // If a previous automatically wrapped line, and one has to be exactly
         // at the end of this line, the cursor lands on the current line at the
         // beginning. See Problem: Last character of an automatically wrapped
@@ -1297,7 +1351,7 @@ EditPaM ImpEditEngine::CursorUp( const EditPaM& rPaM, EditView const * pView )
         {
             const EditLine& rLine2 = pPrevPortion->GetLines()[pPrevPortion->GetLines().Count()-1];
             aNewPaM.SetNode( pPrevPortion->GetNode() );
-            aNewPaM.SetIndex( GetChar( pPrevPortion, &rLine2, nX+nOnePixelInRef ) );
+            aNewPaM.SetIndex(GetChar(*pPrevPortion, rLine2, nX + mnOnePixelInRef));
         }
     }
 
@@ -1313,20 +1367,20 @@ EditPaM ImpEditEngine::CursorDown( const EditPaM& rPaM, EditView const * pView )
     sal_Int32 nLine = pPPortion->GetLineNumber( rPaM.GetIndex() );
 
     tools::Long nX;
-    if ( pView->pImpEditView->nTravelXPos == TRAVEL_X_DONTKNOW )
+    if ( pView->getImpl().mnTravelXPos == TRAVEL_X_DONTKNOW )
     {
         const EditLine& rLine = pPPortion->GetLines()[nLine];
-        nX = GetXPos( pPPortion, &rLine, rPaM.GetIndex() );
-        pView->pImpEditView->nTravelXPos = nX+nOnePixelInRef;
+        nX = GetXPos(*pPPortion, rLine, rPaM.GetIndex());
+        pView->getImpl().mnTravelXPos = nX + mnOnePixelInRef;
     }
     else
-        nX = pView->pImpEditView->nTravelXPos;
+        nX = pView->getImpl().mnTravelXPos;
 
     EditPaM aNewPaM( rPaM );
     if ( nLine < pPPortion->GetLines().Count()-1 )
     {
         const EditLine& rNextLine = pPPortion->GetLines()[nLine+1];
-        aNewPaM.SetIndex( GetChar( pPPortion, &rNextLine, nX ) );
+        aNewPaM.SetIndex(GetChar(*pPPortion, rNextLine, nX));
         // Special treatment, see CursorUp ...
         if ( ( aNewPaM.GetIndex() == rNextLine.GetEnd() ) && ( aNewPaM.GetIndex() > rNextLine.GetStart() ) && ( aNewPaM.GetIndex() < pPPortion->GetNode()->Len() ) )
             aNewPaM = CursorLeft( aNewPaM );
@@ -1340,7 +1394,7 @@ EditPaM ImpEditEngine::CursorDown( const EditPaM& rPaM, EditView const * pView )
             aNewPaM.SetNode( pNextPortion->GetNode() );
             // Never at the very end when several lines, because then a line
             // below the cursor appears.
-            aNewPaM.SetIndex( GetChar( pNextPortion, &rLine, nX+nOnePixelInRef ) );
+            aNewPaM.SetIndex(GetChar(*pNextPortion, rLine, nX + mnOnePixelInRef));
             if ( ( aNewPaM.GetIndex() == rLine.GetEnd() ) && ( aNewPaM.GetIndex() > rLine.GetStart() ) && ( pNextPortion->GetLines().Count() > 1 ) )
                 aNewPaM = CursorLeft( aNewPaM );
         }
@@ -1435,7 +1489,7 @@ EditPaM ImpEditEngine::PageUp( const EditPaM& rPaM, EditView const * pView )
     tools::Rectangle aRect = PaMtoEditCursor( rPaM );
     Point aTopLeft = aRect.TopLeft();
     aTopLeft.AdjustY( -(pView->GetVisArea().GetHeight() *9/10) );
-    aTopLeft.AdjustX(nOnePixelInRef );
+    aTopLeft.AdjustX(mnOnePixelInRef);
     if ( aTopLeft.Y() < 0 )
     {
         aTopLeft.setY( 0 );
@@ -1448,7 +1502,7 @@ EditPaM ImpEditEngine::PageDown( const EditPaM& rPaM, EditView const * pView )
     tools::Rectangle aRect = PaMtoEditCursor( rPaM );
     Point aBottomRight = aRect.BottomRight();
     aBottomRight.AdjustY(pView->GetVisArea().GetHeight() *9/10 );
-    aBottomRight.AdjustX(nOnePixelInRef );
+    aBottomRight.AdjustX(mnOnePixelInRef);
     tools::Long nHeight = GetTextHeight();
     if ( aBottomRight.Y() > nHeight )
     {
@@ -1566,7 +1620,7 @@ EditPaM ImpEditEngine::EndOfWord( const EditPaM& rPaM )
     return aNewPaM;
 }
 
-EditSelection ImpEditEngine::SelectWord( const EditSelection& rCurSel, sal_Int16 nWordType, bool bAcceptStartOfWord )
+EditSelection ImpEditEngine::SelectWord( const EditSelection& rCurSel, sal_Int16 nWordType, bool bAcceptStartOfWord, bool bAcceptEndOfWord )
 {
     EditSelection aNewSel( rCurSel );
     EditPaM aPaM( rCurSel.Max() );
@@ -1585,10 +1639,11 @@ EditSelection ImpEditEngine::SelectWord( const EditSelection& rCurSel, sal_Int16
     if ( nType == i18n::WordType::ANY_WORD )
     {
         i18n::Boundary aBoundary = _xBI->getWordBoundary(
-            aPaM.GetNode()->GetString(), aPaM.GetIndex(), aLocale, nWordType, true);
+            aPaM.GetNode()->GetString(), aPaM.GetIndex(), aLocale, nWordType,
+            aPaM.GetNode()->GetString().getLength() == aPaM.GetIndex() ? false : true);
 
         // don't select when cursor at end of word
-        if ( ( aBoundary.endPos > aPaM.GetIndex() ) &&
+        if ( ( aBoundary.endPos > aPaM.GetIndex() || ( bAcceptEndOfWord && aBoundary.endPos == aPaM.GetIndex() ) ) &&
              ( ( aBoundary.startPos < aPaM.GetIndex() ) || ( bAcceptStartOfWord && ( aBoundary.startPos == aPaM.GetIndex() ) ) ) )
         {
             aNewSel.Min().SetIndex( aBoundary.startPos );
@@ -1637,27 +1692,13 @@ bool ImpEditEngine::IsInputSequenceCheckingRequired( sal_Unicode nChar, const Ed
     return bIsSequenceChecking;
 }
 
-static  bool lcl_HasStrongLTR ( std::u16string_view rTxt, sal_Int32 nStart, sal_Int32 nEnd )
- {
-     for( sal_Int32 nCharIdx = nStart; nCharIdx < nEnd; ++nCharIdx )
-     {
-         const UCharDirection nCharDir = u_charDirection ( rTxt[ nCharIdx ] );
-         if ( nCharDir == U_LEFT_TO_RIGHT ||
-              nCharDir == U_LEFT_TO_RIGHT_EMBEDDING ||
-              nCharDir == U_LEFT_TO_RIGHT_OVERRIDE )
-             return true;
-     }
-     return false;
- }
-
-
 void ImpEditEngine::InitScriptTypes( sal_Int32 nPara )
 {
     ParaPortion* pParaPortion = GetParaPortions().SafeGetObject( nPara );
     if (!pParaPortion)
         return;
 
-    ScriptTypePosInfos& rTypes = pParaPortion->aScriptInfos;
+    ScriptTypePosInfos& rTypes = pParaPortion->getScriptTypePosInfos();
     rTypes.clear();
 
     ContentNode* pNode = pParaPortion->GetNode();
@@ -1703,96 +1744,38 @@ void ImpEditEngine::InitScriptTypes( sal_Int32 nPara )
         pField = pField->GetEnd() ? pNode->GetCharAttribs().FindNextAttrib( EE_FEATURE_FIELD, pField->GetEnd() ) : nullptr;
     }
 
-    sal_Int32 nTextLen = aText.getLength();
-
-    sal_Int32 nPos = 0;
-    short nScriptType = _xBI->getScriptType( aText, nPos );
-    rTypes.emplace_back( nScriptType, nPos, nTextLen );
-    nPos = _xBI->endOfScript( aText, nPos, nScriptType );
-    while ( ( nPos != -1 ) && ( nPos < nTextLen ) )
+    i18nutil::ScriptHintProvider stScriptHints;
+    const EditCharAttrib* pScriptHint
+        = pNode->GetCharAttribs().FindNextAttrib(EE_CHAR_SCRIPT_HINT, 0);
+    while (pScriptHint)
     {
-        rTypes.back().nEndPos = nPos;
+        const auto* pScriptHintValue
+            = static_cast<const SvxScriptHintItem*>(pScriptHint->GetItem());
+        stScriptHints.AddHint(pScriptHintValue->GetValue(), pScriptHint->GetStart(),
+                              pScriptHint->GetEnd());
 
-        nScriptType = _xBI->getScriptType( aText, nPos );
-        tools::Long nEndPos = _xBI->endOfScript( aText, nPos, nScriptType );
-
-        if ( ( nScriptType == i18n::ScriptType::WEAK ) || ( nScriptType == rTypes.back().nScriptType ) )
-        {
-            // Expand last ScriptTypePosInfo, don't create weak or unnecessary portions
-            rTypes.back().nEndPos = nEndPos;
-        }
-        else
-        {
-            auto nPrevPos = nPos;
-            auto nPrevChar = aText.iterateCodePoints(&nPrevPos, -1);
-            if (_xBI->getScriptType(aText, nPrevPos) == i18n::ScriptType::WEAK)
-            {
-                auto nChar = aText.iterateCodePoints(&nPos, 0);
-                auto nType = unicode::getUnicodeType(nChar);
-                if (nType == css::i18n::UnicodeType::NON_SPACING_MARK ||
-                    nType == css::i18n::UnicodeType::ENCLOSING_MARK ||
-                    nType == css::i18n::UnicodeType::COMBINING_SPACING_MARK ||
-                    (nPrevChar == 0x202F /* NNBSP, tdf#112594 */ &&
-                     u_getIntPropertyValue(nChar, UCHAR_SCRIPT) == USCRIPT_MONGOLIAN))
-                {
-                    rTypes.back().nEndPos = nPos = nPrevPos;
-                    break;
-                }
-            }
-            rTypes.emplace_back( nScriptType, nPos, nTextLen );
-        }
-
-        nPos = nEndPos;
+        pScriptHint = pScriptHint->GetEnd() ? pNode->GetCharAttribs().FindAttribRightOpen(
+                                                  EE_CHAR_SCRIPT_HINT, pScriptHint->GetEnd())
+                                            : nullptr;
     }
 
-    if ( rTypes[0].nScriptType == i18n::ScriptType::WEAK )
-        rTypes[0].nScriptType = ( rTypes.size() > 1 ) ? rTypes[1].nScriptType : SvtLanguageOptions::GetI18NScriptTypeOfLanguage( GetDefaultLanguage() );
+    const UBiDiLevel nInitialBidiLevel = IsRightToLeft(nPara) ? 1 /*RTL*/ : 0 /*LTR*/;
+    auto pDirScanner = i18nutil::MakeDirectionChangeScanner(aText, nInitialBidiLevel);
+    auto pScriptScanner = i18nutil::MakeScriptChangeScanner(
+        aText, SvtLanguageOptions::GetI18NScriptTypeOfLanguage(GetDefaultLanguage()), *pDirScanner,
+        stScriptHints);
+    while (!pScriptScanner->AtEnd() || rTypes.empty())
+    {
+        auto stChange = pScriptScanner->Peek();
+        rTypes.emplace_back(stChange.m_nScriptType, stChange.m_nStartIndex, stChange.m_nEndIndex);
+
+        pScriptScanner->Advance();
+    }
 
     // create writing direction information:
-    if ( pParaPortion->aWritingDirectionInfos.empty() )
+    WritingDirectionInfos& rDirInfos = pParaPortion->getWritingDirectionInfos();
+    if (rDirInfos.empty())
         InitWritingDirections( nPara );
-
-    // i89825: Use CTL font for numbers embedded into an RTL run:
-    WritingDirectionInfos& rDirInfos = pParaPortion->aWritingDirectionInfos;
-    for (const WritingDirectionInfo & rDirInfo : rDirInfos)
-    {
-        const sal_Int32 nStart = rDirInfo.nStartPos;
-        const sal_Int32 nEnd   = rDirInfo.nEndPos;
-        const sal_uInt8 nCurrDirType = rDirInfo.nType;
-
-        if ( nCurrDirType % 2 == UBIDI_RTL  || // text in RTL run
-            ( nCurrDirType > UBIDI_LTR && !lcl_HasStrongLTR( aText, nStart, nEnd ) ) ) // non-strong text in embedded LTR run
-        {
-            size_t nIdx = 0;
-
-            // Skip entries in ScriptArray which are not inside the RTL run:
-            while ( nIdx < rTypes.size() && rTypes[nIdx].nStartPos < nStart )
-                ++nIdx;
-
-            // Remove any entries *inside* the current run:
-            while (nIdx < rTypes.size() && rTypes[nIdx].nEndPos <= nEnd)
-            {
-                // coverity[use_iterator] - we're protected from a bad iterator by the above condition
-                rTypes.erase(rTypes.begin() + nIdx);
-            }
-
-            // special case:
-            if(nIdx < rTypes.size() && rTypes[nIdx].nStartPos < nStart && rTypes[nIdx].nEndPos > nEnd)
-            {
-                rTypes.insert( rTypes.begin()+nIdx, ScriptTypePosInfo( rTypes[nIdx].nScriptType, nEnd, rTypes[nIdx].nEndPos ) );
-                rTypes[nIdx].nEndPos = nStart;
-            }
-
-            if( nIdx )
-                rTypes[nIdx - 1].nEndPos = nStart;
-
-            rTypes.insert( rTypes.begin()+nIdx, ScriptTypePosInfo( i18n::ScriptType::COMPLEX, nStart, nEnd) );
-            ++nIdx;
-
-            if( nIdx < rTypes.size() )
-                rTypes[nIdx].nStartPos = nEnd;
-        }
-    }
 }
 
 namespace {
@@ -1828,10 +1811,10 @@ sal_uInt16 ImpEditEngine::GetI18NScriptType( const EditPaM& rPaM, sal_Int32* pEn
         const ParaPortion* pParaPortion = GetParaPortions().SafeGetObject( nPara );
         if (pParaPortion)
         {
-            if ( pParaPortion->aScriptInfos.empty() )
-                const_cast<ImpEditEngine*>(this)->InitScriptTypes( nPara );
+            const ScriptTypePosInfos& rTypes = pParaPortion->getScriptTypePosInfos();
 
-            const ScriptTypePosInfos& rTypes = pParaPortion->aScriptInfos;
+            if (rTypes.empty())
+                const_cast<ImpEditEngine*>(this)->InitScriptTypes( nPara );
 
             const sal_Int32 nPos = rPaM.GetIndex();
             ScriptTypePosInfos::const_iterator itr = std::find_if(rTypes.begin(), rTypes.end(), FindByPos(nPos));
@@ -1862,10 +1845,10 @@ SvtScriptType ImpEditEngine::GetItemScriptType( const EditSelection& rSel ) cons
         if (!pParaPortion)
             continue;
 
-        if ( pParaPortion->aScriptInfos.empty() )
-            const_cast<ImpEditEngine*>(this)->InitScriptTypes( nPara );
+        ScriptTypePosInfos const& rTypes = pParaPortion->getScriptTypePosInfos();
 
-        const ScriptTypePosInfos& rTypes = pParaPortion->aScriptInfos;
+        if (rTypes.empty())
+            const_cast<ImpEditEngine*>(this)->InitScriptTypes( nPara );
 
         // find all the scripts of this range
         sal_Int32 nS = ( nPara == nStartPara ) ? aSel.Min().GetIndex() : 0;
@@ -1908,10 +1891,11 @@ bool ImpEditEngine::IsScriptChange( const EditPaM& rPaM ) const
         const ParaPortion* pParaPortion = GetParaPortions().SafeGetObject( nPara );
         if (pParaPortion)
         {
-            if ( pParaPortion->aScriptInfos.empty() )
+            ScriptTypePosInfos const& rTypes = pParaPortion->getScriptTypePosInfos();
+
+            if (rTypes.empty())
                 const_cast<ImpEditEngine*>(this)->InitScriptTypes( nPara );
 
-            const ScriptTypePosInfos& rTypes = pParaPortion->aScriptInfos;
             const sal_Int32 nPos = rPaM.GetIndex();
             for (const ScriptTypePosInfo & rType : rTypes)
             {
@@ -1933,15 +1917,13 @@ bool ImpEditEngine::HasScriptType( sal_Int32 nPara, sal_uInt16 nType ) const
     const ParaPortion* pParaPortion = GetParaPortions().SafeGetObject( nPara );
     if (pParaPortion)
     {
-        if ( pParaPortion->aScriptInfos.empty() )
+        const ScriptTypePosInfos& rTypes = pParaPortion->getScriptTypePosInfos();
+
+        if (rTypes.empty())
             const_cast<ImpEditEngine*>(this)->InitScriptTypes( nPara );
 
-        const ScriptTypePosInfos& rTypes = pParaPortion->aScriptInfos;
-        for ( size_t n = rTypes.size(); n && !bTypeFound; )
-        {
-            if ( rTypes[--n].nScriptType == nType )
-                bTypeFound = true;
-        }
+        bTypeFound = std::any_of(rTypes.begin(), rTypes.end(),
+            [nType](const ScriptTypePosInfo& rType){ return rType.nScriptType == nType; });
     }
     return bTypeFound;
 }
@@ -1952,7 +1934,7 @@ void ImpEditEngine::InitWritingDirections( sal_Int32 nPara )
     if (!pParaPortion)
         return;
 
-    WritingDirectionInfos& rInfos = pParaPortion->aWritingDirectionInfos;
+    WritingDirectionInfos& rInfos = pParaPortion->getWritingDirectionInfos();
     rInfos.clear();
 
     if (pParaPortion->GetNode()->Len() && !mbFuzzing)
@@ -2058,10 +2040,10 @@ sal_uInt8 ImpEditEngine::GetRightToLeft( sal_Int32 nPara, sal_Int32 nPos, sal_In
         ParaPortion* pParaPortion = GetParaPortions().SafeGetObject( nPara );
         if (pParaPortion)
         {
-            if ( pParaPortion->aWritingDirectionInfos.empty() )
+            WritingDirectionInfos& rDirInfos = pParaPortion->getWritingDirectionInfos();
+            if (rDirInfos.empty())
                 InitWritingDirections( nPara );
 
-            WritingDirectionInfos& rDirInfos = pParaPortion->aWritingDirectionInfos;
             for (const WritingDirectionInfo & rDirInfo : rDirInfos)
             {
                 if ( ( rDirInfo.nStartPos <= nPos ) && ( rDirInfo.nEndPos >= nPos ) )
@@ -2101,13 +2083,28 @@ SvxAdjust ImpEditEngine::GetJustification( sal_Int32 nPara ) const
 SvxCellJustifyMethod ImpEditEngine::GetJustifyMethod( sal_Int32 nPara ) const
 {
     const SvxJustifyMethodItem& rItem = GetParaAttrib(nPara, EE_PARA_JUST_METHOD);
-    return static_cast<SvxCellJustifyMethod>(rItem.GetEnumValue());
+    return rItem.GetValue();
 }
 
 SvxCellVerJustify ImpEditEngine::GetVerJustification( sal_Int32 nPara ) const
 {
     const SvxVerJustifyItem& rItem = GetParaAttrib(nPara, EE_PARA_VER_JUST);
-    return static_cast<SvxCellVerJustify>(rItem.GetEnumValue());
+    return rItem.GetValue();
+}
+
+SvxFontUnitMetrics ImpEditEngine::GetFontUnitMetrics(ContentNode* pNode)
+{
+    SvxFont aTmpFont{ pNode->GetCharAttribs().GetDefFont() };
+    SeekCursor(pNode, /*index*/ 1, aTmpFont);
+    aTmpFont.SetPhysFont(*GetRefDevice());
+
+    // tdf#36709: Metrics conversion should use em and ic values from the bound fonts.
+    // Unfortunately, this currently poses a problem due to font substitution: tests
+    // abort when a missing font is set on a device.
+    // In the interim, use height for all metrics. This is technically not correct, but
+    // should be close enough for common fonts.
+    auto dTextLineHeight = static_cast<double>(aTmpFont.GetPhysTxtSize(GetRefDevice()).Height());
+    return SvxFontUnitMetrics{ /*em*/ dTextLineHeight, /*ic*/ dTextLineHeight };
 }
 
 //  Text changes
@@ -2132,7 +2129,7 @@ void ImpEditEngine::ImpRemoveChars( const EditPaM& rPaM, sal_Int32 nChars )
                 break;  // for
             }
         }
-        InsertUndo(std::make_unique<EditUndoRemoveChars>(pEditEngine, CreateEPaM(rPaM), aStr));
+        InsertUndo(std::make_unique<EditUndoRemoveChars>(mpEditEngine, CreateEPaM(rPaM), aStr));
     }
 
     maEditDoc.RemoveChars( rPaM, nChars );
@@ -2164,68 +2161,83 @@ EditSelection ImpEditEngine::ImpMoveParagraphs( Range aOldPositions, sal_Int32 n
     ParaPortion* pRecalc3 = nullptr;
     ParaPortion* pRecalc4 = nullptr;
 
-    if ( nNewPos == 0 ) // Move to Start
+    if (nNewPos == 0) // Move to Start
     {
-        pRecalc1 = GetParaPortions()[0];
-        pRecalc2 = GetParaPortions()[aOldPositions.Min()];
+        if (GetParaPortions().exists(0))
+            pRecalc1 = &GetParaPortions().getRef(0);
+        if (GetParaPortions().exists(aOldPositions.Min()))
+            pRecalc2 = &GetParaPortions().getRef(aOldPositions.Min());
 
     }
-    else if ( nNewPos == nParaCount )
+    else if (nNewPos == nParaCount)
     {
-        pRecalc1 = GetParaPortions()[nParaCount-1];
-        pRecalc2 = GetParaPortions()[aOldPositions.Max()];
+        if (GetParaPortions().exists(nParaCount - 1))
+            pRecalc1 = &GetParaPortions().getRef(nParaCount - 1);
+        if (GetParaPortions().exists(aOldPositions.Max()))
+            pRecalc2 = &GetParaPortions().getRef(aOldPositions.Max());
     }
 
-    if ( aOldPositions.Min() == 0 ) // Move from Start
+    if (aOldPositions.Min() == 0) // Move from Start
     {
-        pRecalc3 = GetParaPortions()[0];
-        pRecalc4 = GetParaPortions()[aOldPositions.Max()+1];
+        if (GetParaPortions().exists(0))
+            pRecalc3 = &GetParaPortions().getRef(0);
+        if (GetParaPortions().exists(aOldPositions.Max() + 1))
+            pRecalc4 = &GetParaPortions().getRef(aOldPositions.Max() + 1);
     }
-    else if ( aOldPositions.Max() == (nParaCount-1) )
+    else if (aOldPositions.Max() == nParaCount - 1)
     {
-        pRecalc3 = GetParaPortions()[aOldPositions.Max()];
-        pRecalc4 = GetParaPortions()[aOldPositions.Min()-1];
+        if (GetParaPortions().exists(aOldPositions.Max()))
+            pRecalc3 = &GetParaPortions().getRef(aOldPositions.Max());
+        if (GetParaPortions().exists(aOldPositions.Min() - 1))
+            pRecalc4 = &GetParaPortions().getRef(aOldPositions.Min() - 1);
     }
 
     MoveParagraphsInfo aMoveParagraphsInfo( aOldPositions.Min(), aOldPositions.Max(), nNewPos );
-    aBeginMovingParagraphsHdl.Call( aMoveParagraphsInfo );
+    maBeginMovingParagraphsHdl.Call( aMoveParagraphsInfo );
 
     if ( IsUndoEnabled() && !IsInUndo())
-        InsertUndo(std::make_unique<EditUndoMoveParagraphs>(pEditEngine, aOldPositions, nNewPos));
+        InsertUndo(std::make_unique<EditUndoMoveParagraphs>(mpEditEngine, aOldPositions, nNewPos));
 
     // do not lose sight of the Position !
     ParaPortion* pDestPortion = GetParaPortions().SafeGetObject( nNewPos );
 
-    ParaPortionList aTmpPortionList;
+    // Temporary containers used for moving the paragraph portions and content nodes to a new location
+    std::vector<std::unique_ptr<ParaPortion>> aParagraphPortionVector;
+    std::vector<std::unique_ptr<ContentNode>> aContentNodeVector;
+
+    // Take the paragraph portions and content nodes out of its containers
     for (tools::Long i = aOldPositions.Min(); i <= aOldPositions.Max(); i++  )
     {
-        // always aOldPositions.Min(), since Remove().
-        std::unique_ptr<ParaPortion> pTmpPortion = GetParaPortions().Release(aOldPositions.Min());
-        maEditDoc.Release( aOldPositions.Min() );
-        aTmpPortionList.Append(std::move(pTmpPortion));
+        // always aOldPositions.Min() as the index, since we remove and the elements from the containers and the
+        // other elements shift to the left.
+        std::unique_ptr<ParaPortion> pPortion = GetParaPortions().Release(aOldPositions.Min());
+        aParagraphPortionVector.push_back(std::move(pPortion));
+
+        std::unique_ptr<ContentNode> pContentNode = maEditDoc.Release(aOldPositions.Min());
+        aContentNodeVector.push_back(std::move(pContentNode));
     }
 
+    // Determine the new location for paragraphs
     sal_Int32 nRealNewPos = pDestPortion ? GetParaPortions().GetPos( pDestPortion ) : GetParaPortions().Count();
-    assert( nRealNewPos != EE_PARA_NOT_FOUND && "ImpMoveParagraphs: Invalid Position!" );
+    assert(nRealNewPos != EE_PARA_MAX && "ImpMoveParagraphs: Invalid Position!");
 
+    // Add the paragraph portions and content nodes to a new position
     sal_Int32 i = 0;
-    while( aTmpPortionList.Count() > 0 )
+    for (auto& pPortion : aParagraphPortionVector)
     {
-        std::unique_ptr<ParaPortion> pTmpPortion = aTmpPortionList.Release(0);
-        if ( i == 0 )
-            aSelection.Min().SetNode( pTmpPortion->GetNode() );
+        if (i == 0)
+            aSelection.Min().SetNode(pPortion->GetNode());
+        aSelection.Max().SetNode(pPortion->GetNode());
+        aSelection.Max().SetIndex(pPortion->GetNode()->Len());
 
-        aSelection.Max().SetNode( pTmpPortion->GetNode() );
-        aSelection.Max().SetIndex( pTmpPortion->GetNode()->Len() );
+        maEditDoc.Insert(nRealNewPos + i, std::move(aContentNodeVector[i]));
+        GetParaPortions().Insert(nRealNewPos + i, std::move(pPortion));
 
-        ContentNode* pN = pTmpPortion->GetNode();
-        maEditDoc.Insert(nRealNewPos+i, pN);
-
-        GetParaPortions().Insert(nRealNewPos+i, std::move(pTmpPortion));
         ++i;
     }
 
-    aEndMovingParagraphsHdl.Call( aMoveParagraphsInfo );
+    // Signal end of paragraph moving
+    maEndMovingParagraphsHdl.Call( aMoveParagraphsInfo );
 
     if ( GetNotifyHdl().IsSet() )
     {
@@ -2238,14 +2250,14 @@ EditSelection ImpEditEngine::ImpMoveParagraphs( Range aOldPositions, sal_Int32 n
 
     maEditDoc.SetModified( true );
 
-    if ( pRecalc1 )
-        CalcHeight( pRecalc1 );
-    if ( pRecalc2 )
-        CalcHeight( pRecalc2 );
-    if ( pRecalc3 )
-        CalcHeight( pRecalc3 );
-    if ( pRecalc4 )
-        CalcHeight( pRecalc4 );
+    if (pRecalc1)
+        CalcHeight(*pRecalc1);
+    if (pRecalc2)
+        CalcHeight(*pRecalc2);
+    if (pRecalc3)
+        CalcHeight(*pRecalc3);
+    if (pRecalc4)
+        CalcHeight(*pRecalc4);
 
 #if OSL_DEBUG_LEVEL > 0 && !defined NDEBUG
     ParaPortionList::DbgCheck(GetParaPortions(), maEditDoc);
@@ -2254,11 +2266,12 @@ EditSelection ImpEditEngine::ImpMoveParagraphs( Range aOldPositions, sal_Int32 n
 }
 
 
-EditPaM ImpEditEngine::ImpConnectParagraphs( ContentNode* pLeft, ContentNode* pRight, bool bBackward )
+EditPaM ImpEditEngine::ImpConnectParagraphs(ContentNode* pLeft, ContentNode* pRight,
+        bool bBackward, bool const isUpdateCursors)
 {
     OSL_ENSURE( pLeft != pRight, "Join together the same paragraph ?" );
-    OSL_ENSURE( maEditDoc.GetPos( pLeft ) != EE_PARA_NOT_FOUND, "Inserted node not found (1)" );
-    OSL_ENSURE( maEditDoc.GetPos( pRight ) != EE_PARA_NOT_FOUND, "Inserted node not found (2)" );
+    OSL_ENSURE(maEditDoc.GetPos(pLeft) != EE_PARA_MAX, "Inserted node not found (1)");
+    OSL_ENSURE(maEditDoc.GetPos(pRight) != EE_PARA_MAX, "Inserted node not found (2)");
 
     // #i120020# it is possible that left and right are *not* in the desired order (left/right)
     // so correct it. This correction is needed, else an invalid SfxLinkUndoAction will be
@@ -2271,13 +2284,14 @@ EditPaM ImpEditEngine::ImpConnectParagraphs( ContentNode* pLeft, ContentNode* pR
     }
 
     sal_Int32 nParagraphTobeDeleted = maEditDoc.GetPos( pRight );
-    aDeletedNodes.push_back(std::make_unique<DeletedNodeInfo>( pRight, nParagraphTobeDeleted ));
+    maDeletedNodes.push_back(std::make_unique<DeletedNodeInfo>( pRight, nParagraphTobeDeleted ));
+    ESelection const deleted{nParagraphTobeDeleted - 1, pLeft->Len(), nParagraphTobeDeleted, 0};
 
     GetEditEnginePtr()->ParagraphConnected( maEditDoc.GetPos( pLeft ), maEditDoc.GetPos( pRight ) );
 
     if ( IsUndoEnabled() && !IsInUndo() )
     {
-        InsertUndo( std::make_unique<EditUndoConnectParas>(pEditEngine,
+        InsertUndo( std::make_unique<EditUndoConnectParas>(mpEditEngine,
             maEditDoc.GetPos( pLeft ), pLeft->Len(),
             pLeft->GetContentAttribs().GetItems(), pRight->GetContentAttribs().GetItems(),
             pLeft->GetStyleSheet(), pRight->GetStyleSheet(), bBackward ) );
@@ -2333,10 +2347,15 @@ EditPaM ImpEditEngine::ImpConnectParagraphs( ContentNode* pLeft, ContentNode* pR
         // the change of the total text height too late...
         for ( sal_Int32 n = nParagraphTobeDeleted; n < GetParaPortions().Count(); n++ )
         {
-            ParaPortion* pPP = GetParaPortions()[n];
-            pPP->MarkSelectionInvalid( 0 );
-            pPP->GetLines().Reset();
+            ParaPortion& rParaPortion = GetParaPortions().getRef(n);
+            rParaPortion.MarkSelectionInvalid(0);
+            rParaPortion.GetLines().Reset();
         }
+    }
+
+    if (isUpdateCursors)
+    {
+        UpdateSelectionsDelete(deleted);
     }
 
     TextModified();
@@ -2440,6 +2459,7 @@ EditPaM ImpEditEngine::ImpDeleteSelection(const EditSelection& rCurSel)
     if ( !rCurSel.HasRange() )
         return rCurSel.Min();
 
+    ESelection const deleted{CreateESel(rCurSel)};
     EditSelection aCurSel(rCurSel);
     aCurSel.Adjust( maEditDoc );
     EditPaM aStartPaM(aCurSel.Min());
@@ -2456,8 +2476,8 @@ EditPaM ImpEditEngine::ImpDeleteSelection(const EditSelection& rCurSel)
     sal_Int32 nStartNode = maEditDoc.GetPos( aStartPaM.GetNode() );
     sal_Int32 nEndNode = maEditDoc.GetPos( aEndPaM.GetNode() );
 
-    OSL_ENSURE( nEndNode != EE_PARA_NOT_FOUND, "Start > End ?!" );
-    OSL_ENSURE( nStartNode <= nEndNode, "Start > End ?!" );
+    assert(nEndNode != EE_PARA_MAX && "Start > End ?!");
+    assert( nStartNode <= nEndNode && "Start > End ?!" );
 
     // Remove all nodes in between...
     for ( sal_Int32 z = nStartNode+1; z < nEndNode; z++ )
@@ -2482,7 +2502,7 @@ EditPaM ImpEditEngine::ImpDeleteSelection(const EditSelection& rCurSel)
         assert(pPortion);
         pPortion->MarkSelectionInvalid( 0 );
         // Join together...
-        aStartPaM = ImpConnectParagraphs( aStartPaM.GetNode(), aEndPaM.GetNode() );
+        aStartPaM = ImpConnectParagraphs(aStartPaM.GetNode(), aEndPaM.GetNode(), false, false);
     }
     else
     {
@@ -2492,22 +2512,48 @@ EditPaM ImpEditEngine::ImpDeleteSelection(const EditSelection& rCurSel)
         pPortion->MarkInvalid( aEndPaM.GetIndex(), aStartPaM.GetIndex() - aEndPaM.GetIndex() );
     }
 
+    UpdateSelectionsDelete(deleted);
     UpdateSelections();
     TextModified();
     return aStartPaM;
 }
 
+void ImpEditEngine::RemoveParagraph( sal_Int32 nPara )
+{
+    DBG_ASSERT(maEditDoc.Count() > 1, "The first paragraph should not be deleted!");
+    if (maEditDoc.Count() <= 1)
+        return;
+
+    ContentNode* pNode = maEditDoc.GetObject(nPara);
+    const ParaPortion* pPortion = maParaPortionList.SafeGetObject(nPara);
+    DBG_ASSERT( pPortion && pNode, "Paragraph not found: RemoveParagraph" );
+    if ( pNode && pPortion )
+    {
+        // No Undo encapsulation needed.
+        auto const len{pNode->Len()};
+        ImpRemoveParagraph(nPara);
+        InvalidateFromParagraph(nPara);
+        ESelection const deleted{nPara == 0 ? nPara : nPara - 1,
+            nPara == 0 ? 0 : maEditDoc.GetObject(nPara-1)->Len(),
+            nPara, len};
+        UpdateSelectionsDelete(deleted);
+        UpdateSelections();
+        if (IsUpdateLayout())
+            FormatAndLayout();
+    }
+}
+
 void ImpEditEngine::ImpRemoveParagraph( sal_Int32 nPara )
 {
-    ContentNode* pNode = maEditDoc.GetObject( nPara );
+    assert(maEditDoc.GetObject(nPara));
+
     ContentNode* pNextNode = maEditDoc.GetObject( nPara+1 );
 
-    assert(pNode);
-
-    aDeletedNodes.push_back(std::make_unique<DeletedNodeInfo>( pNode, nPara ));
+    std::unique_ptr<ContentNode> pNode = maEditDoc.Release(nPara);
+    maDeletedNodes.push_back(std::make_unique<DeletedNodeInfo>(pNode.get(), nPara));
 
     // The node is managed by the undo and possibly destroyed!
-    maEditDoc.Release( nPara );
+
     GetParaPortions().Remove( nPara );
 
     if ( IsCallParaInsertedOrDeleted() )
@@ -2521,13 +2567,15 @@ void ImpEditEngine::ImpRemoveParagraph( sal_Int32 nPara )
     if ( pNextNode )
         ParaAttribsChanged( pNextNode );
 
-    if ( IsUndoEnabled() && !IsInUndo() )
-        InsertUndo(std::make_unique<EditUndoDelContent>(pEditEngine, pNode, nPara));
+    if (IsUndoEnabled() && !IsInUndo())
+    {
+        InsertUndo(std::make_unique<EditUndoDelContent>(mpEditEngine, std::move(pNode), nPara));
+    }
     else
     {
         if ( pNode->GetStyleSheet() )
-            EndListening( *pNode->GetStyleSheet() );
-        delete pNode;
+            EndListening(*pNode->GetStyleSheet());
+        pNode.reset();
     }
 }
 
@@ -2558,7 +2606,7 @@ EditPaM ImpEditEngine::AutoCorrect( const EditSelection& rCurSel, sal_Unicode c,
             ESelection aESel( CreateESel(aSel) );
             EditSelection aFirstWordSel;
             EditSelection aSecondWordSel;
-            if (aESel.nEndPara == 0)    // is this the first para?
+            if (aESel.end.nPara == 0)    // is this the first para?
             {
                 // select first word...
                 // start by checking if para starts with word.
@@ -2578,7 +2626,7 @@ EditPaM ImpEditEngine::AutoCorrect( const EditSelection& rCurSel, sal_Unicode c,
                 EditPaM aRight2Word( WordRight( aFirstWordSel.Max() ) );
                 aSecondWordSel = SelectWord( EditSelection( aRight2Word ) );
             }
-            bool bIsFirstWordInFirstPara = aESel.nEndPara == 0 &&
+            bool bIsFirstWordInFirstPara = aESel.end.nPara == 0 &&
                     aFirstWordSel.Max().GetIndex() <= aSel.Max().GetIndex() &&
                     aSel.Max().GetIndex() <= aSecondWordSel.Min().GetIndex();
 
@@ -2588,7 +2636,7 @@ EditPaM ImpEditEngine::AutoCorrect( const EditSelection& rCurSel, sal_Unicode c,
 
         ContentNode* pNode = aSel.Max().GetNode();
         const sal_Int32 nIndex = aSel.Max().GetIndex();
-        EdtAutoCorrDoc aAuto(pEditEngine, pNode, nIndex, c);
+        EdtAutoCorrDoc aAuto(mpEditEngine, pNode, nIndex, c);
         // FIXME: this _must_ be called with reference to the actual node text!
         OUString const& rNodeString(pNode->GetString());
         pAutoCorrect->DoAutoCorrect(
@@ -2685,7 +2733,7 @@ EditPaM ImpEditEngine::InsertTextUserInput( const EditSelection& rCurSel,
 
         if ( IsUndoEnabled() && !IsInUndo() )
         {
-            std::unique_ptr<EditUndoInsertChars> pNewUndo(new EditUndoInsertChars(pEditEngine, CreateEPaM(aPaM), OUString(c)));
+            std::unique_ptr<EditUndoInsertChars> pNewUndo(new EditUndoInsertChars(mpEditEngine, CreateEPaM(aPaM), OUString(c)));
             bool bTryMerge = !bDoOverwrite && ( c != ' ' );
             InsertUndo( std::move(pNewUndo), bTryMerge );
         }
@@ -2723,7 +2771,7 @@ EditPaM ImpEditEngine::ImpInsertText(const EditSelection& aCurSel, const OUStrin
     // #i107201# do the expensive SelectWord call only if online spelling is active
     EditSelection aCurWord;
     if ( GetStatus().DoOnlineSpelling() )
-        aCurWord = SelectWord( aCurPaM, i18n::WordType::DICTIONARY_WORD );
+        aCurWord = SelectWord( EditSelection(aCurPaM), i18n::WordType::DICTIONARY_WORD );
 
     OUString aText(convertLineEnd(rStr, LINEEND_LF));
     if (mbFuzzing)    //tab expansion performance in editeng is appalling
@@ -2805,7 +2853,7 @@ EditPaM ImpEditEngine::ImpInsertText(const EditSelection& aCurSel, const OUStrin
                 aLine = aLine.copy( 0, nMaxNewChars );  // Delete the Rest...
             }
             if ( IsUndoEnabled() && !IsInUndo() )
-                InsertUndo(std::make_unique<EditUndoInsertChars>(pEditEngine, CreateEPaM(aPaM), aLine));
+                InsertUndo(std::make_unique<EditUndoInsertChars>(mpEditEngine, CreateEPaM(aPaM), aLine));
             // Tabs ?
             if ( aLine.indexOf( '\t' ) == -1 )
                 aPaM = maEditDoc.InsertText( aPaM, aLine );
@@ -2819,7 +2867,7 @@ EditPaM ImpEditEngine::ImpInsertText(const EditSelection& aCurSel, const OUStrin
                         nEnd2 = aLine.getLength();    // not dereference!
 
                     if ( nEnd2 > nStart2 )
-                        aPaM = maEditDoc.InsertText( aPaM, aLine.subView( nStart2, nEnd2-nStart2 ) );
+                        aPaM = maEditDoc.InsertText( aPaM, aLine.copy( nStart2, nEnd2-nStart2 ) );
                     if ( nEnd2 < aLine.getLength() )
                     {
                         aPaM = maEditDoc.InsertFeature( aPaM, aTabItem );
@@ -2850,6 +2898,10 @@ EditPaM ImpEditEngine::ImpInsertText(const EditSelection& aCurSel, const OUStrin
 
     UndoActionEnd();
 
+    ESelection inserted{CreateEPaM(aCurPaM)};
+    inserted.end = CreateEPaM(aPaM);
+    UpdateSelectionsInsert(inserted);
+
     TextModified();
     return aPaM;
 }
@@ -2863,14 +2915,14 @@ EditPaM ImpEditEngine::ImpFastInsertText( EditPaM aPaM, const OUString& rStr )
     if ( ( aPaM.GetNode()->Len() + rStr.getLength() ) < MAXCHARSINPARA )
     {
         if ( IsUndoEnabled() && !IsInUndo() )
-            InsertUndo(std::make_unique<EditUndoInsertChars>(pEditEngine, CreateEPaM(aPaM), rStr));
+            InsertUndo(std::make_unique<EditUndoInsertChars>(mpEditEngine, CreateEPaM(aPaM), rStr));
 
         aPaM = maEditDoc.InsertText( aPaM, rStr );
         TextModified();
     }
     else
     {
-        aPaM = ImpInsertText( aPaM, rStr );
+        aPaM = ImpInsertText( EditSelection(aPaM), rStr );
     }
 
     return aPaM;
@@ -2888,13 +2940,17 @@ EditPaM ImpEditEngine::ImpInsertFeature(const EditSelection& rCurSel, const SfxP
         return aPaM;
 
     if ( IsUndoEnabled() && !IsInUndo() )
-        InsertUndo(std::make_unique<EditUndoInsertFeature>(pEditEngine, CreateEPaM(aPaM), rItem));
+        InsertUndo(std::make_unique<EditUndoInsertFeature>(mpEditEngine, CreateEPaM(aPaM), rItem));
     aPaM = maEditDoc.InsertFeature( aPaM, rItem );
     UpdateFields();
 
     ParaPortion* pPortion = FindParaPortion( aPaM.GetNode() );
     assert(pPortion);
     pPortion->MarkInvalid( aPaM.GetIndex()-1, 1 );
+
+    ESelection inserted{CreateEPaM(rCurSel.Min())};
+    inserted.end = CreateEPaM(aPaM);
+    UpdateSelectionsInsert(inserted);
 
     TextModified();
 
@@ -2914,15 +2970,15 @@ EditPaM ImpEditEngine::ImpInsertParaBreak( const EditSelection& rCurSel )
 
 EditPaM ImpEditEngine::ImpInsertParaBreak( EditPaM& rPaM, bool bKeepEndingAttribs )
 {
-    if ( maEditDoc.Count() >= EE_PARA_MAX_COUNT )
+    if (maEditDoc.Count() >= EE_PARA_MAX)
     {
         SAL_WARN( "editeng", "ImpEditEngine::ImpInsertParaBreak - can't process more than "
-                << EE_PARA_MAX_COUNT << " paragraphs!");
+                << EE_PARA_MAX << " paragraphs!");
         return rPaM;
     }
 
     if ( IsUndoEnabled() && !IsInUndo() )
-        InsertUndo(std::make_unique<EditUndoSplitPara>(pEditEngine, maEditDoc.GetPos(rPaM.GetNode()), rPaM.GetIndex()));
+        InsertUndo(std::make_unique<EditUndoSplitPara>(mpEditEngine, maEditDoc.GetPos(rPaM.GetNode()), rPaM.GetIndex()));
 
     EditPaM aPaM( maEditDoc.InsertParaBreak( rPaM, bKeepEndingAttribs ) );
     if (auto pStyle = aPaM.GetNode()->GetStyleSheet())
@@ -2965,6 +3021,7 @@ EditPaM ImpEditEngine::ImpInsertParaBreak( EditPaM& rPaM, bool bKeepEndingAttrib
     // Optimization: Do not place unnecessarily many getPos to Listen!
     // Here, as in undo, but also in all other methods.
     sal_Int32 nPos = GetParaPortions().GetPos( pPortion );
+    assert(nPos != EE_PARA_MAX);
     ParaPortion* pNewPortion = new ParaPortion( aPaM.GetNode() );
     GetParaPortions().Insert(nPos+1, std::unique_ptr<ParaPortion>(pNewPortion));
     ParaAttribsChanged( pNewPortion->GetNode() );
@@ -2973,6 +3030,10 @@ EditPaM ImpEditEngine::ImpInsertParaBreak( EditPaM& rPaM, bool bKeepEndingAttrib
 
     if( nullptr != rPaM.GetNode() )
         rPaM.GetNode()->checkAndDeleteEmptyAttribs(); // if empty Attributes have emerged.
+
+    ESelection inserted{CreateEPaM(rPaM)};
+    inserted.end = CreateEPaM(aPaM);
+    UpdateSelectionsInsert(inserted);
 
     TextModified();
     return aPaM;
@@ -2985,10 +3046,10 @@ EditPaM ImpEditEngine::ImpFastInsertParagraph( sal_Int32 nPara )
         if ( nPara )
         {
             assert(maEditDoc.GetObject(nPara - 1));
-            InsertUndo(std::make_unique<EditUndoSplitPara>(pEditEngine, nPara-1, maEditDoc.GetObject( nPara-1 )->Len()));
+            InsertUndo(std::make_unique<EditUndoSplitPara>(mpEditEngine, nPara-1, maEditDoc.GetObject(nPara - 1)->Len()));
         }
         else
-            InsertUndo(std::make_unique<EditUndoSplitPara>(pEditEngine, 0, 0));
+            InsertUndo(std::make_unique<EditUndoSplitPara>(mpEditEngine, 0, 0));
     }
 
     ContentNode* pNode = new ContentNode( maEditDoc.GetItemPool() );
@@ -2998,7 +3059,7 @@ EditPaM ImpEditEngine::ImpFastInsertParagraph( sal_Int32 nPara )
     if ( GetStatus().DoOnlineSpelling() )
         pNode->CreateWrongList();
 
-    maEditDoc.Insert(nPara, pNode);
+    maEditDoc.Insert(nPara, std::unique_ptr<ContentNode>(pNode));
 
     GetParaPortions().Insert(nPara, std::make_unique<ParaPortion>( pNode ));
     if ( IsCallParaInsertedOrDeleted() )
@@ -3020,9 +3081,9 @@ EditPaM ImpEditEngine::InsertParaBreak(const EditSelection& rCurSel)
                 ( ( aPrevParaText[n] == ' ' ) || ( aPrevParaText[n] == '\t' ) ) )
         {
             if ( aPrevParaText[n] == '\t' )
-                aPaM = ImpInsertFeature( aPaM, SfxVoidItem( EE_FEATURE_TAB ) );
+                aPaM = ImpInsertFeature( EditSelection(aPaM), SfxVoidItem( EE_FEATURE_TAB ) );
             else
-                aPaM = ImpInsertText( aPaM, OUString(aPrevParaText[n]) );
+                aPaM = ImpInsertText( EditSelection(aPaM), OUString(aPrevParaText[n]) );
             n++;
         }
 
@@ -3092,9 +3153,9 @@ bool ImpEditEngine::UpdateFields()
         if ( bChangesInPara )
         {
             // If possible be more precise when invalidate.
-            ParaPortion* pPortion = GetParaPortions()[nPara];
-            assert(pPortion);
-            pPortion->MarkSelectionInvalid( 0 );
+            assert(GetParaPortions().exists(nPara));
+            ParaPortion& rPortion = GetParaPortions().getRef(nPara);
+            rPortion.MarkSelectionInvalid( 0 );
         }
     }
     return bChanges;
@@ -3109,45 +3170,43 @@ EditPaM ImpEditEngine::InsertLineBreak(const EditSelection& aCurSel)
 
 //  Helper functions
 
-tools::Rectangle ImpEditEngine::GetEditCursor(const ParaPortion* pPortion, const EditLine* pLine,
-                                              sal_Int32 nIndex, GetCursorFlags nFlags)
+tools::Rectangle ImpEditEngine::GetEditCursor(ParaPortion const& rPortion, EditLine const& rLine,
+                                              sal_Int32 nIndex, CursorFlags aFlags)
 {
-    assert(pPortion && pLine);
     // nIndex might be not in the line
     // Search within the line...
     tools::Long nX;
 
-    if ((nIndex == pLine->GetStart()) && (nFlags & GetCursorFlags::StartOfLine))
+    if (nIndex == rLine.GetStart() && aFlags.bStartOfLine)
     {
-        Range aXRange = GetLineXPosStartEnd(pPortion, pLine);
-        nX = !IsRightToLeft(GetEditDoc().GetPos(pPortion->GetNode())) ? aXRange.Min()
+        Range aXRange = GetLineXPosStartEnd(rPortion, rLine);
+        nX = !IsRightToLeft(GetEditDoc().GetPos(rPortion.GetNode())) ? aXRange.Min()
                                                                       : aXRange.Max();
     }
-    else if ((nIndex == pLine->GetEnd()) && (nFlags & GetCursorFlags::EndOfLine))
+    else if (nIndex == rLine.GetEnd() && aFlags.bEndOfLine)
     {
-        Range aXRange = GetLineXPosStartEnd(pPortion, pLine);
-        nX = !IsRightToLeft(GetEditDoc().GetPos(pPortion->GetNode())) ? aXRange.Max()
+        Range aXRange = GetLineXPosStartEnd(rPortion, rLine);
+        nX = !IsRightToLeft(GetEditDoc().GetPos(rPortion.GetNode())) ? aXRange.Max()
                                                                       : aXRange.Min();
     }
     else
     {
-        nX = GetXPos(pPortion, pLine, nIndex, bool(nFlags & GetCursorFlags::PreferPortionStart));
+        nX = GetXPos(rPortion, rLine, nIndex, aFlags.bPreferPortionStart);
     }
 
     tools::Rectangle aEditCursor;
     aEditCursor.SetLeft(nX);
     aEditCursor.SetRight(nX);
 
-    aEditCursor.SetBottom(pLine->GetHeight() - 1);
-    if (nFlags & GetCursorFlags::TextOnly)
-        aEditCursor.SetTop(aEditCursor.Bottom() - pLine->GetTxtHeight() + 1);
+    aEditCursor.SetBottom(rLine.GetHeight() - 1);
+    if (aFlags.bTextOnly)
+        aEditCursor.SetTop(aEditCursor.Bottom() - rLine.GetTxtHeight() + 1);
     else
-        aEditCursor.SetTop(aEditCursor.Bottom()
-                           - std::min(pLine->GetTxtHeight(), pLine->GetHeight()) + 1);
+        aEditCursor.SetTop(aEditCursor.Bottom() - std::min(rLine.GetTxtHeight(), rLine.GetHeight()) + 1);
     return aEditCursor;
 }
 
-tools::Rectangle ImpEditEngine::PaMtoEditCursor( EditPaM aPaM, GetCursorFlags nFlags )
+tools::Rectangle ImpEditEngine::PaMtoEditCursor( EditPaM aPaM, CursorFlags aFlags)
 {
     assert( IsUpdateLayout() && "Must not be reached when Update=FALSE: PaMtoEditCursor" );
 
@@ -3157,8 +3216,8 @@ tools::Rectangle ImpEditEngine::PaMtoEditCursor( EditPaM aPaM, GetCursorFlags nF
     const EditLine* pLastLine = nullptr;
     tools::Rectangle aLineArea;
 
-    auto FindPortionLineAndArea
-        = [&, bEOL(bool(nFlags & GetCursorFlags::EndOfLine))](const LineAreaInfo& rInfo) {
+    auto FindPortionLineAndArea = [&, bEOL(aFlags.bEndOfLine)](const LineAreaInfo& rInfo)
+    {
         if (!rInfo.pLine) // start of ParaPortion
         {
             ContentNode* pNode = rInfo.rPortion.GetNode();
@@ -3178,9 +3237,9 @@ tools::Rectangle ImpEditEngine::PaMtoEditCursor( EditPaM aPaM, GetCursorFlags nF
     };
     IterateLineAreas(FindPortionLineAndArea, IterFlag::none);
 
-    if (pLastLine)
+    if (pLastLine && pPortion)
     {
-        aEditCursor = GetEditCursor(pPortion, pLastLine, nIndex, nFlags);
+        aEditCursor = GetEditCursor(*pPortion, *pLastLine, nIndex, aFlags);
         aEditCursor.Move(getTopLeftDocOffset(aLineArea));
     }
     else
@@ -3191,26 +3250,25 @@ tools::Rectangle ImpEditEngine::PaMtoEditCursor( EditPaM aPaM, GetCursorFlags nF
 
 void ImpEditEngine::IterateLineAreas(const IterateLinesAreasFunc& f, IterFlag eOptions)
 {
-    const Point aOrigin(0, 0);
-    Point aLineStart(aOrigin);
+    Point aLineStart(0, 0);
     const tools::Long nVertLineSpacing = CalcVertLineSpacing(aLineStart);
     const tools::Long nColumnWidth = GetColumnWidth(maPaperSize);
     sal_Int16 nColumn = 0;
     for (sal_Int32 n = 0, nPortions = GetParaPortions().Count(); n < nPortions; ++n)
     {
-        ParaPortion* pPortion = GetParaPortions()[n];
+        ParaPortion& rPortion = GetParaPortions().getRef(n);
         bool bSkipThis = true;
-        if (pPortion->IsVisible())
+        if (rPortion.IsVisible())
         {
             // when typing idle formatting, asynchronous Paint. Invisible Portions may be invalid.
-            if (pPortion->IsInvalid())
+            if (rPortion.IsInvalid())
                 return;
 
             LineAreaInfo aInfo{
-                *pPortion, // pPortion
+                rPortion,
                 nullptr, // pLine
                 0, // nHeightNeededToNotWrap
-                { aLineStart, Size{ nColumnWidth, pPortion->GetFirstLineOffset() } }, // aArea
+                { aLineStart, Size{ nColumnWidth, rPortion.GetFirstLineOffset() } }, // aArea
                 n, // nPortion
                 0, // nLine
                 nColumn // nColumn
@@ -3224,20 +3282,20 @@ void ImpEditEngine::IterateLineAreas(const IterateLinesAreasFunc& f, IterFlag eO
             if (!maStatus.IsOutliner())
             {
                 const SvxLineSpacingItem& rLSItem
-                    = pPortion->GetNode()->GetContentAttribs().GetItem(EE_PARA_SBL);
+                    = rPortion.GetNode()->GetContentAttribs().GetItem(EE_PARA_SBL);
                 nSBL = (rLSItem.GetInterLineSpaceRule() == SvxInterLineSpaceRule::Fix)
                            ? scaleYSpacingValue(rLSItem.GetInterLineSpace())
                            : 0;
             }
 
-            adjustYDirectionAware(aLineStart, pPortion->GetFirstLineOffset());
-            for (sal_Int32 nLine = 0, nLines = pPortion->GetLines().Count(); nLine < nLines; nLine++)
+            adjustYDirectionAware(aLineStart, rPortion.GetFirstLineOffset());
+            for (sal_Int32 nLine = 0, nLines = rPortion.GetLines().Count(); nLine < nLines; nLine++)
             {
-                EditLine& rLine = pPortion->GetLines()[nLine];
+                EditLine& rLine = rPortion.GetLines()[nLine];
                 tools::Long nLineHeight = rLine.GetHeight();
                 if (nLine != nLines - 1)
                     nLineHeight += nVertLineSpacing;
-                MoveToNextLine(aLineStart, nLineHeight, nColumn, aOrigin,
+                MoveToNextLine(aLineStart, nLineHeight, nColumn,
                                &aInfo.nHeightNeededToNotWrap);
                 const bool bInclILS = eOptions & IterFlag::inclILS;
                 if (bInclILS && (nLine != nLines - 1) && !maStatus.IsOutliner())
@@ -3268,8 +3326,7 @@ void ImpEditEngine::IterateLineAreas(const IterateLinesAreasFunc& f, IterFlag eO
             }
             if (!maStatus.IsOutliner())
             {
-                const SvxULSpaceItem& rULItem
-                    = pPortion->GetNode()->GetContentAttribs().GetItem(EE_PARA_ULSPACE);
+                const SvxULSpaceItem& rULItem = rPortion.GetNode()->GetContentAttribs().GetItem(EE_PARA_ULSPACE);
                 tools::Long nUL = scaleYSpacingValue(rULItem.GetLower());
                 adjustYDirectionAware(aLineStart, nUL);
             }
@@ -3320,10 +3377,11 @@ EditPaM ImpEditEngine::GetPaM( Point aDocPos, bool bSmart )
 {
     assert( IsUpdateLayout() && "Must not be reached when Update=FALSE: GetPaM" );
 
-    if (const auto& [pPortion, pLine, nLineStartX] = GetPortionAndLine(aDocPos); pPortion)
+    if (const auto [pPortion, pLine, nLineStartX] = GetPortionAndLine(aDocPos); pPortion)
     {
-        sal_Int32 nCurIndex
-            = GetChar(pPortion, pLine, aDocPos.X() - nLineStartX, bSmart);
+        assert(pLine);
+        assert(pPortion);
+        sal_Int32 nCurIndex = GetChar(*pPortion, *pLine, aDocPos.X() - nLineStartX, bSmart);
         EditPaM aPaM(pPortion->GetNode(), nCurIndex);
 
         if (nCurIndex && (nCurIndex == pLine->GetEnd())
@@ -3339,9 +3397,11 @@ EditPaM ImpEditEngine::GetPaM( Point aDocPos, bool bSmart )
 
 bool ImpEditEngine::IsTextPos(const Point& rDocPos, sal_uInt16 nBorder)
 {
-    if (const auto& [pPortion, pLine, nLineStartX] = GetPortionAndLine(rDocPos); pPortion)
+    if (const auto [pPortion, pLine, nLineStartX] = GetPortionAndLine(rDocPos); pPortion)
     {
-        Range aLineXPosStartEnd = GetLineXPosStartEnd(pPortion, pLine);
+        assert(pLine);
+        assert(pPortion);
+        Range aLineXPosStartEnd = GetLineXPosStartEnd(*pPortion, *pLine);
         if ((rDocPos.X() >= nLineStartX + aLineXPosStartEnd.Min() - nBorder)
             && (rDocPos.X() <= nLineStartX + aLineXPosStartEnd.Max() + nBorder))
             return true;
@@ -3353,7 +3413,7 @@ sal_uInt32 ImpEditEngine::GetTextHeight() const
 {
     assert( IsUpdateLayout() && "Should not be used for Update=FALSE: GetTextHeight" );
     OSL_ENSURE( IsFormatted() || IsFormatting(), "GetTextHeight: Not formatted" );
-    return nCurTextHeight;
+    return mnCurTextHeight;
 }
 
 sal_uInt32 ImpEditEngine::CalcTextWidth( bool bIgnoreExtraSpace )
@@ -3387,29 +3447,31 @@ sal_uInt32 ImpEditEngine::CalcParaWidth( sal_Int32 nPara, bool bIgnoreExtraSpace
 
     // Over all the paragraphs ...
 
-    OSL_ENSURE( 0 <= nPara && nPara < GetParaPortions().Count(), "CalcParaWidth: Out of range" );
-    ParaPortion* pPortion = GetParaPortions()[nPara];
+    OSL_ENSURE(GetParaPortions().exists(nPara), "CalcParaWidth: Out of range");
+    ParaPortion* pPortion = GetParaPortions().SafeGetObject(nPara);
     if ( pPortion && pPortion->IsVisible() )
     {
         const SvxLRSpaceItem& rLRItem = GetLRSpaceItem( pPortion->GetNode() );
         sal_Int32 nSpaceBeforeAndMinLabelWidth = GetSpaceBeforeAndMinLabelWidth( pPortion->GetNode() );
 
+        auto stMetrics = GetFontUnitMetrics(pPortion->GetNode());
 
         // On the lines of the paragraph ...
 
         sal_Int32 nLines = pPortion->GetLines().Count();
         for ( sal_Int32 nLine = 0; nLine < nLines; nLine++ )
         {
-            EditLine& rLine = pPortion->GetLines()[nLine];
+            EditLine const& rLine = pPortion->GetLines()[nLine];
             // nCurWidth = pLine->GetStartPosX();
             // For Center- or Right- alignment it depends on the paper
             // width, here not preferred. I general, it is best not leave it
             // to StartPosX, also the right indents have to be taken into
             // account!
-            tools::Long nCurWidth = scaleXSpacingValue(rLRItem.GetTextLeft() + nSpaceBeforeAndMinLabelWidth);
+            tools::Long nCurWidth
+                = scaleXSpacingValue(rLRItem.ResolveTextLeft({}) + nSpaceBeforeAndMinLabelWidth);
             if ( nLine == 0 )
             {
-                tools::Long nFI = scaleXSpacingValue(rLRItem.GetTextFirstLineOffset());
+                tools::Long nFI = scaleXSpacingValue(rLRItem.ResolveTextFirstLineOffset(stMetrics));
                 nCurWidth -= nFI;
                 if ( pPortion->GetBulletX() > nCurWidth )
                 {
@@ -3418,8 +3480,8 @@ sal_uInt32 ImpEditEngine::CalcParaWidth( sal_Int32 nPara, bool bIgnoreExtraSpace
                         nCurWidth = pPortion->GetBulletX();
                 }
             }
-            nCurWidth += scaleXSpacingValue(rLRItem.GetRight());
-            nCurWidth += CalcLineWidth( pPortion, &rLine, bIgnoreExtraSpace );
+            nCurWidth += scaleXSpacingValue(rLRItem.ResolveRight({}));
+            nCurWidth += CalcLineWidth(*pPortion, rLine, bIgnoreExtraSpace);
             if ( nCurWidth > nMaxWidth )
             {
                 nMaxWidth = nCurWidth;
@@ -3431,13 +3493,13 @@ sal_uInt32 ImpEditEngine::CalcParaWidth( sal_Int32 nPara, bool bIgnoreExtraSpace
     return static_cast<sal_uInt32>(nMaxWidth);
 }
 
-sal_uInt32 ImpEditEngine::CalcLineWidth( ParaPortion* pPortion, EditLine* pLine, bool bIgnoreExtraSpace )
+sal_uInt32 ImpEditEngine::CalcLineWidth(ParaPortion const& rPortion, EditLine const& rLine, bool bIgnoreExtraSpace)
 {
-    sal_Int32 nPara = GetEditDoc().GetPos( pPortion->GetNode() );
+    sal_Int32 nPara = GetEditDoc().GetPos(rPortion.GetNode());
 
     // #114278# Saving both layout mode and language (since I'm
     // potentially changing both)
-    GetRefDevice()->Push( vcl::PushFlags::TEXTLAYOUTMODE|vcl::PushFlags::TEXTLANGUAGE );
+    auto popIt = GetRefDevice()->ScopedPush(vcl::PushFlags::TEXTLAYOUTMODE | vcl::PushFlags::TEXTLANGUAGE);
 
     ImplInitLayoutMode(*GetRefDevice(), nPara, -1);
 
@@ -3445,10 +3507,10 @@ sal_uInt32 ImpEditEngine::CalcLineWidth( ParaPortion* pPortion, EditLine* pLine,
 
     // Calculation of the width without the Indents ...
     sal_uInt32 nWidth = 0;
-    sal_Int32 nPos = pLine->GetStart();
-    for ( sal_Int32 nTP = pLine->GetStartPortion(); nTP <= pLine->GetEndPortion(); nTP++ )
+    sal_Int32 nPos = rLine.GetStart();
+    for ( sal_Int32 nTP = rLine.GetStartPortion(); nTP <= rLine.GetEndPortion(); nTP++ )
     {
-        const TextPortion& rTextPortion = pPortion->GetTextPortions()[nTP];
+        const TextPortion& rTextPortion = rPortion.GetTextPortions()[nTP];
         switch ( rTextPortion.GetKind() )
         {
             case PortionKind::FIELD:
@@ -3466,12 +3528,12 @@ sal_uInt32 ImpEditEngine::CalcLineWidth( ParaPortion* pPortion, EditLine* pLine,
                 }
                 else
                 {
-                    SvxFont aTmpFont( pPortion->GetNode()->GetCharAttribs().GetDefFont() );
-                    SeekCursor( pPortion->GetNode(), nPos+1, aTmpFont );
+                    SvxFont aTmpFont(rPortion.GetNode()->GetCharAttribs().GetDefFont());
+                    SeekCursor(rPortion.GetNode(), nPos + 1, aTmpFont);
                     aTmpFont.SetPhysFont(*GetRefDevice());
                     ImplInitDigitMode(*GetRefDevice(), aTmpFont.GetLanguage());
                     nWidth += aTmpFont.QuickGetTextSize( GetRefDevice(),
-                        pPortion->GetNode()->GetString(), nPos, rTextPortion.GetLen(), nullptr ).Width();
+                        rPortion.GetNode()->GetString(), nPos, rTextPortion.GetLen(), nullptr ).Width();
                 }
             }
             break;
@@ -3480,34 +3542,20 @@ sal_uInt32 ImpEditEngine::CalcLineWidth( ParaPortion* pPortion, EditLine* pLine,
         nPos = nPos + rTextPortion.GetLen();
     }
 
-    GetRefDevice()->Pop();
-
     return nWidth;
 }
 
-sal_uInt32 ImpEditEngine::GetTextHeightNTP() const
-{
-    assert( IsUpdateLayout() && "Should not be used for Update=FALSE: GetTextHeight" );
-    DBG_ASSERT( IsFormatted() || IsFormatting(), "GetTextHeight: Not formatted" );
-    return nCurTextHeightNTP;
-}
-
-tools::Long ImpEditEngine::Calc1ColumnTextHeight(tools::Long* pHeightNTP)
+tools::Long ImpEditEngine::Calc1ColumnTextHeight()
 {
     tools::Long nHeight = 0;
-    if (pHeightNTP)
-        *pHeightNTP = 0;
     // Pretend that we have ~infinite height to get total height
-    comphelper::ValueRestorationGuard aGuard(nCurTextHeight,
-                                             std::numeric_limits<tools::Long>::max());
+    comphelper::ValueRestorationGuard aGuard(mnCurTextHeight, std::numeric_limits<tools::Long>::max());
 
     IterateLinesAreasFunc FindLastLineBottom = [&](const LineAreaInfo& rInfo) {
         if (rInfo.pLine)
         {
             // bottom coordinate does not belong to area, so no need to do +1
             nHeight = getBottomDocOffset(rInfo.aArea);
-            if (pHeightNTP && !rInfo.rPortion.IsEmpty())
-                *pHeightNTP = nHeight;
         }
         return CallbackResult::Continue;
     };
@@ -3515,12 +3563,12 @@ tools::Long ImpEditEngine::Calc1ColumnTextHeight(tools::Long* pHeightNTP)
     return nHeight;
 }
 
-tools::Long ImpEditEngine::CalcTextHeight(tools::Long* pHeightNTP)
+tools::Long ImpEditEngine::CalcTextHeight()
 {
     assert( IsUpdateLayout() && "Should not be used when Update=FALSE: CalcTextHeight" );
 
     if (mnColumns <= 1)
-        return Calc1ColumnTextHeight(pHeightNTP); // All text fits into a single column - done!
+        return Calc1ColumnTextHeight(); // All text fits into a single column - done!
 
     // The final column height can be smaller than total height divided by number of columns (taking
     // into account first line offset and interline spacing, that aren't considered in positioning
@@ -3530,7 +3578,7 @@ tools::Long ImpEditEngine::CalcTextHeight(tools::Long* pHeightNTP)
     tools::Long nCurrentTextHeight;
 
     // This does the necessary column balancing for the case when the text does not fit min height.
-    // When the height of column (taken from nCurTextHeight) is too small, the last column will
+    // When the height of column (taken from mnCurTextHeight) is too small, the last column will
     // overflow, so the resulting height of the text will exceed the set column height. Increasing
     // the column height step by step by the minimal value that allows one of columns to accommodate
     // one line more, we finally get to the point where all the text fits. At each iteration, the
@@ -3576,8 +3624,6 @@ tools::Long ImpEditEngine::CalcTextHeight(tools::Long* pHeightNTP)
         nTentativeColHeight += nWantedIncrease;
         nWantedIncrease = std::numeric_limits<tools::Long>::max();
         nCurrentTextHeight = 0;
-        if (pHeightNTP)
-            *pHeightNTP = 0;
         auto GetHeightAndWantedIncrease = [&, minHeight = tools::Long(0), lastCol = sal_Int16(0)](
                                               const LineAreaInfo& rInfo) mutable {
             if (rInfo.pLine)
@@ -3591,27 +3637,22 @@ tools::Long ImpEditEngine::CalcTextHeight(tools::Long* pHeightNTP)
                 }
                 // bottom coordinate does not belong to area, so no need to do +1
                 nCurrentTextHeight = std::max(getBottomDocOffset(rInfo.aArea), minHeight);
-                if (pHeightNTP)
-                {
-                    if (rInfo.rPortion.IsEmpty())
-                        *pHeightNTP = std::max(*pHeightNTP, minHeight);
-                    else
-                        *pHeightNTP = nCurrentTextHeight;
-                }
             }
             return CallbackResult::Continue;
         };
-        comphelper::ValueRestorationGuard aGuard(nCurTextHeight, nTentativeColHeight);
+        comphelper::ValueRestorationGuard aGuard(mnCurTextHeight, nTentativeColHeight);
         IterateLineAreas(GetHeightAndWantedIncrease, IterFlag::none);
     } while (nCurrentTextHeight > nTentativeColHeight && nWantedIncrease > 0
              && nWantedIncrease != std::numeric_limits<tools::Long>::max());
     return nCurrentTextHeight;
 }
 
-sal_Int32 ImpEditEngine::GetLineCount( sal_Int32 nParagraph ) const
+sal_Int32 ImpEditEngine::GetLineCount( sal_Int32 nParagraph )
 {
-    OSL_ENSURE( 0 <= nParagraph && nParagraph < GetParaPortions().Count(), "GetLineCount: Out of range" );
-    const ParaPortion* pPPortion = GetParaPortions().SafeGetObject( nParagraph );
+    if (!IsFormatted())
+        FormatDoc();
+    OSL_ENSURE(GetParaPortions().exists(nParagraph), "GetLineCount: Out of range");
+    const ParaPortion* pPPortion = GetParaPortions().SafeGetObject(nParagraph);
     OSL_ENSURE( pPPortion, "Paragraph not found: GetLineCount" );
     if ( pPPortion )
         return pPPortion->GetLines().Count();
@@ -3619,11 +3660,13 @@ sal_Int32 ImpEditEngine::GetLineCount( sal_Int32 nParagraph ) const
     return -1;
 }
 
-sal_Int32 ImpEditEngine::GetLineLen( sal_Int32 nParagraph, sal_Int32 nLine ) const
+sal_Int32 ImpEditEngine::GetLineLen( sal_Int32 nParagraph, sal_Int32 nLine )
 {
-    OSL_ENSURE( 0 <= nParagraph && nParagraph < GetParaPortions().Count(), "GetLineLen: Out of range" );
-    const ParaPortion* pPPortion = GetParaPortions().SafeGetObject( nParagraph );
-    OSL_ENSURE( pPPortion, "Paragraph not found: GetLineLen" );
+    if (!IsFormatted())
+        FormatDoc();
+    OSL_ENSURE(GetParaPortions().exists(nParagraph), "GetLineLen: Out of range");
+    const ParaPortion* pPPortion = GetParaPortions().SafeGetObject(nParagraph);
+    OSL_ENSURE(pPPortion, "Paragraph not found: GetLineLen");
     if ( pPPortion && ( nLine < pPPortion->GetLines().Count() ) )
     {
         const EditLine& rLine = pPPortion->GetLines()[nLine];
@@ -3633,9 +3676,11 @@ sal_Int32 ImpEditEngine::GetLineLen( sal_Int32 nParagraph, sal_Int32 nLine ) con
     return -1;
 }
 
-void ImpEditEngine::GetLineBoundaries( /*out*/sal_Int32 &rStart, /*out*/sal_Int32 &rEnd, sal_Int32 nParagraph, sal_Int32 nLine ) const
+void ImpEditEngine::GetLineBoundaries( /*out*/sal_Int32 &rStart, /*out*/sal_Int32 &rEnd, sal_Int32 nParagraph, sal_Int32 nLine )
 {
-    OSL_ENSURE( 0 <= nParagraph && nParagraph < GetParaPortions().Count(), "GetLineCount: Out of range" );
+    if (!IsFormatted())
+        FormatDoc();
+    OSL_ENSURE(GetParaPortions().exists(nParagraph), "GetLineCount: Out of range");
     const ParaPortion* pPPortion = GetParaPortions().SafeGetObject( nParagraph );
     OSL_ENSURE( pPPortion, "Paragraph not found: GetLineBoundaries" );
     rStart = rEnd = -1;     // default values in case of error
@@ -3647,28 +3692,38 @@ void ImpEditEngine::GetLineBoundaries( /*out*/sal_Int32 &rStart, /*out*/sal_Int3
     }
 }
 
-sal_Int32 ImpEditEngine::GetLineNumberAtIndex( sal_Int32 nPara, sal_Int32 nIndex ) const
+sal_Int32 ImpEditEngine::GetLineNumberAtIndex( sal_Int32 nPara, sal_Int32 nIndex )
 {
-    sal_Int32 nLineNo = -1;
+    if (!IsFormatted())
+        FormatDoc();
     const ContentNode* pNode = GetEditDoc().GetObject( nPara );
     OSL_ENSURE( pNode, "GetLineNumberAtIndex: invalid paragraph index" );
-    if (pNode)
+    if (!pNode)
+        return -1;
+    // we explicitly allow for the index to point at the character right behind the text
+    const bool bValidIndex = /*0 <= nIndex &&*/ nIndex <= pNode->Len();
+    OSL_ENSURE( bValidIndex, "GetLineNumberAtIndex: invalid index" );
+    const ParaPortion* pPPortion = maParaPortionList.SafeGetObject(nPara);
+    if (!pPPortion)
     {
-        // we explicitly allow for the index to point at the character right behind the text
-        const bool bValidIndex = /*0 <= nIndex &&*/ nIndex <= pNode->Len();
-        OSL_ENSURE( bValidIndex, "GetLineNumberAtIndex: invalid index" );
-        const sal_Int32 nLineCount = GetLineCount( nPara );
-        if (nIndex == pNode->Len())
-            nLineNo = nLineCount > 0 ? nLineCount - 1 : 0;
-        else if (bValidIndex)   // nIndex < pNode->Len()
+        SAL_WARN( "editeng", "ImpEditEngine::GetLineNumberAtIndex missing ParaPortion");
+        return -1;
+    }
+    const EditLineList& rLineList = pPPortion->GetLines();
+    const sal_Int32 nLineCount = rLineList.Count();
+    sal_Int32 nLineNo = -1;
+    if (nIndex == pNode->Len())
+        nLineNo = nLineCount > 0 ? nLineCount - 1 : 0;
+    else if (bValidIndex)   // nIndex < pNode->Len()
+    {
+        sal_Int32 nStart = -1, nEnd = -1;
+        for (sal_Int32 i = 0;  i < nLineCount && nLineNo == -1;  ++i)
         {
-            sal_Int32 nStart = -1, nEnd = -1;
-            for (sal_Int32 i = 0;  i < nLineCount && nLineNo == -1;  ++i)
-            {
-                GetLineBoundaries( nStart, nEnd, nPara, i );
-                if (nStart >= 0 && nStart <= nIndex && nEnd >= 0 && nIndex < nEnd)
-                    nLineNo = i;
-            }
+            const EditLine& rLine = rLineList[i];
+            nStart = rLine.GetStart();
+            nEnd   = rLine.GetEnd();
+            if (nStart >= 0 && nStart <= nIndex && nEnd >= 0 && nIndex < nEnd)
+                nLineNo = i;
         }
     }
     return nLineNo;
@@ -3676,7 +3731,9 @@ sal_Int32 ImpEditEngine::GetLineNumberAtIndex( sal_Int32 nPara, sal_Int32 nIndex
 
 sal_uInt16 ImpEditEngine::GetLineHeight( sal_Int32 nParagraph, sal_Int32 nLine )
 {
-    OSL_ENSURE( 0 <= nParagraph && nParagraph < GetParaPortions().Count(), "GetLineCount: Out of range" );
+    if (!IsFormatted())
+        FormatDoc();
+    OSL_ENSURE(GetParaPortions().exists(nParagraph), "GetLineCount: Out of range");
     ParaPortion* pPPortion = GetParaPortions().SafeGetObject( nParagraph );
     OSL_ENSURE( pPPortion, "Paragraph not found: GetLineHeight" );
     if ( pPPortion && ( nLine < pPPortion->GetLines().Count() ) )
@@ -3688,11 +3745,70 @@ sal_uInt16 ImpEditEngine::GetLineHeight( sal_Int32 nParagraph, sal_Int32 nLine )
     return 0xFFFF;
 }
 
-sal_uInt32 ImpEditEngine::GetParaHeight( sal_Int32 nParagraph )
+tools::Rectangle ImpEditEngine::GetParaBounds( sal_Int32 nPara )
+{
+    if (!IsFormatted())
+        FormatDoc();
+    Point aPnt = GetDocPosTopLeft( nPara );
+
+    if( IsEffectivelyVertical() )
+    {
+        sal_Int32 nTextHeight = GetTextHeight();
+        sal_Int32 nParaWidth = CalcParaWidth(nPara, true);
+        sal_Int32 nParaHeight = GetParaHeight(nPara);
+
+        return tools::Rectangle( nTextHeight - aPnt.Y() - nParaHeight, 0, nTextHeight - aPnt.Y(), nParaWidth );
+    }
+    else
+    {
+        sal_Int32 nParaWidth = CalcParaWidth( nPara, true );
+        sal_Int32 nParaHeight = GetParaHeight( nPara );
+
+        return tools::Rectangle( 0, aPnt.Y(), nParaWidth, aPnt.Y() + nParaHeight );
+    }
+}
+
+Point ImpEditEngine::GetDocPosTopLeft( sal_Int32 nParagraph )
+{
+    const ParaPortion* pPPortion = maParaPortionList.SafeGetObject(nParagraph);
+    DBG_ASSERT( pPPortion, "Paragraph not found: GetWindowPosTopLeft" );
+
+    Point aPoint;
+    if ( pPPortion )
+    {
+        auto stMetrics = GetFontUnitMetrics(pPPortion->GetNode());
+
+        // If someone calls GetLineHeight() with an empty Engine.
+        DBG_ASSERT(IsFormatted() || !IsFormatting(), "GetDocPosTopLeft: Doc not formatted - unable to format!");
+        if (!IsFormatted())
+            FormatAndLayout();
+        if (pPPortion->GetLines().Count())
+        {
+            // Correct it if large Bullet.
+            const EditLine& rFirstLine = pPPortion->GetLines()[0];
+            aPoint.setX( rFirstLine.GetStartPosX() );
+        }
+        else
+        {
+            const SvxLRSpaceItem& rLRItem = GetLRSpaceItem(pPPortion->GetNode());
+            sal_Int32 nSpaceBefore = 0;
+            GetSpaceBeforeAndMinLabelWidth(pPPortion->GetNode(), &nSpaceBefore);
+            short nX = static_cast<short>(rLRItem.ResolveTextLeft(stMetrics)
+                                          + rLRItem.ResolveTextFirstLineOffset(stMetrics)
+                                          + nSpaceBefore);
+
+            aPoint.setX(scaleXSpacingValue(nX));
+        }
+        aPoint.setY(maParaPortionList.GetYOffset(pPPortion));
+    }
+    return aPoint;
+}
+
+sal_uInt32 ImpEditEngine::GetParaHeight(sal_Int32 nParagraph) const
 {
     sal_uInt32 nHeight = 0;
 
-    ParaPortion* pPPortion = GetParaPortions().SafeGetObject( nParagraph );
+    ParaPortion const* pPPortion = GetParaPortions().SafeGetObject( nParagraph );
     OSL_ENSURE( pPPortion, "Paragraph not found: GetParaHeight" );
 
     if ( pPPortion )
@@ -3701,64 +3817,213 @@ sal_uInt32 ImpEditEngine::GetParaHeight( sal_Int32 nParagraph )
     return nHeight;
 }
 
+bool ImpEditEngine::UpdateSelection(EditSelection & rCurSel)
+{
+    bool bChanged = false;
+    for (const std::unique_ptr<DeletedNodeInfo> & aDeletedNode : maDeletedNodes)
+    {
+        const DeletedNodeInfo& rInf = *aDeletedNode;
+        if ((rCurSel.Min().GetNode() == rInf.GetNode()) ||
+            (rCurSel.Max().GetNode() == rInf.GetNode()))
+        {
+            // Use ParaPortions, as now also hidden paragraphs have to be
+            // taken into account!
+            sal_Int32 nPara = rInf.GetPosition();
+            if (!GetParaPortions().exists(nPara)) // Last paragraph
+            {
+                nPara = GetParaPortions().lastIndex();
+            }
+            assert(GetParaPortions().exists(nPara) && "Empty Document in UpdateSelections ?");
+            // Do not end up from a hidden paragraph:
+            sal_Int32 nCurrentPara = nPara;
+            sal_Int32 nLastParaIndex = GetParaPortions().lastIndex();
+            while (nPara <= nLastParaIndex && !GetParaPortions().getRef(nPara).IsVisible())
+                nPara++;
+            if (nPara > nLastParaIndex) // then also backwards ...
+            {
+                nPara = nCurrentPara;
+                while ( nPara && !GetParaPortions().getRef(nPara).IsVisible() )
+                    nPara--;
+            }
+            OSL_ENSURE(GetParaPortions().getRef(nPara).IsVisible(), "No visible paragraph found: UpdateSelections" );
+
+            ParaPortion& rParaPortion = GetParaPortions().getRef(nPara);
+            EditSelection aTmpSelection(EditPaM(rParaPortion.GetNode(), 0));
+            rCurSel = aTmpSelection;
+            bChanged=true;
+            break;  // for loop
+        }
+    }
+    if ( !bChanged )
+    {
+        // Check Index if node shrunk.
+        if (rCurSel.Min().GetIndex() > rCurSel.Min().GetNode()->Len())
+        {
+            rCurSel.Min().SetIndex(rCurSel.Min().GetNode()->Len());
+            bChanged = true;
+        }
+        if (rCurSel.Max().GetIndex() > rCurSel.Max().GetNode()->Len())
+        {
+            rCurSel.Max().SetIndex(rCurSel.Max().GetNode()->Len());
+            bChanged = true;
+        }
+    }
+    return bChanged;
+}
+
 void ImpEditEngine::UpdateSelections()
 {
     // Check whether one of the selections is at a deleted node...
     // If the node is valid, the index has yet to be examined!
-    for (EditView* pView : aEditViews)
+    for (EditView* pView : maEditViews)
     {
-        EditSelection aCurSel( pView->pImpEditView->GetEditSelection() );
-        bool bChanged = false;
-        for (const std::unique_ptr<DeletedNodeInfo> & aDeletedNode : aDeletedNodes)
+        EditSelection aCurSel( pView->getImpl().GetEditSelection() );
+        if (UpdateSelection(aCurSel))
         {
-            const DeletedNodeInfo& rInf = *aDeletedNode;
-            if ( ( aCurSel.Min().GetNode() == rInf.GetNode() ) ||
-                 ( aCurSel.Max().GetNode() == rInf.GetNode() ) )
+            pView->getImpl().SetEditSelection(aCurSel);
+        }
+#if ENABLE_YRS
+        for (auto & it : pView->getImpl().m_PeerCursors)
+        {
+            EditSelection sel(CreateSel(it.second.second));
+            if (UpdateSelection(sel))
             {
-                // Use ParaPortions, as now also hidden paragraphs have to be
-                // taken into account!
-                sal_Int32 nPara = rInf.GetPosition();
-                if (!GetParaPortions().SafeGetObject(nPara)) // Last paragraph
-                {
-                    nPara = GetParaPortions().Count()-1;
-                }
-                assert(GetParaPortions()[nPara] && "Empty Document in UpdateSelections ?");
-                // Do not end up from a hidden paragraph:
-                sal_Int32 nCurPara = nPara;
-                sal_Int32 nLastPara = GetParaPortions().Count()-1;
-                while ( nPara <= nLastPara && !GetParaPortions()[nPara]->IsVisible() )
-                    nPara++;
-                if ( nPara > nLastPara ) // then also backwards ...
-                {
-                    nPara = nCurPara;
-                    while ( nPara && !GetParaPortions()[nPara]->IsVisible() )
-                        nPara--;
-                }
-                OSL_ENSURE( GetParaPortions()[nPara]->IsVisible(), "No visible paragraph found: UpdateSelections" );
-
-                ParaPortion* pParaPortion = GetParaPortions()[nPara];
-                EditSelection aTmpSelection( EditPaM( pParaPortion->GetNode(), 0 ) );
-                pView->pImpEditView->SetEditSelection( aTmpSelection );
-                bChanged=true;
-                break;  // for loop
+                assert(false); // should have called Insert/Delete?
+                it.second.second = CreateESel(sel);
             }
         }
-        if ( !bChanged )
+#endif
+    }
+    maDeletedNodes.clear();
+}
+
+#if ENABLE_YRS
+static bool UpdatePosDelete(EPaM & rPos, ESelection const& rDeleted)
+{
+    // correct towards start: RemoveParagraph(Count()) can't work otherwise
+    assert(rDeleted.IsAdjusted());
+    if (rDeleted.start.nPara == rPos.nPara)
+    {
+        if (rDeleted.start.nIndex < rPos.nIndex)
         {
-            // Check Index if node shrunk.
-            if ( aCurSel.Min().GetIndex() > aCurSel.Min().GetNode()->Len() )
+            if (rDeleted.start.nPara == rDeleted.end.nPara && rDeleted.end.nIndex < rPos.nIndex)
             {
-                aCurSel.Min().SetIndex( aCurSel.Min().GetNode()->Len() );
-                pView->pImpEditView->SetEditSelection( aCurSel );
+                rPos.nIndex -= (rDeleted.end.nIndex - rDeleted.start.nIndex);
             }
-            if ( aCurSel.Max().GetIndex() > aCurSel.Max().GetNode()->Len() )
+            else
             {
-                aCurSel.Max().SetIndex( aCurSel.Max().GetNode()->Len() );
-                pView->pImpEditView->SetEditSelection( aCurSel );
+                rPos.nIndex = rDeleted.start.nIndex;
             }
+            return true;
         }
     }
-    aDeletedNodes.clear();
+    else if (rDeleted.start.nPara < rPos.nPara && rPos.nPara <= rDeleted.end.nPara)
+    {
+        if (rPos.nPara == rDeleted.end.nPara && rDeleted.end.nIndex < rPos.nIndex)
+        {
+            rPos.nIndex -= rDeleted.end.nIndex - rDeleted.start.nIndex;
+        }
+        else
+        {
+            rPos.nIndex = rDeleted.start.nIndex;
+        }
+        rPos.nPara = rDeleted.start.nPara;
+        return true;
+    }
+    else if (rDeleted.end.nPara < rPos.nPara)
+    {
+        rPos.nPara -= rDeleted.end.nPara - rDeleted.start.nPara;
+        return true;
+    }
+    return false;
+}
+#endif
+
+static bool UpdatePosInsert(EPaM & rPos, ESelection const& rInserted)
+{
+    assert(rInserted.IsAdjusted());
+    if (rInserted.start.nPara == rPos.nPara)
+    {
+        if (rInserted.start.nIndex <= rPos.nIndex)
+        {
+            rPos.nPara = rInserted.end.nPara;
+            rPos.nIndex = rInserted.end.nIndex + (rPos.nIndex - rInserted.start.nIndex);
+            return true;
+        }
+    }
+    else if (rInserted.start.nPara < rPos.nPara && rInserted.start.nPara != rInserted.end.nPara)
+    {
+        rPos.nPara += rInserted.end.nPara - rInserted.start.nPara;
+        return true;
+    }
+    return false;
+}
+
+void ImpEditEngine::UpdateSelectionsDelete(ESelection const& rDeleted)
+{
+    ESelection deleted(rDeleted);
+    deleted.Adjust();
+    for (EditView *const pView : maEditViews)
+    {
+        // FIXME fails because CreateESel needs the deleted nodes! but if it's
+        // called before deleting the nodes, it will assign wrong nodes...
+        // perhaps the cursors could be stored as ESelection in the first
+        // place, but that would require reviewing all code that inserts or
+        // deletes nodes if it does the update in the correct place...
+#if 0
+        EditSelection const sel{pView->getImpl().GetEditSelection()};
+        ESelection esel{CreateESel(sel)};
+        bool isChanged{false};
+        isChanged |= UpdatePosDelete(esel.start, deleted);
+        isChanged |= UpdatePosDelete(esel.end, deleted);
+        if (isChanged)
+        {
+            pView->getImpl().SetEditSelection(CreateSel(esel));
+        }
+#else
+        (void)pView;
+        (void)deleted;
+#endif
+#if ENABLE_YRS
+        for (auto & it : pView->getImpl().m_PeerCursors)
+        {
+            UpdatePosDelete(it.second.second.start, deleted);
+            UpdatePosDelete(it.second.second.end, deleted);
+        }
+#endif
+    }
+}
+
+void ImpEditEngine::UpdateSelectionsInsert(ESelection const& rInserted)
+{
+    for (EditView *const pView : maEditViews)
+    {
+        EditSelection const sel{pView->getImpl().GetEditSelection()};
+        ESelection esel{CreateESel(sel)};
+        // nodes have been inserted, but CreateESel counts them: adjust for this!
+        if (rInserted.start.nPara < esel.start.nPara)
+        {
+            esel.start.nPara -= rInserted.end.nPara - rInserted.start.nPara;
+        }
+        if (rInserted.start.nPara < esel.end.nPara)
+        {
+            esel.end.nPara -= rInserted.end.nPara - rInserted.start.nPara;
+        }
+        bool isChanged{false};
+        isChanged |= UpdatePosInsert(esel.start, rInserted);
+        isChanged |= UpdatePosInsert(esel.end, rInserted);
+        if (isChanged)
+        {
+            pView->getImpl().SetEditSelection(CreateSel(esel));
+        }
+#if ENABLE_YRS
+        for (auto & it : pView->getImpl().m_PeerCursors)
+        {
+            UpdatePosInsert(it.second.second.start, rInserted);
+            UpdatePosInsert(it.second.second.end, rInserted);
+        }
+#endif
+    }
 }
 
 EditSelection ImpEditEngine::ConvertSelection(
@@ -3771,7 +4036,7 @@ EditSelection ImpEditEngine::ConvertSelection(
     sal_Int32 nIndex = nStartPos;
     if ( !pNode )
     {
-        pNode = maEditDoc[ maEditDoc.Count()-1 ];
+        pNode = maEditDoc.GetObject(maEditDoc.Count() - 1);
         nIndex = pNode->Len();
     }
     else if ( nIndex > pNode->Len() )
@@ -3785,7 +4050,7 @@ EditSelection ImpEditEngine::ConvertSelection(
     nIndex = nEndPos;
     if ( !pNode )
     {
-        pNode = maEditDoc[ maEditDoc.Count()-1 ];
+        pNode = maEditDoc.GetObject(maEditDoc.Count() - 1);
         nIndex = pNode->Len();
     }
     else if ( nIndex > pNode->Len() )
@@ -3802,16 +4067,16 @@ void ImpEditEngine::SetActiveView( EditView* pView )
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     // Actually, now bHasVisSel and HideSelection would be necessary     !!!
 
-    if ( pView == pActiveView )
+    if (pView == mpActiveView)
         return;
 
-    if ( pActiveView && pActiveView->HasSelection() )
-        pActiveView->pImpEditView->DrawSelectionXOR();
+    if (mpActiveView && mpActiveView->HasSelection())
+        mpActiveView->getImpl().DrawSelectionXOR();
 
-    pActiveView = pView;
+    mpActiveView = pView;
 
-    if ( pActiveView && pActiveView->HasSelection() )
-        pActiveView->pImpEditView->DrawSelectionXOR();
+    if (mpActiveView && mpActiveView->HasSelection())
+        mpActiveView->getImpl().DrawSelectionXOR();
 
     //  NN: Quick fix for #78668#:
     //  When editing of a cell in Calc is ended, the edit engine is not deleted,
@@ -3836,7 +4101,7 @@ uno::Reference< datatransfer::XTransferable > ImpEditEngine::CreateTransferable(
 
     pDataObj->GetString() = convertLineEnd(GetSelected(aSelection), GetSystemLineEnd()); // System specific
 
-    WriteRTF( pDataObj->GetRTFStream(), aSelection );
+    WriteRTF( pDataObj->GetRTFStream(), aSelection, /*bClipboard=*/true );
     pDataObj->GetRTFStream().Seek( 0 );
 
     WriteXML( pDataObj->GetODFStream(), aSelection );
@@ -3897,13 +4162,39 @@ EditSelection ImpEditEngine::PasteText( uno::Reference< datatransfer::XTransfera
                 aData >>= aSeq;
                 {
                     SvMemoryStream aODFStream( aSeq.getArray(), aSeq.getLength(), StreamMode::READ );
-                    aNewSelection = Read( aODFStream, rBaseURL, EETextFormat::Xml, rPaM );
+                    aNewSelection = Read( aODFStream, rBaseURL, EETextFormat::Xml, EditSelection(rPaM) );
                 }
                 bDone = true;
             }
             catch( const css::uno::Exception&)
             {
                 TOOLS_WARN_EXCEPTION( "editeng", "Unable to paste EDITENGINE_ODF_TEXT_FLAT" );
+            }
+        }
+
+        if (!bDone) {
+            // HTML_SIMPLE
+            SotExchange::GetFormatDataFlavor(SotClipboardFormatId::HTML_SIMPLE, aFlavor);
+            bool bHtmlSupported = rxDataObj->isDataFlavorSupported(aFlavor);
+            if (bHtmlSupported && (SotClipboardFormatId::NONE == format || SotClipboardFormatId::HTML_SIMPLE == format)) {
+                MSE40HTMLClipFormatObj aMSE40HTMLClipFormatObj;
+                try
+                {
+                    uno::Any aData = rxDataObj->getTransferData(aFlavor);
+                    uno::Sequence< sal_Int8 > aSeq;
+                    aData >>= aSeq;
+                    {
+                        SvMemoryStream aHtmlStream(aSeq.getArray(), aSeq.getLength(), StreamMode::READ);
+                        SvStream* pHtmlStream = aMSE40HTMLClipFormatObj.IsValid(aHtmlStream);
+                        if (pHtmlStream != nullptr) {
+                            aNewSelection = Read(*pHtmlStream, rBaseURL, EETextFormat::Html, EditSelection(rPaM));
+                        }
+                    }
+                    bDone = true;
+                }
+                catch (const css::uno::Exception&)
+                {
+                }
             }
         }
 
@@ -3920,7 +4211,7 @@ EditSelection ImpEditEngine::PasteText( uno::Reference< datatransfer::XTransfera
             {
                 if(bRichtextSupported)
                 {
-                    aFlavor = aFlavorRichtext;
+                    aFlavor = std::move(aFlavorRichtext);
                 }
                 try
                 {
@@ -3929,7 +4220,7 @@ EditSelection ImpEditEngine::PasteText( uno::Reference< datatransfer::XTransfera
                     aData >>= aSeq;
                     {
                         SvMemoryStream aRTFStream( aSeq.getArray(), aSeq.getLength(), StreamMode::READ );
-                        aNewSelection = Read( aRTFStream, rBaseURL, EETextFormat::Rtf, rPaM );
+                        aNewSelection = Read( aRTFStream, rBaseURL, EETextFormat::Rtf, EditSelection(rPaM) );
                     }
                     bDone = true;
                 }
@@ -3938,28 +4229,27 @@ EditSelection ImpEditEngine::PasteText( uno::Reference< datatransfer::XTransfera
                 }
             }
         }
-        if (!bDone) {
+
+        if (!bDone)
+        {
             // HTML
-            SotExchange::GetFormatDataFlavor(SotClipboardFormatId::HTML_SIMPLE, aFlavor);
+            SotExchange::GetFormatDataFlavor(SotClipboardFormatId::HTML, aFlavor);
             bool bHtmlSupported = rxDataObj->isDataFlavorSupported(aFlavor);
-            if (bHtmlSupported && (SotClipboardFormatId::NONE == format || SotClipboardFormatId::HTML_SIMPLE == format)) {
-                MSE40HTMLClipFormatObj aMSE40HTMLClipFormatObj;
+            if (bHtmlSupported
+                && (format == SotClipboardFormatId::NONE || format == SotClipboardFormatId::HTML))
+            {
                 try
                 {
                     uno::Any aData = rxDataObj->getTransferData(aFlavor);
-                    uno::Sequence< sal_Int8 > aSeq;
+                    uno::Sequence<sal_Int8> aSeq;
                     aData >>= aSeq;
-                    {
-                        SvMemoryStream aHtmlStream(aSeq.getArray(), aSeq.getLength(), StreamMode::READ);
-                        SvStream* pHtmlStream = aMSE40HTMLClipFormatObj.IsValid(aHtmlStream);
-                        if (pHtmlStream != nullptr) {
-                            aNewSelection = Read(*pHtmlStream, rBaseURL, EETextFormat::Html, rPaM);
-                        }
-                    }
+                    SvMemoryStream aHtmlStream(aSeq.getArray(), aSeq.getLength(), StreamMode::READ);
+                    aNewSelection = Read(aHtmlStream, rBaseURL, EETextFormat::Html, EditSelection(rPaM));
                     bDone = true;
                 }
                 catch (const css::uno::Exception&)
                 {
+                    TOOLS_WARN_EXCEPTION("editeng", "HTML paste failed");
                 }
             }
         }
@@ -3974,7 +4264,7 @@ EditSelection ImpEditEngine::PasteText( uno::Reference< datatransfer::XTransfera
                 uno::Any aData = rxDataObj->getTransferData( aFlavor );
                 OUString aText;
                 aData >>= aText;
-                aNewSelection = ImpInsertText( rPaM, aText );
+                aNewSelection = ImpInsertText( EditSelection(rPaM), aText );
             }
             catch( ... )
             {
@@ -3986,20 +4276,17 @@ EditSelection ImpEditEngine::PasteText( uno::Reference< datatransfer::XTransfera
     return aNewSelection;
 }
 
-sal_Int32 ImpEditEngine::GetChar(
-    const ParaPortion* pParaPortion, const EditLine* pLine, tools::Long nXPos, bool bSmart)
+sal_Int32 ImpEditEngine::GetChar(ParaPortion const& rParaPortion, EditLine const& rLine, tools::Long nXPos, bool bSmart)
 {
-    assert(pLine);
-
     sal_Int32 nChar = -1;
-    sal_Int32 nCurIndex = pLine->GetStart();
+    sal_Int32 nCurIndex = rLine.GetStart();
 
 
     // Search best matching portion with GetPortionXOffset()
-    for ( sal_Int32 i = pLine->GetStartPortion(); i <= pLine->GetEndPortion(); i++ )
+    for ( sal_Int32 i = rLine.GetStartPortion(); i <= rLine.GetEndPortion(); i++ )
     {
-        const TextPortion& rPortion = pParaPortion->GetTextPortions()[i];
-        tools::Long nXLeft = GetPortionXOffset( pParaPortion, pLine, i );
+        const TextPortion& rPortion = rParaPortion.GetTextPortions()[i];
+        tools::Long nXLeft = GetPortionXOffset(rParaPortion, rLine, i);
         tools::Long nXRight = nXLeft + rPortion.GetSize().Width();
         if ( ( nXLeft <= nXPos ) && ( nXRight >= nXPos ) )
         {
@@ -4023,7 +4310,7 @@ sal_Int32 ImpEditEngine::GetChar(
             {
                 sal_Int32 nMax = rPortion.GetLen();
                 sal_Int32 nOffset = -1;
-                sal_Int32 nTmpCurIndex = nChar - pLine->GetStart();
+                sal_Int32 nTmpCurIndex = nChar - rLine.GetStart();
 
                 tools::Long nXInPortion = nXPos - nXLeft;
                 if ( rPortion.IsRightToLeft() )
@@ -4032,11 +4319,11 @@ sal_Int32 ImpEditEngine::GetChar(
                 // Search in Array...
                 for ( sal_Int32 x = 0; x < nMax; x++ )
                 {
-                    tools::Long nTmpPosMax = pLine->GetCharPosArray()[nTmpCurIndex+x];
+                    tools::Long nTmpPosMax = rLine.GetCharPosArray()[nTmpCurIndex+x];
                     if ( nTmpPosMax > nXInPortion )
                     {
                         // Check whether this or the previous...
-                        tools::Long nTmpPosMin = x ? pLine->GetCharPosArray()[nTmpCurIndex+x-1] : 0;
+                        tools::Long nTmpPosMin = x ? rLine.GetCharPosArray()[nTmpCurIndex+x-1] : 0;
                         tools::Long nDiffLeft = nXInPortion - nTmpPosMin;
                         tools::Long nDiffRight = nTmpPosMax - nXInPortion;
                         OSL_ENSURE( nDiffLeft >= 0, "DiffLeft negative" );
@@ -4047,8 +4334,8 @@ sal_Int32 ImpEditEngine::GetChar(
                             // I18N: If there are character position with the length of 0,
                             // they belong to the same character, we can not use this position as an index.
                             // Skip all 0-positions, cheaper than using XBreakIterator:
-                            tools::Long nX = pLine->GetCharPosArray()[nTmpCurIndex + x];
-                            while(x < nMax && pLine->GetCharPosArray()[nTmpCurIndex + x] == nX)
+                            tools::Long nX = rLine.GetCharPosArray()[nTmpCurIndex + x];
+                            while(x < nMax && static_cast<tools::Long>(rLine.GetCharPosArray()[nTmpCurIndex + x]) == nX)
                                 ++x;
                         }
                         nOffset = x;
@@ -4067,9 +4354,9 @@ sal_Int32 ImpEditEngine::GetChar(
                 nChar = nChar + nOffset;
 
                 // Check if index is within a cell:
-                if ( nChar && ( nChar < pParaPortion->GetNode()->Len() ) )
+                if ( nChar && ( nChar < rParaPortion.GetNode()->Len() ) )
                 {
-                    EditPaM aPaM( pParaPortion->GetNode(), nChar+1 );
+                    EditPaM aPaM( rParaPortion.GetNode(), nChar+1 );
                     sal_uInt16 nScriptType = GetI18NScriptType( aPaM );
                     if ( nScriptType == i18n::ScriptType::COMPLEX )
                     {
@@ -4077,9 +4364,9 @@ sal_Int32 ImpEditEngine::GetChar(
                         sal_Int32 nCount = 1;
                         lang::Locale aLocale = GetLocale( aPaM );
                         sal_Int32 nRight = _xBI->nextCharacters(
-                            pParaPortion->GetNode()->GetString(), nChar, aLocale, css::i18n::CharacterIteratorMode::SKIPCELL, nCount, nCount );
+                            rParaPortion.GetNode()->GetString(), nChar, aLocale, css::i18n::CharacterIteratorMode::SKIPCELL, nCount, nCount );
                         sal_Int32 nLeft = _xBI->previousCharacters(
-                            pParaPortion->GetNode()->GetString(), nRight, aLocale, css::i18n::CharacterIteratorMode::SKIPCELL, nCount, nCount );
+                            rParaPortion.GetNode()->GetString(), nRight, aLocale, css::i18n::CharacterIteratorMode::SKIPCELL, nCount, nCount );
                         if ( ( nLeft != nChar ) && ( nRight != nChar ) )
                         {
                             nChar = ( std::abs( nRight - nChar ) < std::abs( nLeft - nChar ) ) ? nRight : nLeft;
@@ -4087,7 +4374,7 @@ sal_Int32 ImpEditEngine::GetChar(
                     }
                     else
                     {
-                        OUString aStr(pParaPortion->GetNode()->GetString());
+                        OUString aStr(rParaPortion.GetNode()->GetString());
                         // tdf#102625: don't select middle of a pair of surrogates with mouse cursor
                         if (rtl::isSurrogate(aStr[nChar]))
                             --nChar;
@@ -4101,40 +4388,38 @@ sal_Int32 ImpEditEngine::GetChar(
 
     if ( nChar == -1 )
     {
-        nChar = ( nXPos <= pLine->GetStartPosX() ) ? pLine->GetStart() : pLine->GetEnd();
+        nChar = ( nXPos <= rLine.GetStartPosX() ) ? rLine.GetStart() : rLine.GetEnd();
     }
 
     return nChar;
 }
 
-Range ImpEditEngine::GetLineXPosStartEnd( const ParaPortion* pParaPortion, const EditLine* pLine ) const
+Range ImpEditEngine::GetLineXPosStartEnd(ParaPortion const& rParaPortion, EditLine const& rLine) const
 {
     Range aLineXPosStartEnd;
 
-    sal_Int32 nPara = GetEditDoc().GetPos( pParaPortion->GetNode() );
+    sal_Int32 nPara = GetEditDoc().GetPos(rParaPortion.GetNode());
     if ( !IsRightToLeft( nPara ) )
     {
-        aLineXPosStartEnd.Min() = pLine->GetStartPosX();
-        aLineXPosStartEnd.Max() = pLine->GetStartPosX() + pLine->GetTextWidth();
+        aLineXPosStartEnd.Min() = rLine.GetStartPosX();
+        aLineXPosStartEnd.Max() = rLine.GetStartPosX() + rLine.GetTextWidth();
     }
     else
     {
-        aLineXPosStartEnd.Min() = GetPaperSize().Width() - ( pLine->GetStartPosX() + pLine->GetTextWidth() );
-        aLineXPosStartEnd.Max() = GetPaperSize().Width() - pLine->GetStartPosX();
+        aLineXPosStartEnd.Min() = GetPaperSize().Width() - (rLine.GetStartPosX() + rLine.GetTextWidth());
+        aLineXPosStartEnd.Max() = GetPaperSize().Width() - rLine.GetStartPosX();
     }
-
 
     return aLineXPosStartEnd;
 }
 
-tools::Long ImpEditEngine::GetPortionXOffset(
-    const ParaPortion* pParaPortion, const EditLine* pLine, sal_Int32 nTextPortion) const
+tools::Long ImpEditEngine::GetPortionXOffset(ParaPortion const& rParaPortion, EditLine const& rLine, sal_Int32 nTextPortion) const
 {
-    tools::Long nX = pLine->GetStartPosX();
+    tools::Long nX = rLine.GetStartPosX();
 
-    for ( sal_Int32 i = pLine->GetStartPortion(); i < nTextPortion; i++ )
+    for ( sal_Int32 i = rLine.GetStartPortion(); i < nTextPortion; i++ )
     {
-        const TextPortion& rPortion = pParaPortion->GetTextPortions()[i];
+        const TextPortion& rPortion = rParaPortion.GetTextPortions()[i];
         switch ( rPortion.GetKind() )
         {
             case PortionKind::FIELD:
@@ -4149,19 +4434,19 @@ tools::Long ImpEditEngine::GetPortionXOffset(
         }
     }
 
-    sal_Int32 nPara = GetEditDoc().GetPos( pParaPortion->GetNode() );
+    sal_Int32 nPara = GetEditDoc().GetPos(rParaPortion.GetNode());
     bool bR2LPara = IsRightToLeft( nPara );
 
-    const TextPortion& rDestPortion = pParaPortion->GetTextPortions()[nTextPortion];
+    const TextPortion& rDestPortion = rParaPortion.GetTextPortions()[nTextPortion];
     if ( rDestPortion.GetKind() != PortionKind::TAB )
     {
         if ( !bR2LPara && rDestPortion.GetRightToLeftLevel() )
         {
             // Portions behind must be added, visual before this portion
             sal_Int32 nTmpPortion = nTextPortion+1;
-            while ( nTmpPortion <= pLine->GetEndPortion() )
+            while ( nTmpPortion <= rLine.GetEndPortion() )
             {
-                const TextPortion& rNextTextPortion = pParaPortion->GetTextPortions()[nTmpPortion];
+                const TextPortion& rNextTextPortion = rParaPortion.GetTextPortions()[nTmpPortion];
                 if ( rNextTextPortion.GetRightToLeftLevel() && ( rNextTextPortion.GetKind() != PortionKind::TAB ) )
                     nX += rNextTextPortion.GetSize().Width();
                 else
@@ -4170,10 +4455,10 @@ tools::Long ImpEditEngine::GetPortionXOffset(
             }
             // Portions before must be removed, visual behind this portion
             nTmpPortion = nTextPortion;
-            while ( nTmpPortion > pLine->GetStartPortion() )
+            while ( nTmpPortion > rLine.GetStartPortion() )
             {
                 --nTmpPortion;
-                const TextPortion& rPrevTextPortion = pParaPortion->GetTextPortions()[nTmpPortion];
+                const TextPortion& rPrevTextPortion = rParaPortion.GetTextPortions()[nTmpPortion];
                 if ( rPrevTextPortion.GetRightToLeftLevel() && ( rPrevTextPortion.GetKind() != PortionKind::TAB ) )
                     nX -= rPrevTextPortion.GetSize().Width();
                 else
@@ -4184,9 +4469,9 @@ tools::Long ImpEditEngine::GetPortionXOffset(
         {
             // Portions behind must be removed, visual behind this portion
             sal_Int32 nTmpPortion = nTextPortion+1;
-            while ( nTmpPortion <= pLine->GetEndPortion() )
+            while ( nTmpPortion <= rLine.GetEndPortion() )
             {
-                const TextPortion& rNextTextPortion = pParaPortion->GetTextPortions()[nTmpPortion];
+                const TextPortion& rNextTextPortion = rParaPortion.GetTextPortions()[nTmpPortion];
                 if ( !rNextTextPortion.IsRightToLeft() && ( rNextTextPortion.GetKind() != PortionKind::TAB ) )
                     nX += rNextTextPortion.GetSize().Width();
                 else
@@ -4195,10 +4480,10 @@ tools::Long ImpEditEngine::GetPortionXOffset(
             }
             // Portions before must be added, visual before this portion
             nTmpPortion = nTextPortion;
-            while ( nTmpPortion > pLine->GetStartPortion() )
+            while ( nTmpPortion > rLine.GetStartPortion() )
             {
                 --nTmpPortion;
-                const TextPortion& rPrevTextPortion = pParaPortion->GetTextPortions()[nTmpPortion];
+                const TextPortion& rPrevTextPortion = rParaPortion.GetTextPortions()[nTmpPortion];
                 if ( !rPrevTextPortion.IsRightToLeft() && ( rPrevTextPortion.GetKind() != PortionKind::TAB ) )
                     nX -= rPrevTextPortion.GetSize().Width();
                 else
@@ -4218,33 +4503,31 @@ tools::Long ImpEditEngine::GetPortionXOffset(
     return nX;
 }
 
-tools::Long ImpEditEngine::GetXPos(
-    const ParaPortion* pParaPortion, const EditLine* pLine, sal_Int32 nIndex, bool bPreferPortionStart) const
+tools::Long ImpEditEngine::GetXPos(ParaPortion const& rParaPortion, EditLine const& rLine, sal_Int32 nIndex, bool bPreferPortionStart) const
 {
-    assert(pLine);
-    OSL_ENSURE( ( nIndex >= pLine->GetStart() ) && ( nIndex <= pLine->GetEnd() ) , "GetXPos has to be called properly!" );
+    OSL_ENSURE( ( nIndex >= rLine.GetStart() ) && ( nIndex <= rLine.GetEnd() ) , "GetXPos has to be called properly!" );
 
     bool bDoPreferPortionStart = bPreferPortionStart;
     // Assure that the portion belongs to this line:
-    if ( nIndex == pLine->GetStart() )
+    if ( nIndex == rLine.GetStart() )
         bDoPreferPortionStart = true;
-    else if ( nIndex == pLine->GetEnd() )
+    else if ( nIndex == rLine.GetEnd() )
         bDoPreferPortionStart = false;
 
     sal_Int32 nTextPortionStart = 0;
-    sal_Int32 nTextPortion = pParaPortion->GetTextPortions().FindPortion( nIndex, nTextPortionStart, bDoPreferPortionStart );
+    sal_Int32 nTextPortion = rParaPortion.GetTextPortions().FindPortion( nIndex, nTextPortionStart, bDoPreferPortionStart );
 
-    OSL_ENSURE( ( nTextPortion >= pLine->GetStartPortion() ) && ( nTextPortion <= pLine->GetEndPortion() ), "GetXPos: Portion not in current line! " );
+    OSL_ENSURE( ( nTextPortion >= rLine.GetStartPortion() ) && ( nTextPortion <= rLine.GetEndPortion() ), "GetXPos: Portion not in current line! " );
 
-    const TextPortion& rPortion = pParaPortion->GetTextPortions()[nTextPortion];
+    const TextPortion& rPortion = rParaPortion.GetTextPortions()[nTextPortion];
 
-    tools::Long nX = GetPortionXOffset( pParaPortion, pLine, nTextPortion );
+    tools::Long nX = GetPortionXOffset(rParaPortion, rLine, nTextPortion);
 
     // calc text width, portion size may include CJK/CTL spacing...
     // But the array might not be init yet, if using text ranger this method is called within CreateLines()...
     tools::Long nPortionTextWidth = rPortion.GetSize().Width();
     if ( ( rPortion.GetKind() == PortionKind::TEXT ) && rPortion.GetLen() && !GetTextRanger() )
-        nPortionTextWidth = pLine->GetCharPosArray()[nTextPortionStart + rPortion.GetLen() - 1 - pLine->GetStart()];
+        nPortionTextWidth = rLine.GetCharPosArray()[nTextPortionStart + rPortion.GetLen() - 1 - rLine.GetStart()];
 
     if ( nTextPortionStart != nIndex )
     {
@@ -4254,18 +4537,18 @@ tools::Long ImpEditEngine::GetXPos(
             // End of Portion
             if ( rPortion.GetKind() == PortionKind::TAB )
             {
-                if ( nTextPortion+1 < pParaPortion->GetTextPortions().Count() )
+                if ( nTextPortion+1 < rParaPortion.GetTextPortions().Count() )
                 {
-                    const TextPortion& rNextPortion = pParaPortion->GetTextPortions()[nTextPortion+1];
+                    const TextPortion& rNextPortion = rParaPortion.GetTextPortions()[nTextPortion+1];
                     if ( rNextPortion.GetKind() != PortionKind::TAB )
                     {
                         if ( !bPreferPortionStart )
-                            nX = GetXPos( pParaPortion, pLine, nIndex, true );
-                        else if ( !IsRightToLeft( GetEditDoc().GetPos( pParaPortion->GetNode() ) ) )
+                            nX = GetXPos(rParaPortion, rLine, nIndex, true );
+                        else if ( !IsRightToLeft( GetEditDoc().GetPos(rParaPortion.GetNode()) ) )
                             nX += nPortionTextWidth;
                     }
                 }
-                else if ( !IsRightToLeft( GetEditDoc().GetPos( pParaPortion->GetNode() ) ) )
+                else if ( !IsRightToLeft( GetEditDoc().GetPos(rParaPortion.GetNode()) ) )
                 {
                     nX += nPortionTextWidth;
                 }
@@ -4277,20 +4560,20 @@ tools::Long ImpEditEngine::GetXPos(
         }
         else if ( rPortion.GetKind() == PortionKind::TEXT )
         {
-            OSL_ENSURE( nIndex != pLine->GetStart(), "Strange behavior in new GetXPos()" );
-            OSL_ENSURE( !pLine->GetCharPosArray().empty(), "svx::ImpEditEngine::GetXPos(), portion in an empty line?" );
+            OSL_ENSURE( nIndex != rLine.GetStart(), "Strange behavior in new GetXPos()" );
+            OSL_ENSURE( !rLine.GetCharPosArray().empty(), "svx::ImpEditEngine::GetXPos(), portion in an empty line?" );
 
-            if( !pLine->GetCharPosArray().empty() )
+            if( !rLine.GetCharPosArray().empty() )
             {
-                sal_Int32 nPos = nIndex - 1 - pLine->GetStart();
-                if (nPos < 0 || o3tl::make_unsigned(nPos) >= pLine->GetCharPosArray().size())
+                sal_Int32 nPos = nIndex - 1 - rLine.GetStart();
+                if (nPos < 0 || o3tl::make_unsigned(nPos) >= rLine.GetCharPosArray().size())
                 {
-                    nPos = pLine->GetCharPosArray().size()-1;
+                    nPos = rLine.GetCharPosArray().size()-1;
                     OSL_FAIL("svx::ImpEditEngine::GetXPos(), index out of range!");
                 }
 
                 // old code restored see #i112788 (which leaves #i74188 unfixed again)
-                tools::Long nPosInPortion = pLine->GetCharPosArray()[nPos];
+                tools::Long nPosInPortion = rLine.GetCharPosArray()[nPos];
 
                 if ( !rPortion.IsRightToLeft() )
                 {
@@ -4306,17 +4589,17 @@ tools::Long ImpEditEngine::GetXPos(
                     nX += rPortion.GetExtraInfos()->nPortionOffsetX;
                     if ( rPortion.GetExtraInfos()->nAsianCompressionTypes & AsianCompressionFlags::PunctuationRight )
                     {
-                        AsianCompressionFlags nType = GetCharTypeForCompression( pParaPortion->GetNode()->GetChar( nIndex ) );
-                        if ( nType == AsianCompressionFlags::PunctuationRight && !pLine->GetCharPosArray().empty() )
+                        AsianCompressionFlags nType = GetCharTypeForCompression(rParaPortion.GetNode()->GetChar(nIndex));
+                        if ( nType == AsianCompressionFlags::PunctuationRight && !rLine.GetCharPosArray().empty() )
                         {
                             sal_Int32 n = nIndex - nTextPortionStart;
-                            const sal_Int32* pDXArray = pLine->GetCharPosArray().data()+( nTextPortionStart-pLine->GetStart() );
+                            const double* pDXArray = rLine.GetCharPosArray().data() + (nTextPortionStart - rLine.GetStart());
                             sal_Int32 nCharWidth = ( ( (n+1) < rPortion.GetLen() ) ? pDXArray[n] : rPortion.GetSize().Width() )
                                                             - ( n ? pDXArray[n-1] : 0 );
                             if ( (n+1) < rPortion.GetLen() )
                             {
                                 // smaller, when char behind is AsianCompressionFlags::PunctuationRight also
-                                nType = GetCharTypeForCompression( pParaPortion->GetNode()->GetChar( nIndex+1 ) );
+                                nType = GetCharTypeForCompression(rParaPortion.GetNode()->GetChar(nIndex + 1));
                                 if ( nType == AsianCompressionFlags::PunctuationRight )
                                 {
                                     sal_Int32 nNextCharWidth = ( ( (n+2) < rPortion.GetLen() ) ? pDXArray[n+1] : rPortion.GetSize().Width() )
@@ -4338,7 +4621,7 @@ tools::Long ImpEditEngine::GetXPos(
             }
         }
     }
-    else // if ( nIndex == pLine->GetStart() )
+    else // if ( nIndex == rLine.GetStart() )
     {
         if ( rPortion.IsRightToLeft() )
         {
@@ -4349,46 +4632,71 @@ tools::Long ImpEditEngine::GetXPos(
     return nX;
 }
 
-void ImpEditEngine::CalcHeight( ParaPortion* pPortion )
+/** Is true if paragraph is in the empty cluster of paragraphs at the end */
+bool ImpEditEngine::isInEmptyClusterAtTheEnd(const ParaPortion& rPortion, bool bIsScaling)
 {
-    pPortion->nHeight = 0;
-    pPortion->nFirstLineOffset = 0;
+    sal_Int32 nPortion = GetParaPortions().GetPos(&rPortion);
 
-    if ( !pPortion->IsVisible() )
+    auto& rParagraphs = GetParaPortions();
+    if (rParagraphs.Count() <= 0)
+        return false;
+
+    sal_Int32 nCurrent = rParagraphs.lastIndex();
+
+    while (nCurrent > 0 && rParagraphs.getRef(nCurrent).IsEmpty())
+    {
+        if (nCurrent == nPortion)
+        {
+            OutlinerEditEng* pOutlEditEng{ dynamic_cast<OutlinerEditEng*>(mpEditEngine)};
+            if (!bIsScaling && pOutlEditEng)
+                return pOutlEditEng->GetDepth(nCurrent) < 0;
+            else
+                return true;
+        }
+        nCurrent--;
+    }
+    return false;
+}
+
+void ImpEditEngine::CalcHeight(ParaPortion& rPortion, bool bIsScaling)
+{
+    rPortion.mnHeight = 0;
+    rPortion.mnFirstLineOffset = 0;
+
+    if (!rPortion.IsVisible() || isInEmptyClusterAtTheEnd(rPortion, bIsScaling))
         return;
 
-    OSL_ENSURE( pPortion->GetLines().Count(), "Paragraph with no lines in ParaPortion::CalcHeight" );
-    for (sal_Int32 nLine = 0; nLine < pPortion->GetLines().Count(); ++nLine)
-        pPortion->nHeight += pPortion->GetLines()[nLine].GetHeight();
+    OSL_ENSURE(rPortion.GetLines().Count(), "Paragraph with no lines in ParaPortion::CalcHeight");
+    for (sal_Int32 nLine = 0; nLine < rPortion.GetLines().Count(); ++nLine)
+        rPortion.mnHeight += rPortion.GetLines()[nLine].GetHeight();
 
     if (maStatus.IsOutliner())
         return;
 
-    const SvxULSpaceItem& rULItem = pPortion->GetNode()->GetContentAttribs().GetItem( EE_PARA_ULSPACE );
-    const SvxLineSpacingItem& rLSItem = pPortion->GetNode()->GetContentAttribs().GetItem( EE_PARA_SBL );
+    const SvxULSpaceItem& rULItem = rPortion.GetNode()->GetContentAttribs().GetItem( EE_PARA_ULSPACE );
+    const SvxLineSpacingItem& rLSItem = rPortion.GetNode()->GetContentAttribs().GetItem( EE_PARA_SBL );
     sal_Int32 nSBL = ( rLSItem.GetInterLineSpaceRule() == SvxInterLineSpaceRule::Fix ) ? scaleYSpacingValue(rLSItem.GetInterLineSpace()) : 0;
 
     if ( nSBL )
     {
-        if ( pPortion->GetLines().Count() > 1 )
-            pPortion->nHeight += ( pPortion->GetLines().Count() - 1 ) * nSBL;
+        if (rPortion.GetLines().Count() > 1)
+            rPortion.mnHeight += (rPortion.GetLines().Count() - 1) * nSBL;
         if (maStatus.ULSpaceSummation())
-            pPortion->nHeight += nSBL;
+            rPortion.mnHeight += nSBL;
     }
 
-    sal_Int32 nPortion = GetParaPortions().GetPos( pPortion );
+    sal_Int32 nPortion = GetParaPortions().GetPos(&rPortion);
     if ( nPortion )
     {
         sal_uInt16 nUpper = scaleYSpacingValue(rULItem.GetUpper());
-        pPortion->nHeight += nUpper;
-        pPortion->nFirstLineOffset = nUpper;
+        rPortion.mnHeight += nUpper;
+        rPortion.mnFirstLineOffset = nUpper;
     }
 
-    if ( nPortion != (GetParaPortions().Count()-1) )
+    if (nPortion != GetParaPortions().lastIndex())
     {
-        pPortion->nHeight += scaleYSpacingValue(rULItem.GetLower());   // not in the last
+        rPortion.mnHeight += scaleYSpacingValue(rULItem.GetLower());   // not in the last
     }
-
 
     if ( !nPortion || maStatus.ULSpaceSummation() )
         return;
@@ -4407,29 +4715,28 @@ void ImpEditEngine::CalcHeight( ParaPortion* pPortion )
 
     // check if distance by LineSpacing > Upper:
     sal_uInt16 nExtraSpace = scaleYSpacingValue(lcl_CalcExtraSpace(rLSItem));
-    if ( nExtraSpace > pPortion->nFirstLineOffset )
+    if (nExtraSpace > rPortion.mnFirstLineOffset)
     {
         // Paragraph becomes 'bigger':
-        pPortion->nHeight += ( nExtraSpace - pPortion->nFirstLineOffset );
-        pPortion->nFirstLineOffset = nExtraSpace;
+        rPortion.mnHeight += (nExtraSpace - rPortion.mnFirstLineOffset);
+        rPortion.mnFirstLineOffset = nExtraSpace;
     }
 
     // Determine nFirstLineOffset now f(pNode) => now f(pNode, pPrev):
     sal_uInt16 nPrevLower = scaleYSpacingValue(rPrevULItem.GetLower());
 
     // This PrevLower is still in the height of PrevPortion ...
-    if ( nPrevLower > pPortion->nFirstLineOffset )
+    if (nPrevLower > rPortion.mnFirstLineOffset)
     {
         // Paragraph is 'small':
-        pPortion->nHeight -= pPortion->nFirstLineOffset;
-        pPortion->nFirstLineOffset = 0;
+        rPortion.mnHeight -= rPortion.mnFirstLineOffset;
+        rPortion.mnFirstLineOffset = 0;
     }
     else if ( nPrevLower )
     {
         // Paragraph becomes 'somewhat smaller':
-        pPortion->nHeight -= nPrevLower;
-        pPortion->nFirstLineOffset =
-            pPortion->nFirstLineOffset - nPrevLower;
+        rPortion.mnHeight -= nPrevLower;
+        rPortion.mnFirstLineOffset = rPortion.mnFirstLineOffset - nPrevLower;
     }
     // I find it not so good, but Writer3 feature:
     // Check if distance by LineSpacing > Lower: this value is not
@@ -4442,11 +4749,45 @@ void ImpEditEngine::CalcHeight( ParaPortion* pPortion )
     {
         sal_uInt16 nMoreLower = nExtraSpace - nPrevLower;
         // Paragraph becomes 'bigger', 'grows' downwards:
-        if ( nMoreLower > pPortion->nFirstLineOffset )
+        if ( nMoreLower > rPortion.mnFirstLineOffset )
         {
-            pPortion->nHeight += ( nMoreLower - pPortion->nFirstLineOffset );
-            pPortion->nFirstLineOffset = nMoreLower;
+            rPortion.mnHeight += (nMoreLower - rPortion.mnFirstLineOffset);
+            rPortion.mnFirstLineOffset = nMoreLower;
         }
+    }
+}
+
+void ImpEditEngine::SetPaperSize(const Size& rNewSize)
+{
+    Size aOldSize = maPaperSize;
+    SetValidPaperSize(rNewSize);
+    Size aNewSize = maPaperSize;
+
+    bool bAutoPageSize = GetStatus().AutoPageSize();
+    if ( !(bAutoPageSize || ( aNewSize.Width() != aOldSize.Width() )) )
+        return;
+
+    for (EditView* pView : maEditViews)
+    {
+        if ( bAutoPageSize )
+            pView->getImpl().RecalcOutputArea();
+        else if (pView->getImpl().DoAutoSize())
+        {
+            pView->getImpl().ResetOutputArea(tools::Rectangle(pView->getImpl().GetOutputArea().TopLeft(), aNewSize));
+        }
+    }
+
+    if ( bAutoPageSize || IsFormatted() )
+    {
+        // Changing the width has no effect for AutoPageSize, as this is
+        // determined by the text width.
+        // Optimization first after Vobis delivery was enabled ...
+        FormatFullDoc();
+
+        UpdateViews(mpActiveView);
+
+        if (IsUpdateLayout() && mpActiveView)
+            mpActiveView->ShowCursor(false, false);
     }
 }
 
@@ -4503,7 +4844,7 @@ bool ImpEditEngine::DoVisualCursorTraveling()
 
 IMPL_LINK_NOARG(ImpEditEngine, DocModified, LinkParamNone*, void)
 {
-    aModifyHdl.Call( nullptr /*GetEditEnginePtr()*/ ); // NULL, because also used for Outliner
+    maModifyHdl.Call( nullptr /*GetEditEnginePtr()*/ ); // NULL, because also used for Outliner
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -40,7 +40,7 @@ class VclMetaFileProcessor2DTest : public test::BootstrapFixture
     {
         if (mbExportBitmap)
         {
-            BitmapEx aBitmapEx(device->GetBitmapEx(Point(0, 0), device->GetOutputSizePixel()));
+            BitmapEx aBitmapEx(device->GetBitmap(Point(0, 0), device->GetOutputSizePixel()));
             SvFileStream aStream(filename, StreamMode::WRITE | StreamMode::TRUNC);
             GraphicFilter::GetGraphicFilter().compressAsPNG(aBitmapEx, aStream);
         }
@@ -54,7 +54,7 @@ public:
 
     virtual void tearDown() override
     {
-        mVclDevice.clear();
+        mVclDevice.reset();
         mCanvas = uno::Reference<rendering::XCanvas>();
         BootstrapFixture::tearDown();
     }
@@ -93,7 +93,7 @@ public:
         rtl::Reference<primitive2d::PolygonStrokePrimitive2D> strokePrimitive(
             new primitive2d::PolygonStrokePrimitive2D(polygon, lineAttributes, strokeAttributes));
         primitive2d::Primitive2DContainer primitives;
-        primitives.push_back(primitive2d::Primitive2DReference(strokePrimitive));
+        primitives.push_back(strokePrimitive);
         processor->process(primitives);
         metafile.Stop();
         metafile.WindStart();
@@ -131,7 +131,7 @@ public:
             cppCanvas, metafile, cppcanvas::Renderer::Parameters());
         renderer->setTransformation(basegfx::B2DHomMatrix(14548, 0, -2, 0, 3350, 3431));
         CPPUNIT_ASSERT(renderer->draw());
-        exportDevice("test-tdf136957", mVclDevice);
+        exportDevice(u"test-tdf136957"_ustr, mVclDevice);
         Bitmap bitmap = mVclDevice->GetBitmap(Point(), Size(1920, 1080));
         BitmapScopedReadAccess access(bitmap);
         // There should be a dotted line, without the fix it wouldn't be there, so check

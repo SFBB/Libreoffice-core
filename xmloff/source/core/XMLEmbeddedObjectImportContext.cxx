@@ -37,7 +37,6 @@
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::xml::sax;
@@ -119,27 +118,27 @@ void XMLEmbeddedObjectImportContext::SetComponent( Reference< XComponent > const
         return;
 
     assert(dynamic_cast<SvXMLImport*>(xFilter.get()));
-    SvXMLImport *pFastHandler = dynamic_cast<SvXMLImport*>(xFilter.get());
-    mxFastHandler = pFastHandler;
+    SvXMLImport& rFastHandler = dynamic_cast<SvXMLImport&>(*xFilter);
+    mxFastHandler = &rFastHandler;
 
     try
     {
-        Reference < XModifiable2 > xModifiable2( rComp, UNO_QUERY_THROW );
-        xModifiable2->disableSetModified();
+        Reference < XModifiable2 > xModifiable2( rComp, UNO_QUERY );
+        if (xModifiable2)
+            xModifiable2->disableSetModified();
     }
     catch( Exception& )
     {
     }
 
-    Reference < XImporter > xImporter( mxFastHandler, UNO_QUERY );
-    xImporter->setTargetDocument( rComp );
+    mxFastHandler->setTargetDocument( rComp );
 
     xComp = rComp;  // keep ref to component only if there is a handler
 
     // #i34042: copy namespace declarations
     // We created a new instance of XMLImport, so we need to propagate the namespace
     // declarations to it.
-    pFastHandler->GetNamespaceMap() = GetImport().GetNamespaceMap();
+    rFastHandler.GetNamespaceMap() = GetImport().GetNamespaceMap();
 }
 
 XMLEmbeddedObjectImportContext::XMLEmbeddedObjectImportContext(
@@ -244,9 +243,12 @@ void XMLEmbeddedObjectImportContext::endFastElement(sal_Int32 nElement)
 
     try
     {
-        Reference < XModifiable2 > xModifiable2( xComp, UNO_QUERY_THROW );
-        xModifiable2->enableSetModified();
-        xModifiable2->setModified( true ); // trigger new replacement image generation
+        Reference < XModifiable2 > xModifiable2( xComp, UNO_QUERY );
+        if (xModifiable2)
+        {
+            xModifiable2->enableSetModified();
+            xModifiable2->setModified( true ); // trigger new replacement image generation
+        }
     }
     catch( Exception& )
     {

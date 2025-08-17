@@ -11,7 +11,7 @@
 
 #include <comphelper/string.hxx>
 #include <sfx2/doctempl.hxx>
-#include <sfx2/inputdlg.hxx>
+#include <inputdlg.hxx>
 #include <sfx2/sfxresid.hxx>
 #include <templatecontaineritem.hxx>
 #include <templateviewitem.hxx>
@@ -128,7 +128,7 @@ void TemplateLocalView::Populate()
                                                                           mnThumbnailHeight);
 
             pItem->maTemplates.push_back(aProperties);
-            maAllTemplates.push_back(aProperties);
+            maAllTemplates.push_back(std::move(aProperties));
         }
 
         maRegions.push_back(std::move(pItem));
@@ -491,9 +491,9 @@ void TemplateLocalView::moveTemplates(const std::set<const ThumbnailViewItem*, s
             aTemplateItem.aName = pViewItem->maTitle;
             aTemplateItem.aPath = mpDocTemplates->GetPath(nTargetRegion,nTargetIdx);
             aTemplateItem.aRegionName = pViewItem->maHelpText;
-            aTemplateItem.aThumbnail = pViewItem->maPreview1;
+            aTemplateItem.aThumbnail = pViewItem->maPreview;
 
-            pTarget->maTemplates.push_back(aTemplateItem);
+            pTarget->maTemplates.push_back(std::move(aTemplateItem));
 
             if (!bCopy)
             {
@@ -567,7 +567,7 @@ bool TemplateLocalView::copyFrom (TemplateContainerItem *pItem, const OUString &
         aTemplate.aPath = rPath;
         aTemplate.aRegionName = getRegionName(nRegionId);
 
-        pItem->maTemplates.push_back(aTemplate);
+        pItem->maTemplates.push_back(std::move(aTemplate));
 
         CalculateItemPositions();
 
@@ -598,13 +598,11 @@ bool TemplateLocalView::exportTo(const sal_uInt16 nItemId, const sal_uInt16 nReg
     return false;
 }
 
-bool TemplateLocalView::renameItem(ThumbnailViewItem* pItem, const OUString& sNewTitle)
+bool TemplateLocalView::renameItem(ThumbnailViewItem& rItem, const OUString& sNewTitle)
 {
     sal_uInt16 nRegionId = 0;
     sal_uInt16 nDocId = USHRT_MAX;
-    TemplateViewItem* pDocItem = dynamic_cast<TemplateViewItem*>( pItem );
-
-    if ( pDocItem )
+    if (TemplateViewItem* pDocItem = dynamic_cast<TemplateViewItem*>(&rItem))
     {
         nRegionId = pDocItem->mnRegionId;
         nDocId = pDocItem->mnDocId;
@@ -641,8 +639,8 @@ bool TemplateLocalView::renameItem(ThumbnailViewItem* pItem, const OUString& sNe
 
         OUString sHelpText = SfxResId(STR_TEMPLATE_TOOLTIP);
         sHelpText = (sHelpText.replaceFirst("$1", sNewTitle)).replaceFirst("$2", sRegionName);
-        pItem->setHelpText(sHelpText);
-        pItem->maTitle = sNewTitle;
+        rItem.setHelpText(sHelpText);
+        rItem.maTitle = sNewTitle;
     }
     return bRes;
 }
@@ -674,7 +672,7 @@ void TemplateLocalView::insertItems(const std::vector<TemplateItemProperties> &r
             pChild->setHelpText(sHelpText);
         }
 
-        pChild->maPreview1 = pCur->aThumbnail;
+        pChild->maPreview = pCur->aThumbnail;
 
         if(IsDefaultTemplate(pCur->aPath))
             pChild->showDefaultIcon(true);
@@ -682,7 +680,7 @@ void TemplateLocalView::insertItems(const std::vector<TemplateItemProperties> &r
         if ( pCur->aThumbnail.IsEmpty() )
         {
             // Use the default thumbnail if we have nothing else
-            pChild->maPreview1 = TemplateLocalView::getDefaultThumbnail(pCur->aPath);
+            pChild->maPreview = TemplateLocalView::getDefaultThumbnail(pCur->aPath);
         }
 
         aItems[i] = std::move(pChild);
@@ -821,9 +819,9 @@ void TemplateLocalView::setExportTemplateHdl(const Link<void*,void> &rLink)
     maExportTemplateHdl = rLink;
 }
 
-BitmapEx TemplateLocalView::scaleImg (const BitmapEx &rImg, tools::Long width, tools::Long height)
+Bitmap TemplateLocalView::scaleImg (const Bitmap &rImg, tools::Long width, tools::Long height)
 {
-    BitmapEx aImg = rImg;
+    Bitmap aImg = rImg;
 
     if (!rImg.IsEmpty())
     {
@@ -847,7 +845,7 @@ BitmapEx TemplateLocalView::scaleImg (const BitmapEx &rImg, tools::Long width, t
 bool TemplateLocalView::IsDefaultTemplate(const OUString& rPath)
 {
     SvtModuleOptions aModOpt;
-    const css::uno::Sequence<OUString> &aServiceNames = aModOpt.GetAllServiceNames();
+    const css::uno::Sequence<OUString> aServiceNames = aModOpt.GetAllServiceNames();
 
     return std::any_of(aServiceNames.begin(), aServiceNames.end(), [&rPath](const OUString& rName) {
         return SfxObjectFactory::GetStandardTemplate(rName).match(rPath); });
@@ -867,25 +865,25 @@ void TemplateLocalView::RemoveDefaultTemplateIcon(std::u16string_view rPath)
     }
 }
 
-BitmapEx TemplateLocalView::getDefaultThumbnail( std::u16string_view rPath )
+Bitmap TemplateLocalView::getDefaultThumbnail( std::u16string_view rPath )
 {
-    BitmapEx aImg;
+    Bitmap aImg;
     INetURLObject aUrl(rPath);
     OUString aExt = aUrl.getExtension();
 
     if ( ViewFilter_Application::isFilteredExtension( FILTER_APPLICATION::WRITER, aExt) )
-        aImg = BitmapEx(SFX_THUMBNAIL_TEXT);
+        aImg = Bitmap(SFX_THUMBNAIL_TEXT);
     else if ( ViewFilter_Application::isFilteredExtension( FILTER_APPLICATION::CALC, aExt) )
-        aImg = BitmapEx(SFX_THUMBNAIL_SHEET);
+        aImg = Bitmap(SFX_THUMBNAIL_SHEET);
     else if ( ViewFilter_Application::isFilteredExtension( FILTER_APPLICATION::IMPRESS, aExt) )
-        aImg = BitmapEx(SFX_THUMBNAIL_PRESENTATION);
+        aImg = Bitmap(SFX_THUMBNAIL_PRESENTATION);
     else if ( ViewFilter_Application::isFilteredExtension( FILTER_APPLICATION::DRAW, aExt) )
-        aImg = BitmapEx(SFX_THUMBNAIL_DRAWING);
+        aImg = Bitmap(SFX_THUMBNAIL_DRAWING);
 
     return aImg;
 }
 
-BitmapEx TemplateLocalView::fetchThumbnail (const OUString &msURL, tools::Long width, tools::Long height)
+Bitmap TemplateLocalView::fetchThumbnail (const OUString &msURL, tools::Long width, tools::Long height)
 {
     return TemplateLocalView::scaleImg(ThumbnailView::readThumbnail(msURL), width, height);
 }
@@ -900,10 +898,10 @@ void TemplateLocalView::OnItemDblClicked (ThumbnailViewItem *pItem)
 
 bool TemplateLocalView::IsInternalTemplate(const OUString& rPath)
 {
-    uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     css::uno::Reference< css::util::XPathSettings > xPathSettings = css::util::thePathSettings::get(xContext);
     uno::Sequence<OUString> aInternalTemplateDirs;
-    uno::Any aAny = xPathSettings->getPropertyValue("Template_internal");
+    uno::Any aAny = xPathSettings->getPropertyValue(u"Template_internal"_ustr);
     aAny >>= aInternalTemplateDirs;
     SfxURLRelocator_Impl aRelocator(xContext);
     for (OUString& rInternalTemplateDir : asNonConstRange(aInternalTemplateDirs))

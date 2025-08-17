@@ -43,7 +43,6 @@
 #include <com/sun/star/frame/XPopupMenuController.hpp>
 #include <comphelper/propertyvalue.hxx>
 #include <toolkit/awt/vclxmenu.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <RptDef.hxx>
 #include <SectionWindow.hxx>
@@ -53,6 +52,7 @@
 
 #include <utility>
 #include <vcl/commandevent.hxx>
+#include <vcl/unohelp.hxx>
 #include <o3tl/safeint.hxx>
 
 #include <svl/itempool.hxx>
@@ -73,7 +73,7 @@ static Color lcl_getOverlappedControlColor(/*const uno::Reference <lang::XMultiS
 
 OReportSection::OReportSection(OSectionWindow* _pParent,uno::Reference< report::XSection > _xSection)
     : Window(_pParent,WB_DIALOGCONTROL)
-    , ::comphelper::OPropertyChangeListener(m_aMutex)
+    , ::comphelper::OPropertyChangeListener()
     , DropTargetHelper(this)
     , m_pPage(nullptr)
     , m_pView(nullptr)
@@ -125,7 +125,7 @@ void OReportSection::dispose()
         delete m_pView;
         m_pView = nullptr;
     }
-    m_pParent.clear();
+    m_pParent.reset();
     vcl::Window::dispose();
 }
 
@@ -148,7 +148,7 @@ void OReportSection::Paint( vcl::RenderContext& rRenderContext, const tools::Rec
     if (pPgView)
     {
         pTargetPaintWindow = pPgView->GetView().BeginDrawLayers(GetOutDev(), aPaintRectRegion);
-        OSL_ENSURE(pTargetPaintWindow, "BeginDrawLayers: Got no SdrPaintWindow (!)");
+        assert(pTargetPaintWindow && "BeginDrawLayers: Got no SdrPaintWindow (!)");
         // draw background self using wallpaper
         OutputDevice& rTargetOutDev = pTargetPaintWindow->GetTargetOutputDevice();
         rTargetOutDev.DrawWallpaper(rRect, Wallpaper(pPgView->GetApplicationDocumentColor()));
@@ -247,7 +247,7 @@ void OReportSection::Paste(const uno::Sequence< beans::NamedValue >& _aAllreadyC
             {
                 uno::Sequence< uno::Reference<report::XReportComponent> > aCopies;
                 rObject.Value >>= aCopies;
-                for (const uno::Reference<report::XReportComponent>& rCopy : std::as_const(aCopies))
+                for (const uno::Reference<report::XReportComponent>& rCopy : aCopies)
                 {
                     SdrObject* pObject = SdrObject::getSdrObjectFromXShape( rCopy );
                     if ( pObject )
@@ -255,7 +255,8 @@ void OReportSection::Paste(const uno::Sequence< beans::NamedValue >& _aAllreadyC
                         // Clone to target SdrModel
                         rtl::Reference<SdrObject> pNewObj(pObject->CloneSdrObject(*m_pModel));
                         m_pPage->InsertObject(pNewObj.get(), SAL_MAX_SIZE);
-                        tools::Rectangle aRet(VCLPoint(rCopy->getPosition()),VCLSize(rCopy->getSize()));
+                        tools::Rectangle aRet(vcl::unohelper::ConvertToVCLPoint(rCopy->getPosition()),
+                                              vcl::unohelper::ConvertToVCLSize(rCopy->getSize()));
                         aRet.setHeight(aRet.getOpenHeight() + 1);
                         aRet.setWidth(aRet.getOpenWidth() + 1);
                         bool bOverlapping = true;
@@ -287,7 +288,7 @@ void OReportSection::Paste(const uno::Sequence< beans::NamedValue >& _aAllreadyC
 
 void OReportSection::Delete()
 {
-    if( !m_pView->AreObjectsMarked() )
+    if( m_pView->GetMarkedObjectList().GetMarkCount() == 0 )
         return;
 
     m_pView->BrkAction();
@@ -320,7 +321,7 @@ void OReportSection::Copy(uno::Sequence< beans::NamedValue >& _rAllreadyCopiedOb
 void OReportSection::Copy(uno::Sequence< beans::NamedValue >& _rAllreadyCopiedObjects,bool _bEraseAnddNoClone)
 {
     OSL_ENSURE(m_xSection.is(),"Why is the section here NULL!");
-    if( !m_pView->AreObjectsMarked() || !m_xSection.is() )
+    if( m_pView->GetMarkedObjectList().GetMarkCount() == 0 || !m_xSection.is() )
         return;
 
     // insert control models of marked objects into clipboard dialog model
@@ -422,15 +423,15 @@ void OReportSection::Command( const CommandEvent& _rCEvt )
     OReportController& rController = m_pParent->getViewsWindow()->getView()->getReportView()->getController();
     uno::Reference<frame::XFrame> xFrame = rController.getFrame();
     css::uno::Sequence<css::uno::Any> aArgs {
-        css::uno::Any(comphelper::makePropertyValue("Value", OUString("report"))),
-        css::uno::Any(comphelper::makePropertyValue("Frame", xFrame)),
-        css::uno::Any(comphelper::makePropertyValue("IsContextMenu", true))
+        css::uno::Any(comphelper::makePropertyValue(u"Value"_ustr, u"report"_ustr)),
+        css::uno::Any(comphelper::makePropertyValue(u"Frame"_ustr, xFrame)),
+        css::uno::Any(comphelper::makePropertyValue(u"IsContextMenu"_ustr, true))
     };
 
     css::uno::Reference<css::uno::XComponentContext> xContext(rController.getORB());
     css::uno::Reference<css::frame::XPopupMenuController> xMenuController(
         xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-        "com.sun.star.comp.framework.ResourceMenuController", aArgs, xContext), css::uno::UNO_QUERY);
+        u"com.sun.star.comp.framework.ResourceMenuController"_ustr, aArgs, xContext), css::uno::UNO_QUERY);
 
     if (!xMenuController.is())
         return;
@@ -536,7 +537,9 @@ void OReportSection::impl_adjustObjectSizePosition(sal_Int32 i_nPaperWidth,sal_I
                 {
                     xReportComponent->setPosition(aPos);
                     correctOverlapping(pObject,*this,false);
-                    tools::Rectangle aRet(VCLPoint(xReportComponent->getPosition()),VCLSize(xReportComponent->getSize()));
+                    tools::Rectangle aRet(
+                        vcl::unohelper::ConvertToVCLPoint(xReportComponent->getPosition()),
+                        vcl::unohelper::ConvertToVCLSize(xReportComponent->getSize()));
                     aRet.setHeight(aRet.getOpenHeight() + 1);
                     aRet.setWidth(aRet.getOpenWidth() + 1);
                     if ( m_xSection.is() && (o3tl::make_unsigned(aRet.getOpenHeight() + aRet.Top()) > m_xSection->getHeight()) )
@@ -588,27 +591,23 @@ void OReportSection::createDefault(const OUString& _sType,SdrObject* _pObj)
             {
                 auto i = static_cast<sal_uInt32>(std::distance(aObjList.begin(), aIter));
                 OReportModel aReportModel(nullptr);
-                SfxItemPool& rPool = aReportModel.GetItemPool();
-                rPool.FreezeIdRanges();
+
                 if ( GalleryExplorer::GetSdrObj( GALLERY_THEME_POWERPOINT, i, &aReportModel ) )
                 {
                     const SdrObject* pSourceObj = aReportModel.GetPage( 0 )->GetObj( 0 );
                     if( pSourceObj )
                     {
                         const SfxItemSet& rSource = pSourceObj->GetMergedItemSet();
-                        SfxItemSetFixed<
-                                // Ranges from SdrAttrObj:
-                                SDRATTR_START, SDRATTR_SHADOW_LAST,
-                                SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST,
-                                SDRATTR_TEXTDIRECTION,
-                                    SDRATTR_TEXTDIRECTION,
-                                // Graphic attributes, 3D properties,
-                                // CustomShape properties:
-                                SDRATTR_GRAF_FIRST,
-                                    SDRATTR_CUSTOMSHAPE_LAST,
-                                // Range from SdrTextObj:
-                                EE_ITEMS_START, EE_ITEMS_END>
-                            aDest( _pObj->getSdrModelFromSdrObject().GetItemPool() );
+                        SfxItemSet aDest(SfxItemSet::makeFixedSfxItemSet<
+                            // Ranges from SdrAttrObj:
+                            SDRATTR_START, SDRATTR_SHADOW_LAST,
+                            SDRATTR_MISC_FIRST, SDRATTR_MISC_LAST,
+                            SDRATTR_TEXTDIRECTION, SDRATTR_TEXTDIRECTION,
+                            // Graphic attributes, 3D properties,
+                            // CustomShape properties:
+                            SDRATTR_GRAF_FIRST, SDRATTR_CUSTOMSHAPE_LAST,
+                            // Range from SdrTextObj:
+                            EE_ITEMS_START, EE_ITEMS_END>(_pObj->getSdrModelFromSdrObject().GetItemPool()));
                         aDest.Set( rSource );
                         _pObj->SetMergedItemSet( aDest );
                         Degree100 nAngle = pSourceObj->GetRotateAngle();
@@ -769,7 +768,7 @@ sal_Int8 OReportSection::ExecuteDrop( const ExecuteDropEvent& _rEvt )
                 aCurrent.realloc(nLength + 3);
                 auto pCurrent = aCurrent.getArray();
                 pCurrent[nLength].Name = PROPERTY_POSITION;
-                pCurrent[nLength++].Value <<= AWTPoint(aDropPos);
+                pCurrent[nLength++].Value <<= vcl::unohelper::ConvertToAWTPoint(aDropPos);
                 // give also the DND Action (Shift|Ctrl) Key to really say what we want
                 pCurrent[nLength].Name = "DNDAction";
                 pCurrent[nLength++].Value <<= _rEvt.mnAction;

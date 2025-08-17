@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <cassert>
+
 #include <hintids.hxx>
 #include <i18nlangtag/mslangid.hxx>
 #include <editeng/boxitem.hxx>
@@ -35,7 +37,6 @@
 #include <tblafmt.hxx>
 #include <hints.hxx>
 
-using namespace ::editeng;
 using namespace ::com::sun::star;
 
 void SetAllScriptItem( SfxItemSet& rSet, const SfxPoolItem& rItem )
@@ -82,9 +83,25 @@ SvxFrameDirection GetDefaultFrameDirection(LanguageType nLanguage)
             SvxFrameDirection::Horizontal_RL_TB : SvxFrameDirection::Horizontal_LR_TB;
 }
 
-// See if the Paragraph/Character/Frame/Page style is in use
+namespace {
+#ifndef NDEBUG
+    bool lcl_isValidUsedStyle(const sw::BroadcastingModify* pModify)
+    {
+        const bool isParaStyle = dynamic_cast<const SwTextFormatColl*>(pModify);
+        const bool isCharStyle = dynamic_cast<const SwCharFormat*>(pModify);
+        const bool isFrameStyle = dynamic_cast<const SwFrameFormat*>(pModify);
+        const bool isFieldType = dynamic_cast<const SwFieldType*>(pModify); // just for insanity's sake, this is also used on FieldTypes
+        return isParaStyle || isCharStyle || isFrameStyle || isFieldType;
+    }
+#endif
+}
+
+
+// See if the Paragraph/Character/Frame style or Field Type is in use
 bool SwDoc::IsUsed( const sw::BroadcastingModify& rModify ) const
 {
+    assert(lcl_isValidUsedStyle(&rModify));
+
     // Check if we have dependent ContentNodes in the Nodes array
     // (also indirect ones for derived Formats)
     bool isUsed = false;
@@ -184,20 +201,7 @@ sal_uInt16 GetPoolParent( sal_uInt16 nId )
             case RES_POOLCOLL_TEXT:
             case RES_POOLCOLL_GREETING:
             case RES_POOLCOLL_SIGNATURE:
-            case RES_POOLCOLL_HEADLINE_BASE:
                     nRet = RES_POOLCOLL_STANDARD;               break;
-
-            case RES_POOLCOLL_HEADLINE1:
-            case RES_POOLCOLL_HEADLINE2:
-            case RES_POOLCOLL_HEADLINE3:
-            case RES_POOLCOLL_HEADLINE4:
-            case RES_POOLCOLL_HEADLINE5:
-            case RES_POOLCOLL_HEADLINE6:
-            case RES_POOLCOLL_HEADLINE7:
-            case RES_POOLCOLL_HEADLINE8:
-            case RES_POOLCOLL_HEADLINE9:
-            case RES_POOLCOLL_HEADLINE10:
-                    nRet = RES_POOLCOLL_HEADLINE_BASE;          break;
             }
             break;
 
@@ -271,7 +275,15 @@ sal_uInt16 GetPoolParent( sal_uInt16 nId )
             break;
 
         case COLL_DOC_BITS:
-            nRet = RES_POOLCOLL_HEADLINE_BASE;
+            switch (nId)
+            {
+                case RES_POOLCOLL_HEADLINE_BASE:
+                    nRet = RES_POOLCOLL_STANDARD;
+                    break;
+                default:
+                    nRet = RES_POOLCOLL_HEADLINE_BASE;
+                    break;
+            }
             break;
 
         case COLL_HTML_BITS:
@@ -286,7 +298,7 @@ sal_uInt16 GetPoolParent( sal_uInt16 nId )
 void SwDoc::RemoveAllFormatLanguageDependencies()
 {
     /* Restore the language independent pool defaults and styles. */
-    GetAttrPool().ResetPoolDefaultItem( RES_PARATR_ADJUST );
+    GetAttrPool().ResetUserDefaultItem( RES_PARATR_ADJUST );
 
     SwTextFormatColl * pTextFormatColl = getIDocumentStylePoolAccess().GetTextCollFromPool( RES_POOLCOLL_STANDARD );
 
@@ -305,7 +317,7 @@ void SwDoc::RemoveAllFormatLanguageDependencies()
     }
 
     //#i16874# AutoKerning as default for new documents
-    GetAttrPool().ResetPoolDefaultItem( RES_CHRATR_AUTOKERN );
+    GetAttrPool().ResetUserDefaultItem( RES_CHRATR_AUTOKERN );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

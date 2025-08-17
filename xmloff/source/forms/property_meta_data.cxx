@@ -27,8 +27,6 @@
 
 #include <o3tl/hash_combine.hxx>
 #include <tools/debug.hxx>
-#include <osl/diagnose.h>
-#include <sal/log.hxx>
 
 #include <unordered_map>
 
@@ -113,7 +111,7 @@ namespace xmloff::metadata
                     PropertyDescriptionList singleElementList;
                     singleElementList.push_back( desc );
 
-                    s_attributesWithoutGroup[ desc->attribute ].push_back( singleElementList );
+                    s_attributesWithoutGroup[ desc->attribute ].push_back(std::move(singleElementList));
                     ++desc;
                 }
             }

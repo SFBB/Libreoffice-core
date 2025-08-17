@@ -106,6 +106,7 @@ bool ExcelFilter::importDocument()
             rtl::Reference<WorkbookFragment> xWorkbookFragment( new WorkbookFragment(*xBookGlob, aWorkbookPath));
 
             ScDocument& rDoc = xWorkbookFragment->getScDocument();
+            rDoc.SetImportingXLSX(true);
             ScDocShell* pDocSh = rDoc.GetDocumentShell();
             assert( pDocSh );
             pDocSh->SetInitialLinkUpdate( pDocSh->GetMedium());
@@ -121,6 +122,7 @@ bool ExcelFilter::importDocument()
                 else if (rAC.isRowOverflow())
                     pDocSh->SetError(SCWARN_IMPORT_ROW_OVERFLOW);
             }
+            rDoc.SetImportingXLSX(false);
             return bRet;
         }
     }
@@ -198,7 +200,7 @@ sal_Bool SAL_CALL ExcelFilter::filter( const css::uno::Sequence< css::beans::Pro
 
 OUString ExcelFilter::getImplementationName()
 {
-    return "com.sun.star.comp.oox.xls.ExcelFilter";
+    return u"com.sun.star.comp.oox.xls.ExcelFilter"_ustr;
 }
 
 } // namespace oox::xls

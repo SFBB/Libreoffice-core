@@ -36,13 +36,12 @@
 #include <docufld.hxx>
 #include <flddat.hxx>
 #include <viewopt.hxx>
+#include <expfld.hxx>
 #include "htmlfld.hxx"
 #include "wrthtml.hxx"
 #include <rtl/strbuf.hxx>
 #include "css1atr.hxx"
 #include "css1kywd.hxx"
-
-using namespace nsSwDocInfoSubType;
 
 const char *SwHTMLWriter::GetNumFormat( sal_uInt16 nFormat )
 {
@@ -72,7 +71,6 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
 {
     const SwFieldType* pFieldTyp = pField->GetTyp();
     SwFieldIds nField = pFieldTyp->Which();
-    sal_uLong nFormat = pField->GetFormat();
 
     const char *pTypeStr=nullptr, // TYPE
                       *pSubStr=nullptr,   // SUBTYPE
@@ -83,41 +81,45 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
     double dNumValue = 0.0;     // SDVAL (Number-Formatter-Value)
     bool bFixed=false;          // SDFIXED
     OUString aName;               // NAME (CUSTOM)
+    sal_uInt32 nNumFormat = 0;
 
     switch( nField )
     {
         case SwFieldIds::ExtUser:
+        {
+            auto pExtUserField = static_cast<const SwExtUserField*>(pField);
             pTypeStr = OOO_STRING_SW_HTML_FT_sender;
-            switch( static_cast<SwExtUserSubType>(pField->GetSubType()) )
+            switch( pExtUserField->GetSubType() )
             {
-                case EU_COMPANY:    pSubStr = OOO_STRING_SW_HTML_FS_company;        break;
-                case EU_FIRSTNAME:  pSubStr = OOO_STRING_SW_HTML_FS_firstname;  break;
-                case EU_NAME:       pSubStr = OOO_STRING_SW_HTML_FS_name;       break;
-                case EU_SHORTCUT:   pSubStr = OOO_STRING_SW_HTML_FS_shortcut;   break;
-                case EU_STREET:     pSubStr = OOO_STRING_SW_HTML_FS_street;     break;
-                case EU_COUNTRY:    pSubStr = OOO_STRING_SW_HTML_FS_country;     break;
-                case EU_ZIP:        pSubStr = OOO_STRING_SW_HTML_FS_zip;         break;
-                case EU_CITY:       pSubStr = OOO_STRING_SW_HTML_FS_city;        break;
-                case EU_TITLE:      pSubStr = OOO_STRING_SW_HTML_FS_title;       break;
-                case EU_POSITION:   pSubStr = OOO_STRING_SW_HTML_FS_position;    break;
-                case EU_PHONE_PRIVATE:  pSubStr = OOO_STRING_SW_HTML_FS_pphone;      break;
-                case EU_PHONE_COMPANY:  pSubStr = OOO_STRING_SW_HTML_FS_cphone;      break;
-                case EU_FAX:        pSubStr = OOO_STRING_SW_HTML_FS_fax;         break;
-                case EU_EMAIL:      pSubStr = OOO_STRING_SW_HTML_FS_email;       break;
-                case EU_STATE:      pSubStr = OOO_STRING_SW_HTML_FS_state;       break;
+                case SwExtUserSubType::Company:    pSubStr = OOO_STRING_SW_HTML_FS_company;        break;
+                case SwExtUserSubType::Firstname:  pSubStr = OOO_STRING_SW_HTML_FS_firstname;  break;
+                case SwExtUserSubType::Name:       pSubStr = OOO_STRING_SW_HTML_FS_name;       break;
+                case SwExtUserSubType::Shortcut:   pSubStr = OOO_STRING_SW_HTML_FS_shortcut;   break;
+                case SwExtUserSubType::Street:     pSubStr = OOO_STRING_SW_HTML_FS_street;     break;
+                case SwExtUserSubType::Country:    pSubStr = OOO_STRING_SW_HTML_FS_country;     break;
+                case SwExtUserSubType::Zip:        pSubStr = OOO_STRING_SW_HTML_FS_zip;         break;
+                case SwExtUserSubType::City:       pSubStr = OOO_STRING_SW_HTML_FS_city;        break;
+                case SwExtUserSubType::Title:      pSubStr = OOO_STRING_SW_HTML_FS_title;       break;
+                case SwExtUserSubType::Position:   pSubStr = OOO_STRING_SW_HTML_FS_position;    break;
+                case SwExtUserSubType::PhonePrivate:  pSubStr = OOO_STRING_SW_HTML_FS_pphone;      break;
+                case SwExtUserSubType::PhoneCompany:  pSubStr = OOO_STRING_SW_HTML_FS_cphone;      break;
+                case SwExtUserSubType::Fax:        pSubStr = OOO_STRING_SW_HTML_FS_fax;         break;
+                case SwExtUserSubType::Email:      pSubStr = OOO_STRING_SW_HTML_FS_email;       break;
+                case SwExtUserSubType::State:      pSubStr = OOO_STRING_SW_HTML_FS_state;       break;
                 default:
                     ;
             }
             OSL_ENSURE( pSubStr, "unknown sub type for SwExtUserField" );
-            bFixed = static_cast<const SwExtUserField*>(pField)->IsFixed();
+            bFixed = pExtUserField->IsFixed();
             break;
-
+        }
         case SwFieldIds::Author:
             pTypeStr = OOO_STRING_SW_HTML_FT_author;
-            switch( static_cast<SwAuthorFormat>(nFormat) & 0xff)
+            switch( static_cast<const SwAuthorField*>(pField)->GetFormat() & SwAuthorFormat::Mask )
             {
-                case AF_NAME:     pFormatStr = OOO_STRING_SW_HTML_FF_name;     break;
-                case AF_SHORTCUT:  pFormatStr = OOO_STRING_SW_HTML_FF_shortcut;    break;
+                case SwAuthorFormat::Name:     pFormatStr = OOO_STRING_SW_HTML_FF_name;     break;
+                case SwAuthorFormat::Shortcut:  pFormatStr = OOO_STRING_SW_HTML_FF_shortcut;    break;
+                default: break;
             }
             OSL_ENSURE( pFormatStr, "unknown format for SwAuthorField" );
             bFixed = static_cast<const SwAuthorField*>(pField)->IsFixed();
@@ -126,6 +128,7 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
         case SwFieldIds::DateTime:
             pTypeStr = OOO_STRING_SW_HTML_FT_datetime;
             bNumFormat = true;
+            nNumFormat = static_cast<const SwDateTimeField*>(pField)->GetFormat();
             if( static_cast<const SwDateTimeField*>(pField)->IsFixed() )
             {
                 bNumValue = true;
@@ -135,75 +138,80 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
 
         case SwFieldIds::PageNumber:
             {
+                auto pPageNumberField = static_cast<const SwPageNumberField *>(pField);
                 pTypeStr = OOO_STRING_SW_HTML_FT_page;
-                SwPageNumSubType eSubType = static_cast<SwPageNumSubType>(pField->GetSubType());
+                SwPageNumSubType eSubType = pPageNumberField->GetSubType();
                 switch( eSubType )
                 {
-                    case PG_RANDOM:     pSubStr = OOO_STRING_SW_HTML_FS_random;     break;
-                    case PG_NEXT:       pSubStr = OOO_STRING_SW_HTML_FS_next;       break;
-                    case PG_PREV:       pSubStr = OOO_STRING_SW_HTML_FS_prev;       break;
+                    case SwPageNumSubType::Random:     pSubStr = OOO_STRING_SW_HTML_FS_random;     break;
+                    case SwPageNumSubType::Next:       pSubStr = OOO_STRING_SW_HTML_FS_next;       break;
+                    case SwPageNumSubType::Previous:       pSubStr = OOO_STRING_SW_HTML_FS_prev;       break;
                 }
                 OSL_ENSURE( pSubStr, "unknown sub type for SwPageNumberField" );
+                SvxNumType nFormat = pPageNumberField->GetFormat();
                 pFormatStr = SwHTMLWriter::GetNumFormat( static_cast< sal_uInt16 >(nFormat) );
 
-                if( static_cast<SvxNumType>(nFormat)==SVX_NUM_CHAR_SPECIAL )
+                if( nFormat == SVX_NUM_CHAR_SPECIAL )
                 {
-                    aValue = static_cast<const SwPageNumberField *>(pField)->GetUserString();
+                    aValue = pPageNumberField->GetUserString();
                 }
                 else
                 {
-                    const OUString& rValue = pField->GetPar2();
-                    short nValue = static_cast<short>(rValue.toInt32());
-                    if( (eSubType == PG_NEXT && nValue!=1) ||
-                        (eSubType == PG_PREV && nValue!=-1) ||
-                        (eSubType == PG_RANDOM && nValue!=0) )
+                    const OUString aPar2Value = pField->GetPar2();
+                    short nValue = static_cast<short>(aPar2Value.toInt32());
+                    if( (eSubType == SwPageNumSubType::Next && nValue!=1) ||
+                        (eSubType == SwPageNumSubType::Previous && nValue!=-1) ||
+                        (eSubType == SwPageNumSubType::Random && nValue!=0) )
                     {
-                        aValue = rValue;
+                        aValue = aPar2Value;
                     }
                 }
             }
             break;
         case SwFieldIds::DocInfo:
             {
-                sal_uInt16 nSubType = pField->GetSubType();
+                auto pDocInfoField = static_cast<const SwDocInfoField*>(pField);
+                nNumFormat = pDocInfoField->GetFormat();
+                SwDocInfoSubType nSubType = pDocInfoField->GetSubType();
                 pTypeStr = OOO_STRING_SW_HTML_FT_docinfo;
-                sal_uInt16 nExtSubType = nSubType & 0x0f00;
-                nSubType &= 0x00ff;
+                SwDocInfoSubType nExtSubType = nSubType & SwDocInfoSubType::SubMask;
+                nSubType &= SwDocInfoSubType::LowerMask;
 
                 switch( nSubType )
                 {
-                    case DI_TITLE:      pSubStr = OOO_STRING_SW_HTML_FS_title;  break;
-                    case DI_SUBJECT:    pSubStr = OOO_STRING_SW_HTML_FS_theme;  break;
-                    case DI_KEYS:       pSubStr = OOO_STRING_SW_HTML_FS_keys;   break;
-                    case DI_COMMENT:    pSubStr = OOO_STRING_SW_HTML_FS_comment; break;
-                    case DI_CREATE:     pSubStr = OOO_STRING_SW_HTML_FS_create;     break;
-                    case DI_CHANGE:     pSubStr = OOO_STRING_SW_HTML_FS_change;     break;
-                    case DI_CUSTOM:     pSubStr = OOO_STRING_SW_HTML_FS_custom;     break;
+                    case SwDocInfoSubType::Title:      pSubStr = OOO_STRING_SW_HTML_FS_title;  break;
+                    case SwDocInfoSubType::Subject:    pSubStr = OOO_STRING_SW_HTML_FS_theme;  break;
+                    case SwDocInfoSubType::Keys:       pSubStr = OOO_STRING_SW_HTML_FS_keys;   break;
+                    case SwDocInfoSubType::Comment:    pSubStr = OOO_STRING_SW_HTML_FS_comment; break;
+                    case SwDocInfoSubType::Create:     pSubStr = OOO_STRING_SW_HTML_FS_create;     break;
+                    case SwDocInfoSubType::Change:     pSubStr = OOO_STRING_SW_HTML_FS_change;     break;
+                    case SwDocInfoSubType::Custom:     pSubStr = OOO_STRING_SW_HTML_FS_custom;     break;
                     default:            pTypeStr = nullptr;               break;
                 }
 
-                if( DI_CUSTOM == nSubType ) {
-                    aName = static_cast<const SwDocInfoField*>(pField)->GetName();
+                if( SwDocInfoSubType::Custom == nSubType ) {
+                    aName = pDocInfoField->GetName();
                 }
 
-                if( DI_CREATE == nSubType || DI_CHANGE == nSubType )
+                if( SwDocInfoSubType::Create == nSubType || SwDocInfoSubType::Change == nSubType )
                 {
                     switch( nExtSubType )
                     {
-                        case DI_SUB_AUTHOR:
+                        case SwDocInfoSubType::SubAuthor:
                             pFormatStr = OOO_STRING_SW_HTML_FF_author;
                             break;
-                        case DI_SUB_TIME:
+                        case SwDocInfoSubType::SubTime:
                             pFormatStr = OOO_STRING_SW_HTML_FF_time;
                             bNumFormat = true;
                             break;
-                        case DI_SUB_DATE:
+                        case SwDocInfoSubType::SubDate:
                             pFormatStr = OOO_STRING_SW_HTML_FF_date;
                             bNumFormat = true;
                             break;
+                        default: break;
                     }
                 }
-                bFixed = static_cast<const SwDocInfoField*>(pField)->IsFixed();
+                bFixed = pDocInfoField->IsFixed();
                 if( bNumFormat )
                 {
                     if( bFixed )
@@ -214,7 +222,7 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
                         dNumValue = static_cast<const SwDocInfoField*>(pField)->GetValue();
                         bNumValue = true;
                     }
-                    else if( !nFormat  )
+                    else if( !pDocInfoField->GetFormat()  )
                     {
                         // Non-fixed fields may not have a number format, when
                         // they come from a 4.0-document.
@@ -226,31 +234,32 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
 
         case SwFieldIds::DocStat:
             {
+                auto pDocStatField = static_cast<const SwDocStatField*>(pField);
                 pTypeStr = OOO_STRING_SW_HTML_FT_docstat;
-                sal_uInt16 nSubType = pField->GetSubType();
+                SwDocStatSubType nSubType = pDocStatField->GetSubType();
                 switch( nSubType )
                 {
-                    case DS_PAGE:       pSubStr = OOO_STRING_SW_HTML_FS_page;   break;
-                    case DS_PARA:       pSubStr = OOO_STRING_SW_HTML_FS_para;   break;
-                    case DS_WORD:       pSubStr = OOO_STRING_SW_HTML_FS_word;   break;
-                    case DS_CHAR:       pSubStr = OOO_STRING_SW_HTML_FS_char;   break;
-                    case DS_TBL:        pSubStr = OOO_STRING_SW_HTML_FS_tbl;    break;
-                    case DS_GRF:        pSubStr = OOO_STRING_SW_HTML_FS_grf;    break;
-                    case DS_OLE:        pSubStr = OOO_STRING_SW_HTML_FS_ole;    break;
+                    case SwDocStatSubType::Page:       pSubStr = OOO_STRING_SW_HTML_FS_page;   break;
+                    case SwDocStatSubType::Paragraph:       pSubStr = OOO_STRING_SW_HTML_FS_para;   break;
+                    case SwDocStatSubType::Word:       pSubStr = OOO_STRING_SW_HTML_FS_word;   break;
+                    case SwDocStatSubType::Character:       pSubStr = OOO_STRING_SW_HTML_FS_char;   break;
+                    case SwDocStatSubType::Table:        pSubStr = OOO_STRING_SW_HTML_FS_tbl;    break;
+                    case SwDocStatSubType::Graphic:        pSubStr = OOO_STRING_SW_HTML_FS_grf;    break;
+                    case SwDocStatSubType::OLE:        pSubStr = OOO_STRING_SW_HTML_FS_ole;    break;
                     default:            pTypeStr = nullptr;               break;
                 }
-                pFormatStr = SwHTMLWriter::GetNumFormat( static_cast< sal_uInt16 >(nFormat) );
+                pFormatStr = SwHTMLWriter::GetNumFormat( static_cast< sal_uInt16 >(pDocStatField->GetFormat()) );
             }
             break;
 
         case SwFieldIds::Filename:
             pTypeStr = OOO_STRING_SW_HTML_FT_filename;
-            switch( static_cast<SwFileNameFormat>(nFormat & ~FF_FIXED) )
+            switch( static_cast<const SwFileNameField*>(pField)->GetFormat() & ~SwFileNameFormat::Fixed )
             {
-                case FF_NAME:       pFormatStr = OOO_STRING_SW_HTML_FF_name;       break;
-                case FF_PATHNAME:   pFormatStr = OOO_STRING_SW_HTML_FF_pathname;   break;
-                case FF_PATH:       pFormatStr = OOO_STRING_SW_HTML_FF_path;       break;
-                case FF_NAME_NOEXT: pFormatStr = OOO_STRING_SW_HTML_FF_name_noext; break;
+                case SwFileNameFormat::Name:       pFormatStr = OOO_STRING_SW_HTML_FF_name;       break;
+                case SwFileNameFormat::PathName:   pFormatStr = OOO_STRING_SW_HTML_FF_pathname;   break;
+                case SwFileNameFormat::Path:       pFormatStr = OOO_STRING_SW_HTML_FF_path;       break;
+                case SwFileNameFormat::NameNoExt: pFormatStr = OOO_STRING_SW_HTML_FF_name_noext; break;
                 default:
                     ;
             }
@@ -304,9 +313,9 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
         }
         if( bNumFormat )
         {
-            OSL_ENSURE( nFormat, "number format is 0" );
+            OSL_ENSURE( nNumFormat, "number format is 0" );
             sOut.append(HTMLOutFuncs::CreateTableDataOptionsValNum(
-                bNumValue, dNumValue, nFormat,
+                bNumValue, dNumValue, nNumFormat,
                 *rWrt.m_pDoc->GetNumberFormatter()));
         }
         if( bFixed )
@@ -339,11 +348,10 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
     {
         //sequence of (start, end) property ranges we want to
         //query
-        SfxItemSetFixed<RES_CHRATR_FONT, RES_CHRATR_FONTSIZE,
-                       RES_CHRATR_POSTURE, RES_CHRATR_POSTURE,
-                       RES_CHRATR_WEIGHT, RES_CHRATR_WEIGHT,
-                       RES_CHRATR_CJK_FONT, RES_CHRATR_CTL_WEIGHT>
-            aScriptItemSet( rWrt.m_pDoc->GetAttrPool() );
+        SfxItemSet aScriptItemSet(SfxItemSet::makeFixedSfxItemSet<RES_CHRATR_FONT, RES_CHRATR_FONTSIZE,
+                                                                  RES_CHRATR_POSTURE, RES_CHRATR_POSTURE,
+                                                                  RES_CHRATR_WEIGHT, RES_CHRATR_WEIGHT,
+                                                                  RES_CHRATR_CJK_FONT, RES_CHRATR_CTL_WEIGHT>(rWrt.m_pDoc->GetAttrPool()));
         rTextNd.GetParaAttr(aScriptItemSet, nFieldPos, nFieldPos+1);
 
         sal_uInt16 aWesternWhichIds[4] =
@@ -414,7 +422,7 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
                     }
                 }
 
-                HTMLOutFuncs::Out_String( rWrt.Strm(), sExpand.copy( nPos, nChunkLen ) );
+                HTMLOutFuncs::Out_String( rWrt.Strm(), sExpand.subView( nPos, nChunkLen ) );
 
                 rWrt.m_bTagOn = false;
                 while( nItems )
@@ -423,7 +431,7 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
             }
             else
             {
-                HTMLOutFuncs::Out_String( rWrt.Strm(), sExpand.copy( nPos, nChunkLen ) );
+                HTMLOutFuncs::Out_String( rWrt.Strm(), sExpand.subView( nPos, nChunkLen ) );
             }
             nPos = nEndPos;
         }
@@ -441,6 +449,26 @@ static SwHTMLWriter& OutHTML_SwField( SwHTMLWriter& rWrt, const SwField* pField,
     return rWrt;
 }
 
+namespace
+{
+const SwViewOption* GetViewOptionFromDoc(SwDoc* pDoc)
+{
+    SwDocShell* pDocShell = pDoc->GetDocShell();
+    if (!pDocShell)
+    {
+        return nullptr;
+    }
+
+    SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
+    if (!pWrtShell)
+    {
+        return nullptr;
+    }
+
+    return pWrtShell->GetViewOptions();
+}
+}
+
 SwHTMLWriter& OutHTML_SwFormatField( SwHTMLWriter& rWrt, const SfxPoolItem& rHt )
 {
     const SwFormatField & rField = static_cast<const SwFormatField&>(rHt);
@@ -448,7 +476,7 @@ SwHTMLWriter& OutHTML_SwFormatField( SwHTMLWriter& rWrt, const SfxPoolItem& rHt 
     const SwFieldType* pFieldTyp = pField->GetTyp();
 
     if( SwFieldIds::SetExp == pFieldTyp->Which() &&
-        (nsSwGetSetExpType::GSE_STRING & pField->GetSubType()) )
+        (SwGetSetExpType::String & static_cast<const SwSetExpField*>(pField)->GetSubType()) )
     {
         const bool bOn = pFieldTyp->GetName() == "HTML_ON";
         if (!bOn && pFieldTyp->GetName() != "HTML_OFF")
@@ -468,17 +496,17 @@ SwHTMLWriter& OutHTML_SwFormatField( SwHTMLWriter& rWrt, const SfxPoolItem& rHt 
     {
         // Comments will be written in ANSI character set, but with system
         // line breaks.
-        const OUString& rComment = pField->GetPar2();
+        const OUString aComment = pField->GetPar2();
         bool bWritten = false;
 
-        if( (rComment.getLength() >= 6 && rComment.startsWith("<") && rComment.endsWith(">") &&
-             o3tl::equalsIgnoreAsciiCase(rComment.subView( 1, 4 ), u"" OOO_STRING_SVTOOLS_HTML_meta) ) ||
-            (rComment.getLength() >= 7 &&
-             rComment.startsWith( "<!--" ) &&
-             rComment.endsWith( "-->" )) )
+        if( (aComment.getLength() >= 6 && aComment.startsWith("<") && aComment.endsWith(">") &&
+             o3tl::equalsIgnoreAsciiCase(aComment.subView( 1, 4 ), u"" OOO_STRING_SVTOOLS_HTML_meta) ) ||
+            (aComment.getLength() >= 7 &&
+             aComment.startsWith( "<!--" ) &&
+             aComment.endsWith( "-->" )) )
         {
             // directly output META tags
-            OUString sComment(convertLineEnd(rComment, GetSystemLineEnd()));
+            OUString sComment(convertLineEnd(aComment, GetSystemLineEnd()));
             // TODO: HTML-Tags are written without entities, that for,
             // characters not contained in the destination encoding are lost!
             OString sTmp(OUStringToOString(sComment,
@@ -486,11 +514,11 @@ SwHTMLWriter& OutHTML_SwFormatField( SwHTMLWriter& rWrt, const SfxPoolItem& rHt 
             rWrt.Strm().WriteOString( sTmp );
             bWritten = true;
         }
-        else if( rComment.getLength() >= 7 &&
-                 rComment.endsWith(">") &&
-                 rComment.startsWithIgnoreAsciiCase( "HTML:" ) )
+        else if( aComment.getLength() >= 7 &&
+                 aComment.endsWith(">") &&
+                 aComment.startsWithIgnoreAsciiCase( "HTML:" ) )
         {
-            OUString sComment(comphelper::string::stripStart(rComment.subView(5), ' '));
+            OUString sComment(comphelper::string::stripStart(aComment.subView(5), ' '));
             if( '<' == sComment[0] )
             {
                 sComment = convertLineEnd(sComment, GetSystemLineEnd());
@@ -507,7 +535,7 @@ SwHTMLWriter& OutHTML_SwFormatField( SwHTMLWriter& rWrt, const SfxPoolItem& rHt 
 
         if( !bWritten )
         {
-            OUString sComment(convertLineEnd(rComment, GetSystemLineEnd()));
+            OUString sComment(convertLineEnd(aComment, GetSystemLineEnd()));
             // TODO: ???
             OString sOut =
                 "<" OOO_STRING_SVTOOLS_HTML_comment
@@ -523,7 +551,7 @@ SwHTMLWriter& OutHTML_SwFormatField( SwHTMLWriter& rWrt, const SfxPoolItem& rHt 
             rWrt.OutNewLine( true );
 
         bool bURL = static_cast<const SwScriptField *>(pField)->IsCodeURL();
-        const OUString& rType = pField->GetPar1();
+        const OUString aType = pField->GetPar1();
         OUString aContents, aURL;
         if(bURL)
             aURL = pField->GetPar2();
@@ -532,7 +560,7 @@ SwHTMLWriter& OutHTML_SwFormatField( SwHTMLWriter& rWrt, const SfxPoolItem& rHt 
 
         // otherwise is the script content itself. Since only JavaScript
         // is in fields, it must be JavaScript ...:)
-        HTMLOutFuncs::OutScript( rWrt.Strm(), rWrt.GetBaseURL(), aContents, rType, JAVASCRIPT,
+        HTMLOutFuncs::OutScript( rWrt.Strm(), rWrt.GetBaseURL(), aContents, aType, JAVASCRIPT,
                                  aURL, nullptr, nullptr );
 
         if (rWrt.IsLFPossible())
@@ -542,11 +570,11 @@ SwHTMLWriter& OutHTML_SwFormatField( SwHTMLWriter& rWrt, const SfxPoolItem& rHt 
     {
         const SwTextField *pTextField = rField.GetTextField();
         OSL_ENSURE( pTextField, "Where is the txt fld?" );
-        if (pTextField && rWrt.m_pDoc->GetDocShell() && rWrt.m_pDoc->GetDocShell()->GetView())
+        if (pTextField)
         {
+            const SwViewOption* pViewOptions = GetViewOptionFromDoc(rWrt.m_pDoc);
             // ReqIF-XHTML doesn't allow specifying a background color.
-            const SwViewOption* pViewOptions = rWrt.m_pDoc->GetDocShell()->GetView()->GetWrtShell().GetViewOptions();
-            bool bFieldShadings = pViewOptions->IsFieldShadings() && !rWrt.mbReqIF;
+            bool bFieldShadings = pViewOptions && pViewOptions->IsFieldShadings() && !rWrt.mbReqIF;
             if (bFieldShadings)
             {
                 // If there is a text portion background started already, that should have priority.

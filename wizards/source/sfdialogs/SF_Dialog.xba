@@ -110,12 +110,15 @@ Type _PageManager
 	ControlName As String					&apos; Case-sensitive name of control involved in page management
 	PageMgtType As Integer					&apos; One of the PILOTCONTROL, TABCONTROL, NEXTCONTROL, BACKCONTROL constants
 	PageNumber As Long						&apos; When &gt; 0, the page to activate for tab controls
-	ListenerType As Integer					&apos; One of the ITEMSTATECHANGED, ACTIONPERFORMED constants
+	ListenerType As Integer					&apos; One of the ITEMSTATECHANGED, ACTIONPERFORMED or TABSELECTED constants
 End Type
 
 Private _PageManagement		As Variant		&apos; Array of _PageManager objects, one entry by involved control
+Private _TabPageContainer	As String		&apos; The name of the unique tab page container control
 Private _ItemListener		As Object		&apos; com.sun.star.awt.XItemListener
 Private _ActionListener		As Object		&apos; com.sun.star.awt.XActionListener
+Private _TabPageContainerListener	As Object
+											&apos; com.sun.star.awt.tab.XTabPageContainerListener
 Private _LastPage			As Long			&apos; When &gt; 0, the last page in a tabbed dialog
 
 &apos;	Updatable events
@@ -140,7 +143,9 @@ Private _MouseCounter		As Integer		&apos; Counts the number of events set on the
 Private _MouseMotionListener As Object		&apos; com.sun.star.awt.XMouseMotionListener
 Private _OnMouseDragged		As String		&apos; Script to invoke when mouse is dragged from the dialog
 Private _OnMouseMoved		As String		&apos; Script to invoke when mouse is moved across the dialog
-Private _MouseMotionCounter	As Integer	&apos; Counts the number of events set on the listener
+Private _MouseMotionCounter	As Integer		&apos; Counts the number of events set on the listener
+&apos; ---
+Private _TopWindowListener	As Object		&apos; com.sun.star.awt.XTopWindowListener
 
 &apos;	Persistent storage for controls
 Private _ControlCache		As Variant		&apos; Array of control objects sorted like ElementNames of the Dialog model
@@ -156,8 +161,10 @@ Private Const PILOTCONTROL		= 1
 Private Const TABCONTROL		= 2
 Private Const BACKCONTROL		= 3
 Private Const NEXTCONTROL		= 4
+Private Const TABPAGE			= 5
 Private Const ITEMSTATECHANGED	= 1
 Private Const ACTIONPERFORMED	= 2
+Private Const TABSELECTED		= 3
 
 REM ====================================================== CONSTRUCTOR/DESTRUCTOR
 
@@ -185,8 +192,10 @@ Private Sub Class_Initialize()
 	_Height = -1
 
 	_PageManagement = Array()
+	_TabPageContainer = &quot;&quot;
 	Set _ItemListener = Nothing
 	Set _ActionListener = Nothing
+	Set _TabPageContainerListener = Nothing
 	_LastPage = 0
 
 	Set _FocusListener = Nothing
@@ -252,6 +261,12 @@ Property Let Height(Optional ByVal pvHeight As Variant)
 &apos;&apos;&apos;	Set the updatable property Height
 	_PropertySet(&quot;Height&quot;, pvHeight)
 End Property	&apos;	SFDialogs.SF_Dialog.Height (let)
+
+REM -----------------------------------------------------------------------------
+Property Get IsAlive() As Boolean
+&apos;&apos;&apos;	Returns True when the dialog has not been closed by the user
+	IsAlive = _PropertyGet(&quot;IsAlive&quot;)
+End Property	&apos;	SFDocuments.SF_Dialog.IsAlive
 
 REM -----------------------------------------------------------------------------
 Property Get Modal() As Boolean
@@ -470,6 +485,7 @@ Check:
 	End If
 Try:
 	If Not IsNull(_DialogControl) Then
+		_DialogControl.setVisible(True)
 		_DialogControl.setFocus()
 		bActivate = True
 	End If
@@ -602,12 +618,12 @@ Check:
 
 	If Not _CheckNewControl(cstThisSub, cstSubArgs, ControlName, Place := Null) Then GoTo Finally
 
-	If Not ScriptForge.SF_Utils._Validate(SourceName, &quot;SourceName&quot;, V_String, _DialogModel.getElementNames()) Then GoTo Finally
+	If Not ScriptForge.SF_Utils._Validate(SourceName, &quot;SourceName&quot;, V_STRING, _DialogModel.getElementNames(), True) Then GoTo Finally
 	If Not ScriptForge.SF_Utils._Validate(Left, &quot;Left&quot;, ScriptForge.V_NUMERIC) Then GoTo Finally
 	If Not ScriptForge.SF_Utils._Validate(Top, &quot;Top&quot;, ScriptForge.V_NUMERIC) Then GoTo Finally
 
 Try:
-	&apos;	All control types are presumes cloneable
+	&apos;	All control types are presumed cloneable
 	Set oSourceModel = _DialogModel.getByName(SourceName)
 	Set oControlModel = oSourceModel.createClone()
 	oControlModel.Name = ControlName
@@ -690,7 +706,7 @@ Finally:
 Catch:
 	GoTo Finally
 CatchNotFound:
-	ScriptForge.SF_Utils._Validate(ControlName, &quot;ControlName&quot;, V_STRING, _DialogModel.getElementNames())
+	ScriptForge.SF_Utils._Validate(ControlName, &quot;ControlName&quot;, V_STRING, _DialogModel.getElementNames(), True)
 	GoTo Finally
 End Function	&apos;	SFDialogs.SF_Dialog.Controls
 
@@ -1724,6 +1740,94 @@ Finally:
 End Function	&apos;	SFDialogs.SF_Dialog.CreateTableControl
 
 REM -----------------------------------------------------------------------------
+Public Function CreateTabPageContainer(Optional ByVal ControlName As Variant _
+									, Optional ByRef Place As Variant _
+									, Optional ByRef TabHeaders As Variant _
+									, Optional ByVal Border As Variant _
+									) As Object
+&apos;&apos;&apos;	Create a new control of type TabPageContainer in the actual dialog.
+&apos;&apos;&apos;	Only one such creation is allowed per dialog.
+&apos;&apos;&apos;	A TabPageContainer control will be automatically coupled with a PageManager setup.
+&apos;&apos;&apos;
+&apos;&apos;&apos;	This type of control has no equivalent in the Basic IDE. The actual method
+&apos;&apos;&apos;	may nevertheless be applied to a dialog built in the IDE.
+&apos;&apos;&apos;
+&apos;&apos;&apos;	It is recommended for control stacking reasons to define a tab container
+&apos;&apos;&apos;	control AFTER all or most other editable controls.
+&apos;&apos;&apos;
+&apos;&apos;&apos;	The creation request is ignored if the dialog is already displayed.
+&apos;&apos;&apos;
+&apos;&apos;&apos;	Specific args:
+&apos;&apos;&apos;			TabHeaders: an array of strings to define the texts displayed in each individual tabs
+1&apos;&apos;&apos;		Border: &quot;3D&quot; (default) or &quot;FLAT&quot; or &quot;NONE&quot;
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		an instance of the SF_DialogControl class or Nothing
+&apos;&apos;&apos;	Example:
+&apos;&apos;&apos;		Set myTabContainer = dialog.CreateTabPageContainer(&quot;TabContainer1&quot;, Array(20, 20, 60, 15), _
+&apos;&apos;&apos;				TabHeaders := Array(&quot;Modules&quot;, &quot;Dialogs&quot;, &quot;Libraries&quot;))
+
+Dim oControl As Object			&apos;	Return value
+Dim iBorder As Integer			&apos;	Alias of border
+Dim vPropNames As Variant		&apos;	Array of names of specific arguments
+Dim vPropValues As Variant		&apos;	Array of values of specific arguments
+Dim oTabPageModel As Object		&apos;	stardiv.Toolkit.UnoControlTabPageModel
+Dim oToolkit As Object			&apos;	com.sun.star.awt.Toolkit
+Dim iPage As Integer			&apos;	Actual page number
+Dim i As Integer
+
+Const cstThisSub = &quot;SFDialogs.Dialog.CreateTabContainer&quot;
+Const cstSubArgs = &quot;ControlName, Place, TabHeaders, [Border=&quot;&quot;3D&quot;&quot;|&quot;&quot;FLAT&quot;&quot;|&quot;&quot;NONE&quot;&quot;]&quot;
+
+Check:
+	Set oControl = Nothing
+	If Not _CheckNewControl(cstThisSub, cstSubArgs, ControlName, Place) Then GoTo Finally
+
+	If IsMissing(Border) Or IsEmpty(Border) Then Border = &quot;3D&quot;
+	If Not ScriptForge.SF_Utils._ValidateArray(TabHeaders, &quot;TabHeaders&quot;, 1, V_STRING, True) Then GoTo Finally
+	If Not ScriptForge.SF_Utils._Validate(Border, &quot;Border&quot;, V_STRING, Array(&quot;3D&quot;, &quot;FLAT&quot;, &quot;NONE&quot;)) Then GoTo Finally
+
+	If _Displayed Then GoTo Finally		&apos;	Ignore the call when dialog is displayed to enable peer creation below
+	If Len(_TabPageContainer) &gt; 0 Then GoTo Finally		&apos;	A tab page container must be unique in a dialog
+
+Try:
+	&apos;	Handle specific arguments
+	iBorder = ScriptForge.SF_Array.IndexOf(Array(&quot;NONE&quot;, &quot;3D&quot;, &quot;FLAT&quot;), Border)
+	vPropNames = Array(&quot;Border&quot;)
+	vPropValues = Array(iBorder)
+
+	&apos;	Create the control
+	Set oControl = _CreateNewControl(&quot;tab.UnoControlTabPageContainerModel&quot;, ControlName, Place, vPropNames, vPropValues)
+
+	&apos;	Create the peer dialog window, preamble of the determination of the ActiveTabPageID
+	_DialogControl.setVisible(False)	&apos;	Differ the display of the dialog later than at createPeer()
+	Set oToolkit = CreateUnoService(&quot;com.sun.star.awt.Toolkit&quot;)
+	_DialogControl.createPeer(oToolkit, Null)
+
+	With oControl
+		&apos;	Store the tab headers
+		._TabHeaders = TabHeaders
+		&apos;	Insert the individual tab pages
+		For i = LBound(TabHeaders) To UBound(TabHeaders)
+			Set oTabPageModel = _DialogModel.createInstance(&quot;com.sun.star.awt.tab.UnoControlTabPageModel&quot;)
+			oTabPageModel.initialize (Array (i - LBound(TabHeaders) + 1))		&apos;	TabPageID&apos;s start at 1
+			oTabPageModel.Title = TabHeaders(i)
+			._ControlModel.insertByIndex(i - LBound(TabHeaders), oTabPageModel)
+		Next i
+		&apos;	Determine the default tab page
+		iPage = _DialogModel.Step
+		._ControlView.ActiveTabPageID = Iif(iPage = 0, 1, iPage)
+	End With
+
+	&apos;	Register the unique tab page container
+	_TabPageContainer = ControlName
+
+Finally:
+	Set CreateTabPageContainer = oControl
+	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+End Function	&apos;	SFDialogs.SF_Dialog.CreateTabPageContainer
+
+REM -----------------------------------------------------------------------------
 Public Function CreateTextField(Optional ByVal ControlName As Variant _
 								, Optional ByRef Place As Variant _
 								, Optional ByVal Border As Variant _
@@ -1931,6 +2035,10 @@ End Sub			&apos;	SFDialogs.SF_Dialog.EndExecute
 REM -----------------------------------------------------------------------------
 Public Function Execute(Optional ByVal Modal As Variant) As Long
 &apos;&apos;&apos;	Display the dialog and wait for its termination by the user
+&apos;&apos;&apos;	When the window Close button is clicked:
+&apos;&apos;&apos;		- a modal dialog is stopped as if a Cancel button was pressed
+&apos;&apos;&apos;		- a non-modal dialog is made hidden
+&apos;&apos;&apos;	Termination and disposal of the dialog instance are roles of user scripts
 &apos;&apos;&apos;	Args:
 &apos;&apos;&apos;		Modal: False when non-modal dialog. Default = True
 &apos;&apos;&apos;	Returns:
@@ -1976,6 +2084,12 @@ Try:
 		&apos;	To make visible an on-the-fly designed dialog when macro triggered from Python
 		_DialogModel.DesktopAsParent = Not ( _BuiltFromScratch And _BuiltInPython )
 		_DialogControl.setVisible(True)
+		&apos;	Watch the window Close button - not to be done for stored dialogs
+		If _BuiltFromScratch Then
+			Set _TopWindowListener = CreateUnoListener(&quot;SFDialogs.SF_DialogListener._SFNONMODAL_&quot; _
+												, &quot;com.sun.star.awt.XTopWindowListener&quot;)
+			_DialogControl.addTopWindowListener(_TopWindowListener)
+		End If
 		lExecute = 0
 	End If
 
@@ -2115,6 +2229,98 @@ Catch:
 End Function    &apos;   SFDialogs.SF_Dialog.GetTextsFromL10N
 
 REM -----------------------------------------------------------------------------
+Public Function ImportControl(Optional ByRef SourceDialog As Variant _
+								, Optional ByVal SourceName As Variant _
+								, Optional ByVal ControlName As Variant _
+								, Optional ByVal Page As Variant _
+								, Optional ByVal OffsetX As Variant _
+								, Optional ByVal OffsetY As Variant _
+								, Optional ByVal IncludeOnProperties As Variant _
+								) As Object
+&apos;&apos;&apos;	Import and duplicate an existing control of any type from one dialog to the actual dialog.
+&apos;&apos;&apos;	The duplicated control is left unchanged. The new control can be renamed and relocated.
+&apos;&apos;&apos;	The events, when defined, may optionally be imported too.
+&apos;&apos;&apos;	Specific args:
+&apos;&apos;&apos;		SourceDialog: a SF_Dialog class instance.
+&apos;&apos;&apos;			The dialog must be at least &quot;created&quot; (with CreateScriptService).
+&apos;&apos;&apos;		SourceName: the name of the control to import
+&apos;&apos;&apos;		ControlName: the name of the new control. It must not exist yet. Default = SourceName
+&apos;&apos;&apos;		Page: the page number of the new control. Default = 0
+&apos;&apos;&apos;		OffsetX, OffsetY: the number of pixels to add to the source control coordinates in &quot;Map AppFont&quot; units.
+&apos;&apos;&apos;			The default = 0. May be negative.
+&apos;&apos;&apos;		IncludeOnProperties: when True (default = False) include the OnXXX event properties.
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		an instance of the SF_DialogControl class or Nothing
+&apos;&apos;&apos;	Example:
+&apos;&apos;&apos;		Set myButton2 = dialog.ImportControl(otherdialog, &quot;Button01&quot;, &quot;Button2&quot;, OffsetX := 30, OffsetY := 30)
+
+Dim oControl As Object			&apos;	Return value
+Dim oSourceModel As Object		&apos;	com.sun.star.awt.XControlModel of the source
+Dim oControlModel As Object		&apos;	com.sun.star.awt.XControlModel of the new control
+Dim vProperties As Variant		&apos;	Array of property names
+Dim sProperty As String			&apos;	A single item in vProperties
+Dim oSourceControl As Object	&apos;	The SF_DialogControl instance representing the input control
+Dim sOnEvent As String			&apos;	An OnEvent property
+
+Const cstThisSub = &quot;SFDialogs.Dialog.ImportControl&quot;
+Const cstSubArgs = &quot;SourceDialog, SourceName, [ControlName=&quot;&quot;&quot;&quot;], [Page=0], &quot; _
+					&amp; &quot;[OffsetX=0], [OffsetY=0], [IncludeOnProperties=False]&quot;
+
+Check:
+	Set oControl = Nothing
+
+	If IsMissing(ControlName) Or IsEmpty(ControlName) Then ControlName = SourceName
+	If VarType(ControlName) = V_STRING Then			&apos;	Typically a Python call will pass a zero-length string
+		If ControlName = &quot;&quot; Then ControlName = SourceName
+	End If
+	If IsMissing(Page) Or IsEmpty(Page) Then Page = 0
+	If IsMissing(OffsetX) Or IsEmpty(OffsetX) Then OffsetX = 0
+	If IsMissing(OffsetY) Or IsEmpty(OffsetY) Then OffsetY = 0
+	If IsMissing(IncludeOnProperties) Or IsEmpty(IncludeOnProperties) Then IncludeOnProperties = False
+
+	If Not _CheckNewControl(cstThisSub, cstSubArgs, ControlName, Place := Null) Then GoTo Finally
+
+	If Not ScriptForge.SF_Utils._Validate(SourceDialog, &quot;SourceDialog&quot;, ScriptForge.V_OBJECT, , , &quot;DIALOG&quot;) Then GoTo Finally
+	If Not ScriptForge.SF_Utils._Validate(SourceName, &quot;SourceName&quot;, V_STRING, SourceDialog._DialogModel.getElementNames(), True) Then GoTo Finally
+	If Not ScriptForge.SF_Utils._Validate(Page, &quot;Page&quot;, ScriptForge.V_NUMERIC) Then GoTo Finally
+	If Not ScriptForge.SF_Utils._Validate(OffsetX, &quot;OffsetX&quot;, ScriptForge.V_NUMERIC) Then GoTo Finally
+	If Not ScriptForge.SF_Utils._Validate(OffsetY, &quot;OffsetY&quot;, ScriptForge.V_NUMERIC) Then GoTo Finally
+	If Not ScriptForge.SF_Utils._Validate(IncludeOnProperties, &quot;IncludeOnProperties&quot;, ScriptForge.V_BOOLEAN) Then GoTo Finally
+
+Try:
+	&apos;	All control types are presumed Importable
+	Set oSourceModel = SourceDialog._DialogModel.getByName(SourceName)
+	Set oControlModel = oSourceModel.createClone()
+	oControlModel.Name = ControlName
+
+	&apos;	Create the control
+	Set oControl = _CreateNewControl(oControlModel, ControlName, _
+						Array(oSourceModel.PositionX + OffsetX, oSourceModel.PositionY + OffsetY))
+
+	&apos;	Display the control in the requested page
+	oControl.Page = Page
+
+	&apos;	Copy the OnEvent properties
+	If IncludeOnProperties Then
+		vProperties = oControl.Properties()
+		Set oSourceControl = SourceDialog.Controls(SourceName)
+		For Each sProperty In vProperties
+			If Left(sProperty, 2) = &quot;On&quot; Then
+				sOnEvent = oSourceControl._PropertyGet(sProperty, &quot;&quot;)	&apos;	Default = zero-length string
+				If Len(sOnEvent) &gt; 0 Then oControl._PropertySet(sProperty, sOnEvent)
+			End If
+		Next sProperty
+	End If
+
+Finally:
+	Set ImportControl = oControl
+	ScriptForge.SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+End Function	&apos;	SFDialogs.SF_Dialog.ImportControl
+
+REM -----------------------------------------------------------------------------
 Public Function Methods() As Variant
 &apos;&apos;&apos;	Return the list of public methods of the Model service as an array
 
@@ -2142,12 +2348,14 @@ Public Function Methods() As Variant
 					, &quot;CreateRadioButton&quot; _
 					, &quot;CreateScrollBar&quot; _
 					, &quot;CreateTableControl&quot; _
+					, &quot;CreateTabPageContainer&quot; _
 					, &quot;CreateTextField&quot; _
 					, &quot;CreateTimeField&quot; _
 					, &quot;CreateTreeControl&quot; _
 					, &quot;EndExecute&quot; _
 					, &quot;Execute&quot; _
 					, &quot;GetTextsFromL10N&quot; _
+					, &quot;ImportControl&quot; _
 					, &quot;OrderTabs&quot; _
 					, &quot;Resize&quot; _
 					, &quot;SetPageManager&quot; _
@@ -2200,7 +2408,7 @@ Check:
 	End If
 
 Try:
-	vWrongTypes = Array(&quot;FixedLine&quot;, &quot;GroupBox&quot;, &quot;ProgressBar&quot;)
+	vWrongTypes = Array(&quot;FixedLine&quot;, &quot;GroupBox&quot;, &quot;ProgressBar&quot;, &quot;TabPageContainer&quot;)
 
 	&apos;	Remove all existing tabulations
 	vControlNames = _DialogModel.getElementNames()
@@ -2247,6 +2455,7 @@ Public Function Properties() As Variant
 	Properties = Array( _
 					&quot;Caption&quot; _
 					, &quot;Height&quot; _
+					, &quot;IsAlive&quot; _
 					, &quot;Modal&quot; _
 					, &quot;Name&quot; _
 					, &quot;OnFocusGained&quot; _
@@ -2313,19 +2522,20 @@ Public Function SetPageManager(Optional ByVal PilotControls As Variant _
 &apos;&apos;&apos;	and all controls with a page value of 2 become visible.
 &apos;&apos;&apos;
 &apos;&apos;&apos;	The arguments define which controls are involved in the orchestration of the displayed pages.
-&apos;&apos;&apos;	Possible options:
+&apos;&apos;&apos;	If any, the predefined TabPageContainer control is implicitly part of the process.
+&apos;&apos;&apos;	Possible additional options:
 &apos;&apos;&apos;		- select a value in a list- or combobox
 &apos;&apos;&apos;		- select an item in a group of radio buttons
 &apos;&apos;&apos;		- select a button linked to a page - placed side-by-side the buttons can simulate a tabbed interface
 &apos;&apos;&apos;		- press a NEXT or BACK button like in many wizards
-&apos;&apos;&apos;	Those options may be combined. The control updates will be synchronized.
+&apos;&apos;&apos;	Those options may be combined. The updates of all the involved controls will be synchronized.
 &apos;&apos;&apos;	The method will set the actual page number to 1. Afterwards the Page property may be used to display any other page
 &apos;&apos;&apos;	
 &apos;&apos;&apos;	The SetPageManager() method is to be run only once and before the Execute() statement.
 &apos;&apos;&apos;	If invoked several times, subsequent calls will be ignored.
 &apos;&apos;&apos;	The method will define new listeners on the concerned controls, addressing generic routines.
 &apos;&apos;&apos;	The corresponding events will be fired during the dialog execution.
-&apos;&apos;&apos;	Preset events (in the Basic IDE) will be preserved and executed immediately AFTER the page change.
+&apos;&apos;&apos;	Predefined events (in the Basic IDE) will be preserved and executed immediately AFTER the page change.
 &apos;&apos;&apos;	The listeners will be removed at dialog termination.
 &apos;&apos;&apos;
 &apos;&apos;&apos;	Args:
@@ -2338,12 +2548,16 @@ Public Function SetPageManager(Optional ByVal PilotControls As Variant _
 &apos;&apos;&apos;		True when successful
 &apos;&apos;&apos;	Examples:
 &apos;&apos;&apos;		dialog.SetPageManager(PilotControls := &quot;aListBox,aComboBox&quot;)	&apos;	2 controls may cause page changes
+&apos;&apos;&apos;			or
+&apos;&apos;&apos;		Set oTabs = dialog.CreateTabPageContainer(...)
+&apos;&apos;&apos;		dialog.SetPageManager()		&apos;	Only the TabPageContainer is involved
 
 Dim bManager As Boolean				&apos;	Return value
 Dim vControls As Variant			&apos;	Array of involved controls
 Dim oControl As Object				&apos;	A DialogControl object
 Dim i As Long
-Const cstPrefix = &quot;_SFTAB_&quot;		&apos;	Prefix of Subs to trigger when involved controls are clicked
+Const cstPrefix = &quot;SFDialogs.SF_DialogListener._SFTAB_&quot;
+							&apos;	Prefix of Subs to trigger when involved controls are clicked
 Const cstComma = &quot;,&quot;
 
 Const cstThisSub = &quot;SFDialogs.Dialog.SetPageManager&quot;
@@ -2370,6 +2584,7 @@ Try:
 	&apos;	Common listeners to all involved controls
 	Set _ItemListener = CreateUnoListener(cstPrefix, &quot;com.sun.star.awt.XItemListener&quot;)
 	Set _ActionListener	= CreateUnoListener(cstPrefix, &quot;com.sun.star.awt.XActionListener&quot;)
+	Set _TabPageContainerListener = CreateUnoListener(cstPrefix, &quot;com.sun.star.awt.tab.XTabPageContainerListener&quot;)
 
 	&apos;	Register the arguments in the _PageManagement array, control by control
 	&apos;	Pilot controls
@@ -2392,6 +2607,10 @@ Try:
 		For i = 0 To UBound(vControls)
 			If Not _RegisterPageListener(Trim(vControls(i)), &quot;Button&quot;, Iif(i = 0, BACKCONTROL, NEXTCONTROL), 0, ACTIONPERFORMED) Then GoTo Catch
 		Next i
+	End If
+	&apos;	Tab page container
+	If Len(_TabPageContainer) &gt; 0 Then
+		If Not _RegisterPageListener(_TabPageContainer, &quot;TabPageContainer&quot;, TABPAGE, 0, TABSELECTED) Then GoTo Catch
 	End If
 
 	&apos;	Set the initial page to 1
@@ -2818,8 +3037,8 @@ Try:
 	&apos;		The Next button must be dimmed when last page otherwise enabled
 	For Each oPageManager In _PageManagement
 		With oPageManager
-		lPage = .PageNumber
-		Set oControl = Controls(.ControlName)
+			lPage = .PageNumber
+			Set oControl = Controls(.ControlName)
 			With oControl
 				Select Case .ControlType
 					Case &quot;ListBox&quot;, &quot;ComboBox&quot;
@@ -2836,6 +3055,8 @@ Try:
 								.Enabled = ( _LastPage = 0 Or plPage &lt; _LastPage )
 							Case Else
 						End Select
+					Case &quot;TabPageContainer&quot;
+						._ControlView.ActiveTabPageID = plPage
 					Case Else
 				End Select
 			End With
@@ -2863,7 +3084,9 @@ Const cstSubArgs = &quot;&quot;
 	If ScriptForge.SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
 
 	ScriptForge.SF_Utils._EnterFunction(cstThisSub, cstSubArgs)
-	If Not _IsStillAlive() Then GoTo Finally
+	If UCase(psProperty) &lt;&gt; UCase(&quot;IsAlive&quot;) Then
+		If Not _IsStillAlive() Then GoTo Finally
+	End If
 
 	If IsNull(oSession) Then Set oSession = ScriptForge.SF_Services.CreateScriptService(&quot;Session&quot;)
 	Select Case UCase(psProperty)
@@ -2875,6 +3098,8 @@ Const cstSubArgs = &quot;&quot;
 			Else
 				If oSession.HasUNOProperty(_DialogModel, &quot;Height&quot;) Then _PropertyGet = _DialogModel.Height
 			End If			
+		Case UCase(&quot;IsAlive&quot;)
+			_PropertyGet = _IsStillAlive(False)
 		Case UCase(&quot;Modal&quot;)
 			_PropertyGet = _Modal
 		Case UCase(&quot;Name&quot;)
@@ -2998,14 +3223,15 @@ Private Function _RegisterPageListener(ByVal psControlName As String _
 											, ByVal plPageNumber As Long _
 											, ByVal piListener As Integer _
 											) As Boolean
-&apos;&apos;&apos;	Insert a new entry in the _PageManagement array when 1st argument is a listbox, a combobox or a button
+&apos;&apos;&apos;	Insert a new entry in the _PageManagement array when 1st argument is a listbox, a combobox,
+&apos;&apos;&apos;	a button or a tabpagecontainer.
 &apos;&apos;&apos;	or insert a new entry in the _PageManagement array by radio button in the same group as the 1st argument
 &apos;&apos;&apos;	Args:
 &apos;&apos;&apos;		psControlName: name of the involved control
 &apos;&apos;&apos;		psControlTypes: comma-separated list of allowed control types
-&apos;&apos;&apos;		piMgtType: one of the PILOTCONTROL, TABCONTROL, BACKCONTROL, NEXTCONTROL constants
+&apos;&apos;&apos;		piMgtType: one of the PILOTCONTROL, TABCONTROL, BACKCONTROL, NEXTCONTROL, TABPAGE constants
 &apos;&apos;&apos;		plPageNumber: when &gt; 0 the page to jump to when control is clicked
-&apos;&apos;&apos;		piListener: one of the ACTIONPERFORMED, ITEMSTATECHANGED constants
+&apos;&apos;&apos;		piListener: one of the ACTIONPERFORMED, ITEMSTATECHANGED, TABSELECTED constants
 
 Dim bRegister As Boolean			&apos;	Return value
 Dim oControl As Object				&apos;	A DialogControl object
@@ -3048,6 +3274,8 @@ Try:
 					._ControlView.addActionListener(_ActionListener)
 				ElseIf piListener = ITEMSTATECHANGED Then
 					._ControlView.addItemListener(_ItemListener)
+				ElseIf piListener = TABSELECTED Then
+					._ControlView.addTabPageContainerListener(_TabPageContainerListener)
 				End If
 			End With
 		Next i
@@ -3103,6 +3331,9 @@ Try:
 	Set _KeyListener = Nothing
 	Set _MouseListener = Nothing
 	Set _MouseMotionListener = Nothing
+
+	&apos;	Clean close listener for non-modal dialog
+	If Not IsNull(_TopWindowListener) Then _DialogControl.removeTopWindowListener(_TopWindowListener)
 
 Finally:
 	Exit Sub	

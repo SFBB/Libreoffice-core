@@ -10,10 +10,12 @@
 #include <sal/config.h>
 
 #include <algorithm>
+#include <array>
 
 #include <svl/cryptosign.hxx>
 #include <svl/sigstruct.hxx>
 #include <config_crypto.h>
+#include <o3tl/numeric.hxx>
 
 #if USE_CRYPTO_NSS
 #include <systools/curlinit.hxx>
@@ -66,17 +68,6 @@
 using namespace com::sun::star;
 
 namespace {
-
-#if USE_CRYPTO_ANY
-void appendHex( sal_Int8 nInt, OStringBuffer& rBuffer )
-{
-    static const char pHexDigits[] = { '0', '1', '2', '3', '4', '5', '6', '7',
-                                           '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
-    rBuffer.append( pHexDigits[ (nInt >> 4) & 15 ] );
-    rBuffer.append( pHexDigits[ nInt & 15 ] );
-}
-#endif
-
 #if USE_CRYPTO_NSS
 char *PDFSigningPKCS7PasswordCallback(PK11SlotInfo * /*slot*/, PRBool /*retry*/, void *arg)
 {
@@ -337,6 +328,83 @@ const SEC_ASN1Template TimeStampReq_Template[] =
     { 0, 0, nullptr, 0 }
 };
 
+// 1.2.840.113549.1.9.16.2.47
+constexpr unsigned char OID_SIGNINGCERTIFICATEV2[] {0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x10, 0x02, 0x2f};
+// 1.2.840.113549.1.9.16.2.14
+constexpr unsigned char OID_TIMESTAMPTOKEN[] {0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x10, 0x02, 0x0e};
+
+struct cms_recode_attribute {
+  SECItem type;
+  SECItem **values;
+};
+
+struct cms_recode_signer_info {
+  SECItem version;
+  SECItem signerIdentifier;
+  SECItem digestAlg;
+  SECItem authAttr;
+  SECItem digestEncAlg;
+  SECItem encDigest;
+  cms_recode_attribute **unAuthAttr;
+};
+
+struct cms_recode_signed_data {
+  SECItem version;
+  SECItem digestAlgorithms;
+  SECItem contentInfo;
+  SECItem rawCerts;
+  SECItem crls;
+  cms_recode_signer_info **signerInfos;
+};
+
+struct cms_recode_message {
+  SECItem contentType;
+  cms_recode_signed_data signedData;
+};
+
+const SEC_ASN1Template recode_attribute_template[] = {
+    { SEC_ASN1_SEQUENCE, 0, nullptr, sizeof(cms_recode_attribute) },
+    { SEC_ASN1_OBJECT_ID, offsetof(cms_recode_attribute, type), nullptr, 0 },
+    { SEC_ASN1_SET_OF, offsetof(cms_recode_attribute, values), SEC_AnyTemplate, 0 },
+    {0, 0, nullptr, 0}};
+
+const SEC_ASN1Template recode_set_of_attribute_template[] = {
+    { SEC_ASN1_SET_OF, 0, recode_attribute_template, 0 }
+};
+
+const SEC_ASN1Template recode_signer_info_template[] = {
+    { SEC_ASN1_SEQUENCE, 0, nullptr, sizeof(cms_recode_signer_info) },
+    { SEC_ASN1_ANY, offsetof(cms_recode_signer_info, version), nullptr, 0 },
+    { SEC_ASN1_ANY, offsetof(cms_recode_signer_info, signerIdentifier), nullptr, 0 },
+    { SEC_ASN1_ANY, offsetof(cms_recode_signer_info, digestAlg), nullptr, 0 },
+    { SEC_ASN1_OPTIONAL | SEC_ASN1_CONSTRUCTED | SEC_ASN1_CONTEXT_SPECIFIC | 0,
+      offsetof(cms_recode_signer_info, authAttr), SEC_AnyTemplate, 0 },
+    { SEC_ASN1_ANY, offsetof(cms_recode_signer_info, digestEncAlg), nullptr, 0 },
+    { SEC_ASN1_ANY, offsetof(cms_recode_signer_info, encDigest), nullptr, 0 },
+    { SEC_ASN1_OPTIONAL | SEC_ASN1_CONSTRUCTED | SEC_ASN1_CONTEXT_SPECIFIC | 1,
+      offsetof(cms_recode_signer_info, unAuthAttr), recode_set_of_attribute_template, 0 },
+    {0, 0, nullptr, 0}};
+
+const SEC_ASN1Template recode_signed_data_template[] = {
+    { SEC_ASN1_SEQUENCE, 0, nullptr, sizeof(cms_recode_signed_data) },
+    { SEC_ASN1_ANY, offsetof(cms_recode_signed_data, version), nullptr, 0 },
+    { SEC_ASN1_ANY, offsetof(cms_recode_signed_data, digestAlgorithms), nullptr, 0 },
+    { SEC_ASN1_ANY, offsetof(cms_recode_signed_data, contentInfo), nullptr, 0 },
+    { SEC_ASN1_OPTIONAL | SEC_ASN1_CONSTRUCTED | SEC_ASN1_CONTEXT_SPECIFIC | 0,
+      offsetof(cms_recode_signed_data, rawCerts), SEC_AnyTemplate, 0 },
+    { SEC_ASN1_OPTIONAL | SEC_ASN1_CONSTRUCTED | SEC_ASN1_CONTEXT_SPECIFIC | 1,
+      offsetof(cms_recode_signed_data, crls), SEC_AnyTemplate, 0 },
+    { SEC_ASN1_SET_OF, offsetof(cms_recode_signed_data, signerInfos), recode_signer_info_template,
+      0 },
+    {0, 0, nullptr, 0}};
+
+const SEC_ASN1Template recode_message_template[] = {
+    { SEC_ASN1_SEQUENCE, 0, nullptr, sizeof(cms_recode_message) },
+    { SEC_ASN1_ANY, offsetof(cms_recode_message, contentType), nullptr, 0 },
+    { SEC_ASN1_EXPLICIT | SEC_ASN1_CONSTRUCTED | SEC_ASN1_CONTEXT_SPECIFIC | 0,
+      offsetof(cms_recode_message, signedData), recode_signed_data_template, 0 },
+    {0, 0, nullptr, 0}};
+
 size_t AppendToBuffer(char const *ptr, size_t size, size_t nmemb, void *userdata)
 {
     OStringBuffer *pBuffer = static_cast<OStringBuffer*>(userdata);
@@ -349,19 +417,19 @@ OUString PKIStatusToString(int n)
 {
     switch (n)
     {
-    case 0: return "granted";
-    case 1: return "grantedWithMods";
-    case 2: return "rejection";
-    case 3: return "waiting";
-    case 4: return "revocationWarning";
-    case 5: return "revocationNotification";
+    case 0: return u"granted"_ustr;
+    case 1: return u"grantedWithMods"_ustr;
+    case 2: return u"rejection"_ustr;
+    case 3: return u"waiting"_ustr;
+    case 4: return u"revocationWarning"_ustr;
+    case 5: return u"revocationNotification"_ustr;
     default: return "unknown (" + OUString::number(n) + ")";
     }
 }
 
 OUString PKIStatusInfoToString(const PKIStatusInfo& rStatusInfo)
 {
-    OUString result = "{status=";
+    OUString result = u"{status="_ustr;
     if (rStatusInfo.status.len == 1)
         result += PKIStatusToString(rStatusInfo.status.data[0]);
     else
@@ -382,99 +450,6 @@ OUString PKIStatusInfoToString(const PKIStatusInfo& rStatusInfo)
 
 // SEC_StringToOID() and NSS_CMSSignerInfo_AddUnauthAttr() are
 // not exported from libsmime, so copy them here. Sigh.
-
-SECStatus
-my_SEC_StringToOID(SECItem *to, const char *from, PRUint32 len)
-{
-    PRUint32 decimal_numbers = 0;
-    PRUint32 result_bytes = 0;
-    SECStatus rv;
-    PRUint8 result[1024];
-
-    static const PRUint32 max_decimal = 0xffffffff / 10;
-    static const char OIDstring[] = {"OID."};
-
-    if (!from || !to) {
-        PORT_SetError(SEC_ERROR_INVALID_ARGS);
-        return SECFailure;
-    }
-    if (!len) {
-        len = PL_strlen(from);
-    }
-    if (len >= 4 && !PL_strncasecmp(from, OIDstring, 4)) {
-        from += 4; /* skip leading "OID." if present */
-        len  -= 4;
-    }
-    if (!len) {
-bad_data:
-        PORT_SetError(SEC_ERROR_BAD_DATA);
-        return SECFailure;
-    }
-    do {
-        PRUint32 decimal = 0;
-        while (len > 0 && rtl::isAsciiDigit(static_cast<unsigned char>(*from))) {
-            PRUint32 addend = *from++ - '0';
-            --len;
-            if (decimal > max_decimal)  /* overflow */
-                goto bad_data;
-            decimal = (decimal * 10) + addend;
-            if (decimal < addend)   /* overflow */
-                goto bad_data;
-        }
-        if (len != 0 && *from != '.') {
-            goto bad_data;
-        }
-        if (decimal_numbers == 0) {
-            if (decimal > 2)
-                goto bad_data;
-            result[0] = decimal * 40;
-            result_bytes = 1;
-        } else if (decimal_numbers == 1) {
-            if (decimal > 40)
-                goto bad_data;
-            result[0] += decimal;
-        } else {
-            /* encode the decimal number,  */
-            PRUint8 * rp;
-            PRUint32 num_bytes = 0;
-            PRUint32 tmp = decimal;
-            while (tmp) {
-                num_bytes++;
-                tmp >>= 7;
-            }
-            if (!num_bytes )
-                ++num_bytes;  /* use one byte for a zero value */
-            if (num_bytes + result_bytes > sizeof result)
-                goto bad_data;
-            tmp = num_bytes;
-            rp = result + result_bytes - 1;
-            rp[tmp] = static_cast<PRUint8>(decimal & 0x7f);
-            decimal >>= 7;
-            while (--tmp > 0) {
-                rp[tmp] = static_cast<PRUint8>(decimal | 0x80);
-                decimal >>= 7;
-            }
-            result_bytes += num_bytes;
-        }
-        ++decimal_numbers;
-        if (len > 0) { /* skip trailing '.' */
-            ++from;
-            --len;
-        }
-    } while (len > 0);
-    /* now result contains result_bytes of data */
-    if (to->data && to->len >= result_bytes) {
-        to->len = result_bytes;
-        PORT_Memcpy(to->data, result, to->len);
-        rv = SECSuccess;
-    } else {
-        SECItem result_item = {siBuffer, nullptr, 0 };
-        result_item.data = result;
-        result_item.len  = result_bytes;
-        rv = SECITEM_CopyItem(nullptr, to, &result_item);
-    }
-    return rv;
-}
 
 NSSCMSAttribute *
 my_NSS_CMSAttributeArray_FindAttrByOidTag(NSSCMSAttribute **attrs, SECOidTag oidtag, PRBool only)
@@ -589,12 +564,6 @@ loser:
 }
 
 SECStatus
-my_NSS_CMSSignerInfo_AddUnauthAttr(NSSCMSSignerInfo *signerinfo, NSSCMSAttribute *attr)
-{
-    return my_NSS_CMSAttributeArray_AddAttr(signerinfo->cmsg->poolp, &(signerinfo->unAuthAttr), attr);
-}
-
-SECStatus
 my_NSS_CMSSignerInfo_AddAuthAttr(NSSCMSSignerInfo *signerinfo, NSSCMSAttribute *attr)
 {
     return my_NSS_CMSAttributeArray_AddAttr(signerinfo->cmsg->poolp, &(signerinfo->authAttr), attr);
@@ -688,14 +657,6 @@ NSSCMSMessage *CreateCMSMessage(const PRTime* time,
     if (NSS_CMSSignerInfo_IncludeCerts(*cms_signer, NSSCMSCM_CertChain, certUsageEmailSigner) != SECSuccess)
     {
         SAL_WARN("svl.crypto", "NSS_CMSSignerInfo_IncludeCerts failed");
-        NSS_CMSSignedData_Destroy(*cms_sd);
-        NSS_CMSMessage_Destroy(result);
-        return nullptr;
-    }
-
-    if (NSS_CMSSignedData_AddCertificate(*cms_sd, cert) != SECSuccess)
-    {
-        SAL_WARN("svl.crypto", "NSS_CMSSignedData_AddCertificate failed");
         NSS_CMSSignedData_Destroy(*cms_sd);
         NSS_CMSMessage_Destroy(result);
         return nullptr;
@@ -895,24 +856,6 @@ bool CreateSigningCertificateAttribute(void const * pDerEncoded, int nDerEncoded
 
 namespace svl::crypto {
 
-static int AsHex(char ch)
-{
-    int nRet = 0;
-    if (rtl::isAsciiDigit(static_cast<unsigned char>(ch)))
-        nRet = ch - '0';
-    else
-    {
-        if (ch >= 'a' && ch <= 'f')
-            nRet = ch - 'a';
-        else if (ch >= 'A' && ch <= 'F')
-            nRet = ch - 'A';
-        else
-            return -1;
-        nRet += 10;
-    }
-    return nRet;
-}
-
 std::vector<unsigned char> DecodeHexString(std::string_view rHex)
 {
     std::vector<unsigned char> aRet;
@@ -923,7 +866,7 @@ std::vector<unsigned char> DecodeHexString(std::string_view rHex)
         for (size_t i = 0; i < nHexLen; ++i)
         {
             nByte = nByte << 4;
-            sal_Int8 nParsed = AsHex(rHex[i]);
+            sal_Int8 nParsed = o3tl::convertToHex<int>(rHex[i]);
             if (nParsed == -1)
             {
                 SAL_WARN("svl.crypto", "DecodeHexString: invalid hex value");
@@ -947,31 +890,28 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
 {
 #if !USE_CRYPTO_ANY
     (void)rCMSHexBuffer;
+    (void)m_rSigningContext;
     return false;
 #else
     // Create the PKCS#7 object.
-    css::uno::Sequence<sal_Int8> aDerEncoded = m_xCertificate->getEncoded();
-    if (!aDerEncoded.hasElements())
+    css::uno::Sequence<sal_Int8> aDerEncoded;
+    if (m_rSigningContext.m_xCertificate.is())
     {
-        SAL_WARN("svl.crypto", "Crypto::Signing: empty certificate");
-        return false;
+        aDerEncoded = m_rSigningContext.m_xCertificate->getEncoded();
+        if (!aDerEncoded.hasElements())
+        {
+            SAL_WARN("svl.crypto", "Crypto::Signing: empty certificate");
+            return false;
+        }
     }
 
 #if USE_CRYPTO_NSS
-    CERTCertificate *cert = CERT_DecodeCertFromPackage(reinterpret_cast<char *>(aDerEncoded.getArray()), aDerEncoded.getLength());
-
-    if (!cert)
-    {
-        SAL_WARN("svl.crypto", "CERT_DecodeCertFromPackage failed");
-        return false;
-    }
-
     std::vector<unsigned char> aHashResult;
     {
         comphelper::Hash aHash(comphelper::HashType::SHA256);
 
         for (const auto& pair : m_dataBlocks)
-            aHash.update(static_cast<const unsigned char*>(pair.first), pair.second);
+            aHash.update(pair.first, pair.second);
 
         aHashResult = aHash.finalize();
     }
@@ -980,6 +920,33 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
     digest.len = aHashResult.size();
 
     PRTime now = PR_Now();
+
+    // The context unit is milliseconds, PR_Now() unit is microseconds.
+    if (m_rSigningContext.m_nSignatureTime)
+    {
+        now = m_rSigningContext.m_nSignatureTime * 1000;
+    }
+    else
+    {
+        m_rSigningContext.m_nSignatureTime = now / 1000;
+    }
+
+    if (!m_rSigningContext.m_xCertificate.is())
+    {
+        m_rSigningContext.m_aDigest = std::move(aHashResult);
+        // No certificate is provided: don't actually sign -- just update the context with the
+        // parameters for the signing and return.
+        return false;
+    }
+
+    CERTCertificate *cert = CERT_DecodeCertFromPackage(reinterpret_cast<char *>(aDerEncoded.getArray()), aDerEncoded.getLength());
+
+    if (!cert)
+    {
+        SAL_WARN("svl.crypto", "CERT_DecodeCertFromPackage failed");
+        return false;
+    }
+
     NSSCMSSignedData *cms_sd(nullptr);
     NSSCMSSignerInfo *cms_signer(nullptr);
     NSSCMSMessage *cms_msg = CreateCMSMessage(nullptr, &cms_sd, &cms_signer, cert, &digest);
@@ -988,55 +955,124 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
 
     OString pass(OUStringToOString( m_aSignPassword, RTL_TEXTENCODING_UTF8 ));
 
-    TimeStampReq src;
-    OStringBuffer response_buffer;
-    TimeStampResp response;
-    SECItem response_item;
-    NSSCMSAttribute timestamp;
-    SECItem values[2];
-    SECItem *valuesp[2];
-    valuesp[0] = values;
-    valuesp[1] = nullptr;
-    SECOidData typetag;
+    // Add the signing certificate as a signed attribute.
+    ESSCertIDv2* aCertIDs[2];
+    ESSCertIDv2 aCertID;
+    // Write ESSCertIDv2.hashAlgorithm.
+    aCertID.hashAlgorithm.algorithm.data = nullptr;
+    aCertID.hashAlgorithm.parameters.data = nullptr;
+    SECOID_SetAlgorithmID(nullptr, &aCertID.hashAlgorithm, SEC_OID_SHA256, nullptr);
+    comphelper::ScopeGuard aAlgoGuard(
+        [&aCertID] () { SECOID_DestroyAlgorithmID(&aCertID.hashAlgorithm, false); } );
+    // Write ESSCertIDv2.certHash.
+    SECItem aCertHashItem;
+    auto pDerEncoded = reinterpret_cast<const unsigned char *>(aDerEncoded.getArray());
+    std::vector<unsigned char> aCertHashResult = comphelper::Hash::calculateHash(pDerEncoded, aDerEncoded.getLength(), comphelper::HashType::SHA256);
+    aCertHashItem.type = siBuffer;
+    aCertHashItem.data = aCertHashResult.data();
+    aCertHashItem.len = aCertHashResult.size();
+    aCertID.certHash = aCertHashItem;
+    // Write ESSCertIDv2.issuerSerial.
+    IssuerSerial aSerial;
+    GeneralName aName;
+    aName.name = cert->issuer;
+    aSerial.issuer.names = aName;
+    aSerial.serialNumber = cert->serialNumber;
+    aCertID.issuerSerial = aSerial;
+    // Write SigningCertificateV2.certs.
+    aCertIDs[0] = &aCertID;
+    aCertIDs[1] = nullptr;
+    SigningCertificateV2 aCertificate;
+    aCertificate.certs = &aCertIDs[0];
+    SECItem* pEncodedCertificate = SEC_ASN1EncodeItem(nullptr, nullptr, &aCertificate, SigningCertificateV2Template);
+    if (!pEncodedCertificate)
+    {
+        SAL_WARN("svl.crypto", "SEC_ASN1EncodeItem() failed");
+        return false;
+    }
+
+    NSSCMSAttribute aAttribute;
+    SECItem aAttributeValues[2];
+    SECItem* pAttributeValues[2];
+    pAttributeValues[0] = aAttributeValues;
+    pAttributeValues[1] = nullptr;
+    aAttributeValues[0] = *pEncodedCertificate;
+    aAttributeValues[1].type = siBuffer;
+    aAttributeValues[1].data = nullptr;
+    aAttributeValues[1].len = 0;
+    aAttribute.values = pAttributeValues;
+
+    SECOidData aOidData;
+    auto cert_oid_buffer = std::to_array(OID_SIGNINGCERTIFICATEV2);
+    aOidData.oid.data = cert_oid_buffer.data();
+    aOidData.oid.len = cert_oid_buffer.size();
+    /*
+     * id-aa-signingCertificateV2 OBJECT IDENTIFIER ::=
+     * { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) pkcs9(9)
+     *   smime(16) id-aa(2) 47 }
+     */
+    aOidData.offset = SEC_OID_UNKNOWN;
+    aOidData.desc = "id-aa-signingCertificateV2";
+    aOidData.mechanism = CKM_SHA_1;
+    aOidData.supportedExtension = UNSUPPORTED_CERT_EXTENSION;
+    aAttribute.typeTag = &aOidData;
+    aAttribute.type = aOidData.oid;
+    aAttribute.encoded = PR_TRUE;
+
+    if (my_NSS_CMSSignerInfo_AddAuthAttr(cms_signer, &aAttribute) != SECSuccess)
+    {
+        SAL_WARN("svl.crypto", "my_NSS_CMSSignerInfo_AddAuthAttr() failed");
+        return false;
+    }
+
+    SECItem cms_output;
+    cms_output.data = nullptr;
+    cms_output.len = 0;
+    PLArenaPool *arena = PORT_NewArena(10000);
+    const ::comphelper::ScopeGuard aScopeGuard(
+        [&arena]() mutable { PORT_FreeArena(arena, true); } );
+    NSSCMSEncoderContext *cms_ecx;
+
+    // Possibly it would work to even just pass NULL for the password callback function and its
+    // argument here. After all, at least with the hardware token and associated software I tested
+    // with, the software itself pops up a dialog asking for the PIN (password). But I am not going
+    // to test it and risk locking up my token...
+
+    cms_ecx = NSS_CMSEncoder_Start(cms_msg, nullptr, nullptr, &cms_output, arena, PDFSigningPKCS7PasswordCallback,
+                                   const_cast<char*>(pass.getStr()), nullptr, nullptr, nullptr, nullptr);
+
+    if (!cms_ecx)
+    {
+        SAL_WARN("svl.crypto", "NSS_CMSEncoder_Start failed");
+        return false;
+    }
+
+    if (NSS_CMSEncoder_Finish(cms_ecx) != SECSuccess)
+    {
+        SAL_WARN("svl.crypto", "NSS_CMSEncoder_Finish failed");
+        return false;
+    }
 
     if( !m_aSignTSA.isEmpty() )
     {
-        // Create another CMS message with the same contents as cms_msg, because it doesn't seem
-        // possible to encode a message twice (once to get something to timestamp, and then after
-        // adding the timestamp attribute).
+        TimeStampReq src;
+        OStringBuffer response_buffer;
+        TimeStampResp response;
+        SECItem response_item;
+        cms_recode_attribute timestamp;
+        SECItem values[2];
+        SECItem *valuesp[2];
+        valuesp[0] = values;
+        valuesp[1] = nullptr;
 
-        NSSCMSSignedData *ts_cms_sd;
-        NSSCMSSignerInfo *ts_cms_signer;
-        NSSCMSMessage *ts_cms_msg = CreateCMSMessage(&now, &ts_cms_sd, &ts_cms_signer, cert, &digest);
-        if (!ts_cms_msg)
-        {
-            return false;
-        }
-
-        SECItem ts_cms_output;
-        ts_cms_output.data = nullptr;
-        ts_cms_output.len = 0;
-        PLArenaPool *ts_arena = PORT_NewArena(10000);
-        NSSCMSEncoderContext *ts_cms_ecx;
-        ts_cms_ecx = NSS_CMSEncoder_Start(ts_cms_msg, nullptr, nullptr, &ts_cms_output, ts_arena, PDFSigningPKCS7PasswordCallback,
-                                          const_cast<char*>(pass.getStr()), nullptr, nullptr, nullptr, nullptr);
-
-        if (NSS_CMSEncoder_Finish(ts_cms_ecx) != SECSuccess)
-        {
-            SAL_WARN("svl.crypto", "NSS_CMSEncoder_Finish failed");
-            return false;
-        }
-
-        // I have compared the ts_cms_output produced here with the cms_output produced below when
-        // not actually calling my_NSS_CMSSignerInfo_AddUnauthAttr()), and they are identical.
-
-        std::vector<unsigned char> aTsHashResult = comphelper::Hash::calculateHash(ts_cms_signer->encDigest.data, ts_cms_signer->encDigest.len, comphelper::HashType::SHA256);
+        std::vector<unsigned char> aTsHashResult = comphelper::Hash::calculateHash(cms_signer->encDigest.data, cms_signer->encDigest.len, comphelper::HashType::SHA256);
         SECItem ts_digest;
         ts_digest.type = siBuffer;
         ts_digest.data = aTsHashResult.data();
         ts_digest.len = aTsHashResult.size();
 
         unsigned char cOne = 1;
+        unsigned char cTRUE = 0xff; // under DER rules true is 0xff, false is 0x00
         src.version.type = siUnsignedInteger;
         src.version.data = &cOne;
         src.version.len = sizeof(cOne);
@@ -1056,8 +1092,8 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
         src.nonce.len = sizeof(nNonce);
 
         src.certReq.type = siUnsignedInteger;
-        src.certReq.data = &cOne;
-        src.certReq.len = sizeof(cOne);
+        src.certReq.data = &cTRUE;
+        src.certReq.len = sizeof(cTRUE);
 
         src.extensions = nullptr;
 
@@ -1206,133 +1242,53 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
 
         timestamp.values = valuesp;
 
-        typetag.oid.data = nullptr;
+        auto ts_oid_buffer = std::to_array(OID_TIMESTAMPTOKEN);
         // id-aa-timeStampToken OBJECT IDENTIFIER ::= { iso(1)
         // member-body(2) us(840) rsadsi(113549) pkcs(1) pkcs-9(9)
         // smime(16) aa(2) 14 }
-        if (my_SEC_StringToOID(&typetag.oid, "1.2.840.113549.1.9.16.2.14", 0) != SECSuccess)
+
+        timestamp.type.data = ts_oid_buffer.data();
+        timestamp.type.len =  ts_oid_buffer.size();
+
+        cms_recode_message decoded_cms_output {};
+
+        if (SEC_ASN1DecodeItem(arena, &decoded_cms_output, recode_message_template, &cms_output) != SECSuccess)
         {
-            SAL_WARN("svl.crypto", "SEC_StringToOID failed");
+            SAL_WARN("svl.crypto", "SEC_ASN1DecodeItem failed");
             return false;
         }
-        typetag.offset = SEC_OID_UNKNOWN; // ???
-        typetag.desc = "id-aa-timeStampToken";
-        typetag.mechanism = CKM_SHA_1; // ???
-        typetag.supportedExtension = UNSUPPORTED_CERT_EXTENSION; // ???
-        timestamp.typeTag = &typetag;
 
-        timestamp.type = typetag.oid; // ???
+        // now insert the new attribute
 
-        timestamp.encoded = PR_TRUE; // ???
-
-        if (my_NSS_CMSSignerInfo_AddUnauthAttr(cms_signer, &timestamp) != SECSuccess)
-        {
-            SAL_WARN("svl.crypto", "NSS_CMSSignerInfo_AddUnauthAttr failed");
+        cms_recode_signer_info **decoded_signerinfos = decoded_cms_output.signedData.signerInfos;
+        if (!decoded_signerinfos || !*decoded_signerinfos) {
+            SAL_WARN("svl.crypto", "Decoded signed message invalid");
             return false;
         }
-    }
 
-    // Add the signing certificate as a signed attribute.
-    ESSCertIDv2* aCertIDs[2];
-    ESSCertIDv2 aCertID;
-    // Write ESSCertIDv2.hashAlgorithm.
-    aCertID.hashAlgorithm.algorithm.data = nullptr;
-    aCertID.hashAlgorithm.parameters.data = nullptr;
-    SECOID_SetAlgorithmID(nullptr, &aCertID.hashAlgorithm, SEC_OID_SHA256, nullptr);
-    comphelper::ScopeGuard aAlgoGuard(
-        [&aCertID] () { SECOID_DestroyAlgorithmID(&aCertID.hashAlgorithm, false); } );
-    // Write ESSCertIDv2.certHash.
-    SECItem aCertHashItem;
-    auto pDerEncoded = reinterpret_cast<const unsigned char *>(aDerEncoded.getArray());
-    std::vector<unsigned char> aCertHashResult = comphelper::Hash::calculateHash(pDerEncoded, aDerEncoded.getLength(), comphelper::HashType::SHA256);
-    aCertHashItem.type = siBuffer;
-    aCertHashItem.data = aCertHashResult.data();
-    aCertHashItem.len = aCertHashResult.size();
-    aCertID.certHash = aCertHashItem;
-    // Write ESSCertIDv2.issuerSerial.
-    IssuerSerial aSerial;
-    GeneralName aName;
-    aName.name = cert->issuer;
-    aSerial.issuer.names = aName;
-    aSerial.serialNumber = cert->serialNumber;
-    aCertID.issuerSerial = aSerial;
-    // Write SigningCertificateV2.certs.
-    aCertIDs[0] = &aCertID;
-    aCertIDs[1] = nullptr;
-    SigningCertificateV2 aCertificate;
-    aCertificate.certs = &aCertIDs[0];
-    SECItem* pEncodedCertificate = SEC_ASN1EncodeItem(nullptr, nullptr, &aCertificate, SigningCertificateV2Template);
-    if (!pEncodedCertificate)
-    {
-        SAL_WARN("svl.crypto", "SEC_ASN1EncodeItem() failed");
-        return false;
-    }
+        std::vector<cms_recode_attribute *> updated_attrs;
 
-    NSSCMSAttribute aAttribute;
-    SECItem aAttributeValues[2];
-    SECItem* pAttributeValues[2];
-    pAttributeValues[0] = aAttributeValues;
-    pAttributeValues[1] = nullptr;
-    aAttributeValues[0] = *pEncodedCertificate;
-    aAttributeValues[1].type = siBuffer;
-    aAttributeValues[1].data = nullptr;
-    aAttributeValues[1].len = 0;
-    aAttribute.values = pAttributeValues;
+        // there are no unauthenticated attributes at the moment
+        // if this ever changes, make sure to preserve them
+        cms_recode_attribute **existing_attrs = (*decoded_signerinfos)->unAuthAttr ;
 
-    SECOidData aOidData;
-    aOidData.oid.data = nullptr;
-    /*
-     * id-aa-signingCertificateV2 OBJECT IDENTIFIER ::=
-     * { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) pkcs9(9)
-     *   smime(16) id-aa(2) 47 }
-     */
-    if (my_SEC_StringToOID(&aOidData.oid, "1.2.840.113549.1.9.16.2.47", 0) != SECSuccess)
-    {
-        SAL_WARN("svl.crypto", "my_SEC_StringToOID() failed");
-        return false;
-    }
-    comphelper::ScopeGuard aGuard(
-        [&aOidData] () { SECITEM_FreeItem(&aOidData.oid, false); } );
-    aOidData.offset = SEC_OID_UNKNOWN;
-    aOidData.desc = "id-aa-signingCertificateV2";
-    aOidData.mechanism = CKM_SHA_1;
-    aOidData.supportedExtension = UNSUPPORTED_CERT_EXTENSION;
-    aAttribute.typeTag = &aOidData;
-    aAttribute.type = aOidData.oid;
-    aAttribute.encoded = PR_TRUE;
+        if (existing_attrs)
+            while (*existing_attrs)
+                updated_attrs.push_back(*existing_attrs++);
 
-    if (my_NSS_CMSSignerInfo_AddAuthAttr(cms_signer, &aAttribute) != SECSuccess)
-    {
-        SAL_WARN("svl.crypto", "my_NSS_CMSSignerInfo_AddAuthAttr() failed");
-        return false;
-    }
+        updated_attrs.push_back(&timestamp);
+        updated_attrs.push_back(nullptr);
 
-    SECItem cms_output;
-    cms_output.data = nullptr;
-    cms_output.len = 0;
-    PLArenaPool *arena = PORT_NewArena(10000);
-    const ::comphelper::ScopeGuard aScopeGuard(
-        [&arena]() mutable { PORT_FreeArena(arena, true); } );
-    NSSCMSEncoderContext *cms_ecx;
+        (*decoded_signerinfos)->unAuthAttr = updated_attrs.data();
 
-    // Possibly it would work to even just pass NULL for the password callback function and its
-    // argument here. After all, at least with the hardware token and associated software I tested
-    // with, the software itself pops up a dialog asking for the PIN (password). But I am not going
-    // to test it and risk locking up my token...
+        SECItem * ts_cms_output = SEC_ASN1EncodeItem(arena, nullptr, &decoded_cms_output, recode_message_template);
+        if (!ts_cms_output)
+        {
+            SAL_WARN("svl.crypto", "SEC_ASN1EncodeItem failed");
+            return false;
+        }
 
-    cms_ecx = NSS_CMSEncoder_Start(cms_msg, nullptr, nullptr, &cms_output, arena, PDFSigningPKCS7PasswordCallback,
-                                   const_cast<char*>(pass.getStr()), nullptr, nullptr, nullptr, nullptr);
-
-    if (!cms_ecx)
-    {
-        SAL_WARN("svl.crypto", "NSS_CMSEncoder_Start failed");
-        return false;
-    }
-
-    if (NSS_CMSEncoder_Finish(cms_ecx) != SECSuccess)
-    {
-        SAL_WARN("svl.crypto", "NSS_CMSEncoder_Finish failed");
-        return false;
+        cms_output = *ts_cms_output;
     }
 
     if (cms_output.len*2 > MAX_SIGNATURE_CONTENT_LENGTH)
@@ -1355,7 +1311,7 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
     PCCERT_CONTEXT pCertContext = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, reinterpret_cast<const BYTE*>(aDerEncoded.getArray()), aDerEncoded.getLength());
     if (pCertContext == nullptr)
     {
-        SAL_WARN("svl.crypto", "CertCreateCertificateContext failed: " << WindowsErrorString(GetLastError()));
+        SAL_WARN("svl.crypto", "CertCreateCertificateContext failed: " << comphelper::WindowsErrorString(GetLastError()));
         return false;
     }
 
@@ -1381,7 +1337,7 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
                                            &nKeySpec,
                                            &bFreeNeeded))
     {
-        SAL_WARN("svl.crypto", "CryptAcquireCertificatePrivateKey failed: " << WindowsErrorString(GetLastError()));
+        SAL_WARN("svl.crypto", "CryptAcquireCertificatePrivateKey failed: " << comphelper::WindowsErrorString(GetLastError()));
         CertFreeCertificateContext(pCertContext);
         return false;
     }
@@ -1438,7 +1394,7 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
                                           nullptr);
     if (!hMsg)
     {
-        SAL_WARN("svl.crypto", "CryptMsgOpenToEncode failed: " << WindowsErrorString(GetLastError()));
+        SAL_WARN("svl.crypto", "CryptMsgOpenToEncode failed: " << comphelper::WindowsErrorString(GetLastError()));
         CertFreeCertificateContext(pCertContext);
         return false;
     }
@@ -1448,14 +1404,16 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
         const bool last = (i == m_dataBlocks.size() - 1);
         if (!CryptMsgUpdate(hMsg, static_cast<const BYTE *>(m_dataBlocks[i].first), m_dataBlocks[i].second, last))
         {
-            SAL_WARN("svl.crypto", "CryptMsgUpdate failed: " << WindowsErrorString(GetLastError()));
+            SAL_WARN("svl.crypto", "CryptMsgUpdate failed: " << comphelper::WindowsErrorString(GetLastError()));
             CryptMsgClose(hMsg);
             CertFreeCertificateContext(pCertContext);
             return false;
         }
     }
+    CertFreeCertificateContext(pCertContext);
 
     PCRYPT_TIMESTAMP_CONTEXT pTsContext = nullptr;
+    DWORD dwEncodedMessageParamType = CMSG_CONTENT_PARAM;
 
     if( !m_aSignTSA.isEmpty() )
     {
@@ -1467,9 +1425,8 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
                                                      nullptr);
         if (!hDecodedMsg)
         {
-            SAL_WARN("svl.crypto", "CryptMsgOpenToDecode failed: " << WindowsErrorString(GetLastError()));
+            SAL_WARN("svl.crypto", "CryptMsgOpenToDecode failed: " << comphelper::WindowsErrorString(GetLastError()));
             CryptMsgClose(hMsg);
-            CertFreeCertificateContext(pCertContext);
             return false;
         }
 
@@ -1477,10 +1434,9 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
 
         if (!CryptMsgGetParam(hMsg, CMSG_BARE_CONTENT_PARAM, 0, nullptr, &nTsSigLen))
         {
-            SAL_WARN("svl.crypto", "CryptMsgGetParam(CMSG_BARE_CONTENT_PARAM) failed: " << WindowsErrorString(GetLastError()));
+            SAL_WARN("svl.crypto", "CryptMsgGetParam(CMSG_BARE_CONTENT_PARAM) failed: " << comphelper::WindowsErrorString(GetLastError()));
             CryptMsgClose(hDecodedMsg);
             CryptMsgClose(hMsg);
-            CertFreeCertificateContext(pCertContext);
             return false;
         }
 
@@ -1490,29 +1446,26 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
 
         if (!CryptMsgGetParam(hMsg, CMSG_BARE_CONTENT_PARAM, 0, pTsSig.get(), &nTsSigLen))
         {
-            SAL_WARN("svl.crypto", "CryptMsgGetParam(CMSG_BARE_CONTENT_PARAM) failed: " << WindowsErrorString(GetLastError()));
+            SAL_WARN("svl.crypto", "CryptMsgGetParam(CMSG_BARE_CONTENT_PARAM) failed: " << comphelper::WindowsErrorString(GetLastError()));
             CryptMsgClose(hDecodedMsg);
             CryptMsgClose(hMsg);
-            CertFreeCertificateContext(pCertContext);
             return false;
         }
 
+        CryptMsgClose(hMsg);
+
         if (!CryptMsgUpdate(hDecodedMsg, pTsSig.get(), nTsSigLen, TRUE))
         {
-            SAL_WARN("svl.crypto", "CryptMsgUpdate failed: " << WindowsErrorString(GetLastError()));
+            SAL_WARN("svl.crypto", "CryptMsgUpdate failed: " << comphelper::WindowsErrorString(GetLastError()));
             CryptMsgClose(hDecodedMsg);
-            CryptMsgClose(hMsg);
-            CertFreeCertificateContext(pCertContext);
             return false;
         }
 
         DWORD nDecodedSignerInfoLen = 0;
         if (!CryptMsgGetParam(hDecodedMsg, CMSG_SIGNER_INFO_PARAM, 0, nullptr, &nDecodedSignerInfoLen))
         {
-            SAL_WARN("svl.crypto", "CryptMsgGetParam(CMSG_SIGNER_INFO_PARAM) failed: " << WindowsErrorString(GetLastError()));
+            SAL_WARN("svl.crypto", "CryptMsgGetParam(CMSG_SIGNER_INFO_PARAM) failed: " << comphelper::WindowsErrorString(GetLastError()));
             CryptMsgClose(hDecodedMsg);
-            CryptMsgClose(hMsg);
-            CertFreeCertificateContext(pCertContext);
             return false;
         }
 
@@ -1520,10 +1473,8 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
 
         if (!CryptMsgGetParam(hDecodedMsg, CMSG_SIGNER_INFO_PARAM, 0, pDecodedSignerInfoBuf.get(), &nDecodedSignerInfoLen))
         {
-            SAL_WARN("svl.crypto", "CryptMsgGetParam(CMSG_SIGNER_INFO_PARAM) failed: " << WindowsErrorString(GetLastError()));
+            SAL_WARN("svl.crypto", "CryptMsgGetParam(CMSG_SIGNER_INFO_PARAM) failed: " << comphelper::WindowsErrorString(GetLastError()));
             CryptMsgClose(hDecodedMsg);
-            CryptMsgClose(hMsg);
-            CertFreeCertificateContext(pCertContext);
             return false;
         }
 
@@ -1550,20 +1501,12 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
                      nullptr,
                      nullptr))
         {
-            SAL_WARN("svl.crypto", "CryptRetrieveTimeStamp failed: " << WindowsErrorString(GetLastError()));
+            SAL_WARN("svl.crypto", "CryptRetrieveTimeStamp failed: " << comphelper::WindowsErrorString(GetLastError()));
             CryptMsgClose(hDecodedMsg);
-            CryptMsgClose(hMsg);
-            CertFreeCertificateContext(pCertContext);
             return false;
         }
 
         SAL_INFO("svl.crypto", "Time stamp size is " << pTsContext->cbEncoded << " bytes");
-
-        // I tried to use CryptMsgControl() with CMSG_CTRL_ADD_SIGNER_UNAUTH_ATTR to add the
-        // timestamp, but that failed with "The parameter is incorrect". Probably it is too late to
-        // modify the message once its data has already been encoded as part of the
-        // CryptMsgGetParam() with CMSG_BARE_CONTENT_PARAM above. So close the message and re-do its
-        // creation steps, but now with an amended aSignerInfo.
 
         CRYPT_INTEGER_BLOB aTimestampBlob;
         aTimestampBlob.cbData = pTsContext->cbEncoded;
@@ -1575,45 +1518,48 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
         aTimestampAttribute.cValue = 1;
         aTimestampAttribute.rgValue = &aTimestampBlob;
 
-        aSignerInfo.cUnauthAttr = 1;
-        aSignerInfo.rgUnauthAttr = &aTimestampAttribute;
-
-        CryptMsgClose(hMsg);
-
-        hMsg = CryptMsgOpenToEncode(PKCS_7_ASN_ENCODING | X509_ASN_ENCODING,
-                                    CMSG_DETACHED_FLAG,
-                                    CMSG_SIGNED,
-                                    &aSignedInfo,
-                                    nullptr,
-                                    nullptr);
-
-        for (size_t i = 0; i < m_dataBlocks.size(); ++i)
+        DWORD nEncodedTsAttributeLen = 0;
+        if (!CryptEncodeObject(PKCS_7_ASN_ENCODING, PKCS_ATTRIBUTE, &aTimestampAttribute, nullptr, &nEncodedTsAttributeLen))
         {
-            const bool last = (i == m_dataBlocks.size() - 1);
-            if (!hMsg ||
-                !CryptMsgUpdate(hMsg, static_cast<const BYTE *>(m_dataBlocks[i].first), m_dataBlocks[i].second, last))
-            {
-                SAL_WARN("svl.crypto", "Re-creating the message failed: " << WindowsErrorString(GetLastError()));
-                CryptMemFree(pTsContext);
-                CryptMsgClose(hDecodedMsg);
-                CryptMsgClose(hMsg);
-                CertFreeCertificateContext(pCertContext);
-                return false;
-            }
+            SAL_WARN("svl.crypto", "CryptEncodeObject(PKCS_ATTRIBUTE) failed: " << comphelper::WindowsErrorString(GetLastError()));
+            CryptMsgClose(hDecodedMsg);
+            return false;
         }
 
-        CryptMsgClose(hDecodedMsg);
+        std::unique_ptr<BYTE[]> pEncodedTsAttributeBuf(new BYTE[nEncodedTsAttributeLen]);
+
+        CMSG_CTRL_ADD_SIGNER_UNAUTH_ATTR_PARA aAddTsAttrPara;
+        aAddTsAttrPara.dwSignerIndex = 0;
+        aAddTsAttrPara.cbSize = sizeof(aAddTsAttrPara);
+
+        if (!CryptEncodeObject(PKCS_7_ASN_ENCODING, PKCS_ATTRIBUTE, &aTimestampAttribute, pEncodedTsAttributeBuf.get(), &nEncodedTsAttributeLen))
+        {
+            SAL_WARN("svl.crypto", "CryptEncodeObject(PKCS_ATTRIBUTE) failed: " << comphelper::WindowsErrorString(GetLastError()));
+            CryptMsgClose(hDecodedMsg);
+            return false;
+        }
+
+         aAddTsAttrPara.blob.cbData = nEncodedTsAttributeLen;
+         aAddTsAttrPara.blob.pbData = pEncodedTsAttributeBuf.get();
+
+        if (!CryptMsgControl(hDecodedMsg, 0, CMSG_CTRL_ADD_SIGNER_UNAUTH_ATTR, &aAddTsAttrPara))
+        {
+            SAL_WARN("svl.crypto", "CryptMsgControl(CMSG_CTRL_ADD_SIGNER_UNAUTH_ATTR) failed: " << comphelper::WindowsErrorString(GetLastError()));
+            CryptMsgClose(hDecodedMsg);
+            return false;
+        }
+        hMsg = hDecodedMsg;
+        dwEncodedMessageParamType = CMSG_ENCODED_MESSAGE;
     }
 
     DWORD nSigLen = 0;
 
-    if (!CryptMsgGetParam(hMsg, CMSG_CONTENT_PARAM, 0, nullptr, &nSigLen))
+    if (!CryptMsgGetParam(hMsg, dwEncodedMessageParamType, 0, nullptr, &nSigLen))
     {
-        SAL_WARN("svl.crypto", "CryptMsgGetParam(CMSG_CONTENT_PARAM) failed: " << WindowsErrorString(GetLastError()));
+        SAL_WARN("svl.crypto", "Reading the encoded message via CryptMsgGetParam() failed: " << comphelper::WindowsErrorString(GetLastError()));
         if (pTsContext)
             CryptMemFree(pTsContext);
         CryptMsgClose(hMsg);
-        CertFreeCertificateContext(pCertContext);
         return false;
     }
 
@@ -1623,20 +1569,18 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
         if (pTsContext)
             CryptMemFree(pTsContext);
         CryptMsgClose(hMsg);
-        CertFreeCertificateContext(pCertContext);
         return false;
     }
 
     SAL_INFO("svl.crypto", "Signature size is " << nSigLen << " bytes");
     std::unique_ptr<BYTE[]> pSig(new BYTE[nSigLen]);
 
-    if (!CryptMsgGetParam(hMsg, CMSG_CONTENT_PARAM, 0, pSig.get(), &nSigLen))
+    if (!CryptMsgGetParam(hMsg, dwEncodedMessageParamType, 0, pSig.get(), &nSigLen))
     {
-        SAL_WARN("svl.crypto", "CryptMsgGetParam(CMSG_CONTENT_PARAM) failed: " << WindowsErrorString(GetLastError()));
+        SAL_WARN("svl.crypto", "Reading the encoded message via CryptMsgGetParam() failed: " << comphelper::WindowsErrorString(GetLastError()));
         if (pTsContext)
             CryptMemFree(pTsContext);
         CryptMsgClose(hMsg);
-        CertFreeCertificateContext(pCertContext);
         return false;
     }
 
@@ -1644,7 +1588,6 @@ bool Signing::Sign(OStringBuffer& rCMSHexBuffer)
     if (pTsContext)
         CryptMemFree(pTsContext);
     CryptMsgClose(hMsg);
-    CertFreeCertificateContext(pCertContext);
 
     for (unsigned int i = 0; i < nSigLen ; i++)
         appendHex(pSig[i], rCMSHexBuffer);
@@ -1694,118 +1637,6 @@ NSSCMSAttribute* CMSAttributeArray_FindAttrByOidData(NSSCMSAttribute** attrs, SE
         return nullptr;
 
     return attr1;
-}
-
-/// Same as SEC_StringToOID(), which is private to us.
-SECStatus StringToOID(SECItem* to, const char* from, PRUint32 len)
-{
-    PRUint32 decimal_numbers = 0;
-    PRUint32 result_bytes = 0;
-    SECStatus rv;
-    PRUint8 result[1024];
-
-    static const PRUint32 max_decimal = 0xffffffff / 10;
-    static const char OIDstring[] = {"OID."};
-
-    if (!from || !to)
-    {
-        PORT_SetError(SEC_ERROR_INVALID_ARGS);
-        return SECFailure;
-    }
-    if (!len)
-    {
-        len = PL_strlen(from);
-    }
-    if (len >= 4 && !PL_strncasecmp(from, OIDstring, 4))
-    {
-        from += 4; /* skip leading "OID." if present */
-        len  -= 4;
-    }
-    if (!len)
-    {
-bad_data:
-        PORT_SetError(SEC_ERROR_BAD_DATA);
-        return SECFailure;
-    }
-    do
-    {
-        PRUint32 decimal = 0;
-        while (len > 0 && rtl::isAsciiDigit(static_cast<unsigned char>(*from)))
-        {
-            PRUint32 addend = *from++ - '0';
-            --len;
-            if (decimal > max_decimal)  /* overflow */
-                goto bad_data;
-            decimal = (decimal * 10) + addend;
-            if (decimal < addend)   /* overflow */
-                goto bad_data;
-        }
-        if (len != 0 && *from != '.')
-        {
-            goto bad_data;
-        }
-        if (decimal_numbers == 0)
-        {
-            if (decimal > 2)
-                goto bad_data;
-            result[0] = decimal * 40;
-            result_bytes = 1;
-        }
-        else if (decimal_numbers == 1)
-        {
-            if (decimal > 40)
-                goto bad_data;
-            result[0] += decimal;
-        }
-        else
-        {
-            /* encode the decimal number,  */
-            PRUint8* rp;
-            PRUint32 num_bytes = 0;
-            PRUint32 tmp = decimal;
-            while (tmp)
-            {
-                num_bytes++;
-                tmp >>= 7;
-            }
-            if (!num_bytes)
-                ++num_bytes;  /* use one byte for a zero value */
-            if (static_cast<size_t>(num_bytes) + result_bytes > sizeof result)
-                goto bad_data;
-            tmp = num_bytes;
-            rp = result + result_bytes - 1;
-            rp[tmp] = static_cast<PRUint8>(decimal & 0x7f);
-            decimal >>= 7;
-            while (--tmp > 0)
-            {
-                rp[tmp] = static_cast<PRUint8>(decimal | 0x80);
-                decimal >>= 7;
-            }
-            result_bytes += num_bytes;
-        }
-        ++decimal_numbers;
-        if (len > 0)   /* skip trailing '.' */
-        {
-            ++from;
-            --len;
-        }
-    }
-    while (len > 0);
-    /* now result contains result_bytes of data */
-    if (to->data && to->len >= result_bytes)
-    {
-        to->len = result_bytes;
-        PORT_Memcpy(to->data, result, to->len);
-        rv = SECSuccess;
-    }
-    else
-    {
-        SECItem result_item = {siBuffer, nullptr, 0 };
-        result_item.data = result;
-        result_item.len  = result_bytes;
-        rv = SECITEM_CopyItem(nullptr, to, &result_item);
-    }
-    return rv;
 }
 
 #elif USE_CRYPTO_MSCAPI // ends USE_CRYPTO_NSS
@@ -1959,8 +1790,10 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
     // possible to verify the signature, even if we didn't have the certificate
     // previously.
     std::vector<CERTCertificate*> aDocumentCertificates;
-    for (size_t i = 0; pCMSSignedData->rawCerts[i]; ++i)
-        aDocumentCertificates.push_back(CERT_NewTempCertificate(CERT_GetDefaultCertDB(), pCMSSignedData->rawCerts[i], nullptr, 0, 0));
+    if (auto aCerts = pCMSSignedData->rawCerts) {
+        while (*aCerts)
+            aDocumentCertificates.push_back(CERT_NewTempCertificate(CERT_GetDefaultCertDB(), *aCerts++, nullptr, 0, 0));
+    }
 
     NSSCMSSignerInfo* pCMSSignerInfo = NSS_CMSSignedData_GetSignerInfo(pCMSSignedData, 0);
     if (!pCMSSignerInfo)
@@ -1969,7 +1802,13 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
         return false;
     }
 
-    SECItem aAlgorithm = NSS_CMSSignedData_GetDigestAlgs(pCMSSignedData)[0]->algorithm;
+    auto aDigestAlgs = NSS_CMSSignedData_GetDigestAlgs(pCMSSignedData);
+    if (!aDigestAlgs || !*aDigestAlgs) {
+        SAL_WARN("svl.crypto", "ValidateSignature: digestAlgorithms missing");
+        return false;
+    }
+
+    SECItem aAlgorithm = aDigestAlgs[0]->algorithm;
     SECOidTag eOidTag = SECOID_FindOIDTag(&aAlgorithm);
 
     // Map a sign algorithm to a digest algorithm.
@@ -1990,7 +1829,7 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
     }
 
     HASH_HashType eHashType = HASH_GetHashTypeByOidTag(eOidTag);
-    HASHContext* pHASHContext = HASH_Create(eHashType);
+    HASHContext* pHASHContext = HASH_Create(bNonDetached ? HASH_AlgSHA1 : eHashType);
     if (!pHASHContext)
     {
         SAL_WARN("svl.crypto", "ValidateSignature: HASH_Create() failed");
@@ -2077,17 +1916,14 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
 
     // Check if we have a signing certificate attribute.
     SECOidData aOidData;
-    aOidData.oid.data = nullptr;
+    auto cert_oid_buffer = std::to_array(OID_SIGNINGCERTIFICATEV2);
+    aOidData.oid.data = cert_oid_buffer.data();
+    aOidData.oid.len = cert_oid_buffer.size();
     /*
      * id-aa-signingCertificateV2 OBJECT IDENTIFIER ::=
      * { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) pkcs9(9)
      *   smime(16) id-aa(2) 47 }
      */
-    if (StringToOID(&aOidData.oid, "1.2.840.113549.1.9.16.2.47", 0) != SECSuccess)
-    {
-        SAL_WARN("svl.crypto", "StringToOID() failed");
-        return false;
-    }
     aOidData.offset = SEC_OID_UNKNOWN;
     aOidData.desc = "id-aa-signingCertificateV2";
     aOidData.mechanism = CKM_SHA_1;
@@ -2096,25 +1932,31 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
     if (pAttribute)
         rInformation.bHasSigningCertificate = true;
 
+    SECItem aSignedDigestItem {siBuffer, nullptr, 0};
+
     SECItem* pContentInfoContentData = pCMSSignedData->contentInfo.content.data;
-    if (bNonDetached && pContentInfoContentData && pContentInfoContentData->data)
+    if (pContentInfoContentData && pContentInfoContentData->data)
     {
         // Not a detached signature.
-        if (!std::memcmp(pActualResultBuffer, pContentInfoContentData->data, nMaxResultLen) && nActualResultLen == pContentInfoContentData->len)
-            rInformation.nStatus = xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
+        if (bNonDetached && nActualResultLen == pContentInfoContentData->len &&
+            !std::memcmp(pActualResultBuffer, pContentInfoContentData->data, nActualResultLen) &&
+            HASH_HashBuf(eHashType, pActualResultBuffer, pContentInfoContentData->data, nActualResultLen) == SECSuccess)
+        {
+            aSignedDigestItem.data = pActualResultBuffer;
+            aSignedDigestItem.len = nMaxResultLen;
+        }
     }
-    else
+    else if (!bNonDetached)
     {
         // Detached, the usual case.
-        SECItem aActualResultItem;
-        aActualResultItem.data = pActualResultBuffer;
-        aActualResultItem.len = nActualResultLen;
-        if (NSS_CMSSignerInfo_Verify(pCMSSignerInfo, &aActualResultItem, nullptr) == SECSuccess)
-            rInformation.nStatus = xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
+        aSignedDigestItem.data = pActualResultBuffer;
+        aSignedDigestItem.len = nActualResultLen;
     }
 
+    if (aSignedDigestItem.data && NSS_CMSSignerInfo_Verify(pCMSSignerInfo, &aSignedDigestItem, nullptr) == SECSuccess)
+            rInformation.nStatus = xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
+
     // Everything went fine
-    SECITEM_FreeItem(&aOidData.oid, false);
     PORT_Free(pActualResultBuffer);
     HASH_Destroy(pHASHContext);
     NSS_CMSSignerInfo_Destroy(pCMSSignerInfo);
@@ -2141,34 +1983,36 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
     // Update the message with the encoded header blob.
     if (!CryptMsgUpdate(hMsg, aSignature.data(), aSignature.size(), TRUE))
     {
-        SAL_WARN("svl.crypto", "ValidateSignature, CryptMsgUpdate() for the header failed: " << WindowsErrorString(GetLastError()));
+        SAL_WARN("svl.crypto", "ValidateSignature, CryptMsgUpdate() for the header failed: " << comphelper::WindowsErrorString(GetLastError()));
         return false;
     }
 
-    // Update the message with the content blob.
-    if (!CryptMsgUpdate(hMsg, aData.data(), aData.size(), FALSE))
+    if (!bNonDetached)
     {
-        SAL_WARN("svl.crypto", "ValidateSignature, CryptMsgUpdate() for the content failed: " << WindowsErrorString(GetLastError()));
-        return false;
-    }
+        // Update the message with the content blob.
+        if (!CryptMsgUpdate(hMsg, aData.data(), aData.size(), FALSE))
+        {
+            SAL_WARN("svl.crypto", "ValidateSignature, CryptMsgUpdate() for the content failed: " << comphelper::WindowsErrorString(GetLastError()));
+            return false;
+        }
 
-    if (!CryptMsgUpdate(hMsg, nullptr, 0, TRUE))
-    {
-        SAL_WARN("svl.crypto", "ValidateSignature, CryptMsgUpdate() for the last content failed: " << WindowsErrorString(GetLastError()));
-        return false;
+        if (!CryptMsgUpdate(hMsg, nullptr, 0, TRUE))
+        {
+            SAL_WARN("svl.crypto", "ValidateSignature, CryptMsgUpdate() for the last content failed: " << comphelper::WindowsErrorString(GetLastError()));
+            return false;
+        }
     }
-
     // Get the CRYPT_ALGORITHM_IDENTIFIER from the message.
     DWORD nDigestID = 0;
     if (!CryptMsgGetParam(hMsg, CMSG_SIGNER_HASH_ALGORITHM_PARAM, 0, nullptr, &nDigestID))
     {
-        SAL_WARN("svl.crypto", "ValidateSignature: CryptMsgGetParam() failed: " << WindowsErrorString(GetLastError()));
+        SAL_WARN("svl.crypto", "ValidateSignature: CryptMsgGetParam() failed: " << comphelper::WindowsErrorString(GetLastError()));
         return false;
     }
     std::unique_ptr<BYTE[]> pDigestBytes(new BYTE[nDigestID]);
     if (!CryptMsgGetParam(hMsg, CMSG_SIGNER_HASH_ALGORITHM_PARAM, 0, pDigestBytes.get(), &nDigestID))
     {
-        SAL_WARN("svl.crypto", "ValidateSignature: CryptMsgGetParam() failed: " << WindowsErrorString(GetLastError()));
+        SAL_WARN("svl.crypto", "ValidateSignature: CryptMsgGetParam() failed: " << comphelper::WindowsErrorString(GetLastError()));
         return false;
     }
     auto pDigestID = reinterpret_cast<CRYPT_ALGORITHM_IDENTIFIER*>(pDigestBytes.get());
@@ -2233,6 +2077,8 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
         rInformation.X509Datas.emplace_back(temp);
     }
 
+    std::vector<BYTE> aContentParam;
+
     if (bNonDetached)
     {
         // Not a detached signature.
@@ -2243,19 +2089,16 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
             return false;
         }
 
-        std::vector<BYTE> aContentParam(nContentParam);
+        aContentParam.resize(nContentParam);
         if (!CryptMsgGetParam(hMsg, CMSG_CONTENT_PARAM, 0, aContentParam.data(), &nContentParam))
         {
             SAL_WARN("svl.crypto", "ValidateSignature: CryptMsgGetParam() failed");
             return false;
         }
-
-        if (VerifyNonDetachedSignature(aData, aContentParam))
-            rInformation.nStatus = xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
     }
-    else
+
+    if (!bNonDetached || VerifyNonDetachedSignature(aData, aContentParam))
     {
-        // Detached, the usual case.
         // Use the CERT_INFO from the signer certificate to verify the signature.
         if (CryptMsgControl(hMsg, 0, CMSG_CTRL_VERIFY_SIGNATURE, pSignerCertContext->pCertInfo))
             rInformation.nStatus = xml::crypto::SecurityOperationStatus_OPERATION_SUCCEEDED;
@@ -2308,7 +2151,7 @@ bool Signing::Verify(const std::vector<unsigned char>& aData,
                 PCRYPT_TIMESTAMP_CONTEXT pTsContext;
                 if (!CryptVerifyTimeStampSignature(rAttr.rgValue->pbData, rAttr.rgValue->cbData, nullptr, 0, nullptr, &pTsContext, nullptr, nullptr))
                 {
-                    SAL_WARN("svl.crypto", "CryptMsgUpdate failed: " << WindowsErrorString(GetLastError()));
+                    SAL_WARN("svl.crypto", "CryptMsgUpdate failed: " << comphelper::WindowsErrorString(GetLastError()));
                     break;
                 }
 
@@ -2380,6 +2223,18 @@ bool Signing::Verify(SvStream& rStream,
 #endif
 }
 
+void Signing::appendHex(sal_Int8 nInt, OStringBuffer& rBuffer)
+{
+    static const char pHexDigits[] = { '0', '1', '2', '3', '4', '5', '6', '7',
+                                           '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
+    rBuffer.append( pHexDigits[ (nInt >> 4) & 15 ] );
+    rBuffer.append( pHexDigits[ nInt & 15 ] );
+}
+
+bool CertificateOrName::Is() const
+{
+    return m_xCertificate.is() || !m_aName.isEmpty();
+}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

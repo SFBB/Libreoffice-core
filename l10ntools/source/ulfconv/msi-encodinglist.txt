@@ -20,6 +20,7 @@
 # 2nd field used to be the ANSI codepage,
 # but now we are using UTF-8 everywhere.
 # comment lines begin with hash
+ab       0  1716   # Abkhaz, fake LCID
 af       0  1078   # Afrikaans
 am       0  1118   # Amharic
 ar       0  1025
@@ -133,7 +134,8 @@ ro       0  1048   # Romanian
 ru       0  1049
 rw       0  1159   # Kinyarwanda
 sa-IN    0  1103   # Sanskrit
-sat      0  1606   # Santali
+sat      0  1606   # Santali Devanagari
+sat-Olck 0  1715   # Santali Ol Chiki
 sb       0  1070   # Sorbian
 sc       0  3047
 sd       0  1113   # Sindhi
@@ -147,6 +149,7 @@ sr-Latn  0  2074   # Serbian Latin
 sr-SP    0  3098   # Serbian Cyrillic
 ss       0  1579   # Swazi
 st       0  1072   # Southern Sotho, Sutu
+sun      0  1690   # Sundanese, fake LCID
 sv       0  1053
 sw       0  1089   # Swahili
 sw-TZ    0  1089   # Swahili
@@ -160,6 +163,7 @@ tg       0  1064   # Tajik
 th       0  1054
 ti       0  1139   # Tigrinya
 ti-ER    0  1139   # Tigrinya
+tl       0  1592   # Tagalog, fake LCID
 tn       0  1074   # Setsuana
 tr       0  1055   # Turkish
 ts       0  1073   # Tsonga

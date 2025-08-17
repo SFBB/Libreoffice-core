@@ -37,14 +37,17 @@
 #include <svl/sharedstring.hxx>
 #include <sal/log.hxx>
 
+#include <com/sun/star/util/DateTime.hpp>
+
 using namespace ::com::sun::star;
 using namespace xmloff::token;
 
-ScChangeTrackingExportHelper::ScChangeTrackingExportHelper(ScXMLExport& rTempExport)
-    : rExport(rTempExport),
-    pChangeTrack(nullptr)
+ScChangeTrackingExportHelper::ScChangeTrackingExportHelper(ScDocument& rDoc, ScXMLExport& rTempExport)
+    : m_rDoc(rDoc)
+    , rExport(rTempExport)
+    , pChangeTrack(nullptr)
 {
-    pChangeTrack = rExport.GetDocument() ? rExport.GetDocument()->GetChangeTrack() : nullptr;
+    pChangeTrack = m_rDoc.GetChangeTrack();
 }
 
 ScChangeTrackingExportHelper::~ScChangeTrackingExportHelper()
@@ -94,21 +97,28 @@ void ScChangeTrackingExportHelper::WriteBigRange(const ScBigRange& rBigRange, XM
 
 void ScChangeTrackingExportHelper::WriteChangeInfo(const ScChangeAction* pAction)
 {
+    bool bRemovePersonalInfo
+        = SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo)
+          && !SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnKeepRedlineInfo);
+
     SvXMLElementExport aElemInfo (rExport, XML_NAMESPACE_OFFICE, XML_CHANGE_INFO, true, true);
 
     {
         SvXMLElementExport aCreatorElem( rExport, XML_NAMESPACE_DC,
                                             XML_CREATOR, true,
                                             false );
-        rExport.Characters(pAction->GetUser());
+        rExport.Characters(bRemovePersonalInfo
+                               ? "Author" + OUString::number(rExport.GetInfoID(pAction->GetUser()))
+                               : pAction->GetUser());
     }
 
     {
         OUStringBuffer sDate;
-        ScXMLConverter::ConvertDateTimeToString(pAction->GetDateTimeUTC(), sDate);
-        SvXMLElementExport aDateElem( rExport, XML_NAMESPACE_DC,
-                                          XML_DATE, true,
-                                          false );
+        ScXMLConverter::ConvertDateTimeToString(bRemovePersonalInfo
+                                                    ? DateTime( util::DateTime(0, 0, 0, 12, 1, 1, 1970, true) )
+                                                    : pAction->GetDateTimeUTC(),
+                                                sDate);
+        SvXMLElementExport aDateElem(rExport, XML_NAMESPACE_DC, XML_DATE, true, false);
         rExport.Characters(sDate.makeStringAndClear());
     }
 
@@ -129,7 +139,7 @@ void ScChangeTrackingExportHelper::WriteGenerated(const ScChangeAction* pGenerat
 #endif
     SvXMLElementExport aElemPrev(rExport, XML_NAMESPACE_TABLE, XML_CELL_CONTENT_DELETION, true, true);
     WriteBigRange(pGeneratedAction->GetBigRange(), XML_CELL_ADDRESS);
-    OUString sValue = static_cast<const ScChangeActionContent*>(pGeneratedAction)->GetNewString(rExport.GetDocument());
+    OUString sValue = static_cast<const ScChangeActionContent*>(pGeneratedAction)->GetNewString(m_rDoc);
     WriteCell(static_cast<const ScChangeActionContent*>(pGeneratedAction)->GetNewCell(), sValue);
 }
 
@@ -147,7 +157,7 @@ void ScChangeTrackingExportHelper::WriteDeleted(const ScChangeAction* pDeletedAc
                 SvXMLElementExport aElemPrev(rExport, XML_NAMESPACE_TABLE, XML_CELL_CONTENT_DELETION, true, true);
                 if (static_cast<const ScChangeActionContent*>(pDeletedAction)->IsTopContent() && pDeletedAction->IsDeletedIn())
                 {
-                    OUString sValue = pContentAction->GetNewString(rExport.GetDocument());
+                    OUString sValue = pContentAction->GetNewString(m_rDoc);
                     WriteCell(pContentAction->GetNewCell(), sValue);
                 }
             }
@@ -207,9 +217,9 @@ void ScChangeTrackingExportHelper::SetValueAttributes(const double& fValue, cons
     {
         sal_uInt32 nIndex = 0;
         double fTempValue = 0.0;
-        if (rExport.GetDocument() && rExport.GetDocument()->GetFormatTable()->IsNumberFormat(sValue, nIndex, fTempValue))
+        if (m_rDoc.GetFormatTable()->IsNumberFormat(sValue, nIndex, fTempValue))
         {
-            SvNumFormatType nType = rExport.GetDocument()->GetFormatTable()->GetType(nIndex);
+            SvNumFormatType nType = m_rDoc.GetFormatTable()->GetType(nIndex);
             if (nType & SvNumFormatType::DEFINED)
                 nType &= ~SvNumFormatType::DEFINED;
             switch(nType)
@@ -278,14 +288,14 @@ void ScChangeTrackingExportHelper::WriteEditCell(const ScCellValue& rCell)
 
     OUString sString;
     if (rCell.getEditText())
-        sString = ScEditUtil::GetString(*rCell.getEditText(), rExport.GetDocument());
+        sString = ScEditUtil::GetString(*rCell.getEditText(), m_rDoc);
 
     rExport.AddAttribute(XML_NAMESPACE_OFFICE, XML_VALUE_TYPE, XML_STRING);
     SvXMLElementExport aElemC(rExport, XML_NAMESPACE_TABLE, XML_CHANGE_TRACK_TABLE_CELL, true, true);
     if (rCell.getEditText() && !sString.isEmpty())
     {
         if (!pEditTextObj)
-            pEditTextObj = new ScEditEngineTextObj();
+            pEditTextObj = new ScEditEngineTextObj(m_rDoc.GetEditEnginePool());
         pEditTextObj->SetText(*rCell.getEditText());
         rExport.GetTextParagraphExport()->exportText(pEditTextObj, false, false);
     }
@@ -297,10 +307,9 @@ void ScChangeTrackingExportHelper::WriteFormulaCell(const ScCellValue& rCell, co
 
     ScFormulaCell* pFormulaCell = rCell.getFormula();
     OUString sAddress;
-    const ScDocument* pDoc = rExport.GetDocument();
-    ScRangeStringConverter::GetStringFromAddress(sAddress, pFormulaCell->aPos, pDoc, ::formula::FormulaGrammar::CONV_OOO);
+    ScRangeStringConverter::GetStringFromAddress(sAddress, pFormulaCell->aPos, &m_rDoc, ::formula::FormulaGrammar::CONV_OOO);
     rExport.AddAttribute(XML_NAMESPACE_TABLE, XML_CELL_ADDRESS, sAddress);
-    const formula::FormulaGrammar::Grammar eGrammar = pDoc->GetStorageGrammar();
+    const formula::FormulaGrammar::Grammar eGrammar = m_rDoc.GetStorageGrammar();
     sal_uInt16 nNamespacePrefix = (eGrammar == formula::FormulaGrammar::GRAM_ODFF ? XML_NAMESPACE_OF : XML_NAMESPACE_OOOC);
     OUString sFormula = pFormulaCell->GetFormula(eGrammar);
     ScMatrixMode nMatrixFlag(pFormulaCell->GetMatrixFlag());
@@ -385,7 +394,7 @@ void ScChangeTrackingExportHelper::WriteContentChange(const ScChangeAction* pAct
         if (pPrevAction)
             rExport.AddAttribute(XML_NAMESPACE_TABLE, XML_ID, GetChangeID(pPrevAction->GetActionNumber()));
         SvXMLElementExport aElemPrev(rExport, XML_NAMESPACE_TABLE, XML_PREVIOUS, true, true);
-        OUString sValue = static_cast<const ScChangeActionContent*>(pAction)->GetOldString(rExport.GetDocument());
+        OUString sValue = static_cast<const ScChangeActionContent*>(pAction)->GetOldString(m_rDoc);
         WriteCell(static_cast<const ScChangeActionContent*>(pAction)->GetOldCell(), sValue);
     }
 }
@@ -589,7 +598,7 @@ void ScChangeTrackingExportHelper::CollectCellAutoStyles(const ScCellValue& rCel
         return;
 
     if (!pEditTextObj)
-        pEditTextObj = new ScEditEngineTextObj();
+        pEditTextObj = new ScEditEngineTextObj(m_rDoc.GetEditEnginePool());
 
     pEditTextObj->SetText(*rCell.getEditText());
     rExport.GetTextParagraphExport()->collectTextAutoStyles(pEditTextObj, false, false);

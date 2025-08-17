@@ -25,8 +25,6 @@
 #include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
 
-#include <comphelper/attributelist.hxx>
-
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
 
@@ -52,6 +50,7 @@ constexpr OUString ELEMENT_NS_ENTRY = u"image:entry"_ustr;
 constexpr OUStringLiteral ATTRIBUTE_XMLNS_IMAGE = u"xmlns:image";
 constexpr OUStringLiteral ATTRIBUTE_XMLNS_XLINK = u"xmlns:xlink";
 
+constexpr OUString ATTRIBUTE_XLINK_HREF = u"xlink:href"_ustr;
 constexpr OUStringLiteral ATTRIBUTE_XLINK_TYPE = u"xlink:type";
 constexpr OUStringLiteral ATTRIBUTE_XLINK_TYPE_VALUE = u"simple";
 
@@ -138,7 +137,7 @@ void SAL_CALL OReadImagesDocumentHandler::endDocument()
 void SAL_CALL OReadImagesDocumentHandler::startElement(
     const OUString& aName, const Reference< XAttributeList > &xAttribs )
 {
-    ImageHashMap::const_iterator pImageEntry = m_aImageMap.find( aName );
+    auto pImageEntry = m_aImageMap.find( aName );
     if ( pImageEntry == m_aImageMap.end() )
         return;
 
@@ -214,7 +213,7 @@ void SAL_CALL OReadImagesDocumentHandler::startElement(
                 throw SAXException( aErrorMessage, Reference< XInterface >(), Any() );
             }
 
-            m_rImageList.push_back( aItem );
+            m_rImageList.aImageItemDescriptors.push_back(aItem);
         }
         break;
 
@@ -225,7 +224,7 @@ void SAL_CALL OReadImagesDocumentHandler::startElement(
 
 void SAL_CALL OReadImagesDocumentHandler::endElement(const OUString& aName)
 {
-    ImageHashMap::const_iterator pImageEntry = m_aImageMap.find( aName );
+    auto pImageEntry = m_aImageMap.find( aName );
     if ( pImageEntry == m_aImageMap.end() )
         return;
 
@@ -286,7 +285,6 @@ OWriteImagesDocumentHandler::OWriteImagesDocumentHandler(
     m_rImageItemList( rItems ),
     m_xWriteDocumentHandler( rWriteDocumentHandler )
 {
-    m_xEmptyList = new ::comphelper::AttributeList;
     m_aXMLImageNS           = XMLNS_IMAGE_PREFIX;
     m_aAttributeXlinkType   = ATTRIBUTE_XLINK_TYPE;
     m_aAttributeValueSimple = ATTRIBUTE_XLINK_TYPE_VALUE;
@@ -337,10 +335,12 @@ void OWriteImagesDocumentHandler::WriteImageList( const ImageItemDescriptorList*
     pList->AddAttribute( m_aAttributeXlinkType,
                          m_aAttributeValueSimple );
 
+    pList->AddAttribute(ATTRIBUTE_XLINK_HREF, pImageList->aURL);
+
     m_xWriteDocumentHandler->startElement( ELEMENT_NS_IMAGES, pList );
     m_xWriteDocumentHandler->ignorableWhitespace( OUString() );
 
-    for (const ImageItemDescriptor & i : *pImageList)
+    for (const ImageItemDescriptor & i : pImageList->aImageItemDescriptors)
         WriteImage( &i );
 
     m_xWriteDocumentHandler->endElement( ELEMENT_NS_IMAGES );
@@ -350,6 +350,8 @@ void OWriteImagesDocumentHandler::WriteImageList( const ImageItemDescriptorList*
 void OWriteImagesDocumentHandler::WriteImage( const ImageItemDescriptor* pImage )
 {
     rtl::Reference<::comphelper::AttributeList> pList = new ::comphelper::AttributeList;
+
+    pList->AddAttribute(m_aXMLImageNS + ATTRIBUTE_BITMAPINDEX, OUString::number(pImage->nIndex));
 
     pList->AddAttribute( m_aXMLImageNS + ATTRIBUTE_COMMAND,
                          pImage->aCommandURL );

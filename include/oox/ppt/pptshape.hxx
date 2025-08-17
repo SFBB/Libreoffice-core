@@ -32,7 +32,6 @@
 namespace basegfx { class B2DHomMatrix; }
 
 namespace com::sun::star {
-    namespace awt { struct Rectangle; }
     namespace drawing { class XShapes; }
 }
 
@@ -55,10 +54,13 @@ class PPTShape final : public oox::drawingml::Shape
 
     bool IsPlaceHolderCandidate(const SlidePersist& rSlidePersist) const;
 
+    void setTextMasterStyles(const SlidePersist& rSlidePersist, const oox::core::XmlFilterBase& rFilterBase,
+        const std::u16string_view& sType);
+
 public:
 
     PPTShape( const oox::ppt::ShapeLocation eShapeLocation,
-                const char* pServiceType );
+                const OUString& rServiceType );
     virtual ~PPTShape() override;
 
     using oox::drawingml::Shape::addShape;

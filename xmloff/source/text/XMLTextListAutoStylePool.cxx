@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include <tools/solar.h>
 #include <o3tl/sorted_vector.hxx>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/style/XStyle.hpp>
@@ -28,7 +27,6 @@
 #include <com/sun/star/ucb/XAnyCompareFactory.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/container/XIndexReplace.hpp>
-#include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <xmloff/xmlnume.hxx>
 #include <xmloff/XMLTextListAutoStylePool.hxx>
@@ -37,7 +35,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::style;
 
@@ -120,9 +117,10 @@ namespace {
 
 struct XMLTextListAutoStylePoolEntryCmp_Impl
 {
-    bool operator()(
-            std::unique_ptr<XMLTextListAutoStylePoolEntry_Impl> const& r1,
-            std::unique_ptr<XMLTextListAutoStylePoolEntry_Impl> const& r2 ) const
+    template <typename T1, typename T2>
+        requires o3tl::is_reference_to<T1, XMLTextListAutoStylePoolEntry_Impl>
+                 && o3tl::is_reference_to<T2, XMLTextListAutoStylePoolEntry_Impl>
+    bool operator()(T1 const& r1, T2 const& r2) const
     {
         if( r1->IsNamed() )
         {
@@ -147,13 +145,13 @@ class XMLTextListAutoStylePool_Impl : public o3tl::sorted_vector<std::unique_ptr
 
 XMLTextListAutoStylePool::XMLTextListAutoStylePool( SvXMLExport& rExp ) :
     m_rExport( rExp ),
-    m_sPrefix( "L" ),
+    m_sPrefix( u"L"_ustr ),
     m_pPool( new XMLTextListAutoStylePool_Impl ),
     m_nName( 0 )
 {
     Reference<ucb::XAnyCompareFactory> xCompareFac( rExp.GetModel(), uno::UNO_QUERY );
     if( xCompareFac.is() )
-        mxNumRuleCompare = xCompareFac->createAnyCompareByName( "NumberingRules" );
+        mxNumRuleCompare = xCompareFac->createAnyCompareByName( u"NumberingRules"_ustr );
     SvXMLExportFlags nExportFlags = m_rExport.getExportFlags();
     bool bStylesOnly = (nExportFlags & SvXMLExportFlags::STYLES) && !(nExportFlags & SvXMLExportFlags::CONTENT);
     if( bStylesOnly )
@@ -174,7 +172,14 @@ XMLTextListAutoStylePool::XMLTextListAutoStylePool( SvXMLExport& rExp ) :
     for (sal_Int32 i = 0; i < nStyles; i++)
     {
         Reference<XStyle> xStyle;
-        xStyles->getByIndex(i) >>= xStyle;
+        try
+        {
+            xStyles->getByIndex(i) >>= xStyle;
+        }
+        catch (const container::NoSuchElementException&)
+        {
+            SAL_WARN("xmloff", "XMLTextListAutoStylePool_Impl ctor: can't export numbering style #" << i);
+        }
         RegisterName(xStyle->getName());
     }
 }

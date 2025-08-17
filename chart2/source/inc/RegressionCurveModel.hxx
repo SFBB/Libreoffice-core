@@ -33,6 +33,7 @@
 
 namespace chart
 {
+class RegressionCurveCalculator;
 
 namespace impl
 {
@@ -98,6 +99,8 @@ public:
     virtual void SAL_CALL removeModifyListener(
         const css::uno::Reference< css::util::XModifyListener >& aListener ) override;
 
+    rtl::Reference< RegressionCurveCalculator > getCurveCalculator();
+
 protected:
     // ____ XModifyListener ____
     virtual void SAL_CALL modified(
@@ -124,7 +127,7 @@ private:
 
 // implementations for factory instantiation
 
-class MeanValueRegressionCurve : public RegressionCurveModel
+class MeanValueRegressionCurve final : public RegressionCurveModel
 {
 public:
     explicit MeanValueRegressionCurve();
@@ -141,7 +144,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class LinearRegressionCurve : public RegressionCurveModel
+class LinearRegressionCurve final : public RegressionCurveModel
 {
 public:
     explicit LinearRegressionCurve();
@@ -157,7 +160,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class LogarithmicRegressionCurve : public RegressionCurveModel
+class LogarithmicRegressionCurve final : public RegressionCurveModel
 {
 public:
     explicit LogarithmicRegressionCurve();
@@ -173,7 +176,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class ExponentialRegressionCurve : public RegressionCurveModel
+class ExponentialRegressionCurve final : public RegressionCurveModel
 {
 public:
     explicit ExponentialRegressionCurve();
@@ -189,7 +192,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class PotentialRegressionCurve : public RegressionCurveModel
+class PotentialRegressionCurve final : public RegressionCurveModel
 {
 public:
     explicit PotentialRegressionCurve();
@@ -205,7 +208,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class PolynomialRegressionCurve : public RegressionCurveModel
+class PolynomialRegressionCurve final : public RegressionCurveModel
 {
 public:
     explicit PolynomialRegressionCurve();
@@ -221,7 +224,7 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-class MovingAverageRegressionCurve : public RegressionCurveModel
+class MovingAverageRegressionCurve final : public RegressionCurveModel
 {
 public:
     explicit MovingAverageRegressionCurve();

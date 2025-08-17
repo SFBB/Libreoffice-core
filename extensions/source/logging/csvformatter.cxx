@@ -134,7 +134,7 @@ namespace logging
         m_LogTimestamp(true),
         m_LogSource(false),
         m_MultiColumn(false),
-        m_Columnnames({ "message" })
+        m_Columnnames({ u"message"_ustr })
     { }
 
     sal_Bool CsvFormatter::getLogEventNo()
@@ -233,11 +233,11 @@ namespace logging
                 || 60 < record.LogTime.Seconds
                 || 999999999 < record.LogTime.NanoSeconds)
             {
-                throw css::lang::IllegalArgumentException("invalid date", static_cast<cppu::OWeakObject*>(this), 1);
+                throw css::lang::IllegalArgumentException(u"invalid date"_ustr, static_cast<cppu::OWeakObject*>(this), 1);
             }
 
             // ISO 8601
-            char buffer[ SAL_N_ELEMENTS("-32768-65535-65535T65535:65535:65535.4294967295") ];
+            char buffer[ std::size("-32768-65535-65535T65535:65535:65535.4294967295") ];
             const size_t buffer_size = sizeof( buffer );
             snprintf( buffer, buffer_size, "%04i-%02u-%02uT%02u:%02u:%02u.%09" SAL_PRIuUINT32,
                 static_cast<int>(record.LogTime.Year),
@@ -298,12 +298,12 @@ namespace logging
 
     OUString SAL_CALL CsvFormatter::getImplementationName()
     {
-        return "com.sun.star.comp.extensions.CsvFormatter";
+        return u"com.sun.star.comp.extensions.CsvFormatter"_ustr;
     }
 
     Sequence< OUString > SAL_CALL CsvFormatter::getSupportedServiceNames()
     {
-        return { "com.sun.star.logging.CsvFormatter" };
+        return { u"com.sun.star.logging.CsvFormatter"_ustr };
     }
 
 } // namespace logging

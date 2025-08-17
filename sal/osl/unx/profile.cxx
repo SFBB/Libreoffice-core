@@ -20,6 +20,7 @@
 #include "system.hxx"
 #include "readwrite_helper.hxx"
 #include "file_url.hxx"
+#include "file_impl.hxx"
 #include "unixerrnostring.hxx"
 
 #include <osl/diagnose.h>
@@ -189,7 +190,6 @@ static oslProfile osl_psz_openProfile(const char *pszProfileName, oslProfileOpti
     if (pProfile->m_pFile == nullptr)
         closeFileImpl(pFile,pProfile->m_Flags);
 
-    // coverity[leaked_storage] - pFile is not leaked
     return pProfile;
 }
 
@@ -934,8 +934,12 @@ static bool OslProfile_lockFile(const osl_TFile* pFile, osl_TLockMode eMode)
 static osl_TFile* openFileImpl(const char* pszFilename, oslProfileOption ProfileFlags )
 {
     int        Flags;
-    osl_TFile* pFile = static_cast<osl_TFile*>(calloc(1, sizeof(osl_TFile)));
     bool       bWriteable = false;
+
+    if ( isForbidden( pszFilename, osl_File_OpenFlag_Write ) )
+        return nullptr;
+
+    osl_TFile* pFile = static_cast<osl_TFile*>(calloc(1, sizeof(osl_TFile)));
 
     if ( ProfileFlags & ( osl_Profile_WRITELOCK | osl_Profile_FLUSHWRITE ) )
     {
@@ -1048,7 +1052,7 @@ static bool OslProfile_rewindFile(osl_TFile* pFile, bool bTruncate)
 
 static char* OslProfile_getLine(osl_TFile* pFile)
 {
-    int   Max, Free, nLineBytes = 0;
+    ssize_t Max, nLineBytes = 0;
     char* pChr;
     char* pLine = nullptr;
     char* pNewLine;
@@ -1063,7 +1067,7 @@ static char* OslProfile_getLine(osl_TFile* pFile)
 
     do
     {
-        int Bytes = sizeof(pFile->m_ReadBuf) - (pFile->m_pReadPtr - pFile->m_ReadBuf);
+        ssize_t Bytes = sizeof(pFile->m_ReadBuf) - (pFile->m_pReadPtr - pFile->m_ReadBuf);
 
         if (Bytes <= 1)
         {
@@ -1071,9 +1075,10 @@ static char* OslProfile_getLine(osl_TFile* pFile)
             memcpy(pFile->m_ReadBuf, pFile->m_pReadPtr, Bytes);
             pFile->m_pReadPtr = pFile->m_ReadBuf;
 
-            Free = sizeof(pFile->m_ReadBuf) - Bytes;
+            ssize_t Free = sizeof(pFile->m_ReadBuf) - Bytes;
 
-            if ((Max = read(pFile->m_Handle, &pFile->m_ReadBuf[Bytes], Free)) < 0)
+            Max = read(pFile->m_Handle, &pFile->m_ReadBuf[Bytes], Free);
+            if (Max < 0)
             {
                 SAL_INFO("sal.osl", "read failed: " << UnixErrnoString(errno));
 

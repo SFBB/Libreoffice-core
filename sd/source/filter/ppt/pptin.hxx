@@ -43,14 +43,14 @@ typedef ::std::map < SdrObject*, Ppt97AnimationPtr > tAnimationMap;
 
 class ImplSdPPTImport : public SdrPowerPointImport
 {
-    tools::SvRef<SotStorageStream> mxPicturesStream;
+    rtl::Reference<SotStorageStream> mxPicturesStream;
     SfxMedium&      mrMed;
     SotStorage&      mrStorage;
     DffRecordHeader maDocHd;
     std::vector<OUString> maSlideNameList;
     bool            mbDocumentFound;
     sal_uInt32      mnFilterOptions;
-    SdDrawDocument* mpDoc;
+    SdDrawDocument& mrDoc;
     PresChange      mePresChange;
     SdrLayerID      mnBackgroundObjectsLayerID;
 
@@ -69,11 +69,11 @@ public:
     OUString        ReadSound( sal_uInt32 nSoundRef ) const;
     OUString        ReadMedia( sal_uInt32 nMediaRef ) const;
 
-    ImplSdPPTImport( SdDrawDocument* pDoc, SotStorage& rStorage, SfxMedium& rMed, PowerPointImportParam& );
+    ImplSdPPTImport( SdDrawDocument& rDoc, SotStorage& rStorage, SfxMedium& rMed, PowerPointImportParam& );
     virtual ~ImplSdPPTImport() override;
 
     bool         Import();
-    virtual bool ReadFormControl(  tools::SvRef<SotStorage>& rSrc1, css::uno::Reference< css::form::XFormComponent > & rFormComp ) const override;
+    virtual bool ReadFormControl(  rtl::Reference<SotStorage>& rSrc1, css::uno::Reference< css::form::XFormComponent > & rFormComp ) const override;
 };
 
 class SdPPTImport
@@ -83,7 +83,7 @@ class SdPPTImport
 
 public:
 
-    SdPPTImport( SdDrawDocument* pDoc, SvStream& rDocStream, SotStorage& rStorage, SfxMedium& rMed );
+    SdPPTImport( SdDrawDocument& rDoc, SvStream& rDocStream, SotStorage& rStorage, SfxMedium& rMed );
     ~SdPPTImport();
 
     bool Import();

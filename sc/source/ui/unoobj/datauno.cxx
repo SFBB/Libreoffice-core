@@ -131,11 +131,11 @@ static std::span<const SfxItemPropertyMapEntry> lcl_GetDBRangePropertyMap()
     return aDBRangePropertyMap_Impl;
 }
 
-SC_SIMPLE_SERVICE_INFO( ScConsolidationDescriptor, "ScConsolidationDescriptor", "com.sun.star.sheet.ConsolidationDescriptor" )
-SC_SIMPLE_SERVICE_INFO( ScDatabaseRangesObj, "ScDatabaseRangesObj", "com.sun.star.sheet.DatabaseRanges" )
-SC_SIMPLE_SERVICE_INFO( ScFilterDescriptorBase, "ScFilterDescriptorBase", "com.sun.star.sheet.SheetFilterDescriptor" )
-SC_SIMPLE_SERVICE_INFO( ScSubTotalDescriptorBase, "ScSubTotalDescriptorBase", "com.sun.star.sheet.SubTotalDescriptor" )
-SC_SIMPLE_SERVICE_INFO( ScSubTotalFieldObj, "ScSubTotalFieldObj", "com.sun.star.sheet.SubTotalField" )
+SC_SIMPLE_SERVICE_INFO( ScConsolidationDescriptor, u"ScConsolidationDescriptor"_ustr, u"com.sun.star.sheet.ConsolidationDescriptor"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScDatabaseRangesObj, u"ScDatabaseRangesObj"_ustr, u"com.sun.star.sheet.DatabaseRanges"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScFilterDescriptorBase, u"ScFilterDescriptorBase"_ustr, u"com.sun.star.sheet.SheetFilterDescriptor"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScSubTotalDescriptorBase, u"ScSubTotalDescriptorBase"_ustr, u"com.sun.star.sheet.SubTotalDescriptor"_ustr )
+SC_SIMPLE_SERVICE_INFO( ScSubTotalFieldObj, u"ScSubTotalFieldObj"_ustr, u"com.sun.star.sheet.SubTotalField"_ustr )
 
 sheet::GeneralFunction  ScDataUnoConversion::SubTotalToGeneral( ScSubTotalFunc eSubTotal )
 {
@@ -459,7 +459,7 @@ sal_Int32 SAL_CALL ScSubTotalFieldObj::getGroupColumn()
     ScSubTotalParam aParam;
     xParent->GetData(aParam);
 
-    return aParam.nField[nPos];
+    return aParam.aGroups[nPos].nField;
 }
 
 void SAL_CALL ScSubTotalFieldObj::setGroupColumn( sal_Int32 nGroupColumn )
@@ -468,7 +468,7 @@ void SAL_CALL ScSubTotalFieldObj::setGroupColumn( sal_Int32 nGroupColumn )
     ScSubTotalParam aParam;
     xParent->GetData(aParam);
 
-    aParam.nField[nPos] = static_cast<SCCOL>(nGroupColumn);
+    aParam.aGroups[nPos].nField = static_cast<SCCOL>(nGroupColumn);
 
     xParent->PutData(aParam);
 }
@@ -479,14 +479,13 @@ uno::Sequence<sheet::SubTotalColumn> SAL_CALL ScSubTotalFieldObj::getSubTotalCol
     ScSubTotalParam aParam;
     xParent->GetData(aParam);
 
-    SCCOL nCount = aParam.nSubTotals[nPos];
+    SCCOL nCount = aParam.aGroups[nPos].nSubTotals;
     uno::Sequence<sheet::SubTotalColumn> aSeq(nCount);
     sheet::SubTotalColumn* pAry = aSeq.getArray();
     for (SCCOL i=0; i<nCount; i++)
     {
-        pAry[i].Column = aParam.pSubTotals[nPos][i];
-        pAry[i].Function = ScDataUnoConversion::SubTotalToGeneral(
-                                        aParam.pFunctions[nPos][i] );
+        pAry[i].Column = aParam.aGroups[nPos].col(i);
+        pAry[i].Function = ScDataUnoConversion::SubTotalToGeneral(aParam.aGroups[nPos].func(i));
     }
     return aSeq;
 }
@@ -498,29 +497,8 @@ void SAL_CALL ScSubTotalFieldObj::setSubTotalColumns(
     ScSubTotalParam aParam;
     xParent->GetData(aParam);
 
-    sal_uInt32 nColCount = aSubTotalColumns.getLength();
-    if ( nColCount <= sal::static_int_cast<sal_uInt32>(SCCOL_MAX) )
-    {
-        SCCOL nCount = static_cast<SCCOL>(nColCount);
-        aParam.nSubTotals[nPos] = nCount;
-        if (nCount != 0)
-        {
-            aParam.pSubTotals[nPos].reset(new SCCOL[nCount]);
-            aParam.pFunctions[nPos].reset(new ScSubTotalFunc[nCount]);
-
-            const sheet::SubTotalColumn* pAry = aSubTotalColumns.getConstArray();
-            for (SCCOL i=0; i<nCount; i++)
-            {
-                aParam.pSubTotals[nPos][i] = static_cast<SCCOL>(pAry[i].Column);
-                aParam.pFunctions[nPos][i] = ScDPUtil::toSubTotalFunc(static_cast<ScGeneralFunction>(pAry[i].Function));
-            }
-        }
-        else
-        {
-            aParam.pSubTotals[nPos].reset();
-            aParam.pFunctions[nPos].reset();
-        }
-    }
+    if (aSubTotalColumns.getLength() <= SCCOL_MAX)
+        aParam.aGroups[nPos].SetSubtotals(aSubTotalColumns);
     //! otherwise exception or so? (too many columns)
 
     xParent->PutData(aParam);
@@ -550,8 +528,8 @@ void SAL_CALL ScSubTotalDescriptorBase::clear()
     ScSubTotalParam aParam;
     GetData(aParam);
 
-    for (bool & rn : aParam.bGroupActive)
-        rn = false;
+    for (auto& group : aParam.aGroups)
+        group.bActive = false;
 
     //! notify the field objects???
 
@@ -567,40 +545,17 @@ void SAL_CALL ScSubTotalDescriptorBase::addNew(
     GetData(aParam);
 
     sal_uInt16 nPos = 0;
-    while ( nPos < MAXSUBTOTAL && aParam.bGroupActive[nPos] )
+    while (nPos < MAXSUBTOTAL && aParam.aGroups[nPos].bActive)
         ++nPos;
 
-    sal_uInt32 nColCount = aSubTotalColumns.getLength();
-
-    if ( nPos >= MAXSUBTOTAL || nColCount > sal::static_int_cast<sal_uInt32>(SCCOL_MAX) )
+    if (nPos >= MAXSUBTOTAL || aSubTotalColumns.getLength() > SCCOL_MAX)
         // too many fields / columns
         throw uno::RuntimeException();      // no other exceptions specified
+    auto& group = aParam.aGroups[nPos];
 
-    aParam.bGroupActive[nPos] = true;
-    aParam.nField[nPos] = static_cast<SCCOL>(nGroupColumn);
-
-    aParam.pSubTotals[nPos].reset();
-    aParam.pFunctions[nPos].reset();
-
-    SCCOL nCount = static_cast<SCCOL>(nColCount);
-    aParam.nSubTotals[nPos] = nCount;
-    if (nCount != 0)
-    {
-        aParam.pSubTotals[nPos].reset(new SCCOL[nCount]);
-        aParam.pFunctions[nPos].reset(new ScSubTotalFunc[nCount]);
-
-        const sheet::SubTotalColumn* pAry = aSubTotalColumns.getConstArray();
-        for (SCCOL i=0; i<nCount; i++)
-        {
-            aParam.pSubTotals[nPos][i] = static_cast<SCCOL>(pAry[i].Column);
-            aParam.pFunctions[nPos][i] = ScDPUtil::toSubTotalFunc(static_cast<ScGeneralFunction>(pAry[i].Function));
-        }
-    }
-    else
-    {
-        aParam.pSubTotals[nPos].reset();
-        aParam.pFunctions[nPos].reset();
-    }
+    group.bActive = true;
+    group.nField = static_cast<SCCOL>(nGroupColumn);
+    group.SetSubtotals(aSubTotalColumns);
 
     PutData(aParam);
 }
@@ -612,7 +567,7 @@ void SAL_CALL ScSubTotalDescriptorBase::addNew(
 uno::Reference<container::XEnumeration> SAL_CALL ScSubTotalDescriptorBase::createEnumeration()
 {
     SolarMutexGuard aGuard;
-    return new ScIndexEnumeration(this, "com.sun.star.sheet.SubTotalFieldsEnumeration");
+    return new ScIndexEnumeration(this, u"com.sun.star.sheet.SubTotalFieldsEnumeration"_ustr);
 }
 
 // XIndexAccess
@@ -624,7 +579,7 @@ sal_Int32 SAL_CALL ScSubTotalDescriptorBase::getCount()
     GetData(aParam);
 
     sal_uInt16 nCount = 0;
-    while ( nCount < MAXSUBTOTAL && aParam.bGroupActive[nCount] )
+    while ( nCount < MAXSUBTOTAL && aParam.aGroups[nCount].bActive )
         ++nCount;
     return nCount;
 }
@@ -632,11 +587,11 @@ sal_Int32 SAL_CALL ScSubTotalDescriptorBase::getCount()
 uno::Any SAL_CALL ScSubTotalDescriptorBase::getByIndex( sal_Int32 nIndex )
 {
     SolarMutexGuard aGuard;
-    uno::Reference<sheet::XSubTotalField> xField(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
+    rtl::Reference<ScSubTotalFieldObj> xField(GetObjectByIndex_Impl(static_cast<sal_uInt16>(nIndex)));
     if (!xField.is())
         throw lang::IndexOutOfBoundsException();
 
-    return uno::Any(xField);
+    return uno::Any(uno::Reference<sheet::XSubTotalField>(xField));
 }
 
 uno::Type SAL_CALL ScSubTotalDescriptorBase::getElementType()
@@ -1085,8 +1040,7 @@ void fillQueryParam(
 
             if (rItem.meType == ScQueryEntry::ByValue)
             {
-                OUString aStr;
-                pDoc->GetFormatTable()->GetInputLineString(rItem.mfVal, 0, aStr);
+                OUString aStr = pDoc->GetFormatTable()->GetInputLineString(rItem.mfVal, 0);
                 rItem.maString = rPool.intern(aStr);
             }
         }
@@ -1142,8 +1096,7 @@ void fillQueryParam(
 
                 if (aItem.meType == ScQueryEntry::ByValue)
                 {
-                    OUString aStr;
-                    pDoc->GetFormatTable()->GetInputLineString(aItem.mfVal, 0, aStr);
+                    OUString aStr = pDoc->GetFormatTable()->GetInputLineString(aItem.mfVal, 0);
                     aItem.maString = rPool.intern(aStr);
                 }
                 else if (aItem.meType == ScQueryEntry::ByTextColor
@@ -1321,8 +1274,7 @@ void SAL_CALL ScFilterDescriptorBase::setFilterFields(
 
         if (rItem.meType != ScQueryEntry::ByString)
         {
-            OUString aStr;
-            rDoc.GetFormatTable()->GetInputLineString(rItem.mfVal, 0, aStr);
+            OUString aStr = rDoc.GetFormatTable()->GetInputLineString(rItem.mfVal, 0);
             rItem.maString = rPool.intern(aStr);
         }
 
@@ -1377,7 +1329,7 @@ void SAL_CALL ScFilterDescriptorBase::setFilterFields3(
     PutData(aParam);
 }
 
-// Rest sind Properties
+// Rest are Properties
 
 // XPropertySet
 
@@ -1592,8 +1544,9 @@ void ScDatabaseRangeObj::Notify( SfxBroadcaster&, const SfxHint& rHint )
 
     if ( rHint.GetId() == SfxHintId::Dying )
         pDocShell = nullptr;
-    else if ( auto pRefreshHint = dynamic_cast<const ScDBRangeRefreshedHint*>(&rHint) )
+    else if ( rHint.GetId() == SfxHintId::ScDBRangeRefreshed )
     {
+        auto pRefreshHint = static_cast<const ScDBRangeRefreshedHint*>(&rHint);
         ScDBData* pDBData = GetDBData_Impl();
         ScImportParam aParam;
         pDBData->GetImportParam(aParam);
@@ -1749,6 +1702,7 @@ void ScDatabaseRangeObj::SetQueryParam(const ScQueryParam& rQueryParam)
     ScDBData aNewData( *pData );
     aNewData.SetQueryParam(aParam);
     aNewData.SetHeader(aParam.bHasHeader);      // not in ScDBData::SetQueryParam
+    aNewData.SetTotals(aParam.bHasTotals);      // not in ScDBData::SetQueryParam
     ScDBDocFunc aFunc(*pDocShell);
     aFunc.ModifyDBData(aNewData);
 }
@@ -1771,16 +1725,15 @@ void ScDatabaseRangeObj::GetSubTotalParam(ScSubTotalParam& rSubTotalParam) const
     ScRange aDBRange;
     pData->GetArea(aDBRange);
     SCCOL nFieldStart = aDBRange.aStart.Col();
-    for (sal_uInt16 i=0; i<MAXSUBTOTAL; i++)
+    for (auto& group : rSubTotalParam.aGroups)
     {
-        if ( rSubTotalParam.bGroupActive[i] )
+        if (group.bActive)
         {
-            if ( rSubTotalParam.nField[i] >= nFieldStart )
-                rSubTotalParam.nField[i] = sal::static_int_cast<SCCOL>( rSubTotalParam.nField[i] - nFieldStart );
-            for (SCCOL j=0; j<rSubTotalParam.nSubTotals[i]; j++)
-                if ( rSubTotalParam.pSubTotals[i][j] >= nFieldStart )
-                    rSubTotalParam.pSubTotals[i][j] =
-                        sal::static_int_cast<SCCOL>( rSubTotalParam.pSubTotals[i][j] - nFieldStart );
+            if (group.nField >= nFieldStart)
+                group.nField -= nFieldStart;
+            for (SCCOL j = 0; j < group.nSubTotals; j++)
+                if (group.col(j) >= nFieldStart)
+                    group.col(j) -= nFieldStart;
         }
     }
 }
@@ -1796,13 +1749,13 @@ void ScDatabaseRangeObj::SetSubTotalParam(const ScSubTotalParam& rSubTotalParam)
     ScRange aDBRange;
     pData->GetArea(aDBRange);
     SCCOL nFieldStart = aDBRange.aStart.Col();
-    for (sal_uInt16 i=0; i<MAXSUBTOTAL; i++)
+    for (auto& group : aParam.aGroups)
     {
-        if ( aParam.bGroupActive[i] )
+        if (group.bActive)
         {
-            aParam.nField[i] = sal::static_int_cast<SCCOL>( aParam.nField[i] + nFieldStart );
-            for (SCCOL j=0; j<aParam.nSubTotals[i]; j++)
-                aParam.pSubTotals[i][j] = sal::static_int_cast<SCCOL>( aParam.pSubTotals[i][j] + nFieldStart );
+            group.nField += nFieldStart;
+            for (SCCOL j = 0; j < group.nSubTotals; j++)
+                group.col(j) += nFieldStart;
         }
     }
 
@@ -2106,7 +2059,7 @@ SC_IMPL_DUMMY_PROPERTY_LISTENER( ScDatabaseRangeObj )
 // XServiceInfo
 OUString SAL_CALL ScDatabaseRangeObj::getImplementationName()
 {
-    return "ScDatabaseRangeObj";
+    return u"ScDatabaseRangeObj"_ustr;
 }
 
 sal_Bool SAL_CALL ScDatabaseRangeObj::supportsService( const OUString& rServiceName )
@@ -2116,7 +2069,7 @@ sal_Bool SAL_CALL ScDatabaseRangeObj::supportsService( const OUString& rServiceN
 
 uno::Sequence<OUString> SAL_CALL ScDatabaseRangeObj::getSupportedServiceNames()
 {
-    return {"com.sun.star.sheet.DatabaseRange",
+    return {u"com.sun.star.sheet.DatabaseRange"_ustr,
             SCLINKTARGET_SERVICE};
 }
 
@@ -2208,7 +2161,7 @@ void SAL_CALL ScDatabaseRangesObj::removeByName( const OUString& aName )
 uno::Reference<container::XEnumeration> SAL_CALL ScDatabaseRangesObj::createEnumeration()
 {
     SolarMutexGuard aGuard;
-    return new ScIndexEnumeration(this, "com.sun.star.sheet.DatabaseRangesEnumeration");
+    return new ScIndexEnumeration(this, u"com.sun.star.sheet.DatabaseRangesEnumeration"_ustr);
 }
 
 // XIndexAccess
@@ -2234,11 +2187,11 @@ uno::Any SAL_CALL ScDatabaseRangesObj::getByIndex( sal_Int32 nIndex )
     if (nIndex < 0)
         throw lang::IndexOutOfBoundsException();
 
-    uno::Reference<sheet::XDatabaseRange> xRange(GetObjectByIndex_Impl(static_cast<size_t>(nIndex)));
+    rtl::Reference<ScDatabaseRangeObj> xRange(GetObjectByIndex_Impl(static_cast<size_t>(nIndex)));
     if (!xRange.is())
         throw lang::IndexOutOfBoundsException();
 
-    return uno::Any(xRange);
+    return uno::Any(uno::Reference<sheet::XDatabaseRange>(xRange));
 }
 
 uno::Type SAL_CALL ScDatabaseRangesObj::getElementType()
@@ -2257,11 +2210,11 @@ sal_Bool SAL_CALL ScDatabaseRangesObj::hasElements()
 uno::Any SAL_CALL ScDatabaseRangesObj::getByName( const OUString& aName )
 {
     SolarMutexGuard aGuard;
-    uno::Reference<sheet::XDatabaseRange> xRange(GetObjectByName_Impl(aName));
+    rtl::Reference<ScDatabaseRangeObj> xRange(GetObjectByName_Impl(aName));
     if (!xRange.is())
         throw container::NoSuchElementException();
 
-    return uno::Any(xRange);
+    return uno::Any(uno::Reference<sheet::XDatabaseRange>(xRange));
 }
 
 uno::Sequence<OUString> SAL_CALL ScDatabaseRangesObj::getElementNames()

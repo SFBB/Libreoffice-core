@@ -33,9 +33,9 @@ void StructPage::SetActiveFlag(bool bFlag)
 }
 
 StructPage::StructPage(weld::Container* pParent)
-    : m_xBuilder(Application::CreateBuilder(pParent, "formula/ui/structpage.ui"))
-    , m_xContainer(m_xBuilder->weld_container("StructPage"))
-    , m_xTlbStruct(m_xBuilder->weld_tree_view("struct"))
+    : m_xBuilder(Application::CreateBuilder(pParent, u"formula/ui/structpage.ui"_ustr))
+    , m_xContainer(m_xBuilder->weld_container(u"StructPage"_ustr))
+    , m_xTlbStruct(m_xBuilder->weld_tree_view(u"struct"_ustr))
     , maImgEnd(BMP_STR_END)
     , maImgError(BMP_STR_ERROR)
     , pSelectedToken(nullptr)
@@ -44,7 +44,7 @@ StructPage::StructPage(weld::Container* pParent)
     m_xTlbStruct->set_size_request(m_xTlbStruct->get_approximate_digit_width() * 20,
                                    m_xTlbStruct->get_height_rows(17));
 
-    m_xTlbStruct->connect_changed(LINK( this, StructPage, SelectHdl ) );
+    m_xTlbStruct->connect_selection_changed(LINK(this, StructPage, SelectHdl));
 }
 
 StructPage::~StructPage()
@@ -58,8 +58,7 @@ void StructPage::ClearStruct()
 }
 
 bool StructPage::InsertEntry(const OUString& rText, const weld::TreeIter* pParent,
-                             sal_uInt16 nFlag, int nPos,
-                             const FormulaToken* pIFormulaToken,
+                             StructType eStructType, int nPos, const FormulaToken* pIFormulaToken,
                              weld::TreeIter& rRet)
 {
     SetActiveFlag(false);
@@ -67,24 +66,24 @@ bool StructPage::InsertEntry(const OUString& rText, const weld::TreeIter* pParen
     OUString sId(weld::toId(pIFormulaToken));
 
     bool bEntry = false;
-    switch (nFlag)
+    switch (eStructType)
     {
-        case STRUCT_FOLDER:
+        case StructType::Folder:
             m_xTlbStruct->insert(pParent, nPos, &rText, &sId, nullptr, nullptr,
                                  false, &rRet);
-            m_xTlbStruct->set_image(rRet, BMP_STR_OPEN);
+            m_xTlbStruct->set_image(rRet, BMP_STR_OPEN, 0);
             bEntry = true;
             break;
-        case STRUCT_END:
+        case StructType::End:
             m_xTlbStruct->insert(pParent, nPos, &rText, &sId, nullptr, nullptr,
                                  false, &rRet);
-            m_xTlbStruct->set_image(rRet, maImgEnd);
+            m_xTlbStruct->set_image(rRet, maImgEnd, 0);
             bEntry = true;
             break;
-        case STRUCT_ERROR:
+        case StructType::Error:
             m_xTlbStruct->insert(pParent, nPos, &rText, &sId, nullptr, nullptr,
                                  false, &rRet);
-            m_xTlbStruct->set_image(rRet, maImgError);
+            m_xTlbStruct->set_image(rRet, maImgError, 0);
             bEntry = true;
             break;
     }

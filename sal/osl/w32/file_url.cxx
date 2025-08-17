@@ -25,6 +25,7 @@
 #include <stack>
 #include <string_view>
 
+#include <systools/win32/extended_max_path.hxx>
 #include <systools/win32/uwinapi.h>
 
 #include "file_url.hxx"
@@ -424,7 +425,7 @@ DWORD IsValidFilePath(const OUString& path, DWORD dwFlags, OUString* corrected)
             // Correct path by merging consecutive slashes:
             if (o3tl::starts_with(*oComponent, u"\\") && corrected != nullptr) {
                 sal_Int32 i = oComponent->data() - lastCorrected.getStr();
-                *corrected = lastCorrected.replaceAt(i, 1, {});
+                *corrected = lastCorrected.replaceAt(i, 1, std::u16string_view{});
                     //TODO: handle out-of-memory
                 lastCorrected = *corrected;
                 oComponent = lastCorrected.subView(i);
@@ -594,7 +595,7 @@ static OUString GetCaseCorrectPathName(std::u16string_view sysPath)
     wchar_t* const pStart = pEnd;
     pEnd = std::copy(sysPath.begin() + sysPathOffset, sysPath.end(), pStart);
     *pEnd = 0;
-    osl::LongPathBuffer<wchar_t> aBuf(MAX_LONG_PATH);
+    osl::LongPathBuffer<wchar_t> aBuf(EXTENDED_MAX_PATH);
     while (pEnd > pStart)
     {
         std::u16string_view curPath(o3tl::toU(pPath), pEnd - pPath);
@@ -750,7 +751,7 @@ oslFileError osl_getFileURLFromSystemPath( rtl_uString* strPath, rtl_uString** p
 
         if ( dwPathType & PATHTYPE_IS_LONGPATH )
         {
-            /* the path has the longpath prefix, lets remove it */
+            /* the path has the longpath prefix, let's remove it */
             switch ( dwPathType & PATHTYPE_MASK_TYPE )
             {
                 case PATHTYPE_ABSOLUTE_UNC:
@@ -864,7 +865,7 @@ oslFileError SAL_CALL osl_searchFileURL(
         } while ( dwResult && dwResult >= nBufferLength );
 
         /*  ... until an error occurs or buffer is large enough.
-            dwResult == nBufferLength can not happen according to documentation but lets be robust ;-) */
+            dwResult == nBufferLength can not happen according to documentation but let's be robust ;-) */
 
         if ( dwResult )
         {
@@ -943,8 +944,8 @@ oslFileError SAL_CALL osl_getAbsoluteFileURL( rtl_uString* ustrBaseURL, rtl_uStr
                 else
                 {
                     // Call GetFullPathNameW to get current directory on ustrRelSysPath's drive
-                    wchar_t baseDrive[3] = { ustrRelSysPath[0], ':' }; // just "C:"
-                    osl::LongPathBuffer<wchar_t> aBuf(MAX_LONG_PATH);
+                    wchar_t baseDrive[3] = { ustrRelSysPath[0], ':', 0 }; // just "C:"
+                    osl::LongPathBuffer<wchar_t> aBuf(EXTENDED_MAX_PATH);
                     DWORD dwResult
                         = GetFullPathNameW(baseDrive, aBuf.getBufSizeInSymbols(), aBuf, nullptr);
                     if (dwResult)

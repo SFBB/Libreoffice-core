@@ -515,7 +515,7 @@ public:
     ScRange( const ScRange& rRange ) :
         aStart( rRange.aStart ), aEnd( rRange.aEnd )
     {}
-    ScRange( const ScAddress& rRange ) :
+    explicit ScRange( const ScAddress& rRange ) :
         aStart( rRange ), aEnd( rRange )
     {}
     ScRange( SCCOL nCol, SCROW nRow, SCTAB nTab ) :
@@ -957,13 +957,6 @@ bool ConvertDoubleRef( const ScDocument& rDocument, const OUString& rRefString,
 
 /// append alpha representation of column to buffer
 SC_DLLPUBLIC void ScColToAlpha( OUStringBuffer& rBuffer, SCCOL nCol);
-
-inline void ScColToAlpha( OUString& rStr, SCCOL nCol)
-{
-    OUStringBuffer aBuf(4);
-    ScColToAlpha( aBuf, nCol);
-    rStr += aBuf;
-}
 
 inline OUString ScColToAlpha( SCCOL nCol )
 {

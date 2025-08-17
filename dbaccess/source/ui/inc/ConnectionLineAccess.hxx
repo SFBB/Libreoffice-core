@@ -19,21 +19,21 @@
 #pragma once
 
 #include "TableConnection.hxx"
+#include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/accessibility/XAccessibleRelationSet.hpp>
 #include <cppuhelper/implbase.hxx>
-#include <toolkit/awt/vclxaccessiblecomponent.hxx>
+#include <vcl/accessibility/vclxaccessiblecomponent.hxx>
 #include <vcl/vclptr.hxx>
+
+using css::accessibility::AccessibleRelationType;
 
 namespace dbaui
 {
-    class OTableConnection;
     /** the class OConnectionLineAccess represents the accessible object for the connection between two table windows
         like they are used in the QueryDesign and the RelationDesign
     */
-    class OConnectionLineAccess     :   public cppu::ImplInheritanceHelper<
-                                            VCLXAccessibleComponent,
-                                            css::accessibility::XAccessibleRelationSet,
-                                            css::accessibility::XAccessible>
+    class OConnectionLineAccess : public cppu::ImplInheritanceHelper<VCLXAccessibleComponent,
+                                                                     css::accessibility::XAccessibleRelationSet>
     {
         VclPtr<const OTableConnection>             m_pLine; // the window which I should give accessibility to
     protected:
@@ -47,9 +47,6 @@ namespace dbaui
         // XServiceInfo
         virtual OUString SAL_CALL getImplementationName() override;
 
-        // XAccessible
-        virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override;
-
         // XAccessibleContext
         virtual sal_Int64 SAL_CALL getAccessibleChildCount(  ) override;
         virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleChild( sal_Int64 i ) override;
@@ -58,18 +55,17 @@ namespace dbaui
         virtual OUString SAL_CALL getAccessibleDescription(  ) override;
         virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL getAccessibleRelationSet(  ) override;
 
+        // OAccessible
+        virtual css::awt::Rectangle implGetBounds() override;
+
         // XAccessibleComponent
         virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint( const css::awt::Point& aPoint ) override;
-        virtual css::awt::Rectangle SAL_CALL getBounds(  ) override;
-        virtual css::awt::Point SAL_CALL getLocation(  ) override;
-        virtual css::awt::Point SAL_CALL getLocationOnScreen(  ) override;
-        virtual css::awt::Size SAL_CALL getSize(  ) override;
 
         // XAccessibleRelationSet
         virtual sal_Int32 SAL_CALL getRelationCount(  ) override;
         virtual css::accessibility::AccessibleRelation SAL_CALL getRelation( sal_Int32 nIndex ) override;
-        virtual sal_Bool SAL_CALL containsRelation( sal_Int16 aRelationType ) override;
-        virtual css::accessibility::AccessibleRelation SAL_CALL getRelationByType( sal_Int16 aRelationType ) override;
+        virtual sal_Bool SAL_CALL containsRelation(AccessibleRelationType eRelationType) override;
+        virtual css::accessibility::AccessibleRelation SAL_CALL getRelationByType(AccessibleRelationType eRelationType) override;
     };
 }
 

@@ -23,12 +23,13 @@
 #include <unotools/configmgr.hxx>
 #include <unotools/fontcfg.hxx>
 #include <unotools/fontdefs.hxx>
+#include <comphelper/configuration.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/configuration/theDefaultProvider.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <comphelper/propertysequence.hxx>
 #include <unotools/syslocale.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <osl/diagnose.h>
@@ -40,7 +41,6 @@
 using namespace utl;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::container;
 using namespace com::sun::star::configuration;
 
@@ -48,36 +48,36 @@ using namespace com::sun::star::configuration;
  * DefaultFontConfiguration
  */
 
-static const char* getKeyType( DefaultFontType nKeyType )
+static OUString getKeyType( DefaultFontType nKeyType )
 {
     switch( nKeyType )
     {
-    case DefaultFontType::CJK_DISPLAY: return "CJK_DISPLAY";
-    case DefaultFontType::CJK_HEADING: return "CJK_HEADING";
-    case DefaultFontType::CJK_PRESENTATION: return "CJK_PRESENTATION";
-    case DefaultFontType::CJK_SPREADSHEET: return "CJK_SPREADSHEET";
-    case DefaultFontType::CJK_TEXT: return "CJK_TEXT";
-    case DefaultFontType::CTL_DISPLAY: return "CTL_DISPLAY";
-    case DefaultFontType::CTL_HEADING: return "CTL_HEADING";
-    case DefaultFontType::CTL_PRESENTATION: return "CTL_PRESENTATION";
-    case DefaultFontType::CTL_SPREADSHEET: return "CTL_SPREADSHEET";
-    case DefaultFontType::CTL_TEXT: return "CTL_TEXT";
-    case DefaultFontType::FIXED: return "FIXED";
-    case DefaultFontType::LATIN_DISPLAY: return "LATIN_DISPLAY";
-    case DefaultFontType::LATIN_FIXED: return "LATIN_FIXED";
-    case DefaultFontType::LATIN_HEADING: return "LATIN_HEADING";
-    case DefaultFontType::LATIN_PRESENTATION: return "LATIN_PRESENTATION";
-    case DefaultFontType::LATIN_SPREADSHEET: return "LATIN_SPREADSHEET";
-    case DefaultFontType::LATIN_TEXT: return "LATIN_TEXT";
-    case DefaultFontType::SANS: return "SANS";
-    case DefaultFontType::SANS_UNICODE: return "SANS_UNICODE";
-    case DefaultFontType::SERIF: return "SERIF";
-    case DefaultFontType::SYMBOL: return "SYMBOL";
-    case DefaultFontType::UI_FIXED: return "UI_FIXED";
-    case DefaultFontType::UI_SANS: return "UI_SANS";
+    case DefaultFontType::CJK_DISPLAY: return u"CJK_DISPLAY"_ustr;
+    case DefaultFontType::CJK_HEADING: return u"CJK_HEADING"_ustr;
+    case DefaultFontType::CJK_PRESENTATION: return u"CJK_PRESENTATION"_ustr;
+    case DefaultFontType::CJK_SPREADSHEET: return u"CJK_SPREADSHEET"_ustr;
+    case DefaultFontType::CJK_TEXT: return u"CJK_TEXT"_ustr;
+    case DefaultFontType::CTL_DISPLAY: return u"CTL_DISPLAY"_ustr;
+    case DefaultFontType::CTL_HEADING: return u"CTL_HEADING"_ustr;
+    case DefaultFontType::CTL_PRESENTATION: return u"CTL_PRESENTATION"_ustr;
+    case DefaultFontType::CTL_SPREADSHEET: return u"CTL_SPREADSHEET"_ustr;
+    case DefaultFontType::CTL_TEXT: return u"CTL_TEXT"_ustr;
+    case DefaultFontType::FIXED: return u"FIXED"_ustr;
+    case DefaultFontType::LATIN_DISPLAY: return u"LATIN_DISPLAY"_ustr;
+    case DefaultFontType::LATIN_FIXED: return u"LATIN_FIXED"_ustr;
+    case DefaultFontType::LATIN_HEADING: return u"LATIN_HEADING"_ustr;
+    case DefaultFontType::LATIN_PRESENTATION: return u"LATIN_PRESENTATION"_ustr;
+    case DefaultFontType::LATIN_SPREADSHEET: return u"LATIN_SPREADSHEET"_ustr;
+    case DefaultFontType::LATIN_TEXT: return u"LATIN_TEXT"_ustr;
+    case DefaultFontType::SANS: return u"SANS"_ustr;
+    case DefaultFontType::SANS_UNICODE: return u"SANS_UNICODE"_ustr;
+    case DefaultFontType::SERIF: return u"SERIF"_ustr;
+    case DefaultFontType::SYMBOL: return u"SYMBOL"_ustr;
+    case DefaultFontType::UI_FIXED: return u"UI_FIXED"_ustr;
+    case DefaultFontType::UI_SANS: return u"UI_SANS"_ustr;
     default:
         OSL_FAIL( "unmatched type" );
-        return "";
+        return u""_ustr;
     }
 }
 
@@ -89,7 +89,7 @@ DefaultFontConfiguration& DefaultFontConfiguration::get()
 
 DefaultFontConfiguration::DefaultFontConfiguration()
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
     // create configuration hierarchical access name
     try
@@ -98,11 +98,11 @@ DefaultFontConfiguration::DefaultFontConfiguration()
         m_xConfigProvider = theDefaultProvider::get(comphelper::getProcessComponentContext());
         Sequence<Any> aArgs(comphelper::InitAnyPropertySequence(
         {
-            {"nodepath", Any(OUString( "/org.openoffice.VCL/DefaultFonts" ))}
+            {"nodepath", Any(u"/org.openoffice.VCL/DefaultFonts"_ustr)}
         }));
         m_xConfigAccess =
             Reference< XNameAccess >(
-                m_xConfigProvider->createInstanceWithArguments( "com.sun.star.configuration.ConfigurationAccess",
+                m_xConfigProvider->createInstanceWithArguments( u"com.sun.star.configuration.ConfigurationAccess"_ustr,
                                                                 aArgs ),
                 UNO_QUERY );
         if( m_xConfigAccess.is() )
@@ -154,7 +154,7 @@ OUString DefaultFontConfiguration::tryLocale( const OUString& rBcp47, const OUSt
                 {
                     Any aAny = m_xConfigAccess->getByName( it->second.aConfigLocaleString );
                     if( aAny >>= xNode )
-                        it->second.xAccess = xNode;
+                        it->second.xAccess = std::move(xNode);
                 }
             }
             catch (const NoSuchElementException&)
@@ -188,7 +188,7 @@ OUString DefaultFontConfiguration::tryLocale( const OUString& rBcp47, const OUSt
 
 OUString DefaultFontConfiguration::getDefaultFont( const LanguageTag& rLanguageTag, DefaultFontType nType ) const
 {
-    OUString aType = OUString::createFromAscii( getKeyType( nType ) );
+    OUString aType = getKeyType( nType );
     // Try the simple cases first without constructing fallbacks.
     OUString aRet = tryLocale( rLanguageTag.getBcp47(), aType );
     if (aRet.isEmpty())
@@ -213,7 +213,7 @@ OUString DefaultFontConfiguration::getDefaultFont( const LanguageTag& rLanguageT
     }
     if( aRet.isEmpty() )
     {
-        aRet = tryLocale( "en", aType );
+        aRet = tryLocale( u"en"_ustr, aType );
     }
     return aRet;
 }
@@ -299,23 +299,23 @@ FontSubstConfiguration& FontSubstConfiguration::get()
 
 FontSubstConfiguration::FontSubstConfiguration() :
     maSubstHash( 300 ),
-    maLanguageTag("en")
+    maLanguageTag(u"en"_ustr)
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
     try
     {
         // get service provider
-        Reference< XComponentContext > xContext( comphelper::getProcessComponentContext() );
+        const Reference< XComponentContext >& xContext( comphelper::getProcessComponentContext() );
         // create configuration hierarchical access name
         m_xConfigProvider = theDefaultProvider::get( xContext );
         Sequence<Any> aArgs(comphelper::InitAnyPropertySequence(
         {
-            {"nodepath", Any(OUString( "/org.openoffice.VCL/FontSubstitutions" ))}
+            {"nodepath", Any(u"/org.openoffice.VCL/FontSubstitutions"_ustr)}
         }));
         m_xConfigAccess =
             Reference< XNameAccess >(
-                m_xConfigProvider->createInstanceWithArguments( "com.sun.star.configuration.ConfigurationAccess",
+                m_xConfigProvider->createInstanceWithArguments( u"com.sun.star.configuration.ConfigurationAccess"_ustr,
                                                                 aArgs ),
                 UNO_QUERY );
         if( m_xConfigAccess.is() )
@@ -510,8 +510,8 @@ ImplFontAttrTypeSearchData const aImplTypeAttrSearchList[] =
 {   "monotype",             ImplFontAttrs::None },
 {   "linotype",             ImplFontAttrs::None },
 {   "titling",              ImplFontAttrs::Titling },
-{   "captitals",            ImplFontAttrs::Capitals },
-{   "captital",             ImplFontAttrs::Capitals },
+{   "capitals",             ImplFontAttrs::Capitals },
+{   "capital",              ImplFontAttrs::Capitals },
 {   "caps",                 ImplFontAttrs::Capitals },
 {   "italic",               ImplFontAttrs::Italic },
 {   "oblique",              ImplFontAttrs::Italic },
@@ -874,8 +874,9 @@ void FontSubstConfiguration::fillSubstVector( const css::uno::Reference< XNameAc
     }
 }
 
+// static
 FontWeight FontSubstConfiguration::getSubstWeight( const css::uno::Reference< XNameAccess >& rFont,
-                                                   const OUString& rType ) const
+                                                   const OUString& rType )
 {
     int weight = -1;
     try
@@ -901,8 +902,9 @@ FontWeight FontSubstConfiguration::getSubstWeight( const css::uno::Reference< XN
     return static_cast<FontWeight>( weight >= 0 ? pWeightNames[weight].nEnum : WEIGHT_DONTKNOW );
 }
 
+// static
 FontWidth FontSubstConfiguration::getSubstWidth( const css::uno::Reference< XNameAccess >& rFont,
-                                                 const OUString& rType ) const
+                                                 const OUString& rType )
 {
     int width = -1;
     try
@@ -928,8 +930,9 @@ FontWidth FontSubstConfiguration::getSubstWidth( const css::uno::Reference< XNam
     return static_cast<FontWidth>( width >= 0 ? pWidthNames[width].nEnum : WIDTH_DONTKNOW );
 }
 
+// static
 ImplFontAttrs FontSubstConfiguration::getSubstType( const css::uno::Reference< XNameAccess >& rFont,
-                                                    const OUString& rType ) const
+                                                    const OUString& rType )
 {
     sal_uInt32 type = 0;
     try
@@ -1029,7 +1032,7 @@ void FontSubstConfiguration::readLocaleSubst( const OUString& rBcp47 ) const
         aAttr.Type = getSubstType( xFont, aSubstTypeStr );
 
         // finally insert this entry
-        it->second.aSubstAttributes.push_back( aAttr );
+        it->second.aSubstAttributes.push_back(std::move(aAttr));
     }
     std::sort( it->second.aSubstAttributes.begin(), it->second.aSubstAttributes.end(), StrictStringSort() );
 }

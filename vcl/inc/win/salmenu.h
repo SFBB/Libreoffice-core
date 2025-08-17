@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_WIN_SALMENU_H
-#define INCLUDED_VCL_INC_WIN_SALMENU_H
+#pragma once
 
 #include <vcl/bitmap.hxx>
 #include <salmenu.hxx>
@@ -40,7 +39,7 @@ public:
     virtual void SetItemText( unsigned nPos, SalMenuItem* pSalMenuItem, const OUString& rText ) override;
     virtual void SetItemImage( unsigned nPos, SalMenuItem* pSalMenuItem, const Image& rImage ) override;
     virtual void SetAccelerator( unsigned nPos, SalMenuItem* pSalMenuItem, const vcl::KeyCode& rKeyCode, const OUString& rKeyName ) override;
-    virtual void GetSystemMenuData( SystemMenuData* pData ) override;
+    virtual void GetSystemMenuData(SystemMenuData& rData) override;
 
     HMENU mhMenu;           // the menu handle
     bool  mbMenuBar;        // true for menu bars
@@ -62,7 +61,5 @@ public:
     int       mnId;         // item id
     WinSalMenu*  mpSalMenu;    // the menu where this item is inserted
 };
-
-#endif // INCLUDED_VCL_INC_WIN_SALMENU_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

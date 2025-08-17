@@ -27,6 +27,7 @@
 #include <swrect.hxx>
 #include <calbck.hxx>
 #include <svl/SfxBroadcaster.hxx>
+#include <o3tl/temporary.hxx>
 #include <o3tl/typed_flags_set.hxx>
 #include <com/sun/star/style/TabStop.hpp>
 #include <basegfx/matrix/b2dhommatrix.hxx>
@@ -40,6 +41,7 @@ namespace drawinglayer::processor2d { class BaseProcessor2D; }
 class SwLayoutFrame;
 class SwRootFrame;
 class SwPageFrame;
+class SwColumnFrame;
 class SwBodyFrame;
 class SwFlyFrame;
 class SwSectionFrame;
@@ -59,7 +61,6 @@ class SwSelectionList;
 struct SwPosition;
 struct SwCursorMoveState;
 class SwFormat;
-class SwPrintData;
 class SwSortedObjs;
 class SwAnchoredObject;
 enum class SvxFrameDirection;
@@ -79,8 +80,8 @@ enum class SwFrameType
     Column      = 0x0004,
     Header      = 0x0008,
     Footer      = 0x0010,
-    FtnCont     = 0x0020,
-    Ftn         = 0x0040,
+    FootnoteContainer = 0x0020,
+    Footnote    = 0x0040,
     Body        = 0x0080,
     Fly         = 0x0100,
     Section     = 0x0200,
@@ -98,15 +99,15 @@ namespace o3tl
 };
 
 // for internal use some common combinations
-#define FRM_LAYOUT      SwFrameType(0x3bFF)
-#define FRM_ALL         SwFrameType(0xfbff)
-#define FRM_CNTNT       (SwFrameType::Txt | SwFrameType::NoTxt)
-#define FRM_FTNBOSS     (SwFrameType::Page | SwFrameType::Column)
-#define FRM_ACCESSIBLE  (SwFrameType::Root | SwFrameType::Page | SwFrameType::Header | SwFrameType::Footer | SwFrameType::Ftn | SwFrameType::Fly | SwFrameType::Tab | SwFrameType::Cell | SwFrameType::Txt)
-#define FRM_NEIGHBOUR   (SwFrameType::Column | SwFrameType::Cell)
-#define FRM_NOTE_VERT   (SwFrameType::FtnCont | SwFrameType::Ftn | SwFrameType::Section | SwFrameType::Tab | SwFrameType::Row | SwFrameType::Cell | SwFrameType::Txt)
-#define FRM_HEADFOOT    (SwFrameType::Header | SwFrameType::Footer)
-#define FRM_BODYFTNC    (SwFrameType::FtnCont | SwFrameType::Body)
+constexpr SwFrameType FRM_LAYOUT = SwFrameType(0x3bFF);
+constexpr SwFrameType FRM_ALL = SwFrameType(0xfbff);
+constexpr SwFrameType FRM_CNTNT = SwFrameType::Txt | SwFrameType::NoTxt;
+constexpr SwFrameType FRM_FTNBOSS = SwFrameType::Page | SwFrameType::Column;
+constexpr SwFrameType FRM_ACCESSIBLE = SwFrameType::Root | SwFrameType::Page | SwFrameType::Header | SwFrameType::Footer | SwFrameType::Footnote | SwFrameType::Fly | SwFrameType::Tab | SwFrameType::Cell | SwFrameType::Txt;
+constexpr SwFrameType FRM_NEIGHBOUR = SwFrameType::Column | SwFrameType::Cell;
+constexpr SwFrameType FRM_NOTE_VERT = SwFrameType::FootnoteContainer | SwFrameType::Footnote | SwFrameType::Section | SwFrameType::Tab | SwFrameType::Row | SwFrameType::Cell | SwFrameType::Txt;
+constexpr SwFrameType FRM_HEADFOOT = SwFrameType::Header | SwFrameType::Footer;
+constexpr SwFrameType FRM_BODYFTNC = SwFrameType::FootnoteContainer | SwFrameType::Body;
 
 // for GetNextLeaf/GetPrevLeaf.
 enum MakePageType
@@ -142,21 +143,21 @@ private:
     // When identical to FrameArea, Pos() will be (0, 0) and Size identical.
     SwRect  maFramePrintArea;
 
-    // bitfield
-    bool mbFrameAreaPositionValid   : 1;
-    bool mbFrameAreaSizeValid       : 1;
-    bool mbFramePrintAreaValid      : 1;
+    sal_uInt32 mnFrameId;
+
+    bool mbFrameAreaPositionValid;
+    bool mbFrameAreaSizeValid;
+    bool mbFramePrintAreaValid;
 
     // #i65250#
     // frame ID is now in general available - used for layout loop control
     static sal_uInt32 snLastFrameId;
-    const  sal_uInt32 mnFrameId;
 
 protected:
     // write access to mb*Valid flags
-    void setFrameAreaPositionValid(bool bNew);
-    void setFrameAreaSizeValid(bool bNew);
-    void setFramePrintAreaValid(bool bNew);
+    SW_DLLPUBLIC void setFrameAreaPositionValid(bool bNew);
+    SW_DLLPUBLIC void setFrameAreaSizeValid(bool bNew);
+    SW_DLLPUBLIC void setFramePrintAreaValid(bool bNew);
 
 public:
     SwFrameAreaDefinition();
@@ -304,6 +305,15 @@ namespace o3tl {
     template<> struct typed_flags<SwFrameInvFlags> : is_typed_flags<SwFrameInvFlags, 0x003f> {};
 }
 
+// Possible reasons why SwFrame::Grow[Frame] failed to provide the requested growth
+enum class SwResizeLimitReason
+{
+    Unspecified, // no specific reason
+    FixedSizeFrame, // e.g., fixed-height table row; children must be clipped
+    FlowToFollow, // content must flow to a follow; includes next page, column, linked frames
+    BalancedColumns, // resize is performed by Format*, not by Grow*
+};
+
 /**
  * Base class of the Writer layout elements.
  *
@@ -311,7 +321,7 @@ namespace o3tl {
  * level: pages, headers, footers, etc. (Inside a paragraph SwLinePortion
  * instances are used.)
  */
-class SW_DLLPUBLIC SwFrame : public SwFrameAreaDefinition, public SwClient, public SfxBroadcaster
+class SAL_DLLPUBLIC_RTTI SwFrame : public SwFrameAreaDefinition, public SwClient, public SfxBroadcaster
 {
     // the hidden Frame
     friend class SwFlowFrame;
@@ -402,6 +412,7 @@ class SW_DLLPUBLIC SwFrame : public SwFrameAreaDefinition, public SwClient, publ
     SwContentFrame* FindPrevCnt_();
 
     void UpdateAttrFrame( const SfxPoolItem*, const SfxPoolItem*, SwFrameInvFlags & );
+    static void UpdateAttrFrameForFormatChange( SwFrameInvFlags & );
     SwFrame* GetIndNext_();
     void SetDirFlags( bool bVert );
 
@@ -471,7 +482,8 @@ protected:
 
     // change only frame size not the size of PrtArea
     virtual SwTwips ShrinkFrame( SwTwips, bool bTst = false, bool bInfo = false ) = 0;
-    virtual SwTwips GrowFrame  ( SwTwips, bool bTst = false, bool bInfo = false ) = 0;
+    virtual SwTwips GrowFrame(SwTwips, SwResizeLimitReason&, bool bTst, bool bInfo) = 0;
+    SwTwips GrowFrame(SwTwips, bool bTst = false, bool bInfo = false);
 
     /// use these so we can grep for SwFrame's GetRegisteredIn accesses
     /// beware that SwTextFrame may return sw::WriterMultiListener
@@ -527,6 +539,7 @@ public:
     // change PrtArea size and FrameSize
     SwTwips Shrink( SwTwips, bool bTst = false, bool bInfo = false );
     SwTwips Grow  ( SwTwips, bool bTst = false, bool bInfo = false );
+    SwTwips Grow(SwTwips nDist, SwResizeLimitReason&, bool bTst, bool bInfo);
 
     // different methods for inserting in layout tree (for performance reasons)
 
@@ -575,13 +588,17 @@ public:
         const SwRect&,
         const SwPageFrame* pPage,
         const SwBorderAttrs&) const;
+    enum PaintFrameMode { PAINT_ALL, PAINT_HEADER_FOOTER, PAINT_NON_HEADER_FOOTER };
+    static const SwFrame* SkipFrame(const SwFrame* pFrame, PaintFrameMode ePaintFrameMode );
     void PaintBaBo( const SwRect&, const SwPageFrame *pPage,
-                    const bool bOnlyTextBackground = false) const;
+                    const bool bOnlyTextBackground = false,
+                   PaintFrameMode eMode = PAINT_ALL ) const;
     void PaintSwFrameBackground( const SwRect&, const SwPageFrame *pPage,
                           const SwBorderAttrs &,
                           const bool bLowerMode = false,
                           const bool bLowerBorder = false,
-                          const bool bOnlyTextBackground = false ) const;
+                          const bool bOnlyTextBackground = false,
+                          PaintFrameMode eMode = PAINT_ALL ) const;
     void PaintBorderLine( const SwRect&, const SwRect&, const SwPageFrame*,
                           const Color *pColor,
                           const SvxBorderLineStyle = SvxBorderLineStyle::SOLID ) const;
@@ -608,8 +625,8 @@ public:
     inline void ResetRetouche() const;
     bool IsRetouche() const { return mbRetouche; }
 
-    void SetInfFlags();
-    void InvalidateInfFlags() { mbInfInvalid = true; }
+    SW_DLLPUBLIC void SetInfFlags();
+    inline void InvalidateInfFlags();
     inline bool IsInDocBody() const;    // use InfoFlags, determine flags
     inline bool IsInFootnote() const;        // if necessary
     inline bool IsInTab() const;
@@ -687,13 +704,13 @@ public:
     SwFrame               *FindColFrame();
     SwRowFrame            *FindRowFrame();
     SwFootnoteBossFrame   *FindFootnoteBossFrame( bool bFootnotes = false );
-    SwTabFrame            *ImplFindTabFrame();
+    SW_DLLPUBLIC SwTabFrame *ImplFindTabFrame();
     SwFootnoteFrame       *ImplFindFootnoteFrame();
     SwFlyFrame            *ImplFindFlyFrame();
     SwSectionFrame        *ImplFindSctFrame();
     const SwBodyFrame     *ImplFindBodyFrame() const;
     SwFrame               *FindFooterOrHeader();
-    SwFrame               *GetLower();
+    SW_DLLPUBLIC SwFrame  *GetLower();
     const SwFrame         *GetNext()  const { return mpNext; }
     const SwFrame         *GetPrev()  const { return mpPrev; }
     const SwLayoutFrame   *GetUpper() const { return mpUpper; }
@@ -735,7 +752,8 @@ public:
     const SwFrame* GetIndNext() const { return const_cast<SwFrame*>(this)->GetIndNext(); }
 
     sal_uInt16 GetPhyPageNum() const;   // page number without offset
-    sal_uInt16 GetVirtPageNum() const;  // page number with offset
+    SW_DLLPUBLIC sal_uInt16 GetVirtPageNum() const;  // page number with offset
+    SW_DLLPUBLIC sal_uInt16 GetVirtPageCount() const;  // page count between offsets
     bool OnRightPage() const { return 0 != GetPhyPageNum() % 2; };
     bool WannaRightPage() const;
     bool OnFirstPage() const;
@@ -752,7 +770,7 @@ public:
 
     // PaintArea is the area where content might be displayed.
     // The margin of a page or the space between columns belongs to it.
-    SwRect GetPaintArea() const;
+    SW_DLLPUBLIC SwRect GetPaintArea() const;
 
     // UnionFrame is the union of Frame- and PrtArea, normally identical
     // to the FrameArea except in case of negative Prt margins.
@@ -828,7 +846,7 @@ public:
     inline void InvalidateAll();
     void ImplInvalidateSize();
     void ImplInvalidatePrt();
-    void ImplInvalidatePos();
+    SW_DLLPUBLIC void ImplInvalidatePos();
     void ImplInvalidateLineNum();
 
     inline void InvalidateNextPos( bool bNoFootnote = false );
@@ -847,7 +865,7 @@ public:
                                  SwCursorMoveState* = nullptr, bool bTestBackground = false ) const;
     virtual bool    GetCharRect( SwRect &, const SwPosition&,
                                  SwCursorMoveState* = nullptr, bool bAllowFarAway = true ) const;
-    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const& ) const;
+    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const&, PaintFrameMode eMode = PAINT_ALL ) const;
 
     // HACK: shortcut between frame and formatting
     // It's your own fault if you cast void* incorrectly! In any case check
@@ -875,10 +893,12 @@ public:
     inline bool IsCellFrame() const;
     inline bool IsContentFrame() const;
     inline bool IsTextFrame() const;
-    SwTextFrame* DynCastTextFrame();
+    SW_DLLPUBLIC SwTextFrame* DynCastTextFrame();
     const SwTextFrame* DynCastTextFrame() const;
-    SwPageFrame* DynCastPageFrame();
+    SW_DLLPUBLIC SwPageFrame* DynCastPageFrame();
     const SwPageFrame* DynCastPageFrame() const;
+    SW_DLLPUBLIC SwColumnFrame* DynCastColumnFrame();
+    const SwColumnFrame* DynCastColumnFrame() const;
     inline bool IsNoTextFrame() const;
     // Frames where its PrtArea depends on their neighbors and that are
     // positioned in the content flow
@@ -893,6 +913,10 @@ public:
     // Is the Frame (or the section containing it) protected? Same for Fly in
     // Fly in ... and footnotes
     bool IsProtected() const;
+
+    virtual bool IsHiddenNow() const;
+    void MakeValidZeroHeight();
+    virtual void HideAndShowObjects();
 
     bool IsColLocked()  const { return mbColLocked; }
     virtual bool IsDeleteForbidden() const { return mnForbidDelete > 0; }
@@ -949,7 +973,21 @@ public:
     virtual void dumpAsXmlAttributes(xmlTextWriterPtr writer) const;
     void dumpChildrenAsXml(xmlTextWriterPtr writer) const;
     bool IsCollapse() const;
+
+    /// Determines if the upper margin of this frame should be ignored.
+    bool IsCollapseUpper() const;
 };
+
+inline void SwFrame::InvalidateInfFlags()
+{
+    mbInfInvalid = true;
+    if (IsLayoutFrame())
+    {
+        // If we are not sure about our flags, neither are lowers
+        for (SwFrame* p = GetLower(); p; p = p->GetNext())
+            p->InvalidateInfFlags();
+    }
+}
 
 inline bool SwFrame::IsInDocBody() const
 {
@@ -1208,11 +1246,11 @@ inline bool SwFrame::IsFooterFrame() const
 }
 inline bool SwFrame::IsFootnoteContFrame() const
 {
-    return mnFrameType == SwFrameType::FtnCont;
+    return mnFrameType == SwFrameType::FootnoteContainer;
 }
 inline bool SwFrame::IsFootnoteFrame() const
 {
-    return mnFrameType == SwFrameType::Ftn;
+    return mnFrameType == SwFrameType::Footnote;
 }
 inline bool SwFrame::IsBodyFrame() const
 {
@@ -1256,11 +1294,19 @@ inline bool SwFrame::IsFlowFrame() const
 }
 inline bool SwFrame::IsRetoucheFrame() const
 {
-    return bool(GetType() & (FRM_CNTNT|SwFrameType::Tab|SwFrameType::Section|SwFrameType::Ftn));
+    return bool(GetType() & (FRM_CNTNT|SwFrameType::Tab|SwFrameType::Section|SwFrameType::Footnote));
 }
 inline bool SwFrame::IsAccessibleFrame() const
 {
     return bool(GetType() & FRM_ACCESSIBLE);
+}
+inline SwTwips SwFrame::Grow(SwTwips nDist, bool bTst, bool bInfo)
+{
+    return Grow(nDist, o3tl::temporary(SwResizeLimitReason()), bTst, bInfo);
+}
+inline SwTwips SwFrame::GrowFrame(SwTwips nDist, bool bTst, bool bInfo)
+{
+    return GrowFrame(nDist, o3tl::temporary(SwResizeLimitReason()), bTst, bInfo);
 }
 
 //use this to protect a SwFrame for a given scope from getting deleted
@@ -1352,25 +1398,23 @@ struct SwRectFnCollection
     SwRectSetTwice  fnSetTopAndHeight;
 };
 
-typedef SwRectFnCollection* SwRectFn;
+typedef const SwRectFnCollection* SwRectFn;
 
 // This class allows to use proper methods regardless of orientation (LTR/RTL, horizontal or vertical)
-extern SwRectFn fnRectHori, fnRectVert, fnRectVertL2R, fnRectVertL2RB2T;
+extern const SwRectFn fnRectHori, fnRectVert, fnRectVertL2R, fnRectVertL2RB2T;
 class SwRectFnSet {
 public:
-    explicit SwRectFnSet(const SwFrame *pFrame)
-        : m_bVert(pFrame->IsVertical())
-        , m_bVertL2R(pFrame->IsVertLR())
-        , m_bVertL2RB2T(pFrame->IsVertLRBT())
-    {
-        m_fnRect = m_bVert ? (m_bVertL2R ? (m_bVertL2RB2T ? fnRectVertL2RB2T : fnRectVertL2R) : fnRectVert) : fnRectHori;
-    }
+    explicit SwRectFnSet(const SwFrame* pFrame) { Refresh(pFrame); }
 
-    void Refresh(const SwFrame *pFrame)
+    explicit SwRectFnSet(bool vert, bool vL2R, bool vL2RB2T) { Refresh(vert, vL2R, vL2RB2T); }
+
+    void Refresh(const SwFrame* p) { Refresh(p->IsVertical(), p->IsVertLR(), p->IsVertLRBT()); }
+
+    void Refresh(bool vert, bool vL2R, bool vL2RB2T)
     {
-        m_bVert = pFrame->IsVertical();
-        m_bVertL2R = pFrame->IsVertLR();
-        m_bVertL2RB2T = pFrame->IsVertLRBT();
+        m_bVert = vert;
+        m_bVertL2R = vL2R;
+        m_bVertL2RB2T = vL2RB2T;
         m_fnRect = m_bVert ? (m_bVertL2R ? (m_bVertL2RB2T ? fnRectVertL2RB2T : fnRectVertL2R) : fnRectVert) : fnRectHori;
     }
 
@@ -1424,7 +1468,7 @@ public:
     tools::Long  BottomDist(const SwRect& rRect, tools::Long nPos) const { return (rRect.*m_fnRect->fnBottomDist) (nPos); }
     tools::Long  LeftDist   (const SwRect& rRect, tools::Long nPos) const { return (rRect.*m_fnRect->fnLeftDist)    (nPos); }
     tools::Long  RightDist   (const SwRect& rRect, tools::Long nPos) const { return (rRect.*m_fnRect->fnRightDist)    (nPos); }
-    void  SetLimit (SwFrame& rFrame, tools::Long nNew) const { (rFrame.*m_fnRect->fnSetLimit) (nNew); }
+    bool  SetLimit (SwFrame& rFrame, tools::Long nNew) const { return (rFrame.*m_fnRect->fnSetLimit) (nNew); }
     bool  OverStep  (const SwRect& rRect, tools::Long nPos) const { return (rRect.*m_fnRect->fnOverStep)   (nPos); }
 
     void SetPos(SwRect& rRect, const Point& rNew) const { (rRect.*m_fnRect->fnSetPos)(rNew); }

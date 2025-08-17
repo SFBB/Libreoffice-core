@@ -59,11 +59,10 @@ using namespace com::sun::star;
 ScFormulaDlg::ScFormulaDlg(SfxBindings* pB, SfxChildWindow* pCW,
                            weld::Window* pParent, const ScViewData& rViewData, const formula::IFunctionManager* _pFunctionMgr)
     : formula::FormulaDlg(pB, pCW, pParent, _pFunctionMgr, this)
-    , m_aHelper(this,pB)
+    , m_aHelper(this, pB, m_xDialog.get())
     , m_pViewShell( nullptr )
 {
-    m_aHelper.SetDialog(m_xDialog.get());
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     pScMod->InputEnterHandler();
     m_pViewShell = nullptr;
 
@@ -94,7 +93,7 @@ ScFormulaDlg::ScFormulaDlg(SfxBindings* pB, SfxChildWindow* pCW,
     m_xOpCodeMapper.set(ScServiceProvider::MakeInstance(ScServiceProvider::Type::OPCODEMAPPER,
                                                         m_pDoc->GetDocumentShell()), uno::UNO_QUERY);
 
-    ScInputHandler* pInputHdl = SC_MOD()->GetInputHdl(m_pViewShell);
+    ScInputHandler* pInputHdl = pScMod->GetInputHdl(m_pViewShell);
 
     assert(pInputHdl && "Missing input handler :-/");
 
@@ -120,10 +119,9 @@ ScFormulaDlg::ScFormulaDlg(SfxBindings* pB, SfxChildWindow* pCW,
     SCTAB nTab = rViewData.GetTabNo();
     m_CursorPos = ScAddress( nCol, nRow, nTab );
 
-    m_pViewShell->InitFormEditData();                             // create new
+    m_pViewShell->InitFormEditData(rViewData.GetDocShell()); // create new
     pData = m_pViewShell->GetFormEditData();
     pData->SetInputHandler(pInputHdl);
-    pData->SetDocShell(rViewData.GetDocShell());
 
     OSL_ENSURE(pData,"FormEditData not available");
 
@@ -173,7 +171,6 @@ ScFormulaDlg::ScFormulaDlg(SfxBindings* pB, SfxChildWindow* pCW,
     OUString rStrExp = GetMeText();
 
     Update(rStrExp);
-
 }
 
 void ScFormulaDlg::notifyChange()
@@ -185,7 +182,7 @@ void ScFormulaDlg::notifyChange()
 
 void ScFormulaDlg::fill()
 {
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     ScFormEditData* pData = static_cast<ScFormEditData*>(getFormEditData());
     notifyChange();
     OUString rStrExp;
@@ -230,7 +227,12 @@ void ScFormulaDlg::fill()
     pScMod->SetRefInputHdl(nullptr);
 }
 
-ScFormulaDlg::~ScFormulaDlg() COVERITY_NOEXCEPT_FALSE
+ScFormulaDlg::~ScFormulaDlg()
+{
+    suppress_fun_call_w_exception(ImplDestroy());
+}
+
+void ScFormulaDlg::ImplDestroy()
 {
     ScFormEditData* pData = m_pViewShell->GetFormEditData();
 
@@ -239,7 +241,7 @@ ScFormulaDlg::~ScFormulaDlg() COVERITY_NOEXCEPT_FALSE
     if (pData) // close doesn't destroy;
     {
         //set back reference input handler
-        SC_MOD()->SetRefInputHdl(nullptr);
+        ScModule::get()->SetRefInputHdl(nullptr);
         StoreFormEditData(pData);
     }
 
@@ -264,11 +266,11 @@ bool ScFormulaDlg::IsInputHdl(const ScInputHandler* pHdl)
 
 }
 
-ScInputHandler* ScFormulaDlg::GetNextInputHandler(const ScDocShell* pDocShell, ScTabViewShell** ppViewSh)
+ScInputHandler* ScFormulaDlg::GetNextInputHandler(const ScDocShell& rDocShell, ScTabViewShell** ppViewSh)
 {
     ScInputHandler* pHdl=nullptr;
 
-    SfxViewFrame* pFrame = SfxViewFrame::GetFirst( pDocShell );
+    SfxViewFrame* pFrame = SfxViewFrame::GetFirst( &rDocShell );
     while( pFrame && pHdl==nullptr)
     {
         SfxViewShell* p = pFrame->GetViewShell();
@@ -278,7 +280,7 @@ ScInputHandler* ScFormulaDlg::GetNextInputHandler(const ScDocShell* pDocShell, S
             pHdl=pViewSh->GetInputHandler();
             if(ppViewSh!=nullptr) *ppViewSh=pViewSh;
         }
-        pFrame = SfxViewFrame::GetNext( *pFrame, pDocShell );
+        pFrame = SfxViewFrame::GetNext( *pFrame, &rDocShell );
     }
 
     return pHdl;
@@ -499,8 +501,7 @@ void ScFormulaDlg::SaveLRUEntry(const ScFuncDesc* pFuncDescP)
 {
     if (pFuncDescP && pFuncDescP->nFIndex!=0)
     {
-        ScModule* pScMod = SC_MOD();
-        pScMod->InsertEntryToLRUList(pFuncDescP->nFIndex);
+        ScModule::get()->InsertEntryToLRUList(pFuncDescP->nFIndex);
     }
 }
 
@@ -513,6 +514,16 @@ void ScFormulaDlg::insertEntryToLRUList(const formula::IFunctionDescription*    
     const ScFuncDesc* pDesc = dynamic_cast<const ScFuncDesc*>(_pDesc);
     SaveLRUEntry(pDesc);
 }
+
+void ScFormulaDlg::insertOrEraseFavouritesListEntry(const formula::IFunctionDescription* _pDesc, bool bInsert)
+{
+    const ScFuncDesc* pDesc = dynamic_cast<const ScFuncDesc*>(_pDesc);
+    if (pDesc && pDesc->nFIndex != 0)
+    {
+        ScModule::get()->InsertOrEraseFavouritesListEntry(pDesc->nFIndex, bInsert);
+    }
+}
+
 void ScFormulaDlg::showReference(const OUString& _sFormula)
 {
     ShowReference(_sFormula);
@@ -582,7 +593,7 @@ void ScFormulaDlg::clear()
     m_pDoc = nullptr;
 
     //restore reference inputhandler
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     pScMod->SetRefInputHdl(nullptr);
 
     // force Enable() of edit line
@@ -626,7 +637,7 @@ formula::FormEditData* ScFormulaDlg::getFormEditData() const
 }
 void ScFormulaDlg::setCurrentFormula(const OUString& _sReplacement)
 {
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     {
         //fdo#69971 We need the EditEngine Modification handler of the inputbar that we
         //are feeding to be disabled while this dialog is open. Otherwise we end up in
@@ -641,27 +652,25 @@ void ScFormulaDlg::setCurrentFormula(const OUString& _sReplacement)
         //to repaint, e.g. when switching to another window and back, then in
         //ScMultiTextWnd::Paint a new editengine will have been created via
         //GetEditView with its default Modification handler enabled. So ensure
-        //its off when we will access it via InputReplaceSelection
+        //it's off when we will access it via InputReplaceSelection
         pScMod->InputTurnOffWinEngine();
     }
     pScMod->InputReplaceSelection(_sReplacement);
 }
 void ScFormulaDlg::setSelection(sal_Int32 _nStart, sal_Int32 _nEnd)
 {
-    ScModule* pScMod = SC_MOD();
-    pScMod->InputSetSelection( _nStart, _nEnd );
+    ScModule::get()->InputSetSelection(_nStart, _nEnd);
 }
 void ScFormulaDlg::getSelection(sal_Int32& _nStart, sal_Int32& _nEnd) const
 {
-    ScModule* pScMod = SC_MOD();
-    pScMod->InputGetSelection( _nStart, _nEnd );
+    ScModule::get()->InputGetSelection(_nStart, _nEnd);
 }
 OUString ScFormulaDlg::getCurrentFormula() const
 {
     ScFormEditData* pData = m_pViewShell->GetFormEditData();
     if (pData && pData->GetInputHandler())
         return pData->GetInputHandler()->GetFormString();
-    return "";
+    return u""_ustr;
 }
 formula::IFunctionManager* ScFormulaDlg::getFunctionManager()
 {

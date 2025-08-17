@@ -23,14 +23,14 @@
 
 #include <vector>
 
-// forward declaractions
+// forward declarations
+namespace com::sun::star::xml::dom
+{
+class XNode;
+}
 namespace com::sun::star::xml::dom
 {
 class XNodeList;
-namespace events
-{
-class XEventListener;
-}
 }
 
 namespace xforms

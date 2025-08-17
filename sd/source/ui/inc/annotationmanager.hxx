@@ -24,6 +24,11 @@
 class SfxRequest;
 class SfxItemSet;
 
+namespace sdr::annotation
+{
+class Annotation;
+}
+
 namespace sd
 {
 class ViewShellBase;
@@ -37,6 +42,8 @@ public:
 
     void ExecuteAnnotation(SfxRequest const& rRequest);
     void GetAnnotationState(SfxItemSet& rItemSet);
+    void SelectAnnotation(rtl::Reference<sdr::annotation::Annotation> const& xAnnotation,
+                          bool bEdit = false);
 
 private:
     ::rtl::Reference<AnnotationManagerImpl> mxImpl;

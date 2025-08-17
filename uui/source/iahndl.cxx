@@ -26,10 +26,10 @@
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/document/BrokenPackageRequest.hpp>
 #include <com/sun/star/document/ExoticFileLoadException.hpp>
+#include <com/sun/star/document/FontsDisallowEditingRequest.hpp>
 #include <com/sun/star/task/DocumentMacroConfirmationRequest.hpp>
 #include <com/sun/star/java/WrongJavaVersionException.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/script/ModuleSizeExceededRequest.hpp>
 #include <com/sun/star/task/ErrorCodeIOException.hpp>
 #include <com/sun/star/task/ErrorCodeRequest2.hpp>
@@ -92,7 +92,6 @@ using ::com::sun::star::uno::Reference;
 using ::com::sun::star::task::XInteractionContinuation;
 using ::com::sun::star::task::XInteractionAbort;
 using ::com::sun::star::task::XInteractionApprove;
-using ::com::sun::star::uno::XInterface;
 using ::com::sun::star::lang::XInitialization;
 using ::com::sun::star::uno::UNO_QUERY_THROW;
 using ::com::sun::star::task::InteractionHandler;
@@ -100,7 +99,6 @@ using ::com::sun::star::task::XInteractionHandler2;
 using ::com::sun::star::uno::Exception;
 using ::com::sun::star::uno::Any;
 using ::com::sun::star::task::XInteractionRequest;
-using ::com::sun::star::lang::XMultiServiceFactory;
 
 using namespace ::com::sun::star;
 
@@ -161,7 +159,7 @@ UUIInteractionHelper::handleRequest(
     {
         // we are not in the main thread, let it handle that stuff
         HandleData aHD(rRequest);
-        Link<void*,void> aLink(&aHD,handlerequest);
+        Link<void*,void> aLink = LINK_NONMEMBER(&aHD,handlerequest);
         Application::PostUserEvent(aLink,this);
         comphelper::SolarMutex& rSolarMutex = Application::GetSolarMutex();
         sal_uInt32 nLockCount = (rSolarMutex.IsCurrentThread()) ? rSolarMutex.release(true) : 0;
@@ -212,7 +210,7 @@ UUIInteractionHelper::getStringFromRequest(
     {
         // we are not in the main thread, let it handle that stuff
         HandleData aHD(rRequest);
-        Link<void*,void> aLink(&aHD,getstringfromrequest);
+        Link<void*,void> aLink = LINK_NONMEMBER(&aHD,getstringfromrequest);
         Application::PostUserEvent(aLink,this);
         comphelper::SolarMutex& rSolarMutex = Application::GetSolarMutex();
         sal_uInt32 nLockCount = (rSolarMutex.IsCurrentThread()) ? rSolarMutex.release(true) : 0;
@@ -297,7 +295,7 @@ bool UUIInteractionHelper::handleCustomRequest( const Reference< XInteractionReq
         if ( xHandlerInit.is() )
         {
             ::comphelper::NamedValueCollection aInitArgs;
-            aInitArgs.put( "Parent", getParentXWindow() );
+            aInitArgs.put( u"Parent"_ustr, getParentXWindow() );
             xHandlerInit->initialize( aInitArgs.getWrappedPropertyValues() );
         }
 
@@ -324,7 +322,7 @@ bool UUIInteractionHelper::handleTypedHandlerImplementations( Reference< XIntera
     // the base registration node for "typed" interaction handlers
     const ::utl::OConfigurationTreeRoot aConfigRoot( ::utl::OConfigurationTreeRoot::createWithComponentContext(
         m_xContext,
-        "/org.openoffice.Interaction/InteractionHandlers",
+        u"/org.openoffice.Interaction/InteractionHandlers"_ustr,
         -1,
         ::utl::OConfigurationTreeRoot::CM_READONLY
     ) );
@@ -334,7 +332,7 @@ bool UUIInteractionHelper::handleTypedHandlerImplementations( Reference< XIntera
     for ( auto const & handlerName : aRegisteredHandlers )
     {
         const ::utl::OConfigurationNode aHandlerNode( aConfigRoot.openNode( handlerName ) );
-        const ::utl::OConfigurationNode aTypesNode( aHandlerNode.openNode( "HandledRequestTypes" ) );
+        const ::utl::OConfigurationNode aTypesNode( aHandlerNode.openNode( u"HandledRequestTypes"_ustr ) );
 
         // loop through all the types which the current handler is registered for
         const Sequence< OUString > aHandledTypes( aTypesNode.getNodeNames() );
@@ -344,12 +342,12 @@ bool UUIInteractionHelper::handleTypedHandlerImplementations( Reference< XIntera
             ::utl::OConfigurationNode aType( aTypesNode.openNode( type ) );
             // and there's a child denoting how the responsibility propagates
             OUString sPropagation;
-            OSL_VERIFY( aType.getNodeValue( "Propagation" ) >>= sPropagation );
+            OSL_VERIFY( aType.getNodeValue( u"Propagation"_ustr ) >>= sPropagation );
             if ( lcl_matchesRequest( aRequest, type, sPropagation ) )
             {
                 // retrieve the service/implementation name of the handler
                 OUString sServiceName;
-                OSL_VERIFY( aHandlerNode.getNodeValue( "ServiceName" ) >>= sServiceName );
+                OSL_VERIFY( aHandlerNode.getNodeValue( u"ServiceName"_ustr ) >>= sServiceName );
                 // cache the information who feels responsible for requests of this type
                 m_aTypedCustomHandlers[ aRequest.getValueTypeName() ] = sServiceName;
                 // actually handle the request
@@ -501,6 +499,7 @@ UUIInteractionHelper::handleRequest_impl(
             {
                 nErrorCode = ERRCODE_INET_CONNECT;
                 aArguments.push_back(aConnectException.Server);
+                aArguments.push_back(aConnectException.Message);
             }
             else if (aAnyRequest >>= aReadException)
             {
@@ -699,6 +698,9 @@ UUIInteractionHelper::handleRequest_impl(
             return true;
         }
 
+        if (handleFontsDisallowEditingRequest(rRequest))
+            return true;
+
         task::ErrorCodeRequest2 aErrorCodeRequest2;
         if (aAnyRequest >>= aErrorCodeRequest2)
         {
@@ -889,6 +891,7 @@ executeMessageBox(
             aResult = DialogMask::ButtonsNo;
             break;
         default:
+            SAL_WARN("uui", "executeMessageBox: nMessResult is " << nMessResult);
             assert(false);
     }
 
@@ -1150,6 +1153,51 @@ UUIInteractionHelper::handleBrokenPackageRequest(
 
     default: break;
     }
+}
+
+bool UUIInteractionHelper::handleFontsDisallowEditingRequest(
+    const uno::Reference<task::XInteractionRequest>& rRequest)
+{
+    document::FontsDisallowEditingRequest aRequest;
+    if (!(rRequest->getRequest() >>= aRequest))
+        return false;
+
+    uno::Reference<task::XInteractionApprove> xApprove;
+    uno::Reference<task::XInteractionDisapprove> xDisapprove;
+    getContinuations(rRequest->getContinuations(), &xApprove, &xDisapprove);
+
+    if (xApprove.is() && xDisapprove.is())
+    {
+        std::locale aResLocale = Translate::Create("uui");
+        OUString title(utl::ConfigManager::getProductName());
+
+        OUString title2 = Translate::get(STR_READONLY_FONT_TITLE, aResLocale);
+        if (!title.isEmpty() && !title2.isEmpty())
+            title += " - ";
+        title += title2;
+
+        OUString aMessage = replaceMessageWithArguments(
+            Translate::get(STR_READONLY_FONT_MSG, aResLocale), { aRequest.aFontNames });
+
+        switch (executeMessageBox(Application::GetFrameWeld(getParentXWindow()), title, aMessage,
+                                  VclMessageType::Question))
+        {
+            case DialogMask::ButtonsNo:
+                if (xDisapprove.is())
+                    xDisapprove->select();
+                break;
+
+            case DialogMask::ButtonsYes:
+                if (xApprove.is())
+                    xApprove->select();
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    return true;
 }
 
 // ErrorResource Implementation

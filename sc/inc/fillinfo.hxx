@@ -29,8 +29,6 @@
 #include <o3tl/typed_flags_set.hxx>
 #include <optional>
 
-class SfxItemSet;
-class SvxBrushItem;
 class SvxBoxItem;
 class SvxLineItem;
 class SvxShadowItem;
@@ -92,6 +90,7 @@ struct ScIconSetInfo
 {
     sal_Int32 nIconIndex;
     ScIconSetType eIconSetType;
+    ScConditionMode eConditionMode;
     tools::Long mnHeight = 0;
     bool mbShowValue;
 };
@@ -119,7 +118,7 @@ struct ScCellInfo
         , pConditionSet(nullptr)
         , pDataBar(nullptr)
         , pIconSet(nullptr)
-        , pBackground(nullptr)   // TODO: omit?
+        , maBackground()
         , pLinesAttr(nullptr)
         , mpTLBRLine(nullptr)
         , mpBLTRLine(nullptr)
@@ -156,7 +155,7 @@ struct ScCellInfo
     const ScDataBarInfo*        pDataBar;
     const ScIconSetInfo*        pIconSet;
 
-    const SvxBrushItem*         pBackground;
+    SfxPoolItemHolder           maBackground;
 
     const SvxBoxItem*           pLinesAttr;         /// original item from document.
     const SvxLineItem*          mpTLBRLine;         /// original item from document.
@@ -268,7 +267,7 @@ struct ScTableInfo
     SCSIZE              mnArrCapacity;
     bool                mbPageMode;
 
-    explicit            ScTableInfo(const SCSIZE capacity = 1024);
+    explicit            ScTableInfo(SCROW nStartRow, SCROW nEndRow, bool bHintOnly);
                         ~ScTableInfo();
     ScTableInfo(const ScTableInfo&) = delete;
     const ScTableInfo& operator=(const ScTableInfo&) = delete;

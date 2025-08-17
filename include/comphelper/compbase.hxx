@@ -56,6 +56,9 @@ protected:
         if (m_bDisposed)
             throw css::lang::DisposedException(OUString(), static_cast<cppu::OWeakObject*>(this));
     }
+    // only to be called from the destructor, to run the dispose logic, if necessary
+    void disposeOnDestruct();
+
     comphelper::OInterfaceContainerHelper4<css::lang::XEventListener> maEventListeners;
 };
 
@@ -116,6 +119,62 @@ private:
 COMPHELPER_DLLPUBLIC css::uno::Any
 WeakComponentImplHelper_query(css::uno::Type const& rType, cppu::class_data* cd,
                               WeakComponentImplHelperBase* pBase);
+
+/**
+    Serves two purposes
+    (1) extracts code that doesn't need to be templated
+    (2) helps to handle the custom where we have conflicting interfaces
+        e.g. multiple UNO interfaces that extend css::lang::XComponent
+*/
+class COMPHELPER_DLLPUBLIC WeakImplHelperBase : public virtual comphelper::UnoImplBase,
+                                                public cppu::OWeakObject
+{
+public:
+    virtual ~WeakImplHelperBase() override;
+
+    virtual css::uno::Any SAL_CALL queryInterface(css::uno::Type const& rType) override;
+};
+
+template <typename... Ifc>
+class SAL_DLLPUBLIC_TEMPLATE WeakImplHelper : public WeakImplHelperBase,
+                                              public css::lang::XTypeProvider,
+                                              public Ifc...
+{
+public:
+    virtual void SAL_CALL acquire() noexcept override { OWeakObject::acquire(); }
+
+    virtual void SAL_CALL release() noexcept override { OWeakObject::release(); }
+
+    virtual css::uno::Any SAL_CALL queryInterface(css::uno::Type const& rType) override
+    {
+        return WeakImplHelper_query(rType, class_data_get(), this);
+    }
+
+    // css::lang::XTypeProvider
+    virtual css::uno::Sequence<css::uno::Type> SAL_CALL getTypes() override
+    {
+        static const css::uno::Sequence<css::uno::Type> aTypeList{
+            cppu::UnoType<css::uno::XWeak>::get(), cppu::UnoType<css::lang::XComponent>::get(),
+            cppu::UnoType<css::lang::XTypeProvider>::get(), cppu::UnoType<Ifc>::get()...
+        };
+        return aTypeList;
+    }
+    virtual css::uno::Sequence<sal_Int8> SAL_CALL getImplementationId() override
+    {
+        return css::uno::Sequence<sal_Int8>();
+    }
+
+private:
+    static cppu::class_data* class_data_get()
+    {
+        return cppu::detail::ImplClassData<WeakImplHelper, Ifc...>{}();
+    }
+};
+
+/** WeakImplHelper
+*/
+COMPHELPER_DLLPUBLIC css::uno::Any
+WeakImplHelper_query(css::uno::Type const& rType, cppu::class_data* cd, WeakImplHelperBase* pBase);
 
 } //  namespace comphelper
 

@@ -12,7 +12,6 @@
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XLabelRanges.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/table/CellRangeAddress.hpp>
@@ -44,7 +43,7 @@ public:
 };
 
 ScIndexEnumeration_LabelRangesEnumeration::ScIndexEnumeration_LabelRangesEnumeration()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -55,7 +54,7 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_LabelRangesEnumeration::init(
 
     uno::Reference<beans::XPropertySet> xPropertySet(xDoc, uno::UNO_QUERY_THROW);
     uno::Reference<sheet::XLabelRanges> xLR;
-    CPPUNIT_ASSERT(xPropertySet->getPropertyValue("ColumnLabelRanges") >>= xLR);
+    CPPUNIT_ASSERT(xPropertySet->getPropertyValue(u"ColumnLabelRanges"_ustr) >>= xLR);
 
     xLR->addNew(table::CellRangeAddress(0, 0, 1, 0, 6), table::CellRangeAddress(0, 0, 0, 0, 1));
 
@@ -67,7 +66,7 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_LabelRangesEnumeration::init(
 void ScIndexEnumeration_LabelRangesEnumeration::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScIndexEnumeration_LabelRangesEnumeration);

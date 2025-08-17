@@ -145,7 +145,7 @@ OUString SAL_CALL OApplicationController::getImplementationName()
 
 Sequence< OUString> SAL_CALL OApplicationController::getSupportedServiceNames()
 {
-    return { "com.sun.star.sdb.application.DefaultViewController" };
+    return { u"com.sun.star.sdb.application.DefaultViewController"_ustr };
 }
 
 namespace {
@@ -362,11 +362,12 @@ void SAL_CALL OApplicationController::disposing()
                     if ( pFilter )
                         aFilter = pFilter->GetFilterName();
 
+                    OUString sDatabaseName;
                     // add to svtool history options
                     SvtHistoryOptions::AppendItem( EHistoryType::PickList,
                             aURL.GetURLNoPass( INetURLObject::DecodeMechanism::NONE ),
                             aFilter,
-                            getStrippedDatabaseName(),
+                            ::dbaui::getStrippedDatabaseName(m_xDataSource, sDatabaseName),
                             std::nullopt, std::nullopt);
 
                     // add to recent document list
@@ -474,7 +475,7 @@ sal_Bool SAL_CALL OApplicationController::suspend(sal_Bool bSuspend)
     if ( xBroadcaster.is() )
     {
         xBroadcaster->notifyDocumentEvent(
-            "OnPrepareViewClosing",
+            u"OnPrepareViewClosing"_ustr,
             this,
             Any()
         );
@@ -504,7 +505,8 @@ sal_Bool SAL_CALL OApplicationController::suspend(sal_Bool bSuspend)
                 )
             )
         {
-            switch (ExecuteQuerySaveDocument(getFrameWeld(), getStrippedDatabaseName()))
+            OUString sDatabaseName;
+            switch (ExecuteQuerySaveDocument(getFrameWeld(), ::dbaui::getStrippedDatabaseName(m_xDataSource, sDatabaseName)))
             {
                 case RET_YES:
                     Execute(ID_BROWSER_SAVEDOC,Sequence<PropertyValue>());
@@ -596,11 +598,10 @@ FeatureState OApplicationController::GetState(sal_uInt16 _nId) const
             case SID_NEWDOC:
             case SID_APP_NEW_FORM:
             case ID_DOCUMENT_CREATE_REPWIZ:
-                aReturn.bEnabled = !isDataSourceReadOnly() && SvtModuleOptions().IsModuleInstalled(SvtModuleOptions::EModule::WRITER);
+                aReturn.bEnabled = !isDataSourceReadOnly() && SvtModuleOptions().IsWriterInstalled();
                 break;
             case SID_APP_NEW_REPORT:
-                aReturn.bEnabled = !isDataSourceReadOnly()
-                                    && SvtModuleOptions().IsModuleInstalled(SvtModuleOptions::EModule::WRITER);
+                aReturn.bEnabled = !isDataSourceReadOnly() && SvtModuleOptions().IsWriterInstalled();
                 if ( aReturn.bEnabled )
                 {
                     Reference< XContentEnumerationAccess > xEnumAccess(m_xContext->getServiceManager(), UNO_QUERY);
@@ -668,7 +669,7 @@ FeatureState OApplicationController::GetState(sal_uInt16 _nId) const
             case SID_REPORT_CREATE_REPWIZ_PRE_SEL:
             case SID_APP_NEW_REPORT_PRE_SEL:
                 aReturn.bEnabled = !isDataSourceReadOnly()
-                                    && SvtModuleOptions().IsModuleInstalled(SvtModuleOptions::EModule::WRITER)
+                                    && SvtModuleOptions().IsWriterInstalled()
                                     && getContainer()->isALeafSelected();
                 if ( aReturn.bEnabled )
                 {
@@ -812,6 +813,8 @@ FeatureState OApplicationController::GetState(sal_uInt16 _nId) const
                 aReturn.bChecked = getContainer()->getPreviewMode() == PreviewMode::Document;
                 break;
             case ID_BROWSER_UNDO:
+            case SID_DB_APP_SENDREPORTTOWRITER:
+            case SID_DB_APP_DBADMIN:
                 aReturn.bEnabled = false;
                 break;
             case SID_MAIL_SENDDOC:
@@ -822,10 +825,6 @@ FeatureState OApplicationController::GetState(sal_uInt16 _nId) const
                     ElementType eType = getContainer()->getElementType();
                     aReturn.bEnabled = E_REPORT == eType && getContainer()->getSelectionCount() > 0 && getContainer()->isALeafSelected();
                 }
-                break;
-            case SID_DB_APP_SENDREPORTTOWRITER:
-            case SID_DB_APP_DBADMIN:
-                aReturn.bEnabled = false;
                 break;
             case SID_DB_APP_STATUS_TYPE:
                 aReturn.bEnabled = m_xDataSource.is();
@@ -1018,21 +1017,19 @@ void OApplicationController::Execute(sal_uInt16 _nId, const Sequence< PropertyVa
                         std::vector<SotClipboardFormatId> aFormatIds;
                         getSupportedFormats(getContainer()->getElementType(),aFormatIds);
                         for (auto const& formatId : aFormatIds)
-                            pDlg->Insert(formatId,"");
+                            pDlg->Insert(formatId,u""_ustr);
 
                         const TransferableDataHelper& rClipboard = getViewClipboard();
                         pasteFormat(pDlg->GetFormat(rClipboard.GetTransferable()));
                     }
                     else
                     {
-                        const PropertyValue* pIter = aArgs.getConstArray();
-                        const PropertyValue* pEnd  = pIter + aArgs.getLength();
-                        for( ; pIter != pEnd ; ++pIter)
+                        for (auto& arg : aArgs)
                         {
-                            if ( pIter->Name == "FormatStringId" )
+                            if (arg.Name == "FormatStringId")
                             {
                                 sal_uInt32 nTmp;
-                                if ( pIter->Value >>= nTmp )
+                                if (arg.Value >>= nTmp)
                                     pasteFormat(static_cast<SotClipboardFormatId>(nTmp));
                                 break;
                             }
@@ -1248,8 +1245,6 @@ void OApplicationController::Execute(sal_uInt16 _nId, const Sequence< PropertyVa
             case SID_DB_APP_QUERY_OPEN:
             case SID_DB_APP_FORM_OPEN:
             case SID_DB_APP_REPORT_OPEN:
-                doAction( _nId, ElementOpenMode::Normal );
-                break;
             case SID_DB_APP_CONVERTTOVIEW:
                 doAction( _nId, ElementOpenMode::Normal );
                 break;
@@ -1278,12 +1273,12 @@ void OApplicationController::Execute(sal_uInt16 _nId, const Sequence< PropertyVa
                 {
                     SharedConnection xConnection( ensureConnection() );
                     if ( xConnection.is() )
-                        openDialog("com.sun.star.sdb.UserAdministrationDialog");
+                        openDialog(u"com.sun.star.sdb.UserAdministrationDialog"_ustr);
                 }
                 break;
             case SID_DB_APP_TABLEFILTER:
                 // opens the table filter dialog for the selected data source
-                openDialog( "com.sun.star.sdb.TableFilterDialog" );
+                openDialog( u"com.sun.star.sdb.TableFilterDialog"_ustr );
                 askToReconnect();
                 break;
             case SID_DB_APP_REFRESH_TABLES:
@@ -1291,15 +1286,15 @@ void OApplicationController::Execute(sal_uInt16 _nId, const Sequence< PropertyVa
                 break;
             case SID_DB_APP_DSPROPS:
                 // opens the administration dialog for the selected data source
-                openDialog( "com.sun.star.sdb.DatasourceAdministrationDialog" );
+                openDialog( u"com.sun.star.sdb.DatasourceAdministrationDialog"_ustr );
                 askToReconnect();
                 break;
             case SID_DB_APP_DSADVANCED_SETTINGS:
-                openDialog("com.sun.star.sdb.AdvancedDatabaseSettingsDialog");
+                openDialog(u"com.sun.star.sdb.AdvancedDatabaseSettingsDialog"_ustr);
                 askToReconnect();
                 break;
             case SID_DB_APP_DSCONNECTION_TYPE:
-                openDialog("com.sun.star.sdb.DataSourceTypeChangeDialog");
+                openDialog(u"com.sun.star.sdb.DataSourceTypeChangeDialog"_ustr);
                 askToReconnect();
                 break;
             case ID_DIRECT_SQL:
@@ -1357,107 +1352,107 @@ void OApplicationController::describeSupportedFeatures()
 {
     OGenericUnoController::describeSupportedFeatures();
 
-    implDescribeSupportedFeature( ".uno:AddDirect",          SID_NEWDOCDIRECT,          CommandGroup::APPLICATION );
-    implDescribeSupportedFeature( ".uno:Save",               ID_BROWSER_SAVEDOC,        CommandGroup::DOCUMENT );
-    implDescribeSupportedFeature( ".uno:SaveAs",             ID_BROWSER_SAVEASDOC,      CommandGroup::DOCUMENT );
-    implDescribeSupportedFeature( ".uno:SendMail",           SID_MAIL_SENDDOC,          CommandGroup::DOCUMENT );
-    implDescribeSupportedFeature( ".uno:DBSendReportAsMail",SID_DB_APP_SENDREPORTASMAIL,
+    implDescribeSupportedFeature( u".uno:AddDirect"_ustr,          SID_NEWDOCDIRECT,          CommandGroup::APPLICATION );
+    implDescribeSupportedFeature( u".uno:Save"_ustr,               ID_BROWSER_SAVEDOC,        CommandGroup::DOCUMENT );
+    implDescribeSupportedFeature( u".uno:SaveAs"_ustr,             ID_BROWSER_SAVEASDOC,      CommandGroup::DOCUMENT );
+    implDescribeSupportedFeature( u".uno:SendMail"_ustr,           SID_MAIL_SENDDOC,          CommandGroup::DOCUMENT );
+    implDescribeSupportedFeature( u".uno:DBSendReportAsMail"_ustr,SID_DB_APP_SENDREPORTASMAIL,
                                                                                         CommandGroup::DOCUMENT );
-    implDescribeSupportedFeature( ".uno:DBSendReportToWriter",SID_DB_APP_SENDREPORTTOWRITER,
+    implDescribeSupportedFeature( u".uno:DBSendReportToWriter"_ustr,SID_DB_APP_SENDREPORTTOWRITER,
                                                                                         CommandGroup::DOCUMENT );
-    implDescribeSupportedFeature( ".uno:DBNewForm",          SID_APP_NEW_FORM,          CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewFolder",        SID_APP_NEW_FOLDER,        CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewFormAutoPilot", SID_DB_FORM_NEW_PILOT,     CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewFormAutoPilotWithPreSelection",
+    implDescribeSupportedFeature( u".uno:DBNewForm"_ustr,          SID_APP_NEW_FORM,          CommandGroup::INSERT );
+    implDescribeSupportedFeature( u".uno:DBNewFolder"_ustr,        SID_APP_NEW_FOLDER,        CommandGroup::INSERT );
+    implDescribeSupportedFeature( u".uno:DBNewFormAutoPilot"_ustr, SID_DB_FORM_NEW_PILOT,     CommandGroup::INSERT );
+    implDescribeSupportedFeature( u".uno:DBNewFormAutoPilotWithPreSelection"_ustr,
                                                              SID_FORM_CREATE_REPWIZ_PRE_SEL,
                                                                                         CommandGroup::APPLICATION );
 
-    implDescribeSupportedFeature( ".uno:DBNewReport",        SID_APP_NEW_REPORT,        CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewReportAutoPilot",
+    implDescribeSupportedFeature( u".uno:DBNewReport"_ustr,        SID_APP_NEW_REPORT,        CommandGroup::INSERT );
+    implDescribeSupportedFeature( u".uno:DBNewReportAutoPilot"_ustr,
                                                              ID_DOCUMENT_CREATE_REPWIZ, CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewReportAutoPilotWithPreSelection",
+    implDescribeSupportedFeature( u".uno:DBNewReportAutoPilotWithPreSelection"_ustr,
                                                              SID_REPORT_CREATE_REPWIZ_PRE_SEL,
                                                                                         CommandGroup::APPLICATION );
-    implDescribeSupportedFeature( ".uno:DBNewQuery",         ID_NEW_QUERY_DESIGN,       CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewQuerySql",      ID_NEW_QUERY_SQL,          CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewQueryAutoPilot",ID_APP_NEW_QUERY_AUTO_PILOT,
+    implDescribeSupportedFeature( u".uno:DBNewQuery"_ustr,         ID_NEW_QUERY_DESIGN,       CommandGroup::INSERT );
+    implDescribeSupportedFeature( u".uno:DBNewQuerySql"_ustr,      ID_NEW_QUERY_SQL,          CommandGroup::INSERT );
+    implDescribeSupportedFeature( u".uno:DBNewQueryAutoPilot"_ustr,ID_APP_NEW_QUERY_AUTO_PILOT,
                                                                                         CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewTable",         ID_NEW_TABLE_DESIGN,       CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewTableAutoPilot",ID_NEW_TABLE_DESIGN_AUTO_PILOT,
+    implDescribeSupportedFeature( u".uno:DBNewTable"_ustr,         ID_NEW_TABLE_DESIGN,       CommandGroup::INSERT );
+    implDescribeSupportedFeature( u".uno:DBNewTableAutoPilot"_ustr,ID_NEW_TABLE_DESIGN_AUTO_PILOT,
                                                                                         CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewView",          ID_NEW_VIEW_DESIGN,        CommandGroup::INSERT );
-    implDescribeSupportedFeature( ".uno:DBNewViewSQL",       SID_DB_NEW_VIEW_SQL,       CommandGroup::INSERT );
+    implDescribeSupportedFeature( u".uno:DBNewView"_ustr,          ID_NEW_VIEW_DESIGN,        CommandGroup::INSERT );
+    implDescribeSupportedFeature( u".uno:DBNewViewSQL"_ustr,       SID_DB_NEW_VIEW_SQL,       CommandGroup::INSERT );
 
-    implDescribeSupportedFeature( ".uno:DBDelete",           SID_DB_APP_DELETE,         CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:Delete",             SID_DB_APP_DELETE,         CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBRename",           SID_DB_APP_RENAME,         CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBEdit",             SID_DB_APP_EDIT,           CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBEditSqlView",      SID_DB_APP_EDIT_SQL_VIEW,  CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBOpen",             SID_DB_APP_OPEN,           CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBDelete"_ustr,           SID_DB_APP_DELETE,         CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:Delete"_ustr,             SID_DB_APP_DELETE,         CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBRename"_ustr,           SID_DB_APP_RENAME,         CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBEdit"_ustr,             SID_DB_APP_EDIT,           CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBEditSqlView"_ustr,      SID_DB_APP_EDIT_SQL_VIEW,  CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBOpen"_ustr,             SID_DB_APP_OPEN,           CommandGroup::EDIT );
 
-    implDescribeSupportedFeature( ".uno:DBTableDelete",      SID_DB_APP_TABLE_DELETE,   CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBTableRename",      SID_DB_APP_TABLE_RENAME,   CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBTableEdit",        SID_DB_APP_TABLE_EDIT,     CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBTableOpen",        SID_DB_APP_TABLE_OPEN,     CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBTableDelete"_ustr,      SID_DB_APP_TABLE_DELETE,   CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBTableRename"_ustr,      SID_DB_APP_TABLE_RENAME,   CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBTableEdit"_ustr,        SID_DB_APP_TABLE_EDIT,     CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBTableOpen"_ustr,        SID_DB_APP_TABLE_OPEN,     CommandGroup::EDIT );
 
-    implDescribeSupportedFeature( ".uno:DBQueryDelete",      SID_DB_APP_QUERY_DELETE,   CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBQueryRename",      SID_DB_APP_QUERY_RENAME,   CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBQueryEdit",        SID_DB_APP_QUERY_EDIT,     CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBQueryOpen",        SID_DB_APP_QUERY_OPEN,     CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBQueryDelete"_ustr,      SID_DB_APP_QUERY_DELETE,   CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBQueryRename"_ustr,      SID_DB_APP_QUERY_RENAME,   CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBQueryEdit"_ustr,        SID_DB_APP_QUERY_EDIT,     CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBQueryOpen"_ustr,        SID_DB_APP_QUERY_OPEN,     CommandGroup::EDIT );
 
-    implDescribeSupportedFeature( ".uno:DBFormDelete",       SID_DB_APP_FORM_DELETE,    CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBFormRename",       SID_DB_APP_FORM_RENAME,    CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBFormEdit",         SID_DB_APP_FORM_EDIT,      CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBFormOpen",         SID_DB_APP_FORM_OPEN,      CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBFormDelete"_ustr,       SID_DB_APP_FORM_DELETE,    CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBFormRename"_ustr,       SID_DB_APP_FORM_RENAME,    CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBFormEdit"_ustr,         SID_DB_APP_FORM_EDIT,      CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBFormOpen"_ustr,         SID_DB_APP_FORM_OPEN,      CommandGroup::EDIT );
 
-    implDescribeSupportedFeature( ".uno:DBReportDelete",     SID_DB_APP_REPORT_DELETE,  CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBReportRename",     SID_DB_APP_REPORT_RENAME,  CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBReportEdit",       SID_DB_APP_REPORT_EDIT,    CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBReportOpen",       SID_DB_APP_REPORT_OPEN,    CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBReportDelete"_ustr,     SID_DB_APP_REPORT_DELETE,  CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBReportRename"_ustr,     SID_DB_APP_REPORT_RENAME,  CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBReportEdit"_ustr,       SID_DB_APP_REPORT_EDIT,    CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBReportOpen"_ustr,       SID_DB_APP_REPORT_OPEN,    CommandGroup::EDIT );
 
-    implDescribeSupportedFeature( ".uno:SelectAll",          SID_SELECTALL,             CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:Undo",               ID_BROWSER_UNDO,           CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:SelectAll"_ustr,          SID_SELECTALL,             CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:Undo"_ustr,               ID_BROWSER_UNDO,           CommandGroup::EDIT );
 
-    implDescribeSupportedFeature( ".uno:Sortup",             ID_BROWSER_SORTUP,         CommandGroup::VIEW );
-    implDescribeSupportedFeature( ".uno:SortDown",           ID_BROWSER_SORTDOWN,       CommandGroup::VIEW );
-    implDescribeSupportedFeature( ".uno:DBRelationDesign",   SID_DB_APP_DSRELDESIGN,    CommandGroup::APPLICATION );
-    implDescribeSupportedFeature( ".uno:DBUserAdmin",        SID_DB_APP_DSUSERADMIN,    CommandGroup::APPLICATION );
-    implDescribeSupportedFeature( ".uno:DBTableFilter",      SID_DB_APP_TABLEFILTER,    CommandGroup::APPLICATION );
-    implDescribeSupportedFeature( ".uno:DBDSProperties",     SID_DB_APP_DSPROPS,        CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBDSConnectionType", SID_DB_APP_DSCONNECTION_TYPE,
+    implDescribeSupportedFeature( u".uno:Sortup"_ustr,             ID_BROWSER_SORTUP,         CommandGroup::VIEW );
+    implDescribeSupportedFeature( u".uno:SortDown"_ustr,           ID_BROWSER_SORTDOWN,       CommandGroup::VIEW );
+    implDescribeSupportedFeature( u".uno:DBRelationDesign"_ustr,   SID_DB_APP_DSRELDESIGN,    CommandGroup::APPLICATION );
+    implDescribeSupportedFeature( u".uno:DBUserAdmin"_ustr,        SID_DB_APP_DSUSERADMIN,    CommandGroup::APPLICATION );
+    implDescribeSupportedFeature( u".uno:DBTableFilter"_ustr,      SID_DB_APP_TABLEFILTER,    CommandGroup::APPLICATION );
+    implDescribeSupportedFeature( u".uno:DBDSProperties"_ustr,     SID_DB_APP_DSPROPS,        CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBDSConnectionType"_ustr, SID_DB_APP_DSCONNECTION_TYPE,
                                                                                         CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBDSAdvancedSettings",
+    implDescribeSupportedFeature( u".uno:DBDSAdvancedSettings"_ustr,
                                                              SID_DB_APP_DSADVANCED_SETTINGS,
                                                                                         CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:PasteSpecial",       SID_DB_APP_PASTE_SPECIAL,  CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBConvertToView",    SID_DB_APP_CONVERTTOVIEW,  CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:DBRefreshTables",    SID_DB_APP_REFRESH_TABLES, CommandGroup::APPLICATION );
-    implDescribeSupportedFeature( ".uno:DBDirectSQL",        ID_DIRECT_SQL,             CommandGroup::APPLICATION );
-    implDescribeSupportedFeature( ".uno:DBViewTables",       SID_DB_APP_VIEW_TABLES,    CommandGroup::VIEW );
-    implDescribeSupportedFeature( ".uno:DBViewQueries",      SID_DB_APP_VIEW_QUERIES,   CommandGroup::VIEW );
-    implDescribeSupportedFeature( ".uno:DBViewForms",        SID_DB_APP_VIEW_FORMS,     CommandGroup::VIEW );
-    implDescribeSupportedFeature( ".uno:DBViewReports",      SID_DB_APP_VIEW_REPORTS,   CommandGroup::VIEW );
-    implDescribeSupportedFeature( ".uno:DBDisablePreview",   SID_DB_APP_DISABLE_PREVIEW,CommandGroup::VIEW );
-    implDescribeSupportedFeature( ".uno:DBShowDocInfoPreview",
+    implDescribeSupportedFeature( u".uno:PasteSpecial"_ustr,       SID_DB_APP_PASTE_SPECIAL,  CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBConvertToView"_ustr,    SID_DB_APP_CONVERTTOVIEW,  CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBRefreshTables"_ustr,    SID_DB_APP_REFRESH_TABLES, CommandGroup::APPLICATION );
+    implDescribeSupportedFeature( u".uno:DBDirectSQL"_ustr,        ID_DIRECT_SQL,             CommandGroup::APPLICATION );
+    implDescribeSupportedFeature( u".uno:DBViewTables"_ustr,       SID_DB_APP_VIEW_TABLES,    CommandGroup::VIEW );
+    implDescribeSupportedFeature( u".uno:DBViewQueries"_ustr,      SID_DB_APP_VIEW_QUERIES,   CommandGroup::VIEW );
+    implDescribeSupportedFeature( u".uno:DBViewForms"_ustr,        SID_DB_APP_VIEW_FORMS,     CommandGroup::VIEW );
+    implDescribeSupportedFeature( u".uno:DBViewReports"_ustr,      SID_DB_APP_VIEW_REPORTS,   CommandGroup::VIEW );
+    implDescribeSupportedFeature( u".uno:DBDisablePreview"_ustr,   SID_DB_APP_DISABLE_PREVIEW,CommandGroup::VIEW );
+    implDescribeSupportedFeature( u".uno:DBShowDocInfoPreview"_ustr,
                                                              SID_DB_APP_VIEW_DOCINFO_PREVIEW,
                                                                                         CommandGroup::VIEW );
-    implDescribeSupportedFeature( ".uno:DBShowDocPreview",   SID_DB_APP_VIEW_DOC_PREVIEW,
+    implDescribeSupportedFeature( u".uno:DBShowDocPreview"_ustr,   SID_DB_APP_VIEW_DOC_PREVIEW,
                                                                                         CommandGroup::VIEW );
 
-    implDescribeSupportedFeature( ".uno:OpenUrl",            SID_OPENURL,               CommandGroup::APPLICATION );
+    implDescribeSupportedFeature( u".uno:OpenUrl"_ustr,            SID_OPENURL,               CommandGroup::APPLICATION );
 
     // this one should not appear under Tools->Customize->Keyboard
-    implDescribeSupportedFeature( ".uno:DBNewReportWithPreSelection",
+    implDescribeSupportedFeature( u".uno:DBNewReportWithPreSelection"_ustr,
                                                              SID_APP_NEW_REPORT_PRE_SEL );
-    implDescribeSupportedFeature( ".uno:DBDSImport",         SID_DB_APP_DSIMPORT);
-    implDescribeSupportedFeature( ".uno:DBDSExport",         SID_DB_APP_DSEXPORT);
-    implDescribeSupportedFeature( ".uno:DBDBAdmin",          SID_DB_APP_DBADMIN);
+    implDescribeSupportedFeature( u".uno:DBDSImport"_ustr,         SID_DB_APP_DSIMPORT);
+    implDescribeSupportedFeature( u".uno:DBDSExport"_ustr,         SID_DB_APP_DSEXPORT);
+    implDescribeSupportedFeature( u".uno:DBDBAdmin"_ustr,          SID_DB_APP_DBADMIN);
 
     // status info
-    implDescribeSupportedFeature( ".uno:DBStatusType",       SID_DB_APP_STATUS_TYPE);
-    implDescribeSupportedFeature( ".uno:DBStatusDBName",     SID_DB_APP_STATUS_DBNAME);
-    implDescribeSupportedFeature( ".uno:DBStatusUserName",   SID_DB_APP_STATUS_USERNAME);
-    implDescribeSupportedFeature( ".uno:DBStatusHostName",   SID_DB_APP_STATUS_HOSTNAME);
+    implDescribeSupportedFeature( u".uno:DBStatusType"_ustr,       SID_DB_APP_STATUS_TYPE);
+    implDescribeSupportedFeature( u".uno:DBStatusDBName"_ustr,     SID_DB_APP_STATUS_DBNAME);
+    implDescribeSupportedFeature( u".uno:DBStatusUserName"_ustr,   SID_DB_APP_STATUS_USERNAME);
+    implDescribeSupportedFeature( u".uno:DBStatusHostName"_ustr,   SID_DB_APP_STATUS_HOSTNAME);
 }
 
 OApplicationView*   OApplicationController::getContainer() const
@@ -2034,7 +2029,7 @@ void OApplicationController::renameEntry()
                                     Reference<XHierarchicalNameContainer> xParent(xChild->getParent(),UNO_QUERY);
                                     if ( xParent.is() )
                                     {
-                                        xHNames = xParent;
+                                        xHNames = std::move(xParent);
                                         Reference<XPropertySet>(xRename,UNO_QUERY_THROW)->getPropertyValue(PROPERTY_NAME) >>= sName;
                                     }
                                 }
@@ -2117,7 +2112,7 @@ void OApplicationController::renameEntry()
                         catch(const ElementExistException& e)
                         {
                             OUString sMsg(DBA_RES(STR_NAME_ALREADY_EXISTS));
-                            showError(SQLExceptionInfo(SQLException(sMsg.replaceAll("#", e.Message), e.Context, "S1000", 0, Any())));
+                            showError(SQLExceptionInfo(SQLException(sMsg.replaceAll("#", e.Message), e.Context, u"S1000"_ustr, 0, Any())));
                         }
                         catch(const Exception& )
                         {
@@ -2253,7 +2248,7 @@ void OApplicationController::onDeleteEntry()
 
 OUString OApplicationController::getContextMenuResourceName() const
 {
-    return "edit";
+    return u"edit"_ustr;
 }
 
 IController& OApplicationController::getCommandController()
@@ -2529,7 +2524,7 @@ void OApplicationController::OnFirstControllerConnected()
         SQLException aDetail(DBA_RES(STR_SUB_DOCS_WITH_SCRIPTS_DETAIL), {}, {}, 0, {});
         SQLWarning aWarning(DBA_RES(STR_SUB_DOCS_WITH_SCRIPTS), {}, {}, 0, css::uno::Any(aDetail));
 
-        Reference< XExecutableDialog > xDialog = ErrorMessageDialog::create( getORB(), "", nullptr, Any( aWarning ) );
+        Reference< XExecutableDialog > xDialog = ErrorMessageDialog::create( getORB(), u""_ustr, nullptr, Any( aWarning ) );
         xDialog->execute();
     }
     catch( const Exception& )
@@ -2701,20 +2696,18 @@ sal_Bool SAL_CALL OApplicationController::select( const Any& _aSelection )
     if ( (_aSelection >>= aCurrentSelection) && aCurrentSelection.hasElements() )
     {
         ElementType eType = E_NONE;
-        const NamedValue* pIter = aCurrentSelection.getConstArray();
-        const NamedValue* pEnd  = pIter + aCurrentSelection.getLength();
-        for(;pIter != pEnd;++pIter)
+        for (auto& item : aCurrentSelection)
         {
-            if ( pIter->Name == "Type" )
+            if (item.Name == "Type")
             {
                 sal_Int32 nType = 0;
-                pIter->Value >>= nType;
+                item.Value >>= nType;
                 if ( nType < DatabaseObject::TABLE || nType > DatabaseObject::REPORT )
                     throw IllegalArgumentException();
                 eType = static_cast< ElementType >( nType );
             }
-            else if ( pIter->Name == "Selection" )
-                pIter->Value >>= aSelection;
+            else if (item.Name == "Selection")
+                item.Value >>= aSelection;
         }
 
         m_aSelectContainerEvent.CancelCall();   // just in case the async select request was running
@@ -2734,42 +2727,37 @@ sal_Bool SAL_CALL OApplicationController::select( const Any& _aSelection )
 
     SelectionByElementType aSelectedElements;
     ElementType eSelectedCategory = E_NONE;
-    for (   const NamedDatabaseObject* pObject = aSelectedObjects.getConstArray();
-            pObject != aSelectedObjects.getConstArray() + aSelectedObjects.getLength();
-            ++pObject
-        )
+    for (sal_Int32 i = 0; i < aSelectedObjects.getLength(); ++i)
     {
-        switch ( pObject->Type )
+        switch (aSelectedObjects[i].Type)
         {
             case DatabaseObject::TABLE:
             case DatabaseObjectContainer::SCHEMA:
             case DatabaseObjectContainer::CATALOG:
-                aSelectedElements[ E_TABLE ].push_back( pObject->Name );
+                aSelectedElements[E_TABLE].push_back(aSelectedObjects[i].Name);
                 break;
             case DatabaseObject::QUERY:
-                aSelectedElements[ E_QUERY ].push_back( pObject->Name );
+                aSelectedElements[E_QUERY].push_back(aSelectedObjects[i].Name);
                 break;
             case DatabaseObject::FORM:
             case DatabaseObjectContainer::FORMS_FOLDER:
-                aSelectedElements[ E_FORM ].push_back( pObject->Name );
+                aSelectedElements[E_FORM].push_back(aSelectedObjects[i].Name);
                 break;
             case DatabaseObject::REPORT:
             case DatabaseObjectContainer::REPORTS_FOLDER:
-                aSelectedElements[ E_REPORT ].push_back( pObject->Name );
+                aSelectedElements[E_REPORT].push_back(aSelectedObjects[i].Name);
                 break;
             case DatabaseObjectContainer::TABLES:
             case DatabaseObjectContainer::QUERIES:
             case DatabaseObjectContainer::FORMS:
             case DatabaseObjectContainer::REPORTS:
                 if ( eSelectedCategory != E_NONE )
-                    throw IllegalArgumentException(
-                        DBA_RES(RID_STR_NO_DIFF_CAT),
-                        *this, sal_Int16( pObject - aSelectedObjects.getConstArray() ) );
+                    throw IllegalArgumentException(DBA_RES(RID_STR_NO_DIFF_CAT), *this, i);
                 eSelectedCategory =
-                        ( pObject->Type == DatabaseObjectContainer::TABLES )  ? E_TABLE
-                    :   ( pObject->Type == DatabaseObjectContainer::QUERIES ) ? E_QUERY
-                    :   ( pObject->Type == DatabaseObjectContainer::FORMS )   ? E_FORM
-                    :   ( pObject->Type == DatabaseObjectContainer::REPORTS ) ? E_REPORT
+                        ( aSelectedObjects[i].Type == DatabaseObjectContainer::TABLES )  ? E_TABLE
+                    :   ( aSelectedObjects[i].Type == DatabaseObjectContainer::QUERIES ) ? E_QUERY
+                    :   ( aSelectedObjects[i].Type == DatabaseObjectContainer::FORMS )   ? E_FORM
+                    :   ( aSelectedObjects[i].Type == DatabaseObjectContainer::REPORTS ) ? E_REPORT
                     :   E_NONE;
                 break;
 
@@ -2778,8 +2766,8 @@ sal_Bool SAL_CALL OApplicationController::select( const Any& _aSelection )
             {
                 OUString sMessage(
                         DBA_RES(RID_STR_UNSUPPORTED_OBJECT_TYPE).
-                    replaceFirst("$type$", OUString::number(pObject->Type)));
-                throw IllegalArgumentException(sMessage, *this, sal_Int16( pObject - aSelectedObjects.getConstArray() ));
+                    replaceFirst("$type$", OUString::number(aSelectedObjects[i].Type)));
+                throw IllegalArgumentException(sMessage, *this, i);
             }
         }
     }

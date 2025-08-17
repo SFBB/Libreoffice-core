@@ -62,27 +62,29 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::ui;
 using namespace ::cppu;
 
-const sal_Int16 MAX_IMAGETYPE_VALUE       = css::ui::ImageType::SIZE_32;
-
 constexpr OUString IMAGE_FOLDER = u"images"_ustr;
 constexpr OUString BITMAPS_FOLDER = u"Bitmaps"_ustr;
 
-const o3tl::enumarray<vcl::ImageType, const char*> IMAGELIST_XML_FILE =
+constexpr o3tl::enumarray<vcl::ImageType, OUString> IMAGELIST_XML_FILE
 {
-    "sc_imagelist.xml",
-    "lc_imagelist.xml",
-    "xc_imagelist.xml"
+    u"sc_imagelist.xml"_ustr,
+    u"lc_imagelist.xml"_ustr,
+    u"xc_imagelist.xml"_ustr
 };
 
-const o3tl::enumarray<vcl::ImageType, const char*> BITMAP_FILE_NAMES =
+constexpr o3tl::enumarray<vcl::ImageType, OUString> BITMAP_FILE_NAMES
 {
-    "sc_userimages.png",
-    "lc_userimages.png",
-    "xc_userimages.png"
+    u"sc_userimages.png"_ustr,
+    u"lc_userimages.png"_ustr,
+    u"xc_userimages.png"_ustr
 };
 
 namespace framework
 {
+namespace
+{
+using ImageIndex = std::tuple<vcl::ImageType, vcl::ImageWritingDirection>;
+}
 
 static GlobalImageList*     pGlobalImageList = nullptr;
 
@@ -159,14 +161,16 @@ void CmdImageList::initialize()
     m_bInitialized = true;
 }
 
-
-Image CmdImageList::getImageFromCommandURL(vcl::ImageType nImageType, const OUString& rCommandURL)
+Image CmdImageList::getImageFromCommandURL(vcl::ImageType nImageType,
+                                           vcl::ImageWritingDirection nImageDir,
+                                           const OUString& rCommandURL)
 {
     initialize();
-    return m_aResolver.getImageFromCommandURL(nImageType, rCommandURL);
+    return m_aResolver.getImageFromCommandURL(nImageType, nImageDir, rCommandURL);
 }
 
-bool CmdImageList::hasImage(vcl::ImageType /*nImageType*/, const OUString& rCommandURL)
+bool CmdImageList::hasImage(vcl::ImageType /*nImageType*/, vcl::ImageWritingDirection /*nImageDir*/,
+                            const OUString& rCommandURL)
 {
     initialize();
     return m_aResolver.hasImage(rCommandURL);
@@ -189,16 +193,19 @@ GlobalImageList::~GlobalImageList()
     pGlobalImageList = nullptr;
 }
 
-Image GlobalImageList::getImageFromCommandURL( vcl::ImageType nImageType, const OUString& rCommandURL )
+Image GlobalImageList::getImageFromCommandURL(vcl::ImageType nImageType,
+                                              vcl::ImageWritingDirection nImageDir,
+                                              const OUString& rCommandURL)
 {
-    std::unique_lock guard( getGlobalImageListMutex() );
-    return CmdImageList::getImageFromCommandURL( nImageType, rCommandURL );
+    std::unique_lock guard(getGlobalImageListMutex());
+    return CmdImageList::getImageFromCommandURL(nImageType, nImageDir, rCommandURL);
 }
 
-bool GlobalImageList::hasImage( vcl::ImageType nImageType, const OUString& rCommandURL )
+bool GlobalImageList::hasImage(vcl::ImageType nImageType, vcl::ImageWritingDirection nImageDir,
+                               const OUString& rCommandURL)
 {
-    std::unique_lock guard( getGlobalImageListMutex() );
-    return CmdImageList::hasImage( nImageType, rCommandURL );
+    std::unique_lock guard(getGlobalImageListMutex());
+    return CmdImageList::hasImage(nImageType, nImageDir, rCommandURL);
 }
 
 ::std::vector< OUString >& GlobalImageList::getImageCommandNames()
@@ -235,14 +242,36 @@ static bool implts_checkAndScaleGraphic( uno::Reference< XGraphic >& rOutGraphic
     return true;
 }
 
-static vcl::ImageType implts_convertImageTypeToIndex( sal_Int16 nImageType )
+static std::optional<ImageIndex> implts_convertImageTypeToIndex(sal_Int16 nImageType)
 {
+    sal_Int16 nSanitize = 0;
+
+    vcl::ImageType nType = vcl::ImageType::Size16;
+    vcl::ImageWritingDirection nDir = vcl::ImageWritingDirection::DontCare;
+
     if (nImageType & css::ui::ImageType::SIZE_LARGE)
-        return vcl::ImageType::Size26;
+    {
+        nType = vcl::ImageType::Size26;
+        nSanitize |= css::ui::ImageType::SIZE_LARGE;
+    }
     else if (nImageType & css::ui::ImageType::SIZE_32)
-        return vcl::ImageType::Size32;
-    else
-        return vcl::ImageType::Size16;
+    {
+        nType = vcl::ImageType::Size32;
+        nSanitize |= css::ui::ImageType::SIZE_32;
+    }
+
+    if (nImageType & css::ui::ImageType::DIR_RL_TB)
+    {
+        nDir = vcl::ImageWritingDirection::RightLeftTopBottom;
+        nSanitize |= css::ui::ImageType::DIR_RL_TB;
+    }
+
+    if (nSanitize != nImageType)
+    {
+        return std::nullopt;
+    }
+
+    return ImageIndex{ nType, nDir };
 }
 
 ImageList* ImageManagerImpl::implts_getUserImageList( vcl::ImageType nImageType )
@@ -260,16 +289,14 @@ void ImageManagerImpl::implts_initialize()
     if ( !m_xUserConfigStorage.is() )
         return;
 
-    tools::Long nModes = m_bReadOnly ? ElementModes::READ : ElementModes::READWRITE;
-
     try
     {
         m_xUserImageStorage = m_xUserConfigStorage->openStorageElement( IMAGE_FOLDER,
-                                                                        nModes );
+                                                                        ElementModes::READ );
         if ( m_xUserImageStorage.is() )
         {
             m_xUserBitmapsStorage = m_xUserImageStorage->openStorageElement( BITMAPS_FOLDER,
-                                                                             nModes );
+                                                                             ElementModes::READ );
         }
     }
     catch ( const css::container::NoSuchElementException& )
@@ -300,7 +327,7 @@ void ImageManagerImpl::implts_loadUserImages(
     {
         try
         {
-            uno::Reference< XStream > xStream = xUserImageStorage->openStreamElement( OUString::createFromAscii( IMAGELIST_XML_FILE[nImageType] ),
+            uno::Reference< XStream > xStream = xUserImageStorage->openStreamElement( IMAGELIST_XML_FILE[nImageType],
                                                                                       ElementModes::READ );
             uno::Reference< XInputStream > xInputStream = xStream->getInputStream();
 
@@ -308,19 +335,19 @@ void ImageManagerImpl::implts_loadUserImages(
             ImagesConfiguration::LoadImages( m_xContext,
                                              xInputStream,
                                              aUserImageListInfo );
-            if ( !aUserImageListInfo.empty() )
+            if (!aUserImageListInfo.aImageItemDescriptors.empty())
             {
-                sal_Int32 nCount = aUserImageListInfo.size();
+                sal_Int32 nCount = aUserImageListInfo.aImageItemDescriptors.size();
                 std::vector< OUString > aUserImagesVector;
                 aUserImagesVector.reserve(nCount);
                 for ( sal_Int32 i=0; i < nCount; i++ )
                 {
-                    const ImageItemDescriptor& rItem = aUserImageListInfo[i];
+                    const ImageItemDescriptor& rItem = aUserImageListInfo.aImageItemDescriptors[i];
                     aUserImagesVector.push_back( rItem.aCommandURL );
                 }
 
                 uno::Reference< XStream > xBitmapStream = xUserBitmapsStorage->openStreamElement(
-                                                        OUString::createFromAscii( BITMAP_FILE_NAMES[nImageType] ),
+                                                        BITMAP_FILE_NAMES[nImageType],
                                                         ElementModes::READ );
 
                 if ( xBitmapStream.is() )
@@ -379,18 +406,20 @@ bool ImageManagerImpl::implts_storeUserImages(
         for ( sal_uInt16 i=0; i < pImageList->GetImageCount(); i++ )
         {
             ImageItemDescriptor aItem;
-            aItem.aCommandURL = pImageList->GetImageName( i );
-            aUserImageListInfo.push_back( aItem );
+            aItem.nIndex = i;
+            aItem.aCommandURL = pImageList->GetImageName(i);
+            aUserImageListInfo.aImageItemDescriptors.push_back( aItem );
         }
+        aUserImageListInfo.aURL = "Bitmaps/" + BITMAP_FILE_NAMES[nImageType];
 
         uno::Reference< XTransactedObject > xTransaction;
         uno::Reference< XOutputStream >     xOutputStream;
-        uno::Reference< XStream > xStream = xUserImageStorage->openStreamElement( OUString::createFromAscii( IMAGELIST_XML_FILE[nImageType] ),
+        uno::Reference< XStream > xStream = xUserImageStorage->openStreamElement( IMAGELIST_XML_FILE[nImageType],
                                                                                   ElementModes::WRITE|ElementModes::TRUNCATE );
         if ( xStream.is() )
         {
             uno::Reference< XStream > xBitmapStream =
-                xUserBitmapsStorage->openStreamElement( OUString::createFromAscii( BITMAP_FILE_NAMES[nImageType] ),
+                xUserBitmapsStorage->openStreamElement( BITMAP_FILE_NAMES[nImageType],
                                                         ElementModes::WRITE|ElementModes::TRUNCATE );
             if ( xBitmapStream.is() )
             {
@@ -425,7 +454,7 @@ bool ImageManagerImpl::implts_storeUserImages(
         // the NoSuchElementException as it can be possible that there is no stream at all!
         try
         {
-            xUserImageStorage->removeElement( OUString::createFromAscii( IMAGELIST_XML_FILE[nImageType] ));
+            xUserImageStorage->removeElement( IMAGELIST_XML_FILE[nImageType] );
         }
         catch ( const css::container::NoSuchElementException& )
         {
@@ -433,7 +462,7 @@ bool ImageManagerImpl::implts_storeUserImages(
 
         try
         {
-            xUserBitmapsStorage->removeElement( OUString::createFromAscii( BITMAP_FILE_NAMES[nImageType] ));
+            xUserBitmapsStorage->removeElement( BITMAP_FILE_NAMES[nImageType] );
         }
         catch ( const css::container::NoSuchElementException& )
         {
@@ -479,12 +508,13 @@ CmdImageList* ImageManagerImpl::implts_getDefaultImageList()
 ImageManagerImpl::ImageManagerImpl( uno::Reference< uno::XComponentContext > xContext, ::cppu::OWeakObject* pOwner, bool _bUseGlobal ) :
     m_xContext(std::move( xContext ))
     , m_pOwner(pOwner)
-    , m_aResourceString( "private:resource/images/moduleimages" )
+    , m_aResourceString( u"private:resource/images/moduleimages"_ustr )
     , m_bUseGlobal(_bUseGlobal)
     , m_bReadOnly( true )
     , m_bInitialized( false )
     , m_bModified( false )
     , m_bDisposed( false )
+    , m_bShouldReloadRWOnStore( false )
 {
     for ( vcl::ImageType n : o3tl::enumrange<vcl::ImageType>() )
     {
@@ -583,8 +613,10 @@ void ImageManagerImpl::initialize( const Sequence< Any >& aArguments )
         if ( xPropSet.is() )
         {
             tools::Long nOpenMode = 0;
-            if ( xPropSet->getPropertyValue("OpenMode") >>= nOpenMode )
+            if ( xPropSet->getPropertyValue(u"OpenMode"_ustr) >>= nOpenMode ) {
                 m_bReadOnly = !( nOpenMode & ElementModes::WRITE );
+                m_bShouldReloadRWOnStore = !m_bReadOnly;
+            }
         }
     }
 
@@ -630,7 +662,9 @@ Sequence< OUString > ImageManagerImpl::getAllImageNames( ::sal_Int16 nImageType 
 
     std::unordered_set< OUString > aImageCmdNames;
 
-    vcl::ImageType nIndex = implts_convertImageTypeToIndex( nImageType );
+    auto nIndex = implts_convertImageTypeToIndex(nImageType);
+    if (!nIndex.has_value())
+        throw IllegalArgumentException();
 
     sal_uInt32 i( 0 );
     if ( m_bUseGlobal )
@@ -648,7 +682,7 @@ Sequence< OUString > ImageManagerImpl::getAllImageNames( ::sal_Int16 nImageType 
             aImageCmdNames.insert( rModuleImageNameVector[i] );
     }
 
-    ImageList* pImageList = implts_getUserImageList(nIndex);
+    ImageList* pImageList = implts_getUserImageList(std::get<0>(*nIndex));
     std::vector< OUString > rUserImageNames;
     pImageList->GetImageNames( rUserImageNames );
     const sal_uInt32 nUserCount = rUserImageNames.size();
@@ -666,20 +700,24 @@ bool ImageManagerImpl::hasImage( ::sal_Int16 nImageType, const OUString& aComman
     if ( m_bDisposed )
         throw DisposedException();
 
-    if (( nImageType < 0 ) || ( nImageType > MAX_IMAGETYPE_VALUE ))
+    auto nIndex = implts_convertImageTypeToIndex(nImageType);
+    if (!nIndex.has_value())
         throw IllegalArgumentException();
 
-    vcl::ImageType nIndex = implts_convertImageTypeToIndex( nImageType );
-    if ( m_bUseGlobal && implts_getGlobalImageList()->hasImage( nIndex, aCommandURL ))
+    if (m_bUseGlobal
+        && implts_getGlobalImageList()->hasImage(std::get<0>(*nIndex), std::get<1>(*nIndex),
+                                                 aCommandURL))
         return true;
     else
     {
-        if ( m_bUseGlobal && implts_getDefaultImageList()->hasImage( nIndex, aCommandURL ))
+        if (m_bUseGlobal
+            && implts_getDefaultImageList()->hasImage(std::get<0>(*nIndex), std::get<1>(*nIndex),
+                                                      aCommandURL))
             return true;
         else
         {
             // User layer
-            ImageList* pImageList = implts_getUserImageList(nIndex);
+            ImageList* pImageList = implts_getUserImageList(std::get<0>(*nIndex));
             if ( pImageList )
                 return ( pImageList->GetImagePos( aCommandURL ) != IMAGELIST_IMAGE_NOTFOUND );
         }
@@ -706,12 +744,12 @@ Sequence< uno::Reference< XGraphic > > ImageManagerImpl::getImages(
     if ( m_bDisposed )
         throw DisposedException();
 
-    if (( nImageType < 0 ) || ( nImageType > MAX_IMAGETYPE_VALUE ))
+    auto nIndex = implts_convertImageTypeToIndex(nImageType);
+    if (!nIndex.has_value())
         throw IllegalArgumentException();
 
     Sequence< uno::Reference< XGraphic > > aGraphSeq( aCommandURLSequence.getLength() );
 
-    vcl::ImageType                    nIndex            = implts_convertImageTypeToIndex( nImageType );
     rtl::Reference< GlobalImageList > rGlobalImageList;
     CmdImageList*                     pDefaultImageList = nullptr;
     if ( m_bUseGlobal )
@@ -719,7 +757,7 @@ Sequence< uno::Reference< XGraphic > > ImageManagerImpl::getImages(
         rGlobalImageList  = implts_getGlobalImageList();
         pDefaultImageList = implts_getDefaultImageList();
     }
-    ImageList*                        pUserImageList    = implts_getUserImageList(nIndex);
+    ImageList* pUserImageList = implts_getUserImageList(std::get<0>(*nIndex));
 
     // We have to search our image list in the following order:
     // 1. user image list (read/write)
@@ -732,10 +770,16 @@ Sequence< uno::Reference< XGraphic > > ImageManagerImpl::getImages(
         Image aImage = pUserImageList->GetImage( rURL );
         if ( !aImage && m_bUseGlobal )
         {
-            aImage = pDefaultImageList->getImageFromCommandURL( nIndex, rURL );
-            if ( !aImage )
-                aImage = rGlobalImageList->getImageFromCommandURL( nIndex, rURL );
+            aImage = pDefaultImageList->getImageFromCommandURL(std::get<0>(*nIndex),
+                                                               std::get<1>(*nIndex), rURL);
+            if (!aImage)
+                aImage = rGlobalImageList->getImageFromCommandURL(std::get<0>(*nIndex),
+                                                                  std::get<1>(*nIndex), rURL);
         }
+
+        // tdf#70102: Writing direction specializations are always optional. Suppress
+        // missing image file warnings on load.
+        aImage.SetOptional(std::get<1>(*nIndex) != vcl::ImageWritingDirection::DontCare);
 
         aGraphSeqRange[n++] = GetXGraphic(aImage);
     }
@@ -758,21 +802,21 @@ void ImageManagerImpl::replaceImages(
         if ( m_bDisposed )
             throw DisposedException();
 
-        if (( aCommandURLSequence.getLength() != aGraphicsSequence.getLength() ) ||
-            (( nImageType < 0 ) || ( nImageType > MAX_IMAGETYPE_VALUE )))
+        auto nIndex = implts_convertImageTypeToIndex(nImageType);
+        if ((aCommandURLSequence.getLength() != aGraphicsSequence.getLength())
+            || (!nIndex.has_value()))
             throw IllegalArgumentException();
 
         if ( m_bReadOnly )
             throw IllegalAccessException();
 
-        vcl::ImageType nIndex = implts_convertImageTypeToIndex( nImageType );
-        ImageList* pImageList = implts_getUserImageList(nIndex);
+        ImageList* pImageList = implts_getUserImageList(std::get<0>(*nIndex));
 
         uno::Reference< XGraphic > xGraphic;
         for ( sal_Int32 i = 0; i < aCommandURLSequence.getLength(); i++ )
         {
             // Check size and scale. If we don't have any graphics ignore it
-            if ( !implts_checkAndScaleGraphic( xGraphic, aGraphicsSequence[i], nIndex ))
+            if (!implts_checkAndScaleGraphic(xGraphic, aGraphicsSequence[i], std::get<0>(*nIndex)))
                 continue;
 
             sal_uInt16 nPos = pImageList->GetImagePos( aCommandURLSequence[i] );
@@ -795,7 +839,7 @@ void ImageManagerImpl::replaceImages(
         if (( pInsertedImages != nullptr ) || (  pReplacedImages != nullptr ))
         {
             m_bModified = true;
-            m_bUserImageListModified[nIndex] = true;
+            m_bUserImageListModified[std::get<0>(*nIndex)] = true;
         }
     }
 
@@ -816,7 +860,7 @@ void ImageManagerImpl::replaceImages(
         ConfigurationEvent aReplaceEvent;
         aReplaceEvent.aInfo           <<= nImageType;
         aReplaceEvent.Accessor        <<= xOwner;
-        aReplaceEvent.Source          = xOwner;
+        aReplaceEvent.Source          = std::move(xOwner);
         aReplaceEvent.ResourceURL     = m_aResourceString;
         aReplaceEvent.ReplacedElement = Any();
         aReplaceEvent.Element         <<= uno::Reference< XNameAccess >(pReplacedImages);
@@ -836,13 +880,13 @@ void ImageManagerImpl::removeImages( ::sal_Int16 nImageType, const Sequence< OUS
         if ( m_bDisposed )
             throw DisposedException();
 
-        if (( nImageType < 0 ) || ( nImageType > MAX_IMAGETYPE_VALUE ))
+        auto nIndex = implts_convertImageTypeToIndex(nImageType);
+        if (!nIndex.has_value())
             throw IllegalArgumentException();
 
         if ( m_bReadOnly )
             throw IllegalAccessException();
 
-        vcl::ImageType nIndex = implts_convertImageTypeToIndex( nImageType );
         rtl::Reference< GlobalImageList > rGlobalImageList;
         CmdImageList*                     pDefaultImageList = nullptr;
         if ( m_bUseGlobal )
@@ -850,7 +894,7 @@ void ImageManagerImpl::removeImages( ::sal_Int16 nImageType, const Sequence< OUS
             rGlobalImageList  = implts_getGlobalImageList();
             pDefaultImageList = implts_getDefaultImageList();
         }
-        ImageList*                        pImageList        = implts_getUserImageList(nIndex);
+        ImageList* pImageList = implts_getUserImageList(std::get<0>(*nIndex));
         uno::Reference<XGraphic> xEmptyGraphic;
 
         for ( const OUString& rURL : aCommandURLSequence )
@@ -865,9 +909,11 @@ void ImageManagerImpl::removeImages( ::sal_Int16 nImageType, const Sequence< OUS
                 {
                     // Check, if we have an image in our module/global image list. If we find one =>
                     // this is a replace instead of a remove operation!
-                    Image aNewImage = pDefaultImageList->getImageFromCommandURL( nIndex, rURL );
-                    if ( !aNewImage )
-                        aNewImage = rGlobalImageList->getImageFromCommandURL( nIndex, rURL );
+                    Image aNewImage = pDefaultImageList->getImageFromCommandURL(
+                        std::get<0>(*nIndex), std::get<1>(*nIndex), rURL);
+                    if (!aNewImage)
+                        aNewImage = rGlobalImageList->getImageFromCommandURL(
+                            std::get<0>(*nIndex), std::get<1>(*nIndex), rURL);
                     if ( !aNewImage )
                     {
                         if ( !pRemovedImages )
@@ -893,7 +939,7 @@ void ImageManagerImpl::removeImages( ::sal_Int16 nImageType, const Sequence< OUS
         if (( pReplacedImages != nullptr ) || ( pRemovedImages != nullptr ))
         {
             m_bModified = true;
-            m_bUserImageListModified[nIndex] = true;
+            m_bUserImageListModified[std::get<0>(*nIndex)] = true;
         }
     }
 
@@ -914,7 +960,7 @@ void ImageManagerImpl::removeImages( ::sal_Int16 nImageType, const Sequence< OUS
         ConfigurationEvent aReplaceEvent;
         aReplaceEvent.aInfo           <<= nImageType;
         aReplaceEvent.Accessor        <<= xOwner;
-        aReplaceEvent.Source          = xOwner;
+        aReplaceEvent.Source          = std::move(xOwner);
         aReplaceEvent.ResourceURL     = m_aResourceString;
         aReplaceEvent.ReplacedElement = Any();
         aReplaceEvent.Element         <<= uno::Reference< XNameAccess >(pReplacedImages);
@@ -1001,9 +1047,11 @@ void ImageManagerImpl::reload()
                 {
                     if ( m_bUseGlobal )
                     {
-                        Image aImage = pDefaultImageList->getImageFromCommandURL( i, oldUserCmdImage.first );
-                        if ( !aImage )
-                            aImage = rGlobalImageList->getImageFromCommandURL( i, oldUserCmdImage.first );
+                        Image aImage = pDefaultImageList->getImageFromCommandURL(
+                            i, vcl::ImageWritingDirection::DontCare, oldUserCmdImage.first);
+                        if (!aImage)
+                            aImage = rGlobalImageList->getImageFromCommandURL(
+                                i, vcl::ImageWritingDirection::DontCare, oldUserCmdImage.first);
 
                         if ( !aImage )
                         {
@@ -1060,7 +1108,7 @@ void ImageManagerImpl::reload()
                 ConfigurationEvent aRemoveEvent;
                 aRemoveEvent.aInfo           <<= static_cast<sal_uInt16>(i);
                 aRemoveEvent.Accessor        <<= xOwner;
-                aRemoveEvent.Source          = xOwner;
+                aRemoveEvent.Source          = std::move(xOwner);
                 aRemoveEvent.ResourceURL     = m_aResourceString;
                 aRemoveEvent.Element         <<= uno::Reference< XNameAccess >( pRemovedImages );
                 implts_notifyContainerListener( aRemoveEvent, NotifyOp_Remove );
@@ -1080,6 +1128,50 @@ void ImageManagerImpl::store()
 
     if ( !m_bModified )
         return;
+
+    if ( m_bShouldReloadRWOnStore ) {
+        m_bShouldReloadRWOnStore = false;
+
+        m_xUserBitmapsStorage.clear();
+        m_xUserImageStorage.clear();
+
+        try
+        {
+            uno::Reference< XStorage > xUserImageStorage =
+                m_xUserConfigStorage->openStorageElement( IMAGE_FOLDER, ElementModes::READWRITE );
+            if ( !xUserImageStorage.is() )
+                throw css::uno::Exception();
+
+            uno::Reference< XStorage > xUserBitmapsStorage =
+                xUserImageStorage->openStorageElement( BITMAPS_FOLDER, ElementModes::READWRITE );
+            if ( !xUserBitmapsStorage.is() )
+                throw css::uno::Exception();
+
+            m_xUserImageStorage = std::move( xUserImageStorage );
+            m_xUserBitmapsStorage = std::move( xUserBitmapsStorage );
+        } catch ( const css::uno::Exception& )
+        {
+            try
+            {
+                uno::Reference< XStorage > xUserImageStorage =
+                    m_xUserConfigStorage->openStorageElement( IMAGE_FOLDER, ElementModes::READ );
+                if ( !xUserImageStorage.is() )
+                    return;
+
+                uno::Reference< XStorage > xUserBitmapsStorage =
+                    xUserImageStorage->openStorageElement( BITMAPS_FOLDER, ElementModes::READ );
+                if ( !xUserBitmapsStorage.is() )
+                    return;
+
+                m_xUserImageStorage = std::move( xUserImageStorage );
+                m_xUserBitmapsStorage = std::move( xUserBitmapsStorage );
+            } catch ( const css::uno::Exception& )
+            {
+            }
+
+            return;
+        }
+    }
 
     bool bWritten( false );
     for ( vcl::ImageType i : o3tl::enumrange<vcl::ImageType>() )

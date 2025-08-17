@@ -149,7 +149,7 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
         {
             oFormHandler.insertHiddenControl(xNameAccess, xNamedForm, PropertyNames.COMMAND, CurDBMetaData.Command);
         }
-        oFormHandler.insertHiddenControl(xNameAccess, xNamedForm, "GroupFieldNames", JavaTools.ArraytoString(CurDBMetaData.GroupFieldNames));
+        oFormHandler.insertHiddenControl(xNameAccess, xNamedForm, "GroupFieldNames", JavaTools.ArraytoString(CurDBMetaData.getGroupFieldNames()));
         oFormHandler.insertHiddenControl(xNameAccess, xNamedForm, "FieldNames", JavaTools.ArraytoString(CurDBMetaData.getFieldNames()));
         String[][] sortFieldNames = CurDBMetaData.getSortFieldNames();
         if (sortFieldNames != null && sortFieldNames.length > 0)
@@ -223,7 +223,7 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
         {
             int i;
             DBColumn CurDBColumn;
-            int GroupCount = CurDBMetaData.GroupFieldNames.length;
+            int GroupCount = CurDBMetaData.getGroupFieldNames().length;
             CurRecordTable = null;
             for (i = 0; i < GroupCount; i++)
             {
@@ -232,7 +232,7 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
                 oTextSectionHandler.linkSectiontoTemplate(sTemplateUrl, SectionName);
                 oTextTableHandler.renameTextTable("MyTextTable", "Tbl_" + SectionName);
             }
-            if (oTextSectionHandler.xTextSectionsSupplier.getTextSections().getElementNames().length > CurDBMetaData.GroupFieldNames.length)
+            if (oTextSectionHandler.xTextSectionsSupplier.getTextSections().getElementNames().length > CurDBMetaData.getGroupFieldNames().length)
             {
                 oTextSectionHandler.linkSectiontoTemplate(sTemplateUrl, RECORDSECTION);
                 CurRecordTable = new RecordTable(oTextTableHandler);
@@ -240,7 +240,7 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
             }
             for (i = 0; i < GroupCount; i++)
             {
-                CurDBColumn = new DBColumn(oTextTableHandler, CurDBMetaData, CurDBMetaData.GroupFieldNames[i], TBLGROUPSECTION + (i + 1));
+                CurDBColumn = new DBColumn(oTextTableHandler, CurDBMetaData, CurDBMetaData.getGroupFieldNames()[i], TBLGROUPSECTION + (i + 1));
                 CurDBColumn.formatValueCell();
                 DBColumnsVector.set(i, CurDBColumn);
                 replaceFieldValueInGroupTable(CurDBColumn, i);
@@ -260,9 +260,9 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
         if (CurDBMetaData.getRecordFieldNames().length > 0)
         {
             boolean bAddParagraph = true;
-            if (CurDBMetaData.GroupFieldNames != null)
+            if (CurDBMetaData.getGroupFieldNames() != null)
             {
-                bAddParagraph = (CurDBMetaData.GroupFieldNames.length == 0);
+                bAddParagraph = (CurDBMetaData.getGroupFieldNames().length == 0);
             }
             oTextSectionHandler.insertTextSection(RECORDSECTION, TemplateName, bAddParagraph);
             CurRecordTable = new RecordTable(oTextTableHandler);
@@ -284,10 +284,10 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
         for (int i = 0; i < nSize; i++)
         {
             DBColumn CurDBColumn = DBColumnsVector.get(i);
-            String sFieldName = CurDBColumn.CurDBField.getFieldName();
+            String sFieldName = CurDBColumn.getCurDBField().getFieldName();
             if (!sFieldName.equals(_sNewNames[i]))
             {
-                CurDBColumn.CurDBField = CurDBMetaData.getFieldColumnByDisplayName(_sNewNames[i]);
+                CurDBColumn.setCurDBField(CurDBMetaData.getFieldColumnByDisplayName(_sNewNames[i]));
                 CurDBColumn.insertColumnData(oTextFieldHandler, bIsCurLandscape);
             }
         }
@@ -315,10 +315,10 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
     {
         String TableName = TBLGROUPSECTION + (TableIndex + 1);
         // Note: for some reason the table might lose its name and has to be renamed therefore
-        String OldTableName = CurDBColumn.xTableName.getName();
+        String OldTableName = CurDBColumn.getTableName().getName();
         if (OldTableName.compareTo(TableName) != 0)
         {
-            CurDBColumn.xTableName.setName(TableName);
+            CurDBColumn.getTableName().setName(TableName);
         }
         CurDBColumn.insertColumnData(oTextFieldHandler, this.bIsCurLandscape);
         CurDBColumn.setCellFont();
@@ -326,7 +326,7 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
 
     private void insertColumnstoRecordTable()
     {
-        int GroupCount = CurDBMetaData.GroupFieldNames.length;
+        int GroupCount = CurDBMetaData.getGroupFieldNames().length;
         DBColumn CurDBColumn;
         // Note for some reason the table might lose its name and has to be renamed therefore
         String OldTableName = CurRecordTable.xTableName.getName();
@@ -434,11 +434,11 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
         try
         {
             DBColumn CurDBColumn;
-            for (int i = 0; i < CurDBMetaData.FieldColumns.length; i++)
+            for (int i = 0; i < CurDBMetaData.getFieldColumns().length; i++)
             {
-                if (i < CurDBMetaData.GroupFieldNames.length)
+                if (i < CurDBMetaData.getGroupFieldNames().length)
                 {
-                    CurDBColumn = new DBColumn(oTextTableHandler, CurDBMetaData, CurDBMetaData.GroupFieldNames[i], COPYOFTBLGROUPSECTION + (i + 1));
+                    CurDBColumn = new DBColumn(oTextTableHandler, CurDBMetaData, CurDBMetaData.getGroupFieldNames()[i], COPYOFTBLGROUPSECTION + (i + 1));
                 }
                 else
                 {
@@ -446,40 +446,40 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
                     {
                         CurRecordTable = new RecordTable(oTextTableHandler);
                     }
-                    CurDBColumn = new DBColumn(CurRecordTable, oTextTableHandler, CurDBMetaData, i - CurDBMetaData.GroupFieldNames.length);
+                    CurDBColumn = new DBColumn(CurRecordTable, oTextTableHandler, CurDBMetaData, i - CurDBMetaData.getGroupFieldNames().length);
                 }
-                if (CurDBColumn.xNameCell != null)
+                if (CurDBColumn.getNameCell() != null)
                 {
                     DBColumnsVector.add(CurDBColumn);
                 }
                 else
                 {
                     String DelFieldName;
-                    if (i < CurDBMetaData.GroupFieldNames.length)
+                    if (i < CurDBMetaData.getGroupFieldNames().length)
                     {
-                        DelFieldName = CurDBMetaData.GroupFieldNames[i];
-                        CurDBMetaData.GroupFieldNames = JavaTools.removefromList(CurDBMetaData.GroupFieldNames, new String[]
+                        DelFieldName = CurDBMetaData.getGroupFieldNames()[i];
+                        CurDBMetaData.setGroupFieldNames(JavaTools.removefromList(CurDBMetaData.getGroupFieldNames(), new String[]
                                 {
                                     DelFieldName
-                                });
-                        CurDBMetaData.GroupFieldColumns = removeFieldColumnByFieldName(DelFieldName, CurDBMetaData.GroupFieldColumns);
+                                }));
+                        CurDBMetaData.setGroupFieldColumns(removeFieldColumnByFieldName(DelFieldName, CurDBMetaData.getGroupFieldColumns()));
                     }
                     else
                     {
-                        DelFieldName = CurDBMetaData.getRecordFieldName(i - CurDBMetaData.GroupFieldNames.length);
+                        DelFieldName = CurDBMetaData.getRecordFieldName(i - CurDBMetaData.getGroupFieldNames().length);
                         String[] aNewList = JavaTools.removefromList(CurDBMetaData.getRecordFieldNames(), new String[]
                                 {
                                     DelFieldName
                                 });
                         CurDBMetaData.setRecordFieldNames(aNewList);
-                        CurDBMetaData.RecordFieldColumns = removeFieldColumnByFieldName(DelFieldName, CurDBMetaData.RecordFieldColumns);
-                        CurDBMetaData.FieldColumns = removeFieldColumnByFieldName(DelFieldName, CurDBMetaData.FieldColumns);
+                        CurDBMetaData.setRecordFieldColumns(removeFieldColumnByFieldName(DelFieldName, CurDBMetaData.getRecordFieldColumns()));
+                        CurDBMetaData.setFieldColumns(removeFieldColumnByFieldName(DelFieldName, CurDBMetaData.getFieldColumns()));
 
                     }
                     i--;
                 }
             }
-            java.util.Arrays.sort(CurDBMetaData.RecordFieldColumns, this);
+            java.util.Arrays.sort(CurDBMetaData.getRecordFieldColumns(), this);
         }
         catch (Exception exception)
         {
@@ -491,11 +491,11 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
     {
         DBColumn oDBColumn1 = getDBColumnByName(oFieldColumn1.getFieldName());
         DBColumn oDBColumn2 = getDBColumnByName(oFieldColumn2.getFieldName());
-        if (oDBColumn1.ValColumn < oDBColumn2.ValColumn)
+        if (oDBColumn1.getValColumn() < oDBColumn2.getValColumn())
         {
             return -1;
         }
-        else if (oDBColumn1.ValColumn == oDBColumn2.ValColumn)
+        else if (oDBColumn1.getValColumn() == oDBColumn2.getValColumn())
         {
             return 0;
         }
@@ -510,7 +510,7 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
         for (int i = 0; i < DBColumnsVector.size(); i++)
         {
             DBColumn oDBColumn = DBColumnsVector.get(i);
-            if (oDBColumn.CurDBField.getFieldName().equals(_FieldName))
+            if (oDBColumn.getCurDBField().getFieldName().equals(_FieldName))
             {
                 return oDBColumn;
             }
@@ -544,7 +544,7 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
 
     public void removeAllVisibleTextSections()
     {
-        int GroupCount = CurDBMetaData.GroupFieldNames.length;
+        int GroupCount = CurDBMetaData.getGroupFieldNames().length;
         String[] sInvisibleSectionNames = new String[GroupCount + 1];
         sInvisibleSectionNames[0] = RECORDSECTION;
         for (int i = 1; i <= GroupCount; i++)
@@ -565,7 +565,7 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
 
     private String[] getLayoutTextTableNames()
     {
-        int GroupCount = CurDBMetaData.GroupFieldNames.length;
+        int GroupCount = CurDBMetaData.getGroupFieldNames().length;
         String[] sLayoutTableNames = new String[GroupCount + 1];
         for (int i = 0; i < GroupCount; i++)
         {
@@ -629,7 +629,7 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
         {
             XNameAccess xTextSections = oTextSectionHandler.xTextSectionsSupplier.getTextSections();
             Object oTextSection;
-            int GroupFieldCount = CurDBMetaData.GroupFieldNames.length;
+            int GroupFieldCount = CurDBMetaData.getGroupFieldNames().length;
             for (int i = 0; i < GroupFieldCount; i++)
             {
                 oTextSection = xTextSections.getByName(GROUPSECTION + String.valueOf(i + 1));
@@ -649,7 +649,7 @@ class ReportTextDocument extends com.sun.star.wizards.text.TextDocument implemen
 
     public void removeCopiedTextSections()
     {
-        int GroupCount = CurDBMetaData.GroupFieldNames.length;
+        int GroupCount = CurDBMetaData.getGroupFieldNames().length;
         String[] sCopyTextSections = new String[GroupCount + 1];
         String[] sCopyTextTables = new String[GroupCount + 1];
         sCopyTextSections[0] = COPYOFRECORDSECTION;

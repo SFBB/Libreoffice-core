@@ -51,6 +51,7 @@
 #include <com/sun/star/chart2/StackingDirection.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
 #include <com/sun/star/chart2/RelativeSize.hpp>
+#include <com/sun/star/chart2/PieChartSubType.hpp>
 #include <com/sun/star/chart/MissingValueTreatment.hpp>
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/drawing/ShadeMode.hpp>
@@ -59,7 +60,6 @@
 
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/diagnose_ex.hxx>
-#include <editeng/unoprnms.hxx>
 #include <o3tl/safeint.hxx>
 #include <rtl/math.hxx>
 #include <tools/helpers.hxx>
@@ -97,9 +97,12 @@ enum
     PROP_DIAGRAM_MISSING_VALUE_TREATMENT,
     PROP_DIAGRAM_3DRELATIVEHEIGHT,
     PROP_DIAGRAM_DATATABLEHBORDER,
+    PROP_DIAGRAM_OF_PIE_TYPE,
+    PROP_DIAGRAM_SPLIT_POS,
     PROP_DIAGRAM_DATATABLEVBORDER,
     PROP_DIAGRAM_DATATABLEOUTLINE,
-    PROP_DIAGRAM_EXTERNALDATA
+    PROP_DIAGRAM_EXTERNALDATA,
+    PROP_DIAGRAM_STYLE_INDEX
 };
 
 void lcl_AddPropertiesToVector(
@@ -183,8 +186,20 @@ void lcl_AddPropertiesToVector(
                   PROP_DIAGRAM_3DRELATIVEHEIGHT,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "SubPieType",
+                  PROP_DIAGRAM_OF_PIE_TYPE,
+                  cppu::UnoType<chart2::PieChartSubType>::get(),
+                  beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "SplitPos",
+                  PROP_DIAGRAM_SPLIT_POS,
+                  cppu::UnoType<sal_Int32>::get(),
+                  beans::PropertyAttribute::MAYBEVOID );
     rOutProperties.emplace_back( "ExternalData",
                   PROP_DIAGRAM_EXTERNALDATA,
+                  cppu::UnoType<OUString>::get(),
+                  beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "StyleIndex",
+                  PROP_DIAGRAM_STYLE_INDEX,
                   cppu::UnoType<OUString>::get(),
                   beans::PropertyAttribute::MAYBEVOID );
 }
@@ -202,6 +217,9 @@ const ::chart::tPropertyValueMap& StaticDiagramDefaults()
         ::chart::PropertyHelper::setPropertyValueDefault( aMap, PROP_DIAGRAM_RIGHT_ANGLED_AXES, false );
         ::chart::PropertyHelper::setPropertyValueDefault< sal_Int32 >( aMap, PROP_DIAGRAM_STARTING_ANGLE, 90 );
         ::chart::PropertyHelper::setPropertyValueDefault< sal_Int32 >( aMap, PROP_DIAGRAM_3DRELATIVEHEIGHT, 100 );
+        ::chart::PropertyHelper::setPropertyValueDefault< chart2::PieChartSubType >( aMap, PROP_DIAGRAM_OF_PIE_TYPE,
+                chart2::PieChartSubType_NONE);
+        ::chart::PropertyHelper::setPropertyValueDefault< sal_Int32 >( aMap, PROP_DIAGRAM_SPLIT_POS, 2 );
         ::chart::SceneProperties::AddDefaultsToMap( aMap );
         return aMap;
     }();
@@ -418,7 +436,7 @@ void SAL_CALL Diagram::setDiagramData(
     Diagram::tTemplateWithServiceName aTemplateAndService = getTemplate( xChartTypeManager );
     rtl::Reference< ::chart::ChartTypeTemplate > xTemplate( aTemplateAndService.xChartTypeTemplate );
     if( !xTemplate.is() )
-        xTemplate = xChartTypeManager->createTemplate( "com.sun.star.chart2.template.Column" );
+        xTemplate = xChartTypeManager->createTemplate( u"com.sun.star.chart2.template.Column"_ustr );
     if(!xTemplate.is())
         return;
     xTemplate->changeDiagramData( rtl::Reference< ::chart::Diagram >(this), xDataSource, aArguments );
@@ -451,8 +469,8 @@ void SAL_CALL Diagram::setTitleObject( const uno::Reference< chart2::XTitle >& x
 // ____ X3DDefaultSetter ____
 void SAL_CALL Diagram::set3DSettingsToDefault()
 {
-    setPropertyToDefault( "D3DSceneDistance");
-    setPropertyToDefault( "D3DSceneFocalLength");
+    setPropertyToDefault( u"D3DSceneDistance"_ustr);
+    setPropertyToDefault( u"D3DSceneFocalLength"_ustr);
     setDefaultRotation();
     setDefaultIllumination();
 }
@@ -517,7 +535,7 @@ static void lcl_setLightsForScheme( Diagram& rDiagram, const ThreeDLookScheme& r
         rDiagram.getFastPropertyValue( PROP_DIAGRAM_RIGHT_ANGLED_AXES ) >>= bRightAngledAxes; // "RightAngledAxes"
         if(!bRightAngledAxes)
         {
-            if( ChartTypeHelper::isSupportingRightAngledAxes( xChartType ) )
+            if (xChartType.is() ? xChartType->isSupportingRightAngledAxes() : true)
             {
                 ::basegfx::B3DHomMatrix aRotation( lcl_getCompleteRotationMatrix( rDiagram ) );
                 BaseGFXHelper::ReduceToRotationMatrix( aRotation );
@@ -575,7 +593,7 @@ void SAL_CALL Diagram::addCoordinateSystem(
         MutexGuard aGuard( m_aMutex );
         if( std::find( m_aCoordSystems.begin(), m_aCoordSystems.end(), pCoordSys )
             != m_aCoordSystems.end())
-            throw lang::IllegalArgumentException("coordsys not found", static_cast<cppu::OWeakObject*>(this), 1);
+            throw lang::IllegalArgumentException(u"coordsys not found"_ustr, static_cast<cppu::OWeakObject*>(this), 1);
 
         if( !m_aCoordSystems.empty() )
         {
@@ -598,7 +616,7 @@ void SAL_CALL Diagram::removeCoordinateSystem(
         auto aIt =  std::find( m_aCoordSystems.begin(), m_aCoordSystems.end(), pCoordSys );
         if( aIt == m_aCoordSystems.end())
             throw container::NoSuchElementException(
-                "The given coordinate-system is no element of the container",
+                u"The given coordinate-system is no element of the container"_ustr,
                 static_cast< uno::XWeak * >( this ));
         m_aCoordSystems.erase( aIt );
     }
@@ -826,7 +844,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( Diagram, Diagram_Base, ::property::OPropertySe
 // implement XServiceInfo methods basing upon getSupportedServiceNames_Static
 OUString SAL_CALL Diagram::getImplementationName()
 {
-    return "com.sun.star.comp.chart2.Diagram";
+    return u"com.sun.star.comp.chart2.Diagram"_ustr;
 }
 
 sal_Bool SAL_CALL Diagram::supportsService( const OUString& rServiceName )
@@ -837,9 +855,9 @@ sal_Bool SAL_CALL Diagram::supportsService( const OUString& rServiceName )
 css::uno::Sequence< OUString > SAL_CALL Diagram::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.chart2.Diagram",
-        "com.sun.star.layout.LayoutElement",
-        "com.sun.star.beans.PropertySet" };
+        u"com.sun.star.chart2.Diagram"_ustr,
+        u"com.sun.star.layout.LayoutElement"_ustr,
+        u"com.sun.star.beans.PropertySet"_ustr };
 }
 
 DiagramPositioningMode Diagram::getDiagramPositioningMode()
@@ -893,8 +911,8 @@ void Diagram::setGeometry3D( sal_Int32 nNewGeometry )
 
     for (auto const& series : aSeriesVec)
     {
-        DataSeriesHelper::setPropertyAlsoToAllAttributedDataPoints(
-            series, "Geometry3D", uno::Any( nNewGeometry ));
+        series->setPropertyAlsoToAllAttributedDataPoints(
+            u"Geometry3D"_ustr, uno::Any( nNewGeometry ));
     }
 }
 
@@ -914,7 +932,7 @@ sal_Int32 Diagram::getGeometry3D( bool& rbFound, bool& rbAmbiguous )
         try
         {
             sal_Int32 nGeom = 0;
-            if( series->getPropertyValue( "Geometry3D") >>= nGeom )
+            if( series->getPropertyValue( u"Geometry3D"_ustr) >>= nGeom )
             {
                 if( ! rbFound )
                 {
@@ -1002,7 +1020,7 @@ bool Diagram::isSupportingFloorAndWall()
  *
  */
 static bool lcl_moveSeriesOrCheckIfMoveIsAllowed(
-    Diagram& rDiagram,
+    const Diagram& rDiagram,
     const rtl::Reference< DataSeries >& xGivenDataSeries,
     bool bForward,
     bool bDoMove )
@@ -1016,7 +1034,7 @@ static bool lcl_moveSeriesOrCheckIfMoveIsAllowed(
 
         //find position of series.
         bool bFound = false;
-        const std::vector< rtl::Reference< BaseCoordinateSystem > > & aCooSysList( rDiagram.getBaseCoordinateSystems() );
+        const std::vector< rtl::Reference< BaseCoordinateSystem > > aCooSysList( rDiagram.getBaseCoordinateSystems() );
 
         for( std::size_t nCS = 0; !bFound && nCS < aCooSysList.size(); ++nCS )
         {
@@ -1080,7 +1098,7 @@ static bool lcl_moveSeriesOrCheckIfMoveIsAllowed(
                                             aOtherSeriesList[nOtherSeriesIndex] = xGivenDataSeries;
                                             xFormerChartType->setDataSeries(aOtherSeriesList);
 
-                                            aSeriesList[nOldSeriesIndex]=xExchangeSeries;
+                                            aSeriesList[nOldSeriesIndex] = std::move(xExchangeSeries);
                                             xCurrentChartType->setDataSeries(aSeriesList);
                                         }
                                     }
@@ -1089,7 +1107,7 @@ static bool lcl_moveSeriesOrCheckIfMoveIsAllowed(
                             else if( nT+1 < aChartTypeList.size() )
                             {
                                 //exchange series with next charttype
-                                rtl::Reference< ChartType > xOtherChartType( aChartTypeList[nT+1] );
+                                const rtl::Reference< ChartType >& xOtherChartType( aChartTypeList[nT+1] );
                                 if( xOtherChartType.is() && DiagramHelper::areChartTypesCompatible( xOtherChartType, xCurrentChartType ) )
                                 {
                                     bMovedOrMoveAllowed = true;
@@ -1098,11 +1116,11 @@ static bool lcl_moveSeriesOrCheckIfMoveIsAllowed(
                                         std::vector< rtl::Reference< DataSeries > > aOtherSeriesList = xOtherChartType->getDataSeries2();
                                         if( !aOtherSeriesList.empty() )
                                         {
-                                            rtl::Reference< DataSeries > xExchangeSeries( aOtherSeriesList[0] );
+                                            rtl::Reference<DataSeries> xExchangeSeries(aOtherSeriesList[0]);
                                             aOtherSeriesList[0] = xGivenDataSeries;
                                             xOtherChartType->setDataSeries(aOtherSeriesList);
 
-                                            aSeriesList[nOldSeriesIndex]=xExchangeSeries;
+                                            aSeriesList[nOldSeriesIndex] = std::move(xExchangeSeries);
                                             xCurrentChartType->setDataSeries(aSeriesList);
                                         }
                                     }
@@ -1117,7 +1135,7 @@ static bool lcl_moveSeriesOrCheckIfMoveIsAllowed(
                         }
                     }
                 }
-                xFormerChartType = xCurrentChartType;
+                xFormerChartType = std::move(xCurrentChartType);
             }
         }
     }
@@ -1193,11 +1211,12 @@ rtl::Reference< ChartType > Diagram::getChartTypeByIndex( sal_Int32 nIndex )
 
 bool Diagram::isSupportingDateAxis()
 {
-    return ::chart::ChartTypeHelper::isSupportingDateAxis( getChartTypeByIndex( 0 ), 0 );
+    auto xChartType = getChartTypeByIndex(0);
+    return xChartType.is() ? xChartType->isSupportingDateAxis(0) : true;
 }
 
 static std::vector< rtl::Reference< Axis > > lcl_getAxisHoldingCategoriesFromDiagram(
-    Diagram& rDiagram )
+    const Diagram& rDiagram )
 {
     std::vector< rtl::Reference< Axis > > aRet;
 
@@ -1223,7 +1242,7 @@ static std::vector< rtl::Reference< Axis > > lcl_getAxisHoldingCategoriesFromDia
                             aRet.push_back(xAxis);
                         }
                         if( (nN == 0) && !xFallBack.is())
-                            xFallBack = xAxis;
+                            xFallBack = std::move(xAxis);
                     }
                 }
             }
@@ -1252,7 +1271,7 @@ uno::Reference< chart2::data::XLabeledDataSequence > Diagram::getCategories()
         if (aCatAxes.empty())
             return xResult;
 
-        rtl::Reference< Axis > xCatAxis(aCatAxes[0]);
+        const rtl::Reference< Axis >& xCatAxis(aCatAxes[0]);
         if( !xCatAxis.is())
             return xResult;
 
@@ -1266,7 +1285,7 @@ uno::Reference< chart2::data::XLabeledDataSequence > Diagram::getCategories()
         {
             try
             {
-                xProp->setPropertyValue( "Role", uno::Any( OUString("categories") ) );
+                xProp->setPropertyValue( u"Role"_ustr, uno::Any( u"categories"_ustr ) );
             }
             catch( const uno::Exception & )
             {
@@ -1410,7 +1429,7 @@ rtl::Reference< ChartType > Diagram::getChartTypeOfSeries(
 rtl::Reference< Axis > Diagram::getAttachedAxis(
         const rtl::Reference< DataSeries >& xSeries )
 {
-    return AxisHelper::getAxis( 1, DiagramHelper::isSeriesAttachedToMainAxis( xSeries ), this );
+    return AxisHelper::getAxis( 1, !xSeries || xSeries->isAttachedToMainAxis(), this );
 }
 
 bool Diagram::attachSeriesToAxis( bool bAttachToMainAxis
@@ -1423,14 +1442,14 @@ bool Diagram::attachSeriesToAxis( bool bAttachToMainAxis
     //set property at axis
 
     sal_Int32 nNewAxisIndex = bAttachToMainAxis ? 0 : 1;
-    sal_Int32 nOldAxisIndex = DataSeriesHelper::getAttachedAxisIndex(xDataSeries);
+    sal_Int32 nOldAxisIndex = xDataSeries->getAttachedAxisIndex();
     rtl::Reference< Axis > xOldAxis = getAttachedAxis( xDataSeries );
 
     if( nOldAxisIndex != nNewAxisIndex )
     {
         try
         {
-            xDataSeries->setPropertyValue( "AttachedAxisIndex", uno::Any( nNewAxisIndex ) );
+            xDataSeries->setPropertyValue( u"AttachedAxisIndex"_ustr, uno::Any( nNewAxisIndex ) );
             bChanged = true;
         }
         catch( const uno::Exception & )
@@ -1523,7 +1542,7 @@ void Diagram::setDimension( sal_Int32 nNewDimensionCount )
             const std::vector< rtl::Reference< ChartType > > aChartTypeList( xOldCooSys->getChartTypes2() );
             for( rtl::Reference< ChartType > const & xChartType : aChartTypeList )
             {
-                bIsSupportingOnlyDeepStackingFor3D = ChartTypeHelper::isSupportingOnlyDeepStackingFor3D( xChartType );
+                bIsSupportingOnlyDeepStackingFor3D = xChartType.is() ? xChartType->isSupportingOnlyDeepStackingFor3D() : false;
                 if(!xNewCooSys.is())
                 {
                     xNewCooSys = dynamic_cast<BaseCoordinateSystem*>(xChartType->createCoordinateSystem( nNewDimensionCount ).get());
@@ -1605,7 +1624,7 @@ void Diagram::setStackMode( StackMode eStackMode )
             //iterate through all series in this chart type
             for( rtl::Reference< DataSeries > const & dataSeries : xChartType->getDataSeries2() )
             {
-                dataSeries->setPropertyValue( "StackingDirection", aNewDirection );
+                dataSeries->setPropertyValue( u"StackingDirection"_ustr, aNewDirection );
             }
         }
     }
@@ -1629,7 +1648,7 @@ StackMode Diagram::getStackMode( bool& rbFound, bool& rbAmbiguous )
         std::vector< rtl::Reference< ChartType > > aChartTypeList( xCooSys->getChartTypes2() );
         for( std::size_t nT = 0; nT < aChartTypeList.size(); ++nT )
         {
-            rtl::Reference< ChartType > xChartType( aChartTypeList[nT] );
+            const rtl::Reference< ChartType >& xChartType( aChartTypeList[nT] );
 
             StackMode eLocalStackMode = DiagramHelper::getStackModeFromChartType(
                 xChartType, rbFound, rbAmbiguous, xCooSys );
@@ -1657,12 +1676,12 @@ void Diagram::setVertical( bool bVertical /* = true */ )
         {
             bool bChanged = false;
             bool bOldSwap = false;
-            if( !(xCooSys->getPropertyValue("SwapXAndYAxis") >>= bOldSwap)
+            if( !(xCooSys->getPropertyValue(u"SwapXAndYAxis"_ustr) >>= bOldSwap)
                 || bVertical != bOldSwap )
                 bChanged = true;
 
             if( bChanged )
-                xCooSys->setPropertyValue("SwapXAndYAxis", aValue);
+                xCooSys->setPropertyValue(u"SwapXAndYAxis"_ustr, aValue);
 
             const sal_Int32 nDimensionCount = xCooSys->getDimension();
             sal_Int32 nDimIndex = 0;
@@ -1684,7 +1703,7 @@ void Diagram::setVertical( bool bVertical /* = true */ )
                         continue;
 
                     double fAngleDegree = 0.0;
-                    xTitleProps->getPropertyValue("TextRotation") >>= fAngleDegree;
+                    xTitleProps->getPropertyValue(u"TextRotation"_ustr) >>= fAngleDegree;
                     if (fAngleDegree != 0.0 &&
                         !rtl::math::approxEqual(fAngleDegree, 90.0))
                         continue;
@@ -1695,7 +1714,7 @@ void Diagram::setVertical( bool bVertical /* = true */ )
                     else if( bVertical && nDimIndex == 0 )
                         fNewAngleDegree = 90.0;
 
-                    xTitleProps->setPropertyValue("TextRotation", uno::Any(fNewAngleDegree));
+                    xTitleProps->setPropertyValue(u"TextRotation"_ustr, uno::Any(fNewAngleDegree));
                 }
             }
         }
@@ -1715,7 +1734,7 @@ bool Diagram::getVertical( bool& rbFound, bool& rbAmbiguous )
     for (rtl::Reference<BaseCoordinateSystem> const & coords : getBaseCoordinateSystems())
     {
         bool bCurrent = false;
-        if (coords->getPropertyValue("SwapXAndYAxis") >>= bCurrent)
+        if (coords->getPropertyValue(u"SwapXAndYAxis"_ustr) >>= bCurrent)
         {
             if (!rbFound)
             {
@@ -1755,7 +1774,7 @@ Diagram::tTemplateWithServiceName
 
             if (xTempl.is() && xTempl->matchesTemplate2(this, true))
             {
-                aResult.xChartTypeTemplate = xTempl;
+                aResult.xChartTypeTemplate = std::move(xTempl);
                 aResult.sServiceName = aServiceNames[ i ];
                 bTemplateFound = true;
             }
@@ -1835,11 +1854,9 @@ static bool lcl_isRightAngledAxesSetAndSupported( Diagram& rDiagram )
     rDiagram.getFastPropertyValue( PROP_DIAGRAM_RIGHT_ANGLED_AXES ) >>= bRightAngledAxes; // "RightAngledAxes"
     if(bRightAngledAxes)
     {
-        if( ChartTypeHelper::isSupportingRightAngledAxes(
-                rDiagram.getChartTypeByIndex( 0 ) ) )
-        {
+        auto xChartType = rDiagram.getChartTypeByIndex(0);
+        if (xChartType.is() ? xChartType->isSupportingRightAngledAxes() : true)
             return true;
-        }
     }
     return false;
 }
@@ -2039,8 +2056,8 @@ void Diagram::setRotationAngle(
         //rotate lights if RightAngledAxes are not set or not supported
         bool bRightAngledAxes = false;
         getFastPropertyValue( PROP_DIAGRAM_RIGHT_ANGLED_AXES ) >>= bRightAngledAxes;
-        if(!bRightAngledAxes || !ChartTypeHelper::isSupportingRightAngledAxes(
-                    getChartTypeByIndex( 0 ) ) )
+        auto xChartType = getChartTypeByIndex(0);
+        if (!bRightAngledAxes || !(xChartType.is() ? xChartType->isSupportingRightAngledAxes() : true))
         {
             ::basegfx::B3DHomMatrix aNewRotation;
             aNewRotation.rotate( fXAngleRad, fYAngleRad, fZAngleRad );
@@ -2125,8 +2142,7 @@ static bool lcl_isLightScheme( Diagram& rDiagram, bool bRealistic )
         rDiagram.getFastPropertyValue( PROP_DIAGRAM_RIGHT_ANGLED_AXES ) >>= bRightAngledAxes; // "RightAngledAxes"
         if(!bRightAngledAxes)
         {
-            if( ChartTypeHelper::isSupportingRightAngledAxes(
-                    rDiagram.getChartTypeByIndex( 0 ) ) )
+            if (xChartType.is() ? xChartType->isSupportingRightAngledAxes() : true)
             {
                 ::basegfx::B3DHomMatrix aRotation( lcl_getCompleteRotationMatrix( rDiagram ) );
                 BaseGFXHelper::ReduceToRotationMatrix( aRotation );

@@ -40,7 +40,6 @@
 namespace
 {
 // Paragraph properties are pasted if the selection contains a whole paragraph
-// or there was no selection at all (i.e. just a left click)
 bool ShouldPasteParaFormatPerSelection(const OutlinerView* pOLV)
 {
     if(!pOLV)
@@ -50,7 +49,7 @@ bool ShouldPasteParaFormatPerSelection(const OutlinerView* pOLV)
         return true;
 
     if(!pOLV->GetEditView().IsSelectionWithinSinglePara())
-        return true;
+        return false;
 
     return pOLV->GetEditView().IsSelectionFullPara();
 }
@@ -59,16 +58,17 @@ bool ShouldPasteParaFormatPerSelection(const OutlinerView* pOLV)
 namespace sd {
 
 
-FuFormatPaintBrush::FuFormatPaintBrush( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
-: FuText(pViewSh, pWin, pView, pDoc, rReq)
-, mbPermanent( false )
-, mbOldIsQuickTextEditMode( true )
+FuFormatPaintBrush::FuFormatPaintBrush( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
+: FuText(rViewSh, pWin, pView, rDoc, rReq)
+    , mnDepth(-1)
+    , mbPermanent( false )
+    , mbOldIsQuickTextEditMode(true)
 {
 }
 
-rtl::Reference<FuPoor> FuFormatPaintBrush::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuFormatPaintBrush::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuFormatPaintBrush( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuFormatPaintBrush( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute( rReq );
     return xFunc;
 }
@@ -83,15 +83,15 @@ void FuFormatPaintBrush::DoExecute( SfxRequest& rReq )
 
     if( mpView )
     {
-        mpView->TakeFormatPaintBrush( mxItemSet );
+        mnDepth = mpView->TakeFormatPaintBrush( mxItemSet );
     }
 }
 
 void FuFormatPaintBrush::implcancel()
 {
-    if( mpViewShell && mpViewShell->GetViewFrame() )
+    if( mrViewShell.GetViewFrame() )
     {
-        SfxViewFrame* pViewFrame = mpViewShell->GetViewFrame();
+        SfxViewFrame* pViewFrame = mrViewShell.GetViewFrame();
         pViewFrame->GetBindings().Invalidate(SID_FORMATPAINTBRUSH);
         pViewFrame->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
     }
@@ -110,7 +110,7 @@ bool FuFormatPaintBrush::MouseButtonDown(const MouseEvent& rMEvt)
         SdrViewEvent aVEvt;
         SdrHitKind eHit = mpView->PickAnything(rMEvt, SdrMouseEventKind::BUTTONDOWN, aVEvt);
 
-        if( (eHit == SdrHitKind::TextEdit) || (eHit == SdrHitKind::TextEditObj && ( mpViewShell->GetFrameView()->IsQuickEdit() || dynamic_cast<sdr::table::SdrTableObj*>(aVEvt.mpObj) != nullptr ) ))
+        if( (eHit == SdrHitKind::TextEdit) || (eHit == SdrHitKind::TextEditObj && ( mrViewShell.GetFrameView()->IsQuickEdit() || dynamic_cast<sdr::table::SdrTableObj*>(aVEvt.mpObj) != nullptr ) ))
         {
             SdrPageView* pPV=nullptr;
             sal_uInt16 nHitLog = sal_uInt16 ( mpWindow->PixelToLogic(Size(HITPIX,0)).Width() );
@@ -152,6 +152,7 @@ bool FuFormatPaintBrush::MouseButtonDown(const MouseEvent& rMEvt)
             mpView->MarkObj(mpWindow->PixelToLogic( rMEvt.GetPosPixel() ), nHitLog, false/*bToggle*/);
             return true;
         }
+
     }
     return false;
 }
@@ -182,7 +183,7 @@ bool FuFormatPaintBrush::MouseMove(const MouseEvent& rMEvt)
 
 bool FuFormatPaintBrush::MouseButtonUp(const MouseEvent& rMEvt)
 {
-    if( mxItemSet && mpView && mpView->AreObjectsMarked() )
+    if( mxItemSet && mpView && mpView->GetMarkedObjectList().GetMarkCount() != 0 )
     {
         OutlinerView* pOLV = mpView->GetTextEditOutlinerView();
 
@@ -203,8 +204,7 @@ bool FuFormatPaintBrush::MouseButtonUp(const MouseEvent& rMEvt)
             pOLV->MouseButtonUp(rMEvt);
 
         Paste( bNoCharacterFormats, bNoParagraphFormats );
-        if(mpViewShell)
-            mpViewShell->GetViewFrame()->GetBindings().Invalidate(SID_FORMATPAINTBRUSH);
+        mrViewShell.GetViewFrame()->GetBindings().Invalidate(SID_FORMATPAINTBRUSH);
 
         if( mbPermanent )
             return true;
@@ -226,10 +226,10 @@ bool FuFormatPaintBrush::KeyInput(const KeyEvent& rKEvt)
 
 void FuFormatPaintBrush::Activate()
 {
-    mbOldIsQuickTextEditMode = mpViewShell->GetFrameView()->IsQuickEdit();
+    mbOldIsQuickTextEditMode = mrViewShell.GetFrameView()->IsQuickEdit();
     if( !mbOldIsQuickTextEditMode  )
     {
-        mpViewShell->GetFrameView()->SetQuickEdit(true);
+        mrViewShell.GetFrameView()->SetQuickEdit(true);
         mpView->SetQuickTextEditMode(true);
     }
 }
@@ -238,7 +238,7 @@ void FuFormatPaintBrush::Deactivate()
 {
     if( !mbOldIsQuickTextEditMode  )
     {
-        mpViewShell->GetFrameView()->SetQuickEdit(false);
+        mrViewShell.GetFrameView()->SetQuickEdit(false);
         mpView->SetQuickTextEditMode(false);
     }
 }
@@ -259,7 +259,7 @@ void FuFormatPaintBrush::Paste( bool bNoCharacterFormats, bool bNoParagraphForma
         return;
 
     SdrObject* pObj( nullptr );
-    bool bUndo = mpDoc->IsUndoEnabled();
+    bool bUndo = mrDoc.IsUndoEnabled();
 
     if( bUndo && !mpView->GetTextEditOutlinerView() )
         pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
@@ -268,17 +268,17 @@ void FuFormatPaintBrush::Paste( bool bNoCharacterFormats, bool bNoParagraphForma
     // except in a few cases (?)
     if( pObj )
     {
-        OUString sLabel( mpViewShell->GetViewShellBase().RetrieveLabelFromCommand(".uno:FormatPaintbrush" ) );
-        mpDoc->BegUndo( sLabel );
+        OUString sLabel( mrViewShell.GetViewShellBase().RetrieveLabelFromCommand(u".uno:FormatPaintbrush"_ustr ) );
+        mrDoc.BegUndo( sLabel );
         if (dynamic_cast< sdr::table::SdrTableObj* >( pObj ) == nullptr)
-            mpDoc->AddUndo( mpDoc->GetSdrUndoFactory().CreateUndoAttrObject( *pObj, false, true ) );
+            mrDoc.AddUndo( mrDoc.GetSdrUndoFactory().CreateUndoAttrObject( *pObj, false, true ) );
     }
 
-    mpView->ApplyFormatPaintBrush( *mxItemSet, bNoCharacterFormats, bNoParagraphFormats );
+    mpView->ApplyFormatPaintBrush( *mxItemSet, mnDepth, bNoCharacterFormats, bNoParagraphFormats );
 
     if( pObj )
     {
-        mpDoc->EndUndo();
+        mrDoc.EndUndo();
     }
 }
 
@@ -289,7 +289,8 @@ void FuFormatPaintBrush::Paste( bool bNoCharacterFormats, bool bNoParagraphForma
     if( rMarkList.GetMarkCount() == 1 )
     {
         SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
-        if( pObj && SdrObjEditView::SupportsFormatPaintbrush(pObj->GetObjInventor(),pObj->GetObjIdentifier()) )
+        if (pObj &&
+            SdrObjEditView::SupportsFormatPaintbrush(pObj->GetObjInventor(),pObj->GetObjIdentifier()) )
             return;
     }
     rSet.DisableItem( SID_FORMATPAINTBRUSH );

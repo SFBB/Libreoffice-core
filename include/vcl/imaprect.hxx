@@ -16,9 +16,9 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_VCL_IMAPRECT_HXX
-#define INCLUDED_VCL_IMAPRECT_HXX
+#pragma once
 
+#include <config_options.h>
 #include <vcl/dllapi.h>
 #include <vcl/imapobj.hxx>
 #include <tools/gen.hxx>
@@ -29,7 +29,7 @@ class VCL_DLLPUBLIC IMapRectangleObject final : public IMapObject
 {
     tools::Rectangle           aRect;
 
-    VCL_DLLPRIVATE void             ImpConstruct( const tools::Rectangle& rRect, bool bPixel );
+    SAL_DLLPRIVATE void             ImpConstruct( const tools::Rectangle& rRect, bool bPixel );
 
     // binary import/export
     virtual void        WriteIMapObject( SvStream& rOStm ) const override;
@@ -61,7 +61,5 @@ public:
     void                WriteCERN( SvStream& rOStm  ) const;
     void                WriteNCSA( SvStream& rOStm  ) const;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

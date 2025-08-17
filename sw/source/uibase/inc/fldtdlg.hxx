@@ -26,15 +26,12 @@
 #include <sfx2/tabdlg.hxx>
 
 class SfxBindings;
-class SfxTabPage;
 class SwChildWinWrapper;
 struct SfxChildWinInfo;
 
 class SwFieldDlg final : public SfxTabDialogController
 {
-    SwChildWinWrapper*  m_pChildWin;
     SfxBindings*        m_pBindings;
-    bool                m_bHtmlMode;
     bool                m_bDataBaseMode;
     bool                m_bClosing;
     std::unique_ptr<SfxItemSet> mxInputItemSet;
@@ -42,8 +39,7 @@ class SwFieldDlg final : public SfxTabDialogController
     virtual SfxItemSet* CreateInputItemSet(const OUString& rId) override;
     virtual void        PageCreated(const OUString& rId, SfxTabPage& rPage) override;
 
-    void                ReInitTabPage(std::u16string_view rPageId,
-                                      bool bOnlyActivate = false);
+    void                ReInitTabPage(std::u16string_view rPageId);
 
 public:
     SwFieldDlg(SfxBindings* pB, SwChildWinWrapper* pCW, weld::Window *pParent);
@@ -53,7 +49,6 @@ public:
     DECL_LINK(CancelHdl, weld::Button&, void);
 
     void                Initialize(SfxChildWinInfo const *pInfo);
-    void                ReInitDlg();
     void                EnableInsert(bool bEnable);
     void                InsertHdl();
     void                ActivateDatabasePage();
@@ -61,6 +56,7 @@ public:
     virtual void        Close() override;
     virtual void        EndDialog(int nResponse) override;
     virtual void        Activate() override;
+    virtual void        ActivatePage(const OUString& rPage) override;
 };
 
 #endif

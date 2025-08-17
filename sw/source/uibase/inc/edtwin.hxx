@@ -28,16 +28,13 @@
 #include <vcl/transfer.hxx>
 #include <swevent.hxx>
 #include <swtypes.hxx>
+#include <viewsh.hxx>
 
 class   SwWrtShell;
 class   SwView;
-class   SwRect;
-class   SwViewShell;
 class   SwAnchorMarker;
 class   SdrObject;
 class   SwShadowCursor;
-class   DataChangedEvent;
-class   SvxAutoCorrCfg;
 class   SvxAutoCorrect;
 class   SwPaM;
 struct  SwApplyTemplate;
@@ -56,7 +53,7 @@ class SwTextFrame;
     To translate the pixel positions from the buffer OutputDevice to the real
     pixel positions, use the PixelToLogic methods of this class.
   */
-class SW_DLLPUBLIC SwEditWin final : public vcl::DocWindow,
+class SAL_DLLPUBLIC_RTTI SwEditWin final : public vcl::DocWindow,
                 public DropTargetHelper, public DragSourceHelper
 {
     static  QuickHelpData* s_pQuickHlpData;
@@ -74,6 +71,7 @@ class SW_DLLPUBLIC SwEditWin final : public vcl::DocWindow,
      * regularly.
      */
     AutoTimer       m_aTimer;
+    sal_uInt32      m_nTimerCalls;
     // timer for ANY-KeyInput question without a following KeyInputEvent
     Timer           m_aKeyInputFlushTimer;
 
@@ -81,6 +79,7 @@ class SW_DLLPUBLIC SwEditWin final : public vcl::DocWindow,
     LanguageType    m_eBufferLanguage;
     Point           m_aStartPos;
     Point           m_aMovePos;
+    ScrollSizeMode  m_eScrollSizeMode;
     Point           m_aRszMvHdlPt;
     Timer           m_aTemplateTimer;
 
@@ -122,7 +121,9 @@ class SW_DLLPUBLIC SwEditWin final : public vcl::DocWindow,
                         selection position depending on what has changed lately
                      */
                     m_bUseInputLanguage: 1,
-                    m_bObjectSelect   : 1;
+                    m_bObjectSelect   : 1,
+                    mbIsDragSidebar   : 1,
+                    m_bMaybeShowTooltipAfterBufferFlush : 1 = false;
 
     sal_uInt16          m_nKS_NUMDOWN_Count; // #i23725#
     sal_uInt16          m_nKS_NUMINDENTINC_Count;
@@ -132,7 +133,7 @@ class SW_DLLPUBLIC SwEditWin final : public vcl::DocWindow,
      SwTextFrame* m_pSavedOutlineFrame = nullptr;
 
     void            LeaveArea(const Point &);
-    void            JustifyAreaTimer();
+    void            JustifyAreaTimer(bool bStart = false);
     inline void     EnterArea();
 
     void            ResetMouseButtonDownFlags();
@@ -157,19 +158,19 @@ class SW_DLLPUBLIC SwEditWin final : public vcl::DocWindow,
      * The selection is regularly increased towards the mouse
      * position.
      */
-    DECL_DLLPRIVATE_LINK( TimerHandler, Timer *, void );
+    DECL_LINK( TimerHandler, Timer *, void );
     void            StartDDTimer();
     void            StopDDTimer(SwWrtShell *, const Point &);
-    DECL_DLLPRIVATE_LINK( DDHandler, Timer *, void );
+    DECL_LINK( DDHandler, Timer *, void );
 
     // timer for ANY-KeyInut question without a following KeyInputEvent
-    DECL_DLLPRIVATE_LINK( KeyInputFlushHandler, Timer *, void );
+    DECL_LINK( KeyInputFlushHandler, Timer *, void );
 
     // timer for ApplyTemplates via mouse (in disguise Drag&Drop)
-    DECL_DLLPRIVATE_LINK( TemplateTimerHdl, Timer *, void );
+    DECL_LINK( TemplateTimerHdl, Timer *, void );
 
     void            MoveCursor( SwWrtShell &rSh, const Point& rDocPos,
-                                const bool bOnlyText, bool bLockView );
+                                const bool bOnlyText, bool bLockView);
 
     virtual void    DataChanged( const DataChangedEvent& ) override;
     virtual void    PrePaint(vcl::RenderContext& rRenderContext) override;
@@ -203,7 +204,7 @@ class SW_DLLPUBLIC SwEditWin final : public vcl::DocWindow,
     bool    IsOverHeaderFooterFly( const Point& rDocPos, FrameControlType& rControl, bool& bOverFly, bool& bPageAnchored ) const;
 
 public:
-    virtual void    KeyInput(const KeyEvent &rKEvt) override;
+    SW_DLLPUBLIC virtual void KeyInput(const KeyEvent &rKEvt) override;
     void            UpdatePointer(const Point &, sal_uInt16 nButtons = 0);
 
     bool            IsDrawSelMode() const;
@@ -246,7 +247,7 @@ public:
     const SwView &GetView() const { return m_rView; }
           SwView &GetView()       { return m_rView; }
 
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     static tools::Long GetDDStartPosX() { return s_nDDStartPosX; }
     static tools::Long GetDDStartPosY() { return s_nDDStartPosY; }
@@ -287,6 +288,8 @@ public:
     /// Allows starting or ending a graphic move or resize action.
     void SetGraphicTwipPosition(bool bStart, const Point& rPosition);
 
+    bool IsViewReadonly() const;
+
     const SwTextFrame* GetSavedOutlineFrame() const { return m_pSavedOutlineFrame; }
     void SetSavedOutlineFrame(SwTextFrame* pFrame) { m_pSavedOutlineFrame = pFrame; }
     // bSubs set true, sets all sub level outline content to same visibility as nOutlinePos.
@@ -294,6 +297,12 @@ public:
     void ToggleOutlineContentVisibility(const size_t nOutlinePos, const bool bSubs);
 
     virtual FactoryFunction GetUITestFactory() const override;
+
+    // Draws a guide line at the specified position
+    void DrawCommentGuideLine(Point aPointPixel);
+    // Stops drawing the guide line
+    void ReleaseCommentGuideLine();
+    void SetSidebarWidth(const Point& rPointPixel);
 };
 
 extern bool g_bModePushed;

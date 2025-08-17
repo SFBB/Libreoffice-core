@@ -275,7 +275,7 @@ void SAL_CALL PopupMenuControllerBase::removeStatusListener(
 OUString PopupMenuControllerBase::determineBaseURL( std::u16string_view aURL )
 {
     // Just use the main part of the URL for popup menu controllers
-    OUString aMainURL( "vnd.sun.star.popup:" );
+    OUString aMainURL( u"vnd.sun.star.popup:"_ustr );
 
     size_t nSchemePart = aURL.find( ':' );
     if (( nSchemePart != std::u16string_view::npos && nSchemePart > 0 ) &&
@@ -324,7 +324,7 @@ void PopupMenuControllerBase::initializeImpl( std::unique_lock<std::mutex>& /*rG
 
     if ( xFrame.is() && !aCommandURL.isEmpty() )
     {
-        m_xFrame        = xFrame;
+        m_xFrame        = std::move(xFrame);
         m_aCommandURL   = aCommandURL;
         m_aBaseURL      = determineBaseURL( aCommandURL );
         m_bInitialized  = true;
@@ -354,13 +354,15 @@ void SAL_CALL PopupMenuControllerBase::setPopupMenu( const Reference< awt::XPopu
         m_xURLTransformer->parseStrict( aTargetURL );
         m_xDispatch = xDispatchProvider->queryDispatch( aTargetURL, OUString(), 0 );
 
-        impl_setPopupMenu();
+        impl_setPopupMenu(aLock);
     }
     updatePopupMenu();
 }
-void PopupMenuControllerBase::impl_setPopupMenu()
+
+void PopupMenuControllerBase::impl_setPopupMenu(std::unique_lock<std::mutex>& /*rGuard*/)
 {
 }
+
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

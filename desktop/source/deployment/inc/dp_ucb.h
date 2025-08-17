@@ -25,30 +25,20 @@
 #include "dp_misc_api.hxx"
 #include <ucbhelper/content.hxx>
 
-namespace ucbhelper
-{
-class Content;
-}
-
 namespace dp_misc {
 
 struct DESKTOP_DEPLOYMENTMISC_DLLPUBLIC StrTitle
 {
-    static css::uno::Sequence< OUString > getTitleSequence()
-    {
-        css::uno::Sequence<OUString> aSeq { "Title" };
-        return aSeq;
-    }
     static OUString getTitle( ::ucbhelper::Content &rContent )
     {
-        return rContent.getPropertyValue("Title").get<OUString>();
+        return rContent.getPropertyValue(u"Title"_ustr).get<OUString>();
     }
     // just return titles - the ucbhelper should have a simpler API for this [!]
     static css::uno::Reference< css::sdbc::XResultSet >
         createCursor( ::ucbhelper::Content &rContent,
                       ucbhelper::ResultSetInclude eInclude )
     {
-        return rContent.createCursor( StrTitle::getTitleSequence(), eInclude );
+        return rContent.createCursor({ u"Title"_ustr }, eInclude);
     }
 };
 

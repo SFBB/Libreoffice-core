@@ -118,7 +118,7 @@ namespace svgio::svgreader
             else
             {
                 // append to current target
-                rTarget.append(aNewTarget);
+                rTarget.append(std::move(aNewTarget));
             }
         }
 
@@ -233,10 +233,9 @@ namespace svgio::svgreader
                     // SvgStyleAttributes the clip definition is without fill, stroke,
                     // and strokeWidth and forced to black
                     rContent = drawinglayer::primitive2d::Primitive2DContainer {
-                        drawinglayer::primitive2d::Primitive2DReference(
                             new drawinglayer::primitive2d::MaskPrimitive2D(
                                 std::move(aClipPolyPolygon),
-                                std::move(rContent)))
+                                std::move(rContent))
                     };
                 }
                 else

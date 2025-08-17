@@ -45,9 +45,7 @@ namespace rptui
     using namespace ::com::sun::star;
     using namespace uno;
     using namespace lang;
-    using namespace script;
     using namespace beans;
-    using namespace awt;
     using namespace util;
     using namespace container;
     using namespace report;
@@ -482,8 +480,7 @@ void OXUndoEnvironment::AddSection(const Reference< report::XSection > & _xSecti
     {
         uno::Reference<container::XChild> xChild = _xSection;
         m_pImpl->m_aSections.push_back(xChild);
-        Reference< XInterface >  xInt(_xSection);
-        AddElement(xInt);
+        AddElement(_xSection);
     }
     catch(const uno::Exception&)
     {
@@ -499,8 +496,7 @@ void OXUndoEnvironment::RemoveSection(const Reference< report::XSection > & _xSe
     {
         uno::Reference<container::XChild> xChild(_xSection);
         std::erase(m_pImpl->m_aSections, xChild);
-        Reference< XInterface >  xInt(_xSection);
-        RemoveElement(xInt);
+        RemoveElement(_xSection);
     }
     catch(uno::Exception&){}
 }

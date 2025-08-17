@@ -165,9 +165,9 @@ double lclGetSerialDay( const XclImpRoot& rRoot, sal_uInt16 nValue, sal_uInt16 n
         case EXC_CHDATERANGE_DAYS:
             return nValue;
         case EXC_CHDATERANGE_MONTHS:
-            return rRoot.GetDoubleFromDateTime( Date( 1, static_cast< sal_uInt16 >( 1 + nValue % 12 ), static_cast< sal_uInt16 >( rRoot.GetBaseYear() + nValue / 12 ) ) );
+            return rRoot.GetDoubleFromDateTime( DateTime( Date( 1, static_cast< sal_uInt16 >( 1 + nValue % 12 ), static_cast< sal_uInt16 >( rRoot.GetBaseYear() + nValue / 12 ) ) ) );
         case EXC_CHDATERANGE_YEARS:
-            return rRoot.GetDoubleFromDateTime( Date( 1, 1, static_cast< sal_uInt16 >( rRoot.GetBaseYear() + nValue ) ) );
+            return rRoot.GetDoubleFromDateTime( DateTime( Date( 1, 1, static_cast< sal_uInt16 >( rRoot.GetBaseYear() + nValue ) ) ) );
         default:
             OSL_ENSURE( false, "lclGetSerialDay - unexpected time unit" );
     }
@@ -857,7 +857,7 @@ Reference< XDataSequence > XclImpChSourceLink::CreateDataSequence( const OUStrin
         {
             try
             {
-                OUString aString("\"");
+                OUString aString(u"\""_ustr);
                 xDataSeq = xDataProv->createDataSequenceByRangeRepresentation( aString + mxString->GetText() + aString );
                 // set sequence role
                 ScfPropertySet aSeqProp( xDataSeq );
@@ -1206,22 +1206,21 @@ void XclImpChText::ConvertTitlePosition( const XclChTextKey& rTitleKey ) const
     try
     {
         Reference< XShape > xTitleShape( GetTitleShape( rTitleKey ), UNO_SET_THROW );
-        // the call to XShape.getSize() may recalc the chart view
-        css::awt::Size aTitleSize = xTitleShape->getSize();
         // rotated titles need special handling...
         Degree100 nScRot = XclTools::GetScRotation( GetRotation(), 0_deg100 );
         double fRad = toRadians(nScRot);
         double fSin = fabs( sin( fRad ) );
         // calculate the title position from the values in the CHTEXT record
-        css::awt::Point aTitlePos(
-            CalcHmmFromChartX( maData.maRect.mnX ),
-            CalcHmmFromChartY( maData.maRect.mnY ) );
-        // add part of height to X direction, if title is rotated down (clockwise)
+        css::awt::Rectangle aTitleRect = CalcHmmFromChartRect(maData.maRect);
+        css::awt::Point aTitlePos(aTitleRect.X, aTitleRect.Y);
+        // add part of width to X direction, if title is rotated down (clockwise)
         if( nScRot > 18000_deg100 )
-            aTitlePos.X += static_cast< sal_Int32 >( fSin * aTitleSize.Height + 0.5 );
-        // add part of width to Y direction, if title is rotated up (counterclockwise)
+        {
+            aTitlePos.X += static_cast< sal_Int32 >( fSin * aTitleRect.Width + 0.5 );
+        }
+        // add part of height to Y direction, if title is rotated up (counterclockwise)
         else if( nScRot > 0_deg100 )
-            aTitlePos.Y += static_cast< sal_Int32 >( fSin * aTitleSize.Width + 0.5 );
+            aTitlePos.Y += static_cast< sal_Int32 >( fSin * aTitleRect.Height + 0.5 );
         // set the resulting position at the title shape
         xTitleShape->setPosition( aTitlePos );
     }
@@ -1543,7 +1542,7 @@ void XclImpChDataFormat::Convert( ScfPropertySet& rPropSet, const XclChExtTypeIn
 
     // #i83151# only hair lines in 3D charts with filled data points
     if( rTypeInfo.mb3dChart && rTypeInfo.IsSeriesFrameFormat() && mxLineFmt && mxLineFmt->HasLine() )
-        rPropSet.SetProperty< sal_Int32 >( "BorderWidth", 0 );
+        rPropSet.SetProperty< sal_Int32 >( u"BorderWidth"_ustr, 0 );
 
     // other formatting
     if( mxMarkerFmt )
@@ -2127,10 +2126,10 @@ void XclImpChSeries::ReadChSourceLink( XclImpStream& rStrm )
     xSrcLink->ReadChSourceLink( rStrm );
     switch( xSrcLink->GetDestType() )
     {
-        case EXC_CHSRCLINK_TITLE:       mxTitleLink = xSrcLink;     break;
-        case EXC_CHSRCLINK_VALUES:      mxValueLink = xSrcLink;     break;
-        case EXC_CHSRCLINK_CATEGORY:    mxCategLink = xSrcLink;     break;
-        case EXC_CHSRCLINK_BUBBLES:     mxBubbleLink = xSrcLink;    break;
+        case EXC_CHSRCLINK_TITLE:    mxTitleLink = std::move(xSrcLink);  break;
+        case EXC_CHSRCLINK_VALUES:   mxValueLink = std::move(xSrcLink);  break;
+        case EXC_CHSRCLINK_CATEGORY: mxCategLink = std::move(xSrcLink);  break;
+        case EXC_CHSRCLINK_BUBBLES:  mxBubbleLink = std::move(xSrcLink); break;
     }
 }
 
@@ -2154,7 +2153,7 @@ void XclImpChSeries::ReadChSerTrendLine( XclImpStream& rStrm )
 {
     XclImpChSerTrendLineRef xTrendLine = std::make_shared<XclImpChSerTrendLine>( GetChRoot() );
     xTrendLine->ReadChSerTrendLine( rStrm );
-    maTrendLines.push_back( xTrendLine );
+    maTrendLines.push_back(std::move(xTrendLine));
 }
 
 void XclImpChSeries::ReadChSerErrorBar( XclImpStream& rStrm )
@@ -2239,6 +2238,7 @@ void XclImpChType::ReadChType( XclImpStream& rStrm )
         case EXC_ID_CHAREA:
         case EXC_ID_CHRADARLINE:
         case EXC_ID_CHRADARAREA:
+        case EXC_ID_CHSURFACE:
             maData.mnFlags = rStrm.ReaduInt16();
         break;
 
@@ -2266,10 +2266,6 @@ void XclImpChType::ReadChType( XclImpStream& rStrm )
             }
             else
                 maData.mnFlags = 0;
-        break;
-
-        case EXC_ID_CHSURFACE:
-            maData.mnFlags = rStrm.ReaduInt16();
         break;
 
         default:
@@ -2367,7 +2363,7 @@ bool XclImpChType::HasCategoryLabels() const
 Reference< XCoordinateSystem > XclImpChType::CreateCoordSystem( bool b3dChart ) const
 {
     // create the coordinate system object
-    Reference< css::uno::XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const Reference< css::uno::XComponentContext >& xContext = comphelper::getProcessComponentContext();
     Reference< XCoordinateSystem > xCoordSystem;
     if( maTypeInfo.mbPolarCoordSystem )
     {
@@ -2853,7 +2849,7 @@ void XclImpChTypeGroup::ReadChChartLine( XclImpStream& rStrm )
     {
         XclImpChLineFormat aLineFmt;
         aLineFmt.ReadChLineFormat( rStrm );
-        m_ChartLines[ nLineId ] = aLineFmt;
+        m_ChartLines[nLineId] = std::move(aLineFmt);
     }
 }
 
@@ -2865,7 +2861,7 @@ void XclImpChTypeGroup::ReadChDataFormat( XclImpStream& rStrm )
     const XclChDataPointPos& rPos = xDataFmt->GetPointPos();
     if( (rPos.mnSeriesIdx == 0) && (rPos.mnPointIdx == 0) &&
             (xDataFmt->GetFormatIdx() == EXC_CHDATAFORMAT_DEFAULT) )
-        mxGroupFmt = xDataFmt;
+        mxGroupFmt = std::move(xDataFmt);
 }
 
 void XclImpChTypeGroup::InsertDataSeries( Reference< XChartType > const & xChartType,
@@ -3695,9 +3691,9 @@ void XclImpChAxesSet::ReadChAxis( XclImpStream& rStrm )
 
     switch( xAxis->GetAxisType() )
     {
-        case EXC_CHAXIS_X:  mxXAxis = xAxis;    break;
-        case EXC_CHAXIS_Y:  mxYAxis = xAxis;    break;
-        case EXC_CHAXIS_Z:  mxZAxis = xAxis;    break;
+        case EXC_CHAXIS_X: mxXAxis = std::move(xAxis); break;
+        case EXC_CHAXIS_Y: mxYAxis = std::move(xAxis); break;
+        case EXC_CHAXIS_Z: mxZAxis = std::move(xAxis); break;
     }
 }
 
@@ -3708,9 +3704,9 @@ void XclImpChAxesSet::ReadChText( XclImpStream& rStrm )
 
     switch( xText->GetLinkTarget() )
     {
-        case EXC_CHOBJLINK_XAXIS:   mxXAxisTitle = xText;   break;
-        case EXC_CHOBJLINK_YAXIS:   mxYAxisTitle = xText;   break;
-        case EXC_CHOBJLINK_ZAXIS:   mxZAxisTitle = xText;   break;
+        case EXC_CHOBJLINK_XAXIS: mxXAxisTitle = std::move(xText); break;
+        case EXC_CHOBJLINK_YAXIS: mxYAxisTitle = std::move(xText); break;
+        case EXC_CHOBJLINK_ZAXIS: mxZAxisTitle = std::move(xText); break;
     }
 }
 
@@ -3730,8 +3726,10 @@ void XclImpChAxesSet::ReadChTypeGroup( XclImpStream& rStrm )
     sal_uInt16 nGroupIdx = xTypeGroup->GetGroupIdx();
     XclImpChTypeGroupMap::iterator itr = maTypeGroups.lower_bound(nGroupIdx);
     if (itr != maTypeGroups.end() && !maTypeGroups.key_comp()(nGroupIdx, itr->first))
+    {
         // Overwrite the existing element.
-        itr->second = xTypeGroup;
+        itr->second = std::move(xTypeGroup);
+    }
     else
         maTypeGroups.insert(
             itr, XclImpChTypeGroupMap::value_type(nGroupIdx, xTypeGroup));
@@ -4082,7 +4080,7 @@ void XclImpChChart::ReadChSeries( XclImpStream& rStrm )
     sal_uInt16 nNewSeriesIdx = static_cast< sal_uInt16 >( maSeries.size() );
     XclImpChSeriesRef xSeries = std::make_shared<XclImpChSeries>( GetChRoot(), nNewSeriesIdx );
     xSeries->ReadRecordGroup( rStrm );
-    maSeries.push_back( xSeries );
+    maSeries.push_back(std::move(xSeries));
 }
 
 void XclImpChChart::ReadChProperties( XclImpStream& rStrm )
@@ -4097,8 +4095,8 @@ void XclImpChChart::ReadChAxesSet( XclImpStream& rStrm )
     xAxesSet->ReadRecordGroup( rStrm );
     switch( xAxesSet->GetAxesSetId() )
     {
-        case EXC_CHAXESSET_PRIMARY:     mxPrimAxesSet = xAxesSet;   break;
-        case EXC_CHAXESSET_SECONDARY:   mxSecnAxesSet = xAxesSet;   break;
+        case EXC_CHAXESSET_PRIMARY:   mxPrimAxesSet = std::move(xAxesSet); break;
+        case EXC_CHAXESSET_SECONDARY: mxSecnAxesSet = std::move(xAxesSet); break;
     }
 }
 
@@ -4109,7 +4107,7 @@ void XclImpChChart::ReadChText( XclImpStream& rStrm )
     switch( xText->GetLinkTarget() )
     {
         case EXC_CHOBJLINK_TITLE:
-            mxTitle = xText;
+            mxTitle = std::move(xText);
         break;
         case EXC_CHOBJLINK_DATA:
         {

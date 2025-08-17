@@ -32,17 +32,11 @@
 #include <officecfg/Office/Common.hxx>
 
 #ifdef _WIN32
-#include <prewin.h>
-#include <postwin.h>
 #define OPENCL_DLL_NAME "OpenCL.dll"
 #elif defined(MACOSX)
 #define OPENCL_DLL_NAME nullptr
 #else
 #define OPENCL_DLL_NAME "libOpenCL.so.1"
-#endif
-
-#ifdef _WIN32_WINNT_WINBLUE
-#include <VersionHelpers.h>
 #endif
 
 #define DEVICE_NAME_LENGTH 1024
@@ -86,17 +80,20 @@ OString generateMD5(const void* pData, size_t length)
     return aBuffer.makeStringAndClear();
 }
 
-OString const & getCacheFolder()
+// workaround segfault with XCode 14
+OString get_CacheFolder_impl()
 {
-    static OString const aCacheFolder = []()
-    {
-        OUString url("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache/");
+        OUString url(u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache/"_ustr);
         rtl::Bootstrap::expandMacros(url);
 
         osl::Directory::create(url);
 
         return OUStringToOString(url, RTL_TEXTENCODING_UTF8);
-    }();
+}
+
+OString const & getCacheFolder()
+{
+    static OString const aCacheFolder = get_CacheFolder_impl();
     return aCacheFolder;
 }
 
@@ -217,7 +214,7 @@ std::vector<std::shared_ptr<osl::File> > binaryGenerated( const char * clFileNam
     auto pNewFile = std::make_shared<osl::File>(OStringToOUString(fileName, RTL_TEXTENCODING_UTF8));
     if(pNewFile->open(osl_File_OpenFlag_Read) == osl::FileBase::E_None)
     {
-        aGeneratedFiles.push_back(pNewFile);
+        aGeneratedFiles.push_back(std::move(pNewFile));
         SAL_INFO("opencl.file", "Opening binary file '" << fileName << "' for reading: success");
     }
     else
@@ -487,33 +484,10 @@ bool initOpenCLRunEnv( GPUEnv *gpuInfo )
     clGetPlatformInfo(gpuInfo->mpPlatformID, CL_PLATFORM_NAME, 64,
              pName, nullptr);
 
-#if defined (_WIN32)
-// the Win32 SDK 8.1 deprecates GetVersionEx()
-# ifdef _WIN32_WINNT_WINBLUE
-    const bool bIsNotWinOrIsWin8OrGreater = IsWindows8OrGreater();
-# else
-    bool bIsNotWinOrIsWin8OrGreater = true;
-    OSVERSIONINFOW aVersionInfo = {};
-    aVersionInfo.dwOSVersionInfoSize = sizeof( aVersionInfo );
-    if (GetVersionExW( &aVersionInfo ))
-    {
-        // Windows 7 or lower?
-        if (aVersionInfo.dwMajorVersion < 6 ||
-           (aVersionInfo.dwMajorVersion == 6 && aVersionInfo.dwMinorVersion < 2))
-            bIsNotWinOrIsWin8OrGreater = false;
-    }
-# endif
-#else
-    const bool bIsNotWinOrIsWin8OrGreater = true;
-#endif
-
     // Heuristic: Certain old low-end OpenCL implementations don't
     // work for us with too large group lengths. Looking at the preferred
-    // float vector width seems to be a way to detect these devices, except
-    // the non-working NVIDIA cards on Windows older than version 8.
-    gpuInfo->mbNeedsTDRAvoidance = ( nPreferredVectorWidthFloat == 4 ) ||
-        ( !bIsNotWinOrIsWin8OrGreater &&
-          OUString::createFromAscii(pName).indexOf("NVIDIA") > -1 );
+    // float vector width seems to be a way to detect these devices.
+    gpuInfo->mbNeedsTDRAvoidance = nPreferredVectorWidthFloat == 4;
 
     size_t nMaxParameterSize;
     clGetDeviceInfo(gpuInfo->mpDevID, CL_DEVICE_MAX_PARAMETER_SIZE, sizeof(size_t),
@@ -693,7 +667,7 @@ const std::vector<OpenCLPlatformInfo>& fillOpenCLInfo()
     {
         OpenCLPlatformInfo aPlatformInfo;
         if(createPlatformInfo(pPlatforms[i], aPlatformInfo))
-            aPlatforms.push_back(aPlatformInfo);
+            aPlatforms.push_back(std::move(aPlatformInfo));
     }
 
     return aPlatforms;

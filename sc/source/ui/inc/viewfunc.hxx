@@ -64,7 +64,7 @@ struct ScDataFormFragment
     std::unique_ptr<weld::Label> m_xLabel;
     std::unique_ptr<weld::Entry> m_xEdit;
 
-    ScDataFormFragment(weld::Container* pGrid, int nLine);
+    ScDataFormFragment(weld::Grid* pGrid, int nLine);
 };
 
 class ScViewFunc : public ScTabView
@@ -89,6 +89,8 @@ public:
     void            EnterAutoSum( const ScRangeList& rRangeList, bool bSubTotal, const ScAddress& rAddr, const OpCode eCode );
     bool            AutoSum( const ScRange& rRange, bool bSubTotal, bool bSetCursor, bool bContinue, const OpCode eCode );
     OUString        GetAutoSumFormula( const ScRangeList& rRangeList, bool bSubTotal, const ScAddress& rAddr, const OpCode eCode );
+
+    SC_DLLPUBLIC void EnterDataToCurrentCell(const OUString& rString, const EditTextObject* pData = nullptr, bool bMatrixExpand = false);
 
     SC_DLLPUBLIC void EnterData(SCCOL nCol, SCROW nRow, SCTAB nTab, const OUString& rString,
                                 const EditTextObject* pData = nullptr, bool bMatrixExpand = false);
@@ -127,8 +129,8 @@ public:
 
     void                        FillTab( InsertDeleteFlags nFlags, ScPasteFunc nFunction, bool bSkipEmpty, bool bAsLink );
 
-    SC_DLLPUBLIC void           PasteFromSystem();
-    SC_DLLPUBLIC bool           PasteFromSystem( SotClipboardFormatId nFormatId, bool bApi = false );
+    SC_DLLPUBLIC void           PasteFromSystem(bool useSavedPrefs = false);
+    SC_DLLPUBLIC bool           PasteFromSystem( SotClipboardFormatId nFormatId, bool bApi = false, bool useSavedPrefs = false );
     void                        PasteFromTransferable( const css::uno::Reference<
                                                        css::datatransfer::XTransferable >& rxTransferable );
 
@@ -143,7 +145,7 @@ public:
     bool            PasteDataFormat( SotClipboardFormatId nFormatId,
                                         const css::uno::Reference< css::datatransfer::XTransferable >& rxTransferable,
                                         SCCOL nPosX, SCROW nPosY, const Point* pLogicPos,
-                                        bool bLink = false, bool bAllowDialogs = false );
+                                        bool bLink = false, bool bAllowDialogs = false, bool useSavedPrefs = false );
 
     bool            PasteFile( const Point&, const OUString&, bool bLink );
     bool            PasteObject( const Point&, const css::uno::Reference < css::embed::XEmbeddedObject >&, const Size*, const Graphic* = nullptr, const OUString& = OUString(), sal_Int64 nAspect = css::embed::Aspects::MSOLE_CONTENT );
@@ -200,10 +202,10 @@ public:
     void            ProtectSheet( SCTAB nTab, const ScTableProtection& rProtect );
 
     void            ProtectDoc( const OUString& rPassword );
-    bool            Unprotect( SCTAB nTab, const OUString& rPassword );
+    bool            Unprotect( SCTAB nTab, std::u16string_view rPassword );
 
     void            DeleteCells( DelCellCmd eCmd );
-    bool            InsertCells( InsCellCmd eCmd, bool bRecord = true, bool bPartOfPaste = false );
+    bool            InsertCells( InsCellCmd eCmd, bool bRecord = true, bool bPartOfPaste = false, size_t nCount = 0);
     void            DeleteMulti( bool bRows );
 
     void            DeleteContents( InsertDeleteFlags nFlags );
@@ -271,7 +273,8 @@ public:
     void            DeleteTables(SCTAB nTab, SCTAB nSheets);
 
     bool            RenameTable( const OUString& rName, SCTAB nTabNr );
-    void            MoveTable( sal_uInt16 nDestDocNo, SCTAB nDestTab, bool bCopy, const OUString* pNewTabName = nullptr );
+    void            MoveTable( sal_uInt16 nDestDocNo, SCTAB nDestTab, bool bCopy, const OUString* pNewTabName = nullptr,
+                               bool bContextMenu = false, SCTAB nContextMenuSourceTab = -1 );
     void            ImportTables( ScDocShell* pSrcShell,
                                     SCTAB nCount, const SCTAB* pSrcTabs,
                                     bool bLink,SCTAB nTab);
@@ -338,11 +341,16 @@ public:
                                     SCROW nEndRow , SCCOL nEndCol ,
                                     std::vector<std::unique_ptr<ScDataFormFragment>>& rEdits,
                                     sal_uInt16 aColLength);
-    void            UpdateSelectionArea( const ScMarkData& rSel, ScPatternAttr* pAttr = nullptr );
+    void UpdateSelectionArea(const ScMarkData& rSel, ScPatternAttr* pAttr = nullptr,
+                             bool adjustHeight = true);
 
     void            OnLOKInsertDeleteColumn(SCCOL nStartCol, tools::Long nOffset);
     void            OnLOKInsertDeleteRow(SCROW nStartRow, tools::Long nOffset);
     void            OnLOKSetWidthOrHeight(SCCOLROW nStart, bool bWidth);
+
+    bool            TestFormatArea( SCCOL nCol, SCROW nRow, SCTAB nTab, bool bAttrChanged );
+    void            DoAutoAttributes( SCCOL nCol, SCROW nRow, SCTAB nTab,
+                                        bool bAttrChanged );
 
                                                 // Internal helper functions
 protected:
@@ -368,12 +376,18 @@ private:
 
     void            PostPasteFromClip(const ScRangeList& rPasteRanges, const ScMarkData& rMark);
 
+    bool            PasteDataFormatSource( SotClipboardFormatId nFormatId,
+                                        SCCOL nPosX, SCROW nPosY,
+                                        bool bAllowDialogs,
+                                        const TransferableDataHelper& rDataHelper, const Point& rPos);
+    bool            PasteDataFormatFormattedText( SotClipboardFormatId nFormatId,
+                                        const css::uno::Reference< css::datatransfer::XTransferable >& rxTransferable,
+                                        SCCOL nPosX, SCROW nPosY,
+                                        bool bAllowDialogs, const TransferableDataHelper& rDataHelper, bool useSavedPrefs = false );
+
     sal_uInt16      GetOptimalColWidth( SCCOL nCol, SCTAB nTab, bool bFormula );
 
     void            StartFormatArea();
-    bool            TestFormatArea( SCCOL nCol, SCROW nRow, SCTAB nTab, bool bAttrChanged );
-    void            DoAutoAttributes( SCCOL nCol, SCROW nRow, SCTAB nTab,
-                                        bool bAttrChanged );
 
     void            MarkAndJumpToRanges(const ScRangeList& rRanges);
     void            CopyAutoSpellData( FillDir eDir, SCCOL nStartCol, SCROW nStartRow,

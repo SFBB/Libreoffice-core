@@ -22,7 +22,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <vector>
 
 #include <codemaker/generatedtypeset.hxx>
 #include <codemaker/typemanager.hxx>
@@ -70,7 +69,7 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv) {
                 }
             }
         } else {
-            produce("", typeMgr, generated, options);
+            produce(u""_ustr, typeMgr, generated, options);
         }
         if (!options.isValid("-nD"_ostr)) {
             // C++ header files generated for the following UNO types are
@@ -78,12 +77,12 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv) {
             // Reference.hxx, Type.h), so it seems best to always generate those
             // C++ header files:
             produce(
-                "com.sun.star.uno.RuntimeException", typeMgr, generated,
+                u"com.sun.star.uno.RuntimeException"_ustr, typeMgr, generated,
                 options);
             produce(
-                "com.sun.star.uno.TypeClass", typeMgr, generated, options);
+                u"com.sun.star.uno.TypeClass"_ustr, typeMgr, generated, options);
             produce(
-                "com.sun.star.uno.XInterface", typeMgr, generated, options);
+                u"com.sun.star.uno.XInterface"_ustr, typeMgr, generated, options);
         }
     } catch (CannotDumpException & e) {
         std::cerr << "ERROR: " << e.getMessage() << '\n';

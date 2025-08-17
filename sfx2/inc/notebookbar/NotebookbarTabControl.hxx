@@ -13,8 +13,8 @@
 
 #include <com/sun/star/frame/XFrame.hpp>
 
-namespace com::sun::star::ui { class XUIConfigurationListener; }
 namespace com::sun::star::uno { class XComponentContext; }
+class ChangedUIEventListener;
 
 class NotebookbarTabControl final : public NotebookbarTabControlBase
 {
@@ -39,7 +39,7 @@ private:
 
     DECL_LINK(OpenNotebookbarPopupMenu, NotebookBar*, void);
 
-    css::uno::Reference<css::ui::XUIConfigurationListener> m_pListener;
+    rtl::Reference<ChangedUIEventListener> m_pListener;
     css::uno::Reference<css::frame::XFrame> m_xFrame;
     bool m_bInitialized;
     bool m_bInvalidate;

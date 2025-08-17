@@ -95,7 +95,7 @@ public:
 
     // XEventListener
     virtual void SAL_CALL
-        disposing( const css::lang::EventObject& rSource ) override;
+        disposing( const css::lang::EventObject& rSource ) override final;
 
     // XPropertyChangeListener
     virtual void SAL_CALL
@@ -104,10 +104,10 @@ public:
     // XLinguServiceEventBroadcaster
     virtual sal_Bool SAL_CALL
         addLinguServiceEventListener(
-                const css::uno::Reference< css::linguistic2::XLinguServiceEventListener >& rxListener ) override;
+                const css::uno::Reference< css::linguistic2::XLinguServiceEventListener >& rxListener ) override final;
     virtual sal_Bool SAL_CALL
         removeLinguServiceEventListener(
-                const css::uno::Reference< css::linguistic2::XLinguServiceEventListener >& rxListener ) override;
+                const css::uno::Reference< css::linguistic2::XLinguServiceEventListener >& rxListener ) override final;
 
     // non-UNO functions
     void    AddAsPropListener();
@@ -165,14 +165,12 @@ class UNLESS_MERGELIBS(LNG_DLLPUBLIC) PropertyHelper_Spell final :
     // default values
     bool        bIsSpellUpperCase;
     bool        bIsSpellWithDigits;
-    bool        bIsSpellCapitalization;
     bool        bIsSpellClosedCompound;
     bool        bIsSpellHyphenatedCompound;
 
     // return values, will be set to default value or current temporary value
     bool        bResIsSpellUpperCase;
     bool        bResIsSpellWithDigits;
-    bool        bResIsSpellCapitalization;
     bool        bResIsSpellClosedCompound;
     bool        bResIsSpellHyphenatedCompound;
 
@@ -199,7 +197,6 @@ public:
 
     bool        IsSpellUpperCase() const            { return bResIsSpellUpperCase; }
     bool        IsSpellWithDigits() const           { return bResIsSpellWithDigits; }
-    bool        IsSpellCapitalization() const       { return bResIsSpellCapitalization; }
     bool        IsSpellClosedCompound() const       { return bResIsSpellClosedCompound; }
     bool        IsSpellHyphenatedCompound() const   { return bResIsSpellHyphenatedCompound; }
 };
@@ -224,7 +221,6 @@ public:
     void    SetTmpPropVals( const css::beans::PropertyValues &rPropVals );
     bool    IsSpellUpperCase() const;
     bool    IsSpellWithDigits() const;
-    bool    IsSpellCapitalization() const;
     bool    IsSpellClosedCompound() const;
     bool    IsSpellHyphenatedCompound() const;
     /// @throws css::uno::RuntimeException
@@ -242,13 +238,17 @@ class PropertyHelper_Hyphen final :
     // default values
     sal_Int16   nHyphMinLeading,
             nHyphMinTrailing,
-            nHyphMinWordLength;
+            nHyphCompoundMinLeading,
+            nHyphMinWordLength,
+            nHyphTextHyphenZone;
     bool bNoHyphenateCaps;
 
     // return values, will be set to default value or current temporary value
     sal_Int16   nResHyphMinLeading,
             nResHyphMinTrailing,
-            nResHyphMinWordLength;
+            nResHyphCompoundMinLeading,
+            nResHyphMinWordLength,
+            nResHyphTextHyphenZone;
     bool bResNoHyphenateCaps;
 
     PropertyHelper_Hyphen( const PropertyHelper_Hyphen & ) = delete;
@@ -274,6 +274,7 @@ public:
 
     sal_Int16   GetMinLeading() const               { return nResHyphMinLeading; }
     sal_Int16   GetMinTrailing() const              { return nResHyphMinTrailing; }
+    sal_Int16   GetCompoundMinLeading() const       { return nResHyphCompoundMinLeading; }
     sal_Int16   GetMinWordLength() const            { return nResHyphMinWordLength; }
     bool IsNoHyphenateCaps() const { return bResNoHyphenateCaps; }
 };
@@ -297,6 +298,7 @@ public:
     void SetTmpPropVals( const css::beans::PropertyValues &rPropVals );
     sal_Int16   GetMinLeading() const;
     sal_Int16   GetMinTrailing() const;
+    sal_Int16   GetCompoundMinLeading() const;
     sal_Int16   GetMinWordLength() const;
     bool IsNoHyphenateCaps() const;
     /// @throws css::uno::RuntimeException

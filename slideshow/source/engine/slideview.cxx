@@ -23,12 +23,14 @@
 #include <eventqueue.hxx>
 #include <eventmultiplexer.hxx>
 #include <slideview.hxx>
+#include <tools.hxx>
 #include <delayevent.hxx>
 #include <unoview.hxx>
 
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/make_shared_from_uno.hxx>
+#include <unotools/weakref.hxx>
 
 #include <cppcanvas/spritecanvas.hxx>
 #include <cppcanvas/customsprite.hxx>
@@ -211,8 +213,7 @@ void clearRect( ::cppcanvas::CanvasSharedPtr const& pCanvas,
 basegfx::B2IRange getLayerBoundsPixel( basegfx::B2DRange const&     rLayerBounds,
                                        basegfx::B2DHomMatrix const& rTransformation )
 {
-    ::basegfx::B2DRange aTmpRect;
-    ::canvas::tools::calcTransformedRectBounds( aTmpRect,
+    ::basegfx::B2DRange aTmpRect = ::canvas::tools::calcTransformedRectBounds(
                                                 rLayerBounds,
                                                 rTransformation );
 
@@ -449,10 +450,10 @@ public:
                                                    maUserSize.getWidth(),
                                                    maUserSize.getHeight()) );
 
-        basegfx::B2IRange const& rNewLayerPixel(
+        basegfx::B2IRange const aNewLayerPixel(
             getLayerBoundsPixel(maLayerBounds,
                                 maTransformation) );
-        if( rNewLayerPixel != maLayerBoundsPixel )
+        if( aNewLayerPixel != maLayerBoundsPixel )
         {
             // re-gen sprite with new size
             mpOutputCanvas.reset();
@@ -462,8 +463,7 @@ public:
 
     virtual css::geometry::IntegerSize2D getTranslationOffset() const override
     {
-        basegfx::B2DRectangle aTmpRect;
-        canvas::tools::calcTransformedRectBounds( aTmpRect,
+        basegfx::B2DRectangle aTmpRect = canvas::tools::calcTransformedRectBounds(
                                                   maLayerBounds,
                                                   maTransformation );
         geometry::IntegerSize2D offset(0, 0);
@@ -512,8 +512,7 @@ private:
     {
         // Offset given transformation by left, top border of given
         // range (after transformation through given transformation)
-        basegfx::B2DRectangle aTmpRect;
-        canvas::tools::calcTransformedRectBounds( aTmpRect,
+        basegfx::B2DRectangle aTmpRect = canvas::tools::calcTransformedRectBounds(
                                                   maLayerBounds,
                                                   maTransformation );
 
@@ -523,8 +522,8 @@ private:
         // translation when aTmpRect was not properly initialized.
         if ( ! aTmpRect.isEmpty())
         {
-            aMatrix.translate( -basegfx::fround(aTmpRect.getMinX()),
-                               -basegfx::fround(aTmpRect.getMinY()) );
+            aMatrix.translate( -std::round(aTmpRect.getMinX()),
+                               -std::round(aTmpRect.getMinY()) );
         }
 
         return aMatrix;
@@ -541,9 +540,9 @@ private:
         cppcanvas::CanvasSharedPtr pCanvas=getCanvas()->clone();
 
         // clear whole canvas
-        const basegfx::B2I64Tuple& rSpriteSize(maLayerBoundsPixel.getRange());
+        const basegfx::B2I64Tuple aSpriteSize(maLayerBoundsPixel.getRange());
         clearRect(pCanvas,
-                  basegfx::B2IRange(0,0,rSpriteSize.getX(),rSpriteSize.getY()));
+                  basegfx::B2IRange(0,0,aSpriteSize.getX(),aSpriteSize.getY()));
     }
 
     virtual void clearAll() const override
@@ -555,9 +554,9 @@ private:
         pCanvas->setClip();
 
         // clear whole canvas
-        const basegfx::B2I64Tuple& rSpriteSize(maLayerBoundsPixel.getRange());
+        const basegfx::B2I64Tuple aSpriteSize(maLayerBoundsPixel.getRange());
         clearRect(pCanvas,
-                  basegfx::B2IRange(0,0,rSpriteSize.getX(),rSpriteSize.getY()));
+                  basegfx::B2IRange(0,0,aSpriteSize.getX(),aSpriteSize.getY()));
     }
 
     virtual bool isOnView(ViewSharedPtr const& rView) const override
@@ -582,26 +581,25 @@ private:
                 if( maLayerBoundsPixel.isEmpty() )
                     maLayerBoundsPixel = basegfx::B2IRange(0,0,1,1);
 
-                const basegfx::B2I64Tuple& rSpriteSize(maLayerBoundsPixel.getRange());
+                const basegfx::B2I64Tuple aSpriteSize(maLayerBoundsPixel.getRange());
                 mpSprite = mpSpriteCanvas->createCustomSprite(
-                    basegfx::B2DSize(sal::static_int_cast<sal_Int32>(rSpriteSize.getX()),
-                                       sal::static_int_cast<sal_Int32>(rSpriteSize.getY())) );
+                    basegfx::B2DSize(sal::static_int_cast<sal_Int32>(aSpriteSize.getX()),
+                                       sal::static_int_cast<sal_Int32>(aSpriteSize.getY())) );
 
                 mpSprite->setPriority(
                     maSpriteContainer.getLayerPriority().getMinimum() );
 
+                basegfx::B2DPoint pos(maLayerBoundsPixel.getMinimum());
+                double alpha = 1.0;
 #if defined(DBG_UTIL)
-                mpSprite->movePixel(
-                    basegfx::B2DPoint(maLayerBoundsPixel.getMinimum()) +
-                    basegfx::B2DPoint(10,10) );
-
-                mpSprite->setAlpha(0.5);
-#else
-                mpSprite->movePixel(
-                    basegfx::B2DPoint(maLayerBoundsPixel.getMinimum()) );
-
-                mpSprite->setAlpha(1.0);
+                if (isShowingMoreDebugInfo())
+                {
+                    pos += basegfx::B2DPoint(10, 10);
+                    alpha = 0.5;
+                }
 #endif
+                mpSprite->movePixel(pos);
+                mpSprite->setAlpha(alpha);
                 mpSprite->show();
             }
 
@@ -630,7 +628,7 @@ private:
 
         if( aNewClip != maClip )
         {
-            maClip = aNewClip;
+            maClip = std::move(aNewClip);
 
             if(mpOutputCanvas )
                 mpOutputCanvas->setClip(
@@ -966,8 +964,7 @@ void SlideView::setClip( const basegfx::B2DPolyPolygon& rClip )
 
     if( aNewClip != maClip )
     {
-        maClip = aNewClip;
-
+        maClip = std::move(aNewClip);
         updateClip();
     }
 }
@@ -1019,23 +1016,21 @@ void SlideView::disposing( lang::EventObject const& evt )
 // silly wrapper to check that event handlers don't touch dead SlideView
 struct WeakRefWrapper
 {
-    SlideView & m_rObj;
-    uno::WeakReference<uno::XInterface> const m_wObj;
+    unotools::WeakReference<SlideView> const m_wObj;
     std::function<void (SlideView&)> const m_func;
 
     WeakRefWrapper(SlideView & rObj, std::function<void (SlideView&)> func)
-        : m_rObj(rObj)
-        , m_wObj(rObj.getXWeak())
+        : m_wObj(&rObj)
         , m_func(std::move(func))
     {
     }
 
     void operator()()
     {
-        uno::Reference<uno::XInterface> const xObj(m_wObj);
+        rtl::Reference<SlideView> const xObj(m_wObj);
         if (xObj.is())
         {
-            m_func(m_rObj);
+            m_func(*xObj);
         }
     }
 };
@@ -1084,7 +1079,7 @@ void SlideView::modified( const lang::EventObject& /*aEvent*/ )
     mrEventQueue.addEvent(
         makeEvent( WeakRefWrapper(*this,
             [] (SlideView & rThis) { rThis.mrEventMultiplexer.notifyViewChanged(rThis.mxView); }),
-                   "EventMultiplexer::notifyViewChanged"));
+                   u"EventMultiplexer::notifyViewChanged"_ustr));
 }
 
 // XPaintListener
@@ -1099,7 +1094,7 @@ void SlideView::windowPaint( const awt::PaintEvent& /*e*/ )
     mrEventQueue.addEvent(
         makeEvent( WeakRefWrapper(*this,
             [] (SlideView & rThis) { rThis.mrEventMultiplexer.notifyViewClobbered(rThis.mxView); }),
-                   "EventMultiplexer::notifyViewClobbered") );
+                   u"EventMultiplexer::notifyViewClobbered"_ustr) );
 }
 
 void SlideView::updateCanvas()
@@ -1141,7 +1136,7 @@ void SlideView::pruneLayers( bool bWithViewLayerUpdate ) const
 {
     ViewLayerVector aValidLayers;
 
-    const basegfx::B2DHomMatrix& rCurrTransform(
+    const basegfx::B2DHomMatrix aCurrTransform(
         getTransformation() );
 
     // check all layers for validity, and retain only the live ones
@@ -1154,7 +1149,7 @@ void SlideView::pruneLayers( bool bWithViewLayerUpdate ) const
             aValidLayers.push_back( xCurrLayer );
 
             if( bWithViewLayerUpdate )
-                xCurrLayer->updateView( rCurrTransform,
+                xCurrLayer->updateView( aCurrTransform,
                                         maUserSize );
         }
     }

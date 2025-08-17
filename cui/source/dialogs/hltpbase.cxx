@@ -37,9 +37,6 @@
 #include <strings.hrc>
 #include <dialmgr.hxx>
 #include <bitmaps.hlst>
-#include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
-
-using namespace ::ucbhelper;
 
 namespace {
 
@@ -109,13 +106,11 @@ SvxHyperlinkTabPageBase::SvxHyperlinkTabPageBase(weld::Container* pParent,
                                                  const OUString& rID,
                                                  const SfxItemSet* pItemSet)
   : IconChoicePage(pParent, rUIXMLDescription, rID, pItemSet)
-  , mxCbbFrame(xBuilder->weld_combo_box("frame"))
-  , mxLbForm(xBuilder->weld_combo_box("form"))
-  , mxEdIndication(xBuilder->weld_entry("indication"))
-  , mxEdText(xBuilder->weld_entry("name"))
-  , mxBtScript(xBuilder->weld_button("script"))
-  , mxFormLabel(xBuilder->weld_label("form_label"))
-  , mxFrameLabel(xBuilder->weld_label("frame_label"))
+  , mxLbForm(xBuilder->weld_combo_box(u"form"_ustr))
+  , mxEdIndication(xBuilder->weld_entry(u"indication"_ustr))
+  , mxEdText(xBuilder->weld_entry(u"name"_ustr))
+  , mxBtScript(xBuilder->weld_button(u"script"_ustr))
+  , mxFormLabel(xBuilder->weld_label(u"form_label"_ustr))
   , mbIsCloseDisabled( false )
   , mpDialog( pDlg )
   , mbStdControlsInit( false )
@@ -140,26 +135,7 @@ void SvxHyperlinkTabPageBase::InitStdControls ()
 {
     if ( !mbStdControlsInit )
     {
-        SfxDispatcher* pDispatch = GetDispatcher();
-        SfxViewFrame* pViewFrame = pDispatch ? pDispatch->GetFrame() : nullptr;
-        SfxFrame* pFrame = pViewFrame ? &pViewFrame->GetFrame() : nullptr;
-        if ( pFrame )
-        {
-            TargetList aList;
-            SfxFrame::GetDefaultTargetList(aList);
-            if( !aList.empty() )
-            {
-                size_t nCount = aList.size();
-                size_t i;
-                for ( i = 0; i < nCount; i++ )
-                {
-                    mxCbbFrame->append_text( aList.at( i ) );
-                }
-            }
-        }
-
         mxBtScript->set_from_icon_name(RID_SVXBMP_SCRIPT);
-
         mxBtScript->connect_clicked ( LINK ( this, SvxHyperlinkTabPageBase, ClickScriptHdl_Impl ) );
     }
 
@@ -235,11 +211,6 @@ void SvxHyperlinkTabPageBase::FillStandardDlgFields ( const SvxHyperlinkItem* pH
 {
     if (!comphelper::LibreOfficeKit::isActive())
     {
-        // Frame
-        sal_Int32 nPos = mxCbbFrame->find_text(pHyperlinkItem->GetTargetFrame());
-        if (nPos != -1)
-            mxCbbFrame->set_active(nPos);
-
         // Form
         OUString aStrFormText = CuiResId( RID_CUISTR_HYPERDLG_FROM_TEXT );
 
@@ -261,10 +232,8 @@ void SvxHyperlinkTabPageBase::FillStandardDlgFields ( const SvxHyperlinkItem* pH
     }
     else
     {
-        mxCbbFrame->hide();
         mxLbForm->hide();
         mxFormLabel->hide();
-        mxFrameLabel->hide();
     }
 
     // URL
@@ -336,12 +305,12 @@ IMPL_LINK_NOARG(SvxHyperlinkTabPageBase, ClickScriptHdl_Impl, weld::Button&, voi
         aItem.SetMacroTable( *pMacroTbl );
 
     // create empty itemset for macro-dlg
-    SfxItemSetFixed<SID_ATTR_MACROITEM, SID_ATTR_MACROITEM> aItemSet( SfxGetpApp()->GetPool() );
-    aItemSet.Put ( aItem );
+    auto xItemSet = std::make_unique<SfxItemSetFixed<SID_ATTR_MACROITEM, SID_ATTR_MACROITEM>>( SfxGetpApp()->GetPool() );
+    xItemSet->Put( aItem );
 
     DisableClose( true );
 
-    SfxMacroAssignDlg aDlg(mpDialog->getDialog(), mxDocumentFrame, aItemSet);
+    SfxMacroAssignDlg aDlg(mpDialog->getDialog(), mxDocumentFrame, std::move(xItemSet));
 
     // add events
     SfxMacroTabPage *pMacroPage = aDlg.GetTabPage();
@@ -421,12 +390,11 @@ OUString SvxHyperlinkTabPageBase::GetSchemeFromURL( const OUString& rStrURL )
 }
 
 void SvxHyperlinkTabPageBase::GetDataFromCommonFields( OUString& aStrName,
-                                             OUString& aStrIntName, OUString& aStrFrame,
+                                             OUString& aStrIntName,
                                              SvxLinkInsertMode& eMode )
 {
     aStrIntName = mxEdText->get_text();
     aStrName    = mxEdIndication->get_text();
-    aStrFrame   = mxCbbFrame->get_active_text();
 
     sal_Int32 nPos = mxLbForm->get_active();
     if (nPos == -1)
@@ -440,7 +408,7 @@ void SvxHyperlinkTabPageBase::GetDataFromCommonFields( OUString& aStrName,
 }
 
 // reset dialog-fields
-void SvxHyperlinkTabPageBase::Reset( const SfxItemSet& rItemSet)
+void SvxHyperlinkTabPageBase::Reset( const SfxItemSet& rItemSet )
 {
 
     // Set dialog-fields from create-itemset
@@ -451,64 +419,31 @@ void SvxHyperlinkTabPageBase::Reset( const SfxItemSet& rItemSet)
 
     if ( pHyperlinkItem )
     {
-        // tdf#146576 - propose clipboard content when inserting a hyperlink
-        OUString aStrURL(pHyperlinkItem->GetURL());
-        // Store initial URL
-        maStrInitURL = aStrURL;
-        if (aStrURL.isEmpty())
-        {
-            if (auto xClipboard = GetSystemClipboard())
-            {
-                if (auto xTransferable = xClipboard->getContents())
-                {
-                    css::datatransfer::DataFlavor aFlavor;
-                    SotExchange::GetFormatDataFlavor(SotClipboardFormatId::STRING, aFlavor);
-                    if (xTransferable->isDataFlavorSupported(aFlavor))
-                    {
-                        OUString aClipBoardConentent;
-                        try
-                        {
-                            if (xTransferable->getTransferData(aFlavor) >>= aClipBoardConentent)
-                            {
-                                INetURLObject aURL;
-                                aURL.SetSmartURL(aClipBoardConentent);
-                                if (!aURL.HasError())
-                                    aStrURL
-                                        = aURL.GetMainURL(INetURLObject::DecodeMechanism::Unambiguous);
-                            }
-                        }
-                        // tdf#158345: Opening Hyperlink dialog leads to crash
-                        // MimeType = "text/plain;charset=utf-16"
-                        catch(const css::datatransfer::UnsupportedFlavorException&)
-                        {
-                        }
-                    }
-                }
-            }
-        }
-
         // set dialog-fields
         FillStandardDlgFields (pHyperlinkItem);
 
         // set all other fields
-        FillDlgFields(aStrURL);
+        FillDlgFields(pHyperlinkItem->GetURL());
+
+        // Store initial URL
+        maStrInitURL = pHyperlinkItem->GetURL();
     }
 }
 
 // Fill output-ItemSet
 bool SvxHyperlinkTabPageBase::FillItemSet( SfxItemSet* rOut)
 {
-    OUString aStrURL, aStrName, aStrIntName, aStrFrame;
+    OUString aStrURL, aStrName, aStrIntName;
     SvxLinkInsertMode eMode;
 
-    GetCurrentItemData ( aStrURL, aStrName, aStrIntName, aStrFrame, eMode);
+    GetCurrentItemData ( aStrURL, aStrName, aStrIntName, eMode);
     if ( aStrName.isEmpty() ) //automatically create a visible name if the link is created without name
         aStrName = CreateUiNameFromURL(aStrURL);
 
     HyperDialogEvent nEvents = GetMacroEvents();
     SvxMacroTableDtor* pTable = GetMacroTable();
 
-    SvxHyperlinkItem aItem( SID_HYPERLINK_SETLINK, aStrName, aStrURL, aStrFrame,
+    SvxHyperlinkItem aItem( SID_HYPERLINK_SETLINK, aStrName, aStrURL, OUString(),
                             aStrIntName, eMode, nEvents, pTable );
     rOut->Put (aItem);
 
@@ -541,17 +476,17 @@ DeactivateRC SvxHyperlinkTabPageBase::DeactivatePage( SfxItemSet* _pSet)
     HideMarkWnd ();
 
     // retrieve data of dialog
-    OUString aStrURL, aStrName, aStrIntName, aStrFrame;
+    OUString aStrURL, aStrName, aStrIntName;
     SvxLinkInsertMode eMode;
 
-    GetCurrentItemData ( aStrURL, aStrName, aStrIntName, aStrFrame, eMode);
+    GetCurrentItemData ( aStrURL, aStrName, aStrIntName, eMode);
 
     HyperDialogEvent nEvents = GetMacroEvents();
     SvxMacroTableDtor* pTable = GetMacroTable();
 
     if( _pSet )
     {
-        SvxHyperlinkItem aItem( SID_HYPERLINK_GETLINK, aStrName, aStrURL, aStrFrame,
+        SvxHyperlinkItem aItem( SID_HYPERLINK_GETLINK, aStrName, aStrURL, OUString(),
                                 aStrIntName, eMode, nEvents, pTable );
         _pSet->Put( aItem );
     }

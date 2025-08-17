@@ -33,6 +33,7 @@
 #include <com/sun/star/linguistic2/XProofreadingIterator.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
 
+#include <comphelper/configuration.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/random.hxx>
 #include <sfx2/viewfrm.hxx>
@@ -111,6 +112,8 @@
 #include <svx/xfillit0.hxx>
 #include <unotools/configmgr.hxx>
 #include <i18nlangtag/mslangid.hxx>
+#include <svl/setitem.hxx>
+#include <unotxdoc.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::document;
@@ -124,7 +127,7 @@ constexpr OUStringLiteral DEFAULT_CHAR_FORMAT_NAME = u"Character style";
 {
     if (!m_xGCIterator.is() && SvtLinguConfig().HasGrammarChecker())
     {
-        uno::Reference< uno::XComponentContext >  xContext( comphelper::getProcessComponentContext() );
+        const uno::Reference< uno::XComponentContext >&  xContext( comphelper::getProcessComponentContext() );
         try
         {
             m_xGCIterator = sw::proofreadingiterator::get( xContext );
@@ -144,6 +147,8 @@ bool SwDoc::StartGrammarChecking( bool bSkipStart )
     bool bVisible = false;
     bool bStarted = false;
     const SwDocShell *pDocShell = GetDocShell();
+    if (!pDocShell)
+        return bStarted;
     SfxViewFrame     *pFrame = SfxViewFrame::GetFirst( pDocShell, false );
     while (pFrame && !bVisible)
     {
@@ -161,11 +166,10 @@ bool SwDoc::StartGrammarChecking( bool bSkipStart )
         uno::Reference< linguistic2::XProofreadingIterator > xGCIterator( GetGCIterator() );
         if ( xGCIterator.is() )
         {
-            uno::Reference< lang::XComponent >  xDoc = GetDocShell()->GetBaseModel();
-            uno::Reference< text::XFlatParagraphIteratorProvider >  xFPIP( xDoc, uno::UNO_QUERY );
+            rtl::Reference< SwXTextDocument >  xDoc = pDocShell->GetBaseModel();
 
             // start automatic background checking if not active already
-            if ( xFPIP.is() && !xGCIterator->isProofreading( xDoc ) )
+            if ( xDoc.is() && !xGCIterator->isProofreading( cppu::getXWeak(xDoc.get()) ) )
             {
                 bStarted = true;
                 if ( !bSkipStart )
@@ -175,7 +179,7 @@ bool SwDoc::StartGrammarChecking( bool bSkipStart )
                         // again until the user modifies the document
                         pLayout->SetNeedGrammarCheck(false);
                     }
-                    xGCIterator->startProofreading( xDoc, xFPIP );
+                    xGCIterator->startProofreading( cppu::getXWeak(xDoc.get()), uno::Reference< text::XFlatParagraphIteratorProvider >(xDoc) );
                 }
             }
         }
@@ -202,7 +206,7 @@ static void lcl_DelFormatIndices( SwFormat const * pFormat )
  */
 SwDoc::SwDoc()
     : m_pNodes(new SwNodes(*this)),
-    mpAttrPool(new SwAttrPool(this)),
+    mpAttrPool(new SwAttrPool(*this)),
     maOLEModifiedIdle( "sw::SwDoc maOLEModifiedIdle" ),
     mpMarkManager(new ::sw::mark::MarkManager(*this)),
     m_pMetaFieldManager(new ::sw::MetaFieldManager()),
@@ -226,14 +230,15 @@ SwDoc::SwDoc()
     m_pDocumentLayoutManager( new ::sw::DocumentLayoutManager( *this ) ),
     m_pDocumentStylePoolManager( new ::sw::DocumentStylePoolManager( *this ) ),
     m_pDocumentExternalDataManager( new ::sw::DocumentExternalDataManager ),
-    mpDfltFrameFormat( new SwFrameFormat( GetAttrPool(), "Frameformat", nullptr ) ),
-    mpEmptyPageFormat( new SwFrameFormat( GetAttrPool(), "Empty Page", mpDfltFrameFormat.get() ) ),
-    mpColumnContFormat( new SwFrameFormat( GetAttrPool(), "Columncontainer", mpDfltFrameFormat.get() ) ),
-    mpDfltCharFormat( new SwCharFormat( GetAttrPool(), DEFAULT_CHAR_FORMAT_NAME, nullptr ) ),
-    mpDfltTextFormatColl( new SwTextFormatColl( GetAttrPool(), "Paragraph style" ) ),
-    mpDfltGrfFormatColl( new SwGrfFormatColl( GetAttrPool(), "Graphikformatvorlage" ) ),
+    mpDfltFrameFormat( new SwFrameFormat( GetAttrPool(), UIName(u"Frameformat"_ustr), nullptr ) ),
+    mpEmptyPageFormat( new SwFrameFormat( GetAttrPool(), UIName(u"Empty Page"_ustr), mpDfltFrameFormat.get() ) ),
+    mpColumnContFormat( new SwFrameFormat( GetAttrPool(), UIName(u"Columncontainer"_ustr), mpDfltFrameFormat.get() ) ),
+    mpDfltCharFormat( new SwCharFormat( GetAttrPool(), UIName(DEFAULT_CHAR_FORMAT_NAME), nullptr ) ),
+    mpDfltTextFormatColl( new SwTextFormatColl( GetAttrPool(), UIName(u"Paragraph style"_ustr) ) ),
+    mpDfltGrfFormatColl( new SwGrfFormatColl( GetAttrPool(), UIName(u"Graphikformatvorlage"_ustr) ) ),
     mpFrameFormatTable( new sw::FrameFormats<SwFrameFormat*>() ),
     mpCharFormatTable( new SwCharFormats ),
+    mpCharFormatDeletionTable( new SwCharFormats ),
     mpSpzFrameFormatTable( new sw::FrameFormats<sw::SpzFrameFormat*>() ),
     mpSectionFormatTable( new SwSectionFormats ),
     mpTableFrameFormatTable( new sw::TableFrameFormats() ),
@@ -370,7 +375,7 @@ SwDoc::SwDoc()
     }
     mnRsidRoot = mnRsid;
 
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         // Make sure that in case the document language is not set, then we don't return
         // LANGUAGE_DONTKNOW, but the UI locale.
@@ -503,6 +508,7 @@ SwDoc::~SwDoc()
     // do not have any dependencies anymore.
     m_pNodes->DelNodes( SwNodeIndex(*m_pNodes), m_pNodes->Count() );
     rUndoNodes.DelNodes( SwNodeIndex( rUndoNodes ), rUndoNodes.Count() );
+    mpEndNoteInfo->ResetSwSection();
 
     // clear TOX after nodes - TOXMarks are gone now so SwTOXType has no clients
     for (const auto& pType : *mpTOXTypes)
@@ -591,6 +597,10 @@ SwDoc::~SwDoc()
     mpStyleAccess.reset();
 
     mpCharFormatTable.reset();
+    // tdf#140061 keep SwCharFormat instances alive while SwDoc is alive
+    if (mpCharFormatDeletionTable)
+        mpCharFormatDeletionTable->DeleteAndDestroyAll(/*keepDefault*/false);
+    mpCharFormatDeletionTable.reset();
     mpSectionFormatTable.reset();
     mpTableFrameFormatTable.reset();
     mpDfltTextFormatColl.reset();
@@ -684,7 +694,7 @@ void SwDoc::ClearDoc()
     InitTOXTypes();
 
     // create a dummy pagedesc for the layout
-    SwPageDesc* pDummyPgDsc = MakePageDesc("?DUMMY?");
+    SwPageDesc* pDummyPgDsc = MakePageDesc(UIName(u"?DUMMY?"_ustr));
 
     SwNodeIndex aSttIdx( *GetNodes().GetEndOfContent().StartOfSectionNode(), 1 );
     // create the first one over and over again (without attributes/style etc.
@@ -745,6 +755,7 @@ void SwDoc::ClearDoc()
     mpTextFormatCollTable->DeleteAndDestroy(1, mpTextFormatCollTable->size());
     mpGrfFormatCollTable->DeleteAndDestroy(1, mpGrfFormatCollTable->size());
     mpCharFormatTable->DeleteAndDestroyAll(/*keepDefault*/true);
+    mpCharFormatDeletionTable->DeleteAndDestroyAll(/*keepDefault*/false);
 
     if( getIDocumentLayoutAccess().GetCurrentViewShell() )
     {
@@ -867,9 +878,21 @@ void SwDoc::ReplaceDefaults(const SwDoc& rSource)
         for (sal_uInt16 nWhich = rPair.first;
              nWhich <= rPair.second; ++nWhich)
         {
-            const SfxPoolItem& rSourceAttr =
-                rSource.mpAttrPool->GetDefaultItem(nWhich);
-            if (rSourceAttr != mpAttrPool->GetDefaultItem(nWhich))
+            const SfxPoolItem& rSourceAttr(rSource.mpAttrPool->GetUserOrPoolDefaultItem(nWhich));
+            const SfxPoolItem& rDestAttr(mpAttrPool->GetUserOrPoolDefaultItem(nWhich));
+            bool bEqual(SfxPoolItem::areSame(rSourceAttr, rDestAttr));
+
+            if (!bEqual && rSourceAttr.isSetItem() && rDestAttr.isSetItem())
+            {
+                // the normal SfxSetItem::operator== returns false when pools are different,
+                // which will always be the case here. Use the compare without pool
+                // comparison - the chances that the defaults in pools of the same type are
+                // equal are high, and cloning them is expensive
+                bEqual = static_cast<const SfxSetItem&>(rSourceAttr).GetItemSet().Equals(
+                    static_cast<const SfxSetItem&>(rDestAttr).GetItemSet(), false);
+            }
+
+            if (!bEqual)
                 aNewDefaults.Put(rSourceAttr);
         }
     }
@@ -890,15 +913,13 @@ void SwDoc::ReplaceCompatibilityOptions(const SwDoc& rSource)
     ((idx).GetNode().GetIndex() - GetNodes().GetEndOfExtras().GetIndex() - 1)
 #endif
 
-SfxObjectShell* SwDoc::CreateCopy( bool bCallInitNew, bool bEmpty ) const
+rtl::Reference<SfxObjectShell> SwDoc::CreateCopy(bool bCallInitNew, bool bEmpty) const
 {
     SAL_INFO( "sw.pageframe", "(SwDoc::CreateCopy in" );
     rtl::Reference<SwDoc> xRet( new SwDoc );
+    xRet->SetInMailMerge(IsInMailMerge());
 
-    // we have to use pointer here, since the callee has to decide whether
-    // SfxObjectShellLock or SfxObjectShellRef should be used sometimes the
-    // object will be returned with refcount set to 0 ( if no DoInitNew is done )
-    SfxObjectShell* pRetShell = new SwDocShell( *xRet, SfxObjectCreateMode::STANDARD );
+    rtl::Reference<SwDocShell> pRetShell = new SwDocShell(*xRet, SfxObjectCreateMode::STANDARD);
     if( bCallInitNew )
     {
         // it could happen that DoInitNew creates model,
@@ -912,13 +933,9 @@ SfxObjectShell* SwDoc::CreateCopy( bool bCallInitNew, bool bEmpty ) const
 
     xRet->ReplaceStyles(*this);
 
-    uno::Reference<beans::XPropertySet> const xThisSet(
-        GetDocShell()->GetBaseModel(), uno::UNO_QUERY_THROW);
-    uno::Reference<beans::XPropertySet> const xRetSet(
-        pRetShell->GetBaseModel(), uno::UNO_QUERY_THROW);
     uno::Sequence<beans::PropertyValue> aInteropGrabBag;
-    xThisSet->getPropertyValue("InteropGrabBag") >>= aInteropGrabBag;
-    xRetSet->setPropertyValue("InteropGrabBag", uno::Any(aInteropGrabBag));
+    GetDocShell()->GetBaseModel()->getPropertyValue(u"InteropGrabBag"_ustr) >>= aInteropGrabBag;
+    pRetShell->GetBaseModel()->setPropertyValue(u"InteropGrabBag"_ustr, uno::Any(aInteropGrabBag));
 
     if( !bEmpty )
     {
@@ -940,11 +957,11 @@ SfxObjectShell* SwDoc::CreateCopy( bool bCallInitNew, bool bEmpty ) const
 }
 
 // save bulk letters as single documents
-static OUString lcl_FindUniqueName(SwWrtShell* pTargetShell, std::u16string_view rStartingPageDesc, sal_uLong nDocNo )
+static UIName lcl_FindUniqueName(SwWrtShell* pTargetShell, std::u16string_view rStartingPageDesc, sal_uLong nDocNo )
 {
     do
     {
-        OUString sTest = rStartingPageDesc + OUString::number( nDocNo );
+        UIName sTest( rStartingPageDesc + OUString::number( nDocNo ) );
         if( !pTargetShell->FindPageDescByName( sTest ) )
             return sTest;
         ++nDocNo;
@@ -981,13 +998,13 @@ static void lcl_CopyFollowPageDesc(
     // note: these may at any point form a cycle, so a loop is needed and it
     // must be detected that the last iteration closes the cycle and doesn't
     // copy the first page desc of the cycle again.
-    std::map<OUString, OUString> followMap{ { rSourcePageDesc.GetName(), rTargetPageDesc.GetName() } };
+    std::map<UIName, UIName> followMap{ { rSourcePageDesc.GetName(), rTargetPageDesc.GetName() } };
     SwPageDesc const* pCurSourcePageDesc(&rSourcePageDesc);
     SwPageDesc const* pCurTargetPageDesc(&rTargetPageDesc);
     do
     {
         const SwPageDesc* pFollowPageDesc = pCurSourcePageDesc->GetFollow();
-        OUString sFollowPageDesc = pFollowPageDesc->GetName();
+        UIName sFollowPageDesc = pFollowPageDesc->GetName();
         if (sFollowPageDesc == pCurSourcePageDesc->GetName())
         {
             break;
@@ -997,7 +1014,7 @@ static void lcl_CopyFollowPageDesc(
         auto const itMapped(followMap.find(sFollowPageDesc));
         if (itMapped == followMap.end())
         {
-            OUString sNewFollowPageDesc = lcl_FindUniqueName(&rTargetShell, sFollowPageDesc, nDocNo);
+            UIName sNewFollowPageDesc = lcl_FindUniqueName(&rTargetShell, sFollowPageDesc.toString(), nDocNo);
             pTargetFollowPageDesc = pTargetDoc->MakePageDesc(sNewFollowPageDesc);
             pTargetDoc->CopyPageDesc(*pFollowPageDesc, *pTargetFollowPageDesc, false);
         }
@@ -1072,14 +1089,14 @@ SwNodeIndex SwDoc::AppendDoc(const SwDoc& rSource, sal_uInt16 const nStartPageNu
             const SwWrtShell *pSourceShell = rSource.GetDocShell()->GetWrtShell();
             const SwPageDesc& rSourcePageDesc = pSourceShell->GetPageDesc(
                                                     pSourceShell->GetCurPageDesc());
-            const OUString sStartingPageDesc = rSourcePageDesc.GetName();
+            const UIName sStartingPageDesc = rSourcePageDesc.GetName();
             const bool bPageStylesWithHeaderFooter = lcl_PageDescOrFollowContainsHeaderFooter(rSourcePageDesc);
             if( bPageStylesWithHeaderFooter )
             {
                 // create a new pagestyle
                 // copy the pagedesc from the current document to the new
                 // document and change the name of the to-be-applied style
-                OUString sNewPageDescName = lcl_FindUniqueName(pTargetShell, sStartingPageDesc, nDocNo );
+                UIName sNewPageDescName = lcl_FindUniqueName(pTargetShell, sStartingPageDesc.toString(), nDocNo );
                 pTargetPageDesc = MakePageDesc( sNewPageDescName );
                 if( pTargetPageDesc )
                 {
@@ -1120,18 +1137,18 @@ SwNodeIndex SwDoc::AppendDoc(const SwDoc& rSource, sal_uInt16 const nStartPageNu
                 --aNodeIndex;
                 SwPaM aPaM(aNodeIndex);
                 // Collect the marks starting or ending at this text node.
-                o3tl::sorted_vector<sw::mark::IMark*> aSeenMarks;
+                o3tl::sorted_vector<sw::mark::MarkBase*> aSeenMarks;
                 IDocumentMarkAccess* pMarkAccess = getIDocumentMarkAccess();
                 for (const SwContentIndex* pIndex = pTextNode->GetFirstIndex(); pIndex; pIndex = pIndex->GetNext())
                 {
-                    sw::mark::IMark* pMark = const_cast<sw::mark::IMark*>(pIndex->GetMark());
-                    if (!pMark)
+                    if (!pIndex->GetOwner() || pIndex->GetOwner()->GetOwnerType() != SwContentIndexOwnerType::Mark)
                         continue;
+                    sw::mark::MarkBase* pMark = static_cast<sw::mark::MarkBase*>(pIndex->GetOwner());
                     if (!aSeenMarks.insert(pMark).second)
                         continue;
                 }
                 // And move them back.
-                for (sw::mark::IMark* pMark : aSeenMarks)
+                for (sw::mark::MarkBase* pMark : aSeenMarks)
                     pMarkAccess->repositionMark(pMark, aPaM);
             }
 
@@ -1246,7 +1263,7 @@ SwNodeIndex SwDoc::AppendDoc(const SwDoc& rSource, sal_uInt16 const nStartPageNu
                 SwFormatPageDesc *aDesc = static_cast< SwFormatPageDesc* >( pNewItem.get() );
 #ifdef DBG_UTIL
                 if ( aDesc->GetPageDesc() )
-                    SAL_INFO( "sw.docappend", "PD Update " << aDesc->GetPageDesc()->GetName() );
+                    SAL_INFO( "sw.docappend", "PD Update " << aDesc->GetPageDesc()->GetName().toString() );
                 else
                     SAL_INFO( "sw.docappend", "PD New" );
 #endif

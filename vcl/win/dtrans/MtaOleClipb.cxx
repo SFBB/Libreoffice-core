@@ -45,6 +45,7 @@
 
 #include <systools/win32/comtools.hxx>
 #include <systools/win32/retry_if_failed.hxx>
+#include <systools/win32/wait_for_multiple_objects.hxx>
 
 #include <comphelper/windowserrorstring.hxx>
 
@@ -66,13 +67,7 @@ namespace /* private */
     const bool MANUAL_RESET = true;
     const bool INIT_NONSIGNALED = false;
 
-    /*  Cannot use osl conditions because they are blocking
-        without waking up on messages sent by another thread
-        this leads to deadlocks because we are blocking the
-        communication between inter-thread marshalled COM
-        pointers.
-        COM Proxy-Stub communication uses SendMessages for
-        synchronization purposes.
+    /*  Similar to osl conditions, with two condition objects passed to the Wait function.
     */
     class Win32Condition
     {
@@ -86,33 +81,14 @@ namespace /* private */
         bool wait(HANDLE hEvtAbort)
         {
             const HANDLE hWaitArray[2] = { m_hEvent, hEvtAbort };
-            while (true)
+            switch (sal::systools::WaitForMultipleObjects_COMDispatch(2, hWaitArray, INFINITE))
             {
-                DWORD dwResult
-                    = MsgWaitForMultipleObjects(2, hWaitArray, FALSE, INFINITE, QS_SENDMESSAGE);
-
-                switch (dwResult)
-                {
                     case WAIT_OBJECT_0: // wait successful
                         return true;
 
                     case WAIT_OBJECT_0 + 1: // wait aborted
-                        return false;
-
-                    case WAIT_OBJECT_0 + 2:
-                    {
-                        /* PeekMessage processes all messages in the SendMessage
-                           queue that's what we want, messages from the PostMessage
-                           queue stay untouched */
-                        MSG msg;
-                        PeekMessageW(&msg, nullptr, 0, 0, PM_NOREMOVE);
-
-                        break;
-                    }
-
                     default: // WAIT_FAILED?
                         return false;
-                }
             }
         }
 
@@ -135,19 +111,13 @@ namespace /* private */
         HRESULT         hr;
     };
 
-} /* namespace private */
-
-//  static member initialization
-
-CMtaOleClipboard* CMtaOleClipboard::s_theMtaOleClipboardInst = nullptr;
+CMtaOleClipboard* s_theMtaOleClipboardInst = nullptr;
 
 // marshal an IDataObject
-
-//inline
-static HRESULT MarshalIDataObjectInStream( IDataObject* pIDataObject, LPSTREAM* ppStream )
+HRESULT MarshalIDataObjectInStream( IDataObject* pIDataObject, LPSTREAM* ppStream )
 {
     OSL_ASSERT( nullptr != pIDataObject );
-    OSL_ASSERT( nullptr != ppStream );
+    assert(nullptr != ppStream);
 
     *ppStream = nullptr;
     return CoMarshalInterThreadInterfaceInStream(
@@ -158,12 +128,10 @@ static HRESULT MarshalIDataObjectInStream( IDataObject* pIDataObject, LPSTREAM* 
 }
 
 // unmarshal an IDataObject
-
-//inline
-static HRESULT UnmarshalIDataObjectAndReleaseStream( LPSTREAM lpStream, IDataObject** ppIDataObject )
+HRESULT UnmarshalIDataObjectAndReleaseStream( LPSTREAM lpStream, IDataObject** ppIDataObject )
 {
     OSL_ASSERT( nullptr != lpStream );
-    OSL_ASSERT( nullptr != ppIDataObject );
+    assert(nullptr != ppIDataObject);
 
     *ppIDataObject = nullptr;
     return CoGetInterfaceAndReleaseStream(
@@ -172,10 +140,47 @@ static HRESULT UnmarshalIDataObjectAndReleaseStream( LPSTREAM lpStream, IDataObj
         reinterpret_cast<LPVOID*>(ppIDataObject));
 }
 
+// message handler functions; remember these functions are called from a different thread context!
+
+void onSetClipboard(IDataObject* pIDataObject)
+{
+    sal::systools::RetryIfFailed(10, 100, [pIDataObject] { return OleSetClipboard(pIDataObject); });
+}
+
+HRESULT onGetClipboard(LPSTREAM* ppStream)
+{
+    OSL_ASSERT(nullptr != ppStream);
+
+    IDataObjectPtr pIDataObject;
+
+    // forward the request to the OleClipboard
+    HRESULT hr
+        = sal::systools::RetryIfFailed(10, 100, [p = &pIDataObject] { return OleGetClipboard(p); });
+    if (SUCCEEDED(hr))
+    {
+        hr = MarshalIDataObjectInStream(pIDataObject.get(), ppStream);
+        OSL_ENSURE(SUCCEEDED(hr), "marshalling clipboard data object failed");
+    }
+    return hr;
+}
+
+// flush the ole-clipboard
+HRESULT onFlushClipboard()
+{
+    return sal::systools::RetryIfFailed(10, 100, [] { return OleFlushClipboard(); });
+}
+
+// Use a template to localize reinterpret_cast
+template <typename wParam_t, typename lParam_t>
+bool postMessage(HWND hWnd, UINT msg, wParam_t wParam, lParam_t lParam)
+{
+    bool const ret = PostMessageW(hWnd, msg, reinterpret_cast<WPARAM>(wParam),
+                                  reinterpret_cast<LPARAM>(lParam));
+    SAL_WARN_IF(!ret, "vcl.win.dtrans", "ERROR: PostMessage() failed!");
+    return ret;
+}
+
 // helper class to ensure that the calling thread has com initialized
-
-namespace {
-
 class CAutoComInit
 {
 public:
@@ -219,8 +224,6 @@ private:
 
 }
 
-// ctor
-
 CMtaOleClipboard::CMtaOleClipboard( ) :
     m_hOleThread( nullptr ),
     m_uOleThreadId( 0 ),
@@ -259,8 +262,6 @@ CMtaOleClipboard::CMtaOleClipboard( ) :
     OSL_ASSERT( nullptr != m_hClipboardChangedNotifierThread );
 }
 
-// dtor
-
 CMtaOleClipboard::~CMtaOleClipboard( )
 {
     // block calling threads out
@@ -292,7 +293,7 @@ CMtaOleClipboard::~CMtaOleClipboard( )
     // end the thread
     // because DestroyWindow can only be called
     // from within the thread that created the window
-    sendMessage( MSG_SHUTDOWN );
+    SendMessageW(m_hwndMtaOleReqWnd, MSG_SHUTDOWN, 0, 0);
 
     // wait for thread shutdown
     dwResult = WaitForSingleObject( m_hOleThread, MAX_WAIT_SHUTDOWN );
@@ -314,12 +315,12 @@ CMtaOleClipboard::~CMtaOleClipboard( )
                 "Clipboard viewer not properly unregistered" );
 }
 
-HRESULT CMtaOleClipboard::flushClipboard( )
+void CMtaOleClipboard::flushClipboard()
 {
     if ( !WaitForThreadReady( ) )
     {
         OSL_FAIL( "clipboard sta thread not ready" );
-        return E_FAIL;
+        return;
     }
 
     OSL_ENSURE( GetCurrentThreadId( ) != m_uOleThreadId,
@@ -327,15 +328,13 @@ HRESULT CMtaOleClipboard::flushClipboard( )
 
     MsgCtx  aMsgCtx;
 
-    const bool bWaitSuccess = postMessage(MSG_FLUSHCLIPBOARD, 0, reinterpret_cast<LPARAM>(&aMsgCtx))
-                              && aMsgCtx.aCondition.wait(m_hEvtWndDisposed);
-
-    return bWaitSuccess ? aMsgCtx.hr : E_ABORT;
+    postMessage(m_hwndMtaOleReqWnd, MSG_FLUSHCLIPBOARD, nullptr, &aMsgCtx);
+    aMsgCtx.aCondition.wait(m_hEvtWndDisposed);
 }
 
 HRESULT CMtaOleClipboard::getClipboard( IDataObject** ppIDataObject )
 {
-    OSL_PRECOND( nullptr != ppIDataObject, "invalid parameter" );
+    assert(ppIDataObject && "invalid parameter");
     OSL_PRECOND( GetCurrentThreadId( ) != m_uOleThreadId, "getClipboard from within clipboard sta thread called" );
 
     if ( !WaitForThreadReady( ) )
@@ -352,8 +351,7 @@ HRESULT CMtaOleClipboard::getClipboard( IDataObject** ppIDataObject )
 
     MsgCtx    aMsgCtx;
 
-    const bool bWaitSuccess = postMessage(MSG_GETCLIPBOARD, reinterpret_cast<WPARAM>(&lpStream),
-                                          reinterpret_cast<LPARAM>(&aMsgCtx))
+    const bool bWaitSuccess = postMessage(m_hwndMtaOleReqWnd, MSG_GETCLIPBOARD, &lpStream, &aMsgCtx)
                               && aMsgCtx.aCondition.wait(m_hEvtWndDisposed);
 
     HRESULT hr = bWaitSuccess ? aMsgCtx.hr : E_ABORT;
@@ -369,13 +367,12 @@ HRESULT CMtaOleClipboard::getClipboard( IDataObject** ppIDataObject )
 
 // this is an asynchronous method that's why we don't wait until the
 // request is completed
-
-HRESULT CMtaOleClipboard::setClipboard( IDataObject* pIDataObject )
+void CMtaOleClipboard::setClipboard(IDataObject* pIDataObject)
 {
     if ( !WaitForThreadReady( ) )
     {
         OSL_FAIL( "clipboard sta thread not ready" );
-        return E_FAIL;
+        return;
     }
 
     CAutoComInit comAutoInit;
@@ -394,42 +391,29 @@ HRESULT CMtaOleClipboard::setClipboard( IDataObject* pIDataObject )
     if ( pIDataObject )
         pIDataObject->AddRef( );
 
-    postMessage(
-        MSG_SETCLIPBOARD,
-        reinterpret_cast< WPARAM >( pIDataObject ) );
-
-    // because this is an asynchronous function
-    // the return value is useless
-    return S_OK;
+    postMessage(m_hwndMtaOleReqWnd, MSG_SETCLIPBOARD, pIDataObject, nullptr);
 }
 
 // register a clipboard viewer
-
-bool CMtaOleClipboard::registerClipViewer( LPFNC_CLIPVIEWER_CALLBACK_t pfncClipViewerCallback )
+void CMtaOleClipboard::registerClipViewer(LPFNC_CLIPVIEWER_CALLBACK_t pfncClipViewerCallback)
 {
     if ( !WaitForThreadReady( ) )
     {
         OSL_FAIL( "clipboard sta thread not ready" );
-        return false;
+        return;
     }
 
     OSL_ENSURE( GetCurrentThreadId( ) != m_uOleThreadId, "registerClipViewer from within the OleThread called" );
 
     MsgCtx aMsgCtx;
 
-    if (postMessage(MSG_REGCLIPVIEWER, reinterpret_cast<WPARAM>(pfncClipViewerCallback),
-                    reinterpret_cast<LPARAM>(&aMsgCtx)))
+    if (postMessage(m_hwndMtaOleReqWnd, MSG_REGCLIPVIEWER, pfncClipViewerCallback, &aMsgCtx))
         aMsgCtx.aCondition.wait(m_hEvtWndDisposed);
-
-    return false;
 }
 
 // register a clipboard viewer
-
-bool CMtaOleClipboard::onRegisterClipViewer( LPFNC_CLIPVIEWER_CALLBACK_t pfncClipViewerCallback )
+void CMtaOleClipboard::onRegisterClipViewer(LPFNC_CLIPVIEWER_CALLBACK_t pfncClipViewerCallback)
 {
-    bool bRet = false;
-
     // we need exclusive access because the clipboard changed notifier
     // thread also accesses this variable
     std::unique_lock aGuard( m_pfncClipViewerCallbackMutex );
@@ -440,7 +424,7 @@ bool CMtaOleClipboard::onRegisterClipViewer( LPFNC_CLIPVIEWER_CALLBACK_t pfncCli
         // SetClipboardViewer sends a WM_DRAWCLIPBOARD message we ignore
         // this message if we register ourself as clip viewer
         m_bInRegisterClipViewer = true;
-        bRet = AddClipboardFormatListener(m_hwndMtaOleReqWnd);
+        AddClipboardFormatListener(m_hwndMtaOleReqWnd);
         m_bInRegisterClipViewer = false;
 
         // save the new callback function
@@ -452,44 +436,11 @@ bool CMtaOleClipboard::onRegisterClipViewer( LPFNC_CLIPVIEWER_CALLBACK_t pfncCli
 
         // unregister if input parameter is NULL and we previously registered
         // as clipboard viewer
-        bRet = RemoveClipboardFormatListener(m_hwndMtaOleReqWnd);
+        RemoveClipboardFormatListener(m_hwndMtaOleReqWnd);
     }
-
-    return bRet;
-}
-
-HRESULT CMtaOleClipboard::onSetClipboard( IDataObject* pIDataObject )
-{
-    return sal::systools::RetryIfFailed(10, 100,
-                                        [pIDataObject] { return OleSetClipboard(pIDataObject); });
-}
-
-HRESULT CMtaOleClipboard::onGetClipboard( LPSTREAM* ppStream )
-{
-    OSL_ASSERT(nullptr != ppStream);
-
-    IDataObjectPtr pIDataObject;
-
-    // forward the request to the OleClipboard
-    HRESULT hr
-        = sal::systools::RetryIfFailed(10, 100, [p = &pIDataObject] { return OleGetClipboard(p); });
-    if ( SUCCEEDED( hr ) )
-    {
-        hr = MarshalIDataObjectInStream(pIDataObject.get(), ppStream);
-        OSL_ENSURE(SUCCEEDED(hr), "marshalling clipboard data object failed");
-    }
-    return hr;
-}
-
-// flush the ole-clipboard
-
-HRESULT CMtaOleClipboard::onFlushClipboard( )
-{
-    return sal::systools::RetryIfFailed(10, 100, [] { return OleFlushClipboard(); });
 }
 
 // handle clipboard update event
-
 LRESULT CMtaOleClipboard::onClipboardUpdate()
 {
     // we don't send a notification if we are
@@ -505,40 +456,21 @@ LRESULT CMtaOleClipboard::onClipboardUpdate()
     return 0;
 }
 
-// SendMessage so we don't need to supply the HWND if we send
-// something to our wrapped window
-
-LRESULT CMtaOleClipboard::sendMessage( UINT msg, WPARAM wParam, LPARAM lParam )
-{
-    return ::SendMessageW( m_hwndMtaOleReqWnd, msg, wParam, lParam );
-}
-
-// PostMessage so we don't need to supply the HWND if we send
-// something to our wrapped window
-
-bool CMtaOleClipboard::postMessage( UINT msg, WPARAM wParam, LPARAM lParam )
-{
-    bool const ret = PostMessageW(m_hwndMtaOleReqWnd, msg, wParam, lParam);
-    SAL_WARN_IF(!ret, "vcl.win.dtrans", "ERROR: PostMessage() failed!");
-    return ret;
-}
-
 // the window proc
-
 LRESULT CALLBACK CMtaOleClipboard::mtaOleReqWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam )
 {
     LRESULT lResult = 0;
 
-    // get a connection to the class-instance via the static member
-    CMtaOleClipboard* pImpl = CMtaOleClipboard::s_theMtaOleClipboardInst;
-    OSL_ASSERT( nullptr != pImpl );
+    // get a connection to the class-instance via the static
+    CMtaOleClipboard* pImpl = s_theMtaOleClipboardInst;
+    assert(pImpl);
 
     switch( uMsg )
     {
     case MSG_SETCLIPBOARD:
         {
             IDataObject* pIDataObject = reinterpret_cast< IDataObject* >( wParam );
-            CMtaOleClipboard::onSetClipboard( pIDataObject );
+            onSetClipboard(pIDataObject);
 
             // in setClipboard we did acquire the
             // interface pointer in order to prevent
@@ -555,9 +487,9 @@ LRESULT CALLBACK CMtaOleClipboard::mtaOleReqWndProc( HWND hWnd, UINT uMsg, WPARA
     case MSG_GETCLIPBOARD:
         {
             MsgCtx* aMsgCtx = reinterpret_cast< MsgCtx* >( lParam );
-            OSL_ASSERT( aMsgCtx );
+            assert(aMsgCtx);
 
-            aMsgCtx->hr = CMtaOleClipboard::onGetClipboard( reinterpret_cast< LPSTREAM* >(wParam) );
+            aMsgCtx->hr = onGetClipboard(reinterpret_cast<LPSTREAM*>(wParam));
             aMsgCtx->aCondition.set( );
         }
         break;
@@ -565,9 +497,9 @@ LRESULT CALLBACK CMtaOleClipboard::mtaOleReqWndProc( HWND hWnd, UINT uMsg, WPARA
     case MSG_FLUSHCLIPBOARD:
         {
             MsgCtx* aMsgCtx = reinterpret_cast< MsgCtx* >( lParam );
-            OSL_ASSERT( aMsgCtx );
+            assert(aMsgCtx);
 
-            aMsgCtx->hr = CMtaOleClipboard::onFlushClipboard( );
+            aMsgCtx->hr = onFlushClipboard();
             aMsgCtx->aCondition.set( );
         }
         break;
@@ -575,7 +507,7 @@ LRESULT CALLBACK CMtaOleClipboard::mtaOleReqWndProc( HWND hWnd, UINT uMsg, WPARA
     case MSG_REGCLIPVIEWER:
         {
             MsgCtx* pMsgCtx = reinterpret_cast<MsgCtx*>(lParam);
-            SAL_WARN_IF(!pMsgCtx, "vcl.win.dtrans", "pMsgCtx is nullptr");
+            assert(pMsgCtx && "pMsgCtx is nullptr");
 
             pImpl->onRegisterClipViewer(
                 reinterpret_cast<CMtaOleClipboard::LPFNC_CLIPVIEWER_CALLBACK_t>(wParam));
@@ -634,19 +566,24 @@ void CMtaOleClipboard::createMtaOleReqWnd( )
             g_szWndClsName, nullptr, 0, 0, 0, 0, 0, nullptr, nullptr, pSalData->mhInst, nullptr );
 }
 
-unsigned int CMtaOleClipboard::run( )
+unsigned __stdcall CMtaOleClipboard::oleThreadProc(void* pParam)
 {
+    osl_setThreadName("CMtaOleClipboard::oleThreadProc()");
+
+    CMtaOleClipboard* pInst = static_cast<CMtaOleClipboard*>(pParam);
+    assert(pInst);
+
     HRESULT hr = OleInitialize( nullptr );
     OSL_ASSERT( SUCCEEDED( hr ) );
 
-    createMtaOleReqWnd( );
+    pInst->createMtaOleReqWnd();
 
     unsigned int nRet = ~0U; // = error
 
-    if ( IsWindow( m_hwndMtaOleReqWnd ) )
+    if (IsWindow(pInst->m_hwndMtaOleReqWnd))
     {
-        if ( nullptr != m_hEvtThrdReady )
-            SetEvent( m_hEvtThrdReady );
+        if (nullptr != pInst->m_hEvtThrdReady)
+            SetEvent(pInst->m_hEvtThrdReady);
 
         nRet = 0;
 
@@ -661,7 +598,7 @@ unsigned int CMtaOleClipboard::run( )
             }
             if (-1 == bRet)
             {
-                SAL_WARN("vcl.win.dtrans", "GetMessageW failed: " << WindowsErrorString(GetLastError()));
+                SAL_WARN("vcl.win.dtrans", "GetMessageW failed: " << comphelper::WindowsErrorString(GetLastError()));
                 nRet = ~0U;
                 break;
             }
@@ -674,22 +611,11 @@ unsigned int CMtaOleClipboard::run( )
     return nRet;
 }
 
-unsigned __stdcall CMtaOleClipboard::oleThreadProc( void* pParam )
-{
-    osl_setThreadName("CMtaOleClipboard::run()");
-
-    CMtaOleClipboard* pInst =
-        static_cast<CMtaOleClipboard*>( pParam );
-    OSL_ASSERT( nullptr != pInst );
-
-    return pInst->run( );
-}
-
 unsigned __stdcall CMtaOleClipboard::clipboardChangedNotifierThreadProc(void* pParam)
 {
     osl_setThreadName("CMtaOleClipboard::clipboardChangedNotifierThreadProc()");
     CMtaOleClipboard* pInst = static_cast< CMtaOleClipboard* >( pParam );
-    OSL_ASSERT( nullptr != pInst );
+    assert(pInst);
 
     sal::systools::CoInitializeGuard aGuard(COINIT_APARTMENTTHREADED, false,
                                             sal::systools::CoInitializeGuard::WhenFailed::NoThrow);
@@ -707,25 +633,32 @@ unsigned __stdcall CMtaOleClipboard::clipboardChangedNotifierThreadProc(void* pP
         MsgWaitForMultipleObjects(2, pInst->m_hClipboardChangedNotifierEvents, false, INFINITE,
                                   QS_ALLINPUT | QS_ALLPOSTMESSAGE);
 
-        std::unique_lock aGuard2( pInst->m_ClipboardChangedEventCountMutex );
-
-        if ( pInst->m_ClipboardChangedEventCount > 0 )
+        bool hadEvents;
         {
-            pInst->m_ClipboardChangedEventCount--;
-            if ( 0 == pInst->m_ClipboardChangedEventCount )
-                ResetEvent( pInst->m_hClipboardChangedEvent );
+            std::unique_lock aGuard2(pInst->m_ClipboardChangedEventCountMutex);
+            hadEvents = pInst->m_ClipboardChangedEventCount > 0;
+            if (hadEvents)
+            {
+                pInst->m_ClipboardChangedEventCount--;
+                if (0 == pInst->m_ClipboardChangedEventCount)
+                    ResetEvent(pInst->m_hClipboardChangedEvent);
+            }
+        }
 
-            aGuard2.unlock( );
-
-            // nobody should touch m_pfncClipViewerCallback while we do
-            std::unique_lock aClipViewerGuard( pInst->m_pfncClipViewerCallbackMutex );
+        if (hadEvents)
+        {
+            LPFNC_CLIPVIEWER_CALLBACK_t pClipViewerCallback;
+            {
+                // nobody should touch m_pfncClipViewerCallback while we do
+                // but don't hold the mutex while calling the callback itself: it could deadlock
+                std::unique_lock aClipViewerGuard(pInst->m_pfncClipViewerCallbackMutex);
+                pClipViewerCallback = pInst->m_pfncClipViewerCallback;
+            }
 
             // notify all clipboard listener
-            if ( pInst->m_pfncClipViewerCallback )
-                pInst->m_pfncClipViewerCallback( );
+            if (pClipViewerCallback)
+                pClipViewerCallback();
         }
-        else
-            aGuard2.unlock( );
     }
 
     return 0;

@@ -18,11 +18,12 @@
  */
 
 #include "ConfigurationControllerBroadcaster.hxx"
-#include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XResource.hpp>
+#include <framework/ConfigurationChangeListener.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
+#include <framework/AbstractResource.hxx>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
+#include <framework/ConfigurationController.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
 using namespace ::com::sun::star;
@@ -32,42 +33,37 @@ using namespace ::com::sun::star::drawing::framework;
 namespace sd::framework {
 
 ConfigurationControllerBroadcaster::ConfigurationControllerBroadcaster (
-    const Reference<XConfigurationController>& rxController)
+    const rtl::Reference<ConfigurationController>& rxController)
     : mxConfigurationController(rxController)
 {
 }
 
 void ConfigurationControllerBroadcaster::AddListener(
-    const Reference<XConfigurationChangeListener>& rxListener,
-    const OUString& rsEventType,
-    const Any& rUserData)
+    const rtl::Reference<ConfigurationChangeListener>& rxListener,
+    ConfigurationChangeEventType rsEventType)
 {
     if ( ! rxListener.is())
-        throw lang::IllegalArgumentException("invalid listener",
-            mxConfigurationController,
+        throw lang::IllegalArgumentException(u"invalid listener"_ustr,
+            cppu::getXWeak(mxConfigurationController.get()),
             0);
 
     maListenerMap.try_emplace(rsEventType);
 
-    ListenerDescriptor aDescriptor;
-    aDescriptor.mxListener = rxListener;
-    aDescriptor.maUserData = rUserData;
-    maListenerMap[rsEventType].push_back(aDescriptor);
+    maListenerMap[rsEventType].push_back(rxListener);
 }
 
 void ConfigurationControllerBroadcaster::RemoveListener(
-    const Reference<XConfigurationChangeListener>& rxListener)
+    const rtl::Reference<ConfigurationChangeListener>& rxListener)
 {
     if ( ! rxListener.is())
-        throw lang::IllegalArgumentException("invalid listener",
-            mxConfigurationController,
+        throw lang::IllegalArgumentException(u"invalid listener"_ustr,
+            cppu::getXWeak(mxConfigurationController.get()),
             0);
 
     ListenerList::iterator iList;
     for (auto& rMap : maListenerMap)
     {
-        iList = std::find_if(rMap.second.begin(), rMap.second.end(),
-            [&rxListener](const ListenerDescriptor& rList) { return rList.mxListener == rxListener; });
+        iList = std::find(rMap.second.begin(), rMap.second.end(), rxListener);
         if (iList != rMap.second.end())
             rMap.second.erase(iList);
     }
@@ -85,15 +81,14 @@ void ConfigurationControllerBroadcaster::NotifyListeners (
     {
         try
         {
-            aEvent.UserData = rListener.maUserData;
-            rListener.mxListener->notifyConfigurationChange(aEvent);
+            rListener->notifyConfigurationChange(aEvent);
         }
         catch (const lang::DisposedException& rException)
         {
             // When the exception comes from the listener itself then
             // unregister it.
-            if (rException.Context == rListener.mxListener)
-                RemoveListener(rListener.mxListener);
+            if (rException.Context == cppu::getXWeak(rListener.get()))
+                RemoveListener(rListener);
         }
         catch (const RuntimeException&)
         {
@@ -113,22 +108,12 @@ void ConfigurationControllerBroadcaster::NotifyListeners (const ConfigurationCha
         ListenerList aList (iMap->second.begin(), iMap->second.end());
         NotifyListeners(aList,rEvent);
     }
-
-    // Notify the universal listeners.
-    iMap = maListenerMap.find(OUString());
-    if (iMap != maListenerMap.end())
-    {
-        // Create a local list of the listeners to avoid problems with
-        // concurrent changes and to be able to remove disposed listeners.
-        ListenerList aList (iMap->second.begin(), iMap->second.end());
-        NotifyListeners(aList,rEvent);
-    }
 }
 
 void ConfigurationControllerBroadcaster::NotifyListeners (
-    const OUString& rsEventType,
-    const Reference<XResourceId>& rxResourceId,
-    const Reference<XResource>& rxResourceObject)
+    ConfigurationChangeEventType rsEventType,
+    const rtl::Reference<ResourceId>& rxResourceId,
+    const rtl::Reference<AbstractResource>& rxResourceObject)
 {
     ConfigurationChangeEvent aEvent;
     aEvent.Type = rsEventType;
@@ -146,7 +131,7 @@ void ConfigurationControllerBroadcaster::NotifyListeners (
 void ConfigurationControllerBroadcaster::DisposeAndClear()
 {
     lang::EventObject aEvent;
-    aEvent.Source = mxConfigurationController;
+    aEvent.Source = cppu::getXWeak(mxConfigurationController.get());
     while (!maListenerMap.empty())
     {
         ListenerMap::iterator iMap (maListenerMap.begin());
@@ -161,8 +146,7 @@ void ConfigurationControllerBroadcaster::DisposeAndClear()
         }
         else
         {
-            Reference<XConfigurationChangeListener> xListener (
-                iMap->second.front().mxListener );
+            rtl::Reference<ConfigurationChangeListener> xListener ( iMap->second.front() );
             if (xListener.is())
             {
                 // Tell the listener that the configuration controller is

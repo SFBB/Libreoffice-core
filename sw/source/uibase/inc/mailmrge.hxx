@@ -29,7 +29,6 @@
 
 class SwWrtShell;
 class SwModuleOptions;
-class SwXSelChgLstnr_Impl;
 struct SwMailMergeDlg_Impl;
 namespace com::sun::star{
     namespace frame{
@@ -69,7 +68,6 @@ class SwMailMergeDlg final : public SfxDialogController
     std::unique_ptr<weld::RadioButton> m_xMailingRB;
     std::unique_ptr<weld::RadioButton> m_xFileRB;
 
-    std::unique_ptr<weld::CheckButton> m_xSingleJobsCB;
     std::unique_ptr<weld::CheckButton> m_xPasswordCB;
 
     std::unique_ptr<weld::Label> m_xSaveMergedDocumentFT;

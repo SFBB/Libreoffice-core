@@ -34,6 +34,7 @@
 #include <numrule.hxx>
 #include <pagedesc.hxx>
 #include <paratr.hxx>
+#include <init.hxx>
 #include <o3tl/unit_conversion.hxx>
 #include <osl/diagnose.h>
 #include <svl/whiter.hxx>
@@ -42,12 +43,14 @@
 #include <svx/sxenditm.hxx>
 #include <svx/sdsxyitm.hxx>
 
-SwAttrPool::SwAttrPool( SwDoc* pD )
-    : SfxItemPool( "SWG",
-                    POOLATTR_BEGIN, POOLATTR_END-1,
-                    aSlotTab, &aAttrTab ),
-    m_pDoc( pD )
+
+
+SwAttrPool::SwAttrPool(SwDoc& rDoc)
+: SfxItemPool(u"SWG"_ustr)
+, m_rDoc(rDoc)
 {
+    registerItemInfoPackage(getItemInfoPackageSwAttributes());
+
     // create SfxItemPool and EditEngine pool and add these in a chain. These
     // belong us and will be removed/destroyed in removeAndDeleteSecondaryPools() used from
     // the destructor
@@ -58,44 +61,36 @@ SwAttrPool::SwAttrPool( SwDoc* pD )
     constexpr tools::Long nDefEdgeDist
         = o3tl::convert(500, o3tl::Length::mm100, o3tl::Length::twip);
 
-    pSdrPool->SetPoolDefaultItem(SdrEdgeNode1HorzDistItem(nDefEdgeDist));
-    pSdrPool->SetPoolDefaultItem(SdrEdgeNode1VertDistItem(nDefEdgeDist));
-    pSdrPool->SetPoolDefaultItem(SdrEdgeNode2HorzDistItem(nDefEdgeDist));
-    pSdrPool->SetPoolDefaultItem(SdrEdgeNode2VertDistItem(nDefEdgeDist));
+    pSdrPool->SetUserDefaultItem(SdrEdgeNode1HorzDistItem(nDefEdgeDist));
+    pSdrPool->SetUserDefaultItem(SdrEdgeNode1VertDistItem(nDefEdgeDist));
+    pSdrPool->SetUserDefaultItem(SdrEdgeNode2HorzDistItem(nDefEdgeDist));
+    pSdrPool->SetUserDefaultItem(SdrEdgeNode2VertDistItem(nDefEdgeDist));
 
     // #i33700# // Set shadow distance defaults as PoolDefaultItems
     constexpr tools::Long nDefShadowDist
         = o3tl::convert(300, o3tl::Length::mm100, o3tl::Length::twip);
-    pSdrPool->SetPoolDefaultItem(makeSdrShadowXDistItem(nDefShadowDist));
-    pSdrPool->SetPoolDefaultItem(makeSdrShadowYDistItem(nDefShadowDist));
+    pSdrPool->SetUserDefaultItem(makeSdrShadowXDistItem(nDefShadowDist));
+    pSdrPool->SetUserDefaultItem(makeSdrShadowYDistItem(nDefShadowDist));
 
     rtl::Reference<SfxItemPool> pEEgPool = EditEngine::CreatePool();
 
     pSdrPool->SetSecondaryPool(pEEgPool.get());
-
-    if(GetFrozenIdRanges().empty())
-    {
-        FreezeIdRanges();
-    }
-    else
-    {
-        pSdrPool->FreezeIdRanges();
-    }
 }
 
 SwAttrPool::~SwAttrPool()
 {
     // cleanup secondary pools
-    SfxItemPool *pSdrPool = GetSecondaryPool();
+    SfxItemPool* pSdrPool(GetSecondaryPool());
+
     // first delete the items, then break the linking
-    pSdrPool->Delete();
+    pSdrPool->sendShutdownHint();
     SetSecondaryPool(nullptr);
 }
 
 /// Notification callback
-void SwAttrSet::changeCallback(const SfxPoolItem* pOld, const SfxPoolItem* pNew) const
+void SwAttrSet::Changed(const SfxPoolItem* pOld, const SfxPoolItem* pNew) const
 {
-    // will have no effect, return
+    // when neither pOld nor pNew is set, no need to do anything so return
     if (nullptr == m_pOldSet && nullptr == m_pNewSet)
         return;
 
@@ -105,8 +100,8 @@ void SwAttrSet::changeCallback(const SfxPoolItem* pOld, const SfxPoolItem* pNew)
 
     if (nullptr != pOld)
     {
-        // do not handle if an invalid item is involved
-        if (IsInvalidItem(pOld))
+        // do not handle if an invalid or disabled item is involved
+        if (IsInvalidItem(pOld) || IsDisabledItem(pOld))
             return;
 
         // get WhichID from pOld
@@ -115,8 +110,8 @@ void SwAttrSet::changeCallback(const SfxPoolItem* pOld, const SfxPoolItem* pNew)
 
     if (nullptr != pNew)
     {
-        // do not handle if an invalid item is involved
-        if (IsInvalidItem(pNew))
+        // do not handle if an invalid or disabled item is involved
+        if (IsInvalidItem(pNew) || IsDisabledItem(pNew))
             return;
 
         if (0 == nWhich)
@@ -127,7 +122,7 @@ void SwAttrSet::changeCallback(const SfxPoolItem* pOld, const SfxPoolItem* pNew)
     }
 
     // all given items are valid. If we got no WhichID != 0 then
-    // pOld == pNew == nullptr or SfxVoidItem(0) and we have no
+    // pOld == pNew == nullptr or IsDisabledItem and we have no
     // valid input. Also not needed if !IsWhich (aka > SFX_WHICH_MAX)
     if (0 == nWhich || !SfxItemPool::IsWhich(nWhich))
         return;
@@ -141,12 +136,12 @@ void SwAttrSet::changeCallback(const SfxPoolItem* pOld, const SfxPoolItem* pNew)
             const SfxItemSet* pParent(GetParent());
             m_pOldSet->PutImpl(nullptr != pParent
                 ? pParent->Get(nWhich)
-                : GetPool()->GetDefaultItem(nWhich), nWhich, false);
+                : GetPool()->GetUserOrPoolDefaultItem(nWhich), false);
         }
         else if (!IsInvalidItem(pOld))
         {
             // set/remember old value
-            m_pOldSet->PutImpl(*pOld, nWhich, false);
+            m_pOldSet->PutImpl(*pOld, false);
         }
     }
 
@@ -159,12 +154,12 @@ void SwAttrSet::changeCallback(const SfxPoolItem* pOld, const SfxPoolItem* pNew)
             const SfxItemSet* pParent(GetParent());
             m_pNewSet->PutImpl(nullptr != pParent
                 ? pParent->Get(nWhich)
-                : GetPool()->GetDefaultItem(nWhich), nWhich, false);
+                : GetPool()->GetUserOrPoolDefaultItem(nWhich), false);
         }
         else if (!IsInvalidItem(pNew))
         {
             // set/remember new value
-            m_pNewSet->PutImpl(*pNew, nWhich, false);
+            m_pNewSet->PutImpl(*pNew, false);
         }
     }
 }
@@ -173,7 +168,6 @@ SwAttrSet::SwAttrSet( SwAttrPool& rPool, sal_uInt16 nWh1, sal_uInt16 nWh2 )
     : SfxItemSet( rPool, nWh1, nWh2 )
     , m_pOldSet( nullptr )
     , m_pNewSet( nullptr )
-    , m_aCallbackHolder(this)
 {
 }
 
@@ -181,7 +175,6 @@ SwAttrSet::SwAttrSet( SwAttrPool& rPool, const WhichRangesContainer& nWhichPairT
     : SfxItemSet( rPool, nWhichPairTable )
     , m_pOldSet( nullptr )
     , m_pNewSet( nullptr )
-    , m_aCallbackHolder(this)
 {
 }
 
@@ -189,7 +182,6 @@ SwAttrSet::SwAttrSet( const SwAttrSet& rSet )
     : SfxItemSet( rSet )
     , m_pOldSet( nullptr )
     , m_pNewSet( nullptr )
-    , m_aCallbackHolder(this)
 {
 }
 
@@ -237,15 +229,9 @@ SwAttrSet SwAttrSet::CloneAsValue( bool bItems ) const
 bool SwAttrSet::Put_BC( const SfxPoolItem& rAttr,
                        SwAttrSet* pOld, SwAttrSet* pNew )
 {
-    // direct call when neither pOld nor pNew is set, no need for callback
-    if (nullptr == pOld && nullptr == pNew)
-        return nullptr != SfxItemSet::Put( rAttr );
-
     m_pNewSet = pNew;
     m_pOldSet = pOld;
-    setCallback(m_aCallbackHolder);
     bool bRet = nullptr != SfxItemSet::Put( rAttr );
-    clearCallback();
     m_pOldSet = m_pNewSet = nullptr;
     return bRet;
 }
@@ -253,15 +239,9 @@ bool SwAttrSet::Put_BC( const SfxPoolItem& rAttr,
 bool SwAttrSet::Put_BC( const SfxItemSet& rSet,
                        SwAttrSet* pOld, SwAttrSet* pNew )
 {
-    // direct call when neither pOld nor pNew is set, no need for callback
-    if (nullptr == pOld && nullptr == pNew)
-        return SfxItemSet::Put( rSet );
-
     m_pNewSet = pNew;
     m_pOldSet = pOld;
-    setCallback(m_aCallbackHolder);
     bool bRet = SfxItemSet::Put( rSet );
-    clearCallback();
     m_pOldSet = m_pNewSet = nullptr;
     return bRet;
 }
@@ -269,15 +249,9 @@ bool SwAttrSet::Put_BC( const SfxItemSet& rSet,
 sal_uInt16 SwAttrSet::ClearItem_BC( sal_uInt16 nWhich,
                                     SwAttrSet* pOld, SwAttrSet* pNew )
 {
-    // direct call when neither pOld nor pNew is set, no need for callback
-    if (nullptr == pOld && nullptr == pNew)
-        return SfxItemSet::ClearItem( nWhich );
-
     m_pNewSet = pNew;
     m_pOldSet = pOld;
-    setCallback(m_aCallbackHolder);
     sal_uInt16 nRet = SfxItemSet::ClearItem( nWhich );
-    clearCallback();
     m_pOldSet = m_pNewSet = nullptr;
     return nRet;
 }
@@ -288,20 +262,10 @@ sal_uInt16 SwAttrSet::ClearItem_BC( sal_uInt16 nWhich1, sal_uInt16 nWhich2,
     OSL_ENSURE( nWhich1 <= nWhich2, "no valid range" );
     sal_uInt16 nRet = 0;
 
-    // direct call when neither pOld nor pNew is set, no need for callback
-    if (nullptr == pOld && nullptr == pNew)
-    {
-        for( ; nWhich1 <= nWhich2; ++nWhich1 )
-            nRet = nRet + SfxItemSet::ClearItem( nWhich1 );
-        return nRet;
-    }
-
     m_pNewSet = pNew;
     m_pOldSet = pOld;
-    setCallback(m_aCallbackHolder);
     for( ; nWhich1 <= nWhich2; ++nWhich1 )
         nRet = nRet + SfxItemSet::ClearItem( nWhich1 );
-    clearCallback();
     m_pOldSet = m_pNewSet = nullptr;
     return nRet;
 }
@@ -309,18 +273,9 @@ sal_uInt16 SwAttrSet::ClearItem_BC( sal_uInt16 nWhich1, sal_uInt16 nWhich2,
 int SwAttrSet::Intersect_BC( const SfxItemSet& rSet,
                              SwAttrSet* pOld, SwAttrSet* pNew )
 {
-    // direct call when neither pOld nor pNew is set, no need for callback
-    if (nullptr == pOld && nullptr == pNew)
-    {
-        SfxItemSet::Intersect( rSet );
-        return 0; // as below when neither pOld nor pNew is set
-    }
-
     m_pNewSet = pNew;
     m_pOldSet = pOld;
-    setCallback(m_aCallbackHolder);
     SfxItemSet::Intersect( rSet );
-    clearCallback();
     m_pOldSet = m_pNewSet = nullptr;
     return pNew ? pNew->Count() : pOld->Count();
 }
@@ -353,7 +308,7 @@ bool SwAttrSet::SetModifyAtAttr( const sw::BroadcastingModify* pModify )
         SwCharFormat* pCharFormat = pFormatDrop->GetCharFormat();
         if(pCharFormat && GetPool() != pCharFormat->GetAttrSet().GetPool())
         {
-           pCharFormat = GetDoc()->CopyCharFormat(*pCharFormat);
+           pCharFormat = GetDoc().CopyCharFormat(*pCharFormat);
            pFormatDrop->SetCharFormat(pCharFormat);
         }
         pFormatDrop->ChgDefinedIn(pDropDefiner);
@@ -383,52 +338,52 @@ void SwAttrSet::CopyToModify( sw::BroadcastingModify& rMod ) const
             // #i92811#
             std::unique_ptr<SfxStringItem> pNewListIdItem;
 
-            const SwDoc *pSrcDoc = GetDoc();
-            SwDoc *pDstDoc = pCNd ? &pCNd->GetDoc() : pFormat->GetDoc();
+            const SwDoc& rSrcDoc = GetDoc();
+            SwDoc& rDstDoc = pCNd ? pCNd->GetDoc() : pFormat->GetDoc();
 
             // Does the NumRule has to be copied?
             const SwNumRuleItem* pNumRuleItem;
-            if( pSrcDoc != pDstDoc &&
+            if( &rSrcDoc != &rDstDoc &&
                 (pNumRuleItem = GetItemIfSet( RES_PARATR_NUMRULE, false )) )
             {
-                const OUString& rNm = pNumRuleItem->GetValue();
-                if( !rNm.isEmpty() )
+                UIName aNm(pNumRuleItem->GetValue());
+                if( !aNm.isEmpty() )
                 {
-                    SwNumRule* pDestRule = pDstDoc->FindNumRulePtr( rNm );
+                    SwNumRule* pDestRule = rDstDoc.FindNumRulePtr( aNm );
                     if( pDestRule )
-                        pDestRule->SetInvalidRule( true );
+                        pDestRule->Invalidate();
                     else
-                        pDstDoc->MakeNumRule( rNm, pSrcDoc->FindNumRulePtr( rNm ) );
+                        rDstDoc.MakeNumRule( aNm, rSrcDoc.FindNumRulePtr( aNm ) );
                 }
             }
 
             // copy list and if needed also the corresponding list style
             // for text nodes
             const SfxStringItem* pStrItem;
-            if ( pSrcDoc != pDstDoc &&
+            if ( &rSrcDoc != &rDstDoc &&
                  pCNd && pCNd->IsTextNode() &&
                  (pStrItem = GetItemIfSet( RES_PARATR_LIST_ID, false )) )
             {
                 const OUString& sListId = pStrItem->GetValue();
                 if ( !sListId.isEmpty() &&
-                     !pDstDoc->getIDocumentListsAccess().getListByName( sListId ) )
+                     !rDstDoc.getIDocumentListsAccess().getListByName( sListId ) )
                 {
-                    const SwList* pList = pSrcDoc->getIDocumentListsAccess().getListByName( sListId );
+                    const SwList* pList = rSrcDoc.getIDocumentListsAccess().getListByName( sListId );
                     // copy list style, if needed
-                    const OUString& sDefaultListStyleName =
+                    const UIName& sDefaultListStyleName =
                                             pList->GetDefaultListStyleName();
                     // #i92811#
                     const SwNumRule* pDstDocNumRule =
-                                pDstDoc->FindNumRulePtr( sDefaultListStyleName );
+                                rDstDoc.FindNumRulePtr( sDefaultListStyleName );
                     if ( !pDstDocNumRule )
                     {
-                        pDstDoc->MakeNumRule( sDefaultListStyleName,
-                                              pSrcDoc->FindNumRulePtr( sDefaultListStyleName ) );
+                        rDstDoc.MakeNumRule( sDefaultListStyleName,
+                                              rSrcDoc.FindNumRulePtr( sDefaultListStyleName ) );
                     }
                     else
                     {
                         const SwNumRule* pSrcDocNumRule =
-                                pSrcDoc->FindNumRulePtr( sDefaultListStyleName );
+                                rSrcDoc.FindNumRulePtr( sDefaultListStyleName );
                         // If list id of text node equals the list style's
                         // default list id in the source document, the same
                         // should be hold in the destination document.
@@ -443,17 +398,17 @@ void SwAttrSet::CopyToModify( sw::BroadcastingModify& rMod ) const
                     // check again, if list exist, because <SwDoc::MakeNumRule(..)>
                     // could have also created it.
                     if ( pNewListIdItem == nullptr &&
-                         !pDstDoc->getIDocumentListsAccess().getListByName( sListId ) )
+                         !rDstDoc.getIDocumentListsAccess().getListByName( sListId ) )
                     {
                         // copy list
-                        pDstDoc->getIDocumentListsAccess().createList( sListId, sDefaultListStyleName );
+                        rDstDoc.getIDocumentListsAccess().createList( sListId, sDefaultListStyleName );
                     }
                 }
             }
 
             std::optional< SfxItemSet > tmpSet;
             const SwFormatPageDesc* pPageDescItem;
-            if( pSrcDoc != pDstDoc && (pPageDescItem = GetItemIfSet(
+            if( &rSrcDoc != &rDstDoc && (pPageDescItem = GetItemIfSet(
                                             RES_PAGEDESC, false )))
             {
                 const SwPageDesc* pPgDesc = pPageDescItem->GetPageDesc();
@@ -461,11 +416,11 @@ void SwAttrSet::CopyToModify( sw::BroadcastingModify& rMod ) const
                 {
                     tmpSet.emplace(*this);
 
-                    SwPageDesc* pDstPgDesc = pDstDoc->FindPageDesc(pPgDesc->GetName());
+                    SwPageDesc* pDstPgDesc = rDstDoc.FindPageDesc(pPgDesc->GetName());
                     if( !pDstPgDesc )
                     {
-                        pDstPgDesc = pDstDoc->MakePageDesc(pPgDesc->GetName());
-                        pDstDoc->CopyPageDesc( *pPgDesc, *pDstPgDesc );
+                        pDstPgDesc = rDstDoc.MakePageDesc(pPgDesc->GetName());
+                        rDstDoc.CopyPageDesc( *pPgDesc, *pDstPgDesc );
                     }
                     SwFormatPageDesc aDesc( pDstPgDesc );
                     aDesc.SetNumOffset( pPageDescItem->GetNumOffset() );
@@ -474,7 +429,7 @@ void SwAttrSet::CopyToModify( sw::BroadcastingModify& rMod ) const
             }
 
             const SwFormatAnchor* pAnchorItem;
-            if( pSrcDoc != pDstDoc && (pAnchorItem = GetItemIfSet( RES_ANCHOR, false ))
+            if( &rSrcDoc != &rDstDoc && (pAnchorItem = GetItemIfSet( RES_ANCHOR, false ))
                 && pAnchorItem->GetAnchorNode() != nullptr )
             {
                 if( !tmpSet )
@@ -485,18 +440,18 @@ void SwAttrSet::CopyToModify( sw::BroadcastingModify& rMod ) const
             }
 
             const SwFormatAutoFormat* pAutoFormatItem;
-            if (pSrcDoc != pDstDoc &&
+            if (&rSrcDoc != &rDstDoc &&
                 (pAutoFormatItem = GetItemIfSet(RES_PARATR_LIST_AUTOFMT, false)) &&
                 pAutoFormatItem->GetStyleHandle())
             {
                 SfxItemSet const& rAutoStyle(*pAutoFormatItem->GetStyleHandle());
                 std::shared_ptr<SfxItemSet> const pNewSet(
-                    rAutoStyle.SfxItemSet::Clone(true, &pDstDoc->GetAttrPool()));
+                    rAutoStyle.SfxItemSet::Clone(true, &rDstDoc.GetAttrPool()));
 
-                // fix up character style, it contains pointers to pSrcDoc
+                // fix up character style, it contains pointers to rSrcDoc
                 if (const SwFormatCharFormat* pCharFormatItem = pNewSet->GetItemIfSet(RES_TXTATR_CHARFMT, false))
                 {
-                    SwCharFormat *const pCopy(pDstDoc->CopyCharFormat(*pCharFormatItem->GetCharFormat()));
+                    SwCharFormat *const pCopy(rDstDoc.CopyCharFormat(*pCharFormatItem->GetCharFormat()));
                     const_cast<SwFormatCharFormat&>(*pCharFormatItem).SetCharFormat(pCopy);
                 }
 

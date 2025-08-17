@@ -20,6 +20,7 @@
 #include <sfx2/printer.hxx>
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
+#include <comphelper/lok.hxx>
 #include <doc.hxx>
 #include <IDocumentDrawModelAccess.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -43,8 +44,21 @@
 #include <ndindex.hxx>
 #include <accessibilityoptions.hxx>
 
-void SwViewShell::Init( const SwViewOption *pNewOpt )
+void SwViewShell::Init( const SwViewOption *pNewOpt, tools::Long const nFlags)
 {
+    // in order to suppress event handling in
+    // <SwDrawContact::Changed> during construction of <SwViewShell> instance
+    mbInConstructor = true;
+
+    mbPaintInProgress = mbViewLocked = mbInEndAction = false;
+    mbPaintWorks = mbEnableSmooth = true;
+    mbPreview = 0 !=( VSHELLFLAG_ISPREVIEW & nFlags );
+
+    // i#38810 Do not reset modified state of document,
+    // if it's already been modified.
+    const bool bIsDocModified( mxDoc->getIDocumentState().IsModified() );
+    OutputDevice* pOrigOut = mpOut;
+
     mbDocSizeChgd = false;
 
     // We play it safe: Remove old font information whenever the printer
@@ -104,7 +118,6 @@ void SwViewShell::Init( const SwViewOption *pNewOpt )
     SAL_INFO( "sw.core", "View::Init - after InitPrt" );
     if( GetWin() )
     {
-        SwViewOption::Init( GetWin()->GetOutDev() );
         GetWin()->GetOutDev()->SetFillColor();
         GetWin()->SetBackground();
         GetWin()->GetOutDev()->SetLineColor();
@@ -130,53 +143,14 @@ void SwViewShell::Init( const SwViewOption *pNewOpt )
     }
     SizeChgNotify();
 
-    // XForms mode: initialize XForms mode, based on design mode (draw view)
-    //   MakeDrawView() requires layout
-    if( GetDoc()->isXForms() )
+    awt::Rectangle aClientVisibleArea = comphelper::LibreOfficeKit::getInitialClientVisibleArea();
+    if (aClientVisibleArea.Width && aClientVisibleArea.Height)
     {
-        if( ! HasDrawView() )
-            MakeDrawView();
-        mpOpt->SetFormView( ! GetDrawView()->IsDesignMode() );
+        maLOKVisibleArea
+            = tools::Rectangle(Point(aClientVisibleArea.X, aClientVisibleArea.Y),
+                               Size(aClientVisibleArea.Width, aClientVisibleArea.Height));
     }
-}
 
-/// CTor for the first Shell.
-SwViewShell::SwViewShell( SwDoc& rDocument, vcl::Window *pWindow,
-                        const SwViewOption *pNewOpt, OutputDevice *pOutput,
-                        tools::Long nFlags )
-    :
-    mpSfxViewShell( nullptr ),
-    mpImp( new SwViewShellImp( this ) ),
-    mpWin( pWindow ),
-    mpOut( pOutput ? pOutput
-                  : pWindow ? pWindow->GetOutDev()
-                            : static_cast<OutputDevice*>(rDocument.getIDocumentDeviceAccess().getPrinter( true ))),
-    mpAccOptions( new SwAccessibilityOptions ),
-    mbShowHeaderSeparator( false ),
-    mbShowFooterSeparator( false ),
-    mbHeaderFooterEdit( false ),
-    mpTargetPaintWindow(nullptr),
-    mpBufferedOut(nullptr),
-    mxDoc( &rDocument ),
-    mnStartAction( 0 ),
-    mnLockPaint( 0 ),
-    mbSelectAll(false),
-    mbOutputToWindow(false),
-    mpPrePostOutDev(nullptr)
-{
-    // in order to suppress event handling in
-    // <SwDrawContact::Changed> during construction of <SwViewShell> instance
-    mbInConstructor = true;
-
-    mbPaintInProgress = mbViewLocked = mbInEndAction = false;
-    mbPaintWorks = mbEnableSmooth = true;
-    mbPreview = 0 !=( VSHELLFLAG_ISPREVIEW & nFlags );
-
-    // i#38810 Do not reset modified state of document,
-    // if it's already been modified.
-    const bool bIsDocModified( mxDoc->getIDocumentState().IsModified() );
-    OutputDevice* pOrigOut = mpOut;
-    Init( pNewOpt );    // may change the Outdev (InitPrt())
     mpOut = pOrigOut;
 
     // initialize print preview layout after layout
@@ -208,13 +182,40 @@ SwViewShell::SwViewShell( SwDoc& rDocument, vcl::Window *pWindow,
     mbInConstructor = false;
 }
 
+/// CTor for the first Shell.
+SwViewShell::SwViewShell( SwDoc& rDocument, vcl::Window *pWindow,
+                        const SwViewOption *pNewOpt, OutputDevice *pOutput,
+                        tools::Long nFlags )
+    :
+    mpSfxViewShell( nullptr ),
+    mpImp( new SwViewShellImp( *this ) ),
+    mpWin( pWindow ),
+    mpOut( pOutput ? pOutput
+                  : pWindow ? pWindow->GetOutDev()
+                            : static_cast<OutputDevice*>(rDocument.getIDocumentDeviceAccess().getPrinter( true ))),
+    mpAccOptions( new SwAccessibilityOptions ),
+    mbShowHeaderSeparator( false ),
+    mbShowFooterSeparator( false ),
+    mbHeaderFooterEdit( false ),
+    mpTargetPaintWindow(nullptr),
+    mpBufferedOut(nullptr),
+    mxDoc( &rDocument ),
+    mnStartAction( 0 ),
+    mnLockPaint( 0 ),
+    mbSelectAll(false),
+    mbOutputToWindow(false),
+    mpPrePostOutDev(nullptr)
+{
+    Init( pNewOpt, nFlags );    // may change the Outdev (InitPrt())
+}
+
 /// CTor for further Shells on a document.
 SwViewShell::SwViewShell( SwViewShell& rShell, vcl::Window *pWindow,
                         OutputDevice * pOutput, tools::Long const nFlags)
     : Ring( &rShell ) ,
     maBrowseBorder( rShell.maBrowseBorder ),
     mpSfxViewShell( nullptr ),
-    mpImp( new SwViewShellImp( this ) ),
+    mpImp( new SwViewShellImp( *this ) ),
     mpWin( pWindow ),
     mpOut( pOutput ? pOutput
                   : pWindow ? pWindow->GetOutDev()
@@ -232,45 +233,10 @@ SwViewShell::SwViewShell( SwViewShell& rShell, vcl::Window *pWindow,
     mbOutputToWindow(false),
     mpPrePostOutDev(nullptr)
 {
-    // in order to suppress event handling in
-    // <SwDrawContact::Changed> during construction of <SwViewShell> instance
-    mbInConstructor = true;
-
-    mbPaintWorks = mbEnableSmooth = true;
-    mbPaintInProgress = mbViewLocked = mbInEndAction = false;
-    mbPreview = 0 !=( VSHELLFLAG_ISPREVIEW & nFlags );
-
     if( nFlags & VSHELLFLAG_SHARELAYOUT )
         mpLayout = rShell.mpLayout;
 
-    CurrShell aCurr( this );
-
-    bool bModified = mxDoc->getIDocumentState().IsModified();
-
-    OutputDevice* pOrigOut = mpOut;
-    Init( rShell.GetViewOptions() ); // might change Outdev (InitPrt())
-    mpOut = pOrigOut;
-
-    if ( mbPreview )
-        mpImp->InitPagePreviewLayout();
-
-    static_cast<SwHiddenTextFieldType*>(mxDoc->getIDocumentFieldsAccess().GetSysFieldType( SwFieldIds::HiddenText ))->
-            SetHiddenFlag( !mpOpt->IsShowHiddenField() );
-
-    // In Init a standard FrameFormat is created.
-    if( !bModified && !mxDoc->GetIDocumentUndoRedo().IsUndoNoResetModified() )
-    {
-        mxDoc->getIDocumentState().ResetModified();
-    }
-
-    // extend format cache.
-    if ( SwTextFrame::GetTextCache()->GetCurMax() < 2550 )
-        SwTextFrame::GetTextCache()->IncreaseMax( 100 );
-    if( mpOpt->IsGridVisible() || getIDocumentDrawModelAccess().GetDrawModel() )
-        Imp()->MakeDrawView();
-
-    mbInConstructor = false;
-
+    Init( rShell.GetViewOptions(), nFlags ); // might change Outdev (InitPrt())
 }
 
 SwViewShell::~SwViewShell()

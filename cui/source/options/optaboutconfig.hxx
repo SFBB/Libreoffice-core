@@ -17,8 +17,6 @@
 
 #include <vector>
 
-class CuiAboutConfigTabPage;
-class CuiAboutConfigValueDialog;
 struct Prop_Impl;
 struct UserData;
 
@@ -70,8 +68,9 @@ private:
 public:
     explicit CuiAboutConfigTabPage(weld::Window* pParent);
     virtual ~CuiAboutConfigTabPage() override;
-    void InsertEntry(const OUString& rPropertyPath, const OUString& rProp, const OUString& rStatus,
-                     const OUString& rType, const OUString& rValue, const OUString& rTooltip,
+    void InsertEntry(const OUString& rPropertyPath, css::uno::Any aPropertyValue,
+                     const OUString& rProp, const OUString& rStatus, const OUString& rType,
+                     const OUString& rValue, const OUString& rTooltip,
                      const weld::TreeIter* pParentEntry, bool bInsertToPrefBox, bool bIsReadOnly,
                      bool bWasMOdified);
     void Reset();

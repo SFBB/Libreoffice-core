@@ -75,7 +75,7 @@ SQLEditView::SQLEditView(std::unique_ptr<weld::ScrolledWindow> xScrolledWindow)
     , m_bInUpdate(false)
     , m_bDisableInternalUndo(false)
 {
-    m_xScrolledWindow->connect_vadjustment_changed(LINK(this, SQLEditView, ScrollHdl));
+    m_xScrolledWindow->connect_vadjustment_value_changed(LINK(this, SQLEditView, ScrollHdl));
 }
 
 void SQLEditView::DisableInternalUndo()
@@ -96,21 +96,21 @@ void SQLEditView::SetItemPoolFont(SfxItemPool* pItemPool)
     Size aFontSize(0, officecfg::Office::Common::Font::SourceViewFont::FontHeight::get());
     vcl::Font aAppFont(sFontName, aFontSize);
 
-    pItemPool->SetPoolDefaultItem(SvxFontItem(aAppFont.GetFamilyType(), aAppFont.GetFamilyName(),
-                                              "", PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW,
+    pItemPool->SetUserDefaultItem(SvxFontItem(aAppFont.GetFamilyTypeMaybeAskConfig(), aAppFont.GetFamilyName(),
+                                              u""_ustr, PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW,
                                               EE_CHAR_FONTINFO));
-    pItemPool->SetPoolDefaultItem(SvxFontItem(aAppFont.GetFamilyType(), aAppFont.GetFamilyName(),
-                                              "", PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW,
+    pItemPool->SetUserDefaultItem(SvxFontItem(aAppFont.GetFamilyTypeMaybeAskConfig(), aAppFont.GetFamilyName(),
+                                              u""_ustr, PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW,
                                               EE_CHAR_FONTINFO_CJK));
-    pItemPool->SetPoolDefaultItem(SvxFontItem(aAppFont.GetFamilyType(), aAppFont.GetFamilyName(),
-                                              "", PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW,
+    pItemPool->SetUserDefaultItem(SvxFontItem(aAppFont.GetFamilyTypeMaybeAskConfig(), aAppFont.GetFamilyName(),
+                                              u""_ustr, PITCH_DONTKNOW, RTL_TEXTENCODING_DONTKNOW,
                                               EE_CHAR_FONTINFO_CTL));
 
-    pItemPool->SetPoolDefaultItem(
+    pItemPool->SetUserDefaultItem(
         SvxFontHeightItem(aAppFont.GetFontHeight() * 20, 100, EE_CHAR_FONTHEIGHT));
-    pItemPool->SetPoolDefaultItem(
+    pItemPool->SetUserDefaultItem(
         SvxFontHeightItem(aAppFont.GetFontHeight() * 20, 100, EE_CHAR_FONTHEIGHT_CJK));
-    pItemPool->SetPoolDefaultItem(
+    pItemPool->SetUserDefaultItem(
         SvxFontHeightItem(aAppFont.GetFontHeight() * 20, 100, EE_CHAR_FONTHEIGHT_CTL));
 }
 
@@ -148,7 +148,7 @@ void SQLEditView::SetDrawingArea(weld::DrawingArea* pDrawingArea)
         std::unique_lock g(m_mutex);
         m_notifier = n;
     }
-    css::uno::Sequence< OUString > s { "FontHeight", "FontName" };
+    css::uno::Sequence< OUString > s { u"FontHeight"_ustr, u"FontName"_ustr };
     n->addPropertiesChangeListener(s, m_listener);
     m_ColorConfig.AddListener(this);
 }
@@ -203,7 +203,7 @@ void SQLEditView::UpdateData()
     {
         OUString aLine( rEditEngine.GetText( nLine ) );
 
-        ESelection aAllLine(nLine, 0, nLine, EE_TEXTPOS_ALL);
+        ESelection aAllLine(nLine, 0, nLine, EE_TEXTPOS_MAX);
         rEditEngine.RemoveAttribs(aAllLine, false, EE_CHAR_COLOR);
         rEditEngine.RemoveAttribs(aAllLine, false, EE_CHAR_WEIGHT);
         rEditEngine.RemoveAttribs(aAllLine, false, EE_CHAR_WEIGHT_CJK);
@@ -234,8 +234,8 @@ void SQLEditView::UpdateData()
 void SQLEditView::DoBracketHilight(sal_uInt16 nKey)
 {
     ESelection aCurrentPos = m_xEditView->GetSelection();
-    sal_Int32 nStartPos = aCurrentPos.nStartPos;
-    const sal_uInt32 nStartPara = aCurrentPos.nStartPara;
+    sal_Int32 nStartPos = aCurrentPos.start.nIndex;
+    const sal_uInt32 nStartPara = aCurrentPos.start.nPara;
     sal_uInt16 nCount = 0;
     int nChar = -1;
 
@@ -294,7 +294,7 @@ void SQLEditView::DoBracketHilight(sal_uInt16 nKey)
                     aSet.Put(SvxWeightItem(WEIGHT_ULTRABOLD, EE_CHAR_WEIGHT_CTL));
 
                     m_xEditEngine->QuickSetAttribs(aSet, ESelection(nPara, i, nPara, i + 1));
-                    m_xEditEngine->QuickSetAttribs(aSet, ESelection(nStartPara, nStartPos, nStartPara, nStartPos));
+                    m_xEditEngine->QuickSetAttribs(aSet, ESelection(nStartPara, nStartPos));
                     return;
                 }
                 else
@@ -369,8 +369,8 @@ bool SQLEditView::Command(const CommandEvent& rCEvt)
     {
         ::tools::Rectangle aRect(rCEvt.GetMousePosPixel(), Size(1, 1));
         weld::Widget* pPopupParent = GetDrawingArea();
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "vcl/ui/editmenu.ui"));
-        std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"vcl/ui/editmenu.ui"_ustr));
+        std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
 
         bool bEnableCut = true;
         bool bEnableCopy = true;
@@ -395,13 +395,13 @@ bool SQLEditView::Command(const CommandEvent& rCEvt)
             bEnableSpecialChar = false;
         }
 
-        xContextMenu->set_sensitive("cut", bEnableCut);
-        xContextMenu->set_sensitive("copy", bEnableCopy);
-        xContextMenu->set_sensitive("delete", bEnableDelete);
-        xContextMenu->set_sensitive("paste", bEnablePaste);
-        xContextMenu->set_sensitive("specialchar", bEnableSpecialChar);
-        xContextMenu->set_visible("undo", false);
-        xContextMenu->set_visible("specialchar", vcl::GetGetSpecialCharsFunction() != nullptr);
+        xContextMenu->set_sensitive(u"cut"_ustr, bEnableCut);
+        xContextMenu->set_sensitive(u"copy"_ustr, bEnableCopy);
+        xContextMenu->set_sensitive(u"delete"_ustr, bEnableDelete);
+        xContextMenu->set_sensitive(u"paste"_ustr, bEnablePaste);
+        xContextMenu->set_sensitive(u"specialchar"_ustr, bEnableSpecialChar);
+        xContextMenu->set_visible(u"undo"_ustr, false);
+        xContextMenu->set_visible(u"specialchar"_ustr, vcl::GetGetSpecialCharsFunction() != nullptr);
 
         OUString sCommand = xContextMenu->popup_at_rect(pPopupParent, aRect);
 
@@ -415,11 +415,9 @@ bool SQLEditView::Command(const CommandEvent& rCEvt)
             pEditView->DeleteSelected();
         else if (sCommand == "selectall")
         {
-            sal_Int32 nPar = m_xEditEngine->GetParagraphCount();
-            if (nPar)
+            if (m_xEditEngine->GetParagraphCount())
             {
-                sal_Int32 nLen = m_xEditEngine->GetTextLen(nPar - 1);
-                pEditView->SetSelection(ESelection(0, 0, nPar - 1, nLen));
+                pEditView->SetSelection(ESelection::All());
             }
         }
         else if (sCommand == "specialchar")
@@ -470,8 +468,8 @@ void SQLEditView::SetScrollBarRange()
     */
     nVPageSize = std::min(nVPageSize, nVUpper);
 
-    m_xScrolledWindow->vadjustment_configure(nVCurrentDocPos, 0, nVUpper,
-                                             nVStepIncrement, nVPageIncrement, nVPageSize);
+    m_xScrolledWindow->vadjustment_configure(nVCurrentDocPos, nVUpper, nVStepIncrement,
+                                             nVPageIncrement, nVPageSize);
 }
 
 IMPL_LINK_NOARG(SQLEditView, ScrollHdl, weld::ScrolledWindow&, void)

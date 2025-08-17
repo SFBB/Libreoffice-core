@@ -1837,7 +1837,8 @@ tools::Long SwDoc::CompareDoc( const SwDoc& rDoc )
     tools::Long nRet = 0;
 
     // Get comparison options
-    CmpOptions.eCmpMode = SW_MOD()->GetCompareMode();
+    SwModule* mod = SwModule::get();
+    CmpOptions.eCmpMode = mod->GetCompareMode();
     if( CmpOptions.eCmpMode == SwCompareMode::Auto )
     {
         if( getRsidRoot() == rDoc.getRsidRoot() )
@@ -1855,8 +1856,8 @@ tools::Long SwDoc::CompareDoc( const SwDoc& rDoc )
     }
     else
     {
-        CmpOptions.bUseRsid = getRsidRoot() == rDoc.getRsidRoot() && SW_MOD()->IsUseRsid();
-        CmpOptions.nIgnoreLen = SW_MOD()->IsIgnorePieces() ? SW_MOD()->GetPieceLen() : 0;
+        CmpOptions.bUseRsid = getRsidRoot() == rDoc.getRsidRoot() && mod->IsUseRsid();
+        CmpOptions.nIgnoreLen = mod->IsIgnorePieces() ? mod->GetPieceLen() : 0;
     }
 
     GetIDocumentUndoRedo().StartUndo(SwUndoId::EMPTY, nullptr);
@@ -1919,9 +1920,9 @@ SaveMergeRedline::SaveMergeRedline( const SwNode& rDstNd,
 {
     SwPosition aPos( rDstNd );
 
-    const SwPosition* pStt = rSrcRedl.Start();
+    const SwPosition* pStart = rSrcRedl.Start();
     if( rDstNd.IsContentNode() )
-        aPos.SetContent( pStt->GetContentIndex() );
+        aPos.SetContent( pStart->GetContentIndex() );
     pDestRedl = new SwRangeRedline( rSrcRedl.GetRedlineData(), aPos );
 
     if( RedlineType::Delete != pDestRedl->GetType() )
@@ -1932,7 +1933,7 @@ SaveMergeRedline::SaveMergeRedline( const SwNode& rDstNd,
 
     pDestRedl->SetMark();
     pDestRedl->GetPoint()->Adjust( pEnd->GetNodeIndex() -
-                                    pStt->GetNodeIndex() );
+                                    pStart->GetNodeIndex() );
     if( pDestRedl->GetPointContentNode() )
         pDestRedl->GetPoint()->SetContent( pEnd->GetContentIndex() );
 }
@@ -1975,7 +1976,7 @@ sal_uInt16 SaveMergeRedline::InsertRedline(SwPaM* pLastDestRedline)
         SwRedlineTable::size_type n = 0;
 
             // find the first redline for StartPos
-        if( !rDoc.getIDocumentRedlineAccess().GetRedline( *pDStt, &n ) && n )
+        if (!rDoc.getIDocumentRedlineAccess().GetRedline( *pDStt, &n ) && n > 0)
             --n;
 
         const SwRedlineTable& rRedlineTable = rDoc.getIDocumentRedlineAccess().GetRedlineTable();

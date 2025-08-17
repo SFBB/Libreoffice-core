@@ -51,20 +51,19 @@ namespace slideshow::internal
             ENSURE_OR_RETURN_FALSE( rMtf,
                                "ViewBackgroundShape::prefetch(): no valid metafile!" );
 
-            const ::basegfx::B2DHomMatrix& rCanvasTransform(
+            const ::basegfx::B2DHomMatrix aCanvasTransform(
                 mpViewLayer->getTransformation() );
 
             if( !mxBitmap.is() ||
                 rMtf != mpLastMtf ||
-                rCanvasTransform != maLastTransformation )
+                aCanvasTransform != maLastTransformation )
             {
                 // buffered bitmap is invalid, re-create
 
                 // determine transformed page bounds
-                ::basegfx::B2DRectangle aTmpRect;
-                ::canvas::tools::calcTransformedRectBounds( aTmpRect,
+                ::basegfx::B2DRectangle aTmpRect = ::canvas::tools::calcTransformedRectBounds(
                                                             maBounds,
-                                                            rCanvasTransform );
+                                                            aCanvasTransform );
 
                 // determine pixel size of bitmap (choose it one pixel
                 // larger, as polygon rendering takes one pixel more
@@ -93,7 +92,7 @@ namespace slideshow::internal
 
                 // apply linear part of destination canvas transformation (linear means in this context:
                 // transformation without any translational components)
-                ::basegfx::B2DHomMatrix aLinearTransform( rCanvasTransform );
+                ::basegfx::B2DHomMatrix aLinearTransform( aCanvasTransform );
                 aLinearTransform.set( 0, 2, 0.0 );
                 aLinearTransform.set( 1, 2, 0.0 );
                 pBitmapCanvas->setTransformation( aLinearTransform );
@@ -118,7 +117,7 @@ namespace slideshow::internal
             }
 
             mpLastMtf            = rMtf;
-            maLastTransformation = rCanvasTransform;
+            maLastTransformation = aCanvasTransform;
 
             return mxBitmap.is();
         }
@@ -144,9 +143,9 @@ namespace slideshow::internal
         {
             SAL_INFO( "slideshow", "::presentation::internal::ViewBackgroundShape::draw()" );
 
-            const ::cppcanvas::CanvasSharedPtr& rDestinationCanvas( mpViewLayer->getCanvas() );
+            const ::cppcanvas::CanvasSharedPtr xDestinationCanvas( mpViewLayer->getCanvas() );
 
-            if( !prefetch( rDestinationCanvas, rMtf ) )
+            if( !prefetch( xDestinationCanvas, rMtf ) )
                 return false;
 
             ENSURE_OR_RETURN_FALSE( mxBitmap.is(),
@@ -171,8 +170,8 @@ namespace slideshow::internal
 
             try
             {
-                rDestinationCanvas->getUNOCanvas()->drawBitmap( mxBitmap,
-                                                                rDestinationCanvas->getViewState(),
+                xDestinationCanvas->getUNOCanvas()->drawBitmap( mxBitmap,
+                                                                xDestinationCanvas->getViewState(),
                                                                 aRenderState );
             }
             catch( uno::Exception& )

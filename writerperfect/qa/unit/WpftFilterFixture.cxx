@@ -13,9 +13,9 @@
 #include <com/sun/star/document/XTypeDetection.hpp>
 #include <com/sun/star/frame/theDesktop.hpp>
 
-namespace document = com::sun::star::document;
-namespace frame = com::sun::star::frame;
-namespace uno = com::sun::star::uno;
+namespace document = css::document;
+namespace frame = css::frame;
+namespace uno = css::uno;
 
 namespace writerperfect::test
 {
@@ -25,9 +25,9 @@ void WpftFilterFixture::setUp()
 
     m_xDesktop = frame::theDesktop::get(m_xContext);
 
-    m_xTypeDetection.set(
-        m_xFactory->createInstanceWithContext("com.sun.star.document.TypeDetection", m_xContext),
-        uno::UNO_QUERY_THROW);
+    m_xTypeDetection.set(m_xFactory->createInstanceWithContext(
+                             u"com.sun.star.document.TypeDetection"_ustr, m_xContext),
+                         uno::UNO_QUERY_THROW);
     m_xTypeMap.set(m_xTypeDetection, uno::UNO_QUERY_THROW);
 }
 }

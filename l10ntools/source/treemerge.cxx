@@ -67,13 +67,17 @@ namespace
             helper::xmlStrToOString( pID );
         xmlFree( pID );
 
-        const sal_Int32 nFirstSlash = sID.indexOf('/');
+        const std::string_view::size_type nFirstSlash = sID.indexOf('/');
+        const auto nAfterSlash = (nFirstSlash != std::string_view::npos) ? (nFirstSlash + 1) : 0;
         // Update id attribute of topic
         {
+            std::u16string_view::size_type nXhpSlash = rXhpRoot.rfind('/');
+            const auto nAfterXhpSlash = (nXhpSlash != std::u16string_view::npos) ? (nXhpSlash + 1) : 0;
+
             OString sNewID =
-                OString::Concat(sID.subView( 0, nFirstSlash + 1 )) +
-                rXhpRoot.substr( rXhpRoot.rfind('/') + 1 ) +
-                sID.subView( sID.indexOf( '/', nFirstSlash + 1 ) );
+                OString::Concat(sID.subView( 0, nAfterSlash )) +
+                rXhpRoot.substr( nAfterXhpSlash ) +
+                sID.subView( sID.indexOf( '/', nAfterSlash ) );
             xmlSetProp(
                 pReturn, reinterpret_cast<const xmlChar*>("id"),
                 reinterpret_cast<const xmlChar*>(sNewID.getStr()));
@@ -81,7 +85,7 @@ namespace
 
         const OString sXhpPath =
             OString::Concat(rXhpRoot) +
-            sID.subView(sID.indexOf('/', nFirstSlash + 1));
+            sID.subView(sID.indexOf('/', nAfterSlash));
         xmlDocPtr pXhpFile = xmlParseFile( sXhpPath.getStr() );
         // if xhpfile is missing than put this topic into comment
         if ( !pXhpFile )

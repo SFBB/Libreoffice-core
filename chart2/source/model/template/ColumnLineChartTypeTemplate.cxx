@@ -36,7 +36,6 @@
 
 #include <algorithm>
 
-using namespace ::com::sun::star::chart2;
 using namespace ::com::sun::star;
 
 using ::com::sun::star::uno::Reference;
@@ -69,7 +68,7 @@ enum
         []()
         {
             std::vector< css::beans::Property > aProperties {
-                { "NumberOfLines",
+                { u"NumberOfLines"_ustr,
                   PROP_COL_LINE_NUMBER_OF_LINES,
                   cppu::UnoType<sal_Int32>::get(),
                   beans::PropertyAttribute::BOUND
@@ -212,13 +211,13 @@ void ColumnLineChartTypeTemplate::applyStyle2(
 
     if( nChartTypeIndex==0 ) // columns
     {
-        DataSeriesHelper::setPropertyAlsoToAllAttributedDataPoints( xSeries, "BorderStyle", uno::Any( drawing::LineStyle_NONE ) );
+        xSeries->setPropertyAlsoToAllAttributedDataPoints( u"BorderStyle"_ustr, uno::Any( drawing::LineStyle_NONE ) );
     }
     else if( nChartTypeIndex==1 ) // lines
     {
-        DataSeriesHelper::switchLinesOnOrOff( xSeries, true );
-        DataSeriesHelper::switchSymbolsOnOrOff( xSeries, false, nSeriesIndex );
-        DataSeriesHelper::makeLinesThickOrThin( xSeries, true );
+        xSeries->switchLinesOnOrOff( true );
+        xSeries->switchSymbolsOnOrOff( false, nSeriesIndex );
+        xSeries->makeLinesThickOrThin( true );
     }
 }
 

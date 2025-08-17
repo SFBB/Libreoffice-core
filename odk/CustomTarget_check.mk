@@ -23,12 +23,12 @@ odk_PLATFORM := $(if $(filter WNT,$(OS)),windows,\
 					$(if $(filter DRAGONFLY,$(OS)),dragonfly,\
 						$(if $(filter MACOSX,$(OS)),macosx)))))))
 
-.PHONY: $(call gb_CustomTarget_get_workdir,odk/check)/checkbin
-$(call gb_CustomTarget_get_workdir,odk/check)/checkbin : \
+.PHONY: $(gb_CustomTarget_workdir)/odk/check/checkbin
+$(gb_CustomTarget_workdir)/odk/check/checkbin : \
 		$(SRCDIR)/odk/util/check.pl \
 		$(if $(DOXYGEN),$(call gb_GeneratedPackage_get_target,odk_doxygen)) \
-		$(foreach exe,$(if $(filter WNT,$(OS)),$(if $(filter-out AARCH64_TRUE,$(CPUNAME)_$(CROSS_COMPILING)),climaker)) cppumaker \
-				javamaker uno-skeletonmaker unoapploader unoidl-read unoidl-write,\
+		$(foreach exe,$(if $(ENABLE_CLI),$(if $(filter WNT,$(OS)),$(if $(filter-out AARCH64_TRUE,$(CPUNAME)_$(CROSS_COMPILING)),climaker))) \
+				cppumaker javamaker uno-skeletonmaker unoapploader unoidl-read unoidl-write,\
 			$(call gb_Executable_get_target,$(exe))) \
 		$(if $(filter WNT,$(OS)),$(call gb_Package_get_target,odk_cli)) \
 		$(call gb_Package_get_target,odk_config) \

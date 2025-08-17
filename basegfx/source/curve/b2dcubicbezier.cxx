@@ -25,6 +25,8 @@
 
 #include <osl/diagnose.h>
 
+#include <cassert>
+#include <cmath>
 #include <limits>
 
 // #i37443#
@@ -351,16 +353,6 @@ namespace basegfx
         );
     }
 
-    bool B2DCubicBezier::operator!=(const B2DCubicBezier& rBezier) const
-    {
-        return (
-            maStartPoint != rBezier.maStartPoint
-            || maEndPoint != rBezier.maEndPoint
-            || maControlPointA != rBezier.maControlPointA
-            || maControlPointB != rBezier.maControlPointB
-        );
-    }
-
     bool B2DCubicBezier::equal(const B2DCubicBezier& rBezier) const
     {
         return (
@@ -541,7 +533,7 @@ namespace basegfx
 
     B2DVector B2DCubicBezier::getTangent(double t) const
     {
-        if(fTools::lessOrEqual(t, 0.0))
+        if(t <= 0.0)
         {
             // tangent in start point
             B2DVector aTangent(getControlPointA() - getStartPoint());
@@ -655,18 +647,17 @@ namespace basegfx
         // now look for the closest point
         const sal_uInt32 nPointCount(aInitialPolygon.count());
         B2DVector aVector(rTestPoint - aInitialPolygon.getB2DPoint(0));
-        double fQuadDist(aVector.getX() * aVector.getX() + aVector.getY() * aVector.getY());
-        double fNewQuadDist;
+        double pointDistance(std::hypot(aVector.getX(), aVector.getY()));
+        double newPointDistance;
         sal_uInt32 nSmallestIndex(0);
 
         for(sal_uInt32 a(1); a < nPointCount; a++)
         {
             aVector = B2DVector(rTestPoint - aInitialPolygon.getB2DPoint(a));
-            fNewQuadDist = aVector.getX() * aVector.getX() + aVector.getY() * aVector.getY();
-
-            if(fNewQuadDist < fQuadDist)
+            newPointDistance = std::hypot(aVector.getX(), aVector.getY());
+            if(newPointDistance < pointDistance)
             {
-                fQuadDist = fNewQuadDist;
+                pointDistance = newPointDistance;
                 nSmallestIndex = a;
             }
         }
@@ -690,11 +681,11 @@ namespace basegfx
                 aVector = B2DVector(rTestPoint - interpolatePoint(fPosLeft));
             }
 
-            fNewQuadDist = aVector.getX() * aVector.getX() + aVector.getY() * aVector.getY();
+            newPointDistance = std::hypot(aVector.getX(), aVector.getY());
 
-            if(fTools::less(fNewQuadDist, fQuadDist))
+            if(fTools::less(newPointDistance, pointDistance))
             {
-                fQuadDist = fNewQuadDist;
+                pointDistance = newPointDistance;
                 fPosition = fPosLeft;
             }
             else
@@ -712,11 +703,11 @@ namespace basegfx
                     aVector = B2DVector(rTestPoint - interpolatePoint(fPosRight));
                 }
 
-                fNewQuadDist = aVector.getX() * aVector.getX() + aVector.getY() * aVector.getY();
+                newPointDistance = std::hypot(aVector.getX(), aVector.getY());
 
-                if(fTools::less(fNewQuadDist, fQuadDist))
+                if(fTools::less(newPointDistance, pointDistance))
                 {
-                    fQuadDist = fNewQuadDist;
+                    pointDistance = newPointDistance;
                     fPosition = fPosRight;
                 }
                 else
@@ -737,7 +728,7 @@ namespace basegfx
         }
 
         rCut = fPosition;
-        return sqrt(fQuadDist);
+        return pointDistance;
     }
 
     void B2DCubicBezier::split(double t, B2DCubicBezier* pBezierA, B2DCubicBezier* pBezierB) const
@@ -800,23 +791,8 @@ namespace basegfx
     {
         B2DCubicBezier aRetval;
 
-        if(fTools::more(fStart, 1.0))
-        {
-            fStart = 1.0;
-        }
-        else if(fTools::less(fStart, 0.0))
-        {
-            fStart = 0.0;
-        }
-
-        if(fTools::more(fEnd, 1.0))
-        {
-            fEnd = 1.0;
-        }
-        else if(fTools::less(fEnd, 0.0))
-        {
-            fEnd = 0.0;
-        }
+        fStart = std::clamp(fStart, 0.0, 1.0);
+        fEnd = std::clamp(fEnd, 0.0, 1.0);
 
         if(fEnd <= fStart)
         {
@@ -844,6 +820,7 @@ namespace basegfx
 
                     if(!bStartIsZero)
                     {
+                        assert(fEnd != 0 && "help coverity see it's not zero");
                         fStart /= fEnd;
                     }
                 }
@@ -1021,33 +998,33 @@ namespace basegfx
         if(maControlPointA == maStartPoint)
         {
             maControlPointA = maStartPoint = basegfx::B2DPoint(
-                basegfx::fround(maStartPoint.getX()),
-                basegfx::fround(maStartPoint.getY()));
+                std::round(maStartPoint.getX()),
+                std::round(maStartPoint.getY()));
         }
         else
         {
             maStartPoint = basegfx::B2DPoint(
-                basegfx::fround(maStartPoint.getX()),
-                basegfx::fround(maStartPoint.getY()));
+                std::round(maStartPoint.getX()),
+                std::round(maStartPoint.getY()));
             maControlPointA = basegfx::B2DPoint(
-                basegfx::fround(maControlPointA.getX()),
-                basegfx::fround(maControlPointA.getY()));
+                std::round(maControlPointA.getX()),
+                std::round(maControlPointA.getY()));
         }
 
         if(maControlPointB == maEndPoint)
         {
             maControlPointB = maEndPoint = basegfx::B2DPoint(
-                basegfx::fround(maEndPoint.getX()),
-                basegfx::fround(maEndPoint.getY()));
+                std::round(maEndPoint.getX()),
+                std::round(maEndPoint.getY()));
         }
         else
         {
             maEndPoint = basegfx::B2DPoint(
-                basegfx::fround(maEndPoint.getX()),
-                basegfx::fround(maEndPoint.getY()));
+                std::round(maEndPoint.getX()),
+                std::round(maEndPoint.getY()));
             maControlPointB = basegfx::B2DPoint(
-                basegfx::fround(maControlPointB.getX()),
-                basegfx::fround(maControlPointB.getY()));
+                std::round(maControlPointB.getX()),
+                std::round(maControlPointB.getY()));
         }
     }
 } // end of namespace basegfx

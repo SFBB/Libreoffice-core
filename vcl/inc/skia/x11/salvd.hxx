@@ -7,8 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_VCL_INC_SKIA_X11_SALVD_H
-#define INCLUDED_VCL_INC_SKIA_X11_SALVD_H
+#pragma once
 
 #include <salvd.hxx>
 #include <unx/saldisp.hxx>
@@ -18,14 +17,16 @@ class X11SkiaSalVirtualDevice final : public SalVirtualDevice
 {
     SalDisplay* mpDisplay;
     std::unique_ptr<X11SalGraphics> mpGraphics;
-    bool mbGraphics; // is Graphics used
+    bool mbGraphicsAcquired; // is Graphics used
     SalX11Screen mnXScreen;
     int mnWidth;
     int mnHeight;
 
 public:
     X11SkiaSalVirtualDevice(const SalGraphics& rGraphics, tools::Long nDX, tools::Long nDY,
-                            const SystemGraphicsData* pData,
+                            std::unique_ptr<X11SalGraphics> pNewGraphics);
+    X11SkiaSalVirtualDevice(const SalGraphics& rGraphics, tools::Long nDX, tools::Long nDY,
+                            const SystemGraphicsData& rData,
                             std::unique_ptr<X11SalGraphics> pNewGraphics);
     virtual ~X11SkiaSalVirtualDevice() override;
 
@@ -40,9 +41,8 @@ public:
     virtual void ReleaseGraphics(SalGraphics* pGraphics) override;
 
     // Set new size, without saving the old contents
-    virtual bool SetSize(tools::Long nNewDX, tools::Long nNewDY) override;
+    virtual bool SetSize(tools::Long nNewDX, tools::Long nNewDY,
+                         bool bAlphaMaskTransparent) override;
 };
-
-#endif // INCLUDED_VCL_INC_SKIA_X11_SALVD_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

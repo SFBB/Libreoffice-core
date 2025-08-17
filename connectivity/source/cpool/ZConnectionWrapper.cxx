@@ -23,13 +23,11 @@ using namespace connectivity;
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::sdbc;
 
 OConnectionWeakWrapper::OConnectionWeakWrapper(Reference< XAggregation >& _xConnection)
-    : OConnectionWeakWrapper_BASE(m_aMutex)
 {
-    setDelegation(_xConnection,m_refCount);
+    setDelegation(_xConnection);
     OSL_ENSURE(m_xConnection.is(),"OConnectionWeakWrapper: Connection must be valid!");
 }
 
@@ -43,7 +41,7 @@ OConnectionWeakWrapper::~OConnectionWeakWrapper()
 }
 // XServiceInfo
 
-IMPLEMENT_SERVICE_INFO(OConnectionWeakWrapper, "com.sun.star.sdbc.drivers.OConnectionWeakWrapper", "com.sun.star.sdbc.Connection")
+IMPLEMENT_SERVICE_INFO(OConnectionWeakWrapper, u"com.sun.star.sdbc.drivers.OConnectionWeakWrapper"_ustr, u"com.sun.star.sdbc.Connection"_ustr)
 
 
 Reference< XStatement > SAL_CALL OConnectionWeakWrapper::createStatement(  )
@@ -215,27 +213,6 @@ void SAL_CALL OConnectionWeakWrapper::close(  )
     }
     dispose();
 }
-
-void OConnectionWeakWrapper::disposing()
-{
-    ::osl::MutexGuard aGuard(m_aMutex);
-
-    OConnectionWeakWrapper_BASE::disposing();
-    OConnectionWrapper::disposing();
-}
-
-// css::lang::XUnoTunnel
-IMPLEMENT_FORWARD_REFCOUNT( OConnectionWeakWrapper, OConnectionWeakWrapper_BASE )
-
-css::uno::Any SAL_CALL OConnectionWeakWrapper::queryInterface( const css::uno::Type& _rType )
-{
-    css::uno::Any aReturn = OConnectionWeakWrapper_BASE::queryInterface( _rType );
-    if ( !aReturn.hasValue() )
-        aReturn = OConnectionWrapper::queryInterface( _rType );
-    return aReturn;
-}
-
-IMPLEMENT_FORWARD_XTYPEPROVIDER2(OConnectionWeakWrapper,OConnectionWeakWrapper_BASE,OConnectionWrapper)
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

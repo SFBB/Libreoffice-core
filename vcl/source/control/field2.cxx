@@ -1294,7 +1294,7 @@ static sal_uInt16 ImplCutMonthFromString( OUString& rStr, OUString& rCalendarNam
 static OUString ImplGetDateSep( const LocaleDataWrapper& rLocaleDataWrapper, ExtDateFieldFormat eFormat )
 {
     if ( ( eFormat == ExtDateFieldFormat::ShortYYMMDD_DIN5008 ) || ( eFormat == ExtDateFieldFormat::ShortYYYYMMDD_DIN5008 ) )
-        return "-";
+        return u"-"_ustr;
     else
         return rLocaleDataWrapper.getDateSep();
 }
@@ -2007,7 +2007,7 @@ void DateFormatter::ExpandCentury( Date& rDate, sal_uInt16 nTwoDigitYearStart )
 }
 
 DateField::DateField( vcl::Window* pParent, WinBits nWinStyle ) :
-    SpinField( pParent, nWinStyle ),
+    SpinField(pParent, nWinStyle, WindowType::DATEFIELD),
     DateFormatter(this),
     maFirst( GetMin() ),
     maLast( GetMax() )
@@ -2247,24 +2247,24 @@ namespace weld
         return ::DateFormatter::FormatDate(Date(nValue), m_eFormat, rLocaleData, m_aStaticFormatter);
     }
 
-    IMPL_LINK_NOARG(DateFormatter, FormatOutputHdl, LinkParamNone*, bool)
+    IMPL_LINK(DateFormatter, FormatOutputHdl, double, fValue, std::optional<OUString>)
     {
-        OUString sText = FormatNumber(GetValue());
-        ImplSetTextImpl(sText, nullptr);
-        return true;
+        return std::optional<OUString>(FormatNumber(fValue));
     }
 
-    IMPL_LINK(DateFormatter, ParseInputHdl, sal_Int64*, result, TriState)
+    IMPL_LINK(DateFormatter, ParseInputHdl, const OUString&, rText, Formatter::ParseResult)
     {
         const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
 
         Date aResult(Date::EMPTY);
-        bool bRet = ::DateFormatter::TextToDate(GetEntryText(), aResult, ResolveSystemFormat(m_eFormat, rLocaleDataWrapper),
+        bool bRet = ::DateFormatter::TextToDate(rText, aResult, ResolveSystemFormat(m_eFormat, rLocaleDataWrapper),
                                                 rLocaleDataWrapper, GetCalendarWrapper());
-        if (bRet)
-            *result = aResult.GetDate();
 
-        return bRet ? TRISTATE_TRUE : TRISTATE_FALSE;
+        double fValue = 0;
+        if (bRet)
+            fValue = aResult.GetDate();
+
+        return Formatter::ParseResult(bRet ? TRISTATE_TRUE : TRISTATE_FALSE, fValue);
     }
 }
 
@@ -2885,7 +2885,7 @@ void TimeFormatter::Reformat()
 }
 
 TimeField::TimeField( vcl::Window* pParent, WinBits nWinStyle ) :
-    SpinField( pParent, nWinStyle ),
+    SpinField(pParent, nWinStyle, WindowType::TIMEFIELD),
     TimeFormatter(this),
     maFirst( GetMin() ),
     maLast( GetMax() )
@@ -3102,7 +3102,7 @@ namespace weld
 {
     tools::Time TimeFormatter::ConvertValue(int nValue)
     {
-        tools::Time aTime(0);
+        tools::Time aTime(tools::Time::EMPTY);
         aTime.MakeTimeFromMS(nValue);
         return aTime;
     }
@@ -3145,23 +3145,22 @@ namespace weld
         return ::TimeFormatter::FormatTime(ConvertValue(nValue), m_eFormat, m_eTimeFormat, m_bDuration, rLocaleData);
     }
 
-    IMPL_LINK_NOARG(TimeFormatter, FormatOutputHdl, LinkParamNone*, bool)
+    IMPL_LINK(TimeFormatter, FormatOutputHdl, double, fValue, std::optional<OUString>)
     {
-        OUString sText = FormatNumber(GetValue());
-        ImplSetTextImpl(sText, nullptr);
-        return true;
+        return std::optional<OUString>(FormatNumber(fValue));
     }
 
-    IMPL_LINK(TimeFormatter, ParseInputHdl, sal_Int64*, result, TriState)
+    IMPL_LINK(TimeFormatter, ParseInputHdl, const OUString&, rText, Formatter::ParseResult)
     {
         const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
 
-        tools::Time aResult(0);
-        bool bRet = ::TimeFormatter::TextToTime(GetEntryText(), aResult, m_eFormat, m_bDuration, rLocaleDataWrapper);
+        double fValue = 0.0;
+        tools::Time aResult(tools::Time::EMPTY);
+        bool bRet = ::TimeFormatter::TextToTime(rText, aResult, m_eFormat, m_bDuration, rLocaleDataWrapper);
         if (bRet)
-            *result = ConvertValue(aResult);
+            fValue = ConvertValue(aResult);
 
-        return bRet ? TRISTATE_TRUE : TRISTATE_FALSE;
+        return Formatter::ParseResult(bRet ? TRISTATE_TRUE : TRISTATE_FALSE, fValue);
     }
 
     IMPL_LINK(TimeFormatter, CursorChangedHdl, weld::Entry&, rEntry, void)

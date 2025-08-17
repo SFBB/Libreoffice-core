@@ -78,11 +78,17 @@ namespace xmloff::EnhancedCustomShapeToken {
         EAS_handle_mirror_vertical,
         EAS_handle_switched,
         EAS_handle_position,
+        EAS_handle_position_x,
+        EAS_handle_position_y,
         EAS_handle_range_x_minimum,
         EAS_handle_range_x_maximum,
         EAS_handle_range_y_minimum,
         EAS_handle_range_y_maximum,
         EAS_handle_polar,
+        EAS_handle_polar_angle,
+        EAS_handle_polar_radius,
+        EAS_handle_polar_pole_x,
+        EAS_handle_polar_pole_y,
         EAS_handle_radius_range_minimum,
         EAS_handle_radius_range_maximum,
         EAS_sub_view_size,
@@ -155,9 +161,9 @@ namespace xmloff::EnhancedCustomShapeToken {
         EAS_NotFound
     };
 
-    EnhancedCustomShapeTokenEnum EASGet( std::u16string_view );
+    EnhancedCustomShapeTokenEnum EASGet( const OUString& );
     EnhancedCustomShapeTokenEnum EASGet( sal_Int32 nToken );
-    OUString EASGet( const EnhancedCustomShapeTokenEnum );
+    const OUString & EASGet( const EnhancedCustomShapeTokenEnum );
 }
 
 

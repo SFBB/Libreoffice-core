@@ -20,10 +20,7 @@
 
 #include <svl/svldllapi.h>
 #include <svl/whichranges.hxx>
-
-class SfxItemSet;
-class SfxPoolItem;
-enum class SfxItemState;
+#include <svl/itemset.hxx>
 
 /**
  * Iterates over the which ids and the pool items arrays together (which are stored in parallel arrays).
@@ -35,18 +32,35 @@ class SVL_DLLPUBLIC SfxWhichIter
     const SfxItemSet& m_rItemSet;
     const WhichPair* m_pCurrentWhichPair;
     sal_uInt16 m_nOffsetFromStartOfCurrentWhichPair;
-    /// Offset into m_ppItems array in SfxItemSet
-    sal_uInt16 m_nItemsOffset;
 
 public:
-    SfxWhichIter(const SfxItemSet& rSet);
+    SfxWhichIter(const SfxItemSet& rSet)
+        : m_rItemSet(rSet)
+        , m_pCurrentWhichPair(rSet.m_aWhichRanges.begin())
+        , m_nOffsetFromStartOfCurrentWhichPair(0)
+    {
+    }
 
     sal_uInt16 GetCurWhich() const;
     sal_uInt16 NextWhich();
     sal_uInt16 FirstWhich();
-    SfxItemState GetItemState(bool bSrchInParent = true,
-                              const SfxPoolItem** ppItem = nullptr) const;
-    void ClearItem();
+
+    SfxItemState GetItemState(bool bSrchInParent = true, const SfxPoolItem** ppItem = nullptr) const
+    {
+        const sal_uInt16 nWhich(GetCurWhich());
+        if (0 == nWhich)
+            return SfxItemState::UNKNOWN;
+        return m_rItemSet.GetItemState_ForWhichID(SfxItemState::UNKNOWN, nWhich, bSrchInParent,
+                                                  ppItem);
+    }
+
+    void ClearItem()
+    {
+        const sal_uInt16 nWhich(GetCurWhich());
+        if (0 == nWhich)
+            return;
+        const_cast<SfxItemSet&>(m_rItemSet).ClearSingleItem_ForWhichID(nWhich);
+    }
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

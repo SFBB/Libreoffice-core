@@ -217,11 +217,11 @@ protected:
     css::uno::Reference< css::io::XStream > GetNewFilledTempStream_Impl(
                                     const css::uno::Reference< css::io::XInputStream >& xInStream );
 #ifdef _WIN32
-    void SwitchComponentToRunningState_Impl();
+    void SwitchComponentToRunningState_Impl(osl::ResettableMutexGuard& guard);
 #endif
-    void MakeEventListenerNotification_Impl( const OUString& aEventName );
+    void MakeEventListenerNotification_Impl( const OUString& aEventName, osl::ResettableMutexGuard& guard );
 #ifdef _WIN32
-    void StateChangeNotification_Impl( bool bBeforeChange, sal_Int32 nOldState, sal_Int32 nNewState );
+    void StateChangeNotification_Impl( bool bBeforeChange, sal_Int32 nOldState, sal_Int32 nNewState, osl::ResettableMutexGuard& guard );
     css::uno::Reference< css::io::XOutputStream > GetStreamForSaving();
 
 
@@ -231,7 +231,7 @@ protected:
                         const css::uno::Sequence< css::embed::VerbDescriptor >& aVerbList );
 #endif
 
-    void Dispose();
+    void Dispose(osl::ResettableMutexGuard* guard = nullptr);
 
     void SwitchOwnPersistence(
                 const css::uno::Reference< css::embed::XStorage >& xNewParentStorage,
@@ -242,22 +242,25 @@ protected:
                 const css::uno::Reference< css::embed::XStorage >& xNewParentStorage,
                 const OUString& aNewName );
 
-    void GetRidOfComponent();
+    void GetRidOfComponent(osl::ResettableMutexGuard* guard);
 
     /// @throws css::uno::Exception
     void StoreToLocation_Impl(
                             const css::uno::Reference< css::embed::XStorage >& xStorage,
                             const OUString& sEntName,
                             const css::uno::Sequence< css::beans::PropertyValue >& lObjArgs,
-                            bool bSaveAs );
+                            bool bSaveAs,
+                            osl::ResettableMutexGuard& rGuard);
 #ifdef _WIN32
     /// @throws css::uno::Exception
-    void StoreObjectToStream( css::uno::Reference< css::io::XOutputStream > const & xOutStream );
+    void StoreObjectToStream(css::uno::Reference<css::io::XOutputStream> const& xOutStream,
+                             osl::ResettableMutexGuard& rGuard);
 #endif
     /// @throws css::uno::Exception
     void InsertVisualCache_Impl(
             const css::uno::Reference< css::io::XStream >& xTargetStream,
-            const css::uno::Reference< css::io::XStream >& xCachedVisualRepresentation );
+            const css::uno::Reference< css::io::XStream >& xCachedVisualRepresentation,
+            osl::ResettableMutexGuard& rGuard);
 
     /// @throws css::uno::Exception
     void RemoveVisualCache_Impl( const css::uno::Reference< css::io::XStream >& xTargetStream );
@@ -271,6 +274,7 @@ protected:
 
     css::uno::Reference< css::io::XStream > TryToRetrieveCachedVisualRepresentation_Impl(
                     const css::uno::Reference< css::io::XStream >& xStream,
+                    osl::ResettableMutexGuard& rGuard,
                     bool bAllowRepair50 = false )
         noexcept;
 #ifdef _WIN32
@@ -451,6 +455,20 @@ public:
     OUString SAL_CALL getImplementationName() override;
     sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+
+private:
+    css::awt::Size getVisualAreaSize_impl(sal_Int64 nAspect, osl::ResettableMutexGuard& guard);
 };
+
+namespace
+{
+#if defined(_WIN32)
+template <class Proc> auto ExecUnlocked(Proc proc, osl::ResettableMutexGuard& guard)
+{
+    osl::ResettableMutexGuardScopedReleaser area(guard);
+    return proc();
+}
+#endif
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

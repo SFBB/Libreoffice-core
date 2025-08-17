@@ -27,6 +27,9 @@ class SwWrtShell;
 class SwTableRep;
 struct ImplSVEvent;
 
+/// Provides the Table tab page on the Table -> Properties dialog, which works on an existing table.
+///
+/// Has nothing to do with the other SwFormatSomething classes, which are subclasses of SfxPoolItem.
 class SwFormatTablePage : public SfxTabPage
 {
     SwTableRep*     m_pTableData;
@@ -108,6 +111,7 @@ class SwTableColumnPage : public SfxTabPage
 
     SwPercentField  m_aFieldArr[MET_FIELDS];
     std::unique_ptr<weld::Label> m_aTextArr[MET_FIELDS];
+    std::unique_ptr<weld::Grid> m_xColumnWidthsGrid;
     std::unique_ptr<weld::CheckButton> m_xModifyTableCB;
     std::unique_ptr<weld::CheckButton> m_xProportionalCB;
     std::unique_ptr<weld::Label> m_xSpaceFT;

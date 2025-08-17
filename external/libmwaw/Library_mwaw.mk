@@ -20,7 +20,7 @@ $(eval $(call gb_Library_set_warnings_disabled,mwaw))
 $(eval $(call gb_Library_set_precompiled_header,mwaw,external/libmwaw/inc/pch/precompiled_mwaw))
 
 $(eval $(call gb_Library_set_include,mwaw,\
-    -I$(call gb_UnpackedTarball_get_dir,libmwaw)/inc \
+    -I$(gb_UnpackedTarball_workdir)/libmwaw/inc \
     $$(INCLUDE) \
 ))
 
@@ -201,9 +201,12 @@ $(eval $(call gb_Library_add_generated_exception_objects,mwaw,\
 	UnpackedTarball/libmwaw/src/lib/RagTimeSpreadsheet \
 	UnpackedTarball/libmwaw/src/lib/RagTimeStruct \
 	UnpackedTarball/libmwaw/src/lib/RagTimeText \
+	UnpackedTarball/libmwaw/src/lib/ReadySetGoGraph \
 	UnpackedTarball/libmwaw/src/lib/ReadySetGoParser \
+	UnpackedTarball/libmwaw/src/lib/ReadySetGoStyleManager \
 	UnpackedTarball/libmwaw/src/lib/ScoopParser \
 	UnpackedTarball/libmwaw/src/lib/ScriptWriterParser \
+	UnpackedTarball/libmwaw/src/lib/SpringBoardParser \
 	UnpackedTarball/libmwaw/src/lib/StudentWritingCParser \
 	UnpackedTarball/libmwaw/src/lib/StyleParser \
 	UnpackedTarball/libmwaw/src/lib/SuperPaintParser \

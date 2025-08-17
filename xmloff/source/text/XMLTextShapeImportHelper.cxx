@@ -19,13 +19,13 @@
 
 #include <com/sun/star/text/XTextContent.hpp>
 #include <com/sun/star/text/TextContentAnchorType.hpp>
+#include <comphelper/configuration.hxx>
 
 #include <sax/tools/converter.hxx>
 
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include "XMLAnchorTypePropHdl.hxx"
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -103,7 +103,8 @@ void XMLTextShapeImportHelper::addShape(
         case XML_ELEMENT(TEXT, XML_ANCHOR_PAGE_NUMBER):
             {
                 sal_Int32 nTmp;
-                if (::sax::Converter::convertNumber(nTmp, aIter.toView(), 1, SHRT_MAX))
+                sal_Int32 nMax = !comphelper::IsFuzzing() ? SHRT_MAX : 100;
+                if (::sax::Converter::convertNumber(nTmp, aIter.toView(), 1, nMax))
                     nPage = static_cast<sal_Int16>(nTmp);
             }
             break;

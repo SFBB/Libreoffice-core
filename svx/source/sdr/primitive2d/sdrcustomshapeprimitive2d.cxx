@@ -24,6 +24,7 @@
 #include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <svx/sdr/primitive2d/svx_primitivetypes2d.hxx>
 #include <drawinglayer/attribute/sdrlineattribute.hxx>
+#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <utility>
 
 
@@ -32,7 +33,7 @@ using namespace com::sun::star;
 
 namespace drawinglayer::primitive2d
 {
-        void SdrCustomShapePrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*aViewInformation*/) const
+        Primitive2DReference SdrCustomShapePrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& /*aViewInformation*/) const
         {
             Primitive2DContainer aRetval(getSubPrimitives());
 
@@ -43,12 +44,20 @@ namespace drawinglayer::primitive2d
                                                           getSdrSTAttribute().getSoftEdgeRadius());
             }
 
+            // tdf#132199: put glow before shadow, to have shadow of the glow, not the opposite
+            if (!aRetval.empty() && !getSdrSTAttribute().getGlow().isDefault())
+            {
+                // glow
+                aRetval = createEmbeddedGlowPrimitive(std::move(aRetval), getSdrSTAttribute().getGlow());
+            }
+
             // add text
             if(!getSdrSTAttribute().getText().isDefault())
             {
                 const basegfx::B2DPolygon& aUnitOutline(basegfx::utils::createUnitPolygon());
 
-                aRetval.push_back(
+                Primitive2DContainer aTempContentText;
+                aTempContentText.push_back(
                     createTextPrimitive(
                         basegfx::B2DPolyPolygon(aUnitOutline),
                         getTextBox(),
@@ -56,13 +65,14 @@ namespace drawinglayer::primitive2d
                         attribute::SdrLineAttribute(),
                         false,
                         getWordWrap()));
-            }
 
-            // tdf#132199: put glow before shadow, to have shadow of the glow, not the opposite
-            if (!aRetval.empty() && !getSdrSTAttribute().getGlow().isDefault())
-            {
-                // glow
-                aRetval = createEmbeddedGlowPrimitive(std::move(aRetval), getSdrSTAttribute().getGlow());
+                // put text glow before, shape glow and shadow
+                if (!getSdrSTAttribute().getGlowText().isDefault())
+                {
+                    // add text glow
+                    aTempContentText = createEmbeddedTextGlowPrimitive(std::move(aTempContentText), getSdrSTAttribute().getGlowText());
+                }
+                aRetval.append(std::move(aTempContentText));
             }
 
             // add shadow
@@ -85,7 +95,7 @@ namespace drawinglayer::primitive2d
                 }
             }
 
-            rContainer.append(std::move(aRetval));
+            return new GroupPrimitive2D(std::move(aRetval));
         }
 
         SdrCustomShapePrimitive2D::SdrCustomShapePrimitive2D(
@@ -102,8 +112,6 @@ namespace drawinglayer::primitive2d
             mb3DShape(b3DShape),
             maTransform(std::move(aTransform))
         {
-            // activate callback to flush buffered decomposition content
-            setCallbackSeconds(10);
         }
 
         bool SdrCustomShapePrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const

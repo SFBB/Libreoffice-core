@@ -48,9 +48,7 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::linguistic2;
-using namespace ::com::sun::star::beans;
 
 SFX_IMPL_CHILDWINDOW_WITHID(SwSpellDialogChildWindow, FN_SPELL_GRAMMAR_DIALOG)
 
@@ -400,7 +398,7 @@ The code below would only be part of the solution.
                     bCloseMessage = false; // no closing message if a wrap around has been denied
             }
         }
-        if( aRet.empty() && bCloseMessage && !bNoDictionaryAvailable )
+        if( aRet.empty() && bCloseMessage )
         {
             LockFocusNotification( true );
             OUString sInfo( SwResId( bNoDictionaryAvailable ? STR_DICTIONARY_UNAVAILABLE : STR_SPELLING_COMPLETED ) );
@@ -685,7 +683,7 @@ void SwSpellDialogChildWindow::MakeTextSelection_Impl(SwWrtShell& rShell, ShellM
             else if ( rShell.HasSelection() || rView.IsDrawMode() )
             {
                 SdrView *pSdrView = rShell.GetDrawView();
-                if(pSdrView && pSdrView->AreObjectsMarked() &&
+                if(pSdrView && pSdrView->GetMarkedObjectList().GetMarkCount() != 0 &&
                     pSdrView->GetHdlList().GetFocusHdl())
                 {
                     const_cast<SdrHdlList&>(pSdrView->GetHdlList()).ResetFocusHdl();
@@ -761,8 +759,8 @@ bool SwSpellDialogChildWindow::FindNextDrawTextError_Impl(SwWrtShell& rSh)
                     aTmpOutliner.SetPaperSize( pTextObj->GetLogicRect().GetSize() );
                     aTmpOutliner.SetSpeller( xSpell );
 
-                    OutlinerView aOutlView( &aTmpOutliner, &(rView.GetEditWin()) );
-                    aOutlView.GetOutliner()->SetRefDevice( rSh.getIDocumentDeviceAccess().getPrinter( false ) );
+                    OutlinerView aOutlView( aTmpOutliner, &(rView.GetEditWin()) );
+                    aOutlView.GetOutliner().SetRefDevice( rSh.getIDocumentDeviceAccess().getPrinter( false ) );
                     aTmpOutliner.InsertView( &aOutlView );
                     Size aSize(1,1);
                     tools::Rectangle aRect( Point(), aSize );
@@ -807,9 +805,7 @@ bool SwSpellDialogChildWindow::SpellDrawText_Impl(SwWrtShell& rSh, svx::SpellPor
         {
             OutlinerView* pOLV = pSdrView->GetTextEditOutlinerView();
             ESelection aCurrentSelection = pOLV->GetSelection();
-            if(m_pSpellState->m_aStartDrawingSelection.nEndPara < aCurrentSelection.nEndPara ||
-               (m_pSpellState->m_aStartDrawingSelection.nEndPara ==  aCurrentSelection.nEndPara &&
-                    m_pSpellState->m_aStartDrawingSelection.nEndPos <  aCurrentSelection.nEndPos))
+            if (m_pSpellState->m_aStartDrawingSelection.end < aCurrentSelection.end)
             {
                 bRet = false;
                 rPortions.clear();
@@ -821,6 +817,11 @@ bool SwSpellDialogChildWindow::SpellDrawText_Impl(SwWrtShell& rSh, svx::SpellPor
 
 void SwSpellDialogChildWindow::LockFocusNotification(bool bLock)
 {
+    if (!m_pSpellState)
+    {
+        return;
+    }
+
     OSL_ENSURE(m_pSpellState->m_bLockFocus != bLock, "invalid locking - no change of state");
     m_pSpellState->m_bLockFocus = bLock;
 }

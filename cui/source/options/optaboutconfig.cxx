@@ -70,15 +70,18 @@ struct UserData
     bool bIsReadOnly;
     bool bWasModified;
     OUString sPropertyPath;
+    Any aPropertyValue;
     OUString sTooltip;
     int aLineage;
     Reference<XNameAccess> aXNameAccess;
 
-    explicit UserData(OUString aPropertyPath, OUString aTooltip, bool isReadOnly, bool wasModified)
+    explicit UserData(OUString aPropertyPath, Any aPropValue, OUString aTooltip, bool isReadOnly,
+                      bool wasModified)
         : bIsPropertyPath(true)
         , bIsReadOnly(isReadOnly)
         , bWasModified(wasModified)
         , sPropertyPath(std::move(aPropertyPath))
+        , aPropertyValue(aPropValue)
         , sTooltip(std::move(aTooltip))
         , aLineage(0)
     {
@@ -95,13 +98,13 @@ struct UserData
 };
 
 CuiAboutConfigTabPage::CuiAboutConfigTabPage(weld::Window* pParent)
-    : GenericDialogController(pParent, "cui/ui/aboutconfigdialog.ui", "AboutConfig")
-    , m_xResetBtn(m_xBuilder->weld_button("reset"))
-    , m_xEditBtn(m_xBuilder->weld_button("edit"))
-    , m_xSearchBtn(m_xBuilder->weld_button("searchButton"))
-    , m_xModifiedCheckBtn(m_xBuilder->weld_check_button("modifiedButton"))
-    , m_xSearchEdit(m_xBuilder->weld_entry("searchEntry"))
-    , m_xPrefBox(m_xBuilder->weld_tree_view("preferences"))
+    : GenericDialogController(pParent, u"cui/ui/aboutconfigdialog.ui"_ustr, u"AboutConfig"_ustr)
+    , m_xResetBtn(m_xBuilder->weld_button(u"reset"_ustr))
+    , m_xEditBtn(m_xBuilder->weld_button(u"edit"_ustr))
+    , m_xSearchBtn(m_xBuilder->weld_button(u"searchButton"_ustr))
+    , m_xModifiedCheckBtn(m_xBuilder->weld_check_button(u"modifiedButton"_ustr))
+    , m_xSearchEdit(m_xBuilder->weld_entry(u"searchEntry"_ustr))
+    , m_xPrefBox(m_xBuilder->weld_tree_view(u"preferences"_ustr))
     , m_xScratchIter(m_xPrefBox->make_iterator())
     , m_bSorted(false)
 {
@@ -186,9 +189,10 @@ IMPL_STATIC_LINK_NOARG(CuiAboutConfigTabPage, ValidNameHdl, SvxNameDialog&, bool
 
 CuiAboutConfigTabPage::~CuiAboutConfigTabPage() {}
 
-void CuiAboutConfigTabPage::InsertEntry(const OUString& rPropertyPath, const OUString& rProp,
-                                        const OUString& rStatus, const OUString& rType,
-                                        const OUString& rValue, const OUString& rTooltip,
+void CuiAboutConfigTabPage::InsertEntry(const OUString& rPropertyPath, Any aPropertyValue,
+                                        const OUString& rProp, const OUString& rStatus,
+                                        const OUString& rType, const OUString& rValue,
+                                        const OUString& rTooltip,
                                         const weld::TreeIter* pParentEntry, bool bInsertToPrefBox,
                                         bool bIsReadOnly, bool bWasModified)
 {
@@ -196,8 +200,8 @@ void CuiAboutConfigTabPage::InsertEntry(const OUString& rPropertyPath, const OUS
     if (bOnlyModified && !bWasModified)
         return;
 
-    m_vectorUserData.push_back(
-        std::make_unique<UserData>(rPropertyPath, rTooltip, bIsReadOnly, bWasModified));
+    m_vectorUserData.push_back(std::make_unique<UserData>(rPropertyPath, aPropertyValue, rTooltip,
+                                                          bIsReadOnly, bWasModified));
     if (bInsertToPrefBox)
     {
         OUString sId(weld::toId(m_vectorUserData.back().get()));
@@ -230,7 +234,7 @@ void CuiAboutConfigTabPage::InputChanged()
     if (m_xSearchEdit->get_text().isEmpty())
     {
         m_xPrefBox->clear();
-        Reference<XNameAccess> xConfigAccess = getConfigAccess("/", false);
+        Reference<XNameAccess> xConfigAccess = getConfigAccess(u"/"_ustr, false);
         FillItems(xConfigAccess);
     }
     else
@@ -293,7 +297,7 @@ void CuiAboutConfigTabPage::Reset()
     m_modifiedPrefBoxEntries.clear();
 
     m_xPrefBox->freeze();
-    Reference<XNameAccess> xConfigAccess = getConfigAccess("/", false);
+    Reference<XNameAccess> xConfigAccess = getConfigAccess(u"/"_ustr, false);
     //Load all XNameAccess to m_prefBoxEntries
     FillItems(xConfigAccess, nullptr, 0, true);
     //Load xConfigAccess' children to m_prefBox
@@ -417,9 +421,10 @@ void CuiAboutConfigTabPage::FillItems(const Reference<XNameAccess>& xNameAccess,
                 m_xPrefBox->insert(pParentEntry, -1, &item, &sId, nullptr, nullptr, true,
                                    m_xScratchIter.get());
                 // Necessary, without this the selection line will be truncated.
-                m_xPrefBox->set_text(*m_xScratchIter, "", 1);
-                m_xPrefBox->set_text(*m_xScratchIter, "", 2);
-                m_xPrefBox->set_text(*m_xScratchIter, "", 3);
+                m_xPrefBox->set_text(*m_xScratchIter, u""_ustr, 1);
+                m_xPrefBox->set_text(*m_xScratchIter, u""_ustr, 2);
+                m_xPrefBox->set_text(*m_xScratchIter, u""_ustr, 3);
+                m_xPrefBox->set_text_emphasis(*m_xScratchIter, false, -1);
                 m_xPrefBox->set_sensitive(*m_xScratchIter, true);
             }
         }
@@ -435,7 +440,7 @@ void CuiAboutConfigTabPage::FillItems(const Reference<XNameAccess>& xNameAccess,
 
             css::uno::Reference<css::configuration::XReadWriteAccess> m_xReadWriteAccess;
             m_xReadWriteAccess = css::configuration::ReadWriteAccess::create(
-                ::comphelper::getProcessComponentContext(), "*");
+                ::comphelper::getProcessComponentContext(), u"*"_ustr);
             beans::Property aProperty;
             bool bReadOnly = false;
             OUString sFullPath(sPath + "/" + sPropertyName);
@@ -688,8 +693,9 @@ void CuiAboutConfigTabPage::FillItems(const Reference<XNameAccess>& xNameAccess,
             for (int j = 1; j < lineage; ++j)
                 index = sPath.indexOf("/", index + 1);
 
-            InsertEntry(sPath, sPath.copy(index + 1), item, sType, sValue.makeStringAndClear(),
-                        sTooltip, pParentEntry, !bLoadAll, bReadOnly, bWasModified);
+            InsertEntry(sPath, aNode, sPath.copy(index + 1), item, sType,
+                        sValue.makeStringAndClear(), sTooltip, pParentEntry, !bLoadAll, bReadOnly,
+                        bWasModified);
         }
     }
 }
@@ -697,7 +703,8 @@ void CuiAboutConfigTabPage::FillItems(const Reference<XNameAccess>& xNameAccess,
 Reference<XNameAccess> CuiAboutConfigTabPage::getConfigAccess(const OUString& sNodePath,
                                                               bool bUpdate)
 {
-    uno::Reference<uno::XComponentContext> xContext(::comphelper::getProcessComponentContext());
+    const uno::Reference<uno::XComponentContext>& xContext(
+        ::comphelper::getProcessComponentContext());
 
     uno::Reference<lang::XMultiServiceFactory> xConfigProvider(
         css::configuration::theDefaultProvider::get(xContext));
@@ -939,10 +946,8 @@ IMPL_LINK_NOARG(CuiAboutConfigTabPage, StandardHdl_Impl, weld::Button&, void)
             else if (sPropertyType == "string-list")
             {
                 SvxListDialog aListDialog(m_xDialog.get());
-                Reference<XNameAccess> xConfigAccess
-                    = getConfigAccess(pUserData->sPropertyPath, false);
-                Any aNode = xConfigAccess->getByName(sPropertyName);
-                uno::Sequence<OUString> aList = aNode.get<uno::Sequence<OUString>>();
+                uno::Sequence<OUString> aList
+                    = pUserData->aPropertyValue.get<uno::Sequence<OUString>>();
                 aListDialog.SetEntries(
                     comphelper::sequenceToContainer<std::vector<OUString>>(aList));
                 aListDialog.SetMode(ListMode::String);
@@ -961,6 +966,7 @@ IMPL_LINK_NOARG(CuiAboutConfigTabPage, StandardHdl_Impl, weld::Button&, void)
         if (bSaveChanges)
         {
             AddToModifiedVector(pProperty);
+            pUserData->aPropertyValue = pProperty->Value;
 
             //update listbox value.
             m_xPrefBox->set_text(*m_xScratchIter, sPropertyType, 2);
@@ -1069,9 +1075,10 @@ void CuiAboutConfigTabPage::InsertEntry(const prefBoxEntry& rEntry)
             m_xPrefBox->insert(xGrandParentEntry.get(), -1, &sParentName, nullptr, nullptr, nullptr,
                                false, xParentEntry.get());
             //It is needed, without this the selection line will be truncated.
-            m_xPrefBox->set_text(*xParentEntry, "", 1);
-            m_xPrefBox->set_text(*xParentEntry, "", 2);
-            m_xPrefBox->set_text(*xParentEntry, "", 3);
+            m_xPrefBox->set_text(*xParentEntry, u""_ustr, 1);
+            m_xPrefBox->set_text(*xParentEntry, u""_ustr, 2);
+            m_xPrefBox->set_text(*xParentEntry, u""_ustr, 3);
+            m_xPrefBox->set_text_emphasis(*xParentEntry, false, -1);
             m_xPrefBox->set_sensitive(*xParentEntry, true);
         }
 

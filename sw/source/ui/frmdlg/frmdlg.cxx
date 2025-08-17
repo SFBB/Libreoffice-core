@@ -40,6 +40,8 @@
 #include <svx/drawitem.hxx>
 #include <comphelper/lok.hxx>
 
+#include <vcl/tabs.hrc>
+
 // the dialog's carrier
 SwFrameDlg::SwFrameDlg(const SfxViewFrame& rViewFrame,
                        weld::Window*       pParent,
@@ -68,52 +70,66 @@ SwFrameDlg::SwFrameDlg(const SfxViewFrame& rViewFrame,
         m_xDialog->set_title(m_xDialog->get_title() + SwResId(STR_FRMUI_COLL_HEADER) + *pStr + ")");
     }
 
-    AddTabPage("type",  SwFramePage::Create, nullptr);
-    AddTabPage("options",  SwFrameAddPage::Create, nullptr);
-    AddTabPage("wrap", SwWrapTabPage::Create, nullptr);
-    AddTabPage("hyperlink",  SwFrameURLPage::Create, nullptr);
+    AddTabPage(u"type"_ustr, TabResId(RID_TAB_POSSIZE.aLabel), SwFramePage::Create,
+               RID_M + RID_TAB_POSSIZE.sIconName);
+    AddTabPage(u"options"_ustr, TabResId(RID_TAB_FRAME_OPTIONS.aLabel), SwFrameAddPage::Create,
+               RID_M + RID_TAB_FRAME_OPTIONS.sIconName);
+    AddTabPage(u"wrap"_ustr, TabResId(RID_TAB_FRAME_WRAP.aLabel), SwWrapTabPage::Create,
+               RID_M + RID_TAB_FRAME_WRAP.sIconName);
+    AddTabPage(u"hyperlink"_ustr, TabResId(RID_TAB_HYPERLINK.aLabel), SwFrameURLPage::Create,
+               RID_M + RID_TAB_HYPERLINK.sIconName);
     if (m_sDlgType == "PictureDialog")
     {
-        AddTabPage("picture", SwGrfExtPage::Create, nullptr);
-        AddTabPage("crop", RID_SVXPAGE_GRFCROP);
+        AddTabPage(u"picture"_ustr, TabResId(RID_TAB_ROTATION.aLabel), SwGrfExtPage::Create,
+                   RID_M + RID_TAB_ROTATION.sIconName);
+        AddTabPage(u"crop"_ustr, TabResId(RID_TAB_CROP.aLabel), RID_SVXPAGE_GRFCROP,
+                   RID_M + RID_TAB_CROP.sIconName);
     }
     if (m_sDlgType == "FrameDialog")
     {
-        AddTabPage("columns", SwColumnPage::Create, nullptr);
+        AddTabPage(u"columns"_ustr, TabResId(RID_TAB_COLUMNS.aLabel), SwColumnPage::Create,
+                   RID_M + RID_TAB_COLUMNS.sIconName);
     }
     SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
 
     // add Area and Transparence TabPages
-    AddTabPage("area", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_AREA ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_AREA ));
-    AddTabPage("transparence", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_TRANSPARENCE ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_TRANSPARENCE ) );
+    AddTabPage(u"area"_ustr, TabResId(RID_TAB_AREA.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_AREA),
+               pFact->GetTabPageRangesFunc(RID_SVXPAGE_AREA), RID_M + RID_TAB_AREA.sIconName);
+    AddTabPage(u"transparence"_ustr, TabResId(RID_TAB_TRANSPARENCE.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_TRANSPARENCE),
+               pFact->GetTabPageRangesFunc(RID_SVXPAGE_TRANSPARENCE),
+               RID_M + RID_TAB_TRANSPARENCE.sIconName);
 
-    AddTabPage("macro", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_MACROASSIGN), nullptr);
-    AddTabPage("borders", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BORDER ), nullptr);
+    AddTabPage(u"macro"_ustr, TabResId(RID_TAB_MACRO.aLabel), RID_SVXPAGE_MACROASSIGN,
+               RID_M + RID_TAB_MACRO.sIconName);
+    AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel), RID_SVXPAGE_BORDER,
+               RID_M + RID_TAB_BORDER.sIconName);
 
     if(bHTMLMode)
     {
         if (m_sDlgType == "FrameDialog" || m_sDlgType == "ObjectDialog")
         {
             if (m_sDlgType == "FrameDialog")
-                RemoveTabPage("columns");
-            RemoveTabPage("hyperlink");
-            RemoveTabPage("macro");
+                RemoveTabPage(u"columns"_ustr);
+            RemoveTabPage(u"hyperlink"_ustr);
+            RemoveTabPage(u"macro"_ustr);
         }
         else if (m_sDlgType == "PictureDialog")
-            RemoveTabPage("crop");
+            RemoveTabPage(u"crop"_ustr);
         if( m_sDlgType != "FrameDialog" )
         {
             // RemoveTabPage("background");
-            RemoveTabPage("area");
-            RemoveTabPage("transparence");
+            RemoveTabPage(u"area"_ustr);
+            RemoveTabPage(u"transparence"_ustr);
         }
     }
 
     if(comphelper::LibreOfficeKit::isActive())
-        RemoveTabPage("macro");
+        RemoveTabPage(u"macro"_ustr);
 
     if (m_bNew)
-        SetCurPageId("type");
+        SetCurPageId(u"type"_ustr);
 
     if (!sDefPage.isEmpty())
         SetCurPageId(sDefPage);

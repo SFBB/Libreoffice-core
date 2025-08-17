@@ -29,6 +29,7 @@
 #include <vcl/kernarray.hxx>
 #include <vcl/gradient.hxx>
 #include <vcl/metric.hxx>
+#include <vcl/unohelp.hxx>
 #include <tools/debug.hxx>
 
 using namespace com::sun::star;
@@ -126,9 +127,9 @@ uno::Reference< awt::XDevice > VCLXGraphics::getDevice()
 
     if( !mxDevice.is() && mpOutputDevice )
     {
-        rtl::Reference<VCLXDevice> pDev = new VCLXDevice;
-        pDev->SetOutputDevice( mpOutputDevice );
-        mxDevice = pDev;
+        rtl::Reference<VCLXDevice> xDev = new VCLXDevice;
+        xDev->SetOutputDevice( mpOutputDevice );
+        mxDevice = std::move(xDev);
     }
     return mxDevice;
 }
@@ -213,7 +214,7 @@ void VCLXGraphics::intersectClipRegion( const uno::Reference< awt::XRegion >& rx
     {
         vcl::Region aRegion( VCLUnoHelper::GetRegion( rxRegion ) );
         if ( !mpClipRegion )
-            mpClipRegion.reset( new vcl::Region( aRegion ) );
+            mpClipRegion.reset( new vcl::Region(std::move(aRegion)) );
         else
             mpClipRegion->Intersect( aRegion );
     }
@@ -244,7 +245,7 @@ void VCLXGraphics::clear(
 
     if( mpOutputDevice )
     {
-        const ::tools::Rectangle aVCLRect = VCLUnoHelper::ConvertToVCLRect( aRect );
+        const ::tools::Rectangle aVCLRect = vcl::unohelper::ConvertToVCLRect( aRect );
         mpOutputDevice->Erase( aVCLRect );
     }
 }
@@ -275,10 +276,10 @@ void VCLXGraphics::draw( const uno::Reference< awt::XDisplayBitmap >& rxBitmapHa
 
     InitOutputDevice( InitOutDevFlags::NONE);
     uno::Reference< awt::XBitmap > xBitmap( rxBitmapHandle, uno::UNO_QUERY );
-    BitmapEx aBmpEx = VCLUnoHelper::GetBitmap( xBitmap );
+    Bitmap aBmp = VCLUnoHelper::GetBitmap( xBitmap );
 
     Point aPos(nDestX - nSourceX, nDestY - nSourceY);
-    Size aSz = aBmpEx.GetSizePixel();
+    Size aSz = aBmp.GetSizePixel();
 
     if(nDestWidth != nSourceWidth)
     {
@@ -295,7 +296,7 @@ void VCLXGraphics::draw( const uno::Reference< awt::XDisplayBitmap >& rxBitmapHa
     if(nSourceX || nSourceY || aSz.Width() != nSourceWidth || aSz.Height() != nSourceHeight)
         mpOutputDevice->IntersectClipRegion(vcl::Region(tools::Rectangle(nDestX, nDestY, nDestX + nDestWidth - 1, nDestY + nDestHeight - 1)));
 
-    mpOutputDevice->DrawBitmapEx( aPos, aSz, aBmpEx );
+    mpOutputDevice->DrawBitmapEx( aPos, aSz, aBmp );
 }
 
 void VCLXGraphics::drawPixel( sal_Int32 x, sal_Int32 y )

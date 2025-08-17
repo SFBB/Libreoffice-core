@@ -110,11 +110,11 @@ ModelToViewHelper::ModelToViewHelper(const SwTextNode &rNode,
     {
         // hide fieldmark commands
         IDocumentMarkAccess const& rIDMA(*rNode.GetDoc().getIDocumentMarkAccess());
-        ::std::deque<::std::pair<sw::mark::IFieldmark const*, bool>> startedFields;
+        ::std::deque<::std::pair<sw::mark::Fieldmark const*, bool>> startedFields;
         SwPaM cursor(rNode, 0);
         while (true)
         {
-            sw::mark::IFieldmark const* pFieldMark(nullptr);
+            sw::mark::Fieldmark const* pFieldMark(nullptr);
             while (true) // loop to skip NonTextFieldmarks, those are handled later
             {
                 pFieldMark = rIDMA.getInnerFieldmarkFor(*cursor.GetPoint());
@@ -138,10 +138,11 @@ ModelToViewHelper::ModelToViewHelper(const SwTextNode &rNode,
             assert(pFieldMark->GetMarkStart().GetNode().GetTextNode()->GetText()[pFieldMark->GetMarkStart().GetContentIndex()] != CH_TXT_ATR_FORMELEMENT);
             // getInnerFieldmarkFor may also return one that starts at rNode,0 -
             // skip it, must be handled in loop below
-            if (pFieldMark->GetMarkStart().GetNode() < rNode)
+            auto [/*const SwPosition&*/ rMarkStartPos, rMarkEndPos] = pFieldMark->GetMarkStartEnd();
+            if (rMarkStartPos.GetNode() < rNode)
             {
                 // this can be a nested field's end - skip over those!
-                if (pFieldMark->GetMarkEnd().GetNode() < rNode)
+                if (rMarkEndPos.GetNode() < rNode)
                 {
                     assert(cursor.GetPoint()->GetNode().GetTextNode()->GetText()[cursor.GetPoint()->GetContentIndex()] == CH_TXT_ATR_FIELDEND);
                 }
@@ -289,7 +290,7 @@ ModelToViewHelper::ModelToViewHelper(const SwTextNode &rNode,
                             {
                                 // add a ZWSP before the expanded field in replace mode
                                 aFieldResult.m_sExpand = ((eMode & ExpandMode::ReplaceMode)
-                                    ? OUString(CHAR_ZWSP) : OUString("")) +
+                                    ? OUString(CHAR_ZWSP) : u""_ustr) +
                                       static_txtattr_cast<SwTextField const*>(pAttr)->
                                       GetFormatField().GetField()->ExpandField(true, pLayout);
                                 aFieldResult.m_eType = FieldResult::FIELD;
@@ -319,10 +320,10 @@ ModelToViewHelper::ModelToViewHelper(const SwTextNode &rNode,
             //now get the dropdown formfields, get their position in the node and what the text they expand
             //to is
             SwPaM aPaM(rNode, 0, rNode, rNode.Len());
-            std::vector<sw::mark::IFieldmark*> aNoTextFieldmarks =
+            std::vector<sw::mark::Fieldmark*> aNoTextFieldmarks =
                 rNode.GetDoc().getIDocumentMarkAccess()->getNoTextFieldmarksIn(aPaM);
 
-            for (sw::mark::IFieldmark *const pMark : aNoTextFieldmarks)
+            for (sw::mark::Fieldmark *const pMark : aNoTextFieldmarks)
             {
                 const sal_Int32 nDummyCharPos = pMark->GetMarkStart().GetContentIndex();
                 if (aHiddenMulti.IsSelected(nDummyCharPos))

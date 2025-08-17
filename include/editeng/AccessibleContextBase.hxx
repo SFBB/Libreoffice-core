@@ -17,44 +17,25 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_EDITENG_ACCESSIBLECONTEXTBASE_HXX
-#define INCLUDED_EDITENG_ACCESSIBLECONTEXTBASE_HXX
+#pragma once
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/accessibility/XAccessibleContext.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <comphelper/OAccessible.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <editeng/editengdllapi.h>
 #include <rtl/ref.hxx>
 
-namespace com::sun::star::accessibility { class XAccessibleRelationSet; }
-namespace com::sun::star::accessibility { struct AccessibleEventObject; }
 namespace utl { class AccessibleRelationSetHelper; }
 
 namespace accessibility {
 
-/** @descr
-        This base class provides an implementation of the
-        AccessibleContext service. Apart from the
-        <type>XXAccessible<type> and XAccessibleContextContext
-        interfaces it supports the XServiceInfo interface.
-*/
 class EDITENG_DLLPUBLIC AccessibleContextBase
-    :   public cppu::BaseMutex,
-        public cppu::WeakComponentImplHelper<
-        css::accessibility::XAccessible,
-        css::accessibility::XAccessibleContext,
-        css::accessibility::XAccessibleEventBroadcaster,
-        css::lang::XServiceInfo
-        >
+    : public cppu::ImplInheritanceHelper<comphelper::OAccessible, css::lang::XServiceInfo>
 {
 public:
-
-    //=====  internal  ========================================================
-
     /** The origin of the accessible name or description.
     */
     enum StringOrigin {
@@ -161,14 +142,6 @@ public:
     void SetRelationSet (
         const rtl::Reference< utl::AccessibleRelationSetHelper>& rxRelationSet);
 
-
-    //=====  XAccessible  =====================================================
-
-    /// Return the XAccessibleContext.
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext> SAL_CALL
-        getAccessibleContext() override;
-
-
     //=====  XAccessibleContext  ==============================================
 
     /// Return the number of currently visible children.
@@ -182,10 +155,6 @@ public:
     /// Return a reference to the parent.
     virtual css::uno::Reference< css::accessibility::XAccessible> SAL_CALL
         getAccessibleParent() override;
-
-    /// Return this objects index among the parents children.
-    virtual sal_Int64 SAL_CALL
-        getAccessibleIndexInParent() override;
 
     /// Return this object's role.
     virtual sal_Int16 SAL_CALL
@@ -212,16 +181,24 @@ public:
     virtual css::lang::Locale SAL_CALL
         getLocale() override;
 
-    //=====  XAccessibleEventBroadcaster  ========================================
+    //=====  XAccessibleComponent  ================================================
 
-    virtual void SAL_CALL
-        addAccessibleEventListener (
-            const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener) override;
+    /** The default implementation returns an empty reference.
+    */
+    virtual css::uno::Reference<css::accessibility::XAccessible>
+        SAL_CALL getAccessibleAtPoint(const css::awt::Point& aPoint) override;
 
-    virtual void SAL_CALL
-        removeAccessibleEventListener (
-            const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener) override;
+    /** The default implementation does nothing.
+    */
+    virtual void SAL_CALL grabFocus() override;
 
+    /** Returns black as the default foreground color.
+    */
+    virtual sal_Int32 SAL_CALL getForeground() override;
+
+    /** Returns white as the default background color.
+    */
+    virtual sal_Int32 SAL_CALL getBackground() override;
 
     //=====  XServiceInfo  ====================================================
 
@@ -233,21 +210,10 @@ public:
     /** Return whether the specified service is supported by this class.
     */
     virtual sal_Bool SAL_CALL
-        supportsService (const OUString& sServiceName) override;
+        supportsService (const OUString& sServiceName) override final;
 
-    /** Returns a list of all supported services.  In this case that is just
-        the AccessibleContext service.
-    */
     virtual css::uno::Sequence< OUString> SAL_CALL
         getSupportedServiceNames() override;
-
-
-    //=====  XTypeProvider  ===================================================
-
-    /** Returns an implementation id.
-    */
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL
-        getImplementationId() override;
 
     /** Check whether or not the object has been disposed (or is in the
         state of being disposed).
@@ -278,16 +244,6 @@ protected:
         @throws css::uno::RuntimeException
     */
     virtual OUString CreateAccessibleName();
-
-    void FireEvent (const css::accessibility::AccessibleEventObject& aEvent);
-
-    /** Check whether or not the object has been disposed (or is in the
-        state of being disposed).  If that is the case then
-        DisposedException is thrown to inform the (indirect) caller of the
-        foul deed.
-        @throws css::lang::DisposedException
-    */
-    void ThrowIfDisposed();
 
     /** sets the role as returned by XaccessibleContext::getAccessibleRole
 
@@ -324,17 +280,11 @@ private:
     */
     StringOrigin meNameOrigin;
 
-    /** client id in the AccessibleEventNotifier queue
-    */
-    sal_uInt32 mnClientId;
-
     /** This is the role of this object.
     */
     sal_Int16 maRole;
 };
 
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

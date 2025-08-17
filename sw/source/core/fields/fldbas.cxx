@@ -44,17 +44,19 @@
 #include <viewsh.hxx>
 #include <hints.hxx>
 #include <unofield.hxx>
+#include <dbfld.hxx>
+#include <chpfld.hxx>
+#include <flddat.hxx>
+#include <usrfld.hxx>
 
 using namespace ::com::sun::star;
-using namespace nsSwDocInfoSubType;
 
-static LanguageType lcl_GetLanguageOfFormat( LanguageType nLng, sal_uLong nFormat,
-                                const SvNumberFormatter& rFormatter )
+static LanguageType lcl_GetLanguageOfFormat(LanguageType nLng, sal_uLong nFormat)
 {
     if( nLng == LANGUAGE_NONE ) // Bug #60010
         nLng = LANGUAGE_SYSTEM;
     else if( nLng == ::GetAppLanguage() )
-        switch( rFormatter.GetIndexTableOffset( nFormat ))
+        switch( SvNumberFormatter::GetIndexTableOffset( nFormat ))
         {
         case NF_NUMBER_SYSTEM:
         case NF_DATE_SYSTEM_SHORT:
@@ -136,9 +138,9 @@ SwFieldType::SwFieldType( SwFieldIds nWhichId )
 {
 }
 
-OUString SwFieldType::GetName() const
+UIName SwFieldType::GetName() const
 {
-    return OUString();
+    return UIName();
 }
 
 void SwFieldType::QueryValue( uno::Any&, sal_uInt16 ) const
@@ -150,8 +152,7 @@ void SwFieldType::PutValue( const uno::Any& , sal_uInt16 )
 
 void SwFieldType::PrintHiddenPara()
 {
-    const SwMsgPoolItem aHint(RES_HIDDENPARA_PRINT);
-    SwClientNotify(*this, sw::LegacyModifyHint(&aHint, nullptr));
+    SwClientNotify(*this, sw::PrintHiddenParaHint());
 }
 
 void SwFieldType::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -164,7 +165,11 @@ void SwFieldType::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("symbol"), "%s", BAD_CAST(typeid(*this).name()));
     for(const auto pFormatField: vFields)
-        pFormatField->dumpAsXml(pWriter);
+    {
+        (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwFormatField"));
+        (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", pFormatField);
+        (void)xmlTextWriterEndElement(pWriter);
+    }
     (void)xmlTextWriterEndElement(pWriter);
 }
 
@@ -197,7 +202,7 @@ void SwFieldType::GatherNodeIndex(std::vector<SwNodeOffset>& rvNodeIndex)
     CallSwClientNotify(sw::GatherNodeIndexHint(rvNodeIndex));
 }
 
-void SwFieldType::GatherRefFields(std::vector<SwGetRefField*>& rvRFields, const sal_uInt16 nTyp)
+void SwFieldType::GatherRefFields(std::vector<SwGetRefField*>& rvRFields, const ReferencesSubtype nTyp)
 {
     CallSwClientNotify(sw::GatherRefFieldsHint(rvRFields, nTyp));
 }
@@ -241,11 +246,9 @@ void SwFieldTypes::dumpAsXml(xmlTextWriterPtr pWriter) const
 // A field (multiple can exist) references a field type (can exists only once)
 SwField::SwField(
         SwFieldType* pType,
-        sal_uInt32 nFormat,
         LanguageType nLang,
         bool bUseFieldValueCache)
     : m_pType( pType )
-    , m_nFormat( nFormat )
     , m_nLang( nLang )
     , m_bUseFieldValueCache( bUseFieldValueCache )
     , m_bIsAutomaticLanguage( true )
@@ -264,34 +267,48 @@ SwFieldTypesEnum SwField::GetTypeId() const
     switch (m_pType->Which())
     {
     case SwFieldIds::DateTime:
-        if (GetSubType() & FIXEDFLD)
-            nRet = GetSubType() & DATEFLD ? SwFieldTypesEnum::FixedDate : SwFieldTypesEnum::FixedTime;
-        else
-            nRet = GetSubType() & DATEFLD ? SwFieldTypesEnum::Date : SwFieldTypesEnum::Time;
+        {
+            auto pDateTimeField = static_cast<const SwDateTimeField*>(this);
+            SwDateTimeSubType nSubType = pDateTimeField->GetSubType();
+            if (nSubType & SwDateTimeSubType::Fixed)
+                nRet = nSubType & SwDateTimeSubType::Date ? SwFieldTypesEnum::FixedDate : SwFieldTypesEnum::FixedTime;
+            else
+                nRet = nSubType & SwDateTimeSubType::Date ? SwFieldTypesEnum::Date : SwFieldTypesEnum::Time;
+        }
         break;
     case SwFieldIds::GetExp:
-        nRet = nsSwGetSetExpType::GSE_FORMULA & GetSubType() ? SwFieldTypesEnum::Formel : SwFieldTypesEnum::Get;
+        {
+            auto pGetExpField = static_cast<const SwGetExpField*>(this);
+            nRet = SwGetSetExpType::Formula & pGetExpField->GetSubType() ? SwFieldTypesEnum::Formel : SwFieldTypesEnum::Get;
+        }
         break;
 
     case SwFieldIds::HiddenText:
-        nRet = static_cast<SwFieldTypesEnum>(GetSubType());
+        {
+            auto pHiddenTextField = static_cast<const SwHiddenTextField*>(this);
+            nRet = pHiddenTextField->GetSubType();
+        }
         break;
 
     case SwFieldIds::SetExp:
-        if( nsSwGetSetExpType::GSE_SEQ & GetSubType() )
-            nRet = SwFieldTypesEnum::Sequence;
-        else if( static_cast<const SwSetExpField*>(this)->GetInputFlag() )
-            nRet = SwFieldTypesEnum::SetInput;
-        else
-            nRet = SwFieldTypesEnum::Set;
+        {
+            auto pSetExpField = static_cast<const SwSetExpField*>(this);
+            if( SwGetSetExpType::Sequence & pSetExpField->GetSubType() )
+                nRet = SwFieldTypesEnum::Sequence;
+            else if( pSetExpField->GetInputFlag() )
+                nRet = SwFieldTypesEnum::SetInput;
+            else
+                nRet = SwFieldTypesEnum::Set;
+        }
         break;
 
     case SwFieldIds::PageNumber:
         {
-            auto nSubType = GetSubType();
-            if( PG_NEXT == nSubType )
+            auto pPageNumberField = static_cast<const SwPageNumberField*>(this);
+            SwPageNumSubType nSubType = pPageNumberField->GetSubType();
+            if( SwPageNumSubType::Next == nSubType )
                 nRet = SwFieldTypesEnum::NextPage;
-            else if( PG_PREV == nSubType )
+            else if( SwPageNumSubType::Previous == nSubType )
                 nRet = SwFieldTypesEnum::PreviousPage;
             else
                 nRet = SwFieldTypesEnum::PageNumber;
@@ -310,8 +327,9 @@ OUString SwField::GetFieldName() const
     SwFieldTypesEnum nTypeId = GetTypeId();
     if (SwFieldIds::DateTime == GetTyp()->Which())
     {
+        auto pDateTimeField = static_cast<const SwDateTimeField*>(this);
         nTypeId =
-            ((GetSubType() & DATEFLD) != 0) ? SwFieldTypesEnum::Date : SwFieldTypesEnum::Time;
+            (pDateTimeField->GetSubType() & SwDateTimeSubType::Date) ? SwFieldTypesEnum::Date : SwFieldTypesEnum::Time;
     }
     OUString sRet = SwFieldType::GetTypeStr( nTypeId );
     if (IsFixed())
@@ -320,6 +338,91 @@ OUString SwField::GetFieldName() const
     }
     return sRet;
 }
+
+/// Helpers for those places still passing untyped format ids around for SwField
+sal_uInt32 SwField::GetUntypedFormat() const
+{
+    switch (m_pType->Which())
+    {
+    case SwFieldIds::PageNumber:
+        return static_cast<const SwPageNumberField*>(this)->GetFormat();
+    case SwFieldIds::JumpEdit:
+        return static_cast<sal_uInt32>(static_cast<const SwJumpEditField*>(this)->GetFormat());
+    case SwFieldIds::DocStat:
+        return static_cast<const SwDocStatField*>(this)->GetFormat();
+    case SwFieldIds::TemplateName:
+        return static_cast<sal_uInt32>(static_cast<const SwTemplNameField*>(this)->GetFormat());
+    case SwFieldIds::Chapter:
+        return static_cast<sal_uInt32>(static_cast<const SwChapterField*>(this)->GetFormat());
+    case SwFieldIds::Filename:
+        return static_cast<sal_uInt32>(static_cast<const SwFileNameField*>(this)->GetFormat());
+    case SwFieldIds::Author:
+        return static_cast<sal_uInt32>(static_cast<const SwAuthorField*>(this)->GetFormat());
+    case SwFieldIds::ExtUser:
+        return static_cast<sal_uInt32>(static_cast<const SwExtUserField*>(this)->GetFormat());
+    case SwFieldIds::DbNextSet:
+    case SwFieldIds::DbNumSet:
+    case SwFieldIds::DatabaseName:
+    case SwFieldIds::DbSetNumber:
+        return static_cast<const SwDBNameInfField*>(this)->GetFormat();
+    case SwFieldIds::RefPageGet:
+        return static_cast<const SwRefPageGetField*>(this)->GetFormat();
+    case SwFieldIds::GetRef:
+        return static_cast<sal_uInt16>(static_cast<const SwGetRefField*>(this)->GetFormat());
+    default: break;
+    }
+    if (auto p = dynamic_cast<const SwValueField*>(this))
+        return p->GetFormat();
+    return 0;
+}
+
+/// Helpers for those places still passing untyped format ids around for SwField
+void SwField::SetUntypedFormat(sal_uInt32 n)
+{
+    switch (m_pType->Which())
+    {
+    case SwFieldIds::PageNumber:
+        static_cast<SwPageNumberField*>(this)->SetFormat(static_cast<SvxNumType>(n));
+        return;
+    case SwFieldIds::JumpEdit:
+        static_cast<SwJumpEditField*>(this)->SetFormat(static_cast<SwJumpEditFormat>(n));
+        return;
+    case SwFieldIds::DocStat:
+        static_cast<SwDocStatField*>(this)->SetFormat(static_cast<SvxNumType>(n));
+        return;
+    case SwFieldIds::TemplateName:
+        static_cast<SwTemplNameField*>(this)->SetFormat(static_cast<SwFileNameFormat>(n));
+        return;
+    case SwFieldIds::Chapter:
+        static_cast<SwChapterField*>(this)->SetFormat(static_cast<SwChapterFormat>(n));
+        return;
+    case SwFieldIds::Filename:
+        static_cast<SwFileNameField*>(this)->SetFormat(static_cast<SwFileNameFormat>(n));
+        return;
+    case SwFieldIds::Author:
+        static_cast<SwAuthorField*>(this)->SetFormat(static_cast<SwAuthorFormat>(n));
+        return;
+    case SwFieldIds::ExtUser:
+        static_cast<SwExtUserField*>(this)->SetFormat(static_cast<SwAuthorFormat>(n));
+        return;
+    case SwFieldIds::DbNextSet:
+    case SwFieldIds::DbNumSet:
+    case SwFieldIds::DatabaseName:
+    case SwFieldIds::DbSetNumber:
+        static_cast<SwDBNameInfField*>(this)->SetFormat(n);
+        return;
+    case SwFieldIds::RefPageGet:
+        static_cast<SwRefPageGetField*>(this)->SetFormat(static_cast<SvxNumType>(n));
+        return;
+    case SwFieldIds::GetRef:
+        static_cast<SwGetRefField*>(this)->SetFormat(static_cast<RefFieldFormat>(n));
+        return;
+    default: break;
+    }
+    if (auto p2 = dynamic_cast<SwValueField*>(this))
+        p2->SetFormat(n);
+}
+
 
 OUString SwField::GetPar1() const
 {
@@ -342,13 +445,100 @@ void SwField::SetPar1(const OUString& )
 void SwField::SetPar2(const OUString& )
 {}
 
-sal_uInt16 SwField::GetSubType() const
+// for code that is still passing around untyped values
+sal_uInt16 SwField::GetUntypedSubType() const
 {
+    switch (m_pType->Which())
+    {
+    case SwFieldIds::User:
+        return static_cast<sal_uInt16>(static_cast<const SwUserField*>(this)->GetSubType());
+    case SwFieldIds::GetRef:
+        return static_cast<sal_uInt16>(static_cast<const SwGetRefField*>(this)->GetSubType());
+    case SwFieldIds::DateTime:
+        return static_cast<sal_uInt16>(static_cast<const SwDateTimeField*>(this)->GetSubType());
+    case SwFieldIds::Table:
+        return static_cast<sal_uInt16>(static_cast<const SwTableField*>(this)->GetSubType());
+    case SwFieldIds::Input:
+        return static_cast<sal_uInt16>(static_cast<const SwInputField*>(this)->GetSubType());
+    case SwFieldIds::GetExp:
+        return static_cast<sal_uInt16>(static_cast<const SwGetExpField*>(this)->GetSubType());
+    case SwFieldIds::SetExp:
+        return static_cast<sal_uInt16>(static_cast<const SwSetExpField*>(this)->GetSubType());
+    case SwFieldIds::ExtUser:
+        return static_cast<sal_uInt32>(static_cast<const SwExtUserField*>(this)->GetSubType());
+    case SwFieldIds::DocInfo:
+        return static_cast<sal_uInt16>(static_cast<const SwDocInfoField*>(this)->GetSubType());
+    case SwFieldIds::HiddenText:
+        return static_cast<sal_uInt16>(static_cast<const SwHiddenTextField*>(this)->GetSubType());
+    case SwFieldIds::DocStat:
+        return static_cast<sal_uInt16>(static_cast<const SwDocStatField*>(this)->GetSubType());
+    case SwFieldIds::PageNumber:
+        return static_cast<sal_uInt16>(static_cast<const SwPageNumberField*>(this)->GetSubType());
+    case SwFieldIds::DbNextSet:
+    case SwFieldIds::DbNumSet:
+    case SwFieldIds::DatabaseName:
+    case SwFieldIds::DbSetNumber:
+        return static_cast<sal_uInt16>(static_cast<const SwDBNameInfField*>(this)->GetSubType());
+    case SwFieldIds::Database:
+        return static_cast<sal_uInt16>(static_cast<const SwDBField*>(this)->GetSubType());
+    default: break;
+    }
     return 0;
 }
 
-void SwField::SetSubType(sal_uInt16 )
+void SwField::SetUntypedSubType(sal_uInt16 n)
 {
+    switch (m_pType->Which())
+    {
+    case SwFieldIds::User:
+        static_cast<SwUserField*>(this)->SetSubType(static_cast<SwUserType>(n));
+        break;
+    case SwFieldIds::GetRef:
+        static_cast<SwGetRefField*>(this)->SetSubType(static_cast<ReferencesSubtype>(n));
+        break;
+    case SwFieldIds::DateTime:
+        static_cast<SwDateTimeField*>(this)->SetSubType(static_cast<SwDateTimeSubType>(n));
+        break;
+    case SwFieldIds::Table:
+        static_cast<SwTableField*>(this)->SetSubType(static_cast<SwTableFieldSubType>(n));
+        break;
+    case SwFieldIds::Input:
+        static_cast<SwInputField*>(this)->SetSubType(static_cast<SwInputFieldSubType>(n));
+        break;
+    case SwFieldIds::GetExp:
+        static_cast<SwGetExpField*>(this)->SetSubType(static_cast<SwGetSetExpType>(n));
+        break;
+    case SwFieldIds::SetExp:
+        static_cast<SwSetExpField*>(this)->SetSubType(static_cast<SwGetSetExpType>(n));
+        break;
+    case SwFieldIds::ExtUser:
+        static_cast<SwExtUserField*>(this)->SetSubType(static_cast<SwExtUserSubType>(n));
+        break;
+    case SwFieldIds::DocInfo:
+        static_cast<SwDocInfoField*>(this)->SetSubType(static_cast<SwDocInfoSubType>(n));
+        break;
+    case SwFieldIds::HiddenText:
+        static_cast<SwHiddenTextField*>(this)->SetSubType(static_cast<SwFieldTypesEnum>(n));
+        break;
+    case SwFieldIds::DocStat:
+        static_cast<SwDocStatField*>(this)->SetSubType(static_cast<SwDocStatSubType>(n));
+        break;
+    case SwFieldIds::PageNumber:
+        static_cast<SwPageNumberField*>(this)->SetSubType(static_cast<SwPageNumSubType>(n));
+        break;
+    case SwFieldIds::DbNextSet:
+    case SwFieldIds::DbNumSet:
+    case SwFieldIds::DatabaseName:
+    case SwFieldIds::DbSetNumber:
+        static_cast<SwDBNameInfField*>(this)->SetSubType(static_cast<SwDBFieldSubType>(n));
+        break;
+    case SwFieldIds::Database:
+        static_cast<SwDBField*>(this)->SetSubType(static_cast<SwDBFieldSubType>(n));
+        break;
+    default:
+        assert(n == 0 && "trying to set a subtype on something I don't know about");
+        break;
+    }
 }
 
 bool  SwField::QueryValue( uno::Any& rVal, sal_uInt16 nWhichId ) const
@@ -441,11 +631,6 @@ void SwField::SetLanguage(LanguageType const nLang)
     m_nLang = nLang;
 }
 
-void SwField::ChangeFormat(sal_uInt32 const nFormat)
-{
-    m_nFormat = nFormat;
-}
-
 bool SwField::IsFixed() const
 {
     bool bRet = false;
@@ -457,20 +642,22 @@ bool SwField::IsFixed() const
         break;
 
     case SwFieldIds::DateTime:
-        bRet = 0 != (GetSubType() & FIXEDFLD);
+        bRet = bool(static_cast<const SwDateTimeField*>(this)->GetSubType() & SwDateTimeSubType::Fixed);
         break;
 
     case SwFieldIds::ExtUser:
+        bRet = bool(static_cast<const SwExtUserField*>(this)->GetFormat() & SwAuthorFormat::Fixed);
+        break;
     case SwFieldIds::Author:
-        bRet = 0 != (GetFormat() & AF_FIXED);
+        bRet = bool(static_cast<const SwAuthorField*>(this)->GetFormat() & SwAuthorFormat::Fixed);
         break;
 
     case SwFieldIds::Filename:
-        bRet = 0 != (GetFormat() & FF_FIXED);
+        bRet = bool(static_cast<const SwFileNameField*>(this)->GetFormat() & SwFileNameFormat::Fixed);
         break;
 
     case SwFieldIds::DocInfo:
-        bRet = 0 != (GetSubType() & DI_SUB_FIXED);
+        bRet = bool(static_cast<const SwDocInfoField*>(this)->GetSubType() & SwDocInfoSubType::SubFixed);
         break;
     default: break;
     }
@@ -583,7 +770,7 @@ OUString SwValueFieldType::ExpandValue( const double& rVal,
     const Color* pCol = nullptr;
 
     // Bug #60010
-    LanguageType nFormatLng = ::lcl_GetLanguageOfFormat( nLng, nFormat, *pFormatter );
+    LanguageType nFormatLng = ::lcl_GetLanguageOfFormat( nLng, nFormat );
 
     if( nFormat < SV_COUNTRY_LANGUAGE_OFFSET && LANGUAGE_SYSTEM != nFormatLng )
     {
@@ -654,25 +841,23 @@ OUString SwValueFieldType::GetInputOrDateTime( const OUString& rInput, const dou
         SvNumberFormatter* pFormatter = m_pDoc->GetNumberFormatter();
         const SvNumberformat* pEntry = pFormatter->GetEntry(nFormat);
         if (pEntry && (pEntry->GetType() & SvNumFormatType::DATETIME))
-        {
-            OUString aEdit;
-            pFormatter->GetInputLineString( rVal, nFormat, aEdit);
-            return aEdit;
-        }
+            return pFormatter->GetInputLineString( rVal, nFormat );
     }
     return rInput;
 }
 
 SwValueField::SwValueField( SwValueFieldType* pFieldType, sal_uInt32 nFormat,
                             LanguageType nLng, const double fVal )
-    : SwField(pFieldType, nFormat, nLng)
+    : SwField(pFieldType, nLng)
     , m_fValue(fVal)
+    , m_nFormat(nFormat)
 {
 }
 
 SwValueField::SwValueField( const SwValueField& rField )
     : SwField(rField)
     , m_fValue(rField.GetValue())
+    , m_nFormat(rField.GetFormat())
 {
 }
 
@@ -752,12 +937,11 @@ void SwValueField::SetLanguage( LanguageType nLng )
     {
         // Bug #60010
         SvNumberFormatter* pFormatter = GetDoc()->GetNumberFormatter();
-        LanguageType nFormatLng = ::lcl_GetLanguageOfFormat( nLng, GetFormat(),
-                                                    *pFormatter );
+        LanguageType nFormatLng = ::lcl_GetLanguageOfFormat( nLng, GetFormat() );
 
         if( (GetFormat() >= SV_COUNTRY_LANGUAGE_OFFSET ||
              LANGUAGE_SYSTEM != nFormatLng ) &&
-            !(Which() == SwFieldIds::User && (GetSubType()&nsSwExtendedSubType::SUB_CMD) ) )
+            !(Which() == SwFieldIds::User && (static_cast<const SwUserField*>(this)->GetSubType() & SwUserType::ShowCommand) ) )
         {
             const SvNumberformat* pEntry = pFormatter->GetEntry(GetFormat());
 
@@ -923,7 +1107,6 @@ void SwField::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwField"));
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("symbol"), "%s", BAD_CAST(typeid(*this).name()));
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nFormat"), BAD_CAST(OString::number(m_nFormat).getStr()));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_nLang"), BAD_CAST(OString::number(m_nLang.get()).getStr()));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("m_aTitle"), BAD_CAST(m_aTitle.toUtf8().getStr()));
 

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_LINGUISTIC_WORKBEN_SPROPHELP_HXX
-#define INCLUDED_LINGUISTIC_WORKBEN_SPROPHELP_HXX
+#pragma once
 
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/interfacecontainer.h>
@@ -106,7 +105,6 @@ class PropertyHelper_Spell :
     public PropertyChgHelper
 {
     // default values
-    sal_Bool    bIsGermanPreReform;
     sal_Bool    bIsIgnoreControlCharacters;
     sal_Bool    bIsUseDictionaryList;
     sal_Bool    bIsSpellUpperCase;
@@ -114,7 +112,6 @@ class PropertyHelper_Spell :
     sal_Bool    bIsSpellCapitalization;
 
     // return values, will be set to default value or current temporary value
-    sal_Bool    bResIsGermanPreReform;
     sal_Bool    bResIsIgnoreControlCharacters;
     sal_Bool    bResIsUseDictionaryList;
     sal_Bool    bResIsSpellUpperCase;
@@ -141,7 +138,6 @@ public:
 
     void    SetTmpPropVals( const PropertyValues &rPropVals );
 
-    sal_Bool    IsGermanPreReform() const           { return bResIsGermanPreReform; }
     sal_Bool    IsIgnoreControlCharacters() const   { return bResIsIgnoreControlCharacters; }
     sal_Bool    IsUseDictionaryList() const         { return bResIsUseDictionaryList; }
     sal_Bool    IsSpellUpperCase() const            { return bResIsSpellUpperCase; }
@@ -149,7 +145,5 @@ public:
     sal_Bool    IsSpellCapitalization() const       { return bResIsSpellCapitalization; }
 };
 
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

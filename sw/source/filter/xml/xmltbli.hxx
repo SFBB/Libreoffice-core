@@ -28,7 +28,6 @@
 #include <unordered_map>
 #include <vector>
 
-class SwXMLImport;
 class SwTableNode;
 class SwTableBox;
 class SwTableLine;
@@ -154,7 +153,7 @@ public:
     void InsertColumn( sal_Int32 nWidth, bool bRelWidth,
                        const OUString *pDfltCellStyleName = nullptr );
     sal_Int32 GetColumnWidth( sal_uInt32 nCol, sal_uInt32 nColSpan ) const;
-    OUString GetColumnDefaultCellStyleName( sal_uInt32 nCol ) const;
+    const OUString & GetColumnDefaultCellStyleName( sal_uInt32 nCol ) const;
     inline sal_uInt32 GetColumnCount() const;
 
     bool IsInsertCellPossible() const { return m_nCurCol < GetColumnCount(); }

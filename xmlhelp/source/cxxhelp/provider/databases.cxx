@@ -29,7 +29,6 @@
 #include <com/sun/star/awt/Toolkit.hpp>
 #include <com/sun/star/i18n/Collator.hpp>
 #include <comphelper/propertysequence.hxx>
-#include "inputstream.hxx"
 #include <algorithm>
 #include <cassert>
 #include <string.h>
@@ -57,6 +56,7 @@
 
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/storagehelper.hxx>
+#include <officecfg/Office/Common.hxx>
 #include <utility>
 
 #include "databases.hxx"
@@ -123,13 +123,13 @@ OUString Databases::expandURL( const OUString& aURL, const Reference< uno::XComp
     return aRetURL;
 }
 
-const char vendVersion[] = "%VENDORVERSION";
-const char vendName[] = "%VENDORNAME";
-const char prodVersion[] = "%PRODUCTVERSION";
-const char vendShort[] = "%VENDORSHORT";
-const char prodName[] = "%PRODUCTNAME";
-const char newProdVersion[] = "$[officeversion]";
-const char newProdName[] = "$[officename]";
+constexpr OUStringLiteral vendVersion = u"%VENDORVERSION";
+constexpr OUStringLiteral vendName = u"%VENDORNAME";
+constexpr OUStringLiteral prodVersion = u"%PRODUCTVERSION";
+constexpr OUStringLiteral vendShort = u"%VENDORSHORT";
+constexpr OUStringLiteral prodName = u"%PRODUCTNAME";
+constexpr OUStringLiteral newProdVersion = u"$[officeversion]";
+constexpr OUStringLiteral newProdName = u"$[officename]";
 
 Databases::Databases( bool showBasic,
                       const OUString& instPath,
@@ -141,8 +141,6 @@ Databases::Databases( bool showBasic,
       m_bShowBasic(showBasic),
       m_aCSS(styleSheet.toAsciiLowerCase())
 {
-    m_xSMgr = m_xContext->getServiceManager();
-
     m_vAdd[0] = 12;
     m_vAdd[1] = 15;
     m_vAdd[2] = 11;
@@ -176,26 +174,10 @@ Databases::~Databases()
     m_aKeywordInfo.clear();
 }
 
-OString Databases::getImageTheme() const
+// static
+OString Databases::getImageTheme()
 {
-    uno::Reference< lang::XMultiServiceFactory > xConfigProvider =
-        configuration::theDefaultProvider::get(m_xContext);
-
-    // set root path
-    uno::Sequence<uno::Any> lParams(comphelper::InitAnyPropertySequence(
-    {
-        {"nodepath", uno::Any(OUString("org.openoffice.Office.Common"))}
-    }));
-
-    // open it
-    uno::Reference< uno::XInterface > xCFG( xConfigProvider->createInstanceWithArguments(
-                "com.sun.star.configuration.ConfigurationAccess",
-                lParams) );
-
-    uno::Reference< container::XHierarchicalNameAccess > xAccess(xCFG, uno::UNO_QUERY_THROW);
-    uno::Any aResult = xAccess->getByHierarchicalName("Misc/SymbolStyle");
-    OUString aSymbolsStyleName;
-    aResult >>= aSymbolsStyleName;
+    OUString aSymbolsStyleName = officecfg::Office::Common::Misc::SymbolStyle::get();
 
     if ( aSymbolsStyleName.isEmpty() || aSymbolsStyleName == "auto" )
     {
@@ -277,7 +259,7 @@ OUString Databases::getInstallPathAsURL()
     return m_aInstallDirectory;
 }
 
-OUString Databases::getInstallPathAsURL(std::unique_lock<std::mutex>& )
+const OUString & Databases::getInstallPathAsURL(std::unique_lock<std::mutex>& )
 {
     return m_aInstallDirectory;
 }
@@ -304,7 +286,7 @@ const std::vector< OUString >& Databases::getModuleList( const OUString& Languag
             fileName = aStatus.getFileName();
 
             // Check, whether fileName is of the form *.cfg
-            if (!fileName.endsWithIgnoreAsciiCase(".cfg", &fileName)) {
+            if (!fileName.endsWithIgnoreAsciiCase(u".cfg", &fileName)) {
                 continue;
             }
             fileName = fileName.toAsciiLowerCase();
@@ -353,7 +335,7 @@ StaticModuleInformation* Databases::getStaticInformationForModule( std::u16strin
 
             const sal_Unicode* str = fileContent.getStr();
             OUString current,program,startid,title;
-            OUString order( "1" );
+            OUString order( u"1"_ustr );
 
             for( sal_Int32 i = 0;i < fileContent.getLength();i++ )
             {
@@ -453,7 +435,7 @@ helpdatafileproxy::Hdf* Databases::getHelpDataFile(std::unique_lock<std::mutex>&
     if( Database.empty() || Language.isEmpty() )
         return nullptr;
 
-    OUString aFileExt( helpText ? OUString(".ht") : OUString(".db") );
+    OUString aFileExt( helpText ? u".ht"_ustr : u".db"_ustr );
     OUString dbFileName = OUString::Concat("/") + Database + aFileExt;
     OUString key;
     if( pExtensionPath == nullptr )
@@ -607,7 +589,7 @@ void KeywordInfo::KeywordElement::init( Databases const *pDatabases,helpdatafile
         if( idx == std::u16string_view::npos )
             break;
         size_t h = ids.find( '#', k );
-        if( h == std::u16string_view::npos || h < idx )
+        if( h != std::u16string_view::npos && h < idx )
         {
             // found an anchor
             id.push_back( OUString(ids.substr( k, h-k )) );
@@ -789,8 +771,7 @@ KeywordInfo* Databases::getKeyword( const OUString& Database,
 
         // sorting
         Reference<XCollator> xCollator = getCollator(aGuard, Language);
-        KeywordElementComparator aComparator( xCollator );
-        std::sort(aVector.begin(),aVector.end(),aComparator);
+        std::sort(aVector.begin(), aVector.end(), KeywordElementComparator(xCollator));
 
         it->second.reset(new KeywordInfo( aVector ));
     }
@@ -809,73 +790,45 @@ Reference< XHierarchicalNameAccess > Databases::jarFile(
 
     OUString key = processLang(rGuard, Language) + "/" + jar;
 
-    ZipFileTable::iterator it =
-        m_aZipFileTable.emplace( key,Reference< XHierarchicalNameAccess >(nullptr) ).first;
-
-    if( ! it->second.is() )
+    css::uno::Reference< css::container::XHierarchicalNameAccess > xHNameAccess;
+    try
     {
-        try
+        OUString zipFile;
+        // Extension jar file? Search for ?
+        size_t nQuestionMark1 = jar.find( '?' );
+        size_t nQuestionMark2 = jar.rfind( '?' );
+        if( nQuestionMark1 != std::u16string_view::npos && nQuestionMark2 != std::u16string_view::npos && nQuestionMark1 != nQuestionMark2 )
         {
-            OUString zipFile;
-            // Extension jar file? Search for ?
-            size_t nQuestionMark1 = jar.find( '?' );
-            size_t nQuestionMark2 = jar.rfind( '?' );
-            if( nQuestionMark1 != std::u16string_view::npos && nQuestionMark2 != std::u16string_view::npos && nQuestionMark1 != nQuestionMark2 )
-            {
-                std::u16string_view aExtensionPath = jar.substr( nQuestionMark1 + 1, nQuestionMark2 - nQuestionMark1 - 1 );
-                std::u16string_view aPureJar = jar.substr( nQuestionMark2 + 1 );
+            std::u16string_view aExtensionPath = jar.substr( nQuestionMark1 + 1, nQuestionMark2 - nQuestionMark1 - 1 );
+            std::u16string_view aPureJar = jar.substr( nQuestionMark2 + 1 );
 
-                zipFile = expandURL(rGuard, OUString::Concat(aExtensionPath) + "/" + aPureJar);
-            }
-            else
-            {
-                zipFile = m_aInstallDirectory + key;
-            }
-
-            Sequence< Any > aArguments( 2 );
-            auto pArguments = aArguments.getArray();
-
-            rtl::Reference<XInputStream_impl> p(new XInputStream_impl( zipFile ));
-            if( p->CtorSuccess() )
-            {
-                pArguments[ 0 ] <<= Reference< XInputStream >( p );
-            }
-            else
-            {
-                p.clear();
-                pArguments[ 0 ] <<= zipFile;
-            }
-
-            // let ZipPackage be used ( no manifest.xml is required )
-            beans::NamedValue aArg;
-            aArg.Name = "StorageFormat";
-            aArg.Value <<= ZIP_STORAGE_FORMAT_STRING;
-            pArguments[ 1 ] <<= aArg;
-
-            Reference< XInterface > xIfc
-                = m_xSMgr->createInstanceWithArgumentsAndContext(
-                    "com.sun.star.packages.comp.ZipPackage",
-                    aArguments, m_xContext );
-
-            if ( xIfc.is() )
-            {
-                it->second.set( xIfc, UNO_QUERY );
-
-                OSL_ENSURE( it->second.is(),
-                            "ContentProvider::createPackage - "
-                            "Got no hierarchical name access!" );
-
-            }
+            zipFile = expandURL(rGuard, OUString::Concat(aExtensionPath) + "/" + aPureJar);
         }
-        catch ( RuntimeException & )
+        else
         {
+            zipFile = m_aInstallDirectory + key;
         }
-        catch ( Exception & )
-        {
-        }
+
+        // create the package zip file
+        Sequence< Any > aArguments{
+            Any(zipFile),
+            // let ZipPackage be used
+            Any(beans::NamedValue(u"StorageFormat"_ustr, Any(ZIP_STORAGE_FORMAT_STRING)))
+        };
+
+        xHNameAccess.set(
+            m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
+            u"com.sun.star.packages.comp.ZipPackage"_ustr,
+            aArguments, m_xContext ), UNO_QUERY);
     }
-
-    return it->second;
+    catch ( RuntimeException & )
+    {
+    }
+    catch ( Exception & )
+    {
+    }
+    // get root zip folder
+    return xHNameAccess;
 }
 
 Reference< XHierarchicalNameAccess > Databases::findJarFileForPath
@@ -968,7 +921,7 @@ void Databases::cascadingStylesheet( const OUString& Language,
                 uno::Reference< awt::XVclWindowPeer > xVclWindowPeer( xTopWindow, uno::UNO_QUERY );
                 if ( xVclWindowPeer.is() )
                 {
-                    uno::Any aHCMode = xVclWindowPeer->getProperty( "HighContrastMode" );
+                    uno::Any aHCMode = xVclWindowPeer->getProperty( u"HighContrastMode"_ustr );
                     if ( ( aHCMode >>= bHighContrastMode ) && bHighContrastMode )
                     {
                         aCSS = "highcontrastblack";
@@ -1187,7 +1140,7 @@ Reference< deployment::XPackage > ExtensionIteratorBase::implGetHelpPackageFromP
     }
     if( bRegistered )
     {
-        OUString aHelpMediaType( "application/vnd.sun.star.help" );
+        OUString aHelpMediaType( u"application/vnd.sun.star.help"_ustr );
         if( xPackage->isBundle() )
         {
             const Sequence< Reference< deployment::XPackage > > aPkgSeq = xPackage->getBundle
@@ -1228,7 +1181,7 @@ Reference< deployment::XPackage > ExtensionIteratorBase::implGetNextUserHelpPack
     {
         Reference< XExtensionManager > xExtensionManager = ExtensionManager::get(m_xContext);
         m_aUserPackagesSeq = xExtensionManager->getDeployedExtensions
-            ( "user", Reference< task::XAbortChannel >(), Reference< ucb::XCommandEnvironment >() );
+            ( u"user"_ustr, Reference< task::XAbortChannel >(), Reference< ucb::XCommandEnvironment >() );
         m_bUserPackagesLoaded = true;
     }
 
@@ -1256,7 +1209,7 @@ Reference< deployment::XPackage > ExtensionIteratorBase::implGetNextSharedHelpPa
     {
         Reference< XExtensionManager > xExtensionManager = ExtensionManager::get(m_xContext);
         m_aSharedPackagesSeq = xExtensionManager->getDeployedExtensions
-            ( "shared", Reference< task::XAbortChannel >(), Reference< ucb::XCommandEnvironment >() );
+            ( u"shared"_ustr, Reference< task::XAbortChannel >(), Reference< ucb::XCommandEnvironment >() );
         m_bSharedPackagesLoaded = true;
     }
 
@@ -1284,7 +1237,7 @@ Reference< deployment::XPackage > ExtensionIteratorBase::implGetNextBundledHelpP
     {
         Reference< XExtensionManager > xExtensionManager = ExtensionManager::get(m_xContext);
         m_aBundledPackagesSeq = xExtensionManager->getDeployedExtensions
-            ( "bundled", Reference< task::XAbortChannel >(), Reference< ucb::XCommandEnvironment >() );
+            ( u"bundled"_ustr, Reference< task::XAbortChannel >(), Reference< ucb::XCommandEnvironment >() );
         m_bBundledPackagesLoaded = true;
     }
 
@@ -1482,7 +1435,7 @@ helpdatafileproxy::Hdf* DataBaseIterator::implGetHdfFromPackage( const Reference
     {
         OUString aRegDataUrl = optRegData.Value + "/";
 
-        OUString aHelpFilesBaseName("help");
+        OUString aHelpFilesBaseName(u"help"_ustr);
 
         OUString aUsedLanguage = m_aLanguage;
         pRetHdf = m_rDatabases.getHelpDataFile(
@@ -1667,14 +1620,14 @@ Reference< XHierarchicalNameAccess > JarFileIterator::implGetJarFromPackage(
         Sequence< Any > aArguments{
             Any(zipFile),
             // let ZipPackage be used ( no manifest.xml is required )
-            Any(comphelper::makePropertyValue("StorageFormat",
+            Any(comphelper::makePropertyValue(u"StorageFormat"_ustr,
                                               ZIP_STORAGE_FORMAT_STRING))
         };
 
         Reference< XMultiComponentFactory >xSMgr = m_xContext->getServiceManager();
         Reference< XInterface > xIfc
             = xSMgr->createInstanceWithArgumentsAndContext(
-                "com.sun.star.packages.comp.ZipPackage",
+                u"com.sun.star.packages.comp.ZipPackage"_ustr,
                 aArguments, m_xContext );
 
         if ( xIfc.is() )
@@ -1840,7 +1793,7 @@ OUString IndexFolderIterator::implGetIndexFolderFromPackage( bool& o_rbTemporary
                     }
                 }
 
-                HelpIndexer aIndexer(aLang, "help", aLangURL, aZipDir);
+                HelpIndexer aIndexer(aLang, u"help"_ustr, aLangURL, aZipDir);
                 aIndexer.indexDocuments();
 
                 if( bIsWriteAccess )

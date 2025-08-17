@@ -10,7 +10,6 @@
 #include <sal/config.h>
 
 #include "helper/qahelper.hxx"
-#include "helper/debughelper.hxx"
 
 #include <patattr.hxx>
 #include <scitems.hxx>
@@ -28,12 +27,10 @@
 #include <queryparam.hxx>
 #include <rtl/string.hxx>
 
-#include <test/xmltesttools.hxx>
 #include <com/sun/star/sheet/DataPilotFieldOrientation.hpp>
 #include <com/sun/star/sheet/DataPilotFieldGroupBy.hpp>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
 using ::std::cerr;
 using ::std::cout;
 using ::std::endl;
@@ -45,7 +42,7 @@ public:
 };
 
 ScPivotTableFiltersTest::ScPivotTableFiltersTest()
-    : ScModelTestBase("sc/qa/unit/data")
+    : ScModelTestBase(u"sc/qa/unit/data"_ustr)
 {
 }
 
@@ -94,8 +91,8 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableBasicODS)
     CPPUNIT_ASSERT_EQUAL_MESSAGE(("There should be exactly 3 row fields (2 normal dimensions and 1"
                                   " layout dimension)."),
                                  std::vector<ScDPSaveDimension const*>::size_type(3), aDims.size());
-    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.", hasDimension(aDims, "Row1"));
-    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.", hasDimension(aDims, "Row2"));
+    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.", hasDimension(aDims, u"Row1"_ustr));
+    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.", hasDimension(aDims, u"Row2"_ustr));
     const ScDPSaveDimension* pDataLayout = pSaveData->GetExistingDataLayoutDimension();
     CPPUNIT_ASSERT_MESSAGE("There should be a data layout field as a row field.", pDataLayout);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("There should be a data layout field as a row field.",
@@ -106,15 +103,17 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableBasicODS)
     pSaveData->GetAllDimensionsByOrientation(sheet::DataPilotFieldOrientation_COLUMN, aDims);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("There should be exactly 2 column fields.",
                                  std::vector<ScDPSaveDimension const*>::size_type(2), aDims.size());
-    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.", hasDimension(aDims, "Col1"));
-    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.", hasDimension(aDims, "Col2"));
+    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.", hasDimension(aDims, u"Col1"_ustr));
+    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.", hasDimension(aDims, u"Col2"_ustr));
 
     // Page fields
     pSaveData->GetAllDimensionsByOrientation(sheet::DataPilotFieldOrientation_PAGE, aDims);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("There should be exactly 2 page fields.",
                                  std::vector<ScDPSaveDimension const*>::size_type(2), aDims.size());
-    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.", hasDimension(aDims, "Page1"));
-    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.", hasDimension(aDims, "Page2"));
+    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.",
+                           hasDimension(aDims, u"Page1"_ustr));
+    CPPUNIT_ASSERT_MESSAGE("Dimension expected, but not found.",
+                           hasDimension(aDims, u"Page2"_ustr));
 
     // Check the data field.
     pSaveData->GetAllDimensionsByOrientation(sheet::DataPilotFieldOrientation_DATA, aDims);
@@ -124,6 +123,137 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableBasicODS)
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Function for the data field should be COUNT.",
                                  sal_uInt16(ScGeneralFunction::COUNT),
                                  sal_uInt16(pDim->GetFunction()));
+}
+
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf123225PivotTableRowColItems)
+{
+    createScDoc("ods/tdf123225_pivotTable_row_col_items.ods");
+    save(u"Calc Office Open XML"_ustr);
+
+    xmlDocUniquePtr pSheet = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
+    CPPUNIT_ASSERT(pSheet);
+
+    /*
+        - be sure that we have <rowItems> and <colItems> element
+        under <pivotTableDefinition> after export of the .ods to .xlsx
+
+            otherwise:
+            1) Excel will fail to open the xlsx document, you will get an error message.
+            2) Excel will open the file without any errors but:
+                2.1) context menu -by right clicking on the pivot table- will have
+                    less or more items than it should have after "refresh".
+                2.2) if e.g. trying to sort the items you will get "Cannot determine
+                    which PivotTable field to sort by" warning.
+
+        - after exporting the .ods as .xlsx and opening the .xlsx document in Excel:
+        the count attribute of rowItems(or colItems) should have the expected value.
+        otherwise, context menu on the pivot table will have less/more items
+        than it should have after "refresh". we shouldn't need "refresh" to use all
+        functions/items in the context menu.
+    */
+
+    // Row items <rowItems>
+
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:rowItems", 1);
+    // check if <rowItems count="8">
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:rowItems", "count", u"8");
+    // check if <rowItems> has enough <i> depending on count attribute value
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:rowItems/x:i", 8);
+    // check if first <i> has single <x/> element
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:rowItems/x:i[1]/x:x", 1);
+    // check if <x/> of the first <i> element, has v="0" attribute value
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:rowItems/x:i[1]/x:x", "v", u"0");
+
+    // Column items <colItems>
+
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems", 1);
+    // check if <colItems count="5">
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems", "count", u"5");
+    // check if <colItems> has enough <i> depending on count attribute value
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems/x:i", 5);
+    // check if first <i> has single <x/> element
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems/x:i[1]/x:x", 1);
+    // check if <x/> of the first <i> element, has v="0" attribute value
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems/x:i[1]/x:x", "v", u"0");
+}
+
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf123225PivotTableNoColItems)
+{
+    createScDoc("ods/tdf123225_pivotTable_no_col_items.ods");
+    save(u"Calc Office Open XML"_ustr);
+
+    xmlDocUniquePtr pSheet = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
+    CPPUNIT_ASSERT(pSheet);
+
+    /*
+        - after exporting the .ods to .xlsx, we should have t="grand" in the
+        last <i> element of the <rowItems> and <colItems>. Otherwise, Excel will not
+        have all functions in the context menu of the pivot table. Especially for the
+        "Grand Total" column/row cells.
+
+        - additionally, we should always export a single <rowItems> and <colItems> regardless of
+        whether the document has row/col items. Otherwise, in Excel, context menu on some
+        cells of the pivot table, will not have the expected context menu items.
+
+        - this tdf123225_pivotTable_no_col_items.ods document does not have
+        axisCol (DataPilotFieldOrientation_COLUMN) and that means <colItems> should not exist
+        during export. But in Excel, if pivot table refreshed, there will be
+
+        <colItems count="1">
+            <i/>
+        </colItems>
+
+        in the xl/pivotTables/pivotTable1.xml. So, that means we should export <colItems>
+        without checking the existence of it.
+        For the sake of completeness, <colItems> exported as:
+
+        <colItems count="1">
+            <i t="grand">
+                <x v="0"/>
+            </i>
+        </colItems>
+    */
+
+    // Row items <rowItems>
+
+    // check if <rowItems count="3">
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:rowItems", "count", u"3");
+    // check if last <i> element, has t="grand"
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:rowItems/x:i[last()]", "t", u"grand");
+
+    // Column items <colItems>
+
+    // check if <colItems count="1">
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems", "count", u"1");
+    // check if <colItems> has only a single <i> element
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems/x:i", 1);
+    // check if <i> element has t="grand"
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems/x:i", "t", u"grand");
+    // check if <i> has <x v="0"/>
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems/x:i/x:x", "v", u"0");
+}
+
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf123225PivotTableEmptyRowColItems)
+{
+    // this doc contains blank row/col items
+    // <sharedItems containsBlank="1" count="..."> (xl/pivotCache/pivotCacheDefinition1.xml)
+    createScDoc("ods/tdf123225_pivotTable_empty_row_col_items.ods");
+    save(u"Calc Office Open XML"_ustr);
+
+    xmlDocUniquePtr pSheet = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
+    CPPUNIT_ASSERT(pSheet);
+
+    // Row items <rowItems>
+
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:rowItems", 1);
+    // check if <rowItems count="4">
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:rowItems", "count", u"4");
+
+    // Column items <colItems>
+
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems", 1);
+    // check if <colItems count="5">
+    assertXPath(pSheet, "/x:pivotTableDefinition/x:colItems", "count", u"5");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableNamedRangeSourceODS)
@@ -141,7 +271,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableNamedRangeSourceODS)
     // Make sure this pivot table is based on a named range source.
     const ScSheetSourceDesc* pDesc = pDP->GetSheetDesc();
     CPPUNIT_ASSERT(pDesc);
-    CPPUNIT_ASSERT_EQUAL(OUString("MyRange"), pDesc->GetRangeName());
+    CPPUNIT_ASSERT_EQUAL(u"MyRange"_ustr, pDesc->GetRangeName());
 
     css::sheet::DataPilotFieldOrientation nOrient;
     tools::Long nDim = pDP->GetHeaderDim(ScAddress(0, 1, 1), nOrient);
@@ -330,22 +460,22 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableSharedGroupXLSX)
 
     // Check whether right group names are imported for both tables
     // First table
-    CPPUNIT_ASSERT_EQUAL(OUString("a2"), pDoc->GetString(ScAddress(0, 1, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("Csoport1"), pDoc->GetString(ScAddress(0, 2, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("Csoport2"), pDoc->GetString(ScAddress(0, 3, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("Csoport3"), pDoc->GetString(ScAddress(0, 4, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("16"), pDoc->GetString(ScAddress(0, 5, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("17"), pDoc->GetString(ScAddress(0, 6, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("18"), pDoc->GetString(ScAddress(0, 7, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"a2"_ustr, pDoc->GetString(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"Csoport1"_ustr, pDoc->GetString(ScAddress(0, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"Csoport2"_ustr, pDoc->GetString(ScAddress(0, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"Csoport3"_ustr, pDoc->GetString(ScAddress(0, 3, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"16"_ustr, pDoc->GetString(ScAddress(0, 4, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"17"_ustr, pDoc->GetString(ScAddress(0, 5, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"18"_ustr, pDoc->GetString(ScAddress(0, 6, 0)));
 
     // Second table
-    CPPUNIT_ASSERT_EQUAL(OUString("a2"), pDoc->GetString(ScAddress(0, 11, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("Csoport1"), pDoc->GetString(ScAddress(0, 12, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("Csoport2"), pDoc->GetString(ScAddress(0, 13, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("Csoport3"), pDoc->GetString(ScAddress(0, 14, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("16"), pDoc->GetString(ScAddress(0, 15, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("17"), pDoc->GetString(ScAddress(0, 16, 0)));
-    CPPUNIT_ASSERT_EQUAL(OUString("18"), pDoc->GetString(ScAddress(0, 17, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"a2"_ustr, pDoc->GetString(ScAddress(0, 10, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"Csoport1"_ustr, pDoc->GetString(ScAddress(0, 11, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"Csoport2"_ustr, pDoc->GetString(ScAddress(0, 12, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"Csoport3"_ustr, pDoc->GetString(ScAddress(0, 13, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"16"_ustr, pDoc->GetString(ScAddress(0, 14, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"17"_ustr, pDoc->GetString(ScAddress(0, 15, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"18"_ustr, pDoc->GetString(ScAddress(0, 16, 0)));
 
     // There should be exactly 2 pivot tables and 1 cache.
     ScDPCollection* pDPs = pDoc->GetDPCollection();
@@ -365,22 +495,22 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableSharedDateGroupXLSX)
     auto testThis = [](ScDocument& rDoc) {
         // Check whether right date labels are imported for both tables
         // First table
-        CPPUNIT_ASSERT_EQUAL(OUString("a"), rDoc.GetString(ScAddress(0, 3, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("1965"), rDoc.GetString(ScAddress(0, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("1989"), rDoc.GetString(ScAddress(0, 5, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("2000"), rDoc.GetString(ScAddress(0, 6, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("2004"), rDoc.GetString(ScAddress(0, 7, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"a"_ustr, rDoc.GetString(ScAddress(0, 2, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"1965"_ustr, rDoc.GetString(ScAddress(0, 3, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"1989"_ustr, rDoc.GetString(ScAddress(0, 4, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"2000"_ustr, rDoc.GetString(ScAddress(0, 5, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"2004"_ustr, rDoc.GetString(ScAddress(0, 6, 1)));
         // TODO: check why this fails with 2005
-        // CPPUNIT_ASSERT_EQUAL(OUString("2007"), rDoc.GetString(ScAddress(0,8,1)));
+        // CPPUNIT_ASSERT_EQUAL(OUString("2007"), rDoc.GetString(ScAddress(0,7,1)));
 
         // Second table
-        CPPUNIT_ASSERT_EQUAL(OUString("a"), rDoc.GetString(ScAddress(5, 3, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("1965"), rDoc.GetString(ScAddress(5, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("1989"), rDoc.GetString(ScAddress(5, 5, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("2000"), rDoc.GetString(ScAddress(5, 6, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("2004"), rDoc.GetString(ScAddress(5, 7, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"a"_ustr, rDoc.GetString(ScAddress(5, 2, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"1965"_ustr, rDoc.GetString(ScAddress(5, 3, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"1989"_ustr, rDoc.GetString(ScAddress(5, 4, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"2000"_ustr, rDoc.GetString(ScAddress(5, 5, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"2004"_ustr, rDoc.GetString(ScAddress(5, 6, 1)));
         // TODO: check why this fails with 2005
-        // CPPUNIT_ASSERT_EQUAL(OUString("2007"), rDoc.GetString(ScAddress(5,8,1)));
+        // CPPUNIT_ASSERT_EQUAL(OUString("2007"), rDoc.GetString(ScAddress(5,7,1)));
 
         // There should be exactly 2 pivot tables and 1 cache.
         ScDPCollection* pDPs = rDoc.GetDPCollection();
@@ -396,7 +526,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableSharedDateGroupXLSX)
     createScDoc("xlsx/pivot-table/shared-dategroup.xlsx");
     testThis(*getScDoc());
     // Now test round-trip of group fields
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     testThis(*getScDoc());
 }
 
@@ -406,19 +536,19 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableSharedNestedDateGrou
         // Check whether right date groups are imported for both tables
         // First table
         // Years, Quarters, 'a' have compact layout so the only header contains a multi-field filter.
-        CPPUNIT_ASSERT_EQUAL(OUString("1965"), rDoc.GetString(ScAddress(0, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("1989"), rDoc.GetString(ScAddress(0, 11, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("2000"), rDoc.GetString(ScAddress(0, 18, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("2004"), rDoc.GetString(ScAddress(0, 21, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"1965"_ustr, rDoc.GetString(ScAddress(0, 3, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"1989"_ustr, rDoc.GetString(ScAddress(0, 10, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"2000"_ustr, rDoc.GetString(ScAddress(0, 17, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"2004"_ustr, rDoc.GetString(ScAddress(0, 20, 1)));
         // TODO: check why this fails with the empty string
         //CPPUNIT_ASSERT_EQUAL(OUString("2007"), rDoc.GetString(ScAddress(0,32,1)));
 
         // Second table
         // Years, Quarters, 'a' have compact layout so the only row header contains a multi-field filter.
-        CPPUNIT_ASSERT_EQUAL(OUString("1965"), rDoc.GetString(ScAddress(6, 4, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("1989"), rDoc.GetString(ScAddress(6, 11, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("2000"), rDoc.GetString(ScAddress(6, 18, 1)));
-        CPPUNIT_ASSERT_EQUAL(OUString("2004"), rDoc.GetString(ScAddress(6, 21, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"1965"_ustr, rDoc.GetString(ScAddress(6, 3, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"1989"_ustr, rDoc.GetString(ScAddress(6, 10, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"2000"_ustr, rDoc.GetString(ScAddress(6, 17, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"2004"_ustr, rDoc.GetString(ScAddress(6, 20, 1)));
         // TODO: check why this fails with the empty string
         //CPPUNIT_ASSERT_EQUAL(OUString("2007"), rDoc.GetString(ScAddress(6,31,1)));
 
@@ -439,7 +569,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableSharedNestedDateGrou
     createScDoc("xlsx/pivot-table/shared-nested-dategroup.xlsx");
     testThis(*getScDoc());
     // Now test round-trip of group fields
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     testThis(*getScDoc());
 }
 
@@ -450,20 +580,20 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableSharedNumGroupXLSX)
 
     // Check whether right number groups are imported for both tables
     // First table
-    CPPUNIT_ASSERT_EQUAL(OUString("f"), pDoc->GetString(ScAddress(0, 3, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("32674-47673"), pDoc->GetString(ScAddress(0, 4, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("47674-62673"), pDoc->GetString(ScAddress(0, 5, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("62674-77673"), pDoc->GetString(ScAddress(0, 6, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("77674-92673"), pDoc->GetString(ScAddress(0, 7, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("92674-107673"), pDoc->GetString(ScAddress(0, 8, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"f"_ustr, pDoc->GetString(ScAddress(0, 2, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"32674-47673"_ustr, pDoc->GetString(ScAddress(0, 3, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"47674-62673"_ustr, pDoc->GetString(ScAddress(0, 4, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"62674-77673"_ustr, pDoc->GetString(ScAddress(0, 5, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"77674-92673"_ustr, pDoc->GetString(ScAddress(0, 6, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"92674-107673"_ustr, pDoc->GetString(ScAddress(0, 7, 1)));
 
     // Second table
-    CPPUNIT_ASSERT_EQUAL(OUString("f"), pDoc->GetString(ScAddress(5, 3, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("32674-47673"), pDoc->GetString(ScAddress(5, 4, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("47674-62673"), pDoc->GetString(ScAddress(5, 5, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("62674-77673"), pDoc->GetString(ScAddress(5, 6, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("77674-92673"), pDoc->GetString(ScAddress(5, 7, 1)));
-    CPPUNIT_ASSERT_EQUAL(OUString("92674-107673"), pDoc->GetString(ScAddress(5, 8, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"f"_ustr, pDoc->GetString(ScAddress(5, 2, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"32674-47673"_ustr, pDoc->GetString(ScAddress(5, 3, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"47674-62673"_ustr, pDoc->GetString(ScAddress(5, 4, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"62674-77673"_ustr, pDoc->GetString(ScAddress(5, 5, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"77674-92673"_ustr, pDoc->GetString(ScAddress(5, 6, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"92674-107673"_ustr, pDoc->GetString(ScAddress(5, 7, 1)));
 
     // There should be exactly 2 pivot tables and 1 cache.
     ScDPCollection* pDPs = pDoc->GetDPCollection();
@@ -575,59 +705,57 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableExportXLSX)
 
     createScDoc("xlsx/tdf89139_pivot_table.xlsx");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
-    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[3]/x:items"_ostr,
-                "count"_ostr, "4");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[3]/x:items/x:item"_ostr,
-                4);
-    assertXPath(pTable,
-                "/x:pivotTableDefinition/x:pivotFields/x:pivotField[3]/x:items/x:item[3]"_ostr,
-                "h"_ostr, "1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[3]/x:items", "count",
+                u"4");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[3]/x:items/x:item", 4);
+    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[3]/x:items/x:item[3]",
+                "h", u"1");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableExportXLSXSingleDataField)
 {
     createScDoc("ods/tdf123421_1datafield.ods");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "ref"_ostr, "A3:B6");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "firstHeaderRow"_ostr, "1");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "firstDataRow"_ostr, "1");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "firstDataCol"_ostr, "1");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:dataFields"_ostr, "count"_ostr, "1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "ref", u"A3:B6");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "firstHeaderRow", u"1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "firstDataRow", u"1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "firstDataCol", u"1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:dataFields", "count", u"1");
 
     // There should not be any colFields tag, before the fix there used to be a singleton with
     // <field x="-2"/> as child node.
-    assertXPath(pTable, "/x:pivotTableDefinition/x:colFields"_ostr, 0);
+    assertXPath(pTable, "/x:pivotTableDefinition/x:colFields", 0);
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableExportXLSXMultipleDataFields)
 {
     createScDoc("ods/tdf123421_2datafields.ods");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "ref"_ostr, "A1:C6");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "firstHeaderRow"_ostr, "1");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "firstDataRow"_ostr, "2");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "firstDataCol"_ostr, "1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "ref", u"A1:C6");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "firstHeaderRow", u"1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "firstDataRow", u"2");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "firstDataCol", u"1");
 
-    assertXPath(pTable, "/x:pivotTableDefinition/x:dataFields"_ostr, "count"_ostr, "2");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:dataFields", "count", u"2");
 
     // There should be a single colFields tag with sole child node
     // <field x="-2"/>.
-    assertXPath(pTable, "/x:pivotTableDefinition/x:colFields"_ostr, 1);
-    assertXPath(pTable, "/x:pivotTableDefinition/x:colFields"_ostr, "count"_ostr, "1");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:colFields/x:field"_ostr, 1);
-    assertXPath(pTable, "/x:pivotTableDefinition/x:colFields/x:field"_ostr, "x"_ostr, "-2");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:colFields", 1);
+    assertXPath(pTable, "/x:pivotTableDefinition/x:colFields", "count", u"1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:colFields/x:field", 1);
+    assertXPath(pTable, "/x:pivotTableDefinition/x:colFields/x:field", "x", u"-2");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotCacheExportXLSX)
@@ -641,271 +769,239 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotCacheExportXLSX)
 
     createScDoc("xlsx/pivot-table/with-strings-integers-and-dates.xlsx");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pCacheDef = parseExport("xl/pivotCache/pivotCacheDefinition1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pCacheDef = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
     CPPUNIT_ASSERT(pCacheDef);
 
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField"_ostr, 6);
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField", 6);
 
     // Four strings and one empty field
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]"_ostr,
-                "name"_ostr, "mixed strings and empty");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-                "containsBlank"_ostr, "1");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "containsMixedTypes"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "containsSemiMixedTypes"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "containsNonDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "containsDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "containsString"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "minDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "maxDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "containsNumber"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "containsInteger"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "minValue"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "maxValue"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-                "count"_ostr, "5");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]", "name",
+                u"mixed strings and empty");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                "containsBlank", u"1");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "containsMixedTypes");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "containsSemiMixedTypes");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "containsNonDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "containsDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "containsString");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "minDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "maxDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "containsNumber");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "containsInteger");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "minValue");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "maxValue");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                "count", u"5");
 
     // Two integers and one empty field
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]"_ostr,
-                "name"_ostr, "mixed empty fields and integers");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                "containsBlank"_ostr, "1");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-        "containsMixedTypes"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-        "containsSemiMixedTypes"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-        "containsNonDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-        "containsDate"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                "containsString"_ostr, "0");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-        "minDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-        "maxDate"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                "containsNumber"_ostr, "1");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                "containsInteger"_ostr, "1");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                "minValue"_ostr, "111");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                "maxValue"_ostr, "222");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]", "name",
+                u"mixed empty fields and integers");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                "containsBlank", u"1");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                           "containsMixedTypes");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                           "containsSemiMixedTypes");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                           "containsNonDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                           "containsDate");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                "containsString", u"0");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                           "minDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                           "maxDate");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                "containsNumber", u"1");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                "containsInteger", u"1");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                "minValue", u"111");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                "maxValue", u"222");
     // We list items on round-trip, Excel not, but Excel accepts that; We need list all items, because we are using it as reference in pivotCacheRecords1.xml
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                "count"_ostr, "3");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                "count", u"3");
 
     // Five integers
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]"_ostr,
-                "name"_ostr, "all fields are integers");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-        "containsBlank"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-        "containsMixedTypes"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-                "containsSemiMixedTypes"_ostr, "0");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-        "containsNonDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-        "containsDate"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-                "containsString"_ostr, "0");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-        "minDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-        "maxDate"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-                "containsNumber"_ostr, "1");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-                "containsInteger"_ostr, "1");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-                "minValue"_ostr, "1111");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-                "maxValue"_ostr, "5555");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]", "name",
+                u"all fields are integers");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                           "containsBlank");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                           "containsMixedTypes");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                "containsSemiMixedTypes", u"0");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                           "containsNonDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                           "containsDate");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                "containsString", u"0");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                           "minDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                           "maxDate");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                "containsNumber", u"1");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                "containsInteger", u"1");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                "minValue", u"1111");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                "maxValue", u"5555");
     // We list items on round-trip, Excel not, but Excel accepts that; We need list all items, because we are using it as reference in pivotCacheRecords1.xml
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems"_ostr,
-                "count"_ostr, "5");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]/x:sharedItems",
+                "count", u"5");
 
     // Three integers and one string
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]"_ostr,
-                "name"_ostr, "mixed strings and integers");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-        "containsBlank"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-                "containsMixedTypes"_ostr, "1");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-        "containsSemiMixedTypes"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-        "containsNonDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-        "containsDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-        "containsString"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-        "minDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-        "maxDate"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-                "containsNumber"_ostr, "1");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-                "containsInteger"_ostr, "1");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-                "minValue"_ostr, "1234");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-                "maxValue"_ostr, "5678");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]", "name",
+                u"mixed strings and integers");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                           "containsBlank");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                "containsMixedTypes", u"1");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                           "containsSemiMixedTypes");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                           "containsNonDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                           "containsDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                           "containsString");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                           "minDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                           "maxDate");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                "containsNumber", u"1");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                "containsInteger", u"1");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                "minValue", u"1234");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                "maxValue", u"5678");
     // We list items on round-trip, Excel not, but Excel accepts that; We need list all items, because we are using it as reference in pivotCacheRecords1.xml
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems"_ostr,
-                "count"_ostr, "4");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]/x:sharedItems",
+                "count", u"4");
 
     // Four dates without blanks
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]"_ostr,
-                "name"_ostr, "date and time with duplicated entries");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-        "containsBlank"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-        "containsMixedTypes"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-                "containsSemiMixedTypes"_ostr, "0");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-                "containsNonDate"_ostr, "0");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-                "containsDate"_ostr, "1");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-                "containsString"_ostr, "0");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-                "minDate"_ostr, "1899-12-31T00:00:00");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-                "maxDate"_ostr, "2009-07-06T10:53:02");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-        "containsNumber"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-        "containsInteger"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-        "minValue"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-        "maxValue"_ostr);
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]", "name",
+                u"date and time with duplicated entries");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                           "containsBlank");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                           "containsMixedTypes");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                "containsSemiMixedTypes", u"0");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                "containsNonDate", u"0");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                "containsDate", u"1");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                "containsString", u"0");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                "minDate", u"1899-12-31T00:00:00");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                "maxDate", u"2009-07-06T10:53:02");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                           "containsNumber");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                           "containsInteger");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                           "minValue");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                           "maxValue");
     // We list items on round-trip, Excel not, but Excel accepts that; We need list all items, because we are using it as reference in pivotCacheRecords1.xml
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems"_ostr,
-                "count"_ostr, "4");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                "count", u"4");
 
     // Only blanks
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]"_ostr,
-                "name"_ostr, "blank");
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-                "containsBlank"_ostr, "1");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-        "containsMixedTypes"_ostr);
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]", "name",
+                u"blank");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                "containsBlank", u"1");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                           "containsMixedTypes");
     // Despite what documentation says, in case there's only blank values in field (no strings), containsSemiMixedTypes is true (default - not written)
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-        "containsSemiMixedTypes"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-        "containsDate"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-                "containsString"_ostr, "0");
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-        "minDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-        "maxDate"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-        "containsNumber"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-        "containsInteger"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-        "minValue"_ostr);
-    assertXPathNoAttribute(
-        pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-        "maxValue"_ostr);
-    assertXPath(pCacheDef,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems"_ostr,
-                "count"_ostr, "1");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                           "containsSemiMixedTypes");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                           "containsDate");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                "containsString", u"0");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                           "minDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                           "maxDate");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                           "containsNumber");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                           "containsInteger");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                           "minValue");
+    assertXPathNoAttribute(pCacheDef,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                           "maxValue");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]/x:sharedItems",
+                "count", u"1");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableXLSX)
@@ -1035,7 +1131,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableXLSX)
     bool bCheck = aTest.check(*pDoc);
     CPPUNIT_ASSERT_MESSAGE("Initial check failed.", bCheck);
 
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     pDoc = getScDoc();
 
     // Reload check.
@@ -1154,7 +1250,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableTwoDataFieldsXLSX)
     bool bCheck = aTest.check(*pDoc);
     CPPUNIT_ASSERT_MESSAGE("Initial check failed.", bCheck);
 
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     pDoc = getScDoc();
 
     // Reload check.
@@ -1167,7 +1263,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableMedianODS)
     createScDoc("ods/pivot-table-median.ods");
 
     // Export the document and import again for a check
-    saveAndReload("calc8");
+    saveAndReload(u"calc8"_ustr);
 
     // Check sheet
     ScDocument* pDoc = getScDoc();
@@ -1230,7 +1326,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableRowHeaderXLS)
     }
 
     // Check also after a reload
-    saveAndReload("MS Excel 97");
+    saveAndReload(u"MS Excel 97"_ustr);
     pDoc = getScDoc();
 
     // There should be exactly 2 pivot tables
@@ -1270,7 +1366,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableDoubleFieldFilter)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("MS Excel 97");
+    saveAndReload(u"MS Excel 97"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), pDPs->GetCount());
@@ -1368,7 +1464,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableStringFieldFilter)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("MS Excel 97");
+    saveAndReload(u"MS Excel 97"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -1382,11 +1478,11 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableStringFieldFilter)
 
     const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
     CPPUNIT_ASSERT_EQUAL(size_t(2), rMembers.size());
-    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("United Kingdom");
+    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"United Kingdom"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(!pMember->GetIsVisible());
-    pMember = pSaveDim->GetExistingMemberByName("United States");
+    pMember = pSaveDim->GetExistingMemberByName(u"United States"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(pMember->GetIsVisible());
@@ -1400,7 +1496,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableDateFieldFilter)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("MS Excel 97");
+    saveAndReload(u"MS Excel 97"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -1487,7 +1583,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableBoolFieldFilter)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("MS Excel 97");
+    saveAndReload(u"MS Excel 97"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -1501,11 +1597,11 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableBoolFieldFilter)
 
     const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
     CPPUNIT_ASSERT_EQUAL(size_t(2), rMembers.size());
-    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("0");
+    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"0"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(!pMember->GetIsVisible());
-    pMember = pSaveDim->GetExistingMemberByName("1");
+    pMember = pSaveDim->GetExistingMemberByName(u"1"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(pMember->GetIsVisible());
@@ -1519,7 +1615,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableRowColPageFieldFilte
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("MS Excel 97");
+    saveAndReload(u"MS Excel 97"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -1536,15 +1632,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableRowColPageFieldFilte
 
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("1");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"1"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("2");
+        pMember = pSaveDim->GetExistingMemberByName(u"2"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("3");
+        pMember = pSaveDim->GetExistingMemberByName(u"3"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
@@ -1558,15 +1654,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableRowColPageFieldFilte
 
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("2");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"2"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("3");
+        pMember = pSaveDim->GetExistingMemberByName(u"3"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("4");
+        pMember = pSaveDim->GetExistingMemberByName(u"4"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
@@ -1580,15 +1676,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableRowColPageFieldFilte
 
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("5");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"5"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("6");
+        pMember = pSaveDim->GetExistingMemberByName(u"6"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("7");
+        pMember = pSaveDim->GetExistingMemberByName(u"7"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
@@ -1602,15 +1698,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableRowColPageFieldFilte
 
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("8");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"8"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("9");
+        pMember = pSaveDim->GetExistingMemberByName(u"9"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("10");
+        pMember = pSaveDim->GetExistingMemberByName(u"10"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
@@ -1625,7 +1721,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableEmptyItem)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("MS Excel 97");
+    saveAndReload(u"MS Excel 97"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -1639,15 +1735,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableEmptyItem)
 
     const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
     CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("Fruit");
+    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"Fruit"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(pMember->GetIsVisible());
-    pMember = pSaveDim->GetExistingMemberByName("Vegetables");
+    pMember = pSaveDim->GetExistingMemberByName(u"Vegetables"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(!pMember->GetIsVisible());
-    pMember = pSaveDim->GetExistingMemberByName("");
+    pMember = pSaveDim->GetExistingMemberByName(u""_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(!pMember->GetIsVisible());
@@ -1661,7 +1757,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTablePageFieldFilter)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("MS Excel 97");
+    saveAndReload(u"MS Excel 97"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -1676,15 +1772,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTablePageFieldFilter)
         CPPUNIT_ASSERT(pSaveDim);
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("Banana");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"Banana"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("Carrots");
+        pMember = pSaveDim->GetExistingMemberByName(u"Carrots"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("");
+        pMember = pSaveDim->GetExistingMemberByName(u""_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
@@ -1697,15 +1793,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTablePageFieldFilter)
 
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("Vegetables");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"Vegetables"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("Fruit");
+        pMember = pSaveDim->GetExistingMemberByName(u"Fruit"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("");
+        pMember = pSaveDim->GetExistingMemberByName(u""_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
@@ -1718,15 +1814,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTablePageFieldFilter)
 
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("1");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"1"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("2");
+        pMember = pSaveDim->GetExistingMemberByName(u"2"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("3");
+        pMember = pSaveDim->GetExistingMemberByName(u"3"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
@@ -1739,15 +1835,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTablePageFieldFilter)
 
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("United States");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"United States"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("United Kingdom");
+        pMember = pSaveDim->GetExistingMemberByName(u"United Kingdom"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("");
+        pMember = pSaveDim->GetExistingMemberByName(u""_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
@@ -1760,18 +1856,18 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableFirstHeaderRowXLSX)
     // The documentation is not clear about what firstHeaderRow actually means, but MS Excel works on this way
     createScDoc("xlsx/pivot_table_first_header_row.xlsx");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "firstHeaderRow"_ostr, "1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "firstHeaderRow", u"1");
 
-    pTable = parseExport("xl/pivotTables/pivotTable2.xml");
+    pTable = parseExport(u"xl/pivotTables/pivotTable2.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "firstHeaderRow"_ostr, "1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "firstHeaderRow", u"1");
 
-    pTable = parseExport("xl/pivotTables/pivotTable3.xml");
+    pTable = parseExport(u"xl/pivotTables/pivotTable3.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
-    assertXPath(pTable, "/x:pivotTableDefinition/x:location"_ostr, "firstHeaderRow"_ostr, "1");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:location", "firstHeaderRow", u"1");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableDoubleFieldFilterXLSX)
@@ -1782,7 +1878,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableDoubleFieldFilterXLS
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), pDPs->GetCount());
@@ -1880,7 +1976,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableStringFieldFilterXLS
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -1894,11 +1990,11 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableStringFieldFilterXLS
 
     const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
     CPPUNIT_ASSERT_EQUAL(size_t(2), rMembers.size());
-    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("United Kingdom");
+    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"United Kingdom"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(!pMember->GetIsVisible());
-    pMember = pSaveDim->GetExistingMemberByName("United States");
+    pMember = pSaveDim->GetExistingMemberByName(u"United States"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(pMember->GetIsVisible());
@@ -1912,7 +2008,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableDateFieldFilterXLSX)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -1982,10 +2078,10 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableBoolFieldFilterXLSX)
     ScDocument* pDoc = getScDoc();
     ScDPCollection* pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
-    CPPUNIT_ASSERT_EQUAL(OUString("TRUE"), pDoc->GetString(ScAddress(0, 1, 0))); //A2
+    CPPUNIT_ASSERT_EQUAL(u"TRUE"_ustr, pDoc->GetString(ScAddress(0, 1, 0))); //A2
 
     // Reload and check filtering of row dimensions
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -1999,11 +2095,11 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableBoolFieldFilterXLSX)
 
     const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
     CPPUNIT_ASSERT_EQUAL(size_t(2), rMembers.size());
-    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("FALSE");
+    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"FALSE"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(!pMember->GetIsVisible());
-    pMember = pSaveDim->GetExistingMemberByName("TRUE");
+    pMember = pSaveDim->GetExistingMemberByName(u"TRUE"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(pMember->GetIsVisible());
@@ -2017,7 +2113,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableRowColPageFieldFilte
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check filtering of row dimensions
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -2034,15 +2130,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableRowColPageFieldFilte
 
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("1");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"1"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("2");
+        pMember = pSaveDim->GetExistingMemberByName(u"2"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("3");
+        pMember = pSaveDim->GetExistingMemberByName(u"3"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
@@ -2056,15 +2152,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableRowColPageFieldFilte
 
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("2");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"2"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("3");
+        pMember = pSaveDim->GetExistingMemberByName(u"3"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("4");
+        pMember = pSaveDim->GetExistingMemberByName(u"4"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
@@ -2078,15 +2174,15 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableRowColPageFieldFilte
 
         const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
         CPPUNIT_ASSERT_EQUAL(size_t(3), rMembers.size());
-        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("5");
+        ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"5"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("6");
+        pMember = pSaveDim->GetExistingMemberByName(u"6"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(!pMember->GetIsVisible());
-        pMember = pSaveDim->GetExistingMemberByName("7");
+        pMember = pSaveDim->GetExistingMemberByName(u"7"_ustr);
         CPPUNIT_ASSERT(pMember);
         CPPUNIT_ASSERT(pMember->HasIsVisible());
         CPPUNIT_ASSERT(pMember->GetIsVisible());
@@ -2121,7 +2217,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableErrorItemFilterXLSX)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check whether filtering is preserved
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -2134,7 +2230,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableErrorItemFilterXLSX)
     CPPUNIT_ASSERT(pSaveDim);
     const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
     CPPUNIT_ASSERT_EQUAL(size_t(4), rMembers.size());
-    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("#DIV/0!");
+    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"#DIV/0!"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(!pMember->GetIsVisible());
@@ -2155,7 +2251,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableErrorItemFilterXLSB)
     CPPUNIT_ASSERT(pSaveDim);
     const ScDPSaveDimension::MemberList& rMembers = pSaveDim->GetMembers();
     CPPUNIT_ASSERT_EQUAL(size_t(4), rMembers.size());
-    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName("#DIV/0!");
+    ScDPSaveMember* pMember = pSaveDim->GetExistingMemberByName(u"#DIV/0!"_ustr);
     CPPUNIT_ASSERT(pMember);
     CPPUNIT_ASSERT(pMember->HasIsVisible());
     CPPUNIT_ASSERT(!pMember->GetIsVisible());
@@ -2169,7 +2265,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableErrorItem2FilterXLSX
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check whether filtering is preserved
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -2189,74 +2285,70 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableOutlineModeXLSX)
 {
     createScDoc("xlsx/pivottable_outline_mode.xlsx");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
     // Next to the outline flags, compact flags also should be set (true is the default)
-    assertXPath(pTable, "/x:pivotTableDefinition"_ostr, "outline"_ostr, "1");
-    assertXPath(pTable, "/x:pivotTableDefinition"_ostr, "outlineData"_ostr, "1");
-    assertXPath(pTable, "/x:pivotTableDefinition"_ostr, "compact"_ostr, "0");
-    assertXPath(pTable, "/x:pivotTableDefinition"_ostr, "compactData"_ostr, "0");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]"_ostr,
-                "compact"_ostr, "0");
+    assertXPath(pTable, "/x:pivotTableDefinition", "outline", u"1");
+    assertXPath(pTable, "/x:pivotTableDefinition", "outlineData", u"1");
+    assertXPath(pTable, "/x:pivotTableDefinition", "compact", u"0");
+    assertXPath(pTable, "/x:pivotTableDefinition", "compactData", u"0");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]", "compact", u"0");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableDuplicatedMemberFilterXLSX)
 {
     createScDoc("xlsx/pivottable_duplicated_member_filter.xlsx");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
     // Check whether page field has the right number of items
-    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[5]"_ostr, "axis"_ostr,
-                "axisPage");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[5]/x:items"_ostr,
-                "count"_ostr, "21");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[5]", "axis",
+                u"axisPage");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[5]/x:items", "count",
+                u"21");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableTabularModeXLSX)
 {
     createScDoc("xlsx/pivottable_tabular_mode.xlsx");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
     // In tabular mode both outline and compact flag should be false
-    assertXPath(pTable, "/x:pivotTableDefinition"_ostr, "outline"_ostr, "0");
-    assertXPath(pTable, "/x:pivotTableDefinition"_ostr, "outlineData"_ostr, "0");
-    assertXPath(pTable, "/x:pivotTableDefinition"_ostr, "compact"_ostr, "0");
-    assertXPath(pTable, "/x:pivotTableDefinition"_ostr, "compactData"_ostr, "0");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]"_ostr,
-                "compact"_ostr, "0");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]"_ostr,
-                "outline"_ostr, "0");
+    assertXPath(pTable, "/x:pivotTableDefinition", "outline", u"0");
+    assertXPath(pTable, "/x:pivotTableDefinition", "outlineData", u"0");
+    assertXPath(pTable, "/x:pivotTableDefinition", "compact", u"0");
+    assertXPath(pTable, "/x:pivotTableDefinition", "compactData", u"0");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]", "compact", u"0");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]", "outline", u"0");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableDuplicateFields)
 {
     createScDoc("ods/caseinsensitive-duplicate-fields.ods");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pCacheDef = parseExport("xl/pivotCache/pivotCacheDefinition1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pCacheDef = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
     CPPUNIT_ASSERT(pCacheDef);
 
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields"_ostr, "count"_ostr, "6");
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]"_ostr,
-                "name"_ostr, "ID");
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]"_ostr,
-                "name"_ostr, "Name");
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]"_ostr,
-                "name"_ostr, "Score");
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]"_ostr,
-                "name"_ostr, "Method");
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]"_ostr,
-                "name"_ostr, "method2");
-    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]"_ostr,
-                "name"_ostr, "Method3");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields", "count", u"6");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]", "name", u"ID");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]", "name",
+                u"Name");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[3]", "name",
+                u"Score");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[4]", "name",
+                u"Method");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]", "name",
+                u"method2");
+    assertXPath(pCacheDef, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[6]", "name",
+                u"Method3");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf112106)
@@ -2267,7 +2359,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf112106)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
 
     // Reload and check data layout dim
-    saveAndReload("MS Excel 97");
+    saveAndReload(u"MS Excel 97"_ustr);
     pDoc = getScDoc();
     pDPs = pDoc->GetDPCollection();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDPs->GetCount());
@@ -2290,13 +2382,12 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf123923)
 
     createScDoc("ods/pivot-table-err-in-cache.ods");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pTable = parseExport("xl/pivotCache/pivotCacheDefinition1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
-    assertXPath(pTable,
-                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems/x:e"_ostr,
-                "v"_ostr, "#REF!");
+    assertXPath(pTable, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems/x:e",
+                "v", u"#REF!");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf123939)
@@ -2305,74 +2396,72 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf123939)
 
     createScDoc("ods/pivot-table-str-and-err-in-data.ods");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pTable = parseExport("xl/pivotCache/pivotCacheDefinition1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
-    assertXPathNoAttribute(
-        pTable, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-        "containsMixedTypes"_ostr);
+    assertXPathNoAttribute(pTable,
+                           "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                           "containsMixedTypes");
 
     // But we must emit containsMixedTypes="1" for a mix of errors and non-string types!
 
-    pTable = parseExport("xl/pivotCache/pivotCacheDefinition2.xml");
+    pTable = parseExport(u"xl/pivotCache/pivotCacheDefinition2.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
-    assertXPath(pTable, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems"_ostr,
-                "containsMixedTypes"_ostr, "1");
+    assertXPath(pTable, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:sharedItems",
+                "containsMixedTypes", u"1");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf124651)
 {
     createScDoc("ods/tdf124651_simplePivotTable.ods");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pDoc = parseExport("xl/pivotTables/pivotTable1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pDoc = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pDoc);
     // We have to export name attribute, even though it's optional according to ECMA-376 standard,
     // because Excel (at least 2016) seems to require it.
     // tdf#124881: this shouldn't be an empty string
-    assertXPath(pDoc, "/x:pivotTableDefinition/x:dataFields/x:dataField"_ostr, "name"_ostr,
-                "Sum - num");
+    assertXPath(pDoc, "/x:pivotTableDefinition/x:dataFields/x:dataField", "name", u"Sum - num");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf124736)
 {
     createScDoc("xlsx/pivot-table/shared-dategroup.xlsx");
 
-    save("Calc Office Open XML");
+    save(u"Calc Office Open XML"_ustr);
 
-    xmlDocUniquePtr pTable = parseExport("xl/pivotCache/pivotCacheDefinition1.xml");
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
-    assertXPath(
-        pTable,
-        "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:fieldGroup/x:groupItems"_ostr,
-        "count"_ostr, "45");
+    assertXPath(pTable,
+                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:fieldGroup/x:groupItems",
+                "count", u"45");
     // Group items must start with "<05/16/1958", then years sorted ascending, then ">06/11/2009"
     // They used to have years in the beginning, then "<05/16/1958", then ">06/11/2009".
     // The "<" and ">" date strings are locale-dependent, so test depends on en_US locale
     assertXPath(
         pTable,
-        "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:fieldGroup/x:groupItems/x:s[1]"_ostr,
-        "v"_ostr, "<05/16/1958");
+        "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:fieldGroup/x:groupItems/x:s[1]",
+        "v", u"<05/16/1958");
     for (int i = 2; i <= 44; ++i)
         assertXPath(
             pTable,
             "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:fieldGroup/x:groupItems/x:s["
                 + OString::number(i) + "]",
-            "v"_ostr, OUString::number(1963 + i));
+            "v", OUString::number(1963 + i));
     assertXPath(
         pTable,
-        "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:fieldGroup/x:groupItems/x:s[45]"_ostr,
-        "v"_ostr, ">06/11/2009");
+        "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[1]/x:fieldGroup/x:groupItems/x:s[45]",
+        "v", u">06/11/2009");
 
     // Now check that table references these in correct order (document-dependent, so this is how
     // it should be in this specific testdoc which shows "<" and ">" values in the end)
-    pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+    pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
-    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]/x:items"_ostr,
-                "count"_ostr, "46");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]/x:items", "count",
+                u"46");
     const int vals[] = { 1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
                          16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
                          31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 0,  44 };
@@ -2381,32 +2470,31 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf124736)
         assertXPath(pTable,
                     "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]/x:items/x:item["
                         + OString::number(i + 1) + "]",
-                    "x"_ostr, OUString::number(vals[i]));
+                    "x", OUString::number(vals[i]));
     }
-    assertXPath(pTable,
-                "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]/x:items/x:item[46]"_ostr,
-                "t"_ostr, "default");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[1]/x:items/x:item[46]",
+                "t", u"default");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf124772NumFmt)
 {
     createScDoc("ods/pivot-table-num-fmt.ods");
 
-    save("Calc Office Open XML");
+    save(u"Calc Office Open XML"_ustr);
 
-    xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
     // This asserts that numFmtId attribute is present
-    const OUString sXclNumFmt = getXPath(
-        pTable, "/x:pivotTableDefinition/x:dataFields/x:dataField"_ostr, "numFmtId"_ostr);
+    const OUString sXclNumFmt
+        = getXPath(pTable, "/x:pivotTableDefinition/x:dataFields/x:dataField", "numFmtId");
 
-    pTable = parseExport("xl/styles.xml");
+    pTable = parseExport(u"xl/styles.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
     // Check that we refer to correct format
     assertXPath(pTable, "/x:styleSheet/x:numFmts/x:numFmt[@numFmtId='" + sXclNumFmt.toUtf8() + "']",
-                "formatCode"_ostr, "\\$#,##0");
+                "formatCode", u"\\$#,##0");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf124810)
@@ -2415,23 +2503,23 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf124810)
         // First, test that we roundtrip existing pivot table style information from XLSX.
         createScDoc("xlsx/pivot_dark1.xlsx");
 
-        save("Calc Office Open XML");
-        xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+        save(u"Calc Office Open XML"_ustr);
+        xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
         CPPUNIT_ASSERT(pTable);
 
         // All attributes must have been roundtripped correctly (testdoc uses some non-default values)
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr, "name"_ostr,
-                    "PivotStyleDark1");
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr,
-                    "showRowHeaders"_ostr, "1");
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr,
-                    "showColHeaders"_ostr, "1");
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr,
-                    "showRowStripes"_ostr, "1");
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr,
-                    "showColStripes"_ostr, "0");
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr,
-                    "showLastColumn"_ostr, "0");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "name",
+                    u"PivotStyleDark1");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "showRowHeaders",
+                    u"1");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "showColHeaders",
+                    u"1");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "showRowStripes",
+                    u"1");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "showColStripes",
+                    u"0");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "showLastColumn",
+                    u"0");
     }
 
     {
@@ -2440,23 +2528,23 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf124810)
         // exporting better pivot table style information.
         createScDoc("ods/tdf124651_simplePivotTable.ods");
 
-        save("Calc Office Open XML");
-        xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+        save(u"Calc Office Open XML"_ustr);
+        xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
         CPPUNIT_ASSERT(pTable);
 
         // The default style for pivot tables in Excel 2007 through 2016 is PivotStyleLight16
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr, "name"_ostr,
-                    "PivotStyleLight16");
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr,
-                    "showRowHeaders"_ostr, "1");
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr,
-                    "showColHeaders"_ostr, "1");
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr,
-                    "showRowStripes"_ostr, "0");
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr,
-                    "showColStripes"_ostr, "0");
-        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo"_ostr,
-                    "showLastColumn"_ostr, "1");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "name",
+                    u"PivotStyleLight16");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "showRowHeaders",
+                    u"1");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "showColHeaders",
+                    u"1");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "showRowStripes",
+                    u"0");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "showColStripes",
+                    u"0");
+        assertXPath(pTable, "/x:pivotTableDefinition/x:pivotTableStyleInfo", "showLastColumn",
+                    u"1");
     }
 }
 
@@ -2464,34 +2552,34 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf124883)
 {
     createScDoc("xlsx/pivot-table/two-data-fields.xlsx");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pTable = parseExport("xl/pivotTables/pivotTable1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pTable);
 
     // The field names must be kept just as they appear in original XLSX
-    assertXPath(pTable, "/x:pivotTableDefinition/x:dataFields/x:dataField[1]"_ostr, "name"_ostr,
-                "Sum of Value");
-    assertXPath(pTable, "/x:pivotTableDefinition/x:dataFields/x:dataField[2]"_ostr, "name"_ostr,
-                "Count of Value2");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:dataFields/x:dataField[1]", "name",
+                u"Sum of Value");
+    assertXPath(pTable, "/x:pivotTableDefinition/x:dataFields/x:dataField[2]", "name",
+                u"Count of Value2");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf125046)
 {
     createScDoc("xlsx/pivottable_long_text.xlsx");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pDoc = parseExport("xl/pivotCache/pivotCacheDefinition1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pDoc = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
     CPPUNIT_ASSERT(pDoc);
-    assertXPath(pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                "longText"_ostr, "1");
+    assertXPath(pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                "longText", u"1");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf125055)
 {
     createScDoc("xlsx/pivottable_1s_difference.xlsx");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pDoc = parseExport("xl/pivotCache/pivotCacheDefinition1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pDoc = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
     CPPUNIT_ASSERT(pDoc);
 
     // 1-second precision should not result in duplicated entries for values different by ~1 s.
@@ -2499,46 +2587,38 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf125055)
     // "2017-07-10T09:11:02.99999..." into "2017-07-10T09:11:02", creating two identical strings
     // Only compare times here: see comment to ScPivotTableFiltersTest::testPivotCacheExportXLSX
     // "TODO Date generator in tests are one day higher, than during standard xlsx export"
-    OUString sISODateTime
-        = getXPath(pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                   "minDate"_ostr);
-    CPPUNIT_ASSERT_EQUAL(OUString("T09:11:02"), sISODateTime.copy(10));
-    sISODateTime
-        = getXPath(pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                   "maxDate"_ostr);
-    CPPUNIT_ASSERT_EQUAL(OUString("T09:11:03"), sISODateTime.copy(10));
-    assertXPath(pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
-                "count"_ostr, "3");
-    assertXPathChildren(pDoc,
-                        "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr,
+    OUString sISODateTime = getXPath(
+        pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems", "minDate");
+    CPPUNIT_ASSERT_EQUAL(u"T09:11:02"_ustr, sISODateTime.copy(10));
+    sISODateTime = getXPath(
+        pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems", "maxDate");
+    CPPUNIT_ASSERT_EQUAL(u"T09:11:03"_ustr, sISODateTime.copy(10));
+    assertXPath(pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
+                "count", u"3");
+    assertXPathChildren(pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems",
                         3); // 2 different values + empty
     sISODateTime = getXPath(
-        pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems/x:d[1]"_ostr,
-        "v"_ostr);
-    CPPUNIT_ASSERT_EQUAL(OUString("T09:11:02"), sISODateTime.copy(10));
+        pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems/x:d[1]", "v");
+    CPPUNIT_ASSERT_EQUAL(u"T09:11:02"_ustr, sISODateTime.copy(10));
     sISODateTime = getXPath(
-        pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems/x:d[2]"_ostr,
-        "v"_ostr);
-    CPPUNIT_ASSERT_EQUAL(OUString("T09:11:03"), sISODateTime.copy(10));
+        pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems/x:d[2]", "v");
+    CPPUNIT_ASSERT_EQUAL(u"T09:11:03"_ustr, sISODateTime.copy(10));
     // Trailing empty
     CPPUNIT_ASSERT_EQUAL(
-        2,
-        getXPathPosition(
-            pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems"_ostr, "m"));
+        2, getXPathPosition(
+               pDoc, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]/x:sharedItems", "m"));
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf125086)
 {
     createScDoc("ods/pivottable_fieldInRowsAndData.ods");
 
-    save("Calc Office Open XML");
-    xmlDocUniquePtr pDoc = parseExport("xl/pivotTables/pivotTable1.xml");
+    save(u"Calc Office Open XML"_ustr);
+    xmlDocUniquePtr pDoc = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
     CPPUNIT_ASSERT(pDoc);
-    assertXPath(pDoc, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[2]"_ostr, "axis"_ostr,
-                "axisRow");
+    assertXPath(pDoc, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[2]", "axis", u"axisRow");
     // "dataField" attribute was not written for this "axisRow" field
-    assertXPath(pDoc, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[2]"_ostr,
-                "dataField"_ostr, "1");
+    assertXPath(pDoc, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[2]", "dataField", u"1");
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testTdf73845)
@@ -2591,7 +2671,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableCompactLayoutXLSX)
         CPPUNIT_ASSERT_MESSAGE("The show expand/collapse buttons option must be true",
                                pSaveData->GetExpandCollapse());
 
-        CPPUNIT_ASSERT_EQUAL(OUString("Row Labels"), rDoc.GetString(ScAddress(10, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"Row Labels"_ustr, rDoc.GetString(ScAddress(10, 1, 0)));
 
         // Check some row fields
         struct RowFieldLabel
@@ -2603,17 +2683,17 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableCompactLayoutXLSX)
 
         constexpr int nCases = 6;
         const RowFieldLabel aCases[nCases] = {
-            { "aaa", ScAddress(10, 2, 0), true },
+            { u"aaa"_ustr, ScAddress(10, 2, 0), true },
 
-            { "bbb", ScAddress(10, 3, 0), true },
+            { u"bbb"_ustr, ScAddress(10, 3, 0), true },
 
-            { "ccc", ScAddress(10, 4, 0), true },
+            { u"ccc"_ustr, ScAddress(10, 4, 0), true },
 
-            { "aax", ScAddress(10, 10, 0), true },
+            { u"aax"_ustr, ScAddress(10, 10, 0), true },
 
-            { "bbx", ScAddress(10, 14, 0), true },
+            { u"bbx"_ustr, ScAddress(10, 14, 0), true },
 
-            { "ccc", ScAddress(10, 15, 0), true },
+            { u"ccc"_ustr, ScAddress(10, 15, 0), true },
         };
 
         for (int nCaseNum = 0; nCaseNum < nCases; ++nCaseNum)
@@ -2633,18 +2713,94 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testPivotTableCompactLayoutXLSX)
         }
 
         // check col fields
-        CPPUNIT_ASSERT_EQUAL(OUString("ddd"), rDoc.GetString(ScAddress(11, 1, 0)));
-        CPPUNIT_ASSERT_EQUAL(OUString("ddx"), rDoc.GetString(ScAddress(12, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"ddd"_ustr, rDoc.GetString(ScAddress(11, 1, 0)));
+        CPPUNIT_ASSERT_EQUAL(u"ddx"_ustr, rDoc.GetString(ScAddress(12, 1, 0)));
     };
 
     createScDoc("xlsx/pivot-table/pivotcompact.xlsx");
     testThis(*getScDoc());
 
-    saveAndReload("calc8");
+    saveAndReload(u"calc8"_ustr);
     testThis(*getScDoc());
 
-    saveAndReload("Calc Office Open XML");
+    saveAndReload(u"Calc Office Open XML"_ustr);
     testThis(*getScDoc());
+}
+
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest,
+                     testPivotTableXLSX_OutOfSyncPivotTableCachedDefinitionImport)
+{
+    // This tests that a out-of-sync sheet data and pivot table cached definitions
+    // still get imported correctly as expected.
+
+    // It is perfectly valid that the sheet data and pivot table are out-of-sync,
+    // but even if the sheet data is heavily modified, the pivot table should still
+    // be imported.
+
+    // The test document has columns named A-K where only A and K are used in the
+    // pivot table. The columns B-J were removed in the sheet data, but the pivot table
+    // was not updated, so the cached data still has those and the pivot table
+    // description still relies on those columns to be present.
+
+    auto testThis = [](ScDocument& rDocument) {
+        ScDPCollection* pDPs = rDocument.GetDPCollection();
+        CPPUNIT_ASSERT_MESSAGE("Failed to get a live ScDPCollection instance.", pDPs);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("There should be exactly one pivot table instance.", size_t(1),
+                                     pDPs->GetCount());
+
+        const ScDPObject* pDPObj = &(*pDPs)[0];
+        CPPUNIT_ASSERT(pDPObj);
+        ScDPSaveData* pSaveData = pDPObj->GetSaveData();
+        CPPUNIT_ASSERT(pSaveData);
+
+        // Do we have a dim named "A"
+        ScDPSaveDimension* pSaveDimA = pSaveData->GetExistingDimensionByName(u"A");
+        CPPUNIT_ASSERT(pSaveDimA);
+
+        // Do we have a dim named "K"
+        ScDPSaveDimension* pSaveDimK = pSaveData->GetExistingDimensionByName(u"K");
+        CPPUNIT_ASSERT(pSaveDimK);
+
+        // Check the headers
+        CPPUNIT_ASSERT_EQUAL(u"K"_ustr, rDocument.GetString(ScAddress(0, 2, 0))); // A3
+        CPPUNIT_ASSERT_EQUAL(u"Sum of A"_ustr, rDocument.GetString(ScAddress(1, 2, 0))); //B3
+
+        // Check the values
+        CPPUNIT_ASSERT_EQUAL(u"1"_ustr, rDocument.GetString(ScAddress(0, 3, 0))); //A4
+        CPPUNIT_ASSERT_EQUAL(u"2"_ustr, rDocument.GetString(ScAddress(0, 4, 0))); //A5
+        CPPUNIT_ASSERT_EQUAL(u"5"_ustr, rDocument.GetString(ScAddress(1, 3, 0))); //B4
+        CPPUNIT_ASSERT_EQUAL(u"5"_ustr, rDocument.GetString(ScAddress(1, 4, 0))); //B5
+    };
+
+    // test document with sheet data and pivot table in sync
+    createScDoc("xlsx/PivotTable_CachedDefinitionAndDataInSync.xlsx");
+    testThis(*getScDoc());
+
+    // test document with sheet data and pivot table in out-of-sync - B-J columns removed,
+    // but the pivot table cache still has all the data
+    createScDoc(
+        "xlsx/PivotTable_CachedDefinitionAndDataNotInSync_SheetColumnsRemoved_WithCacheData.xlsx");
+    testThis(*getScDoc());
+
+    // test document with sheet data and pivot table in out-of-sync - B-J columns removed,
+    // but the pivot table cache is not saved, only the cached definitions are available
+    createScDoc("xlsx/"
+                "PivotTable_CachedDefinitionAndDataNotInSync_SheetColumnsRemoved_WithoutCacheData."
+                "xlsx");
+    testThis(*getScDoc());
+}
+
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testFirstHeaderRowZero)
+{
+    // Test that an xlsx pivot table with `firstHeaderRow="0"` is shown and exported correctly
+    createScDoc("xlsx/pivot-table/first_header_row_zero.xlsx");
+    // Check that the text under the table is visible
+    CPPUNIT_ASSERT_EQUAL(OUString("under"), getScDoc()->GetString(ScAddress(2, 6, 1)));
+
+    save("Calc Office Open XML");
+    xmlDocUniquePtr pDoc = parseExport("xl/pivotTables/pivotTable1.xml");
+    CPPUNIT_ASSERT(pDoc);
+    assertXPath(pDoc, "/x:pivotTableDefinition/x:location", "firstHeaderRow", u"0");
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

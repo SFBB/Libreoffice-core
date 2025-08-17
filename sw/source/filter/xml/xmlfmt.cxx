@@ -50,6 +50,7 @@
 #include <cellatr.hxx>
 #include <SwStyleNameMapper.hxx>
 #include <ccoll.hxx>
+#include <names.hxx>
 
 #include <memory>
 
@@ -286,7 +287,7 @@ uno::Reference < style::XStyle > SwXMLTextStyleContext_Impl::Create()
         if( xFactory.is() )
         {
             uno::Reference < uno::XInterface > xIfc =
-                xFactory->createInstance( "com.sun.star.style.ConditionalParagraphStyle" );
+                xFactory->createInstance( u"com.sun.star.style.ConditionalParagraphStyle"_ustr );
             if( xIfc.is() )
                 xNewStyle.set( xIfc, uno::UNO_QUERY );
         }
@@ -450,14 +451,14 @@ void SwXMLCellStyleContext::AddDataFormat()
     if (nNumberFormat < 0)
         return;
 
-    rtl::Reference<SvXMLImportPropertyMapper> xPropertyMapper(GetStyles()->GetImportPropertyMapper(GetFamily()));
-    if (!xPropertyMapper.is())
+    SvXMLImportPropertyMapper* pPropertyMapper(GetStyles()->GetImportPropertyMapper(GetFamily()));
+    if (!pPropertyMapper)
     {
         SAL_WARN("sw.xml", "there is no import prop mapper");
         return;
     }
 
-    const rtl::Reference<XMLPropertySetMapper>& xPropertySetMapper(xPropertyMapper->getPropertySetMapper());
+    const rtl::Reference<XMLPropertySetMapper>& xPropertySetMapper(pPropertyMapper->getPropertySetMapper());
     sal_Int32 nIndex = xPropertySetMapper->GetEntryIndex(XML_NAMESPACE_STYLE, GetXMLToken(XML_DATA_STYLE_NAME), 0);
     if (nIndex < 0)
     {
@@ -473,7 +474,7 @@ void SwXMLCellStyleContext::AddDataFormat()
     if (aIter != GetProperties().end())
         aIter->maValue <<= nNumberFormat;
     else
-        GetProperties().push_back(XMLPropertyState(nIndex, Any(nNumberFormat)));
+        GetProperties().emplace_back(nIndex, Any(nNumberFormat));
 }
 
 void SwXMLCellStyleContext::FillPropertySet(const css::uno::Reference<css::beans::XPropertySet>& rPropSet)
@@ -619,17 +620,18 @@ void SwXMLItemSetStyleContext_Impl::ConnectPageDesc()
 
     // #i40788# - first determine the display name of the page style,
     // then map this name to the corresponding user interface name.
-    OUString sName = GetImport().GetStyleDisplayName( XmlStyleFamily::MASTER_PAGE,
-                                             m_sMasterPageName );
-    SwStyleNameMapper::FillUIName( sName,
-                                   sName,
+    ProgName sProgName( GetImport().GetStyleDisplayName( XmlStyleFamily::MASTER_PAGE,
+                                             m_sMasterPageName ) );
+    UIName sUIName;
+    SwStyleNameMapper::FillUIName( sProgName,
+                                   sUIName,
                                    SwGetPoolIdFromName::PageDesc);
-    SwPageDesc *pPageDesc = pDoc->FindPageDesc(sName);
+    SwPageDesc *pPageDesc = pDoc->FindPageDesc(sUIName);
     if( !pPageDesc )
     {
         // If the page style is a pool style, then we maybe have to create it
         // first if it hasn't been used by now.
-        const sal_uInt16 nPoolId = SwStyleNameMapper::GetPoolIdFromUIName( sName, SwGetPoolIdFromName::PageDesc );
+        const sal_uInt16 nPoolId = SwStyleNameMapper::GetPoolIdFromUIName( sUIName, SwGetPoolIdFromName::PageDesc );
         if( USHRT_MAX != nPoolId )
             pPageDesc = pDoc->getIDocumentStylePoolAccess().GetPageDescFromPool( nPoolId, false );
     }
@@ -716,7 +718,7 @@ protected:
         XmlStyleFamily nFamily, sal_Int32 nElement,
         const uno::Reference< xml::sax::XFastAttributeList > & xAttrList ) override;
     // HACK
-    virtual rtl::Reference < SvXMLImportPropertyMapper > GetImportPropertyMapper(
+    virtual SvXMLImportPropertyMapper* GetImportPropertyMapper(
         XmlStyleFamily nFamily ) const override;
 
     virtual uno::Reference < container::XNameContainer >
@@ -733,6 +735,12 @@ public:
     virtual bool InsertStyleFamily( XmlStyleFamily nFamily ) const override;
 
     virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
+
+private:
+    mutable std::unique_ptr<SvXMLImportPropertyMapper> mxTableTablePropMapper;
+    mutable std::unique_ptr<SvXMLImportPropertyMapper> mxTableRowPropMapper;
+    mutable std::unique_ptr<SvXMLImportPropertyMapper> mxTableCellPropMapper;
+    mutable std::unique_ptr<SvXMLImportPropertyMapper> mxDrawingPagePropMapper;
 };
 
 }
@@ -868,27 +876,41 @@ bool SwXMLStylesContext_Impl::InsertStyleFamily( XmlStyleFamily nFamily ) const
     return bIns;
 }
 
-rtl::Reference < SvXMLImportPropertyMapper > SwXMLStylesContext_Impl::GetImportPropertyMapper(
+SvXMLImportPropertyMapper* SwXMLStylesContext_Impl::GetImportPropertyMapper(
         XmlStyleFamily nFamily ) const
 {
-    rtl::Reference < SvXMLImportPropertyMapper > xMapper;
+    SvXMLImportPropertyMapper* pMapper = nullptr;
     if( nFamily == XmlStyleFamily::TABLE_TABLE )
-        xMapper = XMLTextImportHelper::CreateTableDefaultExtPropMapper(
-            const_cast<SwXMLStylesContext_Impl*>( this )->GetImport() );
+    {
+        if (!mxTableTablePropMapper)
+            mxTableTablePropMapper = XMLTextImportHelper::CreateTableDefaultExtPropMapper(
+                const_cast<SwXMLStylesContext_Impl*>( this )->GetImport() );
+        pMapper = mxTableTablePropMapper.get();
+    }
     else if( nFamily == XmlStyleFamily::TABLE_ROW )
-        xMapper = XMLTextImportHelper::CreateTableRowDefaultExtPropMapper(
-            const_cast<SwXMLStylesContext_Impl*>( this )->GetImport() );
+    {
+        if (!mxTableRowPropMapper)
+            mxTableRowPropMapper = XMLTextImportHelper::CreateTableRowDefaultExtPropMapper(
+                const_cast<SwXMLStylesContext_Impl*>( this )->GetImport() );
+        pMapper = mxTableRowPropMapper.get();
+    }
     else if( nFamily == XmlStyleFamily::TABLE_CELL )
-        xMapper = XMLTextImportHelper::CreateTableCellExtPropMapper(
-            const_cast<SwXMLStylesContext_Impl*>( this )->GetImport() );
+    {
+        if (!mxTableCellPropMapper)
+            mxTableCellPropMapper = XMLTextImportHelper::CreateTableCellExtPropMapper(
+                const_cast<SwXMLStylesContext_Impl*>( this )->GetImport() );
+        pMapper = mxTableCellPropMapper.get();
+    }
     else if (nFamily == XmlStyleFamily::SD_DRAWINGPAGE_ID)
     {
-        xMapper = XMLTextImportHelper::CreateDrawingPageExtPropMapper(
-            const_cast<SwXMLStylesContext_Impl*>(this)->GetImport());
+        if (!mxDrawingPagePropMapper)
+            mxDrawingPagePropMapper = XMLTextImportHelper::CreateDrawingPageExtPropMapper(
+                const_cast<SwXMLStylesContext_Impl*>(this)->GetImport());
+        pMapper = mxDrawingPagePropMapper.get();
     }
     else
-        xMapper = SvXMLStylesContext::GetImportPropertyMapper( nFamily );
-    return xMapper;
+        pMapper = SvXMLStylesContext::GetImportPropertyMapper( nFamily );
+    return pMapper;
 }
 
 uno::Reference < container::XNameContainer > SwXMLStylesContext_Impl::GetStylesContainer(
@@ -909,9 +931,9 @@ uno::Reference < container::XNameContainer > SwXMLStylesContext_Impl::GetStylesC
 OUString SwXMLStylesContext_Impl::GetServiceName( XmlStyleFamily nFamily ) const
 {
     if( XmlStyleFamily::SD_GRAPHICS_ID == nFamily )
-        return "com.sun.star.style.FrameStyle";
+        return u"com.sun.star.style.FrameStyle"_ustr;
     else if( XmlStyleFamily::TABLE_CELL == nFamily )
-        return "com.sun.star.style.CellStyle";
+        return u"com.sun.star.style.CellStyle"_ustr;
 
     return SvXMLStylesContext::GetServiceName( nFamily );
 }
@@ -973,6 +995,14 @@ void SwXMLMasterStylesContext_Impl::endFastElement(sal_Int32 )
 SvXMLImportContext *SwXMLImport::CreateStylesContext(
         bool bAuto )
 {
+    // tdf#166850 this only worked in 24.2.4..24.2.7 and broke in 24.8.0
+    // anyway but must *not* be applied to fixed 25.2.x or later
+    if (isGeneratorVersionOlderThan(SvXMLImport::AOO_4x, SvXMLImport::LO_248)
+        && !isGeneratorVersionOlderThan(SvXMLImport::AOO_4x, SvXMLImport::LO_242))
+    {
+        getDoc()->SetInXMLImport242(true);
+    }
+
     SvXMLStylesContext *pContext = new SwXMLStylesContext_Impl( *this, bAuto );
     if( bAuto )
         SetAutoStyles( pContext );

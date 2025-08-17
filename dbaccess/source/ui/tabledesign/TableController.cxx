@@ -68,7 +68,6 @@ org_openoffice_comp_dbu_OTableDesign_get_implementation(
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::lang;
@@ -76,7 +75,6 @@ using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
-using namespace ::com::sun::star::ui;
 using namespace ::com::sun::star::util;
 using namespace ::dbtools;
 using namespace ::dbaui;
@@ -101,12 +99,12 @@ namespace
 
 OUString SAL_CALL OTableController::getImplementationName()
 {
-    return "org.openoffice.comp.dbu.OTableDesign";
+    return u"org.openoffice.comp.dbu.OTableDesign"_ustr;
 }
 
 Sequence< OUString> OTableController::getSupportedServiceNames()
 {
-    return { "com.sun.star.sdb.TableDesign" };
+    return { u"com.sun.star.sdb.TableDesign"_ustr };
 }
 
 OTableController::OTableController(const Reference< XComponentContext >& _rM) : OTableController_BASE(_rM)
@@ -455,13 +453,11 @@ void OTableController::doEditIndexes()
 
 }
 
-void OTableController::impl_initialize()
+void OTableController::impl_initialize(const ::comphelper::NamedValueCollection& rArguments)
 {
     try
     {
-        OTableController_BASE::impl_initialize();
-
-        const NamedValueCollection& rArguments( getInitParams() );
+        OTableController_BASE::impl_initialize(rArguments);
 
         rArguments.get_ensureType( PROPERTY_CURRENTTABLE, m_sName );
 
@@ -522,8 +518,8 @@ sal_Bool SAL_CALL OTableController::suspend(sal_Bool /*_bSuspend*/)
         if ( std::any_of(m_vRowList.begin(),m_vRowList.end(),
                            std::mem_fn(&OTableRow::isValid)) )
         {
-            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(getFrameWeld(), "dbaccess/ui/tabledesignsavemodifieddialog.ui"));
-            std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog("TableDesignSaveModifiedDialog"));
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(getFrameWeld(), u"dbaccess/ui/tabledesignsavemodifieddialog.ui"_ustr));
+            std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog(u"TableDesignSaveModifiedDialog"_ustr));
             switch (xQuery->run())
             {
                 case RET_YES:
@@ -540,8 +536,8 @@ sal_Bool SAL_CALL OTableController::suspend(sal_Bool /*_bSuspend*/)
         }
         else if ( !m_bNew )
         {
-            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(getFrameWeld(), "dbaccess/ui/deleteallrowsdialog.ui"));
-            std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog("DeleteAllRowsDialog"));
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(getFrameWeld(), u"dbaccess/ui/deleteallrowsdialog.ui"_ustr));
+            std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog(u"DeleteAllRowsDialog"_ustr));
             switch (xQuery->run())
             {
                 case RET_YES:
@@ -575,15 +571,15 @@ void OTableController::describeSupportedFeatures()
 {
     OSingleDocumentController::describeSupportedFeatures();
 
-    implDescribeSupportedFeature( ".uno:Redo",          ID_BROWSER_REDO,        CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:Save",          ID_BROWSER_SAVEDOC,     CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:Undo",          ID_BROWSER_UNDO,        CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:NewDoc",        SID_NEWDOC,             CommandGroup::DOCUMENT );
-    implDescribeSupportedFeature( ".uno:SaveAs",        ID_BROWSER_SAVEASDOC,   CommandGroup::DOCUMENT );
-    implDescribeSupportedFeature( ".uno:DBIndexDesign", SID_INDEXDESIGN,        CommandGroup::APPLICATION );
-    implDescribeSupportedFeature( ".uno:EditDoc",       ID_BROWSER_EDITDOC,     CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:GetUndoStrings", SID_GETUNDOSTRINGS );
-    implDescribeSupportedFeature( ".uno:GetRedoStrings", SID_GETREDOSTRINGS );
+    implDescribeSupportedFeature( u".uno:Redo"_ustr,          ID_BROWSER_REDO,        CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:Save"_ustr,          ID_BROWSER_SAVEDOC,     CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:Undo"_ustr,          ID_BROWSER_UNDO,        CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:NewDoc"_ustr,        SID_NEWDOC,             CommandGroup::DOCUMENT );
+    implDescribeSupportedFeature( u".uno:SaveAs"_ustr,        ID_BROWSER_SAVEASDOC,   CommandGroup::DOCUMENT );
+    implDescribeSupportedFeature( u".uno:DBIndexDesign"_ustr, SID_INDEXDESIGN,        CommandGroup::APPLICATION );
+    implDescribeSupportedFeature( u".uno:EditDoc"_ustr,       ID_BROWSER_EDITDOC,     CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:GetUndoStrings"_ustr, SID_GETUNDOSTRINGS );
+    implDescribeSupportedFeature( u".uno:GetRedoStrings"_ustr, SID_GETREDOSTRINGS );
 }
 
 void OTableController::impl_onModifyChanged()
@@ -795,7 +791,7 @@ void OTableController::loadData()
             pTabEdRow->SetReadOnly(!bIsAlterAllowed);
             // search for type
             bool bForce;
-            TOTypeInfoSP pTypeInfo = ::dbaui::getTypeInfoFromType(m_aTypeInfo,nType,sTypeName,"x",nPrecision,nScale,bIsAutoIncrement,bForce);
+            TOTypeInfoSP pTypeInfo = ::dbaui::getTypeInfoFromType(m_aTypeInfo,nType,sTypeName,u"x"_ustr,nPrecision,nScale,bIsAutoIncrement,bForce);
             if ( !pTypeInfo )
                 pTypeInfo = m_pTypeInfo;
             pTabEdRow->SetFieldType( pTypeInfo, bForce );
@@ -903,18 +899,18 @@ bool OTableController::checkColumns(bool _bNew)
         {
         case RET_YES:
         {
-            auto pNewRow = std::make_shared<OTableRow>();
             TOTypeInfoSP pTypeInfo = ::dbaui::queryPrimaryKeyType(m_aTypeInfo);
             if ( !pTypeInfo )
                 break;
 
+            auto pNewRow = std::make_shared<OTableRow>();
             pNewRow->SetFieldType( pTypeInfo );
             OFieldDescription* pActFieldDescr = pNewRow->GetActFieldDescr();
 
-            pActFieldDescr->SetAutoIncrement(false);
+            pActFieldDescr->SetAutoIncrement(pTypeInfo->bAutoIncrement);
             pActFieldDescr->SetIsNullable(ColumnValue::NO_NULLS);
 
-            pActFieldDescr->SetName( createUniqueName("ID" ));
+            pActFieldDescr->SetName( createUniqueName(u"ID"_ustr ));
             pActFieldDescr->SetPrimaryKey( true );
             m_vRowList.insert(m_vRowList.begin(),pNewRow);
 
@@ -1168,7 +1164,7 @@ void OTableController::alterColumns()
                     OUString sError( DBA_RES( STR_TABLEDESIGN_COULD_NOT_DROP_COL ) );
                     sError = sError.replaceFirst( "$column$", rColumnName );
 
-                    throw SQLException(sError, {}, "S1000", 0, caughtException);
+                    throw SQLException(sError, {}, u"S1000"_ustr, 0, caughtException);
                 }
             }
         }
@@ -1322,7 +1318,7 @@ void OTableController::assignTable()
     if (!xProp.is())
         return;
 
-    m_xTable = xProp;
+    m_xTable = std::move(xProp);
     startTableListening();
 
     // check if we set the table editable
@@ -1478,7 +1474,7 @@ sal_Int32 OTableController::getFirstEmptyRowPosition()
         auto pTabEdRow = std::make_shared<OTableRow>();
         pTabEdRow->SetReadOnly(bReadRow);
         nRet = m_vRowList.size();
-        m_vRowList.push_back( pTabEdRow);
+        m_vRowList.push_back(std::move(pTabEdRow));
     }
     return nRet;
 }

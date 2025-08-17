@@ -281,7 +281,7 @@ void DicList::SearchForDictionaries(
     {
         LanguageType nLang = LANGUAGE_NONE;
         bool         bNeg  = false;
-        OUString     aDicTitle = "";
+        OUString     aDicTitle = u""_ustr;
 
         if(!::IsVers2OrNewer( aURL, nLang, bNeg, aDicTitle ))
         {
@@ -323,6 +323,11 @@ void DicList::SearchForDictionaries(
             DictionaryType eType = bNeg ? DictionaryType_NEGATIVE : DictionaryType_POSITIVE;
             uno::Reference< XDictionary > xDic =
                         new DictionaryNeo( aDicTitle.isEmpty() ? aDicName : aDicTitle, nLang, eType, aURL, bIsWriteablePath );
+
+            // when using libreofficekit we don't have "options" dialog to make user-dictionaries active
+            // so when we add user-dictionary, we make them active as well
+            if (comphelper::LibreOfficeKit::isActive())
+                xDic->setActive(true);
 
             addDictionary( xDic );
             nCount++;
@@ -572,6 +577,16 @@ void SAL_CALL
         aEvtListeners.removeInterface( rxListener );
 }
 
+void SAL_CALL DicList::initialize(const css::uno::Sequence<css::uno::Any>& /*rArguments*/)
+{
+    osl::MutexGuard aGuard(GetLinguMutex());
+
+    if (!bInCreation && !bDisposing)
+    {
+        CreateDicList();
+    }
+}
+
 void DicList::CreateDicList()
 {
     bInCreation = true;
@@ -588,7 +603,7 @@ void DicList::CreateDicList()
     // create IgnoreAllList dictionary with empty URL (non persistent)
     // and add it to list
     const LanguageTag tag = comphelper::LibreOfficeKit::isActive()
-                                ? LanguageTag("en-US")
+                                ? LanguageTag(u"en-US"_ustr)
                                 : SvtSysLocale().GetUILanguageTag();
     std::locale loc(Translate::Create("svt", tag));
     uno::Reference< XDictionary > xIgnAll(
@@ -661,7 +676,7 @@ void DicList::SaveDics()
 
 OUString SAL_CALL DicList::getImplementationName(  )
 {
-    return "com.sun.star.lingu2.DicList";
+    return u"com.sun.star.lingu2.DicList"_ustr;
 }
 
 
@@ -672,7 +687,7 @@ sal_Bool SAL_CALL DicList::supportsService( const OUString& ServiceName )
 
 uno::Sequence< OUString > SAL_CALL DicList::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.linguistic2.DictionaryList" };
+    return { u"com.sun.star.linguistic2.DictionaryList"_ustr };
 }
 
 
@@ -718,7 +733,7 @@ static void AddInternal(
         return;
 
     //! TL TODO: word iterator should be used to break up the text
-    OUString aDelim("!\"#$%&'()*+,-/:;<=>?[]\\_^`{|}~\t \n");
+    OUString aDelim(u"!\"#$%&'()*+,-/:;<=>?[]\\_^`{|}~\t \n"_ustr);
     OSL_ENSURE(aDelim.indexOf(u'.') == -1,
         "ensure no '.'");
 
@@ -761,7 +776,7 @@ static bool IsVers2OrNewer( const OUString& rFileURL, LanguageType& nLng, bool& 
         return false;
 
     // get stream to be used
-    uno::Reference< uno::XComponentContext > xContext( comphelper::getProcessComponentContext() );
+    const uno::Reference< uno::XComponentContext >& xContext( comphelper::getProcessComponentContext() );
 
     // get XInputStream stream
     uno::Reference< io::XInputStream > xStream;

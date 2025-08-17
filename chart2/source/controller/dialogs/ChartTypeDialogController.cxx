@@ -23,9 +23,8 @@
 #include <ResId.hxx>
 #include <strings.hrc>
 #include <bitmaps.hlst>
-#include <ChartModelHelper.hxx>
 #include <DataSeries.hxx>
-#include <DiagramHelper.hxx>
+#include <DataSeriesHelper.hxx>
 #include <Diagram.hxx>
 #include <ControllerLockGuard.hxx>
 #include <AxisHelper.hxx>
@@ -148,7 +147,7 @@ ChartTypeParameter ChartTypeDialogController::getChartTypeParameterForService(
 
         try
         {
-            xTemplateProps->getPropertyValue( "Geometry3D" ) >>= aRet.nGeometry3D;
+            xTemplateProps->getPropertyValue( u"Geometry3D"_ustr ) >>= aRet.nGeometry3D;
         }
         catch( uno::Exception& ex )
         {
@@ -282,7 +281,7 @@ rtl::Reference< ChartTypeTemplate > ChartTypeDialogController::getCurrentTemplat
                 }
                 try
                 {
-                    xTemplateProps->setPropertyValue( "Geometry3D" , uno::Any(rParameter.nGeometry3D) );
+                    xTemplateProps->setPropertyValue( u"Geometry3D"_ustr , uno::Any(rParameter.nGeometry3D) );
                 }
                 catch( uno::Exception & ex )
                 {
@@ -305,7 +304,8 @@ rtl::Reference< ChartTypeTemplate > ChartTypeDialogController::getCurrentTemplat
 }
 
 void ChartTypeDialogController::commitToModel( const ChartTypeParameter& rParameter
-                , const rtl::Reference<::chart::ChartModel>& xChartModel )
+                , const rtl::Reference<::chart::ChartModel>& xChartModel
+                , const uno::Reference<beans::XPropertySet>& xTemplateProps)
 {
     rtl::Reference< ::chart::ChartTypeManager > xTemplateManager = xChartModel->getTypeManager();
     rtl::Reference< ::chart::ChartTypeTemplate > xTemplate( getCurrentTemplate( rParameter, xTemplateManager ) );
@@ -329,6 +329,20 @@ void ChartTypeDialogController::commitToModel( const ChartTypeParameter& rParame
     if (xDiagram.is())
     {
         xDiagram->setPropertyValue(CHART_UNONAME_SORT_BY_XVALUES, uno::Any(rParameter.bSortByXValues));
+
+        sal_Int32 nSplitPos;
+        try {
+            if (xTemplateProps.is()) {
+                xTemplateProps->getPropertyValue(u"SplitPos"_ustr) >>= nSplitPos;
+                xDiagram->setPropertyValue(u"SplitPos"_ustr, uno::Any(nSplitPos));
+            }
+        }
+        catch( uno::Exception & ex )
+        {
+            //not all templates need to support SplitPos
+            ex.Context.is();//to have debug information without compilation warnings
+        }
+
     }
 }
 void ChartTypeDialogController::fillSubTypeList( ValueSet& rSubTypeList, const ChartTypeParameter& /*rParameter*/ )
@@ -542,6 +556,61 @@ void BarChartDialogController::fillSubTypeList( ValueSet& rSubTypeList, const Ch
     rSubTypeList.SetItemText( 4, SchResId( STR_DEEP ) );
 }
 
+HistogramChartDialogController::HistogramChartDialogController()
+{
+    bSupports3D = false;
+}
+
+HistogramChartDialogController::~HistogramChartDialogController()
+{
+}
+
+OUString HistogramChartDialogController::getName()
+{
+    return SchResId(STR_TYPE_HISTOGRAM);
+}
+
+OUString HistogramChartDialogController::getImage()
+{
+    return BMP_TYPE_HISTOGRAM;
+}
+
+const tTemplateServiceChartTypeParameterMap& HistogramChartDialogController::getTemplateMap() const
+{
+    static tTemplateServiceChartTypeParameterMap s_aTemplateMap{
+        {"com.sun.star.chart2.template.Histogram" , ChartTypeParameter(1, false, false, GlobalStackMode_NONE)}
+    };
+    return s_aTemplateMap;
+}
+void HistogramChartDialogController::fillSubTypeList(ValueSet& rSubTypeList, const ChartTypeParameter& /*rParameter*/)
+{
+    rSubTypeList.Clear();
+    rSubTypeList.InsertItem(1, Image(StockImage::Yes, BMP_HISTOGRAM));
+    rSubTypeList.SetItemText(1, SchResId(STR_HISTOGRAM));
+}
+
+void HistogramChartDialogController::adjustParameterToSubType(ChartTypeParameter& rParameter)
+{
+    rParameter.b3DLook = false;
+
+    switch (rParameter.nSubTypeIndex)
+    {
+        case 2:
+            // Pareto Histogram
+            break;
+        default:
+            // Standard Histogram
+            rParameter.eStackMode = GlobalStackMode_NONE; // Ensure no stacking
+            rParameter.bXAxisWithValues = false; // Standard histogram may not need X-axis values
+            // Set default bin width or other relevant properties if needed
+            break;
+    }
+}
+
+//=========
+// PieChartDialogController
+//=========
+
 PieChartDialogController::PieChartDialogController()
 {
 }
@@ -607,6 +676,157 @@ void PieChartDialogController::adjustParameterToSubType( ChartTypeParameter& rPa
     if(rParameter.eStackMode==GlobalStackMode_STACK_Z)
         rParameter.eStackMode = GlobalStackMode_NONE;
 }
+
+//=========
+// OfPieChartDialogController
+//=========
+
+OfPieChartDialogController::OfPieChartDialogController()
+{
+}
+
+OfPieChartDialogController::~OfPieChartDialogController()
+{
+}
+
+OUString OfPieChartDialogController::getName()
+{
+    return SchResId(STR_TYPE_OFPIE);
+}
+
+OUString OfPieChartDialogController::getImage()
+{
+    return BMP_TYPE_OFPIE;
+}
+
+const tTemplateServiceChartTypeParameterMap& OfPieChartDialogController::getTemplateMap() const
+{
+    static tTemplateServiceChartTypeParameterMap s_aTemplateMap{
+    {"com.sun.star.chart2.template.BarOfPie" ,               ChartTypeParameter(1,false,false)},
+    {"com.sun.star.chart2.template.PieOfPie" ,               ChartTypeParameter(2,false,false)}};
+    return s_aTemplateMap;
+}
+void OfPieChartDialogController::fillSubTypeList( ValueSet& rSubTypeList, const ChartTypeParameter& /*rParameter*/ )
+{
+    rSubTypeList.Clear();
+
+    rSubTypeList.InsertItem(1, Image(StockImage::Yes, BMP_BAR_OF_PIE));
+    rSubTypeList.InsertItem(2, Image(StockImage::Yes, BMP_PIE_OF_PIE));
+    rSubTypeList.SetItemText( 1, SchResId( STR_BAR_OF_PIE ) );
+    rSubTypeList.SetItemText( 2, SchResId( STR_PIE_OF_PIE ) );
+}
+
+bool OfPieChartDialogController::shouldShow_3DLookControl() const
+{
+    // Maybe a TODO?
+    return false;
+}
+
+void OfPieChartDialogController::adjustParameterToSubType( ChartTypeParameter& rParameter )
+{
+    if(rParameter.eStackMode==GlobalStackMode_STACK_Z)
+        rParameter.eStackMode = GlobalStackMode_NONE;
+}
+
+void OfPieChartDialogController::showExtraControls(weld::Builder* pBuilder)
+{
+    if (!m_xFT_CompositeSize)
+    {
+        m_xFT_CompositeSize = pBuilder->weld_label(u"compositesizeft"_ustr);
+        assert(m_xFT_CompositeSize);
+    }
+    if (!m_xMF_CompositeSize)
+    {
+        m_xMF_CompositeSize = pBuilder->weld_spin_button(u"compositesize"_ustr);
+        assert(m_xMF_CompositeSize);
+
+        m_xMF_CompositeSize->set_increments(1, 10);
+        m_xMF_CompositeSize->set_range(2, 100);
+
+        m_xMF_CompositeSize->connect_value_changed( LINK( this,
+                    OfPieChartDialogController, ChangeCompositeSizeHdl ) );
+        m_xMF_CompositeSize->set_sensitive(true);
+    }
+
+    m_xFT_CompositeSize->show();
+    m_xMF_CompositeSize->show();
+}
+
+void OfPieChartDialogController::hideExtraControls() const
+{
+    if (m_xFT_CompositeSize)
+        m_xFT_CompositeSize->hide();
+    if (m_xMF_CompositeSize)
+        m_xMF_CompositeSize->hide();
+}
+
+void OfPieChartDialogController::fillExtraControls(
+                  const rtl::Reference<::chart::ChartModel>& xChartModel
+                , const uno::Reference< beans::XPropertySet >& xTemplateProps ) const
+{
+    if (!m_xMF_CompositeSize)
+        return;
+
+    rtl::Reference< Diagram > xDiagram = xChartModel->getFirstChartDiagram();
+    if(!xDiagram.is())
+        return;
+
+    sal_Int32 nCompositeSize = 2;
+
+    if(xTemplateProps.is())
+    {
+        try
+        {
+            xTemplateProps->getPropertyValue( u"SplitPos"_ustr ) >>= nCompositeSize;
+        }
+        catch( const uno::Exception & )
+        {
+            DBG_UNHANDLED_EXCEPTION("chart2");
+        }
+    }
+    if( nCompositeSize < 2 )
+        nCompositeSize = 2;
+    m_xMF_CompositeSize->set_value(nCompositeSize);
+
+    // Limit based on number of entries in the series
+    const std::vector< rtl::Reference< DataSeries > > dataSeriesVec = xChartModel->getDataSeries();
+    if (!dataSeriesVec.empty()) {
+        const rtl::Reference<DataSeries>& ds = dataSeriesVec[0];
+        const DataSeries::tDataSequenceContainer data = ds->getDataSequences2();
+        const std::vector< uno::Reference< chart2::data::XLabeledDataSequence > > aValuesSeries(
+            DataSeriesHelper::getAllDataSequencesByRole( data , u"values"_ustr ) );
+
+        assert(!aValuesSeries.empty());
+
+        const uno::Reference< chart2::data::XDataSequence > xSeq( aValuesSeries.front()->getValues() );
+
+        // Allow all but one entry to be aggregated in the composite wedge
+        sal_Int32 nMaxCompositeSize = xSeq->getData().getLength() - 1;
+
+        if( nMaxCompositeSize < 2 )
+            nMaxCompositeSize = 2;
+        m_xMF_CompositeSize->set_max(nMaxCompositeSize);
+    }
+}
+
+void OfPieChartDialogController::setTemplateProperties( const uno::Reference< beans::XPropertySet >& xTemplateProps ) const
+{
+    if( xTemplateProps.is())
+    {
+        sal_Int32 nCompositeSize = m_xMF_CompositeSize->get_value();
+        xTemplateProps->setPropertyValue( u"SplitPos"_ustr , uno::Any(nCompositeSize) );
+    }
+}
+
+IMPL_LINK_NOARG(OfPieChartDialogController, ChangeCompositeSizeHdl, weld::SpinButton&, void)
+{
+    if( m_pChangeListener )
+        m_pChangeListener->stateChanged();
+}
+
+//=========
+// LineChartDialogController
+//=========
 
 LineChartDialogController::LineChartDialogController()
 {
@@ -1125,11 +1345,11 @@ void CombiColumnLineChartDialogController::showExtraControls(weld::Builder* pBui
 {
     if (!m_xFT_NumberOfLines)
     {
-        m_xFT_NumberOfLines = pBuilder->weld_label("nolinesft");
+        m_xFT_NumberOfLines = pBuilder->weld_label(u"nolinesft"_ustr);
     }
     if (!m_xMF_NumberOfLines)
     {
-        m_xMF_NumberOfLines = pBuilder->weld_spin_button("nolines");
+        m_xMF_NumberOfLines = pBuilder->weld_spin_button(u"nolines"_ustr);
 
         m_xMF_NumberOfLines->set_increments(1, 10);
         m_xMF_NumberOfLines->set_range(1, 100);
@@ -1166,7 +1386,7 @@ void CombiColumnLineChartDialogController::fillExtraControls(
     {
         try
         {
-            xTemplateProps->getPropertyValue( "NumberOfLines" ) >>= nNumLines;
+            xTemplateProps->getPropertyValue( u"NumberOfLines"_ustr ) >>= nNumLines;
         }
         catch( const uno::Exception & )
         {
@@ -1177,7 +1397,7 @@ void CombiColumnLineChartDialogController::fillExtraControls(
         nNumLines = 0;
     m_xMF_NumberOfLines->set_value(nNumLines);
 
-    sal_Int32 nMaxLines = ChartModelHelper::getDataSeries( xChartModel ).size() - 1;
+    sal_Int32 nMaxLines = xChartModel->getDataSeries().size() - 1;
     if( nMaxLines < 0 )
         nMaxLines = 0;
     m_xMF_NumberOfLines->set_max(nMaxLines);
@@ -1187,7 +1407,7 @@ void CombiColumnLineChartDialogController::setTemplateProperties( const uno::Ref
     if( xTemplateProps.is() )
     {
         sal_Int32 nNumLines = m_xMF_NumberOfLines->get_value();
-        xTemplateProps->setPropertyValue( "NumberOfLines" , uno::Any(nNumLines) );
+        xTemplateProps->setPropertyValue( u"NumberOfLines"_ustr , uno::Any(nNumLines) );
     }
 }
 

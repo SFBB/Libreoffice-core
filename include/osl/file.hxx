@@ -35,7 +35,6 @@
 #include "rtl/ustring.hxx"
 
 #include "osl/file.h"
-#include "osl/diagnose.h"
 
 namespace rtl { class ByteSequence; }
 
@@ -1240,7 +1239,7 @@ public:
     */
     RC sync() const
     {
-        OSL_PRECOND(_pData, "File::sync(): File not open");
+        SAL_WARN_IF(!_pData, "sal.osl", "File::sync(): File not open");
         return static_cast< RC >(osl_syncFile(_pData));
     }
 

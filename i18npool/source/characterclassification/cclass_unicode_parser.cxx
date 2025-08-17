@@ -23,6 +23,7 @@
 #include <rtl/character.hxx>
 #include <rtl/math.hxx>
 #include <rtl/ustring.hxx>
+#include <sal/log.hxx>
 #include <com/sun/star/i18n/KParseTokens.hpp>
 #include <com/sun/star/i18n/KParseType.hpp>
 #include <com/sun/star/i18n/LocaleData2.hpp>
@@ -441,7 +442,11 @@ void cclass_Unicode::initParserTable( const Locale& rLocale, sal_Int32 startChar
         cDecimalSepAlt = aItem.decimalSeparatorAlternative.toChar();
     }
 
-    if (nContTypes & KParseTokens::GROUP_SEPARATOR_IN_NUMBER)
+    SAL_WARN_IF((nContTypes & KParseTokens::GROUP_SEPARATOR_IN_NUMBER)
+             && (nContTypes & KParseTokens::GROUP_SEPARATOR_IN_NUMBER_3),
+        "i18npool", "only one GROUP_SEPARATOR_IN_NUMBER* should be used");
+    if (nContTypes & KParseTokens::GROUP_SEPARATOR_IN_NUMBER
+        || nContTypes & KParseTokens::GROUP_SEPARATOR_IN_NUMBER_3)
     {
         if ( cGroupSep < nDefCnt )
             pTable[cGroupSep] |= ParserFlags::VALUE;
@@ -651,7 +656,7 @@ ParserFlags cclass_Unicode::getFlagsExtended(sal_uInt32 const c, const cclass_Un
             return ((nTypes & KParseTokens::IGNORE_LEADING_WS) ?
                 ParserFlags::CHAR_DONTCARE : (bStart ? ParserFlags::CHAR_WORD : (ParserFlags::CHAR_DONTCARE | ParserFlags::WORD_SEP | ParserFlags::VALUE_SEP) ));
         case U_OTHER_PUNCTUATION:
-            // fdo#61754 Lets see (if we not at the start) if this is midletter
+            // fdo#61754 Let's see (if we not at the start) if this is midletter
             // punctuation and allow it in a word if it is similarly to
             // U_NON_SPACING_MARK, for example U+00B7 MIDDLE DOT.
             // tdf#123575 for U+30FB KATAKANA MIDDLE DOT property is not
@@ -667,6 +672,26 @@ ParserFlags cclass_Unicode::getFlagsExtended(sal_uInt32 const c, const cclass_Un
                     ParserFlags::WORD : ParserFlags::ILLEGAL;
             }
             break;
+        case U_START_PUNCTUATION:
+            // left angle, double angle and corner brackets
+            if (c != 0x3008 && c != 0x300a && c != 0x300c && c != 0x300e)
+                return ParserFlags::ILLEGAL;
+            return bStart ? ParserFlags::CHAR_WORD : ParserFlags::WORD;
+        case U_END_PUNCTUATION:
+            // right angle, double angle and corner brackets
+            if (c != 0x3009 && c != 0x300b && c != 0x300d && c != 0x300f)
+                return ParserFlags::ILLEGAL;
+            return bStart ? ParserFlags::CHAR_WORD : ParserFlags::WORD;
+        case U_INITIAL_PUNCTUATION:
+            // left single / double quotation marks
+            if (c != 0x2018 && c != 0x201c)
+                return ParserFlags::ILLEGAL;
+            return bStart ? ParserFlags::CHAR_WORD : ParserFlags::WORD;
+        case U_FINAL_PUNCTUATION:
+            // right single / double quotation marks
+            if (c != 0x2019 && c != 0x201d)
+                return ParserFlags::ILLEGAL;
+            return bStart ? ParserFlags::CHAR_WORD : ParserFlags::WORD;
     }
 
     return ParserFlags::ILLEGAL;
@@ -827,13 +852,20 @@ void cclass_Unicode::parseText( ParseResult& r, const OUString& rText, sal_Int32
                 {
                     if (current == cGroupSep)
                     {
-                        // accept only if it is followed by 3 digits
+                        // depending or requested nContTypes, accept only if
+                        // it is followed by 3 digits
                         sal_Int32 tempIndex(index);
                         sal_uInt32 const nextChar2((tempIndex < rText.getLength()) ? rText.iterateCodePoints(&tempIndex) : 0);
                         sal_uInt32 const nextChar3((tempIndex < rText.getLength()) ? rText.iterateCodePoints(&tempIndex) : 0);
-                        if (getFlags(nextChar, eState) & ParserFlags::VALUE_DIGIT
+                        if ((nContTypes & KParseTokens::GROUP_SEPARATOR_IN_NUMBER_3)
+                            && getFlags(nextChar, eState) & ParserFlags::VALUE_DIGIT
                             && getFlags(nextChar2, eState) & ParserFlags::VALUE_DIGIT
                             && getFlags(nextChar3, eState) & ParserFlags::VALUE_DIGIT)
+                        {
+                            nParseTokensType |= KParseTokens::GROUP_SEPARATOR_IN_NUMBER_3;
+                        }
+                        else if ((nContTypes & KParseTokens::GROUP_SEPARATOR_IN_NUMBER_3) == 0
+                            && getFlags(nextChar, eState) & ParserFlags::VALUE_DIGIT)
                         {
                             nParseTokensType |= KParseTokens::GROUP_SEPARATOR_IN_NUMBER;
                         }

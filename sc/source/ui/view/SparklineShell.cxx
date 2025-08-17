@@ -8,17 +8,12 @@
  *
  */
 
-#include <scitems.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/objsh.hxx>
-#include <sfx2/request.hxx>
-#include <svl/whiter.hxx>
 #include <vcl/EnumContext.hxx>
 
-#include <sc.hrc>
 #include <SparklineShell.hxx>
 #include <tabvwsh.hxx>
-#include <docsh.hxx>
 #include <document.hxx>
 
 #define ShellClass_SparklineShell
@@ -28,7 +23,10 @@ namespace sc
 {
 SFX_IMPL_INTERFACE(SparklineShell, SfxShell)
 
-void SparklineShell::InitInterface_Impl() { GetStaticInterface()->RegisterPopupMenu("sparkline"); }
+void SparklineShell::InitInterface_Impl()
+{
+    GetStaticInterface()->RegisterPopupMenu(u"sparkline"_ustr);
+}
 
 SparklineShell::SparklineShell(ScTabViewShell* pViewShell)
     : SfxShell(pViewShell)
@@ -36,13 +34,13 @@ SparklineShell::SparklineShell(ScTabViewShell* pViewShell)
 {
     SetPool(&m_pViewShell->GetPool());
     ScViewData& rViewData = m_pViewShell->GetViewData();
-    SfxUndoManager* pUndoManager = rViewData.GetSfxDocShell()->GetUndoManager();
+    SfxUndoManager* pUndoManager = rViewData.GetSfxDocShell().GetUndoManager();
     SetUndoManager(pUndoManager);
     if (!rViewData.GetDocument().IsUndoEnabled())
     {
         pUndoManager->SetMaxUndoActionCount(0);
     }
-    SetName("Sparkline");
+    SetName(u"Sparkline"_ustr);
     SfxShell::SetContextName(
         vcl::EnumContext::GetContextName(vcl::EnumContext::Context::Sparkline));
 }

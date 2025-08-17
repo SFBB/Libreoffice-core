@@ -60,12 +60,12 @@ void UnoApiTest::tearDown()
 
 OUString UnoApiTest::createFileURL(std::u16string_view aFileBase)
 {
-    return m_directories.getSrcRootURL() + m_aBaseString + "/" + aFileBase;
+    return m_directories.getURLFromSrc(m_aBaseString, aFileBase);
 }
 
 OUString UnoApiTest::createFilePath(std::u16string_view aFileBase)
 {
-    return m_directories.getSrcRootPath() + "/" + m_aBaseString + "/" + aFileBase;
+    return m_directories.getPathFromSrc(m_aBaseString, aFileBase);
 }
 
 void UnoApiTest::setTestInteractionHandler(const char* pPassword,
@@ -75,12 +75,11 @@ void UnoApiTest::setTestInteractionHandler(const char* pPassword,
     auto& rPropertyValue = rFilterOptions.emplace_back();
     xInteractionHandler
         = rtl::Reference<TestInteractionHandler>(new TestInteractionHandler(sPassword));
-    css::uno::Reference<task::XInteractionHandler2> const xInteraction(xInteractionHandler);
     rPropertyValue.Name = "InteractionHandler";
-    rPropertyValue.Value <<= xInteraction;
+    rPropertyValue.Value <<= css::uno::Reference<task::XInteractionHandler2>(xInteractionHandler);
 }
 
-void UnoApiTest::load(OUString const& rURL, const char* pPassword)
+void UnoApiTest::loadFromURL(OUString const& rURL, const char* pPassword)
 {
     std::vector<beans::PropertyValue> aFilterOptions;
 
@@ -124,12 +123,13 @@ void UnoApiTest::loadWithParams(OUString const& rURL,
     }
 
     mxComponent = loadFromDesktop(rURL, OUString(), rParams);
+    CPPUNIT_ASSERT(mxComponent);
 }
 
-OUString UnoApiTest::loadFromURL(std::u16string_view aFileBase, const char* pPassword)
+OUString UnoApiTest::loadFromFile(std::u16string_view aFileBase, const char* pPassword)
 {
     OUString aFileName = createFileURL(aFileBase);
-    load(aFileName, pPassword);
+    loadFromURL(aFileName, pPassword);
     return aFileName;
 }
 
@@ -150,23 +150,23 @@ uno::Any UnoApiTest::executeMacro(const OUString& rScriptURL,
 void UnoApiTest::save(const OUString& rFilter, const char* pPassword)
 {
     utl::MediaDescriptor aMediaDescriptor;
-    aMediaDescriptor["FilterName"] <<= rFilter;
+    aMediaDescriptor[u"FilterName"_ustr] <<= rFilter;
     if (!maFilterOptions.isEmpty())
-        aMediaDescriptor["FilterOptions"] <<= maFilterOptions;
+        aMediaDescriptor[u"FilterOptions"_ustr] <<= maFilterOptions;
 
     if (pPassword)
     {
         if (rFilter != "Office Open XML Text" && rFilter != "Calc Office Open XML"
             && rFilter != "Impress Office Open XML")
         {
-            aMediaDescriptor["Password"] <<= OUString::createFromAscii(pPassword);
+            aMediaDescriptor[u"Password"_ustr] <<= OUString::createFromAscii(pPassword);
         }
         else
         {
             OUString sPassword = OUString::createFromAscii(pPassword);
             uno::Sequence<beans::NamedValue> aEncryptionData{
-                { "CryptoType", uno::Any(OUString("Standard")) },
-                { "OOXPassword", uno::Any(sPassword) }
+                { u"CryptoType"_ustr, uno::Any(u"Standard"_ustr) },
+                { u"OOXPassword"_ustr, uno::Any(sPassword) }
             };
             aMediaDescriptor[utl::MediaDescriptor::PROP_ENCRYPTIONDATA] <<= aEncryptionData;
 
@@ -179,31 +179,12 @@ void UnoApiTest::save(const OUString& rFilter, const char* pPassword)
 
     if (!mbSkipValidation)
     {
-        if (rFilter == "Calc Office Open XML")
-            validate(maTempFile.GetFileName(), test::OOXML);
-        /*
-        // too many validation errors right now
-        else if (rFilter == "Office Open XML Text")
-            validate(maTempFile.GetFileName(), test::OOXML);
-        */
-        else if (rFilter == "Impress Office Open XML")
-            validate(maTempFile.GetFileName(), test::OOXML);
-        else if (rFilter == "writer8")
-            validate(maTempFile.GetFileName(), test::ODF);
-        else if (rFilter == "calc8")
-            validate(maTempFile.GetFileName(), test::ODF);
-        else if (rFilter == "impress8")
-            validate(maTempFile.GetFileName(), test::ODF);
-        else if (rFilter == "draw8")
-            validate(maTempFile.GetFileName(), test::ODF);
-        else if (rFilter == "OpenDocument Text Flat XML")
-            validate(maTempFile.GetFileName(), test::ODF);
-        else if (rFilter == "MS Word 97")
-            validate(maTempFile.GetFileName(), test::MSBINARY);
-        else if (rFilter == "MS Excel 97")
-            validate(maTempFile.GetFileName(), test::MSBINARY);
-        else if (rFilter == "MS PowerPoint 97")
-            validate(maTempFile.GetFileName(), test::MSBINARY);
+        if (rFilter == "Office Open XML Text")
+        {
+            // do nothing: too many validation errors right now
+        }
+        else
+            validate(maTempFile.GetFileName(), rFilter);
     }
 }
 
@@ -216,8 +197,7 @@ void UnoApiTest::saveWithParams(const uno::Sequence<beans::PropertyValue>& rPara
 void UnoApiTest::saveAndReload(const OUString& rFilter, const char* pPassword)
 {
     save(rFilter, pPassword);
-
-    load(maTempFile.GetURL(), pPassword);
+    loadFromURL(maTempFile.GetURL(), pPassword);
 }
 
 std::unique_ptr<vcl::pdf::PDFiumDocument> UnoApiTest::parsePDFExport(const OString& rPassword)
@@ -231,7 +211,11 @@ std::unique_ptr<vcl::pdf::PDFiumDocument> UnoApiTest::parsePDFExport(const OStri
     }
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
         = pPDFium->openDocument(maMemory.GetData(), maMemory.GetSize(), rPassword);
-    CPPUNIT_ASSERT(pPdfDocument);
+    if (!pPdfDocument)
+    {
+        OString aError = OUStringToOString(pPDFium->getLastError(), RTL_TEXTENCODING_UTF8);
+        CPPUNIT_ASSERT_MESSAGE(aError.getStr(), pPdfDocument);
+    }
     return pPdfDocument;
 }
 

@@ -19,8 +19,7 @@
 
 #include <sal/config.h>
 #include <sal/log.hxx>
-#include <xmlsec-wrapper.h>
-#include <comphelper/servicehelper.hxx>
+
 #include <cppuhelper/supportsservice.hxx>
 #include <gpg/xmlsignature_gpgimpl.hxx>
 
@@ -33,7 +32,6 @@
 #pragma clang diagnostic pop
 #endif
 #include <context.h>
-#include <key.h>
 #include <data.h>
 #include <signingresult.h>
 #include <importresult.h>
@@ -41,6 +39,10 @@
 #include <xmlelementwrapper_xmlsecimpl.hxx>
 #include <xmlsec/xmlstreamio.hxx>
 #include <xmlsec/errorcallback.hxx>
+#include <xmlsec/xmltree.h>
+#include <xmlsec/base64.h>
+#include <xmlsec/xmldsig.h>
+#include <xmlsec/xmlsec.h>
 
 #include "SecurityEnvironment.hxx"
 
@@ -164,10 +166,10 @@ SAL_CALL XMLSignature_GpgImpl::generate(
     // TODO assert that...
     nodeset = xmlSecNodeSetGetChildren(pNode->doc, cur, 1, 0);
     if(nodeset == nullptr)
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
     if( xmlSecTransformCtxXmlExecute(&(pDsigCtx->transformCtx), nodeset) < 0 )
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
     // now extract the keyid from PGPData
     // walk xml tree to PGPData node - go to children, first is
@@ -180,12 +182,12 @@ SAL_CALL XMLSignature_GpgImpl::generate(
     cur = xmlSecGetNextElementNode(cur->children);
     // check that this is now PGPData
     if(!xmlSecCheckNodeName(cur, xmlSecNodePGPData, xmlSecDSigNs))
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
     // check that this is now PGPKeyID
     cur = xmlSecGetNextElementNode(cur->children);
     static const xmlChar xmlSecNodePGPKeyID[] = "PGPKeyID";
     if(!xmlSecCheckNodeName(cur, xmlSecNodePGPKeyID, xmlSecDSigNs))
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
     GpgME::Context& rCtx=pSecEnv->getGpgContext();
     rCtx.setKeyListMode(GPGME_KEYLIST_MODE_LOCAL);
@@ -194,11 +196,13 @@ SAL_CALL XMLSignature_GpgImpl::generate(
     xmlSecSize nWritten;
     int nRet = xmlSecBase64Decode_ex(pKey, reinterpret_cast<xmlSecByte*>(pKey), xmlStrlen(pKey), &nWritten);
     if(nRet < 0)
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
+
+    rCtx.clearSigningKeys(); // tdf#108828 Clear keys from previous unsuccessful sessions
     if( rCtx.addSigningKey(
             rCtx.key(
                 reinterpret_cast<char*>(pKey), err, true)) )
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
     xmlFree(pKey);
 
@@ -222,21 +226,21 @@ SAL_CALL XMLSignature_GpgImpl::generate(
         len += curr;
 
     if(sign_res.error() || !len)
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
     // write signed data to xml
     xmlChar* signature = static_cast<xmlChar*>(xmlMalloc(len + 1));
     if(signature == nullptr)
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
     result = data_out.seek(0,SEEK_SET);
     assert(result == 0);
     if( data_out.read(signature, len) != len )
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
     // conversion to base64
     xmlChar* signatureEncoded=nullptr;
     if( !(signatureEncoded=xmlSecBase64Encode(reinterpret_cast<xmlSecByte*>(signature), len, 79)) )
-        throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
     xmlFree(signature);
 
     // walk xml tree to sign value node - go to children, first is
@@ -338,11 +342,11 @@ SAL_CALL XMLSignature_GpgImpl::validate(
         // TODO assert that...
         nodeset = xmlSecNodeSetGetChildren(pNode->doc, cur, 1, 0);
         if(nodeset == nullptr)
-            throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+            throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
         // TODO assert we really have the SignatureInfo here?
         if( xmlSecTransformCtxXmlExecute(&(pDsigCtx->transformCtx), nodeset) < 0 )
-            throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+            throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
         // Validate the template via gpgme
         GpgME::Context& rCtx=pSecEnv->getGpgContext();
@@ -359,12 +363,12 @@ SAL_CALL XMLSignature_GpgImpl::validate(
         cur = xmlSecGetNextElementNode(cur->next);
 
         if(!xmlSecCheckNodeName(cur, xmlSecNodeSignatureValue, xmlSecDSigNs))
-            throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+            throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
         xmlChar* pSignatureValue=xmlNodeGetContent(cur);
         xmlSecSize nSigSize;
         int nRet = xmlSecBase64Decode_ex(pSignatureValue, reinterpret_cast<xmlSecByte*>(pSignatureValue), xmlStrlen(pSignatureValue), &nSigSize);
         if( nRet < 0)
-            throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+            throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
         GpgME::Data data_signature(
             reinterpret_cast<char*>(pSignatureValue),
@@ -394,7 +398,7 @@ SAL_CALL XMLSignature_GpgImpl::validate(
             cur = xmlSecGetNextElementNode(cur->children);
             // check that this is now PGPData
             if(!xmlSecCheckNodeName(cur, xmlSecNodePGPData, xmlSecDSigNs))
-                throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+                throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
             // check that this is now PGPKeyPacket
             cur = xmlSecGetNextElementNode(cur->children);
             static const xmlChar xmlSecNodePGPKeyPacket[] = "PGPKeyPacket";
@@ -417,7 +421,7 @@ SAL_CALL XMLSignature_GpgImpl::validate(
             xmlSecSize nKeyLen;
             nRet = xmlSecBase64Decode_ex(pKeyPacket, reinterpret_cast<xmlSecByte*>(pKeyPacket), xmlStrlen(pKeyPacket), &nKeyLen);
             if( nRet < 0)
-                throw RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+                throw RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
             GpgME::Data data_key(
                 reinterpret_cast<char*>(pKeyPacket),
@@ -516,12 +520,12 @@ Sequence< OUString > SAL_CALL XMLSignature_GpgImpl::getSupportedServiceNames() {
 
 //Helper for XServiceInfo
 Sequence< OUString > XMLSignature_GpgImpl::impl_getSupportedServiceNames() {
-    Sequence<OUString> seqServiceNames { "com.sun.star.xml.crypto.XMLSignature" };
+    Sequence<OUString> seqServiceNames { u"com.sun.star.xml.crypto.XMLSignature"_ustr };
     return seqServiceNames ;
 }
 
 OUString XMLSignature_GpgImpl::impl_getImplementationName() {
-    return "com.sun.star.xml.security.bridge.xmlsec.XMLSignature_GpgImpl" ;
+    return u"com.sun.star.xml.security.bridge.xmlsec.XMLSignature_GpgImpl"_ustr ;
 }
 
 //Helper for registry

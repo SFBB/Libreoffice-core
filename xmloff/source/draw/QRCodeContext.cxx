@@ -10,17 +10,12 @@
 #include "QRCodeContext.hxx"
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/frame/XStorable.hpp>
-#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/drawing/BarCode.hpp>
 #include <com/sun/star/drawing/BarCodeErrorCorrection.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlnamespace.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <sax/tools/converter.hxx>
 
 #include <rtl/ustring.hxx>
@@ -29,10 +24,6 @@ using namespace css;
 using namespace css::xml::sax;
 using namespace css::uno;
 using namespace css::drawing;
-using namespace css::embed;
-using namespace css::frame;
-using namespace css::io;
-using namespace css::graphic;
 using namespace xmloff::token;
 
 QRCodeContext::QRCodeContext(SvXMLImport& rImport, sal_Int32 /*nElement*/,
@@ -85,7 +76,7 @@ QRCodeContext::QRCodeContext(SvXMLImport& rImport, sal_Int32 /*nElement*/,
                 XMLOFF_WARN_UNKNOWN("xmloff", aIter);
         }
     }
-    xPropSet->setPropertyValue("BarCodeProperties", Any(aBarCode));
+    xPropSet->setPropertyValue(u"BarCodeProperties"_ustr, Any(aBarCode));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

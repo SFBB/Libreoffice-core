@@ -132,11 +132,22 @@ DrawViewShell::DrawViewShell( ViewShellBase& rViewShellBase, vcl::Window* pParen
     doShow();
 
     ConfigureAppBackgroundColor();
-    SD_MOD()->GetColorConfig().AddListener(this);
-    maViewOptions.mnDocBackgroundColor = SD_MOD()->GetColorConfig().GetColorValue(svtools::DOCCOLOR).nColor;
+    SdModule* mod = SdModule::get();
+    mod->GetColorConfig().AddListener(this);
 
     if (comphelper::LibreOfficeKit::isActive())
     {
+        // get the full page size in pixels
+        mpContentWindow->EnableMapMode();
+        Size aSize(mpContentWindow->LogicToPixel(GetView()->GetSdrPageView()->GetPage()->GetSize()));
+        // Disable map mode, so that it's possible to send mouse event
+        // coordinates in logic units
+        mpContentWindow->EnableMapMode(false);
+
+        // arrange UI elements again with new view size
+        GetParentWindow()->SetSizePixel(aSize);
+        Resize();
+
         SdXImpressDocument* pModel = comphelper::getFromUnoTunnel<SdXImpressDocument>(rViewShellBase.GetCurrentDocument());
         SfxLokHelper::notifyViewRenderState(&rViewShellBase, pModel);
     }
@@ -149,7 +160,9 @@ DrawViewShell::~DrawViewShell()
 
 void DrawViewShell::ImplDestroy()
 {
-    SD_MOD()->GetColorConfig().RemoveListener(this);
+    destroyXSlideShowInstance();
+
+    SdModule::get()->GetColorConfig().RemoveListener(this);
 
     mpSelectionChangeHandler->Disconnect();
 
@@ -332,11 +345,11 @@ void DrawViewShell::Construct(DrawDocShell* pDocSh, PageKind eInitialPageKind)
 
     mbIsRulerDrag = false;
 
-    SetName ("DrawViewShell");
+    SetName (u"DrawViewShell"_ustr);
 
     mnLockCount = 0;
 
-    uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const uno::Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
 
     try
     {
@@ -371,7 +384,8 @@ void DrawViewShell::Shutdown()
 {
     ViewShell::Shutdown();
 
-    if(SlideShow::IsRunning( GetViewShellBase() ) )
+    if(SlideShow::IsRunning( GetViewShellBase() )
+        && !SlideShow::IsInteractiveSlideshow( &GetViewShellBase() )) // IASS
     {
         // Turn off effects.
         GetDrawView()->SetAnimationMode(SdrAnimationMode::Disable);
@@ -551,7 +565,8 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
        or page) with the help of the ZoomItems !!!   */
     if( SfxItemState::DEFAULT == rSet.GetItemState( SID_ATTR_ZOOM ) )
     {
-        if (GetDocSh()->IsUIActive() || SlideShow::IsRunning(GetViewShellBase())
+        if (GetDocSh()->IsUIActive()
+            || (SlideShow::IsRunning(GetViewShellBase()) && !SlideShow::IsInteractiveSlideshow(&GetViewShellBase())) // IASS
             || !GetActiveWindow())
         {
             rSet.DisableItem( SID_ATTR_ZOOM );
@@ -582,7 +597,9 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
     if( SfxItemState::DEFAULT == rSet.GetItemState( SID_ATTR_ZOOMSLIDER ) )
     {
         rtl::Reference< sd::SlideShow > xSlideshow( SlideShow::GetSlideShow( GetDoc() ) );
-        if (GetDocSh()->IsUIActive() || (xSlideshow.is() && xSlideshow->isRunning()) || !GetActiveWindow() )
+        if (GetDocSh()->IsUIActive()
+            || (xSlideshow.is() && xSlideshow->isRunning() && !xSlideshow->IsInteractiveSlideshow()) // IASS
+            || !GetActiveWindow() )
         {
             rSet.DisableItem( SID_ATTR_ZOOMSLIDER );
         }
@@ -646,7 +663,8 @@ void DrawViewShell::GetStatusBarState(SfxItemSet& rSet)
         }
         else
         {
-            if ( mpDrawView->AreObjectsMarked() )
+            const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
+            if ( rMarkList.GetMarkCount() != 0 )
             {
                 ::tools::Rectangle aRect = mpDrawView->GetAllMarkedRect();
                 pPageView->LogicToPagePos(aRect);
@@ -802,15 +820,16 @@ OUString const & DrawViewShell::GetSidebarContextName() const
                 eViewType = svx::sidebar::SelectionAnalyzer::ViewType::Standard;
             break;
     }
+    const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
     return EnumContext::GetContextName(
         svx::sidebar::SelectionAnalyzer::GetContextForSelection_SD(
-            mpDrawView->GetMarkedObjectList(),
+            rMarkList,
             eViewType));
 }
 
 void DrawViewShell::ExecGoToNextPage (SfxRequest& rReq)
 {
-    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
+    SetCurrentFunction( FuNavigation::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
     Cancel();
 }
 
@@ -825,7 +844,7 @@ void DrawViewShell::GetStateGoToNextPage (SfxItemSet& rSet)
 
 void DrawViewShell::ExecGoToPreviousPage (SfxRequest& rReq)
 {
-    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
+    SetCurrentFunction( FuNavigation::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
     Cancel();
 }
 
@@ -840,7 +859,7 @@ void DrawViewShell::GetStateGoToPreviousPage (SfxItemSet& rSet)
 
 void DrawViewShell::ExecGoToFirstPage (SfxRequest& rReq)
 {
-    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
+    SetCurrentFunction( FuNavigation::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
     Cancel();
 }
 
@@ -854,7 +873,7 @@ void DrawViewShell::GetStateGoToFirstPage (SfxItemSet& rSet)
 
 void DrawViewShell::ExecGoToLastPage (SfxRequest& rReq)
 {
-    SetCurrentFunction( FuNavigation::Create( this, GetActiveWindow(), mpDrawView.get(), GetDoc(), rReq) );
+    SetCurrentFunction( FuNavigation::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
     Cancel();
 }
 
@@ -867,6 +886,17 @@ void DrawViewShell::GetStateGoToLastPage (SfxItemSet& rSet)
         rSet.DisableItem( SID_GO_TO_LAST_PAGE );
 }
 
+void DrawViewShell::ExecGoToPage (SfxRequest& rReq)
+{
+    SetCurrentFunction( FuNavigation::Create( *this, GetActiveWindow(), mpDrawView.get(), *GetDoc(), rReq) );
+    Cancel();
+}
+
+void DrawViewShell::GetStateGoToPage (SfxItemSet& rSet)
+{
+    if (meEditMode == EditMode::MasterPage)
+        rSet.DisableItem( SID_GO_TO_PAGE );
+}
 
 } // end of namespace sd
 

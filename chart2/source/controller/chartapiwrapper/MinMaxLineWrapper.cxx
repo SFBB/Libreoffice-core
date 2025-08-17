@@ -20,7 +20,6 @@
 #include "MinMaxLineWrapper.hxx"
 #include "Chart2ModelContact.hxx"
 #include <ChartType.hxx>
-#include <DiagramHelper.hxx>
 #include <servicenames_charttypes.hxx>
 #include <cppuhelper/propshlp.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -33,7 +32,6 @@
 #include <comphelper/diagnose_ex.hxx>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 
 using ::com::sun::star::beans::Property;
 using ::com::sun::star::uno::Reference;
@@ -80,7 +78,7 @@ namespace chart::wrapper
 
 MinMaxLineWrapper::MinMaxLineWrapper(std::shared_ptr<Chart2ModelContact> spChart2ModelContact)
         : m_spChart2ModelContact(std::move( spChart2ModelContact ))
-        , m_aWrappedLineJointProperty( "LineJoint", uno::Any( drawing::LineJoint_NONE ))
+        , m_aWrappedLineJointProperty( u"LineJoint"_ustr, uno::Any( drawing::LineJoint_NONE ))
 {
 }
 
@@ -119,7 +117,7 @@ uno::Reference< beans::XPropertySetInfo > SAL_CALL MinMaxLineWrapper::getPropert
 void SAL_CALL MinMaxLineWrapper::setPropertyValue( const OUString& rPropertyName, const uno::Any& rValue )
 {
     rtl::Reference< ::chart::Diagram > xDiagram( m_spChart2ModelContact->getDiagram() );
-    const std::vector< rtl::Reference< ChartType > > & aTypes = xDiagram->getChartTypes();
+    const std::vector< rtl::Reference< ChartType > > aTypes = xDiagram->getChartTypes();
     for( rtl::Reference< ChartType > const & xType : aTypes )
     {
         if( xType->getChartType() == CHART2_SERVICE_NAME_CHARTTYPE_CANDLESTICK )
@@ -130,9 +128,9 @@ void SAL_CALL MinMaxLineWrapper::setPropertyValue( const OUString& rPropertyName
                 if(aSeriesSeq[0].is())
                 {
                     if( rPropertyName == "LineColor" )
-                        aSeriesSeq[0]->setPropertyValue( "Color", rValue );
+                        aSeriesSeq[0]->setPropertyValue( u"Color"_ustr, rValue );
                     else if( rPropertyName == "LineTransparence" )
-                        aSeriesSeq[0]->setPropertyValue( "Transparency", rValue );
+                        aSeriesSeq[0]->setPropertyValue( u"Transparency"_ustr, rValue );
                     else if( rPropertyName == m_aWrappedLineJointProperty.getOuterName() )
                         m_aWrappedLineJointProperty.setPropertyValue( rValue, aSeriesSeq[0] );
                     else
@@ -166,9 +164,9 @@ uno::Any SAL_CALL MinMaxLineWrapper::getPropertyValue( const OUString& rProperty
     if(xPropSet.is())
     {
         if( rPropertyName == "LineColor" )
-            aRet = xPropSet->getPropertyValue( "Color" );
+            aRet = xPropSet->getPropertyValue( u"Color"_ustr );
         else if( rPropertyName == "LineTransparence" )
-            aRet = xPropSet->getPropertyValue( "Transparency" );
+            aRet = xPropSet->getPropertyValue( u"Transparency"_ustr );
         else if( rPropertyName == m_aWrappedLineJointProperty.getOuterName() )
             aRet = m_aWrappedLineJointProperty.getPropertyValue( xPropSet );
         else
@@ -202,7 +200,7 @@ void SAL_CALL MinMaxLineWrapper::setPropertyValues( const uno::Sequence< OUStrin
     sal_Int32 nMinCount = std::min( rValueSeq.getLength(), rNameSeq.getLength() );
     for(sal_Int32 nN=0; nN<nMinCount; nN++)
     {
-        OUString aPropertyName( rNameSeq[nN] );
+        const OUString& aPropertyName( rNameSeq[nN] );
         try
         {
             setPropertyValue( aPropertyName, rValueSeq[nN] );
@@ -223,7 +221,7 @@ uno::Sequence< uno::Any > SAL_CALL MinMaxLineWrapper::getPropertyValues( const u
         auto pRetSeq = aRetSeq.getArray();
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
-            OUString aPropertyName( rNameSeq[nN] );
+            const OUString& aPropertyName( rNameSeq[nN] );
             pRetSeq[nN] = getPropertyValue( aPropertyName );
         }
     }
@@ -270,7 +268,7 @@ uno::Sequence< beans::PropertyState > SAL_CALL MinMaxLineWrapper::getPropertySta
         auto pRetSeq = aRetSeq.getArray();
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
-            OUString aPropertyName( rNameSeq[nN] );
+            const OUString& aPropertyName( rNameSeq[nN] );
             pRetSeq[nN] = getPropertyState( aPropertyName );
         }
     }
@@ -321,7 +319,7 @@ uno::Sequence< uno::Any > SAL_CALL MinMaxLineWrapper::getPropertyDefaults( const
         auto pRetSeq = aRetSeq.getArray();
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
-            OUString aPropertyName( rNameSeq[nN] );
+            const OUString& aPropertyName( rNameSeq[nN] );
             pRetSeq[nN] = getPropertyDefault( aPropertyName );
         }
     }
@@ -330,7 +328,7 @@ uno::Sequence< uno::Any > SAL_CALL MinMaxLineWrapper::getPropertyDefaults( const
 
 OUString SAL_CALL MinMaxLineWrapper::getImplementationName()
 {
-    return "com.sun.star.comp.chart.ChartLine";
+    return u"com.sun.star.comp.chart.ChartLine"_ustr;
 }
 
 sal_Bool SAL_CALL MinMaxLineWrapper::supportsService( const OUString& rServiceName )
@@ -341,9 +339,9 @@ sal_Bool SAL_CALL MinMaxLineWrapper::supportsService( const OUString& rServiceNa
 css::uno::Sequence< OUString > SAL_CALL MinMaxLineWrapper::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.chart.ChartLine",
-        "com.sun.star.xml.UserDefinedAttributesSupplier",
-        "com.sun.star.drawing.LineProperties"
+        u"com.sun.star.chart.ChartLine"_ustr,
+        u"com.sun.star.xml.UserDefinedAttributesSupplier"_ustr,
+        u"com.sun.star.drawing.LineProperties"_ustr
     };
 }
 

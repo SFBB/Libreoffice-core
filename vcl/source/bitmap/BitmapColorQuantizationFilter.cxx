@@ -10,36 +10,28 @@
 
 #include <sal/config.h>
 
-#include <vcl/bitmap.hxx>
-#include <vcl/bitmapex.hxx>
-#include <vcl/BitmapColorQuantizationFilter.hxx>
+#include <vcl/bitmap/BitmapColorQuantizationFilter.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
 
 #include <algorithm>
 #include <cstdlib>
 
-BitmapEx BitmapColorQuantizationFilter::execute(BitmapEx const& aBitmapEx) const
+Bitmap BitmapColorQuantizationFilter::execute(Bitmap const& rBitmap) const
 {
-    Bitmap aBitmap = aBitmapEx.GetBitmap();
+    Bitmap aBitmap = rBitmap;
 
     if (vcl::numberOfColors(aBitmap.getPixelFormat()) <= sal_Int64(mnNewColorCount))
-        return BitmapEx(aBitmap);
+        return aBitmap;
 
     BitmapScopedReadAccess pRAcc(aBitmap);
     if (!pRAcc)
-        return BitmapEx();
-
-    auto const cappedNewColorCount = std::min(mnNewColorCount, sal_uInt16(256));
+        return Bitmap();
 
     const sal_uInt32 nValidBits = 4;
-    const sal_uInt32 nRightShiftBits = 8 - nValidBits;
-    const sal_uInt32 nLeftShiftBits1 = nValidBits;
-    const sal_uInt32 nLeftShiftBits2 = nValidBits << 1;
     const sal_uInt32 nColorsPerComponent = 1 << nValidBits;
     const sal_uInt32 nColorOffset = 256 / nColorsPerComponent;
     const sal_uInt32 nTotalColors = nColorsPerComponent * nColorsPerComponent * nColorsPerComponent;
-    const sal_Int32 nWidth = pRAcc->Width();
-    const sal_Int32 nHeight = pRAcc->Height();
+
     std::unique_ptr<PopularColorCount[]> pCountTable(new PopularColorCount[nTotalColors]);
 
     memset(pCountTable.get(), 0, nTotalColors * sizeof(PopularColorCount));
@@ -55,6 +47,13 @@ BitmapEx BitmapColorQuantizationFilter::execute(BitmapEx const& aBitmapEx) const
             }
         }
     }
+
+    const sal_uInt32 nRightShiftBits = 8 - nValidBits;
+    const sal_uInt32 nLeftShiftBits1 = nValidBits;
+    const sal_uInt32 nLeftShiftBits2 = nValidBits << 1;
+
+    const sal_Int32 nWidth = pRAcc->Width();
+    const sal_Int32 nHeight = pRAcc->Height();
 
     if (pRAcc->HasPalette())
     {
@@ -92,6 +91,8 @@ BitmapEx BitmapColorQuantizationFilter::execute(BitmapEx const& aBitmapEx) const
         }
     }
 
+    auto const cappedNewColorCount = std::min(mnNewColorCount, sal_uInt16(256));
+
     BitmapPalette aNewPal(cappedNewColorCount);
 
     std::qsort(pCountTable.get(), nTotalColors, sizeof(PopularColorCount),
@@ -123,7 +124,7 @@ BitmapEx BitmapColorQuantizationFilter::execute(BitmapEx const& aBitmapEx) const
     Bitmap aNewBmp(aBitmap.GetSizePixel(), vcl::PixelFormat::N8_BPP, &aNewPal);
     BitmapScopedWriteAccess pWAcc(aNewBmp);
     if (!pWAcc)
-        return BitmapEx();
+        return Bitmap();
 
     BitmapColor aDstCol(sal_uInt8(0));
     std::unique_ptr<sal_uInt8[]> pIndexMap(new sal_uInt8[nTotalColors]);
@@ -189,12 +190,12 @@ BitmapEx BitmapColorQuantizationFilter::execute(BitmapEx const& aBitmapEx) const
     const MapMode aMap(aBitmap.GetPrefMapMode());
     const Size aSize(aBitmap.GetPrefSize());
 
-    aBitmap = aNewBmp;
+    aBitmap = std::move(aNewBmp);
 
     aBitmap.SetPrefMapMode(aMap);
     aBitmap.SetPrefSize(aSize);
 
-    return BitmapEx(aBitmap);
+    return aBitmap;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

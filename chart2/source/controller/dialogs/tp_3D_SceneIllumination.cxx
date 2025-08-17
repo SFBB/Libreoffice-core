@@ -26,11 +26,10 @@
 #include <svx/float3d.hxx>
 #include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
-#include <svtools/colrdlg.hxx>
 #include <svx/svx3ditems.hxx>
 #include <svx/svddef.hxx>
 #include <utility>
-#include <svx/obj3d.hxx>
+#include <vcl/ColorDialog.hxx>
 #include <vcl/svapp.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
@@ -158,7 +157,7 @@ namespace
         Color nResult;
         try
         {
-            xSceneProperties->getPropertyValue("D3DSceneAmbientColor") >>= nResult;
+            xSceneProperties->getPropertyValue(u"D3DSceneAmbientColor"_ustr) >>= nResult;
         }
         catch( const uno::Exception & )
         {
@@ -173,7 +172,7 @@ namespace
     {
         try
         {
-            xSceneProperties->setPropertyValue("D3DSceneAmbientColor",
+            xSceneProperties->setPropertyValue(u"D3DSceneAmbientColor"_ustr,
                                                uno::Any( rColor ));
         }
         catch( const uno::Exception & )
@@ -193,25 +192,25 @@ ThreeD_SceneIllumination_TabPage::ThreeD_SceneIllumination_TabPage(weld::Contain
     , m_aModelChangeListener( LINK( this, ThreeD_SceneIllumination_TabPage, fillControlsFromModel ) )
     , m_xChartModel( xChartModel )
     , m_pTopLevel(pTopLevel)
-    , m_xBuilder(Application::CreateBuilder(pParent, "modules/schart/ui/tp_3D_SceneIllumination.ui"))
-    , m_xContainer(m_xBuilder->weld_container("tp_3D_SceneIllumination"))
-    , m_aBtn_Light1(m_xBuilder->weld_toggle_button("BTN_LIGHT_1"))
-    , m_aBtn_Light2(m_xBuilder->weld_toggle_button("BTN_LIGHT_2"))
-    , m_aBtn_Light3(m_xBuilder->weld_toggle_button("BTN_LIGHT_3"))
-    , m_aBtn_Light4(m_xBuilder->weld_toggle_button("BTN_LIGHT_4"))
-    , m_aBtn_Light5(m_xBuilder->weld_toggle_button("BTN_LIGHT_5"))
-    , m_aBtn_Light6(m_xBuilder->weld_toggle_button("BTN_LIGHT_6"))
-    , m_aBtn_Light7(m_xBuilder->weld_toggle_button("BTN_LIGHT_7"))
-    , m_aBtn_Light8(m_xBuilder->weld_toggle_button("BTN_LIGHT_8"))
-    , m_xLB_LightSource(new ColorListBox(m_xBuilder->weld_menu_button("LB_LIGHTSOURCE"), [this]{ return m_pTopLevel; }))
-    , m_xBtn_LightSource_Color(m_xBuilder->weld_button("BTN_LIGHTSOURCE_COLOR"))
-    , m_xLB_AmbientLight(new ColorListBox(m_xBuilder->weld_menu_button("LB_AMBIENTLIGHT"), [this]{ return m_pTopLevel; }))
-    , m_xBtn_AmbientLight_Color(m_xBuilder->weld_button("BTN_AMBIENT_COLOR"))
-    , m_xHoriScale(m_xBuilder->weld_scale("hori"))
-    , m_xVertScale(m_xBuilder->weld_scale("vert"))
-    , m_xBtn_Corner(m_xBuilder->weld_button("corner"))
+    , m_xBuilder(Application::CreateBuilder(pParent, u"modules/schart/ui/tp_3D_SceneIllumination.ui"_ustr))
+    , m_xContainer(m_xBuilder->weld_container(u"tp_3D_SceneIllumination"_ustr))
+    , m_aBtn_Light1(m_xBuilder->weld_toggle_button(u"BTN_LIGHT_1"_ustr))
+    , m_aBtn_Light2(m_xBuilder->weld_toggle_button(u"BTN_LIGHT_2"_ustr))
+    , m_aBtn_Light3(m_xBuilder->weld_toggle_button(u"BTN_LIGHT_3"_ustr))
+    , m_aBtn_Light4(m_xBuilder->weld_toggle_button(u"BTN_LIGHT_4"_ustr))
+    , m_aBtn_Light5(m_xBuilder->weld_toggle_button(u"BTN_LIGHT_5"_ustr))
+    , m_aBtn_Light6(m_xBuilder->weld_toggle_button(u"BTN_LIGHT_6"_ustr))
+    , m_aBtn_Light7(m_xBuilder->weld_toggle_button(u"BTN_LIGHT_7"_ustr))
+    , m_aBtn_Light8(m_xBuilder->weld_toggle_button(u"BTN_LIGHT_8"_ustr))
+    , m_xLB_LightSource(new ColorListBox(m_xBuilder->weld_menu_button(u"LB_LIGHTSOURCE"_ustr), [this]{ return m_pTopLevel; }))
+    , m_xBtn_LightSource_Color(m_xBuilder->weld_button(u"BTN_LIGHTSOURCE_COLOR"_ustr))
+    , m_xLB_AmbientLight(new ColorListBox(m_xBuilder->weld_menu_button(u"LB_AMBIENTLIGHT"_ustr), [this]{ return m_pTopLevel; }))
+    , m_xBtn_AmbientLight_Color(m_xBuilder->weld_button(u"BTN_AMBIENT_COLOR"_ustr))
+    , m_xHoriScale(m_xBuilder->weld_scale(u"hori"_ustr))
+    , m_xVertScale(m_xBuilder->weld_scale(u"vert"_ustr))
+    , m_xBtn_Corner(m_xBuilder->weld_button(u"corner"_ustr))
     , m_xPreview(new Svx3DLightControl)
-    , m_xPreviewWnd(new weld::CustomWeld(*m_xBuilder, "CTL_LIGHT_PREVIEW", *m_xPreview))
+    , m_xPreviewWnd(new weld::CustomWeld(*m_xBuilder, u"CTL_LIGHT_PREVIEW"_ustr, *m_xPreview))
     , m_xCtl_Preview(new SvxLightCtl3D(*m_xPreview, *m_xHoriScale, *m_xVertScale, *m_xBtn_Corner))
 {
     m_pLightSourceInfoList.reset(new LightSourceInfo[8]);
@@ -251,6 +250,8 @@ ThreeD_SceneIllumination_TabPage::ThreeD_SceneIllumination_TabPage(weld::Contain
 
 ThreeD_SceneIllumination_TabPage::~ThreeD_SceneIllumination_TabPage()
 {
+    // drop page view before the widget it paints to is destroyed
+    m_xPreview->ClearPageView();
 }
 
 IMPL_LINK_NOARG(ThreeD_SceneIllumination_TabPage, fillControlsFromModel, void*, void)
@@ -355,9 +356,9 @@ IMPL_LINK( ThreeD_SceneIllumination_TabPage, ColorDialogHdl, weld::Button&, rBut
     bool bIsAmbientLight = (&rButton == m_xBtn_AmbientLight_Color.get());
     ColorListBox* pListBox = bIsAmbientLight ? m_xLB_AmbientLight.get() : m_xLB_LightSource.get();
 
-    SvColorDialog aColorDlg;
+    ColorDialog aColorDlg(m_pTopLevel);
     aColorDlg.SetColor( pListBox->GetSelectEntryColor() );
-    if( aColorDlg.Execute(m_pTopLevel) != RET_OK )
+    if (aColorDlg.Execute() != RET_OK)
         return;
 
     Color aColor( aColorDlg.GetColor());

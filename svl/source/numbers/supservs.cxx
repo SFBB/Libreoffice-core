@@ -34,7 +34,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::util;
-using namespace ::utl;
 
 
 SvNumberFormatsSupplierServiceObject::SvNumberFormatsSupplierServiceObject(css::uno::Reference< css::uno::XComponentContext > _xORB)
@@ -94,13 +93,13 @@ void SAL_CALL SvNumberFormatsSupplierServiceObject::initialize( const Sequence< 
     }
 
     m_pOwnFormatter.reset( new SvNumberFormatter( m_xORB, eNewFormatterLanguage) );
-    m_pOwnFormatter->SetEvalDateFormat( NF_EVALDATEFORMAT_FORMAT_INTL );
+    m_pOwnFormatter->SetEvalDateFormat( NfEvalDateFormat::FormatThenInternational );
     SetNumberFormatter(m_pOwnFormatter.get());
 }
 
 OUString SAL_CALL SvNumberFormatsSupplierServiceObject::getImplementationName(  )
 {
-    return "com.sun.star.uno.util.numbers.SvNumberFormatsSupplierServiceObject";
+    return u"com.sun.star.uno.util.numbers.SvNumberFormatsSupplierServiceObject"_ustr;
 }
 
 sal_Bool SAL_CALL SvNumberFormatsSupplierServiceObject::supportsService( const OUString& _rServiceName )
@@ -110,7 +109,7 @@ sal_Bool SAL_CALL SvNumberFormatsSupplierServiceObject::supportsService( const O
 
 Sequence< OUString > SAL_CALL SvNumberFormatsSupplierServiceObject::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.util.NumberFormatsSupplier" };
+    return { u"com.sun.star.util.NumberFormatsSupplier"_ustr };
 }
 
 Reference< XPropertySet > SAL_CALL SvNumberFormatsSupplierServiceObject::getNumberFormatSettings()

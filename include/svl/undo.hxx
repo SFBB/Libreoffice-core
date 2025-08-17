@@ -25,6 +25,7 @@
 #include <o3tl/strong_int.hxx>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 typedef o3tl::strong_int<sal_Int32, struct ViewShellIdTag> ViewShellId;
@@ -220,6 +221,7 @@ public:
         Will assert and bail out when called while within a list action (<member>IsInListAction</member>).
     */
     virtual void            ClearRedo();
+
     /** leaves any possible open list action (<member>IsInListAction</member>), and clears both the Undo and the
         Redo stack.
 
@@ -289,22 +291,32 @@ public:
 
     /** removes a mark given by its ID.
         After the call, the mark ID is invalid.
+
+        @return the index at which the mark was removed, or std::numeric_limits<size_t>::max()
+                if failed
     */
-    void            RemoveMark( UndoStackMark const i_mark );
+    size_t RemoveMark(UndoStackMark const i_mark);
 
     /** determines whether the top action on the Undo stack has a given mark
     */
     bool            HasTopUndoActionMark( UndoStackMark const i_mark );
 
     /** removes the oldest Undo actions from the stack
+    * @returns false if it could not do anything (can happen when the action is very large)
     */
-    void            RemoveOldestUndoAction();
+    [[nodiscard]]
+    bool            RemoveOldestUndoAction();
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
 protected:
     bool    UndoWithContext( SfxUndoContext& i_context );
     bool    RedoWithContext( SfxUndoContext& i_context );
+
+    // Undoes a specific mark on the undo stack, and removes it from the undo/redo stack,
+    // but only in case when the redo stack is empty. This is a dangerous operation, because
+    // it undoes out of order.
+    void UndoMark(UndoStackMark i_mark);
 
     void    ImplClearRedo_NoLock( bool const i_currentLevel );
 
@@ -321,19 +333,19 @@ protected:
     virtual void EmptyActionsChanged();
 
 private:
-    size_t  ImplLeaveListAction( const bool i_merge, ::svl::undo::impl::UndoManagerGuard& i_guard );
-    bool    ImplAddUndoAction_NoNotify( std::unique_ptr<SfxUndoAction> pAction, bool bTryMerge, bool bClearRedo, ::svl::undo::impl::UndoManagerGuard& i_guard );
-    void    ImplClearRedo( ::svl::undo::impl::UndoManagerGuard& i_guard, bool const i_currentLevel );
-    void    ImplClearUndo( ::svl::undo::impl::UndoManagerGuard& i_guard );
-    void    ImplClearCurrentLevel_NoNotify( ::svl::undo::impl::UndoManagerGuard& i_guard );
-    size_t  ImplGetRedoActionCount_Lock( bool const i_currentLevel = CurrentLevel ) const;
-    bool    ImplIsUndoEnabled_Lock() const;
-    bool    ImplIsInListAction_Lock() const;
-    void    ImplEnableUndo_Lock( bool const i_enable );
+    SAL_DLLPRIVATE size_t  ImplLeaveListAction( const bool i_merge, ::svl::undo::impl::UndoManagerGuard& i_guard );
+    SAL_DLLPRIVATE bool    ImplAddUndoAction_NoNotify( std::unique_ptr<SfxUndoAction> pAction, bool bTryMerge, bool bClearRedo, ::svl::undo::impl::UndoManagerGuard& i_guard );
+    SAL_DLLPRIVATE void    ImplClearRedo( ::svl::undo::impl::UndoManagerGuard& i_guard, bool const i_currentLevel );
+    SAL_DLLPRIVATE void    ImplClearUndo( ::svl::undo::impl::UndoManagerGuard& i_guard );
+    SAL_DLLPRIVATE void    ImplClearCurrentLevel_NoNotify( ::svl::undo::impl::UndoManagerGuard& i_guard );
+    SAL_DLLPRIVATE size_t  ImplGetRedoActionCount_Lock( bool const i_currentLevel = CurrentLevel ) const;
+    SAL_DLLPRIVATE bool    ImplIsUndoEnabled_Lock() const;
+    SAL_DLLPRIVATE bool    ImplIsInListAction_Lock() const;
+    SAL_DLLPRIVATE void    ImplEnableUndo_Lock( bool const i_enable );
 
-    bool    ImplUndo( SfxUndoContext* i_contextOrNull );
-    bool    ImplRedo( SfxUndoContext* i_contextOrNull );
-    void    ImplCheckEmptyActions();
+    SAL_DLLPRIVATE bool    ImplUndo( SfxUndoContext* i_contextOrNull );
+    SAL_DLLPRIVATE bool    ImplRedo( SfxUndoContext* i_contextOrNull );
+    SAL_DLLPRIVATE void    ImplCheckEmptyActions();
     inline  bool    ImplIsEmptyActions() const;
 
     friend class ::svl::undo::impl::LockGuard;

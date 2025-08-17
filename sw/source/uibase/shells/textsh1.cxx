@@ -22,11 +22,15 @@
 #include <config_features.h>
 
 #include <com/sun/star/i18n/WordType.hpp>
+#include <com/sun/star/frame/XStorable.hpp>
+#include <com/sun/star/linguistic2/XSearchableDictionaryList.hpp>
 #include <com/sun/star/linguistic2/XThesaurus.hpp>
+#include <com/sun/star/text/XContentControlsSupplier.hpp>
 
 #include <hintids.hxx>
 #include <cmdid.h>
 #include <comphelper/lok.hxx>
+#include <comphelper/propertysequence.hxx>
 
 #include <i18nutil/unicode.hxx>
 #include <i18nlangtag/languagetag.hxx>
@@ -37,9 +41,11 @@
 #include <sfx2/htmlmode.hxx>
 #include <svl/whiter.hxx>
 #include <sfx2/bindings.hxx>
+#include <sfx2/namedcolor.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <vcl/unohelp2.hxx>
 #include <vcl/weld.hxx>
+#include <sfx2/lokhelper.hxx>
 #include <sfx2/request.hxx>
 #include <svl/eitem.hxx>
 #include <editeng/lrspitem.hxx>
@@ -67,6 +73,8 @@
 #include <swdtflvr.hxx>
 #include <swundo.hxx>
 #include <reffld.hxx>
+#include <textcontentcontrol.hxx>
+#include <txatbase.hxx>
 #include <docsh.hxx>
 #include <inputwin.hxx>
 #include <chrdlgmodes.hxx>
@@ -74,6 +82,7 @@
 #include <cellatr.hxx>
 #include <edtwin.hxx>
 #include <fldmgr.hxx>
+#include <ndtxt.hxx>
 #include <strings.hrc>
 #include <paratr.hxx>
 #include <vcl/svapp.hxx>
@@ -124,6 +133,35 @@
 #include <fmtrfmrk.hxx>
 #include <cntfrm.hxx>
 #include <flyfrm.hxx>
+#include <unoprnms.hxx>
+#include <boost/property_tree/json_parser.hpp>
+#include <formatcontentcontrol.hxx>
+#include <rtl/uri.hxx>
+#include <unotxdoc.hxx>
+#include <expfld.hxx>
+#include <sax/tools/converter.hxx>
+
+#include <com/sun/star/text/XTextEmbeddedObjectsSupplier.hpp>
+#include <com/sun/star/chart2/XInternalDataProvider.hpp>
+#include <com/sun/star/chart2/XChartDocument.hpp>
+#include <com/sun/star/chart/XChartDocument.hpp>
+#include <com/sun/star/chart/XChartDataArray.hpp>
+#include <com/sun/star/chart2/XTitle.hpp>
+#include <com/sun/star/chart2/XTitled.hpp>
+#include <com/sun/star/chart/ChartDataRowSource.hpp>
+#include <com/sun/star/util/XModifiable.hpp>
+
+#include <com/sun/star/chart2/XCoordinateSystemContainer.hpp>
+#include <com/sun/star/chart2/XChartTypeContainer.hpp>
+#include <com/sun/star/chart2/XDataSeriesContainer.hpp>
+#include <com/sun/star/util/XCloneable.hpp>
+
+#include <com/sun/star/util/SearchAlgorithms2.hpp>
+#include <com/sun/star/document/XDocumentProperties2.hpp>
+#include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
+
+#include <com/sun/star/beans/XPropertyAccess.hpp>
+#include <com/sun/star/beans/PropertyAttribute.hpp>
 
 using namespace ::com::sun::star;
 using namespace com::sun::star::beans;
@@ -138,7 +176,7 @@ static void sw_CharDialog(SwWrtShell& rWrtSh, bool bUseDialog, bool bApplyToPara
                           sal_uInt16 nSlot, const SfxItemSet* pArgs, SfxRequest* pReq)
 {
     FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebView*>( &rWrtSh.GetView()) != nullptr );
-    SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)));
+    SwModule::get()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast<sal_uInt16>(eMetric)));
     auto pCoreSet = std::make_shared<SfxItemSetFixed<
             RES_CHRATR_BEGIN, RES_CHRATR_END - 1,
             RES_TXTATR_INETFMT, RES_TXTATR_INETFMT,
@@ -182,14 +220,12 @@ static void sw_CharDialog(SwWrtShell& rWrtSh, bool bUseDialog, bool bApplyToPara
         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
         pDlg.reset(pFact->CreateSwCharDlg(rWrtSh.GetView().GetFrameWeld(), rWrtSh.GetView(), *pCoreSet, SwCharDlgMode::Std));
 
-        if (nSlot == FN_INSERT_HYPERLINK)
-            pDlg->SetCurPageId("hyperlink");
-        else if (nSlot == SID_CHAR_DLG_EFFECT)
-            pDlg->SetCurPageId("fonteffects");
+        if (nSlot == SID_CHAR_DLG_EFFECT)
+            pDlg->SetCurPageId(u"fonteffects"_ustr);
         else if (nSlot == SID_CHAR_DLG_POSITION)
-            pDlg->SetCurPageId("position");
+            pDlg->SetCurPageId(u"position"_ustr);
         else if (nSlot == SID_CHAR_DLG_FOR_PARAGRAPH)
-            pDlg->SetCurPageId("font");
+            pDlg->SetCurPageId(u"font"_ustr);
         else if (pReq)
         {
             const SfxStringItem* pItem = (*pReq).GetArg<SfxStringItem>(FN_PARAM_1);
@@ -206,7 +242,9 @@ static void sw_CharDialog(SwWrtShell& rWrtSh, bool bUseDialog, bool bApplyToPara
             pRequest = std::make_shared<SfxRequest>(*pReq);
             pReq->Ignore(); // the 'old' request is not relevant any more
         }
-        pDlg->StartExecuteAsync([pDlg, &rWrtSh, pCoreSet, bSel, bSelectionPut, bApplyToParagraph, pRequest](sal_Int32 nResult){
+        pDlg->StartExecuteAsync([pDlg, &rWrtSh, pCoreSet=std::move(pCoreSet), bSel,
+                                 bSelectionPut, bApplyToParagraph,
+                                 pRequest=std::move(pRequest)](sal_Int32 nResult){
             if (nResult == RET_OK)
             {
                 sw_CharDialogResult(pDlg->GetOutputItemSet(), rWrtSh, pCoreSet, bSel, bSelectionPut,
@@ -243,7 +281,7 @@ static void sw_CharDialogResult(const SfxItemSet* pSet, SwWrtShell& rWrtSh, std:
     // The old item is for unknown reasons back in the set again.
     if( !bSelectionPut && (pSelectionItem = aTmpSet.GetItemIfSet(FN_PARAM_SELECTION, false)) )
     {
-        OUString sInsert = pSelectionItem->GetValue();
+        const OUString& sInsert = pSelectionItem->GetValue();
         bInsert = !sInsert.isEmpty();
         if(bInsert)
         {
@@ -364,7 +402,7 @@ namespace {
 void InsertBreak(SwWrtShell& rWrtSh,
                  sal_uInt16 nKind,
                  ::std::optional<sal_uInt16> oPageNumber,
-                 const OUString& rTemplateName, std::optional<SwLineBreakClear> oClear)
+                 const UIName& rTemplateName, std::optional<SwLineBreakClear> oClear)
 {
     switch ( nKind )
     {
@@ -409,7 +447,7 @@ OUString GetLocalURL(const SwWrtShell& rSh)
     return rLocalURL;
 }
 
-void UpdateSections(SfxRequest& rReq, SwWrtShell& rWrtSh)
+void UpdateSections(const SfxRequest& rReq, SwWrtShell& rWrtSh)
 {
     OUString aSectionNamePrefix;
     const SfxStringItem* pSectionNamePrefix = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
@@ -435,7 +473,7 @@ void UpdateSections(SfxRequest& rReq, SwWrtShell& rWrtSh)
     for (size_t i = 0; i < rFormats.size(); ++i)
     {
         const SwSectionFormat* pFormat = rFormats[i];
-        if (!pFormat->GetName().startsWith(aSectionNamePrefix))
+        if (!pFormat->GetName().toString().startsWith(aSectionNamePrefix))
         {
             continue;
         }
@@ -446,7 +484,7 @@ void UpdateSections(SfxRequest& rReq, SwWrtShell& rWrtSh)
         }
 
         comphelper::SequenceAsHashMap aMap(aSections[nSectionIndex++]);
-        OUString aSectionName = aMap["RegionName"].get<OUString>();
+        UIName aSectionName( aMap[u"RegionName"_ustr].get<OUString>() );
         if (aSectionName != pFormat->GetName())
         {
             const_cast<SwSectionFormat*>(pFormat)->SetFormatName(aSectionName, /*bBroadcast=*/true);
@@ -467,7 +505,7 @@ void UpdateSections(SfxRequest& rReq, SwWrtShell& rWrtSh)
             rIDCO.DeleteAndJoin(*pCursorPos);
             rWrtSh.EndSelect();
 
-            OUString aSectionText = aMap["Content"].get<OUString>();
+            OUString aSectionText = aMap[u"Content"_ustr].get<OUString>();
             SwTranslateHelper::PasteHTMLToPaM(rWrtSh, pCursorPos, aSectionText.toUtf8());
         }
     }
@@ -476,7 +514,7 @@ void UpdateSections(SfxRequest& rReq, SwWrtShell& rWrtSh)
     rWrtSh.GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::UPDATE_SECTIONS, nullptr);
 }
 
-void DeleteSections(SfxRequest& rReq, SwWrtShell& rWrtSh)
+void DeleteSections(const SfxRequest& rReq, SwWrtShell& rWrtSh)
 {
     OUString aSectionNamePrefix;
     const SfxStringItem* pSectionNamePrefix = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
@@ -495,22 +533,10 @@ void DeleteSections(SfxRequest& rReq, SwWrtShell& rWrtSh)
         });
 
     SwDoc* pDoc = rWrtSh.GetDoc();
-    SwSectionFormats& rFormats = pDoc->GetSections();
     std::vector<SwSectionFormat*> aRemovals;
-    for (size_t i = 0; i < rFormats.size(); ++i)
-    {
-        SwSectionFormat* pFormat = rFormats[i];
-
-        if (!aSectionNamePrefix.isEmpty())
-        {
-            if (!pFormat->GetName().startsWith(aSectionNamePrefix))
-            {
-                continue;
-            }
-        }
-
-        aRemovals.push_back(pFormat);
-    }
+    for (SwSectionFormat* pFormat : pDoc->GetSections())
+        if (aSectionNamePrefix.isEmpty() || pFormat->GetName().toString().startsWith(aSectionNamePrefix))
+            aRemovals.push_back(pFormat);
 
     for (const auto& pFormat : aRemovals)
     {
@@ -519,7 +545,19 @@ void DeleteSections(SfxRequest& rReq, SwWrtShell& rWrtSh)
     }
 }
 
-void UpdateBookmarks(SfxRequest& rReq, SwWrtShell& rWrtSh)
+void DeleteContentControl( const SwWrtShell& rWrtSh )
+{
+    SwTextContentControl* pTextContentControl = rWrtSh.CursorInsideContentControl();
+    if (pTextContentControl) {
+        const SwFormatContentControl& rFormatContentControl = pTextContentControl->GetContentControl();
+        const std::shared_ptr<SwContentControl>& pContentControl = rFormatContentControl.GetContentControl();
+        pContentControl->SetReadWrite(true);
+        pTextContentControl->Delete(true);
+    }
+}
+
+
+void UpdateBookmarks(const SfxRequest& rReq, SwWrtShell& rWrtSh)
 {
     if (rWrtSh.getIDocumentSettingAccess().get(DocumentSettingId::PROTECT_BOOKMARKS))
     {
@@ -548,9 +586,9 @@ void UpdateBookmarks(SfxRequest& rReq, SwWrtShell& rWrtSh)
     bool bSortMarks = false;
     for (auto it = rIDMA.getBookmarksBegin(); it != rIDMA.getBookmarksEnd(); ++it)
     {
-        auto pMark = dynamic_cast<sw::mark::Bookmark*>(*it);
+        sw::mark::Bookmark* pMark = *it;
         assert(pMark);
-        if (!pMark->GetName().startsWith(aBookmarkNamePrefix))
+        if (!pMark->GetName().toString().startsWith(aBookmarkNamePrefix))
         {
             continue;
         }
@@ -561,17 +599,17 @@ void UpdateBookmarks(SfxRequest& rReq, SwWrtShell& rWrtSh)
         }
 
         comphelper::SequenceAsHashMap aMap(aBookmarks[nBookmarkIndex++]);
-        if (aMap["Bookmark"].get<OUString>() != pMark->GetName())
+        if (aMap[u"Bookmark"_ustr].get<OUString>() != pMark->GetName())
         {
-            rIDMA.renameMark(pMark, aMap["Bookmark"].get<OUString>());
+            rIDMA.renameMark(pMark, SwMarkName(aMap[u"Bookmark"_ustr].get<OUString>()));
         }
 
-        OUString aBookmarkText = aMap["BookmarkText"].get<OUString>();
+        OUString aBookmarkText = aMap[u"BookmarkText"_ustr].get<OUString>();
 
         // Insert markers to remember where the paste positions are.
         SwPaM aMarkers(pMark->GetMarkEnd());
         IDocumentContentOperations& rIDCO = rWrtSh.GetDoc()->getIDocumentContentOperations();
-        bool bSuccess = rIDCO.InsertString(aMarkers, "XY");
+        bool bSuccess = rIDCO.InsertString(aMarkers, u"XY"_ustr);
         if (bSuccess)
         {
             SwPaM aPasteEnd(pMark->GetMarkEnd());
@@ -606,7 +644,7 @@ void UpdateBookmarks(SfxRequest& rReq, SwWrtShell& rWrtSh)
     rWrtSh.GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::UPDATE_BOOKMARKS, nullptr);
 }
 
-void UpdateBookmark(SfxRequest& rReq, SwWrtShell& rWrtSh)
+void UpdateBookmark(const SfxRequest& rReq, SwWrtShell& rWrtSh)
 {
     if (rWrtSh.getIDocumentSettingAccess().get(DocumentSettingId::PROTECT_BOOKMARKS))
     {
@@ -629,8 +667,8 @@ void UpdateBookmark(SfxRequest& rReq, SwWrtShell& rWrtSh)
 
     IDocumentMarkAccess& rIDMA = *rWrtSh.GetDoc()->getIDocumentMarkAccess();
     SwPosition& rCursor = *rWrtSh.GetCursor()->GetPoint();
-    auto pBookmark = dynamic_cast<sw::mark::Bookmark*>(rIDMA.getOneInnermostBookmarkFor(rCursor));
-    if (!pBookmark || !pBookmark->GetName().startsWith(aBookmarkNamePrefix))
+    sw::mark::Bookmark* pBookmark = rIDMA.getOneInnermostBookmarkFor(rCursor);
+    if (!pBookmark || !pBookmark->GetName().toString().startsWith(aBookmarkNamePrefix))
     {
         return;
     }
@@ -648,15 +686,15 @@ void UpdateBookmark(SfxRequest& rReq, SwWrtShell& rWrtSh)
 
 
     comphelper::SequenceAsHashMap aMap(aBookmark);
-    if (aMap["Bookmark"].get<OUString>() != pBookmark->GetName())
+    if (aMap[u"Bookmark"_ustr].get<OUString>() != pBookmark->GetName())
     {
-        rIDMA.renameMark(pBookmark, aMap["Bookmark"].get<OUString>());
+        rIDMA.renameMark(pBookmark, SwMarkName(aMap[u"Bookmark"_ustr].get<OUString>()));
     }
 
     // Insert markers to remember where the paste positions are.
     SwPaM aMarkers(pBookmark->GetMarkEnd());
     IDocumentContentOperations& rIDCO = rWrtSh.GetDoc()->getIDocumentContentOperations();
-    if (!rIDCO.InsertString(aMarkers, "XY"))
+    if (!rIDCO.InsertString(aMarkers, u"XY"_ustr))
     {
         return;
     }
@@ -664,7 +702,7 @@ void UpdateBookmark(SfxRequest& rReq, SwWrtShell& rWrtSh)
     SwPaM aPasteEnd(pBookmark->GetMarkEnd());
     aPasteEnd.Move(fnMoveForward, GoInContent);
 
-    OUString aBookmarkText = aMap["BookmarkText"].get<OUString>();
+    OUString aBookmarkText = aMap[u"BookmarkText"_ustr].get<OUString>();
 
     // Paste HTML content.
     SwPaM* pCursorPos = rWrtSh.GetCursor();
@@ -686,7 +724,7 @@ void UpdateBookmark(SfxRequest& rReq, SwWrtShell& rWrtSh)
     rIDMA.assureSortedMarkContainers();
 }
 
-void DeleteBookmarks(SfxRequest& rReq, SwWrtShell& rWrtSh)
+void DeleteBookmarks(const SfxRequest& rReq, SwWrtShell& rWrtSh)
 {
     if (rWrtSh.getIDocumentSettingAccess().get(DocumentSettingId::PROTECT_BOOKMARKS))
     {
@@ -710,15 +748,15 @@ void DeleteBookmarks(SfxRequest& rReq, SwWrtShell& rWrtSh)
         });
 
     IDocumentMarkAccess* pMarkAccess = rWrtSh.GetDoc()->getIDocumentMarkAccess();
-    std::vector<sw::mark::IMark*> aRemovals;
+    std::vector<sw::mark::MarkBase*> aRemovals;
     for (auto it = pMarkAccess->getBookmarksBegin(); it != pMarkAccess->getBookmarksEnd(); ++it)
     {
-        auto pBookmark = dynamic_cast<sw::mark::Bookmark*>(*it);
+        sw::mark::Bookmark* pBookmark = *it;
         assert(pBookmark);
 
         if (!aBookmarkNamePrefix.isEmpty())
         {
-            if (!pBookmark->GetName().startsWith(aBookmarkNamePrefix))
+            if (!pBookmark->GetName().toString().startsWith(aBookmarkNamePrefix))
             {
                 continue;
             }
@@ -733,7 +771,7 @@ void DeleteBookmarks(SfxRequest& rReq, SwWrtShell& rWrtSh)
     }
 }
 
-void DeleteFields(SfxRequest& rReq, SwWrtShell& rWrtSh)
+void DeleteFields(const SfxRequest& rReq, SwWrtShell& rWrtSh)
 {
     const SfxStringItem* pTypeName = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
     if (!pTypeName || pTypeName->GetValue() != "SetRef")
@@ -765,7 +803,7 @@ void DeleteFields(SfxRequest& rReq, SwWrtShell& rWrtSh)
         const SwFormatRefMark* pRefMark = pDoc->GetRefMark(i);
         if (!aNamePrefix.isEmpty())
         {
-            if (!pRefMark->GetRefName().startsWith(aNamePrefix))
+            if (!pRefMark->GetRefName().toString().startsWith(aNamePrefix))
             {
                 continue;
             }
@@ -779,6 +817,134 @@ void DeleteFields(SfxRequest& rReq, SwWrtShell& rWrtSh)
         pDoc->DeleteFormatRefMark(pMark);
     }
 }
+
+void lcl_LogWarning(std::string sWarning)
+{
+    LOK_WARN("sw.transform",  sWarning);
+}
+
+bool lcl_ChangeChartColumnCount(const uno::Reference<chart2::XChartDocument>& xChartDoc, sal_Int32 nId,
+                                bool bInsert, bool bResize = false)
+{
+    uno::Reference<chart2::XDiagram> xDiagram = xChartDoc->getFirstDiagram();
+    if (!xDiagram.is())
+        return false;
+    uno::Reference<chart2::XCoordinateSystemContainer> xCooSysContainer(xDiagram, uno::UNO_QUERY);
+    if (!xCooSysContainer.is())
+        return false;
+    uno::Sequence<uno::Reference<chart2::XCoordinateSystem>> xCooSysSequence(
+        xCooSysContainer->getCoordinateSystems());
+    if (xCooSysSequence.getLength() <= 0)
+        return false;
+    uno::Reference<chart2::XChartTypeContainer> xChartTypeContainer(xCooSysSequence[0],
+                                                                    uno::UNO_QUERY);
+    if (!xChartTypeContainer.is())
+        return false;
+    uno::Sequence<uno::Reference<chart2::XChartType>> xChartTypeSequence(
+        xChartTypeContainer->getChartTypes());
+    if (xChartTypeSequence.getLength() <= 0)
+        return false;
+    uno::Reference<chart2::XDataSeriesContainer> xDSContainer(xChartTypeSequence[0],
+                                                              uno::UNO_QUERY);
+    if (!xDSContainer.is())
+        return false;
+
+    uno::Reference<chart2::XInternalDataProvider> xIDataProvider(xChartDoc->getDataProvider(),
+                                                                 uno::UNO_QUERY);
+    if (!xIDataProvider.is())
+        return false;
+
+    uno::Sequence<uno::Reference<chart2::XDataSeries>> aSeriesSeq(xDSContainer->getDataSeries());
+
+    int nSeriesCount = aSeriesSeq.getLength();
+
+    if (bResize)
+    {
+        // Resize is actually some inserts, or deletes
+        if (nId > nSeriesCount)
+        {
+            bInsert = true;
+        }
+        else if (nId < nSeriesCount)
+        {
+            bInsert = false;
+        }
+        else
+        {
+            // Resize to the same size. No change needed
+            return true;
+        }
+    }
+
+    // insert or delete
+    if (bInsert)
+    {
+        // insert
+        if (nId > nSeriesCount && !bResize)
+            return false;
+
+        int nInsertCount = bResize ? nId - nSeriesCount : 1;
+
+        // call dialog code
+        if (bResize)
+        {
+            for (int i = 0; i < nInsertCount; i++)
+            {
+                xIDataProvider->insertDataSeries(nSeriesCount);
+            }
+            return true;
+        }
+
+        xIDataProvider->insertDataSeries(nId);
+    }
+    else
+    {
+        // delete 1 or more columns
+        if (nId >= nSeriesCount)
+            return false;
+        int nDeleteCount = bResize ? nSeriesCount - nId : 1;
+        for (int i = 0; i < nDeleteCount; i++)
+        {
+            xDSContainer->removeDataSeries(aSeriesSeq[nId]);
+        }
+    }
+    return true;
+}
+
+bool lcl_ResizeChartColumns(const uno::Reference<chart2::XChartDocument>& xChartDoc, sal_Int32 nSize)
+{
+    return lcl_ChangeChartColumnCount(xChartDoc, nSize, false, true);
+}
+
+bool lcl_InsertChartColumns(const uno::Reference<chart2::XChartDocument>& xChartDoc, sal_Int32 nId)
+{
+    return lcl_ChangeChartColumnCount(xChartDoc, nId, true);
+}
+
+bool lcl_DeleteChartColumns(const uno::Reference<chart2::XChartDocument>& xChartDoc, sal_Int32 nId)
+{
+    return lcl_ChangeChartColumnCount(xChartDoc, nId, false);
+}
+}
+
+static bool AddWordToWordbook(const uno::Reference<linguistic2::XDictionary>& xDictionary, SwWrtShell &rWrtSh)
+{
+    if (!xDictionary)
+        return false;
+
+    SwRect aToFill;
+    uno::Reference<linguistic2::XSpellAlternatives>  xSpellAlt(rWrtSh.GetCorrection(nullptr, aToFill));
+    if (!xSpellAlt.is())
+        return false;
+
+    OUString sWord = xSpellAlt->getWord();
+    linguistic::DictionaryError nAddRes = linguistic::AddEntryToDic(xDictionary, sWord, false, OUString());
+    if (linguistic::DictionaryError::NONE != nAddRes && xDictionary.is() && !xDictionary->getEntry(sWord).is())
+    {
+        SvxDicError(rWrtSh.GetView().GetFrameWeld(), nAddRes);
+        return false;
+    }
+    return true;
 }
 
 void SwTextShell::Execute(SfxRequest &rReq)
@@ -789,7 +955,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
     const SfxPoolItem* pItem = nullptr;
     const sal_uInt16 nSlot = rReq.GetSlot();
     if(pArgs)
-        pArgs->GetItemState(GetPool().GetWhich(nSlot), false, &pItem);
+        pArgs->GetItemState(GetPool().GetWhichIDFromSlotID(nSlot), false, &pItem);
     switch( nSlot )
     {
         case SID_UNICODE_NOTATION_TOGGLE:
@@ -813,8 +979,9 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     rWrtSh.InfoReadOnlyDialog(false);
                     break;
                 }
+                OUString stringToReplace = aToggle.StringToReplace();
                 SwRewriter aRewriter;
-                aRewriter.AddRule( UndoArg1, aToggle.StringToReplace() );
+                aRewriter.AddRule( UndoArg1, stringToReplace );
                 aRewriter.AddRule( UndoArg2, SwResId(STR_YIELDS) );
                 aRewriter.AddRule( UndoArg3, sReplacement );
                 rWrtSh.StartUndo(SwUndoId::REPLACE, &aRewriter);
@@ -823,9 +990,10 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 rWrtSh.ClearMark();
                 if( rWrtSh.IsInSelect() )  // cancel any in-progress keyboard selection as well
                     rWrtSh.EndSelect();
-
-                for( sal_uInt32 i=aToggle.CharsToDelete(); i > 0; --i )
-                    rWrtSh.DelLeft();
+                // Select exactly what was chosen for replacement
+                rWrtSh.GetCursor()->SetMark();
+                rWrtSh.GetCursor()->GetPoint()->AdjustContent(-stringToReplace.getLength());
+                rWrtSh.DelLeft();
                 rWrtSh.Insert2( sReplacement );
                 rWrtSh.EndUndo(SwUndoId::REPLACE, &aRewriter);
             }
@@ -869,10 +1037,11 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     static constexpr OUString aParagraphLangPrefix(u"Paragraph_"_ustr);
                     static constexpr OUString aDocumentLangPrefix(u"Default_"_ustr);
 
-                    SfxItemSetFixed
-                            <RES_CHRATR_LANGUAGE,        RES_CHRATR_LANGUAGE,
-                            RES_CHRATR_CJK_LANGUAGE,    RES_CHRATR_CJK_LANGUAGE,
-                            RES_CHRATR_CTL_LANGUAGE,    RES_CHRATR_CTL_LANGUAGE>  aCoreSet( GetPool() );
+                    SfxItemSetFixed<RES_CHRATR_LANGUAGE, RES_CHRATR_LANGUAGE,
+                                    RES_CHRATR_CJK_LANGUAGE, RES_CHRATR_CJK_LANGUAGE,
+                                    RES_CHRATR_CTL_LANGUAGE, RES_CHRATR_CTL_LANGUAGE,
+                                    RES_CHRATR_SCRIPT_HINT, RES_CHRATR_SCRIPT_HINT>
+                        aCoreSet(GetPool());
 
                     sal_Int32 nPos = 0;
                     bool bForSelection = true;
@@ -977,7 +1146,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 SfxItemSetFixed<RES_CHRATR_FONT, RES_CHRATR_FONT> aSet( rWrtSh.GetAttrPool() );
                 rWrtSh.GetCurAttr( aSet );
                 rWrtSh.SetAttrSet( aSet, SetAttrMode::DONTEXPAND );
-                rWrtSh.ResetSelect(nullptr, false);
+                rWrtSh.ResetSelect(nullptr, false, ScrollSizeMode::ScrollSizeDefault);
                 rWrtSh.EndSelect();
                 rWrtSh.GotoFootnoteText();
             }
@@ -988,20 +1157,26 @@ void SwTextShell::Execute(SfxRequest &rReq)
         case FN_INSERT_FOOTNOTE_DLG:
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            ScopedVclPtr<AbstractInsFootNoteDlg> pDlg(pFact->CreateInsFootNoteDlg(
+            VclPtr<AbstractInsFootNoteDlg> pDlg(pFact->CreateInsFootNoteDlg(
                 GetView().GetFrameWeld(), rWrtSh));
             pDlg->SetHelpId(GetStaticInterface()->GetSlot(nSlot)->GetCommand());
-            if ( pDlg->Execute() == RET_OK )
-            {
-                const sal_uInt16 nId = pDlg->IsEndNote() ? FN_INSERT_ENDNOTE : FN_INSERT_FOOTNOTE;
-                SfxRequest aReq(GetView().GetViewFrame(), nId);
-                if ( !pDlg->GetStr().isEmpty() )
-                    aReq.AppendItem( SfxStringItem( nId, pDlg->GetStr() ) );
-                if ( !pDlg->GetFontName().isEmpty() )
-                    aReq.AppendItem( SfxStringItem( FN_PARAM_1, pDlg->GetFontName() ) );
-                ExecuteSlot( aReq );
-            }
-
+            pDlg->StartExecuteAsync(
+                [this, pDlg] (sal_Int32 nResult)->void
+                {
+                    if ( nResult == RET_OK )
+                    {
+                        pDlg->Apply();
+                        const sal_uInt16 nId = pDlg->IsEndNote() ? FN_INSERT_ENDNOTE : FN_INSERT_FOOTNOTE;
+                        SfxRequest aReq(GetView().GetViewFrame(), nId);
+                        if ( !pDlg->GetStr().isEmpty() )
+                            aReq.AppendItem( SfxStringItem( nId, pDlg->GetStr() ) );
+                        if ( !pDlg->GetFontName().isEmpty() )
+                            aReq.AppendItem( SfxStringItem( FN_PARAM_1, pDlg->GetFontName() ) );
+                        ExecuteSlot( aReq );
+                    }
+                    pDlg->disposeOnce();
+                }
+            );
             rReq.Ignore();
         }
         break;
@@ -1023,7 +1198,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
             // remove the languages from that)
             o3tl::sorted_vector<sal_uInt16> aAttribs;
 
-            constexpr std::pair<sal_uInt16, sal_uInt16> aResetableSetRange[] = {
+            static constexpr std::pair<sal_uInt16, sal_uInt16> aResetableSetRange[] = {
                 // tdf#40496: we don't want to change writing direction, so exclude RES_FRAMEDIR:
                 { RES_FRMATR_BEGIN, RES_FRAMEDIR - 1 },
                 { RES_FRAMEDIR + 1, RES_FRMATR_END - 1 },
@@ -1041,11 +1216,16 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 for (sal_uInt16 i = nBegin; i <= nEnd; ++i)
                     aAttribs.insert( i );
             }
-            rWrtSh.ResetAttr( aAttribs );
 
             // also clear the direct formatting flag inside SwTableBox(es)
             if (SwFEShell* pFEShell = GetView().GetDocShell()->GetFEShell())
                 pFEShell->UpdateTableStyleFormatting(nullptr, true);
+
+            // tdf#160801 fix crash by delaying resetting of attributes
+            // Calling SwWrtShell::ResetAttr() will sometimes delete the
+            // current SwTextShell instance so call it after clearing the
+            // direct formatting flag.
+            rWrtSh.ResetAttr( aAttribs );
 
             rReq.Done();
             break;
@@ -1056,13 +1236,13 @@ void SwTextShell::Execute(SfxRequest &rReq)
             {
                 ::std::optional<sal_uInt16> oPageNumber;
                 std::optional<SwLineBreakClear> oClear;
-                OUString aTemplateName;
+                UIName aTemplateName;
                 sal_uInt16 nKind = static_cast<const SfxInt16Item*>(pItem)->GetValue();
                 const SfxStringItem* pTemplate = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
                 const SfxUInt16Item* pNumber = rReq.GetArg<SfxUInt16Item>(FN_PARAM_2);
                 const SfxBoolItem* pIsNumberFilled = rReq.GetArg<SfxBoolItem>(FN_PARAM_3);
                 if ( pTemplate )
-                    aTemplateName = pTemplate->GetValue();
+                    aTemplateName = UIName(pTemplate->GetValue());
                 if ( pNumber && pIsNumberFilled && pIsNumberFilled->GetValue() )
                     oPageNumber = pNumber->GetValue();
 
@@ -1076,7 +1256,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 std::shared_ptr<weld::DialogController> pDialogController(pAbstractDialog->getDialogController());
 
                 weld::DialogController::runAsync(pDialogController,
-                    [pAbstractDialog, &rWrtSh] (sal_Int32 nResult) {
+                    [pAbstractDialog=std::move(pAbstractDialog), &rWrtSh] (sal_Int32 nResult) {
                         if( RET_OK == nResult )
                         {
                             sal_uInt16 nKind = pAbstractDialog->GetKind();
@@ -1084,7 +1264,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                             ::std::optional<sal_uInt16> oPageNumber = pAbstractDialog->GetPageNumber();
                             std::optional<SwLineBreakClear> oClear = pAbstractDialog->GetClear();
 
-                            InsertBreak(rWrtSh, nKind, oPageNumber, aTemplateName, oClear);
+                            InsertBreak(rWrtSh, nKind, oPageNumber, UIName(aTemplateName), oClear);
                         }
                     });
             }
@@ -1133,7 +1313,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     }
                 }
 
-                rWrtSh.SetBookmark( vcl::KeyCode(), sName );
+                rWrtSh.SetBookmark( vcl::KeyCode(), SwMarkName(sName) );
                 if (pBookmarkText)
                 {
                     pCursorPos->DeleteMark();
@@ -1147,9 +1327,8 @@ void SwTextShell::Execute(SfxRequest &rReq)
         {
             ::std::optional<OUString> oName;
             if (pItem)
-            {
                 oName.emplace(static_cast<const SfxStringItem*>(pItem)->GetValue());
-            }
+
             {
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
                 ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSwInsertBookmarkDlg(GetView().GetFrameWeld(), rWrtSh, oName ? &*oName : nullptr));
@@ -1179,7 +1358,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
             if (pItem && !rWrtSh.getIDocumentSettingAccess().get(DocumentSettingId::PROTECT_BOOKMARKS))
             {
                 IDocumentMarkAccess* const pMarkAccess = rWrtSh.getIDocumentMarkAccess();
-                pMarkAccess->deleteMark(pMarkAccess->findMark(static_cast<const SfxStringItem*>(pItem)->GetValue()), false);
+                pMarkAccess->deleteMark(pMarkAccess->findMark(SwMarkName(static_cast<const SfxStringItem*>(pItem)->GetValue())), false);
             }
             break;
         }
@@ -1207,12 +1386,17 @@ void SwTextShell::Execute(SfxRequest &rReq)
             DeleteSections(rReq, rWrtSh);
             break;
         }
+        case FN_DELETE_CONTENT_CONTROL:
+        {
+            DeleteContentControl( rWrtSh );
+            break;
+        }
         case FN_SET_REMINDER:
         {
             // collect and sort navigator reminder names
             IDocumentMarkAccess* const pMarkAccess = rWrtSh.getIDocumentMarkAccess();
-            std::vector< OUString > vNavMarkNames;
-            for(IDocumentMarkAccess::const_iterator_t ppMark = pMarkAccess->getAllMarksBegin();
+            std::vector< SwMarkName > vNavMarkNames;
+            for(auto ppMark = pMarkAccess->getAllMarksBegin();
                 ppMark != pMarkAccess->getAllMarksEnd();
                 ++ppMark)
             {
@@ -1226,7 +1410,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
             if(vNavMarkNames.size() == MAX_MARKS)
                 pMarkAccess->deleteMark(pMarkAccess->findMark(vNavMarkNames[0]), false);
 
-            rWrtSh.SetBookmark(vcl::KeyCode(), OUString(), IDocumentMarkAccess::MarkType::NAVIGATOR_REMINDER);
+            rWrtSh.SetBookmark(vcl::KeyCode(), SwMarkName(), IDocumentMarkAccess::MarkType::NAVIGATOR_REMINDER);
             SwView::SetActMark(vNavMarkNames.size() < MAX_MARKS ? vNavMarkNames.size() : MAX_MARKS-1);
 
             break;
@@ -1245,10 +1429,16 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 rVFrame.ToggleChildWindow(FN_REDLINE_ACCEPT);
 
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            ScopedVclPtr<AbstractSwModalRedlineAcceptDlg> xDlg(pFact->CreateSwModalRedlineAcceptDlg(GetView().GetEditWin().GetFrameWeld()));
-
-            xDlg->Execute();
-            rReq.Done();
+            auto xRequest = std::make_shared<SfxRequest>(rReq);
+            rReq.Ignore(); // the 'old' request is not relevant any more
+            VclPtr<AbstractSwModalRedlineAcceptDlg> pDlg(pFact->CreateSwModalRedlineAcceptDlg(GetView().GetEditWin().GetFrameWeld()));
+            pDlg->StartExecuteAsync(
+                [pDlg, xRequest=std::move(xRequest)] (sal_Int32 /*nResult*/)->void
+                {
+                    pDlg->disposeOnce();
+                    xRequest->Done();
+                }
+            );
         }
         break;
 
@@ -1271,7 +1461,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 rACfg.Commit();
                 GetView().GetViewFrame().GetBindings().Invalidate( nSlot );
                 if ( !pItem )
-                    rReq.AppendItem( SfxBoolItem( GetPool().GetWhich(nSlot), bSet ) );
+                    rReq.AppendItem( SfxBoolItem( GetPool().GetWhichIDFromSlotID(nSlot), bSet ) );
                 rReq.Done();
             }
         }
@@ -1287,9 +1477,18 @@ void SwTextShell::Execute(SfxRequest &rReq)
         case FN_SORTING_DLG:
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSwSortingDialog(GetView().GetFrameWeld(), rWrtSh));
-            pDlg->Execute();
-            rReq.Done();
+            VclPtr<AbstractSwSortDlg> pDlg(pFact->CreateSwSortingDialog(GetView().GetFrameWeld(), rWrtSh));
+            auto xRequest = std::make_shared<SfxRequest>(rReq);
+            rReq.Ignore(); // the 'old' request is not relevant any more
+            pDlg->StartExecuteAsync(
+                [pDlg, xRequest=std::move(xRequest)] (sal_Int32 nResult)->void
+                {
+                    if (nResult == RET_OK)
+                        pDlg->Apply();
+                    pDlg->disposeOnce();
+                    xRequest->Done();
+                }
+            );
         }
         break;
         case FN_NUMBERING_OUTLINE_DLG:
@@ -1348,7 +1547,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 }
 
                 if( !bDelSel && aFieldMgr.GetCurField() && SwFieldTypesEnum::Formel == aFieldMgr.GetCurTypeId() )
-                    aFieldMgr.UpdateCurField( aFieldMgr.GetCurField()->GetFormat(), OUString(), sFormula );
+                    aFieldMgr.UpdateCurField( static_cast<SwGetExpField*>(aFieldMgr.GetCurField())->GetFormat(), OUString(), sFormula );
                 else if( !sFormula.isEmpty() )
                 {
                     if( rWrtSh.IsCursorInTable() )
@@ -1362,7 +1561,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     {
                         SvNumberFormatter* pFormatter = rWrtSh.GetNumberFormatter();
                         const sal_uInt32 nSysNumFormat = pFormatter->GetFormatIndex( NF_NUMBER_STANDARD, LANGUAGE_SYSTEM);
-                        SwInsertField_Data aData(SwFieldTypesEnum::Formel, nsSwGetSetExpType::GSE_FORMULA, OUString(), sFormula, nSysNumFormat);
+                        SwInsertField_Data aData(SwFieldTypesEnum::Formel, static_cast<sal_uInt16>(SwGetSetExpType::Formula), OUString(), sFormula, nSysNumFormat);
                         aFieldMgr.InsertField(aData);
                     }
                 }
@@ -1389,7 +1588,27 @@ void SwTextShell::Execute(SfxRequest &rReq)
         }
         break;
         case SID_EDIT_HYPERLINK:
+        {
+            if (!rWrtSh.HasSelection())
+            {
+                SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT> aSet(GetPool());
+                rWrtSh.GetCurAttr(aSet);
+                if (SfxItemState::SET > aSet.GetItemState(RES_TXTATR_INETFMT))
+                {
+                    // Didn't find a hyperlink to edit yet.
+
+                    // If the cursor is just before an unselected hyperlink,
+                    // the dialog will not know that it should edit that hyperlink,
+                    // so in this case, first select it so the dialog will find the hyperlink.
+                    // The dialog would leave the hyperlink selected anyway after a successful edit
+                    // (although it isn't normally selected after a cancel, but oh well).
+                    if (!rWrtSh.SelectTextAttr(RES_TXTATR_INETFMT))
+                        break;
+                }
+            }
+
             GetView().GetViewFrame().SetChildWindow(SID_HYPERLINK_DIALOG, true);
+        }
         break;
         case SID_REMOVE_HYPERLINK:
         {
@@ -1414,9 +1633,8 @@ void SwTextShell::Execute(SfxRequest &rReq)
         case SID_ATTR_CHAR_SCALEWIDTH :
         case SID_ATTR_CHAR_ROTATED :
         case FN_TXTATR_INET :
-        case FN_INSERT_HYPERLINK:
         {
-            const sal_uInt16 nWhich = GetPool().GetWhich( nSlot );
+            const sal_uInt16 nWhich = GetPool().GetWhichIDFromSlotID( nSlot );
             if ( pArgs && pArgs->GetItemState( nWhich ) == SfxItemState::SET )
                 bUseDialog = false;
             [[fallthrough]];
@@ -1447,7 +1665,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
         case FN_DROP_TEXT:
         case SID_ATTR_PARA_LRSPACE:
         {
-            const sal_uInt16 nWhich = GetPool().GetWhich( nSlot );
+            const sal_uInt16 nWhich = GetPool().GetWhichIDFromSlotID( nSlot );
             if ( pArgs && pArgs->GetItemState( nWhich ) == SfxItemState::SET )
                 bUseDialog = false;
             [[fallthrough]];
@@ -1458,7 +1676,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
 
             if ( pArgs )
             {
-                const SwPaMItem* pPaMItem = pArgs->GetItemIfSet( GetPool().GetWhich( FN_PARAM_PAM ), false );
+                const SwPaMItem* pPaMItem = pArgs->GetItemIfSet( GetPool().GetWhichIDFromSlotID( FN_PARAM_PAM ), false );
                 if ( pPaMItem )
                     pPaM = pPaMItem->GetValue( );
             }
@@ -1467,10 +1685,11 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 pPaM = rWrtSh.GetCursor();
 
             FieldUnit eMetric = ::GetDfltMetric( dynamic_cast<SwWebView*>( &GetView()) != nullptr );
-            SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)));
+            SwModule* mod = SwModule::get();
+            mod->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast<sal_uInt16>(eMetric)));
 
             bool bApplyCharUnit = ::HasCharUnit( dynamic_cast<SwWebView*>( &GetView()) != nullptr  );
-            SW_MOD()->PutItem(SfxBoolItem(SID_ATTR_APPLYCHARUNIT, bApplyCharUnit));
+            mod->PutItem(SfxBoolItem(SID_ATTR_APPLYCHARUNIT, bApplyCharUnit));
 
             SfxItemSetFixed<
                     RES_PARATR_BEGIN, RES_FRMATR_END - 1,
@@ -1508,7 +1727,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
 
             // Tabulators: Put DefaultTabs into ItemSet
             const SvxTabStopItem& rDefTabs =
-                            GetPool().GetDefaultItem(RES_PARATR_TABSTOP);
+                            GetPool().GetUserOrPoolDefaultItem(RES_PARATR_TABSTOP);
 
             const sal_uInt16 nDefDist = o3tl::narrowing<sal_uInt16>(::GetTabDist( rDefTabs ));
             SfxUInt16Item aDefDistItem( SID_ATTR_TABSTOP_DEFAULTS, nDefDist );
@@ -1520,8 +1739,10 @@ void SwTextShell::Execute(SfxRequest &rReq)
 
             // Left border as offset
             //#i24363# tab stops relative to indent
-            const tools::Long nOff = rWrtSh.getIDocumentSettingAccess().get(DocumentSettingId::TABS_RELATIVE_TO_INDENT)
-                ? aCoreSet.Get(RES_MARGIN_TEXTLEFT).GetTextLeft() : 0;
+            const tools::Long nOff
+                = rWrtSh.getIDocumentSettingAccess().get(DocumentSettingId::TABS_RELATIVE_TO_INDENT)
+                      ? aCoreSet.Get(RES_MARGIN_TEXTLEFT).ResolveTextLeft({})
+                      : 0;
             SfxInt32Item aOff( SID_ATTR_TABSTOP_OFFSET, nOff );
             aCoreSet.Put( aOff );
 
@@ -1560,7 +1781,8 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     SvxFirstLineIndentItem firstLine(RES_MARGIN_FIRSTLINE);
                     SvxTextLeftMarginItem leftMargin(RES_MARGIN_TEXTLEFT);
                     SvxRightMarginItem rightMargin(RES_MARGIN_RIGHT);
-                    firstLine.SetTextFirstLineOffset(aParaMargin.GetTextFirstLineOffset(), aParaMargin.GetPropTextFirstLineOffset());
+                    firstLine.SetTextFirstLineOffset(aParaMargin.GetTextFirstLineOffset(),
+                                                     aParaMargin.GetPropTextFirstLineOffset());
                     firstLine.SetAutoFirst(aParaMargin.IsAutoFirst());
                     leftMargin.SetTextLeft(aParaMargin.GetTextLeft(), aParaMargin.GetPropLeft());
                     rightMargin.SetRight(aParaMargin.GetRight(), aParaMargin.GetPropRight());
@@ -1579,7 +1801,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 rReq.Ignore(); // the 'old' request is not relevant any more
 
                 auto vCursors = CopyPaMRing(*pPaM); // tdf#134439 make a copy to use at later apply
-                pDlg->StartExecuteAsync([pDlg, &rWrtSh, pDrawModel, pRequest, nDefDist, vCursors](sal_Int32 nResult){
+                pDlg->StartExecuteAsync([pDlg, &rWrtSh, pDrawModel, pRequest=std::move(pRequest), nDefDist, vCursors=std::move(vCursors)](sal_Int32 nResult){
                     if (nResult == RET_OK)
                     {
                         // Apply defaults if necessary.
@@ -1603,10 +1825,10 @@ void SwTextShell::Execute(SfxRequest &rReq)
 
                         if (const SwFormatDrop* pDropItem = pSet->GetItemIfSet(RES_PARATR_DROP, false))
                         {
-                            OUString sCharStyleName;
+                            UIName sCharStyleName;
                             if (pDropItem->GetCharFormat())
                                 sCharStyleName = pDropItem->GetCharFormat()->GetName();
-                            pSet->Put(SfxStringItem(FN_DROP_CHAR_STYLE_NAME, sCharStyleName));
+                            pSet->Put(SfxStringItem(FN_DROP_CHAR_STYLE_NAME, sCharStyleName.toString()));
                         }
 
                         const XFillStyleItem* pFS = pSet->GetItem<XFillStyleItem>(XATTR_FILLSTYLE);
@@ -1617,8 +1839,8 @@ void SwTextShell::Execute(SfxRequest &rReq)
                         {
                             // MigrateItemSet guarantees unique gradient names
                             SfxItemSetFixed<XATTR_FILLGRADIENT, XATTR_FILLGRADIENT> aMigrateSet(rWrtSh.GetView().GetPool());
-                            aMigrateSet.Put(XFillGradientItem("gradient", pTempGradItem->GetGradientValue()));
-                            SdrModel::MigrateItemSet(&aMigrateSet, pSet, pDrawModel);
+                            aMigrateSet.Put(XFillGradientItem(u"gradient"_ustr, pTempGradItem->GetGradientValue()));
+                            SdrModel::MigrateItemSet(&aMigrateSet, pSet, *pDrawModel);
                         }
 
                         bSet = pFS && pFS->GetValue() == drawing::FillStyle_HATCH;
@@ -1627,8 +1849,8 @@ void SwTextShell::Execute(SfxRequest &rReq)
                         if (pTempHatchItem && pTempHatchItem->GetName().isEmpty())
                         {
                             SfxItemSetFixed<XATTR_FILLHATCH, XATTR_FILLHATCH> aMigrateSet(rWrtSh.GetView().GetPool());
-                            aMigrateSet.Put(XFillHatchItem("hatch", pTempHatchItem->GetHatchValue()));
-                            SdrModel::MigrateItemSet(&aMigrateSet, pSet, pDrawModel);
+                            aMigrateSet.Put(XFillHatchItem(u"hatch"_ustr, pTempHatchItem->GetHatchValue()));
+                            SdrModel::MigrateItemSet(&aMigrateSet, pSet, *pDrawModel);
                         }
 
                         sw_ParagraphDialogResult(pSet, rWrtSh, *pRequest, vCursors->front().get());
@@ -1703,6 +1925,21 @@ void SwTextShell::Execute(SfxRequest &rReq)
 
         case SID_ATTR_CHAR_COLOR2:
         {
+            std::unique_ptr<const SvxColorItem> pRecentColor; // manage lifecycle scope
+            if (!pItem)
+            {
+                // no color provided: use the pre-selected color shown in the toolbar/sidebar
+                const std::optional<NamedColor> oColor
+                    = GetView().GetDocShell()->GetRecentColor(SID_ATTR_CHAR_COLOR);
+                if (oColor.has_value())
+                {
+                    const model::ComplexColor aCol = (*oColor).getComplexColor();
+                    pRecentColor = std::make_unique<const SvxColorItem>(
+                        aCol.getFinalColor(), aCol, RES_CHRATR_COLOR);
+                    pItem = pRecentColor.get();
+                }
+            }
+
             if (pItem)
             {
                 auto* pColorItem = static_cast<const SvxColorItem*>(pItem);
@@ -1725,7 +1962,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
         case SID_ATTR_CHAR_COLOR_BACKGROUND: // deprecated
         case SID_ATTR_CHAR_COLOR_EXT:
         {
-            Color aColor;
+            Color aColor = COL_TRANSPARENT;
             model::ComplexColor aComplexColor;
 
             if (pItem)
@@ -1734,8 +1971,17 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 aColor = pColorItem->GetValue();
                 aComplexColor = pColorItem->getComplexColor();
             }
-            else
-                aColor = COL_TRANSPARENT;
+            else if (nSlot == SID_ATTR_CHAR_BACK_COLOR)
+            {
+                // no color provided: use the pre-selected color shown in the toolbar/sidebar
+                const std::optional<NamedColor> oColor
+                    = GetView().GetDocShell()->GetRecentColor(nSlot);
+                if (oColor.has_value())
+                {
+                    aComplexColor = (*oColor).getComplexColor();
+                    aColor = aComplexColor.getFinalColor();
+                }
+            }
 
             SwEditWin& rEdtWin = GetView().GetEditWin();
             if (nSlot != SID_ATTR_CHAR_COLOR_EXT)
@@ -1787,6 +2033,13 @@ void SwTextShell::Execute(SfxRequest &rReq)
                 rWrtSh.MoveParagraph(SwNodeOffset(-1));
             rReq.Done();
             break;
+        case SID_INSERT_HYPERLINK:
+        {
+            SfxRequest aReq(SID_HYPERLINK_DIALOG, SfxCallMode::SLOT, SfxGetpApp()->GetPool());
+            GetView().GetViewFrame().ExecuteSlot( aReq);
+            rReq.Ignore();
+        }
+        break;
         case SID_RUBY_DIALOG:
         case SID_HYPERLINK_DIALOG:
         {
@@ -1805,7 +2058,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
         bool bOn = true;
         if( SfxItemState::SET == pArgs->GetItemState(FN_PARAM_1, false, &pItem))
             bOn = static_cast<const SfxBoolItem*>(pItem)->GetValue();
-        rWrtSh.ChangeHeaderOrFooter(sStyleName, FN_INSERT_PAGEHEADER == nSlot, bOn, !rReq.IsAPI());
+        rWrtSh.ChangeHeaderOrFooter(UIName(sStyleName), FN_INSERT_PAGEHEADER == nSlot, bOn, !rReq.IsAPI());
         rReq.Done();
     }
     break;
@@ -1837,17 +2090,32 @@ void SwTextShell::Execute(SfxRequest &rReq)
     {
         SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT> aSet(GetPool());
         rWrtSh.GetCurAttr(aSet);
-        if(SfxItemState::SET <= aSet.GetItemState( RES_TXTATR_INETFMT ))
-        {
-            const SwFormatINetFormat& rINetFormat = aSet.Get(RES_TXTATR_INETFMT);
 
+        const SwFormatINetFormat* pINetFormat = nullptr;
+        if(SfxItemState::SET <= aSet.GetItemState( RES_TXTATR_INETFMT ))
+            pINetFormat = &aSet.Get(RES_TXTATR_INETFMT);
+        else if (!rWrtSh.HasSelection())
+        {
+            // is the cursor at the beginning of a hyperlink?
+            const SwTextNode* pTextNd = rWrtSh.GetCursor()->GetPointNode().GetTextNode();
+            if (pTextNd)
+            {
+                const sal_Int32 nIndex = rWrtSh.GetCursor()->Start()->GetContentIndex();
+                const SwTextAttr* pINetFmt = pTextNd->GetTextAttrAt(nIndex, RES_TXTATR_INETFMT);
+                if (pINetFmt && !pINetFmt->GetINetFormat().GetValue().isEmpty())
+                    pINetFormat = &pINetFmt->GetINetFormat();
+            }
+        }
+
+        if (pINetFormat)
+        {
             if (nSlot == SID_OPEN_HYPERLINK)
             {
-                rWrtSh.ClickToINetAttr(rINetFormat);
+                rWrtSh.ClickToINetAttr(*pINetFormat);
             }
             else if (nSlot == SID_COPY_HYPERLINK_LOCATION)
             {
-                OUString hyperlinkLocation = rINetFormat.GetValue();
+                OUString hyperlinkLocation = pINetFormat->GetValue();
                 ::uno::Reference< datatransfer::clipboard::XClipboard > xClipboard = GetView().GetEditWin().GetClipboard();
                 vcl::unohelper::TextDataObject::CopyStringTo(hyperlinkLocation, xClipboard, SfxViewShell::Current());
             }
@@ -1858,7 +2126,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
             if (pField && pField->GetTyp()->Which() == SwFieldIds::TableOfAuthorities)
             {
                 const auto& rAuthorityField = *static_cast<const SwAuthorityField*>(pField);
-                OUString targetURL = "";
+                OUString targetURL = u""_ustr;
 
                 if (auto targetType = rAuthorityField.GetTargetType();
                     targetType == SwAuthorityField::TargetType::UseDisplayURL
@@ -1940,7 +2208,7 @@ void SwTextShell::Execute(SfxRequest &rReq)
     case SID_FM_CTL_PROPERTIES:
     {
         SwPosition aPos(*GetShell().GetCursor()->GetPoint());
-        sw::mark::IFieldmark* pFieldBM = GetShell().getIDocumentMarkAccess()->getInnerFieldmarkFor(aPos);
+        sw::mark::Fieldmark* pFieldBM = GetShell().getIDocumentMarkAccess()->getInnerFieldmarkFor(aPos);
         if ( !pFieldBM )
         {
             aPos.AdjustContent(-1);
@@ -1951,25 +2219,47 @@ void SwTextShell::Execute(SfxRequest &rReq)
              && !(rWrtSh.GetCurrSection() && rWrtSh.GetCurrSection()->IsProtect()) )
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateDropDownFormFieldDialog(rWrtSh.GetView().GetFrameWeld(), pFieldBM));
-            if (pDlg->Execute() == RET_OK)
-            {
-                pFieldBM->Invalidate();
-                rWrtSh.InvalidateWindows( SwRect(rWrtSh.GetView().GetVisArea()) );
-                rWrtSh.UpdateCursor(); // cursor position might be invalid
-            }
+            VclPtr<AbstractDropDownFormFieldDialog> pDlg(pFact->CreateDropDownFormFieldDialog(rWrtSh.GetView().GetFrameWeld(), pFieldBM));
+            auto xRequest = std::make_shared<SfxRequest>(rReq);
+            rReq.Ignore(); // the 'old' request is not relevant any more
+            auto pWrtSh = &rWrtSh;
+            pDlg->StartExecuteAsync(
+                [pDlg, pFieldBM, pWrtSh, xRequest=std::move(xRequest)] (sal_Int32 nResult)->void
+                {
+                    if (nResult == RET_OK)
+                    {
+                        pDlg->Apply();
+                        pFieldBM->Invalidate();
+                        pWrtSh->InvalidateWindows( SwRect(pWrtSh->GetView().GetVisArea()) );
+                        pWrtSh->UpdateCursor(); // cursor position might be invalid
+                    }
+                    pDlg->disposeOnce();
+                    xRequest->Done();
+                }
+            );
         }
         else if ( pFieldBM && pFieldBM->GetFieldname() == ODF_FORMDATE )
         {
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            sw::mark::DateFieldmark& rDateField = dynamic_cast<sw::mark::DateFieldmark&>(*pFieldBM);
-            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateDateFormFieldDialog(rWrtSh.GetView().GetFrameWeld(), &rDateField, *GetView().GetDocShell()->GetDoc()));
-            if (pDlg->Execute() == RET_OK)
-            {
-                rDateField.Invalidate();
-                rWrtSh.InvalidateWindows( SwRect(rWrtSh.GetView().GetVisArea()) );
-                rWrtSh.UpdateCursor(); // cursor position might be invalid
-            }
+            sw::mark::DateFieldmark* pDateField = &dynamic_cast<sw::mark::DateFieldmark&>(*pFieldBM);
+            VclPtr<AbstractDateFormFieldDialog> pDlg(pFact->CreateDateFormFieldDialog(rWrtSh.GetView().GetFrameWeld(), pDateField, *GetView().GetDocShell()->GetDoc()));
+            auto pWrtSh = &rWrtSh;
+            auto xRequest = std::make_shared<SfxRequest>(rReq);
+            rReq.Ignore(); // the 'old' request is not relevant any more
+            pDlg->StartExecuteAsync(
+                [pDlg, pWrtSh, pDateField, xRequest=std::move(xRequest)] (sal_Int32 nResult)->void
+                {
+                    if (nResult == RET_OK)
+                    {
+                        pDlg->Apply();
+                        pDateField->Invalidate();
+                        pWrtSh->InvalidateWindows( SwRect(pWrtSh->GetView().GetVisArea()) );
+                        pWrtSh->UpdateCursor(); // cursor position might be invalid
+                    }
+                    pDlg->disposeOnce();
+                    xRequest->Done();
+                }
+            );
         }
         else
         {
@@ -2041,8 +2331,9 @@ void SwTextShell::Execute(SfxRequest &rReq)
                     SwPaM *pPaM = rWrtSh.GetCursor();
                     if (pPaM)
                         SwEditShell::IgnoreGrammarErrorAt( *pPaM );
-                    if (xDictionary.is())
+                    if (xDictionary.is() && pPaM)
                     {
+                        linguistic::AddEntryToDic( xDictionary, pPaM->GetText(), false, OUString() );
                         // refresh the layout of all paragraphs (workaround to launch a dictionary event)
                         xDictionary->setActive(false);
                         xDictionary->setActive(true);
@@ -2055,19 +2346,26 @@ void SwTextShell::Execute(SfxRequest &rReq)
         }
         else if (sApplyText == "Spelling")
         {
-            SwRect aToFill;
-            uno::Reference<linguistic2::XSpellAlternatives>  xSpellAlt(rWrtSh.GetCorrection(nullptr, aToFill));
-            if (!xSpellAlt.is())
-                return;
-            uno::Reference< linguistic2::XDictionary > xDictionary = LinguMgr::GetIgnoreAllList();
-            OUString sWord(xSpellAlt->getWord());
-            linguistic::DictionaryError nAddRes = linguistic::AddEntryToDic( xDictionary,
-                    sWord, false, OUString() );
-            if (linguistic::DictionaryError::NONE != nAddRes && xDictionary.is() && !xDictionary->getEntry(sWord).is())
-            {
-                SvxDicError(rWrtSh.GetView().GetFrameWeld(), nAddRes);
-            }
+            AddWordToWordbook(LinguMgr::GetIgnoreAllList(), rWrtSh);
         }
+    }
+    break;
+    case SID_ADD_TO_WORDBOOK:
+    {
+        OUString aDicName;
+        if (const SfxStringItem* pItem1 = rReq.GetArg<SfxStringItem>(FN_PARAM_1))
+            aDicName = pItem1->GetValue();
+
+        uno::Reference<linguistic2::XSearchableDictionaryList> xDicList(LinguMgr::GetDictionaryList());
+        uno::Reference<linguistic2::XDictionary> xDic = xDicList.is() ? xDicList->getDictionaryByName(aDicName) : nullptr;
+        if (AddWordToWordbook(xDic, rWrtSh))
+        {
+            // save modified user-dictionary if it is persistent
+            uno::Reference<frame::XStorable> xSavDic(xDic, uno::UNO_QUERY);
+            if (xSavDic.is())
+                xSavDic->store();
+        }
+        break;
     }
     break;
     case SID_SPELLCHECK_APPLY_SUGGESTION:
@@ -2138,6 +2436,1126 @@ void SwTextShell::Execute(SfxRequest &rReq)
         rWrtSh.SetInsMode( bOldIns );
     }
     break;
+        case FN_TRANSFORM_DOCUMENT_STRUCTURE:
+        {
+            // get the parameter, what to transform
+            OUString aDataJson;
+            const SfxStringItem* pDataJson = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
+            if (pDataJson)
+            {
+                aDataJson = pDataJson->GetValue();
+                aDataJson = rtl::Uri::decode(aDataJson, rtl_UriDecodeStrict, RTL_TEXTENCODING_UTF8);
+            }
+
+            // parse the JSON got prom parameter
+            boost::property_tree::ptree aTree;
+            std::stringstream aStream(
+                (std::string(OUStringToOString(aDataJson, RTL_TEXTENCODING_UTF8))));
+            try
+            {
+                boost::property_tree::read_json(aStream, aTree);
+            }
+            catch (...)
+            {
+                lcl_LogWarning("FillApi Transform parameter, Wrong JSON format. ");
+                throw;
+            }
+
+            // get the loaded content controls
+            uno::Reference<text::XContentControlsSupplier> xCCSupplier(
+                GetView().GetDocShell()->GetModel(), uno::UNO_QUERY);
+            if (!xCCSupplier.is())
+                break;
+
+            uno::Reference<container::XIndexAccess> xContentControls
+                = xCCSupplier->getContentControls();
+            int iCCcount = xContentControls->getCount();
+
+            enum class ContentFilterType
+            {
+                ERROR = -1,
+                INDEX,
+                TAG,
+                ALIAS,
+                ID
+            };
+            std::vector<std::string> aIdTexts = { ".ByIndex.", ".ByTag.", ".ByAlias.", ".ById." };
+
+            // get charts
+            uno::Reference<text::XTextEmbeddedObjectsSupplier> xEOS(
+                GetView().GetDocShell()->GetModel(), uno::UNO_QUERY);
+            if (!xEOS.is())
+                break;
+            uno::Reference<container::XIndexAccess> xEmbeddeds(xEOS->getEmbeddedObjects(),
+                                                               uno::UNO_QUERY);
+            if (!xEmbeddeds.is())
+                break;
+
+            sal_Int32 nEOcount = xEmbeddeds->getCount();
+
+            enum class ChartFilterType
+            {
+                ERROR = -1,
+                INDEX,
+                NAME,
+                TITLE,
+                SUBTITLE
+            };
+            std::vector<std::string> aIdChartTexts
+                = { ".ByEmbedIndex.", ".ByEmbedName.", ".ByTitle.", ".BySubTitle." };
+
+            // Iterate through the JSON data loaded into a tree structure
+            for (const auto& aItem : aTree)
+            {
+                if (aItem.first == "Transforms")
+                {
+                    // Handle all transformations
+                    for (const auto& aItem2Obj : aItem.second)
+                    {
+                        // handle `"Transforms": { `  and `"Transforms": [` cases as well
+                        // if an element is an object `{...}`, then get the first element of the object
+                        const auto& aItem2
+                            = aItem2Obj.first == "" ? *aItem2Obj.second.ordered_begin() : aItem2Obj;
+
+                        if (aItem2.first == "DocumentProperties")
+                        {
+                            uno::Reference<document::XDocumentPropertiesSupplier>
+                                xDocumentPropsSupplier(GetView().GetDocShell()->GetModel(),
+                                                       uno::UNO_QUERY);
+                            if (!xDocumentPropsSupplier.is())
+                                continue;
+                            uno::Reference<document::XDocumentProperties2> xDocProps(
+                                xDocumentPropsSupplier->getDocumentProperties(), uno::UNO_QUERY);
+                            if (!xDocProps.is())
+                                continue;
+
+                            for (const auto& aItem3 : aItem2.second)
+                            {
+                                if (aItem3.first == "Author")
+                                {
+                                    xDocProps->setAuthor(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "Generator")
+                                {
+                                    xDocProps->setGenerator(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "CreationDate")
+                                {
+                                    util::DateTime aDateTime;
+                                    sax::Converter::parseDateTime(
+                                        aDateTime,
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                    xDocProps->setCreationDate(aDateTime);
+                                }
+                                else if (aItem3.first == "Title")
+                                {
+                                    xDocProps->setTitle(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "Subject")
+                                {
+                                    xDocProps->setSubject(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "Description")
+                                {
+                                    xDocProps->setDescription(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "Keywords")
+                                {
+                                    uno::Sequence<OUString> aStringSeq(aItem3.second.size());
+                                    auto aStringArray = aStringSeq.getArray();
+                                    int nId = 0;
+                                    for (const auto& aItem4 : aItem3.second)
+                                    {
+                                        aStringArray[nId++] = OStringToOUString(aItem4.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8);
+                                    }
+                                    xDocProps->setKeywords(aStringSeq);
+                                }
+                                else if (aItem3.first == "Language")
+                                {
+                                    OUString aLanguageStr
+                                        = OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                            RTL_TEXTENCODING_UTF8);
+                                    lang::Locale aLanguageLang
+                                        = LanguageTag::convertToLocale(aLanguageStr);
+                                    xDocProps->setLanguage(aLanguageLang);
+                                }
+                                else if (aItem3.first == "ModifiedBy")
+                                {
+                                    xDocProps->setModifiedBy(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "ModificationDate")
+                                {
+                                    util::DateTime aDateTime;
+                                    sax::Converter::parseDateTime(
+                                        aDateTime,
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                    xDocProps->setModificationDate(aDateTime);
+                                }
+                                else if (aItem3.first == "PrintedBy")
+                                {
+                                    xDocProps->setPrintedBy(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "PrintDate")
+                                {
+                                    util::DateTime aDateTime;
+                                    sax::Converter::parseDateTime(
+                                        aDateTime,
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                    xDocProps->setPrintDate(aDateTime);
+                                }
+                                else if (aItem3.first == "TemplateName")
+                                {
+                                    xDocProps->setTemplateName(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "TemplateURL")
+                                {
+                                    xDocProps->setTemplateURL(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "TemplateDate")
+                                {
+                                    util::DateTime aDateTime;
+                                    sax::Converter::parseDateTime(
+                                        aDateTime,
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                    xDocProps->setTemplateDate(aDateTime);
+                                }
+                                else if (aItem3.first == "AutoloadURL")
+                                {
+                                    // Warning: wrong data here, can freeze LO.
+                                    xDocProps->setAutoloadURL(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "AutoloadSecs")
+                                {
+                                    //sal_Int32
+                                    xDocProps->setAutoloadSecs(aItem3.second.get_value<int>());
+                                }
+                                else if (aItem3.first == "DefaultTarget")
+                                {
+                                    xDocProps->setDefaultTarget(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "DocumentStatistics")
+                                {
+                                    uno::Sequence<beans::NamedValue> aNamedValueSeq(
+                                        aItem3.second.size());
+                                    auto aNamedValueArray = aNamedValueSeq.getArray();
+                                    int nId = 0;
+                                    for (const auto& aItem4 : aItem3.second)
+                                    {
+                                        OUString aName = OStringToOUString(aItem4.first,
+                                                                           RTL_TEXTENCODING_UTF8);
+                                        sal_Int32 nValue = aItem4.second.get_value<int>();
+                                        aNamedValueArray[nId].Name = aName;
+                                        aNamedValueArray[nId].Value <<= nValue;
+                                        nId++;
+                                    }
+                                    xDocProps->setDocumentStatistics(aNamedValueSeq);
+                                }
+                                else if (aItem3.first == "EditingCycles")
+                                {
+                                    //sal_Int16
+                                    xDocProps->setEditingCycles(aItem3.second.get_value<int>());
+                                }
+                                else if (aItem3.first == "EditingDuration")
+                                {
+                                    //sal_Int32
+                                    xDocProps->setEditingDuration(aItem3.second.get_value<int>());
+                                }
+                                else if (aItem3.first == "Contributor")
+                                {
+                                    uno::Sequence<OUString> aStringSeq(aItem3.second.size());
+                                    auto aStringArray = aStringSeq.getArray();
+                                    int nId = 0;
+                                    for (const auto& aItem4 : aItem3.second)
+                                    {
+                                        aStringArray[nId++] = OStringToOUString(
+                                            aItem4.second.get_value<std::string>(),
+                                            RTL_TEXTENCODING_UTF8);
+                                    }
+                                    xDocProps->setContributor(aStringSeq);
+                                }
+                                else if (aItem3.first == "Coverage")
+                                {
+                                    xDocProps->setCoverage(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "Identifier")
+                                {
+                                    xDocProps->setIdentifier(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "Publisher")
+                                {
+                                    uno::Sequence<OUString> aStringSeq(aItem3.second.size());
+                                    auto aStringArray = aStringSeq.getArray();
+                                    int nId = 0;
+                                    for (const auto& aItem4 : aItem3.second)
+                                    {
+                                        aStringArray[nId++] = OStringToOUString(
+                                            aItem4.second.get_value<std::string>(),
+                                            RTL_TEXTENCODING_UTF8);
+                                    }
+                                    xDocProps->setPublisher(aStringSeq);
+                                }
+                                else if (aItem3.first == "Relation")
+                                {
+                                    uno::Sequence<OUString> aStringSeq(aItem3.second.size());
+                                    auto aStringArray = aStringSeq.getArray();
+                                    int nId = 0;
+                                    for (const auto& aItem4 : aItem3.second)
+                                    {
+                                        aStringArray[nId++] = OStringToOUString(
+                                            aItem4.second.get_value<std::string>(),
+                                            RTL_TEXTENCODING_UTF8);
+                                    }
+                                    xDocProps->setRelation(aStringSeq);
+                                }
+                                else if (aItem3.first == "Rights")
+                                {
+                                    xDocProps->setRights(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "Source")
+                                {
+                                    xDocProps->setSource(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "Type")
+                                {
+                                    xDocProps->setType(
+                                        OStringToOUString(aItem3.second.get_value<std::string>(),
+                                                          RTL_TEXTENCODING_UTF8));
+                                }
+                                else if (aItem3.first == "UserDefinedProperties")
+                                {
+                                    const uno::Reference<beans::XPropertyContainer> xUserProps
+                                        = xDocProps->getUserDefinedProperties();
+                                    if (!xUserProps.is())
+                                        continue;
+                                    uno::Reference<beans::XPropertyAccess> xUserPropsAccess(
+                                        xDocProps->getUserDefinedProperties(), uno::UNO_QUERY);
+                                    if (!xUserPropsAccess.is())
+                                        continue;
+
+                                    for (const auto& aItem4Obj : aItem3.second)
+                                    {
+                                        // handle [{},{}...] case as well as {}...}
+                                        const auto& aItem4 = aItem4Obj.first == ""
+                                                                 ? *aItem4Obj.second.ordered_begin()
+                                                                 : aItem4Obj;
+
+                                        if (aItem4.first == "Delete")
+                                        {
+                                            std::string aPropName
+                                                = aItem4.second.get_value<std::string>();
+                                            try
+                                            {
+                                                xUserProps->removeProperty(OStringToOUString(
+                                                    aPropName, RTL_TEXTENCODING_UTF8));
+                                            }
+                                            catch (...)
+                                            {
+                                                lcl_LogWarning("FillApi DocumentProperties "
+                                                               "UserDefinedPropertieschart, failed "
+                                                               "to delete property: '"
+                                                               + aPropName + "'");
+                                            }
+                                        }
+                                        else if (aItem4.first.starts_with("Add."))
+                                        {
+                                            std::string aPropName = aItem4.first.substr(4);
+
+                                            comphelper::SequenceAsHashMap aUserDefinedProperties(
+                                                xUserPropsAccess->getPropertyValues());
+                                            comphelper::SequenceAsHashMap::iterator it
+                                                = aUserDefinedProperties.find(OStringToOUString(
+                                                    aPropName, RTL_TEXTENCODING_UTF8));
+                                            bool bToDelete = (it != aUserDefinedProperties.end());
+
+                                            try
+                                            {
+                                                std::stringstream aStreamPart;
+                                                aStreamPart << "{\n\"" << aPropName << "\" : ";
+                                                boost::property_tree::json_parser::write_json(
+                                                    aStreamPart, aItem4.second);
+                                                aStreamPart << "}";
+
+                                                OString aJSONPart(aStreamPart.str());
+                                                std::vector<beans::PropertyValue> aPropVec
+                                                    = comphelper::JsonToPropertyValues(aJSONPart);
+
+                                                if (bToDelete)
+                                                    xUserProps->removeProperty(aPropVec[0].Name);
+
+                                                xUserProps->addProperty(
+                                                    aPropVec[0].Name,
+                                                    beans::PropertyAttribute::REMOVABLE,
+                                                    aPropVec[0].Value);
+                                            }
+                                            catch(...)
+                                            {
+                                                lcl_LogWarning("FillApi DocumentProperties "
+                                                               "UserDefinedPropertieschart, failed "
+                                                               "to add property: '"
+                                                               + aPropName + "'");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (aItem2.first.starts_with("Charts"))
+                        {
+                            std::string aTextEnd = aItem2.first.substr(6);
+                            std::string aValue = "";
+                            ChartFilterType iKeyId = ChartFilterType::ERROR;
+                            // Find how the chart is identified: ByIndex, ByTitle...
+                            for (size_t i = 0; i < aIdChartTexts.size(); i++)
+                            {
+                                if (aTextEnd.starts_with(aIdChartTexts[i]))
+                                {
+                                    iKeyId = static_cast<ChartFilterType>(i);
+                                    aValue = aTextEnd.substr(aIdChartTexts[i].length());
+                                    break;
+                                }
+                            }
+                            if (iKeyId != ChartFilterType::ERROR)
+                            {
+                                // A chart transformation filter can match multiple charts
+                                // In that case every matching charts will be transformed
+                                // If no chart match to the filter, then we show warning
+                                bool bChartFound = false;
+                                for (int i = 0; i < nEOcount; ++i)
+                                {
+                                    uno::Reference<beans::XPropertySet> xShapeProps(
+                                        xEmbeddeds->getByIndex(i), uno::UNO_QUERY);
+                                    if (!xShapeProps.is())
+                                        continue;
+
+                                    uno::Reference<frame::XModel> xDocModel;
+                                    xShapeProps->getPropertyValue(u"Model"_ustr) >>= xDocModel;
+                                    if (!xDocModel.is())
+                                        continue;
+
+                                    uno::Reference<chart2::XChartDocument> xChartDoc(
+                                        xDocModel, uno::UNO_QUERY);
+                                    if (!xChartDoc.is())
+                                        continue;
+
+                                    uno::Reference<chart2::data::XDataProvider> xDataProvider(
+                                        xChartDoc->getDataProvider());
+                                    if (!xDataProvider.is())
+                                        continue;
+
+                                    uno::Reference<chart::XChartDataArray> xDataArray(
+                                        xChartDoc->getDataProvider(), uno::UNO_QUERY);
+                                    if (!xDataArray.is())
+                                        continue;
+
+                                    uno::Reference<chart2::XInternalDataProvider> xIDataProvider(
+                                        xChartDoc->getDataProvider(), uno::UNO_QUERY);
+                                    if (!xIDataProvider.is())
+                                        continue;
+
+                                    uno::Reference<util::XModifiable> xModi(xDocModel,
+                                                                            uno::UNO_QUERY);
+                                    if (!xModi.is())
+                                        continue;
+
+                                    switch (iKeyId)
+                                    {
+                                        case ChartFilterType::INDEX:
+                                        {
+                                            if (stoi(aValue) != i)
+                                                continue;
+                                        }
+                                        break;
+                                        case ChartFilterType::NAME:
+                                        {
+                                            uno::Reference<container::XNamed> xNamedShape(
+                                                xEmbeddeds->getByIndex(i), uno::UNO_QUERY);
+                                            if (xNamedShape.is())
+                                            {
+                                                OUString aName;
+                                                aName = xNamedShape->getName();
+                                                if (OStringToOUString(aValue, RTL_TEXTENCODING_UTF8)
+                                                    != aName)
+                                                    continue;
+                                            }
+                                        }
+                                        break;
+                                        case ChartFilterType::TITLE:
+                                        {
+                                            uno::Reference<chart2::XTitled> xTitled(
+                                                xChartDoc, uno::UNO_QUERY_THROW);
+                                            if (!xTitled.is())
+                                                continue;
+                                            uno::Reference<chart2::XTitle> xTitle
+                                                = xTitled->getTitleObject();
+                                            if (!xTitle.is())
+                                                continue;
+
+                                            OUString aTitle;
+                                            const uno::Sequence<
+                                                uno::Reference<chart2::XFormattedString>>
+                                                aFSSeq = xTitle->getText();
+                                            for (auto const& fs : aFSSeq)
+                                                aTitle += fs->getString();
+                                            if (OStringToOUString(aValue, RTL_TEXTENCODING_UTF8)
+                                                != aTitle)
+                                                continue;
+                                        }
+                                        break;
+                                        case ChartFilterType::SUBTITLE:
+                                        {
+                                            uno::Reference<chart2::XDiagram> xDiagram
+                                                = xChartDoc->getFirstDiagram();
+                                            if (!xDiagram.is())
+                                                continue;
+
+                                            uno::Reference<chart2::XTitled> xTitled(
+                                                xDiagram, uno::UNO_QUERY_THROW);
+                                            if (!xTitled.is())
+                                                continue;
+
+                                            uno::Reference<chart2::XTitle> xSubTitle(
+                                                xTitled->getTitleObject());
+                                            if (!xSubTitle.is())
+                                                continue;
+
+                                            OUString aSubTitle;
+                                            const uno::Sequence<
+                                                uno::Reference<chart2::XFormattedString>>
+                                                aFSSeq = xSubTitle->getText();
+                                            for (auto const& fs : aFSSeq)
+                                                aSubTitle += fs->getString();
+                                            if (OStringToOUString(aValue, RTL_TEXTENCODING_UTF8)
+                                                != aSubTitle)
+                                                continue;
+                                        }
+                                        break;
+                                        default:
+                                            continue;
+                                    }
+
+                                    // We have a match, this chart need to be transformed
+                                    // Set all the values (of the chart) what is needed
+                                    bChartFound = true;
+
+                                    // Check if the InternalDataProvider is row or column based.
+                                    bool bChartUseColumns = false;
+                                    uno::Sequence<beans::PropertyValue> aArguments(
+                                        xDataProvider->detectArguments(nullptr));
+                                    for (sal_Int32 j = 0; j < aArguments.getLength(); ++j)
+                                    {
+                                        if (aArguments[j].Name == "DataRowSource")
+                                        {
+                                            css::chart::ChartDataRowSource eRowSource;
+                                            if (aArguments[j].Value >>= eRowSource)
+                                                bChartUseColumns
+                                                    = (eRowSource
+                                                       == css::chart::ChartDataRowSource_COLUMNS);
+                                            break;
+                                        }
+                                    }
+
+                                    for (const auto& aItem3Obj : aItem2.second)
+                                    {
+                                        //handle [] and {} cases
+                                        const auto& aItem3 = aItem3Obj.first == ""
+                                                                 ? *aItem3Obj.second.ordered_begin()
+                                                                 : aItem3Obj;
+
+                                        if (aItem3.first.starts_with("deletecolumn.")
+                                            || aItem3.first.starts_with("deleterow.")
+                                            || aItem3.first.starts_with("insertcolumn.")
+                                            || aItem3.first.starts_with("insertrow.")
+                                            || aItem3.first.starts_with("modifycolumn.")
+                                            || aItem3.first.starts_with("modifyrow."))
+                                        {
+                                            // delete insert, or modify a row, or column
+                                            // column, or row?
+                                            bool bSetColumn = (aItem3.first[6] == 'c');
+                                            int nId = stoi(aItem3.first.substr(bSetColumn ? 13 : 10));
+                                            bool bDelete = aItem3.first.starts_with("delete");
+                                            // delete/insert a row/column if needed
+                                            if (!aItem3.first.starts_with("modify"))
+                                            {
+                                                if (bChartUseColumns == bSetColumn)
+                                                {
+                                                    if (bDelete)
+                                                    {
+                                                        if (!lcl_DeleteChartColumns(xChartDoc, nId))
+                                                            continue;
+                                                        xIDataProvider->deleteSequence(nId);
+                                                    }
+                                                    else
+                                                    {
+                                                        if (!lcl_InsertChartColumns(xChartDoc, nId))
+                                                            continue;
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    if (bDelete)
+                                                    {
+                                                        xIDataProvider
+                                                            ->deleteDataPointForAllSequences(nId);
+                                                    }
+                                                    else
+                                                    {
+                                                        xIDataProvider
+                                                            ->insertDataPointForAllSequences(nId
+                                                                                             - 1);
+                                                    }
+                                                }
+                                            }
+                                            // set values also, if needed
+                                            if (!bDelete && aItem3.second.size() > 0)
+                                            {
+                                                uno::Sequence<uno::Sequence<double>> aData
+                                                    = xDataArray->getData();
+                                                uno::Sequence<double>* pRows = aData.getArray();
+
+                                                int nIndex = 0;
+                                                int nX = nId;
+                                                int nY = nId;
+                                                bool bIndexWarning = false;
+                                                for (const auto& aItem4 : aItem3.second)
+                                                {
+                                                    if (bSetColumn)
+                                                    {
+                                                        nY = nIndex;
+                                                    }
+                                                    else
+                                                    {
+                                                        nX = nIndex;
+                                                    }
+                                                    if (nY < aData.getLength() && nY >= 0
+                                                        && nX < pRows[nY].getLength() && nX >= 0)
+                                                    {
+                                                        double* pCols = pRows[nY].getArray();
+                                                        pCols[nX]
+                                                            = aItem4.second.get_value<double>();
+                                                    }
+                                                    else
+                                                    {
+                                                        bIndexWarning = true;
+                                                    }
+
+                                                    nIndex++;
+                                                }
+                                                if (bIndexWarning)
+                                                {
+                                                    std::string sValues = "";
+                                                    for (const auto& atemp : aItem3.second)
+                                                    {
+                                                        if (sValues != "")
+                                                        {
+                                                            sValues += ", ";
+                                                        }
+                                                        sValues += atemp.second
+                                                                       .get_value<std::string>();
+                                                    }
+                                                    lcl_LogWarning(
+                                                        "FillApi chart: Invalid Cell Index at: '"
+                                                        + aItem3.first + ": " + sValues
+                                                        + "' (probably too many parameters)");
+                                                }
+
+                                                xDataArray->setData(aData);
+                                            }
+                                        }
+                                        else if (aItem3.first.starts_with("setrowdesc"))
+                                        {
+                                            // set row descriptions
+                                            uno::Sequence<OUString> aRowDesc
+                                                = xDataArray->getRowDescriptions();
+                                            OUString* aRowdata = aRowDesc.getArray();
+
+                                            if (aItem3.first.starts_with("setrowdesc."))
+                                            {
+                                                // set only 1 description
+                                                int nValue = stoi(aItem3.first.substr(11));
+                                                if (nValue >= 0 && nValue < aRowDesc.getLength())
+                                                {
+                                                    aRowdata[nValue] = OStringToOUString(
+                                                        aItem3.second.get_value<std::string>(),
+                                                        RTL_TEXTENCODING_UTF8);
+                                                }
+                                                else
+                                                {
+                                                    lcl_LogWarning("FillApi chart setrowdesc: "
+                                                                   "invalid Index at: '"
+                                                                   + aItem3.first + "'");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                // set an array of description at once
+                                                int nIndex = 0;
+                                                for (const auto& aItem4 : aItem3.second)
+                                                {
+                                                    if (nIndex >= aRowDesc.getLength())
+                                                    {
+                                                        lcl_LogWarning("FillApi chart setrowdesc: "
+                                                                       "too many params");
+                                                        break;
+                                                    }
+                                                    aRowdata[nIndex] = OStringToOUString(
+                                                        aItem4.second.get_value<std::string>(),
+                                                        RTL_TEXTENCODING_UTF8);
+                                                    nIndex++;
+                                                }
+                                            }
+                                            xDataArray->setRowDescriptions(aRowDesc);
+                                        }
+                                        else if (aItem3.first.starts_with("setcolumndesc"))
+                                        {
+                                            // set column descriptions
+                                            uno::Sequence<OUString> aColDesc
+                                                = xDataArray->getColumnDescriptions();
+                                            OUString* aColdata = aColDesc.getArray();
+
+                                            if (aItem3.first.starts_with("setcolumndesc."))
+                                            {
+                                                int nValue = stoi(aItem3.first.substr(14));
+                                                if (nValue >= 0 && nValue < aColDesc.getLength())
+                                                {
+                                                    aColdata[nValue] = OStringToOUString(
+                                                        aItem3.second.get_value<std::string>(),
+                                                        RTL_TEXTENCODING_UTF8);
+                                                }
+                                                else
+                                                {
+                                                    lcl_LogWarning("FillApi chart setcolumndesc: "
+                                                                   "invalid Index at: '"
+                                                                   + aItem3.first + "'");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                int nIndex = 0;
+                                                for (const auto& aItem4 : aItem3.second)
+                                                {
+                                                    if (nIndex >= aColDesc.getLength())
+                                                    {
+                                                        lcl_LogWarning(
+                                                            "FillApi chart setcolumndesc:"
+                                                            " too many parameters");
+                                                        break;
+                                                    }
+                                                    aColdata[nIndex] = OStringToOUString(
+                                                        aItem4.second.get_value<std::string>(),
+                                                        RTL_TEXTENCODING_UTF8);
+                                                    nIndex++;
+                                                }
+                                            }
+                                            xDataArray->setColumnDescriptions(aColDesc);
+                                        }
+                                        else if (aItem3.first.starts_with("resize"))
+                                        {
+                                            if (aItem3.second.size() >= 2)
+                                            {
+                                                auto aItem4 = aItem3.second.begin();
+                                                int nY = aItem4->second.get_value<int>();
+                                                int nX = (++aItem4)->second.get_value<int>();
+
+                                                if (nX < 1 || nY < 1)
+                                                {
+                                                    lcl_LogWarning(
+                                                        "FillApi chart resize: wrong param"
+                                                        " (Needed: x,y >= 1)");
+                                                    continue;
+                                                }
+                                                // here we need to use the new insert column thing
+                                                if (!lcl_ResizeChartColumns(xChartDoc, nX))
+                                                    continue;
+
+                                                uno::Sequence<uno::Sequence<double>> aData
+                                                    = xDataArray->getData();
+                                                if (aData.getLength() != nY)
+                                                    aData.realloc(nY);
+
+                                                for (sal_Int32 j = 0; j < nY; ++j)
+                                                {
+                                                    uno::Sequence<double>* pRows = aData.getArray();
+                                                    // resize row if needed
+                                                    if (pRows[j].getLength() != nX)
+                                                    {
+                                                        pRows[j].realloc(nX);
+                                                    }
+                                                }
+                                                xDataArray->setData(aData);
+                                            }
+                                            else
+                                            {
+                                                lcl_LogWarning(
+                                                    "FillApi chart resize: not enough parameters"
+                                                    " (x,y is needed)");
+                                            }
+                                        }
+                                        else if (aItem3.first.starts_with("data"))
+                                        {
+                                            // set table data values
+                                            uno::Sequence<uno::Sequence<double>> aData
+                                                = xDataArray->getData();
+
+                                            // set only 1 cell data
+                                            if (aItem3.first.starts_with("datayx."))
+                                            {
+                                                int nPoint = aItem3.first.find('.', 7);
+                                                int nY = stoi(aItem3.first.substr(7, nPoint - 7));
+                                                int nX = stoi(aItem3.first.substr(nPoint + 1));
+                                                bool bValidIndex = false;
+                                                if (nY < aData.getLength() && nY >= 0)
+                                                {
+                                                    uno::Sequence<double>* pRows = aData.getArray();
+                                                    if (nX < pRows[nY].getLength() && nX >= 0)
+                                                    {
+                                                        double* pCols = pRows[nY].getArray();
+                                                        pCols[nX]
+                                                            = aItem3.second.get_value<double>();
+                                                        bValidIndex = true;
+                                                    }
+                                                }
+                                                if (!bValidIndex)
+                                                {
+                                                    lcl_LogWarning(
+                                                        "FillApi chart datayx: invalid Index at: '"
+                                                        + aItem3.first + "'");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                // set the whole data table
+                                                // resize if needed
+                                                int nRowsCount = aItem3.second.size();
+                                                int nColsCount = 0;
+
+                                                for (const auto& aItem4 : aItem3.second)
+                                                {
+                                                    if (nColsCount
+                                                        < static_cast<int>(aItem4.second.size()))
+                                                    {
+                                                        nColsCount = aItem4.second.size();
+                                                    }
+                                                }
+
+                                                if (nColsCount > 0)
+                                                {
+                                                    // here we need to use the new insert column thing
+                                                    if(!lcl_ResizeChartColumns(xChartDoc, nColsCount))
+                                                        continue;
+
+                                                    if (aData.getLength() != nRowsCount)
+                                                        aData.realloc(nRowsCount);
+
+                                                    // set all the rows
+                                                    sal_Int32 nY = 0;
+                                                    for (const auto& aItem4 : aItem3.second)
+                                                    {
+                                                        uno::Sequence<double>* pRows
+                                                            = aData.getArray();
+                                                        // resize row if needed
+                                                        if (pRows[nY].getLength() != nColsCount)
+                                                        {
+                                                            pRows[nY].realloc(nColsCount);
+                                                        }
+                                                        double* pCols = pRows[nY].getArray();
+                                                        // set all values in the row
+                                                        sal_Int32 nX = 0;
+                                                        for (const auto& aItem5 : aItem4.second)
+                                                        {
+                                                            if (nX >= nColsCount)
+                                                            {
+                                                                // This should never happen
+                                                                break;
+                                                            }
+                                                            pCols[nX]
+                                                                = aItem5.second.get_value<double>();
+                                                            nX++;
+                                                        }
+                                                        nY++;
+                                                    }
+                                                }
+                                            }
+                                            xDataArray->setData(aData);
+                                        }
+                                        else
+                                        {
+                                            lcl_LogWarning("FillApi chart command not recognised: '"
+                                                           + aItem3.first + "'");
+                                        }
+                                        xModi->setModified(true);
+                                    }
+                                }
+                                if (!bChartFound)
+                                {
+                                    lcl_LogWarning("FillApi: No chart match the filter: '"
+                                                   + aItem2.first + "'");
+                                }
+                            }
+                            else
+                            {
+                                lcl_LogWarning("FillApi chart filter type not recognised: '"
+                                               + aItem2.first + "'");
+                            }
+                        }
+
+                        if (aItem2.first.starts_with("ContentControls"))
+                        {
+                            std::string aTextEnd = aItem2.first.substr(15);
+                            std::string aValue = "";
+                            ContentFilterType iKeyId = ContentFilterType::ERROR;
+                            // Find how the content control is identified: ByIndex, ByAlias...
+                            for (size_t i = 0; i < aIdTexts.size(); i++)
+                            {
+                                if (aTextEnd.starts_with(aIdTexts[i]))
+                                {
+                                    iKeyId = static_cast<ContentFilterType>(i);
+                                    aValue = aTextEnd.substr(aIdTexts[i].length());
+                                    break;
+                                }
+                            }
+                            if (iKeyId != ContentFilterType::ERROR)
+                            {
+                                // Check all the content controls, if they match
+                                bool bCCFound = false;
+                                for (int i = 0; i < iCCcount; ++i)
+                                {
+                                    uno::Reference<text::XTextContent> xContentControl;
+                                    xContentControls->getByIndex(i) >>= xContentControl;
+
+                                    uno::Reference<beans::XPropertySet> xContentControlProps(
+                                        xContentControl, uno::UNO_QUERY);
+                                    if (!xContentControlProps.is())
+                                        continue;
+
+                                    // Compare the loaded and the actual identifier
+                                    switch (iKeyId)
+                                    {
+                                        case ContentFilterType::INDEX:
+                                        {
+                                            if (stoi(aValue) != i)
+                                                continue;
+                                        }
+                                        break;
+                                        case ContentFilterType::ID:
+                                        {
+                                            sal_Int32 iID = -1;
+                                            xContentControlProps->getPropertyValue(UNO_NAME_ID)
+                                                >>= iID;
+                                            if (stoi(aValue) != iID)
+                                                continue;
+                                        }
+                                        break;
+                                        case ContentFilterType::ALIAS:
+                                        {
+                                            OUString aAlias;
+                                            xContentControlProps->getPropertyValue(UNO_NAME_ALIAS)
+                                                >>= aAlias;
+                                            if (OStringToOUString(aValue, RTL_TEXTENCODING_UTF8)
+                                                != aAlias)
+                                                continue;
+                                        }
+                                        break;
+                                        case ContentFilterType::TAG:
+                                        {
+                                            OUString aTag;
+                                            xContentControlProps->getPropertyValue(UNO_NAME_TAG)
+                                                >>= aTag;
+                                            if (OStringToOUString(aValue, RTL_TEXTENCODING_UTF8)
+                                                != aTag)
+                                                continue;
+                                        }
+                                        break;
+                                        default:
+                                            continue;
+                                    }
+
+                                    // We have a match, this content control need to be transformed
+                                    // Set all the values (of the content control) what is needed
+                                    bCCFound = true;
+                                    for (const auto& aItem3 : aItem2.second)
+                                    {
+                                        if (aItem3.first == "content")
+                                        {
+                                            std::string aContent
+                                                = aItem3.second.get_value<std::string>();
+
+                                            uno::Reference<text::XText> xContentControlText(
+                                                xContentControl, uno::UNO_QUERY);
+                                            if (!xContentControlText.is())
+                                                continue;
+
+                                            xContentControlText->setString(
+                                                OStringToOUString(aContent, RTL_TEXTENCODING_UTF8));
+
+                                            sal_Int32 iType = 0;
+                                            xContentControlProps->getPropertyValue(
+                                                UNO_NAME_CONTENT_CONTROL_TYPE)
+                                                >>= iType;
+                                            SwContentControlType aType
+                                                = static_cast<SwContentControlType>(iType);
+
+                                            // if we set the content of a checkbox, then we
+                                            // also set the checked state based on the content
+                                            if (aType == SwContentControlType::CHECKBOX)
+                                            {
+                                                OUString aCheckedContent;
+                                                xContentControlProps->getPropertyValue(
+                                                    UNO_NAME_CHECKED_STATE)
+                                                    >>= aCheckedContent;
+                                                bool bChecked = false;
+                                                if (aCheckedContent
+                                                    == OStringToOUString(
+                                                        aItem3.second.get_value<std::string>(),
+                                                        RTL_TEXTENCODING_UTF8))
+                                                    bChecked = true;
+                                                xContentControlProps->setPropertyValue(
+                                                    UNO_NAME_CHECKED, uno::Any(bChecked));
+                                            }
+                                            else if (aType == SwContentControlType::PLAIN_TEXT
+                                                     || aType == SwContentControlType::RICH_TEXT
+                                                     || aType == SwContentControlType::DATE
+                                                     || aType == SwContentControlType::COMBO_BOX
+                                                     || aType
+                                                            == SwContentControlType::DROP_DOWN_LIST)
+                                            {
+                                                // Set the placeholder
+                                                bool bPlaceHolder = aContent == "" ? true : false;
+                                                xContentControlProps->setPropertyValue(
+                                                    UNO_NAME_SHOWING_PLACE_HOLDER,
+                                                    uno::Any(bPlaceHolder));
+                                                if (bPlaceHolder)
+                                                {
+                                                    OUString aPlaceHolderText;
+                                                    switch (aType)
+                                                    {
+                                                        case SwContentControlType::PLAIN_TEXT:
+                                                        case SwContentControlType::RICH_TEXT:
+                                                        {
+                                                            aPlaceHolderText = SwResId(
+                                                                STR_CONTENT_CONTROL_PLACEHOLDER);
+                                                        }
+                                                        break;
+                                                        case SwContentControlType::COMBO_BOX:
+                                                        case SwContentControlType::DROP_DOWN_LIST:
+                                                        {
+                                                            aPlaceHolderText = SwResId(
+                                                                STR_DROPDOWN_CONTENT_CONTROL_PLACEHOLDER);
+                                                        }
+                                                        break;
+                                                        case SwContentControlType::DATE:
+                                                        {
+                                                            aPlaceHolderText = SwResId(
+                                                                STR_DATE_CONTENT_CONTROL_PLACEHOLDER);
+                                                        }
+                                                        break;
+                                                        default: // do nothing for picture and checkbox
+                                                        break;
+                                                    }
+                                                    if (!aPlaceHolderText.isEmpty())
+                                                        xContentControlText->setString(
+                                                            aPlaceHolderText);
+                                                }
+                                            }
+                                        }
+                                        else if (aItem3.first == "checked")
+                                        {
+                                            bool bChecked
+                                                = (aItem3.second.get_value<std::string>() == "true")
+                                                      ? true
+                                                      : false;
+                                            xContentControlProps->setPropertyValue(
+                                                UNO_NAME_CHECKED,
+                                                uno::Any(bChecked));
+
+                                            OUString aCheckContent;
+                                            xContentControlProps->getPropertyValue(
+                                                bChecked ? UNO_NAME_CHECKED_STATE
+                                                         : UNO_NAME_UNCHECKED_STATE)
+                                                >>= aCheckContent;
+                                            uno::Reference<text::XText> xContentControlText(
+                                                xContentControl, uno::UNO_QUERY);
+                                            if (!xContentControlText.is())
+                                                continue;
+                                            xContentControlText->setString(aCheckContent);
+                                        }
+                                        else if (aItem3.first == "date")
+                                        {
+                                            std::string aDate
+                                                = aItem3.second.get_value<std::string>();
+                                            xContentControlProps->setPropertyValue(
+                                                UNO_NAME_CURRENT_DATE,
+                                                uno::Any(OStringToOUString(aDate,
+                                                                           RTL_TEXTENCODING_UTF8)));
+                                        }
+                                        else if (aItem3.first == "alias")
+                                        {
+                                            xContentControlProps->setPropertyValue(
+                                                UNO_NAME_ALIAS,
+                                                uno::Any(OStringToOUString(
+                                                    aItem3.second.get_value<std::string>(),
+                                                    RTL_TEXTENCODING_UTF8)));
+                                        }
+                                        else
+                                        {
+                                            lcl_LogWarning(
+                                                "FillApi contentControl command not recognised: '"
+                                                + aItem3.first + "'");
+                                        }
+                                    }
+                                }
+                                if (!bCCFound)
+                                {
+                                    lcl_LogWarning("FillApi: No contentControl match the filter: '"
+                                                   + aItem2.first + "'");
+                                }
+                            }
+                            else
+                            {
+                                lcl_LogWarning(
+                                    "FillApi contentControl filter type not recognised: '"
+                                    + aItem2.first + "'");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        break;
     default:
         OSL_ENSURE(false, "wrong dispatcher");
         return;
@@ -2172,7 +3590,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                     aKeyboardLang = SvtLanguageTable::GetLanguageString( nLang );
 
                 // get the language that is in use
-                OUString aCurrentLang = "*";
+                OUString aCurrentLang = u"*"_ustr;
                 nLang = SwLangHelper::GetCurrentLanguage( rSh );
                 if (nLang != LANGUAGE_DONTKNOW)
                 {
@@ -2288,7 +3706,6 @@ void SwTextShell::GetState( SfxItemSet &rSet )
             }
             break;
 
-        case FN_INSERT_HYPERLINK:
         case SID_INSERTDOC:
         case FN_INSERT_GLOSSARY:
         case FN_EXPAND_GLOSSARY:
@@ -2445,14 +3862,14 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                 std::vector<OUString> aList;
                 static constexpr OUStringLiteral sPhysical(u"IsPhysical");
                 static constexpr OUStringLiteral sDisplay(u"DisplayName");
-                const OUString sHeaderOn(nWhich == FN_INSERT_PAGEHEADER ? OUString("HeaderIsOn") : OUString("FooterIsOn"));
+                const OUString sHeaderOn(nWhich == FN_INSERT_PAGEHEADER ? u"HeaderIsOn"_ustr : u"FooterIsOn"_ustr);
 
-                uno::Reference< XStyleFamiliesSupplier > xSupplier(GetView().GetDocShell()->GetBaseModel(), uno::UNO_QUERY);
+                rtl::Reference< SwXTextDocument > xSupplier(GetView().GetDocShell()->GetBaseModel());
                 if (xSupplier.is())
                 {
                     uno::Reference< XNameContainer > xContainer;
                     uno::Reference< XNameAccess > xFamilies = xSupplier->getStyleFamilies();
-                    if (xFamilies->getByName("PageStyles") >>= xContainer)
+                    if (xFamilies->getByName(u"PageStyles"_ustr) >>= xContainer)
                     {
                         const uno::Sequence< OUString > aSeqNames = xContainer->getElementNames();
                         for (const auto& rName : aSeqNames)
@@ -2477,7 +3894,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                 }
 
                 if (bAllState && aList.size() > 1)
-                    aList.push_back("_ALL_");
+                    aList.push_back(u"_ALL_"_ustr);
 
                 rSet.Put(SfxStringListItem(nWhich, &aList));
             }
@@ -2541,26 +3958,85 @@ void SwTextShell::GetState( SfxItemSet &rSet )
 
             case SID_EDIT_HYPERLINK:
                 {
+                    if (!rSh.HasReadonlySel())
+                    {
+                        SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT> aSet(GetPool());
+                        rSh.GetCurAttr(aSet);
+                        if (SfxItemState::SET <= aSet.GetItemState(RES_TXTATR_INETFMT))
+                            break;
+
+                        // is the cursor at the beginning of a hyperlink?
+                        const SwTextNode* pTextNd = rSh.GetCursor()->GetPointNode().GetTextNode();
+                        if (pTextNd && !rSh.HasSelection())
+                        {
+                            const sal_Int32 nIndex = rSh.GetCursor()->Start()->GetContentIndex();
+                            const SwTextAttr* pINetFmt
+                                = pTextNd->GetTextAttrAt(nIndex, RES_TXTATR_INETFMT);
+                            if (pINetFmt && !pINetFmt->GetINetFormat().GetValue().isEmpty())
+                                break;
+                        }
+                    }
+                    rSet.DisableItem(nWhich);
+                }
+            break;
+            case SID_INSERT_HYPERLINK:
+            {
+                if (!rSh.HasSelection())
+                {
+                    rSet.DisableItem(nWhich);
+                    break;
+                }
+                if (!rSh.HasReadonlySel())
+                {
                     SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT> aSet(GetPool());
                     rSh.GetCurAttr(aSet);
-                    if(SfxItemState::SET > aSet.GetItemState( RES_TXTATR_INETFMT ) || rSh.HasReadonlySel())
+
+                    // If a hyperlink is selected, either alone or along with other text...
+                    if (SfxItemState::SET <= aSet.GetItemState(RES_TXTATR_INETFMT)
+                        || aSet.GetItemState(RES_TXTATR_INETFMT) == SfxItemState::INVALID)
                     {
                         rSet.DisableItem(nWhich);
                     }
+
+                    // is the cursor at the beginning of a hyperlink?
+                    const SwTextNode* pTextNd = rSh.GetCursor()->GetPointNode().GetTextNode();
+                    if (pTextNd && !rSh.HasSelection())
+                    {
+                        const sal_Int32 nIndex = rSh.GetCursor()->Start()->GetContentIndex();
+                        const SwTextAttr* pINetFmt
+                            = pTextNd->GetTextAttrAt(nIndex, RES_TXTATR_INETFMT);
+                        if (pINetFmt && !pINetFmt->GetINetFormat().GetValue().isEmpty())
+                            rSet.DisableItem(nWhich);
+                    }
                 }
+            }
             break;
             case SID_REMOVE_HYPERLINK:
             {
-                SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT> aSet(GetPool());
-                rSh.GetCurAttr(aSet);
-
-                // If a hyperlink is selected, either alone or along with other text...
-                if ((aSet.GetItemState(RES_TXTATR_INETFMT) < SfxItemState::SET &&
-                    aSet.GetItemState(RES_TXTATR_INETFMT) != SfxItemState::DONTCARE) ||
-                    rSh.HasReadonlySel())
+                if (!rSh.HasReadonlySel())
                 {
-                    rSet.DisableItem(nWhich);
+                    SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT> aSet(GetPool());
+                    rSh.GetCurAttr(aSet);
+
+                    // If a hyperlink is selected, either alone or along with other text...
+                    if (SfxItemState::SET <= aSet.GetItemState(RES_TXTATR_INETFMT)
+                        || aSet.GetItemState(RES_TXTATR_INETFMT) == SfxItemState::INVALID)
+                    {
+                        break;
+                    }
+
+                    // is the cursor at the beginning of a hyperlink?
+                    const SwTextNode* pTextNd = rSh.GetCursor()->GetPointNode().GetTextNode();
+                    if (pTextNd && !rSh.HasSelection())
+                    {
+                        const sal_Int32 nIndex = rSh.GetCursor()->Start()->GetContentIndex();
+                        const SwTextAttr* pINetFmt
+                            = pTextNd->GetTextAttrAt(nIndex, RES_TXTATR_INETFMT);
+                        if (pINetFmt && !pINetFmt->GetINetFormat().GetValue().isEmpty())
+                            break;
+                    }
                 }
+                rSet.DisableItem(nWhich);
             }
             break;
             case SID_TRANSLITERATE_HALFWIDTH:
@@ -2594,8 +4070,19 @@ void SwTextShell::GetState( SfxItemSet &rSet )
             {
                 SfxItemSetFixed<RES_TXTATR_INETFMT, RES_TXTATR_INETFMT> aSet(GetPool());
                 rSh.GetCurAttr(aSet);
+                if (SfxItemState::SET <= aSet.GetItemState(RES_TXTATR_INETFMT, false))
+                    break;
 
-                bool bAuthorityFieldURL = false;
+                // is the cursor at the beginning of a hyperlink?
+                const SwTextNode* pTextNd = rSh.GetCursor()->GetPointNode().GetTextNode();
+                if (pTextNd && !rSh.HasSelection())
+                {
+                    const sal_Int32 nIndex = rSh.GetCursor()->Start()->GetContentIndex();
+                    const SwTextAttr* pINetFmt = pTextNd->GetTextAttrAt(nIndex, RES_TXTATR_INETFMT);
+                    if (pINetFmt && !pINetFmt->GetINetFormat().GetValue().isEmpty())
+                        break;
+                }
+
                 SwField* pField = rSh.GetCurField();
                 if (pField && pField->GetTyp()->Which() == SwFieldIds::TableOfAuthorities)
                 {
@@ -2605,12 +4092,12 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                         || targetType == SwAuthorityField::TargetType::UseTargetURL)
                     {
                         // Check if the Bibliography entry has a target URL
-                        bAuthorityFieldURL = rAuthorityField.GetAbsoluteURL().getLength() > 0;
+                        if (rAuthorityField.GetAbsoluteURL().getLength() > 0)
+                            break;
                     }
                 }
-                if (SfxItemState::SET > aSet.GetItemState(RES_TXTATR_INETFMT, false)
-                    && !bAuthorityFieldURL)
-                    rSet.DisableItem(nWhich);
+
+                rSet.DisableItem(nWhich);
             }
             break;
             case FN_OPEN_LOCAL_URL:
@@ -2649,7 +4136,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                                                   aActionIndicesSequence,
                                                   aStringKeyMaps,
                                                   xRange,
-                                                  xController,
+                                                  std::move(xController),
                                                   std::move(aLocale),
                                                   aApplicationName,
                                                   aRangeText );
@@ -2734,6 +4221,18 @@ void SwTextShell::GetState( SfxItemSet &rSet )
             }
         }
             break;
+            case FN_BUL_GET_DOC_BULLETS:
+            {
+                std::set<OUString> aBulletsSet = rSh.GetUsedBullets();
+                std::vector<OUString> aBullets;
+                std::copy(aBulletsSet.begin(), aBulletsSet.end(), std::back_inserter(aBullets));
+                SfxStringListItem aItem(FN_BUL_GET_DOC_BULLETS);
+                uno::Sequence<OUString> aSeq(aBullets.data(),
+                                             static_cast<sal_Int32>(aBullets.size()));
+                aItem.SetStringList(aSeq);
+                rSet.Put(aItem);
+            }
+            break;
             case FN_NUM_CONTINUE:
             {
                 // #i86492#
@@ -2774,7 +4273,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
 
                 // Enable it if we have a valid object other than what form shell knows
                 SwPosition aPos(*GetShell().GetCursor()->GetPoint());
-                sw::mark::IFieldmark* pFieldBM = GetShell().getIDocumentMarkAccess()->getInnerFieldmarkFor(aPos);
+                sw::mark::Fieldmark* pFieldBM = GetShell().getIDocumentMarkAccess()->getInnerFieldmarkFor(aPos);
                 if ( !pFieldBM && aPos.GetContentIndex() > 0)
                 {
                     aPos.AdjustContent(-1);
@@ -2806,6 +4305,7 @@ void SwTextShell::GetState( SfxItemSet &rSet )
                 rSet.Put(SfxBoolItem(nWhich, bProtected));
             }
             break;
+            case FN_DELETE_CONTENT_CONTROL:
             case FN_CONTENT_CONTROL_PROPERTIES:
             {
                 if (!GetShell().CursorInsideContentControl())

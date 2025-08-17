@@ -573,7 +573,7 @@ public:
     virtual void                Beep() override;
 
     // returns system data (most prominent: window handle)
-    virtual const SystemEnvData*    GetSystemData() const override;
+    virtual const SystemEnvData& GetSystemData() const override;
 
     virtual void                ResolveWindowHandle(SystemEnvData& rData) const override;
 
@@ -606,7 +606,6 @@ public:
 
     virtual void                PositionByToolkit(const tools::Rectangle& rRect, FloatWinPopupFlags nFlags) override;
     virtual void                SetModal(bool bModal) override;
-    virtual bool                GetModal() const override;
     void                        HideTooltip();
     void                        BlockTooltip();
     void                        UnblockTooltip();

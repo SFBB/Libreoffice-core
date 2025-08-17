@@ -21,12 +21,13 @@
 #include <unotools/weakref.hxx>
 #include <o3tl/sorted_vector.hxx>
 
+#include "ControllerCommandDispatch.hxx"
+
 #include <map>
 #include <vector>
 
 namespace com::sun::star::frame { class XController; }
 namespace com::sun::star::frame { class XDispatch; }
-namespace com::sun::star::frame { class XModel; }
 namespace com::sun::star::frame { struct DispatchDescriptor; }
 namespace com::sun::star::uno { class XComponentContext; }
 namespace com::sun::star::util { struct URL; }
@@ -71,6 +72,7 @@ public:
     // itself)
     explicit CommandDispatchContainer(
         const css::uno::Reference< css::uno::XComponentContext > & xContext );
+    ~CommandDispatchContainer();
 
     void setModel(
         const rtl::Reference<::chart::ChartModel> & xModel );
@@ -79,8 +81,8 @@ public:
         rChartCommands
      */
     void setChartDispatch(
-        const css::uno::Reference< css::frame::XDispatch >& rChartDispatch,
-        o3tl::sorted_vector< OUString > && rChartCommands );
+        const rtl::Reference< ControllerCommandDispatch >& rChartDispatch,
+        const o3tl::sorted_vector< std::u16string_view > & rChartCommands );
 
     /** Returns the dispatch that is able to do the command given in rURL, if
         implemented here.  If the URL is not implemented here, it should be
@@ -102,7 +104,7 @@ public:
             const css::uno::Reference< css::frame::XController > & xChartController,
             const css::util::URL & rURL );
 
-    const css::uno::Reference< css::frame::XDispatch > & getChartDispatcher() const { return m_xChartDispatcher; }
+    const ControllerCommandDispatch* getChartDispatcher() const { return m_xChartDispatcher.get(); }
 
     void setDrawCommandDispatch( DrawCommandDispatch* pDispatch );
     DrawCommandDispatch* getDrawCommandDispatch() { return m_pDrawCommandDispatch; }
@@ -124,8 +126,8 @@ private:
     css::uno::Reference< css::uno::XComponentContext >    m_xContext;
     unotools::WeakReference< ::chart::ChartModel >         m_xModel;
 
-    css::uno::Reference< css::frame::XDispatch >          m_xChartDispatcher;
-    o3tl::sorted_vector< OUString >                       m_aChartCommands;
+    rtl::Reference<ControllerCommandDispatch> m_xChartDispatcher;
+    o3tl::sorted_vector<std::u16string_view> m_aAdditionalChartCommands;
 
     DrawCommandDispatch* m_pDrawCommandDispatch;
     ShapeController* m_pShapeController;

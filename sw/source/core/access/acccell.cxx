@@ -21,7 +21,6 @@
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/typeprovider.hxx>
 #include <vcl/svapp.hxx>
 #include <cellfrm.hxx>
@@ -48,23 +47,19 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 using namespace sw::access;
 
-constexpr OUStringLiteral sImplementationName = u"com.sun.star.comp.Writer.SwAccessibleCellView";
-
 bool SwAccessibleCell::IsSelected()
 {
     bool bRet = false;
 
     assert(GetMap());
-    const SwViewShell *pVSh = GetMap()->GetShell();
-    assert(pVSh);
-    if( auto pCSh = dynamic_cast<const SwCursorShell*>(pVSh) )
+    const SwViewShell& rVSh = GetMap()->GetShell();
+    if( auto pCSh = dynamic_cast<const SwCursorShell*>(&rVSh) )
     {
         if( pCSh->IsTableMode() )
         {
             const SwCellFrame *pCFrame =
                 static_cast< const SwCellFrame * >( GetFrame() );
-            SwTableBox *pBox =
-                const_cast< SwTableBox *>( pCFrame->GetTabBox() );
+            const SwTableBox* pBox = pCFrame->GetTabBox();
             SwSelBoxes const& rBoxes(pCSh->GetTableCursor()->GetSelectedBoxes());
             bRet = rBoxes.find(pBox) != rBoxes.end();
         }
@@ -78,9 +73,8 @@ void SwAccessibleCell::GetStates( sal_Int64& rStateSet )
     SwAccessibleContext::GetStates( rStateSet );
 
     // SELECTABLE
-    const SwViewShell *pVSh = GetMap()->GetShell();
-    assert(pVSh);
-    if( dynamic_cast<const SwCursorShell*>( pVSh) !=  nullptr )
+    const SwViewShell& rVSh = GetMap()->GetShell();
+    if( dynamic_cast<const SwCursorShell*>(&rVSh) !=  nullptr )
         rStateSet |= AccessibleStateType::SELECTABLE;
     //Add resizable state to table cell.
     rStateSet |= AccessibleStateType::RESIZABLE;
@@ -100,7 +94,7 @@ void SwAccessibleCell::GetStates( sal_Int64& rStateSet )
 
 SwAccessibleCell::SwAccessibleCell(std::shared_ptr<SwAccessibleMap> const& pInitMap,
                                     const SwCellFrame *pCellFrame )
-    : SwAccessibleContext( pInitMap, AccessibleRole::TABLE_CELL, pCellFrame )
+    : SwAccessibleCell_BASE(pInitMap, AccessibleRole::TABLE_CELL, pCellFrame)
     , m_aSelectionHelper( *this )
     , m_bIsSelected( false )
 {
@@ -109,13 +103,11 @@ SwAccessibleCell::SwAccessibleCell(std::shared_ptr<SwAccessibleMap> const& pInit
 
     m_bIsSelected = IsSelected();
 
-    css::uno::Reference<css::accessibility::XAccessible> xTableReference(
+    rtl::Reference<SwAccessibleContext> xTableReference(
         getAccessibleParentImpl());
-    css::uno::Reference<css::accessibility::XAccessibleContext> xContextTable(
-        xTableReference, css::uno::UNO_QUERY);
     SAL_WARN_IF(
-        (!xContextTable.is()
-         || xContextTable->getAccessibleRole() != AccessibleRole::TABLE),
+        (!xTableReference.is()
+         || xTableReference->getAccessibleRole() != AccessibleRole::TABLE),
         "sw.a11y", "bad accessible context");
     m_pAccTable = static_cast<SwAccessibleTable *>(xTableReference.get());
 }
@@ -161,7 +153,7 @@ bool SwAccessibleCell::InvalidateChildrenCursorPos( const SwFrame *pFrame )
         const SwFrame *pLower = rLower.GetSwFrame();
         if( pLower )
         {
-            if( rLower.IsAccessible( GetMap()->GetShell()->IsPreview() )  )
+            if (rLower.IsAccessible(GetMap()->GetShell().IsPreview()))
             {
                 ::rtl::Reference< SwAccessibleContext > xAccImpl(
                     GetMap()->GetContextImpl( pLower, false ) );
@@ -198,10 +190,8 @@ void SwAccessibleCell::InvalidateCursorPos_()
             ::rtl::Reference < SwAccessibleContext > xChildImpl( GetMap()->GetContextImpl( aChild.GetSwFrame())  );
             if (xChildImpl.is())
             {
-                AccessibleEventObject aEvent;
-                aEvent.EventId = AccessibleEventId::STATE_CHANGED;
-                aEvent.NewValue <<= AccessibleStateType::FOCUSED;
-                xChildImpl->FireAccessibleEvent( aEvent );
+                xChildImpl->FireAccessibleEvent(AccessibleEventId::STATE_CHANGED, uno::Any(),
+                                                uno::Any(AccessibleStateType::FOCUSED));
             }
         }
     }
@@ -238,21 +228,6 @@ OUString SAL_CALL SwAccessibleCell::getAccessibleDescription()
     return GetName();
 }
 
-OUString SAL_CALL SwAccessibleCell::getImplementationName()
-{
-    return sImplementationName;
-}
-
-sal_Bool SAL_CALL SwAccessibleCell::supportsService(const OUString& sTestServiceName)
-{
-    return cppu::supportsService(this, sTestServiceName);
-}
-
-uno::Sequence< OUString > SAL_CALL SwAccessibleCell::getSupportedServiceNames()
-{
-    return { "com.sun.star.table.AccessibleCellView", sAccessibleServiceName };
-}
-
 void SwAccessibleCell::Dispose(bool bRecursive, bool bCanSkipInvisible)
 {
     const SwFrame *pParent = GetParent( SwAccessibleChild(GetFrame()), IsInPagePreview() );
@@ -271,49 +246,6 @@ void SwAccessibleCell::InvalidatePosOrSize( const SwRect& rOldBox )
     if( xAccImpl.is() )
         xAccImpl->InvalidateChildPosOrSize( SwAccessibleChild(GetFrame()), rOldBox );
     SwAccessibleContext::InvalidatePosOrSize( rOldBox );
-}
-
-// XAccessibleInterface
-
-uno::Any SwAccessibleCell::queryInterface( const uno::Type& rType )
-{
-    if (rType == cppu::UnoType<XAccessibleExtendedAttributes>::get())
-    {
-        uno::Any aR;
-        aR <<= uno::Reference<XAccessibleExtendedAttributes>(this);
-        return aR;
-    }
-
-    if (rType == cppu::UnoType<XAccessibleSelection>::get())
-    {
-        uno::Any aR;
-        aR <<= uno::Reference<XAccessibleSelection>(this);
-        return aR;
-    }
-    if ( rType == ::cppu::UnoType<XAccessibleValue>::get() )
-    {
-        uno::Reference<XAccessibleValue> xValue = this;
-        uno::Any aRet;
-        aRet <<= xValue;
-        return aRet;
-    }
-    else
-    {
-        return SwAccessibleContext::queryInterface( rType );
-    }
-}
-
-// XTypeProvider
-uno::Sequence< uno::Type > SAL_CALL SwAccessibleCell::getTypes()
-{
-    return cppu::OTypeCollection(
-        ::cppu::UnoType<XAccessibleValue>::get(),
-        SwAccessibleContext::getTypes() ).getTypes();
-}
-
-uno::Sequence< sal_Int8 > SAL_CALL SwAccessibleCell::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
 }
 
 // XAccessibleValue
@@ -368,11 +300,10 @@ uno::Any SwAccessibleCell::getMinimumIncrement(  )
     return uno::Any();
 }
 
-css::uno::Any SAL_CALL SwAccessibleCell::getExtendedAttributes()
+OUString SAL_CALL SwAccessibleCell::getExtendedAttributes()
 {
     SolarMutexGuard g;
 
-    css::uno::Any strRet;
     SwFrameFormat *pFrameFormat = GetTableBoxFormat();
     assert(pFrameFormat);
 
@@ -384,10 +315,7 @@ css::uno::Any SAL_CALL SwAccessibleCell::getExtendedAttributes()
                               .replaceAll(u"=", u"\\=")
                               .replaceAll(u",", u"\\,")
                               .replaceAll(u":", u"\\:");
-    OUString strFor = "Formula:" + strFormula + ";";
-    strRet <<= strFor;
-
-    return strRet;
+    return "Formula:" + strFormula + ";";
 }
 
 sal_Int32 SAL_CALL SwAccessibleCell::getBackground()

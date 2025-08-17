@@ -297,8 +297,8 @@ namespace pcr
     }
 
     OBrowserListBox::OBrowserListBox(weld::Builder& rBuilder, weld::Container* pContainer)
-        : m_xScrolledWindow(rBuilder.weld_scrolled_window("scrolledwindow"))
-        , m_xLinesPlayground(rBuilder.weld_container("playground"))
+        : m_xScrolledWindow(rBuilder.weld_scrolled_window(u"scrolledwindow"_ustr))
+        , m_xLinesPlayground(rBuilder.weld_box(u"playground"_ustr))
         , m_xSizeGroup(rBuilder.create_size_group())
         , m_xHelpWindow(new InspectorHelpWindow(rBuilder))
         , m_pInitialControlParent(pContainer)
@@ -474,7 +474,7 @@ namespace pcr
         if ( _nPos >= m_aLines.size() )
         {
             nInsertPos = m_aLines.size();
-            m_aLines.push_back( aNewLine );
+            m_aLines.push_back(std::move(aNewLine));
         }
         else
             m_aLines.insert( m_aLines.begin() + _nPos, aNewLine );

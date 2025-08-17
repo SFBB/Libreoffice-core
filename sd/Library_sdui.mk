@@ -9,8 +9,6 @@
 
 $(eval $(call gb_Library_Library,sdui))
 
-$(eval $(call gb_Library_set_plugin_for,sdui,sd))
-
 $(eval $(call gb_Library_set_componentfile,sdui,sd/source/console/presenter,services))
 
 $(eval $(call gb_Library_set_include,sdui,\
@@ -53,16 +51,17 @@ $(eval $(call gb_Library_use_libraries,sdui,\
     fwk \
     sal \
     salhelper \
+	sd \
     sfx \
     sot \
     svl \
     svt \
     svxcore \
     svx \
+    tk \
     tl \
     utl \
     vcl \
-    cui \
 ))
 
 $(eval $(call gb_Library_add_exception_objects,sdui,\
@@ -93,6 +92,10 @@ $(eval $(call gb_Library_add_exception_objects,sdui,\
     sd/source/ui/dlg/vectdlg \
     sd/source/ui/dlg/PhotoAlbumDialog \
     sd/source/ui/dlg/BulletAndPositionDlg \
+    sd/source/console/AccessibleFocusManager \
+    sd/source/console/AccessibleNotes \
+    sd/source/console/AccessibleObject \
+    sd/source/console/AccessibleParagraph \
     sd/source/console/PresenterAccessibility \
     sd/source/console/PresenterBitmapContainer \
     sd/source/console/PresenterButton \
@@ -103,7 +106,6 @@ $(eval $(call gb_Library_add_exception_objects,sdui,\
     sd/source/console/PresenterFrameworkObserver \
     sd/source/console/PresenterGeometryHelper \
     sd/source/console/PresenterHelpView \
-    sd/source/console/PresenterHelper \
     sd/source/console/PresenterNotesView \
     sd/source/console/PresenterPaintManager \
     sd/source/console/PresenterPane \

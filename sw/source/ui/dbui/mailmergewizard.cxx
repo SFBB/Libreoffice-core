@@ -33,12 +33,12 @@
 
 #include <helpids.h>
 
-using namespace svt;
 using namespace ::com::sun::star;
+using vcl::RoadmapWizardTypes::PathId;
 
 SwMailMergeWizard::SwMailMergeWizard(SwView& rView, std::shared_ptr<SwMailMergeConfigItem> xItem)
     : RoadmapWizardMachine(rView.GetFrameWeld())
-    , m_pSwView(&rView)
+    , m_rSwView(rView)
     , m_bDocumentLoad(false)
     , m_xConfigItem(std::move(xItem))
     , m_sStarting(SwResId(ST_STARTING))
@@ -61,7 +61,7 @@ SwMailMergeWizard::SwMailMergeWizard(SwView& rView, std::shared_ptr<SwMailMergeC
     //#i51949# no output type page visible if e-Mail is not supported
     if (m_xConfigItem->IsMailAvailable())
         declarePath(
-            0,
+            PathId::COMMON_FIRST_STATE,
             {MM_DOCUMENTSELECTPAGE,
             MM_OUTPUTTYPETPAGE,
             MM_ADDRESSBLOCKPAGE,
@@ -70,7 +70,7 @@ SwMailMergeWizard::SwMailMergeWizard(SwView& rView, std::shared_ptr<SwMailMergeC
         );
     else
         declarePath(
-            0,
+            PathId::COMMON_FIRST_STATE,
             {MM_DOCUMENTSELECTPAGE,
             MM_ADDRESSBLOCKPAGE,
             MM_GREETINGSPAGE,
@@ -101,23 +101,23 @@ std::unique_ptr<BuilderPage> SwMailMergeWizard::createPage(WizardState _nState)
             so that when by default the focus is on the left side pane of
             the wizard the relevant help page is displayed when hitting
             the Help / F1 button */
-            SetRoadmapHelpId("modules/swriter/ui/mmselectpage/MMSelectPage");
+            SetRoadmapHelpId(u"modules/swriter/ui/mmselectpage/MMSelectPage"_ustr);
         break;
         case MM_OUTPUTTYPETPAGE    :
             xRet = std::make_unique<SwMailMergeOutputTypePage>(pPageContainer, this);
-            SetRoadmapHelpId("modules/swriter/ui/mmoutputtypepage/MMOutputTypePage");
+            SetRoadmapHelpId(u"modules/swriter/ui/mmoutputtypepage/MMOutputTypePage"_ustr);
         break;
         case MM_ADDRESSBLOCKPAGE   :
             xRet = std::make_unique<SwMailMergeAddressBlockPage>(pPageContainer, this);
-            SetRoadmapHelpId("modules/swriter/ui/mmaddressblockpage/MMAddressBlockPage");
+            SetRoadmapHelpId(u"modules/swriter/ui/mmaddressblockpage/MMAddressBlockPage"_ustr);
         break;
         case MM_GREETINGSPAGE      :
             xRet = std::make_unique<SwMailMergeGreetingsPage>(pPageContainer, this);
-            SetRoadmapHelpId("modules/swriter/ui/mmsalutationpage/MMSalutationPage");
+            SetRoadmapHelpId(u"modules/swriter/ui/mmsalutationpage/MMSalutationPage"_ustr);
         break;
         case MM_LAYOUTPAGE         :
             xRet = std::make_unique<SwMailMergeLayoutPage>(pPageContainer, this);
-            SetRoadmapHelpId("modules/swriter/ui/mmlayoutpage/MMLayoutPage");
+            SetRoadmapHelpId(u"modules/swriter/ui/mmlayoutpage/MMLayoutPage"_ustr);
         break;
     }
 
@@ -148,7 +148,7 @@ void SwMailMergeWizard::enterState( WizardState _nState )
         {
             bEnablePrev = false; // the first page
 
-            OUString sDataSourceName = GetSwView()->GetDataSourceName();
+            OUString sDataSourceName = GetSwView().GetDataSourceName();
             if(!sDataSourceName.isEmpty() &&
                !SwView::IsDataSourceAvailable(sDataSourceName))
             {

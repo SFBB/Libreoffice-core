@@ -112,6 +112,16 @@ public:
     virtual void                SetRunLabel() = 0;
 };
 
+class AbstractMacroManagerDialog : virtual public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractMacroManagerDialog() override = default;
+
+public:
+    virtual OUString GetScriptURL() const = 0;
+    virtual void LoadLastUsedMacro() const = 0;
+};
+
 namespace com::sun::star::frame { class XFrame; }
 
 class SFX2_DLLPUBLIC SfxAbstractDialogFactory : virtual public VclAbstractDialogFactory
@@ -135,8 +145,15 @@ public:
     virtual VclPtr<SfxAbstractLinksDialog>    CreateLinksDialog(weld::Window* pParent, sfx2::LinkManager* pMgr, bool bHTML=false, sfx2::SvBaseLink* p=nullptr) = 0;
     virtual VclPtr<VclAbstractDialog>         CreateSvxScriptOrgDialog(weld::Window* pParent,  const OUString& rLanguage) = 0;
 
+    virtual VclPtr<AbstractSecurityOptionsDialog> CreateSvxSecurityOptionsDialog(weld::Window* pParent) = 0;
+
     virtual VclPtr<AbstractScriptSelectorDialog> CreateScriptSelectorDialog(weld::Window* pParent,
             const css::uno::Reference< css::frame::XFrame >& rxFrame) = 0;
+
+    virtual VclPtr<AbstractMacroManagerDialog>
+    CreateMacroManagerDialog(weld::Window* pParent,
+                             const css::uno::Reference<css::frame::XFrame>& rxFrame)
+        = 0;
 
     virtual void ShowAsyncScriptErrorDialog( weld::Window* pParent, const css::uno::Any& rException ) = 0;
 
@@ -147,9 +164,11 @@ public:
 
     virtual VclPtr<VclAbstractDialog> CreateTipOfTheDayDialog(weld::Window* _pParent) = 0;
 
-    virtual VclPtr<VclAbstractDialog> CreateToolbarmodeDialog(weld::Window* _pParent) = 0;
+    virtual VclPtr<VclAbstractDialog> CreateUIPickerDialog(weld::Window* _pParent) = 0;
 
     virtual VclPtr<VclAbstractDialog> CreateWidgetTestDialog(weld::Window* _pParent) = 0;
+
+    virtual VclPtr<SfxAbstractTabDialog> CreateWelcomeDialog(weld::Window* pParent, const bool bIsFirstStart) =0;
 };
 
 #endif

@@ -10,6 +10,7 @@
 #ifndef INCLUDED_VCL_CUSTOMWELD_HXX
 #define INCLUDED_VCL_CUSTOMWELD_HXX
 
+#include <comphelper/OAccessible.hxx>
 #include <vcl/weld.hxx>
 
 class InputContext;
@@ -24,10 +25,7 @@ private:
     DECL_LINK(DragBeginHdl, weld::DrawingArea&, bool);
 
 public:
-    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible()
-    {
-        return css::uno::Reference<css::accessibility::XAccessible>();
-    }
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() { return {}; }
     // rRect is in Logical units rather than Pixels
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) = 0;
     virtual void Resize() { Invalidate(); }
@@ -39,6 +37,7 @@ public:
     virtual void StyleUpdated() { Invalidate(); }
     virtual bool Command(const CommandEvent&) { return false; }
     virtual bool KeyInput(const KeyEvent&) { return false; }
+    virtual bool KeyUp(const KeyEvent&) { return false; }
     virtual tools::Rectangle GetFocusRect() { return tools::Rectangle(); }
     virtual FactoryFunction GetUITestFactory() const { return nullptr; }
     virtual OUString RequestHelp(tools::Rectangle&) { return OUString(); }
@@ -83,12 +82,18 @@ public:
     {
         return m_pDrawingArea->get_accessible_description();
     }
-    void CaptureMouse() { m_pDrawingArea->grab_add(); }
-    bool IsMouseCaptured() const { return m_pDrawingArea->has_grab(); }
+    OUString GetAccessibleId() const
+    {
+        if (m_pDrawingArea)
+            return m_pDrawingArea->get_accessible_id();
+        return OUString();
+    }
+    void CaptureMouse() { m_pDrawingArea->grab_mouse(); }
+    bool IsMouseCaptured() const { return m_pDrawingArea->has_mouse_grab(); }
     Point GetPointerPosPixel() const { return m_pDrawingArea->get_pointer_position(); }
     void EnableRTL(bool bEnable) { m_pDrawingArea->set_direction(bEnable); }
     bool IsRTLEnabled() const { return m_pDrawingArea->get_direction(); }
-    void ReleaseMouse() { m_pDrawingArea->grab_remove(); }
+    void ReleaseMouse() { m_pDrawingArea->release_mouse(); }
     void SetPointer(PointerStyle ePointerStyle) { m_pDrawingArea->set_cursor(ePointerStyle); }
     void SetHelpId(const OUString& rHelpId) { m_pDrawingArea->set_help_id(rHelpId); }
     void SetAccessibleName(const OUString& rName) { m_pDrawingArea->set_accessible_name(rName); }
@@ -154,6 +159,7 @@ private:
     DECL_DLLPRIVATE_LINK(DoGetFocus, weld::Widget&, void);
     DECL_DLLPRIVATE_LINK(DoLoseFocus, weld::Widget&, void);
     DECL_DLLPRIVATE_LINK(DoKeyPress, const KeyEvent&, bool);
+    DECL_DLLPRIVATE_LINK(DoKeyRelease, const KeyEvent&, bool);
     DECL_DLLPRIVATE_LINK(DoFocusRect, weld::Widget&, tools::Rectangle);
     DECL_DLLPRIVATE_LINK(DoCommand, const CommandEvent&, bool);
     DECL_DLLPRIVATE_LINK(DoStyleUpdated, weld::Widget&, void);
@@ -181,8 +187,6 @@ public:
     bool get_sensitive() const { return m_xDrawingArea->get_sensitive(); }
     bool get_visible() const { return m_xDrawingArea->get_visible(); }
     void set_visible(bool bVisible) { m_xDrawingArea->set_visible(bVisible); }
-    void set_grid_left_attach(int nAttach) { m_xDrawingArea->set_grid_left_attach(nAttach); }
-    int get_grid_left_attach() const { return m_xDrawingArea->get_grid_left_attach(); }
     void set_help_id(const OUString& rHelpId) { m_xDrawingArea->set_help_id(rHelpId); }
     void set_tooltip_text(const OUString& rTip) { m_xDrawingArea->set_tooltip_text(rTip); }
 };

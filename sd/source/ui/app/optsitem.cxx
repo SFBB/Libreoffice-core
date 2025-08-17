@@ -150,7 +150,7 @@ void SdOptionsGeneric::Commit( SdOptionsItem& rCfgItem ) const
 Sequence< OUString > SdOptionsGeneric::GetPropertyNames() const
 {
     sal_uLong           nCount;
-    const char**    ppPropNames;
+    const char* const*  ppPropNames;
 
     GetPropNameArray( ppPropNames, nCount );
 
@@ -179,213 +179,6 @@ bool SdOptionsGeneric::isMetricSystem()
 
 /*************************************************************************
 |*
-|* SdOptionsLayout
-|*
-\************************************************************************/
-
-SdOptionsLayout::SdOptionsLayout(bool bImpress, bool bUseConfig) :
-    SdOptionsGeneric( bImpress, bUseConfig ?
-                      ( bImpress ?
-                        OUString( "Office.Impress/Layout" ) :
-                        OUString( "Office.Draw/Layout" ) ) :
-                      OUString() ),
-    bRuler( true ),
-    bMoveOutline( true ),
-    bDragStripes( false ),
-    bHandlesBezier( false ),
-    bHelplines( true ),
-    nMetric(static_cast<sal_uInt16>(isMetricSystem() ? FieldUnit::CM : FieldUnit::INCH)),
-    nDefTab( 1250 )
-{
-    EnableModify( true );
-}
-
-bool SdOptionsLayout::operator==( const SdOptionsLayout& rOpt ) const
-{
-    return( IsRulerVisible() == rOpt.IsRulerVisible() &&
-            IsMoveOutline() == rOpt.IsMoveOutline() &&
-            IsDragStripes() == rOpt.IsDragStripes() &&
-            IsHandlesBezier() == rOpt.IsHandlesBezier() &&
-            IsHelplines() == rOpt.IsHelplines() &&
-            GetMetric() == rOpt.GetMetric() &&
-            GetDefTab() == rOpt.GetDefTab() );
-}
-
-void SdOptionsLayout::GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const
-{
-    if( isMetricSystem() )
-    {
-        static const char* aPropNamesMetric[] =
-        {
-            "Display/Ruler",
-            "Display/Bezier",
-            "Display/Contour",
-            "Display/Guide",
-            "Display/Helpline",
-            "Other/MeasureUnit/Metric",
-            "Other/TabStop/Metric"
-        };
-        ppNames = aPropNamesMetric;
-        rCount = SAL_N_ELEMENTS(aPropNamesMetric);
-    }
-    else
-    {
-        static const char* aPropNamesNonMetric[] =
-        {
-            "Display/Ruler",
-            "Display/Bezier",
-            "Display/Contour",
-            "Display/Guide",
-            "Display/Helpline",
-            "Other/MeasureUnit/NonMetric",
-            "Other/TabStop/NonMetric"
-        };
-        ppNames = aPropNamesNonMetric;
-        rCount = SAL_N_ELEMENTS(aPropNamesNonMetric);
-    }
-}
-
-bool SdOptionsLayout::ReadData( const Any* pValues )
-{
-    if( pValues[0].hasValue() ) SetRulerVisible( *o3tl::doAccess<bool>(pValues[ 0 ]) );
-    if( pValues[1].hasValue() ) SetHandlesBezier( *o3tl::doAccess<bool>(pValues[ 1 ]) );
-    if( pValues[2].hasValue() ) SetMoveOutline( *o3tl::doAccess<bool>(pValues[ 2 ]) );
-    if( pValues[3].hasValue() ) SetDragStripes( *o3tl::doAccess<bool>(pValues[ 3 ]) );
-    if( pValues[4].hasValue() ) SetHelplines( *o3tl::doAccess<bool>(pValues[ 4 ]) );
-    if( pValues[5].hasValue() ) SetMetric( static_cast<sal_uInt16>(*o3tl::doAccess<sal_Int32>(pValues[ 5 ])) );
-    if( pValues[6].hasValue() ) SetDefTab( static_cast<sal_uInt16>(*o3tl::doAccess<sal_Int32>(pValues[ 6 ])) );
-
-    return true;
-}
-
-bool SdOptionsLayout::WriteData( Any* pValues ) const
-{
-    pValues[ 0 ] <<= IsRulerVisible();
-    pValues[ 1 ] <<= IsHandlesBezier();
-    pValues[ 2 ] <<= IsMoveOutline();
-    pValues[ 3 ] <<= IsDragStripes();
-    pValues[ 4 ] <<= IsHelplines();
-    pValues[ 5 ] <<= static_cast<sal_Int32>(GetMetric());
-    pValues[ 6 ] <<= static_cast<sal_Int32>(GetDefTab());
-
-    return true;
-}
-
-/*************************************************************************
-|*
-|* SdOptionsLayoutItem
-|*
-\************************************************************************/
-
-SdOptionsLayoutItem::SdOptionsLayoutItem()
-:   SfxPoolItem     ( ATTR_OPTIONS_LAYOUT )
-,   maOptionsLayout ( false, false )
-{
-}
-
-SdOptionsLayoutItem::SdOptionsLayoutItem( SdOptions const * pOpts, ::sd::FrameView const * pView )
-:   SfxPoolItem     ( ATTR_OPTIONS_LAYOUT )
-,   maOptionsLayout ( false, false )
-{
-    if( pOpts )
-    {
-        maOptionsLayout.SetMetric( pOpts->GetMetric() );
-        maOptionsLayout.SetDefTab( pOpts->GetDefTab() );
-    }
-
-    if( pView )
-    {
-        maOptionsLayout.SetRulerVisible( pView->HasRuler() );
-        maOptionsLayout.SetMoveOutline( !pView->IsNoDragXorPolys() );
-        maOptionsLayout.SetDragStripes( pView->IsDragStripes() );
-        maOptionsLayout.SetHandlesBezier( pView->IsPlusHandlesAlwaysVisible() );
-        maOptionsLayout.SetHelplines( pView->IsHlplVisible() );
-    }
-    else if( pOpts )
-    {
-        maOptionsLayout.SetRulerVisible( pOpts->IsRulerVisible() );
-        maOptionsLayout.SetMoveOutline( pOpts->IsMoveOutline() );
-        maOptionsLayout.SetDragStripes( pOpts->IsDragStripes() );
-        maOptionsLayout.SetHandlesBezier( pOpts->IsHandlesBezier() );
-        maOptionsLayout.SetHelplines( pOpts->IsHelplines() );
-    }
-}
-
-SdOptionsLayoutItem* SdOptionsLayoutItem::Clone( SfxItemPool* ) const
-{
-    return new SdOptionsLayoutItem( *this );
-}
-
-bool SdOptionsLayoutItem::operator==( const SfxPoolItem& rAttr ) const
-{
-    assert(SfxPoolItem::operator==(rAttr));
-    return maOptionsLayout == static_cast<const SdOptionsLayoutItem&>(rAttr).maOptionsLayout;
-}
-
-void SdOptionsLayoutItem::SetOptions( SdOptions* pOpts ) const
-{
-    if( pOpts )
-    {
-        pOpts->SetRulerVisible( maOptionsLayout.IsRulerVisible() );
-        pOpts->SetMoveOutline( maOptionsLayout.IsMoveOutline() );
-        pOpts->SetDragStripes( maOptionsLayout.IsDragStripes() );
-        pOpts->SetHandlesBezier( maOptionsLayout.IsHandlesBezier() );
-        pOpts->SetHelplines( maOptionsLayout.IsHelplines() );
-        pOpts->SetMetric( maOptionsLayout.GetMetric() );
-        pOpts->SetDefTab( maOptionsLayout.GetDefTab() );
-    }
-}
-
-/*************************************************************************
-|*
-|* SdOptionsContents
-|*
-\************************************************************************/
-
-SdOptionsContents::SdOptionsContents(bool bImpress) :
-    SdOptionsGeneric( bImpress, bImpress ?
-                        OUString( "Office.Impress/Content" ) :
-                        OUString( "Office.Draw/Content" ) )
-{
-    EnableModify( true );
-}
-
-bool SdOptionsContents::operator==(const SdOptionsContents&) const
-{
-    return true;
-}
-
-void SdOptionsContents::GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const
-{
-    static const char* aPropNames[] =
-    {
-        "Display/PicturePlaceholder",
-        "Display/ContourMode",
-        "Display/LineContour",
-        "Display/TextPlaceholder"
-    };
-
-    rCount = SAL_N_ELEMENTS(aPropNames);
-    ppNames = aPropNames;
-}
-
-bool SdOptionsContents::ReadData(const Any*)
-{
-    return true;
-}
-
-bool SdOptionsContents::WriteData( Any* pValues ) const
-{
-    //#i80528# no draft anymore
-    pValues[ 0 ] <<= false;
-    pValues[ 1 ] <<= false;
-    pValues[ 2 ] <<= false;
-    pValues[ 3 ] <<= false;
-
-    return true;
-}
-/*************************************************************************
-|*
 |* SdOptionsMisc
 |*
 \************************************************************************/
@@ -393,8 +186,8 @@ bool SdOptionsContents::WriteData( Any* pValues ) const
 SdOptionsMisc::SdOptionsMisc( bool bImpress, bool bUseConfig ) :
     SdOptionsGeneric( bImpress, bUseConfig ?
                       ( bImpress ?
-                        OUString( "Office.Impress/Misc" ) :
-                        OUString( "Office.Draw/Misc" ) ) :
+                        u"Office.Impress/Misc"_ustr :
+                        u"Office.Draw/Misc"_ustr ) :
                       OUString() ),
     nDefaultObjectSizeWidth(8000),
     nDefaultObjectSizeHeight(5000),
@@ -461,9 +254,9 @@ bool SdOptionsMisc::operator==( const SdOptionsMisc& rOpt ) const
         );
 }
 
-void SdOptionsMisc::GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const
+void SdOptionsMisc::GetPropNameArray( const char* const*& ppNames, sal_uLong& rCount ) const
 {
-    static const char* aPropNames[] =
+    static const char* const aPropNames[] =
     {
         "ObjectMoveable",
         "NoDistort",
@@ -500,7 +293,7 @@ void SdOptionsMisc::GetPropNameArray( const char**& ppNames, sal_uLong& rCount )
         "TabBarVisible"
     };
 
-    rCount = ( IsImpress() ? SAL_N_ELEMENTS(aPropNames) : 16 );
+    rCount = ( IsImpress() ? SAL_N_ELEMENTS(aPropNames) : 15 );
     ppNames = aPropNames;
 }
 
@@ -689,255 +482,16 @@ void SdOptionsMiscItem::SetOptions( SdOptions* pOpts ) const
 {
     if( !pOpts )
         return;
-
+    //this needs to reflect all settings from SdTpOptionsMisc::FillItemSet()
     pOpts->SetStartWithTemplate( maOptionsMisc.IsStartWithTemplate() );
     pOpts->SetMarkedHitMovesAlways( maOptionsMisc.IsMarkedHitMovesAlways() );
-    pOpts->SetMoveOnlyDragging( maOptionsMisc.IsMoveOnlyDragging() );
-    pOpts->SetCrookNoContortion( maOptionsMisc.IsCrookNoContortion() );
-    pOpts->SetQuickEdit( maOptionsMisc.IsQuickEdit() );
+    pOpts->SetQuickEdit(maOptionsMisc.IsQuickEdit());
+    pOpts->SetPickThrough( maOptionsMisc.IsPickThrough() );
     pOpts->SetMasterPagePaintCaching( maOptionsMisc.IsMasterPagePaintCaching() );
     pOpts->SetDragWithCopy( maOptionsMisc.IsDragWithCopy() );
-    pOpts->SetPickThrough( maOptionsMisc.IsPickThrough() );
-    pOpts->SetDoubleClickTextEdit( maOptionsMisc.IsDoubleClickTextEdit() );
-    pOpts->SetClickChangeRotation( maOptionsMisc.IsClickChangeRotation() );
     pOpts->SetSummationOfParagraphs( maOptionsMisc.IsSummationOfParagraphs() );
-    pOpts->SetTabBarVisible( maOptionsMisc.IsTabBarVisible() );
+    pOpts->SetCrookNoContortion( maOptionsMisc.IsCrookNoContortion() );
 
-    pOpts->SetSolidDragging( maOptionsMisc.IsSolidDragging() );
-    pOpts->SetShowUndoDeleteWarning( maOptionsMisc.IsShowUndoDeleteWarning() );
-    pOpts->SetPrinterIndependentLayout( maOptionsMisc.GetPrinterIndependentLayout() );
-    pOpts->SetShowComments( maOptionsMisc.IsShowComments() );
-    pOpts->SetDefaultObjectSizeWidth( maOptionsMisc.GetDefaultObjectSizeWidth() );
-    pOpts->SetDefaultObjectSizeHeight( maOptionsMisc.GetDefaultObjectSizeHeight() );
-
-    pOpts->SetPreviewNewEffects( maOptionsMisc.IsPreviewNewEffects() );
-    pOpts->SetPreviewChangedEffects( maOptionsMisc.IsPreviewChangedEffects() );
-    pOpts->SetPreviewTransitions( maOptionsMisc.IsPreviewTransitions() );
-
-    pOpts->SetDisplay( maOptionsMisc.GetDisplay() );
-
-    pOpts->SetPresentationPenColor( maOptionsMisc.GetPresentationPenColor() );
-    pOpts->SetPresentationPenWidth( maOptionsMisc.GetPresentationPenWidth() );
-
-    pOpts->SetDragThreshold( maOptionsMisc.GetDragThresholdPixels() );
-}
-
-/*************************************************************************
-|*
-|* SdOptionsSnap
-|*
-\************************************************************************/
-
-SdOptionsSnap::SdOptionsSnap( bool bImpress, bool bUseConfig ) :
-    SdOptionsGeneric( bImpress, bUseConfig ?
-                      ( bImpress ?
-                        OUString( "Office.Impress/Snap" ) :
-                        OUString( "Office.Draw/Snap" ) ) :
-                      OUString() ),
-    bSnapHelplines( true ),
-    bSnapBorder( true ),
-    bSnapFrame( false ),
-    bSnapPoints( false ),
-    bOrtho( false ),
-    bBigOrtho( true ),
-    bRotate( false ),
-    nSnapArea( 5 ),
-    nAngle( 1500 ),
-    nBezAngle( 1500 )
-
-{
-    EnableModify( true );
-}
-
-bool SdOptionsSnap::operator==( const SdOptionsSnap& rOpt ) const
-{
-    return( IsSnapHelplines() == rOpt.IsSnapHelplines() &&
-            IsSnapBorder() == rOpt.IsSnapBorder() &&
-            IsSnapFrame() == rOpt.IsSnapFrame() &&
-            IsSnapPoints() == rOpt.IsSnapPoints() &&
-            IsOrtho() == rOpt.IsOrtho() &&
-            IsBigOrtho() == rOpt.IsBigOrtho() &&
-            IsRotate() == rOpt.IsRotate() &&
-            GetSnapArea() == rOpt.GetSnapArea() &&
-            GetAngle() == rOpt.GetAngle() &&
-            GetEliminatePolyPointLimitAngle() == rOpt.GetEliminatePolyPointLimitAngle() );
-}
-
-void SdOptionsSnap::GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const
-{
-    static const char* aPropNames[] =
-    {
-        "Object/SnapLine",
-        "Object/PageMargin",
-        "Object/ObjectFrame",
-        "Object/ObjectPoint",
-        "Position/CreatingMoving",
-        "Position/ExtendEdges",
-        "Position/Rotating",
-        "Object/Range",
-        "Position/RotatingValue",
-        "Position/PointReduction"
-    };
-
-    rCount = SAL_N_ELEMENTS(aPropNames);
-    ppNames = aPropNames;
-}
-
-bool SdOptionsSnap::ReadData( const Any* pValues )
-{
-    if( pValues[0].hasValue() ) SetSnapHelplines( *o3tl::doAccess<bool>(pValues[ 0 ]) );
-    if( pValues[1].hasValue() ) SetSnapBorder( *o3tl::doAccess<bool>(pValues[ 1 ]) );
-    if( pValues[2].hasValue() ) SetSnapFrame( *o3tl::doAccess<bool>(pValues[ 2 ]) );
-    if( pValues[3].hasValue() ) SetSnapPoints( *o3tl::doAccess<bool>(pValues[ 3 ]) );
-    if( pValues[4].hasValue() ) SetOrtho( *o3tl::doAccess<bool>(pValues[ 4 ]) );
-    if( pValues[5].hasValue() ) SetBigOrtho( *o3tl::doAccess<bool>(pValues[ 5 ]) );
-    if( pValues[6].hasValue() ) SetRotate( *o3tl::doAccess<bool>(pValues[ 6 ]) );
-    if( pValues[7].hasValue() ) SetSnapArea( static_cast<sal_Int16>(*o3tl::doAccess<sal_Int32>(pValues[ 7 ])) );
-    if( pValues[8].hasValue() ) SetAngle( Degree100(*o3tl::doAccess<sal_Int32>(pValues[ 8 ])) );
-    if( pValues[9].hasValue() ) SetEliminatePolyPointLimitAngle( Degree100(*o3tl::doAccess<sal_Int32>(pValues[ 9 ])) );
-
-    return true;
-}
-
-bool SdOptionsSnap::WriteData( Any* pValues ) const
-{
-    pValues[ 0 ] <<= IsSnapHelplines();
-    pValues[ 1 ] <<= IsSnapBorder();
-    pValues[ 2 ] <<= IsSnapFrame();
-    pValues[ 3 ] <<= IsSnapPoints();
-    pValues[ 4 ] <<= IsOrtho();
-    pValues[ 5 ] <<= IsBigOrtho();
-    pValues[ 6 ] <<= IsRotate();
-    pValues[ 7 ] <<= static_cast<sal_Int32>(GetSnapArea());
-    pValues[ 8 ] <<= static_cast<sal_Int32>(GetAngle().get());
-    pValues[ 9 ] <<= static_cast<sal_Int32>(GetEliminatePolyPointLimitAngle().get());
-
-    return true;
-}
-
-/*************************************************************************
-|*
-|* SdOptionsSnapItem
-|*
-\************************************************************************/
-
-SdOptionsSnapItem::SdOptionsSnapItem()
-:   SfxPoolItem     ( ATTR_OPTIONS_SNAP )
-,   maOptionsSnap   ( false, false )
-{
-}
-
-SdOptionsSnapItem::SdOptionsSnapItem( SdOptions const * pOpts, ::sd::FrameView const * pView )
-:   SfxPoolItem     ( ATTR_OPTIONS_SNAP )
-,   maOptionsSnap   ( false, false )
-{
-    if( pView )
-    {
-        maOptionsSnap.SetSnapHelplines( pView->IsHlplSnap() );
-        maOptionsSnap.SetSnapBorder( pView->IsBordSnap() );
-        maOptionsSnap.SetSnapFrame( pView->IsOFrmSnap() );
-        maOptionsSnap.SetSnapPoints( pView->IsOPntSnap() );
-        maOptionsSnap.SetOrtho( pView->IsOrtho() );
-        maOptionsSnap.SetBigOrtho( pView->IsBigOrtho() );
-        maOptionsSnap.SetRotate( pView->IsAngleSnapEnabled() );
-        maOptionsSnap.SetSnapArea( pView->GetSnapMagneticPixel() );
-        maOptionsSnap.SetAngle( pView->GetSnapAngle() );
-        maOptionsSnap.SetEliminatePolyPointLimitAngle( pView->GetEliminatePolyPointLimitAngle() );
-    }
-    else if( pOpts )
-    {
-        maOptionsSnap.SetSnapHelplines( pOpts->IsSnapHelplines() );
-        maOptionsSnap.SetSnapBorder( pOpts->IsSnapBorder() );
-        maOptionsSnap.SetSnapFrame( pOpts->IsSnapFrame() );
-        maOptionsSnap.SetSnapPoints( pOpts->IsSnapPoints() );
-        maOptionsSnap.SetOrtho( pOpts->IsOrtho() );
-        maOptionsSnap.SetBigOrtho( pOpts->IsBigOrtho() );
-        maOptionsSnap.SetRotate( pOpts->IsRotate() );
-        maOptionsSnap.SetSnapArea( pOpts->GetSnapArea() );
-        maOptionsSnap.SetAngle( pOpts->GetAngle() );
-        maOptionsSnap.SetEliminatePolyPointLimitAngle( pOpts->GetEliminatePolyPointLimitAngle() );
-    }
-}
-
-SdOptionsSnapItem* SdOptionsSnapItem::Clone( SfxItemPool* ) const
-{
-    return new SdOptionsSnapItem( *this );
-}
-
-bool SdOptionsSnapItem::operator==( const SfxPoolItem& rAttr ) const
-{
-    assert(SfxPoolItem::operator==(rAttr));
-    return maOptionsSnap == static_cast<const SdOptionsSnapItem&>(rAttr).maOptionsSnap;
-}
-
-void SdOptionsSnapItem::SetOptions( SdOptions* pOpts ) const
-{
-    if( !pOpts )
-        return;
-
-    pOpts->SetSnapHelplines( maOptionsSnap.IsSnapHelplines() );
-    pOpts->SetSnapBorder( maOptionsSnap.IsSnapBorder() );
-    pOpts->SetSnapFrame( maOptionsSnap.IsSnapFrame() );
-    pOpts->SetSnapPoints( maOptionsSnap.IsSnapPoints() );
-    pOpts->SetOrtho( maOptionsSnap.IsOrtho() );
-    pOpts->SetBigOrtho( maOptionsSnap.IsBigOrtho() );
-    pOpts->SetRotate( maOptionsSnap.IsRotate() );
-    pOpts->SetSnapArea( maOptionsSnap.GetSnapArea() );
-    pOpts->SetAngle( maOptionsSnap.GetAngle() );
-    pOpts->SetEliminatePolyPointLimitAngle( maOptionsSnap.GetEliminatePolyPointLimitAngle() );
-}
-
-/*************************************************************************
-|*
-|* SdOptionsZoom
-|*
-\************************************************************************/
-
-SdOptionsZoom::SdOptionsZoom( bool bImpress ) :
-    SdOptionsGeneric( bImpress, bImpress ?
-                                 OUString() :
-                                 OUString("Office.Draw/Zoom") ),
-    nX( 1 ),
-    nY( 1 )
-
-{
-    EnableModify( true );
-}
-
-void SdOptionsZoom::GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const
-{
-    static const char* aPropNames[] =
-    {
-        "ScaleX",
-        "ScaleY"
-    };
-
-    rCount = !IsImpress() ? SAL_N_ELEMENTS(aPropNames) : 0;
-    ppNames = aPropNames;
-}
-
-bool SdOptionsZoom::ReadData( const Any* pValues )
-{
-    sal_Int32 x = 1, y = 1;
-
-    if( pValues[0].hasValue() ) x = *o3tl::doAccess<sal_Int32>(pValues[ 0 ]);
-    if( pValues[1].hasValue() ) y = *o3tl::doAccess<sal_Int32>(pValues[ 1 ]);
-
-    SetScale( x, y );
-
-    return true;
-}
-
-bool SdOptionsZoom::WriteData( Any* pValues ) const
-{
-    sal_Int32 x, y;
-
-    GetScale( x, y );
-
-    pValues[ 0 ] <<= x;
-    pValues[ 1 ] <<= y;
-
-    return true;
 }
 
 /*************************************************************************
@@ -949,8 +503,8 @@ bool SdOptionsZoom::WriteData( Any* pValues ) const
 SdOptionsGrid::SdOptionsGrid(bool bImpress) :
     SdOptionsGeneric( bImpress,
                       bImpress ?
-                        OUString( "Office.Impress/Grid" ) :
-                        OUString( "Office.Draw/Grid" )
+                        u"Office.Impress/Grid"_ustr :
+                        u"Office.Draw/Grid"_ustr
                     )
 {
     EnableModify( false );
@@ -976,11 +530,11 @@ void SdOptionsGrid::SetDefaults()
     SetEqualGrid( true );
 }
 
-void SdOptionsGrid::GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const
+void SdOptionsGrid::GetPropNameArray( const char* const*& ppNames, sal_uLong& rCount ) const
 {
     if( isMetricSystem() )
     {
-        static const char* aPropNamesMetric[] =
+        static const char* const aPropNamesMetric[] =
         {
             "Resolution/XAxis/Metric",
             "Resolution/YAxis/Metric",
@@ -996,7 +550,7 @@ void SdOptionsGrid::GetPropNameArray( const char**& ppNames, sal_uLong& rCount )
     }
     else
     {
-        static const char* aPropNamesNonMetric[] =
+        static const char* const aPropNamesNonMetric[] =
         {
             "Resolution/XAxis/NonMetric",
             "Resolution/YAxis/NonMetric",
@@ -1012,22 +566,27 @@ void SdOptionsGrid::GetPropNameArray( const char**& ppNames, sal_uLong& rCount )
     }
 }
 
+static sal_uInt32 getDivisor(const Any& rValue)
+{
+    if (rValue.hasValue())
+    {
+        sal_uInt32 nDiv = basegfx::fround<sal_uInt32>(*o3tl::doAccess<double>(rValue));
+        return nDiv + 1;
+    }
+    return 0;
+}
+
 bool SdOptionsGrid::ReadData( const Any* pValues )
 {
     if( pValues[0].hasValue() ) SetFieldDrawX( *o3tl::doAccess<sal_Int32>(pValues[ 0 ]) );
     if( pValues[1].hasValue() ) SetFieldDrawY( *o3tl::doAccess<sal_Int32>(pValues[ 1 ]) );
 
-    if( pValues[2].hasValue() )
-    {
-        const sal_uInt32 nDivX = FRound( *o3tl::doAccess<double>(pValues[ 2 ]) );
-        SetFieldDivisionX( SvxOptionsGrid::GetFieldDrawX() / ( nDivX + 1 ) );
-    }
+    if (const sal_uInt32 nDivX = getDivisor(pValues[2]))
+        SetFieldDivisionX(SvxOptionsGrid::GetFieldDrawX() / nDivX);
 
-    if( pValues[3].hasValue() )
-    {
-        const sal_uInt32 nDivY = FRound( *o3tl::doAccess<double>(pValues[ 3 ]) );
-        SetFieldDivisionY( SvxOptionsGrid::GetFieldDrawY() / ( nDivY + 1 ) );
-    }
+    if (const sal_uInt32 nDivY = getDivisor(pValues[3]))
+        SetFieldDivisionY(SvxOptionsGrid::GetFieldDrawY() / nDivY);
+
     if( pValues[4].hasValue() ) SetUseGridSnap( *o3tl::doAccess<bool>(pValues[ 4 ]) );
     if( pValues[5].hasValue() ) SetSynchronize( *o3tl::doAccess<bool>(pValues[ 5 ]) );
     if( pValues[6].hasValue() ) SetGridVisible( *o3tl::doAccess<bool>(pValues[ 6 ]) );
@@ -1091,8 +650,8 @@ void SdOptionsGridItem::SetOptions( SdOptions* pOpts ) const
 SdOptionsPrint::SdOptionsPrint( bool bImpress, bool bUseConfig ) :
     SdOptionsGeneric( bImpress, bUseConfig ?
                       ( bImpress ?
-                        OUString( "Office.Impress/Print" ) :
-                        OUString( "Office.Draw/Print" ) ) :
+                        u"Office.Impress/Print"_ustr :
+                        u"Office.Draw/Print"_ustr ) :
                       OUString() ),
     bDraw( true ),
     bNotes( false ),
@@ -1144,11 +703,11 @@ bool SdOptionsPrint::operator==( const SdOptionsPrint& rOpt ) const
             GetHandoutPages() == rOpt.GetHandoutPages() );
 }
 
-void SdOptionsPrint::GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const
+void SdOptionsPrint::GetPropNameArray( const char* const*& ppNames, sal_uLong& rCount ) const
 {
     if (IsImpress())
     {
-        static const char* aImpressPropNames[] =
+        static const char* const aImpressPropNames[] =
         {
             "Other/Date",
             "Other/Time",
@@ -1177,7 +736,7 @@ void SdOptionsPrint::GetPropNameArray( const char**& ppNames, sal_uLong& rCount 
     }
     else
     {
-        static const char* aDrawPropNames[] =
+        static const char* const aDrawPropNames[] =
         {
             "Other/Date",
             "Other/Time",
@@ -1341,11 +900,7 @@ void SdOptionsPrintItem::SetOptions( SdOptions* pOpts ) const
 \************************************************************************/
 
 SdOptions::SdOptions(bool bImpress) :
-    SdOptionsLayout( bImpress, true ),
-    SdOptionsContents( bImpress ),
     SdOptionsMisc( bImpress, true ),
-    SdOptionsSnap( bImpress, true ),
-    SdOptionsZoom( bImpress ),
     SdOptionsGrid( bImpress ),
     SdOptionsPrint( bImpress, true )
 {
@@ -1357,11 +912,7 @@ SdOptions::~SdOptions()
 
 void SdOptions::StoreConfig()
 {
-    SdOptionsLayout::Store();
-    SdOptionsContents::Store();
     SdOptionsMisc::Store();
-    SdOptionsSnap::Store();
-    SdOptionsZoom::Store();
     SdOptionsGrid::Store();
     SdOptionsPrint::Store();
 }

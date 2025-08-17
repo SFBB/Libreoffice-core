@@ -23,7 +23,7 @@
 #include <tools/fract.hxx>
 #include <tools/stream.hxx>
 #include <sal/log.hxx>
-#include <vcl/graph.hxx>
+#include <vcl/filter/ImportOutput.hxx>
 #include <vcl/dibtools.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/lineinfo.hxx>
@@ -211,6 +211,8 @@ enum PenStyle { PEN_NULL, PEN_SOLID, PEN_DOT, PEN_DASH, PEN_DASHDOT };
 #define GOrdSVwTrn 0x31   /* 1 Set viewing transform */
 #define GOrdSVwWin 0x27   /* 1 Set viewing window          */
 #define GOrdPVwWin 0x67   /* 1 Push and set viewing window */
+
+constexpr double tau = 2.0 * M_PI;
 
 //============================ OS2METReader ==================================
 
@@ -552,8 +554,8 @@ void OS2METReader::DrawPolyPolygon( const tools::PolyPolygon& rPolyPolygon )
         pVirDev->SetLineColor( COL_TRANSPARENT );
         pVirDev->DrawPolyPolygon( rPolyPolygon );
         pVirDev->Pop();
-        for ( sal_uInt16 i = 0; i < rPolyPolygon.Count(); i++ )
-            pVirDev->DrawPolyLine( rPolyPolygon.GetObject( i ), aLineInfo );
+        for ( auto const& rPoly : rPolyPolygon )
+            pVirDev->DrawPolyLine( rPoly, aLineInfo );
     }
     else
         pVirDev->DrawPolyPolygon( rPolyPolygon );
@@ -729,15 +731,10 @@ void OS2METReader::PopAttr()
 
 void OS2METReader::ChangeBrush(const Color& rPatColor, bool bFill )
 {
-    Color aColor;
-
     if( bFill )
-        aColor = rPatColor;
+        pVirDev->SetFillColor( rPatColor );
     else
-        aColor = COL_TRANSPARENT;
-
-    if( pVirDev->GetFillColor() != aColor )
-        pVirDev->SetFillColor( aColor );
+        pVirDev->SetFillColor();
 }
 
 void OS2METReader::SetPen( const Color& rColor, sal_uInt16 nLineWidth, PenStyle ePenStyle )
@@ -745,34 +742,35 @@ void OS2METReader::SetPen( const Color& rColor, sal_uInt16 nLineWidth, PenStyle 
     LineStyle eLineStyle( LineStyle::Solid );
 
     if ( pVirDev->GetLineColor() != rColor )
-        pVirDev->SetLineColor( rColor );
+    {
+        if (rColor == COL_TRANSPARENT)
+            pVirDev->SetLineColor();
+        else
+            pVirDev->SetLineColor( rColor );
+    }
     aLineInfo.SetWidth( nLineWidth );
 
-    sal_uInt16 nDotCount = 0;
-    sal_uInt16 nDashCount = 0;
-    switch ( ePenStyle )
+    if (ePenStyle == PEN_NULL)
+        eLineStyle = LineStyle::NONE;
+    else if (ePenStyle == PEN_DASHDOT || ePenStyle == PEN_DOT || ePenStyle == PEN_DASH)
     {
-        case PEN_NULL :
-            eLineStyle = LineStyle::NONE;
-        break;
-        case PEN_DASHDOT :
+        sal_uInt16 nDotCount = 0;
+        sal_uInt16 nDashCount = 0;
+        if (ePenStyle == PEN_DASHDOT)
+        {
             nDashCount++;
-            [[fallthrough]];
-        case PEN_DOT :
             nDotCount++;
-            nDashCount--;
-            [[fallthrough]];
-        case PEN_DASH :
+        }
+        else if (ePenStyle == PEN_DOT)
+            nDotCount++;
+        else  // (ePenStyle == PEN_DASH)
             nDashCount++;
-            aLineInfo.SetDotCount( nDotCount );
-            aLineInfo.SetDashCount( nDashCount );
-            aLineInfo.SetDistance( nLineWidth );
-            aLineInfo.SetDotLen( nLineWidth );
-            aLineInfo.SetDashLen( nLineWidth << 2 );
-            eLineStyle = LineStyle::Dash;
-        break;
-        case PEN_SOLID:
-        break;  // -Wall not handled...
+        aLineInfo.SetDotCount( nDotCount );
+        aLineInfo.SetDashCount( nDashCount );
+        aLineInfo.SetDistance( nLineWidth );
+        aLineInfo.SetDotLen( nLineWidth );
+        aLineInfo.SetDashLen( nLineWidth << 2 );
+        eLineStyle = LineStyle::Dash;
     }
     aLineInfo.SetStyle( eLineStyle );
 }
@@ -917,7 +915,7 @@ void OS2METReader::ReadRelLine(bool bGivenPos, sal_uInt16 nOrderLen)
     }
     else aP0=aAttr.aCurPos;
     if (nOrderLen > pOS2MET->remainingSize())
-        throw css::uno::Exception("attempt to read past end of input", nullptr);
+        throw css::uno::Exception(u"attempt to read past end of input"_ustr, nullptr);
     nPolySize=nOrderLen/2;
     if (nPolySize==0) return;
     tools::Polygon aPolygon(nPolySize);
@@ -991,10 +989,9 @@ void OS2METReader::ReadBox(bool bGivenPos)
             tools::Polygon aPolygon( aBoxRect, nHRound, nVRound );
             if ( nFlags & 0x40 )
             {
-                pVirDev->Push( vcl::PushFlags::LINECOLOR );
+                auto popIt = pVirDev->ScopedPush(vcl::PushFlags::LINECOLOR);
                 pVirDev->SetLineColor( COL_TRANSPARENT );
                 pVirDev->DrawRect( aBoxRect, nHRound, nVRound );
-                pVirDev->Pop();
             }
             pVirDev->DrawPolyLine( aPolygon, aLineInfo );
         }
@@ -1061,7 +1058,7 @@ void OS2METReader::ReadChrStr(bool bGivenPos, bool bMove, bool bExtra, sal_uInt1
             nLen = nOrderLen-4;
     }
     if (!pOS2MET->good() || nLen > pOS2MET->remainingSize())
-        throw css::uno::Exception("attempt to read past end of input", nullptr);
+        throw css::uno::Exception(u"attempt to read past end of input"_ustr, nullptr);
     std::unique_ptr<char[]> pChr(new char[nLen+1]);
     for (sal_uInt16 i=0; i<nLen; i++)
         pOS2MET->ReadChar( pChr[i] );
@@ -1128,8 +1125,8 @@ void OS2METReader::ReadArc(bool bGivenPos)
     rx=r/q; ry=r/p;
     // We now have to find out how the starting and the end point
     // have to be chosen so that point no. 2 lies inside the drawn arc:
-    w1=fmod((atan2(x1-cx,y1-cy)-atan2(x2-cx,y2-cy)),6.28318530718); if (w1<0) w1+=6.28318530718;
-    w3=fmod((atan2(x3-cx,y3-cy)-atan2(x2-cx,y2-cy)),6.28318530718); if (w3<0) w3+=6.28318530718;
+    w1=fmod((atan2(x1-cx,y1-cy)-atan2(x2-cx,y2-cy)),tau); if (w1<0) w1+=tau;
+    w3=fmod((atan2(x3-cx,y3-cy)-atan2(x2-cx,y2-cy)),tau); if (w3<0) w3+=tau;
     if (w3<w1) {
         pVirDev->DrawArc(tools::Rectangle(static_cast<sal_Int32>(cx-rx),static_cast<sal_Int32>(cy-ry),
                                    static_cast<sal_Int32>(cx+rx),static_cast<sal_Int32>(cy+ry)),aP1,aP3);
@@ -1336,7 +1333,7 @@ void OS2METReader::ReadBezier(bool bGivenPos, sal_uInt16 nOrderLen)
         if( nNumPoints != aBezPoly.GetSize() )
             aBezPoly.SetSize( nNumPoints );
 
-        aPolygon = aBezPoly;
+        aPolygon = std::move(aBezPoly);
     }
 
     aAttr.aCurPos = aPolygon[ nNumPoints - 1 ];
@@ -2019,9 +2016,11 @@ void OS2METReader::ReadOrder(sal_uInt16 nOrderID, sal_uInt16 nOrderLen)
             [[fallthrough]];
         case GOrdSLnWdt: {
             sal_uInt8 nbyte(0);
-            pOS2MET->ReadUChar( nbyte );
-            if (nbyte==0) aAttr.nLinWidth=aDefAttr.nLinWidth;
-            else aAttr.nLinWidth=static_cast<sal_uInt16>(nbyte)-1;
+            pOS2MET->ReadUChar(nbyte);
+            if (nbyte > 0)
+                aAttr.nLinWidth = static_cast<sal_uInt16>(nbyte)-1;
+            else
+                aAttr.nLinWidth = aDefAttr.nLinWidth;
             break;
         }
         case GOrdPFrLWd: PushAttr(nOrderID);
@@ -2524,8 +2523,8 @@ void OS2METReader::ReadField(sal_uInt16 nFieldType, sal_uInt16 nFieldSize)
             for (sal_uInt8 i = 0; i < 4; ++i) {
                 sal_uInt8 nbyte(0),nbyte2(0);
                 pOS2MET->ReadUChar(nbyte).ReadUChar(nbyte2);
-                nbyte -= 0x30;
-                nbyte2 -= 0x30;
+                nbyte = sal_uInt8(nbyte - 0x30);
+                nbyte2 = sal_uInt8(nbyte2 - 0x30);
                 nbyte = (nbyte << 4) | nbyte2;
                 pB->nID=(pB->nID>>8)|(static_cast<sal_uInt32>(nbyte)<<24);
             }
@@ -2857,19 +2856,19 @@ void OS2METReader::ReadOS2MET( SvStream & rStreamOS2MET, GDIMetaFile & rGDIMetaF
 
 //================== GraphicImport - the exported function ================
 
-bool ImportMetGraphic(SvStream & rStream, Graphic & rGraphic)
+bool ImportMetGraphic(SvStream& rStream, ImportOutput& rImportOutput)
 {
-    OS2METReader    aOS2METReader;
-    GDIMetaFile     aMTF;
-    bool            bRet = false;
+    OS2METReader aOS2METReader;
+    GDIMetaFile aMTF;
+    bool bRet = false;
 
     try
     {
-        aOS2METReader.ReadOS2MET( rStream, aMTF );
+        aOS2METReader.ReadOS2MET(rStream, aMTF);
 
-        if ( !rStream.GetError() )
+        if (!rStream.GetError())
         {
-            rGraphic=Graphic( aMTF );
+            rImportOutput.moGDIMetaFile = aMTF;
             bRet = true;
         }
     }

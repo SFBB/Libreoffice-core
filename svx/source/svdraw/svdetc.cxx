@@ -21,7 +21,9 @@
 
 #include <algorithm>
 
+#if defined _WIN32 && !defined _WIN64
 #include <officecfg/Office/Common.hxx>
+#endif
 #include <svtools/colorcfg.hxx>
 #include <svx/svdetc.hxx>
 #include <svx/svdedxv.hxx>
@@ -37,8 +39,9 @@
 #include <svx/xbtmpit.hxx>
 #include <svx/xflgrit.hxx>
 #include <svx/svdoole2.hxx>
+#include <svx/xfltrit.hxx>
 #include <svl/itempool.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/syslocale.hxx>
 #include <svx/xflbckit.hxx>
@@ -60,7 +63,7 @@ using namespace ::com::sun::star;
 // Global data of the DrawingEngine
 SdrGlobalData::SdrGlobalData()
 {
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         svx::ExtrusionBar::RegisterInterface();
         svx::FontworkBar::RegisterInterface();
@@ -84,39 +87,39 @@ SdrGlobalData & GetSdrGlobalData() {
 
 OLEObjCache::OLEObjCache()
 {
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
 // This limit is only useful on 32-bit windows, where we can run out of virtual memory (see tdf#95579)
 // For everything else, we are better off keeping it in main memory rather than using our hacky page-out thing
 #if defined _WIN32 && !defined _WIN64
-        nSize = officecfg::Office::Common::Cache::DrawingEngine::OLE_Objects::get();
+        mnSize = officecfg::Office::Common::Cache::DrawingEngine::OLE_Objects::get();
 #else
-        nSize = SAL_MAX_INT32; // effectively disable the page-out mechanism
+        mnSize = SAL_MAX_INT32; // effectively disable the page-out mechanism
 #endif
     }
     else
-        nSize = 100;
-    pTimer.reset( new AutoTimer( "svx OLEObjCache pTimer UnloadCheck" ) );
-    pTimer->SetInvokeHandler( LINK(this, OLEObjCache, UnloadCheckHdl) );
-    pTimer->SetTimeout(20000);
-    pTimer->SetStatic();
+        mnSize = 100;
+    mpTimer.reset( new AutoTimer( "svx OLEObjCache pTimer UnloadCheck" ) );
+    mpTimer->SetInvokeHandler( LINK(this, OLEObjCache, UnloadCheckHdl) );
+    mpTimer->SetTimeout(20000);
+    mpTimer->SetStatic();
 }
 
 OLEObjCache::~OLEObjCache()
 {
-    pTimer->Stop();
+    mpTimer->Stop();
 }
 
 IMPL_LINK_NOARG(OLEObjCache, UnloadCheckHdl, Timer*, void)
 {
-    if (nSize >= maObjs.size())
+    if (mnSize >= maObjs.size())
         return;
 
     // more objects than configured cache size try to remove objects
     // of course not the freshly inserted one at nIndex=0
     size_t nCount2 = maObjs.size();
     size_t nIndex = nCount2-1;
-    while( nIndex && nCount2 > nSize )
+    while( nIndex && nCount2 > mnSize )
     {
         SdrOle2Obj* pUnloadObj = maObjs[nIndex--];
         if (!pUnloadObj)
@@ -185,10 +188,10 @@ void OLEObjCache::InsertObj(SdrOle2Obj* pObj)
 
     // if a new object was inserted, recalculate the cache
     if (!bFound)
-        pTimer->Invoke();
+        mpTimer->Invoke();
 
-    if (!bFound || !pTimer->IsActive())
-        pTimer->Start();
+    if (!bFound || !mpTimer->IsActive())
+        mpTimer->Start();
 }
 
 void OLEObjCache::RemoveObj(SdrOle2Obj* pObj)
@@ -197,7 +200,7 @@ void OLEObjCache::RemoveObj(SdrOle2Obj* pObj)
     if (it != maObjs.end())
         maObjs.erase(it);
     if (maObjs.empty())
-        pTimer->Stop();
+        mpTimer->Stop();
 }
 
 size_t OLEObjCache::size() const
@@ -240,12 +243,13 @@ bool OLEObjCache::UnloadObj(SdrOle2Obj& rObj)
 std::optional<Color> GetDraftFillColor(const SfxItemSet& rSet)
 {
     drawing::FillStyle eFill=rSet.Get(XATTR_FILLSTYLE).GetValue();
-
+    Color aResult;
     switch(eFill)
     {
         case drawing::FillStyle_SOLID:
         {
-            return rSet.Get(XATTR_FILLCOLOR).GetColorValue();
+            aResult = rSet.Get(XATTR_FILLCOLOR).GetColorValue();
+            break;
         }
         case drawing::FillStyle_HATCH:
         {
@@ -260,14 +264,16 @@ std::optional<Color> GetDraftFillColor(const SfxItemSet& rSet)
             }
 
             const basegfx::BColor aAverageColor(basegfx::average(aCol1.getBColor(), aCol2.getBColor()));
-            return Color(aAverageColor);
+            aResult = Color(aAverageColor);
+            break;
         }
         case drawing::FillStyle_GRADIENT: {
             const basegfx::BGradient& rGrad=rSet.Get(XATTR_FILLGRADIENT).GetGradientValue();
             Color aCol1(Color(rGrad.GetColorStops().front().getStopColor()));
             Color aCol2(Color(rGrad.GetColorStops().back().getStopColor()));
             const basegfx::BColor aAverageColor(basegfx::average(aCol1.getBColor(), aCol2.getBColor()));
-            return Color(aAverageColor);
+            aResult = Color(aAverageColor);
+            break;
         }
         case drawing::FillStyle_BITMAP:
         {
@@ -294,11 +300,11 @@ std::optional<Color> GetDraftFillColor(const SfxItemSet& rSet)
                 {
                     for(sal_uInt32 nX(0); nX < nWidth; nX += nXStep)
                     {
-                        const BitmapColor& rCol2 = pAccess->GetColor(nY, nX);
+                        const BitmapColor aCol2 = pAccess->GetColor(nY, nX);
 
-                        nRt += rCol2.GetRed();
-                        nGn += rCol2.GetGreen();
-                        nBl += rCol2.GetBlue();
+                        nRt += aCol2.GetRed();
+                        nGn += aCol2.GetGreen();
+                        nBl += aCol2.GetBlue();
                         nCount++;
                     }
                 }
@@ -307,21 +313,44 @@ std::optional<Color> GetDraftFillColor(const SfxItemSet& rSet)
                 nGn /= nCount;
                 nBl /= nCount;
 
-                return Color(sal_uInt8(nRt), sal_uInt8(nGn), sal_uInt8(nBl));
+                aResult = Color(sal_uInt8(nRt), sal_uInt8(nGn), sal_uInt8(nBl));
             }
             break;
         }
-        default: break;
+        default:
+            return {};
     }
 
-    return {};
+    sal_uInt16 nTransparencyPercentage = rSet.Get(XATTR_FILLTRANSPARENCE).GetValue();
+    if (!nTransparencyPercentage)
+        return aResult;
+
+    auto nTransparency = nTransparencyPercentage / 100.0;
+    auto nOpacity = 1 - nTransparency;
+
+    svtools::ColorConfig aColorConfig;
+    Color aBackground(aColorConfig.GetColorValue(svtools::DOCCOLOR).nColor);
+
+    // https://en.wikipedia.org/wiki/Alpha_compositing
+    // We are here calculating transparency fill color against background with
+    // To put it is simple words with example
+    // I.E: fill is Red (FF0000) and background is pure white (FFFFFF)
+    // If we add 50% transparency to fill color will look like Pink(ff7777)
+
+    // TODO: calculate this colors based on object in background  and not just the doc color
+    aResult.SetRed(
+        std::min(aResult.GetRed() * nOpacity + aBackground.GetRed() * nTransparency, 255.0));
+    aResult.SetGreen(
+        std::min(aResult.GetGreen() * nOpacity + aBackground.GetGreen() * nTransparency, 255.0));
+    aResult.SetBlue(
+        std::min(aResult.GetBlue() * nOpacity + aBackground.GetBlue() * nTransparency, 255.0));
+    return aResult;
 }
 
 std::unique_ptr<SdrOutliner> SdrMakeOutliner(OutlinerMode nOutlinerMode, SdrModel& rModel)
 {
     SfxItemPool* pPool = &rModel.GetItemPool();
     std::unique_ptr<SdrOutliner> pOutl(new SdrOutliner( pPool, nOutlinerMode ));
-    pOutl->SetEditTextObjectPool( pPool );
     pOutl->SetStyleSheetPool( static_cast<SfxStyleSheetPool*>(rModel.GetStyleSheetPool()));
     pOutl->SetDefTab(rModel.GetDefaultTabulator());
     Outliner::SetForbiddenCharsTable(rModel.GetForbiddenCharsTable());
@@ -334,7 +363,7 @@ std::unique_ptr<SdrOutliner> SdrMakeOutliner(OutlinerMode nOutlinerMode, SdrMode
 std::vector<Link<SdrObjCreatorParams, rtl::Reference<SdrObject>>>& ImpGetUserMakeObjHdl()
 {
     SdrGlobalData& rGlobalData=GetSdrGlobalData();
-    return rGlobalData.aUserMakeObjHdl;
+    return rGlobalData.maUserMakeObjHdl;
 }
 
 bool SearchOutlinerItems(const SfxItemSet& rSet, bool bInklDefaults, bool* pbOnlyEE)

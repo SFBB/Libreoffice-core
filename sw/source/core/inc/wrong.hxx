@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SW_SOURCE_CORE_INC_WRONG_HXX
-#define INCLUDED_SW_SOURCE_CORE_INC_WRONG_HXX
+#pragma once
 
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/container/XStringKeyMap.hpp>
@@ -93,7 +92,7 @@ private:
         {
             if (xPropertyBag.is())
             {
-                css::uno::Any aLineColor = xPropertyBag->getValue("LineColor");
+                css::uno::Any aLineColor = xPropertyBag->getValue(u"LineColor"_ustr);
                 ::Color lineColor;
 
                 if (aLineColor >>= lineColor)
@@ -118,7 +117,7 @@ private:
         {
             if (xPropertyBag.is())
             {
-                css::uno::Any aLineType = xPropertyBag->getValue("LineType");
+                css::uno::Any aLineType = xPropertyBag->getValue(u"LineType"_ustr);
                 ::sal_Int16 lineType = 0;
 
                 if (!(aLineType >>= lineType))
@@ -159,7 +158,7 @@ private:
         {
             if (xPropertyBag.is())
             {
-                css::uno::Any aLineColor = xPropertyBag->getValue("LineColor");
+                css::uno::Any aLineColor = xPropertyBag->getValue(u"LineColor"_ustr);
                 ::Color lineColor;
 
                 if (aLineColor >>= lineColor)
@@ -184,7 +183,7 @@ private:
         {
             if (xPropertyBag.is())
             {
-                css::uno::Any aLineType = xPropertyBag->getValue("LineType");
+                css::uno::Any aLineType = xPropertyBag->getValue(u"LineType"_ustr);
                 ::sal_Int16 lineType = 0;
 
                 if (!(aLineType >>= lineType))
@@ -407,7 +406,5 @@ public:
 };
 
 } // namespace sw
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

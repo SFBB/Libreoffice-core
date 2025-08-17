@@ -239,14 +239,6 @@
           <value>1</value>
         </prop>
       </node>
-      <node oor:name=".uno:EuroConverter" oor:op="replace">
-        <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Euro Converter</value>
-        </prop>
-        <prop oor:name="Properties" oor:type="xs:int">
-          <value>1</value>
-        </prop>
-      </node>
       <node oor:name=".uno:InsertExternalDataSource" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">E~xternal Links...</value>
@@ -933,6 +925,11 @@
           <value xml:lang="en-US">Selection List</value>
         </prop>
       </node>
+      <node oor:name=".uno:ClearAutoFilter" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Clear AutoFilter</value>
+        </prop>
+      </node>
       <node oor:name=".uno:DeleteCell" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Delete C~ells...</value>
@@ -1241,7 +1238,7 @@
       </node>
       <node oor:name=".uno:DeleteRows" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Delete Rows (for unprotected cells)</value>
+          <value xml:lang="en-US">Delete Rows</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -1373,6 +1370,17 @@
       <node oor:name=".uno:ViewValueHighlighting" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Value ~Highlighting</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:HandleDuplicateRecords" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Duplicates...</value>
+        </prop>
+        <prop oor:name="TooltipLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Remove or select duplicate records from the selection</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -2176,6 +2184,14 @@
           <value>1</value>
         </prop>
       </node>
+      <node oor:name=".uno:InsertFunction" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Insert Function</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
       <node oor:name=".uno:TableSelectAll" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Select All Sheets</value>
@@ -2515,6 +2531,14 @@
           <value>1</value>
         </prop>
       </node>
+      <node oor:name=".uno:CopyDelete" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">~Cut but Keep Format</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
     </node>
     <node oor:name="Popups">
       <node oor:name=".uno:InsertFieldMenu" oor:op="replace">
@@ -2663,7 +2687,7 @@
       </node>
       <node oor:name=".uno:ToggleFormula" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Show Formula</value>
+          <value xml:lang="en-US">Show Formulas</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>

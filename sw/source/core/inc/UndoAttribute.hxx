@@ -42,10 +42,10 @@ class SwUndoAttr final : public SwUndo, private SwUndRng
     std::unique_ptr<SwRedlineSaveDatas> m_pRedlineSaveData;
     SwNodeOffset m_nNodeIndex;                         // Offset: for Redlining
     const SetAttrMode m_nInsertFlags;               // insert flags
-    OUString m_aChrFormatName;
+    UIName m_aChrFormatName;
 
     void RemoveIdx( SwDoc& rDoc );
-    void redoAttribute(SwPaM& rPam, sw::UndoRedoContext& rContext);
+    void redoAttribute(SwPaM& rPam, const sw::UndoRedoContext& rContext);
 public:
     SwUndoAttr( const SwPaM&, SfxItemSet, const SetAttrMode nFlags );
     SwUndoAttr( const SwPaM&, const SfxPoolItem&, const SetAttrMode nFlags );
@@ -59,6 +59,7 @@ public:
     void SaveRedlineData( const SwPaM& rPam, bool bInsContent );
 
     SwHistory& GetHistory() { return *m_pHistory; }
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 class SwUndoResetAttr final : public SwUndo, private SwUndRng
@@ -85,7 +86,7 @@ public:
 class SwUndoFormatAttr final : public SwUndo
 {
     friend class SwUndoDefaultAttr;
-    OUString m_sFormatName;
+    UIName m_sFormatName;
     std::optional<SfxItemSet> m_oOldSet;      // old attributes
     sal_Int32 m_nAnchorContentOffset;
     SwNodeOffset m_nNodeIndex;

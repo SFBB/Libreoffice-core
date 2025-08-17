@@ -54,9 +54,9 @@ void OWriterConnection::construct(const OUString& rURL,
 
     sal_Int32 nLen = rURL.indexOf(':');
     nLen = rURL.indexOf(':', nLen + 1);
-    OUString aDSN(rURL.copy(nLen + 1));
 
-    m_aFileName = aDSN;
+    m_aFileName = rURL.copy(nLen + 1); // DSN
+
     INetURLObject aURL;
     aURL.SetSmartProtocol(INetProtocol::File);
     {
@@ -115,7 +115,7 @@ uno::Reference<text::XTextDocument> const& OWriterConnection::acquireDoc()
     uno::Any aLoaderException;
     try
     {
-        xComponent = xDesktop->loadComponentFromURL(m_aFileName, "_blank", 0, aArgs);
+        xComponent = xDesktop->loadComponentFromURL(m_aFileName, u"_blank"_ustr, 0, aArgs);
     }
     catch (const uno::Exception&)
     {
@@ -177,8 +177,8 @@ void OWriterConnection::disposing()
 
 // XServiceInfo
 
-IMPLEMENT_SERVICE_INFO(OWriterConnection, "com.sun.star.sdbc.drivers.writer.Connection",
-                       "com.sun.star.sdbc.Connection")
+IMPLEMENT_SERVICE_INFO(OWriterConnection, u"com.sun.star.sdbc.drivers.writer.Connection"_ustr,
+                       u"com.sun.star.sdbc.Connection"_ustr)
 
 uno::Reference<sdbc::XDatabaseMetaData> SAL_CALL OWriterConnection::getMetaData()
 {
@@ -198,11 +198,11 @@ uno::Reference<sdbc::XDatabaseMetaData> SAL_CALL OWriterConnection::getMetaData(
 css::uno::Reference<css::sdbcx::XTablesSupplier> OWriterConnection::createCatalog()
 {
     ::osl::MutexGuard aGuard(m_aMutex);
-    uno::Reference<css::sdbcx::XTablesSupplier> xTab = m_xCatalog;
+    rtl::Reference<connectivity::sdbcx::OCatalog> xTab = m_xCatalog;
     if (!xTab.is())
     {
         xTab = new OWriterCatalog(this);
-        m_xCatalog = xTab;
+        m_xCatalog = xTab.get();
     }
     return xTab;
 }
@@ -236,8 +236,7 @@ uno::Reference<sdbc::XPreparedStatement>
     ::osl::MutexGuard aGuard(m_aMutex);
     checkDisposed(OConnection_BASE::rBHelper.bDisposed);
 
-    ::dbtools::throwFeatureNotImplementedSQLException("XConnection::prepareCall", *this);
-    return nullptr;
+    ::dbtools::throwFeatureNotImplementedSQLException(u"XConnection::prepareCall"_ustr, *this);
 }
 
 } // namespace

@@ -55,7 +55,7 @@ namespace slideshow::internal
                 LayerSharedPtr pLayer = rShape.second.lock();
                 if( pLayer && pLayer != pCurrLayer )
                 {
-                    pCurrLayer = pLayer;
+                    pCurrLayer = std::move(pLayer);
                     pCurrViewLayer = layerFunc(pCurrLayer);
                 }
 
@@ -241,9 +241,9 @@ namespace slideshow::internal
 
             if( mbDisableAnimationZOrder )
                 putShape2BackgroundLayer(
-                    *maAllShapes.insert(aValue).first );
+                    *maAllShapes.insert(std::move(aValue)).first );
             else
-                maAllShapes.insert(aValue);
+                maAllShapes.insert(std::move(aValue));
 
             // update shape, it's just added and not yet painted
             if( rShape->isVisible() )
@@ -515,7 +515,7 @@ namespace slideshow::internal
                 LayerSharedPtr pLayer = rShape.second.lock();
                 if( pLayer != pCurrLayer )
                 {
-                    pCurrLayer = pLayer;
+                    pCurrLayer = std::move(pLayer);
                     bIsCurrLayerUpdating = pCurrLayer->isUpdatePending();
 
                     if( bIsCurrLayerUpdating )

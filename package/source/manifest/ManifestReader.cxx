@@ -33,7 +33,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::registry;
 using namespace ::com::sun::star::packages;
 using namespace ::com::sun::star::xml::sax;
 
@@ -79,7 +78,7 @@ Sequence< Sequence< PropertyValue > > SAL_CALL ManifestReader::readManifestSeque
 
 OUString ManifestReader::getImplementationName()
 {
-    return "com.sun.star.packages.manifest.comp.ManifestReader";
+    return u"com.sun.star.packages.manifest.comp.ManifestReader"_ustr;
 }
 
 sal_Bool SAL_CALL ManifestReader::supportsService(OUString const & rServiceName)
@@ -89,7 +88,7 @@ sal_Bool SAL_CALL ManifestReader::supportsService(OUString const & rServiceName)
 
 Sequence < OUString > ManifestReader::getSupportedServiceNames()
 {
-    return { "com.sun.star.packages.manifest.ManifestReader" };
+    return { u"com.sun.star.packages.manifest.ManifestReader"_ustr };
 }
 
 

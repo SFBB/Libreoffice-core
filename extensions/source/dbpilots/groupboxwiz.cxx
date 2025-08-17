@@ -34,7 +34,6 @@
 namespace dbp
 {
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::form;
 
@@ -167,11 +166,11 @@ namespace dbp
     }
 
     ORadioSelectionPage::ORadioSelectionPage(weld::Container* pPage, OControlWizard* pWizard)
-        : OGBWPage(pPage, pWizard, "modules/sabpilot/ui/groupradioselectionpage.ui", "GroupRadioSelectionPage")
-        , m_xRadioName(m_xBuilder->weld_entry("radiolabels"))
-        , m_xMoveRight(m_xBuilder->weld_button("toright"))
-        , m_xMoveLeft(m_xBuilder->weld_button("toleft"))
-        , m_xExistingRadios(m_xBuilder->weld_tree_view("radiobuttons"))
+        : OGBWPage(pPage, pWizard, u"modules/sabpilot/ui/groupradioselectionpage.ui"_ustr, u"GroupRadioSelectionPage"_ustr)
+        , m_xRadioName(m_xBuilder->weld_entry(u"radiolabels"_ustr))
+        , m_xMoveRight(m_xBuilder->weld_button(u"toright"_ustr))
+        , m_xMoveLeft(m_xBuilder->weld_button(u"toleft"_ustr))
+        , m_xExistingRadios(m_xBuilder->weld_tree_view(u"radiobuttons"_ustr))
     {
         if (getContext().aFieldNames.hasElements())
         {
@@ -181,7 +180,8 @@ namespace dbp
         m_xMoveLeft->connect_clicked(LINK(this, ORadioSelectionPage, OnMoveEntry));
         m_xMoveRight->connect_clicked(LINK(this, ORadioSelectionPage, OnMoveEntry));
         m_xRadioName->connect_changed(LINK(this, ORadioSelectionPage, OnNameModified));
-        m_xExistingRadios->connect_changed(LINK(this, ORadioSelectionPage, OnEntrySelected));
+        m_xExistingRadios->connect_selection_changed(
+            LINK(this, ORadioSelectionPage, OnEntrySelected));
 
         implCheckMoveButtons();
         m_xExistingRadios->set_selection_mode(SelectionMode::Multiple);
@@ -203,7 +203,7 @@ namespace dbp
     {
         OGBWPage::initializePage();
 
-        m_xRadioName->set_text("");
+        m_xRadioName->set_text(u""_ustr);
 
         // no need to initialize the list of radios here
         // (we're the only one affecting this special setting, so it will be in the same state as last time this
@@ -244,7 +244,7 @@ namespace dbp
         else
         {
             m_xExistingRadios->append_text(m_xRadioName->get_text());
-            m_xRadioName->set_text("");
+            m_xRadioName->set_text(u""_ustr);
         }
 
         implCheckMoveButtons();
@@ -288,21 +288,21 @@ namespace dbp
 
         if (bUnfinishedInput)
         {
-            if (!pDialog->is_default_widget(m_xMoveRight.get()))
+            if (!pDialog->is_default_button(m_xMoveRight.get()))
                 pDialogController->defaultButton(m_xMoveRight.get());
         }
         else
         {
-            if (pDialog->is_default_widget(m_xMoveRight.get()))
+            if (pDialog->is_default_button(m_xMoveRight.get()))
                 pDialogController->defaultButton(WizardButtonFlags::NEXT);
         }
     }
 
     ODefaultFieldSelectionPage::ODefaultFieldSelectionPage(weld::Container* pPage, OControlWizard* pWizard)
-        : OMaybeListSelectionPage(pPage, pWizard, "modules/sabpilot/ui/defaultfieldselectionpage.ui", "DefaultFieldSelectionPage")
-        , m_xDefSelYes(m_xBuilder->weld_radio_button("defaultselectionyes"))
-        , m_xDefSelNo(m_xBuilder->weld_radio_button("defaultselectionno"))
-        , m_xDefSelection(m_xBuilder->weld_combo_box("defselectionfield"))
+        : OMaybeListSelectionPage(pPage, pWizard, u"modules/sabpilot/ui/defaultfieldselectionpage.ui"_ustr, u"DefaultFieldSelectionPage"_ustr)
+        , m_xDefSelYes(m_xBuilder->weld_radio_button(u"defaultselectionyes"_ustr))
+        , m_xDefSelNo(m_xBuilder->weld_radio_button(u"defaultselectionno"_ustr))
+        , m_xDefSelection(m_xBuilder->weld_combo_box(u"defselectionfield"_ustr))
     {
         announceControls(*m_xDefSelYes, *m_xDefSelNo, *m_xDefSelection);
     }
@@ -337,12 +337,12 @@ namespace dbp
     }
 
     OOptionValuesPage::OOptionValuesPage(weld::Container* pPage, OControlWizard* pWizard)
-        : OGBWPage(pPage, pWizard, "modules/sabpilot/ui/optionvaluespage.ui", "OptionValuesPage")
-        , m_xValue(m_xBuilder->weld_entry("optionvalue"))
-        , m_xOptions(m_xBuilder->weld_tree_view("radiobuttons"))
+        : OGBWPage(pPage, pWizard, u"modules/sabpilot/ui/optionvaluespage.ui"_ustr, u"OptionValuesPage"_ustr)
+        , m_xValue(m_xBuilder->weld_entry(u"optionvalue"_ustr))
+        , m_xOptions(m_xBuilder->weld_tree_view(u"radiobuttons"_ustr))
         , m_nLastSelection(::vcl::WizardTypes::WizardState(-1))
     {
-       m_xOptions->connect_changed(LINK(this, OOptionValuesPage, OnOptionSelected));
+        m_xOptions->connect_selection_changed(LINK(this, OOptionValuesPage, OnOptionSelected));
     }
 
     OOptionValuesPage::~OOptionValuesPage()
@@ -424,8 +424,8 @@ namespace dbp
     }
 
     OFinalizeGBWPage::OFinalizeGBWPage(weld::Container* pPage, OControlWizard* pWizard)
-        : OGBWPage(pPage, pWizard, "modules/sabpilot/ui/optionsfinalpage.ui", "OptionsFinalPage")
-        , m_xName(m_xBuilder->weld_entry("nameit"))
+        : OGBWPage(pPage, pWizard, u"modules/sabpilot/ui/optionsfinalpage.ui"_ustr, u"OptionsFinalPage"_ustr)
+        , m_xName(m_xBuilder->weld_entry(u"nameit"_ustr))
     {
     }
 

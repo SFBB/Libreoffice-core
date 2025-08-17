@@ -126,17 +126,13 @@ static wchar_t* ArgToString(wchar_t *d, const wchar_t *s)
 /**
  * Creates a command line from a list of arguments. The returned
  * string is allocated with "malloc" and should be "free"d.
- *
- * argv is UTF8
  */
-wchar_t*
-MakeCommandLine(int argc, wchar_t **argv)
+static wchar_t* MakeCommandLine(wchar_t **argv)
 {
-    int i;
     int len = 0;
 
     // The + 1 of the last argument handles the allocation for null termination
-    for (i = 0; i < argc && argv[i]; ++i)
+    for (int i = 0; argv[i]; ++i)
         len += ArgStrLen(argv[i]) + 1;
 
     // Protect against callers that pass 0 arguments
@@ -148,10 +144,10 @@ MakeCommandLine(int argc, wchar_t **argv)
         return nullptr;
 
     wchar_t *c = s;
-    for (i = 0; i < argc && argv[i]; ++i)
+    for (int i = 0; argv[i]; ++i)
     {
         c = ArgToString(c, argv[i]);
-        if (i + 1 != argc)
+        if (argv[i + 1])
         {
             *c = ' ';
             ++c;
@@ -165,26 +161,20 @@ MakeCommandLine(int argc, wchar_t **argv)
 
 BOOL
 WinLaunchChild(const wchar_t *exePath,
-               int argc,
                wchar_t **argv,
                HANDLE userToken,
                HANDLE *hProcess)
 {
-    wchar_t *cl;
     bool ok;
 
-    cl = MakeCommandLine(argc, argv);
+    wchar_t* cl = MakeCommandLine(argv);
     if (!cl)
     {
         return FALSE;
     }
 
-    STARTUPINFOW si;
-    std::memset(&si, 0, sizeof si);
-    si.cb = sizeof(STARTUPINFOW);
-    si.lpDesktop = const_cast<LPWSTR>(L"winsta0\\Default");
-    PROCESS_INFORMATION pi;
-    std::memset(&pi, 0, sizeof pi);
+    STARTUPINFOW si{ .cb = sizeof(si), .lpDesktop = const_cast<LPWSTR>(L"winsta0\\Default") };
+    PROCESS_INFORMATION pi{};
 
     if (userToken == nullptr)
     {
@@ -241,7 +231,7 @@ WinLaunchChild(const wchar_t *exePath,
     }
     else
     {
-        LPVOID lpMsgBuf = nullptr;
+        LPWSTR lpMsgBuf = nullptr;
         FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER |
                        FORMAT_MESSAGE_FROM_SYSTEM |
                        FORMAT_MESSAGE_IGNORE_INSERTS,

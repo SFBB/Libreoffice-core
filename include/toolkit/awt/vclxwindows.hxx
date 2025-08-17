@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <config_options.h>
 #include <toolkit/dllapi.h>
 
 #include <com/sun/star/awt/XTextArea.hpp>
@@ -97,7 +98,6 @@ private:
     ItemListenerMultiplexer     maItemListeners;
 
     void            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 
 public:
                     VCLXButton();
@@ -132,7 +132,7 @@ public:
 
 //  class VCLXCheckBox
 
-class TOOLKIT_DLLPUBLIC VCLXCheckBox final : public cppu::ImplInheritanceHelper<
+class UNLESS_MERGELIBS_MORE(TOOLKIT_DLLPUBLIC) VCLXCheckBox final : public cppu::ImplInheritanceHelper<
                         VCLXGraphicControl,
                         css::awt::XCheckBox,
                         css::awt::XButton>
@@ -143,7 +143,6 @@ private:
     ItemListenerMultiplexer     maItemListeners;
 
     void    ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 
 public:
                     VCLXCheckBox();
@@ -181,7 +180,7 @@ public:
 
 //  class VCLXRadioButton
 
-class TOOLKIT_DLLPUBLIC VCLXRadioButton final : public cppu::ImplInheritanceHelper<
+class UNLESS_MERGELIBS_MORE(TOOLKIT_DLLPUBLIC) VCLXRadioButton final : public cppu::ImplInheritanceHelper<
                         VCLXGraphicControl,
                         css::awt::XRadioButton,
                         css::awt::XButton>
@@ -193,7 +192,6 @@ private:
 
     void            ImplClickedOrToggled( bool bToggled );
     void            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 
 public:
                     VCLXRadioButton();
@@ -236,9 +234,6 @@ private:
 
     void                        ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
 
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext >
-                                CreateAccessibleContext() override;
-
 public:
     VCLXFixedHyperlink();
     virtual ~VCLXFixedHyperlink() override;
@@ -274,8 +269,6 @@ public:
 
 class VCLXFixedText final : public cppu::ImplInheritanceHelper<VCLXWindow, css::awt::XFixedText>
 {
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
-
 public:
                         VCLXFixedText();
                         virtual ~VCLXFixedText() override;
@@ -298,14 +291,13 @@ public:
 
 //  class VCLXScrollBar
 
-class TOOLKIT_DLLPUBLIC VCLXScrollBar final :
+class UNLESS_MERGELIBS_MORE(TOOLKIT_DLLPUBLIC) VCLXScrollBar final :
                         public cppu::ImplInheritanceHelper<VCLXWindow, css::awt::XScrollBar>
 {
 private:
     AdjustmentListenerMultiplexer maAdjustmentListeners;
 
     void            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 
 public:
                     VCLXScrollBar();
@@ -364,8 +356,6 @@ private:
 
 protected:
     void            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
-
 
 public:
                     VCLXEdit();
@@ -461,9 +451,6 @@ public:
 
     static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
-
-protected:
-    virtual css::uno::Reference<css::accessibility::XAccessibleContext> CreateAccessibleContext() override;
 };
 
 //  class VCLXSpinField
@@ -535,7 +522,7 @@ protected:
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
 };
 
-class TOOLKIT_DLLPUBLIC SVTXNumericField final : public cppu::ImplInheritanceHelper<SVTXFormattedField, css::awt::XNumericField>
+class UNLESS_MERGELIBS_MORE(TOOLKIT_DLLPUBLIC) SVTXNumericField final : public cppu::ImplInheritanceHelper<SVTXFormattedField, css::awt::XNumericField>
 {
 public:
                     SVTXNumericField();
@@ -560,8 +547,6 @@ public:
     sal_Bool SAL_CALL isStrictFormat(  ) override;
 
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override;
-
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
 };
 
 //  class VCLXListBox
@@ -578,8 +563,6 @@ private:
     ItemListenerMultiplexer     maItemListeners;
 
     virtual void    ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext >
-                    CreateAccessibleContext() override;
     void            ImplCallItemListeners();
 
 public:
@@ -653,8 +636,6 @@ private:
     ItemListenerMultiplexer     maItemListeners;
 
     void            ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
-
 
 public:
                         VCLXComboBox();
@@ -701,27 +682,6 @@ public:
 
     static void     ImplGetPropertyIds( std::vector< sal_uInt16 > &aIds );
     virtual void    GetPropertyIds( std::vector< sal_uInt16 > &aIds ) override { return ImplGetPropertyIds( aIds ); }
-};
-
-//  class VCLXToolBox
-class VCLXToolBox final : public VCLXWindow
-{
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext >
-                        CreateAccessibleContext() override;
-
-public:
-                        VCLXToolBox();
-                        virtual ~VCLXToolBox() override;
-};
-
-class VCLXHeaderBar final : public VCLXWindow
-{
-public:
-    VCLXHeaderBar();
-    virtual ~VCLXHeaderBar() override;
-
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > CreateAccessibleContext() override;
-
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

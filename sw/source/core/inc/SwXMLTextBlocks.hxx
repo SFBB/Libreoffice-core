@@ -26,9 +26,10 @@
 #include <sfx2/objsh.hxx>
 #include "swblocks.hxx"
 #include <o3tl/typed_flags_set.hxx>
+#include <tools/ref.hxx>
 
 class SwDoc;
-class SvxMacroTableDtor;
+class SwDocShell;
 
 enum class SwXmlFlags {
     NONE         = 0x0000,
@@ -40,7 +41,7 @@ namespace o3tl {
 
 class SwXMLTextBlocks final : public SwImpBlocks
 {
-    SfxObjectShellRef       m_xDocShellRef;
+    rtl::Reference<SwDocShell> m_xDocShellRef;
     SwXmlFlags              m_nFlags;
     OUString                m_aPackageName;
     tools::SvRef<SfxMedium> m_xMedium;

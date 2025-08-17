@@ -53,7 +53,7 @@ ChartWindow::ChartWindow( ChartController* pController, vcl::Window* pParent, Wi
         , m_bInPaint(false)
         , m_pViewShellWindow( nullptr )
 {
-    set_id("chart_window");
+    set_id(u"chart_window"_ustr);
     SetHelpId( HID_SCH_WIN_DOCUMENT );
     SetMapMode( MapMode(MapUnit::Map100thMM) );
     adjustHighContrastMode();
@@ -72,7 +72,7 @@ ChartWindow::~ChartWindow()
 void ChartWindow::dispose()
 {
     m_pWindowController = nullptr;
-    m_pViewShellWindow.clear();
+    m_pViewShellWindow.reset();
     vcl::Window::dispose();
 }
 
@@ -180,7 +180,7 @@ void ChartWindow::KeyInput( const KeyEvent& rKEvt )
         Window::KeyInput( rKEvt );
 }
 
-uno::Reference< css::accessibility::XAccessible > ChartWindow::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> ChartWindow::CreateAccessible()
 {
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     if( m_pWindowController )
@@ -188,7 +188,7 @@ uno::Reference< css::accessibility::XAccessible > ChartWindow::CreateAccessible(
     else
         return Window::CreateAccessible();
 #else
-    return uno::Reference< css::accessibility::XAccessible >();
+    return {};
 #endif
 }
 

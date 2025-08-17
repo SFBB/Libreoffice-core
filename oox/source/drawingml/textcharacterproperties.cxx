@@ -29,6 +29,7 @@
 #include <docmodel/uno/UnoComplexColor.hxx>
 #include <oox/helper/helper.hxx>
 #include <oox/helper/propertyset.hxx>
+#include <oox/helper/graphichelper.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/drawingml/drawingmltypes.hxx>
 #include <oox/token/properties.hxx>
@@ -69,6 +70,7 @@ void TextCharacterProperties::assignUsed( const TextCharacterProperties& rSource
     assignIfUsed( moTextOutlineProperties, rSourceProps.moTextOutlineProperties);
 
     maTextEffectsProperties = rSourceProps.maTextEffectsProperties;
+    mpEffectPropertiesPtr->assignUsed(*rSourceProps.mpEffectPropertiesPtr);
     maFillProperties.assignUsed( rSourceProps.maFillProperties );
 }
 
@@ -131,12 +133,19 @@ void TextCharacterProperties::pushToPropMap( PropertyMap& rPropMap, const XmlFil
             //            then this is contoured text in LO.
             if (nLineTransparency < aColor.getTransparency()
                 || (bContoured = aColor.getColor(rFilter.getGraphicHelper()) == COL_WHITE))
-                aColor = aLineColor;
+                aColor = std::move(aLineColor);
         }
         rPropMap.setProperty(PROP_CharColor, aColor.getColor(rFilter.getGraphicHelper()));
 
         // set theme color
         model::ComplexColor aComplexColor = aColor.getComplexColor();
+        sal_Int32 nToken = Color::getColorMapToken(aColor.getSchemeColorName());
+        if (nToken != -1)
+        {
+            rFilter.getGraphicHelper().getSchemeColorToken(nToken);
+            model::ThemeColorType eThemeColorType = schemeTokenToThemeColorType(nToken);
+            aComplexColor.setThemeColor(eThemeColorType);
+        }
         rPropMap.setProperty(PROP_CharComplexColor, model::color::createXComplexColor(aComplexColor));
         rPropMap.setProperty(PROP_CharContoured, bContoured);
 

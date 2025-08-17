@@ -262,11 +262,13 @@ public:
     virtual             ~ToolBox() override;
     virtual void        dispose() override;
 
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
+
     virtual void        Click();
-    void                DoubleClick();
+    SAL_DLLPRIVATE void DoubleClick();
     virtual void        Activate() override;
     virtual void        Deactivate() override;
-    void                Highlight();
+    SAL_DLLPRIVATE void Highlight();
     virtual void        Select();
 
     virtual void        MouseButtonDown( const MouseEvent& rMEvt ) override;
@@ -317,7 +319,7 @@ public:
     void                InsertSeparator( ImplToolItems::size_type nPos = APPEND, sal_uInt16 nPixSize = 0 );
     void                InsertBreak( ImplToolItems::size_type nPos = APPEND );
     void                RemoveItem( ImplToolItems::size_type nPos );
-    void                CopyItem( const ToolBox& rToolBox, ToolBoxItemId nItemId );
+    SAL_DLLPRIVATE void CopyItem( const ToolBox& rToolBox, ToolBoxItemId nItemId );
     void                Clear();
 
     void                SetButtonType( ButtonType eNewType );
@@ -333,19 +335,19 @@ public:
     bool                IsHorizontal() const { return mbHorz; }
 
     void                SetLineCount( ImplToolItems::size_type nNewLines );
-    void                ShowLine( bool bNext );
+    SAL_DLLPRIVATE void ShowLine( bool bNext );
 
     ImplToolItems::size_type GetItemCount() const;
     ToolBoxItemType     GetItemType( ImplToolItems::size_type nPos ) const;
     ImplToolItems::size_type GetItemPos( ToolBoxItemId nItemId ) const;
     ImplToolItems::size_type GetItemPos( const Point& rPos ) const;
     ToolBoxItemId       GetItemId( ImplToolItems::size_type nPos ) const;
-    ToolBoxItemId       GetItemId( const Point& rPos ) const;
+    SAL_DLLPRIVATE ToolBoxItemId GetItemId( const Point& rPos ) const;
     /// Map the command name (like .uno:Save) back to item id.
     ToolBoxItemId       GetItemId( const OUString& rCommand ) const;
     tools::Rectangle           GetItemRect( ToolBoxItemId nItemId );
     tools::Rectangle           GetItemPosRect( ImplToolItems::size_type nPos );
-    tools::Rectangle const &   GetOverflowRect() const;
+    SAL_DLLPRIVATE tools::Rectangle const & GetOverflowRect() const;
 
     /// Returns size of the bitmap / text that is inside this toolbox item.
     Size                GetItemContentSize( ToolBoxItemId nItemId );
@@ -357,7 +359,7 @@ public:
     void                SetItemBits( ToolBoxItemId nItemId, ToolBoxItemBits nBits );
     ToolBoxItemBits     GetItemBits( ToolBoxItemId nItemId ) const;
 
-    void                SetItemExpand( ToolBoxItemId nItemId, bool bExpand );
+    SAL_DLLPRIVATE void SetItemExpand( ToolBoxItemId nItemId, bool bExpand );
     // e.g. a label used as an itemwindow
     void                SetItemWindowNonInteractive(ToolBoxItemId nItemId, bool bNonInteractive);
 
@@ -365,7 +367,7 @@ public:
     void                SetItemData( ToolBoxItemId nItemId, void* pNewData );
     void*               GetItemData( ToolBoxItemId nItemId ) const;
     void                SetItemImage( ToolBoxItemId nItemId, const Image& rImage );
-    Image               GetItemImage( ToolBoxItemId nItemId ) const;
+    SAL_DLLPRIVATE Image GetItemImage( ToolBoxItemId nItemId ) const;
     void                SetItemImageAngle( ToolBoxItemId nItemId, Degree10 nAngle10 );
     void                SetItemImageMirrorMode( ToolBoxItemId nItemId, bool bMirror );
     void                SetItemText( ToolBoxItemId nItemId, const OUString& rText );
@@ -388,6 +390,9 @@ public:
     bool                IsItemEnabled( ToolBoxItemId nItemId ) const;
 
     void                TriggerItem( ToolBoxItemId nItemId );
+
+    bool                ItemHasDropdown( ToolBoxItemId nItemId );
+    void                TriggerItemDropdown( ToolBoxItemId nItemId );
 
     /// Shows or hides items.
     void                ShowItem(ToolBoxItemId nItemId, bool bVisible = true);
@@ -412,6 +417,10 @@ public:
 
     void                SetHelpId( ToolBoxItemId nItemId, const OUString& rHelpId );
 
+    using DockingWindow::SetAccessibleName;
+    SAL_DLLPRIVATE void SetAccessibleName(ToolBoxItemId nItemId, const OUString& rName );
+    OUString GetAccessibleName(ToolBoxItemId nItemId) const;
+
     //  window size according to current alignment, floating state and number of lines
     Size                CalcWindowSizePixel();
     //  window size according to current alignment, floating state and a given number of lines
@@ -434,7 +443,7 @@ public:
     WinBits             GetStyle() const { return mnWinStyle; }
 
     // enable/disable undocking
-    void                Lock( bool bLock );
+    SAL_DLLPRIVATE void Lock( bool bLock );
     // read configuration to determine locking behaviour
     static bool         AlwaysLocked();
 
@@ -465,13 +474,13 @@ public:
     // when the menu button was clicked and before the menu is executed
     void                SetMenuType( ToolBoxMenuType aType = ToolBoxMenuType::Customize );
     ToolBoxMenuType     GetMenuType() const;
-    bool                IsMenuEnabled() const;
+    SAL_DLLPRIVATE bool IsMenuEnabled() const;
     PopupMenu*          GetMenu() const;
-    void                UpdateCustomMenu();
+    SAL_DLLPRIVATE void UpdateCustomMenu(PopupMenu* pMenu);
     void                SetMenuExecuteHdl( const Link<ToolBox *, void>& rLink );
 
     // open custommenu
-    void                ExecuteCustomMenu( const tools::Rectangle& rRect = tools::Rectangle() );
+    SAL_DLLPRIVATE void ExecuteCustomMenu( const tools::Rectangle& rRect = tools::Rectangle() );
 
     // allow Click Handler to distinguish between mouse and key input
     bool                IsKeyEvent() const { return mbIsKeyEvent; }
@@ -492,7 +501,7 @@ public:
     // if an index is found the corresponding item id is filled in (else 0)
     tools::Long GetIndexForPoint( const Point& rPoint, ToolBoxItemId& rItemID );
 
-    static Size         GetDefaultImageSize(ToolBoxButtonSize eToolBoxButtonSize);
+    static Size GetDefaultImageSize(ToolBoxButtonSize eToolBoxButtonSize);
     Size                GetDefaultImageSize() const;
     void                ChangeHighlight( ImplToolItems::size_type nPos );
 

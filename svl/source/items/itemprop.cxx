@@ -113,14 +113,15 @@ SfxItemPropertySet::~SfxItemPropertySet()
 {
 }
 
+// static
 void SfxItemPropertySet::getPropertyValue( const SfxItemPropertyMapEntry& rEntry,
-            const SfxItemSet& rSet, Any& rAny ) const
+            const SfxItemSet& rSet, Any& rAny )
 {
     // get the SfxPoolItem
     const SfxPoolItem* pItem = nullptr;
     SfxItemState eState = rSet.GetItemState( rEntry.nWID, true, &pItem );
     if (SfxItemState::SET != eState && SfxItemPool::IsWhich(rEntry.nWID) )
-        pItem = &rSet.GetPool()->GetDefaultItem(rEntry.nWID);
+        pItem = &rSet.GetPool()->GetUserOrPoolDefaultItem(rEntry.nWID);
     // return item values as uno::Any
     if(eState >= SfxItemState::DEFAULT && pItem)
     {
@@ -129,15 +130,15 @@ void SfxItemPropertySet::getPropertyValue( const SfxItemPropertyMapEntry& rEntry
     else if(0 == (rEntry.nFlags & PropertyAttribute::MAYBEVOID))
     {
         throw RuntimeException(
-            "Property not found in ItemSet but not MAYBEVOID?", nullptr);
+            u"Property not found in ItemSet but not MAYBEVOID?"_ustr, nullptr);
     }
 
     // convert general SfxEnumItem values to specific values
-    if( rEntry.aType.getTypeClass() == TypeClass_ENUM &&
-         rAny.getValueTypeClass() == TypeClass_LONG )
+    if (rEntry.aType.getTypeClass() == TypeClass_ENUM
+        && rEntry.aType.getTypeClass() != rAny.getValueTypeClass())
     {
-        sal_Int32 nTmp = *o3tl::forceAccess<sal_Int32>(rAny);
-        rAny.setValue( &nTmp, rEntry.aType );
+        if (sal_Int32 nTmp; rAny >>= nTmp)
+            rAny.setValue(&nTmp, rEntry.aType);
     }
 }
 
@@ -159,16 +160,17 @@ Any SfxItemPropertySet::getPropertyValue( const OUString &rName,
     return aVal;
 }
 
+// static
 void SfxItemPropertySet::setPropertyValue( const SfxItemPropertyMapEntry& rEntry,
                                            const Any& aVal,
-                                           SfxItemSet& rSet ) const
+                                           SfxItemSet& rSet )
 {
     // get the SfxPoolItem
     const SfxPoolItem* pItem = nullptr;
     std::unique_ptr<SfxPoolItem> pNewItem;
     SfxItemState eState = rSet.GetItemState( rEntry.nWID, true, &pItem );
     if (SfxItemState::SET != eState && SfxItemPool::IsWhich(rEntry.nWID))
-        pItem = &rSet.GetPool()->GetDefaultItem(rEntry.nWID);
+        pItem = &rSet.GetPool()->GetUserOrPoolDefaultItem(rEntry.nWID);
     if (pItem)
     {
         pNewItem.reset(pItem->Clone());
@@ -196,7 +198,8 @@ void SfxItemPropertySet::setPropertyValue( const OUString &rName,
     setPropertyValue(*pEntry, aVal, rSet);
 }
 
-PropertyState SfxItemPropertySet::getPropertyState(const SfxItemPropertyMapEntry& rEntry, const SfxItemSet& rSet) const
+// static
+PropertyState SfxItemPropertySet::getPropertyState(const SfxItemPropertyMapEntry& rEntry, const SfxItemSet& rSet)
     noexcept
 {
     PropertyState eRet = PropertyState_DIRECT_VALUE;
@@ -234,7 +237,7 @@ PropertyState   SfxItemPropertySet::getPropertyState(const OUString& rName, cons
     return eRet;
 }
 
-Reference<XPropertySetInfo> const & SfxItemPropertySet::getPropertySetInfo() const
+rtl::Reference<SfxItemPropertySetInfo> const & SfxItemPropertySet::getPropertySetInfo() const
 {
     if( !m_xInfo.is() )
         m_xInfo = new SfxItemPropertySetInfo( m_aMap );

@@ -23,9 +23,6 @@
 #include "gifread.hxx"
 #include <memory>
 #include <vcl/BitmapWriteAccess.hxx>
-#include <graphic/GraphicReader.hxx>
-
-#define NO_PENDING( rStm ) ( ( rStm ).GetError() != ERRCODE_IO_PENDING )
 
 namespace {
 
@@ -44,8 +41,7 @@ enum GIFAction
 enum ReadState
 {
     GIFREAD_OK,
-    GIFREAD_ERROR,
-    GIFREAD_NEED_MORE
+    GIFREAD_ERROR
 };
 
 }
@@ -56,7 +52,7 @@ class SvStream;
 
 namespace {
 
-class GIFReader : public GraphicReader
+class GIFReader
 {
     Animation           aAnimation;
     sal_uInt64          nAnimationByteSize;
@@ -92,14 +88,13 @@ class GIFReader : public GraphicReader
     bool                bGCTransparent;         // is the image transparent, if yes:
     bool                bInterlaced;
     bool                bOverreadBlock;
-    bool                bImGraphicReady;
     bool                bGlobalPalette;
     sal_uInt8           nBackgroundColor;       // backgroundcolour
     sal_uInt8           nGCTransparentIndex;    // pixels of this index are transparent
     sal_uInt8           nGCDisposalMethod;      // 'Disposal Method' (see GIF docs)
     sal_uInt8           cTransIndex1;
     sal_uInt8           cNonTransIndex1;
-    bool                bEnhance;
+    sal_uLong           nPaletteSize;
 
     void                ReadPaletteEntries( BitmapPalette* pPal, sal_uLong nCount );
     void                ClearImageExtensions();
@@ -114,10 +109,9 @@ class GIFReader : public GraphicReader
 
 public:
 
-    ReadState           ReadGIF( Graphic& rGraphic );
+    ReadState           ReadGIF(ImportOutput& rImportOutput);
     bool                ReadIsAnimated();
     void GetLogicSize(Size& rLogicSize);
-    Graphic             GetIntermediateGraphic();
 
     explicit            GIFReader( SvStream& rStm );
 };
@@ -151,15 +145,13 @@ GIFReader::GIFReader( SvStream& rStm )
     , bGCTransparent  ( false )
     , bInterlaced ( false)
     , bOverreadBlock ( false )
-    , bImGraphicReady ( false )
     , bGlobalPalette ( false )
     , nBackgroundColor ( 0 )
     , nGCTransparentIndex ( 0 )
     , cTransIndex1 ( 0 )
     , cNonTransIndex1 ( 0 )
-    , bEnhance( false )
+    , nPaletteSize( 0 )
 {
-    maUpperName = "SVIGIF";
     aSrcBuf.resize(256);    // Memory buffer for ReadNextBlock
     ClearImageExtensions();
 }
@@ -220,18 +212,22 @@ void GIFReader::CreateBitmaps(tools::Long nWidth, tools::Long nHeight, BitmapPal
     if (bGCTransparent)
     {
         const Color aWhite(COL_WHITE);
+        const Color aBlack(COL_BLACK);
 
         aBmp1 = Bitmap(aSize, vcl::PixelFormat::N8_BPP, &Bitmap::GetGreyPalette(256));
 
         if (!aAnimation.Count())
-            aBmp1.Erase(aWhite);
+            aBmp1.Erase(aBlack);
 
         pAcc1 = aBmp1;
 
         if (pAcc1)
         {
-            cTransIndex1 = static_cast<sal_uInt8>(pAcc1->GetBestPaletteIndex(aWhite));
-            cNonTransIndex1 = cTransIndex1 ? 0 : 1;
+            // We have to make an AlphaMask from it, that needs to be inverted from transparency.
+            // It is faster to invert it here.
+            // So Non-Transparent color should be 0xff , and Transparent should be 0.
+            cNonTransIndex1 = static_cast<sal_uInt8>(pAcc1->GetBestPaletteIndex(aWhite));
+            cTransIndex1 = static_cast<sal_uInt8>(pAcc1->GetBestPaletteIndex(aBlack));
         }
         else
         {
@@ -259,13 +255,13 @@ bool GIFReader::ReadGlobalHeader()
     bool    bRet = false;
 
     auto nRead = rIStm.ReadBytes(pBuf, 6);
-    if (nRead == 6 && NO_PENDING(rIStm))
+    if (nRead == 6 && rIStm.good())
     {
         pBuf[ 6 ] = 0;
         if( !strcmp( pBuf, "GIF87a" ) || !strcmp( pBuf, "GIF89a" ) )
         {
             nRead = rIStm.ReadBytes(pBuf, 7);
-            if (nRead == 7 && NO_PENDING(rIStm))
+            if (nRead == 7 && rIStm.good())
             {
                 sal_uInt8   nAspect;
                 sal_uInt8   nRF;
@@ -285,7 +281,7 @@ bool GIFReader::ReadGlobalHeader()
                 else
                     nBackgroundColor = 0;
 
-                if( NO_PENDING( rIStm ) )
+                if (rIStm.good())
                     bRet = true;
             }
         }
@@ -305,7 +301,7 @@ void GIFReader::ReadPaletteEntries( BitmapPalette* pPal, sal_uLong nCount )
     std::unique_ptr<sal_uInt8[]> pBuf(new sal_uInt8[ nLen ]);
     std::size_t nRead = rIStm.ReadBytes(pBuf.get(), nLen);
     nCount = nRead/3UL;
-    if( !(NO_PENDING( rIStm )) )
+    if (!rIStm.good())
         return;
 
     sal_uInt8* pTmp = pBuf.get();
@@ -328,12 +324,7 @@ void GIFReader::ReadPaletteEntries( BitmapPalette* pPal, sal_uLong nCount )
             (*pPal)[ 254UL ] = COL_BLACK;
     }
 
-    // tdf#157793 limit tdf#157635 fix to only larger palettes
-    // I don't know why, but the fix for tdf#157635 causes
-    // images with a palette of 16 entries to be inverted.
-    // Also, fix tdf#158047 by allowing the tdf#157635 fix for
-    // palettes with 64 entries.
-    bEnhance = (nCount > 16);
+    nPaletteSize = nCount;
 }
 
 bool GIFReader::ReadExtension()
@@ -343,7 +334,7 @@ bool GIFReader::ReadExtension()
     // Extension-Label
     sal_uInt8 cFunction(0);
     rIStm.ReadUChar( cFunction );
-    if( NO_PENDING( rIStm ) )
+    if (rIStm.good())
     {
         bool    bOverreadDataBlocks = false;
         sal_uInt8 cSize(0);
@@ -361,7 +352,7 @@ bool GIFReader::ReadExtension()
                 sal_uInt8 cByte(0);
                 rIStm.ReadUChar(cByte);
 
-                if ( NO_PENDING( rIStm ) )
+                if (rIStm.good())
                 {
                     nGCDisposalMethod = ( cFlags >> 2) & 7;
                     bGCTransparent = ( cFlags & 1 );
@@ -374,7 +365,7 @@ bool GIFReader::ReadExtension()
             // Application extension
             case 0xff :
             {
-                if ( NO_PENDING( rIStm ) )
+                if (rIStm.good())
                 {
                     // by default overread this extension
                     bOverreadDataBlocks = true;
@@ -402,7 +393,7 @@ bool GIFReader::ReadExtension()
                                 rIStm.ReadUChar( cByte );
 
                                 bStatus = ( cByte == 0 );
-                                bRet = NO_PENDING( rIStm );
+                                bRet = rIStm.good();
                                 bOverreadDataBlocks = false;
 
                                 // Netscape interprets the loop count
@@ -425,7 +416,7 @@ bool GIFReader::ReadExtension()
                                 rIStm.ReadUInt32( nLogWidth100 ).ReadUInt32( nLogHeight100 );
                                 rIStm.ReadUChar( cByte );
                                 bStatus = ( cByte == 0 );
-                                bRet = NO_PENDING( rIStm );
+                                bRet = rIStm.good();
                                 bOverreadDataBlocks = false;
                             }
                             else
@@ -459,7 +450,7 @@ bool GIFReader::ReadExtension()
 
                 bRet = false;
                 std::size_t nRead = rIStm.ReadBytes(&cSize, 1);
-                if (NO_PENDING(rIStm) && nRead == 1)
+                if (rIStm.good() && nRead == 1)
                 {
                     bRet = true;
                 }
@@ -478,7 +469,7 @@ bool GIFReader::ReadLocalHeader()
     bool    bRet = false;
 
     std::size_t nRead = rIStm.ReadBytes(pBuf, 9);
-    if (NO_PENDING(rIStm) && nRead == 9)
+    if (rIStm.good() && nRead == 9)
     {
         SvMemoryStream  aMemStm;
         BitmapPalette*  pPal;
@@ -507,7 +498,7 @@ bool GIFReader::ReadLocalHeader()
         // if we could read everything, we will create the local image;
         // if the global colour table is valid for the image, we will
         // consider the BackGroundColorIndex.
-        if( NO_PENDING( rIStm ) )
+        if (rIStm.good())
         {
             CreateBitmaps( nImageWidth, nImageHeight, pPal, bGlobalPalette && ( pPal == &aGPalette ) );
             bRet = true;
@@ -526,7 +517,7 @@ sal_uLong GIFReader::ReadNextBlock()
 
     if ( rIStm.eof() )
         nRet = 4;
-    else if ( NO_PENDING( rIStm ) )
+    else if (rIStm.good())
     {
         if ( cBlockSize == 0 )
             nRet = 2;
@@ -534,7 +525,7 @@ sal_uLong GIFReader::ReadNextBlock()
         {
             rIStm.ReadBytes( aSrcBuf.data(), cBlockSize );
 
-            if( NO_PENDING( rIStm ) )
+            if (rIStm.good())
             {
                 if( bOverreadBlock )
                     nRet = 3;
@@ -671,19 +662,29 @@ void GIFReader::CreateNewBitmaps()
     {
         pAcc1.reset();
         AlphaMask aAlphaMask(aBmp1);
-        aAlphaMask.Invert(); // convert from transparency to alpha
+        // No need to convert from transparency to alpha
+        // aBmp1 is already inverted
+        aAnimationFrame.maBitmapEx = BitmapEx( aBmp8, aAlphaMask );
+    }
+    else if( nPaletteSize > 2 )
+    {
+        // tdf#160690 set an opaque alpha mask for non-transparent frames
+        // Due to the switch from transparency to alpha in commit
+        // 81994cb2b8b32453a92bcb011830fcb884f22ff3, an empty alpha mask
+        // is treated as a completely transparent bitmap. So revert all
+        // of the previous commits for tdf#157576, tdf#157635, and tdf#157793
+        // and create a completely opaque bitmap instead.
+        // Note: this fix also fixes tdf#157576, tdf#157635, and tdf#157793.
+        AlphaMask aAlphaMask(aBmp8.GetSizePixel());
         aAnimationFrame.maBitmapEx = BitmapEx( aBmp8, aAlphaMask );
     }
     else
     {
-        // tdf#157576 and tdf#157635 mask out black pixels
-        // Due to the switch from transparency to alpha in commit
-        // 81994cb2b8b32453a92bcb011830fcb884f22ff3, mask out black
-        // pixels in bitmap.
-        if (bEnhance)
-            aAnimationFrame.maBitmapEx = BitmapEx( aBmp8, aBmp8 );
-        else
-            aAnimationFrame.maBitmapEx = BitmapEx( aBmp8 );
+        // Don't apply the fix for tdf#160690 as it will cause 1 bit bitmaps
+        // in Word documents like the following test document to fail to be
+        // parsed correctly:
+        // sw/qa/extras/tiledrendering/data/tdf159626_yellowPatternFill.docx
+        aAnimationFrame.maBitmapEx = BitmapEx( aBmp8 );
     }
 
     aAnimationFrame.maPositionPixel = Point( nImagePosX, nImagePosY );
@@ -714,34 +715,6 @@ void GIFReader::CreateNewBitmaps()
     }
 }
 
-Graphic GIFReader::GetIntermediateGraphic()
-{
-    Graphic aImGraphic;
-
-    // only create intermediate graphic, if data is available
-    // but graphic still not completely read
-    if ( bImGraphicReady && !aAnimation.Count() )
-    {
-        pAcc8.reset();
-
-        if ( bGCTransparent )
-        {
-            pAcc1.reset();
-            aImGraphic = BitmapEx( aBmp8, aBmp1 );
-
-            pAcc1 = aBmp1;
-            bStatus = bStatus && pAcc1;
-        }
-        else
-            aImGraphic = BitmapEx(aBmp8);
-
-        pAcc8 = aBmp8;
-        bStatus = bStatus && pAcc8;
-    }
-
-    return aImGraphic;
-}
-
 bool GIFReader::ProcessGIF()
 {
     bool bRead = false;
@@ -764,7 +737,7 @@ bool GIFReader::ProcessGIF()
 
             if( rIStm.eof() )
                 eActAction = END_READING;
-            else if( NO_PENDING( rIStm ) )
+            else if (rIStm.good())
             {
                 bRead = true;
 
@@ -824,7 +797,7 @@ bool GIFReader::ProcessGIF()
                 eActAction = ABORT_READING;
             else if( cDataSize > 12 )
                 bStatus = false;
-            else if( NO_PENDING( rIStm ) )
+            else if (rIStm.good())
             {
                 bRead = true;
                 pDecomp = std::make_unique<GIFLZWDecompressor>( cDataSize );
@@ -850,7 +823,6 @@ bool GIFReader::ProcessGIF()
 
                 if ( nRet == 1 )
                 {
-                    bImGraphicReady = true;
                     eActAction = NEXT_BLOCK_READING;
                     bOverreadBlock = false;
                 }
@@ -908,23 +880,16 @@ bool GIFReader::ProcessGIF()
 
 bool GIFReader::ReadIsAnimated()
 {
-    ReadState eReadState;
-
     bStatus = true;
+    while (ProcessGIF() && eActAction != END_READING)
+    {}
 
-    while( ProcessGIF() && ( eActAction != END_READING ) ) {}
+    ReadState eReadState = GIFREAD_ERROR;
 
-    if( !bStatus )
+    if (!bStatus)
         eReadState = GIFREAD_ERROR;
-    else if( eActAction == END_READING )
+    else if (eActAction == END_READING)
         eReadState = GIFREAD_OK;
-    else
-    {
-        if ( rIStm.GetError() == ERRCODE_IO_PENDING )
-            rIStm.ResetError();
-
-        eReadState = GIFREAD_NEED_MORE;
-    }
 
     if (eReadState == GIFREAD_OK)
         return aAnimation.Count() > 1;
@@ -937,86 +902,81 @@ void GIFReader::GetLogicSize(Size& rLogicSize)
     rLogicSize.setHeight(nLogHeight100);
 }
 
-ReadState GIFReader::ReadGIF( Graphic& rGraphic )
+ReadState GIFReader::ReadGIF(ImportOutput& rImportOutput)
 {
-    ReadState eReadState;
-
     bStatus = true;
 
-    while( ProcessGIF() && ( eActAction != END_READING ) ) {}
+    while (ProcessGIF() && eActAction != END_READING)
+    {}
 
-    if( !bStatus )
+    ReadState eReadState = GIFREAD_ERROR;
+
+    if (!bStatus)
         eReadState = GIFREAD_ERROR;
-    else if( eActAction == END_READING )
+    else if (eActAction == END_READING)
         eReadState = GIFREAD_OK;
-    else
-    {
-        if ( rIStm.GetError() == ERRCODE_IO_PENDING )
-            rIStm.ResetError();
 
-        eReadState = GIFREAD_NEED_MORE;
+    Size aPrefSize;
+    if (nLogWidth100 && nLogHeight100)
+    {
+        aPrefSize = Size(nLogWidth100, nLogHeight100);
     }
 
-    if( aAnimation.Count() == 1 )
+    if (aAnimation.Count() == 1)
     {
-        rGraphic = aAnimation.Get(0).maBitmapEx;
+        rImportOutput.mbIsAnimated = false;
+        rImportOutput.moBitmap = Bitmap(aAnimation.Get(0).maBitmapEx);
 
-        if( nLogWidth100 && nLogHeight100 )
+        if (aPrefSize.Width() && aPrefSize.Height())
         {
-            rGraphic.SetPrefSize( Size( nLogWidth100, nLogHeight100 ) );
-            rGraphic.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
+            rImportOutput.moBitmap->SetPrefSize(aPrefSize);
+            rImportOutput.moBitmap->SetPrefMapMode(MapMode(MapUnit::Map100thMM));
         }
     }
     else
-        rGraphic = aAnimation;
+    {
+        rImportOutput.mbIsAnimated = true;
+        rImportOutput.moAnimation = aAnimation;
+
+        if (aPrefSize.Width() && aPrefSize.Height())
+        {
+            BitmapEx& rBitmap = const_cast<BitmapEx&>(rImportOutput.moAnimation->GetBitmapEx());
+            rBitmap.SetPrefSize(aPrefSize);
+            rBitmap.SetPrefMapMode(MapMode(MapUnit::Map100thMM));
+        }
+    }
 
     return eReadState;
 }
 
-bool IsGIFAnimated(SvStream & rStm, Size& rLogicSize)
+bool IsGIFAnimated(SvStream& rStream, Size& rLogicSize)
 {
-    GIFReader aReader(rStm);
+    GIFReader aReader(rStream);
 
-    SvStreamEndian nOldFormat = rStm.GetEndian();
-    rStm.SetEndian(SvStreamEndian::LITTLE);
+    SvStreamEndian nOldFormat = rStream.GetEndian();
+    rStream.SetEndian(SvStreamEndian::LITTLE);
     bool bResult = aReader.ReadIsAnimated();
     aReader.GetLogicSize(rLogicSize);
-    rStm.SetEndian(nOldFormat);
+    rStream.SetEndian(nOldFormat);
 
     return bResult;
 }
 
-VCL_DLLPUBLIC bool ImportGIF( SvStream & rStm, Graphic& rGraphic )
+VCL_DLLPUBLIC bool ImportGIF(SvStream & rStream, ImportOutput& rImportOutput)
 {
-    std::shared_ptr<GraphicReader> pContext = rGraphic.GetReaderContext();
-    rGraphic.SetReaderContext(nullptr);
-    GIFReader* pGIFReader = dynamic_cast<GIFReader*>( pContext.get() );
-    if (!pGIFReader)
-    {
-        pContext = std::make_shared<GIFReader>( rStm );
-        pGIFReader = static_cast<GIFReader*>( pContext.get() );
-    }
+    bool bReturn = false;
+    GIFReader aGIFReader(rStream);
 
-    SvStreamEndian nOldFormat = rStm.GetEndian();
-    rStm.SetEndian( SvStreamEndian::LITTLE );
+    SvStreamEndian nOldFormat = rStream.GetEndian();
+    rStream.SetEndian(SvStreamEndian::LITTLE);
 
-    bool bRet = true;
+    ReadState eReadState = aGIFReader.ReadGIF(rImportOutput);
 
-    ReadState eReadState = pGIFReader->ReadGIF(rGraphic);
+    if (eReadState == GIFREAD_OK)
+        bReturn = true;
 
-    if (eReadState == GIFREAD_ERROR)
-    {
-        bRet = false;
-    }
-    else if (eReadState == GIFREAD_NEED_MORE)
-    {
-        rGraphic = pGIFReader->GetIntermediateGraphic();
-        rGraphic.SetReaderContext(pContext);
-    }
-
-    rStm.SetEndian(nOldFormat);
-
-    return bRet;
+    rStream.SetEndian(nOldFormat);
+    return bReturn;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

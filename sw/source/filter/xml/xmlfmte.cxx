@@ -46,13 +46,11 @@
 #include <svx/svdmodel.hxx>
 #include <docmodel/theme/ThemeColorType.hxx>
 #include <docmodel/theme/Theme.hxx>
+#include <names.hxx>
 
 
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::drawing;
-using namespace ::com::sun::star::lang;
 using namespace ::xmloff::token;
 
 void SwXMLExport::ExportFormat(const SwFormat& rFormat, enum XMLTokenEnum eFamily,
@@ -69,7 +67,7 @@ void SwXMLExport::ExportFormat(const SwFormat& rFormat, enum XMLTokenEnum eFamil
     // style:name="..."
     assert(oStyleName || (eFamily != XML_TABLE_ROW && eFamily != XML_TABLE_CELL));
     bool bEncoded = false;
-    OUString const name(oStyleName ? *oStyleName : rFormat.GetName());
+    OUString const name(oStyleName ? *oStyleName : rFormat.GetName().toString());
     AddAttribute(XML_NAMESPACE_STYLE, XML_NAME, EncodeStyleName(name, &bEncoded));
     if( bEncoded )
     {
@@ -97,7 +95,7 @@ void SwXMLExport::ExportFormat(const SwFormat& rFormat, enum XMLTokenEnum eFamil
         if( const SwFormatPageDesc* pItem = rFormat.GetAttrSet().GetItemIfSet( RES_PAGEDESC,
                                                             false ) )
         {
-            OUString sName;
+            ProgName sName;
             const SwPageDesc *pPageDesc = pItem->GetPageDesc();
             if( pPageDesc )
                 SwStyleNameMapper::FillProgName(
@@ -105,7 +103,7 @@ void SwXMLExport::ExportFormat(const SwFormat& rFormat, enum XMLTokenEnum eFamil
                                     sName,
                                     SwGetPoolIdFromName::PageDesc);
             AddAttribute( XML_NAMESPACE_STYLE, XML_MASTER_PAGE_NAME,
-                          EncodeStyleName( sName ) );
+                          EncodeStyleName( sName.toString() ) );
         }
     }
 
@@ -250,7 +248,7 @@ void SwXMLExport::collectAutoStyles()
                 GetFormExport()->examineForms(xPage);
         }
 
-        GetTextParagraphExport()->collectTextAutoStylesOptimized( m_bShowProgress );
+        GetTextParagraphExport()->collectTextAutoStylesAndNodeExportOrder(m_bShowProgress);
     }
 
     mbAutoStylesCollected = true;
@@ -265,12 +263,6 @@ void SwXMLExport::ExportAutoStyles_()
     // work and memory by not collecting field masters
     if( !(getExportFlags() & SvXMLExportFlags::STYLES) )
         GetTextParagraphExport()->exportUsedDeclarations();
-
-    // exported in ExportContent_
-    if( getExportFlags() & SvXMLExportFlags::CONTENT )
-    {
-        GetTextParagraphExport()->exportTrackedChanges( true );
-    }
 
     GetTextParagraphExport()->exportTextAutoStyles();
     GetShapeExport()->exportAutoStyles();

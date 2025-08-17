@@ -129,7 +129,7 @@ class Diagram
 {
 public:
     explicit Diagram();
-    void setData( OoxDiagramDataPtr& pData )
+    void setData( const OoxDiagramDataPtr& pData )
         { mpData = pData; }
     const OoxDiagramDataPtr& getData() const
         { return mpData; }
@@ -144,7 +144,7 @@ public:
     const DiagramColorMap& getColors() const { return maColors; }
     DiagramDomMap & getDomMap() { return maMainDomMap; }
     css::uno::Sequence< css::uno::Sequence< css::uno::Any > > & getDataRelsMap() { return maDataRelsMap; }
-    void addTo( const ShapePtr & pShape );
+    void addTo( const ShapePtr & pShape, bool bCreate );
 
     css::uno::Sequence<css::beans::PropertyValue> getDomsAsPropertyValues() const;
     oox::core::NamedShapePairs& getDiagramFontHeights() { return maDiagramFontHeights; }

@@ -65,31 +65,23 @@
 #include <sfx2/userinputinterception.hxx>
 
 namespace com::sun::star {
-    namespace awt { class XKeyHandler; }
-    namespace awt { class XMouseClickHandler; }
     namespace awt { class XWindow; }
     namespace beans { struct PropertyValue; }
-    namespace frame { class XController; }
     namespace frame { class XDispatchProvider; }
     namespace frame { class XFrame; }
     namespace frame { class XFrameActionListener; }
     namespace frame { class XModel; }
     namespace frame { class XStatusListener; }
-    namespace frame { class XTitleChangeListener; }
-    namespace frame { struct DispatchDescriptor; }
-    namespace frame { struct FrameActionEvent; }
-    namespace lang { class XEventListener; }
     namespace sdb { class XDatabaseContext; }
     namespace sdbc { class XConnection; }
     namespace sdbc { class XDataSource; }
-    namespace ui { class XSidebarProvider; }
     namespace uno { class XComponentContext; }
     namespace util { class XURLTransformer; }
 }
 
 namespace vcl { class Window; }
 namespace weld { class Window; }
-class NotifyEvent;
+namespace framework { class TitleHelper; }
 
 namespace dbaui
 {
@@ -197,17 +189,13 @@ namespace dbaui
                                            ,   css::awt::XUserInputInterception
                                            >   OGenericUnoController_Base;
 
-    struct OGenericUnoController_Data;
-
-    class DBACCESS_DLLPUBLIC OGenericUnoController
+    class UNLESS_MERGELIBS_MORE(DBACCESS_DLLPUBLIC) OGenericUnoController
                                 :public OGenericUnoController_MBASE
                                 ,public OGenericUnoController_Base
                                 ,public IController
     {
     private:
         SupportedFeatures               m_aSupportedFeatures;
-        ::comphelper::NamedValueCollection
-                                        m_aInitParameters;
         ::sfx2::UserInputInterception   m_aUserInputInterception;
         VclPtr<ODataView>               m_pView;                // our (VCL) "main window"
 
@@ -226,15 +214,12 @@ namespace dbaui
             DispatchTarget(css::util::URL _aURL, css::uno::Reference< css::frame::XStatusListener > xRef) : aURL(std::move(_aURL)), xListener(std::move(xRef)) { }
         };
 
-        typedef std::map<sal_uInt16, FeatureState> StateCache;
-        typedef std::vector<DispatchTarget> Dispatch;
-
         ::std::deque< FeatureListener >
                                 m_aFeaturesToInvalidate;
 
         std::mutex              m_aFeatureMutex;        // locked when features are append to or remove from deque
-        StateCache              m_aStateCache;          // save the current status of feature state
-        Dispatch                m_arrStatusListener;    // all our listeners where we dispatch status changes
+        std::map<sal_uInt16, FeatureState> m_aStateCache; // save the current status of feature state
+        std::vector<DispatchTarget> m_arrStatusListener;  // all our listeners where we dispatch status changes
         OAsynchronousLink       m_aAsyncInvalidateAll;
         OAsynchronousLink       m_aAsyncCloseTask;      // called when a task should be closed
 
@@ -244,7 +229,7 @@ namespace dbaui
         css::uno::Reference< css::frame::XDispatchProvider >      m_xSlaveDispatcher;     // for intercepting dispatches
         css::uno::Reference< css::frame::XDispatchProvider >      m_xMasterDispatcher;    // ditto
         css::uno::Reference< css::sdb::XDatabaseContext >         m_xDatabaseContext;
-        css::uno::Reference< css::frame::XTitle >                 m_xTitleHelper;
+        rtl::Reference<::framework::TitleHelper >                 m_xTitleHelper;
 
         bool                    m_bPreview;
         bool                    m_bReadOnly;
@@ -261,8 +246,6 @@ namespace dbaui
         // methods
         OGenericUnoController( const css::uno::Reference< css::uno::XComponentContext >& _rM );
         OGenericUnoController() = delete;
-        const ::comphelper::NamedValueCollection&
-                                    getInitParams() const   { return m_aInitParameters; }
 
         // closes the task when possible
         void closeTask();
@@ -347,7 +330,7 @@ namespace dbaui
         css::uno::Reference< css::awt::XWindow> getTopMostContainerWindow() const;
 
         // XInitialize will be called inside initialize
-        virtual void impl_initialize();
+        virtual void impl_initialize(const ::comphelper::NamedValueCollection& rArguments);
 
         virtual OUString getPrivateTitle() const { return OUString(); }
 

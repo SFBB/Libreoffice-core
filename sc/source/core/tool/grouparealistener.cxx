@@ -96,7 +96,7 @@ FormulaGroupAreaListener::FormulaGroupAreaListener( const ScRange& rRange, const
     assert(mpColumn);
     SAL_INFO( "sc.core.grouparealistener",
             "FormulaGroupAreaListener ctor this " << this <<
-            " range " << (maRange == BCA_LISTEN_ALWAYS ? "LISTEN-ALWAYS" : maRange.Format(mrDocument, ScRefFlags::VALID)) <<
+            " range " << (maRange == BCA_LISTEN_ALWAYS ? u"LISTEN-ALWAYS"_ustr : maRange.Format(mrDocument, ScRefFlags::VALID)) <<
             " mnTopCellRow " << mnTopCellRow << " length " << mnGroupLen <<
             ", col/tab " << mpColumn->GetCol() << "/" << mpColumn->GetTab());
 }
@@ -117,10 +117,9 @@ ScRange FormulaGroupAreaListener::getListeningRange() const
 
 void FormulaGroupAreaListener::Notify( const SfxHint& rHint )
 {
-    // BulkDataHint may include (SfxHintId::ScDataChanged |
-    // SfxHintId::ScTableOpDirty) so has to be checked first.
-    if ( const BulkDataHint* pBulkHint = dynamic_cast<const BulkDataHint*>(&rHint) )
+    if ( rHint.GetId() == SfxHintId::ScBulkData )
     {
+        const BulkDataHint* pBulkHint = static_cast<const BulkDataHint*>(&rHint);
         notifyBulkChange(*pBulkHint);
     }
     else if (rHint.GetId() == SfxHintId::ScDataChanged || rHint.GetId() == SfxHintId::ScTableOpDirty)
@@ -186,7 +185,7 @@ void FormulaGroupAreaListener::collectFormulaCells(
 {
     SAL_INFO( "sc.core.grouparealistener",
             "FormulaGroupAreaListener::collectFormulaCells() this " << this <<
-            " range " << (maRange == BCA_LISTEN_ALWAYS ? "LISTEN-ALWAYS" : maRange.Format(mrDocument, ScRefFlags::VALID)) <<
+            " range " << (maRange == BCA_LISTEN_ALWAYS ? u"LISTEN-ALWAYS"_ustr : maRange.Format(mrDocument, ScRefFlags::VALID)) <<
             " mnTopCellRow " << mnTopCellRow << " length " << mnGroupLen <<
             ", col/tab " << mpColumn->GetCol() << "/" << mpColumn->GetTab());
 

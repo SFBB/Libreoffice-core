@@ -21,21 +21,12 @@
 
 #include <framework/ConfigurationController.hxx>
 
-#include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
+#include <framework/ConfigurationChangeListener.hxx>
 
 #include <rtl/ref.hxx>
 #include <vcl/idle.hxx>
 #include <comphelper/compbase.hxx>
 #include <memory>
-
-namespace com::sun::star::drawing::framework
-{
-class XConfigurationController;
-}
-namespace com::sun::star::frame
-{
-class XController;
-}
 
 namespace sd
 {
@@ -45,8 +36,7 @@ class ViewShellBase;
 
 namespace sd::framework
 {
-typedef comphelper::WeakComponentImplHelper<css::drawing::framework::XConfigurationChangeListener>
-    ShellStackGuardInterfaceBase;
+class ConfigurationController;
 
 /** This module locks updates of the current configuration in situations
     when the shell stack must not be modified.
@@ -58,7 +48,7 @@ typedef comphelper::WeakComponentImplHelper<css::drawing::framework::XConfigurat
     When in the future there are no resources left that use shells then this
     module can be removed.
 */
-class ShellStackGuard : public ShellStackGuardInterfaceBase
+class ShellStackGuard : public sd::framework::ConfigurationChangeListener
 {
 public:
     explicit ShellStackGuard(rtl::Reference<sd::DrawController> const& rxController);
@@ -66,18 +56,17 @@ public:
 
     virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    // XConfigurationChangeListener
+    // ConfigurationChangeListener
 
-    virtual void SAL_CALL notifyConfigurationChange(
-        const css::drawing::framework::ConfigurationChangeEvent& rEvent) override;
+    virtual void
+    notifyConfigurationChange(const sd::framework::ConfigurationChangeEvent& rEvent) override;
 
     // XEventListener
 
     virtual void SAL_CALL disposing(const css::lang::EventObject& rEvent) override;
 
 private:
-    css::uno::Reference<css::drawing::framework::XConfigurationController>
-        mxConfigurationController;
+    rtl::Reference<ConfigurationController> mxConfigurationController;
     ViewShellBase* mpBase;
     std::unique_ptr<ConfigurationController::Lock> mpUpdateLock;
     Idle maPrinterPollingIdle;

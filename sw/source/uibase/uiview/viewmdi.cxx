@@ -53,8 +53,6 @@
 sal_uInt16  SwView::s_nMoveType = NID_PGE;
 sal_Int32 SwView::s_nActMark = 0;
 
-using namespace ::com::sun::star::uno;
-
 namespace {
 
 void collectUIInformation(const OUString& aFactor)
@@ -97,7 +95,8 @@ void SwView::SetZoom_( const Size &rEditSize, SvxZoomType eZoomType,
     tools::Long nFac = nFactor;
 
     const bool bWeb = dynamic_cast< const SwWebView *>( this ) !=  nullptr;
-    SwMasterUsrPref *pUsrPref = const_cast<SwMasterUsrPref*>(SW_MOD()->GetUsrPref(bWeb));
+    SwModule* mod = SwModule::get();
+    SwMasterUsrPref *pUsrPref = const_cast<SwMasterUsrPref*>(mod->GetUsrPref(bWeb));
 
     const SwPageDesc &rDesc = m_pWrtShell->GetPageDesc( m_pWrtShell->GetCurPageDesc() );
     const SvxLRSpaceItem &rLRSpace = rDesc.GetMaster().GetLRSpace();
@@ -127,12 +126,14 @@ void SwView::SetZoom_( const Size &rEditSize, SvxZoomType eZoomType,
             if( UseOnPage::Mirror == rDesc.GetUseOn() )    // mirrored pages
             {
                 const SvxLRSpaceItem &rLeftLRSpace = rDesc.GetLeft().GetLRSpace();
-                aPageSize.AdjustWidth(std::abs( rLeftLRSpace.GetLeft() - rLRSpace.GetLeft() ) );
+                aPageSize.AdjustWidth(
+                    std::abs(rLeftLRSpace.ResolveLeft({}) - rLRSpace.ResolveLeft({})));
             }
 
             if (!pPostItMgr->HasNotes() || !pPostItMgr->ShowNotes())
-                aPageSize.AdjustWidth( -( rLRSpace.GetLeft() + rLRSpace.GetRight() + nLeftOfst * 2 ) );
-            lLeftMargin = rLRSpace.GetLeft() + DOCUMENTBORDER + nLeftOfst;
+                aPageSize.AdjustWidth(
+                    -(rLRSpace.ResolveLeft({}) + rLRSpace.ResolveRight({}) + nLeftOfst * 2));
+            lLeftMargin = rLRSpace.ResolveLeft({}) + DOCUMENTBORDER + nLeftOfst;
             nFac = aWindowSize.Width() * 100 / aPageSize.Width();
         }
         else if(SvxZoomType::WHOLEPAGE == eZoomType || SvxZoomType::PAGEWIDTH == eZoomType )
@@ -169,7 +170,7 @@ void SwView::SetZoom_( const Size &rEditSize, SvxZoomType eZoomType,
         {
             pUsrPref->SetZoom(nZoomFac);
             pUsrPref->SetZoomType(eZoomType);
-            SW_MOD()->ApplyUsrPref(*pUsrPref, nullptr);
+            mod->ApplyUsrPref(*pUsrPref, nullptr);
             pUsrPref->SetModified();
         }
         if ( pOpt->GetZoom() != nZoomFac )
@@ -224,18 +225,13 @@ void SwView::SetZoom_( const Size &rEditSize, SvxZoomType eZoomType,
 
 void SwView::SetViewLayout( sal_uInt16 nColumns, bool bBookMode, bool bViewOnly )
 {
-    const bool bUnLockView = !m_pWrtShell->IsViewLocked();
-    m_pWrtShell->LockView( true );
-    m_pWrtShell->LockPaint(LockPaintReason::ViewLayout);
-
-    {
-
     SwActContext aActContext(m_pWrtShell.get());
 
     if ( !GetViewFrame().GetFrame().IsInPlace() && !bViewOnly )
     {
         const bool bWeb = dynamic_cast< const SwWebView *>( this ) !=  nullptr;
-        SwMasterUsrPref *pUsrPref = const_cast<SwMasterUsrPref*>(SW_MOD()->GetUsrPref(bWeb));
+        SwModule* mod = SwModule::get();
+        SwMasterUsrPref *pUsrPref = const_cast<SwMasterUsrPref*>(mod->GetUsrPref(bWeb));
 
         // Update MasterUsrPrefs and after that update the ViewOptions of the current View.
         if ( nColumns  != pUsrPref->GetViewLayoutColumns() ||
@@ -243,7 +239,7 @@ void SwView::SetViewLayout( sal_uInt16 nColumns, bool bBookMode, bool bViewOnly 
         {
             pUsrPref->SetViewLayoutColumns(nColumns);
             pUsrPref->SetViewLayoutBookMode(bBookMode);
-            SW_MOD()->ApplyUsrPref(*pUsrPref, nullptr);
+            mod->ApplyUsrPref(*pUsrPref, nullptr);
             pUsrPref->SetModified();
         }
     }
@@ -261,12 +257,6 @@ void SwView::SetViewLayout( sal_uInt16 nColumns, bool bBookMode, bool bViewOnly 
 
     m_pVRuler->ForceUpdate();
     m_pHRuler->ForceUpdate();
-
-    }
-
-    m_pWrtShell->UnlockPaint();
-    if( bUnLockView )
-        m_pWrtShell->LockView( false );
 
     SfxBindings& rBnd = GetViewFrame().GetBindings();
     rBnd.Invalidate( SID_ATTR_VIEWLAYOUT );
@@ -347,7 +337,7 @@ IMPL_LINK( SwView, MoveNavigationHdl, void*, p, void )
         {
             tools::Long nYPos;
             SwVisiblePageNumbers aVisiblePageNumbers;
-            rSh.GetFirstLastVisPageNumbers(aVisiblePageNumbers);
+            rSh.GetFirstLastVisPageNumbers(aVisiblePageNumbers, rSh.GetView());
             if ((bNext && aVisiblePageNumbers.nLastPhy + 1 > rSh.GetPageCnt()) ||
                 (!bNext && aVisiblePageNumbers.nFirstPhy == 1))
             {
@@ -517,8 +507,8 @@ IMPL_LINK( SwView, MoveNavigationHdl, void*, p, void )
 
             // collect and sort navigator reminder names
             IDocumentMarkAccess* const pMarkAccess = rSh.getIDocumentMarkAccess();
-            std::vector< OUString > vNavMarkNames;
-            for(IDocumentMarkAccess::const_iterator_t ppMark = pMarkAccess->getAllMarksBegin();
+            std::vector< SwMarkName > vNavMarkNames;
+            for(auto ppMark = pMarkAccess->getAllMarksBegin();
                 ppMark != pMarkAccess->getAllMarksEnd();
                 ++ppMark)
             {
@@ -710,10 +700,10 @@ IMPL_LINK( SwView, ExecRulerClick, Ruler *, pRuler, void )
     {
         case RulerType::DontKnow:
         case RulerType::Outside:
-            sDefPage="labelTP_BORDER";
+            sDefPage="borders";
             break;
         case RulerType::Indent:
-            sDefPage="labelTP_PARA_STD";
+            sDefPage="indents";
             break;
         case RulerType::Margin1:
         case RulerType::Margin2:
@@ -721,7 +711,7 @@ IMPL_LINK( SwView, ExecRulerClick, Ruler *, pRuler, void )
             sDefPage = "page";
             break;
         default:
-            sDefPage = "labelTP_TABULATOR";
+            sDefPage = "tabs";
 
     }
 

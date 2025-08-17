@@ -57,7 +57,7 @@ struct SvtExtensionResIdMapping_Impl
 
 }
 
-SvtExtensionResIdMapping_Impl const ExtensionMap_Impl[] =
+constexpr SvtExtensionResIdMapping_Impl ExtensionMap_Impl[] =
 {
     { "awk",   true,  STR_DESCRIPTION_SOURCEFILE,            SvImageId::NONE },
     { "bas",   true,  STR_DESCRIPTION_SOURCEFILE,            SvImageId::NONE },
@@ -125,18 +125,18 @@ SvtExtensionResIdMapping_Impl const ExtensionMap_Impl[] =
     { "rtf",   false, STR_DESCRIPTION_WORD_DOC,              SvImageId::Writer },
     { "sbl",   false, {},                                    SvImageId::NONE },
     { "sch",   false, {},                                    SvImageId::NONE },
-    { "sda",   false, { nullptr, STR_DESCRIPTION_SDRAW_DOC}, SvImageId::Draw },
+    { "sda",   false, STR_DESCRIPTION_SDRAW_DOC,             SvImageId::Draw },
     { "sdb",   false, STR_DESCRIPTION_SDATABASE_DOC,         SvImageId::Database },
-    { "sdc",   false, { nullptr, STR_DESCRIPTION_SCALC_DOC}, SvImageId::Calc },
-    { "sdd",   false, { nullptr, STR_DESCRIPTION_SIMPRESS_DOC},          SvImageId::Impress },
-    { "sdp",   false, { nullptr, STR_DESCRIPTION_SIMPRESS_DOC},          SvImageId::NONE },
-    { "sds",   false, { nullptr, STR_DESCRIPTION_SCHART_DOC},            SvImageId::NONE },
-    { "sdw",   false, { nullptr, STR_DESCRIPTION_SWRITER_DOC},           SvImageId::Writer },
+    { "sdc",   false, STR_DESCRIPTION_SCALC_DOC,             SvImageId::Calc },
+    { "sdd",   false, STR_DESCRIPTION_SIMPRESS_DOC,          SvImageId::Impress },
+    { "sdp",   false, STR_DESCRIPTION_SIMPRESS_DOC,          SvImageId::NONE },
+    { "sds",   false, STR_DESCRIPTION_SCHART_DOC,            SvImageId::NONE },
+    { "sdw",   false, STR_DESCRIPTION_SWRITER_DOC,           SvImageId::Writer },
     { "sga",   false, {},                                    SvImageId::NONE },
     { "sgl",   false, STR_DESCRIPTION_GLOBALDOC,             SvImageId::GlobalDoc },
     { "shtml", false, STR_DESCRIPTION_HTMLFILE,              SvImageId::HTML },
     { "sim",   false, STR_DESCRIPTION_SIMAGE_DOC,            SvImageId::SIM },
-    { "smf",   false, { nullptr, STR_DESCRIPTION_SMATH_DOC},             SvImageId::Math },
+    { "smf",   false, STR_DESCRIPTION_SMATH_DOC,             SvImageId::Math },
     { "src",   true,  STR_DESCRIPTION_SOURCEFILE,            SvImageId::NONE },
     { "svh",   false, STR_DESCRIPTION_HELP_DOC,              SvImageId::NONE },
     { "svm",   true,  STR_DESCRIPTION_GRAPHIC_DOC,           SvImageId::SVM },
@@ -230,9 +230,9 @@ static OUString GetImageExtensionByFactory_Impl( const OUString& rURL )
     try
     {
         // get the TypeDetection service to access all registered types
-        css::uno::Reference < css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const css::uno::Reference < css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         css::uno::Reference < css::document::XTypeDetection > xTypeDetector(
-            xContext->getServiceManager()->createInstanceWithContext("com.sun.star.document.TypeDetection", xContext),
+            xContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.document.TypeDetection"_ustr, xContext),
             css::uno::UNO_QUERY );
 
         OUString aInternalType = xTypeDetector->queryTypeByURL( rURL );
@@ -241,7 +241,7 @@ static OUString GetImageExtensionByFactory_Impl( const OUString& rURL )
         if ( !aInternalType.isEmpty() && xAccess->hasByName( aInternalType ) )
         {
             xAccess->getByName( aInternalType ) >>= aTypeProps;
-            for ( const css::beans::PropertyValue& rProp : std::as_const(aTypeProps) )
+            for (const css::beans::PropertyValue& rProp : aTypeProps)
             {
                 if (rProp.Name == "Extensions")
                 {
@@ -309,11 +309,11 @@ static bool GetVolumeProperties_Impl( ::ucbhelper::Content& rContent, svtools::V
 
     try
     {
-        bRet = ( ( rContent.getPropertyValue( "IsVolume" ) >>= rVolumeInfo.m_bIsVolume ) &&
-                 ( rContent.getPropertyValue( "IsRemote" ) >>= rVolumeInfo.m_bIsRemote ) &&
-                 ( rContent.getPropertyValue( "IsRemoveable" ) >>= rVolumeInfo.m_bIsRemoveable ) &&
-                 ( rContent.getPropertyValue( "IsFloppy" ) >>= rVolumeInfo.m_bIsFloppy ) &&
-                 ( rContent.getPropertyValue( "IsCompactDisc" ) >>= rVolumeInfo.m_bIsCompactDisc ) );
+        bRet = ( ( rContent.getPropertyValue( u"IsVolume"_ustr ) >>= rVolumeInfo.m_bIsVolume ) &&
+                 ( rContent.getPropertyValue( u"IsRemote"_ustr ) >>= rVolumeInfo.m_bIsRemote ) &&
+                 ( rContent.getPropertyValue( u"IsRemoveable"_ustr ) >>= rVolumeInfo.m_bIsRemoveable ) &&
+                 ( rContent.getPropertyValue( u"IsFloppy"_ustr ) >>= rVolumeInfo.m_bIsFloppy ) &&
+                 ( rContent.getPropertyValue( u"IsCompactDisc"_ustr ) >>= rVolumeInfo.m_bIsCompactDisc ) );
     }
     catch( const css::uno::RuntimeException& )
     {
@@ -403,7 +403,7 @@ static SvImageId GetImageId_Impl(
             SvImageId nId = SvImageId::WriterTemplate;
             try
             {
-                tools::SvRef<SotStorage> aStorage = new SotStorage( sURL, StreamMode::STD_READ );
+                rtl::Reference<SotStorage> aStorage = new SotStorage(sURL, StreamMode::STD_READ);
                 if ( !aStorage->GetError() )
                 {
                     SvGlobalName aGlobalName = aStorage->GetClassName();
@@ -507,7 +507,7 @@ static TranslateId GetFolderDescriptionId_Impl( const OUString& rURL )
     return pRet;
 }
 
-static OUString GetImageNameFromList_Impl( SvImageId nImageId, vcl::ImageType eImageType )
+static const OUString & GetImageNameFromList_Impl( SvImageId nImageId, vcl::ImageType eImageType )
 {
     if (eImageType == vcl::ImageType::Size32)
     {
@@ -737,7 +737,7 @@ static OUString GetImageNameFromList_Impl( SvImageId nImageId, vcl::ImageType eI
         }
     }
 
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 static Image GetImageFromList_Impl( SvImageId nImageId, vcl::ImageType eImageType)
@@ -810,7 +810,7 @@ OUString SvFileInformationManager::GetDescription_Impl( const INetURLObject& rOb
     return sDescription;
 }
 
-OUString SvFileInformationManager::GetImageId(const INetURLObject& rObject, bool bBig)
+const OUString & SvFileInformationManager::GetImageId(const INetURLObject& rObject, bool bBig)
 {
     SvImageId nImage = GetImageId_Impl(
         rObject, true, utl::UCBContentHelper::getDefaultCommandEnvironment() );
@@ -827,7 +827,7 @@ Image SvFileInformationManager::GetImage(
     return GetImageFromList_Impl(nImage, bBig ? vcl::ImageType::Size26 : vcl::ImageType::Size16);
 }
 
-OUString SvFileInformationManager::GetFileImageId(const INetURLObject& rObject)
+const OUString & SvFileInformationManager::GetFileImageId(const INetURLObject& rObject)
 {
     SvImageId nImage = GetImageId_Impl(
         rObject, false, utl::UCBContentHelper::getDefaultCommandEnvironment() );
@@ -847,7 +847,7 @@ Image SvFileInformationManager::GetImageNoDefault(const INetURLObject& rObject, 
     return GetImageFromList_Impl(nImage, eImageType);
 }
 
-OUString SvFileInformationManager::GetFolderImageId( const svtools::VolumeInfo& rInfo )
+const OUString & SvFileInformationManager::GetFolderImageId( const svtools::VolumeInfo& rInfo )
 {
     SvImageId nImage = SvImageId::Folder;
     DBG_ASSERT( nImage != SvImageId::NONE, "invalid ImageId" );

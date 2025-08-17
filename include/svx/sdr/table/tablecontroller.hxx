@@ -31,14 +31,13 @@
 #include <unotools/weakref.hxx>
 
 struct ImplSVEvent;
-class SdrView;
-class SdrObject;
 class SfxItemSet;
 class SvxBoxInfoItem;
 class SvxBoxItem;
 
 namespace sdr::table {
 
+class SvxTableControllerModifyListener;
 class TableModel;
 
 class SVXCORE_DLLPUBLIC SvxTableController final : public sdr::SelectionController
@@ -67,7 +66,7 @@ public:
     SVX_DLLPRIVATE virtual bool GetStyleSheet( SfxStyleSheet* &rpStyleSheet ) const override;
     SVX_DLLPRIVATE virtual bool SetStyleSheet( SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr ) override;
 
-    SVX_DLLPRIVATE virtual bool ApplyFormatPaintBrush( SfxItemSet& rFormatSet, bool bNoCharacterFormats, bool bNoParagraphFormats ) override;
+    SVX_DLLPRIVATE virtual bool ApplyFormatPaintBrush( SfxItemSet& rFormatSet, sal_Int16 nDepth, bool bNoCharacterFormats, bool bNoParagraphFormats ) override;
 
     // slots
     SVX_DLLPRIVATE void onInsert( sal_uInt16 nSId, const SfxItemSet* pArgs = nullptr );
@@ -189,7 +188,7 @@ private:
     std::optional<sdr::overlay::OverlayObjectList>  mpSelectionOverlay;
     SdrView& mrView;
     unotools::WeakReference<SdrTableObj> mxTableObj;
-    css::uno::Reference< css::util::XModifyListener > mxModifyListener;
+    rtl::Reference< SvxTableControllerModifyListener > mxModifyListener;
     ImplSVEvent * mnUpdateEvent;
 };
 

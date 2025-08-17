@@ -118,11 +118,11 @@ namespace cairocanvas
                 if ( !mbHasAlpha )
                     break;
 
-                BitmapEx* pBitmapEx = vcl::bitmap::CreateFromCairoSurface(
+                Bitmap aBitmap = vcl::bitmap::CreateFromCairoSurface(
                                           ::Size( maSize.getWidth(), maSize.getHeight() ),
                                           getSurface()->getCairoSurface().get());
-                if (pBitmapEx)
-                    aRV <<= reinterpret_cast<sal_Int64>( pBitmapEx );
+                if (!aBitmap.IsEmpty())
+                    aRV <<= reinterpret_cast<sal_Int64>( new Bitmap(aBitmap) );
 
                 break;
             }
@@ -145,7 +145,7 @@ namespace cairocanvas
 
     OUString SAL_CALL CanvasBitmap::getImplementationName(  )
     {
-        return "CairoCanvas.CanvasBitmap";
+        return u"CairoCanvas.CanvasBitmap"_ustr;
     }
 
     sal_Bool SAL_CALL CanvasBitmap::supportsService( const OUString& ServiceName )
@@ -155,7 +155,7 @@ namespace cairocanvas
 
     uno::Sequence< OUString > SAL_CALL CanvasBitmap::getSupportedServiceNames(  )
     {
-        return { "com.sun.star.rendering.CanvasBitmap" };
+        return { u"com.sun.star.rendering.CanvasBitmap"_ustr };
     }
 
 }

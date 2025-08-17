@@ -22,11 +22,12 @@
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
 #include <vcl/dibtools.hxx>
+#include <o3tl/environment.hxx>
 #include <o3tl/safeint.hxx>
 #include <o3tl/sprintf.hxx>
 #include <tools/stream.hxx>
 #include <memory>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/pdfread.hxx>
 #include <rtl/bootstrap.hxx>
@@ -386,7 +387,7 @@ bool ImplReadRegion( basegfx::B2DPolyPolygon& rPolyPoly, SvStream& rStream, sal_
         rPolyPoly.append( basegfx::utils::createPolygonFromRect( ::basegfx::B2DRectangle( nLeft, nTop, nRight, nBottom ) ) );
         SAL_INFO("emfio", "\t\t" << i << " Left: " << nLeft << ", top: " << nTop << ", right: " << nRight << ", bottom: " << nBottom);
     }
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         rPolyPoly = basegfx::utils::solveCrossovers(rPolyPoly);
         rPolyPoly = basegfx::utils::stripNeutralPolygons(rPolyPoly);
@@ -827,7 +828,7 @@ namespace emfio
         bool    bHaveDC = false;
 
         OUString aEMFPlusDisable;
-        rtl::Bootstrap::get("EMF_PLUS_DISABLE", aEMFPlusDisable);
+        rtl::Bootstrap::get(u"EMF_PLUS_DISABLE"_ustr, aEMFPlusDisable);
         bool bEnableEMFPlus = aEMFPlusDisable.isEmpty();
         if (!mbEnableEMFPlus)
         {
@@ -1314,9 +1315,9 @@ namespace emfio
                     }
                     break;
 
-                    case EMR_ELLIPSE :
+                    case EMR_ELLIPSE:
                     {
-                        mpInputStream->ReadInt32( nX32 ).ReadInt32( nY32 ).ReadInt32( nx32 ).ReadInt32( ny32 );
+                        mpInputStream->ReadInt32(nX32).ReadInt32(nY32).ReadInt32(nx32).ReadInt32(ny32);
                         SAL_INFO("emfio", "\t\t Rectangle, left: " << nX32 << ", top: " << nY32 << ", right: " << nx32 << ", bottom: " << ny32);
 
                         sal_Int32 w(0), h(0);
@@ -1326,9 +1327,9 @@ namespace emfio
                         {
                             tools::Long dw = w / 2;
                             tools::Long dh = h / 2;
-                            Point aCenter( nX32 + dw, nY32 + dh );
-                            tools::Polygon aPoly( aCenter, dw, dh );
-                            DrawPolygon( std::move(aPoly), mbRecordPath );
+                            Point aCenter(nX32 + dw, nY32 + dh);
+                            tools::Polygon aPoly(aCenter, dw, dh);
+                            DrawPolygon(std::move(aPoly), mbRecordPath);
                         }
                     }
                     break;
@@ -1347,11 +1348,47 @@ namespace emfio
                     }
                     break;
 
-                    case EMR_ROUNDRECT :
+                    case EMR_ROUNDRECT:
                     {
-                        mpInputStream->ReadInt32( nX32 ).ReadInt32( nY32 ).ReadInt32( nx32 ).ReadInt32( ny32 ).ReadUInt32( nW ).ReadUInt32( nH );
-                        tools::Polygon aRoundRectPoly( ReadRectangle( nX32, nY32, nx32, ny32 ), nW, nH );
-                        DrawPolygon( std::move(aRoundRectPoly), mbRecordPath );
+                        mpInputStream->ReadInt32(nX32).ReadInt32(nY32).ReadInt32(nx32).ReadInt32(ny32).ReadUInt32(nW).ReadUInt32(nH);
+                        SAL_INFO("emfio", "\t\t Rectangle position: " << nX32 << ":" << nY32 << ", " << nx32 << ":" << ny32);
+                        SAL_INFO("emfio", "\t\t Ellipse Width: " << nW << ", Height" << nH);
+                        tools::Polygon aRoundRectPoly(ReadRectangle(nX32, nY32, nx32, ny32), nW, nH);
+                        DrawPolygon(std::move(aRoundRectPoly), mbRecordPath);
+                    }
+                    break;
+
+                    case EMR_ANGLEARC:
+                    {
+                        sal_Int32 nCenterX, nCenterY;
+                        sal_uInt32 nRadius;
+                        float fStartAngle, fSweepAngle;
+                        mpInputStream->ReadInt32(nCenterX).ReadInt32(nCenterY).ReadUInt32(nRadius);
+                        mpInputStream->ReadFloat(fStartAngle).ReadFloat(fSweepAngle);
+                        SAL_INFO("emfio", "\t\t Center: " << nCenterX << ":" << nCenterY << ", Radius: " << nRadius);
+                        SAL_INFO("emfio", "\t\t Start Angle: " << fStartAngle << ", Sweep Angle: " << fSweepAngle);
+
+                        if (!mpInputStream->good())
+                            bStatus = false;
+                        else
+                        {
+                            // Convert from degrees to radians and start angle to draw from x-axis
+                            fStartAngle = basegfx::deg2rad(fStartAngle);
+                            fSweepAngle = basegfx::deg2rad(fSweepAngle);
+
+                            tools::Polygon aPoly(Point(nCenterX, nCenterY), nRadius, fStartAngle, fSweepAngle, IsArcDirectionClockWise());
+
+                            if (!aPoly.GetSize())
+                            {
+                                SAL_WARN("emfio", "EMF file error: 0 points");
+                            }
+                            else
+                            {
+                                // Before drawing the arc, AngleArc draws the line segment from the current position to the beginning of the arc
+                                LineTo(aPoly[0], mbRecordPath);
+                                DrawPolyLine(std::move(aPoly), true, mbRecordPath);
+                            }
+                        }
                     }
                     break;
 
@@ -1612,7 +1649,7 @@ namespace emfio
                                     if(bDoSaveForVisualControl)
                                     {
                                         // VCL_DUMP_BMP_PATH should be like C:/path/ or ~/path/
-                                        static const OUString sDumpPath(OUString::createFromAscii(std::getenv("VCL_DUMP_BMP_PATH")));
+                                        static const OUString sDumpPath(o3tl::getEnvironment(u"VCL_DUMP_BMP_PATH"_ustr));
                                         if(!sDumpPath.isEmpty())
                                         {
                                             SvFileStream aNew(sDumpPath + "metafile_content.png",
@@ -1962,7 +1999,7 @@ namespace emfio
                                             }
                                         }
 
-                                        aDXAry.set(i, 0);
+                                        aDXAry[i] = 0;
                                         if (nOptions & ETO_PDY)
                                         {
                                             pDYAry[i] = 0;
@@ -1972,7 +2009,7 @@ namespace emfio
                                         {
                                             sal_Int32 nDxTmp = 0;
                                             mpInputStream->ReadInt32(nDxTmp);
-                                            aDXAry.set(i, o3tl::saturating_add(aDXAry[i], nDxTmp));
+                                            aDXAry[i] += nDxTmp;
                                             if (nOptions & ETO_PDY)
                                             {
                                                 sal_Int32 nDyTmp = 0;
@@ -2136,6 +2173,33 @@ namespace emfio
                     }
                     break;
 
+                    case EMR_CREATECOLORSPACE :
+                    {
+                        sal_uInt32 nRemainingRecSize = nRecSize - 8;
+                        if (nRemainingRecSize < 5)
+                            bStatus = false;
+                        else
+                        {
+                            // index of the logical color space object in the EMF object table
+                            sal_Int32 ihCS(0);
+                            mpInputStream->ReadInt32(ihCS);
+                            sal_Int32 nDescChars = nRemainingRecSize - 4;
+                            OUString aDesc;
+                            for (sal_Int32 i=0; i < nDescChars; i++)
+                            {
+                                unsigned char cChar(0);
+                                mpInputStream->ReadUChar(cChar);
+                                if (cChar == 0)
+                                    break;
+                                aDesc = aDesc + OUStringChar(static_cast<sal_Unicode>(cChar));
+                            }
+                            // if it's the standard color space name, no need to do anything
+                            if (aDesc != "COSP")
+                                SAL_WARN("emfio", "TODO: color space change for EMR_CREATECOLORSPACE not implemented: '" << aDesc << "' " << nDescChars);
+                        }
+                    }
+                    break;
+
                     case EMR_MASKBLT :
                     case EMR_PLGBLT :
                     case EMR_SETDIBITSTODEVICE :
@@ -2146,10 +2210,8 @@ namespace emfio
                     case EMR_SETPALETTEENTRIES :
                     case EMR_RESIZEPALETTE :
                     case EMR_EXTFLOODFILL :
-                    case EMR_ANGLEARC :
                     case EMR_SETCOLORADJUSTMENT :
                     case EMR_POLYDRAW16 :
-                    case EMR_CREATECOLORSPACE :
                     case EMR_SETCOLORSPACE :
                     case EMR_DELETECOLORSPACE :
                     case EMR_GLSRECORD :

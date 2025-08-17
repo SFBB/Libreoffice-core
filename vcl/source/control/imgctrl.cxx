@@ -89,19 +89,19 @@ void ImageControl::ImplDraw(OutputDevice& rDev, const Point& rPos, const Size& r
         return;
     }
 
-    const Size& rBitmapSize = rImage.GetSizePixel();
+    const Size aBitmapSize = rImage.GetSizePixel();
 
     switch ( mnScaleMode )
     {
     case ImageScaleMode::NONE:
     {
-        rDev.DrawImage(lcl_centerWithin( aDrawRect, rBitmapSize ), rImage, nStyle);
+        rDev.DrawImage(lcl_centerWithin( aDrawRect, aBitmapSize ), rImage, nStyle);
     }
     break;
 
     case ImageScaleMode::ISOTROPIC:
     {
-        const Size aPaintSize = lcl_calcPaintSize( aDrawRect, rBitmapSize );
+        const Size aPaintSize = lcl_calcPaintSize( aDrawRect, aBitmapSize );
         rDev.DrawImage(lcl_centerWithin(aDrawRect, aPaintSize), aPaintSize, rImage, nStyle);
     }
     break;
@@ -133,8 +133,7 @@ void ImageControl::Paint(vcl::RenderContext& rRenderContext, const tools::Rectan
 
     bool bFlat = (GetBorderStyle() == WindowBorderStyle::MONO);
     tools::Rectangle aRect(Point(0,0), pBorderWindow->GetOutputSizePixel());
-    Color oldLineCol = pBorderWindow->GetOutDev()->GetLineColor();
-    Color oldFillCol = pBorderWindow->GetOutDev()->GetFillColor();
+    auto popIt = pBorderWindow->GetOutDev()->ScopedPush(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR);
     pBorderWindow->GetOutDev()->SetFillColor();
     pBorderWindow->GetOutDev()->SetLineColor(bFlat ? COL_WHITE : COL_BLACK);
     pBorderWindow->GetOutDev()->DrawRect(aRect);
@@ -144,9 +143,6 @@ void ImageControl::Paint(vcl::RenderContext& rRenderContext, const tools::Rectan
     aRect.AdjustBottom( -1 );
     pBorderWindow->GetOutDev()->SetLineColor(bFlat ? COL_BLACK : COL_WHITE);
     pBorderWindow->GetOutDev()->DrawRect(aRect);
-    pBorderWindow->GetOutDev()->SetLineColor(oldLineCol);
-    pBorderWindow->GetOutDev()->SetFillColor(oldFillCol);
-
 }
 
 void ImageControl::Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorFlags )
@@ -155,7 +151,7 @@ void ImageControl::Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorF
     const Size      aSize = GetSizePixel();
     tools::Rectangle aRect( aPos, aSize );
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
 
     // Border
@@ -165,8 +161,6 @@ void ImageControl::Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorF
     }
     pDev->IntersectClipRegion( aRect );
     ImplDraw( *pDev, aRect.TopLeft(), aRect.GetSize() );
-
-    pDev->Pop();
 }
 
 void ImageControl::GetFocus()

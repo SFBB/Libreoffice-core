@@ -59,11 +59,9 @@
 #include <tools/time.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <comphelper/extract.hxx>
-#include <sal/macros.h>
 #include <sal/log.hxx>
 
 #include <algorithm>
-#include <string_view>
 
 namespace xmloff
 {
@@ -86,7 +84,6 @@ namespace xmloff
     using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::script;
     using namespace ::com::sun::star::io;
-    using namespace ::com::sun::star::table;
     using namespace ::com::sun::star::text;
     using namespace ::com::sun::star::form::binding;
 
@@ -141,7 +138,7 @@ namespace xmloff
         exportEvents();
     }
 
-    void OElementExport::implStartElement(const char* _pName)
+    void OElementExport::implStartElement(const OUString& _pName)
     {
         m_pXMLElement = std::make_unique<SvXMLElementExport>(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, _pName, true, true);
     }
@@ -348,7 +345,7 @@ namespace xmloff
             // later on imported, it overwrites anything which has previously been imported for
             // CharStrikeout.
             // #i27729#
-            exportedProperty( "CharCrossedOut" );
+            exportedProperty( u"CharCrossedOut"_ustr );
         }
 
         if ( m_eType == LISTBOX )
@@ -401,14 +398,14 @@ namespace xmloff
                     Sequence< OUString > aListItems;
                     m_xProps->getPropertyValue(PROPERTY_STRING_ITEM_LIST) >>= aListItems;
                     // loop through it and write the sub elements
-                    for (const auto& rListItem : std::as_const(aListItems))
+                    for (const auto& rListItem : aListItems)
                     {
                         m_rContext.getGlobalContext().ClearAttrList();
                         AddAttribute(
                             OAttributeMetaData::getCommonControlAttributeNamespace(CCAFlags::Label),
                             OAttributeMetaData::getCommonControlAttributeName(CCAFlags::Label),
                             rListItem);
-                        SvXMLElementExport aFormElement(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, "item", true, true);
+                        SvXMLElementExport aFormElement(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, u"item"_ustr, true, true);
                     }
                 }
             }
@@ -1072,7 +1069,7 @@ namespace xmloff
 
                 sal_Int32 nRepeatDelay = 0;
                 m_xProps->getPropertyValue( PROPERTY_REPEAT_DELAY ) >>= nRepeatDelay;
-                tools::Time aTime( tools::Time::SYSTEM );
+                tools::Time aTime(tools::Time::EMPTY);
                 aTime.MakeTimeFromMS( nRepeatDelay );
                 util::Duration aDuration;
                 aDuration.Hours   = aTime.GetHour();
@@ -1236,7 +1233,7 @@ namespace xmloff
         DBG_CHECK_PROPERTY(_rPropertyName, Sequence< sal_Int16 >);
         m_xProps->getPropertyValue(_rPropertyName) >>= aValueSequence;
 
-        for (const auto& rValue : std::as_const(aValueSequence))
+        for (const auto& rValue : aValueSequence)
             _rOut.insert(rValue);
     }
 
@@ -1315,7 +1312,7 @@ namespace xmloff
                     );
                 aDefaultSelection.erase(aDefaultSelectedPos);
             }
-            SvXMLElementExport aFormElement(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, "option", true, true);
+            SvXMLElementExport aFormElement(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, u"option"_ustr, true, true);
         }
 
         // There may be more "selected" or "default-selected" items than there are in the lists in real,
@@ -1359,15 +1356,15 @@ namespace xmloff
                     sTrue
                     );
             }
-            SvXMLElementExport aFormElement(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, "option", true, true);
+            SvXMLElementExport aFormElement(m_rContext.getGlobalContext(), XML_NAMESPACE_FORM, u"option"_ustr, true, true);
         }
     }
 
-    void OControlExport::implStartElement(const char* _pName)
+    void OControlExport::implStartElement(const OUString& _pName)
     {
         // before we let the base class start it's outer element, we add a wrapper element
-        const char *pOuterElementName = getOuterXMLElementName();
-        if (pOuterElementName)
+        OUString pOuterElementName = getOuterXMLElementName();
+        if (!pOuterElementName.isEmpty())
             m_pOuterElement = std::make_unique<SvXMLElementExport>(
                                         m_rContext.getGlobalContext(),
                                         XML_NAMESPACE_FORM,
@@ -1390,12 +1387,12 @@ namespace xmloff
         m_pOuterElement.reset();
     }
 
-    const char* OControlExport::getOuterXMLElementName() const
+    OUString OControlExport::getOuterXMLElementName() const
     {
-        return nullptr;
+        return u""_ustr;
     }
 
-    const char* OControlExport::getXMLElementName() const
+    OUString OControlExport::getXMLElementName() const
     {
         return getElementName(m_eType);
     }
@@ -1694,20 +1691,17 @@ namespace xmloff
         if ( FormCellBindingHelper::livesInSpreadsheetDocument( m_xProps ) )
         {
             FormCellBindingHelper aHelper( m_xProps, nullptr );
+
+            if ( FormCellBindingHelper::isCellBinding( aHelper.getCurrentBinding( ) ) )
             {
-                if ( FormCellBindingHelper::isCellBinding( aHelper.getCurrentBinding( ) ) )
-                {
-                    m_nIncludeBindings |= BAFlags::LinkedCell;
-                    if ( m_nClassId == FormComponentType::LISTBOX )
-                        m_nIncludeBindings |= BAFlags::ListLinkingType;
-                }
+                m_nIncludeBindings |= BAFlags::LinkedCell;
+                if ( m_nClassId == FormComponentType::LISTBOX )
+                    m_nIncludeBindings |= BAFlags::ListLinkingType;
             }
 
             // is it a list-like control which uses a calc cell range as list source?
-            {
-                if ( FormCellBindingHelper::isCellRangeListSource( aHelper.getCurrentListSource( ) ) )
-                    m_nIncludeBindings |= BAFlags::ListCellRange;
-            }
+            if ( FormCellBindingHelper::isCellRangeListSource( aHelper.getCurrentListSource( ) ) )
+                m_nIncludeBindings |= BAFlags::ListCellRange;
         }
 
         // is control bound to XForms?
@@ -1863,7 +1857,7 @@ namespace xmloff
         try
         {
             // currently exchanging the data with a database column?
-            OUString sBoundFieldPropertyName( "BoundField" );
+            OUString sBoundFieldPropertyName( u"BoundField"_ustr );
             if ( m_xPropertyInfo.is() && m_xPropertyInfo->hasPropertyByName( sBoundFieldPropertyName ) )
             {
                 Reference< XPropertySet > xBoundField;
@@ -1952,9 +1946,9 @@ namespace xmloff
 
     }
 
-    const char* OColumnExport::getOuterXMLElementName() const
+    OUString OColumnExport::getOuterXMLElementName() const
     {
-        return "column";
+        return u"column"_ustr;
     }
 
     void OColumnExport::exportAttributes()
@@ -2001,9 +1995,9 @@ namespace xmloff
         OSL_ENSURE(m_xProps.is(), "OFormExport::OFormExport: invalid arguments!");
     }
 
-    const char* OFormExport::getXMLElementName() const
+    OUString OFormExport::getXMLElementName() const
     {
-        return "form";
+        return u"form"_ustr;
     }
 
     void OFormExport::exportSubTags()

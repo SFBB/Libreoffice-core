@@ -37,7 +37,6 @@
 #include <map>
 
 #include "OPropertySet.hxx"
-#include "charttoolsdllapi.hxx"
 
 namespace com::sun::star::beans { class XPropertySet; }
 
@@ -60,7 +59,7 @@ typedef ::cppu::WeakImplHelper<
     DataSeries_Base;
 }
 
-class OOO_DLLPUBLIC_CHARTTOOLS DataSeries
+class DataSeries
     final
     : public impl::DataSeries_Base
     , public ::property::OPropertySet
@@ -136,6 +135,7 @@ public:
 
     void setData( const tDataSequenceContainer& aData );
     const tDataSequenceContainer & getDataSequences2() const { return m_aDataSequences; }
+    void addDataSequence(css::uno::Reference<css::chart2::data::XLabeledDataSequence> const& rSequence);
 
     typedef
         std::vector< rtl::Reference< ::chart::RegressionCurveModel > >
@@ -152,6 +152,45 @@ public:
     OUString getLabelForRole( const OUString & rLabelSequenceRole );
 
     bool hasUnhiddenData();
+
+    bool hasPointOwnColor(
+        sal_Int32 nPointIndex
+        , const css::uno::Reference< css::beans::XPropertySet >& xDataPointProperties //may be NULL this is just for performance
+         );
+
+    // returns true if AttributedDataPoints contains nPointIndex and the
+    // property Color is DEFAULT
+    bool hasPointOwnProperties( sal_Int32 nPointIndex );
+
+    sal_Int32 getAttachedAxisIndex();
+
+    bool isAttachedToMainAxis() { return getAttachedAxisIndex() == 0; }
+
+    void switchSymbolsOnOrOff( bool bSymbolsOn, sal_Int32 nSeriesIndex );
+
+    void switchLinesOnOrOff( bool bLinesOn );
+
+    void makeLinesThickOrThin( bool bThick );
+
+    bool hasAttributedDataPointDifferentValue(
+        const OUString& rPropertyName,
+        const css::uno::Any& rPropertyValue );
+
+    void setPropertyAlsoToAllAttributedDataPoints(
+            const OUString& rPropertyName,
+            const css::uno::Any& rPropertyValue );
+
+    bool hasDataLabelsAtSeries();
+
+    bool hasDataLabelsAtPoints();
+
+    bool hasDataLabelAtPoint( sal_Int32 nPointIndex );
+
+    void insertDataLabelsToSeriesAndAllPoints();
+
+    void deleteDataLabelsFromSeriesAndAllPoints();
+
+    sal_Int32 getExplicitNumberFormatKeyForDataLabel();
 
 private:
 
@@ -172,6 +211,8 @@ private:
 
     void fireModifyEvent();
 
+    void impl_insertOrDeleteDataLabelsToSeriesAndAllPoints( bool bInsert );
+
     tDataSequenceContainer        m_aDataSequences;
 
     typedef std::map< sal_Int32,
@@ -183,7 +224,7 @@ private:
     rtl::Reference<ModifyEventForwarder> m_xModifyEventForwarder;
 };
 
-OOO_DLLPUBLIC_CHARTTOOLS const tPropertyValueMap & StaticDataSeriesDefaults();
+const tPropertyValueMap & StaticDataSeriesDefaults();
 
 }  // namespace chart
 

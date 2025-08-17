@@ -27,6 +27,7 @@ class VclWindowEvent;
 
 namespace vcl { class Window; }
 namespace com::sun::star::uno { class XComponentContext; }
+namespace sd { class DrawDocShell; }
 
 namespace sd::framework {
 
@@ -43,27 +44,22 @@ public:
         @param rxPaneId
             The resource id of the new pane.
         @param pViewShellWindow
-            The top-level parent of this window is used to obtain title and
+            The top-level parent of this window is used to obtain
             icon for the new top-level window.
+        @param pDrawDocShell
+            The DrawDocShell parent of this window is used to obtain
+            title for the new top-level window.
     */
     FullScreenPane (
         const css::uno::Reference<css::uno::XComponentContext>& rxComponentContext,
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId,
-        const vcl::Window* pViewShellWindow);
+        const rtl::Reference<sd::framework::ResourceId>& rxPaneId,
+        const vcl::Window* pViewShellWindow,
+        const DrawDocShell* pDrawDocShell);
     virtual ~FullScreenPane() noexcept override;
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    //----- XPane -------------------------------------------------------------
-
-    virtual sal_Bool SAL_CALL isVisible() override;
-
-    virtual void SAL_CALL setVisible (sal_Bool bIsVisible) override;
-
-    virtual css::uno::Reference<css::accessibility::XAccessible> SAL_CALL getAccessible() override;
-
-    virtual void SAL_CALL setAccessible (
-        const css::uno::Reference<css::accessibility::XAccessible>& rxAccessible) override;
+    virtual void setVisible (bool bIsVisible) override;
 
     DECL_LINK(WindowEventHandler, VclWindowEvent&, void);
 
@@ -76,7 +72,7 @@ private:
     VclPtr<WorkWindow> mpWorkWindow;
 
     static void ExtractArguments (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId,
+        const rtl::Reference<sd::framework::ResourceId>& rxPaneId,
         sal_Int32& rnScreenNumberReturnValue,
         bool& rbFullScreen);
 };

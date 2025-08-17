@@ -48,18 +48,17 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::accessibility;
 
 // Control for display and selection of the corner points and
 // mid point of an object
 
-BitmapEx& SvxRectCtl::GetRectBitmap()
+Bitmap& SvxRectCtl::GetRectBitmap()
 {
-    if( !pBitmap )
+    if( !maBitmap.IsEmpty() )
         InitRectBitmap();
 
-    return *pBitmap;
+    return maBitmap;
 }
 
 SvxRectCtl::SvxRectCtl(SvxTabPage* pPage)
@@ -90,7 +89,6 @@ void SvxRectCtl::SetControlSettings(RectPoint eRpt, sal_uInt16 nBorder)
 
 SvxRectCtl::~SvxRectCtl()
 {
-    pBitmap.reset();
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     pAccContext.clear();
 #endif
@@ -121,12 +119,10 @@ void SvxRectCtl::Resize_Impl(const Size &rSize)
 
 void SvxRectCtl::InitRectBitmap()
 {
-    pBitmap.reset();
-
     const StyleSettings& rStyles = Application::GetSettings().GetStyleSettings();
     svtools::ColorConfig aColorConfig;
 
-    pBitmap.reset(new BitmapEx(RID_SVXCTRL_RECTBTNS));
+    maBitmap = Bitmap(RID_SVXCTRL_RECTBTNS);
 
     // set bitmap-colors
     Color aColorAry1[7];
@@ -163,12 +159,12 @@ void SvxRectCtl::InitRectBitmap()
     }
 #endif
 
-    pBitmap->Replace( aColorAry1, aColorAry2, 7 );
+    maBitmap.Replace( aColorAry1, aColorAry2, 7, nullptr );
 }
 
 void SvxRectCtl::StyleUpdated()
 {
-    pBitmap.reset(); // forces new creating of bitmap
+    maBitmap.SetEmpty(); // forces new creating of bitmap
     CustomWidgetController::StyleUpdated();
 }
 
@@ -322,7 +318,7 @@ void SvxRectCtl::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangl
     bool bNoHorz = bool(m_nState & CTL_STATE::NOHORZ);
     bool bNoVert = bool(m_nState & CTL_STATE::NOVERT);
 
-    BitmapEx& rBitmap = GetRectBitmap();
+    Bitmap& rBitmap = GetRectBitmap();
 
     // CompletelyDisabled() added to have a disabled state for SvxRectCtl
     if (IsCompletelyDisabled())
@@ -558,7 +554,7 @@ tools::Rectangle SvxRectCtl::CalculateFocusRectangle( RectPoint eRectPoint ) con
     return aRet;
 }
 
-Reference< XAccessible > SvxRectCtl::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> SvxRectCtl::CreateAccessible()
 {
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     pAccContext = new SvxRectCtlAccessibleContext(this);
@@ -580,7 +576,7 @@ void SvxRectCtl::DoCompletelyDisable(bool bNew)
 
 // Control for editing bitmaps
 
-css::uno::Reference< css::accessibility::XAccessible > SvxPixelCtl::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> SvxPixelCtl::CreateAccessible()
 {
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     if (!m_xAccess.is())
@@ -883,13 +879,13 @@ void SvxPixelCtl::LoseFocus()
     Invalidate();
 }
 
-void SvxPixelCtl::SetXBitmap(const BitmapEx& rBitmapEx)
+void SvxPixelCtl::SetXBitmap(const Bitmap& rBitmap)
 {
-    if (vcl::bitmap::isHistorical8x8(rBitmapEx, aBackgroundColor, aPixelColor))
+    if (vcl::bitmap::isHistorical8x8(rBitmap, aBackgroundColor, aPixelColor))
     {
         for (sal_uInt16 i = 0; i < nSquares; i++)
         {
-            Color aColor = rBitmapEx.GetPixelColor(i%8, i/8);
+            Color aColor = rBitmap.GetPixelColor(i%8, i/8);
             maPixelData[i] = (aColor == aBackgroundColor) ? 0 : 1;
         }
     }
@@ -942,11 +938,11 @@ void SvxLineLB::Fill( const XDashListRef &pList )
         m_xControl->append_text(pList->GetStringForUiNoLine());
 
         // entry for solid line
-        const BitmapEx aBitmap = pList->GetBitmapForUISolidLine();
+        const Bitmap aBitmap = pList->GetBitmapForUISolidLine();
         const Size aBmpSize(aBitmap.GetSizePixel());
         pVD->SetOutputSizePixel(aBmpSize, false);
         pVD->DrawBitmapEx(Point(), aBitmap);
-        m_xControl->append("", pList->GetStringForUiSolidLine(), *pVD);
+        m_xControl->append(u""_ustr, pList->GetStringForUiSolidLine(), *pVD);
     }
 
     // entries for dashed lines
@@ -957,13 +953,13 @@ void SvxLineLB::Fill( const XDashListRef &pList )
     for( tools::Long i = 0; i < nCount; i++ )
     {
         const XDashEntry* pEntry = pList->GetDash(i);
-        const BitmapEx aBitmap = pList->GetUiBitmap( i );
+        const Bitmap aBitmap = pList->GetUiBitmap( i );
         if( !aBitmap.IsEmpty() )
         {
             const Size aBmpSize(aBitmap.GetSizePixel());
             pVD->SetOutputSizePixel(aBmpSize, false);
             pVD->DrawBitmapEx(Point(), aBitmap);
-            m_xControl->append("", pEntry->GetName(), *pVD);
+            m_xControl->append(u""_ustr, pEntry->GetName(), *pVD);
         }
         else
         {
@@ -974,7 +970,7 @@ void SvxLineLB::Fill( const XDashListRef &pList )
     m_xControl->thaw();
 }
 
-void SvxLineLB::Append( const XDashEntry& rEntry, const BitmapEx& rBitmap )
+void SvxLineLB::Append( const XDashEntry& rEntry, const Bitmap& rBitmap )
 {
     if (!rBitmap.IsEmpty())
     {
@@ -983,7 +979,7 @@ void SvxLineLB::Append( const XDashEntry& rEntry, const BitmapEx& rBitmap )
         const Size aBmpSize(rBitmap.GetSizePixel());
         pVD->SetOutputSizePixel(aBmpSize, false);
         pVD->DrawBitmapEx(Point(), rBitmap);
-        m_xControl->append("", rEntry.GetName(), *pVD);
+        m_xControl->append(u""_ustr, rEntry.GetName(), *pVD);
     }
     else
     {
@@ -991,7 +987,7 @@ void SvxLineLB::Append( const XDashEntry& rEntry, const BitmapEx& rBitmap )
     }
 }
 
-void SvxLineLB::Modify(const XDashEntry& rEntry, sal_Int32 nPos, const BitmapEx& rBitmap)
+void SvxLineLB::Modify(const XDashEntry& rEntry, sal_Int32 nPos, const Bitmap& rBitmap)
 {
     m_xControl->remove(nPos);
 
@@ -1027,13 +1023,13 @@ void SvxLineEndLB::Fill( const XLineEndListRef &pList, bool bStart )
     for( tools::Long i = 0; i < nCount; i++ )
     {
         const XLineEndEntry* pEntry = pList->GetLineEnd(i);
-        const BitmapEx aBitmap = pList->GetUiBitmap( i );
+        const Bitmap aBitmap = pList->GetUiBitmap( i );
         if( !aBitmap.IsEmpty() )
         {
             const Size aBmpSize(aBitmap.GetSizePixel());
             pVD->SetOutputSizePixel(Size(aBmpSize.Width() / 2, aBmpSize.Height()), false);
             pVD->DrawBitmapEx(bStart ? Point() : Point(-aBmpSize.Width() / 2, 0), aBitmap);
-            m_xControl->append("", pEntry->GetName(), *pVD);
+            m_xControl->append(u""_ustr, pEntry->GetName(), *pVD);
         }
         else
             m_xControl->append_text(pEntry->GetName());
@@ -1042,7 +1038,7 @@ void SvxLineEndLB::Fill( const XLineEndListRef &pList, bool bStart )
     m_xControl->thaw();
 }
 
-void SvxLineEndLB::Append( const XLineEndEntry& rEntry, const BitmapEx& rBitmap )
+void SvxLineEndLB::Append( const XLineEndEntry& rEntry, const Bitmap& rBitmap )
 {
     if(!rBitmap.IsEmpty())
     {
@@ -1051,7 +1047,7 @@ void SvxLineEndLB::Append( const XLineEndEntry& rEntry, const BitmapEx& rBitmap 
         const Size aBmpSize(rBitmap.GetSizePixel());
         pVD->SetOutputSizePixel(Size(aBmpSize.Width() / 2, aBmpSize.Height()), false);
         pVD->DrawBitmapEx(Point(-aBmpSize.Width() / 2, 0), rBitmap);
-        m_xControl->append("", rEntry.GetName(), *pVD);
+        m_xControl->append(u""_ustr, rEntry.GetName(), *pVD);
     }
     else
     {
@@ -1059,7 +1055,7 @@ void SvxLineEndLB::Append( const XLineEndEntry& rEntry, const BitmapEx& rBitmap 
     }
 }
 
-void SvxLineEndLB::Modify( const XLineEndEntry& rEntry, sal_Int32 nPos, const BitmapEx& rBitmap )
+void SvxLineEndLB::Modify( const XLineEndEntry& rEntry, sal_Int32 nPos, const Bitmap& rBitmap )
 {
     m_xControl->remove(nPos);
 
@@ -1295,8 +1291,6 @@ void SvxPreviewBase::InitSettings()
 SvxPreviewBase::SvxPreviewBase()
     : mpModel(new SdrModel(nullptr, nullptr, true))
 {
-    // init model
-    mpModel->GetItemPool().FreezeIdRanges();
 }
 
 void SvxPreviewBase::SetDrawingArea(weld::DrawingArea* pDrawingArea)
@@ -1450,10 +1444,10 @@ void padWidthForSidebar(weld::Toolbar& rToolbar, const css::uno::Reference<css::
     {
         // use the, filled-in by dispatcher, width of measurewidth as the width
         // of a "standard" column in a two column panel
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(&rToolbar, "svx/ui/measurewidthbar.ui"));
-        std::unique_ptr<weld::Toolbar> xToolbar1(xBuilder->weld_toolbar("measurewidth1"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(&rToolbar, u"svx/ui/measurewidthbar.ui"_ustr));
+        std::unique_ptr<weld::Toolbar> xToolbar1(xBuilder->weld_toolbar(u"measurewidth1"_ustr));
         ToolbarUnoDispatcher aDispatcher1(*xToolbar1, *xBuilder, rFrame);
-        std::unique_ptr<weld::Toolbar> xToolbar2(xBuilder->weld_toolbar("measurewidth2"));
+        std::unique_ptr<weld::Toolbar> xToolbar2(xBuilder->weld_toolbar(u"measurewidth2"_ustr));
         ToolbarUnoDispatcher aDispatcher2(*xToolbar2, *xBuilder, rFrame);
         nColumnWidth = std::max(xToolbar1->get_preferred_size().Width(), xToolbar2->get_preferred_size().Width());
         eSize = rToolbar.get_icon_size();

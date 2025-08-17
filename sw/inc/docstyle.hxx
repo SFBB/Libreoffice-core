@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_DOCSTYLE_HXX
-#define INCLUDED_SW_INC_DOCSTYLE_HXX
+#pragma once
 
 #include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
@@ -111,8 +110,10 @@ public:
     virtual const OUString& GetFollow() const override;
     const OUString& GetLink() const;
 
-    virtual sal_uLong GetHelpId( OUString& rFile ) override;
-    virtual void SetHelpId( const OUString& r, sal_uLong nId ) override;
+    virtual sal_uInt32 GetHelpId( OUString& rFile ) override;
+    virtual void SetHelpId( const OUString& r, sal_uInt32 nId ) override;
+
+    virtual sal_Int32 GetSpotlightId() override;
 
     /** Preset the members without physical access.
      Used by StyleSheetPool. */
@@ -144,35 +145,32 @@ public:
     virtual bool            IsUsed() const override;
 };
 
-namespace std {
-template<>
-struct hash<std::pair<SfxStyleFamily,OUString>>
-{
-    std::size_t operator()(std::pair<SfxStyleFamily,OUString> const & pair) const
-    { return static_cast<std::size_t>(pair.first) ^ std::size_t(pair.second.hashCode()); }
-};
-}
-
-
 // Iterator for Pool.
 class SwStyleSheetIterator final : public SfxStyleSheetIterator, public SfxListener
 {
     // Local helper class.
     class SwPoolFormatList
     {
-        std::vector<std::pair<SfxStyleFamily, OUString>> maImpl;
-        typedef std::unordered_map<std::pair<SfxStyleFamily, OUString>, sal_uInt32> UniqueHash;
+        struct Hash
+        {
+            size_t operator()(const std::pair<SfxStyleFamily, UIName>& p) const
+            {
+                return std::hash<SfxStyleFamily>()(p.first) ^ std::hash<UIName>()(p.second);
+            }
+        };
+        std::vector<std::pair<SfxStyleFamily, UIName>> maImpl;
+        typedef std::unordered_map<std::pair<SfxStyleFamily, UIName>, sal_uInt32, Hash> UniqueHash;
         UniqueHash maUnique;
         void rehash();
     public:
         SwPoolFormatList() {}
-        void Append( SfxStyleFamily eFam, const OUString& rStr );
+        void Append( SfxStyleFamily eFam, const UIName& rStr );
         void clear() { maImpl.clear(); maUnique.clear(); }
         size_t size() { return maImpl.size(); }
         bool empty() { return maImpl.empty(); }
-        sal_uInt32 FindName(SfxStyleFamily eFam, const OUString& rName);
-        void RemoveName(SfxStyleFamily eFam, const OUString& rName);
-        const std::pair<SfxStyleFamily,OUString> &operator[](sal_uInt32 nIdx) { return maImpl[ nIdx ]; }
+        sal_uInt32 FindName(SfxStyleFamily eFam, const UIName& rName);
+        void RemoveName(SfxStyleFamily eFam, const UIName& rName);
+        const std::pair<SfxStyleFamily,UIName> &operator[](sal_uInt32 nIdx) { return maImpl[ nIdx ]; }
     };
 
     rtl::Reference< SwDocStyleSheet > mxIterSheet;
@@ -181,7 +179,7 @@ class SwStyleSheetIterator final : public SfxStyleSheetIterator, public SfxListe
     sal_uInt32          m_nLastPos;
     bool                m_bFirstCalled;
 
-    bool IsUsedInComments(const OUString& rName) const;
+    bool IsUsedInComments(const UIName& rName) const;
     void                AppendStyleList(const std::vector<OUString>& rLst,
                                         bool        bUsed,
                                         bool        bTestHidden,
@@ -212,7 +210,7 @@ class SwDocStyleSheetPool final : public SfxStyleSheetBasePool
     SwDoc&              m_rDoc;
     bool                m_bOrganizer : 1;     ///< Organizer
 
-    virtual rtl::Reference<SfxStyleSheetBase> Create( const OUString&, SfxStyleFamily, SfxStyleSearchBits nMask) override;
+    virtual rtl::Reference<SfxStyleSheetBase> Create( const OUString&, SfxStyleFamily, SfxStyleSearchBits nMask, const OUString& rParentStyleSheetName) override;
     virtual rtl::Reference<SfxStyleSheetBase> Create( const SfxStyleSheetBase& ) override;
 
     using SfxStyleSheetBasePool::Find;
@@ -221,7 +219,8 @@ public:
     SwDocStyleSheetPool( SwDoc&, bool bOrganizer );
 
     virtual SfxStyleSheetBase& Make(const OUString&, SfxStyleFamily,
-            SfxStyleSearchBits nMask = SfxStyleSearchBits::All) override;
+            SfxStyleSearchBits nMask = SfxStyleSearchBits::All,
+            const OUString& rParentStyleSheetName = u""_ustr) override;
 
     virtual SfxStyleSheetBase* Find( const OUString&, SfxStyleFamily eFam,
                                     SfxStyleSearchBits n=SfxStyleSearchBits::All ) override;
@@ -244,7 +243,5 @@ private:
 
     SwDocStyleSheetPool( const SwDocStyleSheetPool& ) = delete;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

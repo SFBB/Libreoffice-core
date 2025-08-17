@@ -17,11 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
-
-#include <memory>
-#include <numeric>
-
 #include <headless/svpgdi.hxx>
 #include <comphelper/lok.hxx>
 
@@ -51,12 +46,11 @@ void SvpSalGraphics::GetResolution( sal_Int32& rDPIX, sal_Int32& rDPIY )
     rDPIX = rDPIY = 96;
 }
 
-bool SvpSalGraphics::ShouldDownscaleIconsAtSurface(double* pScaleOut) const
+bool SvpSalGraphics::ShouldDownscaleIconsAtSurface(double& rScaleOut) const
 {
     if (comphelper::LibreOfficeKit::isActive())
-        return SalGraphics::ShouldDownscaleIconsAtSurface(pScaleOut);
-    if (pScaleOut)
-        *pScaleOut = m_aCairoCommon.m_fScale;
+        return SalGraphics::ShouldDownscaleIconsAtSurface(rScaleOut);
+    rScaleOut = m_aCairoCommon.m_fScale;
     return true;
 }
 
@@ -94,5 +88,12 @@ SystemGraphicsData SvpSalGraphics::GetGraphicsData() const
     aGraphicsData.pSurface = m_aCairoCommon.m_pSurface;
     return aGraphicsData;
 }
+
+#if USE_HEADLESS_CODE
+void SvpSalGraphics::ApplyFullDamage() const
+{
+    m_aCairoCommon.applyFullDamage();
+}
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -196,9 +196,6 @@ AquaGraphicsBackend::AquaGraphicsBackend(AquaSharedAttributes& rShared)
 
 AquaGraphicsBackend::~AquaGraphicsBackend() {}
 
-void AquaGraphicsBackend::Init() {}
-void AquaGraphicsBackend::freeResources() {}
-
 void AquaGraphicsBackend::setClipRegion(vcl::Region const& rRegion)
 {
     // release old clip path
@@ -264,7 +261,7 @@ tools::Long AquaGraphicsBackend::GetGraphicsWidth() const
     {
         if (mrShared.mbWindow && mrShared.mpFrame)
         {
-            width = mrShared.mpFrame->maGeometry.width();
+            width = mrShared.mpFrame->GetWidth();
         }
     }
 #endif
@@ -273,12 +270,12 @@ tools::Long AquaGraphicsBackend::GetGraphicsWidth() const
 
 void AquaGraphicsBackend::SetLineColor()
 {
-    mrShared.maLineColor.SetAlpha(0.0); // transparent
+    mrShared.maLineColor.SetActive(false);
     if (mrShared.checkContext())
     {
         CGContextSetRGBStrokeColor(mrShared.maContextHolder.get(), mrShared.maLineColor.GetRed(),
                                    mrShared.maLineColor.GetGreen(), mrShared.maLineColor.GetBlue(),
-                                   mrShared.maLineColor.GetAlpha());
+                                   0.0); // alpha, transparent
     }
 }
 
@@ -295,12 +292,12 @@ void AquaGraphicsBackend::SetLineColor(Color nColor)
 
 void AquaGraphicsBackend::SetFillColor()
 {
-    mrShared.maFillColor.SetAlpha(0.0); // transparent
+    mrShared.maFillColor.SetActive(false);
     if (mrShared.checkContext())
     {
         CGContextSetRGBFillColor(mrShared.maContextHolder.get(), mrShared.maFillColor.GetRed(),
                                  mrShared.maFillColor.GetGreen(), mrShared.maFillColor.GetBlue(),
-                                 mrShared.maFillColor.GetAlpha());
+                                 0.0); // alpha, transparent
     }
 }
 
@@ -447,7 +444,7 @@ void AquaGraphicsBackend::drawRect(tools::Long nX, tools::Long nY, tools::Long n
         return;
 
     CGRect aRect = CGRectMake(nX, nY, nWidth, nHeight);
-    if (mrShared.isPenVisible())
+    if (mrShared.isPenActive())
     {
         aRect.origin.x += 0.5;
         aRect.origin.y += 0.5;
@@ -455,13 +452,22 @@ void AquaGraphicsBackend::drawRect(tools::Long nX, tools::Long nY, tools::Long n
         aRect.size.height -= 1;
     }
 
-    if (mrShared.isBrushVisible())
+    if (mrShared.isBrushActive() && mrShared.maFillColor.GetAlpha() == 0)
     {
-        CGContextFillRect(mrShared.maContextHolder.get(), aRect);
+        CGContextSetBlendMode(mrShared.maContextHolder.get(), kCGBlendModeClear);
+        CGContextClearRect(mrShared.maContextHolder.get(), aRect);
+        CGContextSetBlendMode(mrShared.maContextHolder.get(), kCGBlendModeNormal);
     }
-    if (mrShared.isPenVisible())
+    else
     {
-        CGContextStrokeRect(mrShared.maContextHolder.get(), aRect);
+        if (mrShared.isBrushActive())
+        {
+            CGContextFillRect(mrShared.maContextHolder.get(), aRect);
+        }
+        if (mrShared.isPenActive())
+        {
+            CGContextStrokeRect(mrShared.maContextHolder.get(), aRect);
+        }
     }
     mrShared.refreshRect(nX, nY, nWidth, nHeight);
 }
@@ -505,15 +511,15 @@ void AquaGraphicsBackend::drawPolygon(sal_uInt32 nPoints, const Point* pPointArr
     getBoundRect(nPoints, pPointArray, nX, nY, nWidth, nHeight);
 
     CGPathDrawingMode eMode;
-    if (mrShared.isBrushVisible() && mrShared.isPenVisible())
+    if (mrShared.isBrushActive() && mrShared.isPenActive())
     {
         eMode = kCGPathEOFillStroke;
     }
-    else if (mrShared.isPenVisible())
+    else if (mrShared.isPenActive())
     {
         eMode = kCGPathStroke;
     }
-    else if (mrShared.isBrushVisible())
+    else if (mrShared.isBrushActive())
     {
         eMode = kCGPathEOFill;
     }
@@ -525,7 +531,7 @@ void AquaGraphicsBackend::drawPolygon(sal_uInt32 nPoints, const Point* pPointArr
 
     CGContextBeginPath(mrShared.maContextHolder.get());
 
-    if (mrShared.isPenVisible())
+    if (mrShared.isPenActive())
     {
         float fX, fY;
         alignLinePoint(pPointArray, fX, fY);
@@ -595,15 +601,15 @@ void AquaGraphicsBackend::drawPolyPolygon(sal_uInt32 nPolyCount, const sal_uInt3
 
     // prepare drawing mode
     CGPathDrawingMode eMode;
-    if (mrShared.isBrushVisible() && mrShared.isPenVisible())
+    if (mrShared.isBrushActive() && mrShared.isPenActive())
     {
         eMode = kCGPathEOFillStroke;
     }
-    else if (mrShared.isPenVisible())
+    else if (mrShared.isPenActive())
     {
         eMode = kCGPathStroke;
     }
-    else if (mrShared.isBrushVisible())
+    else if (mrShared.isBrushActive())
     {
         eMode = kCGPathEOFill;
     }
@@ -615,7 +621,7 @@ void AquaGraphicsBackend::drawPolyPolygon(sal_uInt32 nPolyCount, const sal_uInt3
 
     // convert to CGPath
     CGContextBeginPath(mrShared.maContextHolder.get());
-    if (mrShared.isPenVisible())
+    if (mrShared.isPenActive())
     {
         for (sal_uInt32 nPoly = 0; nPoly < nPolyCount; nPoly++)
         {
@@ -691,7 +697,7 @@ void AquaGraphicsBackend::drawPolyPolygon(const basegfx::B2DHomMatrix& rObjectTo
     // the transformation is not used here...)
     for (auto const& rPolygon : std::as_const(aPolyPolygon))
     {
-        AddPolygonToPath(xPath, rPolygon, true, !getAntiAlias(), mrShared.isPenVisible());
+        AddPolygonToPath(xPath, rPolygon, true, !getAntiAlias(), mrShared.isPenActive());
     }
 
     const CGRect aRefreshRect = CGPathGetBoundingBox(xPath);
@@ -700,15 +706,15 @@ void AquaGraphicsBackend::drawPolyPolygon(const basegfx::B2DHomMatrix& rObjectTo
     {
         // prepare drawing mode
         CGPathDrawingMode eMode;
-        if (mrShared.isBrushVisible() && mrShared.isPenVisible())
+        if (mrShared.isBrushActive() && mrShared.isPenActive())
         {
             eMode = kCGPathEOFillStroke;
         }
-        else if (mrShared.isPenVisible())
+        else if (mrShared.isPenActive())
         {
             eMode = kCGPathStroke;
         }
-        else if (mrShared.isBrushVisible())
+        else if (mrShared.isBrushActive())
         {
             eMode = kCGPathEOFill;
         }
@@ -952,7 +958,8 @@ void AquaGraphicsBackend::drawMask(const SalTwoRect& rPosAry, const SalBitmap& r
 }
 
 std::shared_ptr<SalBitmap> AquaGraphicsBackend::getBitmap(tools::Long nX, tools::Long nY,
-                                                          tools::Long nDX, tools::Long nDY)
+                                                          tools::Long nDX, tools::Long nDY,
+                                                          bool /*bWithoutAlpha*/)
 {
     SAL_WARN_IF(!mrShared.maLayer.isSet(), "vcl.quartz",
                 "AquaSalGraphics::getBitmap() with no layer this=" << this);
@@ -1009,7 +1016,7 @@ Color AquaGraphicsBackend::getPixel(tools::Long nX, tools::Long nY)
 
     CGContextRelease(xOnePixelContext);
 
-    Color nColor(aPixel.r, aPixel.g, aPixel.b);
+    Color nColor(ColorAlpha, aPixel.a, aPixel.r, aPixel.g, aPixel.b);
     return nColor;
 }
 
@@ -1022,8 +1029,15 @@ void AquaSalGraphics::GetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY)
                                                                : nil);
     }
 
-    rDPIX = mnRealDPIX;
-    rDPIY = mnRealDPIY;
+    if (maShared.mbPrinter)
+    {
+        rDPIX = rDPIY = 720;
+    }
+    else
+    {
+        rDPIX = mnRealDPIX;
+        rDPIY = mnRealDPIY;
+    }
 #else
     // This *must* be 96 or else the iOS app will behave very badly (tiles are scaled wrongly and
     // don't match each others at their boundaries, and other issues). But *why* it must be 96 I
@@ -1195,19 +1209,6 @@ bool AquaGraphicsBackend::drawEPS(tools::Long /*nX*/, tools::Long /*nY*/, tools:
 }
 #endif
 
-bool AquaGraphicsBackend::blendBitmap(const SalTwoRect& /*rPosAry*/, const SalBitmap& /*rBitmap*/)
-{
-    return false;
-}
-
-bool AquaGraphicsBackend::blendAlphaBitmap(const SalTwoRect& /*rPosAry*/,
-                                           const SalBitmap& /*rSrcBitmap*/,
-                                           const SalBitmap& /*rMaskBitmap*/,
-                                           const SalBitmap& /*rAlphaBitmap*/)
-{
-    return false;
-}
-
 bool AquaGraphicsBackend::drawAlphaBitmap(const SalTwoRect& rTR, const SalBitmap& rSrcBitmap,
                                           const SalBitmap& rAlphaBmp)
 {
@@ -1290,8 +1291,6 @@ bool AquaGraphicsBackend::drawTransformedBitmap(const basegfx::B2DPoint& rNull,
     return true;
 }
 
-bool AquaGraphicsBackend::hasFastDrawTransformedBitmap() const { return false; }
-
 bool AquaGraphicsBackend::drawAlphaRect(tools::Long nX, tools::Long nY, tools::Long nWidth,
                                         tools::Long nHeight, sal_uInt8 nTransparency)
 {
@@ -1303,7 +1302,7 @@ bool AquaGraphicsBackend::drawAlphaRect(tools::Long nX, tools::Long nY, tools::L
     CGContextSetAlpha(mrShared.maContextHolder.get(), (100 - nTransparency) * (1.0 / 100));
 
     CGRect aRect = CGRectMake(nX, nY, nWidth - 1, nHeight - 1);
-    if (mrShared.isPenVisible())
+    if (mrShared.isPenActive())
     {
         aRect.origin.x += 0.5;
         aRect.origin.y += 0.5;
@@ -1331,16 +1330,6 @@ bool AquaGraphicsBackend::implDrawGradient(basegfx::B2DPolyPolygon const& /*rPol
     return false;
 }
 
-bool AquaGraphicsBackend::supportsOperation(OutDevSupportType eType) const
-{
-    switch (eType)
-    {
-        case OutDevSupportType::TransparentRect:
-            return true;
-        default:
-            break;
-    }
-    return false;
-}
+bool AquaGraphicsBackend::supportsOperation(OutDevSupportType /*eType*/) const { return false; }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

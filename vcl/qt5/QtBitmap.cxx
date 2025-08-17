@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -25,9 +25,8 @@
 #include <QtCore/QVector>
 #include <QtGui/QColor>
 
-#include <o3tl/safeint.hxx>
-#include <sal/log.hxx>
-#include <tools/helpers.hxx>
+#include <svdata.hxx>
+#include <salinst.hxx>
 
 QtBitmap::QtBitmap() {}
 
@@ -83,7 +82,7 @@ bool QtBitmap::Create(const SalBitmap& rSalBmp, vcl::PixelFormat eNewPixelFormat
 }
 
 bool QtBitmap::Create(const css::uno::Reference<css::rendering::XBitmapCanvas>& /*rBitmapCanvas*/,
-                      Size& /*rSize*/, bool /*bMask*/)
+                      Size& /*rSize*/)
 {
     return false;
 }
@@ -118,27 +117,28 @@ BitmapBuffer* QtBitmap::AcquireBuffer(BitmapAccessMode /*nMode*/)
     pBuffer->mnBitCount = getFormatBits(m_pImage->format());
     pBuffer->mpBits = m_pImage->bits();
     pBuffer->mnScanlineSize = m_pImage->bytesPerLine();
+    pBuffer->meDirection = ScanlineDirection::TopDown;
 
     switch (pBuffer->mnBitCount)
     {
         case 1:
-            pBuffer->mnFormat = ScanlineFormat::N1BitMsbPal | ScanlineFormat::TopDown;
+            pBuffer->meFormat = ScanlineFormat::N1BitMsbPal;
             pBuffer->maPalette = m_aPalette;
             break;
         case 8:
-            pBuffer->mnFormat = ScanlineFormat::N8BitPal | ScanlineFormat::TopDown;
+            pBuffer->meFormat = ScanlineFormat::N8BitPal;
             pBuffer->maPalette = m_aPalette;
             break;
         case 24:
-            pBuffer->mnFormat = ScanlineFormat::N24BitTcRgb | ScanlineFormat::TopDown;
+            pBuffer->meFormat = ScanlineFormat::N24BitTcRgb;
             pBuffer->maPalette = aEmptyPalette;
             break;
         case 32:
         {
 #ifdef OSL_BIGENDIAN
-            pBuffer->mnFormat = ScanlineFormat::N32BitTcArgb | ScanlineFormat::TopDown;
+            pBuffer->meFormat = ScanlineFormat::N32BitTcArgb;
 #else
-            pBuffer->mnFormat = ScanlineFormat::N32BitTcBgra | ScanlineFormat::TopDown;
+            pBuffer->meFormat = ScanlineFormat::N32BitTcBgra;
 #endif
             pBuffer->maPalette = aEmptyPalette;
             break;
@@ -183,4 +183,4 @@ bool QtBitmap::Replace(const Color& /*rSearchColor*/, const Color& /*rReplaceCol
     return false;
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

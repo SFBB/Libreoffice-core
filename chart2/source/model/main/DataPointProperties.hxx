@@ -69,6 +69,7 @@ namespace DataPointProperties
         PROP_DATAPOINT_LABEL_PLACEMENT,
         PROP_DATAPOINT_REFERENCE_DIAGRAM_SIZE,
         PROP_DATAPOINT_TEXT_ROTATION,
+        PROP_DATAPOINT_INVERT_NEGATIVE,
 
         // statistics
         PROP_DATAPOINT_ERROR_BAR_X,
@@ -87,7 +88,8 @@ namespace DataPointProperties
         PROP_DATAPOINT_LABEL_BORDER_DASH_NAME,
         PROP_DATAPOINT_LABEL_BORDER_TRANS,
         PROP_DATAPOINT_CUSTOM_LABEL_FIELDS,
-        PROP_DATAPOINT_LABEL_CUSTOM_POS
+        PROP_DATAPOINT_LABEL_CUSTOM_POS,
+        PROP_DATAPOINT_LABEL_CUSTOM_SIZE
 
         // additionally some properties from ::chart::LineProperties
     };

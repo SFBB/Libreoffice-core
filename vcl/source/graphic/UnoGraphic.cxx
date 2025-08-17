@@ -26,11 +26,13 @@
 #include <vcl/dibtools.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/BitmapColor.hxx>
-#include <vcl/BitmapDuoToneFilter.hxx>
+#include <vcl/BitmapTools.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <cppuhelper/typeprovider.hxx>
+
+#include <bitmap/BitmapDuoToneFilter.hxx>
 
 using namespace com::sun::star;
 
@@ -78,7 +80,7 @@ void SAL_CALL Graphic::release() noexcept
 
 OUString SAL_CALL Graphic::getImplementationName()
 {
-    return "com.sun.star.comp.graphic.Graphic";
+    return u"com.sun.star.comp.graphic.Graphic"_ustr;
 }
 
 sal_Bool SAL_CALL Graphic::supportsService( const OUString& rServiceName )
@@ -89,7 +91,7 @@ sal_Bool SAL_CALL Graphic::supportsService( const OUString& rServiceName )
 uno::Sequence< OUString > SAL_CALL Graphic::getSupportedServiceNames()
 {
     uno::Sequence< OUString >    aRet( ::unographic::GraphicDescriptor::getSupportedServiceNames() );
-    const uno::Sequence< OUString >    aNew { "com.sun.star.graphic.Graphic" };
+    const uno::Sequence< OUString >    aNew { u"com.sun.star.graphic.Graphic"_ustr };
     sal_Int32                           nOldCount = aRet.getLength();
 
     aRet.realloc( nOldCount + aNew.getLength() );
@@ -106,11 +108,6 @@ uno::Sequence< uno::Type > SAL_CALL Graphic::getTypes()
             cppu::UnoType<awt::XBitmap>::get(),
             ::unographic::GraphicDescriptor::getTypes()
         ).getTypes();
-}
-
-uno::Sequence< sal_Int8 > SAL_CALL Graphic::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
 }
 
 sal_Int8 SAL_CALL Graphic::getType()
@@ -163,10 +160,7 @@ uno::Sequence<sal_Int8> SAL_CALL Graphic::getMaskDIB()
 
     if (!maGraphic.IsNone())
     {
-        SvMemoryStream aMemoryStream;
-
-        WriteDIB(maGraphic.GetBitmapEx().GetAlphaMask().GetBitmap(), aMemoryStream, false, true);
-        return css::uno::Sequence<sal_Int8>( static_cast<sal_Int8 const *>(aMemoryStream.GetData()), aMemoryStream.Tell() );
+        return vcl::bitmap::GetMaskDIB(maGraphic.GetBitmapEx());
     }
     else
     {
@@ -229,15 +223,15 @@ uno::Reference< graphic::XGraphic > SAL_CALL Graphic::applyDuotone(
     ::Graphic aReturnGraphic;
 
     BitmapEx    aBitmapEx( aGraphic.GetBitmapEx() );
-    AlphaMask   aMask( aBitmapEx.GetAlphaMask() );
+    const AlphaMask&   aMask( aBitmapEx.GetAlphaMask() );
 
-    BitmapEx    aTmpBmpEx(aBitmapEx.GetBitmap());
-    BitmapFilter::Filter(aTmpBmpEx,
+    Bitmap    aTmpBmp(aBitmapEx.GetBitmap());
+    BitmapFilter::Filter(aTmpBmp,
                     BitmapDuoToneFilter(
                         Color(ColorTransparency, nColorOne),
                         Color(ColorTransparency, nColorTwo)));
 
-    aReturnGraphic = ::Graphic( BitmapEx( aTmpBmpEx.GetBitmap(), aMask ) );
+    aReturnGraphic = ::Graphic( BitmapEx( aTmpBmp, aMask ) );
     aReturnGraphic.setOriginURL(aGraphic.getOriginURL());
     return aReturnGraphic.GetXGraphic();
 }

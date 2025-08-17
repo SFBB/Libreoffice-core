@@ -9,9 +9,9 @@
 
 #pragma once
 
-#include <LibreOfficeKit/LibreOfficeKit.h>
-#include <LibreOfficeKit/LibreOfficeKitEnums.h>
-#include <LibreOfficeKit/LibreOfficeKitInit.h>
+#include "LibreOfficeKit.h"
+#include "LibreOfficeKitEnums.h"
+#include "LibreOfficeKitInit.h"
 
 /*
  * The reasons this C++ code is not as pretty as it could be are:
@@ -859,6 +859,36 @@ public:
         mpDoc->pClass->setViewTimezone(mpDoc, nId, timezone);
     }
 
+    /** Set if the view should be treated as readonly or not.
+     *
+     * @param nId view ID
+     * @param readOnly
+    */
+    void setViewReadOnly(int nId, const bool readOnly)
+    {
+        mpDoc->pClass->setViewReadOnly(mpDoc, nId, readOnly);
+    }
+
+    /** Set if the view can edit comments on readonly mode or not.
+     *
+     * @param nId view ID
+     * @param allow
+    */
+    void setAllowChangeComments(int nId, const bool allow)
+    {
+        mpDoc->pClass->setAllowChangeComments(mpDoc, nId, allow);
+    }
+
+    /** Set if the view can manage redlines in readonly mode or not.
+     *
+     * @param nId view ID
+     * @param allow
+    */
+    void setAllowManageRedlines(int nId, bool allow)
+    {
+        mpDoc->pClass->setAllowManageRedlines(mpDoc, nId, allow);
+    }
+
     /**
      * Enable/Disable accessibility support for the window with the specified nId.
      *
@@ -887,6 +917,40 @@ public:
     int getA11yCaretPosition()
     {
         return mpDoc->pClass->getA11yCaretPosition(mpDoc);
+    }
+
+    /// Get the information about the current presentation (Impress only).
+    char* getPresentationInfo()
+    {
+        return mpDoc->pClass->getPresentationInfo(mpDoc);
+    }
+
+    /// Create a slide renderer in core for the input slide.
+    bool createSlideRenderer(
+        const char* pSlideHash,
+        int nSlideNumber, unsigned* nViewWidth, unsigned* nViewHeight,
+        bool bRenderBackground, bool bRenderMasterPage)
+    {
+        return mpDoc->pClass->createSlideRenderer(
+            mpDoc, pSlideHash, nSlideNumber, nViewWidth, nViewHeight, bRenderBackground, bRenderMasterPage);
+    }
+
+    /// Clean-up the slideshow (slide renderer)
+    void postSlideshowCleanup()
+    {
+        mpDoc->pClass->postSlideshowCleanup(mpDoc);
+    }
+
+    /// Render the slide layer
+    bool renderNextSlideLayer(unsigned char* pBuffer, bool* bIsBitmapLayer, double* pScale, char** pJsonMessage)
+    {
+        return mpDoc->pClass->renderNextSlideLayer(mpDoc, pBuffer, bIsBitmapLayer, pScale, pJsonMessage);
+    }
+
+    /// Set named view options
+    void setViewOption(const char* pOption, const char* pValue)
+    {
+        mpDoc->pClass->setViewOption(mpDoc, pOption, pValue);
     }
 
 #endif // defined LOK_USE_UNSTABLE_API || defined LIBO_INTERNAL_ONLY
@@ -1046,7 +1110,6 @@ public:
      * @since LibreOffice 6.0
      * @param pURL macro url to run
      */
-
     bool runMacro( const char* pURL)
     {
         return mpThis->pClass->runMacro( mpThis, pURL );
@@ -1191,6 +1254,56 @@ public:
     void stopURP(void* pURPContext)
     {
         mpThis->pClass->stopURP(mpThis, pURPContext);
+    }
+
+    /**
+     * Joins all threads if possible to get down to a single process
+     * which can be forked from safely.
+     *
+     * @returns non-zero for successful join, 0 for failure.
+     */
+    int joinThreads()
+    {
+        return mpThis->pClass->joinThreads(mpThis);
+    }
+
+    /**
+     * Starts all threads that are necessary to continue working
+     * after a joinThreads().
+     */
+    void startThreads()
+    {
+        mpThis->pClass->startThreads(mpThis);
+    }
+
+    /**
+     * Informs that this process is either a parent, or a child
+     * process post-fork, allowing improved resource sharing.
+     */
+    void setForkedChild(bool bIsChild)
+    {
+        return mpThis->pClass->setForkedChild(mpThis, bIsChild);
+    }
+
+    char* extractDocumentStructureRequest(const char* pFilePath, const char* pFilter)
+    {
+        return mpThis->pClass->extractDocumentStructureRequest(mpThis, pFilePath, pFilter);
+    }
+
+    /**
+     * Registers a callback that can determine if there are any pending input events.
+     */
+    void registerAnyInputCallback(LibreOfficeKitAnyInputCallback pCallback, void* pData)
+    {
+        return mpThis->pClass->registerAnyInputCallback(mpThis, pCallback, pData);
+    }
+
+    /**
+     * Get number of documents of this LibreOfficeKit.
+     */
+    int getDocsCount()
+    {
+        return mpThis->pClass->getDocsCount(mpThis);
     }
 };
 

@@ -6,9 +6,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-
-#ifndef SW_TOXLINKPROCESSOR_HXX_
-#define SW_TOXLINKPROCESSOR_HXX_
+#pragma once
 
 #include "fmtinfmt.hxx"
 #include <rtl/ustring.hxx>
@@ -33,7 +31,7 @@ public:
     virtual ~ToxLinkProcessor() {}
 
     void
-    StartNewLink(sal_Int32 startPosition, const OUString& characterStyle);
+    StartNewLink(sal_Int32 startPosition, const UIName& characterStyle);
 
     /** Close a link which has been found during processing.
      *
@@ -43,7 +41,7 @@ public:
      * STR_POOLCHR_TOXJUMP.
      */
     void
-    CloseLink(sal_Int32 endPosition, const OUString& url, bool bRelative);
+    CloseLink(sal_Int32 endPosition, const OUString& url, const OUString& sText, bool bRelative);
 
     /** Insert the found links as attributes to a text node */
     void
@@ -56,15 +54,15 @@ private:
      * This method is overridden in the unittests. You should not override it yourself.
      */
     virtual sal_uInt16
-    ObtainPoolId(const OUString& characterStyle) const;
+    ObtainPoolId(const UIName& characterStyle) const;
 
     /** Information about a started link */
     struct StartedLink {
-        StartedLink(sal_Int32 startPosition, OUString characterStyle) :
+        StartedLink(sal_Int32 startPosition, UIName characterStyle) :
                 mStartPosition(startPosition), mCharacterStyle(std::move(characterStyle)) {
         }
         sal_Int32 mStartPosition;
-        OUString mCharacterStyle;
+        UIName mCharacterStyle;
     };
 
     /** A link that has been encountered while parsing a tox.
@@ -90,7 +88,5 @@ private:
 };
 
 }
-
-#endif /* SW_TOXLINKPROCESSOR_HXX_ */
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

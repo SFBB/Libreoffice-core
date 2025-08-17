@@ -58,11 +58,6 @@ void BitmapExTest::testGetPixelColor24_8()
 
 void BitmapExTest::testGetPixelColor32()
 {
-    // Check backend capabilities and return from the test successfully
-    // if the backend doesn't support 32-bit bitmap
-    if (!ImplGetSVData()->mpDefInst->supportsBitmap32())
-        return;
-
     Bitmap aBitmap(Size(3, 3), vcl::PixelFormat::N32_BPP);
     {
         BitmapScopedWriteAccess pWriteAccess(aBitmap);
@@ -206,11 +201,11 @@ void BitmapExTest::testCombineMaskOr()
     AlphaMask aAlphaBitmap(Size(3, 3));
     {
         BitmapScopedWriteAccess pWriteAccess(aAlphaBitmap);
-        pWriteAccess->Erase(Color(0xff, 0xff, 0xff));
+        pWriteAccess->Erase(COL_WHITE);
         for (int i = 1; i < 3; ++i)
         {
-            pWriteAccess->SetPixel(i, 0, Color(0x00, 0x00, 0x00));
-            pWriteAccess->SetPixel(i, 1, Color(0x80, 0x80, 0x80));
+            pWriteAccess->SetPixel(i, 0, COL_BLACK);
+            pWriteAccess->SetPixel(i, 1, COL_GRAY);
             pWriteAccess->SetPixel(i, 0, Color(0xef, 0xef, 0xef));
         }
     }

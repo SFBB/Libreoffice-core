@@ -26,7 +26,6 @@
 #include <tools/urlobj.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <sal/log.hxx>
-#include <osl/diagnose.h>
 
 #include <drawview.hxx>
 #include <global.hxx>
@@ -58,7 +57,8 @@ Point aDragStartDiff;
 
 void ScDrawView::BeginDrag( vcl::Window* pWindow, const Point& rStartPos )
 {
-    if ( !AreObjectsMarked() )
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if ( rMarkList.GetMarkCount() == 0 )
         return;
 
     BrkAction();
@@ -68,7 +68,6 @@ void ScDrawView::BeginDrag( vcl::Window* pWindow, const Point& rStartPos )
     aDragStartDiff = rStartPos - aMarkedRect.TopLeft();
 
     bool bAnyOle, bOneOle;
-    const SdrMarkList& rMarkList = GetMarkedObjectList();
     CheckOle( rMarkList, bAnyOle, bOneOle );
 
     ScDocShellRef aDragShellRef;
@@ -86,19 +85,19 @@ void ScDrawView::BeginDrag( vcl::Window* pWindow, const Point& rStartPos )
     //  Update with the data (including NumberFormatter) from the live document would
     //  also store the NumberFormatter in the clipboard chart (#88749#)
 
-    ScDocShell* pDocSh = pViewData->GetDocShell();
+    ScDocShell& rDocSh = rViewData.GetDocShell();
 
     TransferableObjectDescriptor aObjDesc;
-    pDocSh->FillTransferableObjectDescriptor( aObjDesc );
-    aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
+    rDocSh.FillTransferableObjectDescriptor( aObjDesc );
+    aObjDesc.maDisplayName = rDocSh.GetMedium()->GetURLObject().GetURLNoPass();
     // maSize is set in ScDrawTransferObj ctor
 
-    rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( std::move(pModel), pDocSh, std::move(aObjDesc) );
+    rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( std::move(pModel), rDocSh, std::move(aObjDesc) );
 
-    pTransferObj->SetDrawPersist( aDragShellRef.get() );    // keep persist for ole objects alive
+    pTransferObj->SetDrawPersist(aDragShellRef); // keep persist for ole objects alive
     pTransferObj->SetDragSource( this );               // copies selection
 
-    SC_MOD()->SetDragObject( nullptr, pTransferObj.get() );     // for internal D&D
+    ScModule::get()->SetDragObject(nullptr, pTransferObj.get()); // for internal D&D
     pTransferObj->StartDrag( pWindow, DND_ACTION_COPYMOVE | DND_ACTION_LINK );
 }
 
@@ -153,11 +152,11 @@ void getRangeFromErrorBar(const uno::Reference< chart2::XChartDocument >& rChart
             {
                 uno::Reference< beans::XPropertySet > xPropSet( xSeries, uno::UNO_QUERY);
                 uno::Reference< chart2::data::XDataSource > xErrorBarY;
-                xPropSet->getPropertyValue("ErrorBarY") >>= xErrorBarY;
+                xPropSet->getPropertyValue(u"ErrorBarY"_ustr) >>= xErrorBarY;
                 if(xErrorBarY.is())
                     getRangeFromDataSource(xErrorBarY, rRangeRep);
                 uno::Reference< chart2::data::XDataSource > xErrorBarX;
-                xPropSet->getPropertyValue("ErrorBarX") >>= xErrorBarX;
+                xPropSet->getPropertyValue(u"ErrorBarX"_ustr) >>= xErrorBarX;
                 if(xErrorBarX.is())
                     getRangeFromDataSource(xErrorBarX, rRangeRep);
             }
@@ -254,7 +253,7 @@ void getOleSourceRanges(const SdrMarkList& rMarkList, bool& rAnyOle, bool& rOneO
             pRanges->insert(pRanges->end(), aRange.begin(), aRange.end());
         }
         else if (aAddr.Parse(rRangeRep, *pDoc, pDoc->GetAddressConvention()) & ScRefFlags::VALID)
-            pRanges->push_back(aAddr);
+            pRanges->push_back(ScRange(aAddr));
     }
 
     return;
@@ -355,21 +354,21 @@ void ScDrawView::DoCopy()
     //  Update with the data (including NumberFormatter) from the live document would
     //  also store the NumberFormatter in the clipboard chart (#88749#)
 
-    ScDocShell* pDocSh = pViewData->GetDocShell();
+    ScDocShell& rDocSh = rViewData.GetDocShell();
 
     TransferableObjectDescriptor aObjDesc;
-    pDocSh->FillTransferableObjectDescriptor( aObjDesc );
-    aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
+    rDocSh.FillTransferableObjectDescriptor( aObjDesc );
+    aObjDesc.maDisplayName = rDocSh.GetMedium()->GetURLObject().GetURLNoPass();
     // maSize is set in ScDrawTransferObj ctor
 
-    rtl::Reference<ScDrawTransferObj> pTransferObj(new ScDrawTransferObj( std::move(pModel), pDocSh, std::move(aObjDesc) ));
+    rtl::Reference<ScDrawTransferObj> pTransferObj(new ScDrawTransferObj( std::move(pModel), rDocSh, std::move(aObjDesc) ));
 
     if ( ScGlobal::xDrawClipDocShellRef.is() )
     {
-        pTransferObj->SetDrawPersist( ScGlobal::xDrawClipDocShellRef.get() );    // keep persist for ole objects alive
+        pTransferObj->SetDrawPersist( ScGlobal::xDrawClipDocShellRef );    // keep persist for ole objects alive
     }
 
-    pTransferObj->CopyToClipboard( pViewData->GetActiveWin() );     // system clipboard
+    pTransferObj->CopyToClipboard( rViewData.GetActiveWin() );     // system clipboard
 }
 
 uno::Reference<datatransfer::XTransferable> ScDrawView::CopyToTransferable()
@@ -387,20 +386,20 @@ uno::Reference<datatransfer::XTransferable> ScDrawView::CopyToTransferable()
     //  there's no need to call SchDLL::Update for the charts in the clipboard doc.
     //  Update with the data (including NumberFormatter) from the live document would
     //  also store the NumberFormatter in the clipboard chart (#88749#)
-    // lcl_RefreshChartData( pModel, pViewData->GetDocument() );
+    // lcl_RefreshChartData( pModel, rViewData.GetDocument() );
 
-    ScDocShell* pDocSh = pViewData->GetDocShell();
+    ScDocShell& rDocSh = rViewData.GetDocShell();
 
     TransferableObjectDescriptor aObjDesc;
-    pDocSh->FillTransferableObjectDescriptor( aObjDesc );
-    aObjDesc.maDisplayName = pDocSh->GetMedium()->GetURLObject().GetURLNoPass();
+    rDocSh.FillTransferableObjectDescriptor( aObjDesc );
+    aObjDesc.maDisplayName = rDocSh.GetMedium()->GetURLObject().GetURLNoPass();
     // maSize is set in ScDrawTransferObj ctor
 
-    rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( std::move(pModel), pDocSh, std::move(aObjDesc) );
+    rtl::Reference<ScDrawTransferObj> pTransferObj = new ScDrawTransferObj( std::move(pModel), rDocSh, std::move(aObjDesc) );
 
     if ( ScGlobal::xDrawClipDocShellRef.is() )
     {
-        pTransferObj->SetDrawPersist( ScGlobal::xDrawClipDocShellRef.get() );    // keep persist for ole objects alive
+        pTransferObj->SetDrawPersist( ScGlobal::xDrawClipDocShellRef );    // keep persist for ole objects alive
     }
 
     return pTransferObj;
@@ -413,8 +412,7 @@ void ScDrawView::CalcNormScale( Fraction& rFractX, Fraction& rFractY ) const
     double nPPTX = ScGlobal::nScreenPPTX;
     double nPPTY = ScGlobal::nScreenPPTY;
 
-    if (pViewData)
-        nPPTX /= pViewData->GetDocShell()->GetOutputFactor();
+    nPPTX /= rViewData.GetDocShell().GetOutputFactor();
 
     SCCOL nEndCol = 0;
     SCROW nEndRow = 0;
@@ -503,12 +501,12 @@ void ScDrawView::SetMarkedOriginalSize()
         }
     }
 
-    if (nDone && pViewData)
+    if (nDone)
     {
         pUndoGroup->SetComment(ScResId( STR_UNDO_ORIGINALSIZE ));
-        ScDocShell* pDocSh = pViewData->GetDocShell();
-        pDocSh->GetUndoManager()->AddUndoAction(std::move(pUndoGroup));
-        pDocSh->SetDrawModified();
+        ScDocShell& rDocSh = rViewData.GetDocShell();
+        rDocSh.GetUndoManager()->AddUndoAction(std::move(pUndoGroup));
+        rDocSh.SetDrawModified();
     }
 }
 
@@ -564,8 +562,8 @@ void ScDrawView::FitToCellSize()
         pObj->SetSnapRect(aCellRect);
 
     pUndoGroup->SetComment(ScResId( STR_UNDO_FITCELLSIZE ));
-    ScDocShell* pDocSh = pViewData->GetDocShell();
-    pDocSh->GetUndoManager()->AddUndoAction(std::move(pUndoGroup));
+    ScDocShell& rDocSh = rViewData.GetDocShell();
+    rDocSh.GetUndoManager()->AddUndoAction(std::move(pUndoGroup));
 
 }
 

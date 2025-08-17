@@ -54,6 +54,7 @@
 #include <ViewShellBase.hxx>
 #include <FormShellManager.hxx>
 #include <DrawController.hxx>
+#include <unolayer.hxx>
 #include <memory>
 #include <comphelper/lok.hxx>
 
@@ -114,7 +115,9 @@ void DrawViewShell::ArrangeGUIElements()
     if ( pIPClient && pIPClient->IsObjectInPlaceActive() )
         bClientActive = true;
 
-    bool bInPlaceActive = GetViewFrame()->GetFrame().IsInPlace();
+    bool bInPlaceActive = false;
+    if (SfxViewFrame* pViewFrame = GetViewFrame())
+        bInPlaceActive = pViewFrame->GetFrame().IsInPlace();
 
     if ( mbZoomOnPage && !bInPlaceActive && !bClientActive )
     {
@@ -134,7 +137,7 @@ void DrawViewShell::ReadFrameViewData(FrameView* pView)
 
     // this option has to be adjust at the model
     GetDoc()->SetPickThroughTransparentTextFrames(
-             SD_MOD()->GetSdOptions(GetDoc()->GetDocumentType())->IsPickThrough());
+        SdModule::get()->GetSdOptions(GetDoc()->GetDocumentType())->IsPickThrough());
 
     // initialization of the Character-(Screen-) attribute
     if (HasRuler() != pView->HasRuler())
@@ -513,7 +516,7 @@ void DrawViewShell::ReadUserDataSequence ( const css::uno::Sequence < css::beans
         // in LO 6.2 to 6.4. The ODF defaults were corrected when reading draw:layer-set, but
         // not in reading config settings, because there the name is not known.
         const SdrLayerAdmin& rLayerAdmin = GetDocSh()->GetDoc()->GetLayerAdmin();
-        if (rLayerAdmin.GetLayer("DrawnInSlideshow"))
+        if (rLayerAdmin.GetLayer(u"DrawnInSlideshow"_ustr))
         {
             SdrLayerIDSet aSdrLayerIDSet;
             rLayerAdmin.getVisibleLayersODF( aSdrLayerIDSet );
@@ -584,8 +587,8 @@ void DrawViewShell::VisAreaChanged(const ::tools::Rectangle& rRect)
     <type>AccessibleDrawDocumentView</type>.  Otherwise return an empty
     reference.
 */
-css::uno::Reference<css::accessibility::XAccessible>
-    DrawViewShell::CreateAccessibleDocumentView (::sd::Window* pWindow)
+rtl::Reference<comphelper::OAccessible>
+DrawViewShell::CreateAccessibleDocumentView(::sd::Window* pWindow)
 {
     if (GetViewShellBase().GetController() != nullptr)
     {
@@ -594,13 +597,13 @@ css::uno::Reference<css::accessibility::XAccessible>
                 pWindow,
                 this,
                 GetViewShellBase().GetController(),
-                pWindow->GetAccessibleParentWindow()->GetAccessible());
+                pWindow->GetAccessibleParent());
         pDocumentView->Init();
         return pDocumentView;
     }
 
     SAL_WARN("sd", "DrawViewShell::CreateAccessibleDocumentView: no controller");
-    return css::uno::Reference< css::accessibility::XAccessible>();
+    return {};
 }
 
 int DrawViewShell::GetActiveTabLayerIndex() const
@@ -628,8 +631,8 @@ void DrawViewShell::SetActiveTabLayerIndex (int nIndex)
         rtl::Reference<SdUnoDrawView> pUnoDrawView(new SdUnoDrawView (
             *this,
             *GetView()));
-        css::uno::Reference< css::drawing::XLayer> rLayer = pUnoDrawView->getActiveLayer();
-        GetViewShellBase().GetDrawController()->fireChangeLayer( &rLayer );
+        rtl::Reference<SdLayer> xLayer = pUnoDrawView->getActiveLayer();
+        GetViewShellBase().GetDrawController()->fireChangeLayer( xLayer );
     }
 }
 

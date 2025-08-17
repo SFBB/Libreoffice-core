@@ -31,13 +31,14 @@ class SwDoc;
 class SwFrameFormat;
 class SwXTextCursor;
 struct SwXParagraphEnumeration;
+class SwUnoInternalPaM;
 
 typedef ::cppu::WeakImplHelper
 <   css::lang::XServiceInfo
 ,   css::container::XEnumerationAccess
 > SwXBodyText_Base;
 
-class SwXBodyText final
+class SW_DLLPUBLIC SwXBodyText final
     : public SwXBodyText_Base
     , public SwXText
 {
@@ -83,6 +84,8 @@ public:
     virtual rtl::Reference< SwXTextCursor > createXTextCursorByRange(
             const ::css::uno::Reference< ::css::text::XTextRange >& aTextPosition ) override;
 
+private:
+    rtl::Reference< SwXTextCursor > createXTextCursorByRangeImpl(SwUnoInternalPaM& rPam);
 };
 
 typedef ::cppu::WeakImplHelper
@@ -141,7 +144,8 @@ public:
     virtual rtl::Reference< SwXTextCursor > createXTextCursor() override;
     virtual rtl::Reference< SwXTextCursor > createXTextCursorByRange(
             const ::css::uno::Reference< ::css::text::XTextRange >& aTextPosition ) override;
-
+private:
+    rtl::Reference< SwXTextCursor > createXTextCursorByRangeImpl(SwUnoInternalPaM& rPam);
 };
 
 #endif // INCLUDED_SW_INC_UNOTEXTBODYHF_HXX

@@ -101,7 +101,17 @@ public:
     /// returns false even if there is a running presentation but in another ViewShell
     static bool IsRunning( const ViewShell& rViewShell );
 
+    /// returns true if the interactive slideshow mode is activated
+    static bool IsInteractiveSlideshow(const ViewShellBase* pViewShellBase);
+    bool IsInteractiveSlideshow() const;
+
     // helper api
+
+    bool startInteractivePreview(
+        const css::uno::Reference< css::drawing::XDrawPage >& xDrawPage,
+        const css::uno::Reference< css::animations::XAnimationNode >& xAnimationNode );
+    bool isInteractiveSetup() const;
+    void endInteractivePreview();
 
     void startPreview(
         const css::uno::Reference< css::drawing::XDrawPage >& xDrawPage,

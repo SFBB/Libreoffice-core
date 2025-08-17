@@ -21,14 +21,12 @@
 
 #include <rtl/ref.hxx>
 #include <tools/gen.hxx>
+#include <comphelper/OAccessible.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/accessibility/XAccessibleContext.hpp>
-#include <com/sun/star/accessibility/XAccessibleComponent.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 
 class SvxEditSource;
 class SvxTextForwarder;
@@ -36,165 +34,127 @@ class SvxViewForwarder;
 
 namespace accessibility
 {
-    typedef ::cppu::WeakImplHelper< css::accessibility::XAccessible,
-                                     css::accessibility::XAccessibleContext,
-                                     css::accessibility::XAccessibleComponent,
-                                     css::accessibility::XAccessibleEventBroadcaster,
-                                     css::lang::XServiceInfo >  AccessibleImageBulletInterfaceBase;
 
-    /** This class implements the image bullets for the EditEngine/Outliner UAA
+/** This class implements the image bullets for the EditEngine/Outliner UAA
+ */
+class AccessibleImageBullet final
+    : public cppu::ImplInheritanceHelper<comphelper::OAccessible, css::lang::XServiceInfo>
+{
+
+public:
+    /// Create accessible object for given parent
+    AccessibleImageBullet(css::uno::Reference<css::accessibility::XAccessible> xParent,
+                          sal_Int64 nIndexInParent);
+
+    // XAccessibleContext
+    virtual sal_Int64 SAL_CALL getAccessibleChildCount() override;
+    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleChild( sal_Int64 i ) override;
+    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleParent() override;
+    virtual sal_Int64 SAL_CALL getAccessibleIndexInParent() override;
+    virtual sal_Int16 SAL_CALL getAccessibleRole() override;
+    virtual OUString SAL_CALL getAccessibleDescription() override;
+    virtual OUString SAL_CALL getAccessibleName() override;
+    virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL getAccessibleRelationSet() override;
+    virtual sal_Int64 SAL_CALL getAccessibleStateSet() override;
+    virtual css::lang::Locale SAL_CALL getLocale() override;
+
+    // XAccessibleComponent
+    virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint( const css::awt::Point& aPoint ) override;
+    virtual void SAL_CALL grabFocus(  ) override;
+    virtual sal_Int32 SAL_CALL getForeground(  ) override;
+    virtual sal_Int32 SAL_CALL getBackground(  ) override;
+
+    // XServiceInfo
+    virtual OUString SAL_CALL getImplementationName() override;
+    virtual sal_Bool SAL_CALL supportsService (const OUString& sServiceName) override;
+    virtual css::uno::Sequence< OUString> SAL_CALL getSupportedServiceNames() override;
+
+    /** Set the edit engine offset
+
+        @attention This method does not lock the SolarMutex,
+        leaving that to the calling code. This is because only
+        there potential deadlock situations can be resolved. Thus,
+        make sure SolarMutex is locked when calling this.
      */
-    class AccessibleImageBullet final : public AccessibleImageBulletInterfaceBase
-    {
+    void SetEEOffset( const Point& rOffset );
 
-    public:
-        /// Create accessible object for given parent
-        AccessibleImageBullet ( css::uno::Reference< css::accessibility::XAccessible > xParent );
+    /** Set the EditEngine offset
 
-        virtual ~AccessibleImageBullet  () override;
+        @attention This method does not lock the SolarMutex,
+        leaving that to the calling code. This is because only
+        there potential deadlock situations can be resolved. Thus,
+        make sure SolarMutex is locked when calling this.
+     */
+    void SetEditSource( SvxEditSource* pEditSource );
 
-        // XAccessible
-        virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override;
+    void SAL_CALL dispose() override;
 
-        // XAccessibleContext
-        virtual sal_Int64 SAL_CALL getAccessibleChildCount() override;
-        virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleChild( sal_Int64 i ) override;
-        virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleParent() override;
-        virtual sal_Int64 SAL_CALL getAccessibleIndexInParent() override;
-        virtual sal_Int16 SAL_CALL getAccessibleRole() override;
-        virtual OUString SAL_CALL getAccessibleDescription() override;
-        virtual OUString SAL_CALL getAccessibleName() override;
-        virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL getAccessibleRelationSet() override;
-        virtual sal_Int64 SAL_CALL getAccessibleStateSet() override;
-        virtual css::lang::Locale SAL_CALL getLocale() override;
+    /** Set the current paragraph number
 
-        // XAccessibleEventBroadcaster
-        virtual void SAL_CALL addAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-        virtual void SAL_CALL removeAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
+        @attention This method does not lock the SolarMutex,
+        leaving that to the calling code. This is because only
+        there potential deadlock situations can be resolved. Thus,
+        make sure SolarMutex is locked when calling this.
+     */
+    void SetParagraphIndex( sal_Int32 nIndex );
 
-        // XAccessibleComponent
-        virtual sal_Bool SAL_CALL containsPoint( const css::awt::Point& aPoint ) override;
-        virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint( const css::awt::Point& aPoint ) override;
-        virtual css::awt::Rectangle SAL_CALL getBounds(  ) override;
-        virtual css::awt::Point SAL_CALL getLocation(  ) override;
-        virtual css::awt::Point SAL_CALL getLocationOnScreen(  ) override;
-        virtual css::awt::Size SAL_CALL getSize(  ) override;
-        virtual void SAL_CALL grabFocus(  ) override;
-        virtual sal_Int32 SAL_CALL getForeground(  ) override;
-        virtual sal_Int32 SAL_CALL getBackground(  ) override;
+    /** Query the current paragraph number (0 - nParas-1)
 
-        // XServiceInfo
-        virtual OUString SAL_CALL getImplementationName() override;
-        virtual sal_Bool SAL_CALL supportsService (const OUString& sServiceName) override;
-        virtual css::uno::Sequence< OUString> SAL_CALL getSupportedServiceNames() override;
+        @attention This method does not lock the SolarMutex,
+        leaving that to the calling code. This is because only
+        there potential deadlock situations can be resolved. Thus,
+        make sure SolarMutex is locked when calling this.
+     */
+    sal_Int32 GetParagraphIndex() const { return mnParagraphIndex; }
 
-        /** Set the current index in the accessibility parent
+private:
+    AccessibleImageBullet( const AccessibleImageBullet& ) = delete;
+    AccessibleImageBullet& operator= ( const AccessibleImageBullet& ) = delete;
 
-            @attention This method does not lock the SolarMutex,
-            leaving that to the calling code. This is because only
-            there potential deadlock situations can be resolved. Thus,
-            make sure SolarMutex is locked when calling this.
-         */
-        void SetIndexInParent( sal_Int32 nIndex );
+    // maintain state set and send STATE_CHANGE events
+    void SetState( const sal_Int64 nStateId );
+    void UnSetState( const sal_Int64 nStateId );
 
-        /** Set the edit engine offset
+    SvxEditSource& GetEditSource() const;
 
-            @attention This method does not lock the SolarMutex,
-            leaving that to the calling code. This is because only
-            there potential deadlock situations can be resolved. Thus,
-            make sure SolarMutex is locked when calling this.
-         */
-        void SetEEOffset( const Point& rOffset );
+    /** Query the SvxTextForwarder for EditEngine access.
 
-        /** Set the EditEngine offset
+        @attention This method does not lock the SolarMutex,
+        leaving that to the calling code. This is because only
+        there potential deadlock situations can be resolved. Thus,
+        make sure SolarMutex is locked when calling this.
+     */
+    SvxTextForwarder&   GetTextForwarder() const;
 
-            @attention This method does not lock the SolarMutex,
-            leaving that to the calling code. This is because only
-            there potential deadlock situations can be resolved. Thus,
-            make sure SolarMutex is locked when calling this.
-         */
-        void SetEditSource( SvxEditSource* pEditSource );
+    /** Query the SvxViewForwarder for EditEngine access.
 
-        /** Dispose this object
+        @attention This method does not lock the SolarMutex,
+        leaving that to the calling code. This is because only
+        there potential deadlock situations can be resolved. Thus,
+        make sure SolarMutex is locked when calling this.
+     */
+    SvxViewForwarder&   GetViewForwarder() const;
 
-            Notifies and deregisters the listeners, drops all references.
-         */
-        void Dispose();
+    css::awt::Rectangle implGetBounds() override;
 
-        /** Set the current paragraph number
+    // the paragraph index in the edit engine (guarded by solar mutex)
+    sal_Int32   mnParagraphIndex;
 
-            @attention This method does not lock the SolarMutex,
-            leaving that to the calling code. This is because only
-            there potential deadlock situations can be resolved. Thus,
-            make sure SolarMutex is locked when calling this.
-         */
-        void SetParagraphIndex( sal_Int32 nIndex );
+    // our current index in the parent (guarded by solar mutex)
+    sal_Int32   mnIndexInParent;
 
-        /** Query the current paragraph number (0 - nParas-1)
+    // the current edit source (guarded by solar mutex)
+    SvxEditSource* mpEditSource;
 
-            @attention This method does not lock the SolarMutex,
-            leaving that to the calling code. This is because only
-            there potential deadlock situations can be resolved. Thus,
-            make sure SolarMutex is locked when calling this.
-         */
-        sal_Int32 GetParagraphIndex() const { return mnParagraphIndex; }
+    // the offset of the underlying EditEngine from the shape/cell (guarded by solar mutex)
+    Point maEEOffset;
 
-        /// Calls all Listener objects to tell them the change. Don't hold locks when calling this!
-        void FireEvent(const sal_Int16 nEventId, const css::uno::Any& rNewValue, const css::uno::Any& rOldValue = css::uno::Any() ) const;
+    // the current state set (updated from SetState/UnSetState and guarded by solar mutex)
+    sal_Int64 mnStateSet = 0;
 
-    private:
-        AccessibleImageBullet( const AccessibleImageBullet& ) = delete;
-        AccessibleImageBullet& operator= ( const AccessibleImageBullet& ) = delete;
-
-        // maintain state set and send STATE_CHANGE events
-        void SetState( const sal_Int64 nStateId );
-        void UnSetState( const sal_Int64 nStateId );
-
-        SvxEditSource& GetEditSource() const;
-
-        int getNotifierClientId() const { return mnNotifierClientId; }
-
-        /** Query the SvxTextForwarder for EditEngine access.
-
-            @attention This method does not lock the SolarMutex,
-            leaving that to the calling code. This is because only
-            there potential deadlock situations can be resolved. Thus,
-            make sure SolarMutex is locked when calling this.
-         */
-        SvxTextForwarder&   GetTextForwarder() const;
-
-        /** Query the SvxViewForwarder for EditEngine access.
-
-            @attention This method does not lock the SolarMutex,
-            leaving that to the calling code. This is because only
-            there potential deadlock situations can be resolved. Thus,
-            make sure SolarMutex is locked when calling this.
-         */
-        SvxViewForwarder&   GetViewForwarder() const;
-
-        css::awt::Rectangle implGetBounds();
-
-        // the paragraph index in the edit engine (guarded by solar mutex)
-        sal_Int32   mnParagraphIndex;
-
-        // our current index in the parent (guarded by solar mutex)
-        sal_Int32   mnIndexInParent;
-
-        // the current edit source (guarded by solar mutex)
-        SvxEditSource* mpEditSource;
-
-        // the offset of the underlying EditEngine from the shape/cell (guarded by solar mutex)
-        Point maEEOffset;
-
-        // the current state set (updated from SetState/UnSetState and guarded by solar mutex)
-        sal_Int64 mnStateSet = 0;
-
-        /// The shape we're the accessible for (unguarded)
-        css::uno::Reference< css::accessibility::XAccessible > mxParent;
-
-        /// Our listeners (guarded by maMutex)
-        int mnNotifierClientId;
-    };
+    /// The shape we're the accessible for (unguarded)
+    css::uno::Reference< css::accessibility::XAccessible > mxParent;
+};
 
 } // end of namespace accessibility
 

@@ -32,9 +32,13 @@
 
 class EDITENG_DLLPUBLIC SvxWeightItem final : public SfxEnumItem<FontWeight>
 {
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
+
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxWeightItem)
     SvxWeightItem(  const FontWeight eWght /*= WEIGHT_NORMAL*/,
                     const sal_uInt16 nId  );
 
@@ -46,7 +50,6 @@ public:
 
     virtual SvxWeightItem*  Clone( SfxItemPool *pPool = nullptr ) const override;
     static OUString         GetValueTextByPos( sal_uInt16 nPos );
-    virtual sal_uInt16      GetValueCount() const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;

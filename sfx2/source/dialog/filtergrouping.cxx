@@ -158,8 +158,8 @@ namespace sfx2
         OConfigurationNode aClassDesc = _rClassesNode.openNode( _rLogicalClassName );
 
         // the values
-        aClassDesc.getNodeValue( "DisplayName" ) >>= _rClass.sDisplayName;
-        aClassDesc.getNodeValue( "Filters" ) >>= _rClass.aSubFilters;
+        aClassDesc.getNodeValue( u"DisplayName"_ustr ) >>= _rClass.sDisplayName;
+        aClassDesc.getNodeValue( u"Filters"_ustr ) >>= _rClass.aSubFilters;
     }
 
     namespace {
@@ -232,7 +232,7 @@ namespace sfx2
 
         // get the list describing the order of all global classes
         Sequence< OUString > aGlobalClasses;
-        _rFilterClassification.getNodeValue( "GlobalFilters/Order" ) >>= aGlobalClasses;
+        _rFilterClassification.getNodeValue( u"GlobalFilters/Order"_ustr ) >>= aGlobalClasses;
 
         // copy the logical names
         comphelper::sequenceToContainer(_rGlobalClassNames, aGlobalClasses);
@@ -254,12 +254,12 @@ namespace sfx2
 
         // go for all the single class entries
         OConfigurationNode aFilterClassesNode =
-            _rFilterClassification.openNode( "GlobalFilters/Classes" );
+            _rFilterClassification.openNode( u"GlobalFilters/Classes"_ustr );
         const Sequence< OUString > aFilterClasses = aFilterClassesNode.getNodeNames();
         ::std::for_each(
             aFilterClasses.begin(),
             aFilterClasses.end(),
-            ReadGlobalFilter( aFilterClassesNode, aClassReferrer )
+            ReadGlobalFilter( std::move(aFilterClassesNode), aClassReferrer )
         );
     }
 
@@ -286,7 +286,7 @@ namespace sfx2
             lcl_ReadFilterClass( m_aClassesNode, _rName, aClass );
 
             // insert the class descriptor
-            m_rClasses.push_back( aClass );
+            m_rClasses.push_back(std::move(aClass));
         }
     };
 
@@ -298,13 +298,13 @@ namespace sfx2
 
         // the node for the local classes
         OConfigurationNode aFilterClassesNode =
-            _rFilterClassification.openNode( "LocalFilters/Classes" );
+            _rFilterClassification.openNode( u"LocalFilters/Classes"_ustr );
         const Sequence< OUString > aFilterClasses = aFilterClassesNode.getNodeNames();
 
         ::std::for_each(
             aFilterClasses.begin(),
             aFilterClasses.end(),
-            ReadLocalFilter( aFilterClassesNode, _rLocalClasses )
+            ReadLocalFilter( std::move(aFilterClassesNode), _rLocalClasses )
         );
     }
 
@@ -315,7 +315,7 @@ namespace sfx2
         // open our config node
         OConfigurationTreeRoot aFilterClassification = OConfigurationTreeRoot::createWithComponentContext(
             ::comphelper::getProcessComponentContext(),
-            "org.openoffice.Office.UI/FilterClassification",
+            u"org.openoffice.Office.UI/FilterClassification"_ustr,
             -1,
             OConfigurationTreeRoot::CM_READONLY
         );
@@ -402,10 +402,7 @@ namespace sfx2
 
     const sal_Unicode s_cWildcardSeparator( ';' );
 
-    static OUString getSeparatorString()
-    {
-        return ";";
-    }
+    constexpr OUString SEPARATOR = u";"_ustr;
 
     namespace {
 
@@ -438,7 +435,7 @@ namespace sfx2
             }
 
             if ( !_rToBeExtended.isEmpty() )
-                _rToBeExtended += getSeparatorString();
+                _rToBeExtended += SEPARATOR;
             _rToBeExtended += _rWC;
         }
     };
@@ -860,7 +857,7 @@ namespace sfx2
         {
             ::comphelper::SequenceAsHashMap lFilterProps (xFilterList->nextElement());
             OUString                 sFilterName  = lFilterProps.getUnpackedValueOrDefault(
-                                                             "Name",
+                                                             u"Name"_ustr,
                                                              OUString());
             if (!sFilterName.isEmpty())
                 m_lFilters.push_back(sFilterName);

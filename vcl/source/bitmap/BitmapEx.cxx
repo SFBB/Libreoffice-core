@@ -20,19 +20,20 @@
 #include <sal/log.hxx>
 #include <rtl/crc.h>
 #include <rtl/math.hxx>
+#include <o3tl/environment.hxx>
 #include <o3tl/underlyingenumvalue.hxx>
 #include <osl/diagnose.h>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <basegfx/color/bcolormodifier.hxx>
 
 #include <vcl/ImageTree.hxx>
+#include <vcl/bitmap/BitmapMonochromeFilter.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/alpha.hxx>
 #include <vcl/bitmapex.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/settings.hxx>
-#include <vcl/BitmapMonochromeFilter.hxx>
 
 // BitmapEx::Create
 #include <salbmp.hxx>
@@ -40,12 +41,10 @@
 #include <svdata.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
 #include <bitmap/BitmapMaskToAlphaFilter.hxx>
+#include <bitmap/BlendFrameCache.hxx>
 
-#include <o3tl/any.hxx>
 #include <tools/stream.hxx>
 #include <vcl/filter/PngImageWriter.hxx>
-
-#include <com/sun/star/beans/XFastPropertySet.hpp>
 
 #include <memory>
 
@@ -63,7 +62,7 @@ BitmapEx::BitmapEx( const BitmapEx& rBitmapEx, Point aSrc, Size aSize )
         return;
 
     maBitmap = Bitmap(aSize, rBitmapEx.maBitmap.getPixelFormat());
-    SetSizePixel(aSize);
+    maBitmapSize = aSize;
     if( rBitmapEx.IsAlpha() )
         maAlphaMask = AlphaMask( aSize );
 
@@ -75,36 +74,22 @@ BitmapEx::BitmapEx( const BitmapEx& rBitmapEx, Point aSrc, Size aSize )
 BitmapEx::BitmapEx(Size aSize, vcl::PixelFormat ePixelFormat)
 {
     maBitmap = Bitmap(aSize, ePixelFormat);
-    SetSizePixel(aSize);
-}
-
-BitmapEx::BitmapEx( const OUString& rIconName )
-{
-    loadFromIconTheme( rIconName );
-}
-
-void BitmapEx::loadFromIconTheme( const OUString& rIconName )
-{
-    bool bSuccess;
-    OUString aIconTheme;
-
-    try
-    {
-        aIconTheme = Application::GetSettings().GetStyleSettings().DetermineIconTheme();
-        bSuccess = ImageTree::get().loadImage(rIconName, aIconTheme, *this, true);
-    }
-    catch (...)
-    {
-        bSuccess = false;
-    }
-
-    SAL_WARN_IF( !bSuccess, "vcl", "BitmapEx::BitmapEx(): could not load image " << rIconName << " via icon theme " << aIconTheme);
+    maBitmapSize = aSize;
 }
 
 BitmapEx::BitmapEx( const Bitmap& rBmp ) :
-        maBitmap     ( rBmp ),
-        maBitmapSize ( maBitmap.GetSizePixel() )
+        maBitmapSize ( rBmp.GetSizePixel() )
 {
+    if (rBmp.HasAlpha())
+    {
+        std::pair<Bitmap, AlphaMask> aPair = rBmp.SplitIntoColorAndAlpha();
+        maBitmap = std::move(aPair.first);
+        maAlphaMask = std::move(aPair.second);
+    }
+    else
+    {
+        maBitmap = rBmp;
+    }
 }
 
 BitmapEx::BitmapEx( const Bitmap& rBmp, const Bitmap& rMask ) :
@@ -133,7 +118,7 @@ BitmapEx::BitmapEx( const Bitmap& rBmp, const Bitmap& rMask ) :
     else
     {
         // convert to alpha bitmap
-        SAL_WARN( "vcl", "BitmapEx: forced mask to monochrome");
+        SAL_WARN("vcl", "BitmapEx: forced mask to monochrome");
         BitmapEx aMaskEx(rMask);
         BitmapFilter::Filter(aMaskEx, BitmapMonochromeFilter(255));
         aMaskEx.Invert();
@@ -142,7 +127,7 @@ BitmapEx::BitmapEx( const Bitmap& rBmp, const Bitmap& rMask ) :
 
     if (!maBitmap.IsEmpty() && maBitmap.GetSizePixel() != maAlphaMask.GetSizePixel())
     {
-        OSL_ENSURE(false, "Mask size differs from Bitmap size, corrected Mask (!)");
+        SAL_WARN("vcl", "Mask size differs from Bitmap size, corrected Mask (!)");
         maAlphaMask.Scale(maBitmap.GetSizePixel(), BmpScaleFlag::Fast);
     }
 }
@@ -154,7 +139,7 @@ BitmapEx::BitmapEx( const Bitmap& rBmp, const AlphaMask& rAlphaMask ) :
 {
     if (!maBitmap.IsEmpty() && !maAlphaMask.IsEmpty() && maBitmap.GetSizePixel() != maAlphaMask.GetSizePixel())
     {
-        OSL_ENSURE(false, "Alpha size differs from Bitmap size, corrected Mask (!)");
+        SAL_WARN("vcl", "Alpha size differs from Bitmap size, corrected Mask (!)");
         maAlphaMask.Scale(rBmp.GetSizePixel(), BmpScaleFlag::Fast);
     }
 }
@@ -251,132 +236,116 @@ BitmapChecksum BitmapEx::GetChecksum() const
     return nCrc;
 }
 
-void BitmapEx::SetSizePixel(const Size& rNewSize)
-{
-    maBitmapSize = rNewSize;
-}
-
 bool BitmapEx::Invert()
 {
-    bool bRet = false;
-
     if (!maBitmap.IsEmpty())
-        bRet = maBitmap.Invert();
+        return maBitmap.Invert();
 
-    return bRet;
+    return false;
 }
 
-bool BitmapEx::Mirror( BmpMirrorFlags nMirrorFlags )
+bool BitmapEx::Mirror(BmpMirrorFlags nMirrorFlags)
 {
-    bool bRet = false;
+    if (maBitmap.IsEmpty())
+        return false;
 
-    if( !maBitmap.IsEmpty() )
-    {
-        bRet = maBitmap.Mirror( nMirrorFlags );
+    bool bRet = maBitmap.Mirror( nMirrorFlags );
 
-        if( bRet && !maAlphaMask.IsEmpty() )
-            maAlphaMask.Mirror( nMirrorFlags );
-    }
+    if (bRet && !maAlphaMask.IsEmpty())
+        maAlphaMask.Mirror(nMirrorFlags);
 
     return bRet;
 }
 
 bool BitmapEx::Scale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag )
 {
-    bool bRet = false;
 
-    if( !maBitmap.IsEmpty() )
-    {
-        bRet = maBitmap.Scale( rScaleX, rScaleY, nScaleFlag );
+    if (maBitmap.IsEmpty())
+        return false;
 
-        if( bRet && !maAlphaMask.IsEmpty() )
-        {
-            maAlphaMask.Scale( rScaleX, rScaleY, nScaleFlag );
-        }
+    bool bRet = maBitmap.Scale( rScaleX, rScaleY, nScaleFlag );
 
-        SetSizePixel(maBitmap.GetSizePixel());
+    if (bRet && !maAlphaMask.IsEmpty())
+        maAlphaMask.Scale(rScaleX, rScaleY, nScaleFlag);
 
-        SAL_WARN_IF( !maAlphaMask.IsEmpty() && maBitmap.GetSizePixel() != maAlphaMask.GetSizePixel(), "vcl",
-                    "BitmapEx::Scale(): size mismatch for bitmap and alpha mask." );
-    }
+    maBitmapSize = maBitmap.GetSizePixel();
+
+    SAL_WARN_IF(!maAlphaMask.IsEmpty() && maBitmap.GetSizePixel() != maAlphaMask.GetSizePixel(), "vcl",
+                "BitmapEx::Scale(): size mismatch for bitmap and alpha mask.");
 
     return bRet;
+}
+
+static bool lcl_ShouldScale(Size const& rOrigSize, Size const& rNewSize)
+{
+    return rOrigSize.Width() && rOrigSize.Height()
+            && (rNewSize.Width() != rOrigSize.Width() || rNewSize.Height() != rOrigSize.Height());
 }
 
 bool BitmapEx::Scale( const Size& rNewSize, BmpScaleFlag nScaleFlag )
 {
-    bool bRet;
-
-    if (GetSizePixel().Width() && GetSizePixel().Height()
-            && (rNewSize.Width()  != GetSizePixel().Width()
-                    || rNewSize.Height() != GetSizePixel().Height() ) )
+    if (lcl_ShouldScale(GetSizePixel(), rNewSize))
     {
-        bRet = Scale( static_cast<double>(rNewSize.Width()) / GetSizePixel().Width(),
-                      static_cast<double>(rNewSize.Height()) / GetSizePixel().Height(),
-                      nScaleFlag );
-    }
-    else
-    {
-        bRet = true;
+        return Scale(static_cast<double>(rNewSize.Width()) / GetSizePixel().Width(),
+                 static_cast<double>(rNewSize.Height()) / GetSizePixel().Height(),
+                 nScaleFlag);
     }
 
-    return bRet;
+    return true;
 }
 
 bool BitmapEx::Rotate( Degree10 nAngle10, const Color& rFillColor )
 {
+    if (maBitmap.IsEmpty())
+        return false;
+
+    const bool bTransRotate = ( COL_TRANSPARENT == rFillColor );
+
     bool bRet = false;
 
-    if( !maBitmap.IsEmpty() )
+    if (bTransRotate)
     {
-        const bool bTransRotate = ( COL_TRANSPARENT == rFillColor );
+        bRet = maBitmap.Rotate(nAngle10, COL_BLACK);
 
-        if( bTransRotate )
+        if (maAlphaMask.IsEmpty())
         {
-            bRet = maBitmap.Rotate( nAngle10, COL_BLACK );
-
-            if( maAlphaMask.IsEmpty() )
-            {
-                maAlphaMask = Bitmap(GetSizePixel(), vcl::PixelFormat::N8_BPP, &Bitmap::GetGreyPalette(256));
-                maAlphaMask.Erase( 0 );
-            }
-
-            if( bRet && !maAlphaMask.IsEmpty() )
-                maAlphaMask.Rotate( nAngle10, COL_ALPHA_TRANSPARENT );
-        }
-        else
-        {
-            bRet = maBitmap.Rotate( nAngle10, rFillColor );
-
-            if( bRet && !maAlphaMask.IsEmpty() )
-                maAlphaMask.Rotate( nAngle10, COL_ALPHA_TRANSPARENT );
+            maAlphaMask = Bitmap(GetSizePixel(), vcl::PixelFormat::N8_BPP, &Bitmap::GetGreyPalette(256));
+            maAlphaMask.Erase( 0 );
         }
 
-        SetSizePixel(maBitmap.GetSizePixel());
-
-        SAL_WARN_IF(!maAlphaMask.IsEmpty() && maBitmap.GetSizePixel() != maAlphaMask.GetSizePixel(), "vcl",
-                    "BitmapEx::Rotate(): size mismatch for bitmap and alpha mask.");
+        if (bRet && !maAlphaMask.IsEmpty())
+            maAlphaMask.Rotate(nAngle10, COL_ALPHA_TRANSPARENT);
     }
+    else
+    {
+        bRet = maBitmap.Rotate( nAngle10, rFillColor );
+
+        if (bRet && !maAlphaMask.IsEmpty())
+            maAlphaMask.Rotate(nAngle10, COL_ALPHA_TRANSPARENT);
+    }
+
+    maBitmapSize = maBitmap.GetSizePixel();
+
+    SAL_WARN_IF(!maAlphaMask.IsEmpty() && maBitmap.GetSizePixel() != maAlphaMask.GetSizePixel(), "vcl",
+                "BitmapEx::Rotate(): size mismatch for bitmap and alpha mask.");
 
     return bRet;
 }
 
 bool BitmapEx::Crop( const tools::Rectangle& rRectPixel )
 {
-    bool bRet = false;
+    if (maBitmap.IsEmpty())
+        return false;
 
-    if( !maBitmap.IsEmpty() )
-    {
-        bRet = maBitmap.Crop( rRectPixel );
+    bool bRet = maBitmap.Crop(rRectPixel);
 
-        if( bRet && !maAlphaMask.IsEmpty() )
-            maAlphaMask.Crop( rRectPixel );
+    if (bRet && !maAlphaMask.IsEmpty())
+        maAlphaMask.Crop(rRectPixel);
 
-        SetSizePixel(maBitmap.GetSizePixel());
+    maBitmapSize = maBitmap.GetSizePixel();
 
-        SAL_WARN_IF(!maAlphaMask.IsEmpty() && maBitmap.GetSizePixel() != maAlphaMask.GetSizePixel(), "vcl",
-                    "BitmapEx::Crop(): size mismatch for bitmap and alpha mask.");
-    }
+    SAL_WARN_IF(!maAlphaMask.IsEmpty() && maBitmap.GetSizePixel() != maAlphaMask.GetSizePixel(), "vcl",
+                "BitmapEx::Crop(): size mismatch for bitmap and alpha mask.");
 
     return bRet;
 }
@@ -386,22 +355,20 @@ bool BitmapEx::Convert( BmpConversion eConversion )
     return !maBitmap.IsEmpty() && maBitmap.Convert( eConversion );
 }
 
-void BitmapEx::Expand( sal_Int32 nDX, sal_Int32 nDY, bool bExpandTransparent )
+void BitmapEx::Expand(sal_Int32 nDX, sal_Int32 nDY, bool bExpandTransparent)
 {
-    bool bRet = false;
-
-    if( maBitmap.IsEmpty() )
+    if (maBitmap.IsEmpty())
         return;
 
-    bRet = maBitmap.Expand( nDX, nDY );
+    bool bRet = maBitmap.Expand( nDX, nDY, nullptr );
 
-    if( bRet && !maAlphaMask.IsEmpty() )
+    if ( bRet && !maAlphaMask.IsEmpty() )
     {
         Color aColor( bExpandTransparent ? COL_ALPHA_TRANSPARENT : COL_ALPHA_OPAQUE );
         maAlphaMask.Expand( nDX, nDY, &aColor );
     }
 
-    SetSizePixel(maBitmap.GetSizePixel());
+    maBitmapSize = maBitmap.GetSizePixel();
 
     SAL_WARN_IF(!maAlphaMask.IsEmpty() && maBitmap.GetSizePixel() != maAlphaMask.GetSizePixel(), "vcl",
                 "BitmapEx::Expand(): size mismatch for bitmap and alpha mask.");
@@ -441,23 +408,22 @@ bool BitmapEx::CopyPixel( const tools::Rectangle& rRectDst, const tools::Rectang
 
 bool BitmapEx::Erase( const Color& rFillColor )
 {
-    bool bRet = false;
+    if (maBitmap.IsEmpty())
+        return false;
 
-    if( !maBitmap.IsEmpty() )
+    if (!maBitmap.Erase(rFillColor))
+        return false;
+
+    if (!maAlphaMask.IsEmpty())
     {
-        bRet = maBitmap.Erase( rFillColor );
-
-        if( bRet && !maAlphaMask.IsEmpty() )
-        {
-            // Respect transparency on fill color
-            if( rFillColor.IsTransparent() )
-                maAlphaMask.Erase( 255 - rFillColor.GetAlpha() );
-            else
-                maAlphaMask.Erase( 0 );
-        }
+        // Respect transparency on fill color
+        if (rFillColor.IsTransparent())
+            maAlphaMask.Erase(255 - rFillColor.GetAlpha());
+        else
+            maAlphaMask.Erase(0);
     }
 
-    return bRet;
+    return true;
 }
 
 void BitmapEx::Replace( const Color& rSearchColor, const Color& rReplaceColor )
@@ -492,7 +458,7 @@ void BitmapEx::Draw( OutputDevice* pOutDev,
     pOutDev->DrawBitmapEx( rDestPt, rDestSize, *this );
 }
 
-BitmapEx BitmapEx:: AutoScaleBitmap(BitmapEx const & aBitmap, const tools::Long aStandardSize)
+BitmapEx BitmapEx::AutoScaleBitmap(BitmapEx const & aBitmap, const tools::Long aStandardSize)
 {
     Point aEmptyPoint(0,0);
     double imgposX = 0;
@@ -541,7 +507,7 @@ BitmapEx BitmapEx:: AutoScaleBitmap(BitmapEx const & aBitmap, const tools::Long 
     aVirDevice->DrawRect( aRect );
     Point aPointPixel( static_cast<tools::Long>(imgposX), static_cast<tools::Long>(imgposY) );
     aVirDevice->DrawBitmapEx( aPointPixel, aRet );
-    aRet = aVirDevice->GetBitmapEx( aEmptyPoint, aStdSize );
+    aRet = aVirDevice->GetBitmap( aEmptyPoint, aStdSize );
 
     return aRet;
 }
@@ -596,55 +562,13 @@ Color BitmapEx::GetPixelColor(sal_Int32 nX, sal_Int32 nY) const
     return aColor;
 }
 
-// Shift alpha transparent pixels between cppcanvas/ implementations
-// and vcl in a generally grotesque and under-performing fashion
-bool BitmapEx::Create( const css::uno::Reference< css::rendering::XBitmapCanvas > &xBitmapCanvas,
-                       const Size &rSize )
-{
-    uno::Reference< beans::XFastPropertySet > xFastPropertySet( xBitmapCanvas, uno::UNO_QUERY );
-    if( xFastPropertySet )
-    {
-        // 0 means get BitmapEx
-        uno::Any aAny = xFastPropertySet->getFastPropertyValue( 0 );
-        std::unique_ptr<BitmapEx> xBitmapEx(reinterpret_cast<BitmapEx*>(*o3tl::doAccess<sal_Int64>(aAny)));
-        if( xBitmapEx )
-        {
-            *this = *xBitmapEx;
-            return true;
-        }
-    }
-
-    std::shared_ptr<SalBitmap> pSalBmp;
-    std::shared_ptr<SalBitmap> pSalMask;
-
-    pSalBmp = ImplGetSVData()->mpDefInst->CreateSalBitmap();
-
-    Size aLocalSize(rSize);
-    if( pSalBmp->Create( xBitmapCanvas, aLocalSize ) )
-    {
-        pSalMask = ImplGetSVData()->mpDefInst->CreateSalBitmap();
-        if ( pSalMask->Create( xBitmapCanvas, aLocalSize, true ) )
-        {
-            *this = BitmapEx(Bitmap(pSalBmp), Bitmap(pSalMask) );
-            return true;
-        }
-        else
-        {
-            *this = BitmapEx(Bitmap(pSalBmp));
-            return true;
-        }
-    }
-
-    return false;
-}
-
 namespace
 {
     Bitmap impTransformBitmap(
         const Bitmap& rSource,
         const Size& rDestinationSize,
         const basegfx::B2DHomMatrix& rTransform,
-        bool bSmooth)
+        bool bSmooth, bool bAlphaMask)
     {
         Bitmap aDestination(rDestinationSize, vcl::PixelFormat::N24_BPP);
         BitmapScopedWriteAccess xWrite(aDestination);
@@ -660,7 +584,10 @@ namespace
                 // tdf#157795 set color to black outside of bitmap bounds
                 // Due to commit 81994cb2b8b32453a92bcb011830fcb884f22ff3,
                 // transparent areas are now black instead of white.
-                const BitmapColor aOutside(0x0, 0x0, 0x0);
+                // tdf#160831 only set outside color to black for alpha masks
+                // The outside color still needs to be white for the content
+                // so only apply the fix for tdf#157795 to the alpha mask.
+                const BitmapColor aOutside = bAlphaMask ? BitmapColor(0x0, 0x0, 0x0) : BitmapColor(0xff, 0xff, 0xff);
 
                 for(tools::Long y(0); y < aDestinationSizePixel.getHeight(); y++)
                 {
@@ -744,14 +671,14 @@ BitmapEx BitmapEx::TransformBitmapEx(
         return BitmapEx();
 
     // force destination to 24 bit, we want to smooth output
-    const Size aDestinationSize(basegfx::fround(fWidth), basegfx::fround(fHeight));
+    const Size aDestinationSize(basegfx::fround<tools::Long>(fWidth), basegfx::fround<tools::Long>(fHeight));
     bool bSmooth = implTransformNeedsSmooth(rTransformation);
-    const Bitmap aDestination(impTransformBitmap(GetBitmap(), aDestinationSize, rTransformation, bSmooth));
+    const Bitmap aDestination(impTransformBitmap(GetBitmap(), aDestinationSize, rTransformation, bSmooth, false));
 
     // create mask
     if(IsAlpha())
     {
-        const Bitmap aAlpha(impTransformBitmap(GetAlphaMask().GetBitmap(), aDestinationSize, rTransformation, bSmooth));
+        const Bitmap aAlpha(impTransformBitmap(GetAlphaMask().GetBitmap(), aDestinationSize, rTransformation, bSmooth, true));
         return BitmapEx(aDestination, AlphaMask(aAlpha));
     }
 
@@ -763,16 +690,14 @@ BitmapEx BitmapEx::getTransformed(
     const basegfx::B2DRange& rVisibleRange,
     double fMaximumArea) const
 {
-    BitmapEx aRetval;
-
-    if(IsEmpty())
-        return aRetval;
+    if (IsEmpty())
+        return BitmapEx();
 
     const sal_uInt32 nSourceWidth(GetSizePixel().Width());
     const sal_uInt32 nSourceHeight(GetSizePixel().Height());
 
-    if(!nSourceWidth || !nSourceHeight)
-        return aRetval;
+    if (!nSourceWidth || !nSourceHeight)
+        return BitmapEx();
 
     // Get aOutlineRange
     basegfx::B2DRange aOutlineRange(0.0, 0.0, 1.0, 1.0);
@@ -791,10 +716,8 @@ BitmapEx BitmapEx::getTransformed(
     double fWidth(aVisibleRange.getWidth());
     double fHeight(aVisibleRange.getHeight());
 
-    if(fWidth < 1.0 || fHeight < 1.0)
-    {
-        return aRetval;
-    }
+    if (fWidth < 1.0 || fHeight < 1.0)
+        return BitmapEx();
 
     // test if discrete size (pixel) maybe too big and limit it
     const double fArea(fWidth * fHeight);
@@ -834,308 +757,269 @@ BitmapEx BitmapEx::getTransformed(
     aTransform.invert();
 
     // create bitmap using source, destination and linear back-transformation
-    aRetval = TransformBitmapEx(fWidth, fHeight, aTransform);
+    return TransformBitmapEx(fWidth, fHeight, aTransform);
+}
 
-    return aRetval;
+namespace
+{
+class BufferedData_ModifiedBitmapEx : public basegfx::SystemDependentData
+{
+    Bitmap maChangedBitmap;
+    basegfx::BColorModifierStack maBColorModifierStack;
+
+public:
+    BufferedData_ModifiedBitmapEx(
+        const Bitmap& rChangedBitmap,
+        const basegfx::BColorModifierStack& rBColorModifierStack)
+    : basegfx::SystemDependentData(
+        Application::GetSystemDependentDataManager(),
+        basegfx::SDD_Type::SDDType_ModifiedBitmapEx)
+    , maChangedBitmap(rChangedBitmap)
+    , maBColorModifierStack(rBColorModifierStack)
+    {
+    }
+
+    const Bitmap& getChangedBitmap() const { return maChangedBitmap; }
+    const basegfx::BColorModifierStack& getBColorModifierStack() const { return maBColorModifierStack; }
+
+    virtual sal_Int64 estimateUsageInBytes() const override;
+};
+
+sal_Int64 BufferedData_ModifiedBitmapEx::estimateUsageInBytes() const
+{
+    return maChangedBitmap.GetSizeBytes();
+}
 }
 
 BitmapEx BitmapEx::ModifyBitmapEx(const basegfx::BColorModifierStack& rBColorModifierStack) const
 {
-    Bitmap aChangedBitmap(GetBitmap());
-    bool bDone(false);
-
-    for(sal_uInt32 a(rBColorModifierStack.count()); a && !bDone; )
+    if (0 == rBColorModifierStack.count())
     {
-        const basegfx::BColorModifierSharedPtr& rModifier = rBColorModifierStack.getBColorModifier(--a);
-        const basegfx::BColorModifier_replace* pReplace = dynamic_cast< const basegfx::BColorModifier_replace* >(rModifier.get());
+        // no modifiers, done
+        return *this;
+    }
 
-        if(pReplace)
+    // check for BColorModifier_replace at the top of the stack
+    const basegfx::BColorModifierSharedPtr& rLastModifier(rBColorModifierStack.getBColorModifier(rBColorModifierStack.count() - 1));
+    const basegfx::BColorModifier_replace* pLastModifierReplace(dynamic_cast<const basegfx::BColorModifier_replace*>(rLastModifier.get()));
+
+    if (nullptr != pLastModifierReplace && !IsAlpha())
+    {
+        // at the top of the stack we have a BColorModifier_replace -> no Bitmap needed,
+        // representation can be replaced by filled colored polygon. signal the caller
+        // about that by returning empty BitmapEx
+        return BitmapEx();
+    }
+
+    const basegfx::SystemDependentDataHolder* pHolder(GetBitmap().accessSystemDependentDataHolder());
+    std::shared_ptr<BufferedData_ModifiedBitmapEx> pBufferedData_ModifiedBitmapEx;
+
+    if (nullptr != pHolder)
+    {
+        // try to access SystemDependentDataHolder and buffered data
+        pBufferedData_ModifiedBitmapEx = std::static_pointer_cast<BufferedData_ModifiedBitmapEx>(
+            pHolder->getSystemDependentData(basegfx::SDD_Type::SDDType_ModifiedBitmapEx));
+
+        if (nullptr != pBufferedData_ModifiedBitmapEx
+            && !(pBufferedData_ModifiedBitmapEx->getBColorModifierStack() == rBColorModifierStack))
         {
-            // complete replace
-            if(IsAlpha())
-            {
-                // clear bitmap with dest color
-                if (vcl::isPalettePixelFormat(aChangedBitmap.getPixelFormat()))
-                {
-                    // For e.g. 8bit Bitmaps, the nearest color to the given erase color is
-                    // determined and used -> this may be different from what is wanted here.
-                    // Better create a new bitmap with the needed color explicitly.
-                    BitmapScopedReadAccess xReadAccess(aChangedBitmap);
-                    OSL_ENSURE(xReadAccess, "Got no Bitmap ReadAccess ?!?");
-
-                    if(xReadAccess)
-                    {
-                        BitmapPalette aNewPalette(xReadAccess->GetPalette());
-                        aNewPalette[0] = BitmapColor(Color(pReplace->getBColor()));
-                        aChangedBitmap = Bitmap(
-                            aChangedBitmap.GetSizePixel(),
-                            aChangedBitmap.getPixelFormat(),
-                            &aNewPalette);
-                    }
-                }
-                aChangedBitmap.Erase(Color(pReplace->getBColor()));
-            }
-            else
-            {
-                // erase bitmap, caller will know to paint direct
-                aChangedBitmap.SetEmpty();
-            }
-
-            bDone = true;
+            // BColorModifierStack is different -> data invalid
+            pBufferedData_ModifiedBitmapEx = nullptr;
         }
-        else
+
+        if (nullptr != pBufferedData_ModifiedBitmapEx)
         {
-            BitmapScopedWriteAccess xContent(aChangedBitmap);
-
-            if(xContent)
-            {
-                const double fConvertColor(1.0 / 255.0);
-
-                if(xContent->HasPalette())
-                {
-                    const sal_uInt16 nCount(xContent->GetPaletteEntryCount());
-
-                    for(sal_uInt16 b(0); b < nCount; b++)
-                    {
-                        const BitmapColor& rCol = xContent->GetPaletteColor(b);
-                        const basegfx::BColor aBSource(
-                            rCol.GetRed() * fConvertColor,
-                            rCol.GetGreen() * fConvertColor,
-                            rCol.GetBlue() * fConvertColor);
-                        const basegfx::BColor aBDest(rModifier->getModifiedColor(aBSource));
-                        xContent->SetPaletteColor(b, BitmapColor(Color(aBDest)));
-                    }
-                }
-                else if(ScanlineFormat::N24BitTcBgr == xContent->GetScanlineFormat())
-                {
-                    for(tools::Long y(0); y < xContent->Height(); y++)
-                    {
-                        Scanline pScan = xContent->GetScanline(y);
-
-                        for(tools::Long x(0); x < xContent->Width(); x++)
-                        {
-                            const basegfx::BColor aBSource(
-                                *(pScan + 2)* fConvertColor,
-                                *(pScan + 1) * fConvertColor,
-                                *pScan * fConvertColor);
-                            const basegfx::BColor aBDest(rModifier->getModifiedColor(aBSource));
-                            *pScan++ = static_cast< sal_uInt8 >(aBDest.getBlue() * 255.0);
-                            *pScan++ = static_cast< sal_uInt8 >(aBDest.getGreen() * 255.0);
-                            *pScan++ = static_cast< sal_uInt8 >(aBDest.getRed() * 255.0);
-                        }
-                    }
-                }
-                else if(ScanlineFormat::N24BitTcRgb == xContent->GetScanlineFormat())
-                {
-                    for(tools::Long y(0); y < xContent->Height(); y++)
-                    {
-                        Scanline pScan = xContent->GetScanline(y);
-
-                        for(tools::Long x(0); x < xContent->Width(); x++)
-                        {
-                            const basegfx::BColor aBSource(
-                                *pScan * fConvertColor,
-                                *(pScan + 1) * fConvertColor,
-                                *(pScan + 2) * fConvertColor);
-                            const basegfx::BColor aBDest(rModifier->getModifiedColor(aBSource));
-                            *pScan++ = static_cast< sal_uInt8 >(aBDest.getRed() * 255.0);
-                            *pScan++ = static_cast< sal_uInt8 >(aBDest.getGreen() * 255.0);
-                            *pScan++ = static_cast< sal_uInt8 >(aBDest.getBlue() * 255.0);
-                        }
-                    }
-                }
-                else
-                {
-                    for(tools::Long y(0); y < xContent->Height(); y++)
-                    {
-                        Scanline pScanline = xContent->GetScanline( y );
-                        for(tools::Long x(0); x < xContent->Width(); x++)
-                        {
-                            const BitmapColor aBMCol(xContent->GetColor(y, x));
-                            const basegfx::BColor aBSource(
-                                static_cast<double>(aBMCol.GetRed()) * fConvertColor,
-                                static_cast<double>(aBMCol.GetGreen()) * fConvertColor,
-                                static_cast<double>(aBMCol.GetBlue()) * fConvertColor);
-                            const basegfx::BColor aBDest(rModifier->getModifiedColor(aBSource));
-
-                            xContent->SetPixelOnData(pScanline, x, BitmapColor(Color(aBDest)));
-                        }
-                    }
-                }
-            }
+            // found existing instance of modified Bitmap, return reused/buffered result
+            if(IsAlpha())
+                return BitmapEx(pBufferedData_ModifiedBitmapEx->getChangedBitmap(), GetAlphaMask());
+            return BitmapEx(pBufferedData_ModifiedBitmapEx->getChangedBitmap());
         }
     }
 
-    if(aChangedBitmap.IsEmpty())
+    // have to create modified Bitmap
+    Bitmap aChangedBitmap(GetBitmap());
+
+    if (nullptr != pLastModifierReplace)
     {
-        return BitmapEx();
+        // special case -> we have BColorModifier_replace but Alpha channel
+        if (vcl::isPalettePixelFormat(aChangedBitmap.getPixelFormat()))
+        {
+            // For e.g. 8bit Bitmaps, the nearest color to the given erase color is
+            // determined and used -> this may be different from what is wanted here.
+            // Better create a new bitmap with the needed color explicitly.
+            BitmapScopedReadAccess xReadAccess(aChangedBitmap);
+            SAL_WARN_IF(!xReadAccess, "vcl", "Got no Bitmap ReadAccess ?!?");
+
+            if(xReadAccess)
+            {
+                BitmapPalette aNewPalette(xReadAccess->GetPalette());
+                aNewPalette[0] = BitmapColor(Color(pLastModifierReplace->getBColor()));
+                aChangedBitmap = Bitmap(
+                    aChangedBitmap.GetSizePixel(),
+                    aChangedBitmap.getPixelFormat(),
+                    &aNewPalette);
+            }
+        }
+        else
+        {
+            // clear bitmap with dest color
+            aChangedBitmap.Erase(Color(pLastModifierReplace->getBColor()));
+        }
     }
     else
     {
-        if(IsAlpha())
+        BitmapScopedWriteAccess xContent(aChangedBitmap);
+
+        if(xContent)
         {
-            return BitmapEx(aChangedBitmap, GetAlphaMask());
-        }
-        else
-        {
-            return BitmapEx(aChangedBitmap);
+            const double fConvertColor(1.0 / 255.0);
+
+            if(xContent->HasPalette())
+            {
+                const sal_uInt16 nCount(xContent->GetPaletteEntryCount());
+
+                for(sal_uInt16 b(0); b < nCount; b++)
+                {
+                    const BitmapColor& rCol = xContent->GetPaletteColor(b);
+                    const basegfx::BColor aBSource(
+                        rCol.GetRed() * fConvertColor,
+                        rCol.GetGreen() * fConvertColor,
+                        rCol.GetBlue() * fConvertColor);
+                    const basegfx::BColor aBDest(rBColorModifierStack.getModifiedColor(aBSource));
+                    xContent->SetPaletteColor(b, BitmapColor(Color(aBDest)));
+                }
+            }
+            else if(ScanlineFormat::N24BitTcBgr == xContent->GetScanlineFormat())
+            {
+                for(tools::Long y(0), nHeight(xContent->Height()); y < nHeight; y++)
+                {
+                    Scanline pScan = xContent->GetScanline(y);
+
+                    for(tools::Long x(0), nWidth(xContent->Width()); x < nWidth; x++)
+                    {
+                        const basegfx::BColor aBSource(
+                            *(pScan + 2)* fConvertColor,
+                            *(pScan + 1) * fConvertColor,
+                            *pScan * fConvertColor);
+                        const basegfx::BColor aBDest(rBColorModifierStack.getModifiedColor(aBSource));
+                        *pScan++ = static_cast< sal_uInt8 >(aBDest.getBlue() * 255.0);
+                        *pScan++ = static_cast< sal_uInt8 >(aBDest.getGreen() * 255.0);
+                        *pScan++ = static_cast< sal_uInt8 >(aBDest.getRed() * 255.0);
+                    }
+                }
+            }
+            else if(ScanlineFormat::N24BitTcRgb == xContent->GetScanlineFormat())
+            {
+                for(tools::Long y(0), nHeight(xContent->Height()); y < nHeight; y++)
+                {
+                    Scanline pScan = xContent->GetScanline(y);
+
+                    for(tools::Long x(0), nWidth(xContent->Width()); x < nWidth; x++)
+                    {
+                        const basegfx::BColor aBSource(
+                            *pScan * fConvertColor,
+                            *(pScan + 1) * fConvertColor,
+                            *(pScan + 2) * fConvertColor);
+                        const basegfx::BColor aBDest(rBColorModifierStack.getModifiedColor(aBSource));
+                        *pScan++ = static_cast< sal_uInt8 >(aBDest.getRed() * 255.0);
+                        *pScan++ = static_cast< sal_uInt8 >(aBDest.getGreen() * 255.0);
+                        *pScan++ = static_cast< sal_uInt8 >(aBDest.getBlue() * 255.0);
+                    }
+                }
+            }
+            else
+            {
+                for(tools::Long y(0), nHeight(xContent->Height()); y < nHeight; y++)
+                {
+                    Scanline pScanline = xContent->GetScanline( y );
+                    for(tools::Long x(0), nWidth(xContent->Width()); x < nWidth; x++)
+                    {
+                        const BitmapColor aBMCol(xContent->GetColor(y, x));
+                        const basegfx::BColor aBSource(
+                            static_cast<double>(aBMCol.GetRed()) * fConvertColor,
+                            static_cast<double>(aBMCol.GetGreen()) * fConvertColor,
+                            static_cast<double>(aBMCol.GetBlue()) * fConvertColor);
+                        const basegfx::BColor aBDest(rBColorModifierStack.getModifiedColor(aBSource));
+
+                        xContent->SetPixelOnData(pScanline, x, BitmapColor(Color(aBDest)));
+                    }
+                }
+            }
         }
     }
+
+    if (nullptr != pHolder)
+    {
+        // create new BufferedData_ModifiedBitmapEx (should be nullptr here)
+        if (nullptr == pBufferedData_ModifiedBitmapEx)
+        {
+            pBufferedData_ModifiedBitmapEx = std::make_shared<BufferedData_ModifiedBitmapEx>(aChangedBitmap, rBColorModifierStack);
+        }
+
+        // register it, evtl. it's a new one
+        basegfx::SystemDependentData_SharedPtr r2(pBufferedData_ModifiedBitmapEx);
+        const_cast<basegfx::SystemDependentDataHolder*>(pHolder)->addOrReplaceSystemDependentData(r2);
+    }
+
+    // return result
+    if(IsAlpha())
+        return BitmapEx(aChangedBitmap, GetAlphaMask());
+    return BitmapEx(aChangedBitmap);
 }
 
-BitmapEx createBlendFrame(
+BitmapEx createAlphaBlendFrame(
     const Size& rSize,
     sal_uInt8 nAlpha,
-    Color aColorTopLeft,
-    Color aColorBottomRight)
+    const Color& rColorTopLeft,
+    const Color& rColorBottomRight)
 {
     const sal_uInt32 nW(rSize.Width());
     const sal_uInt32 nH(rSize.Height());
 
     if(nW || nH)
     {
-        Color aColTopRight(aColorTopLeft);
-        Color aColBottomLeft(aColorTopLeft);
+        Color aColTopRight(rColorTopLeft);
+        Color aColBottomLeft(rColorTopLeft);
         const sal_uInt32 nDE(nW + nH);
 
-        aColTopRight.Merge(aColorBottomRight, 255 - sal_uInt8((nW * 255) / nDE));
-        aColBottomLeft.Merge(aColorBottomRight, 255 - sal_uInt8((nH * 255) / nDE));
+        aColTopRight.Merge(rColorBottomRight, 255 - sal_uInt8((nW * 255) / nDE));
+        aColBottomLeft.Merge(rColorBottomRight, 255 - sal_uInt8((nH * 255) / nDE));
 
-        return createBlendFrame(rSize, nAlpha, aColorTopLeft, aColTopRight, aColorBottomRight, aColBottomLeft);
+        return createAlphaBlendFrame(rSize, nAlpha, rColorTopLeft, aColTopRight, rColorBottomRight, aColBottomLeft);
     }
 
     return BitmapEx();
 }
 
-BitmapEx createBlendFrame(
+BitmapEx createAlphaBlendFrame(
     const Size& rSize,
     sal_uInt8 nAlpha,
-    Color aColorTopLeft,
-    Color aColorTopRight,
-    Color aColorBottomRight,
-    Color aColorBottomLeft)
+    const Color& rColorTopLeft,
+    const Color& rColorTopRight,
+    const Color& rColorBottomRight,
+    const Color& rColorBottomLeft)
 {
-    // FIXME the call sites are actually passing in transparency
-    nAlpha = 255 - nAlpha;
-    BlendFrameCache* pBlendFrameCache = ImplGetBlendFrameCache();
+    ImplSVData* pSVData = ImplGetSVData();
+    if (!pSVData->mpBlendFrameCache)
+    {
+        pSVData->mpBlendFrameCache.reset(new BlendFrameCache(rSize, nAlpha, rColorTopLeft, rColorTopRight, rColorBottomRight, rColorBottomLeft));
+        return pSVData->mpBlendFrameCache->m_aLastResult;
+    }
+
+    BlendFrameCache* pBlendFrameCache = pSVData->mpBlendFrameCache.get();
 
     if(pBlendFrameCache->m_aLastSize == rSize
         && pBlendFrameCache->m_nLastAlpha == nAlpha
-        && pBlendFrameCache->m_aLastColorTopLeft == aColorTopLeft
-        && pBlendFrameCache->m_aLastColorTopRight == aColorTopRight
-        && pBlendFrameCache->m_aLastColorBottomRight == aColorBottomRight
-        && pBlendFrameCache->m_aLastColorBottomLeft == aColorBottomLeft)
+        && pBlendFrameCache->m_aLastColorTopLeft == rColorTopLeft
+        && pBlendFrameCache->m_aLastColorTopRight == rColorTopRight
+        && pBlendFrameCache->m_aLastColorBottomRight == rColorBottomRight
+        && pBlendFrameCache->m_aLastColorBottomLeft == rColorBottomLeft)
     {
         return pBlendFrameCache->m_aLastResult;
     }
 
-    pBlendFrameCache->m_aLastSize = rSize;
-    pBlendFrameCache->m_nLastAlpha = nAlpha;
-    pBlendFrameCache->m_aLastColorTopLeft = aColorTopLeft;
-    pBlendFrameCache->m_aLastColorTopRight = aColorTopRight;
-    pBlendFrameCache->m_aLastColorBottomRight = aColorBottomRight;
-    pBlendFrameCache->m_aLastColorBottomLeft = aColorBottomLeft;
-    pBlendFrameCache->m_aLastResult.Clear();
-
-    const tools::Long nW(rSize.Width());
-    const tools::Long nH(rSize.Height());
-
-    if(nW > 1 && nH > 1)
-    {
-        sal_uInt8 aEraseTrans(0xff);
-        Bitmap aContent(rSize, vcl::PixelFormat::N24_BPP);
-        AlphaMask aAlpha(rSize, &aEraseTrans);
-
-        aContent.Erase(COL_BLACK);
-
-        BitmapScopedWriteAccess pContent(aContent);
-        BitmapScopedWriteAccess pAlpha(aAlpha);
-
-        if(pContent && pAlpha)
-        {
-            tools::Long x(0);
-            tools::Long y(0);
-            Scanline pScanContent = pContent->GetScanline( 0 );
-            Scanline pScanAlpha = pContent->GetScanline( 0 );
-
-            // x == 0, y == 0, top-left corner
-            pContent->SetPixelOnData(pScanContent, 0, aColorTopLeft);
-            pAlpha->SetPixelOnData(pScanAlpha, 0, BitmapColor(nAlpha));
-
-            // y == 0, top line left to right
-            for(x = 1; x < nW - 1; x++)
-            {
-                Color aMix(aColorTopLeft);
-
-                aMix.Merge(aColorTopRight, 255 - sal_uInt8((x * 255) / nW));
-                pContent->SetPixelOnData(pScanContent, x, aMix);
-                pAlpha->SetPixelOnData(pScanAlpha, x, BitmapColor(nAlpha));
-            }
-
-            // x == nW - 1, y == 0, top-right corner
-            // #i123690# Caution! When nW is 1, x == nW is possible (!)
-            if(x < nW)
-            {
-                pContent->SetPixelOnData(pScanContent, x, aColorTopRight);
-                pAlpha->SetPixelOnData(pScanAlpha, x, BitmapColor(nAlpha));
-            }
-
-            // x == 0 and nW - 1, left and right line top-down
-            for(y = 1; y < nH - 1; y++)
-            {
-                pScanContent = pContent->GetScanline( y );
-                pScanAlpha = pContent->GetScanline( y );
-                Color aMixA(aColorTopLeft);
-
-                aMixA.Merge(aColorBottomLeft, 255 - sal_uInt8((y * 255) / nH));
-                pContent->SetPixelOnData(pScanContent, 0, aMixA);
-                pAlpha->SetPixelOnData(pScanAlpha, 0, BitmapColor(nAlpha));
-
-                // #i123690# Caution! When nW is 1, x == nW is possible (!)
-                if(x < nW)
-                {
-                    Color aMixB(aColorTopRight);
-
-                    aMixB.Merge(aColorBottomRight, 255 - sal_uInt8((y * 255) / nH));
-                    pContent->SetPixelOnData(pScanContent, x, aMixB);
-                    pAlpha->SetPixelOnData(pScanAlpha, x, BitmapColor(nAlpha));
-                }
-            }
-
-            // #i123690# Caution! When nH is 1, y == nH is possible (!)
-            if(y < nH)
-            {
-                // x == 0, y == nH - 1, bottom-left corner
-                pContent->SetPixelOnData(pScanContent, 0, aColorBottomLeft);
-                pAlpha->SetPixelOnData(pScanAlpha, 0, BitmapColor(nAlpha));
-
-                // y == nH - 1, bottom line left to right
-                for(x = 1; x < nW - 1; x++)
-                {
-                    Color aMix(aColorBottomLeft);
-
-                    aMix.Merge(aColorBottomRight, 255 - sal_uInt8(((x - 0)* 255) / nW));
-                    pContent->SetPixelOnData(pScanContent, x, aMix);
-                    pAlpha->SetPixelOnData(pScanAlpha, x, BitmapColor(nAlpha));
-                }
-
-                // x == nW - 1, y == nH - 1, bottom-right corner
-                // #i123690# Caution! When nW is 1, x == nW is possible (!)
-                if(x < nW)
-                {
-                    pContent->SetPixelOnData(pScanContent, x, aColorBottomRight);
-                    pAlpha->SetPixelOnData(pScanAlpha, x, BitmapColor(nAlpha));
-                }
-            }
-
-            pContent.reset();
-            pAlpha.reset();
-
-            pBlendFrameCache->m_aLastResult = BitmapEx(aContent, aAlpha);
-        }
-    }
-
-    return pBlendFrameCache->m_aLastResult;
+    pSVData->mpBlendFrameCache.reset(new BlendFrameCache(rSize, nAlpha, rColorTopLeft, rColorTopRight, rColorBottomRight, rColorBottomLeft));
+    return pSVData->mpBlendFrameCache->m_aLastResult;
 }
 
 void BitmapEx::Replace(const Color& rSearchColor,
@@ -1253,7 +1137,6 @@ tools::Polygon  BitmapEx::GetContour( bool bContourEdgeDetect,
                                     const tools::Rectangle* pWorkRectPixel )
 {
     Bitmap aWorkBmp;
-    tools::Polygon aRetPoly;
     tools::Rectangle   aWorkRect( Point(), maBitmap.GetSizePixel() );
 
     if( pWorkRectPixel )
@@ -1261,84 +1144,95 @@ tools::Polygon  BitmapEx::GetContour( bool bContourEdgeDetect,
 
     aWorkRect.Normalize();
 
-    if( ( aWorkRect.GetWidth() > 4 ) && ( aWorkRect.GetHeight() > 4 ) )
+    if ((aWorkRect.GetWidth() <= 4) || (aWorkRect.GetHeight() <= 4))
+        return tools::Polygon();
+
+    // if the flag is set, we need to detect edges
+    if( bContourEdgeDetect )
+        aWorkBmp = DetectEdges( maBitmap );
+    else
+        aWorkBmp = maBitmap;
+
+    BitmapScopedReadAccess pAcc(aWorkBmp);
+
+    const tools::Long nWidth = pAcc ? pAcc->Width() : 0;
+    const tools::Long nHeight = pAcc ? pAcc->Height() : 0;
+
+    if (!pAcc || !nWidth || !nHeight)
+        return tools::Polygon();
+
+    // tdf#161833 treat semi-transparent pixels as opaque
+    // Limiting the contour wrapping polygon to only opaque pixels
+    // causes clipping of any shadows or other semi-transparent
+    // areas in the image. So, instead of testing for fully opaque
+    // pixels, treat pixels that are not fully transparent as opaque.
+    // tdf#162062 only apply fix for tdf#161833 if there is a palette
+    const BitmapColor   aTransparent = pAcc->GetBestMatchingColor( pAcc->HasPalette() ? COL_ALPHA_TRANSPARENT : COL_ALPHA_OPAQUE );
+
+    std::unique_ptr<Point[]> pPoints1;
+    std::unique_ptr<Point[]> pPoints2;
+
+    pPoints1.reset(new Point[ nHeight ]);
+    pPoints2.reset(new Point[ nHeight ]);
+
+    const tools::Long nStartX1 = aWorkRect.Left() + 1;
+    const tools::Long nEndX1 = aWorkRect.Right();
+    const tools::Long nStartX2 = nEndX1 - 1;
+    const tools::Long nStartY1 = aWorkRect.Top() + 1;
+    const tools::Long nEndY1 = aWorkRect.Bottom();
+
+    sal_uInt16 nPolyPos = 0;
+
+    for (tools::Long nY = nStartY1; nY < nEndY1; nY++)
     {
-        // if the flag is set, we need to detect edges
-        if( bContourEdgeDetect )
-            aWorkBmp = DetectEdges( maBitmap );
-        else
-            aWorkBmp = maBitmap;
+        tools::Long nX = nStartX1;
+        Scanline pScanline = pAcc->GetScanline( nY );
 
-        BitmapScopedReadAccess pAcc(aWorkBmp);
-
-        const tools::Long nWidth = pAcc ? pAcc->Width() : 0;
-        const tools::Long nHeight = pAcc ? pAcc->Height() : 0;
-
-        if (pAcc && nWidth && nHeight)
+        // scan row from left to right
+        while( nX < nEndX1 )
         {
-            const Size&         rPrefSize = aWorkBmp.GetPrefSize();
-            const double        fFactorX = static_cast<double>(rPrefSize.Width()) / nWidth;
-            const double        fFactorY = static_cast<double>(rPrefSize.Height()) / nHeight;
-            const tools::Long          nStartX1 = aWorkRect.Left() + 1;
-            const tools::Long          nEndX1 = aWorkRect.Right();
-            const tools::Long          nStartX2 = nEndX1 - 1;
-            const tools::Long          nStartY1 = aWorkRect.Top() + 1;
-            const tools::Long          nEndY1 = aWorkRect.Bottom();
-            std::unique_ptr<Point[]> pPoints1;
-            std::unique_ptr<Point[]> pPoints2;
-            tools::Long                nX, nY;
-            sal_uInt16              nPolyPos = 0;
-            const BitmapColor   aBlack = pAcc->GetBestMatchingColor( COL_BLACK );
-
-            pPoints1.reset(new Point[ nHeight ]);
-            pPoints2.reset(new Point[ nHeight ]);
-
-            for ( nY = nStartY1; nY < nEndY1; nY++ )
+            if( aTransparent != pAcc->GetPixelFromData( pScanline, nX ) )
             {
-                nX = nStartX1;
-                Scanline pScanline = pAcc->GetScanline( nY );
+                pPoints1[ nPolyPos ] = Point( nX, nY );
+                nX = nStartX2;
 
-                // scan row from left to right
-                while( nX < nEndX1 )
+                // this loop always breaks eventually as there is at least one pixel
+                while( true )
                 {
-                    if( aBlack == pAcc->GetPixelFromData( pScanline, nX ) )
+                    if( aTransparent != pAcc->GetPixelFromData( pScanline, nX ) )
                     {
-                        pPoints1[ nPolyPos ] = Point( nX, nY );
-                        nX = nStartX2;
-
-                        // this loop always breaks eventually as there is at least one pixel
-                        while( true )
-                        {
-                            if( aBlack == pAcc->GetPixelFromData( pScanline, nX ) )
-                            {
-                                pPoints2[ nPolyPos ] = Point( nX, nY );
-                                break;
-                            }
-
-                            nX--;
-                        }
-
-                        nPolyPos++;
+                        pPoints2[ nPolyPos ] = Point( nX, nY );
                         break;
                     }
 
-                    nX++;
+                    nX--;
                 }
+
+                nPolyPos++;
+                break;
             }
 
-            const sal_uInt16 nNewSize1 = nPolyPos << 1;
-
-            aRetPoly = tools::Polygon( nPolyPos, pPoints1.get() );
-            aRetPoly.SetSize( nNewSize1 + 1 );
-            aRetPoly[ nNewSize1 ] = aRetPoly[ 0 ];
-
-            for( sal_uInt16 j = nPolyPos; nPolyPos < nNewSize1; )
-                aRetPoly[ nPolyPos++ ] = pPoints2[ --j ];
-
-            if( ( fFactorX != 0. ) && ( fFactorY != 0. ) )
-                aRetPoly.Scale( fFactorX, fFactorY );
+            nX++;
         }
     }
+
+    const sal_uInt16 nNewSize1 = nPolyPos << 1;
+
+    tools::Polygon aRetPoly(nPolyPos, pPoints1.get());
+    aRetPoly.SetSize( nNewSize1 + 1 );
+    aRetPoly[ nNewSize1 ] = aRetPoly[ 0 ];
+
+    for( sal_uInt16 j = nPolyPos; nPolyPos < nNewSize1; )
+    {
+        aRetPoly[ nPolyPos++ ] = pPoints2[ --j ];
+    }
+
+    Size const& rPrefSize = aWorkBmp.GetPrefSize();
+    const double fFactorX = static_cast<double>(rPrefSize.Width()) / nWidth;
+    const double fFactorY = static_cast<double>(rPrefSize.Height()) / nHeight;
+
+    if( ( fFactorX != 0. ) && ( fFactorY != 0. ) )
+        aRetPoly.Scale( fFactorX, fFactorY );
 
     return aRetPoly;
 }
@@ -1352,11 +1246,11 @@ void BitmapEx::ChangeColorAlpha( sal_uInt8 cIndexFrom, sal_Int8 nAlphaTo )
     if ( !(pReadAccess.get() && pAlphaWriteAccess.get()) )
         return;
 
-    for ( tools::Long nY = 0; nY < pReadAccess->Height(); nY++ )
+    for ( tools::Long nY = 0, nHeight = pReadAccess->Height(); nY < nHeight; nY++ )
     {
         Scanline pScanline = pAlphaWriteAccess->GetScanline( nY );
         Scanline pScanlineRead = pReadAccess->GetScanline( nY );
-        for ( tools::Long nX = 0; nX < pReadAccess->Width(); nX++ )
+        for ( tools::Long nX = 0, nWidth = pReadAccess->Width(); nX < nWidth; nX++ )
         {
             const sal_uInt8 cIndex = pReadAccess->GetPixelFromData( pScanlineRead, nX ).GetIndex();
             if ( cIndex == cIndexFrom )
@@ -1423,12 +1317,64 @@ void BitmapEx::AdjustTransparency(sal_uInt8 cTrans)
     *this = BitmapEx( GetBitmap(), aAlpha );
 }
 
+void BitmapEx::BlendAlpha(sal_uInt8 nAlpha)
+{
+    AlphaMask   aAlpha;
+
+    if (!IsAlpha())
+    {
+        sal_uInt8 cTrans = 255 - nAlpha;
+        aAlpha = AlphaMask(GetSizePixel(), &cTrans);
+    }
+    else
+    {
+        aAlpha = GetAlphaMask();
+        BitmapScopedWriteAccess pA(aAlpha);
+        assert(pA);
+
+        if( !pA )
+            return;
+
+        const tools::Long  nWidth = pA->Width(), nHeight = pA->Height();
+
+        if( pA->GetScanlineFormat() == ScanlineFormat::N8BitPal )
+        {
+            for( tools::Long nY = 0; nY < nHeight; nY++ )
+            {
+                Scanline pAScan = pA->GetScanline( nY );
+
+                for( tools::Long nX = 0; nX < nWidth; nX++ )
+                {
+                    sal_uInt8 nNewAlpha = static_cast<sal_Int32>(nAlpha) * (*pAScan) / 255;
+                    *pAScan++ = nNewAlpha;
+                }
+            }
+        }
+        else
+        {
+            BitmapColor aAlphaValue( 0 );
+
+            for( tools::Long nY = 0; nY < nHeight; nY++ )
+            {
+                Scanline pScanline = pA->GetScanline( nY );
+                for( tools::Long nX = 0; nX < nWidth; nX++ )
+                {
+                    sal_uInt8 nNewAlpha = static_cast<sal_Int32>(nAlpha) * (pA->GetIndexFromData( pScanline, nX )) / 255;
+                    aAlphaValue.SetIndex( nNewAlpha );
+                    pA->SetPixelOnData( pScanline, nX, aAlphaValue );
+                }
+            }
+        }
+    }
+    *this = BitmapEx( GetBitmap(), aAlpha );
+}
+
 void BitmapEx::CombineMaskOr(Color maskColor, sal_uInt8 nTol)
 {
     AlphaMask aNewMask = maBitmap.CreateAlphaMask( maskColor, nTol );
     if ( IsAlpha() )
          aNewMask.AlphaCombineOr( maAlphaMask );
-    maAlphaMask = aNewMask;
+    maAlphaMask = std::move(aNewMask);
 }
 
 /**
@@ -1488,18 +1434,14 @@ void  BitmapEx::GetColorModel(css::uno::Sequence< sal_Int32 >& rRGBPalette,
 
 void BitmapEx::DumpAsPng(const char* pFileName) const
 {
-    OUString sPath;
+    OUString sPath(u"file:///tmp/bitmap.png"_ustr);
     if (pFileName)
     {
         sPath = OUString::fromUtf8(pFileName);
     }
-    else if (const char* pEnv = std::getenv("VCL_DUMP_BMP_PATH"))
+    else if (OUString env = o3tl::getEnvironment(u"VCL_DUMP_BMP_PATH"_ustr); !env.isEmpty())
     {
-        sPath = OUString::fromUtf8(pEnv);
-    }
-    else
-    {
-        sPath = "file:///tmp/bitmap.png";
+        sPath = env;
     }
     SvFileStream aStream(sPath, StreamMode::STD_READWRITE | StreamMode::TRUNC);
     assert(aStream.good());

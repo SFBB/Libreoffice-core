@@ -166,7 +166,7 @@ void GalleryObjTest::TestThemeURLCase()
     CPPUNIT_ASSERT_MESSAGE("Could not create gallery instance", (pGallery != nullptr));
 
     // Mixed Case Theme Name
-    constexpr OUString myThemeName = u"AddyTestTheme"_ustr;
+    static constexpr OUString myThemeName = u"AddyTestTheme"_ustr;
 
     CPPUNIT_ASSERT_MESSAGE("Could not create theme", pGallery->CreateTheme(myThemeName));
     CPPUNIT_ASSERT_MESSAGE("Could not find theme", pGallery->HasTheme(myThemeName));
@@ -243,7 +243,7 @@ void GalleryObjTest::TestGalleryThemeEntry()
 
     std::unique_ptr<Gallery> pGallery(new Gallery(aGalleryURL));
     CPPUNIT_ASSERT_MESSAGE("Could not create gallery instance", (pGallery != nullptr));
-    constexpr OUString myThemeName = u"addytesttheme"_ustr;
+    static constexpr OUString myThemeName = u"addytesttheme"_ustr;
     CPPUNIT_ASSERT_MESSAGE("Could not create theme", pGallery->CreateTheme(myThemeName));
     CPPUNIT_ASSERT_MESSAGE("Could not find theme", pGallery->HasTheme(myThemeName));
 
@@ -306,10 +306,12 @@ void GalleryObjTest::TestInsertGalleryObject()
 
     // Insert Objects Into Theme
     GalleryTheme* pGalleryTheme = pGallery->AcquireTheme(myThemeName, aListener);
+    CPPUNIT_ASSERT(pGalleryTheme);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Object count inconsistent", sal_uInt32(0),
                                  pGalleryTheme->GetObjectCount());
 
-    std::vector<OUString> imageList{ "galtest1.png", "galtest2.png", "galtest3.jpg" };
+    std::vector<OUString> imageList{ u"galtest1.png"_ustr, u"galtest2.png"_ustr,
+                                     u"galtest3.jpg"_ustr };
 
     for (sal_uInt32 i = 0; i < static_cast<sal_uInt32>(imageList.size()); i++)
     {
@@ -351,10 +353,12 @@ void GalleryObjTest::TestRemoveGalleryObject()
 
     // Insert Objects Into Theme
     GalleryTheme* pGalleryTheme = pGallery->AcquireTheme(myThemeName, aListener);
+    CPPUNIT_ASSERT(pGalleryTheme);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Object count inconsistent", sal_uInt32(0),
                                  pGalleryTheme->GetObjectCount());
 
-    std::vector<OUString> imageList{ "galtest1.png", "galtest2.png", "galtest3.jpg" };
+    std::vector<OUString> imageList{ u"galtest1.png"_ustr, u"galtest2.png"_ustr,
+                                     u"galtest3.jpg"_ustr };
 
     for (sal_uInt32 i = 0; i < static_cast<sal_uInt32>(imageList.size()); i++)
     {
@@ -406,10 +410,11 @@ void GalleryObjTest::TestChangePositionGalleryObject()
 
     // Insert Objects Into Theme
     GalleryTheme* pGalleryTheme = pGallery->AcquireTheme(myThemeName, aListener);
+    CPPUNIT_ASSERT(pGalleryTheme);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Object count inconsistent", sal_uInt32(0),
                                  pGalleryTheme->GetObjectCount());
 
-    OUString imageList[] = { "galtest1.png", "galtest2.png", "galtest3.jpg" };
+    OUString imageList[] = { u"galtest1.png"_ustr, u"galtest2.png"_ustr, u"galtest3.jpg"_ustr };
 
     for (sal_uInt32 i = 0; i < (sizeof(imageList) / sizeof(imageList[0])); i++)
     {
@@ -458,7 +463,7 @@ void GalleryObjTest::TestGetThemeNameFromGalleryTheme()
 
     std::unique_ptr<Gallery> pGallery(new Gallery(aGalleryURL));
     CPPUNIT_ASSERT_MESSAGE("Could not create gallery instance", (pGallery != nullptr));
-    constexpr OUString myThemeName = u"addytesttheme"_ustr;
+    static constexpr OUString myThemeName = u"addytesttheme"_ustr;
     CPPUNIT_ASSERT_MESSAGE("Could not create theme", pGallery->CreateTheme(myThemeName));
     CPPUNIT_ASSERT_MESSAGE("Could not find theme", pGallery->HasTheme(myThemeName));
 
@@ -467,6 +472,7 @@ void GalleryObjTest::TestGetThemeNameFromGalleryTheme()
     SfxApplication::GetOrCreate();
 
     GalleryTheme* pGalleryTheme = pGallery->AcquireTheme(myThemeName, aListener);
+    CPPUNIT_ASSERT(pGalleryTheme);
     CPPUNIT_ASSERT_EQUAL_MESSAGE("Object count inconsistent", sal_uInt32(0),
                                  pGalleryTheme->GetObjectCount());
 

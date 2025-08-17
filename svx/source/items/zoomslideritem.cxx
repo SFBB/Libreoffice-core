@@ -118,7 +118,7 @@ bool SvxZoomSliderItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId
                     sal_Int16 nConvertedCount( 0 );
                     sal_Int32 nMinZoom( 0 ), nMaxZoom( 0 );
 
-                    for ( const auto& rProp : std::as_const(aSeq) )
+                    for (const auto& rProp : aSeq)
                     {
                         if ( rProp.Name == ZOOMSLIDER_PARAM_CURRENTZOOM )
                         {
@@ -145,7 +145,7 @@ bool SvxZoomSliderItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId
                     if ( bAllConverted && nConvertedCount == ZOOMSLIDER_PARAMS )
                     {
                         SetValue( static_cast<sal_uInt16>(nCurrentZoom) );
-                        maValues = aValues;
+                        maValues = std::move(aValues);
                         mnMinZoom = sal::static_int_cast< sal_uInt16 >( nMinZoom );
                         mnMaxZoom = sal::static_int_cast< sal_uInt16 >( nMaxZoom );
 
@@ -173,7 +173,7 @@ bool SvxZoomSliderItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId
                 css::uno::Sequence < sal_Int32 > aValues;
                 if ( rVal >>= aValues )
                 {
-                    maValues = aValues;
+                    maValues = std::move(aValues);
                     return true;
                 }
                 else

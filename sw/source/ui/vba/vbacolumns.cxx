@@ -21,22 +21,25 @@
 #include "vbacolumns.hxx"
 #include "vbacolumn.hxx"
 #include "vbatablehelper.hxx"
+#include "wordvbahelper.hxx"
+#include <unotxdoc.hxx>
 
 using namespace ::ooo::vba;
+using namespace ::ooo::vba::word;
 using namespace ::com::sun::star;
 
 namespace {
 
 class ColumnsEnumWrapper : public EnumerationHelper_BASE
 {
-    uno::WeakReference< XHelperInterface > mxParent;
+    unotools::WeakReference< SwVbaColumns > mxParent;
     uno::Reference< uno::XComponentContext > mxContext;
     uno::Reference< text::XTextTable > mxTextTable;
     uno::Reference< container::XIndexAccess > mxIndexAccess;
     sal_Int32 mnIndex;
 
 public:
-    ColumnsEnumWrapper( const uno::Reference< XHelperInterface >& xParent, uno::Reference< uno::XComponentContext > xContext, uno::Reference< text::XTextTable >  xTextTable ) : mxParent( xParent ), mxContext(std::move( xContext )), mxTextTable(std::move( xTextTable )), mnIndex( 0 )
+    ColumnsEnumWrapper( const rtl::Reference< SwVbaColumns >& xParent, uno::Reference< uno::XComponentContext > xContext, uno::Reference< text::XTextTable >  xTextTable ) : mxParent( xParent ), mxContext(std::move( xContext )), mxTextTable(std::move( xTextTable )), mnIndex( 0 )
     {
         mxIndexAccess = mxTextTable->getColumns();
     }
@@ -49,7 +52,7 @@ public:
     {
         if( mnIndex < mxIndexAccess->getCount() )
         {
-            return uno::Any( uno::Reference< word::XColumn > ( new SwVbaColumn( mxParent, mxContext, mxTextTable, mnIndex++ ) ) );
+            return uno::Any( uno::Reference< word::XColumn > ( new SwVbaColumn( mxParent.get(), mxContext, mxTextTable, mnIndex++ ) ) );
         }
         throw container::NoSuchElementException();
     }
@@ -105,11 +108,11 @@ uno::Any SAL_CALL SwVbaColumns::Item( const uno::Any& Index1, const uno::Any& /*
     {
         if( nIndex <= 0 || nIndex > getCount() )
         {
-            throw  lang::IndexOutOfBoundsException("Index out of bounds" );
+            throw  lang::IndexOutOfBoundsException(u"Index out of bounds"_ustr );
         }
         return uno::Any( uno::Reference< word::XColumn >( new SwVbaColumn( this, mxContext, mxTextTable, nIndex - 1 ) ) );
     }
-    throw  uno::RuntimeException("Index out of bounds" );
+    throw  uno::RuntimeException(u"Index out of bounds"_ustr );
 }
 
 // XEnumerationAccess
@@ -133,7 +136,7 @@ SwVbaColumns::createCollectionObject( const uno::Any& aSource )
 OUString
 SwVbaColumns::getServiceImplName()
 {
-    return "SwVbaColumns";
+    return u"SwVbaColumns"_ustr;
 }
 
 uno::Sequence<OUString>
@@ -141,7 +144,7 @@ SwVbaColumns::getServiceNames()
 {
     static uno::Sequence< OUString > const sNames
     {
-        "ooo.vba.word.Columns"
+        u"ooo.vba.word.Columns"_ustr
     };
     return sNames;
 }

@@ -27,10 +27,12 @@ $(eval $(call gb_Module_Module,sw))
 
 $(eval $(call gb_Module_add_targets,sw,\
 	CustomTarget_generated \
+    CustomTarget_source \
 	Library_msword \
 	Library_sw \
 	Library_swd \
 	Library_swui \
+    Library_sw_writerfilter \
 	UIConfig_sglobal \
 	UIConfig_sweb \
 	UIConfig_swform \
@@ -71,6 +73,7 @@ $(eval $(call gb_Module_add_slowcheck_targets,sw,\
     CppunitTest_sw_docbookexport \
     CppunitTest_sw_fodfexport \
     CppunitTest_sw_htmlexport \
+    CppunitTest_sw_htmlexport2 \
     CppunitTest_sw_xhtmlexport \
     CppunitTest_sw_htmlimport \
     CppunitTest_sw_indexingexport \
@@ -95,6 +98,12 @@ $(eval $(call gb_Module_add_slowcheck_targets,sw,\
     CppunitTest_sw_ooxmlexport18 \
     CppunitTest_sw_ooxmlexport19 \
     CppunitTest_sw_ooxmlexport20 \
+    CppunitTest_sw_ooxmlexport21 \
+    CppunitTest_sw_ooxmlexport22 \
+    CppunitTest_sw_ooxmlexport23 \
+    CppunitTest_sw_ooxmlexport24 \
+    CppunitTest_sw_ooxmlexport25 \
+    CppunitTest_sw_ooxmlexport_de_locale \
     CppunitTest_sw_ooxmlexport_template \
     CppunitTest_sw_ooxmlfieldexport \
     CppunitTest_sw_ooxmllinks \
@@ -109,9 +118,13 @@ $(eval $(call gb_Module_add_slowcheck_targets,sw,\
     CppunitTest_sw_ww8export4 \
     CppunitTest_sw_ww8import \
     CppunitTest_sw_rtfimport \
+    CppunitTest_sw_rtfimport2 \
     CppunitTest_sw_odfexport \
     CppunitTest_sw_odfexport2 \
+    CppunitTest_sw_odfexport3 \
+    CppunitTest_sw_odfexport4 \
     CppunitTest_sw_odfimport \
+    CppunitTest_sw_embedded_fonts \
     CppunitTest_sw_txtexport \
     CppunitTest_sw_txtencexport \
     CppunitTest_sw_txtimport \
@@ -124,15 +137,19 @@ $(eval $(call gb_Module_add_slowcheck_targets,sw,\
     CppunitTest_sw_uiwriter7 \
     CppunitTest_sw_uiwriter8 \
     CppunitTest_sw_uiwriter9 \
+    CppunitTest_sw_uiwriter10 \
     CppunitTest_sw_layoutwriter \
     CppunitTest_sw_layoutwriter2 \
     CppunitTest_sw_layoutwriter3 \
+    CppunitTest_sw_layoutwriter4 \
+    CppunitTest_sw_layoutwriter5 \
     CppunitTest_sw_mailmerge \
     CppunitTest_sw_mailmerge2 \
     CppunitTest_sw_globalfilter \
     CppunitTest_sw_accessible_relation_set \
     CppunitTest_sw_apiterminate \
     CppunitTest_sw_apitests \
+    CppunitTest_sw_autocorrect \
     CppunitTest_sw_unowriter \
     CppunitTest_sw_core_text \
     CppunitTest_sw_core_doc \
@@ -164,15 +181,24 @@ $(eval $(call gb_Module_add_slowcheck_targets,sw,\
     CppunitTest_sw_filter_ww8 \
     CppunitTest_sw_filter_html \
     CppunitTest_sw_filter_xml \
+    CppunitTest_sw_filter_ascii \
+    CppunitTest_sw_filter_md \
     CppunitTest_sw_a11y \
     CppunitTest_sw_core_theme \
     CppunitTest_sw_pdf_test \
+    CppunitTest_sw_writerfilter_filters_test \
+    CppunitTest_sw_writerfilter_misc \
+    CppunitTest_sw_writerfilter_dmapper \
+    CppunitTest_sw_writerfilter_ooxml \
+    CppunitTest_sw_writerfilter_rtftok \
+    CppunitTest_sw_writerfilter_filter \
 ))
 
 ifneq ($(DISABLE_GUI),TRUE)
 ifeq ($(OS),LINUX)
 $(eval $(call gb_Module_add_slowcheck_targets,sw,\
     CppunitTest_sw_tiledrendering \
+    CppunitTest_sw_tiledrendering2 \
 ))
 endif
 endif

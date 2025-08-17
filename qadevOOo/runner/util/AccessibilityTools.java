@@ -20,12 +20,12 @@ package util;
 import com.sun.star.accessibility.XAccessible;
 import com.sun.star.accessibility.XAccessibleComponent;
 import com.sun.star.accessibility.XAccessibleContext;
+import com.sun.star.awt.XVclWindowPeer;
 import com.sun.star.awt.XWindow;
 import com.sun.star.frame.XController;
 import com.sun.star.frame.XFrame;
 import com.sun.star.frame.XModel;
 import com.sun.star.uno.UnoRuntime;
-import com.sun.star.uno.XInterface;
 
 import java.io.PrintWriter;
 
@@ -36,8 +36,10 @@ public class AccessibilityTools {
 
     private AccessibilityTools() {}
 
-    public static XAccessible getAccessibleObject(XInterface xObject) {
-        return UnoRuntime.queryInterface(XAccessible.class, xObject);
+    public static XAccessible getAccessibleObject(XWindow xWindow) {
+        XVclWindowPeer xPeer = UnoRuntime.queryInterface(XVclWindowPeer.class, xWindow);
+        // see VCLXWindow::getProperty
+        return UnoRuntime.queryInterface(XAccessible.class, xPeer.getProperty("XAccessible"));
     }
 
     public static XWindow getCurrentContainerWindow(XModel xModel) {

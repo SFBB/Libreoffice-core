@@ -20,6 +20,7 @@
 #pragma once
 
 #include <sal/config.h>
+#include <unotools/weakref.hxx>
 
 #include <rtl/ref.hxx>
 
@@ -178,34 +179,6 @@ private:
     virtual void SAL_CALL
         deselectAccessibleChild( sal_Int64 nChildIndex ) override;
 
-    ///=====  XServiceInfo  ====================================================
-
-    /** Returns an identifier for the implementation of this object.
-    */
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    /** Returns a list of all supported services.
-    */
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
-    ///=====  XTypeProvider  ===================================================
-
-    /** Returns an implementation id.
-    */
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL
-        getImplementationId() override;
-
-    ///=====  XAccessibleEventBroadcaster  =====================================
-
-    /** Add listener that is informed of future changes of name,
-          description and so on events.
-    */
-    virtual void SAL_CALL
-        addAccessibleEventListener(
-            const css::uno::Reference<css::accessibility::XAccessibleEventListener>& xListener) override;
-
     //=====  XAccessibleTableSelection  ============================================
 
     virtual sal_Bool SAL_CALL selectRow( sal_Int32 row ) override;
@@ -214,10 +187,10 @@ private:
     virtual sal_Bool SAL_CALL unselectColumn( sal_Int32 column ) override;
 
     /// Return the object's current bounding box relative to the desktop.
-    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() const override;
+    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() override;
 
     /// Return the object's current bounding box relative to the parent object.
-    virtual tools::Rectangle GetBoundingBox() const override;
+    virtual tools::Rectangle GetBoundingBox() override;
 
     bool IsDefunc(sal_Int64 nParentStates);
     bool IsEditable();
@@ -250,7 +223,7 @@ private:
     bool            mbIsSpreadsheet;
     bool            mbDelIns;
     bool            mbIsFocusSend;
-    typedef std::map<ScMyAddress,css::uno::Reference< css::accessibility::XAccessible > >
+    typedef std::map<ScMyAddress, rtl::Reference<ScAccessibleCell> >
         MAP_ADDR_XACC;
     MAP_ADDR_XACC m_mapSelectionSend;
     bool          m_bFormulaMode;
@@ -267,6 +240,7 @@ private:
     OUString      m_strCurCellValue;
     ScRangeList   m_LastMarkedRanges;
     OUString      m_strOldTabName;
+    std::map<ScAddress, unotools::WeakReference<ScAccessibleCell>> m_mapCells;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -29,7 +29,6 @@
 #include <memory>
 #include <vector>
 
-class SfxItemSet;
 class SwFormatColl;
 class SwFormatAnchor;
 class SdrMarkList;
@@ -82,6 +81,7 @@ public:
 #if OSL_DEBUG_LEVEL > 0
     void SetRedlineCountDontCheck(bool bCheck) { m_Data[0]->m_bRedlineCountDontCheck=bCheck; }
 #endif
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 namespace sw {
@@ -153,7 +153,7 @@ private:
 
 class SwUndoFormatColl final : public SwUndo, private SwUndRng
 {
-    OUString maFormatName;
+    UIName maFormatName;
     std::unique_ptr<SwHistory> mpHistory;
     // for correct <ReDo(..)> and <Repeat(..)>
     // boolean, which indicates that the attributes are reset at the nodes
@@ -197,8 +197,8 @@ public:
 class SwUndoSetFlyFormat final : public SwUndo, public SwClient
 {
     SwFrameFormat* m_pFrameFormat;                  // saved FlyFormat
-    const OUString m_DerivedFromFormatName;
-    const OUString m_NewFormatName;
+    const UIName m_DerivedFromFormatName;
+    const UIName m_NewFormatName;
     std::optional<SfxItemSet> m_oItemSet;               // the re-/ set attributes
     SwNodeOffset m_nOldNode, m_nNewNode;
     sal_Int32 m_nOldContent, m_nNewContent;

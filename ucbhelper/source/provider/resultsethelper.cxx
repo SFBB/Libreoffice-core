@@ -65,7 +65,7 @@ ResultSetImplHelper::~ResultSetImplHelper()
 
 OUString SAL_CALL ResultSetImplHelper::getImplementationName()
 {
-    return "ResultSetImplHelper";
+    return u"ResultSetImplHelper"_ustr;
 }
 
 sal_Bool SAL_CALL ResultSetImplHelper::supportsService( const OUString& ServiceName )
@@ -185,11 +185,15 @@ sal_Int16 SAL_CALL ResultSetImplHelper::getCapabilities()
 void SAL_CALL ResultSetImplHelper::connectToCache(
         const uno::Reference< css::ucb::XDynamicResultSet > & xCache )
 {
-    if ( m_xListener.is() )
-        throw css::ucb::ListenerAlreadySetException();
+    {
+        std::unique_lock aGuard( m_aMutex );
 
-    if ( m_bStatic )
-        throw css::ucb::ListenerAlreadySetException();
+        if ( m_xListener.is() )
+            throw css::ucb::ListenerAlreadySetException();
+
+        if ( m_bStatic )
+            throw css::ucb::ListenerAlreadySetException();
+    }
 
     uno::Reference< css::ucb::XSourceInitialization > xTarget( xCache, uno::UNO_QUERY );
     if ( xTarget.is() )

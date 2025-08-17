@@ -33,7 +33,7 @@
 
 #include <comphelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/configpaths.hxx>
 #include <rtl/ref.hxx>
 #include <sal/log.hxx>
@@ -70,7 +70,7 @@ private:
     ConfigAccess m_aConfig;
 
     /** helper to allow us listen to the configuration without a cyclic dependency */
-    css::uno::Reference<css::container::XContainerListener> m_xConfigListener;
+    rtl::Reference<WeakContainerListener> m_xConfigListener;
 
     virtual void disposing(std::unique_lock<std::mutex>& rGuard) final override;
 
@@ -81,7 +81,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.JobExecutor";
+        return u"com.sun.star.comp.framework.JobExecutor"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -91,7 +91,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.task.JobExecutor"};
+        return {u"com.sun.star.task.JobExecutor"_ustr};
     }
 
     // task.XJobExecutor
@@ -121,13 +121,13 @@ public:
  */
 JobExecutor::JobExecutor( /*IN*/ const css::uno::Reference< css::uno::XComponentContext >& xContext )
     : m_xContext          (xContext                                                        )
-    , m_aConfig           (xContext, "/org.openoffice.Office.Jobs/Events")
+    , m_aConfig           (xContext, u"/org.openoffice.Office.Jobs/Events"_ustr)
 {
 }
 
 void JobExecutor::initListeners()
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
 
     // read the list of all currently registered events inside configuration.
@@ -166,7 +166,7 @@ JobExecutor::~JobExecutor()
 
 void JobExecutor::disposing(std::unique_lock<std::mutex>& /*rGuard*/) {
     css::uno::Reference<css::container::XContainer> notifier;
-    css::uno::Reference<css::container::XContainerListener> listener;
+    rtl::Reference<WeakContainerListener> listener;
     if (m_aConfig.getMode() != ConfigAccess::E_CLOSED) {
         notifier.set(m_aConfig.cfg(), css::uno::UNO_QUERY);
         listener = m_xConfigListener;

@@ -37,7 +37,6 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace cppu;
 
 
@@ -51,13 +50,13 @@ OIndexesHelper::OIndexesHelper(OTableHelper* _pTable,
 }
 
 
-sdbcx::ObjectType OIndexesHelper::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OIndexesHelper::createObject(const OUString& _rName)
 {
     Reference< XConnection> xConnection = m_pTable->getConnection();
     if ( !xConnection.is() )
         return nullptr;
 
-    sdbcx::ObjectType xRet;
+    rtl::Reference< OIndexHelper > xRet;
     OUString aName,aQualifier;
     sal_Int32 nLen = _rName.indexOf('.');
     if ( nLen != -1 )
@@ -123,7 +122,7 @@ Reference< XPropertySet > OIndexesHelper::createDescriptor()
 }
 
 // XAppend
-sdbcx::ObjectType OIndexesHelper::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > OIndexesHelper::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     Reference< XConnection> xConnection = m_pTable->getConnection();
     if ( !xConnection.is() )
@@ -227,7 +226,7 @@ void OIndexesHelper::dropObject(sal_Int32 /*_nPos*/,const OUString& _sElementNam
             aSchema = _sElementName.copy(0,nLen);
         aName   = _sElementName.copy(nLen+1);
 
-        OUString aSql( "DROP INDEX " );
+        OUString aSql( u"DROP INDEX "_ustr );
 
         OUString aComposedName = dbtools::composeTableName( m_pTable->getMetaData(), m_pTable, ::dbtools::EComposeRule::InIndexDefinitions, true );
         OUString sIndexName = dbtools::composeTableName( m_pTable->getMetaData(), OUString(), aSchema, aName, true, ::dbtools::EComposeRule::InIndexDefinitions );

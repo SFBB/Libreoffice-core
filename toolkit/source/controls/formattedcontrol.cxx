@@ -150,7 +150,7 @@ namespace toolkit
 
     OUString UnoControlFormattedFieldModel::getServiceName()
     {
-        return "stardiv.vcl.controlmodel.FormattedField";
+        return u"stardiv.vcl.controlmodel.FormattedField"_ustr;
     }
 
 
@@ -235,14 +235,12 @@ namespace toolkit
         }
     }
 
-
     void UnoControlFormattedFieldModel::impl_updateCachedFormatKey_nothrow(std::unique_lock<std::mutex>& rGuard)
     {
         Any aFormatKey;
         getFastPropertyValue( rGuard, aFormatKey, BASEPROPERTY_FORMATKEY );
-        m_aCachedFormat = aFormatKey;
+        m_aCachedFormat = std::move(aFormatKey);
     }
-
 
     void UnoControlFormattedFieldModel::dispose(  )
     {
@@ -360,7 +358,7 @@ namespace toolkit
         Any aReturn;
         switch (nPropId)
         {
-            case BASEPROPERTY_DEFAULTCONTROL: aReturn <<= OUString("stardiv.vcl.control.FormattedField"); break;
+            case BASEPROPERTY_DEFAULTCONTROL: aReturn <<= u"stardiv.vcl.control.FormattedField"_ustr; break;
 
             case BASEPROPERTY_TREATASNUMBER: aReturn <<= true; break;
 
@@ -396,7 +394,7 @@ namespace toolkit
 
     OUString UnoControlFormattedFieldModel::getImplementationName()
     {
-        return "stardiv.Toolkit.UnoControlFormattedFieldModel";
+        return u"stardiv.Toolkit.UnoControlFormattedFieldModel"_ustr;
     }
 
     css::uno::Sequence<OUString>
@@ -420,7 +418,7 @@ namespace toolkit
 
     OUString UnoFormattedFieldControl::GetComponentServiceName() const
     {
-        return "FormattedField";
+        return u"FormattedField"_ustr;
     }
 
 
@@ -443,7 +441,7 @@ namespace toolkit
 
     OUString UnoFormattedFieldControl::getImplementationName()
     {
-        return "stardiv.Toolkit.UnoFormattedFieldControl";
+        return u"stardiv.Toolkit.UnoFormattedFieldControl"_ustr;
     }
 
     css::uno::Sequence<OUString>

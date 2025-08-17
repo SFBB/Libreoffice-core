@@ -58,7 +58,7 @@
 using namespace com::sun::star;
 
 SwGrfNode::SwGrfNode(
-        SwNode & rWhere,
+        const SwNode & rWhere,
         const OUString& rGrfName,
         const OUString& rFltName,
         const Graphic* pGraphic,
@@ -82,7 +82,7 @@ SwGrfNode::SwGrfNode(
  *
  * @note Does not read/open the image itself!
  */
-SwGrfNode::SwGrfNode( SwNode& rWhere,
+SwGrfNode::SwGrfNode( const SwNode& rWhere,
                       std::u16string_view rGrfName,
                       const OUString& rFltName,
                       SwGrfFormatColl *pGrfColl,
@@ -252,7 +252,7 @@ bool SwGrfNode::ReRead(
     if( bReadGrf && bNewGrf )
     {
         const SwUpdateAttr aHint(0,0,0);
-        CallSwClientNotify(sw::LegacyModifyHint(&aHint, &aHint));
+        CallSwClientNotify(sw::UpdateAttrHint(&aHint, &aHint));
     }
 
     return bReadGrf;
@@ -387,7 +387,7 @@ const GraphicObject* SwGrfNode::GetReplacementGrfObj() const
     return mpReplacementGraphic.get();
 }
 
-SwGrfNode * SwNodes::MakeGrfNode( SwNode & rWhere,
+SwGrfNode * SwNodes::MakeGrfNode( const SwNode & rWhere,
                                 const OUString& rGrfName,
                                 const OUString& rFltName,
                                 const Graphic* pGraphic,
@@ -585,7 +585,7 @@ void SwGrfNode::ReleaseLink()
 
     getIDocumentLinksAdministration().GetLinkManager().Remove( mxLink.get() );
     mxLink.clear();
-    aLocalGraphic.setOriginURL("");
+    aLocalGraphic.setOriginURL(u""_ustr);
 
     // #i15508# added extra processing after getting rid of the link. Use whatever is
     // known from the formerly linked graphic to get to a state as close to a directly
@@ -788,8 +788,7 @@ GraphicAttr& SwGrfNode::GetGraphicAttr( GraphicAttr& rGA,
     rGA.SetInvert( rSet.GetInvertGrf().GetValue() );
 
     const sal_uInt16 nTrans = rSet.GetTransparencyGrf().GetValue();
-    rGA.SetAlpha( 255 - static_cast<sal_uInt8>(FRound(
-                                std::min( nTrans, sal_uInt16(100) )  * 2.55 )) );
+    rGA.SetAlpha(255 - basegfx::fround<sal_uInt8>(nTrans * 2.55));
 
     return rGA;
 }

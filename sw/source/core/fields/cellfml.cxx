@@ -109,7 +109,7 @@ double SwTableBox::GetValue( SwTableCalcPara& rCalcPara ) const
     rCalcPara.m_pBoxStack->insert( pBox );      // add
     do {        // Middle-Check-Loop, so that we can jump from here. Used so that the box pointer
                 // will be removed from stack at the end.
-        SwDoc* pDoc = GetFrameFormat()->GetDoc();
+        SwDoc& rDoc = GetFrameFormat()->GetDoc();
 
         if( const SwTableBoxFormula* pFormulaItem = GetFrameFormat()->GetItemIfSet(
                                 RES_BOXATR_FORMULA, false ) )
@@ -125,7 +125,7 @@ double SwTableBox::GetValue( SwTableCalcPara& rCalcPara ) const
                 if( !rCalcPara.IsStackOverflow() )
                 {
                     SwFrameFormat* pFormat = pBox->ClaimFrameFormat();
-                    SfxItemSetFixed<RES_BOXATR_BEGIN,RES_BOXATR_END-1> aTmp( pDoc->GetAttrPool() );
+                    SfxItemSetFixed<RES_BOXATR_BEGIN,RES_BOXATR_END-1> aTmp( rDoc.GetAttrPool() );
                     aTmp.Put( SwTableBoxValue( nRet ) );
                     if( SfxItemState::SET != pFormat->GetItemState( RES_BOXATR_FORMAT ))
                         aTmp.Put( SwTableBoxNumFormat( 0 ));
@@ -145,7 +145,7 @@ double SwTableBox::GetValue( SwTableCalcPara& rCalcPara ) const
             break;
         }
 
-        SwTextNode* pTextNd = pDoc->GetNodes()[ m_pStartNode->GetIndex() + 1 ]->GetTextNode();
+        SwTextNode* pTextNd = rDoc.GetNodes()[ m_pStartNode->GetIndex() + 1 ]->GetTextNode();
         if( !pTextNd )
             break;
 
@@ -230,7 +230,7 @@ double SwTableBox::GetValue( SwTableCalcPara& rCalcPara ) const
             sText = bOK ? sText.copy( nSttPos ) : OUString();
             sal_uInt32 nFormatIndex = GetFrameFormat()->GetTableBoxNumFormat().GetValue();
 
-            SvNumberFormatter* pNumFormatr = pDoc->GetNumberFormatter();
+            SvNumberFormatter* pNumFormatr = rDoc.GetNumberFormatter();
 
             const SvNumFormatType nFormatType = pNumFormatr->GetType( nFormatIndex );
             if( nFormatType == SvNumFormatType::TEXT )
@@ -240,12 +240,12 @@ double SwTableBox::GetValue( SwTableCalcPara& rCalcPara ) const
                     SvNumFormatType::PERCENT == nFormatType)
             {
                 sal_uInt32 nTmpFormat = 0;
-                if( pDoc->IsNumberFormat( sText, nTmpFormat, aNum ) &&
+                if( rDoc.IsNumberFormat( sText, nTmpFormat, aNum ) &&
                     SvNumFormatType::NUMBER == pNumFormatr->GetType( nTmpFormat ))
                     sText += "%";
             }
 
-            if( pDoc->IsNumberFormat( sText, nFormatIndex, aNum ))
+            if( rDoc.IsNumberFormat( sText, nFormatIndex, aNum ))
                 nRet = aNum;
             else
                 rCalcPara.m_rCalc.SetCalcError( SwCalcError::NaN ); // set for interoperability functions
@@ -290,7 +290,7 @@ bool SwTableCalcPara::CalcWithStackOverflow()
     sal_uInt16 nSaveMaxSize = m_nMaxSize;
 
     m_nMaxSize = cMAXSTACKSIZE - 5;
-    sal_uInt16 nCnt = 0;
+    int nCnt = 0;
     SwTableBoxes aStackOverflows;
     do {
         SwTableBox* pBox = const_cast<SwTableBox*>(m_pLastTableBox);
@@ -309,7 +309,7 @@ bool SwTableCalcPara::CalcWithStackOverflow()
     m_rCalc.SetCalcError( SwCalcError::NONE );
     m_pBoxStack->clear();
 
-    while( !m_rCalc.IsCalcError() && nCnt )
+    while (!m_rCalc.IsCalcError() && nCnt > 0)
     {
         aStackOverflows[ --nCnt ]->GetValue( *this );
         if( IsStackOverflow() && !CalcWithStackOverflow() )
@@ -429,7 +429,7 @@ void SwTableFormula::RelNmsToBoxNms( const SwTable& rTable, OUStringBuffer& rNew
 {
     // relative name w.r.t. box name (external presentation)
     SwNode* pNd = static_cast<SwNode*>(pPara);
-    OSL_ENSURE( pNd, "Field isn't in any TextNode" );
+    assert(pNd && "Field isn't in any TextNode");
     const SwTableBox *pBox = rTable.GetTableBox(
                     pNd->FindTableBoxStartNode()->GetIndex() );
 
@@ -462,7 +462,7 @@ void SwTableFormula::RelBoxNmsToPtr( const SwTable& rTable, OUStringBuffer& rNew
 {
     // relative name w.r.t. box name (internal presentation)
     SwNode* pNd = static_cast<SwNode*>(pPara);
-    OSL_ENSURE( pNd, "Field not placed in any Node" );
+    assert(pNd && "Field not placed in any Node");
     const SwTableBox *pBox = rTable.GetTableBox(
                     pNd->FindTableBoxStartNode()->GetIndex() );
 
@@ -494,7 +494,7 @@ void SwTableFormula::BoxNmsToRelNm( const SwTable& rTable, OUStringBuffer& rNewS
 {
     // box name (external presentation) w.r.t. relative name
     SwNode* pNd = static_cast<SwNode*>(pPara);
-    OSL_ENSURE( pNd, "Field not placed in any Node" );
+    assert(pNd && "Field not placed in any Node");
     const SwTableNode* pTableNd = pNd->FindTableNode();
 
     OUString sRefBoxNm;
@@ -502,7 +502,7 @@ void SwTableFormula::BoxNmsToRelNm( const SwTable& rTable, OUStringBuffer& rNewS
     {
         const SwTableBox *pBox = rTable.GetTableBox(
                 pNd->FindTableBoxStartNode()->GetIndex() );
-        OSL_ENSURE( pBox, "Field not placed in any Table" );
+        assert(pBox && "Field not placed in any Table");
         sRefBoxNm = pBox->GetName();
     }
 
@@ -597,6 +597,7 @@ void SwTableFormula::PtrToBoxNm( const SwTable* pTable )
     case EXTRNL_NAME:
         return;
     }
+    assert(pTable);
     m_sFormula = ScanString( fnFormula, *pTable, const_cast<void*>(static_cast<void const *>(pNd)) );
     m_eNmType = EXTRNL_NAME;
 }
@@ -622,6 +623,7 @@ void SwTableFormula::BoxNmToPtr( const SwTable* pTable )
     case INTRNL_NAME:
         return;
     }
+    assert(pTable);
     m_sFormula = ScanString( fnFormula, *pTable, const_cast<void*>(static_cast<void const *>(pNd)) );
     m_eNmType = INTRNL_NAME;
 }
@@ -644,6 +646,7 @@ void SwTableFormula::ToRelBoxNm( const SwTable* pTable )
     case REL_NAME:
         return;
     }
+    assert(pTable);
     m_sFormula = ScanString( fnFormula, *pTable, const_cast<void*>(static_cast<void const *>(pNd)) );
     m_eNmType = REL_NAME;
 }
@@ -718,7 +721,7 @@ OUString SwTableFormula::ScanString( FnScanFormula fnFormula, const SwTable& rTa
                     {
                         // then search for table
                         const SwTable* pFnd = FindTable(
-                                                *rTable.GetFrameFormat()->GetDoc(),
+                                                rTable.GetFrameFormat()->GetDoc(),
                                                 sTableNm );
                         if( pFnd )
                             pTable = pFnd;
@@ -755,7 +758,7 @@ const SwTable* SwTableFormula::FindTable( SwDoc& rDoc, std::u16string_view rNm )
         SwTableFormat* pFormat = rTableFormats[ --nFormatCnt ];
         // if we are called from Sw3Writer, a number is dependent on the format name
         SwTableBox* pFBox;
-        if ( rNm == o3tl::getToken(pFormat->GetName(), 0, 0x0a) &&
+        if ( rNm == o3tl::getToken(pFormat->GetName().toString(), 0, 0x0a) &&
             nullptr != ( pTmpTable = SwTable::FindTable( pFormat ) ) &&
             nullptr != (pFBox = pTmpTable->GetTabSortBoxes()[0] ) &&
             pFBox->GetSttNd() &&
@@ -772,8 +775,8 @@ const SwTable* SwTableFormula::FindTable( SwDoc& rDoc, std::u16string_view rNm )
 static const SwFrame* lcl_GetBoxFrame( const SwTableBox& rBox )
 {
     SwNodeIndex aIdx( *rBox.GetSttNd() );
-    SwContentNode* pCNd = aIdx.GetNodes().GoNext( &aIdx );
-    OSL_ENSURE( pCNd, "Box has no TextNode" );
+    SwContentNode* pCNd = SwNodes::GoNext(&aIdx);
+    assert(pCNd && "Box has no TextNode");
     Point aPt;      // get the first frame of the layout - table headline
     std::pair<Point, bool> const tmp(aPt, false);
     return pCNd->getLayoutFrame(pCNd->GetDoc().getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, &tmp);
@@ -849,7 +852,7 @@ static const SwTableBox* lcl_RelToBox( const SwTable& rTable,
         {
             nSttBox = SwTable::GetBoxNum( sGetName );
             pLines = &pBox->GetTabLines();
-            if( nSttBox )
+            if (nSttBox > 0)
                 --nSttBox;
 
             nSttLine = SwTable::GetBoxNum( sGetName );
@@ -969,17 +972,17 @@ void SwTableFormula::GetBoxes( const SwTableBox& rSttBox,
                                 SwSelBoxes& rBoxes )
 {
     // get all selected boxes via layout
-    const SwLayoutFrame *pStt, *pEnd;
+    const SwLayoutFrame *pStart, *pEnd;
     const SwFrame* pFrame = lcl_GetBoxFrame( rSttBox );
-    pStt = pFrame ? pFrame->GetUpper() : nullptr;
+    pStart = pFrame ? pFrame->GetUpper() : nullptr;
     pFrame = lcl_GetBoxFrame( rEndBox );
     pEnd = pFrame ? pFrame->GetUpper() : nullptr;
-    if( !pStt || !pEnd )
+    if( !pStart || !pEnd )
         return ;                        // no valid selection
 
-    GetTableSel( pStt, pEnd, rBoxes, nullptr );
+    GetTableSel( pStart, pEnd, rBoxes, nullptr );
 
-    const SwTable* pTable = pStt->FindTabFrame()->GetTable();
+    const SwTable* pTable = pStart->FindTabFrame()->GetTable();
 
     // filter headline boxes
     if( pTable->GetRowsToRepeat() <= 0 )
@@ -1001,7 +1004,7 @@ void SwTableFormula::GetBoxes( const SwTableBox& rSttBox,
         if( pTable->IsHeadline( *pLine ) )
             break;      // headline in this area!
 
-        const SwTabFrame *pStartTable = pStt->FindTabFrame();
+        const SwTabFrame *pStartTable = pStart->FindTabFrame();
         const SwTabFrame *pEndTable = pEnd->FindTabFrame();
 
         if (pStartTable == pEndTable) // no split table
@@ -1113,7 +1116,7 @@ void SwTableFormula::SplitMergeBoxNm_( const SwTable& rTable, OUStringBuffer& rN
     {
         sTableNm = pTableNmBox->copy( 0, nSeparator );
         *pTableNmBox = pTableNmBox->copy( nSeparator + 1); // remove dot
-        const SwTable* pFnd = FindTable( *rTable.GetFrameFormat()->GetDoc(), sTableNm );
+        const SwTable* pFnd = FindTable( rTable.GetFrameFormat()->GetDoc(), sTableNm );
         if( pFnd )
             pTable = pFnd;
 
@@ -1124,7 +1127,7 @@ void SwTableFormula::SplitMergeBoxNm_( const SwTable& rTable, OUStringBuffer& rN
                 if( pFnd == rTableUpd.m_aData.pDelTable )
                 {
                     if( rTableUpd.m_pTable != &rTable ) // not the current one
-                        rNewStr.append(rTableUpd.m_pTable->GetFrameFormat()->GetName() + "."); // set new table name
+                        rNewStr.append(rTableUpd.m_pTable->GetFrameFormat()->GetName().toString() + "."); // set new table name
                     rTableUpd.m_bModified = true;
                 }
                 else if( pFnd != rTableUpd.m_pTable ||
@@ -1216,7 +1219,7 @@ void SwTableFormula::SplitMergeBoxNm_( const SwTable& rTable, OUStringBuffer& rN
             if( !bInNewTable )
             {
                 rTableUpd.m_bModified = true;
-                rNewStr.append(rTableUpd.m_pTable->GetFrameFormat()->GetName() + ".");
+                rNewStr.append(rTableUpd.m_pTable->GetFrameFormat()->GetName().toString() + ".");
             }
             else if( !sTableNm.isEmpty() )
                 rNewStr.append(sTableNm + ".");
@@ -1224,7 +1227,7 @@ void SwTableFormula::SplitMergeBoxNm_( const SwTable& rTable, OUStringBuffer& rN
         else if( bInNewTable )
         {
             rTableUpd.m_bModified = true;
-            rNewStr.append(*rTableUpd.m_aData.pNewTableNm + ".");
+            rNewStr.append(rTableUpd.m_aData.pNewTableNm->toString() + ".");
         }
         else if( !sTableNm.isEmpty() )
             rNewStr.append(sTableNm + ".");

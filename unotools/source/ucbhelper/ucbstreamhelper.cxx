@@ -60,7 +60,7 @@ static std::unique_ptr<SvStream> lcl_CreateStream( const OUString& rFileName, St
                 ::ucbhelper::Content aCnt(
                     rFileName, Reference < XCommandEnvironment >(),
                     comphelper::getProcessComponentContext() );
-                aCnt.executeCommand( "delete", css::uno::Any( true ) );
+                aCnt.executeCommand( u"delete"_ustr, css::uno::Any( true ) );
             }
 
             catch ( const CommandAbortedException& )
@@ -92,7 +92,7 @@ static std::unique_ptr<SvStream> lcl_CreateStream( const OUString& rFileName, St
                 aInsertArg.ReplaceExisting = false;
                 Any aCmdArg;
                 aCmdArg <<= aInsertArg;
-                aContent.executeCommand( "insert", aCmdArg );
+                aContent.executeCommand( u"insert"_ustr, aCmdArg );
             }
 
             // it is NOT an error when the stream already exists and no truncation was desired
@@ -137,24 +137,37 @@ static std::unique_ptr<SvStream> lcl_CreateStream( const OUString& rFileName, St
     return pStream;
 }
 
-std::unique_ptr<SvStream> UcbStreamHelper::CreateStream(const OUString& rFileName, StreamMode eOpenMode, css::uno::Reference<css::awt::XWindow> xParentWin)
+std::unique_ptr<SvStream>
+UcbStreamHelper::CreateStream(const OUString& rFileName, StreamMode eOpenMode,
+                              const css::uno::Reference<css::awt::XWindow>& xParentWin,
+                              bool bUseSimpleFileAccessInteraction)
 {
     // related tdf#99312
     // create a specialized interaction handler to manages Web certificates and Web credentials when needed
     Reference< XInteractionHandler > xIH(
         css::task::InteractionHandler::createWithParent(comphelper::getProcessComponentContext(), xParentWin));
+
+    if (!bUseSimpleFileAccessInteraction)
+        return lcl_CreateStream(rFileName, eOpenMode, xIH, true /* bEnsureFileExists */);
+
     Reference<XInteractionHandler> xIHScoped(new comphelper::SimpleFileAccessInteraction(xIH));
 
     return lcl_CreateStream( rFileName, eOpenMode, xIHScoped, true /* bEnsureFileExists */ );
 }
 
-std::unique_ptr<SvStream> UcbStreamHelper::CreateStream(const OUString& rFileName, StreamMode eOpenMode,
-                                                        bool bFileExists, css::uno::Reference<css::awt::XWindow> xParentWin)
+std::unique_ptr<SvStream>
+UcbStreamHelper::CreateStream(const OUString& rFileName, StreamMode eOpenMode, bool bFileExists,
+                              const css::uno::Reference<css::awt::XWindow> & xParentWin,
+                              bool bUseSimpleFileAccessInteraction)
 {
     // related tdf#99312
     // create a specialized interaction handler to manages Web certificates and Web credentials when needed
     Reference< XInteractionHandler > xIH(
         css::task::InteractionHandler::createWithParent(comphelper::getProcessComponentContext(), xParentWin));
+
+    if (!bUseSimpleFileAccessInteraction)
+        return lcl_CreateStream(rFileName, eOpenMode, xIH, !bFileExists);
+
     Reference<XInteractionHandler> xIHScoped(new comphelper::SimpleFileAccessInteraction(xIH));
     return lcl_CreateStream( rFileName, eOpenMode, xIHScoped,!bFileExists );
 }

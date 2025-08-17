@@ -38,7 +38,7 @@
 #include <rtl/ref.hxx>
 #include <vector>
 
-// forward declaractions
+// forward declarations
 namespace xforms
 {
     class Model;
@@ -46,7 +46,6 @@ namespace xforms
 }
 namespace com::sun::star {
     namespace xml {
-        namespace xpath { class XXPathAPI; }
         namespace dom
         {
             class XNode;

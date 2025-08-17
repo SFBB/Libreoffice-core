@@ -106,7 +106,7 @@ static void lcl_GetPos(SwView const * pView,
 
 void SwView::InvalidateRulerPos()
 {
-    static sal_uInt16 aInval[] =
+    static const sal_uInt16 aInval[] =
     {
         SID_ATTR_PARA_LRSPACE, SID_RULER_BORDERS, SID_RULER_PAGE_POS,
         SID_RULER_LR_MIN_MAX, SID_ATTR_LONG_ULSPACE, SID_ATTR_LONG_LRSPACE,
@@ -339,14 +339,30 @@ void SwView::CheckVisArea()
 //                              within the new visible area.
 //  sal_uInt16 nRange           optional accurate indication of the
 //                              range by which to scroll if necessary.
+//  eScrollSizeMode             mouse selection should only bring the selected part
+//                              into the visible area, timer call needs increased size
 
-void SwView::CalcPt( Point *pPt, const tools::Rectangle &rRect,
-                     sal_uInt16 nRangeX, sal_uInt16 nRangeY)
+void SwView::CalcPt( Point *pPt, const tools::Rectangle &rRect, sal_uInt16 nRangeX,
+                    sal_uInt16 nRangeY, ScrollSizeMode eScrollSizeMode)
 {
 
     const SwTwips lMin = IsDocumentBorder() ? DOCUMENTBORDER : 0;
 
-    tools::Long nYScroll = GetYScroll();
+    const tools::Long nDefaultYScroll = GetYScroll();
+    tools::Long nYScroll;
+    if (eScrollSizeMode != ScrollSizeMode::ScrollSizeDefault)
+    {
+        nYScroll = m_aVisArea.Top() > rRect.Top() ?
+            m_aVisArea.Top() - rRect.Top() :
+            rRect.Bottom() - m_aVisArea.Bottom();
+
+        if (eScrollSizeMode == ScrollSizeMode::ScrollSizeTimer)
+             nYScroll = std::min(nDefaultYScroll, nYScroll);
+        else if (eScrollSizeMode == ScrollSizeMode::ScrollSizeTimer2)
+             nYScroll = 2 * nDefaultYScroll;
+    }
+    else
+        nYScroll = nDefaultYScroll;
     tools::Long nDesHeight = rRect.GetHeight();
     tools::Long nCurHeight = m_aVisArea.GetHeight();
     nYScroll = std::min(nYScroll, nCurHeight - nDesHeight); // If it is scarce, then scroll not too much.
@@ -391,7 +407,8 @@ bool SwView::IsScroll( const tools::Rectangle &rRect ) const
     return m_bCenterCursor || m_bTopCursor || !m_aVisArea.Contains(rRect);
 }
 
-void SwView::Scroll( const tools::Rectangle &rRect, sal_uInt16 nRangeX, sal_uInt16 nRangeY )
+void SwView::Scroll( const tools::Rectangle &rRect, sal_uInt16 nRangeX, sal_uInt16 nRangeY
+    , ScrollSizeMode eScrollSizeMode )
 {
     if ( m_aVisArea.IsEmpty() )
         return;
@@ -463,7 +480,8 @@ void SwView::Scroll( const tools::Rectangle &rRect, sal_uInt16 nRangeX, sal_uInt
 
         CalcPt( &aPt, tools::Rectangle( rRect.TopLeft(), aSize ),
                 static_cast< sal_uInt16 >((aVisSize.Width() - aSize.Width()) / 2),
-                static_cast< sal_uInt16 >((aVisSize.Height()- aSize.Height())/ 2) );
+                static_cast< sal_uInt16 >((aVisSize.Height()- aSize.Height())/ 2),
+                eScrollSizeMode );
 
         if( m_bTopCursor )
         {
@@ -480,7 +498,7 @@ void SwView::Scroll( const tools::Rectangle &rRect, sal_uInt16 nRangeX, sal_uInt
     if( !m_bCenterCursor )
     {
         Point aPt( m_aVisArea.TopLeft() );
-        CalcPt( &aPt, rRect, nRangeX, nRangeY );
+        CalcPt( &aPt, rRect, nRangeX, nRangeY, eScrollSizeMode );
 
         if( m_bTopCursor )
         {
@@ -739,7 +757,7 @@ IMPL_LINK(SwView, VertScrollHdl, weld::Scrollbar&, rScrollbar, void)
 }
 
 // Handler of the scrollbars
-void SwView::EndScrollHdl(weld::Scrollbar& rScrollbar, bool bHorizontal)
+void SwView::EndScrollHdl(const weld::Scrollbar& rScrollbar, bool bHorizontal)
 {
     if ( GetWrtShell().ActionPend() )
         return;
@@ -1163,6 +1181,7 @@ bool SwView::UpdateScrollbars()
         const tools::Long lOfst = bBorder ? 0 : DOCUMENTBORDER * 2;
         aTmpSz.AdjustWidth(lOfst ); aTmpSz.AdjustHeight(lOfst );
 
+        if (m_pVScrollbar)
         {
             const bool bVScrollVisible = m_pVScrollbar->IsScrollbarVisible(true);
             m_pVScrollbar->DocSzChgd( aTmpSz );
@@ -1170,6 +1189,7 @@ bool SwView::UpdateScrollbars()
             if ( bVScrollVisible != m_pVScrollbar->IsScrollbarVisible(true) )
                 bRet = true;
         }
+        if (m_pHScrollbar)
         {
             const bool bHScrollVisible = m_pHScrollbar->IsScrollbarVisible(true);
             m_pHScrollbar->DocSzChgd( aTmpSz );
@@ -1257,6 +1277,11 @@ bool SwView::HandleGestureZoomCommand(const CommandEvent& rCEvt)
         return true;
     }
     return true;
+}
+
+bool SwView::HandleGesturePanCommand(const CommandEvent& rCEvt)
+{
+    return m_pEditWin->HandleScrollCommand(rCEvt, m_pHScrollbar, m_pVScrollbar);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

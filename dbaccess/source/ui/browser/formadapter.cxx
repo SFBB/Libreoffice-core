@@ -59,33 +59,6 @@ SbaXFormAdapter::~SbaXFormAdapter()
 
 }
 
-Sequence< Type > SAL_CALL SbaXFormAdapter::getTypes(  )
-{
-    return ::comphelper::concatSequences(
-        SbaXFormAdapter_BASE1::getTypes(),
-        SbaXFormAdapter_BASE2::getTypes(),
-        SbaXFormAdapter_BASE3::getTypes()
-    );
-}
-
-Sequence< sal_Int8 > SAL_CALL SbaXFormAdapter::getImplementationId(  )
-{
-    return css::uno::Sequence<sal_Int8>();
-}
-
-Any SAL_CALL SbaXFormAdapter::queryInterface(const Type& _rType)
-{
-    Any aReturn = SbaXFormAdapter_BASE1::queryInterface( _rType );
-
-    if (!aReturn.hasValue())
-        aReturn = SbaXFormAdapter_BASE2::queryInterface( _rType );
-
-    if (!aReturn.hasValue())
-        aReturn = SbaXFormAdapter_BASE3::queryInterface( _rType );
-
-    return aReturn;
-}
-
 void SbaXFormAdapter::StopListening()
 {
     // log off all our multiplexers
@@ -224,7 +197,7 @@ void SbaXFormAdapter::StartListening()
     {
         Reference< css::beans::XMultiPropertySet >  xBroadcaster(m_xMainForm, UNO_QUERY);
         if (xBroadcaster.is())
-            xBroadcaster->addPropertiesChangeListener(css::uno::Sequence<OUString>{""}, &m_aPropertiesChangeListeners);
+            xBroadcaster->addPropertiesChangeListener(css::uno::Sequence<OUString>{u""_ustr}, &m_aPropertiesChangeListeners);
     }
 
     // log off ourself
@@ -297,8 +270,6 @@ sal_Int32 SAL_CALL SbaXFormAdapter::findColumn(const OUString& columnName)
         return xIface->findColumn(columnName);
 
     ::dbtools::throwInvalidColumnException( columnName, *this );
-    assert(false);
-    return 0; // Never reached
 }
 
 // css::sdbcx::XColumnsSupplier
@@ -1295,7 +1266,7 @@ void SAL_CALL SbaXFormAdapter::setFastPropertyValue(sal_Int32 nHandle, const Any
 
     if (m_nNamePropHandle == nHandle)
     {
-        if (aValue.getValueType().getTypeClass() != TypeClass_STRING)
+        if (aValue.getValueTypeClass() != TypeClass_STRING)
         {
             throw css::lang::IllegalArgumentException();
         }
@@ -1424,7 +1395,7 @@ void SAL_CALL SbaXFormAdapter::addPropertiesChangeListener(const Sequence< OUStr
     {
         Reference< css::beans::XMultiPropertySet >  xBroadcaster(m_xMainForm, UNO_QUERY);
         if (xBroadcaster.is())
-            xBroadcaster->addPropertiesChangeListener(Sequence< OUString>{""}, &m_aPropertiesChangeListeners);
+            xBroadcaster->addPropertiesChangeListener(Sequence< OUString>{u""_ustr}, &m_aPropertiesChangeListeners);
     }
 }
 
@@ -1595,7 +1566,7 @@ void SAL_CALL SbaXFormAdapter::removeResetListener(const css::uno::Reference< cs
 void SbaXFormAdapter::implInsert(const Any& aElement, sal_Int32 nIndex, const OUString* pNewElName)
 {
     // extract the form component
-    if (aElement.getValueType().getTypeClass() != TypeClass_INTERFACE)
+    if (aElement.getValueTypeClass() != TypeClass_INTERFACE)
     {
         throw css::lang::IllegalArgumentException();
     }
@@ -1759,7 +1730,7 @@ void SAL_CALL SbaXFormAdapter::replaceByIndex(sal_Int32 _rIndex, const Any& Elem
         throw css::lang::IndexOutOfBoundsException();
 
     // extract the form component
-    if (Element.getValueType().getTypeClass() != TypeClass_INTERFACE)
+    if (Element.getValueTypeClass() != TypeClass_INTERFACE)
     {
         throw css::lang::IllegalArgumentException();
     }

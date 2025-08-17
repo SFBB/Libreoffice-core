@@ -21,6 +21,8 @@
 
 #include <cassert>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <utility>
 #include <vector>
 #include <set>
@@ -51,7 +53,6 @@
 #include <sal/types.h>
 #include <salhelper/thread.hxx>
 #include <comphelper/diagnose_ex.hxx>
-#include <comphelper/backupfilehelper.hxx>
 #include <o3tl/string_view.hxx>
 
 #include "additions.hxx"
@@ -154,7 +155,16 @@ public:
         rtl::Reference< WriteThread > * reference, Components & components,
         OUString url, Data const & data);
 
-    void flush() { delay_.set(); }
+    void trigger() {
+        std::scoped_lock l(triggerMutex_);
+        triggered_ = true;
+        triggerCondition_.notify_all();
+    }
+
+    void flush() {
+        delayOrTerminate_.set();
+        trigger();
+    }
 
 private:
     virtual ~WriteThread() override {}
@@ -165,8 +175,10 @@ private:
     Components & components_;
     OUString url_;
     Data const & data_;
-    osl::Condition delay_;
-    std::shared_ptr<osl::Mutex> lock_;
+    osl::Condition delayOrTerminate_;
+    std::mutex triggerMutex_;
+    std::condition_variable triggerCondition_;
+    bool triggered_;
 };
 
 Components::WriteThread::WriteThread(
@@ -174,26 +186,39 @@ Components::WriteThread::WriteThread(
     OUString url, Data const & data):
     Thread("configmgrWriter"), reference_(reference), components_(components),
     url_(std::move(url)), data_(data),
-    lock_( lock() )
+    triggered_(false)
 {
     assert(reference != nullptr);
 }
 
 void Components::WriteThread::execute() {
-    delay_.wait(std::chrono::seconds(1)); // must not throw; result_error is harmless and ignored
-    osl::MutexGuard g(*lock_); // must not throw
-    try {
-        try {
-            writeModFile(components_, url_, data_);
-        } catch (css::uno::RuntimeException &) {
-            // Ignore write errors, instead of aborting:
-            TOOLS_WARN_EXCEPTION("configmgr", "error writing modifications");
+    for (;;) {
+        {
+            std::unique_lock l(triggerMutex_);
+            while (!triggered_) {
+                triggerCondition_.wait(l);
+            }
+            triggered_ = false;
         }
-    } catch (...) {
+        delayOrTerminate_.wait(std::chrono::seconds(1));
+            // must not throw; result_error is harmless and ignored
+        try {
+            try {
+                writeModFile(components_, url_, data_);
+            } catch (css::uno::RuntimeException &) {
+                // Ignore write errors, instead of aborting:
+                TOOLS_WARN_EXCEPTION("configmgr", "error writing modifications");
+            }
+        } catch (...) {
+            reference_->clear();
+            throw;
+        }
+        if (!delayOrTerminate_.check()) {
+            continue;
+        }
         reference_->clear();
-        throw;
+        break;
     }
-    reference_->clear();
 }
 
 Components & Components::getSingleton(
@@ -285,6 +310,7 @@ void Components::writeModifications() {
                 &writeThread_, *this, modificationFileUrl_, data_);
             writeThread_->launch();
         }
+        writeThread_->trigger();
         break;
     case ModificationTarget::Dconf:
 #if ENABLE_DCONF
@@ -389,8 +415,8 @@ void Components::removeExtensionXcuFile(
 
 void Components::insertModificationXcuFile(
     OUString const & fileUri,
-    std::set< OUString > const & includedPaths,
-    std::set< OUString > const & excludedPaths,
+    css::uno::Sequence< OUString > const & includedPaths,
+    css::uno::Sequence< OUString > const & excludedPaths,
     Modifications * modifications)
 {
     assert(modifications != nullptr);
@@ -466,7 +492,11 @@ Components::Components(
 {
     assert(context.is());
     lock_ = lock();
-    OUString conf(expand("${CONFIGURATION_LAYERS}"));
+
+    bool staticize = !!getenv("SAL_CONFIG_STATICIZE");
+    Node::setStaticizedFlag(staticize);
+
+    OUString conf(expand(u"${CONFIGURATION_LAYERS}"_ustr));
     int layer = 0;
     for (sal_Int32 i = 0;;) {
         while (i != conf.getLength() && conf[i] == ' ') {
@@ -477,8 +507,8 @@ Components::Components(
         }
         if (modificationTarget_ != ModificationTarget::None) {
             throw css::uno::RuntimeException(
-                "CONFIGURATION_LAYERS: modification target layer followed by"
-                " further layers");
+                u"CONFIGURATION_LAYERS: modification target layer followed by"
+                " further layers"_ustr);
         }
         sal_Int32 c = i;
         for (;; ++c) {
@@ -500,31 +530,31 @@ Components::Components(
             sal_uInt32 nStartTime = osl_getGlobalTimer();
             parseXcsXcuLayer(layer, url);
             SAL_INFO("configmgr", "parseXcsXcuLayer() took " << (osl_getGlobalTimer() - nStartTime) << " ms");
-            layer += 2; //TODO: overflow
+            layer += 2;
         } else if (type == "bundledext") {
             parseXcsXcuIniLayer(layer, url, false);
-            layer += 2; //TODO: overflow
+            layer += 2;
         } else if (type == "sharedext") {
             if (sharedExtensionLayer_ != -1) {
                 throw css::uno::RuntimeException(
-                    "CONFIGURATION_LAYERS: multiple \"sharedext\" layers");
+                    u"CONFIGURATION_LAYERS: multiple \"sharedext\" layers"_ustr);
             }
             sharedExtensionLayer_ = layer;
             parseXcsXcuIniLayer(layer, url, true);
-            layer += 2; //TODO: overflow
+            layer += 2;
         } else if (type == "userext") {
             if (userExtensionLayer_ != -1) {
                 throw css::uno::RuntimeException(
-                    "CONFIGURATION_LAYERS: multiple \"userext\" layers");
+                    u"CONFIGURATION_LAYERS: multiple \"userext\" layers"_ustr);
             }
             userExtensionLayer_ = layer;
             parseXcsXcuIniLayer(layer, url, true);
-            layer += 2; //TODO: overflow
+            layer += 2;
         } else if (type == "res") {
             sal_uInt32 nStartTime = osl_getGlobalTimer();
             parseResLayer(layer, url);
             SAL_INFO("configmgr", "parseResLayer() took " << (osl_getGlobalTimer() - nStartTime) << " ms");
-            ++layer; //TODO: overflow
+            ++layer;
 #if ENABLE_DCONF
         } else if (type == "dconf") {
             if (url == "!") {
@@ -537,7 +567,7 @@ Components::Components(
                     "CONFIGURATION_LAYERS: unknown \"dconf\" kind \"" + url
                     + "\"");
             }
-            ++layer; //TODO: overflow
+            ++layer;
 #endif
 #if defined(_WIN32)
         } else if (type == "winreg") {
@@ -557,7 +587,7 @@ Components::Components(
                 if (!getenv("SAL_CONFIG_WINREG_RETAIN_TMP"))
                     osl::File::remove(aTempFileURL);
             }
-            ++layer; //TODO: overflow
+            ++layer;
 #endif
         } else if (type == "user") {
             bool write;
@@ -570,7 +600,7 @@ Components::Components(
             }
             if (url.isEmpty()) {
                 throw css::uno::RuntimeException(
-                    "CONFIGURATION_LAYERS: empty \"user\" URL");
+                    u"CONFIGURATION_LAYERS: empty \"user\" URL"_ustr);
             }
             bool ignore = false;
 #if ENABLE_DCONF
@@ -596,45 +626,20 @@ Components::Components(
                 }
                 parseModificationLayer(write ? Data::NO_LAYER : layer, url);
             }
-            ++layer; //TODO: overflow
+            ++layer;
         } else {
             throw css::uno::RuntimeException(
                 "CONFIGURATION_LAYERS: unknown layer type \"" + type + "\"");
         }
         i = n;
     }
+
+    Node::setStaticizedFlag(false);
 }
 
 Components::~Components()
 {
-    // get flag if _exit was already called which is a sign to not secure user config.
-    // this is used for win only currently where calling _exit() unfortunately still
-    // calls destructors (what is not wanted). May be needed for other systems, too
-    // (unknown yet) but can do no harm
-    const bool bExitWasCalled(comphelper::BackupFileHelper::getExitWasCalled());
-
-#ifndef _WIN32
-    // we can add a SAL_WARN here for other systems where the destructor gets called after
-    // an _exit() call. Still safe - the getExitWasCalled() is used, but a hint that _exit
-    // behaves different on a system
-    SAL_WARN_IF(bExitWasCalled, "configmgr", "Components::~Components() called after _exit() call");
-#endif
-
-    if (bExitWasCalled)
-    {
-        // do not write, re-join threads
-        osl::MutexGuard g(*lock_);
-
-        if (writeThread_.is())
-        {
-            writeThread_->join();
-        }
-    }
-    else
-    {
-        // write changes
-        flushModifications();
-    }
+    flushModifications();
 
     for (auto const& rootElem : roots_)
     {
@@ -819,8 +824,8 @@ void Components::parseXcdFiles(int layer, OUString const & url) {
 
 void Components::parseXcsXcuLayer(int layer, OUString const & url) {
     parseXcdFiles(layer, url);
-    parseFiles(layer, ".xcs", &parseXcsFile, url + "/schema", false);
-    parseFiles(layer + 1, ".xcu", &parseXcuFile, url + "/data", false);
+    parseFiles(layer, u".xcs"_ustr, &parseXcsFile, url + "/schema", false);
+    parseFiles(layer + 1, u".xcu"_ustr, &parseXcuFile, url + "/data", false);
 }
 
 void Components::parseXcsXcuIniLayer(
@@ -860,7 +865,7 @@ void Components::parseXcsXcuIniLayer(
 void Components::parseResLayer(int layer, std::u16string_view url) {
     OUString resUrl(OUString::Concat(url) + "/res");
     parseXcdFiles(layer, resUrl);
-    parseFiles(layer, ".xcu", &parseXcuFile, resUrl, false);
+    parseFiles(layer, u".xcu"_ustr, &parseXcuFile, resUrl, false);
 }
 
 void Components::parseModificationLayer(int layer, OUString const & url) {
@@ -873,10 +878,10 @@ void Components::parseModificationLayer(int layer, OUString const & url) {
         // longer relevant, probably OOo 4; also see hack for xsi namespace in
         // xmlreader::XmlReader::registerNamespaceIri):
         parseFiles(
-            layer, ".xcu", &parseXcuFile,
+            layer, u".xcu"_ustr, &parseXcuFile,
             expand(
-                "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap")
-                ":UserInstallation}/user/registry/data"),
+                u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap")
+                ":UserInstallation}/user/registry/data"_ustr),
             false);
     }
 }
@@ -885,7 +890,7 @@ int Components::getExtensionLayer(bool shared) const {
     int layer = shared ? sharedExtensionLayer_ : userExtensionLayer_;
     if (layer == -1) {
         throw css::uno::RuntimeException(
-            "insert extension xcs/xcu file into undefined layer");
+            u"insert extension xcs/xcu file into undefined layer"_ustr);
     }
     return layer;
 }

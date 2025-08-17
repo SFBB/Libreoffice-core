@@ -52,7 +52,6 @@ namespace pcr
     using namespace ::com::sun::star::table;
     using namespace ::com::sun::star::form;
     using namespace ::com::sun::star::lang;
-    using namespace ::com::sun::star::i18n;
     using namespace ::com::sun::star::form::binding;
 
     namespace
@@ -496,7 +495,6 @@ namespace pcr
         return bDoes;
     }
 
-
     Reference< XValueBinding > CellBindingHelper::getCurrentBinding( ) const
     {
         Reference< XValueBinding > xBinding;
@@ -506,16 +504,13 @@ namespace pcr
         return xBinding;
     }
 
-
     Reference< XListEntrySource > CellBindingHelper::getCurrentListSource( ) const
     {
-        Reference< XListEntrySource > xSource;
         Reference< XListEntrySink > xSink( m_xControlModel, UNO_QUERY );
-        if ( xSink.is() )
-            xSource = xSink->getListEntrySource();
-        return xSource;
+        if (xSink.is())
+            return xSink->getListEntrySource();
+        return Reference<XListEntrySource>();
     }
-
 
     void CellBindingHelper::setBinding( const Reference< XValueBinding >& _rxBinding )
     {
@@ -525,7 +520,6 @@ namespace pcr
             xBindable->setValueBinding( _rxBinding );
     }
 
-
     void CellBindingHelper::setListSource( const Reference< XListEntrySource >& _rxSource )
     {
         Reference< XListEntrySink > xSink( m_xControlModel, UNO_QUERY );
@@ -533,7 +527,6 @@ namespace pcr
         if ( xSink.is() )
             xSink->setListEntrySource( _rxSource );
     }
-
 
 }   // namespace pcr
 

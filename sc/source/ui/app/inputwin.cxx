@@ -144,7 +144,7 @@ SfxChildWinInfo ScInputWindowWrapper::GetInfo() const
 }
 
 
-static VclPtr<ScInputBarGroup> lcl_chooseRuntimeImpl( vcl::Window* pParent, const SfxBindings* pBind )
+static ScTabViewShell* lcl_chooseRuntimeImpl( const SfxBindings* pBind )
 {
     ScTabViewShell* pViewSh = nullptr;
     SfxDispatcher* pDisp = pBind->GetDispatcher();
@@ -154,15 +154,14 @@ static VclPtr<ScInputBarGroup> lcl_chooseRuntimeImpl( vcl::Window* pParent, cons
         if ( pViewFrm )
             pViewSh = dynamic_cast<ScTabViewShell*>( pViewFrm->GetViewShell()  );
     }
-
-    return VclPtr<ScInputBarGroup>::Create( pParent, pViewSh );
+    return pViewSh;
 }
 
 ScInputWindow::ScInputWindow( vcl::Window* pParent, const SfxBindings* pBind ) :
         // With WB_CLIPCHILDREN otherwise we get flickering
         ToolBox         ( pParent, WinBits(WB_CLIPCHILDREN | WB_BORDER | WB_NOSHADOW) ),
-        aWndPos         ( !comphelper::LibreOfficeKit::isActive() ? VclPtr<ScPosWnd>::Create(this) : nullptr ),
-        mxTextWindow    ( lcl_chooseRuntimeImpl( this, pBind ) ),
+        aWndPos         ( VclPtr<ScPosWnd>::Create( this, lcl_chooseRuntimeImpl(pBind)) ),
+        mxTextWindow    ( VclPtr<ScInputBarGroup>::Create( this, lcl_chooseRuntimeImpl(pBind)) ),
         pInputHdl       ( nullptr ),
         mpViewShell     ( nullptr ),
         mnMaxY          (0),
@@ -250,7 +249,7 @@ ScInputWindow::ScInputWindow( vcl::Window* pParent, const SfxBindings* pBind ) :
         aWndPos   ->Show();
     mxTextWindow->Show();
 
-    pInputHdl = SC_MOD()->GetInputHdl( pViewSh, false ); // use own handler even if ref-handler is set
+    pInputHdl = ScModule::get()->GetInputHdl( pViewSh, false ); // use own handler even if ref-handler is set
     if (pInputHdl)
         pInputHdl->SetInputWindow( this );
 
@@ -337,7 +336,7 @@ void ScInputWindow::SetInputHandler( ScInputHandler* pNew )
 
 void ScInputWindow::Select()
 {
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     ToolBox::Select();
 
     ToolBoxItemId curItemId = GetCurItemId();
@@ -380,7 +379,7 @@ void ScInputWindow::Select()
 
 void ScInputWindow::StartFormula()
 {
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     mxTextWindow->StartEditEngine();
     if ( pScMod->IsEditMode() ) // Isn't if e.g. protected
     {
@@ -414,7 +413,7 @@ void ScInputWindow::StartFormula()
                     nEndPos = nLen;
                     break;
                 default:
-                    mxTextWindow->SetTextString("=", true);
+                    mxTextWindow->SetTextString(u"="_ustr, true);
                     break;
             }
         }
@@ -428,9 +427,9 @@ void ScInputWindow::StartFormula()
                 TextGrabFocus();
                 if (pViewSh && !pViewSh->isLOKDesktop())
                 {
-                    nStartPara = nEndPara = pView->GetEditEngine()->GetParagraphCount() ?
-                        (pView->GetEditEngine()->GetParagraphCount() - 1) : 0;
-                    nStartPos = nEndPos = pView->GetEditEngine()->GetTextLen(nStartPara);
+                    nStartPara = nEndPara = pView->getEditEngine().GetParagraphCount() ?
+                        (pView->getEditEngine().GetParagraphCount() - 1) : 0;
+                    nStartPos = nEndPos = pView->getEditEngine().GetTextLen(nStartPara);
                 }
             }
             pView->SetSelection(ESelection(nStartPara, nStartPos, nEndPara, nEndPos));
@@ -531,7 +530,7 @@ void ScInputWindow::SetFuncString( const OUString& rString, bool bDoEdit )
     EnableButtons( pViewFrm && !pViewFrm->GetChildWindow( SID_OPENDLG_FUNCTION ) );
     mxTextWindow->StartEditEngine();
 
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     if ( !pScMod->IsEditMode() )
         return;
 
@@ -547,7 +546,7 @@ void ScInputWindow::SetFuncString( const OUString& rString, bool bDoEdit )
     if ( nLen > 0 )
     {
         nLen--;
-        pView->SetSelection( ESelection( 0, nLen, 0, nLen ) );
+        pView->SetSelection(ESelection(0, nLen));
     }
 
     pScMod->InputChanged(pView);
@@ -559,8 +558,7 @@ void ScInputWindow::SetFuncString( const OUString& rString, bool bDoEdit )
 
 void ScInputWindow::SetPosString( const OUString& rStr )
 {
-    if (!comphelper::LibreOfficeKit::isActive())
-        aWndPos->SetPos( rStr );
+    aWndPos->SetPos( rStr );
 }
 
 void ScInputWindow::SetTextString( const OUString& rString, bool bKitUpdate )
@@ -669,16 +667,13 @@ void ScInputWindow::SwitchToTextWin()
     // used for shift-ctrl-F2
 
     mxTextWindow->StartEditEngine();
-    if ( SC_MOD()->IsEditMode() )
+    if (ScModule::get()->IsEditMode())
     {
         mxTextWindow->TextGrabFocus();
         EditView* pView = mxTextWindow->GetEditView();
         if (pView)
         {
-            sal_Int32 nPara =  pView->GetEditEngine()->GetParagraphCount() ? ( pView->GetEditEngine()->GetParagraphCount() - 1 ) : 0;
-            sal_Int32 nLen = pView->GetEditEngine()->GetTextLen( nPara );
-            ESelection aSel( nPara, nLen, nPara, nLen );
-            pView->SetSelection( aSel ); // set cursor to end of text
+            pView->SetSelection(ESelection::AtEnd()); // set cursor to end of text
         }
     }
 }
@@ -799,9 +794,11 @@ void ScInputWindow::MouseButtonDown( const MouseEvent& rMEvt )
             // I'd prefer to leave at least a single column header and a
             // row but I don't know how to get that value in pixels.
             // Use TOOLBOX_WINDOW_HEIGHT for the moment
-            ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell();
-            mnMaxY = GetOutputSizePixel().Height() + (pViewSh->GetGridHeight(SC_SPLIT_TOP)
-                   + pViewSh->GetGridHeight(SC_SPLIT_BOTTOM)) - TOOLBOX_WINDOW_HEIGHT;
+            if (ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell())
+            {
+                mnMaxY = GetOutputSizePixel().Height() + (pViewSh->GetGridHeight(SC_SPLIT_TOP)
+                       + pViewSh->GetGridHeight(SC_SPLIT_BOTTOM)) - TOOLBOX_WINDOW_HEIGHT;
+            }
         }
     }
 
@@ -821,7 +818,7 @@ void ScInputWindow::MouseButtonUp( const MouseEvent& rMEvt )
 
 void ScInputWindow::AutoSum( bool& bRangeFinder, bool& bSubTotal, OpCode eCode )
 {
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     ScTabViewShell* pViewSh = dynamic_cast<ScTabViewShell*>( SfxViewShell::Current()  );
     if ( !pViewSh )
         return;
@@ -857,11 +854,11 @@ void ScInputWindow::AutoSum( bool& bRangeFinder, bool& bSubTotal, OpCode eCode )
 }
 
 ScInputBarGroup::ScInputBarGroup(vcl::Window* pParent, ScTabViewShell* pViewSh)
-    : InterimItemWindow(pParent, "modules/scalc/ui/inputbar.ui", "InputBar", true, reinterpret_cast<sal_uInt64>(pViewSh))
-    , mxBackground(m_xBuilder->weld_container("background"))
+    : InterimItemWindow(pParent, u"modules/scalc/ui/inputbar.ui"_ustr, u"InputBar"_ustr, true, reinterpret_cast<sal_uInt64>(pViewSh))
+    , mxBackground(m_xBuilder->weld_container(u"background"_ustr))
     , mxTextWndGroup(new ScTextWndGroup(*this, pViewSh))
-    , mxButtonUp(m_xBuilder->weld_button("up"))
-    , mxButtonDown(m_xBuilder->weld_button("down"))
+    , mxButtonUp(m_xBuilder->weld_button(u"up"_ustr))
+    , mxButtonDown(m_xBuilder->weld_button(u"down"_ustr))
 {
     InitControlBase(m_xContainer.get());
 
@@ -898,7 +895,7 @@ void ScInputBarGroup::SetBackgrounds()
     SetBackground(rStyleSettings.GetFaceColor());
     // match to bg used in ScTextWnd::SetDrawingArea to the margin area is drawn with the
     // same desired bg
-    mxBackground->set_background(rStyleSettings.GetWindowColor());
+    mxBackground->set_background(rStyleSettings.GetFieldColor());
 }
 
 void ScInputBarGroup::DataChanged(const DataChangedEvent& rDCEvt)
@@ -1071,8 +1068,8 @@ IMPL_LINK_NOARG(ScInputWindow, DropdownClickHdl, ToolBox *, void)
     {
         tools::Rectangle aRect(GetItemRect(SID_INPUT_SUM));
         weld::Window* pPopupParent = weld::GetPopupParent(*this, aRect);
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "modules/scalc/ui/autosum.ui"));
-        std::unique_ptr<weld::Menu> xPopMenu(xBuilder->weld_menu("menu"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"modules/scalc/ui/autosum.ui"_ustr));
+        std::unique_ptr<weld::Menu> xPopMenu(xBuilder->weld_menu(u"menu"_ustr));
         MenuHdl(xPopMenu->popup_at_rect(pPopupParent, aRect));
     }
 }
@@ -1103,7 +1100,7 @@ void ScInputBarGroup::NumLinesChanged()
     TriggerToolboxLayout();
 
     // Restore focus to input line(s) if necessary
-    ScInputHandler* pHdl = SC_MOD()->GetInputHdl();
+    ScInputHandler* pHdl = ScModule::get()->GetInputHdl();
     if ( pHdl && pHdl->IsTopMode() )
         mxTextWndGroup->TextGrabFocus();
 }
@@ -1126,7 +1123,7 @@ void ScInputBarGroup::TriggerToolboxLayout()
 
     if ( xPropSet.is() )
     {
-        css::uno::Any aValue = xPropSet->getPropertyValue("LayoutManager");
+        css::uno::Any aValue = xPropSet->getPropertyValue(u"LayoutManager"_ustr);
         aValue >>= xLayoutManager;
     }
 
@@ -1163,15 +1160,15 @@ constexpr tools::Long gnBorderHeight = INPUTLINE_INSET_MARGIN + 1;
 
 ScTextWndGroup::ScTextWndGroup(ScInputBarGroup& rParent, ScTabViewShell* pViewSh)
     : mxTextWnd(new ScTextWnd(*this, pViewSh))
-    , mxScrollWin(rParent.GetBuilder().weld_scrolled_window("scrolledwindow", true))
-    , mxTextWndWin(new weld::CustomWeld(rParent.GetBuilder(), "sc_input_window", *mxTextWnd))
+    , mxScrollWin(rParent.GetBuilder().weld_scrolled_window(u"scrolledwindow"_ustr, true))
+    , mxTextWndWin(new weld::CustomWeld(rParent.GetBuilder(), u"sc_input_window"_ustr, *mxTextWnd))
     , mrParent(rParent)
 {
-    mxScrollWin->connect_vadjustment_changed(LINK(this, ScTextWndGroup, Impl_ScrollHdl));
+    mxScrollWin->connect_vadjustment_value_changed(LINK(this, ScTextWndGroup, Impl_ScrollHdl));
     if (ScTabViewShell* pActiveViewShell = comphelper::LibreOfficeKit::isActive() ?
             dynamic_cast<ScTabViewShell*>(SfxViewShell::Current()) : nullptr)
     {
-        pActiveViewShell->LOKSendFormulabarUpdate(nullptr, "", ESelection());
+        pActiveViewShell->LOKSendFormulabarUpdate(nullptr, u""_ustr, ESelection());
     }
 }
 
@@ -1312,7 +1309,7 @@ IMPL_LINK_NOARG(ScTextWndGroup, Impl_ScrollHdl, weld::ScrolledWindow&, void)
 void ScTextWnd::Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect )
 {
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-    Color aBgColor = rStyleSettings.GetWindowColor();
+    Color aBgColor = rStyleSettings.GetFieldColor();
     rRenderContext.SetBackground(aBgColor);
 
     // tdf#137713 we rely on GetEditView creating it if it doesn't already exist so
@@ -1406,7 +1403,7 @@ void ScTextWnd::Resize()
 
 int ScTextWnd::GetEditEngTxtHeight() const
 {
-    return m_xEditView ? m_xEditView->GetEditEngine()->GetTextHeight() : 0;
+    return m_xEditView ? m_xEditView->getEditEngine().GetTextHeight() : 0;
 }
 
 void ScTextWnd::SetScrollBarRange()
@@ -1434,8 +1431,7 @@ void ScTextWnd::SetScrollBarRange()
     nPageSize = std::min(nPageSize, nUpper);
 
     weld::ScrolledWindow& rVBar = mrGroupBar.GetScrollWin();
-    rVBar.vadjustment_configure(nCurrentDocPos, 0, nUpper,
-                                nStepIncrement, nPageIncrement, nPageSize);
+    rVBar.vadjustment_configure(nCurrentDocPos, nUpper, nStepIncrement, nPageIncrement, nPageSize);
 }
 
 void ScTextWnd::DoScroll()
@@ -1524,7 +1520,7 @@ static void lcl_ModifyRTLDefaults( SfxItemSet& rSet )
 static void lcl_ModifyRTLVisArea( EditView* pEditView )
 {
     tools::Rectangle aVisArea = pEditView->GetVisArea();
-    Size aPaper = pEditView->GetEditEngine()->GetPaperSize();
+    Size aPaper = pEditView->getEditEngine().GetPaperSize();
     tools::Long nDiff = aPaper.Width() - aVisArea.Right();
     aVisArea.AdjustLeft(nDiff );
     aVisArea.AdjustRight(nDiff );
@@ -1537,12 +1533,12 @@ void ScTextWnd::InitEditEngine()
     ScDocShell* pDocSh = nullptr;
     if ( mpViewShell )
     {
-        pDocSh = mpViewShell->GetViewData().GetDocShell();
+        pDocSh = &mpViewShell->GetViewData().GetDocShell();
         ScDocument& rDoc = mpViewShell->GetViewData().GetDocument();
-        pNew = std::make_unique<ScFieldEditEngine>(&rDoc, rDoc.GetEnginePool(), rDoc.GetEditPool());
+        pNew = std::make_unique<ScFieldEditEngine>(&rDoc, rDoc.GetEditEnginePool());
     }
     else
-        pNew = std::make_unique<ScFieldEditEngine>(nullptr, EditEngine::CreatePool().get(), nullptr, true);
+        pNew = std::make_unique<ScFieldEditEngine>(nullptr, EditEngine::CreatePool().get(), true);
     pNew->SetExecuteURL( false );
     m_xEditEngine = std::move(pNew);
 
@@ -1556,20 +1552,20 @@ void ScTextWnd::InitEditEngine()
     UpdateAutoCorrFlag();
 
     {
-        auto pSet = std::make_unique<SfxItemSet>( m_xEditEngine->GetEmptyItemSet() );
-        EditEngine::SetFontInfoInItemSet( *pSet, aTextFont );
-        lcl_ExtendEditFontAttribs( *pSet );
+        SfxItemSet aSet( m_xEditEngine->GetEmptyItemSet() );
+        EditEngine::SetFontInfoInItemSet( aSet, aTextFont );
+        lcl_ExtendEditFontAttribs( aSet );
         // turn off script spacing to match DrawText output
-        pSet->Put( SvxScriptSpaceItem( false, EE_PARA_ASIANCJKSPACING ) );
+        aSet.Put( SvxScriptSpaceItem( false, EE_PARA_ASIANCJKSPACING ) );
         if ( bIsRTL )
-            lcl_ModifyRTLDefaults( *pSet );
-        static_cast<ScEditEngineDefaulter*>(m_xEditEngine.get())->SetDefaults( std::move(pSet) );
+            lcl_ModifyRTLDefaults( aSet );
+        static_cast<ScEditEngineDefaulter*>(m_xEditEngine.get())->SetDefaults( std::move(aSet) );
     }
 
     // If the Cell contains URLFields, they need to be taken over into the entry row,
     // or else the position is not correct anymore
     bool bFilled = false;
-    ScInputHandler* pHdl = SC_MOD()->GetInputHdl();
+    ScInputHandler* pHdl = ScModule::get()->GetInputHdl();
     if ( pHdl ) //! Test if it's the right InputHdl?
         bFilled = pHdl->GetTextAndFields(static_cast<ScEditEngineDefaulter&>(*m_xEditEngine));
 
@@ -1581,7 +1577,7 @@ void ScTextWnd::InitEditEngine()
     else
         static_cast<ScEditEngineDefaulter*>(m_xEditEngine.get())->SetTextCurrentDefaults(aString); // At least the right text then
 
-    m_xEditView = std::make_unique<EditView>(m_xEditEngine.get(), nullptr);
+    m_xEditView = std::make_unique<EditView>(*m_xEditEngine, nullptr);
 
     // we get cursor, selection etc. messages from the VCL/window layer
     // otherwise these are injected into the document causing confusion.
@@ -1591,7 +1587,7 @@ void ScTextWnd::InitEditEngine()
     m_xEditView->SetInsertMode(bIsInsertMode);
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-    Color aBgColor = rStyleSettings.GetWindowColor();
+    Color aBgColor = rStyleSettings.GetFieldColor();
     m_xEditView->SetBackgroundColor(aBgColor);
 
     if (pAcc)
@@ -1658,7 +1654,7 @@ bool ScTextWnd::MouseMove( const MouseEvent& rMEvt )
 
 bool ScTextWnd::CanFocus() const
 {
-    return SC_MOD()->IsEditMode();
+    return ScModule::get()->IsEditMode();
 }
 
 void ScTextWnd::UpdateFocus()
@@ -1703,10 +1699,10 @@ bool ScTextWnd::MouseButtonUp( const MouseEvent& rMEvt )
                  Application::GetSettings().GetMouseSettings().GetMiddleButtonAction() == MouseMiddleButtonAction::PasteSelection )
         {
             //  EditView may have pasted from selection
-            SC_MOD()->InputChanged( m_xEditView.get() );
+            ScModule::get()->InputChanged(m_xEditView.get());
         }
         else
-            SC_MOD()->InputSelection( m_xEditView.get() );
+            ScModule::get()->InputSelection(m_xEditView.get());
     }
     return bRet;
 }
@@ -1719,7 +1715,7 @@ bool ScTextWnd::Command( const CommandEvent& rCEvt )
     CommandEventId nCommand = rCEvt.GetCommand();
     if (m_xEditView)
     {
-        ScModule* pScMod = SC_MOD();
+        ScModule* pScMod = ScModule::get();
         ScTabViewShell* pStartViewSh = ScTabViewShell::GetActiveViewShell();
 
         // don't modify the font defaults here - the right defaults are
@@ -1751,12 +1747,14 @@ bool ScTextWnd::Command( const CommandEvent& rCEvt )
         }
         else if ( nCommand == CommandEventId::EndExtTextInput )
         {
+            ScModule* mod = ScModule::get();
             if (bFormulaMode)
             {
-                ScInputHandler* pHdl = SC_MOD()->GetInputHdl();
+                ScInputHandler* pHdl = mod->GetInputHdl();
                 if (pHdl)
                     pHdl->InputCommand(rCEvt);
             }
+            mod->InputChanged(m_xEditView.get());
         }
         else if ( nCommand == CommandEventId::CursorPos )
         {
@@ -1790,7 +1788,7 @@ bool ScTextWnd::Command( const CommandEvent& rCEvt )
                 if (IsMouseCaptured())
                     ReleaseMouse();
                 UpdateFocus();
-                pViewFrm->GetDispatcher()->ExecutePopup("formulabar", &mrGroupBar.GetVclParent(), &aPos);
+                pViewFrm->GetDispatcher()->ExecutePopup(u"formulabar"_ustr, &mrGroupBar.GetVclParent(), &aPos);
             }
         }
         else if ( nCommand == CommandEventId::Wheel )
@@ -1810,7 +1808,7 @@ bool ScTextWnd::Command( const CommandEvent& rCEvt )
             //pass alt press/release to parent impl
         }
         else
-            SC_MOD()->InputChanged( m_xEditView.get() );
+            ScModule::get()->InputChanged(m_xEditView.get());
     }
 
     if ( comphelper::LibreOfficeKit::isActive() && nCommand == CommandEventId::CursorPos )
@@ -1823,6 +1821,10 @@ bool ScTextWnd::Command( const CommandEvent& rCEvt )
 
         if (!m_xEditView)
             return true;
+
+        ScModule* mod = ScModule::get();
+        // if we focus input after "Accept Formula" command, we need to notify to get it working
+        mod->InputChanged(m_xEditView.get());
 
         // information about paragraph is in additional data
         // information about position in a paragraph in a Mouse Pos
@@ -1838,7 +1840,7 @@ bool ScTextWnd::Command( const CommandEvent& rCEvt )
         nPosEnd = m_xEditView->GetPosNoField(nParaEnd, aSelectionStartEnd.Y());
 
         m_xEditView->SetSelection(ESelection(nParaStart, nPosStart, nParaEnd, nPosEnd));
-        SC_MOD()->InputSelection( m_xEditView.get() );
+        mod->InputSelection(m_xEditView.get());
 
         bConsumed = true;
     }
@@ -1864,7 +1866,7 @@ bool ScTextWnd::KeyInput(const KeyEvent& rKEvt)
 {
     bool bUsed = true;
     bInputMode = true;
-    if (!SC_MOD()->InputKeyEvent( rKEvt ))
+    if (!ScModule::get()->InputKeyEvent(rKEvt))
     {
         bUsed = false;
         ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell();
@@ -1918,7 +1920,7 @@ IMPL_LINK_NOARG(ScTextWnd, ModifyHdl, LinkParamNone*, void)
 {
     if (m_xEditView && !bInputMode)
     {
-        ScInputHandler* pHdl = SC_MOD()->GetInputHdl();
+        ScInputHandler* pHdl = ScModule::get()->GetInputHdl();
 
         //  Use the InputHandler's InOwnChange flag to prevent calling InputChanged
         //  while an InputHandler method is modifying the EditEngine content
@@ -1945,7 +1947,7 @@ void ScTextWnd::StopEditEngine( bool bAll )
         if (!maAccTextDatas.empty())
             maAccTextDatas.back()->EndEdit();
 
-        ScModule* pScMod = SC_MOD();
+        ScModule* pScMod = ScModule::get();
 
         if (!bAll)
             pScMod->InputSelection( m_xEditView.get() );
@@ -2103,10 +2105,10 @@ void ScTextWnd::MakeDialogEditView()
     if ( pViewSh )
     {
         ScDocument& rDoc = pViewSh->GetViewData().GetDocument();
-        pNew = std::make_unique<ScFieldEditEngine>(&rDoc, rDoc.GetEnginePool(), rDoc.GetEditPool());
+        pNew = std::make_unique<ScFieldEditEngine>(&rDoc, rDoc.GetEditEnginePool());
     }
     else
-        pNew = std::make_unique<ScFieldEditEngine>(nullptr, EditEngine::CreatePool().get(), nullptr, true);
+        pNew = std::make_unique<ScFieldEditEngine>(nullptr, EditEngine::CreatePool().get(), true);
     pNew->SetExecuteURL( false );
     m_xEditEngine = std::move(pNew);
 
@@ -2114,19 +2116,19 @@ void ScTextWnd::MakeDialogEditView()
     m_xEditEngine->SetWordDelimiters( m_xEditEngine->GetWordDelimiters() + "=" );
     m_xEditEngine->SetPaperSize( Size( bIsRTL ? USHRT_MAX : THESIZE, 300 ) );
 
-    auto pSet = std::make_unique<SfxItemSet>( m_xEditEngine->GetEmptyItemSet() );
-    EditEngine::SetFontInfoInItemSet( *pSet, aTextFont );
-    lcl_ExtendEditFontAttribs( *pSet );
+    SfxItemSet aSet( m_xEditEngine->GetEmptyItemSet() );
+    EditEngine::SetFontInfoInItemSet( aSet, aTextFont );
+    lcl_ExtendEditFontAttribs( aSet );
     if ( bIsRTL )
-        lcl_ModifyRTLDefaults( *pSet );
-    static_cast<ScEditEngineDefaulter*>(m_xEditEngine.get())->SetDefaults( std::move(pSet) );
+        lcl_ModifyRTLDefaults( aSet );
+    static_cast<ScEditEngineDefaulter*>(m_xEditEngine.get())->SetDefaults( std::move(aSet) );
     m_xEditEngine->SetUpdateLayout( bPrevUpdateLayout );
 
-    m_xEditView = std::make_unique<EditView>(m_xEditEngine.get(), nullptr);
+    m_xEditView = std::make_unique<EditView>(*m_xEditEngine, nullptr);
     m_xEditView->setEditViewCallbacks(this);
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-    Color aBgColor = rStyleSettings.GetWindowColor();
+    Color aBgColor = rStyleSettings.GetFieldColor();
     m_xEditView->SetBackgroundColor(aBgColor);
 
     if (pAcc)
@@ -2155,7 +2157,7 @@ void ScTextWnd::ImplInitSettings()
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
 
-    Color aBgColor= rStyleSettings.GetWindowColor();
+    Color aBgColor= rStyleSettings.GetFieldColor();
     Color aTxtColor= rStyleSettings.GetWindowTextColor();
 
     aTextFont.SetFillColor   ( aBgColor );
@@ -2195,7 +2197,7 @@ void ScTextWnd::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
 
-    Color aBgColor = rStyleSettings.GetWindowColor();
+    Color aBgColor = rStyleSettings.GetFieldColor();
     Color aTxtColor = rStyleSettings.GetWindowTextColor();
 
     aTextFont.SetTransparent(true);
@@ -2214,7 +2216,7 @@ void ScTextWnd::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     EnableRTL(false); // EditEngine can't be used with VCL EnableRTL
 }
 
-css::uno::Reference< css::accessibility::XAccessible > ScTextWnd::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> ScTextWnd::CreateAccessible()
 {
     pAcc = new ScAccessibleEditLineObject(this);
     return pAcc;
@@ -2248,9 +2250,10 @@ void ScTextWnd::TextGrabFocus()
 }
 
 // Position window
-ScPosWnd::ScPosWnd(vcl::Window* pParent)
-    : InterimItemWindow(pParent, "modules/scalc/ui/posbox.ui", "PosBox")
-    , m_xWidget(m_xBuilder->weld_combo_box("pos_window"))
+ScPosWnd::ScPosWnd(vcl::Window* pParent, ScTabViewShell* pViewShell)
+    : InterimItemWindow(pParent, u"modules/scalc/ui/posbox.ui"_ustr, u"PosBox"_ustr, true,
+                        reinterpret_cast<sal_uInt64>(pViewShell))
+    , m_xWidget(m_xBuilder->weld_combo_box(u"pos_window"_ustr))
     , m_nAsyncGetFocusId(nullptr)
     , nTipVisible(nullptr)
     , bFormulaMode(false)
@@ -2265,7 +2268,7 @@ ScPosWnd::ScPosWnd(vcl::Window* pParent)
     m_xWidget->set_size_request(aSize.Width(), -1);
     SetSizePixel(m_xContainer->get_preferred_size());
 
-    FillRangeNames();
+    FillRangeNames(true);
 
     StartListening( *SfxGetpApp() ); // For Navigator rangename updates
 
@@ -2301,12 +2304,13 @@ void ScPosWnd::SetFormulaMode( bool bSet )
 {
     if ( bSet != bFormulaMode )
     {
-        bFormulaMode = bSet;
 
         if ( bSet )
             FillFunctions();
         else
             FillRangeNames();
+
+        bFormulaMode = bSet;
 
         HideTip();
     }
@@ -2327,21 +2331,15 @@ OUString ScPosWnd::createLocalRangeName(std::u16string_view rName, std::u16strin
     return OUString::Concat(rName) + " (" + rTableName + ")";
 }
 
-void ScPosWnd::FillRangeNames()
+void ScPosWnd::FillRangeNames(bool initialize)
 {
-    m_xWidget->clear();
-    m_xWidget->freeze();
-
+    std::set<OUString> aSet;
     SfxObjectShell* pObjSh = SfxObjectShell::Current();
-    if ( auto pDocShell = dynamic_cast<ScDocShell*>( pObjSh) )
+    if (auto pDocShell = dynamic_cast<ScDocShell*>(pObjSh))
     {
         ScDocument& rDoc = pDocShell->GetDocument();
 
-        m_xWidget->append_text(ScResId(STR_MANAGE_NAMES));
-        m_xWidget->append_separator("separator");
-
         ScRange aDummy;
-        std::set<OUString> aSet;
         ScRangeName* pRangeNames = rDoc.GetRangeName();
         for (const auto& rEntry : *pRangeNames)
         {
@@ -2362,14 +2360,24 @@ void ScPosWnd::FillRangeNames()
                 }
             }
         }
+    }
 
-        for (const auto& rItem : aSet)
-        {
-            m_xWidget->append_text(rItem);
-        }
+    if (!bFormulaMode && !initialize && aSet == aRangeNames)
+        return;
+
+    aRangeNames = aSet;
+
+    m_xWidget->clear();
+    m_xWidget->freeze();
+    m_xWidget->append_text(ScResId(STR_MANAGE_NAMES));
+    m_xWidget->append_separator(u"separator"_ustr);
+    for (const auto& rItem : aSet)
+    {
+        m_xWidget->append_text(rItem);
     }
     m_xWidget->thaw();
-    m_xWidget->set_entry_text(aPosStr);
+    if (!aPosStr.isEmpty())
+        m_xWidget->set_entry_text(aPosStr);
 }
 
 void ScPosWnd::FillFunctions()
@@ -2378,7 +2386,7 @@ void ScPosWnd::FillFunctions()
     m_xWidget->freeze();
 
     OUString aFirstName;
-    const ScAppOptions& rOpt = SC_MOD()->GetAppOptions();
+    const ScAppOptions& rOpt = ScModule::get()->GetAppOptions();
     sal_uInt16 nMRUCount = rOpt.GetLRUFuncListCount();
     const sal_uInt16* pMRUList = rOpt.GetLRUFuncList();
     if (pMRUList)
@@ -2566,7 +2574,7 @@ void ScPosWnd::DoEnter()
     {
         if ( bFormulaMode )
         {
-            ScModule* pScMod = SC_MOD();
+            ScModule* pScMod = ScModule::get();
             if ( aText == ScResId(STR_FUNCTIONLIST_MORE) )
             {
                 // Function AutoPilot
@@ -2594,8 +2602,8 @@ void ScPosWnd::DoEnter()
             if ( pViewSh )
             {
                 ScViewData& rViewData = pViewSh->GetViewData();
-                ScDocShell* pDocShell = rViewData.GetDocShell();
-                ScDocument& rDoc = pDocShell->GetDocument();
+                ScDocShell& rDocShell = rViewData.GetDocShell();
+                ScDocument& rDoc = rDocShell.GetDocument();
 
                 ScNameInputType eType = lcl_GetInputType( aText );
                 if ( eType == SC_NAME_INPUT_BAD_NAME || eType == SC_NAME_INPUT_BAD_SELECTION )
@@ -2616,7 +2624,7 @@ void ScPosWnd::DoEnter()
                         ScRangeData* pNew = new ScRangeData( rDoc, aText, aContent, aCursor );
                         if ( aNewRanges.insert(pNew) )
                         {
-                            pDocShell->GetDocFunc().ModifyRangeNames( aNewRanges );
+                            rDocShell.GetDocFunc().ModifyRangeNames( aNewRanges );
                             pViewSh->UpdateInputHandler(true);
                         }
                     }
@@ -2663,11 +2671,12 @@ void ScPosWnd::DoEnter()
     if (bOpenManageNamesDialog)
     {
         const sal_uInt16 nId  = ScNameDlgWrapper::GetChildWindowId();
-        ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell();
-        assert(pViewSh);
-        SfxViewFrame& rViewFrm = pViewSh->GetViewFrame();
-        SfxChildWindow* pWnd = rViewFrm.GetChildWindow( nId );
-        SC_MOD()->SetRefDialog( nId, pWnd == nullptr );
+        if (ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell())
+        {
+            SfxViewFrame& rViewFrm = pViewSh->GetViewFrame();
+            SfxChildWindow* pWnd = rViewFrm.GetChildWindow( nId );
+            ScModule::get()->SetRefDialog(nId, pWnd == nullptr);
+        }
     }
 }
 
@@ -2737,7 +2746,7 @@ void ScPosWnd::ReleaseFocus_Impl()
     HideTip();
 
     SfxViewShell* pCurSh = SfxViewShell::Current();
-    ScInputHandler* pHdl = SC_MOD()->GetInputHdl( dynamic_cast<ScTabViewShell*>( pCurSh )  );
+    ScInputHandler* pHdl = ScModule::get()->GetInputHdl(dynamic_cast<ScTabViewShell*>(pCurSh));
     if ( pHdl && pHdl->IsTopMode() )
     {
         // Focus back in input row?

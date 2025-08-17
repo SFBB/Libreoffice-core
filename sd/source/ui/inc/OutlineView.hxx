@@ -30,7 +30,6 @@ class SdPage;
 class SdrPage;
 class SdrTextObj;
 class SfxProgress;
-struct PasteOrDropInfos;
 class EditView;
 
 namespace sd::tools {
@@ -46,14 +45,38 @@ class OutlineViewModelChangeGuard;
 const int MAX_OUTLINERVIEWS = 4;
 
 /**
- * Derivative of ::sd::View for the outline mode
+ *  Common base for OutlineView and NotesPanelView that only have a single Outliner in the view.
+|*
+\************************************************************************/
+class SimpleOutlinerView : public ::sd::View
+{
+public:
+    SimpleOutlinerView(SdDrawDocument& rDrawDoc, OutputDevice* pOutDev, ViewShell* pViewSh)
+            : View(rDrawDoc, pOutDev, pViewSh) {}
+    virtual OutlinerView* GetViewByWindow(vcl::Window const* pWin) const = 0;
+};
+
+/**
+ * Derivative of ::sd::SimpleOutlinerView for the outline mode
 |*
 \************************************************************************/
 
 class OutlineView final
-    : public ::sd::View
+    : public SimpleOutlinerView
 {
     friend class OutlineViewModelChangeGuard;
+
+    // EditViewCallbacks
+    // NOTE: We are already derived from EditViewCallbacks in SdrObjEditView
+    virtual void EditViewInvalidate(const ::tools::Rectangle& rRect) override;
+    virtual void EditViewSelectionChange() override;
+    virtual OutputDevice& EditViewOutputDevice() const override;
+    virtual Point EditViewPointerPosPixel() const override;
+    virtual css::uno::Reference<css::datatransfer::clipboard::XClipboard> GetClipboard() const override;
+    virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget> GetDropTarget() override;
+    virtual void EditViewInputContext(const InputContext& rInputContext) override;
+    virtual void EditViewCursorRect(const ::tools::Rectangle& rRect, int nExtTextInputWidth) override;
+
 public:
     OutlineView (DrawDocShell& rDocSh,
         vcl::Window* pWindow,
@@ -78,7 +101,7 @@ public:
     virtual void AddDeviceToPaintView(OutputDevice& rDev, vcl::Window* pWindow) override;
     virtual void DeleteDeviceFromPaintView(OutputDevice& rDev) override;
 
-    OutlinerView*   GetViewByWindow(vcl::Window const * pWin) const;
+    OutlinerView*   GetViewByWindow(vcl::Window const * pWin) const override;
     SdOutliner&     GetOutliner() { return mrOutliner; }
 
     Paragraph*      GetPrevTitle(const Paragraph* pPara);
@@ -203,6 +226,12 @@ private:
 
     SvxLRSpaceItem maLRSpaceItem;
     Image maSlideImage;
+
+    // remember last selection rectangle vector
+    std::vector<::tools::Rectangle> maLastSelection;
+
+    // last current stripped portions
+    drawinglayer::primitive2d::Primitive2DContainer maTextContent;
 };
 
 // calls IgnoreCurrentPageChangesLevel with true in ctor and with false in dtor

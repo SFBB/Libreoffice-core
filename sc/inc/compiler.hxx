@@ -138,7 +138,7 @@ public:
         } sharedstring;
         ScMatrix*    pMat;
         FormulaError nError;
-        short        nJump[ FORMULA_MAXJUMPCOUNT + 1 ];     // If/Chose token
+        short        nJump[ FORMULA_MAXPARAMS + 1 ];     // If/Choose/Let token
     };
     OUString   maExternalName; // depending on the opcode, this is either the external, or the external name, or the external table name
 
@@ -155,6 +155,7 @@ public:
     // since the reference count is cleared!
     void SetOpCode( OpCode eCode );
     void SetString( rtl_uString* pData, rtl_uString* pDataIgnoreCase );
+    void SetStringName( rtl_uString* pData, rtl_uString* pDataIgnoreCase );
     void SetSingleReference( const ScSingleRefData& rRef );
     void SetDoubleReference( const ScComplexRefData& rRef );
     void SetDouble( double fVal );
@@ -177,7 +178,7 @@ public:
     formula::FormulaToken* CreateToken(ScSheetLimits& rLimits) const;   // create typified token
 };
 
-class SC_DLLPUBLIC ScCompiler final : public formula::FormulaCompiler
+class SAL_DLLPUBLIC_RTTI ScCompiler final : public formula::FormulaCompiler
 {
 public:
 
@@ -188,7 +189,7 @@ public:
         EXTENDED_ERROR_DETECTION_NAME_NO_BREAK  // name error on unknown symbols, don't break, continue
     };
 
-    struct SAL_DLLPRIVATE Convention
+    struct Convention
     {
         const formula::FormulaGrammar::AddressConvention meConv;
 
@@ -252,7 +253,7 @@ public:
         virtual ScCharFlags getCharTableFlags( sal_Unicode c, sal_Unicode cLast ) const = 0;
 
     protected:
-        std::unique_ptr<ScCharFlags[]> mpCharTable;
+        const std::array<ScCharFlags, 128>& mrCharTable;
     };
     friend struct Convention;
 
@@ -274,8 +275,7 @@ private:
     ScDocument& rDoc;
     ScAddress   aPos;
 
-    SvNumberFormatter* mpFormatter;
-    const ScInterpreterContext* mpInterpreterContext;
+    ScInterpreterContext& mrInterpreterContext;
 
     SCTAB       mnCurrentSheetTab;      // indicates current sheet number parsed so far
     sal_Int32   mnCurrentSheetEndPos;   // position after current sheet name if parsed
@@ -331,6 +331,7 @@ private:
 
     bool   NextNewToken(bool bInArray);
     bool ToUpperAsciiOrI18nIsAscii( OUString& rUpper, const OUString& rOrg ) const;
+    short  GetPossibleParaCount( std::u16string_view rLambdaFormula ) const;
 
     virtual void SetError(FormulaError nError) override;
 
@@ -359,6 +360,7 @@ private:
     bool ParsePredetectedErrRefReference( const OUString& rName, const OUString* pErrRef );
     bool ParseMacro( const OUString& );
     bool ParseNamedRange( const OUString&, bool onlyCheck = false );
+    bool ParseLambdaFuncName( const OUString& );
     bool ParseExternalNamedRange( const OUString& rSymbol, bool& rbInvalidExternalNameRange );
     bool ParseDBRange( const OUString& );
     bool ParseColRowName( const OUString& );
@@ -384,31 +386,48 @@ public:
 
 public:
     ScCompiler( sc::CompileFormulaContext& rCxt, const ScAddress& rPos,
-            bool bComputeII = false, bool bMatrixFlag = false, const ScInterpreterContext* pContext = nullptr );
+            bool bComputeII = false, bool bMatrixFlag = false, ScInterpreterContext* pContext = nullptr );
 
     /** If eGrammar == GRAM_UNSPECIFIED then the grammar of rDocument is used,
      */
-    ScCompiler( ScDocument& rDocument, const ScAddress&,
+    SC_DLLPUBLIC ScCompiler( ScDocument& rDocument, const ScAddress&,
             formula::FormulaGrammar::Grammar eGrammar = formula::FormulaGrammar::GRAM_UNSPECIFIED,
-            bool bComputeII = false, bool bMatrixFlag = false, const ScInterpreterContext* pContext = nullptr );
+            bool bComputeII = false, bool bMatrixFlag = false, ScInterpreterContext* pContext = nullptr );
 
-    ScCompiler( sc::CompileFormulaContext& rCxt, const ScAddress& rPos, ScTokenArray& rArr,
-            bool bComputeII = false, bool bMatrixFlag = false, const ScInterpreterContext* pContext = nullptr );
+    SC_DLLPUBLIC ScCompiler( sc::CompileFormulaContext& rCxt, const ScAddress& rPos, ScTokenArray& rArr,
+            bool bComputeII = false, bool bMatrixFlag = false, ScInterpreterContext* pContext = nullptr );
 
     /** If eGrammar == GRAM_UNSPECIFIED then the grammar of rDocument is used,
      */
-    ScCompiler( ScDocument& rDocument, const ScAddress&, ScTokenArray& rArr,
+    SC_DLLPUBLIC ScCompiler( ScDocument& rDocument, const ScAddress&, ScTokenArray& rArr,
             formula::FormulaGrammar::Grammar eGrammar = formula::FormulaGrammar::GRAM_UNSPECIFIED,
-            bool bComputeII = false, bool bMatrixFlag = false, const ScInterpreterContext* pContext = nullptr );
+            bool bComputeII = false, bool bMatrixFlag = false, ScInterpreterContext* pContext = nullptr );
 
-    virtual ~ScCompiler() override;
+    SC_DLLPUBLIC virtual ~ScCompiler() override;
 
 public:
     static void DeInit();               /// all
 
     // for ScAddress::Format()
-    static void CheckTabQuotes( OUString& aTabName,
+    SC_DLLPUBLIC static void CheckTabQuotes( OUString& aTabName,
                                 const formula::FormulaGrammar::AddressConvention eConv = formula::FormulaGrammar::CONV_OOO );
+
+    /** Concatenates two sheet names in Excel syntax, i.e. 'Sheet1:Sheet2'
+        instead of 'Sheet1':'Sheet2' or 'Sheet1':Sheet2 or Sheet1:'Sheet2'.
+
+        @param  rBuf
+                Contains the first sheet name already, in the correct quoted 'Sheet''1' or
+                unquoted Sheet1 form if plain name.
+
+        @param  nQuotePos
+                Start position, of the first sheet name if unquoted, or its
+                opening quote.
+
+        @param  rEndTabName
+                Second sheet name to append, in the correct quoted 'Sheet''2'
+                or unquoted Sheet2 form if plain name.
+     */
+    static void FormExcelSheetRange( OUStringBuffer& rBuf, sal_Int32 nQuotePos, const OUString& rEndTabName );
 
     /** Analyzes a string for a 'Doc'#Tab construct, or 'Do''c'#Tab etc...
 
@@ -417,7 +436,7 @@ public:
     static sal_Int32 GetDocTabPos( const OUString& rString );
 
     // Check if it is a valid english function name
-    static bool IsEnglishSymbol( const OUString& rName );
+    SC_DLLPUBLIC static bool IsEnglishSymbol( const OUString& rName );
 
     bool ParseErrorConstant( const OUString& );
     bool ParseTableRefItem( const OUString& );
@@ -445,9 +464,7 @@ public:
     /// Set symbol map if not empty.
     void            SetFormulaLanguage( const OpCodeMapPtr & xMap );
 
-    void            SetGrammar( const formula::FormulaGrammar::Grammar eGrammar );
-
-    void SetNumberFormatter( SvNumberFormatter* pFormatter );
+    SC_DLLPUBLIC void SetGrammar( const formula::FormulaGrammar::Grammar eGrammar );
 
 private:
     /** Set grammar and reference convention from within SetFormulaLanguage()
@@ -487,18 +504,18 @@ public:
      * @return heap allocated token array object. The caller <i>must</i>
      *         manage the life cycle of this object.
      */
-    std::unique_ptr<ScTokenArray> CompileString( const OUString& rFormula );
+    SC_DLLPUBLIC std::unique_ptr<ScTokenArray> CompileString( const OUString& rFormula );
     std::unique_ptr<ScTokenArray> CompileString( const OUString& rFormula, const OUString& rFormulaNmsp );
     const ScAddress& GetPos() const { return aPos; }
 
     void MoveRelWrap();
-    static void MoveRelWrap( const ScTokenArray& rArr, const ScDocument& rDoc, const ScAddress& rPos,
+    SC_DLLPUBLIC static void MoveRelWrap( const ScTokenArray& rArr, const ScDocument& rDoc, const ScAddress& rPos,
                              SCCOL nMaxCol, SCROW nMaxRow );
 
     /** If the character is allowed as tested by nFlags (SC_COMPILER_C_...
         bits) for all known address conventions. If more than one bit is given
         in nFlags, all bits must match. */
-    static bool IsCharFlagAllConventions(
+    SC_DLLPUBLIC static bool IsCharFlagAllConventions(
         OUString const & rStr, sal_Int32 nPos, ScCharFlags nFlags );
 
     /** TODO : Move this to somewhere appropriate. */
@@ -515,10 +532,12 @@ private:
     virtual OUString FindAddInFunction( const OUString& rUpperName, bool bLocalFirst ) const override;
     virtual void fillFromAddInCollectionUpperName( const NonConstOpCodeMapPtr& xMap ) const override;
     virtual void fillFromAddInCollectionEnglishName( const NonConstOpCodeMapPtr& xMap ) const override;
+    virtual void fillFromAddInCollectionExcelName( const NonConstOpCodeMapPtr& xMap ) const override;
     virtual void fillFromAddInMap( const NonConstOpCodeMapPtr& xMap, formula::FormulaGrammar::Grammar _eGrammar ) const override;
     virtual void fillAddInToken(::std::vector< css::sheet::FormulaOpCodeMapEntry >& _rVec,bool _bIsEnglish) const override;
 
     virtual bool HandleExternalReference(const formula::FormulaToken& _aToken) override;
+    virtual bool HandleStringName() override;
     virtual bool HandleRange() override;
     virtual bool HandleColRowName() override;
     virtual bool HandleDbData() override;
@@ -531,6 +550,7 @@ private:
     virtual void CreateStringFromMatrix( OUStringBuffer& rBuffer, const formula::FormulaToken* pToken ) const override;
     virtual void CreateStringFromIndex( OUStringBuffer& rBuffer, const formula::FormulaToken* pToken ) const override;
     virtual void LocalizeString( OUString& rName ) const override;   // modify rName - input: exact name
+    virtual bool GetExcelName( OUString& rName ) const override;    // modify rName - input: exact name
 
     virtual formula::ParamClass GetForceArrayParameter( const formula::FormulaToken* pToken, sal_uInt16 nParam ) const override;
 

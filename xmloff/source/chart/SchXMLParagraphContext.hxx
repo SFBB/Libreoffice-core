@@ -22,10 +22,6 @@
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
 
-namespace com::sun::star::xml::sax {
-        class XAttributeList;
-}
-
 class SchXMLParagraphContext : public SvXMLImportContext
 {
 private:
@@ -48,6 +44,45 @@ public:
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
         sal_Int32 nElement,
         const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
+};
+
+class SchXMLTitleParaContext : public SvXMLImportContext
+{
+private:
+    std::vector<std::pair<OUString, OUString>>& mrParaText;
+    OUStringBuffer maBuffer;
+    OUString maStyleName;
+
+public:
+    SchXMLTitleParaContext( SvXMLImport& rImport,
+                            std::vector<std::pair<OUString, OUString>>& rParaText);
+    virtual ~SchXMLTitleParaContext() override;
+
+    virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
+    virtual void SAL_CALL characters( const OUString& rChars ) override;
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& AttrList ) override;
+};
+
+class SchXMLTitleSpanContext : public SvXMLImportContext
+{
+private:
+    std::vector<std::pair<OUString, OUString>>& mrSpanTexts;
+    OUStringBuffer maCharBuffer;
+    OUString maStyleName;
+public:
+    SchXMLTitleSpanContext( SvXMLImport& rImport, std::vector<std::pair<OUString, OUString>>& rSpanTexts,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList);
+    virtual ~SchXMLTitleSpanContext() override;
+
+    virtual void SAL_CALL characters( const OUString& rChars ) override;
+    virtual void SAL_CALL endFastElement( sal_Int32 nElement ) override;
+
+    virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL createFastChildContext(
+        sal_Int32 nElement,
+        const css::uno::Reference< css::xml::sax::XFastAttributeList >& /*AttrList*/) override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

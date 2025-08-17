@@ -63,7 +63,6 @@ protected:
     bool            mbEnableDrawingLayerFillStyles : 1;
 
     SvxPageWindow m_aBspWin;
-    std::unique_ptr<weld::Label> m_xPageLbl;
     std::unique_ptr<weld::CheckButton> m_xTurnOnBox;
     std::unique_ptr<weld::CheckButton> m_xCntSharedBox;
     std::unique_ptr<weld::CheckButton> m_xCntSharedFirstBox;
@@ -78,6 +77,7 @@ protected:
     std::unique_ptr<weld::MetricSpinButton> m_xHeightEdit;
     std::unique_ptr<weld::CheckButton> m_xHeightDynBtn;
     std::unique_ptr<weld::Button> m_xBackgroundBtn;
+    std::unique_ptr<weld::Frame>  m_xFrame;
     std::unique_ptr<weld::CustomWeld> m_xBspWin;
 
     void            InitHandler();
@@ -97,7 +97,7 @@ class SVX_DLLPUBLIC SvxHeaderPage final : public SvxHFPage
 public:
     static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet );
     // returns the Which values to the range
-    static WhichRangesContainer GetRanges() { return pRanges; }
+    static const WhichRangesContainer & GetRanges() { return pRanges; }
     SVX_DLLPRIVATE SvxHeaderPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
 };
 
@@ -105,7 +105,7 @@ class SVX_DLLPUBLIC SvxFooterPage final : public SvxHFPage
 {
 public:
     static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet );
-    static WhichRangesContainer GetRanges() { return pRanges; }
+    static const WhichRangesContainer & GetRanges() { return pRanges; }
     SVX_DLLPRIVATE SvxFooterPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
 };
 
@@ -113,8 +113,8 @@ class SVX_DLLPUBLIC DeleteHeaderDialog final : public weld::MessageDialogControl
 {
 public:
     DeleteHeaderDialog(weld::Widget* pParent)
-        : MessageDialogController(pParent, "svx/ui/deleteheaderdialog.ui",
-                "DeleteHeaderDialog")
+        : MessageDialogController(pParent, u"svx/ui/deleteheaderdialog.ui"_ustr,
+                u"DeleteHeaderDialog"_ustr)
     {
     }
 };
@@ -123,8 +123,8 @@ class SVX_DLLPUBLIC DeleteFooterDialog final : public weld::MessageDialogControl
 {
 public:
     DeleteFooterDialog(weld::Widget* pParent)
-        : MessageDialogController(pParent, "svx/ui/deletefooterdialog.ui",
-                "DeleteFooterDialog")
+        : MessageDialogController(pParent, u"svx/ui/deletefooterdialog.ui"_ustr,
+                u"DeleteFooterDialog"_ustr)
     {
     }
 };

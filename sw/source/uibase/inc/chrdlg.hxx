@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_UIBASE_INC_CHRDLG_HXX
-#define INCLUDED_SW_SOURCE_UIBASE_INC_CHRDLG_HXX
+#pragma once
 
 #include <sfx2/tabdlg.hxx>
 #include "chrdlgmodes.hxx"
@@ -32,44 +31,12 @@ class SwCharDlg final : public SfxTabDialogController
     SwCharDlgMode m_nDialogMode;
 
 public:
-    SwCharDlg(weld::Window* pParent, SwView& pVw, const SfxItemSet& rCoreSet,
+    SwCharDlg(weld::Window* pParent, SwView& rView, const SfxItemSet& rCoreSet,
               SwCharDlgMode nDialogMode, const OUString* pFormatStr);
 
     virtual ~SwCharDlg() override;
 
     virtual void PageCreated(const OUString& rId, SfxTabPage &rPage) override;
 };
-
-class SwCharURLPage final : public SfxTabPage
-{
-    std::optional<SvxMacroTableDtor> m_oINetMacroTable;
-    bool                m_bModified;
-
-    std::unique_ptr<weld::Entry> m_xURLED;
-    std::unique_ptr<weld::Label> m_xTextFT;
-    std::unique_ptr<weld::Entry> m_xTextED;
-    std::unique_ptr<weld::Entry> m_xNameED;
-    std::unique_ptr<weld::ComboBox> m_xTargetFrameLB;
-    std::unique_ptr<weld::Button> m_xURLPB;
-    std::unique_ptr<weld::Button> m_xEventPB;
-    std::unique_ptr<weld::ComboBox> m_xVisitedLB;
-    std::unique_ptr<weld::ComboBox> m_xNotVisitedLB;
-    std::unique_ptr<weld::Widget> m_xCharStyleContainer;
-
-    DECL_LINK(InsertFileHdl, weld::Button&, void);
-    DECL_LINK(EventHdl, weld::Button&, void);
-
-public:
-    SwCharURLPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
-
-    virtual ~SwCharURLPage() override;
-    static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController,
-                                     const SfxItemSet* rAttrSet);
-
-    virtual bool        FillItemSet( SfxItemSet* rSet ) override;
-    virtual void        Reset( const SfxItemSet* rSet ) override;
-};
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

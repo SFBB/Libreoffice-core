@@ -22,7 +22,6 @@
 #include "layfrm.hxx"
 
 class SwTableLine;
-class SwBorderAttrs;
 
 /// SwRowFrame is one table row in the document layout.
 class SwRowFrame final : public SwLayoutFrame
@@ -31,7 +30,7 @@ class SwRowFrame final : public SwLayoutFrame
                         const SwBorderAttrs* pAttrs = nullptr) override;
     /// Only change the Frame size, not the PrtArea SSize
     virtual SwTwips ShrinkFrame(SwTwips, bool bTst = false, bool bInfo = false) override;
-    virtual SwTwips GrowFrame(SwTwips, bool bTst = false, bool bInfo = false) override;
+    virtual SwTwips GrowFrame(SwTwips, SwResizeLimitReason&, bool bTst, bool bInfo) override;
 
     const SwTableLine* m_pTabLine;
     SwRowFrame* m_pFollowRow; ///< note: this is *only* set on old-style tables!

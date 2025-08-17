@@ -11,11 +11,24 @@
 
 #include <memory>
 
+#include <com/sun/star/text/XTextDocument.hpp>
+
+#include <comphelper/propertyvalue.hxx>
+#include <editeng/colritem.hxx>
+#include <sfx2/viewfrm.hxx>
+#include <sfx2/dispatch.hxx>
+
 #include <IDocumentLayoutAccess.hxx>
 #include <rootfrm.hxx>
 #include <sortedobjs.hxx>
 #include <pagefrm.hxx>
 #include <cntfrm.hxx>
+#include <docsh.hxx>
+#include <wrtsh.hxx>
+#include <formatcontentcontrol.hxx>
+#include <textcontentcontrol.hxx>
+#include <view.hxx>
+#include <cmdid.h>
 
 namespace
 {
@@ -24,7 +37,7 @@ class Test : public SwModelTestBase
 {
 public:
     Test()
-        : SwModelTestBase("/sw/qa/core/text/data/")
+        : SwModelTestBase(u"/sw/qa/core/text/data/"_ustr)
     {
     }
 };
@@ -84,6 +97,24 @@ CPPUNIT_TEST_FIXTURE(Test, testFloattableLegacyWrapEmptyParagraph)
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rPageObjs2.size());
 }
 
+CPPUNIT_TEST_FIXTURE(Test, testApplyTextAttrToEmptyLineAtEndOfParagraph)
+{
+    createSwDoc("A011-charheight.rtf");
+
+    calcLayout();
+
+    SwDoc* pDoc = getSwDoc();
+    SwRootFrame* pLayout = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
+    auto pPage = dynamic_cast<SwPageFrame*>(pLayout->Lower());
+
+    SwContentFrame* pLastPara = pPage->FindLastBodyContent();
+    // wrong was 449 (11.5pt)
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwTwips>(368), pLastPara->getFrameArea().Height());
+    SwContentFrame* pFirstPara = pPage->FindFirstBodyContent();
+    // wrong was 817 (11.5pt)
+    CPPUNIT_ASSERT_EQUAL(static_cast<SwTwips>(736), pFirstPara->getFrameArea().Height());
+}
+
 CPPUNIT_TEST_FIXTURE(Test, testFlyMinimalWrap)
 {
     // Given a document with a first page that has a shape and a table in it (not floating table),
@@ -120,7 +151,7 @@ CPPUNIT_TEST_FIXTURE(Test, testContentControlHeaderPDFExport)
     createSwDoc("content-control-header.docx");
 
     // When exporting to PDF:
-    save("writer_pdf_Export");
+    save(u"writer_pdf_Export"_ustr);
 
     // Then make sure all the expected text is there on page 2:
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
@@ -165,6 +196,171 @@ CPPUNIT_TEST_FIXTURE(Test, testSplitFlyAnchorLeftMargin)
     // - Actual  : 0
     // i.e. the left margin was lost.
     CPPUNIT_ASSERT_EQUAL(static_cast<SwTwips>(6480), pLastPara->getFramePrintArea().Left());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testCheckedCheckboxContentControlPDF)
+{
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+        return;
+
+    SwExportFormFieldsGuard g;
+    // Given a file with a checked checkbox content control:
+    createSwDoc();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    pWrtShell->InsertContentControl(SwContentControlType::CHECKBOX);
+    // Toggle it, so we get a checked one:
+    SwTextContentControl* pTextContentControl = pWrtShell->CursorInsideContentControl();
+    const SwFormatContentControl& rFormatContentControl = pTextContentControl->GetContentControl();
+    pWrtShell->GotoContentControl(rFormatContentControl);
+
+    // When exporting to PDF:
+    save(u"writer_pdf_Export"_ustr);
+
+    // Then make sure that a checked checkbox form widget is emitted:
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPage = pPdfDocument->openPage(0);
+    CPPUNIT_ASSERT_EQUAL(1, pPage->getAnnotationCount());
+    std::unique_ptr<vcl::pdf::PDFiumAnnotation> pAnnotation = pPage->getAnnotation(0);
+    CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Widget, pAnnotation->getSubType());
+    CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFFormFieldType::CheckBox,
+                         pAnnotation->getFormFieldType(pPdfDocument.get()));
+    OUString aActual = pAnnotation->getFormFieldValue(pPdfDocument.get());
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: Yes
+    // - Actual  : Off
+    // i.e. the /AP -> /N key of the checkbox widget annotation object didn't have a sub-key that
+    // would match /V, leading to not showing the checked state.
+    CPPUNIT_ASSERT_EQUAL(u"Yes"_ustr, aActual);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testContentControlPDFFontColor)
+{
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+        return;
+
+    SwExportFormFieldsGuard g;
+    // Given a document with a custom orange font color and a content control:
+    createSwDoc();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    SfxItemSetFixed<RES_CHRATR_COLOR, RES_CHRATR_COLOR> aSet(pWrtShell->GetAttrPool());
+    Color nOrange(0xff6b00);
+    SvxColorItem aItem(nOrange, RES_CHRATR_COLOR);
+    aSet.Put(aItem);
+    pWrtShell->SetAttrSet(aSet);
+    pWrtShell->InsertContentControl(SwContentControlType::RICH_TEXT);
+
+    // When exporting that document to PDF:
+    save(u"writer_pdf_Export"_ustr);
+
+    // Then make sure that the widget in the PDF result has that custom font color:
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPage = pPdfDocument->openPage(0);
+    pPage->onAfterLoadPage(pPdfDocument.get());
+    CPPUNIT_ASSERT_EQUAL(1, pPage->getAnnotationCount());
+    std::unique_ptr<vcl::pdf::PDFiumAnnotation> pAnnotation = pPage->getAnnotation(0);
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: rgba[ff6b00ff]
+    // - Actual  : rgba[000000ff]
+    // i.e. the custom color was lost, the font color was black, not orange.
+    CPPUNIT_ASSERT_EQUAL(nOrange, pAnnotation->getFontColor(pPdfDocument.get()));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testContentControlPDFDropDownText)
+{
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+        return;
+
+    SwExportFormFieldsGuard g;
+    // Given a document with a dropdown: custom default text and 3 items:
+    createSwDoc();
+    uno::Reference<lang::XMultiServiceFactory> xMSF(mxComponent, uno::UNO_QUERY);
+    uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
+    uno::Reference<text::XText> xText = xTextDocument->getText();
+    uno::Reference<text::XTextCursor> xCursor = xText->createTextCursor();
+    xText->insertString(xCursor, u"test"_ustr, /*bAbsorb=*/false);
+    xCursor->gotoStart(/*bExpand=*/false);
+    xCursor->gotoEnd(/*bExpand=*/true);
+    uno::Reference<text::XTextContent> xContentControl(
+        xMSF->createInstance(u"com.sun.star.text.ContentControl"_ustr), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xContentControlProps(xContentControl, uno::UNO_QUERY);
+    {
+        uno::Sequence<beans::PropertyValues> aListItems = {
+            {
+                comphelper::makePropertyValue(u"DisplayText"_ustr, uno::Any(u"red"_ustr)),
+                comphelper::makePropertyValue(u"Value"_ustr, uno::Any(u"R"_ustr)),
+            },
+            {
+                comphelper::makePropertyValue(u"DisplayText"_ustr, uno::Any(u"green"_ustr)),
+                comphelper::makePropertyValue(u"Value"_ustr, uno::Any(u"G"_ustr)),
+            },
+            {
+                comphelper::makePropertyValue(u"DisplayText"_ustr, uno::Any(u"blue"_ustr)),
+                comphelper::makePropertyValue(u"Value"_ustr, uno::Any(u"B"_ustr)),
+            },
+        };
+        xContentControlProps->setPropertyValue(u"ListItems"_ustr, uno::Any(aListItems));
+    }
+    xText->insertTextContent(xCursor, xContentControl, /*bAbsorb=*/true);
+
+    // When exporting that to PDF:
+    save(u"writer_pdf_Export"_ustr);
+
+    // Then make sure that the custom default is not lost:
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPage = pPdfDocument->openPage(0);
+    pPage->onAfterLoadPage(pPdfDocument.get());
+    CPPUNIT_ASSERT_EQUAL(1, pPage->getAnnotationCount());
+    std::unique_ptr<vcl::pdf::PDFiumAnnotation> pAnnotation = pPage->getAnnotation(0);
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 4
+    // - Actual  : 3
+    // i.e. only the 3 colors were exported, the default "test" text was not.
+    CPPUNIT_ASSERT_EQUAL(4, pAnnotation->getOptionCount(pPdfDocument.get()));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testContentControlPDFComments)
+{
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+        return;
+
+    // Given a document with both a content control and a comment:
+    createSwDoc();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    pWrtShell->InsertContentControl(SwContentControlType::RICH_TEXT);
+    pWrtShell->SttEndDoc(/*bStt=*/false);
+    SwDocShell* pDocShell = getSwDocShell();
+    SwView* pView = pDocShell->GetView();
+    pView->GetViewFrame().GetDispatcher()->Execute(FN_POSTIT, SfxCallMode::SYNCHRON);
+
+    // When exporting to PDF, exporting notes in master (and not as widgets):
+    uno::Sequence<beans::PropertyValue> aFilterData = {
+        comphelper::makePropertyValue(u"ExportFormFields"_ustr, true),
+        comphelper::makePropertyValue(u"ExportNotes"_ustr, false),
+        comphelper::makePropertyValue(u"ExportNotesInMargin"_ustr, true),
+    };
+    saveWithParams({
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"writer_pdf_Export"_ustr),
+        comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+    });
+
+    // Then make sure the only widget for the content control has a correct position:
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPage = pPdfDocument->openPage(0);
+    pPage->onAfterLoadPage(pPdfDocument.get());
+    CPPUNIT_ASSERT_EQUAL(1, pPage->getAnnotationCount());
+    std::unique_ptr<vcl::pdf::PDFiumAnnotation> pAnnotation = pPage->getAnnotation(0);
+    basegfx::B2DPoint aAnnotTopLeft = pAnnotation->getRectangle().getMinimum();
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: (41.749, 639.401)
+    // - Actual  : (59.249,716.951)
+    // i.e. the content control rectangle was shifted towards the top right of the page, compared to
+    // where it's expected.
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(41.749, aAnnotTopLeft.getX(), 0.001);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(639.401, aAnnotTopLeft.getY(), 0.001);
 }
 }
 

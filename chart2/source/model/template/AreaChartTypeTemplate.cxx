@@ -20,7 +20,6 @@
 #include "AreaChartTypeTemplate.hxx"
 #include "AreaChartType.hxx"
 #include <Diagram.hxx>
-#include <DiagramHelper.hxx>
 #include <DataSeries.hxx>
 #include <DataSeriesHelper.hxx>
 #include <PropertyHelper.hxx>
@@ -149,7 +148,7 @@ void AreaChartTypeTemplate::applyStyle2(
     ::sal_Int32 nSeriesCount )
 {
     ChartTypeTemplate::applyStyle2( xSeries, nChartTypeIndex, nSeriesIndex, nSeriesCount );
-    DataSeriesHelper::setPropertyAlsoToAllAttributedDataPoints( xSeries, "BorderStyle", uno::Any( drawing::LineStyle_NONE ) );
+    xSeries->setPropertyAlsoToAllAttributedDataPoints( u"BorderStyle"_ustr, uno::Any( drawing::LineStyle_NONE ) );
 }
 
 void AreaChartTypeTemplate::resetStyles2( const rtl::Reference< ::chart::Diagram >& xDiagram )
@@ -160,9 +159,9 @@ void AreaChartTypeTemplate::resetStyles2( const rtl::Reference< ::chart::Diagram
     uno::Any aLineStyleAny( drawing::LineStyle_NONE );
     for (auto const& series : aSeriesVec)
     {
-        if( series->getPropertyValue( "BorderStyle") == aLineStyleAny )
+        if( series->getPropertyValue( u"BorderStyle"_ustr) == aLineStyleAny )
         {
-            series->setPropertyToDefault( "BorderStyle");
+            series->setPropertyToDefault( u"BorderStyle"_ustr);
         }
     }
 }

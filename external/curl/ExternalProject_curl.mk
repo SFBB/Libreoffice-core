@@ -20,7 +20,11 @@ $(eval $(call gb_ExternalProject_register_targets,curl,\
 
 ifneq ($(OS),WNT)
 
+ifeq ($(OS),EMSCRIPTEN)
+curl_CPPFLAGS := $(gb_EMSCRIPTEN_CPPFLAGS)
+else
 curl_CPPFLAGS :=
+endif
 curl_LDFLAGS := $(if $(filter LINUX FREEBSD,$(OS)),-Wl$(COMMA)-z$(COMMA)origin -Wl$(COMMA)-rpath$(COMMA)\$$$$ORIGIN)
 
 ifneq ($(OS),ANDROID)
@@ -43,7 +47,8 @@ $(call gb_ExternalProject_get_state_target,curl,build):
 			--without-libssh2 --without-nghttp2 \
 			--without-libssh --without-brotli \
 			--without-ngtcp2 --without-quiche \
-			--without-zstd --without-hyper --without-libgsasl --without-gssapi \
+			--without-zstd --without-hyper --without-libgsasl \
+			$(if $(WITH_GSSAPI),--with-gssapi,--without-gssapi) \
 			--disable-mqtt --disable-ares \
 			--disable-dict --disable-file --disable-gopher --disable-imap \
 			--disable-ldap --disable-ldaps --disable-manual --disable-pop3 \
@@ -51,7 +56,7 @@ $(call gb_ExternalProject_get_state_target,curl,build):
 			--disable-tftp  \
 			$(if $(filter iOS MACOSX,$(OS)),\
 				--with-secure-transport,\
-				$(if $(ENABLE_OPENSSL),--with-openssl$(if $(SYSTEM_OPENSSL),,="$(call gb_UnpackedTarball_get_dir,openssl)"))) \
+				$(if $(ENABLE_OPENSSL),--with-openssl$(if $(SYSTEM_OPENSSL),,="$(gb_UnpackedTarball_workdir)/openssl"))) \
 			$(if $(filter LINUX,$(OS)),--without-ca-bundle --without-ca-path) \
 			$(gb_CONFIGURE_PLATFORMS) \
 			$(if $(filter TRUE,$(DISABLE_DYNLOADING)),--disable-shared,--disable-static) \
@@ -60,6 +65,7 @@ $(call gb_ExternalProject_get_state_target,curl,build):
 			$(if $(filter MACOSX,$(OS)),--prefix=/@.__________________________________________________OOO) \
 			$(if $(filter MACOSX,$(OS)),CFLAGS='$(CFLAGS) \
 				-mmacosx-version-min=$(MACOSX_DEPLOYMENT_TARGET)') \
+			$(if $(ENABLE_EMSCRIPTEN_PROXY_POSIX_SOCKETS),--disable-socketpair) \
 			$(if $(filter -fsanitize=undefined,$(CC)),CC='$(CC) -fno-sanitize=function') \
 			CPPFLAGS='$(curl_CPPFLAGS)' \
 			CFLAGS="$(gb_CFLAGS) $(call gb_ExternalProject_get_build_flags,curl)" \
@@ -87,6 +93,7 @@ $(call gb_ExternalProject_get_state_target,curl,build):
 			ENABLE_IPV6=yes \
 			ENABLE_SSPI=yes \
 			ENABLE_WINSSL=yes \
+			WINBUILD_ACKNOWLEDGE_DEPRECATED=yes \
 			WITH_ZLIB=static \
 	,winbuild)
 	$(call gb_Trace_EndRange,curl,EXTERNAL)

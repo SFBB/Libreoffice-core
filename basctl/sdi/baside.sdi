@@ -343,6 +343,12 @@ shell basctl_Shell
         StateMethod = GetState;
     ]
 
+    SID_BASICIDE_COLOR_SCHEME_DLG
+    [
+        ExecMethod  = ExecuteGlobal;
+        StateMethod = GetState;
+    ]
+
     SID_ATTR_ZOOMSLIDER
     [
         ExecMethod      = ExecuteGlobal;
@@ -612,6 +618,7 @@ shell basctl_Shell
 
     SID_BASICIDE_STAT_POS
     [
+        ExecMethod  = ExecuteGlobal;
         StateMethod = GetState;
     ]
 
@@ -680,6 +687,12 @@ shell basctl_Shell
     [
         ExecMethod      = ExecuteDialog;
         StateMethod     = GetState;
+    ]
+
+    SID_TOGGLE_COMMENT
+    [
+        StateMethod = GetState;
+        ExecMethod  = ExecuteGlobal;
     ]
 }
 

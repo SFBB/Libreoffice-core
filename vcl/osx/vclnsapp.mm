@@ -34,6 +34,7 @@
 #include <osx/salframe.h>
 #include <osx/salframeview.h>
 #include <osx/salinst.h>
+#include <osx/salnsmenu.h>
 #include <osx/vclnsapp.h>
 #include <quartz/utils.h>
 
@@ -75,10 +76,16 @@
     assert( pEvent );
     [NSApp postEvent: pEvent atStart: NO];
 
-    if( [NSWindow respondsToSelector:@selector(allowsAutomaticWindowTabbing)] )
-    {
-        [NSWindow setAllowsAutomaticWindowTabbing:NO];
-    }
+    // Disable native tabbed windows. Before native tabbed windows can be
+    // enabled the following known issues need to be fixed:
+    // - Live resizing a non-full screen window with multiple tabs open
+    //   causes the window height to increase far offscreen
+    // - The status bar is pushed off the bottom of the screen in a
+    //   non-full screen window with multiple tabs open
+    // - After closing all tabs in a non-full screen window with multiple
+    //   tabs, the last window leaves an empty space below the status bar
+    //   equal in height to the hidden tab bar
+    [NSWindow setAllowsAutomaticWindowTabbing: NO];
 
     // listen to dark mode change
     [NSApp addObserver:self forKeyPath:@"effectiveAppearance" options: 0 context: nil];
@@ -108,21 +115,46 @@
             [static_cast<SalFrameWindow*>(pKeyWin) endExtTextInput];
 
             AquaSalFrame* pFrame = [static_cast<SalFrameWindow*>(pKeyWin) getSalFrame];
-            unsigned int nModMask = ([pEvent modifierFlags] & (NSEventModifierFlagShift|NSEventModifierFlagControl|NSEventModifierFlagOption|NSEventModifierFlagCommand));
+
+            // Related tdf#162010: match against -[NSEvent characters]
+            // When using some non-Western European keyboard layouts, the
+            // event's "characters ignoring modifiers" will be set to the
+            // original Unicode character instead of the resolved key
+            // equivalent character so match against the -[NSEvent characters]
+            // instead.
+            NSEventModifierFlags nModMask = ([pEvent modifierFlags] & (NSEventModifierFlagShift|NSEventModifierFlagControl|NSEventModifierFlagOption|NSEventModifierFlagCommand));
+
+            // Note: when pressing Command-Option keys, some non-Western
+            // keyboards will set the "characters ignoring modifiers"
+            // property  to the key shortcut character instead of setting
+            // the "characters property. So check for both cases.
+            NSString *pCharacters = [pEvent characters];
+            NSString *pCharactersIgnoringModifiers = [pEvent charactersIgnoringModifiers];
+
             /*
              * #i98949# - Cmd-M miniaturize window, Cmd-Option-M miniaturize all windows
              */
-            if( [[pEvent charactersIgnoringModifiers] isEqualToString: @"m"] )
+            if( [pCharacters isEqualToString: @"m"] || [pCharactersIgnoringModifiers isEqualToString: @"m"] )
             {
                 if ( nModMask == NSEventModifierFlagCommand && ([pFrame->getNSWindow() styleMask] & NSWindowStyleMaskMiniaturizable) )
                 {
                     [pFrame->getNSWindow() performMiniaturize: nil];
                     return;
                 }
-
-                if ( nModMask == ( NSEventModifierFlagCommand | NSEventModifierFlagOption ) )
+                else if ( nModMask == ( NSEventModifierFlagCommand | NSEventModifierFlagOption ) )
                 {
                     [NSApp miniaturizeAll: nil];
+                    return;
+                }
+            }
+            // tdf#162190 handle Command-w
+            // On macOS, Command-w should attempt to close the key window.
+            // TODO: Command-Option-w should attempt to close all windows.
+            else if( [pCharacters isEqualToString: @"w"] || [pCharactersIgnoringModifiers isEqualToString: @"w"] )
+            {
+                if ( nModMask == NSEventModifierFlagCommand && ([pFrame->getNSWindow() styleMask] & NSWindowStyleMaskClosable ) )
+                {
+                    [pFrame->getNSWindow() performClose: nil];
                     return;
                 }
             }
@@ -170,44 +202,8 @@
             // precondition: this ONLY works because CMD-V (paste), CMD-C (copy) and CMD-X (cut) are
             // NOT localized, that is the same in all locales. Should this be
             // different in any locale, this hack will fail.
-            unsigned int nModMask = ([pEvent modifierFlags] & (NSEventModifierFlagShift|NSEventModifierFlagControl|NSEventModifierFlagOption|NSEventModifierFlagCommand));
-            if( nModMask == NSEventModifierFlagCommand )
-            {
-
-                if( [[pEvent charactersIgnoringModifiers] isEqualToString: @"v"] )
-                {
-                    if( [NSApp sendAction: @selector(paste:) to: nil from: nil] )
-                        return;
-                }
-                else if( [[pEvent charactersIgnoringModifiers] isEqualToString: @"c"] )
-                {
-                    if( [NSApp sendAction: @selector(copy:) to: nil from: nil] )
-                        return;
-                }
-                else if( [[pEvent charactersIgnoringModifiers] isEqualToString: @"x"] )
-                {
-                    if( [NSApp sendAction: @selector(cut:) to: nil from: nil] )
-                        return;
-                }
-                else if( [[pEvent charactersIgnoringModifiers] isEqualToString: @"a"] )
-                {
-                    if( [NSApp sendAction: @selector(selectAll:) to: nil from: nil] )
-                        return;
-                }
-                else if( [[pEvent charactersIgnoringModifiers] isEqualToString: @"z"] )
-                {
-                    if( [NSApp sendAction: @selector(undo:) to: nil from: nil] )
-                        return;
-                }
-            }
-            else if( nModMask == (NSEventModifierFlagCommand|NSEventModifierFlagShift) )
-            {
-                if( [[pEvent charactersIgnoringModifiers] isEqualToString: @"Z"] )
-                {
-                    if( [NSApp sendAction: @selector(redo:) to: nil from: nil] )
-                        return;
-                }
-            }
+            if( [SalNSMenu dispatchSpecialKeyEquivalents:pEvent] )
+                return;
         }
     }
     [super sendEvent: pEvent];
@@ -315,6 +311,14 @@
 -(NSApplicationTerminateReply)applicationShouldTerminate: (NSApplication *) app
 {
     (void)app;
+
+    // Related: tdf#126638 disable all menu items when displaying modal windows
+    // Although -[SalNSMenuItem validateMenuItem:] disables almost all menu
+    // items when a modal window is displayed, the standard Quit menu item
+    // does not get disabled so disable it here.
+    if ([NSApp modalWindow])
+        return NSTerminateCancel;
+
     NSApplicationTerminateReply aReply = NSTerminateNow;
     {
         SolarMutexGuard aGuard;
@@ -355,10 +359,10 @@
     (void)pNotification;
     SolarMutexGuard aGuard;
 
-    AquaSalInstance *pInst = GetSalData()->mpInstance;
-    SalFrame *pAnyFrame = pInst->anyFrame();
-    if(  pAnyFrame )
-        pAnyFrame->CallCallback( SalEvent::SettingsChanged, nullptr );
+    // Related: tdf#156855 delay SalEvent::SettingsChanged event
+    // -[SalFrameView viewDidChangeEffectiveAppearance] needs to delay
+    // so be safe and do the same here.
+    GetSalData()->mpInstance->delayedSettingsChanged( true );
 }
 
 -(void)screenParametersChanged: (NSNotification*) pNotification
@@ -418,7 +422,7 @@
         // workaround : declare remoteControl instance variable as public in RemoteMainController.m
 
         [pAppleRemoteCtrl->remoteControl startListening: self];
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
         NSLog(@"Apple Remote will become active - Using remote controls");
 #endif
     }
@@ -446,7 +450,7 @@
         // workaround : declare remoteControl instance variable as public in RemoteMainController.m
 
         [pAppleRemoteCtrl->remoteControl stopListening: self];
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
         NSLog(@"Apple Remote will resign active - Releasing remote controls");
 #endif
     }
@@ -470,11 +474,59 @@
     return YES;
 }
 
+- (BOOL)applicationSupportsSecureRestorableState: (NSApplication *)pApp
+{
+    return YES;
+}
+
 -(void)setDockIconClickHandler: (NSObject*)pHandler
 {
     GetSalData()->mpDockIconClickHandler = pHandler;
 }
 
+-(NSImage*)createNSImage: (NSValue*)pImageValue
+{
+    if (pImageValue)
+    {
+        Image *pImage = static_cast<Image*>([pImageValue pointerValue]);
+        if (pImage)
+            return CreateNSImage(*pImage);
+    }
+
+    return nil;
+}
+
+-(void)addWindowsItem: (NSWindow *)pWindow title: (NSString *)pString filename: (BOOL)bFilename
+{
+    // Related: tdf#165448 stop macOS from creating its own file list in the
+    // windows menu
+    (void)pWindow;
+    (void)pString;
+    (void)bFilename;
+}
+
+-(void)changeWindowsItem: (NSWindow *)pWindow title: (NSString *)pString filename: (BOOL)bFilename
+{
+    // Related: tdf#165448 stop macOS from creating its own file list in the
+    // windows menu
+    (void)pWindow;
+    (void)pString;
+    (void)bFilename;
+}
+
+-(void)removeWindowsItem: (NSWindow *)pWindow
+{
+    // Related: tdf#165448 stop macOS from creating its own file list in the
+    // windows menu
+    (void)pWindow;
+}
+
+-(void)updateWindowsItem: (NSWindow *)pWindow
+{
+    // Related: tdf#165448 stop macOS from creating its own file list in the
+    // windows menu
+    (void)pWindow;
+}
 
 @end
 

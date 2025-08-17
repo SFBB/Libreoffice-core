@@ -56,7 +56,7 @@ namespace sdr::properties
                 GetObjectItemSet();
 
                 // add filtered scene properties (SDRATTR_3DSCENE_) to local itemset
-                SfxItemSetFixed<SDRATTR_3DSCENE_FIRST, SDRATTR_3DSCENE_LAST> aSet(*moItemSet->GetPool() );
+                SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<SDRATTR_3DSCENE_FIRST, SDRATTR_3DSCENE_LAST>(*moItemSet->GetPool()));
                 aSet.Put(pScene->GetProperties().GetObjectItemSet());
                 moItemSet->Put(aSet);
             }
@@ -65,7 +65,7 @@ namespace sdr::properties
             return E3dProperties::GetMergedItemSet();
         }
 
-        void E3dCompoundProperties::SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems)
+        void E3dCompoundProperties::SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems, bool bAdjustTextFrameWidthAndHeight)
         {
             // Set scene specific items at scene
             E3dCompoundObject& rObj = static_cast<E3dCompoundObject&>(GetSdrObject());
@@ -77,7 +77,7 @@ namespace sdr::properties
                 GetObjectItemSet();
 
                 // Generate filtered scene properties (SDRATTR_3DSCENE_) itemset
-                SfxItemSetFixed<SDRATTR_3DSCENE_FIRST, SDRATTR_3DSCENE_LAST> aSet(*moItemSet->GetPool());
+                SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<SDRATTR_3DSCENE_FIRST, SDRATTR_3DSCENE_LAST>(*moItemSet->GetPool()));
                 aSet.Put(rSet);
 
                 if(bClearAllItems)
@@ -92,7 +92,7 @@ namespace sdr::properties
             }
 
             // call parent. This will set items on local object, too.
-            E3dProperties::SetMergedItemSet(rSet, bClearAllItems);
+            E3dProperties::SetMergedItemSet(rSet, bClearAllItems, bAdjustTextFrameWidthAndHeight);
         }
 
         void E3dCompoundProperties::PostItemChange(const sal_uInt16 nWhich)

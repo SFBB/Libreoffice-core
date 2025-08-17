@@ -170,7 +170,7 @@ void SwView::GetState(SfxItemSet &rSet)
                     {
                         rSet.DisableItem(nWhich);
                     }
-                    else if((m_pWrtShell->IsObjSelected() || m_pWrtShell->IsFrameSelected()) &&
+                    else if((m_pWrtShell->GetSelectedObjCount() || m_pWrtShell->IsFrameSelected()) &&
                         (m_pWrtShell->IsSelObjProtected( FlyProtectFlags::Parent) != FlyProtectFlags::NONE ||
                         m_pWrtShell->IsSelObjProtected( FlyProtectFlags::Content ) != FlyProtectFlags::NONE))
                     {
@@ -221,7 +221,7 @@ void SwView::GetState(SfxItemSet &rSet)
                 {
                     const SwFrameFormat& rMaster = rDesc.GetMaster();
 
-                    rSet.SetParent(&rMaster.GetDoc()->GetDfltFrameFormat()->GetAttrSet());
+                    rSet.SetParent(&rMaster.GetDoc().GetDfltFrameFormat()->GetAttrSet());
                 }
 
                 ::PageDescToItemSet( rDesc, rSet);
@@ -263,7 +263,7 @@ void SwView::GetState(SfxItemSet &rSet)
                     SelectShell();
 
                 const SfxPoolItemHolder aResult(m_pShell->GetSlotState(SID_UNDO));
-                if(nullptr != aResult.getItem())
+                if(aResult)
                     rSet.Put(*aResult.getItem());
                 else
                     rSet.DisableItem(nWhich);
@@ -288,13 +288,20 @@ void SwView::GetState(SfxItemSet &rSet)
                 if(nullptr == (pBase = m_pWrtShell->GetCurTOX()) ||
                     (FN_EDIT_CURRENT_TOX == nWhich && pBase->IsTOXBaseInReadonly()))
                     rSet.DisableItem(nWhich);
+                else
+                {
+                    const OUString sLabel
+                        = SwResId(nWhich == FN_EDIT_CURRENT_TOX ? STR_EDITINDEX : STR_UPDATEINDEX)
+                              .replaceAll("%1", pBase->GetTypeName());
+                    rSet.Put(SfxStringItem(nWhich, sLabel));
+                }
             }
             break;
             case SID_TWAIN_SELECT:
             case SID_TWAIN_TRANSFER:
 #if defined(_WIN32) || defined UNX
             {
-                if(!SW_MOD()->GetScannerManager().is())
+                if (!SwModule::get()->GetScannerManager().is())
                     rSet.DisableItem(nWhich);
             }
 #endif
@@ -325,7 +332,8 @@ void SwView::GetState(SfxItemSet &rSet)
             }
             break;
             case FN_REDLINE_ON:
-                rSet.Put( SfxBoolItem( nWhich, GetDocShell()->IsChangeRecording() ) );
+                // Enabled at least in this view.
+                rSet.Put( SfxBoolItem( nWhich, GetDocShell()->IsChangeRecording(this, /*bRecordAllViews=*/false) ) );
                 // When the view is new (e.g. on load), show the Hidden Track Changes infobar
                 // if Show Changes is disabled, but recording of changes is enabled
                 // or hidden tracked changes are there already in the document.
@@ -333,13 +341,13 @@ void SwView::GetState(SfxItemSet &rSet)
                 // enabled, see in sfx2.
                 if ( m_bForceChangesToolbar && m_pWrtShell->GetLayout()->IsHideRedlines() )
                 {
-                    bool isRecording = GetDocShell()->IsChangeRecording();
+                    bool isRecording = GetDocShell()->IsChangeRecording(this, /*bRecordAllViews=*/false);
                     bool hasRecorded =
                         m_pWrtShell->GetDoc()->getIDocumentRedlineAccess().GetRedlineTable().size();
                     if ( isRecording || hasRecorded )
                     {
                         GetDocShell()->AppendInfoBarWhenReady(
-                            "hiddentrackchanges", SwResId(STR_HIDDEN_CHANGES),
+                            u"hiddentrackchanges"_ustr, SwResId(STR_HIDDEN_CHANGES),
                             SwResId( (isRecording && hasRecorded)
                                     ? STR_HIDDEN_CHANGES_DETAIL
                                     : isRecording
@@ -349,6 +357,19 @@ void SwView::GetState(SfxItemSet &rSet)
                     }
                 }
                 m_bForceChangesToolbar = false;
+            break;
+            case FN_TRACK_CHANGES_IN_THIS_VIEW:
+            {
+                // Enabled in this view, but not in all views.
+                bool bOn = GetDocShell()->IsChangeRecording(this, /*bRecordAllViews=*/false) && !GetDocShell()->IsChangeRecording(this);
+                rSet.Put(SfxBoolItem(nWhich, bOn));
+            }
+            break;
+            case FN_TRACK_CHANGES_IN_ALL_VIEWS:
+            {
+                // Enabled in all views.
+                rSet.Put(SfxBoolItem(nWhich, GetDocShell()->IsChangeRecording(this)));
+            }
             break;
             case FN_REDLINE_PROTECT :
                 rSet.Put( SfxBoolItem( nWhich, GetDocShell()->HasChangeRecordProtection() ) );
@@ -370,8 +391,10 @@ void SwView::GetState(SfxItemSet &rSet)
             break;
             case FN_REDLINE_ACCEPT_DIRECT:
             case FN_REDLINE_REJECT_DIRECT:
+            case FN_REDLINE_REINSTATE_DIRECT:
             case FN_REDLINE_ACCEPT_TONEXT:
             case FN_REDLINE_REJECT_TONEXT:
+            case FN_REDLINE_REINSTATE_TONEXT:
             {
                 SwDoc *pDoc = m_pWrtShell->GetDoc();
                 SwPaM *pCursor = m_pWrtShell->GetCursor();
@@ -506,7 +529,7 @@ void SwView::GetState(SfxItemSet &rSet)
                     rSet.DisableItem(nWhich);
             break;
             case  SID_VIEW_DATA_SOURCE_BROWSER:
-                if ( !SvtModuleOptions().IsModuleInstalled( SvtModuleOptions::EModule::DATABASE ) )
+                if (!SvtModuleOptions().IsDataBaseInstalled())
                     rSet.Put( SfxVisibilityItem( nWhich, false ) );
                 else
                     rSet.Put( SfxBoolItem( nWhich, GetViewFrame().HasChildWindow( SID_BROWSER ) ) );
@@ -573,7 +596,7 @@ void SwView::GetState(SfxItemSet &rSet)
                 SfxPoolItemHolder aResult;
                 if(nAlias)
                     GetViewFrame().GetDispatcher()->QueryState(nAlias, aResult);
-                if(nullptr != aResult.getItem())
+                if (aResult && !IsInvalidItem(aResult.getItem()) && !IsDisabledItem(aResult.getItem()))
                 {
                     if (!(m_nSelectionType & SelectionType::DrawObject))
                     {

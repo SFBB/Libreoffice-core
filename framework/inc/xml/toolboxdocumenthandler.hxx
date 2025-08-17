@@ -24,6 +24,8 @@
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 
 #include <rtl/ustring.hxx>
+#include <rtl/ref.hxx>
+#include <comphelper/attributelist.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <unordered_map>
@@ -86,17 +88,12 @@ class OReadToolBoxDocumentHandler final : public OReadToolBoxDocumentHandler_Bas
     private:
         OUString getErrorLineString();
 
-        class ToolBoxHashMap : public std::unordered_map<OUString,
-                                                         ToolBox_XML_Entry>
-        {
-        };
-
         bool                                                      m_bToolBarStartFound : 1;
         bool                                                      m_bToolBarItemStartFound : 1;
         bool                                                      m_bToolBarSpaceStartFound : 1;
         bool                                                      m_bToolBarBreakStartFound : 1;
         bool                                                      m_bToolBarSeparatorStartFound : 1;
-        ToolBoxHashMap                                            m_aToolBoxMap;
+        std::unordered_map<OUString, ToolBox_XML_Entry>           m_aToolBoxMap;
         css::uno::Reference< css::container::XIndexContainer >    m_rItemContainer;
         css::uno::Reference< css::xml::sax::XLocator >            m_xLocator;
 
@@ -137,7 +134,7 @@ class OWriteToolBoxDocumentHandler final
         void WriteToolBoxSeparator();
 
         css::uno::Reference< css::xml::sax::XDocumentHandler > m_xWriteDocumentHandler;
-        css::uno::Reference< css::xml::sax::XAttributeList >   m_xEmptyList;
+        rtl::Reference< ::comphelper::AttributeList >          m_xEmptyList;
         css::uno::Reference< css::container::XIndexAccess >    m_rItemAccess;
         OUString                                               m_aXMLToolbarNS;
         OUString                                               m_aXMLXlinkNS;

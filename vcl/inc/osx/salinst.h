@@ -108,9 +108,14 @@ public:
     virtual void            DestroyObject( SalObject* pObject ) override;
     virtual std::unique_ptr<SalVirtualDevice>
                             CreateVirtualDevice( SalGraphics& rGraphics,
+                                                   tools::Long nDX, tools::Long nDY,
+                                                   DeviceFormat eFormat,
+                                                   bool bAlphaMaskTransparent = false ) override;
+    virtual std::unique_ptr<SalVirtualDevice>
+                            CreateVirtualDevice( SalGraphics& rGraphics,
                                                    tools::Long &nDX, tools::Long &nDY,
                                                    DeviceFormat eFormat,
-                                                   const SystemGraphicsData *pData = nullptr ) override;
+                                                   const SystemGraphicsData& rData ) override;
     virtual SalInfoPrinter* CreateInfoPrinter( SalPrinterQueueInfo* pQueueInfo,
                                                ImplJobSetup* pSetupData ) override;
     virtual void            DestroyInfoPrinter( SalInfoPrinter* pPrinter ) override;
@@ -126,17 +131,18 @@ public:
     virtual std::unique_ptr<SalMenu>     CreateMenu( bool bMenuBar, Menu* pVCLMenu ) override;
     virtual std::unique_ptr<SalMenuItem> CreateMenuItem( const SalItemParams & rItemData ) override;
     virtual OpenGLContext*  CreateOpenGLContext() override;
-    virtual OUString        GetConnectionIdentifier() override;
     virtual void            AddToRecentDocumentList(const OUString& rFileUrl, const OUString& rMimeType,
                                                     const OUString& rDocumentService) override;
 
     virtual OUString        getOSVersion() override;
 
     // dtrans implementation
-    virtual css::uno::Reference< css::uno::XInterface > CreateClipboard(
-            const css::uno::Sequence< css::uno::Any >& i_rArguments ) override;
-    virtual css::uno::Reference<css::uno::XInterface> ImplCreateDragSource(const SystemEnvData*) override;
-    virtual css::uno::Reference<css::uno::XInterface> ImplCreateDropTarget(const SystemEnvData*) override;
+    virtual css::uno::Reference<css::datatransfer::clipboard::XClipboard>
+    CreateClipboard(const css::uno::Sequence<css::uno::Any>& i_rArguments) override;
+    virtual css::uno::Reference<css::datatransfer::dnd::XDragSource>
+    ImplCreateDragSource(const SystemEnvData& rSysEnv) override;
+    virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget>
+    ImplCreateDropTarget(const SystemEnvData& rSysEnv) override;
 
     static void handleAppDefinedEvent( NSEvent* pEvent );
 

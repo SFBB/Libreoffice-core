@@ -35,13 +35,13 @@ public:
 };
 
 ScCondFormatMergeTest::ScCondFormatMergeTest()
-    : UnoApiTest("sc/qa/extras/testdocuments/")
+    : UnoApiTest(u"sc/qa/extras/testdocuments/"_ustr)
 {
 }
 
 void ScCondFormatMergeTest::testCondFormatMerge()
 {
-    loadFromURL(u"cond_format_merge.ods");
+    loadFromFile(u"cond_format_merge.ods");
 
     // get the first sheet
     uno::Reference<sheet::XSpreadsheetDocument> xDoc(mxComponent, uno::UNO_QUERY_THROW);
@@ -49,7 +49,7 @@ void ScCondFormatMergeTest::testCondFormatMerge()
     uno::Reference<sheet::XSpreadsheet> xSheet(xIndex->getByIndex(0), uno::UNO_QUERY_THROW);
 
     uno::Reference<beans::XPropertySet> xProps(xSheet, uno::UNO_QUERY_THROW);
-    uno::Any aAny = xProps->getPropertyValue("ConditionalFormats");
+    uno::Any aAny = xProps->getPropertyValue(u"ConditionalFormats"_ustr);
     uno::Reference<sheet::XConditionalFormats> xCondFormats;
 
     CPPUNIT_ASSERT(aAny >>= xCondFormats);
@@ -71,7 +71,7 @@ void ScCondFormatMergeTest::testCondFormatMerge()
 
         uno::Reference<beans::XPropertySet> xPropSet(xCondFormat, uno::UNO_QUERY_THROW);
 
-        aAny = xPropSet->getPropertyValue("Range");
+        aAny = xPropSet->getPropertyValue(u"Range"_ustr);
         uno::Reference<sheet::XSheetCellRanges> xCellRanges;
         CPPUNIT_ASSERT(aAny >>= xCellRanges);
         CPPUNIT_ASSERT(xCellRanges.is());

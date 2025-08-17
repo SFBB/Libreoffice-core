@@ -33,20 +33,21 @@ SfxPoolItem* SvxDashListItem::CreateDefault() { return new   SvxDashListItem ;}
 SfxPoolItem* SvxLineEndListItem::CreateDefault() { return new   SvxLineEndListItem ;}
 
 SvxColorListItem::SvxColorListItem()
+    : SfxPoolItem( 0 )
 {
 }
 
 
 SvxColorListItem::SvxColorListItem( XColorListRef pTable, TypedWhichId<SvxColorListItem> nW ) :
     SfxPoolItem( nW ),
-    pColorList(std::move( pTable ))
+    m_pColorList(std::move( pTable ))
 {
 }
 
 
 SvxColorListItem::SvxColorListItem( const SvxColorListItem& rItem ) :
     SfxPoolItem( rItem ),
-    pColorList( rItem.pColorList )
+    m_pColorList( rItem.m_pColorList )
 {
 }
 
@@ -65,7 +66,7 @@ bool SvxColorListItem::GetPresentation
 bool SvxColorListItem::operator==( const SfxPoolItem& rItem ) const
 {
     assert(SfxPoolItem::operator==(rItem));
-    return static_cast<const SvxColorListItem&>(rItem).pColorList == pColorList;
+    return static_cast<const SvxColorListItem&>(rItem).m_pColorList == m_pColorList;
 }
 
 SvxColorListItem* SvxColorListItem::Clone( SfxItemPool * ) const
@@ -77,7 +78,7 @@ SvxColorListItem* SvxColorListItem::Clone( SfxItemPool * ) const
 #define QUERY_PUT_IMPL(svtype, xtype) \
 bool svtype::QueryValue( css::uno::Any& rVal, sal_uInt8 ) const \
 { \
-    rVal <<= uno::Reference< uno::XWeak >( p##xtype ); \
+    rVal <<= uno::Reference< uno::XWeak >( m_p##xtype ); \
     return true; \
 } \
 \
@@ -85,7 +86,7 @@ bool svtype::PutValue( const css::uno::Any& rVal, sal_uInt8 ) \
 { \
     uno::Reference< uno::XWeak > xRef; \
     if( rVal >>= xRef ) { \
-        p##xtype = X##xtype##Ref(dynamic_cast<X##xtype *>(xRef.get())); \
+        m_p##xtype = X##xtype##Ref(dynamic_cast<X##xtype *>(xRef.get())); \
         return true; \
     } \
     return false; \
@@ -94,19 +95,20 @@ bool svtype::PutValue( const css::uno::Any& rVal, sal_uInt8 ) \
 QUERY_PUT_IMPL( SvxColorListItem, ColorList )
 
 SvxGradientListItem::SvxGradientListItem()
+    : SfxPoolItem( 0 )
 {
 }
 
 SvxGradientListItem::SvxGradientListItem( XGradientListRef pList, TypedWhichId<SvxGradientListItem> nW ) :
     SfxPoolItem( nW ),
-    pGradientList(std::move( pList ))
+    m_pGradientList(std::move( pList ))
 {
 }
 
 
 SvxGradientListItem::SvxGradientListItem( const SvxGradientListItem& rItem ) :
     SfxPoolItem( rItem ),
-    pGradientList( rItem.pGradientList )
+    m_pGradientList( rItem.m_pGradientList )
 {
 }
 
@@ -127,7 +129,7 @@ bool SvxGradientListItem::GetPresentation
 bool SvxGradientListItem::operator==( const SfxPoolItem& rItem ) const
 {
     assert(SfxPoolItem::operator==(rItem));
-    return static_cast<const SvxGradientListItem&>(rItem).pGradientList == pGradientList;
+    return static_cast<const SvxGradientListItem&>(rItem).m_pGradientList == m_pGradientList;
 }
 
 SvxGradientListItem* SvxGradientListItem::Clone( SfxItemPool * ) const
@@ -138,20 +140,21 @@ SvxGradientListItem* SvxGradientListItem::Clone( SfxItemPool * ) const
 QUERY_PUT_IMPL( SvxGradientListItem, GradientList )
 
 SvxHatchListItem::SvxHatchListItem()
+    : SfxPoolItem( 0 )
 {
 }
 
 
 SvxHatchListItem::SvxHatchListItem( XHatchListRef pList, TypedWhichId<SvxHatchListItem> nW ) :
     SfxPoolItem( nW ),
-    pHatchList(std::move( pList ))
+    m_pHatchList(std::move( pList ))
 {
 }
 
 
 SvxHatchListItem::SvxHatchListItem( const SvxHatchListItem& rItem ) :
     SfxPoolItem( rItem ),
-    pHatchList( rItem.pHatchList )
+    m_pHatchList( rItem.m_pHatchList )
 {
 }
 
@@ -172,7 +175,7 @@ bool SvxHatchListItem::GetPresentation
 bool SvxHatchListItem::operator==( const SfxPoolItem& rItem ) const
 {
     assert(SfxPoolItem::operator==(rItem));
-    return static_cast<const SvxHatchListItem&>(rItem).pHatchList == pHatchList;
+    return static_cast<const SvxHatchListItem&>(rItem).m_pHatchList == m_pHatchList;
 }
 
 SvxHatchListItem* SvxHatchListItem::Clone( SfxItemPool * ) const
@@ -183,18 +186,19 @@ SvxHatchListItem* SvxHatchListItem::Clone( SfxItemPool * ) const
 QUERY_PUT_IMPL( SvxHatchListItem, HatchList )
 
 SvxBitmapListItem::SvxBitmapListItem()
+    : SfxPoolItem( 0 )
 {
 }
 
 SvxBitmapListItem::SvxBitmapListItem( XBitmapListRef pList, TypedWhichId<SvxBitmapListItem> nW ) :
     SfxPoolItem( nW ),
-    pBitmapList(std::move( pList ))
+    m_pBitmapList(std::move( pList ))
 {
 }
 
 SvxBitmapListItem::SvxBitmapListItem( const SvxBitmapListItem& rItem ) :
     SfxPoolItem( rItem ),
-    pBitmapList( rItem.pBitmapList )
+    m_pBitmapList( rItem.m_pBitmapList )
 {
 }
 
@@ -213,7 +217,7 @@ bool SvxBitmapListItem::GetPresentation
 bool SvxBitmapListItem::operator==( const SfxPoolItem& rItem ) const
 {
     assert(SfxPoolItem::operator==(rItem));
-    return static_cast<const SvxBitmapListItem&>(rItem).pBitmapList == pBitmapList;
+    return static_cast<const SvxBitmapListItem&>(rItem).m_pBitmapList == m_pBitmapList;
 }
 
 SvxBitmapListItem* SvxBitmapListItem::Clone( SfxItemPool * ) const
@@ -224,18 +228,19 @@ SvxBitmapListItem* SvxBitmapListItem::Clone( SfxItemPool * ) const
 QUERY_PUT_IMPL( SvxBitmapListItem, BitmapList )
 
 SvxPatternListItem::SvxPatternListItem()
+    : SfxPoolItem( 0 )
 {
 }
 
 SvxPatternListItem::SvxPatternListItem( XPatternListRef pList, TypedWhichId<SvxPatternListItem> nW ) :
     SfxPoolItem( nW ),
-    pPatternList(std::move( pList ))
+    m_pPatternList(std::move( pList ))
 {
 }
 
 SvxPatternListItem::SvxPatternListItem( const SvxPatternListItem& rItem ) :
     SfxPoolItem( rItem ),
-    pPatternList( rItem.pPatternList )
+    m_pPatternList( rItem.m_pPatternList )
 {
 }
 
@@ -254,7 +259,7 @@ bool SvxPatternListItem::GetPresentation
 bool SvxPatternListItem::operator==( const SfxPoolItem& rItem ) const
 {
     assert(SfxPoolItem::operator==(rItem));
-    return static_cast<const SvxPatternListItem&>(rItem).pPatternList == pPatternList;
+    return static_cast<const SvxPatternListItem&>(rItem).m_pPatternList == m_pPatternList;
 }
 
 SvxPatternListItem* SvxPatternListItem::Clone( SfxItemPool * ) const
@@ -265,18 +270,19 @@ SvxPatternListItem* SvxPatternListItem::Clone( SfxItemPool * ) const
 QUERY_PUT_IMPL( SvxPatternListItem, PatternList )
 
 SvxDashListItem::SvxDashListItem()
+    : SfxPoolItem( 0 )
 {
 }
 
 SvxDashListItem::SvxDashListItem( XDashListRef pList, TypedWhichId<SvxDashListItem> nW ) :
     SfxPoolItem( nW ),
-    pDashList(std::move( pList ))
+    m_pDashList(std::move( pList ))
 {
 }
 
 SvxDashListItem::SvxDashListItem( const SvxDashListItem& rItem ) :
     SfxPoolItem( rItem ),
-    pDashList( rItem.pDashList )
+    m_pDashList( rItem.m_pDashList )
 {
 }
 
@@ -295,7 +301,7 @@ bool SvxDashListItem::GetPresentation
 bool SvxDashListItem::operator==( const SfxPoolItem& rItem ) const
 {
     assert(SfxPoolItem::operator==(rItem));
-    return static_cast<const SvxDashListItem&>(rItem).pDashList == pDashList;
+    return static_cast<const SvxDashListItem&>(rItem).m_pDashList == m_pDashList;
 }
 
 SvxDashListItem* SvxDashListItem::Clone( SfxItemPool * ) const
@@ -306,18 +312,19 @@ SvxDashListItem* SvxDashListItem::Clone( SfxItemPool * ) const
 QUERY_PUT_IMPL( SvxDashListItem, DashList )
 
 SvxLineEndListItem::SvxLineEndListItem()
+    : SfxPoolItem( 0 )
 {
 }
 
 SvxLineEndListItem::SvxLineEndListItem( XLineEndListRef pList, TypedWhichId<SvxLineEndListItem>  nW ) :
     SfxPoolItem( nW ),
-    pLineEndList(std::move( pList ))
+    m_pLineEndList(std::move( pList ))
 {
 }
 
 SvxLineEndListItem::SvxLineEndListItem( const SvxLineEndListItem& rItem ) :
     SfxPoolItem( rItem ),
-    pLineEndList( rItem.pLineEndList )
+    m_pLineEndList( rItem.m_pLineEndList )
 {
 }
 
@@ -336,7 +343,7 @@ bool SvxLineEndListItem::GetPresentation
 bool SvxLineEndListItem::operator==( const SfxPoolItem& rItem ) const
 {
     assert(SfxPoolItem::operator==(rItem));
-    return static_cast<const SvxLineEndListItem&>(rItem).pLineEndList == pLineEndList;
+    return static_cast<const SvxLineEndListItem&>(rItem).m_pLineEndList == m_pLineEndList;
 }
 
 SvxLineEndListItem* SvxLineEndListItem::Clone( SfxItemPool * ) const

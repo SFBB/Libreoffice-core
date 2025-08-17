@@ -59,41 +59,42 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::io;
 
 // needs to be converted to a better data structure
-SfxFormalArgument const aFormalArgs[] = {
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "SuggestedSaveAsName", SID_DEFAULTFILENAME },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "SuggestedSaveAsDir", SID_DEFAULTFILEPATH },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "VersionAuthor", SID_DOCINFO_AUTHOR },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "VersionComment", SID_DOCINFO_COMMENTS },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "DontTerminateEdit", FN_PARAM_1 },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "VersionMajor", SID_DOCINFO_MAJOR },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "FilterOptions", SID_FILE_FILTEROPTIONS },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "FilterName", SID_FILTER_NAME },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "Margin1", SID_RULER_MARGIN1 },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "Margin2", SID_RULER_MARGIN2 },
-//    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "FileName", SID_FILE_NAME },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "URL", SID_FILE_NAME },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "OpenFlags", SID_OPTIONS },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "Overwrite", SID_OVERWRITE },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "Password", SID_PASSWORD },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "PasswordInteraction", SID_PASSWORDINTERACTION },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "Referer", SID_REFERER },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "SaveTo", SID_SAVETO },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "TemplateName", SID_TEMPLATE_NAME },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "TemplateRegion", SID_TEMPLATE_REGIONNAME },
-//    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "Region", SID_TEMPLATE_REGIONNAME },
-//    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "Name", SID_TEMPLATE_NAME },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "Unpacked", SID_UNPACK },
-    { reinterpret_cast<SfxType*>(&aSfxInt16Item_Impl), "Version", SID_VERSION },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "SaveACopy", SID_SAVEACOPYITEM },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "NoFileSync", SID_NO_FILE_SYNC },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "NoThumbnail", SID_NO_THUMBNAIL },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "NoEmbDataSet", SID_NO_EMBEDDED_DS },
-    { reinterpret_cast<SfxType*>(&aSfxBoolItem_Impl), "IsRedactMode", SID_IS_REDACT_MODE },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "RedactionStyle", SID_REDACTION_STYLE },
-    { reinterpret_cast<SfxType*>(&aSfxStringItem_Impl), "AdditionsTag", FN_PARAM_ADDITIONS_TAG },
+constexpr SfxFormalArgument aFormalArgs[] = {
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"SuggestedSaveAsName"_ustr, SID_DEFAULTFILENAME },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"SuggestedSaveAsDir"_ustr, SID_DEFAULTFILEPATH },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"VersionAuthor"_ustr, SID_DOCINFO_AUTHOR },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"VersionComment"_ustr, SID_DOCINFO_COMMENTS },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"DontTerminateEdit"_ustr, FN_PARAM_1 },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"VersionMajor"_ustr, SID_DOCINFO_MAJOR },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"FilterOptions"_ustr, SID_FILE_FILTEROPTIONS },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"FilterName"_ustr, SID_FILTER_NAME },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"Margin1"_ustr, SID_RULER_MARGIN1 },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"Margin2"_ustr, SID_RULER_MARGIN2 },
+//    { static_cast<const SfxType*>(&aSfxStringItem_Impl), "FileName", SID_FILE_NAME },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"URL"_ustr, SID_FILE_NAME },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"OpenFlags"_ustr, SID_OPTIONS },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"Overwrite"_ustr, SID_OVERWRITE },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"Password"_ustr, SID_PASSWORD },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"PasswordInteraction"_ustr, SID_PASSWORDINTERACTION },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"Referer"_ustr, SID_REFERER },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"SaveTo"_ustr, SID_SAVETO },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"TemplateName"_ustr, SID_TEMPLATE_NAME },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"TemplateRegion"_ustr, SID_TEMPLATE_REGIONNAME },
+//    { static_cast<const SfxType*>(&aSfxStringItem_Impl), "Region", SID_TEMPLATE_REGIONNAME },
+//    { static_cast<const SfxType*>(&aSfxStringItem_Impl), "Name", SID_TEMPLATE_NAME },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"Unpacked"_ustr, SID_UNPACK },
+    { static_cast<const SfxType*>(&aSfxInt16Item_Impl), u"Version"_ustr, SID_VERSION },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"SaveACopy"_ustr, SID_SAVEACOPYITEM },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"NoFileSync"_ustr, SID_NO_FILE_SYNC },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"NoThumbnail"_ustr, SID_NO_THUMBNAIL },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"NoEmbDataSet"_ustr, SID_NO_EMBEDDED_DS },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"IsRedactMode"_ustr, SID_IS_REDACT_MODE },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"RedactionStyle"_ustr, SID_REDACTION_STYLE },
+    { static_cast<const SfxType*>(&aSfxStringItem_Impl), u"AdditionsTag"_ustr, FN_PARAM_ADDITIONS_TAG },
+    { static_cast<const SfxType*>(&aSfxBoolItem_Impl), u"RedactImages"_ustr, SID_REDACT_IMAGE},
 };
 
-sal_uInt16 const nMediaArgsCount = SAL_N_ELEMENTS(aFormalArgs);
+constexpr sal_uInt16 nMediaArgsCount = std::size(aFormalArgs);
 
 constexpr OUString sTemplateRegionName = u"TemplateRegionName"_ustr;
 constexpr OUString sTemplateName = u"TemplateName"_ustr;
@@ -139,11 +140,11 @@ constexpr OUString sCopyStreamIfPossible = u"CopyStreamIfPossible"_ustr;
 constexpr OUString sNoAutoSave = u"NoAutoSave"_ustr;
 constexpr OUString sFolderName = u"FolderName"_ustr;
 constexpr OUString sUseSystemDialog = u"UseSystemDialog"_ustr;
-constexpr OUString sStandardDir = u"StandardDir"_ustr;
 constexpr OUString sDenyList = u"DenyList"_ustr;
 constexpr OUString sModifyPasswordInfo = u"ModifyPasswordInfo"_ustr;
 constexpr OUString sSuggestedSaveAsDir = u"SuggestedSaveAsDir"_ustr;
 constexpr OUString sSuggestedSaveAsName = u"SuggestedSaveAsName"_ustr;
+constexpr OUString sExportDirectory = u"ExportDirectory"_ustr;
 constexpr OUString sEncryptionData = u"EncryptionData"_ustr;
 constexpr OUString sFailOnWarning = u"FailOnWarning"_ustr;
 constexpr OUString sDocumentService = u"DocumentService"_ustr;
@@ -195,14 +196,14 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
             return;
         }
 
-        sal_uInt16 nWhich = rSet.GetPool()->GetWhich(nSlotId);
+        sal_uInt16 nWhich = rSet.GetPool()->GetWhichIDFromSlotID(nSlotId);
         bool bConvertTwips = ( rSet.GetPool()->GetMetric( nWhich ) == MapUnit::MapTwip );
         pItem->SetWhich( nWhich );
         sal_uInt16 nSubCount = pType->nAttribs;
 
         const beans::PropertyValue& rProp = pPropsVal[0];
         const OUString& rName = rProp.Name;
-        if ( nCount == 1 && rName == pSlot->pUnoName )
+        if ( nCount == 1 && rName == pSlot->aUnoName )
         {
             // there is only one parameter and its name matches the name of the property,
             // so it's either a simple property or a complex property in one single UNO struct
@@ -211,14 +212,14 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
                 rSet.Put( std::move(pItem) );
             else
             {
-                SAL_WARN( "sfx", "Property not convertible: " << pSlot->pUnoName );
+                SAL_WARN( "sfx", "Property not convertible: " << pSlot->aUnoName );
             }
         }
 #ifdef DBG_UTIL
         else if ( nSubCount == 0 )
         {
             // for a simple property there can be only one parameter and its name *must* match
-            SAL_WARN("sfx.appl", "Property name does not match: " << rName);
+            SAL_WARN("sfx.appl", "Property name of '" << rName << "' does not match '" << pSlot->aUnoName << "'");
         }
 #endif
         else
@@ -242,17 +243,16 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
                 for ( nSub=0; nSub<nSubCount; nSub++ )
                 {
                     // search sub item by name
-                    OUString aStr = pSlot->pUnoName + "." + OUString::createFromAscii(pType->aAttrib[nSub].pName);
-                    if ( rPropValue.Name == aStr )
+                    if ( rPropValue.Name == (pSlot->aUnoName + "." + pType->getAttrib(nSub).aName) )
                     {
-                        sal_uInt8 nSubId = static_cast<sal_uInt8>(static_cast<sal_Int8>(pType->aAttrib[nSub].nAID));
+                        sal_uInt8 nSubId = static_cast<sal_uInt8>(static_cast<sal_Int8>(pType->getAttrib(nSub).nAID));
                         if ( bConvertTwips )
                             nSubId |= CONVERT_TWIPS;
                         if ( pItem->PutValue( rPropValue.Value, nSubId ) )
                             nFound++;
                         else
                         {
-                            SAL_WARN( "sfx.appl", "Property not convertible: " << pSlot->pUnoName);
+                            SAL_WARN( "sfx.appl", "Property not convertible: " << pSlot->aUnoName);
                         }
                         break;
                     }
@@ -283,11 +283,11 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
         std::unique_ptr<SfxPoolItem> pItem(rArg.CreateItem());
         if ( !pItem )
         {
-            SAL_WARN( "sfx", "No creator method for argument: " << rArg.pName );
+            SAL_WARN( "sfx", "No creator method for argument: " << rArg.aName );
             return;
         }
 
-        sal_uInt16 nWhich = rSet.GetPool()->GetWhich(rArg.nSlotId);
+        sal_uInt16 nWhich = rSet.GetPool()->GetWhichIDFromSlotID(rArg.nSlotId);
         bool bConvertTwips = ( rSet.GetPool()->GetMetric( nWhich ) == MapUnit::MapTwip );
         pItem->SetWhich( nWhich );
         const SfxType* pType = rArg.pType;
@@ -296,7 +296,7 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
         {
             // "simple" (base type) argument
             auto pProp = std::find_if(rArgs.begin(), rArgs.end(),
-                [&rArg](const beans::PropertyValue& rProp) { return rProp.Name.equalsAscii(rArg.pName); });
+                [&rArg](const beans::PropertyValue& rProp) { return rProp.Name == rArg.aName; });
             if (pProp != rArgs.end())
             {
 #ifdef DBG_UTIL
@@ -307,7 +307,7 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
                     rSet.Put( std::move(pItem) );
                 else
                 {
-                    SAL_WARN( "sfx", "Property not convertible: " << rArg.pName );
+                    SAL_WARN( "sfx", "Property not convertible: " << rArg.aName );
                 }
             }
         }
@@ -318,7 +318,7 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
             for ( const beans::PropertyValue& rProp : rArgs )
             {
                 const OUString& rName = rProp.Name;
-                if ( rName == OUString(rArg.pName, strlen(rArg.pName), RTL_TEXTENCODING_UTF8) )
+                if ( rName == rArg.aName )
                 {
                     bAsWholeItem = true;
 #ifdef DBG_UTIL
@@ -329,7 +329,7 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
                         rSet.Put( std::move(pItem) );
                     else
                     {
-                        SAL_WARN( "sfx", "Property not convertible: " << rArg.pName );
+                        SAL_WARN( "sfx", "Property not convertible: " << rArg.aName );
                     }
                 }
             }
@@ -345,22 +345,21 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
                     for ( sal_uInt16 nSub=0; nSub<nSubCount; nSub++ )
                     {
                         // search sub item by name
-                        OString aStr = OString::Concat(rArg.pName) + "." + pType->aAttrib[nSub].pName;
-                        if ( rProp.Name.equalsAsciiL(aStr.getStr(), aStr.getLength()) )
+                        if ( rProp.Name == (rArg.aName + "." + pType->getAttrib(nSub).aName) )
                         {
                             // at least one member found ...
                             bRet = true;
 #ifdef DBG_UTIL
                             ++nFoundArgs;
 #endif
-                            sal_uInt8 nSubId = static_cast<sal_uInt8>(static_cast<sal_Int8>(pType->aAttrib[nSub].nAID));
+                            sal_uInt8 nSubId = static_cast<sal_uInt8>(static_cast<sal_Int8>(pType->getAttrib(nSub).nAID));
                             if ( bConvertTwips )
                                 nSubId |= CONVERT_TWIPS;
                             if (!pItem->PutValue( rProp.Value, nSubId ) )
                             {
                                 // ... but it was not convertible
                                 bRet = false;
-                                SAL_WARN( "sfx", "Property not convertible: " << rArg.pName );
+                                SAL_WARN( "sfx", "Property not convertible: " << rArg.aName );
                             }
 
                             break;
@@ -545,11 +544,11 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
             }
             else if ( aName == sStartPresentation )
             {
-                bool bVal = false;
-                bool bOK = (rProp.Value >>= bVal);
+                sal_uInt16 nVal = 0;
+                bool bOK = (rProp.Value >>= nVal);
                 DBG_ASSERT( bOK, "invalid type for StartPresentation" );
                 if (bOK)
-                    rSet.Put( SfxBoolItem( SID_DOC_STARTPRESENTATION, bVal ) );
+                    rSet.Put(SfxUInt16Item(SID_DOC_STARTPRESENTATION, nVal));
             }
             else if ( aName == sSelectionOnly )
             {
@@ -614,14 +613,6 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
                 DBG_ASSERT( bOK, "invalid type for ViewOnly" );
                 if (bOK)
                     rSet.Put( SfxBoolItem( SID_FILE_DIALOG, bVal ) );
-            }
-            else if ( aName == sStandardDir )
-            {
-                OUString sVal;
-                bool bOK = ((rProp.Value >>= sVal) && !sVal.isEmpty());
-                DBG_ASSERT( bOK, "invalid type or value for StandardDir" );
-                if (bOK)
-                    rSet.Put( SfxStringItem( SID_STANDARD_DIR, sVal ) );
             }
             else if ( aName == sDenyList )
             {
@@ -812,6 +803,14 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
                 if (bOK)
                     rSet.Put( SfxStringItem( SID_SUGGESTEDSAVEASNAME, sVal ) );
             }
+            else if ( aName == sExportDirectory )
+            {
+                OUString sVal;
+                bool bOK = ((rProp.Value >>= sVal) && !sVal.isEmpty());
+                DBG_ASSERT( bOK, "invalid type or value for ExportDirectoy" );
+                if (bOK)
+                    rSet.Put( SfxStringItem( SID_EXPORTDIRECTORY, sVal ) );
+            }
             else if (aName == sDocumentService)
             {
                 OUString aVal;
@@ -884,7 +883,7 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
     else
     {
         // transform parameter "OptionsPageURL" of slot "OptionsTreeDialog"
-        if ( "OptionsTreeDialog" == pSlot->pUnoName )
+        if ( "OptionsTreeDialog" == pSlot->aUnoName )
         {
             auto pProp = std::find_if(rArgs.begin(), rArgs.end(),
                 [](const PropertyValue& rProp) { return rProp.Name == "OptionsPageURL" || rProp.Name == "OptionsPageID"; });
@@ -903,7 +902,7 @@ void TransformParameters( sal_uInt16 nSlotId, const uno::Sequence<beans::Propert
     if ( nFoundArgs == nCount )
     {
         // except for the "special" slots: assure that every argument was convertible
-        SAL_INFO( "sfx.appl", "MacroPlayer: Some properties didn't match to any formal argument for slot: "<< pSlot->pUnoName );
+        SAL_INFO( "sfx.appl", "MacroPlayer: Some properties didn't match to any formal argument for slot: "<< pSlot->aUnoName );
     }
 #endif
 }
@@ -933,7 +932,7 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
     if ( !pSlot->IsMode(SfxSlotMode::METHOD) )
     {
         // slot is a property
-        sal_uInt16 nWhich = rSet.GetPool()->GetWhich(nSlotId);
+        sal_uInt16 nWhich = rSet.GetPool()->GetWhichIDFromSlotID(nSlotId);
         if ( rSet.GetItemState( nWhich ) == SfxItemState::SET ) //???
         {
             sal_uInt16 nSubCount = pType->nAttribs;
@@ -965,7 +964,7 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
             // check every formal argument of the method
             const SfxFormalArgument &rArg = bIsMediaDescriptor ? aFormalArgs[nArg] : pSlot->GetFormalArgument( nArg );
 
-            sal_uInt16 nWhich = rSet.GetPool()->GetWhich( rArg.nSlotId );
+            sal_uInt16 nWhich = rSet.GetPool()->GetWhichIDFromSlotID( rArg.nSlotId );
             if ( rSet.GetItemState( nWhich ) == SfxItemState::SET ) //???
             {
                 sal_uInt16 nSubCount = rArg.pType->nAttribs;
@@ -995,8 +994,6 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
             if ( rSet.GetItemState( SID_PATH ) == SfxItemState::SET )
                 nAdditional++;
             if ( rSet.GetItemState( SID_FILE_DIALOG ) == SfxItemState::SET )
-                nAdditional++;
-            if ( rSet.GetItemState( SID_STANDARD_DIR ) == SfxItemState::SET )
                 nAdditional++;
             if ( rSet.GetItemState( SID_DENY_LIST ) == SfxItemState::SET )
                 nAdditional++;
@@ -1088,6 +1085,8 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
                 nAdditional++;
             if ( rSet.GetItemState( SID_SUGGESTEDSAVEASNAME ) == SfxItemState::SET )
                 nAdditional++;
+            if ( rSet.GetItemState( SID_EXPORTDIRECTORY ) == SfxItemState::SET )
+                nAdditional++;
             if ( rSet.GetItemState( SID_DOC_SERVICE ) == SfxItemState::SET )
                 nAdditional++;
             if (rSet.HasItem(SID_FILTER_PROVIDER))
@@ -1131,7 +1130,7 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
                     // not really set
                     continue;
 
-                if ( !pSlot->IsMode(SfxSlotMode::METHOD) && nId == rSet.GetPool()->GetWhich( pSlot->GetSlotId() ) )
+                if ( !pSlot->IsMode(SfxSlotMode::METHOD) && nId == rSet.GetPool()->GetWhichIDFromSlotID( pSlot->GetSlotId() ) )
                     continue;
 
                 bool bIsMediaDescriptor = isMediaDescriptor( nSlotId );
@@ -1140,7 +1139,7 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
                 for ( nArg=0; nArg<nFormalArgs; ++nArg )
                 {
                     const SfxFormalArgument &rArg = bIsMediaDescriptor ? aFormalArgs[nArg] : pSlot->GetFormalArgument( nArg );
-                    sal_uInt16 nWhich = rSet.GetPool()->GetWhich( rArg.nSlotId );
+                    sal_uInt16 nWhich = rSet.GetPool()->GetWhichIDFromSlotID( rArg.nSlotId );
                     if ( nId == nWhich )
                         break;
                 }
@@ -1208,8 +1207,6 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
                         continue;
                     if ( nId == SID_FILE_DIALOG )
                         continue;
-                    if ( nId == SID_STANDARD_DIR )
-                        continue;
                     if ( nId == SID_DENY_LIST )
                         continue;
                     if ( nId == SID_CONTENTTYPE )
@@ -1262,6 +1259,8 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
                         continue;
                     if ( nId == SID_SUGGESTEDSAVEASNAME )
                         continue;
+                    if ( nId == SID_EXPORTDIRECTORY )
+                        continue;
                     if ( nId == SID_LOCK_CONTENT_EXTRACTION )
                         continue;
                     if ( nId == SID_LOCK_EXPORT )
@@ -1294,7 +1293,7 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
     if ( !pSlot->IsMode(SfxSlotMode::METHOD) )
     {
         // slot is a property
-        sal_uInt16 nWhich = rSet.GetPool()->GetWhich(nSlotId);
+        sal_uInt16 nWhich = rSet.GetPool()->GetWhichIDFromSlotID(nSlotId);
         bool bConvertTwips = ( rSet.GetPool()->GetMetric( nWhich ) == MapUnit::MapTwip );
         const SfxPoolItem* pItem = rSet.GetItem<SfxPoolItem>(nWhich, false);
         if ( pItem ) //???
@@ -1302,7 +1301,7 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
             sal_uInt16 nSubCount = pType->nAttribs;
             if ( !nSubCount )
             {
-                pValue[nActProp].Name = pSlot->pUnoName;
+                pValue[nActProp].Name = pSlot->aUnoName;
                 if ( !pItem->QueryValue( pValue[nActProp].Value ) )
                 {
                     SAL_WARN( "sfx", "Item not convertible: " << nSlotId );
@@ -1313,24 +1312,24 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
                 // complex type, add a property value for every member of the struct
                 for ( sal_uInt16 n=1; n<=nSubCount; ++n )
                 {
-                    sal_uInt8 nSubId = static_cast<sal_uInt8>(static_cast<sal_Int8>(pType->aAttrib[n-1].nAID));
+                    sal_uInt8 nSubId = static_cast<sal_uInt8>(static_cast<sal_Int8>(pType->getAttrib(n-1).nAID));
                     if ( bConvertTwips )
                         nSubId |= CONVERT_TWIPS;
 
-                    DBG_ASSERT(( pType->aAttrib[n-1].nAID ) <= 127, "Member ID out of range" );
-                    pValue[nActProp].Name = pSlot->pUnoName +
+                    DBG_ASSERT(( pType->getAttrib(n-1).nAID ) <= 127, "Member ID out of range" );
+                    pValue[nActProp].Name = pSlot->aUnoName +
                         "." +
-                        OUString::createFromAscii( pType->aAttrib[n-1].pName );
+                        pType->getAttrib(n-1).aName;
                     if ( !pItem->QueryValue( pValue[nActProp++].Value, nSubId ) )
                     {
-                        SAL_WARN( "sfx", "Sub item " << pType->aAttrib[n-1].nAID
+                        SAL_WARN( "sfx", "Sub item " << pType->getAttrib(n-1).nAID
                                     << " not convertible in slot: " << nSlotId );
                     }
                 }
             }
         }
 
-        rArgs = aSequ;
+        rArgs = std::move(aSequ);
         return;
     }
 
@@ -1339,7 +1338,7 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
     for ( sal_uInt16 nArg=0; nArg<nFormalArgs; ++nArg )
     {
         const SfxFormalArgument &rArg = pSlot->GetFormalArgument( nArg );
-        sal_uInt16 nWhich = rSet.GetPool()->GetWhich( rArg.nSlotId );
+        sal_uInt16 nWhich = rSet.GetPool()->GetWhichIDFromSlotID( rArg.nSlotId );
         bool bConvertTwips = ( rSet.GetPool()->GetMetric( nWhich ) == MapUnit::MapTwip );
         const SfxPoolItem* pItem = rSet.GetItem<SfxPoolItem>(nWhich, false);
         if ( pItem ) //???
@@ -1347,7 +1346,7 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
             sal_uInt16 nSubCount = rArg.pType->nAttribs;
             if ( !nSubCount )
             {
-                pValue[nActProp].Name = OUString::createFromAscii( rArg.pName ) ;
+                pValue[nActProp].Name = rArg.aName;
                 if ( !pItem->QueryValue( pValue[nActProp++].Value ) )
                 {
                     SAL_WARN( "sfx", "Item not convertible: " << rArg.nSlotId );
@@ -1358,18 +1357,18 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
                 // complex type, add a property value for every member of the struct
                 for ( sal_uInt16 n = 1; n <= nSubCount; ++n )
                 {
-                    sal_uInt8 nSubId = static_cast<sal_uInt8>(static_cast<sal_Int8>(rArg.pType->aAttrib[n-1].nAID));
+                    sal_uInt8 nSubId = static_cast<sal_uInt8>(static_cast<sal_Int8>(rArg.pType->getAttrib(n-1).nAID));
                     if ( bConvertTwips )
                         nSubId |= CONVERT_TWIPS;
 
-                    DBG_ASSERT((rArg.pType->aAttrib[n-1].nAID) <= 127, "Member ID out of range" );
-                    pValue[nActProp].Name = OUString::createFromAscii( rArg.pName ) +
+                    DBG_ASSERT((rArg.pType->getAttrib(n-1).nAID) <= 127, "Member ID out of range" );
+                    pValue[nActProp].Name = rArg.aName +
                         "." +
-                        OUString::createFromAscii( rArg.pType->aAttrib[n-1].pName ) ;
+                        rArg.pType->getAttrib(n-1).aName ;
                     if ( !pItem->QueryValue( pValue[nActProp++].Value, nSubId ) )
                     {
                         SAL_WARN( "sfx", "Sub item "
-                                    << rArg.pType->aAttrib[n-1].nAID
+                                    << rArg.pType->getAttrib(n-1).nAID
                                     << " not convertible in slot: "
                                     << rArg.nSlotId );
                     }
@@ -1491,7 +1490,7 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
             pValue[nActProp].Name = sDdeReconnect;
             pValue[nActProp++].Value <<= pItem->GetValue();
         }
-        if ( const SfxBoolItem *pItem = rSet.GetItemIfSet( SID_DOC_STARTPRESENTATION, false) )
+        if (const SfxUInt16Item* pItem = rSet.GetItemIfSet(SID_DOC_STARTPRESENTATION, false))
         {
             pValue[nActProp].Name = sStartPresentation;
             pValue[nActProp++].Value <<= pItem->GetValue();
@@ -1534,11 +1533,6 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
         if ( const SfxBoolItem *pItem = rSet.GetItemIfSet( SID_FILE_DIALOG, false) )
         {
             pValue[nActProp].Name = sUseSystemDialog;
-            pValue[nActProp++].Value <<= pItem->GetValue();
-        }
-        if ( const SfxStringItem *pItem = rSet.GetItemIfSet( SID_STANDARD_DIR, false) )
-        {
-            pValue[nActProp].Name = sStandardDir;
             pValue[nActProp++].Value <<= pItem->GetValue();
         }
         if ( const SfxStringListItem *pItem = rSet.GetItemIfSet( SID_DENY_LIST, false) )
@@ -1650,6 +1644,11 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
             pValue[nActProp].Name = sSuggestedSaveAsName;
             pValue[nActProp++].Value <<= pItem->GetValue();
         }
+        if ( const SfxStringItem *pItem = rSet.GetItemIfSet( SID_EXPORTDIRECTORY, false) )
+        {
+            pValue[nActProp].Name = sExportDirectory;
+            pValue[nActProp++].Value <<= pItem->GetValue();
+        }
         if ( const SfxStringItem *pItem = rSet.GetItemIfSet( SID_DOC_SERVICE, false) )
         {
             pValue[nActProp].Name = sDocumentService;
@@ -1697,7 +1696,7 @@ void TransformItems( sal_uInt16 nSlotId, const SfxItemSet& rSet, uno::Sequence<b
         }
     }
 
-    rArgs = aSequ;
+    rArgs = std::move(aSequ);
 }
 
 void SAL_CALL FilterOptionsContinuation::setFilterOptions(

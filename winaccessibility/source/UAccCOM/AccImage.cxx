@@ -23,6 +23,7 @@
 
 #include <vcl/svapp.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <systools/win32/oleauto.hxx>
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
@@ -43,12 +44,12 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccImage::get_description(BSTR* description)
     {
         if (description == nullptr)
             return E_INVALIDARG;
-        if (!pRXImg.is())
+        if (!m_xImage.is())
             return E_FAIL;
 
-        OUString ouStr = GetXInterface()->getAccessibleImageDescription();
+        OUString ouStr = m_xImage->getAccessibleImageDescription();
         SysFreeString(*description);
-        *description = SysAllocString(o3tl::toW(ouStr.getStr()));
+        *description = sal::systools::BStr::newBSTR(ouStr);
 
         return S_OK;
     }
@@ -85,7 +86,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccImage::put_XInterface(hyper pXInterface)
     try
     {
         CUNOXWrapper::put_XInterface(pXInterface);
-        //special query.
+
         if (pUNOInterface == nullptr)
             return E_FAIL;
 
@@ -94,11 +95,8 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccImage::put_XInterface(hyper pXInterface)
         {
             return E_FAIL;
         }
-        Reference<XAccessibleImage> pRXI(pRContext, UNO_QUERY);
-        if (!pRXI.is())
-            pRXImg = nullptr;
-        else
-            pRXImg = pRXI.get();
+        Reference<XAccessibleImage> xImage(pRContext, UNO_QUERY);
+        m_xImage = xImage;
         return S_OK;
     }
     catch (...)

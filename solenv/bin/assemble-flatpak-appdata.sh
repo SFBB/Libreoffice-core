@@ -25,7 +25,7 @@ set -e
 cat <<\EOF >"${1?}"org.libreoffice.LibreOffice.appdata.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop">
- <id>org.libreoffice.LibreOffice.desktop</id>
+ <id>org.libreoffice.LibreOffice</id>
  <metadata_license>CC0-1.0</metadata_license>
  <project_license>MPL-2.0</project_license>
  <name>LibreOffice</name>
@@ -41,6 +41,7 @@ cat <<\EOF >"${1?}"org.libreoffice.LibreOffice.appdata.xml
   you can easily share documents with users of other popular office suites
   without worrying about compatibility.</p>
  </description>
+ <launchable type="desktop-id">org.libreoffice.LibreOffice.desktop</launchable>
  <url type="homepage">http://www.libreoffice.org/discover/libreoffice/</url>
  <url type="bugtracker">https://bugs.documentfoundation.org/</url>
  <url type="donation">https://donate.libreoffice.org/</url>
@@ -50,23 +51,23 @@ cat <<\EOF >"${1?}"org.libreoffice.LibreOffice.appdata.xml
  <screenshots>
   <screenshot type="default">
    <image>https://hub.libreoffice.org/screenshots/writer-01.png</image>
-   <caption><!-- Describe this screenshot in less than ~10 words --></caption>
+   <caption>Sample Writer document</caption>
   </screenshot>
   <screenshot>
    <image>https://hub.libreoffice.org/screenshots/calc-02.png</image>
-   <caption><!-- Describe this screenshot in less than ~10 words --></caption>
+   <caption>Sample Calc document</caption>
   </screenshot>
   <screenshot>
    <image>https://hub.libreoffice.org/screenshots/impress-01.png</image>
-   <caption><!-- Describe this screenshot in less than ~10 words --></caption>
+   <caption>Sample Impress document</caption>
   </screenshot>
   <screenshot>
    <image>https://hub.libreoffice.org/screenshots/draw-02.png</image>
-   <caption><!-- Describe this screenshot in less than ~10 words --></caption>
+   <caption>Sample Draw document</caption>
   </screenshot>
   <screenshot>
    <image>https://hub.libreoffice.org/screenshots/base-02.png</image>
-   <caption><!-- Describe this screenshot in less than ~10 words --></caption>
+   <caption>Sample Base document</caption>
   </screenshot>
  </screenshots>
  <developer_name>The Document Foundation</developer_name>

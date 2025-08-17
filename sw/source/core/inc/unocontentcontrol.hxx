@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <swdllapi.h>
 #include <memory>
 #include <deque>
 
@@ -28,16 +29,13 @@
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/text/XTextContent.hpp>
 #include <com/sun/star/text/XTextField.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <cppuhelper/implbase.hxx>
 
 #include <unobaseclass.hxx>
 #include <unocoll.hxx>
 
-class SwPaM;
 class SwTextNode;
-class SwFormatContentControl;
 class SwContentControl;
 class SwXText;
 class SwXTextPortion;
@@ -48,7 +46,7 @@ typedef std::deque<rtl::Reference<SwXTextPortion>> TextRangeList_t;
  * UNO API wrapper around an SwContentControl, exposed as the com.sun.star.text.ContentControl
  * service.
  */
-class SwXContentControl final
+class SW_DLLPUBLIC SwXContentControl final
     : public cppu::WeakImplHelper<css::lang::XServiceInfo, css::container::XEnumerationAccess,
                                   css::text::XTextContent, css::text::XText,
                                   css::beans::XPropertySet>

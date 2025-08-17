@@ -15,10 +15,19 @@ $(eval $(call gb_UnpackedTarball_update_autoconf_configs,lcms2))
 
 $(eval $(call gb_UnpackedTarball_set_patchlevel,lcms2,3))
 
+ifneq ($(MSYSTEM),)
+# use binary flag so patch from git-bash won't choke on mixed line-endings in patches
+$(eval $(call gb_UnpackedTarball_set_patchflags,lcms2,--binary))
+endif
+
+# external/lcms2/0001-Mark-some-tables-as-const.patch.1
+# upstream effort at: https://github.com/mm2/Little-CMS/pull/501
+
 $(eval $(call gb_UnpackedTarball_add_patches,lcms2,\
 	external/lcms2/lcms2-2.4-windows.patch \
-	external/lcms2/lcms2-windows_aarch64_outdir.patch.1 \
-	external/lcms2/c++17.patch.1 \
+	external/lcms2/0001-Mark-some-tables-as-const.patch.1 \
+	external/lcms2/0002-mark-more-const.patch.1 \
+	external/lcms2/0003-mark-more-const.patch.1 \
 ))
 
 # vim: set noet sw=4 ts=4:

@@ -109,8 +109,6 @@ namespace o3tl
 
 namespace sdr::table {
 
-namespace {
-
 class SvxTableControllerModifyListener : public ::cppu::WeakImplHelper< css::util::XModifyListener >
 {
 public:
@@ -125,8 +123,6 @@ public:
 
     SvxTableController* mpController;
 };
-
-}
 
 // XModifyListener
 
@@ -190,13 +186,11 @@ SvxTableController::SvxTableController(
     rObj.getActiveCellPos( maCursorFirstPos );
     maCursorLastPos = maCursorFirstPos;
 
-    Reference< XTable > xTable( mxTableObj.get()->getTable() );
-    if( xTable.is() )
+    mxTable = mxTableObj.get()->getUnoTable();
+    if( mxTable )
     {
         mxModifyListener = new SvxTableControllerModifyListener( this );
-        xTable->addModifyListener( mxModifyListener );
-
-        mxTable.set( dynamic_cast< TableModel* >( xTable.get() ) );
+        mxTable->addModifyListener( mxModifyListener );
     }
 }
 
@@ -209,7 +203,7 @@ SvxTableController::~SvxTableController()
 
     if( mxModifyListener.is() && mxTableObj.get() )
     {
-        Reference< XTable > xTable( mxTableObj.get()->getTable() );
+        rtl::Reference< TableModel > xTable( mxTableObj.get()->getUnoTable() );
         if( xTable.is() )
         {
             xTable->removeModifyListener( mxModifyListener );
@@ -298,7 +292,12 @@ bool SvxTableController::onMouseButtonDown(const MouseEvent& rMEvt, vcl::Window*
     }
 
     if( rMEvt.IsRight() && eHit != TableHitKind::NONE )
+    {
+        OutlinerView* pOLV = mrView.GetTextEditOutlinerView();
+        if( pOLV )
+            pOLV->MouseButtonDown(rMEvt);
         return true; // right click will become context menu
+    }
 
     // for cell selection with the mouse remember our first hit
     if( mbLeftButtonDown )
@@ -458,7 +457,7 @@ void SvxTableController::GetState( SfxItemSet& rSet )
 
                         SdrTextVertAdjust eAdj = SDRTEXTVERTADJUST_BLOCK;
 
-                        if (oSet->GetItemState( SDRATTR_TEXT_VERTADJUST ) != SfxItemState::DONTCARE)
+                        if (oSet->GetItemState( SDRATTR_TEXT_VERTADJUST ) != SfxItemState::INVALID)
                             eAdj = oSet->Get(SDRATTR_TEXT_VERTADJUST).GetValue();
 
                         rSet.Put(SfxBoolItem(SID_TABLE_VERT_BOTTOM, eAdj == SDRTEXTVERTADJUST_BOTTOM));
@@ -603,7 +602,7 @@ void SvxTableController::onInsert( sal_uInt16 nSId, const SfxItemSet* pArgs )
 
         for( sal_Int32 nRow = 0; nRow < mxTable->getRowCount(); ++nRow )
         {
-            CellRef xSourceCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nPropSrcCol, nRow ).get() ) );
+            CellRef xSourceCell( mxTable->getCell( nPropSrcCol, nRow ) );
 
             // When we insert new COLUMNs, we want to copy ROW spans.
             if (xSourceCell.is() && nRowSpan == 0)
@@ -626,7 +625,7 @@ void SvxTableController::onInsert( sal_uInt16 nSId, const SfxItemSet* pArgs )
                     // Look for the top-left cell in the span.
                     for( nSpanInfoCol = nPropSrcCol - 1; nSpanInfoCol >= 0; --nSpanInfoCol )
                     {
-                        CellRef xMergeInfoCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nSpanInfoCol, nRow ).get() ) );
+                        CellRef xMergeInfoCell( mxTable->getCell( nSpanInfoCol, nRow ) );
                         if (xMergeInfoCell.is() && !xMergeInfoCell->isMerged())
                         {
                             nRowSpan = xMergeInfoCell->getRowSpan();
@@ -646,7 +645,7 @@ void SvxTableController::onInsert( sal_uInt16 nSId, const SfxItemSet* pArgs )
             // Now copy the properties from the source to the targets
             for( sal_Int32 nOffset = 0; nOffset < nNewColumns; nOffset++ )
             {
-                CellRef xTargetCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nNewStartColumn + nOffset, nRow ).get() ) );
+                CellRef xTargetCell( mxTable->getCell( nNewStartColumn + nOffset, nRow ) );
                 if( xTargetCell.is() )
                 {
                     if( nRowSpan > 0 )
@@ -707,7 +706,7 @@ void SvxTableController::onInsert( sal_uInt16 nSId, const SfxItemSet* pArgs )
 
         for( sal_Int32 nCol = 0; nCol < mxTable->getColumnCount(); ++nCol )
         {
-            CellRef xSourceCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nPropSrcRow ).get() ) );
+            CellRef xSourceCell( mxTable->getCell( nCol, nPropSrcRow ) );
 
             if (!xSourceCell.is())
                 continue;
@@ -733,7 +732,7 @@ void SvxTableController::onInsert( sal_uInt16 nSId, const SfxItemSet* pArgs )
                     // Look for the top-left cell in the span.
                     for( nSpanInfoRow = nPropSrcRow - 1; nSpanInfoRow >= 0; --nSpanInfoRow )
                     {
-                        CellRef xMergeInfoCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nSpanInfoRow ).get() ) );
+                        CellRef xMergeInfoCell( mxTable->getCell( nCol, nSpanInfoRow ) );
                         if (xMergeInfoCell.is() && !xMergeInfoCell->isMerged())
                         {
                             nColSpan = xMergeInfoCell->getColumnSpan();
@@ -753,7 +752,7 @@ void SvxTableController::onInsert( sal_uInt16 nSId, const SfxItemSet* pArgs )
             // Now copy the properties from the source to the targets
             for( sal_Int32 nOffset = 0; nOffset < nNewRows; ++nOffset )
             {
-                CellRef xTargetCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nNewRowStart + nOffset ).get() ) );
+                CellRef xTargetCell( mxTable->getCell( nCol, nNewRowStart + nOffset ) );
                 if( xTargetCell.is() )
                 {
                     if( nColSpan > 0 )
@@ -962,7 +961,8 @@ void SvxTableController::onFormatTable(const SfxRequest& rReq)
         rModel, false) );
 
     // Even Cancel Button is returning positive(101) value,
-    xDlg->StartExecuteAsync([xDlg, this, xBoxItem, xBoxInfoItem](int nResult){
+    xDlg->StartExecuteAsync([xDlg, this, xBoxItem=std::move(xBoxItem),
+                             xBoxInfoItem=std::move(xBoxInfoItem)](int nResult){
         if (nResult == RET_OK)
         {
             SfxItemSet aNewSet(*(xDlg->GetOutputItemSet()));
@@ -1126,7 +1126,7 @@ void SvxTableController::SetTableStyle( const SfxItemSet* pArgs )
     {
         Reference< XStyleFamiliesSupplier > xSFS( rModel.getUnoModel(), UNO_QUERY_THROW );
         Reference< XNameAccess > xFamilyNameAccess( xSFS->getStyleFamilies(), UNO_SET_THROW );
-        Reference< XNameAccess > xTableFamilyAccess( xFamilyNameAccess->getByName( "table" ), UNO_QUERY_THROW );
+        Reference< XNameAccess > xTableFamilyAccess( xFamilyNameAccess->getByName( u"table"_ustr ), UNO_QUERY_THROW );
 
         if( xTableFamilyAccess->hasByName( pArg->GetValue() ) )
         {
@@ -1149,7 +1149,7 @@ void SvxTableController::SetTableStyle( const SfxItemSet* pArgs )
             {
                 for( sal_Int32 nCol = 0; nCol < nColCount; nCol++ ) try
                 {
-                    CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+                    CellRef xCell( mxTable->getCell( nCol, nRow ) );
                     if( xCell.is() )
                     {
                         SfxItemSet aSet( xCell->GetItemSet() );
@@ -1282,7 +1282,7 @@ void SvxTableController::SetVertical( sal_uInt16 nSId )
     {
         for( sal_Int32 nCol = aStart.mnCol; nCol <= aEnd.mnCol; nCol++ )
         {
-            CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+            CellRef xCell( mxTable->getCell( nCol, nRow ) );
             if( xCell.is() )
             {
                 if (bUndo)
@@ -1448,7 +1448,7 @@ bool SvxTableController::DeleteMarked()
         {
             for( sal_Int32 nCol = aStart.mnCol; nCol <= aEnd.mnCol; nCol++ )
             {
-                CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+                CellRef xCell( mxTable->getCell( nCol, nRow ) );
                 if (xCell.is() && xCell->hasText())
                 {
                     if (bUndo)
@@ -1488,7 +1488,7 @@ bool SvxTableController::GetStyleSheet( SfxStyleSheet*& rpStyleSheet ) const
             {
                 for( sal_Int32 nCol = aStart.mnCol; nCol <= aEnd.mnCol; nCol++ )
                 {
-                    CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+                    CellRef xCell( mxTable->getCell( nCol, nRow ) );
                     if( xCell.is() )
                     {
                         SfxStyleSheet* pSS=xCell->GetStyleSheet();
@@ -1524,7 +1524,7 @@ bool SvxTableController::SetStyleSheet( SfxStyleSheet* pStyleSheet, bool bDontRe
             {
                 for( sal_Int32 nCol = aStart.mnCol; nCol <= aEnd.mnCol; nCol++ )
                 {
-                    CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+                    CellRef xCell( mxTable->getCell( nCol, nRow ) );
                     if( xCell.is() )
                         xCell->SetStyleSheet(pStyleSheet,bDontRemoveHardAttr);
                 }
@@ -2099,7 +2099,7 @@ void SvxTableController::EditCell(const CellPos& rPos, vcl::Window* pWindow, Tbl
                              ((nAction == TblAction::GotoRightCell) && (eMode == WritingMode_RL_TB));
 
         if( bLast )
-            aNewSelection = ESelection(EE_PARA_NOT_FOUND, EE_INDEX_NOT_FOUND, EE_PARA_NOT_FOUND, EE_INDEX_NOT_FOUND);
+            aNewSelection = ESelection::AtEnd();
     }
     pOLV->SetSelection(aNewSelection);
 }
@@ -2249,7 +2249,7 @@ bool SvxTableController::ChangeFontSize(bool bGrow, const FontList* pFontList)
     {
         for (sal_Int32 nCol = aStart.mnCol; nCol <= aEnd.mnCol; nCol++)
         {
-            CellRef xCell(dynamic_cast< Cell* >(mxTable->getCellByPosition(nCol, nRow).get()));
+            CellRef xCell(mxTable->getCell(nCol, nRow));
             if (xCell.is())
             {
                 if (rModel.IsUndoEnabled())
@@ -2418,7 +2418,7 @@ void SvxTableController::MergeAttrFromSelectedCells(SfxItemSet& rAttr, bool bOnl
     {
         for( sal_Int32 nCol = aStart.mnCol; nCol <= aEnd.mnCol; nCol++ )
         {
-            CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+            CellRef xCell( mxTable->getCell( nCol, nRow ) );
             if( xCell.is() && !xCell->isMerged() )
             {
                 const SfxItemSet& rSet = xCell->GetItemSet();
@@ -2429,15 +2429,15 @@ void SvxTableController::MergeAttrFromSelectedCells(SfxItemSet& rAttr, bool bOnl
                     SfxItemState nState = aIter.GetItemState(false);
                     if(!bOnlyHardAttr)
                     {
-                        if(SfxItemState::DONTCARE == nState)
+                        if(SfxItemState::INVALID == nState)
                             rAttr.InvalidateItem(nWhich);
                         else
-                            rAttr.MergeValue(rSet.Get(nWhich), true);
+                            rAttr.MergeValue(rSet.Get(nWhich));
                     }
                     else if(SfxItemState::SET == nState)
                     {
                         const SfxPoolItem& rItem = rSet.Get(nWhich);
-                        rAttr.MergeValue(rItem, true);
+                        rAttr.MergeValue(rItem);
                     }
 
                     nWhich = aIter.NextWhich();
@@ -2651,7 +2651,7 @@ void SvxTableController::ApplyBorderAttr( const SfxItemSet& rAttr )
 
         for( sal_Int32 nCol = std::max( aStart.mnCol - 1, sal_Int32(0) ); nCol < nLastCol; nCol++ )
         {
-            CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+            CellRef xCell( mxTable->getCell( nCol, nRow ) );
             if( !xCell.is() )
                 continue;
 
@@ -2728,7 +2728,7 @@ void SvxTableController::SetAttrToSelectedCells(const SfxItemSet& rAttr, bool bR
     {
         for( sal_Int32 nCol = aStart.mnCol; nCol <= aEnd.mnCol; nCol++ )
         {
-            CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+            CellRef xCell( mxTable->getCell( nCol, nRow ) );
             if( xCell.is() )
             {
                 if( bUndo )
@@ -2755,7 +2755,7 @@ void SvxTableController::SetAttrToSelectedShape(const SfxItemSet& rAttr)
         return;
 
     // Filter out non-shadow items from rAttr.
-    SfxItemSetFixed<SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST> aSet(*rAttr.GetPool());
+    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST>(*rAttr.GetPool()));
     aSet.Put(rAttr);
 
     if (!aSet.Count())
@@ -2862,7 +2862,7 @@ bool SvxTableController::PasteObject( SdrTableObj const * pPasteTableObj )
     if( !pPasteTableObj )
         return false;
 
-    Reference< XTable > xPasteTable( pPasteTableObj->getTable() );
+    const rtl::Reference< TableModel >& xPasteTable( pPasteTableObj->getUnoTable() );
     if( !xPasteTable.is() )
         return false;
 
@@ -2897,10 +2897,10 @@ bool SvxTableController::PasteObject( SdrTableObj const * pPasteTableObj )
     {
         for( sal_Int32 nCol = 0, nTargetCol = aStart.mnCol; nCol < nPasteColumns; ++nCol )
         {
-            CellRef xTargetCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nTargetCol, aStart.mnRow + nRow ).get() ) );
+            CellRef xTargetCell( mxTable->getCell( nTargetCol, aStart.mnRow + nRow ) );
             if( xTargetCell.is() && !xTargetCell->isMerged() )
             {
-                CellRef xSourceCell(dynamic_cast<Cell*>(xPasteTable->getCellByPosition(nCol, nRow).get()));
+                CellRef xSourceCell(xPasteTable->getCell(nCol, nRow));
                 if (xSourceCell.is())
                 {
                     xTargetCell->AddUndo();
@@ -2922,7 +2922,8 @@ bool SvxTableController::PasteObject( SdrTableObj const * pPasteTableObj )
     return true;
 }
 
-bool SvxTableController::ApplyFormatPaintBrush( SfxItemSet& rFormatSet, bool bNoCharacterFormats, bool bNoParagraphFormats )
+bool SvxTableController::ApplyFormatPaintBrush(SfxItemSet& rFormatSet, sal_Int16 nDepth,
+                                               bool bNoCharacterFormats, bool bNoParagraphFormats)
 {
     if(!mbCellSelectionMode)
     {
@@ -2947,13 +2948,13 @@ bool SvxTableController::ApplyFormatPaintBrush( SfxItemSet& rFormatSet, bool bNo
     {
         for( sal_Int32 nCol = aStart.mnCol; nCol <= aEnd.mnCol; nCol++ )
         {
-            CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+            CellRef xCell( mxTable->getCell( nCol, nRow ) );
             if( xCell.is() )
             {
                 if (bUndo)
                     xCell->AddUndo();
                 SdrText* pText = xCell.get();
-                SdrObjEditView::ApplyFormatPaintBrushToText( rFormatSet, rTableObj, pText, bNoCharacterFormats, bNoParagraphFormats );
+                SdrObjEditView::ApplyFormatPaintBrushToText( rFormatSet, rTableObj, pText, nDepth, bNoCharacterFormats, bNoParagraphFormats );
             }
         }
     }
@@ -3202,7 +3203,7 @@ void SvxTableController::FillCommonBorderAttrFromSelectedCells( SvxBoxItem& rBox
 
         for( sal_Int32 nCol = std::max( aStart.mnCol - 1, sal_Int32(0) ); nCol < nLastCol; nCol++ )
         {
-            CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+            CellRef xCell( mxTable->getCell( nCol, nRow ) );
             if( !xCell.is() )
                 continue;
 

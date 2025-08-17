@@ -133,8 +133,7 @@ namespace accessibility
         bool            IsValid() const override { return true; }
 
         LanguageType    GetLanguage( sal_Int32, sal_Int32 ) const override { return LANGUAGE_DONTKNOW; }
-        sal_Int32       GetFieldCount( sal_Int32 ) const override { return 0; }
-        EFieldInfo      GetFieldInfo( sal_Int32, sal_uInt16 ) const override { return EFieldInfo(); }
+        std::vector<EFieldInfo> GetFieldInfo( sal_Int32 ) const override { return {}; }
         EBulletInfo     GetBulletInfo( sal_Int32 ) const override { return EBulletInfo(); }
         tools::Rectangle       GetCharBounds( sal_Int32, sal_Int32 ) const override { return tools::Rectangle(); }
         tools::Rectangle       GetParaBounds( sal_Int32 ) const override { return tools::Rectangle(); }
@@ -159,6 +158,7 @@ namespace accessibility
         bool            Delete( const ESelection& ) override { return false; }
         bool            InsertText( const OUString&, const ESelection& ) override { return false; }
         bool            QuickFormatDoc( bool ) override { return true; }
+        bool SupportsOutlineDepth() const override { return false; }
         sal_Int16       GetDepth( sal_Int32 ) const override { return -1; }
         bool            SetDepth( sal_Int32, sal_Int16 ) override { return true; }
 

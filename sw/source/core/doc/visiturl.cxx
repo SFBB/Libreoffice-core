@@ -42,52 +42,47 @@ SwURLStateChanged::~SwURLStateChanged()
 
 void SwURLStateChanged::Notify( SfxBroadcaster& , const SfxHint& rHint )
 {
-    if( !(dynamic_cast<const INetURLHistoryHint*>(&rHint) && m_rDoc.getIDocumentLayoutAccess().GetCurrentViewShell()) )
+    if( rHint.GetId() != SfxHintId::INetURLHistory || !m_rDoc.getIDocumentLayoutAccess().GetCurrentViewShell() )
         return;
 
     // This URL has been changed:
     const INetURLObject* pIURL = static_cast<const INetURLHistoryHint&>(rHint).GetObject();
     OUString sURL( pIURL->GetMainURL( INetURLObject::DecodeMechanism::NONE ) ), sBkmk;
 
-    SwEditShell* pESh = m_rDoc.GetEditShell();
-
-    if( m_rDoc.GetDocShell() && m_rDoc.GetDocShell()->GetMedium() &&
+    SwDocShell* pShell = m_rDoc.GetDocShell();
+    if( pShell && pShell->GetMedium() &&
         // If this is our Doc, we can also have local jumps!
-        m_rDoc.GetDocShell()->GetMedium()->GetName() == sURL )
+        pShell->GetMedium()->GetName() == sURL )
         sBkmk = "#" + pIURL->GetMark();
 
+    SwEditShell* pESh = m_rDoc.GetEditShell();
     bool bAction = false, bUnLockView = false;
-    for (const SfxPoolItem* pItem : m_rDoc.GetAttrPool().GetItemSurrogates(RES_TXTATR_INETFMT))
-    {
-        const SwFormatINetFormat* pFormatItem = dynamic_cast<const SwFormatINetFormat*>(pItem);
-        if( pFormatItem != nullptr &&
-            ( pFormatItem->GetValue() == sURL || ( !sBkmk.isEmpty() && pFormatItem->GetValue() == sBkmk )))
+    m_rDoc.ForEachINetFormat(
+        [&sURL, &sBkmk, &bAction, &pESh, &bUnLockView] (const SwFormatINetFormat& rFormatItem) -> bool
         {
-            const SwTextINetFormat* pTextAttr = pFormatItem->GetTextINetFormat();
-            if (pTextAttr != nullptr)
+            if( rFormatItem.GetValue() == sURL || ( !sBkmk.isEmpty() && rFormatItem.GetValue() == sBkmk ) )
             {
+                const SwTextINetFormat* pTextAttr = rFormatItem.GetTextINetFormat();
                 const SwTextNode* pTextNd = pTextAttr->GetpTextNode();
-                if (pTextNd != nullptr)
+                if( !bAction && pESh )
                 {
-                    if( !bAction && pESh )
-                    {
-                        pESh->StartAllAction();
-                        bAction = true;
-                        bUnLockView = !pESh->IsViewLocked();
-                        pESh->LockView( true );
-                    }
-                    const_cast<SwTextINetFormat*>(pTextAttr)->SetVisitedValid(false);
-                    const SwTextAttr* pAttr = pTextAttr;
-                    SwUpdateAttr aUpdateAttr(
-                        pAttr->GetStart(),
-                        *pAttr->End(),
-                        RES_FMT_CHG);
-
-                    const_cast<SwTextNode*>(pTextNd)->TriggerNodeUpdate(sw::LegacyModifyHint(&aUpdateAttr, &aUpdateAttr));
+                    pESh->StartAllAction();
+                    bAction = true;
+                    bUnLockView = !pESh->IsViewLocked();
+                    pESh->LockView( true );
                 }
+                const_cast<SwTextINetFormat*>(pTextAttr)->SetVisitedValid(false);
+                const SwTextAttr* pAttr = pTextAttr;
+                SwUpdateAttr aUpdateAttr(
+                    pAttr->GetStart(),
+                    *pAttr->End(),
+                    RES_UPDATEATTR_FMT_CHG);
+
+                const_cast<SwTextNode*>(pTextNd)->TriggerNodeUpdate(sw::UpdateAttrHint(&aUpdateAttr, &aUpdateAttr));
             }
-        }
-    }
+            return true;
+        });
+
 
     if( bAction )
         pESh->EndAllAction();

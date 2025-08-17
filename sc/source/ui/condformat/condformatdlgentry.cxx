@@ -44,17 +44,23 @@
 // force them to take a 1/3 of the available space
 #define CommonWidgetWidth 10
 
-ScCondFrmtEntry::ScCondFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScAddress& rPos)
+static bool isLOKMobilePhone()
+{
+    SfxViewShell* pCurrent = SfxViewShell::Current();
+    return pCurrent && pCurrent->isLOKMobilePhone();
+}
+
+ScCondFrmtEntry::ScCondFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScAddress& rPos)
     : mpParent(pParent)
-    , mxBuilder(Application::CreateBuilder(pParent->GetContainer(), (SfxViewShell::Current() && SfxViewShell::Current()->isLOKMobilePhone())?OUString("modules/scalc/ui/conditionalentrymobile.ui"):OUString("modules/scalc/ui/conditionalentry.ui")))
-    , mxBorder(mxBuilder->weld_widget("border"))
-    , mxGrid(mxBuilder->weld_container("grid"))
-    , mxFtCondNr(mxBuilder->weld_label("number"))
-    , mxFtCondition(mxBuilder->weld_label("condition"))
+    , mxBuilder(Application::CreateBuilder(pParent->GetGrid(), isLOKMobilePhone()?u"modules/scalc/ui/conditionalentrymobile.ui"_ustr:u"modules/scalc/ui/conditionalentry.ui"_ustr))
+    , mxBorder(mxBuilder->weld_widget(u"border"_ustr))
+    , mxGrid(mxBuilder->weld_container(u"grid"_ustr))
+    , mxFtCondNr(mxBuilder->weld_label(u"number"_ustr))
+    , mxFtCondition(mxBuilder->weld_label(u"condition"_ustr))
     , mbActive(false)
     , maStrCondition(ScResId(SCSTR_CONDITION))
-    , mxLbType(mxBuilder->weld_combo_box("type"))
-    , mpDoc(pDoc)
+    , mxLbType(mxBuilder->weld_combo_box(u"type"_ustr))
+    , mrDoc(rDoc)
     , maPos(rPos)
 {
     mxLbType->set_size_request(CommonWidgetWidth, -1);
@@ -67,13 +73,18 @@ ScCondFrmtEntry::ScCondFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, co
 
 ScCondFrmtEntry::~ScCondFrmtEntry()
 {
-    mpParent->GetContainer()->move(mxBorder.get(), nullptr);
+    mpParent->GetGrid()->move(mxBorder.get(), nullptr);
 }
 
 IMPL_LINK_NOARG(ScCondFrmtEntry, EntrySelectHdl, const MouseEvent&, bool)
 {
     maClickHdl.Call(*this);
     return false;
+}
+
+void ScCondFrmtEntry::set_grid_top_attach(int nAttach)
+{
+    mpParent->GetGrid()->set_child_top_attach(*mxBorder, nAttach);
 }
 
 void ScCondFrmtEntry::SetIndex(sal_Int32 nIndex)
@@ -104,17 +115,18 @@ void ScCondFrmtEntry::Deselect()
 
 //condition
 
-namespace {
+namespace
+{
 
-void FillStyleListBox( const ScDocument* pDoc, weld::ComboBox& rLbStyle )
+void FillStyleListBox(const ScDocument* pDoc, weld::ComboBox& rLbStyle)
 {
     std::set<OUString> aStyleNames;
-    SfxStyleSheetIterator aStyleIter( pDoc->GetStyleSheetPool(), SfxStyleFamily::Para );
-    for ( SfxStyleSheetBase* pStyle = aStyleIter.First(); pStyle; pStyle = aStyleIter.Next() )
+    SfxStyleSheetIterator aStyleIter(pDoc->GetStyleSheetPool(), SfxStyleFamily::Para);
+    for (SfxStyleSheetBase* pStyle = aStyleIter.First(); pStyle; pStyle = aStyleIter.Next())
     {
         aStyleNames.insert(pStyle->GetName());
     }
-    for(const auto& rStyleName : aStyleNames)
+    for (const auto& rStyleName : aStyleNames)
     {
         rLbStyle.append_text(rStyleName);
     }
@@ -122,44 +134,43 @@ void FillStyleListBox( const ScDocument* pDoc, weld::ComboBox& rLbStyle )
 
 }
 
-const ScConditionMode ScConditionFrmtEntry::mpEntryToCond[ScConditionFrmtEntry::NUM_COND_ENTRIES] = {
-    ScConditionMode::Equal,
-    ScConditionMode::Less,
-    ScConditionMode::Greater,
-    ScConditionMode::EqLess,
-    ScConditionMode::EqGreater,
-    ScConditionMode::NotEqual,
-    ScConditionMode::Between,
-    ScConditionMode::NotBetween,
-    ScConditionMode::Duplicate,
-    ScConditionMode::NotDuplicate,
-    ScConditionMode::Top10,
-    ScConditionMode::Bottom10,
-    ScConditionMode::TopPercent,
-    ScConditionMode::BottomPercent,
-    ScConditionMode::AboveAverage,
-    ScConditionMode::BelowAverage,
-    ScConditionMode::AboveEqualAverage,
-    ScConditionMode::BelowEqualAverage,
-    ScConditionMode::Error,
-    ScConditionMode::NoError,
-    ScConditionMode::BeginsWith,
-    ScConditionMode::EndsWith,
-    ScConditionMode::ContainsText,
-    ScConditionMode::NotContainsText
-};
+const ScConditionMode ScConditionFrmtEntry::mpEntryToCond[ScConditionFrmtEntry::NUM_COND_ENTRIES]
+    = { ScConditionMode::Equal,
+        ScConditionMode::Less,
+        ScConditionMode::Greater,
+        ScConditionMode::EqLess,
+        ScConditionMode::EqGreater,
+        ScConditionMode::NotEqual,
+        ScConditionMode::Between,
+        ScConditionMode::NotBetween,
+        ScConditionMode::Duplicate,
+        ScConditionMode::NotDuplicate,
+        ScConditionMode::Top10,
+        ScConditionMode::Bottom10,
+        ScConditionMode::TopPercent,
+        ScConditionMode::BottomPercent,
+        ScConditionMode::AboveAverage,
+        ScConditionMode::BelowAverage,
+        ScConditionMode::AboveEqualAverage,
+        ScConditionMode::BelowEqualAverage,
+        ScConditionMode::Error,
+        ScConditionMode::NoError,
+        ScConditionMode::BeginsWith,
+        ScConditionMode::EndsWith,
+        ScConditionMode::ContainsText,
+        ScConditionMode::NotContainsText };
 
-ScConditionFrmtEntry::ScConditionFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, ScCondFormatDlg* pDialogParent,
+ScConditionFrmtEntry::ScConditionFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, ScCondFormatDlg* pDialogParent,
         const ScAddress& rPos, const ScCondFormatEntry* pFormatEntry)
-    : ScCondFrmtEntry(pParent, pDoc, rPos)
-    , mxLbCondType(mxBuilder->weld_combo_box("typeis"))
-    , mxEdVal1(new formula::RefEdit(mxBuilder->weld_entry("val1")))
-    , mxEdVal2(new formula::RefEdit(mxBuilder->weld_entry("val2")))
-    , mxFtVal(mxBuilder->weld_label("valueft"))
-    , mxFtStyle(mxBuilder->weld_label("styleft"))
-    , mxLbStyle(mxBuilder->weld_combo_box("style"))
-    , mxWdPreviewWin(mxBuilder->weld_widget("previewwin"))
-    , mxWdPreview(new weld::CustomWeld(*mxBuilder, "preview", maWdPreview))
+    : ScCondFrmtEntry(pParent, rDoc, rPos)
+    , mxLbCondType(mxBuilder->weld_combo_box(u"typeis"_ustr))
+    , mxEdVal1(new formula::RefEdit(mxBuilder->weld_entry(u"val1"_ustr)))
+    , mxEdVal2(new formula::RefEdit(mxBuilder->weld_entry(u"val2"_ustr)))
+    , mxFtVal(mxBuilder->weld_label(u"valueft"_ustr))
+    , mxFtStyle(mxBuilder->weld_label(u"styleft"_ustr))
+    , mxLbStyle(mxBuilder->weld_combo_box(u"style"_ustr))
+    , mxWdPreviewWin(mxBuilder->weld_widget(u"previewwin"_ustr))
+    , mxWdPreview(new weld::CustomWeld(*mxBuilder, u"preview"_ustr, maWdPreview))
     , mbIsInStyleCreate(false)
 {
     mxLbCondType->set_size_request(CommonWidgetWidth, -1);
@@ -170,7 +181,7 @@ ScConditionFrmtEntry::ScConditionFrmtEntry(ScCondFormatList* pParent, ScDocument
 
     Init(pDialogParent);
 
-    StartListening(*pDoc->GetStyleSheetPool(), DuplicateHandling::Prevent);
+    StartListening(*rDoc.GetStyleSheetPool(), DuplicateHandling::Prevent);
 
     if(pFormatEntry)
     {
@@ -222,7 +233,7 @@ void ScConditionFrmtEntry::Init(ScCondFormatDlg* pDialogParent)
     mxEdVal1->SetModifyHdl( LINK( this, ScConditionFrmtEntry, OnEdChanged ) );
     mxEdVal2->SetModifyHdl( LINK( this, ScConditionFrmtEntry, OnEdChanged ) );
 
-    FillStyleListBox( mpDoc, *mxLbStyle );
+    FillStyleListBox(&mrDoc, *mxLbStyle);
     mxLbStyle->connect_changed( LINK( this, ScConditionFrmtEntry, StyleSelectHdl ) );
 
     mxLbCondType->connect_changed( LINK( this, ScConditionFrmtEntry, ConditionTypeSelectHdl ) );
@@ -242,7 +253,7 @@ ScFormatEntry* ScConditionFrmtEntry::createConditionEntry() const
         }
     }
 
-    ScFormatEntry* pEntry = new ScCondFormatEntry(eMode, aExpr1, aExpr2, *mpDoc, maPos, mxLbStyle->get_active_text());
+    ScFormatEntry* pEntry = new ScCondFormatEntry(eMode, aExpr1, aExpr2, mrDoc, maPos, mxLbStyle->get_active_text());
     return pEntry;
 }
 
@@ -251,18 +262,20 @@ IMPL_LINK(ScConditionFrmtEntry, OnEdChanged, formula::RefEdit&, rRefEdit, void)
     weld::Entry& rEdit = *rRefEdit.GetWidget();
     OUString aFormula = rEdit.get_text();
 
-    if( aFormula.isEmpty() )
+    if (aFormula.isEmpty())
     {
         mxFtVal->set_label(ScResId(STR_ENTER_VALUE));
         return;
     }
 
-    ScCompiler aComp( *mpDoc, maPos, mpDoc->GetGrammar() );
-    aComp.SetExtendedErrorDetection( ScCompiler::ExtendedErrorDetection::EXTENDED_ERROR_DETECTION_NAME_BREAK);
+    ScCompiler aComp(mrDoc, maPos, mrDoc.GetGrammar());
+    aComp.SetExtendedErrorDetection(
+        ScCompiler::ExtendedErrorDetection::EXTENDED_ERROR_DETECTION_NAME_BREAK);
     std::unique_ptr<ScTokenArray> ta(aComp.CompileString(aFormula));
 
     // Error, warn the user if it is not an unknown name.
-    if (ta->GetCodeError() != FormulaError::NoName && (ta->GetCodeError() != FormulaError::NONE || ta->GetLen() == 0))
+    if (ta->GetCodeError() != FormulaError::NoName
+        && (ta->GetCodeError() != FormulaError::NONE || ta->GetLen() == 0))
     {
         rEdit.set_message_type(weld::EntryMessageType::Error);
         mxFtVal->set_label(ScResId(STR_VALID_DEFERROR));
@@ -404,7 +417,8 @@ void ScConditionFrmtEntry::SetInactive()
     Deselect();
 }
 
-namespace {
+namespace
+{
 
 void UpdateStyleList(weld::ComboBox& rLbStyle, const ScDocument* pDoc)
 {
@@ -419,64 +433,71 @@ void UpdateStyleList(weld::ComboBox& rLbStyle, const ScDocument* pDoc)
 
 void ScConditionFrmtEntry::Notify(SfxBroadcaster&, const SfxHint& rHint)
 {
-    if(rHint.GetId() == SfxHintId::StyleSheetModified)
+    if(rHint.GetId() == SfxHintId::StyleSheetModified || rHint.GetId() == SfxHintId::StyleSheetModifiedExtended)
     {
         if(!mbIsInStyleCreate)
-            UpdateStyleList(*mxLbStyle, mpDoc);
+            UpdateStyleList(*mxLbStyle, &mrDoc);
     }
 }
 
-namespace {
+namespace
+{
 
-void StyleSelect(weld::Window* pDialogParent, weld::ComboBox& rLbStyle, const ScDocument* pDoc, SvxFontPrevWindow& rWdPreview)
+void StyleSelect(weld::Window* pDialogParent, weld::ComboBox& rLbStyle, const ScDocument* pDoc,
+                 SvxFontPrevWindow& rWdPreview)
 {
     if (rLbStyle.get_active() == 0)
     {
         // call new style dialog
-        SfxUInt16Item aFamilyItem( SID_STYLE_FAMILY, sal_uInt16(SfxStyleFamily::Para) );
-        SfxStringItem aRefItem( SID_STYLE_REFERENCE, ScResId(STR_STYLENAME_STANDARD) );
+        SfxUInt16Item aFamilyItem(SID_STYLE_FAMILY, sal_uInt16(SfxStyleFamily::Para));
+        SfxStringItem aRefItem(SID_STYLE_REFERENCE, ScResId(STR_STYLENAME_STANDARD));
         css::uno::Any aAny(pDialogParent->GetXWindow());
-        SfxUnoAnyItem aDialogParent( SID_DIALOG_PARENT, aAny );
+        SfxUnoAnyItem aDialogParent(SID_DIALOG_PARENT, aAny);
 
         // unlock the dispatcher so SID_STYLE_NEW can be executed
         // (SetDispatcherLock would affect all Calc documents)
-        ScTabViewShell* pViewShell = ScTabViewShell::GetActiveViewShell();
-        SfxDispatcher* pDisp = pViewShell->GetDispatcher();
-        bool bLocked = pDisp->IsLocked();
-        if (bLocked)
-            pDisp->Lock(false);
-
-        // Execute the "new style" slot, complete with undo and all necessary updates.
-        // The return value (SfxUInt16Item) is ignored, look for new styles instead.
-        pDisp->ExecuteList(SID_STYLE_NEW,
-            SfxCallMode::SYNCHRON | SfxCallMode::RECORD,
-            { &aFamilyItem, &aRefItem }, { &aDialogParent });
-
-        if (bLocked)
-            pDisp->Lock(true);
-
-        // Find the new style and add it into the style list boxes
-        SfxStyleSheetIterator aStyleIter( pDoc->GetStyleSheetPool(), SfxStyleFamily::Para );
-        bool bFound = false;
-        for ( SfxStyleSheetBase* pStyle = aStyleIter.First(); pStyle && !bFound; pStyle = aStyleIter.Next() )
+        if (ScTabViewShell* pViewShell = ScTabViewShell::GetActiveViewShell())
         {
-            const OUString& aName = pStyle->GetName();
-            if (rLbStyle.find_text(aName) == -1)    // all lists contain the same entries
+            if (SfxDispatcher* pDisp = pViewShell->GetDispatcher())
             {
-                for( sal_Int32 i = 1, n = rLbStyle.get_count(); i <= n && !bFound; ++i)
+                bool bLocked = pDisp->IsLocked();
+                if (bLocked)
+                    pDisp->Lock(false);
+
+                // Execute the "new style" slot, complete with undo and all necessary updates.
+                // The return value (SfxUInt16Item) is ignored, look for new styles instead.
+                pDisp->ExecuteList(SID_STYLE_NEW, SfxCallMode::SYNCHRON | SfxCallMode::RECORD,
+                                   { &aFamilyItem, &aRefItem }, { &aDialogParent });
+
+                if (bLocked)
+                    pDisp->Lock(true);
+
+                // Find the new style and add it into the style list boxes
+                SfxStyleSheetIterator aStyleIter(pDoc->GetStyleSheetPool(), SfxStyleFamily::Para);
+                bool bFound = false;
+                for (SfxStyleSheetBase* pStyle = aStyleIter.First(); pStyle && !bFound;
+                     pStyle = aStyleIter.Next())
                 {
-                    OUString aStyleName = ScGlobal::getCharClass().uppercase(rLbStyle.get_text(i));
-                    if( i == n )
+                    const OUString& aName = pStyle->GetName();
+                    if (rLbStyle.find_text(aName) == -1) // all lists contain the same entries
                     {
-                        rLbStyle.append_text(aName);
-                        rLbStyle.set_active_text(aName);
-                        bFound = true;
-                    }
-                    else if( aStyleName > ScGlobal::getCharClass().uppercase(aName) )
-                    {
-                        rLbStyle.insert_text(i, aName);
-                        rLbStyle.set_active_text(aName);
-                        bFound = true;
+                        for (sal_Int32 i = 1, n = rLbStyle.get_count(); i <= n && !bFound; ++i)
+                        {
+                            OUString aStyleName
+                                = ScGlobal::getCharClass().uppercase(rLbStyle.get_text(i));
+                            if (i == n)
+                            {
+                                rLbStyle.append_text(aName);
+                                rLbStyle.set_active_text(aName);
+                                bFound = true;
+                            }
+                            else if (aStyleName > ScGlobal::getCharClass().uppercase(aName))
+                            {
+                                rLbStyle.insert_text(i, aName);
+                                rLbStyle.set_active_text(aName);
+                                bFound = true;
+                            }
+                        }
                     }
                 }
             }
@@ -484,8 +505,9 @@ void StyleSelect(weld::Window* pDialogParent, weld::ComboBox& rLbStyle, const Sc
     }
 
     OUString aStyleName = rLbStyle.get_active_text();
-    SfxStyleSheetBase* pStyleSheet = pDoc->GetStyleSheetPool()->Find( aStyleName, SfxStyleFamily::Para );
-    if(pStyleSheet)
+    SfxStyleSheetBase* pStyleSheet
+        = pDoc->GetStyleSheetPool()->Find(aStyleName, SfxStyleFamily::Para);
+    if (pStyleSheet)
     {
         const SfxItemSet& rSet = pStyleSheet->GetItemSet();
         rWdPreview.SetFromItemSet(rSet, false);
@@ -497,19 +519,19 @@ void StyleSelect(weld::Window* pDialogParent, weld::ComboBox& rLbStyle, const Sc
 IMPL_LINK_NOARG(ScConditionFrmtEntry, StyleSelectHdl, weld::ComboBox&, void)
 {
     mbIsInStyleCreate = true;
-    StyleSelect(mpParent->GetFrameWeld(), *mxLbStyle, mpDoc, maWdPreview);
+    StyleSelect(mpParent->GetFrameWeld(), *mxLbStyle, &mrDoc, maWdPreview);
     mbIsInStyleCreate = false;
 }
 
 // formula
 
-ScFormulaFrmtEntry::ScFormulaFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, ScCondFormatDlg* pDialogParent, const ScAddress& rPos, const ScCondFormatEntry* pFormat)
-    : ScCondFrmtEntry(pParent, pDoc, rPos)
-    , mxFtStyle(mxBuilder->weld_label("styleft"))
-    , mxLbStyle(mxBuilder->weld_combo_box("style"))
-    , mxWdPreviewWin(mxBuilder->weld_widget("previewwin"))
-    , mxWdPreview(new weld::CustomWeld(*mxBuilder, "preview", maWdPreview))
-    , mxEdFormula(new formula::RefEdit(mxBuilder->weld_entry("formula")))
+ScFormulaFrmtEntry::ScFormulaFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, ScCondFormatDlg* pDialogParent, const ScAddress& rPos, const ScCondFormatEntry* pFormat)
+    : ScCondFrmtEntry(pParent, rDoc, rPos)
+    , mxFtStyle(mxBuilder->weld_label(u"styleft"_ustr))
+    , mxLbStyle(mxBuilder->weld_combo_box(u"style"_ustr))
+    , mxWdPreviewWin(mxBuilder->weld_widget(u"previewwin"_ustr))
+    , mxWdPreview(new weld::CustomWeld(*mxBuilder, u"preview"_ustr, maWdPreview))
+    , mxEdFormula(new formula::RefEdit(mxBuilder->weld_entry(u"formula"_ustr)))
 {
     mxLbType->set_size_request(CommonWidgetWidth, -1);
     mxWdPreview->set_size_request(-1, mxLbStyle->get_preferred_size().Height());
@@ -520,7 +542,7 @@ ScFormulaFrmtEntry::ScFormulaFrmtEntry(ScCondFormatList* pParent, ScDocument* pD
 
     if(pFormat)
     {
-        mxEdFormula->SetText(pFormat->GetExpression(rPos, 0, 0, pDoc->GetGrammar()));
+        mxEdFormula->SetText(pFormat->GetExpression(rPos, 0, 0, rDoc.GetGrammar()));
         mxLbStyle->set_active_text(pFormat->GetStyle());
     }
     else
@@ -539,13 +561,13 @@ void ScFormulaFrmtEntry::Init(ScCondFormatDlg* pDialogParent)
 {
     mxEdFormula->SetGetFocusHdl( LINK( pDialogParent, ScCondFormatDlg, RangeGetFocusHdl ) );
 
-    FillStyleListBox( mpDoc, *mxLbStyle );
+    FillStyleListBox(&mrDoc, *mxLbStyle);
     mxLbStyle->connect_changed( LINK( this, ScFormulaFrmtEntry, StyleSelectHdl ) );
 }
 
 IMPL_LINK_NOARG(ScFormulaFrmtEntry, StyleSelectHdl, weld::ComboBox&, void)
 {
-    StyleSelect(mpParent->GetFrameWeld(), *mxLbStyle, mpDoc, maWdPreview);
+    StyleSelect(mpParent->GetFrameWeld(), *mxLbStyle, &mrDoc, maWdPreview);
 }
 
 ScFormatEntry* ScFormulaFrmtEntry::createFormulaEntry() const
@@ -554,7 +576,7 @@ ScFormatEntry* ScFormulaFrmtEntry::createFormulaEntry() const
     if(aFormula.isEmpty())
         return nullptr;
 
-    ScFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct, aFormula, OUString(), *mpDoc, maPos, mxLbStyle->get_active_text());
+    ScFormatEntry* pEntry = new ScCondFormatEntry(ScConditionMode::Direct, aFormula, OUString(), mrDoc, maPos, mxLbStyle->get_active_text());
     return pEntry;
 }
 
@@ -592,12 +614,10 @@ void ScFormulaFrmtEntry::SetInactive()
 
 namespace {
 
-OUString convertNumberToString(double nVal, const ScDocument* pDoc)
+OUString convertNumberToString(double nVal, const ScDocument& rDoc)
 {
-    SvNumberFormatter* pNumberFormatter = pDoc->GetFormatTable();
-    OUString aText;
-    pNumberFormatter->GetInputLineString(nVal, 0, aText);
-    return aText;
+    SvNumberFormatter* pNumberFormatter = rDoc.GetFormatTable();
+    return pNumberFormatter->GetInputLineString(nVal, 0);
 }
 
 const struct
@@ -658,7 +678,7 @@ void removeType(weld::ComboBox& rListBox, ScColorScaleEntryType eType)
         rListBox.remove(nPos);
 }
 
-void SetColorScaleEntryTypes( const ScColorScaleEntry& rEntry, weld::ComboBox& rLbType, weld::Entry& rEdit, ColorListBox& rLbCol, const ScDocument* pDoc )
+void SetColorScaleEntryTypes( const ScColorScaleEntry& rEntry, weld::ComboBox& rLbType, weld::Entry& rEdit, ColorListBox& rLbCol, const ScDocument& rDoc )
 {
     // entry Automatic is not available for color scales
     assert(rEntry.GetType() > COLORSCALE_AUTO);
@@ -673,7 +693,7 @@ void SetColorScaleEntryTypes( const ScColorScaleEntry& rEntry, weld::ComboBox& r
         case COLORSCALE_PERCENT:
             {
                 double nVal = rEntry.GetValue();
-                rEdit.set_text(convertNumberToString(nVal, pDoc));
+                rEdit.set_text(convertNumberToString(nVal, rDoc));
             }
             break;
         case COLORSCALE_FORMULA:
@@ -687,7 +707,7 @@ void SetColorScaleEntryTypes( const ScColorScaleEntry& rEntry, weld::ComboBox& r
 }
 
 void SetColorScaleEntry(ScColorScaleEntry* pEntry, const weld::ComboBox& rType, const weld::Entry& rValue,
-                        ScDocument* pDoc, const ScAddress& rPos)
+                        ScDocument& rDoc, const ScAddress& rPos)
 {
     ScColorScaleEntryType eType = getSelectedType(rType);
 
@@ -704,24 +724,24 @@ void SetColorScaleEntry(ScColorScaleEntry* pEntry, const weld::ComboBox& rType, 
             {
                 sal_uInt32 nIndex = 0;
                 double nVal = 0;
-                SvNumberFormatter* pNumberFormatter = pDoc->GetFormatTable();
+                SvNumberFormatter* pNumberFormatter = rDoc.GetFormatTable();
                 (void)pNumberFormatter->IsNumberFormat(rValue.get_text(), nIndex, nVal);
                 pEntry->SetValue(nVal);
             }
             break;
         case COLORSCALE_FORMULA:
-            pEntry->SetFormula(rValue.get_text(), *pDoc, rPos);
+            pEntry->SetFormula(rValue.get_text(), rDoc, rPos);
             break;
         default:
             break;
     }
 }
 
-ScColorScaleEntry* createColorScaleEntry( const weld::ComboBox& rType, const ColorListBox& rColor, const weld::Entry& rValue, ScDocument* pDoc, const ScAddress& rPos )
+ScColorScaleEntry* createColorScaleEntry( const weld::ComboBox& rType, const ColorListBox& rColor, const weld::Entry& rValue, ScDocument& rDoc, const ScAddress& rPos )
 {
     ScColorScaleEntry* pEntry = new ScColorScaleEntry();
 
-    SetColorScaleEntry(pEntry, rType, rValue, pDoc, rPos);
+    SetColorScaleEntry(pEntry, rType, rValue, rDoc, rPos);
     Color aColor = rColor.GetSelectEntryColor();
     pEntry->SetColor(aColor);
     return pEntry;
@@ -729,17 +749,17 @@ ScColorScaleEntry* createColorScaleEntry( const weld::ComboBox& rType, const Col
 
 }
 
-ScColorScale2FrmtEntry::ScColorScale2FrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScAddress& rPos, const ScColorScaleFormat* pFormat)
-    : ScCondFrmtEntry(pParent, pDoc, rPos)
-    , mxLbColorFormat(mxBuilder->weld_combo_box("colorformat"))
-    , mxLbEntryTypeMin(mxBuilder->weld_combo_box("colscalemin"))
-    , mxLbEntryTypeMax(mxBuilder->weld_combo_box("colscalemax"))
-    , mxEdMin(mxBuilder->weld_entry("edcolscalemin"))
-    , mxEdMax(mxBuilder->weld_entry("edcolscalemax"))
-    , mxLbColMin(new ColorListBox(mxBuilder->weld_menu_button("lbcolmin"), [this]{ return mpParent->GetFrameWeld(); }))
-    , mxLbColMax(new ColorListBox(mxBuilder->weld_menu_button("lbcolmax"), [this]{ return mpParent->GetFrameWeld(); }))
-    , mxFtMin(mxBuilder->weld_label("Label_minimum"))
-    , mxFtMax(mxBuilder->weld_label("Label_maximum"))
+ScColorScale2FrmtEntry::ScColorScale2FrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScAddress& rPos, const ScColorScaleFormat* pFormat)
+    : ScCondFrmtEntry(pParent, rDoc, rPos)
+    , mxLbColorFormat(mxBuilder->weld_combo_box(u"colorformat"_ustr))
+    , mxLbEntryTypeMin(mxBuilder->weld_combo_box(u"colscalemin"_ustr))
+    , mxLbEntryTypeMax(mxBuilder->weld_combo_box(u"colscalemax"_ustr))
+    , mxEdMin(mxBuilder->weld_entry(u"edcolscalemin"_ustr))
+    , mxEdMax(mxBuilder->weld_entry(u"edcolscalemax"_ustr))
+    , mxLbColMin(new ColorListBox(mxBuilder->weld_menu_button(u"lbcolmin"_ustr), [this]{ return mpParent->GetFrameWeld(); }))
+    , mxLbColMax(new ColorListBox(mxBuilder->weld_menu_button(u"lbcolmax"_ustr), [this]{ return mpParent->GetFrameWeld(); }))
+    , mxFtMin(mxBuilder->weld_label(u"Label_minimum"_ustr))
+    , mxFtMax(mxBuilder->weld_label(u"Label_maximum"_ustr))
 {
     mxLbColorFormat->set_size_request(CommonWidgetWidth, -1);
     mxLbEntryTypeMin->set_size_request(CommonWidgetWidth, -1);
@@ -763,9 +783,9 @@ ScColorScale2FrmtEntry::ScColorScale2FrmtEntry(ScCondFormatList* pParent, ScDocu
     if(pFormat)
     {
         ScColorScaleEntries::const_iterator itr = pFormat->begin();
-        SetColorScaleEntryTypes(*itr[0], *mxLbEntryTypeMin, *mxEdMin, *mxLbColMin, pDoc);
+        SetColorScaleEntryTypes(*itr[0], *mxLbEntryTypeMin, *mxEdMin, *mxLbColMin, rDoc);
         ++itr;
-        SetColorScaleEntryTypes(*itr[0], *mxLbEntryTypeMax, *mxEdMax, *mxLbColMax, pDoc);
+        SetColorScaleEntryTypes(*itr[0], *mxLbEntryTypeMax, *mxEdMax, *mxLbColMax, rDoc);
     }
     else
     {
@@ -793,9 +813,9 @@ void ScColorScale2FrmtEntry::Init()
 
 ScFormatEntry* ScColorScale2FrmtEntry::createColorscaleEntry() const
 {
-    ScColorScaleFormat* pColorScale = new ScColorScaleFormat(mpDoc);
-    pColorScale->AddEntry(createColorScaleEntry(*mxLbEntryTypeMin, *mxLbColMin, *mxEdMin, mpDoc, maPos));
-    pColorScale->AddEntry(createColorScaleEntry(*mxLbEntryTypeMax, *mxLbColMax, *mxEdMax, mpDoc, maPos));
+    ScColorScaleFormat* pColorScale = new ScColorScaleFormat(mrDoc);
+    pColorScale->AddEntry(createColorScaleEntry(*mxLbEntryTypeMin, *mxLbColMin, *mxEdMin, mrDoc, maPos));
+    pColorScale->AddEntry(createColorScaleEntry(*mxLbEntryTypeMax, *mxLbColMax, *mxEdMax, mrDoc, maPos));
     return pColorScale;
 }
 
@@ -864,20 +884,20 @@ IMPL_LINK( ScColorScale2FrmtEntry, EntryTypeHdl, weld::ComboBox&, rBox, void )
         pEd->set_sensitive(false);
 }
 
-ScColorScale3FrmtEntry::ScColorScale3FrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScAddress& rPos, const ScColorScaleFormat* pFormat)
-    : ScCondFrmtEntry(pParent, pDoc, rPos)
-    , mxLbColorFormat(mxBuilder->weld_combo_box("colorformat"))
-    , mxLbEntryTypeMin(mxBuilder->weld_combo_box("colscalemin"))
-    , mxLbEntryTypeMiddle(mxBuilder->weld_combo_box("colscalemiddle"))
-    , mxLbEntryTypeMax(mxBuilder->weld_combo_box("colscalemax"))
-    , mxEdMin(mxBuilder->weld_entry("edcolscalemin"))
-    , mxEdMiddle(mxBuilder->weld_entry("edcolscalemiddle"))
-    , mxEdMax(mxBuilder->weld_entry("edcolscalemax"))
-    , mxLbColMin(new ColorListBox(mxBuilder->weld_menu_button("lbcolmin"), [this]{ return mpParent->GetFrameWeld(); }))
-    , mxLbColMiddle(new ColorListBox(mxBuilder->weld_menu_button("lbcolmiddle"), [this]{ return mpParent->GetFrameWeld(); }))
-    , mxLbColMax(new ColorListBox(mxBuilder->weld_menu_button("lbcolmax"), [this]{ return mpParent->GetFrameWeld(); }))
-    , mxFtMin(mxBuilder->weld_label("Label_minimum"))
-    , mxFtMax(mxBuilder->weld_label("Label_maximum"))
+ScColorScale3FrmtEntry::ScColorScale3FrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScAddress& rPos, const ScColorScaleFormat* pFormat)
+    : ScCondFrmtEntry(pParent, rDoc, rPos)
+    , mxLbColorFormat(mxBuilder->weld_combo_box(u"colorformat"_ustr))
+    , mxLbEntryTypeMin(mxBuilder->weld_combo_box(u"colscalemin"_ustr))
+    , mxLbEntryTypeMiddle(mxBuilder->weld_combo_box(u"colscalemiddle"_ustr))
+    , mxLbEntryTypeMax(mxBuilder->weld_combo_box(u"colscalemax"_ustr))
+    , mxEdMin(mxBuilder->weld_entry(u"edcolscalemin"_ustr))
+    , mxEdMiddle(mxBuilder->weld_entry(u"edcolscalemiddle"_ustr))
+    , mxEdMax(mxBuilder->weld_entry(u"edcolscalemax"_ustr))
+    , mxLbColMin(new ColorListBox(mxBuilder->weld_menu_button(u"lbcolmin"_ustr), [this]{ return mpParent->GetFrameWeld(); }))
+    , mxLbColMiddle(new ColorListBox(mxBuilder->weld_menu_button(u"lbcolmiddle"_ustr), [this]{ return mpParent->GetFrameWeld(); }))
+    , mxLbColMax(new ColorListBox(mxBuilder->weld_menu_button(u"lbcolmax"_ustr), [this]{ return mpParent->GetFrameWeld(); }))
+    , mxFtMin(mxBuilder->weld_label(u"Label_minimum"_ustr))
+    , mxFtMax(mxBuilder->weld_label(u"Label_maximum"_ustr))
 {
     mxLbColorFormat->set_size_request(CommonWidgetWidth, -1);
     mxLbEntryTypeMin->set_size_request(CommonWidgetWidth, -1);
@@ -903,12 +923,12 @@ ScColorScale3FrmtEntry::ScColorScale3FrmtEntry(ScCondFormatList* pParent, ScDocu
     if(pFormat)
     {
         ScColorScaleEntries::const_iterator itr = pFormat->begin();
-        SetColorScaleEntryTypes(*itr[0], *mxLbEntryTypeMin, *mxEdMin, *mxLbColMin, pDoc);
+        SetColorScaleEntryTypes(*itr[0], *mxLbEntryTypeMin, *mxEdMin, *mxLbColMin, rDoc);
         assert(pFormat->size() == 3);
         ++itr;
-        SetColorScaleEntryTypes(*itr[0], *mxLbEntryTypeMiddle, *mxEdMiddle, *mxLbColMiddle, pDoc);
+        SetColorScaleEntryTypes(*itr[0], *mxLbEntryTypeMiddle, *mxEdMiddle, *mxLbColMiddle, rDoc);
         ++itr;
-        SetColorScaleEntryTypes(*itr[0], *mxLbEntryTypeMax, *mxEdMax, *mxLbColMax, pDoc);
+        SetColorScaleEntryTypes(*itr[0], *mxLbEntryTypeMax, *mxEdMax, *mxLbColMax, rDoc);
     }
     else
     {
@@ -941,11 +961,11 @@ void ScColorScale3FrmtEntry::Init()
 
 ScFormatEntry* ScColorScale3FrmtEntry::createColorscaleEntry() const
 {
-    ScColorScaleFormat* pColorScale = new ScColorScaleFormat(mpDoc);
-    pColorScale->AddEntry(createColorScaleEntry(*mxLbEntryTypeMin, *mxLbColMin, *mxEdMin, mpDoc, maPos));
+    ScColorScaleFormat* pColorScale = new ScColorScaleFormat(mrDoc);
+    pColorScale->AddEntry(createColorScaleEntry(*mxLbEntryTypeMin, *mxLbColMin, *mxEdMin, mrDoc, maPos));
     if (mxLbColorFormat->get_active() == 1)
-        pColorScale->AddEntry(createColorScaleEntry(*mxLbEntryTypeMiddle, *mxLbColMiddle, *mxEdMiddle, mpDoc, maPos));
-    pColorScale->AddEntry(createColorScaleEntry(*mxLbEntryTypeMax, *mxLbColMax, *mxEdMax, mpDoc, maPos));
+        pColorScale->AddEntry(createColorScaleEntry(*mxLbEntryTypeMiddle, *mxLbColMiddle, *mxEdMiddle, mrDoc, maPos));
+    pColorScale->AddEntry(createColorScaleEntry(*mxLbEntryTypeMax, *mxLbColMax, *mxEdMax, mrDoc, maPos));
     return pColorScale;
 }
 
@@ -1049,7 +1069,7 @@ IMPL_LINK_NOARG(ScConditionFrmtEntry, ConditionTypeSelectHdl, weld::ComboBox&, v
 
 namespace {
 
-void SetDataBarEntryTypes( const ScColorScaleEntry& rEntry, weld::ComboBox& rLbType, weld::Entry& rEdit, const ScDocument* pDoc )
+void SetDataBarEntryTypes( const ScColorScaleEntry& rEntry, weld::ComboBox& rLbType, weld::Entry& rEdit, const ScDocument& rDoc )
 {
     selectType(rLbType, rEntry.GetType());
     switch(rEntry.GetType())
@@ -1063,9 +1083,8 @@ void SetDataBarEntryTypes( const ScColorScaleEntry& rEntry, weld::ComboBox& rLbT
         case COLORSCALE_PERCENTILE:
             {
                 double nVal = rEntry.GetValue();
-                SvNumberFormatter* pNumberFormatter = pDoc->GetFormatTable();
-                OUString aText;
-                pNumberFormatter->GetInputLineString(nVal, 0, aText);
+                SvNumberFormatter* pNumberFormatter = rDoc.GetFormatTable();
+                OUString aText = pNumberFormatter->GetInputLineString(nVal, 0);
                 rEdit.set_text(aText);
             }
             break;
@@ -1077,16 +1096,16 @@ void SetDataBarEntryTypes( const ScColorScaleEntry& rEntry, weld::ComboBox& rLbT
 
 }
 
-ScDataBarFrmtEntry::ScDataBarFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScAddress& rPos, const ScDataBarFormat* pFormat)
-    : ScCondFrmtEntry(pParent, pDoc, rPos)
-    , mxLbColorFormat(mxBuilder->weld_combo_box("colorformat"))
-    , mxLbDataBarMinType(mxBuilder->weld_combo_box("colscalemin"))
-    , mxLbDataBarMaxType(mxBuilder->weld_combo_box("colscalemax"))
-    , mxEdDataBarMin(mxBuilder->weld_entry("edcolscalemin"))
-    , mxEdDataBarMax(mxBuilder->weld_entry("edcolscalemax"))
-    , mxBtOptions(mxBuilder->weld_button("options"))
-    , mxFtMin(mxBuilder->weld_label("Label_minimum"))
-    , mxFtMax(mxBuilder->weld_label("Label_maximum"))
+ScDataBarFrmtEntry::ScDataBarFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScAddress& rPos, const ScDataBarFormat* pFormat)
+    : ScCondFrmtEntry(pParent, rDoc, rPos)
+    , mxLbColorFormat(mxBuilder->weld_combo_box(u"colorformat"_ustr))
+    , mxLbDataBarMinType(mxBuilder->weld_combo_box(u"colscalemin"_ustr))
+    , mxLbDataBarMaxType(mxBuilder->weld_combo_box(u"colscalemax"_ustr))
+    , mxEdDataBarMin(mxBuilder->weld_entry(u"edcolscalemin"_ustr))
+    , mxEdDataBarMax(mxBuilder->weld_entry(u"edcolscalemax"_ustr))
+    , mxBtOptions(mxBuilder->weld_button(u"options"_ustr))
+    , mxFtMin(mxBuilder->weld_label(u"Label_minimum"_ustr))
+    , mxFtMax(mxBuilder->weld_label(u"Label_maximum"_ustr))
 {
     mxLbColorFormat->set_size_request(CommonWidgetWidth, -1);
     mxLbDataBarMinType->set_size_request(CommonWidgetWidth, -1);
@@ -1104,8 +1123,8 @@ ScDataBarFrmtEntry::ScDataBarFrmtEntry(ScCondFormatList* pParent, ScDocument* pD
     if(pFormat)
     {
         mpDataBarData.reset(new ScDataBarFormatData(*pFormat->GetDataBarData()));
-        SetDataBarEntryTypes(*mpDataBarData->mpLowerLimit, *mxLbDataBarMinType, *mxEdDataBarMin, pDoc);
-        SetDataBarEntryTypes(*mpDataBarData->mpUpperLimit, *mxLbDataBarMaxType, *mxEdDataBarMax, pDoc);
+        SetDataBarEntryTypes(*mpDataBarData->mpLowerLimit, *mxLbDataBarMinType, *mxEdDataBarMin, rDoc);
+        SetDataBarEntryTypes(*mpDataBarData->mpUpperLimit, *mxLbDataBarMaxType, *mxEdDataBarMax, rDoc);
         DataBarTypeSelectHdl(*mxLbDataBarMinType);
     }
     else
@@ -1149,10 +1168,10 @@ void ScDataBarFrmtEntry::Init()
 ScFormatEntry* ScDataBarFrmtEntry::createDatabarEntry() const
 {
     SetColorScaleEntry(mpDataBarData->mpLowerLimit.get(), *mxLbDataBarMinType,
-                       *mxEdDataBarMin, mpDoc, maPos);
+                       *mxEdDataBarMin, mrDoc, maPos);
     SetColorScaleEntry(mpDataBarData->mpUpperLimit.get(), *mxLbDataBarMaxType,
-                       *mxEdDataBarMax, mpDoc, maPos);
-    ScDataBarFormat* pDataBar = new ScDataBarFormat(mpDoc);
+                       *mxEdDataBarMax, mrDoc, maPos);
+    ScDataBarFormat* pDataBar = new ScDataBarFormat(mrDoc);
     pDataBar->SetDataBarData(new ScDataBarFormatData(*mpDataBarData));
     return pDataBar;
 }
@@ -1204,26 +1223,26 @@ IMPL_LINK_NOARG( ScDataBarFrmtEntry, DataBarTypeSelectHdl, weld::ComboBox&, void
 IMPL_LINK_NOARG( ScDataBarFrmtEntry, OptionBtnHdl, weld::Button&, void )
 {
     SetColorScaleEntry(mpDataBarData->mpLowerLimit.get(), *mxLbDataBarMinType,
-                       *mxEdDataBarMin, mpDoc, maPos);
+                       *mxEdDataBarMin, mrDoc, maPos);
     SetColorScaleEntry(mpDataBarData->mpUpperLimit.get(), *mxLbDataBarMaxType,
-                       *mxEdDataBarMax, mpDoc, maPos);
-    ScDataBarSettingsDlg aDlg(mpParent->GetFrameWeld(), *mpDataBarData, mpDoc, maPos);
+                       *mxEdDataBarMax, mrDoc, maPos);
+    ScDataBarSettingsDlg aDlg(mpParent->GetFrameWeld(), *mpDataBarData, mrDoc, maPos);
     if (aDlg.run() == RET_OK)
     {
         mpDataBarData.reset(aDlg.GetData());
-        SetDataBarEntryTypes(*mpDataBarData->mpLowerLimit, *mxLbDataBarMinType, *mxEdDataBarMin, mpDoc);
-        SetDataBarEntryTypes(*mpDataBarData->mpUpperLimit, *mxLbDataBarMaxType, *mxEdDataBarMax, mpDoc);
+        SetDataBarEntryTypes(*mpDataBarData->mpLowerLimit, *mxLbDataBarMinType, *mxEdDataBarMin, mrDoc);
+        SetDataBarEntryTypes(*mpDataBarData->mpUpperLimit, *mxLbDataBarMaxType, *mxEdDataBarMax, mrDoc);
         DataBarTypeSelectHdl(*mxLbDataBarMinType);
     }
 }
 
-ScDateFrmtEntry::ScDateFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScCondDateFormatEntry* pFormat)
-    : ScCondFrmtEntry(pParent, pDoc, ScAddress())
-    , mxLbDateEntry(mxBuilder->weld_combo_box("datetype"))
-    , mxFtStyle(mxBuilder->weld_label("styleft"))
-    , mxLbStyle(mxBuilder->weld_combo_box("style"))
-    , mxWdPreviewWin(mxBuilder->weld_widget("previewwin"))
-    , mxWdPreview(new weld::CustomWeld(*mxBuilder, "preview", maWdPreview))
+ScDateFrmtEntry::ScDateFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScCondDateFormatEntry* pFormat)
+    : ScCondFrmtEntry(pParent, rDoc, ScAddress())
+    , mxLbDateEntry(mxBuilder->weld_combo_box(u"datetype"_ustr))
+    , mxFtStyle(mxBuilder->weld_label(u"styleft"_ustr))
+    , mxLbStyle(mxBuilder->weld_combo_box(u"style"_ustr))
+    , mxWdPreviewWin(mxBuilder->weld_widget(u"previewwin"_ustr))
+    , mxWdPreview(new weld::CustomWeld(*mxBuilder, u"preview"_ustr, maWdPreview))
     , mbIsInStyleCreate(false)
 {
     mxLbDateEntry->set_size_request(CommonWidgetWidth, -1);
@@ -1233,7 +1252,7 @@ ScDateFrmtEntry::ScDateFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, co
 
     Init();
 
-    StartListening(*pDoc->GetStyleSheetPool(), DuplicateHandling::Prevent);
+    StartListening(*rDoc.GetStyleSheetPool(), DuplicateHandling::Prevent);
 
     if(pFormat)
     {
@@ -1255,7 +1274,7 @@ void ScDateFrmtEntry::Init()
     mxLbDateEntry->set_active(0);
     mxLbType->set_active(3);
 
-    FillStyleListBox( mpDoc, *mxLbStyle );
+    FillStyleListBox(&mrDoc, *mxLbStyle);
     mxLbStyle->connect_changed( LINK( this, ScDateFrmtEntry, StyleSelectHdl ) );
     mxLbStyle->set_active(1);
 }
@@ -1282,16 +1301,16 @@ void ScDateFrmtEntry::SetInactive()
 
 void ScDateFrmtEntry::Notify( SfxBroadcaster&, const SfxHint& rHint )
 {
-    if(rHint.GetId() == SfxHintId::StyleSheetModified)
+    if(rHint.GetId() == SfxHintId::StyleSheetModified || rHint.GetId() == SfxHintId::StyleSheetModifiedExtended)
     {
         if(!mbIsInStyleCreate)
-            UpdateStyleList(*mxLbStyle, mpDoc);
+            UpdateStyleList(*mxLbStyle, &mrDoc);
     }
 }
 
 ScFormatEntry* ScDateFrmtEntry::GetEntry() const
 {
-    ScCondDateFormatEntry* pNewEntry = new ScCondDateFormatEntry(mpDoc);
+    ScCondDateFormatEntry* pNewEntry = new ScCondDateFormatEntry(mrDoc);
     condformat::ScCondFormatDateType eType = static_cast<condformat::ScCondFormatDateType>(mxLbDateEntry->get_active());
     pNewEntry->SetDateType(eType);
     pNewEntry->SetStyleName(mxLbStyle->get_active_text());
@@ -1307,7 +1326,7 @@ OUString ScDateFrmtEntry::GetExpressionString()
 IMPL_LINK_NOARG( ScDateFrmtEntry, StyleSelectHdl, weld::ComboBox&, void )
 {
     mbIsInStyleCreate = true;
-    StyleSelect(mpParent->GetFrameWeld(), *mxLbStyle, mpDoc, maWdPreview);
+    StyleSelect(mpParent->GetFrameWeld(), *mxLbStyle, &mrDoc, maWdPreview);
     mbIsInStyleCreate = false;
 }
 
@@ -1318,53 +1337,69 @@ protected:
 private:
     std::unique_ptr<weld::Container> mxGrid;
     std::unique_ptr<weld::Image> mxImgIcon;
-    std::unique_ptr<weld::Label> mxFtEntry;
     std::unique_ptr<weld::Entry> mxEdEntry;
     std::unique_ptr<weld::ComboBox> mxLbEntryType;
-    weld::Container* mpContainer;
+    std::unique_ptr<weld::ComboBox> mxConditionMode;
+    weld::Grid* mpParentGrid;
 
 public:
-    ScIconSetFrmtDataEntry(weld::Container* pParent, ScIconSetType eType, const ScDocument* pDoc,
+    ScIconSetFrmtDataEntry(weld::Grid* pParent, ScIconSetType eType, const ScDocument& rDoc,
             sal_Int32 i, const ScColorScaleEntry* pEntry = nullptr);
     ~ScIconSetFrmtDataEntry();
     void Show() { mxGrid->show(); }
     void Hide() { mxGrid->hide(); }
     void set_grid_top_attach(int nTop)
     {
-        mxGrid->set_grid_left_attach(0);
-        mxGrid->set_grid_top_attach(nTop);
+        mpParentGrid->set_child_left_attach(*mxGrid, 0);
+        mpParentGrid->set_child_top_attach(*mxGrid, nTop);
     }
 
     ScColorScaleEntry* CreateEntry(ScDocument& rDoc, const ScAddress& rPos) const;
-
-    void SetFirstEntry();
 };
 
-ScIconSetFrmtDataEntry::ScIconSetFrmtDataEntry(weld::Container* pParent, ScIconSetType eType, const ScDocument* pDoc, sal_Int32 i, const ScColorScaleEntry* pEntry)
-    : mxBuilder(Application::CreateBuilder(pParent, "modules/scalc/ui/conditionaliconset.ui"))
-    , mxGrid(mxBuilder->weld_container("ConditionalIconSet"))
-    , mxImgIcon(mxBuilder->weld_image("icon"))
-    , mxFtEntry(mxBuilder->weld_label("label"))
-    , mxEdEntry(mxBuilder->weld_entry("entry"))
-    , mxLbEntryType(mxBuilder->weld_combo_box("listbox"))
-    , mpContainer(pParent)
+ScIconSetFrmtDataEntry::ScIconSetFrmtDataEntry(weld::Grid* pParent, ScIconSetType eType, const ScDocument& rDoc, sal_Int32 i, const ScColorScaleEntry* pEntry)
+    : mxBuilder(Application::CreateBuilder(pParent, u"modules/scalc/ui/conditionaliconset.ui"_ustr))
+    , mxGrid(mxBuilder->weld_container(u"ConditionalIconSet"_ustr))
+    , mxImgIcon(mxBuilder->weld_image(u"icon"_ustr))
+    , mxEdEntry(mxBuilder->weld_entry(u"entry"_ustr))
+    , mxLbEntryType(mxBuilder->weld_combo_box(u"listbox"_ustr))
+    , mxConditionMode(mxBuilder->weld_combo_box("conditionMode"))
+    , mpParentGrid(pParent)
 {
+    mxEdEntry->set_buildable_name(mxEdEntry->get_buildable_name() + OUString::number(i));
+    mxLbEntryType->set_buildable_name(mxLbEntryType->get_buildable_name() + OUString::number(i));
+
     mxImgIcon->set_from_icon_name(ScIconSetFormat::getIconName(eType, i));
     if(pEntry)
     {
+        switch (pEntry->GetMode())
+        {
+            case ScConditionMode::Equal:
+            case ScConditionMode::Less:
+            case ScConditionMode::Greater:
+            case ScConditionMode::EqLess:
+            case ScConditionMode::EqGreater:
+            case ScConditionMode::NotEqual:
+                mxConditionMode->set_active(static_cast<int>(pEntry->GetMode()));
+                break;
+            default:
+                assert(false
+                       && "ScIconSetFrmtDataEntry::ScIconSetFrmtDataEntry: Invalid condition mode");
+        }
+
         switch(pEntry->GetType())
         {
             case COLORSCALE_VALUE:
                 mxLbEntryType->set_active(0);
-                mxEdEntry->set_text(convertNumberToString(pEntry->GetValue(), pDoc));
+                mxEdEntry->set_text(convertNumberToString(pEntry->GetValue(), rDoc));
                 break;
             case COLORSCALE_PERCENTILE:
                 mxLbEntryType->set_active(2);
-                mxEdEntry->set_text(convertNumberToString(pEntry->GetValue(), pDoc));
+                mxEdEntry->set_text(convertNumberToString(pEntry->GetValue(), rDoc));
                 break;
             case COLORSCALE_PERCENT:
                 mxLbEntryType->set_active(1);
-                mxEdEntry->set_text(convertNumberToString(pEntry->GetValue(), pDoc));
+                mxEdEntry->set_text(convertNumberToString(pEntry->GetValue(), rDoc));
                 break;
             case COLORSCALE_FORMULA:
                 mxLbEntryType->set_active(3);
@@ -1377,17 +1412,19 @@ ScIconSetFrmtDataEntry::ScIconSetFrmtDataEntry(weld::Container* pParent, ScIconS
     else
     {
         mxLbEntryType->set_active(1);
+        mxConditionMode->set_active(0);
     }
 }
 
 ScIconSetFrmtDataEntry::~ScIconSetFrmtDataEntry()
 {
-    mpContainer->move(mxGrid.get(), nullptr);
+    mpParentGrid->move(mxGrid.get(), nullptr);
 }
 
 ScColorScaleEntry* ScIconSetFrmtDataEntry::CreateEntry(ScDocument& rDoc, const ScAddress& rPos) const
 {
-    sal_Int32 nPos = mxLbEntryType->get_active();
+    sal_Int32 nTypePos = mxLbEntryType->get_active();
+    sal_Int32 nModePos = mxConditionMode->get_active();
     OUString aText = mxEdEntry->get_text();
     ScColorScaleEntry* pEntry = new ScColorScaleEntry();
 
@@ -1397,7 +1434,7 @@ ScColorScaleEntry* ScIconSetFrmtDataEntry::CreateEntry(ScDocument& rDoc, const S
     (void)pNumberFormatter->IsNumberFormat(aText, nIndex, nVal);
     pEntry->SetValue(nVal);
 
-    switch(nPos)
+    switch(nTypePos)
     {
         case 0:
             pEntry->SetType(COLORSCALE_VALUE);
@@ -1416,23 +1453,15 @@ ScColorScaleEntry* ScIconSetFrmtDataEntry::CreateEntry(ScDocument& rDoc, const S
             assert(false);
     }
 
+    pEntry->SetMode(static_cast<ScConditionMode>(nModePos));
     return pEntry;
 }
 
-void ScIconSetFrmtDataEntry::SetFirstEntry()
-{
-    mxEdEntry->hide();
-    mxLbEntryType->hide();
-    mxFtEntry->hide();
-    mxEdEntry->set_text("0");
-    mxLbEntryType->set_active(1);
-}
-
-ScIconSetFrmtEntry::ScIconSetFrmtEntry(ScCondFormatList* pParent, ScDocument* pDoc, const ScAddress& rPos, const ScIconSetFormat* pFormat)
-    : ScCondFrmtEntry(pParent, pDoc, rPos)
-    , mxLbColorFormat(mxBuilder->weld_combo_box("colorformat"))
-    , mxLbIconSetType(mxBuilder->weld_combo_box("iconsettype"))
-    , mxIconParent(mxBuilder->weld_container("iconparent"))
+ScIconSetFrmtEntry::ScIconSetFrmtEntry(ScCondFormatList* pParent, ScDocument& rDoc, const ScAddress& rPos, const ScIconSetFormat* pFormat)
+    : ScCondFrmtEntry(pParent, rDoc, rPos)
+    , mxLbColorFormat(mxBuilder->weld_combo_box(u"colorformat"_ustr))
+    , mxLbIconSetType(mxBuilder->weld_combo_box(u"iconsettype"_ustr))
+    , mxIconParent(mxBuilder->weld_grid(u"iconparent"_ustr))
 {
     mxLbColorFormat->set_size_request(CommonWidgetWidth, -1);
     mxLbIconSetType->set_size_request(CommonWidgetWidth, -1);
@@ -1451,10 +1480,9 @@ ScIconSetFrmtEntry::ScIconSetFrmtEntry(ScCondFormatList* pParent, ScDocument* pD
                 i < n; ++i)
         {
             maEntries.emplace_back(new ScIconSetFrmtDataEntry(
-                mxIconParent.get(), eType, pDoc, i, pIconSetFormatData->m_Entries[i].get()));
+                mxIconParent.get(), eType, rDoc, i, pIconSetFormatData->m_Entries[i].get()));
             maEntries[i]->set_grid_top_attach(i);
         }
-        maEntries[0]->SetFirstEntry();
     }
     else
         IconSetTypeHdl(*mxLbIconSetType);
@@ -1484,11 +1512,10 @@ IMPL_LINK_NOARG( ScIconSetFrmtEntry, IconSetTypeHdl, weld::ComboBox&, void )
 
     for(size_t i = 0; i < nElements; ++i)
     {
-        maEntries.emplace_back(new ScIconSetFrmtDataEntry(mxIconParent.get(), static_cast<ScIconSetType>(nPos), mpDoc, i));
+        maEntries.emplace_back(new ScIconSetFrmtDataEntry(mxIconParent.get(), static_cast<ScIconSetType>(nPos), mrDoc, i));
         maEntries[i]->set_grid_top_attach(i);
         maEntries[i]->Show();
     }
-    maEntries[0]->SetFirstEntry();
 }
 
 OUString ScIconSetFrmtEntry::GetExpressionString()
@@ -1522,13 +1549,13 @@ void ScIconSetFrmtEntry::SetInactive()
 
 ScFormatEntry* ScIconSetFrmtEntry::GetEntry() const
 {
-    ScIconSetFormat* pFormat = new ScIconSetFormat(mpDoc);
+    ScIconSetFormat* pFormat = new ScIconSetFormat(mrDoc);
 
     ScIconSetFormatData* pData = new ScIconSetFormatData;
     pData->eIconSetType = static_cast<ScIconSetType>(mxLbIconSetType->get_active());
     for(const auto& rxEntry : maEntries)
     {
-        pData->m_Entries.emplace_back(rxEntry->CreateEntry(*mpDoc, maPos));
+        pData->m_Entries.emplace_back(rxEntry->CreateEntry(mrDoc, maPos));
     }
     pFormat->SetIconSetData(pData);
 

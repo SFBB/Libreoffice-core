@@ -31,7 +31,6 @@
 #include <rtl/process.h>
 #include <comphelper/diagnose_ex.hxx>
 
-using namespace ::comphelper;
 static sal_Unicode rtl_ascii_toUpperCase( sal_Unicode ch )
 {
     return ch >= 0x0061 && ch <= 0x007a ? ch + 0x20 : ch;
@@ -40,8 +39,6 @@ static sal_Unicode rtl_ascii_toUpperCase( sal_Unicode ch )
 namespace connectivity
 {
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
-    using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::java;
     using namespace dbtools;
 
@@ -128,7 +125,7 @@ namespace connectivity
             Any uaJVM = xVM->getJavaVM( processID );
             sal_Int64 nTemp;
             if (!(uaJVM >>= nTemp)) {
-                throw Exception("cannot get result for getJavaVM", nullptr); // -5
+                throw Exception(u"cannot get result for getJavaVM"_ustr, nullptr); // -5
             }
             aRet = reinterpret_cast<jvmaccess::VirtualMachine *>(
                 static_cast<sal_IntPtr>(nTemp));

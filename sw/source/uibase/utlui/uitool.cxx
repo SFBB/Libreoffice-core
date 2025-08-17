@@ -68,6 +68,7 @@
 #include <SwStyleNameMapper.hxx>
 #include <strings.hrc>
 #include <docmodel/color/ComplexColor.hxx>
+#include <IDocumentSettingAccess.hxx>
 
 // 50 cm 28350
 #define MAXHEIGHT 28350
@@ -126,8 +127,8 @@ void ConvertAttrCharToGen(SfxItemSet& rSet, bool bIsPara)
     // tdf#126684: We use RES_PARATR_GRABBAG, because RES_CHRATR_GRABBAG may be overwritten later in
     // SwDocStyleSheet::GetItemSet when applying attributes from char format
     assert(SfxItemState::SET != rSet.GetItemState(RES_PARATR_GRABBAG, false));
-    SfxGrabBagItem aGrabBag(RES_PARATR_GRABBAG);
-    aGrabBag.GetGrabBag()["DialogUseCharAttr"] <<= true;
+    std::map<OUString, css::uno::Any> aGrabBagMap;
+    aGrabBagMap[u"DialogUseCharAttr"_ustr] <<= true;
     // Store initial ranges to allow restoring later
     uno::Sequence<sal_uInt16> aOrigRanges(rSet.GetRanges().size() * 2 + 1);
     int i = 0;
@@ -137,9 +138,9 @@ void ConvertAttrCharToGen(SfxItemSet& rSet, bool bIsPara)
         aOrigRanges.getArray()[i++] = rPair.second;
     }
     aOrigRanges.getArray()[i++] = 0;
-    aGrabBag.GetGrabBag()["OrigItemSetRanges"] <<= aOrigRanges;
+    aGrabBagMap[u"OrigItemSetRanges"_ustr] <<= aOrigRanges;
     rSet.MergeRange(RES_PARATR_GRABBAG, RES_PARATR_GRABBAG);
-    rSet.Put(aGrabBag);
+    rSet.Put(SfxGrabBagItem(RES_PARATR_GRABBAG, std::move(aGrabBagMap)));
 }
 
 void ConvertAttrGenToChar(SfxItemSet& rSet, const SfxItemSet& rOrigSet, bool bIsPara)
@@ -154,14 +155,12 @@ void ConvertAttrGenToChar(SfxItemSet& rSet, const SfxItemSet& rOrigSet, bool bIs
         // Remove shading marker
         if (const SfxGrabBagItem* pGrabBagItem = rOrigSet.GetItemIfSet(RES_CHRATR_GRABBAG, false))
         {
-            SfxGrabBagItem aGrabBag(*pGrabBagItem);
-            std::map<OUString, css::uno::Any>& rMap = aGrabBag.GetGrabBag();
-            auto aIterator = rMap.find("CharShadingMarker");
-            if( aIterator != rMap.end() )
+            if( pGrabBagItem->GetGrabBag().count(u"CharShadingMarker"_ustr) )
             {
-                aIterator->second <<= false;
+                std::map<OUString, css::uno::Any> aGrabBagMap = pGrabBagItem->GetGrabBag();
+                aGrabBagMap[u"CharShadingMarker"_ustr] <<= false;
+                rSet.Put( SfxGrabBagItem(RES_CHRATR_GRABBAG, std::move(aGrabBagMap)) );
             }
-            rSet.Put( aGrabBag );
         }
     }
 
@@ -172,9 +171,8 @@ void ConvertAttrGenToChar(SfxItemSet& rSet, const SfxItemSet& rOrigSet, bool bIs
 
     if (const SfxGrabBagItem* pGrabBagItem = rOrigSet.GetItemIfSet(RES_PARATR_GRABBAG, false))
     {
-        SfxGrabBagItem aGrabBag(*pGrabBagItem);
-        std::map<OUString, css::uno::Any>& rMap = aGrabBag.GetGrabBag();
-        auto aIterator = rMap.find("OrigItemSetRanges");
+        const std::map<OUString, css::uno::Any>& rMap = pGrabBagItem->GetGrabBag();
+        auto aIterator = rMap.find(u"OrigItemSetRanges"_ustr);
         if (aIterator != rMap.end())
         {
             uno::Sequence<sal_uInt16> aOrigRanges;
@@ -212,14 +210,12 @@ void ApplyCharBackground(Color const& rBackgroundColor, model::ComplexColor cons
     // Remove shading marker
     if (const SfxGrabBagItem* pGrabBagItem = aCoreSet.GetItemIfSet(RES_CHRATR_GRABBAG, false))
     {
-        SfxGrabBagItem aGrabBag(*pGrabBagItem);
-        std::map<OUString, css::uno::Any>& rMap = aGrabBag.GetGrabBag();
-        auto aIterator = rMap.find("CharShadingMarker");
-        if (aIterator != rMap.end())
+        if (pGrabBagItem->GetGrabBag().count(u"CharShadingMarker"_ustr))
         {
-            aIterator->second <<= false;
+            std::map<OUString, css::uno::Any> aGrabBagMap = pGrabBagItem->GetGrabBag();
+            aGrabBagMap[u"CharShadingMarker"_ustr] <<= false;
+            rShell.SetAttrItem(SfxGrabBagItem(RES_CHRATR_GRABBAG, std::move(aGrabBagMap)));
         }
-        rShell.SetAttrItem(aGrabBag);
     }
 
     rShell.EndUndo(SwUndoId::INSATTR);
@@ -285,15 +281,15 @@ void ItemSetToPageDesc( const SfxItemSet& rSet, SwPageDesc& rPageDesc )
     if (const SfxGrabBagItem* pGrabBag = rSet.GetItemIfSet(SID_ATTR_CHAR_GRABBAG))
     {
         bool bValue;
-        const auto pGrabBagInner = pGrabBag->GetGrabBag();
-        const auto iter = pGrabBagInner.find("BackgroundFullSize");
-        assert(iter != pGrabBagInner.end());
+        const auto& rGrabBagInner = pGrabBag->GetGrabBag();
+        const auto iter = rGrabBagInner.find(u"BackgroundFullSize"_ustr);
+        assert(iter != rGrabBagInner.end());
         if (iter->second >>= bValue)
         {
             rMaster.SetFormatAttr(SfxBoolItem(RES_BACKGROUND_FULL_SIZE, bValue));
         }
-        auto it = pGrabBagInner.find("RtlGutter");
-        if (it != pGrabBagInner.end() && (it->second >>= bValue))
+        auto it = rGrabBagInner.find(u"RtlGutter"_ustr);
+        if (it != rGrabBagInner.end() && (it->second >>= bValue))
         {
             rMaster.SetFormatAttr(SfxBoolItem(RES_RTL_GUTTER, bValue));
         }
@@ -392,6 +388,7 @@ void ItemSetToPageDesc( const SfxItemSet& rSet, SwPageDesc& rPageDesc )
             if(rMaster.GetFooter().IsActive())
             {
                 rMaster.SetFormatAttr(SwFormatFooter(false));
+                // why reset this? but not doing it causes testTdf112694 to fail
                 rPageDesc.ChgFooterShare(false);
             }
         }
@@ -419,16 +416,16 @@ void ItemSetToPageDesc( const SfxItemSet& rSet, SwPageDesc& rPageDesc )
                             SID_SWREGISTER_COLLECTION, false))
     {
         const OUString& rColl = pCollectionItem->GetValue();
-        SwDoc& rDoc = *rMaster.GetDoc();
-        SwTextFormatColl* pColl = rDoc.FindTextFormatCollByName( rColl );
+        SwDoc& rDoc = rMaster.GetDoc();
+        SwTextFormatColl* pColl = rDoc.FindTextFormatCollByName( UIName(rColl) );
         if( !pColl )
         {
             const sal_uInt16 nId = SwStyleNameMapper::GetPoolIdFromUIName(
-                rColl, SwGetPoolIdFromName::TxtColl );
+                UIName(rColl), SwGetPoolIdFromName::TxtColl );
             if( USHRT_MAX != nId )
                 pColl = rDoc.getIDocumentStylePoolAccess().GetTextCollFromPool( nId );
             else
-                pColl = rDoc.MakeTextFormatColl( rColl,
+                pColl = rDoc.MakeTextFormatColl( UIName(rColl),
                             rDoc.GetDfltTextFormatColl() );
         }
         if( pColl )
@@ -442,6 +439,9 @@ namespace
 bool IsOwnFormat(const SwDoc& rDoc)
 {
     const SwDocShell* pDocShell = rDoc.GetDocShell();
+    if (!pDocShell)
+        return false;
+
     SfxMedium* pMedium = pDocShell->GetMedium();
     if (!pMedium)
     {
@@ -464,7 +464,7 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
 
     // Page data
     SvxPageItem aPageItem(SID_ATTR_PAGE);
-    aPageItem.SetDescName(rPageDesc.GetName());
+    aPageItem.SetDescName(rPageDesc.GetName().toString());
     aPageItem.SetPageUsage(lcl_convertUseToSvx(rPageDesc.GetUseOn()));
     aPageItem.SetLandscape(rPageDesc.GetLandscape());
     aPageItem.SetNumType(rPageDesc.GetNumType().GetNumberingType());
@@ -501,7 +501,7 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
 
     SfxStringItem aFollow(SID_ATTR_PAGE_EXT1, OUString());
     if(rPageDesc.GetFollow())
-        aFollow.SetValue(rPageDesc.GetFollow()->GetName());
+        aFollow.SetValue(rPageDesc.GetFollow()->GetName().toString());
     rSet.Put(aFollow);
 
     // Header
@@ -509,7 +509,7 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
     {
         const SwFormatHeader &rHeaderFormat = rMaster.GetHeader();
         const SwFrameFormat *pHeaderFormat = rHeaderFormat.GetHeaderFormat();
-        OSL_ENSURE(pHeaderFormat != nullptr, "no header format");
+        assert(pHeaderFormat && "no header format");
 
         // HeaderInfo, margins, background, border
         SfxItemSetFixed<RES_FRMATR_BEGIN,RES_FRMATR_END - 1,            // [82
@@ -523,7 +523,7 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
             SID_ATTR_PAGE_SHARED_FIRST,SID_ATTR_PAGE_SHARED_FIRST>  aHeaderSet(*rSet.GetPool());
 
         // set correct parent to get the XFILL_NONE FillStyle as needed
-        aHeaderSet.SetParent(&rMaster.GetDoc()->GetDfltFrameFormat()->GetAttrSet());
+        aHeaderSet.SetParent(&rMaster.GetDoc().GetDfltFrameFormat()->GetAttrSet());
 
         // Dynamic or fixed height
         SfxBoolItem aOn(SID_ATTR_PAGE_ON, true);
@@ -558,7 +558,7 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
     {
         const SwFormatFooter &rFooterFormat = rMaster.GetFooter();
         const SwFrameFormat *pFooterFormat = rFooterFormat.GetFooterFormat();
-        OSL_ENSURE(pFooterFormat != nullptr, "no footer format");
+        assert(pFooterFormat && "no footer format");
 
         // FooterInfo, margins, background, border
         SfxItemSetFixed<RES_FRMATR_BEGIN,RES_FRMATR_END - 1,            // [82
@@ -572,7 +572,7 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
             SID_ATTR_PAGE_SHARED_FIRST,SID_ATTR_PAGE_SHARED_FIRST>  aFooterSet(*rSet.GetPool());
 
         // set correct parent to get the XFILL_NONE FillStyle as needed
-        aFooterSet.SetParent(&rMaster.GetDoc()->GetDfltFrameFormat()->GetAttrSet());
+        aFooterSet.SetParent(&rMaster.GetDoc().GetDfltFrameFormat()->GetAttrSet());
 
         // Dynamic or fixed height
         SfxBoolItem aOn(SID_ATTR_PAGE_ON, true);
@@ -613,27 +613,27 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
     aReg.SetWhich(SID_SWREGISTER_MODE);
     rSet.Put(aReg);
     if(pCol)
-        rSet.Put(SfxStringItem(SID_SWREGISTER_COLLECTION, pCol->GetName()));
+        rSet.Put(SfxStringItem(SID_SWREGISTER_COLLECTION, pCol->GetName().toString()));
 
-    std::optional<SfxGrabBagItem> oGrabBag;
+    std::map<OUString, css::uno::Any> aGrabBagMap;
     if (SfxGrabBagItem const* pItem = rSet.GetItemIfSet(SID_ATTR_CHAR_GRABBAG))
-    {
-        oGrabBag.emplace(*pItem);
-    }
-    else
-    {
-        oGrabBag.emplace(SID_ATTR_CHAR_GRABBAG);
-    }
-    oGrabBag->GetGrabBag()["BackgroundFullSize"] <<=
+        aGrabBagMap = pItem->GetGrabBag();
+    aGrabBagMap[u"BackgroundFullSize"_ustr] <<=
         rMaster.GetAttrSet().GetItem<SfxBoolItem>(RES_BACKGROUND_FULL_SIZE)->GetValue();
 
-    if (IsOwnFormat(*rMaster.GetDoc()))
+    if (IsOwnFormat(rMaster.GetDoc()))
     {
-        oGrabBag->GetGrabBag()["RtlGutter"]
+        aGrabBagMap[u"RtlGutter"_ustr]
             <<= rMaster.GetAttrSet().GetItem<SfxBoolItem>(RES_RTL_GUTTER)->GetValue();
     }
 
-    rSet.Put(*oGrabBag);
+    const IDocumentSettingAccess& rIDSA = rMaster.getIDocumentSettingAccess();
+    if (rIDSA.get(DocumentSettingId::CONTINUOUS_ENDNOTES))
+    {
+        aGrabBagMap[u"ContinuousEndnotes"_ustr] <<= true;
+    }
+
+    rSet.Put(SfxGrabBagItem(SID_ATTR_CHAR_GRABBAG, std::move(aGrabBagMap)));
 }
 
 // Set DefaultTabs
@@ -662,6 +662,7 @@ void SfxToSwPageDescAttr( const SwWrtShell& rShell, SfxItemSet& rSet )
     SwFormatPageDesc aPgDesc;
 
     bool bChanged = false;
+    bool bRemoveNumOffset = false;
     // Page number
     switch (rSet.GetItemState(SID_ATTR_PARA_PAGENUM, false, &pItem))
     {
@@ -678,6 +679,7 @@ void SfxToSwPageDescAttr( const SwWrtShell& rShell, SfxItemSet& rSet )
         }
         case SfxItemState::UNKNOWN:
         case SfxItemState::DEFAULT:
+            bRemoveNumOffset = true;
             break;
         default:
             assert(false); // unexpected
@@ -691,7 +693,7 @@ void SfxToSwPageDescAttr( const SwWrtShell& rShell, SfxItemSet& rSet )
             // Delete only, if PageDesc will be enabled!
             rSet.ClearItem( RES_BREAK );
             SwPageDesc* pDesc = const_cast<SwWrtShell&>(rShell).FindPageDescByName(
-                                                    rDescName, true );
+                                                    UIName(rDescName), true );
             if( pDesc )
                 aPgDesc.RegisterToPageDesc( *pDesc );
         }
@@ -705,13 +707,14 @@ void SfxToSwPageDescAttr( const SwWrtShell& rShell, SfxItemSet& rSet )
         if(const SwFormatPageDesc* pPageDescItem = aCoreSet.GetItemIfSet( RES_PAGEDESC ) )
         {
             const SwPageDesc* pPageDesc = pPageDescItem->GetPageDesc();
+            if (bRemoveNumOffset && pPageDescItem->GetNumOffset())
+                bChanged = true;
             if( pPageDesc )
             {
                 aPgDesc.RegisterToPageDesc( *const_cast<SwPageDesc*>(pPageDesc) );
             }
         }
     }
-
     if(bChanged)
         rSet.Put( aPgDesc );
 }
@@ -720,7 +723,7 @@ void SfxToSwPageDescAttr( const SwWrtShell& rShell, SfxItemSet& rSet )
 void SwToSfxPageDescAttr( SfxItemSet& rCoreSet )
 {
     const SwFormatPageDesc* pPageDescItem = nullptr;
-    OUString aName;
+    UIName aName;
     ::std::optional<sal_uInt16> oNumOffset;
     bool bPut = true;
     switch( rCoreSet.GetItemState( RES_PAGEDESC, true, &pPageDescItem ) )
@@ -751,21 +754,21 @@ void SwToSfxPageDescAttr( SfxItemSet& rCoreSet )
     }
 
     if(bPut)
-        rCoreSet.Put( SvxPageModelItem( aName, true, SID_ATTR_PARA_MODEL ) );
+        rCoreSet.Put( SvxPageModelItem( aName.toString(), true, SID_ATTR_PARA_MODEL ) );
 }
 
 // Determine metric
 
 FieldUnit   GetDfltMetric(bool bWeb)
 {
-    return SW_MOD()->GetUsrPref(bWeb)->GetMetric();
+    return SwModule::get()->GetUsrPref(bWeb)->GetMetric();
 }
 
 // Determine metric
 
 void    SetDfltMetric( FieldUnit eMetric, bool bWeb )
 {
-    SW_MOD()->ApplyUserMetric(eMetric, bWeb);
+    SwModule::get()->ApplyUserMetric(eMetric, bWeb);
 }
 
 void InsertStringSorted(const OUString& rId, const OUString& rEntry, weld::ComboBox& rToFill, int nOffset)
@@ -793,7 +796,7 @@ void FillCharStyleListBox(weld::ComboBox& rToFill, SwDocShell* pDocSh, bool bSor
     {
         if(bWithDefault || pBase->GetName() !=  sStandard)
         {
-            sal_IntPtr nPoolId = SwStyleNameMapper::GetPoolIdFromUIName( pBase->GetName(), SwGetPoolIdFromName::ChrFmt );
+            sal_IntPtr nPoolId = SwStyleNameMapper::GetPoolIdFromUIName( UIName(pBase->GetName()), SwGetPoolIdFromName::ChrFmt );
             OUString sId(OUString::number(nPoolId));
             if (bSorted)
                 InsertStringSorted(sId, pBase->GetName(), rToFill, nOffset);
@@ -803,20 +806,18 @@ void FillCharStyleListBox(weld::ComboBox& rToFill, SwDocShell* pDocSh, bool bSor
         pBase = pPool->Next();
     }
     // non-pool styles
-    const SwCharFormats* pFormats = pDoc->GetCharFormats();
-    for(size_t i = 0; i < pFormats->size(); ++i)
+    for(const auto pFormat : *pDoc->GetCharFormats())
     {
-        const SwCharFormat* pFormat = (*pFormats)[i];
         if(pFormat->IsDefault())
             continue;
-        const OUString& rName = pFormat->GetName();
-        if (rToFill.find_text(rName) == -1)
+        const UIName& rName = pFormat->GetName();
+        if (rToFill.find_text(rName.toString()) == -1)
         {
             OUString sId(OUString::number(USHRT_MAX));
             if (bSorted)
-                InsertStringSorted(sId, rName, rToFill, nOffset);
+                InsertStringSorted(sId, rName.toString(), rToFill, nOffset);
             else
-                rToFill.append(sId, rName);
+                rToFill.append(sId, rName.toString());
         }
     }
     rToFill.thaw();
@@ -855,7 +856,7 @@ SwTwips GetTableWidth( SwFrameFormat const * pFormat, SwTabCols const & rCols, s
                 OSL_FAIL("where to get the actual width from?");
             }
             const SvxLRSpaceItem& rLRSpace = pFormat->GetLRSpace();
-            nWidth -= (rLRSpace.GetRight() + rLRSpace.GetLeft());
+            nWidth -= (rLRSpace.ResolveRight({}) + rLRSpace.ResolveLeft({}));
         }
     }
     if (pPercent)
@@ -875,12 +876,12 @@ OUString GetAppLangDateTimeString( const DateTime& rDT )
 
 bool HasCharUnit( bool bWeb)
 {
-    return SW_MOD()->GetUsrPref(bWeb)->IsApplyCharUnit();
+    return SwModule::get()->GetUsrPref(bWeb)->IsApplyCharUnit();
 }
 
 void SetApplyCharUnit(bool bApplyChar, bool bWeb)
 {
-    SW_MOD()->ApplyUserCharUnit(bApplyChar, bWeb);
+    SwModule::get()->ApplyUserCharUnit(bApplyChar, bWeb);
 }
 
 bool ExecuteMenuCommand(const css::uno::Reference<css::awt::XPopupMenu>& rMenu, const SfxViewFrame& rViewFrame, sal_uInt16 nId)

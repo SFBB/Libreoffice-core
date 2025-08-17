@@ -26,7 +26,6 @@
 #include <dlgedpage.hxx>
 #include <dlgedview.hxx>
 #include <dlgedobj.hxx>
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
@@ -35,10 +34,9 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <tools/debug.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
-#include <toolkit/awt/vclxfont.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/unohelp.hxx>
 #include <i18nlangtag/languagetag.hxx>
 
 namespace basctl
@@ -401,15 +399,14 @@ void AccessibleDialogWindow::FillAccessibleStateSet( sal_Int64& rStateSet )
     rStateSet |= AccessibleStateType::RESIZABLE;
 }
 
-
-// OCommonAccessibleComponent
-
+// OAccessible
 
 awt::Rectangle AccessibleDialogWindow::implGetBounds()
 {
     awt::Rectangle aBounds;
     if ( m_pDialogWindow )
-        aBounds = AWTRectangle( tools::Rectangle( m_pDialogWindow->GetPosPixel(), m_pDialogWindow->GetSizePixel() ) );
+        aBounds = vcl::unohelper::ConvertToAWTRect(
+            tools::Rectangle(m_pDialogWindow->GetPosPixel(), m_pDialogWindow->GetSizePixel()));
 
     return aBounds;
 }
@@ -420,8 +417,9 @@ awt::Rectangle AccessibleDialogWindow::implGetBounds()
 
 void AccessibleDialogWindow::Notify( SfxBroadcaster&, const SfxHint& rHint )
 {
-    if (SdrHint const* pSdrHint = dynamic_cast<SdrHint const*>(&rHint))
+    if (rHint.GetId() == SfxHintId::ThisIsAnSdrHint)
     {
+        SdrHint const* pSdrHint = static_cast<SdrHint const*>(&rHint);
         switch ( pSdrHint->GetKind() )
         {
             case SdrHintKind::ObjectInserted:
@@ -443,8 +441,9 @@ void AccessibleDialogWindow::Notify( SfxBroadcaster&, const SfxHint& rHint )
             default: ;
         }
     }
-    else if (DlgEdHint const* pDlgEdHint = dynamic_cast<DlgEdHint const*>(&rHint))
+    else if (rHint.GetId() == SfxHintId::BasCtlDlgEd)
     {
+        DlgEdHint const* pDlgEdHint = static_cast<DlgEdHint const*>(&rHint);
         switch (pDlgEdHint->GetKind())
         {
             case DlgEdHint::WINDOWSCROLLED:
@@ -481,7 +480,7 @@ void AccessibleDialogWindow::Notify( SfxBroadcaster&, const SfxHint& rHint )
 
 void AccessibleDialogWindow::disposing()
 {
-    OAccessibleExtendedComponentHelper::disposing();
+    OAccessible::disposing();
 
     if ( !m_pDialogWindow )
         return;
@@ -505,7 +504,7 @@ void AccessibleDialogWindow::disposing()
 // XServiceInfo
 OUString AccessibleDialogWindow::getImplementationName()
 {
-    return "com.sun.star.comp.basctl.AccessibleWindow";
+    return u"com.sun.star.comp.basctl.AccessibleWindow"_ustr;
 }
 
 sal_Bool AccessibleDialogWindow::supportsService( const OUString& rServiceName )
@@ -515,13 +514,7 @@ sal_Bool AccessibleDialogWindow::supportsService( const OUString& rServiceName )
 
 Sequence< OUString > AccessibleDialogWindow::getSupportedServiceNames()
 {
-    return { "com.sun.star.awt.AccessibleWindow" };
-}
-
-// XAccessible
-Reference< XAccessibleContext > AccessibleDialogWindow::getAccessibleContext(  )
-{
-    return this;
+    return { u"com.sun.star.awt.AccessibleWindow"_ustr };
 }
 
 // XAccessibleContext
@@ -564,15 +557,10 @@ Reference< XAccessible > AccessibleDialogWindow::getAccessibleParent(  )
 {
     OExternalLockGuard aGuard( this );
 
-    Reference< XAccessible > xParent;
     if ( m_pDialogWindow )
-    {
-        vcl::Window* pParent = m_pDialogWindow->GetAccessibleParentWindow();
-        if ( pParent )
-            xParent = pParent->GetAccessible();
-    }
+        return m_pDialogWindow->GetAccessibleParent();
 
-    return xParent;
+    return nullptr;
 }
 
 
@@ -648,7 +636,7 @@ sal_Int64 AccessibleDialogWindow::getAccessibleStateSet(  )
 
     sal_Int64 nStateSet = 0;
 
-    if ( !rBHelper.bDisposed && !rBHelper.bInDispose )
+    if (isAlive())
     {
         FillAccessibleStateSet( nStateSet );
     }
@@ -668,10 +656,7 @@ Locale AccessibleDialogWindow::getLocale(  )
     return Application::GetSettings().GetLanguageTag().getLocale();
 }
 
-
 // XAccessibleComponent
-
-
 Reference< XAccessible > AccessibleDialogWindow::getAccessibleAtPoint( const awt::Point& rPoint )
 {
     OExternalLockGuard aGuard( this );
@@ -685,11 +670,11 @@ Reference< XAccessible > AccessibleDialogWindow::getAccessibleAtPoint( const awt
             Reference< XAccessibleComponent > xComp( xAcc->getAccessibleContext(), UNO_QUERY );
             if ( xComp.is() )
             {
-                tools::Rectangle aRect = VCLRectangle( xComp->getBounds() );
-                Point aPos = VCLPoint( rPoint );
+                tools::Rectangle aRect = vcl::unohelper::ConvertToVCLRect(xComp->getBounds());
+                Point aPos = vcl::unohelper::ConvertToVCLPoint(rPoint);
                 if ( aRect.Contains( aPos ) )
                 {
-                    xChild = xAcc;
+                    xChild = std::move(xAcc);
                     break;
                 }
             }
@@ -699,7 +684,6 @@ Reference< XAccessible > AccessibleDialogWindow::getAccessibleAtPoint( const awt
     return xChild;
 }
 
-
 void AccessibleDialogWindow::grabFocus(  )
 {
     OExternalLockGuard aGuard( this );
@@ -707,7 +691,6 @@ void AccessibleDialogWindow::grabFocus(  )
     if ( m_pDialogWindow )
         m_pDialogWindow->GrabFocus();
 }
-
 
 sal_Int32 AccessibleDialogWindow::getForeground(  )
 {
@@ -751,40 +734,6 @@ sal_Int32 AccessibleDialogWindow::getBackground(  )
 
 
 // XAccessibleExtendedComponent
-
-
-Reference< awt::XFont > AccessibleDialogWindow::getFont(  )
-{
-    OExternalLockGuard aGuard( this );
-
-    Reference< awt::XFont > xFont;
-    if ( m_pDialogWindow )
-    {
-        Reference< awt::XDevice > xDev( m_pDialogWindow->GetComponentInterface(), UNO_QUERY );
-        if ( xDev.is() )
-        {
-            vcl::Font aFont;
-            if ( m_pDialogWindow->IsControlFont() )
-                aFont = m_pDialogWindow->GetControlFont();
-            else
-                aFont = m_pDialogWindow->GetFont();
-            rtl::Reference<VCLXFont> pVCLXFont = new VCLXFont;
-            pVCLXFont->Init( *xDev, aFont );
-            xFont = pVCLXFont;
-        }
-    }
-
-    return xFont;
-}
-
-
-OUString AccessibleDialogWindow::getTitledBorderText(  )
-{
-    OExternalLockGuard aGuard( this );
-
-    return OUString();
-}
-
 
 OUString AccessibleDialogWindow::getToolTipText(  )
 {

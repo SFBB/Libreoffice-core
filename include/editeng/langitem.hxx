@@ -33,6 +33,7 @@
 // MSVC hack:
 class SAL_DLLPUBLIC_RTTI SvxLanguageItem_Base: public SfxEnumItem<LanguageType> {
 protected:
+    DECLARE_ITEM_TYPE_FUNCTION(SvxLanguageItem_Base)
     explicit SvxLanguageItem_Base(sal_uInt16 nWhich, LanguageType nValue):
         SfxEnumItem(nWhich, nValue)
     {}
@@ -40,9 +41,12 @@ protected:
 
 class EDITENG_DLLPUBLIC SvxLanguageItem final : public SvxLanguageItem_Base
 {
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
+
 public:
     static SfxPoolItem* CreateDefault();
-
+    DECLARE_ITEM_TYPE_FUNCTION(SvxLanguageItem)
     SvxLanguageItem( const LanguageType eLang /*= LANGUAGE_GERMAN*/,
                      const sal_uInt16 nId  );
 
@@ -53,7 +57,6 @@ public:
                                  OUString &rText, const IntlWrapper&) const override;
 
     virtual SvxLanguageItem* Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual sal_uInt16      GetValueCount() const override;
 
     SvxLanguageItem(SvxLanguageItem const &) = default; // SfxPoolItem copy function dichotomy
 

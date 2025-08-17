@@ -35,6 +35,7 @@ SfxPoolItem* SfxPointItem::CreateDefault() { return new SfxPointItem; }
 
 
 SfxPointItem::SfxPointItem()
+    : SfxPoolItem(0)
 {
 }
 

@@ -24,13 +24,14 @@
 #include <unotools/resmgr.hxx>
 
 #define DBA_RES( id )                       ::dbaccess::ResourceManager::loadString( id )
+#define DBA_RES_PLURAL( id, number )        ::dbaccess::ResourceManager::loadString( id, number )
 #define DBA_RES_PARAM( id, ascii, replace ) ::dbaccess::ResourceManager::loadString( id, ascii, replace )
 
 namespace dbaccess
 {
     // ResourceManager
     // handling resources within the DBA-Core library
-    class OOO_DLLPUBLIC_DBA ResourceManager
+    class UNLESS_MERGELIBS_MORE(OOO_DLLPUBLIC_DBA) ResourceManager
     {
     private:
         // no instantiation allowed
@@ -41,6 +42,7 @@ namespace dbaccess
         /** loads the string with the specified resource id
         */
         static OUString  loadString(TranslateId pResId);
+        static OUString  loadString(TranslateNId aContextSingularPlural, int nCardinality);
 
         /** loads a string from the resource file, substituting two placeholders with given strings
 
@@ -57,9 +59,9 @@ namespace dbaccess
         */
         static OUString  loadString(
                 TranslateId pResId,
-                const char* _pPlaceholderAscii1,
+                std::u16string_view _rPlaceholderAscii1,
                 std::u16string_view _rReplace1,
-                const char* _pPlaceholderAscii2,
+                std::u16string_view _rPlaceholderAscii2,
                 std::u16string_view _rReplace2
         );
     };

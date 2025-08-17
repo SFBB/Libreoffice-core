@@ -23,7 +23,7 @@
 #include "typedstrdata.hxx"
 #include <i18nlangtag/lang.h>
 #include <svx/svdtypes.hxx>
-#include <tools/ref.hxx>
+#include <rtl/ref.hxx>
 #include <sal/types.h>
 #include <com/sun/star/i18n/CollatorOptions.hpp>
 #include <com/sun/star/sheet/CellFlags.hpp>
@@ -40,6 +40,7 @@
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <unordered_map>
 
 namespace com::sun::star::uno { template <typename > class Reference; }
 
@@ -83,15 +84,15 @@ const sal_uInt16 MAXZOOM = 400;
 const SCSIZE MAXSUBTOTAL        = 3;
 
 // ~105.88 twip, i.e. about 2 times narrower than o3tl::Length::ch, which is 210 twip
-constexpr auto TWIPS_PER_CHAR = o3tl::toTwips(1 / 13.6, o3tl::Length::in);
+inline constexpr auto TWIPS_PER_CHAR = o3tl::toTwips(1 / 13.6, o3tl::Length::in);
 
-constexpr sal_Int32 STD_COL_WIDTH = o3tl::convert(64, o3tl::Length::pt, o3tl::Length::twip);
-constexpr sal_Int32 STD_EXTRA_WIDTH = o3tl::convert(2, o3tl::Length::mm, o3tl::Length::twip);
+inline constexpr sal_Int32 STD_COL_WIDTH = o3tl::convert(64, o3tl::Length::pt, o3tl::Length::twip);
+inline constexpr sal_Int32 STD_EXTRA_WIDTH = o3tl::convert(2, o3tl::Length::mm, o3tl::Length::twip);
 
-constexpr sal_Int32 MAX_EXTRA_WIDTH = o3tl::convert(42, o3tl::Length::cm, o3tl::Length::twip);
-constexpr sal_Int32 MAX_EXTRA_HEIGHT = o3tl::convert(42, o3tl::Length::cm, o3tl::Length::twip);
-constexpr sal_Int32 MAX_COL_WIDTH = o3tl::convert(1, o3tl::Length::m, o3tl::Length::twip);
-constexpr sal_Int32 MAX_ROW_HEIGHT = o3tl::convert(1, o3tl::Length::m, o3tl::Length::twip);
+inline constexpr sal_Int32 MAX_EXTRA_WIDTH = o3tl::convert(42, o3tl::Length::cm, o3tl::Length::twip);
+inline constexpr sal_Int32 MAX_EXTRA_HEIGHT = o3tl::convert(42, o3tl::Length::cm, o3tl::Length::twip);
+inline constexpr sal_Int32 MAX_COL_WIDTH = o3tl::convert(1, o3tl::Length::m, o3tl::Length::twip);
+inline constexpr sal_Int32 MAX_ROW_HEIGHT = o3tl::convert(1, o3tl::Length::m, o3tl::Length::twip);
 
                                     /* standard row height: text + margin - STD_ROWHEIGHT_DIFF */
 #define STD_ROWHEIGHT_DIFF  23
@@ -206,11 +207,11 @@ namespace o3tl {
 
 // Layer id's for drawing.
 // These are both id's and positions.
-constexpr SdrLayerID SC_LAYER_FRONT   (0);
-constexpr SdrLayerID SC_LAYER_BACK    (1);
-constexpr SdrLayerID SC_LAYER_INTERN  (2);
-constexpr SdrLayerID SC_LAYER_CONTROLS(3);
-constexpr SdrLayerID SC_LAYER_HIDDEN  (4);
+inline constexpr SdrLayerID SC_LAYER_FRONT   (0);
+inline constexpr SdrLayerID SC_LAYER_BACK    (1);
+inline constexpr SdrLayerID SC_LAYER_INTERN  (2);
+inline constexpr SdrLayerID SC_LAYER_CONTROLS(3);
+inline constexpr SdrLayerID SC_LAYER_HIDDEN  (4);
 
 //  link tables
 enum class ScLinkMode {
@@ -424,7 +425,7 @@ enum ScDBObject
 
 namespace sc {
 
-enum class ColRowEditAction
+enum class EditAction
 {
     Unknown,
     InsertColumnsBefore,
@@ -432,7 +433,8 @@ enum class ColRowEditAction
     InsertRowsBefore,
     InsertRowsAfter,
     DeleteColumns,
-    DeleteRows
+    DeleteRows,
+    UpdatePivotTable
 };
 
 }
@@ -461,7 +463,7 @@ struct ScImportParam
 // Formula data replacement character for a pair of parentheses at end of
 // function name, to force sorting parentheses before all other characters.
 // Collation may treat parentheses differently.
-constexpr sal_Unicode cParenthesesReplacement = 0x0001;
+inline constexpr sal_Unicode cParenthesesReplacement = 0x0001;
 struct InputHandlerFunctionNames
 {
     ScTypedCaseStrSet       maFunctionData;
@@ -482,13 +484,13 @@ class SfxItemPool;
 class EditTextObject;
 class SfxObjectShell;
 class SvNumberFormatter;
+struct ScInterpreterContext;
 class ScUnitConverter;
 class CharClass;
 class LocaleDataWrapper;
 class SvtSysLocale;
 class CalendarWrapper;
 class CollatorWrapper;
-class IntlWrapper;
 class ScFieldEditEngine;
 
 namespace com::sun::star {
@@ -518,8 +520,8 @@ class ScGlobal
     static std::unique_ptr<SvxBrushItem> xEmptyBrushItem;
     static std::unique_ptr<SvxBrushItem> xButtonBrushItem;
 
-    static std::unique_ptr<ScFunctionList> xStarCalcFunctionList;
-    static std::unique_ptr<ScFunctionMgr> xStarCalcFunctionMgr;
+    static std::unordered_map<OUString, std::unique_ptr<ScFunctionList>> xStarCalcFunctionList;
+    static std::unordered_map<OUString, std::unique_ptr<ScFunctionMgr>> xStarCalcFunctionMgr;
 
     static std::atomic<ScUnitConverter*> pUnitConverter;
 
@@ -537,7 +539,7 @@ class ScGlobal
 
     static std::atomic<sc::SharedStringPoolPurge*> pSharedStringPoolPurge;
 
-    static InputHandlerFunctionNames maInputHandlerFunctionNames;
+    static std::unordered_map<OUString, InputHandlerFunctionNames> maInputHandlerFunctionNames;
 
     static void                 InitPPT();
 
@@ -570,7 +572,7 @@ public:
     static void                 ClearAutoFormat(); //BugId 54209
     static LegacyFuncCollection*      GetLegacyFuncCollection();
     SC_DLLPUBLIC static ScUnoAddInCollection* GetAddInCollection();
-    SC_DLLPUBLIC static ScUserList*         GetUserList();
+    SC_DLLPUBLIC static ScUserList&         GetUserList();
     static void                 SetUserList( const ScUserList* pNewList );
     /**
      * Open the specified URL.
@@ -583,15 +585,14 @@ public:
                                                 const SfxObjectShell* pShell );
     SC_DLLPUBLIC static OUString            GetDocTabName( std::u16string_view rFileName,
                                                 std::u16string_view rTabName );
-    SC_DLLPUBLIC static sal_uInt32 GetStandardFormat( SvNumberFormatter&, sal_uInt32 nFormat, SvNumFormatType nType );
+    SC_DLLPUBLIC static sal_uInt32 GetStandardFormat( ScInterpreterContext&, sal_uInt32 nFormat, SvNumFormatType nType );
 
-    SC_DLLPUBLIC static sal_uInt16 GetStandardRowHeight();
     /// Horizontal pixel per twips factor.
     SC_DLLPUBLIC static double              nScreenPPTX;
     /// Vertical pixel per twips factor.
     SC_DLLPUBLIC static double              nScreenPPTY;
 
-    static tools::SvRef<ScDocShell>   xDrawClipDocShellRef;
+    static rtl::Reference<ScDocShell> xDrawClipDocShellRef;
 
     static sal_uInt16           nDefFontHeight;
     SC_DLLPUBLIC static sal_uInt16           nStdRowHeight;
@@ -603,8 +604,8 @@ public:
     static void             InitAddIns();
     SC_DLLPUBLIC static void Clear();                    // at the end of the program
 
-    static void             InitTextHeight(const SfxItemPool* pPool);
-    static SvxBrushItem*    GetEmptyBrushItem() { return xEmptyBrushItem.get(); }
+    static void             InitTextHeight(SfxItemPool& rPool);
+    static const SvxBrushItem* GetEmptyBrushItem() { return xEmptyBrushItem.get(); }
     static SvxBrushItem*    GetButtonBrushItem();
 
     static bool             HasStarCalcFunctionList();
@@ -695,10 +696,6 @@ public:
 
     /** Obtain the ordinal suffix for a number according to the system locale */
     static OUString         GetOrdinalSuffix( sal_Int32 nNumber);
-
-    /** A static instance of ScFieldEditEngine not capable of resolving
-        document specific fields, to be used only by ScEditUtil::GetString(). */
-    static ScFieldEditEngine&   GetStaticFieldEditEngine();
 
     static sc::SharedStringPoolPurge& GetSharedStringPoolPurge();
 
@@ -823,7 +820,7 @@ public:
      */
     static double ConvertStringToValue( const OUString& rStr, const ScCalcConfig& rConfig,
             FormulaError & rError, FormulaError nStringNoValueError,
-            SvNumberFormatter* pFormatter, SvNumFormatType & rCurFmtType );
+            ScInterpreterContext& rContext, SvNumFormatType & rCurFmtType );
 
     /// Calc's threaded group calculation is in progress.
     SC_DLLPUBLIC static bool bThreadedGroupCalcInProgress;
@@ -857,7 +854,7 @@ enum ScQueryConnect
         SC_OR
     };
 
-enum ScSubTotalFunc
+enum ScSubTotalFunc : sal_Int16
     {
         SUBTOTAL_FUNC_NONE  = 0,
         SUBTOTAL_FUNC_AVE   = 1,

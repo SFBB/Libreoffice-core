@@ -112,7 +112,7 @@ sal_Int32 SAL_CALL SVTXGridControl::getRowAtPoint(::sal_Int32 x, ::sal_Int32 y)
     VclPtr< TableControl > pTable = GetAsDynamic< TableControl >();
     ENSURE_OR_RETURN( pTable, "SVTXGridControl::getRowAtPoint: no control (anymore)!", -1 );
 
-    TableCell const tableCell = pTable->getTableControlInterface().hitTest( Point( x, y ) );
+    TableCell const tableCell = pTable->hitTest(Point(x, y));
     return ( tableCell.nRow >= 0 ) ? tableCell.nRow : -1;
 }
 
@@ -124,7 +124,7 @@ sal_Int32 SAL_CALL SVTXGridControl::getColumnAtPoint(::sal_Int32 x, ::sal_Int32 
     VclPtr< TableControl > pTable = GetAsDynamic< TableControl >();
     ENSURE_OR_RETURN( pTable, "SVTXGridControl::getColumnAtPoint: no control (anymore)!", -1 );
 
-    TableCell const tableCell = pTable->getTableControlInterface().hitTest( Point( x, y ) );
+    TableCell const tableCell = pTable->hitTest(Point(x, y));
     return ( tableCell.nColumn >= 0 ) ? tableCell.nColumn : -1;
 }
 
@@ -397,7 +397,7 @@ void SVTXGridControl::setProperty( const OUString& PropertyName, const Any& aVal
         {
             Reference< XGridDataModel > const xDataModel( aValue, UNO_QUERY );
             if ( !xDataModel.is() )
-                throw GridInvalidDataException("Invalid data model.", *this );
+                throw GridInvalidDataException(u"Invalid data model."_ustr, *this );
 
             m_xTableModel->setDataModel( xDataModel );
             impl_checkTableModelInit();
@@ -409,7 +409,7 @@ void SVTXGridControl::setProperty( const OUString& PropertyName, const Any& aVal
             // obtain new col model
             Reference< XGridColumnModel > const xColumnModel( aValue, UNO_QUERY );
             if ( !xColumnModel.is() )
-                throw GridInvalidModelException("Invalid column model.", *this );
+                throw GridInvalidModelException(u"Invalid column model."_ustr, *this );
 
             // remove all old columns
             m_xTableModel->removeAllColumns();
@@ -620,7 +620,7 @@ void SAL_CALL SVTXGridControl::dataChanged( const GridDataEvent& i_event )
     // So, just in case, invalidate the column header area, too.
     VclPtr< TableControl > pTable = GetAsDynamic< TableControl >();
     ENSURE_OR_RETURN_VOID( pTable, "SVTXGridControl::dataChanged: no control (anymore)!" );
-    pTable->getTableControlInterface().invalidate( TableArea::ColumnHeaders );
+    pTable->invalidate(TableArea::ColumnHeaders);
 }
 
 
@@ -631,8 +631,7 @@ void SAL_CALL SVTXGridControl::rowHeadingChanged( const GridDataEvent& )
     VclPtr< TableControl > pTable = GetAsDynamic< TableControl >();
     ENSURE_OR_RETURN_VOID( pTable, "SVTXGridControl::rowHeadingChanged: no control (anymore)!" );
 
-    // TODO: we could do better than this - invalidate the header area only
-    pTable->getTableControlInterface().invalidate( TableArea::RowHeaders );
+    pTable->invalidate(TableArea::RowHeaders);
 }
 
 
@@ -666,9 +665,8 @@ void SAL_CALL SVTXGridControl::elementReplaced( const ContainerEvent& )
 }
 
 
-void SAL_CALL SVTXGridControl::disposing( const EventObject& Source )
+void SAL_CALL SVTXGridControl::disposing(const EventObject&)
 {
-    VCLXWindow::disposing( Source );
 }
 
 
@@ -791,14 +789,14 @@ void SVTXGridControl::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent 
         {
             // TODO: this doesn't belong here. It belongs into the TableControl/_Impl, so A11Y also
             // works when the control is used outside the UNO context
-            if ( pTable->GetRowCount()>0 )
+            if (pTable->GetCurrentRow() !=  ROW_INVALID && pTable->GetCurrentColumn() != COL_INVALID)
             {
-                pTable->commitCellEventIfAccessibleAlive(
+                pTable->commitCellEvent(
                     AccessibleEventId::STATE_CHANGED,
                     Any( AccessibleStateType::FOCUSED ),
                     Any()
                 );
-                pTable->commitTableEventIfAccessibleAlive(
+                pTable->commitTableEvent(
                     AccessibleEventId::ACTIVE_DESCENDANT_CHANGED,
                     Any(),
                     Any()
@@ -806,7 +804,7 @@ void SVTXGridControl::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent 
             }
             else
             {
-                pTable->commitTableEventIfAccessibleAlive(
+                pTable->commitTableEvent(
                     AccessibleEventId::STATE_CHANGED,
                     Any( AccessibleStateType::FOCUSED ),
                     Any()
@@ -819,9 +817,9 @@ void SVTXGridControl::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent 
         {
             // TODO: this doesn't belong here. It belongs into the TableControl/_Impl, so A11Y also
             // works when the control is used outside the UNO context
-            if ( pTable->GetRowCount()>0 )
+            if (pTable->GetCurrentRow() !=  ROW_INVALID && pTable->GetCurrentColumn() != COL_INVALID)
             {
-                pTable->commitCellEventIfAccessibleAlive(
+                pTable->commitCellEvent(
                     AccessibleEventId::STATE_CHANGED,
                     Any(),
                     Any( AccessibleStateType::FOCUSED )
@@ -829,7 +827,7 @@ void SVTXGridControl::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent 
             }
             else
             {
-                pTable->commitTableEventIfAccessibleAlive(
+                pTable->commitTableEvent(
                     AccessibleEventId::STATE_CHANGED,
                     Any(),
                     Any( AccessibleStateType::FOCUSED )

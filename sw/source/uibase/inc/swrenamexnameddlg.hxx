@@ -25,10 +25,8 @@
 
 class SwRenameXNamedDlg final : public weld::GenericDialogController
 {
-    css::uno::Reference< css::container::XNamed > &   m_xNamed;
-    css::uno::Reference< css::container::XNameAccess > & m_xNameAccess;
-    css::uno::Reference< css::container::XNameAccess >   m_xSecondAccess;
-    css::uno::Reference< css::container::XNameAccess >   m_xThirdAccess;
+    css::uno::Reference< css::container::XNamed >        m_xNamed;
+    css::uno::Reference< css::container::XNameAccess >   m_xNameAccess;
 
     TextFilter m_aTextFilter;
 
@@ -41,20 +39,12 @@ class SwRenameXNamedDlg final : public weld::GenericDialogController
 
 public:
     SwRenameXNamedDlg(weld::Widget* pParent,
-                      css::uno::Reference< css::container::XNamed > & xNamed,
-                      css::uno::Reference< css::container::XNameAccess > & xNameAccess );
+                      const css::uno::Reference< css::container::XNamed > & xNamed,
+                      const css::uno::Reference< css::container::XNameAccess > & xNameAccess );
 
     void SetForbiddenChars(const OUString& rSet)
     {
         m_aTextFilter.SetForbiddenChars(rSet);
-    }
-
-    void SetAlternativeAccess(
-            css::uno::Reference< css::container::XNameAccess > const & xSecond,
-            css::uno::Reference< css::container::XNameAccess > const & xThird )
-    {
-        m_xSecondAccess = xSecond;
-        m_xThirdAccess = xThird;
     }
 };
 

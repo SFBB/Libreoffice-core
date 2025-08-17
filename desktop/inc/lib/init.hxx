@@ -93,14 +93,13 @@ namespace desktop {
     };
 
     /// One instance of this per view, handles flushing callbacks
-    class DESKTOP_DLLPUBLIC CallbackFlushHandler final : public Idle, public SfxLokCallbackInterface
+    class SAL_DLLPUBLIC_RTTI CallbackFlushHandler final : public SfxLokCallbackInterface
     {
     public:
-        explicit CallbackFlushHandler(LibreOfficeKitDocument* pDocument, LibreOfficeKitCallback pCallback, void* pData);
-        virtual ~CallbackFlushHandler() override;
-        virtual void Invoke() override;
+        DESKTOP_DLLPUBLIC explicit CallbackFlushHandler(LibreOfficeKitDocument* pDocument, LibreOfficeKitCallback pCallback, void* pData);
+        DESKTOP_DLLPUBLIC virtual ~CallbackFlushHandler() override;
         // TODO This should be dropped and the binary libreOfficeKitViewCallback() variants should be called?
-        void queue(const int type, const OString& data);
+        DESKTOP_DLLPUBLIC void queue(const int type, const OString& data);
 
         /// Disables callbacks on this handler. Must match with identical count
         /// of enableCallbacks. Used during painting and changing views.
@@ -116,10 +115,21 @@ namespace desktop {
 
         void setViewId( int viewId ) { m_viewId = viewId; }
 
+        DESKTOP_DLLPUBLIC void tilePainted(int nPart, int nMode, const tools::Rectangle& rRectangle);
+        const OString& getViewRenderState() const { return m_aViewRenderState; }
+        const std::map<int, std::map<int, tools::Rectangle>>& getPaintedTiles() const
+        {
+            return m_aPaintedTiles;
+        }
+        void setPaintedTiles(const std::map<int, std::map<int, tools::Rectangle>>& rPaintedTiles)
+        {
+            m_aPaintedTiles = rPaintedTiles;
+        }
+
         // SfxLockCallbackInterface
         virtual void libreOfficeKitViewCallback(int nType, const OString& pPayload) override;
         virtual void libreOfficeKitViewCallbackWithViewId(int nType, const OString& pPayload, int nViewId) override;
-        virtual void libreOfficeKitViewInvalidateTilesCallback(const tools::Rectangle* pRect, int nPart, int nMode) override;
+        DESKTOP_DLLPUBLIC virtual void libreOfficeKitViewInvalidateTilesCallback(const tools::Rectangle* pRect, int nPart, int nMode) override;
         virtual void libreOfficeKitViewUpdatedCallback(int nType) override;
         virtual void libreOfficeKitViewUpdatedCallbackPerViewId(int nType, int nViewId, int nSourceViewId) override;
         virtual void libreOfficeKitViewAddPendingInvalidateTiles() override;
@@ -189,7 +199,8 @@ namespace desktop {
         typedef std::vector<int> queue_type1;
         typedef std::vector<CallbackData> queue_type2;
 
-        void startTimer();
+        void scheduleFlush();
+        void invoke();
         bool removeAll(int type);
         bool removeAll(int type, const std::function<bool (const CallbackData&)>& rTestFunc);
         bool processInvalidateTilesEvent(int type, CallbackData& aCallbackData);
@@ -200,6 +211,8 @@ namespace desktop {
         void enqueueUpdatedTypes();
         void enqueueUpdatedType( int type, const SfxViewShell* sourceViewShell, int viewId );
 
+        void stop();
+
         /** we frequently want to scan the queue, and mostly when we do so, we only care about the element type
             so we split the queue in 2 to make the scanning cache friendly. */
         queue_type1 m_queue1;
@@ -207,6 +220,9 @@ namespace desktop {
         std::map<int, OString> m_states;
         std::unordered_map<OString, OString> m_lastStateChange;
         std::unordered_map<int, std::unordered_map<int, OString>> m_viewStates;
+
+        /// BBox of already painted tiles: part number -> part mode -> rectangle.
+        std::map<int, std::map<int, tools::Rectangle>> m_aPaintedTiles;
 
         // For some types only the last message matters (see isUpdatedType()) or only the last message
         // per each viewId value matters (see isUpdatedTypePerViewId()), so instead of using push model
@@ -228,20 +244,15 @@ namespace desktop {
         boost::container::flat_map<int, std::vector<PerViewIdData>> m_updatedTypesPerViewId; // key is view, index is type
 
         LibreOfficeKitDocument* m_pDocument;
+        OString m_aViewRenderState;
         int m_viewId = -1; // view id of the associated SfxViewShell
         LibreOfficeKitCallback m_pCallback;
+        ImplSVEvent* m_pFlushEvent;
         void *m_pData;
         int m_nDisableCallbacks;
         std::recursive_mutex m_mutex;
-        class TimeoutIdle : public Timer
-        {
-        public:
-            TimeoutIdle( CallbackFlushHandler* handler );
-            virtual void Invoke() override;
-        private:
-            CallbackFlushHandler* mHandler;
-        };
-        TimeoutIdle m_TimeoutIdle;
+
+        DECL_LINK(FlushQueue, void*, void);
     };
 
     struct DESKTOP_DLLPUBLIC LibLODocument_Impl : public _LibreOfficeKitDocument
@@ -255,6 +266,8 @@ namespace desktop {
         explicit LibLODocument_Impl(css::uno::Reference<css::lang::XComponent> xComponent,
                                     int nDocumentId);
         ~LibLODocument_Impl();
+
+        void updateViewsForPaintedTile(int nOrigViewId, int nPart, int nMode, const tools::Rectangle& rRectangle);
     };
 
     struct DESKTOP_DLLPUBLIC LibLibreOffice_Impl : public _LibreOfficeKit
@@ -285,7 +298,7 @@ namespace desktop {
 
     /// Helper function to convert JSON to a vector of PropertyValues.
     /// Public to be unit-test-able.
-    DESKTOP_DLLPUBLIC std::vector<com::sun::star::beans::PropertyValue> jsonToPropertyValuesVector(const char* pJSON);
+    DESKTOP_DLLPUBLIC std::vector<css::beans::PropertyValue> jsonToPropertyValuesVector(const char* pJSON);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

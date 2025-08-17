@@ -33,8 +33,6 @@
 #include <vcl/weld.hxx>
 #include <config_features.h>
 
-class Button;
-class SaveInData;
 #if HAVE_FEATURE_SCRIPTING
 class SfxMacroInfoItem;
 #endif
@@ -116,7 +114,10 @@ class CuiConfigFunctionListBox
 public:
     CuiConfigFunctionListBox(std::unique_ptr<weld::TreeView> xTreeView);
     void set_sensitive(bool bSensitive) { m_xTreeView->set_sensitive(bSensitive); }
-    void connect_changed(const Link<weld::TreeView&, void>& rLink) { m_xTreeView->connect_changed(rLink); }
+    void connect_changed(const Link<weld::TreeView&, void>& rLink)
+    {
+        m_xTreeView->connect_selection_changed(rLink);
+    }
     void connect_popup_menu(const Link<const CommandEvent&, bool>& rLink) { m_xTreeView->connect_popup_menu(rLink); }
     void connect_row_activated(const Link<weld::TreeView&, bool>& rLink) { m_xTreeView->connect_row_activated(rLink); }
     void freeze() { m_xTreeView->freeze(); }
@@ -172,7 +173,7 @@ public:
 
     void          ClearAll();
     OUString      GetSelectedScriptURI() const;
-    OUString      GetHelpText( bool bConsiderParent = true );
+    OUString      GetCommandHelpText();
     OUString      GetCurCommand() const;
     OUString      GetCurLabel() const;
 
@@ -195,11 +196,6 @@ class CuiConfigGroupListBox
     std::unique_ptr<weld::TreeView> m_xTreeView;
     std::unique_ptr<weld::TreeIter> m_xScratchIter;
 
-    static OUString GetImage(
-        const css::uno::Reference< css::script::browse::XBrowseNode >& node,
-        css::uno::Reference< css::uno::XComponentContext > const & xCtx,
-        bool bIsRootNode);
-
     static css::uno::Reference< css::uno::XInterface  > getDocumentModel(
         css::uno::Reference< css::uno::XComponentContext > const & xCtx,
         std::u16string_view docName);
@@ -215,7 +211,10 @@ class CuiConfigGroupListBox
 public:
     CuiConfigGroupListBox(std::unique_ptr<weld::TreeView> xTreeView);
     void set_sensitive(bool bSensitive) { m_xTreeView->set_sensitive(bSensitive); }
-    void connect_changed(const Link<weld::TreeView&, void>& rLink) { m_xTreeView->connect_changed(rLink); }
+    void connect_changed(const Link<weld::TreeView&, void>& rLink)
+    {
+        m_xTreeView->connect_selection_changed(rLink);
+    }
     void set_size_request(int nWidth, int nHeight) { m_xTreeView->set_size_request(nWidth, nHeight); }
     weld::TreeView& get_widget() { return *m_xTreeView; }
     ~CuiConfigGroupListBox();
@@ -232,6 +231,11 @@ public:
     void                SelectMacro(const SfxMacroInfoItem*);
 #endif
     void                SetStylesInfo(SfxStylesInfo_Impl* pStyles);
+
+    static OUString GetImage(
+        const css::uno::Reference< css::script::browse::XBrowseNode >& node,
+        css::uno::Reference< css::uno::XComponentContext > const & xCtx,
+        bool bIsRootNode);
 };
 
 class SvxScriptSelectorDialog : public weld::GenericDialogController

@@ -49,9 +49,7 @@ public:
         , m_eClear(SwLineBreakClear::NONE)
     {
         if (m_pFormatLineBreak)
-        {
-            StartListening(m_pFormatLineBreak->GetNotifier());
-        }
+            StartListening(*m_pFormatLineBreak);
     }
 
     const SwFormatLineBreak* GetLineBreakFormat() const;
@@ -74,7 +72,7 @@ const SwFormatLineBreak& SwXLineBreak::Impl::GetLineBreakFormatOrThrow() const
     const SwFormatLineBreak* pLineBreak(GetLineBreakFormat());
     if (!pLineBreak)
     {
-        throw uno::RuntimeException("SwXLineBreak: disposed or invalid", nullptr);
+        throw uno::RuntimeException(u"SwXLineBreak: disposed or invalid"_ustr, nullptr);
     }
 
     return *pLineBreak;
@@ -115,16 +113,18 @@ rtl::Reference<SwXLineBreak> SwXLineBreak::CreateXLineBreak(SwFormatLineBreak* p
     }
     if (!xLineBreak.is())
     {
-        xLineBreak = pLineBreakFormat ? new SwXLineBreak(*pLineBreakFormat) : new SwXLineBreak;
         if (pLineBreakFormat)
         {
+            xLineBreak = new SwXLineBreak(*pLineBreakFormat);
             pLineBreakFormat->SetXLineBreak(xLineBreak);
         }
+        else
+            xLineBreak = new SwXLineBreak;
     }
     return xLineBreak;
 }
 
-OUString SAL_CALL SwXLineBreak::getImplementationName() { return "SwXLineBreak"; }
+OUString SAL_CALL SwXLineBreak::getImplementationName() { return u"SwXLineBreak"_ustr; }
 
 sal_Bool SAL_CALL SwXLineBreak::supportsService(const OUString& rServiceName)
 {
@@ -133,7 +133,7 @@ sal_Bool SAL_CALL SwXLineBreak::supportsService(const OUString& rServiceName)
 
 uno::Sequence<OUString> SAL_CALL SwXLineBreak::getSupportedServiceNames()
 {
-    return { "com.sun.star.text.LineBreak" };
+    return { u"com.sun.star.text.LineBreak"_ustr };
 }
 
 void SAL_CALL SwXLineBreak::attach(const uno::Reference<text::XTextRange>& xTextRange)
@@ -165,7 +165,7 @@ void SAL_CALL SwXLineBreak::attach(const uno::Reference<text::XTextRange>& xText
         m_pImpl->EndListeningAll();
         auto pLineBreak = const_cast<SwFormatLineBreak*>(&pTextAttr->GetLineBreak());
         m_pImpl->m_pFormatLineBreak = pLineBreak;
-        m_pImpl->StartListening(pLineBreak->GetNotifier());
+        m_pImpl->StartListening(*pLineBreak);
     }
     m_pImpl->m_bIsDescriptor = false;
 }
@@ -247,7 +247,7 @@ uno::Any SAL_CALL SwXLineBreak::getPropertyValue(const OUString& rPropertyName)
     }
     else
     {
-        aRet <<= m_pImpl->m_pFormatLineBreak->GetEnumValue();
+        m_pImpl->m_pFormatLineBreak->QueryValue(aRet);
     }
     return aRet;
 }

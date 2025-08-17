@@ -24,6 +24,9 @@
 #include <osl/detail/file.h>
 #include <rtl/byteseq.h>
 #include <rtl/string.hxx>
+#include <o3tl/string_view.hxx>
+
+#include <setallowedpaths.hxx>
 
 #include "system.hxx"
 #include "createfilehandlefromfd.hxx"
@@ -39,6 +42,7 @@
 #include <fcntl.h>
 #include <limits>
 #include <limits.h>
+#include <utility>
 
 #include <string.h>
 #include <pthread.h>
@@ -60,8 +64,16 @@
 #include <osl/detail/android-bootstrap.h>
 #include <android/log.h>
 #include <android/asset_manager.h>
-#include <o3tl/string_view.hxx>
+#endif
+
 #include <vector>
+
+#ifdef LINUX
+#include <sys/vfs.h>
+// As documented by the kernel
+constexpr decltype(std::declval<struct statfs>().f_type) SMB_SUPER_MAGIC = 0x517B;
+constexpr decltype(std::declval<struct statfs>().f_type) CIFS_SUPER_MAGIC = 0xFF534D42;
+constexpr decltype(std::declval<struct statfs>().f_type) SMB2_SUPER_MAGIC = 0xFE534D42;
 #endif
 
 namespace {
@@ -569,7 +581,7 @@ oslFileError FileHandle_Impl::readLineAt(
         if (curpos >= m_buflen)
         {
             /* buffer examined */
-            if ((curpos - bufpos) > 0)
+            if (curpos > bufpos)
             {
                 /* flush buffer to sequence */
                 result = writeSequence_Impl(
@@ -736,9 +748,11 @@ oslFileHandle osl::detail::createFileHandleFromFD(int fd)
     return static_cast<oslFileHandle>(pImpl);
 }
 
-static int osl_file_adjustLockFlags(const OString& path, int flags)
+static void osl_file_adjustLockFlags(const OString& path, int *flags, sal_uInt32 *uFlags)
 {
 #ifdef MACOSX
+    (void) uFlags;
+
     /*
      * The AFP implementation of MacOS X 10.4 treats O_EXLOCK in a way
      * that makes it impossible for OOo to create a backup copy of the
@@ -751,20 +765,50 @@ static int osl_file_adjustLockFlags(const OString& path, int flags)
     {
         if(strncmp("afpfs", s.f_fstypename, 5) == 0)
         {
-            flags &= ~O_EXLOCK;
-            flags |=  O_SHLOCK;
+            *flags &= ~O_EXLOCK;
+            *flags |=  O_SHLOCK;
         }
         else
         {
             /* Needed flags to allow opening a webdav file */
-            flags &= ~(O_EXLOCK | O_SHLOCK | O_NONBLOCK);
+            *flags &= ~(O_EXLOCK | O_SHLOCK | O_NONBLOCK);
+        }
+    }
+#elif defined(LINUX)
+    (void) flags;
+
+    /* get filesystem info */
+    struct statfs aFileStatFs;
+    if (statfs(path.getStr(), &aFileStatFs) < 0)
+    {
+        int e = errno;
+        SAL_INFO("sal.file", "statfs(" << path << "): " << UnixErrnoString(e));
+    }
+    else
+    {
+        SAL_INFO("sal.file", "statfs(" << path << "): OK");
+
+        // We avoid locking if on a Linux CIFS mount otherwise this
+        // fill fail later on when opening the file for reading
+        // during backup creation at save time (even though this is a
+        // write lock and not a read lock).
+        // Fixes the following bug:
+        // https://bugs.documentfoundation.org/show_bug.cgi?id=55004
+        switch (aFileStatFs.f_type) {
+        case SMB_SUPER_MAGIC:
+        case CIFS_SUPER_MAGIC:
+        case SMB2_SUPER_MAGIC:
+            *uFlags |= osl_File_OpenFlag_NoLock;
+            break;
+        default:
+            break;
         }
     }
 #else
     (void) path;
+    (void) flags;
+    (void) uFlags;
 #endif
-
-    return flags;
 }
 
 static bool osl_file_queryLocking(sal_uInt32 uFlags)
@@ -782,6 +826,144 @@ static bool osl_file_queryLocking(sal_uInt32 uFlags)
     (void) uFlags;
 #endif
     return false;
+}
+
+static bool abortOnForbidden = false;
+static std::vector<OString> allowedPathsRead;
+static std::vector<OString> allowedPathsReadWrite;
+static std::vector<OString> allowedPathsExecute;
+
+static OString getParentFolder(std::string_view rFilePath)
+{
+    sal_Int32 n = rFilePath.find_last_of('/');
+    OString folderPath;
+    if (n < 1)
+        folderPath = "."_ostr;
+    else
+        folderPath = OString(rFilePath.substr(0, n));
+
+    return folderPath;
+}
+
+void setAllowedPaths(
+        std::u16string_view aPaths
+    )
+{
+    allowedPathsRead.clear();
+    allowedPathsReadWrite.clear();
+    allowedPathsExecute.clear();
+
+    char eType = 'r';
+    sal_Int32 nIndex = 0;
+    do
+    {
+        OString aPath = rtl::OUStringToOString(
+            o3tl::getToken(aPaths, 0, ':', nIndex),
+            RTL_TEXTENCODING_UTF8);
+
+        if (aPath.getLength() == 0)
+            continue;
+
+        if (aPath.getLength() == 1)
+        {
+            eType = aPath[0];
+            continue;
+        }
+
+        char resolvedPath[PATH_MAX];
+        bool isResolved = !!realpath(aPath.getStr(), resolvedPath);
+        bool notExists = !isResolved && errno == ENOENT;
+
+        if (notExists)
+        {
+            sal_Int32 n = aPath.lastIndexOf('/');
+            OString folderPath = getParentFolder(aPath);
+            isResolved = !!realpath(folderPath.getStr(), resolvedPath);
+            notExists = !isResolved && errno == ENOENT;
+
+            if (notExists || !isResolved || strlen(resolvedPath) + aPath.getLength() - n + 1 >= PATH_MAX)
+                return; // too bad
+            else
+            {
+                strcat(resolvedPath, aPath.getStr() + n);
+            }
+        }
+
+        if (isResolved)
+        {
+            OString aPushPath(resolvedPath, strlen(resolvedPath));
+            if (eType == 'r')
+                allowedPathsRead.push_back(aPushPath);
+            else if (eType == 'w')
+            {
+                allowedPathsRead.push_back(aPushPath);
+                allowedPathsReadWrite.push_back(aPushPath);
+            }
+            else if (eType == 'x')
+                allowedPathsExecute.push_back(aPushPath);
+        }
+    }
+    while (nIndex != -1);
+
+    abortOnForbidden = !!getenv("SAL_ABORT_ON_FORBIDDEN");
+}
+
+bool isForbidden(const OString &filePath, sal_uInt32 nFlags)
+{
+    // avoid realpath cost unless configured
+    if (allowedPathsRead.size() == 0)
+        return false;
+
+    char resolvedPath[PATH_MAX];
+    if (!realpath(filePath.getStr(), resolvedPath))
+    {
+        // write calls path a non-existent path that realpath will
+        // fail to resolve. Thankfully our I/O APIs don't allow
+        // symlink creation to race here.
+        sal_Int32 n = filePath.lastIndexOf('/');
+        OString folderPath = getParentFolder(filePath);
+
+        bool isResolved = !!realpath(folderPath.getStr(), resolvedPath);
+        bool notExists = !isResolved && errno == ENOENT;
+        if (notExists) // folder doesn't exist, check parent, in the end of chain checks "."
+            return isForbidden(folderPath, nFlags);
+        else if (!isResolved || strlen(resolvedPath) + filePath.getLength() - n + 1 >= PATH_MAX)
+            return true; // too bad
+        else
+        {
+            strcat(resolvedPath, filePath.getStr() + n);
+        }
+    }
+
+    const std::vector<OString> *pCheckPaths = &allowedPathsRead;
+    if (nFlags & osl_File_OpenFlag_Write ||
+        nFlags & osl_File_OpenFlag_Create)
+        pCheckPaths = &allowedPathsReadWrite;
+    else if (nFlags & 0x80)
+        pCheckPaths = &allowedPathsExecute;
+
+    bool allowed = false;
+    for (const auto &it : *pCheckPaths) {
+        if (!strncmp(resolvedPath, it.getStr(), it.getLength()))
+        {
+            allowed = true;
+            break;
+        }
+    }
+
+    if (!allowed)
+        SAL_WARN("sal.osl", "access outside sandbox to " <<
+                 ((nFlags & osl_File_OpenFlag_Write ||
+                   nFlags & osl_File_OpenFlag_Create) ? "w" :
+                  (nFlags & 0x80) ? "x" : "r") << ":" <<
+                 filePath << " which is really " << resolvedPath <<
+                 (allowed ? " allowed " : " forbidden") <<
+                 " check list: " << pCheckPaths->size());
+
+    if (abortOnForbidden && !allowed)
+        abort(); // a bit abrupt - but don't try to escape.
+
+    return !allowed;
 }
 
 #ifdef HAVE_O_EXLOCK
@@ -981,12 +1163,19 @@ oslFileError openFilePath(const OString& filePath, oslFileHandle* pHandle,
     }
     else
     {
-        flags = osl_file_adjustLockFlags (filePath, flags);
+        osl_file_adjustLockFlags (filePath, &flags, &uFlags);
     }
 
     // O_EXCL can be set only when O_CREAT is set
     if (flags & O_EXCL && !(flags & O_CREAT))
         flags &= ~O_EXCL;
+
+    // set close-on-exec by default
+    flags |= O_CLOEXEC;
+
+    // Sandboxing hook
+    if (isForbidden( filePath, uFlags ))
+        return osl_File_E_ACCES;
 
     /* open the file */
     int fd = open_c( filePath, flags, mode );
@@ -1192,7 +1381,11 @@ oslFileError SAL_CALL osl_syncFile(oslFileHandle Handle)
     if (result != osl_File_E_None)
         return result;
 
-    if (fsync(pImpl->m_fd) == -1)
+    static bool disabled = getenv("SAL_DISABLE_FSYNC") != nullptr;
+
+    if (disabled)
+        SAL_INFO("sal.file", "fsync(" << pImpl->m_fd << "): Disabled");
+    else if (fsync(pImpl->m_fd) == -1)
     {
         int e = errno;
         SAL_INFO("sal.file", "fsync(" << pImpl->m_fd << "): " << UnixErrnoString(e));
@@ -1208,10 +1401,8 @@ const off_t MAX_OFF_T = std::numeric_limits< off_t >::max();
 
 namespace {
 
-// coverity[result_independent_of_operands] - crossplatform requirement
 template<typename T> bool exceedsMaxOffT(T n) { return n > MAX_OFF_T; }
 
-// coverity[result_independent_of_operands] - crossplatform requirement
 template<typename T> bool exceedsMinOffT(T n)
 { return n < std::numeric_limits<off_t>::min(); }
 
@@ -1233,7 +1424,10 @@ oslFileError SAL_CALL osl_mapFile(
     *ppAddr = nullptr;
 
     if (uLength > SAL_MAX_SIZE)
+    {
+        // coverity[dead_error_line] 2024.6.1 - crossplatform requirement
         return osl_File_E_OVERFLOW;
+    }
 
     size_t const nLength = sal::static_int_cast< size_t >(uLength);
 
@@ -1309,7 +1503,10 @@ static oslFileError unmapFile(void* pAddr, sal_uInt64 uLength)
         return osl_File_E_INVAL;
 
     if (uLength > SAL_MAX_SIZE)
+    {
+        // coverity[dead_error_line] 2024.6.1 - crossplatform requirement
         return osl_File_E_OVERFLOW;
+    }
 
     size_t const nLength = sal::static_int_cast< size_t >(uLength);
 
@@ -1601,5 +1798,6 @@ oslFileError SAL_CALL osl_setFileSize(oslFileHandle Handle, sal_uInt64 uSize)
 
     return pImpl->setSize(uSize);
 }
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

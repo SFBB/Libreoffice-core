@@ -26,6 +26,7 @@
 #include <miscuno.hxx>
 #include <vector>
 #include <osl/diagnose.h>
+#include <comphelper/sequence.hxx>
 
 using namespace utl;
 using namespace com::sun::star::uno;
@@ -78,6 +79,7 @@ void ScAppOptions::SetDefaults()
     nDefaultObjectSizeHeight = 5000;
 
     mbShowSharedDocumentWarning = true;
+    bClickChangeRotation = false;
 
     meKeyBindingType     = ScOptionsUtil::KEY_DEFAULT;
     mbLinksInsertedLikeMSExcel = false;
@@ -90,6 +92,7 @@ ScAppOptions& ScAppOptions::operator=( const ScAppOptions& rCpy )
     bSynchronizeZoom = rCpy.bSynchronizeZoom;
     nZoom           = rCpy.nZoom;
     SetLRUFuncList( rCpy.pLRUList.get(), rCpy.nLRUFuncCount );
+    SetFavouritesList(rCpy.sFavouritesList);
     nStatusFunc     = rCpy.nStatusFunc;
     bAutoComplete   = rCpy.bAutoComplete;
     bDetectiveAuto  = rCpy.bDetectiveAuto;
@@ -101,6 +104,7 @@ ScAppOptions& ScAppOptions::operator=( const ScAppOptions& rCpy )
     nDefaultObjectSizeWidth = rCpy.nDefaultObjectSizeWidth;
     nDefaultObjectSizeHeight = rCpy.nDefaultObjectSizeHeight;
     mbShowSharedDocumentWarning = rCpy.mbShowSharedDocumentWarning;
+    bClickChangeRotation = rCpy.bClickChangeRotation;
     meKeyBindingType  = rCpy.meKeyBindingType;
     mbLinksInsertedLikeMSExcel = rCpy.mbLinksInsertedLikeMSExcel;
     return *this;
@@ -139,20 +143,20 @@ static void lcl_GetLastFunctions( Any& rDest, const ScAppOptions& rOpt )
         rDest <<= Sequence<sal_Int32>(0);   // empty
 }
 
+static void lcl_GetFavouriteFunctions(Any& rDest, const ScAppOptions& rOpt)
+{
+    rDest <<= comphelper::containerToSequence<sal_Int32>(rOpt.GetFavouritesList());
+}
+
 static void lcl_GetSortList( Any& rDest )
 {
-    const ScUserList* pUserList = ScGlobal::GetUserList();
-    if (pUserList)
-    {
-        size_t nCount = pUserList->size();
-        Sequence<OUString> aSeq( nCount );
-        OUString* pArray = aSeq.getArray();
-        for (size_t i=0; i<nCount; ++i)
-            pArray[i] = (*pUserList)[sal::static_int_cast<sal_uInt16>(i)].GetString();
-        rDest <<= aSeq;
-    }
-    else
-        rDest <<= Sequence<OUString>(0);    // empty
+    const ScUserList& rUserList = ScGlobal::GetUserList();
+    size_t nCount = rUserList.size();
+    Sequence<OUString> aSeq( nCount );
+    OUString* pArray = aSeq.getArray();
+    for (size_t i=0; i<nCount; ++i)
+        pArray[i] = rUserList[sal::static_int_cast<sal_uInt16>(i)].GetString();
+    rDest <<= aSeq;
 }
 
 constexpr OUStringLiteral CFGPATH_LAYOUT = u"Office.Calc/Layout";
@@ -167,8 +171,9 @@ constexpr OUStringLiteral CFGPATH_LAYOUT = u"Office.Calc/Layout";
 constexpr OUStringLiteral CFGPATH_INPUT = u"Office.Calc/Input";
 
 #define SCINPUTOPT_LASTFUNCS        0
-#define SCINPUTOPT_AUTOINPUT        1
-#define SCINPUTOPT_DET_AUTO         2
+#define SCINPUTOPT_FAVOURITEFUNCS   1
+#define SCINPUTOPT_AUTOINPUT        2
+#define SCINPUTOPT_DET_AUTO         3
 
 constexpr OUStringLiteral CFGPATH_REVISION = u"Office.Calc/Revision/Color";
 
@@ -190,6 +195,7 @@ constexpr OUStringLiteral CFGPATH_MISC = u"Office.Calc/Misc";
 #define SCMISCOPT_DEFOBJWIDTH       0
 #define SCMISCOPT_DEFOBJHEIGHT      1
 #define SCMISCOPT_SHOWSHAREDDOCWARN 2
+#define SCMISCOPT_CLICKCHANGEROTATION 3
 
 constexpr OUStringLiteral CFGPATH_COMPAT = u"Office.Calc/Compatibility";
 
@@ -218,51 +224,53 @@ Sequence<OUString> ScAppCfg::GetLayoutPropertyNames()
 {
     const bool bIsMetric = ScOptionsUtil::IsMetricSystem();
 
-    return {(bIsMetric ? OUString("Other/MeasureUnit/Metric")
-                       : OUString("Other/MeasureUnit/NonMetric")),  // SCLAYOUTOPT_MEASURE
-             "Other/StatusbarFunction",                             // SCLAYOUTOPT_STATUSBAR
-             "Zoom/Value",                                          // SCLAYOUTOPT_ZOOMVAL
-             "Zoom/Type",                                           // SCLAYOUTOPT_ZOOMTYPE
-             "Zoom/Synchronize",                                    // SCLAYOUTOPT_SYNCZOOM
-             "Other/StatusbarMultiFunction"};                       // SCLAYOUTOPT_STATUSBARMULTI
+    return {(bIsMetric ? u"Other/MeasureUnit/Metric"_ustr
+                       : u"Other/MeasureUnit/NonMetric"_ustr),  // SCLAYOUTOPT_MEASURE
+             u"Other/StatusbarFunction"_ustr,                             // SCLAYOUTOPT_STATUSBAR
+             u"Zoom/Value"_ustr,                                          // SCLAYOUTOPT_ZOOMVAL
+             u"Zoom/Type"_ustr,                                           // SCLAYOUTOPT_ZOOMTYPE
+             u"Zoom/Synchronize"_ustr,                                    // SCLAYOUTOPT_SYNCZOOM
+             u"Other/StatusbarMultiFunction"_ustr};                       // SCLAYOUTOPT_STATUSBARMULTI
 }
 
 Sequence<OUString> ScAppCfg::GetInputPropertyNames()
 {
-    return {"LastFunctions",            // SCINPUTOPT_LASTFUNCS
-            "AutoInput",                // SCINPUTOPT_AUTOINPUT
-            "DetectiveAuto"};           // SCINPUTOPT_DET_AUTO
+    return {u"LastFunctions"_ustr,            // SCINPUTOPT_LASTFUNCS
+            u"FavouriteFunctions"_ustr,       // SCINPUTOPT_FAVOURITEFUNCS
+            u"AutoInput"_ustr,                // SCINPUTOPT_AUTOINPUT
+            u"DetectiveAuto"_ustr};           // SCINPUTOPT_DET_AUTO
 }
 
 Sequence<OUString> ScAppCfg::GetRevisionPropertyNames()
 {
-    return {"Change",                   // SCREVISOPT_CHANGE
-            "Insertion",                // SCREVISOPT_INSERTION
-            "Deletion",                 // SCREVISOPT_DELETION
-            "MovedEntry"};              // SCREVISOPT_MOVEDENTRY
+    return {u"Change"_ustr,                   // SCREVISOPT_CHANGE
+            u"Insertion"_ustr,                // SCREVISOPT_INSERTION
+            u"Deletion"_ustr,                 // SCREVISOPT_DELETION
+            u"MovedEntry"_ustr};              // SCREVISOPT_MOVEDENTRY
 }
 
 Sequence<OUString> ScAppCfg::GetContentPropertyNames()
 {
-    return {"Link"};                    // SCCONTENTOPT_LINK
+    return {u"Link"_ustr};                    // SCCONTENTOPT_LINK
 }
 
 Sequence<OUString> ScAppCfg::GetSortListPropertyNames()
 {
-    return {"List"};                    // SCSORTLISTOPT_LIST
+    return {u"List"_ustr};                    // SCSORTLISTOPT_LIST
 }
 
 Sequence<OUString> ScAppCfg::GetMiscPropertyNames()
 {
-    return {"DefaultObjectSize/Width",      // SCMISCOPT_DEFOBJWIDTH
-            "DefaultObjectSize/Height",     // SCMISCOPT_DEFOBJHEIGHT
-            "SharedDocument/ShowWarning"};  // SCMISCOPT_SHOWSHAREDDOCWARN
+    return {u"DefaultObjectSize/Width"_ustr,      // SCMISCOPT_DEFOBJWIDTH
+            u"DefaultObjectSize/Height"_ustr,     // SCMISCOPT_DEFOBJHEIGHT
+            u"SharedDocument/ShowWarning"_ustr,   // SCMISCOPT_SHOWSHAREDDOCWARN
+            u"Draw/ClickChangeRotation"_ustr};    // SCMISCOPT_CLICKCHANGEROTATION
 }
 
 Sequence<OUString> ScAppCfg::GetCompatPropertyNames()
 {
-    return {"KeyBindings/BaseGroup",    // SCCOMPATOPT_KEY_BINDING
-            "Links" };                  // SCCOMPATOPT_LINK_LIKE_MS
+    return {u"KeyBindings/BaseGroup"_ustr,    // SCCOMPATOPT_KEY_BINDING
+            u"Links"_ustr };                  // SCCOMPATOPT_LINK_LIKE_MS
 }
 
 ScAppCfg::ScAppCfg() :
@@ -360,11 +368,25 @@ void ScAppCfg::ReadInputCfg()
         sal_Int32 nCount = aSeq.getLength();
         if (nCount < SAL_MAX_UINT16)
         {
-            std::vector<sal_uInt16> pUShorts(nCount);
-            for (sal_Int32 i = 0; i < nCount; i++)
+            sal_uInt16 nLRUCount = nCount;
+            std::vector<sal_uInt16> pUShorts(nLRUCount);
+            for (sal_uInt16 i = 0; i < nLRUCount; ++i)
                 pUShorts[i] = aSeq[i];
 
-            SetLRUFuncList(pUShorts.data(), nCount);
+            SetLRUFuncList(pUShorts.data(), nLRUCount);
+        }
+    }
+
+    if (Sequence<sal_Int32> aSeq; aValues[SCINPUTOPT_FAVOURITEFUNCS] >>= aSeq)
+    {
+        sal_Int32 nCount = aSeq.getLength();
+        if (nCount < SAL_MAX_UINT16)
+        {
+            sal_uInt16 nFavouritesCount = nCount;
+            std::unordered_set<sal_uInt16> sFavouriteFunctions;
+            for (sal_uInt16 i = 0; i < nFavouritesCount; ++i)
+                sFavouriteFunctions.insert(aSeq[i]);
+            SetFavouritesList(sFavouriteFunctions);
         }
     }
     SetAutoComplete(ScUnoHelpFunctions::GetBoolFromAny(aValues[SCINPUTOPT_AUTOINPUT]));
@@ -423,7 +445,7 @@ void ScAppCfg::ReadSortListCfg()
         }
         else
         {
-            for (const OUString& rStr : std::as_const(aSeq))
+            for (const OUString& rStr : aSeq)
             {
                 aList.emplace_back(rStr);
             }
@@ -447,6 +469,8 @@ void ScAppCfg::ReadMiscCfg()
         SetDefaultObjectSizeHeight(nIntVal);
     SetShowSharedDocumentWarning(
         ScUnoHelpFunctions::GetBoolFromAny(aValues[SCMISCOPT_SHOWSHAREDDOCWARN]));
+    SetClickChangeRotation(
+        ScUnoHelpFunctions::GetBoolFromAny(aValues[SCMISCOPT_CLICKCHANGEROTATION]));
 }
 
 void ScAppCfg::ReadCompatCfg()
@@ -518,6 +542,9 @@ IMPL_LINK_NOARG(ScAppCfg, InputCommitHdl, ScLinkConfigItem&, void)
                 break;
             case SCINPUTOPT_DET_AUTO:
                 pValues[nProp] <<= GetDetectiveAuto();
+                break;
+            case SCINPUTOPT_FAVOURITEFUNCS:
+                lcl_GetFavouriteFunctions(pValues[nProp], *this);
                 break;
         }
     }
@@ -613,6 +640,9 @@ IMPL_LINK_NOARG(ScAppCfg, MiscCommitHdl, ScLinkConfigItem&, void)
                 break;
             case SCMISCOPT_SHOWSHAREDDOCWARN:
                 pValues[nProp] <<= GetShowSharedDocumentWarning();
+                break;
+            case SCMISCOPT_CLICKCHANGEROTATION:
+                pValues[nProp] <<= IsClickChangeRotation();
                 break;
         }
     }

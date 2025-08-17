@@ -25,7 +25,6 @@
 
 using namespace osl;
 using namespace com::sun::star;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::linguistic2;
@@ -37,10 +36,6 @@ Meaning::Meaning(OUString _aTerm) :
     aSyn        ( Sequence< OUString >(1) ),
     aTerm       (std::move(_aTerm))
 {
-#if 0
-    // this is for future use by a german thesaurus when one exists
-    bIsGermanPreReform = rHelper.IsGermanPreReform;
-#endif
 }
 
 Meaning::~Meaning()

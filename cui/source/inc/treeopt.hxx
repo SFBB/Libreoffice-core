@@ -112,9 +112,6 @@ namespace com::sun::star::frame { class XFrame; }
 namespace com::sun::star::awt { class XContainerWindowProvider; }
 
 struct OptionsPageInfo;
-struct Module;
-class ExtensionsTabPage;
-class SvxColorTabPage;
 struct OptionsGroupInfo;
 struct OptionsPageIdInfo;
 
@@ -199,16 +196,13 @@ private:
     void ResetCurrentPageFromConfig();
     void SelectHdl_Impl();
     void initializeCurrentDialog(OptionsPageInfo*& pPageInfo,
-                                 std::unique_ptr<weld::TreeIter>& xEntry);
+                                 const std::unique_ptr<weld::TreeIter>& xEntry);
 
     void InitItemSets(OptionsGroupInfo& rGroupInfo);
 
-    virtual short run() override;
-
-    virtual weld::Button& GetOKButton() const override { return *xOkPB; }
-    virtual const SfxItemSet* GetExampleSet() const override { return nullptr; }
-
     int applySearchFilter(const OUString& rSearchTerm);
+
+    void ImplDestroy();
 
     // Common initialization
     OfaTreeOptionsDialog(weld::Window* pParent, bool fromExtensionManager);
@@ -229,14 +223,19 @@ public:
     void                ActivatePage( const OUString& rPageURL );
     void                ApplyItemSets();
 
-    // default value initializes all dialogs
-    void initializeFirstNDialog(sal_Int16 nNumberOfNode = -1);
+    // initialize all dialogs in "Tools > Options"
+    void initializeAllDialogs();
 
     // helper functions to call the Languages and Locales TabPage from the SpellDialog
     static void         ApplyLanguageOptions(const SfxItemSet& rSet);
     static OUString     getCurrentFactory_Impl( const css::uno::Reference< css::frame::XFrame >& _xFrame );
 
     void                SetNeedsRestart( svtools::RestartReason eReason );
+
+    virtual short run() override;
+
+    virtual weld::Button& GetOKButton() const override { return *xOkPB; }
+    virtual const SfxItemSet* GetExampleSet() const override { return nullptr; }
 };
 
 // class ExtensionsTabPage -----------------------------------------------

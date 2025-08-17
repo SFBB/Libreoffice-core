@@ -231,11 +231,9 @@ void SAL_CALL OGridControlModel::setParent( const css::uno::Reference<css::uno::
 Sequence< Type > SAL_CALL OGridControlModel::getTypes(  )
 {
     return concatSequences(
-        concatSequences(
             OControlModel::getTypes(),
             OInterfaceContainer::getTypes(),
-            OErrorBroadcaster::getTypes()
-        ),
+            OErrorBroadcaster::getTypes(),
         OGridControlModel_BASE::getTypes()
     );
 }
@@ -284,7 +282,7 @@ sal_Bool SAL_CALL OGridControlModel::select(const Any& rElement)
     }
     if ( xSel != m_xSelection )
     {
-        m_xSelection = xSel;
+        m_xSelection = std::move(xSel);
         aGuard.clear();
         m_aSelectListeners.notifyEach( &XSelectionChangeListener::selectionChanged, EventObject( *this ) );
         return true;
@@ -313,9 +311,9 @@ Reference<XPropertySet> SAL_CALL OGridControlModel::createColumn(const OUString&
     const Sequence< OUString >& rColumnTypes = frm::getColumnTypes();
     return createColumnById( ::detail::findPos( ColumnType, rColumnTypes ) );
 }
-Reference<XPropertySet>  OGridControlModel::createColumnById(sal_Int32 nTypeId) const
+rtl::Reference<OGridColumn>  OGridControlModel::createColumnById(sal_Int32 nTypeId) const
 {
-    Reference<XPropertySet>  xReturn;
+    rtl::Reference<OGridColumn>  xReturn;
     switch (nTypeId)
     {
         case TYPE_CHECKBOX:         xReturn = new CheckBoxColumn( getContext() ); break;
@@ -512,7 +510,7 @@ sal_Bool OGridControlModel::convertFastPropertyValue( Any& rConvertedValue, Any&
         case PROPERTY_ID_CURSORCOLOR:
             if (!rValue.hasValue() || !m_aCursorColor.hasValue())
             {
-                if (rValue.hasValue() && (TypeClass_LONG != rValue.getValueType().getTypeClass()))
+                if (rValue.hasValue() && (TypeClass_LONG != rValue.getValueTypeClass()))
                 {
                     throw IllegalArgumentException();
                 }
@@ -770,7 +768,7 @@ void OGridControlModel::write(const Reference<XObjectOutputStream>& _rxOutStream
     {
         // first the service name for the underlying model
         OGridColumn* pCol = comphelper::getFromUnoTunnel<OGridColumn>(m_aItems[i]);
-        DBG_ASSERT(pCol != nullptr, "OGridControlModel::write : such items should never reach it into my container !");
+        assert(pCol != nullptr && "OGridControlModel::write : such items should never reach it into my container !");
         _rxOutStream << pCol->getModelName();
         // then the object itself
         sal_Int32 nMark = xMark->createMark();
@@ -790,15 +788,15 @@ void OGridControlModel::write(const Reference<XObjectOutputStream>& _rxOutStream
     // 4. Attributes
     // Masking for all 'any' types
     sal_uInt16 nAnyMask = 0;
-    if (m_aRowHeight.getValueType().getTypeClass() == TypeClass_LONG)
+    if (m_aRowHeight.getValueTypeClass() == TypeClass_LONG)
         nAnyMask |= ROWHEIGHT;
     if ( getFont() != getDefaultFont() )
         nAnyMask |= FONTATTRIBS | FONTSIZE | FONTTYPE | FONTDESCRIPTOR;
-    if (m_aTabStop.getValueType().getTypeClass() == TypeClass_BOOLEAN)
+    if (m_aTabStop.getValueTypeClass() == TypeClass_BOOLEAN)
         nAnyMask |= TABSTOP;
     if ( hasTextColor() )
         nAnyMask |= TEXTCOLOR;
-    if (m_aBackgroundColor.getValueType().getTypeClass() == TypeClass_LONG)
+    if (m_aBackgroundColor.getValueTypeClass() == TypeClass_LONG)
         nAnyMask |= BACKGROUNDCOLOR;
     if (!m_bRecordMarker)
         nAnyMask |= RECORDMARKER;
@@ -865,7 +863,7 @@ void OGridControlModel::read(const Reference<XObjectInputStream>& _rxInStream)
             // reading the model names
             OUString sModelName;
             _rxInStream >> sModelName;
-            Reference<XPropertySet>  xCol(createColumnById(getColumnTypeByModelName(sModelName)));
+            rtl::Reference<OGridColumn> xCol(createColumnById(getColumnTypeByModelName(sModelName)));
             DBG_ASSERT(xCol.is(), "OGridControlModel::read : unknown column type !");
             sal_Int32 nObjLen = _rxInStream->readLong();
             if (nObjLen)
@@ -873,8 +871,7 @@ void OGridControlModel::read(const Reference<XObjectInputStream>& _rxInStream)
                 sal_Int32 nMark = xMark->createMark();
                 if (xCol.is())
                 {
-                    OGridColumn* pCol = comphelper::getFromUnoTunnel<OGridColumn>(xCol);
-                    pCol->read(_rxInStream);
+                    xCol->read(_rxInStream);
                 }
                 xMark->jumpToMark(nMark);
                 _rxInStream->skipBytes(nObjLen);

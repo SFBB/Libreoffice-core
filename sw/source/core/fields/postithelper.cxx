@@ -43,7 +43,7 @@ class Point;
 namespace
 {
 /// Checks if pAnnotationMark covers exactly rAnchorPos (the comment anchor).
-bool AnnotationMarkCoversCommentAnchor(const sw::mark::IMark* pAnnotationMark,
+bool AnnotationMarkCoversCommentAnchor(const sw::mark::MarkBase* pAnnotationMark,
                                        const SwPosition& rAnchorPos)
 {
     if (!pAnnotationMark)
@@ -51,8 +51,7 @@ bool AnnotationMarkCoversCommentAnchor(const sw::mark::IMark* pAnnotationMark,
         return false;
     }
 
-    const SwPosition& rMarkStart = pAnnotationMark->GetMarkStart();
-    const SwPosition& rMarkEnd = pAnnotationMark->GetMarkEnd();
+    auto [/*const SwPosition&*/ rMarkStart, rMarkEnd] = pAnnotationMark->GetMarkStartEnd();
 
     if (rMarkStart != rAnchorPos)
     {
@@ -86,7 +85,7 @@ bool AnnotationMarkCoversCommentAnchor(const sw::mark::IMark* pAnnotationMark,
  * Finds the first draw object of rTextFrame which has the same anchor position as the start of
  * rAnnotationMark.
  */
-SwAnchoredObject* GetAnchoredObjectOfAnnotationMark(const sw::mark::IMark& rAnnotationMark,
+SwAnchoredObject* GetAnchoredObjectOfAnnotationMark(const sw::mark::MarkBase& rAnnotationMark,
                                                     const SwTextFrame& rTextFrame)
 {
     const SwSortedObjs* pAnchored = rTextFrame.GetDrawObjs();
@@ -97,8 +96,8 @@ SwAnchoredObject* GetAnchoredObjectOfAnnotationMark(const sw::mark::IMark& rAnno
 
     for (SwAnchoredObject* pObject : *pAnchored)
     {
-        SwFrameFormat& rFrameFormat = pObject->GetFrameFormat();
-        const SwPosition* pFrameAnchor = rFrameFormat.GetAnchor().GetContentAnchor();
+        SwFrameFormat* pFrameFormat = pObject->GetFrameFormat();
+        const SwPosition* pFrameAnchor = pFrameFormat->GetAnchor().GetContentAnchor();
         if (!pFrameAnchor)
         {
             continue;
@@ -114,21 +113,22 @@ SwAnchoredObject* GetAnchoredObjectOfAnnotationMark(const sw::mark::IMark& rAnno
 }
 }
 
-SwSidebarItem::SwSidebarItem(const bool aFocus)
+SwAnnotationItem::SwAnnotationItem(SwFormatField& rFormatField, const bool aFocus)
     : mpPostIt(nullptr)
     , mbShow(true)
     , mbFocus(aFocus)
     , mbPendingLayout(false)
     , mLayoutStatus(SwPostItHelper::INVISIBLE)
+    , mrFormatField( rFormatField )
 {
 }
 
-SwSidebarItem::~SwSidebarItem() {}
+SwAnnotationItem::~SwAnnotationItem() {}
 
 SwPostItHelper::SwLayoutStatus SwPostItHelper::getLayoutInfos(
     SwLayoutInfo& o_rInfo,
     const SwPosition& rAnchorPos,
-    const sw::mark::IMark* pAnnotationMark )
+    const sw::mark::MarkBase* pAnnotationMark )
 {
     SwLayoutStatus aRet = INVISIBLE;
     SwTextNode* pTextNode = rAnchorPos.GetNode().GetTextNode();
@@ -198,7 +198,7 @@ SwPostItHelper::SwLayoutStatus SwPostItHelper::getLayoutInfos(
                             if( !bDeleted )
                             {
                                 IDocumentMarkAccess& rDMA(*pTextNode->GetDoc().getIDocumentMarkAccess());
-                                IDocumentMarkAccess::const_iterator_t pAnnotationBookmark =
+                                auto pAnnotationBookmark =
                                     rDMA.findAnnotationBookmark(pAnnotationMark->GetName());
                                 // tdf#140980 only really deleted, if there is no helper bookmark
                                 // in ChangesInMargin mode

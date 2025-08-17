@@ -30,6 +30,7 @@
 #include <comphelper/accessibleeventnotifier.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/asyncnotification.hxx>
+#include <drawinglayer/primitive2d/BufferedDecompositionFlusher.hxx>
 #include <i18nlangtag/mslangid.hxx>
 #include <unotools/syslocale.hxx>
 #include <unotools/syslocaleoptions.hxx>
@@ -44,13 +45,14 @@
 #include <vcl/ImageTree.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/toolkit/unowrap.hxx>
-#include <configsettings.hxx>
-#include <vcl/lazydelete.hxx>
-#include <vcl/embeddedfontshelper.hxx>
+#include <tools/lazydelete.hxx>
+#include <vcl/embeddedfontsmanager.hxx>
 #include <vcl/toolkit/dialog.hxx>
 #include <vcl/menu.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/print.hxx>
+
+#include <bitmap/BlendFrameCache.hxx>
 #include <debugevent.hxx>
 #include <scrwnd.hxx>
 #include <windowdev.hxx>
@@ -194,24 +196,23 @@ int ImplSVMain()
 
     const bool bWasInitVCL = IsVCLInit();
 
-#if defined(LINUX) && !defined(SYSTEM_OPENSSL)
+#if !defined(_WIN32) && !defined(SYSTEM_OPENSSL)
     if (!bWasInitVCL)
     {
-        OUString constexpr name(u"SSL_CERT_FILE"_ustr);
+        static constexpr OUString name(u"SSL_CERT_FILE"_ustr);
         OUString temp;
         if (osl_getEnvironment(name.pData, &temp.pData) == osl_Process_E_NotFound)
         {
-            try // to point bundled OpenSSL to some system certificate file
-            {   // ... this only works if the client actually calls
-                // SSL_CTX_set_default_verify_paths() or similar; e.g. python ssl.
-                char const*const path = GetCABundleFile();
+            // Try to point bundled OpenSSL to some system certificate file
+            // ... this only works if the client actually calls
+            // SSL_CTX_set_default_verify_paths() or similar; e.g. python ssl.
+            char const*const path = GetCABundleFile();
+            if (path == nullptr) {
+                SAL_WARN("vcl", "no OpenSSL CA certificate bundle found");
+            } else {
                 OUString const filepath(::rtl::OStringToOUString(
                     ::std::string_view(path), osl_getThreadTextEncoding()));
                 osl_setEnvironment(name.pData, filepath.pData);
-            }
-            catch (uno::RuntimeException const& e)
-            {
-                SAL_WARN("vcl", e.Message);
             }
         }
     }
@@ -236,20 +237,6 @@ int ImplSVMain()
         pSVData->mxDisplayConnection.clear();
     }
 
-    // This is a hack to work around the problem of the asynchronous nature
-    // of bridging accessibility through Java: on shutdown there might still
-    // be some events in the AWT EventQueue, which need the SolarMutex which
-    // - on the other hand - is destroyed in DeInitVCL(). So empty the queue
-    // here ..
-    if( pSVData->mxAccessBridge.is() )
-    {
-        {
-            SolarMutexReleaser aReleaser;
-            pSVData->mxAccessBridge->dispose();
-        }
-        pSVData->mxAccessBridge.clear();
-    }
-
     WatchdogThread::stop();
     DeInitVCL();
 
@@ -267,39 +254,6 @@ static Application *        pOwnSvApp = nullptr;
 
 // Exception handler. pExceptionHandler != NULL => VCL already inited
 static oslSignalHandler pExceptionHandler = nullptr;
-
-namespace {
-
-class DesktopEnvironmentContext: public cppu::WeakImplHelper< css::uno::XCurrentContext >
-{
-public:
-    explicit DesktopEnvironmentContext( css::uno::Reference< css::uno::XCurrentContext > ctx)
-        : m_xNextContext(std::move( ctx )) {}
-
-    // XCurrentContext
-    virtual css::uno::Any SAL_CALL getValueByName( const OUString& Name ) override;
-
-private:
-    css::uno::Reference< css::uno::XCurrentContext > m_xNextContext;
-};
-
-}
-
-uno::Any SAL_CALL DesktopEnvironmentContext::getValueByName( const OUString& Name)
-{
-    uno::Any retVal;
-
-    if ( Name == "system.desktop-environment" )
-    {
-        retVal <<= Application::GetDesktopEnvironment();
-    }
-    else if( m_xNextContext.is() )
-    {
-        // Call next context in chain if found
-        retVal = m_xNextContext->getValueByName( Name );
-    }
-    return retVal;
-}
 
 bool IsVCLInit()
 {
@@ -331,7 +285,7 @@ bool InitVCL()
     if( pExceptionHandler != nullptr )
         return false;
 
-    EmbeddedFontsHelper::clearTemporaryFontFiles();
+    EmbeddedFontsManager::clearTemporaryFontFiles();
 
     if( !ImplGetSVData()->mpApp )
     {
@@ -348,10 +302,6 @@ bool InitVCL()
     if ( !pSVData->mpDefInst )
         return false;
     pSVData->mpDefInst->AcquireYieldMutex();
-
-    // Desktop Environment context (to be able to get value of "system.desktop-environment" as soon as possible)
-    css::uno::setCurrentContext(
-        new DesktopEnvironmentContext( css::uno::getCurrentContext() ) );
 
     // Initialize application instance (should be done after initialization of VCL SAL part)
     if (pSVData->mpApp)
@@ -371,7 +321,7 @@ bool InitVCL()
         if (!aLocaleString.isEmpty())
         {
             MsLangId::getSystemUILanguage(); //call this now to pin what the system UI really was
-            OUString envVar("LANGUAGE");
+            OUString envVar(u"LANGUAGE"_ustr);
             osl_setEnvironment(envVar.pData, aLocaleString.pData);
         }
     }
@@ -461,12 +411,35 @@ void DeInitVCL()
     }
     ImplSVData* pSVData = ImplGetSVData();
 
+    // This is a hack to work around the problem of the asynchronous nature
+    // of bridging accessibility through Java: on shutdown there might still
+    // be some events in the AWT EventQueue, which need the SolarMutex which
+    // - on the other hand - is destroyed in DeInitVCL(). So empty the queue
+    // here ..
+    if (pSVData->mxAccessBridge.is())
+    {
+        {
+            SolarMutexReleaser aReleaser;
+            pSVData->mxAccessBridge->dispose();
+        }
+        pSVData->mxAccessBridge.clear();
+    }
+
     // lp#1560328: clear cache before disposing rest of VCL
     if(pSVData->mpBlendFrameCache)
         pSVData->mpBlendFrameCache->m_aLastResult.Clear();
     pSVData->mbDeInit = true;
 
-    vcl::DeleteOnDeinitBase::ImplDeleteOnDeInit();
+    // Some events may need to access objects destroyed in ImplDeleteOnDeInit, so process them first
+    Scheduler::ProcessEventsToIdle();
+
+    {
+        // unblock we will wait for things that want to take the SolarMutex on another thread
+        SolarMutexReleaser aReleaser;
+        drawinglayer::primitive2d::BufferedDecompositionFlusher::shutdown();
+    }
+
+    tools::DeleteOnDeinitBase::ImplDeleteOnDeInit();
 
 #if OSL_DEBUG_LEVEL > 0
     OStringBuffer aBuf( 256 );
@@ -501,7 +474,6 @@ void DeInitVCL()
 
     // free global data
     pSVData->maGDIData.mxGrfConverter.reset();
-    pSVData->mpSettingsConfigItem.reset();
 
     // prevent unnecessary painting during Scheduler shutdown
     // as this processes all pending events in debug builds.
@@ -621,7 +593,7 @@ void DeInitVCL()
     // Deinit Sal
     if (pSVData->mpDefInst)
     {
-        pSVData->mpDefInst->ReleaseYieldMutexAll();
+        pSVData->mpDefInst->ReleaseYieldMutex(true);
         DestroySalInstance( pSVData->mpDefInst );
         pSVData->mpDefInst = nullptr;
     }
@@ -638,7 +610,7 @@ void DeInitVCL()
         pOwnSvApp = nullptr;
     }
 
-    EmbeddedFontsHelper::clearTemporaryFontFiles();
+    EmbeddedFontsManager::clearTemporaryFontFiles();
 }
 
 namespace {

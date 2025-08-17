@@ -162,12 +162,6 @@ bool XLineJointItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /*nMemberId*
     return true;
 }
 
-sal_uInt16 XLineJointItem::GetValueCount() const
-{
-    // don't forget to update the api interface also
-    return 5;
-}
-
 
 AffineMatrixItem::AffineMatrixItem(const css::geometry::AffineMatrix2D* pMatrix)
 :   SfxPoolItem(SID_ATTR_TRANSFORM_MATRIX)
@@ -312,12 +306,6 @@ bool XLineCapItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /*nMemberId*/)
     return true;
 }
 
-sal_uInt16 XLineCapItem::GetValueCount() const
-{
-    // don't forget to update the api interface also
-    return 3;
-}
-
 css::drawing::LineCap XLineCapItem::GetValue() const
 {
     const css::drawing::LineCap eRetval(SfxEnumItem::GetValue());
@@ -459,11 +447,6 @@ bool XFillBmpPosItem::GetPresentation
 {
     rText.clear();
     return true;
-}
-
-sal_uInt16 XFillBmpPosItem::GetValueCount() const
-{
-    return 9;
 }
 
 void XFillBmpPosItem::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -631,9 +614,8 @@ void XFillBmpStretchItem::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterEndElement(pWriter);
 }
 
-
-XFillBmpPosOffsetXItem::XFillBmpPosOffsetXItem( sal_uInt16 nOffPosX ) :
-            SfxUInt16Item( XATTR_FILLBMP_POSOFFSETX, nOffPosX )
+XFillBmpPosOffsetXItem::XFillBmpPosOffsetXItem(sal_Int32 nOffPosX)
+    : SfxInt32Item(XATTR_FILLBMP_POSOFFSETX, nOffPosX )
 {
 }
 
@@ -654,9 +636,8 @@ bool XFillBmpPosOffsetXItem::GetPresentation
     return true;
 }
 
-
-XFillBmpPosOffsetYItem::XFillBmpPosOffsetYItem( sal_uInt16 nOffPosY ) :
-            SfxUInt16Item( XATTR_FILLBMP_POSOFFSETY, nOffPosY )
+XFillBmpPosOffsetYItem::XFillBmpPosOffsetYItem(sal_Int32 nOffPosY)
+    : SfxInt32Item(XATTR_FILLBMP_POSOFFSETY, nOffPosY)
 {
 }
 

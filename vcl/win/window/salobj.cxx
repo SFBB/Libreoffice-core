@@ -477,7 +477,7 @@ SalObject* ImplSalCreateObject( WinSalInstance* pInst, WinSalFrame* pParent )
 
         if ( !hWndChild )
         {
-            SAL_WARN("vcl", "CreateWindowExW failed: " << WindowsErrorString(GetLastError()));
+            SAL_WARN("vcl", "CreateWindowExW failed: " << comphelper::WindowsErrorString(GetLastError()));
 
             delete pObject;
             return nullptr;
@@ -534,19 +534,10 @@ WinSalObject::~WinSalObject()
     // destroy cache data
     delete [] reinterpret_cast<BYTE*>(mpStdClipRgnData);
 
-    HWND hWndParent = ::GetParent( mhWnd );
-
     if ( mhWndChild )
         DestroyWindow( mhWndChild );
     if ( mhWnd )
         DestroyWindow( mhWnd );
-
-    // reset palette, if no external child window is left,
-    // as they might have overwritten our palette
-    if ( hWndParent &&
-         ::GetActiveWindow() == hWndParent &&
-         !GetWindow( hWndParent, GW_CHILD ) )
-        SendMessageW( hWndParent, SAL_MSG_FORCEPALETTE, 0, 0 );
 }
 
 void WinSalObject::ResetClipRegion()
@@ -671,9 +662,9 @@ void WinSalObject::GrabFocus()
         ::SetFocus( mhWndChild );
 }
 
-const SystemEnvData* WinSalObject::GetSystemData() const
+const SystemEnvData& WinSalObject::GetSystemData() const
 {
-    return &maSysData;
+    return maSysData;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

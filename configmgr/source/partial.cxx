@@ -23,6 +23,7 @@
 #include <set>
 
 #include <com/sun/star/uno/RuntimeException.hpp>
+#include <com/sun/star/uno/Sequence.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
@@ -56,8 +57,8 @@ bool parseSegment(
 }
 
 Partial::Partial(
-    std::set< OUString > const & includedPaths,
-    std::set< OUString > const & excludedPaths)
+    css::uno::Sequence< OUString > const & includedPaths,
+    css::uno::Sequence< OUString > const & excludedPaths)
 {
     // The Partial::Node tree built up here encodes the following information:
     // * Inner node, startInclude: an include starts here that contains excluded
@@ -71,7 +72,7 @@ Partial::Partial(
         for (Node * p = &root_;;) {
             OUString seg;
             bool end = parseSegment(includedPath, &n, &seg);
-            p = &p->children[seg];
+            p = !seg.isEmpty() ? &p->children[seg] : p;
             if (p->startInclude) {
                 break;
             }

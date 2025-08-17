@@ -143,7 +143,7 @@ dispatchRequests (const uno::Reference< frame::XModel>& xModel, const OUString &
     uno::Reference<frame::XDispatchProvider> xDispatchProvider (xFrame,uno::UNO_QUERY_THROW);
     try
     {
-        uno::Reference<uno::XComponentContext > xContext(
+        const uno::Reference<uno::XComponentContext >& xContext(
             comphelper::getProcessComponentContext() );
         uno::Reference<util::XURLTransformer> xParser( util::URLTransformer::create(xContext) );
         xParser->parseStrict (url);
@@ -153,7 +153,7 @@ dispatchRequests (const uno::Reference< frame::XModel>& xModel, const OUString &
         return;
     }
 
-    uno::Reference<frame::XDispatch> xDispatcher = xDispatchProvider->queryDispatch(url,"",0);
+    uno::Reference<frame::XDispatch> xDispatcher = xDispatchProvider->queryDispatch(url,u""_ustr,0);
 
     sal_Int32 nProps = sProps.getLength();
     uno::Sequence<beans::PropertyValue> dispatchProps(nProps + 1);
@@ -209,20 +209,20 @@ getCurrentDoc( const OUString& sKey )
         if ( !( aModel >>= xModel ) || !xModel.is() )
         {
             throw uno::RuntimeException(
-                "Can't extract model from basic ( it's obviously not set yet  therefore don't know the current document context)" );
+                u"Can't extract model from basic ( it's obviously not set yet  therefore don't know the current document context)"_ustr );
         }
         SAL_INFO("vbahelper", "Have model points to url " << xModel->getURL());
     }
     else
     {
         SAL_INFO("vbahelper", "Failed to get " << sKey);
-        throw uno::RuntimeException( "Can't determine the currently selected document" );
+        throw uno::RuntimeException( u"Can't determine the currently selected document"_ustr );
     }
     return xModel;
 }
 
 /// @throws uno::RuntimeException
-static uno::Reference< frame::XModel >
+uno::Reference< frame::XModel >
 getCurrentDocCtx( const OUString& ctxName, const uno::Reference< uno::XComponentContext >& xContext )
 {
     uno::Reference< frame::XModel > xModel;
@@ -235,13 +235,7 @@ getCurrentDocCtx( const OUString& ctxName, const uno::Reference< uno::XComponent
 uno::Reference< frame::XModel >
 getThisExcelDoc( const uno::Reference< uno::XComponentContext >& xContext )
 {
-    return getCurrentDocCtx( "ExcelDocumentContext" , xContext );
-}
-
-uno::Reference< frame::XModel >
-getThisWordDoc( const uno::Reference< uno::XComponentContext >& xContext )
-{
-    return getCurrentDocCtx( "WordDocumentContext" , xContext );
+    return getCurrentDocCtx( u"ExcelDocumentContext"_ustr , xContext );
 }
 
  uno::Reference< frame::XModel >
@@ -250,34 +244,13 @@ getCurrentExcelDoc( const uno::Reference< uno::XComponentContext >& xContext )
     uno::Reference< frame::XModel > xModel;
     try
     {
-        xModel = getCurrentDoc( "ThisExcelDoc" );
+        xModel = getCurrentDoc( u"ThisExcelDoc"_ustr );
     }
     catch (const uno::Exception&)
     {
         try
         {
             xModel = getThisExcelDoc( xContext );
-        }
-        catch (const uno::Exception&)
-        {
-        }
-    }
-    return xModel;
-}
-
- uno::Reference< frame::XModel >
-getCurrentWordDoc( const uno::Reference< uno::XComponentContext >& xContext )
-{
-    uno::Reference< frame::XModel > xModel;
-    try
-    {
-        xModel = getCurrentDoc( "ThisWordDoc" );
-    }
-    catch (const uno::Exception&)
-    {
-        try
-        {
-            xModel = getThisWordDoc( xContext );
         }
         catch (const uno::Exception&)
         {
@@ -352,7 +325,7 @@ void PrintOutHelper( SfxViewShell const * pViewShell, const uno::Any& From, cons
     if ( nCopies > 1 ) // Collate only useful when more that 1 copy
         Collate >>= bCollate;
 
-    OUString sRange(   "-"  );
+    OUString sRange(   u"-"_ustr  );
     OUString sFileName;
 
     if ( nFrom || nTo )
@@ -373,24 +346,24 @@ void PrintOutHelper( SfxViewShell const * pViewShell, const uno::Any& From, cons
     SfxAllItemSet aArgs( SfxGetpApp()->GetPool() );
 
     SfxBoolItem sfxCollate( SID_PRINT_COLLATE, bCollate );
-    aArgs.Put( sfxCollate, sfxCollate.Which() );
+    aArgs.Put( sfxCollate );
     SfxInt16Item sfxCopies( SID_PRINT_COPIES, nCopies );
-    aArgs.Put( sfxCopies, sfxCopies.Which() );
+    aArgs.Put( sfxCopies );
     if ( !sFileName.isEmpty() )
     {
         SfxStringItem sfxFileName( SID_FILE_NAME, sFileName);
-        aArgs.Put( sfxFileName, sfxFileName.Which() );
+        aArgs.Put( sfxFileName );
 
     }
     if (  !sRange.isEmpty() )
     {
         SfxStringItem sfxRange( SID_PRINT_PAGES, sRange );
-        aArgs.Put( sfxRange, sfxRange.Which() );
+        aArgs.Put( sfxRange );
     }
     SfxBoolItem sfxSelection( SID_SELECTION, bSelection );
-    aArgs.Put( sfxSelection, sfxSelection.Which() );
+    aArgs.Put( sfxSelection );
     SfxBoolItem sfxAsync( SID_ASYNCHRON, false );
-    aArgs.Put( sfxAsync, sfxAsync.Which() );
+    aArgs.Put( sfxAsync );
     SfxDispatcher* pDispatcher = pViewFrame->GetDispatcher();
 
     if ( !pDispatcher )
@@ -401,7 +374,7 @@ void PrintOutHelper( SfxViewShell const * pViewShell, const uno::Any& From, cons
         if ( !pViewFrame->GetFrame().IsInPlace() )
         {
             // #TODO is this necessary ( calc specific )
-//                  SC_MOD()->InputEnterHandler();
+//                  ScModule::get()->InputEnterHandler();
             pViewFrame->GetDispatcher()->Execute( SID_VIEWSHELL1, SfxCallMode::SYNCHRON );
             WaitUntilPreviewIsClosed( pViewFrame );
         }
@@ -444,7 +417,7 @@ void WaitUntilPreviewIsClosed( SfxViewFrame* pViewFrame )
 
 bool extractBoolFromAny( const uno::Any& rAny )
 {
-    switch( rAny.getValueType().getTypeClass() )
+    switch( rAny.getValueTypeClass() )
     {
         case uno::TypeClass_BOOLEAN:
             return rAny.get< bool >();
@@ -460,18 +433,18 @@ bool extractBoolFromAny( const uno::Any& rAny )
             return rAny.get< sal_Int64 >() != 0;
         default:;
     }
-    throw uno::RuntimeException( "Invalid type, cannot convert to boolean." , nullptr );
+    throw uno::RuntimeException( u"Invalid type, cannot convert to boolean."_ustr , nullptr );
 }
 
 OUString extractStringFromAny( const uno::Any& rAny, bool bUppercaseBool )
 {
-    switch( rAny.getValueType().getTypeClass() )
+    switch( rAny.getValueTypeClass() )
     {
         case uno::TypeClass_STRING:
             return rAny.get< OUString >();
         case uno::TypeClass_BOOLEAN:
             return bUppercaseBool ?
-                (rAny.get< bool >() ? OUString(  "TRUE"  ) : OUString(  "FALSE"  )) :
+                (rAny.get< bool >() ? u"TRUE"_ustr : u"FALSE"_ustr) :
                 OUString::boolean( rAny.get< bool >() );
         case uno::TypeClass_FLOAT:
             return OUString::number( rAny.get< float >() );
@@ -485,7 +458,7 @@ OUString extractStringFromAny( const uno::Any& rAny, bool bUppercaseBool )
             return OUString::number( rAny.get< sal_Int64 >() );
         default:;
     }
-    throw uno::RuntimeException( "Invalid type, cannot convert to string." , nullptr );
+    throw uno::RuntimeException( u"Invalid type, cannot convert to string."_ustr , nullptr );
 }
 
 OUString extractStringFromAny( const uno::Any& rAny, const OUString& rDefault, bool bUppercaseBool )
@@ -533,7 +506,7 @@ ContainerUtilities::FieldInList( const uno::Sequence< OUString >& SearchList, co
 
 static bool NeedEsc(sal_Unicode cCode)
 {
-    return OUString(".^$+\\|{}()").indexOf(cCode) != -1;
+    return u".^$+\\|{}()"_ustr.indexOf(cCode) != -1;
 }
 
 OUString VBAToRegexp(const OUString &rIn)
@@ -747,7 +720,7 @@ void setOrAppendPropertyValue( uno::Sequence< beans::PropertyValue >& aProp, con
     pProp[ nLength ].Value = aValue;
 }
 
-bool executeRunTimeLibrary(const std::u16string_view& rSbRtl_command, SbxArray* pParameters)
+bool executeRunTimeLibrary(std::u16string_view rSbRtl_command, SbxArray* pParameters)
 {
     StarBASIC* pBasic = dynamic_cast< StarBASIC* >(StarBASIC::GetActiveModule()->GetParent());
     if (!pBasic)
@@ -778,7 +751,7 @@ UserFormGeometryHelper::UserFormGeometryHelper(
     mbDialog( uno::Reference< awt::XDialog >( xControl, uno::UNO_QUERY ).is() )
 {
     if ( !xControl.is() )
-        throw uno::RuntimeException( "No control is provided!" );
+        throw uno::RuntimeException( u"No control is provided!"_ustr );
 
     mxWindow.set( xControl->getPeer(), uno::UNO_QUERY_THROW );
     mxModelProps.set( xControl->getModel(), uno::UNO_QUERY_THROW );
@@ -973,7 +946,7 @@ ShapeHelper::ShapeHelper( css::uno::Reference< css::drawing::XShape > _xShape)
     : xShape(std::move( _xShape ))
 {
     if( !xShape.is() )
-        throw css::uno::RuntimeException( "No valid shape for helper" );
+        throw css::uno::RuntimeException( u"No valid shape for helper"_ustr );
 }
 
 double ShapeHelper::getHeight() const
@@ -1078,9 +1051,11 @@ uno::Reference< XHelperInterface > getVBADocument( const uno::Reference< frame::
     uno::Reference< XHelperInterface > xIf;
     try
     {
-        uno::Reference< beans::XPropertySet > xDocProps( xModel, uno::UNO_QUERY_THROW );
+        uno::Reference< beans::XPropertySet > xDocProps( xModel, uno::UNO_QUERY );
+        if (!xDocProps)
+            return xIf;
         OUString aCodeName;
-        xDocProps->getPropertyValue( "CodeName" ) >>= aCodeName;
+        xDocProps->getPropertyValue( u"CodeName"_ustr ) >>= aCodeName;
         xIf = getUnoDocModule( aCodeName, getSfxObjShell( xModel ) );
     }
     catch (const uno::Exception&)
@@ -1094,7 +1069,7 @@ uno::Reference< XHelperInterface > getUnoDocModule( std::u16string_view aModName
     uno::Reference< XHelperInterface > xIf;
     if ( pShell )
     {
-        OUString sProj( "Standard" );
+        OUString sProj( u"Standard"_ustr );
         // GetBasicManager() causes a SolarMutex assertion failure in some use cases from
         // Automation, at least when opening a Calc Document through ooo::vba::excel::
         // XWorkbooks::Open(). Let's see if this check is a good way around that. It does seem that

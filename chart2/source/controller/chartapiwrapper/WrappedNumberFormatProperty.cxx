@@ -20,7 +20,7 @@
 #include "WrappedNumberFormatProperty.hxx"
 #include "Chart2ModelContact.hxx"
 #include <Axis.hxx>
-#include <com/sun/star/chart2/XAxis.hpp>
+#include <DataSeries.hxx>
 #include <com/sun/star/chart2/XDataSeries.hpp>
 #include <unonames.hxx>
 #include <utility>
@@ -47,7 +47,7 @@ void WrappedNumberFormatProperty::setPropertyValue( const Any& rOuterValue, cons
 {
     sal_Int32 nFormat = 0;
     if( ! (rOuterValue >>= nFormat) )
-        throw lang::IllegalArgumentException( "Property 'NumberFormat' requires value of type sal_Int32", nullptr, 0 );
+        throw lang::IllegalArgumentException( u"Property 'NumberFormat' requires value of type sal_Int32"_ustr, nullptr, 0 );
 
     if(xInnerPropertySet.is())
         xInnerPropertySet->setPropertyValue(getInnerName(), convertOuterToInnerValue(rOuterValue));
@@ -65,8 +65,8 @@ Any WrappedNumberFormatProperty::getPropertyValue( const Reference< beans::XProp
     {
         sal_Int32 nKey = 0;
         Reference< chart2::XDataSeries > xSeries( xInnerPropertySet, uno::UNO_QUERY );
-        if( xSeries.is() )
-            nKey = Chart2ModelContact::getExplicitNumberFormatKeyForSeries( xSeries );
+        if( ::chart::DataSeries* pDataSeries = dynamic_cast<DataSeries*>(xSeries.get()) )
+            nKey = pDataSeries->getExplicitNumberFormatKeyForDataLabel();
         else
         {
             rtl::Reference< Axis > xAxis = dynamic_cast<Axis*>(xInnerPropertySet.get());

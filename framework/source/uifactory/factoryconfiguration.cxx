@@ -55,10 +55,10 @@ static OUString getHashKeyFromStrings(
 //  XInterface, XTypeProvider
 
 ConfigurationAccess_ControllerFactory::ConfigurationAccess_ControllerFactory( const Reference< XComponentContext >& rxContext, OUString _sRoot ) :
-    m_aPropCommand( "Command" ),
-    m_aPropModule( "Module" ),
-    m_aPropController( "Controller" ),
-    m_aPropValue( "Value" ),
+    m_aPropCommand( u"Command"_ustr ),
+    m_aPropModule( u"Module"_ustr ),
+    m_aPropController( u"Controller"_ustr ),
+    m_aPropValue( u"Value"_ustr ),
     m_sRoot(std::move(_sRoot)),
     m_bConfigAccessInitialized( false )
 {
@@ -77,7 +77,7 @@ ConfigurationAccess_ControllerFactory::~ConfigurationAccess_ControllerFactory()
 OUString ConfigurationAccess_ControllerFactory::getServiceFromCommandModule( std::u16string_view rCommandURL, std::u16string_view rModule ) const
 {
     std::unique_lock g(m_mutex);
-    MenuControllerMap::const_iterator pIter = m_aMenuControllerMap.find( getHashKeyFromStrings( rCommandURL, rModule ));
+    auto pIter = m_aMenuControllerMap.find( getHashKeyFromStrings( rCommandURL, rModule ));
 
     if ( pIter != m_aMenuControllerMap.end() )
         return pIter->second.m_aImplementationName;
@@ -97,7 +97,7 @@ OUString ConfigurationAccess_ControllerFactory::getValueFromCommandModule( std::
 {
     std::unique_lock g(m_mutex);
 
-    MenuControllerMap::const_iterator pIter = m_aMenuControllerMap.find( getHashKeyFromStrings( rCommandURL, rModule ));
+    auto pIter = m_aMenuControllerMap.find( getHashKeyFromStrings( rCommandURL, rModule ));
 
     if ( pIter != m_aMenuControllerMap.end() )
         return pIter->second.m_aValue;

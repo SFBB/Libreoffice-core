@@ -48,13 +48,15 @@ ScMyValidation::ScMyValidation()
     nShowList(0),
     bShowErrorMessage(false),
     bShowInputMessage(false),
-    bIgnoreBlanks(false)
+    bIgnoreBlanks(false),
+    bCaseSensitive(false)
 {
 }
 
 bool ScMyValidation::IsEqual(const ScMyValidation& aVal) const
 {
     return aVal.bIgnoreBlanks == bIgnoreBlanks &&
+        aVal.bCaseSensitive == bCaseSensitive &&
         aVal.bShowInputMessage == bShowInputMessage &&
         aVal.bShowErrorMessage == bShowErrorMessage &&
         aVal.aBaseCell == aBaseCell &&
@@ -109,6 +111,7 @@ void ScMyValidationsContainer::AddValidation(const uno::Any& aTempAny,
     aValidation.bShowInputMessage = bShowInputMessage;
     aValidation.aValidationType = aValidationType;
     aValidation.bIgnoreBlanks = ::cppu::any2bool(xPropertySet->getPropertyValue(SC_UNONAME_IGNOREBL));
+    aValidation.bCaseSensitive = ::cppu::any2bool(xPropertySet->getPropertyValue(SC_UNONAME_ISCASE));
     xPropertySet->getPropertyValue(SC_UNONAME_SHOWLIST) >>= aValidation.nShowList;
     xPropertySet->getPropertyValue(SC_UNONAME_ERRALSTY) >>= aValidation.aAlertStyle;
     uno::Reference<sheet::XSheetCondition> xCondition(xPropertySet, uno::UNO_QUERY);
@@ -143,7 +146,7 @@ void ScMyValidationsContainer::AddValidation(const uno::Any& aTempAny,
     }
 }
 
-OUString ScMyValidationsContainer::GetCondition(ScXMLExport& rExport, const ScMyValidation& aValidation)
+OUString ScMyValidationsContainer::GetCondition(const ScDocument& rDoc, const ScXMLExport& rExport, const ScMyValidation& aValidation)
 {
     /* ATTENTION! Should the condition to not write sheet::ValidationType_ANY
      * ever be changed, adapt the conditional call of
@@ -249,7 +252,7 @@ OUString ScMyValidationsContainer::GetCondition(ScXMLExport& rExport, const ScMy
     }
     if (!sCondition.isEmpty())
     {
-        const formula::FormulaGrammar::Grammar eGrammar = rExport.GetDocument()->GetStorageGrammar();
+        const formula::FormulaGrammar::Grammar eGrammar = rDoc.GetStorageGrammar();
         sal_uInt16 nNamespacePrefix = (eGrammar == formula::FormulaGrammar::GRAM_ODFF ? XML_NAMESPACE_OF : XML_NAMESPACE_OOOC);
         sCondition = rExport.GetNamespaceMap().GetQNameByKey( nNamespacePrefix, sCondition, false );
     }
@@ -305,7 +308,7 @@ void ScMyValidationsContainer::WriteMessage(ScXMLExport& rExport,
     }
 }
 
-void ScMyValidationsContainer::WriteValidations(ScXMLExport& rExport)
+void ScMyValidationsContainer::WriteValidations(const ScDocument& rDoc, ScXMLExport& rExport)
 {
     if (aValidationVec.empty())
         return;
@@ -314,7 +317,7 @@ void ScMyValidationsContainer::WriteValidations(ScXMLExport& rExport)
     for (const auto& rValidation : aValidationVec)
     {
         rExport.AddAttribute(XML_NAMESPACE_TABLE, XML_NAME, rValidation.sName);
-        OUString sCondition(GetCondition(rExport, rValidation));
+        OUString sCondition(GetCondition(rDoc, rExport, rValidation));
         if (!sCondition.isEmpty())
         {
             rExport.AddAttribute(XML_NAMESPACE_TABLE, XML_CONDITION, sCondition);
@@ -322,6 +325,10 @@ void ScMyValidationsContainer::WriteValidations(ScXMLExport& rExport)
                 rExport.AddAttribute(XML_NAMESPACE_TABLE, XML_ALLOW_EMPTY_CELL, XML_TRUE);
             else
                 rExport.AddAttribute(XML_NAMESPACE_TABLE, XML_ALLOW_EMPTY_CELL, XML_FALSE);
+            // Validation Case Sensitive
+            if (rValidation.bCaseSensitive)
+                rExport.AddAttribute(XML_NAMESPACE_TABLE, XML_CASE_SENSITIVE, XML_TRUE);
+
             if (rValidation.aValidationType == sheet::ValidationType_LIST)
             {
                 switch (rValidation.nShowList)
@@ -340,7 +347,7 @@ void ScMyValidationsContainer::WriteValidations(ScXMLExport& rExport)
                 }
             }
         }
-        rExport.AddAttribute(XML_NAMESPACE_TABLE, XML_BASE_CELL_ADDRESS, GetBaseCellAddress(rExport.GetDocument(), rValidation.aBaseCell));
+        rExport.AddAttribute(XML_NAMESPACE_TABLE, XML_BASE_CELL_ADDRESS, GetBaseCellAddress(&rDoc, rValidation.aBaseCell));
         SvXMLElementExport aElemV(rExport, XML_NAMESPACE_TABLE, XML_CONTENT_VALIDATION, true, true);
         if (rValidation.bShowInputMessage || !rValidation.sInputMessage.isEmpty() || !rValidation.sInputTitle.isEmpty())
         {
@@ -386,12 +393,12 @@ void ScMyValidationsContainer::WriteValidations(ScXMLExport& rExport)
 
                         static constexpr OUString sScript(u"Script"_ustr);
                         uno::Sequence<beans::PropertyValue> aSeq( comphelper::InitPropertySequence({
-                                { "EventType", uno::Any(bScriptURL ? sScript : OUString("StarBasic")) },
+                                { "EventType", uno::Any(bScriptURL ? sScript : u"StarBasic"_ustr) },
                                 { "Library", uno::Any(OUString()) },
-                                { bScriptURL ? sScript : OUString("MacroName"), uno::Any(rValidation.sErrorTitle) }
+                                { bScriptURL ? sScript : u"MacroName"_ustr, uno::Any(rValidation.sErrorTitle) }
                             }));
                         // 2) export the sequence
-                        rExport.GetEventExport().ExportSingleEvent( aSeq, "OnError");
+                        rExport.GetEventExport().ExportSingleEvent( aSeq, u"OnError"_ustr);
                     }
                 }
                 break;
@@ -418,7 +425,7 @@ sal_Int32 ScMyDefaultStyles::GetStyleNameIndex(const ScFormatRangeStyles* pCellS
 }
 
 void ScMyDefaultStyles::FillDefaultStyles(const sal_Int32 nTable,
-    const sal_Int32 nLastRow, const sal_Int32 nLastCol,
+    const sal_Int32 nLastRow, sal_Int32 nLastCol,
     const ScFormatRangeStyles* pCellStyles, ScDocument* pDoc)
 {
     maColDefaults.clear();
@@ -427,7 +434,7 @@ void ScMyDefaultStyles::FillDefaultStyles(const sal_Int32 nTable,
         return ;
 
     SCTAB nTab = static_cast<SCTAB>(nTable);
-    pDoc->CreateColumnIfNotExists(nTab, nLastCol);
+    nLastCol = pDoc->ClampToAllocatedColumns(nTab, nLastCol);
     sal_Int32 nPos;
     ScMyDefaultStyleList* pDefaults = &maColDefaults;
     bool bPrevAutoStyle(false);
@@ -640,13 +647,11 @@ ScMyFormatRange::ScMyFormatRange()
 
 bool ScMyFormatRange::operator<(const ScMyFormatRange& rRange) const
 {
-    if (aRangeAddress.StartRow < rRange.aRangeAddress.StartRow)
+    if (aRangeAddress.Sheet < rRange.aRangeAddress.Sheet)
         return true;
-    else
-        if (aRangeAddress.StartRow == rRange.aRangeAddress.StartRow)
-            return (aRangeAddress.StartColumn < rRange.aRangeAddress.StartColumn);
-        else
-            return false;
+    if (aRangeAddress.Sheet > rRange.aRangeAddress.Sheet)
+        return false;
+    return aRangeAddress.StartRow < rRange.aRangeAddress.StartRow;
 }
 
 ScFormatRangeStyles::ScFormatRangeStyles()
@@ -656,16 +661,6 @@ ScFormatRangeStyles::ScFormatRangeStyles()
 
 ScFormatRangeStyles::~ScFormatRangeStyles()
 {
-}
-
-void ScFormatRangeStyles::AddNewTable(const sal_Int32 nTable)
-{
-    sal_Int32 nSize = aTables.size() - 1;
-    if (nTable > nSize)
-        for (sal_Int32 i = nSize; i < nTable; ++i)
-        {
-            aTables.emplace_back();
-        }
 }
 
 bool ScFormatRangeStyles::AddStyleName(OUString const & rString, sal_Int32& rIndex, const bool bIsAutoStyle)
@@ -752,12 +747,17 @@ sal_Int32 ScFormatRangeStyles::GetIndexOfStyleName(std::u16string_view rString, 
 sal_Int32 ScFormatRangeStyles::GetStyleNameIndex(const sal_Int32 nTable,
     const sal_Int32 nColumn, const sal_Int32 nRow, bool& bIsAutoStyle) const
 {
-    OSL_ENSURE(o3tl::make_unsigned(nTable) < aTables.size(), "wrong table");
+    ScMyFormatRange aNeedle;
+    aNeedle.aRangeAddress.Sheet = nTable;
+    aNeedle.aRangeAddress.StartRow = nRow;
     bIsAutoStyle = false;
-    if (o3tl::make_unsigned(nTable) >= aTables.size())
-        return -1;
-    for (const ScMyFormatRange & rFormatRange : aTables[nTable])
+    for (auto it = maFormatRanges.lower_bound(aNeedle); it != maFormatRanges.end(); ++it)
     {
+        const ScMyFormatRange& rFormatRange = *it;
+        if (rFormatRange.aRangeAddress.Sheet > nTable)
+            break;
+        if (rFormatRange.aRangeAddress.StartRow > nRow)
+            break;
         if ((rFormatRange.aRangeAddress.StartColumn <= nColumn) &&
             (rFormatRange.aRangeAddress.EndColumn >= nColumn) &&
             (rFormatRange.aRangeAddress.StartRow <= nRow) &&
@@ -773,18 +773,16 @@ sal_Int32 ScFormatRangeStyles::GetStyleNameIndex(const sal_Int32 nTable,
 sal_Int32 ScFormatRangeStyles::GetStyleNameIndex(const sal_Int32 nTable, const sal_Int32 nColumn, const sal_Int32 nRow,
     bool& bIsAutoStyle, sal_Int32& nValidationIndex, sal_Int32& nNumberFormat, const sal_Int32 nRemoveBeforeRow)
 {
-    OSL_ENSURE(o3tl::make_unsigned(nTable) < aTables.size(), "wrong table");
-    if (o3tl::make_unsigned(nTable) >= aTables.size())
-        return -1;
-    ScMyFormatRangeAddresses& rFormatRanges(aTables[nTable]);
-    ScMyFormatRangeAddresses::iterator aItr(rFormatRanges.begin());
-    ScMyFormatRangeAddresses::iterator aEndItr(rFormatRanges.end());
-    while (aItr != aEndItr)
+    ScMyFormatRange aNeedle;
+    aNeedle.aRangeAddress.Sheet = nTable;
+    for (auto aItr = maFormatRanges.lower_bound(aNeedle); aItr != maFormatRanges.end(); )
     {
-        if (((*aItr).aRangeAddress.StartColumn <= nColumn) &&
-            ((*aItr).aRangeAddress.EndColumn >= nColumn) &&
-            ((*aItr).aRangeAddress.StartRow <= nRow) &&
-            ((*aItr).aRangeAddress.EndRow >= nRow))
+        if (aItr->aRangeAddress.Sheet > nTable)
+            break;
+        if ((aItr->aRangeAddress.StartColumn <= nColumn) &&
+            (aItr->aRangeAddress.EndColumn >= nColumn) &&
+            (aItr->aRangeAddress.StartRow <= nRow) &&
+            (aItr->aRangeAddress.EndRow >= nRow))
         {
             bIsAutoStyle = aItr->bIsAutoStyle;
             nValidationIndex = aItr->nValidationIndex;
@@ -801,7 +799,7 @@ sal_Int32 ScFormatRangeStyles::GetStyleNameIndex(const sal_Int32 nTable, const s
         else
         {
             if ((*aItr).aRangeAddress.EndRow < nRemoveBeforeRow)
-                aItr = rFormatRanges.erase(aItr);
+                aItr = maFormatRanges.erase(aItr);
             else
                 ++aItr;
         }
@@ -813,13 +811,15 @@ void ScFormatRangeStyles::GetFormatRanges(const sal_Int32 nStartColumn, const sa
                     const sal_Int32 nTable, ScRowFormatRanges* pRowFormatRanges)
 {
     sal_Int32 nTotalColumns(nEndColumn - nStartColumn + 1);
-    OSL_ENSURE(o3tl::make_unsigned(nTable) < aTables.size(), "wrong table");
-    ScMyFormatRangeAddresses& rFormatRanges(aTables[nTable]);
-    ScMyFormatRangeAddresses::iterator aItr(rFormatRanges.begin());
-    ScMyFormatRangeAddresses::iterator aEndItr(rFormatRanges.end());
     sal_Int32 nColumns = 0;
-    while (aItr != aEndItr && nColumns < nTotalColumns)
+    ScMyFormatRange aNeedle;
+    aNeedle.aRangeAddress.Sheet = nTable;
+    for (auto aItr = maFormatRanges.lower_bound(aNeedle); aItr != maFormatRanges.end(); )
     {
+        if (aItr->aRangeAddress.Sheet > nTable)
+            break;
+        if (nColumns >= nTotalColumns)
+            break;
         if (((*aItr).aRangeAddress.StartRow <= nRow) &&
             ((*aItr).aRangeAddress.EndRow >= nRow))
         {
@@ -864,7 +864,7 @@ void ScFormatRangeStyles::GetFormatRanges(const sal_Int32 nStartColumn, const sa
         }
         else
             if(aItr->aRangeAddress.EndRow < nRow)
-                aItr = rFormatRanges.erase(aItr);
+                aItr = maFormatRanges.erase(aItr);
             else
                 ++aItr;
     }
@@ -881,9 +881,7 @@ void ScFormatRangeStyles::AddRangeStyleName(const table::CellRangeAddress& rCell
     aFormatRange.nValidationIndex = nValidationIndex;
     aFormatRange.nNumberFormat = nNumberFormat;
     aFormatRange.bIsAutoStyle = bIsAutoStyle;
-    OSL_ENSURE(o3tl::make_unsigned(rCellRangeAddress.Sheet) < aTables.size(), "wrong table");
-    ScMyFormatRangeAddresses& rFormatRanges(aTables[rCellRangeAddress.Sheet]);
-    rFormatRanges.push_back(aFormatRange);
+    maFormatRanges.insert(aFormatRange);
 }
 
 OUString & ScFormatRangeStyles::GetStyleNameByIndex(const sal_Int32 nIndex, const bool bIsAutoStyle)
@@ -892,12 +890,6 @@ OUString & ScFormatRangeStyles::GetStyleNameByIndex(const sal_Int32 nIndex, cons
         return aAutoStyleNames[nIndex];
     else
         return aStyleNames[nIndex];
-}
-
-void ScFormatRangeStyles::Sort()
-{
-    for (auto & rTable : aTables)
-        rTable.sort();
 }
 
 ScColumnRowStylesBase::ScColumnRowStylesBase()
@@ -916,27 +908,17 @@ sal_Int32 ScColumnRowStylesBase::AddStyleName(const OUString & rString)
 
 sal_Int32 ScColumnRowStylesBase::GetIndexOfStyleName(std::u16string_view rString, std::u16string_view rPrefix)
 {
-    sal_Int32 nPrefixLength(rPrefix.size());
-    std::u16string_view sTemp(rString.substr(nPrefixLength));
-    sal_Int32 nIndex(o3tl::toInt32(sTemp));
-    if (nIndex > 0 && o3tl::make_unsigned(nIndex-1) < aStyleNames.size() && aStyleNames.at(nIndex - 1) == rString)
-        return nIndex - 1;
-    else
+    if (std::u16string_view rest; o3tl::starts_with(rString, rPrefix, &rest))
     {
-        sal_Int32 i(0);
-        bool bFound(false);
-        while (!bFound && o3tl::make_unsigned(i) < aStyleNames.size())
-        {
-            if (aStyleNames.at(i) == rString)
-                bFound = true;
-            else
-                ++i;
-        }
-        if (bFound)
-            return i;
-        else
-            return -1;
+        sal_Int32 nIndex(o3tl::toInt32(rest));
+        if (nIndex > 0 && o3tl::make_unsigned(nIndex - 1) < aStyleNames.size() && aStyleNames[nIndex - 1] == rString)
+            return nIndex - 1;
     }
+
+    if (auto i = std::find(aStyleNames.begin(), aStyleNames.end(), rString); i != aStyleNames.end())
+        return std::distance(aStyleNames.begin(), i);
+
+    return -1;
 }
 
 OUString& ScColumnRowStylesBase::GetStyleNameByIndex(const sal_Int32 nIndex)
@@ -958,8 +940,7 @@ void ScColumnStyles::AddNewTable(const sal_Int32 nTable, const sal_Int32 nFields
     if (nTable > nSize)
         for (sal_Int32 i = nSize; i < nTable; ++i)
         {
-            ScMyColumnStyleVec aFieldsVec(nFields + 1, ScColumnStyle());
-            aTables.push_back(aFieldsVec);
+            aTables.emplace_back(nFields + 1, ScColumnStyle());
         }
 }
 
@@ -1029,7 +1010,7 @@ sal_Int32 ScRowStyles::GetStyleNameIndex(const sal_Int32 nTable, const sal_Int32
         return maCache.mnStyle;
 
     StylesType& r = *aTables[nTable];
-    if (!r.is_tree_valid())
+    if (!r.valid_tree())
         r.build_tree();
     sal_Int32 nStyle(0);
     sal_Int32 nStart(0), nEnd(0);

@@ -20,7 +20,6 @@
 #include "XMLIndexTitleTemplateContext.hxx"
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <sal/log.hxx>
@@ -75,14 +74,14 @@ void XMLIndexTitleTemplateContext::endFastElement(sal_Int32 )
     Any aAny;
 
     aAny <<= sContent.makeStringAndClear();
-    rTOCPropertySet->setPropertyValue("Title", aAny);
+    rTOCPropertySet->setPropertyValue(u"Title"_ustr, aAny);
 
     if (bStyleNameOK)
     {
         aAny <<= GetImport().GetStyleDisplayName(
                                 XmlStyleFamily::TEXT_PARAGRAPH,
                                 sStyleName );
-        rTOCPropertySet->setPropertyValue("ParaStyleHeading", aAny);
+        rTOCPropertySet->setPropertyValue(u"ParaStyleHeading"_ustr, aAny);
     }
 }
 

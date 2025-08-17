@@ -81,7 +81,7 @@
 #include <xfilter/xfparastyle.hxx>
 #include <o3tl/sorted_vector.hxx>
 #include <sal/log.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <algorithm>
 #include <memory>
@@ -258,7 +258,7 @@ double LwpSuperTableLayout::GetTableWidth()
 
     double dLeft    = GetMarginsValue(MARGIN_LEFT);
     double dRight   = GetMarginsValue(MARGIN_RIGHT);
-    return LwpTools::ConvertFromUnitsToMetric(nWidth)-dLeft-dRight;
+    return LwpTools::ConvertFromUnits(nWidth) - dLeft - dRight;
 
 }
 /**
@@ -342,7 +342,7 @@ void LwpSuperTableLayout::ApplyAlignment(XFTableStyle * pTableStyle)
     LwpPoint aPoint;
     if (LwpLayoutGeometry* pGeometry = GetGeometry())
         aPoint = pGeometry->GetOrigin();
-    double dXOffset = LwpTools::ConvertFromUnitsToMetric(aPoint.GetX());
+    double dXOffset = LwpTools::ConvertFromUnits(aPoint.GetX());
 
     // add left padding to alignment distance
     double dLeft = GetMarginsValue(MARGIN_LEFT);
@@ -800,15 +800,16 @@ void LwpTableLayout::ParseTable()
     {
         sal_uInt16 nStartHeadRow;
         sal_uInt16 nEndHeadRow;
-        pTableHeading->GetStartEndRow(nStartHeadRow,nEndHeadRow);
-        if (nStartHeadRow == 0)
+        pTableHeading->GetStartEndRow(nStartHeadRow, nEndHeadRow);
+        SAL_WARN_IF(nEndHeadRow == SAL_MAX_UINT16, "lwp", "invalid End Head Row of: " << nEndHeadRow);
+        if (nStartHeadRow == 0 && nEndHeadRow != SAL_MAX_UINT16)
         {
-            if (utl::ConfigManager::IsFuzzing() && nEndHeadRow - nStartHeadRow > 128)
+            if (comphelper::IsFuzzing() && nEndHeadRow - nStartHeadRow > 128)
             {
                 SAL_WARN("lwp", "truncating HeadingRow for fuzzing performance");
                 nEndHeadRow = nStartHeadRow + 128;
             }
-            nContentRow = ConvertHeadingRow(m_pXFTable,nStartHeadRow,nEndHeadRow+1);
+            nContentRow = ConvertHeadingRow(m_pXFTable, nStartHeadRow, o3tl::sanitizing_inc(nEndHeadRow));
         }
     }
 
@@ -916,12 +917,11 @@ void LwpTableLayout::SplitRowToCells(XFTable* pTmpTable, rtl::Reference<XFTable>
 
     //register style for heading row
     double fHeight = 0;
-    OUString styleName;
     std::unique_ptr<XFRowStyle> xRowStyle(new XFRowStyle);
     XFRow* pRow = pTmpTable->GetRow(1);
     if (!pRow)
         throw std::runtime_error("missing row");
-    styleName = pRow->GetStyleName();
+    OUString styleName = pRow->GetStyleName();
 
     // get settings of the row and assign them to new row style
     XFStyleManager* pXFStyleManager = LwpGlobalMgr::GetInstance()->GetXFStyleManager();
@@ -932,7 +932,8 @@ void LwpTableLayout::SplitRowToCells(XFTable* pTmpTable, rtl::Reference<XFTable>
     for (i=1;i<=nRowNum;i++)
     {
         styleName = pTmpTable->GetRow(i)->GetStyleName();
-        fHeight+=static_cast<XFRowStyle*>(pXFStyleManager->FindStyle(styleName))->GetRowHeight();
+        if (XFRowStyle* pRowStyle = static_cast<XFRowStyle*>(pXFStyleManager->FindStyle(styleName)))
+            fHeight+=pRowStyle->GetRowHeight();
     }
     if (m_nDirection & 0x0030)
     {
@@ -1285,7 +1286,7 @@ void LwpTableLayout::PostProcessParagraph(XFCell *pCell, sal_uInt16 nRowID, sal_
         }
     }
 
-    xOverStyle->SetStyleName("");
+    xOverStyle->SetStyleName(u""_ustr);
     OUString StyleName
         = pXFStyleManager->AddStyle(std::move(xOverStyle)).m_pStyle->GetStyleName();
 
@@ -1422,7 +1423,7 @@ void LwpTableLayout::ConvertDefaultRow(rtl::Reference<XFTable> const & pXFTable,
 void LwpTableLayout::SetCellsMap(sal_uInt16 nRow1, sal_uInt8 nCol1,
                                  sal_uInt16 nRow2, sal_uInt8 nCol2, XFCell* pXFCell)
 {
-    m_CellsMap.insert({{nRow1, nCol1}, {nRow2, nCol2}}, pXFCell);
+    m_CellsMap.insert({{nRow1, nCol1}, {nRow2, nCol2}}, XFCellListener(pXFCell));
 }
 
 /**

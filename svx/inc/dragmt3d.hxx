@@ -20,9 +20,8 @@
 #ifndef INCLUDED_SVX_INC_DRAGMT3D_HXX
 #define INCLUDED_SVX_INC_DRAGMT3D_HXX
 
-#include <svx/def3d.hxx>
+#include "def3d.hxx"
 #include <svx/svddrgmt.hxx>
-#include <svx/view3d.hxx>
 #include <basegfx/polygon/b3dpolypolygon.hxx>
 #include <basegfx/matrix/b3dhommatrix.hxx>
 
@@ -79,7 +78,7 @@ public:
     // for migration from XOR to overlay
     virtual void CreateOverlayGeometry(
         sdr::overlay::OverlayManager& rOverlayManager,
-        const sdr::contact::ObjectContact& rObjectContact) override;
+        const sdr::contact::ObjectContact& rObjectContact, bool IsGeometrySizeValid=true) override;
 };
 
 // Derivative of SdrDragMethod for spinning 3D objects

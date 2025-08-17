@@ -51,19 +51,19 @@ namespace sd {
 
 
 FuConstruct3dObject::FuConstruct3dObject (
-    ViewShell*  pViewSh,
+    ViewShell&  rViewSh,
     ::sd::Window*       pWin,
     ::sd::View*         pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest&     rReq)
-    : FuConstruct(pViewSh, pWin, pView, pDoc, rReq)
+    : FuConstruct(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuConstruct3dObject::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq, bool bPermanent )
+rtl::Reference<FuPoor> FuConstruct3dObject::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq, bool bPermanent )
 {
     FuConstruct3dObject* pFunc;
-    rtl::Reference<FuPoor> xFunc( pFunc = new FuConstruct3dObject( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( pFunc = new FuConstruct3dObject( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     pFunc->SetPermanent(bPermanent);
     return xFunc;
@@ -72,7 +72,7 @@ rtl::Reference<FuPoor> FuConstruct3dObject::Create( ViewShell* pViewSh, ::sd::Wi
 void FuConstruct3dObject::DoExecute( SfxRequest& rReq )
 {
     FuConstruct::DoExecute( rReq );
-    mpViewShell->GetViewShellBase().GetToolBarManager()->SetToolBar(
+    mrViewShell.GetViewShellBase().GetToolBarManager()->SetToolBar(
         ToolBarManager::ToolBarGroup::Function,
         ToolBarManager::msDrawingObjectToolBar);
 }
@@ -278,11 +278,6 @@ void FuConstruct3dObject::ImpPrepareBasic3DShape(E3dCompoundObject const * p3DOb
         }
         break;
 
-        case SID_3D_SPHERE:
-        {
-        }
-        break;
-
         case SID_3D_SHELL:
         case SID_3D_HALF_SPHERE:
         {
@@ -290,6 +285,7 @@ void FuConstruct3dObject::ImpPrepareBasic3DShape(E3dCompoundObject const * p3DOb
         }
         break;
 
+        case SID_3D_SPHERE:
         case SID_3D_CYLINDER:
         case SID_3D_CONE:
         case SID_3D_PYRAMID:
@@ -311,7 +307,7 @@ void FuConstruct3dObject::ImpPrepareBasic3DShape(E3dCompoundObject const * p3DOb
 
     pScene->SetTransform(aTransformation * pScene->GetTransform());
 
-    SfxItemSet aAttr (mpViewShell->GetPool());
+    SfxItemSet aAttr (mrViewShell.GetPool());
     pScene->SetMergedItemSetAndBroadcast(aAttr);
 }
 
@@ -326,7 +322,7 @@ bool FuConstruct3dObject::MouseButtonDown(const MouseEvent& rMEvt)
         mpWindow->CaptureMouse();
         sal_uInt16 nDrgLog = sal_uInt16 ( mpWindow->PixelToLogic(Size(mpView->GetDragThresholdPixels(),0)).Width() );
 
-        weld::WaitObject aWait(mpViewShell->GetFrameWeld());
+        weld::WaitObject aWait(mrViewShell.GetFrameWeld());
 
         rtl::Reference<E3dCompoundObject> p3DObj = ImpCreateBasic3DShape();
         rtl::Reference<E3dScene> pScene = mpView->SetCurrent3DObj(p3DObj.get());
@@ -338,7 +334,7 @@ bool FuConstruct3dObject::MouseButtonDown(const MouseEvent& rMEvt)
 
         if (pObj)
         {
-            SfxItemSet aAttr(mpDoc->GetPool());
+            SfxItemSet aAttr(mrDoc.GetPool());
             SetStyleSheet(aAttr, pObj);
 
             // extract LineStyle
@@ -381,13 +377,13 @@ bool FuConstruct3dObject::MouseButtonUp(const MouseEvent& rMEvt)
             ::tools::Rectangle aNewObjectRectangle(aClickPos, Size(nDefaultObjectSize, nDefaultObjectSize));
             rtl::Reference<SdrObject> pObjDefault = CreateDefaultObject(nSlotId, aNewObjectRectangle);
 
-            bReturn = mpView->InsertObjectAtView(pObjDefault.get(), *pPV);
+            bReturn = mpView->InsertObjectAtView(pObjDefault.get(), *pPV, SdrInsertFlags::SETDEFLAYER | SdrInsertFlags::SETDEFATTR);
         }
     }
     bReturn = FuConstruct::MouseButtonUp(rMEvt) || bReturn;
 
     if (!bPermanent)
-        mpViewShell->GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
+        mrViewShell.GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
 
     return bReturn;
 }
@@ -412,7 +408,7 @@ rtl::Reference<SdrObject> FuConstruct3dObject::CreateDefaultObject(const sal_uIn
     double fW(aVolume.getWidth());
     double fH(aVolume.getHeight());
     ::tools::Rectangle a3DRect(0, 0, static_cast<::tools::Long>(fW), static_cast<::tools::Long>(fH));
-    rtl::Reference< E3dScene > pScene(new E3dScene(*mpDoc));
+    rtl::Reference< E3dScene > pScene(new E3dScene(mrDoc));
 
     // copied code from E3dView::InitScene
     double fCamZ(aVolume.getMaxZ() + ((fW + fH) / 4.0));
@@ -428,7 +424,7 @@ rtl::Reference<SdrObject> FuConstruct3dObject::CreateDefaultObject(const sal_uIn
     pScene->InsertObject(p3DObj.get());
     pScene->NbcSetSnapRect(a3DRect);
     ImpPrepareBasic3DShape(p3DObj.get(), pScene.get());
-    SfxItemSet aAttr(mpDoc->GetPool());
+    SfxItemSet aAttr(mrDoc.GetPool());
     SetStyleSheet(aAttr, p3DObj.get());
     aAttr.Put(XLineStyleItem (drawing::LineStyle_NONE));
     p3DObj->SetMergedItemSet(aAttr);

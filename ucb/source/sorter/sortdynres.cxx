@@ -76,7 +76,7 @@ SortedDynamicResultSet::~SortedDynamicResultSet()
 
 OUString SAL_CALL SortedDynamicResultSet::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.SortedDynamicResultSet";
+    return u"com.sun.star.comp.ucb.SortedDynamicResultSet"_ustr;
 }
 
 sal_Bool SAL_CALL SortedDynamicResultSet::supportsService( const OUString& ServiceName )
@@ -86,7 +86,7 @@ sal_Bool SAL_CALL SortedDynamicResultSet::supportsService( const OUString& Servi
 
 css::uno::Sequence< OUString > SAL_CALL SortedDynamicResultSet::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.SortedDynamicResultSet" };
+    return { u"com.sun.star.ucb.SortedDynamicResultSet"_ustr };
 }
 
 // XComponent methods.
@@ -168,11 +168,14 @@ SortedDynamicResultSet::setListener( const Reference< XDynamicResultSetListener 
 void SAL_CALL
 SortedDynamicResultSet::connectToCache( const Reference< XDynamicResultSet > & xCache )
 {
-    if( mxListener.is() )
-        throw ListenerAlreadySetException();
+    {
+        std::unique_lock aGuard( maMutex );
+        if( mxListener.is() )
+            throw ListenerAlreadySetException();
 
-    if( mbStatic )
-        throw ListenerAlreadySetException();
+        if( mbStatic )
+            throw ListenerAlreadySetException();
+    }
 
     Reference< XSourceInitialization > xTarget( xCache, UNO_QUERY );
     if( xTarget.is() && m_xContext.is() )
@@ -263,7 +266,7 @@ void SortedDynamicResultSet::impl_notify( const ListEvent& Changes )
     Any  aRet;
 
     try {
-        aRet = pCurSet->getPropertyValue("IsRowCountFinal");
+        aRet = pCurSet->getPropertyValue(u"IsRowCountFinal"_ustr);
     }
     catch (const UnknownPropertyException&) {}
     catch (const WrappedTargetException&) {}
@@ -379,7 +382,7 @@ void SortedDynamicResultSet::SendNotify()
         }
 
         ListEvent aNewEvent;
-        aNewEvent.Changes = aActionList;
+        aNewEvent.Changes = std::move(aActionList);
 
         mxListener->notify( aNewEvent );
     }
@@ -406,7 +409,7 @@ SortedDynamicResultSetFactory::~SortedDynamicResultSetFactory()
 
 OUString SAL_CALL SortedDynamicResultSetFactory::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.SortedDynamicResultSetFactory";
+    return u"com.sun.star.comp.ucb.SortedDynamicResultSetFactory"_ustr;
 }
 
 sal_Bool SAL_CALL SortedDynamicResultSetFactory::supportsService( const OUString& ServiceName )
@@ -416,7 +419,7 @@ sal_Bool SAL_CALL SortedDynamicResultSetFactory::supportsService( const OUString
 
 css::uno::Sequence< OUString > SAL_CALL SortedDynamicResultSetFactory::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.SortedDynamicResultSetFactory" };
+    return { u"com.sun.star.ucb.SortedDynamicResultSetFactory"_ustr };
 }
 
 

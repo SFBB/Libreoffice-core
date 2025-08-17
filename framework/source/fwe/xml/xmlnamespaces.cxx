@@ -33,22 +33,20 @@ void XMLNamespaces::addNamespace( const OUString& aName, const OUString& aValue 
     OUString aNamespaceName( aName );
 
     // delete preceding "xmlns"
-    constexpr char aXMLAttributeNamespace[] = "xmlns";
-    if ( aNamespaceName.startsWith( aXMLAttributeNamespace ) )
+    if (std::u16string_view rest; aNamespaceName.startsWith("xmlns", &rest))
     {
-        constexpr sal_Int32 nXMLNamespaceLength = RTL_CONSTASCII_LENGTH(aXMLAttributeNamespace);
-        if ( aNamespaceName.getLength() == nXMLNamespaceLength )
+        if (rest.empty())
         {
             aNamespaceName.clear();
         }
-        else if ( aNamespaceName.getLength() >= nXMLNamespaceLength+2 )
+        else if (rest.size() > 1)
         {
-            aNamespaceName = aNamespaceName.copy( nXMLNamespaceLength+1 );
+            aNamespaceName = rest.substr(1);
         }
         else
         {
             // a xml namespace without name is not allowed (e.g. "xmlns:" )
-            throw SAXException( "A xml namespace without name is not allowed!", Reference< XInterface >(), Any() );
+            throw SAXException( u"A xml namespace without name is not allowed!"_ustr, Reference< XInterface >(), Any() );
         }
     }
 
@@ -56,7 +54,7 @@ void XMLNamespaces::addNamespace( const OUString& aName, const OUString& aValue 
     {
         // namespace should be reset - as xml draft states this is only allowed
         // for the default namespace - check and throw exception if check fails
-        throw SAXException( "Clearing xml namespace only allowed for default namespace!", Reference< XInterface >(), Any() );
+        throw SAXException( u"Clearing xml namespace only allowed for default namespace!"_ustr, Reference< XInterface >(), Any() );
     }
 
     if ( aNamespaceName.isEmpty() )
@@ -87,7 +85,7 @@ OUString XMLNamespaces::applyNSToAttributeName( const OUString& aName ) const
         if ( aName.getLength() <= index+1 )
         {
             // attribute with namespace but without name "namespace:" is not allowed!!
-            throw SAXException( "Attribute has no name only preceding namespace!", Reference< XInterface >(), Any() );
+            throw SAXException( u"Attribute has no name only preceding namespace!"_ustr, Reference< XInterface >(), Any() );
         }
         OUString aAttributeName = getNamespaceValue( aName.copy( 0, index )) + "^" + aName.subView( index+1);
         return aAttributeName;
@@ -121,7 +119,7 @@ OUString XMLNamespaces::applyNSToElementName( const OUString& aName ) const
         if ( aName.getLength() <= index+1 )
         {
             // attribute with namespace but without a name is not allowed (e.g. "cfg:" )
-            throw SAXException( "Attribute has no name only preceding namespace!", Reference< XInterface >(), Any() );
+            throw SAXException( u"Attribute has no name only preceding namespace!"_ustr, Reference< XInterface >(), Any() );
         }
         aElementName += aName.subView( index+1 );
     }
@@ -141,7 +139,7 @@ OUString const & XMLNamespaces::getNamespaceValue( const OUString& aNamespace ) 
         if ( p == m_aNamespaceMap.end() )
         {
             // namespace not defined => throw exception!
-            throw SAXException( "XML namespace used but not defined!", Reference< XInterface >(), Any() );
+            throw SAXException( u"XML namespace used but not defined!"_ustr, Reference< XInterface >(), Any() );
         }
         return p->second;
     }

@@ -689,7 +689,7 @@ void ScDPGroupTableData::ModifyFilterCriteria(vector<ScDPFilteredCache::Criterio
                         std::make_shared<ScDPGroupNumFilter>(std::move(aMatchValues), *pNumInfo);
                 }
 
-                aNewCriteria.push_back(aCri);
+                aNewCriteria.push_back(std::move(aCri));
             }
             else
             {
@@ -715,7 +715,7 @@ void ScDPGroupTableData::ModifyFilterCriteria(vector<ScDPFilteredCache::Criterio
                     std::make_shared<ScDPGroupDateFilter>(
                         std::move(aMatchValues), pDoc->GetFormatTable()->GetNullDate(), *pNumInfo);
 
-                aNewCriteria.push_back(aCri);
+                aNewCriteria.push_back(std::move(aCri));
             }
             else
             {
@@ -741,7 +741,7 @@ void ScDPGroupTableData::ModifyFilterCriteria(vector<ScDPFilteredCache::Criterio
                     pGrpItem->FillGroupFilter(*pGrpFilter);
                 }
 
-                aNewCriteria.push_back(aCri);
+                aNewCriteria.push_back(std::move(aCri));
             }
         }
     }

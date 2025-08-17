@@ -258,7 +258,7 @@ void SwHTMLParser::SetSpace( const Size& rPixSpace,
         if( rCSS1PropInfo.m_bLeftMargin )
         {
             // should be SvxLeftMarginItem... "cast" it
-            nLeftSpace = pLeft->GetTextLeft();
+            nLeftSpace = pLeft->ResolveTextLeft({});
             rCSS1PropInfo.m_bLeftMargin = false;
         }
         rCSS1ItemSet.ClearItem(RES_MARGIN_TEXTLEFT);
@@ -267,7 +267,7 @@ void SwHTMLParser::SetSpace( const Size& rPixSpace,
     {
         if( rCSS1PropInfo.m_bRightMargin )
         {
-            nRightSpace = pRight->GetRight();
+            nRightSpace = pRight->ResolveRight({});
             rCSS1PropInfo.m_bRightMargin = false;
         }
         rCSS1ItemSet.ClearItem(RES_MARGIN_RIGHT);
@@ -275,8 +275,8 @@ void SwHTMLParser::SetSpace( const Size& rPixSpace,
     if( nLeftSpace > 0 || nRightSpace > 0 )
     {
         SvxLRSpaceItem aLRItem( RES_LR_SPACE );
-        aLRItem.SetLeft( std::max<sal_Int32>(nLeftSpace, 0) );
-        aLRItem.SetRight( std::max<sal_Int32>(nRightSpace, 0) );
+        aLRItem.SetLeft(SvxIndentValue::twips(std::max<sal_Int32>(nLeftSpace, 0)));
+        aLRItem.SetRight(SvxIndentValue::twips(std::max<sal_Int32>(nRightSpace, 0)));
         rFlyItemSet.Put( aLRItem );
         if( nLeftSpace )
         {
@@ -453,7 +453,7 @@ bool SwHTMLParser::InsertEmbed()
     SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
     SvxCSS1PropertyInfo aPropInfo;
     if( HasStyleOptions( aStyle, aId, aClass ) )
-        ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo );
+        (void)ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo );
 
     // Convert the default values (except height/width, which is done by SetFrameSize())
     if( eVertOri==text::VertOrientation::NONE && eHoriOri==text::HoriOrientation::NONE )
@@ -552,13 +552,13 @@ bool SwHTMLParser::InsertEmbed()
             if ( xSet.is() )
             {
                 if( bHasURL )
-                    xSet->setPropertyValue("PluginURL", uno::Any( aURL ) );
+                    xSet->setPropertyValue(u"PluginURL"_ustr, uno::Any( aURL ) );
                 if( bHasType )
-                    xSet->setPropertyValue("PluginMimeType", uno::Any( aType ) );
+                    xSet->setPropertyValue(u"PluginMimeType"_ustr, uno::Any( aType ) );
 
                 uno::Sequence < beans::PropertyValue > aProps;
                 aCmdLst.FillSequence( aProps );
-                xSet->setPropertyValue("PluginCommands", uno::Any( aProps ) );
+                xSet->setPropertyValue(u"PluginCommands"_ustr, uno::Any( aProps ) );
 
             }
         }
@@ -596,7 +596,7 @@ bool SwHTMLParser::InsertEmbed()
                     {
                         uno::Sequence<beans::PropertyValue> aMedium = comphelper::InitPropertySequence(
                             { { "InputStream", uno::Any(xInStream) },
-                              { "URL", uno::Any(OUString("private:stream")) },
+                              { "URL", uno::Any(u"private:stream"_ustr) },
                               { "DocumentBaseURL", uno::Any(m_sBaseURL) } });
                         xObj = aCnt.InsertEmbeddedObject(aMedium, aName, &m_sBaseURL);
                     }
@@ -630,7 +630,7 @@ bool SwHTMLParser::InsertEmbed()
                     // Set media type of the native data.
                     uno::Reference<beans::XPropertySet> xOutStreamProps(xOutStream, uno::UNO_QUERY);
                     if (xOutStreamProps.is())
-                        xOutStreamProps->setPropertyValue("MediaType", uno::Any(aType));
+                        xOutStreamProps->setPropertyValue(u"MediaType"_ustr, uno::Any(aType));
                 }
             }
             xObj = aCnt.GetEmbeddedObject(aObjName);
@@ -667,18 +667,21 @@ bool SwHTMLParser::InsertEmbed()
     {
         // Request that the native data of the embedded object is not modified
         // during parsing.
-        uno::Sequence<beans::PropertyValue> aValues{ comphelper::makePropertyValue("StreamReadOnly",
+        uno::Sequence<beans::PropertyValue> aValues{ comphelper::makePropertyValue(u"StreamReadOnly"_ustr,
                                                                                    true) };
         uno::Sequence<uno::Any> aArguments{ uno::Any(aValues) };
         xObjInitialization->initialize(aArguments);
     }
+
+    SanitizeAnchor(aFrameSet);
+
     SwFrameFormat* pFlyFormat =
         m_xDoc->getIDocumentContentOperations().InsertEmbObject(*m_pPam,
                 ::svt::EmbeddedObjectRef(xObj, embed::Aspects::MSOLE_CONTENT),
                 &aFrameSet);
     if (xObjInitialization.is())
     {
-        uno::Sequence<beans::PropertyValue> aValues{ comphelper::makePropertyValue("StreamReadOnly",
+        uno::Sequence<beans::PropertyValue> aValues{ comphelper::makePropertyValue(u"StreamReadOnly"_ustr,
                                                                                    false) };
         uno::Sequence<uno::Any> aArguments{ uno::Any(aValues) };
         xObjInitialization->initialize(aArguments);
@@ -686,7 +689,7 @@ bool SwHTMLParser::InsertEmbed()
 
     // set name at FrameFormat
     if( !aName.isEmpty() )
-        pFlyFormat->SetFormatName( aName );
+        pFlyFormat->SetFormatName( UIName(aName) );
 
     // set the alternative text
     SwNoTextNode *pNoTextNd =
@@ -834,7 +837,7 @@ void SwHTMLParser::NewObject()
     SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
     SvxCSS1PropertyInfo aPropInfo;
     if( HasStyleOptions( aStyle, aId, aClass ) )
-        ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo );
+        (void)ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo );
 
     SfxItemSet& rFrameSet = m_pAppletImpl->GetItemSet();
     if( !IsNewDoc() )
@@ -964,7 +967,7 @@ void SwHTMLParser::InsertApplet()
     SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
     SvxCSS1PropertyInfo aPropInfo;
     if( HasStyleOptions( aStyle, aId, aClass ) )
-        ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo );
+        (void)ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo );
 
     SfxItemSet& rFrameSet = m_pAppletImpl->GetItemSet();
     if( !IsNewDoc() )
@@ -1120,23 +1123,23 @@ void SwHTMLParser::InsertFloatingFrame()
                 if (INetURLObject(sHRef).IsExoticProtocol())
                     NotifyMacroEventRead();
 
-                xSet->setPropertyValue("FrameURL", uno::Any( sHRef ) );
-                xSet->setPropertyValue("FrameName", uno::Any( aName ) );
+                xSet->setPropertyValue(u"FrameURL"_ustr, uno::Any( sHRef ) );
+                xSet->setPropertyValue(u"FrameName"_ustr, uno::Any( aName ) );
 
                 if ( eScroll == ScrollingMode::Auto )
-                    xSet->setPropertyValue("FrameIsAutoScroll",
+                    xSet->setPropertyValue(u"FrameIsAutoScroll"_ustr,
                         uno::Any( true ) );
                 else
-                    xSet->setPropertyValue("FrameIsScrollingMode",
+                    xSet->setPropertyValue(u"FrameIsScrollingMode"_ustr,
                         uno::Any( eScroll == ScrollingMode::Yes ) );
 
-                xSet->setPropertyValue("FrameIsBorder",
+                xSet->setPropertyValue(u"FrameIsBorder"_ustr,
                         uno::Any( bHasBorder ) );
 
-                xSet->setPropertyValue("FrameMarginWidth",
+                xSet->setPropertyValue(u"FrameMarginWidth"_ustr,
                     uno::Any( sal_Int32( aMargin.Width() ) ) );
 
-                xSet->setPropertyValue("FrameMarginHeight",
+                xSet->setPropertyValue(u"FrameMarginHeight"_ustr,
                     uno::Any( sal_Int32( aMargin.Height() ) ) );
             }
         }
@@ -1148,7 +1151,7 @@ void SwHTMLParser::InsertFloatingFrame()
     SfxItemSet aItemSet( m_xDoc->GetAttrPool(), m_pCSS1Parser->GetWhichMap() );
     SvxCSS1PropertyInfo aPropInfo;
     if( HasStyleOptions( aStyle, aId, aClass ) )
-        ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo );
+        (void)ParseStyleOptions( aStyle, aId, aClass, aItemSet, aPropInfo );
 
     // fetch the ItemSet
     SfxItemSetFixed<RES_FRMATR_BEGIN, RES_FRMATR_END-1> aFrameSet( m_xDoc->GetAttrPool() );
@@ -1162,6 +1165,8 @@ void SwHTMLParser::InsertFloatingFrame()
     Size aDfltSz( HTML_DFLT_APPLET_WIDTH, HTML_DFLT_APPLET_HEIGHT );
     SetFixSize( aSize, aDfltSz, bPercentWidth, bPercentHeight, aPropInfo, aFrameSet );
     SetSpace( aSpace, aItemSet, aPropInfo, aFrameSet );
+
+    SanitizeAnchor(aFrameSet);
 
     // and insert into the document
     SwFrameFormat* pFlyFormat =
@@ -1244,7 +1249,7 @@ SwHTMLWriter& OutHTML_FrameFormatOLENode( SwHTMLWriter& rWrt, const SwFrameForma
         rWrt.OutNewLine( true );
 
     if( !rFrameFormat.GetName().isEmpty() )
-        rWrt.OutImplicitMark( rFrameFormat.GetName(),
+        rWrt.OutImplicitMark( rFrameFormat.GetName().toString(),
                                   "ole" );
     uno::Any aAny;
     SvGlobalName aGlobName( xObj->getClassID() );
@@ -1256,11 +1261,10 @@ SwHTMLWriter& OutHTML_FrameFormatOLENode( SwHTMLWriter& rWrt, const SwFrameForma
 
         OUString aStr;
         OUString aURL;
-        aAny = xSet->getPropertyValue("PluginURL");
+        aAny = xSet->getPropertyValue(u"PluginURL"_ustr);
         if( (aAny >>= aStr) && !aStr.isEmpty() )
         {
-            aURL = URIHelper::simpleNormalizedMakeRelative( rWrt.GetBaseURL(),
-                      aStr);
+            aURL = rWrt.normalizeURL(aStr, false);
         }
 
         if( !aURL.isEmpty() )
@@ -1273,7 +1277,7 @@ SwHTMLWriter& OutHTML_FrameFormatOLENode( SwHTMLWriter& rWrt, const SwFrameForma
         }
 
         OUString aType;
-        aAny = xSet->getPropertyValue("PluginMimeType");
+        aAny = xSet->getPropertyValue(u"PluginMimeType"_ustr);
         if( (aAny >>= aType) && !aType.isEmpty() )
         {
             sOut.append(" " OOO_STRING_SVTOOLS_HTML_O_type "=\"");
@@ -1305,10 +1309,10 @@ SwHTMLWriter& OutHTML_FrameFormatOLENode( SwHTMLWriter& rWrt, const SwFrameForma
 
         // CODEBASE
         OUString aCd;
-        aAny = xSet->getPropertyValue("AppletCodeBase");
+        aAny = xSet->getPropertyValue(u"AppletCodeBase"_ustr);
         if( (aAny >>= aCd) && !aCd.isEmpty() )
         {
-            OUString sCodeBase( URIHelper::simpleNormalizedMakeRelative(rWrt.GetBaseURL(), aCd) );
+            OUString sCodeBase(rWrt.normalizeURL(aCd, false));
             if( !sCodeBase.isEmpty() )
             {
                 sOut.append(" " OOO_STRING_SVTOOLS_HTML_O_codebase "=\"");
@@ -1321,7 +1325,7 @@ SwHTMLWriter& OutHTML_FrameFormatOLENode( SwHTMLWriter& rWrt, const SwFrameForma
 
         // CODE
         OUString aClass;
-        aAny = xSet->getPropertyValue("AppletCode");
+        aAny = xSet->getPropertyValue(u"AppletCode"_ustr);
         aAny >>= aClass;
         sOut.append(" " OOO_STRING_SVTOOLS_HTML_O_code "=\"");
         rWrt.Strm().WriteOString( sOut );
@@ -1331,7 +1335,7 @@ SwHTMLWriter& OutHTML_FrameFormatOLENode( SwHTMLWriter& rWrt, const SwFrameForma
 
         // NAME
         OUString aAppletName;
-        aAny = xSet->getPropertyValue("AppletName");
+        aAny = xSet->getPropertyValue(u"AppletName"_ustr);
         aAny >>= aAppletName;
         if( !aAppletName.isEmpty() )
         {
@@ -1343,7 +1347,7 @@ SwHTMLWriter& OutHTML_FrameFormatOLENode( SwHTMLWriter& rWrt, const SwFrameForma
         }
 
         bool bScript = false;
-        aAny = xSet->getPropertyValue("AppletIsScript");
+        aAny = xSet->getPropertyValue(u"AppletIsScript"_ustr);
         aAny >>= bScript;
         if( bScript )
             sOut.append(" " OOO_STRING_SVTOOLS_HTML_O_mayscript);
@@ -1382,7 +1386,7 @@ SwHTMLWriter& OutHTML_FrameFormatOLENode( SwHTMLWriter& rWrt, const SwFrameForma
         // and write a </APPLET>
 
         uno::Sequence < beans::PropertyValue > aProps;
-        aAny = xSet->getPropertyValue("AppletCommands");
+        aAny = xSet->getPropertyValue(u"AppletCommands"_ustr);
         aAny >>= aProps;
 
         SvCommandList aCommands;
@@ -1442,7 +1446,7 @@ SwHTMLWriter& OutHTML_FrameFormatOLENode( SwHTMLWriter& rWrt, const SwFrameForma
         // write plug-ins parameters as options
 
         uno::Sequence < beans::PropertyValue > aProps;
-        aAny = xSet->getPropertyValue("PluginCommands");
+        aAny = xSet->getPropertyValue(u"PluginCommands"_ustr);
         aAny >>= aProps;
 
         SvCommandList aCommands;
@@ -1477,7 +1481,7 @@ SwHTMLWriter& OutHTML_FrameFormatOLENode( SwHTMLWriter& rWrt, const SwFrameForma
     return rWrt;
 }
 
-static void OutHTMLGraphic(SwHTMLWriter& rWrt, const SwFrameFormat& rFrameFormat, SwOLENode* pOLENd,
+static void OutHTMLGraphic(SwHTMLWriter& rWrt, const SwFrameFormat& rFrameFormat, const SwOLENode* pOLENd,
                            const Graphic& rGraphic, bool bObjectOpened, bool bInCntnr)
 {
     OUString aGraphicURL;
@@ -1522,15 +1526,16 @@ static void OutHTMLGraphic(SwHTMLWriter& rWrt, const SwFrameFormat& rFrameFormat
     HtmlFrmOpts nFlags = bInCntnr ? HtmlFrmOpts::GenImgAllMask : HtmlFrmOpts::GenImgMask;
     if (bObjectOpened)
         nFlags |= HtmlFrmOpts::Replacement;
-    HtmlWriter aHtml(rWrt.Strm(), rWrt.maNamespace);
+    HtmlWriter aHtml(rWrt.Strm(), rWrt.GetNamespace());
     OutHTML_ImageStart(aHtml, rWrt, rFrameFormat, aGraphicURL, rGraphic, pOLENd->GetTitle(),
-                       pOLENd->GetTwipSize(), nFlags, "ole", nullptr, aMimeType);
+                       pOLENd->GetTwipSize(), nFlags, "ole", nullptr, aMimeType, true);
     OutHTML_ImageEnd(aHtml, rWrt);
 }
 
 static void OutHTMLStartObject(SwHTMLWriter& rWrt, const OUString& rFileName, const OUString& rFileType)
 {
-    OUString aFileName = URIHelper::simpleNormalizedMakeRelative(rWrt.GetBaseURL(), rFileName);
+    // OutHTMLStartObject is only for own objects
+    OUString aFileName = rWrt.normalizeURL(rFileName, true);
 
     if (rWrt.IsLFPossible())
         rWrt.OutNewLine();
@@ -1550,7 +1555,7 @@ static void OutHTMLEndObject(SwHTMLWriter& rWrt)
 }
 
 static bool TrySaveFormulaAsPDF(SwHTMLWriter& rWrt, const SwFrameFormat& rFrameFormat,
-                                SwOLENode* pOLENd, bool bWriteReplacementGraphic, bool bInCntnr)
+                                const SwOLENode* pOLENd, bool bWriteReplacementGraphic, bool bInCntnr)
 {
     if (!rWrt.mbReqIF)
         return false;
@@ -1613,9 +1618,9 @@ SwHTMLWriter& OutHTML_FrameFormatOLENodeGrf( SwHTMLWriter& rWrt, const SwFrameFo
         OUString aFilter;
         if (uno::Reference<lang::XServiceInfo> xServiceInfo{ xStorable, uno::UNO_QUERY })
         {
-            if (xServiceInfo->supportsService("com.sun.star.sheet.SpreadsheetDocument"))
+            if (xServiceInfo->supportsService(u"com.sun.star.sheet.SpreadsheetDocument"_ustr))
                 aFilter = "HTML (StarCalc)";
-            else if (xServiceInfo->supportsService("com.sun.star.text.TextDocument"))
+            else if (xServiceInfo->supportsService(u"com.sun.star.text.TextDocument"_ustr))
                 aFilter = "HTML (StarWriter)";
         }
 
@@ -1627,10 +1632,10 @@ SwHTMLWriter& OutHTML_FrameFormatOLENodeGrf( SwHTMLWriter& rWrt, const SwFrameFo
                 SvMemoryStream aStream;
                 uno::Reference<io::XOutputStream> xOutputStream(new utl::OStreamWrapper(aStream));
                 utl::MediaDescriptor aMediaDescriptor;
-                aMediaDescriptor["FilterName"] <<= aFilter;
-                aMediaDescriptor["FilterOptions"] <<= OUString("SkipHeaderFooter");
-                aMediaDescriptor["OutputStream"] <<= xOutputStream;
-                xStorable->storeToURL("private:stream", aMediaDescriptor.getAsConstPropertyValueList());
+                aMediaDescriptor[u"FilterName"_ustr] <<= aFilter;
+                aMediaDescriptor[u"FilterOptions"_ustr] <<= u"SkipHeaderFooter"_ustr;
+                aMediaDescriptor[u"OutputStream"_ustr] <<= xOutputStream;
+                xStorable->storeToURL(u"private:stream"_ustr, aMediaDescriptor.getAsConstPropertyValueList());
                 SAL_WARN_IF(aStream.GetSize()>=o3tl::make_unsigned(SAL_MAX_INT32), "sw.html", "Stream can't fit in OString");
                 OString aData(static_cast<const char*>(aStream.GetData()), static_cast<sal_Int32>(aStream.GetSize()));
                 // Wrap output in a <span> tag to avoid 'HTML parser error: Unexpected end tag: p'
@@ -1649,17 +1654,14 @@ SwHTMLWriter& OutHTML_FrameFormatOLENodeGrf( SwHTMLWriter& rWrt, const SwFrameFo
     if (TrySaveFormulaAsPDF(rWrt, rFrameFormat, pOLENd, bWriteReplacementGraphic, bInCntnr))
         return rWrt;
 
-    if ( !pOLENd->GetGraphic() )
-    {
-        SAL_WARN("sw.html", "Unexpected missing OLE fallback graphic");
-        return rWrt;
-    }
-
-    Graphic aGraphic( *pOLENd->GetGraphic() );
+    // Missing fallback graphic must not give up exporting the document, and also must produce
+    // valid output (see OutHTMLGraphic)
+    const Graphic* pFallbackGraphic = pOLENd->GetGraphic();
+    Graphic aGraphic(pFallbackGraphic ? *pFallbackGraphic : Graphic());
 
     SwDocShell* pDocSh = rWrt.m_pDoc->GetDocShell();
     bool bObjectOpened = false;
-    OUString aRTFType = "text/rtf";
+    OUString aRTFType = u"text/rtf"_ustr;
     if (!rWrt.m_aRTFOLEMimeType.isEmpty())
     {
         aRTFType = rWrt.m_aRTFOLEMimeType;
@@ -1707,7 +1709,7 @@ SwHTMLWriter& OutHTML_FrameFormatOLENodeGrf( SwHTMLWriter& rWrt, const SwFrameFo
             // export it.
             pOLENd->GetTwipSize();
             SvMemoryStream aMemory;
-            tools::SvRef<SotStorage> pStorage = new SotStorage(aMemory);
+            rtl::Reference<SotStorage> pStorage = new SotStorage(aMemory);
             aOLEExp.ExportOLEObject(rOLEObj.GetObject(), *pStorage);
             pStorage->Commit();
             aMemory.Seek(0);
@@ -1740,7 +1742,7 @@ SwHTMLWriter& OutHTML_FrameFormatOLENodeGrf( SwHTMLWriter& rWrt, const SwFrameFo
 
             uno::Reference<beans::XPropertySet> xOutStreamProps(xInStream, uno::UNO_QUERY);
             if (xOutStreamProps.is())
-                xOutStreamProps->getPropertyValue("MediaType") >>= aFileType;
+                xOutStreamProps->getPropertyValue(u"MediaType"_ustr) >>= aFileType;
             if (!aRTFType.isEmpty())
             {
                 aFileType = aRTFType;

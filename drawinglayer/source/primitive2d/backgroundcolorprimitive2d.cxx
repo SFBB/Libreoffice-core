@@ -21,7 +21,7 @@
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
-#include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonRGBAPrimitive2D.hxx>
 #include <drawinglayer/geometry/viewinformation2d.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 
@@ -31,31 +31,32 @@ using namespace com::sun::star;
 
 namespace drawinglayer::primitive2d
 {
-        void BackgroundColorPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const
+        Primitive2DReference BackgroundColorPrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const
         {
             // transparency invalid or completely transparent, done
             if(getTransparency() < 0.0 || getTransparency() >= 1.0)
-                return;
+                return nullptr;
 
             // no viewport, not visible, done
             if(rViewInformation.getViewport().isEmpty())
-                return;
+                return nullptr;
 
             // create decompose geometry
             const basegfx::B2DPolygon aOutline(basegfx::utils::createPolygonFromRect(rViewInformation.getViewport()));
-            Primitive2DReference aDecompose(new PolyPolygonColorPrimitive2D(basegfx::B2DPolyPolygon(aOutline), getBColor()));
 
-            if(getTransparency() != 0.0)
+            if (getTransparency() <= 0.0)
             {
-                // if used, embed decompose geometry to unified transparency
-                Primitive2DContainer aContent { aDecompose };
-                aDecompose = Primitive2DReference(
-                    new UnifiedTransparencePrimitive2D(
-                        std::move(aContent),
-                        getTransparency()));
+                // no transparency
+                return Primitive2DReference {
+                    new PolyPolygonColorPrimitive2D(basegfx::B2DPolyPolygon(aOutline), getBColor()) };
             }
 
-            rContainer.push_back(aDecompose);
+            // if transparent, use PolyPolygonRGBAPrimitive2D
+            return Primitive2DReference {
+                new PolyPolygonRGBAPrimitive2D(
+                    basegfx::B2DPolyPolygon(aOutline),
+                    getBColor(),
+                    getTransparency()) };
         }
 
         BackgroundColorPrimitive2D::BackgroundColorPrimitive2D(
@@ -86,13 +87,13 @@ namespace drawinglayer::primitive2d
 
         void BackgroundColorPrimitive2D::get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const
         {
-            if(!getBuffered2DDecomposition().empty() && (maLastViewport != rViewInformation.getViewport()))
+            if(hasBuffered2DDecomposition() && (maLastViewport != rViewInformation.getViewport()))
             {
                 // conditions of last local decomposition have changed, delete
-                const_cast< BackgroundColorPrimitive2D* >(this)->setBuffered2DDecomposition(Primitive2DContainer());
+                const_cast< BackgroundColorPrimitive2D* >(this)->setBuffered2DDecomposition(nullptr);
             }
 
-            if(getBuffered2DDecomposition().empty())
+            if(!hasBuffered2DDecomposition())
             {
                 // remember ViewRange
                 const_cast< BackgroundColorPrimitive2D* >(this)->maLastViewport = rViewInformation.getViewport();

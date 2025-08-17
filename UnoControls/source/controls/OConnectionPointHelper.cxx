@@ -52,7 +52,6 @@ OConnectionPointHelper::~OConnectionPointHelper()
 }
 
 //  XInterface
-
 Any SAL_CALL OConnectionPointHelper::queryInterface( const Type& aType )
 {
     // Attention:
@@ -64,18 +63,15 @@ Any SAL_CALL OConnectionPointHelper::queryInterface( const Type& aType )
                                         )
                 );
 
-    // If searched interface not supported by this class ...
-    if ( !aReturn.hasValue() )
-    {
-        // ... ask baseclasses.
-        aReturn = OWeakObject::queryInterface( aType );
-    }
+    if (aReturn.hasValue())
+        return aReturn;
 
-    return aReturn;
+    // If searched interface not supported by this class ...
+    // ... ask baseclasses.
+    return OWeakObject::queryInterface(aType);
 }
 
 //  XInterface
-
 void SAL_CALL OConnectionPointHelper::acquire() noexcept
 {
     // Attention:
@@ -86,7 +82,6 @@ void SAL_CALL OConnectionPointHelper::acquire() noexcept
 }
 
 //  XInterface
-
 void SAL_CALL OConnectionPointHelper::release() noexcept
 {
     // Attention:
@@ -106,7 +101,7 @@ Type SAL_CALL OConnectionPointHelper::getConnectionType()
     // Set default return value, if method failed.
     if ( !impl_LockContainer() )
     {
-        throw RuntimeException("Container does not exist!");
+        throw RuntimeException(u"Container does not exist!"_ustr);
     }
 
     // If container reference valid, return right type of supported interfaces of THIS connectionpoint.
@@ -149,7 +144,7 @@ void SAL_CALL OConnectionPointHelper::advise( const Reference< XInterface >& xLi
     // Operation is permitted only, if reference to container is valid!
     if ( !impl_LockContainer() )
     {
-        throw RuntimeException("Container does not exist!");
+        throw RuntimeException(u"Container does not exist!"_ustr);
     }
     // Forward it to OConnectionPointHelperContainer!
     m_pContainerImplementation->advise( m_aInterfaceType, xListener );
@@ -166,7 +161,7 @@ void SAL_CALL OConnectionPointHelper::unadvise( const Reference< XInterface >& x
     // Operation is permitted only, if reference to container is valid!
     if ( !impl_LockContainer() )
     {
-        throw RuntimeException("Container does not exist!");
+        throw RuntimeException(u"Container does not exist!"_ustr);
 
     }
     // Forward it to OConnectionPointHelperContainer!
@@ -184,7 +179,7 @@ Sequence< Reference< XInterface > > SAL_CALL OConnectionPointHelper::getConnecti
     // Operation is permitted only, if reference to container is valid!
     if ( !impl_LockContainer() )
     {
-        throw RuntimeException("Container does not exist!");
+        throw RuntimeException(u"Container does not exist!"_ustr);
     }
     // Set default return value, if method failed.
     Sequence< Reference< XInterface > > seqReturnConnections;

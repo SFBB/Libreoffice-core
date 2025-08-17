@@ -36,6 +36,7 @@
 #include "shapelist.hxx"
 #include "misc/scopelock.hxx"
 #include "sddllapi.h"
+#include <tools/json_writer.hxx>
 
 namespace com::sun::star::animations {
     class XAnimationNode;
@@ -43,6 +44,7 @@ namespace com::sun::star::animations {
 
 class SfxStyleSheet;
 class SdDrawDocument;
+class SdrOutliner;
 class SdrTextObj;
 class SdPageLink;
 class SfxItemSet;
@@ -54,7 +56,6 @@ class Graphic;
 namespace sd
 {
     class MainSequence;
-    class Annotation;
 }
 
 namespace sd {
@@ -79,8 +80,6 @@ namespace sd {
 
         bool operator==( const HeaderFooterSettings& rSettings ) const;
     };
-
-    typedef std::vector< rtl::Reference< Annotation > > AnnotationVector;
 }
 
 namespace sd {
@@ -90,7 +89,7 @@ namespace sd {
     class UndoAttrObject;
 }
 
-class SD_DLLPUBLIC SdPage final : public FmFormPage, public SdrObjUserCall
+class SAL_DLLPUBLIC_RTTI SdPage final : public FmFormPage, public SdrObjUserCall
 {
     SdPage& operator=(const SdPage&) = delete;
     SdPage(const SdPage&) = delete;
@@ -123,8 +122,6 @@ friend class sd::UndoAttrObject;
     rtl_TextEncoding meCharSet;           ///< Text encoding
     sal_uInt16  mnPaperBin;               ///< PaperBin
     SdPageLink* mpPageLink;               ///< Page link (at left sides only)
-
-    sd::AnnotationVector    maAnnotations;
 
     /** holds the smil animation sequences for this page */
     css::uno::Reference< css::animations::XAnimationNode > mxAnimationNode;
@@ -167,16 +164,17 @@ public:
     sd::ShapeList&  GetPresentationShapeList() { return maPresentationShapeList; }
 
     void EnsureMasterPageDefaultBackground();
-    SdrObject* CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::tools::Rectangle& rRect);
-    rtl::Reference<SdrObject> CreateDefaultPresObj(PresObjKind eObjKind);
-    void            DestroyDefaultPresObj(PresObjKind eObjKind);
-    SdrObject*      GetPresObj(PresObjKind eObjKind, int nIndex = 1, bool bFuzzySearch = false );
+    SD_DLLPUBLIC SdrObject* CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::tools::Rectangle& rRect, const OUString& rCustomPrompt = OUString());
+    SD_DLLPUBLIC rtl::Reference<SdrObject> CreateDefaultPresObj(PresObjKind eObjKind);
+    SD_DLLPUBLIC void DestroyDefaultPresObj(PresObjKind eObjKind);
+    SD_DLLPUBLIC SdrObject* GetPresObj(PresObjKind eObjKind, int nIndex = 1, bool bFuzzySearch = false );
     PresObjKind     GetPresObjKind(SdrObject* pObj) const;
     OUString        GetPresObjText(PresObjKind eObjKind) const;
     SfxStyleSheet* GetStyleSheetForMasterPageBackground() const;
     SfxStyleSheet*  GetStyleSheetForPresObj(PresObjKind eObjKind) const;
-    sal_Int64       GetHashCode() const;
-    bool            RestoreDefaultText( SdrObject* pObj );
+    void            GetPageInfo(::tools::JsonWriter& jsonWriter);
+    void            NotifyPagePropertyChanges();
+    bool            RestoreDefaultText( SdrObject* pObj, const OUString& rStr ) override;
 
     /** @return true if the given SdrObject is inside the presentation object list */
     bool            IsPresObj(const SdrObject* pObj);
@@ -187,10 +185,10 @@ public:
     /** inserts the given SdrObject into the presentation object list */
     void            InsertPresObj(SdrObject* pObj, PresObjKind eKind );
 
-    void            SetAutoLayout(AutoLayout eLayout, bool bInit=false, bool bCreate=false);
+    SD_DLLPUBLIC void SetAutoLayout(AutoLayout eLayout, bool bInit=false, bool bCreate=false);
     AutoLayout      GetAutoLayout() const { return meAutoLayout; }
     void            CreateTitleAndLayout(bool bInit=false, bool bCreate=false);
-    SdrObject*      InsertAutoLayoutShape(SdrObject* pObj, PresObjKind eObjKind, bool bVertical, const ::tools::Rectangle& rRect, bool bInit);
+    SdrObject*      InsertAutoLayoutShape(SdrObject* pObj, PresObjKind eObjKind, bool bVertical, const ::tools::Rectangle& rRect, const OUString& rCustomPrompt, bool bInit);
 
     virtual void       NbcInsertObject(SdrObject* pObj, size_t nPos=SAL_MAX_SIZE) override;
     virtual rtl::Reference<SdrObject> NbcRemoveObject(size_t nObjNum) override;
@@ -253,7 +251,7 @@ public:
                          const ::tools::Rectangle& rOldBoundRect) override;
 
     void             SetLayoutName(const OUString& aName);
-    virtual OUString GetLayoutName() const override       { return maLayoutName; }
+    const OUString& GetLayoutName() const { return maLayoutName; }
 
     void            SetFileName(const OUString& aName) { maFileName = aName; }
     const OUString& GetFileName() const       { return maFileName; }
@@ -266,7 +264,7 @@ public:
     void            ScaleObjects(const Size& rNewPageSize, const ::tools::Rectangle& rNewBorderRect,
                          bool bScaleAllObj);
 
-    const OUString& GetName() const;
+    SD_DLLPUBLIC const OUString& GetName() const;
     OUString const & GetRealName() const { return FmFormPage::GetName(); };
 
     void            SetPresentationLayout(std::u16string_view rLayoutName,
@@ -317,10 +315,10 @@ public:
 
     /** Set the name of the page and broadcast a model change.
     */
-    void SetName (const OUString& rName);
+    SD_DLLPUBLIC void SetName(const OUString& rName, bool bUpdatePageRelativeURLs = true);
 
-    const sd::HeaderFooterSettings& getHeaderFooterSettings() const;
-    void setHeaderFooterSettings( const sd::HeaderFooterSettings& rNewSettings );
+    SD_DLLPUBLIC const sd::HeaderFooterSettings& getHeaderFooterSettings() const;
+    SD_DLLPUBLIC void setHeaderFooterSettings( const sd::HeaderFooterSettings& rNewSettings );
 
     /**
         @return true if the object from the ViewObjectContact should
@@ -345,7 +343,7 @@ public:
 
     /** @return the presentation style with the given helpid from this masterpage or this
         slides masterpage */
-    SdStyleSheet* getPresentationStyle( sal_uInt32 nHelpId ) const;
+    SD_DLLPUBLIC SdStyleSheet* getPresentationStyle( sal_uInt32 nHelpId ) const;
 
     /** removes all empty presentation objects from this slide */
     void RemoveEmptyPresentationObjects();
@@ -353,7 +351,7 @@ public:
     ::tools::Rectangle   GetTitleRect() const;
     ::tools::Rectangle   GetLayoutRect() const;
 
-    static void CalculateHandoutAreas( SdDrawDocument& rModel, AutoLayout eLayout, bool bHorizontal, std::vector< ::tools::Rectangle >& rAreas );
+    static void CalculateHandoutAreas( SdDrawDocument& rModel, AutoLayout eLayout, bool bHorizontal, std::vector< ::tools::Rectangle >& rAreas, Orientation eOrient );
 
     /** Set the "precious" flag to the given value.
     */
@@ -368,10 +366,13 @@ public:
     */
     bool IsPrecious() const { return mbIsPrecious; }
 
-    void createAnnotation( rtl::Reference< sd::Annotation >& xAnnotation );
-    void addAnnotation( const rtl::Reference< sd::Annotation >& xAnnotation, int nIndex );
-    void removeAnnotation( const rtl::Reference< sd::Annotation >& xAnnotation );
-    const sd::AnnotationVector& getAnnotations() const { return maAnnotations; }
+    SD_DLLPUBLIC rtl::Reference<sdr::annotation::Annotation> createAnnotation() override;
+    SD_DLLPUBLIC void addAnnotation(rtl::Reference<sdr::annotation::Annotation> const& xAnnotation, int nIndex = -1) override;
+    void addAnnotationNoNotify(rtl::Reference<sdr::annotation::Annotation> const& xAnnotation, int nIndex = -1) override;
+
+    SD_DLLPUBLIC void removeAnnotation(rtl::Reference<sdr::annotation::Annotation> const& xAnnotation) override;
+    void removeAnnotationNoNotify(rtl::Reference<sdr::annotation::Annotation> const& xAnnotation) override;
+
     bool Equals(const SdPage&) const;
     virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
     sal_uInt16 getPageId() const { return mnPageId; }
@@ -381,6 +382,9 @@ public:
      The pointers are temporary and should not be kept.
     */
     void getGraphicsForPrefetch(std::vector<Graphic*>& graphics) const;
+
+    static AutoLayout stringToAutoLayout(std::u16string_view rLayoutName);
+    static OUString autoLayoutToString(AutoLayout nLayoutId);
 
     static sal_uInt16 mnLastPageId;
 

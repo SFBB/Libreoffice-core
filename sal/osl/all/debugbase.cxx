@@ -22,6 +22,7 @@
 #include <osl/process.h>
 #include <osl/diagnose.hxx>
 #include <sal/log.hxx>
+#include <o3tl/environment.hxx>
 #include <o3tl/string_view.hxx>
 
 #include <algorithm>
@@ -34,12 +35,9 @@ const std::vector<OString>& StaticDebugBaseAddressFilter()
     static const std::vector<OString> theFilter = []()
     {
         std::vector<OString> vec;
-        rtl_uString * pStr = nullptr;
-        if (osl_getEnvironment( u"OSL_DEBUGBASE_STORE_ADDRESSES"_ustr.pData, &pStr )
-            == osl_Process_E_None)
+        OUString const str(o3tl::getEnvironment(u"OSL_DEBUGBASE_STORE_ADDRESSES"_ustr));
+        if (!str.isEmpty())
         {
-            OUString const str(pStr);
-            rtl_uString_release(pStr);
             sal_Int32 nIndex = 0;
             do {
                 vec.push_back( OUStringToOString(
@@ -69,8 +67,7 @@ extern "C" {
 #pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
 #endif
 
-osl::Mutex & SAL_CALL osl_detail_ObjectRegistry_getMutex()
-    SAL_THROW_EXTERN_C()
+osl::Mutex & SAL_CALL osl_detail_ObjectRegistry_getMutex() noexcept
 {
     static osl::Mutex aMutex;
     return aMutex;
@@ -79,8 +76,7 @@ osl::Mutex & SAL_CALL osl_detail_ObjectRegistry_getMutex()
 #pragma clang diagnostic pop
 #endif
 
-bool SAL_CALL osl_detail_ObjectRegistry_storeAddresses( char const* pName )
-    SAL_THROW_EXTERN_C()
+bool SAL_CALL osl_detail_ObjectRegistry_storeAddresses( char const* pName ) noexcept
 {
     std::vector<OString> const& rVec = StaticDebugBaseAddressFilter();
     if (rVec.empty())
@@ -95,8 +91,7 @@ bool SAL_CALL osl_detail_ObjectRegistry_storeAddresses( char const* pName )
 }
 
 bool SAL_CALL osl_detail_ObjectRegistry_checkObjectCount(
-    osl::detail::ObjectRegistryData const& rData, std::size_t nExpected )
-    SAL_THROW_EXTERN_C()
+    osl::detail::ObjectRegistryData const& rData, std::size_t nExpected ) noexcept
 {
     std::size_t nSize;
     if (rData.m_bStoreAddresses)
@@ -113,8 +108,7 @@ bool SAL_CALL osl_detail_ObjectRegistry_checkObjectCount(
 }
 
 void SAL_CALL osl_detail_ObjectRegistry_registerObject(
-    osl::detail::ObjectRegistryData & rData, void const* pObj )
-    SAL_THROW_EXTERN_C()
+    osl::detail::ObjectRegistryData & rData, void const* pObj ) noexcept
 {
     if (rData.m_bStoreAddresses) {
         osl::MutexGuard const guard( osl_detail_ObjectRegistry_getMutex() );
@@ -128,8 +122,7 @@ void SAL_CALL osl_detail_ObjectRegistry_registerObject(
 }
 
 void SAL_CALL osl_detail_ObjectRegistry_revokeObject(
-    osl::detail::ObjectRegistryData & rData, void const* pObj )
-    SAL_THROW_EXTERN_C()
+    osl::detail::ObjectRegistryData & rData, void const* pObj ) noexcept
 {
     if (rData.m_bStoreAddresses) {
         osl::MutexGuard const guard( osl_detail_ObjectRegistry_getMutex() );

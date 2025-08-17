@@ -101,7 +101,7 @@ OUString GetNewTempFileURL_Impl( const uno::Reference< uno::XComponentContext >&
     }
 
     if ( aResult.isEmpty() )
-        throw uno::RuntimeException("Cannot create tempfile.");
+        throw uno::RuntimeException(u"Cannot create tempfile."_ustr);
 
     return aResult;
 }
@@ -195,7 +195,7 @@ static void SetStreamMediaType_Impl( const uno::Reference< io::XStream >& xStrea
 static void LetCommonStoragePassBeUsed_Impl( const uno::Reference< io::XStream >& xStream )
 {
     uno::Reference< beans::XPropertySet > xPropSet( xStream, uno::UNO_QUERY_THROW );
-    xPropSet->setPropertyValue("UseCommonStoragePasswordEncryption",
+    xPropSet->setPropertyValue(u"UseCommonStoragePasswordEncryption"_ustr,
                                 uno::Any( true ) );
 }
 #ifdef _WIN32
@@ -353,7 +353,8 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToGetAcceptableFormat_Impl( 
 
 
 void OleEmbeddedObject::InsertVisualCache_Impl( const uno::Reference< io::XStream >& xTargetStream,
-                                                const uno::Reference< io::XStream >& xCachedVisualRepresentation )
+                                                const uno::Reference< io::XStream >& xCachedVisualRepresentation,
+                                                osl::ResettableMutexGuard& rGuard )
 {
     OSL_ENSURE( xTargetStream.is() && xCachedVisualRepresentation.is(), "Invalid arguments!" );
 
@@ -365,7 +366,7 @@ void OleEmbeddedObject::InsertVisualCache_Impl( const uno::Reference< io::XStrea
 
     uno::Reference< container::XNameContainer > xNameContainer(
             m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                    "com.sun.star.embed.OLESimpleStorage",
+                    u"com.sun.star.embed.OLESimpleStorage"_ustr,
                     aArgs, m_xContext ),
             uno::UNO_QUERY_THROW );
 
@@ -433,7 +434,7 @@ void OleEmbeddedObject::InsertVisualCache_Impl( const uno::Reference< io::XStrea
     xTempOutStream->writeBytes( aData );
 
     // get the size
-    awt::Size aSize = getVisualAreaSize( embed::Aspects::MSOLE_CONTENT );
+    awt::Size aSize = getVisualAreaSize_impl(embed::Aspects::MSOLE_CONTENT, rGuard);
     sal_Int32 nIndex = 0;
 
     // write width
@@ -483,7 +484,7 @@ void OleEmbeddedObject::InsertVisualCache_Impl( const uno::Reference< io::XStrea
         xCachedSeek->seek( 0 );
 
     // insert the result file as replacement image
-    OUString aCacheName = "\002OlePres000";
+    OUString aCacheName = u"\002OlePres000"_ustr;
     if ( xNameContainer->hasByName( aCacheName ) )
         xNameContainer->replaceByName( aCacheName, uno::Any( xTempFile ) );
     else
@@ -504,7 +505,7 @@ void OleEmbeddedObject::RemoveVisualCache_Impl( const uno::Reference< io::XStrea
                                      uno::Any(true) }; // do not create copy
     uno::Reference< container::XNameContainer > xNameContainer(
             m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                    "com.sun.star.embed.OLESimpleStorage",
+                    u"com.sun.star.embed.OLESimpleStorage"_ustr,
                     aArgs, m_xContext ),
             uno::UNO_QUERY_THROW );
 
@@ -565,7 +566,7 @@ bool OleEmbeddedObject::HasVisReplInStream()
                                                  uno::Any(true) }; // do not create copy
                 uno::Reference< container::XNameContainer > xNameContainer(
                         m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                                "com.sun.star.embed.OLESimpleStorage",
+                                u"com.sun.star.embed.OLESimpleStorage"_ustr,
                                 aArgs, m_xContext ),
                         uno::UNO_QUERY );
 
@@ -594,6 +595,7 @@ bool OleEmbeddedObject::HasVisReplInStream()
 
 uno::Reference< io::XStream > OleEmbeddedObject::TryToRetrieveCachedVisualRepresentation_Impl(
         const uno::Reference< io::XStream >& xStream,
+        osl::ResettableMutexGuard& rGuard,
         bool bAllowToRepair50 )
     noexcept
 {
@@ -610,7 +612,7 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToRetrieveCachedVisualRepres
         {
             xNameContainer.set(
                 m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                        "com.sun.star.embed.OLESimpleStorage",
+                        u"com.sun.star.embed.OLESimpleStorage"_ustr,
                         aArgs, m_xContext ),
                 uno::UNO_QUERY );
         }
@@ -657,7 +659,7 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToRetrieveCachedVisualRepres
             {
                 if ( bAllowToRepair50 && !xResult.is() )
                 {
-                    OUString aOrigContName( "Ole-Object" );
+                    OUString aOrigContName( u"Ole-Object"_ustr );
                     if ( xNameContainer->hasByName( aOrigContName ) )
                     {
                         uno::Reference< embed::XClassifiedObject > xClassified( xNameContainer, uno::UNO_QUERY_THROW );
@@ -697,7 +699,7 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToRetrieveCachedVisualRepres
 
 #ifdef _WIN32
                                     // retry to create the component after recovering
-                                    GetRidOfComponent();
+                                    GetRidOfComponent(&rGuard);
 
                                     try
                                     {
@@ -706,12 +708,12 @@ uno::Reference< io::XStream > OleEmbeddedObject::TryToRetrieveCachedVisualRepres
                                     }
                                     catch( const uno::Exception& )
                                     {
-                                        GetRidOfComponent();
+                                        GetRidOfComponent(&rGuard);
                                     }
 #endif
                                 }
 
-                                xResult = TryToRetrieveCachedVisualRepresentation_Impl( xStream );
+                                xResult = TryToRetrieveCachedVisualRepresentation_Impl( xStream, rGuard );
                             }
                         }
                     }
@@ -821,7 +823,7 @@ bool OleEmbeddedObject::SaveObject_Impl()
 
 bool OleEmbeddedObject::OnShowWindow_Impl( bool bShow )
 {
-    osl::ClearableMutexGuard aGuard(m_aMutex);
+    osl::ResettableMutexGuard aGuard(m_aMutex);
 
     bool bResult = false;
 
@@ -837,21 +839,19 @@ bool OleEmbeddedObject::OnShowWindow_Impl( bool bShow )
         m_nObjectState = embed::EmbedStates::ACTIVE;
         m_aVerbExecutionController.ObjectIsActive();
 
-        aGuard.clear();
-        StateChangeNotification_Impl( false, nOldState, m_nObjectState );
+        StateChangeNotification_Impl( false, nOldState, m_nObjectState, aGuard );
     }
     else if ( !bShow && m_nObjectState == embed::EmbedStates::ACTIVE )
     {
         m_nObjectState = embed::EmbedStates::RUNNING;
-        aGuard.clear();
-        StateChangeNotification_Impl( false, nOldState, m_nObjectState );
+        StateChangeNotification_Impl( false, nOldState, m_nObjectState, aGuard );
     }
 
     if ( m_xClientSite.is() )
     {
         try
         {
-            m_xClientSite->visibilityChanged( bShow );
+            ExecUnlocked([p = m_xClientSite, bShow] { p->visibilityChanged(bShow); }, aGuard);
             bResult = true;
         }
         catch( const uno::Exception& )
@@ -872,6 +872,7 @@ void OleEmbeddedObject::OnIconChanged_Impl()
 
 void OleEmbeddedObject::OnViewChanged_Impl()
 {
+    osl::ResettableMutexGuard aGuard(m_aMutex);
     if ( m_bDisposed )
         throw lang::DisposedException();
 
@@ -895,7 +896,7 @@ void OleEmbeddedObject::OnViewChanged_Impl()
         // The view is changed while the object is in running state, save the new object
         m_xCachedVisualRepresentation.clear();
         SaveObject_Impl();
-        MakeEventListenerNotification_Impl( "OnVisAreaChanged" );
+        MakeEventListenerNotification_Impl( "OnVisAreaChanged", aGuard );
     }
 
 }
@@ -903,6 +904,7 @@ void OleEmbeddedObject::OnViewChanged_Impl()
 
 void OleEmbeddedObject::OnClosed_Impl()
 {
+    osl::ResettableMutexGuard aGuard(m_aMutex);
     if ( m_bDisposed )
         throw lang::DisposedException();
 
@@ -910,7 +912,7 @@ void OleEmbeddedObject::OnClosed_Impl()
     {
         sal_Int32 nOldState = m_nObjectState;
         m_nObjectState = embed::EmbedStates::LOADED;
-        StateChangeNotification_Impl( false, nOldState, m_nObjectState );
+        StateChangeNotification_Impl( false, nOldState, m_nObjectState, aGuard );
     }
 }
 
@@ -1020,11 +1022,12 @@ uno::Reference< io::XOutputStream > OleEmbeddedObject::GetStreamForSaving()
 }
 
 
-void OleEmbeddedObject::StoreObjectToStream( uno::Reference< io::XOutputStream > const & xOutStream )
+void OleEmbeddedObject::StoreObjectToStream(uno::Reference<io::XOutputStream> const& xOutStream,
+                                            osl::ResettableMutexGuard& rGuard)
 {
     // this method should be used only on windows
     if ( m_pOleComponent )
-        m_pOleComponent->StoreOwnTmpIfNecessary();
+        ExecUnlocked([this] { m_pOleComponent->StoreOwnTmpIfNecessary(); }, rGuard);
 
     // now all the changes should be in temporary location
     if ( m_aTempURL.isEmpty() )
@@ -1059,21 +1062,24 @@ void OleEmbeddedObject::StoreToLocation_Impl(
                             const uno::Reference< embed::XStorage >& xStorage,
                             const OUString& sEntName,
                             const uno::Sequence< beans::PropertyValue >& lObjArgs,
-                            bool bSaveAs )
+                            bool bSaveAs, osl::ResettableMutexGuard& rGuard)
 {
+#ifndef _WIN32
+    (void)rGuard;
+#endif
     // TODO: use lObjArgs
     // TODO: exchange StoreVisualReplacement by SO file format version?
 
     if ( m_nObjectState == -1 )
     {
         // the object is still not loaded
-        throw embed::WrongStateException( "Can't store object without persistence!",
+        throw embed::WrongStateException( u"Can't store object without persistence!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
     }
 
     if ( m_bWaitSaveCompleted )
         throw embed::WrongStateException(
-                    "The object waits for saveCompleted() call!",
+                    u"The object waits for saveCompleted() call!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
 
     OSL_ENSURE( m_xParentStorage.is() && m_xObjectStream.is(), "The object has no valid persistence!" );
@@ -1110,7 +1116,7 @@ void OleEmbeddedObject::StoreToLocation_Impl(
 #ifdef _WIN32
         // if the object was NOT modified after storing it can be just copied
         // as if it was in loaded state
-      || ( m_pOleComponent && !m_pOleComponent->IsDirty() )
+        || (m_pOleComponent && !ExecUnlocked([p = m_pOleComponent] { return p->IsDirty(); }, rGuard))
 #endif
     )
     {
@@ -1160,7 +1166,7 @@ void OleEmbeddedObject::StoreToLocation_Impl(
         if ( !xOutStream.is() )
             throw io::IOException(); //TODO: access denied
 
-        StoreObjectToStream( xOutStream );
+        StoreObjectToStream(xOutStream, rGuard);
         bVisReplIsStored = true;
 
         if ( bSaveAs )
@@ -1170,7 +1176,7 @@ void OleEmbeddedObject::StoreToLocation_Impl(
             // is not changed by StoreTo action
 
             uno::Reference< io::XStream > xTmpCVRepresentation =
-                        TryToRetrieveCachedVisualRepresentation_Impl( xTargetStream );
+                        TryToRetrieveCachedVisualRepresentation_Impl( xTargetStream, rGuard );
 
             // the locally retrieved representation is always preferable
             if ( xTmpCVRepresentation.is() )
@@ -1201,7 +1207,7 @@ void OleEmbeddedObject::StoreToLocation_Impl(
         if ( bStoreVis )
         {
             if ( !xCachedVisualRepresentation.is() )
-                xCachedVisualRepresentation = TryToRetrieveCachedVisualRepresentation_Impl( xTargetStream );
+                xCachedVisualRepresentation = TryToRetrieveCachedVisualRepresentation_Impl( xTargetStream, rGuard );
 
             SAL_WARN_IF( !xCachedVisualRepresentation.is(), "embeddedobj.ole", "No representation is available!" );
 
@@ -1219,13 +1225,13 @@ void OleEmbeddedObject::StoreToLocation_Impl(
                 }
             }
 
-            InsertVisualCache_Impl( xTargetStream, xCachedVisualRepresentation );
+            InsertVisualCache_Impl(xTargetStream, xCachedVisualRepresentation, rGuard);
         }
         else
         {
             // the removed representation could be cached by this method
             if ( !xCachedVisualRepresentation.is() )
-                xCachedVisualRepresentation = TryToRetrieveCachedVisualRepresentation_Impl( xTargetStream );
+                xCachedVisualRepresentation = TryToRetrieveCachedVisualRepresentation_Impl( xTargetStream, rGuard );
 
             if (!m_bStreamReadOnly)
                 RemoveVisualCache_Impl(xTargetStream);
@@ -1235,7 +1241,7 @@ void OleEmbeddedObject::StoreToLocation_Impl(
     if ( bSaveAs )
     {
         m_bWaitSaveCompleted = true;
-        m_xNewObjectStream = xTargetStream;
+        m_xNewObjectStream = std::move(xTargetStream);
         m_xNewParentStorage = xStorage;
         m_aNewEntryName = sEntName;
         m_bNewVisReplInStream = bStoreVis;
@@ -1246,7 +1252,7 @@ void OleEmbeddedObject::StoreToLocation_Impl(
             if ( bNeedLocalCache )
                 m_xNewCachedVisRepl = GetNewFilledTempStream_Impl( xCachedVisualRepresentation->getInputStream() );
             else
-                m_xNewCachedVisRepl = xCachedVisualRepresentation;
+                m_xNewCachedVisRepl = std::move(xCachedVisualRepresentation);
         }
 
         // TODO: register listeners for storages above, in case they are disposed
@@ -1291,17 +1297,17 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
     // the only exception is object initialized from a stream,
     // the class ID will be detected from the stream
 
-    ::osl::MutexGuard aGuard( m_aMutex );
+    osl::ResettableMutexGuard aGuard( m_aMutex );
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
     if ( !xStorage.is() )
-        throw lang::IllegalArgumentException( "No parent storage is provided!",
+        throw lang::IllegalArgumentException( u"No parent storage is provided!"_ustr,
                                             static_cast< ::cppu::OWeakObject* >(this),
                                             1 );
 
     if ( sEntName.isEmpty() )
-        throw lang::IllegalArgumentException( "Empty element name is provided!",
+        throw lang::IllegalArgumentException( u"Empty element name is provided!"_ustr,
                                             static_cast< ::cppu::OWeakObject* >(this),
                                             2 );
 
@@ -1316,7 +1322,7 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
         // it can switch persistent representation only without initialization
 
         throw embed::WrongStateException(
-                    "Can't change persistent representation of activated object!",
+                    u"Can't change persistent representation of activated object!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
     }
 
@@ -1324,7 +1330,7 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
     {
         if ( nEntryConnectionMode != embed::EntryInitModes::NO_INIT )
             throw embed::WrongStateException(
-                        "The object waits for saveCompleted() call!",
+                        u"The object waits for saveCompleted() call!"_ustr,
                         static_cast< ::cppu::OWeakObject* >(this) );
         saveCompleted( m_xParentStorage != xStorage || m_aEntryName != sEntName );
     }
@@ -1375,7 +1381,7 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
             {
                 // TODO/LATER: detect classID of the object if possible
                 // means that the object inprocess server could not be successfully instantiated
-                GetRidOfComponent();
+                GetRidOfComponent(&aGuard);
             }
 
             m_nObjectState = embed::EmbedStates::LOADED;
@@ -1459,7 +1465,7 @@ void SAL_CALL OleEmbeddedObject::setPersistentEntry(
         // do nothing, the object has already switched it's persistence
     }
     else
-        throw lang::IllegalArgumentException( "Wrong connection mode is provided!",
+        throw lang::IllegalArgumentException( u"Wrong connection mode is provided!"_ustr,
                                     static_cast< ::cppu::OWeakObject* >(this),
                                     3 );
 
@@ -1482,13 +1488,13 @@ void SAL_CALL OleEmbeddedObject::storeToEntry( const uno::Reference< embed::XSto
     }
     // end wrapping related part ====================
 
-    ::osl::MutexGuard aGuard( m_aMutex );
+    ::osl::ResettableMutexGuard aGuard( m_aMutex );
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
     VerbExecutionControllerGuard aVerbGuard( m_aVerbExecutionController );
 
-    StoreToLocation_Impl( xStorage, sEntName, lObjArgs, false );
+    StoreToLocation_Impl( xStorage, sEntName, lObjArgs, false, aGuard );
 
     // TODO: should the listener notification be done?
 }
@@ -1509,13 +1515,13 @@ void SAL_CALL OleEmbeddedObject::storeAsEntry( const uno::Reference< embed::XSto
     }
     // end wrapping related part ====================
 
-    ::osl::MutexGuard aGuard( m_aMutex );
+    ::osl::ResettableMutexGuard aGuard( m_aMutex );
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
     VerbExecutionControllerGuard aVerbGuard( m_aVerbExecutionController );
 
-    StoreToLocation_Impl( xStorage, sEntName, lObjArgs, true );
+    StoreToLocation_Impl( xStorage, sEntName, lObjArgs, true, aGuard );
 
     // TODO: should the listener notification be done here or in saveCompleted?
 }
@@ -1533,14 +1539,14 @@ void SAL_CALL OleEmbeddedObject::saveCompleted( sal_Bool bUseNew )
     }
     // end wrapping related part ====================
 
-    osl::ClearableMutexGuard aGuard(m_aMutex);
+    osl::ResettableMutexGuard aGuard(m_aMutex);
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
     {
         // the object is still not loaded
-        throw embed::WrongStateException( "Can't store object without persistence!",
+        throw embed::WrongStateException( u"Can't store object without persistence!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
     }
 
@@ -1596,22 +1602,21 @@ void SAL_CALL OleEmbeddedObject::saveCompleted( sal_Bool bUseNew )
         {
             // the call will cache the size in case of success
             // probably it might need to be done earlier, while the object is in active state
-            getVisualAreaSize( embed::Aspects::MSOLE_CONTENT );
+            getVisualAreaSize_impl(embed::Aspects::MSOLE_CONTENT, aGuard);
         }
         catch( const uno::Exception& )
         {}
     }
 
-    aGuard.clear();
     if ( bUseNew )
     {
-        MakeEventListenerNotification_Impl( "OnSaveAsDone");
+        MakeEventListenerNotification_Impl( u"OnSaveAsDone"_ustr, aGuard);
 
         // the object can be changed only on windows
         // the notification should be done only if the object is not in loaded state
         if ( m_pOleComponent && m_nUpdateMode == embed::EmbedUpdateModes::ALWAYS_UPDATE && !bStoreLoaded )
         {
-            MakeEventListenerNotification_Impl( "OnVisAreaChanged");
+            MakeEventListenerNotification_Impl( u"OnVisAreaChanged"_ustr, aGuard);
         }
     }
 }
@@ -1634,7 +1639,7 @@ sal_Bool SAL_CALL OleEmbeddedObject::hasEntry()
 
     if ( m_bWaitSaveCompleted )
         throw embed::WrongStateException(
-                    "The object waits for saveCompleted() call!",
+                    u"The object waits for saveCompleted() call!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
 
     if ( m_xObjectStream.is() )
@@ -1662,13 +1667,13 @@ OUString SAL_CALL OleEmbeddedObject::getEntryName()
     if ( m_nObjectState == -1 )
     {
         // the object is still not loaded
-        throw embed::WrongStateException( "The object persistence is not initialized!",
+        throw embed::WrongStateException( u"The object persistence is not initialized!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
     }
 
     if ( m_bWaitSaveCompleted )
         throw embed::WrongStateException(
-                    "The object waits for saveCompleted() call!",
+                    u"The object waits for saveCompleted() call!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
 
     return m_aEntryName;
@@ -1691,7 +1696,7 @@ void SAL_CALL OleEmbeddedObject::storeOwn()
     // ask container to store the object, the container has to make decision
     // to do so or not
 
-    osl::ClearableMutexGuard aGuard(m_aMutex);
+    osl::ResettableMutexGuard aGuard(m_aMutex);
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
@@ -1700,13 +1705,13 @@ void SAL_CALL OleEmbeddedObject::storeOwn()
     if ( m_nObjectState == -1 )
     {
         // the object is still not loaded
-        throw embed::WrongStateException( "Can't store object without persistence!",
+        throw embed::WrongStateException( u"Can't store object without persistence!"_ustr,
                                     static_cast< ::cppu::OWeakObject* >(this) );
     }
 
     if ( m_bWaitSaveCompleted )
         throw embed::WrongStateException(
-                    "The object waits for saveCompleted() call!",
+                    u"The object waits for saveCompleted() call!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
 
     if ( m_bReadOnly )
@@ -1717,7 +1722,7 @@ void SAL_CALL OleEmbeddedObject::storeOwn()
     bool bStoreLoaded = true;
 
 #ifdef _WIN32
-    if ( m_nObjectState != embed::EmbedStates::LOADED && m_pOleComponent && m_pOleComponent->IsDirty() )
+    if ( m_nObjectState != embed::EmbedStates::LOADED && m_pOleComponent && ExecUnlocked([p = m_pOleComponent] { return p->IsDirty(); }, aGuard) )
     {
         bStoreLoaded = false;
 
@@ -1732,7 +1737,7 @@ void SAL_CALL OleEmbeddedObject::storeOwn()
             throw io::IOException(); //TODO: access denied
 
         // TODO: does this work for links too?
-        StoreObjectToStream( GetStreamForSaving() );
+        StoreObjectToStream(GetStreamForSaving(), aGuard);
 
         // the replacement is changed probably, and it must be in the object stream
         if ( !m_pOleComponent->IsWorkaroundActive() )
@@ -1747,17 +1752,17 @@ void SAL_CALL OleEmbeddedObject::storeOwn()
         {
             // the m_xCachedVisualRepresentation must be set or it should be already stored
             if ( m_xCachedVisualRepresentation.is() )
-                InsertVisualCache_Impl( m_xObjectStream, m_xCachedVisualRepresentation );
+                InsertVisualCache_Impl(m_xObjectStream, m_xCachedVisualRepresentation, aGuard);
             else
             {
-                m_xCachedVisualRepresentation = TryToRetrieveCachedVisualRepresentation_Impl( m_xObjectStream );
+                m_xCachedVisualRepresentation = TryToRetrieveCachedVisualRepresentation_Impl( m_xObjectStream, aGuard );
                 SAL_WARN_IF( !m_xCachedVisualRepresentation.is(), "embeddedobj.ole", "No representation is available!" );
             }
         }
         else
         {
             if ( !m_xCachedVisualRepresentation.is() )
-                m_xCachedVisualRepresentation = TryToRetrieveCachedVisualRepresentation_Impl( m_xObjectStream );
+                m_xCachedVisualRepresentation = TryToRetrieveCachedVisualRepresentation_Impl( m_xObjectStream, aGuard );
             RemoveVisualCache_Impl( m_xObjectStream );
         }
 
@@ -1772,20 +1777,18 @@ void SAL_CALL OleEmbeddedObject::storeOwn()
         {
             // the call will cache the size in case of success
             // probably it might need to be done earlier, while the object is in active state
-            getVisualAreaSize( embed::Aspects::MSOLE_CONTENT );
+            getVisualAreaSize_impl(embed::Aspects::MSOLE_CONTENT, aGuard);
         }
         catch( const uno::Exception& )
         {}
     }
 
-    aGuard.clear();
-
-    MakeEventListenerNotification_Impl( "OnSaveDone");
+    MakeEventListenerNotification_Impl( u"OnSaveDone"_ustr, aGuard);
 
     // the object can be changed only on Windows
     // the notification should be done only if the object is not in loaded state
     if ( m_pOleComponent && m_nUpdateMode == embed::EmbedUpdateModes::ALWAYS_UPDATE && !bStoreLoaded )
-        MakeEventListenerNotification_Impl( "OnVisAreaChanged");
+        MakeEventListenerNotification_Impl( u"OnVisAreaChanged"_ustr, aGuard);
 }
 
 
@@ -1807,13 +1810,13 @@ sal_Bool SAL_CALL OleEmbeddedObject::isReadonly()
     if ( m_nObjectState == -1 )
     {
         // the object is still not loaded
-        throw embed::WrongStateException( "The object persistence is not initialized!",
+        throw embed::WrongStateException( u"The object persistence is not initialized!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
     }
 
     if ( m_bWaitSaveCompleted )
         throw embed::WrongStateException(
-                    "The object waits for saveCompleted() call!",
+                    u"The object waits for saveCompleted() call!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
 
     return m_bReadOnly;
@@ -1843,13 +1846,13 @@ void SAL_CALL OleEmbeddedObject::reload(
     if ( m_nObjectState == -1 )
     {
         // the object is still not loaded
-        throw embed::WrongStateException( "The object persistence is not initialized!",
+        throw embed::WrongStateException( u"The object persistence is not initialized!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
     }
 
     if ( m_bWaitSaveCompleted )
         throw embed::WrongStateException(
-                    "The object waits for saveCompleted() call!",
+                    u"The object waits for saveCompleted() call!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
 
     // TODO:
@@ -1872,17 +1875,17 @@ void SAL_CALL OleEmbeddedObject::breakLink( const uno::Reference< embed::XStorag
     }
     // end wrapping related part ====================
 
-    ::osl::MutexGuard aGuard( m_aMutex );
+    osl::ResettableMutexGuard aGuard( m_aMutex );
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
     if ( !xStorage.is() )
-        throw lang::IllegalArgumentException( "No parent storage is provided!",
+        throw lang::IllegalArgumentException( u"No parent storage is provided!"_ustr,
                                             static_cast< ::cppu::OWeakObject* >(this),
                                             1 );
 
     if ( sEntName.isEmpty() )
-        throw lang::IllegalArgumentException( "Empty element name is provided!",
+        throw lang::IllegalArgumentException( u"Empty element name is provided!"_ustr,
                                             static_cast< ::cppu::OWeakObject* >(this),
                                             2 );
 
@@ -1891,7 +1894,7 @@ void SAL_CALL OleEmbeddedObject::breakLink( const uno::Reference< embed::XStorag
     {
         // it must be a linked initialized object
         throw embed::WrongStateException(
-                    "The object is not a valid linked object!",
+                    u"The object is not a valid linked object!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
     }
 
@@ -1900,7 +1903,7 @@ void SAL_CALL OleEmbeddedObject::breakLink( const uno::Reference< embed::XStorag
 
     if ( m_bWaitSaveCompleted )
         throw embed::WrongStateException(
-                    "The object waits for saveCompleted() call!",
+                    u"The object waits for saveCompleted() call!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
 
 
@@ -1924,7 +1927,7 @@ void SAL_CALL OleEmbeddedObject::breakLink( const uno::Reference< embed::XStorag
     }
 
     try {
-        GetRidOfComponent();
+        GetRidOfComponent(&aGuard);
     }
     catch (const uno::Exception&)
     {
@@ -2003,12 +2006,12 @@ OUString SAL_CALL OleEmbeddedObject::getLinkURL()
 
     if ( m_bWaitSaveCompleted )
         throw embed::WrongStateException(
-                    "The object waits for saveCompleted() call!",
+                    u"The object waits for saveCompleted() call!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
 
     if ( !m_bIsLink )
         throw embed::WrongStateException(
-                    "The object is not a link object!",
+                    u"The object is not a link object!"_ustr,
                     static_cast< ::cppu::OWeakObject* >(this) );
 
     // TODO: probably the link URL can be retrieved from OLE

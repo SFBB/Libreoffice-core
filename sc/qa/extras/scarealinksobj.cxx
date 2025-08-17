@@ -14,7 +14,6 @@
 #include <test/sheet/xarealinks.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XAreaLink.hpp>
 #include <com/sun/star/sheet/XAreaLinks.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
@@ -63,7 +62,7 @@ public:
 };
 
 ScAreaLinksObj::ScAreaLinksObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
     , XElementAccess(cppu::UnoType<sheet::XAreaLink>::get())
     , XIndexAccess(1)
 {
@@ -75,10 +74,11 @@ uno::Reference<uno::XInterface> ScAreaLinksObj::init()
     CPPUNIT_ASSERT_MESSAGE("no calc document", xDoc.is());
 
     uno::Reference<beans::XPropertySet> xPropSet(xDoc, uno::UNO_QUERY_THROW);
-    uno::Reference<sheet::XAreaLinks> xLinks(xPropSet->getPropertyValue("AreaLinks"),
+    uno::Reference<sheet::XAreaLinks> xLinks(xPropSet->getPropertyValue(u"AreaLinks"_ustr),
                                              uno::UNO_QUERY_THROW);
 
-    xLinks->insertAtPosition(table::CellAddress(1, 2, 3), "ScAreaLinksObj.ods", "A2:B5", "", "");
+    xLinks->insertAtPosition(table::CellAddress(1, 2, 3), u"ScAreaLinksObj.ods"_ustr, u"A2:B5"_ustr,
+                             u""_ustr, u""_ustr);
 
     return xLinks;
 }
@@ -86,7 +86,7 @@ uno::Reference<uno::XInterface> ScAreaLinksObj::init()
 void ScAreaLinksObj::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScAreaLinksObj);

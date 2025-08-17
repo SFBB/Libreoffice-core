@@ -30,21 +30,17 @@
 #include <com/sun/star/text/PageNumberType.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <xmloff/xmlictxt.hxx>
+#include <xmloff/XMLEventsImportContext.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/xmltkmap.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <vector>
-#include "txtfld.hxx"
 
 namespace com::sun::star {
-    namespace xml::sax { class XAttributeList; }
-    namespace text { class XTextField; }
-    namespace beans { class XPropertySet; struct PropertyValue; }
+    namespace beans { class XPropertySet; }
 }
 
 class SvXMLImport;
 class XMLTextImportHelper;
-class SvXMLTokenMap;
 
 /// abstract class for text field import
 class XMLTextFieldImportContext : public SvXMLImportContext
@@ -954,7 +950,7 @@ private:
     virtual void PrepareField(
         const css::uno::Reference<css::beans::XPropertySet> & xPropertySet) override;
 
-    static const char* MapBibliographyFieldName(sal_Int32 nElement);
+    static OUString MapBibliographyFieldName(sal_Int32 nElement);
 };
 
 /** Import an annotation field (<text:annotation>) */

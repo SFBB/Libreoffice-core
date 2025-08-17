@@ -31,12 +31,12 @@ namespace sd {
 
 ClientBoxEntry::ClientBoxEntry(ClientBox* pClientBox,
                                std::shared_ptr<ClientInfo> pClientInfo)
-    : m_xBuilder(Application::CreateBuilder(pClientBox->GetContainer(), "modules/simpress/ui/clientboxfragment.ui"))
-    , m_xContainer(m_xBuilder->weld_container("ClientboxFragment"))
-    , m_xDeviceName(m_xBuilder->weld_label("name"))
-    , m_xPinLabel(m_xBuilder->weld_label("pinlabel"))
-    , m_xPinBox(m_xBuilder->weld_entry("pin"))
-    , m_xDeauthoriseButton(m_xBuilder->weld_button("button"))
+    : m_xBuilder(Application::CreateBuilder(pClientBox->GetContainer(), u"modules/simpress/ui/clientboxfragment.ui"_ustr))
+    , m_xContainer(m_xBuilder->weld_container(u"ClientboxFragment"_ustr))
+    , m_xDeviceName(m_xBuilder->weld_label(u"name"_ustr))
+    , m_xPinLabel(m_xBuilder->weld_label(u"pinlabel"_ustr))
+    , m_xPinBox(m_xBuilder->weld_entry(u"pin"_ustr))
+    , m_xDeauthoriseButton(m_xBuilder->weld_button(u"button"_ustr))
     , m_xClientInfo(std::move(pClientInfo))
     , m_pClientBox(pClientBox)
 {
@@ -82,8 +82,7 @@ ClientBoxEntry* ClientBox::GetActiveEntry()
 
 void ClientBox::addEntry( const std::shared_ptr<ClientInfo>& pClientInfo )
 {
-    TClientBoxEntry xEntry = std::make_shared<ClientBoxEntry>(this, pClientInfo);
-    m_vEntries.push_back(xEntry);
+    m_vEntries.push_back(std::make_shared<ClientBoxEntry>(this, pClientInfo));
 }
 
 void ClientBox::setActive(ClientBoxEntry* pClientEntry)

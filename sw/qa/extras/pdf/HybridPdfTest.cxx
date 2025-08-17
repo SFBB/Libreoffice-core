@@ -10,6 +10,7 @@
 #include <swmodeltestbase.hxx>
 #include <docsh.hxx>
 #include <unotxdoc.hxx>
+#include <config_poppler.h>
 
 namespace
 {
@@ -17,58 +18,77 @@ class HybridPdfTest : public SwModelTestBase
 {
 public:
     HybridPdfTest()
-        : SwModelTestBase("/sw/qa/extras/pdf/data/")
+        : SwModelTestBase(u"/sw/qa/extras/pdf/data/"_ustr)
     {
     }
 
     void testNoHybridDataInPDF();
     void testHybridWithAdditionalStreams();
     void testHybridWithAdditionalStreamsAndAttachedFile();
+    void testHybridWithAttachedFileAndPass();
 
     CPPUNIT_TEST_SUITE(HybridPdfTest);
     CPPUNIT_TEST(testNoHybridDataInPDF);
     CPPUNIT_TEST(testHybridWithAdditionalStreams);
     CPPUNIT_TEST(testHybridWithAdditionalStreamsAndAttachedFile);
+    CPPUNIT_TEST(testHybridWithAttachedFileAndPass);
     CPPUNIT_TEST_SUITE_END();
 };
 
 void HybridPdfTest::testNoHybridDataInPDF()
 {
+#if ENABLE_PDFIMPORT
     // Load PDF document without attached ODT document
-    UnoApiXmlTest::load(createFileURL(u"PDFOnly.pdf"), nullptr);
-    CPPUNIT_ASSERT(mxComponent.is());
+    loadFromFile(u"PDFOnly.pdf");
     uno::Reference<lang::XServiceInfo> xServiceInfo(mxComponent, uno::UNO_QUERY_THROW);
     // Draw document is expected in this case - default when importing PDF
-    CPPUNIT_ASSERT(xServiceInfo->supportsService("com.sun.star.drawing.DrawingDocument"));
+    CPPUNIT_ASSERT(xServiceInfo->supportsService(u"com.sun.star.drawing.DrawingDocument"_ustr));
+#endif
 }
 
 void HybridPdfTest::testHybridWithAdditionalStreams()
 {
+#if ENABLE_PDFIMPORT
     // Load PDF document with an embedded ODT document
     // The ODT document is embedded in "/AdditionalStreams" structure that is in the PDF trailer
     createSwDoc("Hybrid_AdditionalStreamsOnly.pdf");
-    SwDoc* pDoc = getSwDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     // We can access the document text in a single paragraph that spans multiple rows
     // This wouldn't be possible with a PDF, so the opened document has to be ODT
-    CPPUNIT_ASSERT_EQUAL(OUString("He heard quiet steps behind him. \nThat didn't bode well."),
+    CPPUNIT_ASSERT_EQUAL(u"He heard quiet steps behind him. \nThat didn't bode well."_ustr,
                          getParagraph(1)->getString());
+#endif
 }
 
 void HybridPdfTest::testHybridWithAdditionalStreamsAndAttachedFile()
 {
+#if ENABLE_PDFIMPORT
     // Load PDF document with an embedded ODT document
     // The ODT document is embedded in "/AdditionalStreams" structure that is in the PDF trailer
     // and is included as an attached file conforming to the PDF specs
     createSwDoc("Hybrid_AdditionalStreamsAndPDFAttachedFile.pdf");
-    SwDoc* pDoc = getSwDoc();
-    CPPUNIT_ASSERT(pDoc);
 
     // We can access the document text in a single paragraph that spans multiple rows
     // This wouldn't be possible with a PDF, so the opened document has to be ODT
-    CPPUNIT_ASSERT_EQUAL(OUString("He heard quiet steps behind him. \nThat didn't bode well."),
+    CPPUNIT_ASSERT_EQUAL(u"He heard quiet steps behind him. \nThat didn't bode well."_ustr,
                          getParagraph(1)->getString());
+#endif
+}
+
+void HybridPdfTest::testHybridWithAttachedFileAndPass()
+{
+#if ENABLE_PDFIMPORT
+    // Load PDF document with an embedded ODT document
+    // The ODT document is embedded using an attached file conforming to the PDF specs
+    // it doesn't have the "/AdditionalStreams"
+    // The file is encrypted
+    createSwDoc("Hybrid_EmbeddedFileOnlyPDF20UAPasswordpop.pdf", "pop");
+
+    // We can access the document text in a single paragraph that spans multiple rows
+    // This wouldn't be possible with a PDF, so the opened document has to be ODT
+    CPPUNIT_ASSERT_EQUAL(u"He heard quiet steps behind him. \nThat didn't bode well."_ustr,
+                         getParagraph(1)->getString());
+#endif
 }
 
 } // end of anonymous namespace

@@ -11,11 +11,13 @@ $(eval $(call gb_StaticLibrary_StaticLibrary,zxcvbn-c))
 
 $(eval $(call gb_StaticLibrary_use_unpacked,zxcvbn-c,zxcvbn-c))
 
+$(eval $(call gb_StaticLibrary_set_warnings_disabled,zxcvbn-c))
+
 # zxcvbn-c static library depends on generation of dictionary nodes resulting in dict-src.h
 $(eval $(call gb_StaticLibrary_use_external_project,zxcvbn-c,zxcvbn-c,full))
 
 $(eval $(call gb_StaticLibrary_set_include,zxcvbn-c,\
-    -I$(call gb_UnpackedTarball_get_dir,zxcvbn-c)\
+    -I$(gb_UnpackedTarball_workdir)/zxcvbn-c\
     $$(INCLUDE)\
 ))
 

@@ -28,6 +28,7 @@
 #include <comphelper/servicehelper.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/weakref.hxx>
+#include <unotools/weakref.hxx>
 
 #include <rtl/ref.hxx>
 
@@ -96,7 +97,7 @@ class ScHeaderFooterTextData
 {
 private:
     std::unique_ptr<EditTextObject> mpTextObj;
-    css::uno::WeakReference<css::sheet::XHeaderFooterContent> xContentObj;
+    unotools::WeakReference<ScHeaderFooterContentObj> xContentObj;
     ScHeaderFooterPart          nPart;
     std::unique_ptr<ScEditEngineDefaulter>  pEditEngine;
     std::unique_ptr<SvxEditEngineForwarder> pForwarder;
@@ -106,7 +107,7 @@ public:
     ScHeaderFooterTextData(const ScHeaderFooterTextData&) = delete;
     const ScHeaderFooterTextData& operator=(const ScHeaderFooterTextData&) = delete;
     ScHeaderFooterTextData(
-        css::uno::WeakReference<css::sheet::XHeaderFooterContent> xContent, ScHeaderFooterPart nP, const EditTextObject* pTextObj);
+        unotools::WeakReference<ScHeaderFooterContentObj> xContent, ScHeaderFooterPart nP, const EditTextObject* pTextObj);
     ~ScHeaderFooterTextData();
 
                             // helper functions
@@ -116,7 +117,7 @@ public:
     ScEditEngineDefaulter*  GetEditEngine() { GetTextForwarder(); return pEditEngine.get(); }
 
     ScHeaderFooterPart      GetPart() const         { return nPart; }
-    css::uno::Reference<css::sheet::XHeaderFooterContent> GetContentObj() const { return xContentObj; }
+    rtl::Reference<ScHeaderFooterContentObj> GetContentObj() const { return xContentObj; }
 
     const EditTextObject* GetTextObject() const { return mpTextObj.get(); }
 };
@@ -142,7 +143,7 @@ private:
 
 public:
     ScHeaderFooterTextObj(
-        const css::uno::WeakReference<css::sheet::XHeaderFooterContent>& xContent, ScHeaderFooterPart nP, const EditTextObject* pTextObj);
+        const unotools::WeakReference<ScHeaderFooterContentObj>& xContent, ScHeaderFooterPart nP, const EditTextObject* pTextObj);
     virtual ~ScHeaderFooterTextObj() override;
 
     const EditTextObject* GetTextObject() const;
@@ -297,7 +298,7 @@ class ScSimpleEditSourceHelper
     std::unique_ptr<ScSimpleEditSource>     pOriginalSource;
 
 public:
-            ScSimpleEditSourceHelper();
+            ScSimpleEditSourceHelper(SfxItemPool* pEditEnginePool);
             ~ScSimpleEditSourceHelper();
 
     ScSimpleEditSource* GetOriginalSource() const   { return pOriginalSource.get(); }
@@ -307,7 +308,7 @@ public:
 class ScEditEngineTextObj final : public ScSimpleEditSourceHelper, public SvxUnoText
 {
 public:
-                        ScEditEngineTextObj();
+                        ScEditEngineTextObj(SfxItemPool* pEditEngineItemPool);
         virtual         ~ScEditEngineTextObj() noexcept override;
 
     void                SetText( const EditTextObject& rTextObject );

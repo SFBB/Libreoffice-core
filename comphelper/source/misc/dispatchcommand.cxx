@@ -31,15 +31,17 @@ using namespace css;
 
 namespace comphelper {
 
-bool dispatchCommand(const OUString& rCommand, const uno::Reference<css::frame::XFrame>& rFrame, const css::uno::Sequence<css::beans::PropertyValue>& rArguments, const uno::Reference<css::frame::XDispatchResultListener>& rListener)
+bool dispatchCommand(const OUString& rCommand,
+                     const uno::Reference<frame::XDispatchProvider>& xDispatchProvider,
+                     const uno::Sequence<beans::PropertyValue>& rArguments,
+                     const uno::Reference<frame::XDispatchResultListener>& xListener)
 {
-    uno::Reference<frame::XDispatchProvider> xDispatchProvider(rFrame, uno::UNO_QUERY);
     if (!xDispatchProvider.is())
         return false;
 
     util::URL aCommandURL;
     aCommandURL.Complete = rCommand;
-    uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
     uno::Reference<util::XURLTransformer> xParser = util::URLTransformer::create(xContext);
     xParser->parseStrict(aCommandURL);
 
@@ -48,12 +50,12 @@ bool dispatchCommand(const OUString& rCommand, const uno::Reference<css::frame::
         return false;
 
     // And do the work...
-    if (rListener.is())
+    if (xListener.is())
     {
         uno::Reference<frame::XNotifyingDispatch> xNotifyingDisp(xDisp, uno::UNO_QUERY);
         if (xNotifyingDisp.is())
         {
-            xNotifyingDisp->dispatchWithNotification(aCommandURL, rArguments, rListener);
+            xNotifyingDisp->dispatchWithNotification(aCommandURL, rArguments, xListener);
             return true;
         }
     }
@@ -63,17 +65,35 @@ bool dispatchCommand(const OUString& rCommand, const uno::Reference<css::frame::
     return true;
 }
 
-bool dispatchCommand(const OUString& rCommand, const css::uno::Sequence<css::beans::PropertyValue>& rArguments, const uno::Reference<css::frame::XDispatchResultListener>& rListener)
+bool dispatchCommand(const OUString& rCommand,
+                     const uno::Reference<frame::XFrame>& xFrame,
+                     const uno::Sequence<beans::PropertyValue>& rArguments,
+                     const uno::Reference<frame::XDispatchResultListener>& xListener)
+{
+    return dispatchCommand(rCommand, xFrame.query<frame::XDispatchProvider>(), rArguments, xListener);
+}
+
+bool dispatchCommand(const OUString& rCommand,
+                     const uno::Reference<frame::XController>& xController,
+                     const uno::Sequence<beans::PropertyValue>& rArguments,
+                     const uno::Reference<frame::XDispatchResultListener>& xListener)
+{
+    return dispatchCommand(rCommand, xController.query<frame::XDispatchProvider>(), rArguments, xListener);
+}
+
+bool dispatchCommand(const OUString& rCommand,
+                     const uno::Sequence<beans::PropertyValue>& rArguments,
+                     const uno::Reference<frame::XDispatchResultListener>& xListener)
 {
     // Target where we will execute the .uno: command
-    uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
     uno::Reference<frame::XDesktop2> xDesktop = frame::Desktop::create(xContext);
 
     uno::Reference<frame::XFrame> xFrame(xDesktop->getActiveFrame());
     if (!xFrame.is())
         xFrame = xDesktop;
 
-    return dispatchCommand(rCommand, xFrame, rArguments, rListener);
+    return dispatchCommand(rCommand, xFrame, rArguments, xListener);
 }
 
 } // namespace comphelper

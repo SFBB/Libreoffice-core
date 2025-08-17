@@ -33,7 +33,6 @@
 #include <subtotal.hxx>
 #include <markdata.hxx>
 #include <stringutil.hxx>
-#include <docpool.hxx>
 #include <cellvalue.hxx>
 #include <tokenarray.hxx>
 #include <clipcontext.hxx>
@@ -48,7 +47,6 @@
 #include <colorscale.hxx>
 #include <table.hxx>
 #include <editeng/brushitem.hxx>
-#include <editeng/colritem.hxx>
 
 #include <com/sun/star/i18n/LocaleDataItem2.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
@@ -63,7 +61,6 @@
 #include <svl/zforlist.hxx>
 #include <svl/zformat.hxx>
 #include <svl/sharedstringpool.hxx>
-#include <osl/diagnose.h>
 
 #include <cstdio>
 #include <refdata.hxx>
@@ -238,6 +235,7 @@ void ScColumn::Delete( SCROW nRow )
 void ScColumn::FreeAll()
 {
     maCells.event_handler().stop();
+    maCellNotes.event_handler().stop();
 
     auto maxRowCount = GetDoc().GetMaxRowCount();
     // Keep a logical empty range of 0-rDoc.MaxRow() at all times.
@@ -439,9 +437,9 @@ void ScColumn::StartListeningUnshared( const std::vector<SCROW>& rNewSharedRows 
     if (rNewSharedRows.empty() || rDoc.IsDelayedFormulaGrouping())
         return;
 
-    auto pPosSet = std::make_shared<sc::ColumnBlockPositionSet>(rDoc);
-    sc::StartListeningContext aStartCxt(rDoc, pPosSet);
-    sc::EndListeningContext aEndCxt(rDoc, pPosSet);
+    auto xPosSet = std::make_shared<sc::ColumnBlockPositionSet>(rDoc);
+    sc::StartListeningContext aStartCxt(rDoc, xPosSet);
+    sc::EndListeningContext aEndCxt(rDoc, std::move(xPosSet));
     if (rNewSharedRows.size() >= 2)
     {
         if(!rDoc.CanDelayStartListeningFormulaCells( this, rNewSharedRows[0], rNewSharedRows[1]))
@@ -581,9 +579,12 @@ void ScColumn::AttachFormulaCells( sc::StartListeningContext& rCxt, SCROW nRow1,
         if (rCell.IsShared())
         {
             nRow1 = std::min( nRow1, rCell.GetSharedTopRow());
-            if (nRow2 < rCell.GetSharedTopRow() + rCell.GetSharedLength())
+            SCROW nCellLen = rCell.GetSharedLength();
+            // coverity[ tainted_data_return : FALSE ] version 2023.12.2
+            const auto nEndRow = rCell.GetSharedTopRow() + nCellLen;
+            if (nRow2 < nEndRow)
             {
-                nRow2 = rCell.GetSharedTopRow() + rCell.GetSharedLength() - 1;
+                nRow2 = nEndRow - 1;
                 bEnlargedDown = true;
                 // Same end row is also enlarged, i.e. doesn't need to be
                 // checked for another group.
@@ -710,9 +711,9 @@ void ScColumn::AttachNewFormulaCell(
     {
         case sc::ConvertToGroupListening:
         {
-            auto pPosSet = std::make_shared<sc::ColumnBlockPositionSet>(rDocument);
-            sc::StartListeningContext aStartCxt(rDocument, pPosSet);
-            sc::EndListeningContext aEndCxt(rDocument, pPosSet);
+            auto xPosSet = std::make_shared<sc::ColumnBlockPositionSet>(rDocument);
+            sc::StartListeningContext aStartCxt(rDocument, xPosSet);
+            sc::EndListeningContext aEndCxt(rDocument, std::move(xPosSet));
             SCROW nStartRow, nEndRow;
             nStartRow = nEndRow = aPos.first->position + aPos.second;
             for (const SCROW nR : rNewSharedRows)
@@ -872,7 +873,7 @@ bool ScColumn::UpdateScriptType( sc::CellTextAttr& rAttr, SCROW nRow, sc::CellSt
     pPattern = GetPattern(nRow);
     const Color* pColor;
     sal_uInt32 nFormat = pPattern->GetNumberFormat(pFormatter, pCondSet);
-    OUString aStr = ScCellFormat::GetString(aCell, nFormat, &pColor, *pFormatter, rDocument);
+    OUString aStr = ScCellFormat::GetString(aCell, nFormat, &pColor, nullptr, rDocument);
 
     // Store the real script type to the array.
     rAttr.mnScriptType = rDocument.GetStringScriptType(aStr);
@@ -2044,9 +2045,9 @@ void ScColumn::MixData(
     CellStorageModified();
 }
 
-std::unique_ptr<ScAttrIterator> ScColumnData::CreateAttrIterator( SCROW nStartRow, SCROW nEndRow ) const
+ScAttrIterator ScColumnData::CreateAttrIterator( SCROW nStartRow, SCROW nEndRow ) const
 {
-    return std::make_unique<ScAttrIterator>( pAttrArray.get(), nStartRow, nEndRow, GetDoc().GetDefPattern() );
+    return ScAttrIterator( pAttrArray.get(), nStartRow, nEndRow, &GetDoc().getCellAttributeHelper().getDefaultCellAttribute() );
 }
 
 namespace {
@@ -2097,9 +2098,8 @@ namespace {
 void applyTextNumFormat( ScColumn& rCol, SCROW nRow, SvNumberFormatter* pFormatter )
 {
     sal_uInt32 nFormat = pFormatter->GetStandardFormat(SvNumFormatType::TEXT);
-    ScPatternAttr aNewAttrs(rCol.GetDoc().GetPool());
-    SfxItemSet& rSet = aNewAttrs.GetItemSet();
-    rSet.Put(SfxUInt32Item(ATTR_VALUE_FORMAT, nFormat));
+    ScPatternAttr aNewAttrs(rCol.GetDoc().getCellAttributeHelper());
+    aNewAttrs.ItemSetPut(SfxUInt32Item(ATTR_VALUE_FORMAT, nFormat));
     rCol.ApplyPattern(nRow, aNewAttrs);
 }
 
@@ -2197,7 +2197,7 @@ bool ScColumn::ParseString(
                 bool bForceFormatDate = (eNumFormatType == SvNumFormatType::DATE
                         || eNumFormatType == SvNumFormatType::DATETIME);
                 const SvNumberformat* pOldFormat = nullptr;
-                NfEvalDateFormat eEvalDateFormat = NF_EVALDATEFORMAT_INTL_FORMAT;
+                NfEvalDateFormat eEvalDateFormat = NfEvalDateFormat::InternationalThenFormat;
                 if (bForceFormatDate)
                 {
                     ScRefCellValue aCell = GetCellValue(nRow);
@@ -2215,7 +2215,7 @@ bool ScColumn::ParseString(
                             nIndex = aParam.mpNumFormatter->GetEditFormat(
                                     aCell.getValue(), nOldIndex, eNumFormatType, pOldFormat);
                             eEvalDateFormat = aParam.mpNumFormatter->GetEvalDateFormat();
-                            aParam.mpNumFormatter->SetEvalDateFormat( NF_EVALDATEFORMAT_FORMAT_INTL);
+                            aParam.mpNumFormatter->SetEvalDateFormat( NfEvalDateFormat::FormatThenInternational);
                         }
                     }
                     else
@@ -2358,6 +2358,11 @@ bool ScColumn::SetString( SCROW nRow, SCTAB nTabP, const OUString& rString,
 
 void ScColumn::SetEditText( SCROW nRow, std::unique_ptr<EditTextObject> pEditText )
 {
+    if (!pEditText)
+    {
+        return;
+    }
+
     pEditText->NormalizeString(GetDoc().GetSharedStringPool());
     std::vector<SCROW> aNewSharedRows;
     sc::CellStoreType::iterator it = GetPositionToInsert(nRow, aNewSharedRows, false);
@@ -2388,7 +2393,7 @@ void ScColumn::SetEditText( sc::ColumnBlockPosition& rBlockPos, SCROW nRow, std:
 
 void ScColumn::SetEditText( sc::ColumnBlockPosition& rBlockPos, SCROW nRow, const EditTextObject& rEditText )
 {
-    if (GetDoc().GetEditPool() == rEditText.GetPool())
+    if (GetDoc().GetEditEnginePool() == rEditText.GetPool())
     {
         SetEditText(rBlockPos, nRow, rEditText.Clone());
         return;
@@ -2404,7 +2409,7 @@ void ScColumn::SetEditText( sc::ColumnBlockPosition& rBlockPos, SCROW nRow, cons
 
 void ScColumn::SetEditText( SCROW nRow, const EditTextObject& rEditText, const SfxItemPool* pEditPool )
 {
-    if (pEditPool && GetDoc().GetEditPool() == pEditPool)
+    if (pEditPool && GetDoc().GetEditEnginePool() == pEditPool)
     {
         SetEditText(nRow, rEditText.Clone());
         return;
@@ -2566,11 +2571,11 @@ class FilterEntriesHandler
     bool mbFiltering;
     bool mbFilteredRow;
 
-    void processCell(const ScColumn& rColumn, SCROW nRow, ScRefCellValue& rCell, bool bIsEmptyCell=false)
+    void processCell(const ScColumn& rColumn, SCROW nRow, const ScRefCellValue& rCell, bool bIsEmptyCell=false)
     {
-        SvNumberFormatter* pFormatter = mrColumn.GetDoc().GetFormatTable();
-        sal_uLong nFormat = mrColumn.GetNumberFormat(mrColumn.GetDoc().GetNonThreadedContext(), nRow);
-        OUString aStr = ScCellFormat::GetInputString(rCell, nFormat, *pFormatter, mrColumn.GetDoc(), mbFiltering);
+        ScInterpreterContext& rContext = mrColumn.GetDoc().GetNonThreadedContext();
+        sal_uInt32 nFormat = mrColumn.GetNumberFormat(rContext, nRow);
+        OUString aStr = ScCellFormat::GetInputString(rCell, nFormat, &rContext, mrColumn.GetDoc(), mbFiltering);
 
         // Colors
         ScAddress aPos(rColumn.GetCol(), nRow, rColumn.GetTab());
@@ -2582,10 +2587,21 @@ class FilterEntriesHandler
 
         if (bIsEmptyCell)
         {
-            if (!mrFilterEntries.mbHasEmpties)
+            if (mbFilteredRow)
             {
-                mrFilterEntries.push_back(ScTypedStrData(OUString()));
-                mrFilterEntries.mbHasEmpties = true;
+                if (!mrFilterEntries.mbHasHiddenEmpties)
+                {
+                    mrFilterEntries.push_back(ScTypedStrData(OUString(), 0.0, 0.0, ScTypedStrData::Standard, false, true));
+                    mrFilterEntries.mbHasHiddenEmpties = true;
+                }
+            }
+            else
+            {
+                if (!mrFilterEntries.mbHasUnHiddenEmpties)
+                {
+                    mrFilterEntries.push_back(ScTypedStrData(OUString(), 0.0, 0.0, ScTypedStrData::Standard, false, false));
+                    mrFilterEntries.mbHasUnHiddenEmpties = true;
+                }
             }
             return;
         }
@@ -2614,7 +2630,7 @@ class FilterEntriesHandler
                     OUString aErr = ScGlobal::GetErrorString(nErr);
                     if (!aErr.isEmpty())
                     {
-                        mrFilterEntries.push_back(ScTypedStrData(std::move(aErr)));
+                        mrFilterEntries.push_back(ScTypedStrData(std::move(aErr), 0.0, 0.0, ScTypedStrData::Standard, false, mbFilteredRow));
                         return;
                     }
                 }
@@ -2626,7 +2642,7 @@ class FilterEntriesHandler
                 ;
         }
 
-        SvNumFormatType nType = pFormatter->GetType(nFormat);
+        SvNumFormatType nType = rContext.NFGetType(nFormat);
         bool bDate = false;
         if ((nType & SvNumFormatType::DATE) && !(nType & SvNumFormatType::TIME))
         {
@@ -2637,16 +2653,16 @@ class FilterEntriesHandler
             bDate = true;
             // Convert string representation to ISO 8601 date to eliminate
             // locale dependent behaviour later when filtering for dates.
-            sal_uInt32 nIndex = pFormatter->GetFormatIndex( NF_DATE_DIN_YYYYMMDD);
-            pFormatter->GetInputLineString( fVal, nIndex, aStr);
+            sal_uInt32 nIndex = rContext.NFGetFormatIndex( NF_DATE_DIN_YYYYMMDD);
+            aStr = rContext.NFGetInputLineString( fVal, nIndex);
         }
         else if (nType == SvNumFormatType::DATETIME)
         {
             // special case for datetime values.
             // Convert string representation to ISO 8601 (with blank instead of T) datetime
             // to eliminate locale dependent behaviour later when filtering for datetimes.
-            sal_uInt32 nIndex = pFormatter->GetFormatIndex(NF_DATETIME_ISO_YYYYMMDD_HHMMSS);
-            pFormatter->GetInputLineString(fVal, nIndex, aStr);
+            sal_uInt32 nIndex = rContext.NFGetFormatIndex(NF_DATETIME_ISO_YYYYMMDD_HHMMSS);
+            aStr = rContext.NFGetInputLineString(fVal, nIndex);
         }
         // store the formatted/rounded value for filtering
         if ((nFormat % SV_COUNTRY_LANGUAGE_OFFSET) != 0 && !bDate)
@@ -2703,35 +2719,72 @@ void ScColumn::GetFilterEntries(
 
 void ScColumn::GetBackColorFilterEntries(SCROW nRow1, SCROW nRow2, ScFilterEntries& rFilterEntries)
 {
-    Color aBackColor;
-    bool bCondBackColor = false;
-    ScAddress aCell(GetCol(), 0, GetTab());
-    ScConditionalFormat* pCondFormat = nullptr;
-
-    const SfxItemSet* pCondSet = nullptr;
-    const SvxBrushItem* pBrush = nullptr;
-    const ScPatternAttr* pPattern = nullptr;
-    const ScColorScaleFormat* pColFormat = nullptr;
-
     if (!GetDoc().ValidRow(nRow1) || !GetDoc().ValidRow(nRow2))
         return;
 
+    ScAddress aCell(GetCol(), 0, GetTab());
+    ScDocument& rDoc = GetDoc();
+    ScConditionalFormatList* pCondFormList = rDoc.GetCondFormList(aCell.Tab());
+    // cache the output of GetCondResult
+    const ScPatternAttr* pPrevPattern = nullptr;
+    ScRefCellValue aPrevCellValue;
+    Color aPrevPatternColor;
+    Color aPrevInsertColor;
+    ScConditionalFormat* pCondFormat = nullptr;
+    const ScCondFormatIndexes* pCondFormats = nullptr;
+    Color aBackgroundBrushColor;
+    SCROW nPatternStartRow = -1;
+    SCROW nPatternEndRow = -1;
     while (nRow1 <= nRow2)
     {
         aCell.SetRow(nRow1);
-        pPattern = GetDoc().GetPattern(aCell.Col(), aCell.Row(), aCell.Tab());
-        if (pPattern)
+
+        Color aBackColor;
+        bool bCondBackColor = false;
+
+        if (nRow1 <= nPatternEndRow)
+            ; // then the previous value of pPattern and pCondFormat and pCondFormats and aBackgroundBrushColor is still valid
+        else
         {
-            if (!pPattern->GetItem(ATTR_CONDITIONAL).GetCondFormatData().empty())
+            if (const ScPatternAttr* pPattern = pAttrArray->GetPatternRange(nPatternStartRow, nPatternEndRow, nRow1))
             {
-                pCondSet = GetDoc().GetCondResult(GetCol(), nRow1, GetTab());
-                pBrush = &pPattern->GetItem(ATTR_BACKGROUND, pCondSet);
-                aBackColor = pBrush->GetColor();
-                bCondBackColor = true;
+                pCondFormats = &pPattern->GetItem(ATTR_CONDITIONAL).GetCondFormatData();
+                sal_uInt32 nIndex = 0;
+                if(!pCondFormats->empty())
+                    nIndex = (*pCondFormats)[0];
+                if (nIndex)
+                {
+                    assert(pCondFormList);
+                    pCondFormat = pCondFormList->GetFormat( nIndex );
+                }
+                else
+                    pCondFormat = nullptr;
+                aBackgroundBrushColor = pPattern->GetItem(ATTR_BACKGROUND).GetColor();
+
+                if (!pCondFormats->empty())
+                {
+                    // Speed up processing when dealing with runs of identical cells. This avoids
+                    // an expensive GetCondResult call.
+                    ScRefCellValue aCellValue = GetCellValue(nRow1);
+                    if (pPrevPattern == pPattern && aCellValue == aPrevCellValue)
+                    {
+                        aBackColor = aPrevPatternColor;
+                        bCondBackColor = true;
+                    }
+                    else
+                    {
+                        const SfxItemSet* pCondSet = rDoc.GetCondResult(GetCol(), nRow1, GetTab());
+                        const SvxBrushItem* pCondBrush = &pPattern->GetItem(ATTR_BACKGROUND, pCondSet);
+                        aBackColor = pCondBrush->GetColor();
+                        bCondBackColor = true;
+                        aPrevCellValue = aCellValue;
+                        pPrevPattern = pPattern;
+                        aPrevPatternColor = aBackColor;
+                    }
+                }
             }
         }
 
-        pCondFormat = GetDoc().GetCondFormat(aCell.Col(), aCell.Row(), aCell.Tab());
         if (pCondFormat)
         {
             for (size_t nFormat = 0; nFormat < pCondFormat->size(); nFormat++)
@@ -2739,7 +2792,7 @@ void ScColumn::GetBackColorFilterEntries(SCROW nRow1, SCROW nRow2, ScFilterEntri
                 auto aEntry = pCondFormat->GetEntry(nFormat);
                 if (aEntry->GetType() == ScFormatEntry::Type::Colorscale)
                 {
-                    pColFormat = static_cast<const ScColorScaleFormat*>(aEntry);
+                    const ScColorScaleFormat* pColFormat = static_cast<const ScColorScaleFormat*>(aEntry);
                     std::optional<Color> oColor = pColFormat->GetColor(aCell);
                     if (oColor)
                     {
@@ -2752,11 +2805,14 @@ void ScColumn::GetBackColorFilterEntries(SCROW nRow1, SCROW nRow2, ScFilterEntri
 
         if (!bCondBackColor)
         {
-            pBrush = GetDoc().GetAttr(aCell, ATTR_BACKGROUND);
-            aBackColor = pBrush->GetColor();
+            aBackColor = aBackgroundBrushColor;
         }
 
-        rFilterEntries.addBackgroundColor(aBackColor);
+        if (aPrevInsertColor != aBackColor)
+        {
+            rFilterEntries.addBackgroundColor(aBackColor);
+            aPrevInsertColor = aBackColor;
+        }
         nRow1++;
     }
 }
@@ -2772,12 +2828,12 @@ class StrCellIterator
     PosType maPos;
     sc::CellStoreType::const_iterator miBeg;
     sc::CellStoreType::const_iterator miEnd;
-    const ScDocument* mpDoc;
+    const ScDocument& mrDoc;
 public:
-    StrCellIterator(const sc::CellStoreType& rCells, SCROW nStart, const ScDocument* pDoc) :
-        miBeg(rCells.begin()), miEnd(rCells.end()), mpDoc(pDoc)
+    StrCellIterator(const sc::CellStoreType& rCells, SCROW nStart, const ScDocument& rDoc) :
+        miBeg(rCells.begin()), miEnd(rCells.end()), mrDoc(rDoc)
     {
-        if (pDoc->ValidRow(nStart))
+        if (rDoc.ValidRow(nStart))
             maPos = rCells.position(nStart);
         else
             // Make this iterator invalid.
@@ -2875,7 +2931,7 @@ public:
             case sc::element_type_edittext:
             {
                 const EditTextObject* p = sc::edittext_block::at(*maPos.first->data, maPos.second);
-                return ScEditUtil::GetString(*p, mpDoc);
+                return ScEditUtil::GetString(*p, mrDoc);
             }
             default:
                 ;
@@ -2894,8 +2950,8 @@ bool ScColumn::GetDataEntries(
     // going upward and downward directions in parallel. The start position
     // cell must be skipped.
 
-    StrCellIterator aItrUp(maCells, nStartRow, &GetDoc());
-    StrCellIterator aItrDown(maCells, nStartRow+1, &GetDoc());
+    StrCellIterator aItrUp(maCells, nStartRow, GetDoc());
+    StrCellIterator aItrDown(maCells, nStartRow+1, GetDoc());
 
     bool bMoveUp = aItrUp.valid();
     if (!bMoveUp)
@@ -2995,7 +3051,7 @@ void ScColumn::RemoveProtected( SCROW nStartRow, SCROW nEndRow )
     FormulaToValueHandler aFunc;
     sc::CellStoreType::const_iterator itPos = maCells.begin();
 
-    ScAttrIterator aAttrIter( pAttrArray.get(), nStartRow, nEndRow, GetDoc().GetDefPattern() );
+    ScAttrIterator aAttrIter( pAttrArray.get(), nStartRow, nEndRow, &GetDoc().getCellAttributeHelper().getDefaultCellAttribute() );
     SCROW nTop = -1;
     SCROW nBottom = -1;
     const ScPatternAttr* pPattern = aAttrIter.Next( nTop, nBottom );
@@ -3120,7 +3176,7 @@ void ScColumn::SetValue(
         BroadcastNewCell(nRow);
 }
 
-OUString ScColumn::GetString( const ScRefCellValue& aCell, SCROW nRow, const ScInterpreterContext* pContext ) const
+OUString ScColumn::GetString( const ScRefCellValue& aCell, SCROW nRow, ScInterpreterContext* pContext ) const
 {
     // ugly hack for ordering problem with GetNumberFormat and missing inherited formats
     if (aCell.getType() == CELLTYPE_FORMULA)
@@ -3128,8 +3184,7 @@ OUString ScColumn::GetString( const ScRefCellValue& aCell, SCROW nRow, const ScI
 
     sal_uInt32 nFormat = GetNumberFormat( pContext ? *pContext : GetDoc().GetNonThreadedContext(), nRow);
     const Color* pColor = nullptr;
-    return ScCellFormat::GetString(aCell, nFormat, &pColor,
-        pContext ? *(pContext->GetFormatTable()) : *(GetDoc().GetFormatTable()), GetDoc());
+    return ScCellFormat::GetString(aCell, nFormat, &pColor, pContext, GetDoc());
 }
 
 double* ScColumn::GetValueCell( SCROW nRow )
@@ -3147,8 +3202,8 @@ double* ScColumn::GetValueCell( SCROW nRow )
 
 OUString ScColumn::GetInputString( const ScRefCellValue& aCell, SCROW nRow, bool bForceSystemLocale ) const
 {
-    sal_uLong nFormat = GetNumberFormat(GetDoc().GetNonThreadedContext(), nRow);
-    return ScCellFormat::GetInputString(aCell, nFormat, *(GetDoc().GetFormatTable()), GetDoc(), nullptr, false, bForceSystemLocale);
+    sal_uInt32 nFormat = GetNumberFormat(GetDoc().GetNonThreadedContext(), nRow);
+    return ScCellFormat::GetInputString(aCell, nFormat, nullptr, GetDoc(), false, bForceSystemLocale);
 }
 
 double ScColumn::GetValue( SCROW nRow ) const
@@ -3266,6 +3321,19 @@ SCSIZE ScColumn::GetCellCount() const
     return aFunc.getCount();
 }
 
+bool ScColumn::IsCellCountZero() const
+{
+    auto it = maCells.begin();
+    auto itEnd = maCells.end();
+    for (; it != itEnd; ++it)
+    {
+        const sc::CellStoreType::value_type& node = *it;
+        if (node.size != 0)
+            return false;
+    }
+    return true;
+}
+
 FormulaError ScColumn::GetErrCode( SCROW nRow ) const
 {
     std::pair<sc::CellStoreType::const_iterator,size_t> aPos = maCells.position(nRow);
@@ -3346,7 +3414,6 @@ class MaxStringLenHandler
 {
     sal_Int32 mnMaxLen;
     const ScColumn& mrColumn;
-    SvNumberFormatter* mpFormatter;
     rtl_TextEncoding meCharSet;
     bool mbOctetEncoding;
 
@@ -3354,7 +3421,7 @@ class MaxStringLenHandler
     {
         const Color* pColor;
         sal_uInt32 nFormat = mrColumn.GetAttr(nRow, ATTR_VALUE_FORMAT).GetValue();
-        OUString aString = ScCellFormat::GetString(rCell, nFormat, &pColor, *mpFormatter, mrColumn.GetDoc());
+        OUString aString = ScCellFormat::GetString(rCell, nFormat, &pColor, nullptr, mrColumn.GetDoc());
         sal_Int32 nLen = 0;
         if (mbOctetEncoding)
         {
@@ -3381,7 +3448,6 @@ public:
     MaxStringLenHandler(const ScColumn& rColumn, rtl_TextEncoding eCharSet) :
         mnMaxLen(0),
         mrColumn(rColumn),
-        mpFormatter(rColumn.GetDoc().GetFormatTable()),
         meCharSet(eCharSet),
         mbOctetEncoding(rtl_isOctetTextEncoding(eCharSet))
     {
@@ -3428,7 +3494,6 @@ namespace {
 class MaxNumStringLenHandler
 {
     const ScColumn& mrColumn;
-    SvNumberFormatter* mpFormatter;
     sal_Int32 mnMaxLen;
     sal_uInt16 mnPrecision;
     sal_uInt16 mnMaxGeneralPrecision;
@@ -3463,9 +3528,10 @@ class MaxNumStringLenHandler
                 mrColumn.GetAttr(nRow, ATTR_VALUE_FORMAT).GetValue();
         if (nFormat % SV_COUNTRY_LANGUAGE_OFFSET)
         {
-            aSep = mpFormatter->GetFormatDecimalSep(nFormat);
-            aString = ScCellFormat::GetInputString(rCell, nFormat, *mpFormatter, mrColumn.GetDoc());
-            const SvNumberformat* pEntry = mpFormatter->GetEntry(nFormat);
+            ScInterpreterContext& rContext = mrColumn.GetDoc().GetNonThreadedContext();
+            aSep = rContext.NFGetFormatDecimalSep(nFormat);
+            aString = ScCellFormat::GetInputString(rCell, nFormat, &rContext, mrColumn.GetDoc());
+            const SvNumberformat* pEntry = rContext.NFGetFormatEntry(nFormat);
             if (pEntry)
             {
                 bool bThousand, bNegRed;
@@ -3473,7 +3539,7 @@ class MaxNumStringLenHandler
                 pEntry->GetFormatSpecialInfo(bThousand, bNegRed, nPrec, nLeading);
             }
             else
-                nPrec = mpFormatter->GetFormatPrecision(nFormat);
+                nPrec = rContext.NFGetFormatPrecision(nFormat);
         }
         else
         {
@@ -3548,7 +3614,7 @@ class MaxNumStringLenHandler
 
 public:
     MaxNumStringLenHandler(const ScColumn& rColumn, sal_uInt16 nMaxGeneralPrecision) :
-        mrColumn(rColumn), mpFormatter(rColumn.GetDoc().GetFormatTable()),
+        mrColumn(rColumn),
         mnMaxLen(0), mnPrecision(0), mnMaxGeneralPrecision(nMaxGeneralPrecision),
         mbHaveSigned(false)
     {

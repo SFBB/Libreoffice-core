@@ -45,7 +45,7 @@ class CommandLineArgs
 
             virtual ~Supplier();
             virtual std::optional< OUString > getCwdUrl() = 0;
-            virtual bool next(OUString * argument) = 0;
+            virtual bool next(OUString& argument) = 0;
         };
 
         CommandLineArgs();
@@ -99,6 +99,7 @@ class CommandLineArgs
         bool                    HasSplashPipe() const { return m_splashpipe;}
         std::vector< OUString > const & GetAccept() const { return m_accept;}
         std::vector< OUString > const & GetUnaccept() const { return m_unaccept;}
+        void RemoveFilesFromOpenListEndingWith(const OUString& rExt);
         std::vector< OUString > GetOpenList() const;
         std::vector< OUString > GetViewList() const;
         std::vector< OUString > GetStartList() const;
@@ -113,12 +114,16 @@ class CommandLineArgs
         const OUString&         GetConversionParams() const { return m_conversionparams;}
         OUString                GetConversionOut() const;
         OUString const &        GetImageConversionType() const { return m_convertimages; }
+        const OUString&         GetStartListParams() const { return m_startListParams; }
         const OUString&         GetPidfileName() const { return m_pidfile;}
 
         // Special analyzed states (does not match directly to a command line parameter!)
         bool IsEmpty() const { return m_bEmpty;}
 
         void setHeadless() { m_headless = true; }
+
+        bool GetAllSucceeded() const { return m_bAllSucceeded; }
+        void SetAllSucceeded(bool bSet) { m_bAllSucceeded = bSet; }
 
     private:
         void                    ParseCommandLine_Impl( Supplier& supplier );
@@ -176,9 +181,14 @@ class CommandLineArgs
         OUString m_conversionparams;
         OUString m_conversionout; // contains external URIs
         OUString m_convertimages; // The format in which images should be converted
+        OUString m_startListParams;
         std::vector< OUString > m_infilter;
         OUString m_language;
         OUString m_pidfile;
+
+        // If any argument fails, this may be set to false so that the app exits with EXIT_FAILURE.
+        // NOTE: only items of interest are setting this to false - can be extended to more cases...
+        bool m_bAllSucceeded = true;
 };
 
 }

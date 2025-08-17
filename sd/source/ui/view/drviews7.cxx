@@ -90,7 +90,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::linguistic2;
 
 /** Create a list of clipboard formats that are supported both from the
@@ -98,7 +97,7 @@ using namespace ::com::sun::star::linguistic2;
     The list is stored in a new instance of SvxClipboardFormatItem.
 */
 static ::std::unique_ptr<SvxClipboardFormatItem> GetSupportedClipboardFormats (
-    TransferableDataHelper& rDataHelper)
+    const TransferableDataHelper& rDataHelper)
 {
     ::std::unique_ptr<SvxClipboardFormatItem> pResult (
         new SvxClipboardFormatItem(SID_CLIPBOARD_FORMAT_ITEMS));
@@ -219,8 +218,10 @@ void DrawViewShell::GetDrawAttrState(SfxItemSet& rSet)
     if( !mpDrawView )
         return nullptr;
 
+    const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
+
     //when there is one object selected
-    if (!mpDrawView->AreObjectsMarked() || (mpDrawView->GetMarkedObjectList().GetMarkCount() != 1))
+    if (rMarkList.GetMarkCount() == 0 || (rMarkList.GetMarkCount() != 1))
         return nullptr;
 
     //and we are editing the outline object
@@ -237,12 +238,12 @@ void DrawViewShell::GetDrawAttrState(SfxItemSet& rSet)
         return nullptr;
 
     OutlinerView* pOLV = mpDrawView->GetTextEditOutlinerView();
-    ::Outliner* pOL = pOLV ? pOLV->GetOutliner() : nullptr;
-    if (!pOL)
+    if (!pOLV)
         return nullptr;
+    ::Outliner& rOL = pOLV->GetOutliner();
     rSel = pOLV->GetSelection();
 
-    return pOL;
+    return &rOL;
 }
 
 void DrawViewShell::GetMarginProperties( SfxItemSet &rSet )
@@ -287,9 +288,10 @@ bool DrawViewShell::ShouldDisableEditHyperlink() const
 {
     if (!mpDrawView)
         return true;
-    if (!mpDrawView->AreObjectsMarked())
+    const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
+    if (rMarkList.GetMarkCount() == 0)
        return true;
-    if (mpDrawView->GetMarkedObjectList().GetMarkCount() != 1)
+    if (rMarkList.GetMarkCount() != 1)
         return true;
 
     bool bDisableEditHyperlink = true;
@@ -301,7 +303,7 @@ bool DrawViewShell::ShouldDisableEditHyperlink() const
     }
     else
     {
-        SdrUnoObj* pUnoCtrl = dynamic_cast<SdrUnoObj*>( mpDrawView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj() );
+        SdrUnoObj* pUnoCtrl = dynamic_cast<SdrUnoObj*>( rMarkList.GetMark(0)->GetMarkedSdrObj() );
 
         if ( pUnoCtrl && SdrInventor::FmForm == pUnoCtrl->GetObjInventor() )
         {
@@ -312,7 +314,7 @@ bool DrawViewShell::ShouldDisableEditHyperlink() const
                 if( xPropSet.is() )
                 {
                     uno::Reference< beans::XPropertySetInfo > xPropInfo( xPropSet->getPropertySetInfo() );
-                    if( xPropInfo.is() && xPropInfo->hasPropertyByName( "TargetURL") )
+                    if( xPropInfo.is() && xPropInfo->hasPropertyByName( u"TargetURL"_ustr) )
                     {
                         bDisableEditHyperlink = false;
                     }
@@ -906,9 +908,9 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
         if(GetLayerTabControl()) // #i87182#
         {
             sal_uInt16 nCurrentLayer = GetLayerTabControl()->GetCurPageId();
-            const OUString& rName = GetLayerTabControl()->GetLayerName(nCurrentLayer);
+            const OUString aName = GetLayerTabControl()->GetLayerName(nCurrentLayer);
 
-            if (!IsLayerModeActive() || LayerTabBar::IsRealNameOfStandardLayer(rName))
+            if (!IsLayerModeActive() || LayerTabBar::IsRealNameOfStandardLayer(aName))
             {
                 rSet.DisableItem(SID_DELETE_LAYER);
                 rSet.DisableItem(SID_RENAMELAYER);
@@ -1062,11 +1064,12 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
     if ( ( !aActiveLayer.isEmpty() && pPV && ( pPV->IsLayerLocked(aActiveLayer) ||
           !pPV->IsLayerVisible(aActiveLayer) ) ) ||
-          SD_MOD()->GetWaterCan() )
+          SdModule::get()->GetWaterCan() )
     {
         rSet.DisableItem( SID_PASTE );
         rSet.DisableItem( SID_PASTE_SPECIAL );
         rSet.DisableItem( SID_PASTE_UNFORMATTED );
+        rSet.DisableItem( SID_PASTE_SLIDE );
         rSet.DisableItem( SID_CLIPBOARD_FORMAT_ITEMS );
 
         rSet.DisableItem( SID_INSERT_FLD_DATE_FIX );
@@ -1285,22 +1288,23 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
     // are the modules available?
 
-    if (!SvtModuleOptions().IsCalc())
+    if (!SvtModuleOptions().IsCalcInstalled())
     {
         // remove menu entry if module is not available
         rSet.Put( SfxVisibilityItem( SID_ATTR_TABLE, false ) );
     }
-    if (!SvtModuleOptions().IsChart())
+    if (!SvtModuleOptions().IsChartInstalled())
     {
         rSet.DisableItem( SID_INSERT_DIAGRAM );
     }
-    if (!SvtModuleOptions().IsMath())
+    if (!SvtModuleOptions().IsMathInstalled())
     {
         rSet.DisableItem( SID_INSERT_MATH );
     }
 
     rtl::Reference< sd::SlideShow > xSlideshow( SlideShow::GetSlideShow( GetViewShellBase() ) );
-    if( (xSlideshow.is() && xSlideshow->isRunning() && (xSlideshow->getAnimationMode() != ANIMATIONMODE_PREVIEW) ) || GetDocSh()->IsPreview() )
+    if( (xSlideshow.is() && xSlideshow->isRunning() && !xSlideshow->IsInteractiveSlideshow() // IASS
+        && (xSlideshow->getAnimationMode() != ANIMATIONMODE_PREVIEW) ) || GetDocSh()->IsPreview() )
     {
         // Own Slots
         rSet.DisableItem( SID_PRESENTATION );
@@ -1323,7 +1327,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
         rSet.DisableItem( SID_DELETE_PAGE );
         rSet.DisableItem( SID_PAGESETUP );
 
-        if( xSlideshow.is() && xSlideshow->isRunning() )
+        if( xSlideshow.is() && xSlideshow->isRunning() && !xSlideshow->IsInteractiveSlideshow() ) // IASS
         {
             rSet.ClearItem(SID_INSERTFILE);
             rSet.ClearItem(SID_OBJECT_ROTATE);
@@ -1334,6 +1338,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
             rSet.ClearItem(SID_3D_WIN);
 
             rSet.DisableItem(SID_OBJECT_ALIGN);
+            rSet.DisableItem(SID_ALIGN_PAGE);
             rSet.DisableItem(SID_ZOOM_TOOLBOX);
             rSet.DisableItem(SID_OBJECT_CHOOSE_MODE);
             rSet.DisableItem(SID_DRAWTBX_TEXT);
@@ -1364,7 +1369,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
     bool bSingleGraphicSelected = false;
 
-    if (!mpDrawView->AreObjectsMarked())
+    if (rMarkList.GetMarkCount() == 0)
     {
         rSet.DisableItem (SID_CONVERT_TO_METAFILE);
         rSet.DisableItem (SID_CONVERT_TO_BITMAP);
@@ -1486,23 +1491,21 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
     bool bDisableEditHyperlink = ShouldDisableEditHyperlink();
 
     //highlight selected custom shape
+    if(HasCurrentFunction())
     {
-        if(HasCurrentFunction())
+        rtl::Reference< FuPoor > xFunc( GetCurrentFunction() );
+        FuConstructCustomShape* pShapeFunc = dynamic_cast< FuConstructCustomShape* >( xFunc.get() );
+
+        static const sal_uInt16 nCSTbArray[] = { SID_DRAWTBX_CS_BASIC, SID_DRAWTBX_CS_SYMBOL,
+                                                 SID_DRAWTBX_CS_ARROW, SID_DRAWTBX_CS_FLOWCHART,
+                                                 SID_DRAWTBX_CS_CALLOUT, SID_DRAWTBX_CS_STAR };
+
+        const sal_uInt16 nCurrentSId = GetCurrentFunction()->GetSlotID();
+        for (sal_uInt16 i : nCSTbArray)
         {
-            rtl::Reference< FuPoor > xFunc( GetCurrentFunction() );
-            FuConstructCustomShape* pShapeFunc = dynamic_cast< FuConstructCustomShape* >( xFunc.get() );
-
-            static const sal_uInt16 nCSTbArray[] = { SID_DRAWTBX_CS_BASIC, SID_DRAWTBX_CS_SYMBOL,
-                                                     SID_DRAWTBX_CS_ARROW, SID_DRAWTBX_CS_FLOWCHART,
-                                                     SID_DRAWTBX_CS_CALLOUT, SID_DRAWTBX_CS_STAR };
-
-            const sal_uInt16 nCurrentSId = GetCurrentFunction()->GetSlotID();
-            for (sal_uInt16 i : nCSTbArray)
-            {
-                rSet.ClearItem( i ); // Why is this necessary?
-                rSet.Put( SfxStringItem( i, nCurrentSId == i && pShapeFunc
-                                         ? pShapeFunc->GetShapeType() : OUString() ) );
-            }
+            rSet.ClearItem( i ); // Why is this necessary?
+            rSet.Put( SfxStringItem( i, nCurrentSId == i && pShapeFunc
+                                     ? pShapeFunc->GetShapeType() : OUString() ) );
         }
     }
 
@@ -1527,9 +1530,9 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
         {
             //and are on the last paragraph
             aSel.Adjust();
-            if (aSel.nEndPara == pOL->GetParagraphCount() - 1)
+            if (aSel.end.nPara == pOL->GetParagraphCount() - 1)
             {
-                sal_uInt16 nDepth = pOL->GetDepth(aSel.nEndPara);
+                sal_uInt16 nDepth = pOL->GetDepth(aSel.end.nPara);
                 if (nDepth != sal_uInt16(-1))
                 {
                     //there exists another numbering level that
@@ -1609,6 +1612,9 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
         }
     }
 
+    if (!SdModule::get()->pTransferClip)
+        rSet.DisableItem(SID_PASTE_SLIDE);
+
     GetModeSwitchingMenuState (rSet);
 }
 
@@ -1642,11 +1648,14 @@ void DrawViewShell::GetModeSwitchingMenuState (SfxItemSet &rSet)
     // clause because the current function of the docshell can only be
     // search and replace or spell checking and in that case switching the
     // view mode is allowed.
-    const bool bIsRunning = SlideShow::IsRunning(GetViewShellBase());
+    const bool bIsRunning = SlideShow::IsRunning(GetViewShellBase())
+        && !SlideShow::IsInteractiveSlideshow(&GetViewShellBase()); // IASS
 
-    if (GetViewFrame()->GetFrame().IsInPlace() || bIsRunning)
+    SfxViewFrame* pViewFrame = GetViewFrame();
+    const bool bIsInPlace = pViewFrame && pViewFrame->GetFrame().IsInPlace() ? true : false;
+    if (bIsInPlace || bIsRunning)
     {
-        if ( !GetViewFrame()->GetFrame().IsInPlace() )
+        if (!bIsInPlace)
         {
             rSet.ClearItem( SID_DRAWINGMODE );
             rSet.DisableItem( SID_DRAWINGMODE );
@@ -1801,7 +1810,7 @@ void DrawViewShell::SetPageProperties (SfxRequest& rReq)
             {
                 rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_SOLID ) );
                 if (const XFillColorItem* pColorItem = static_cast<const XFillColorItem*>(pArgs->GetItem(SID_ATTR_PAGE_COLOR)))
-                    rPageProperties.PutItem(XFillColorItem("", pColorItem->GetColorValue()));
+                    rPageProperties.PutItem(XFillColorItem(u""_ustr, pColorItem->GetColorValue()));
                 else
                     rPageProperties.PutItem(pArgs->Get(XATTR_FILLCOLOR));
             }
@@ -1817,7 +1826,7 @@ void DrawViewShell::SetPageProperties (SfxRequest& rReq)
                     // MigrateItemSet guarantees unique gradient names
                     SfxItemSetFixed<XATTR_FILLGRADIENT, XATTR_FILLGRADIENT> aMigrateSet(mpDrawView->GetModel().GetItemPool());
                     aMigrateSet.Put( aGradientItem );
-                    SdrModel::MigrateItemSet(&aMigrateSet, &aTempSet, &mpDrawView->GetModel());
+                    SdrModel::MigrateItemSet(&aMigrateSet, &aTempSet, mpDrawView->GetModel());
 
                     rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_GRADIENT ) );
                     rPageProperties.PutItemSet( aTempSet );
@@ -1829,7 +1838,7 @@ void DrawViewShell::SetPageProperties (SfxRequest& rReq)
                     // MigrateItemSet guarantees unique gradient names
                     SfxItemSetFixed<XATTR_FILLGRADIENT, XATTR_FILLGRADIENT> aMigrateSet(mpDrawView->GetModel().GetItemPool());
                     aMigrateSet.Put( aGradientItem );
-                    SdrModel::MigrateItemSet(&aMigrateSet, &aTempSet, &mpDrawView->GetModel());
+                    SdrModel::MigrateItemSet(&aMigrateSet, &aTempSet, mpDrawView->GetModel());
 
                     rPageProperties.PutItem( XFillStyleItem( drawing::FillStyle_GRADIENT ) );
                     rPageProperties.PutItemSet( aTempSet );
@@ -1918,6 +1927,7 @@ void DrawViewShell::GetState (SfxItemSet& rSet)
     {
         switch (nWhich)
         {
+            case FID_SEARCH_NOW:
             case SID_SEARCH_ITEM:
             case SID_SEARCH_OPTIONS:
                 // Forward this request to the common (old) code of the
@@ -1934,7 +1944,8 @@ void DrawViewShell::GetState (SfxItemSet& rSet)
 
 void DrawViewShell::Execute (SfxRequest& rReq)
 {
-    if(SlideShow::IsRunning(GetViewShellBase()))
+    if(SlideShow::IsRunning(GetViewShellBase())
+        && !SlideShow::IsInteractiveSlideshow(&GetViewShellBase())) // IASS
     {
         // Do not execute anything during a native slide show.
         return;
@@ -1942,6 +1953,12 @@ void DrawViewShell::Execute (SfxRequest& rReq)
 
     switch (rReq.GetSlot())
     {
+        case FID_SEARCH_NOW:
+            // Forward this request to the common (old) code of the
+            // document shell.
+            GetDocSh()->Execute(rReq);
+            break;
+
         case SID_SEARCH_ITEM:
             // Forward this request to the common (old) code of the
             // document shell.

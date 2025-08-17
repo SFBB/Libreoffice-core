@@ -23,6 +23,7 @@
 #include <editeng/kernitem.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/tbxctrl.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <TextCharacterSpacingPopup.hxx>
 #include <svl/itempool.hxx>
@@ -30,6 +31,8 @@
 #include <helpids.h>
 
 #include <com/sun/star/beans/NamedValue.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/frame/XDispatchProvider.hpp>
 
 #define SPACING_VERY_TIGHT  -30
 #define SPACING_TIGHT       -15
@@ -40,16 +43,16 @@
 namespace svx {
 
 TextCharacterSpacingControl::TextCharacterSpacingControl(TextCharacterSpacingPopup* pControl, weld::Widget* pParent)
-    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "svx/ui/textcharacterspacingcontrol.ui", "TextCharacterSpacingControl")
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/textcharacterspacingcontrol.ui"_ustr, u"TextCharacterSpacingControl"_ustr)
     , mnCustomKern(0)
     , mnLastCus(SPACING_NOCUSTOM)
-    , mxEditKerning(m_xBuilder->weld_metric_spin_button("kerning", FieldUnit::POINT))
-    , mxTight(m_xBuilder->weld_button("tight"))
-    , mxVeryTight(m_xBuilder->weld_button("very_tight"))
-    , mxNormal(m_xBuilder->weld_button("normal"))
-    , mxLoose(m_xBuilder->weld_button("loose"))
-    , mxVeryLoose(m_xBuilder->weld_button("very_loose"))
-    , mxLastCustom(m_xBuilder->weld_button("last_custom"))
+    , mxEditKerning(m_xBuilder->weld_metric_spin_button(u"kerning"_ustr, FieldUnit::POINT))
+    , mxTight(m_xBuilder->weld_button(u"tight"_ustr))
+    , mxVeryTight(m_xBuilder->weld_button(u"very_tight"_ustr))
+    , mxNormal(m_xBuilder->weld_button(u"normal"_ustr))
+    , mxLoose(m_xBuilder->weld_button(u"loose"_ustr))
+    , mxVeryLoose(m_xBuilder->weld_button(u"very_loose"_ustr))
+    , mxLastCustom(m_xBuilder->weld_button(u"last_custom"_ustr))
     , mxControl(pControl)
 {
     mxEditKerning->connect_value_changed(LINK(this, TextCharacterSpacingControl, KerningModifyHdl));
@@ -100,7 +103,7 @@ TextCharacterSpacingControl::~TextCharacterSpacingControl()
     {
         SvtViewOptions aWinOpt(EViewType::Window, SIDEBAR_SPACING_GLOBAL_VALUE);
         css::uno::Sequence<css::beans::NamedValue> aSeq
-            { { "Spacing", css::uno::Any(OUString::number(mnCustomKern)) } };
+            { { u"Spacing"_ustr, css::uno::Any(OUString::number(mnCustomKern)) } };
         aWinOpt.SetUserData(aSeq);
     }
 }
@@ -155,7 +158,7 @@ void TextCharacterSpacingControl::Initialize()
 
 void TextCharacterSpacingControl::ExecuteCharacterSpacing(tools::Long nValue, bool bClose)
 {
-    MapUnit eUnit = GetCoreMetric();
+    MapUnit eUnit = MapUnit::Map100thMM;
 
     tools::Long nSign = (nValue < 0) ? -1 : 1;
     nValue = nValue * nSign;
@@ -163,13 +166,13 @@ void TextCharacterSpacingControl::ExecuteCharacterSpacing(tools::Long nValue, bo
     tools::Long nVal = OutputDevice::LogicToLogic(nValue, MapUnit::MapPoint, eUnit);
     short nKern = (nValue == 0) ? 0 : static_cast<short>(mxEditKerning->denormalize(nVal));
 
-    SvxKerningItem aKernItem(nSign * nKern, SID_ATTR_CHAR_KERNING);
-
-    if (SfxViewFrame* pViewFrm = SfxViewFrame::Current())
-    {
-        pViewFrm->GetBindings().GetDispatcher()->ExecuteList(SID_ATTR_CHAR_KERNING,
-            SfxCallMode::RECORD, { &aKernItem });
-    }
+    css::uno::Sequence<css::beans::PropertyValue> aArgs(1);
+    css::beans::PropertyValue* pArgs = aArgs.getArray();
+    pArgs[0].Name = "Spacing";
+    pArgs[0].Value <<= sal_Int16(nSign * nKern);
+    const css::uno::Reference<com::sun::star::frame::XDispatchProvider> xProvider(
+        m_xFrame, css::uno::UNO_QUERY);
+    SfxToolBoxControl::Dispatch(xProvider, u".uno:Spacing"_ustr, aArgs);
 
     if (bClose)
         mxControl->EndPopupMode();
@@ -216,7 +219,7 @@ IMPL_LINK_NOARG(TextCharacterSpacingControl, KerningModifyHdl, weld::MetricSpinB
 MapUnit TextCharacterSpacingControl::GetCoreMetric()
 {
     SfxItemPool &rPool = SfxGetpApp()->GetPool();
-    sal_uInt16 nWhich = rPool.GetWhich(SID_ATTR_CHAR_KERNING);
+    sal_uInt16 nWhich = rPool.GetWhichIDFromSlotID(SID_ATTR_CHAR_KERNING);
     return rPool.GetMetric(nWhich);
 }
 

@@ -30,9 +30,8 @@ import "defines.idl";
         helpstring("IMAccessible Interface"),
         pointer_default(unique)
     ]
-    interface IMAccessible : IAccessible2
+    interface IMAccessible : IAccessible2_2
     {
-        [id(1), helpstring("method Put_XAccName")] HRESULT Put_XAccName(const OLECHAR* pszName);
         [id(2), helpstring("method Put_XAccRole")] HRESULT Put_XAccRole(unsigned short pRole);
         [id(3), helpstring("method DecreaseState")] HRESULT DecreaseState(DWORD pXSate);
         [id(4), helpstring("method IncreaseState")] HRESULT IncreaseState(DWORD pXSate);
@@ -43,9 +42,6 @@ import "defines.idl";
         [id(13), helpstring("method Put_XAccWindowHandle")] HRESULT Put_XAccWindowHandle(HWND hwnd);
         [id(14), helpstring("method Put_XAccChildID")] HRESULT Put_XAccChildID(long dChildID);
         [id(19), helpstring("method SetXAccessible")] HRESULT SetXAccessible(hyper XAccessible);
-        [id(20), helpstring("method GetUNOInterface")] HRESULT GetUNOInterface(hyper* UNOInterface);
-        [id(23), helpstring("method SetDefaultAction")] HRESULT SetDefaultAction(hyper pAction);
-        [id(24), helpstring("method Put_ActionDescription")] HRESULT Put_ActionDescription( const OLECHAR* szAction);
         [id(25), helpstring("method Put_XAccObjectManager")] HRESULT Put_XAccObjectManager(hyper pManager);
         [id(26), helpstring("method NotifyDestroy")] HRESULT NotifyDestroy();
     };

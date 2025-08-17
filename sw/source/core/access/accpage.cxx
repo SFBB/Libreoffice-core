@@ -20,7 +20,7 @@
 #include <vcl/window.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <cppuhelper/supportsservice.hxx>
+
 #include "accpage.hxx"
 
 #include <strings.hrc>
@@ -30,8 +30,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
 using uno::Sequence;
-
-constexpr OUStringLiteral sImplementationName = u"com.sun.star.comp.Writer.SwAccessiblePageView";
 
 bool SwAccessiblePage::IsSelected()
 {
@@ -125,26 +123,6 @@ bool SwAccessiblePage::HasCursor()
 {
     std::scoped_lock aGuard( m_Mutex );
     return m_bIsSelected;
-}
-
-OUString SwAccessiblePage::getImplementationName( )
-{
-    return sImplementationName;
-}
-
-sal_Bool SwAccessiblePage::supportsService( const OUString& rServiceName)
-{
-    return cppu::supportsService(this, rServiceName);
-}
-
-Sequence<OUString> SwAccessiblePage::getSupportedServiceNames( )
-{
-    return { "com.sun.star.text.AccessiblePageView", sAccessibleServiceName };
-}
-
-Sequence< sal_Int8 > SAL_CALL SwAccessiblePage::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
 }
 
 OUString SwAccessiblePage::getAccessibleDescription( )

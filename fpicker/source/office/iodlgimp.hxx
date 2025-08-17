@@ -26,7 +26,6 @@
 #include <memory>
 #include <vector>
 
-class CheckBox;
 class SvtFileDialog;
 
 #define FILEDIALOG_DEF_EXTSEP       ';'
@@ -127,6 +126,7 @@ public:
     std::unique_ptr<weld::Button> m_xBtnNewFolder;
     std::unique_ptr<weld::CheckButton> m_xCbPassword;
     std::unique_ptr<weld::CheckButton> m_xCbGPGEncrypt;
+    std::unique_ptr<weld::CheckButton> m_xCbGPGSign;
     std::unique_ptr<SvtURLBox> m_xEdCurrentPath;
     std::unique_ptr<weld::CheckButton> m_xCbAutoExtension;
     std::unique_ptr<weld::CheckButton> m_xCbOptions;
@@ -137,8 +137,6 @@ public:
     SvtFileDlgMode m_eMode;
     SvtFileDlgType m_eDlgType;
     PickerFlags m_nStyle;
-
-    OUString m_aStdDir;
 
     // delay filter when traveling the filterbox
     Idle m_aFilterIdle;
@@ -157,8 +155,6 @@ public:
 
     void             SetDenyList( const css::uno::Sequence< OUString >& rDenyList ) { m_aDenyList = rDenyList; }
     const css::uno::Sequence< OUString >& GetDenyList() const { return m_aDenyList; }
-    void                    SetStandardDir( const OUString& rDir );
-    const OUString&  GetStandardDir() const { return m_aStdDir; }
 
     // access to the filter listbox only as weld::Widget* - we want to maintain the entries/userdata ourself
     weld::Widget* GetFilterListControl() { return m_xLbFilter.get(); }

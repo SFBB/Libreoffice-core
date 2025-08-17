@@ -54,9 +54,6 @@ void OutputDevice::DrawWallpaper( const tools::Rectangle& rRect,
                                rWallpaper );
         }
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawWallpaper( rRect, rWallpaper );
 }
 
 void OutputDevice::DrawWallpaper( tools::Long nX, tools::Long nY,
@@ -80,17 +77,27 @@ void OutputDevice::DrawColorWallpaper( tools::Long nX, tools::Long nY,
     assert(!is_double_buffered_window());
 
     // draw wallpaper without border
+    bool bOldIsLineColor = IsLineColor();
     Color aOldLineColor = GetLineColor();
+    bool bOldIsFillColor = IsFillColor();
     Color aOldFillColor = GetFillColor();
+    bool bMap = mbMap;
+
     SetLineColor();
     SetFillColor( rWallpaper.GetColor() );
-
-    bool bMap = mbMap;
     EnableMapMode( false );
+
     DrawRect( tools::Rectangle( Point( nX, nY ), Size( nWidth, nHeight ) ) );
-    SetLineColor( aOldLineColor );
-    SetFillColor( aOldFillColor );
+
     EnableMapMode( bMap );
+    if (bOldIsFillColor)
+        SetFillColor(aOldFillColor);
+    else
+        SetFillColor();
+    if (bOldIsLineColor)
+        SetLineColor(aOldLineColor);
+    else
+        SetLineColor();
 }
 
 void OutputDevice::Erase()
@@ -107,9 +114,6 @@ void OutputDevice::Erase()
         if ( eRasterOp != RasterOp::OverPaint )
             SetRasterOp( eRasterOp );
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->Erase();
 }
 
 void OutputDevice::Erase(const tools::Rectangle& rRect)
@@ -120,9 +124,6 @@ void OutputDevice::Erase(const tools::Rectangle& rRect)
     DrawWallpaper(rRect, GetBackground());
     if ( eRasterOp != RasterOp::OverPaint )
         SetRasterOp( eRasterOp );
-
-    if (mpAlphaVDev)
-        mpAlphaVDev->Erase(rRect);
 }
 
 void OutputDevice::DrawBitmapWallpaper( tools::Long nX, tools::Long nY,
@@ -131,20 +132,20 @@ void OutputDevice::DrawBitmapWallpaper( tools::Long nX, tools::Long nY,
 {
     assert(!is_double_buffered_window());
 
-    const BitmapEx* pCached = rWallpaper.ImplGetCachedBitmap();
+    const Bitmap* pCached = rWallpaper.ImplGetCachedBitmap();
 
     GDIMetaFile* pOldMetaFile = mpMetaFile;
     const bool bOldMap = mbMap;
 
-    BitmapEx aBmpEx;
+    Bitmap aBmp;
     if( pCached )
-        aBmpEx = *pCached;
+        aBmp = *pCached;
     else
-        aBmpEx = rWallpaper.GetBitmap();
+        aBmp = rWallpaper.GetBitmap();
 
-    const tools::Long nBmpWidth = aBmpEx.GetSizePixel().Width();
-    const tools::Long nBmpHeight = aBmpEx.GetSizePixel().Height();
-    const bool bTransparent = aBmpEx.IsAlpha();
+    const tools::Long nBmpWidth = aBmp.GetSizePixel().Width();
+    const tools::Long nBmpHeight = aBmp.GetSizePixel().Height();
+    const bool bTransparent = aBmp.HasAlpha();
 
     const WallpaperStyle eStyle = rWallpaper.GetStyle();
 
@@ -163,8 +164,8 @@ void OutputDevice::DrawBitmapWallpaper( tools::Long nX, tools::Long nY,
                 ScopedVclPtrInstance< VirtualDevice > aVDev(  *this  );
                 aVDev->SetBackground( rWallpaper.GetColor() );
                 aVDev->SetOutputSizePixel( Size( nBmpWidth, nBmpHeight ) );
-                aVDev->DrawBitmapEx( Point(), aBmpEx );
-                aBmpEx = aVDev->GetBitmapEx( Point(), aVDev->GetOutputSizePixel() );
+                aVDev->DrawBitmapEx( Point(), aBmp );
+                aBmp = aVDev->GetBitmap( Point(), aVDev->GetOutputSizePixel() );
             }
 
             bDrawColorBackground = true;
@@ -220,9 +221,9 @@ void OutputDevice::DrawBitmapWallpaper( tools::Long nX, tools::Long nY,
             if( pCached )
                 rWallpaper.ImplReleaseCachedBitmap();
 
-            aBmpEx = rWallpaper.GetBitmap();
-            aBmpEx.Scale( aSize );
-            aBmpEx = BitmapEx( aBmpEx.GetBitmap().CreateDisplayBitmap( this ), aBmpEx.GetAlphaMask() );
+            aBmp = rWallpaper.GetBitmap();
+            aBmp.Scale( aSize );
+            aBmp = aBmp.CreateDisplayBitmap( this );
         }
         break;
 
@@ -298,7 +299,7 @@ void OutputDevice::DrawBitmapWallpaper( tools::Long nX, tools::Long nY,
             {
                 for( tools::Long nBmpX = nStartX; nBmpX <= nRight; nBmpX += nBmpWidth )
                 {
-                    DrawBitmapEx( Point( nBmpX, nBmpY ), aBmpEx );
+                    DrawBitmapEx( Point( nBmpX, nBmpY ), aBmp );
                 }
             }
             bDrawn = true;
@@ -311,7 +312,7 @@ void OutputDevice::DrawBitmapWallpaper( tools::Long nX, tools::Long nY,
         // optimized for non-transparent bitmaps
         if( bDrawColorBackground )
         {
-            const Size aBmpSize( aBmpEx.GetSizePixel() );
+            const Size aBmpSize( aBmp.GetSizePixel() );
             const Point aTmpPoint;
             const tools::Rectangle aOutRect( aTmpPoint, GetOutputSizePixel() );
             const tools::Rectangle aColRect( Point( nX, nY ), Size( nWidth, nHeight ) );
@@ -359,10 +360,10 @@ void OutputDevice::DrawBitmapWallpaper( tools::Long nX, tools::Long nY,
             }
         }
 
-        DrawBitmapEx( aPos, aBmpEx );
+        DrawBitmapEx( aPos, aBmp );
     }
 
-    rWallpaper.ImplSetCachedBitmap( aBmpEx );
+    rWallpaper.ImplSetCachedBitmap( aBmp );
 
     Pop();
     EnableMapMode( bOldMap );

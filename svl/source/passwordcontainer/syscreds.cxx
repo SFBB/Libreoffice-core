@@ -25,11 +25,11 @@ using namespace com::sun::star;
 
 SysCredentialsConfigItem::SysCredentialsConfigItem(
     SysCredentialsConfig * pOwner )
-: utl::ConfigItem( "Office.Common/Passwords", ConfigItemMode::NONE ),
+: utl::ConfigItem( u"Office.Common/Passwords"_ustr, ConfigItemMode::NONE ),
   m_bInited( false ),
   m_pOwner( pOwner )
 {
-    uno::Sequence<OUString> aNode { "Office.Common/Passwords/AuthenticateUsingSystemCredentials" };
+    uno::Sequence<OUString> aNode { u"Office.Common/Passwords/AuthenticateUsingSystemCredentials"_ustr };
     EnableNotification( aNode );
 }
 
@@ -58,13 +58,13 @@ SysCredentialsConfigItem::getSystemCredentialsURLs()
     return getSystemCredentialsURLs(aGuard);
 }
 
-uno::Sequence< OUString >
+const uno::Sequence< OUString > &
 SysCredentialsConfigItem::getSystemCredentialsURLs(std::unique_lock<std::mutex>& /*rGuard*/)
 {
     if ( !m_bInited )
     {
         // read config item
-        uno::Sequence<OUString> aPropNames { "AuthenticateUsingSystemCredentials" };
+        uno::Sequence<OUString> aPropNames { u"AuthenticateUsingSystemCredentials"_ustr };
         uno::Sequence< uno::Any > aAnyValues(
             utl::ConfigItem::GetProperties( aPropNames ) );
 
@@ -77,7 +77,7 @@ SysCredentialsConfigItem::getSystemCredentialsURLs(std::unique_lock<std::mutex>&
         if ( ( aAnyValues[ 0 ] >>= aValues ) ||
              ( !aAnyValues[ 0 ].hasValue() ) )
         {
-            m_seqURLs = aValues;
+            m_seqURLs = std::move(aValues);
             m_bInited = true;
         }
     }
@@ -88,7 +88,7 @@ void SysCredentialsConfigItem::setSystemCredentialsURLs(
     const uno::Sequence< OUString > & seqURLList )
 {
     // write config item.
-    uno::Sequence< OUString > aPropNames{ "AuthenticateUsingSystemCredentials" };
+    uno::Sequence< OUString > aPropNames{ u"AuthenticateUsingSystemCredentials"_ustr };
     uno::Sequence< uno::Any > aPropValues{ uno::Any(seqURLList) };
 
     utl::ConfigItem::SetModified();

@@ -77,18 +77,18 @@ namespace rptui
 
     ConditionalFormattingDialog::ConditionalFormattingDialog(
             weld::Window* _pParent, const Reference< XReportControlModel >& _rxFormatConditions, ::rptui::OReportController& _rController)
-        : GenericDialogController(_pParent, "modules/dbreport/ui/condformatdialog.ui", "CondFormat")
+        : GenericDialogController(_pParent, u"modules/dbreport/ui/condformatdialog.ui"_ustr, u"CondFormat"_ustr)
         , m_rController(_rController)
         , m_xFormatConditions(_rxFormatConditions)
         , m_bConstructed(false)
-        , m_xScrollWindow(m_xBuilder->weld_scrolled_window("scrolledwindow"))
-        , m_xConditionPlayground(m_xBuilder->weld_box("condPlaygroundDrawingarea"))
+        , m_xScrollWindow(m_xBuilder->weld_scrolled_window(u"scrolledwindow"_ustr))
+        , m_xConditionPlayground(m_xBuilder->weld_box(u"condPlaygroundDrawingarea"_ustr))
     {
         OSL_ENSURE( m_xFormatConditions.is(), "ConditionalFormattingDialog::ConditionalFormattingDialog: ReportControlModel is NULL -> Prepare for GPF!" );
 
         m_xCopy.set( m_xFormatConditions->createClone(), UNO_QUERY_THROW );
 
-        m_xScrollWindow->connect_vadjustment_changed(LINK(this, ConditionalFormattingDialog, OnScroll));
+        m_xScrollWindow->connect_vadjustment_value_changed(LINK(this, ConditionalFormattingDialog, OnScroll));
 
         impl_initializeConditions();
 

@@ -16,7 +16,7 @@ from libreoffice.uno.propertyvalue import mkPropertyValues
 # Chart Display Legend dialog
 class chartLegend(UITestCase):
    def test_chart_display_legend_dialog(self):
-    with self.ui_test.load_file(get_url_for_data_file("tdf98390.ods")):
+    with self.ui_test.load_file(get_url_for_data_file("chart.ods")):
       xCalcDoc = self.xUITest.getTopFocusWindow()
       gridwin = xCalcDoc.getChild("grid_window")
 
@@ -88,7 +88,7 @@ class chartLegend(UITestCase):
           xLegends.executeAction("SELECT", tuple())
 
           with self.ui_test.execute_dialog_through_action(xLegends, "COMMAND", mkPropertyValues({"COMMAND": "TransformDialog"})) as xDialog:
-            self.assertEqual("4.61", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_X"))['Value'])
+            self.assertEqual("4.59", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_X"))['Value'])
             self.assertEqual("1.54", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_Y"))['Value'])
 
           xChartMain.executeAction("TYPE", mkPropertyValues({"KEYCODE": "UP"}))
@@ -96,7 +96,7 @@ class chartLegend(UITestCase):
 
           # Check the position has changed after moving the label using the arrows keys
           with self.ui_test.execute_dialog_through_action(xLegends, "COMMAND", mkPropertyValues({"COMMAND": "TransformDialog"})) as xDialog:
-            self.assertEqual("4.51", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_X"))['Value'])
+            self.assertEqual("4.49", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_X"))['Value'])
             self.assertEqual("1.44", get_state_as_dict(xDialog.getChild("MTR_FLD_POS_Y"))['Value'])
 
    def test_Tdf147394(self):

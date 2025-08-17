@@ -220,7 +220,7 @@ private:
         RowData& rRowData = impl_getRowDataAccess_throw( aGuard, i_rowIndex, m_nColumnCount );
 
         ::std::transform( rRowData.begin(), rRowData.end(), resultData.getArray(),
-                          [] ( const CellData& rCellData )
+                          [] ( const CellData& rCellData ) -> const Any&
                           { return rCellData.first; });
         return resultData;
     }
@@ -480,7 +480,7 @@ private:
 
     OUString SAL_CALL DefaultGridDataModel::getImplementationName(  )
     {
-        return "stardiv.Toolkit.DefaultGridDataModel";
+        return u"stardiv.Toolkit.DefaultGridDataModel"_ustr;
     }
 
     sal_Bool SAL_CALL DefaultGridDataModel::supportsService( const OUString& ServiceName )
@@ -490,12 +490,13 @@ private:
 
     Sequence< OUString > SAL_CALL DefaultGridDataModel::getSupportedServiceNames(  )
     {
-        return { "com.sun.star.awt.grid.DefaultGridDataModel" };
+        return { u"com.sun.star.awt.grid.DefaultGridDataModel"_ustr };
     }
 
 
     Reference< css::util::XCloneable > SAL_CALL DefaultGridDataModel::createClone(  )
     {
+        std::unique_lock aGuard(m_aMutex);
         return new DefaultGridDataModel( *this );
     }
 

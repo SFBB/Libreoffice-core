@@ -35,6 +35,7 @@
 class SdrCaptionAngleItem final : public SdrAngleItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SdrCaptionAngleItem)
     SdrCaptionAngleItem(Degree100 nAngle = 0_deg100)
         : SdrAngleItem(SDRATTR_CAPTIONANGLE, nAngle)
     {

@@ -75,13 +75,12 @@ namespace svx
     using namespace ::com::sun::star::frame;
     using namespace ::com::sun::star::util;
     using namespace ::com::sun::star::beans;
-    using namespace ::com::sun::star::container;
 
 
     typedef sal_uInt16 WhichId;
 
 
-    static SfxSlotId pTextControlSlots[] =
+    constexpr SfxSlotId pTextControlSlots[] =
     {
         SID_CLIPBOARD_FORMAT_ITEMS,
         SID_CUT,
@@ -131,7 +130,7 @@ namespace svx
     // slots which we are not responsible for on the SfxShell level, but
     // need to handle during the "paragraph attributes" and/or "character
     // attributes" dialogs
-    static SfxSlotId pDialogSlots[] =
+    constexpr SfxSlotId pDialogSlots[] =
     {
         SID_ATTR_TABSTOP,
         SID_ATTR_PARA_HANGPUNCTUATION,
@@ -350,7 +349,7 @@ namespace svx
 
         void lcl_translateUnoStateToItem( SfxSlotId _nSlot, const Any& _rUnoState, SfxItemSet& _rSet )
         {
-            WhichId nWhich = _rSet.GetPool()->GetWhich( _nSlot );
+            WhichId nWhich = _rSet.GetPool()->GetWhichIDFromSlotID( _nSlot );
             if ( !_rUnoState.hasValue() )
             {
                 if  ( ( _nSlot != SID_CUT )
@@ -363,7 +362,7 @@ namespace svx
             }
             else
             {
-                switch ( _rUnoState.getValueType().getTypeClass() )
+                switch ( _rUnoState.getValueTypeClass() )
                 {
                 case TypeClass_BOOLEAN:
                 {
@@ -497,7 +496,7 @@ namespace svx
                 Reference< XPropertySetInfo > xPSI;
                 if ( xModelProps.is() )
                     xPSI = xModelProps->getPropertySetInfo();
-                OUString sRichTextPropertyName = "RichText";
+                OUString sRichTextPropertyName = u"RichText"_ustr;
                 if ( xPSI.is() && xPSI->hasPropertyByName( sRichTextPropertyName ) )
                 {
                     OSL_VERIFY( xModelProps->getPropertyValue( sRichTextPropertyName ) >>= bIsRichText );
@@ -586,7 +585,7 @@ namespace svx
                 }
             }
 
-            WhichId nWhich = rPool.GetWhich( nSlotId );
+            WhichId nWhich = rPool.GetWhichIDFromSlotID( nSlotId );
             bool bIsInPool = rPool.IsInRange( nWhich );
             if ( bIsInPool )
             {
@@ -618,7 +617,6 @@ namespace svx
             return;
 
         rtl::Reference<SfxItemPool> pPool(EditEngine::CreatePool());
-        pPool->FreezeIdRanges();
         std::optional< SfxItemSet > xPureItems(( SfxItemSet( *pPool ) ));
 
         // put the current states of the items into the set
@@ -641,11 +639,10 @@ namespace svx
             const SfxItemSet& rModifiedItems = *xDialog->GetOutputItemSet();
             for ( WhichId nWhich = pPool->GetFirstWhich(); nWhich <= pPool->GetLastWhich(); ++nWhich )
             {
-                if ( rModifiedItems.GetItemState( nWhich ) == SfxItemState::SET )
+                const SfxPoolItem* pModifiedItem = nullptr;
+                if ( rModifiedItems.GetItemState( nWhich, true, &pModifiedItem ) == SfxItemState::SET )
                 {
                     SfxSlotId nSlotForItemSet = pPool->GetSlotId( nWhich );
-                    const SfxPoolItem* pModifiedItem = rModifiedItems.GetItem( nWhich );
-
 
                     SfxSlotId nSlotForDispatcher = nSlotForItemSet;
                     switch ( nSlotForDispatcher )
@@ -689,7 +686,7 @@ namespace svx
                             DBG_ASSERT( pBoolItem, "FmTextControlShell::executeAttributeDialog: no bool item?!" );
                             if ( pBoolItem )
                             {
-                                aArgs = { comphelper::makePropertyValue("Enable",
+                                aArgs = { comphelper::makePropertyValue(u"Enable"_ustr,
                                                                         pBoolItem->GetValue()) };
                             }
                         }
@@ -824,7 +821,7 @@ namespace svx
                 SfxItemSet aToggled( *_rReq.GetArgs() );
 
                 lcl_translateUnoStateToItem( nSlot, aFeaturePos->second->getFeatureState(), aToggled );
-                WhichId nWhich = aToggled.GetPool()->GetWhich( nSlot );
+                WhichId nWhich = aToggled.GetPool()->GetWhichIDFromSlotID( nSlot );
                 const SfxPoolItem* pItem = aToggled.GetItem( nWhich );
                 if ( ( SID_ATTR_CHAR_UNDERLINE == nSlot ) || ( SID_ATTR_CHAR_OVERLINE == nSlot ) )
                 {
@@ -1210,7 +1207,8 @@ namespace svx
     }
 
 
-    void FmTextControlShell::fillFeatureDispatchers(const Reference< css::awt::XControl >& _rxControl, SfxSlotId* _pZeroTerminatedSlots,
+    void FmTextControlShell::fillFeatureDispatchers(const Reference< css::awt::XControl >& _rxControl,
+            const SfxSlotId* _pZeroTerminatedSlots,
             ControlFeatures& _rDispatchers)
     {
         Reference< XDispatchProvider > xProvider( _rxControl, UNO_QUERY );
@@ -1218,7 +1216,7 @@ namespace svx
         DBG_ASSERT( pApplication, "FmTextControlShell::fillFeatureDispatchers: no SfxApplication!" );
         if ( xProvider.is() && pApplication )
         {
-            SfxSlotId* pSlots = _pZeroTerminatedSlots;
+            const SfxSlotId* pSlots = _pZeroTerminatedSlots;
             while ( *pSlots )
             {
                 rtl::Reference<FmTextControlFeature> pDispatcher = implGetFeatureDispatcher( xProvider, pApplication, *pSlots );
@@ -1299,7 +1297,7 @@ namespace svx
 
     void FmTextControlShell::contextMenuRequested()
     {
-        m_rBindings.GetDispatcher()->ExecutePopup( "formrichtext" );
+        m_rBindings.GetDispatcher()->ExecutePopup( u"formrichtext"_ustr );
     }
 
 

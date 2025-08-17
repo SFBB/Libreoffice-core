@@ -20,7 +20,6 @@
 
 #include <AccessibleBase.hxx>
 
-#include <com/sun/star/accessibility/XAccessibleExtendedComponent.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <svx/AccessibleShapeTreeInfo.hxx>
 
@@ -32,22 +31,11 @@ class AccessibleShape;
 namespace chart
 {
 
-namespace impl
-{
-typedef ::cppu::ImplInheritanceHelper<
-    AccessibleBase,
-    css::accessibility::XAccessibleExtendedComponent > AccessibleChartShape_Base;
-}
-
-class AccessibleChartShape :
-    public impl::AccessibleChartShape_Base
+class AccessibleChartShape : public AccessibleBase
 {
 public:
     explicit AccessibleChartShape( const AccessibleElementInfo& rAccInfo );
     virtual ~AccessibleChartShape() override;
-
-    // ________ XServiceInfo ________
-    virtual OUString SAL_CALL getImplementationName() override;
 
     // ________ XAccessibleContext ________
     virtual sal_Int64 SAL_CALL getAccessibleChildCount() override;
@@ -57,19 +45,15 @@ public:
     virtual OUString SAL_CALL getAccessibleDescription() override;
     virtual OUString SAL_CALL getAccessibleName() override;
 
+    // OAccessible
+    virtual css::awt::Rectangle implGetBounds() override;
+
     // ________ XAccessibleComponent ________
-    virtual sal_Bool SAL_CALL containsPoint( const css::awt::Point& aPoint ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint( const css::awt::Point& aPoint ) override;
-    virtual css::awt::Rectangle SAL_CALL getBounds() override;
-    virtual css::awt::Point SAL_CALL getLocation() override;
-    virtual css::awt::Point SAL_CALL getLocationOnScreen() override;
-    virtual css::awt::Size SAL_CALL getSize() override;
-    virtual void SAL_CALL grabFocus() override;
     virtual sal_Int32 SAL_CALL getForeground() override;
     virtual sal_Int32 SAL_CALL getBackground() override;
 
     // ________ XAccessibleExtendedComponent ________
-    virtual css::uno::Reference< css::awt::XFont > SAL_CALL getFont() override;
     virtual OUString SAL_CALL getTitledBorderText() override;
     virtual OUString SAL_CALL getToolTipText() override;
 

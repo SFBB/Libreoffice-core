@@ -99,7 +99,7 @@ SFX_IMPL_INTERFACE(SwGrfShell, SwBaseShell)
 
 void SwGrfShell::InitInterface_Impl()
 {
-    GetStaticInterface()->RegisterPopupMenu("graphic");
+    GetStaticInterface()->RegisterPopupMenu(u"graphic"_ustr);
 
     GetStaticInterface()->RegisterObjectBar(SFX_OBJECTBAR_OBJECT, SfxVisibilityFlags::Invisible, ToolbarId::Grafik_Toolbox);
 }
@@ -189,8 +189,7 @@ void SwGrfShell::Execute(SfxRequest &rReq)
             if( pGraphic )
             {
                 Size aSize (
-                    convertTwipToMm100(rSh.GetAnyCurRect(CurRectType::FlyEmbedded).Width()),
-                    convertTwipToMm100(rSh.GetAnyCurRect(CurRectType::FlyEmbedded).Height()));
+                    convertTwipToMm100(rSh.GetAnyCurRect(CurRectType::FlyEmbedded).SSize()));
 
                 SfxItemSetFixed<RES_GRFATR_MIRRORGRF, RES_GRFATR_CROPGRF> aSet( rSh.GetAttrPool() );
                 rSh.GetCurAttr( aSet );
@@ -296,14 +295,15 @@ void SwGrfShell::Execute(SfxRequest &rReq)
             sal_uInt16 nHtmlMode = ::GetHtmlMode(GetView().GetDocShell());
             aSet.Put(SfxUInt16Item(SID_HTML_MODE, nHtmlMode));
             FieldUnit eMetric = ::GetDfltMetric(0 != (nHtmlMode&HTMLMODE_ON));
-            SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast< sal_uInt16 >(eMetric)) );
+            SwModule* mod = SwModule::get();
+            mod->PutItem(SfxUInt16Item(SID_ATTR_METRIC, static_cast<sal_uInt16>(eMetric)));
 
             const SwRect* pRect = &rSh.GetAnyCurRect(CurRectType::Page);
             SwFormatFrameSize aFrameSize( SwFrameSize::Variable, pRect->Width(), pRect->Height());
-            aFrameSize.SetWhich( GetPool().GetWhich( SID_ATTR_PAGE_SIZE ) );
+            aFrameSize.SetWhich( GetPool().GetWhichIDFromSlotID( SID_ATTR_PAGE_SIZE ) );
             aSet.Put( aFrameSize );
 
-            aSet.Put(SfxStringItem(FN_SET_FRM_NAME, rSh.GetFlyName()));
+            aSet.Put(SfxStringItem(FN_SET_FRM_NAME, rSh.GetFlyName().toString()));
             aSet.Put(SfxStringItem(FN_UNO_DESCRIPTION, rSh.GetObjDescription()));
             if ( nSlot == FN_FORMAT_GRAFIC_DLG )
             {
@@ -314,7 +314,7 @@ void SwGrfShell::Execute(SfxRequest &rReq)
             pRect = &rSh.GetAnyCurRect(CurRectType::PagePrt);
             aFrameSize.SetWidth( pRect->Width() );
             aFrameSize.SetHeight( pRect->Height() );
-            aFrameSize.SetWhich( GetPool().GetWhich(FN_GET_PRINT_AREA) );
+            aFrameSize.SetWhich( GetPool().GetWhichIDFromSlotID(FN_GET_PRINT_AREA) );
             aSet.Put( aFrameSize );
 
             aSet.Put( aMgr.GetAttrSet() );
@@ -405,12 +405,12 @@ void SwGrfShell::Execute(SfxRequest &rReq)
             }
 
             SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateFrameTabDialog("PictureDialog",
+            ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateFrameTabDialog(u"PictureDialog"_ustr,
                                                     GetView().GetViewFrame(),
                                                     GetView().GetFrameWeld(),
                                                     aSet, false));
             if (nSlot == FN_DRAW_WRAP_DLG)
-                pDlg->SetCurPageId("wrap");
+                pDlg->SetCurPageId(u"wrap"_ustr);
 
             if (pDlg->Execute() == RET_OK)
             {
@@ -469,7 +469,7 @@ void SwGrfShell::Execute(SfxRequest &rReq)
                 }
 
                 if( bApplyUsrPref )
-                    SW_MOD()->ApplyUsrPref(aUsrPref, &GetView());
+                    mod->ApplyUsrPref(aUsrPref, &GetView());
 
                 // and now set all the graphic attributes and other stuff
                 if( const SvxBrushItem* pGraphicBrushItem = pSet->GetItemIfSet(
@@ -689,11 +689,12 @@ void SwGrfShell::ExecAttr( SfxRequest const &rReq )
                 const GraphicObject* pFilterObj( GetShell().GetGraphicObj() );
                 if ( pFilterObj )
                 {
-                    GraphicObject aFilterObj( *pFilterObj );
-                    if( SvxGraphicFilterResult::NONE ==
-                        SvxGraphicFilter::ExecuteGrfFilterSlot( rReq, aFilterObj ))
-                        GetShell().ReRead( OUString(), OUString(),
-                                           &aFilterObj.GetGraphic() );
+                    SvxGraphicFilter::ExecuteGrfFilterSlot( rReq, *pFilterObj,
+                        [this] (GraphicObject aFilteredObject) -> void
+                        {
+                            GetShell().ReRead( OUString(), OUString(),
+                                               &aFilteredObject.GetGraphic() );
+                        });
                 }
             }
             break;
@@ -1011,7 +1012,7 @@ SwGrfShell::~SwGrfShell()
 SwGrfShell::SwGrfShell(SwView &_rView) :
     SwBaseShell(_rView)
 {
-    SetName("Graphic");
+    SetName(u"Graphic"_ustr);
     SfxShell::SetContextName(vcl::EnumContext::GetContextName(vcl::EnumContext::Context::Graphic));
 }
 

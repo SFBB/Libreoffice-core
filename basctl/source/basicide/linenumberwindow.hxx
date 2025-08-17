@@ -23,6 +23,7 @@ private:
     tools::Long m_nCurYOffset;
     int m_nBaseWidth;
     Color m_FontColor;
+    Color m_HighlightColor;
     virtual void DataChanged(DataChangedEvent const& rDCEvt) override;
 
 protected:
@@ -35,7 +36,7 @@ public:
 
     void DoScroll(tools::Long nVertScroll);
 
-    bool SyncYOffset();
+    void SyncYOffset();
     tools::Long& GetCurYOffset() { return m_nCurYOffset; }
 
     int GetWidth() const { return m_nWidth; }

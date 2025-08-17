@@ -48,17 +48,20 @@ public:
 
     bool isParentARootStorage() const
     { return m_bParentIsRootStorage; }
-    const css::uno::Reference< css::embed::XStorage >&
+    css::uno::Reference< css::embed::XStorage >
     getParentStorage() const
-    { return m_xParentStorage; }
-    void setParentStorage( const css::uno::Reference< css::embed::XStorage > & xStg )
     {
         std::scoped_lock aGuard( m_aMutex );
-        m_xParentStorage = xStg;
+        return m_xParentStorage;
+    }
+    void clearParentStorage()
+    {
+        std::scoped_lock aGuard( m_aMutex );
+        m_xParentStorage = nullptr;
     }
 
 private:
-    std::mutex m_aMutex;
+    mutable std::mutex m_aMutex;
     css::uno::Reference< css::embed::XStorage > m_xParentStorage;
     bool                                  m_bParentIsRootStorage;
 };

@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <colorpicker.hxx>
+
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/ui/dialogs/XExecutableDialog.hpp>
 #include <com/sun/star/ui/dialogs/XAsynchronousExecutableDialog.hpp>
@@ -28,13 +30,8 @@
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <vcl/customweld.hxx>
-#include <vcl/event.hxx>
+#include <vcl/ColorDialog.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/virdev.hxx>
-#include <vcl/weld.hxx>
-#include <sfx2/basedlgs.hxx>
-#include <svx/hexcolorcontrol.hxx>
 #include <basegfx/color/bcolortools.hxx>
 #include <cmath>
 #include <o3tl/typed_flags_set.hxx>
@@ -44,47 +41,6 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::ui::dialogs;
 using namespace ::com::sun::star::beans;
 using namespace ::basegfx;
-
-namespace {
-
-enum class UpdateFlags
-{
-    NONE         = 0x00,
-    RGB          = 0x01,
-    CMYK         = 0x02,
-    HSB          = 0x04,
-    ColorChooser = 0x08,
-    ColorSlider  = 0x10,
-    Hex          = 0x20,
-    All          = 0x3f,
-};
-
-}
-
-namespace o3tl {
-    template<> struct typed_flags<UpdateFlags> : is_typed_flags<UpdateFlags, 0x3f> {};
-}
-
-
-namespace cui
-{
-
-namespace {
-
-enum class ColorComponent {
-    Red,
-    Green,
-    Blue,
-    Hue,
-    Saturation,
-    Brightness,
-    Cyan,
-    Yellow,
-    Magenta,
-    Key,
-};
-
-}
 
 // color space conversion helpers
 
@@ -146,38 +102,6 @@ static void RGBtoCMYK( double dR, double dG, double dB, double& fCyan, double& f
     }
 }
 
-namespace {
-
-class ColorPreviewControl : public weld::CustomWidgetController
-{
-private:
-    Color m_aColor;
-
-    virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
-public:
-    ColorPreviewControl()
-    {
-    }
-
-    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override
-    {
-        CustomWidgetController::SetDrawingArea(pDrawingArea);
-        pDrawingArea->set_size_request(pDrawingArea->get_approximate_digit_width() * 10,
-                                       pDrawingArea->get_text_height() * 2);
-    }
-
-    void SetColor(const Color& rCol)
-    {
-        if (rCol != m_aColor)
-        {
-            m_aColor = rCol;
-            Invalidate();
-        }
-    }
-};
-
-}
-
 void ColorPreviewControl::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&)
 {
     rRenderContext.SetFillColor(m_aColor);
@@ -185,73 +109,20 @@ void ColorPreviewControl::Paint(vcl::RenderContext& rRenderContext, const tools:
     rRenderContext.DrawRect(tools::Rectangle(Point(0, 0), GetOutputSizePixel()));
 }
 
-namespace {
-
-enum ColorMode { HUE, SATURATION, BRIGHTNESS, RED, GREEN, BLUE };
-
+void ColorPreviewControl::SetDrawingArea(weld::DrawingArea* pDrawingArea)
+{
+    CustomWidgetController::SetDrawingArea(pDrawingArea);
+    pDrawingArea->set_size_request(pDrawingArea->get_approximate_digit_width() * 10,
+                                   pDrawingArea->get_text_height() * 2);
 }
 
-const ColorMode DefaultMode = HUE;
-
-namespace {
-
-class ColorFieldControl : public weld::CustomWidgetController
+void ColorPreviewControl::SetColor(const Color& rCol)
 {
-public:
-    ColorFieldControl()
-        : meMode( DefaultMode )
-        , mnBaseValue(USHRT_MAX)
-        , mdX( -1.0 )
-        , mdY( -1.0 )
-        , mbMouseCaptured(false)
+    if (rCol != m_aColor)
     {
+        m_aColor = rCol;
+        Invalidate();
     }
-
-    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override
-    {
-        CustomWidgetController::SetDrawingArea(pDrawingArea);
-        pDrawingArea->set_size_request(pDrawingArea->get_approximate_digit_width() * 40,
-                                       pDrawingArea->get_text_height() * 10);
-    }
-
-    virtual ~ColorFieldControl() override
-    {
-        mxBitmap.disposeAndClear();
-    }
-
-    virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
-    virtual void Resize() override;
-    virtual bool MouseButtonDown(const MouseEvent& rMEvt) override;
-    virtual bool MouseMove(const MouseEvent& rMEvt) override;
-    virtual bool MouseButtonUp(const MouseEvent& rMEvt) override;
-
-    void UpdateBitmap();
-    void ShowPosition( const Point& rPos, bool bUpdate );
-    void UpdatePosition();
-    void Modify();
-
-    void SetValues(sal_uInt16 nBaseValue, ColorMode eMode, double x, double y);
-    double GetX() const { return mdX;}
-    double GetY() const { return mdY;}
-
-    void SetModifyHdl(const Link<ColorFieldControl&,void>& rLink) { maModifyHdl = rLink; }
-
-private:
-    ColorMode meMode;
-    sal_uInt16 mnBaseValue;
-    double mdX;
-    double mdY;
-    bool mbMouseCaptured;
-    Point maPosition;
-    VclPtr<VirtualDevice> mxBitmap;
-    Link<ColorFieldControl&,void> maModifyHdl;
-    std::vector<sal_uInt8>  maRGB_Horiz;
-    std::vector<sal_uInt16> maGrad_Horiz;
-    std::vector<sal_uInt16> maPercent_Horiz;
-    std::vector<sal_uInt8>  maRGB_Vert;
-    std::vector<sal_uInt16> maPercent_Vert;
-};
-
 }
 
 void ColorFieldControl::UpdateBitmap()
@@ -402,6 +273,25 @@ void ColorFieldControl::UpdateBitmap()
 
 constexpr int nCenterOffset = 5;
 
+const ColorMode DefaultMode = HUE;
+
+ColorFieldControl::ColorFieldControl()
+    : meMode(DefaultMode)
+    , mnBaseValue(USHRT_MAX)
+    , mdX(-1.0)
+    , mdY(-1.0)
+{
+}
+
+void ColorFieldControl::SetDrawingArea(weld::DrawingArea* pDrawingArea)
+{
+    CustomWidgetController::SetDrawingArea(pDrawingArea);
+    pDrawingArea->set_size_request(pDrawingArea->get_approximate_digit_width() * 40,
+                                   pDrawingArea->get_text_height() * 10);
+}
+
+ColorFieldControl::~ColorFieldControl() { mxBitmap.disposeAndClear(); }
+
 void ColorFieldControl::ShowPosition( const Point& rPos, bool bUpdate )
 {
     if (!mxBitmap)
@@ -443,7 +333,6 @@ void ColorFieldControl::ShowPosition( const Point& rPos, bool bUpdate )
 bool ColorFieldControl::MouseButtonDown(const MouseEvent& rMEvt)
 {
     CaptureMouse();
-    mbMouseCaptured = true;
     ShowPosition(rMEvt.GetPosPixel(), true);
     Modify();
     return true;
@@ -451,7 +340,7 @@ bool ColorFieldControl::MouseButtonDown(const MouseEvent& rMEvt)
 
 bool ColorFieldControl::MouseMove(const MouseEvent& rMEvt)
 {
-    if (mbMouseCaptured)
+    if (IsMouseCaptured())
     {
         ShowPosition(rMEvt.GetPosPixel(), true);
         Modify();
@@ -462,7 +351,6 @@ bool ColorFieldControl::MouseMove(const MouseEvent& rMEvt)
 bool ColorFieldControl::MouseButtonUp(const MouseEvent&)
 {
     ReleaseMouse();
-    mbMouseCaptured = false;
     return true;
 }
 
@@ -523,44 +411,6 @@ void ColorFieldControl::UpdatePosition()
 {
     Size aSize(GetOutputSizePixel());
     ShowPosition(Point(static_cast<tools::Long>(mdX * aSize.Width()), static_cast<tools::Long>((1.0 - mdY) * aSize.Height())), false);
-}
-
-namespace {
-
-class ColorSliderControl : public weld::CustomWidgetController
-{
-public:
-    ColorSliderControl();
-    virtual ~ColorSliderControl() override;
-
-    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
-
-    virtual bool MouseButtonDown(const MouseEvent& rMEvt) override;
-    virtual bool MouseMove(const MouseEvent& rMEvt) override;
-    virtual bool MouseButtonUp(const MouseEvent& rMEvt) override;
-    virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
-    virtual void Resize() override;
-
-    void UpdateBitmap();
-    void ChangePosition( tools::Long nY );
-    void Modify();
-
-    void SetValue( const Color& rColor, ColorMode eMode, double dValue );
-    double GetValue() const { return mdValue; }
-
-    void SetModifyHdl( const Link<ColorSliderControl&,void>& rLink ) { maModifyHdl = rLink; }
-
-    sal_Int16 GetLevel() const { return mnLevel; }
-
-private:
-    Link<ColorSliderControl&,void> maModifyHdl;
-    Color maColor;
-    ColorMode meMode;
-    VclPtr<VirtualDevice> mxBitmap;
-    sal_Int16 mnLevel;
-    double mdValue;
-};
-
 }
 
 ColorSliderControl::ColorSliderControl()
@@ -737,95 +587,31 @@ void ColorSliderControl::SetValue(const Color& rColor, ColorMode eMode, double d
     }
 }
 
-namespace {
-
-class ColorPickerDialog : public SfxDialogController
-{
-private:
-    ColorFieldControl m_aColorField;
-    ColorSliderControl m_aColorSlider;
-    ColorPreviewControl m_aColorPreview;
-    ColorPreviewControl m_aColorPrevious;
-
-    std::unique_ptr<weld::CustomWeld> m_xColorField;
-    std::unique_ptr<weld::CustomWeld> m_xColorSlider;
-    std::unique_ptr<weld::CustomWeld> m_xColorPreview;
-    std::unique_ptr<weld::CustomWeld> m_xColorPrevious;
-
-    std::unique_ptr<weld::Widget> m_xFISliderLeft;
-    std::unique_ptr<weld::Widget> m_xFISliderRight;
-    std::unique_ptr<weld::RadioButton> m_xRBRed;
-    std::unique_ptr<weld::RadioButton> m_xRBGreen;
-    std::unique_ptr<weld::RadioButton> m_xRBBlue;
-    std::unique_ptr<weld::RadioButton> m_xRBHue;
-    std::unique_ptr<weld::RadioButton> m_xRBSaturation;
-    std::unique_ptr<weld::RadioButton> m_xRBBrightness;
-
-    std::unique_ptr<weld::SpinButton> m_xMFRed;
-    std::unique_ptr<weld::SpinButton> m_xMFGreen;
-    std::unique_ptr<weld::SpinButton> m_xMFBlue;
-    std::unique_ptr<weld::HexColorControl> m_xEDHex;
-
-    std::unique_ptr<weld::MetricSpinButton> m_xMFHue;
-    std::unique_ptr<weld::MetricSpinButton> m_xMFSaturation;
-    std::unique_ptr<weld::MetricSpinButton> m_xMFBrightness;
-
-    std::unique_ptr<weld::MetricSpinButton> m_xMFCyan;
-    std::unique_ptr<weld::MetricSpinButton> m_xMFMagenta;
-    std::unique_ptr<weld::MetricSpinButton> m_xMFYellow;
-    std::unique_ptr<weld::MetricSpinButton> m_xMFKey;
-
-public:
-    ColorPickerDialog(weld::Window* pParent, Color nColor, sal_Int16 nMode);
-
-    void update_color(UpdateFlags n = UpdateFlags::All);
-
-    DECL_LINK(ColorFieldControlModifydl, ColorFieldControl&, void);
-    DECL_LINK(ColorSliderControlModifyHdl, ColorSliderControl&, void);
-    DECL_LINK(ColorModifyMetricHdl, weld::MetricSpinButton&, void);
-    DECL_LINK(ColorModifySpinHdl, weld::SpinButton&, void);
-    DECL_LINK(ColorModifyEditHdl, weld::Entry&, void);
-    DECL_LINK(ModeModifyHdl, weld::Toggleable&, void);
-
-    Color GetColor() const;
-
-    void setColorComponent(ColorComponent nComp, double dValue);
-
-private:
-    ColorMode meMode;
-
-    double mdRed, mdGreen, mdBlue;
-    double mdHue, mdSat, mdBri;
-    double mdCyan, mdMagenta, mdYellow, mdKey;
-};
-
-}
-
-ColorPickerDialog::ColorPickerDialog(weld::Window* pParent, Color nColor, sal_Int16 nDialogMode)
-    : SfxDialogController(pParent, "cui/ui/colorpickerdialog.ui", "ColorPicker")
-    , m_xColorField(new weld::CustomWeld(*m_xBuilder, "colorField", m_aColorField))
-    , m_xColorSlider(new weld::CustomWeld(*m_xBuilder, "colorSlider", m_aColorSlider))
-    , m_xColorPreview(new weld::CustomWeld(*m_xBuilder, "preview", m_aColorPreview))
-    , m_xColorPrevious(new weld::CustomWeld(*m_xBuilder, "previous", m_aColorPrevious))
-    , m_xFISliderLeft(m_xBuilder->weld_widget("leftImage"))
-    , m_xFISliderRight(m_xBuilder->weld_widget("rightImage"))
-    , m_xRBRed(m_xBuilder->weld_radio_button("redRadiobutton"))
-    , m_xRBGreen(m_xBuilder->weld_radio_button("greenRadiobutton"))
-    , m_xRBBlue(m_xBuilder->weld_radio_button("blueRadiobutton"))
-    , m_xRBHue(m_xBuilder->weld_radio_button("hueRadiobutton"))
-    , m_xRBSaturation(m_xBuilder->weld_radio_button("satRadiobutton"))
-    , m_xRBBrightness(m_xBuilder->weld_radio_button("brightRadiobutton"))
-    , m_xMFRed(m_xBuilder->weld_spin_button("redSpinbutton"))
-    , m_xMFGreen(m_xBuilder->weld_spin_button("greenSpinbutton"))
-    , m_xMFBlue(m_xBuilder->weld_spin_button("blueSpinbutton"))
-    , m_xEDHex(new weld::HexColorControl(m_xBuilder->weld_entry("hexEntry")))
-    , m_xMFHue(m_xBuilder->weld_metric_spin_button("hueSpinbutton", FieldUnit::DEGREE))
-    , m_xMFSaturation(m_xBuilder->weld_metric_spin_button("satSpinbutton", FieldUnit::PERCENT))
-    , m_xMFBrightness(m_xBuilder->weld_metric_spin_button("brightSpinbutton", FieldUnit::PERCENT))
-    , m_xMFCyan(m_xBuilder->weld_metric_spin_button("cyanSpinbutton", FieldUnit::PERCENT))
-    , m_xMFMagenta(m_xBuilder->weld_metric_spin_button("magSpinbutton", FieldUnit::PERCENT))
-    , m_xMFYellow(m_xBuilder->weld_metric_spin_button("yellowSpinbutton", FieldUnit::PERCENT))
-    , m_xMFKey(m_xBuilder->weld_metric_spin_button("keySpinbutton", FieldUnit::PERCENT))
+ColorPickerDialog::ColorPickerDialog(weld::Window* pParent, const Color& rColor, vcl::ColorPickerMode eDialogMode)
+    : SfxDialogController(pParent, u"cui/ui/colorpickerdialog.ui"_ustr, u"ColorPicker"_ustr)
+    , m_xColorField(new weld::CustomWeld(*m_xBuilder, u"colorField"_ustr, m_aColorField))
+    , m_xColorSlider(new weld::CustomWeld(*m_xBuilder, u"colorSlider"_ustr, m_aColorSlider))
+    , m_xColorPreview(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, m_aColorPreview))
+    , m_xColorPrevious(new weld::CustomWeld(*m_xBuilder, u"previous"_ustr, m_aColorPrevious))
+    , m_xFISliderLeft(m_xBuilder->weld_widget(u"leftImage"_ustr))
+    , m_xFISliderRight(m_xBuilder->weld_widget(u"rightImage"_ustr))
+    , m_xRBRed(m_xBuilder->weld_radio_button(u"redRadiobutton"_ustr))
+    , m_xRBGreen(m_xBuilder->weld_radio_button(u"greenRadiobutton"_ustr))
+    , m_xRBBlue(m_xBuilder->weld_radio_button(u"blueRadiobutton"_ustr))
+    , m_xRBHue(m_xBuilder->weld_radio_button(u"hueRadiobutton"_ustr))
+    , m_xRBSaturation(m_xBuilder->weld_radio_button(u"satRadiobutton"_ustr))
+    , m_xRBBrightness(m_xBuilder->weld_radio_button(u"brightRadiobutton"_ustr))
+    , m_xMFRed(m_xBuilder->weld_spin_button(u"redSpinbutton"_ustr))
+    , m_xMFGreen(m_xBuilder->weld_spin_button(u"greenSpinbutton"_ustr))
+    , m_xMFBlue(m_xBuilder->weld_spin_button(u"blueSpinbutton"_ustr))
+    , m_xEDHex(new weld::HexColorControl(m_xBuilder->weld_entry(u"hexEntry"_ustr)))
+    , m_xMFHue(m_xBuilder->weld_metric_spin_button(u"hueSpinbutton"_ustr, FieldUnit::DEGREE))
+    , m_xMFSaturation(m_xBuilder->weld_metric_spin_button(u"satSpinbutton"_ustr, FieldUnit::PERCENT))
+    , m_xMFBrightness(m_xBuilder->weld_metric_spin_button(u"brightSpinbutton"_ustr, FieldUnit::PERCENT))
+    , m_xMFCyan(m_xBuilder->weld_metric_spin_button(u"cyanSpinbutton"_ustr, FieldUnit::PERCENT))
+    , m_xMFMagenta(m_xBuilder->weld_metric_spin_button(u"magSpinbutton"_ustr, FieldUnit::PERCENT))
+    , m_xMFYellow(m_xBuilder->weld_metric_spin_button(u"yellowSpinbutton"_ustr, FieldUnit::PERCENT))
+    , m_xMFKey(m_xBuilder->weld_metric_spin_button(u"keySpinbutton"_ustr, FieldUnit::PERCENT))
     , meMode( DefaultMode )
 {
     m_aColorField.SetModifyHdl( LINK( this, ColorPickerDialog, ColorFieldControlModifydl ) );
@@ -860,23 +646,10 @@ ColorPickerDialog::ColorPickerDialog(weld::Window* pParent, Color nColor, sal_In
     m_xRBSaturation->connect_toggled( aLink2 );
     m_xRBBrightness->connect_toggled( aLink2 );
 
-    Color aColor(nColor);
-
-    // modify
-    if (nDialogMode == 2)
-    {
-        m_aColorPrevious.SetColor(aColor);
+    if (eDialogMode == vcl::ColorPickerMode::Modify)
         m_xColorPrevious->show();
-    }
 
-    mdRed = static_cast<double>(aColor.GetRed()) / 255.0;
-    mdGreen = static_cast<double>(aColor.GetGreen()) / 255.0;
-    mdBlue = static_cast<double>(aColor.GetBlue()) / 255.0;
-
-    RGBtoHSV( mdRed, mdGreen, mdBlue, mdHue, mdSat, mdBri );
-    RGBtoCMYK( mdRed, mdGreen, mdBlue, mdCyan, mdMagenta, mdYellow, mdKey );
-
-    update_color();
+    SetColor(rColor);
 }
 
 static int toInt( double dValue, double dRange )
@@ -887,6 +660,21 @@ static int toInt( double dValue, double dRange )
 Color ColorPickerDialog::GetColor() const
 {
     return Color( toInt(mdRed,255.0), toInt(mdGreen,255.0), toInt(mdBlue,255.0) );
+}
+
+void ColorPickerDialog::SetColor(const Color& rColor)
+{
+    if (m_xColorPrevious->get_visible())
+        m_aColorPrevious.SetColor(rColor);
+
+    mdRed = static_cast<double>(rColor.GetRed()) / 255.0;
+    mdGreen = static_cast<double>(rColor.GetGreen()) / 255.0;
+    mdBlue = static_cast<double>(rColor.GetBlue()) / 255.0;
+
+    RGBtoHSV(mdRed, mdGreen, mdBlue, mdHue, mdSat, mdBri);
+    RGBtoCMYK(mdRed, mdGreen, mdBlue, mdCyan, mdMagenta, mdYellow, mdKey);
+
+    update_color();
 }
 
 void ColorPickerDialog::update_color( UpdateFlags n )
@@ -1219,143 +1007,6 @@ void ColorPickerDialog::setColorComponent( ColorComponent nComp, double dValue )
         CMYKtoRGB( mdCyan, mdMagenta, mdYellow, mdKey, mdRed, mdGreen, mdBlue );
         RGBtoHSV( mdRed, mdGreen, mdBlue, mdHue, mdSat, mdBri );
     }
-}
-
-typedef ::comphelper::WeakComponentImplHelper< XServiceInfo, XExecutableDialog, XAsynchronousExecutableDialog, XInitialization, XPropertyAccess > ColorPickerBase;
-
-namespace {
-
-class ColorPicker : public ColorPickerBase
-{
-public:
-    explicit ColorPicker();
-
-    // XInitialization
-    virtual void SAL_CALL initialize( const Sequence< Any >& aArguments ) override;
-
-    // XInitialization
-    virtual OUString SAL_CALL getImplementationName(  ) override;
-    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
-    virtual Sequence< OUString > SAL_CALL getSupportedServiceNames(  ) override;
-
-    // XPropertyAccess
-    virtual Sequence< PropertyValue > SAL_CALL getPropertyValues(  ) override;
-    virtual void SAL_CALL setPropertyValues( const Sequence< PropertyValue >& aProps ) override;
-
-    // XExecutableDialog
-    virtual void SAL_CALL setTitle( const OUString& aTitle ) override;
-    virtual sal_Int16 SAL_CALL execute(  ) override;
-
-    // XAsynchronousExecutableDialog
-    virtual void SAL_CALL setDialogTitle( const OUString& aTitle ) override;
-    virtual void SAL_CALL startExecuteModal( const css::uno::Reference< css::ui::dialogs::XDialogClosedListener >& xListener ) override;
-
-private:
-    Color mnColor;
-    sal_Int16 mnMode;
-    Reference<css::awt::XWindow> mxParent;
-};
-
-}
-
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
-com_sun_star_cui_ColorPicker_get_implementation(
-    css::uno::XComponentContext*, css::uno::Sequence<css::uno::Any> const&)
-{
-    return cppu::acquire( new ColorPicker );
-}
-
-
-constexpr OUString gsColorKey( u"Color"_ustr );
-constexpr OUStringLiteral gsModeKey( u"Mode" );
-
-ColorPicker::ColorPicker()
-    : mnColor( 0 )
-    , mnMode( 0 )
-{
-}
-
-// XInitialization
-void SAL_CALL ColorPicker::initialize( const Sequence< Any >& aArguments )
-{
-    if( aArguments.getLength() == 1 )
-    {
-        aArguments[0] >>= mxParent;
-    }
-}
-
-// XInitialization
-OUString SAL_CALL ColorPicker::getImplementationName(  )
-{
-    return "com.sun.star.cui.ColorPicker";
-}
-
-sal_Bool SAL_CALL ColorPicker::supportsService( const OUString& sServiceName )
-{
-    return cppu::supportsService(this, sServiceName);
-}
-
-Sequence< OUString > SAL_CALL ColorPicker::getSupportedServiceNames(  )
-{
-    return { "com.sun.star.ui.dialogs.ColorPicker",
-             "com.sun.star.ui.dialogs.AsynchronousColorPicker" };
-}
-
-// XPropertyAccess
-Sequence< PropertyValue > SAL_CALL ColorPicker::getPropertyValues(  )
-{
-    Sequence< PropertyValue > props{ comphelper::makePropertyValue(gsColorKey, mnColor) };
-    return props;
-}
-
-void SAL_CALL ColorPicker::setPropertyValues( const Sequence< PropertyValue >& aProps )
-{
-    for ( const PropertyValue& rProp : aProps )
-    {
-        if( rProp.Name == gsColorKey )
-        {
-            rProp.Value >>= mnColor;
-        }
-        else if( rProp.Name == gsModeKey )
-        {
-            rProp.Value >>= mnMode;
-        }
-    }
-}
-
-// XExecutableDialog
-void SAL_CALL ColorPicker::setTitle( const OUString& )
-{
-}
-
-sal_Int16 SAL_CALL ColorPicker::execute()
-{
-    std::unique_ptr<ColorPickerDialog> xDlg(new ColorPickerDialog(Application::GetFrameWeld(mxParent), mnColor, mnMode));
-    sal_Int16 ret = xDlg->run();
-    if (ret)
-        mnColor = xDlg->GetColor();
-    return ret;
-}
-
-// XAsynchronousExecutableDialog
-void SAL_CALL ColorPicker::setDialogTitle( const OUString& )
-{
-}
-
-void SAL_CALL ColorPicker::startExecuteModal( const css::uno::Reference< css::ui::dialogs::XDialogClosedListener >& xListener )
-{
-    std::shared_ptr<ColorPickerDialog> xDlg = std::make_shared<ColorPickerDialog>(Application::GetFrameWeld(mxParent), mnColor, mnMode);
-    rtl::Reference<ColorPicker> xThis(this);
-    weld::DialogController::runAsync(xDlg, [xThis, xDlg, xListener] (sal_Int32 nResult) {
-        if (nResult)
-            xThis->mnColor = xDlg->GetColor();
-
-        sal_Int16 nRet = static_cast<sal_Int16>(nResult);
-        css::ui::dialogs::DialogClosedEvent aEvent( *xThis, nRet );
-        xListener->dialogClosed( aEvent );
-    });
-}
-
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -79,7 +79,7 @@ namespace cairocanvas
 
         const SystemGraphicsData* pSysData=reinterpret_cast<const SystemGraphicsData*>(aSeq.getConstArray());
         if( !pSysData || !pSysData->nSize )
-            throw lang::NoSupportException( "Passed SystemGraphicsData invalid!" );
+            throw lang::NoSupportException( u"Passed SystemGraphicsData invalid!"_ustr );
 
         bool bHasCairo = pOutDev->SupportsCairo();
         ENSURE_ARG_OR_THROW(bHasCairo, "SpriteCanvas::SpriteCanvas: No Cairo capability");
@@ -110,7 +110,7 @@ namespace cairocanvas
 
     OUString SAL_CALL Canvas::getServiceName(  )
     {
-        return "com.sun.star.rendering.Canvas.Cairo";
+        return u"com.sun.star.rendering.Canvas.Cairo"_ustr;
     }
 
     //  XServiceInfo
@@ -121,7 +121,7 @@ namespace cairocanvas
     }
     OUString Canvas::getImplementationName()
     {
-        return "com.sun.star.comp.rendering.Canvas.Cairo";
+        return u"com.sun.star.comp.rendering.Canvas.Cairo"_ustr;
     }
     css::uno::Sequence< OUString > Canvas::getSupportedServiceNames()
     {
@@ -151,9 +151,9 @@ namespace cairocanvas
 
         BitmapSystemData aData;
         if( rBitmap.GetSystemData( aData ) ) {
-            const Size& rSize = rBitmap.GetSizePixel();
+            const Size aSize = rBitmap.GetSizePixel();
 
-            pSurface = maDeviceHelper.createSurface( aData, rSize );
+            pSurface = maDeviceHelper.createSurface( aData, aSize );
         }
 
         return pSurface;

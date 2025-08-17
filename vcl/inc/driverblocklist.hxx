@@ -7,8 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_VCL_DRIVERBLOCKLIST_HXX
-#define INCLUDED_VCL_DRIVERBLOCKLIST_HXX
+#pragma once
 
 #include <vcl/dllapi.h>
 #include <xmlreader/xmlreader.hxx>
@@ -58,10 +57,7 @@ enum OperatingSystem
 {
     DRIVER_OS_UNKNOWN = 0,
     DRIVER_OS_WINDOWS_FIRST,
-    DRIVER_OS_WINDOWS_7 = DRIVER_OS_WINDOWS_FIRST,
-    DRIVER_OS_WINDOWS_8,
-    DRIVER_OS_WINDOWS_8_1,
-    DRIVER_OS_WINDOWS_10,
+    DRIVER_OS_WINDOWS_10 = DRIVER_OS_WINDOWS_FIRST,
     DRIVER_OS_WINDOWS_LAST = DRIVER_OS_WINDOWS_10,
     DRIVER_OS_WINDOWS_ALL,
     DRIVER_OS_LINUX,
@@ -173,7 +169,5 @@ inline uint64_t OpenGLVersion(uint32_t a, uint32_t b, uint32_t c, uint32_t d)
 }
 
 } // namespace
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

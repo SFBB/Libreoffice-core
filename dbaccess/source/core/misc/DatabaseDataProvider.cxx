@@ -58,7 +58,7 @@ DatabaseDataProvider::DatabaseDataProvider(uno::Reference< uno::XComponentContex
     m_EscapeProcessing(true),
     m_ApplyFilter(true)
 {
-    m_xInternal.set( m_xContext->getServiceManager()->createInstanceWithContext("com.sun.star.comp.chart.InternalDataProvider",m_xContext ), uno::UNO_QUERY );
+    m_xInternal.set( m_xContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.comp.chart.InternalDataProvider"_ustr,m_xContext ), uno::UNO_QUERY );
     m_xRangeConversion.set(m_xInternal,uno::UNO_QUERY);
     m_xComplexDescriptionAccess.set(m_xInternal,uno::UNO_QUERY);
 
@@ -98,7 +98,7 @@ uno::Any DatabaseDataProvider::queryInterface(uno::Type const & type)
 // XServiceInfo
 OUString SAL_CALL DatabaseDataProvider::getImplementationName(  )
 {
-    return "com.sun.star.comp.dbaccess.DatabaseDataProvider";
+    return u"com.sun.star.comp.dbaccess.DatabaseDataProvider"_ustr;
 }
 
 sal_Bool SAL_CALL DatabaseDataProvider::supportsService( const OUString& _rServiceName )
@@ -108,21 +108,19 @@ sal_Bool SAL_CALL DatabaseDataProvider::supportsService( const OUString& _rServi
 
 uno::Sequence< OUString > SAL_CALL DatabaseDataProvider::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.chart2.data.DatabaseDataProvider" };
+    return { u"com.sun.star.chart2.data.DatabaseDataProvider"_ustr };
 }
 
 // lang::XInitialization:
 void SAL_CALL DatabaseDataProvider::initialize(const uno::Sequence< uno::Any > & aArguments)
 {
     osl::MutexGuard g(m_aMutex);
-    const uno::Any* pIter   = aArguments.getConstArray();
-    const uno::Any* pEnd    = pIter + aArguments.getLength();
-    for(;pIter != pEnd;++pIter)
+    for (auto& arg : aArguments)
     {
         if ( !m_xActiveConnection.is() )
-            (*pIter) >>= m_xActiveConnection;
+            arg >>= m_xActiveConnection;
         else if ( !m_xHandler.is() )
-            (*pIter) >>= m_xHandler;
+            arg >>= m_xHandler;
     }
     m_xAggregateSet->setPropertyValue( PROPERTY_ACTIVE_CONNECTION, uno::Any( m_xActiveConnection ) );
 }
@@ -130,28 +128,26 @@ void SAL_CALL DatabaseDataProvider::initialize(const uno::Sequence< uno::Any > &
 // chart2::data::XDataProvider:
 sal_Bool SAL_CALL DatabaseDataProvider::createDataSourcePossible(const uno::Sequence< beans::PropertyValue > & _aArguments)
 {
-    const beans::PropertyValue* pArgIter = _aArguments.getConstArray();
-    const beans::PropertyValue* pArgEnd  = pArgIter + _aArguments.getLength();
-    for(;pArgIter != pArgEnd;++pArgIter)
+    for (auto& arg : _aArguments)
     {
-        if ( pArgIter->Name == "DataRowSource" )
+        if (arg.Name == "DataRowSource")
         {
             css::chart::ChartDataRowSource eRowSource = css::chart::ChartDataRowSource_COLUMNS;
-            pArgIter->Value >>= eRowSource;
+            arg.Value >>= eRowSource;
             if ( eRowSource != css::chart::ChartDataRowSource_COLUMNS )
                 return false;
         }
-        else if ( pArgIter->Name == "CellRangeRepresentation" )
+        else if (arg.Name == "CellRangeRepresentation")
         {
             OUString sRange;
-            pArgIter->Value >>= sRange;
+            arg.Value >>= sRange;
             if ( sRange != "all" )
                 return false;
         }
-        else if ( pArgIter->Name == "FirstCellAsLabel" )
+        else if (arg.Name == "FirstCellAsLabel")
         {
             bool bFirstCellAsLabel = true;
-            pArgIter->Value >>= bFirstCellAsLabel;
+            arg.Value >>= bFirstCellAsLabel;
             if ( !bFirstCellAsLabel )
                 return false;
         }
@@ -178,9 +174,9 @@ uno::Reference< chart2::data::XDataSource > SAL_CALL DatabaseDataProvider::creat
         }
 
         ::comphelper::NamedValueCollection aArgs( _aArguments );
-        const bool bHasCategories = aArgs.getOrDefault( "HasCategories", true );
+        const bool bHasCategories = aArgs.getOrDefault( u"HasCategories"_ustr, true );
         uno::Sequence< OUString > aColumnNames =
-            aArgs.getOrDefault( "ColumnDescriptions", uno::Sequence< OUString >() );
+            aArgs.getOrDefault( u"ColumnDescriptions"_ustr, uno::Sequence< OUString >() );
 
         bool bRet = false;
         if ( !m_Command.isEmpty() && m_xActiveConnection.is() )
@@ -202,7 +198,7 @@ uno::Reference< chart2::data::XDataSource > SAL_CALL DatabaseDataProvider::creat
             uno::Reference< lang::XInitialization> xIni(m_xInternal,uno::UNO_QUERY);
             if ( xIni.is() )
             {
-                beans::NamedValue aParam("CreateDefaultData",uno::Any(true));
+                beans::NamedValue aParam(u"CreateDefaultData"_ustr,uno::Any(true));
                 uno::Sequence< uno::Any > aInitArgs{ uno::Any(aParam) };
                 xIni->initialize(aInitArgs);
             }
@@ -215,10 +211,10 @@ uno::Reference< chart2::data::XDataSource > SAL_CALL DatabaseDataProvider::creat
 uno::Sequence< beans::PropertyValue > SAL_CALL DatabaseDataProvider::detectArguments(const uno::Reference< chart2::data::XDataSource > & _xDataSource)
 {
     ::comphelper::NamedValueCollection aArguments;
-    aArguments.put( "CellRangeRepresentation", uno::Any( OUString( "all" ) ) );
-    aArguments.put( "DataRowSource", uno::Any( chart::ChartDataRowSource_COLUMNS ) );
+    aArguments.put( u"CellRangeRepresentation"_ustr, uno::Any( u"all"_ustr ) );
+    aArguments.put( u"DataRowSource"_ustr, uno::Any( chart::ChartDataRowSource_COLUMNS ) );
     // internal data always contains labels
-    aArguments.put( "FirstCellAsLabel", uno::Any( true ) );
+    aArguments.put( u"FirstCellAsLabel"_ustr, uno::Any( true ) );
 
     bool bHasCategories = false;
     if( _xDataSource.is())
@@ -232,7 +228,7 @@ uno::Sequence< beans::PropertyValue > SAL_CALL DatabaseDataProvider::detectArgum
                 uno::Reference< beans::XPropertySet > xSeqProp( aSequences[nIdx]->getValues(), uno::UNO_QUERY );
                 OUString aRole;
                 if  (   xSeqProp.is()
-                    &&  ( xSeqProp->getPropertyValue( "Role" ) >>= aRole )
+                    &&  ( xSeqProp->getPropertyValue( u"Role"_ustr ) >>= aRole )
                     &&  aRole == "categories"
                     )
                 {
@@ -242,7 +238,7 @@ uno::Sequence< beans::PropertyValue > SAL_CALL DatabaseDataProvider::detectArgum
             }
         }
     }
-    aArguments.put( "HasCategories", uno::Any( bHasCategories ) );
+    aArguments.put( u"HasCategories"_ustr, uno::Any( bHasCategories ) );
     return aArguments.getPropertyValues();
 }
 
@@ -420,7 +416,7 @@ uno::Sequence< OUString > SAL_CALL DatabaseDataProvider::getMasterFields()
 void SAL_CALL DatabaseDataProvider::setMasterFields(const uno::Sequence< OUString > & the_value)
 {
     impl_invalidateParameter_nothrow();
-    set("MasterFields",the_value,m_MasterFields);
+    set(u"MasterFields"_ustr,the_value,m_MasterFields);
 }
 
 uno::Sequence< OUString > SAL_CALL DatabaseDataProvider::getDetailFields()
@@ -431,7 +427,7 @@ uno::Sequence< OUString > SAL_CALL DatabaseDataProvider::getDetailFields()
 
 void SAL_CALL DatabaseDataProvider::setDetailFields(const uno::Sequence< OUString > & the_value)
 {
-    set("DetailFields",the_value,m_DetailFields);
+    set(u"DetailFields"_ustr,the_value,m_DetailFields);
 }
 
 OUString SAL_CALL DatabaseDataProvider::getCommand()
@@ -559,7 +555,7 @@ void SAL_CALL DatabaseDataProvider::setEscapeProcessing(sal_Bool the_value)
 
 void SAL_CALL DatabaseDataProvider::setRowLimit(::sal_Int32 the_value)
 {
-    set("RowLimit",the_value,m_RowLimit);
+    set(u"RowLimit"_ustr,the_value,m_RowLimit);
 }
 
 uno::Reference< sdbc::XConnection > SAL_CALL DatabaseDataProvider::getActiveConnection()
@@ -665,7 +661,7 @@ void DatabaseDataProvider::impl_fillInternalDataProvider_throw(bool _bHasCategor
         const sal_Int32 nCount = aImposedColumnNames.getLength();
         for ( sal_Int32 i = 0 ; i < nCount; ++i )
         {
-            const OUString sColumnName( aImposedColumnNames[i] );
+            const OUString& sColumnName( aImposedColumnNames[i] );
             if ( !xColumns->hasByName( sColumnName ) )
                 continue;
 
@@ -740,7 +736,7 @@ void DatabaseDataProvider::impl_fillInternalDataProvider_throw(bool _bHasCategor
                 aRow.push_back( aValue.getDouble() );
         }
 
-        aDataValues.push_back( aRow );
+        aDataValues.push_back(std::move(aRow));
     }
 
     // insert default data when no rows exist
@@ -763,7 +759,7 @@ void DatabaseDataProvider::impl_fillInternalDataProvider_throw(bool _bHasCategor
                     k = 0;
                 aRow.push_back(fDefaultData[k]);
             }
-            aDataValues.push_back(aRow);
+            aDataValues.push_back(std::move(aRow));
         }
     }
 

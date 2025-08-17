@@ -38,6 +38,7 @@
 #include <editeng/shdditem.hxx>
 #include <editeng/escapementitem.hxx>
 #include <editeng/kernitem.hxx>
+#include <editeng/rubyitem.hxx>
 #include <editeng/wrlmitem.hxx>
 #include <editeng/autokernitem.hxx>
 #include <editeng/langitem.hxx>
@@ -47,6 +48,7 @@
 #include <editeng/charscaleitem.hxx>
 #include <editeng/charreliefitem.hxx>
 #include <editeng/frmdiritem.hxx>
+#include <editeng/scripthintitem.hxx>
 
 #include "impedit.hxx"
 #include <editeng/editeng.hxx>
@@ -69,9 +71,10 @@ struct DebOutBuffer
     }
     void append(std::string_view descr, const SvxLRSpaceItem& rItem)
     {
-        str.append(OString::Concat(descr) + "FI=" + OString::number(rItem.GetTextFirstLineOffset())
-                   + ", LI=" + OString::number(rItem.GetTextLeft())
-                   + ", RI=" + OString::number(rItem.GetRight()));
+        str.append(OString::Concat(descr)
+                   + "FI=" + OString::number(rItem.ResolveTextFirstLineOffset({}))
+                   + ", LI=" + OString::number(rItem.ResolveTextLeft({}))
+                   + ", RI=" + OString::number(rItem.ResolveRight({})));
     }
     void append(std::string_view descr, const SvxNumBulletItem& rItem)
     {
@@ -112,6 +115,10 @@ struct DebOutBuffer
     {
         str.append("SB=" + OString::number(rItem.GetUpper())
                    + ", SA=" + OString::number(rItem.GetLower()));
+    }
+    void append(const SvxAdjustItem& rItem)
+    {
+        str.append("SvxAdust=" + OString::number(static_cast<sal_uInt16>(rItem.GetAdjust())));
     }
     void append(std::string_view descr, const SvxLineSpacingItem& rItem)
     {
@@ -172,6 +179,17 @@ struct DebOutBuffer
     {
         appendHeightAndPts(descr, rItem.GetValue(), rPool.GetMetric(rItem.Which()));
     }
+    void append(std::string_view descr, const SvxRubyItem& rItem)
+    {
+        str.append(OString::Concat(descr)
+                   + OUStringToOString(rItem.GetText(), RTL_TEXTENCODING_UTF8));
+    }
+    void append(std::string_view descr, const SvxScriptHintItem& rItem)
+    {
+        str.append(OString::Concat(descr)
+                   + OUStringToOString(SvxScriptHintItem::GetValueText(rItem.GetValue()),
+                                       RTL_TEXTENCODING_ASCII_US));
+    }
 };
 }
 
@@ -208,7 +226,7 @@ static OString DbgOutItem(const SfxItemPool& rPool, const SfxPoolItem& rItem)
             buffer.append("SBL=", rItem.StaticWhichCast(EE_PARA_SBL));
         break;
         case EE_PARA_JUST:
-            buffer.append("SvxAdust=", rItem.StaticWhichCast(EE_PARA_JUST));
+            buffer.append(rItem.StaticWhichCast(EE_PARA_JUST));
         break;
         case EE_PARA_TABS:
             buffer.append(rItem.StaticWhichCast(EE_PARA_TABS));
@@ -303,6 +321,12 @@ static OString DbgOutItem(const SfxItemPool& rPool, const SfxPoolItem& rItem)
         case EE_CHAR_XMLATTRIBS:
             buffer.str.append("XMLAttribs=...");
         break;
+        case EE_CHAR_RUBY:
+            buffer.append("Ruby=", rItem.StaticWhichCast(EE_CHAR_RUBY));
+        break;
+        case EE_CHAR_SCRIPT_HINT:
+            buffer.append("ScriptHint=", rItem.StaticWhichCast(EE_CHAR_SCRIPT_HINT));
+        break;
     }
     return buffer.str.makeStringAndClear();
 }
@@ -314,7 +338,7 @@ static void DbgOutItemSet(FILE* fp, const SfxItemSet& rSet, bool bSearchInParent
         fprintf( fp, "\nWhich: %i\t", nWhich );
         if ( rSet.GetItemState( nWhich, bSearchInParent ) == SfxItemState::DEFAULT )
             fprintf( fp, "ITEM_OFF   " );
-        else if ( rSet.GetItemState( nWhich, bSearchInParent ) == SfxItemState::DONTCARE )
+        else if ( rSet.GetItemState( nWhich, bSearchInParent ) == SfxItemState::INVALID )
             fprintf( fp, "ITEM_DC    " );
         else if ( rSet.GetItemState( nWhich, bSearchInParent ) == SfxItemState::SET )
             fprintf( fp, "ITEM_ON   *" );
@@ -328,11 +352,8 @@ static void DbgOutItemSet(FILE* fp, const SfxItemSet& rSet, bool bSearchInParent
     }
 }
 
-void EditEngine::DumpData(const EditEngine* pEE, bool bInfoBox)
+void ImpEditEngine::DumpData(bool bInfoBox)
 {
-    if (!pEE)
-        return;
-
     FILE* fp = fopen( "editenginedump.log", "w" );
     if ( fp == nullptr )
     {
@@ -340,29 +361,29 @@ void EditEngine::DumpData(const EditEngine* pEE, bool bInfoBox)
         return;
     }
 
-    const SfxItemPool& rPool = *pEE->GetEmptyItemSet().GetPool();
+    const SfxItemPool& rPool = *GetEmptyItemSet().GetPool();
 
     fprintf( fp, "================================================================================" );
     fprintf( fp, "\n==================   Document   ================================================" );
     fprintf( fp, "\n================================================================================" );
-    for ( sal_Int32 nPortion = 0; nPortion < pEE->pImpEditEngine->GetParaPortions().Count(); nPortion++)
+    for ( sal_Int32 nPortion = 0; nPortion < GetParaPortions().Count(); nPortion++)
     {
-        ParaPortion* pPPortion = pEE->pImpEditEngine->GetParaPortions()[nPortion];
+        ParaPortion const& rPPortion = GetParaPortions().getRef(nPortion);
         fprintf( fp, "\nParagraph %" SAL_PRIdINT32 ": Length = %" SAL_PRIdINT32 ", Invalid = %i\nText = '%s'",
-                 nPortion, pPPortion->GetNode()->Len(), pPPortion->IsInvalid(),
-                 OUStringToOString(pPPortion->GetNode()->GetString(), RTL_TEXTENCODING_UTF8).getStr() );
+                 nPortion, rPPortion.GetNode()->Len(), rPPortion.IsInvalid(),
+                 OUStringToOString(rPPortion.GetNode()->GetString(), RTL_TEXTENCODING_UTF8).getStr() );
         fprintf( fp, "\nVorlage:" );
-        SfxStyleSheet* pStyle = pPPortion->GetNode()->GetStyleSheet();
+        SfxStyleSheet* pStyle = rPPortion.GetNode()->GetStyleSheet();
         if ( pStyle )
             fprintf( fp, " %s", OUStringToOString( pStyle->GetName(), RTL_TEXTENCODING_UTF8).getStr() );
         fprintf( fp, "\nParagraph attribute:" );
-        DbgOutItemSet( fp, pPPortion->GetNode()->GetContentAttribs().GetItems(), false, false );
+        DbgOutItemSet( fp, rPPortion.GetNode()->GetContentAttribs().GetItems(), false, false );
 
         fprintf( fp, "\nCharacter attribute:" );
         bool bZeroAttr = false;
-        for ( sal_Int32 z = 0; z < pPPortion->GetNode()->GetCharAttribs().Count(); ++z )
+        for ( sal_Int32 z = 0; z < rPPortion.GetNode()->GetCharAttribs().Count(); ++z )
         {
-            const std::unique_ptr<EditCharAttrib>& rAttr = pPPortion->GetNode()->GetCharAttribs().GetAttribs()[z];
+            const std::unique_ptr<EditCharAttrib>& rAttr = rPPortion.GetNode()->GetCharAttribs().GetAttribs()[z];
             OString aCharAttribs =
                 "\nA"
                 + OString::number(nPortion)
@@ -382,20 +403,20 @@ void EditEngine::DumpData(const EditEngine* pEE, bool bInfoBox)
         if ( bZeroAttr )
             fprintf( fp, "\nNULL-Attribute!" );
 
-        const sal_Int32 nTextPortions = pPPortion->GetTextPortions().Count();
+        const sal_Int32 nTextPortions = rPPortion.GetTextPortions().Count();
         OStringBuffer aPortionStr("\nText portions: #"
             + OString::number(nTextPortions)
             + " \nA"
             + OString::number(nPortion)
             + ": Paragraph Length = "
-            + OString::number(pPPortion->GetNode()->Len())
+            + OString::number(rPPortion.GetNode()->Len())
             + "\nA"
             + OString::number(nPortion)
             + ": ");
         sal_Int32 n = 0;
         for ( sal_Int32 z = 0; z < nTextPortions; ++z )
         {
-            TextPortion& rPortion = pPPortion->GetTextPortions()[z];
+            TextPortion const& rPortion = rPPortion.GetTextPortions()[z];
             aPortionStr.append(" "
                 + OString::number(rPortion.GetLen())
                 + "("
@@ -410,23 +431,23 @@ void EditEngine::DumpData(const EditEngine* pEE, bool bInfoBox)
             + OString::number(nPortion)
             + ": Total length: "
             + OString::number(n));
-        if ( pPPortion->GetNode()->Len() != n )
+        if ( rPPortion.GetNode()->Len() != n )
             aPortionStr.append(" => Error !!!");
         fprintf(fp, "%s", aPortionStr.getStr());
 
         fprintf( fp, "\n\nLines:" );
         // First the content ...
-        for ( sal_Int32 nLine = 0; nLine < pPPortion->GetLines().Count(); nLine++ )
+        for ( sal_Int32 nLine = 0; nLine < rPPortion.GetLines().Count(); nLine++ )
         {
-            EditLine& rLine = pPPortion->GetLines()[nLine];
+            EditLine const& rLine = rPPortion.GetLines()[nLine];
 
-            OString aLine(OUStringToOString(pPPortion->GetNode()->Copy(rLine.GetStart(), rLine.GetEnd() - rLine.GetStart()), RTL_TEXTENCODING_ASCII_US));
+            OString aLine(OUStringToOString(rPPortion.GetNode()->Copy(rLine.GetStart(), rLine.GetEnd() - rLine.GetStart()), RTL_TEXTENCODING_ASCII_US));
             fprintf( fp, "\nLine %" SAL_PRIdINT32 "\t>%s<", nLine, aLine.getStr() );
         }
         // then the internal data ...
-        for ( sal_Int32 nLine = 0; nLine < pPPortion->GetLines().Count(); nLine++ )
+        for ( sal_Int32 nLine = 0; nLine < rPPortion.GetLines().Count(); nLine++ )
         {
-            EditLine& rLine = pPPortion->GetLines()[nLine];
+            EditLine const& rLine = rPPortion.GetLines()[nLine];
             fprintf( fp, "\nLine %" SAL_PRIdINT32 ":\tStart: %" SAL_PRIdINT32 ",\tEnd: %" SAL_PRIdINT32, nLine, rLine.GetStart(), rLine.GetEnd() );
             fprintf( fp, "\t\tPortions: %" SAL_PRIdINT32 " - %" SAL_PRIdINT32 ".\tHight: %i, Ascent=%i", rLine.GetStartPortion(), rLine.GetEndPortion(), rLine.GetHeight(), rLine.GetMaxAscent() );
         }
@@ -434,9 +455,9 @@ void EditEngine::DumpData(const EditEngine* pEE, bool bInfoBox)
         fprintf( fp, "\n-----------------------------------------------------------------------------" );
     }
 
-    if ( pEE->pImpEditEngine->GetStyleSheetPool() )
+    if (GetStyleSheetPool())
     {
-        SfxStyleSheetIterator aIter( pEE->pImpEditEngine->GetStyleSheetPool(), SfxStyleFamily::All );
+        SfxStyleSheetIterator aIter(GetStyleSheetPool(), SfxStyleFamily::All);
         sal_uInt16 nStyles = aIter.Count();
         fprintf( fp, "\n\n================================================================================" );
         fprintf( fp, "\n==================   Stylesheets   =============================================" );
@@ -458,22 +479,22 @@ void EditEngine::DumpData(const EditEngine* pEE, bool bInfoBox)
     fprintf( fp, "\n\n================================================================================" );
     fprintf( fp, "\n==================   Defaults   ================================================" );
     fprintf( fp, "\n================================================================================" );
-    DbgOutItemSet( fp, pEE->pImpEditEngine->GetEmptyItemSet(), true, true );
+    DbgOutItemSet(fp, GetEmptyItemSet(), true, true);
 
     fprintf( fp, "\n\n================================================================================" );
     fprintf( fp, "\n==================   EditEngine & Views   ======================================" );
     fprintf( fp, "\n================================================================================" );
-    fprintf( fp, "\nControl: %x", unsigned( pEE->GetControlWord() ) );
-    fprintf( fp, "\nRefMapMode: %i", int( pEE->pImpEditEngine->pRefDev->GetMapMode().GetMapUnit() ) );
-    fprintf( fp, "\nPaperSize: %" SAL_PRIdINT64 " x %" SAL_PRIdINT64, sal_Int64(pEE->GetPaperSize().Width()), sal_Int64(pEE->GetPaperSize().Height()) );
-    fprintf( fp, "\nMaxAutoPaperSize: %" SAL_PRIdINT64 " x %" SAL_PRIdINT64, sal_Int64(pEE->GetMaxAutoPaperSize().Width()), sal_Int64(pEE->GetMaxAutoPaperSize().Height()) );
-    fprintf( fp, "\nMinAutoPaperSize: %" SAL_PRIdINT64 " x %" SAL_PRIdINT64 , sal_Int64(pEE->GetMinAutoPaperSize().Width()), sal_Int64(pEE->GetMinAutoPaperSize().Height()) );
-    fprintf( fp, "\nCalculateLayout: %i", pEE->IsUpdateLayout() );
-    fprintf( fp, "\nNumber of Views: %" SAL_PRI_SIZET "i", pEE->GetViewCount() );
-    for ( size_t nView = 0; nView < pEE->GetViewCount(); nView++ )
+    fprintf( fp, "\nControl: %x", unsigned( GetStatus().GetControlWord() ) );
+    fprintf( fp, "\nRefMapMode: %i", int( mpRefDev->GetMapMode().GetMapUnit()));
+    fprintf( fp, "\nPaperSize: %" SAL_PRIdINT64 " x %" SAL_PRIdINT64, sal_Int64(GetPaperSize().Width()), sal_Int64(GetPaperSize().Height()) );
+    fprintf( fp, "\nMaxAutoPaperSize: %" SAL_PRIdINT64 " x %" SAL_PRIdINT64, sal_Int64(GetMaxAutoPaperSize().Width()), sal_Int64(GetMaxAutoPaperSize().Height()) );
+    fprintf( fp, "\nMinAutoPaperSize: %" SAL_PRIdINT64 " x %" SAL_PRIdINT64 , sal_Int64(GetMinAutoPaperSize().Width()), sal_Int64(GetMinAutoPaperSize().Height()) );
+    fprintf( fp, "\nCalculateLayout: %i", IsUpdateLayout() );
+    fprintf( fp, "\nNumber of Views: %" SAL_PRI_SIZET "i", GetEditViews().size() );
+    for ( size_t nView = 0; nView < GetEditViews().size(); nView++ )
     {
-        EditView* pV = pEE->GetView( nView );
-        DBG_ASSERT( pV, "View not found!" );
+        EditView* pV = GetEditViews()[nView];
+        assert(pV && "View not found!");
         fprintf( fp, "\nView %zu: Focus=%i", nView, pV->GetWindow()->HasFocus() );
         tools::Rectangle aR( pV->GetOutputArea() );
         fprintf( fp, "\n  OutputArea: nX=%" SAL_PRIdINT64 ", nY=%" SAL_PRIdINT64 ", dX=%" SAL_PRIdINT64 ", dY=%" SAL_PRIdINT64 ", MapMode = %i",
@@ -482,21 +503,21 @@ void EditEngine::DumpData(const EditEngine* pEE, bool bInfoBox)
         fprintf( fp, "\n  VisArea: nX=%" SAL_PRIdINT64 ", nY=%" SAL_PRIdINT64 ", dX=%" SAL_PRIdINT64 ", dY=%" SAL_PRIdINT64,
             sal_Int64(aR.Left()), sal_Int64(aR.Top()), sal_Int64(aR.GetSize().Width()), sal_Int64(aR.GetSize().Height()) );
         ESelection aSel = pV->GetSelection();
-        fprintf( fp, "\n  Selection: Start=%" SAL_PRIdINT32 ",%" SAL_PRIdINT32 ", End=%" SAL_PRIdINT32 ",%" SAL_PRIdINT32, aSel.nStartPara, aSel.nStartPos, aSel.nEndPara, aSel.nEndPos );
+        fprintf( fp, "\n  Selection: Start=%" SAL_PRIdINT32 ",%" SAL_PRIdINT32 ", End=%" SAL_PRIdINT32 ",%" SAL_PRIdINT32, aSel.start.nPara, aSel.start.nIndex, aSel.end.nPara, aSel.end.nIndex );
     }
-    if ( pEE->GetActiveView() )
+    if ( GetActiveView() )
     {
         fprintf( fp, "\n\n================================================================================" );
         fprintf( fp, "\n==================   Current View   ===========================================" );
         fprintf( fp, "\n================================================================================" );
-        DbgOutItemSet( fp, pEE->GetActiveView()->GetAttribs(), true, false );
+        DbgOutItemSet( fp, GetActiveView()->GetAttribs(), true, false );
     }
     fclose( fp );
     if ( bInfoBox )
     {
         std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(nullptr,
                                                       VclMessageType::Info, VclButtonsType::Ok,
-                                                      "Dumped editenginedump.log!" ));
+                                                      u"Dumped editenginedump.log!"_ustr ));
         xInfoBox->run();
     }
 }
@@ -507,11 +528,12 @@ bool ParaPortion::DbgCheckTextPortions(ParaPortion const& rPara)
 {
     // check, if Portion length ok:
     sal_uInt16 nXLen = 0;
-    for (sal_Int32 nPortion = 0; nPortion < rPara.aTextPortionList.Count(); nPortion++)
+
+    for (sal_Int32 nPortion = 0; nPortion < rPara.maTextPortionList.Count(); nPortion++)
     {
-        nXLen = nXLen + rPara.aTextPortionList[nPortion].GetLen();
+        nXLen = nXLen + rPara.maTextPortionList[nPortion].GetLen();
     }
-    return nXLen == rPara.pNode->Len();
+    return nXLen == rPara.mpNode->Len();
 }
 #endif
 

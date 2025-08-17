@@ -30,9 +30,7 @@
 namespace dbaui
 {
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::util;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::frame;
 
     ODataView::ODataView(   vcl::Window* pParent,
@@ -71,7 +69,7 @@ namespace dbaui
         // draw the background
         {
             rRenderContext.Push(vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR);
-            rRenderContext.SetLineColor(COL_TRANSPARENT);
+            rRenderContext.SetLineColor();
             rRenderContext.SetFillColor(GetSettings().GetStyleSettings().GetFaceColor());
             rRenderContext.DrawRect(_rRect);
             rRenderContext.Pop();
@@ -133,7 +131,7 @@ namespace dbaui
             if ( xModel.is() )
             {
                 ::comphelper::NamedValueCollection aArgs( xModel->getArgs() );
-                aArgs.remove( "Hidden" );
+                aArgs.remove( u"Hidden"_ustr );
                 xModel->attachResource( xModel->getURL(), aArgs.getPropertyValues() );
             }
         }

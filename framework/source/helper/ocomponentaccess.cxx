@@ -32,7 +32,6 @@ using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 using namespace ::cppu;
-using namespace ::osl;
 
 //  constructor
 
@@ -56,7 +55,7 @@ css::uno::Reference< XEnumeration > SAL_CALL OComponentAccess::createEnumeration
 
     // Set default return value, if method failed.
     // If no desktop exist and there is no task container - return an empty enumeration!
-    css::uno::Reference< XEnumeration > xReturn;
+    rtl::Reference< OComponentEnumeration > xReturn;
 
     // Try to "lock" the desktop for access to task container.
     css::uno::Reference< XInterface > xLock = m_xOwner.get();
@@ -103,7 +102,7 @@ sal_Bool SAL_CALL OComponentAccess::hasElements()
     return bReturn;
 }
 
-
+// static
 void OComponentAccess::impl_collectAllChildComponents(  const css::uno::Reference< XFramesSupplier >&         xNode           ,
                                                                std::vector< css::uno::Reference< XComponent > >& seqComponents   )
 {
@@ -131,7 +130,8 @@ void OComponentAccess::impl_collectAllChildComponents(  const css::uno::Referenc
     // ... otherwise break a recursive path and go back at current stack!
 }
 
-css::uno::Reference< XComponent > OComponentAccess::impl_getFrameComponent( const css::uno::Reference< XFrame >& xFrame ) const
+// static
+css::uno::Reference< XComponent > OComponentAccess::impl_getFrameComponent( const css::uno::Reference< XFrame >& xFrame )
 {
     // Set default return value, if method failed.
     css::uno::Reference< XComponent > xComponent;

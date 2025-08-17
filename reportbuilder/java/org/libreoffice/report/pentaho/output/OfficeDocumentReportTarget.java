@@ -41,6 +41,7 @@ import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.DocumentBuilder;
+import javax.xml.XMLConstants;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.xml.sax.InputSource;
@@ -1020,13 +1021,18 @@ public abstract class OfficeDocumentReportTarget extends AbstractReportTarget
             {
                 inputStream = getInputRepository().createInputStream("meta.xml");
                 DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+                dbFactory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
                 DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
                 Document document = dBuilder.parse(new InputSource(inputStream));
 
                 Node node = document.getFirstChild().getFirstChild().getFirstChild().getFirstChild();
                 String creator = node.getNodeValue();
                 node.setNodeValue(creator + "/report_builder");
-                Transformer transformer = TransformerFactory.newInstance().newTransformer();
+                TransformerFactory transformerFactory = TransformerFactory.newInstance();
+                transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+                transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
+                transformerFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+                Transformer transformer = transformerFactory.newTransformer();
                 transformer.setOutputProperty(OutputKeys.METHOD, "xml");
 
                 final OutputStream outputMetaStream = getOutputRepository().createOutputStream("meta.xml", "text/xml");

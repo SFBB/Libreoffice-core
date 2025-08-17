@@ -23,6 +23,7 @@
 #error "don't use this in new code"
 #endif
 
+#include <config_options.h>
 #include <vcl/dllapi.h>
 
 #include <deque>
@@ -70,6 +71,8 @@ enum class SvLBoxTabFlags
                                // (on which Abo Tabpage/Extras/Option/Customize, etc. rely on)
                                // The first tab's position corresponds precisely to the Flags set
                                // and column widths
+
+    ADJUST_FLAGS = ADJUST_RIGHT | ADJUST_LEFT | ADJUST_CENTER,
 };
 namespace o3tl
 {
@@ -112,7 +115,7 @@ public:
     bool    IsEditable() const { return bool(nFlags & SvLBoxTabFlags::EDITABLE); }
 };
 
-class VCL_DLLPUBLIC SvLBoxItem
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) SvLBoxItem
 {
 protected:
     bool mbDisabled;
@@ -171,8 +174,9 @@ struct SvTreeListBoxImpl;
 
 typedef std::pair<vcl::RenderContext&, const SvTreeListEntry&> svtree_measure_args;
 typedef std::tuple<vcl::RenderContext&, const tools::Rectangle&, const SvTreeListEntry&> svtree_render_args;
+typedef std::pair<SvTreeListEntry*, OUString> IterString;
 
-class VCL_DLLPUBLIC SvTreeListBox
+class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox
                 :public Control
                 ,public SvListView
                 ,public DropTargetHelper
@@ -215,6 +219,7 @@ class VCL_DLLPUBLIC SvTreeListBox
     bool mbActivateOnSingleClick; // Make single click "activate" a row like a double-click normally does
     bool mbHoverSelection; // Make mouse over a row "select" a row like a single-click normally does
     bool mbSelectingByHover; // true during "Select" if it was due to hover
+    bool mbIsTextColumEnabled; // true if the property name text-column is enabled
     sal_Int8        mnClicksToToggle; // 0 == Click on a row not toggle its checkbox.
                                       // 1 == Every click on row toggle its checkbox.
                                       // 2 == First click select, second click toggle.
@@ -235,7 +240,6 @@ class VCL_DLLPUBLIC SvTreeListBox
 
 protected:
     std::unique_ptr<SvImpLBox>              pImpl;
-    short                   nColumns;
     short                   nEntryHeight;
     short                   nEntryWidth;
     bool                    mbCenterAndClipText;
@@ -261,16 +265,16 @@ private:
     // call. The AddBox method is called from the GetDragFinishedHdl() and the
     // remove is called in the link callback and in the dtor. So it can't be
     // called for a deleted object.
-    VCL_DLLPRIVATE static void AddBoxToDDList_Impl( const SvTreeListBox& rB );
-    VCL_DLLPRIVATE static void RemoveBoxFromDDList_Impl( const SvTreeListBox& rB );
+    SAL_DLLPRIVATE static void AddBoxToDDList_Impl( const SvTreeListBox& rB );
+    SAL_DLLPRIVATE static void RemoveBoxFromDDList_Impl( const SvTreeListBox& rB );
     DECL_DLLPRIVATE_LINK( DragFinishHdl_Impl, sal_Int8, void );
 
     // after a checkbox entry is inserted, use this to get its width to support
     // autowidth for the 1st checkbox column
-    VCL_DLLPRIVATE void CheckBoxInserted(SvTreeListEntry* pEntry);
+    SAL_DLLPRIVATE void CheckBoxInserted(SvTreeListEntry* pEntry);
 
-    VCL_DLLPRIVATE void DrawCustomEntry(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect, const SvTreeListEntry& rEntry);
-    VCL_DLLPRIVATE Size MeasureCustomEntry(vcl::RenderContext& rRenderContext, const SvTreeListEntry& rEntry) const;
+    SAL_DLLPRIVATE void DrawCustomEntry(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect, const SvTreeListEntry& rEntry);
+    SAL_DLLPRIVATE Size MeasureCustomEntry(vcl::RenderContext& rRenderContext, const SvTreeListEntry& rEntry) const;
 
     /** Handles the given key event.
 
@@ -279,7 +283,7 @@ private:
         @return
             <TRUE/> if the event has been consumed, <FALSE/> otherwise.
     */
-    VCL_DLLPRIVATE bool HandleKeyInput(const KeyEvent& rKEvt);
+    SAL_DLLPRIVATE bool HandleKeyInput(const KeyEvent& rKEvt);
 
     void UnsetDropTarget();
 
@@ -449,12 +453,10 @@ public:
     // ACCESSIBILITY ==========================================================
 
     /** Creates and returns the accessible object of the Box. */
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     /** Fills the StateSet of one entry. */
     void FillAccessibleEntryStateSet( SvTreeListEntry* pEntry, sal_Int64& rStateSet ) const;
-
-    virtual OUString GetEntryAccessibleDescription(SvTreeListEntry* pEntry) const;
 
     /** Calculate and return the bounding rectangle of an entry.
         @param pEntry
@@ -470,22 +472,22 @@ public:
 
     virtual bool set_property(const OUString &rKey, const OUString &rValue) override;
 
-    VCL_DLLPRIVATE void SetCollapsedNodeBmp( const Image& );
-    VCL_DLLPRIVATE void SetExpandedNodeBmp( const Image& );
-    VCL_DLLPRIVATE Image const & GetExpandedNodeBmp( ) const;
+    SAL_DLLPRIVATE void SetCollapsedNodeBmp( const Image& );
+    SAL_DLLPRIVATE void SetExpandedNodeBmp( const Image& );
+    SAL_DLLPRIVATE Image const & GetExpandedNodeBmp( ) const;
 
 protected:
 
     virtual void                CalcEntryHeight(SvTreeListEntry const* pEntry);
                    void         AdjustEntryHeight( const Image& rBmp );
-    VCL_DLLPRIVATE void         AdjustEntryHeight();
+    SAL_DLLPRIVATE void         AdjustEntryHeight();
 
-    VCL_DLLPRIVATE void         ImpEntryInserted( SvTreeListEntry* pEntry );
-    VCL_DLLPRIVATE void         PaintEntry1( SvTreeListEntry&, tools::Long nLine, vcl::RenderContext& rRenderContext );
+    SAL_DLLPRIVATE void         ImpEntryInserted( SvTreeListEntry* pEntry );
+    SAL_DLLPRIVATE void         PaintEntry1( SvTreeListEntry&, tools::Long nLine, vcl::RenderContext& rRenderContext );
 
-    VCL_DLLPRIVATE void         InitTreeView();
-    VCL_DLLPRIVATE SvLBoxItem*  GetItem_Impl( SvTreeListEntry*, tools::Long nX, SvLBoxTab** ppTab );
-    VCL_DLLPRIVATE void         ImplInitStyle();
+    SAL_DLLPRIVATE void         InitTreeView();
+    SAL_DLLPRIVATE SvLBoxItem*  GetItem_Impl( SvTreeListEntry*, tools::Long nX, SvLBoxTab** ppTab );
+    SAL_DLLPRIVATE void         ImplInitStyle();
 
     void            SetupDragOrigin();
     void            EditItemText( SvTreeListEntry* pEntry, SvLBoxString* pItem,
@@ -527,13 +529,12 @@ protected:
 
     // true if rPos is over the SvTreeListBox body, i.e. not over a
     // scrollbar
-    VCL_DLLPRIVATE bool PosOverBody(const Point& rPos) const;
+    SAL_DLLPRIVATE bool PosOverBody(const Point& rPos) const;
 public:
 
     void            SetNoAutoCurEntry( bool b );
 
-    void            EnableCheckButton( SvLBoxButtonData* );
-    void            SetCheckButtonData( SvLBoxButtonData* );
+    void            EnableCheckButton(SvLBoxButtonData&);
 
     /** Returns the default image which clients should use for expanded nodes, to have a consistent user
         interface experience in the whole product.
@@ -561,6 +562,7 @@ public:
 
     void            SetCheckButtonState( SvTreeListEntry*, SvButtonState );
     SvButtonState   GetCheckButtonState( SvTreeListEntry* ) const;
+    bool GetCheckButtonEnabled(SvTreeListEntry* pEntry) const;
 
     void            SetEntryText(SvTreeListEntry*, const OUString& );
     void            SetExpandedEntryBmp( SvTreeListEntry* _pEntry, const Image& _rImage );
@@ -601,7 +603,6 @@ public:
 
     void            ScrollOutputArea( short nDeltaEntries );
 
-    short           GetColumnsCount() const { return nColumns; }
     short           GetEntryHeight() const  { return nEntryHeight; }
     void            SetEntryHeight( short nHeight );
     short           GetEntryWidth() const { return nEntryWidth; }
@@ -665,6 +666,10 @@ public:
     // Make mouse over a row "select" a row like a single-click normally does
     void            SetHoverSelection(bool bEnable) { mbHoverSelection = bEnable; }
     bool            GetHoverSelection() const { return mbHoverSelection; }
+
+    // to get enable or disable the text-column
+    void           SetTextColumnEnabled(bool bEnable) { mbIsTextColumEnabled = bEnable; }
+    bool           IsTextColumnEnabled() const { return mbIsTextColumEnabled; }
 
     // only true during Select if the Select is due to a Hover
     bool            IsSelectDueToHover() const { return mbSelectingByHover; }

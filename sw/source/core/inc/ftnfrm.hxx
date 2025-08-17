@@ -26,7 +26,6 @@ class SwContentFrame;
 class SwRootFrame;
 class SwTextNode;
 class SwTextFootnote;
-class SwBorderAttrs;
 class SwFootnoteFrame;
 
 void sw_RemoveFootnotes( SwFootnoteBossFrame* pBoss, bool bPageOnly, bool bEndNotes );
@@ -51,12 +50,13 @@ public:
     SwFootnoteContFrame( SwFrameFormat*, SwFrame* );
 
     const SwFootnoteFrame* FindFootNote() const;
+    const SwFootnoteFrame* FindEndNote() const;
 
     static inline SwFootnoteFrame* AppendChained(SwFrame* pThis, bool bDefaultFormat);
     static inline SwFootnoteFrame* PrependChained(SwFrame* pThis, bool bDefaultFormat);
 
     virtual SwTwips ShrinkFrame( SwTwips, bool bTst = false, bool bInfo = false ) override;
-    virtual SwTwips GrowFrame  ( SwTwips, bool bTst = false, bool bInfo = false ) override;
+    virtual SwTwips GrowFrame(SwTwips, SwResizeLimitReason&, bool bTst, bool bInfo) override;
     virtual void    Format( vcl::RenderContext* pRenderContext, const SwBorderAttrs *pAttrs = nullptr ) override;
     virtual void    PaintSwFrameShadowAndBorder(
         const SwRect&,

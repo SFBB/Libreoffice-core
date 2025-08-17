@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_LISTBOX_HXX
-#define INCLUDED_VCL_INC_LISTBOX_HXX
+#pragma once
 
 #include <sal/config.h>
 
@@ -223,6 +222,8 @@ private:
     /// Listbox is actually a dropdown (either combobox, or popup window treated as dropdown)
     bool mbIsDropdown : 1;
 
+    Point mnLastPosPixel = Point();
+
     Link<ImplListBoxWindow*,void>  maScrollHdl;
     Link<LinkParamNone*,void>      maSelectHdl;
     Link<LinkParamNone*,void>      maCancelHdl;
@@ -367,6 +368,8 @@ public:
 
     using Control::ImplInitSettings;
     virtual void ApplySettings(vcl::RenderContext& rRenderContext) override;
+
+    void ResetLastPosPixel() { mnLastPosPixel = Point(); }
 
 private:
     // ISearchableStringList
@@ -519,7 +522,8 @@ public:
 
     void            SetAutoWidth( bool b )              { mbAutoWidth = b; }
 
-    Size            CalcFloatSize() const;
+    tools::Rectangle GetParentRect() const;
+    Size            CalcFloatSize(const tools::Rectangle& rParentRect) const;
     void            StartFloat( bool bStartTracking );
 
     virtual void    setPosSizePixel( tools::Long nX, tools::Long nY,
@@ -593,7 +597,5 @@ public:
 };
 
 void ImplInitDropDownButton( PushButton* pButton );
-
-#endif // INCLUDED_VCL_INC_LISTBOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

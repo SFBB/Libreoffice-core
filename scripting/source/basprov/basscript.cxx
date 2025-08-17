@@ -27,7 +27,6 @@
 #include <basic/basmgr.hxx>
 #include <com/sun/star/script/provider/ScriptFrameworkErrorException.hpp>
 #include <com/sun/star/script/provider/ScriptFrameworkErrorType.hpp>
-#include <bcholder.hxx>
 #include <comphelper/propertycontainer.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <map>
@@ -40,6 +39,17 @@ using namespace ::com::sun::star::script;
 using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::beans;
 
+
+static void ChangeTypeKeepingValue(SbxVariable& var, SbxDataType to)
+{
+    SbxValues val(to);
+    var.Get(val);
+    bool bSetFlag = var.IsSet(SbxFlagBits::Fixed);
+    var.ResetFlag(SbxFlagBits::Fixed);
+    var.Put(val);
+    if (bSetFlag)
+        var.SetFlag(SbxFlagBits::Fixed);
+}
 
 namespace basprov
 {
@@ -56,9 +66,8 @@ constexpr OUString BASSCRIPT_PROPERTY_CALLER = u"Caller"_ustr;
 
 
     BasicScriptImpl::BasicScriptImpl( OUString funcName, SbMethodRef xMethod )
-        : ::scripting_helper::OBroadcastHelperHolder( m_aMutex )
-        ,OPropertyContainer( GetBroadcastHelper() )
-        ,m_xMethod(std::move( xMethod ))
+        :
+        m_xMethod(std::move( xMethod ))
         ,m_funcName(std::move( funcName ))
         ,m_documentBasicManager( nullptr )
         ,m_xDocumentScriptContext()
@@ -68,9 +77,8 @@ constexpr OUString BASSCRIPT_PROPERTY_CALLER = u"Caller"_ustr;
 
 
     BasicScriptImpl::BasicScriptImpl( OUString funcName, SbMethodRef xMethod,
-        BasicManager& documentBasicManager, const Reference< XScriptInvocationContext >& documentScriptContext ) : ::scripting_helper::OBroadcastHelperHolder( m_aMutex )
-        ,OPropertyContainer( GetBroadcastHelper() )
-        ,m_xMethod(std::move( xMethod ))
+        BasicManager& documentBasicManager, const Reference< XScriptInvocationContext >& documentScriptContext ) :
+        m_xMethod(std::move( xMethod ))
         ,m_funcName(std::move( funcName ))
         ,m_documentBasicManager( &documentBasicManager )
         ,m_xDocumentScriptContext( documentScriptContext )
@@ -110,13 +118,13 @@ constexpr OUString BASSCRIPT_PROPERTY_CALLER = u"Caller"_ustr;
     // XInterface
 
 
-    IMPLEMENT_FORWARD_XINTERFACE2( BasicScriptImpl, BasicScriptImpl_BASE, OPropertyContainer )
+    IMPLEMENT_FORWARD_XINTERFACE2( BasicScriptImpl, BasicScriptImpl_BASE, comphelper::OPropertyContainer2 )
 
 
     // XTypeProvider
 
 
-    IMPLEMENT_FORWARD_XTYPEPROVIDER2( BasicScriptImpl, BasicScriptImpl_BASE, OPropertyContainer )
+    IMPLEMENT_FORWARD_XTYPEPROVIDER2( BasicScriptImpl, BasicScriptImpl_BASE, comphelper::OPropertyContainer2 )
 
 
     // OPropertySetHelper
@@ -186,10 +194,10 @@ constexpr OUString BASSCRIPT_PROPERTY_CALLER = u"Caller"_ustr;
                 if ( nParamsCount < nSbxCount - nSbxOptional )
                 {
                     throw provider::ScriptFrameworkErrorException(
-                         "wrong number of parameters!",
+                         u"wrong number of parameters!"_ustr,
                          Reference< XInterface >(),
                          m_funcName,
-                         "Basic",
+                         u"Basic"_ustr,
                          provider::ScriptFrameworkErrorType::NO_SUCH_SCRIPT  );
                 }
             }
@@ -199,11 +207,10 @@ constexpr OUString BASSCRIPT_PROPERTY_CALLER = u"Caller"_ustr;
             if ( nParamsCount > 0 )
             {
                 xSbxParams = new SbxArray;
-                const Any* pParams = aParams.getConstArray();
                 for ( sal_Int32 i = 0; i < nParamsCount; ++i )
                 {
                     SbxVariableRef xSbxVar = new SbxVariable( SbxVARIANT );
-                    unoToSbxValue( xSbxVar.get(), pParams[i] );
+                    unoToSbxValue(xSbxVar.get(), aParams[i]);
                     xSbxParams->Put(xSbxVar.get(), static_cast<sal_uInt32>(i) + 1);
 
                     if (pInfo)
@@ -218,14 +225,14 @@ constexpr OUString BASSCRIPT_PROPERTY_CALLER = u"Caller"_ustr;
                             {
                                 sal_Int32 val = xSbxVar->GetLong();
                                 if (val >= -16777216 && val <= 16777215)
-                                    xSbxVar->SetType(t);
+                                    ChangeTypeKeepingValue(*xSbxVar, t);
                             }
                             else if (t == SbxDOUBLE && (a == SbxINTEGER || a == SbxLONG))
-                                xSbxVar->SetType(t);
+                                ChangeTypeKeepingValue(*xSbxVar, t);
                             else if (t == SbxLONG && a == SbxINTEGER)
-                                xSbxVar->SetType(t);
+                                ChangeTypeKeepingValue(*xSbxVar, t);
                             else if (t == SbxULONG && a == SbxUSHORT)
-                                xSbxVar->SetType(t);
+                                ChangeTypeKeepingValue(*xSbxVar, t);
                             // Enable passing by ref
                             if (t != SbxVARIANT)
                                 xSbxVar->SetFlag(SbxFlagBits::Fixed);
@@ -243,7 +250,7 @@ constexpr OUString BASSCRIPT_PROPERTY_CALLER = u"Caller"_ustr;
             // if it's a document-based script, temporarily reset ThisComponent to the script invocation context
             Any aOldThisComponent;
             if ( m_documentBasicManager && m_xDocumentScriptContext.is() )
-                m_documentBasicManager->SetGlobalUNOConstant( "ThisComponent", Any( m_xDocumentScriptContext ), &aOldThisComponent );
+                m_documentBasicManager->SetGlobalUNOConstant( u"ThisComponent"_ustr, Any( m_xDocumentScriptContext ), &aOldThisComponent );
 
             if ( m_caller.hasElements() && m_caller[ 0 ].hasValue()  )
             {
@@ -255,7 +262,7 @@ constexpr OUString BASSCRIPT_PROPERTY_CALLER = u"Caller"_ustr;
                 nErr = m_xMethod->Call( xReturn.get() );
 
             if ( m_documentBasicManager && m_xDocumentScriptContext.is() )
-                m_documentBasicManager->SetGlobalUNOConstant( "ThisComponent", aOldThisComponent );
+                m_documentBasicManager->SetGlobalUNOConstant( u"ThisComponent"_ustr, aOldThisComponent );
 
             if ( nErr != ERRCODE_NONE )
             {

@@ -24,18 +24,16 @@
 #include <com/sun/star/deployment/DependencyException.hpp>
 #include <com/sun/star/deployment/PlatformException.hpp>
 #include <com/sun/star/task/XInteractionApprove.hpp>
-#include <com/sun/star/task/XInteractionHandler.hpp>
-#include <com/sun/star/ucb/XCommandEnvironment.hpp>
 #include <utility>
 #include "dp_commandenvironments.hxx"
 #include <osl/diagnose.h>
 
-namespace deployment = com::sun::star::deployment;
-namespace task = com::sun::star::task;
-namespace ucb = com::sun::star::ucb;
-namespace uno = com::sun::star::uno;
+namespace deployment = css::deployment;
+namespace task = css::task;
+namespace ucb = css::ucb;
+namespace uno = css::uno;
 
-using ::com::sun::star::uno::Reference;
+using css::uno::Reference;
 
 namespace dp_manager {
 
@@ -84,21 +82,14 @@ void BaseCommandEnv::handle_(bool approve,
     else
     {
         // select:
-        uno::Sequence< Reference< task::XInteractionContinuation > > conts(
-            xRequest->getContinuations() );
-        Reference< task::XInteractionContinuation > const * pConts =
-            conts.getConstArray();
-        sal_Int32 len = conts.getLength();
-        for ( sal_Int32 pos = 0; pos < len; ++pos )
+        for (auto& xContinuation : xRequest->getContinuations())
         {
-            if (approve) {
-                Reference< task::XInteractionApprove > xInteractionApprove(
-                    pConts[ pos ], uno::UNO_QUERY );
-                if (xInteractionApprove.is()) {
-                    xInteractionApprove->select();
-                    // don't query again for ongoing continuations:
-                    approve = false;
-                }
+            Reference<task::XInteractionApprove> xInteractionApprove(xContinuation, uno::UNO_QUERY);
+            if (xInteractionApprove.is())
+            {
+                xInteractionApprove->select();
+                // don't query again for ongoing continuations:
+                break;
             }
         }
     }
@@ -233,11 +224,11 @@ void SilentCheckPrerequisitesCommandEnv::handle(
     else if ((request >>= platformExc)
              || (request >>= depExc))
     {
-        m_Exception = request;
+        m_Exception = std::move(request);
     }
     else
     {
-        m_UnknownException = request;
+        m_UnknownException = std::move(request);
     }
 }
 

@@ -32,6 +32,7 @@
 #include <xmloff/xmlement.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <rtl/math.hxx>
+#include <o3tl/numeric.hxx>
 
 #include <tools/date.hxx>
 #include <tools/time.hxx>
@@ -54,7 +55,6 @@
 
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::lang;
 using namespace com::sun::star::text;
 using namespace com::sun::star::style;
 using namespace ::com::sun::star::i18n;
@@ -313,18 +313,6 @@ bool SvXMLUnitConverter::convertEnumImpl(
         rBuffer.append( GetXMLToken(eTok) );
 
     return (eTok != XML_TOKEN_INVALID);
-}
-
-static int lcl_gethex( int nChar )
-{
-    if( nChar >= '0' && nChar <= '9' )
-        return nChar - '0';
-    else if( nChar >= 'a' && nChar <= 'f' )
-        return nChar - 'a' + 10;
-    else if( nChar >= 'A' && nChar <= 'F' )
-        return nChar - 'A' + 10;
-    else
-        return 0;
 }
 
 const char aHexTab[] = "0123456789abcdef";
@@ -813,7 +801,7 @@ void SvXMLUnitConverter::convertPropertySet(uno::Sequence<beans::PropertyValue>&
 
             beans::PropertyValue aValue;
             aValue.Name = rProp.Name;
-            aValue.Value = aPropertyValue;
+            aValue.Value = std::move(aPropertyValue);
             aPropsVec.push_back(aValue);
         }
         rProps = comphelper::containerToSequence(aPropsVec);
@@ -951,8 +939,7 @@ bool SvXMLUnitConverter::convertHex( sal_uInt32& nVal, std::u16string_view rValu
     nVal = 0;
     for ( int i = 0; i < 8; i++ )
     {
-        nVal = ( nVal << 4 )
-            | sal::static_int_cast< sal_uInt32 >( lcl_gethex( rValue[i] ) );
+        nVal = ( nVal << 4 ) | o3tl::convertToHex<sal_uInt32>(rValue[i]);
     }
 
     return true;

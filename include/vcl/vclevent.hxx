@@ -25,10 +25,6 @@
 
 class Menu;
 
-namespace com::sun::star::accessibility {
-    class XAccessible;
-}
-
 namespace vcl
 {
     class Window;
@@ -121,7 +117,6 @@ enum class VclEventId
     TabpageRemovedAll,
     ToolboxActivate,
     ToolboxAllItemsChanged,
-    ToolboxButtonStateChanged, // pData = itempos
     ToolboxClick,
     ToolboxDeactivate,
     ToolboxDoubleClick,

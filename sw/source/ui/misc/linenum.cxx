@@ -64,26 +64,26 @@ static void lcl_setLineNumbering(const OUString& rName, SwWrtShell* pSh, bool bL
 
 SwLineNumberingDlg::SwLineNumberingDlg(const SwView& rVw)
     : SfxDialogController(rVw.GetViewFrame().GetFrameWeld(),
-            "modules/swriter/ui/linenumbering.ui", "LineNumberingDialog")
+            u"modules/swriter/ui/linenumbering.ui"_ustr, u"LineNumberingDialog"_ustr)
     , m_pSh(rVw.GetWrtShellPtr())
-    , m_xBodyContent(m_xBuilder->weld_widget("content"))
-    , m_xDivIntervalFT(m_xBuilder->weld_widget("every"))
-    , m_xDivIntervalNF(m_xBuilder->weld_spin_button("linesspin"))
-    , m_xDivRowsFT(m_xBuilder->weld_widget("lines"))
-    , m_xNumIntervalNF(m_xBuilder->weld_spin_button("intervalspin"))
-    , m_xCharStyleLB(m_xBuilder->weld_combo_box("styledropdown"))
-    , m_xFormatLB(new SwNumberingTypeListBox(m_xBuilder->weld_combo_box("formatdropdown")))
-    , m_xPosLB(m_xBuilder->weld_combo_box("positiondropdown"))
-    , m_xOffsetMF(m_xBuilder->weld_metric_spin_button("spacingspin", FieldUnit::CM))
-    , m_xDivisorED(m_xBuilder->weld_entry("textentry"))
-    , m_xCountEmptyLinesCB(m_xBuilder->weld_check_button("blanklines"))
-    , m_xCountFrameLinesCB(m_xBuilder->weld_check_button("linesintextframes"))
-    , m_xRestartEachPageCB(m_xBuilder->weld_check_button("restarteverynewpage"))
-    , m_xNumberingOnCB(m_xBuilder->weld_check_button("shownumbering"))
-    , m_xNumberingOnFooterHeader(m_xBuilder->weld_check_button("showfooterheadernumbering"))
-    , m_xOKButton(m_xBuilder->weld_button("ok"))
-    , m_xNumIntervalFT(m_xBuilder->weld_widget("interval"))
-    , m_xNumRowsFT(m_xBuilder->weld_widget("intervallines"))
+    , m_xBodyContent(m_xBuilder->weld_widget(u"content"_ustr))
+    , m_xDivIntervalFT(m_xBuilder->weld_widget(u"every"_ustr))
+    , m_xDivIntervalNF(m_xBuilder->weld_spin_button(u"linesspin"_ustr))
+    , m_xDivRowsFT(m_xBuilder->weld_widget(u"lines"_ustr))
+    , m_xNumIntervalNF(m_xBuilder->weld_spin_button(u"intervalspin"_ustr))
+    , m_xCharStyleLB(m_xBuilder->weld_combo_box(u"styledropdown"_ustr))
+    , m_xFormatLB(new SwNumberingTypeListBox(m_xBuilder->weld_combo_box(u"formatdropdown"_ustr)))
+    , m_xPosLB(m_xBuilder->weld_combo_box(u"positiondropdown"_ustr))
+    , m_xOffsetMF(m_xBuilder->weld_metric_spin_button(u"spacingspin"_ustr, FieldUnit::CM))
+    , m_xDivisorED(m_xBuilder->weld_entry(u"textentry"_ustr))
+    , m_xCountEmptyLinesCB(m_xBuilder->weld_check_button(u"blanklines"_ustr))
+    , m_xCountFrameLinesCB(m_xBuilder->weld_check_button(u"linesintextframes"_ustr))
+    , m_xRestartEachPageCB(m_xBuilder->weld_check_button(u"restarteverynewpage"_ustr))
+    , m_xNumberingOnCB(m_xBuilder->weld_check_button(u"shownumbering"_ustr))
+    , m_xNumberingOnFooterHeader(m_xBuilder->weld_check_button(u"showfooterheadernumbering"_ustr))
+    , m_xOKButton(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xNumIntervalFT(m_xBuilder->weld_widget(u"interval"_ustr))
+    , m_xNumRowsFT(m_xBuilder->weld_widget(u"intervallines"_ustr))
 {
     m_xFormatLB->Reload(SwInsertNumTypes::Extended);
 
@@ -105,7 +105,7 @@ SwLineNumberingDlg::SwLineNumberingDlg(const SwView& rVw)
     const SwLineNumberInfo &rInf = m_pSh->GetLineNumberInfo();
     IDocumentStylePoolAccess& rIDSPA = m_pSh->getIDocumentStylePoolAccess();
 
-    OUString sStyleName(rInf.GetCharFormat( rIDSPA )->GetName());
+    OUString sStyleName(rInf.GetCharFormat( rIDSPA )->GetName().toString());
     const int nPos = m_xCharStyleLB->find_text(sStyleName);
 
     if (nPos != -1)
@@ -132,7 +132,7 @@ SwLineNumberingDlg::SwLineNumberingDlg(const SwView& rVw)
     if (nOffset == USHRT_MAX)
         nOffset = 0;
 
-    FieldUnit eFieldUnit = SW_MOD()->GetUsrPref(dynamic_cast< const SwWebDocShell*>(
+    FieldUnit eFieldUnit = SwModule::get()->GetUsrPref(dynamic_cast< const SwWebDocShell*>(
                                 rVw.GetDocShell()) != nullptr)->GetMetric();
     ::SetFieldUnit(*m_xOffsetMF, eFieldUnit);
     m_xOffsetMF->set_value(m_xOffsetMF->normalize(nOffset), FieldUnit::TWIP);
@@ -184,7 +184,7 @@ IMPL_LINK_NOARG(SwLineNumberingDlg, OKHdl, weld::Button&, void)
 
     // char styles
     OUString sCharFormatName(m_xCharStyleLB->get_active_text());
-    SwCharFormat *pCharFormat = m_pSh->FindCharFormatByName(sCharFormatName);
+    SwCharFormat *pCharFormat = m_pSh->FindCharFormatByName(UIName(sCharFormatName));
 
     if (!pCharFormat)
     {

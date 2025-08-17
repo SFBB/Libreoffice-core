@@ -43,6 +43,8 @@
 #include <tools/time.hxx>
 #include <tools/duration.hxx>
 #include <o3tl/string_view.hxx>
+#include <map>
+#include <mutex>
 #include <utility>
 
 const sal_uInt16 nCurrFormatDefault = 0;
@@ -58,6 +60,26 @@ namespace
 }
 
 sal_uInt8 LocaleDataWrapper::nLocaleDataChecking = 0;
+
+/**
+ * Loading LocaleDataWrapper can become expensive because of all the function-symbol lookups required, so
+ * we cache these.
+ */
+// static
+const LocaleDataWrapper* LocaleDataWrapper::get(const LanguageTag& aLanguageTag)
+{
+    static std::map<LanguageTag, std::unique_ptr<LocaleDataWrapper>> gCache;
+    static std::mutex gMutex;
+
+    std::unique_lock l(gMutex);
+    auto it = gCache.find(aLanguageTag);
+    if (it != gCache.end())
+        return it->second.get();
+    auto pNew = new LocaleDataWrapper(comphelper::getProcessComponentContext(), aLanguageTag);
+    gCache.insert({aLanguageTag, std::unique_ptr<LocaleDataWrapper>(pNew)});
+    return pNew;
+};
+
 
 LocaleDataWrapper::LocaleDataWrapper(
             const Reference< uno::XComponentContext > & rxContext,
@@ -362,7 +384,7 @@ const std::vector< LanguageType >& LocaleDataWrapper::getInstalledLanguageTypes(
         if ( eLang != LANGUAGE_DONTKNOW )
             xLang.push_back(eLang);
     }
-    rInstalledLanguageTypes = xLang;
+    rInstalledLanguageTypes = std::move(xLang);
 
     return rInstalledLanguageTypes;
 }
@@ -382,13 +404,13 @@ const OUString& LocaleDataWrapper::getOneReservedWord( sal_Int16 nWord ) const
     if ( nWord < 0 || o3tl::make_unsigned(nWord) >= aReservedWords.size() )
     {
         SAL_WARN( "unotools.i18n", "getOneReservedWord: bounds" );
-        static const OUString EMPTY;
-        return EMPTY;
+        return EMPTY_OUSTRING;
     }
     return aReservedWords[nWord];
 }
 
-MeasurementSystem LocaleDataWrapper::mapMeasurementStringToEnum( std::u16string_view rMS ) const
+// static
+MeasurementSystem LocaleDataWrapper::mapMeasurementStringToEnum( std::u16string_view rMS )
 {
 //! TODO: could be cached too
     if ( o3tl::equalsIgnoreAsciiCase( rMS, u"metric" ) )

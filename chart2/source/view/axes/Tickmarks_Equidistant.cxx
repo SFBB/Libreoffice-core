@@ -171,7 +171,7 @@ void EquidistantTickFactory::addSubTicks( sal_Int32 nDepth, uno::Sequence< uno::
     }
 
     aSubTicks.realloc(nRealSubTickCount);
-    rParentTicks.getArray()[nDepth] = aSubTicks;
+    rParentTicks.getArray()[nDepth] = std::move(aSubTicks);
     if(static_cast<sal_Int32>(m_rIncrement.SubIncrements.size())>nDepth)
         addSubTicks( nDepth+1, rParentTicks );
 }
@@ -409,7 +409,7 @@ void EquidistantTickFactory::getAllTicksShifted( TickInfoArraysType& rAllTickInf
 {
     ExplicitIncrementData aShiftedIncrement( m_rIncrement );
     aShiftedIncrement.BaseValue = m_rIncrement.BaseValue-m_rIncrement.Distance/2.0;
-    EquidistantTickFactory( m_rScale, aShiftedIncrement ).getAllTicks(rAllTickInfos);
+    EquidistantTickFactory( m_rScale, std::move(aShiftedIncrement) ).getAllTicks(rAllTickInfos);
 }
 
 EquidistantTickIter::EquidistantTickIter( const uno::Sequence< uno::Sequence< double > >& rTicks

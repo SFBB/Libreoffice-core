@@ -27,6 +27,7 @@
 #include <vcl/toolbox.hxx>
 
 #include <sfx2/childwin.hxx>
+#include <names.hxx>
 
 class SwFieldMgr;
 class SwWrtShell;
@@ -42,8 +43,8 @@ private:
     DECL_LINK(ActivateHdl, weld::Entry&, bool);
 public:
     InputEdit(vcl::Window* pParent)
-        : InterimItemWindow(pParent, "modules/swriter/ui/inputeditbox.ui", "InputEditBox")
-        , m_xWidget(m_xBuilder->weld_entry("entry"))
+        : InterimItemWindow(pParent, u"modules/swriter/ui/inputeditbox.ui"_ustr, u"InputEditBox"_ustr)
+        , m_xWidget(m_xBuilder->weld_entry(u"entry"_ustr))
     {
         InitControlBase(m_xWidget.get());
 
@@ -52,7 +53,7 @@ public:
         SetSizePixel(m_xWidget->get_preferred_size());
     }
 
-    void UpdateRange(std::u16string_view rSel, const OUString& rTableName);
+    void UpdateRange(std::u16string_view rSel, const UIName& rTableName);
 
     virtual void dispose() override
     {
@@ -113,8 +114,8 @@ private:
     DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
 public:
     PosEdit(vcl::Window* pParent)
-        : InterimItemWindow(pParent, "modules/swriter/ui/poseditbox.ui", "PosEditBox")
-        , m_xWidget(m_xBuilder->weld_entry("entry"))
+        : InterimItemWindow(pParent, u"modules/swriter/ui/poseditbox.ui"_ustr, u"PosEditBox"_ustr)
+        , m_xWidget(m_xBuilder->weld_entry(u"entry"_ustr))
     {
         InitControlBase(m_xWidget.get());
 
@@ -153,7 +154,8 @@ friend class InputEdit;
     std::unique_ptr<SwFieldMgr> m_pMgr;
     SwWrtShell*     m_pWrtShell;
     SwView*         m_pView;
-    OUString        m_aCurrentTableName, m_sOldFormula;
+    UIName          m_aCurrentTableName;
+    OUString        m_sOldFormula;
 
     bool            m_bFirst : 1;  // initialisations at first call
     bool            m_bIsTable : 1;

@@ -20,8 +20,9 @@
 
 #include <biginteger.hxx>
 
-#include <xmlsec-wrapper.h>
 #include <com/sun/star/uno/Sequence.hxx>
+#include <xmlsec/xmlsec.h>
+#include <xmlsec/bn.h>
 
 #include <comphelper/sequence.hxx>
 

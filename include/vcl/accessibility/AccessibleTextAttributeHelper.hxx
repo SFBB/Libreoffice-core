@@ -20,8 +20,6 @@
 #pragma once
 
 #include <com/sun/star/accessibility/XAccessibleText.hpp>
-#include <com/sun/star/beans/PropertyValue.hdl>
-#include <com/sun/star/uno/Sequence.hxx>
 #include <o3tl/typed_flags_set.hxx>
 #include <rtl/ustring.hxx>
 #include <vcl/dllapi.h>
@@ -32,8 +30,8 @@
  * but others should be reported as object attributes (e.g. text alignment is reported
  * via the "text-align" object attribute on the paragraph object).
  *
- * https://wiki.linuxfoundation.org/accessibility/iaccessible2/textattributes
- * https://wiki.linuxfoundation.org/accessibility/iaccessible2/objectattributes
+ * https://github.com/LinuxA11y/IAccessible2/blob/master/spec/textattributes.md
+ * https://github.com/LinuxA11y/IAccessible2/blob/master/spec/objectattributes.md
  *
  * This enum class is used to specify the type(s) of attributes of interest.
  */
@@ -48,20 +46,9 @@ template <> struct o3tl::typed_flags<IA2AttributeType> : is_typed_flags<IA2Attri
 {
 };
 
-class VCL_DLLPUBLIC AccessibleTextAttributeHelper
+namespace AccessibleTextAttributeHelper
 {
-public:
-    /** Converts UNO text attribute properties to a string holding
-     *  the corresponding IAccessible2 text attributes.
-     * @param rUnoAttributes A sequence holding the UNO text attributes.
-     * @param eAttributeType: The type(s) of attributes of interest.
-     * @returns String holding the corresponding IAccessible2 text properties.
-     */
-    static OUString ConvertUnoToIAccessible2TextAttributes(
-        const css::uno::Sequence<css::beans::PropertyValue>& rUnoAttributes,
-        IA2AttributeType eAttributeType);
-
-    /**
+/**
      * Get the IAccessible2 text attributes and the span of the attributes at the given index.
      * @param xText The interface to query for the information.
      * @param eAttributeType: The type(s) of attributes of interest.
@@ -70,10 +57,10 @@ public:
      * @param rEndOffset Out param that is set to the end index of the attribute run.
      * @return IAccessible2 text attributes at the given character offset.
      */
-    static OUString
-    GetIAccessible2TextAttributes(css::uno::Reference<css::accessibility::XAccessibleText> xText,
-                                  IA2AttributeType eAttributeType, sal_Int32 nOffset,
-                                  sal_Int32& rStartOffset, sal_Int32& rEndOffset);
+OUString VCL_DLLPUBLIC
+GetIAccessible2TextAttributes(const css::uno::Reference<css::accessibility::XAccessibleText>& xText,
+                              IA2AttributeType eAttributeType, sal_Int32 nOffset,
+                              sal_Int32& rStartOffset, sal_Int32& rEndOffset);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -26,12 +26,10 @@
 
 namespace framework{
 
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 using namespace ::cppu;
-using namespace ::osl;
 
 //  constructor
 
@@ -225,7 +223,7 @@ Any SAL_CALL OFrames::getByIndex( sal_Int32 nIndex )
 
     sal_uInt32 nCount = m_pFrameContainer->getCount();
     if ( nIndex < 0 || ( sal::static_int_cast< sal_uInt32 >( nIndex ) >= nCount ))
-          throw IndexOutOfBoundsException("OFrames::getByIndex - Index out of bounds",
+          throw IndexOutOfBoundsException(u"OFrames::getByIndex - Index out of bounds"_ustr,
                                            static_cast<OWeakObject *>(this) );
 
     // Set default return value.
@@ -324,7 +322,7 @@ void OFrames::impl_appendSequence(          Sequence< css::uno::Reference< XFram
 
     // Return result of this operation.
     seqDestination.realloc( 0 );
-    seqDestination = seqResult;
+    seqDestination = std::move(seqResult);
 }
 
 //  debug methods

@@ -29,6 +29,7 @@
 #include <cppuhelper/implbase.hxx>
 #include <i18nlangtag/lang.h>
 #include <rtl/ustring.hxx>
+#include <rtl/ref.hxx>
 #include <linguistic/lngdllapi.h>
 
 #include <vector>
@@ -45,7 +46,6 @@ namespace osl { class Mutex; }
 class CharClass;
 class LocaleDataWrapper;
 
-
 inline constexpr OUString SN_GRAMMARCHECKER = u"com.sun.star.linguistic2.Proofreader"_ustr;
 inline constexpr OUString SN_SPELLCHECKER = u"com.sun.star.linguistic2.SpellChecker"_ustr;
 inline constexpr OUString SN_HYPHENATOR = u"com.sun.star.linguistic2.Hyphenator"_ustr;
@@ -54,6 +54,7 @@ inline constexpr OUString SN_THESAURUS = u"com.sun.star.linguistic2.Thesaurus"_u
 
 namespace linguistic
 {
+class HyphenatedWord;
 
 
 // AddEntryToDic return values
@@ -122,7 +123,7 @@ LNG_DLLPUBLIC OUString  GetWritableDictionaryURL( std::u16string_view rDicName )
 
 LNG_DLLPUBLIC sal_Int32 GetPosInWordToCheck( std::u16string_view rTxt, sal_Int32 nPos );
 
-css::uno::Reference< css::linguistic2::XHyphenatedWord >
+rtl::Reference< HyphenatedWord >
             RebuildHyphensAndControlChars(
                 const OUString &rOrigWord,
                 css::uno::Reference< css::linguistic2::XHyphenatedWord > const &rxHyphWord );
@@ -133,7 +134,7 @@ LNG_DLLPUBLIC bool        IsUpper( const OUString &rText, sal_Int32 nPos, sal_In
 inline bool        IsUpper( const OUString &rText, LanguageType nLanguage )     { return IsUpper( rText, 0, rText.getLength(), nLanguage ); }
 LNG_DLLPUBLIC CapType capitalType(const OUString&, CharClass const *);
 
-LNG_DLLPUBLIC bool      HasDigits( const OUString &rText );
+LNG_DLLPUBLIC bool      HasDigits( std::u16string_view rText );
 LNG_DLLPUBLIC bool      IsNumeric( std::u16string_view rText );
 
 
@@ -182,11 +183,11 @@ public:
     void            Deactivate();
 
     // XEventListener
-    virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
+    virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override final;
 
     // XTerminateListener
-    virtual void SAL_CALL queryTermination( const css::lang::EventObject& aEvent ) override;
-    virtual void SAL_CALL notifyTermination( const css::lang::EventObject& aEvent ) override;
+    virtual void SAL_CALL queryTermination( const css::lang::EventObject& aEvent ) override final;
+    virtual void SAL_CALL notifyTermination( const css::lang::EventObject& aEvent ) override final;
 };
 
 }   // namespace linguistic

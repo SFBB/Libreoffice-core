@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <tbzoomsliderctrl.hxx>
+#include <i18nutil/unicode.hxx>
+#include <vcl/svapp.hxx>
 
 #include <comphelper/propertyvalue.hxx>
 #include <utility>
@@ -102,8 +104,7 @@ const tools::Long nSnappingPointsMinDist = nSnappingEpsilon; // minimum distance
 
 sal_uInt16 ScZoomSlider::Offset2Zoom( tools::Long nOffset ) const
 {
-    Size aSliderWindowSize = GetOutputSizePixel();
-    const tools::Long nControlWidth = aSliderWindowSize.Width();
+    const tools::Long nControlWidth = GetSliderLength();
     sal_uInt16 nRet = 0;
 
     if( nOffset < nSliderXOffset )
@@ -154,8 +155,7 @@ sal_uInt16 ScZoomSlider::Offset2Zoom( tools::Long nOffset ) const
 
 tools::Long ScZoomSlider::Zoom2Offset( sal_uInt16 nCurrentZoom ) const
 {
-    Size aSliderWindowSize = GetOutputSizePixel();
-    const tools::Long nControlWidth = aSliderWindowSize.Width();
+    const tools::Long nControlWidth = GetSliderLength();
     tools::Long  nRect = nSliderXOffset;
 
     const tools::Long nHalfSliderWidth = nControlWidth/2 - nSliderXOffset;
@@ -181,16 +181,25 @@ tools::Long ScZoomSlider::Zoom2Offset( sal_uInt16 nCurrentZoom ) const
 ScZoomSliderWnd::ScZoomSliderWnd( vcl::Window* pParent,
                 const css::uno::Reference< css::frame::XDispatchProvider >& rDispatchProvider,
                 sal_uInt16 nCurrentZoom ):
-                InterimItemWindow(pParent, "modules/scalc/ui/zoombox.ui", "ZoomBox"),
+                InterimItemWindow(pParent, u"modules/scalc/ui/zoombox.ui"_ustr, u"ZoomBox"_ustr),
                 mxWidget(new ScZoomSlider(rDispatchProvider, nCurrentZoom)),
-                mxWeld(new weld::CustomWeld(*m_xBuilder, "zoom", *mxWidget))
+                mxPercentage(m_xBuilder->weld_label(u"current_zoom"_ustr)),
+                mxLabel(m_xBuilder->weld_label(u"zoom_label"_ustr)),
+                mxWeld(new weld::CustomWeld(*m_xBuilder, u"zoom"_ustr, *mxWidget))
 {
     Size aLogicalSize( 115, 40 );
     Size aSliderSize = LogicToPixel(aLogicalSize, MapMode(MapUnit::Map10thMM));
     Size aPreferredSize(aSliderSize.Width() * nSliderWidth-1, aSliderSize.Height() + nSliderHeight);
     mxWidget->GetDrawingArea()->set_size_request(aPreferredSize.Width(), aPreferredSize.Height());
     mxWidget->SetOutputSizePixel(aPreferredSize);
+    mxWidget->SetSliderLength(aPreferredSize.Width() + nIncDecWidth);
+
+    aPreferredSize.setWidth(aPreferredSize.Width() + mxLabel->get_pixel_size(mxLabel->get_label()).Width()
+                      + mxPercentage->get_pixel_size(mxPercentage->get_label()).Width());
+
     SetSizePixel(aPreferredSize);
+    OUString sCurrentZoom(unicode::formatPercent(nCurrentZoom, Application::GetSettings().GetUILanguageTag()));
+    mxPercentage->set_label(sCurrentZoom);
 }
 
 ScZoomSliderWnd::~ScZoomSliderWnd()
@@ -207,11 +216,12 @@ void ScZoomSliderWnd::dispose()
 
 ScZoomSlider::ScZoomSlider(css::uno::Reference< css::frame::XDispatchProvider> xDispatchProvider,
                            sal_uInt16 nCurrentZoom)
-    : mnCurrentZoom( nCurrentZoom ),
-      mnMinZoom( 10 ),
-      mnMaxZoom( 400 ),
-      mbOmitPaint( false ),
-      m_xDispatchProvider(std::move(xDispatchProvider))
+    : mnSliderLength(0)
+    , mnCurrentZoom(nCurrentZoom)
+    , mnMinZoom(10)
+    , mnMaxZoom(400)
+    , mbOmitPaint(false)
+    , m_xDispatchProvider(std::move(xDispatchProvider))
 {
     maSliderButton      = Image(StockImage::Yes, RID_SVXBMP_SLIDERBUTTON);
     maIncreaseButton    = Image(StockImage::Yes, RID_SVXBMP_SLIDERINCREASE);
@@ -236,12 +246,12 @@ bool ScZoomSlider::MouseButtonDown( const MouseEvent& rMEvt )
         mnCurrentZoom = mnCurrentZoom - 5;
     }
     // click to + button
-    else if ( aPoint.X() >= aSliderWindowSize.Width() - nSliderXOffset + nButtonLeftOffset &&
-              aPoint.X() <= aSliderWindowSize.Width() - nSliderXOffset + nButtonRightOffset )
+    else if ( aPoint.X() >= GetSliderLength() - nSliderXOffset + nButtonLeftOffset &&
+              aPoint.X() <= GetSliderLength() - nSliderXOffset + nButtonRightOffset )
     {
         mnCurrentZoom = mnCurrentZoom + 5;
     }
-    else if( aPoint.X() >= nSliderXOffset && aPoint.X() <= aSliderWindowSize.Width() - nSliderXOffset )
+    else if( aPoint.X() >= nSliderXOffset && aPoint.X() <= GetSliderLength() - nSliderXOffset )
     {
         mnCurrentZoom = Offset2Zoom( aPoint.X() );
     }
@@ -264,9 +274,9 @@ bool ScZoomSlider::MouseButtonDown( const MouseEvent& rMEvt )
     css::uno::Any  a;
     aZoomSliderItem.QueryValue( a );
 
-    css::uno::Sequence aArgs{ comphelper::makePropertyValue("ScalingFactor", a) };
+    css::uno::Sequence aArgs{ comphelper::makePropertyValue(u"ScalingFactor"_ustr, a) };
 
-    SfxToolBoxControl::Dispatch( m_xDispatchProvider, ".uno:ScalingFactor", aArgs );
+    SfxToolBoxControl::Dispatch( m_xDispatchProvider, u".uno:ScalingFactor"_ustr, aArgs );
 
     mbOmitPaint = false;
 
@@ -276,7 +286,7 @@ bool ScZoomSlider::MouseButtonDown( const MouseEvent& rMEvt )
 bool ScZoomSlider::MouseMove( const MouseEvent& rMEvt )
 {
     Size aSliderWindowSize   = GetOutputSizePixel();
-    const tools::Long nControlWidth = aSliderWindowSize.Width();
+    const tools::Long nControlWidth = GetSliderLength();
     const short nButtons     = rMEvt.GetButtons();
 
     // check mouse move with button pressed
@@ -299,9 +309,9 @@ bool ScZoomSlider::MouseMove( const MouseEvent& rMEvt )
             css::uno::Any a;
             aZoomSliderItem.QueryValue( a );
 
-            css::uno::Sequence aArgs{ comphelper::makePropertyValue("ScalingFactor", a) };
+            css::uno::Sequence aArgs{ comphelper::makePropertyValue(u"ScalingFactor"_ustr, a) };
 
-            SfxToolBoxControl::Dispatch( m_xDispatchProvider, ".uno:ScalingFactor", aArgs );
+            SfxToolBoxControl::Dispatch( m_xDispatchProvider, u".uno:ScalingFactor"_ustr, aArgs );
 
             mbOmitPaint = false;
         }
@@ -312,6 +322,8 @@ bool ScZoomSlider::MouseMove( const MouseEvent& rMEvt )
 
 void ScZoomSliderWnd::UpdateFromItem( const SvxZoomSliderItem* pZoomSliderItem )
 {
+    OUString sCurrentZoom(unicode::formatPercent(pZoomSliderItem->GetValue(), Application::GetSettings().GetUILanguageTag()));
+    mxPercentage->set_label(sCurrentZoom);
     mxWidget->UpdateFromItem(pZoomSliderItem);
 }
 
@@ -377,6 +389,7 @@ void ScZoomSlider::DoPaint(vcl::RenderContext& rRenderContext)
     pVDev->SetOutputSizePixel(aSliderWindowSize);
 
     tools::Rectangle aSlider = aRect;
+    aSlider.setWidth(GetSliderLength());
 
     aSlider.AdjustTop((aSliderWindowSize.Height() - nSliderHeight) / 2 - 1 );
     aSlider.SetBottom( aSlider.Top() + nSliderHeight );
@@ -449,7 +462,7 @@ void ScZoomSlider::DoPaint(vcl::RenderContext& rRenderContext)
     pVDev->DrawImage(aImagePoint, maDecreaseButton);
 
     // draw increase button
-    aImagePoint.setX( aRect.Left() + aSliderWindowSize.Width() - nIncDecWidth - (nSliderXOffset - nIncDecWidth) / 2 );
+    aImagePoint.setX( aRect.Left() + GetSliderLength() - nIncDecWidth - (nSliderXOffset - nIncDecWidth) / 2 );
     pVDev->DrawImage(aImagePoint, maIncreaseButton);
 
     rRenderContext.DrawOutDev(Point(0, 0), aSliderWindowSize, Point(0, 0), aSliderWindowSize, *pVDev);

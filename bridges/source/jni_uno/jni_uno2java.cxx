@@ -25,14 +25,13 @@
 #include <cstddef>
 #include <memory>
 
-#include <sal/alloca.h>
-
 #include <com/sun/star/uno/RuntimeException.hpp>
 
 #include <rtl/ustrbuf.hxx>
 #include <utility>
 
 #include "jni_bridge.h"
+#include "jni_helper.h"
 #include "jniunoenvironmentdata.hxx"
 
 namespace
@@ -41,22 +40,18 @@ extern "C"
 {
 
 
-void UNO_proxy_free( uno_ExtEnvironment * env, void * proxy )
-    SAL_THROW_EXTERN_C();
+void UNO_proxy_free( uno_ExtEnvironment * env, void * proxy ) noexcept;
 
 
-void UNO_proxy_acquire( uno_Interface * pUnoI )
-    SAL_THROW_EXTERN_C();
+void UNO_proxy_acquire( uno_Interface * pUnoI ) noexcept;
 
 
-void UNO_proxy_release( uno_Interface * pUnoI )
-    SAL_THROW_EXTERN_C();
+void UNO_proxy_release( uno_Interface * pUnoI ) noexcept;
 
 
 void UNO_proxy_dispatch(
     uno_Interface * pUnoI, typelib_TypeDescription const * member_td,
-    void * uno_ret, void * uno_args[], uno_Any ** uno_exc )
-    SAL_THROW_EXTERN_C();
+    void * uno_ret, void * uno_args[], uno_Any ** uno_exc ) noexcept;
 }
 }
 
@@ -505,8 +500,7 @@ extern "C"
 {
 
 
-void UNO_proxy_free( uno_ExtEnvironment * env, void * proxy )
-    SAL_THROW_EXTERN_C()
+void UNO_proxy_free( uno_ExtEnvironment * env, void * proxy ) noexcept
 {
     UNO_proxy * that = static_cast< UNO_proxy * >( proxy );
     Bridge const * bridge = that->m_bridge;
@@ -543,16 +537,14 @@ void UNO_proxy_free( uno_ExtEnvironment * env, void * proxy )
 }
 
 
-void UNO_proxy_acquire( uno_Interface * pUnoI )
-    SAL_THROW_EXTERN_C()
+void UNO_proxy_acquire( uno_Interface * pUnoI ) noexcept
 {
     UNO_proxy const * that = static_cast< UNO_proxy const * >( pUnoI );
     that->acquire();
 }
 
 
-void UNO_proxy_release( uno_Interface * pUnoI )
-    SAL_THROW_EXTERN_C()
+void UNO_proxy_release( uno_Interface * pUnoI ) noexcept
 {
     UNO_proxy const * that = static_cast< UNO_proxy const * >( pUnoI );
     that->release();
@@ -561,8 +553,7 @@ void UNO_proxy_release( uno_Interface * pUnoI )
 
 void UNO_proxy_dispatch(
     uno_Interface * pUnoI, typelib_TypeDescription const * member_td,
-    void * uno_ret, void * uno_args [], uno_Any ** uno_exc )
-    SAL_THROW_EXTERN_C()
+    void * uno_ret, void * uno_args [], uno_Any ** uno_exc ) noexcept
 {
     UNO_proxy const * that = static_cast< UNO_proxy const * >( pUnoI );
     Bridge const * bridge = that->m_bridge;
@@ -582,9 +573,9 @@ void UNO_proxy_dispatch(
                 reinterpret_cast<
                 typelib_InterfaceAttributeTypeDescription const * >(
                     member_td );
-            com::sun::star::uno::TypeDescription attrib_holder;
+            css::uno::TypeDescription attrib_holder;
             while ( attrib_td->pBaseRef != nullptr ) {
-                attrib_holder = com::sun::star::uno::TypeDescription(
+                attrib_holder = css::uno::TypeDescription(
                     attrib_td->pBaseRef );
                 assert(
                     attrib_holder.get()->eTypeClass
@@ -625,9 +616,9 @@ void UNO_proxy_dispatch(
                 reinterpret_cast<
                 typelib_InterfaceMethodTypeDescription const * >(
                     member_td );
-            com::sun::star::uno::TypeDescription method_holder;
+            css::uno::TypeDescription method_holder;
             while ( method_td->pBaseRef != nullptr ) {
-                method_holder = com::sun::star::uno::TypeDescription(
+                method_holder = css::uno::TypeDescription(
                     method_td->pBaseRef );
                 assert(
                     method_holder.get()->eTypeClass
@@ -649,7 +640,7 @@ void UNO_proxy_dispatch(
                       typelib_TypeClass_INTERFACE)
                 {
                     throw BridgeRuntimeError(
-                        "queryInterface() call demands an INTERFACE type!" );
+                        u"queryInterface() call demands an INTERFACE type!"_ustr );
                 }
 
                 uno_Interface * pInterface = nullptr;
@@ -759,7 +750,7 @@ void UNO_proxy_dispatch(
         default:
         {
             throw BridgeRuntimeError(
-                "illegal member type description!" );
+                u"illegal member type description!"_ustr );
         }
         }
     }
@@ -789,7 +780,7 @@ void UNO_proxy_dispatch(
     {
         // binary identical struct
         css::uno::RuntimeException exc(
-            "[jni_uno bridge error] attaching current thread to java failed!",
+            u"[jni_uno bridge error] attaching current thread to java failed!"_ustr,
             css::uno::Reference<
               css::uno::XInterface >() );
         css::uno::Type const & exc_type = cppu::UnoType<decltype(exc)>::get();

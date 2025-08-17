@@ -41,7 +41,7 @@
 typedef ::o3tl::sorted_vector< OUString > NameSet;
 typedef ::o3tl::sorted_vector< sal_Int16 > ValueSet;
 
-namespace cssi = ::com::sun::star::i18n;
+namespace cssi = css::i18n;
 
 LocaleNode::LocaleNode (OUString name, const Reference< XAttributeList > & attr)
     : aName(std::move(name))
@@ -274,7 +274,7 @@ void LCInfoNode::generateCode (const OFileWriter &of) const
     of.writeAsciiString("\tcountryDefaultName,\n");
     of.writeAsciiString("\tVariant\n");
     of.writeAsciiString("};\n\n");
-    of.writeOUStringFunction("getLCInfo_", "SAL_N_ELEMENTS(LCInfoArray)", "LCInfoArray");
+    of.writeOUStringFunction("getLCInfo_", "std::size(LCInfoArray)", "LCInfoArray");
 }
 
 
@@ -503,7 +503,7 @@ void LCCTYPENode::generateCode (const OFileWriter &of) const
     of.writeAsciiString("\tLongDateYearSeparator,\n");
     of.writeAsciiString("\tdecimalSeparatorAlternative\n");
     of.writeAsciiString("};\n\n");
-    of.writeOUStringFunction("getLocaleItem_", "SAL_N_ELEMENTS(LCType)", "LCType");
+    of.writeOUStringFunction("getLocaleItem_", "std::size(LCType)", "LCType");
 }
 
 
@@ -588,7 +588,13 @@ void LCFormatNode::generateCode (const OFileWriter &of) const
             if (mnSection > 0)
                 incError( "DateAcceptancePattern only handled in LC_FORMAT, not LC_FORMAT_1");
             else
-                theDateAcceptancePatterns.push_back( currNode->getValue());
+            {
+                auto val = currNode->getValue();
+                if (std::find(theDateAcceptancePatterns.begin(), theDateAcceptancePatterns.end(), val) == theDateAcceptancePatterns.end())
+                    theDateAcceptancePatterns.push_back(val);
+                else
+                    incErrorStr( "Error: Duplicated DateAcceptancePattern: %s\n", val);
+            }
             --formatCount;
             continue;   // for
         }
@@ -1170,8 +1176,11 @@ void LCFormatNode::generateCode (const OFileWriter &of) const
                     OSTR( aPattern), OSTR( sTheDateEditFormat),
                     int(cssi::NumberFormatIndex::DATE_SYS_DDMMYYYY),
                     OSTR( OUString(&cDateSep, 1)));
-            // Insert at front so full date pattern is first in checks.
-            theDateAcceptancePatterns.insert( theDateAcceptancePatterns.begin(), aPattern);
+
+            if (std::find(theDateAcceptancePatterns.begin(), theDateAcceptancePatterns.end(), aPattern) == theDateAcceptancePatterns.end())
+                theDateAcceptancePatterns.push_back(aPattern);
+            else
+                incErrorStr( "Error: Duplicated DateAcceptancePattern: %s\n", aPattern);
         }
         if (!aPatternBuf2.isEmpty())
         {
@@ -1188,7 +1197,11 @@ void LCFormatNode::generateCode (const OFileWriter &of) const
                 fprintf( stderr, "Generated  2nd acceptance pattern: '%s' from '%s' (formatindex=\"%d\")\n",
                         OSTR( aPattern2), OSTR( sTheDateEditFormat),
                         int(cssi::NumberFormatIndex::DATE_SYS_DDMMYYYY));
-                theDateAcceptancePatterns.insert( theDateAcceptancePatterns.begin(), aPattern2);
+
+                if (std::find(theDateAcceptancePatterns.begin(), theDateAcceptancePatterns.end(), aPattern2) == theDateAcceptancePatterns.end())
+                    theDateAcceptancePatterns.push_back(aPattern2);
+                else
+                    incErrorStr( "Error: Duplicated DateAcceptancePattern: %s\n", aPattern2);
             }
         }
 
@@ -1208,23 +1221,6 @@ void LCFormatNode::generateCode (const OFileWriter &of) const
                                 OSTR(elem), OSTR( aDecSep));
                     }
                 }
-            }
-        }
-
-        // Check for duplicates.
-        for (std::vector<OUString>::const_iterator aIt = theDateAcceptancePatterns.begin();
-                aIt != theDateAcceptancePatterns.end(); ++aIt)
-        {
-            for (std::vector<OUString>::iterator aComp = theDateAcceptancePatterns.begin();
-                    aComp != theDateAcceptancePatterns.end(); /*nop*/)
-            {
-                if (aIt != aComp && *aIt == *aComp)
-                {
-                    incErrorStr( "Error: Duplicated DateAcceptancePattern: %s\n", *aComp);
-                    aComp = theDateAcceptancePatterns.erase( aComp);
-                }
-                else
-                    ++aComp;
             }
         }
 
@@ -1577,17 +1573,17 @@ void LCCalendarNode::generateCode (const OFileWriter &of) const
     // Of course there must be an implementation for new to be added
     // identifiers.. see data/locale.dtd
     std::map< OUString, bool > aCalendars;
-    aCalendars["buddhist"]   = false;
-    aCalendars["gengou"]     = false;
-    aCalendars["gregorian"]  = false;
-    aCalendars["hanja"]      = false;
-    aCalendars["hanja_yoil"] = false;
-    aCalendars["hijri"]      = false;
-    aCalendars["jewish"]     = false;
-    aCalendars["ROC"]        = false;
+    aCalendars[u"buddhist"_ustr]   = false;
+    aCalendars[u"gengou"_ustr]     = false;
+    aCalendars[u"gregorian"_ustr]  = false;
+    aCalendars[u"hanja"_ustr]      = false;
+    aCalendars[u"hanja_yoil"_ustr] = false;
+    aCalendars[u"hijri"_ustr]      = false;
+    aCalendars[u"jewish"_ustr]     = false;
+    aCalendars[u"ROC"_ustr]        = false;
     // Not in ODF:
-    aCalendars["dangi"]      = false;
-    aCalendars["persian"]    = false;
+    aCalendars[u"dangi"_ustr]      = false;
+    aCalendars[u"persian"_ustr]    = false;
 
     sal_Int16 j;
     sal_Int16 i;
@@ -2218,7 +2214,7 @@ void LCNumberingLevelNode::generateCode (const OFileWriter &of) const
 
     // generate code. (top-level array)
     of.writeAsciiString("\n");
-    of.writeAsciiString("static const OUString* LCContinuousNumberingLevelsArray[] = {\n" );
+    of.writeAsciiString("static const OUString* const LCContinuousNumberingLevelsArray[] = {\n" );
     for( i=0; i<nStyles; i++ )
     {
         of.writeAsciiString( "\t" );

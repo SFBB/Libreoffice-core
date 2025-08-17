@@ -23,6 +23,12 @@ $(eval $(call gb_Module_add_slowcheck_targets,xmlsecurity,\
     CppunitTest_xmlsecurity_pdfsigning \
 ))
 
+ifeq ($(OS),LINUX)
+$(eval $(call gb_Module_add_slowcheck_targets,xmlsecurity,\
+    CppunitTest_xmlsecurity_xmlsec \
+))
+endif
+
 $(eval $(call gb_Module_add_subsequentcheck_targets,xmlsecurity,\
     CppunitTest_xmlsecurity_signing \
     CppunitTest_xmlsecurity_signing2 \
@@ -40,6 +46,10 @@ $(eval $(call gb_Module_add_l10n_targets,xmlsecurity,\
 # screenshots
 $(eval $(call gb_Module_add_screenshot_targets,xmlsecurity,\
     CppunitTest_xmlsecurity_dialogs_test \
+))
+
+$(eval $(call gb_Module_add_uicheck_targets,xmlsecurity,\
+	UITest_xmlsecurity_gpg \
 ))
 
 ifneq (,$(filter DESKTOP,$(BUILD_TYPE)))

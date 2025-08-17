@@ -23,6 +23,7 @@
 #include <tools/urlobj.hxx>
 #include <svl/converter.hxx>
 #include <svl/numformat.hxx>
+#include <comphelper/configuration.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/types.hxx>
@@ -113,7 +114,7 @@ namespace
         aURL.removeSegment();
         aURL.removeFinalSlash();
         OUString aPath = aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
-        uno::Reference<uno::XComponentContext> xContext = comphelper::getProcessComponentContext();
+        const uno::Reference<uno::XComponentContext>& xContext = comphelper::getProcessComponentContext();
 
         _rDrvMgr.set( sdbc::DriverManager::create( xContext ) );
 
@@ -159,7 +160,7 @@ bool ScDocShell::MoveFile( const INetURLObject& rSourceObj, const INetURLObject&
                             uno::Reference< css::ucb::XCommandEnvironment >(),
                             comphelper::getProcessComponentContext() );
         uno::Reference< css::ucb::XCommandInfo > xInfo = aDestPath.getCommands();
-        OUString aTransferName = "transfer";
+        OUString aTransferName = u"transfer"_ustr;
         if ( xInfo->hasCommandByName( aTransferName ) )
         {
             aDestPath.executeCommand( aTransferName, uno::Any(
@@ -191,7 +192,7 @@ bool ScDocShell::KillFile( const INetURLObject& rURL )
         ::ucbhelper::Content aCnt( rURL.GetMainURL(INetURLObject::DecodeMechanism::NONE),
                         uno::Reference< css::ucb::XCommandEnvironment >(),
                         comphelper::getProcessComponentContext() );
-        aCnt.executeCommand( "delete", css::uno::Any( true ) );
+        aCnt.executeCommand( u"delete"_ustr, css::uno::Any( true ) );
     }
     catch( uno::Exception& )
     {
@@ -261,9 +262,8 @@ static void lcl_setScalesToColumns(ScDocument& rDoc, const vector<tools::Long>& 
                 continue;
         }
 
-        ScPatternAttr aNewAttrs( rDoc.GetPool() );
-        SfxItemSet& rSet = aNewAttrs.GetItemSet();
-        rSet.Put( SfxUInt32Item(ATTR_VALUE_FORMAT, nNewFormat) );
+        ScPatternAttr aNewAttrs(rDoc.getCellAttributeHelper());
+        aNewAttrs.ItemSetPut(SfxUInt32Item(ATTR_VALUE_FORMAT, nNewFormat));
         rDoc.ApplyPatternAreaTab(i, 0, i, rDoc.MaxRow(), 0, aNewAttrs);
     }
 }
@@ -286,7 +286,6 @@ ErrCode ScDocShell::DBaseImport( const OUString& rFullFileName, rtl_TextEncoding
 
     try
     {
-        tools::Long i;
         sal_Int32 nColCount = 0;
         OUString aTabName;
         uno::Reference<sdbc::XDriverManager2> xDrvMan;
@@ -335,7 +334,7 @@ ErrCode ScDocShell::DBaseImport( const OUString& rFullFileName, rtl_TextEncoding
         // currency flag is not needed for dBase
         uno::Sequence<sal_Int32> aColTypes( nColCount );    // column types
         sal_Int32* pTypeArr = aColTypes.getArray();
-        for (i=0; i<nColCount; i++)
+        for (sal_Int32 i=0; i<nColCount; i++)
             pTypeArr[i] = xMeta->getColumnType( i+1 );
 
         //  read column names
@@ -344,7 +343,7 @@ ErrCode ScDocShell::DBaseImport( const OUString& rFullFileName, rtl_TextEncoding
         aProgress.SetState( 0 );
 
         vector<tools::Long> aScales(nColCount, -1);
-        for (i=0; i<nColCount; i++)
+        for (sal_Int32 i=0; i<nColCount; i++)
         {
             OUString aHeader = xMeta->getColumnLabel( i+1 );
 
@@ -384,18 +383,23 @@ ErrCode ScDocShell::DBaseImport( const OUString& rFullFileName, rtl_TextEncoding
 
         SCROW nRow = 1;     // 0 is column titles
         bool bEnd = false;
+        size_t nErrors(0);
         while ( !bEnd && xRowSet->next() )
         {
-            if ( nRow <= m_pDocument->MaxRow() )
+            if (nRow <= m_pDocument->MaxRow())
             {
                 bool bSimpleRow = true;
                 SCCOL nCol = 0;
-                for (i=0; i<nColCount; i++)
+                for (sal_Int32 i=0; i<nColCount; i++)
                 {
                     ScDatabaseDocUtil::StrData aStrData;
-                    ScDatabaseDocUtil::PutData( *m_pDocument, nCol, nRow, 0,
+                    bool bWasError =
+                        ScDatabaseDocUtil::PutData( *m_pDocument, nCol, nRow, 0,
                                                 xRow, i+1, pTypeArr[i], false,
                                                 &aStrData );
+
+                    if (bWasError)
+                        ++nErrors;
 
                     if (aStrData.mnStrLength > aColWidthParam[nCol].mnMaxTextLen)
                     {
@@ -410,6 +414,12 @@ ErrCode ScDocShell::DBaseImport( const OUString& rFullFileName, rtl_TextEncoding
                     }
 
                     ++nCol;
+                }
+                if (nErrors > 65535 && comphelper::IsFuzzing())
+                {
+                    bEnd = true;
+                    nErr = ERRCODE_IO_GENERAL;
+                    SAL_WARN("sc", "Too many errors: abandoning.");
                 }
                 if (!bSimpleRow)
                     rRowHeightsRecalc.setTrue(nRow, nRow);
@@ -446,7 +456,7 @@ void lcl_GetColumnTypes(
     sal_Int32* pColScales, bool& bHasMemo, rtl_TextEncoding eCharSet )
 {
     ScDocument& rDoc = rDocShell.GetDocument();
-    SvNumberFormatter* pNumFmt = rDoc.GetFormatTable();
+    ScInterpreterContext& rContext = rDoc.GetNonThreadedContext();
 
     SCTAB nTab = rDataRange.aStart.Tab();
     SCCOL nFirstCol = rDataRange.aStart.Col();
@@ -574,7 +584,7 @@ void lcl_GetColumnTypes(
             else
             {
                 sal_uInt32 nFormat = rDoc.GetNumberFormat( nCol, nFirstDataRow, nTab );
-                switch ( pNumFmt->GetType( nFormat ) )
+                switch (rContext.NFGetType(nFormat))
                 {
                     case SvNumFormatType::LOGICAL :
                         nDbType = sdbc::DataType::BIT;
@@ -714,12 +724,12 @@ void lcl_getLongVarCharEditString( OUString& rString,
 }
 
 void lcl_getLongVarCharString(
-    OUString& rString, ScDocument& rDoc, SCCOL nCol, SCROW nRow, SCTAB nTab, SvNumberFormatter& rNumFmt )
+    OUString& rString, ScDocument& rDoc, SCCOL nCol, SCROW nRow, SCTAB nTab, ScInterpreterContext& rContext )
 {
     const Color* pColor;
     ScAddress aPos(nCol, nRow, nTab);
-    sal_uInt32 nFormat = rDoc.GetNumberFormat(aPos);
-    rString = ScCellFormat::GetString(rDoc, aPos, nFormat, &pColor, rNumFmt);
+    sal_uInt32 nFormat = rDoc.GetNumberFormat(ScRange(aPos));
+    rString = ScCellFormat::GetString(rDoc, aPos, nFormat, &pColor, &rContext);
 }
 
 }
@@ -752,7 +762,7 @@ ErrCodeMsg ScDocShell::DBaseExport( const OUString& rFullFileName, rtl_TextEncod
         nFirstRow = nLastRow;
     ScProgress aProgress( this, ScResId( STR_SAVE_DOC ),
                                                     nLastRow - nFirstRow, true );
-    SvNumberFormatter* pNumFmt = m_pDocument->GetFormatTable();
+    ScInterpreterContext& rContext = m_pDocument->GetNonThreadedContext();
 
     bool bHasFieldNames = true;
     for ( SCCOL nDocCol = nFirstCol; nDocCol <= nLastCol && bHasFieldNames; nDocCol++ )
@@ -774,7 +784,7 @@ ErrCodeMsg ScDocShell::DBaseExport( const OUString& rFullFileName, rtl_TextEncod
                         bHasMemo, eCharSet );
     // also needed for exception catch
     SCROW nDocRow = 0;
-    ScFieldEditEngine aEditEngine(m_pDocument.get(), m_pDocument->GetEditPool());
+    ScFieldEditEngine aEditEngine(m_pDocument.get(), m_pDocument->GetEditEnginePool());
     OUString aString;
 
     try
@@ -910,7 +920,7 @@ ErrCodeMsg ScDocShell::DBaseExport( const OUString& rFullFileName, rtl_TextEncod
                             else
                             {
                                 lcl_getLongVarCharString(
-                                    aString, *m_pDocument, nDocCol, nDocRow, nTab, *pNumFmt);
+                                    aString, *m_pDocument, nDocCol, nDocRow, nTab, rContext);
                             }
                             xRowUpdate->updateString( nCol+1, aString );
                         }
@@ -942,7 +952,7 @@ ErrCodeMsg ScDocShell::DBaseExport( const OUString& rFullFileName, rtl_TextEncod
                             }
                             else
                             {
-                                Date aDate = pNumFmt->GetNullDate();        // tools date
+                                Date aDate = rContext.NFGetNullDate();      // tools date
                                 aDate.AddDays(fVal);                        //! approxfloor?
                                 xRowUpdate->updateDate( nCol+1, aDate.GetUNODate() );
                             }
@@ -1013,7 +1023,7 @@ ErrCodeMsg ScDocShell::DBaseExport( const OUString& rFullFileName, rtl_TextEncod
                                 lcl_getLongVarCharEditString(aString, *pCell, aEditEngine);
                             else
                                 lcl_getLongVarCharString(
-                                    aString, *m_pDocument, nDocCol, nDocRow, nTab, *pNumFmt);
+                                    aString, *m_pDocument, nDocCol, nDocRow, nTab, rContext);
                         }
                         break;
 

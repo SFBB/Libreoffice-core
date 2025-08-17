@@ -35,11 +35,7 @@ using namespace frm;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::form;
-using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
@@ -88,18 +84,15 @@ Reference< XCloneable > SAL_CALL OFormattedFieldWrapper::createClone()
     rtl::Reference< OFormattedFieldWrapper > xRef(new OFormattedFieldWrapper(m_xContext,
                                                                              m_implementationName));
 
-    Reference< XCloneable > xCloneAccess;
-    query_aggregation( m_xAggregate, xCloneAccess );
+    auto xCloneAccess = query_aggregation<XCloneable>(m_xAggregate);
 
     // clone the aggregate
-    if ( xCloneAccess.is() )
+    if ( m_xAggregate.is() )
     {
-        Reference< XCloneable > xClone = xCloneAccess->createClone();
-        xRef->m_xAggregate.set(xClone, UNO_QUERY);
+        xRef->m_xAggregate.set(static_cast<OEditBaseModel*>(m_xAggregate->createClone().get()));
         OSL_ENSURE(xRef->m_xAggregate.is(), "invalid aggregate cloned !");
 
-        xRef->m_xFormattedPart.set(
-            Reference< XInterface >(xClone), css::uno::UNO_QUERY);
+        xRef->m_xFormattedPart = xRef->m_xAggregate;
 
         if ( m_pEditPart.is() )
         {
@@ -202,8 +195,7 @@ void SAL_CALL OFormattedFieldWrapper::write(const Reference<XObjectOutputStream>
     // if we act as real edit field, we can simple forward this write request
     if (!m_xFormattedPart.is())
     {
-        Reference<XPersistObject>  xAggregatePersistence;
-        query_aggregation(m_xAggregate, xAggregatePersistence);
+        auto xAggregatePersistence = query_aggregation<XPersistObject>(m_xAggregate);
         DBG_ASSERT(xAggregatePersistence.is(), "OFormattedFieldWrapper::write : don't know how to handle this : can't write !");
             // oops ... We gave an XPersistObject interface to the caller but now we aren't an XPersistObject ...
         if (xAggregatePersistence.is())
@@ -217,11 +209,9 @@ void SAL_CALL OFormattedFieldWrapper::write(const Reference<XObjectOutputStream>
         throw RuntimeException( OUString(), *this );
 
     // for this we transfer the current props of the formatted part to the edit part
-    Reference<XPropertySet>  xFormatProps(m_xFormattedPart, UNO_QUERY);
-    Reference<XPropertySet> xEditProps = m_pEditPart;
 
     Locale aAppLanguage = Application::GetSettings().GetUILanguageTag().getLocale();
-    dbtools::TransferFormComponentProperties(xFormatProps, xEditProps, aAppLanguage);
+    dbtools::TransferFormComponentProperties(m_xFormattedPart, m_pEditPart, aAppLanguage);
 
     // then write the edit part, after switching to "fake mode"
     m_pEditPart->enableFormattedWriteFake();
@@ -261,8 +251,7 @@ void SAL_CALL OFormattedFieldWrapper::read(const Reference<XObjectInputStream>& 
             xInMarkable->deleteMark(nBeforeEditPart);
         }
 
-        Reference<XPersistObject>  xAggregatePersistence;
-        query_aggregation(m_xAggregate, xAggregatePersistence);
+        auto xAggregatePersistence = query_aggregation<XPersistObject>(m_xAggregate);
         DBG_ASSERT(xAggregatePersistence.is(), "OFormattedFieldWrapper::read : don't know how to handle this : can't read !");
             // oops ... We gave an XPersistObject interface to the caller but now we aren't an XPersistObject ...
 
@@ -283,15 +272,15 @@ void SAL_CALL OFormattedFieldWrapper::read(const Reference<XObjectInputStream>& 
         if (!pBasicReader->lastReadWasFormattedFake())
         {
             // yes -> all fine
-            m_xAggregate = pBasicReader;
+            m_xAggregate = std::move(pBasicReader);
         }
         else
         {   // no -> substitute it with a formatted model
             // let the formatted model do the reading
             m_xFormattedPart.set(new OFormattedModel(m_xContext));
             m_xFormattedPart->read(_rxInStream);
-            m_pEditPart = pBasicReader;
-            m_xAggregate.set( m_xFormattedPart, UNO_QUERY );
+            m_pEditPart = std::move(pBasicReader);
+            m_xAggregate = m_xFormattedPart;
         }
     }
 
@@ -312,25 +301,9 @@ void OFormattedFieldWrapper::ensureAggregate()
     {
         // instantiate an EditModel (the only place where we are allowed to decide that we're a FormattedModel
         // is in ::read)
-        css::uno::Reference<css::uno::XInterface>  xEditModel = m_xContext->getServiceManager()->createInstanceWithContext(FRM_SUN_COMPONENT_TEXTFIELD, m_xContext);
-        if (!xEditModel.is())
-        {
-            // arghhh... instantiate it directly... it's dirty, but we really need this aggregate
-            rtl::Reference<OEditModel> pModel = new OEditModel(m_xContext);
-            xEditModel.set(static_cast<XWeak*>(pModel.get()), css::uno::UNO_QUERY);
-        }
-
-        m_xAggregate.set(xEditModel, UNO_QUERY);
+        rtl::Reference<OEditModel> xEditModel = new OEditModel(m_xContext);
+        m_xAggregate = xEditModel;
         DBG_ASSERT(m_xAggregate.is(), "OFormattedFieldWrapper::ensureAggregate : the OEditModel didn't have an XAggregation interface !");
-
-        {
-            Reference< XServiceInfo > xSI(m_xAggregate, UNO_QUERY);
-            if (!xSI.is())
-            {
-                OSL_FAIL("OFormattedFieldWrapper::ensureAggregate: the aggregate has no XServiceInfo!");
-                m_xAggregate.clear();
-            }
-        }
     }
 
     osl_atomic_increment(&m_refCount);
@@ -347,7 +320,7 @@ com_sun_star_form_OFormattedFieldWrapper_get_implementation(css::uno::XComponent
 {
     css::uno::Reference<css::uno::XInterface> inst(
         OFormattedFieldWrapper::createFormattedFieldWrapper(
-            component, false, "com.sun.star.form.OFormattedFieldWrapper"));
+            component, false, u"com.sun.star.form.OFormattedFieldWrapper"_ustr));
     inst->acquire();
     return inst.get();
 }
@@ -358,7 +331,7 @@ com_sun_star_comp_forms_OFormattedFieldWrapper_ForcedFormatted_get_implementatio
 {
     css::uno::Reference<css::uno::XInterface> inst(
         OFormattedFieldWrapper::createFormattedFieldWrapper(
-            component, true, "com.sun.star.comp.forms.OFormattedFieldWrapper_ForcedFormatted"));
+            component, true, u"com.sun.star.comp.forms.OFormattedFieldWrapper_ForcedFormatted"_ustr));
     inst->acquire();
     return inst.get();
 }

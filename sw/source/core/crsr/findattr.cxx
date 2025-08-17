@@ -220,9 +220,27 @@ SwAttrCheckArr::SwAttrCheckArr( const SfxItemSet& rSet, bool bFwd,
     m_aComapeSet.Put( rSet, false );
 
     // determine area of Fnd/Stack array (Min/Max)
-    SfxItemIter aIter( m_aComapeSet );
-    m_nArrStart = m_aComapeSet.GetWhichByOffset( aIter.GetFirstPos() );
-    m_nArrLen = m_aComapeSet.GetWhichByOffset( aIter.GetLastPos() ) - m_nArrStart+1;
+    sal_uInt16 nMinUsedWhichID(0);
+    sal_uInt16 nMaxUsedWhichID(0);
+
+    if (0 != m_aComapeSet.Count())
+    {
+        nMinUsedWhichID = 5000; // SFX_WHICH_MAX+1;
+        for (SfxItemIter aIter(m_aComapeSet); !aIter.IsAtEnd(); aIter.NextItem())
+        {
+            const sal_uInt16 nCurrentWhich(aIter.GetCurWhich());
+            if (SfxItemPool::IsSlot(nCurrentWhich))
+                continue;
+            nMinUsedWhichID = std::min(nMinUsedWhichID, nCurrentWhich);
+            nMaxUsedWhichID = std::max(nMaxUsedWhichID, nCurrentWhich);
+        }
+
+        if (nMinUsedWhichID > nMaxUsedWhichID)
+            nMinUsedWhichID = nMaxUsedWhichID = 0;
+    }
+
+    m_nArrStart = nMinUsedWhichID;//m_aComapeSet.GetWhichByOffset( aIter.GetFirstPos() );
+    m_nArrLen = nMaxUsedWhichID - nMinUsedWhichID + 1;//m_aComapeSet.GetWhichByOffset( aIter.GetLastPos() ) - m_nArrStart+1;
 
     char* pFndChar  = new char[ m_nArrLen * sizeof(SwSrchChrAttr) ];
     char* pStackChar = new char[ m_nArrLen * sizeof(SwSrchChrAttr) ];
@@ -273,12 +291,12 @@ void SwAttrCheckArr::SetNewSet( const SwTextNode& rTextNd, const SwPaM& rPam )
     {
         if( IsInvalidItem( pItem ) )
         {
-            nWhich = m_aComapeSet.GetWhichByOffset( aIter.GetCurPos() );
+            nWhich = aIter.GetCurWhich();
             if( RES_TXTATR_END <= nWhich )
                 break; // end of text attributes
 
             if( SfxItemState::SET == rSet.GetItemState( nWhich, !m_bNoColls, &pFndItem )
-                && !CmpAttr( *pFndItem, rSet.GetPool()->GetDefaultItem( nWhich ) ))
+                && !CmpAttr( *pFndItem, rSet.GetPool()->GetUserOrPoolDefaultItem( nWhich ) ))
             {
                 m_pFindArr[ nWhich - m_nArrStart ] =
                     SwSrchChrAttr( *pFndItem, m_nNodeStart, m_nNodeEnd );
@@ -357,7 +375,7 @@ bool SwAttrCheckArr::SetAttrFwd( const SwTextAttr& rAttr )
     while( pTmpItem )
     {
         SfxItemState eState = m_aComapeSet.GetItemState( nWhch, false, &pItem );
-        if( SfxItemState::DONTCARE == eState || SfxItemState::SET == eState )
+        if( SfxItemState::INVALID == eState || SfxItemState::SET == eState )
         {
             sal_uInt16 n;
             SwSrchChrAttr* pCmp;
@@ -409,10 +427,10 @@ bool SwAttrCheckArr::SetAttrFwd( const SwTextAttr& rAttr )
 
             bool bContinue = false;
 
-            if( SfxItemState::DONTCARE == eState  )
+            if( SfxItemState::INVALID == eState  )
             {
                 // Will the attribute become valid?
-                if( !CmpAttr( m_aComapeSet.GetPool()->GetDefaultItem( nWhch ),
+                if( !CmpAttr( m_aComapeSet.GetPool()->GetUserOrPoolDefaultItem( nWhch ),
                     *pTmpItem ))
                 {
                     // search attribute and extend if needed
@@ -517,7 +535,7 @@ bool SwAttrCheckArr::SetAttrBwd( const SwTextAttr& rAttr )
     while( pTmpItem )
     {
         SfxItemState eState = m_aComapeSet.GetItemState( nWhch, false, &pItem );
-        if( SfxItemState::DONTCARE == eState || SfxItemState::SET == eState )
+        if( SfxItemState::INVALID == eState || SfxItemState::SET == eState )
         {
             sal_uInt16 n;
             SwSrchChrAttr* pCmp;
@@ -567,10 +585,10 @@ bool SwAttrCheckArr::SetAttrBwd( const SwTextAttr& rAttr )
                 }
 
             bool bContinue = false;
-            if( SfxItemState::DONTCARE == eState  )
+            if( SfxItemState::INVALID == eState  )
             {
                 // Will the attribute become valid?
-                if( !CmpAttr( m_aComapeSet.GetPool()->GetDefaultItem( nWhch ),
+                if( !CmpAttr( m_aComapeSet.GetPool()->GetUserOrPoolDefaultItem( nWhch ),
                     *pTmpItem ) )
                 {
                     // search attribute and extend if needed
@@ -887,9 +905,9 @@ static bool lcl_Search( const SwContentNode& rCNd, const SfxItemSet& rCmpSet, bo
     {
         if( IsInvalidItem( pItem ))
         {
-            nWhich = rCmpSet.GetWhichByOffset( aIter.GetCurPos() );
+            nWhich = aIter.GetCurWhich();
             if( SfxItemState::SET != rNdSet.GetItemState( nWhich, !bNoColls, &pNdItem )
-                || CmpAttr( *pNdItem, rNdSet.GetPool()->GetDefaultItem( nWhich ) ))
+                || CmpAttr( *pNdItem, rNdSet.GetPool()->GetUserOrPoolDefaultItem( nWhich ) ))
                 return false;
         }
         else
@@ -1384,7 +1402,7 @@ int SwFindParaAttr::DoFind(SwPaM & rCursor, SwMoveFnCollection const & fnMove,
                 // reset all that are not set with pool defaults
                 if( !IsInvalidItem( pItem ) && SfxItemState::SET !=
                     pReplSet->GetItemState( pItem->Which(), false ))
-                    aSet.Put( pPool->GetDefaultItem( pItem->Which() ));
+                    aSet.Put( pPool->GetUserOrPoolDefaultItem( pItem->Which() ));
 
                 pItem = aIter.NextItem();
             } while (pItem);

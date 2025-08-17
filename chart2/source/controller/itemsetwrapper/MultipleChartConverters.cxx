@@ -24,7 +24,6 @@
 #include <StatisticsItemConverter.hxx>
 #include <GraphicPropertyItemConverter.hxx>
 #include <DataPointItemConverter.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartModel.hxx>
 #include <Diagram.hxx>
 #include <DataSeries.hxx>
@@ -33,13 +32,11 @@
 #include <TitleItemConverter.hxx>
 #include <Axis.hxx>
 #include <AxisHelper.hxx>
-#include <chartview/ExplicitValueProvider.hxx>
-#include <com/sun/star/chart2/XTitle.hpp>
+#include <ChartView.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
 using ::com::sun::star::uno::Reference;
-using ::com::sun::star::uno::Sequence;
 
 namespace chart::wrapper {
 
@@ -54,9 +51,9 @@ AllAxisItemConverter::AllAxisItemConverter(
     const std::vector< rtl::Reference< Axis > > aElementList = AxisHelper::getAllAxesOfDiagram( xDiagram );
     for( rtl::Reference< Axis > const & axis : aElementList )
     {
-        uno::Reference< beans::XPropertySet > xObjectProperties(axis);
         m_aConverters.emplace_back( new ::chart::wrapper::AxisItemConverter(
-            xObjectProperties, rItemPool, rDrawModel,
+            uno::Reference< beans::XPropertySet >(axis),
+            rItemPool, rDrawModel,
             xChartModel, nullptr, nullptr,
             pRefSize));
     }
@@ -75,8 +72,7 @@ const WhichRangesContainer& AllAxisItemConverter::GetWhichPairs() const
 AllGridItemConverter::AllGridItemConverter(
     const rtl::Reference<::chart::ChartModel> & xChartModel,
     SfxItemPool& rItemPool,
-    SdrModel& rDrawModel,
-    const uno::Reference< lang::XMultiServiceFactory > & xNamedPropertyContainerFactory )
+    SdrModel& rDrawModel )
         : MultipleItemConverter( rItemPool )
 {
     rtl::Reference< Diagram > xDiagram( xChartModel->getFirstChartDiagram() );
@@ -84,7 +80,7 @@ AllGridItemConverter::AllGridItemConverter(
     for( rtl::Reference< GridProperties > const & xObjectProperties : aElementList )
     {
         m_aConverters.emplace_back( new ::chart::wrapper::GraphicPropertyItemConverter(
-                                        xObjectProperties, rItemPool, rDrawModel, xNamedPropertyContainerFactory,
+                                        xObjectProperties, rItemPool, rDrawModel, xChartModel,
                                         ::chart::wrapper::GraphicObjectType::LineProperties ) );
     }
 }
@@ -102,25 +98,24 @@ const WhichRangesContainer& AllGridItemConverter::GetWhichPairs() const
 AllDataLabelItemConverter::AllDataLabelItemConverter(
     const rtl::Reference<::chart::ChartModel> & xChartModel,
     SfxItemPool& rItemPool,
-    SdrModel& rDrawModel,
-    const uno::Reference< lang::XMultiServiceFactory > & xNamedPropertyContainerFactory )
+    SdrModel& rDrawModel )
         : MultipleItemConverter( rItemPool )
 {
     std::vector< rtl::Reference< DataSeries > > aSeriesList =
-        ::chart::ChartModelHelper::getDataSeries( xChartModel );
+        xChartModel->getDataSeries();
 
     for (auto const& series : aSeriesList)
     {
         uno::Reference< uno::XComponentContext> xContext;//do not need Context for label properties
 
-        sal_Int32 nNumberFormat=ExplicitValueProvider::getExplicitNumberFormatKeyForDataLabel( series );
-        sal_Int32 nPercentNumberFormat=ExplicitValueProvider::getExplicitPercentageNumberFormatKeyForDataLabel(
+        sal_Int32 nNumberFormat = series->getExplicitNumberFormatKeyForDataLabel();
+        sal_Int32 nPercentNumberFormat=ChartView::getExplicitPercentageNumberFormatKeyForDataLabel(
                 series,xChartModel);
 
         m_aConverters.emplace_back(
             new ::chart::wrapper::DataPointItemConverter(
                 xChartModel, xContext, series, series, rItemPool, rDrawModel,
-                xNamedPropertyContainerFactory, GraphicObjectType::FilledDataPoint,
+                GraphicObjectType::FilledDataPoint,
                 std::nullopt, true, false, 0, true, nNumberFormat, nPercentNumberFormat));
     }
 }
@@ -138,8 +133,7 @@ const WhichRangesContainer& AllDataLabelItemConverter::GetWhichPairs() const
 AllTitleItemConverter::AllTitleItemConverter(
     const rtl::Reference<::chart::ChartModel> & xChartModel,
     SfxItemPool& rItemPool,
-    SdrModel& rDrawModel,
-    const uno::Reference< lang::XMultiServiceFactory > & xNamedPropertyContainerFactory )
+    SdrModel& rDrawModel )
         : MultipleItemConverter( rItemPool )
 {
     for(sal_Int32 nTitle = TitleHelper::TITLE_BEGIN; nTitle < TitleHelper::NORMAL_TITLE_END; nTitle++ )
@@ -147,10 +141,10 @@ AllTitleItemConverter::AllTitleItemConverter(
         rtl::Reference< Title > xTitle( TitleHelper::getTitle( TitleHelper::eTitleType(nTitle), xChartModel ) );
         if(!xTitle.is())
             continue;
-        uno::Reference< beans::XPropertySet > xObjectProperties( xTitle );
         m_aConverters.emplace_back(
             new ::chart::wrapper::TitleItemConverter(
-                xObjectProperties, rItemPool, rDrawModel, xNamedPropertyContainerFactory, std::nullopt));
+                uno::Reference< beans::XPropertySet >( xTitle ),
+                rItemPool, rDrawModel, xChartModel, std::nullopt));
     }
 }
 
@@ -170,7 +164,7 @@ AllSeriesStatisticsConverter::AllSeriesStatisticsConverter(
         : MultipleItemConverter( rItemPool )
 {
     std::vector< rtl::Reference< DataSeries > > aSeriesList =
-        ::chart::ChartModelHelper::getDataSeries( xChartModel );
+        xChartModel->getDataSeries();
 
     for (auto const& series : aSeriesList)
     {

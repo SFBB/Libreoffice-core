@@ -17,6 +17,45 @@ from uitest.uihelper.common import change_measurement_unit
 
 class formatBulletsNumbering(UITestCase):
 
+   def test_bullets_and_numbering_change_bullet(self):
+        with self.ui_test.create_doc_in_start_center("writer"):
+
+            # Set the "black down-pointing triangle" bullet in the third item
+            with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog") as xDialog:
+                # Select the BulletPage's selector
+                xTabs = xDialog.getChild("tabcontrol")
+                select_pos(xTabs, "0")
+                xBulletPage = xDialog.getChild("PickBulletPage")
+                xSelector = xBulletPage.getChild("valueset")
+
+                # Select element number 3
+                xSelector.executeAction("CHOOSE", mkPropertyValues({"POS": "3"}))
+                self.assertEqual(get_state_as_dict(xSelector)["SelectedItemId"], "3")
+                xChangeBulletBtn = xBulletPage.getChild("changeBulletBtn")
+                with self.ui_test.execute_blocking_action(xChangeBulletBtn.executeAction, args=('CLICK', ())) as xCharSetDialog:
+                    xCharSet = xCharSetDialog.getChild("showcharset")
+                    xCharSet.executeAction("SELECT", mkPropertyValues({"COLUMN": "21", "ROW": "1"}))
+
+            # Check that the "black down-pointing triangle" bullet is the third item
+            with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog") as xDialog:
+                # Select the BulletPage's selector
+                xTabs = xDialog.getChild("tabcontrol")
+                select_pos(xTabs, "0")
+                xBulletPage = xDialog.getChild("PickBulletPage")
+                xSelector = xBulletPage.getChild("valueset")
+
+                # Select element number 3
+                xSelector.executeAction("CHOOSE", mkPropertyValues({"POS": "3"}))
+                self.assertEqual(get_state_as_dict(xSelector)["SelectedItemId"], "3")
+                xChangeBulletBtn = xBulletPage.getChild("changeBulletBtn")
+                with self.ui_test.execute_blocking_action(xChangeBulletBtn.executeAction, args=('CLICK', ())) as xCharSetDialog:
+                    xHexText = xCharSetDialog.getChild("hexvalue")
+                    xDecText = xCharSetDialog.getChild("decimalvalue")
+                    # Check the "black down-pointing triangle" bullet Hex and Decimal value
+                    self.assertEqual(get_state_as_dict(xHexText)["Text"], "25BC")
+                    self.assertEqual(get_state_as_dict(xDecText)["Text"], "9660")
+
+
    def test_bullets_and_numbering_dialog_tab_position(self):
         with self.ui_test.create_doc_in_start_center("writer"):
 
@@ -36,7 +75,7 @@ class formatBulletsNumbering(UITestCase):
                     xindentatmf.executeAction("UP", tuple())
 
 
-                with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="cancel") as xDialog:
+                with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="ok") as xDialog:
                     xTabs = xDialog.getChild("tabcontrol")
                     select_pos(xTabs, "4")
                     xalignedatmf = xDialog.getChild("alignedatmf")
@@ -61,7 +100,7 @@ class formatBulletsNumbering(UITestCase):
                 select_by_text(xnumfollowedbylb, "Space")
 
 
-            with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="cancel") as xDialog:
+            with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="ok") as xDialog:
                 xTabs = xDialog.getChild("tabcontrol")
                 select_pos(xTabs, "4")
                 xnumfollowedbylb = xDialog.getChild("numfollowedbylb")
@@ -91,7 +130,7 @@ class formatBulletsNumbering(UITestCase):
                 xallsame.executeAction("CLICK", tuple())
 
 
-            with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="cancel") as xDialog:
+            with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="ok") as xDialog:
                 xTabs = xDialog.getChild("tabcontrol")
                 select_pos(xTabs, "5")
                 xnumfmtlb = xDialog.getChild("numfmtlb")
@@ -112,7 +151,7 @@ class formatBulletsNumbering(UITestCase):
             with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="user") as xDialog:
                 pass
 
-            with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="cancel") as xDialog:
+            with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="ok") as xDialog:
                 xTabs = xDialog.getChild("tabcontrol")
                 select_pos(xTabs, "5")
                 xnumfmtlb = xDialog.getChild("numfmtlb")
@@ -146,7 +185,7 @@ class formatBulletsNumbering(UITestCase):
 
 
                 xWriterEdit.executeAction("TYPE", mkPropertyValues({"KEYCODE": "TAB"})) #TAB to move indent right
-                with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="cancel") as xDialog:
+                with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="ok") as xDialog:
                     xTabs = xDialog.getChild("tabcontrol")
                     select_pos(xTabs, "4")
                     xindentatmf = xDialog.getChild("indentatmf")
@@ -154,7 +193,7 @@ class formatBulletsNumbering(UITestCase):
                     self.assertEqual(indentValue < indentValue2 , True)
 
                 xWriterEdit.executeAction("TYPE", mkPropertyValues({"KEYCODE": "BACKSPACE"}))
-                with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="cancel") as xDialog:
+                with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="ok") as xDialog:
                     xTabs = xDialog.getChild("tabcontrol")
                     select_pos(xTabs, "4")
                     xindentatmf = xDialog.getChild("indentatmf")
@@ -175,7 +214,7 @@ class formatBulletsNumbering(UITestCase):
 
 
                 self.xUITest.executeCommand(".uno:DecrementSubLevels")
-                with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="cancel") as xDialog:
+                with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="ok") as xDialog:
                     xTabs = xDialog.getChild("tabcontrol")
                     select_pos(xTabs, "4")
                     xindentatmf = xDialog.getChild("indentatmf")
@@ -183,7 +222,7 @@ class formatBulletsNumbering(UITestCase):
                     self.assertEqual(indentValue < indentValue2 , True)
 
                 self.xUITest.executeCommand(".uno:IncrementLevel")
-                with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="cancel") as xDialog:
+                with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog", close_button="ok") as xDialog:
                     xTabs = xDialog.getChild("tabcontrol")
                     select_pos(xTabs, "4")
                     xindentatmf = xDialog.getChild("indentatmf")
@@ -207,13 +246,10 @@ class formatBulletsNumbering(UITestCase):
                 xselector.executeAction("CHOOSE", mkPropertyValues({"POS": "3"}))
                 self.assertEqual(get_state_as_dict(xselector)["SelectedItemPos"], "2")
                 self.assertEqual(get_state_as_dict(xselector)["SelectedItemId"], "3")
-                self.assertEqual(get_state_as_dict(xselector)["ItemText"], "Solid diamond bullets")
                 # Select element num 7
                 xselector.executeAction("CHOOSE", mkPropertyValues({"POS": "7"}))
                 self.assertEqual(get_state_as_dict(xselector)["SelectedItemPos"], "6")
                 self.assertEqual(get_state_as_dict(xselector)["SelectedItemId"], "7")
-                self.assertEqual(get_state_as_dict(xselector)["ItemText"], "Cross mark bullets")
-
 
             # Test other Pages
             with self.ui_test.execute_dialog_through_command(".uno:BulletsAndNumberingDialog") as xDialog:
@@ -260,6 +296,13 @@ class formatBulletsNumbering(UITestCase):
                 xselector.executeAction("CHOOSE", mkPropertyValues({"POS": "73"}))
                 self.assertEqual(get_state_as_dict(xselector)["SelectedItemPos"], "72")
                 self.assertEqual(get_state_as_dict(xselector)["SelectedItemId"], "73")
+
+
+   def test_bullets_and_numbering_document_bullet_list(self):
+        with self.ui_test.create_doc_in_start_center("writer"):
+            self.xUITest.executeCommand(".uno:DefaultBullet")
+            # Without the fix in place, this test would have crashed here
+            self.xUITest.executeCommand(".uno:DocumentBulletList")
 
 
 # vim: set shiftwidth=4 softtabstop=4 expandtab:

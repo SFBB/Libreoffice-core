@@ -81,6 +81,15 @@ public:
     static void       SetDeterministicMode(bool bDeterministic);
     /// Return the current state of deterministic mode.
     static bool       GetDeterministicMode();
+
+    static int GetMostUrgentTaskPriority();
+
+    // Makes sure that idles are not processed, until the guard is destroyed
+    struct VCL_DLLPUBLIC IdlesLockGuard final
+    {
+        IdlesLockGuard();
+        ~IdlesLockGuard();
+    };
 };
 
 #endif // INCLUDED_VCL_SCHEDULER_HXX

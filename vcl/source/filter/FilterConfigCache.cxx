@@ -20,8 +20,9 @@
 #include "FilterConfigCache.hxx"
 
 #include <o3tl/safeint.hxx>
+#include <o3tl/string_view.hxx>
 #include <vcl/graphicfilter.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <tools/svlibrary.h>
 #include <com/sun/star/uno/Any.h>
 #include <comphelper/processfactory.hxx>
@@ -39,7 +40,7 @@ using namespace ::com::sun::star::uno           ;   // Reference
 using namespace ::com::sun::star::beans         ;   // PropertyValue
 using namespace ::com::sun::star::configuration ;
 
-const char* FilterConfigCache::FilterConfigCacheEntry::InternalPixelFilterNameList[] =
+const char* const FilterConfigCache::FilterConfigCacheEntry::InternalPixelFilterNameList[] =
 {
     IMP_BMP, IMP_GIF, IMP_PNG, IMP_JPEG, IMP_TIFF, IMP_WEBP,
     IMP_XBM, IMP_XPM, IMP_TGA, IMP_PICT, IMP_MET, IMP_RAS,
@@ -52,7 +53,7 @@ void FilterConfigCache::FilterConfigCacheEntry::CreateFilterName( const OUString
 {
     bIsPixelFormat = false;
     sFilterName = rUserDataEntry;
-    const char** pPtr;
+    const char*const* pPtr;
     for ( pPtr = InternalPixelFilterNameList; *pPtr; pPtr++ )
     {
         if ( sFilterName.equalsIgnoreAsciiCaseAscii( *pPtr ) )
@@ -88,7 +89,7 @@ OUString FilterConfigCache::FilterConfigCacheEntry::GetShortName()
  */
 static Reference< XInterface > openConfig(const char* sPackage)
 {
-    Reference< XComponentContext > xContext(
+    const Reference< XComponentContext >& xContext(
         comphelper::getProcessComponentContext() );
     Reference< XInterface >           xCfg;
     try
@@ -101,13 +102,13 @@ static Reference< XInterface > openConfig(const char* sPackage)
         // define cfg path for open
         aParam.Name = "nodepath";
         if (rtl_str_compareIgnoreAsciiCase(sPackage, "types") == 0)
-            aParam.Value <<= OUString( "/org.openoffice.TypeDetection.Types/Types" );
+            aParam.Value <<= u"/org.openoffice.TypeDetection.Types/Types"_ustr;
         if (rtl_str_compareIgnoreAsciiCase(sPackage, "filters") == 0)
-            aParam.Value <<= OUString( "/org.openoffice.TypeDetection.GraphicFilter/Filters" );
+            aParam.Value <<= u"/org.openoffice.TypeDetection.GraphicFilter/Filters"_ustr;
         Sequence< Any > lParams{ Any(aParam) };
 
         // get access to file
-        xCfg = xConfigProvider->createInstanceWithArguments("com.sun.star.configuration.ConfigurationAccess", lParams);
+        xCfg = xConfigProvider->createInstanceWithArguments(u"com.sun.star.configuration.ConfigurationAccess"_ustr, lParams);
     }
     catch(const RuntimeException&)
         { throw; }
@@ -191,80 +192,77 @@ void FilterConfigCache::ImplInit()
     }
 };
 
-const char* FilterConfigCache::InternalFilterListForSvxLight[] =
+namespace {
+struct FilterEntry
 {
-    "bmp","1","SVBMP",
-    "bmp","2","SVBMP",
-    "dxf","1","SVDXF",
-    "eps","1","SVIEPS",
-    "eps","2","SVEEPS",
-    "gif","1","SVIGIF",
-    "gif","2","SVEGIF",
-    "jpg","1","SVIJPEG",
-    "jpg","2","SVEJPEG",
-    "mov","1","SVMOV",
-    "mov","2","SVMOV",
-    "met","1","SVMET",
-    "png","1","SVIPNG",
-    "png","2","SVEPNG",
-    "pct","1","SVPICT",
-    "pcd","1","SVPCD",
-    "psd","1","SVPSD",
-    "pcx","1","SVPCX",
-    "pbm","1","SVPBM",
-    "pgm","1","SVPBM",
-    "ppm","1","SVPBM",
-    "ras","1","SVRAS",
-    "svm","1","SVMETAFILE",
-    "svm","2","SVMETAFILE",
-    "tga","1","SVTGA",
-    "tif","1","SVTIFF",
-    "tif","2","SVTIFF",
-    "emf","1","SVEMF",
-    "emf","2","SVEMF",
-    "wmf","1","SVWMF",
-    "wmf","2","SVWMF",
-    "xbm","1","SVIXBM",
-    "xpm","1","SVIXPM",
-    "svg","1","SVISVG",
-    "svg","2","SVESVG",
-    "webp","1","SVIWEBP",
-    "webp","2","SVEWEBP",
-    nullptr
+    OUString sExtension;
+    sal_Int32 nFlags;
+    OUString sUserData;
+};
+}
+constexpr FilterEntry InternalFilterListForSvxLight[]
+{
+    { u"bmp"_ustr, 1, u"SVBMP"_ustr },
+    { u"bmp"_ustr, 2, u"SVBMP"_ustr },
+    { u"dxf"_ustr, 1, u"SVDXF"_ustr },
+    { u"eps"_ustr, 1, u"SVIEPS"_ustr },
+    { u"eps"_ustr, 2, u"SVEEPS"_ustr },
+    { u"gif"_ustr, 1, u"SVIGIF"_ustr },
+    { u"gif"_ustr, 2, u"SVEGIF"_ustr },
+    { u"jpg"_ustr, 1, u"SVIJPEG"_ustr },
+    { u"jpg"_ustr, 2, u"SVEJPEG"_ustr },
+    { u"mov"_ustr, 1, u"SVMOV"_ustr },
+    { u"mov"_ustr, 2, u"SVMOV"_ustr },
+    { u"met"_ustr, 1, u"SVMET"_ustr },
+    { u"png"_ustr, 1, u"SVIPNG"_ustr },
+    { u"png"_ustr, 2, u"SVEPNG"_ustr },
+    { u"pct"_ustr, 1, u"SVPICT"_ustr },
+    { u"pcd"_ustr, 1, u"SVPCD"_ustr },
+    { u"psd"_ustr, 1, u"SVPSD"_ustr },
+    { u"pcx"_ustr, 1, u"SVPCX"_ustr },
+    { u"pbm"_ustr, 1, u"SVPBM"_ustr },
+    { u"pgm"_ustr, 1, u"SVPBM"_ustr },
+    { u"ppm"_ustr, 1, u"SVPBM"_ustr },
+    { u"ras"_ustr, 1, u"SVRAS"_ustr },
+    { u"svm"_ustr, 1, u"SVMETAFILE"_ustr },
+    { u"svm"_ustr, 2, u"SVMETAFILE"_ustr },
+    { u"tga"_ustr, 1, u"SVTGA"_ustr },
+    { u"tif"_ustr, 1, u"SVTIFF"_ustr },
+    { u"tif"_ustr, 2, u"SVTIFF"_ustr },
+    { u"emf"_ustr, 1, u"SVEMF"_ustr },
+    { u"emf"_ustr, 2, u"SVEMF"_ustr },
+    { u"wmf"_ustr, 1, u"SVWMF"_ustr },
+    { u"wmf"_ustr, 2, u"SVWMF"_ustr },
+    { u"xbm"_ustr, 1, u"SVIXBM"_ustr },
+    { u"xpm"_ustr, 1, u"SVIXPM"_ustr },
+    { u"svg"_ustr, 1, u"SVISVG"_ustr },
+    { u"svg"_ustr, 2, u"SVESVG"_ustr },
+    { u"webp"_ustr, 1, u"SVIWEBP"_ustr },
+    { u"webp"_ustr, 2, u"SVEWEBP"_ustr },
 };
 
 void FilterConfigCache::ImplInitSmart()
 {
-    const char** pPtr;
-    for ( pPtr = InternalFilterListForSvxLight; *pPtr; pPtr++ )
+    for ( const FilterEntry& rEntry : InternalFilterListForSvxLight )
     {
         FilterConfigCacheEntry  aEntry;
 
-        OUString    sExtension( OUString::createFromAscii( *pPtr++ ) );
-
-        aEntry.lExtensionList.push_back(sExtension);
-
-        aEntry.sType = sExtension;
-        aEntry.sUIName = sExtension;
-
-        OString sFlags( *pPtr++ );
-        aEntry.nFlags = sFlags.toInt32();
-
-        OUString    sUserData( OUString::createFromAscii( *pPtr ) );
-        aEntry.CreateFilterName( sUserData );
+        aEntry.lExtensionList.push_back(rEntry.sExtension);
+        aEntry.sType = rEntry.sExtension;
+        aEntry.sUIName = rEntry.sExtension;
+        aEntry.nFlags = rEntry.nFlags;
+        aEntry.CreateFilterName( rEntry.sUserData );
 
         if ( aEntry.nFlags & 1 )
             aImport.push_back( aEntry );
         if ( aEntry.nFlags & 2 )
-            aExport.push_back( aEntry );
+            aExport.push_back(std::move(aEntry));
     }
 }
 
-FilterConfigCache::FilterConfigCache(bool bConfig)
+FilterConfigCache::FilterConfigCache()
 {
-    if (bConfig)
-        bConfig = !utl::ConfigManager::IsFuzzing();
-    if (bConfig)
+    if (!comphelper::IsFuzzing())
         ImplInit();
     else
         ImplInitSmart();
@@ -274,11 +272,11 @@ FilterConfigCache::~FilterConfigCache()
 {
 }
 
-OUString FilterConfigCache::GetImportFilterName( sal_uInt16 nFormat )
+const OUString & FilterConfigCache::GetImportFilterName( sal_uInt16 nFormat )
 {
     if( nFormat < aImport.size() )
         return aImport[ nFormat ].sFilterName;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 sal_uInt16 FilterConfigCache::GetImportFormatNumber( std::u16string_view rFormatName )
@@ -333,18 +331,18 @@ sal_uInt16 FilterConfigCache::GetImportFormatNumberForTypeName( std::u16string_v
     return GRFILTER_FORMAT_NOTFOUND;
 }
 
-OUString FilterConfigCache::GetImportFormatName( sal_uInt16 nFormat )
+const OUString & FilterConfigCache::GetImportFormatName( sal_uInt16 nFormat )
 {
     if( nFormat < aImport.size() )
         return aImport[ nFormat ].sUIName;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
-OUString FilterConfigCache::GetImportFormatMediaType( sal_uInt16 nFormat )
+const OUString & FilterConfigCache::GetImportFormatMediaType( sal_uInt16 nFormat )
 {
     if( nFormat < aImport.size() )
         return aImport[ nFormat ].sMediaType;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 OUString FilterConfigCache::GetImportFormatShortName( sal_uInt16 nFormat )
@@ -354,25 +352,25 @@ OUString FilterConfigCache::GetImportFormatShortName( sal_uInt16 nFormat )
     return OUString();
 }
 
-OUString FilterConfigCache::GetImportFormatExtension( sal_uInt16 nFormat, sal_Int32 nEntry )
+const OUString & FilterConfigCache::GetImportFormatExtension( sal_uInt16 nFormat, sal_Int32 nEntry )
 {
     if ( (nFormat < aImport.size()) && (o3tl::make_unsigned(nEntry) < aImport[ nFormat ].lExtensionList.size()) )
         return aImport[ nFormat ].lExtensionList[ nEntry ];
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
-OUString FilterConfigCache::GetImportFilterType( sal_uInt16 nFormat )
+const OUString & FilterConfigCache::GetImportFilterType( sal_uInt16 nFormat )
 {
     if( nFormat < aImport.size() )
         return aImport[ nFormat ].sType;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
-OUString FilterConfigCache::GetImportFilterTypeName( sal_uInt16 nFormat )
+const OUString & FilterConfigCache::GetImportFilterTypeName( sal_uInt16 nFormat )
 {
     if( nFormat < aImport.size() )
         return aImport[ nFormat ].sFilterType;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 OUString FilterConfigCache::GetImportWildcard(sal_uInt16 nFormat, sal_Int32 nEntry)
@@ -383,11 +381,11 @@ OUString FilterConfigCache::GetImportWildcard(sal_uInt16 nFormat, sal_Int32 nEnt
     return aWildcard;
 }
 
-OUString FilterConfigCache::GetExportFilterName( sal_uInt16 nFormat )
+const OUString & FilterConfigCache::GetExportFilterName( sal_uInt16 nFormat )
 {
     if( nFormat < aExport.size() )
         return aExport[ nFormat ].sFilterName;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 sal_uInt16 FilterConfigCache::GetExportFormatNumber(std::u16string_view rFormatName)
@@ -438,18 +436,18 @@ sal_uInt16 FilterConfigCache::GetExportFormatNumberForTypeName( std::u16string_v
     return GRFILTER_FORMAT_NOTFOUND;
 }
 
-OUString FilterConfigCache::GetExportFormatName( sal_uInt16 nFormat )
+const OUString & FilterConfigCache::GetExportFormatName( sal_uInt16 nFormat )
 {
     if( nFormat < aExport.size() )
         return aExport[ nFormat ].sUIName;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
-OUString FilterConfigCache::GetExportFormatMediaType( sal_uInt16 nFormat )
+const OUString & FilterConfigCache::GetExportFormatMediaType( sal_uInt16 nFormat )
 {
     if( nFormat < aExport.size() )
         return aExport[ nFormat ].sMediaType;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 OUString FilterConfigCache::GetExportFormatShortName( sal_uInt16 nFormat )
@@ -459,18 +457,18 @@ OUString FilterConfigCache::GetExportFormatShortName( sal_uInt16 nFormat )
     return OUString();
 }
 
-OUString FilterConfigCache::GetExportFormatExtension( sal_uInt16 nFormat, sal_Int32 nEntry )
+const OUString & FilterConfigCache::GetExportFormatExtension( sal_uInt16 nFormat, sal_Int32 nEntry )
 {
     if ( (nFormat < aExport.size()) && (o3tl::make_unsigned(nEntry) < aExport[ nFormat ].lExtensionList.size()) )
         return aExport[ nFormat ].lExtensionList[ nEntry ];
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
-OUString FilterConfigCache::GetExportInternalFilterName( sal_uInt16 nFormat )
+const OUString & FilterConfigCache::GetExportInternalFilterName( sal_uInt16 nFormat )
 {
     if( nFormat < aExport.size() )
         return aExport[ nFormat ].sInternalFilterName;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 OUString FilterConfigCache::GetExportWildcard( sal_uInt16 nFormat, sal_Int32 nEntry )

@@ -36,11 +36,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
-using namespace ::com::sun::star::awt;
-using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
 
 OCurrencyControl::OCurrencyControl(const Reference<XComponentContext>& _rxFactory)
@@ -188,7 +184,7 @@ bool OCurrencyModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
     Any aControlValue( m_xAggregateFastSet->getFastPropertyValue( getValuePropertyAggHandle() ) );
     if ( aControlValue != m_aSaveValue )
     {
-        if ( aControlValue.getValueType().getTypeClass() == TypeClass_VOID )
+        if ( aControlValue.getValueTypeClass() == TypeClass_VOID )
             m_xColumnUpdate->updateNull();
         else
         {
@@ -201,7 +197,7 @@ bool OCurrencyModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
                 return false;
             }
         }
-        m_aSaveValue = aControlValue;
+        m_aSaveValue = std::move(aControlValue);
     }
     return true;
 }
@@ -220,7 +216,7 @@ Any OCurrencyModel::translateDbColumnToControlValue()
 Any OCurrencyModel::getDefaultForReset() const
 {
     Any aValue;
-    if ( m_aDefault.getValueType().getTypeClass() == TypeClass_DOUBLE )
+    if ( m_aDefault.getValueTypeClass() == TypeClass_DOUBLE )
         aValue = m_aDefault;
 
     return aValue;

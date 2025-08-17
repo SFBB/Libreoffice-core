@@ -264,7 +264,7 @@ uno::Sequence< uno::Type > SAL_CALL Content::getTypes()
 // virtual
 OUString SAL_CALL Content::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.TransientDocumentsContent";
+    return u"com.sun.star.comp.ucb.TransientDocumentsContent"_ustr;
 }
 
 
@@ -339,7 +339,7 @@ uno::Any SAL_CALL Content::execute(
         {
             ucbhelper::cancelCommandExecution(
                 uno::Any( lang::IllegalArgumentException(
-                                    "Wrong argument type!",
+                                    u"Wrong argument type!"_ustr,
                                     getXWeak(),
                                     -1 ) ),
                 Environment );
@@ -359,7 +359,7 @@ uno::Any SAL_CALL Content::execute(
         {
             ucbhelper::cancelCommandExecution(
                 uno::Any( lang::IllegalArgumentException(
-                                    "Wrong argument type!",
+                                    u"Wrong argument type!"_ustr,
                                     getXWeak(),
                                     -1 ) ),
                 Environment );
@@ -370,7 +370,7 @@ uno::Any SAL_CALL Content::execute(
         {
             ucbhelper::cancelCommandExecution(
                 uno::Any( lang::IllegalArgumentException(
-                                    "No properties!",
+                                    u"No properties!"_ustr,
                                     getXWeak(),
                                     -1 ) ),
                 Environment );
@@ -406,7 +406,7 @@ uno::Any SAL_CALL Content::execute(
         {
             ucbhelper::cancelCommandExecution(
                 uno::Any( lang::IllegalArgumentException(
-                                    "Wrong argument type!",
+                                    u"Wrong argument type!"_ustr,
                                     getXWeak(),
                                     -1 ) ),
                 Environment );
@@ -426,8 +426,8 @@ uno::Any SAL_CALL Content::execute(
         {
             ucbhelper::cancelCommandExecution(
                 uno::Any( ucb::UnsupportedCommandException(
-                                "insert command only supported by "
-                                "folders and streams!",
+                                u"insert command only supported by "
+                                "folders and streams!"_ustr,
                                 getXWeak() ) ),
                 Environment );
             // Unreachable
@@ -441,9 +441,9 @@ uno::Any SAL_CALL Content::execute(
             {
                 ucbhelper::cancelCommandExecution(
                     uno::Any( ucb::UnsupportedCommandException(
-                                    "insert command not supported by "
+                                    u"insert command not supported by "
                                     "streams that are direct children "
-                                    "of document root!",
+                                    "of document root!"_ustr,
                                     getXWeak() ) ),
                     Environment );
                 // Unreachable
@@ -455,7 +455,7 @@ uno::Any SAL_CALL Content::execute(
         {
             ucbhelper::cancelCommandExecution(
                 uno::Any( lang::IllegalArgumentException(
-                                    "Wrong argument type!",
+                                    u"Wrong argument type!"_ustr,
                                     getXWeak(),
                                     -1 ) ),
                 Environment );
@@ -481,8 +481,8 @@ uno::Any SAL_CALL Content::execute(
             {
                 ucbhelper::cancelCommandExecution(
                     uno::Any( ucb::UnsupportedCommandException(
-                                    "delete command only supported by "
-                                    "folders and streams!",
+                                    u"delete command only supported by "
+                                    "folders and streams!"_ustr,
                                     getXWeak() ) ),
                     Environment );
                 // Unreachable
@@ -504,7 +504,7 @@ uno::Any SAL_CALL Content::execute(
                 ucb::IOErrorCode_CANT_WRITE,
                 aArgs,
                 Environment,
-                "Cannot remove persistent data!",
+                u"Cannot remove persistent data!"_ustr,
                 this );
             // Unreachable
         }
@@ -526,8 +526,8 @@ uno::Any SAL_CALL Content::execute(
             {
                 ucbhelper::cancelCommandExecution(
                     uno::Any( ucb::UnsupportedCommandException(
-                                    "transfer command only supported "
-                                    "by folders and documents!",
+                                    u"transfer command only supported "
+                                    "by folders and documents!"_ustr,
                                     getXWeak() ) ),
                     Environment );
                 // Unreachable
@@ -540,7 +540,7 @@ uno::Any SAL_CALL Content::execute(
             OSL_FAIL( "Wrong argument type!" );
             ucbhelper::cancelCommandExecution(
                 uno::Any( lang::IllegalArgumentException(
-                                    "Wrong argument type!",
+                                    u"Wrong argument type!"_ustr,
                                     getXWeak(),
                                     -1 ) ),
                 Environment );
@@ -563,9 +563,9 @@ uno::Any SAL_CALL Content::execute(
             {
                 ucbhelper::cancelCommandExecution(
                     uno::Any( ucb::UnsupportedCommandException(
-                                    "createNewContent command only "
+                                    u"createNewContent command only "
                                     "supported by folders and "
-                                    "documents!",
+                                    "documents!"_ustr,
                                     getXWeak() ) ),
                     Environment );
                 // Unreachable
@@ -578,7 +578,7 @@ uno::Any SAL_CALL Content::execute(
             OSL_FAIL( "Wrong argument type!" );
             ucbhelper::cancelCommandExecution(
                 uno::Any( lang::IllegalArgumentException(
-                                    "Wrong argument type!",
+                                    u"Wrong argument type!"_ustr,
                                     getXWeak(),
                                     -1 ) ),
                 Environment );
@@ -963,7 +963,7 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
     {
         // Append all Core Properties.
         xRow->appendString (
-            beans::Property( "ContentType",
+            beans::Property( u"ContentType"_ustr,
                       -1,
                       cppu::UnoType<OUString>::get(),
                       beans::PropertyAttribute::BOUND
@@ -973,7 +973,7 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
         ContentType eType = rData.getType();
 
         xRow->appendString (
-            beans::Property( "Title",
+            beans::Property( u"Title"_ustr,
                       -1,
                       cppu::UnoType<OUString>::get(),
                       // Title is read-only for root and documents.
@@ -983,14 +983,14 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
                         : 0 ) ),
             rData.getTitle() );
         xRow->appendBoolean(
-            beans::Property( "IsDocument",
+            beans::Property( u"IsDocument"_ustr,
                       -1,
                       cppu::UnoType<bool>::get(),
                       beans::PropertyAttribute::BOUND
                         | beans::PropertyAttribute::READONLY ),
             rData.getIsDocument() );
         xRow->appendBoolean(
-            beans::Property( "IsFolder",
+            beans::Property( u"IsFolder"_ustr,
                       -1,
                       cppu::UnoType<bool>::get(),
                       beans::PropertyAttribute::BOUND
@@ -998,7 +998,7 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
             rData.getIsFolder() );
         xRow->appendObject(
             beans::Property(
-                "CreatableContentsInfo",
+                u"CreatableContentsInfo"_ustr,
                 -1,
                 cppu::UnoType<uno::Sequence< ucb::ContentInfo >>::get(),
                 beans::PropertyAttribute::BOUND
@@ -1009,7 +1009,7 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
         if ( eType == STREAM )
         {
             xRow->appendObject(
-                beans::Property( "DateModified",
+                beans::Property( u"DateModified"_ustr,
                           -1,
                           cppu::UnoType<css::util::DateTime>::get(),
                           beans::PropertyAttribute::BOUND
@@ -1020,7 +1020,7 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
         // Storage is only supported by folders.
         if ( eType == FOLDER )
             xRow->appendObject(
-                beans::Property( "Storage",
+                beans::Property( u"Storage"_ustr,
                           -1,
                           cppu::UnoType<embed::XStorage>::get(),
                           beans::PropertyAttribute::BOUND
@@ -1030,7 +1030,7 @@ uno::Reference< sdbc::XRow > Content::getPropertyValues(
         // DocumentModel is only supported by documents.
         if ( eType == DOCUMENT )
             xRow->appendObject(
-                beans::Property( "DocumentModel",
+                beans::Property( u"DocumentModel"_ustr,
                           -1,
                           cppu::UnoType<frame::XModel>::get(),
                           beans::PropertyAttribute::BOUND
@@ -1075,10 +1075,7 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
     beans::PropertyChangeEvent aEvent;
     aEvent.Source         = getXWeak();
     aEvent.Further        = false;
-    //    aEvent.PropertyName   =
     aEvent.PropertyHandle = -1;
-    //    aEvent.OldValue       =
-    //    aEvent.NewValue       =
 
     const beans::PropertyValue* pValues = rValues.getConstArray();
     sal_Int32 nCount = rValues.getLength();
@@ -1098,28 +1095,28 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
         {
             // Read-only property!
             aRetRange[ n ] <<= lang::IllegalAccessException(
-                            "Property is read-only!",
+                            u"Property is read-only!"_ustr,
                             getXWeak() );
         }
         else if ( rValue.Name == "IsDocument" )
         {
             // Read-only property!
             aRetRange[ n ] <<= lang::IllegalAccessException(
-                            "Property is read-only!",
+                            u"Property is read-only!"_ustr,
                             getXWeak() );
         }
         else if ( rValue.Name == "IsFolder" )
         {
             // Read-only property!
             aRetRange[ n ] <<= lang::IllegalAccessException(
-                            "Property is read-only!",
+                            u"Property is read-only!"_ustr,
                             getXWeak() );
         }
         else if ( rValue.Name == "CreatableContentsInfo" )
         {
             // Read-only property!
             aRetRange[ n ] <<= lang::IllegalAccessException(
-                            "Property is read-only!",
+                            u"Property is read-only!"_ustr,
                             getXWeak() );
         }
         else if ( rValue.Name == "Title" )
@@ -1129,7 +1126,7 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
             if ( ( eType == ROOT ) || ( eType == DOCUMENT ) )
             {
                 aRetRange[ n ] <<= lang::IllegalAccessException(
-                                "Property is read-only!",
+                                u"Property is read-only!"_ustr,
                                 getXWeak() );
             }
             else
@@ -1159,7 +1156,7 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
                     else
                     {
                         aRetRange[ n ] <<= lang::IllegalArgumentException(
-                                    "Empty Title not allowed!",
+                                    u"Empty Title not allowed!"_ustr,
                                     getXWeak(),
                                     -1 );
                     }
@@ -1167,7 +1164,7 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
                 else
                 {
                     aRetRange[ n ] <<= beans::IllegalTypeException(
-                                "Title Property value has wrong type!",
+                                u"Title Property value has wrong type!"_ustr,
                                 getXWeak() );
                 }
             }
@@ -1178,14 +1175,14 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
             if ( eType == FOLDER )
             {
                 aRetRange[ n ] <<= lang::IllegalAccessException(
-                                "Property is read-only!",
+                                u"Property is read-only!"_ustr,
                                 getXWeak() );
             }
             else
             {
                 // Storage is only supported by folders.
                 aRetRange[ n ] <<= beans::UnknownPropertyException(
-                            "Storage property only supported by folders",
+                            u"Storage property only supported by folders"_ustr,
                             getXWeak() );
             }
         }
@@ -1195,14 +1192,14 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
             if ( eType == DOCUMENT )
             {
                 aRetRange[ n ] <<= lang::IllegalAccessException(
-                                "Property is read-only!",
+                                u"Property is read-only!"_ustr,
                                 getXWeak() );
             }
             else
             {
                 // Storage is only supported by folders.
                 aRetRange[ n ] <<= beans::UnknownPropertyException(
-                            "DocumentModel property only supported by documents",
+                            u"DocumentModel property only supported by documents"_ustr,
                             getXWeak() );
             }
         }
@@ -1228,7 +1225,7 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
                                                 rValue.Name, rValue.Value );
 
                         aEvent.PropertyName = rValue.Name;
-                        aEvent.OldValue     = aOldValue;
+                        aEvent.OldValue     = std::move(aOldValue);
                         aEvent.NewValue     = rValue.Value;
 
                         aChanges.getArray()[ nChanged ] = aEvent;
@@ -1255,7 +1252,7 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
             else
             {
                 aRetRange[ n ] <<= uno::Exception(
-                                "No property set for storing the value!",
+                                u"No property set for storing the value!"_ustr,
                                 getXWeak() );
             }
         }
@@ -1286,7 +1283,7 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
 
             // Set error .
             aRetRange[ nTitlePos ] <<= uno::Exception(
-                    "Exchange failed!",
+                    u"Exchange failed!"_ustr,
                     getXWeak() );
         }
     }
@@ -1297,7 +1294,7 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
         aEvent.OldValue     <<= aOldTitle;
         aEvent.NewValue     <<= m_aProps.getTitle();
 
-        aChanges.getArray()[ nChanged ] = aEvent;
+        aChanges.getArray()[ nChanged ] = std::move(aEvent);
         nChanged++;
     }
 
@@ -1316,7 +1313,7 @@ uno::Sequence< uno::Any > Content::setPropertyValues(
                     ucb::IOErrorCode_CANT_WRITE,
                     aArgs,
                     xEnv,
-                    "Cannot store persistent data!",
+                    u"Cannot store persistent data!"_ustr,
                     this );
                 // Unreachable
             }
@@ -1388,7 +1385,7 @@ uno::Any Content::open(
                     m_eState == PERSISTENT
                         ? xEnv
                         : uno::Reference< ucb::XCommandEnvironment >(),
-                    "Got no data stream!",
+                    u"Got no data stream!"_ustr,
                     this );
                 // Unreachable
             }
@@ -1418,7 +1415,7 @@ uno::Any Content::open(
                         m_eState == PERSISTENT
                             ? xEnv
                             : uno::Reference< ucb::XCommandEnvironment >(),
-                        "Got no data stream!",
+                        u"Got no data stream!"_ustr,
                         this );
                     // Unreachable
                 }
@@ -1475,7 +1472,7 @@ uno::Any Content::open(
                                 ? xEnv
                                 : uno::Reference<
                                       ucb::XCommandEnvironment >(),
-                            "Got no data stream!",
+                            u"Got no data stream!"_ustr,
                             this );
                         // Unreachable
                     }
@@ -1595,7 +1592,7 @@ void Content::insert( const uno::Reference< io::XInputStream >& xData,
                     ucbhelper::cancelCommandExecution(
                         uno::Any(
                             ucb::UnsupportedNameClashException(
-                                "Unable to resolve name clash!",
+                                u"Unable to resolve name clash!"_ustr,
                                 getXWeak(),
                                 nNameClashResolve ) ),
                         xEnv );
@@ -1644,7 +1641,7 @@ void Content::insert( const uno::Reference< io::XInputStream >& xData,
             ucb::IOErrorCode_CANT_WRITE,
             aArgs,
             xEnv,
-            "Cannot store persistent data!",
+            u"Cannot store persistent data!"_ustr,
             this );
         // Unreachable
     }
@@ -1681,7 +1678,7 @@ void Content::destroy( bool bDeletePhysical,
     {
         ucbhelper::cancelCommandExecution(
             uno::Any( ucb::UnsupportedCommandException(
-                                "Not persistent!",
+                                u"Not persistent!"_ustr,
                                 getXWeak() ) ),
             xEnv );
         // Unreachable
@@ -1816,7 +1813,7 @@ void Content::transfer(
     {
         ucbhelper::cancelCommandExecution(
             uno::Any( ucb::UnsupportedCommandException(
-                                "Not persistent!",
+                                u"Not persistent!"_ustr,
                                 getXWeak() ) ),
             xEnv );
         // Unreachable
@@ -1855,7 +1852,7 @@ void Content::transfer(
     {
         ucbhelper::cancelCommandExecution(
             uno::Any( lang::IllegalArgumentException(
-                                "Invalid source URI! Syntax!",
+                                u"Invalid source URI! Syntax!"_ustr,
                                 getXWeak(),
                                 -1 ) ),
             xEnv );
@@ -1866,7 +1863,7 @@ void Content::transfer(
     {
         ucbhelper::cancelCommandExecution(
             uno::Any( lang::IllegalArgumentException(
-                                "Invalid source URI! Must describe a folder or stream!",
+                                u"Invalid source URI! Must describe a folder or stream!"_ustr,
                                 getXWeak(),
                                 -1 ) ),
             xEnv );
@@ -1894,7 +1891,7 @@ void Content::transfer(
                 ucb::IOErrorCode_RECURSIVE,
                 aArgs,
                 xEnv,
-                "Target is equal to or is a child of source!",
+                u"Target is equal to or is a child of source!"_ustr,
                 this );
             // Unreachable
         }
@@ -1915,9 +1912,9 @@ void Content::transfer(
                 {
                     ucbhelper::cancelCommandExecution(
                         uno::Any( lang::IllegalArgumentException(
-                                        "Invalid source URI! "
+                                        u"Invalid source URI! "
                                         "Streams cannot be created as "
-                                        "children of document root!",
+                                        "children of document root!"_ustr,
                                         getXWeak(),
                                         -1 ) ),
                         xEnv );
@@ -1943,7 +1940,7 @@ void Content::transfer(
         {
             ucbhelper::cancelCommandExecution(
                 uno::Any( lang::IllegalArgumentException(
-                                    "Invalid source URI! Unable to determine source type!",
+                                    u"Invalid source URI! Unable to determine source type!"_ustr,
                                     getXWeak(),
                                     -1 ) ),
                 xEnv );
@@ -1969,7 +1966,7 @@ void Content::transfer(
             ucb::IOErrorCode_CANT_WRITE,
             aArgs,
             xEnv,
-            "Cannot copy data!",
+            u"Cannot copy data!"_ustr,
             this );
         // Unreachable
     }
@@ -1997,7 +1994,7 @@ void Content::transfer(
             ucb::IOErrorCode_CANT_WRITE,
             aArgs,
             xEnv,
-            "Cannot copy additional properties!",
+            u"Cannot copy additional properties!"_ustr,
             this );
         // Unreachable
     }
@@ -2033,7 +2030,7 @@ void Content::transfer(
             ucb::IOErrorCode_CANT_READ,
             aArgs,
             xEnv,
-            "Cannot instantiate target object!",
+            u"Cannot instantiate target object!"_ustr,
             this );
         // Unreachable
     }
@@ -2074,7 +2071,7 @@ void Content::transfer(
             ucb::IOErrorCode_CANT_READ,
             aArgs,
             xEnv,
-            "Cannot instantiate target object!",
+            u"Cannot instantiate target object!"_ustr,
             this );
         // Unreachable
     }
@@ -2093,7 +2090,7 @@ void Content::transfer(
             ucb::IOErrorCode_CANT_WRITE,
             aArgs,
             xEnv,
-            "Cannot remove persistent data of source object!",
+            u"Cannot remove persistent data of source object!"_ustr,
             this );
         // Unreachable
     }
@@ -2110,7 +2107,7 @@ void Content::transfer(
         ucb::IOErrorCode_CANT_WRITE,
         aArgs,
         xEnv,
-        "Cannot remove additional properties of source object!",
+        u"Cannot remove additional properties of source object!"_ustr,
         this );
     // Unreachable
 }
@@ -2250,10 +2247,9 @@ bool Content::storeData( const uno::Reference< io::XInputStream >& xData,
             // According to MBA, if no mediatype is set, folder and all
             // its contents will be lost on save of the document!!!
             xPropSet->setPropertyValue(
-                "MediaType",
+                u"MediaType"_ustr,
                 uno::Any(
-                    OUString(                        // @@@ better mediatype
-                        "application/binary"  ) ) );
+                    u"application/binary"_ustr ) );
         }
         catch ( beans::UnknownPropertyException const & )
         {
@@ -2631,17 +2627,17 @@ static OUString obtainPassword(
             {
                 // Handler handled the request.
                 uno::Reference< task::XInteractionAbort > xAbort(
-                    xSelection.get(), uno::UNO_QUERY );
+                    xSelection->getXWeak(), uno::UNO_QUERY );
                 if ( xAbort.is() )
                 {
                     throw ucb::CommandFailedException(
-                        "Abort requested by Interaction Handler.",
+                        u"Abort requested by Interaction Handler."_ustr,
                         uno::Reference< uno::XInterface >(),
                         xRequest->getRequest() );
                 }
 
                 uno::Reference< task::XInteractionPassword > xPassword(
-                    xSelection.get(), uno::UNO_QUERY );
+                    xSelection->getXWeak(), uno::UNO_QUERY );
                 if ( xPassword.is() )
                 {
                     return xPassword->getPassword();
@@ -2649,7 +2645,7 @@ static OUString obtainPassword(
 
                 // Unknown selection. Should never happen.
                 throw ucb::CommandFailedException(
-                    "Interaction Handler selected unknown continuation!",
+                    u"Interaction Handler selected unknown continuation!"_ustr,
                     uno::Reference< uno::XInterface >(),
                     xRequest->getRequest() );
             }
@@ -2788,7 +2784,7 @@ ContentProperties::getCreatableContentsInfo() const
     {
         uno::Sequence< beans::Property > aProps( 1 );
         aProps.getArray()[ 0 ] = beans::Property(
-                    "Title",
+                    u"Title"_ustr,
                     -1,
                     cppu::UnoType<OUString>::get(),
                     beans::PropertyAttribute::BOUND );
@@ -2801,7 +2797,7 @@ ContentProperties::getCreatableContentsInfo() const
             // Folder.
             aSeq.getArray()[ 0 ].Type = TDOC_FOLDER_CONTENT_TYPE;
             aSeq.getArray()[ 0 ].Attributes = ucb::ContentInfoAttribute::KIND_FOLDER;
-            aSeq.getArray()[ 0 ].Properties = aProps;
+            aSeq.getArray()[ 0 ].Properties = std::move(aProps);
 
             return aSeq;
         }
@@ -2820,7 +2816,7 @@ ContentProperties::getCreatableContentsInfo() const
             aSeq.getArray()[ 1 ].Attributes
                 = ucb::ContentInfoAttribute::INSERT_WITH_INPUTSTREAM
                   | ucb::ContentInfoAttribute::KIND_DOCUMENT;
-            aSeq.getArray()[ 1 ].Properties = aProps;
+            aSeq.getArray()[ 1 ].Properties = std::move(aProps);
 
             return aSeq;
         }

@@ -41,12 +41,9 @@
 #include "htmlfly.hxx"
 
 // some forward declarations
-class Color;
 class SwFrameFormat;
-class SwFlyFrameFormat;
 class SwDrawFrameFormat;
 class SwFormatINetFormat;
-class SwFormatVertOrient;
 class SwFormatFootnote;
 class SwStartNode;
 class SwTableNode;
@@ -59,13 +56,11 @@ class SdrUnoObj;
 class SvxBrushItem;
 class SvxFontItem;
 class SwHTMLNumRuleInfo;
-class SwHTMLPosFlyFrames;
 class SwTextFootnote;
-enum class HtmlPosition;
 enum class HtmlTokenId : sal_Int16;
 namespace utl { class TempFileNamed; }
 
-extern SwAttrFnTab aHTMLAttrFnTab;
+extern const SwAttrFnTab aHTMLAttrFnTab;
 
 #define HTML_PARSPACE (o3tl::toTwips(5, o3tl::Length::mm))
 
@@ -204,7 +199,7 @@ struct HTMLControl
     }
 };
 
-class HTMLControls : public o3tl::sorted_vector<std::unique_ptr<HTMLControl>, o3tl::less_uniqueptr_to<HTMLControl> > {
+class HTMLControls : public o3tl::sorted_vector<std::unique_ptr<HTMLControl>, o3tl::less_ptr_to > {
 };
 
 struct SwHTMLFormatInfo
@@ -269,8 +264,11 @@ enum class Css1Background
 };
 }
 
-class SW_DLLPUBLIC SwHTMLWriter : public Writer
+class SwHTMLWriter : public Writer
 {
+    /// XML namespace, in case of XHTML.
+    OString maNamespace;
+
     SwHTMLPosFlyFrames m_aHTMLPosFlyFrames;
     std::unique_ptr<SwHTMLNumRuleInfo> m_pNumRuleInfo;// current numbering
     std::unique_ptr<SwHTMLNumRuleInfo> m_pNextNumRuleInfo;
@@ -282,6 +280,9 @@ class SW_DLLPUBLIC SwHTMLWriter : public Writer
     bool m_bLFPossible = false; // a line break can be inserted
     bool m_bSpacePreserve = false; // Using xml::space="preserve", or "white-space: pre-wrap" style
     bool m_bPreserveSpacesOnWrite = false; // If export should use m_bSpacePreserve
+    bool m_bInlineHeading = false; // If export should use display:inline for inline heading
+    // If "Save URLs relative to *" is ignored for self-generated images / objects
+    bool m_bRelativeURLsForOwnObjects = false;
 
     sal_uInt16 OutHeaderAttrs();
     const SwPageDesc *MakeHeader( sal_uInt16& rHeaderAtrs );
@@ -301,9 +302,9 @@ protected:
 public:
     std::vector<OUString> m_aImgMapNames;   // written image maps
     std::set<OUString> m_aImplicitMarks;    // implicit jump marks
-    std::set<OUString> m_aNumRuleNames;     // names of exported num rules
+    std::set<UIName> m_aNumRuleNames;     // names of exported num rules
     std::set<OUString> m_aScriptParaStyles; // script dependent para styles
-    std::set<OUString> m_aScriptTextStyles; // script dependent text styles
+    std::set<UIName> m_aScriptTextStyles; // script dependent text styles
     std::vector<OUString> m_aOutlineMarks;
     std::vector<SwNodeOffset> m_aOutlineMarkPoss;
     HTMLControls m_aHTMLControls;     // the forms to be written
@@ -412,8 +413,6 @@ public:
     std::unique_ptr<utl::TempFileNamed> mpTempBaseURL;
     /// If XHTML markup should be written instead of HTML.
     bool mbXHTML = false;
-    /// XML namespace, in case of XHTML.
-    OString maNamespace;
     /// If the ReqIF subset of XHTML should be written.
     bool mbReqIF = false;
 
@@ -441,7 +440,7 @@ public:
 
     /// Construct an instance of SwHTMLWriter and optionally give it
     /// the filter options directly, which can also be set via SetupFilterOptions().
-    explicit SwHTMLWriter( const OUString& rBaseURL, std::u16string_view rFilterOptions = std::u16string_view() );
+    SW_DLLPUBLIC explicit SwHTMLWriter( const OUString& rBaseURL, std::u16string_view rFilterOptions = std::u16string_view() );
     virtual ~SwHTMLWriter() override;
 
     void Out_SwDoc( SwPaM* );       // write the marked range
@@ -474,7 +473,7 @@ public:
     void OutFootEndNoteInfo();
     void OutFootEndNotes();
     OUString GetFootEndNoteSym( const SwFormatFootnote& rFormatFootnote );
-    void OutFootEndNoteSym( const SwFormatFootnote& rFormatFootnote, const OUString& rNum,
+    void OutFootEndNoteSym( const SwFormatFootnote& rFormatFootnote, std::u16string_view rNum,
                              sal_uInt16 nScript );
 
     void OutBasic(const SwHTMLWriter& rHTMLWrt);
@@ -509,10 +508,12 @@ public:
     // ALT/ALIGN/WIDTH/HEIGHT/HSPACE/VSPACE option of current
     // frame format output and maybe add a <BR CLEAR=...> at the
     // beginning of rEndTags
-    OString OutFrameFormatOptions( const SwFrameFormat& rFrameFormat, const OUString& rAltText,
+    OString OutFrameFormatOptions( const SwFrameFormat& rFrameFormat, std::u16string_view rAltText,
                                    HtmlFrmOpts nFrameOpts );
 
     void writeFrameFormatOptions(HtmlWriter& aHtml, const SwFrameFormat& rFrameFormat, const OUString& rAltText, HtmlFrmOpts nFrameOpts);
+
+    void writeFrameSurroundTag(HtmlWriter& aHtml, const SwFrameFormat& rFrameFormat, HtmlFrmOpts nFrameOpts);
 
     /// Writes the formatting for tables.
     void OutCSS1_TableFrameFormatOptions( const SwFrameFormat& rFrameFormat );
@@ -596,7 +597,7 @@ public:
     static void GetEEAttrsFromDrwObj( SfxItemSet& rItemSet,
                                       const SdrObject *pObj );
 
-    static sal_uInt16 GetDefListLvl( std::u16string_view rNm, sal_uInt16 nPoolId );
+    static sal_uInt16 GetDefListLvl( const UIName& rNm, sal_uInt16 nPoolId );
 
     sal_uInt32 GetHTMLMode() const
     {
@@ -621,7 +622,7 @@ public:
     sal_Int32 indexOfDotLeaders( sal_uInt16 nPoolId, std::u16string_view rText );
 
     /// Determines the prefix string needed to respect the requested namespace alias.
-    OString GetNamespace() const;
+    OString GetNamespace() const { return maNamespace; }
 
     bool IsPrettyPrint() const { return !m_bSpacePreserve && m_bPrettyPrint; }
     bool IsLFPossible() const { return !m_bSpacePreserve && m_bLFPossible; }
@@ -629,6 +630,9 @@ public:
     bool IsSpacePreserve() const { return m_bSpacePreserve; }
     void SetSpacePreserve(bool val) { m_bSpacePreserve = val; }
     bool IsPreserveSpacesOnWritePrefSet() const { return m_bPreserveSpacesOnWrite; }
+    bool IsInlineHeading() const { return m_bInlineHeading; }
+
+    OUString normalizeURL(const OUString& url, bool own) const;
 };
 
 inline bool SwHTMLWriter::IsCSS1Source( sal_uInt16 n ) const
@@ -706,7 +710,8 @@ SwHTMLWriter& OutHTML_ImageStart( HtmlWriter& rHtml, SwHTMLWriter&, const SwFram
                        const Size& rRealSize, HtmlFrmOpts nFrameOpts,
                        const char *pMarkType,
                        const ImageMap *pGenImgMap,
-                       const OUString& rMimeType = {} );
+                       const OUString& rMimeType,
+                       bool bOwn = false );
 SwHTMLWriter& OutHTML_ImageEnd( HtmlWriter& rHtml, SwHTMLWriter& );
 
 SwHTMLWriter& OutHTML_BulletImage( SwHTMLWriter& rWrt, const char *pTag,

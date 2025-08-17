@@ -25,25 +25,26 @@
 
 #include <comphelper/compbase.hxx>
 
-#include "annotationtag.hxx"
-
 namespace com::sun::star::drawing { class XDrawView; }
 namespace com::sun::star::office { class XAnnotationAccess; }
 namespace com::sun::star::office { class XAnnotation; }
 
 class SfxRequest;
+class SdrObject;
 class SdPage;
 class SdDrawDocument;
 struct ImplSVEvent;
+
+namespace sdr::annotation { class Annotation; }
 
 namespace sd
 {
 class Annotation;
 class ViewShellBase;
+class View;
+class DrawController;
 
-namespace tools {
-class EventMultiplexerEvent;
-}
+namespace tools { class EventMultiplexerEvent; }
 
 typedef comphelper::WeakComponentImplHelper <
     css::document::XEventListener
@@ -73,23 +74,17 @@ public:
 
     void SelectNextAnnotation(bool bForward);
 
-    void SelectAnnotation( const rtl::Reference< Annotation >& xAnnotation, bool bEdit = false );
-    void GetSelectedAnnotation( rtl::Reference< Annotation >& xAnnotation );
+    void SelectAnnotation(rtl::Reference<sdr::annotation::Annotation> const& xAnnotation, bool bEdit = false);
+    void GetSelectedAnnotation(rtl::Reference<sdr::annotation::Annotation>& xAnnotation);
 
     void InsertAnnotation(const OUString& rText);
-    void DeleteAnnotation( const rtl::Reference< Annotation >& xAnnotation );
+    void DeleteAnnotation(rtl::Reference<sdr::annotation::Annotation> const& xAnnotation);
     void DeleteAnnotationsByAuthor( std::u16string_view sAuthor );
     void DeleteAllAnnotations();
-
-    void ExecuteAnnotationTagContextMenu(const rtl::Reference<Annotation>& xAnnotation, weld::Widget* pParent, const ::tools::Rectangle& rContextRect);
 
     static Color GetColorDark(sal_uInt16 aAuthorIndex);
     static Color GetColorLight(sal_uInt16 aAuthorIndex);
     static Color GetColor(sal_uInt16 aAuthorIndex);
-
-    // callbacks
-    void onTagSelected( AnnotationTag const & rTag );
-    void onTagDeselected( AnnotationTag const & rTag );
 
     void onSelectionChanged();
 
@@ -102,14 +97,11 @@ public:
     DECL_LINK(UpdateTagsHdl, void *, void);
 
     void UpdateTags(bool bSynchron = false);
-    void CreateTags();
-    void DisposeTags();
+    void SyncAnnotationObjects();
 
     SdPage* GetNextPage( SdPage const * pPage, bool bForward );
 
     SdPage* GetCurrentPage();
-
-    SdDrawDocument* GetDoc() { return mpDoc; }
 
     void ShowAnnotations(bool bShow);
 
@@ -117,17 +109,14 @@ private:
     ViewShellBase& mrBase;
     SdDrawDocument* mpDoc;
 
-    std::vector< rtl::Reference< AnnotationTag > > maTagVector;
-
-    css::uno::Reference< css::drawing::XDrawView > mxView;
-    rtl::Reference< SdPage > mxCurrentPage;
-    rtl::Reference< Annotation > mxSelectedAnnotation;
+    rtl::Reference< ::sd::DrawController > mxView;
+    rtl::Reference<SdPage> mxCurrentPage;
+    rtl::Reference<sdr::annotation::Annotation> mxSelectedAnnotation;
 
     bool mbShowAnnotations;
     ImplSVEvent * mnUpdateTagsEvent;
-    vcl::Font maFont;
 
-    rtl::Reference<Annotation> GetAnnotationById(sal_uInt32 nAnnotationId);
+    rtl::Reference<sdr::annotation::Annotation> GetAnnotationById(sal_uInt32 nAnnotationId);
 };
 
 OUString getAnnotationDateTimeString( const css::uno::Reference< css::office::XAnnotation >& xAnnotation );

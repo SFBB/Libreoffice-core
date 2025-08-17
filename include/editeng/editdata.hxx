@@ -24,6 +24,7 @@
 #include <rtl/ustring.hxx>
 #include <editeng/editengdllapi.h>
 #include <i18nlangtag/lang.h>
+#include <editeng/ESelection.hxx>
 #include <memory>
 #include <ostream>
 
@@ -44,15 +45,6 @@ enum class EEAnchorMode {
             BottomLeft,  BottomHCenter,  BottomRight };
 
 enum class EERemoveParaAttribsMode { RemoveAll, RemoveCharItems, RemoveNone };
-
-#define EE_PARA_NOT_FOUND       SAL_MAX_INT32
-#define EE_PARA_APPEND          SAL_MAX_INT32
-#define EE_PARA_ALL             SAL_MAX_INT32
-#define EE_PARA_MAX_COUNT       SAL_MAX_INT32
-
-#define EE_INDEX_NOT_FOUND      SAL_MAX_INT32
-#define EE_TEXTPOS_ALL          SAL_MAX_INT32
-#define EE_TEXTPOS_MAX_COUNT    SAL_MAX_INT32
 
 EDITENG_DLLPUBLIC extern const size_t EE_APPEND;
 
@@ -85,123 +77,11 @@ EDITENG_DLLPUBLIC extern const size_t EE_APPEND;
 
 #define EDITUNDO_USER               200
 
-struct EPosition
-{
-    sal_Int32   nPara;
-    sal_Int32   nIndex;
-
-    EPosition()
-        : nPara( EE_PARA_NOT_FOUND )
-        , nIndex( EE_INDEX_NOT_FOUND )
-        { }
-
-    EPosition( sal_Int32 nPara_, sal_Int32 nPos_ )
-        : nPara( nPara_ )
-        , nIndex( nPos_ )
-        { }
-};
-
-template<typename charT, typename traits>
-inline std::basic_ostream<charT, traits> & operator <<(
-    std::basic_ostream<charT, traits> & stream, EPosition const& pos)
-{
-    return stream << "EPosition(" << pos.nPara << ',' << pos.nIndex << ")";
-}
-
-struct ESelection
-{
-    sal_Int32   nStartPara;
-    sal_Int32   nStartPos;
-    sal_Int32   nEndPara;
-    sal_Int32   nEndPos;
-
-    ESelection() : nStartPara( 0 ), nStartPos( 0 ), nEndPara( 0 ), nEndPos( 0 ) {}
-
-    ESelection( sal_Int32 nStPara, sal_Int32 nStPos,
-                sal_Int32 nEPara, sal_Int32 nEPos )
-        : nStartPara( nStPara )
-        , nStartPos( nStPos )
-        , nEndPara( nEPara )
-        , nEndPos( nEPos )
-        { }
-
-    ESelection( sal_Int32 nPara, sal_Int32 nPos )
-        : nStartPara( nPara )
-        , nStartPos( nPos )
-        , nEndPara( nPara )
-        , nEndPos( nPos )
-        { }
-
-    void    Adjust();
-    bool    operator==( const ESelection& rS ) const;
-    bool    operator!=( const ESelection& rS ) const { return !operator==(rS); }
-    bool    operator<( const ESelection& rS ) const;
-    bool    operator>( const ESelection& rS ) const;
-    bool    IsZero() const;
-    bool    HasRange() const;
-};
-
-template<typename charT, typename traits>
-inline std::basic_ostream<charT, traits> & operator <<(
-    std::basic_ostream<charT, traits> & stream, ESelection const& sel)
-{
-    return stream << "ESelection(" << sel.nStartPara << ',' << sel.nStartPos << "," << sel.nEndPara << "," << sel.nEndPos << ")";
-}
-
-inline bool ESelection::HasRange() const
-{
-    return ( nStartPara != nEndPara ) || ( nStartPos != nEndPos );
-}
-
-inline bool ESelection::IsZero() const
-{
-    return ( ( nStartPara == 0 ) && ( nStartPos == 0 ) &&
-             ( nEndPara == 0 ) && ( nEndPos == 0 ) );
-}
-
-inline bool ESelection::operator==( const ESelection& rS ) const
-{
-    return ( ( nStartPara == rS.nStartPara ) && ( nStartPos == rS.nStartPos ) &&
-             ( nEndPara == rS.nEndPara ) && ( nEndPos == rS.nEndPos ) );
-}
-
-inline bool ESelection::operator<( const ESelection& rS ) const
-{
-    // The selection must be adjusted.
-    // => Only check if end of 'this' < Start of rS
-    return ( nEndPara < rS.nStartPara ) ||
-        ( ( nEndPara == rS.nStartPara ) && ( nEndPos < rS.nStartPos ) && !operator==( rS ) );
-}
-
-inline bool ESelection::operator>( const ESelection& rS ) const
-{
-    // The selection must be adjusted.
-    // => Only check if end of 'this' < Start of rS
-    return ( nStartPara > rS.nEndPara ) ||
-        ( ( nStartPara == rS.nEndPara ) && ( nStartPos > rS.nEndPos ) && !operator==( rS ) );
-}
-
-inline void ESelection::Adjust()
-{
-    bool bSwap = false;
-    if ( nStartPara > nEndPara )
-        bSwap = true;
-    else if ( ( nStartPara == nEndPara ) && ( nStartPos > nEndPos ) )
-        bSwap = true;
-
-    if ( bSwap )
-    {
-        sal_Int32  nSPar = nStartPara; sal_Int32 nSPos = nStartPos;
-        nStartPara = nEndPara; nStartPos = nEndPos;
-        nEndPara = nSPar; nEndPos = nSPos;
-    }
-}
-
 struct EDITENG_DLLPUBLIC EFieldInfo
 {
     std::unique_ptr<SvxFieldItem>   pFieldItem;
     OUString                        aCurrentText;
-    EPosition                       aPosition;
+    EPaM                            aPosition = EPaM::NotFound();
 
     EFieldInfo();
     EFieldInfo( const SvxFieldItem& rFieldItem, sal_Int32 nPara, sal_Int32 nPos );
@@ -266,6 +146,20 @@ struct ParagraphInfos
     sal_uInt16  nFirstLineMaxAscent;
 
     bool        bValid; // A query during formatting is not valid!
+};
+
+struct ScalingParameters
+{
+    double fFontX = 1.0;
+    double fFontY = 1.0;
+    double fSpacingX = 1.0;
+    double fSpacingY = 1.0;
+
+    bool operator==(const ScalingParameters& rOther) const = default;
+    bool areValuesDefault()
+    {
+        return fFontX == 1.0 && fFontY == 1.0 && fSpacingX == 1.0 && fSpacingY == 1.0;
+    }
 };
 
 struct EECharAttrib
@@ -333,13 +227,12 @@ struct EENotify
 {
     EENotifyType    eNotificationType;
 
-    sal_Int32       nParagraph; // only valid in PARAGRAPHINSERTED/EE_NOTIFY_PARAGRAPHREMOVED
+    sal_Int32 nParagraph = EE_PARA_MAX; // only valid in PARAGRAPHINSERTED/EE_NOTIFY_PARAGRAPHREMOVED
 
-    sal_Int32       nParam1;
-    sal_Int32       nParam2;
+    sal_Int32 nParam1 = 0;
+    sal_Int32 nParam2 = 0;
 
-    EENotify( EENotifyType eType )
-        { eNotificationType = eType; nParagraph = EE_PARA_NOT_FOUND; nParam1 = 0; nParam2 = 0; }
+    EENotify(EENotifyType eType) { eNotificationType = eType; }
 };
 
 namespace editeng

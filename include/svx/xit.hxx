@@ -42,25 +42,28 @@ protected:
     void    Detach()    { m_nPalIndex = -1; }
 
 public:
-            NameOrIndex() { m_nPalIndex = -1; }
+            DECLARE_ITEM_TYPE_FUNCTION(NameOrIndex)
+            NameOrIndex() : SfxStringItem(0) { m_nPalIndex = -1; }
             NameOrIndex(TypedWhichId<NameOrIndex> nWhich, sal_Int32 nIndex);
             NameOrIndex(TypedWhichId<NameOrIndex> nWhich, const OUString& rName);
             NameOrIndex(const NameOrIndex& rNameOrIndex);
 
     virtual bool         operator==(const SfxPoolItem& rItem) const override;
     virtual NameOrIndex* Clone(SfxItemPool* pPool = nullptr) const override;
+    // Marked as false since the SfxStringItem superclass supports hashing, but
+    // this class has not been checked for safety under hashing yet.
+    virtual bool         supportsHashCode() const override { return false; }
 
             OUString const & GetName() const              { return GetValue();   }
             void         SetName(const OUString& rName) { SetValue(rName);     }
             bool         IsIndex() const          { return (m_nPalIndex >= 0); }
             sal_Int32    GetPalIndex() const { return m_nPalIndex; }
 
-    /** this static checks if the given NameOrIndex item has a unique name for its value.
+    /** this checks if the given NameOrIndex item has a unique name for its value.
         The returned String is a unique name for an item with this value in both given pools.
-        Argument pPool2 can be null.
         If returned string equals NameOrIndex->GetName(), the name was already unique.
     */
-    static OUString CheckNamedItem( const NameOrIndex* pCheckItem, const sal_uInt16 nWhich, const SfxItemPool* pPool1, SvxCompareValueFunc pCompareValueFunc, TranslateId pPrefixResId, const XPropertyListRef &pDefaults );
+    OUString CheckNamedItem(const sal_uInt16 nWhich, const SfxItemPool* pPool1, SvxCompareValueFunc pCompareValueFunc, TranslateId pPrefixResId, const XPropertyListRef &pDefaults) const;
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };

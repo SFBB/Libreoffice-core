@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include <config_emscripten.h>
+#include <config_vclplug.h>
 #include <vclpluginapi.h>
 #include <unx/geninst.h>
 #include <salusereventlist.hxx>
@@ -26,14 +28,20 @@
 
 #include <osl/conditn.hxx>
 
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
 #include <QtCore/QObject>
+SAL_WNODEPRECATED_DECLARATIONS_POP
 
+#include <concepts>
 #include <cstdlib>
 #include <functional>
 #include <memory>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "QtFilePicker.hxx"
+#include <salinst.hxx>
 
 class QtFrame;
 class QtTimer;
@@ -41,6 +49,13 @@ class QtTimer;
 class QApplication;
 class SalYieldMutex;
 class SalFrame;
+
+#if defined EMSCRIPTEN && ENABLE_QT6 && HAVE_EMSCRIPTEN_JSPI && !HAVE_EMSCRIPTEN_PROXY_TO_PTHREAD
+namespace comphelper::emscriptenthreading
+{
+struct Data;
+}
+#endif
 
 struct StdFreeCStr
 {
@@ -58,7 +73,8 @@ class VCLPLUG_QT_PUBLIC QtInstance : public QObject,
     const bool m_bUseCairo;
     QtTimer* m_pTimer;
     bool m_bSleeping;
-    std::unordered_map<OUString, css::uno::Reference<css::uno::XInterface>> m_aClipboards;
+    std::unordered_map<OUString, css::uno::Reference<css::datatransfer::clipboard::XClipboard>>
+        m_aClipboards;
 
     std::unique_ptr<QApplication> m_pQApplication;
     std::vector<FreeableCStr> m_pFakeArgvFreeable;
@@ -70,8 +86,13 @@ class VCLPLUG_QT_PUBLIC QtInstance : public QObject,
 
     QtFrame* m_pActivePopup;
 
+#if defined EMSCRIPTEN && ENABLE_QT6 && HAVE_EMSCRIPTEN_JSPI && !HAVE_EMSCRIPTEN_PROXY_TO_PTHREAD
+    comphelper::emscriptenthreading::Data* m_emscriptenThreadingData;
+#endif
+
     DECL_DLLPRIVATE_LINK(updateStyleHdl, Timer*, void);
     void AfterAppInit() override;
+    void EmscriptenLightweightRunInMainThread_(std::function<void()> func);
 
 private Q_SLOTS:
     bool ImplYield(bool bWait, bool bHandleAllCurrentEvents);
@@ -111,6 +132,22 @@ public:
     static std::unique_ptr<QApplication> CreateQApplication(int& nArgc, char** pArgv);
 
     void RunInMainThread(std::function<void()> func);
+    template <typename F>
+    requires std::invocable<F> std::invoke_result_t<F>
+    EmscriptenLightweightRunInMainThread(F&& func)
+    {
+        if constexpr (std::is_same_v<std::invoke_result_t<F>, void>)
+        {
+            EmscriptenLightweightRunInMainThread_(std::move(func));
+        }
+        else
+        {
+            std::invoke_result_t<F> ret;
+            EmscriptenLightweightRunInMainThread_(
+                [&func, &ret] { ret = std::forward<std::invoke_result_t<F>>(func()); });
+            return ret;
+        }
+    }
 
     virtual SalFrame* CreateFrame(SalFrame* pParent, SalFrameStyleFlags nStyle) override;
     virtual SalFrame* CreateChildFrame(SystemParentData* pParent,
@@ -122,8 +159,12 @@ public:
     virtual void DestroyObject(SalObject* pObject) override;
 
     virtual std::unique_ptr<SalVirtualDevice>
+    CreateVirtualDevice(SalGraphics& rGraphics, tools::Long nDX, tools::Long nDY,
+                        DeviceFormat eFormat, bool bAlphaMaskTransparent = false) override;
+
+    virtual std::unique_ptr<SalVirtualDevice>
     CreateVirtualDevice(SalGraphics& rGraphics, tools::Long& nDX, tools::Long& nDY,
-                        DeviceFormat eFormat, const SystemGraphicsData* pData = nullptr) override;
+                        DeviceFormat eFormat, const SystemGraphicsData& rData) override;
 
     virtual SalInfoPrinter* CreateInfoPrinter(SalPrinterQueueInfo* pQueueInfo,
                                               ImplJobSetup* pSetupData) override;
@@ -144,12 +185,19 @@ public:
     virtual bool DoYield(bool bWait, bool bHandleAllCurrentEvents) override;
     virtual bool AnyInput(VclInputFlags nType) override;
 
+    std::unique_ptr<weld::Builder> CreateBuilder(weld::Widget* pParent, const OUString& rUIRoot,
+                                                 const OUString& rUIFile) override;
+    virtual weld::MessageDialog* CreateMessageDialog(weld::Widget* pParent,
+                                                     VclMessageType eMessageType,
+                                                     VclButtonsType eButtonType,
+                                                     const OUString& rPrimaryMessage) override;
+    virtual std::unique_ptr<weld::ColorChooserDialog>
+    CreateColorChooserDialog(weld::Window* pParent, vcl::ColorPickerMode eMode) override;
+
 // so we fall back to the default abort, instead of duplicating it...
 #ifndef EMSCRIPTEN
     virtual OpenGLContext* CreateOpenGLContext() override;
 #endif
-
-    virtual OUString GetConnectionIdentifier() override;
 
     virtual void AddToRecentDocumentList(const OUString& rFileUrl, const OUString& rMimeType,
                                          const OUString& rDocumentService) override;
@@ -167,12 +215,15 @@ public:
     css::uno::Reference<css::ui::dialogs::XFolderPicker2>
     createFolderPicker(const css::uno::Reference<css::uno::XComponentContext>&) override;
 
-    virtual css::uno::Reference<css::uno::XInterface>
+    virtual css::uno::Reference<css::datatransfer::clipboard::XClipboard>
     CreateClipboard(const css::uno::Sequence<css::uno::Any>& i_rArguments) override;
-    virtual css::uno::Reference<css::uno::XInterface>
-    ImplCreateDragSource(const SystemEnvData*) override;
-    virtual css::uno::Reference<css::uno::XInterface>
-    ImplCreateDropTarget(const SystemEnvData*) override;
+    virtual css::uno::Reference<css::datatransfer::dnd::XDragSource>
+    ImplCreateDragSource(const SystemEnvData& rSysEnv) override;
+    virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget>
+    ImplCreateDropTarget(const SystemEnvData& rSysEnv) override;
+
+    // for qt font options
+    virtual const cairo_font_options_t* GetCairoFontOptions() override;
 
     // whether to reduce animations; KFSalInstance overrides this to read Plasma settings
     virtual bool GetUseReducedAnimation() { return false; }
@@ -183,10 +234,17 @@ public:
     bool DoExecute(int& nExitCode) override;
     void DoQuit() override;
 
+    static QWidget* GetNativeParentFromWeldParent(weld::Widget* pParent);
+
     QtFrame* activePopup() const { return m_pActivePopup; }
     void setActivePopup(QtFrame*);
 };
 
-inline QtInstance* GetQtInstance() { return static_cast<QtInstance*>(GetSalInstance()); }
+inline QtInstance& GetQtInstance()
+{
+    QtInstance* pInstance = static_cast<QtInstance*>(GetSalInstance());
+    assert(pInstance);
+    return *pInstance;
+}
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

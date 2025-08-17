@@ -51,12 +51,12 @@ namespace sd {
 
 
 FuConstruct::FuConstruct (
-    ViewShell*      pViewSh,
+    ViewShell&      rViewSh,
     ::sd::Window*           pWin,
     ::sd::View*         pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest&     rReq)
-    : FuDraw(pViewSh, pWin, pView, pDoc, rReq),
+    : FuDraw(rViewSh, pWin, pView, rDoc, rReq),
       bSelectionChanged(false)
 {
 }
@@ -85,13 +85,14 @@ bool FuConstruct::MouseButtonDown(const MouseEvent& rMEvt)
 
         SdrHdl* pHdl = mpView->PickHandle(aMDPos);
 
+        const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
         if ( pHdl != nullptr || mpView->IsMarkedHit(aMDPos, nHitLog) )
         {
             sal_uInt16 nDrgLog = sal_uInt16 ( mpWindow->PixelToLogic(Size(mpView->GetDragThresholdPixels(),0)).Width() );
             mpView->BegDragObj(aMDPos, nullptr, pHdl, nDrgLog);
             bReturn = true;
         }
-        else if ( mpView->AreObjectsMarked() )
+        else if ( rMarkList.GetMarkCount() != 0 )
         {
             mpView->UnmarkAll();
             bReturn = true;
@@ -141,7 +142,7 @@ bool FuConstruct::MouseButtonUp(const MouseEvent& rMEvt)
 
     if ( mpView && mpView->IsDragObj() )
     {
-        FrameView* pFrameView = mpViewShell->GetFrameView();
+        FrameView* pFrameView = mrViewShell.GetFrameView();
         bool bDragWithCopy = (rMEvt.IsMod1() && pFrameView->IsDragWithCopy());
 
         if (bDragWithCopy)
@@ -166,7 +167,8 @@ bool FuConstruct::MouseButtonUp(const MouseEvent& rMEvt)
         mpWindow->ReleaseMouse();
         sal_uInt16 nDrgLog = sal_uInt16 ( mpWindow->PixelToLogic(Size(mpView->GetDragThresholdPixels(),0)).Width() );
 
-        if ( !mpView->AreObjectsMarked() )
+        const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
+        if ( rMarkList.GetMarkCount() == 0 )
         {
             SdrPageView* pPV;
             sal_uInt16 nHitLog = sal_uInt16 ( mpWindow->PixelToLogic(Size(HITPIX,0)).Width() );
@@ -177,7 +179,7 @@ bool FuConstruct::MouseButtonUp(const MouseEvent& rMEvt)
                 mpView->MarkObj(aPnt, nHitLog);
             }
 
-            mpViewShell->GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
+            mrViewShell.GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON);
         }
         else if (rMEvt.IsLeft() && !rMEvt.IsShift() && !rMEvt.IsMod1() && !rMEvt.IsMod2() &&
                  !bSelectionChanged                   &&
@@ -187,14 +189,14 @@ bool FuConstruct::MouseButtonUp(const MouseEvent& rMEvt)
             // toggle between selection and rotation
             SdrObject* pSingleObj = nullptr;
 
-            if (mpView->GetMarkedObjectList().GetMarkCount()==1)
+            if (rMarkList.GetMarkCount()==1)
             {
-                pSingleObj = mpView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
+                pSingleObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
             }
 
             const bool bTiledRendering = comphelper::LibreOfficeKit::isActive();
             if (!bTiledRendering && (mpView->GetDragMode() == SdrDragMode::Move && mpView->IsRotateAllowed() &&
-                (mpViewShell->GetFrameView()->IsClickChangeRotation() ||
+                (mrViewShell.GetFrameView()->IsClickChangeRotation() ||
                  (pSingleObj && pSingleObj->GetObjInventor()==SdrInventor::E3d))))
             {
                 mpView->SetDragMode(SdrDragMode::Rotate);
@@ -328,7 +330,7 @@ void FuConstruct::SetStyleSheet( SfxItemSet& rAttr, SdrObject* pObj,
 {
     SdPage* pPage = static_cast<SdPage*>(mpView->GetSdrPageView()->GetPage());
     if ( pPage->IsMasterPage() && pPage->GetPageKind() == PageKind::Standard &&
-         mpDoc->GetDocumentType() == DocumentType::Impress )
+         mrDoc.GetDocumentType() == DocumentType::Impress )
     {
         /**********************************************
         * Objects was created on the slide master page

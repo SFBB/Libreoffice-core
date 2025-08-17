@@ -30,7 +30,7 @@
 #include <dobjfac.hxx>
 
 #include <com/sun/star/frame/Desktop.hpp>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <comphelper/unique_disposing_ptr.hxx>
 #include <comphelper/processfactory.hxx>
@@ -73,11 +73,6 @@ namespace SwGlobals
         // coverity[side_effect_free : FALSE] - not actually side-effect-free
         theSwDLLInstance();
     }
-
-    sw::Filters & getFilters()
-    {
-        return theSwDLLInstance()->getFilters();
-    }
 }
 
 SwDLL::SwDLL()
@@ -86,12 +81,12 @@ SwDLL::SwDLL()
     if ( SfxApplication::GetModule(SfxToolsModule::Writer) )    // Module already active
         return;
 
-    std::unique_ptr<SvtModuleOptions> xOpt;
-    if (!utl::ConfigManager::IsFuzzing())
-        xOpt.reset(new SvtModuleOptions);
+    std::optional<SvtModuleOptions> oOpt;
+    if (!comphelper::IsFuzzing())
+        oOpt.emplace();
     SfxObjectFactory* pDocFact = nullptr;
     SfxObjectFactory* pGlobDocFact = nullptr;
-    if (!xOpt || xOpt->IsWriter())
+    if (!oOpt || oOpt->IsWriterInstalled())
     {
         pDocFact = &SwDocShell::Factory();
         pGlobDocFact = &SwGlobalDocShell::Factory();
@@ -100,15 +95,14 @@ SwDLL::SwDLL()
     SfxObjectFactory* pWDocFact = &SwWebDocShell::Factory();
 
     auto pUniqueModule = std::make_unique<SwModule>(pWDocFact, pDocFact, pGlobDocFact);
-    SwModule* pModule = pUniqueModule.get();
     SfxApplication::SetModule(SfxToolsModule::Writer, std::move(pUniqueModule));
 
-    pWDocFact->SetDocumentServiceName("com.sun.star.text.WebDocument");
+    pWDocFact->SetDocumentServiceName(u"com.sun.star.text.WebDocument"_ustr);
 
-    if (!xOpt || xOpt->IsWriter())
+    if (!oOpt || oOpt->IsWriterInstalled())
     {
-        pGlobDocFact->SetDocumentServiceName("com.sun.star.text.GlobalDocument");
-        pDocFact->SetDocumentServiceName("com.sun.star.text.TextDocument");
+        pGlobDocFact->SetDocumentServiceName(u"com.sun.star.text.GlobalDocument"_ustr);
+        pDocFact->SetDocumentServiceName(u"com.sun.star.text.TextDocument"_ustr);
     }
 
     // register 3D-object-Factory
@@ -125,9 +119,6 @@ SwDLL::SwDLL()
     m_pFilters.reset(new sw::Filters);
     ::InitUI();
 
-    pModule->InitAttrPool();
-    // now SWModule can create its Pool
-
     // register your view-factories here
     RegisterFactories();
 
@@ -137,7 +128,7 @@ SwDLL::SwDLL()
     // register your controllers here
     RegisterControls();
 
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         // replace SvxAutocorrect with SwAutocorrect
         SvxAutoCorrCfg& rACfg = SvxAutoCorrCfg::Get();
@@ -155,9 +146,6 @@ SwDLL::~SwDLL() COVERITY_NOEXCEPT_FALSE
         m_pAutoCorrCfg->SetAutoCorrect(nullptr); // delete SwAutoCorrect before exit handlers
     }
 
-    // Pool has to be deleted before statics are
-    SW_MOD()->RemoveAttrPool();
-
     ::FinitUI();
     m_pFilters.reset();
     ::FinitCore();
@@ -165,17 +153,14 @@ SwDLL::~SwDLL() COVERITY_NOEXCEPT_FALSE
     SdrObjFactory::RemoveMakeObjectHdl(LINK(&aSwObjectFactory, SwObjectFactory, MakeObject ));
 }
 
-sw::Filters & SwDLL::getFilters()
-{
-    assert(m_pFilters);
-    return *m_pFilters;
-}
-
 #ifndef DISABLE_DYNLOADING
 
 extern "C" SAL_DLLPUBLIC_EXPORT
 void lok_preload_hook()
 {
+    // msword (any symbol will do)
+    sw::Filters::GetMswordLibSymbol("ImportDOC");
+    // swui
     SwAbstractDialogFactory::Create();
 }
 

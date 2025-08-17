@@ -113,7 +113,7 @@ private:
         @param rOutPos
         Position in LO user space coordinates
      */
-    void setShapePosition(const css::uno::Reference<css::drawing::XShape> xShape,
+    void setShapePosition(const css::uno::Reference<css::drawing::XShape>& xShape,
                           const ::basegfx::B2DPoint& rOutPos);
 
     /** Moves shape's corresponding Box2D body to specified position
@@ -130,7 +130,7 @@ private:
         @param fPassedTime
         Time frame which the Box2D body should move to the specified position.
      */
-    void setShapePositionByLinearVelocity(const css::uno::Reference<css::drawing::XShape> xShape,
+    void setShapePositionByLinearVelocity(const css::uno::Reference<css::drawing::XShape>& xShape,
                                           const ::basegfx::B2DPoint& rOutPos,
                                           const double fPassedTime);
 
@@ -145,7 +145,7 @@ private:
         @param rVelocity
         Velocity vector in LO user space coordinates.
      */
-    void setShapeLinearVelocity(const css::uno::Reference<com::sun::star::drawing::XShape> xShape,
+    void setShapeLinearVelocity(const css::uno::Reference<css::drawing::XShape>& xShape,
                                 const basegfx::B2DVector& rVelocity);
 
     /** Sets rotation angle of the shape's corresponding Box2D body
@@ -156,7 +156,7 @@ private:
         @param fAngle
         Angle of rotation in degrees.
      */
-    void setShapeAngle(const css::uno::Reference<com::sun::star::drawing::XShape> xShape,
+    void setShapeAngle(const css::uno::Reference<css::drawing::XShape>& xShape,
                        const double fAngle);
 
     /** Rotates shape's corresponding Box2D body to specified angle
@@ -174,9 +174,8 @@ private:
         @param fPassedTime
         Time frame which the Box2D body should rotate to the specified angle.
      */
-    void setShapeAngleByAngularVelocity(
-        const css::uno::Reference<com::sun::star::drawing::XShape> xShape, const double fAngle,
-        const double fPassedTime);
+    void setShapeAngleByAngularVelocity(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                        const double fAngle, const double fPassedTime);
 
     /** Sets angular velocity of the shape's corresponding Box2D body.
 
@@ -186,7 +185,7 @@ private:
         @param fAngularVelocity
         Angular velocity in degrees per second.
      */
-    void setShapeAngularVelocity(const css::uno::Reference<com::sun::star::drawing::XShape> xShape,
+    void setShapeAngularVelocity(const css::uno::Reference<css::drawing::XShape>& xShape,
                                  const double fAngularVelocity);
 
     /** Sets whether a shape's corresponding Box2D body has collision in the Box2D World or not
@@ -200,7 +199,7 @@ private:
         true if collisions should be enabled for the corresponding Box2D body of this shape
         and false if it should be disabled.
     */
-    void setShapeCollision(const css::uno::Reference<com::sun::star::drawing::XShape> xShape,
+    void setShapeCollision(const css::uno::Reference<css::drawing::XShape>& xShape,
                            const bool bCanCollide);
 
     /** Process the updates queued in the maShapeParallelUpdateQueue
@@ -212,24 +211,13 @@ private:
      */
     void processUpdateQueue(const double fPassedTime);
 
-    /** Simulate and step through time in the Box2D World
-
-        Used in stepAmount
-
-        @attention fTimeStep should not vary.
-     */
-    void step(const float fTimeStep = 1.0f / 100.0f, const int nVelocityIterations = 6,
-              const int nPositionIterations = 2);
-
     /// Queue a rotation update that is simulated as if shape's corresponding box2D body rotated to given angle when processed
-    void
-    queueDynamicRotationUpdate(const css::uno::Reference<com::sun::star::drawing::XShape>& xShape,
-                               const double fAngle);
+    void queueDynamicRotationUpdate(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                    const double fAngle);
 
     /// Queue an angular velocity update that sets the shape's corresponding box2D body angular velocity to the given value when processed
-    void
-    queueAngularVelocityUpdate(const css::uno::Reference<com::sun::star::drawing::XShape>& xShape,
-                               const double fAngularVelocity, const int nDelayForSteps = 0);
+    void queueAngularVelocityUpdate(const css::uno::Reference<css::drawing::XShape>& xShape,
+                                    const double fAngularVelocity, const int nDelayForSteps);
 
     /// Queue an collision update that sets the collision of shape's corresponding box2D body when processed
     void queueShapeVisibilityUpdate(const css::uno::Reference<css::drawing::XShape>& xShape,
@@ -242,8 +230,6 @@ public:
     box2DWorld(const ::basegfx::B2DVector& rSlideSize);
     ~box2DWorld();
 
-    bool initiateWorld(const ::basegfx::B2DVector& rSlideSize);
-
     /** Simulate and step through a given amount of time in the Box2D World
 
         @param fPassedTime
@@ -251,11 +237,8 @@ public:
 
         @return Amount of time actually stepped through, since it is possible
         to only step through a multiple of fTimeStep
-
-        @attention fTimeStep should not vary.
     */
-    double stepAmount(const double fPassedTime, const float fTimeStep = 1.0f / 100.0f,
-                      const int nVelocityIterations = 6, const int nPositionIterations = 2);
+    double stepAmount(const double fPassedTime);
 
     /// @return whether shapes in the slide are initialized as Box2D bodies or not
     bool shapesInitialized();
@@ -285,25 +268,11 @@ public:
                                         const basegfx::B2DVector& rStartVelocity,
                                         const double fDensity, const double fBounciness);
 
-    /** Make the Box2D body corresponding to the given shape a static one
-
-        A static body will not be affected by other bodies and the gravity. But will
-        affect other bodies that are dynamic (will still collide with them but won't
-        move etc.)
-
-        @param pShape
-        Pointer to the shape to alter the corresponding Box2D body of
-
-        @return box2d body pointer
-     */
-    Box2DBodySharedPtr makeShapeStatic(const slideshow::internal::ShapeSharedPtr& pShape);
-
     /** Create a static body that is represented by the shape's geometry
 
         @return pointer to the box2d body
      */
-    Box2DBodySharedPtr createStaticBody(const slideshow::internal::ShapeSharedPtr& rShape,
-                                        const float fDensity = 1.0f, const float fFriction = 0.3f);
+    Box2DBodySharedPtr createStaticBody(const slideshow::internal::ShapeSharedPtr& rShape);
 
     /// Initiate all the shapes in the current slide in the box2DWorld as static ones
     void initiateAllShapesAsStaticBodies(
@@ -321,8 +290,7 @@ public:
 
     /// Queue a update that sets the corresponding box2D body's linear velocity to the given value when processed
     void queueLinearVelocityUpdate(const css::uno::Reference<css::drawing::XShape>& xShape,
-                                   const ::basegfx::B2DVector& rVelocity,
-                                   const int nDelayForSteps = 0);
+                                   const ::basegfx::B2DVector& rVelocity, const int nDelayForSteps);
 
     /// Queue an appropriate update for the animation effect that is in parallel with a physics animation
     void
@@ -333,7 +301,7 @@ public:
 
     /// Queue an appropriate update for a path animation that is in parallel with a physics animation
     void queueShapePathAnimationUpdate(
-        const css::uno::Reference<com::sun::star::drawing::XShape>& xShape,
+        const css::uno::Reference<css::drawing::XShape>& xShape,
         const slideshow::internal::ShapeAttributeLayerSharedPtr& pAttrLayer,
         const bool bIsFirstUpdate);
 

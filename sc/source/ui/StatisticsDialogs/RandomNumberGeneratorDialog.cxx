@@ -47,26 +47,26 @@ ScRandomNumberGeneratorDialog::ScRandomNumberGeneratorDialog(
                     SfxBindings* pSfxBindings, SfxChildWindow* pChildWindow,
                     weld::Window* pParent, ScViewData& rViewData)
     : ScAnyRefDlgController(pSfxBindings, pChildWindow, pParent,
-                          "modules/scalc/ui/randomnumbergenerator.ui",
-                          "RandomNumberGeneratorDialog")
+                          u"modules/scalc/ui/randomnumbergenerator.ui"_ustr,
+                          u"RandomNumberGeneratorDialog"_ustr)
     , mrViewData(rViewData)
     , mrDoc(rViewData.GetDocument())
     , mbDialogLostFocus(false)
-    , mxInputRangeText(m_xBuilder->weld_label("cell-range-label"))
-    , mxInputRangeEdit(new formula::RefEdit(m_xBuilder->weld_entry("cell-range-edit")))
-    , mxInputRangeButton(new formula::RefButton(m_xBuilder->weld_button("cell-range-button")))
-    , mxDistributionCombo(m_xBuilder->weld_combo_box("distribution-combo"))
-    , mxParameter1Text(m_xBuilder->weld_label("parameter1-label"))
-    , mxParameter1Value(m_xBuilder->weld_spin_button("parameter1-spin"))
-    , mxParameter2Text(m_xBuilder->weld_label("parameter2-label"))
-    , mxParameter2Value(m_xBuilder->weld_spin_button("parameter2-spin"))
-    , mxSeed(m_xBuilder->weld_spin_button("seed-spin"))
-    , mxEnableSeed(m_xBuilder->weld_check_button("enable-seed-check"))
-    , mxDecimalPlaces(m_xBuilder->weld_spin_button("decimal-places-spin"))
-    , mxEnableRounding(m_xBuilder->weld_check_button("enable-rounding-check"))
-    , mxButtonApply(m_xBuilder->weld_button("apply"))
-    , mxButtonOk(m_xBuilder->weld_button("ok"))
-    , mxButtonClose(m_xBuilder->weld_button("close"))
+    , mxInputRangeText(m_xBuilder->weld_label(u"cell-range-label"_ustr))
+    , mxInputRangeEdit(new formula::RefEdit(m_xBuilder->weld_entry(u"cell-range-edit"_ustr)))
+    , mxInputRangeButton(new formula::RefButton(m_xBuilder->weld_button(u"cell-range-button"_ustr)))
+    , mxDistributionCombo(m_xBuilder->weld_combo_box(u"distribution-combo"_ustr))
+    , mxParameter1Text(m_xBuilder->weld_label(u"parameter1-label"_ustr))
+    , mxParameter1Value(m_xBuilder->weld_spin_button(u"parameter1-spin"_ustr))
+    , mxParameter2Text(m_xBuilder->weld_label(u"parameter2-label"_ustr))
+    , mxParameter2Value(m_xBuilder->weld_spin_button(u"parameter2-spin"_ustr))
+    , mxSeed(m_xBuilder->weld_spin_button(u"seed-spin"_ustr))
+    , mxEnableSeed(m_xBuilder->weld_check_button(u"enable-seed-check"_ustr))
+    , mxDecimalPlaces(m_xBuilder->weld_spin_button(u"decimal-places-spin"_ustr))
+    , mxEnableRounding(m_xBuilder->weld_check_button(u"enable-rounding-check"_ustr))
+    , mxButtonApply(m_xBuilder->weld_button(u"apply"_ustr))
+    , mxButtonOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , mxButtonClose(m_xBuilder->weld_button(u"close"_ustr))
 {
     mxInputRangeEdit->SetReferences(this, mxInputRangeText.get());
     mxInputRangeButton->SetReferences(this, mxInputRangeEdit.get());
@@ -187,85 +187,75 @@ void ScRandomNumberGeneratorDialog::SelectGeneratorAndGenerateNumbers()
         case DIST_UNIFORM:
         {
             std::uniform_real_distribution<> distribution(parameter1, parameter2);
-            auto rng = std::bind(distribution, seed);
-            GenerateNumbers(rng, STR_DISTRIBUTION_UNIFORM_REAL, aDecimalPlaces);
+            GenerateNumbers(distribution, seed, STR_DISTRIBUTION_UNIFORM_REAL, aDecimalPlaces);
             break;
         }
         case DIST_UNIFORM_INTEGER:
         {
             std::uniform_int_distribution<sal_Int64> distribution(parameterInteger1, parameterInteger2);
-            auto rng = std::bind(distribution, seed);
-            GenerateNumbers(rng, STR_DISTRIBUTION_UNIFORM_INTEGER, aDecimalPlaces);
+            GenerateNumbers(distribution, seed, STR_DISTRIBUTION_UNIFORM_INTEGER, aDecimalPlaces);
             break;
         }
         case DIST_NORMAL:
         {
             std::normal_distribution<> distribution(parameter1, parameter2);
-            auto rng = std::bind(distribution, seed);
-            GenerateNumbers(rng, STR_DISTRIBUTION_NORMAL, aDecimalPlaces);
+            GenerateNumbers(distribution, seed, STR_DISTRIBUTION_NORMAL, aDecimalPlaces);
             break;
         }
         case DIST_CAUCHY:
         {
             std::cauchy_distribution<> distribution(parameter1);
-            auto rng = std::bind(distribution, seed);
-            GenerateNumbers(rng, STR_DISTRIBUTION_CAUCHY, aDecimalPlaces);
+            GenerateNumbers(distribution, seed, STR_DISTRIBUTION_CAUCHY, aDecimalPlaces);
             break;
         }
         case DIST_BERNOULLI:
         {
             std::bernoulli_distribution distribution(parameter1);
-            auto rng = std::bind(distribution, seed);
-            GenerateNumbers(rng, STR_DISTRIBUTION_BERNOULLI, aDecimalPlaces);
+            GenerateNumbers(distribution, seed, STR_DISTRIBUTION_BERNOULLI, aDecimalPlaces);
             break;
         }
         case DIST_BINOMIAL:
         {
             std::binomial_distribution<> distribution(parameterInteger2, parameter1);
-            auto rng = std::bind(distribution, seed);
-            GenerateNumbers(rng, STR_DISTRIBUTION_BINOMIAL, aDecimalPlaces);
+            GenerateNumbers(distribution, seed, STR_DISTRIBUTION_BINOMIAL, aDecimalPlaces);
             break;
         }
         case DIST_CHI_SQUARED:
         {
             std::chi_squared_distribution<> distribution(parameter1);
-            auto rng = std::bind(distribution, seed);
-            GenerateNumbers(rng, STR_DISTRIBUTION_CHI_SQUARED, aDecimalPlaces);
+            GenerateNumbers(distribution, seed, STR_DISTRIBUTION_CHI_SQUARED, aDecimalPlaces);
             break;
         }
         case DIST_GEOMETRIC:
         {
             std::geometric_distribution<> distribution(parameter1);
-            auto rng = std::bind(distribution, seed);
-            GenerateNumbers(rng, STR_DISTRIBUTION_GEOMETRIC, aDecimalPlaces);
+            GenerateNumbers(distribution, seed, STR_DISTRIBUTION_GEOMETRIC, aDecimalPlaces);
             break;
         }
         case DIST_NEGATIVE_BINOMIAL:
         {
             std::negative_binomial_distribution<> distribution(parameterInteger2, parameter1);
-            auto rng = std::bind(distribution, seed);
-            GenerateNumbers(rng, STR_DISTRIBUTION_NEGATIVE_BINOMIAL, aDecimalPlaces);
+            GenerateNumbers(distribution, seed, STR_DISTRIBUTION_NEGATIVE_BINOMIAL, aDecimalPlaces);
             break;
         }
         case DIST_POISSON:
         {
             std::poisson_distribution<> distribution(parameter1);
-            auto rng = std::bind(distribution, seed);
-            GenerateNumbers(rng, STR_DISTRIBUTION_POISSON, aDecimalPlaces);
+            GenerateNumbers(distribution, seed, STR_DISTRIBUTION_POISSON, aDecimalPlaces);
             break;
         }
     }
 }
 
-template<class RNG>
-void ScRandomNumberGeneratorDialog::GenerateNumbers(RNG& randomGenerator, TranslateId pDistributionStringId, std::optional<sal_Int8> aDecimalPlaces)
+template<class DIST>
+void ScRandomNumberGeneratorDialog::GenerateNumbers(DIST& distribution, std::mt19937& seed, TranslateId pDistributionStringId, std::optional<sal_Int8> aDecimalPlaces)
 {
     OUString aUndo = ScResId(STR_UNDO_DISTRIBUTION_TEMPLATE);
     OUString aDistributionName = ScResId(pDistributionStringId);
     aUndo = aUndo.replaceAll("%1",  aDistributionName);
 
-    ScDocShell* pDocShell = mrViewData.GetDocShell();
-    SfxUndoManager* pUndoManager = pDocShell->GetUndoManager();
+    ScDocShell& rDocShell = mrViewData.GetDocShell();
+    SfxUndoManager* pUndoManager = rDocShell.GetUndoManager();
     pUndoManager->EnterListAction( aUndo, aUndo, 0, mrViewData.GetViewShell()->GetViewShellId() );
 
     SCROW nRowStart = maInputRange.aStart.Row();
@@ -289,18 +279,18 @@ void ScRandomNumberGeneratorDialog::GenerateNumbers(RNG& randomGenerator, Transl
             {
 
                 if (aDecimalPlaces)
-                    aVals.push_back(rtl::math::round(randomGenerator(), *aDecimalPlaces));
+                    aVals.push_back(rtl::math::round(distribution(seed), *aDecimalPlaces));
                 else
-                    aVals.push_back(randomGenerator());
+                    aVals.push_back(distribution(seed));
             }
 
-            pDocShell->GetDocFunc().SetValueCells(aPos, aVals, true);
+            rDocShell.GetDocFunc().SetValueCells(aPos, aVals, true);
         }
     }
 
     pUndoManager->LeaveListAction();
 
-    pDocShell->PostPaint( maInputRange, PaintPartFlags::Grid );
+    rDocShell.PostPaint( maInputRange, PaintPartFlags::Grid );
 }
 
 IMPL_LINK_NOARG( ScRandomNumberGeneratorDialog, OkClicked, weld::Button&, void )

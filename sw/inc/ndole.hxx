@@ -24,6 +24,7 @@
 #include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 #include <rtl/ref.hxx>
 
+class SvxDrawPage;
 class SwGrfFormatColl;
 class SwDoc;
 class SwOLENode;
@@ -81,6 +82,8 @@ public:
         bool bSynchron);
     void resetBufferedData();
 
+    SvxDrawPage* tryToGetChartDrawPage() const;
+
     void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
@@ -90,19 +93,19 @@ class SW_DLLPUBLIC SwOLENode final: public SwNoTextNode
 {
     friend class SwNodes;
     mutable SwOLEObj maOLEObj;
-    OUString msChartTableName;     ///< with chart objects: name of referenced table.
+    UIName msChartTableName;     ///< with chart objects: name of referenced table.
     bool   mbOLESizeInvalid; /**< Should be considered at SwDoc::PrtOLENotify
                                    (e.g. copied). Is not persistent. */
 
     sfx2::SvBaseLink*  mpObjectLink;
     OUString maLinkURL;
 
-    SwOLENode(  SwNode& rWhere,
+    SwOLENode(  const SwNode& rWhere,
                 const svt::EmbeddedObjectRef&,
                 SwGrfFormatColl *pGrfColl,
                 SwAttrSet const * pAutoAttr );
 
-    SwOLENode(  SwNode& rWhere,
+    SwOLENode(  const SwNode& rWhere,
                 const OUString &rName,
                 sal_Int64 nAspect,
                 SwGrfFormatColl *pGrfColl,
@@ -153,8 +156,8 @@ public:
     // #i99665#
     bool IsChart() const;
 
-    const OUString& GetChartTableName() const { return msChartTableName; }
-    void SetChartTableName( const OUString& rNm ) { msChartTableName = rNm; }
+    const UIName& GetChartTableName() const { return msChartTableName; }
+    void SetChartTableName( const UIName& rNm ) { msChartTableName = rNm; }
 
 
     // react on visual change (invalidate)

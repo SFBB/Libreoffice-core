@@ -24,18 +24,15 @@
 #include <com/sun/star/drawing/XLayerManager.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/drawing/XLayerSupplier.hpp>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlnamespace.hxx>
-#include <xmloff/namespacemap.hxx>
 #include "layerimp.hxx"
 
 
 #include <XMLStringBufferImportContext.hxx>
 
-using namespace ::cppu;
 using namespace ::xmloff::token;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::xml;
@@ -43,7 +40,6 @@ using namespace ::com::sun::star::xml::sax;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
 
 namespace {
@@ -98,11 +94,11 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > SdXMLLayerContext::cre
     sal_Int32 nElement,
     const css::uno::Reference< css::xml::sax::XFastAttributeList >&  )
 {
-    if( nElement == XML_ELEMENT(SVG, XML_TITLE) )
+    if( nElement == XML_ELEMENT(SVG, XML_TITLE) || nElement == XML_ELEMENT(SVG_COMPAT, XML_TITLE) )
     {
         return new XMLStringBufferImportContext( GetImport(), sTitleBuffer);
     }
-    else if( nElement == XML_ELEMENT(SVG, XML_DESC) )
+    else if( nElement == XML_ELEMENT(SVG, XML_DESC) || nElement == XML_ELEMENT(SVG_COMPAT, XML_DESC) )
     {
         return new XMLStringBufferImportContext( GetImport(), sDescriptionBuffer);
     }
@@ -134,13 +130,13 @@ void SdXMLLayerContext::endFastElement(sal_Int32 )
             SAL_WARN_IF( !xLayer.is(), "xmloff", "xmloff::SdXMLLayerContext::EndElement(), failed to create new XLayer!" );
 
             if( xLayer.is() )
-                xLayer->setPropertyValue("Name", Any( msName ) );
+                xLayer->setPropertyValue(u"Name"_ustr, Any( msName ) );
         }
 
         if( xLayer.is() )
         {
-            xLayer->setPropertyValue("Title", Any( sTitleBuffer.makeStringAndClear() ) );
-            xLayer->setPropertyValue("Description", Any( sDescriptionBuffer.makeStringAndClear() ) );
+            xLayer->setPropertyValue(u"Title"_ustr, Any( sTitleBuffer.makeStringAndClear() ) );
+            xLayer->setPropertyValue(u"Description"_ustr, Any( sDescriptionBuffer.makeStringAndClear() ) );
             bool bIsVisible( true );
             bool bIsPrintable( true );
             if ( !msDisplay.isEmpty() )
@@ -148,20 +144,20 @@ void SdXMLLayerContext::endFastElement(sal_Int32 )
                 bIsVisible = (msDisplay == "always") || (msDisplay == "screen");
                 bIsPrintable = (msDisplay == "always") || (msDisplay == "printer");
             }
-            xLayer->setPropertyValue("IsVisible", Any( bIsVisible ) );
-            xLayer->setPropertyValue("IsPrintable", Any( bIsPrintable ) );
+            xLayer->setPropertyValue(u"IsVisible"_ustr, Any( bIsVisible ) );
+            xLayer->setPropertyValue(u"IsPrintable"_ustr, Any( bIsPrintable ) );
             bool bIsLocked( false );
             if ( !msProtected.isEmpty() )
                 bIsLocked = (msProtected == "true");
-            xLayer->setPropertyValue("IsLocked", Any( bIsLocked ) );
+            xLayer->setPropertyValue(u"IsLocked"_ustr, Any( bIsLocked ) );
 
             // tdf#129898 repair layer "DrawnInSlideshow", which was wrongly written
             // in LO 6.2 to 6.4. It should always have ODF defaults.
             if (msName == "DrawnInSlideshow")
             {
-                xLayer->setPropertyValue("IsVisible", Any(true));
-                xLayer->setPropertyValue("IsPrintable", Any(true));
-                xLayer->setPropertyValue("IsLocked", Any(false));
+                xLayer->setPropertyValue(u"IsVisible"_ustr, Any(true));
+                xLayer->setPropertyValue(u"IsPrintable"_ustr, Any(true));
+                xLayer->setPropertyValue(u"IsLocked"_ustr, Any(false));
             }
         }
     }

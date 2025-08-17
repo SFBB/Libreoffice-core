@@ -73,11 +73,11 @@ std::unique_ptr<PanelLayout> AreaPropertyPanel::Create (
     SfxBindings* pBindings)
 {
     if (pParent == nullptr)
-        throw lang::IllegalArgumentException("no parent Window given to AreaPropertyPanel::Create", nullptr, 0);
+        throw lang::IllegalArgumentException(u"no parent Window given to AreaPropertyPanel::Create"_ustr, nullptr, 0);
     if ( ! rxFrame.is())
-        throw lang::IllegalArgumentException("no XFrame given to AreaPropertyPanel::Create", nullptr, 1);
+        throw lang::IllegalArgumentException(u"no XFrame given to AreaPropertyPanel::Create"_ustr, nullptr, 1);
     if (pBindings == nullptr)
-        throw lang::IllegalArgumentException("no SfxBindings given to AreaPropertyPanel::Create", nullptr, 2);
+        throw lang::IllegalArgumentException(u"no SfxBindings given to AreaPropertyPanel::Create"_ustr, nullptr, 2);
 
     return std::make_unique<AreaPropertyPanel>(pParent, rxFrame, pBindings);
 }
@@ -152,6 +152,17 @@ void AreaPropertyPanel::setFillStyleAndBitmap(const XFillStyleItem* pStyleItem,
         SfxCallMode::RECORD, pStyleItem
             ? std::initializer_list<SfxPoolItem const*>{ &rBitmapItem, pStyleItem }
             : std::initializer_list<SfxPoolItem const*>{ &rBitmapItem });
+}
+
+void AreaPropertyPanel::HandleContextChange(const vcl::EnumContext& rContext)
+{
+    AreaPropertyPanelBase::HandleContextChange(rContext);
+    if (rContext.GetContext() != vcl::EnumContext::Context::Default)
+    {
+        std::unique_ptr<SfxPoolItem> pFillState;
+        SfxItemState eState = mpBindings->QueryState( SID_ATTR_FILL_STYLE, pFillState );
+        NotifyItemUpdate(SID_ATTR_FILL_STYLE, eState, pFillState.get());
+    }
 }
 
 } // end of namespace svx::sidebar

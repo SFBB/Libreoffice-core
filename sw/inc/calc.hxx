@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SW_INC_CALC_HXX
-#define INCLUDED_SW_INC_CALC_HXX
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -58,45 +57,46 @@ enum SwCalcOper
     CALC_ROUND=281,         CALC_DATE=282,          CALC_MONTH=283,
     CALC_DAY=284,           CALC_PRODUCT=285,       CALC_AVERAGE=286,
     CALC_COUNT=287,         CALC_SIGN=288,          CALC_ABS=289,
-    CALC_INT=290
+    CALC_INT=290,           CALC_MOD=291,           CALC_MOD_IN=292
 };
 
 // Calculate Operations Strings
-extern const char sCalc_Add[];
-extern const char sCalc_Sub[];
-extern const char sCalc_Mul[];
-extern const char sCalc_Div[];
-extern const char sCalc_Phd[];
-extern const char sCalc_Sqrt[];
-extern const char sCalc_Pow[];
-extern const char sCalc_Or[];
-extern const char sCalc_Xor[];
-extern const char sCalc_And[];
-extern const char sCalc_Not[];
-extern const char sCalc_Eq[];
-extern const char sCalc_Neq[];
-extern const char sCalc_Leq[];
-extern const char sCalc_Geq[];
-extern const char sCalc_L[];
-extern const char sCalc_G[];
-extern const char sCalc_Sum[];
-extern const char sCalc_Mean[];
-extern const char sCalc_Average[];
-extern const char sCalc_Product[];
-extern const char sCalc_Count[];
-extern const char sCalc_Min[];
-extern const char sCalc_Max[];
-extern const char sCalc_Sin[];
-extern const char sCalc_Cos[];
-extern const char sCalc_Tan[];
-extern const char sCalc_Asin[];
-extern const char sCalc_Acos[];
-extern const char sCalc_Atan[];
-extern const char sCalc_Round[];
-extern const char sCalc_Date[];
-extern const char sCalc_Sign[];
-extern const char sCalc_Abs[];
-extern const char sCalc_Int[];
+inline constexpr OUString sCalc_Add  = u"add"_ustr;
+inline constexpr OUString sCalc_Sub  = u"sub"_ustr;
+inline constexpr OUString sCalc_Mul  = u"mul"_ustr;
+inline constexpr OUString sCalc_Div  = u"div"_ustr;
+inline constexpr OUString sCalc_Phd  = u"phd"_ustr;
+inline constexpr OUString sCalc_Sqrt = u"sqrt"_ustr;
+inline constexpr OUString sCalc_Pow  = u"pow"_ustr;
+inline constexpr OUString sCalc_Or   = u"or"_ustr;
+inline constexpr OUString sCalc_Xor  = u"xor"_ustr;
+inline constexpr OUString sCalc_And  = u"and"_ustr;
+inline constexpr OUString sCalc_Not  = u"not"_ustr;
+inline constexpr OUString sCalc_Eq   = u"eq"_ustr;
+inline constexpr OUString sCalc_Neq  = u"neq"_ustr;
+inline constexpr OUString sCalc_Leq  = u"leq"_ustr;
+inline constexpr OUString sCalc_Geq  = u"geq"_ustr;
+inline constexpr OUString sCalc_L    = u"l"_ustr;
+inline constexpr OUString sCalc_G    = u"g"_ustr;
+inline constexpr OUString sCalc_Sum  = u"sum"_ustr;
+inline constexpr OUString sCalc_Mean = u"mean"_ustr;
+inline constexpr OUString sCalc_Min  = u"min"_ustr;
+inline constexpr OUString sCalc_Max  = u"max"_ustr;
+inline constexpr OUString sCalc_Mod  = u"mod"_ustr;
+inline constexpr OUString sCalc_Sin  = u"sin"_ustr;
+inline constexpr OUString sCalc_Cos  = u"cos"_ustr;
+inline constexpr OUString sCalc_Tan  = u"tan"_ustr;
+inline constexpr OUString sCalc_Asin = u"asin"_ustr;
+inline constexpr OUString sCalc_Acos = u"acos"_ustr;
+inline constexpr OUString sCalc_Atan = u"atan"_ustr;
+inline constexpr OUString sCalc_Round= u"round"_ustr;
+inline constexpr OUString sCalc_Date = u"date"_ustr;
+inline constexpr OUString sCalc_Product = u"product"_ustr;
+inline constexpr OUString sCalc_Average = u"average"_ustr;
+inline constexpr OUString sCalc_Count= u"count"_ustr;
+inline constexpr OUString sCalc_Sign = u"sign"_ustr;
+inline constexpr OUString sCalc_Abs  = u"abs"_ustr;
+inline constexpr OUString sCalc_Int  = u"int"_ustr;
 
 //  Calculate ErrorCodes
 enum class SwCalcError
@@ -215,7 +215,5 @@ public:
     SW_DLLPUBLIC static bool IsValidVarName( const OUString& rStr,
                                     OUString* pValidName = nullptr );
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

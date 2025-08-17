@@ -25,7 +25,7 @@
 #include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <vcl/pdfextoutdevdata.hxx> // vcl::PDFExtOutDevData support
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 
 class GDIMetaFile;
 namespace tools
@@ -65,6 +65,7 @@ class MaskPrimitive2D;
 class UnifiedTransparencePrimitive2D;
 class TransparencePrimitive2D;
 class ObjectInfoPrimitive2D;
+class FillGraphicPrimitive2D;
 class StructureTagPrimitive2D;
 }
 
@@ -107,7 +108,7 @@ private:
                                    const attribute::LineStartEndAttribute* pEnd);
     void impStartSvtGraphicStroke(SvtGraphicStroke const* pSvtGraphicStroke);
     void impEndSvtGraphicStroke(SvtGraphicStroke const* pSvtGraphicStroke);
-    void popStructureElement(vcl::PDFWriter::StructElement eElem);
+    void popStructureElement(vcl::pdf::StructElement eElem);
     void popListItem();
     void popList();
 
@@ -146,6 +147,8 @@ private:
         const primitive2d::TransparencePrimitive2D& rTransparenceCandidate);
     void
     processObjectInfoPrimitive2D(const primitive2d::ObjectInfoPrimitive2D& rObjectInfoPrimitive2D);
+    void processFillGraphicPrimitive2D(
+        primitive2d::FillGraphicPrimitive2D const& rFillGraphicPrimitive2D);
     void processStructureTagPrimitive2D(
         const primitive2d::StructureTagPrimitive2D& rStructureTagCandidate);
 
@@ -171,13 +174,6 @@ private:
      */
     double mfCurrentUnifiedTransparence;
 
-    /*  break iterator support
-        made static so it only needs to be fetched once, even with many single
-        constructed VclMetafileProcessor2D. It's still incarnated on demand,
-        but exists for OOo runtime now by purpose.
-     */
-    static vcl::DeleteOnDeinit<css::uno::Reference<css::i18n::XBreakIterator>> mxBreakIterator;
-
     /*  vcl::PDFExtOutDevData support
         For the first step, some extra actions at vcl::PDFExtOutDevData need to
         be emulated with the VclMetafileProcessor2D. These are potentially temporarily
@@ -193,7 +189,7 @@ private:
     bool mbInListItem;
     bool mbBulletPresent;
 
-    std::stack<vcl::PDFWriter::StructElement> maListElements;
+    std::stack<vcl::pdf::StructElement> maListElements;
 
     primitive2d::StructureTagPrimitive2D const* mpCurrentStructureTag = nullptr;
 

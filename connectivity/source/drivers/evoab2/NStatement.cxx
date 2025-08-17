@@ -49,7 +49,6 @@ using namespace com::sun::star::beans;
 using namespace com::sun::star::sdbc;
 using namespace com::sun::star::sdbcx;
 using namespace com::sun::star::container;
-using namespace com::sun::star::io;
 using namespace com::sun::star::util;
 
 namespace {
@@ -161,7 +160,7 @@ OCommonStatement::~OCommonStatement()
 void OCommonStatement::disposeResultSet()
 {
     // free the cursor if alive
-    Reference< XComponent > xComp(m_xResultSet.get(), UNO_QUERY);
+    rtl::Reference< OEvoabResultSet > xComp(m_xResultSet);
     if (xComp.is())
         xComp->dispose();
     m_xResultSet.clear();
@@ -614,7 +613,7 @@ Reference< XResultSet > OCommonStatement::impl_executeQuery_throw( const QueryDa
     pResult->construct( _rQueryData );
 
     // done
-    m_xResultSet = Reference<XWeak>(pResult);
+    m_xResultSet = pResult.get();
     return pResult;
 }
 
@@ -641,7 +640,7 @@ Reference< XPropertySetInfo > SAL_CALL OCommonStatement::getPropertySetInfo(  )
 // = OStatement
 
 
-IMPLEMENT_SERVICE_INFO( OStatement, "com.sun.star.comp.sdbcx.evoab.OStatement", "com.sun.star.sdbc.Statement" );
+IMPLEMENT_SERVICE_INFO( OStatement, u"com.sun.star.comp.sdbcx.evoab.OStatement"_ustr, u"com.sun.star.sdbc.Statement"_ustr );
 
 
 IMPLEMENT_FORWARD_XINTERFACE2( OStatement, OCommonStatement, OStatement_IBase )
@@ -673,7 +672,7 @@ sal_Int32 SAL_CALL OStatement::executeUpdate( const OUString& /*sql*/ )
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OCommonStatement_IBase::rBHelper.bDisposed);
-    ::dbtools::throwFeatureNotImplementedSQLException( "XStatement::executeUpdate", *this );
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XStatement::executeUpdate"_ustr, *this );
     return 0;
 }
 

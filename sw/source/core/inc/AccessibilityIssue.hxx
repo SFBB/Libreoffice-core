@@ -26,6 +26,8 @@ enum class IssueObject
     FORM,
     TABLE,
     TEXT,
+    HYPERLINKTEXT,
+    HYPERLINKFLY,
     DOCUMENT_TITLE,
     DOCUMENT_BACKGROUND,
     LANGUAGE_NOT_SET,
@@ -48,7 +50,7 @@ private:
     sal_Int32 m_nEnd;
 
 public:
-    AccessibilityIssue(sfx::AccessibilityIssueID eIssueID = sfx::AccessibilityIssueID::UNSPECIFIED);
+    AccessibilityIssue(sfx::AccessibilityIssueID eIssueID, sfx::AccessibilityIssueLevel eIssueLvl);
     AccessibilityIssue(AccessibilityIssue const&) = default;
 
     void setIssueObject(IssueObject eIssueObject);

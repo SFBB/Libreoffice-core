@@ -128,18 +128,18 @@ class UITest(object):
         while not event.executed:
             time.sleep(DEFAULT_SLEEP)
         dialog = self._xUITest.getTopFocusWindow()
-        if parent == dialog:
+        if parent.equals(dialog):
             raise Exception("executing the action did not open the dialog")
         try:
             yield dialog
         except:
             if not close_button:
                 if 'cancel' in dialog.getChildren():
-                    self.close_dialog_through_button(dialog.getChild("cancel"))
+                    self.close_dialog_through_button(dialog.getChild("cancel"), dialog)
             raise
         finally:
             if close_button:
-                self.close_dialog_through_button(dialog.getChild(close_button))
+                self.close_dialog_through_button(dialog.getChild(close_button), dialog)
 
     # Calls UITest.close_dialog_through_button at exit
     @contextmanager
@@ -189,14 +189,21 @@ class UITest(object):
                     return
                 time.sleep(DEFAULT_SLEEP)
 
-    def close_dialog_through_button(self, button):
+    def close_dialog_through_button(self, button, dialog=None):
+        if dialog is None:
+            dialog = self._xUITest.getTopFocusWindow()
+        if isinstance(button, str):
+            button = dialog.getChild(button)
         with EventListener(self._xContext, "DialogClosed" ) as event:
             button.executeAction("CLICK", tuple())
             while True:
                 if event.executed:
                     time.sleep(DEFAULT_SLEEP)
-                    return
+                    break
                 time.sleep(DEFAULT_SLEEP)
+        parent = self._xUITest.getTopFocusWindow()
+        if parent.equals(dialog):
+            raise Exception("executing the action did not close the dialog")
 
     def close_doc(self):
         desktop = self.get_desktop()
@@ -212,7 +219,7 @@ class UITest(object):
             component.dispose()
         else:
             if component.isModified():
-                with self.execute_dialog_through_command('.uno:CloseDoc', close_button="discard") as xConfirmationDialog:
+                with self.execute_dialog_through_command('.uno:CloseDoc', close_button="discard"):
                     pass
             else:
                 self._xUITest.executeCommand(".uno:CloseDoc")
@@ -248,11 +255,11 @@ class UITest(object):
                     except:
                         if not close_button:
                             if 'cancel' in xDialog.getChildren():
-                                self.close_dialog_through_button(xDialog.getChild("cancel"))
+                                self.close_dialog_through_button(xDialog.getChild("cancel"), xDialog)
                         raise
                     finally:
                         if close_button:
-                            self.close_dialog_through_button(xDialog.getChild(close_button))
+                            self.close_dialog_through_button(xDialog.getChild(close_button), xDialog)
                         thread.join()
                     return
                 time.sleep(DEFAULT_SLEEP)

@@ -23,13 +23,20 @@
 
 #include <o3tl/hash_combine.hxx>
 #include <o3tl/lru_map.hxx>
+#include <rtl/strbuf.hxx>
 #include <unotools/configmgr.hxx>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <vcl/dropcache.hxx>
+
+#include <memory>
 
 namespace vcl::text
 {
 TextLayoutCache::TextLayoutCache(sal_Unicode const* pStr, sal_Int32 const nEnd)
+#if defined __cpp_lib_memory_resource
+    : runs(&CacheOwner::GetMemoryResource())
+#endif
 {
     vcl::ScriptRun aScriptRun(reinterpret_cast<const UChar*>(pStr), nEnd);
     while (aScriptRun.next())
@@ -48,27 +55,76 @@ struct TextLayoutCacheCost
         return item->runs.size() * sizeof(item->runs.front());
     }
 };
-} // namespace
 
-std::shared_ptr<const TextLayoutCache> TextLayoutCache::Create(OUString const& rString)
+struct TextLayoutCacheMap : public CacheOwner
 {
     typedef o3tl::lru_map<OUString, std::shared_ptr<const TextLayoutCache>, FirstCharsStringHash,
                           FastStringCompareEqual, TextLayoutCacheCost>
         Cache;
-    static vcl::DeleteOnDeinit<Cache> cache(
-        !utl::ConfigManager::IsFuzzing()
-            ? officecfg::Office::Common::Cache::Font::TextRunsCacheSize::get()
-            : 100);
-    if (Cache* map = cache.get())
+
+#if defined __cpp_lib_memory_resource
+    std::pmr::polymorphic_allocator<TextLayoutCache> allocator;
+#endif
+    Cache cache;
+
+    TextLayoutCacheMap(int capacity)
+#if defined __cpp_lib_memory_resource
+        : allocator(&CacheOwner::GetMemoryResource())
+        , cache(capacity, &CacheOwner::GetMemoryResource())
+#else
+        : cache(capacity)
+#endif
     {
-        auto it = map->find(rString);
-        if (it != map->end())
+    }
+
+    std::shared_ptr<const TextLayoutCache> Create(OUString const& rString)
+    {
+        auto it = cache.find(rString);
+        if (it != cache.end())
             return it->second;
-        auto ret = std::make_shared<const TextLayoutCache>(rString.getStr(), rString.getLength());
-        map->insert({ rString, ret });
+#if defined __cpp_lib_memory_resource
+        auto ret = std::allocate_shared<TextLayoutCache>(allocator, rString.getStr(),
+                                                         rString.getLength());
+#else
+        auto ret = std::make_shared<TextLayoutCache>(rString.getStr(), rString.getLength());
+#endif
+        cache.insert({ rString, ret });
         return ret;
     }
-    return std::make_shared<const TextLayoutCache>(rString.getStr(), rString.getLength());
+
+    virtual OUString getCacheName() const override { return "TextLayoutCache"; }
+
+    virtual bool dropCaches() override
+    {
+        cache.clear();
+        return true;
+    }
+
+    virtual void dumpState(rtl::OStringBuffer& rState) override
+    {
+        rState.append("\nTextLayoutCache:\t");
+        rState.append(static_cast<sal_Int32>(cache.size()));
+
+        TextLayoutCacheCost cost;
+        size_t nTotalCost = 0;
+        for (auto it = cache.begin(); it != cache.end(); ++it)
+            nTotalCost += cost(it->second);
+
+        rState.append("\t cost: ");
+        rState.append(static_cast<sal_Int64>(nTotalCost));
+    }
+};
+
+} // namespace
+
+std::shared_ptr<const TextLayoutCache> TextLayoutCache::Create(OUString const& rString)
+{
+    static tools::DeleteOnDeinit<TextLayoutCacheMap> cache(
+        !comphelper::IsFuzzing() ? officecfg::Office::Common::Cache::Font::TextRunsCacheSize::get()
+                                 : 100);
+    if (TextLayoutCacheMap* map = cache.get())
+        return map->Create(rString);
+    return std::make_shared<TextLayoutCache>(rString.getStr(), rString.getLength());
 }
 }
 

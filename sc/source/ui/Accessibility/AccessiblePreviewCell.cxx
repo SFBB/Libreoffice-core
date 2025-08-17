@@ -31,21 +31,19 @@
 #include <editeng/brushitem.hxx>
 #include <vcl/window.hxx>
 #include <vcl/svapp.hxx>
-#include <toolkit/helper/convert.hxx>
+#include <vcl/unohelp.hxx>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <comphelper/sequence.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-//=====  internal  ============================================================
-
-ScAccessiblePreviewCell::ScAccessiblePreviewCell( const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-                            ScPreviewShell* pViewShell,
-                            const ScAddress& rCellAddress,
-                            sal_Int32 nIndex ) :
-    ScAccessibleCellBase( rxParent, ( pViewShell ? &pViewShell->GetDocument() : nullptr ), rCellAddress, nIndex ),
-    mpViewShell( pViewShell )
+ScAccessiblePreviewCell::ScAccessiblePreviewCell(
+    const rtl::Reference<ScAccessiblePreviewTable>& rParent, ScPreviewShell* pViewShell,
+    const ScAddress& rCellAddress, sal_Int32 nIndex)
+    : ScAccessibleCellBase(rParent, (pViewShell ? &pViewShell->GetDocument() : nullptr),
+                           rCellAddress, nIndex)
+    , mpViewShell(pViewShell)
 {
     if (mpViewShell)
         mpViewShell->AddAccessibilityObject(*this);
@@ -55,7 +53,7 @@ ScAccessiblePreviewCell::~ScAccessiblePreviewCell()
 {
     if (!ScAccessibleContextBase::IsDefunc() && !rBHelper.bInDispose)
     {
-        // increment refcount to prevent double call off dtor
+        // increment refcount to prevent double call of dtor
         osl_atomic_increment( &m_refCount );
         // call dispose to inform object which have a weak reference to this object
         dispose();
@@ -91,25 +89,25 @@ void ScAccessiblePreviewCell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint 
 
 uno::Reference< XAccessible > SAL_CALL ScAccessiblePreviewCell::getAccessibleAtPoint( const awt::Point& rPoint )
 {
-    uno::Reference<XAccessible> xRet;
+    rtl::Reference<comphelper::OAccessible> pRet;
     if (containsPoint(rPoint))
     {
         SolarMutexGuard aGuard;
-        IsObjectValid();
+        ensureAlive();
 
         if(!mpTextHelper)
             CreateTextHelper();
 
-        xRet = mpTextHelper->GetAt(rPoint);
+        pRet = mpTextHelper->GetAt(rPoint);
     }
 
-    return xRet;
+    return pRet;
 }
 
 void SAL_CALL ScAccessiblePreviewCell::grabFocus()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     if (getAccessibleParent().is())
     {
         uno::Reference<XAccessibleComponent> xAccessibleComponent(getAccessibleParent()->getAccessibleContext(), uno::UNO_QUERY);
@@ -123,7 +121,7 @@ void SAL_CALL ScAccessiblePreviewCell::grabFocus()
 sal_Int64 SAL_CALL ScAccessiblePreviewCell::getAccessibleChildCount()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     if (!mpTextHelper)
         CreateTextHelper();
     return mpTextHelper->GetChildCount();
@@ -132,7 +130,7 @@ sal_Int64 SAL_CALL ScAccessiblePreviewCell::getAccessibleChildCount()
 uno::Reference< XAccessible > SAL_CALL ScAccessiblePreviewCell::getAccessibleChild(sal_Int64 nIndex)
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     if (!mpTextHelper)
         CreateTextHelper();
     return mpTextHelper->GetChild(nIndex);
@@ -168,35 +166,12 @@ sal_Int64 SAL_CALL ScAccessiblePreviewCell::getAccessibleStateSet()
     return nStateSet;
 }
 
-//=====  XServiceInfo  ====================================================
-
-OUString SAL_CALL ScAccessiblePreviewCell::getImplementationName()
-{
-    return "ScAccessiblePreviewCell";
-}
-
-uno::Sequence<OUString> SAL_CALL ScAccessiblePreviewCell::getSupportedServiceNames()
-{
-    const css::uno::Sequence<OUString> vals { "com.sun.star.table.AccessibleCellView" };
-    return comphelper::concatSequences(ScAccessibleContextBase::getSupportedServiceNames(), vals);
-}
-
-//=====  XTypeProvider  =======================================================
-
-uno::Sequence<sal_Int8> SAL_CALL
-    ScAccessiblePreviewCell::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
-}
-
-//====  internal  =========================================================
-
-AbsoluteScreenPixelRectangle ScAccessiblePreviewCell::GetBoundingBoxOnScreen() const
+AbsoluteScreenPixelRectangle ScAccessiblePreviewCell::GetBoundingBoxOnScreen()
 {
     tools::Rectangle aCellRect;
     if (mpViewShell)
     {
-        mpViewShell->GetLocationData().GetCellPosition( maCellAddress, aCellRect );
+        aCellRect = mpViewShell->GetLocationData().GetCellPosition(maCellAddress);
         vcl::Window* pWindow = mpViewShell->GetWindow();
         if (pWindow)
         {
@@ -207,20 +182,21 @@ AbsoluteScreenPixelRectangle ScAccessiblePreviewCell::GetBoundingBoxOnScreen() c
     return AbsoluteScreenPixelRectangle(aCellRect);
 }
 
-tools::Rectangle ScAccessiblePreviewCell::GetBoundingBox() const
+tools::Rectangle ScAccessiblePreviewCell::GetBoundingBox()
 {
     tools::Rectangle aCellRect;
     if (mpViewShell)
     {
-        mpViewShell->GetLocationData().GetCellPosition( maCellAddress, aCellRect );
-        uno::Reference<XAccessible> xAccParent = const_cast<ScAccessiblePreviewCell*>(this)->getAccessibleParent();
+        aCellRect = mpViewShell->GetLocationData().GetCellPosition(maCellAddress);
+        uno::Reference<XAccessible> xAccParent = getAccessibleParent();
         if (xAccParent.is())
         {
             uno::Reference<XAccessibleContext> xAccParentContext = xAccParent->getAccessibleContext();
             uno::Reference<XAccessibleComponent> xAccParentComp (xAccParentContext, uno::UNO_QUERY);
             if (xAccParentComp.is())
             {
-                tools::Rectangle aParentRect (VCLRectangle(xAccParentComp->getBounds()));
+                tools::Rectangle aParentRect(
+                    vcl::unohelper::ConvertToVCLRect(xAccParentComp->getBounds()));
                 aCellRect.Move(-aParentRect.Left(), -aParentRect.Top());
             }
         }

@@ -36,12 +36,15 @@
 #include <tools/bigint.hxx>
 #include <svtools/insdlg.hxx>
 #include <sfx2/ipclient.hxx>
+#include <editeng/editeng.hxx>
+#include <editeng/editobj.hxx>
 #include <editeng/formatbreakitem.hxx>
 #include <editeng/svxacorr.hxx>
 #include <editeng/ulspitem.hxx>
 #include <vcl/graph.hxx>
 #include <unotools/charclass.hxx>
 #include <comphelper/storagehelper.hxx>
+#include <comphelper/random.hxx>
 #include <svx/svxdlg.hxx>
 #include <svx/extrusionbar.hxx>
 #include <svx/fontworkbar.hxx>
@@ -61,6 +64,7 @@
 #include <swundo.hxx>
 #include <swcli.hxx>
 #include <poolfmt.hxx>
+#include <postithelper.hxx>
 #include <edtwin.hxx>
 #include <fmtcol.hxx>
 #include <swtable.hxx>
@@ -115,6 +119,7 @@
 #include <frmtool.hxx>
 #include <viewopt.hxx>
 
+#include <IDocumentRedlineAccess.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <UndoInsert.hxx>
 #include <UndoCore.hxx>
@@ -149,9 +154,7 @@ static bool lcl_IsAllowed(const SwWrtShell* rSh)
         if (pTextNode && pTextNode->IsOutline())
         {
             // disallow if this is an outline node having folded content
-            bool bVisible = true;
-            pTextNode->GetAttrOutlineContentVisible(bVisible);
-            if (!bVisible)
+            if (!pTextNode->GetAttrOutlineContentVisible())
                 return false;
         }
     }
@@ -453,7 +456,7 @@ void SwWrtShell::InsertObject( const svt::EmbeddedObjectRef& xRef, SvGlobalName 
                 // TODO/LATER: recording! Convert properties to items
                 case SID_INSERT_FLOATINGFRAME:
                 {
-                    SfxSlotPool* pSlotPool = SW_MOD()->GetSlotPool();
+                    SfxSlotPool* pSlotPool = SwModule::get()->GetSlotPool();
                     const SfxSlot* pSlot = pSlotPool->GetSlot(nSlotId);
                     OUString aCmd = pSlot->GetCommand();
                     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
@@ -566,7 +569,7 @@ bool SwWrtShell::InsertOleObject( const svt::EmbeddedObjectRef& xRef, SwFlyFrame
                 {
                     try
                     {
-                        xSet->setPropertyValue("Formula", uno::Any( aMathData ) );
+                        xSet->setPropertyValue(u"Formula"_ustr, uno::Any( aMathData ) );
                         bActivate = false;
                     }
                     catch (const uno::Exception&)
@@ -619,19 +622,19 @@ bool SwWrtShell::InsertOleObject( const svt::EmbeddedObjectRef& xRef, SwFlyFrame
 
     if ( SotExchange::IsChart( aCLSID ) )
     {
-        uno::Reference< embed::XEmbeddedObject > xEmbeddedObj = xRef.GetObject();
+        const uno::Reference< embed::XEmbeddedObject >& xEmbeddedObj = xRef.GetObject();
         if ( xEmbeddedObj.is() )
         {
             bool bDisableDataTableDialog = false;
             svt::EmbeddedObjectRef::TryRunningState( xEmbeddedObj );
             uno::Reference< beans::XPropertySet > xProps( xEmbeddedObj->getComponent(), uno::UNO_QUERY );
             if ( xProps.is() &&
-                 ( xProps->getPropertyValue("DisableDataTableDialog") >>= bDisableDataTableDialog ) &&
+                 ( xProps->getPropertyValue(u"DisableDataTableDialog"_ustr) >>= bDisableDataTableDialog ) &&
                  bDisableDataTableDialog )
             {
-                xProps->setPropertyValue("DisableDataTableDialog",
+                xProps->setPropertyValue(u"DisableDataTableDialog"_ustr,
                     uno::Any( false ) );
-                xProps->setPropertyValue("DisableComplexChartTypes",
+                xProps->setPropertyValue(u"DisableComplexChartTypes"_ustr,
                     uno::Any( false ) );
                 uno::Reference< util::XModifiable > xModifiable( xProps, uno::UNO_QUERY );
                 if ( xModifiable.is() )
@@ -690,7 +693,7 @@ void SwWrtShell::LaunchOLEObj(sal_Int32 nVerb)
     if (xOLEInit.is())
     {
         uno::Sequence<beans::PropertyValue> aArguments
-            = { comphelper::makePropertyValue("ReadOnly", pCli->IsProtected()) };
+            = { comphelper::makePropertyValue(u"ReadOnly"_ustr, pCli->IsProtected()) };
         xOLEInit->initialize({ uno::Any(aArguments) });
     }
 
@@ -950,7 +953,7 @@ void SwWrtShell::ConnectObj( svt::EmbeddedObjectRef& xObj, const SwRect &rPrt,
 
 // Insert hard page break;
 // Selections will be overwritten
-void SwWrtShell::InsertPageBreak(const OUString *pPageDesc, const ::std::optional<sal_uInt16>& oPgNum )
+void SwWrtShell::InsertPageBreak(const UIName *pPageDesc, const ::std::optional<sal_uInt16>& oPgNum )
 {
     if (!lcl_IsAllowed(this))
         return;
@@ -982,7 +985,70 @@ void SwWrtShell::InsertPageBreak(const OUString *pPageDesc, const ::std::optiona
             SetAttrItem( SvxFormatBreakItem(SvxBreak::PageBefore, RES_BREAK) );
         EndUndo(SwUndoId::UI_INSERT_PAGE_BREAK);
     }
-    collectUIInformation("BREAK_PAGE", "parameter");
+    collectUIInformation(u"BREAK_PAGE"_ustr, u"parameter"_ustr);
+}
+
+// Insert enclosing characters
+// Selections will be overwritten
+void SwWrtShell::InsertEnclosingChars(const OUString& sStartStr, const OUString& sEndStr)
+{
+    if (!lcl_IsAllowed(this) || !CanInsert())
+        return;
+    StartAllAction();
+    StartUndo();
+
+    OUStringBuffer currentText, newText;
+    bool dotsAdded = false;
+    const OUString dots = SwResId(STR_LDOTS);
+    for (SwPaM& rPaM : SwWrtShell::GetCursor()->GetRingContainer())
+    {
+        if (*rPaM.GetPoint() == *rPaM.GetMark())
+            continue;
+        if (newText.isEmpty())
+        {
+            OUString pamText = ShortenString(rPaM.GetText(), nUndoStringLength, dots)
+                                   .replaceAll("\n", " ");
+            currentText.append(pamText);
+            newText.append(sStartStr + pamText + sEndStr);
+        }
+        else if (!dotsAdded)
+        {
+            dotsAdded = true;
+            currentText.append(dots);
+            newText.append(dots);
+        }
+
+        {
+            SwPaM aLocalPam(rPaM, nullptr);
+            aLocalPam.Normalize(); // point is at start now
+            auto& contentOperations = SwViewShell::getIDocumentContentOperations();
+
+            // To copy the formatting of the start of the range, insert the start string in two
+            // phases: insert it after the first selected character; and then move it back
+            SwPosition posStart = *aLocalPam.GetPoint();
+            aLocalPam.GetPoint()->AdjustContent(+1);
+            contentOperations.InsertString(aLocalPam, sStartStr);
+            // Now aLocalPam's point is *after* the inserted string
+            SwPaM insertedPaM(*aLocalPam.GetPoint());
+            insertedPaM.SetMark();
+            insertedPaM.GetPoint()->AdjustContent(-sStartStr.getLength());
+            contentOperations.CopyRange(insertedPaM, posStart, SwCopyFlags::CopyAll);
+            contentOperations.DeleteRange(insertedPaM);
+
+            // No such problems with end string
+            aLocalPam.Exchange(); // point is at end now
+            contentOperations.InsertString(aLocalPam, sEndStr);
+        }
+        rPaM.Start()->AdjustContent(-sStartStr.getLength()); // now the selection includes insertion
+    }
+
+    SwRewriter aRewriter;
+    aRewriter.AddRule(UndoArg1, currentText.makeStringAndClear());
+    aRewriter.AddRule(UndoArg2, SwResId(STR_YIELDS));
+    aRewriter.AddRule(UndoArg3, newText.makeStringAndClear());
+    EndUndo(SwUndoId::UI_REPLACE, &aRewriter);
+
+    EndAllAction();
 }
 
 // Insert hard page break;
@@ -1063,6 +1129,30 @@ void SwWrtShell::InsertContentControl(SwContentControlType eType)
     }
 
     auto pContentControl = std::make_shared<SwContentControl>(nullptr);
+
+    // Make Random ID... check if it is unique
+    // warning: possible infinite loop if there would be billions of content controls.
+    SwContentControlManager& pManager = GetDoc()->GetContentControlManager();
+    size_t nCCCount = pManager.GetCount();
+    sal_Int32 nIdToCheck;
+    nIdToCheck
+        = comphelper::rng::uniform_uint_distribution(1, std::numeric_limits<sal_Int32>::max());
+    size_t nIdx = 0;
+    while (nIdx < nCCCount)
+    {
+        sal_Int32 nID
+            = pManager.UnsortedGet(nIdx)->GetContentControl().GetContentControl()->GetId();
+        if (nID == nIdToCheck)
+        {
+            nIdToCheck = comphelper::rng::uniform_uint_distribution(
+                1, std::numeric_limits<sal_Int32>::max());
+            nIdx = 0;
+        }
+        else
+            nIdx++;
+    }
+    pContentControl->SetId(nIdToCheck);
+
     OUString aPlaceholder;
     switch (eType)
     {
@@ -1109,7 +1199,7 @@ void SwWrtShell::InsertContentControl(SwContentControlType eType)
             }
             SwContentControlListItem aListItem;
             aListItem.m_aValue = aPlaceholder;
-            pContentControl->SetListItems({ aListItem });
+            pContentControl->SetListItems({ std::move(aListItem) });
             break;
         }
         case SwContentControlType::PICTURE:
@@ -1177,8 +1267,12 @@ void SwWrtShell::InsertContentControl(SwContentControlType eType)
         Left(SwCursorSkipMode::Chars, /*bSelect=*/true, aPlaceholder.getLength(),
                 /*bBasicCall=*/false);
     }
+
+    const RedlineFlags oldRedlineFlags = getIDocumentRedlineAccess().GetRedlineFlags();
+    getIDocumentRedlineAccess().SetRedlineFlags(RedlineFlags::Ignore);
     SwFormatContentControl aContentControl(pContentControl, RES_TXTATR_CONTENTCONTROL);
     SetAttrItem(aContentControl);
+    getIDocumentRedlineAccess().SetRedlineFlags(oldRedlineFlags);
 }
 
 // Insert footnote
@@ -1219,9 +1313,7 @@ static bool lcl_FoldedOutlineNodeEndOfParaSplit(SwWrtShell *pThis)
     SwTextNode* pTextNode = pThis->GetCursor()->GetPointNode().GetTextNode();
     if (pTextNode && pTextNode->IsOutline())
     {
-        bool bVisible = true;
-        pTextNode->GetAttrOutlineContentVisible(bVisible);
-        if (!bVisible)
+        if (!pTextNode->GetAttrOutlineContentVisible())
         {
             const SwNodes& rNodes = pThis->GetNodes();
             const SwOutlineNodes& rOutlineNodes = rNodes.GetOutLineNds();
@@ -1550,7 +1642,7 @@ void SwWrtShell::NumOrBulletOn(bool bNum)
                     aFormat.SetBulletChar( numfunc::GetBulletChar(static_cast<sal_uInt8>(nLevel)));
                     aFormat.SetNumberingType(SVX_NUM_CHAR_SPECIAL);
                     // #i93908# clear suffix for bullet lists
-                    aFormat.SetListFormat("", "", nLevel);
+                    aFormat.SetListFormat(u""_ustr, u""_ustr, nLevel);
                 }
                 aNumRule.Set(o3tl::narrowing<sal_uInt16>(nLevel), aFormat);
             }
@@ -1568,11 +1660,6 @@ void SwWrtShell::NumOrBulletOn(bool bNum)
         // Append the character template at the numbering.
         SwCharFormat* pChrFormat;
         SwDocShell* pDocSh = GetView().GetDocShell();
-        // #i63395#
-        // Only apply user defined default bullet font
-        const vcl::Font* pFnt = numfunc::IsDefBulletFontUserDefined()
-                           ? &numfunc::GetDefBulletFont()
-                           : nullptr;
 
         if (bNum)
         {
@@ -1599,16 +1686,19 @@ void SwWrtShell::NumOrBulletOn(bool bNum)
 
             if (! bNum)
             {
-                // #i63395#
-                // Only apply user defined default bullet font
-                if ( pFnt )
-                {
-                    aFormat.SetBulletFont( pFnt );
-                }
-                aFormat.SetBulletChar( numfunc::GetBulletChar(nLvl) );
+                uno::Sequence<OUString> aBulletSymbols(
+                    officecfg::Office::Common::BulletsNumbering::DefaultBullets::get());
+                uno::Sequence<OUString> aBulletSymbolsFonts(
+                    officecfg::Office::Common::BulletsNumbering::DefaultBulletsFonts::get());
+                sal_Int32 nBulletSymbolIndex = nLvl < aBulletSymbols.getLength() ? nLvl : 0;
+                aFormat.SetBulletChar(aBulletSymbols[nBulletSymbolIndex].toChar());
+                vcl::Font aFont;
+                sal_Int32 nBulletSymbolsFontIndex = nLvl < aBulletSymbolsFonts.getLength() ? nLvl : 0;
+                aFont.SetFamilyName(aBulletSymbolsFonts[nBulletSymbolsFontIndex]);
+                aFormat.SetBulletFont(&aFont);
                 aFormat.SetNumberingType(SVX_NUM_CHAR_SPECIAL);
                 // #i93908# clear suffix for bullet lists
-                aFormat.SetListFormat("", "", nLvl);
+                aFormat.SetListFormat(u""_ustr, u""_ustr, nLvl);
             }
 
             // #i95907#
@@ -1688,36 +1778,7 @@ void SwWrtShell::NumOrBulletOff()
     if (!pCurNumRule)
         return;
 
-    if (pCurNumRule->IsOutlineRule())
-    {
-        SwNumRule aNumRule(*pCurNumRule);
-
-        SwTextNode * pTextNode =
-            sw::GetParaPropsNode(*GetLayout(), GetCursor()->GetPoint()->GetNode());
-
-        if (pTextNode)
-        {
-            int nLevel = pTextNode->GetActualListLevel();
-
-            if (nLevel < 0)
-                nLevel = 0;
-
-            if (nLevel >= MAXLEVEL)
-                nLevel = MAXLEVEL - 1;
-
-            SwNumFormat aFormat(aNumRule.Get(o3tl::narrowing<sal_uInt16>(nLevel)));
-
-            aFormat.SetNumberingType(SVX_NUM_NUMBER_NONE);
-            aNumRule.Set(nLevel, aFormat);
-
-            // no start or continuation of a list - the outline style is only changed.
-            SetCurNumRule( aNumRule, false );
-        }
-    }
-    else
-    {
-        DelNumRules();
-    }
+    DelNumRules();
 
     // #126346# - Cursor can not be anymore in front of
     // a label, because numbering/bullet is switched off.
@@ -1748,7 +1809,7 @@ SelectionType SwWrtShell::GetSelectionType() const
     // Inserting a frame is not a DrawMode
     SelectionType nCnt;
     if ( !_rView.GetEditWin().IsFrameAction() &&
-        (IsObjSelected() || (_rView.IsDrawMode() && !IsFrameSelected()) ))
+        (GetSelectedObjCount() || (_rView.IsDrawMode() && !IsFrameSelected()) ))
     {
         if (GetDrawView()->IsTextEdit())
             nCnt = SelectionType::DrawObjectEditMode;
@@ -1827,12 +1888,27 @@ SelectionType SwWrtShell::GetSelectionType() const
     return nCnt;
 }
 
+bool SwWrtShell::IsSectionEditableInReadonly() const
+{
+    bool bIsEditableSect = false;
+    SwTextNode* pTextNode = GetCursor()->GetPointNode().GetTextNode();
+    if (pTextNode)
+    {
+        if (SwSectionNode* pSectNode = pTextNode->FindSectionNode())
+        {
+            bIsEditableSect = pSectNode->GetSection().IsEditInReadonly();
+        }
+    }
+
+    return bIsEditableSect;
+}
+
 // Find the text collection with the name rCollname
 // Returns:   Pointer at the collection or 0, if no
 //            text collection with this name exists, or
 //            this is a default template.
 
-SwTextFormatColl *SwWrtShell::GetParaStyle(const OUString &rCollName, GetStyle eCreate )
+SwTextFormatColl *SwWrtShell::GetParaStyle(const UIName &rCollName, GetStyle eCreate )
 {
     SwTextFormatColl* pColl = FindTextFormatCollByName( rCollName );
     if( !pColl && GETSTYLE_NOCREATE != eCreate )
@@ -1849,7 +1925,7 @@ SwTextFormatColl *SwWrtShell::GetParaStyle(const OUString &rCollName, GetStyle e
 //            character template with this name exists, or
 //            this is a default template or template is automatic.
 
-SwCharFormat *SwWrtShell::GetCharStyle(const OUString &rFormatName, GetStyle eCreate )
+SwCharFormat *SwWrtShell::GetCharStyle(const UIName &rFormatName, GetStyle eCreate )
 {
     SwCharFormat* pFormat = FindCharFormatByName( rFormatName );
     if( !pFormat && GETSTYLE_NOCREATE != eCreate )
@@ -1866,7 +1942,7 @@ SwCharFormat *SwWrtShell::GetCharStyle(const OUString &rFormatName, GetStyle eCr
 //            frame format with this name exists or
 //            this is a default format or the format is automatic.
 
-SwFrameFormat *SwWrtShell::GetTableStyle(std::u16string_view rFormatName)
+SwFrameFormat *SwWrtShell::GetTableStyle(const UIName& rFormatName)
 {
     for( size_t i = GetTableFrameFormatCount(); i; )
     {
@@ -1885,9 +1961,9 @@ void SwWrtShell::addCurrentPosition() {
 
 // Applying templates
 
-void SwWrtShell::SetPageStyle(const OUString &rCollName)
+void SwWrtShell::SetPageStyle(const UIName &rCollName)
 {
-    if( !SwCursorShell::HasSelection() && !IsSelFrameMode() && !IsObjSelected() )
+    if( !SwCursorShell::HasSelection() && !IsSelFrameMode() && !GetSelectedObjCount() )
     {
         SwPageDesc* pDesc = FindPageDescByName( rCollName, true );
         if( pDesc )
@@ -1897,7 +1973,7 @@ void SwWrtShell::SetPageStyle(const OUString &rCollName)
 
 // Access templates
 
-OUString const & SwWrtShell::GetCurPageStyle() const
+UIName const & SwWrtShell::GetCurPageStyle() const
 {
     return GetPageDesc(GetCurPageDesc( false/*bCalcFrame*/ )).GetName();
 }
@@ -1930,20 +2006,26 @@ void SwWrtShell::AutoUpdatePara(SwTextFormatColl* pColl, const SfxItemSet& rStyl
             SID_ATTR_PARA_PAGENUM, SID_ATTR_PARA_PAGENUM>  aCoreSet( GetAttrPool() );
     GetPaMAttr( pCursor, aCoreSet );
     bool bReset = false;
-    SfxItemIter aParaIter( aCoreSet );
-    for (auto pParaItem = aParaIter.GetCurItem(); pParaItem; pParaItem = aParaIter.NextItem())
+
+    // ITEM: SfxItemIter and removing SfxPoolItems:
+    std::vector<sal_uInt16> aDeleteWhichIDs;
+
+    for (SfxItemIter aIter(aCoreSet); !aIter.IsAtEnd(); aIter.NextItem())
     {
-        if(!IsInvalidItem(pParaItem))
+        if(!IsInvalidItem(aIter.GetCurItem()))
         {
-            sal_uInt16 nWhich = pParaItem->Which();
-            if(SfxItemState::SET == aParaIter.GetItemState() &&
-               SfxItemState::SET == rStyleSet.GetItemState(nWhich))
+            if (SfxItemState::SET == aIter.GetItemState() &&
+                SfxItemState::SET == rStyleSet.GetItemState(aIter.GetCurWhich()))
             {
-                aParaIter.ClearItem();
+                aDeleteWhichIDs.push_back(aIter.GetCurWhich());
                 bReset = true;
             }
         }
     }
+
+    for (auto nDelWhich : aDeleteWhichIDs)
+        aCoreSet.ClearItem(nDelWhich);
+
     StartAction();
     if(bReset)
     {
@@ -2016,8 +2098,8 @@ SwWrtShell::SwWrtShell( SwWrtShell& rSh, vcl::Window *_pWin, SwView &rShell )
     SetFlyMacroLnk( LINK(this, SwWrtShell, ExecFlyMac) );
 
     // place the cursor on the first field...
-    IFieldmark *pBM = nullptr;
-    if (IsFormProtected() && (pBM = GetFieldmarkAfter(/*bLoop=*/true)) !=nullptr) {
+    Fieldmark *pBM = nullptr;
+    if (IsFormProtected() && (pBM = GetFieldmarkAfter()) !=nullptr) {
         GotoFieldmark(pBM);
     }
 }
@@ -2034,8 +2116,8 @@ SwWrtShell::SwWrtShell( SwDoc& rDoc, vcl::Window *_pWin, SwView &rShell,
     SetFlyMacroLnk( LINK(this, SwWrtShell, ExecFlyMac) );
 
     // place the cursor on the first field...
-    IFieldmark *pBM = nullptr;
-    if (IsFormProtected() && (pBM = GetFieldmarkAfter(/*bLoop=*/true)) !=nullptr) {
+    Fieldmark *pBM = nullptr;
+    if (IsFormProtected() && (pBM = GetFieldmarkAfter()) !=nullptr) {
         GotoFieldmark(pBM);
     }
 }
@@ -2074,7 +2156,7 @@ bool SwWrtShell::CanInsert()
         return false;
     }
 
-    if(IsObjSelected())
+    if(GetSelectedObjCount())
     {
         return false;
     }
@@ -2148,7 +2230,7 @@ void SwWrtShell::SetReadonlyOption(bool bSet)
 // given all styles are changed
 
 void SwWrtShell::ChangeHeaderOrFooter(
-    std::u16string_view rStyleName, bool bHeader, bool bOn, bool bShowWarning)
+    const UIName& rStyleName, bool bHeader, bool bOn, bool bShowWarning)
 {
     SdrView *const pSdrView = GetDrawView();
     if (pSdrView && pSdrView->IsTextEdit())
@@ -2164,8 +2246,8 @@ void SwWrtShell::ChangeHeaderOrFooter(
             nFrom < nTo; ++nFrom )
     {
         SwPageDesc aDesc( GetPageDesc( nFrom ));
-        OUString sTmp(aDesc.GetName());
-        if( rStyleName.empty() || rStyleName == sTmp )
+        UIName sTmp(aDesc.GetName());
+        if( rStyleName.toString().isEmpty() || rStyleName == sTmp )
         {
             bool bChgd = false;
 
@@ -2220,7 +2302,7 @@ void SwWrtShell::ChangeHeaderOrFooter(
                     if ( !IsHeaderFooterEdit() )
                         ToggleHeaderFooterEdit();
                     bCursorSet = SetCursorInHdFt(
-                            rStyleName.empty() ? SIZE_MAX : nFrom,
+                            rStyleName.toString().isEmpty() ? SIZE_MAX : nFrom,
                             bHeader );
                 }
             }
@@ -2241,7 +2323,7 @@ void SwWrtShell::InsertPostIt(SwFieldMgr& rFieldMgr, const SfxRequest& rReq)
 {
     SwPostItField* pPostIt = dynamic_cast<SwPostItField*>(rFieldMgr.GetCurField());
     bool bNew = !(pPostIt && pPostIt->GetTyp()->Which() == SwFieldIds::Postit);
-    if (bNew || GetView().GetPostItMgr()->IsAnswer())
+    if (bNew || GetView().GetPostItMgr()->IsAnswer() || comphelper::LibreOfficeKit::isActive())
     {
         const SvxPostItAuthorItem* pAuthorItem = rReq.GetArg<SvxPostItAuthorItem>(SID_ATTR_POSTIT_AUTHOR);
         OUString sAuthor;
@@ -2249,8 +2331,9 @@ void SwWrtShell::InsertPostIt(SwFieldMgr& rFieldMgr, const SfxRequest& rReq)
             sAuthor = pAuthorItem->GetValue();
         else
         {
-            std::size_t nAuthor = SW_MOD()->GetRedlineAuthor();
-            sAuthor = SW_MOD()->GetRedlineAuthor(nAuthor);
+            SwModule* mod = SwModule::get();
+            std::size_t nAuthor = mod->GetRedlineAuthor();
+            sAuthor = mod->GetRedlineAuthor(nAuthor);
         }
 
         const SvxPostItTextItem* pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT);
@@ -2258,11 +2341,31 @@ void SwWrtShell::InsertPostIt(SwFieldMgr& rFieldMgr, const SfxRequest& rReq)
         if ( pTextItem )
             sText = pTextItem->GetValue();
 
-        // If we have a text already registered for answer, use that
-        if (GetView().GetPostItMgr()->IsAnswer() && !GetView().GetPostItMgr()->GetAnswerText().isEmpty())
+        std::optional<OutlinerParaObject> oTextPara;
+        if (const SvxPostItTextItem* pHtmlItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_HTML))
         {
-            sText = GetView().GetPostItMgr()->GetAnswerText();
-            GetView().GetPostItMgr()->RegisterAnswerText(OUString());
+            SwDocShell* pDocSh = GetView().GetDocShell();
+            Outliner aOutliner(&pDocSh->GetPool(), OutlinerMode::TextObject);
+            SwPostItHelper::ImportHTML(aOutliner, pHtmlItem->GetValue());
+            oTextPara = aOutliner.CreateParaObject();
+            sText = aOutliner.GetEditEngine().GetText();
+        }
+
+        // If we have a text already registered for answer, use that
+        SwPostItMgr* pPostItMgr = GetView().GetPostItMgr();
+        if (OutlinerParaObject* pAnswer = pPostItMgr->IsAnswer())
+        {
+            if (!pPostItMgr->GetAnswerText().isEmpty())
+            {
+                sText = GetView().GetPostItMgr()->GetAnswerText();
+                pPostItMgr->RegisterAnswerText(OUString());
+            }
+            const EditTextObject& rTextObject = pAnswer->GetTextObject();
+            if (rTextObject.GetParagraphCount() != 1 || !rTextObject.GetText(0).isEmpty())
+            {
+                oTextPara = *pAnswer;
+                sText = rTextObject.GetText();
+            }
         }
 
         if ( HasSelection() && !IsTableMode() )
@@ -2275,6 +2378,18 @@ void SwWrtShell::InsertPostIt(SwFieldMgr& rFieldMgr, const SfxRequest& rReq)
         GetView().GetEditWin().StopQuickHelp();
 
         SwInsertField_Data aData(SwFieldTypesEnum::Postit, 0, sAuthor, sText, 0);
+
+        {
+            SvxPostItIdItem const*const pParentParaIdItem{rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_PARENTPARAID)};
+            SvxPostItIdItem const*const pParentPostItIdItem{rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_PARENTPOSTITID)};
+            SfxStringItem const*const pParentNameItem{rReq.GetArg<SfxStringItem>(SID_ATTR_POSTIT_PARENTNAME)};
+            if (pParentParaIdItem && pParentPostItIdItem && pParentNameItem)
+            {
+                aData.m_oParentId.emplace(pParentParaIdItem->GetValue().toUInt32(),
+                    pParentPostItIdItem->GetValue().toUInt32(),
+                    pParentNameItem->GetValue());
+            }
+        }
 
         if (IsSelFrameMode())
         {
@@ -2318,12 +2433,24 @@ void SwWrtShell::InsertPostIt(SwFieldMgr& rFieldMgr, const SfxRequest& rReq)
             }
         }
 
+        // Defer broadcast of postit field update from layout until oTextPara has been
+        // applied to the field's associated postit window
+        if (oTextPara)
+            StartAction();
+
         rFieldMgr.InsertField( aData );
 
         Push();
         SwCursorShell::Left(1, SwCursorSkipMode::Chars);
         pPostIt = static_cast<SwPostItField*>(rFieldMgr.GetCurField());
+
+        if (pPostIt && oTextPara)
+            pPostIt->SetTextObject(*oTextPara);
+
         Pop(SwCursorShell::PopMode::DeleteCurrent); // Restore cursor position
+
+        if (oTextPara)
+            EndAction();
     }
 
     // Client has disabled annotations rendering, no need to
@@ -2403,7 +2530,7 @@ void SwWrtShell::MakeOutlineLevelsVisible(const int nLevel)
         {
             SwNodeIndex aIdx(*pNode, +1);
             // Make the outline paragraph frame
-            MakeFrames(GetDoc(), *pNode, aIdx.GetNode());
+            MakeFrames(*GetDoc(), *pNode, aIdx.GetNode());
             // Make the outline content visible but don't set the outline visible attribute and
             // don't make outline content made visible not visible that have outline visible
             // attribute false. Visibility will be taken care of when
@@ -2518,7 +2645,7 @@ void SwWrtShell::MakeOutlineContentVisible(const size_t nPos, bool bMakeVisible,
     {
         // reset the index marker and make frames
         aIdx.Assign(*pSttNd, +1);
-        MakeFrames(GetDoc(), aIdx.GetNode(), *pEndNd);
+        MakeFrames(*GetDoc(), aIdx.GetNode(), *pEndNd);
 
         if (bSetAttrOutlineVisibility)
         {
@@ -2531,9 +2658,7 @@ void SwWrtShell::MakeOutlineContentVisible(const size_t nPos, bool bMakeVisible,
                 if (pNd->IsTextNode() && pNd->GetTextNode()->IsOutline())
                 {
                     SwTextNode* pTextNd = pNd->GetTextNode();
-                    bool bOutlineContentVisibleAttr = true;
-                    pTextNd->GetAttrOutlineContentVisible(bOutlineContentVisibleAttr);
-                    if (!bOutlineContentVisibleAttr)
+                    if (!pTextNd->GetAttrOutlineContentVisible())
                     {
                         SwOutlineNodes::size_type iPos;
                         if (rOutlineNodes.Seek_Entry(pTextNd, &iPos))
@@ -2560,8 +2685,7 @@ void SwWrtShell::InvalidateOutlineContentVisibility()
     for (SwOutlineNodes::size_type nPos = 0; nPos < rOutlineNds.size(); ++nPos)
     {
         bool bIsOutlineContentVisible = IsOutlineContentVisible(nPos);
-        bool bOutlineContentVisibleAttr = true;
-        rOutlineNds[nPos]->GetTextNode()->GetAttrOutlineContentVisible(bOutlineContentVisibleAttr);
+        bool bOutlineContentVisibleAttr = rOutlineNds[nPos]->GetTextNode()->GetAttrOutlineContentVisible();
         if (!bIsOutlineContentVisible && bOutlineContentVisibleAttr)
             MakeOutlineContentVisible(nPos);
         else if (bIsOutlineContentVisible && !bOutlineContentVisibleAttr)
@@ -2585,9 +2709,7 @@ void SwWrtShell::MakeAllFoldedOutlineContentVisible(bool bMakeVisible)
         std::vector<SwNode*> aFoldedOutlineNodeArray;
         for (SwNode* pNd: GetNodes().GetOutLineNds())
         {
-            bool bOutlineContentVisibleAttr = true;
-            pNd->GetTextNode()->GetAttrOutlineContentVisible(bOutlineContentVisibleAttr);
-            if (!bOutlineContentVisibleAttr)
+            if (!pNd->GetTextNode()->GetAttrOutlineContentVisible())
             {
                 aFoldedOutlineNodeArray.push_back(pNd);
                 pNd->GetTextNode()->SetAttrOutlineContentVisible(true);
@@ -2629,9 +2751,7 @@ void SwWrtShell::MakeAllFoldedOutlineContentVisible(bool bMakeVisible)
 
 bool SwWrtShell::GetAttrOutlineContentVisible(const size_t nPos) const
 {
-    bool bVisibleAttr = true;
-    GetNodes().GetOutLineNds()[nPos]->GetTextNode()->GetAttrOutlineContentVisible(bVisibleAttr);
-    return bVisibleAttr;
+    return GetNodes().GetOutLineNds()[nPos]->GetTextNode()->GetAttrOutlineContentVisible();
 }
 
 bool SwWrtShell::HasFoldedOutlineContentSelected() const
@@ -2688,9 +2808,9 @@ void SwWrtShell::InfoReadOnlyDialog(bool bAsync) const
     {
         std::unique_ptr<weld::Builder>
                 xBuilder(Application::CreateBuilder(GetView().GetFrameWeld(),
-                                                    "modules/swriter/ui/inforeadonlydialog.ui"));
+                                                    u"modules/swriter/ui/inforeadonlydialog.ui"_ustr));
         std::unique_ptr<weld::MessageDialog>
-                xInfo(xBuilder->weld_message_dialog("InfoReadonlyDialog"));
+                xInfo(xBuilder->weld_message_dialog(u"InfoReadonlyDialog"_ustr));
         if (GetViewOptions()->IsShowOutlineContentVisibilityButton() &&
                 HasFoldedOutlineContentSelected())
         {
@@ -2704,9 +2824,9 @@ void SwWrtShell::InfoReadOnlyDialog(bool bAsync) const
 bool SwWrtShell::WarnHiddenSectionDialog() const
 {
     std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(
-        GetView().GetFrameWeld(), "modules/swriter/ui/warnhiddensectiondialog.ui"));
+        GetView().GetFrameWeld(), u"modules/swriter/ui/warnhiddensectiondialog.ui"_ustr));
     std::unique_ptr<weld::MessageDialog> xQuery(
-        xBuilder->weld_message_dialog("WarnHiddenSectionDialog"));
+        xBuilder->weld_message_dialog(u"WarnHiddenSectionDialog"_ustr));
     if (GetViewOptions()->IsShowOutlineContentVisibilityButton()
         && HasFoldedOutlineContentSelected())
     {

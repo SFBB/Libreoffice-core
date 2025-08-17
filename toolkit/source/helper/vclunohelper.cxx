@@ -21,6 +21,7 @@
 #include <vcl/dibtools.hxx>
 #include <vcl/event.hxx>
 #include <vcl/graph.hxx>
+#include <vcl/graphic/BitmapHelper.hxx>
 #include <vcl/metric.hxx>
 #include <vcl/ptrstyle.hxx>
 #include <vcl/unohelp.hxx>
@@ -37,79 +38,41 @@
 #include <com/sun/star/embed/EmbedMapUnits.hpp>
 #include <com/sun/star/graphic/XGraphic.hpp>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <awt/vclxbitmap.hxx>
 #include <awt/vclxregion.hxx>
 #include <toolkit/awt/vclxwindow.hxx>
 #include <awt/vclxgraphics.hxx>
 #include <toolkit/awt/vclxfont.hxx>
-#include <controls/unocontrolcontainer.hxx>
-#include <controls/unocontrolcontainermodel.hxx>
+#include <toolkit/controls/unocontrolcontainer.hxx>
+#include <toolkit/controls/unocontrolcontainermodel.hxx>
 #include <comphelper/processfactory.hxx>
 
 #include <com/sun/star/awt/Toolkit.hpp>
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/awt/Point.hpp>
 
 using namespace ::com::sun::star;
 
 
 uno::Reference< css::awt::XToolkit> VCLUnoHelper::CreateToolkit()
 {
-    uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     uno::Reference< awt::XToolkit> xToolkit( awt::Toolkit::create(xContext), uno::UNO_QUERY_THROW );
     return xToolkit;
 }
 
-BitmapEx VCLUnoHelper::GetBitmap( const css::uno::Reference< css::awt::XBitmap>& rxBitmap )
+Bitmap VCLUnoHelper::GetBitmap( const css::uno::Reference< css::awt::XBitmap>& rxBitmap )
 {
-    BitmapEx aBmp;
+    if (VCLXBitmap* pVCLBitmap = dynamic_cast<VCLXBitmap*>(rxBitmap.get()))
+        return pVCLBitmap->GetBitmap();
 
-    css::uno::Reference< css::graphic::XGraphic > xGraphic( rxBitmap, css::uno::UNO_QUERY );
-    if( xGraphic.is() )
-    {
-        Graphic aGraphic( xGraphic );
-        aBmp = aGraphic.GetBitmapEx();
-    }
-    else if ( rxBitmap.is() )
-    {
-        VCLXBitmap* pVCLBitmap = dynamic_cast<VCLXBitmap*>( rxBitmap.get() );
-        if ( pVCLBitmap )
-            aBmp = pVCLBitmap->GetBitmap();
-        else
-        {
-            Bitmap aDIB, aMask;
-            {
-                css::uno::Sequence<sal_Int8> aBytes = rxBitmap->getDIB();
-                SvMemoryStream aMem( aBytes.getArray(), aBytes.getLength(), StreamMode::READ );
-                ReadDIB(aDIB, aMem, true);
-            }
-            {
-                css::uno::Sequence<sal_Int8> aBytes = rxBitmap->getMaskDIB();
-                SvMemoryStream aMem( aBytes.getArray(), aBytes.getLength(), StreamMode::READ );
-                ReadDIB(aMask, aMem, true);
-            }
-            aMask.Invert(); // Convert from transparency to alpha
-            aBmp = BitmapEx( aDIB, aMask );
-        }
-    }
-    return aBmp;
+    return Bitmap(vcl::GetBitmap(rxBitmap));
 }
 
-css::uno::Reference< css::awt::XBitmap> VCLUnoHelper::CreateBitmap( const BitmapEx& rBitmap )
+css::uno::Reference< css::awt::XBitmap> VCLUnoHelper::CreateBitmap( const Bitmap& rBitmap )
 {
-    Graphic aGraphic( rBitmap );
-    css::uno::Reference< css::awt::XBitmap> xBmp( aGraphic.GetXGraphic(), css::uno::UNO_QUERY );
-    return xBmp;
+    return Graphic(rBitmap).GetXGraphic().query<css::awt::XBitmap>();
 }
 
 vcl::Window* VCLUnoHelper::GetWindow( const css::uno::Reference< css::awt::XWindow>& rxWindow )
-{
-    VCLXWindow* pVCLXWindow = dynamic_cast<VCLXWindow*>( rxWindow.get() );
-    return pVCLXWindow ? pVCLXWindow->GetWindow() : nullptr;
-}
-
-vcl::Window* VCLUnoHelper::GetWindow( const css::uno::Reference< css::awt::XWindow2>& rxWindow )
 {
     VCLXWindow* pVCLXWindow = dynamic_cast<VCLXWindow*>( rxWindow.get() );
     return pVCLXWindow ? pVCLXWindow->GetWindow() : nullptr;
@@ -131,7 +94,7 @@ vcl::Region VCLUnoHelper::GetRegion( const css::uno::Reference< css::awt::XRegio
     {
         const css::uno::Sequence< css::awt::Rectangle > aRects = rxRegion->getRectangles();
         for ( const auto& rRect : aRects )
-            aRegion.Union( VCLRectangle( rRect ) );
+            aRegion.Union(vcl::unohelper::ConvertToVCLRect(rRect));
     }
     return aRegion;
 }
@@ -182,7 +145,7 @@ tools::Polygon VCLUnoHelper::CreatePolygon( const css::uno::Sequence< sal_Int32 
     return aPoly;
 }
 
-css::uno::Reference< css::awt::XControlContainer> VCLUnoHelper::CreateControlContainer( vcl::Window* pWindow )
+rtl::Reference<UnoControlContainer> VCLUnoHelper::CreateControlContainer( vcl::Window* pWindow )
 {
     rtl::Reference<UnoControlContainer> pContainer = new UnoControlContainer( pWindow->GetComponentInterface() );
 
@@ -473,44 +436,9 @@ MapUnit /* MapModeUnit */ VCLUnoHelper::ConvertToMapModeUnit(sal_Int16 /* com.su
         break;
 
     default:
-        throw css::lang::IllegalArgumentException("Unsupported measure unit.", nullptr, 1 );
+        throw css::lang::IllegalArgumentException(u"Unsupported measure unit."_ustr, nullptr, 1 );
     }
     return eMode;
-}
-
-::Size VCLUnoHelper::ConvertToVCLSize(css::awt::Size const& _aSize)
-{
-    ::Size aVCLSize(_aSize.Width, _aSize.Height);
-    return aVCLSize;
-}
-
-css::awt::Size VCLUnoHelper::ConvertToAWTSize(::Size /* VCLSize */ const& _aSize)
-{
-    css::awt::Size aAWTSize(_aSize.Width(), _aSize.Height());
-    return aAWTSize;
-}
-
-
-::Point VCLUnoHelper::ConvertToVCLPoint(css::awt::Point const& _aPoint)
-{
-    ::Point aVCLPoint(_aPoint.X, _aPoint.Y);
-    return aVCLPoint;
-}
-
-css::awt::Point VCLUnoHelper::ConvertToAWTPoint(::Point /* VCLPoint */ const& _aPoint)
-{
-    css::awt::Point aAWTPoint(_aPoint.X(), _aPoint.Y());
-    return aAWTPoint;
-}
-
-::tools::Rectangle VCLUnoHelper::ConvertToVCLRect( css::awt::Rectangle const & _rRect )
-{
-    return ::tools::Rectangle( _rRect.X, _rRect.Y, _rRect.X + _rRect.Width - 1, _rRect.Y + _rRect.Height - 1 );
-}
-
-css::awt::Rectangle VCLUnoHelper::ConvertToAWTRect( ::tools::Rectangle const & _rRect )
-{
-    return css::awt::Rectangle( _rRect.Left(), _rRect.Top(), _rRect.GetWidth(), _rRect.GetHeight() );
 }
 
 awt::MouseEvent VCLUnoHelper::createMouseEvent( const ::MouseEvent& _rVclEvent, const uno::Reference< uno::XInterface >& _rxContext )

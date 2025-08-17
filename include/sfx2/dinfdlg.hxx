@@ -50,7 +50,6 @@ namespace com::sun::star {
 }
 
 struct CustomProperty;
-class SvtCalendarBox;
 
 // class SfxDocumentInfoItem ---------------------------------------------
 
@@ -82,6 +81,7 @@ private:
     OUString                     m_Type;
     OUString                     m_Subject;
     OUString                     m_Title;
+    sal_Int64                    m_nFileSize;
     bool                         m_bHasTemplate;
     bool                         m_bDeleteUserData;
     bool                         m_bUseUserData;
@@ -91,11 +91,12 @@ private:
 
 public:
     static SfxPoolItem* CreateDefault();
+    DECLARE_ITEM_TYPE_FUNCTION(SfxDocumentInfoItem)
     SfxDocumentInfoItem();
     SfxDocumentInfoItem( const OUString &rFileName,
         const css::uno::Reference< css::document::XDocumentProperties> & i_xDocProps,
         const css::uno::Sequence< css::document::CmisProperty> & i_cmisProps,
-        bool bUseUserData, bool bUseThumbnailSave );
+        bool bUseUserData, bool bUseThumbnailSave, sal_Int64 nFileSize );
     SfxDocumentInfoItem( const SfxDocumentInfoItem& );
     virtual ~SfxDocumentInfoItem() override;
 
@@ -148,6 +149,7 @@ public:
     void        setSubject(const OUString& i_val) { m_Subject = i_val; }
     const OUString& getTitle() const { return m_Title; }
     void        setTitle(const OUString& i_val) { m_Title = i_val; }
+    sal_Int64   getFileSize() const { return m_nFileSize; }
 
     /// reset user-specific data (author, modified-by, ...)
     void        resetUserData(const OUString & i_rAuthor);
@@ -171,7 +173,10 @@ public:
 
     void        SetCmisProperties(const css::uno::Sequence< css::document::CmisProperty >& cmisProps );
     virtual SfxDocumentInfoItem* Clone( SfxItemPool* pPool = nullptr ) const override;
-    virtual bool            operator==( const SfxPoolItem& ) const override;
+    virtual bool        operator==( const SfxPoolItem& ) const override;
+    // Marked as false since the SfxStringItem superclass supports hashing, but
+    // this class has not been checked for safety under hashing yet.
+    virtual bool        supportsHashCode() const override { return false; }
     virtual bool        QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool        PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 };
@@ -271,9 +276,6 @@ public:
     void AddFontTabPage();
 };
 
-// class CustomPropertiesRemoveButton ------------------------------------
-struct CustomPropertyLine;
-
 class CustomPropertiesDateField
 {
 private:
@@ -287,11 +289,6 @@ public:
     void set_date(const Date& rDate);
     ~CustomPropertiesDateField();
 };
-
-namespace weld
-{
-    class TimeFormatter;
-}
 
 class CustomPropertiesTimeField
 {

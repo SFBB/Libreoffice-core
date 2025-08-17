@@ -41,8 +41,6 @@
 #include <comphelper/lok.hxx>
 #include <textboxhelper.hxx>
 
-using namespace com::sun::star::drawing;
-
 void SwDrawShell::ExecDrawDlg(SfxRequest& rReq)
 {
     SwWrtShell*     pSh     = &GetShell();
@@ -61,32 +59,38 @@ void SwDrawShell::ExecDrawDlg(SfxRequest& rReq)
         case FN_DRAWTEXT_ATTR_DLG:
         {
             SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-            ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateTextTabDialog(rReq.GetFrameWeld(), &aNewAttr, pView));
-            sal_uInt16 nResult = pDlg->Execute();
-
-            if (nResult == RET_OK)
-            {
-                if (pView->AreObjectsMarked())
+            VclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateTextTabDialog(rReq.GetFrameWeld(), &aNewAttr, pView));
+            auto xRequest = std::make_shared<SfxRequest>(rReq);
+            rReq.Ignore(); // the 'old' request is not relevant any more
+            pDlg->StartExecuteAsync(
+                [pDlg, xRequest=std::move(xRequest), pView, pSh] (sal_Int32 nResult)->void
                 {
-                    pSh->StartAction();
-                    pView->SetAttributes(*pDlg->GetOutputItemSet());
-                    auto vMarkedObjs = pView->GetMarkedObjects();
-                    for (auto pObj : vMarkedObjs)
+                    if (nResult == RET_OK)
                     {
-                        // If the shape has textframe, set its params as well.
-                        if (SwTextBoxHelper::hasTextFrame(pObj))
-                            SwTextBoxHelper::updateTextBoxMargin(pObj);
+                        if (pView->GetMarkedObjectList().GetMarkCount() != 0)
+                        {
+                            pSh->StartAction();
+                            pView->SetAttributes(*pDlg->GetOutputItemSet());
+                            auto vMarkedObjs = pView->GetMarkedObjects();
+                            for (auto pObj : vMarkedObjs)
+                            {
+                                // If the shape has textframe, set its params as well.
+                                if (SwTextBoxHelper::hasTextFrame(pObj))
+                                    SwTextBoxHelper::updateTextBoxMargin(pObj);
+                            }
+                            xRequest->Done(*(pDlg->GetOutputItemSet()));
+                            pSh->EndAction();
+                        }
                     }
-                    rReq.Done(*(pDlg->GetOutputItemSet()));
-                    pSh->EndAction();
+                    pDlg->disposeOnce();
                 }
-            }
+            );
         }
         break;
 
         case SID_MEASURE_DLG:
         {
-            bool bHasMarked = pView->AreObjectsMarked();
+            bool bHasMarked = pView->GetMarkedObjectList().GetMarkCount() != 0;
 
             SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
             ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateSfxDialog(rReq.GetFrameWeld(),
@@ -105,7 +109,7 @@ void SwDrawShell::ExecDrawDlg(SfxRequest& rReq)
 
         case SID_ATTRIBUTES_AREA:
         {
-            bool bHasMarked = pView->AreObjectsMarked();
+            bool bHasMarked = pView->GetMarkedObjectList().GetMarkCount() != 0;
 
             SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
             VclPtr<AbstractSvxAreaTabDialog> pDlg(pFact->CreateSvxAreaTabDialog(rReq.GetFrameWeld(),
@@ -127,7 +131,7 @@ void SwDrawShell::ExecDrawDlg(SfxRequest& rReq)
                         pView->SetDefaultAttr(*pDlg->GetOutputItemSet(), false);
                     pSh->EndAction();
 
-                    static sal_uInt16 aInval[] =
+                    static const sal_uInt16 aInval[] =
                     {
                         SID_ATTR_FILL_STYLE,
                         SID_ATTR_FILL_COLOR,
@@ -155,7 +159,7 @@ void SwDrawShell::ExecDrawDlg(SfxRequest& rReq)
 
         case SID_ATTRIBUTES_LINE:
         {
-            bool bHasMarked = pView->AreObjectsMarked();
+            bool bHasMarked = pView->GetMarkedObjectList().GetMarkCount() != 0;
 
             const SdrObject* pObj = nullptr;
             const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
@@ -182,7 +186,7 @@ void SwDrawShell::ExecDrawDlg(SfxRequest& rReq)
                         pView->SetDefaultAttr(*pDlg->GetOutputItemSet(), false);
                     pSh->EndAction();
 
-                    static sal_uInt16 aInval[] =
+                    static const sal_uInt16 aInval[] =
                     {
                         SID_ATTR_LINE_STYLE,                // ( SID_SVX_START + 169 )
                         SID_ATTR_LINE_DASH,                 // ( SID_SVX_START + 170 )
@@ -254,7 +258,7 @@ void SwDrawShell::ExecDrawAttrArgs(SfxRequest const & rReq)
 
     if (pArgs)
     {
-        if(pView->AreObjectsMarked())
+        if(pView->GetMarkedObjectList().GetMarkCount() != 0)
         {
             std::unique_ptr<SfxItemSet> pNewArgs = pArgs->Clone();
             lcl_convertStringArguments(pNewArgs);
@@ -333,7 +337,7 @@ void SwDrawShell::GetDrawAttrState(SfxItemSet& rSet)
 {
     SdrView* pSdrView = GetShell().GetDrawView();
 
-    if (pSdrView->AreObjectsMarked())
+    if (pSdrView->GetMarkedObjectList().GetMarkCount() != 0)
     {
         bool bDisable = Disable( rSet );
 

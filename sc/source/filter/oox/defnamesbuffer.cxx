@@ -37,6 +37,7 @@
 #include <worksheetbuffer.hxx>
 #include <tokenarray.hxx>
 #include <tokenuno.hxx>
+#include <cellsuno.hxx>
 #include <compiler.hxx>
 #include <document.hxx>
 
@@ -270,7 +271,22 @@ bool DefinedName::isValid(
 std::unique_ptr<ScTokenArray> DefinedName::getScTokens(
         const css::uno::Sequence<css::sheet::ExternalLinkInfo>& rExternalLinks )
 {
-    ScCompiler aCompiler(getScDocument(), ScAddress(0, 0, mnCalcSheet), formula::FormulaGrammar::GRAM_OOXML);
+    ScAddress aReferenceAddr(0, 0, (mnCalcSheet < 0 ? 0 : mnCalcSheet));
+    ScDocument& rDoc = getScDocument();
+    if (mxFormula) {
+        SequenceInputStream aInputStrm(*mxFormula);
+        ApiTokenSequence aTokens = getFormulaParser().importFormula(aReferenceAddr, FormulaType::Cell, aInputStrm);
+        std::unique_ptr<ScTokenArray> pArray(new ScTokenArray(rDoc));
+        (void)ScTokenConversion::ConvertToTokenArray( rDoc, *pArray, aTokens );
+        return pArray;
+    }
+
+    // mnCalcSheet < 0 means global name and results in tab deleted when
+    // compiling a reference without sheet reference. For a global name it
+    // doesn't really matter which sheet is the position's default sheet if the
+    // reference doesn't specify any. tdf#164895
+    ScCompiler aCompiler(getScDocument(), aReferenceAddr,
+            formula::FormulaGrammar::GRAM_OOXML);
     aCompiler.SetExternalLinks( rExternalLinks);
     std::unique_ptr<ScTokenArray> pArray(aCompiler.CompileString(maModel.maFormula));
     // Compile the tokens into RPN once to populate information into tokens
@@ -299,8 +315,11 @@ void DefinedName::convertFormula( const css::uno::Sequence<css::sheet::ExternalL
     }
 
     ScTokenArray* pTokenArray = pScRangeData->GetCode();
+    /* TODO: conversion to FormulaToken sequence would be completely
+     * unnecessary if getFormulaParser().extractCellRangeList() could operate
+     * on ScTokenArray instead. */
     Sequence< FormulaToken > aFTokenSeq;
-    ScTokenConversion::ConvertToTokenSequence( getScDocument(), aFTokenSeq, *pTokenArray );
+    ScTokenConversion::ConvertToTokenSequence( getScDocument(), aFTokenSeq, *pTokenArray, true);
     // set built-in names (print ranges, repeated titles, filter ranges)
     if( isGlobalName() )
         return;
@@ -309,7 +328,7 @@ void DefinedName::convertFormula( const css::uno::Sequence<css::sheet::ExternalL
     {
     case BIFF_DEFNAME_PRINTAREA:
     {
-        Reference< XPrintAreas > xPrintAreas( getSheetFromDoc( mnCalcSheet ), UNO_QUERY );
+        rtl::Reference< ScTableSheetObj > xPrintAreas( getSheetFromDoc( mnCalcSheet ) );
         ScRangeList aPrintRanges;
         getFormulaParser().extractCellRangeList( aPrintRanges, aFTokenSeq, mnCalcSheet );
         if( xPrintAreas.is() && !aPrintRanges.empty() )
@@ -318,7 +337,7 @@ void DefinedName::convertFormula( const css::uno::Sequence<css::sheet::ExternalL
     break;
     case BIFF_DEFNAME_PRINTTITLES:
     {
-        Reference< XPrintAreas > xPrintAreas( getSheetFromDoc( mnCalcSheet ), UNO_QUERY );
+        rtl::Reference< ScTableSheetObj > xPrintAreas( getSheetFromDoc( mnCalcSheet ) );
         ScRangeList aTitleRanges;
         getFormulaParser().extractCellRangeList( aTitleRanges, aFTokenSeq, mnCalcSheet );
         if( xPrintAreas.is() && !aTitleRanges.empty() )
@@ -358,8 +377,11 @@ bool DefinedName::getAbsoluteRange( ScRange& orRange ) const
 {
     ScRangeData* pScRangeData = maScRangeData.first;
     ScTokenArray* pTokenArray = pScRangeData->GetCode();
+    /* TODO: conversion to FormulaToken sequence would be completely
+     * unnecessary if getFormulaParser().extractCellRange() could operate
+     * on ScTokenArray instead. */
     Sequence< FormulaToken > aFTokenSeq;
-    ScTokenConversion::ConvertToTokenSequence(getScDocument(), aFTokenSeq, *pTokenArray);
+    ScTokenConversion::ConvertToTokenSequence(getScDocument(), aFTokenSeq, *pTokenArray, true);
     return getFormulaParser().extractCellRange( orRange, aFTokenSeq );
 }
 

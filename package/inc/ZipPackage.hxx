@@ -41,13 +41,9 @@
 class SvStream;
 class ZipOutputStream;
 class ZipPackageFolder;
-class ZipFile;
 namespace com::sun::star {
-    namespace container { class XNameContainer; }
-    namespace io { class XStream; class XOutputStream; class XInputStream; class XSeekable; class XActiveDataStreamer; }
-    namespace lang { class XMultiServiceFactory; }
+    namespace io { class XStream; class XInputStream; class XSeekable; class XActiveDataStreamer; }
     namespace uno { class XComponentContext; }
-    namespace task { class XInteractionHandler; }
 }
 
 enum InitialisationMode
@@ -57,6 +53,8 @@ enum InitialisationMode
     e_IMode_XInputStream,
     e_IMode_XStream
 };
+
+sal_Int32 GetDefaultDerivedKeySize(sal_Int32 nCipherID);
 
 class ZipPackage final : public cppu::WeakImplHelper
                     <
@@ -104,6 +102,7 @@ class ZipPackage final : public cppu::WeakImplHelper
 
     bool isLocalFile() const;
 
+    void checkZipEntriesWithDD();
     void parseManifest();
     void parseContentType();
     void getZipFileContents();
@@ -125,18 +124,9 @@ public:
 
     sal_Int32 GetStartKeyGenID() const { return m_nStartKeyGenerationID; }
     sal_Int32 GetEncAlgID() const { return m_nCommonEncryptionID; }
-    ::std::optional<sal_Int32> GetChecksumAlgID() const { return m_oChecksumDigestID; }
+    const ::std::optional<sal_Int32> & GetChecksumAlgID() const { return m_oChecksumDigestID; }
     sal_Int32 GetDefaultDerivedKeySize() const {
-        switch (m_nCommonEncryptionID)
-        {
-            case css::xml::crypto::CipherID::BLOWFISH_CFB_8:
-                return 16;
-            case css::xml::crypto::CipherID::AES_CBC_W3C_PADDING:
-            case css::xml::crypto::CipherID::AES_GCM_W3C:
-                return 32;
-            default:
-                O3TL_UNREACHABLE;
-        }
+        return ::GetDefaultDerivedKeySize(m_nCommonEncryptionID);
     }
 
     rtl::Reference<comphelper::RefCountedMutex>& GetSharedMutexRef() { return m_aMutexHolder; }

@@ -62,9 +62,9 @@ namespace sd {
 /**
  * Base-class for all drawmodul-specific functions
  */
-FuDraw::FuDraw(ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView,
-               SdDrawDocument* pDoc, SfxRequest& rReq)
-    : FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+FuDraw::FuDraw(ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView,
+               SdDrawDocument& rDoc, SfxRequest& rReq)
+    : FuPoor(rViewSh, pWin, pView, rDoc, rReq)
     , aNewPointer(PointerStyle::Arrow)
     , aOldPointer(PointerStyle::Arrow)
     , bMBDown(false)
@@ -85,7 +85,7 @@ FuDraw::~FuDraw()
  */
 void FuDraw::DoModifiers(const MouseEvent& rMEvt, bool bSnapModPressed)
 {
-    FrameView* pFrameView = mpViewShell->GetFrameView();
+    FrameView* pFrameView = mrViewShell.GetFrameView();
     bool bGridSnap = pFrameView->IsGridSnap();
     bGridSnap = (bSnapModPressed != bGridSnap);
 
@@ -149,7 +149,7 @@ bool FuDraw::MouseButtonDown(const MouseEvent& rMEvt)
 
     if ( rMEvt.IsLeft() )
     {
-        FrameView* pFrameView = mpViewShell->GetFrameView();
+        FrameView* pFrameView = mrViewShell.GetFrameView();
 
         bool bOrtho = false;
 
@@ -213,7 +213,7 @@ bool FuDraw::MouseButtonDown(const MouseEvent& rMEvt)
 
 bool FuDraw::MouseMove(const MouseEvent& rMEvt)
 {
-    FrameView* pFrameView = mpViewShell->GetFrameView();
+    FrameView* pFrameView = mrViewShell.GetFrameView();
     Point aPos = mpWindow->PixelToLogic( rMEvt.GetPosPixel() );
 
     bool bOrtho = false;
@@ -288,7 +288,7 @@ bool FuDraw::MouseButtonUp(const MouseEvent& rMEvt)
 
     if (mpView)
     {
-        FrameView* pFrameView = mpViewShell->GetFrameView();
+        FrameView* pFrameView = mrViewShell.GetFrameView();
         mpView->SetOrtho( pFrameView->IsOrtho() );
         mpView->SetAngleSnapEnabled( pFrameView->IsAngleSnapEnabled() );
         mpView->SetSnapEnabled(true);
@@ -317,6 +317,7 @@ bool FuDraw::MouseButtonUp(const MouseEvent& rMEvt)
 bool FuDraw::KeyInput(const KeyEvent& rKEvt)
 {
     bool bReturn = false;
+    const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
 
     switch ( rKEvt.GetKeyCode().GetCode() )
     {
@@ -341,7 +342,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                 else
                 {
                     // wait-mousepointer while deleting object
-                    weld::WaitObject aWait(mpViewShell->GetFrameWeld());
+                    weld::WaitObject aWait(mrViewShell.GetFrameWeld());
                     // delete object
                     mpView->DeleteMarked();
                 }
@@ -361,7 +362,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                 // and thus is allowed to call SelectionHasChanged().
 
                 // Switch to FuSelect.
-                mpViewShell->GetViewFrame()->GetDispatcher()->Execute(
+                mrViewShell.GetViewFrame()->GetDispatcher()->Execute(
                     SID_OBJECT_SELECT,
                     SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
 
@@ -369,7 +370,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                 if(!mpView->MarkNextObj( !aCode.IsShift() ))
                 {
                     //If there is only one object, don't do the UnmarkAllObj() & MarkNextObj().
-                    if ( mpView->HasMultipleMarkableObjects() && mpView->AreObjectsMarked() )
+                    if ( mpView->HasMultipleMarkableObjects() && rMarkList.GetMarkCount() != 0 )
                     {
                         // No next object: go over open end and get first from
                         // the other side
@@ -378,7 +379,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                     }
                 }
 
-                if(mpView->AreObjectsMarked())
+                if(rMarkList.GetMarkCount() != 0)
                     mpView->MakeVisible(mpView->GetAllMarkedRect(), *mpWindow);
 
                 bReturn = true;
@@ -396,7 +397,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                 mpView->UnmarkAllObj();
                 mpView->MarkNextObj();
 
-                if(mpView->AreObjectsMarked())
+                if(rMarkList.GetMarkCount() != 0)
                     mpView->MakeVisible(mpView->GetAllMarkedRect(), *mpWindow);
 
                 bReturn = true;
@@ -414,7 +415,7 @@ bool FuDraw::KeyInput(const KeyEvent& rKEvt)
                 mpView->UnmarkAllObj();
                 mpView->MarkNextObj(true);
 
-                if(mpView->AreObjectsMarked())
+                if(rMarkList.GetMarkCount() != 0)
                     mpView->MakeVisible(mpView->GetAllMarkedRect(), *mpWindow);
 
                 bReturn = true;
@@ -467,7 +468,7 @@ void FuDraw::ForcePointer(const MouseEvent* pMEvt)
 
     if (mpView->IsDragObj())
     {
-        if (SD_MOD()->GetWaterCan() && !mpView->PickHandle(aPnt))
+        if (SdModule::get()->GetWaterCan() && !mpView->PickHandle(aPnt))
         {
             // water can mode
             bDefPointer = false;
@@ -478,17 +479,17 @@ void FuDraw::ForcePointer(const MouseEvent* pMEvt)
     {
         SdrHdl* pHdl = mpView->PickHandle(aPnt);
 
-        if (SD_MOD()->GetWaterCan() && !pHdl)
+        if (SdModule::get()->GetWaterCan() && !pHdl)
         {
             // water can mode
             bDefPointer = false;
             mpWindow->SetPointer(PointerStyle::Fill);
         }
         else if (!pHdl &&
-                 mpViewShell->GetViewFrame()->HasChildWindow(SvxBmpMaskChildWindow::GetChildWindowId()))
+                 mrViewShell.GetViewFrame()->HasChildWindow(SvxBmpMaskChildWindow::GetChildWindowId()))
         {
             // pipette mode
-            SfxChildWindow* pWnd = mpViewShell->GetViewFrame()->GetChildWindow(SvxBmpMaskChildWindow::GetChildWindowId());
+            SfxChildWindow* pWnd = mrViewShell.GetViewFrame()->GetChildWindow(SvxBmpMaskChildWindow::GetChildWindowId());
             SvxBmpMask* pMask = pWnd ? static_cast<SvxBmpMask*>(pWnd->GetWindow()) : nullptr;
             if (pMask && pMask->IsEyedropping())
             {
@@ -628,10 +629,9 @@ void FuDraw::DoubleClick(const MouseEvent& rMEvt)
 {
     sal_uInt16 nHitLog = sal_uInt16 ( mpWindow->PixelToLogic(Size(HITPIX,0)).Width() );
 
-    if ( mpView->AreObjectsMarked() )
+    const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
+    if ( rMarkList.GetMarkCount() != 0 )
     {
-        const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
-
         if (rMarkList.GetMarkCount() == 1)
         {
             SdrMark* pMark = rMarkList.GetMark(0);
@@ -640,28 +640,30 @@ void FuDraw::DoubleClick(const MouseEvent& rMEvt)
             SdrInventor nInv = pObj->GetObjInventor();
             SdrObjKind  nSdrObjKind = pObj->GetObjIdentifier();
 
-            if (nInv == SdrInventor::Default && nSdrObjKind == SdrObjKind::OLE2)
+            if (nInv == SdrInventor::Default && nSdrObjKind == SdrObjKind::OLE2
+                && !mpDocSh->IsReadOnly())
             {
                 // activate OLE-object
                 SfxInt16Item aItem(SID_OBJECT, 0);
-                mpViewShell->GetViewFrame()->
+                mrViewShell.GetViewFrame()->
                     GetDispatcher()->ExecuteList(SID_OBJECT,
                                                  SfxCallMode::ASYNCHRON | SfxCallMode::RECORD,
                                                  { &aItem });
             }
-            else if (nInv == SdrInventor::Default &&  nSdrObjKind == SdrObjKind::Graphic && pObj->IsEmptyPresObj() )
+            else if (nInv == SdrInventor::Default && nSdrObjKind == SdrObjKind::Graphic
+                     && pObj->IsEmptyPresObj() && !mpDocSh->IsReadOnly())
             {
-                mpViewShell->GetViewFrame()->
+                mrViewShell.GetViewFrame()->
                     GetDispatcher()->Execute( SID_INSERT_GRAPHIC,
                                               SfxCallMode::ASYNCHRON | SfxCallMode::RECORD );
             }
             else if ( ( DynCastSdrTextObj( pObj ) != nullptr || dynamic_cast< const SdrObjGroup *>( pObj ) !=  nullptr ) &&
-                      !SD_MOD()->GetWaterCan()                            &&
-                      mpViewShell->GetFrameView()->IsDoubleClickTextEdit() &&
+                      !SdModule::get()->GetWaterCan() &&
+                      mrViewShell.GetFrameView()->IsDoubleClickTextEdit() &&
                       !mpDocSh->IsReadOnly())
             {
                 SfxUInt16Item aItem(SID_TEXTEDIT, 2);
-                mpViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(
+                mrViewShell.GetViewFrame()->GetDispatcher()->ExecuteList(
                         SID_TEXTEDIT,
                         SfxCallMode::ASYNCHRON | SfxCallMode::RECORD,
                         { &aItem });
@@ -675,7 +677,7 @@ void FuDraw::DoubleClick(const MouseEvent& rMEvt)
         }
     }
     else
-        mpViewShell->GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
+        mrViewShell.GetViewFrame()->GetDispatcher()->Execute(SID_OBJECT_SELECT, SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
 }
 
 bool FuDraw::RequestHelp(const HelpEvent& rHEvt)
@@ -773,6 +775,7 @@ bool FuDraw::SetHelpText(const SdrObject* pObj, const Point& rPosPixel, const Sd
 bool FuDraw::cancel()
 {
     bool bReturn = false;
+    const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
 
     if ( mpView->IsAction() )
     {
@@ -784,13 +787,13 @@ bool FuDraw::cancel()
         mpView->SdrEndTextEdit();
         bReturn = true;
 
-        SfxBindings& rBindings = mpViewShell->GetViewFrame()->GetBindings();
+        SfxBindings& rBindings = mrViewShell.GetViewFrame()->GetBindings();
         rBindings.Invalidate( SID_DEC_INDENT );
         rBindings.Invalidate( SID_INC_INDENT );
         rBindings.Invalidate( SID_PARASPACE_INCREASE );
         rBindings.Invalidate( SID_PARASPACE_DECREASE );
     }
-    else if ( mpView->AreObjectsMarked() )
+    else if ( rMarkList.GetMarkCount() != 0 )
     {
         const SdrHdlList& rHdlList = mpView->GetHdlList();
         SdrHdl* pHdl = rHdlList.GetFocusHdl();
@@ -805,7 +808,7 @@ bool FuDraw::cancel()
         }
 
         // Switch to FuSelect.
-        mpViewShell->GetViewFrame()->GetDispatcher()->Execute(
+        mrViewShell.GetViewFrame()->GetDispatcher()->Execute(
             SID_OBJECT_SELECT,
             SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
 

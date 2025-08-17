@@ -18,7 +18,6 @@
  */
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <cppuhelper/supportsservice.hxx>
 #include <vcl/svapp.hxx>
 #include <ftnfrm.hxx>
 #include <fmtftn.hxx>
@@ -32,11 +31,6 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::accessibility;
-
-constexpr OUStringLiteral sImplementationNameFootnote
-    = u"com.sun.star.comp.Writer.SwAccessibleFootnoteView";
-constexpr OUStringLiteral sImplementationNameEndnote
-    = u"com.sun.star.comp.Writer.SwAccessibleEndnoteView";
 
 SwAccessibleFootnote::SwAccessibleFootnote(
         std::shared_ptr<SwAccessibleMap> const& pInitMap,
@@ -54,7 +48,7 @@ SwAccessibleFootnote::SwAccessibleFootnote(
         static_cast< const SwFootnoteFrame *>( GetFrame() )->GetAttr();
     if( pTextFootnote )
     {
-        const SwDoc *pDoc = GetShell()->GetDoc();
+        const SwDoc* pDoc = GetShell().GetDoc();
         sArg = pTextFootnote->GetFootnote().GetViewNumStr(*pDoc, pFootnoteFrame->getRootFrame());
     }
 
@@ -80,35 +74,11 @@ OUString SAL_CALL SwAccessibleFootnote::getAccessibleDescription()
         static_cast< const SwFootnoteFrame *>( GetFrame() )->GetAttr();
     if( pTextFootnote )
     {
-        const SwDoc *pDoc = GetMap()->GetShell()->GetDoc();
+        const SwDoc* pDoc = GetMap()->GetShell().GetDoc();
         sArg = pTextFootnote->GetFootnote().GetViewNumStr(*pDoc, GetFrame()->getRootFrame());
     }
 
     return GetResource(pResId, &sArg);
-}
-
-OUString SAL_CALL SwAccessibleFootnote::getImplementationName()
-{
-    if( AccessibleRole::END_NOTE == GetRole() )
-        return sImplementationNameEndnote;
-    else
-        return sImplementationNameFootnote;
-}
-
-sal_Bool SAL_CALL SwAccessibleFootnote::supportsService(const OUString& sTestServiceName)
-{
-    return cppu::supportsService(this, sTestServiceName);
-}
-
-Sequence< OUString > SAL_CALL SwAccessibleFootnote::getSupportedServiceNames()
-{
-    return { (AccessibleRole::END_NOTE == GetRole())?OUString("com.sun.star.text.AccessibleEndnoteView"):OUString("com.sun.star.text.AccessibleFootnoteView"),
-             sAccessibleServiceName };
-}
-
-Sequence< sal_Int8 > SAL_CALL SwAccessibleFootnote::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
 }
 
 bool SwAccessibleFootnote::IsEndnote( const SwFootnoteFrame *pFootnoteFrame )

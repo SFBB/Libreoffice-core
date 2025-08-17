@@ -57,7 +57,7 @@ class XResultSet_impl :
 
         virtual ~XResultSet_impl() override;
 
-        sal_Int32 CtorSuccess() const { return m_nErrorCode;}
+        TaskHandlerErr CtorSuccess() const { return m_nErrorCode;}
         sal_Int32 getMinorError() const { return m_nMinorErrorCode;}
 
         // XEventListener
@@ -415,16 +415,16 @@ class XResultSet_impl :
 
         css::uno::Reference< css::ucb::XDynamicResultSetListener >       m_xListener;
 
-        sal_Int32                                          m_nErrorCode;
+        TaskHandlerErr                                     m_nErrorCode;
         sal_Int32                                          m_nMinorErrorCode;
 
         // Methods
         /// @throws css::sdbc::SQLException
         /// @throws css::uno::RuntimeException
-        bool OneMore();
+        bool OneMore(std::unique_lock<std::mutex>&);
 
         void rowCountChanged(std::unique_lock<std::mutex>&);
-        void isFinalChanged();
+        void isFinalChanged(std::unique_lock<std::mutex>&);
     };
 
 

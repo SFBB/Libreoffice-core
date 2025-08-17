@@ -24,7 +24,7 @@
 #include <map>
 #include <unordered_map>
 
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
+#include <com/sun/star/xml/sax/XFastAttributeList.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/form/XFormsSupplier2.hpp>
 #include <rtl/ref.hxx>
@@ -41,9 +41,6 @@ class SvXMLStylesContext;
 
 namespace xmloff
 {
-
-    class OAttribute2Property;
-
     //= OFormLayerXMLImport_Impl
     class OFormLayerXMLImport_Impl
                 : public ODefaultEventAttacherManager

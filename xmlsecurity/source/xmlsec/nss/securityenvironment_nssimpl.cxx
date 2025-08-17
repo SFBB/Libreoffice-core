@@ -18,18 +18,16 @@
  */
 
 #include "nssrenam.h"
+#include <nss.h>
 #include <cert.h>
+#include <pk11pub.h>
 #include <secerr.h>
 #include <ocsp.h>
 
 #include <sal/config.h>
-#include <sal/macros.h>
 #include <osl/diagnose.h>
 #include "securityenvironment_nssimpl.hxx"
 #include <cppuhelper/supportsservice.hxx>
-#include <comphelper/servicehelper.hxx>
-
-#include <xmlsec-wrapper.h>
 
 #include <rtl/ustrbuf.hxx>
 #include <comphelper/processfactory.hxx>
@@ -45,11 +43,16 @@
 #include "secerror.hxx"
 #include <prerror.h>
 #include <keyhi.h>
+#include <xmlsec/base64.h>
+#include <xmlsec/keysmngr.h>
+#include <xmlsec/nss/app.h>
+#include <xmlsec/nss/pkikeys.h>
 
 // added for password exception
 #include <com/sun/star/security/NoPasswordException.hpp>
 #include <com/sun/star/security/CertificateCharacters.hpp>
 #include <com/sun/star/security/CertificateValidity.hpp>
+#include <com/sun/star/xml/crypto/NSSInitializer.hpp>
 
 namespace csss = ::com::sun::star::security;
 using namespace ::com::sun::star::security;
@@ -92,13 +95,17 @@ struct UsageDescription
 
 static char* GetPasswordFunction( PK11SlotInfo* pSlot, PRBool bRetry, void* /*arg*/ )
 {
-    uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const uno::Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
     uno::Reference < task::XInteractionHandler2 > xInteractionHandler(
         task::InteractionHandler::createWithParent(xContext, nullptr) );
 
     task::PasswordRequestMode eMode = bRetry ? task::PasswordRequestMode_PASSWORD_REENTER : task::PasswordRequestMode_PASSWORD_ENTER;
+    OUString passwordLabel = xml::crypto::NSSInitializer::create(xContext)->getNSSPath();
+    if (!passwordLabel.isEmpty())
+        passwordLabel = ": " + passwordLabel;
+    passwordLabel = OUString::createFromAscii(PK11_GetTokenName(pSlot)) + passwordLabel;
     rtl::Reference<::comphelper::DocPasswordRequest> pPasswordRequest = new ::comphelper::DocPasswordRequest(
-        ::comphelper::DocPasswordRequestType::Standard, eMode, OUString::createFromAscii(PK11_GetTokenName(pSlot)) );
+        ::comphelper::DocPasswordRequestType::Standard, eMode, passwordLabel);
 
     xInteractionHandler->handle( pPasswordRequest );
 
@@ -136,7 +143,7 @@ SecurityEnvironment_NssImpl::~SecurityEnvironment_NssImpl() {
 
 /* XServiceInfo */
 OUString SAL_CALL SecurityEnvironment_NssImpl::getImplementationName() {
-    return "com.sun.star.xml.crypto.SecurityEnvironment";
+    return u"com.sun.star.xml.crypto.SecurityEnvironment"_ustr;
 }
 
 /* XServiceInfo */
@@ -146,7 +153,7 @@ sal_Bool SAL_CALL SecurityEnvironment_NssImpl::supportsService( const OUString& 
 
 /* XServiceInfo */
 Sequence< OUString > SAL_CALL SecurityEnvironment_NssImpl::getSupportedServiceNames() {
-    Sequence<OUString> seqServiceNames{ "com.sun.star.xml.crypto.SecurityEnvironment" };
+    Sequence<OUString> seqServiceNames{ u"com.sun.star.xml.crypto.SecurityEnvironment"_ustr };
     return seqServiceNames;
 }
 
@@ -284,7 +291,7 @@ SecurityEnvironment_NssImpl::getPersonalCertificates()
 
     }
 
-    if( certsList.size() != 0 ) {
+    if( !certsList.empty() ) {
         return comphelper::containerToSequence<Reference< XCertificate >>(certsList) ;
     }
 
@@ -836,7 +843,9 @@ SECKEYPrivateKey* SecurityEnvironment_NssImpl::insertPrivateKey(css::uno::Sequen
     const unsigned int aKeyUsage = KU_ALL;
     SECKEYPrivateKey* pPrivateKey = nullptr;
 
-    bool bPermanent = PR_FALSE;
+    // If the import is not permanent, then later we won't be able to find the private key when
+    // searching for keys and signing will fail.
+    bool bPermanent = PR_TRUE;
     bool bPrivate = PR_TRUE;
 
     SECStatus nStatus = PK11_ImportDERPrivateKeyInfoAndReturnKey(

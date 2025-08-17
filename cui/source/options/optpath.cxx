@@ -46,7 +46,6 @@
 
 using namespace css;
 using namespace css::beans;
-using namespace css::lang;
 using namespace css::ui::dialogs;
 using namespace css::uno;
 using namespace svx;
@@ -93,48 +92,46 @@ struct PathUserData_Impl
 struct Handle2CfgNameMapping_Impl
 {
     SvtPathOptions::Paths m_nHandle;
-    const char* m_pCfgName;
+    OUString m_aCfgName;
 };
 
 }
 
-Handle2CfgNameMapping_Impl const Hdl2CfgMap_Impl[] =
+constexpr Handle2CfgNameMapping_Impl Hdl2CfgMap_Impl[]
 {
-    { SvtPathOptions::Paths::AutoCorrect, "AutoCorrect" },
-    { SvtPathOptions::Paths::AutoText,    "AutoText" },
-    { SvtPathOptions::Paths::Backup,      "Backup" },
-    { SvtPathOptions::Paths::Gallery,     "Gallery" },
-    { SvtPathOptions::Paths::Graphic,     "Graphic" },
-    { SvtPathOptions::Paths::Temp,        "Temp" },
-    { SvtPathOptions::Paths::Template,    "Template" },
-    { SvtPathOptions::Paths::Work,        "Work" },
-    { SvtPathOptions::Paths::Dictionary,        "Dictionary" },
-    { SvtPathOptions::Paths::Classification, "Classification" },
+    { SvtPathOptions::Paths::AutoCorrect, u"AutoCorrect"_ustr },
+    { SvtPathOptions::Paths::AutoText,    u"AutoText"_ustr },
+    { SvtPathOptions::Paths::Backup,      u"Backup"_ustr },
+    { SvtPathOptions::Paths::Gallery,     u"Gallery"_ustr },
+    { SvtPathOptions::Paths::Graphic,     u"Graphic"_ustr },
+    { SvtPathOptions::Paths::Temp,        u"Temp"_ustr },
+    { SvtPathOptions::Paths::Template,    u"Template"_ustr },
+    { SvtPathOptions::Paths::Work,        u"Work"_ustr },
+    { SvtPathOptions::Paths::Dictionary,     u"Dictionary"_ustr },
+    { SvtPathOptions::Paths::Classification, u"Classification"_ustr },
+    { SvtPathOptions::Paths::DocumentTheme, u"DocumentTheme"_ustr },
 #if OSL_DEBUG_LEVEL > 1
-    { SvtPathOptions::Paths::Linguistic,        "Linguistic" },
+    { SvtPathOptions::Paths::Linguistic,     u"Linguistic"_ustr },
 #endif
-    { SvtPathOptions::Paths::LAST, nullptr }
 };
 
 static OUString getCfgName_Impl( SvtPathOptions::Paths _nHandle )
 {
     OUString sCfgName;
-    sal_uInt16 nIndex = 0;
-    while ( Hdl2CfgMap_Impl[ nIndex ].m_nHandle != SvtPathOptions::Paths::LAST )
+    for (const auto & rMapping : Hdl2CfgMap_Impl)
     {
-        if ( Hdl2CfgMap_Impl[ nIndex ].m_nHandle == _nHandle )
+        if ( rMapping.m_nHandle == _nHandle )
         {
             // config name found
-            sCfgName = OUString::createFromAscii( Hdl2CfgMap_Impl[ nIndex ].m_pCfgName );
+            sCfgName = rMapping.m_aCfgName;
             break;
         }
-        ++nIndex;
     }
 
     return sCfgName;
 }
 
-#define MULTIPATH_DELIMITER     ';'
+constexpr char MULTIPATH_DELIMITER = ';';
 
 static OUString Convert_Impl( std::u16string_view rValue )
 {
@@ -181,12 +178,12 @@ static bool IsMultiPath_Impl( const SvtPathOptions::Paths nIndex )
 // class SvxPathTabPage --------------------------------------------------
 
 SvxPathTabPage::SvxPathTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage( pPage, pController, "cui/ui/optpathspage.ui", "OptPathsPage", &rSet)
+    : SfxTabPage( pPage, pController, u"cui/ui/optpathspage.ui"_ustr, u"OptPathsPage"_ustr, &rSet)
     , pImpl(new OptPath_Impl)
     , xDialogListener ( new ::svt::DialogClosedListener() )
-    , m_xStandardBtn(m_xBuilder->weld_button("default"))
-    , m_xPathBtn(m_xBuilder->weld_button("edit"))
-    , m_xPathBox(m_xBuilder->weld_tree_view("paths"))
+    , m_xStandardBtn(m_xBuilder->weld_button(u"default"_ustr))
+    , m_xPathBtn(m_xBuilder->weld_button(u"edit"_ustr))
+    , m_xPathBox(m_xBuilder->weld_tree_view(u"paths"_ustr))
 {
     m_xStandardBtn->connect_clicked(LINK(this, SvxPathTabPage, StandardHdl_Impl));
     m_xPathBtn->connect_clicked( LINK( this, SvxPathTabPage, PathHdl_Impl ) );
@@ -196,7 +193,7 @@ SvxPathTabPage::SvxPathTabPage(weld::Container* pPage, weld::DialogController* p
 
     m_xPathBox->connect_row_activated( LINK( this, SvxPathTabPage, DoubleClickPathHdl_Impl ) );
     m_xPathBox->connect_column_clicked(LINK(this, SvxPathTabPage, HeaderBarClick));
-    m_xPathBox->connect_changed( LINK( this, SvxPathTabPage, PathSelect_Impl ) );
+    m_xPathBox->connect_selection_changed(LINK(this, SvxPathTabPage, PathSelect_Impl));
     m_xPathBox->set_selection_mode(SelectionMode::Multiple);
 
     xDialogListener->SetDialogClosedLink( LINK( this, SvxPathTabPage, DialogClosedHdl ) );
@@ -224,7 +221,7 @@ std::unique_ptr<SfxTabPage> SvxPathTabPage::Create( weld::Container* pPage, weld
 OUString SvxPathTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    if (const auto& pString = m_xBuilder->weld_label("label1"))
+    if (const auto pString = m_xBuilder->weld_label(u"label1"_ustr))
         sAllStrings += pString->get_label() + " ";
     return sAllStrings.replaceAll("_", "");
 }
@@ -251,7 +248,7 @@ void SvxPathTabPage::Reset( const SfxItemSet* )
     {
         // only writer uses autotext
         if ( static_cast<SvtPathOptions::Paths>(i) == SvtPathOptions::Paths::AutoText
-            && !SvtModuleOptions().IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
+            && !SvtModuleOptions().IsWriterInstalled())
             continue;
 
         TranslateId pId;
@@ -284,6 +281,9 @@ void SvxPathTabPage::Reset( const SfxItemSet* )
                 break;
             case SvtPathOptions::Paths::Classification:
                 pId = RID_CUISTR_KEY_CLASSIFICATION_PATH;
+                break;
+            case SvtPathOptions::Paths::DocumentTheme:
+                pId = RID_CUISTR_KEY_DOCUMENT_THEME_PATH;
                 break;
 #if OSL_DEBUG_LEVEL > 1
             case SvtPathOptions::Paths::Linguistic:
@@ -464,9 +464,6 @@ void SvxPathTabPage::ChangeCurrentEntry( const OUString& _rFolder )
         // will be used for the next open dialog.
         SvtViewOptions aDlgOpt( EViewType::Dialog, IODLG_CONFIGNAME );
         aDlgOpt.Delete();
-        // Reset also last used dir in the sfx application instance
-        SfxApplication *pSfxApp = SfxGetpApp();
-        pSfxApp->ResetLastDir();
     }
 }
 
@@ -547,7 +544,7 @@ IMPL_LINK_NOARG(SvxPathTabPage, PathHdl_Impl, weld::Button&, void)
     {
         try
         {
-            Reference < XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+            const Reference < XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
             xFolderPicker = sfx2::createFolderPicker(xContext, GetFrameWeld());
 
             INetURLObject aURL( sWritable, INetProtocol::File );
@@ -576,8 +573,8 @@ IMPL_LINK_NOARG(SvxPathTabPage, PathHdl_Impl, weld::Button&, void)
         try
         {
             sfx2::FileDialogHelper aHelper(ui::dialogs::TemplateDescription::FILEOPEN_SIMPLE, FileDialogFlags::NONE, GetFrameWeld());
-            uno::Reference<ui::dialogs::XFilePicker3> xFilePicker = aHelper.GetFilePicker();
-            xFilePicker->appendFilter(OUString(), "*.xml");
+            const uno::Reference<ui::dialogs::XFilePicker3>& xFilePicker = aHelper.GetFilePicker();
+            xFilePicker->appendFilter(OUString(), u"*.xml"_ustr);
             if (xFilePicker->execute() == ui::dialogs::ExecutableDialogResults::OK)
             {
                 uno::Sequence<OUString> aPathSeq(xFilePicker->getSelectedFiles());
@@ -612,7 +609,7 @@ void SvxPathTabPage::GetPathList(
         // load PathSettings service if necessary
         if ( !pImpl->m_xPathSettings.is() )
         {
-            Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+            const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
             pImpl->m_xPathSettings = css::util::thePathSettings::get( xContext );
         }
 
@@ -622,14 +619,11 @@ void SvxPathTabPage::GetPathList(
         Sequence< OUString > aPathSeq;
         if ( aAny >>= aPathSeq )
         {
-            tools::Long i, nCount = aPathSeq.getLength();
-            const OUString* pPaths = aPathSeq.getConstArray();
-
-            for ( i = 0; i < nCount; ++i )
+            for (auto& path : aPathSeq)
             {
                 if ( !_rInternalPath.isEmpty() )
                     _rInternalPath += ";";
-                _rInternalPath += pPaths[i];
+                _rInternalPath += path;
             }
         }
         // load user paths
@@ -637,14 +631,11 @@ void SvxPathTabPage::GetPathList(
             sCfgName + POSTFIX_USER);
         if ( aAny >>= aPathSeq )
         {
-            tools::Long i, nCount = aPathSeq.getLength();
-            const OUString* pPaths = aPathSeq.getConstArray();
-
-            for ( i = 0; i < nCount; ++i )
+            for (auto& path : aPathSeq)
             {
                 if ( !_rUserPath.isEmpty() )
                     _rUserPath += ";";
-                _rUserPath += pPaths[i];
+                _rUserPath += path;
             }
         }
         // then the writable path
@@ -676,7 +667,7 @@ void SvxPathTabPage::SetPathList(
         // load PathSettings service if necessary
         if ( !pImpl->m_xPathSettings.is() )
         {
-            Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+            const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
             pImpl->m_xPathSettings = css::util::thePathSettings::get( xContext );
         }
 

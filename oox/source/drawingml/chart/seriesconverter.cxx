@@ -21,6 +21,7 @@
 
 #include <com/sun/star/chart/DataLabelPlacement.hpp>
 #include <com/sun/star/chart2/RelativePosition.hpp>
+#include <com/sun/star/chart2/RelativeSize.hpp>
 #include <com/sun/star/chart/ErrorBarStyle.hpp>
 #include <com/sun/star/chart2/DataPointLabel.hpp>
 #include <com/sun/star/drawing/Hatch.hpp>
@@ -83,7 +84,7 @@ Reference< XLabeledDataSequence > lclCreateLabeledDataSequence(
     if( pTitle )
     {
         TextConverter aTextConv( rParent, *pTitle );
-        xTitleSeq = aTextConv.createDataSequence( "label" );
+        xTitleSeq = aTextConv.createDataSequence( u"label"_ustr );
     }
 
     // create the labeled data sequence, if values or title are present
@@ -169,7 +170,7 @@ void lclConvertLabelFormatting( PropertySet& rPropSet, ObjectFormatter& rFormatt
     if( !(bDataSeriesLabel || rDataLabel.monLabelPos.has_value()) )
         return;
 
-    namespace csscd = ::com::sun::star::chart::DataLabelPlacement;
+    namespace csscd = css::chart::DataLabelPlacement;
     sal_Int32 nPlacement = -1;
     switch( rDataLabel.monLabelPos.value_or( XML_TOKEN_INVALID ) )
     {
@@ -209,6 +210,28 @@ void importBorderProperties( PropertySet& rPropSet, Shape& rShape, const Graphic
     const Color& aColor = rLP.maLineFill.maFillColor;
     ::Color nColor = aColor.getColor(rGraphicHelper);
     rPropSet.setProperty(PROP_LabelBorderColor, uno::Any(nColor));
+}
+
+void lcl_ImportLeaderLineProperties(PropertySet& rPropSet, Shape& rShape,
+                                    const GraphicHelper& rGraphicHelper)
+{
+    LineProperties& rLP = rShape.getLineProperties();
+    // no fill has the same effect as no line so skip it
+    if (rLP.maLineFill.moFillType.has_value() && rLP.maLineFill.moFillType.value() == XML_noFill)
+        return;
+
+    if (rLP.moLineWidth.has_value())
+    {
+        sal_Int32 nWidth = convertEmuToHmm(rLP.moLineWidth.value());
+        rPropSet.setProperty(PROP_LineWidth, uno::Any(nWidth));
+    }
+
+    if (rLP.maLineFill.moFillType.has_value() && rLP.maLineFill.moFillType.value() == XML_solidFill)
+    {
+        const Color& aColor = rLP.maLineFill.maFillColor;
+        ::Color nColor = aColor.getColor(rGraphicHelper);
+        rPropSet.setProperty(PROP_LineColor, uno::Any(nColor));
+    }
 }
 
 void importFillProperties( PropertySet& rPropSet, Shape& rShape, const GraphicHelper& rGraphicHelper, ModelObjectHelper& rModelObjHelper )
@@ -291,6 +314,8 @@ void DataLabelConverter::convertFromModel( const Reference< XDataSeries >& rxDat
         {
             RelativePosition aPos(mrModel.mxLayout->mfX, mrModel.mxLayout->mfY, css::drawing::Alignment_TOP_LEFT);
             aPropSet.setProperty(PROP_CustomLabelPosition, aPos);
+            const RelativeSize aSize(mrModel.mxLayout->mfW, mrModel.mxLayout->mfH);
+            aPropSet.setProperty(PROP_CustomLabelSize, aSize);
             sal_Int32 nPlacement = -1;
             if (bIsPie && aPropSet.getProperty(nPlacement, PROP_LabelPlacement)
                 && nPlacement == css::chart::DataLabelPlacement::AVOID_OVERLAP)
@@ -328,11 +353,11 @@ void DataLabelConverter::convertFromModel( const Reference< XDataSeries >& rxDat
                 {
                     oaCellRange = pLabelSource->mxDataSeq->maFormula;
                     const auto& rLabelMap = pLabelSource->mxDataSeq->maData;
-                    const auto& rKV = rLabelMap.find(mrModel.mnIndex);
-                    if (rKV != rLabelMap.end())
+                    const auto aKV = rLabelMap.find(mrModel.mnIndex);
+                    if (aKV != rLabelMap.end())
                     {
                         oaLabelText.emplace();
-                        rKV->second >>= *oaLabelText;
+                        aKV->second >>= *oaLabelText;
                     }
                 }
             }
@@ -374,15 +399,15 @@ void DataLabelConverter::convertFromModel( const Reference< XDataSeries >& rxDat
                         xCustomLabel->setString( pRun->getText() );
                         xCustomLabel->setFieldType( DataPointCustomLabelFieldType::DataPointCustomLabelFieldType_TEXT );
                     }
-                    aSequenceRange[ nPos++ ] = xCustomLabel;
+                    aSequenceRange[ nPos++ ] = std::move(xCustomLabel);
                 }
 
                 if( nParagraphs > 1 && nPos < nSequenceSize )
                 {
                     css::uno::Reference< XDataPointCustomLabelField > xCustomLabel = DataPointCustomLabelField::create( xContext );
                     xCustomLabel->setFieldType( DataPointCustomLabelFieldType::DataPointCustomLabelFieldType_NEWLINE );
-                    xCustomLabel->setString("\n");
-                    aSequenceRange[ nPos++ ] = xCustomLabel;
+                    xCustomLabel->setString(u"\n"_ustr);
+                    aSequenceRange[ nPos++ ] = std::move(xCustomLabel);
                 }
             }
 
@@ -464,6 +489,13 @@ void DataLabelsConverter::convertFromModel( const Reference< XDataSeries >& rxDa
     if( !mrModel.mbShowLeaderLines )
         aPropSet.setProperty( PROP_ShowCustomLeaderLines, false );
 
+    if (mrModel.mxLeaderLines)
+    {
+        // Import leaderline properties (SolidFill color, and width)
+        lcl_ImportLeaderLineProperties(aPropSet, *mrModel.mxLeaderLines,
+                                       getFilter().getGraphicHelper());
+    }
+
     // data point label settings
     for (auto const& pointLabel : mrModel.maPointLabels)
     {
@@ -494,7 +526,7 @@ void ErrorBarConverter::convertFromModel( const Reference< XDataSeries >& rxData
 
     try
     {
-        Reference< XPropertySet > xErrorBar( createInstance( "com.sun.star.chart2.ErrorBar" ), UNO_QUERY_THROW );
+        Reference< XPropertySet > xErrorBar( createInstance( u"com.sun.star.chart2.ErrorBar"_ustr ), UNO_QUERY_THROW );
         PropertySet aBarProp( xErrorBar );
 
         // plus/minus bars
@@ -502,7 +534,7 @@ void ErrorBarConverter::convertFromModel( const Reference< XDataSeries >& rxData
         aBarProp.setProperty( PROP_ShowNegativeError, bShowNeg );
 
         // type of displayed error
-        namespace cssc = ::com::sun::star::chart;
+        namespace cssc = css::chart;
         switch( mrModel.mnValueType )
         {
             case XML_cust:
@@ -733,6 +765,11 @@ void DataPointConverter::convertFromModel( const Reference< XDataSeries >& rxDat
         if( mrModel.monExplosion.has_value() && mrModel.monExplosion.value() != rSeries.mnExplosion )
             rTypeGroup.convertPieExplosion( aPropSet, mrModel.monExplosion.value() );
 
+        // data point invert negative
+        if( mrModel.mbInvertNeg != rSeries.mbInvertNeg ) {
+            aPropSet.setProperty( PROP_InvertNegative, mrModel.mbInvertNeg);
+        }
+
         // point formatting
         if( mrModel.mxShapeProp.is() )
         {
@@ -762,12 +799,12 @@ SeriesConverter::~SeriesConverter()
 
 Reference< XLabeledDataSequence > SeriesConverter::createCategorySequence( const OUString& rRole )
 {
-    return createLabeledDataSequence(SeriesModel::CATEGORIES, rRole, false);
+    return createLabeledDataSequence(DataSourceType::CATEGORIES, rRole, false);
 }
 
 Reference< XLabeledDataSequence > SeriesConverter::createValueSequence( const OUString& rRole )
 {
-    return createLabeledDataSequence( SeriesModel::VALUES, rRole, true );
+    return createLabeledDataSequence( DataSourceType::VALUES, rRole, true );
 }
 
 Reference< XDataSeries > SeriesConverter::createDataSeries( const TypeGroupConverter& rTypeGroup, bool bVaryColorsByPoint )
@@ -775,7 +812,7 @@ Reference< XDataSeries > SeriesConverter::createDataSeries( const TypeGroupConve
     const TypeGroupInfo& rTypeInfo = rTypeGroup.getTypeInfo();
 
     // create the data series object
-    Reference< XDataSeries > xDataSeries( createInstance( "com.sun.star.chart2.DataSeries" ), UNO_QUERY );
+    Reference< XDataSeries > xDataSeries( createInstance( u"com.sun.star.chart2.DataSeries"_ustr ), UNO_QUERY );
     PropertySet aSeriesProp( xDataSeries );
 
     // attach data and title sequences to series
@@ -786,7 +823,7 @@ Reference< XDataSeries > SeriesConverter::createDataSeries( const TypeGroupConve
         // create vector of all value sequences
         ::std::vector< Reference< XLabeledDataSequence > > aLabeledSeqVec;
         // add Y values
-        Reference< XLabeledDataSequence > xYValueSeq = createValueSequence( "values-y" );
+        Reference< XLabeledDataSequence > xYValueSeq = createValueSequence( u"values-y"_ustr );
         if( xYValueSeq.is() )
         {
             aLabeledSeqVec.push_back( xYValueSeq );
@@ -801,13 +838,14 @@ Reference< XDataSeries > SeriesConverter::createDataSeries( const TypeGroupConve
         // add X values of scatter and bubble charts
         if( !rTypeInfo.mbCategoryAxis )
         {
-            Reference< XLabeledDataSequence > xXValueSeq = createCategorySequence( "values-x" );
+            Reference< XLabeledDataSequence > xXValueSeq = createCategorySequence( u"values-x"_ustr );
             if( xXValueSeq.is() )
                 aLabeledSeqVec.push_back( xXValueSeq );
             // add size values of bubble charts
             if( rTypeInfo.meTypeId == TYPEID_BUBBLE )
             {
-                Reference< XLabeledDataSequence > xSizeValueSeq = createLabeledDataSequence( SeriesModel::POINTS, "values-size", true );
+                Reference< XLabeledDataSequence > xSizeValueSeq =
+                    createLabeledDataSequence( DataSourceType::POINTS, u"values-size"_ustr, true );
                 if( xSizeValueSeq.is() )
                     aLabeledSeqVec.push_back( xSizeValueSeq );
             }
@@ -841,6 +879,8 @@ Reference< XDataSeries > SeriesConverter::createDataSeries( const TypeGroupConve
     rTypeGroup.convertBarGeometry( aSeriesProp, mrModel.monShape.value_or( rTypeGroup.getModel().mnShape ) );
     // pie explosion (restricted to [0%,100%] in Chart2)
     rTypeGroup.convertPieExplosion( aSeriesProp, mrModel.mnExplosion );
+    // invert if negative
+    aSeriesProp.setProperty(PROP_InvertNegative, mrModel.mbInvertNeg);
 
     // series formatting
     ObjectFormatter& rFormatter = getFormatter();
@@ -897,7 +937,7 @@ Reference< XDataSeries > SeriesConverter::createDataSeries( const TypeGroupConve
         if( xLabels->maNumberFormat.maFormatCode.isEmpty() )
         {
             // Use number format code from Value series
-            DataSourceModel* pValues = mrModel.maSources.get( SeriesModel::VALUES ).get();
+            DataSourceModel* pValues = mrModel.maSources.get( DataSourceType::VALUES ).get();
             if( pValues )
                 xLabels->maNumberFormat.maFormatCode = pValues->mxDataSeq->maFormatCode;
         }
@@ -911,7 +951,7 @@ Reference< XDataSeries > SeriesConverter::createDataSeries( const TypeGroupConve
 // private --------------------------------------------------------------------
 
 Reference< XLabeledDataSequence > SeriesConverter::createLabeledDataSequence(
-        SeriesModel::SourceType eSourceType, const OUString& rRole, bool bUseTextLabel )
+        enum DataSourceType eSourceType, const OUString& rRole, bool bUseTextLabel )
 {
     DataSourceModel* pValues = mrModel.maSources.get( eSourceType ).get();
     TextModel* pTitle = bUseTextLabel ? mrModel.mxText.get() : nullptr;

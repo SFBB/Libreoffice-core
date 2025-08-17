@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <config_options.h>
 #include <drawinglayer/drawinglayerdllapi.h>
 
 #include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
@@ -119,6 +120,8 @@ namespace drawinglayer::primitive2d
 */
 class DRAWINGLAYERCORE_DLLPUBLIC BasePrimitive2D : public salhelper::SimpleReferenceObject
 {
+    bool mbVisible = true;
+
     BasePrimitive2D(const BasePrimitive2D&) = delete;
     BasePrimitive2D& operator=(const BasePrimitive2D&) = delete;
 
@@ -164,6 +167,10 @@ public:
 
     // XAccounting
     virtual sal_Int64 estimateUsage();
+
+    void setVisible(bool bVisible) { mbVisible = bVisible; }
+
+    bool getVisible() const { return mbVisible; }
 };
 
 /**
@@ -171,7 +178,8 @@ public:
   object, we just wrap the top level BasePrimitive2D in this class when we need
   to pass them over UNO
 */
-class DRAWINGLAYERCORE_DLLPUBLIC UnoPrimitive2D final : public BasePrimitive2DImplBase
+class UNLESS_MERGELIBS(DRAWINGLAYERCORE_DLLPUBLIC) UnoPrimitive2D final
+    : public BasePrimitive2DImplBase
 {
     UnoPrimitive2D(const UnoPrimitive2D&) = delete;
     UnoPrimitive2D& operator=(const UnoPrimitive2D&) = delete;

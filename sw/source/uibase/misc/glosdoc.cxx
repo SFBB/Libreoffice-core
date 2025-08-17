@@ -90,7 +90,7 @@ OUString lcl_CheckFileName( const OUString& rNewFilePath,
 // supplies the default group's name
 OUString SwGlossaries::GetDefName()
 {
-    return "standard";
+    return u"standard"_ustr;
 
 }
 
@@ -388,7 +388,7 @@ void SwGlossaries::UpdateGlosPath(bool bFull)
         aInvalidPaths.erase(std::unique(aInvalidPaths.begin(), aInvalidPaths.end()), aInvalidPaths.end());
         if (bPathChanged || (m_aInvalidPaths != aInvalidPaths))
         {
-            m_aInvalidPaths = aInvalidPaths;
+            m_aInvalidPaths = std::move(aInvalidPaths);
             // wrong path, that means AutoText directory doesn't exist
 
             ErrorHandler::HandleError( ErrCodeMsg(
@@ -417,7 +417,7 @@ void SwGlossaries::ShowError()
 
 OUString SwGlossaries::GetExtension()
 {
-    return ".bau";
+    return u".bau"_ustr;
 }
 
 void SwGlossaries::RemoveFileFromList( const OUString& rGroup )
@@ -541,7 +541,7 @@ Reference< text::XAutoTextGroup > SwGlossaries::GetAutoTextGroup( std::u16string
         {                               // the group is already cached
             if ( !sCompleteGroupName.isEmpty() )
             {   // the group still exists -> return it
-                xGroup = pSwGroup;
+                xGroup = std::move(pSwGroup);
                 break;
             }
             else
@@ -602,7 +602,7 @@ Reference< text::XAutoTextEntry > SwGlossaries::GetAutoTextEntry(
             &&  pEntry->GetEntryName() == rEntryName
             )
         {
-            xReturn = pEntry;
+            xReturn = std::move(pEntry);
             break;
         }
 

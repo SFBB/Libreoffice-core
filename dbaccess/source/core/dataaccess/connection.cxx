@@ -21,7 +21,7 @@
 
 #include <iterator>
 
-#include "connection.hxx"
+#include <connection.hxx>
 #include "datasource.hxx"
 #include <strings.hrc>
 #include <strings.hxx>
@@ -47,7 +47,6 @@
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdb::application;
 using namespace ::com::sun::star::sdbc;
@@ -71,7 +70,7 @@ namespace dbaccess
 // XServiceInfo
 OUString OConnection::getImplementationName(  )
 {
-    return "com.sun.star.comp.dbaccess.Connection";
+    return u"com.sun.star.comp.dbaccess.Connection"_ustr;
 }
 
 sal_Bool OConnection::supportsService( const OUString& _rServiceName )
@@ -112,7 +111,7 @@ Reference< XStatement >  OConnection::createStatement()
     MutexGuard aGuard(m_aMutex);
     checkDisposed();
 
-    Reference< XStatement > xStatement;
+    rtl::Reference< OStatement > xStatement;
     Reference< XStatement > xMasterStatement = m_xMasterConnection->createStatement();
     if ( xMasterStatement.is() )
     {
@@ -128,7 +127,7 @@ Reference< XPreparedStatement >  OConnection::prepareStatement(const OUString& s
     checkDisposed();
 
     // TODO convert the SQL to SQL the driver understands
-    Reference< XPreparedStatement > xStatement;
+    rtl::Reference< OPreparedStatement > xStatement;
     Reference< XPreparedStatement > xMasterStatement = m_xMasterConnection->prepareStatement(sql);
     if ( xMasterStatement.is() )
     {
@@ -143,7 +142,7 @@ Reference< XPreparedStatement >  OConnection::prepareCall(const OUString& sql)
     MutexGuard aGuard(m_aMutex);
     checkDisposed();
 
-    Reference< XPreparedStatement > xStatement;
+    rtl::Reference< OCallableStatement > xStatement;
     Reference< XPreparedStatement > xMasterStatement = m_xMasterConnection->prepareCall(sql);
     if ( xMasterStatement.is() )
     {
@@ -256,10 +255,7 @@ void OConnection::setTypeMap(const Reference< XNameAccess > & typeMap)
 OConnection::OConnection(ODatabaseSource& _rDB
                          , Reference< XConnection > const & _rxMaster
                          , const Reference< XComponentContext >& _rxORB)
-            :OSubComponent(m_aMutex, static_cast< OWeakObject* >(&_rDB))
-                // as the queries reroute their refcounting to us, this m_aMutex is okey. If the queries
-                // container would do its own refcounting, it would have to acquire m_pMutex
-                // same for tables
+            :m_xParent(&_rDB)
             ,m_aTableFilter(_rDB.m_pImpl->m_aTableFilter)
             ,m_aTableTypeFilter(_rDB.m_pImpl->m_aTableTypeFilter)
             ,m_aContext( _rxORB )
@@ -276,7 +272,7 @@ OConnection::OConnection(ODatabaseSource& _rDB
     {
         Reference< XProxyFactory > xProxyFactory = ProxyFactory::create( m_aContext );
         Reference<XAggregation> xAgg = xProxyFactory->createProxy(_rxMaster);
-        setDelegation(xAgg,m_refCount);
+        setDelegation(xAgg);
         OSL_ENSURE(m_xConnection.is(), "OConnection::OConnection : invalid master connection !");
     }
     catch(const Exception&)
@@ -319,6 +315,19 @@ OConnection::OConnection(ODatabaseSource& _rDB
                         break;
                     }
                 }
+                Reference<XCloseable> xCloseable(xRes, UNO_QUERY);
+                if (xCloseable.is())
+                    xCloseable->close();
+            }
+            // tdf#130564: getTableTypes retrieves only the table types of the current database and not all the possible table types
+            // provided by the DBMS. JDBC would need a new function, something like "supportsViews()"
+            // do the same for MySQL/MariaDB since we're on it
+            OUString strDbProductName = xMeta->getDatabaseProductName();
+            if (!m_bSupportsViews && xMeta->getURL().startsWith("sdbc:odbc:") &&
+                 (strDbProductName == "PostgreSQL" || strDbProductName == "MySQL")
+               )
+            {
+                m_bSupportsViews = true;
             }
             // some dbs don't support this type so we should ask if a XViewsSupplier is supported
             if(!m_bSupportsViews)
@@ -389,9 +398,7 @@ Sequence< Type > OConnection::getTypes()
 {
     TypeBag aNormalizedTypes;
 
-    lcl_copyTypes( aNormalizedTypes, OSubComponent::getTypes() );
     lcl_copyTypes( aNormalizedTypes, OConnection_Base::getTypes() );
-    lcl_copyTypes( aNormalizedTypes, ::connectivity::OConnectionWrapper::getTypes() );
 
     if ( !m_bSupportsViews )
         aNormalizedTypes.erase( cppu::UnoType<XViewsSupplier>::get() );
@@ -403,11 +410,6 @@ Sequence< Type > OConnection::getTypes()
     return comphelper::containerToSequence(aNormalizedTypes);
 }
 
-Sequence< sal_Int8 > OConnection::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
-}
-
 // css::uno::XInterface
 Any OConnection::queryInterface( const Type & rType )
 {
@@ -417,39 +419,19 @@ Any OConnection::queryInterface( const Type & rType )
         return Any();
     else if ( !m_bSupportsGroups && rType.equals( cppu::UnoType<XGroupsSupplier>::get() ) )
         return Any();
-    Any aReturn = OSubComponent::queryInterface( rType );
-    if (!aReturn.hasValue())
-    {
-        aReturn = OConnection_Base::queryInterface( rType );
-        if (!aReturn.hasValue())
-            aReturn = OConnectionWrapper::queryInterface( rType );
-    }
-    return aReturn;
+    return OConnection_Base::queryInterface( rType );
 }
 
-void OConnection::acquire() noexcept
-{
-    // include this one when you want to see who calls it (call graph)
-    OSubComponent::acquire();
-}
-
-void OConnection::release() noexcept
-{
-    // include this one when you want to see who calls it (call graph)
-    OSubComponent::release();
-}
-
-// OSubComponent
+// OConnection_Base
 void OConnection::disposing()
 {
     MutexGuard aGuard(m_aMutex);
 
-    OSubComponent::disposing();
-    OConnectionWrapper::disposing();
+    OConnection_Base::disposing();
 
     for (auto const& statement : m_aStatements)
     {
-        Reference<XComponent> xComp(statement.get(),UNO_QUERY);
+        rtl::Reference<OStatementBase> xComp(statement.get());
         ::comphelper::disposeComponent(xComp);
     }
     m_aStatements.clear();
@@ -486,7 +468,7 @@ Reference< XInterface >  OConnection::getParent()
 {
     MutexGuard aGuard(m_aMutex);
     checkDisposed();
-    return m_xParent;
+    return static_cast<OWeakObject*>(m_xParent.get().get());
 }
 
 void OConnection::setParent(const Reference< XInterface > & /*Parent*/)
@@ -630,7 +612,7 @@ Reference< XInterface > SAL_CALL OConnection::createInstance( const OUString& _s
             if ( aFind == m_aSupportServices.end() )
             {
                 Reference<XConnection> xMy(this);
-                Sequence<Any> aArgs{ Any(NamedValue("ActiveConnection",Any(xMy))) };
+                Sequence<Any> aArgs{ Any(NamedValue(u"ActiveConnection"_ustr,Any(xMy))) };
                 aFind = m_aSupportServices.emplace(
                                _sServiceSpecifier,
                                m_aContext->getServiceManager()->createInstanceWithArgumentsAndContext(_sServiceSpecifier, aArgs, m_aContext)
@@ -758,7 +740,7 @@ void OConnection::impl_checkTableQueryNames_nothrow()
 
         for ( auto const & queryName : aQueryNames )
         {
-            if ( aSortedTableNames.find( queryName ) != aSortedTableNames.end() )
+            if ( aSortedTableNames.contains(queryName) )
             {
                 OUString sConflictWarning( DBA_RES( RID_STR_CONFLICTING_NAMES ) );
                 m_aWarnings.appendWarning( sConflictWarning, "01SB0", *this );

@@ -63,7 +63,6 @@
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/awt/XControl.hpp>
 #include <com/sun/star/sdbc/SQLException.hpp>
-#include <com/sun/star/sdb/XQueriesSupplier.hpp>
 #include <com/sun/star/container/XContainer.hpp>
 
 #include <comphelper/namedvaluecollection.hxx>
@@ -530,7 +529,7 @@ void FmXFormView::addWindow(const SdrPageWindow& rWindow)
     if ( !pFormPage )
         return;
 
-    const Reference< XControlContainer >& xCC = rWindow.GetControlContainer();
+    const rtl::Reference< UnoControlContainer > & xCC = rWindow.GetControlContainer();
     if  (   xCC.is()
         &&  ( !findWindow( xCC ).is() )
         )
@@ -539,9 +538,7 @@ void FmXFormView::addWindow(const SdrPageWindow& rWindow)
         m_aPageWindowAdapters.push_back( pAdapter );
 
         // listen at the ControlContainer to notice changes
-        Reference< XContainer >  xContainer( xCC, UNO_QUERY );
-        if ( xContainer.is() )
-            xContainer->addContainerListener( this );
+        xCC->addContainerListener( this );
     }
 }
 
@@ -715,7 +712,7 @@ IMPL_LINK_NOARG(FmXFormView, OnActivate, void*, void)
             Reference< XFormController > xActiveController(fad(xController));
             if (xActiveController.is())
             {
-                xControllerToActivate = xActiveController;
+                xControllerToActivate = std::move(xActiveController);
                 break;
             }
         }
@@ -993,7 +990,7 @@ void FmXFormView::onCreatedFormObject( FmFormObj const & _rFormObject )
 
     // #i46898# no wizards if there is no Base installed - currently, all wizards are
     // database related
-    if ( !SvtModuleOptions().IsModuleInstalled( SvtModuleOptions::EModule::DATABASE ) )
+    if (!SvtModuleOptions().IsDataBaseInstalled())
         return;
 
     if ( m_nControlWizardEvent )
@@ -1054,14 +1051,14 @@ IMPL_LINK_NOARG( FmXFormView, OnStartControlWizard, void*, void )
     {
         // build the argument list
         ::comphelper::NamedValueCollection aWizardArgs;
-        aWizardArgs.put("ObjectModel", m_xLastCreatedControlModel);
-        aWizardArgs.put("ParentWindow", GetParentWindow());
+        aWizardArgs.put(u"ObjectModel"_ustr, m_xLastCreatedControlModel);
+        aWizardArgs.put(u"ParentWindow"_ustr, GetParentWindow());
 
         // create the wizard object
         Reference< XExecutableDialog > xWizard;
         try
         {
-            Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
+            const Reference<XComponentContext>& xContext = comphelper::getProcessComponentContext();
             xWizard.set( xContext->getServiceManager()->createInstanceWithArgumentsAndContext( OUString::createFromAscii(pWizardAsciiName), aWizardArgs.getWrappedPropertyValues(), xContext ), UNO_QUERY);
         }
         catch (const Exception&)
@@ -1403,7 +1400,7 @@ rtl::Reference<SdrObject> FmXFormView::implCreateXFormsControl( const svx::OXFor
             rtl::Reference<SdrUnoObj> pLabel;
             rtl::Reference<SdrUnoObj> pControl;
             if  (   !createControlLabelPair( *pOutDev, 0, 0, nullptr, xNumberFormats, nOBJID, sLabelPostfix,
-                        pLabel, pControl, nullptr, "", "", -1 )
+                        pLabel, pControl, nullptr, u""_ustr, u""_ustr, -1 )
                 )
             {
                 return nullptr;
@@ -1537,8 +1534,8 @@ bool FmXFormView::createControlLabelPair( OutputDevice const & _rOutDev, sal_Int
     // calculate the positions, respecting the settings of the target device
     ::Size aTextSize( _rOutDev.GetTextWidth(sFieldName + _rFieldPostfix), _rOutDev.GetTextHeight() );
 
-    MapMode   eTargetMode( _rOutDev.GetMapMode() ),
-              eSourceMode( MapUnit::Map100thMM );
+    const MapMode & eTargetMode( _rOutDev.GetMapMode() );
+    MapMode eSourceMode( MapUnit::Map100thMM );
 
     // text width is at least 4 centimeters
     // text height is always half a centimeter

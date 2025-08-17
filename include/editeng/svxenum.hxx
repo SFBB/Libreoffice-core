@@ -73,6 +73,9 @@ enum class SvxInterLineSpaceRule
     Fix
 };
 
+// The values map directly to css::style::ParagraphAdjust enum (returned as ParaAdjust property
+// from SwUnoCursorHelper::GetPropertyValue, see SvxAdjustItem::QueryValue). Also, there is a
+// mapping to css::text::HoriOrientation for numbering (see aSvxToUnoAdjust).
 enum class SvxAdjust
 {
     Left,
@@ -84,6 +87,7 @@ enum class SvxAdjust
     LAST = End
 };
 
+// The values are stored to e.g. autoformat table
 enum class SvxBreak
 {
     NONE,

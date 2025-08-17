@@ -23,7 +23,6 @@
 
 #include <osl/conditn.hxx>
 #include <osl/file.hxx>
-#include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <tools/debug.hxx>
 #include <tools/time.hxx>
@@ -32,6 +31,7 @@
 #include <comphelper/windowserrorstring.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/temporary.hxx>
 
 #include <dndhelper.hxx>
 #include <vcl/inputtypes.hxx>
@@ -54,11 +54,9 @@
 
 #include <config_features.h>
 #include <vcl/skia/SkiaHelper.hxx>
-#if HAVE_FEATURE_SKIA
 #include <config_skia.h>
 #include <skia/salbmp.hxx>
 #include <skia/win/gdiimpl.hxx>
-#endif
 
 #include <salsys.hxx>
 
@@ -211,11 +209,11 @@ bool SalYieldMutex::IsCurrentThread() const
 
 void SalData::initKeyCodeMap()
 {
-    UINT nKey;
-    #define initKey( a, b )\
-        nKey = LOWORD( VkKeyScanW( a ) );\
-        if( nKey < 0xffff )\
-            maVKMap[ nKey ] = b;
+    auto initKey = [this](wchar_t ch, sal_uInt16 key)
+    {
+        if (UINT vkey = LOWORD(VkKeyScanW(ch)); vkey < 0xffff)
+            maVKMap[vkey] = key;
+    };
 
     maVKMap.clear();
 
@@ -248,13 +246,6 @@ SalData::SalData()
 {
     mhInst = nullptr;           // default instance handle
     mnCmdShow = 0;              // default frame show style
-    mhDitherPal = nullptr;      // dither palette
-    mhDitherDIB = nullptr;      // dither memory handle
-    mpDitherDIB = nullptr;      // dither memory
-    mpDitherDIBData = nullptr;  // beginning of DIB data
-    mpDitherDiff = nullptr;     // Dither mapping table
-    mpDitherLow = nullptr;      // Dither mapping table
-    mpDitherHigh = nullptr;     // Dither mapping table
     mhSalObjMsgHook = nullptr;  // hook to get interesting msg for SalObject
     mhWantLeaveMsg = nullptr;   // window handle, that want a MOUSELEAVE message
     mpInstance = nullptr;  // pointer of first instance
@@ -278,13 +269,10 @@ SalData::SalData()
     mnStockPenCount = 0;        // count of static pens
     mnStockBrushCount = 0;      // count of static brushes
     mnSalObjWantKeyEvt = 0;     // KeyEvent for the SalObj hook
-    mnCacheDCInUse = 0;         // count of CacheDC in use
     mbObjClassInit = false;     // is SALOBJECTCLASS initialised
-    mbInPalChange = false;      // is in WM_QUERYNEWPALETTE
     mnAppThreadId = 0;          // Id from Application-Thread
     mpFirstIcon = nullptr;      // icon cache, points to first icon, NULL if none
-    mpSharedTempFontItem = nullptr;
-    mpOtherTempFontItem = nullptr;
+    mpTempFontItem = nullptr;
     mbThemeChanged = false;     // true if visual theme was changed: throw away theme handles
     mbThemeMenuSupport = false;
 
@@ -311,30 +299,7 @@ SalData::~SalData()
 
 bool OSSupportsDarkMode()
 {
-    bool bRet = false;
-    if (HMODULE h_ntdll = GetModuleHandleW(L"ntdll.dll"))
-    {
-        typedef LONG(WINAPI* RtlGetVersion_t)(PRTL_OSVERSIONINFOW);
-        if (auto RtlGetVersion
-            = reinterpret_cast<RtlGetVersion_t>(GetProcAddress(h_ntdll, "RtlGetVersion")))
-        {
-            RTL_OSVERSIONINFOW vi2{};
-            vi2.dwOSVersionInfoSize = sizeof(vi2);
-            if (RtlGetVersion(&vi2) == 0)
-            {
-                if (vi2.dwMajorVersion > 10)
-                    bRet = true;
-                else if (vi2.dwMajorVersion == 10)
-                {
-                    if (vi2.dwMinorVersion > 0)
-                        bRet = true;
-                    else if (vi2.dwBuildNumber >= 18362)
-                        bRet = true;
-                }
-            }
-        }
-    }
-    return bRet;
+    return WinSalInstance::getWindowsBuildNumber() >= 18362;
 }
 
 namespace {
@@ -355,8 +320,7 @@ VCLPLUG_WIN_PUBLIC SalInstance* create_SalInstance()
 {
     SalData* pSalData = new SalData();
 
-    STARTUPINFOW aSI;
-    aSI.cb = sizeof( aSI );
+    STARTUPINFOW aSI{ .cb = sizeof(aSI) };
     GetStartupInfoW( &aSI );
     pSalData->mhInst = GetModuleHandleW( nullptr );
     pSalData->mnCmdShow = aSI.wShowWindow;
@@ -440,22 +404,14 @@ WinSalInstance::WinSalInstance()
     ImplSVData* pSVData = ImplGetSVData();
     pSVData->maAppData.mxToolkitName = OUString("win");
     m_bSupportsOpenGL = true;
-#if HAVE_FEATURE_SKIA
     WinSkiaSalGraphicsImpl::prepareSkia();
-#if SKIA_USE_BITMAP32
-    if (SkiaHelper::isVCLSkiaEnabled())
-        m_bSupportsBitmap32 = true;
-#endif
-#endif
 }
 
 WinSalInstance::~WinSalInstance()
 {
     ImplFreeSalGDI();
     DestroyWindow( mhComWnd );
-#if HAVE_FEATURE_SKIA
     SkiaHelper::cleanup();
-#endif
 }
 
 void WinSalInstance::AfterAppInit()
@@ -532,7 +488,7 @@ bool ImplSalYield(const bool bWait, const bool bHandleAllCurrentEvents)
         switch (GetMessageW(&aMsg, nullptr, 0, 0))
         {
             case -1:
-                SAL_WARN("vcl.schedule", "GetMessageW failed: " << WindowsErrorString(GetLastError()));
+                SAL_WARN("vcl.schedule", "GetMessageW failed: " << comphelper::WindowsErrorString(GetLastError()));
                 // should we std::abort() / SalAbort here?
                 break;
             case 0:
@@ -586,45 +542,33 @@ bool WinSalInstance::DoYield(bool bWait, bool bHandleAllCurrentEvents)
     return bDidWork;
 }
 
-#define CASE_NOYIELDLOCK( salmsg, function ) \
-    case salmsg: \
-        if (bIsOtherThreadMessage) \
-        { \
-            ++pInst->m_nNoYieldLock; \
-            function; \
-            --pInst->m_nNoYieldLock; \
-        } \
-        else \
-        { \
-            DBG_TESTSOLARMUTEX(); \
-            function; \
-        } \
-        break;
-
-#define CASE_NOYIELDLOCK_RESULT( salmsg, function ) \
-    case salmsg: \
-        if (bIsOtherThreadMessage) \
-        { \
-            ++pInst->m_nNoYieldLock; \
-            nRet = reinterpret_cast<LRESULT>( function ); \
-            --pInst->m_nNoYieldLock; \
-        } \
-        else \
-        { \
-            DBG_TESTSOLARMUTEX(); \
-            nRet = reinterpret_cast<LRESULT>( function ); \
-        } \
-        break;
+namespace
+{
+struct NoYieldLockGuard
+{
+    NoYieldLockGuard()
+        : counter(InSendMessage() ? GetSalData()->mpInstance->m_nNoYieldLock : dummy())
+    {
+        ++counter;
+    }
+    ~NoYieldLockGuard() { --counter; }
+    static decltype(WinSalInstance::m_nNoYieldLock)& dummy()
+    {
+        DBG_TESTSOLARMUTEX(); // called when !InSendMessage()
+        static decltype(WinSalInstance::m_nNoYieldLock) n = 0;
+        return n;
+    }
+    decltype(WinSalInstance::m_nNoYieldLock)& counter;
+};
+}
 
 LRESULT CALLBACK SalComWndProc( HWND, UINT nMsg, WPARAM wParam, LPARAM lParam, bool& rDef )
 {
-    const bool bIsOtherThreadMessage = InSendMessage();
     LRESULT nRet = 0;
-    WinSalInstance *pInst = GetSalData()->mpInstance;
     WinSalTimer *const pTimer = static_cast<WinSalTimer*>( ImplGetSVData()->maSchedCtx.mpSalTimer );
 
     SAL_INFO("vcl.gdi.wndproc", "SalComWndProc(nMsg=" << nMsg << ", wParam=" << wParam
-                                << ", lParam=" << lParam << "); inSendMsg: " << bIsOtherThreadMessage);
+                                << ", lParam=" << lParam << "); inSendMsg: " << InSendMessage());
 
     if (ImplGetSVData()->mbDeInit)
     {
@@ -658,13 +602,34 @@ LRESULT CALLBACK SalComWndProc( HWND, UINT nMsg, WPARAM wParam, LPARAM lParam, b
             pTimer->ImplStop();
             break;
 
-        CASE_NOYIELDLOCK_RESULT( SAL_MSG_CREATEFRAME, ImplSalCreateFrame( GetSalData()->mpInstance,
-            reinterpret_cast<HWND>(lParam), static_cast<SalFrameStyleFlags>(wParam)) )
-        CASE_NOYIELDLOCK_RESULT( SAL_MSG_RECREATEHWND, ImplSalReCreateHWND(
-            reinterpret_cast<HWND>(wParam), reinterpret_cast<HWND>(lParam), false) )
-        CASE_NOYIELDLOCK_RESULT( SAL_MSG_RECREATECHILDHWND, ImplSalReCreateHWND(
-            reinterpret_cast<HWND>(wParam), reinterpret_cast<HWND>(lParam), true) )
-        CASE_NOYIELDLOCK( SAL_MSG_DESTROYFRAME, delete reinterpret_cast<SalFrame*>(lParam) )
+        case (SAL_MSG_CREATEFRAME):
+            {
+                NoYieldLockGuard g;
+                nRet = reinterpret_cast<LRESULT>(
+                    ImplSalCreateFrame(GetSalData()->mpInstance, reinterpret_cast<HWND>(lParam),
+                                       static_cast<SalFrameStyleFlags>(wParam)));
+            }
+            break;
+        case (SAL_MSG_RECREATEHWND):
+            {
+                NoYieldLockGuard g;
+                nRet = reinterpret_cast<LRESULT>(ImplSalReCreateHWND(
+                    reinterpret_cast<HWND>(wParam), reinterpret_cast<HWND>(lParam), false));
+            }
+            break;
+        case (SAL_MSG_RECREATECHILDHWND):
+            {
+                NoYieldLockGuard g;
+                nRet = reinterpret_cast<LRESULT>(ImplSalReCreateHWND(
+                    reinterpret_cast<HWND>(wParam), reinterpret_cast<HWND>(lParam), true));
+            }
+            break;
+        case (SAL_MSG_DESTROYFRAME):
+            {
+                NoYieldLockGuard g;
+                delete reinterpret_cast<SalFrame*>(lParam);
+            }
+            break;
 
         case SAL_MSG_DESTROYHWND:
             // We only destroy the native window here. We do NOT destroy the SalFrame contained
@@ -678,13 +643,32 @@ LRESULT CALLBACK SalComWndProc( HWND, UINT nMsg, WPARAM wParam, LPARAM lParam, b
             }
             break;
 
-        CASE_NOYIELDLOCK_RESULT( SAL_MSG_CREATEOBJECT, ImplSalCreateObject(
-            GetSalData()->mpInstance, reinterpret_cast<WinSalFrame*>(lParam)) )
-        CASE_NOYIELDLOCK( SAL_MSG_DESTROYOBJECT, delete reinterpret_cast<SalObject*>(lParam) )
-        CASE_NOYIELDLOCK_RESULT( SAL_MSG_GETCACHEDDC, GetDCEx(
-            reinterpret_cast<HWND>(wParam), nullptr, DCX_CACHE) )
-        CASE_NOYIELDLOCK( SAL_MSG_RELEASEDC, ReleaseDC(
-            reinterpret_cast<HWND>(wParam), reinterpret_cast<HDC>(lParam)) )
+        case (SAL_MSG_CREATEOBJECT):
+            {
+                NoYieldLockGuard g;
+                nRet = reinterpret_cast<LRESULT>(ImplSalCreateObject(
+                    GetSalData()->mpInstance, reinterpret_cast<WinSalFrame*>(lParam)));
+            }
+            break;
+        case (SAL_MSG_DESTROYOBJECT):
+            {
+                NoYieldLockGuard g;
+                delete reinterpret_cast<SalObject*>(lParam);
+            }
+            break;
+        case (SAL_MSG_GETCACHEDDC):
+            {
+                NoYieldLockGuard g;
+                nRet = reinterpret_cast<LRESULT>(
+                    GetDCEx(reinterpret_cast<HWND>(wParam), nullptr, 0x00000002L));
+            }
+            break;
+        case (SAL_MSG_RELEASEDC):
+            {
+                NoYieldLockGuard g;
+                ReleaseDC(reinterpret_cast<HWND>(wParam), reinterpret_cast<HDC>(lParam));
+            }
+            break;
 
         case SAL_MSG_TIMER_CALLBACK:
             assert( pTimer != nullptr );
@@ -711,9 +695,6 @@ LRESULT CALLBACK SalComWndProc( HWND, UINT nMsg, WPARAM wParam, LPARAM lParam, b
 
     return nRet;
 }
-
-#undef CASE_NOYIELDLOCK
-#undef CASE_NOYIELDLOCK_RESULT
 
 LRESULT CALLBACK SalComWndProcW( HWND hWnd, UINT nMsg, WPARAM wParam, LPARAM lParam )
 {
@@ -818,11 +799,6 @@ void WinSalInstance::DestroyObject( SalObject* pObject )
     SendMessageW( mhComWnd, SAL_MSG_DESTROYOBJECT, 0, reinterpret_cast<LPARAM>(pObject) );
 }
 
-OUString WinSalInstance::GetConnectionIdentifier()
-{
-    return OUString();
-}
-
 /** Add a file to the system shells recent document list if there is any.
       This function may have no effect under Unix because there is no
       standard API among the different desktop managers.
@@ -896,12 +872,8 @@ SalTimer* WinSalInstance::CreateSalTimer()
 
 std::shared_ptr<SalBitmap> WinSalInstance::CreateSalBitmap()
 {
-#if HAVE_FEATURE_SKIA
-    if (SkiaHelper::isVCLSkiaEnabled())
-        return std::make_shared<SkiaSalBitmap>();
-    else
-#endif
-        return std::make_shared<WinSalBitmap>();
+    assert(SkiaHelper::isVCLSkiaEnabled() && "Windows requires skia");
+    return std::make_shared<SkiaSalBitmap>();
 }
 
 int WinSalInstance::WorkaroundExceptionHandlingInUSER32Lib(int, LPEXCEPTION_POINTERS pExceptionInfo)
@@ -924,68 +896,147 @@ typedef LONG NTSTATUS;
 typedef NTSTATUS(WINAPI* RtlGetVersion_t)(PRTL_OSVERSIONINFOW);
 constexpr NTSTATUS STATUS_SUCCESS = 0x00000000;
 
-OUString WinSalInstance::getOSVersion()
+static OUString getWinArch()
 {
-    OUStringBuffer aVer(50); // capacity for string like "Windows 6.1 Service Pack 1 build 7601"
-    aVer.append("Windows ");
-    // GetVersion(Ex) and VersionHelpers (based on VerifyVersionInfo) API are
-    // subject to manifest-based behavior since Windows 8.1, so give wrong results.
-    // Another approach would be to use NetWkstaGetInfo, but that has some small
-    // reported delays (some milliseconds), and might get slower in domains with
-    // poor network connections.
-    // So go with a solution described at https://msdn.microsoft.com/en-us/library/ms724429
-    bool bHaveVerFromKernel32 = false;
-    if (HMODULE h_kernel32 = GetModuleHandleW(L"kernel32.dll"))
+    USHORT nNativeMachine = IMAGE_FILE_MACHINE_UNKNOWN;
+
+    using LPFN_ISWOW64PROCESS2 = BOOL(WINAPI*)(HANDLE, USHORT*, USHORT*);
+    auto fnIsWow64Process2 = reinterpret_cast<LPFN_ISWOW64PROCESS2>(
+        GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "IsWow64Process2"));
+    if (fnIsWow64Process2)
+        fnIsWow64Process2(GetCurrentProcess(), &o3tl::temporary(USHORT()), &nNativeMachine);
+
+    if (nNativeMachine == IMAGE_FILE_MACHINE_UNKNOWN)
     {
-        wchar_t szPath[MAX_PATH];
-        DWORD dwCount = GetModuleFileNameW(h_kernel32, szPath, SAL_N_ELEMENTS(szPath));
-        if (dwCount != 0 && dwCount < SAL_N_ELEMENTS(szPath))
+#if _WIN64
+
+        nNativeMachine = IMAGE_FILE_MACHINE_AMD64;
+
+#else
+
+        BOOL isWow64 = FALSE;
+
+        IsWow64Process(GetCurrentProcess(), &isWow64);
+
+        if (isWow64)
+            nNativeMachine = IMAGE_FILE_MACHINE_AMD64; // 32-bit process on 64-bit Windows
+        else
+            nNativeMachine = IMAGE_FILE_MACHINE_I386;
+
+#endif
+    }
+
+    switch (nNativeMachine)
+    {
+        case IMAGE_FILE_MACHINE_I386:
+            return u" X86_32"_ustr;
+        case IMAGE_FILE_MACHINE_R3000:
+            return u" R3000"_ustr;
+        case IMAGE_FILE_MACHINE_R4000:
+            return u" R4000"_ustr;
+        case IMAGE_FILE_MACHINE_R10000:
+            return u" R10000"_ustr;
+        case IMAGE_FILE_MACHINE_WCEMIPSV2:
+            return u" WCEMIPSV2"_ustr;
+        case IMAGE_FILE_MACHINE_ALPHA:
+            return u" ALPHA"_ustr;
+        case IMAGE_FILE_MACHINE_SH3:
+            return u" SH3"_ustr;
+        case IMAGE_FILE_MACHINE_SH3DSP:
+            return u" SH3DSP"_ustr;
+        case IMAGE_FILE_MACHINE_SH3E:
+            return u" SH3E"_ustr;
+        case IMAGE_FILE_MACHINE_SH4:
+            return u" SH4"_ustr;
+        case IMAGE_FILE_MACHINE_SH5:
+            return u" SH5"_ustr;
+        case IMAGE_FILE_MACHINE_ARM:
+            return u" ARM"_ustr;
+        case IMAGE_FILE_MACHINE_THUMB:
+            return u" THUMB"_ustr;
+        case IMAGE_FILE_MACHINE_ARMNT:
+            return u" ARMNT"_ustr;
+        case IMAGE_FILE_MACHINE_AM33:
+            return u" AM33"_ustr;
+        case IMAGE_FILE_MACHINE_POWERPC:
+            return u" POWERPC"_ustr;
+        case IMAGE_FILE_MACHINE_POWERPCFP:
+            return u" POWERPCFP"_ustr;
+        case IMAGE_FILE_MACHINE_IA64:
+            return u" IA64"_ustr;
+        case IMAGE_FILE_MACHINE_MIPS16:
+            return u" MIPS16"_ustr;
+        case IMAGE_FILE_MACHINE_ALPHA64:
+            return u" ALPHA64"_ustr;
+        case IMAGE_FILE_MACHINE_MIPSFPU:
+            return u" MIPSFPU"_ustr;
+        case IMAGE_FILE_MACHINE_MIPSFPU16:
+            return u" MIPSFPU16"_ustr;
+        case IMAGE_FILE_MACHINE_TRICORE:
+            return u" TRICORE"_ustr;
+        case IMAGE_FILE_MACHINE_CEF:
+            return u" CEF"_ustr;
+        case IMAGE_FILE_MACHINE_EBC:
+            return u" EBC"_ustr;
+        case IMAGE_FILE_MACHINE_AMD64:
+            return u" X86_64"_ustr;
+        case IMAGE_FILE_MACHINE_M32R:
+            return u" M32R"_ustr;
+        case IMAGE_FILE_MACHINE_ARM64:
+            return u" ARM64"_ustr;
+        case IMAGE_FILE_MACHINE_CEE:
+            return u" CEE"_ustr;
+        default:
+            assert(!"Yet unhandled case");
+            return OUString();
+    }
+}
+
+static OUString getOSVersionString(DWORD nBuildNumber)
+{
+    OUStringBuffer result = u"Windows";
+    if (nBuildNumber >= 22000)
+        result.append(" 11");
+    else if (nBuildNumber > 0)
+        result.append(" 10");
+    else // We don't know what Windows it is
+        result.append(" unknown");
+
+    result.append(getWinArch());
+
+    if (nBuildNumber)
+        result.append(" (build " + OUString::number(nBuildNumber) + ")");
+
+    return result.makeStringAndClear();
+}
+
+DWORD WinSalInstance::getWindowsBuildNumber()
+{
+    static const DWORD nResult = []
+    {
+        DWORD nBuildNumber = 0;
+        // use RtlGetVersion to get build number
+        if (HMODULE h_ntdll = GetModuleHandleW(L"ntdll.dll"))
         {
-            dwCount = GetFileVersionInfoSizeW(szPath, nullptr);
-            if (dwCount != 0)
+            if (auto RtlGetVersion
+                = reinterpret_cast<RtlGetVersion_t>(GetProcAddress(h_ntdll, "RtlGetVersion")))
             {
-                std::unique_ptr<char[]> ver(new char[dwCount]);
-                if (GetFileVersionInfoW(szPath, 0, dwCount, ver.get()) != FALSE)
+                RTL_OSVERSIONINFOW vi2{}; // initialize with zeroes - a better alternative to memset
+                vi2.dwOSVersionInfoSize = sizeof(vi2);
+                if (STATUS_SUCCESS == RtlGetVersion(&vi2))
                 {
-                    void* pBlock = nullptr;
-                    UINT dwBlockSz = 0;
-                    if (VerQueryValueW(ver.get(), L"\\", &pBlock, &dwBlockSz) != FALSE && dwBlockSz >= sizeof(VS_FIXEDFILEINFO))
-                    {
-                        VS_FIXEDFILEINFO* vi1 = static_cast<VS_FIXEDFILEINFO*>(pBlock);
-                        aVer.append(OUString::number(HIWORD(vi1->dwProductVersionMS)) + "."
-                                    + OUString::number(LOWORD(vi1->dwProductVersionMS)));
-                        bHaveVerFromKernel32 = true;
-                    }
+                    nBuildNumber = vi2.dwBuildNumber;
                 }
             }
         }
-    }
-    // Now use RtlGetVersion (which is not subject to deprecation for GetVersion(Ex) API)
-    // to get build number and SP info
-    bool bHaveVerFromRtlGetVersion = false;
-    if (HMODULE h_ntdll = GetModuleHandleW(L"ntdll.dll"))
-    {
-        if (auto RtlGetVersion
-            = reinterpret_cast<RtlGetVersion_t>(GetProcAddress(h_ntdll, "RtlGetVersion")))
-        {
-            RTL_OSVERSIONINFOW vi2{}; // initialize with zeroes - a better alternative to memset
-            vi2.dwOSVersionInfoSize = sizeof(vi2);
-            if (STATUS_SUCCESS == RtlGetVersion(&vi2))
-            {
-                if (!bHaveVerFromKernel32) // we failed above; let's hope this would be useful
-                    aVer.append(OUString::number(vi2.dwMajorVersion) + "."
-                                + OUString::number(vi2.dwMinorVersion));
-                aVer.append(" ");
-                if (vi2.szCSDVersion[0])
-                    aVer.append(OUString::Concat(o3tl::toU(vi2.szCSDVersion)) + " ");
-                aVer.append("Build " + OUString::number(vi2.dwBuildNumber));
-                bHaveVerFromRtlGetVersion = true;
-            }
-        }
-    }
-    if (!bHaveVerFromKernel32 && !bHaveVerFromRtlGetVersion)
-        aVer.append("unknown");
-    return aVer.makeStringAndClear();
+        return nBuildNumber;
+    }();
+    return nResult;
+}
+
+OUString WinSalInstance::getOSVersion()
+{
+    return getOSVersionString(getWindowsBuildNumber());
 }
 
 void WinSalInstance::BeforeAbort(const OUString&, bool)
@@ -993,16 +1044,20 @@ void WinSalInstance::BeforeAbort(const OUString&, bool)
     ImplFreeSalGDI();
 }
 
-css::uno::Reference<css::uno::XInterface> WinSalInstance::ImplCreateDragSource(const SystemEnvData* pSysEnv)
+css::uno::Reference<css::datatransfer::dnd::XDragSource>
+WinSalInstance::ImplCreateDragSource(const SystemEnvData& rSysEnv)
 {
-    return vcl::OleDnDHelper(new DragSource(comphelper::getProcessComponentContext()),
-                             reinterpret_cast<sal_IntPtr>(pSysEnv->hWnd), vcl::DragOrDrop::Drag);
+    rtl::Reference<DragSource> xDragSource = new DragSource(comphelper::getProcessComponentContext());
+    vcl::OleDnDHelper(xDragSource, reinterpret_cast<sal_IntPtr>(rSysEnv.hWnd), vcl::DragOrDrop::Drag);
+    return xDragSource;
 }
 
-css::uno::Reference<css::uno::XInterface> WinSalInstance::ImplCreateDropTarget(const SystemEnvData* pSysEnv)
+css::uno::Reference<css::datatransfer::dnd::XDropTarget>
+WinSalInstance::ImplCreateDropTarget(const SystemEnvData& rSysEnv)
 {
-    return vcl::OleDnDHelper(new DropTarget(comphelper::getProcessComponentContext()),
-                             reinterpret_cast<sal_IntPtr>(pSysEnv->hWnd), vcl::DragOrDrop::Drop);
+    rtl::Reference<DropTarget> xDropTarget = new DropTarget(comphelper::getProcessComponentContext());
+    vcl::OleDnDHelper(xDropTarget, reinterpret_cast<sal_IntPtr>(rSysEnv.hWnd), vcl::DragOrDrop::Drop);
+    return xDropTarget;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

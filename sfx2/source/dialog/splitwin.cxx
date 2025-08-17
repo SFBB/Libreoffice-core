@@ -36,6 +36,7 @@
 #include <sfx2/dockwin.hxx>
 #include <o3tl/string_view.hxx>
 
+#include <cassert>
 #include <memory>
 #include <vector>
 #include <utility>
@@ -118,7 +119,7 @@ public:
    virtual void         dispose() override
                         {
                             aTimer.Stop();
-                            pOwner.clear();
+                            pOwner.reset();
                             SplitWindow::dispose();
                         }
 
@@ -291,7 +292,7 @@ void SfxSplitWindow::dispose()
     pEmptyWin.disposeAndClear();
 
     maDockArr.clear();
-    pActive.clear();
+    pActive.reset();
     SplitWindow::dispose();
 }
 
@@ -429,7 +430,6 @@ void SfxSplitWindow::InsertWindow( SfxDockingWindow* pDockWin, const Size& rSize
 */
 {
     short nLine = -1;  // so that the first window cab set nline to 0
-    sal_uInt16 nL;
     sal_uInt16 nPos = 0;
     bool bNewLine = true;
     bool bSaveConfig = false;
@@ -456,7 +456,9 @@ void SfxSplitWindow::InsertWindow( SfxDockingWindow* pDockWin, const Size& rSize
             if ( bNewLine && !pFoundDock )
             {
                 // Not known until now in which real line it is located
-                GetWindowPos( rDock.pWin, nL, nPos );
+                sal_uInt16 nL = 0;
+                [[maybe_unused]] auto const ok = GetWindowPos( rDock.pWin, nL, nPos );
+                assert(ok);
                 nLine = static_cast<short>(nL);
             }
 
@@ -543,8 +545,10 @@ void SfxSplitWindow::MoveWindow( SfxDockingWindow* pDockWin, const Size& rSize,
 */
 
 {
-    sal_uInt16 nL, nP;
-    GetWindowPos( pDockWin, nL, nP );
+    sal_uInt16 nL = 0;
+    sal_uInt16 nP = 0;
+    [[maybe_unused]] auto const ok = GetWindowPos( pDockWin, nL, nP );
+    assert(ok);
 
     if ( nLine > nL && GetItemCount( GetItemId( nL ) ) == 1 )
     {

@@ -797,7 +797,7 @@ void ScTabView::GetPageMoveEndPosition(SCCOL nMovX, SCROW nMovY, SCCOL& rPageX, 
     ScHSplitPos eWhichX = WhichH( eWhich );
     ScVSplitPos eWhichY = WhichV( eWhich );
 
-    sal_uInt16 nScrSizeY = SC_SIZE_NONE;
+    auto nScrSizeY = SC_SIZE_NONE;
     if (comphelper::LibreOfficeKit::isActive() && aViewData.GetPageUpDownOffset() > 0) {
         nScrSizeY = ScViewData::ToPixel( aViewData.GetPageUpDownOffset(), aViewData.GetPPTX() );
     }
@@ -832,7 +832,7 @@ void ScTabView::GetAreaMoveEndPosition(SCCOL nMovX, SCROW nMovY, ScFollowMode eM
     SCCOL nCurX = aViewData.GetCurX();
     SCROW nCurY = aViewData.GetCurY();
 
-    ScModule* pScModule = SC_MOD();
+    ScModule* pScModule = ScModule::get();
     bool bLegacyCellSelection = pScModule->GetInputOptions().GetLegacyCellSelection();
     bool bIncrementallyExpandToDocLimits(false);
 
@@ -1316,7 +1316,7 @@ void ScTabView::SelectAllTables()
         for (SCTAB i=0; i<nCount; i++)
             rMark.SelectTable( i, true );
 
-        aViewData.GetDocShell()->PostPaintExtras();
+        aViewData.GetDocShell().PostPaintExtras();
         SfxBindings& rBind = aViewData.GetBindings();
         rBind.Invalidate( FID_FILL_TAB );
         rBind.Invalidate( FID_TAB_DESELECTALL );
@@ -1333,7 +1333,7 @@ void ScTabView::DeselectAllTables()
     for (SCTAB i=0; i<nCount; i++)
         rMark.SelectTable( i, ( i == nTab ) );
 
-    aViewData.GetDocShell()->PostPaintExtras();
+    aViewData.GetDocShell().PostPaintExtras();
     SfxBindings& rBind = aViewData.GetBindings();
     rBind.Invalidate( FID_FILL_TAB );
     rBind.Invalidate( FID_TAB_DESELECTALL );
@@ -1470,8 +1470,8 @@ sal_uInt16 ScTabView::CalcZoom( SvxZoomType eType, sal_uInt16 nOldZoom )
                         if ( nFixPosY != 0 )
                             aWinSize.AdjustHeight(GetGridHeight( SC_SPLIT_TOP ) );
 
-                        ScDocShell* pDocSh = aViewData.GetDocShell();
-                        double nPPTX = ScGlobal::nScreenPPTX / pDocSh->GetOutputFactor();
+                        ScDocShell& rDocSh = aViewData.GetDocShell();
+                        double nPPTX = ScGlobal::nScreenPPTX / rDocSh.GetOutputFactor();
                         double nPPTY = ScGlobal::nScreenPPTY;
 
                         sal_uInt16 nMin = MINZOOM;
@@ -1566,7 +1566,7 @@ sal_uInt16 ScTabView::CalcZoom( SvxZoomType eType, sal_uInt16 nOldZoom )
                                 aWinSize.setHeight( nOtherHeight );
                         }
 
-                        double nPPTX = ScGlobal::nScreenPPTX / aViewData.GetDocShell()->GetOutputFactor();
+                        double nPPTX = ScGlobal::nScreenPPTX / aViewData.GetDocShell().GetOutputFactor();
                         double nPPTY = ScGlobal::nScreenPPTY;
 
                         tools::Long nZoomX = static_cast<tools::Long>( aWinSize.Width() * 100 /
@@ -1607,11 +1607,11 @@ void ScTabView::StopMarking()
         pRowBar[eV]->StopMarking();
 }
 
-void ScTabView::HideNoteMarker()
+void ScTabView::HideNoteOverlay()
 {
     for (VclPtr<ScGridWindow> & pWin : pGridWin)
         if (pWin && pWin->IsVisible())
-            pWin->HideNoteMarker();
+            pWin->HideNoteOverlay();
 }
 
 void ScTabView::MakeDrawLayer()
@@ -1619,7 +1619,7 @@ void ScTabView::MakeDrawLayer()
     if (pDrawView)
         return;
 
-    aViewData.GetDocShell()->MakeDrawLayer();
+    aViewData.GetDocShell().MakeDrawLayer();
 
     // pDrawView is set per Notify
     OSL_ENSURE(pDrawView,"ScTabView::MakeDrawLayer does not work");
@@ -1640,7 +1640,7 @@ IMPL_STATIC_LINK_NOARG(ScTabView, InstallLOKNotifierHdl, void*, vcl::ILibreOffic
 
 void ScTabView::ErrorMessage(TranslateId pGlobStrId)
 {
-    if ( SC_MOD()->IsInExecuteDrop() )
+    if (ScModule::get()->IsInExecuteDrop())
     {
         // #i28468# don't show error message when called from Drag&Drop, silently abort instead
         return;
@@ -1654,7 +1654,7 @@ void ScTabView::ErrorMessage(TranslateId pGlobStrId)
 
     if (pGlobStrId && pGlobStrId == STR_PROTECTIONERR)
     {
-        if (aViewData.GetDocShell()->IsReadOnly())
+        if (aViewData.GetDocShell().IsReadOnly())
         {
             pGlobStrId = STR_READONLYERR;
         }
@@ -1681,8 +1681,8 @@ void ScTabView::UpdatePageBreakData( bool bForcePaint )
 
     if (aViewData.IsPagebreakMode())
     {
-        ScDocShell* pDocSh = aViewData.GetDocShell();
-        ScDocument& rDoc = pDocSh->GetDocument();
+        ScDocShell& rDocSh = aViewData.GetDocShell();
+        ScDocument& rDoc = rDocSh.GetDocument();
         SCTAB nTab = aViewData.GetTabNo();
 
         sal_uInt16 nCount = rDoc.GetPrintRangeCount(nTab);
@@ -1690,7 +1690,7 @@ void ScTabView::UpdatePageBreakData( bool bForcePaint )
             nCount = 1;
         pNewData.reset( new ScPageBreakData(nCount) );
 
-        ScPrintFunc aPrintFunc( pDocSh, pDocSh->GetPrinter(), nTab, 0,0,nullptr, nullptr, pNewData.get() );
+        ScPrintFunc aPrintFunc( rDocSh, rDocSh.GetPrinter(), nTab, 0,0,nullptr, nullptr, pNewData.get() );
         // ScPrintFunc fills the PageBreakData in ctor
         if ( nCount > 1 )
         {

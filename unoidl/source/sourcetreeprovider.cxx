@@ -173,7 +173,7 @@ rtl::Reference<Entity> Cursor::getNext(OUString * name) {
                 if (rc != osl::FileBase::E_None) {
                     SAL_WARN(
                         "unoidl",
-                        "getFileSatus in <" << directory_.getURL() << "> failed with " << +rc);
+                        "getFileStatus in <" << directory_.getURL() << "> failed with " << +rc);
                     continue;
                 }
                 auto const dir = stat.getFileType() == osl::FileStatus::Directory;
@@ -195,20 +195,21 @@ rtl::Reference<Entity> Cursor::getNext(OUString * name) {
                     }
                     auto ent = data.entities.end();
                     for (auto j = data.entities.begin(); j != data.entities.end(); ++j) {
-                        if (j->second.kind == SourceProviderEntity::KIND_EXTERNAL
-                            || j->second.kind == SourceProviderEntity::KIND_MODULE)
+                        if (j->second.kind != SourceProviderEntity::KIND_LOCAL)
                         {
                             continue;
                         }
                         if (ent != data.entities.end()) {
                             throw FileFormatException(
-                                stat.getFileURL(), "source file defines more than one entity");
+                                stat.getFileURL(), u"source file defines more than one entity"_ustr);
                         }
                         ent = j;
                     }
                     if (ent == data.entities.end()) {
-                        throw FileFormatException(
-                            stat.getFileURL(), "source file defines no entity");
+                        SAL_INFO(
+                            "unoidl",
+                            "source file <" << stat.getFileURL() << "> defines no entity");
+                        continue;
                     }
                     //TODO: Check that the entity's name matches the suffix of stat.getFileURL():
                     *name = ent->first.copy(ent->first.lastIndexOf('.') + 1);
@@ -258,7 +259,7 @@ rtl::Reference<Entity> SourceTreeProvider::findEntity(OUString const & name)
             assert(i == start || i != 0);
             if (i == start || name[i - 1] == '_') {
                 throw FileFormatException( //TODO
-                    "", "Illegal UNOIDL identifier \"" + name + "\"");
+                    u""_ustr, "Illegal UNOIDL identifier \"" + name + "\"");
             }
             buf[i] = '/';
             start = i + 1;
@@ -268,21 +269,21 @@ rtl::Reference<Entity> SourceTreeProvider::findEntity(OUString const & name)
                 || !rtl::isAsciiUpperCase(name[start]))
             {
                 throw FileFormatException( //TODO
-                    "", "Illegal UNOIDL identifier \"" + name + "\"");
+                    u""_ustr, "Illegal UNOIDL identifier \"" + name + "\"");
             }
         } else if (rtl::isAsciiDigit(c)) {
             if (i == start) {
                 throw FileFormatException( //TODO
-                    "", "Illegal UNOIDL identifier \"" + name + "\"");
+                    u""_ustr, "Illegal UNOIDL identifier \"" + name + "\"");
             }
         } else if (!rtl::isAsciiAlpha(c)) {
             throw FileFormatException( //TODO
-                "", "Illegal UNOIDL identifier \"" + name + "\"");
+                u""_ustr, "Illegal UNOIDL identifier \"" + name + "\"");
         }
     }
     if (i == start) {
         throw FileFormatException( //TODO
-            "", "Illegal UNOIDL identifier \"" + name + "\"");
+            u""_ustr, "Illegal UNOIDL identifier \"" + name + "\"");
     }
     OUString uri(uri_ + buf);
     rtl::Reference<Entity> ent;

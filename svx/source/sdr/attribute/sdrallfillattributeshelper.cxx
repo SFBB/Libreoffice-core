@@ -21,7 +21,7 @@
 #include <sdr/primitive2d/sdrdecompositiontools.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
-#include <basegfx/utils/gradienttools.hxx>
+#include <basegfx/utils/bgradient.hxx>
 #include <drawinglayer/attribute/fillhatchattribute.hxx>
 #include <drawinglayer/attribute/sdrfillgraphicattribute.hxx>
 #include <vcl/graph.hxx>
@@ -40,14 +40,14 @@ namespace drawinglayer::attribute
 
             if(isUsed())
             {
-                maPrimitives.resize(1);
-                maPrimitives[0] = drawinglayer::primitive2d::createPolyPolygonFillPrimitive(
-                    basegfx::B2DPolyPolygon(
-                        basegfx::utils::createPolygonFromRect(
-                            maLastPaintRange)),
-                        maLastDefineRange,
-                    maFillAttribute ? *maFillAttribute : drawinglayer::attribute::SdrFillAttribute(),
-                    maFillGradientAttribute ? *maFillGradientAttribute : drawinglayer::attribute::FillGradientAttribute());
+                maPrimitives = drawinglayer::primitive2d::Primitive2DContainer {
+                    drawinglayer::primitive2d::createPolyPolygonFillPrimitive(
+                        basegfx::B2DPolyPolygon(
+                            basegfx::utils::createPolygonFromRect(
+                                maLastPaintRange)),
+                            maLastDefineRange,
+                        maFillAttribute ? *maFillAttribute : drawinglayer::attribute::SdrFillAttribute(),
+                        maFillGradientAttribute ? *maFillGradientAttribute : drawinglayer::attribute::FillGradientAttribute()) };
             }
         }
 

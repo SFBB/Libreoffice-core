@@ -37,7 +37,7 @@
 class SfxTabPage;
 
 typedef std::unique_ptr<SfxTabPage> (*CreateTabPage)(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rAttrSet);
-typedef WhichRangesContainer (*GetTabPageRanges)(); // provides international Which-value
+typedef const WhichRangesContainer & (*GetTabPageRanges)(); // provides international Which-value
 struct TabPageImpl;
 
 struct TabDlg_Impl;
@@ -45,11 +45,11 @@ struct TabDlg_Impl;
 namespace com::sun::star::frame { class XFrame; }
 
 #define RET_USER        100
-#define RET_USER_CANCEL 101
 
 class SFX2_DLLPUBLIC SfxTabDialogItem final : public SfxSetItem
 {
 public:
+                            DECLARE_ITEM_TYPE_FUNCTION(SfxTabDialogItem)
                             SfxTabDialogItem( sal_uInt16 nId, const SfxItemSet& rItemSet );
                             SfxTabDialogItem(const SfxTabDialogItem& rAttr, SfxItemPool* pItemPool);
     virtual SfxTabDialogItem* Clone(SfxItemPool* pToPool = nullptr) const override;
@@ -107,6 +107,11 @@ protected:
     */
     bool PrepareLeaveCurrentPage();
 
+    /** Called before user cancels the dialog.
+        Calls DeactivatePage of all tab pages with IsCancelMode() set to true
+    */
+    void PrepareCancel();
+
     /** save the position of the TabDialog and which tab page is the currently active one
      */
     void SavePosAndId();
@@ -124,11 +129,29 @@ public:
 
     void                AddTabPage(const OUString& rName,          // Name of the label for the new page to create
                                    const OUString& rLabel,         // UI Label for the new page to create
-                                   CreateTabPage pCreateFunc);     // != 0
+                                   CreateTabPage pCreateFunc,      // != 0
+                                   const OUString* pIconName = nullptr);
 
     void                AddTabPage(const OUString& rName,          // Name of the label for the new page to create
                                    const OUString& rLabel,         // UI Label for the new page to create
-                                   sal_uInt16 nPageCreateId);      // Identifier of the Factory Method to create the page
+                                   CreateTabPage pCreateFunc,      // != 0
+                                   GetTabPageRanges pRangesFunc,
+                                   const OUString& rIconName);
+
+    void                AddTabPage(const OUString& rName,
+                                   const OUString& rLabel,
+                                   CreateTabPage pCreateFunc,
+                                   const OUString& rIconName);
+
+    void                AddTabPage(const OUString& rName,          // Name of the label for the new page to create
+                                   const OUString& rLabel,         // UI Label for the new page to create
+                                   sal_uInt16 nPageCreateId,       // Identifier of the Factory Method to create the page
+                                   const OUString* pIconName = nullptr);
+
+    void                AddTabPage(const OUString& rName,
+                                   const OUString& rLabel,
+                                   sal_uInt16 nPageCreateId,
+                                   const OUString& rIconName);
 
     void                RemoveTabPage( const OUString& rName ); // Name of the label for the page in the notebook .ui
 
@@ -167,7 +190,7 @@ public:
     //screenshotting
     std::vector<OUString> getAllPageUIXMLDescriptions() const;
     bool selectPageByUIXMLDescription(const OUString& rUIXMLDescription);
-    BitmapEx createScreenshot() const;
+    Bitmap createScreenshot() const;
     OUString GetScreenshotId() const;
 };
 
@@ -192,6 +215,7 @@ private:
     const SfxItemSet* mpSet;
     OUString maUserString;
     bool mbHasExchangeSupport;
+    bool mbCancel;
     std::unordered_map<OUString, css::uno::Any> maAdditionalProperties;
 
     std::unique_ptr<TabPageImpl> mpImpl;
@@ -201,7 +225,7 @@ protected:
 
     sal_uInt16          GetWhich( sal_uInt16 nSlot, bool bDeep = true ) const
     {
-        return mpSet->GetPool()->GetWhich(nSlot, bDeep);
+        return mpSet->GetPool()->GetWhichIDFromSlotID(nSlot, bDeep);
     }
     template<class T>
     TypedWhichId<T> GetWhich( TypedWhichId<T> nSlot, bool bDeep = true ) const
@@ -258,6 +282,9 @@ public:
     }
     virtual void            FillUserData();
     virtual bool            IsReadOnly() const;
+    // Whether the user has canceled the dialog. Allows to restore settings, etc.
+    bool IsCancelMode() { return mbCancel; }
+    void SetCancelMode(bool bCancel) { mbCancel = bCancel; }
     virtual void PageCreated (const SfxAllItemSet& aSet);
     virtual void ChangesApplied();
     static const SfxPoolItem* GetItem( const SfxItemSet& rSet, sal_uInt16 nSlot, bool bDeep = true );

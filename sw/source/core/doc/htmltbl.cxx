@@ -408,7 +408,7 @@ const SwStartNode *SwHTMLTableLayout::GetAnyBoxStartNode() const
 SwFrameFormat *SwHTMLTableLayout::FindFlyFrameFormat() const
 {
     const SwTableNode *pTableNd = GetAnyBoxStartNode()->FindTableNode();
-    OSL_ENSURE( pTableNd, "No Table-Node?" );
+    assert(pTableNd && "No Table-Node?");
     return pTableNd->GetFlyFormat();
 }
 
@@ -1658,15 +1658,7 @@ void SwHTMLTableLayout::SetWidths( bool bCallPass2, sal_uInt16 nAbsAvail,
     }
 
 #ifdef DBG_UTIL
-    {
-        // check if the tables have correct widths
-        SwTwips nSize = m_pSwTable->GetFrameFormat()->GetFrameSize().GetWidth();
-        const SwTableLines& rLines = m_pSwTable->GetTabLines();
-        for (size_t n = 0; n < rLines.size(); ++n)
-        {
-            CheckBoxWidth( *rLines[ n ], nSize );
-        }
-    }
+    CheckBoxWidth(m_pSwTable->GetTabLines(), *m_pSwTable->GetFrameFormat());
 #endif
 }
 

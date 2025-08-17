@@ -62,11 +62,12 @@ class SW_DLLPUBLIC SwSectionData
 private:
     SectionType m_eType;
 
-    OUString m_sSectionName;
+    UIName m_sSectionName;
     OUString m_sCondition; ///< Hide condition
     OUString m_sLinkFileName;
     OUString m_sLinkFilePassword; // Must be changed to Sequence.
     css::uno::Sequence <sal_Int8> m_Password;
+    sal_uInt16 m_nPage; // loaded meta page count for page anchored flys in master document
 
     /// It seems this flag caches the current final "hidden" state.
     bool m_bHiddenFlag          : 1;
@@ -84,14 +85,14 @@ private:
 
 public:
 
-    SwSectionData(SectionType const eType, OUString aName);
+    SwSectionData(SectionType const eType, UIName aName);
     explicit SwSectionData(SwSection const&);
     SwSectionData(SwSectionData const&);
     SwSectionData & operator=(SwSectionData const&);
     bool operator==(SwSectionData const&) const;
 
-    const OUString& GetSectionName() const         { return m_sSectionName; }
-    void SetSectionName(OUString const& rName){ m_sSectionName = rName; }
+    const UIName& GetSectionName() const         { return m_sSectionName; }
+    void SetSectionName(UIName const& rName){ m_sSectionName = rName; }
     SectionType GetType() const             { return m_eType; }
     void SetType(SectionType const eNew)    { m_eType = eNew; }
 
@@ -133,6 +134,9 @@ public:
     bool IsConnectFlag() const                  { return m_bConnectFlag; }
     void SetConnectFlag(bool const bFlag){ m_bConnectFlag = bFlag; }
 
+    sal_uInt16 GetPageNum() const         { return m_nPage; }
+    void SetPageNum(sal_uInt16 nPageNum){ m_nPage = nPageNum; }
+
     void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
@@ -160,7 +164,7 @@ protected:
 
 public:
 
-    SwSection(SectionType const eType, OUString const& rName,
+    SwSection(SectionType const eType, UIName const& rName,
                 SwSectionFormat & rFormat);
     virtual ~SwSection() override;
 
@@ -168,8 +172,8 @@ public:
 
     void SetSectionData(SwSectionData const& rData);
 
-    const OUString& GetSectionName() const         { return m_Data.GetSectionName(); }
-    void SetSectionName(OUString const& rName){ m_Data.SetSectionName(rName); }
+    const UIName& GetSectionName() const         { return m_Data.GetSectionName(); }
+    void SetSectionName(UIName const& rName){ m_Data.SetSectionName(rName); }
     SectionType GetType() const             { return m_Data.GetType(); }
     void SetType(SectionType const eType)   { return m_Data.SetType(eType); }
 
@@ -212,6 +216,11 @@ public:
     // Get / set password of this section
     css::uno::Sequence<sal_Int8> const& GetPassword() const
                                             { return m_Data.GetPassword(); }
+
+    sal_uInt16 GetPageNum() const
+        { return m_Data.GetPageNum(); }
+    void SetPageNum(sal_uInt16 nPage)
+        { m_Data.SetPageNum(nPage); }
 
     // Data server methods.
     void SetRefObject( SwServerObject* pObj );
@@ -284,7 +293,7 @@ class SW_DLLPUBLIC SwSectionFormat final
 
     SAL_DLLPRIVATE void UpdateParent();      // Parent has been changed.
 
-    SwSectionFormat( SwFrameFormat* pDrvdFrame, SwDoc *pDoc );
+    SwSectionFormat( SwFrameFormat* pDrvdFrame, SwDoc& rDoc );
     virtual void SwClientNotify(const SwModify&, const SfxHint&) override;
 
 public:
@@ -297,7 +306,7 @@ public:
     virtual void MakeFrames() override;
 
     // Get information from Format.
-    virtual bool GetInfo( SfxPoolItem& ) const override;
+    virtual bool GetInfo( SwFindNearestNode& ) const override;
 
     virtual bool IsVisible() const override;
 
@@ -334,7 +343,7 @@ public:
     virtual bool IsInContent() const override;
     virtual css::uno::Reference< css::rdf::XMetadatable > MakeUnoObject() override;
     virtual bool supportsFullDrawingLayerFillAttributeSet() const override;
-    void dumpAsXml(xmlTextWriterPtr pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
 };
 

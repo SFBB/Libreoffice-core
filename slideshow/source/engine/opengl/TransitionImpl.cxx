@@ -144,8 +144,8 @@ bool OGLTransitionImpl::prepare( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteri
     CHECK_GL_ERROR();
 
     const SceneObjects_t& rSceneObjects(maScene.getSceneObjects());
-    for(size_t i(0); i != rSceneObjects.size(); ++i) {
-        rSceneObjects[i]->prepare(m_nProgramObject);
+    for(const auto& rSceneObject : rSceneObjects) {
+        rSceneObject->prepare(m_nProgramObject);
     }
 
     GLint location = glGetUniformLocation( m_nProgramObject, "leavingSlideTexture" );
@@ -208,8 +208,8 @@ bool OGLTransitionImpl::prepare( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteri
 void OGLTransitionImpl::finish()
 {
     const SceneObjects_t& rSceneObjects(maScene.getSceneObjects());
-    for(size_t i(0); i != rSceneObjects.size(); ++i) {
-        rSceneObjects[i]->finish();
+    for(const auto& rSceneObject : rSceneObjects) {
+        rSceneObject->finish();
     }
 
     finishTransition();
@@ -278,8 +278,8 @@ void OGLTransitionImpl::applyOverallOperations( double nTime, double SlideWidthS
 {
     const Operations_t& rOverallOperations(maScene.getOperations());
     glm::mat4 matrix;
-    for(size_t i(0); i != rOverallOperations.size(); ++i)
-        rOverallOperations[i]->interpolate(matrix, nTime, SlideWidthScale, SlideHeightScale);
+    for(const auto& rOperation : rOverallOperations)
+        rOperation->interpolate(matrix, nTime, SlideWidthScale, SlideHeightScale);
     CHECK_GL_ERROR();
     if (m_nOperationsTransformLocation != -1) {
         glUniformMatrix4fv(m_nOperationsTransformLocation, 1, false, glm::value_ptr(matrix));
@@ -340,8 +340,8 @@ void OGLTransitionImpl::displayScene( double nTime, double SlideWidth, double Sl
 {
     const SceneObjects_t& rSceneObjects(maScene.getSceneObjects());
     CHECK_GL_ERROR();
-    for(size_t i(0); i != rSceneObjects.size(); ++i)
-        rSceneObjects[i]->display(m_nSceneTransformLocation, m_nPrimitiveTransformLocation, nTime, SlideWidth, SlideHeight, DispWidth, DispHeight);
+    for(const auto& rSceneObject : rSceneObjects)
+        rSceneObject->display(m_nSceneTransformLocation, m_nPrimitiveTransformLocation, nTime, SlideWidth, SlideHeight, DispWidth, DispHeight);
     CHECK_GL_ERROR();
 }
 
@@ -548,7 +548,7 @@ private:
 
 GLuint ReflectionTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "reflectionVertexShader", "reflectionFragmentShader" );
+    return OpenGLHelper::LoadShaders( u"reflectionVertexShader"_ustr, u"reflectionFragmentShader"_ustr );
 }
 
 void ReflectionTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex,
@@ -604,7 +604,7 @@ private:
 
 GLuint SimpleTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "basicVertexShader", "basicFragmentShader" );
+    return OpenGLHelper::LoadShaders( u"basicVertexShader"_ustr, u"basicFragmentShader"_ustr );
 }
 
 void SimpleTransition::displaySlides_( double nTime, sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex,
@@ -1318,7 +1318,7 @@ private:
 
 GLuint FadeSmoothlyTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "basicVertexShader", "fadeFragmentShader" );
+    return OpenGLHelper::LoadShaders( u"basicVertexShader"_ustr, u"fadeFragmentShader"_ustr );
 }
 
 std::shared_ptr<OGLTransitionImpl>
@@ -1369,7 +1369,7 @@ private:
 
 GLuint FadeThroughColorTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "basicVertexShader", "fadeBlackFragmentShader",
+    return OpenGLHelper::LoadShaders( u"basicVertexShader"_ustr, u"fadeBlackFragmentShader"_ustr,
         useWhite ? "#define use_white" : "", "" );
 }
 
@@ -1526,7 +1526,7 @@ private:
 
 GLuint StaticNoiseTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "basicVertexShader", "staticFragmentShader" );
+    return OpenGLHelper::LoadShaders( u"basicVertexShader"_ustr, u"staticFragmentShader"_ustr );
 }
 
 std::shared_ptr<OGLTransitionImpl>
@@ -1576,7 +1576,7 @@ private:
 
 GLuint DissolveTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "basicVertexShader", "dissolveFragmentShader" );
+    return OpenGLHelper::LoadShaders( u"basicVertexShader"_ustr, u"dissolveFragmentShader"_ustr );
 }
 
 std::shared_ptr<OGLTransitionImpl>
@@ -1665,7 +1665,7 @@ void VortexTransition::finishTransition()
 
 GLuint VortexTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "vortexVertexShader", "vortexFragmentShader", "vortexGeometryShader" );
+    return OpenGLHelper::LoadShaders( u"vortexVertexShader"_ustr, u"vortexFragmentShader"_ustr, u"vortexGeometryShader"_ustr );
 }
 
 glm::mat4 lookAt(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up) {
@@ -1887,7 +1887,7 @@ private:
 
 GLuint RippleTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "basicVertexShader", "rippleFragmentShader" );
+    return OpenGLHelper::LoadShaders( u"basicVertexShader"_ustr, u"rippleFragmentShader"_ustr );
 }
 
 void RippleTransition::prepareTransition( sal_Int32, sal_Int32, OpenGLContext* )
@@ -1983,7 +1983,7 @@ private:
 
 GLuint GlitterTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "glitterVertexShader", "glitterFragmentShader" );
+    return OpenGLHelper::LoadShaders( u"glitterVertexShader"_ustr, u"glitterFragmentShader"_ustr );
 }
 
 struct ThreeFloats
@@ -1996,12 +1996,6 @@ void GlitterTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int3
     CHECK_GL_ERROR();
     PermTextureTransition::prepareTransition( glLeavingSlideTex, glEnteringSlideTex, pContext );
     CHECK_GL_ERROR();
-
-    GLint nNumTilesLocation = glGetUniformLocation(m_nProgramObject, "numTiles");
-    if (nNumTilesLocation != -1) {
-        glUniform2iv(nNumTilesLocation, 1, glm::value_ptr(glm::ivec2(41, 41 * 4 / 3)));
-        CHECK_GL_ERROR();
-    }
 
     glGenBuffers(1, &maBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, maBuffer);
@@ -2109,7 +2103,7 @@ void HoneycombTransition::finishTransition()
 
 GLuint HoneycombTransition::makeShader() const
 {
-    return OpenGLHelper::LoadShaders( "honeycombVertexShader", "honeycombFragmentShader", "honeycombGeometryShader" );
+    return OpenGLHelper::LoadShaders( u"honeycombVertexShader"_ustr, u"honeycombFragmentShader"_ustr, u"honeycombGeometryShader"_ustr );
 }
 
 void HoneycombTransition::prepareTransition( sal_Int32 glLeavingSlideTex, sal_Int32 glEnteringSlideTex, OpenGLContext *pContext )

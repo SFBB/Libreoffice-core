@@ -49,9 +49,8 @@ class SvXMLExportPropertyMapper;
 
 namespace com::sun::star
 {
-    namespace beans { class XPropertySet; class XPropertyState;
-                      class XPropertySetInfo; }
-    namespace container { class XEnumeration; class XIndexAccess; class XNameReplace; }
+    namespace beans { class XPropertySet; class XPropertySetInfo; }
+    namespace container { class XEnumeration; class XIndexAccess; }
     namespace drawing { class XShape; }
     namespace text { class XTextContent; class XTextRange; class XText;
                      class XFootnote; class XTextFrame; class XTextSection;
@@ -114,6 +113,8 @@ class XMLOFF_DLLPUBLIC XMLTextParagraphExport : public XMLStyleExport
 
     struct DocumentListNodes;
     std::unique_ptr<DocumentListNodes> mpDocumentListNodes;
+    std::vector<sal_Int32> maDocumentNodeOrder;
+    bool bInDocumentNodeOrderCollection = false;
 
     o3tl::sorted_vector<css::uno::Reference<css::text::XTextFrame>> maFrameRecurseGuard;
     o3tl::sorted_vector<css::uno::Reference<css::drawing::XShape>> maShapeRecurseGuard;
@@ -210,7 +211,7 @@ protected:
         OUString *pMinWidthValue = nullptr );
 
     virtual void exportStyleAttributes(
-        const css::uno::Reference< css::style::XStyle > & rStyle ) override;
+        const css::uno::Reference< css::style::XStyle > & rStyle ) override final;
 
     void exportPageFrames( bool bProgress );
     void exportFrameFrames( bool bAutoStyles, bool bProgress,
@@ -254,7 +255,11 @@ protected:
     void exportTextField(
         const css::uno::Reference< css::text::XTextField> & xTextField,
         const bool bAutoStyles, const bool bProgress,
-        const bool bRecursive, bool * pPrevCharIsSpace);
+        bool * pPrevCharIsSpace);
+
+    void exportTextFieldStartEnd(
+        const css::uno::Reference< css::beans::XPropertySet > & xPropSet,
+        const bool bAutoStyles);
 
     void exportAnyTextFrame(
         const css::uno::Reference< css::text::XTextContent > & rTextContent,
@@ -395,7 +400,7 @@ public:
     void Add(
         XmlStyleFamily nFamily,
         const css::uno::Reference< css::beans::XPropertySet > & rPropSet,
-        std::span<const XMLPropertyState> aAddStates = {}, bool bDontSeek = false );
+        std::span<const XMLPropertyState> aAddStates = {} );
 
     /// find style name for specified family and parent
     OUString Find(
@@ -472,9 +477,7 @@ public:
         exportText( rText, rBaseSection, true, bIsProgress, true/*bExportParagraph*/ );
     }
 
-    // It the model implements the xAutoStylesSupplier interface, the automatic
-    // styles can exported without iterating over the text portions
-    void collectTextAutoStylesOptimized( bool bIsProgress );
+    void collectTextAutoStylesAndNodeExportOrder(bool bIsProgress);
 
     // This method exports all automatic styles that have been collected.
     void exportTextAutoStyles();
@@ -540,6 +543,7 @@ public:
     void PopTextListsHelper();
 
 private:
+    void RecordNodeIndex(const css::uno::Reference<css::text::XTextContent>& xTextContent);
     bool ShouldSkipListId(const css::uno::Reference<css::text::XTextContent>& xTextContent);
     bool ExportListId() const;
 

@@ -21,35 +21,17 @@
 
 #include <osl/module.hxx>
 #include <tools/svlibrary.h>
-
-typedef ScAbstractDialogFactory* (*ScFuncPtrCreateDialogFactory)();
-
-#ifndef DISABLE_DYNLOADING
-
-extern "C" { static void thisModule() {} }
-
-#else
-
-extern "C" ScAbstractDialogFactory* ScCreateDialogFactory();
-
-#endif
+#include <comphelper/processfactory.hxx>
+#include <com/sun/star/sheet/CreateDialogFactoryService.hpp>
 
 ScAbstractDialogFactory* ScAbstractDialogFactory::Create()
 {
-    ScFuncPtrCreateDialogFactory fp = nullptr;
-#ifndef DISABLE_DYNLOADING
-    static ::osl::Module aDialogLibrary;
-
-    if ( aDialogLibrary.is() || aDialogLibrary.loadRelative( &thisModule, SVLIBRARY("scui"),
-                                                             SAL_LOADMODULE_GLOBAL | SAL_LOADMODULE_LAZY ) )
-        fp = reinterpret_cast<ScAbstractDialogFactory* (SAL_CALL*)()>(
-            aDialogLibrary.getFunctionSymbol( "ScCreateDialogFactory" ));
-#else
-    fp = ScCreateDialogFactory;
-#endif
-    if ( fp )
-        return fp();
-    return nullptr;
+    auto xService = css::sheet::CreateDialogFactoryService::create(comphelper::getProcessComponentContext());
+    assert(xService);
+    // get a factory instance
+    ScAbstractDialogFactory* pFactory = reinterpret_cast<ScAbstractDialogFactory*>(xService->getSomething({}));
+    assert(pFactory);
+    return pFactory;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

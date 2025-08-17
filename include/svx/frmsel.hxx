@@ -137,7 +137,7 @@ public:
     /** Returns true, if the specified frame border is selected. */
     bool                IsBorderSelected( FrameBorderType eBorder ) const;
     /** Selects or deselects the specified frame border. */
-    void                SelectBorder( FrameBorderType eBorder );
+    void SelectBorder(FrameBorderType eBorder, bool bFocus);
     /** Returns true, if any of the enabled frame borders is selected. */
     bool                IsAnyBorderSelected() const;
     /** Selects or deselects all frame borders. */
@@ -158,18 +158,16 @@ public:
     // accessibility
 
     css::uno::Reference<css::accessibility::XAccessible> getAccessibleParent() const { return GetDrawingArea()->get_accessible_parent(); }
-    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
     a11yrelationset get_accessible_relation_set() const { return GetDrawingArea()->get_accessible_relation_set(); }
 
     /** Returns the accessibility child object of the specified frame border (if enabled). */
     rtl::Reference< a11y::AccFrameSelectorChild >
                         GetChildAccessible( FrameBorderType eBorder );
     /** Returns the accessibility child object with specified index (counts enabled frame borders only). */
-    css::uno::Reference< css::accessibility::XAccessible >
-                        GetChildAccessible( sal_Int32 nIndex );
+    rtl::Reference<comphelper::OAccessible> GetChildAccessible(sal_Int32 nIndex);
     /** Returns the accessibility child object at the specified position (relative to control). */
-    css::uno::Reference< css::accessibility::XAccessible >
-                        GetChildAccessible( const Point& rPos );
+    rtl::Reference<comphelper::OAccessible> GetChildAccessible(const Point& rPos);
 
     /** Returns the bounding rectangle of the specified frame border (if enabled). */
     tools::Rectangle           GetClickBoundRect( FrameBorderType eBorder ) const;

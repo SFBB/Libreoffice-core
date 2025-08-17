@@ -44,6 +44,7 @@
 #include <viewopt.hxx>
 #include <globals.hrc>
 #include <strings.hrc>
+#include <optload.hrc>
 #include <swwrtshitem.hxx>
 
 #include <editeng/fhgtitem.hxx>
@@ -86,42 +87,51 @@ void drawRect(vcl::RenderContext& rRenderContext, const tools::Rectangle &rRect,
 // Tools->Options->Writer->View
 // Tools->Options->Writer/Web->View
 SwContentOptPage::SwContentOptPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/viewoptionspage.ui", "ViewOptionsPage", &rCoreSet)
-    , m_xCrossCB(m_xBuilder->weld_check_button("helplines"))
-    , m_xCrossImg(m_xBuilder->weld_widget("lockhelplines"))
-    , m_xHMetric(m_xBuilder->weld_combo_box("hrulercombobox"))
-    , m_xHMetricImg(m_xBuilder->weld_widget("lockhruler"))
-    , m_xVRulerCBox(m_xBuilder->weld_check_button("vruler"))
-    , m_xVRulerImg(m_xBuilder->weld_widget("lockvruler"))
-    , m_xVRulerRightCBox(m_xBuilder->weld_check_button("vrulerright"))
-    , m_xVRulerRightImg(m_xBuilder->weld_widget("lockvrulerright"))
-    , m_xVMetric(m_xBuilder->weld_combo_box("vrulercombobox"))
-    , m_xSmoothCBox(m_xBuilder->weld_check_button("smoothscroll"))
-    , m_xSmoothImg(m_xBuilder->weld_widget("locksmoothscroll"))
-    , m_xGrfCB(m_xBuilder->weld_check_button("graphics"))
-    , m_xGrfImg(m_xBuilder->weld_widget("lockgraphics"))
-    , m_xTableCB(m_xBuilder->weld_check_button("tables"))
-    , m_xTableImg(m_xBuilder->weld_widget("locktables"))
-    , m_xDrwCB(m_xBuilder->weld_check_button("drawings"))
-    , m_xDrwImg(m_xBuilder->weld_widget("lockdrawings"))
-    , m_xPostItCB(m_xBuilder->weld_check_button("comments"))
-    , m_xSettingsFrame(m_xBuilder->weld_frame("settingsframe"))
-    , m_xSettingsLabel(m_xBuilder->weld_label("settingslabel"))
-    , m_xMetricLabel(m_xBuilder->weld_label("measureunitlabel"))
-    , m_xMetricLB(m_xBuilder->weld_combo_box("measureunit"))
-    , m_xMetricImg(m_xBuilder->weld_widget("lockmeasureunit"))
-    , m_xShowInlineTooltips(m_xBuilder->weld_check_button("changestooltip"))
-    , m_xShowInlineTooltipsImg(m_xBuilder->weld_widget("lockchangestooltip"))
-    , m_xShowOutlineContentVisibilityButton(m_xBuilder->weld_check_button("outlinecontentvisibilitybutton"))
-    , m_xShowOutlineContentVImg(m_xBuilder->weld_widget("lockoutlinecontentvisibility"))
-    , m_xTreatSubOutlineLevelsAsContent(m_xBuilder->weld_check_button("suboutlinelevelsascontent"))
-    , m_xTreatSubOutlineLevelsImg(m_xBuilder->weld_widget("locksuboutlinelevels"))
-    , m_xShowChangesInMargin(m_xBuilder->weld_check_button("changesinmargin"))
-    , m_xShowChangesInMarginImg(m_xBuilder->weld_widget("lockchangesinmargin"))
-    , m_xFieldHiddenCB(m_xBuilder->weld_check_button("hiddentextfield"))
-    , m_xFieldHiddenImg(m_xBuilder->weld_widget("lockhiddentextfield"))
-    , m_xFieldHiddenParaCB(m_xBuilder->weld_check_button("hiddenparafield"))
-    , m_xFieldHiddenParaImg(m_xBuilder->weld_widget("lockhiddenparafield"))
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/viewoptionspage.ui"_ustr, u"ViewOptionsPage"_ustr, &rCoreSet)
+    , m_xCrossCB(m_xBuilder->weld_check_button(u"helplines"_ustr))
+    , m_xCrossImg(m_xBuilder->weld_widget(u"lockhelplines"_ustr))
+    , m_xHMetric(m_xBuilder->weld_combo_box(u"hrulercombobox"_ustr))
+    , m_xHMetricImg(m_xBuilder->weld_widget(u"lockhruler"_ustr))
+    , m_xVRulerCBox(m_xBuilder->weld_check_button(u"vruler"_ustr))
+    , m_xVRulerImg(m_xBuilder->weld_widget(u"lockvruler"_ustr))
+    , m_xVRulerRightCBox(m_xBuilder->weld_check_button(u"vrulerright"_ustr))
+    , m_xVRulerRightImg(m_xBuilder->weld_widget(u"lockvrulerright"_ustr))
+    , m_xVMetric(m_xBuilder->weld_combo_box(u"vrulercombobox"_ustr))
+    , m_xSmoothCBox(m_xBuilder->weld_check_button(u"smoothscroll"_ustr))
+    , m_xSmoothImg(m_xBuilder->weld_widget(u"locksmoothscroll"_ustr))
+    , m_xGrfCB(m_xBuilder->weld_check_button(u"graphics"_ustr))
+    , m_xGrfImg(m_xBuilder->weld_widget(u"lockgraphics"_ustr))
+    , m_xTableCB(m_xBuilder->weld_check_button(u"tables"_ustr))
+    , m_xTableImg(m_xBuilder->weld_widget(u"locktables"_ustr))
+    , m_xDrwCB(m_xBuilder->weld_check_button(u"drawings"_ustr))
+    , m_xDrwImg(m_xBuilder->weld_widget(u"lockdrawings"_ustr))
+    , m_xPostItCB(m_xBuilder->weld_check_button(u"comments"_ustr))
+    , m_xSettingsFrame(m_xBuilder->weld_frame(u"settingsframe"_ustr))
+    , m_xSettingsLabel(m_xBuilder->weld_label(u"settingslabel"_ustr))
+    , m_xMetricLabel(m_xBuilder->weld_label(u"measureunitlabel"_ustr))
+    , m_xMetricLB(m_xBuilder->weld_combo_box(u"measureunit"_ustr))
+    , m_xMetricImg(m_xBuilder->weld_widget(u"lockmeasureunit"_ustr))
+    , m_xShowInlineTooltips(m_xBuilder->weld_check_button(u"changestooltip"_ustr))
+    , m_xShowInlineTooltipsImg(m_xBuilder->weld_widget(u"lockchangestooltip"_ustr))
+    , m_xShowOutlineContentVisibilityButton(m_xBuilder->weld_check_button(u"outlinecontentvisibilitybutton"_ustr))
+    , m_xShowOutlineContentVImg(m_xBuilder->weld_widget(u"lockoutlinecontentvisibility"_ustr))
+    , m_xTreatSubOutlineLevelsAsContent(m_xBuilder->weld_check_button(u"suboutlinelevelsascontent"_ustr))
+    , m_xTreatSubOutlineLevelsImg(m_xBuilder->weld_widget(u"locksuboutlinelevels"_ustr))
+    , m_xShowChangesInMargin(m_xBuilder->weld_check_button(u"changesinmargin"_ustr))
+    , m_xShowChangesInMarginImg(m_xBuilder->weld_widget(u"lockchangesinmargin"_ustr))
+    , m_xFieldHiddenCB(m_xBuilder->weld_check_button(u"hiddentextfield"_ustr))
+    , m_xFieldHiddenImg(m_xBuilder->weld_widget(u"lockhiddentextfield"_ustr))
+    , m_xFieldHiddenParaCB(m_xBuilder->weld_check_button(u"hiddenparafield"_ustr))
+    , m_xFieldHiddenParaImg(m_xBuilder->weld_widget(u"lockhiddenparafield"_ustr))
+    , m_xZoomFrame(m_xBuilder->weld_frame(u"zoomframe"_ustr))
+    , m_xZoomLatestRB(m_xBuilder->weld_radio_button(u"zoomlatest"_ustr))
+    , m_xZoomPreferredRB(m_xBuilder->weld_radio_button(u"zoompreferred"_ustr))
+    , m_xZoomOptimalRB(m_xBuilder->weld_radio_button(u"zoomoptimal"_ustr))
+    , m_xZoomWidthAndHeightRB(m_xBuilder->weld_radio_button(u"zoomfitwandh"_ustr))
+    , m_xZoomWidthRB(m_xBuilder->weld_radio_button(u"zoomfitw"_ustr))
+    , m_xZoom100RB(m_xBuilder->weld_radio_button(u"zoom100pc"_ustr))
+    , m_xZoomCustomRB(m_xBuilder->weld_radio_button(u"zoomcustom"_ustr))
+    , m_xZoomValue(m_xBuilder->weld_metric_spin_button(u"zoomvalue"_ustr, FieldUnit::PERCENT))
 {
     m_xShowOutlineContentVisibilityButton->connect_toggled(LINK(this, SwContentOptPage, ShowOutlineContentVisibilityButtonHdl));
 
@@ -133,17 +143,37 @@ SwContentOptPage::SwContentOptPage(weld::Container* pPage, weld::DialogControlle
         m_xSettingsLabel->hide();
         m_xMetricLabel->hide();
         m_xMetricLB->hide();
+
+        Link<weld::Toggleable&, void> aZoomLatestLink = LINK(this, SwContentOptPage, ZoomLatestHdl);
+        m_xZoomLatestRB->connect_toggled(aZoomLatestLink);
+        m_xZoomPreferredRB->connect_toggled(aZoomLatestLink);
+        Link<weld::Toggleable&, void> aZoomLink = LINK(this, SwContentOptPage, ZoomHdl);
+        m_xZoomOptimalRB->connect_toggled(aZoomLink);
+        m_xZoomWidthAndHeightRB->connect_toggled(aZoomLink);
+        m_xZoomWidthRB->connect_toggled(aZoomLink);
+        m_xZoom100RB->connect_toggled(aZoomLink);
+        m_xZoomCustomRB->connect_toggled(aZoomLink);
+        m_xZoomValue->set_range(MINZOOM, MAXZOOM, FieldUnit::PERCENT);
+    }
+    else
+    {
+        m_xZoomFrame->hide();
+        m_xZoomLatestRB->hide();
+        m_xZoomPreferredRB->hide();
+        m_xZoomOptimalRB->hide();
+        m_xZoomWidthAndHeightRB->hide();
+        m_xZoomWidthRB->hide();
+        m_xZoom100RB->hide();
+        m_xZoomCustomRB->hide();
+        m_xZoomValue->hide();
     }
 
     if(!SvtCJKOptions::IsVerticalTextEnabled() )
         m_xVRulerRightCBox->hide();
     m_xVRulerCBox->connect_toggled(LINK(this, SwContentOptPage, VertRulerHdl ));
 
-    for (size_t i = 0; i < SwFieldUnitTable::Count(); ++i)
+    for (const auto& [pId, eFUnit] : STR_ARR_METRIC)
     {
-        const OUString sMetric = SwFieldUnitTable::GetString(i);
-        FieldUnit eFUnit = SwFieldUnitTable::GetValue(i);
-
         switch ( eFUnit )
         {
             case FieldUnit::MM:
@@ -159,13 +189,13 @@ SwContentOptPage::SwContentOptPage(weld::Container* pPage, weld::DialogControlle
                 // there isn't 'line' unit in HTML format
                 if (eFUnit != FieldUnit::LINE)
                 {
-                   m_xMetricLB->append(OUString::number(static_cast<sal_uInt32>(eFUnit)), sMetric);
-                   m_xHMetric->append(OUString::number(static_cast<sal_uInt32>(eFUnit)), sMetric);
+                   m_xMetricLB->append(OUString::number(static_cast<sal_uInt32>(eFUnit)), SwResId(pId));
+                   m_xHMetric->append(OUString::number(static_cast<sal_uInt32>(eFUnit)), SwResId(pId));
                 }
                 // a vertical ruler has not the 'character' unit
                 if (eFUnit != FieldUnit::CHAR)
                 {
-                   m_xVMetric->append(OUString::number(static_cast<sal_uInt32>(eFUnit)), sMetric);
+                   m_xVMetric->append(OUString::number(static_cast<sal_uInt32>(eFUnit)), SwResId(pId));
                 }
                 break;
             }
@@ -247,7 +277,7 @@ void SwContentOptPage::Reset(const SfxItemSet* rSet)
 
         bReadOnly = officecfg::Office::Writer::Layout::Window::IsVerticalRulerRight::isReadOnly();
         m_xVRulerRightCBox->set_active(pElemAttr->m_bVertRulerRight);
-        m_xVRulerRightCBox->set_sensitive(!bReadOnly);
+        m_xVRulerRightCBox->set_sensitive(pElemAttr->m_bVertRuler && !bReadOnly);
         m_xVRulerRightImg->set_visible(bReadOnly);
 
         bReadOnly = !bWebOptionsPage ? officecfg::Office::Writer::Layout::Window::SmoothScroll::isReadOnly() :
@@ -285,6 +315,26 @@ void SwContentOptPage::Reset(const SfxItemSet* rSet)
         m_xFieldHiddenParaCB->set_active( pElemAttr->m_bShowHiddenPara );
         m_xFieldHiddenParaCB->set_sensitive(!bReadOnly);
         m_xFieldHiddenParaImg->set_visible(bReadOnly);
+
+        if (!bWebOptionsPage)
+        {
+            m_xZoomLatestRB->set_active(pElemAttr->IsDefaultZoom());
+            m_xZoomPreferredRB->set_active(!pElemAttr->IsDefaultZoom());
+            switch (pElemAttr->GetDefaultZoomType())
+            {
+                case SvxZoomType::OPTIMAL:   m_xZoomOptimalRB->set_active(true); break;
+                case SvxZoomType::WHOLEPAGE: m_xZoomWidthAndHeightRB->set_active(true); break;
+                case SvxZoomType::PAGEWIDTH: m_xZoomWidthRB->set_active(true); break;
+                case SvxZoomType::PERCENT:
+                    m_xZoom100RB->set_active(pElemAttr->GetDefaultZoomValue() == 100);
+                    m_xZoomCustomRB->set_active(pElemAttr->GetDefaultZoomValue() != 100);
+                    break;
+                default:
+                    break;
+            }
+            m_xZoomValue->set_value(pElemAttr->GetDefaultZoomValue(), FieldUnit::PERCENT);
+            ZoomLatestHdl(*m_xZoomLatestRB);
+        }
     }
 
     bReadOnly = !bWebOptionsPage ? officecfg::Office::Writer::Layout::Window::HorizontalRulerUnit::isReadOnly() :
@@ -312,34 +362,34 @@ OUString SwContentOptPage::GetAllStrings()
 {
     OUString sAllStrings;
     OUString labels[]
-        = { "guideslabel", "displaylabel",  "displayfl1",       "changeslabel", "label3",
-            "hruler",      "settingslabel", "measureunitlabel", "outlinelabel" };
+        = { u"guideslabel"_ustr, u"displaylabel"_ustr,  u"displayfl1"_ustr,       u"changeslabel"_ustr, u"label3"_ustr,
+            u"hruler"_ustr,      u"settingslabel"_ustr, u"measureunitlabel"_ustr, u"outlinelabel"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString checkButton[] = { "helplines",
-                               "graphics",
-                               "tables",
-                               "drawings",
-                               "comments",
-                               "resolvedcomments",
-                               "hiddentextfield",
-                               "hiddenparafield",
-                               "changesinmargin",
-                               "changestooltip",
-                               "vruler",
-                               "vrulerright",
-                               "smoothscroll",
-                               "outlinecontentvisibilitybutton",
-                               "suboutlinelevelsascontent" };
+    OUString checkButton[] = { u"helplines"_ustr,
+                               u"graphics"_ustr,
+                               u"tables"_ustr,
+                               u"drawings"_ustr,
+                               u"comments"_ustr,
+                               u"resolvedcomments"_ustr,
+                               u"hiddentextfield"_ustr,
+                               u"hiddenparafield"_ustr,
+                               u"changesinmargin"_ustr,
+                               u"changestooltip"_ustr,
+                               u"vruler"_ustr,
+                               u"vrulerright"_ustr,
+                               u"smoothscroll"_ustr,
+                               u"outlinecontentvisibilitybutton"_ustr,
+                               u"suboutlinelevelsascontent"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -365,6 +415,27 @@ bool SwContentOptPage::FillItemSet(SfxItemSet* rSet)
     aElem.m_bShowChangesInMargin  = m_xShowChangesInMargin->get_active();
     aElem.m_bFieldHiddenText      = m_xFieldHiddenCB->get_active();
     aElem.m_bShowHiddenPara       = m_xFieldHiddenParaCB->get_active();
+
+    if (m_xZoomLatestRB->is_visible())
+    {
+        aElem.SetDefaultZoom(m_xZoomLatestRB->get_active());
+        if (m_xZoomOptimalRB->get_active())
+            aElem.SetDefaultZoomType(SvxZoomType::OPTIMAL);
+        else if (m_xZoomWidthAndHeightRB->get_active())
+            aElem.SetDefaultZoomType(SvxZoomType::WHOLEPAGE);
+        else if (m_xZoomWidthRB->get_active())
+            aElem.SetDefaultZoomType(SvxZoomType::PAGEWIDTH);
+        else if (m_xZoom100RB->get_active())
+        {
+            aElem.SetDefaultZoomType(SvxZoomType::PERCENT);
+            aElem.SetDefaultZoomValue(100);
+        }
+        else
+        {
+            aElem.SetDefaultZoomType(SvxZoomType::PERCENT);
+            aElem.SetDefaultZoomValue(m_xZoomValue->get_value(FieldUnit::PERCENT));
+        }
+    }
 
     bool bRet = !pOldAttr || aElem != *pOldAttr;
     if(bRet)
@@ -408,48 +479,72 @@ IMPL_LINK(SwContentOptPage, ShowOutlineContentVisibilityButtonHdl, weld::Togglea
     m_xTreatSubOutlineLevelsAsContent->set_sensitive(rBox.get_active());
 }
 
+IMPL_LINK_NOARG(SwContentOptPage, ZoomLatestHdl, weld::Toggleable&, void)
+{
+    bool bZoomPreferred = m_xZoomPreferredRB->get_active();
+    m_xZoomOptimalRB->set_sensitive(bZoomPreferred);
+    m_xZoomWidthAndHeightRB->set_sensitive(bZoomPreferred);
+    m_xZoomWidthRB->set_sensitive(bZoomPreferred);
+    m_xZoom100RB->set_sensitive(bZoomPreferred);
+    m_xZoomCustomRB->set_sensitive(bZoomPreferred);
+    m_xZoomValue->set_sensitive(bZoomPreferred);
+    ZoomHdl(*m_xZoomOptimalRB);
+}
+IMPL_LINK_NOARG(SwContentOptPage, ZoomHdl, weld::Toggleable&, void)
+{
+    if (m_xZoomCustomRB->get_active() && m_xZoomCustomRB->get_sensitive())
+    {
+        m_xZoomValue->set_sensitive(true);
+        m_xZoomValue->grab_focus();
+    }
+    else
+    {
+       m_xZoomValue->set_sensitive(false);
+    }
+}
+
 // TabPage Printer additional settings
 SwAddPrinterTabPage::SwAddPrinterTabPage(weld::Container* pPage, weld::DialogController* pController,
     const SfxItemSet& rCoreSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/printoptionspage.ui", "PrintOptionsPage", &rCoreSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/printoptionspage.ui"_ustr, u"PrintOptionsPage"_ustr, &rCoreSet)
     , m_sNone(SwResId(SW_STR_NONE))
     , m_bAttrModified(false)
     , m_bPreview(false)
     , m_bHTMLMode(false)
-    , m_xGrfCB(m_xBuilder->weld_check_button("graphics"))
-    , m_xGrfImg(m_xBuilder->weld_widget("lockgraphics"))
-    , m_xCtrlFieldCB(m_xBuilder->weld_check_button("formcontrols"))
-    , m_xCtrlFieldImg(m_xBuilder->weld_widget("lockformcontrols"))
-    , m_xBackgroundCB(m_xBuilder->weld_check_button("background"))
-    , m_xBackgroundImg(m_xBuilder->weld_widget("lockbackground"))
-    , m_xBlackFontCB(m_xBuilder->weld_check_button("inblack"))
-    , m_xBlackFontImg(m_xBuilder->weld_widget("lockinblack"))
-    , m_xPrintHiddenTextCB(m_xBuilder->weld_check_button("hiddentext"))
-    , m_xPrintHiddenTextImg(m_xBuilder->weld_widget("lockhiddentext"))
-    , m_xPrintTextPlaceholderCB(m_xBuilder->weld_check_button("textplaceholder"))
-    , m_xPrintTextPlaceholderImg(m_xBuilder->weld_widget("locktextplaceholder"))
-    , m_xPagesFrame(m_xBuilder->weld_widget("pagesframe"))
-    , m_xLeftPageCB(m_xBuilder->weld_check_button("leftpages"))
-    , m_xLeftPageImg(m_xBuilder->weld_widget("lockleftpages"))
-    , m_xRightPageCB(m_xBuilder->weld_check_button("rightpages"))
-    , m_xRightPageImg(m_xBuilder->weld_widget("lockrightpages"))
-    , m_xProspectCB(m_xBuilder->weld_check_button("brochure"))
-    , m_xProspectImg(m_xBuilder->weld_widget("lockbrochure"))
-    , m_xProspectCB_RTL(m_xBuilder->weld_check_button("rtl"))
-    , m_xProspectImg_RTL(m_xBuilder->weld_widget("lockrtl"))
-    , m_xCommentsFrame(m_xBuilder->weld_widget("commentsframe"))
-    , m_xNoRB(m_xBuilder->weld_radio_button("none"))
-    , m_xOnlyRB(m_xBuilder->weld_radio_button("only"))
-    , m_xEndRB(m_xBuilder->weld_radio_button("end"))
-    , m_xEndPageRB(m_xBuilder->weld_radio_button("endpage"))
-    , m_xInMarginsRB(m_xBuilder->weld_radio_button("inmargins"))
-    , m_xMarginsImg(m_xBuilder->weld_widget("lockcomments"))
-    , m_xPrintEmptyPagesCB(m_xBuilder->weld_check_button("blankpages"))
-    , m_xPrintEmptyPagesImg(m_xBuilder->weld_widget("lockblankpages"))
-    , m_xPaperFromSetupCB(m_xBuilder->weld_check_button("papertray"))
-    , m_xPaperFromSetupImg(m_xBuilder->weld_widget("lockpapertray"))
-    , m_xFaxLB(m_xBuilder->weld_combo_box("fax"))
-    , m_xFaxImg(m_xBuilder->weld_widget("lockfax"))
+    , m_xGrfCB(m_xBuilder->weld_check_button(u"graphics"_ustr))
+    , m_xGrfImg(m_xBuilder->weld_widget(u"lockgraphics"_ustr))
+    , m_xCtrlFieldCB(m_xBuilder->weld_check_button(u"formcontrols"_ustr))
+    , m_xCtrlFieldImg(m_xBuilder->weld_widget(u"lockformcontrols"_ustr))
+    , m_xBackgroundCB(m_xBuilder->weld_check_button(u"background"_ustr))
+    , m_xBackgroundImg(m_xBuilder->weld_widget(u"lockbackground"_ustr))
+    , m_xBlackFontCB(m_xBuilder->weld_check_button(u"inblack"_ustr))
+    , m_xBlackFontImg(m_xBuilder->weld_widget(u"lockinblack"_ustr))
+    , m_xPrintHiddenTextCB(m_xBuilder->weld_check_button(u"hiddentext"_ustr))
+    , m_xPrintHiddenTextImg(m_xBuilder->weld_widget(u"lockhiddentext"_ustr))
+    , m_xPrintTextPlaceholderCB(m_xBuilder->weld_check_button(u"textplaceholder"_ustr))
+    , m_xPrintTextPlaceholderImg(m_xBuilder->weld_widget(u"locktextplaceholder"_ustr))
+    , m_xPagesFrame(m_xBuilder->weld_widget(u"pagesframe"_ustr))
+    , m_xLeftPageCB(m_xBuilder->weld_check_button(u"leftpages"_ustr))
+    , m_xLeftPageImg(m_xBuilder->weld_widget(u"lockleftpages"_ustr))
+    , m_xRightPageCB(m_xBuilder->weld_check_button(u"rightpages"_ustr))
+    , m_xRightPageImg(m_xBuilder->weld_widget(u"lockrightpages"_ustr))
+    , m_xProspectCB(m_xBuilder->weld_check_button(u"brochure"_ustr))
+    , m_xProspectImg(m_xBuilder->weld_widget(u"lockbrochure"_ustr))
+    , m_xProspectCB_RTL(m_xBuilder->weld_check_button(u"rtl"_ustr))
+    , m_xProspectImg_RTL(m_xBuilder->weld_widget(u"lockrtl"_ustr))
+    , m_xCommentsFrame(m_xBuilder->weld_widget(u"commentsframe"_ustr))
+    , m_xNoRB(m_xBuilder->weld_radio_button(u"none"_ustr))
+    , m_xOnlyRB(m_xBuilder->weld_radio_button(u"only"_ustr))
+    , m_xEndRB(m_xBuilder->weld_radio_button(u"end"_ustr))
+    , m_xEndPageRB(m_xBuilder->weld_radio_button(u"endpage"_ustr))
+    , m_xInMarginsRB(m_xBuilder->weld_radio_button(u"inmargins"_ustr))
+    , m_xMarginsImg(m_xBuilder->weld_widget(u"lockcomments"_ustr))
+    , m_xPrintEmptyPagesCB(m_xBuilder->weld_check_button(u"blankpages"_ustr))
+    , m_xPrintEmptyPagesImg(m_xBuilder->weld_widget(u"lockblankpages"_ustr))
+    , m_xPaperFromSetupCB(m_xBuilder->weld_check_button(u"papertray"_ustr))
+    , m_xPaperFromSetupImg(m_xBuilder->weld_widget(u"lockpapertray"_ustr))
+    , m_xFaxLB(m_xBuilder->weld_combo_box(u"fax"_ustr))
+    , m_xFaxImg(m_xBuilder->weld_widget(u"lockfax"_ustr))
 {
     Link<weld::Toggleable&,void> aLk = LINK( this, SwAddPrinterTabPage, AutoClickHdl);
     m_xGrfCB->connect_toggled( aLk );
@@ -506,29 +601,29 @@ std::unique_ptr<SfxTabPage> SwAddPrinterTabPage::Create( weld::Container* pPage,
 OUString SwAddPrinterTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label2", "label10", "label1", "label5", "4" };
+    OUString labels[] = { u"label2"_ustr, u"label10"_ustr, u"label1"_ustr, u"label5"_ustr, u"4"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
     OUString checkButton[]
-        = { "graphics",  "formcontrols", "background", "inblack", "hiddentext", "textplaceholder",
-            "leftpages", "rightpages",   "brochure",   "rtl",     "blankpages", "papertray" };
+        = { u"graphics"_ustr,  u"formcontrols"_ustr, u"background"_ustr, u"inblack"_ustr, u"hiddentext"_ustr, u"textplaceholder"_ustr,
+            u"leftpages"_ustr, u"rightpages"_ustr,   u"brochure"_ustr,   u"rtl"_ustr,     u"blankpages"_ustr, u"papertray"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString radioButton[] = { "none", "only", "end", "endpage", "inmargins" };
+    OUString radioButton[] = { u"none"_ustr, u"only"_ustr, u"end"_ustr, u"endpage"_ustr, u"inmargins"_ustr };
 
     for (const auto& radio : radioButton)
     {
-        if (const auto& pString = m_xBuilder->weld_radio_button(radio))
+        if (const auto pString = m_xBuilder->weld_radio_button(radio))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -738,7 +833,7 @@ void SwAddPrinterTabPage::PageCreated( const SfxAllItemSet& aSet)
 
 // Tabpage Standardfonts
 SwStdFontTabPage::SwStdFontTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/optfonttabpage.ui", "OptFontTabPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/optfonttabpage.ui"_ustr, u"OptFontTabPage"_ustr, &rSet)
     , m_pPrt(nullptr)
     , m_pFontConfig(nullptr)
     , m_pWrtShell(nullptr)
@@ -754,28 +849,28 @@ SwStdFontTabPage::SwStdFontTabPage(weld::Container* pPage, weld::DialogControlle
     , m_sScriptWestern(SwResId(ST_SCRIPT_WESTERN))
     , m_sScriptAsian(SwResId(ST_SCRIPT_ASIAN))
     , m_sScriptComplex(SwResId(ST_SCRIPT_CTL))
-    , m_xLabelFT(m_xBuilder->weld_label("label1"))
-    , m_xStandardBox(m_xBuilder->weld_combo_box("standardbox"))
-    , m_xStandardBoxImg(m_xBuilder->weld_widget("lockstandardbox"))
-    , m_xStandardHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box("standardheight")))
-    , m_xStandardHeightImg(m_xBuilder->weld_widget("lockstandardheight"))
-    , m_xTitleBox(m_xBuilder->weld_combo_box("titlebox"))
-    , m_xTitleBoxImg(m_xBuilder->weld_widget("locktitlebox"))
-    , m_xTitleHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box("titleheight")))
-    , m_xTitleHeightImg(m_xBuilder->weld_widget("locktitleheight"))
-    , m_xListBox(m_xBuilder->weld_combo_box("listbox"))
-    , m_xListBoxImg(m_xBuilder->weld_widget("locklistbox"))
-    , m_xListHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box("listheight")))
-    , m_xListHeightImg(m_xBuilder->weld_widget("locklistheight"))
-    , m_xLabelBox(m_xBuilder->weld_combo_box("labelbox"))
-    , m_xLabelBoxImg(m_xBuilder->weld_widget("locklabelbox"))
-    , m_xLabelHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box("labelheight")))
-    , m_xLabelHeightImg(m_xBuilder->weld_widget("locklabelheight"))
-    , m_xIdxBox(m_xBuilder->weld_combo_box("idxbox"))
-    , m_xIdxBoxImg(m_xBuilder->weld_widget("lockidxbox"))
-    , m_xIndexHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box("indexheight")))
-    , m_xIndexHeightImg(m_xBuilder->weld_widget("lockindexheight"))
-    , m_xStandardPB(m_xBuilder->weld_button("standard"))
+    , m_xLabelFT(m_xBuilder->weld_label(u"label1"_ustr))
+    , m_xStandardBox(m_xBuilder->weld_combo_box(u"standardbox"_ustr))
+    , m_xStandardBoxImg(m_xBuilder->weld_widget(u"lockstandardbox"_ustr))
+    , m_xStandardHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box(u"standardheight"_ustr)))
+    , m_xStandardHeightImg(m_xBuilder->weld_widget(u"lockstandardheight"_ustr))
+    , m_xTitleBox(m_xBuilder->weld_combo_box(u"titlebox"_ustr))
+    , m_xTitleBoxImg(m_xBuilder->weld_widget(u"locktitlebox"_ustr))
+    , m_xTitleHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box(u"titleheight"_ustr)))
+    , m_xTitleHeightImg(m_xBuilder->weld_widget(u"locktitleheight"_ustr))
+    , m_xListBox(m_xBuilder->weld_combo_box(u"listbox"_ustr))
+    , m_xListBoxImg(m_xBuilder->weld_widget(u"locklistbox"_ustr))
+    , m_xListHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box(u"listheight"_ustr)))
+    , m_xListHeightImg(m_xBuilder->weld_widget(u"locklistheight"_ustr))
+    , m_xLabelBox(m_xBuilder->weld_combo_box(u"labelbox"_ustr))
+    , m_xLabelBoxImg(m_xBuilder->weld_widget(u"locklabelbox"_ustr))
+    , m_xLabelHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box(u"labelheight"_ustr)))
+    , m_xLabelHeightImg(m_xBuilder->weld_widget(u"locklabelheight"_ustr))
+    , m_xIdxBox(m_xBuilder->weld_combo_box(u"idxbox"_ustr))
+    , m_xIdxBoxImg(m_xBuilder->weld_widget(u"lockidxbox"_ustr))
+    , m_xIndexHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box(u"indexheight"_ustr)))
+    , m_xIndexHeightImg(m_xBuilder->weld_widget(u"lockindexheight"_ustr))
+    , m_xStandardPB(m_xBuilder->weld_button(u"standard"_ustr))
 {
     m_xStandardBox->make_sorted();
     m_xTitleBox->make_sorted();
@@ -807,7 +902,7 @@ SwStdFontTabPage::~SwStdFontTabPage()
     if (m_bDisposePrinter)
         m_pPrt.disposeAndClear();
     else
-        m_pPrt.clear();
+        m_pPrt.reset();
 }
 
 std::unique_ptr<SfxTabPage> SwStdFontTabPage::Create( weld::Container* pPage, weld::DialogController* pController,
@@ -824,8 +919,8 @@ static void lcl_SetColl(SwWrtShell* pWrtShell, sal_uInt16 nType,
     if( pPrt )
         aFont = pPrt->GetFontMetric( aFont );
     SwTextFormatColl *pColl = pWrtShell->GetTextCollFromPool(nType);
-    pColl->SetFormatAttr(SvxFontItem(aFont.GetFamilyType(), aFont.GetFamilyName(),
-                OUString(), aFont.GetPitch(), aFont.GetCharSet(), nFontWhich));
+    pColl->SetFormatAttr(SvxFontItem(aFont.GetFamilyTypeMaybeAskConfig(), aFont.GetFamilyName(),
+                OUString(), aFont.GetPitchMaybeAskConfig(), aFont.GetCharSet(), nFontWhich));
 }
 
 static void lcl_SetColl(SwWrtShell* pWrtShell, sal_uInt16 nType,
@@ -840,12 +935,12 @@ static void lcl_SetColl(SwWrtShell* pWrtShell, sal_uInt16 nType,
 OUString SwStdFontTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label1",        "font_label", "size_label",    "default_label",
-                          "heading_label", "list_label", "caption_label", "index_label" };
+    OUString labels[] = { u"label1"_ustr,        u"font_label"_ustr, u"size_label"_ustr,    u"default_label"_ustr,
+                          u"heading_label"_ustr, u"list_label"_ustr, u"caption_label"_ustr, u"index_label"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -856,7 +951,7 @@ OUString SwStdFontTabPage::GetAllStrings()
 
 bool SwStdFontTabPage::FillItemSet( SfxItemSet* )
 {
-    SW_MOD()->GetModuleConfig()->SetDefaultFontInCurrDocOnly(false);
+    SwModule::get()->GetModuleConfig()->SetDefaultFontInCurrDocOnly(false);
 
     const OUString sStandard    = m_xStandardBox->get_active_text();
     const OUString sTitle       = m_xTitleBox->get_active_text();
@@ -917,8 +1012,8 @@ bool SwStdFontTabPage::FillItemSet( SfxItemSet* )
             vcl::Font aFont( sStandard, Size( 0, 10 ) );
             if( pPrinter )
                 aFont = pPrinter->GetFontMetric( aFont );
-            m_pWrtShell->SetDefault(SvxFontItem(aFont.GetFamilyType(), aFont.GetFamilyName(),
-                                  OUString(), aFont.GetPitch(), aFont.GetCharSet(), nFontWhich));
+            m_pWrtShell->SetDefault(SvxFontItem(aFont.GetFamilyTypeMaybeAskConfig(), aFont.GetFamilyName(),
+                                  OUString(), aFont.GetPitchMaybeAskConfig(), aFont.GetCharSet(), nFontWhich));
             SwTextFormatColl *pColl = m_pWrtShell->GetTextCollFromPool(RES_POOLCOLL_STANDARD);
             pColl->ResetFormatAttr(nFontWhich);
             bMod = true;
@@ -1296,35 +1391,35 @@ void SwStdFontTabPage::PageCreated( const SfxAllItemSet& aSet)
 }
 
 SwTableOptionsTabPage::SwTableOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/opttablepage.ui", "OptTablePage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/opttablepage.ui"_ustr, u"OptTablePage"_ustr, &rSet)
     , m_pWrtShell(nullptr)
     , m_bHTMLMode(false)
-    , m_xHeaderCB(m_xBuilder->weld_check_button("header"))
-    , m_xHeaderImg(m_xBuilder->weld_widget("lockheader"))
-    , m_xRepeatHeaderCB(m_xBuilder->weld_check_button("repeatheader"))
-    , m_xRepeatHeaderImg(m_xBuilder->weld_widget("lockrepeatheader"))
-    , m_xDontSplitCB(m_xBuilder->weld_check_button("dontsplit"))
-    , m_xDontSplitImg(m_xBuilder->weld_widget("lockdontsplit"))
-    , m_xBorderCB(m_xBuilder->weld_check_button("border"))
-    , m_xBorderImg(m_xBuilder->weld_widget("lockborder"))
-    , m_xNumFormattingCB(m_xBuilder->weld_check_button("numformatting"))
-    , m_xNumFormattingImg(m_xBuilder->weld_widget("locknumformatting"))
-    , m_xNumFormatFormattingCB(m_xBuilder->weld_check_button("numfmtformatting"))
-    , m_xNumFormatFormattingImg(m_xBuilder->weld_widget("locknumfmtformatting"))
-    , m_xNumAlignmentCB(m_xBuilder->weld_check_button("numalignment"))
-    , m_xNumAlignmentImg(m_xBuilder->weld_widget("locknumalignment"))
-    , m_xRowMoveMF(m_xBuilder->weld_metric_spin_button("rowmove", FieldUnit::CM))
-    , m_xRowMoveImg(m_xBuilder->weld_widget("lockrowmove"))
-    , m_xColMoveMF(m_xBuilder->weld_metric_spin_button("colmove", FieldUnit::CM))
-    , m_xColMoveImg(m_xBuilder->weld_widget("lockcolmove"))
-    , m_xRowInsertMF(m_xBuilder->weld_metric_spin_button("rowinsert", FieldUnit::CM))
-    , m_xRowInsertImg(m_xBuilder->weld_widget("lockrowinsert"))
-    , m_xColInsertMF(m_xBuilder->weld_metric_spin_button("colinsert", FieldUnit::CM))
-    , m_xColInsertImg(m_xBuilder->weld_widget("lockcolinsert"))
-    , m_xFixRB(m_xBuilder->weld_radio_button("fix"))
-    , m_xFixPropRB(m_xBuilder->weld_radio_button("fixprop"))
-    , m_xVarRB(m_xBuilder->weld_radio_button("var"))
-    , m_xBehaviorOfImg(m_xBuilder->weld_widget("lockbehaviorof"))
+    , m_xHeaderCB(m_xBuilder->weld_check_button(u"header"_ustr))
+    , m_xHeaderImg(m_xBuilder->weld_widget(u"lockheader"_ustr))
+    , m_xRepeatHeaderCB(m_xBuilder->weld_check_button(u"repeatheader"_ustr))
+    , m_xRepeatHeaderImg(m_xBuilder->weld_widget(u"lockrepeatheader"_ustr))
+    , m_xDontSplitCB(m_xBuilder->weld_check_button(u"dontsplit"_ustr))
+    , m_xDontSplitImg(m_xBuilder->weld_widget(u"lockdontsplit"_ustr))
+    , m_xBorderCB(m_xBuilder->weld_check_button(u"border"_ustr))
+    , m_xBorderImg(m_xBuilder->weld_widget(u"lockborder"_ustr))
+    , m_xNumFormattingCB(m_xBuilder->weld_check_button(u"numformatting"_ustr))
+    , m_xNumFormattingImg(m_xBuilder->weld_widget(u"locknumformatting"_ustr))
+    , m_xNumFormatFormattingCB(m_xBuilder->weld_check_button(u"numfmtformatting"_ustr))
+    , m_xNumFormatFormattingImg(m_xBuilder->weld_widget(u"locknumfmtformatting"_ustr))
+    , m_xNumAlignmentCB(m_xBuilder->weld_check_button(u"numalignment"_ustr))
+    , m_xNumAlignmentImg(m_xBuilder->weld_widget(u"locknumalignment"_ustr))
+    , m_xRowMoveMF(m_xBuilder->weld_metric_spin_button(u"rowmove"_ustr, FieldUnit::CM))
+    , m_xRowMoveImg(m_xBuilder->weld_widget(u"lockrowmove"_ustr))
+    , m_xColMoveMF(m_xBuilder->weld_metric_spin_button(u"colmove"_ustr, FieldUnit::CM))
+    , m_xColMoveImg(m_xBuilder->weld_widget(u"lockcolmove"_ustr))
+    , m_xRowInsertMF(m_xBuilder->weld_metric_spin_button(u"rowinsert"_ustr, FieldUnit::CM))
+    , m_xRowInsertImg(m_xBuilder->weld_widget(u"lockrowinsert"_ustr))
+    , m_xColInsertMF(m_xBuilder->weld_metric_spin_button(u"colinsert"_ustr, FieldUnit::CM))
+    , m_xColInsertImg(m_xBuilder->weld_widget(u"lockcolinsert"_ustr))
+    , m_xFixRB(m_xBuilder->weld_radio_button(u"fix"_ustr))
+    , m_xFixPropRB(m_xBuilder->weld_radio_button(u"fixprop"_ustr))
+    , m_xVarRB(m_xBuilder->weld_radio_button(u"var"_ustr))
+    , m_xBehaviorOfImg(m_xBuilder->weld_widget(u"lockbehaviorof"_ustr))
 {
     Link<weld::Toggleable&,void> aLnk(LINK(this, SwTableOptionsTabPage, CheckBoxHdl));
     m_xNumFormattingCB->connect_toggled(aLnk);
@@ -1346,29 +1441,29 @@ OUString SwTableOptionsTabPage::GetAllStrings()
 {
     OUString sAllStrings;
     OUString labels[]
-        = { "label1",  "label3",  "label4",  "label5",  "label6",  "label10", "label2",
-            "label14", "label15", "label16", "label11", "label12", "label13" };
+        = { u"label1"_ustr,  u"label3"_ustr,  u"label4"_ustr,  u"label5"_ustr,  u"label6"_ustr,  u"label10"_ustr, u"label2"_ustr,
+            u"label14"_ustr, u"label15"_ustr, u"label16"_ustr, u"label11"_ustr, u"label12"_ustr, u"label13"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString checkButton[] = { "header",        "repeatheader",     "dontsplit",   "border",
-                               "numformatting", "numfmtformatting", "numalignment" };
+    OUString checkButton[] = { u"header"_ustr,        u"repeatheader"_ustr,     u"dontsplit"_ustr,   u"border"_ustr,
+                               u"numformatting"_ustr, u"numfmtformatting"_ustr, u"numalignment"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString radioButton[] = { "fix", "fixprop", "var" };
+    OUString radioButton[] = { u"fix"_ustr, u"fixprop"_ustr, u"var"_ustr };
 
     for (const auto& radio : radioButton)
     {
-        if (const auto& pString = m_xBuilder->weld_radio_button(radio))
+        if (const auto pString = m_xBuilder->weld_radio_button(radio))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -1378,7 +1473,7 @@ OUString SwTableOptionsTabPage::GetAllStrings()
 bool SwTableOptionsTabPage::FillItemSet( SfxItemSet* )
 {
     bool bRet = false;
-    SwModuleOptions* pModOpt = SW_MOD()->GetModuleConfig();
+    SwModuleOptions* pModOpt = SwModule::get()->GetModuleConfig();
 
     if (m_xRowMoveMF->get_value_changed_from_saved())
         pModOpt->SetTableHMove( o3tl::narrowing<sal_uInt16>(m_xRowMoveMF->denormalize( m_xRowMoveMF->get_value(FieldUnit::TWIP))));
@@ -1407,7 +1502,7 @@ bool SwTableOptionsTabPage::FillItemSet( SfxItemSet* )
         if(m_pWrtShell && SelectionType::Table & m_pWrtShell->GetSelectionType())
         {
             m_pWrtShell->SetTableChgMode(eMode);
-            static sal_uInt16 aInva[] =
+            static const sal_uInt16 aInva[] =
                                 {   FN_TABLE_MODE_FIX,
                                     FN_TABLE_MODE_FIX_PROP,
                                     FN_TABLE_MODE_VARIABLE,
@@ -1469,7 +1564,7 @@ void SwTableOptionsTabPage::Reset( const SfxItemSet* rSet)
         m_bHTMLMode = 0 != (pItem->GetValue() & HTMLMODE_ON);
     }
 
-    const SwModuleOptions* pModOpt = SW_MOD()->GetModuleConfig();
+    const SwModuleOptions* pModOpt = SwModule::get()->GetModuleConfig();
     if ( rSet->GetItemState( SID_ATTR_METRIC ) >= SfxItemState::DEFAULT )
     {
         const SfxUInt16Item& rItem = rSet->Get( SID_ATTR_METRIC );
@@ -1608,40 +1703,48 @@ void SwTableOptionsTabPage::PageCreated( const SfxAllItemSet& aSet)
 }
 
 SwShdwCursorOptionsTabPage::SwShdwCursorOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/optformataidspage.ui", "OptFormatAidsPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/optformataidspage.ui"_ustr, u"OptFormatAidsPage"_ustr, &rSet)
     , m_pWrtShell(nullptr)
     , m_bHTMLMode(false)
-    , m_xParaCB(m_xBuilder->weld_check_button("paragraph"))
-    , m_xParaImg(m_xBuilder->weld_widget("lockparagraph"))
-    , m_xSHyphCB(m_xBuilder->weld_check_button("hyphens"))
-    , m_xSHyphImg(m_xBuilder->weld_widget("lockhyphens"))
-    , m_xSpacesCB(m_xBuilder->weld_check_button("spaces"))
-    , m_xSpacesImg(m_xBuilder->weld_widget("lockspaces"))
-    , m_xHSpacesCB(m_xBuilder->weld_check_button("nonbreak"))
-    , m_xHSpacesImg(m_xBuilder->weld_widget("locknonbreak"))
-    , m_xTabCB(m_xBuilder->weld_check_button("tabs"))
-    , m_xTabImg(m_xBuilder->weld_widget("locktabs"))
-    , m_xTabLabel(m_xBuilder->weld_label("tabs_label"))
-    , m_xBreakCB(m_xBuilder->weld_check_button("break"))
-    , m_xBreakImg(m_xBuilder->weld_widget("lockbreak"))
-    , m_xCharHiddenCB(m_xBuilder->weld_check_button("hiddentext"))
-    , m_xCharHiddenImg(m_xBuilder->weld_widget("lockhiddentext"))
-    , m_xBookmarkCB(m_xBuilder->weld_check_button("bookmarks"))
-    , m_xBookmarkImg(m_xBuilder->weld_widget("lockbookmarks"))
-    , m_xBookmarkLabel(m_xBuilder->weld_label("bookmarks_label"))
-    , m_xDirectCursorFrame(m_xBuilder->weld_frame("directcrsrframe"))
-    , m_xOnOffCB(m_xBuilder->weld_check_button("cursoronoff"))
-    , m_xOnOffImg(m_xBuilder->weld_widget("lockcursoronoff"))
-    , m_xDirectCursorFillMode(m_xBuilder->weld_combo_box("cxDirectCursorFillMode"))
-    , m_xDirectCursorFillModeImg(m_xBuilder->weld_widget("lockfillmode"))
-    , m_xCursorProtFrame(m_xBuilder->weld_frame("crsrprotframe"))
-    , m_xImageFrame(m_xBuilder->weld_frame("frmImage"))
-    , m_xCursorInProtCB(m_xBuilder->weld_check_button("cursorinprot"))
-    , m_xCursorInProtImg(m_xBuilder->weld_widget("lockcursorinprot"))
-    , m_xDefaultAnchorType(m_xBuilder->weld_combo_box("cxDefaultAnchor"))
-    , m_xDefaultAnchorTypeImg(m_xBuilder->weld_widget("lockAnchor"))
-    , m_xMathBaselineAlignmentCB(m_xBuilder->weld_check_button("mathbaseline"))
-    , m_xMathBaselineAlignmentImg(m_xBuilder->weld_widget("lockmathbaseline"))
+    , m_xParaCB(m_xBuilder->weld_check_button(u"paragraph"_ustr))
+    , m_xParaImg(m_xBuilder->weld_widget(u"lockparagraph"_ustr))
+    , m_xSHyphCB(m_xBuilder->weld_check_button(u"hyphens"_ustr))
+    , m_xSHyphImg(m_xBuilder->weld_widget(u"lockhyphens"_ustr))
+    , m_xSpacesCB(m_xBuilder->weld_check_button(u"spaces"_ustr))
+    , m_xSpacesImg(m_xBuilder->weld_widget(u"lockspaces"_ustr))
+    , m_xHSpacesCB(m_xBuilder->weld_check_button(u"nonbreak"_ustr))
+    , m_xHSpacesImg(m_xBuilder->weld_widget(u"locknonbreak"_ustr))
+    , m_xTabCB(m_xBuilder->weld_check_button(u"tabs"_ustr))
+    , m_xTabImg(m_xBuilder->weld_widget(u"locktabs"_ustr))
+    , m_xTabLabel(m_xBuilder->weld_label(u"tabs_label"_ustr))
+    , m_xBreakCB(m_xBuilder->weld_check_button(u"break"_ustr))
+    , m_xBreakImg(m_xBuilder->weld_widget(u"lockbreak"_ustr))
+    , m_xCharHiddenCB(m_xBuilder->weld_check_button(u"hiddentext"_ustr))
+    , m_xCharHiddenImg(m_xBuilder->weld_widget(u"lockhiddentext"_ustr))
+    , m_xBookmarkCB(m_xBuilder->weld_check_button(u"bookmarks"_ustr))
+    , m_xBookmarkImg(m_xBuilder->weld_widget(u"lockbookmarks"_ustr))
+    , m_xBookmarkLabel(m_xBuilder->weld_label(u"bookmarks_label"_ustr))
+    , m_xTextBoundariesFull(m_xBuilder->weld_radio_button(u"rbTextBoundariesFull"_ustr))
+    , m_xTextBoundariesCrop(m_xBuilder->weld_radio_button(u"rbTextBoundariesCrop"_ustr))
+    , m_xDirectCursorFrame(m_xBuilder->weld_frame(u"directcrsrframe"_ustr))
+    , m_xOnOffCB(m_xBuilder->weld_check_button(u"cursoronoff"_ustr))
+    , m_xOnOffImg(m_xBuilder->weld_widget(u"lockcursoronoff"_ustr))
+    , m_xDirectCursorFillMode(m_xBuilder->weld_combo_box(u"cxDirectCursorFillMode"_ustr))
+    , m_xDirectCursorFillModeImg(m_xBuilder->weld_widget(u"lockfillmode"_ustr))
+    , m_xCursorProtFrame(m_xBuilder->weld_frame(u"crsrprotframe"_ustr))
+    , m_xImageFrame(m_xBuilder->weld_frame(u"frmImage"_ustr))
+    , m_xCursorInProtCB(m_xBuilder->weld_check_button(u"cursorinprot"_ustr))
+    , m_xCursorInProtImg(m_xBuilder->weld_widget(u"lockcursorinprot"_ustr))
+    , m_xDefaultAnchorType(m_xBuilder->weld_combo_box(u"cxDefaultAnchor"_ustr))
+    , m_xDefaultAnchorTypeImg(m_xBuilder->weld_widget(u"lockAnchor"_ustr))
+    , m_xMathBaselineAlignmentCB(m_xBuilder->weld_check_button(u"mathbaseline"_ustr))
+    , m_xMathBaselineAlignmentImg(m_xBuilder->weld_widget(u"lockmathbaseline"_ustr))
+    , m_xFmtAidsAutoComplFrame(m_xBuilder->weld_frame(u"fmtaidsautocompleteframe"_ustr))
+    , m_xEncloseWithCharactersCB(m_xBuilder->weld_check_button(u"enclosewithcharacters"_ustr))
+    , m_xEncloseWithCharactersImg(m_xBuilder->weld_widget(u"lockenclosewithcharacters"_ustr))
+    , m_xTextBoundariesCB(m_xBuilder->weld_check_button(u"cbTextBoundaries"_ustr))
+    , m_xSectionBoundariesCB(m_xBuilder->weld_check_button(u"cbSectionBoundaries"_ustr))
+    , m_xTableBoundariesCB(m_xBuilder->weld_check_button(u"cbTableBoundaries"_ustr))
 {
     SwFillMode eMode = SwFillMode::Tab;
     bool bIsOn = false;
@@ -1652,6 +1755,15 @@ SwShdwCursorOptionsTabPage::SwShdwCursorOptionsTabPage(weld::Container* pPage, w
         bIsOn = pItem->IsOn();
     }
     m_xOnOffCB->set_active( bIsOn );
+
+    bool bIsEncloseWithCharactersOn = false;
+    if (const SwFmtAidsAutoComplItem* pItem = rSet.GetItemIfSet(FN_PARAM_FMT_AIDS_AUTOCOMPL, false))
+    {
+        bIsEncloseWithCharactersOn = pItem->IsEncloseWithCharactersOn();
+    }
+    m_xEncloseWithCharactersCB->set_active(bIsEncloseWithCharactersOn);
+
+    m_xTextBoundariesCB->connect_toggled(LINK(this, SwShdwCursorOptionsTabPage, TextBoundariesHdl));
 
     m_xDirectCursorFillMode->set_active( static_cast<int>(eMode) );
     const SfxUInt16Item* pHtmlModeItem = rSet.GetItemIfSet(SID_HTML_MODE, false);
@@ -1672,10 +1784,20 @@ SwShdwCursorOptionsTabPage::SwShdwCursorOptionsTabPage(weld::Container* pPage, w
     m_xCursorProtFrame->hide();
     m_xCursorInProtCB->hide();
     m_xImageFrame->hide();
+
+    m_xFmtAidsAutoComplFrame->hide();
+    m_xEncloseWithCharactersCB->hide();
 }
 
 SwShdwCursorOptionsTabPage::~SwShdwCursorOptionsTabPage()
 {
+}
+
+IMPL_LINK_NOARG( SwShdwCursorOptionsTabPage, TextBoundariesHdl, weld::Toggleable&, void )
+{
+    const bool bIsTextBoundaries(m_xTextBoundariesCB->get_active());
+    m_xTextBoundariesFull->set_sensitive(bIsTextBoundaries);
+    m_xTextBoundariesCrop->set_sensitive(bIsTextBoundaries);
 }
 
 std::unique_ptr<SfxTabPage> SwShdwCursorOptionsTabPage::Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet )
@@ -1693,22 +1815,23 @@ void SwShdwCursorOptionsTabPage::PageCreated( const SfxAllItemSet& aSet )
 OUString SwShdwCursorOptionsTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "layoutopt", "displayfl", "cursoropt",      "cursorlabel",
-                          "fillmode",  "lbImage",   "lbDefaultAnchor" };
+    OUString labels[] = { u"layoutopt"_ustr, u"displayfl"_ustr, u"cursoropt"_ustr,       u"cursorlabel"_ustr,
+                          u"fillmode"_ustr,  u"lbImage"_ustr,   u"lbDefaultAnchor"_ustr, u"autocomplete"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
     OUString checkButton[]
-        = { "mathbaseline", "paragraph",  "hyphens",   "spaces",       "nonbreak",   "tabs",
-            "break",        "hiddentext", "bookmarks", "cursorinprot", "cursoronoff" };
+        = { u"mathbaseline"_ustr, u"paragraph"_ustr,    u"hyphens"_ustr,     u"spaces"_ustr,
+            u"nonbreak"_ustr,     u"tabs"_ustr,         u"break"_ustr,       u"hiddentext"_ustr,
+            u"bookmarks"_ustr,    u"cursorinprot"_ustr, u"cursoronoff"_ustr, u"enclosewithcharacters"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -1743,6 +1866,16 @@ bool SwShdwCursorOptionsTabPage::FillItemSet( SfxItemSet* rSet )
         bRet = true;
     }
 
+    SwFmtAidsAutoComplItem aFmtAidsAutoComplOpt;
+    aFmtAidsAutoComplOpt.SetEncloseWithCharactersOn(m_xEncloseWithCharactersCB->get_active());
+    if (const SwFmtAidsAutoComplItem* pFmtAidsAutoComplItem
+        = rSet->GetItemIfSet(FN_PARAM_FMT_AIDS_AUTOCOMPL, false);
+        !pFmtAidsAutoComplItem || *pFmtAidsAutoComplItem != aFmtAidsAutoComplOpt)
+    {
+        rSet->Put(aFmtAidsAutoComplOpt);
+        bRet = true;
+    }
+
     const SwDocDisplayItem* pOldAttr = GetOldItem(GetItemSet(), FN_PARAM_DOCDISP);
 
     SwDocDisplayItem aDisp;
@@ -1756,6 +1889,10 @@ bool SwShdwCursorOptionsTabPage::FillItemSet( SfxItemSet* rSet )
     aDisp.m_bBookmarks            = m_xBookmarkCB->get_active();
     aDisp.m_bManualBreak          = m_xBreakCB->get_active();
     aDisp.m_xDefaultAnchor        = m_xDefaultAnchorType->get_active();
+    aDisp.m_bTextBoundariesFull   = m_xTextBoundariesFull->get_active();
+    aDisp.m_bTextBoundaries       = m_xTextBoundariesCB->get_active();
+    aDisp.m_bSectionBoundaries    = m_xSectionBoundariesCB->get_active();
+    aDisp.m_bTableBoundaries      = m_xTableBoundariesCB->get_active();
 
     bRet |= (!pOldAttr || aDisp != *pOldAttr);
     if(bRet)
@@ -1795,6 +1932,17 @@ void SwShdwCursorOptionsTabPage::Reset( const SfxItemSet* rSet )
     } else {
         m_xMathBaselineAlignmentCB->hide();
     }
+
+    bool bIsEncloseWithCharactersOn = false;
+    if (const SwFmtAidsAutoComplItem* pItem
+        = rSet->GetItemIfSet(FN_PARAM_FMT_AIDS_AUTOCOMPL, false))
+    {
+        bIsEncloseWithCharactersOn = pItem->IsEncloseWithCharactersOn();
+    }
+    bReadOnly = officecfg::Office::Writer::FmtAidsAutocomplete::EncloseWithCharacters::isReadOnly();
+    m_xEncloseWithCharactersCB->set_active(bIsEncloseWithCharactersOn);
+    m_xEncloseWithCharactersCB->set_sensitive(!bReadOnly);
+    m_xEncloseWithCharactersImg->set_visible(bReadOnly);
 
     if( const SfxBoolItem* pItem = rSet->GetItemIfSet( FN_PARAM_CRSR_IN_PROTECTED, false ) )
         m_xCursorInProtCB->set_active(pItem->GetValue());
@@ -1855,6 +2003,26 @@ void SwShdwCursorOptionsTabPage::Reset( const SfxItemSet* rSet )
         m_xDefaultAnchorType->set_active( pDocDisplayAttr->m_xDefaultAnchor );
         m_xDefaultAnchorType->set_sensitive(!bReadOnly);
         m_xDefaultAnchorTypeImg->set_visible(bReadOnly);
+
+        bReadOnly = officecfg::Office::Writer::Content::Display::TextBoundaries::isReadOnly();
+        m_xTextBoundariesCB->set_active( pDocDisplayAttr->m_bTextBoundaries );
+        m_xTextBoundariesCB->set_sensitive(!bReadOnly);
+
+        const bool bIsTextBoundaries(m_xTextBoundariesCB->get_active());
+        m_xTextBoundariesFull->set_sensitive(bIsTextBoundaries);
+        m_xTextBoundariesCrop->set_sensitive(bIsTextBoundaries);
+        if (pDocDisplayAttr->m_bTextBoundariesFull)
+            m_xTextBoundariesFull->set_active(true);
+        else
+            m_xTextBoundariesCrop->set_active(true);
+
+        bReadOnly = officecfg::Office::Writer::Content::Display::SectionBoundaries::isReadOnly();
+        m_xSectionBoundariesCB->set_active( pDocDisplayAttr->m_bSectionBoundaries );
+        m_xSectionBoundariesCB->set_sensitive(!bReadOnly);
+
+        bReadOnly = officecfg::Office::Writer::Content::Display::TableBoundaries::isReadOnly();
+        m_xTableBoundariesCB->set_active( pDocDisplayAttr->m_bTableBoundaries );
+        m_xTableBoundariesCB->set_sensitive(!bReadOnly);
     }
 }
 
@@ -1886,15 +2054,15 @@ CharAttr const aRedlineAttr[] =
 };
 // Items from aRedlineAttr relevant for InsertAttr: strikethrough is
 // not used
-static sal_uInt16 aInsertAttrMap[] = { 0, 1, 2, 3, 4, 6, 7, 8, 9, 10 };
+const sal_uInt16 aInsertAttrMap[] = { 0, 1, 2, 3, 4, 6, 7, 8, 9, 10 };
 
 // Items from aRedlineAttr relevant for DeleteAttr: underline and
 // double underline is not used
-static sal_uInt16 aDeletedAttrMap[] = { 0, 1, 2, 5, 6, 7, 8, 9, 10 };
+const sal_uInt16 aDeletedAttrMap[] = { 0, 1, 2, 5, 6, 7, 8, 9, 10 };
 
 // Items from aRedlineAttr relevant for ChangeAttr: strikethrough is
 // not used
-static sal_uInt16 aChangedAttrMap[] = { 0, 1, 2, 3, 4, 6, 7, 8, 9, 10 };
+const sal_uInt16 aChangedAttrMap[] = { 0, 1, 2, 3, 4, 6, 7, 8, 9, 10 };
 
 // Preview of selection
 SwMarkPreview::SwMarkPreview()
@@ -2052,35 +2220,35 @@ namespace
 
 SwRedlineOptionsTabPage::SwRedlineOptionsTabPage(weld::Container* pPage, weld::DialogController* pController,
                                                  const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/optredlinepage.ui", "OptRedLinePage", &rSet)
-    , m_xInsertLB(m_xBuilder->weld_combo_box("insert"))
-    , m_xInsertImg(m_xBuilder->weld_widget("lockinsert"))
-    , m_xInsertColorLB(new ColorListBox(m_xBuilder->weld_menu_button("insertcolor"),
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/optredlinepage.ui"_ustr, u"OptRedLinePage"_ustr, &rSet)
+    , m_xInsertLB(m_xBuilder->weld_combo_box(u"insert"_ustr))
+    , m_xInsertImg(m_xBuilder->weld_widget(u"lockinsert"_ustr))
+    , m_xInsertColorLB(new ColorListBox(m_xBuilder->weld_menu_button(u"insertcolor"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xInsertColorImg(m_xBuilder->weld_widget("lockinsertcolor"))
+    , m_xInsertColorImg(m_xBuilder->weld_widget(u"lockinsertcolor"_ustr))
     , m_xInsertedPreviewWN(new SvxFontPrevWindow)
-    , m_xInsertedPreview(new weld::CustomWeld(*m_xBuilder, "insertedpreview", *m_xInsertedPreviewWN))
-    , m_xDeletedLB(m_xBuilder->weld_combo_box("deleted"))
-    , m_xDeletedImg(m_xBuilder->weld_widget("lockdeleted"))
-    , m_xDeletedColorLB(new ColorListBox(m_xBuilder->weld_menu_button("deletedcolor"),
+    , m_xInsertedPreview(new weld::CustomWeld(*m_xBuilder, u"insertedpreview"_ustr, *m_xInsertedPreviewWN))
+    , m_xDeletedLB(m_xBuilder->weld_combo_box(u"deleted"_ustr))
+    , m_xDeletedImg(m_xBuilder->weld_widget(u"lockdeleted"_ustr))
+    , m_xDeletedColorLB(new ColorListBox(m_xBuilder->weld_menu_button(u"deletedcolor"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xDeletedColorImg(m_xBuilder->weld_widget("lockdeletedcolor"))
+    , m_xDeletedColorImg(m_xBuilder->weld_widget(u"lockdeletedcolor"_ustr))
     , m_xDeletedPreviewWN(new SvxFontPrevWindow)
-    , m_xDeletedPreview(new weld::CustomWeld(*m_xBuilder, "deletedpreview", *m_xDeletedPreviewWN))
-    , m_xChangedLB(m_xBuilder->weld_combo_box("changed"))
-    , m_xChangedImg(m_xBuilder->weld_widget("lockchanged"))
-    , m_xChangedColorLB(new ColorListBox(m_xBuilder->weld_menu_button("changedcolor"),
+    , m_xDeletedPreview(new weld::CustomWeld(*m_xBuilder, u"deletedpreview"_ustr, *m_xDeletedPreviewWN))
+    , m_xChangedLB(m_xBuilder->weld_combo_box(u"changed"_ustr))
+    , m_xChangedImg(m_xBuilder->weld_widget(u"lockchanged"_ustr))
+    , m_xChangedColorLB(new ColorListBox(m_xBuilder->weld_menu_button(u"changedcolor"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xChangedColorImg(m_xBuilder->weld_widget("lockchangedcolor"))
+    , m_xChangedColorImg(m_xBuilder->weld_widget(u"lockchangedcolor"_ustr))
     , m_xChangedPreviewWN(new SvxFontPrevWindow)
-    , m_xChangedPreview(new weld::CustomWeld(*m_xBuilder, "changedpreview", *m_xChangedPreviewWN))
-    , m_xMarkPosLB(m_xBuilder->weld_combo_box("markpos"))
-    , m_xMarkPosImg(m_xBuilder->weld_widget("lockmarkpos"))
-    , m_xMarkColorLB(new ColorListBox(m_xBuilder->weld_menu_button("markcolor"),
+    , m_xChangedPreview(new weld::CustomWeld(*m_xBuilder, u"changedpreview"_ustr, *m_xChangedPreviewWN))
+    , m_xMarkPosLB(m_xBuilder->weld_combo_box(u"markpos"_ustr))
+    , m_xMarkPosImg(m_xBuilder->weld_widget(u"lockmarkpos"_ustr))
+    , m_xMarkColorLB(new ColorListBox(m_xBuilder->weld_menu_button(u"markcolor"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xMarkColorImg(m_xBuilder->weld_widget("lockmarkcolor"))
+    , m_xMarkColorImg(m_xBuilder->weld_widget(u"lockmarkcolor"_ustr))
     , m_xMarkPreviewWN(new SwMarkPreview)
-    , m_xMarkPreview(new weld::CustomWeld(*m_xBuilder, "markpreview", *m_xMarkPreviewWN))
+    , m_xMarkPreview(new weld::CustomWeld(*m_xBuilder, u"markpreview"_ustr, *m_xMarkPreviewWN))
 {
     Size aPreviewSize(getPreviewOptionsSize(m_xMarkPreviewWN->GetDrawingArea()->get_ref_device()));
 
@@ -2145,14 +2313,14 @@ std::unique_ptr<SfxTabPage> SwRedlineOptionsTabPage::Create( weld::Container* pP
 OUString SwRedlineOptionsTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label2", "insert_label",  "insertcolor_label",
-                          "label3", "deleted_label", "deletedcolor_label",
-                          "label4", "changed_label", "changedcolor_label",
-                          "label5", "markpos_label", "markcolor_label" };
+    OUString labels[] = { u"label2"_ustr, u"insert_label"_ustr,  u"insertcolor_label"_ustr,
+                          u"label3"_ustr, u"deleted_label"_ustr, u"deletedcolor_label"_ustr,
+                          u"label4"_ustr, u"changed_label"_ustr, u"changedcolor_label"_ustr,
+                          u"label5"_ustr, u"markpos_label"_ustr, u"markcolor_label"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -2162,7 +2330,7 @@ OUString SwRedlineOptionsTabPage::GetAllStrings()
 bool SwRedlineOptionsTabPage::FillItemSet( SfxItemSet* )
 {
     CharAttr *pAttr;
-    SwModuleOptions *pOpt = SW_MOD()->GetModuleConfig();
+    SwModuleOptions* pOpt = SwModule::get()->GetModuleConfig();
 
     AuthorCharAttr aInsertedAttr;
     AuthorCharAttr aDeletedAttr;
@@ -2238,7 +2406,7 @@ bool SwRedlineOptionsTabPage::FillItemSet( SfxItemSet* )
 
 void SwRedlineOptionsTabPage::Reset( const SfxItemSet*  )
 {
-    const SwModuleOptions *pOpt = SW_MOD()->GetModuleConfig();
+    const SwModuleOptions* pOpt = SwModule::get()->GetModuleConfig();
 
     const AuthorCharAttr &rInsertAttr = pOpt->GetInsertAuthorAttr();
     const AuthorCharAttr &rDeletedAttr = pOpt->GetDeletedAuthorAttr();
@@ -2535,26 +2703,20 @@ void SwRedlineOptionsTabPage::InitFontStyle(SvxFontPrevWindow& rExampleWin, cons
 }
 
 SwCompareOptionsTabPage::SwCompareOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/optcomparison.ui", "OptComparison", &rSet)
-    , m_xAutoRB(m_xBuilder->weld_radio_button("auto"))
-    , m_xWordRB(m_xBuilder->weld_radio_button("byword"))
-    , m_xCharRB(m_xBuilder->weld_radio_button("bycharacter"))
-    , m_xCompareModeImg(m_xBuilder->weld_widget("lockcomparemode"))
-    , m_xRsidCB(m_xBuilder->weld_check_button("useRSID"))
-    , m_xRsidImg(m_xBuilder->weld_widget("lockuseRSID"))
-    , m_xIgnoreCB(m_xBuilder->weld_check_button("ignore"))
-    , m_xIgnoreImg(m_xBuilder->weld_widget("lockignore"))
-    , m_xLenNF(m_xBuilder->weld_spin_button("ignorelen"))
-    , m_xLenImg(m_xBuilder->weld_widget("lockignorelen"))
-    , m_xStoreRsidCB(m_xBuilder->weld_check_button("storeRSID"))
-    , m_xStoreRsidImg(m_xBuilder->weld_widget("lockstoreRSID"))
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/optcomparison.ui"_ustr, u"OptComparison"_ustr, &rSet)
+    , m_xAutoRB(m_xBuilder->weld_radio_button(u"auto"_ustr))
+    , m_xWordRB(m_xBuilder->weld_radio_button(u"byword"_ustr))
+    , m_xCharRB(m_xBuilder->weld_radio_button(u"bycharacter"_ustr))
+    , m_xCompareModeImg(m_xBuilder->weld_widget(u"lockcomparemode"_ustr))
+    , m_xRsidCB(m_xBuilder->weld_check_button(u"useRSID"_ustr))
+    , m_xRsidImg(m_xBuilder->weld_widget(u"lockuseRSID"_ustr))
+    , m_xStoreRsidCB(m_xBuilder->weld_check_button(u"storeRSID"_ustr))
+    , m_xStoreRsidImg(m_xBuilder->weld_widget(u"lockstoreRSID"_ustr))
 {
     Link<weld::Toggleable&,void> aLnk( LINK( this, SwCompareOptionsTabPage, ComparisonHdl ) );
     m_xAutoRB->connect_toggled( aLnk );
     m_xWordRB->connect_toggled( aLnk );
     m_xCharRB->connect_toggled( aLnk );
-
-    m_xIgnoreCB->connect_toggled( LINK( this, SwCompareOptionsTabPage, IgnoreHdl) );
 }
 
 SwCompareOptionsTabPage::~SwCompareOptionsTabPage()
@@ -2569,27 +2731,19 @@ std::unique_ptr<SfxTabPage> SwCompareOptionsTabPage::Create( weld::Container* pP
 OUString SwCompareOptionsTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label1", "setting" };
+    OUString labels[] = { u"label1"_ustr, u"setting"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString checkButton[] = { "useRSID", "ignore", "storeRSID" };
-
-    for (const auto& check : checkButton)
-    {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
-            sAllStrings += pString->get_label() + " ";
-    }
-
-    OUString radioButton[] = { "auto", "byword", "bycharacter" };
+    OUString radioButton[] = { u"auto"_ustr, u"byword"_ustr, u"bycharacter"_ustr };
 
     for (const auto& radio : radioButton)
     {
-        if (const auto& pString = m_xBuilder->weld_radio_button(radio))
+        if (const auto pString = m_xBuilder->weld_radio_button(radio))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -2599,7 +2753,7 @@ OUString SwCompareOptionsTabPage::GetAllStrings()
 bool SwCompareOptionsTabPage::FillItemSet( SfxItemSet* )
 {
     bool bRet = false;
-    SwModuleOptions *pOpt = SW_MOD()->GetModuleConfig();
+    SwModuleOptions* pOpt = SwModule::get()->GetModuleConfig();
 
     if( m_xAutoRB->get_state_changed_from_saved() ||
         m_xWordRB->get_state_changed_from_saved() ||
@@ -2621,18 +2775,6 @@ bool SwCompareOptionsTabPage::FillItemSet( SfxItemSet* )
         bRet = true;
     }
 
-    if( m_xIgnoreCB->get_state_changed_from_saved() )
-    {
-        pOpt->SetIgnorePieces( m_xIgnoreCB->get_active() );
-        bRet = true;
-    }
-
-    if( m_xLenNF->get_value_changed_from_saved() )
-    {
-        pOpt->SetPieceLen( m_xLenNF->get_value() );
-        bRet = true;
-    }
-
     if (m_xStoreRsidCB->get_state_changed_from_saved())
     {
         pOpt->SetStoreRsid(m_xStoreRsidCB->get_active());
@@ -2644,29 +2786,23 @@ bool SwCompareOptionsTabPage::FillItemSet( SfxItemSet* )
 
 void SwCompareOptionsTabPage::Reset( const SfxItemSet* )
 {
-    SwModuleOptions *pOpt = SW_MOD()->GetModuleConfig();
+    SwModuleOptions* pOpt = SwModule::get()->GetModuleConfig();
 
     SwCompareMode eCmpMode = pOpt->GetCompareMode();
     if( eCmpMode == SwCompareMode::Auto )
     {
         m_xAutoRB->set_active(true);
         m_xRsidCB->set_sensitive(false);
-        m_xIgnoreCB->set_sensitive(false);
-        m_xLenNF->set_sensitive(false);
     }
     else if( eCmpMode == SwCompareMode::ByWord )
     {
         m_xWordRB->set_active(true);
         m_xRsidCB->set_sensitive(true);
-        m_xIgnoreCB->set_sensitive(true);
-        m_xLenNF->set_sensitive(true);
     }
     else if( eCmpMode == SwCompareMode::ByChar)
     {
         m_xCharRB->set_active(true);
         m_xRsidCB->set_sensitive(true);
-        m_xIgnoreCB->set_sensitive(true);
-        m_xLenNF->set_sensitive(true);
     }
 
     if (officecfg::Office::Writer::Comparison::Mode::isReadOnly())
@@ -2689,24 +2825,6 @@ void SwCompareOptionsTabPage::Reset( const SfxItemSet* )
     }
     m_xRsidCB->save_state();
 
-    m_xIgnoreCB->set_active( pOpt->IsIgnorePieces() );
-    if (officecfg::Office::Writer::Comparison::IgnorePieces::isReadOnly())
-    {
-        m_xIgnoreCB->set_sensitive(false);
-        m_xIgnoreImg->set_visible(true);
-    }
-    m_xIgnoreCB->save_state();
-
-    m_xLenNF->set_sensitive( m_xIgnoreCB->get_active() && eCmpMode != SwCompareMode::Auto );
-
-    m_xLenNF->set_value( pOpt->GetPieceLen() );
-    if (officecfg::Office::Writer::Comparison::IgnoreLength::isReadOnly())
-    {
-        m_xLenNF->set_sensitive(false);
-        m_xLenImg->set_visible(true);
-    }
-    m_xLenNF->save_value();
-
     m_xStoreRsidCB->set_active(pOpt->IsStoreRsid());
     m_xStoreRsidCB->set_sensitive(!officecfg::Office::Writer::Comparison::StoreRSID::isReadOnly());
     m_xStoreRsidImg->set_visible(officecfg::Office::Writer::Comparison::StoreRSID::isReadOnly());
@@ -2720,30 +2838,23 @@ IMPL_LINK(SwCompareOptionsTabPage, ComparisonHdl, weld::Toggleable&, rButton, vo
 
     bool bChecked = !m_xAutoRB->get_active();
     m_xRsidCB->set_sensitive( bChecked );
-    m_xIgnoreCB->set_sensitive( bChecked );
-    m_xLenNF->set_sensitive( bChecked && m_xIgnoreCB->get_active() );
-}
-
-IMPL_LINK_NOARG(SwCompareOptionsTabPage, IgnoreHdl, weld::Toggleable&, void)
-{
-    m_xLenNF->set_sensitive(m_xIgnoreCB->get_active());
 }
 
 #ifdef DBG_UTIL
 
 SwTestTabPage::SwTestTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/opttestpage.ui", "OptTestPage", &rCoreSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/opttestpage.ui"_ustr, u"OptTestPage"_ustr, &rCoreSet)
     , m_bAttrModified( false )
-    , m_xTest1CBox(m_xBuilder->weld_check_button("unused"))
-    , m_xTest2CBox(m_xBuilder->weld_check_button("dynamic"))
-    , m_xTest3CBox(m_xBuilder->weld_check_button("nocalm"))
-    , m_xTest4CBox(m_xBuilder->weld_check_button("wysiwygdbg"))
-    , m_xTest5CBox(m_xBuilder->weld_check_button("noidle"))
-    , m_xTest6CBox(m_xBuilder->weld_check_button("noscreenadj"))
-    , m_xTest7CBox(m_xBuilder->weld_check_button("winformat"))
-    , m_xTest8CBox(m_xBuilder->weld_check_button("noscroll"))
-    , m_xTest9CBox(m_xBuilder->weld_check_button("DrawingLayerNotLoading"))
-    , m_xTest10CBox(m_xBuilder->weld_check_button("AutoFormatByInput"))
+    , m_xTest1CBox(m_xBuilder->weld_check_button(u"unused"_ustr))
+    , m_xTest2CBox(m_xBuilder->weld_check_button(u"dynamic"_ustr))
+    , m_xTest3CBox(m_xBuilder->weld_check_button(u"nocalm"_ustr))
+    , m_xTest4CBox(m_xBuilder->weld_check_button(u"wysiwygdbg"_ustr))
+    , m_xTest5CBox(m_xBuilder->weld_check_button(u"noidle"_ustr))
+    , m_xTest6CBox(m_xBuilder->weld_check_button(u"noscreenadj"_ustr))
+    , m_xTest7CBox(m_xBuilder->weld_check_button(u"winformat"_ustr))
+    , m_xTest8CBox(m_xBuilder->weld_check_button(u"noscroll"_ustr))
+    , m_xTest9CBox(m_xBuilder->weld_check_button(u"DrawingLayerNotLoading"_ustr))
+    , m_xTest10CBox(m_xBuilder->weld_check_button(u"AutoFormatByInput"_ustr))
 {
     Init();
 }
@@ -2761,18 +2872,18 @@ std::unique_ptr<SfxTabPage> SwTestTabPage::Create( weld::Container* pPage, weld:
 OUString SwTestTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString checkButton[] = { "unused",           "dynamic",  "nocalm",
-                               "wysiwygdbg",       "noidle",   "noscreenadj",
-                               "winformat",        "noscroll", "DrawingLayerNotLoading",
-                               "AutoFormatByInput" };
+    OUString checkButton[] = { u"unused"_ustr,           u"dynamic"_ustr,  u"nocalm"_ustr,
+                               u"wysiwygdbg"_ustr,       u"noidle"_ustr,   u"noscreenadj"_ustr,
+                               u"winformat"_ustr,        u"noscroll"_ustr, u"DrawingLayerNotLoading"_ustr,
+                               u"AutoFormatByInput"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
-    if (const auto& pString = m_xBuilder->weld_label("label1"))
+    if (const auto pString = m_xBuilder->weld_label(u"label1"_ustr))
         sAllStrings += pString->get_label() + " ";
 
     return sAllStrings.replaceAll("_", "");

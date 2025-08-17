@@ -25,7 +25,7 @@
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/view/XFormLayerAccess.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
+#include <com/sun/star/drawing/XSlideSorterSelectionSupplier.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <comphelper/uno3.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -36,8 +36,6 @@
 #include <vector>
 
 namespace com::sun::star::drawing { class XDrawSubController; }
-namespace com::sun::star::drawing::framework { class XConfigurationController; }
-namespace com::sun::star::drawing::framework { class XModuleController; }
 namespace com::sun::star::drawing { class XLayer; }
 namespace osl { class Mutex; }
 namespace sd::framework { class ConfigurationController; }
@@ -53,7 +51,7 @@ typedef ::cppu::ImplInheritanceHelper <
     css::drawing::XDrawView,
     css::view::XSelectionChangeListener,
     css::view::XFormLayerAccess,
-    css::drawing::framework::XControllerManager
+    css::drawing::XSlideSorterSelectionSupplier
     > DrawControllerInterfaceBase;
 
 class BroadcastHelperOwner
@@ -70,11 +68,8 @@ class ViewShellBase;
     specific behaviour.  The life time of the DrawController is roughly that
     of ViewShellBase but note that the DrawController can (in the case of a
     reload) outlive the ViewShellBase.
-
-    The implementation of the XControllerManager interface is not yet in its
-    final form.
 */
-class SD_DLLPUBLIC DrawController final
+class SAL_DLLPUBLIC_RTTI DrawController final
     : public DrawControllerInterfaceBase,
       private BroadcastHelperOwner,
       public ::cppu::OPropertySetHelper
@@ -139,7 +134,7 @@ public:
     */
     void BroadcastContextChange() const;
     void NotifyAccUpdate();
-    void fireChangeLayer( css::uno::Reference< css::drawing::XLayer>* pCurrentLayer ) noexcept;
+    void fireChangeLayer( const css::uno::Reference< css::drawing::XLayer>& xNewLayer ) noexcept;
     // change the parameter to int
     //void fireSwitchCurrentPage( String pageName) throw();
     void fireSwitchCurrentPage( sal_Int32 pageIndex) noexcept;
@@ -160,7 +155,11 @@ public:
     */
     void ReleaseViewShellBase();
 
-    DECLARE_XINTERFACE()
+    // XInterface
+    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
+    SD_DLLPUBLIC virtual void SAL_CALL acquire() noexcept override;
+    SD_DLLPUBLIC virtual void SAL_CALL release() noexcept override;
+
     DECLARE_XTYPEPROVIDER()
 
     // XComponent
@@ -211,13 +210,12 @@ public:
     virtual void  SAL_CALL
         selectionChanged (const css::lang::EventObject& rEvent) override;
 
-    // XControllerManager
+    SD_DLLPUBLIC const rtl::Reference<sd::framework::ConfigurationController> & getConfigurationController();
 
-    virtual css::uno::Reference<css::drawing::framework::XConfigurationController> SAL_CALL
-        getConfigurationController() override;
+    rtl::Reference<sd::framework::ModuleController> getModuleController();
 
-    virtual css::uno::Reference<css::drawing::framework::XModuleController> SAL_CALL
-        getModuleController() override;
+    // XSlideSorterSelectionSupplier
+    virtual css::uno::Any SAL_CALL getSlideSorterSelection(  ) override;
 
 private:
     /** This method must return the name to index table. This table
@@ -273,7 +271,7 @@ private:
     using cppu::OPropertySetHelper::disposing;
     using cppu::OPropertySetHelper::getFastPropertyValue;
 
-    css::uno::Reference< css::drawing::XLayer>* mpCurrentLayer;
+    css::uno::Reference< css::drawing::XLayer> mxCurrentLayer;
 
     const css::uno::Type m_aSelectionTypeIdentifier;
 
@@ -311,7 +309,6 @@ private:
         const css::uno::Any& rNewValue,
         const css::uno::Any& rOldValue);
 
-    void ProvideFrameworkControllers();
     void DisposeFrameworkControllers();
 };
 

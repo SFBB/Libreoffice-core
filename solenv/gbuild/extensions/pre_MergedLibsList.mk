@@ -18,6 +18,7 @@ gb_MERGE_LIBRARY_LIST := \
 	basegfx \
 	canvasfactory \
 	canvastools \
+	chart2 \
 	comphelper \
 	configmgr \
 	cppcanvas \
@@ -32,6 +33,8 @@ gb_MERGE_LIBRARY_LIST := \
 	drawinglayercore \
 	drawinglayer \
 	editeng \
+	embobj \
+	emboleobj \
 	emfio \
 	$(if $(filter WNT,$(OS)),emser) \
 	evtatt \
@@ -49,15 +52,18 @@ gb_MERGE_LIBRARY_LIST := \
 	i18nsearch \
 	i18npool \
 	i18nutil \
+	icg \
 	lng \
 	lnth \
 	localebe1 \
+	$(if $(filter iOS MACOSX,$(OS)),MacOSXSpell) \
 	msfilter \
 	mtfrenderer \
 	numbertext \
 	odfflatxml \
 	offacc \
 	$(if $(ENABLE_OPENGL_CANVAS),oglcanvas) \
+	oox \
 	$(if $(filter OPENCL,$(BUILD_TYPE)),opencl) \
 	package2 \
 	passwordcontainer \
@@ -97,6 +103,7 @@ gb_MERGE_LIBRARY_LIST := \
 	vbahelper \
 	vcl \
 	vclcanvas \
+	xsec_xmlsec \
 	xmlfa \
 	xmlfd \
 	xmlscript \
@@ -106,6 +113,90 @@ gb_MERGE_LIBRARY_LIST := \
 	xsltfilter \
 	xstor \
 
+# if we have --enable-mergelibs=more
+ifneq ($(MERGELIBS_MORE),)
+
+gb_MERGE_LIBRARY_LIST += \
+	$(if $(filter $(OS),WNT), \
+		ado \
+	) \
+	analysis \
+	animcore \
+	$(call gb_Helper_optional,AVMEDIA, \
+		$(if $(filter MACOSX,$(OS)),\
+			avmediaMacAVF \
+		) \
+	) \
+	bib \
+	cached1 \
+	$(if $(ENABLE_CAIRO_CANVAS),cairocanvas) \
+	cui \
+	date \
+	dba \
+	dbahsql \
+	$(call gb_Helper_optional,DBCONNECTIVITY, \
+		dbase \
+		dbaxml) \
+	$(call gb_Helper_optional,DBCONNECTIVITY,dbpool2) \
+	$(call gb_Helper_optional,DBCONNECTIVITY,dbu) \
+	dlgprov \
+	$(if $(ENABLE_EVOAB2),evoab) \
+	$(call gb_Helper_optional,DBCONNECTIVITY, \
+		flat \
+		file) \
+	$(if $(ENABLE_FIREBIRD_SDBC),firebird_sdbc) \
+	$(if $(filter WNT,$(OS)), \
+		fps \
+	) \
+	$(if $(filter MACOSX,$(OS)),\
+		fps_aqua \
+	) \
+	graphicfilter \
+	hwp \
+	log \
+	$(if $(ENABLE_LWP),lwpft) \
+	$(if $(filter $(OS),MACOSX), \
+		macab1 \
+	) \
+	mozbootstrap \
+	msforms \
+	$(call gb_Helper_optional,DBCONNECTIVITY,mysql_jdbc) \
+	$(call gb_Helper_optional,MARIADBC,$(call gb_Helper_optional,DBCONNECTIVITY,mysqlc)) \
+	$(if $(ENABLE_OPENGL_TRANSITIONS),OGLTrans) \
+	odbc \
+	pdffilter \
+	$(if $(BUILD_POSTGRESQL_SDBC),postgresql-sdbc) \
+	pricing \
+	$(call gb_Helper_optional,SCRIPTING,protocolhandler) \
+	rpt \
+	rptui \
+	$(call gb_Helper_optional,SCRIPTING,scriptframe) \
+	sdbc2 \
+	$(call gb_Helper_optional,DBCONNECTIVITY,sdbt) \
+	slideshow \
+	$(if $(filter WNT,$(OS)), \
+		smplmail \
+	) \
+	solver \
+	storagefd \
+	svgfilter \
+	t602filter \
+	textconversiondlgs \
+	$(call gb_Helper_optional,XMLHELP,ucpchelp1) \
+	$(if $(ENABLE_LIBCMIS),ucpcmis1) \
+	$(if $(WITH_WEBDAV),ucpdav1) \
+	ucppkg1 \
+	wpftcalc \
+	wpftdraw \
+	wpftimpress \
+	wpftwriter \
+	$(if $(filter WNT,$(OS)), \
+		wininetbe1 \
+	) \
+	writerperfect \
+	xmlsecurity \
+
+endif
 
 # allow module-deps.pl to color based on this.
 ifneq ($(ENABLE_PRINT_DEPS),)

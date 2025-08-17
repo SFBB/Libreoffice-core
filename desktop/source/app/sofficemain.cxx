@@ -18,6 +18,7 @@
  */
 
 #include <sal/config.h>
+#include <config_emscripten.h>
 #include <config_features.h>
 
 #include <desktop/dllapi.h>
@@ -29,8 +30,12 @@
 // needed before sal/main.h to avoid redefinition of macros
 #include <prewin.h>
 
+#if defined _WIN32
+#include <o3tl/test_info.hxx>
+#include <systools/win32/test_desktop.hxx>
+#endif
+
 #include <rtl/bootstrap.hxx>
-#include <sal/log.hxx>
 #include <sal/main.h>
 #include <tools/extendapplicationenvironment.hxx>
 #include <vcl/svmain.hxx>
@@ -52,6 +57,12 @@
 
 extern "C" int DESKTOP_DLLPUBLIC soffice_main()
 {
+#if defined _WIN32
+    // If this is a UI test, we may need to switch to a dedicated desktop
+    if (o3tl::IsRunningUITest())
+        sal::systools::maybeCreateTestDesktop();
+#endif
+
     sal_detail_initialize(sal::detail::InitializeSoffice, nullptr);
 
 #if HAVE_FEATURE_BREAKPAD
@@ -64,9 +75,26 @@ extern "C" int DESKTOP_DLLPUBLIC soffice_main()
 #endif
     tools::extendApplicationEnvironment();
 
+#if defined EMSCRIPTEN && !HAVE_EMSCRIPTEN_JSPI
+    //HACK: Qt5 QWasmEventDispatcher::processEvents
+    // (qtbase/src/plugins/platforms/wasm/qwasmeventdispatcher.cpp) calls
+    // emscripten_set_main_loop_arg with simulateInfiniteLoop == true, and as we use
+    // -fwasm-exceptions (cf. solenv/gbuild/platform/EMSCRIPTEN_INTEL_GCC.mk), aDesktop allocated on
+    // the stack would run into the issue warned about at
+    // <https://emscripten.org/docs/api_reference/emscripten.h.html#c.emscripten_set_main_loop>
+    // "Note: Currently, using the new Wasm exception handling and simulate_infinite_loop == true at
+    // the same time does not work yet in C++ projects that have objects with destructors on the
+    // stack at the time of the call."  (Also see the mailing list thread at
+    // <https://groups.google.com/g/emscripten-discuss/c/xpWDVwyJu-M> "Implementation of
+    // -fexceptions and -fwasm-exceptions" for why such automatic variables are destroyed with
+    // -fwasm-exceptions but not with -fexceptions.)  So deliberately leak the Desktop instance
+    // here:
+    new desktop::Desktop();
+#else
     desktop::Desktop aDesktop;
+#endif
     // This string is used during initialization of the Gtk+ VCL module
-    Application::SetAppName( "soffice" );
+    Application::SetAppName( u"soffice"_ustr );
 
     // handle --version and --help already here, otherwise they would be handled
     // after VCL initialization that might fail if $DISPLAY is not set

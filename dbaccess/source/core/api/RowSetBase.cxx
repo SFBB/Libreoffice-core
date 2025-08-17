@@ -60,7 +60,7 @@ class OEmptyCollection : public sdbcx::OCollection
 {
 protected:
     virtual void impl_refresh() override;
-    virtual connectivity::sdbcx::ObjectType createObject(const OUString& _rName) override;
+    virtual css::uno::Reference< css::beans::XPropertySet > createObject(const OUString& _rName) override;
 public:
     OEmptyCollection(::cppu::OWeakObject& _rParent,::osl::Mutex& _rMutex) : OCollection(_rParent, true, _rMutex, std::vector< OUString>()){}
 };
@@ -69,9 +69,9 @@ void OEmptyCollection::impl_refresh()
 {
 }
 
-connectivity::sdbcx::ObjectType OEmptyCollection::createObject(const OUString& /*_rName*/)
+css::uno::Reference< css::beans::XPropertySet > OEmptyCollection::createObject(const OUString& /*_rName*/)
 {
-    return connectivity::sdbcx::ObjectType();
+    return css::uno::Reference< css::beans::XPropertySet >();
 }
 
 // ORowSetBase
@@ -228,7 +228,7 @@ const ORowSetValue& ORowSetBase::impl_getValue(sal_Int32 columnIndex)
         for (; k != m_pCache->getEnd(); ++k)
         {
             ORowSetValueVector* pTemp = k->get();
-            OSL_ENSURE( pTemp != reinterpret_cast<void*>(0xfeeefeee),"HALT!" );
+            OSL_ENSURE( pTemp != reinterpret_cast<void*>(sal_uIntPtr(0xfeeefeee)),"HALT!" );
         }
         OSL_ENSURE(!m_aCurrentRow.isNull() && m_aCurrentRow < m_pCache->getEnd() && aCacheIter != m_pCache->m_aCacheIterators.end(),"Invalid iterator set for currentrow!");
 #endif
@@ -371,8 +371,7 @@ Any SAL_CALL ORowSetBase::getObject( sal_Int32 columnIndex, const Reference< XNa
 
 Reference< XRef > SAL_CALL ORowSetBase::getRef( sal_Int32 /*columnIndex*/ )
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XRow::getRef", *m_pMySelf );
-    return nullptr;
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XRow::getRef"_ustr, *m_pMySelf );
 }
 
 Reference< XBlob > SAL_CALL ORowSetBase::getBlob( sal_Int32 columnIndex )
@@ -387,8 +386,7 @@ Reference< XClob > SAL_CALL ORowSetBase::getClob( sal_Int32 columnIndex )
 
 Reference< XArray > SAL_CALL ORowSetBase::getArray( sal_Int32 /*columnIndex*/ )
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XRow::getArray", *m_pMySelf );
-    return nullptr;
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XRow::getArray"_ustr, *m_pMySelf );
 }
 
 // css::sdbcx::XRowLocate
@@ -1089,7 +1087,7 @@ void SAL_CALL ORowSetBase::refreshRow(  )
     ::osl::MutexGuard aGuard( *m_pMutex );
     checkCache();
     if ( impl_rowDeleted() )
-        throwSQLException( "The current row is deleted", StandardSQLState::INVALID_CURSOR_STATE, Reference< XRowSet >( this ) );
+        throwSQLException( u"The current row is deleted"_ustr, StandardSQLState::INVALID_CURSOR_STATE, Reference< XRowSet >( this ) );
 
     if(!(m_bBeforeFirst || m_bAfterLast))
     {

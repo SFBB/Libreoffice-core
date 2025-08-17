@@ -56,7 +56,7 @@ public:
 
     const OUString &GetLibName() const        { return aLibName; }
     const OUString &GetMacName() const        { return aMacName; }
-    OUString GetLanguage()const;
+    const OUString &GetLanguage()const;
 
     ScriptType GetScriptType() const        { return eType; }
 
@@ -110,6 +110,7 @@ This item describes a Macro table.
 class SVL_DLLPUBLIC SvxMacroItem final : public SfxPoolItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SvxMacroItem)
     explicit inline SvxMacroItem ( const sal_uInt16 nId );
 
     // "pure virtual methods" of SfxPoolItem

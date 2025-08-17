@@ -50,6 +50,7 @@
 #include <oox/helper/propertyset.hxx>
 #include <oox/token/properties.hxx>
 #include <oox/token/tokens.hxx>
+#include <sax/fastattribs.hxx>
 #include <addressconverter.hxx>
 #include <biffhelper.hxx>
 
@@ -60,6 +61,7 @@
 #include <document.hxx>
 #include <documentimport.hxx>
 #include <workbooksettings.hxx>
+#include <PivotTableFormat.hxx>
 
 namespace oox::xls {
 
@@ -396,13 +398,18 @@ void PivotTableField::finalizeImport( const Reference< XDataPilotDescriptor >& r
         // try to get the source field and its name from passed DataPilot descriptor
         Reference< XIndexAccess > xDPFieldsIA( rxDPDesc->getDataPilotFields(), UNO_SET_THROW );
         xDPField.set( xDPFieldsIA->getByIndex( nDatabaseIdx ), UNO_QUERY_THROW );
-        Reference< XNamed > xDPFieldName( xDPField, UNO_QUERY_THROW );
-        maDPFieldName = xDPFieldName->getName();
-        OSL_ENSURE( !maDPFieldName.isEmpty(), "PivotTableField::finalizeImport - no field name in source data found" );
+    }
+    catch( Exception& )
+    {
+    }
 
+    try
+    {
         // try to convert grouping settings
         if( const PivotCacheField* pCacheField = mrPivotTable.getCacheField( mnFieldIndex ) )
         {
+            maDPFieldName = pCacheField->getName();
+
             // numeric grouping is done inplace, no nested group fields will appear
             if( pCacheField->hasNumericGrouping() )
             {
@@ -427,6 +434,13 @@ void PivotTableField::finalizeImport( const Reference< XDataPilotDescriptor >& r
                 // create all nested group fields (if any)
                 mrPivotTable.finalizeParentGroupingImport( xDPField, *pCacheField, aItemNames );
             }
+        }
+        else
+        {
+            // No choice - check the sheet for field name
+            Reference< XNamed > xDPFieldName( xDPField, UNO_QUERY_THROW );
+            maDPFieldName = xDPFieldName->getName();
+            OSL_ENSURE( !maDPFieldName.isEmpty(), "PivotTableField::finalizeImport - no field name in source data found" );
         }
     }
     catch( Exception& )
@@ -568,7 +582,7 @@ void PivotTableField::convertPageField( const PTPageFieldModel& rPageField )
             ScDPObject* pDPObj = mrPivotTable.getDPObject();
             ScDPSaveData* pSaveData = pDPObj->GetSaveData();
             ScDPSaveDimension* pDim = pSaveData->GetDimensionByName(pCacheField->getName());
-            OUString aSelectedPage = pSharedItem->getFormattedName(*pDim, pDPObj, DateTime(getWorkbookSettings().getNullDate()));
+            OUString aSelectedPage = pSharedItem->getFormattedName(*pDim, pDPObj, Date( getWorkbookSettings().getNullDate()));
             aPropSet.setProperty( PROP_SelectedPage, aSelectedPage );
         }
     }
@@ -595,7 +609,7 @@ void PivotTableField::convertDataField( const PTDataFieldModel& rDataField )
         means 'count all', and 'countNum' means 'count numbers'. On the
         other hand, for subtotals, 'countA' means 'count all', and 'count'
         means 'count numbers' (see above). */
-    GeneralFunction eAggFunc = GeneralFunction_SUM;
+    GeneralFunction eAggFunc;
     switch( rDataField.mnSubtotal )
     {
         case XML_sum:       eAggFunc = GeneralFunction_SUM;         break;
@@ -609,7 +623,10 @@ void PivotTableField::convertDataField( const PTDataFieldModel& rDataField )
         case XML_stdDevp:   eAggFunc = GeneralFunction_STDEVP;      break;
         case XML_var:       eAggFunc = GeneralFunction_VAR;         break;
         case XML_varp:      eAggFunc = GeneralFunction_VARP;        break;
-        default:            OSL_FAIL( "PivotTableField::convertDataField - unknown aggregation function" );
+        default:
+          OSL_FAIL( "PivotTableField::convertDataField - unknown aggregation function" );
+          eAggFunc = GeneralFunction_SUM;
+          break;
     }
     aPropSet.setProperty( PROP_Function, eAggFunc );
 
@@ -785,7 +802,7 @@ Reference< XDataPilotField > PivotTableField::convertRowColPageField( sal_Int32 
 
                         try
                         {
-                            ScDPSaveMember* pMem = pDim->GetMemberByName(pSharedItem->getFormattedName(*pDim, pDPObj, DateTime(getWorkbookSettings().getNullDate())));
+                            ScDPSaveMember* pMem = pDim->GetMemberByName(pSharedItem->getFormattedName(*pDim, pDPObj, Date( getWorkbookSettings().getNullDate())));
                             pMem->SetShowDetails(rItem.mbShowDetails);
                             pMem->SetIsVisible(!rItem.mbHidden);
                         }
@@ -1025,7 +1042,9 @@ void PivotTable::importPivotTableDefinition( const AttributeList& rAttribs )
 
 void PivotTable::importLocation( const AttributeList& rAttribs, sal_Int16 nSheet )
 {
-    AddressConverter::convertToCellRangeUnchecked( maLocationModel.maRange, rAttribs.getString( XML_ref, OUString() ), nSheet );
+    AddressConverter::convertToCellRangeUnchecked(maLocationModel.maRange,
+                                                  rAttribs.getString(XML_ref, OUString()), nSheet,
+                                                  getScDocument());
     maLocationModel.mnFirstHeaderRow = rAttribs.getInteger( XML_firstHeaderRow, 0 );
     maLocationModel.mnFirstDataRow   = rAttribs.getInteger( XML_firstDataRow, 0 );
     maLocationModel.mnFirstDataCol   = rAttribs.getInteger( XML_firstDataCol, 0 );
@@ -1222,6 +1241,13 @@ PivotTableFilter& PivotTable::createTableFilter()
     return *xTableFilter;
 }
 
+PivotTableFormat& PivotTable::createFormat()
+{
+    PivotTableFormatVector::value_type xFormat = std::make_shared<PivotTableFormat>(*this);
+    maFormats.push_back(xFormat);
+    return *xFormat;
+}
+
 void PivotTable::finalizeImport()
 {
     if( !getAddressConverter().validateCellRange( maLocationModel.maRange, true, true ) )
@@ -1245,7 +1271,7 @@ void PivotTable::finalizeImport()
     try
     {
         // create a new data pilot descriptor based on the source data
-        Reference< XDataPilotTablesSupplier > xDPTablesSupp( getSheetFromDoc( maLocationModel.maRange.aStart.Tab() ), UNO_QUERY_THROW );
+        rtl::Reference< ScTableSheetObj > xDPTablesSupp( getSheetFromDoc( maLocationModel.maRange.aStart.Tab() ) );
         Reference< XDataPilotTables > xDPTables( xDPTablesSupp->getDataPilotTables(), UNO_SET_THROW );
         mxDPDescriptor = static_cast<ScDataPilotDescriptorBase*>( xDPTables->createDataPilotDescriptor().get() );
         ScRange aRange = mpPivotCache->getSourceRange();
@@ -1260,15 +1286,15 @@ void PivotTable::finalizeImport()
             return;
 
         // global data pilot properties
-        PropertySet aDescProp(( css::uno::Reference< css::beans::XPropertySet >(mxDPDescriptor) ));
-        aDescProp.setProperty( PROP_ColumnGrand, maDefModel.mbColGrandTotals );
-        aDescProp.setProperty( PROP_RowGrand, maDefModel.mbRowGrandTotals );
-        aDescProp.setProperty( PROP_ShowFilterButton, false );
-        aDescProp.setProperty( PROP_DrillDownOnDoubleClick, maDefModel.mbEnableDrill );
-
         if (auto* pSaveData = mpDPObject->GetSaveData())
+        {
+            pSaveData->SetColumnGrand(maDefModel.mbColGrandTotals);
+            pSaveData->SetRowGrand(maDefModel.mbRowGrandTotals);
+            pSaveData->SetDrillDown(maDefModel.mbEnableDrill);
+            pSaveData->SetFilterButton(false);
             pSaveData->SetExpandCollapse(maDefModel.mbShowDrill);
-
+        }
+        mpDPObject->SetHideHeader(maLocationModel.mnFirstHeaderRow == 0);
         // finalize all fields, this finds field names and creates grouping fields
         finalizeFieldsImport();
 
@@ -1316,6 +1342,10 @@ void PivotTable::finalizeImport()
         // filters
         maFilters.forEachMem( &PivotTableFilter::finalizeImport );
 
+        // formats
+        for (auto& pFormat : maFormats)
+            pFormat->finalizeImport();
+
         // calculate base position of table
         CellAddress aPos( maLocationModel.maRange.aStart.Tab(), maLocationModel.maRange.aStart.Col(), maLocationModel.maRange.aStart.Row() );
         /*  If page fields exist, include them into the destination
@@ -1327,7 +1357,10 @@ void PivotTable::finalizeImport()
         mpDPObject->PutInteropGrabBag(std::move(maInteropGrabBag));
 
         // insert the DataPilot table into the sheet
+        ScDocument& rDoc = getDocImport().getDoc();
+        rDoc.SetImportingXML(true);
         xDPTables->insertNewByName( maDefModel.maName, aPos, mxDPDescriptor );
+        rDoc.SetImportingXML(false);
     }
     catch( Exception& )
     {

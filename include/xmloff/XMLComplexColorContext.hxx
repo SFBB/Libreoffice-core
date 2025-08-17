@@ -9,13 +9,14 @@
 
 #pragma once
 
+#include <config_options.h>
 #include <xmloff/dllapi.h>
 
 #include <xmloff/XMLElementPropertyContext.hxx>
 #include <xmloff/xmlictxt.hxx>
 #include <docmodel/color/ComplexColor.hxx>
 
-class XMLOFF_DLLPUBLIC XMLComplexColorImport
+class UNLESS_MERGELIBS(XMLOFF_DLLPUBLIC) XMLComplexColorImport
 {
 private:
     model::ComplexColor& mrComplexColor;
@@ -48,7 +49,7 @@ public:
 
     void SAL_CALL endFastElement(sal_Int32 nElement) override;
 
-    model::ComplexColor getComplexColor() { return maComplexColor; }
+    const model::ComplexColor& getComplexColor() { return maComplexColor; }
 };
 
 class XMLOFF_DLLPUBLIC XMLComplexColorContext final : public SvXMLImportContext

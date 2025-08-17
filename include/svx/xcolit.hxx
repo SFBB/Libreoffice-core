@@ -26,16 +26,15 @@
 #include <svx/svxdllapi.h>
 #include <svx/xit.hxx>
 
-class XColorList;
-
 class SVXCORE_DLLPUBLIC XColorItem : public NameOrIndex
 {
-    Color   aColor;
+    Color   m_aColor;
     model::ComplexColor maComplexColor;
 
 public:
             static SfxPoolItem* CreateDefault();
-            XColorItem() {}
+            DECLARE_ITEM_TYPE_FUNCTION(XColorItem)
+            XColorItem() : NameOrIndex() {}
             XColorItem(TypedWhichId<XColorItem> nWhich, sal_Int32 nIndex, const Color& rTheColor);
             XColorItem(TypedWhichId<XColorItem> nWhich, const Color& rTheColor);
             XColorItem(TypedWhichId<XColorItem> nWhich, const OUString& rName, const Color& rTheColor);
@@ -47,7 +46,7 @@ public:
     virtual XColorItem* Clone(SfxItemPool* pPool = nullptr) const override;
 
     const Color&    GetColorValue() const;
-    void            SetColorValue(const Color& rNew) { aColor = rNew; Detach(); }
+    void            SetColorValue(const Color& rNew) { m_aColor = rNew; Detach(); }
 
     void setComplexColor(model::ComplexColor const& rComplexColor) { maComplexColor = rComplexColor; }
     const model::ComplexColor& getComplexColor() const { return maComplexColor; }

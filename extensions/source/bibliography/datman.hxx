@@ -37,7 +37,6 @@ namespace weld { class Window; }
 
 namespace bib
 {
-    class BibView;
     class BibBeamer;
 }
 
@@ -101,6 +100,13 @@ private:
         static css::uno::Reference< css::awt::XControlModel >
                                     createGridModel( const OUString& rName );
 
+        using WeakComponentImplHelperBase::disposing;
+
+public:
+
+        BibDataManager();
+        virtual ~BibDataManager() override;
+
         // XLoadable
         virtual void SAL_CALL load(  ) override;
         virtual void SAL_CALL unload(  ) override;
@@ -108,13 +114,6 @@ private:
         virtual sal_Bool SAL_CALL isLoaded(  ) override;
         virtual void SAL_CALL addLoadListener( const css::uno::Reference< css::form::XLoadListener >& aListener ) override;
         virtual void SAL_CALL removeLoadListener( const css::uno::Reference< css::form::XLoadListener >& aListener ) override;
-
-        using WeakComponentImplHelperBase::disposing;
-
-public:
-
-        BibDataManager();
-        virtual ~BibDataManager() override;
 
         css::uno::Reference< css::form::XForm >                   createDatabaseForm( BibDBDescriptor&    aDesc);
 

@@ -97,18 +97,17 @@ void ScTransferObj::GetAreaSize( const ScDocument& rDoc, SCTAB nTab1, SCTAB nTab
     nCol = nMaxCol;
 }
 
-void ScTransferObj::PaintToDev( OutputDevice* pDev, ScDocument& rDoc, double nPrintFactor,
+void ScTransferObj::PaintToDev( OutputDevice* pDev, ScDocShell& rDocSh, double nPrintFactor,
                                 const ScRange& rBlock )
 {
     tools::Rectangle aBound( Point(), pDev->GetOutputSize() );      //! use size from clip area?
 
-    ScViewData aViewData(rDoc);
+    ScViewData aViewData(rDocSh, nullptr);
 
-    aViewData.SetTabNo( rBlock.aEnd.Tab() );
     aViewData.SetScreen( rBlock.aStart.Col(), rBlock.aStart.Row(),
                             rBlock.aEnd.Col(), rBlock.aEnd.Row() );
 
-    ScPrintFunc::DrawToDev( rDoc, pDev, nPrintFactor, aBound, &aViewData, false/*bMetaFile*/ );
+    ScPrintFunc::DrawToDev( rDocSh.GetDocument(), pDev, nPrintFactor, aBound, aViewData, false/*bMetaFile*/ );
 }
 
 ScTransferObj::ScTransferObj( const std::shared_ptr<ScDocument>& pClipDoc, TransferableObjectDescriptor aDesc ) :
@@ -180,9 +179,9 @@ ScTransferObj::~ScTransferObj()
 {
     SolarMutexGuard aSolarGuard;
 
-    bool bIsDisposing = comphelper::LibreOfficeKit::isActive() && !ScTabViewShell::GetActiveViewShell();
-    ScModule* pScMod = SC_MOD();
-    if (pScMod && !bIsDisposing && pScMod->GetDragData().pCellTransfer == this)
+    ScModule* pScMod = ScModule::get();
+    const ScDragData* pDragData = pScMod ? pScMod->GetDragData() : nullptr;
+    if (pDragData && pDragData->pCellTransfer == this)
     {
         OSL_FAIL("ScTransferObj wasn't released");
         pScMod->ResetDragObject();
@@ -312,28 +311,34 @@ bool ScTransferObj::GetData( const datatransfer::DataFlavor& rFlavor, const OUSt
             ScAddress aPos(nCol, nRow, nTab);
 
             const ScPatternAttr* pPattern = m_pDoc->GetPattern( nCol, nRow, nTab );
-            ScTabEditEngine aEngine( *pPattern, m_pDoc->GetEditPool(), m_pDoc.get() );
-            ScRefCellValue aCell(*m_pDoc, aPos);
-            if (aCell.getType() == CELLTYPE_EDIT)
+            if (pPattern)
             {
-                const EditTextObject* pObj = aCell.getEditText();
-                aEngine.SetTextCurrentDefaults(*pObj);
-            }
-            else
-            {
-                SvNumberFormatter* pFormatter = m_pDoc->GetFormatTable();
-                sal_uInt32 nNumFmt = pPattern->GetNumberFormat(pFormatter);
-                const Color* pColor;
-                OUString aText = ScCellFormat::GetString(aCell, nNumFmt, &pColor, *pFormatter, *m_pDoc);
-                if (!aText.isEmpty())
-                    aEngine.SetTextCurrentDefaults(aText);
-            }
+                ScTabEditEngine aEngine(*pPattern, m_pDoc->GetEditEnginePool(), *m_pDoc);
+                ScRefCellValue aCell(*m_pDoc, aPos);
+                if (aCell.getType() == CELLTYPE_EDIT)
+                {
+                    const EditTextObject* pObj = aCell.getEditText();
+                    aEngine.SetTextCurrentDefaults(*pObj);
+                }
+                else
+                {
+                    ScInterpreterContext& rContext = m_pDoc->GetNonThreadedContext();
+                    sal_uInt32 nNumFmt = pPattern->GetNumberFormat(rContext);
+                    const Color* pColor;
+                    OUString aText
+                        = ScCellFormat::GetString(aCell, nNumFmt, &pColor, &rContext, *m_pDoc);
+                    if (!aText.isEmpty())
+                        aEngine.SetTextCurrentDefaults(aText);
+                }
 
-            bOK = SetObject( &aEngine,
-                    ((nFormat == SotClipboardFormatId::RTF) ? SCTRANS_TYPE_EDIT_RTF :
-                     ((nFormat == SotClipboardFormatId::EDITENGINE_ODF_TEXT_FLAT) ?
-                      SCTRANS_TYPE_EDIT_ODF_TEXT_FLAT : SCTRANS_TYPE_EDIT_BIN)),
-                    rFlavor );
+                bOK = SetObject(&aEngine,
+                                ((nFormat == SotClipboardFormatId::RTF)
+                                     ? SCTRANS_TYPE_EDIT_RTF
+                                     : ((nFormat == SotClipboardFormatId::EDITENGINE_ODF_TEXT_FLAT)
+                                            ? SCTRANS_TYPE_EDIT_ODF_TEXT_FLAT
+                                            : SCTRANS_TYPE_EDIT_BIN)),
+                                rFlavor);
+            }
         }
         else if ( ScImportExport::IsFormatSupported( nFormat ) || nFormat == SotClipboardFormatId::RTF
             || nFormat == SotClipboardFormatId::RICHTEXT )
@@ -372,7 +377,7 @@ bool ScTransferObj::GetData( const datatransfer::DataFlavor& rFlavor, const OUSt
                 aTextOptions.mbAddQuotes = false;
             }
             aObj.SetExportTextOptions(aTextOptions);
-            aObj.SetFormulas( m_pDoc->GetViewOptions().GetOption( VOPT_FORMULAS ) );
+            aObj.SetFormulas(m_pDoc->GetViewOptions().GetOption(sc::ViewOption::FORMULAS));
             aObj.SetIncludeFiltered( bIncludeFiltered );
 
             //  DataType depends on format type:
@@ -399,12 +404,40 @@ bool ScTransferObj::GetData( const datatransfer::DataFlavor& rFlavor, const OUSt
                                                  aReducedBlock.aEnd.Col(), aReducedBlock.aEnd.Row(),
                                                  aReducedBlock.aStart.Tab() );
             ScopedVclPtrInstance< VirtualDevice > pVirtDev;
-            pVirtDev->SetOutputSizePixel(pVirtDev->LogicToPixel(aMMRect.GetSize(), MapMode(MapUnit::Map100thMM)));
 
-            PaintToDev( pVirtDev, *m_pDoc, 1.0, aReducedBlock );
+            // tdf#160855 fix crash due to Skia's internal maximum pixel limit
+            // Somewhere in the tens of thousands of selected fill cells,
+            // the size of the VirtualDevice exceeds 1 GB of pixels. But
+            // Skia, at least on macOS, will fail to create a surface.
+            // Even if there is ample free memory, Skia/Raster will fail.
+            // The second problem is that even if you disable Skia, the
+            // crash is just delayed when a BitmapEx is created from the
+            // VirtualDevice and malloc() fails.
+            // Since this data flavor really triggers one or more system
+            // memory limits, lower the resolution of the bitmap by keeping
+            // the VirtualDevice pixel size within an arbitrary number of
+            // pixels.
+            // Note: the arbitrary "maximum number of pixels" limit that
+            // that Skia can handle may need to be raised or lowered for
+            // platforms other than macOS.
+            static constexpr tools::Long nCopyToImageMaxPixels = 8192 * 8192;
+            Fraction aScale(1.0);
+            Size aPixelSize = pVirtDev->LogicToPixel(aMMRect.GetSize(), MapMode(MapUnit::Map100thMM));
+            tools::Long nPixels(aPixelSize.Width() * aPixelSize.Height());
+            if (nPixels < 0 || nPixels > nCopyToImageMaxPixels)
+            {
+                aScale = Fraction(nCopyToImageMaxPixels, nPixels);
+                aPixelSize = pVirtDev->LogicToPixel(aMMRect.GetSize(), MapMode(MapUnit::Map100thMM, Point(), aScale, aScale));
+                nPixels = aPixelSize.Width() * aPixelSize.Height();
+            }
 
-            pVirtDev->SetMapMode( MapMode( MapUnit::MapPixel ) );
-            BitmapEx aBmp = pVirtDev->GetBitmapEx( Point(), pVirtDev->GetOutputSize() );
+            pVirtDev->SetOutputSizePixel(aPixelSize);
+
+            InitDocShell(true);
+            PaintToDev( pVirtDev, *m_aDocShellRef, 1.0, aReducedBlock );
+
+            pVirtDev->SetMapMode( MapMode( MapUnit::MapPixel, Point(), aScale, aScale ) );
+            Bitmap aBmp( pVirtDev->GetBitmap( Point(), pVirtDev->GetOutputSize() ) );
             bOK = SetBitmapEx( aBmp, rFlavor );
         }
         else if ( nFormat == SotClipboardFormatId::GDIMETAFILE )
@@ -449,7 +482,7 @@ bool ScTransferObj::GetData( const datatransfer::DataFlavor& rFlavor, const OUSt
     return bOK;
 }
 
-bool ScTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId,
+bool ScTransferObj::WriteObject( SvStream& rOStm, void* pUserObject, sal_uInt32 nUserObjectId,
                                         const datatransfer::DataFlavor& rFlavor )
 {
     // called from SetObject, put data into stream
@@ -463,8 +496,8 @@ bool ScTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUse
 
                 SotClipboardFormatId nFormat = SotExchange::GetFormat( rFlavor );
                 // mba: no BaseURL for data exchange
-                if ( pImpEx->ExportStream( *rxOStm, OUString(), nFormat ) )
-                    bRet = ( rxOStm->GetError() == ERRCODE_NONE );
+                if ( pImpEx->ExportStream( rOStm, OUString(), nFormat ) )
+                    bRet = ( rOStm.GetError() == ERRCODE_NONE );
             }
             break;
 
@@ -474,8 +507,8 @@ bool ScTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUse
                 ScTabEditEngine* pEngine = static_cast<ScTabEditEngine*>(pUserObject);
                 if ( nUserObjectId == SCTRANS_TYPE_EDIT_RTF )
                 {
-                    pEngine->Write( *rxOStm, EETextFormat::Rtf );
-                    bRet = ( rxOStm->GetError() == ERRCODE_NONE );
+                    pEngine->Write( rOStm, EETextFormat::Rtf );
+                    bRet = ( rOStm.GetError() == ERRCODE_NONE );
                 }
                 else
                 {
@@ -491,7 +524,10 @@ bool ScTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUse
                     uno::Reference<datatransfer::XTransferable> xEditTrans = pEngine->CreateTransferable( aSel );
                     TransferableDataHelper aEditHelper( xEditTrans );
 
-                    bRet = aEditHelper.GetSotStorageStream( rFlavor, rxOStm );
+                    std::unique_ptr<SvStream> xStrm = aEditHelper.GetSotStorageStream( rFlavor );
+                    bRet = bool(xStrm);
+                    if (bRet)
+                        rOStm.WriteStream(*xStrm);
                 }
             }
             break;
@@ -499,8 +535,8 @@ bool ScTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUse
         case SCTRANS_TYPE_EDIT_ODF_TEXT_FLAT:
             {
                 ScTabEditEngine* pEngine = static_cast<ScTabEditEngine*>(pUserObject);
-                pEngine->Write(*rxOStm, EETextFormat::Xml);
-                bRet = (rxOStm->GetError() == ERRCODE_NONE);
+                pEngine->Write(rOStm, EETextFormat::Xml);
+                bRet = (rOStm.GetError() == ERRCODE_NONE);
             }
             break;
 
@@ -525,8 +561,8 @@ bool ScTransferObj::WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUse
                 if ( xTransact.is() )
                     xTransact->commit();
 
-                rxOStm->SetBufferSize( 0xff00 );
-                rxOStm->WriteStream( *pTempStream );
+                rOStm.SetBufferSize( 0xff00 );
+                rOStm.WriteStream( *pTempStream );
 
                 bRet = true;
 
@@ -565,8 +601,9 @@ void ScTransferObj::DragFinished( sal_Int8 nDropAction )
         }
     }
 
-    ScModule* pScMod = SC_MOD();
-    if ( pScMod && pScMod->GetDragData().pCellTransfer == this )
+    ScModule* pScMod = ScModule::get();
+    const ScDragData* pDragData = pScMod ? pScMod->GetDragData() : nullptr;
+    if (pDragData && pDragData->pCellTransfer == this)
         pScMod->ResetDragObject();
 
     m_xDragSourceRanges = nullptr;       // don't keep source after dropping
@@ -662,12 +699,11 @@ void ScTransferObj::InitDocShell(bool bLimitToPageSize)
     if ( m_aDocShellRef.is() )
         return;
 
-    ScDocShell* pDocSh = new ScDocShell;
-    m_aDocShellRef = pDocSh;      // ref must be there before InitNew
+    m_aDocShellRef = new ScDocShell; // ref must be there before InitNew
 
-    pDocSh->DoInitNew();
+    m_aDocShellRef->DoInitNew();
 
-    ScDocument& rDestDoc = pDocSh->GetDocument();
+    ScDocument& rDestDoc = m_aDocShellRef->GetDocument();
     ScMarkData aDestMark(rDestDoc.GetSheetLimits());
     aDestMark.SelectTable( 0, true );
 
@@ -677,7 +713,7 @@ void ScTransferObj::InitDocShell(bool bLimitToPageSize)
     m_pDoc->GetName( m_aBlock.aStart.Tab(), aTabName );
     rDestDoc.RenameTab( 0, aTabName );
 
-    pDocSh->MakeDrawLayer();
+    m_aDocShellRef->MakeDrawLayer();
 
     rDestDoc.CopyStdStylesFrom(*m_pDoc);
 
@@ -752,7 +788,7 @@ void ScTransferObj::InitDocShell(bool bLimitToPageSize)
         pDestPool->CopyStyleFrom( pStylePool, aStyleName, SfxStyleFamily::Page );
     }
 
-    ScViewData aViewData( *pDocSh, nullptr );
+    ScViewData aViewData(*m_aDocShellRef, nullptr);
     aViewData.SetScreen( nStartX,nStartY, nEndX,nEndY );
     aViewData.SetCurX( nStartX );
     aViewData.SetCurY( nStartY );
@@ -793,14 +829,14 @@ void ScTransferObj::InitDocShell(bool bLimitToPageSize)
     nSizeX = o3tl::convert(nSizeX, o3tl::Length::twip, o3tl::Length::mm100);
     nSizeY = o3tl::convert(nSizeY, o3tl::Length::twip, o3tl::Length::mm100);
 
-//      pDocSh->SetVisAreaSize( Size(nSizeX,nSizeY) );
+//      m_aDocShellRef->SetVisAreaSize( Size(nSizeX,nSizeY) );
 
     tools::Rectangle aNewArea( Point(nPosX,nPosY), Size(nSizeX,nSizeY) );
     //TODO/LATER: why twice?!
-    //pDocSh->SvInPlaceObject::SetVisArea( aNewArea );
-    pDocSh->SetVisArea( aNewArea );
+    //m_aDocShellRef->SvInPlaceObject::SetVisArea( aNewArea );
+    m_aDocShellRef->SetVisArea(aNewArea);
 
-    pDocSh->UpdateOle(aViewData, true);
+    m_aDocShellRef->UpdateOle(aViewData, true);
 
     //! SetDocumentModified?
     if ( rDestDoc.IsChartListenerCollectionNeedsUpdate() )

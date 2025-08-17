@@ -76,19 +76,17 @@ namespace connectivity::hsqldb
     {
         m_aFlushListeners.disposeAndClear( EventObject( *this ) );
         OHsqlConnection_BASE::disposing();
-        OConnectionWrapper::disposing();
     }
 
     OHsqlConnection::OHsqlConnection( const Reference< XDriver >& _rxDriver,
         const Reference< XConnection >& _xConnection ,const Reference< XComponentContext >& _rxContext )
-        :OHsqlConnection_BASE( m_aMutex )
-        ,m_aFlushListeners( m_aMutex )
+        :m_aFlushListeners( m_aMutex )
         ,m_xDriver( _rxDriver )
         ,m_xContext( _rxContext )
         ,m_bIni(true)
         ,m_bReadOnly(false)
     {
-        setDelegation(_xConnection,_rxContext,m_refCount);
+        setDelegation(_xConnection, _rxContext);
     }
 
     OHsqlConnection::~OHsqlConnection()
@@ -100,9 +98,7 @@ namespace connectivity::hsqldb
         }
     }
 
-    IMPLEMENT_FORWARD_XINTERFACE2(OHsqlConnection,OHsqlConnection_BASE,OConnectionWrapper)
-    IMPLEMENT_SERVICE_INFO(OHsqlConnection, "com.sun.star.sdbc.drivers.hsqldb.OHsqlConnection", "com.sun.star.sdbc.Connection")
-    IMPLEMENT_FORWARD_XTYPEPROVIDER2(OHsqlConnection,OHsqlConnection_BASE,OConnectionWrapper)
+    IMPLEMENT_SERVICE_INFO(OHsqlConnection, u"com.sun.star.sdbc.drivers.hsqldb.OHsqlConnection"_ustr, u"com.sun.star.sdbc.Connection"_ustr)
 
 
     ::osl::Mutex& OHsqlConnection::getMutex() const
@@ -144,7 +140,7 @@ namespace connectivity::hsqldb
                     if ( !m_bReadOnly )
                     {
                         Reference< XStatement > xStmt( m_xConnection->createStatement(), css::uno::UNO_SET_THROW );
-                        xStmt->execute( "CHECKPOINT DEFRAG" );
+                        xStmt->execute( u"CHECKPOINT DEFRAG"_ustr );
                     }
                 }
                 catch(const Exception& )
@@ -316,11 +312,9 @@ namespace connectivity::hsqldb
 
             // ask the provider to obtain a graphic
             Sequence< PropertyValue > aMediaProperties{ comphelper::makePropertyValue(
-                "URL", OUString(
-                           // load the graphic from the global graphic repository
-                           "private:graphicrepository/"
+                u"URL"_ustr, u"private:graphicrepository/"
                            // the relative path within the images.zip
-                           LINKED_TEXT_TABLE_IMAGE_RESOURCE)) };
+                           LINKED_TEXT_TABLE_IMAGE_RESOURCE ""_ustr) };
             xGraphic = xProvider->queryGraphic( aMediaProperties );
             OSL_ENSURE( xGraphic.is(), "OHsqlConnection::impl_getTextTableIcon_nothrow: the provider did not give us a graphic object!" );
         }

@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <tools/fract.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/svapp.hxx>
@@ -44,7 +47,7 @@ void ImplDrawDefault(OutputDevice& rOutDev, const OUString* pText,
     bool        bFilled = ( pBitmapEx != nullptr || pFont != nullptr );
     tools::Rectangle   aBorderRect( aPoint, aSize );
 
-    rOutDev.Push();
+    auto popIt = rOutDev.ScopedPush();
 
     rOutDev.SetFillColor();
 
@@ -152,21 +155,19 @@ void ImplDrawDefault(OutputDevice& rOutDev, const OUString* pText,
         rOutDev.DrawLine( aBorderRect.TopLeft(), aBorderRect.BottomRight() );
         rOutDev.DrawLine( aBorderRect.TopRight(), aBorderRect.BottomLeft() );
     }
-
-    rOutDev.Pop();
 }
 
 } // end anonymous namespace
 
 Graphic::Graphic()
-    : mxImpGraphic(vcl::graphic::Manager::get().newInstance())
+    : mxImpGraphic(new ImpGraphic())
 {
 }
 
 Graphic::Graphic(const Graphic& rGraphic)
 {
     if( rGraphic.IsAnimated() )
-        mxImpGraphic = vcl::graphic::Manager::get().copy(rGraphic.mxImpGraphic);
+        mxImpGraphic = std::make_shared<ImpGraphic>(*rGraphic.mxImpGraphic);
     else
         mxImpGraphic = rGraphic.mxImpGraphic;
 }
@@ -177,17 +178,22 @@ Graphic::Graphic(Graphic&& rGraphic) noexcept
 }
 
 Graphic::Graphic(std::shared_ptr<GfxLink> const & rGfxLink, sal_Int32 nPageIndex)
-    : mxImpGraphic(vcl::graphic::Manager::get().newInstance(rGfxLink, nPageIndex))
+    : mxImpGraphic(new ImpGraphic(rGfxLink, nPageIndex))
 {
 }
 
 Graphic::Graphic(GraphicExternalLink const & rGraphicExternalLink)
-    : mxImpGraphic(vcl::graphic::Manager::get().newInstance(rGraphicExternalLink))
+    : mxImpGraphic(new ImpGraphic(rGraphicExternalLink))
 {
 }
 
-Graphic::Graphic(const BitmapEx& rBmpEx)
-    : mxImpGraphic(vcl::graphic::Manager::get().newInstance(rBmpEx))
+Graphic::Graphic(const BitmapEx& rBitmapEx)
+    : mxImpGraphic(new ImpGraphic(Bitmap(rBitmapEx)))
+{
+}
+
+Graphic::Graphic(const Bitmap& rBitmap)
+    : mxImpGraphic(new ImpGraphic(rBitmap))
 {
 }
 
@@ -195,25 +201,25 @@ Graphic::Graphic(const BitmapEx& rBmpEx)
 // and we need to be able to see and preserve 'stock' images too.
 Graphic::Graphic(const Image& rImage)
     // FIXME: should really defer the BitmapEx load.
-    : mxImpGraphic(std::make_shared<ImpGraphic>(rImage.GetBitmapEx()))
+    : mxImpGraphic(new ImpGraphic(rImage.GetBitmap()))
 {
-    OUString aStock = rImage.GetStock();
+    const OUString& aStock = rImage.GetStock();
     if (aStock.getLength())
         mxImpGraphic->setOriginURL("private:graphicrepository/" + aStock);
 }
 
 Graphic::Graphic(const std::shared_ptr<VectorGraphicData>& rVectorGraphicDataPtr)
-    : mxImpGraphic(vcl::graphic::Manager::get().newInstance(rVectorGraphicDataPtr))
+    : mxImpGraphic(new ImpGraphic(rVectorGraphicDataPtr))
 {
 }
 
 Graphic::Graphic(const Animation& rAnimation)
-    : mxImpGraphic(vcl::graphic::Manager::get().newInstance(rAnimation))
+    : mxImpGraphic(new ImpGraphic(rAnimation))
 {
 }
 
-Graphic::Graphic(const GDIMetaFile& rMtf)
-    : mxImpGraphic(vcl::graphic::Manager::get().newInstance(rMtf))
+Graphic::Graphic(const GDIMetaFile& rMetaFile)
+    : mxImpGraphic(new ImpGraphic(rMetaFile))
 {
 }
 
@@ -225,19 +231,19 @@ Graphic::Graphic( const css::uno::Reference< css::graphic::XGraphic >& rxGraphic
     if( pGraphic )
     {
         if (pGraphic->IsAnimated())
-            mxImpGraphic = vcl::graphic::Manager::get().copy(pGraphic->mxImpGraphic);
+            mxImpGraphic = std::make_shared<ImpGraphic>(*pGraphic->mxImpGraphic);
         else
             mxImpGraphic = pGraphic->mxImpGraphic;
     }
     else
-        mxImpGraphic = vcl::graphic::Manager::get().newInstance();
+        mxImpGraphic = std::make_shared<ImpGraphic>();
 }
 
 void Graphic::ImplTestRefCount()
 {
     if (mxImpGraphic.use_count() > 1)
     {
-        mxImpGraphic = vcl::graphic::Manager::get().copy(mxImpGraphic);
+        mxImpGraphic = std::make_shared<ImpGraphic>(*mxImpGraphic);
     }
 }
 
@@ -256,7 +262,7 @@ Graphic& Graphic::operator=( const Graphic& rGraphic )
     if( &rGraphic != this )
     {
         if( rGraphic.IsAnimated() )
-            mxImpGraphic = vcl::graphic::Manager::get().copy(rGraphic.mxImpGraphic);
+            mxImpGraphic = std::make_shared<ImpGraphic>(*rGraphic.mxImpGraphic);
         else
             mxImpGraphic = rGraphic.mxImpGraphic;
     }
@@ -287,8 +293,7 @@ bool Graphic::IsNone() const
 
 void Graphic::Clear()
 {
-    ImplTestRefCount();
-    mxImpGraphic->clear();
+    mxImpGraphic = std::make_shared<ImpGraphic>();
 }
 
 GraphicType Graphic::GetType() const
@@ -298,8 +303,7 @@ GraphicType Graphic::GetType() const
 
 void Graphic::SetDefaultType()
 {
-    ImplTestRefCount();
-    mxImpGraphic->setDefaultType();
+    mxImpGraphic = std::make_shared<ImpGraphic>(true);
 }
 
 bool Graphic::IsSupportedGraphic() const
@@ -332,6 +336,11 @@ BitmapEx Graphic::GetBitmapEx(const GraphicConversionParameters& rParameters) co
     return mxImpGraphic->getBitmapEx(rParameters);
 }
 
+Bitmap Graphic::GetBitmap(const GraphicConversionParameters& rParameters) const
+{
+    return mxImpGraphic->getBitmap(rParameters);
+}
+
 Animation Graphic::GetAnimation() const
 {
     return mxImpGraphic->getAnimation();
@@ -342,23 +351,19 @@ const GDIMetaFile& Graphic::GetGDIMetaFile() const
     return mxImpGraphic->getGDIMetaFile();
 }
 
-const BitmapEx& Graphic::GetBitmapExRef() const
+const Bitmap& Graphic::GetBitmapRef() const
 {
-    return mxImpGraphic->getBitmapExRef();
+    return mxImpGraphic->getBitmapRef();
 }
 
 uno::Reference<css::graphic::XGraphic> Graphic::GetXGraphic() const
 {
-    uno::Reference<css::graphic::XGraphic> xGraphic;
+    if (GetType() == GraphicType::NONE)
+        return nullptr;
 
-    if (GetType() != GraphicType::NONE)
-    {
-        rtl::Reference<unographic::Graphic> pUnoGraphic = new unographic::Graphic;
-        pUnoGraphic->init(*this);
-        xGraphic = pUnoGraphic;
-    }
-
-    return xGraphic;
+    rtl::Reference<unographic::Graphic> pUnoGraphic = new unographic::Graphic;
+    pUnoGraphic->init(*this);
+    return pUnoGraphic;
 }
 
 Size Graphic::GetPrefSize() const
@@ -383,30 +388,24 @@ void Graphic::SetPrefMapMode( const MapMode& rPrefMapMode )
     mxImpGraphic->setPrefMapMode( rPrefMapMode );
 }
 
-basegfx::B2DSize Graphic::GetPPI() const
+basegfx::B2DSize Graphic::GetPPUnit(const MapMode& unit) const
 {
-    double nGrfDPIx;
-    double nGrfDPIy;
-
-    const MapMode aGrfMap(GetPrefMapMode());
-    const Size aGrfPixelSize(GetSizePixel());
     const Size aGrfPrefMapModeSize(GetPrefSize());
-    if (aGrfMap.GetMapUnit() == MapUnit::MapInch)
-    {
-        nGrfDPIx = aGrfPixelSize.Width() / ( static_cast<double>(aGrfMap.GetScaleX()) * aGrfPrefMapModeSize.Width() );
-        nGrfDPIy = aGrfPixelSize.Height() / ( static_cast<double>(aGrfMap.GetScaleY()) * aGrfPrefMapModeSize.Height() );
-    }
-    else
-    {
-        const Size aGrf1000thInchSize = OutputDevice::LogicToLogic(
-                aGrfPrefMapModeSize, aGrfMap, MapMode(MapUnit::Map1000thInch));
-        nGrfDPIx = aGrf1000thInchSize.Width() == 0
-            ? 0.0 : 1000.0 * aGrfPixelSize.Width() / aGrf1000thInchSize.Width();
-        nGrfDPIy = aGrf1000thInchSize.Height() == 0
-            ? 0.0 : 1000.0 * aGrfPixelSize.Height() / aGrf1000thInchSize.Height();
-    }
+    if (aGrfPrefMapModeSize.IsEmpty())
+        return {};
+    const Size aGrfPixelSize(GetSizePixel());
+    basegfx::B2DHomMatrix toPixels = basegfx::utils::createScaleB2DHomMatrix(
+        double(aGrfPixelSize.Width()) / aGrfPrefMapModeSize.Width(),
+        double(aGrfPixelSize.Height()) / aGrfPrefMapModeSize.Height());
+    toPixels *= OutputDevice::LogicToLogic(unit, GetPrefMapMode());
+    return toPixels * basegfx::B2DSize(1, 1);
+}
 
-    return basegfx::B2DSize(nGrfDPIx, nGrfDPIy);
+basegfx::B2DSize Graphic::GetPPI() const { return GetPPUnit(MapMode(MapUnit::MapInch)); }
+
+basegfx::B2DSize Graphic::GetPPM() const
+{
+    return GetPPUnit(MapMode(MapUnit::MapMM, {}, { 1000, 1 }, { 1000, 1 }));
 }
 
 Size Graphic::GetSizePixel( const OutputDevice* pRefDevice ) const
@@ -424,11 +423,6 @@ Size Graphic::GetSizePixel( const OutputDevice* pRefDevice ) const
 sal_uLong Graphic::GetSizeBytes() const
 {
     return mxImpGraphic->getSizeBytes();
-}
-
-void Graphic::Draw(OutputDevice& rOutDev, const Point& rDestPt) const
-{
-    mxImpGraphic->draw(rOutDev, rDestPt);
 }
 
 void Graphic::Draw(OutputDevice& rOutDev, const Point& rDestPt,
@@ -474,16 +468,6 @@ Link<Animation*,void> Graphic::GetAnimationNotifyHdl() const
 sal_uInt32 Graphic::GetAnimationLoopCount() const
 {
     return mxImpGraphic->getAnimationLoopCount();
-}
-
-std::shared_ptr<GraphicReader>& Graphic::GetReaderContext()
-{
-    return mxImpGraphic->getContext();
-}
-
-void Graphic::SetReaderContext( const std::shared_ptr<GraphicReader> &pReader )
-{
-    mxImpGraphic->setContext( pReader );
 }
 
 void Graphic::SetDummyContext( bool value )
@@ -532,13 +516,13 @@ sal_Int32 Graphic::getPageNumber() const
     return mxImpGraphic->getPageNumber();
 }
 
-OUString Graphic::getOriginURL() const
+const OUString & Graphic::getOriginURL() const
 {
     if (mxImpGraphic)
     {
         return mxImpGraphic->getOriginURL();
     }
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 void Graphic::setOriginURL(OUString const & rOriginURL)

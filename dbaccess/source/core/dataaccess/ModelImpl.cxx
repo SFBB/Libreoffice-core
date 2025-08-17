@@ -63,7 +63,6 @@
 using namespace css;
 using namespace ::com::sun::star::document;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
@@ -72,9 +71,7 @@ using namespace ::com::sun::star::embed;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::ucb;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::view;
 using namespace ::com::sun::star::task;
 using namespace ::com::sun::star::script;
 using namespace ::cppu;
@@ -252,7 +249,7 @@ bool DocumentStorageAccess::commitEmbeddedStorage( bool _bPreventRootCommits )
     bool bSuccess = false;
     try
     {
-        NamedStorages::const_iterator pos = m_aExposedStorages.find( "database" );
+        NamedStorages::const_iterator pos = m_aExposedStorages.find( u"database"_ustr );
         if ( pos != m_aExposedStorages.end() )
             bSuccess = tools::stor::commitStorageIfWriteable( pos->second );
     }
@@ -318,7 +315,7 @@ void SAL_CALL DocumentStorageAccess::commited( const css::lang::EventObject& aEv
     Reference< XStorage > xStorage( aEvent.Source, UNO_QUERY );
 
     // check if this is the dedicated "database" sub storage
-    NamedStorages::const_iterator pos = m_aExposedStorages.find( "database" );
+    NamedStorages::const_iterator pos = m_aExposedStorages.find( u"database"_ustr );
     if  (   ( pos != m_aExposedStorages.end() )
         &&  ( pos->second == xStorage )
         )
@@ -374,7 +371,7 @@ ODatabaseModelImpl::ODatabaseModelImpl( const Reference< XComponentContext >& _r
 {
     // some kind of default
     m_sConnectURL = "jdbc:";
-    m_aTableFilter = { "%" };
+    m_aTableFilter = { u"%"_ustr };
     impl_construct_nothrow();
 }
 
@@ -429,25 +426,22 @@ void ODatabaseModelImpl::impl_construct_nothrow()
         // insert the default settings
         Reference< XPropertyContainer > xContainer( m_xSettings, UNO_QUERY_THROW );
         Reference< XSet > xSettingsSet( m_xSettings, UNO_QUERY_THROW );
-        const AsciiPropertyValue* pSettings = getDefaultDataSourceSettings();
-        for ( ; pSettings->AsciiName; ++pSettings )
+        for (auto& setting : getDefaultDataSourceSettings())
         {
-            if ( !pSettings->DefaultValue.hasValue() )
+            if (!setting.DefaultValue.hasValue())
             {
-                Property aProperty(
-                    OUString::createFromAscii( pSettings->AsciiName ),
+                Property aProperty(setting.Name,
                     -1,
-                    pSettings->ValueType,
+                    setting.ValueType,
                     PropertyAttribute::BOUND | PropertyAttribute::MAYBEDEFAULT | PropertyAttribute::MAYBEVOID
                 );
                 xSettingsSet->insert( Any( aProperty ) );
             }
             else
             {
-                xContainer->addProperty(
-                    OUString::createFromAscii( pSettings->AsciiName ),
+                xContainer->addProperty(setting.Name,
                     PropertyAttribute::BOUND | PropertyAttribute::MAYBEDEFAULT,
-                    pSettings->DefaultValue
+                    setting.DefaultValue
                 );
             }
         }
@@ -463,17 +457,17 @@ namespace
 {
     OUString lcl_getContainerStorageName_throw( ODatabaseModelImpl::ObjectType _eType )
     {
-        const char* pAsciiName( nullptr );
+        OUString sName;
         switch ( _eType )
         {
-        case ODatabaseModelImpl::ObjectType::Form:   pAsciiName = "forms"; break;
-        case ODatabaseModelImpl::ObjectType::Report: pAsciiName = "reports"; break;
-        case ODatabaseModelImpl::ObjectType::Query:  pAsciiName = "queries"; break;
-        case ODatabaseModelImpl::ObjectType::Table:  pAsciiName = "tables"; break;
+        case ODatabaseModelImpl::ObjectType::Form:   sName = u"forms"_ustr; break;
+        case ODatabaseModelImpl::ObjectType::Report: sName = u"reports"_ustr; break;
+        case ODatabaseModelImpl::ObjectType::Query:  sName = u"queries"_ustr; break;
+        case ODatabaseModelImpl::ObjectType::Table:  sName = u"tables"_ustr; break;
         default:
             throw RuntimeException();
         }
-        return OUString::createFromAscii( pAsciiName );
+        return sName;
     }
 
     bool lcl_hasObjectWithMacros_throw( const ODefinitionContainer_Impl& _rObjectDefinitions, const Reference< XStorage >& _rxContainerStorage )
@@ -630,18 +624,26 @@ void ODatabaseModelImpl::dispose()
     // dispose the data source and the model
     try
     {
-        Reference< XDataSource > xDS( m_xDataSource );
-        ::comphelper::disposeComponent( xDS );
+        rtl::Reference< ODatabaseSource > xDS( m_xDataSource );
+        if (xDS)
+        {
+            xDS->dispose();
+            m_xDataSource.clear();
+        }
 
-        Reference< XModel > xModel( m_xModel );
-        ::comphelper::disposeComponent( xModel );
+        rtl::Reference< ODatabaseDocument > xModel( m_xModel );
+        if (xModel)
+        {
+            xModel->dispose();
+            m_xModel.clear();
+        }
     }
     catch( const Exception& )
     {
         DBG_UNHANDLED_EXCEPTION("dbaccess");
     }
-    m_xDataSource = WeakReference<XDataSource>();
-    m_xModel = WeakReference< XModel >();
+    m_xDataSource.clear();
+    m_xModel.clear();
 
     for (auto const& elem : m_aContainer)
     {
@@ -702,9 +704,9 @@ void ODatabaseModelImpl::setResource( const OUString& i_rDocumentURL, const Sequ
 
     ::comphelper::NamedValueCollection aMediaDescriptor( _rArgs );
 #if OSL_DEBUG_LEVEL > 0
-    if ( aMediaDescriptor.has( "SalvagedFile" ) )
+    if ( aMediaDescriptor.has( u"SalvagedFile"_ustr ) )
     {
-        OUString sSalvagedFile( aMediaDescriptor.getOrDefault( "SalvagedFile", OUString() ) );
+        OUString sSalvagedFile( aMediaDescriptor.getOrDefault( u"SalvagedFile"_ustr, OUString() ) );
         // If SalvagedFile is an empty string, this indicates "the document is being recovered, but i_rDocumentURL already
         // is the real document URL, not the temporary document location"
         if ( sSalvagedFile.isEmpty() )
@@ -722,12 +724,12 @@ void ODatabaseModelImpl::setResource( const OUString& i_rDocumentURL, const Sequ
 
 ::comphelper::NamedValueCollection ODatabaseModelImpl::stripLoadArguments( const ::comphelper::NamedValueCollection& _rArguments )
 {
-    OSL_ENSURE( !_rArguments.has( "Model" ), "ODatabaseModelImpl::stripLoadArguments: this is suspicious (1)!" );
-    OSL_ENSURE( !_rArguments.has( "ViewName" ), "ODatabaseModelImpl::stripLoadArguments: this is suspicious (2)!" );
+    OSL_ENSURE( !_rArguments.has( u"Model"_ustr ), "ODatabaseModelImpl::stripLoadArguments: this is suspicious (1)!" );
+    OSL_ENSURE( !_rArguments.has( u"ViewName"_ustr ), "ODatabaseModelImpl::stripLoadArguments: this is suspicious (2)!" );
 
     ::comphelper::NamedValueCollection aMutableArgs( _rArguments );
-    aMutableArgs.remove( "Model" );
-    aMutableArgs.remove( "ViewName" );
+    aMutableArgs.remove( u"Model"_ustr );
+    aMutableArgs.remove( u"ViewName"_ustr );
     return aMutableArgs;
 }
 
@@ -754,9 +756,9 @@ Reference< XStorage > const & ODatabaseModelImpl::getOrCreateRootStorage()
     if ( !m_xDocumentStorage.is() )
     {
         Reference< XSingleServiceFactory> xStorageFactory = StorageFactory::create( m_aContext );
-        Any aSource = m_aMediaDescriptor.get( "Stream" );
+        Any aSource = m_aMediaDescriptor.get( u"Stream"_ustr );
         if ( !aSource.hasValue() )
-            aSource = m_aMediaDescriptor.get( "InputStream" );
+            aSource = m_aMediaDescriptor.get( u"InputStream"_ustr );
         if ( !aSource.hasValue() && !m_sDocFileLocation.isEmpty() )
             aSource <<= m_sDocFileLocation;
         // TODO: shouldn't we also check URL?
@@ -849,7 +851,7 @@ bool ODatabaseModelImpl::commitStorageIfWriteable_ignoreErrors( const Reference<
         // For that, we need a temporary copy of the original file.
         osl::File::RC rc = osl::File::copy(sLocation, sTmpFileUrl);
         if (rc != osl::FileBase::E_None)
-            throw uno::RuntimeException("Could not create temp file");
+            throw uno::RuntimeException(u"Could not create temp file"_ustr);
     }
 
     bool bSuccess = false;
@@ -883,10 +885,10 @@ bool ODatabaseModelImpl::commitStorageIfWriteable_ignoreErrors( const Reference<
                 if (!xReadOrig.is())
                     throw uno::RuntimeException("Could not read " + sTmpFileUrl);
                 uno::Reference<embed::XStorage> xMetaInf
-                    = xReadOrig->openStorageElement("META-INF", embed::ElementModes::READ);
+                    = xReadOrig->openStorageElement(u"META-INF"_ustr, embed::ElementModes::READ);
 
                 uno::Reference<embed::XStorage> xTargetMetaInf
-                    = _rxStorage->openStorageElement("META-INF", embed::ElementModes::READWRITE);
+                    = _rxStorage->openStorageElement(u"META-INF"_ustr, embed::ElementModes::READWRITE);
                 if (xMetaInf.is() && xTargetMetaInf.is() && xMetaInf->hasByName(aScriptSignName))
                 {
                     xMetaInf->copyElementTo(aScriptSignName, xTargetMetaInf, aScriptSignName);
@@ -934,7 +936,7 @@ void ODatabaseModelImpl::setModified( bool _bModified )
 
     try
     {
-        Reference< XModifiable > xModi( m_xModel.get(), UNO_QUERY );
+        rtl::Reference< ODatabaseDocument > xModi( m_xModel );
         if ( xModi.is() )
             xModi->setModified( _bModified );
         else
@@ -948,35 +950,35 @@ void ODatabaseModelImpl::setModified( bool _bModified )
 
 Reference<XDataSource> ODatabaseModelImpl::getOrCreateDataSource()
 {
-    Reference<XDataSource> xDs = m_xDataSource;
+    rtl::Reference<ODatabaseSource> xDs = m_xDataSource;
     if ( !xDs.is() )
     {
         xDs = new ODatabaseSource(this);
-        m_xDataSource = xDs;
+        m_xDataSource = xDs.get();
     }
     return xDs;
 }
 
-Reference< XModel> ODatabaseModelImpl::getModel_noCreate() const
+rtl::Reference<ODatabaseDocument> ODatabaseModelImpl::getModel_noCreate() const
 {
-    return m_xModel;
+    return m_xModel.get();
 }
 
-Reference< XModel > ODatabaseModelImpl::createNewModel_deliverOwnership()
+rtl::Reference< ODatabaseDocument > ODatabaseModelImpl::createNewModel_deliverOwnership()
 {
-    Reference< XModel > xModel( m_xModel );
+    rtl::Reference< ODatabaseDocument > xModel( m_xModel );
     OSL_PRECOND( !xModel.is(), "ODatabaseModelImpl::createNewModel_deliverOwnership: not to be called if there already is a model!" );
     if ( !xModel.is() )
     {
         bool bHadModelBefore = m_bDocumentInitialized;
 
         xModel = ODatabaseDocument::createDatabaseDocument( this, ODatabaseDocument::FactoryAccess() );
-        m_xModel = xModel;
+        m_xModel = xModel.get();
 
         try
         {
             Reference< XGlobalEventBroadcaster > xModelCollection = theGlobalEventBroadcaster::get( m_aContext );
-            xModelCollection->insert( Any( xModel ) );
+            xModelCollection->insert( Any( Reference< XModel >(xModel) ) );
         }
         catch( const Exception& )
         {
@@ -1027,75 +1029,74 @@ Reference< XStorage > ODatabaseModelImpl::getStorage( const ObjectType _eType )
                     css::embed::ElementModes::READWRITE );
 }
 
-const AsciiPropertyValue* ODatabaseModelImpl::getDefaultDataSourceSettings()
+// static
+std::span<const DefaultPropertyValue> ODatabaseModelImpl::getDefaultDataSourceSettings()
 {
-    static const AsciiPropertyValue aKnownSettings[] =
+    static const DefaultPropertyValue aKnownSettings[] =
     {
         // known JDBC settings
-        AsciiPropertyValue( "JavaDriverClass",            Any( OUString() ) ),
-        AsciiPropertyValue( "JavaDriverClassPath",        Any( OUString() ) ),
-        AsciiPropertyValue( "IgnoreCurrency",             Any( false ) ),
+        { u"JavaDriverClass"_ustr,            Any( OUString() ) },
+        { u"JavaDriverClassPath"_ustr,        Any( OUString() ) },
+        { u"IgnoreCurrency"_ustr,             Any( false ) },
         // known settings for file-based drivers
-        AsciiPropertyValue( "Extension",                  Any( OUString() ) ),
-        AsciiPropertyValue( "CharSet",                    Any( OUString() ) ),
-        AsciiPropertyValue( "HeaderLine",                 Any( true ) ),
-        AsciiPropertyValue( "FieldDelimiter",             Any( OUString( "," ) ) ),
-        AsciiPropertyValue( "StringDelimiter",            Any( OUString( "\"" ) ) ),
-        AsciiPropertyValue( "DecimalDelimiter",           Any( OUString( "." ) ) ),
-        AsciiPropertyValue( "ThousandDelimiter",          Any( OUString() ) ),
-        AsciiPropertyValue( "ShowDeleted",                Any( false ) ),
+        { u"Extension"_ustr,                  Any( OUString() ) },
+        { u"CharSet"_ustr,                    Any( OUString() ) },
+        { u"HeaderLine"_ustr,                 Any( true ) },
+        { u"FieldDelimiter"_ustr,             Any( u","_ustr ) },
+        { u"StringDelimiter"_ustr,            Any( u"\""_ustr ) },
+        { u"DecimalDelimiter"_ustr,           Any( u"."_ustr ) },
+        { u"ThousandDelimiter"_ustr,          Any( OUString() ) },
+        { u"ShowDeleted"_ustr,                Any( false ) },
         // known ODBC settings
-        AsciiPropertyValue( "SystemDriverSettings",       Any( OUString() ) ),
-        AsciiPropertyValue( "UseCatalog",                 Any( false ) ),
-        AsciiPropertyValue( "TypeInfoSettings",           Any( Sequence< Any >()) ),
+        { u"SystemDriverSettings"_ustr,       Any( OUString() ) },
+        { u"UseCatalog"_ustr,                 Any( false ) },
+        { u"TypeInfoSettings"_ustr,           Any( Sequence< Any >()) },
         // settings related to auto increment handling
-        AsciiPropertyValue( "AutoIncrementCreation",      Any( OUString() ) ),
-        AsciiPropertyValue( "AutoRetrievingStatement",    Any( OUString() ) ),
-        AsciiPropertyValue( "IsAutoRetrievingEnabled",    Any( false ) ),
+        { u"AutoIncrementCreation"_ustr,      Any( OUString() ) },
+        { u"AutoRetrievingStatement"_ustr,    Any( OUString() ) },
+        { u"IsAutoRetrievingEnabled"_ustr,    Any( false ) },
         // known LDAP driver settings
-        AsciiPropertyValue( "HostName",                   Any( OUString() ) ),
-        AsciiPropertyValue( "PortNumber",                 Any( sal_Int32(389) ) ),
-        AsciiPropertyValue( "BaseDN",                     Any( OUString() ) ),
-        AsciiPropertyValue( "MaxRowCount",                Any( sal_Int32(100) ) ),
+        { u"HostName"_ustr,                   Any( OUString() ) },
+        { u"PortNumber"_ustr,                 Any( sal_Int32(389) ) },
+        { u"BaseDN"_ustr,                     Any( OUString() ) },
+        { u"MaxRowCount"_ustr,                Any( sal_Int32(100) ) },
         // known MySQLNative driver settings
-        AsciiPropertyValue( "LocalSocket",                Any( OUString() ) ),
-        AsciiPropertyValue( "NamedPipe",                  Any( OUString() ) ),
+        { u"LocalSocket"_ustr,                Any( OUString() ) },
+        { u"NamedPipe"_ustr,                  Any( OUString() ) },
         // misc known driver settings
-        AsciiPropertyValue( "ParameterNameSubstitution",  Any( false ) ),
-        AsciiPropertyValue( "AddIndexAppendix",           Any( true ) ),
-        AsciiPropertyValue( "IgnoreDriverPrivileges",     Any( true ) ),
-        AsciiPropertyValue( "ImplicitCatalogRestriction", ::cppu::UnoType< OUString >::get() ),
-        AsciiPropertyValue( "ImplicitSchemaRestriction",  ::cppu::UnoType< OUString >::get() ),
-        AsciiPropertyValue( "PrimaryKeySupport",          ::cppu::UnoType< sal_Bool >::get() ),
-        AsciiPropertyValue( "ShowColumnDescription",      Any( false ) ),
+        { u"ParameterNameSubstitution"_ustr,  Any( false ) },
+        { u"AddIndexAppendix"_ustr,           Any( true ) },
+        { u"IgnoreDriverPrivileges"_ustr,     Any( true ) },
+        { u"ImplicitCatalogRestriction"_ustr, ::cppu::UnoType< OUString >::get() },
+        { u"ImplicitSchemaRestriction"_ustr,  ::cppu::UnoType< OUString >::get() },
+        { u"PrimaryKeySupport"_ustr,          ::cppu::UnoType< sal_Bool >::get() },
+        { u"ShowColumnDescription"_ustr,      Any( false ) },
         // known SDB level settings
-        AsciiPropertyValue( "NoNameLengthLimit",          Any( false ) ),
-        AsciiPropertyValue( "AppendTableAliasName",       Any( false ) ),
-        AsciiPropertyValue( "GenerateASBeforeCorrelationName",  Any( false ) ),
-        AsciiPropertyValue( "ColumnAliasInOrderBy",       Any( true ) ),
-        AsciiPropertyValue( "EnableSQL92Check",           Any( false ) ),
-        AsciiPropertyValue( "BooleanComparisonMode",      Any( BooleanComparisonMode::EQUAL_INTEGER ) ),
-        AsciiPropertyValue( "TableTypeFilterMode",        Any( sal_Int32(3) ) ),
-        AsciiPropertyValue( "RespectDriverResultSetType", Any( false ) ),
-        AsciiPropertyValue( "UseSchemaInSelect",          Any( true ) ),
-        AsciiPropertyValue( "UseCatalogInSelect",         Any( true ) ),
-        AsciiPropertyValue( "EnableOuterJoinEscape",      Any( true ) ),
-        AsciiPropertyValue( "PreferDosLikeLineEnds",      Any( false ) ),
-        AsciiPropertyValue( "FormsCheckRequiredFields",   Any( true ) ),
-        AsciiPropertyValue( "EscapeDateTime",             Any( true ) ),
+        { u"NoNameLengthLimit"_ustr,          Any( false ) },
+        { u"AppendTableAliasName"_ustr,       Any( false ) },
+        { u"GenerateASBeforeCorrelationName"_ustr,  Any( false ) },
+        { u"ColumnAliasInOrderBy"_ustr,       Any( true ) },
+        { u"EnableSQL92Check"_ustr,           Any( false ) },
+        { u"BooleanComparisonMode"_ustr,      Any( BooleanComparisonMode::EQUAL_INTEGER ) },
+        { u"TableTypeFilterMode"_ustr,        Any( sal_Int32(3) ) },
+        { u"RespectDriverResultSetType"_ustr, Any( false ) },
+        { u"UseSchemaInSelect"_ustr,          Any( true ) },
+        { u"UseCatalogInSelect"_ustr,         Any( true ) },
+        { u"EnableOuterJoinEscape"_ustr,      Any( true ) },
+        { u"PreferDosLikeLineEnds"_ustr,      Any( false ) },
+        { u"FormsCheckRequiredFields"_ustr,   Any( true ) },
+        { u"EscapeDateTime"_ustr,             Any( true ) },
 
         // known services to handle database tasks
-        AsciiPropertyValue( "TableAlterationServiceName", Any( OUString() ) ),
-        AsciiPropertyValue( "TableRenameServiceName",     Any( OUString() ) ),
-        AsciiPropertyValue( "ViewAlterationServiceName",  Any( OUString() ) ),
-        AsciiPropertyValue( "ViewAccessServiceName",      Any( OUString() ) ),
-        AsciiPropertyValue( "CommandDefinitions",         Any( OUString() ) ),
-        AsciiPropertyValue( "Forms",                      Any( OUString() ) ),
-        AsciiPropertyValue( "Reports",                    Any( OUString() ) ),
-        AsciiPropertyValue( "KeyAlterationServiceName",   Any( OUString() ) ),
-        AsciiPropertyValue( "IndexAlterationServiceName", Any( OUString() ) ),
-
-        AsciiPropertyValue()
+        { u"TableAlterationServiceName"_ustr, Any( OUString() ) },
+        { u"TableRenameServiceName"_ustr,     Any( OUString() ) },
+        { u"ViewAlterationServiceName"_ustr,  Any( OUString() ) },
+        { u"ViewAccessServiceName"_ustr,      Any( OUString() ) },
+        { u"CommandDefinitions"_ustr,         Any( OUString() ) },
+        { u"Forms"_ustr,                      Any( OUString() ) },
+        { u"Reports"_ustr,                    Any( OUString() ) },
+        { u"KeyAlterationServiceName"_ustr,   Any( OUString() ) },
+        { u"IndexAlterationServiceName"_ustr, Any( OUString() ) },
     };
     return aKnownSettings;
 }
@@ -1121,9 +1122,10 @@ bool ODatabaseModelImpl::adjustMacroMode_AutoReject()
 bool ODatabaseModelImpl::checkMacrosOnLoading()
 {
     Reference< XInteractionHandler > xInteraction;
-    xInteraction = m_aMediaDescriptor.getOrDefault( "InteractionHandler", xInteraction );
+    xInteraction = m_aMediaDescriptor.getOrDefault( u"InteractionHandler"_ustr, xInteraction );
     const bool bHasMacros = m_aMacroMode.hasMacros();
-    return m_aMacroMode.checkMacrosOnLoading(xInteraction, false /*HasValidContentSignature*/, bHasMacros);
+    // Since Base does not support document signatures, we always assume that the content signature is valid.
+    return m_aMacroMode.checkMacrosOnLoading(xInteraction, true /*HasValidContentSignature*/, bHasMacros);
 }
 
 void ODatabaseModelImpl::resetMacroExecutionMode()
@@ -1137,7 +1139,9 @@ Reference< XStorageBasedLibraryContainer > ODatabaseModelImpl::getLibraryContain
     if ( rxContainer.is() )
         return rxContainer;
 
-    Reference< XStorageBasedDocument > xDocument( getModel_noCreate(), UNO_QUERY_THROW );
+    rtl::Reference< ODatabaseDocument > xDocument( getModel_noCreate() );
+    if (!xDocument)
+        throw uno::RuntimeException();
         // this is only to be called if there already exists a document model - in fact, it is
         // to be called by the document model only
 
@@ -1159,7 +1163,7 @@ Reference< XStorageBasedLibraryContainer > ODatabaseModelImpl::getLibraryContain
     {
         throw WrappedTargetRuntimeException(
             OUString(),
-            xDocument,
+            cppu::getXWeak(xDocument.get()),
             ::cppu::getCaughtException()
         );
     }
@@ -1290,7 +1294,7 @@ sal_Int16 ODatabaseModelImpl::getCurrentMacroExecMode() const
     sal_Int16 nCurrentMode = MacroExecMode::NEVER_EXECUTE;
     try
     {
-        nCurrentMode = m_aMediaDescriptor.getOrDefault( "MacroExecutionMode", nCurrentMode );
+        nCurrentMode = m_aMediaDescriptor.getOrDefault( u"MacroExecutionMode"_ustr, nCurrentMode );
     }
     catch( const Exception& )
     {
@@ -1301,7 +1305,7 @@ sal_Int16 ODatabaseModelImpl::getCurrentMacroExecMode() const
 
 void ODatabaseModelImpl::setCurrentMacroExecMode( sal_uInt16 nMacroMode )
 {
-    m_aMediaDescriptor.put( "MacroExecutionMode", nMacroMode );
+    m_aMediaDescriptor.put( u"MacroExecutionMode"_ustr, nMacroMode );
 }
 
 OUString ODatabaseModelImpl::getDocumentLocation() const
@@ -1350,7 +1354,7 @@ bool ODatabaseModelImpl::macroCallsSeenWhileLoading() const
 
 Reference< XEmbeddedScripts > ODatabaseModelImpl::getEmbeddedDocumentScripts() const
 {
-    return Reference< XEmbeddedScripts >( getModel_noCreate(), UNO_QUERY );
+    return getModel_noCreate();
 }
 
 SignatureState ODatabaseModelImpl::getScriptingSignatureState()
@@ -1374,7 +1378,7 @@ bool ODatabaseModelImpl::hasTrustedScriptingSignature(
         uno::Reference<security::XDocumentDigitalSignatures> xSigner(
             security::DocumentDigitalSignatures::createWithVersion(
                 comphelper::getProcessComponentContext(), aODFVersion));
-        const uno::Sequence<security::DocumentSignatureInformation> aInfo
+        uno::Sequence<security::DocumentSignatureInformation> aInfo
             = xSigner->verifyScriptingContentSignatures(xStorage,
                                                         uno::Reference<io::XInputStream>());
 
@@ -1395,8 +1399,8 @@ bool ODatabaseModelImpl::hasTrustedScriptingSignature(
         {
             task::DocumentMacroConfirmationRequest aRequest;
             aRequest.DocumentURL = m_sDocFileLocation;
-            aRequest.DocumentStorage = xStorage;
-            aRequest.DocumentSignatureInformation = aInfo;
+            aRequest.DocumentStorage = std::move(xStorage);
+            aRequest.DocumentSignatureInformation = std::move(aInfo);
             aRequest.DocumentVersion = aODFVersion;
             aRequest.Classification = task::InteractionClassification_QUERY;
             bResult = SfxMedium::CallApproveHandler(_rxInteraction, uno::Any(aRequest), true);

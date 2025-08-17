@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <set>
 #include <vector>
 #include <memory>
 #include <vcl/customweld.hxx>
@@ -31,17 +32,13 @@
 #include <formula/opcode.hxx>
 #include <svx/weldeditview.hxx>
 
-namespace com::sun::star::accessibility { class XAccessible; }
-
 class EditView;
 class ScAccessibleEditLineTextData;
 class ScAccessibleEditObject;
-class ScEditEngineDefaulter;
 class ScTextWndGroup;
 class ScInputBarGroup;
 class ScInputHandler;
 class ScTabViewShell;
-struct EENotify;
 
 class ScTextWndBase
 {
@@ -94,7 +91,7 @@ public:
 
     virtual void            SetFormulaMode( bool bSet ) override;
 
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     virtual void            InsertAccessibleTextData( ScAccessibleEditLineTextData& rTextData ) override;
     virtual void            RemoveAccessibleTextData( ScAccessibleEditLineTextData& rTextData ) override;
@@ -167,12 +164,13 @@ private:
 
     ImplSVEvent* m_nAsyncGetFocusId;
 
-    OUString        aPosStr;
-    void*           nTipVisible;
-    bool            bFormulaMode;
+    OUString aPosStr;
+    void* nTipVisible;
+    bool bFormulaMode;
+    std::set<OUString> aRangeNames;
 
 public:
-                    ScPosWnd( vcl::Window* pParent );
+    ScPosWnd(vcl::Window* pParent, ScTabViewShell* pViewSh);
     virtual         ~ScPosWnd() override;
     virtual void    dispose() override;
 
@@ -192,7 +190,7 @@ private:
     virtual void    Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
 
 private:
-    void            FillRangeNames();
+    void            FillRangeNames(bool initialize = false);
     void            FillFunctions();
     void            DoEnter();
     void            HideTip();

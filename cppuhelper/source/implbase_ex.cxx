@@ -22,12 +22,13 @@
 #include <cppuhelper/compbase_ex.hxx>
 #include <cppuhelper/implbase_ex.hxx>
 
+#include "type_entries.hxx"
+
 #include <com/sun/star/uno/RuntimeException.hpp>
 
 #include <mutex>
 
 using namespace ::cppu;
-using namespace ::osl;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
@@ -62,7 +63,7 @@ static bool td_equals(
             OUString::unacquired(&pTDR1->pTypeName) == OUString::unacquired(&pTDR2->pTypeName));
 }
 
-static type_entry * getTypeEntries( class_data * cd )
+type_entry * getTypeEntries( class_data * cd )
 {
     type_entry * pEntries = cd->m_typeEntries;
     if (! cd->m_storedTypeRefs) // not inited?
@@ -256,16 +257,11 @@ Sequence< Type >  SAL_CALL ImplInhHelper_getTypes(
     class_data * cd, Sequence< Type > const & rAddTypes )
 {
     sal_Int32 nImplTypes = cd->m_nTypes;
-    sal_Int32 nAddTypes = rAddTypes.getLength();
-    Sequence< Type > types( nImplTypes + nAddTypes );
+    Sequence<Type> types(nImplTypes + rAddTypes.getLength());
     Type * pTypes = types.getArray();
     fillTypes( pTypes, cd );
     // append base types
-    Type const * pAddTypes = rAddTypes.getConstArray();
-    while (nAddTypes--)
-    {
-        pTypes[ nImplTypes + nAddTypes ] = pAddTypes[ nAddTypes ];
-    }
+    std::copy(rAddTypes.begin(), rAddTypes.end(), pTypes + nImplTypes);
     return types;
 }
 

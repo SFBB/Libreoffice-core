@@ -159,27 +159,30 @@ namespace drawinglayer::primitive2d
             separate from other text data since some renderers need to suppress
             this output due to painting the edited text in e.g. an
             OutlinerEditView in the active text edit control.
-            Deriving now from BasePrimitive2D to turn around functionality:
-            This will decompose to nothing -> suppress. In renderers that need to
-            visualize it (only VclMetafileProcessor2D for now), it needs
-            to be detected and used (see there).
-            Doing it this way around since we will potentially have many
-            pixel renderers and only one MetafileProcessor, so it will
-            be one action less to support (and to potentially forget about )
-            in these implementations.
+            It now uses get2DDecomposition to decide if to process or not,
+            thus it does not need to be processed in any B2DProcessor at all.
+            This is also important e.g. for PDF export - if the object is in
+            edit mode, we need to include the most current text from EditEngine/
+            Outliner to that export which is contained here.
          */
-        class DRAWINGLAYER_DLLPUBLIC TextHierarchyEditPrimitive2D final : public BasePrimitive2D
+        class DRAWINGLAYER_DLLPUBLIC TextHierarchyEditPrimitive2D final : public GroupPrimitive2D
         {
-        private:
-            /// the content
-            Primitive2DContainer                             maContent;
-
         public:
             /// constructor
             explicit TextHierarchyEditPrimitive2D(Primitive2DContainer&& aContent);
 
-            /// data read access
-            const Primitive2DContainer& getContent() const { return maContent; }
+            /// local decomposition
+            virtual void get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const override;
+
+            /// provide unique ID
+            virtual sal_uInt32 getPrimitive2DID() const override;
+        };
+
+        class DRAWINGLAYER_DLLPUBLIC TextHierarchyEmphasisMarkPrimitive2D final : public GroupPrimitive2D
+        {
+        public:
+            /// constructor
+            explicit TextHierarchyEmphasisMarkPrimitive2D(Primitive2DContainer&& aContent);
 
             /// provide unique ID
             virtual sal_uInt32 getPrimitive2DID() const override;

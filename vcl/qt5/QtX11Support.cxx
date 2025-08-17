@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -9,11 +9,8 @@
 
 #include <QtX11Support.hxx>
 
-#include <config_vclplug.h>
-
 #include <QtCore/QVersionNumber>
 
-#include <QtInstance.hxx>
 #include <QtTools.hxx>
 
 #if CHECK_QT5_USING_X11
@@ -45,4 +42,4 @@ void QtX11Support::setApplicationID(const xcb_window_t nWinId, std::u16string_vi
 #endif
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

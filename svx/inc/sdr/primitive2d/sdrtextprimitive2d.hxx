@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRTEXTPRIMITIVE2D_HXX
-#define INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRTEXTPRIMITIVE2D_HXX
+#pragma once
 
 #include <drawinglayer/primitive2d/BufferedDecompositionPrimitive2D.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
@@ -27,7 +26,6 @@
 #include <editeng/outlobj.hxx>
 #include <tools/color.hxx>
 #include <sdr/attribute/sdrformtextattribute.hxx>
-#include <tools/weakbase.h>
 #include <svx/sdtaitm.hxx>
 #include <rtl/ref.hxx>
 #include <unotools/weakref.hxx>
@@ -76,7 +74,7 @@ namespace drawinglayer::primitive2d
 
         protected:
             // support for XTEXT_PAINTSHAPE_BEGIN/XTEXT_PAINTSHAPE_END Metafile comments
-            static void encapsulateWithTextHierarchyBlockPrimitive2D(Primitive2DContainer& rContainer, Primitive2DContainer&& aCandidate);
+            static Primitive2DReference encapsulateWithTextHierarchyBlockPrimitive2D(Primitive2DContainer&& aCandidate);
 
         public:
             SdrTextPrimitive2D(
@@ -112,7 +110,7 @@ namespace drawinglayer::primitive2d
             basegfx::B2DHomMatrix               maObjectTransform;
 
             // local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
             SdrContourTextPrimitive2D(
@@ -149,7 +147,7 @@ namespace drawinglayer::primitive2d
             attribute::SdrFormTextAttribute     maSdrFormTextAttribute;
 
             // local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
             SdrPathTextPrimitive2D(
@@ -192,7 +190,7 @@ namespace drawinglayer::primitive2d
             bool                                    mbWordWrap : 1;         // for CustomShapes text layout
 
             // local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
             SdrBlockTextPrimitive2D(
@@ -238,7 +236,7 @@ namespace drawinglayer::primitive2d
             bool                                    mbFixedCellHeight : 1;
 
             // local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
             SdrStretchTextPrimitive2D(
@@ -271,20 +269,23 @@ namespace drawinglayer::primitive2d
             ::basegfx::B2DHomMatrix                 maTextRangeTransform;   // text range transformation from unit range ([0.0 .. 1.0]) to text range
 
             bool                                    mbWordWrap : 1;         // for CustomShapes text layout
+            bool                                    mbFixedCellHeight : 1;
 
             // local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
             SdrAutoFitTextPrimitive2D(
                 const SdrText* pSdrText,
                 const OutlinerParaObject& rOutlinerParaObjectPtr,
                 ::basegfx::B2DHomMatrix aTextRangeTransform,
-                bool bWordWrap);
+                bool bWordWrap,
+                bool bFixedCellHeight);
 
             // get data
             const basegfx::B2DHomMatrix& getTextRangeTransform() const { return maTextRangeTransform; }
             bool getWordWrap() const { return mbWordWrap; }
+            bool isFixedCellHeight() const { return mbFixedCellHeight; }
 
             // compare operator
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
@@ -307,7 +308,7 @@ namespace drawinglayer::primitive2d
             ::basegfx::B2DHomMatrix maTextRangeTransform;   // text range transformation from unit range ([0.0 .. 1.0]) to text range
 
             // local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& aViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& aViewInformation) const override;
 
         public:
             SdrChainedTextPrimitive2D(
@@ -329,8 +330,5 @@ namespace drawinglayer::primitive2d
             virtual sal_uInt32 getPrimitive2DID() const override;
         };
 } // end of namespace drawinglayer::primitive2d
-
-
-#endif // INCLUDED_SVX_INC_SDR_PRIMITIVE2D_SDRTEXTPRIMITIVE2D_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

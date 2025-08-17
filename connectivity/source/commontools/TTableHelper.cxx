@@ -132,10 +132,10 @@ namespace connectivity
                 Reference<XMultiServiceFactory> xFac(_xConnection,UNO_QUERY);
                 if ( xFac.is() )
                 {
-                    m_xRename.set(xFac->createInstance(lcl_getServiceNameForSetting(m_xConnection,"TableRenameServiceName")),UNO_QUERY);
-                    m_xAlter.set(xFac->createInstance(lcl_getServiceNameForSetting(m_xConnection,"TableAlterationServiceName")),UNO_QUERY);
-                    m_xKeyAlter.set(xFac->createInstance(lcl_getServiceNameForSetting(m_xConnection,"KeyAlterationServiceName")),UNO_QUERY);
-                    m_xIndexAlter.set(xFac->createInstance(lcl_getServiceNameForSetting(m_xConnection,"IndexAlterationServiceName")),UNO_QUERY);
+                    m_xRename.set(xFac->createInstance(lcl_getServiceNameForSetting(m_xConnection,u"TableRenameServiceName"_ustr)),UNO_QUERY);
+                    m_xAlter.set(xFac->createInstance(lcl_getServiceNameForSetting(m_xConnection,u"TableAlterationServiceName"_ustr)),UNO_QUERY);
+                    m_xKeyAlter.set(xFac->createInstance(lcl_getServiceNameForSetting(m_xConnection,u"KeyAlterationServiceName"_ustr)),UNO_QUERY);
+                    m_xIndexAlter.set(xFac->createInstance(lcl_getServiceNameForSetting(m_xConnection,u"IndexAlterationServiceName"_ustr)),UNO_QUERY);
                 }
             }
             catch(const Exception&)
@@ -202,15 +202,23 @@ namespace
         Reference< XRow > xRow( _rxResult, UNO_QUERY_THROW );
         while ( _rxResult->next() )
         {
-            _out_rColumns.emplace_back(xRow->getString(4), // COLUMN_NAME,
-                                       xRow->getInt(5),
-                                       xRow->getString(6),
-                                       xRow->getInt(7),
-                                       xRow->getInt(9),
-                                       xRow->getInt(11),
-                                       xRow->getString(12),
-                                       xRow->getString(13),
-                                       xRow->getInt(17));  // ORDINAL_POSITION
+            // tdf#162227: ODBC SQLGetData requires that data must be retrieved in increasing
+            // column number order, unless the driver supports SQL_GD_ANY_ORDER extension (see
+            // https://learn.microsoft.com/en-us/sql/odbc/reference/syntax/sqlgetdata-function).
+            // We can't emplace_back(getString(4), getInt(5), ..., getString(12), getInt(17)),
+            // because MSVC would reorder calls into getInt(17) -> getString(12) -> ..., and then
+            // MS SQL Server ODBC driver will give error on access of column 12 after column 17.
+            OUString sName = xRow->getString(4); // COLUMN_NAME
+            sal_Int32 nField5 = xRow->getInt(5);
+            OUString aField6 = xRow->getString(6);
+            sal_Int32 nField7 = xRow->getInt(7);
+            sal_Int32 nField9 = xRow->getInt(9);
+            sal_Int32 nField11 = xRow->getInt(11);
+            OUString sField12 = xRow->getString(12);
+            OUString sField13 = xRow->getString(13);
+            OrdinalPosition nOrdinalPosition = xRow->getInt(17); // ORDINAL_POSITION
+            _out_rColumns.emplace_back(sName, nField5, aField6, nField7, nField9, nField11,
+                                       sField12, sField13, nOrdinalPosition);
         }
     }
 
@@ -266,7 +274,7 @@ void OTableHelper::refreshColumns()
             aCatalog,
             m_SchemaName,
             m_Name,
-            "%"
+            u"%"_ustr
         ) );
 
         // collect the column names, together with their ordinal position
@@ -462,7 +470,7 @@ void OTableHelper::refreshIndexes()
 
 OUString OTableHelper::getRenameStart() const
 {
-    OUString sSql("RENAME ");
+    OUString sSql(u"RENAME "_ustr);
     if ( m_Type == "VIEW" )
         sSql += " VIEW ";
     else

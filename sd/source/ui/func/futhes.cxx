@@ -21,6 +21,7 @@
 
 #include <editeng/outliner.hxx>
 #include <sfx2/request.hxx>
+#include <svx/ehdl.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/svdotext.hxx>
 #include <editeng/eeitem.hxx>
@@ -47,32 +48,30 @@ class SfxRequest;
 namespace sd {
 
 
-FuThesaurus::FuThesaurus( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView,
-                  SdDrawDocument* pDoc, SfxRequest& rReq )
-       : FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+FuThesaurus::FuThesaurus( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView,
+                  SdDrawDocument& rDoc, SfxRequest& rReq )
+       : FuPoor(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuThesaurus::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuThesaurus::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuThesaurus( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuThesaurus( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
 
 void FuThesaurus::DoExecute(SfxRequest& rReq)
 {
-    SfxErrorContext aContext(ERRCTX_SVX_LINGU_THESAURUS, OUString(),
-                             mpWindow->GetFrameWeld(), RID_SVXERRCTX, SvxResLocale());
+    SvxErrorContext aContext(ERRCTX_SVX_LINGU_THESAURUS, OUString(), mpWindow->GetFrameWeld());
 
-    if (dynamic_cast< DrawViewShell *>( mpViewShell ))
+    if (dynamic_cast< DrawViewShell *>( &mrViewShell ))
     {
         SdrTextObj* pTextObj = nullptr;
+        const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
 
-        if ( mpView->AreObjectsMarked() )
+        if ( rMarkList.GetMarkCount() != 0 )
         {
-            const SdrMarkList& rMarkList = mpView->GetMarkedObjectList();
-
             if ( rMarkList.GetMarkCount() == 1 )
             {
                 SdrMark* pMark = rMarkList.GetMark(0);
@@ -97,16 +96,16 @@ void FuThesaurus::DoExecute(SfxRequest& rReq)
                 if( xHyphenator.is() )
                     pOutliner->SetHyphenator( xHyphenator );
 
-                pOutliner->SetDefaultLanguage( mpDoc->GetLanguage( EE_CHAR_LANGUAGE ) );
+                pOutliner->SetDefaultLanguage( mrDoc.GetLanguage( EE_CHAR_LANGUAGE ) );
             }
 
             EESpellState eState = const_cast<OutlinerView*>(pOutlView)->StartThesaurus(rReq.GetFrameWeld());
             DBG_ASSERT(eState != EESpellState::NoSpeller, "No SpellChecker");
         }
     }
-    else if (dynamic_cast< OutlineViewShell *>( mpViewShell ))
+    else if (dynamic_cast< OutlineViewShell *>( &mrViewShell ))
     {
-        Outliner* pOutliner = mpDoc->GetOutliner();
+        Outliner* pOutliner = mrDoc.GetOutliner();
         OutlinerView* pOutlView = pOutliner->GetView(0);
 
         if ( !pOutliner->GetSpeller().is() )
@@ -119,7 +118,7 @@ void FuThesaurus::DoExecute(SfxRequest& rReq)
             if( xHyphenator.is() )
                 pOutliner->SetHyphenator( xHyphenator );
 
-            pOutliner->SetDefaultLanguage( mpDoc->GetLanguage( EE_CHAR_LANGUAGE ) );
+            pOutliner->SetDefaultLanguage( mrDoc.GetLanguage( EE_CHAR_LANGUAGE ) );
         }
 
         EESpellState eState = pOutlView->StartThesaurus(rReq.GetFrameWeld());

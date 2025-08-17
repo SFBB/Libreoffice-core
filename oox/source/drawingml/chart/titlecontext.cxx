@@ -25,7 +25,6 @@
 #include <drawingml/chart/titlemodel.hxx>
 #include <oox/helper/attributelist.hxx>
 #include <oox/token/namespaces.hxx>
-#include <oox/token/tokens.hxx>
 
 #include <osl/diagnose.h>
 
@@ -47,9 +46,10 @@ TextContext::~TextContext()
 ContextHandlerRef TextContext::onCreateContext( sal_Int32 nElement, const AttributeList& )
 {
     // this context handler is used for <c:tx> and embedded <c:v> elements
-    if( isCurrentElement( C_TOKEN( tx ) ) ) switch( nElement )
+    if( isCurrentElement( C_TOKEN( tx ) ) || isCurrentElement(CX_TOKEN(tx)) ) switch( nElement )
     {
         case C_TOKEN( rich ):
+        case CX_TOKEN( rich ):
             return new TextBodyContext( *this, mrModel.mxTextBody.create() );
 
         case C_TOKEN( strRef ):
@@ -57,8 +57,14 @@ ContextHandlerRef TextContext::onCreateContext( sal_Int32 nElement, const Attrib
             return new StringSequenceContext( *this, mrModel.mxDataSeq.create() );
 
         case C_TOKEN( v ):
+        case CX_TOKEN( v ):
             OSL_ENSURE( !mrModel.mxDataSeq, "TextContext::onCreateContext - multiple data sequences" );
             return this;    // collect value in onCharacters()
+        case CX_TOKEN( txData ):
+            // CT_TextData can have a <cx:v> element or a sequence
+            // <cx:f> <cx:v>. The former case will be handled through the
+            // CX_TOKEN(v) above, but the latter is not handled. TODO
+            return this;
     }
     return nullptr;
 }
@@ -87,7 +93,6 @@ TitleContext::~TitleContext()
 
 ContextHandlerRef TitleContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
 {
-    // this context handler is used for <c:title> only
     switch( nElement )
     {
         case C_TOKEN( layout ):
@@ -98,12 +103,15 @@ ContextHandlerRef TitleContext::onCreateContext( sal_Int32 nElement, const Attri
             return nullptr;
 
         case C_TOKEN( spPr ):
+        case CX_TOKEN( spPr ):
             return new ShapePropertiesContext( *this, mrModel.mxShapeProp.create() );
 
         case C_TOKEN( tx ):
+        case CX_TOKEN( tx ):
             return new TextContext( *this, mrModel.mxText.create() );
 
         case C_TOKEN( txPr ):
+        case CX_TOKEN( txPr ):
             return new TextBodyContext( *this, mrModel.mxTextProp.create() );
     }
     return nullptr;
@@ -134,9 +142,16 @@ ContextHandlerRef LegendEntryContext::onCreateContext( sal_Int32 nElement, const
     return nullptr;
 }
 
-LegendContext::LegendContext( ContextHandler2Helper& rParent, LegendModel& rModel ) :
+LegendContext::LegendContext( ContextHandler2Helper& rParent,
+        LegendModel& rModel,
+        bool bOverlay /* = false */,
+        sal_Int32 nPos /* = XML_r */) :
     ContextBase< LegendModel >( rParent, rModel )
 {
+    // These can't be in the initializer list because they're members of
+    // ContextBase<LegendModel>
+    mrModel.mbOverlay = bOverlay;
+    mrModel.mnPosition = nPos;
 }
 
 LegendContext::~LegendContext()
@@ -145,7 +160,6 @@ LegendContext::~LegendContext()
 
 ContextHandlerRef LegendContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
 {
-    // this context handler is used for <c:legend> only
     switch( nElement )
     {
         case C_TOKEN( layout ):
@@ -159,13 +173,16 @@ ContextHandlerRef LegendContext::onCreateContext( sal_Int32 nElement, const Attr
             return new LegendEntryContext( *this, mrModel.maLegendEntries.create() );
 
         case C_TOKEN( overlay ):
+            // For cx, overlay is an attribute of <cx:legend>
             mrModel.mbOverlay = rAttribs.getBool( XML_val, true );
             return nullptr;
 
         case C_TOKEN( spPr ):
+        case CX_TOKEN( spPr ):
             return new ShapePropertiesContext( *this, mrModel.mxShapeProp.create() );
 
         case C_TOKEN( txPr ):
+        case CX_TOKEN( txPr ):
             return new TextBodyContext( *this, mrModel.mxTextProp.create() );
     }
     return nullptr;

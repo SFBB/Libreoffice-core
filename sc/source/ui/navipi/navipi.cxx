@@ -41,6 +41,8 @@
 #include <navsett.hxx>
 #include <markdata.hxx>
 
+#include <vcl/jsdialog/executor.hxx>
+
 #include <com/sun/star/uno/Reference.hxx>
 
 using namespace com::sun::star;
@@ -75,76 +77,56 @@ void ScNavigatorDlg::ReleaseFocus()
 
 namespace
 {
-    SCCOL NumToAlpha(const ScSheetLimits& rSheetLimits, SCCOL nColNo, OUString& rStr)
+    SCCOL NumToAlpha(const ScSheetLimits& rSheetLimits, SCCOL nColNo)
     {
         if ( nColNo > SCNAV_MAXCOL(rSheetLimits) )
             nColNo = SCNAV_MAXCOL(rSheetLimits);
         else if ( nColNo < 1 )
             nColNo = 1;
 
-        ::ScColToAlpha( rStr, nColNo - 1);
-
         return nColNo;
     }
 
-    SCCOL AlphaToNum(const ScDocument& rDoc, OUString& rStr)
+    SCCOL AlphaToNum(const ScDocument& rDoc, const OUString& rStr)
     {
         SCCOL  nColumn = 0;
 
         if ( CharClass::isAsciiAlpha( rStr) )
         {
-            rStr = rStr.toAsciiUpperCase();
+            const OUString aUpperCaseStr = rStr.toAsciiUpperCase();
 
-            if (::AlphaToCol( rDoc, nColumn, rStr))
+            if (::AlphaToCol( rDoc, nColumn, aUpperCaseStr))
                 ++nColumn;
 
-            if ( (rStr.getLength() > SCNAV_COLLETTERS(rDoc.GetSheetLimits())) ||
+            if ( (aUpperCaseStr.getLength() > SCNAV_COLLETTERS(rDoc.GetSheetLimits())) ||
                  (nColumn > SCNAV_MAXCOL(rDoc.GetSheetLimits())) )
             {
                 nColumn = SCNAV_MAXCOL(rDoc.GetSheetLimits());
-                NumToAlpha( rDoc.GetSheetLimits(), nColumn, rStr );
             }
         }
-        else
-            rStr.clear();
-
-        return nColumn;
-    }
-
-    SCCOL NumStrToAlpha(const ScSheetLimits& rSheetLimits, OUString& rStr)
-    {
-        SCCOL  nColumn = 0;
-
-        if ( CharClass::isAsciiNumeric(rStr) )
-            nColumn = NumToAlpha( rSheetLimits, static_cast<SCCOL>(rStr.toInt32()), rStr );
-        else
-            rStr.clear();
 
         return nColumn;
     }
 }
 
-IMPL_LINK(ScNavigatorDlg, ParseRowInputHdl, int*, result, bool)
+IMPL_STATIC_LINK(ScNavigatorDlg, ParseRowInputHdl, const OUString&, rStrCol, std::optional<int>)
 {
     SCCOL nCol(0);
 
-    OUString aStrCol = m_xEdCol->get_text();
-
-    if (!aStrCol.isEmpty())
+    if (!rStrCol.isEmpty())
     {
         if (ScViewData* pData = GetViewData())
         {
             ScDocument& rDoc = pData->GetDocument();
 
-            if ( CharClass::isAsciiNumeric(aStrCol) )
-                nCol = NumStrToAlpha( rDoc.GetSheetLimits(), aStrCol );
+            if ( CharClass::isAsciiNumeric(rStrCol) )
+                nCol = NumToAlpha(rDoc.GetSheetLimits(), static_cast<SCCOL>(rStrCol.toInt32()));
             else
-                nCol = AlphaToNum( rDoc, aStrCol );
+                nCol = AlphaToNum( rDoc, rStrCol );
         }
     }
 
-    *result = nCol;
-    return true;
+    return std::optional<int>(nCol);
 }
 
 IMPL_LINK_NOARG(ScNavigatorDlg, ExecuteColHdl, weld::Entry&, bool)
@@ -160,11 +142,9 @@ IMPL_LINK_NOARG(ScNavigatorDlg, ExecuteColHdl, weld::Entry&, bool)
     return true;
 }
 
-IMPL_LINK_NOARG(ScNavigatorDlg, FormatRowOutputHdl, weld::SpinButton&, void)
+IMPL_STATIC_LINK(ScNavigatorDlg, FormatRowOutputHdl, sal_Int64, nValue, OUString)
 {
-    OUString aStr;
-    ::ScColToAlpha(aStr, m_xEdCol->get_value() - 1);
-    m_xEdCol->set_text(aStr);
+    return ::ScColToAlpha(nValue - 1);
 }
 
 IMPL_LINK_NOARG(ScNavigatorDlg, ExecuteRowHdl, weld::Entry&, bool)
@@ -214,7 +194,7 @@ IMPL_LINK(ScNavigatorDlg, ToolBoxSelectHdl, const OUString&, rSelId, void)
         UpdateButtons();
     }
     else if (rSelId == "dragmode")
-        m_xTbxCmd2->set_menu_item_active("dragmode", !m_xTbxCmd2->get_menu_item_active("dragmode"));
+        m_xTbxCmd2->set_menu_item_active(u"dragmode"_ustr, !m_xTbxCmd2->get_menu_item_active(u"dragmode"_ustr));
     else
     {
         if (rSelId == "datarange")
@@ -244,13 +224,13 @@ IMPL_LINK(ScNavigatorDlg, ToolBoxDropdownClickHdl, const OUString&, rCommand, vo
     switch (GetDropMode())
     {
         case 0:
-            m_xDragModeMenu->set_active("hyperlink", true);
+            m_xDragModeMenu->set_active(u"hyperlink"_ustr, true);
             break;
         case 1:
-            m_xDragModeMenu->set_active("link", true);
+            m_xDragModeMenu->set_active(u"link"_ustr, true);
             break;
         case 2:
-            m_xDragModeMenu->set_active("copy", true);
+            m_xDragModeMenu->set_active(u"copy"_ustr, true);
             break;
     }
 }
@@ -268,20 +248,20 @@ IMPL_LINK(ScNavigatorDlg, MenuSelectHdl, const OUString&, rIdent, void)
 void ScNavigatorDlg::UpdateButtons()
 {
     NavListMode eMode = eListMode;
-    m_xTbxCmd2->set_item_active("scenarios", eMode == NAV_LMODE_SCENARIOS);
-    m_xTbxCmd1->set_item_active("contents", eMode != NAV_LMODE_NONE);
+    m_xTbxCmd2->set_item_active(u"scenarios"_ustr, eMode == NAV_LMODE_SCENARIOS);
+    m_xTbxCmd1->set_item_active(u"contents"_ustr, eMode != NAV_LMODE_NONE);
 
     // the toggle button:
     if (eMode == NAV_LMODE_SCENARIOS || eMode == NAV_LMODE_NONE)
     {
-        m_xTbxCmd2->set_item_sensitive("toggle", false);
-        m_xTbxCmd2->set_item_active("toggle", false);
+        m_xTbxCmd2->set_item_sensitive(u"toggle"_ustr, false);
+        m_xTbxCmd2->set_item_active(u"toggle"_ustr, false);
     }
     else
     {
-        m_xTbxCmd2->set_item_sensitive("toggle", true);
+        m_xTbxCmd2->set_item_sensitive(u"toggle"_ustr, true);
         bool bRootSet = m_xLbEntries->GetRootType() != ScContentId::ROOT;
-        m_xTbxCmd2->set_item_active("toggle", bRootSet);
+        m_xTbxCmd2->set_item_active(u"toggle"_ustr, bRootSet);
     }
 
     OUString sImageId;
@@ -297,7 +277,7 @@ void ScNavigatorDlg::UpdateButtons()
             sImageId = RID_BMP_DROP_COPY;
             break;
     }
-    m_xTbxCmd2->set_item_icon_name("dragmode", sImageId);
+    m_xTbxCmd2->set_item_icon_name(u"dragmode"_ustr, sImageId);
 }
 
 ScNavigatorSettings::ScNavigatorSettings()
@@ -335,28 +315,34 @@ ScNavigatorWin::ScNavigatorWin(SfxBindings* _pBindings, SfxChildWindow* _pMgr,
 }
 
 ScNavigatorDlg::ScNavigatorDlg(SfxBindings* pB, weld::Widget* pParent, SfxNavigator* pNavigatorDlg)
-    : PanelLayout(pParent, "NavigatorPanel", "modules/scalc/ui/navigatorpanel.ui")
+    : PanelLayout(pParent, u"NavigatorPanel"_ustr, u"modules/scalc/ui/navigatorpanel.ui"_ustr)
     , rBindings(*pB)
-    , m_xEdCol(m_xBuilder->weld_spin_button("column"))
-    , m_xEdRow(m_xBuilder->weld_spin_button("row"))
-    , m_xTbxCmd1(m_xBuilder->weld_toolbar("toolbox1"))
-    , m_xTbxCmd2(m_xBuilder->weld_toolbar("toolbox2"))
-    , m_xLbEntries(new ScContentTree(m_xBuilder->weld_tree_view("contentbox"), this))
-    , m_xScenarioBox(m_xBuilder->weld_widget("scenariobox"))
+    , m_xEdCol(m_xBuilder->weld_spin_button(u"column"_ustr))
+    , m_xEdRow(m_xBuilder->weld_spin_button(u"row"_ustr))
+    , m_xTbxCmd1(m_xBuilder->weld_toolbar(u"toolbox1"_ustr))
+    , m_xTbxCmd2(m_xBuilder->weld_toolbar(u"toolbox2"_ustr))
+    , m_xLbEntries(new ScContentTree(m_xBuilder->weld_tree_view(u"contentbox"_ustr), this))
+    , m_xScenarioBox(m_xBuilder->weld_widget(u"scenariobox"_ustr))
     , m_xWndScenarios(new ScScenarioWindow(*m_xBuilder,
         ScResId(SCSTR_QHLP_SCEN_LISTBOX), ScResId(SCSTR_QHLP_SCEN_COMMENT)))
-    , m_xLbDocuments(m_xBuilder->weld_combo_box("documents"))
-    , m_xDragModeMenu(m_xBuilder->weld_menu("dragmodemenu"))
+    , m_xLbDocuments(m_xBuilder->weld_combo_box(u"documents"_ustr))
+    , m_xDragModeMenu(m_xBuilder->weld_menu(u"dragmodemenu"_ustr))
     , m_xNavigatorDlg(pNavigatorDlg)
     , aContentIdle("ScNavigatorDlg aContentIdle")
     , aStrActiveWin(ScResId(SCSTR_ACTIVEWIN))
-    , pViewData(nullptr )
     , eListMode(NAV_LMODE_NONE)
     , nDropMode(SC_DROPMODE_URL)
     , nCurCol(0)
     , nCurRow(0)
     , nCurTab(0)
 {
+
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        sal_uInt64 nShellId = reinterpret_cast<sal_uInt64>(SfxViewShell::Current());
+        jsdialog::SendNavigatorForView(nShellId);
+    }
+
     UpdateInitShow();
 
     UpdateSheetLimits();
@@ -365,17 +351,17 @@ ScNavigatorDlg::ScNavigatorDlg(SfxBindings* pB, weld::Widget* pParent, SfxNaviga
     m_xEdRow->connect_activate(LINK(this, ScNavigatorDlg, ExecuteRowHdl));
 
     m_xEdCol->connect_activate(LINK(this, ScNavigatorDlg, ExecuteColHdl));
-    m_xEdCol->connect_output(LINK(this, ScNavigatorDlg, FormatRowOutputHdl));
-    m_xEdCol->connect_input(LINK(this, ScNavigatorDlg, ParseRowInputHdl));
+    m_xEdCol->set_value_formatter(LINK(this, ScNavigatorDlg, FormatRowOutputHdl));
+    m_xEdCol->set_text_parser(LINK(this, ScNavigatorDlg, ParseRowInputHdl));
 
     m_xTbxCmd1->connect_clicked(LINK(this, ScNavigatorDlg, ToolBoxSelectHdl));
     m_xTbxCmd2->connect_clicked(LINK(this, ScNavigatorDlg, ToolBoxSelectHdl));
 
-    m_xTbxCmd2->set_item_menu("dragmode", m_xDragModeMenu.get());
+    m_xTbxCmd2->set_item_menu(u"dragmode"_ustr, m_xDragModeMenu.get());
     m_xDragModeMenu->connect_activate(LINK(this, ScNavigatorDlg, MenuSelectHdl));
     m_xTbxCmd2->connect_menu_toggled(LINK(this, ScNavigatorDlg, ToolBoxDropdownClickHdl));
 
-    ScNavipiCfg& rCfg = SC_MOD()->GetNavipiCfg();
+    ScNavipiCfg& rCfg = ScModule::get()->GetNavipiCfg();
     nDropMode = rCfg.GetDragMode();
 
     m_xLbDocuments->set_size_request(42, -1); // set a nominal width so it takes width of surroundings
@@ -418,14 +404,14 @@ ScNavigatorDlg::ScNavigatorDlg(SfxBindings* pB, weld::Widget* pParent, SfxNaviga
     // if scenario was active, switch on
     NavListMode eNavMode = static_cast<NavListMode>(rCfg.GetListMode());
     if (eNavMode == NAV_LMODE_SCENARIOS)
-        m_xTbxCmd2->set_item_active("scenarios", true);
+        m_xTbxCmd2->set_item_active(u"scenarios"_ustr, true);
     else
         eNavMode = NAV_LMODE_AREAS;
     SetListMode(eNavMode);
 
     if(comphelper::LibreOfficeKit::isActive())
     {
-        m_xBuilder->weld_container("gridbuttons")->hide();
+        m_xBuilder->weld_container(u"gridbuttons"_ustr)->hide();
         m_xLbDocuments->hide();
     }
 }
@@ -453,7 +439,7 @@ void ScNavigatorDlg::UpdateInitShow()
     // When the navigator is displayed in the sidebar, or is otherwise
     // docked, it has the whole deck to fill. Therefore hide the button that
     // hides all controls below the top two rows of buttons.
-    m_xTbxCmd1->set_item_visible("contents", ParentIsFloatingWindow(m_xNavigatorDlg));
+    m_xTbxCmd1->set_item_visible(u"contents"_ustr, ParentIsFloatingWindow(m_xNavigatorDlg));
 }
 
 void ScNavigatorWin::StateChanged(StateChangedType nStateChange)
@@ -540,7 +526,7 @@ void ScNavigatorDlg::Notify( SfxBroadcaster&, const SfxHint& rHint )
                     m_xLbEntries->Refresh( ScContentId::GRAPHIC );
                     m_xLbEntries->Refresh( ScContentId::OLEOBJECT );
                     m_xLbEntries->Refresh( ScContentId::DRAWING );
-                    m_xLbEntries->Refresh( ScContentId::NOTE );
+                    aContentIdle.Start();      // Do not search notes immediately
                     break;
 
                 case SfxHintId::ScAreaLinksChanged:
@@ -579,7 +565,7 @@ void ScNavigatorDlg::SetDropMode(sal_uInt16 nNew)
 {
     nDropMode = nNew;
     UpdateButtons();
-    ScNavipiCfg& rCfg = SC_MOD()->GetNavipiCfg();
+    ScNavipiCfg& rCfg = ScModule::get()->GetNavipiCfg();
     rCfg.SetDragMode(nDropMode);
 }
 
@@ -596,8 +582,8 @@ void ScNavigatorDlg::SetCurrentCell( SCCOL nColNo, SCROW nRowNo )
     OUString aAddr(aScAddress.Format(ScRefFlags::ADDR_ABS));
 
     bool bUnmark = false;
-    if ( GetViewData() )
-        bUnmark = !pViewData->GetMarkData().IsCellMarked( nColNo, nRowNo );
+    if (ScViewData* pData = GetViewData())
+        bUnmark = !pData->GetMarkData().IsCellMarked( nColNo, nRowNo );
 
     SfxStringItem   aPosItem( SID_CURRENTCELL, aAddr );
     SfxBoolItem     aUnmarkItem( FN_PARAM_1, bUnmark );     // cancel selection
@@ -631,9 +617,11 @@ void ScNavigatorDlg::SetCurrentTable( SCTAB nTabNo )
 
 void ScNavigatorDlg::SetCurrentTableStr( std::u16string_view rName )
 {
-    if (!GetViewData()) return;
+    ScViewData* pData = GetViewData();
+    if(!pData)
+        return;
 
-    ScDocument& rDoc = pViewData->GetDocument();
+    ScDocument& rDoc = pData->GetDocument();
     SCTAB nCount = rDoc.GetTableCount();
     OUString aTabName;
     SCTAB nLastSheet = 0;
@@ -725,16 +713,15 @@ ScNavigatorSettings* ScNavigatorDlg::GetNavigatorSettings()
 ScViewData* ScNavigatorDlg::GetViewData()
 {
     ScTabViewShell* pViewSh = GetTabViewShell();
-    pViewData = pViewSh ? &pViewSh->GetViewData() : nullptr;
-    return pViewData;
+    return pViewSh ? &pViewSh->GetViewData() : nullptr;
 }
 
 void ScNavigatorDlg::UpdateColumn( const SCCOL* pCol )
 {
     if ( pCol )
         nCurCol = *pCol;
-    else if ( GetViewData() )
-        nCurCol = pViewData->GetCurX() + 1;
+    else if ( ScViewData* pData = GetViewData() )
+        nCurCol = pData->GetCurX() + 1;
 
     m_xEdCol->set_value(nCurCol);
 }
@@ -743,8 +730,8 @@ void ScNavigatorDlg::UpdateRow( const SCROW* pRow )
 {
     if ( pRow )
         nCurRow = *pRow;
-    else if ( GetViewData() )
-        nCurRow = pViewData->GetCurY() + 1;
+    else if ( ScViewData* pData = GetViewData() )
+        nCurRow = pData->GetCurY() + 1;
 
     m_xEdRow->set_value(nCurRow);
 }
@@ -753,8 +740,8 @@ void ScNavigatorDlg::UpdateTable( const SCTAB* pTab )
 {
     if ( pTab )
         nCurTab = *pTab;
-    else if ( GetViewData() )
-        nCurTab = pViewData->GetTabNo();
+    else if ( ScViewData* pData = GetViewData() )
+        nCurTab = pData->GetTabNo();
 }
 
 void ScNavigatorDlg::UpdateAll()
@@ -808,7 +795,7 @@ void ScNavigatorDlg::SetListMode(NavListMode eMode)
 
         if (eMode != NAV_LMODE_NONE)
         {
-            ScNavipiCfg& rCfg = SC_MOD()->GetNavipiCfg();
+            ScNavipiCfg& rCfg = ScModule::get()->GetNavipiCfg();
             rCfg.SetListMode( static_cast<sal_uInt16>(eMode) );
         }
 
@@ -923,9 +910,9 @@ void ScNavigatorDlg::StartOfDataArea()
 {
     //  pMarkArea evaluate ???
 
-    if ( GetViewData() )
+    if (ScViewData* pData = GetViewData())
     {
-        ScMarkData& rMark = pViewData->GetMarkData();
+        ScMarkData& rMark = pData->GetMarkData();
         const ScRange& aMarkRange = rMark.GetMarkArea();
 
         SCCOL nCol = aMarkRange.aStart.Col();
@@ -940,9 +927,9 @@ void ScNavigatorDlg::EndOfDataArea()
 {
     //  pMarkArea evaluate ???
 
-    if ( GetViewData() )
+    if (ScViewData* pData = GetViewData())
     {
-        ScMarkData& rMark = pViewData->GetMarkData();
+        ScMarkData& rMark = pData->GetMarkData();
         const ScRange& aMarkRange = rMark.GetMarkArea();
 
         SCCOL nCol = aMarkRange.aEnd.Col();

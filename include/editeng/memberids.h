@@ -51,6 +51,14 @@
 #define MID_HYPHEN_NO_LAST_WORD 5
 #define MID_HYPHEN_MIN_WORD_LENGTH 6
 #define MID_HYPHEN_ZONE         7
+#define MID_HYPHEN_ZONE_ALWAYS  8
+#define MID_HYPHEN_ZONE_COLUMN  9
+#define MID_HYPHEN_ZONE_PAGE    10
+#define MID_HYPHEN_ZONE_SPREAD  11
+#define MID_HYPHEN_KEEP         12
+#define MID_HYPHEN_KEEP_TYPE    13
+#define MID_HYPHEN_COMPOUND_MIN_LEAD 14
+#define MID_HYPHEN_KEEP_LINE    15
 
 // SvxBoxInfoItem
 #define MID_HORIZONTAL          1
@@ -61,6 +69,11 @@
 #define MID_PARA_ADJUST         0
 #define MID_LAST_LINE_ADJUST    1
 #define MID_EXPAND_SINGLE       2
+#define MID_WORD_SPACING        3
+#define MID_WORD_SPACING_MIN    4
+#define MID_WORD_SPACING_MAX    5
+#define MID_LETTER_SPACING_MIN  6
+#define MID_LETTER_SPACING_MAX  7
 
 //SvxFontItem
 // Don't use 0 as it used for the whole struct
@@ -106,6 +119,9 @@
 #define MID_BOLD            0
 #define MID_WEIGHT          1
 
+//SvxScriptHintItem
+#define MID_SCRIPTHINT 0
+
 //SvxLanguageItem
 #define MID_LANG_INT            0
 #define MID_LANG_LOCALE         1
@@ -135,6 +151,9 @@
 #define MID_FIRST_AUTO              10
 #define MID_TXT_LMARGIN             11
 #define MID_GUTTER_MARGIN 12
+#define MID_FIRST_LINE_UNIT_INDENT 13
+#define MID_R_UNIT_MARGIN 14
+#define MID_L_UNIT_MARGIN 15
 
 //ProtectItem
 #define MID_PROTECT_CONTENT     0
@@ -198,6 +217,12 @@
 #define MID_COMPLEX_COLOR_JSON  8
 #define MID_COMPLEX_COLOR       9
 
+// SvxRubyItem and SwFormatRuby
+#define MID_RUBY_TEXT           0
+#define MID_RUBY_ADJUST         1
+#define MID_RUBY_CHARSTYLE      2
+#define MID_RUBY_ABOVE          3
+#define MID_RUBY_POSITION       4
 
 #endif
 

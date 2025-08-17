@@ -27,7 +27,6 @@
 #include <com/sun/star/frame/XFrame.hpp>
 #include <memory>
 
-class SfxMacroTabPage_;
 class SfxMacroTabPage_Impl;
 class Timer;
 
@@ -80,11 +79,13 @@ class SfxMacroAssignDlg : public SfxSingleTabDialogController
 public:
     SfxMacroAssignDlg(weld::Widget* pParent,
                       const css::uno::Reference< css::frame::XFrame >& rxDocumentFrame,
-                      const SfxItemSet& rSet);
+                      std::unique_ptr<const SfxItemSet> xSet);
     SfxMacroTabPage* GetTabPage()
     {
         return static_cast<SfxMacroTabPage*>(m_xSfxPage.get());
     }
+private:
+    std::unique_ptr<const SfxItemSet> mxItemSet;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

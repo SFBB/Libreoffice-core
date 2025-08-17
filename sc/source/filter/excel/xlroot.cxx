@@ -59,7 +59,7 @@
 #include <xlchart.hxx>
 #include <xltracer.hxx>
 #include <xltools.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/useroptions.hxx>
 #include <root.hxx>
 
@@ -85,7 +85,7 @@ XclDebugObjCounter::~XclDebugObjCounter()
 #endif
 
 XclRootData::XclRootData( XclBiff eBiff, SfxMedium& rMedium,
-        tools::SvRef<SotStorage> xRootStrg, ScDocument& rDoc, rtl_TextEncoding eTextEnc, bool bExport ) :
+        rtl::Reference<SotStorage> xRootStrg, ScDocument& rDoc, rtl_TextEncoding eTextEnc, bool bExport ) :
     meBiff( eBiff ),
     meOutput( EXC_OUTPUT_BINARY ),
     mrMedium( rMedium ),
@@ -109,7 +109,7 @@ XclRootData::XclRootData( XclBiff eBiff, SfxMedium& rMedium,
     mnScTab( 0 ),
     mbExport( bExport )
 {
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
         maUserName = SvtUserOptions().GetLastName();
     if (maUserName.isEmpty())
         maUserName = "Calc";
@@ -258,37 +258,32 @@ uno::Sequence< beans::NamedValue > XclRoot::RequestEncryptionData( ::comphelper:
 
 bool XclRoot::HasVbaStorage() const
 {
-    tools::SvRef<SotStorage> xRootStrg = GetRootStorage();
+    rtl::Reference<SotStorage> xRootStrg = GetRootStorage();
     return xRootStrg.is() && xRootStrg->IsContained( EXC_STORAGE_VBA_PROJECT );
 }
 
-tools::SvRef<SotStorage> XclRoot::OpenStorage( tools::SvRef<SotStorage> const & xStrg, const OUString& rStrgName ) const
+rtl::Reference<SotStorage> XclRoot::OpenStorage( rtl::Reference<SotStorage> const & xStrg, const OUString& rStrgName ) const
 {
     return mrData.mbExport ?
         ScfTools::OpenStorageWrite( xStrg, rStrgName ) :
         ScfTools::OpenStorageRead( xStrg, rStrgName );
 }
 
-tools::SvRef<SotStorage> XclRoot::OpenStorage( const OUString& rStrgName ) const
+rtl::Reference<SotStorage> XclRoot::OpenStorage(const OUString& rStrgName) const
 {
     return OpenStorage( GetRootStorage(), rStrgName );
 }
 
-tools::SvRef<SotStorageStream> XclRoot::OpenStream( tools::SvRef<SotStorage> const & xStrg, const OUString& rStrmName ) const
+rtl::Reference<SotStorageStream> XclRoot::OpenStream( rtl::Reference<SotStorage> const & xStrg, const OUString& rStrmName ) const
 {
     return mrData.mbExport ?
         ScfTools::OpenStorageStreamWrite( xStrg, rStrmName ) :
         ScfTools::OpenStorageStreamRead( xStrg, rStrmName );
 }
 
-tools::SvRef<SotStorageStream> XclRoot::OpenStream( const OUString& rStrmName ) const
+rtl::Reference<SotStorageStream> XclRoot::OpenStream(const OUString& rStrmName) const
 {
     return OpenStream( GetRootStorage(), rStrmName );
-}
-
-ScDocument& XclRoot::GetDoc() const
-{
-    return mrData.mrDoc;
 }
 
 ScDocShell* XclRoot::GetDocShell() const
@@ -328,7 +323,7 @@ SvNumberFormatter& XclRoot::GetFormatter() const
     return *GetDoc().GetFormatTable();
 }
 
-DateTime XclRoot::GetNullDate() const
+const Date & XclRoot::GetNullDate() const
 {
     return GetFormatter().GetNullDate();
 }
@@ -344,7 +339,7 @@ const DateTime theExcelCutOverDate( Date( 1, 3, 1900 ));
 
 double XclRoot::GetDoubleFromDateTime( const DateTime& rDateTime ) const
 {
-    double fValue = DateTime::Sub( rDateTime, GetNullDate());
+    double fValue = DateTime::Sub( rDateTime, DateTime( GetNullDate()));
     // adjust dates before 1900-03-01 to get correct time values in the range [0.0,1.0)
     /* XXX: this is only used when reading BIFF, otherwise we'd have to check
      * for dateCompatibility==true as mentioned below. */
@@ -355,7 +350,7 @@ double XclRoot::GetDoubleFromDateTime( const DateTime& rDateTime ) const
 
 DateTime XclRoot::GetDateTimeFromDouble( double fValue ) const
 {
-    DateTime aDateTime = GetNullDate() + fValue;
+    DateTime aDateTime = DateTime( GetNullDate()) + fValue;
     // adjust dates before 1900-03-01 to get correct time values
     /* FIXME: correction should only be done when writing BIFF or OOXML
      * transitional with dateCompatibility==true (or absent for default true),
@@ -370,10 +365,9 @@ ScEditEngineDefaulter& XclRoot::GetEditEngine() const
 {
     if( !mrData.mxEditEngine )
     {
-        mrData.mxEditEngine = std::make_shared<ScEditEngineDefaulter>( GetDoc().GetEnginePool() );
+        mrData.mxEditEngine = std::make_shared<ScEditEngineDefaulter>( GetDoc().GetEditEnginePool() );
         ScEditEngineDefaulter& rEE = *mrData.mxEditEngine;
         rEE.SetRefMapMode(MapMode(MapUnit::Map100thMM));
-        rEE.SetEditTextObjectPool( GetDoc().GetEditPool() );
         rEE.SetUpdateLayout( false );
         rEE.EnableUndo( false );
         rEE.SetControlWord( rEE.GetControlWord() & ~EEControlBits::ALLOWBIGOBJS );
@@ -393,14 +387,14 @@ ScHeaderEditEngine& XclRoot::GetHFEditEngine() const
         rEE.SetControlWord( rEE.GetControlWord() & ~EEControlBits::ALLOWBIGOBJS );
 
         // set Calc header/footer defaults
-        auto pEditSet = std::make_unique<SfxItemSet>( rEE.GetEmptyItemSet() );
+        SfxItemSet aEditSet( rEE.GetEmptyItemSet() );
         SfxItemSetFixed<ATTR_PATTERN_START, ATTR_PATTERN_END> aItemSet( *GetDoc().GetPool() );
-        ScPatternAttr::FillToEditItemSet( *pEditSet, aItemSet );
+        ScPatternAttr::FillToEditItemSet( aEditSet, aItemSet );
         // FillToEditItemSet() adjusts font height to 1/100th mm, we need twips
-        pEditSet->Put( aItemSet.Get( ATTR_FONT_HEIGHT ).CloneSetWhich(EE_CHAR_FONTHEIGHT) );
-        pEditSet->Put( aItemSet.Get( ATTR_CJK_FONT_HEIGHT ).CloneSetWhich(EE_CHAR_FONTHEIGHT_CJK) );
-        pEditSet->Put( aItemSet.Get( ATTR_CTL_FONT_HEIGHT ).CloneSetWhich(EE_CHAR_FONTHEIGHT_CTL) );
-        rEE.SetDefaults( std::move(pEditSet) );    // takes ownership
+        aEditSet.Put( aItemSet.Get( ATTR_FONT_HEIGHT ).CloneSetWhich(EE_CHAR_FONTHEIGHT) );
+        aEditSet.Put( aItemSet.Get( ATTR_CJK_FONT_HEIGHT ).CloneSetWhich(EE_CHAR_FONTHEIGHT_CJK) );
+        aEditSet.Put( aItemSet.Get( ATTR_CTL_FONT_HEIGHT ).CloneSetWhich(EE_CHAR_FONTHEIGHT_CTL) );
+        rEE.SetDefaults( std::move(aEditSet) );    // takes ownership
     }
     return *mrData.mxHFEditEngine;
 }

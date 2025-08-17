@@ -21,6 +21,7 @@
 #include <SwPortionHandler.hxx>
 
 #include "porlin.hxx"
+#include "portxt.hxx"
 #include "inftxt.hxx"
 #include "pormulti.hxx"
 #if OSL_DEBUG_LEVEL > 0
@@ -58,10 +59,7 @@ SwLinePortion *SwLinePortion::Compress()
     return GetLen() || Width() ? this : nullptr;
 }
 
-sal_uInt16 SwLinePortion::GetViewWidth( const SwTextSizeInfo & ) const
-{
-    return 0;
-}
+SwTwips SwLinePortion::GetViewWidth(const SwTextSizeInfo&) const { return 0; }
 
 SwLinePortion::SwLinePortion( ) :
     mpNextPortion( nullptr ),
@@ -70,7 +68,8 @@ SwLinePortion::SwLinePortion( ) :
     mnHangingBaseline( 0 ),
     mnWhichPor( PortionType::NONE ),
     m_bJoinBorderWithPrev(false),
-    m_bJoinBorderWithNext(false)
+    m_bJoinBorderWithNext(false),
+    m_bIsFieldmarkText(false)
 {
 }
 
@@ -80,18 +79,18 @@ void SwLinePortion::PrePaint( const SwTextPaintInfo& rInf,
     OSL_ENSURE( rInf.OnWin(), "SwLinePortion::PrePaint: don't prepaint on a printer");
     OSL_ENSURE( !Width(), "SwLinePortion::PrePaint: For Width()==0 only!");
 
-    const sal_uInt16 nViewWidth = GetViewWidth( rInf );
+    const SwTwips nViewWidth = GetViewWidth(rInf);
 
     if( ! nViewWidth )
         return;
 
-    const sal_uInt16 nHalfView = nViewWidth / 2;
-    sal_uInt16 nLastWidth = pLast->Width();
+    const SwTwips nHalfView = nViewWidth / 2;
+    SwTwips nLastWidth = pLast->Width() + pLast->ExtraBlankWidth();
 
-    if ( pLast->InSpaceGrp() && rInf.GetSpaceAdd() )
-        nLastWidth = nLastWidth + pLast->CalcSpacing( rInf.GetSpaceAdd(), rInf );
+    if ( pLast->InSpaceGrp() && rInf.GetSpaceAdd(/*bShrink=*/true) )
+        nLastWidth += pLast->CalcSpacing( rInf.GetSpaceAdd(/*bShrink=*/true), rInf );
 
-    sal_uInt16 nPos;
+    SwTwips nPos;
     SwTextPaintInfo aInf( rInf );
 
     const bool bBidiPor = rInf.GetTextFrame()->IsRightToLeft() !=
@@ -108,22 +107,22 @@ void SwLinePortion::PrePaint( const SwTextPaintInfo& rInf,
         switch (nDir.get())
         {
         case 0:
-            nPos = sal_uInt16( rInf.X() );
+            nPos = rInf.X();
             nPos += nLastWidth - nHalfView;
             aInf.X( nPos );
             break;
         case 900:
-            nPos = sal_uInt16( rInf.Y() );
+            nPos = rInf.Y();
             nPos -= nLastWidth - nHalfView;
             aInf.Y( nPos );
             break;
         case 1800:
-            nPos = sal_uInt16( rInf.X() );
+            nPos = rInf.X();
             nPos -= nLastWidth - nHalfView;
             aInf.X( nPos );
             break;
         case 2700:
-            nPos = sal_uInt16( rInf.Y() );
+            nPos = rInf.Y();
             nPos += nLastWidth - nHalfView;
             aInf.Y( nPos );
             break;
@@ -139,12 +138,12 @@ void SwLinePortion::PrePaint( const SwTextPaintInfo& rInf,
 void SwLinePortion::CalcTextSize( const SwTextSizeInfo &rInf )
 {
     if( GetLen() == rInf.GetLen()  )
-        *static_cast<SwPosSize*>(this) = GetTextSize( rInf );
+        *static_cast<SwPositiveSize*>(this) = GetTextSize( rInf );
     else
     {
         SwTextSizeInfo aInf( rInf );
         aInf.SetLen( GetLen() );
-        *static_cast<SwPosSize*>(this) = GetTextSize( aInf );
+        *static_cast<SwPositiveSize*>(this) = GetTextSize( aInf );
     }
 }
 
@@ -223,7 +222,7 @@ SwLinePortion *SwLinePortion::FindPrevPortion( const SwLinePortion *pRoot )
     return pPos;
 }
 
-TextFrameIndex SwLinePortion::GetModelPositionForViewPoint(const sal_uInt16 nOfst) const
+TextFrameIndex SwLinePortion::GetModelPositionForViewPoint(const SwTwips nOfst) const
 {
     if( nOfst > ( PrtWidth() / 2 ) )
         return GetLen();
@@ -231,11 +230,11 @@ TextFrameIndex SwLinePortion::GetModelPositionForViewPoint(const sal_uInt16 nOfs
         return TextFrameIndex(0);
 }
 
-SwPosSize SwLinePortion::GetTextSize( const SwTextSizeInfo & ) const
+SwPositiveSize SwLinePortion::GetTextSize( const SwTextSizeInfo & ) const
 {
     OSL_ENSURE( false, "SwLinePortion::GetTextSize: don't ask me about sizes, "
                    "I'm only a stupid SwLinePortion" );
-    return SwPosSize();
+    return SwPositiveSize();
 }
 
 bool SwLinePortion::Format( SwTextFormatInfo &rInf )
@@ -250,7 +249,7 @@ bool SwLinePortion::Format( SwTextFormatInfo &rInf )
     const SwLinePortion *pLast = rInf.GetLast();
     Height( pLast->Height() );
     SetAscent( pLast->GetAscent() );
-    const sal_uInt16 nNewWidth = o3tl::narrowing<sal_uInt16>(rInf.X() + PrtWidth());
+    const SwTwips nNewWidth = rInf.X() + PrtWidth();
     // Only portions with true width can return true
     // Notes for example never set bFull==true
     if( rInf.Width() <= nNewWidth && PrtWidth() && ! IsKernPortion() )
@@ -276,9 +275,10 @@ void SwLinePortion::Move(SwTextPaintInfo & rInf) const
     bool bCounterDir = ( ! bFrameDir && DIR_RIGHT2LEFT == rInf.GetDirection() ) ||
                        (   bFrameDir && DIR_LEFT2RIGHT == rInf.GetDirection() );
 
+    SwTwips nTmp = PrtWidth() + ExtraBlankWidth();
     if ( InSpaceGrp() && rInf.GetSpaceAdd(/*bShrink=*/true) )
     {
-        SwTwips nTmp = PrtWidth() + CalcSpacing( rInf.GetSpaceAdd(/*bShrink=*/true), rInf );
+        nTmp += CalcSpacing( rInf.GetSpaceAdd(/*bShrink=*/true), rInf );
         if( rInf.IsRotated() )
             rInf.Y( rInf.Y() + ( bB2T ? -nTmp : nTmp ) );
         else if ( bCounterDir )
@@ -294,11 +294,11 @@ void SwLinePortion::Move(SwTextPaintInfo & rInf) const
             rInf.IncKanaIdx();
         }
         if( rInf.IsRotated() )
-            rInf.Y( rInf.Y() + ( bB2T ? -PrtWidth() : PrtWidth() ) );
+            rInf.Y(rInf.Y() + (bB2T ? -nTmp : nTmp));
         else if ( bCounterDir )
-            rInf.X( rInf.X() - PrtWidth() );
+            rInf.X(rInf.X() - nTmp);
         else
-            rInf.X( rInf.X() + PrtWidth() );
+            rInf.X(rInf.X() + nTmp);
     }
     if (IsMultiPortion() && static_cast<SwMultiPortion const*>(this)->HasTabulator())
         rInf.IncSpaceIdx();

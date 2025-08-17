@@ -33,11 +33,7 @@
 using namespace dbaui;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdb;
-using namespace ::com::sun::star::lang;
 
 // export data
 ORowSetImportExport::ORowSetImportExport(weld::Window* pParent,
@@ -62,7 +58,7 @@ void ORowSetImportExport::initialize()
 
     m_xTargetResultSetMetaData = Reference<XResultSetMetaDataSupplier>(m_xTargetResultSetUpdate,UNO_QUERY_THROW)->getMetaData();
     if(!m_xTargetResultSetMetaData.is() || !xColumnLocate.is() || !m_xResultSetMetaData.is() )
-        throw SQLException(DBA_RES(STR_UNEXPECTED_ERROR),*this,"S1000",0,Any());
+        throw SQLException(DBA_RES(STR_UNEXPECTED_ERROR),*this,u"S1000"_ustr,0,Any());
 
     sal_Int32 nCount = m_xTargetResultSetMetaData->getColumnCount();
     m_aColumnMapping.reserve(nCount);
@@ -99,21 +95,21 @@ bool ORowSetImportExport::Write()
 
 bool ORowSetImportExport::Read()
 {
+    if (!m_xResultSet)
+        return false;
     // check if there is any column to copy
     if(std::none_of(m_aColumnMapping.begin(),m_aColumnMapping.end(),
                         [](sal_Int32 n) { return n > 0; }))
         return false;
-    bool bContinue = true;
     if(m_aSelection.hasElements())
     {
-        const Any* pBegin = m_aSelection.getConstArray();
-        const Any* pEnd   = pBegin + m_aSelection.getLength();
-        for(;pBegin != pEnd && bContinue;++pBegin)
+        for (auto& any : m_aSelection)
         {
             sal_Int32 nPos = -1;
-            *pBegin >>= nPos;
+            any >>= nPos;
             OSL_ENSURE(nPos != -1,"Invalid position!");
-            bContinue = (m_xResultSet.is() && m_xResultSet->absolute(nPos) && insertNewRow());
+            if (!m_xResultSet->absolute(nPos) || !insertNewRow())
+                break;
         }
     }
     else
@@ -135,10 +131,11 @@ bool ORowSetImportExport::Read()
         }
         OSL_ENSURE(nRowCount,"RowCount is 0!");
         m_xResultSet->beforeFirst();
-        while(m_xResultSet.is() && m_xResultSet->next() && bContinue && nRowCount )
+        while(m_xResultSet.is() && m_xResultSet->next() && nRowCount )
         {
             --nRowCount;
-            bContinue = insertNewRow();
+            if (!insertNewRow())
+                break;
         }
     }
     return true;

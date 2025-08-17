@@ -28,6 +28,7 @@
 #include <unotools/tempfile.hxx>
 #include <rtl/ustring.hxx>
 #include <o3tl/safeint.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
 #include <osl/mutex.hxx>
 #include <osl/detail/file.h>
 #include <osl/file.hxx>
@@ -42,80 +43,47 @@
 #include <process.h>
 #endif
 
-using namespace osl;
-
 namespace
 {
-    OUString gTempNameBase_Impl;
+OUString gTempNameBase_Impl;
+
+OUString ensureTrailingSlash(const OUString& url)
+{
+    if (!url.isEmpty() && !url.endsWith("/"))
+        return url + "/";
+    return url;
 }
 
-namespace utl
+OUString stripTrailingSlash(const OUString& url)
 {
-
-static OUString getParentName( std::u16string_view aFileName )
-{
-    size_t lastIndex = aFileName.rfind( '/' );
-    OUString aParent;
-
-    if (lastIndex != std::u16string_view::npos)
-    {
-        aParent = aFileName.substr(0, lastIndex);
-
-        if (aParent.endsWith(":") && aParent.getLength() == 6)
-            aParent += "/";
-
-        if (aParent.equalsIgnoreAsciiCase("file://"))
-            aParent = "file:///";
-    }
-
-    return aParent;
+    if (url.endsWith("/"))
+        return url.copy(0, url.getLength() - 1);
+    return url;
 }
 
-static bool ensuredir( const OUString& rUnqPath )
+bool okOrExists(osl::FileBase::RC ret)
 {
-    OUString aPath;
-    if ( rUnqPath.isEmpty() )
-        return false;
+    return ret == osl::FileBase::E_None || ret == osl::FileBase::E_EXIST;
+}
 
-    // remove trailing slash
-    if ( rUnqPath.endsWith("/") )
-        aPath = rUnqPath.copy( 0, rUnqPath.getLength() - 1 );
-    else
-        aPath = rUnqPath;
-
-    // HACK: create directory on a mount point with nobrowse option
-    // returns ENOSYS in any case !!
-    osl::Directory aDirectory( aPath );
-    osl::FileBase::RC nError = aDirectory.open();
-    aDirectory.close();
-    if( nError == osl::File::E_None )
-        return true;
-
-    // try to create the directory
-    nError = osl::Directory::create( aPath );
-    bool  bSuccess = ( nError == osl::File::E_None || nError == osl::FileBase::E_EXIST );
-    if( !bSuccess )
+const OUString& getTempNameBase_Impl()
+{
+    if (gTempNameBase_Impl.isEmpty())
     {
-        // perhaps parent(s) don't exist
-        OUString aParentDir = getParentName( aPath );
-        if ( aParentDir != aPath )
+        OUString ustrTempDirURL;
+        osl::FileBase::RC rc = osl::File::getTempDirURL(ustrTempDirURL);
+        if (rc == osl::FileBase::E_None)
         {
-            bSuccess = ensuredir( getParentName( aPath ) );
-
-            // After parent directory structure exists try it one's more
-            if ( bSuccess )
-            {
-                // Parent directory exists, retry creation of directory
-                nError = osl::Directory::create( aPath );
-                bSuccess =( nError == osl::File::E_None || nError == osl::FileBase::E_EXIST );
-            }
+            gTempNameBase_Impl = ensureTrailingSlash(ustrTempDirURL);
+            osl::Directory::createPath(gTempNameBase_Impl);
         }
     }
-
-    return bSuccess;
+    assert(gTempNameBase_Impl.isEmpty() || gTempNameBase_Impl.endsWith("/"));
+    DBG_ASSERT(!gTempNameBase_Impl.isEmpty(), "No TempDir!");
+    return gTempNameBase_Impl;
 }
 
-static OUString ConstructTempDir_Impl( const OUString* pParent, bool bCreateParentDirs )
+OUString ConstructTempDir_Impl( const OUString* pParent, bool bCreateParentDirs )
 {
     OUString aName;
 
@@ -131,12 +99,12 @@ static OUString ConstructTempDir_Impl( const OUString* pParent, bool bCreatePare
             && (osl::FileBase::getFileURLFromSystemPath(aRet, aRet)
                 == osl::FileBase::E_None))
         {
-            ::osl::DirectoryItem aItem;
+            osl::DirectoryItem aItem;
             sal_Int32 i = aRet.getLength();
             if ( aRet[i-1] == '/' )
                 i--;
 
-            if ( DirectoryItem::get( aRet.copy(0, i), aItem ) == FileBase::E_None || bCreateParentDirs )
+            if ( osl::DirectoryItem::get( aRet.copy(0, i), aItem ) == osl::FileBase::E_None || bCreateParentDirs )
                 aName = aRet;
         }
     }
@@ -147,28 +115,14 @@ static OUString ConstructTempDir_Impl( const OUString* pParent, bool bCreatePare
 
     if ( aName.isEmpty() )
     {
-        if (gTempNameBase_Impl.isEmpty())
-        {
-            OUString ustrTempDirURL;
-            ::osl::FileBase::RC rc = ::osl::File::getTempDirURL(
-                ustrTempDirURL );
-            if (rc == ::osl::FileBase::E_None)
-                gTempNameBase_Impl = ustrTempDirURL;
-            ensuredir( aName );
-        }
         // if no parent or invalid parent : use default directory
-        DBG_ASSERT( !gTempNameBase_Impl.isEmpty(), "No TempDir!" );
-        aName = gTempNameBase_Impl;
+        aName = getTempNameBase_Impl();
+        osl::Directory::createPath(aName); // tdf#159769: always make sure it exists
     }
 
     // Make sure that directory ends with a separator
-    if( !aName.isEmpty() && !aName.endsWith("/") )
-        aName += "/";
-
-    return aName;
+    return ensureTrailingSlash(aName);
 }
-
-namespace {
 
 class Tokens {
 public:
@@ -233,24 +187,19 @@ private:
     sal_uInt32 m_count;
 };
 
-}
-
 sal_uInt32 UniqueTokens::globalValue = SAL_MAX_UINT32;
 
-namespace
-{
-    class TempDirCreatedObserver : public DirectoryCreationObserver
+    class TempDirCreatedObserver : public osl::DirectoryCreationObserver
     {
     public:
         virtual void DirectoryCreated(const OUString& aDirectoryUrl) override
         {
-            File::setAttributes( aDirectoryUrl, osl_File_Attribute_OwnRead |
+            osl::File::setAttributes( aDirectoryUrl, osl_File_Attribute_OwnRead |
                 osl_File_Attribute_OwnWrite | osl_File_Attribute_OwnExe );
         };
     };
-};
 
-static OUString lcl_createName(
+OUString lcl_createName(
     std::u16string_view rLeadingChars, Tokens & tokens, std::u16string_view pExtension,
     const OUString* pParent, bool bDirectory, bool bKeep, bool bLock,
     bool bCreateParentDirs )
@@ -265,8 +214,7 @@ static OUString lcl_createName(
         else
             aDirName = aName;
         TempDirCreatedObserver observer;
-        FileBase::RC err = Directory::createPath( aDirName, &observer );
-        if ( err != FileBase::E_None && err != FileBase::E_EXIST )
+        if (!okOrExists(osl::Directory::createPath(aDirName, &observer)))
             return OUString();
     }
     aName += rLeadingChars;
@@ -281,44 +229,44 @@ static OUString lcl_createName(
             aTmp += ".tmp";
         if ( bDirectory )
         {
-            FileBase::RC err = Directory::create(
+            osl::FileBase::RC err = osl::Directory::create(
                 aTmp,
                 (osl_File_OpenFlag_Read | osl_File_OpenFlag_Write
                  | osl_File_OpenFlag_Private));
-            if ( err == FileBase::E_None )
+            if (err == osl::FileBase::E_None)
             {
                 // !bKeep: only for creating a name, not a file or directory
-                if ( bKeep || Directory::remove( aTmp ) == FileBase::E_None )
+                if (bKeep || osl::Directory::remove(aTmp) == osl::FileBase::E_None)
                     return aTmp;
                 else
                     return OUString();
             }
-            else if ( err != FileBase::E_EXIST )
+            else if (err != osl::FileBase::E_EXIST)
                 // if f.e. name contains invalid chars stop trying to create dirs
                 return OUString();
         }
         else
         {
             DBG_ASSERT( bKeep, "Too expensive, use directory for creating name!" );
-            File aFile( aTmp );
-            FileBase::RC err = aFile.open(
+            osl::File aFile(aTmp);
+            osl::FileBase::RC err = aFile.open(
                 osl_File_OpenFlag_Create | osl_File_OpenFlag_Private
                 | (bLock ? 0 : osl_File_OpenFlag_NoLock));
-            if ( err == FileBase::E_None || (bLock && err == FileBase::E_NOLCK) )
+            if (err == osl::FileBase::E_None || (bLock && err == osl::FileBase::E_NOLCK))
             {
                 aFile.close();
                 return aTmp;
             }
-            else if ( err != FileBase::E_EXIST )
+            else if (err != osl::FileBase::E_EXIST)
             {
                 // if f.e. name contains invalid chars stop trying to create dirs
                 // but if there is a folder with such name proceed further
 
-                DirectoryItem aTmpItem;
-                FileStatus aTmpStatus( osl_FileStatus_Mask_Type );
-                if ( DirectoryItem::get( aTmp, aTmpItem ) != FileBase::E_None
-                  || aTmpItem.getFileStatus( aTmpStatus ) != FileBase::E_None
-                  || aTmpStatus.getFileType() != FileStatus::Directory )
+                osl::DirectoryItem aTmpItem;
+                osl::FileStatus aTmpStatus(osl_FileStatus_Mask_Type);
+                if (osl::DirectoryItem::get(aTmp, aTmpItem) != osl::FileBase::E_None
+                  || aTmpItem.getFileStatus(aTmpStatus) != osl::FileBase::E_None
+                  || aTmpStatus.getFileType() != osl::FileStatus::Directory)
                     return OUString();
             }
         }
@@ -326,58 +274,52 @@ static OUString lcl_createName(
     return OUString();
 }
 
-static OUString CreateTempName_Impl( const OUString* pParent, bool bKeep, bool bDir = true )
+OUString createEyeCatcher()
 {
-    OUString aEyeCatcher = "lu";
-#ifdef UNX
+    OUString eyeCatcher = u"lu"_ustr;
 #ifdef DBG_UTIL
-    const char* eye = getenv("LO_TESTNAME");
-    if(eye)
-    {
-        aEyeCatcher = OUString(eye, strlen(eye), RTL_TEXTENCODING_ASCII_US);
-    }
-#else
-    static const pid_t pid = getpid();
-    static const OUString aPidString = OUString::number(pid);
-    aEyeCatcher += aPidString;
-#endif
+#ifdef UNX
+    if (const char* eye = getenv("LO_TESTNAME"))
+        eyeCatcher = OUString(eye, strlen(eye), RTL_TEXTENCODING_ASCII_US);
 #elif defined(_WIN32)
-    static const int pid = _getpid();
-    static const OUString aPidString = OUString::number(pid);
-    aEyeCatcher += aPidString;
+    if (const wchar_t* eye = _wgetenv(L"LO_TESTNAME"))
+        eyeCatcher = OUString(o3tl::toU(eye));
 #endif
+#else
+#ifdef UNX
+    eyeCatcher += OUString::number(getpid());
+#elif defined(_WIN32)
+    eyeCatcher += OUString::number(_getpid());
+#endif
+#endif
+    return eyeCatcher;
+}
+
+const OUString& getEyeCatcher()
+{
+    static const OUString sEyeCatcher = createEyeCatcher();
+    return sEyeCatcher;
+}
+
+OUString CreateTempName_Impl( const OUString* pParent, bool bKeep, bool bDir = true )
+{
     UniqueTokens t;
-    return lcl_createName( aEyeCatcher, t, u"", pParent, bDir, bKeep,
+    return lcl_createName( getEyeCatcher(), t, u"", pParent, bDir, bKeep,
                            false, false);
 }
 
-static OUString CreateTempNameFast()
+OUString CreateTempNameFast()
 {
-    OUString aEyeCatcher = "lu";
-#ifdef UNX
-#ifdef DBG_UTIL
-    const char* eye = getenv("LO_TESTNAME");
-    if(eye)
-    {
-        aEyeCatcher = OUString(eye, strlen(eye), RTL_TEXTENCODING_ASCII_US);
-    }
-#else
-    static const pid_t pid = getpid();
-    static const OUString aPidString = OUString::number(pid);
-    aEyeCatcher += aPidString;
-#endif
-#elif defined(_WIN32)
-    static const int pid = _getpid();
-    static const OUString aPidString = OUString::number(pid);
-    aEyeCatcher += aPidString;
-#endif
-
-    OUString aName = ConstructTempDir_Impl( /*pParent*/nullptr, /*bCreateParentDirs*/false ) + aEyeCatcher;
+    OUString aName = getTempNameBase_Impl() + getEyeCatcher();
 
     tools::Guid aGuid(tools::Guid::Generate);
 
     return aName + aGuid.getOUString() + ".tmp" ;
 }
+}
+
+namespace utl
+{
 
 OUString CreateTempName()
 {
@@ -386,7 +328,7 @@ OUString CreateTempName()
     // convert to file URL
     OUString aTmp;
     if ( !aName.isEmpty() )
-        FileBase::getSystemPathFromFileURL( aName, aTmp );
+        osl::FileBase::getSystemPathFromFileURL(aName, aTmp);
     return aTmp;
 }
 
@@ -431,7 +373,7 @@ void TempFileFast::CloseStream()
         // On other platforms, we need to explicitly delete it.
 #else
         if (!aName.isEmpty() && (osl::FileBase::getFileURLFromSystemPath(aName, aName) == osl::FileBase::E_None))
-            File::remove(aName);
+            osl::File::remove(aName);
 #endif
     }
 }
@@ -487,7 +429,7 @@ TempFileNamed::~TempFileNamed()
     }
     else
     {
-        File::remove( aName );
+        osl::File::remove(aName);
     }
 }
 
@@ -499,7 +441,7 @@ bool TempFileNamed::IsValid() const
 OUString TempFileNamed::GetFileName() const
 {
     OUString aTmp;
-    FileBase::getSystemPathFromFileURL(aName, aTmp);
+    osl::FileBase::getSystemPathFromFileURL(aName, aTmp);
     return aTmp;
 }
 
@@ -538,36 +480,26 @@ OUString SetTempNameBaseDirectory( const OUString &rBaseName )
     if( rBaseName.isEmpty() )
         return OUString();
 
-    OUString aUnqPath( rBaseName );
-
     // remove trailing slash
-    if ( rBaseName.endsWith("/") )
-        aUnqPath = rBaseName.copy( 0, rBaseName.getLength() - 1 );
+    OUString aUnqPath(stripTrailingSlash(rBaseName));
 
     // try to create the directory
-    bool bRet = false;
-    osl::FileBase::RC err = osl::Directory::create( aUnqPath );
-    if ( err != FileBase::E_None && err != FileBase::E_EXIST )
-        // perhaps parent(s) don't exist
-        bRet = ensuredir( aUnqPath );
-    else
-        bRet = true;
+    bool bRet = okOrExists(osl::Directory::createPath(aUnqPath));
 
     // failure to create base directory means returning an empty string
     OUString aTmp;
     if ( bRet )
     {
         // append own internal directory
-        OUString &rTempNameBase_Impl = gTempNameBase_Impl;
-        rTempNameBase_Impl = rBaseName + "/";
+        gTempNameBase_Impl = ensureTrailingSlash(rBaseName);
 
         TempFileNamed aBase( {}, true );
         if ( aBase.IsValid() )
             // use it in case of success
-            rTempNameBase_Impl = aBase.aName;
+            gTempNameBase_Impl = ensureTrailingSlash(aBase.GetURL());
 
         // return system path of used directory
-        FileBase::getSystemPathFromFileURL( rTempNameBase_Impl, aTmp );
+        osl::FileBase::getSystemPathFromFileURL(gTempNameBase_Impl, aTmp);
     }
 
     return aTmp;
@@ -637,6 +569,28 @@ sal_Int32 SAL_CALL TempFileFastService::readSomeBytes( css::uno::Sequence< sal_I
     return readBytes(aData, nMaxBytesToRead);
 }
 
+// comphelper::ByteReader
+sal_Int32 TempFileFastService::readSomeBytes( sal_Int8* aData, sal_Int32 nBytesToRead )
+{
+    std::unique_lock aGuard( maMutex );
+    if ( mbInClosed )
+        throw css::io::NotConnectedException ( OUString(), getXWeak() );
+
+    checkConnected();
+    checkError();
+
+    if (nBytesToRead < 0)
+        throw css::io::BufferSizeExceededException( OUString(), getXWeak() );
+
+    if (mpStream->eof())
+        return 0;
+
+    sal_uInt32 nRead = mpStream->ReadBytes(aData, nBytesToRead);
+    checkError();
+
+    return nRead;
+}
+
 void SAL_CALL TempFileFastService::skipBytes( sal_Int32 nBytesToSkip )
 {
     std::unique_lock aGuard( maMutex );
@@ -691,6 +645,21 @@ void SAL_CALL TempFileFastService::writeBytes( const css::uno::Sequence< sal_Int
     sal_uInt32 nWritten = mpStream->WriteBytes(aData.getConstArray(), aData.getLength());
     checkError();
     if  ( nWritten != static_cast<sal_uInt32>(aData.getLength()))
+        throw css::io::BufferSizeExceededException( OUString(), getXWeak() );
+}
+
+// comphelper::ByteWriter
+
+void TempFileFastService::writeBytes( const sal_Int8* aData, sal_Int32 nBytesToWrite )
+{
+    std::unique_lock aGuard( maMutex );
+    if ( mbOutClosed )
+        throw css::io::NotConnectedException ( OUString(), getXWeak() );
+
+    checkConnected();
+    sal_uInt32 nWritten = mpStream->WriteBytes(aData, nBytesToWrite);
+    checkError();
+    if  ( nWritten != o3tl::make_unsigned(nBytesToWrite) )
         throw css::io::BufferSizeExceededException( OUString(), getXWeak() );
 }
 

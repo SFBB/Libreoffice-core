@@ -21,6 +21,7 @@
 
 #include <oox/helper/attributelist.hxx>
 #include <drawingml/colorchoicecontext.hxx>
+#include <drawingml/effectpropertiescontext.hxx>
 #include <drawingml/linepropertiescontext.hxx>
 #include <drawingml/misccontexts.hxx>
 #include <drawingml/textcharacterproperties.hxx>
@@ -34,8 +35,6 @@
 
 using namespace ::oox::core;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::xml::sax;
-using namespace ::com::sun::star::awt;
 
 namespace oox::drawingml {
 
@@ -49,6 +48,9 @@ TextCharacterPropertiesContext::TextCharacterPropertiesContext(
 {
     int nVisualTokenAmount = sax_fastparser::castToFastAttributeList(
                 rAttribs.getFastAttributeList() ).getFastAttributeTokens().size();
+
+    if (nVisualTokenAmount == 0)
+        mrTextCharacterProperties.mbHasEmptyParaProperties = true;
 
     if ( rAttribs.hasAttribute( XML_lang ) )
     {
@@ -128,6 +130,7 @@ ContextHandlerRef TextCharacterPropertiesContext::onCreateContext( sal_Int32 aEl
         // EG_EffectProperties
         case A_TOKEN( effectDag ):  // CT_EffectContainer 5.1.10.25
         case A_TOKEN( effectLst ):  // CT_EffectList 5.1.10.26
+            return new EffectPropertiesContext(*this, mrTextCharacterProperties.getEffectProperties());
         break;
         case A_TOKEN( highlight ):  // CT_Color
             return new ColorContext(*this, mrTextCharacterProperties.maHighlightColor);
@@ -235,7 +238,7 @@ ContextHandlerRef TextCharacterPropertiesContext::onCreateContext( sal_Int32 aEl
             {
                 oox::drawingml::Color theColor;
                 theColor.setSrgbClr(colorAttrib.value());
-                mrTextCharacterProperties.maUnderlineColor = theColor;
+                mrTextCharacterProperties.maUnderlineColor = std::move(theColor);
             }
             break;
         }

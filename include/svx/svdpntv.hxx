@@ -35,25 +35,12 @@
 
 
 // Pre defines
-class SdrPageWindow;
-
-namespace com::sun::star::awt {
-    class XControlContainer;
-}
 namespace sdr::overlay { class OverlayManager; }
 
 class SdrPage;
-class SdrView;
-class SfxItemSet;
 class SfxStyleSheet;
 class SdrOle2Obj;
 class SdrModel;
-class SdrObject;
-enum class GraphicManagerDrawFlags;
-
-namespace sdr::contact {
-    class ViewObjectContactRedirector;
-}
 
 // Defines for AnimationMode
 enum class SdrAnimationMode
@@ -62,7 +49,6 @@ enum class SdrAnimationMode
     Disable
 };
 
-class SdrPaintView;
 namespace sdr::contact { class ViewObjectContactRedirector; }
 
 namespace vcl {
@@ -79,10 +65,10 @@ public:
 class SdrPaintWindow;
 
 /**
- * Helper to convert any GDIMetaFile to a good quality BitmapEx,
+ * Helper to convert any GDIMetaFile to a good quality Bitmap,
  * using default parameters and graphic::XPrimitive2DRenderer
  */
-BitmapEx convertMetafileToBitmapEx(
+Bitmap convertMetafileToBitmap(
     const GDIMetaFile& rMtf,
     const basegfx::B2DRange& rTargetRange,
     const sal_uInt32 nMaximumQuadraticPixels);
@@ -207,7 +193,8 @@ protected:
     bool mbHideChart : 1;
     bool mbHideDraw : 1; // hide draw objects other than form controls
     bool mbHideFormControl : 1; // hide form controls only
-    bool mbPaintTextEdit : 1;        // if should paint currently edited text
+    bool mbHideBackground : 1; // don't draw the (page's or master page's) background
+    bool mbPaintTextEdit : 1; // if should paint currently edited text
 
 public:
     // Interface for BufferedOoutputAllowed flag
@@ -235,7 +222,7 @@ protected:
     // Interface to SdrPaintWindow
     void DeletePaintWindow(const SdrPaintWindow& rOld);
     void ConfigurationChanged( ::utl::ConfigurationBroadcaster*, ConfigurationHints ) override;
-    static void InitOverlayManager(rtl::Reference<sdr::overlay::OverlayManager> xOverlayManager);
+    static void InitOverlayManager(const rtl::Reference<sdr::overlay::OverlayManager> & xOverlayManager);
 
 public:
     sal_uInt32 PaintWindowCount() const { return maPaintWindows.size(); }
@@ -243,6 +230,7 @@ public:
     SdrPaintWindow* GetPaintWindow(sal_uInt32 nIndex) const;
     // Replacement for GetWin(0), may return 0L (!)
     OutputDevice* GetFirstOutputDevice() const;
+    const Idle& GetComeBackIdle() const { return maComeBackIdle; };
 
 private:
     DECL_DLLPRIVATE_LINK(ImpComeBackHdl, Timer*, void);
@@ -354,7 +342,8 @@ public:
     // This means: the SdrPaintWindow is no longer safe after this closing call.
     virtual SdrPaintWindow* BeginCompleteRedraw(OutputDevice* pOut);
     void DoCompleteRedraw(SdrPaintWindow& rPaintWindow, const vcl::Region& rReg, sdr::contact::ViewObjectContactRedirector* pRedirector = nullptr);
-    virtual void EndCompleteRedraw(SdrPaintWindow& rPaintWindow, bool bPaintFormLayer);
+    virtual void EndCompleteRedraw(SdrPaintWindow& rPaintWindow, bool bPaintFormLayer,
+        sdr::contact::ViewObjectContactRedirector* pRedirector = nullptr);
 
 
     // Used for the other applications basctl/sc/sw which call DrawLayer at PageViews
@@ -364,12 +353,14 @@ public:
 
     // Used when the region passed to BeginDrawLayers needs to be changed
     void UpdateDrawLayersRegion(const OutputDevice* pOut, const vcl::Region& rReg);
-    void EndDrawLayers(SdrPaintWindow& rPaintWindow, bool bPaintFormLayer);
+    void EndDrawLayers(SdrPaintWindow& rPaintWindow, bool bPaintFormLayer,
+        sdr::contact::ViewObjectContactRedirector* pRedirector = nullptr);
 
 protected:
 
     // Used to paint the form layer after the PreRender device is flushed (painted) to the window.
-    void ImpFormLayerDrawing( SdrPaintWindow& rPaintWindow );
+    void ImpFormLayerDrawing( SdrPaintWindow& rPaintWindow,
+        sdr::contact::ViewObjectContactRedirector* pRedirector = nullptr );
 
     static vcl::Region OptimizeDrawLayersRegion(const OutputDevice* pOut, const vcl::Region& rReg, bool bDisableIntersect);
 
@@ -399,14 +390,70 @@ public:
     bool IsHlplFront() const { return mbHlplFront  ; }
 
     const Color& GetGridColor() const { return maGridColor;}
-    void SetPageVisible(bool bOn = true) { mbPageVisible=bOn; InvalidateAllWin(); }
-    void SetPageShadowVisible(bool bOn) { mbPageShadowVisible=bOn; InvalidateAllWin(); }
-    void SetPageBorderVisible(bool bOn = true) { mbPageBorderVisible=bOn; InvalidateAllWin(); }
-    void SetBordVisible(bool bOn = true) { mbBordVisible=bOn; InvalidateAllWin(); }
-    void SetGridVisible(bool bOn) { mbGridVisible=bOn; InvalidateAllWin(); }
-    void SetGridFront(bool bOn) { mbGridFront  =bOn; InvalidateAllWin(); }
-    void SetHlplVisible(bool bOn = true) { mbHlplVisible=bOn; InvalidateAllWin(); }
-    void SetHlplFront(bool bOn) { mbHlplFront  =bOn; InvalidateAllWin(); }
+    void SetPageVisible(bool bOn = true)
+    {
+        if (mbPageVisible != bOn)
+        {
+            mbPageVisible = bOn;
+            InvalidateAllWin();
+        }
+    }
+    void SetPageShadowVisible(bool bOn)
+    {
+        if (mbPageShadowVisible != bOn)
+        {
+            mbPageShadowVisible = bOn;
+            InvalidateAllWin();
+        }
+    }
+    void SetPageBorderVisible(bool bOn = true)
+    {
+        if (mbPageBorderVisible != bOn)
+        {
+            mbPageBorderVisible = bOn;
+            InvalidateAllWin();
+        }
+    }
+    void SetBordVisible(bool bOn = true)
+    {
+        if (mbBordVisible != bOn)
+        {
+            mbBordVisible = bOn;
+            InvalidateAllWin();
+        }
+    }
+    void SetGridVisible(bool bOn)
+    {
+        if (mbGridVisible != bOn)
+        {
+            mbGridVisible = bOn;
+            InvalidateAllWin();
+        }
+    }
+    void SetGridFront(bool bOn)
+    {
+        if (mbGridFront != bOn)
+        {
+            mbGridFront = bOn;
+            InvalidateAllWin();
+        }
+    }
+    void SetHlplVisible(bool bOn = true)
+    {
+        if (mbHlplVisible != bOn)
+        {
+            mbHlplVisible = bOn;
+            InvalidateAllWin();
+        }
+    }
+    void SetHlplFront(bool bOn)
+    {
+        if (mbHlplFront != bOn)
+        {
+            mbHlplFront = bOn;
+            InvalidateAllWin();
+        }
+    }
     void SetGlueVisible(bool bOn = true) { if (mbGlueVisible!=bOn) { mbGlueVisible=bOn; if (!mbGlueVisible2 && !mbGlueVisible3 && !mbGlueVisible4) GlueInvalidate(); } }
 
     bool IsPreviewRenderer() const { return mbPreviewRenderer; }
@@ -417,10 +464,13 @@ public:
     bool getHideChart() const { return mbHideChart; }
     bool getHideDraw() const { return mbHideDraw; }
     bool getHideFormControl() const { return mbHideFormControl; }
+    bool getHideBackground() const { return mbHideBackground; }
+
     void setHideOle(bool bNew) { if(bNew != mbHideOle) mbHideOle = bNew; }
     void setHideChart(bool bNew) { if(bNew != mbHideChart) mbHideChart = bNew; }
     void setHideDraw(bool bNew) { if(bNew != mbHideDraw) mbHideDraw = bNew; }
     void setHideFormControl(bool bNew) { if(bNew != mbHideFormControl) mbHideFormControl = bNew; }
+    void setHideBackground(bool bNew) { mbHideBackground = bNew; }
 
     void SetGridCoarse(const Size& rSiz) { maGridBig=rSiz; }
     void SetGridFine(const Size& rSiz) {

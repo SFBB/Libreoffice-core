@@ -20,10 +20,10 @@ namespace oox
 namespace
 {
 
-constexpr frozen::unordered_map<Relationship, std::u16string_view, 48> constRelationshipMap
-{
+constexpr auto constRelationshipMap = frozen::make_unordered_map<Relationship, std::u16string_view>
+({
 #include "relationship.inc"
-};
+});
 
 } // end anonymous ns
 

@@ -17,7 +17,6 @@
 
 
 namespace {
-const size_t NUMBER_OF_FAMILIES = 7;
 size_t family_to_index(SfxStyleFamily family)
 {
     switch (family) {
@@ -33,8 +32,6 @@ size_t family_to_index(SfxStyleFamily family)
         return 4;
     case SfxStyleFamily::Table:
         return 5;
-    case SfxStyleFamily::All:
-        return 6;
     default: break;
     }
     assert(false); // only for compiler warning. all cases are handled in the switch
@@ -46,27 +43,21 @@ namespace svl {
 
 IndexedStyleSheets::IndexedStyleSheets()
 {
-    for (size_t i = 0; i < NUMBER_OF_FAMILIES; i++) {
-        mStyleSheetPositionsByFamily.emplace_back();
-    }
-;}
+}
 
-void IndexedStyleSheets::Register(const SfxStyleSheetBase& style, sal_Int32 pos)
+void IndexedStyleSheets::Register(SfxStyleSheetBase& style, sal_Int32 pos)
 {
     mPositionsByName.insert(std::make_pair(style.GetName(), pos));
     size_t position = family_to_index(style.GetFamily());
-    mStyleSheetPositionsByFamily.at(position).push_back(pos);
-    size_t positionForFamilyAll = family_to_index(SfxStyleFamily::All);
-    mStyleSheetPositionsByFamily.at(positionForFamilyAll).push_back(pos);
+    mStyleSheetsByFamily.at(position).push_back(&style);
 }
 
 void
 IndexedStyleSheets::Reindex()
 {
     mPositionsByName.clear();
-    mStyleSheetPositionsByFamily.clear();
     for (size_t i = 0; i < NUMBER_OF_FAMILIES; i++) {
-        mStyleSheetPositionsByFamily.emplace_back();
+        mStyleSheetsByFamily[i].clear();
     }
 
     sal_Int32 i = 0;
@@ -77,9 +68,20 @@ IndexedStyleSheets::Reindex()
     }
 }
 
-sal_Int32 IndexedStyleSheets::GetNumberOfStyleSheets() const
+void
+IndexedStyleSheets::ReindexOnNameChange(const SfxStyleSheetBase& style, const OUString& rOldName, const OUString& rNewName)
 {
-    return mStyleSheets.size();
+    std::pair<MapType::const_iterator, MapType::const_iterator> range = mPositionsByName.equal_range(rOldName);
+    for (MapType::const_iterator it = range.first; it != range.second; ++it)
+    {
+        if (mStyleSheets[it->second].get() == &style)
+        {
+            unsigned nPos = it->second;
+            mPositionsByName.erase(it);
+            mPositionsByName.insert(std::make_pair(rNewName, nPos));
+            break;
+        }
+    }
 }
 
 void
@@ -148,7 +150,7 @@ IndexedStyleSheets::GetNumberOfStyleSheetsWithPredicate(StyleSheetPredicate& pre
         });
 }
 
-SfxStyleSheetBase*
+std::pair<SfxStyleSheetBase*, sal_Int32>
 IndexedStyleSheets::GetNthStyleSheetThatMatchesPredicate(
         sal_Int32 n,
         StyleSheetPredicate& predicate,
@@ -156,7 +158,8 @@ IndexedStyleSheets::GetNthStyleSheetThatMatchesPredicate(
 {
     SfxStyleSheetBase* retval = nullptr;
     sal_Int32 matching = 0;
-    for (VectorType::const_iterator it = mStyleSheets.begin()+startAt; it != mStyleSheets.end(); ++it) {
+    VectorType::const_iterator it = mStyleSheets.begin()+startAt;
+    for (; it != mStyleSheets.end(); ++it) {
         SfxStyleSheetBase *ssheet = it->get();
         if (predicate.Check(*ssheet)) {
             if (matching == n) {
@@ -166,7 +169,7 @@ IndexedStyleSheets::GetNthStyleSheetThatMatchesPredicate(
             ++matching;
         }
     }
-    return retval;
+    return { retval, std::distance(mStyleSheets.cbegin(), it) };
 }
 
 sal_Int32 IndexedStyleSheets::FindStyleSheetPosition(const SfxStyleSheetBase& style) const
@@ -181,8 +184,21 @@ sal_Int32 IndexedStyleSheets::FindStyleSheetPosition(const SfxStyleSheetBase& st
 void
 IndexedStyleSheets::Clear(StyleSheetDisposer& disposer)
 {
-    for (const auto& rxStyleSheet : mStyleSheets) {
+    for (auto& rxStyleSheet : mStyleSheets) {
         disposer.Dispose(rxStyleSheet);
+
+        // tdf#161729 clear style sheets in same order as they were added
+        // std::vector::clear() appears to delete elements in the
+        // reverse order added. In the case of tdf#161729, a style
+        // sheet's SfxItemSet can have a parent SfxItemSet and that
+        // parent is the SfxItemSet for a style sheet added later.
+        // Deleting from the end of the vector deletes a style sheet
+        // and its SfxItemSet. If the now deleted SfxItemSet is a
+        // parent SfxItemSet of a style sheet that was added earlier,
+        // the style sheet added earlier will now have an SfxItemSet
+        // with its parent set to an already deleted pointer. And so
+        // a crash will occur when that earlier style sheet is deleted.
+        rxStyleSheet.clear();
     }
     mStyleSheets.clear();
     mPositionsByName.clear();
@@ -232,11 +248,11 @@ IndexedStyleSheets::FindPositionsByPredicate(StyleSheetPredicate& predicate) con
     return r;
 }
 
-const std::vector<sal_Int32>&
-IndexedStyleSheets::GetStyleSheetPositionsByFamily(SfxStyleFamily e) const
+const std::vector<SfxStyleSheetBase*>&
+IndexedStyleSheets::GetStyleSheetsByFamily(SfxStyleFamily e) const
 {
     size_t position = family_to_index(e);
-    return mStyleSheetPositionsByFamily.at(position);
+    return mStyleSheetsByFamily.at(position);
 }
 
 } /* namespace svl */

@@ -19,7 +19,6 @@
 #include <svx/sidebar/ValueSetWithTextControl.hxx>
 #include <sfx2/sidebar/Theme.hxx>
 
-#include <i18nlangtag/mslangid.hxx>
 #include <svtools/valueset.hxx>
 #include <vcl/event.hxx>
 #include <vcl/settings.hxx>
@@ -41,15 +40,6 @@ void ValueSetWithTextControl::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     SetOutputSizePixel(aSize);
 
     SetColCount();
-}
-
-void ValueSetWithTextControl::SetOptimalDrawingAreaHeight()
-{
-    const vcl::Font aFont(Application::GetSettings().GetStyleSettings().GetLabelFont());
-    const sal_Int32 nRowHeight = aFont.GetFontSize().Height() * 9 / 4; // see UserDraw()
-    const Size aSize(GetOutputSizePixel().Width(), nRowHeight * maItems.size());
-    GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
-    SetOutputSizePixel(aSize);
 }
 
 void ValueSetWithTextControl::AddItem(

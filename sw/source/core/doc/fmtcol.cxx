@@ -25,6 +25,7 @@
 #include <osl/diagnose.h>
 #include <sal/macros.h>
 #include <svl/intitem.hxx>
+#include <svl/itemiter.hxx>
 #include <calbck.hxx>
 #include <doc.hxx>
 #include <fmtcol.hxx>
@@ -61,9 +62,9 @@ namespace TextFormatCollFunc
         }
         if (pNewNumRuleItem)
         {
-            const OUString& sNumRuleName = pNewNumRuleItem->GetValue();
+            const UIName sNumRuleName = pNewNumRuleItem->GetValue();
             if ( sNumRuleName.isEmpty() ||
-                 sNumRuleName != pTextFormatColl->GetDoc()->GetOutlineNumRule()->GetName() )
+                 sNumRuleName != pTextFormatColl->GetDoc().GetOutlineNumRule()->GetName() )
             {
                 // delete assignment of paragraph style to list level of outline style.
                 pTextFormatColl->DeleteAssignmentToListLevelOfOutlineStyle();
@@ -78,10 +79,10 @@ namespace TextFormatCollFunc
         const SwNumRuleItem* pNumRuleItem = rTextFormatColl.GetItemIfSet(RES_PARATR_NUMRULE, false);
         if (pNumRuleItem)
         {
-            const OUString& sNumRuleName = pNumRuleItem->GetValue();
+            const UIName sNumRuleName = pNumRuleItem->GetValue();
             if ( !sNumRuleName.isEmpty() )
             {
-                pNumRule = rTextFormatColl.GetDoc()->FindNumRulePtr( sNumRuleName );
+                pNumRule = rTextFormatColl.GetDoc().FindNumRulePtr( sNumRuleName );
             }
         }
 
@@ -112,18 +113,19 @@ SwTextFormatColl::~SwTextFormatColl()
     if(m_bInSwFntCache)
         pSwFontCache->Delete( this );
 
-    if (GetDoc()->IsInDtor())
+    if (GetDoc().IsInDtor())
     {
         return;
     }
 
-    for (const auto& pCharFormat : *GetDoc()->GetCharFormats())
+    for (const auto& pCharFormat : *GetDoc().GetCharFormats())
     {
         if (pCharFormat->GetLinkedParaFormat() == this)
         {
             pCharFormat->SetLinkedParaFormat(nullptr);
         }
     }
+    Destr();
 }
 void SwTextFormatColl::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
 {
@@ -132,10 +134,17 @@ void SwTextFormatColl::SwClientNotify(const SwModify& rModify, const SfxHint& rH
         CallSwClientNotify(rHint);
         return;
     }
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
+    else if (rHint.GetId() == SfxHintId::SwVirtPageNumHint)
+    {
+        CallSwClientNotify(rHint);
         return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    if(GetDoc()->IsInDtor())
+    }
+    else if (rHint.GetId() != SfxHintId::SwLegacyModify && rHint.GetId() != SfxHintId::SwFormatChange
+             && rHint.GetId() != SfxHintId::SwAttrSetChange
+             && rHint.GetId() != SfxHintId::SwObjectDying
+             && rHint.GetId() != SfxHintId::SwUpdateAttr)
+        return;
+    if(GetDoc().IsInDtor())
     {
         SwFormatColl::SwClientNotify(rModify, rHint);
         return;
@@ -150,15 +159,51 @@ void SwTextFormatColl::SwClientNotify(const SwModify& rModify, const SfxHint& rH
     const bool bAssignedToListLevelOfOutlineStyle(IsAssignedToListLevelOfOutlineStyle());
     const SwNumRuleItem* pNewNumRuleItem( nullptr );
 
-    const SwAttrSetChg *pNewChgSet = nullptr,  *pOldChgSet = nullptr;
-    const auto pOld = pLegacy->m_pOld;
-    const auto pNew = pLegacy->m_pNew;
-    switch( pLegacy->GetWhich() )
+    if (rHint.GetId() == SfxHintId::SwLegacyModify)
     {
-    case RES_ATTRSET_CHG:
+        auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
+        const auto pNew = pLegacy->m_pNew;
+
+        switch( pLegacy->GetWhich() )
+        {
+        case RES_MARGIN_FIRSTLINE:
+            pNewFirstLineIndent = &pNew->StaticWhichCast(RES_MARGIN_FIRSTLINE);
+            break;
+        case RES_MARGIN_TEXTLEFT:
+            pNewTextLeftMargin = &pNew->StaticWhichCast(RES_MARGIN_TEXTLEFT);
+            break;
+        case RES_MARGIN_RIGHT:
+            pNewRightMargin = &pNew->StaticWhichCast(RES_MARGIN_RIGHT);
+            break;
+        case RES_UL_SPACE:
+            pNewULSpace = &pNew->StaticWhichCast(RES_UL_SPACE);
+            break;
+        case RES_CHRATR_FONTSIZE:
+            aFontSizeArr[0] = &pNew->StaticWhichCast(RES_CHRATR_FONTSIZE);
+            break;
+        case RES_CHRATR_CJK_FONTSIZE:
+            aFontSizeArr[1] = &pNew->StaticWhichCast(RES_CHRATR_CJK_FONTSIZE);
+            break;
+        case RES_CHRATR_CTL_FONTSIZE:
+            aFontSizeArr[2] = &pNew->StaticWhichCast(RES_CHRATR_CTL_FONTSIZE);
+            break;
+        // #i70223#
+        case RES_PARATR_NUMRULE:
+            if (bAssignedToListLevelOfOutlineStyle)
+            {
+                pNewNumRuleItem = &pNew->StaticWhichCast(RES_PARATR_NUMRULE);
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    else if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+        const SwAttrSetChg *pNewChgSet = pChangeHint->m_pNew;
+
         // Only recalculate if we're not the sender!
-        pNewChgSet = &pNew->StaticWhichCast(RES_ATTRSET_CHG);
-        pOldChgSet = &pOld->StaticWhichCast(RES_ATTRSET_CHG);
         pNewFirstLineIndent = pNewChgSet->GetChgSet()->GetItemIfSet(RES_MARGIN_FIRSTLINE, false);
         pNewTextLeftMargin = pNewChgSet->GetChgSet()->GetItemIfSet(RES_MARGIN_TEXTLEFT, false);
         pNewRightMargin = pNewChgSet->GetChgSet()->GetItemIfSet(RES_MARGIN_RIGHT, false);
@@ -173,10 +218,9 @@ void SwTextFormatColl::SwClientNotify(const SwModify& rModify, const SfxHint& rH
         {
             pNewNumRuleItem = pNewChgSet->GetChgSet()->GetItemIfSet( RES_PARATR_NUMRULE, false );
         }
-
-        break;
-
-    case RES_FMT_CHG:
+    }
+    else if (rHint.GetId() == SfxHintId::SwFormatChange)
+    {
         if( GetAttrSet().GetParent() )
         {
             const SfxItemSet* pParent = GetAttrSet().GetParent();
@@ -190,38 +234,6 @@ void SwTextFormatColl::SwClientNotify(const SwModify& rModify, const SfxHint& rH
             // #i66431# - modify has to be propagated, because of new parent format.
             bNewParent = true;
         }
-        break;
-
-    case RES_MARGIN_FIRSTLINE:
-        pNewFirstLineIndent = &pNew->StaticWhichCast(RES_MARGIN_FIRSTLINE);
-        break;
-    case RES_MARGIN_TEXTLEFT:
-        pNewTextLeftMargin = &pNew->StaticWhichCast(RES_MARGIN_TEXTLEFT);
-        break;
-    case RES_MARGIN_RIGHT:
-        pNewRightMargin = &pNew->StaticWhichCast(RES_MARGIN_RIGHT);
-        break;
-    case RES_UL_SPACE:
-        pNewULSpace = &pNew->StaticWhichCast(RES_UL_SPACE);
-        break;
-    case RES_CHRATR_FONTSIZE:
-        aFontSizeArr[0] = &pNew->StaticWhichCast(RES_CHRATR_CJK_FONTSIZE);
-        break;
-    case RES_CHRATR_CJK_FONTSIZE:
-        aFontSizeArr[1] = &pNew->StaticWhichCast(RES_CHRATR_CJK_FONTSIZE);
-        break;
-    case RES_CHRATR_CTL_FONTSIZE:
-        aFontSizeArr[2] = &pNew->StaticWhichCast(RES_CHRATR_CTL_FONTSIZE);
-        break;
-    // #i70223#
-    case RES_PARATR_NUMRULE:
-        if (bAssignedToListLevelOfOutlineStyle)
-        {
-            pNewNumRuleItem = &pNew->StaticWhichCast(RES_PARATR_NUMRULE);
-        }
-        break;
-    default:
-        break;
     }
 
     // #i70223#
@@ -231,7 +243,7 @@ void SwTextFormatColl::SwClientNotify(const SwModify& rModify, const SfxHint& rH
                                                         this, pNewNumRuleItem );
     }
 
-    bool bContinue = true;
+    sal_uInt32 nNoNotify = 0; // track handled changes: no need to notify if all are handled here
 
     // Check against the own attributes
     const SvxFirstLineIndentItem *pOldFirstLineIndent(GetItemIfSet(RES_MARGIN_FIRSTLINE, false));
@@ -242,22 +254,18 @@ void SwTextFormatColl::SwClientNotify(const SwModify& rModify, const SfxHint& rH
             bool bChg = false;
             SvxFirstLineIndentItem aNew(*pOldFirstLineIndent);
             // We had a relative value -> recalculate
-            if( 100 != aNew.GetPropTextFirstLineOffset() )
+            if (100 != pOldFirstLineIndent->GetPropTextFirstLineOffset())
             {
-                short nTmp = aNew.GetTextFirstLineOffset();    // keep so that we can compare
+                const auto stOld = pOldFirstLineIndent->GetTextFirstLineOffset();
                 aNew.SetTextFirstLineOffset(pNewFirstLineIndent->GetTextFirstLineOffset(),
-                                            aNew.GetPropTextFirstLineOffset() );
-                bChg |= nTmp != aNew.GetTextFirstLineOffset();
+                                            pOldFirstLineIndent->GetPropTextFirstLineOffset());
+                bChg = (stOld != aNew.GetTextFirstLineOffset());
             }
             if( bChg )
             {
-                SetFormatAttr( aNew );
-                bContinue = nullptr != pOldChgSet || bNewParent;
+                SetFormatAttr(aNew); // triggered separate notification about only this one property
             }
-            // We set it to absolute -> do not propagate it further, unless
-            // we set it!
-            else if( pNewChgSet )
-                bContinue = pNewChgSet->GetTheChgdSet() == &GetAttrSet();
+            ++nNoNotify;
         }
     }
     const SvxTextLeftMarginItem *pOldTextLeftMargin(GetItemIfSet(RES_MARGIN_TEXTLEFT, false));
@@ -268,22 +276,19 @@ void SwTextFormatColl::SwClientNotify(const SwModify& rModify, const SfxHint& rH
             bool bChg = false;
             SvxTextLeftMarginItem aNew(*pOldTextLeftMargin);
             // We had a relative value -> recalculate
-            if( 100 != aNew.GetPropLeft() )
+            if (100 != pOldTextLeftMargin->GetPropLeft())
             {
                 // note: changing from Left to TextLeft - looked wrong with Left
-                tools::Long nTmp = aNew.GetTextLeft(); // keep so that we can compare
-                aNew.SetTextLeft(pNewTextLeftMargin->GetTextLeft(), aNew.GetPropLeft());
-                bChg |= nTmp != aNew.GetTextLeft();
+                const auto stOld = pOldTextLeftMargin->GetTextLeft();
+                aNew.SetTextLeft(pNewTextLeftMargin->GetTextLeft(),
+                                 pOldTextLeftMargin->GetPropLeft());
+                bChg = (stOld != aNew.GetTextLeft());
             }
             if( bChg )
             {
                 SetFormatAttr( aNew );
-                bContinue = nullptr != pOldChgSet || bNewParent;
             }
-            // We set it to absolute -> do not propagate it further, unless
-            // we set it!
-            else if( pNewChgSet )
-                bContinue = pNewChgSet->GetTheChgdSet() == &GetAttrSet();
+            ++nNoNotify;
         }
     }
     const SvxRightMarginItem *pOldRightMargin(GetItemIfSet(RES_MARGIN_RIGHT, false));
@@ -294,21 +299,17 @@ void SwTextFormatColl::SwClientNotify(const SwModify& rModify, const SfxHint& rH
             bool bChg = false;
             SvxRightMarginItem aNew(*pOldRightMargin);
             // We had a relative value -> recalculate
-            if( 100 != aNew.GetPropRight() )
+            if (100 != pOldRightMargin->GetPropRight())
             {
-                tools::Long nTmp = aNew.GetRight();    // keep so that we can compare
-                aNew.SetRight(pNewRightMargin->GetRight(), aNew.GetPropRight());
-                bChg |= nTmp != aNew.GetRight();
+                const auto stOld = pOldRightMargin->GetRight();
+                aNew.SetRight(pNewRightMargin->GetRight(), pOldRightMargin->GetPropRight());
+                bChg = (stOld != aNew.GetRight());
             }
             if( bChg )
             {
                 SetFormatAttr( aNew );
-                bContinue = nullptr != pOldChgSet || bNewParent;
             }
-            // We set it to absolute -> do not propagate it further, unless
-            // we set it!
-            else if( pNewChgSet )
-                bContinue = pNewChgSet->GetTheChgdSet() == &GetAttrSet();
+            ++nNoNotify;
         }
     }
 
@@ -318,68 +319,71 @@ void SwTextFormatColl::SwClientNotify(const SwModify& rModify, const SfxHint& rH
         SvxULSpaceItem aNew( *pOldULSpace );
         bool bChg = false;
         // We had a relative value -> recalculate
-        if( 100 != aNew.GetPropUpper() )
+        if (100 != pOldULSpace->GetPropUpper())
         {
-            sal_uInt16 nTmp = aNew.GetUpper();      // keep so that we can compare
-            aNew.SetUpper( pNewULSpace->GetUpper(), aNew.GetPropUpper() );
-            bChg |= nTmp != aNew.GetUpper();
+            const sal_uInt16 nOld = pOldULSpace->GetUpper();
+            aNew.SetUpper(pNewULSpace->GetUpper(), pOldULSpace->GetPropUpper());
+            bChg = nOld != aNew.GetUpper();
         }
         // We had a relative value -> recalculate
-        if( 100 != aNew.GetPropLower() )
+        if (100 != pOldULSpace->GetPropLower())
         {
-            sal_uInt16 nTmp = aNew.GetLower();      // keep so that we can compare
-            aNew.SetLower( pNewULSpace->GetLower(), aNew.GetPropLower() );
-            bChg |= nTmp != aNew.GetLower();
+            const sal_uInt16 nOld = pOldULSpace->GetLower();
+            aNew.SetLower(pNewULSpace->GetLower(), pOldULSpace->GetPropLower());
+            bChg |= nOld != aNew.GetLower();
         }
         if( bChg )
         {
             SetFormatAttr( aNew );
-            bContinue = nullptr != pOldChgSet || bNewParent;
         }
-        // We set it to absolute -> do not propagate it further, unless
-        // we set it!
-        else if( pNewChgSet )
-            bContinue = pNewChgSet->GetTheChgdSet() == &GetAttrSet();
+        ++nNoNotify;
     }
 
-    for( int nC = 0; nC < int(SAL_N_ELEMENTS(aFontSizeArr)); ++nC )
+    for (const SvxFontHeightItem *pFSize : aFontSizeArr)
     {
-        const SvxFontHeightItem *pFSize = aFontSizeArr[ nC ], *pOldFSize;
+        const SvxFontHeightItem *pOldFSize;
         if( pFSize && (SfxItemState::SET == GetItemState(
             pFSize->Which(), false, reinterpret_cast<const SfxPoolItem**>(&pOldFSize) )) &&
             // Avoid recursion (SetAttr!)
             !SfxPoolItem::areSame(pFSize, pOldFSize) )
         {
-            if( 100 == pOldFSize->GetProp() &&
-                MapUnit::MapRelative == pOldFSize->GetPropUnit() )
-            {
-                // We set it to absolute -> do not propagate it further, unless
-                // we set it!
-                if( pNewChgSet )
-                    bContinue = pNewChgSet->GetTheChgdSet() == &GetAttrSet();
-            }
-            else
+            if (100 != pOldFSize->GetProp() || MapUnit::MapRelative != pOldFSize->GetPropUnit())
             {
                 // We had a relative value -> recalculate
-                sal_uInt32 nTmp = pOldFSize->GetHeight();       // keep so that we can compare
+                const sal_uInt32 nOld = pOldFSize->GetHeight();
                 SvxFontHeightItem aNew(240 , 100, pFSize->Which());
                 aNew.SetHeight( pFSize->GetHeight(), pOldFSize->GetProp(),
                                 pOldFSize->GetPropUnit() );
-                if( nTmp != aNew.GetHeight() )
+                if (nOld != aNew.GetHeight())
                 {
                     SetFormatAttr( aNew );
-                    bContinue = nullptr != pOldChgSet || bNewParent;
                 }
-                // We set it to absolute -> do not propagate it further, unless
-                // we set it!
-                else if( pNewChgSet )
-                    bContinue = pNewChgSet->GetTheChgdSet() == &GetAttrSet();
             }
+            ++nNoNotify;
         }
     }
 
-    if( bContinue )
-        SwFormatColl::SwClientNotify(rModify, rHint);
+    // if the parent changed, we can't know how many properties are involved: always notify a change
+    if (rHint.GetId() == SfxHintId::SwLegacyModify
+        || rHint.GetId() == SfxHintId::SwObjectDying
+        || rHint.GetId() == SfxHintId::SwUpdateAttr)
+    {
+        if (bNewParent || !nNoNotify)
+            SwFormatColl::SwClientNotify(rModify, rHint);
+    }
+    else if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+        const SwAttrSetChg *pOldChgSet = pChangeHint->m_pOld;
+
+        if (bNewParent || !nNoNotify || (pOldChgSet && pOldChgSet->GetChgSet()->Count() > nNoNotify))
+            SwFormatColl::SwClientNotify(rModify, rHint);
+    }
+    else if (rHint.GetId() == SfxHintId::SwFormatChange)
+    {
+        if (bNewParent || !nNoNotify)
+            SwFormatColl::SwClientNotify(rModify, rHint);
+    }
 }
 
 void SwTextFormatColl::SetLinkedCharFormat(SwCharFormat* pLink) { mpLinkedCharFormat = pLink; }
@@ -389,7 +393,7 @@ const SwCharFormat* SwTextFormatColl::GetLinkedCharFormat() const { return mpLin
 bool SwTextFormatColl::IsAtDocNodeSet() const
 {
     SwIterator<SwContentNode,SwFormatColl> aIter( *this );
-    const SwNodes& rNds = GetDoc()->GetNodes();
+    const SwNodes& rNds = GetDoc().GetNodes();
     for( SwContentNode* pNode = aIter.First(); pNode; pNode = aIter.Next() )
         if( &(pNode->GetNodes()) == &rNds )
             return true;
@@ -547,20 +551,19 @@ bool SwTextFormatColl::AreListLevelIndentsApplicableImpl(sal_uInt16 const nWhich
 void SwTextFormatColl::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwTextFormatColl"));
-    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
-    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("symbol"), "%s", BAD_CAST(typeid(*this).name()));
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("name"), BAD_CAST(GetName().toUtf8().getStr()));
     if (mpNextTextFormatColl)
     {
         (void)xmlTextWriterWriteAttribute(
-            pWriter, BAD_CAST("next"), BAD_CAST(mpNextTextFormatColl->GetName().toUtf8().getStr()));
+            pWriter, BAD_CAST("next"), BAD_CAST(mpNextTextFormatColl->GetName().toString().toUtf8().getStr()));
     }
     if (mpLinkedCharFormat)
     {
         (void)xmlTextWriterWriteAttribute(
-            pWriter, BAD_CAST("linked"), BAD_CAST(mpLinkedCharFormat->GetName().toUtf8().getStr()));
+            pWriter, BAD_CAST("linked"), BAD_CAST(mpLinkedCharFormat->GetName().toString().toUtf8().getStr()));
     }
-    GetAttrSet().dumpAsXml(pWriter);
+
+    SwFormat::dumpAsXml(pWriter);
+
     (void)xmlTextWriterEndElement(pWriter);
 }
 
@@ -574,17 +577,17 @@ void SwTextFormatColls::dumpAsXml(xmlTextWriterPtr pWriter) const
 
 //FEATURE::CONDCOLL
 
-SwCollCondition::SwCollCondition( SwTextFormatColl* pColl, Master_CollCondition nMasterCond,
-                                sal_uInt32 nSubCond )
-    : SwClient( pColl ), m_nCondition( nMasterCond ),
-      m_nSubCondition( nSubCond )
+SwCollCondition::SwCollCondition( SwTextFormatColl* pColl, Master_CollCondition nMasterCond, sal_uInt32 nSubCond )
+    : m_nCondition(nMasterCond)
+    , m_nSubCondition(nSubCond)
+    , m_pCollection(pColl)
 {
 }
 
 SwCollCondition::SwCollCondition( const SwCollCondition& rCopy )
-    : SwClient( const_cast<sw::BroadcastingModify*>(static_cast<const sw::BroadcastingModify*>(rCopy.GetRegisteredIn())) ),
-      m_nCondition( rCopy.m_nCondition ),
-      m_nSubCondition( rCopy.m_nSubCondition )
+    : m_nCondition(rCopy.m_nCondition)
+    , m_nSubCondition(rCopy.m_nSubCondition)
+    , m_pCollection(rCopy.m_pCollection)
 {
 }
 
@@ -592,9 +595,9 @@ SwCollCondition::~SwCollCondition()
 {
 }
 
-void SwCollCondition::RegisterToFormat( SwFormat& rFormat )
+void SwCollCondition::RegisterToFormat(SwTextFormatColl& rColl)
 {
-    rFormat.Add( this );
+    m_pCollection.Assign(&rColl);
 }
 
 bool SwCollCondition::operator==( const SwCollCondition& rCmp ) const
@@ -655,7 +658,7 @@ void SwConditionTextFormatColl::SetConditions( const SwFormatCollConditions& rCn
 {
     // Copy the Conditions, but first delete the old ones
     m_CondColls.clear();
-    SwDoc& rDoc = *GetDoc();
+    SwDoc& rDoc = GetDoc();
     for (const auto &rpFnd : rCndClls)
     {
         SwTextFormatColl *const pTmpColl = rpFnd->GetTextFormatColl()

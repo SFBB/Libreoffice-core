@@ -238,6 +238,7 @@ bool MathType::LookupChar(sal_Unicode nChar,OUStringBuffer &rRet,sal_uInt8 nVers
             pC = " dotslow ";
             break;
         case 0x2022:
+        case 0x22c5:
             pC = " cdot ";
             break;
         case 0x2102:
@@ -280,6 +281,7 @@ bool MathType::LookupChar(sal_Unicode nChar,OUStringBuffer &rRet,sal_uInt8 nVers
             pC = " rightarrow ";
             break;
         case 0x0362:
+        case 0xe098:
             pC = " widevec ";
             break;
         case 0x2193:
@@ -320,6 +322,16 @@ bool MathType::LookupChar(sal_Unicode nChar,OUStringBuffer &rRet,sal_uInt8 nVers
             break;
         case 0x2208: // in
         case 0x2209: // notin
+        case 0x2282: // subset
+        case 0x2283: // supset
+        case 0x2284: // nsubset
+        case 0x2285: // nsupset
+        case 0x2286: // subseteq
+        case 0x2287: // supseteq
+        case 0x2288: // nsubseteq
+        case 0x2289: // nsupseteq
+        case 0x22b2: // NORMAL SUBGROUP OF
+        case 0x22b3: // CONTAINS AS NORMAL SUBGROUP
             rRet.append(" func " + OUStringChar(nChar) + " ");
             break;
         case 0x220d: // owns
@@ -425,24 +437,8 @@ bool MathType::LookupChar(sal_Unicode nChar,OUStringBuffer &rRet,sal_uInt8 nVers
         case 0x2281:
             pC = " nsucc ";
             break;
-
-        case 0x2282: // subset
-        case 0x2283: // supset
-        case 0x2284: // nsubset
-        case 0x2285: // nsupset
-        case 0x2286: // subseteq
-        case 0x2287: // supseteq
-        case 0x2288: // nsubseteq
-        case 0x2289: // nsupseteq
-        case 0x22b2: // NORMAL SUBGROUP OF
-        case 0x22b3: // CONTAINS AS NORMAL SUBGROUP
-            rRet.append(" func " + OUStringChar(nChar) + " ");
-            break;
         case 0x22a5:
             pC = " ortho ";
-            break;
-        case 0x22c5:
-            pC = " cdot ";
             break;
         case 0x22ee:
             pC = " dotsvert ";
@@ -480,9 +476,6 @@ bool MathType::LookupChar(sal_Unicode nChar,OUStringBuffer &rRet,sal_uInt8 nVers
             break;
         case 0xe096:
             pC = " widetilde ";
-            break;
-        case 0xe098:
-            pC = " widevec ";
             break;
         case 0xE421:
             pC = " geslant ";
@@ -549,8 +542,8 @@ void MathType::TypeFaceToString(OUString &rTxt,sal_uInt8 nFace)
 
 bool MathType::Parse(SotStorage *pStor)
 {
-    tools::SvRef<SotStorageStream> xSrc = pStor->OpenSotStream(
-        "Equation Native",
+    rtl::Reference<SotStorageStream> xSrc = pStor->OpenSotStream(
+        u"Equation Native"_ustr,
         StreamMode::STD_READ);
     if ( (!xSrc.is()) || (ERRCODE_NONE != xSrc->GetError()))
         return false;
@@ -827,32 +820,14 @@ bool MathType::HandleRecords(int nLevel, sal_uInt8 nSelector,
                             rRet.append(" {");
                             break;
                         case tmLARROW:
-                            if (nPart == 0)
-                            {
-                                if (nVariation == 0)
-                                    rRet.append(" widevec ");//left arrow above
-                                else if (nVariation == 1)
-                                    rRet.append(" widevec ");//left arrow below
-                                rRet.append(" {");
-                            }
-                            break;
                         case tmRARROW:
-                            if (nPart == 0)
-                            {
-                                if (nVariation == 0)
-                                    rRet.append(" widevec ");//right arrow above
-                                else if (nVariation == 1)
-                                    rRet.append(" widevec ");//right arrow below
-                                rRet.append(" {");
-                            }
-                            break;
                         case tmBARROW:
                             if (nPart == 0)
                             {
                                 if (nVariation == 0)
-                                    rRet.append(" widevec ");//double arrow above
+                                    rRet.append(" widevec ");//arrow above
                                 else if (nVariation == 1)
-                                    rRet.append(" widevec ");//double arrow below
+                                    rRet.append(" widevec ");//arrow below
                                 rRet.append(" {");
                             }
                             break;
@@ -957,6 +932,7 @@ bool MathType::HandleRecords(int nLevel, sal_uInt8 nSelector,
                             break;
                         case tmUHBRACE:
                         case tmLHBRACE:
+                        case tmSLFRACT:
                             rRet.append(" {");
                             break;
                         case tmSUM:
@@ -1144,9 +1120,6 @@ bool MathType::HandleRecords(int nLevel, sal_uInt8 nSelector,
                             if (nVariation == 1)
                                 rRet.append("overline ");
                             break;
-                        case tmSLFRACT:
-                            rRet.append(" {");
-                            break;
                         case tmINTOP:
                             if (nPart == 0)
                             {
@@ -1207,20 +1180,20 @@ bool MathType::HandleRecords(int nLevel, sal_uInt8 nSelector,
                             break;
                         case tmUARROW:
                             if (nVariation == 0)
-                                rRet.append(" widevec ");//left below
+                                rRet.append(" widevec ");//left below - missing functionality
                             else if (nVariation == 1)
-                                rRet.append(" widevec ");//right below
+                                rRet.append(" widevec ");//right below - missing functionality
                             else if (nVariation == 2)
-                                rRet.append(" widevec ");//double headed below
+                                rRet.append(" widevec ");//double headed below - missing functionality
                             rRet.append(" {");
                             break;
                         case tmOARROW:
                             if (nVariation == 0)
-                                rRet.append(" widevec ");//left above
+                                rRet.append(" widevec ");//left above - missing functionality
                             else if (nVariation == 1)
                                 rRet.append(" widevec ");//right above
                             else if (nVariation == 2)
-                                rRet.append(" widevec ");//double headed above
+                                rRet.append(" widevec ");//double headed above - missing functionality
                             rRet.append(" {");
                             break;
                         default:
@@ -1869,10 +1842,10 @@ bool MathType::ConvertFromStarMath( SfxMedium& rMedium )
     SvStream *pStream = rMedium.GetOutStream();
     if ( pStream )
     {
-        tools::SvRef<SotStorage> pStor = new SotStorage( pStream, false );
+        rtl::Reference<SotStorage> pStor = new SotStorage(pStream, false);
 
         SvGlobalName aGName(MSO_EQUATION3_CLASSID);
-        pStor->SetClass( aGName, SotClipboardFormatId::NONE, "Microsoft Equation 3.0");
+        pStor->SetClass( aGName, SotClipboardFormatId::NONE, u"Microsoft Equation 3.0"_ustr);
 
         static sal_uInt8 const aCompObj[] = {
             0x01, 0x00, 0xFE, 0xFF, 0x03, 0x0A, 0x00, 0x00,
@@ -1889,7 +1862,7 @@ bool MathType::ConvertFromStarMath( SfxMedium& rMedium )
             0xB2, 0x71, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00
         };
-        tools::SvRef<SotStorageStream> xStor( pStor->OpenSotStream("\1CompObj"));
+        rtl::Reference<SotStorageStream> xStor(pStor->OpenSotStream(u"\1CompObj"_ustr));
         xStor->WriteBytes(aCompObj, sizeof(aCompObj));
 
         static sal_uInt8 const aOle[] = {
@@ -1897,12 +1870,12 @@ bool MathType::ConvertFromStarMath( SfxMedium& rMedium )
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00
             };
-        tools::SvRef<SotStorageStream> xStor2( pStor->OpenSotStream("\1Ole"));
+        rtl::Reference<SotStorageStream> xStor2(pStor->OpenSotStream(u"\1Ole"_ustr));
         xStor2->WriteBytes(aOle, sizeof(aOle));
         xStor.clear();
         xStor2.clear();
 
-        tools::SvRef<SotStorageStream> xSrc = pStor->OpenSotStream("Equation Native");
+        rtl::Reference<SotStorageStream> xSrc = pStor->OpenSotStream(u"Equation Native"_ustr);
         if ( (!xSrc.is()) || (ERRCODE_NONE != xSrc->GetError()))
             return false;
 
@@ -3147,6 +3120,7 @@ void MathType::HandleMath(SmNode *pNode)
 
 void MathType::HandleAttributes(SmNode *pNode,int nLevel)
 {
+    sal_uInt64 nOldInsertion = nInsertion;
     int nOldPending = 0;
     SmNode *pTemp       = nullptr;
     SmTextNode *pIsText = nullptr;
@@ -3220,8 +3194,7 @@ void MathType::HandleAttributes(SmNode *pNode,int nLevel)
         if ((nInsertion != 0) && nullptr != (pTemp = pNode->GetSubNode(0)))
         {
             auto nPos = pS->Tell();
-            nInsertion--;
-            pS->Seek(nInsertion);
+            pS->Seek(nInsertion - 1);
             switch(pTemp->GetToken().eType)
             {
             case TACUTE: //Not Exportable
@@ -3274,6 +3247,7 @@ void MathType::HandleAttributes(SmNode *pNode,int nLevel)
             pS->Seek(nPos);
         }
     }
+    nInsertion = nOldInsertion;
 }
 
 void MathType::HandleText(SmNode *pNode)
@@ -3291,9 +3265,9 @@ void MathType::HandleText(SmNode *pNode)
             pS->WriteUChar( CHAR );
 
         sal_uInt8 nFace = 0x1;
-        if (pNode->GetFont().GetItalic() == ITALIC_NORMAL)
+        if (pNode->GetFont().GetItalicMaybeAskConfig() == ITALIC_NORMAL)
             nFace = 0x3;
-        else if (pNode->GetFont().GetWeight() == WEIGHT_BOLD)
+        else if (pNode->GetFont().GetWeightMaybeAskConfig() == WEIGHT_BOLD)
             nFace = 0x7;
         pS->WriteUChar( nFace+128 ); //typeface
         sal_uInt16 nChar = pTemp->GetText()[i];

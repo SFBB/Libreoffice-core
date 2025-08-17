@@ -26,17 +26,16 @@
 void SwCharFormat::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwCharFormat"));
-    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
-    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("name"),
-                                      BAD_CAST(GetName().toUtf8().getStr()));
+
+    SwFormat::dumpAsXml(pWriter);
 
     if (mpLinkedParaFormat)
     {
         (void)xmlTextWriterWriteAttribute(
-            pWriter, BAD_CAST("linked"), BAD_CAST(mpLinkedParaFormat->GetName().toUtf8().getStr()));
+            pWriter, BAD_CAST("linked"),
+            BAD_CAST(mpLinkedParaFormat->GetName().toString().toUtf8().getStr()));
     }
 
-    GetAttrSet().dumpAsXml(pWriter);
     (void)xmlTextWriterEndElement(pWriter);
 }
 
@@ -46,12 +45,12 @@ const SwTextFormatColl* SwCharFormat::GetLinkedParaFormat() const { return mpLin
 
 SwCharFormat::~SwCharFormat()
 {
-    if (GetDoc()->IsInDtor())
+    if (GetDoc().IsInDtor())
     {
         return;
     }
 
-    for (const auto& pTextFormat : *GetDoc()->GetTextFormatColls())
+    for (const auto& pTextFormat : *GetDoc().GetTextFormatColls())
     {
         if (pTextFormat->GetLinkedCharFormat() == this)
         {
@@ -87,12 +86,12 @@ SwCharFormats::const_iterator SwCharFormats::find(const SwCharFormat* x) const
     return m_Array.project<0>(it);
 }
 
-SwCharFormats::ByName::const_iterator SwCharFormats::findByName(const OUString& name) const
+SwCharFormats::ByName::const_iterator SwCharFormats::findByName(const UIName& name) const
 {
     return m_NameIndex.find(std::make_tuple(name));
 }
 
-SwCharFormat* SwCharFormats::FindFormatByName(const OUString& rName) const
+SwCharFormat* SwCharFormats::FindFormatByName(const UIName& rName) const
 {
     auto it = findByName(rName);
     if (it != m_NameIndex.end())
@@ -127,7 +126,7 @@ void SwCharFormats::erase(const_iterator const& position) { m_PosIndex.erase(pos
 bool SwCharFormats::ContainsFormat(const SwCharFormat* x) const { return find(x) != end(); }
 
 /** Need to call this when the format name changes */
-void SwCharFormats::SetFormatNameAndReindex(SwCharFormat* v, const OUString& sNewName)
+void SwCharFormats::SetFormatNameAndReindex(SwCharFormat* v, const UIName& sNewName)
 {
     auto it = find(v);
     erase(it);

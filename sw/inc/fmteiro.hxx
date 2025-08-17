@@ -24,11 +24,15 @@
 #include "format.hxx"
 #include "swdllapi.h"
 
-class IntlWrapper;
-
+/// Allows you to edit the contents of a TextFrame in a document that is read-only.
+///
+/// Appears in the item set of an sw::SpzFrameFormat.
+///
+/// Insert -> Frame -> Frame -> Options -> Editable in read-only document on the UI.
 class SW_DLLPUBLIC SwFormatEditInReadonly final : public SfxBoolItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatEditInReadonly)
     SwFormatEditInReadonly( sal_uInt16 nId = RES_EDIT_IN_READONLY,
                      bool bPrt = false ) : SfxBoolItem( nId, bPrt ) {}
 

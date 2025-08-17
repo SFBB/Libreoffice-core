@@ -36,10 +36,10 @@
 #include <editeng/fhgtitem.hxx>
 #include <osl/diagnose.h>
 
-#include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
 
 #include <sfx2/objsh.hxx>
+#include <sfx2/viewsh.hxx>
 #include <svx/helperhittest3d.hxx>
 #include <officecfg/Office/Calc.hxx>
 
@@ -84,18 +84,18 @@ DrawViewWrapper::DrawViewWrapper(
 
     // #i12587# support for shapes in chart
     SdrOutliner* pOutliner = getOutliner();
-    SfxItemPool* pOutlinerPool = ( pOutliner ? pOutliner->GetEditTextObjectPool() : nullptr );
+    SfxItemPool* pOutlinerPool = ( pOutliner ? pOutliner->GetEditEnginePool() : nullptr );
     if ( pOutlinerPool )
     {
         SvtLinguConfig aLinguConfig;
         SvtLinguOptions aLinguOptions;
         aLinguConfig.GetOptions( aLinguOptions );
-        pOutlinerPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage, EE_CHAR_LANGUAGE ) );
-        pOutlinerPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage_CJK, EE_CHAR_LANGUAGE_CJK ) );
-        pOutlinerPool->SetPoolDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage_CTL, EE_CHAR_LANGUAGE_CTL ) );
+        pOutlinerPool->SetUserDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage, EE_CHAR_LANGUAGE ) );
+        pOutlinerPool->SetUserDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage_CJK, EE_CHAR_LANGUAGE_CJK ) );
+        pOutlinerPool->SetUserDefaultItem( SvxLanguageItem( aLinguOptions.nDefaultLanguage_CTL, EE_CHAR_LANGUAGE_CTL ) );
 
         // set font height without changing SdrEngineDefaults
-        pOutlinerPool->SetPoolDefaultItem( SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT ) );  // 12pt
+        pOutlinerPool->SetUserDefaultItem( SvxFontHeightItem( 423, 100, EE_CHAR_FONTHEIGHT ) );  // 12pt
     }
 
     // #i121463# Use big handles by default
@@ -212,10 +212,23 @@ void DrawViewWrapper::setMarkHandleProvider( MarkHandleProvider* pMarkHandleProv
 
 void DrawViewWrapper::CompleteRedraw(OutputDevice* pOut, const vcl::Region& rReg, sdr::contact::ViewObjectContactRedirector* /* pRedirector */)
 {
-    svtools::ColorConfig aColorConfig;
-    Color aFillColor( aColorConfig.GetColorValue( svtools::DOCCOLOR ).nColor );
+    Color aFillColor;
+    if (const SfxViewShell* pViewShell = SfxViewShell::Current())
+        aFillColor = pViewShell->GetColorConfigColor(svtools::DOCCOLOR);
+    else
+    {
+        svtools::ColorConfig aColorConfig;
+        aFillColor = aColorConfig.GetColorValue(svtools::DOCCOLOR).nColor;
+    }
     SetApplicationBackgroundColor(aFillColor);
+
+    SdrOutliner& rOutliner = GetModel().GetDrawOutliner();
+    Color aOldBackColor = rOutliner.GetBackgroundColor();
+    rOutliner.SetBackgroundColor(aFillColor);
+
     E3dView::CompleteRedraw( pOut, rReg );
+
+    rOutliner.SetBackgroundColor(aOldBackColor);
 }
 
 SdrObject* DrawViewWrapper::getSelectedObject() const

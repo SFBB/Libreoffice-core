@@ -27,6 +27,7 @@
 #include "fontwork/FontworkPropertyPanel.hxx"
 #include "shadow/ShadowPropertyPanel.hxx"
 #include "effect/EffectPropertyPanel.hxx"
+#include "effect/TextEffectPropertyPanel.hxx"
 #include "graphic/GraphicPropertyPanel.hxx"
 #include "line/LinePropertyPanel.hxx"
 #include "possize/PosSizePropertyPanel.hxx"
@@ -77,13 +78,13 @@ public:
         const ::css::uno::Sequence<css::beans::PropertyValue>& rArguments) override;
 
     OUString SAL_CALL getImplementationName() override
-    { return "org.apache.openoffice.comp.svx.sidebar.PanelFactory"; }
+    { return u"org.apache.openoffice.comp.svx.sidebar.PanelFactory"_ustr; }
 
     sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
     { return cppu::supportsService(this, ServiceName); }
 
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
-    { return {"com.sun.star.ui.UIElementFactory"}; }
+    { return {u"com.sun.star.ui.UIElementFactory"_ustr}; }
 };
 
 PanelFactory::PanelFactory()
@@ -95,10 +96,10 @@ Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
     const ::css::uno::Sequence<css::beans::PropertyValue>& rArguments)
 {
     const ::comphelper::NamedValueCollection aArguments (rArguments);
-    Reference<frame::XFrame> xFrame (aArguments.getOrDefault("Frame", Reference<frame::XFrame>()));
-    Reference<awt::XWindow> xParentWindow (aArguments.getOrDefault("ParentWindow", Reference<awt::XWindow>()));
-    Reference<ui::XSidebar> xSidebar (aArguments.getOrDefault("Sidebar", Reference<ui::XSidebar>()));
-    const sal_uInt64 nBindingsValue (aArguments.getOrDefault("SfxBindings", sal_uInt64(0)));
+    Reference<frame::XFrame> xFrame(sfx2::sidebar::GetFrame(aArguments));
+    Reference<awt::XWindow> xParentWindow (aArguments.getOrDefault(u"ParentWindow"_ustr, Reference<awt::XWindow>()));
+    Reference<ui::XSidebar> xSidebar (aArguments.getOrDefault(u"Sidebar"_ustr, Reference<ui::XSidebar>()));
+    const sal_uInt64 nBindingsValue (aArguments.getOrDefault(u"SfxBindings"_ustr, sal_uInt64(0)));
     SfxBindings* pBindings = reinterpret_cast<SfxBindings*>(nBindingsValue);
 
     weld::Widget* pParent(nullptr);
@@ -107,15 +108,15 @@ Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
 
     if (!pParent)
         throw RuntimeException(
-            "PanelFactory::createUIElement called without ParentWindow",
+            u"PanelFactory::createUIElement called without ParentWindow"_ustr,
             nullptr);
     if ( ! xFrame.is())
         throw RuntimeException(
-            "PanelFactory::createUIElement called without Frame",
+            u"PanelFactory::createUIElement called without Frame"_ustr,
             nullptr);
     if (pBindings == nullptr)
         throw RuntimeException(
-            "PanelFactory::createUIElement called without SfxBindings",
+            u"PanelFactory::createUIElement called without SfxBindings"_ustr,
             nullptr);
 
     std::unique_ptr<PanelLayout> xControl;
@@ -152,6 +153,10 @@ Reference<ui::XUIElement> SAL_CALL PanelFactory::createUIElement (
     else if (rsResourceURL.endsWith("/EffectPropertyPanel"))
     {
         xControl = EffectPropertyPanel::Create(pParent, pBindings);
+    }
+    else if (rsResourceURL.endsWith("/TextEffectPropertyPanel"))
+    {
+        xControl = TextEffectPropertyPanel::Create(pParent, pBindings);
     }
     else if (rsResourceURL.endsWith("/GraphicPropertyPanel"))
     {

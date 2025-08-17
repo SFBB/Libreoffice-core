@@ -38,11 +38,9 @@ class SwTextFormatColl;
 class IDocumentListsAccess;
 class SwNodeNum;
 namespace vcl { class Font; }
-class SvxBrushItem;
 class SfxGrabBagItem;
 class SwDoc;
 class SwTextNode;
-class Size;
 class SwWrtShell;
 
 const sal_Unicode cBulletChar = 0x2022; ///< Character for lists.
@@ -75,6 +73,7 @@ public:
     void       SetCharFormat( SwCharFormat* );
 
     using SvxNumberFormat::SetCharFormatName;
+    // this should return UIName but cannot because we are overriding code from include/editeng
     virtual OUString        GetCharFormatName() const override;
 
     //For i120928,access the cp info of graphic within bullet
@@ -87,10 +86,12 @@ public:
 
     bool IsEnumeration() const; // #i22362#
     bool IsItemize() const; // #i29560#
+
+    void dumpAsXml(xmlTextWriterPtr w) const override;
 };
 
 enum SwNumRuleType { OUTLINE_RULE = 0, NUM_RULE = 1, RULE_END = 2 };
-class SW_DLLPUBLIC SwNumRule
+class SwNumRule
 {
 
 public:
@@ -121,9 +122,9 @@ private:
     tParagraphStyleList maParagraphStyleList;
 
     /** unordered_map containing "name->rule" relation */
-    std::unordered_map<OUString, SwNumRule *> * mpNumRuleMap;
+    std::unordered_map<UIName, SwNumRule *> * mpNumRuleMap;
 
-    OUString msName;
+    UIName msName;
     SwNumRuleType meRuleType;
     sal_uInt16 mnPoolFormatId;      ///< Id-for NumRules created "automatically"
     sal_uInt16 mnPoolHelpId;     ///< HelpId for this Pool-style.
@@ -142,31 +143,31 @@ private:
 
 public:
     /// add parameter <eDefaultNumberFormatPositionAndSpaceMode>
-    SwNumRule( OUString aNm,
+    SW_DLLPUBLIC SwNumRule( UIName aNm,
                const SvxNumberFormat::SvxNumPositionAndSpaceMode eDefaultNumberFormatPositionAndSpaceMode,
                SwNumRuleType = NUM_RULE );
 
-    SwNumRule( const SwNumRule& );
-    ~SwNumRule();
+    SW_DLLPUBLIC SwNumRule( const SwNumRule& );
+    SW_DLLPUBLIC ~SwNumRule();
 
-    SwNumRule& operator=( const SwNumRule& );
-    bool operator==( const SwNumRule& ) const;
+    SW_DLLPUBLIC SwNumRule& operator=( const SwNumRule& );
+    SW_DLLPUBLIC bool operator==( const SwNumRule& ) const;
     bool operator!=( const SwNumRule& r ) const { return !(*this == r); }
 
-    void Reset( const OUString& rName );
+    void Reset( const UIName& rName );
 
-    const SwNumFormat* GetNumFormat( sal_uInt16 i ) const;
-    const SwNumFormat& Get( sal_uInt16 i ) const;
+    SW_DLLPUBLIC const SwNumFormat* GetNumFormat( sal_uInt16 i ) const;
+    SW_DLLPUBLIC const SwNumFormat& Get( sal_uInt16 i ) const;
 
     bool IsHidden( ) const { return mbHidden; }
     void SetHidden( bool bValue ) { mbHidden = bValue; }
 
     void Set( sal_uInt16 i, const SwNumFormat* );
-    void Set( sal_uInt16 i, const SwNumFormat& );
+    SW_DLLPUBLIC void Set( sal_uInt16 i, const SwNumFormat& );
     OUString MakeNumString( const SwNodeNum&, bool bInclStrings = true ) const;
     /** - add optional parameter <_nRestrictToThisLevel> in order to
          restrict returned string to this level. */
-    OUString MakeNumString( const SwNumberTree::tNumberVector & rNumVector,
+    SW_DLLPUBLIC OUString MakeNumString( const SwNumberTree::tNumberVector & rNumVector,
                           const bool bInclStrings = true,
                           const unsigned int _nRestrictToThisLevel = MAXLEVEL,
                           const bool bHideNonNumerical = false,
@@ -203,9 +204,9 @@ public:
        @param pNumRuleMap      map to register in
      */
     void SetNumRuleMap(
-                std::unordered_map<OUString, SwNumRule *>* pNumRuleMap );
+                std::unordered_map<UIName, SwNumRule *>* pNumRuleMap );
 
-    static OUString GetOutlineRuleName();
+    static UIName GetOutlineRuleName();
 
     static sal_uInt16 GetNumIndent( sal_uInt8 nLvl );
     static sal_uInt16 GetBullIndent( sal_uInt8 nLvl );
@@ -223,16 +224,16 @@ public:
        and copies them if appropriate. */
     void CheckCharFormats( SwDoc& rDoc );
 
-    const OUString& GetName() const { return msName; }
+    const UIName& GetName() const { return msName; }
 
-    void SetName( const OUString& rNm,
+    void SetName( const UIName& rNm,
                   IDocumentListsAccess& rDocListAccess );
 
     bool IsAutoRule() const             { return mbAutoRuleFlag; }
     void SetAutoRule( bool bFlag )      { mbAutoRuleFlag = bFlag; }
 
     bool IsInvalidRule() const          { return mbInvalidRuleFlag; }
-    void SetInvalidRule( bool bFlag );
+    void Invalidate() { mbInvalidRuleFlag = true; }
 
     bool IsContinusNum() const          { return mbContinusNum; }
     void SetContinusNum( bool bFlag )   { mbContinusNum = bFlag; }
@@ -254,7 +255,7 @@ public:
 
     /// Query and set Help-IDs for document styles.
     sal_uInt16 GetPoolHelpId() const        { return mnPoolHelpId; }
-    void SetPoolHelpId( sal_uInt16 nId )    { mnPoolHelpId = nId; }
+    void SetPoolHelpId( sal_uInt32 nId )    { mnPoolHelpId = nId; }
     sal_uInt8 GetPoolHlpFileId() const      { return mnPoolHlpFileId; }
     void SetPoolHlpFileId( sal_uInt8 nId )  { mnPoolHlpFileId = nId; }
 
@@ -272,7 +273,7 @@ public:
 
     void Validate(const SwDoc& rDoc);
     void dumpAsXml(xmlTextWriterPtr w) const;
-    void GetGrabBagItem(css::uno::Any& rVal) const;
+    SW_DLLPUBLIC void GetGrabBagItem(css::uno::Any& rVal) const;
     void SetGrabBagItem(const css::uno::Any& rVal);
 };
 

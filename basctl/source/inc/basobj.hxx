@@ -18,7 +18,8 @@
  */
 #pragma once
 
-#include "scriptdocument.hxx"
+#include <basctl/basctldllpublic.hxx>
+#include <basctl/scriptdocument.hxx>
 #include <tools/long.hxx>
 
 class SbMethod;
@@ -27,7 +28,6 @@ class SbxVariable;
 class StarBASIC;
 class SfxUInt16Item;
 class SfxBindings;
-class SfxDispatcher;
 namespace weld { class Widget; class Window; }
 
 namespace basctl
@@ -44,13 +44,9 @@ namespace basctl
     void            BasicStopped( bool* pbAppWindowDisabled = nullptr, bool* pbDispatcherLocked = nullptr, sal_uInt16* pnWaitCount = nullptr,
                             SfxUInt16Item** ppSWActionCount = nullptr, SfxUInt16Item** ppSWLockViewCount = nullptr );
 
-    bool            IsValidSbxName( std::u16string_view rName );
+    SAL_RET_MAYBENULL BasicManager*   FindBasicManager( StarBASIC const * pLib );
 
-    BasicManager*   FindBasicManager( StarBASIC const * pLib );
-
-    SfxBindings*    GetBindingsPtr();
-
-    SfxDispatcher*  GetDispatcher ();
+    SAL_RET_MAYBENULL SfxBindings*    GetBindingsPtr();
 
     void            InvalidateDebuggerSlots();
 
@@ -97,8 +93,6 @@ namespace basctl
     bool            RenameDialog(weld::Widget* pErrorParent, const ScriptDocument& rDocument, const OUString& rLibName, const OUString& rOldName, const OUString& rNewName);
 
     bool            RemoveDialog( const ScriptDocument& rDocument, const OUString& rLibName, const OUString& rDlgName );
-
-    void            MarkDocumentModified( const ScriptDocument& rDocument );
 
 } // namespace basctl
 

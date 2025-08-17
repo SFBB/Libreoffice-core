@@ -35,7 +35,6 @@ namespace dbaui
 {
 
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::frame;
     using namespace ::com::sun::star::beans;
 
@@ -65,7 +64,7 @@ namespace dbaui
         }
         if ( m_pBeamer )
             ::dbaui::notifySystemWindow(this,m_pBeamer,::comphelper::mem_fun(&TaskPaneList::RemoveWindow));
-        m_pBeamer.clear();
+        m_pBeamer.reset();
         if ( m_xBeamer.is() )
         {
             Reference< css::util::XCloseable > xCloseable(m_xBeamer,UNO_QUERY);
@@ -184,7 +183,7 @@ namespace dbaui
             Reference < XPropertySet > xLMPropSet(m_xBeamer->getLayoutManager(), UNO_QUERY);
             if ( xLMPropSet.is() )
             {
-                xLMPropSet->setPropertyValue( "AutomaticToolbars", Any( false ));
+                xLMPropSet->setPropertyValue( u"AutomaticToolbars"_ustr, Any( false ));
             }
         }
         catch( Exception& )

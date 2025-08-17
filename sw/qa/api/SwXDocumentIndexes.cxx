@@ -36,30 +36,23 @@ class SwXDocumentIndexes final : public UnoApiTest,
 {
 public:
     SwXDocumentIndexes()
-        : UnoApiTest("")
+        : UnoApiTest(u""_ustr)
         , XElementAccess(cppu::UnoType<text::XDocumentIndex>::get())
         , XIndexAccess(1)
-        , XNameAccess("Table of Contents1")
+        , XNameAccess(u"Table of Contents1"_ustr)
     {
-    }
-
-    virtual void setUp() override
-    {
-        UnoApiTest::setUp();
-        mxDesktop.set(frame::Desktop::create(mxComponentContext));
-        mxComponent = loadFromDesktop("private:factory/swriter");
-        CPPUNIT_ASSERT(mxComponent.is());
     }
 
     Reference<XInterface> init() override
     {
+        loadFromURL(u"private:factory/swriter"_ustr);
         Reference<text::XTextDocument> xTextDocument(mxComponent, UNO_QUERY_THROW);
         Reference<lang::XMultiServiceFactory> xMSF(mxComponent, UNO_QUERY_THROW);
 
         Reference<text::XText> xText = xTextDocument->getText();
         Reference<text::XTextCursor> xCursor = xText->createTextCursor();
         Reference<text::XTextContent> xTextContent(
-            xMSF->createInstance("com.sun.star.text.ContentIndex"), UNO_QUERY_THROW);
+            xMSF->createInstance(u"com.sun.star.text.ContentIndex"_ustr), UNO_QUERY_THROW);
 
         xText->insertTextContent(xCursor, xTextContent, false);
         Reference<text::XDocumentIndexesSupplier> xDocIndSupp(xTextDocument, UNO_QUERY_THROW);

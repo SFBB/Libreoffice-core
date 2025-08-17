@@ -60,6 +60,7 @@
 
 #include "appenv.hxx"
 #include <memory>
+#include <unotxdoc.hxx>
 
 using namespace ::com::sun::star;
 
@@ -226,9 +227,9 @@ void SwModule::InsertLab(SfxRequest& rReq, bool bLabel)
         // Borders
         SvxLRSpaceItem aLRMargin( RES_LR_SPACE );
         SvxULSpaceItem aULMargin( RES_UL_SPACE );
-        aLRMargin.SetLeft (o3tl::narrowing<sal_uInt16>(rItem.m_lLeft) );
+        aLRMargin.SetLeft(SvxIndentValue::twips(o3tl::narrowing<sal_uInt16>(rItem.m_lLeft)));
         aULMargin.SetUpper(o3tl::narrowing<sal_uInt16>(rItem.m_lUpper));
-        aLRMargin.SetRight( 0 );
+        aLRMargin.SetRight(SvxIndentValue::zero());
         aULMargin.SetLower( 0 );
         rFormat.SetFormatAttr(aLRMargin);
         rFormat.SetFormatAttr(aULMargin);
@@ -281,7 +282,8 @@ void SwModule::InsertLab(SfxRequest& rReq, bool bLabel)
 
         //frame represents label itself, no border space
         SvxULSpaceItem aFrameNoULSpace( 0, 0, RES_UL_SPACE );
-        SvxLRSpaceItem aFrameNoLRSpace( 0, 0, 0, RES_LR_SPACE );
+        SvxLRSpaceItem aFrameNoLRSpace(SvxIndentValue::zero(), SvxIndentValue::zero(),
+                                       SvxIndentValue::zero(), RES_LR_SPACE);
         pFormat->SetFormatAttr( aFrameNoULSpace );
         pFormat->SetFormatAttr( aFrameNoLRSpace );
 
@@ -320,21 +322,21 @@ void SwModule::InsertLab(SfxRequest& rReq, bool bLabel)
                             else
                                 pSh->SetMark();     // set only the mark
 
-                            SwSectionData aSect(SectionType::Content, MASTER_LABEL);
+                            SwSectionData aSect(SectionType::Content, UIName(MASTER_LABEL));
                             pSh->InsertSection(aSect);
                         }
                     }
                     else if (rItem.m_bSynchron)
                     {
                         SwSectionData aSect(SectionType::FileLink,
-                                pSh->GetUniqueSectionName());
+                                UIName(pSh->GetUniqueSectionName()));
                         OUString sLinkName =
                             OUStringChar(sfx2::cTokenSeparator) +
                             OUStringChar(sfx2::cTokenSeparator) +
                             MASTER_LABEL;
                         aSect.SetLinkFileName(sLinkName);
                         aSect.SetProtectFlag(true);
-                        pSh->Insert(".");   // Dummytext to allocate the Section
+                        pSh->Insert(u"."_ustr);   // Dummytext to allocate the Section
                         pSh->StartOfSection();
                         pSh->EndOfSection(true); // Select everything in the frame
                         pSh->InsertSection(aSect);
@@ -357,10 +359,9 @@ void SwModule::InsertLab(SfxRequest& rReq, bool bLabel)
         //fill the user fields
         if(!bLabel)
         {
-            uno::Reference< frame::XModel >  xModel = pSh->GetView().GetDocShell()->GetBaseModel();
             OSL_ENSURE(pDialogFactory, "SwAbstractDialogFactory fail!");
             SwLabDlgMethod SwLabDlgUpdateFieldInformation = pDialogFactory->GetSwLabDlgStaticMethod ();
-            SwLabDlgUpdateFieldInformation(xModel, rItem);
+            SwLabDlgUpdateFieldInformation(pSh->GetView().GetDocShell()->GetModel(), rItem);
         }
 
         pFieldMgr->SetEvalExpFields(true);
@@ -372,7 +373,7 @@ void SwModule::InsertLab(SfxRequest& rReq, bool bLabel)
             pSh->GotoFly(pFirstFlyFormat->GetName(), FLYCNTTYPE_ALL, false);
 
         if (pSh->IsAnyDatabaseFieldInDoc())
-            pSh->GetView().ShowUIElement("private:resource/toolbar/mailmerge");
+            pSh->GetView().ShowUIElement(u"private:resource/toolbar/mailmerge"_ustr);
 
         pSh->EndAllAction();
         pSh->DoUndo();

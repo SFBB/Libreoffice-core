@@ -69,32 +69,19 @@ ShapeTypeHandler& ShapeTypeHandler::Instance()
     return *instance;
 }
 
-
-/** The given service name is first transformed into a slot id that
-    identifies the place of the type descriptor.  From that descriptor the
-    shape type id is returned.
-*/
-ShapeTypeId ShapeTypeHandler::GetTypeId (const OUString& aServiceName) const
+ShapeTypeId ShapeTypeHandler::GetTypeId(const uno::Reference<drawing::XShape>& rxShape) const
 {
-    tServiceNameToSlotId::const_iterator I (maServiceNameToSlotId.find (aServiceName));
+    if (!rxShape.is())
+        return -1;
+
+    // The service name is first transformed into a slot id that
+    // identifies the place of the type descriptor.  From that descriptor the
+    // shape type id is returned.
+    tServiceNameToSlotId::const_iterator I(maServiceNameToSlotId.find(rxShape->getShapeType()));
     if (I != maServiceNameToSlotId.end())
-    {
         return maShapeTypeDescriptorList[I->second].mnShapeTypeId;
-    }
-    else
-        return -1;
-}
 
-
-/** Extract the specified shape's service name and forward the request to
-    the appropriate method.
-*/
-ShapeTypeId ShapeTypeHandler::GetTypeId (const uno::Reference<drawing::XShape>& rxShape) const
-{
-    if (rxShape.is())
-        return GetTypeId (rxShape->getShapeType());
-    else
-        return -1;
+    return -1;
 }
 
 
@@ -107,7 +94,7 @@ rtl::Reference<AccessibleShape>
         const AccessibleShapeInfo& rShapeInfo,
         const AccessibleShapeTreeInfo& rShapeTreeInfo) const
 {
-    ShapeTypeId nSlotId (GetSlotId (rShapeInfo.mxShape));
+    ShapeTypeId nSlotId = GetSlotId(rShapeInfo.mxShape);
     rtl::Reference<AccessibleShape> pShape(
         maShapeTypeDescriptorList[nSlotId].maCreateFunction (
             rShapeInfo,
@@ -166,25 +153,16 @@ void ShapeTypeHandler::AddShapeTypeList (int nDescriptorCount,
     }
 }
 
-
-tools::Long ShapeTypeHandler::GetSlotId (const OUString& aServiceName) const
+ShapeTypeId ShapeTypeHandler::GetSlotId(const uno::Reference<drawing::XShape>& rxShape) const
 {
-    tServiceNameToSlotId::const_iterator I (maServiceNameToSlotId.find (aServiceName));
+    if (!rxShape.is())
+        return 0;
+
+    tServiceNameToSlotId::const_iterator I (maServiceNameToSlotId.find(rxShape->getShapeType()));
     if (I != maServiceNameToSlotId.end())
         return I->second;
-    else
-        return 0;
-}
 
-
-// Extract the given shape's service name and forward request to appropriate
-// method.
-tools::Long ShapeTypeHandler::GetSlotId (const uno::Reference<drawing::XShape>& rxShape) const
-{
-    if (rxShape.is())
-        return GetSlotId (rxShape->getShapeType());
-    else
-        return 0;
+    return 0;
 }
 
 /// get the accessible base name for an object

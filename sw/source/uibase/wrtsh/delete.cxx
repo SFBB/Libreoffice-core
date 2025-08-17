@@ -36,6 +36,8 @@
 #include <osl/diagnose.h>
 #include <doc.hxx>
 #include <IDocumentRedlineAccess.hxx>
+#include <IDocumentLayoutAccess.hxx>
+#include <txtfrm.hxx>
 
 inline void SwWrtShell::OpenMark()
 {
@@ -63,28 +65,29 @@ bool SwWrtShell::TryRemoveIndent()
 {
     bool bResult = false;
 
-    SfxItemSetFixed<RES_MARGIN_FIRSTLINE, RES_MARGIN_FIRSTLINE> aAttrSet(GetAttrPool());
+    SfxItemSetFixed<RES_MARGIN_FIRSTLINE, RES_MARGIN_TEXTLEFT> aAttrSet(GetAttrPool());
     GetCurAttr(aAttrSet);
 
     SvxFirstLineIndentItem firstLine(aAttrSet.Get(RES_MARGIN_FIRSTLINE));
     SvxTextLeftMarginItem leftMargin(aAttrSet.Get(RES_MARGIN_TEXTLEFT));
-    short aOldFirstLineOfst = firstLine.GetTextFirstLineOffset();
+    short aOldFirstLineOfst = firstLine.ResolveTextFirstLineOffset({});
 
     if (aOldFirstLineOfst > 0)
     {
-        firstLine.SetTextFirstLineOffset(0);
+        firstLine.SetTextFirstLineOffset(SvxIndentValue::zero());
         bResult = true;
     }
     else if (aOldFirstLineOfst < 0)
     {
         // this used to call SetLeft() but this should be the same result
-        firstLine.SetTextFirstLineOffset(0);
-        leftMargin.SetTextLeft(leftMargin.GetTextLeft() + aOldFirstLineOfst);
+        firstLine.SetTextFirstLineOffset(SvxIndentValue::zero());
+        leftMargin.SetTextLeft(
+            SvxIndentValue::twips(leftMargin.ResolveTextLeft({}) + aOldFirstLineOfst));
         bResult = true;
     }
-    else if (leftMargin.GetTextLeft() != 0)
+    else if (leftMargin.GetTextLeft().m_dValue != 0.0)
     {
-        leftMargin.SetTextLeft(0);
+        leftMargin.SetTextLeft(SvxIndentValue::zero());
         bResult = true;
     }
 
@@ -171,7 +174,7 @@ bool SwWrtShell::DelLeft()
             {
                 SwActContext aActContext(this);
                 ResetCursorStack();
-                Delete(false);
+                Delete(false, true);
                 UpdateAttr();
             }
             if( IsBlockMode() )
@@ -245,7 +248,7 @@ bool SwWrtShell::DelLeft()
         // If we are just to the right to a fieldmark, then remove it completely
         const SwPosition* pCurPos = GetCursor()->GetPoint();
         SwPosition aPrevChar(*pCurPos->GetContentNode(), pCurPos->GetContentIndex() - 1);
-        sw::mark::IFieldmark* pFm = getIDocumentMarkAccess()->getFieldmarkAt(aPrevChar);
+        sw::mark::Fieldmark* pFm = getIDocumentMarkAccess()->getFieldmarkAt(aPrevChar);
         if (pFm && pFm->GetMarkEnd() == *pCurPos)
         {
             mxDoc->GetIDocumentUndoRedo().StartUndo(SwUndoId::EMPTY, nullptr);
@@ -274,7 +277,7 @@ bool SwWrtShell::DelLeft()
             SwCursorShell::Pop( SwCursorShell::PopMode::DeleteStack );
         }
     }
-    bool bRet = Delete(true);
+    bool bRet = Delete(true, true);
     if( !bRet && bSwap )
         SwCursorShell::SwapPam();
     CloseMark( bRet );
@@ -292,6 +295,8 @@ bool SwWrtShell::DelRight(bool const isReplaceHeuristic)
         nSelection = SelectionType::Table;
     if(nSelection & SelectionType::Text)
         nSelection = SelectionType::Text;
+    if(nSelection & SelectionType::FontWork)
+        nSelection = SelectionType::DrawObject;
 
     switch( nSelection & ~SelectionType::Ornament & ~SelectionType::Media )
     {
@@ -336,6 +341,7 @@ bool SwWrtShell::DelRight(bool const isReplaceHeuristic)
             // #108049# Save the startnode of the current cell
             const SwStartNode* pSNdOld = pWasInTableNd ?
                 GetCursor()->GetPointNode().FindTableBoxStartNode() : nullptr;
+            SwTextNode* pOldTextNode = GetCursor()->GetPointNode().GetTextNode();
             bool bCheckDelFull = SelectionType::Text & nSelection && SwCursorShell::IsSttPara();
             bool bDelFull = false;
             bool bDoNothing = false;
@@ -365,6 +371,7 @@ bool SwWrtShell::DelRight(bool const isReplaceHeuristic)
             }
 
             // restore cursor
+            SwTextNode* pNewTextNode = GetCursor()->GetPointNode().GetTextNode();
             SwCursorShell::Pop(SwCursorShell::PopMode::DeleteCurrent);
 
             if (bDelFull)
@@ -372,13 +379,32 @@ bool SwWrtShell::DelRight(bool const isReplaceHeuristic)
                 DelFullPara();
                 UpdateAttr();
             }
+
+            if (pOldTextNode && pNewTextNode && pNewTextNode != pOldTextNode)
+            {
+                SwRootFrame* pLayout = mxDoc->getIDocumentLayoutAccess().GetCurrentLayout();
+                if (pLayout)
+                {
+                    auto pOldFrame = static_cast<SwTextFrame*>(pOldTextNode->getLayoutFrame(pLayout));
+                    auto pNewFrame = static_cast<SwTextFrame*>(pNewTextNode->getLayoutFrame(pLayout));
+                    if (pOldFrame && pNewFrame && pOldFrame->HasSplitFlyDrawObjs() && pNewFrame->HasSplitFlyDrawObjs())
+                    {
+                        // We have a selection where both the old and the new position is an anchor
+                        // for a potentially split fly. Don't allow join of the nodes in this case,
+                        // since the layout supports multiple anchors for one split fly, but it
+                        // doesn't support the usage of the same anchor for multiple split flys.
+                        bDoNothing = true;
+                    }
+                }
+            }
+
             if (bDelFull || bDoNothing)
                 break;
         }
 
         {
             // If we are just ahead of a fieldmark, then remove it completely
-            sw::mark::IFieldmark *const pFm = getIDocumentMarkAccess()->getFieldmarkAt(*GetCursor()->GetPoint());
+            sw::mark::Fieldmark *const pFm = getIDocumentMarkAccess()->getFieldmarkAt(*GetCursor()->GetPoint());
             if (pFm && pFm->GetMarkStart() == *GetCursor()->GetPoint())
             {
                 mxDoc->GetIDocumentUndoRedo().StartUndo(SwUndoId::EMPTY, nullptr);

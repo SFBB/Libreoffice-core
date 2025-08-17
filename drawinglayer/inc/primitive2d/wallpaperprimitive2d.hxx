@@ -43,22 +43,22 @@ namespace drawinglayer::primitive2d
         {
         private:
             basegfx::B2DRange                   maObjectRange;
-            BitmapEx                            maBitmapEx;
+            Bitmap                              maBitmap;
             WallpaperStyle                      meWallpaperStyle;
 
             /// create local decomposition
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
             /// constructor
             WallpaperBitmapPrimitive2D(
                 const basegfx::B2DRange& rObjectRange,
-                const BitmapEx& rBitmapEx,
+                const Bitmap& rBitmap,
                 WallpaperStyle eWallpaperStyle);
 
             /// data read access
             const basegfx::B2DRange& getLocalObjectRange() const { return maObjectRange; }
-            const BitmapEx& getBitmapEx() const { return maBitmapEx ; }
+            const Bitmap& getBitmap() const { return maBitmap; }
             WallpaperStyle getWallpaperStyle() const { return meWallpaperStyle; }
 
             /// compare operator

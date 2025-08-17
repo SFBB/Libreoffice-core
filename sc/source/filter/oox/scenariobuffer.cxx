@@ -33,6 +33,7 @@
 #include <addressconverter.hxx>
 #include <biffhelper.hxx>
 #include <docuno.hxx>
+#include <cellsuno.hxx>
 
 namespace oox::xls {
 
@@ -73,7 +74,8 @@ void Scenario::importScenario( const AttributeList& rAttribs )
 void Scenario::importInputCells( const AttributeList& rAttribs )
 {
     ScenarioCellModel aModel;
-    AddressConverter::convertToCellAddressUnchecked( aModel.maPos, rAttribs.getString( XML_r, OUString() ), mnSheet );
+    AddressConverter::convertToCellAddressUnchecked(
+        aModel.maPos, rAttribs.getString(XML_r, OUString()), mnSheet, getScDocument());
     aModel.maValue    = rAttribs.getXString( XML_val, OUString() );
     aModel.mnNumFmtId = rAttribs.getInteger( XML_numFmtId, 0 );
     aModel.mbDeleted  = rAttribs.getBool( XML_deleted, false );
@@ -121,7 +123,7 @@ void Scenario::finalizeImport()
         OUString aScenName = ContainerHelper::getUnusedName( xSheetsNA, maModel.maName, '_' );
 
         // create the new scenario sheet
-        Reference< XScenariosSupplier > xScenariosSupp( getSheetFromDoc( mnSheet ), UNO_QUERY_THROW );
+        rtl::Reference< ScTableSheetObj > xScenariosSupp( getSheetFromDoc( mnSheet ) );
         Reference< XScenarios > xScenarios( xScenariosSupp->getScenarios(), UNO_SET_THROW );
         xScenarios->addNewByName( aScenName, AddressConverter::toApiSequence(aRanges), maModel.maComment );
 

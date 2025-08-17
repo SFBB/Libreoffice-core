@@ -188,7 +188,7 @@ const int* getStateTransitionTable( sal_Int16 nRestartMode,
         AnimationNode::ENDED|AnimationNode::ACTIVE|AnimationNode::RESOLVED  // active successors for ENDED: restart
     };
 
-    static const StateTransitionTable* tableGuide[] = {
+    static const StateTransitionTable* const tableGuide[] = {
         &stateTransitionTable_Never_Remove,
         &stateTransitionTable_NotActive_Remove,
         &stateTransitionTable_Always_Remove,
@@ -245,7 +245,7 @@ bool isMainSequenceRootNode_(
     // detect main sequence root node (need that for
     // end-of-mainsequence signalling below)
     beans::NamedValue const aSearchKey(
-        "node-type",
+        u"node-type"_ustr,
         uno::Any( presentation::EffectNodeType::MAIN_SEQUENCE ) );
 
     uno::Sequence<beans::NamedValue> const userData(xNode->getUserData());
@@ -462,7 +462,7 @@ bool BaseNode::resolve()
         if (aBegin.hasValue()) {
             auto self(mpSelf);
             mpCurrentEvent = generateEvent(
-                aBegin, [self] () { self->activate(); },
+                aBegin, [self=std::move(self)] () { self->activate(); },
                 maContext, mnStartDelay );
         }
         else {
@@ -474,9 +474,9 @@ bool BaseNode::resolve()
             // timeout into account
             auto self(mpSelf);
             mpCurrentEvent = makeDelay(
-                [self] () { self->activate(); },
+                [self=std::move(self)] () { self->activate(); },
                 mnStartDelay,
-                "AnimationNode::activate with delay");
+                u"AnimationNode::activate with delay"_ustr);
             maContext.mrEventQueue.addEvent( mpCurrentEvent );
         }
 
@@ -538,7 +538,6 @@ void BaseNode::scheduleDeactivationEvent( EventSharedPtr const& pEvent )
         // if anim base node has no activity, this is called to schedule deactivation,
         // but what if it does not schedule anything?
 
-        auto self(mpSelf);
         if (mxAnimationNode->getEnd().hasValue())
         {
             // TODO: We may need to calculate the duration if the end value is numeric.
@@ -547,7 +546,7 @@ void BaseNode::scheduleDeactivationEvent( EventSharedPtr const& pEvent )
             // until we find a test case.
             mpCurrentEvent = generateEvent(
                 mxAnimationNode->getEnd(),
-                [self] () { self->deactivate(); },
+                [self=mpSelf] () { self->deactivate(); },
                 maContext, 0.0 );
 
         }
@@ -555,7 +554,7 @@ void BaseNode::scheduleDeactivationEvent( EventSharedPtr const& pEvent )
         {
             mpCurrentEvent = generateEvent(
                 mxAnimationNode->getDuration(),
-                [self] () { self->deactivate(); },
+                [self=mpSelf] () { self->deactivate(); },
                 maContext, 0.0 );
         }
     }
@@ -730,7 +729,7 @@ void BaseNode::showState() const
 
     // read shape name
     OUString aName;
-    if( xPropSet->getPropertyValue("Name") >>= aName )
+    if( xPropSet->getPropertyValue(u"Name"_ustr) >>= aName )
     {
         SAL_INFO("slideshow.verbose", "Node info: n" <<
                  debugGetNodeName(this) <<

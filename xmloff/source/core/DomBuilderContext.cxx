@@ -29,7 +29,6 @@
 #include <com/sun/star/xml/dom/DocumentBuilder.hpp>
 #include <com/sun/star/xml/dom/XNode.hpp>
 #include <com/sun/star/xml/dom/XElement.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/xml/dom/NodeType.hpp>
 
 #include <rtl/ustring.hxx>
@@ -156,7 +155,7 @@ void DomBuilderContext::HandleAttributes(
         sal_Int32 nAttrToken = aIter.getToken();
         // get name & value for attribute
         sal_uInt16 nNamespace = (nAttrToken >> NMSP_SHIFT) - 1;
-        const OUString& rPrefix = SvXMLImport::getNamespacePrefixFromToken(nAttrToken, &GetImport().GetNamespaceMap());
+        const OUString aPrefix = SvXMLImport::getNamespacePrefixFromToken(nAttrToken, &GetImport().GetNamespaceMap());
         const OUString& rLocalName = SvXMLImport::getNameFromToken( nAttrToken );
         OUString aValue = aIter.toString();
 
@@ -183,7 +182,7 @@ void DomBuilderContext::HandleAttributes(
             {
                 // a real and proper namespace: create namespaced attribute
                 OUString namespaceURI = SvXMLImport::getNamespaceURIFromToken(aIter.getToken());
-                OUString qualifiedName = rPrefix.isEmpty() ? rLocalName : rPrefix + SvXMLImport::aNamespaceSeparator + rLocalName;
+                OUString qualifiedName = aPrefix.isEmpty() ? rLocalName : aPrefix + SvXMLImport::aNamespaceSeparator + rLocalName;
                 xElement->setAttributeNS( namespaceURI, qualifiedName, aValue );
             }
             break;
@@ -230,7 +229,7 @@ void DomBuilderContext::characters( const OUString& rCharacters )
 
 static Reference<XNode> lcl_createDomInstance()
 {
-    Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
+    const Reference<XComponentContext>& xContext = comphelper::getProcessComponentContext();
     SAL_WARN_IF( !xContext.is(), "xmloff", "can't get service factory" );
 
     Reference<XDocumentBuilder> xBuilder( DocumentBuilder::create(xContext) );
@@ -253,7 +252,7 @@ static Reference<XNode> lcl_createElement( SvXMLImport& rImport,
 
     Reference<XElement> xElement;
     sal_uInt16 nNamespace = (nElement >> NMSP_SHIFT) - 1;
-    const OUString& rPrefix = SvXMLImport::getNamespacePrefixFromToken(nElement, &rImport.GetNamespaceMap());
+    const OUString aPrefix = SvXMLImport::getNamespacePrefixFromToken(nElement, &rImport.GetNamespaceMap());
     const OUString& rLocalName = SvXMLImport::getNameFromToken( nElement );
     switch( nNamespace )
     {
@@ -277,7 +276,7 @@ static Reference<XNode> lcl_createElement( SvXMLImport& rImport,
         // this is a bug, since this will fail for multiple prefixes used for
         // the same namespace.
         OUString namespaceURI = SvXMLImport::getNamespaceURIFromToken(nElement);
-        OUString qualifiedName = rPrefix.isEmpty() ? rLocalName : rPrefix + SvXMLImport::aNamespaceSeparator + rLocalName;
+        OUString qualifiedName = aPrefix.isEmpty() ? rLocalName : aPrefix + SvXMLImport::aNamespaceSeparator + rLocalName;
         xElement = xDocument->createElementNS(namespaceURI, qualifiedName);
         break;
     }

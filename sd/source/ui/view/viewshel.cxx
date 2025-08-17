@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <framework/FrameworkHelper.hxx>
+#include <framework/ViewShellWrapper.hxx>
+#include <framework/ConfigurationController.hxx>
 #include <memory>
 #include <ViewShell.hxx>
 #include <ViewShellImplementation.hxx>
@@ -27,6 +30,7 @@
 #include <DrawController.hxx>
 #include <LayerTabBar.hxx>
 #include <Outliner.hxx>
+#include <ResourceId.hxx>
 
 #include <sal/log.hxx>
 #include <sfx2/viewfrm.hxx>
@@ -58,6 +62,7 @@
 #include <SlideSorterViewShell.hxx>
 #include <ViewShellManager.hxx>
 #include <FormShellManager.hxx>
+#include <EventMultiplexer.hxx>
 #include <svx/extrusionbar.hxx>
 #include <svx/fontworkbar.hxx>
 #include <svx/svdoutl.hxx>
@@ -90,6 +95,10 @@
 #include <sdmod.hxx>
 #include <AccessibleDocumentViewBase.hxx>
 
+#include <framework/Configuration.hxx>
+#include <framework/AbstractView.hxx>
+#include <com/sun/star/frame/XFrame.hpp>
+
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::presentation;
@@ -110,6 +119,13 @@ private:
 } // end of anonymous namespace
 
 namespace sd {
+
+/// When true, scrolling to bottom of a page switches to the next page.
+bool ViewShell::CanPanAcrossPages() const
+{
+    return dynamic_cast<const DrawViewShell*>(this) && mpContentWindow &&
+        mpContentWindow->GetVisibleHeight() < 1.0;
+}
 
 bool ViewShell::IsPageFlipMode() const
 {
@@ -134,10 +150,66 @@ SfxViewFrame* ViewShell::GetViewFrame() const
 /// declare SFX-Slotmap and standard interface
 
 ViewShell::ViewShell( vcl::Window* pParentWindow, ViewShellBase& rViewShellBase)
-:   SfxShell(&rViewShellBase)
-,   mpParentWindow(pParentWindow)
+    :   SfxShell(&rViewShellBase)
+    ,   mbHasRulers(false)
+    ,   mpActiveWindow(nullptr)
+    ,   mpView(nullptr)
+    ,   mpFrameView(nullptr)
+    ,   mpZoomList(new ZoomList( *this ))
+    ,   mfLastZoomScale(0)
+    ,   mbStartShowWithDialog(false)
+    ,   mnPrintedHandoutPageNum(1)
+    ,   mnPrintedHandoutPageCount(0)
+    ,   meShellType(ST_NONE)
+    ,   mpImpl(new Implementation(*this))
+    ,   mpParentWindow(pParentWindow)
+    ,   mpWindowUpdater(new ::sd::WindowUpdater())
 {
-    construct();
+    OSL_ASSERT (GetViewShell()!=nullptr);
+
+    if (IsMainViewShell())
+        GetDocSh()->Connect (this);
+
+    mpContentWindow.reset(VclPtr< ::sd::Window >::Create(GetParentWindow()));
+    SetActiveWindow (mpContentWindow.get());
+
+    GetParentWindow()->SetBackground(Application::GetSettings().GetStyleSettings().GetFaceColor());
+    mpContentWindow->SetBackground (Wallpaper());
+    mpContentWindow->SetCenterAllowed(true);
+    mpContentWindow->SetViewShell(this);
+    mpContentWindow->SetPosSizePixel(
+        GetParentWindow()->GetPosPixel(),GetParentWindow()->GetSizePixel());
+
+    if ( ! GetDocSh()->IsPreview())
+    {
+        // Create scroll bars and the filler between the scroll bars.
+        mpHorizontalScrollBar.reset (VclPtr<ScrollAdaptor>::Create(GetParentWindow(), true));
+        mpHorizontalScrollBar->EnableRTL (false);
+        mpHorizontalScrollBar->SetRange(Range(0, 32000));
+        mpHorizontalScrollBar->SetScrollHdl(LINK(this, ViewShell, HScrollHdl));
+
+        mpVerticalScrollBar.reset (VclPtr<ScrollAdaptor>::Create(GetParentWindow(), false));
+        mpVerticalScrollBar->SetRange(Range(0, 32000));
+        mpVerticalScrollBar->SetScrollHdl(LINK(this, ViewShell, VScrollHdl));
+    }
+
+    SetName (u"ViewShell"_ustr);
+
+    GetDoc()->StartOnlineSpelling(false);
+
+    mpWindowUpdater->SetDocument (GetDoc());
+
+    // Re-initialize the spell dialog.
+    ::sd::SpellDialogChildWindow* pSpellDialog =
+          static_cast< ::sd::SpellDialogChildWindow*> (
+              GetViewFrame()->GetChildWindow (
+                  ::sd::SpellDialogChildWindow::GetChildWindowId()));
+    if (pSpellDialog != nullptr)
+        pSpellDialog->InvalidateSpellDialog();
+
+    // Register the sub shell factory.
+    mpImpl->mpSubShellFactory = std::make_shared<ViewShellObjectBarFactory>(*this);
+    GetViewShellBase().GetViewShellManager()->AddSubShellFactory(this,mpImpl->mpSubShellFactory);
 }
 
 ViewShell::~ViewShell()
@@ -168,73 +240,6 @@ ViewShell::~ViewShell()
     mpHorizontalRuler.disposeAndClear();
     mpVerticalScrollBar.disposeAndClear();
     mpHorizontalScrollBar.disposeAndClear();
-}
-
-/**
- * common initialization part of both constructors
- */
-void ViewShell::construct()
-{
-    mbHasRulers = false;
-    mpActiveWindow = nullptr;
-    mpView = nullptr;
-    mpFrameView = nullptr;
-    mpZoomList = nullptr;
-    mfLastZoomScale = 0;
-    mbStartShowWithDialog = false;
-    mnPrintedHandoutPageNum = 1;
-    mnPrintedHandoutPageCount = 0;
-    mpWindowUpdater.reset( new ::sd::WindowUpdater() );
-    mpImpl.reset(new Implementation(*this));
-    meShellType = ST_NONE;
-
-    OSL_ASSERT (GetViewShell()!=nullptr);
-
-    if (IsMainViewShell())
-        GetDocSh()->Connect (this);
-
-    mpZoomList.reset( new ZoomList( this ) );
-
-    mpContentWindow.reset(VclPtr< ::sd::Window >::Create(GetParentWindow()));
-    SetActiveWindow (mpContentWindow.get());
-
-    GetParentWindow()->SetBackground(Application::GetSettings().GetStyleSettings().GetFaceColor());
-    mpContentWindow->SetBackground (Wallpaper());
-    mpContentWindow->SetCenterAllowed(true);
-    mpContentWindow->SetViewShell(this);
-    mpContentWindow->SetPosSizePixel(
-        GetParentWindow()->GetPosPixel(),GetParentWindow()->GetSizePixel());
-
-    if ( ! GetDocSh()->IsPreview())
-    {
-        // Create scroll bars and the filler between the scroll bars.
-        mpHorizontalScrollBar.reset (VclPtr<ScrollAdaptor>::Create(GetParentWindow(), true));
-        mpHorizontalScrollBar->EnableRTL (false);
-        mpHorizontalScrollBar->SetRange(Range(0, 32000));
-        mpHorizontalScrollBar->SetScrollHdl(LINK(this, ViewShell, HScrollHdl));
-
-        mpVerticalScrollBar.reset (VclPtr<ScrollAdaptor>::Create(GetParentWindow(), false));
-        mpVerticalScrollBar->SetRange(Range(0, 32000));
-        mpVerticalScrollBar->SetScrollHdl(LINK(this, ViewShell, VScrollHdl));
-    }
-
-    SetName ("ViewShell");
-
-    GetDoc()->StartOnlineSpelling(false);
-
-    mpWindowUpdater->SetDocument (GetDoc());
-
-    // Re-initialize the spell dialog.
-    ::sd::SpellDialogChildWindow* pSpellDialog =
-          static_cast< ::sd::SpellDialogChildWindow*> (
-              GetViewFrame()->GetChildWindow (
-                  ::sd::SpellDialogChildWindow::GetChildWindowId()));
-    if (pSpellDialog != nullptr)
-        pSpellDialog->InvalidateSpellDialog();
-
-    // Register the sub shell factory.
-    mpImpl->mpSubShellFactory = std::make_shared<ViewShellObjectBarFactory>(*this);
-    GetViewShellBase().GetViewShellManager()->AddSubShellFactory(this,mpImpl->mpSubShellFactory);
 }
 
 void ViewShell::doShow()
@@ -326,12 +331,12 @@ void ViewShell::Activate(bool bIsMDIActivate)
         }
 
         SfxViewShell* pViewShell = GetViewShell();
-        OSL_ASSERT (pViewShell!=nullptr);
+        assert(pViewShell!=nullptr);
         SfxBindings& rBindings = pViewShell->GetViewFrame().GetBindings();
         rBindings.Invalidate( SID_3D_STATE, true );
 
         rtl::Reference< SlideShow > xSlideShow( SlideShow::GetSlideShow( GetViewShellBase() ) );
-        if (xSlideShow.is() && xSlideShow->isRunning())
+        if (xSlideShow.is() && xSlideShow->isRunning()) //IASS
         {
             bool bSuccess = xSlideShow->activate(GetViewShellBase());
             assert(bSuccess && "can only return false with a PresentationViewShell"); (void)bSuccess;
@@ -367,7 +372,7 @@ void ViewShell::UIDeactivated( SfxInPlaceClient*  )
 void ViewShell::Deactivate(bool bIsMDIActivate)
 {
     // remove view from a still active drag'n'drop session
-    SdTransferable* pDragTransferable = SD_MOD()->pTransferDrag;
+    SdTransferable* pDragTransferable = SdModule::get()->pTransferDrag;
 
     if (IsMainViewShell())
         GetDocSh()->Disconnect(this);
@@ -383,7 +388,7 @@ void ViewShell::Deactivate(bool bIsMDIActivate)
     if (bIsMDIActivate)
     {
         rtl::Reference< SlideShow > xSlideShow( SlideShow::GetSlideShow( GetViewShellBase() ) );
-        if(xSlideShow.is() && xSlideShow->isRunning() )
+        if(xSlideShow.is() && xSlideShow->isRunning() ) //IASS
             xSlideShow->deactivate();
 
         if(HasCurrentFunction())
@@ -398,9 +403,93 @@ void ViewShell::Deactivate(bool bIsMDIActivate)
     SfxShell::Deactivate(bIsMDIActivate);
 }
 
+void ViewShell::BroadcastContextForActivation(const bool bIsActivated)
+{
+    auto getFrameworkResourceIdForShell
+        = [&]() -> rtl::Reference<framework::ResourceId> const
+    {
+        DrawController* pDrawController = GetViewShellBase().GetDrawController();
+        if (!pDrawController)
+            return {};
+
+        rtl::Reference<sd::framework::ConfigurationController> xConfigurationController
+            = pDrawController->getConfigurationController();
+        if (!xConfigurationController.is())
+            return {};
+
+        rtl::Reference<framework::Configuration> xConfiguration
+            = xConfigurationController->getCurrentConfiguration();
+        if (!xConfiguration.is())
+            return {};
+
+        auto aResIdsIndirect
+            = xConfiguration->getResources({}, u"", drawing::framework::AnchorBindingMode_INDIRECT);
+
+        for (const rtl::Reference<framework::ResourceId>& rResId : aResIdsIndirect)
+        {
+            auto pFrameworkHelper = framework::FrameworkHelper::Instance(GetViewShellBase());
+
+            rtl::Reference<sd::framework::AbstractView> xView;
+            if (rResId->getResourceURL().match(framework::FrameworkHelper::msViewURLPrefix))
+            {
+                xView = dynamic_cast<sd::framework::AbstractView*>(xConfigurationController->getResource(rResId).get());
+
+                if (xView.is())
+                {
+                    if (auto pViewShellWrapper = dynamic_cast<framework::ViewShellWrapper*>(xView.get()))
+                    {
+                        if (pViewShellWrapper->GetViewShell().get() == this)
+                        {
+                            return rResId;
+                        }
+                    }
+                }
+            }
+        }
+        return {};
+    };
+
+    if (bIsActivated)
+    {
+        GetViewShellBase().GetEventMultiplexer()->MultiplexEvent(
+            EventMultiplexerEventId::FocusShifted, nullptr, getFrameworkResourceIdForShell());
+    }
+
+    if (GetDispatcher())
+        SfxShell::BroadcastContextForActivation(bIsActivated);
+}
+
 void ViewShell::Shutdown()
 {
     Exit ();
+}
+
+// IASS: Check if commands should be used for SlideShow
+// This is the case when IASS is on, SlideShow is active
+// and the SlideShow Window has the focus
+bool ViewShell::useInputForSlideShow() const
+{
+    rtl::Reference< SlideShow > xSlideShow(SlideShow::GetSlideShow(GetViewShellBase()));
+
+    if (!xSlideShow.is())
+        // no SlideShow, do not use
+        return false;
+
+    if (!xSlideShow->isRunning())
+        // SlideShow not running, do not use
+        return false;
+
+    if(!xSlideShow->IsInteractiveSlideshow())
+        // if IASS is deactivated, do what was done before when
+        // SlideSHow is running: use for SlideShow
+        return true;
+
+    // else, check if SlideShow Window has the focus
+    OutputDevice* pShOut(xSlideShow->getShowWindow());
+    vcl::Window* pShWin(pShOut ? pShOut->GetOwnerWindow() : nullptr);
+
+    // return true if we got the SlideShow Window and it has the focus
+    return nullptr != pShWin && pShWin->HasFocus();
 }
 
 bool ViewShell::KeyInput(const KeyEvent& rKEvt, ::sd::Window* pWin)
@@ -415,45 +504,49 @@ bool ViewShell::KeyInput(const KeyEvent& rKEvt, ::sd::Window* pWin)
     OSL_ASSERT(GetViewShell() != nullptr);
     bReturn = GetViewShell()->KeyInput(rKEvt);
 
-    const size_t OriCount = GetView()->GetMarkedObjectList().GetMarkCount();
-    if(!bReturn)
+    if (sd::View* pView = GetView())
     {
-        rtl::Reference< SlideShow > xSlideShow( SlideShow::GetSlideShow( GetViewShellBase() ) );
-        if(xSlideShow.is() && xSlideShow->isRunning())
+        const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+        const size_t OriCount = rMarkList.GetMarkCount();
+        if(!bReturn)
         {
-            bReturn = xSlideShow->keyInput(rKEvt);
-        }
-        else
-        {
-            bool bConsumed = false;
-            if( GetView() )
-                bConsumed = GetView()->getSmartTags().KeyInput(rKEvt);
-
-            if( !bConsumed )
+            if(useInputForSlideShow()) //IASS
             {
-                rtl::Reference< sdr::SelectionController > xSelectionController( GetView()->getSelectionController() );
-                if( !xSelectionController.is() || !xSelectionController->onKeyInput( rKEvt, pWin ) )
+                // use for SlideShow
+                rtl::Reference< SlideShow > xSlideShow( SlideShow::GetSlideShow( GetViewShellBase() ) );
+                bReturn = xSlideShow->keyInput(rKEvt);
+            }
+            else
+            {
+                bool bConsumed = false;
+                bConsumed = pView->getSmartTags().KeyInput(rKEvt);
+
+                if( !bConsumed )
                 {
-                    if(HasCurrentFunction())
-                        bReturn = GetCurrentFunction()->KeyInput(rKEvt);
-                }
-                else
-                {
-                    bReturn = true;
-                    if (HasCurrentFunction())
+                    rtl::Reference< sdr::SelectionController > xSelectionController( pView->getSelectionController() );
+                    if( !xSelectionController.is() || !xSelectionController->onKeyInput( rKEvt, pWin ) )
                     {
-                        FuText* pTextFunction = dynamic_cast<FuText*>(GetCurrentFunction().get());
-                        if(pTextFunction != nullptr)
-                            pTextFunction->InvalidateBindings();
+                        if(HasCurrentFunction())
+                            bReturn = GetCurrentFunction()->KeyInput(rKEvt);
+                    }
+                    else
+                    {
+                        bReturn = true;
+                        if (HasCurrentFunction())
+                        {
+                            FuText* pTextFunction = dynamic_cast<FuText*>(GetCurrentFunction().get());
+                            if(pTextFunction != nullptr)
+                                pTextFunction->InvalidateBindings();
+                        }
                     }
                 }
             }
         }
+        const size_t EndCount = rMarkList.GetMarkCount();
+        // Here, oriCount or endCount must have one value=0, another value > 0, then to switch focus between Document and shape objects
+        if(bReturn &&  (OriCount + EndCount > 0) && (OriCount * EndCount == 0))
+            SwitchActiveViewFireFocus();
     }
-    const size_t EndCount = GetView()->GetMarkedObjectList().GetMarkCount();
-    // Here, oriCount or endCount must have one value=0, another value > 0, then to switch focus between Document and shape objects
-    if(bReturn &&  (OriCount + EndCount > 0) && (OriCount * EndCount == 0))
-        SwitchActiveViewFireFocus();
 
     if(!bReturn && GetActiveWindow())
     {
@@ -488,18 +581,20 @@ void ViewShell::MouseButtonDown(const MouseEvent& rMEvt, ::sd::Window* pWin)
         SetActiveWindow(pWin);
     }
 
+    ::sd::View* pView = GetView();
+    if (!pView)
+        return;
+
     // insert MouseEvent into E3dView
-    if (GetView() != nullptr)
-        GetView()->SetMouseEvent(rMEvt);
+    pView->SetMouseEvent(rMEvt);
 
     bool bConsumed = false;
-    if( GetView() )
-        bConsumed = GetView()->getSmartTags().MouseButtonDown( rMEvt );
+    bConsumed = pView->getSmartTags().MouseButtonDown( rMEvt );
 
     if( bConsumed )
         return;
 
-    rtl::Reference< sdr::SelectionController > xSelectionController( GetView()->getSelectionController() );
+    rtl::Reference< sdr::SelectionController > xSelectionController( pView->getSelectionController() );
     if( !xSelectionController.is() || !xSelectionController->onMouseButtonDown( rMEvt, pWin ) )
     {
         if(HasCurrentFunction())
@@ -542,7 +637,7 @@ uno::Reference<datatransfer::XTransferable> ViewShell::GetSelectionTransferable(
         return uno::Reference<datatransfer::XTransferable>();
 
     EditView& rEditView = pSdrView->GetTextEditOutlinerView()->GetEditView();
-    return rEditView.GetEditEngine()->CreateTransferable(rEditView.GetSelection());
+    return rEditView.getEditEngine().CreateTransferable(rEditView.GetSelection());
 }
 
 void ViewShell::SetGraphicMm100Position(bool bStart, const Point& rPosition)
@@ -678,9 +773,10 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
     {
         case CommandEventId::GestureSwipe:
             {
-                rtl::Reference< SlideShow > xSlideShow( SlideShow::GetSlideShow( GetViewShellBase() ) );
-                if (xSlideShow.is())
+                if(useInputForSlideShow()) //IASS
                 {
+                    // use for SlideShow
+                    rtl::Reference< SlideShow > xSlideShow( SlideShow::GetSlideShow( GetViewShellBase() ) );
                     const CommandGestureSwipeData* pSwipeData = rCEvt.GetGestureSwipeData();
                     bDone = xSlideShow->swipe(*pSwipeData);
                 }
@@ -688,9 +784,10 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
             break;
         case CommandEventId::GestureLongPress:
             {
-                rtl::Reference< SlideShow > xSlideShow( SlideShow::GetSlideShow( GetViewShellBase() ) );
-                if (xSlideShow.is())
+                if(useInputForSlideShow()) //IASS
                 {
+                    // use for SlideShow
+                    rtl::Reference< SlideShow > xSlideShow( SlideShow::GetSlideShow( GetViewShellBase() ) );
                     const CommandGestureLongPressData* pLongPressData = rCEvt.GetLongPressData();
                     bDone = xSlideShow->longpress(*pLongPressData);
                 }
@@ -702,17 +799,21 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
                 Reference< XSlideShowController > xSlideShowController( SlideShow::GetSlideShowController(GetViewShellBase() ) );
                 if( xSlideShowController.is() )
                 {
-                    // We ignore zooming with control+mouse wheel.
-                    const CommandWheelData* pData = rCEvt.GetWheelData();
-                    if( pData && !pData->GetModifier() && ( pData->GetMode() == CommandWheelMode::SCROLL ) && !pData->IsHorz() )
+                    if(useInputForSlideShow()) //IASS
                     {
-                        ::tools::Long nDelta = pData->GetDelta();
-                        if( nDelta > 0 )
-                            xSlideShowController->gotoPreviousSlide();
-                        else if( nDelta < 0 )
-                            xSlideShowController->gotoNextEffect();
+                        // use for SlideShow
+                        // We ignore zooming with control+mouse wheel.
+                        const CommandWheelData* pData = rCEvt.GetWheelData();
+                        if( pData && !pData->GetModifier() && ( pData->GetMode() == CommandWheelMode::SCROLL ) && !pData->IsHorz() )
+                        {
+                            ::tools::Long nDelta = pData->GetDelta();
+                            if( nDelta > 0 )
+                                xSlideShowController->gotoPreviousSlide();
+                            else if( nDelta < 0 )
+                                xSlideShowController->gotoNextEffect();
+                        }
+                        break;
                     }
-                    break;
                 }
             }
             [[fallthrough]];
@@ -767,11 +868,16 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
         }
         break;
 
+        case CommandEventId::GesturePan:
+        {
+            bDone = pWin->HandleScrollCommand(rCEvt, mpHorizontalScrollBar.get(),
+                                              mpVerticalScrollBar.get());
+        }
+        break;
+
         case CommandEventId::GestureZoom:
         {
             const CommandGestureZoomData* pData = rCEvt.GetGestureZoomData();
-
-            Reference<XSlideShowController> xSlideShowController(SlideShow::GetSlideShowController(GetViewShellBase()));
 
             if (pData->meEventType == GestureEventZoomType::Begin)
             {
@@ -785,7 +891,7 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
                 double deltaBetweenEvents = (pData->mfScaleDelta - mfLastZoomScale) / mfLastZoomScale;
                 mfLastZoomScale = pData->mfScaleDelta;
 
-                if (!GetDocSh()->IsUIActive() && !xSlideShowController.is())
+                if (!GetDocSh()->IsUIActive() && !useInputForSlideShow()) //IASS
                 {
                     const ::tools::Long nOldZoom = GetActiveWindow()->GetZoom();
                     ::tools::Long nNewZoom;
@@ -824,7 +930,10 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
 
 void ViewShell::SetupRulers()
 {
-    if(!mbHasRulers || !mpContentWindow || SlideShow::IsRunning(GetViewShellBase()))
+    if(!mbHasRulers || !mpContentWindow )
+        return;
+
+    if( SlideShow::IsRunning(GetViewShellBase()) && !SlideShow::IsInteractiveSlideshow(&GetViewShellBase())) // IASS
         return;
 
     ::tools::Long nHRulerOfs = 0;
@@ -857,7 +966,7 @@ const SvxNumBulletItem* ViewShell::GetNumBulletItem(SfxItemSet& aNewAttr, TypedW
     if(pTmpItem)
         return pTmpItem;
 
-    nNumItemId = aNewAttr.GetPool()->GetWhich(SID_ATTR_NUMBERING_RULE);
+    nNumItemId = aNewAttr.GetPool()->GetWhichIDFromSlotID(SID_ATTR_NUMBERING_RULE);
     pTmpItem = aNewAttr.GetItemIfSet(nNumItemId, false);
     if(pTmpItem)
         return pTmpItem;
@@ -900,13 +1009,13 @@ const SvxNumBulletItem* ViewShell::GetNumBulletItem(SfxItemSet& aNewAttr, TypedW
     }
 
     if( pItem == nullptr )
-        pItem = aNewAttr.GetPool()->GetSecondaryPool()->GetPoolDefaultItem(EE_PARA_NUMBULLET);
+        pItem = aNewAttr.GetPool()->GetSecondaryPool()->GetUserDefaultItem(EE_PARA_NUMBULLET);
 
     aNewAttr.Put(pItem->CloneSetWhich(EE_PARA_NUMBULLET));
 
-    if(bTitle && aNewAttr.GetItemState(EE_PARA_NUMBULLET) == SfxItemState::SET )
+    const SvxNumBulletItem* pBulletItem = nullptr;
+    if(bTitle && aNewAttr.GetItemState(EE_PARA_NUMBULLET, true, &pBulletItem) == SfxItemState::SET )
     {
-        const SvxNumBulletItem* pBulletItem = aNewAttr.GetItem(EE_PARA_NUMBULLET);
         const SvxNumRule& rRule = pBulletItem->GetNumRule();
         SvxNumRule aNewRule( rRule );
         aNewRule.SetFeatureFlag( SvxNumRuleFlags::NO_NUMBERS );
@@ -1041,7 +1150,8 @@ void ViewShell::ArrangeGUIElements()
 
     // The size of the window of the center pane is set differently from
     // that of the windows in the docking windows.
-    bool bSlideShowActive = (xSlideShow.is() && xSlideShow->isRunning()) && !xSlideShow->isFullScreen() && xSlideShow->getAnimationMode() == ANIMATIONMODE_SHOW;
+    bool bSlideShowActive = (xSlideShow.is() && xSlideShow->isRunning()) //IASS
+        && !xSlideShow->isFullScreen() && xSlideShow->getAnimationMode() == ANIMATIONMODE_SHOW;
     if ( !bSlideShowActive)
     {
         OSL_ASSERT (GetViewShell()!=nullptr);
@@ -1260,8 +1370,11 @@ void ViewShell::ImpSidUndo(SfxRequest& rReq)
             {
                 // when UndoStack is cleared by ModifyPageUndoAction
                 // the nCount may have changed, so test GetUndoActionCount()
-                while(nNumber-- && pUndoManager->GetUndoActionCount())
+                while (nNumber && pUndoManager->GetUndoActionCount())
+                {
                     pUndoManager->Undo();
+                    --nNumber;
+                }
             }
             catch( const Exception& )
             {
@@ -1327,8 +1440,11 @@ void ViewShell::ImpSidRedo(SfxRequest& rReq)
             {
                 // when UndoStack is cleared by ModifyPageRedoAction
                 // the nCount may have changed, so test GetRedoActionCount()
-                while(nNumber-- && pUndoManager->GetRedoActionCount())
+                while (nNumber && pUndoManager->GetRedoActionCount())
+                {
                     pUndoManager->Redo();
+                    --nNumber;
+                }
             }
             catch( const Exception& )
             {
@@ -1396,12 +1512,11 @@ void ViewShell::ExecReq( SfxRequest& rReq )
 /** This default implementation returns only an empty reference.  See derived
     classes for more interesting examples.
 */
-css::uno::Reference<css::accessibility::XAccessible>
-ViewShell::CreateAccessibleDocumentView (::sd::Window* )
+rtl::Reference<comphelper::OAccessible> ViewShell::CreateAccessibleDocumentView(::sd::Window*)
 {
     OSL_FAIL("ViewShell::CreateAccessibleDocumentView should not be called!, perhaps Meyers, 3rd edition, Item 9:");
 
-    return css::uno::Reference<css::accessibility::XAccessible> ();
+    return {};
 }
 
 ::sd::WindowUpdater* ViewShell::GetWindowUpdater() const
@@ -1624,20 +1739,20 @@ SfxShell* ViewShellObjectBarFactory::CreateShell( ::sd::ShellId nId )
     switch (nId)
     {
         case ToolbarId::Bezier_Toolbox_Sd:
-            pShell = new ::sd::BezierObjectBar(&mrViewShell, pView);
+            pShell = new ::sd::BezierObjectBar(mrViewShell, pView);
             break;
 
         case ToolbarId::Draw_Text_Toolbox_Sd:
             pShell = new ::sd::TextObjectBar(
-                &mrViewShell, mrViewShell.GetDoc()->GetPool(), pView);
+                mrViewShell, mrViewShell.GetDoc()->GetPool(), pView);
             break;
 
         case ToolbarId::Draw_Graf_Toolbox:
-            pShell = new ::sd::GraphicObjectBar(&mrViewShell, pView);
+            pShell = new ::sd::GraphicObjectBar(mrViewShell, pView);
             break;
 
         case ToolbarId::Draw_Media_Toolbox:
-            pShell = new ::sd::MediaObjectBar(&mrViewShell, pView);
+            pShell = new ::sd::MediaObjectBar(mrViewShell, pView);
             break;
 
         case ToolbarId::Draw_Table_Toolbox:

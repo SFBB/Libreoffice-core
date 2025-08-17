@@ -29,7 +29,6 @@
 #include <ucbhelper/content.hxx>
 #include <vector>
 
-using namespace ::osl;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::ucb;
 
@@ -45,7 +44,7 @@ css::uno::Sequence < OUString > LocalFileHelper::GetFolderContents( const OUStri
             rFolder, Reference< XCommandEnvironment >(),
             comphelper::getProcessComponentContext() );
         Reference< css::sdbc::XResultSet > xResultSet;
-        css::uno::Sequence< OUString > aProps { "Url" };
+        css::uno::Sequence< OUString > aProps { u"Url"_ustr };
 
         try
         {

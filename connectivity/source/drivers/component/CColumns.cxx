@@ -23,20 +23,16 @@
 using namespace connectivity::component;
 using namespace connectivity;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbcx;
-using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
 
 
-sdbcx::ObjectType OComponentColumns::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OComponentColumns::createObject(const OUString& _rName)
 {
     ::rtl::Reference<OSQLColumns> aCols = m_pTable->getTableColumns();
 
     OSQLColumns::const_iterator aIter = find(aCols->begin(),aCols->end(),_rName,::comphelper::UStringMixEqual(isCaseSensitive()));
-    sdbcx::ObjectType xRet;
+    css::uno::Reference< css::beans::XPropertySet > xRet;
     if(aIter != aCols->end())
-        xRet = sdbcx::ObjectType(*aIter,UNO_QUERY);
+        xRet = *aIter;
     return xRet;
 }
 

@@ -28,10 +28,8 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::presentation;
 
@@ -108,7 +106,7 @@ void PageCollector::CollectMasterPages( const Reference< XModel >& rxModel, std:
             if ( aIter == rMasterPageList.end() )
             {
                 MasterPageEntity aMasterPageEntity;
-                aMasterPageEntity.xMasterPage = xMasterPage;
+                aMasterPageEntity.xMasterPage = std::move(xMasterPage);
                 aMasterPageEntity.bUsed = false;
                 rMasterPageList.push_back( aMasterPageEntity );
             }

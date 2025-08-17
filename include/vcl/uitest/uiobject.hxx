@@ -7,8 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_VCL_UITEST_UIOBJECT_HXX
-#define INCLUDED_VCL_UITEST_UIOBJECT_HXX
+#pragma once
 
 #include <rtl/ustring.hxx>
 #include <map>
@@ -40,7 +39,6 @@ class VclExpander;
 class VclDrawingArea;
 class VclMultiLineEdit;
 class MenuButton;
-class ToolBox;
 namespace vcl { class Window; }
 namespace weld { class CustomWidgetController; }
 
@@ -113,6 +111,11 @@ public:
      * Gets the corresponding Action string for the event.
      */
     virtual OUString get_action(VclEventId nEvent) const;
+
+    /**
+     * Does this represent the same underlying UI widget as rOther?
+     */
+    virtual bool equals(const UIObject& rOther) const = 0;
 };
 
 class UITEST_DLLPUBLIC WindowUIObject : public UIObject
@@ -143,6 +146,8 @@ public:
     virtual OUString get_action(VclEventId nEvent) const override;
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
+
+    virtual bool equals(const UIObject& rOther) const override;
 
 protected:
 
@@ -505,6 +510,8 @@ public:
 
     virtual OUString get_type() const override;
 
+    virtual bool equals(const UIObject& rOther) const override;
+
 private:
 
     SvTreeListEntry* getEntry() const;
@@ -522,30 +529,6 @@ public:
     virtual StringMap get_state() override;
 
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
-
-private:
-
-    virtual OUString get_name() const override;
-};
-
-class ToolBoxUIObject final : public WindowUIObject
-{
-private:
-    VclPtr<ToolBox> mxToolBox;
-
-public:
-
-    ToolBoxUIObject(const VclPtr<ToolBox>& mxToolBox);
-    virtual ~ToolBoxUIObject() override;
-
-    virtual void execute(const OUString& rAction,
-            const StringMap& rParameters) override;
-
-    virtual StringMap get_state() override;
-
-    static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
-
-    virtual OUString get_action(VclEventId nEvent) const override;
 
 private:
 
@@ -585,7 +568,5 @@ public:
     virtual void execute(const OUString& rAction, const StringMap& rParameters) override;
     static std::unique_ptr<UIObject> create(vcl::Window* pWindow);
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

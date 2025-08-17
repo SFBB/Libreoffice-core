@@ -54,11 +54,11 @@ using namespace com::sun::star;
 
 //  delimiters additionally to EditEngine default:
 
-ScEditUtil::ScEditUtil( ScDocument* pDocument, SCCOL nX, SCROW nY, SCTAB nZ,
+ScEditUtil::ScEditUtil( ScDocument& rDocument, SCCOL nX, SCROW nY, SCTAB nZ,
                             const Point& rCellPos,
                             OutputDevice* pDevice, double nScaleX, double nScaleY,
                             const Fraction& rX, const Fraction& rY, bool bPrintTwips ) :
-                    pDoc(pDocument),nCol(nX),nRow(nY),nTab(nZ),
+                    rDoc(rDocument),nCol(nX),nRow(nY),nTab(nZ),
                     aCellPos(rCellPos),pDev(pDevice),
                     nPPTX(nScaleX),nPPTY(nScaleY),aZoomX(rX),aZoomY(rY),
                     bInPrintTwips(bPrintTwips) {}
@@ -93,6 +93,8 @@ static OUString lcl_GetDelimitedString( const EditEngine& rEngine, const char c 
 static OUString lcl_GetDelimitedString( const EditTextObject& rEdit, const char c )
 {
     sal_Int32 nParCount = rEdit.GetParagraphCount();
+    if (nParCount == 0)
+        return u""_ustr;
     OUStringBuffer aRet( nParCount * 80 );
     for (sal_Int32 nPar=0; nPar<nParCount; nPar++)
     {
@@ -117,7 +119,7 @@ OUString ScEditUtil::GetMultilineString( const EditTextObject& rEdit )
     return lcl_GetDelimitedString(rEdit, '\n');
 }
 
-OUString ScEditUtil::GetString( const EditTextObject& rEditText, const ScDocument* pDoc )
+OUString ScEditUtil::GetString( const EditTextObject& rEditText, const ScDocument& rDoc )
 {
     if( !rEditText.HasField())
         return GetMultilineString( rEditText );
@@ -125,21 +127,12 @@ OUString ScEditUtil::GetString( const EditTextObject& rEditText, const ScDocumen
     static std::mutex aMutex;
     std::scoped_lock aGuard( aMutex);
     // ScFieldEditEngine is needed to resolve field contents.
-    if (pDoc)
-    {
-        /* TODO: make ScDocument::GetEditEngine() const? Most likely it's only
-         * not const because of the pointer assignment, make that mutable, and
-         * then remove the ugly const_cast here. */
-        EditEngine& rEE = const_cast<ScDocument*>(pDoc)->GetEditEngine();
-        rEE.SetText( rEditText);
-        return GetMultilineString( rEE);
-    }
-    else
-    {
-        EditEngine& rEE = ScGlobal::GetStaticFieldEditEngine();
-        rEE.SetText( rEditText);
-        return GetMultilineString( rEE);
-    }
+    /* TODO: make ScDocument::GetEditEngine() const? Most likely it's only
+     * not const because of the pointer assignment, make that mutable, and
+     * then remove the ugly const_cast here. */
+    EditEngine& rEE = const_cast<ScDocument&>(rDoc).GetEditEngine();
+    rEE.SetText( rEditText);
+    return GetMultilineString( rEE);
 }
 
 std::unique_ptr<EditTextObject> ScEditUtil::CreateURLObjectFromURL( ScDocument& rDoc, const OUString& rURL, const OUString& rText )
@@ -147,8 +140,7 @@ std::unique_ptr<EditTextObject> ScEditUtil::CreateURLObjectFromURL( ScDocument& 
     SvxURLField aUrlField( rURL, rText, SvxURLFormat::AppDefault);
     EditEngine& rEE = rDoc.GetEditEngine();
     rEE.SetText( OUString() );
-    rEE.QuickInsertField( SvxFieldItem( aUrlField, EE_FEATURE_FIELD ),
-            ESelection( EE_PARA_MAX_COUNT, EE_TEXTPOS_MAX_COUNT ) );
+    rEE.QuickInsertField(SvxFieldItem(aUrlField, EE_FEATURE_FIELD), ESelection::AtEnd());
 
     return rEE.CreateTextObject();
 }
@@ -241,7 +233,11 @@ OUString ScEditUtil::GetCellFieldValue(
                 INetURLHistory::GetOrCreate()->QueryUrl(aURL) ? svtools::LINKSVISITED : svtools::LINKS;
 
             if (ppTextColor)
-                *ppTextColor = SC_MOD()->GetColorConfig().GetColorValue(eEntry).nColor;
+            {
+                *ppTextColor = ScModule::get()->GetColorConfig().GetColorValue(eEntry).nColor;
+                if (comphelper::LibreOfficeKit::isActive())
+                    ScModule::IsLOKViewInDarkMode() ? *ppTextColor = Color(0x1D99F3) : *ppTextColor = Color(0x000080);
+            }
 
             if (ppFldLineStyle)
                 *ppFldLineStyle = FontLineStyle::LINESTYLE_SINGLE;
@@ -306,7 +302,7 @@ OUString ScEditUtil::GetCellFieldValue(
 tools::Long ScEditUtil::GetIndent(const ScPatternAttr* pPattern) const
 {
     if (!pPattern)
-        pPattern = pDoc->GetPattern( nCol, nRow, nTab );
+        pPattern = rDoc.GetPattern( nCol, nRow, nTab );
 
     if ( pPattern->GetItem(ATTR_HOR_JUSTIFY).GetValue() ==
                 SvxCellHorJustify::Left )
@@ -324,7 +320,7 @@ void ScEditUtil::GetMargins(const ScPatternAttr* pPattern, tools::Long& nLeftMar
                             tools::Long& nRightMargin, tools::Long& nBottomMargin) const
 {
     if (!pPattern)
-        pPattern = pDoc->GetPattern( nCol, nRow, nTab );
+        pPattern = rDoc.GetPattern( nCol, nRow, nTab );
 
     const SvxMarginItem* pMargin = &pPattern->GetItem(ATTR_MARGIN);
     if (!pMargin)
@@ -342,16 +338,16 @@ tools::Rectangle ScEditUtil::GetEditArea( const ScPatternAttr* pPattern, bool bF
     // (sal_False for querying URLs etc.)
 
     if (!pPattern)
-        pPattern = pDoc->GetPattern( nCol, nRow, nTab );
+        pPattern = rDoc.GetPattern( nCol, nRow, nTab );
 
     Point aStartPos = aCellPos;
     bool bIsTiledRendering = comphelper::LibreOfficeKit::isActive();
 
-    bool bLayoutRTL = pDoc->IsLayoutRTL( nTab );
+    bool bLayoutRTL = rDoc.IsLayoutRTL( nTab );
     tools::Long nLayoutSign = (bLayoutRTL && !bIsTiledRendering) ? -1 : 1;
 
     const ScMergeAttr* pMerge = &pPattern->GetItem(ATTR_MERGE);
-    tools::Long nCellX = pDoc->GetColWidth(nCol,nTab);
+    tools::Long nCellX = rDoc.GetColWidth(nCol,nTab);
     if (!bInPrintTwips)
         nCellX = static_cast<tools::Long>( nCellX * nPPTX );
     if ( pMerge->GetColMerge() > 1 )
@@ -359,20 +355,20 @@ tools::Rectangle ScEditUtil::GetEditArea( const ScPatternAttr* pPattern, bool bF
         SCCOL nCountX = pMerge->GetColMerge();
         for (SCCOL i=1; i<nCountX; i++)
         {
-            tools::Long nColWidth = pDoc->GetColWidth(nCol+i,nTab);
+            tools::Long nColWidth = rDoc.GetColWidth(nCol+i,nTab);
             nCellX += (bInPrintTwips ? nColWidth : static_cast<tools::Long>( nColWidth * nPPTX ));
         }
     }
-    tools::Long nCellY = pDoc->GetRowHeight(nRow,nTab);
+    tools::Long nCellY = rDoc.GetRowHeight(nRow,nTab);
     if (!bInPrintTwips)
         nCellY = static_cast<tools::Long>( nCellY * nPPTY );
     if ( pMerge->GetRowMerge() > 1 )
     {
         SCROW nCountY = pMerge->GetRowMerge();
         if (bInPrintTwips)
-            nCellY += pDoc->GetRowHeight(nRow + 1, nRow + nCountY - 1, nTab);
+            nCellY += rDoc.GetRowHeight(nRow + 1, nRow + nCountY - 1, nTab);
         else
-            nCellY += pDoc->GetScaledRowHeight( nRow+1, nRow+nCountY-1, nTab, nPPTY);
+            nCellY += rDoc.GetScaledRowHeight( nRow+1, nRow+nCountY-1, nTab, nPPTY);
     }
 
     tools::Long nRightMargin = 0;
@@ -412,14 +408,14 @@ tools::Rectangle ScEditUtil::GetEditArea( const ScPatternAttr* pPattern, bool bF
         pPattern->GetItem( ATTR_VERTICAL_ASIAN ).GetValue();
 
     if ( eJust == SvxCellVerJustify::Top ||
-            ( bForceToTop && ( SC_MOD()->GetInputOptions().GetTextWysiwyg() || bAsianVertical ) ) )
+            ( bForceToTop && ( ScModule::get()->GetInputOptions().GetTextWysiwyg() || bAsianVertical ) ) )
         nDifY = nTopMargin;
     else
     {
         MapMode aMode = pDev->GetMapMode();
         pDev->SetMapMode(MapMode(bInPrintTwips ? MapUnit::MapTwip : MapUnit::MapPixel));
 
-        tools::Long nTextHeight = pDoc->GetNeededSize( nCol, nRow, nTab,
+        tools::Long nTextHeight = rDoc.GetNeededSize( nCol, nRow, nTab,
                                                 pDev, nPPTX, nPPTY, aZoomX, aZoomY, false /* bWidth */,
                                                 false /* bTotalSize */, bInPrintTwips );
         if (!nTextHeight)
@@ -472,7 +468,7 @@ ScEditAttrTester::ScEditAttrTester( ScEditEngineDefaulter* pEngine ) :
         for (sal_uInt16 nId = EE_CHAR_START; nId <= EE_CHAR_END && !bNeedsObject; nId++)
         {
             SfxItemState eState = pEditAttrs->GetItemState( nId, false, &pItem );
-            if (eState == SfxItemState::DONTCARE)
+            if (eState == SfxItemState::INVALID)
                 bNeedsObject = true;
             else if (eState == SfxItemState::SET)
             {
@@ -498,13 +494,13 @@ ScEditAttrTester::ScEditAttrTester( ScEditEngineDefaulter* pEngine ) :
         //  contains field commands?
 
         SfxItemState eFieldState = pEditAttrs->GetItemState( EE_FEATURE_FIELD, false );
-        if ( eFieldState == SfxItemState::DONTCARE || eFieldState == SfxItemState::SET )
+        if ( eFieldState == SfxItemState::INVALID || eFieldState == SfxItemState::SET )
             bNeedsObject = true;
 
         //  not converted characters?
 
         SfxItemState eConvState = pEditAttrs->GetItemState( EE_FEATURE_NOTCONV, false );
-        if ( eConvState == SfxItemState::DONTCARE || eConvState == SfxItemState::SET )
+        if ( eConvState == SfxItemState::INVALID || eConvState == SfxItemState::SET )
             bNeedsObject = true;
     }
 }
@@ -516,26 +512,20 @@ ScEditAttrTester::~ScEditAttrTester()
 ScEnginePoolHelper::ScEnginePoolHelper( SfxItemPool* pEnginePoolP,
                 bool bDeleteEnginePoolP )
             :
-            pEnginePool( pEnginePoolP ),
-            pDefaults( nullptr ),
-            bDeleteEnginePool( bDeleteEnginePoolP ),
-            bDeleteDefaults( false )
+            m_pEnginePool( pEnginePoolP ),
+            m_bDeleteEnginePool( bDeleteEnginePoolP )
 {
 }
 
 ScEnginePoolHelper::ScEnginePoolHelper( const ScEnginePoolHelper& rOrg )
             :
-            pEnginePool( rOrg.bDeleteEnginePool ? rOrg.pEnginePool->Clone() : rOrg.pEnginePool ),
-            pDefaults( nullptr ),
-            bDeleteEnginePool( rOrg.bDeleteEnginePool ),
-            bDeleteDefaults( false )
+            m_pEnginePool( rOrg.m_bDeleteEnginePool ? rOrg.m_pEnginePool->Clone() : rOrg.m_pEnginePool ),
+            m_bDeleteEnginePool( rOrg.m_bDeleteEnginePool )
 {
 }
 
 ScEnginePoolHelper::~ScEnginePoolHelper()
 {
-    if ( bDeleteDefaults )
-        delete pDefaults;
 }
 
 ScEditEngineDefaulter::ScEditEngineDefaulter( SfxItemPool* pEnginePoolP,
@@ -553,7 +543,7 @@ ScEditEngineDefaulter::ScEditEngineDefaulter( SfxItemPool* pEnginePoolP,
 ScEditEngineDefaulter::ScEditEngineDefaulter( const ScEditEngineDefaulter& rOrg )
             :
             ScEnginePoolHelper( rOrg ),
-            EditEngine( pEnginePool.get() )
+            EditEngine( m_pEnginePool.get() )
 {
     SetDefaultLanguage( ScGlobal::GetEditDefaultLanguage() );
 }
@@ -562,16 +552,8 @@ ScEditEngineDefaulter::~ScEditEngineDefaulter()
 {
 }
 
-void ScEditEngineDefaulter::SetDefaults( const SfxItemSet& rSet, bool bRememberCopy )
+void ScEditEngineDefaulter::ApplyDefaults(const SfxItemSet& rNewSet)
 {
-    if ( bRememberCopy )
-    {
-        if ( bDeleteDefaults )
-            delete pDefaults;
-        pDefaults = new SfxItemSet( rSet );
-        bDeleteDefaults = true;
-    }
-    const SfxItemSet& rNewSet = bRememberCopy ? *pDefaults : rSet;
     bool bUndo = IsUndoEnabled();
     EnableUndo( false );
     bool bUpdateMode = SetUpdateLayout( false );
@@ -586,53 +568,63 @@ void ScEditEngineDefaulter::SetDefaults( const SfxItemSet& rSet, bool bRememberC
         EnableUndo( true );
 }
 
-void ScEditEngineDefaulter::SetDefaults( std::unique_ptr<SfxItemSet> pSet )
+void ScEditEngineDefaulter::SetDefaults(const SfxItemSet& rSet)
 {
-    if ( bDeleteDefaults )
-        delete pDefaults;
-    pDefaults = pSet.release();
-    bDeleteDefaults = true;
-    if ( pDefaults )
-        SetDefaults( *pDefaults, false );
+    m_oDefaults.emplace(rSet);
+    ApplyDefaults(*m_oDefaults);
+}
+
+void ScEditEngineDefaulter::SetDefaults( SfxItemSet&& aSet )
+{
+    m_oDefaults.emplace(std::move(aSet));
+    ApplyDefaults(*m_oDefaults);
 }
 
 void ScEditEngineDefaulter::SetDefaultItem( const SfxPoolItem& rItem )
 {
-    if ( !pDefaults )
+    if ( !m_oDefaults )
     {
-        pDefaults = new SfxItemSet( GetEmptyItemSet() );
-        bDeleteDefaults = true;
+        m_oDefaults.emplace( GetEmptyItemSet() );
     }
-    pDefaults->Put( rItem );
-    SetDefaults( *pDefaults, false );
+    m_oDefaults->Put( rItem );
+    ApplyDefaults(*m_oDefaults);
 }
 
 const SfxItemSet& ScEditEngineDefaulter::GetDefaults()
 {
-    if ( !pDefaults )
+    if ( !m_oDefaults )
     {
-        pDefaults = new SfxItemSet( GetEmptyItemSet() );
-        bDeleteDefaults = true;
+        m_oDefaults.emplace( GetEmptyItemSet() );
     }
-    return *pDefaults;
+    return *m_oDefaults;
 }
 
 void ScEditEngineDefaulter::SetTextCurrentDefaults( const EditTextObject& rTextObject )
 {
     bool bUpdateMode = SetUpdateLayout( false );
     SetText( rTextObject );
-    if ( pDefaults )
-        SetDefaults( *pDefaults, false );
+    if ( m_oDefaults )
+        ApplyDefaults(*m_oDefaults);
     if ( bUpdateMode )
         SetUpdateLayout( true );
 }
 
-void ScEditEngineDefaulter::SetTextNewDefaults( const EditTextObject& rTextObject,
-            const SfxItemSet& rSet, bool bRememberCopy )
+void ScEditEngineDefaulter::SetTextNewDefaults(const EditTextObject& rTextObject,
+                                               SfxItemSet&& aDefaults)
 {
     bool bUpdateMode = SetUpdateLayout( false );
     SetText( rTextObject );
-    SetDefaults( rSet, bRememberCopy );
+    SetDefaults(std::move(aDefaults));
+    if ( bUpdateMode )
+        SetUpdateLayout( true );
+}
+
+void ScEditEngineDefaulter::SetTextTempDefaults(const EditTextObject& rTextObject,
+                                                const SfxItemSet& rSet)
+{
+    bool bUpdateMode = SetUpdateLayout( false );
+    SetText( rTextObject );
+    ApplyDefaults(rSet);
     if ( bUpdateMode )
         SetUpdateLayout( true );
 }
@@ -641,29 +633,29 @@ void ScEditEngineDefaulter::SetTextCurrentDefaults( const OUString& rText )
 {
     bool bUpdateMode = SetUpdateLayout( false );
     SetText( rText );
-    if ( pDefaults )
-        SetDefaults( *pDefaults, false );
+    if ( m_oDefaults )
+        ApplyDefaults(*m_oDefaults);
     if ( bUpdateMode )
         SetUpdateLayout( true );
 }
 
 void ScEditEngineDefaulter::SetTextNewDefaults( const OUString& rText,
-            const SfxItemSet& rSet )
+                                                SfxItemSet&& aDefaults )
 {
     bool bUpdateMode = SetUpdateLayout( false );
     SetText( rText );
-    SetDefaults( rSet );
+    SetDefaults(std::move(aDefaults));
     if ( bUpdateMode )
         SetUpdateLayout( true );
 }
 
 void ScEditEngineDefaulter::RepeatDefaults()
 {
-    if ( pDefaults )
+    if ( m_oDefaults )
     {
         sal_Int32 nPara = GetParagraphCount();
         for ( sal_Int32 j=0; j<nPara; j++ )
-            SetParaAttribs( j, *pDefaults );
+            SetParaAttribs( j, *m_oDefaults );
     }
 }
 
@@ -682,7 +674,7 @@ void ScEditEngineDefaulter::RemoveParaAttribs()
             if ( rParaAttribs.GetItemState( nWhich, false, &pParaItem ) == SfxItemState::SET )
             {
                 //  if defaults are set, use only items that are different from default
-                if ( !pDefaults || *pParaItem != pDefaults->Get(nWhich) )
+                if ( !m_oDefaults || *pParaItem != m_oDefaults->Get(nWhich) )
                 {
                     if (!pCharItems)
                         pCharItems.emplace( GetEmptyItemSet() );
@@ -737,28 +729,26 @@ void ScEditEngineDefaulter::RemoveParaAttribs()
         SetUpdateLayout( true );
 }
 
-ScTabEditEngine::ScTabEditEngine( ScDocument* pDoc )
-        : ScFieldEditEngine( pDoc, pDoc->GetEnginePool() )
+ScTabEditEngine::ScTabEditEngine( ScDocument& rDoc )
+        : ScFieldEditEngine( &rDoc, rDoc.GetEditEnginePool() )
 {
-    SetEditTextObjectPool( pDoc->GetEditPool() );
-    Init(pDoc->GetPool()->GetDefaultItem(ATTR_PATTERN));
+    const ScPatternAttr& rScPatternAttr(rDoc.getCellAttributeHelper().getDefaultCellAttribute());
+    Init(rScPatternAttr);
 }
 
 ScTabEditEngine::ScTabEditEngine( const ScPatternAttr& rPattern,
-            SfxItemPool* pEngineItemPool, ScDocument* pDoc, SfxItemPool* pTextObjectPool )
-        : ScFieldEditEngine( pDoc, pEngineItemPool, pTextObjectPool )
+            SfxItemPool* pEngineItemPool, ScDocument& rDoc )
+        : ScFieldEditEngine( &rDoc, pEngineItemPool )
 {
-    if ( pTextObjectPool )
-        SetEditTextObjectPool( pTextObjectPool );
     Init( rPattern );
 }
 
 void ScTabEditEngine::Init( const ScPatternAttr& rPattern )
 {
     SetRefMapMode(MapMode(MapUnit::Map100thMM));
-    auto pEditDefaults = std::make_unique<SfxItemSet>( GetEmptyItemSet() );
-    rPattern.FillEditItemSet( pEditDefaults.get() );
-    SetDefaults( std::move(pEditDefaults) );
+    SfxItemSet aEditDefaults( GetEmptyItemSet() );
+    rPattern.FillEditItemSet( &aEditDefaults );
+    SetDefaults( std::move(aEditDefaults) );
     // we have no StyleSheets for text
     SetControlWord( GetControlWord() & ~EEControlBits::RTFSTYLESHEETS );
 }
@@ -845,7 +835,7 @@ OUString ScHeaderEditEngine::CalcFieldValue( const SvxFieldItem& rField,
 {
     const SvxFieldData* pFieldData = rField.GetField();
     if (!pFieldData)
-        return "?";
+        return u"?"_ustr;
 
     OUString aRet;
     sal_Int32 nClsId = pFieldData->GetClassId();
@@ -894,12 +884,10 @@ OUString ScHeaderEditEngine::CalcFieldValue( const SvxFieldItem& rField,
 
 ScFieldEditEngine::ScFieldEditEngine(
     ScDocument* pDoc, SfxItemPool* pEnginePoolP,
-    SfxItemPool* pTextObjectPool, bool bDeleteEnginePoolP) :
+    bool bDeleteEnginePoolP) :
         ScEditEngineDefaulter( pEnginePoolP, bDeleteEnginePoolP ),
         mpDoc(pDoc), bExecuteURL(true)
 {
-    if ( pTextObjectPool )
-        SetEditTextObjectPool( pTextObjectPool );
     SetControlWord( EEControlBits(GetControlWord() | EEControlBits::MARKFIELDS) & ~EEControlBits::RTFSTYLESHEETS );
 }
 
@@ -911,7 +899,7 @@ OUString ScFieldEditEngine::CalcFieldValue( const SvxFieldItem& rField,
     const SvxFieldData* pFieldData = rField.GetField();
 
     if (!pFieldData)
-        return " ";
+        return u" "_ustr;
 
     return ScEditUtil::GetCellFieldValue(*pFieldData, mpDoc, &rTxtColor, &rFldLineStyle);
 }
@@ -929,12 +917,9 @@ bool ScFieldEditEngine::FieldClicked( const SvxFieldItem& rField )
     return false;
 }
 
-ScNoteEditEngine::ScNoteEditEngine( SfxItemPool* pEnginePoolP,
-            SfxItemPool* pTextObjectPool ) :
+ScNoteEditEngine::ScNoteEditEngine( SfxItemPool* pEnginePoolP ) :
     ScEditEngineDefaulter( pEnginePoolP, false/*bDeleteEnginePoolP*/ )
 {
-    if ( pTextObjectPool )
-        SetEditTextObjectPool( pTextObjectPool );
     SetControlWord( EEControlBits(GetControlWord() | EEControlBits::MARKFIELDS) & ~EEControlBits::RTFSTYLESHEETS );
 }
 

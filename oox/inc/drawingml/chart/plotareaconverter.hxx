@@ -21,6 +21,8 @@
 #define INCLUDED_OOX_DRAWINGML_CHART_PLOTAREACONVERTER_HXX
 
 #include <drawingml/chart/converterbase.hxx>
+#include <drawingml/chart/seriesmodel.hxx>
+#include <oox/drawingml/chart/datasourcemodel.hxx>
 
 namespace com::sun::star {
     namespace chart2 { class XDiagram; }
@@ -68,12 +70,15 @@ public:
     virtual             ~PlotAreaConverter() override;
 
     /** Converts the OOXML plot area model to a chart2 diagram. */
-    void                convertFromModel( View3DModel& rView3DModel );
+    void                convertFromModel( View3DModel& rView3DModel,
+            DataSourceCxModel& raDataMap );
     /** Converts the manual plot area position and size, if set. */
     void                convertPositionFromModel();
 
     /** Returns the automatic chart title if the chart contains only one series. */
     const OUString&     getAutomaticTitle() const { return maAutoTitle; }
+    /** Returns true, if the chart contains only one series and have title textbox (even empty). */
+    bool                isSingleSeriesTitle() const { return mbSingleSeriesTitle; }
     /** Returns true, if chart type supports wall and floor format in 3D mode. */
     bool                isWall3dChart() const { return mbWall3dChart; }
 
@@ -82,6 +87,7 @@ private:
     bool                mb3dChart;
     bool                mbWall3dChart;
     bool                mbPieChart;
+    bool                mbSingleSeriesTitle;;
 };
 
 

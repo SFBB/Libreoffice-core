@@ -115,7 +115,12 @@ static SwNode* GoPreviousWithFrame(SwNodeIndex *pIdx, SwFlowFrame const**const p
             // frame as the caller's one
             pFound = SwIterator<SwFrame, SwContentNode, sw::IteratorMode::UnwrapMulti>(*static_cast<SwContentNode*>(pNd)).First();
         else if ( pNd->IsTableNode() )
-            pFound = SwIterator<SwFrame,SwFormat>(*static_cast<SwTableNode*>(pNd)->GetTable().GetFrameFormat()).First();
+        {
+            if (SwFrameFormat *const pFormat{static_cast<SwTableNode*>(pNd)->GetTable().GetFrameFormat()})
+            {
+                pFound = SwIterator<SwFrame,SwFormat>(*pFormat).First();
+            }
+        }
         else if( pNd->IsStartNode() && !pNd->IsSectionNode() )
         {
             pNd = nullptr;
@@ -146,7 +151,7 @@ SwFrame const* FindNeighbourFrameForNode(SwNode const& rNode)
 {
     SwNodeIndex idx(rNode);
     SwFlowFrame const* pFlow(nullptr);
-    if (SwNode *const pNode = GoPreviousWithFrame(&idx, &pFlow))
+    if (GoPreviousWithFrame(&idx, &pFlow))
     {
         if (::CheckNodesRange(rNode, idx.GetNode(), true))
         {
@@ -158,7 +163,7 @@ SwFrame const* FindNeighbourFrameForNode(SwNode const& rNode)
         }
     }
     idx = rNode;
-    if (SwNode *const pNode = GoNextWithFrame(idx.GetNodes(), &idx, &pFlow))
+    if (GoNextWithFrame(idx.GetNodes(), &idx, &pFlow))
     {
         if (::CheckNodesRange(rNode, idx.GetNode(), true))
         {
@@ -349,16 +354,15 @@ SwLayoutFrame* SwNode2LayImpl::UpperFrame( SwFrame* &rpFrame, const SwNode &rNod
                     // #i22922# - consider columned sections
                     // 'Go down' the section frame as long as the layout frame
                     // is found, which would contain content.
-                    while ( pFrame->IsLayoutFrame() &&
-                            static_cast<SwLayoutFrame*>(pFrame)->Lower() &&
-                            !static_cast<SwLayoutFrame*>(pFrame)->Lower()->IsFlowFrame() &&
-                            static_cast<SwLayoutFrame*>(pFrame)->Lower()->IsLayoutFrame() )
+                    SwFrame* pLower = static_cast<SwLayoutFrame*>(pFrame)->Lower();
+                    while ( pFrame->IsLayoutFrame() && pLower &&
+                            !pLower->IsFlowFrame() && pLower->IsLayoutFrame() )
                     {
-                        pFrame = static_cast<SwLayoutFrame*>(pFrame)->Lower();
+                        pFrame = pLower;
+                        pLower = static_cast<SwLayoutFrame*>(pFrame)->Lower();
                     }
                     assert(pFrame->IsLayoutFrame());
-                    rpFrame = mbMaster ? nullptr
-                                    : static_cast<SwLayoutFrame*>(pFrame)->Lower();
+                    rpFrame = mbMaster ? nullptr : pLower;
                     assert((!rpFrame || rpFrame->IsFlowFrame()) &&
                             "<SwNode2LayImpl::UpperFrame(..)> - expected sibling isn't a flow frame." );
                     return static_cast<SwLayoutFrame*>(pFrame);
@@ -372,11 +376,12 @@ SwLayoutFrame* SwNode2LayImpl::UpperFrame( SwFrame* &rpFrame, const SwNode &rNod
                 rpFrame = nullptr;
                 // 'Go down' the section frame as long as the layout frame
                 // is found, which would contain content.
-                while ( pUpper->Lower() &&
-                        !pUpper->Lower()->IsFlowFrame() &&
-                        pUpper->Lower()->IsLayoutFrame() )
+                SwFrame* pLower = pUpper->Lower();
+                while ( pLower && !pLower->IsFlowFrame() &&
+                        pLower->IsLayoutFrame() )
                 {
-                    pUpper = static_cast<SwLayoutFrame*>(pUpper->Lower());
+                    pUpper = static_cast<SwLayoutFrame*>(pLower);
+                    pLower = pUpper->Lower();
                 }
                 return pUpper;
             }
@@ -439,7 +444,7 @@ void SwNode2LayImpl::RestoreUpperFrames( SwNodes& rNds, SwNodeOffset nStt, SwNod
                     static_cast<SwSectionFrame*>(pNxt)->UnlockJoin();
                 pUp = static_cast<SwLayoutFrame*>(mvUpperFrames[x++]);
                 OSL_ENSURE( pUp->GetUpper() || pUp->IsFlyFrame(), "Lost Upper" );
-                ::InsertCnt_( pUp, &rDoc, pNd->GetIndex(), false, nStt+1, pNxt );
+                ::InsertCnt_( pUp, rDoc, pNd->GetIndex(), false, nStt+1, pNxt );
                 pNxt = pUp->GetLastLower();
                 mvUpperFrames[x-2] = pNxt;
             }

@@ -48,7 +48,7 @@ std::unique_ptr<PanelLayout> PageFormatPanel::Create(
     SfxBindings* pBindings)
 {
     if( pParent == nullptr )
-        throw ::com::sun::star::lang::IllegalArgumentException("no parent window given to PageFormatPanel::Create", nullptr, 0);
+        throw css::lang::IllegalArgumentException(u"no parent window given to PageFormatPanel::Create"_ustr, nullptr, 0);
 
     return std::make_unique<PageFormatPanel>(pParent, pBindings);
 }
@@ -81,14 +81,14 @@ void PageFormatPanel::SetMarginFieldUnit()
 }
 
 PageFormatPanel::PageFormatPanel(weld::Widget* pParent, SfxBindings* pBindings) :
-    PanelLayout(pParent, "PageFormatPanel", "modules/swriter/ui/pageformatpanel.ui"),
+    PanelLayout(pParent, u"PageFormatPanel"_ustr, u"modules/swriter/ui/pageformatpanel.ui"_ustr),
     mpBindings( pBindings ),
-    mxPaperSizeBox(new SvxPaperSizeListBox(m_xBuilder->weld_combo_box("papersize"))),
-    mxPaperWidth(new SvxRelativeField(m_xBuilder->weld_metric_spin_button("paperwidth", FieldUnit::CM))),
-    mxPaperHeight(new SvxRelativeField(m_xBuilder->weld_metric_spin_button("paperheight", FieldUnit::CM))),
-    mxPaperOrientation(m_xBuilder->weld_combo_box("paperorientation")),
-    mxMarginSelectBox(m_xBuilder->weld_combo_box("marginLB")),
-    mxCustomEntry(m_xBuilder->weld_label("customlabel")),
+    mxPaperSizeBox(new SvxPaperSizeListBox(m_xBuilder->weld_combo_box(u"papersize"_ustr))),
+    mxPaperWidth(new SvxRelativeField(m_xBuilder->weld_metric_spin_button(u"paperwidth"_ustr, FieldUnit::CM))),
+    mxPaperHeight(new SvxRelativeField(m_xBuilder->weld_metric_spin_button(u"paperheight"_ustr, FieldUnit::CM))),
+    mxPaperOrientation(m_xBuilder->weld_combo_box(u"paperorientation"_ustr)),
+    mxMarginSelectBox(m_xBuilder->weld_combo_box(u"marginLB"_ustr)),
+    mxCustomEntry(m_xBuilder->weld_label(u"customlabel"_ustr)),
     maPaperSizeController(SID_ATTR_PAGE_SIZE, *pBindings, *this),
     maPaperOrientationController(SID_ATTR_PAGE, *pBindings, *this),
     maMetricController(SID_ATTR_METRIC, *pBindings,*this),
@@ -319,9 +319,7 @@ FieldUnit PageFormatPanel::GetCurrentUnit( SfxItemState eState, const SfxPoolIte
             SfxModule* pModule = pSh->GetModule();
             if ( pModule )
             {
-                const SfxPoolItem* pItem = pModule->GetItem( SID_ATTR_METRIC );
-                if ( pItem )
-                    eUnit = static_cast<FieldUnit>(static_cast<const SfxUInt16Item*>(pItem)->GetValue());
+                eUnit = pModule->GetFieldUnit();
             }
             else
             {

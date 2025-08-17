@@ -37,7 +37,6 @@
 class SvtFileView;
 class SvtFileDialogFilter_Impl;
 class SvtExpFileDlg_Impl;
-class SvtURLBox;
 
 enum class AdjustFilterFlags {
     NONE            = 0x0000,
@@ -148,6 +147,8 @@ private:
     void                        EnableControl(weld::Widget* pControl, bool bEnable);
     virtual bool                PrepareExecute() override;
 
+    void ImplDestroy();
+
 public:
                                 SvtFileDialog( weld::Window* pParent, PickerFlags nBits );
                                 virtual ~SvtFileDialog() override;
@@ -159,8 +160,6 @@ public:
 
     void                        SetDenyList( const css::uno::Sequence< OUString >& rDenyList ) override;
     const css::uno::Sequence< OUString >& GetDenyList() const override;
-    void                        SetStandardDir( const OUString& rStdDir ) override;
-    const OUString&             GetStandardDir() const override;
     std::vector<OUString>       GetPathList() const override;        // for MultiSelection
 
             void                AddFilter( const OUString& rFilter,

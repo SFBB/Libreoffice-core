@@ -16,15 +16,33 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_IMARK_HXX
-#define INCLUDED_SW_INC_IMARK_HXX
+#pragma once
 
+#include <com/sun/star/text/XTextContent.hpp>
+#include <cppuhelper/weakref.hxx>
+#include <osl/diagnose.h>
+#include <rtl/ustring.hxx>
+#include <sfx2/Metadatable.hxx>
+#include <unotools/weakref.hxx>
+#include <tools/ref.hxx>
 #include <vcl/keycod.hxx>
+#include "swrect.hxx"
 #include "calbck.hxx"
 #include "pam.hxx"
+#include "names.hxx"
+#include "swdllapi.h"
 #include <map>
 #include <memory>
-#include "swdllapi.h"
+#include <optional>
+#include <string_view>
+
+class SwDoc;
+class SwEditWin;
+class SvNumberFormatter;
+class SwServerObject;
+class SfxViewShell;
+class SwXBookmark;
+class FormFieldButton;
 
 namespace sw::mark
 {
@@ -34,138 +52,342 @@ namespace sw::mark
         CopyText,
     };
 
-    class SW_DLLPUBLIC IMark
-        : virtual public sw::BroadcastingModify // inherited as interface
+    class SW_DLLPUBLIC MarkBase
+        : public ISwContentIndexOwner,
+          virtual public sw::BroadcastingModify // inherited as interface
     {
-        protected:
-            IMark() = default;
+    public:
+        virtual SwContentIndexOwnerType GetOwnerType() const override final { return SwContentIndexOwnerType::Mark; }
 
-        public:
-            //getters
-            virtual const SwPosition& GetMarkPos() const =0;
-            // GetOtherMarkPos() is only guaranteed to return a valid
-            // reference if IsExpanded() returned true
-            virtual const SwPosition& GetOtherMarkPos() const =0;
-            virtual const SwPosition& GetMarkStart() const =0;
-            virtual const SwPosition& GetMarkEnd() const =0;
-            virtual const OUString& GetName() const =0;
-            virtual bool IsExpanded() const =0;
-            virtual bool IsCoveringPosition(const SwPosition& rPos) const =0;
+        //getters
+        SwPosition& GetMarkPos() const
+            { return const_cast<SwPosition&>(*m_oPos1); }
+        const SwMarkName& GetName() const
+            { return m_aName; }
+        // GetOtherMarkPos() is only guaranteed to return a valid
+        // reference if IsExpanded() returned true
+        virtual SwPosition& GetOtherMarkPos() const
+        {
+            OSL_PRECOND(IsExpanded(), "<SwPosition::GetOtherMarkPos(..)> - I have no other Pos set." );
+            return const_cast<SwPosition&>(*m_oPos2);
+        }
+        virtual SwPosition& GetMarkStart() const
+        {
+            SwPosition& rPos1 = GetMarkPos();
+            if( !IsExpanded() )
+                return rPos1;
+            SwPosition& rPos2 = GetOtherMarkPos();
+            if ( rPos1 < rPos2 )
+                return rPos1;
+            else
+                return rPos2;
+        }
+        virtual SwPosition& GetMarkEnd() const
+        {
+            SwPosition& rPos1 = GetMarkPos();
+            if( !IsExpanded() )
+                return rPos1;
+            SwPosition& rPos2 = GetOtherMarkPos();
+            if ( rPos1 >= rPos2 )
+                return rPos1;
+            else
+                return rPos2;
+        }
+        virtual std::pair<SwPosition&,SwPosition&> GetMarkStartEnd() const
+        {
+            SwPosition& rPos1 = GetMarkPos();
+            if( !IsExpanded() )
+                return {rPos1, rPos1};
+            SwPosition& rPos2 = GetOtherMarkPos();
+            if ( rPos1 < rPos2 )
+                return {rPos1, rPos2};
+            else
+                return {rPos2, rPos1};
+        }
 
-            //setters
-            // not available in IMark
-            // inside core, you can cast to MarkBase and use its setters,
-            // make sure to update the sorting in Markmanager in this case
+        bool IsCoveringPosition(const SwPosition& rPos) const;
+        virtual bool IsExpanded() const
+            { return m_oPos2.has_value(); }
 
-            virtual OUString ToString( ) const =0;
-            virtual void dumpAsXml(xmlTextWriterPtr pWriter) const = 0;
-        private:
-            IMark(IMark const &) = delete;
-            IMark &operator =(IMark const&) = delete;
+        void SetName(const SwMarkName& rName)
+            { m_aName = rName; }
+        virtual void SetMarkPos(const SwPosition& rNewPos);
+        virtual void SetOtherMarkPos(const SwPosition& rNewPos);
+        virtual void ClearOtherMarkPos()
+            { m_oPos2.reset(); }
+
+        virtual auto InvalidateFrames() -> void;
+
+        virtual OUString ToString( ) const;
+        virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
+
+        void Swap()
+        {
+            if(m_oPos2)
+                m_oPos1.swap(m_oPos2);
+        }
+
+        virtual void InitDoc(SwDoc&, sw::mark::InsertMode, SwPosition const*)
+        {
+        }
+
+        ~MarkBase() override;
+
+        const unotools::WeakReference<SwXBookmark> & GetXBookmark() const
+                { return m_wXBookmark; }
+        void SetXBookmark(rtl::Reference<SwXBookmark> const& xBkmk);
+
+        static SwMarkName GenerateNewName(std::u16string_view rPrefix);
+    protected:
+        // SwClient
+        void SwClientNotify(const SwModify&, const SfxHint&) override;
+
+        MarkBase(const SwPaM& rPaM, SwMarkName aName);
+        std::optional<SwPosition> m_oPos1;
+        std::optional<SwPosition> m_oPos2;
+        SwMarkName m_aName;
+
+        unotools::WeakReference<SwXBookmark> m_wXBookmark;
     };
 
-    class SW_DLLPUBLIC IBookmark
-        : virtual public IMark
+    class NavigatorReminder final
+        : public MarkBase
     {
-        protected:
-            IBookmark() = default;
-
-        public:
-            virtual const OUString& GetShortName() const =0;
-            virtual const vcl::KeyCode& GetKeyCode() const =0;
-            virtual void SetShortName(const OUString&) =0;
-            virtual void SetKeyCode(const vcl::KeyCode&) =0;
-            virtual bool IsHidden() const =0;
-            virtual const OUString& GetHideCondition() const =0;
-            virtual void Hide(bool hide) =0;
-            virtual void SetHideCondition(const OUString&) =0;
-        private:
-            IBookmark(IBookmark const &) = delete;
-            IBookmark &operator =(IBookmark const&) = delete;
+    public:
+        NavigatorReminder(const SwPaM& rPaM);
     };
 
-    class SW_DLLPUBLIC SAL_LOPLUGIN_ANNOTATE("crosscast") IFieldmark
-        : virtual public IMark
+    class UnoMark final
+        : public MarkBase
     {
-        protected:
-            IFieldmark() = default;
-
-        public:
-            typedef std::map< OUString, css::uno::Any> parameter_map_t;
-            //getters
-            virtual OUString GetFieldname() const =0;
-            virtual OUString GetFieldHelptext() const =0;
-            virtual parameter_map_t* GetParameters() =0;
-            virtual const parameter_map_t* GetParameters() const =0;
-
-            //setters
-            virtual void SetFieldname(const OUString& rFieldname) =0;
-            virtual void SetFieldHelptext(const OUString& rFieldHelptext) =0;
-            virtual void Invalidate() = 0;
-
-            virtual OUString GetContent() const { return OUString(); }
-            virtual void ReplaceContent(const OUString& /*sNewContent*/) {}
-
-        private:
-            IFieldmark(IFieldmark const &) = delete;
-            IFieldmark &operator =(IFieldmark const&) = delete;
+    public:
+        UnoMark(const SwPaM& rPaM);
     };
 
-    class SW_DLLPUBLIC ICheckboxFieldmark
-        : virtual public IFieldmark
+    class SW_DLLPUBLIC DdeBookmark
+        : public MarkBase
     {
-        protected:
-            ICheckboxFieldmark() = default;
+    public:
+        DdeBookmark(const SwPaM& rPaM);
 
-        public:
-            virtual bool IsChecked() const =0;
-            virtual void SetChecked(bool checked) =0;
-        private:
-            ICheckboxFieldmark(ICheckboxFieldmark const &) = delete;
-            ICheckboxFieldmark &operator =(ICheckboxFieldmark const&) = delete;
-    };
+        const SwServerObject* GetRefObject() const { return m_aRefObj.get(); }
+        SwServerObject* GetRefObject() { return m_aRefObj.get(); }
 
-    class SW_DLLPUBLIC IDropdownFieldmark
-        : virtual public IFieldmark
-    {
-        protected:
-            IDropdownFieldmark() = default;
+        bool IsServer() const { return m_aRefObj.is(); }
 
-        public:
-            virtual OUString GetContent(sal_Int32* pIndex) const = 0;
-            virtual OUString GetContent() const override = 0;
-            virtual void AddContent(const OUString& rText, sal_Int32* pIndex = nullptr) = 0;
-            virtual void DelContent(sal_Int32 nDelIndex = -1) = 0;
-            virtual void ReplaceContent(const OUString* pText, sal_Int32* pIndex) = 0;
-            virtual void ReplaceContent(const OUString& sNewContent) override = 0;
+        void SetRefObject( SwServerObject* pObj );
+
+        virtual void DeregisterFromDoc(SwDoc& rDoc);
+        ~DdeBookmark() override;
 
     private:
-            IDropdownFieldmark(IDropdownFieldmark const &) = delete;
-            IDropdownFieldmark &operator =(IDropdownFieldmark const&) = delete;
+        tools::SvRef<SwServerObject> m_aRefObj;
     };
 
-    class SW_DLLPUBLIC IDateFieldmark
-        : virtual public IFieldmark
+    class SW_DLLPUBLIC Bookmark
+        : public DdeBookmark
+        , public ::sfx2::Metadatable
     {
-        protected:
-            IDateFieldmark() = default;
+    public:
+        Bookmark(const SwPaM& rPaM,
+            const vcl::KeyCode& rCode,
+            const SwMarkName& rName);
+        void InitDoc(SwDoc& io_Doc, sw::mark::InsertMode eMode, SwPosition const* pSepPos) override;
 
-        public:
-            virtual OUString GetContent() const override = 0;
-            virtual void ReplaceContent(const OUString& sNewContent) override = 0;
+        void DeregisterFromDoc(SwDoc& io_rDoc) override;
 
-            virtual std::pair<bool, double> GetCurrentDate() const = 0;
-            virtual void SetCurrentDate(double fDate) = 0;
-            virtual OUString GetDateInStandardDateFormat(double fDate) const = 0;
+        auto InvalidateFrames() -> void override;
+
+        const OUString& GetShortName() const
+            { return m_sShortName; }
+        const vcl::KeyCode& GetKeyCode() const
+            { return m_aCode; }
+        void SetShortName(const OUString& rShortName)
+            { m_sShortName = rShortName; }
+        void SetKeyCode(const vcl::KeyCode& rCode)
+            { m_aCode = rCode; }
+        bool IsHidden() const
+            { return m_bHidden; }
+        const OUString& GetHideCondition() const
+            { return m_sHideCondition; }
+        void Hide(bool rHide);
+        void SetHideCondition(const OUString& rHideCondition);
+
+        // ::sfx2::Metadatable
+        ::sfx2::IXmlIdRegistry& GetRegistry() override;
+        bool IsInClipboard() const override;
+        bool IsInUndo() const override;
+        bool IsInContent() const override;
+        void sendLOKDeleteCallback();
+        css::uno::Reference< css::rdf::XMetadatable > MakeUnoObject() override;
 
     private:
-            IDateFieldmark(ICheckboxFieldmark const &) = delete;
-            IDateFieldmark &operator =(ICheckboxFieldmark const&) = delete;
+        vcl::KeyCode m_aCode;
+        OUString m_sShortName;
+        bool m_bHidden;
+        OUString m_sHideCondition;
     };
 
-    OUString ExpandFieldmark(IFieldmark* pBM);
+    class SW_DLLPUBLIC Fieldmark
+        : public MarkBase
+    {
+    public:
+        typedef std::map< OUString, css::uno::Any> parameter_map_t;
 
+        Fieldmark(const SwPaM& rPaM);
+
+        virtual OUString GetContent() const { return OUString(); }
+        virtual void ReplaceContent(const OUString& /*sNewContent*/) {}
+
+        const OUString & GetFieldname() const { return m_aFieldname; }
+        const OUString & GetFieldHelptext() const { return m_aFieldHelptext; }
+
+        parameter_map_t* GetParameters() { return &m_vParams; }
+
+        const parameter_map_t* GetParameters() const
+            { return &m_vParams; }
+
+        void SetFieldname(const OUString& aFieldname)
+            { m_aFieldname = aFieldname; }
+        void SetFieldHelptext(const OUString& aFieldHelptext)
+            { m_aFieldHelptext = aFieldHelptext; }
+
+        virtual void ReleaseDoc(SwDoc&) = 0;
+
+        void SetMarkStartPos( const SwPosition& rNewStartPos );
+
+        void Invalidate();
+        OUString ToString() const override;
+        void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+
+    private:
+        OUString m_aFieldname;
+        OUString m_aFieldHelptext;
+        parameter_map_t m_vParams;
+    };
+
+    OUString ExpandFieldmark(Fieldmark* pBM);
+
+    class TextFieldmark final
+        : public Fieldmark
+    {
+    public:
+        TextFieldmark(const SwPaM& rPaM, const SwMarkName& rName);
+        ~TextFieldmark();
+        void InitDoc(SwDoc& io_rDoc, sw::mark::InsertMode eMode, SwPosition const* pSepPos) override;
+        void ReleaseDoc(SwDoc& rDoc) override;
+
+        OUString GetContent() const override;
+        void ReplaceContent(const OUString& sNewContent) override;
+
+        bool HasDefaultContent() const;
+
+    private:
+        sw::DocumentContentOperationsManager* m_pDocumentContentOperationsManager;
+    };
+
+    // Non text fieldmarks have no content between the start and end marks.
+    class SW_DLLPUBLIC NonTextFieldmark
+        : public Fieldmark
+    {
+    public:
+        NonTextFieldmark(const SwPaM& rPaM);
+        void InitDoc(SwDoc& io_rDoc, sw::mark::InsertMode eMode, SwPosition const* pSepPos) override;
+        void ReleaseDoc(SwDoc& rDoc) override;
+    };
+
+    /// Fieldmark representing a checkbox form field.
+    class SW_DLLPUBLIC CheckboxFieldmark final
+        : public NonTextFieldmark
+    {
+    public:
+        CheckboxFieldmark(const SwPaM& rPaM, const SwMarkName& rName);
+        bool IsChecked() const;
+        void SetChecked(bool checked);
+        OUString GetContent() const override;
+        void ReplaceContent(const OUString& sNewContent) override;
+    };
+
+    /// Fieldmark with a drop down button (e.g. this button opens the date picker for a date field)
+    class SW_DLLPUBLIC FieldmarkWithDropDownButton
+        : public NonTextFieldmark
+    {
+    public:
+        FieldmarkWithDropDownButton(const SwPaM& rPaM);
+        ~FieldmarkWithDropDownButton() override;
+
+        virtual void ShowButton(SwEditWin* pEditWin) = 0;
+        virtual void RemoveButton();
+        void LaunchPopup();
+
+    protected:
+        VclPtr<FormFieldButton> m_pButton;
+    };
+
+    /// Fieldmark representing a drop-down form field.
+    class SW_DLLPUBLIC DropDownFieldmark final
+        : public FieldmarkWithDropDownButton
+    {
+    public:
+        DropDownFieldmark(const SwPaM& rPaM, const SwMarkName& rName);
+        ~DropDownFieldmark() override;
+
+        void ShowButton(SwEditWin* pEditWin) override;
+        void RemoveButton() override;
+        OUString GetContent(sal_Int32* pIndex) const;
+        OUString GetContent() const override;
+        void AddContent(const OUString& rText, sal_Int32* pIndex = nullptr);
+        void DelContent(sal_Int32 nDelIndex = -1);
+        void ReplaceContent(const OUString* pText, sal_Int32* pIndex);
+        void ReplaceContent(const OUString& sNewContent) override;
+
+        // This method should be called only by the portion so we can now the portion's painting area
+        void SetPortionPaintArea(const SwRect& rPortionPaintArea);
+
+        void SendLOKShowMessage(const SfxViewShell* pViewShell);
+        static void SendLOKHideMessage(const SfxViewShell* pViewShell);
+
+    private:
+        SwRect m_aPortionPaintArea;
+    };
+
+    /// Fieldmark representing a date form field.
+    /// TODO: this was an SDT in DOCX, which is modelled suboptimally here
+    /// as a fieldmark; as it cannot contain paragraph breaks, must be
+    /// well-formed XML element, and does not have field separator, it
+    /// should be a nesting text attribute similar to SwTextMeta.
+    class SW_DLLPUBLIC DateFieldmark final
+        : public FieldmarkWithDropDownButton
+    {
+    public:
+        DateFieldmark(const SwPaM& rPaM);
+        ~DateFieldmark() override;
+
+        void InitDoc(SwDoc& io_rDoc, sw::mark::InsertMode eMode, SwPosition const* pSepPos) override;
+        void ReleaseDoc(SwDoc& rDoc) override;
+
+        void ShowButton(SwEditWin* pEditWin) override;
+
+        void SetPortionPaintAreaStart(const SwRect& rPortionPaintArea);
+        void SetPortionPaintAreaEnd(const SwRect& rPortionPaintArea);
+
+        OUString GetContent() const override;
+        void ReplaceContent(const OUString& sNewContent) override;
+
+        std::pair<bool, double> GetCurrentDate() const;
+        void SetCurrentDate(double fDate);
+        OUString GetDateInStandardDateFormat(double fDate) const;
+
+    private:
+        OUString GetDateInCurrentDateFormat(double fDate) const;
+        std::pair<bool, double> ParseCurrentDateParam() const;
+        void InvalidateCurrentDateParam();
+
+        SvNumberFormatter* m_pNumberFormatter;
+        sw::DocumentContentOperationsManager* m_pDocumentContentOperationsManager;
+        SwRect m_aPaintAreaStart;
+        SwRect m_aPaintAreaEnd;
+    };
 }
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

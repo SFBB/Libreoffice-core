@@ -18,25 +18,27 @@
  */
 
 #include <sal/log.hxx>
-#include <utility>
+#include <comphelper/lok.hxx>
+
 #include <vcl/svapp.hxx>
-#include <vcl/bitmapex.hxx>
+#include <vcl/bitmap/BitmapFilter.hxx>
 #include <vcl/gdimtf.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/virdev.hxx>
-#include <vcl/BitmapFilter.hxx>
 #include <vcl/ImageTree.hxx>
 #include <vcl/skia/SkiaHelper.hxx>
+
 #include <bitmap/BitmapDisabledImageFilter.hxx>
-#include <comphelper/lok.hxx>
 
 #include <image.h>
 #include <salgdi.hxx>
 
-ImplImage::ImplImage(const BitmapEx &rBitmapEx)
+#include <utility>
+
+ImplImage::ImplImage(const Bitmap &rBitmap)
     : maBitmapChecksum(0)
-    , maSizePixel(rBitmapEx.GetSizePixel())
-    , maBitmapEx(rBitmapEx)
+    , maSizePixel(rBitmap.GetSizePixel())
+    , maBitmap(rBitmap)
 {
 }
 
@@ -53,22 +55,29 @@ ImplImage::ImplImage(const GDIMetaFile& rMetaFile)
 {
 }
 
-bool ImplImage::loadStockAtScale(SalGraphics* pGraphics, BitmapEx &rBitmapEx)
+bool ImplImage::loadStockAtScale(SalGraphics* pGraphics, Bitmap &rBitmap)
 {
-    BitmapEx aBitmapEx;
+    Bitmap aBitmap;
 
     ImageLoadFlags eScalingFlags = ImageLoadFlags::NONE;
     sal_Int32 nScalePercentage = -1;
 
     double fScale(1.0);
-    if (pGraphics && pGraphics->ShouldDownscaleIconsAtSurface(&fScale)) // scale at the surface
-    {
-        nScalePercentage = fScale * 100.0;
-        eScalingFlags = ImageLoadFlags::IgnoreScalingFactor;
-    }
-
     OUString aIconTheme = Application::GetSettings().GetStyleSettings().DetermineIconTheme();
-    if (!ImageTree::get().loadImage(maStockName, aIconTheme, aBitmapEx, true,
+#ifdef MACOSX
+    if (aIconTheme.endsWith("_svg"))
+    {
+#endif
+        if (pGraphics && pGraphics->ShouldDownscaleIconsAtSurface(fScale)) // scale at the surface
+        {
+            nScalePercentage = fScale * 100.0;
+            eScalingFlags = ImageLoadFlags::IgnoreScalingFactor;
+        }
+#ifdef MACOSX
+    }
+#endif
+
+    if (!ImageTree::get().loadImage(maStockName, aIconTheme, aBitmap, true,
                                     nScalePercentage, eScalingFlags))
     {
         /* If the uno command has parameters, passed in from a toolbar,
@@ -80,22 +89,23 @@ bool ImplImage::loadStockAtScale(SalGraphics* pGraphics, BitmapEx &rBitmapEx)
             sal_Int32 nEnd = maStockName.lastIndexOf(".");
 
             OUString aFileName = maStockName.replaceAt(nStart, nEnd - nStart, u"");
-            if (!ImageTree::get().loadImage(aFileName, aIconTheme, aBitmapEx, true,
+            if (!ImageTree::get().loadImage(aFileName, aIconTheme, aBitmap, true,
                                             nScalePercentage, eScalingFlags))
             {
-                SAL_WARN("vcl", "Failed to load scaled image from " << maStockName <<
-                         " and " << aFileName << " at " << fScale);
+                SAL_WARN_IF(!bOptional, "vcl",
+                            "Failed to load scaled image from " << maStockName << " and "
+                                                                << aFileName << " at " << fScale);
                 return false;
             }
         }
         else
         {
-            SAL_WARN("vcl", "Failed to load scaled image from " << maStockName <<
-                     " at " << fScale);
+            SAL_WARN_IF(!bOptional, "vcl",
+                        "Failed to load scaled image from " << maStockName << " at " << fScale);
             return false;
         }
     }
-    rBitmapEx = aBitmapEx;
+    rBitmap = std::move(aBitmap);
     return true;
 }
 
@@ -106,39 +116,41 @@ Size ImplImage::getSizePixel()
         aRet = maSizePixel;
     else if (isStock())
     {
-        if (loadStockAtScale(nullptr, maBitmapEx))
+        if (loadStockAtScale(nullptr, maBitmap))
         {
-            assert(maDisabledBitmapEx.IsEmpty());
+            assert(maDisabledBitmap.IsEmpty());
             assert(maBitmapChecksum == 0);
-            maSizePixel = maBitmapEx.GetSizePixel();
+            maSizePixel = maBitmap.GetSizePixel();
             aRet = maSizePixel;
         }
         else
-            SAL_WARN("vcl", "Failed to load stock icon " << maStockName);
+            SAL_WARN_IF(!bOptional, "vcl", "Failed to load stock icon " << maStockName);
     }
     return aRet;
 }
 
 /// non-HiDPI compatibility method.
-BitmapEx const & ImplImage::getBitmapEx(bool bDisabled)
+Bitmap const & ImplImage::getBitmap(bool bDisabled)
 {
     getSizePixel(); // force load, and at unity scale.
     if (bDisabled)
     {
         // Changed since we last generated this.
-        BitmapChecksum aChecksum = maBitmapEx.GetChecksum();
+        BitmapChecksum aChecksum = maBitmap.GetChecksum();
         if (maBitmapChecksum != aChecksum ||
-            maDisabledBitmapEx.GetSizePixel() != maBitmapEx.GetSizePixel())
+            maDisabledBitmap.GetSizePixel() != maBitmap.GetSizePixel())
         {
-            maDisabledBitmapEx = maBitmapEx;
-            BitmapFilter::Filter(maDisabledBitmapEx, BitmapDisabledImageFilter());
+            maDisabledBitmap = maBitmap;
+            BitmapFilter::Filter(maDisabledBitmap, BitmapDisabledImageFilter());
             maBitmapChecksum = aChecksum;
         }
-        return maDisabledBitmapEx;
+        return maDisabledBitmap;
     }
 
-    return maBitmapEx;
+    return maBitmap;
 }
+
+void ImplImage::SetOptional(bool bValue) { bOptional = bValue; }
 
 bool ImplImage::isEqual(const ImplImage &ref) const
 {
@@ -147,21 +159,21 @@ bool ImplImage::isEqual(const ImplImage &ref) const
     if (isStock())
         return maStockName == ref.maStockName;
     else
-        return maBitmapEx == ref.maBitmapEx;
+        return maBitmap == ref.maBitmap;
 }
 
-BitmapEx const & ImplImage::getBitmapExForHiDPI(bool bDisabled, SalGraphics* pGraphics)
+Bitmap const & ImplImage::getBitmapForHiDPI(bool bDisabled, SalGraphics* pGraphics)
 {
     if ((isStock() || mxMetaFile) && pGraphics)
     {   // check we have the right bitmap cached.
         double fScale = 1.0;
-        pGraphics->ShouldDownscaleIconsAtSurface(&fScale);
+        pGraphics->ShouldDownscaleIconsAtSurface(fScale);
         Size aTarget(maSizePixel.Width()*fScale,
                      maSizePixel.Height()*fScale);
-        if (maBitmapEx.GetSizePixel() != aTarget)
+        if (maBitmap.GetSizePixel() != aTarget)
         {
             if (isStock())
-                loadStockAtScale(pGraphics, maBitmapEx);
+                loadStockAtScale(pGraphics, maBitmap);
             else // if (mxMetaFile)
             {
                 ScopedVclPtrInstance<VirtualDevice> aVDev(DeviceFormat::WITH_ALPHA);
@@ -176,11 +188,11 @@ BitmapEx const & ImplImage::getBitmapExForHiDPI(bool bDisabled, SalGraphics* pGr
                 aVDev->SetOutputSizePixel(aTarget, true, bAlphaMaskTransparent);
                 mxMetaFile->WindStart();
                 mxMetaFile->Play(*aVDev, Point(), aTarget);
-                maBitmapEx = aVDev->GetBitmapEx(Point(), aTarget);
+                maBitmap = aVDev->GetBitmap(Point(), aTarget);
             }
         }
     }
-    return getBitmapEx(bDisabled);
+    return getBitmap(bDisabled);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

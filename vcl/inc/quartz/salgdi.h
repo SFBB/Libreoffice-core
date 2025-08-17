@@ -146,13 +146,13 @@ struct AquaSharedAttributes
     bool checkContext();
     void setState();
 
-    bool isPenVisible() const
+    bool isPenActive() const
     {
-        return maLineColor.IsVisible();
+        return maLineColor.IsActive();
     }
-    bool isBrushVisible() const
+    bool isBrushActive() const
     {
-        return maFillColor.IsVisible();
+        return maFillColor.IsActive();
     }
 
     void refreshRect(float lX, float lY, float lWidth, float lHeight)
@@ -269,10 +269,6 @@ public:
     AquaGraphicsBackend(AquaSharedAttributes & rShared);
     ~AquaGraphicsBackend() override;
 
-    void Init() override;
-
-    void freeResources() override;
-
     OUString getRenderBackendName() const override
     {
         return "aqua";
@@ -335,7 +331,7 @@ public:
                   Color nMaskColor) override;
 
     std::shared_ptr<SalBitmap> getBitmap(tools::Long nX, tools::Long nY, tools::Long nWidth,
-                                         tools::Long nHeight) override;
+                                         tools::Long nHeight, bool bWithoutAlpha) override;
 
     Color getPixel(tools::Long nX, tools::Long nY) override;
 
@@ -347,19 +343,12 @@ public:
     bool drawEPS(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
                  void* pPtr, sal_uInt32 nSize) override;
 
-    bool blendBitmap(const SalTwoRect&, const SalBitmap& rBitmap) override;
-
-    bool blendAlphaBitmap(const SalTwoRect&, const SalBitmap& rSrcBitmap,
-                          const SalBitmap& rMaskBitmap, const SalBitmap& rAlphaBitmap) override;
-
     bool drawAlphaBitmap(const SalTwoRect&, const SalBitmap& rSourceBitmap,
                          const SalBitmap& rAlphaBitmap) override;
 
     bool drawTransformedBitmap(const basegfx::B2DPoint& rNull, const basegfx::B2DPoint& rX,
                                const basegfx::B2DPoint& rY, const SalBitmap& rSourceBitmap,
                                const SalBitmap* pAlphaBitmap, double fAlpha) override;
-
-    bool hasFastDrawTransformedBitmap() const override;
 
     bool drawAlphaRect(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
                        sal_uInt8 nTransparency) override;
@@ -446,6 +435,7 @@ protected:
     virtual bool            drawNativeControl( ControlType nType, ControlPart nPart, const tools::Rectangle& rControlRegion,
                                                ControlState nState, const ImplControlValue& aValue,
                                                const OUString& aCaption, const Color& rBackgroundColor ) override;
+public:
     virtual bool            getNativeControlRegion( ControlType nType, ControlPart nPart, const tools::Rectangle& rControlRegion, ControlState nState,
                                                     const ImplControlValue& aValue, const OUString& aCaption,
                                                     tools::Rectangle &rNativeBoundingRegion, tools::Rectangle &rNativeContentRegion ) override;
@@ -468,10 +458,15 @@ public:
     // graphics must drop any cached font info
     virtual void            ClearDevFontCache() override;
     virtual bool            AddTempDevFont( vcl::font::PhysicalFontCollection*, const OUString& rFileURL, const OUString& rFontName ) override;
+    virtual bool            RemoveTempDevFont( const OUString& rFileURL, const OUString& rFontName ) override;
 
     virtual std::unique_ptr<GenericSalLayout>
                             GetTextLayout(int nFallbackLevel) override;
     virtual void            DrawTextLayout( const GenericSalLayout& ) override;
+
+#ifdef MACOSX
+    virtual bool            ShouldDownscaleIconsAtSurface(double& rScaleOut) const override;
+#endif
 
     virtual SystemGraphicsData
                             GetGraphicsData() const override;

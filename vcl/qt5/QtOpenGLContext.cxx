@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -80,6 +80,15 @@ bool QtOpenGLContext::ImplInit()
     }
 
     m_pWindow->setSurfaceType(QSurface::OpenGLSurface);
+
+    // give window a transparent background, see
+    // https://doc.qt.io/qt-6/qwindow.html#setFormat
+    // Otherwise, slide content in a presentation using OpenGL transitions
+    // doesn't get updated with qt6 on Wayland
+    QSurfaceFormat format;
+    format.setAlphaBufferSize(8);
+    m_pWindow->setFormat(format);
+
     m_pWindow->create();
 
     m_pContext = new QOpenGLContext(m_pWindow);
@@ -143,11 +152,9 @@ void QtOpenGLContext::initWindow()
         SystemWindowData winData = generateWinData(mpWindow, mbRequestLegacyContext);
         m_pChildWindow = VclPtr<SystemChildWindow>::Create(mpWindow, 0, &winData, false);
     }
+    assert(m_pChildWindow);
 
-    if (m_pChildWindow)
-    {
-        InitChildWindow(m_pChildWindow.get());
-    }
+    InitChildWindow(m_pChildWindow.get());
 
     m_pWindow
         = static_cast<QtObject*>(m_pChildWindow->ImplGetWindowImpl()->mpSysObj)->windowHandle();

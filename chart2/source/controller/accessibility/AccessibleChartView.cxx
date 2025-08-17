@@ -18,7 +18,6 @@
  */
 
 #include <AccessibleChartView.hxx>
-#include <chartview/ExplicitValueProvider.hxx>
 #include <ObjectHierarchy.hxx>
 #include <ObjectIdentifier.hxx>
 #include <ResId.hxx>
@@ -32,8 +31,6 @@
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 
-#include <comphelper/servicehelper.hxx>
-
 #include <rtl/ustring.hxx>
 #include <vcl/window.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
@@ -43,22 +40,19 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-using ::com::sun::star::uno::Sequence;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::uno::WeakReference;
-using ::com::sun::star::uno::Any;
 using osl::MutexGuard;
 
 namespace chart
 {
 
-AccessibleChartView::AccessibleChartView(SdrView* pView ) :
-        impl::AccessibleChartView_Base(
-            AccessibleElementInfo(), // empty for now
-            true, // has children
-            true  // always transparent
-            ),
-        m_pSdrView( pView )
+AccessibleChartView::AccessibleChartView(SdrView* pView)
+    : ImplInheritanceHelper(AccessibleElementInfo(), // empty for now
+                            true, // has children
+                            true // always transparent
+                            )
+    , m_pSdrView(pView)
 {
     AddState( AccessibleStateType::OPAQUE );
 }
@@ -69,20 +63,19 @@ AccessibleChartView::~AccessibleChartView()
 
 awt::Rectangle AccessibleChartView::GetWindowPosSize() const
 {
-    Reference< awt::XWindow > xWindow( GetInfo().m_xWindow );
-    if( ! xWindow.is())
+    SolarMutexGuard aSolarGuard;
+
+    VclPtr<vcl::Window> pWindow = GetInfo().m_pWindow;
+    if (!pWindow)
         return awt::Rectangle();
 
-    awt::Rectangle aBBox( xWindow->getPosSize() );
-
-    VclPtr<vcl::Window> pWindow( VCLUnoHelper::GetWindow( GetInfo().m_xWindow ));
-    if( pWindow )
-    {
-        SolarMutexGuard aSolarGuard;
-        Point aVCLPoint( pWindow->OutputToAbsoluteScreenPixel( Point( 0, 0 ) ));
-        aBBox.X = aVCLPoint.getX();
-        aBBox.Y = aVCLPoint.getY();
-    }
+    awt::Rectangle aBBox;
+    Point aVCLPoint( pWindow->OutputToAbsoluteScreenPixel( Point( 0, 0 ) ));
+    const Size aSize = pWindow->GetSizePixel();
+    aBBox.X = aVCLPoint.getX();
+    aBBox.Y = aVCLPoint.getY();
+    aBBox.Width = aSize.Width();
+    aBBox.Height = aSize.Height();
 
     return aBBox;
 }
@@ -125,8 +118,7 @@ sal_Int16 SAL_CALL AccessibleChartView::getAccessibleRole()
     return AccessibleRole::DOCUMENT;
 }
 
-// ________ XAccessibleComponent ________
-awt::Rectangle SAL_CALL AccessibleChartView::getBounds()
+awt::Rectangle AccessibleChartView::implGetBounds()
 {
     awt::Rectangle aResult( GetWindowPosSize());
     Reference< XAccessible > xParent( m_xParent );
@@ -143,27 +135,19 @@ awt::Rectangle SAL_CALL AccessibleChartView::getBounds()
     return aResult;
 }
 
-awt::Point SAL_CALL AccessibleChartView::getLocationOnScreen()
+
+void SAL_CALL AccessibleChartView::disposing()
 {
-    awt::Rectangle aBounds( getBounds());
-    awt::Point aResult;
-    Reference< XAccessible > xParent( m_xParent );
-    if( xParent.is())
-    {
-        Reference< XAccessibleComponent > xAccComp(
-            xParent->getAccessibleContext(), uno::UNO_QUERY );
-        aResult = xAccComp->getLocationOnScreen();
-        aResult.X += aBounds.X;
-        aResult.Y += aBounds.Y;
-    }
-    return aResult;
+    m_pChartWindow.reset();
+
+    AccessibleBase::disposing();
 }
 
 void AccessibleChartView::initialize( ChartController& rNewChartController,
                      const rtl::Reference<::chart::ChartModel>& xNewChartModel,
                      const rtl::Reference<::chart::ChartView>& xNewChartView,
                      const uno::Reference< XAccessible >& xNewParent,
-                     const css::uno::Reference<css::awt::XWindow>& xNewWindow )
+                     ChartWindow* pNewChartWindow)
 {
     //0: view::XSelectionSupplier offers notifications for selection changes and access to the selection itself
     //1: frame::XModel representing the chart model - offers access to object data
@@ -178,14 +162,14 @@ void AccessibleChartView::initialize( ChartController& rNewChartController,
     rtl::Reference<::chart::ChartModel> xChartModel;
     rtl::Reference<::chart::ChartView> xChartView;
     Reference< XAccessible > xParent;
-    Reference< awt::XWindow > xWindow;
+    VclPtr<ChartWindow> pChartWindow;
     {
         MutexGuard aGuard( m_aMutex);
         xChartController = m_xChartController;
         xChartModel = m_xChartModel;
         xChartView = m_xChartView;
         xParent.set( m_xParent );
-        xWindow.set( m_xWindow );
+        pChartWindow = m_pChartWindow;
     }
 
     if( !xChartController.is() || !xChartModel.is() || !xChartView.is() )
@@ -211,9 +195,9 @@ void AccessibleChartView::initialize( ChartController& rNewChartController,
         bChanged = true;
     }
 
-    if( xNewWindow != xWindow )
+    if (pNewChartWindow != pChartWindow)
     {
-        xWindow = xNewWindow;
+        pChartWindow = pNewChartWindow;
         bChanged = true;
     }
 
@@ -236,7 +220,7 @@ void AccessibleChartView::initialize( ChartController& rNewChartController,
         xChartModel.clear();
         xChartView.clear();
         xParent.clear();
-        xWindow.clear();
+        pChartWindow.reset();
 
         bNewInvalid = true;
     }
@@ -247,7 +231,7 @@ void AccessibleChartView::initialize( ChartController& rNewChartController,
         m_xChartModel = xChartModel.get();
         m_xChartView = xChartView.get();
         m_xParent = xParent;
-        m_xWindow = xWindow;
+        m_pChartWindow = std::move(pChartWindow);
     }
 
     if( bOldInvalid && bNewInvalid )
@@ -269,16 +253,15 @@ void AccessibleChartView::initialize( ChartController& rNewChartController,
 
     {
         AccessibleElementInfo aAccInfo;
-        aAccInfo.m_aOID = ObjectIdentifier("ROOT");
+        aAccInfo.m_aOID = ObjectIdentifier(u"ROOT"_ustr);
         aAccInfo.m_xChartDocument = m_xChartModel;
         aAccInfo.m_xChartController = m_xChartController;
         aAccInfo.m_xView = m_xChartView;
-        aAccInfo.m_xWindow = m_xWindow;
+        aAccInfo.m_pWindow = m_pChartWindow;
         aAccInfo.m_pParent = nullptr;
         aAccInfo.m_spObjectHierarchy = m_spObjectHierarchy;
         aAccInfo.m_pSdrView = m_pSdrView;
-        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( m_xWindow );
-        m_pViewForwarder.reset( new AccessibleViewForwarder( this, pWindow ) );
+        m_pViewForwarder.reset(new AccessibleViewForwarder(this, m_pChartWindow));
         aAccInfo.m_pViewForwarder = m_pViewForwarder.get();
         // broadcasts an INVALIDATE_ALL_CHILDREN event globally
         SetInfo( aAccInfo );
@@ -298,15 +281,11 @@ void AccessibleChartView::initialize()
     rtl::Reference< ::chart::ChartController > xChartController;
     rtl::Reference<::chart::ChartModel> xChartModel;
     rtl::Reference<::chart::ChartView> xChartView;
-    Reference< XAccessible > xParent;
-    Reference< awt::XWindow > xWindow;
     {
         MutexGuard aGuard( m_aMutex);
         xChartController = m_xChartController;
         xChartModel = m_xChartModel;
         xChartView = m_xChartView;
-        xParent.set( m_xParent );
-        xWindow.set( m_xWindow );
     }
 
     if( !xChartController.is() || !xChartModel.is() || !xChartView.is() )
@@ -333,16 +312,13 @@ void AccessibleChartView::initialize()
         xChartController = nullptr;
     }
 
-    xParent.clear();
-    xWindow.clear();
-
     {
         MutexGuard aGuard( m_aMutex);
         m_xChartController = xChartController.get();
         m_xChartModel = xChartModel.get();
         m_xChartView = xChartView.get();
-        m_xParent = WeakReference< XAccessible >(xParent);
-        m_xWindow = WeakReference< awt::XWindow >(xWindow);
+        m_xParent.clear();
+        m_pChartWindow.reset();
     }
 
     if( bOldInvalid )
@@ -364,16 +340,15 @@ void AccessibleChartView::initialize()
 
     {
         AccessibleElementInfo aAccInfo;
-        aAccInfo.m_aOID = ObjectIdentifier("ROOT");
+        aAccInfo.m_aOID = ObjectIdentifier(u"ROOT"_ustr);
         aAccInfo.m_xChartDocument = m_xChartModel;
         aAccInfo.m_xChartController = m_xChartController;
         aAccInfo.m_xView = m_xChartView;
-        aAccInfo.m_xWindow = m_xWindow;
+        aAccInfo.m_pWindow.reset();
         aAccInfo.m_pParent = nullptr;
         aAccInfo.m_spObjectHierarchy = m_spObjectHierarchy;
         aAccInfo.m_pSdrView = m_pSdrView;
-        VclPtr<vcl::Window> pWindow = VCLUnoHelper::GetWindow( m_xWindow );
-        m_pViewForwarder.reset( new AccessibleViewForwarder( this, pWindow ) );
+        m_pViewForwarder.reset(new AccessibleViewForwarder(this, nullptr));
         aAccInfo.m_pViewForwarder = m_pViewForwarder.get();
         // broadcasts an INVALIDATE_ALL_CHILDREN event globally
         SetInfo( aAccInfo );
@@ -402,7 +377,7 @@ void SAL_CALL AccessibleChartView::selectionChanged( const lang::EventObject& /*
     {
         NotifyEvent( EventType::GOT_SELECTION, aSelectedOID );
     }
-    m_aCurrentSelectionOID = aSelectedOID;
+    m_aCurrentSelectionOID = std::move(aSelectedOID);
 }
 
 // XEventListener

@@ -24,7 +24,6 @@
 class SdDrawDocument;
 class SfxRequest;
 class SfxItemSet;
-class SfxPoolItem;
 class SvxNumBulletItem;
 
 namespace sd {
@@ -41,15 +40,15 @@ class FuBulletAndPosition final
 {
 public:
 
-    static rtl::Reference<FuPoor> Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq );
+    static rtl::Reference<FuPoor> Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq );
     virtual void DoExecute( SfxRequest& rReq ) override;
 
 private:
     FuBulletAndPosition (
-        ViewShell* pViewShell,
+        ViewShell& rViewShell,
         ::sd::Window* pWin,
         ::sd::View* pView,
-        SdDrawDocument* pDoc,
+        SdDrawDocument& rDoc,
         SfxRequest& rReq);
 
     void SetCurrentBulletsNumbering(SfxRequest& rReq);

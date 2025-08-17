@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <framework/ResourceId.hxx>
+#include <ResourceId.hxx>
 #include <tools/SdGlobalResourceContainer.hxx>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <comphelper/processfactory.hxx>
@@ -34,14 +34,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::drawing::framework;
 
-/** When the USE_OPTIMIZATIONS symbol is defined then at some optimizations
-    are activated that work only together with XResourceId objects that are
-    implemented by the ResourceId class.  For other implementations of when
-    the USE_OPTIMIZATIONS symbol is not defined then alternative code is
-    used instead.
-*/
-#define USE_OPTIMIZATIONS
-
 namespace sd::framework {
 
 //===== ResourceId ============================================================
@@ -51,13 +43,6 @@ WeakReference<util::XURLTransformer> ResourceId::mxURLTransformerWeak;
 ResourceId::ResourceId()
     : maResourceURLs(0)
 {
-}
-
-ResourceId::ResourceId (
-    std::vector<OUString>&& rResourceURLs)
-    : maResourceURLs(std::move(rResourceURLs))
-{
-    ParseResourceURL();
 }
 
 ResourceId::ResourceId (
@@ -71,6 +56,19 @@ ResourceId::ResourceId (
 }
 
 ResourceId::ResourceId (
+    const OUString& rsResourceURL, const rtl::Reference<ResourceId>& xAnchor)
+{
+    maResourceURLs.push_back(rsResourceURL);
+    if (xAnchor.is())
+    {
+        maResourceURLs.push_back(xAnchor->getResourceURL());
+        std::vector<OUString> aAnchorURLs (xAnchor->getAnchorURLs());
+        maResourceURLs.insert( maResourceURLs.end(), aAnchorURLs.begin(), aAnchorURLs.end() );
+    }
+    ParseResourceURL();
+}
+
+ResourceId::ResourceId (
     const OUString& rsResourceURL,
     const OUString& rsAnchorURL)
     : maResourceURLs(2)
@@ -80,25 +78,12 @@ ResourceId::ResourceId (
     ParseResourceURL();
 }
 
-ResourceId::ResourceId (
-    const OUString& rsResourceURL,
-    const OUString& rsFirstAnchorURL,
-    const Sequence<OUString>& rAnchorURLs)
-    : maResourceURLs(2+rAnchorURLs.getLength())
-{
-    maResourceURLs[0] = rsResourceURL;
-    maResourceURLs[1] = rsFirstAnchorURL;
-    std::copy(rAnchorURLs.begin(), rAnchorURLs.end(), std::next(maResourceURLs.begin(), 2));
-    ParseResourceURL();
-}
-
 ResourceId::~ResourceId()
 {
     mpURL.reset();
 }
 
-OUString SAL_CALL
-    ResourceId::getResourceURL()
+OUString ResourceId::getResourceURL() const
 {
     if (!maResourceURLs.empty())
         return maResourceURLs[0];
@@ -106,8 +91,7 @@ OUString SAL_CALL
         return OUString();
 }
 
-util::URL SAL_CALL
-    ResourceId::getFullResourceURL()
+util::URL ResourceId::getFullResourceURL()
 {
     if (mpURL != nullptr)
         return *mpURL;
@@ -127,14 +111,12 @@ util::URL SAL_CALL
     return aURL;
 }
 
-sal_Bool SAL_CALL
-    ResourceId::hasAnchor()
+bool ResourceId::hasAnchor() const
 {
     return maResourceURLs.size()>1;
 }
 
-Reference<XResourceId> SAL_CALL
-    ResourceId::getAnchor()
+rtl::Reference<ResourceId> ResourceId::getAnchor() const
 {
     ::rtl::Reference<ResourceId> rResourceId (new ResourceId());
     const sal_Int32 nAnchorCount (maResourceURLs.size()-1);
@@ -147,22 +129,20 @@ Reference<XResourceId> SAL_CALL
     return rResourceId;
 }
 
-Sequence<OUString> SAL_CALL
-    ResourceId::getAnchorURLs()
+std::vector<OUString> ResourceId::getAnchorURLs() const
 {
     const sal_Int32 nAnchorCount (maResourceURLs.size() - 1);
     if (nAnchorCount > 0)
     {
-        Sequence<OUString> aAnchorURLs (nAnchorCount);
-        std::copy_n(maResourceURLs.begin() + 1, nAnchorCount, aAnchorURLs.getArray());
+        std::vector<OUString> aAnchorURLs(nAnchorCount);
+        std::copy_n(maResourceURLs.begin() + 1, nAnchorCount, aAnchorURLs.begin());
         return aAnchorURLs;
     }
     else
-        return Sequence<OUString>();
+        return {};
 }
 
-OUString SAL_CALL
-    ResourceId::getResourceTypePrefix()
+OUString ResourceId::getResourceTypePrefix() const
 {
     if (!maResourceURLs.empty() )
     {
@@ -182,8 +162,7 @@ OUString SAL_CALL
         return OUString();
 }
 
-sal_Int16 SAL_CALL
-    ResourceId::compareTo (const Reference<XResourceId>& rxResourceId)
+sal_Int16 ResourceId::compareTo(const rtl::Reference<ResourceId>& rxResourceId) const
 {
     sal_Int16 nResult (0);
 
@@ -197,22 +176,7 @@ sal_Int16 SAL_CALL
     }
     else
     {
-        ResourceId* pId = nullptr;
-#ifdef USE_OPTIMIZATIONS
-        pId = dynamic_cast<ResourceId*>(rxResourceId.get());
-#endif
-        if (pId != nullptr)
-        {
-            // We have direct access to the implementation of the given
-            // resource id object.
-            nResult = CompareToLocalImplementation(*pId);
-        }
-        else
-        {
-            // We have to do the comparison via the UNO interface of the
-            // given resource id object.
-            nResult = CompareToExternalImplementation(rxResourceId);
-        }
+        nResult = CompareToLocalImplementation(*rxResourceId);
     }
 
     return nResult;
@@ -260,131 +224,24 @@ sal_Int16 ResourceId::CompareToLocalImplementation (const ResourceId& rId) const
     return nResult;
 }
 
-sal_Int16 ResourceId::CompareToExternalImplementation (const Reference<XResourceId>& rxId) const
-{
-    sal_Int16 nResult (0);
-
-    const Sequence<OUString> aAnchorURLs (rxId->getAnchorURLs());
-    const sal_uInt32 nLocalURLCount (maResourceURLs.size());
-    const sal_uInt32 nURLCount(1+aAnchorURLs.getLength());
-
-    // Start comparison with the top most anchors.
-    sal_Int32 nLocalResult (0);
-    for (sal_Int32 nIndex=nURLCount-1,nLocalIndex=nLocalURLCount-1;
-         nIndex>=0&&nLocalIndex>=0;
-         --nIndex,--nLocalIndex)
-    {
-        if (nIndex == 0 )
-            nLocalResult = maResourceURLs[nIndex].compareTo(rxId->getResourceURL());
-        else
-            nLocalResult = maResourceURLs[nIndex].compareTo(aAnchorURLs[nIndex-1]);
-        if (nLocalResult != 0)
-        {
-            if (nLocalResult < 0)
-                nResult = -1;
-            else
-                nResult = +1;
-            break;
-        }
-    }
-
-    if (nResult == 0)
-    {
-        // No difference found yet.  When the lengths are the same then the
-        // two resource ids are equivalent.  Otherwise the shorter comes
-        // first.
-        if (nLocalURLCount != nURLCount)
-        {
-            if (nLocalURLCount < nURLCount)
-                nResult = -1;
-            else
-                nResult = +1;
-        }
-    }
-
-    return nResult;
-}
-
-sal_Bool SAL_CALL
-    ResourceId::isBoundTo (
-        const Reference<XResourceId>& rxResourceId,
-        AnchorBindingMode eMode)
+bool ResourceId::isBoundTo (
+        const rtl::Reference<ResourceId>& rxResourceId,
+        AnchorBindingMode eMode) const
 {
     if ( ! rxResourceId.is())
     {
         // An empty reference is interpreted as empty resource id.
-        return IsBoundToAnchor(nullptr, nullptr, eMode);
+        return IsBoundToAnchor(nullptr, eMode);
     }
 
-    ResourceId* pId = nullptr;
-#ifdef USE_OPTIMIZATIONS
-    pId = dynamic_cast<ResourceId*>(rxResourceId.get());
-#endif
-    if (pId != nullptr)
-    {
-        return IsBoundToAnchor(pId->maResourceURLs, eMode);
-    }
-    else
-    {
-        const OUString sResourceURL (rxResourceId->getResourceURL());
-        const Sequence<OUString> aAnchorURLs (rxResourceId->getAnchorURLs());
-        return IsBoundToAnchor(&sResourceURL, &aAnchorURLs, eMode);
-    }
+    return IsBoundToAnchor(rxResourceId->maResourceURLs, eMode);
 }
 
-sal_Bool SAL_CALL
-    ResourceId::isBoundToURL (
+bool ResourceId::isBoundToURL (
         const OUString& rsAnchorURL,
-        AnchorBindingMode eMode)
+        AnchorBindingMode eMode) const
 {
-    return IsBoundToAnchor(&rsAnchorURL, nullptr, eMode);
-}
-
-Reference<XResourceId> SAL_CALL
-    ResourceId::clone()
-{
-    return new ResourceId(std::vector(maResourceURLs));
-}
-
-//----- XInitialization -------------------------------------------------------
-
-void SAL_CALL ResourceId::initialize (const Sequence<Any>& aArguments)
-{
-    for (const auto& rArgument : aArguments)
-    {
-        OUString sResourceURL;
-        if (rArgument >>= sResourceURL)
-            maResourceURLs.push_back(sResourceURL);
-        else
-        {
-            Reference<XResourceId> xAnchor;
-            if (rArgument >>= xAnchor)
-            {
-                if (xAnchor.is())
-                {
-                    maResourceURLs.push_back(xAnchor->getResourceURL());
-                    const Sequence<OUString> aAnchorURLs (xAnchor->getAnchorURLs());
-                    maResourceURLs.insert( maResourceURLs.end(), aAnchorURLs.begin(), aAnchorURLs.end() );
-                }
-            }
-        }
-    }
-    ParseResourceURL();
-}
-
-OUString ResourceId::getImplementationName()
-{
-    return "com.sun.star.comp.Draw.framework.ResourceId";
-}
-
-sal_Bool ResourceId::supportsService(OUString const & ServiceName)
-{
-    return cppu::supportsService(this, ServiceName);
-}
-
-css::uno::Sequence<OUString> ResourceId::getSupportedServiceNames()
-{
-    return {"com.sun.star.drawing.framework.ResourceId"};
+    return IsBoundToAnchor(&rsAnchorURL, eMode);
 }
 
 /** When eMode is DIRECTLY then the anchor of the called object and the
@@ -394,13 +251,11 @@ css::uno::Sequence<OUString> ResourceId::getSupportedServiceNames()
 */
 bool ResourceId::IsBoundToAnchor (
     const OUString* psFirstAnchorURL,
-    const Sequence<OUString>* paAnchorURLs,
     AnchorBindingMode eMode) const
 {
     const sal_uInt32 nLocalAnchorURLCount (maResourceURLs.size() - 1);
     const bool bHasFirstAnchorURL (psFirstAnchorURL!=nullptr);
-    const sal_uInt32 nAnchorURLCount ((bHasFirstAnchorURL?1:0)
-        + (paAnchorURLs!=nullptr ? paAnchorURLs->getLength() : 0));
+    const sal_uInt32 nAnchorURLCount (bHasFirstAnchorURL?1:0);
 
     // Check the lengths.
     if (nLocalAnchorURLCount<nAnchorURLCount ||
@@ -411,23 +266,9 @@ bool ResourceId::IsBoundToAnchor (
 
     // Compare the nAnchorURLCount bottom-most anchor URLs of this resource
     // id and the given anchor.
-    sal_uInt32 nOffset = 0;
-    if (paAnchorURLs != nullptr)
-    {
-        sal_uInt32 nCount = paAnchorURLs->getLength();
-        while (nOffset < nCount)
-        {
-            if ( maResourceURLs[nLocalAnchorURLCount - nOffset] !=
-                (*paAnchorURLs)[nCount - 1 - nOffset] )
-            {
-                return false;
-            }
-            ++nOffset;
-        }
-    }
     if (bHasFirstAnchorURL)
     {
-        if ( *psFirstAnchorURL != maResourceURLs[nLocalAnchorURLCount - nOffset] )
+        if ( *psFirstAnchorURL != maResourceURLs[nLocalAnchorURLCount] )
             return false;
     }
 
@@ -469,7 +310,7 @@ void ResourceId::ParseResourceURL()
     if ( ! xURLTransformer.is())
     {
         // Create the URL transformer.
-        Reference<uno::XComponentContext> xContext(::comphelper::getProcessComponentContext());
+        const Reference<uno::XComponentContext>& xContext(::comphelper::getProcessComponentContext());
         xURLTransformer.set(util::URLTransformer::create(xContext));
         mxURLTransformerWeak = xURLTransformer;
         SdGlobalResourceContainer::Instance().AddResource(
@@ -489,14 +330,5 @@ void ResourceId::ParseResourceURL()
 }
 
 } // end of namespace sd::framework
-
-
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
-com_sun_star_comp_Draw_framework_ResourceID_get_implementation(css::uno::XComponentContext*,
-                                                               css::uno::Sequence<css::uno::Any> const &)
-{
-    return cppu::acquire(new sd::framework::ResourceId());
-}
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

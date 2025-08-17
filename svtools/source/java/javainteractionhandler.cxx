@@ -27,6 +27,7 @@
 #include <com/sun/star/java/JavaVMCreationFailureException.hpp>
 #include <com/sun/star/java/RestartRequiredException.hpp>
 #include <comphelper/processfactory.hxx>
+#include <osl/process.h>
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
 #include <jvmfwk/framework.hxx>
@@ -113,16 +114,11 @@ void SAL_CALL JavaInteractionHandler::handle( const Reference< XInteractionReque
             break;
     }
 
-    css::java::JavaNotFoundException           e1;
-    css::java::InvalidJavaSettingsException    e2;
-    css::java::JavaDisabledException           e3;
-    css::java::JavaVMCreationFailureException  e4;
-    css::java::RestartRequiredException        e5;
     // Try to recover the Exception type in the any and
     // react accordingly.
     sal_uInt16      nResult = RET_CANCEL;
 
-    if ( anyExc >>= e1 )
+    if (css::java::JavaNotFoundException e1; anyExc >>= e1)
     {
         SolarMutexGuard aSolarGuard;
         if( !g_JavaEvents.bNotFoundHandled )
@@ -155,7 +151,7 @@ void SAL_CALL JavaInteractionHandler::handle( const Reference< XInteractionReque
             nResult = RET_OK;
         }
     }
-    else if ( anyExc >>= e2 )
+    else if (css::java::InvalidJavaSettingsException e2; anyExc >>= e2)
     {
         SolarMutexGuard aSolarGuard;
         if( !g_JavaEvents.bInvalidSettingsHandled )
@@ -177,15 +173,15 @@ void SAL_CALL JavaInteractionHandler::handle( const Reference< XInteractionReque
             nResult = RET_OK;
         }
     }
-    else if ( anyExc >>= e3 )
+    else if (css::java::JavaDisabledException e3; anyExc >>= e3)
     {
         SolarMutexGuard aSolarGuard;
         if( !g_JavaEvents.bDisabledHandled )
         {
             g_JavaEvents.bDisabledHandled = true;
             // Java disabled. Give user a chance to enable Java inside Office.
-            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "svt/ui/javadisableddialog.ui"));
-            std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog("JavaDisabledDialog"));
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, u"svt/ui/javadisableddialog.ui"_ustr));
+            std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog(u"JavaDisabledDialog"_ustr));
             nResult = xQueryBox->run();
             if ( nResult == RET_YES )
             {
@@ -200,7 +196,7 @@ void SAL_CALL JavaInteractionHandler::handle( const Reference< XInteractionReque
             nResult = g_JavaEvents.nResult_JavaDisabled;
         }
     }
-    else if ( anyExc >>= e4 )
+    else if (css::java::JavaVMCreationFailureException e4; anyExc >>= e4)
     {
         SolarMutexGuard aSolarGuard;
         if( !g_JavaEvents.bVMCreationFailureHandled )
@@ -212,6 +208,16 @@ void SAL_CALL JavaInteractionHandler::handle( const Reference< XInteractionReque
 #else
             OUString sWarning(SvtResId(STR_ERROR_JVMCREATIONFAILED));
 #endif
+#if !defined(_WIN32)
+            if (OUString javaldx_warn;
+                osl_getEnvironment(u"javaldx_warn"_ustr.pData, &javaldx_warn.pData)
+                    == osl_Process_E_None
+                && !javaldx_warn.isEmpty())
+            {
+                // Technical untranslated info
+                sWarning += "\njavaldx warning: " + javaldx_warn;
+            }
+#endif
             std::unique_ptr<weld::MessageDialog> xErrorBox(Application::CreateMessageDialog(nullptr,
                                                            VclMessageType::Warning, VclButtonsType::Ok, sWarning));
             xErrorBox->set_title(SvtResId(STR_ERROR_JVMCREATIONFAILED_TITLE));
@@ -222,7 +228,7 @@ void SAL_CALL JavaInteractionHandler::handle( const Reference< XInteractionReque
             nResult = RET_OK;
         }
     }
-    else if ( anyExc >>= e5 )
+    else if (css::java::RestartRequiredException e5; anyExc >>= e5)
     {
         SolarMutexGuard aSolarGuard;
         if( !g_JavaEvents.bRestartRequiredHandled )

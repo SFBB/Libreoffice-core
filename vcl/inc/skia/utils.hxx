@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_SKIA_UTILS_H
-#define INCLUDED_VCL_INC_SKIA_UTILS_H
+#pragma once
 
 #include <vcl/skia/SkiaHelper.hxx>
 
+#include <o3tl/test_info.hxx>
 #include <tools/color.hxx>
 #include <tools/gen.hxx>
 #include <driverblocklist.hxx>
@@ -38,7 +38,7 @@
 #pragma GCC diagnostic ignored "-Wattributes"
 #pragma GCC diagnostic ignored "-Wshadow"
 #endif
-#include <tools/sk_app/WindowContext.h>
+#include <tools/window/WindowContext.h>
 #if defined __GNUC__ && !defined __clang__
 #pragma GCC diagnostic pop
 #endif
@@ -50,8 +50,6 @@ namespace SkiaHelper
 {
 // Get the one shared GrDirectContext instance.
 GrDirectContext* getSharedGrDirectContext();
-
-void disableRenderMethod(RenderMethod method);
 
 // Create SkSurface, GPU-backed if possible.
 VCL_DLLPUBLIC sk_sp<SkSurface> createSkSurface(int width, int height,
@@ -122,7 +120,7 @@ void setBlenderXor(SkPaint* paint);
 // Must be called in any VCL backend before any Skia functionality is used.
 // If not set, Skia will be disabled.
 VCL_DLLPUBLIC void
-    prepareSkia(std::unique_ptr<sk_app::WindowContext> (*createGpuWindowContext)(bool));
+    prepareSkia(std::unique_ptr<skwindow::WindowContext> (*createGpuWindowContext)(bool));
 
 // Shared cache of images.
 void addCachedImage(const OString& key, sk_sp<SkImage> image);
@@ -143,8 +141,7 @@ inline bool isUnitTestRunning(const char* name = nullptr)
 {
     if (name == nullptr)
     {
-        static const char* const testname = getenv("LO_TESTNAME");
-        if (testname != nullptr)
+        if (o3tl::IsRunningUnitTest())
             return true;
         return !vcl::test::activeGraphicsRenderTest().isEmpty();
     }
@@ -159,8 +156,23 @@ inline bool isUnitTestRunning(const char* name = nullptr)
 // In that case use only BmpScaleFlag::Default, which is bilinear+mipmap,
 // which should be good enough (and that's what the "super" bitmap scaling
 // algorithm done by VCL does as well).
-inline BmpScaleFlag goodScalingQuality(bool isGPU)
+inline BmpScaleFlag goodScalingQuality(bool isGPU, bool isUpscale = false)
 {
+#ifdef MACOSX
+    // tdf#161480 use BmpScaleFlag::NearestNeighbor when upscaling on macOS
+    // On macOS, due to Retina window scaling, it is very common to
+    // have Skia surfaces that are 2 times the size of their respective
+    // output device sizes so upscaling is often the default state.
+    // But when upscaling bitmaps on macOS with either Skia/Metal or
+    // Skia/Raster, some distortion to color and/or alpha values is
+    // introduced and only BmpScaleFlag::NearestNeighbor will upscale
+    // the bitmap correctly.
+    if (isUpscale)
+        return BmpScaleFlag::NearestNeighbor;
+#else
+    (void)isUpscale;
+#endif
+
     return isGPU ? BmpScaleFlag::BestQuality : BmpScaleFlag::Default;
 }
 
@@ -235,7 +247,12 @@ inline SkSamplingOptions makeSamplingOptions(const SalTwoRect& rPosAry, int scal
     if (srcScalingFactor != 1)
         srcSize *= srcScalingFactor;
     if (srcSize != destSize)
-        return makeSamplingOptions(goodScalingQuality(isGPU), srcSize, destSize, 1);
+    {
+        bool isUpscale
+            = (srcSize.Width() < destSize.Width() || srcSize.Height() < destSize.Height());
+        BmpScaleFlag scalingType = goodScalingQuality(isGPU, isUpscale);
+        return makeSamplingOptions(scalingType, srcSize, destSize, 1);
+    }
     return SkSamplingOptions(); // none
 }
 
@@ -336,7 +353,5 @@ inline std::basic_ostream<charT, traits>& operator<<(std::basic_ostream<charT, t
         return stream << "(null)";
     return stream << *image;
 }
-
-#endif // INCLUDED_VCL_INC_SKIA_UTILS_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

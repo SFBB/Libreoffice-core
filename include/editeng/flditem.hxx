@@ -56,9 +56,7 @@ public:
 
     virtual std::unique_ptr<SvxFieldData> Clone() const;
     virtual bool            operator==( const SvxFieldData& ) const;
-
-    virtual MetaAction*     createBeginComment() const;
-    static MetaAction*      createEndComment();
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 /**
@@ -70,6 +68,7 @@ class EDITENG_DLLPUBLIC SvxFieldItem final : public SfxPoolItem
 {
     std::unique_ptr<SvxFieldData>  mpField;
 public:
+            DECLARE_ITEM_TYPE_FUNCTION(SvxFieldItem)
             SvxFieldItem( std::unique_ptr<SvxFieldData> pField, const sal_uInt16 nId  );
             SvxFieldItem( const SvxFieldData& rField, const sal_uInt16 nId  );
             SvxFieldItem( const SvxFieldItem& rItem );
@@ -77,6 +76,7 @@ public:
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual SvxFieldItem*   Clone( SfxItemPool *pPool = nullptr ) const override;
+    virtual void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
     const SvxFieldData*     GetField() const    { return mpField.get(); }
 };
@@ -130,15 +130,13 @@ public:
 
     virtual std::unique_ptr<SvxFieldData> Clone() const override;
     virtual bool            operator==( const SvxFieldData& ) const override;
-
-    virtual MetaAction* createBeginComment() const override;
 };
 
 
 enum class SvxURLFormat {
-    AppDefault = 0, // Set as in App
-    Url,            // Represent URL
-    Repr            // Constitute representation
+    AppDefault = 0, // App setting
+    Url,            // Show URL
+    Repr            // Show representation
 };
 
 class EDITENG_DLLPUBLIC SvxURLField final : public SvxFieldData
@@ -146,8 +144,9 @@ class EDITENG_DLLPUBLIC SvxURLField final : public SvxFieldData
 private:
     SvxURLFormat            eFormat;
     OUString                aURL;               // URL-Address
-    OUString                aRepresentation;    // What is shown
-    OUString                aTargetFrame;       // In what Frame
+    OUString                aRepresentation;    // Text shown in document
+    OUString                aTargetFrame;       // Frame to open in
+    OUString                m_Name;             // Alt-text
 
 public:
     static constexpr auto CLASS_ID = css::text::textfield::Type::URL;
@@ -162,6 +161,9 @@ public:
     const OUString&         GetRepresentation() const { return aRepresentation; }
     void                    SetRepresentation( const OUString& rRep ) { aRepresentation= rRep; }
 
+    OUString const&         GetName() const { return m_Name; }
+    void                    SetName(OUString const& rName) { m_Name = rName; }
+
     const OUString&         GetTargetFrame() const { return aTargetFrame; }
     void                    SetTargetFrame( const OUString& rFrm ) { aTargetFrame = rFrm; }
 
@@ -170,8 +172,7 @@ public:
 
     virtual std::unique_ptr<SvxFieldData> Clone() const override;
     virtual bool            operator==( const SvxFieldData& ) const override;
-
-    virtual MetaAction* createBeginComment() const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 class EDITENG_DLLPUBLIC SvxPageField final: public SvxFieldData
@@ -182,8 +183,6 @@ public:
 
     virtual std::unique_ptr<SvxFieldData> Clone() const override;
     virtual bool            operator==( const SvxFieldData& ) const override;
-
-    virtual MetaAction* createBeginComment() const override;
 };
 
 class EDITENG_DLLPUBLIC SvxPageTitleField final: public SvxFieldData
@@ -195,8 +194,6 @@ public:
 
     virtual std::unique_ptr<SvxFieldData> Clone() const override;
     virtual bool            operator==( const SvxFieldData& ) const override;
-
-    virtual MetaAction* createBeginComment() const override;
 };
 
 class EDITENG_DLLPUBLIC SvxPagesField final: public SvxFieldData
@@ -219,8 +216,6 @@ public:
 
     virtual std::unique_ptr<SvxFieldData> Clone() const override;
     virtual bool            operator==( const SvxFieldData& ) const override;
-
-    virtual MetaAction* createBeginComment() const override;
 };
 
 class EDITENG_DLLPUBLIC SvxFileField final: public SvxFieldData
@@ -301,8 +296,6 @@ public:
 
     virtual std::unique_ptr<SvxFieldData> Clone() const override;
     virtual bool            operator==( const SvxFieldData& ) const override;
-
-    virtual MetaAction* createBeginComment() const override;
 };
 
 

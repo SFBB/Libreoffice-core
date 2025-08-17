@@ -29,7 +29,6 @@ namespace frm
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::frame;
     using namespace ::com::sun::star::util;
-    using namespace ::com::sun::star::lang;
 
     ControlFeatureInterception::ControlFeatureInterception( const Reference< XComponentContext >& _rxORB )
         :m_pUrlTransformer( new UrlTransformer( _rxORB ) )
@@ -100,7 +99,7 @@ namespace frm
                 break;
             }
 
-            xChainWalk = xSlave;
+            xChainWalk = std::move(xSlave);
         }
     }
 
@@ -134,9 +133,9 @@ namespace frm
     }
 
 
-    Reference< XDispatch > ControlFeatureInterception::queryDispatch( const char* _pAsciiURL )
+    Reference< XDispatch > ControlFeatureInterception::queryDispatch( const OUString& _rURL )
     {
-        return queryDispatch( m_pUrlTransformer->getStrictURLFromAscii( _pAsciiURL ) );
+        return queryDispatch( m_pUrlTransformer->getStrictURL( _rURL ) );
     }
 
 

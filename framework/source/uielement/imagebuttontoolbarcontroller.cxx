@@ -34,12 +34,9 @@
 #include <memory>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::util;
 
 const ::Size  aImageSizeSmall( 16, 16 );
 const ::Size  aImageSizeBig( 26, 26 );
@@ -104,8 +101,8 @@ void ImageButtonToolbarController::executeControlCommand( const css::frame::Cont
                 m_xToolbar->SetItemImage( m_nID, aImage );
 
                 // send notification
-                uno::Sequence< beans::NamedValue > aInfo { { "URL", css::uno::Any(aURL) } };
-                addNotifyInfo( "ImageChanged",
+                uno::Sequence< beans::NamedValue > aInfo { { u"URL"_ustr, css::uno::Any(aURL) } };
+                addNotifyInfo( u"ImageChanged"_ustr,
                             getDispatchFromCommand( m_aCommandURL ),
                             aInfo );
                 break;
@@ -114,6 +111,7 @@ void ImageButtonToolbarController::executeControlCommand( const css::frame::Cont
     }
 }
 
+// static
 bool ImageButtonToolbarController::ReadImageFromURL( bool bBigImage, const OUString& aImageURL, Image& aImage )
 {
     std::unique_ptr<SvStream> pStream(utl::UcbStreamHelper::CreateStream( aImageURL, StreamMode::STD_READ ));

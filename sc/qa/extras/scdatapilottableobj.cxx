@@ -13,7 +13,6 @@
 #include <test/sheet/xdatapilottable.hxx>
 #include <test/sheet/xdatapilottable2.hxx>
 
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XDataPilotTablesSupplier.hpp>
@@ -70,8 +69,8 @@ public:
 };
 
 ScDataPilotTableObj::ScDataPilotTableObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments"),
-      apitest::XNamed("DataPilotTable")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr),
+      apitest::XNamed(u"DataPilotTable"_ustr)
 {
 }
 
@@ -93,7 +92,7 @@ uno::Reference< uno::XInterface > ScDataPilotTableObj::init()
     uno::Reference< sheet::XDataPilotTables > xDPT = xDPTS->getDataPilotTables();
     CPPUNIT_ASSERT(xDPT.is());
 
-    uno::Reference< sheet::XDataPilotTable > xDPTable(xDPT->getByName("DataPilotTable"),UNO_QUERY_THROW);
+    uno::Reference< sheet::XDataPilotTable > xDPTable(xDPT->getByName(u"DataPilotTable"_ustr),UNO_QUERY_THROW);
 
     return xDPTable;
 }
@@ -122,7 +121,7 @@ uno::Reference< uno::XInterface > ScDataPilotTableObj::initDP2()
     uno::Reference< sheet::XDataPilotTables > xDPT = xDPTS->getDataPilotTables();
     CPPUNIT_ASSERT(xDPT.is());
 
-    uno::Reference< sheet::XDataPilotTable > xDPTable(xDPT->getByName("DataPilotTable2"),UNO_QUERY_THROW);
+    uno::Reference< sheet::XDataPilotTable > xDPTable(xDPT->getByName(u"DataPilotTable2"_ustr),UNO_QUERY_THROW);
 
     return xDPTable;
 }
@@ -131,7 +130,7 @@ void ScDataPilotTableObj::setUp()
 {
     UnoApiTest::setUp();
     // create a calc document
-    loadFromURL(u"ScDataPilotTableObj.ods");
+    loadFromFile(u"ScDataPilotTableObj.ods");
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScDataPilotTableObj);

@@ -38,7 +38,6 @@ using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::ucb;
-using namespace com::sun::star::container;
 
 #if OSL_DEBUG_LEVEL > 0
 #define THROW_WHERE SAL_WHERE
@@ -91,7 +90,7 @@ FileProvider::initialize(
 OUString SAL_CALL
 FileProvider::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.FileProvider";
+    return u"com.sun.star.comp.ucb.FileProvider"_ustr;
 }
 
 sal_Bool SAL_CALL FileProvider::supportsService(const OUString& ServiceName )
@@ -102,11 +101,10 @@ sal_Bool SAL_CALL FileProvider::supportsService(const OUString& ServiceName )
 Sequence< OUString > SAL_CALL
 FileProvider::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.FileContentProvider" };
+    return { u"com.sun.star.ucb.FileContentProvider"_ustr };
 }
 
 // XContent
-
 
 Reference< XContent > SAL_CALL
 FileProvider::queryContent(
@@ -122,9 +120,8 @@ FileProvider::queryContent(
         throw IllegalIdentifierException( THROW_WHERE );
     }
 
-    return Reference< XContent >( new BaseContent( m_pMyShell.get(), xIdentifier, aUnc ) );
+    return Reference<XContent>(new BaseContent(m_pMyShell.get(), xIdentifier, aUnc));
 }
-
 
 sal_Int32 SAL_CALL
 FileProvider::compareContentIds(
@@ -194,7 +191,7 @@ FileProvider::createContentIdentifier(
 
 //XPropertySetInfoImpl
 
-namespace {
+namespace fileaccess {
 
 class XPropertySetInfoImpl2
     : public cppu::OWeakObject,
@@ -233,15 +230,15 @@ private:
 }
 
 XPropertySetInfoImpl2::XPropertySetInfoImpl2()
-    : m_seq{ Property( "HostName",
+    : m_seq{ Property( u"HostName"_ustr,
                          -1,
                          cppu::UnoType<OUString>::get(),
                          PropertyAttribute::READONLY ),
-             Property( "HomeDirectory",
+             Property( u"HomeDirectory"_ustr,
                          -1,
                          cppu::UnoType<OUString>::get(),
                          PropertyAttribute::READONLY ),
-             Property( "FileSystemNotation",
+             Property( u"FileSystemNotation"_ustr,
                          -1,
                          cppu::UnoType<sal_Int32>::get(),
                          PropertyAttribute::READONLY )}
@@ -301,9 +298,8 @@ XPropertySetInfoImpl2::hasPropertyByName(
 }
 
 
-void FileProvider::initProperties()
+void FileProvider::initProperties(std::unique_lock<std::mutex>& /*rGuard*/)
 {
-    std::scoped_lock aGuard( m_aMutex );
     if(  m_xPropertySetInfo.is() )
         return;
 
@@ -333,7 +329,8 @@ void FileProvider::initProperties()
 Reference< XPropertySetInfo > SAL_CALL
 FileProvider::getPropertySetInfo(  )
 {
-    initProperties();
+    std::unique_lock aGuard( m_aMutex );
+    initProperties(aGuard);
     return m_xPropertySetInfo;
 }
 
@@ -353,7 +350,8 @@ Any SAL_CALL
 FileProvider::getPropertyValue(
     const OUString& aPropertyName )
 {
-    initProperties();
+    std::unique_lock aGuard( m_aMutex );
+    initProperties(aGuard);
     if( aPropertyName == "FileSystemNotation" )
     {
         return Any(m_FileSystemNotation);

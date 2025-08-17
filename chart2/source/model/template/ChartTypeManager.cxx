@@ -23,12 +23,14 @@
 #include "LineChartTypeTemplate.hxx"
 #include "BarChartTypeTemplate.hxx"
 #include "ColumnLineChartTypeTemplate.hxx"
+#include "HistogramChartTypeTemplate.hxx"
 #include "AreaChartTypeTemplate.hxx"
 #include "PieChartTypeTemplate.hxx"
 #include "ScatterChartTypeTemplate.hxx"
 #include "StockChartTypeTemplate.hxx"
 #include "NetChartTypeTemplate.hxx"
 #include "BubbleChartTypeTemplate.hxx"
+#include "FunnelChartTypeTemplate.hxx"
 #include <cppuhelper/supportsservice.hxx>
 #include <com/sun/star/container/XContentEnumerationAccess.hpp>
 #include <com/sun/star/lang/XServiceName.hpp>
@@ -79,6 +81,7 @@ enum TemplateId
     TEMPLATE_PERCENTSTACKEDTHREEDBARFLAT,
     TEMPLATE_COLUMNWITHLINE,
     TEMPLATE_STACKEDCOLUMNWITHLINE,
+    TEMPLATE_HISTOGRAM,
     TEMPLATE_AREA,
     TEMPLATE_STACKEDAREA,
     TEMPLATE_PERCENTSTACKEDAREA,
@@ -89,6 +92,8 @@ enum TemplateId
     TEMPLATE_PIEALLEXPLODED,
     TEMPLATE_DONUT,
     TEMPLATE_DONUTALLEXPLODED,
+    TEMPLATE_BAROFPIE,
+    TEMPLATE_PIEOFPIE,
     TEMPLATE_THREEDPIE,
     TEMPLATE_THREEDPIEALLEXPLODED,
     TEMPLATE_THREEDDONUT,
@@ -114,6 +119,7 @@ enum TemplateId
     TEMPLATE_STOCKVOLUMELOWHIGHCLOSE,
     TEMPLATE_STOCKVOLUMEOPENLOWHIGHCLOSE,
     TEMPLATE_BUBBLE,
+    TEMPLATE_FUNNEL,
 //    TEMPLATE_SURFACE,
 //     TEMPLATE_ADDIN,
     TEMPLATE_NOT_FOUND = 0xffff
@@ -153,6 +159,7 @@ const tTemplateMapType & lcl_DefaultChartTypeMap()
         {"com.sun.star.chart2.template.PercentStackedThreeDBarFlat",    TEMPLATE_PERCENTSTACKEDTHREEDBARFLAT},
         {"com.sun.star.chart2.template.ColumnWithLine",                 TEMPLATE_COLUMNWITHLINE},
         {"com.sun.star.chart2.template.StackedColumnWithLine",          TEMPLATE_STACKEDCOLUMNWITHLINE},
+        {"com.sun.star.chart2.template.Histogram",                      TEMPLATE_HISTOGRAM},
         {"com.sun.star.chart2.template.Area",                           TEMPLATE_AREA},
         {"com.sun.star.chart2.template.StackedArea",                    TEMPLATE_STACKEDAREA},
         {"com.sun.star.chart2.template.PercentStackedArea",             TEMPLATE_PERCENTSTACKEDAREA},
@@ -162,6 +169,9 @@ const tTemplateMapType & lcl_DefaultChartTypeMap()
         {"com.sun.star.chart2.template.Pie",                            TEMPLATE_PIE},
         {"com.sun.star.chart2.template.PieAllExploded",                 TEMPLATE_PIEALLEXPLODED},
         {"com.sun.star.chart2.template.Donut",                          TEMPLATE_DONUT},
+        {"com.sun.star.chart2.template.DonutAllExploded",               TEMPLATE_DONUTALLEXPLODED},
+        {"com.sun.star.chart2.template.BarOfPie",                       TEMPLATE_BAROFPIE},
+        {"com.sun.star.chart2.template.PieOfPie",                       TEMPLATE_PIEOFPIE},
         {"com.sun.star.chart2.template.DonutAllExploded",               TEMPLATE_DONUTALLEXPLODED},
         {"com.sun.star.chart2.template.ThreeDPie",                      TEMPLATE_THREEDPIE},
         {"com.sun.star.chart2.template.ThreeDPieAllExploded",           TEMPLATE_THREEDPIEALLEXPLODED},
@@ -188,6 +198,7 @@ const tTemplateMapType & lcl_DefaultChartTypeMap()
         {"com.sun.star.chart2.template.StockVolumeLowHighClose",        TEMPLATE_STOCKVOLUMELOWHIGHCLOSE},
         {"com.sun.star.chart2.template.StockVolumeOpenLowHighClose",    TEMPLATE_STOCKVOLUMEOPENLOWHIGHCLOSE},
         {"com.sun.star.chart2.template.Bubble",                         TEMPLATE_BUBBLE},
+        {"com.sun.star.chart2.template.Funnel",                         TEMPLATE_FUNNEL},
 //      {"com.sun.star.chart2.template.Surface",                        TEMPLATE_SURFACE},
 //      {"com.sun.star.chart2.template.Addin",                          TEMPLATE_ADDIN},
         };
@@ -360,6 +371,11 @@ rtl::Reference< ::chart::ChartTypeTemplate > ChartTypeManager::createTemplate(
         }
         break;
 
+        // Histogram
+        case TEMPLATE_HISTOGRAM:
+            xTemplate.set( new HistogramChartTypeTemplate( m_xContext, aServiceSpecifier, StackMode::NONE ));
+            break;
+
         // Area
         case TEMPLATE_AREA:
             xTemplate.set( new AreaChartTypeTemplate( m_xContext, aServiceSpecifier, StackMode::NONE ));
@@ -382,35 +398,53 @@ rtl::Reference< ::chart::ChartTypeTemplate > ChartTypeManager::createTemplate(
 
         case TEMPLATE_PIE:
             xTemplate.set( new PieChartTypeTemplate( m_xContext, aServiceSpecifier,
-                chart2::PieChartOffsetMode_NONE, false ));
+                chart2::PieChartOffsetMode_NONE, false,
+                chart2::PieChartSubType_NONE, 3, 2));
             break;
         case TEMPLATE_PIEALLEXPLODED:
             xTemplate.set( new PieChartTypeTemplate( m_xContext, aServiceSpecifier,
-                chart2::PieChartOffsetMode_ALL_EXPLODED, false ));
+                chart2::PieChartOffsetMode_ALL_EXPLODED, false,
+                chart2::PieChartSubType_NONE, 3, 2 ));
             break;
         case TEMPLATE_DONUT:
             xTemplate.set( new PieChartTypeTemplate( m_xContext, aServiceSpecifier,
-                chart2::PieChartOffsetMode_NONE, true ));
+                chart2::PieChartOffsetMode_NONE, true,
+                chart2::PieChartSubType_NONE, 3, 2 ));
             break;
         case TEMPLATE_DONUTALLEXPLODED:
             xTemplate.set( new PieChartTypeTemplate( m_xContext, aServiceSpecifier,
-                chart2::PieChartOffsetMode_ALL_EXPLODED, true ));
+                chart2::PieChartOffsetMode_ALL_EXPLODED, true,
+                chart2::PieChartSubType_NONE, 3, 2 ));
+            break;
+        case TEMPLATE_BAROFPIE:
+            xTemplate.set( new PieChartTypeTemplate( m_xContext, aServiceSpecifier,
+                chart2::PieChartOffsetMode_NONE, false,
+                chart2::PieChartSubType_BAR, 3, 2 ));
+            break;
+        case TEMPLATE_PIEOFPIE:
+            xTemplate.set( new PieChartTypeTemplate( m_xContext, aServiceSpecifier,
+                chart2::PieChartOffsetMode_NONE, false,
+                chart2::PieChartSubType_PIE, 3, 2 ));
             break;
         case TEMPLATE_THREEDPIE:
             xTemplate.set( new PieChartTypeTemplate( m_xContext, aServiceSpecifier,
-                chart2::PieChartOffsetMode_NONE, false, 3 ));
+                chart2::PieChartOffsetMode_NONE, false,
+                chart2::PieChartSubType_NONE, 3, 3 ));
             break;
         case TEMPLATE_THREEDPIEALLEXPLODED:
             xTemplate.set( new PieChartTypeTemplate( m_xContext, aServiceSpecifier,
-                chart2::PieChartOffsetMode_ALL_EXPLODED, false, 3 ));
+                chart2::PieChartOffsetMode_ALL_EXPLODED, false,
+                chart2::PieChartSubType_NONE, 3, 3 ));
             break;
         case TEMPLATE_THREEDDONUT:
             xTemplate.set( new PieChartTypeTemplate( m_xContext, aServiceSpecifier,
-                chart2::PieChartOffsetMode_NONE, true, 3 ));
+                chart2::PieChartOffsetMode_NONE, true,
+                chart2::PieChartSubType_NONE, 3, 3 ));
             break;
         case TEMPLATE_THREEDDONUTALLEXPLODED:
             xTemplate.set( new PieChartTypeTemplate( m_xContext, aServiceSpecifier,
-                chart2::PieChartOffsetMode_ALL_EXPLODED, true, 3 ));
+                chart2::PieChartOffsetMode_ALL_EXPLODED, true,
+                chart2::PieChartSubType_NONE, 3, 3 ));
             break;
 
         case TEMPLATE_SCATTERLINESYMBOL:
@@ -501,6 +535,11 @@ rtl::Reference< ::chart::ChartTypeTemplate > ChartTypeManager::createTemplate(
             xTemplate.set( new BubbleChartTypeTemplate( m_xContext, aServiceSpecifier ));
             break;
 
+        // Funnel chart
+        case TEMPLATE_FUNNEL:
+            xTemplate.set( new FunnelChartTypeTemplate( m_xContext,
+                        aServiceSpecifier));
+            break;
         case TEMPLATE_NOT_FOUND:
             SAL_WARN("chart2", "Couldn't instantiate service: "<< aServiceSpecifier );
             assert(false);
@@ -539,7 +578,7 @@ uno::Sequence< OUString > SAL_CALL ChartTypeManager::getAvailableServiceNames()
     if( xEnumAcc.is())
     {
         uno::Reference< container::XEnumeration > xEnum(
-            xEnumAcc->createContentEnumeration( "com.sun.star.chart2.ChartTypeTemplate" ));
+            xEnumAcc->createContentEnumeration( u"com.sun.star.chart2.ChartTypeTemplate"_ustr ));
         if( xEnum.is())
         {
             uno::Reference< uno::XInterface > xFactIntf;
@@ -562,7 +601,7 @@ uno::Sequence< OUString > SAL_CALL ChartTypeManager::getAvailableServiceNames()
 // ____ XServiceInfo ____
 OUString SAL_CALL ChartTypeManager::getImplementationName()
 {
-    return "com.sun.star.comp.chart.ChartTypeManager";
+    return u"com.sun.star.comp.chart.ChartTypeManager"_ustr;
 }
 
 sal_Bool SAL_CALL ChartTypeManager::supportsService( const OUString& rServiceName )
@@ -573,8 +612,8 @@ sal_Bool SAL_CALL ChartTypeManager::supportsService( const OUString& rServiceNam
 css::uno::Sequence< OUString > SAL_CALL ChartTypeManager::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.chart2.ChartTypeManager",
-        "com.sun.star.lang.MultiServiceFactory" };
+        u"com.sun.star.chart2.ChartTypeManager"_ustr,
+        u"com.sun.star.lang.MultiServiceFactory"_ustr };
 }
 
 } //  namespace chart

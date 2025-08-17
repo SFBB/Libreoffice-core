@@ -28,6 +28,7 @@
 #include <rtl/ustring.hxx>
 #include <optional>
 #include <map>
+#include <unordered_set>
 #include <memory>
 
 #define MAX_FUNCCAT 12  /* maximum number of categories for functions */
@@ -41,7 +42,7 @@ class ScFuncDesc final : public formula::IFunctionDescription
 {
 public:
     ScFuncDesc();
-    virtual ~ScFuncDesc();
+    ~ScFuncDesc();
 
     /**
       Clears the object
@@ -272,7 +273,6 @@ class ScFunctionCategory final : public formula::IFunctionCategory
 public:
     ScFunctionCategory(const ::std::vector<const ScFuncDesc*>& _rCategory,sal_uInt32 _nCategory)
             : m_rCategory(_rCategory),m_nCategory(_nCategory){}
-    virtual ~ScFunctionCategory(){}
 
     /**
       @return count of functions in this category
@@ -314,7 +314,7 @@ public:
       The function lists of the categories are sorted by (case insensitive) function name
     */
             ScFunctionMgr();
-    virtual ~ScFunctionMgr();
+    ~ScFunctionMgr();
 
     /**
       Returns name of category.
@@ -336,7 +336,7 @@ public:
 
       @return pointer to function with the index nFIndex, null if no such function was found.
     */
-    const ScFuncDesc* Get( sal_uInt16 nFIndex ) const;
+    const formula::IFunctionDescription* Get( sal_uInt16 nFIndex ) const override;
 
     /**
       Returns the first function in category nCategory.
@@ -375,6 +375,16 @@ public:
     virtual const formula::IFunctionCategory* getCategory(sal_uInt32 nPos) const override;
 
     /**
+      Returns the index of the function.
+
+      @param _pDesc
+      Pointer to function description
+
+      @return The index of the function if not null, 0 otherwise.
+    */
+    virtual sal_uInt16 getFunctionIndex(const formula::IFunctionDescription* _pDesc) const override;
+
+    /**
       Appends the last recently used functions.
 
       Takes the last recently used functions, but maximal LRU_MAX, and appends them to the given vector _rLastRUFunctions.
@@ -383,6 +393,14 @@ public:
       a vector of pointer to IFunctionDescription, by reference.
     */
     virtual void fillLastRecentlyUsedFunctions(::std::vector< const formula::IFunctionDescription*>& _rLastRUFunctions) const override;
+
+    /**
+      Appends favourite functions to the given vector.
+
+      @param rFavouriteFunctions
+      a vector of pointer to IFunctionDescription, by reference.
+    */
+    virtual void fillFavouriteFunctions(std::unordered_set<sal_uInt16>& rFavouriteFunctions) const override;
 
     /**
       Maps Etoken to character

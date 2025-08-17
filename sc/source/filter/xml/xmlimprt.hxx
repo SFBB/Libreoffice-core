@@ -36,8 +36,6 @@
 #include <list>
 
 namespace com::sun::star::beans { class XPropertySet; }
-namespace com::sun::star::sheet { class XSheetCellRangeContainer; }
-namespace com::sun::star::table { struct CellRangeAddress; }
 namespace com::sun::star::util { class XNumberFormatTypes; }
 namespace com::sun::star::util { class XNumberFormats; }
 namespace sax_fastparser { class FastAttributeList; }
@@ -49,18 +47,14 @@ class XMLNumberFormatAttributesExportHelper;
 class ScEditEngineDefaulter;
 class ScDocumentImport;
 class ScMyImpDetectiveOpArray;
-class SdrPage;
 class ScModelObj;
 
 namespace sc {
 struct ImportPostProcessData;
 struct PivotTableSources;
-class ScDrawObjData;
 }
 
 
-class SvXMLTokenMap;
-class XMLShapeImportHelper;
 class ScXMLChangeTrackingImportHelper;
 
 struct ScMyNamedExpression
@@ -106,6 +100,7 @@ struct ScMyImportValidation
     bool                                       bShowErrorMessage;
     bool                                       bShowInputMessage;
     bool                                       bIgnoreBlanks;
+    bool                                       bCaseSensitive;
 };
 
 typedef std::vector<ScMyImportValidation>           ScMyImportValidations;
@@ -120,7 +115,7 @@ class ScXMLImport: public SvXMLImport
 
     typedef ::std::map<SCTAB, ScMyNamedExpressions> SheetNamedExpMap;
 
-    ScDocument*             pDoc;
+    ScDocument*             mpDoc;
     std::unique_ptr<ScDocumentImport> mpDocImport;
     std::unique_ptr<ScCompiler> mpComp; // For error-checking of cached string cell values.
     std::unique_ptr<ScEditEngineDefaulter> mpEditEngine;
@@ -204,8 +199,8 @@ public:
 
     ScDocumentImport& GetDoc();
 
-    ScDocument*          GetDocument()           { return pDoc; }
-    const ScDocument*    GetDocument() const     { return pDoc; }
+    SAL_RET_MAYBENULL ScDocument*          GetDocument()           { return mpDoc; }
+    SAL_RET_MAYBENULL const ScDocument*    GetDocument() const     { return mpDoc; }
 
     ScModelObj* GetScModel() const;
 

@@ -97,6 +97,7 @@ define gb_LinkTarget__command_dynamiclink
 		$(foreach object,$(OBJCXXOBJECTS),$(call gb_ObjCxxObject_get_target,$(object))) \
 		$(foreach object,$(GENCOBJECTS),$(call gb_GenCObject_get_target,$(object))) \
 		$(foreach object,$(GENCXXOBJECTS),$(call gb_GenCxxObject_get_target,$(object))) \
+		$(foreach object,$(GENASMOBJECTS),$(call gb_GenAsmObject_get_target,$(object))) \
 		$(foreach object,$(GENNASMOBJECTS),$(call gb_GenNasmObject_get_target,$(object))) \
 		$(foreach extraobjectlist,$(EXTRAOBJECTLISTS),`cat $(extraobjectlist)`) \
 		$(foreach lib,$(LINKED_STATIC_LIBS),$(call gb_StaticLibrary_get_target,$(lib))) \
@@ -118,6 +119,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		$(foreach object,$(ASMOBJECTS),$(call gb_AsmObject_get_target,$(object))) \
 		$(foreach object,$(GENCOBJECTS),$(call gb_GenCObject_get_target,$(object))) \
 		$(foreach object,$(GENCXXOBJECTS),$(call gb_GenCxxObject_get_target,$(object))) \
+		$(foreach object,$(GENASMOBJECTS),$(call gb_GenAsmObject_get_target,$(object))) \
 		$(foreach object,$(GENNASMOBJECTS),$(call gb_GenNasmObject_get_target,$(object))) \
 		$(foreach extraobjectlist,$(EXTRAOBJECTLISTS),@$(extraobjectlist)) \
 		$(if $(findstring s,$(MAKEFLAGS)),2> /dev/null))
@@ -181,7 +183,7 @@ endef
 
 gb_Library__set_soversion_script_platform =
 
-gb_Library_get_sdk_link_dir = $(WORKDIR)/LinkTarget/Library
+gb_Library_get_sdk_link_dir := $(gb_Library_DLLDIR)
 
 # Executable class
 
@@ -240,14 +242,6 @@ gb_Extension_LICENSEFILE_DEFAULT := $(INSTROOT)/LICENSE
 # UnpackedTarget class
 
 gb_UnpackedTarget_TARFILE_LOCATION := $(TARFILE_LOCATION)
-
-# UnoApiHeadersTarget class
-
-ifeq ($(DISABLE_DYNLOADING),TRUE)
-gb_UnoApiHeadersTarget_select_variant = $(if $(filter udkapi,$(1)),comprehensive,$(2))
-else
-gb_UnoApiHeadersTarget_select_variant = $(2)
-endif
 
 # UIMenubarTarget class
 

@@ -23,6 +23,9 @@
 #include <texture/texture.hxx>
 #include <drawinglayer/primitive2d/PolyPolygonColorPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
+#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
+#include <drawinglayer/primitive2d/transparenceprimitive2d.hxx>
+#include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
 #include <utility>
 #include <algorithm>
 
@@ -141,19 +144,20 @@ namespace drawinglayer::primitive2d
             }
         }
 
-        void FillGradientPrimitive2D::createFill(Primitive2DContainer& rContainer, bool bOverlapping) const
+        Primitive2DReference FillGradientPrimitive2D::createFill(bool bOverlapping) const
         {
+            Primitive2DContainer aContainer;
             if (bOverlapping)
             {
                 // OverlappingFill: create solid fill with outmost color
-                rContainer.push_back(
+                aContainer.push_back(
                     new PolyPolygonColorPrimitive2D(
                         basegfx::B2DPolyPolygon(
                             basegfx::utils::createPolygonFromRect(getOutputRange())),
                         getOuterColor()));
 
                 // create solid fill steps by providing callback as lambda
-                auto aCallback([&rContainer,this](
+                auto aCallback([&aContainer,this](
                     const basegfx::B2DHomMatrix& rMatrix,
                     const basegfx::BColor& rColor)
                 {
@@ -162,7 +166,7 @@ namespace drawinglayer::primitive2d
                     aNewPoly.transform(rMatrix);
 
                     // create solid fill
-                    rContainer.push_back(
+                    aContainer.push_back(
                         new PolyPolygonColorPrimitive2D(
                             basegfx::B2DPolyPolygon(aNewPoly),
                             rColor));
@@ -179,7 +183,7 @@ namespace drawinglayer::primitive2d
                     // not really a gradient, we need to create a start primitive
                     // entry using the single color and the covered area
                     const basegfx::B2DRange aOutmostRange(getOutputRange());
-                    rContainer.push_back(
+                    aContainer.push_back(
                         new PolyPolygonColorPrimitive2D(
                             basegfx::B2DPolyPolygon(basegfx::utils::createPolygonFromRect(aOutmostRange)),
                             getOuterColor()));
@@ -190,11 +194,11 @@ namespace drawinglayer::primitive2d
                     basegfx::B2DPolyPolygon aCombinedPolyPoly;
                     basegfx::BColor aLastColor;
 
-                    auto aCallback([&rContainer,&aCombinedPolyPoly,&aLastColor,this](
+                    auto aCallback([&aContainer,&aCombinedPolyPoly,&aLastColor,this](
                         const basegfx::B2DHomMatrix& rMatrix,
                         const basegfx::BColor& rColor)
                     {
-                        if (rContainer.empty())
+                        if (aContainer.empty())
                         {
                             // 1st callback, init CombinedPolyPoly & create 1st entry
                             basegfx::B2DRange aOutmostRange(getOutputRange());
@@ -211,7 +215,7 @@ namespace drawinglayer::primitive2d
                             aCombinedPolyPoly.append(aFirstPoly);
 
                             // create first primitive
-                            rContainer.push_back(
+                            aContainer.push_back(
                                 new PolyPolygonColorPrimitive2D(
                                     aCombinedPolyPoly,
                                     getOuterColor()));
@@ -232,7 +236,7 @@ namespace drawinglayer::primitive2d
                             aCombinedPolyPoly.append(aNextPoly);
 
                             // create primitive with correct color
-                            rContainer.push_back(
+                            aContainer.push_back(
                                 new PolyPolygonColorPrimitive2D(
                                     aCombinedPolyPoly,
                                     aLastColor));
@@ -247,60 +251,114 @@ namespace drawinglayer::primitive2d
                     generateMatricesAndColors(aCallback);
 
                     // add last inner polygon with last color
-                    rContainer.push_back(
+                    aContainer.push_back(
                         new PolyPolygonColorPrimitive2D(
-                            aCombinedPolyPoly,
+                            std::move(aCombinedPolyPoly),
                             aLastColor));
                 }
             }
+            return new GroupPrimitive2D(std::move(aContainer));
         }
 
-        void FillGradientPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
+        Primitive2DReference FillGradientPrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
+            // SDPR: support alpha directly now. If a primitive processor
+            // cannot deal with it, use it's decomposition. For that purpose
+            // this decomposition has two stages now: This 1st one will
+            // (if needed) separate content and alpha into a TransparencePrimitive2D
+            // and (if needed) embed that to a UnifiedTransparencePrimitive2D,
+            // so all processors can work as before
+            if (hasAlphaGradient() || hasTransparency())
+            {
+                Primitive2DReference aRetval(
+                    new FillGradientPrimitive2D(
+                        getOutputRange(),
+                        getDefinitionRange(),
+                        getFillGradient()));
+
+                if (hasAlphaGradient())
+                {
+                    Primitive2DContainer aAlpha{ new FillGradientPrimitive2D(
+                        getOutputRange(),
+                        getDefinitionRange(),
+                        getAlphaGradient()) };
+
+                    aRetval = new TransparencePrimitive2D(Primitive2DContainer{ aRetval }, std::move(aAlpha));
+                }
+
+                if (hasTransparency())
+                {
+                    aRetval = new UnifiedTransparencePrimitive2D(Primitive2DContainer{ aRetval }, getTransparency());
+                }
+
+                return aRetval;
+            }
+
             // default creates overlapping fill which works with AntiAliasing and without.
             // The non-overlapping version does not create single filled polygons, but
             // PolyPolygons where each one describes a 'ring' for the gradient such
             // that the rings will not overlap. This is useful for the old XOR-paint
             // 'trick' of VCL which is recorded in Metafiles; so this version may be
             // used from the MetafilePrimitive2D in its decomposition.
-
             if(!getFillGradient().isDefault())
             {
-                createFill(rContainer, /*bOverlapping*/true);
+                return createFill(/*bOverlapping*/true);
             }
+
+            return nullptr;
         }
 
         FillGradientPrimitive2D::FillGradientPrimitive2D(
             const basegfx::B2DRange& rOutputRange,
-            attribute::FillGradientAttribute aFillGradient)
-        :   maOutputRange(rOutputRange),
-            maDefinitionRange(rOutputRange),
-            maFillGradient(std::move(aFillGradient))
+            const attribute::FillGradientAttribute& rFillGradient)
+        : maOutputRange(rOutputRange)
+        , maDefinitionRange(rOutputRange)
+        , maFillGradient(rFillGradient)
+        , maAlphaGradient()
+        , mfTransparency(0.0)
         {
         }
 
         FillGradientPrimitive2D::FillGradientPrimitive2D(
             const basegfx::B2DRange& rOutputRange,
             const basegfx::B2DRange& rDefinitionRange,
-            attribute::FillGradientAttribute aFillGradient)
-        :   maOutputRange(rOutputRange),
-            maDefinitionRange(rDefinitionRange),
-            maFillGradient(std::move(aFillGradient))
+            const attribute::FillGradientAttribute& rFillGradient,
+            const attribute::FillGradientAttribute* pAlphaGradient,
+            double fTransparency)
+        : maOutputRange(rOutputRange)
+        , maDefinitionRange(rDefinitionRange)
+        , maFillGradient(rFillGradient)
+        , maAlphaGradient()
+        , mfTransparency(fTransparency)
         {
+            // copy alpha gradient if we got one
+            if (nullptr != pAlphaGradient)
+                maAlphaGradient = *pAlphaGradient;
         }
 
         bool FillGradientPrimitive2D::operator==(const BasePrimitive2D& rPrimitive) const
         {
-            if(BufferedDecompositionPrimitive2D::operator==(rPrimitive))
-            {
-                const FillGradientPrimitive2D& rCompare = static_cast<const FillGradientPrimitive2D&>(rPrimitive);
+            if(!BufferedDecompositionPrimitive2D::operator==(rPrimitive))
+                return false;
 
-                return (getOutputRange() == rCompare.getOutputRange()
-                    && getDefinitionRange() == rCompare.getDefinitionRange()
-                    && getFillGradient() == rCompare.getFillGradient());
-            }
+            const FillGradientPrimitive2D& rCompare(static_cast<const FillGradientPrimitive2D&>(rPrimitive));
 
-            return false;
+            if (getOutputRange() != rCompare.getOutputRange())
+                return false;
+
+            if (getDefinitionRange() != rCompare.getDefinitionRange())
+                return false;
+
+            if (getFillGradient() != rCompare.getFillGradient())
+                return false;
+
+            if (maAlphaGradient != rCompare.maAlphaGradient)
+                return false;
+
+            if (!basegfx::fTools::equal(getTransparency(), rCompare.getTransparency()))
+                return false;
+
+            return true;
         }
 
         basegfx::B2DRange FillGradientPrimitive2D::getB2DRange(const geometry::ViewInformation2D& /*rViewInformation*/) const

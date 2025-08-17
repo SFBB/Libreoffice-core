@@ -22,7 +22,6 @@
 #include <tools/date.hxx>
 #include <tools/time.hxx>
 #include <svl/fstathelper.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/docfilt.hxx>
@@ -85,7 +84,7 @@ void SwAsciiOptions::Reset()
     m_eCharSet = ::osl_getThreadTextEncoding();
     m_nLanguage = LANGUAGE_SYSTEM;
     m_bIncludeBOM = true;
-    m_bIncludeHidden = !utl::ConfigManager::IsFuzzing() && officecfg::Office::Writer::FilterFlags::ASCII::IncludeHiddenText::get();
+    m_bIncludeHidden = officecfg::Office::Writer::FilterFlags::ASCII::IncludeHiddenText::get();
 }
 
 ErrCodeMsg SwReader::Read( const Reader& rOptions )
@@ -97,6 +96,7 @@ ErrCodeMsg SwReader::Read( const Reader& rOptions )
     po->m_xStorage  = mxStg;
     po->m_bInsertMode = nullptr != mpCursor;
     po->m_bSkipImages = mbSkipImages;
+    po->SetInPaste(IsInPaste());
 
     // if a Medium is selected, get its Stream
     if( nullptr != (po->m_pMedium = mpMedium ) &&
@@ -201,7 +201,12 @@ ErrCodeMsg SwReader::Read( const Reader& rOptions )
 
         mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
 
-        nError = po->Read( *mxDoc, msBaseURL, *pPam, maFileName );
+        {
+            // Performance mode: import all bookmarks names as defined in the document
+            auto perfModeGuard = mxDoc->getIDocumentMarkAccess()->disableUniqueNameChecks();
+
+            nError = po->Read(*mxDoc, msBaseURL, *pPam, maFileName);
+        }
 
         // an ODF document may contain redline mode in settings.xml; save it!
         ePostReadRedlineFlags = mxDoc->getIDocumentRedlineAccess().GetRedlineFlags();
@@ -213,7 +218,7 @@ ErrCodeMsg SwReader::Read( const Reader& rOptions )
             --aEndPos;
             pCNd = aEndPos.GetNode().GetContentNode();
             if( !pCNd && nullptr == ( pCNd = SwNodes::GoPrevious( &aEndPos ) ))
-                pCNd = mxDoc->GetNodes().GoNext( &aEndPos );
+                pCNd = SwNodes::GoNext(&aEndPos);
 
             const sal_Int32 nLen = pCNd->Len();
             if( nLen < nEndContent )
@@ -252,9 +257,7 @@ ErrCodeMsg SwReader::Read( const Reader& rOptions )
                 // ok, here IsAlive is a misnomer...
                 if (!aFlyFrameArr.IsAlive(pFrameFormat))
                 {
-                    if  (   (RndStdIds::FLY_AT_PAGE == rAnchor.GetAnchorId())
-                        // TODO: why is this not handled via SetInsertRange?
-                        ||  SwUndoInserts::IsCreateUndoForNewFly(rAnchor,
+                    if (SwUndoInserts::IsCreateUndoForNewFly(rAnchor,
                                 pUndoPam->GetPoint()->GetNodeIndex(),
                                 pUndoPam->GetMark()->GetNodeIndex()))
                     {
@@ -269,16 +272,6 @@ ErrCodeMsg SwReader::Read( const Reader& rOptions )
                         }
                         else
                         {
-                            if( bSaveUndo )
-                            {
-                                mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
-                                // UGLY: temp. enable undo
-                                mxDoc->GetIDocumentUndoRedo().DoUndo(true);
-                                mxDoc->GetIDocumentUndoRedo().AppendUndo(
-                                    std::make_unique<SwUndoInsLayFormat>( pFrameFormat, SwNodeOffset(0), 0 ) );
-                                mxDoc->GetIDocumentUndoRedo().DoUndo(false);
-                                mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( RedlineFlags::Ignore );
-                            }
                             if( pFrameFormat->HasWriterListeners() )
                             {
                                 // Draw-Objects create a Frame when being inserted; thus delete them
@@ -314,7 +307,7 @@ ErrCodeMsg SwReader::Read( const Reader& rOptions )
         if( bSaveUndo )
         {
             mxDoc->getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
-            pUndo->SetInsertRange( *pUndoPam, false );
+            pUndo->SetInsertRange(*pUndoPam, true);
             // UGLY: temp. enable undo
             mxDoc->GetIDocumentUndoRedo().DoUndo(true);
             mxDoc->GetIDocumentUndoRedo().AppendUndo( std::move(pUndo) );
@@ -353,9 +346,13 @@ ErrCodeMsg SwReader::Read( const Reader& rOptions )
 
     mxDoc->SetInReading( false );
     mxDoc->SetInXMLImport( false );
+    mxDoc->SetInXMLImport242(false);
     mxDoc->SetInWriterfilterImport(false);
 
-    mxDoc->InvalidateNumRules();
+    if (!mbSkipInvalidateNumRules)
+    {
+        mxDoc->InvalidateNumRules();
+    }
     mxDoc->UpdateNumRule();
     mxDoc->ChkCondColls();
     mxDoc->SetAllUniqueFlyNames();
@@ -404,6 +401,7 @@ ErrCodeMsg SwReader::Read( const Reader& rOptions )
     po->SetBlockMode( false );
     po->SetOrganizerMode( false );
     po->SetIgnoreHTMLComments( false );
+    po->SetInPaste(false);
 
     return nError;
 }
@@ -505,11 +503,10 @@ SwDoc* Reader::GetTemplateDoc(SwDoc& rDoc)
             // we cannot create a SwDocShell. We could create a
             // SwWebDocShell however, because this exists always
             // for the help.
-            SvtModuleOptions aModuleOptions;
-            if (aModuleOptions.IsWriter())
+            if (SvtModuleOptions().IsWriterInstalled())
             {
-                SwDocShell *pDocSh = new SwDocShell(SfxObjectCreateMode::INTERNAL);
-                SfxObjectShellLock xDocSh = pDocSh;
+                rtl::Reference<SwDocShell> pDocSh = new SwDocShell(SfxObjectCreateMode::INTERNAL);
+                SfxObjectShellLock xDocSh = pDocSh.get();
                 if (pDocSh->DoInitNew())
                 {
                     mxTemplate = pDocSh->GetDoc();
@@ -572,7 +569,7 @@ void Reader::MakeHTMLDummyTemplateDoc()
     mxTemplate->getIDocumentSettingAccess().set(DocumentSettingId::BROWSE_MODE, m_bTemplateBrowseMode );
     mxTemplate->getIDocumentDeviceAccess().getPrinter( true );
     mxTemplate->RemoveAllFormatLanguageDependencies();
-    m_aCheckDateTime = Date( 1, 1, 2300 );  // year 2300 should be sufficient
+    m_aCheckDateTime = DateTime( Date( 1, 1, 2300 ) );  // year 2300 should be sufficient
     m_aTemplateName = "$$Dummy$$";
 }
 
@@ -926,7 +923,7 @@ bool SetHTMLTemplate( SwDoc & rDoc )
 
     SwNodes& rNds = rDoc.GetNodes();
     SwNodeIndex aIdx( rNds.GetEndOfExtras(), 1 );
-    SwContentNode* pCNd = rNds.GoNext( &aIdx );
+    SwContentNode* pCNd = SwNodes::GoNext(&aIdx);
     if( pCNd )
     {
         pCNd->SetAttr

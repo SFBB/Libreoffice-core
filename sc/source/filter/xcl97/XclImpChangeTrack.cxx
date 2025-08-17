@@ -44,7 +44,7 @@ XclImpChangeTrack::XclImpChangeTrack( const XclImpRoot& rRoot, const XclImpStrea
     // Verify that the User Names stream exists before going any further. Excel adds both
     // "Revision Log" and "User Names" streams when Change Tracking is active but the Revision log
     // remains if Change Tracking is turned off.
-    tools::SvRef<SotStorageStream> xUserStrm = OpenStream( EXC_STREAM_USERNAMES );
+    rtl::Reference<SotStorageStream> xUserStrm = OpenStream( EXC_STREAM_USERNAMES );
     if( !xUserStrm.is() )
         return;
 
@@ -166,14 +166,13 @@ void XclImpChangeTrack::Read3DTabRefInfo( SCTAB& rFirstTab, SCTAB& rLastTab, Exc
         XclImpUrlHelper::DecodeUrl( aUrl, bSelf, GetRoot(), aEncUrl );
         pStrm->Ignore( 1 );
         // - sheet name, always separated from URL
-        OUString aTabName( pStrm->ReadUniString() );
+        rExtInfo.maTabName = pStrm->ReadUniString();
         pStrm->Ignore( 1 );
 
         rExtInfo.mbExternal = true;
         ScExternalRefManager* pRefMgr = GetDoc().GetExternalRefManager();
         pRefMgr->convertToAbsName(aUrl);
         rExtInfo.mnFileId = pRefMgr->getExternalFileId(aUrl);
-        rExtInfo.maTabName = aTabName;
         rFirstTab = rLastTab = 0;
     }
 }

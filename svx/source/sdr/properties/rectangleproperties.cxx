@@ -42,12 +42,12 @@ namespace sdr::properties
             return std::unique_ptr<BaseProperties>(new RectangleProperties(*this, rObj));
         }
 
-        void RectangleProperties::ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich)
+        void RectangleProperties::ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich, bool bAdjustTextFrameWidthAndHeight)
         {
             SdrRectObj& rObj = static_cast<SdrRectObj&>(GetSdrObject());
 
             // call parent
-            TextProperties::ItemSetChanged(aChangedItems, nDeletedWhich);
+            TextProperties::ItemSetChanged(aChangedItems, nDeletedWhich, bAdjustTextFrameWidthAndHeight);
 
             // local changes
             rObj.SetXPolyDirty();
@@ -55,10 +55,10 @@ namespace sdr::properties
 
         // set a new StyleSheet and broadcast
         void RectangleProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast)
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight)
         {
             // call parent (always first thing to do, may create the SfxItemSet)
-            TextProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr, bBroadcast);
+            TextProperties::SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr, bBroadcast, bAdjustTextFrameWidthAndHeight);
 
             // local changes
             SdrRectObj& rObj = static_cast<SdrRectObj&>(GetSdrObject());

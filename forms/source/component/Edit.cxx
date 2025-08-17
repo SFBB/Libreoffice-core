@@ -55,7 +55,6 @@ using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::form::binding;
 
 
 Sequence<Type> OEditControl::_getTypes()
@@ -84,8 +83,7 @@ OEditControl::OEditControl(const Reference<XComponentContext>& _rxFactory)
 
     osl_atomic_increment(&m_refCount);
     {
-        Reference<XWindow>  xComp;
-        if (query_aggregation(m_xAggregate, xComp))
+        if (auto xComp = query_aggregation<XWindow>(m_xAggregate))
         {
             xComp->addFocusListener(this);
             xComp->addKeyListener(this);
@@ -543,7 +541,7 @@ void OEditModel::read(const Reference<XObjectInputStream>& _rxInStream)
     if (m_xAggregateSet.is())
     {
         Any aDefaultControl = m_xAggregateSet->getPropertyValue(PROPERTY_DEFAULTCONTROL);
-        if  (   (aDefaultControl.getValueType().getTypeClass() == TypeClass_STRING)
+        if  (   (aDefaultControl.getValueTypeClass() == TypeClass_STRING)
             &&  (getString(aDefaultControl) == STARDIV_ONE_FORM_CONTROL_TEXTFIELD )
             )
         {
@@ -581,7 +579,7 @@ void OEditModel::onConnectedDbColumn( const Reference< XInterface >& _rxForm )
     if ( !m_bMaxTextLenModified )
     {
         sal_Int32 nFieldLen = 0;
-        xField->getPropertyValue("Precision") >>= nFieldLen;
+        xField->getPropertyValue(u"Precision"_ustr) >>= nFieldLen;
 
         if (nFieldLen > 0 && nFieldLen <= SAL_MAX_INT16)
         {

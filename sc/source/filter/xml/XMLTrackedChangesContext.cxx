@@ -824,30 +824,25 @@ uno::Reference< xml::sax::XFastContextHandler > ScXMLChangeCellContext::createFa
 
 void ScXMLChangeCellContext::CreateTextPContext(bool bIsNewParagraph)
 {
-    if (!GetScImport().GetDocument())
+    ScDocument* pDoc = GetScImport().GetDocument();
+    if (!pDoc)
         return;
 
-    mpEditTextObj = new ScEditEngineTextObj();
-    mpEditTextObj->GetEditEngine()->SetEditTextObjectPool(GetScImport().GetDocument()->GetEditPool());
-    uno::Reference <text::XText> xText(mpEditTextObj);
-    if (xText.is())
+    mpEditTextObj = new ScEditEngineTextObj(pDoc->GetEditEnginePool());
+    uno::Reference<text::XTextCursor> xTextCursor(mpEditTextObj->createTextCursor());
+    if (bIsNewParagraph)
     {
-        uno::Reference<text::XTextCursor> xTextCursor(xText->createTextCursor());
-        if (bIsNewParagraph)
-        {
-            xText->setString(sText);
-            xTextCursor->gotoEnd(false);
-            xText->insertControlCharacter(xTextCursor, text::ControlCharacter::PARAGRAPH_BREAK, false);
-        }
-        GetScImport().GetTextImport()->SetCursor(xTextCursor);
+        mpEditTextObj->setString(sText);
+        xTextCursor->gotoEnd(false);
+        mpEditTextObj->insertControlCharacter(xTextCursor, text::ControlCharacter::PARAGRAPH_BREAK, false);
     }
+    GetScImport().GetTextImport()->SetCursor(xTextCursor);
 }
 
 void SAL_CALL ScXMLChangeCellContext::endFastElement( sal_Int32 /*nElement*/ )
 {
     if (!bEmpty)
     {
-        ScDocument* pDoc = GetScImport().GetDocument();
         if (mpEditTextObj.is())
         {
             if (GetImport().GetTextImport()->GetCursor().is())
@@ -856,7 +851,7 @@ void SAL_CALL ScXMLChangeCellContext::endFastElement( sal_Int32 /*nElement*/ )
                 if( GetImport().GetTextImport()->GetCursor()->goLeft( 1, true ) )
                 {
                     GetImport().GetTextImport()->GetText()->insertString(
-                        GetImport().GetTextImport()->GetCursorAsRange(), "",
+                        GetImport().GetTextImport()->GetCursorAsRange(), u""_ustr,
                         true );
                 }
             }
@@ -872,7 +867,8 @@ void SAL_CALL ScXMLChangeCellContext::endFastElement( sal_Int32 /*nElement*/ )
             {
                 if (!sText.isEmpty() && bString)
                 {
-                    mrOldCell.set(pDoc->GetSharedStringPool().intern(sText));
+                    if (ScDocument* pDoc = GetScImport().GetDocument())
+                        mrOldCell.set(pDoc->GetSharedStringPool().intern(sText));
                 }
                 else
                 {

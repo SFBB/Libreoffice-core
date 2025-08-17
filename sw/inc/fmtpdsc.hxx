@@ -27,11 +27,11 @@
 #include <optional>
 #include "pagedesc.hxx"
 
-class IntlWrapper;
-
-/** Pagedescriptor
- Client of SwPageDesc that is "described" by the attribute. */
-
+/**
+    SwFormatPageDesc ("use this page style with xyz parameters") is the wrapper
+    around SwPageDesc ("page style"),
+    multiple SwFormatPageDesc can refer to the same SwPageDesc.
+ */
 class SW_DLLPUBLIC SwFormatPageDesc final : public SfxPoolItem, public SwClient
 {
     ::std::optional<sal_uInt16> m_oNumOffset;          ///< Offset page number.
@@ -41,7 +41,8 @@ class SW_DLLPUBLIC SwFormatPageDesc final : public SfxPoolItem, public SwClient
     virtual void SwClientNotify( const SwModify&, const SfxHint& rHint ) override;
 
 public:
-    SwFormatPageDesc( const SwPageDesc *pDesc = nullptr );
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatPageDesc)
+    explicit SwFormatPageDesc( const SwPageDesc *pDesc = nullptr );
     SwFormatPageDesc( const SwFormatPageDesc &rCpy );
     SwFormatPageDesc &operator=( const SwFormatPageDesc &rCpy );
     virtual ~SwFormatPageDesc() override;
@@ -49,6 +50,8 @@ public:
 
     /// "Pure virtual methods" of SfxPoolItem.
     virtual bool            operator==( const SfxPoolItem& ) const override;
+    virtual bool            supportsHashCode() const override { return true; }
+    virtual size_t          hashCode() const override;
     virtual SwFormatPageDesc* Clone( SfxItemPool* pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
@@ -62,7 +65,7 @@ public:
     const SwPageDesc *GetPageDesc() const { return static_cast<const SwPageDesc*>(GetRegisteredIn()); }
 
     const ::std::optional<sal_uInt16>&  GetNumOffset() const        { return m_oNumOffset; }
-    void    SetNumOffset( const ::std::optional<sal_uInt16>& oNum ) { m_oNumOffset = oNum; }
+    void    SetNumOffset( const ::std::optional<sal_uInt16>& oNum ) { ASSERT_CHANGE_REFCOUNTED_ITEM; m_oNumOffset = oNum; }
 
     /// Query / set where attribute is anchored.
     const sw::BroadcastingModify* GetDefinedIn() const { return m_pDefinedIn; }

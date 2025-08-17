@@ -23,16 +23,13 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/container/XIndexContainer.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmlnamespace.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmluconv.hxx>
 #include <xexptran.hxx>
 #include <xmloff/xmlerror.hxx>
@@ -203,12 +200,12 @@ void XMLImageMapObjectContext::ProcessAttribute(
 void XMLImageMapObjectContext::Prepare(
     Reference<XPropertySet> & rPropertySet)
 {
-    rPropertySet->setPropertyValue( "URL", Any( sUrl ) );
-    rPropertySet->setPropertyValue( "Title", Any( sTitleBuffer.makeStringAndClear() ) );
-    rPropertySet->setPropertyValue( "Description", Any( sDescriptionBuffer.makeStringAndClear() ) );
-    rPropertySet->setPropertyValue( "Target", Any( sTargt ) );
-    rPropertySet->setPropertyValue( "IsActive", Any( bIsActive ) );
-    rPropertySet->setPropertyValue( "Name", Any( sNam ) );
+    rPropertySet->setPropertyValue( u"URL"_ustr, Any( sUrl ) );
+    rPropertySet->setPropertyValue( u"Title"_ustr, Any( sTitleBuffer.makeStringAndClear() ) );
+    rPropertySet->setPropertyValue( u"Description"_ustr, Any( sDescriptionBuffer.makeStringAndClear() ) );
+    rPropertySet->setPropertyValue( u"Target"_ustr, Any( sTargt ) );
+    rPropertySet->setPropertyValue( u"IsActive"_ustr, Any( bIsActive ) );
+    rPropertySet->setPropertyValue( u"Name"_ustr, Any( sNam ) );
 }
 
 namespace {
@@ -302,7 +299,7 @@ void XMLImageMapRectangleContext::ProcessAttribute(
 void XMLImageMapRectangleContext::Prepare(
     Reference<XPropertySet> & rPropertySet)
 {
-    rPropertySet->setPropertyValue( "Boundary", uno::Any(aRectangle) );
+    rPropertySet->setPropertyValue( u"Boundary"_ustr, uno::Any(aRectangle) );
 
     // common properties handled by super class
     XMLImageMapObjectContext::Prepare(rPropertySet);
@@ -379,7 +376,7 @@ void XMLImageMapPolygonContext::Prepare(Reference<XPropertySet> & rPropertySet)
         {
             css::drawing::PointSequence aPointSequence;
             basegfx::utils::B2DPolygonToUnoPointSequence(aPolygon, aPointSequence);
-            rPropertySet->setPropertyValue("Polygon", Any(aPointSequence));
+            rPropertySet->setPropertyValue(u"Polygon"_ustr, Any(aPointSequence));
         }
     }
 
@@ -470,9 +467,9 @@ void XMLImageMapCircleContext::Prepare(
     Reference<XPropertySet> & rPropertySet)
 {
     // center (x,y)
-    rPropertySet->setPropertyValue( "Center", uno::Any(aCenter) );
+    rPropertySet->setPropertyValue( u"Center"_ustr, uno::Any(aCenter) );
     // radius
-    rPropertySet->setPropertyValue( "Radius", uno::Any(nRadius) );
+    rPropertySet->setPropertyValue( u"Radius"_ustr, uno::Any(nRadius) );
 
     // common properties handled by super class
     XMLImageMapObjectContext::Prepare(rPropertySet);

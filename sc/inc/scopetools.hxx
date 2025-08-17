@@ -13,10 +13,6 @@
 
 class ScDocument;
 class ScColumn;
-namespace vcl
-{
-class Window;
-}
 
 namespace sc
 {
@@ -85,6 +81,8 @@ class DelayStartListeningFormulaCells
 {
     ScColumn& mColumn;
     bool const mbOldValue;
+
+    void ImplDestroy();
 
 public:
     DelayStartListeningFormulaCells(ScColumn& column, bool delay);

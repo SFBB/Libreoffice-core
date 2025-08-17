@@ -43,6 +43,7 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <framework/documentundoguard.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <unotools/securityoptions.hxx>
 
 #include <com/sun/star/uri/XUriReference.hpp>
 #include <com/sun/star/uri/XVndSunStarScriptUrlReference.hpp>
@@ -75,7 +76,7 @@ void SAL_CALL ScriptProtocolHandler::initialize(
     // but usually it's a "real" frame)
     if ( aArguments.hasElements() && !( aArguments[ 0 ] >>= m_xFrame ) )
     {
-        throw RuntimeException( "ScriptProtocolHandler::initialize: could not extract reference to the frame" );
+        throw RuntimeException( u"ScriptProtocolHandler::initialize: could not extract reference to the frame"_ustr );
     }
 
     ENSURE_OR_THROW( m_xContext.is(), "ScriptProtocolHandler::initialize: No Service Manager available" );
@@ -117,10 +118,10 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
     const URL& aURL, const Sequence < PropertyValue >& lArgs,
     const Reference< XDispatchResultListener >& xListener )
 {
-    if (officecfg::Office::Common::Security::Scripting::DisableMacrosExecution::get())
+    if (SvtSecurityOptions::IsMacroDisabled())
         return;
 
-    bool bSuccess = false;
+    sal_Int16 aState = css::frame::DispatchResultState::FAILURE;
     Any invokeResult;
     bool bCaughtException = false;
     Any aException;
@@ -133,7 +134,7 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
                 css::uri::UriReferenceFactory::create(m_xContext));
             css::uno::Reference<css::uri::XVndSunStarScriptUrlReference> uri(
                 urifac->parse(aURL.Complete), css::uno::UNO_QUERY_THROW);
-            auto const loc = uri->getParameter("location");
+            auto const loc = uri->getParameter(u"location"_ustr);
             bool bIsDocumentScript = loc == "document";
 
             if ( bIsDocumentScript )
@@ -204,14 +205,14 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
             if ( bIsDocumentScript )
                 pUndoGuard.reset( new ::framework::DocumentUndoGuard( m_xScriptInvocation ) );
 
-            bSuccess = false;
-            while ( !bSuccess )
+            while ( true )
             {
                 std::exception_ptr aFirstCaughtException;
                 try
                 {
                     invokeResult = xFunc->invoke( inArgs, outIndex, outArgs );
-                    bSuccess = true;
+                    aState = css::frame::DispatchResultState::SUCCESS;
+                    break;
                 }
                 catch( const provider::ScriptFrameworkErrorException& se )
                 {
@@ -225,7 +226,7 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
 
                     if ( !inArgs.hasElements() )
                         // no chance to retry if we can't strip more in-args
-                        std::rethrow_exception(aFirstCaughtException);
+                        std::rethrow_exception(std::move(aFirstCaughtException));
 
                     // strip one argument, then retry
                     inArgs.realloc( inArgs.getLength() - 1 );
@@ -247,9 +248,7 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
     }
     else
     {
-        invokeResult <<= OUString(
-            "ScriptProtocolHandler::dispatchWithNotification failed, ScriptProtocolHandler not initialised"
-        );
+        invokeResult <<= u"ScriptProtocolHandler::dispatchWithNotification failed, ScriptProtocolHandler not initialised"_ustr;
     }
 
     if ( bCaughtException )
@@ -266,15 +265,8 @@ void SAL_CALL ScriptProtocolHandler::dispatchWithNotification(
     css::frame::DispatchResultEvent aEvent;
 
     aEvent.Source = getXWeak();
-    aEvent.Result = invokeResult;
-    if ( bSuccess )
-    {
-        aEvent.State = css::frame::DispatchResultState::SUCCESS;
-    }
-    else
-    {
-        aEvent.State = css::frame::DispatchResultState::FAILURE;
-    }
+    aEvent.Result = std::move(invokeResult);
+    aEvent.State = aState;
 
     try
     {
@@ -408,7 +400,7 @@ ScriptProtocolHandler::~ScriptProtocolHandler()
 /* XServiceInfo */
 OUString SAL_CALL ScriptProtocolHandler::getImplementationName( )
 {
-    return "com.sun.star.comp.ScriptProtocolHandler";
+    return u"com.sun.star.comp.ScriptProtocolHandler"_ustr;
 }
 
 /* XServiceInfo */
@@ -420,7 +412,7 @@ sal_Bool SAL_CALL ScriptProtocolHandler::supportsService(const OUString& sServic
 /* XServiceInfo */
 Sequence< OUString > SAL_CALL ScriptProtocolHandler::getSupportedServiceNames()
 {
-    return {"com.sun.star.frame.ProtocolHandler"};
+    return {u"com.sun.star.frame.ProtocolHandler"_ustr};
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

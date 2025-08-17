@@ -70,7 +70,7 @@ public:
         auto pFrameFormat = pOleNode->GetFlyFormat();
         m_rXmlWriter.startElement("object");
         m_rXmlWriter.attribute("alt", pOleNode->GetTitle());
-        m_rXmlWriter.attribute("name", pFrameFormat->GetName());
+        m_rXmlWriter.attribute("name", pFrameFormat->GetName().toString());
         m_rXmlWriter.attribute("object_type", "ole"_ostr);
         m_rXmlWriter.endElement();
     }
@@ -80,7 +80,7 @@ public:
         auto pFrameFormat = pGraphicNode->GetFlyFormat();
         m_rXmlWriter.startElement("object");
         m_rXmlWriter.attribute("alt", pGraphicNode->GetTitle());
-        m_rXmlWriter.attribute("name", pFrameFormat->GetName());
+        m_rXmlWriter.attribute("name", pFrameFormat->GetName().toString());
         m_rXmlWriter.attribute("object_type", "graphic"_ostr);
         m_rXmlWriter.endElement();
     }
@@ -92,16 +92,16 @@ public:
         {
             nParentIndex = maNodeStack.back()->GetIndex();
         }
-        const OUString& rString
+        const OUString aString
             = pTextNode->GetText().replaceAll(OUStringChar(CH_TXTATR_BREAKWORD), "");
-        if (rString.isEmpty())
+        if (aString.isEmpty())
             return;
         m_rXmlWriter.startElement("paragraph");
         m_rXmlWriter.attribute("index", sal_Int32(pTextNode->GetIndex()));
         m_rXmlWriter.attribute("node_type", "writer"_ostr);
         if (nParentIndex >= SwNodeOffset(0))
             m_rXmlWriter.attribute("parent_index", sal_Int32(nParentIndex));
-        m_rXmlWriter.content(rString);
+        m_rXmlWriter.content(aString);
         m_rXmlWriter.endElement();
     }
 
@@ -143,11 +143,11 @@ public:
     void handleTableNode(SwTableNode* pTableNode)
     {
         const SwTableFormat* pFormat = pTableNode->GetTable().GetFrameFormat();
-        OUString sName = pFormat->GetName();
+        UIName sName = pFormat->GetName();
 
         m_rXmlWriter.startElement("object");
         m_rXmlWriter.attribute("index", sal_Int32(pTableNode->GetIndex()));
-        m_rXmlWriter.attribute("name", sName);
+        m_rXmlWriter.attribute("name", sName.toString());
         m_rXmlWriter.attribute("object_type", "table"_ostr);
         m_rXmlWriter.endElement();
 
@@ -158,7 +158,7 @@ public:
     {
         m_rXmlWriter.startElement("object");
         m_rXmlWriter.attribute("index", sal_Int32(pSectionNode->GetIndex()));
-        m_rXmlWriter.attribute("name", pSectionNode->GetSection().GetSectionName());
+        m_rXmlWriter.attribute("name", pSectionNode->GetSection().GetSectionName().toString());
         m_rXmlWriter.attribute("object_type", "section"_ostr);
         m_rXmlWriter.endElement();
 

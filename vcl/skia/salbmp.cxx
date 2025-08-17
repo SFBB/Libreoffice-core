@@ -58,16 +58,13 @@ SkiaSalBitmap::SkiaSalBitmap() {}
 
 SkiaSalBitmap::~SkiaSalBitmap() {}
 
-SkiaSalBitmap::SkiaSalBitmap(const sk_sp<SkImage>& image)
+SkiaSalBitmap::SkiaSalBitmap(const sk_sp<SkImage>& image, bool bWithoutAlpha)
 {
     ResetAllData();
     mImage = image;
     mPalette = BitmapPalette();
-#if SKIA_USE_BITMAP32
     mBitCount = 32;
-#else
-    mBitCount = 24;
-#endif
+    m_bWithoutAlpha = bWithoutAlpha;
     mSize = mPixelsSize = Size(image->width(), image->height());
     ComputeScanlineSize();
     mReadAccessCount = 0;
@@ -187,7 +184,7 @@ bool SkiaSalBitmap::Create(const SalBitmap& rSalBmp, vcl::PixelFormat eNewPixelF
     return true;
 }
 
-bool SkiaSalBitmap::Create(const css::uno::Reference<css::rendering::XBitmapCanvas>&, Size&, bool)
+bool SkiaSalBitmap::Create(const css::uno::Reference<css::rendering::XBitmapCanvas>&, Size&)
 {
     return false;
 }
@@ -288,25 +285,33 @@ BitmapBuffer* SkiaSalBitmap::AcquireBuffer(BitmapAccessMode nMode)
     switch (mBitCount)
     {
         case 1:
-            buffer->mnFormat = ScanlineFormat::N1BitMsbPal;
+            buffer->meFormat = ScanlineFormat::N1BitMsbPal;
             break;
         case 8:
-            buffer->mnFormat = ScanlineFormat::N8BitPal;
+            buffer->meFormat = ScanlineFormat::N8BitPal;
             break;
         case 24:
             // Make the RGB/BGR format match the default Skia 32bpp format, to allow
             // easy conversion later.
-            buffer->mnFormat = kN32_SkColorTypeIsBGRA ? ScanlineFormat::N24BitTcBgr
+            buffer->meFormat = kN32_SkColorTypeIsBGRA ? ScanlineFormat::N24BitTcBgr
                                                       : ScanlineFormat::N24BitTcRgb;
             break;
         case 32:
-            buffer->mnFormat = kN32_SkColorTypeIsBGRA ? ScanlineFormat::N32BitTcBgra
-                                                      : ScanlineFormat::N32BitTcRgba;
+            if (m_bWithoutAlpha)
+            {
+                buffer->meFormat = kN32_SkColorTypeIsBGRA ? ScanlineFormat::N32BitTcBgrx
+                                                          : ScanlineFormat::N32BitTcRgbx;
+            }
+            else
+            {
+                buffer->meFormat = kN32_SkColorTypeIsBGRA ? ScanlineFormat::N32BitTcBgra
+                                                          : ScanlineFormat::N32BitTcRgba;
+            }
             break;
         default:
             abort();
     }
-    buffer->mnFormat |= ScanlineFormat::TopDown;
+    buffer->meDirection = ScanlineDirection::TopDown;
     // Refcount all read/write accesses, to catch problems with existing accesses while
     // a bitmap changes, and also to detect when we can free mBuffer if wanted.
     // Write mode implies also reading. It would be probably a good idea to count even
@@ -321,12 +326,6 @@ BitmapBuffer* SkiaSalBitmap::AcquireBuffer(BitmapAccessMode nMode)
 }
 
 void SkiaSalBitmap::ReleaseBuffer(BitmapBuffer* pBuffer, BitmapAccessMode nMode)
-{
-    ReleaseBuffer(pBuffer, nMode, false);
-}
-
-void SkiaSalBitmap::ReleaseBuffer(BitmapBuffer* pBuffer, BitmapAccessMode nMode,
-                                  bool dontChangeToErase)
 {
     if (nMode == BitmapAccessMode::Write)
     {
@@ -350,62 +349,6 @@ void SkiaSalBitmap::ReleaseBuffer(BitmapBuffer* pBuffer, BitmapAccessMode nMode,
     assert(pBuffer->mpBits == mBuffer.get() || nMode == BitmapAccessMode::Info);
     verify();
     delete pBuffer;
-    if (nMode == BitmapAccessMode::Write && !dontChangeToErase)
-    {
-        // This saves memory and is also used by IsFullyOpaqueAsAlpha() to avoid unnecessary
-        // alpha blending.
-        if (IsAllBlack())
-        {
-            SAL_INFO("vcl.skia.trace", "releasebuffer(" << this << "): erasing to black");
-            EraseInternal(COL_BLACK);
-        }
-    }
-}
-
-static bool isAllZero(const sal_uInt8* data, size_t size)
-{ // For performance, check in larger data chunks.
-#ifdef UINT64_MAX
-    const int64_t* d = reinterpret_cast<const int64_t*>(data);
-#else
-    const int32_t* d = reinterpret_cast<const int32_t*>(data);
-#endif
-    constexpr size_t step = sizeof(*d) * 8;
-    for (size_t i = 0; i < size / step; ++i)
-    { // Unrolled loop.
-        if (d[0] != 0)
-            return false;
-        if (d[1] != 0)
-            return false;
-        if (d[2] != 0)
-            return false;
-        if (d[3] != 0)
-            return false;
-        if (d[4] != 0)
-            return false;
-        if (d[5] != 0)
-            return false;
-        if (d[6] != 0)
-            return false;
-        if (d[7] != 0)
-            return false;
-        d += 8;
-    }
-    for (size_t i = size / step * step; i < size; ++i)
-        if (data[i] != 0)
-            return false;
-    return true;
-}
-
-bool SkiaSalBitmap::IsAllBlack() const
-{
-    if (mBitCount % 8 != 0 || (!!mPalette && mPalette[0] != COL_BLACK))
-        return false; // Don't bother.
-    if (mSize.Width() * mBitCount / 8 == mScanlineSize)
-        return isAllZero(mBuffer.get(), mScanlineSize * mSize.Height());
-    for (tools::Long y = 0; y < mSize.Height(); ++y)
-        if (!isAllZero(mBuffer.get() + mScanlineSize * y, mSize.Width() * mBitCount / 8))
-            return false;
-    return true;
 }
 
 bool SkiaSalBitmap::GetSystemData(BitmapSystemData&)
@@ -424,7 +367,8 @@ bool SkiaSalBitmap::Scale(const double& rScaleX, const double& rScaleY, BmpScale
 #ifdef DBG_UTIL
     assert(mWriteAccessCount == 0);
 #endif
-    Size newSize(FRound(mSize.Width() * rScaleX), FRound(mSize.Height() * rScaleY));
+    Size newSize(basegfx::fround<tools::Long>(mSize.Width() * rScaleX),
+                 basegfx::fround<tools::Long>(mSize.Height() * rScaleY));
     if (mSize == newSize)
         return true;
 
@@ -528,10 +472,10 @@ bool SkiaSalBitmap::ConvertToGreyscale()
         // values from Bitmap::ImplMakeGreyscales(). Do not use kGray_8_SkColorType,
         // Skia would use its gray conversion formula.
         // NOTE: The matrix is 4x5 organized as columns (i.e. each line is a column, not a row).
-        constexpr SkColorMatrix toGray(77 / 256.0, 151 / 256.0, 28 / 256.0, 0, 0, // R column
-                                       77 / 256.0, 151 / 256.0, 28 / 256.0, 0, 0, // G column
-                                       77 / 256.0, 151 / 256.0, 28 / 256.0, 0, 0, // B column
-                                       0, 0, 0, 1, 0); // don't modify alpha
+        static constexpr SkColorMatrix toGray(77 / 256.0, 151 / 256.0, 28 / 256.0, 0, 0, // R column
+                                              77 / 256.0, 151 / 256.0, 28 / 256.0, 0, 0, // G column
+                                              77 / 256.0, 151 / 256.0, 28 / 256.0, 0, 0, // B column
+                                              0, 0, 0, 1, 0); // don't modify alpha
         paint.setColorFilter(SkColorFilters::Matrix(toGray));
         surface->getCanvas()->drawImage(mImage, 0, 0, SkSamplingOptions(), &paint);
         mBitCount = 8;
@@ -986,10 +930,10 @@ const sk_sp<SkImage>& SkiaSalBitmap::GetAlphaSkImage(DirectImage direct) const
         // Move the R channel value to the alpha channel. This seems to be the only
         // way to reinterpret data in SkImage as an alpha SkImage without accessing the pixels.
         // NOTE: The matrix is 4x5 organized as columns (i.e. each line is a column, not a row).
-        constexpr SkColorMatrix redToAlpha(0, 0, 0, 0, 0, // R column
-                                           0, 0, 0, 0, 0, // G column
-                                           0, 0, 0, 0, 0, // B column
-                                           1, 0, 0, 0, 0); // A column
+        static constexpr SkColorMatrix redToAlpha(0, 0, 0, 0, 0, // R column
+                                                  0, 0, 0, 0, 0, // G column
+                                                  0, 0, 0, 0, 0, // B column
+                                                  1, 0, 0, 0, 0); // A column
         SkPaint paint;
         paint.setColorFilter(SkColorFilters::Matrix(redToAlpha));
         if (scaling)
@@ -1045,10 +989,10 @@ const sk_sp<SkImage>& SkiaSalBitmap::GetAlphaSkImage(DirectImage direct) const
         // Move the R channel value to the alpha channel. This seems to be the only
         // way to reinterpret data in SkImage as an alpha SkImage without accessing the pixels.
         // NOTE: The matrix is 4x5 organized as columns (i.e. each line is a column, not a row).
-        constexpr SkColorMatrix redToAlpha(0, 0, 0, 0, 0, // R column
-                                           0, 0, 0, 0, 0, // G column
-                                           0, 0, 0, 0, 0, // B column
-                                           1, 0, 0, 0, 0); // A column
+        static constexpr SkColorMatrix redToAlpha(0, 0, 0, 0, 0, // R column
+                                                  0, 0, 0, 0, 0, // G column
+                                                  0, 0, 0, 0, 0, // B column
+                                                  1, 0, 0, 0, 0); // A column
         paint.setColorFilter(SkColorFilters::Matrix(redToAlpha));
         surface->getCanvas()->drawImage(GetAsSkBitmap().asImage(), 0, 0, SkSamplingOptions(),
                                         &paint);
@@ -1118,12 +1062,8 @@ SkAlphaType SkiaSalBitmap::alphaType() const
 {
     if (mEraseColorSet)
         return mEraseColor.IsTransparent() ? kPremul_SkAlphaType : kOpaque_SkAlphaType;
-#if SKIA_USE_BITMAP32
-    // The bitmap's alpha matters only if SKIA_USE_BITMAP32 is set, otherwise
-    // the alpha is in a separate bitmap.
     if (mBitCount == 32)
         return kPremul_SkAlphaType;
-#endif
     return kOpaque_SkAlphaType;
 }
 
@@ -1139,17 +1079,17 @@ void SkiaSalBitmap::PerformErase()
         fastColor = Color(ColorAlpha, mPalette.GetBestIndex(fastColor));
     if (!ImplFastEraseBitmap(*bitmapBuffer, fastColor))
     {
-        FncSetPixel setPixel = BitmapReadAccess::SetPixelFunction(bitmapBuffer->mnFormat);
-        assert(bitmapBuffer->mnFormat & ScanlineFormat::TopDown);
+        FncSetPixel setPixel = BitmapReadAccess::SetPixelFunction(bitmapBuffer->meFormat);
+        assert(bitmapBuffer->meDirection == ScanlineDirection::TopDown);
         // Set first scanline, copy to others.
         Scanline scanline = bitmapBuffer->mpBits;
         for (tools::Long x = 0; x < bitmapBuffer->mnWidth; ++x)
-            setPixel(scanline, x, mEraseColor, bitmapBuffer->maColorMask);
+            setPixel(scanline, x, mEraseColor);
         for (tools::Long y = 1; y < bitmapBuffer->mnHeight; ++y)
             memcpy(scanline + y * bitmapBuffer->mnScanlineSize, scanline,
                    bitmapBuffer->mnScanlineSize);
     }
-    ReleaseBuffer(bitmapBuffer, BitmapAccessMode::Write, true);
+    ReleaseBuffer(bitmapBuffer, BitmapAccessMode::Write);
 }
 
 void SkiaSalBitmap::EnsureBitmapData()
@@ -1203,7 +1143,8 @@ void SkiaSalBitmap::EnsureBitmapData()
             SkPaint paint;
             paint.setBlendMode(SkBlendMode::kSrc); // set as is, including alpha
             canvas.drawImage(mAlphaImage, 0, 0, SkSamplingOptions(), &paint);
-            canvas.flush();
+            if (auto dContext = GrAsDirectContext(canvas.recordingContext()))
+                dContext->flushAndSubmit();
         }
         bitmap.setImmutable();
         ResetPendingScaling();
@@ -1243,18 +1184,12 @@ void SkiaSalBitmap::EnsureBitmapData()
     // Try to fill mBuffer from mImage.
     assert(mImage->colorType() == kN32_SkColorType);
     SkiaZone zone;
-    // If the source image has no alpha, then use no alpha (faster to convert), otherwise
-    // use kUnpremul_SkAlphaType to make Skia convert from premultiplied alpha when reading
-    // from the SkImage (the alpha will be ignored if converting to bpp<32 formats, but
-    // the color channels must be unpremultiplied. Unless bpp==32 and SKIA_USE_BITMAP32,
-    // in which case use kPremul_SkAlphaType, since SKIA_USE_BITMAP32 implies premultiplied alpha.
+    // If the source image has no alpha, then use no alpha (faster to convert).
     SkAlphaType alphaType = kUnpremul_SkAlphaType;
     if (mImage->imageInfo().alphaType() == kOpaque_SkAlphaType)
         alphaType = kOpaque_SkAlphaType;
-#if SKIA_USE_BITMAP32
     if (mBitCount == 32)
         alphaType = kPremul_SkAlphaType;
-#endif
     SkBitmap bitmap;
     SkPixmap pixmap;
     if (imageSize(mImage) == mSize && mImage->imageInfo().alphaType() == alphaType
@@ -1280,7 +1215,8 @@ void SkiaSalBitmap::EnsureBitmapData()
         }
         else
             canvas.drawImage(mImage, 0, 0, SkSamplingOptions(), &paint);
-        canvas.flush();
+        if (auto dContext = GrAsDirectContext(canvas.recordingContext()))
+            dContext->flushAndSubmit();
     }
     bitmap.setImmutable();
     ResetPendingScaling();

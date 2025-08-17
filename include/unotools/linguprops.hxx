@@ -26,7 +26,6 @@
 #endif
 
 // UNO property names for general options
-inline constexpr OUString UPN_IS_GERMAN_PRE_REFORM            = u"IsGermanPreReform"_ustr;     /*! deprecated #i91949 !*/
 inline constexpr OUString UPN_IS_USE_DICTIONARY_LIST          = u"IsUseDictionaryList"_ustr;
 inline constexpr OUString UPN_IS_IGNORE_CONTROL_CHARACTERS    = u"IsIgnoreControlCharacters"_ustr;
 inline constexpr OUString UPN_ACTIVE_DICTIONARIES             = u"ActiveDictionaries"_ustr;
@@ -34,15 +33,22 @@ inline constexpr OUString UPN_ACTIVE_DICTIONARIES             = u"ActiveDictiona
 // UNO property names for SpellChecker
 inline constexpr OUString UPN_IS_SPELL_UPPER_CASE             = u"IsSpellUpperCase"_ustr;
 inline constexpr OUString UPN_IS_SPELL_WITH_DIGITS            = u"IsSpellWithDigits"_ustr;
-inline constexpr OUString UPN_IS_SPELL_CAPITALIZATION         = u"IsSpellCapitalization"_ustr;
 
 // UNO property names for Hyphenator
 inline constexpr OUString UPN_HYPH_MIN_LEADING                = u"HyphMinLeading"_ustr;
 inline constexpr OUString UPN_HYPH_MIN_TRAILING               = u"HyphMinTrailing"_ustr;
+inline constexpr OUString UPN_HYPH_COMPOUND_MIN_LEADING       = u"HyphCompoundMinLeading"_ustr;
 inline constexpr OUString UPN_HYPH_MIN_WORD_LENGTH            = u"HyphMinWordLength"_ustr;
 inline constexpr OUString UPN_HYPH_NO_CAPS                    = u"HyphNoCaps"_ustr;
 inline constexpr OUString UPN_HYPH_NO_LAST_WORD               = u"HyphNoLastWord"_ustr;
 inline constexpr OUString UPN_HYPH_ZONE                       = u"HyphZone"_ustr;
+inline constexpr OUString UPN_HYPH_ZONE_ALWAYS                = u"HyphZoneAlways"_ustr;
+inline constexpr OUString UPN_HYPH_ZONE_COLUMN                = u"HyphZoneColumn"_ustr;
+inline constexpr OUString UPN_HYPH_ZONE_PAGE                  = u"HyphZonePage"_ustr;
+inline constexpr OUString UPN_HYPH_ZONE_SPREAD                = u"HyphZoneSpread"_ustr;
+inline constexpr OUString UPN_HYPH_KEEP                       = u"HyphKeep"_ustr;
+inline constexpr OUString UPN_HYPH_KEEP_TYPE                  = u"HyphKeepType"_ustr;
+inline constexpr OUString UPN_HYPH_KEEP_LINE                  = u"HyphKeepLine"_ustr;
 
 // UNO property names for Lingu
 // (those not covered by the SpellChecker and Hyphenator
@@ -75,42 +81,48 @@ inline constexpr OUString UPN_IS_GRAMMAR_AUTO                 = u"IsAutoGrammarC
 inline constexpr OUString UPN_IS_GRAMMAR_INTERACTIVE          = u"IsInteractiveGrammarCheck"_ustr;
 
 // uno property handles
-#define UPH_IS_GERMAN_PRE_REFORM             0
-#define UPH_IS_USE_DICTIONARY_LIST           1
-#define UPH_IS_IGNORE_CONTROL_CHARACTERS     2
-#define UPH_IS_SPELL_UPPER_CASE              3
-#define UPH_IS_SPELL_WITH_DIGITS             4
-#define UPH_IS_SPELL_CAPITALIZATION          5
-#define UPH_HYPH_MIN_LEADING                 6
-#define UPH_HYPH_MIN_TRAILING                7
-#define UPH_HYPH_MIN_WORD_LENGTH             8
-#define UPH_DEFAULT_LOCALE                   9
-#define UPH_IS_SPELL_AUTO                   10
-#define UPH_IS_SPELL_CLOSED_COMPOUND        11
-#define UPH_IS_SPELL_HYPHENATED_COMPOUND    12
-#define UPH_IS_SPELL_SPECIAL                13
-#define UPH_IS_HYPH_AUTO                    14
-#define UPH_IS_HYPH_SPECIAL                 15
-#define UPH_IS_WRAP_REVERSE                 16
-#define UPH_DATA_FILES_CHANGED_CHECK_VALUE  17
-#define UPH_DEFAULT_LANGUAGE                21
-#define UPH_DEFAULT_LOCALE_CJK              22
-#define UPH_DEFAULT_LOCALE_CTL              23
-#define UPH_ACTIVE_DICTIONARIES             24
-#define UPH_ACTIVE_CONVERSION_DICTIONARIES  25
-#define UPH_IS_IGNORE_POST_POSITIONAL_WORD  26
-#define UPH_IS_AUTO_CLOSE_DIALOG            27
-#define UPH_IS_SHOW_ENTRIES_RECENTLY_USED_FIRST     28
-#define UPH_IS_AUTO_REPLACE_UNIQUE_ENTRIES  29
-#define UPH_IS_DIRECTION_TO_SIMPLIFIED      30
-#define UPH_IS_USE_CHARACTER_VARIANTS       31
-#define UPH_IS_TRANSLATE_COMMON_TERMS       32
-#define UPH_IS_REVERSE_MAPPING              33
-#define UPH_IS_GRAMMAR_AUTO                 34
-#define UPH_IS_GRAMMAR_INTERACTIVE          35
-#define UPH_HYPH_NO_CAPS                    36
-#define UPH_HYPH_NO_LAST_WORD               37
-#define UPH_HYPH_ZONE                       38
+#define UPH_IS_USE_DICTIONARY_LIST           0
+#define UPH_IS_IGNORE_CONTROL_CHARACTERS     1
+#define UPH_IS_SPELL_UPPER_CASE              2
+#define UPH_IS_SPELL_WITH_DIGITS             3
+#define UPH_HYPH_MIN_LEADING                 4
+#define UPH_HYPH_MIN_TRAILING                5
+#define UPH_HYPH_MIN_WORD_LENGTH             6
+#define UPH_DEFAULT_LOCALE                   7
+#define UPH_IS_SPELL_AUTO                    8
+#define UPH_IS_SPELL_CLOSED_COMPOUND         9
+#define UPH_IS_SPELL_HYPHENATED_COMPOUND    10
+#define UPH_IS_SPELL_SPECIAL                11
+#define UPH_IS_HYPH_AUTO                    12
+#define UPH_IS_HYPH_SPECIAL                 13
+#define UPH_IS_WRAP_REVERSE                 14
+#define UPH_DATA_FILES_CHANGED_CHECK_VALUE  15
+#define UPH_DEFAULT_LANGUAGE                16
+#define UPH_DEFAULT_LOCALE_CJK              17
+#define UPH_DEFAULT_LOCALE_CTL              18
+#define UPH_ACTIVE_DICTIONARIES             19
+#define UPH_ACTIVE_CONVERSION_DICTIONARIES  20
+#define UPH_IS_IGNORE_POST_POSITIONAL_WORD  21
+#define UPH_IS_AUTO_CLOSE_DIALOG            22
+#define UPH_IS_SHOW_ENTRIES_RECENTLY_USED_FIRST     23
+#define UPH_IS_AUTO_REPLACE_UNIQUE_ENTRIES  24
+#define UPH_IS_DIRECTION_TO_SIMPLIFIED      25
+#define UPH_IS_USE_CHARACTER_VARIANTS       26
+#define UPH_IS_TRANSLATE_COMMON_TERMS       27
+#define UPH_IS_REVERSE_MAPPING              28
+#define UPH_IS_GRAMMAR_AUTO                 29
+#define UPH_IS_GRAMMAR_INTERACTIVE          30
+#define UPH_HYPH_NO_CAPS                    31
+#define UPH_HYPH_NO_LAST_WORD               32
+#define UPH_HYPH_ZONE                       33
+#define UPH_HYPH_ZONE_ALWAYS                34
+#define UPH_HYPH_ZONE_COLUMN                35
+#define UPH_HYPH_ZONE_PAGE                  36
+#define UPH_HYPH_ZONE_SPREAD                37
+#define UPH_HYPH_KEEP                       38
+#define UPH_HYPH_KEEP_TYPE                  39
+#define UPH_HYPH_COMPOUND_MIN_LEADING       40
+#define UPH_HYPH_KEEP_LINE                  41
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

@@ -26,34 +26,21 @@
 #include <certificatechooser.hxx>
 #include <certificateviewer.hxx>
 #include <biginteger.hxx>
-#include <sax/tools/converter.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <comphelper/configuration.hxx>
 #include <officecfg/Office/Common.hxx>
 
+#include <com/sun/star/uno/SecurityException.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
-#include <com/sun/star/embed/ElementModes.hpp>
-#include <com/sun/star/embed/StorageFormats.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/security/NoPasswordException.hpp>
-#include <com/sun/star/lang/DisposedException.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/security/CertificateValidity.hpp>
-#include <com/sun/star/packages/WrongPasswordException.hpp>
 #include <com/sun/star/security/CertificateKind.hpp>
-#include <com/sun/star/security/XDocumentDigitalSignatures.hpp>
 #include <com/sun/star/system/SystemShellExecute.hpp>
 #include <com/sun/star/system/SystemShellExecuteFlags.hpp>
-#include <com/sun/star/system/SystemShellExecuteException.hpp>
 
 #include <osl/file.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <rtl/uri.hxx>
+#include <osl/process.h>
 #include <sal/log.hxx>
-
-#include <tools/date.hxx>
-#include <tools/time.hxx>
 #include <unotools/datetime.hxx>
 
 #include <bitmaps.hlst>
@@ -66,12 +53,17 @@
 #include <utility>
 #include <vcl/weld.hxx>
 #include <vcl/svapp.hxx>
-#include <unotools/configitem.hxx>
+#include <sfx2/viewsh.hxx>
+#include <svl/cryptosign.hxx>
 
 #ifdef _WIN32
 #include <o3tl/char16_t2wchar_t.hxx>
 #include <systools/win32/comtools.hxx>
 #include <Shlobj.h>
+#endif
+
+#if defined MACOSX
+#include <sys/stat.h>
 #endif
 
 using namespace comphelper;
@@ -81,34 +73,6 @@ using namespace css;
 
 namespace
 {
-    class SaveODFItem: public utl::ConfigItem
-    {
-    private:
-        virtual void ImplCommit() override;
-
-    public:
-    virtual void Notify( const css::uno::Sequence< OUString >& aPropertyNames ) override;
-        SaveODFItem();
-    };
-
-    void SaveODFItem::ImplCommit() {}
-    void SaveODFItem::Notify( const css::uno::Sequence< OUString >& ) {}
-
-    SaveODFItem::SaveODFItem(): utl::ConfigItem("Office.Common/Save")
-    {
-        OUString sDef("ODF/DefaultVersion");
-        Sequence< css::uno::Any > aValues = GetProperties( Sequence<OUString>(&sDef,1) );
-        if ( aValues.getLength() != 1)
-            throw uno::RuntimeException(
-                "[xmlsecurity] Could not open property Office.Common/Save/ODF/DefaultVersion",
-                nullptr);
-
-        sal_Int16 nTmp = 0;
-        if ( !(aValues[0] >>= nTmp) )
-            throw uno::RuntimeException(
-                "[xmlsecurity]SaveODFItem::SaveODFItem(): Wrong Type!",
-                nullptr );
-    }
 
 #ifdef _WIN32
     constexpr std::u16string_view aGUIServers[]
@@ -121,6 +85,12 @@ namespace
             u"GNU\\GnuPG\\bin\\kleopatra.exe",
             u"GNU\\GnuPG\\bin\\launch-gpa.exe",
             u"GNU\\GnuPG\\bin\\gpa.exe"};
+#elif defined MACOSX
+    constexpr std::u16string_view aGUIServers[]
+        = { u"/Applications/GPG Keychain.app",
+            u"/Applications/Trusted Key Manager.app", // tdf#147291
+            u"/Applications/SCinterface/scManager.app", // tdf#147291
+            u"/System/Applications/Utilities/Keychain Access.app"};
 #else
     constexpr std::u16string_view aGUIServers[]
         = { u"kleopatra", u"seahorse", u"gpa", u"kgpg"};
@@ -137,10 +107,7 @@ bool GetPathAllOS(OUString& aPath)
         return false;
     aPath = o3tl::toU(sPath);
 #else
-    const char* cPath = getenv("PATH");
-    if (!cPath)
-        return false;
-    aPath = OUString(cPath, strlen(cPath), osl_getThreadTextEncoding());
+    osl_getEnvironment(u"PATH"_ustr.pData, &aPath.pData);
 #endif
     return (!aPath.isEmpty());
 }
@@ -154,26 +121,55 @@ void GetCertificateManager(OUString& sExecutable)
     OUString aCetMgrConfig = officecfg::Office::Common::Security::Scripting::CertMgrPath::get();
     if (!aCetMgrConfig.isEmpty())
     {
+        if (aCetMgrConfig.indexOf('/') != -1
 #ifdef _WIN32
-        sal_Int32 nLastBackslashIndex = aCetMgrConfig.lastIndexOf('\\');
-#else
-        sal_Int32 nLastBackslashIndex = aCetMgrConfig.lastIndexOf('/');
+            || aCetMgrConfig.indexOf('\\') != -1
 #endif
-        osl::FileBase::RC searchError = osl::File::searchFileURL(
-            aCetMgrConfig.copy(0, nLastBackslashIndex + 1), aPath,
-            aFoundGUIServer);
-        if (searchError == osl::FileBase::E_None)
+           )
+        {
+            sExecutable = aCetMgrConfig;
             return;
-    }
-
-    for (const auto& rServer: aGUIServers)
-    {
+        }
         osl::FileBase::RC searchError = osl::File::searchFileURL(
-            OUString(rServer), aPath,
+            aCetMgrConfig, aPath,
             aFoundGUIServer);
         if (searchError == osl::FileBase::E_None)
         {
             osl::File::getSystemPathFromFileURL(aFoundGUIServer, sExecutable);
+            return;
+        }
+    }
+
+    for (const auto& rServer: aGUIServers)
+    {
+        bool bSetCertMgrPath = false;
+
+#ifdef MACOSX
+        // On macOS, the list of default certificate manager applications
+        // includes absolute paths so check if the path exists and is a
+        // directory
+        if (rServer.starts_with('/'))
+        {
+            OString aSysPath = OUString(rServer).toUtf8();
+            if (struct stat st; stat(aSysPath.getStr(), &st) == 0 && S_ISDIR(st.st_mode))
+            {
+                bSetCertMgrPath = true;
+                sExecutable = rServer;
+            }
+        }
+#endif
+
+        if (!bSetCertMgrPath)
+        {
+            osl::FileBase::RC searchError = osl::File::searchFileURL(
+                OUString(rServer), aPath,
+                aFoundGUIServer);
+            if (searchError == osl::FileBase::E_None && osl::File::getSystemPathFromFileURL(aFoundGUIServer, sExecutable) == osl::FileBase::E_None)
+                bSetCertMgrPath = true;
+        }
+
+        if (bSetCertMgrPath)
+        {
             std::shared_ptr<comphelper::ConfigurationChanges> pBatch(
                 comphelper::ConfigurationChanges::create());
             officecfg::Office::Common::Security::Scripting::CertMgrPath::set(sExecutable,
@@ -196,29 +192,30 @@ bool IsThereCertificateMgr()
 DigitalSignaturesDialog::DigitalSignaturesDialog(
     weld::Window* pParent,
     const uno::Reference< uno::XComponentContext >& rxCtx, DocumentSignatureMode eMode,
-    bool bReadOnly, OUString sODFVersion, bool bHasDocumentSignature)
-    : GenericDialogController(pParent, "xmlsec/ui/digitalsignaturesdialog.ui", "DigitalSignaturesDialog")
+    bool bReadOnly, OUString sODFVersion, bool bHasDocumentSignature,
+    SfxViewShell* pViewShell)
+    : GenericDialogController(pParent, u"xmlsec/ui/digitalsignaturesdialog.ui"_ustr, u"DigitalSignaturesDialog"_ustr)
     , maSignatureManager(rxCtx, eMode)
     , m_sODFVersion (std::move(sODFVersion))
     , m_bHasDocumentSignature(bHasDocumentSignature)
     , m_bWarningShowSignMacro(false)
-    , m_xHintDocFT(m_xBuilder->weld_label("dochint"))
-    , m_xHintBasicFT(m_xBuilder->weld_label("macrohint"))
-    , m_xHintPackageFT(m_xBuilder->weld_label("packagehint"))
-    , m_xSignaturesLB(m_xBuilder->weld_tree_view("signatures"))
-    , m_xSigsValidImg(m_xBuilder->weld_image("validimg"))
-    , m_xSigsValidFI(m_xBuilder->weld_label("validft"))
-    , m_xSigsInvalidImg(m_xBuilder->weld_image("invalidimg"))
-    , m_xSigsInvalidFI(m_xBuilder->weld_label("invalidft"))
-    , m_xSigsNotvalidatedImg(m_xBuilder->weld_image("notvalidatedimg"))
-    , m_xSigsNotvalidatedFI(m_xBuilder->weld_label("notvalidatedft"))
-    , m_xSigsOldSignatureImg(m_xBuilder->weld_image("oldsignatureimg"))
-    , m_xSigsOldSignatureFI(m_xBuilder->weld_label("oldsignatureft"))
-    , m_xViewBtn(m_xBuilder->weld_button("view"))
-    , m_xAddBtn(m_xBuilder->weld_button("sign"))
-    , m_xRemoveBtn(m_xBuilder->weld_button("remove"))
-    , m_xStartCertMgrBtn(m_xBuilder->weld_button("start_certmanager"))
-    , m_xCloseBtn(m_xBuilder->weld_button("close"))
+    , m_pViewShell(pViewShell)
+    , m_xHintDocFT(m_xBuilder->weld_label(u"dochint"_ustr))
+    , m_xHintBasicFT(m_xBuilder->weld_label(u"macrohint"_ustr))
+    , m_xSignaturesLB(m_xBuilder->weld_tree_view(u"signatures"_ustr))
+    , m_xSigsValidImg(m_xBuilder->weld_image(u"validimg"_ustr))
+    , m_xSigsValidFI(m_xBuilder->weld_label(u"validft"_ustr))
+    , m_xSigsInvalidImg(m_xBuilder->weld_image(u"invalidimg"_ustr))
+    , m_xSigsInvalidFI(m_xBuilder->weld_label(u"invalidft"_ustr))
+    , m_xSigsNotvalidatedImg(m_xBuilder->weld_image(u"notvalidatedimg"_ustr))
+    , m_xSigsNotvalidatedFI(m_xBuilder->weld_label(u"notvalidatedft"_ustr))
+    , m_xSigsOldSignatureImg(m_xBuilder->weld_image(u"oldsignatureimg"_ustr))
+    , m_xSigsOldSignatureFI(m_xBuilder->weld_label(u"oldsignatureft"_ustr))
+    , m_xViewBtn(m_xBuilder->weld_button(u"view"_ustr))
+    , m_xAddBtn(m_xBuilder->weld_button(u"sign"_ustr))
+    , m_xRemoveBtn(m_xBuilder->weld_button(u"remove"_ustr))
+    , m_xStartCertMgrBtn(m_xBuilder->weld_button(u"start_certmanager"_ustr))
+    , m_xCloseBtn(m_xBuilder->weld_button(u"close"_ustr))
 {
     auto nControlWidth = m_xSignaturesLB->get_approximate_digit_width() * 105;
     m_xSignaturesLB->set_size_request(nControlWidth, m_xSignaturesLB->get_height_rows(10));
@@ -226,7 +223,8 @@ DigitalSignaturesDialog::DigitalSignaturesDialog(
     // Give the first column 6 percent, try to distribute the rest equally.
     std::vector<int> aWidths;
     aWidths.push_back(6*nControlWidth/100);
-    auto nColWidth = (nControlWidth - aWidths[0]) / 4;
+    auto nColWidth = (nControlWidth - aWidths[0]) / 5;
+    aWidths.push_back(nColWidth);
     aWidths.push_back(nColWidth);
     aWidths.push_back(nColWidth);
     aWidths.push_back(nColWidth);
@@ -235,7 +233,8 @@ DigitalSignaturesDialog::DigitalSignaturesDialog(
     mbVerifySignatures = true;
     mbSignaturesChanged = false;
 
-    m_xSignaturesLB->connect_changed( LINK( this, DigitalSignaturesDialog, SignatureHighlightHdl ) );
+    m_xSignaturesLB->connect_selection_changed(
+        LINK(this, DigitalSignaturesDialog, SignatureHighlightHdl));
     m_xSignaturesLB->connect_row_activated( LINK( this, DigitalSignaturesDialog, SignatureSelectHdl ) );
 
     m_xViewBtn->connect_clicked( LINK( this, DigitalSignaturesDialog, ViewButtonHdl ) );
@@ -260,15 +259,15 @@ DigitalSignaturesDialog::DigitalSignaturesDialog(
         case DocumentSignatureMode::Macros:
             m_xHintBasicFT->show();
             break;
-        case DocumentSignatureMode::Package:
-            m_xHintPackageFT->show();
-            break;
     }
 
     if (comphelper::LibreOfficeKit::isActive())
     {
-        m_xAddBtn->hide();
-        m_xRemoveBtn->hide();
+        // If the view has a signing certificate, then allow adding a signature.
+        if (!pViewShell || !pViewShell->GetSigningCertificate().m_xCertificate.is())
+        {
+            m_xAddBtn->hide();
+        }
         m_xStartCertMgrBtn->hide();
     }
 
@@ -311,11 +310,11 @@ void DigitalSignaturesDialog::SetStorage( const css::uno::Reference < css::embed
     }
 
     // only ODF 1.1 wants to be non-XAdES (m_sODFVersion="1.0" for OOXML somehow?)
-    m_bAdESCompliant = !rxStore->hasByName("META-INF") // it's a Zip storage
+    m_bAdESCompliant = !rxStore->hasByName(u"META-INF"_ustr) // it's a Zip storage
                     || !DocumentSignatureHelper::isODFPre_1_2(m_sODFVersion);
 
     maSignatureManager.setStore(rxStore);
-    maSignatureManager.getSignatureHelper().SetStorage( maSignatureManager.getStore(), m_sODFVersion);
+    maSignatureManager.getSignatureHelper().SetStorage( maSignatureManager.getStore(), m_sODFVersion, {});
 }
 
 void DigitalSignaturesDialog::SetSignatureStream( const css::uno::Reference < css::io::XStream >& rxStream )
@@ -323,12 +322,32 @@ void DigitalSignaturesDialog::SetSignatureStream( const css::uno::Reference < cs
     maSignatureManager.setSignatureStream(rxStream);
 }
 
+void DigitalSignaturesDialog::SetScriptingSignatureStream( const css::uno::Reference < css::io::XStream >& rxStream )
+{
+    if (!rxStream.is())
+    {
+        return;
+    }
+
+    uno::Reference<uno::XComponentContext> xContext = comphelper::getProcessComponentContext();
+    moScriptSignatureManager.emplace(xContext, DocumentSignatureMode::Macros);
+    if (!moScriptSignatureManager->init())
+    {
+        return;
+    }
+    moScriptSignatureManager->setStore(maSignatureManager.getStore());
+    // This is the storage used by UriBindingHelper::getUriBinding().
+    moScriptSignatureManager->getSignatureHelper().SetStorage(maSignatureManager.getStore(), m_sODFVersion);
+    maSignatureManager.getSignatureHelper().SetStorage(maSignatureManager.getStore(), m_sODFVersion, rxStream);
+    moScriptSignatureManager->setSignatureStream(rxStream);
+}
+
 bool DigitalSignaturesDialog::canAddRemove()
 {
     //FIXME: this func needs some cleanup, such as real split between
     //'canAdd' and 'canRemove' case
     uno::Reference<container::XNameAccess> xNameAccess = maSignatureManager.getStore();
-    if (xNameAccess.is() && xNameAccess->hasByName("[Content_Types].xml"))
+    if (xNameAccess.is() && xNameAccess->hasByName(u"[Content_Types].xml"_ustr))
         // It's always possible to append an OOXML signature.
         return true;
 
@@ -338,7 +357,6 @@ bool DigitalSignaturesDialog::canAddRemove()
 
     OSL_ASSERT(maSignatureManager.getStore().is());
     bool bDoc1_1 = DocumentSignatureHelper::isODFPre_1_2(m_sODFVersion);
-    SaveODFItem item;
 
     // see specification
     //cvs: specs/www/appwide/security/Electronic_Signatures_and_Security.sxw
@@ -380,20 +398,25 @@ bool DigitalSignaturesDialog::canAddRemove()
 
 bool DigitalSignaturesDialog::canAdd() { return canAddRemove(); }
 
-bool DigitalSignaturesDialog::canRemove()
+void DigitalSignaturesDialog::canRemove(const std::function<void(bool)>& rCallback)
 {
+    auto onFinished = [this, rCallback](bool bRet) {
+        rCallback(bRet && canAddRemove());
+    };
     bool bRet = true;
 
     if ( maSignatureManager.getSignatureMode() == DocumentSignatureMode::Content )
     {
-        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(),
+        std::shared_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(),
                                                   VclMessageType::Question, VclButtonsType::YesNo,
                                                   XsResId(STR_XMLSECDLG_QUERY_REALLYREMOVE)));
-        short nDlgRet = xBox->run();
-        bRet = ( nDlgRet == RET_YES );
+        xBox->runAsync(xBox, [onFinished=std::move(onFinished)](sal_Int32 nDlgRet) {
+                onFinished(nDlgRet == RET_YES);
+        });
+        return;
     }
 
-    return (bRet && canAddRemove());
+    onFinished(bRet);
 }
 
 void DigitalSignaturesDialog::beforeRun()
@@ -460,22 +483,54 @@ IMPL_LINK_NOARG(DigitalSignaturesDialog, AddButtonHdl, weld::Button&, void)
 {
     if( ! canAdd())
         return;
-    try
-    {
-        std::vector<uno::Reference<xml::crypto::XXMLSecurityContext>> xSecContexts
-        {
-            maSignatureManager.getSecurityContext()
-        };
-        // Gpg signing is only possible with ODF >= 1.2 documents
-        if (DocumentSignatureHelper::CanSignWithGPG(maSignatureManager.getStore(), m_sODFVersion))
-            xSecContexts.push_back(maSignatureManager.getGpgSecurityContext());
 
-        CertificateChooser* aChooser = CertificateChooser::getInstance(m_xDialog.get(), std::move(xSecContexts), UserAction::Sign);
-        if (aChooser->run() == RET_OK)
+    // Separate function, so the function can call itself when the certificate choosing was
+    // successful, but the actual signing was not.
+    AddButtonHdlImpl();
+}
+
+void DigitalSignaturesDialog::AddButtonHdlImpl()
+{
+    std::vector<uno::Reference<xml::crypto::XXMLSecurityContext>> xSecContexts
+    {
+        maSignatureManager.getSecurityContext()
+    };
+    // Gpg signing is only possible with ODF >= 1.2 documents
+    if (DocumentSignatureHelper::CanSignWithGPG(maSignatureManager.getStore(), m_sODFVersion))
+        xSecContexts.push_back(maSignatureManager.getGpgSecurityContext());
+
+    std::shared_ptr<CertificateChooser> aChooser = CertificateChooser::getInstance(m_xDialog.get(), m_pViewShell, std::move(xSecContexts), CertificateChooserUserAction::Sign);
+    aChooser->BeforeRun();
+    weld::DialogController::runAsync(aChooser, [this, aChooser](sal_Int32 nRet) {
+        if (nRet != RET_OK)
+        {
+            return;
+        }
+
+        try
         {
             sal_Int32 nSecurityId;
-            if (!maSignatureManager.add(aChooser->GetSelectedCertificates()[0], aChooser->GetSelectedSecurityContext(),
-                                        aChooser->GetDescription(), nSecurityId, m_bAdESCompliant))
+
+            svl::crypto::SigningContext aSigningContext;
+            aSigningContext.m_xCertificate = aChooser->GetSelectedCertificates()[0];
+            if (moScriptSignatureManager)
+            {
+                if (!moScriptSignatureManager->add(aSigningContext,
+                            aChooser->GetSelectedSecurityContext(),
+                            aChooser->GetDescription(), nSecurityId,
+                            m_bAdESCompliant))
+                {
+                    return;
+                }
+
+                moScriptSignatureManager->read(/*bUseTempStream=*/true, /*bCacheLastSignature=*/false);
+                moScriptSignatureManager->write(m_bAdESCompliant);
+
+                maSignatureManager.setScriptingSignatureStream(moScriptSignatureManager->getSignatureStream());
+            }
+
+            if (!maSignatureManager.add(aSigningContext, aChooser->GetSelectedSecurityContext(),
+                        aChooser->GetDescription(), nSecurityId, m_bAdESCompliant))
                 return;
             mbSignaturesChanged = true;
 
@@ -497,45 +552,52 @@ IMPL_LINK_NOARG(DigitalSignaturesDialog, AddButtonHdl, weld::Button&, void)
                 ImplGetSignatureInformations(/*bUseTempStream=*/true, /*bCacheLastSignature=*/false);
                 ImplFillSignaturesBox();
             }
+            else
+            {
+                AddButtonHdlImpl();
+            }
         }
-    }
-    catch ( uno::Exception& )
-    {
-        TOOLS_WARN_EXCEPTION( "xmlsecurity.dialogs", "adding a signature!" );
-        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(),
-                                                  VclMessageType::Error, VclButtonsType::Ok,
-                                                  XsResId(STR_XMLSECDLG_SIGNING_FAILED)));
-        xBox->run();
-        // Don't keep invalid entries...
-        ImplGetSignatureInformations(/*bUseTempStream=*/true, /*bCacheLastSignature=*/false);
-        ImplFillSignaturesBox();
-    }
+        catch ( uno::Exception& )
+        {
+            TOOLS_WARN_EXCEPTION( "xmlsecurity.dialogs", "adding a signature!" );
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(),
+                        VclMessageType::Error, VclButtonsType::Ok,
+                        XsResId(STR_XMLSECDLG_SIGNING_FAILED)));
+            xBox->run();
+            // Don't keep invalid entries...
+            ImplGetSignatureInformations(/*bUseTempStream=*/true, /*bCacheLastSignature=*/false);
+            ImplFillSignaturesBox();
+        }
+    });
 }
 
 IMPL_LINK_NOARG(DigitalSignaturesDialog, RemoveButtonHdl, weld::Button&, void)
 {
-    if (!canRemove())
-        return;
-    int nEntry = m_xSignaturesLB->get_selected_index();
-    if (nEntry == -1)
-        return;
+    canRemove([this](bool bRet) {
+        if (!bRet)
+            return;
 
-    try
-    {
-        sal_uInt16 nSelected = m_xSignaturesLB->get_id(nEntry).toUInt32();
-        maSignatureManager.remove(nSelected);
+        int nEntry = m_xSignaturesLB->get_selected_index();
+        if (nEntry == -1)
+            return;
 
-        mbSignaturesChanged = true;
+        try
+        {
+            sal_uInt16 nSelected = m_xSignaturesLB->get_id(nEntry).toUInt32();
+            maSignatureManager.remove(nSelected);
 
-        ImplFillSignaturesBox();
-    }
-    catch ( uno::Exception& )
-    {
-        TOOLS_WARN_EXCEPTION( "xmlsecurity.dialogs", "Exception while removing a signature!" );
-        // Don't keep invalid entries...
-        ImplGetSignatureInformations(/*bUseTempStream=*/true, /*bCacheLastSignature=*/true);
-        ImplFillSignaturesBox();
-    }
+            mbSignaturesChanged = true;
+
+            ImplFillSignaturesBox();
+        }
+        catch ( uno::Exception& )
+        {
+            TOOLS_WARN_EXCEPTION( "xmlsecurity.dialogs", "Exception while removing a signature!" );
+            // Don't keep invalid entries...
+            ImplGetSignatureInformations(/*bUseTempStream=*/true, /*bCacheLastSignature=*/true);
+            ImplFillSignaturesBox();
+        }
+    });
 }
 
 
@@ -546,13 +608,27 @@ IMPL_LINK_NOARG(DigitalSignaturesDialog, CertMgrButtonHdl, weld::Button&, void)
 
     if (!sExecutable.isEmpty())
     {
-        uno::Reference<uno::XComponentContext> xContext
+        const uno::Reference<uno::XComponentContext>& xContext
             = ::comphelper::getProcessComponentContext();
         uno::Reference<css::system::XSystemShellExecute> xSystemShell(
             css::system::SystemShellExecute::create(xContext));
 
-        xSystemShell->execute(sExecutable, OUString(),
-                              css::system::SystemShellExecuteFlags::DEFAULTS);
+        try
+        {
+            xSystemShell->execute(sExecutable, OUString(),
+                                  css::system::SystemShellExecuteFlags::DEFAULTS);
+        }
+        catch (...)
+        {
+            // Related tdf#159307 fix uncloseable windows due to uncaught exception
+            // XSystemShellExecute::execute() throws an exception for a variety
+            // of common error conditions such as files or directories that
+            // are non-existent or non-executable. Failure to catch such
+            // exceptions would cause the document window to be uncloseable
+            // and the application to be unquittable.
+            TOOLS_WARN_EXCEPTION( "xmlsecurity.dialogs", "executable failed!" );
+            sExecutable = OUString();
+        }
     }
 
     OUString sDialogText = (sExecutable.isEmpty() ?
@@ -780,7 +856,7 @@ uno::Reference<xml::crypto::XSecurityEnvironment> DigitalSignaturesDialog::getSe
         case CertificateKind_X509:
             return maSignatureManager.getSecurityEnvironment();
         default:
-            throw RuntimeException("Unknown certificate kind");
+            throw RuntimeException(u"Unknown certificate kind"_ustr);
     }
 }
 

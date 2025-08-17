@@ -18,6 +18,7 @@
  */
 
 #include <BaseGFXHelper.hxx>
+#include <ChartView.hxx>
 #include <DateHelper.hxx>
 #include <VCoordinateSystem.hxx>
 #include "VCartesianCoordinateSystem.hxx"
@@ -33,10 +34,8 @@
 #include <Axis.hxx>
 #include "VAxisBase.hxx"
 #include <defines.hxx>
-#include <chartview/ExplicitValueProvider.hxx>
 #include <com/sun/star/chart/TimeUnit.hpp>
 #include <com/sun/star/chart2/AxisType.hpp>
-#include <comphelper/sequence.hxx>
 #include <rtl/math.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
@@ -221,16 +220,6 @@ void VCoordinateSystem::impl_adjustDimensionAndIndex( sal_Int32& rDimensionIndex
         rAxisIndex = 0;
 }
 
-void VCoordinateSystem::setExplicitCategoriesProvider( ExplicitCategoriesProvider* pExplicitCategoriesProvider /*takes ownership*/ )
-{
-    m_apExplicitCategoriesProvider.reset(pExplicitCategoriesProvider);
-}
-
-ExplicitCategoriesProvider* VCoordinateSystem::getExplicitCategoriesProvider()
-{
-    return m_apExplicitCategoriesProvider.get();
-}
-
 std::vector< ExplicitScaleData > VCoordinateSystem::getExplicitScales( sal_Int32 nDimensionIndex, sal_Int32 nAxisIndex ) const
 {
     std::vector< ExplicitScaleData > aRet(m_aExplicitScales);
@@ -367,9 +356,9 @@ void VCoordinateSystem::prepareAutomaticAxisScaling( ScaleAutomatism& rScaleAuto
     {
         // y dimension
         ExplicitScaleData aScale = getExplicitScale( 0, 0 );
-        double fMaximum = aScale.Maximum;
         if (!aScale.m_bShiftedCategoryPosition && aScale.AxisType == AxisType::DATE)
         {
+            double fMaximum = aScale.Maximum;
             // tdf#146066 Increase maximum date value by one month/year,
             //            because the automatic scaling of the Y axis was incorrect when the last Y value was the highest value.
             Date aMaxDate(aScale.NullDate);
@@ -384,9 +373,15 @@ void VCoordinateSystem::prepareAutomaticAxisScaling( ScaleAutomatism& rScaleAuto
                     break;
             }
             fMaximum = aMaxDate - aScale.NullDate;
+            fMin = m_aMergedMinMaxSupplier.getMinimumAndMaximumYInRange(aScale.Minimum, aScale.Maximum, nAxisIndex).first;
+            fMax = m_aMergedMinMaxSupplier.getMinimumAndMaximumYInRange(aScale.Minimum, fMaximum, nAxisIndex).second;
         }
-        fMin = m_aMergedMinMaxSupplier.getMinimumYInRange(aScale.Minimum,aScale.Maximum, nAxisIndex);
-        fMax = m_aMergedMinMaxSupplier.getMaximumYInRange(aScale.Minimum, fMaximum, nAxisIndex);
+        else
+        {
+            auto fTmp = m_aMergedMinMaxSupplier.getMinimumAndMaximumYInRange(aScale.Minimum, aScale.Maximum, nAxisIndex);
+            fMin = fTmp.first;
+            fMax = fTmp.second;
+        }
     }
     else if( nDimIndex == 2 )
     {
@@ -548,7 +543,7 @@ bool VCoordinateSystem::getPropertySwapXAndYAxis() const
     bool bSwapXAndY = false;
     if( m_xCooSysModel.is()) try
     {
-        m_xCooSysModel->getPropertyValue( "SwapXAndYAxis" ) >>= bSwapXAndY;
+        m_xCooSysModel->getPropertyValue( u"SwapXAndYAxis"_ustr ) >>= bSwapXAndY;
     }
     catch( const uno::Exception& )
     {
@@ -570,7 +565,7 @@ sal_Int32 VCoordinateSystem::getNumberFormatKeyForAxis(
         const rtl::Reference< Axis >& xAxis
         , const rtl::Reference<::chart::ChartModel>& xChartDoc)
 {
-    return ExplicitValueProvider::getExplicitNumberFormatKeyForAxis(
+    return ChartView::getExplicitNumberFormatKeyForAxis(
                 xAxis, m_xCooSysModel, xChartDoc);
 }
 

@@ -22,8 +22,9 @@ $(call gb_ExternalProject_get_state_target,libeot,build) :
 			--with-pic \
 			--enable-static \
 			--disable-shared \
-			--disable-debug \
-		&& $(MAKE) $(if $(verbose),V=1) \
+			$(if $(ENABLE_DEBUG),--enable-debug,--disable-debug) \
+			$(gb_CONFIGURE_PLATFORMS) \
+		&& $(MAKE) $(if $(verbose),V=1) libeot.la \
 	)
 	$(call gb_Trace_EndRange,libeot,EXTERNAL)
 

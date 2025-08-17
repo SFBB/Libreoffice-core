@@ -22,6 +22,7 @@
 #include <codemaker/codemaker.hxx>
 #include <codemaker/commoncpp.hxx>
 #include <codemaker/global.hxx>
+#include <osl/diagnose.h>
 
 #include "skeletoncommon.hxx"
 #include "skeletoncpp.hxx"
@@ -67,7 +68,9 @@ static void printType(
         if (sort == codemaker::UnoType::Sort::Enum) {
             auto pEnumTypeEntity(dynamic_cast<unoidl::EnumTypeEntity *>(entity.get()));
             assert(pEnumTypeEntity);
-            o << OUString(nucleus.substr(nucleus.rfind('.') + 1)) << "_"
+            const std::string_view::size_type nLastDot = nucleus.rfind('.');
+            const auto nAfterDot = (nLastDot != std::string_view::npos) ? (nLastDot + 1) : 0;
+            o << OUString(nucleus.substr(nAfterDot)) << "_"
               << pEnumTypeEntity->getMembers()[0].name;
         }
         return;
@@ -264,7 +267,8 @@ static void printConstructor(
     rtl::Reference< unoidl::Entity > const & entity, std::u16string_view name,
     std::vector< OUString > const & arguments)
 {
-    o << "public " << OUString(name.substr(name.rfind('.') + 1)) << '(';
+    std::u16string_view::size_type pos = name.rfind('.');
+    o << "public " << OUString(name.substr((pos != std::u16string_view::npos) ? pos + 1 : 0)) << '(';
     printConstructorParameters(
         o, options, manager, sort, entity, name, arguments);
     o << ");\n";

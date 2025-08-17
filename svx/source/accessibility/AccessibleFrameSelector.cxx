@@ -47,11 +47,6 @@ AccFrameSelector::~AccFrameSelector()
 {
 }
 
-Reference< XAccessibleContext > AccFrameSelector::getAccessibleContext(  )
-{
-    return this;
-}
-
 sal_Int64 AccFrameSelector::getAccessibleChildCount(  )
 {
     SolarMutexGuard aGuard;
@@ -90,7 +85,7 @@ OUString AccFrameSelector::getAccessibleDescription(  )
 {
     SolarMutexGuard aGuard;
     IsValid();
-    return SvxResId(RID_SVXSTR_FRMSEL_DESCRIPTIONS[0].first);
+    return OUString();
 }
 
 OUString AccFrameSelector::getAccessibleName(  )
@@ -231,11 +226,6 @@ AccFrameSelectorChild::~AccFrameSelectorChild()
 {
 }
 
-Reference< XAccessibleContext > AccFrameSelectorChild::getAccessibleContext(  )
-{
-    return this;
-}
-
 sal_Int64 AccFrameSelectorChild::getAccessibleChildCount(  )
 {
     SolarMutexGuard aGuard;
@@ -265,7 +255,7 @@ OUString AccFrameSelectorChild::getAccessibleDescription(  )
 {
     SolarMutexGuard aGuard;
     IsValid();
-    return SvxResId(RID_SVXSTR_FRMSEL_DESCRIPTIONS[static_cast<sal_uInt32>(meBorder)].first);
+    return OUString();
 }
 
 OUString AccFrameSelectorChild::getAccessibleName(  )
@@ -286,33 +276,34 @@ Reference< XAccessibleRelationSet > AccFrameSelectorChild::getAccessibleRelation
 sal_Int64 AccFrameSelectorChild::getAccessibleStateSet(  )
 {
     SolarMutexGuard aGuard;
-    sal_Int64 nStateSet = 0;
 
     if(!mpFrameSel)
-        nStateSet |= AccessibleStateType::DEFUNC;
-    else
-    {
-        nStateSet |=
-            AccessibleStateType::EDITABLE |
-            AccessibleStateType::FOCUSABLE |
-            AccessibleStateType::MULTI_SELECTABLE |
-            AccessibleStateType::SELECTABLE |
-            AccessibleStateType::SHOWING |
-            AccessibleStateType::VISIBLE |
-            AccessibleStateType::OPAQUE;
-        if(mpFrameSel->IsEnabled())
-        {
-            nStateSet |= AccessibleStateType::ENABLED;
-            nStateSet |= AccessibleStateType::SENSITIVE;
-        }
+        return AccessibleStateType::DEFUNC;
 
-        if (mpFrameSel->HasFocus() && mpFrameSel->IsBorderSelected(meBorder))
-        {
-            nStateSet |= AccessibleStateType::ACTIVE;
-            nStateSet |= AccessibleStateType::FOCUSED;
-            nStateSet |= AccessibleStateType::SELECTED;
-        }
+    sal_Int64 nStateSet = AccessibleStateType::CHECKABLE
+                          | AccessibleStateType::EDITABLE
+                          | AccessibleStateType::FOCUSABLE
+                          | AccessibleStateType::MULTI_SELECTABLE
+                          | AccessibleStateType::SELECTABLE
+                          | AccessibleStateType::SHOWING
+                          | AccessibleStateType::VISIBLE
+                          | AccessibleStateType::OPAQUE;
+    if (mpFrameSel->IsEnabled())
+    {
+        nStateSet |= AccessibleStateType::ENABLED;
+        nStateSet |= AccessibleStateType::SENSITIVE;
     }
+
+    if (mpFrameSel->GetFrameBorderState(meBorder) == FrameBorderState::Show)
+        nStateSet |= AccessibleStateType::CHECKED;
+
+    if (mpFrameSel->HasFocus() && mpFrameSel->IsBorderSelected(meBorder))
+    {
+        nStateSet |= AccessibleStateType::ACTIVE;
+        nStateSet |= AccessibleStateType::FOCUSED;
+        nStateSet |= AccessibleStateType::SELECTED;
+    }
+
     return nStateSet;
 }
 

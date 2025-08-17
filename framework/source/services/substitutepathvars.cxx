@@ -25,7 +25,9 @@
 
 #include <unotools/bootstrap.hxx>
 #include <unotools/configmgr.hxx>
+#include <o3tl/environment.hxx>
 #include <osl/file.hxx>
+#include <osl/process.h>
 #include <osl/security.hxx>
 #include <osl/thread.hxx>
 #include <i18nlangtag/languagetag.hxx>
@@ -35,6 +37,7 @@
 
 #include <officecfg/Office/Paths.hxx>
 
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
@@ -76,36 +79,36 @@ enum PreDefVariable
 
 struct FixedVariable
 {
-    const char*     pVarName;
-    bool            bAbsPath;
+    OUString     pVarName;
+    bool         bAbsPath;
 };
 
 // Table with all fixed/predefined variables supported.
-const FixedVariable aFixedVarTable[PREDEFVAR_COUNT] =
+constexpr FixedVariable aFixedVarTable[PREDEFVAR_COUNT] =
 {
-    { "$(inst)",         true  }, // PREDEFVAR_INST
-    { "$(prog)",         true  }, // PREDEFVAR_PROG
-    { "$(user)",         true  }, // PREDEFVAR_USER
-    { "$(work)",         true  }, // PREDEFVAR_WORK, special variable
+    { u"$(inst)"_ustr,         true  }, // PREDEFVAR_INST
+    { u"$(prog)"_ustr,         true  }, // PREDEFVAR_PROG
+    { u"$(user)"_ustr,         true  }, // PREDEFVAR_USER
+    { u"$(work)"_ustr,         true  }, // PREDEFVAR_WORK, special variable
                                   //  (transient)
-    { "$(home)",         true  }, // PREDEFVAR_HOME
-    { "$(temp)",         true  }, // PREDEFVAR_TEMP
-    { "$(path)",         true  }, // PREDEFVAR_PATH
-    { "$(username)",     false }, // PREDEFVAR_USERNAME
-    { "$(langid)",       false }, // PREDEFVAR_LANGID
-    { "$(vlang)",        false }, // PREDEFVAR_VLANG
-    { "$(instpath)",     true  }, // PREDEFVAR_INSTPATH
-    { "$(progpath)",     true  }, // PREDEFVAR_PROGPATH
-    { "$(userpath)",     true  }, // PREDEFVAR_USERPATH
-    { "$(insturl)",      true  }, // PREDEFVAR_INSTURL
-    { "$(progurl)",      true  }, // PREDEFVAR_PROGURL
-    { "$(userurl)",      true  }, // PREDEFVAR_USERURL
-    { "$(workdirurl)",   true  }, // PREDEFVAR_WORKDIRURL, special variable
+    { u"$(home)"_ustr,         true  }, // PREDEFVAR_HOME
+    { u"$(temp)"_ustr,         true  }, // PREDEFVAR_TEMP
+    { u"$(path)"_ustr,         true  }, // PREDEFVAR_PATH
+    { u"$(username)"_ustr,     false }, // PREDEFVAR_USERNAME
+    { u"$(langid)"_ustr,       false }, // PREDEFVAR_LANGID
+    { u"$(vlang)"_ustr,        false }, // PREDEFVAR_VLANG
+    { u"$(instpath)"_ustr,     true  }, // PREDEFVAR_INSTPATH
+    { u"$(progpath)"_ustr,     true  }, // PREDEFVAR_PROGPATH
+    { u"$(userpath)"_ustr,     true  }, // PREDEFVAR_USERPATH
+    { u"$(insturl)"_ustr,      true  }, // PREDEFVAR_INSTURL
+    { u"$(progurl)"_ustr,      true  }, // PREDEFVAR_PROGURL
+    { u"$(userurl)"_ustr,      true  }, // PREDEFVAR_USERURL
+    { u"$(workdirurl)"_ustr,   true  }, // PREDEFVAR_WORKDIRURL, special variable
                                   //  (transient) and don't use for
                                   //  resubstitution
-    { "$(baseinsturl)",  true  }, // PREDEFVAR_BASEINSTURL
-    { "$(userdataurl)",  true  }, // PREDEFVAR_USERDATAURL
-    { "$(brandbaseurl)", true  }  // PREDEFVAR_BRANDBASEURL
+    { u"$(baseinsturl)"_ustr,  true  }, // PREDEFVAR_BASEINSTURL
+    { u"$(userdataurl)"_ustr,  true  }, // PREDEFVAR_USERDATAURL
+    { u"$(brandbaseurl)"_ustr, true  }  // PREDEFVAR_BRANDBASEURL
 };
 
 struct PredefinedPathVariables
@@ -130,7 +133,8 @@ struct ReSubstFixedVarOrder
 
 typedef comphelper::WeakComponentImplHelper<
     css::util::XStringSubstitution,
-    css::lang::XServiceInfo > SubstitutePathVariables_BASE;
+    css::lang::XServiceInfo,
+    css::lang::XInitialization > SubstitutePathVariables_BASE;
 
 class SubstitutePathVariables : public SubstitutePathVariables_BASE
 {
@@ -139,7 +143,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.PathSubstitution";
+        return u"com.sun.star.comp.framework.PathSubstitution"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -149,7 +153,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.util.PathSubstitution"};
+        return {u"com.sun.star.util.PathSubstitution"_ustr};
     }
 
     // XStringSubstitution
@@ -157,16 +161,21 @@ public:
     virtual OUString SAL_CALL reSubstituteVariables( const OUString& aText ) override;
     virtual OUString SAL_CALL getSubstituteVariableValue( const OUString& variable ) override;
 
-protected:
+    // XInitialization
+    virtual void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& /*rArguments*/) override;
+
+private:
+    void            impl_initialize();
+
     void            SetPredefinedPathVariables();
 
     // Special case (transient) values can change during runtime!
     // Don't store them in the pre defined struct
-    OUString   GetWorkPath() const;
-    OUString   GetWorkVariableValue() const;
-    OUString   GetPathVariableValue() const;
+    static OUString GetWorkPath();
+    static OUString GetWorkVariableValue();
+    static OUString GetPathVariableValue();
 
-    OUString   GetHomeVariableValue() const;
+    static OUString GetHomeVariableValue();
 
     // XStringSubstitution implementation methods
     /// @throws css::container::NoSuchElementException
@@ -189,13 +198,18 @@ private:
 
 SubstitutePathVariables::SubstitutePathVariables()
 {
+    impl_initialize();
+}
+
+void SubstitutePathVariables::impl_initialize()
+{
     SetPredefinedPathVariables();
 
     // Init the predefined/fixed variable to index hash map
     for ( int i = 0; i < PREDEFVAR_COUNT; i++ )
     {
         // Store variable name into struct of predefined/fixed variables
-        m_aPreDefVars.m_FixedVarNames[i] = OUString::createFromAscii( aFixedVarTable[i].pVarName );
+        m_aPreDefVars.m_FixedVarNames[i] = aFixedVarTable[i].pVarName;
 
         // Create hash map entry
         m_aPreDefVarMap.emplace( m_aPreDefVars.m_FixedVarNames[i], PreDefVariable(i) );
@@ -219,6 +233,12 @@ SubstitutePathVariables::SubstitutePathVariables()
     sort(m_aReSubstFixedVarOrder.begin(),m_aReSubstFixedVarOrder.end());
 }
 
+void SAL_CALL SubstitutePathVariables::initialize(const css::uno::Sequence<css::uno::Any>& /*rArguments*/)
+{
+    std::unique_lock g(m_aMutex);
+    impl_initialize();
+}
+
 // XStringSubstitution
 OUString SAL_CALL SubstitutePathVariables::substituteVariables( const OUString& aText, sal_Bool bSubstRequired )
 {
@@ -238,18 +258,20 @@ OUString SAL_CALL SubstitutePathVariables::getSubstituteVariableValue( const OUS
     return impl_getSubstituteVariableValue( aVariable );
 }
 
-OUString SubstitutePathVariables::GetWorkPath() const
+// static
+OUString SubstitutePathVariables::GetWorkPath()
 {
     OUString aWorkPath;
     css::uno::Reference< css::container::XHierarchicalNameAccess > xPaths(officecfg::Office::Paths::Paths::get(), css::uno::UNO_QUERY_THROW);
-    if (!(xPaths->getByHierarchicalName("['Work']/WritePath") >>= aWorkPath))
+    if (!(xPaths->getByHierarchicalName(u"['Work']/WritePath"_ustr) >>= aWorkPath))
         // fallback in case config layer does not return a usable work dir value.
         aWorkPath = GetWorkVariableValue();
 
     return aWorkPath;
 }
 
-OUString SubstitutePathVariables::GetWorkVariableValue() const
+// static
+OUString SubstitutePathVariables::GetWorkVariableValue()
 {
     OUString aWorkPath;
     std::optional<OUString> x(officecfg::Office::Paths::Variables::Work::get());
@@ -265,7 +287,8 @@ OUString SubstitutePathVariables::GetWorkVariableValue() const
     return aWorkPath;
 }
 
-OUString SubstitutePathVariables::GetHomeVariableValue() const
+// static
+OUString SubstitutePathVariables::GetHomeVariableValue()
 {
     osl::Security   aSecurity;
     OUString   aHomePath;
@@ -274,16 +297,16 @@ OUString SubstitutePathVariables::GetHomeVariableValue() const
     return aHomePath;
 }
 
-OUString SubstitutePathVariables::GetPathVariableValue() const
+// static
+OUString SubstitutePathVariables::GetPathVariableValue()
 {
     OUString aRetStr;
-    const char* pEnv = getenv( "PATH" );
+    OUString aPathList = o3tl::getEnvironment(u"PATH"_ustr);
 
-    if ( pEnv )
+    if (!aPathList.isEmpty())
     {
         const int PATH_EXTEND_FACTOR = 200;
         OUString       aTmp;
-        OUString       aPathList( pEnv, strlen( pEnv ), osl_getThreadTextEncoding() );
         OUStringBuffer aPathStrBuffer( aPathList.getLength() * PATH_EXTEND_FACTOR / 100 );
 
         bool      bAppendSep = false;
@@ -472,7 +495,7 @@ OUString SubstitutePathVariables::impl_substituteVariable( const OUString& rText
             // recursion depth reached!
             if ( bSubstRequired )
             {
-                throw NoSuchElementException( "Endless recursion detected. Cannot substitute variables!", static_cast<cppu::OWeakObject *>(this) );
+                throw NoSuchElementException( u"Endless recursion detected. Cannot substitute variables!"_ustr, static_cast<cppu::OWeakObject *>(this) );
             }
             aResult = rText;
         }
@@ -481,7 +504,7 @@ OUString SubstitutePathVariables::impl_substituteVariable( const OUString& rText
             // variable in text but unknown!
             if ( bSubstRequired )
             {
-                throw NoSuchElementException( "Unknown variable found!", static_cast<cppu::OWeakObject *>(this) );
+                throw NoSuchElementException( u"Unknown variable found!"_ustr, static_cast<cppu::OWeakObject *>(this) );
             }
             aResult = aWorkText;
         }
@@ -586,7 +609,7 @@ OUString const & SubstitutePathVariables::impl_getSubstituteVariableValue( const
     // Fixed/Predefined variable
     if ( pNTOIIter == m_aPreDefVarMap.end() )
     {
-        throw NoSuchElementException("Unknown variable!", static_cast<cppu::OWeakObject *>(this));
+        throw NoSuchElementException(u"Unknown variable!"_ustr, static_cast<cppu::OWeakObject *>(this));
     }
     PreDefVariable nIndex = pNTOIIter->second;
     return m_aPreDefVars.m_FixedVar[static_cast<sal_Int32>(nIndex)];
@@ -594,7 +617,6 @@ OUString const & SubstitutePathVariables::impl_getSubstituteVariableValue( const
 
 void SubstitutePathVariables::SetPredefinedPathVariables()
 {
-
     m_aPreDefVars.m_FixedVar[PREDEFVAR_BRANDBASEURL] = "$BRAND_BASE_DIR";
     rtl::Bootstrap::expandMacros(
         m_aPreDefVars.m_FixedVar[PREDEFVAR_BRANDBASEURL]);

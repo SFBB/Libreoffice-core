@@ -184,7 +184,7 @@ namespace
             void RestoreUnoCursors(updater_t const & rUpdater);
             void SaveShellCursors(SwDoc& rDoc, SwNodeOffset nNode, sal_Int32 nContent);
             void RestoreShellCursors(updater_t const & rUpdater);
-            static const SwPosition& GetRightMarkPos(::sw::mark::IMark const * pMark, bool bOther)
+            static const SwPosition& GetRightMarkPos(::sw::mark::MarkBase const * pMark, bool bOther)
                 { return bOther ? pMark->GetOtherMarkPos() : pMark->GetMarkPos(); };
             static void SetRightMarkPos(MarkBase* pMark, bool bOther, const SwPosition* const pPos)
                 { bOther ? pMark->SetOtherMarkPos(*pPos) : pMark->SetMarkPos(*pPos); };
@@ -221,13 +221,13 @@ namespace
 void ContentIdxStoreImpl::SaveBkmks(SwDoc& rDoc, SwNodeOffset nNode, sal_Int32 nContent)
 {
     IDocumentMarkAccess* const pMarkAccess = rDoc.getIDocumentMarkAccess();
-    const IDocumentMarkAccess::const_iterator_t ppBkmkEnd = pMarkAccess->getAllMarksEnd();
+    const auto ppBkmkEnd = pMarkAccess->getAllMarksEnd();
     for(
-        IDocumentMarkAccess::const_iterator_t ppBkmk = pMarkAccess->getAllMarksBegin();
+        auto ppBkmk = pMarkAccess->getAllMarksBegin();
         ppBkmk != ppBkmkEnd;
         ++ppBkmk)
     {
-        const ::sw::mark::IMark* pBkmk = *ppBkmk;
+        const ::sw::mark::MarkBase* pBkmk = *ppBkmk;
         bool bMarkPosEqual = false;
         if(pBkmk->GetMarkPos().GetNodeIndex() == nNode
             && pBkmk->GetMarkPos().GetContentIndex() <= nContent)
@@ -258,10 +258,12 @@ void ContentIdxStoreImpl::SaveBkmks(SwDoc& rDoc, SwNodeOffset nNode, sal_Int32 n
 void ContentIdxStoreImpl::RestoreBkmks(SwDoc& rDoc, updater_t const & rUpdater)
 {
     IDocumentMarkAccess* const pMarkAccess = rDoc.getIDocumentMarkAccess();
+    sal_Int32 nMinIndexModified = SAL_MAX_INT32;
     for (const MarkEntry& aEntry : m_aBkmkEntries)
     {
-        if (MarkBase *const pMark = pMarkAccess->getAllMarksBegin().get()[aEntry.m_nIdx])
+        if (MarkBase *const pMark = pMarkAccess->getAllMarksBegin()[aEntry.m_nIdx])
         {
+            nMinIndexModified = std::min(nMinIndexModified, sal_Int32(aEntry.m_nIdx));
             SwPosition aNewPos(GetRightMarkPos(pMark, aEntry.m_bOther));
             rUpdater(aNewPos, aEntry.m_nContent);
             SetRightMarkPos(pMark, aEntry.m_bOther, &aNewPos);
@@ -270,7 +272,7 @@ void ContentIdxStoreImpl::RestoreBkmks(SwDoc& rDoc, updater_t const & rUpdater)
     if (!m_aBkmkEntries.empty())
     {   // tdf#105705 sort bookmarks because SaveBkmks special handling of
         // "bMarkPosEqual" may destroy sort order
-        pMarkAccess->assureSortedMarkContainers();
+        pMarkAccess->assureSortedMarkContainers(nMinIndexModified);
     }
 }
 

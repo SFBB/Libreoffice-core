@@ -27,6 +27,7 @@
 #include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/unohelp.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
 #include <viewsh.hxx>
@@ -51,30 +52,18 @@ using namespace sw::access;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-void SwAccessibleContext::InitStates()
-{
-    m_isShowingState = GetMap() && IsShowing( *(GetMap()) );
-
-    SwViewShell *pVSh = GetMap()->GetShell();
-    m_isEditableState = pVSh && IsEditable( pVSh );
-    m_isOpaqueState = pVSh && IsOpaque( pVSh );
-    m_isDefuncState = false;
-}
-
 void SwAccessibleContext::SetParent( SwAccessibleContext *pParent )
 {
     std::scoped_lock aGuard( m_Mutex );
 
-    uno::Reference < XAccessible > xParent( pParent );
-    m_xWeakParent = xParent;
+    m_xWeakParent = pParent;
 }
 
-uno::Reference< XAccessible > SwAccessibleContext::GetWeakParent() const
+rtl::Reference< SwAccessibleContext > SwAccessibleContext::GetWeakParent() const
 {
     std::scoped_lock aGuard( m_Mutex );
 
-    uno::Reference< XAccessible > xParent( m_xWeakParent );
-    return xParent;
+    return m_xWeakParent.get();
 }
 
 vcl::Window *SwAccessibleContext::GetWindow()
@@ -83,11 +72,7 @@ vcl::Window *SwAccessibleContext::GetWindow()
 
     if( GetMap() )
     {
-        const SwViewShell *pVSh = GetMap()->GetShell();
-        OSL_ENSURE( pVSh, "no view shell" );
-        if( pVSh )
-            pWin = pVSh->GetWin();
-
+        pWin = GetMap()->GetShell().GetWin();
         OSL_ENSURE( pWin, "no window" );
     }
 
@@ -97,7 +82,7 @@ vcl::Window *SwAccessibleContext::GetWindow()
 // get SwViewShell from accessibility map, and cast to cursor shell
 SwCursorShell* SwAccessibleContext::GetCursorShell()
 {
-    SwViewShell* pViewShell = GetMap() ? GetMap()->GetShell() : nullptr;
+    SwViewShell* pViewShell = GetMap() ? &GetMap()->GetShell() : nullptr;
     OSL_ENSURE( pViewShell, "no view shell" );
     return dynamic_cast<SwCursorShell*>( pViewShell);
 }
@@ -105,7 +90,7 @@ SwCursorShell* SwAccessibleContext::GetCursorShell()
 const SwCursorShell* SwAccessibleContext::GetCursorShell() const
 {
     // just like non-const GetCursorShell
-    const SwViewShell* pViewShell = GetMap() ? GetMap()->GetShell() : nullptr;
+    const SwViewShell* pViewShell = GetMap() ? &GetMap()->GetShell() : nullptr;
     OSL_ENSURE( pViewShell, "no view shell" );
     return dynamic_cast<const SwCursorShell*>( pViewShell);
 }
@@ -124,32 +109,20 @@ void SwAccessibleContext::ChildrenScrolled( const SwFrame *pFrame,
     const bool bVisibleChildrenOnly = SwAccessibleChild( pFrame ).IsVisibleChildrenOnly();
 
     const SwAccessibleChildSList aList( *pFrame, *(GetMap()) );
-    SwAccessibleChildSList::const_iterator aIter( aList.begin() );
-    while( aIter != aList.end() )
+    for (const SwAccessibleChild& rLower : aList)
     {
-        const SwAccessibleChild& rLower = *aIter;
         const SwRect aBox( rLower.GetBox( *(GetMap()) ) );
-        if( rLower.IsAccessible( GetShell()->IsPreview() ) )
+        if (rLower.IsAccessible(GetShell().IsPreview()))
         {
             Action eAction = Action::NONE;
             if( aBox.Overlaps( rNewVisArea ) )
             {
                 if( aBox.Overlaps( rOldVisArea ) )
-                {
                     eAction = Action::SCROLLED_WITHIN;
-                }
+                else if (bVisibleChildrenOnly && !rLower.AlwaysIncludeAsChild())
+                    eAction = Action::SCROLLED_IN;
                 else
-                {
-                    if ( bVisibleChildrenOnly &&
-                         !rLower.AlwaysIncludeAsChild() )
-                    {
-                        eAction = Action::SCROLLED_IN;
-                    }
-                    else
-                    {
-                        eAction = Action::SCROLLED;
-                    }
-                }
+                    eAction = Action::SCROLLED;
             }
             else if( aBox.Overlaps( rOldVisArea ) )
             {
@@ -254,7 +227,6 @@ void SwAccessibleContext::ChildrenScrolled( const SwFrame *pFrame,
             // There are no unaccessible SdrObjects that need to be notified
             ChildrenScrolled( rLower.GetSwFrame(), rOldVisArea );
         }
-        ++aIter;
     }
 }
 
@@ -298,18 +270,13 @@ void SwAccessibleContext::ScrolledIn()
     const SwFrame* pParent = GetParent();
     ::rtl::Reference< SwAccessibleContext > xParentImpl(
          GetMap()->GetContextImpl( pParent, false ) );
-    uno::Reference < XAccessibleContext > xThis( this );
     if( !xParentImpl.is() )
         return;
 
     SetParent( xParentImpl.get() );
 
-    AccessibleEventObject aEvent;
-    aEvent.EventId = AccessibleEventId::CHILD;
-    aEvent.NewValue <<= xThis;
-    aEvent.IndexHint = -1;
-
-    xParentImpl->FireAccessibleEvent( aEvent );
+    uno::Reference<XAccessibleContext> xThis(this);
+    xParentImpl->FireAccessibleEvent(AccessibleEventId::CHILD, uno::Any(), uno::Any(xThis));
 
     if( HasCursor() )
     {
@@ -350,15 +317,12 @@ void SwAccessibleContext::InvalidateChildrenStates( const SwFrame* _pFrame,
 {
     const SwAccessibleChildSList aVisList( GetVisArea(), *_pFrame, *(GetMap()) );
 
-    SwAccessibleChildSList::const_iterator aIter( aVisList.begin() );
-    while( aIter != aVisList.end() )
+    for (const SwAccessibleChild& rLower : aVisList)
     {
-        const SwAccessibleChild& rLower = *aIter;
-        const SwFrame* pLower = rLower.GetSwFrame();
-        if( pLower )
+        if (const SwFrame* pLower = rLower.GetSwFrame())
         {
             ::rtl::Reference< SwAccessibleContext > xAccImpl;
-            if( rLower.IsAccessible( GetShell()->IsPreview() ) )
+            if (rLower.IsAccessible(GetShell().IsPreview()))
                 xAccImpl = GetMap()->GetContextImpl( pLower, false );
             if( xAccImpl.is() )
                 xAccImpl->InvalidateStates( _nStates );
@@ -373,8 +337,6 @@ void SwAccessibleContext::InvalidateChildrenStates( const SwFrame* _pFrame,
         {
             // nothing to do ?
         }
-
-        ++aIter;
     }
 }
 
@@ -438,7 +400,9 @@ void SwAccessibleContext::InvalidateFocus_()
 {
 }
 
-void SwAccessibleContext::FireAccessibleEvent( AccessibleEventObject& rEvent )
+void SwAccessibleContext::FireAccessibleEvent(const sal_Int16 nEventId,
+                                              const css::uno::Any& rOldValue,
+                                              const css::uno::Any& rNewValue, sal_Int32 nIndexHint)
 {
     if( !GetFrame() )
     {
@@ -446,41 +410,31 @@ void SwAccessibleContext::FireAccessibleEvent( AccessibleEventObject& rEvent )
         return;
     }
 
-    if( !rEvent.Source.is() )
-    {
-        uno::Reference < XAccessibleContext > xThis( this );
-        rEvent.Source = xThis;
-    }
-
-    if (m_nClientId)
-        comphelper::AccessibleEventNotifier::addEvent( m_nClientId, rEvent );
+    NotifyAccessibleEvent(nEventId, rOldValue, rNewValue, nIndexHint);
 }
 
 void SwAccessibleContext::FireVisibleDataEvent()
 {
-    AccessibleEventObject aEvent;
-    aEvent.EventId = AccessibleEventId::VISIBLE_DATA_CHANGED;
-
-    FireAccessibleEvent( aEvent );
+    FireAccessibleEvent(AccessibleEventId::VISIBLE_DATA_CHANGED, uno::Any(), uno::Any());
 }
 
 void SwAccessibleContext::FireStateChangedEvent( sal_Int64 nState,
                                                  bool bNewState )
 {
-    AccessibleEventObject aEvent;
+    uno::Any aOldValue;
+    uno::Any aNewValue;
 
-    aEvent.EventId = AccessibleEventId::STATE_CHANGED;
     if( bNewState )
-        aEvent.NewValue <<= nState;
+        aNewValue <<= nState;
     else
-        aEvent.OldValue <<= nState;
+        aOldValue <<= nState;
 
-    FireAccessibleEvent( aEvent );
+    FireAccessibleEvent(AccessibleEventId::STATE_CHANGED, aOldValue, aNewValue);
 }
 
 void SwAccessibleContext::GetStates( sal_Int64& rStateSet )
 {
-    SolarMutexGuard aGuard;
+    std::scoped_lock aGuard( m_Mutex );
 
     // SHOWING
     if (m_isShowingState)
@@ -528,7 +482,7 @@ void SwAccessibleContext::ThrowIfDisposed()
 {
     if (IsDisposed())
     {
-        throw lang::DisposedException("object is nonfunctional",
+        throw lang::DisposedException(u"object is nonfunctional"_ustr,
                 getXWeak());
     }
 }
@@ -537,16 +491,20 @@ SwAccessibleContext::SwAccessibleContext(std::shared_ptr<SwAccessibleMap> const&
                                           sal_Int16 const nRole,
                                           const SwFrame *pF )
     : SwAccessibleFrame( pMap->GetVisArea(), pF,
-                         pMap->GetShell()->IsPreview() )
+                         pMap->GetShell().IsPreview() )
     , m_pMap(pMap.get())
     , m_wMap(pMap)
-    , m_nClientId(0)
     , m_nRole(nRole)
     , m_isDisposing( false )
     , m_isRegisteredAtAccessibleMap( true )
     , m_isSelectedInDoc(false)
 {
-    InitStates();
+    m_isShowingState = IsShowing( *(GetMap()) );
+
+    SwViewShell& rVSh = GetMap()->GetShell();
+    m_isEditableState = IsEditable(rVSh);
+    m_isOpaqueState = IsOpaque(rVSh);
+    m_isDefuncState = false;
 }
 
 SwAccessibleContext::~SwAccessibleContext()
@@ -561,13 +519,6 @@ SwAccessibleContext::~SwAccessibleContext()
     {
         pMap->RemoveContext( GetFrame() );
     }
-}
-
-uno::Reference< XAccessibleContext > SAL_CALL
-    SwAccessibleContext::getAccessibleContext()
-{
-    uno::Reference < XAccessibleContext > xRet( this );
-    return xRet;
 }
 
 sal_Int64 SAL_CALL SwAccessibleContext::getAccessibleChildCount()
@@ -594,12 +545,12 @@ uno::Reference< XAccessible> SAL_CALL
     {
         uno::Reference < XAccessibleContext > xThis( this );
         lang::IndexOutOfBoundsException aExcept(
-                "index out of bounds",
+                u"index out of bounds"_ustr,
                 xThis );
         throw aExcept;
     }
 
-    uno::Reference< XAccessible > xChild;
+    rtl::Reference<comphelper::OAccessible> pChild;
     if( aChild.GetSwFrame() )
     {
         ::rtl::Reference < SwAccessibleContext > xChildImpl(
@@ -607,7 +558,7 @@ uno::Reference< XAccessible> SAL_CALL
         if( xChildImpl.is() )
         {
             xChildImpl->SetParent( this );
-            xChild = xChildImpl.get();
+            pChild = xChildImpl;
         }
     }
     else if ( aChild.GetDrawObject() )
@@ -616,14 +567,14 @@ uno::Reference< XAccessible> SAL_CALL
                 GetMap()->GetContextImpl( aChild.GetDrawObject(),
                                           this, !m_isDisposing) );
         if( xChildImpl.is() )
-            xChild = xChildImpl.get();
+            pChild = xChildImpl;
     }
     else if ( aChild.GetWindow() )
     {
-        xChild = aChild.GetWindow()->GetAccessible();
+        pChild = aChild.GetWindow()->GetAccessible();
     }
 
-    return xChild;
+    return pChild;
 }
 
 css::uno::Sequence<uno::Reference<XAccessible>> SAL_CALL
@@ -633,8 +584,7 @@ css::uno::Sequence<uno::Reference<XAccessible>> SAL_CALL
 
     ThrowIfDisposed();
 
-    std::list< sw::access::SwAccessibleChild > aChildren;
-    GetChildren( *GetMap(), aChildren );
+    std::list<sw::access::SwAccessibleChild> aChildren = GetChildren(*GetMap());
 
     std::vector<uno::Reference<XAccessible>> aRet;
     aRet.reserve(aChildren.size());
@@ -668,23 +618,23 @@ css::uno::Sequence<uno::Reference<XAccessible>> SAL_CALL
     return comphelper::containerToSequence(aRet);
 }
 
-uno::Reference< XAccessible> SwAccessibleContext::getAccessibleParentImpl()
+rtl::Reference< SwAccessibleContext> SwAccessibleContext::getAccessibleParentImpl()
 {
     SolarMutexGuard aGuard;
 
     const SwFrame *pUpper = GetParent();
     OSL_ENSURE( pUpper != nullptr || m_isDisposing, "no upper found" );
 
-    uno::Reference< XAccessible > xAcc;
+    rtl::Reference< SwAccessibleContext > xAcc;
     if( pUpper )
-        xAcc = GetMap()->GetContext( pUpper, !m_isDisposing );
+        xAcc = GetMap()->GetContextImpl( pUpper, !m_isDisposing );
 
     OSL_ENSURE( xAcc.is() || m_isDisposing, "no parent found" );
 
     // Remember the parent as weak ref.
     {
         std::scoped_lock aWeakParentGuard( m_Mutex );
-        m_xWeakParent = xAcc;
+        m_xWeakParent = xAcc.get();
     }
 
     return xAcc;
@@ -763,58 +713,7 @@ lang::Locale SAL_CALL SwAccessibleContext::getLocale()
     return aLoc;
 }
 
-void SAL_CALL SwAccessibleContext::addAccessibleEventListener(
-            const uno::Reference< XAccessibleEventListener >& xListener )
-{
-    if (xListener.is())
-    {
-        SolarMutexGuard aGuard;
-        if (!m_nClientId)
-            m_nClientId = comphelper::AccessibleEventNotifier::registerClient( );
-        comphelper::AccessibleEventNotifier::addEventListener( m_nClientId, xListener );
-    }
-}
-
-void SAL_CALL SwAccessibleContext::removeAccessibleEventListener(
-            const uno::Reference< XAccessibleEventListener >& xListener )
-{
-    if (!(xListener.is() && m_nClientId))
-        return;
-
-    SolarMutexGuard aGuard;
-    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( m_nClientId, xListener );
-    if ( !nListenerCount )
-    {
-        // no listeners anymore
-        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-        // and at least to us not firing any events anymore, in case somebody calls
-        // NotifyAccessibleEvent, again
-        comphelper::AccessibleEventNotifier::revokeClient( m_nClientId );
-        m_nClientId = 0;
-    }
-}
-
-static bool lcl_PointInRectangle(const awt::Point & aPoint,
-                                     const awt::Rectangle & aRect)
-{
-    tools::Long nDiffX = aPoint.X - aRect.X;
-    tools::Long nDiffY = aPoint.Y - aRect.Y;
-
-    return
-        nDiffX >= 0 && nDiffX < aRect.Width && nDiffY >= 0 &&
-        nDiffY < aRect.Height;
-
-}
-
-sal_Bool SAL_CALL SwAccessibleContext::containsPoint(
-            const awt::Point& aPoint )
-{
-    awt::Rectangle aPixBounds = getBoundsImpl(true);
-    aPixBounds.X = 0;
-    aPixBounds.Y = 0;
-
-    return lcl_PointInRectangle(aPoint, aPixBounds);
-}
+css::awt::Rectangle SwAccessibleContext::implGetBounds() { return getBoundsImpl(true); }
 
 uno::Reference< XAccessible > SAL_CALL SwAccessibleContext::getAccessibleAtPoint(
                 const awt::Point& aPoint )
@@ -828,7 +727,7 @@ uno::Reference< XAccessible > SAL_CALL SwAccessibleContext::getAccessibleAtPoint
     vcl::Window *pWin = GetWindow();
     if (!pWin)
     {
-        throw uno::RuntimeException("no Window", getXWeak());
+        throw uno::RuntimeException(u"no Window"_ustr, getXWeak());
     }
 
     Point aPixPoint( aPoint.X, aPoint.Y ); // px rel to parent
@@ -877,8 +776,6 @@ uno::Reference< XAccessible > SAL_CALL SwAccessibleContext::getAccessibleAtPoint
 */
 awt::Rectangle SwAccessibleContext::getBoundsImpl(bool bRelative)
 {
-    SolarMutexGuard aGuard;
-
     ThrowIfDisposed();
 
     const SwFrame *pParent = GetParent();
@@ -887,11 +784,11 @@ awt::Rectangle SwAccessibleContext::getBoundsImpl(bool bRelative)
 
     if (!pParent)
     {
-        throw uno::RuntimeException("no Parent", getXWeak());
+        throw uno::RuntimeException(u"no Parent"_ustr, getXWeak());
     }
     if (!pWin)
     {
-        throw uno::RuntimeException("no Window", getXWeak());
+        throw uno::RuntimeException(u"no Window"_ustr, getXWeak());
     }
 
     SwRect aLogBounds( GetBounds( *(GetMap()), GetFrame() ) ); // twip relative to document root
@@ -899,8 +796,8 @@ awt::Rectangle SwAccessibleContext::getBoundsImpl(bool bRelative)
     if( GetFrame()->IsPageFrame() &&
         static_cast < const SwPageFrame * >( GetFrame() )->IsEmptyPage() )
     {
-        OSL_ENSURE( GetShell()->IsPreview(), "empty page accessible?" );
-        if( GetShell()->IsPreview() )
+        OSL_ENSURE(GetShell().IsPreview(), "empty page accessible?");
+        if (GetShell().IsPreview())
         {
             // adjust method call <GetMap()->GetPreviewPageSize()>
             sal_uInt16 nPageNum =
@@ -919,27 +816,13 @@ awt::Rectangle SwAccessibleContext::getBoundsImpl(bool bRelative)
         }
     }
 
-    awt::Rectangle aBox( aPixBounds.Left(), aPixBounds.Top(),
-                         aPixBounds.GetWidth(), aPixBounds.GetHeight() );
-
-    return aBox;
-}
-
-awt::Rectangle SAL_CALL SwAccessibleContext::getBounds()
-{
-    return getBoundsImpl(true);
-}
-
-awt::Point SAL_CALL SwAccessibleContext::getLocation()
-{
-    awt::Rectangle aRect = getBoundsImpl(true);
-    awt::Point aPoint(aRect.X, aRect.Y);
-
-    return aPoint;
+    return vcl::unohelper::ConvertToAWTRect(aPixBounds);
 }
 
 awt::Point SAL_CALL SwAccessibleContext::getLocationOnScreen()
 {
+    SolarMutexGuard aGuard;
+
     awt::Rectangle aRect = getBoundsImpl(false);
 
     Point aPixPos(aRect.X, aRect.Y);
@@ -947,21 +830,13 @@ awt::Point SAL_CALL SwAccessibleContext::getLocationOnScreen()
     vcl::Window *pWin = GetWindow();
     if (!pWin)
     {
-        throw uno::RuntimeException("no Window", getXWeak());
+        throw uno::RuntimeException(u"no Window"_ustr, getXWeak());
     }
 
     AbsoluteScreenPixelPoint aPixPosAbs = pWin->OutputToAbsoluteScreenPixel(aPixPos);
     awt::Point aPoint(aPixPosAbs.getX(), aPixPosAbs.getY());
 
     return aPoint;
-}
-
-awt::Size SAL_CALL SwAccessibleContext::getSize()
-{
-    awt::Rectangle aRect = getBoundsImpl(false);
-    awt::Size aSize( aRect.Width, aRect.Height );
-
-    return aSize;
 }
 
 void SAL_CALL SwAccessibleContext::grabFocus()
@@ -1013,11 +888,6 @@ sal_Int32 SAL_CALL SwAccessibleContext::getBackground()
     return sal_Int32(COL_WHITE);
 }
 
-sal_Bool SAL_CALL SwAccessibleContext::supportsService (const OUString& ServiceName)
-{
-    return cppu::supportsService(this, ServiceName);
-}
-
 void SwAccessibleContext::DisposeShape( const SdrObject *pObj,
                                 ::accessibility::AccessibleShape *pAccImpl )
 {
@@ -1025,12 +895,8 @@ void SwAccessibleContext::DisposeShape( const SdrObject *pObj,
     if( !xAccImpl.is() )
         xAccImpl = GetMap()->GetContextImpl( pObj, this );
 
-    AccessibleEventObject aEvent;
-    aEvent.EventId = AccessibleEventId::CHILD;
-    uno::Reference< XAccessible > xAcc( xAccImpl );
-    aEvent.OldValue <<= xAcc;
-    aEvent.IndexHint = -1;
-    FireAccessibleEvent( aEvent );
+    FireAccessibleEvent(AccessibleEventId::CHILD, uno::Any(uno::Reference<XAccessible>(xAccImpl)),
+                        uno::Any());
 
     GetMap()->RemoveContext( pObj );
     xAccImpl->dispose();
@@ -1042,12 +908,8 @@ void SwAccessibleContext::ScrolledInShape( ::accessibility::AccessibleShape *pAc
     {
         return ;
     }
-    AccessibleEventObject aEvent;
-    aEvent.EventId = AccessibleEventId::CHILD;
     uno::Reference< XAccessible > xAcc( pAccImpl );
-    aEvent.NewValue <<= xAcc;
-    aEvent.IndexHint = -1;
-    FireAccessibleEvent( aEvent );
+    FireAccessibleEvent(AccessibleEventId::CHILD, uno::Any(), uno::Any(xAcc));
 
     if( !pAccImpl->GetState( AccessibleStateType::FOCUSED ) )
         return;
@@ -1055,12 +917,8 @@ void SwAccessibleContext::ScrolledInShape( ::accessibility::AccessibleShape *pAc
     vcl::Window *pWin = GetWindow();
     if( pWin && pWin->HasFocus() )
     {
-        AccessibleEventObject aStateChangedEvent;
-        aStateChangedEvent.EventId = AccessibleEventId::STATE_CHANGED;
-        aStateChangedEvent.NewValue <<= AccessibleStateType::FOCUSED;
-        aStateChangedEvent.Source = xAcc;
-
-        FireAccessibleEvent( aStateChangedEvent );
+        pAccImpl->CommitChange(AccessibleEventId::STATE_CHANGED,
+                               uno::Any(AccessibleStateType::FOCUSED), uno::Any(), -1);
     }
 }
 
@@ -1079,19 +937,13 @@ void SwAccessibleContext::Dispose(bool bRecursive, bool bCanSkipInvisible)
         DisposeChildren(GetFrame(), bRecursive, bCanSkipInvisible);
 
     // get parent
-    uno::Reference< XAccessible > xParent( GetWeakParent() );
+    rtl::Reference<SwAccessibleContext> xParent(GetWeakParent());
     uno::Reference < XAccessibleContext > xThis( this );
 
     // send child event at parent
     if( xParent.is() )
     {
-        SwAccessibleContext *pAcc = static_cast<SwAccessibleContext *>(xParent.get());
-
-        AccessibleEventObject aEvent;
-        aEvent.EventId = AccessibleEventId::CHILD;
-        aEvent.OldValue <<= xThis;
-        aEvent.IndexHint = -1;
-        pAcc->FireAccessibleEvent( aEvent );
+        xParent->FireAccessibleEvent(AccessibleEventId::CHILD, uno::Any(xThis), uno::Any());
     }
 
     // set defunc state (it's not required to broadcast a state changed
@@ -1101,12 +953,7 @@ void SwAccessibleContext::Dispose(bool bRecursive, bool bCanSkipInvisible)
         m_isDefuncState = true;
     }
 
-    // broadcast dispose event
-    if (m_nClientId)
-    {
-        comphelper::AccessibleEventNotifier::revokeClientNotifyDisposing( m_nClientId, *this );
-        m_nClientId =  0;
-    }
+    OAccessible::dispose();
 
     RemoveFrameFromAccessibleMap();
     ClearFrame();
@@ -1147,13 +994,9 @@ void SwAccessibleContext::DisposeChild( const SwAccessibleChild& rChildFrameOrOb
         }
         else if ( rChildFrameOrObj.GetWindow() )
         {
-            AccessibleEventObject aEvent;
-            aEvent.EventId = AccessibleEventId::CHILD;
             uno::Reference< XAccessible > xAcc =
                                     rChildFrameOrObj.GetWindow()->GetAccessible();
-            aEvent.OldValue <<= xAcc;
-            aEvent.IndexHint = -1;
-            FireAccessibleEvent( aEvent );
+            FireAccessibleEvent(AccessibleEventId::CHILD, uno::Any(xAcc), uno::Any());
         }
     }
     else if( bRecursive && rChildFrameOrObj.GetSwFrame() )
@@ -1254,10 +1097,9 @@ void SwAccessibleContext::InvalidateChildPosOrSize(
             }
             else if ( rChildFrameOrObj.GetWindow() )
             {
-                AccessibleEventObject aEvent;
-                aEvent.EventId = AccessibleEventId::CHILD;
-                aEvent.NewValue <<= rChildFrameOrObj.GetWindow()->GetAccessible();
-                FireAccessibleEvent( aEvent );
+                FireAccessibleEvent(AccessibleEventId::CHILD, uno::Any(),
+                                    uno::Any(uno::Reference<XAccessible>(
+                                        rChildFrameOrObj.GetWindow()->GetAccessible())));
             }
         }
     }
@@ -1320,37 +1162,34 @@ void SwAccessibleContext::InvalidateStates( AccessibleStates _nStates )
     if( !GetMap() )
         return;
 
-    SwViewShell *pVSh = GetMap()->GetShell();
-    if( pVSh )
+    SwViewShell& rVSh = GetMap()->GetShell();
+    if( _nStates & AccessibleStates::EDITABLE )
     {
-        if( _nStates & AccessibleStates::EDITABLE )
+        bool bIsOldEditableState;
+        bool bIsNewEditableState = IsEditable(rVSh);
         {
-            bool bIsOldEditableState;
-            bool bIsNewEditableState = IsEditable( pVSh );
-            {
-                std::scoped_lock aGuard( m_Mutex );
-                bIsOldEditableState = m_isEditableState;
-                m_isEditableState = bIsNewEditableState;
-            }
-
-            if( bIsOldEditableState != bIsNewEditableState )
-                FireStateChangedEvent( AccessibleStateType::EDITABLE,
-                                       bIsNewEditableState  );
+            std::scoped_lock aGuard( m_Mutex );
+            bIsOldEditableState = m_isEditableState;
+            m_isEditableState = bIsNewEditableState;
         }
-        if( _nStates & AccessibleStates::OPAQUE )
+
+        if( bIsOldEditableState != bIsNewEditableState )
+            FireStateChangedEvent( AccessibleStateType::EDITABLE,
+                                   bIsNewEditableState  );
+    }
+    if( _nStates & AccessibleStates::OPAQUE )
+    {
+        bool bIsOldOpaqueState;
+        bool bIsNewOpaqueState = IsOpaque(rVSh);
         {
-            bool bIsOldOpaqueState;
-            bool bIsNewOpaqueState = IsOpaque( pVSh );
-            {
-                std::scoped_lock aGuard( m_Mutex );
-                bIsOldOpaqueState = m_isOpaqueState;
-                m_isOpaqueState = bIsNewOpaqueState;
-            }
-
-            if( bIsOldOpaqueState != bIsNewOpaqueState )
-                FireStateChangedEvent( AccessibleStateType::OPAQUE,
-                                       bIsNewOpaqueState  );
+            std::scoped_lock aGuard( m_Mutex );
+            bIsOldOpaqueState = m_isOpaqueState;
+            m_isOpaqueState = bIsNewOpaqueState;
         }
+
+        if( bIsOldOpaqueState != bIsNewOpaqueState )
+            FireStateChangedEvent( AccessibleStateType::OPAQUE,
+                                   bIsNewOpaqueState  );
     }
 
     InvalidateChildrenStates( GetFrame(), _nStates );
@@ -1358,28 +1197,19 @@ void SwAccessibleContext::InvalidateStates( AccessibleStates _nStates )
 
 void SwAccessibleContext::InvalidateRelation( sal_uInt16 nType )
 {
-    AccessibleEventObject aEvent;
-    aEvent.EventId = nType;
-
-    FireAccessibleEvent( aEvent );
+    FireAccessibleEvent(nType, uno::Any(), uno::Any());
 }
 
 /** #i27301# - text selection has changed */
 void SwAccessibleContext::InvalidateTextSelection()
 {
-    AccessibleEventObject aEvent;
-    aEvent.EventId = AccessibleEventId::TEXT_SELECTION_CHANGED;
-
-    FireAccessibleEvent( aEvent );
+    FireAccessibleEvent(AccessibleEventId::TEXT_SELECTION_CHANGED, uno::Any(), uno::Any());
 }
 
 /** #i88069# - attributes has changed */
 void SwAccessibleContext::InvalidateAttr()
 {
-    AccessibleEventObject aEvent;
-    aEvent.EventId = AccessibleEventId::TEXT_ATTRIBUTE_CHANGED;
-
-    FireAccessibleEvent( aEvent );
+    FireAccessibleEvent(AccessibleEventId::TEXT_ATTRIBUTE_CHANGED, uno::Any(), uno::Any());
 }
 
 bool SwAccessibleContext::HasCursor()
@@ -1417,7 +1247,7 @@ bool SwAccessibleContext::Select( SwPaM *pPaM, SdrObject *pObj,
         // visible again.
         bool bCallShowCursor = false;
         if( pFEShell && (pFEShell->IsFrameSelected() ||
-                         pFEShell->IsObjSelected()) )
+                         pFEShell->GetSelectedObjCount()) )
         {
             Point aPt( LONG_MIN, LONG_MIN );
             pFEShell->SelectObj( aPt );
@@ -1474,7 +1304,7 @@ bool SwAccessibleContext::HasAdditionalAccessibleChildren()
 
     if ( GetFrame()->IsTextFrame() )
     {
-        SwPostItMgr* pPostItMgr = GetMap()->GetShell()->GetPostItMgr();
+        SwPostItMgr* pPostItMgr = GetMap()->GetShell().GetPostItMgr();
         if ( pPostItMgr && pPostItMgr->HasNotes() && pPostItMgr->ShowNotes() )
         {
             bRet = pPostItMgr->HasFrameConnectedSidebarWins( *(GetFrame()) );
@@ -1491,7 +1321,7 @@ vcl::Window* SwAccessibleContext::GetAdditionalAccessibleChild( const sal_Int32 
 
     if ( GetFrame()->IsTextFrame() )
     {
-        SwPostItMgr* pPostItMgr = GetMap()->GetShell()->GetPostItMgr();
+        SwPostItMgr* pPostItMgr = GetMap()->GetShell().GetPostItMgr();
         if ( pPostItMgr && pPostItMgr->HasNotes() && pPostItMgr->ShowNotes() )
         {
             pAdditionalAccessibleChild =
@@ -1503,16 +1333,18 @@ vcl::Window* SwAccessibleContext::GetAdditionalAccessibleChild( const sal_Int32 
 }
 
 /** #i88070# - get all additional accessible children */
-void SwAccessibleContext::GetAdditionalAccessibleChildren( std::vector< vcl::Window* >* pChildren )
+std::vector<vcl::Window*> SwAccessibleContext::GetAdditionalAccessibleChildren()
 {
     if ( GetFrame()->IsTextFrame() )
     {
-        SwPostItMgr* pPostItMgr = GetMap()->GetShell()->GetPostItMgr();
+        SwPostItMgr* pPostItMgr = GetMap()->GetShell().GetPostItMgr();
         if ( pPostItMgr && pPostItMgr->HasNotes() && pPostItMgr->ShowNotes() )
         {
-            pPostItMgr->GetAllSidebarWinForFrame( *(GetFrame()), pChildren );
+            return pPostItMgr->GetAllSidebarWinForFrame(*(GetFrame()));
         }
     }
+
+    return {};
 }
 
 bool SwAccessibleContext::SetSelectedState(bool const bSelected)

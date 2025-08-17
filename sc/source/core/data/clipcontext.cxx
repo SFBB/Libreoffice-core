@@ -14,7 +14,6 @@
 #include <column.hxx>
 #include <scitems.hxx>
 #include <tokenarray.hxx>
-#include <editutil.hxx>
 #include <clipparam.hxx>
 
 #include <svl/intitem.hxx>
@@ -152,9 +151,9 @@ public:
 
 void CopyFromClipContext::startListeningFormulas()
 {
-    auto pSet = std::make_shared<sc::ColumnBlockPositionSet>(mrDestDoc);
-    sc::StartListeningContext aStartCxt(mrDestDoc, pSet);
-    sc::EndListeningContext aEndCxt(mrDestDoc, pSet, nullptr);
+    auto xSet = std::make_shared<sc::ColumnBlockPositionSet>(mrDestDoc);
+    sc::StartListeningContext aStartCxt(mrDestDoc, xSet);
+    sc::EndListeningContext aEndCxt(mrDestDoc, std::move(xSet), nullptr);
 
     StartListeningAction aAction(mrDestDoc, aStartCxt, aEndCxt);
     maListeningFormulaSpans.executeAction(mrDestDoc, aAction);
@@ -397,14 +396,14 @@ bool CopyFromClipContext::isCloneSparklines() const
 
 bool CopyFromClipContext::isDateCell( const ScColumn& rCol, SCROW nRow ) const
 {
-    sal_uLong nNumIndex = rCol.GetAttr(nRow, ATTR_VALUE_FORMAT).GetValue();
+    sal_uInt32 nNumIndex = rCol.GetAttr(nRow, ATTR_VALUE_FORMAT).GetValue();
     SvNumFormatType nType = mpClipDoc->GetFormatTable()->GetType(nNumIndex);
     return (nType == SvNumFormatType::DATE) || (nType == SvNumFormatType::TIME) || (nType == SvNumFormatType::DATETIME);
 }
 
 CopyToClipContext::CopyToClipContext(
-    ScDocument& rDoc, bool bKeepScenarioFlags) :
-    ClipContextBase(rDoc), mbKeepScenarioFlags(bKeepScenarioFlags) {}
+    ScDocument& rDoc, bool bKeepScenarioFlags, bool bCopyChartRanges) :
+    ClipContextBase(rDoc), mbKeepScenarioFlags(bKeepScenarioFlags), mbCopyChartRanges(bCopyChartRanges) {}
 
 CopyToClipContext::~CopyToClipContext() {}
 

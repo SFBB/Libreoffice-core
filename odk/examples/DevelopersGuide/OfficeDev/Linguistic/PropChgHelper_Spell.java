@@ -65,10 +65,6 @@ public class PropChgHelper_Spell extends PropChgHelper
             {
                 // nothing to be done
             }
-            else if (aEvt.PropertyName.equals( "IsGermanPreReform" ))
-            {
-                bSCWA = bSWWA = true;
-            }
             else if (aEvt.PropertyName.equals( "IsUseDictionaryList" ))
             {
                 bSCWA = bSWWA = true;
@@ -82,11 +78,6 @@ public class PropChgHelper_Spell extends PropChgHelper
             {
                 bSCWA = !bVal;          // FALSE->TRUE change?
                 bSWWA = !bSCWA;                 // TRUE->FALSE change?
-            }
-            else if (aEvt.PropertyName.equals( "IsSpellCapitalization" ))
-            {
-                bSCWA = !bVal;      // FALSE->TRUE change?
-                bSWWA = !bSCWA;             // TRUE->FALSE change?
             }
 
             if (bSCWA)

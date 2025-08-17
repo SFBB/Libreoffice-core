@@ -75,7 +75,7 @@ void OPredicateCompiler::start(OSQLParseNode const * pSQLParseNode)
         DBG_ASSERT(pSQLParseNode->count() >= 4,"OFILECursor: Error in Parse Tree");
 
         OSQLParseNode * pTableExp = pSQLParseNode->getChild(3);
-        DBG_ASSERT(pTableExp != nullptr,"Error in Parse Tree");
+        assert(pTableExp && "Error in Parse Tree");
         DBG_ASSERT(SQL_ISRULE(pTableExp,table_exp)," Error in Parse Tree");
         DBG_ASSERT(pTableExp->count() == TABLE_EXPRESSION_CHILD_COUNT,"Error in Parse Tree");
 
@@ -330,12 +330,12 @@ void OPredicateCompiler::execute_BETWEEN(OSQLParseNode const * pPredicateNode)
 
     OOperand* pColumnOp = execute(pColumn);
     OOperand* pOb1 = execute(p1stValue);
-    OBoolOperator* pOperator = new OOp_COMPARE(bNot ? SQLFilterOperator::LESS_EQUAL : SQLFilterOperator::GREATER);
+    OBoolOperator* pOperator = new OOp_COMPARE(bNot ? SQLFilterOperator::LESS : SQLFilterOperator::GREATER_EQUAL);
     m_aCodeList.emplace_back(pOperator);
 
     execute(pColumn);
     OOperand* pOb2 = execute(p2ndtValue);
-    pOperator = new OOp_COMPARE(bNot ? SQLFilterOperator::GREATER_EQUAL : SQLFilterOperator::LESS);
+    pOperator = new OOp_COMPARE(bNot ? SQLFilterOperator::GREATER : SQLFilterOperator::LESS_EQUAL);
     m_aCodeList.emplace_back(pOperator);
 
     if ( pColumnOp && pOb1 && pOb2 )
@@ -350,17 +350,14 @@ void OPredicateCompiler::execute_BETWEEN(OSQLParseNode const * pPredicateNode)
                 break;
             case DataType::DECIMAL:
             case DataType::NUMERIC:
+            case DataType::DOUBLE:
+            case DataType::REAL:
                 pOb1->setValue(pOb1->getValue().getDouble());
                 pOb2->setValue(pOb2->getValue().getDouble());
                 break;
             case DataType::FLOAT:
                 pOb1->setValue(pOb1->getValue().getFloat());
                 pOb2->setValue(pOb2->getValue().getFloat());
-                break;
-            case DataType::DOUBLE:
-            case DataType::REAL:
-                pOb1->setValue(pOb1->getValue().getDouble());
-                pOb2->setValue(pOb2->getValue().getDouble());
                 break;
             case DataType::DATE:
                 pOb1->setValue(pOb1->getValue().getDate());
@@ -546,7 +543,7 @@ bool OPredicateInterpreter::evaluate(OCodeList& rCodeList)
     m_aStack.pop();
 
     DBG_ASSERT(m_aStack.empty(), "Stack error");
-    DBG_ASSERT(pOperand, "Stack error");
+    assert(pOperand && "Stack error");
 
     const bool bResult = pOperand->isValid();
     if (typeid(OOperandResult) == typeid(*pOperand))
@@ -572,7 +569,7 @@ void OPredicateInterpreter::evaluateSelection(OCodeList& rCodeList, ORowSetValue
     m_aStack.pop();
 
     DBG_ASSERT(m_aStack.empty(), "Stack error");
-    DBG_ASSERT(pOperand, "Stack error");
+    assert(pOperand && "Stack error");
 
     (*_rVal) = pOperand->getValue();
     if (typeid(OOperandResult) == typeid(*pOperand))

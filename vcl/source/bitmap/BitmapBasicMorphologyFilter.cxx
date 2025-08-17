@@ -10,9 +10,10 @@
 
 #include <sal/config.h>
 
-#include <comphelper/threadpool.hxx>
 #include <sal/log.hxx>
-#include <vcl/BitmapBasicMorphologyFilter.hxx>
+#include <comphelper/threadpool.hxx>
+
+#include <vcl/bitmap/BitmapBasicMorphologyFilter.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
 
 #include <algorithm>
@@ -60,30 +61,30 @@ struct DilateOp
 
 template <typename MorphologyOp, int nComponentWidth> struct Value
 {
-    static constexpr int nWidthBytes = nComponentWidth / 8;
-    static_assert(nWidthBytes * 8 == nComponentWidth);
+    static constexpr int mnWidthBytes = nComponentWidth / 8;
+    static_assert(mnWidthBytes * 8 == nComponentWidth);
 
-    sal_uInt8 aResult[nWidthBytes];
+    sal_uInt8 maResult[mnWidthBytes];
 
     // If we are at the start or at the end of the line, consider outside value
     Value(FilterSharedData const& rShared, bool bLookOutside)
     {
-        std::fill_n(aResult, nWidthBytes,
+        std::fill_n(maResult, mnWidthBytes,
                     bLookOutside ? rShared.mnOutsideVal : MorphologyOp::initVal);
     }
 
     void apply(BitmapScopedReadAccess& pReadAccess, sal_Int32 x, sal_Int32 y,
                sal_uInt8* pHint = nullptr)
     {
-        sal_uInt8* pSource = (pHint ? pHint : pReadAccess->GetScanline(y)) + nWidthBytes * x;
-        std::transform(pSource, pSource + nWidthBytes, aResult, aResult, MorphologyOp::apply);
+        sal_uInt8* pSource = (pHint ? pHint : pReadAccess->GetScanline(y)) + mnWidthBytes * x;
+        std::transform(pSource, pSource + mnWidthBytes, maResult, maResult, MorphologyOp::apply);
     }
 
     void copy(BitmapScopedWriteAccess& pWriteAccess, sal_Int32 x, sal_Int32 y,
               sal_uInt8* pHint = nullptr)
     {
-        sal_uInt8* pDest = (pHint ? pHint : pWriteAccess->GetScanline(y)) + nWidthBytes * x;
-        std::copy_n(aResult, nWidthBytes, pDest);
+        sal_uInt8* pDest = (pHint ? pHint : pWriteAccess->GetScanline(y)) + mnWidthBytes * x;
+        std::copy_n(maResult, mnWidthBytes, pDest);
     }
 };
 
@@ -95,28 +96,28 @@ template <typename MorphologyOp> struct Value<MorphologyOp, 0>
                                       MorphologyOp::initVal, MorphologyOp::initVal,
                                       MorphologyOp::initVal };
 
-    Color aResult;
+    Color maResult;
 
     // If we are at the start or at the end of the line, consider outside value
     Value(FilterSharedData const& rShared, bool bLookOutside)
-        : aResult(bLookOutside ? rShared.maOutsideColor : initColor)
+        : maResult(bLookOutside ? rShared.maOutsideColor : initColor)
     {
     }
 
     void apply(const BitmapScopedReadAccess& pReadAccess, sal_Int32 x, sal_Int32 y,
                sal_uInt8* /*pHint*/ = nullptr)
     {
-        const auto& rSource = pReadAccess->GetColor(y, x);
-        aResult = Color(ColorAlpha, MorphologyOp::apply(rSource.GetAlpha(), aResult.GetAlpha()),
-                        MorphologyOp::apply(rSource.GetRed(), aResult.GetRed()),
-                        MorphologyOp::apply(rSource.GetGreen(), aResult.GetGreen()),
-                        MorphologyOp::apply(rSource.GetBlue(), aResult.GetBlue()));
+        const auto aSource = pReadAccess->GetColor(y, x);
+        maResult = Color(ColorAlpha, MorphologyOp::apply(aSource.GetAlpha(), maResult.GetAlpha()),
+                         MorphologyOp::apply(aSource.GetRed(), maResult.GetRed()),
+                         MorphologyOp::apply(aSource.GetGreen(), maResult.GetGreen()),
+                         MorphologyOp::apply(aSource.GetBlue(), maResult.GetBlue()));
     }
 
     void copy(BitmapScopedWriteAccess& pWriteAccess, sal_Int32 x, sal_Int32 y,
               sal_uInt8* /*pHint*/ = nullptr)
     {
-        pWriteAccess->SetPixel(y, x, aResult);
+        pWriteAccess->SetPixel(y, x, maResult);
     }
 };
 
@@ -329,13 +330,7 @@ BitmapBasicMorphologyFilter::BitmapBasicMorphologyFilter(BasicMorphologyOp op, s
 
 BitmapBasicMorphologyFilter::~BitmapBasicMorphologyFilter() = default;
 
-BitmapEx BitmapBasicMorphologyFilter::execute(BitmapEx const& rBitmapEx) const
-{
-    Bitmap result = filter(rBitmapEx.GetBitmap());
-    return BitmapEx(result, rBitmapEx.GetAlphaMask());
-}
-
-Bitmap BitmapBasicMorphologyFilter::filter(Bitmap const& rBitmap) const
+Bitmap BitmapBasicMorphologyFilter::execute(Bitmap const& rBitmap) const
 {
     Bitmap bitmapCopy(rBitmap);
     ScanlineFormat nScanlineFormat;
@@ -350,8 +345,8 @@ Bitmap BitmapBasicMorphologyFilter::filter(Bitmap const& rBitmap) const
         case ScanlineFormat::N24BitTcBgr:
             runFilter<24>(bitmapCopy, m_eOp, m_nRadius, m_bUseValueOutside, m_nValueOutside);
             break;
-        case ScanlineFormat::N32BitTcMask:
         case ScanlineFormat::N32BitTcBgra:
+        case ScanlineFormat::N32BitTcBgrx:
             runFilter<32>(bitmapCopy, m_eOp, m_nRadius, m_bUseValueOutside, m_nValueOutside);
             break;
         case ScanlineFormat::N8BitPal:

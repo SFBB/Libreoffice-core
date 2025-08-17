@@ -23,10 +23,11 @@
 #include <sal/log.hxx>
 #include <strings.hrc>
 #include <shellres.hxx>
+#include <swmodule.hxx>
 #include <tautofmt.hxx>
 
-namespace {
-
+namespace
+{
 class SwStringInputDlg : public SfxDialogController
 {
 private:
@@ -34,12 +35,11 @@ private:
     std::unique_ptr<weld::Entry> m_xEdInput; // Edit obtains the focus.
 
 public:
-    SwStringInputDlg(weld::Window* pParent, const OUString& rTitle,
-        const OUString& rEditTitle, const OUString& rDefault)
-        : SfxDialogController(pParent, "modules/swriter/ui/stringinput.ui",
-                "StringInputDialog")
-        , m_xLabel(m_xBuilder->weld_label("name"))
-        , m_xEdInput(m_xBuilder->weld_entry("edit"))
+    SwStringInputDlg(weld::Window* pParent, const OUString& rTitle, const OUString& rEditTitle,
+                     const OUString& rDefault)
+        : SfxDialogController(pParent, u"modules/swriter/ui/stringinput.ui"_ustr, u"StringInputDialog"_ustr)
+        , m_xLabel(m_xBuilder->weld_label(u"name"_ustr))
+        , m_xEdInput(m_xBuilder->weld_entry(u"edit"_ustr))
     {
         m_xLabel->set_label(rEditTitle);
         m_xDialog->set_title(rTitle);
@@ -47,19 +47,14 @@ public:
         m_xEdInput->select_region(0, -1);
     }
 
-    OUString GetInputString() const
-    {
-        return m_xEdInput->get_text();
-    }
+    OUString GetInputString() const { return m_xEdInput->get_text(); }
 };
-
 }
 
 // AutoFormat-Dialogue:
-SwAutoFormatDlg::SwAutoFormatDlg(weld::Window* pParent, SwWrtShell* pWrtShell,
-                                 bool bAutoFormat, const SwTableAutoFormat* pSelFormat)
-    : SfxDialogController(pParent, "modules/swriter/ui/autoformattable.ui",
-            "AutoFormatTableDialog")
+SwAutoFormatDlg::SwAutoFormatDlg(weld::Window* pParent, SwWrtShell* pWrtShell, bool bAutoFormat,
+                                 const SwTableAutoFormat* pSelFormat)
+    : SfxDialogController(pParent, u"modules/swriter/ui/autoformattable.ui"_ustr, u"AutoFormatTableDialog"_ustr)
     , m_aStrTitle(SwResId(STR_ADD_AUTOFORMAT_TITLE))
     , m_aStrLabel(SwResId(STR_ADD_AUTOFORMAT_LABEL))
     , m_aStrClose(SwResId(STR_BTN_AUTOFORMAT_CLOSE))
@@ -72,21 +67,20 @@ SwAutoFormatDlg::SwAutoFormatDlg(weld::Window* pParent, SwWrtShell* pWrtShell,
     , m_nDfltStylePos(0)
     , m_bCoreDataChanged(false)
     , m_bSetAutoFormat(bAutoFormat)
-    , m_xTableTable(new SwTableAutoFormatTable)
-    , m_xLbFormat(m_xBuilder->weld_tree_view("formatlb"))
-    , m_xBtnNumFormat(m_xBuilder->weld_check_button("numformatcb"))
-    , m_xBtnBorder(m_xBuilder->weld_check_button("bordercb"))
-    , m_xBtnFont(m_xBuilder->weld_check_button("fontcb"))
-    , m_xBtnPattern(m_xBuilder->weld_check_button("patterncb"))
-    , m_xBtnAlignment(m_xBuilder->weld_check_button("alignmentcb"))
-    , m_xBtnCancel(m_xBuilder->weld_button("cancel"))
-    , m_xBtnAdd(m_xBuilder->weld_button("add"))
-    , m_xBtnRemove(m_xBuilder->weld_button("remove"))
-    , m_xBtnRename(m_xBuilder->weld_button("rename"))
-    , m_xWndPreview(new weld::CustomWeld(*m_xBuilder, "preview", m_aWndPreview))
+    , m_xTableTable(new SwTableAutoFormatTable(SwModule::get()->GetAutoFormatTable()))
+    , m_xLbFormat(m_xBuilder->weld_tree_view(u"formatlb"_ustr))
+    , m_xBtnNumFormat(m_xBuilder->weld_check_button(u"numformatcb"_ustr))
+    , m_xBtnBorder(m_xBuilder->weld_check_button(u"bordercb"_ustr))
+    , m_xBtnFont(m_xBuilder->weld_check_button(u"fontcb"_ustr))
+    , m_xBtnPattern(m_xBuilder->weld_check_button(u"patterncb"_ustr))
+    , m_xBtnAlignment(m_xBuilder->weld_check_button(u"alignmentcb"_ustr))
+    , m_xBtnCancel(m_xBuilder->weld_button(u"cancel"_ustr))
+    , m_xBtnAdd(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xBtnRemove(m_xBuilder->weld_button(u"remove"_ustr))
+    , m_xBtnRename(m_xBuilder->weld_button(u"rename"_ustr))
+    , m_xWndPreview(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, m_aWndPreview))
 {
     m_aWndPreview.DetectRTL(pWrtShell);
-    m_xTableTable->Load();
 
     const int nWidth = m_xLbFormat->get_approximate_digit_width() * 32;
     const int nHeight = m_xLbFormat->get_height_rows(8);
@@ -109,7 +103,7 @@ SwAutoFormatDlg::~SwAutoFormatDlg()
     m_xTableTable.reset();
 }
 
-void SwAutoFormatDlg::Init( const SwTableAutoFormat* pSelFormat )
+void SwAutoFormatDlg::Init(const SwTableAutoFormat* pSelFormat)
 {
     Link<weld::Toggleable&, void> aLk(LINK(this, SwAutoFormatDlg, CheckHdl));
     m_xBtnBorder->connect_toggled(aLk);
@@ -121,24 +115,19 @@ void SwAutoFormatDlg::Init( const SwTableAutoFormat* pSelFormat )
     m_xBtnAdd->connect_clicked(LINK(this, SwAutoFormatDlg, AddHdl));
     m_xBtnRemove->connect_clicked(LINK(this, SwAutoFormatDlg, RemoveHdl));
     m_xBtnRename->connect_clicked(LINK(this, SwAutoFormatDlg, RenameHdl));
-    m_xLbFormat->connect_changed(LINK(this, SwAutoFormatDlg, SelFormatHdl));
+    m_xLbFormat->connect_selection_changed(LINK(this, SwAutoFormatDlg, SelFormatHdl));
 
     m_xBtnAdd->set_sensitive(m_bSetAutoFormat);
 
-    m_nIndex = 0;
-    if( !m_bSetAutoFormat )
-    {
-        // Then the list to be expanded by the entry "- none -".
-        m_xLbFormat->append_text(SwViewShell::GetShellRes()->aStrNone);
-        m_nDfltStylePos = 1;
-        m_nIndex = 255;
-    }
+    // Expand list with the entry "- none -".
+    m_xLbFormat->append_text(SwViewShell::GetShellRes()->aStrNone);
+    m_nDfltStylePos = 1;
+    m_nIndex = 255;
 
-    for (sal_uInt8 i = 0, nCount = static_cast<sal_uInt8>(m_xTableTable->size());
-            i < nCount; i++)
+    for (sal_uInt8 i = 0, nCount = static_cast<sal_uInt8>(m_xTableTable->size()); i < nCount; i++)
     {
-        SwTableAutoFormat const& rFormat = (*m_xTableTable)[ i ];
-        m_xLbFormat->append_text(rFormat.GetName());
+        SwTableAutoFormat const& rFormat = (*m_xTableTable)[i];
+        m_xLbFormat->append_text(rFormat.GetName().toString());
         if (pSelFormat && rFormat.GetName() == pSelFormat->GetName())
             m_nIndex = i;
     }
@@ -147,7 +136,7 @@ void SwAutoFormatDlg::Init( const SwTableAutoFormat* pSelFormat )
     SelFormatHdl(*m_xLbFormat);
 }
 
-void SwAutoFormatDlg::UpdateChecks( const SwTableAutoFormat& rFormat, bool bEnable )
+void SwAutoFormatDlg::UpdateChecks(const SwTableAutoFormat& rFormat, bool bEnable)
 {
     m_xBtnNumFormat->set_sensitive(bEnable);
     m_xBtnNumFormat->set_active(rFormat.IsValueFormat());
@@ -167,9 +156,9 @@ void SwAutoFormatDlg::UpdateChecks( const SwTableAutoFormat& rFormat, bool bEnab
 
 std::unique_ptr<SwTableAutoFormat> SwAutoFormatDlg::FillAutoFormatOfIndex() const
 {
-    if( 255 != m_nIndex )
+    if (255 != m_nIndex)
     {
-        return std::make_unique<SwTableAutoFormat>( (*m_xTableTable)[ m_nIndex ] );
+        return std::make_unique<SwTableAutoFormat>((*m_xTableTable)[m_nIndex]);
     }
 
     return nullptr;
@@ -181,25 +170,25 @@ IMPL_LINK(SwAutoFormatDlg, CheckHdl, weld::Toggleable&, rBtn, void)
     if (m_nIndex == 255)
         return;
 
-    SwTableAutoFormat& rData  = (*m_xTableTable)[m_nIndex];
+    SwTableAutoFormat& rData = (*m_xTableTable)[m_nIndex];
     bool bCheck = rBtn.get_active(), bDataChgd = true;
 
     if (&rBtn == m_xBtnNumFormat.get())
-        rData.SetValueFormat( bCheck );
+        rData.SetValueFormat(bCheck);
     else if (&rBtn == m_xBtnBorder.get())
-        rData.SetFrame( bCheck );
+        rData.SetFrame(bCheck);
     else if (&rBtn == m_xBtnFont.get())
-        rData.SetFont( bCheck );
+        rData.SetFont(bCheck);
     else if (&rBtn == m_xBtnPattern.get())
-        rData.SetBackground( bCheck );
+        rData.SetBackground(bCheck);
     else if (&rBtn == m_xBtnAlignment.get())
-        rData.SetJustify( bCheck );
+        rData.SetJustify(bCheck);
     else
         bDataChgd = false;
 
-    if( bDataChgd )
+    if (bDataChgd)
     {
-        if( !m_bCoreDataChanged )
+        if (!m_bCoreDataChanged)
         {
             m_xBtnCancel->set_label(m_aStrClose);
             m_bCoreDataChanged = true;
@@ -212,31 +201,30 @@ IMPL_LINK(SwAutoFormatDlg, CheckHdl, weld::Toggleable&, rBtn, void)
 IMPL_LINK_NOARG(SwAutoFormatDlg, AddHdl, weld::Button&, void)
 {
     bool bOk = false, bFormatInserted = false;
-    while( !bOk )
+    while (!bOk)
     {
         SwStringInputDlg aDlg(m_xDialog.get(), m_aStrTitle, m_aStrLabel, OUString());
         if (RET_OK == aDlg.run())
         {
             const OUString aFormatName(aDlg.GetInputString());
 
-            if ( !aFormatName.isEmpty() )
+            if (!aFormatName.isEmpty())
             {
                 size_t n;
-                for( n = 0; n < m_xTableTable->size(); ++n )
-                    if( (*m_xTableTable)[n].GetName() == aFormatName )
+                for (n = 0; n < m_xTableTable->size(); ++n)
+                    if ((*m_xTableTable)[n].GetName() == aFormatName)
                         break;
 
-                if( n >= m_xTableTable->size() )
+                if (n >= m_xTableTable->size())
                 {
                     // Format with the name does not already exist, so take up.
-                    std::unique_ptr<SwTableAutoFormat> pNewData(
-                            new SwTableAutoFormat(aFormatName));
-                    bool bGetOk = m_pShell->GetTableAutoFormat( *pNewData );
+                    std::unique_ptr<SwTableAutoFormat> pNewData(new SwTableAutoFormat(TableStyleName(aFormatName)));
+                    bool bGetOk = m_pShell->GetTableAutoFormat(*pNewData);
                     SAL_WARN_IF(!bGetOk, "sw.ui", "GetTableAutoFormat failed for: " << aFormatName);
 
                     // Insert sorted!!
-                    for( n = 1; n < m_xTableTable->size(); ++n )
-                        if( (*m_xTableTable)[ n ].GetName() > aFormatName )
+                    for (n = 1; n < m_xTableTable->size(); ++n)
+                        if ((*m_xTableTable)[n].GetName().toString() > aFormatName)
                             break;
 
                     m_xTableTable->InsertAutoFormat(n, std::move(pNewData));
@@ -244,7 +232,7 @@ IMPL_LINK_NOARG(SwAutoFormatDlg, AddHdl, weld::Button&, void)
                     m_xLbFormat->select(m_nDfltStylePos + n);
                     bFormatInserted = true;
                     m_xBtnAdd->set_sensitive(false);
-                    if ( !m_bCoreDataChanged )
+                    if (!m_bCoreDataChanged)
                     {
                         m_xBtnCancel->set_label(m_aStrClose);
                         m_bCoreDataChanged = true;
@@ -255,9 +243,11 @@ IMPL_LINK_NOARG(SwAutoFormatDlg, AddHdl, weld::Button&, void)
                 }
             }
 
-            if( !bFormatInserted )
+            if (!bFormatInserted)
             {
-                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(), VclMessageType::Error, VclButtonsType::OkCancel, m_aStrInvalidFormat));
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(
+                    m_xDialog.get(), VclMessageType::Error, VclButtonsType::OkCancel,
+                    m_aStrInvalidFormat));
                 bOk = RET_CANCEL == xBox->run();
             }
         }
@@ -268,11 +258,10 @@ IMPL_LINK_NOARG(SwAutoFormatDlg, AddHdl, weld::Button&, void)
 
 IMPL_LINK_NOARG(SwAutoFormatDlg, RemoveHdl, weld::Button&, void)
 {
-    OUString aMessage = m_aStrDelMsg + "\n\n" +
-        m_xLbFormat->get_selected_text() + "\n";
+    OUString aMessage = m_aStrDelMsg + "\n\n" + m_xLbFormat->get_selected_text() + "\n";
 
-    std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(), VclMessageType::Question,
-                                              VclButtonsType::OkCancel, m_aStrDelTitle));
+    std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(
+        m_xDialog.get(), VclMessageType::Question, VclButtonsType::OkCancel, m_aStrDelTitle));
     xBox->set_secondary_text(aMessage);
 
     if (xBox->run() == RET_OK)
@@ -285,13 +274,13 @@ IMPL_LINK_NOARG(SwAutoFormatDlg, RemoveHdl, weld::Button&, void)
         m_xTableTable->EraseAutoFormat(nIndex);
         m_nIndex = nIndex - 1;
 
-        if( !m_nIndex )
+        if (!m_nIndex)
         {
             m_xBtnRemove->set_sensitive(false);
             m_xBtnRename->set_sensitive(false);
         }
 
-        if( !m_bCoreDataChanged )
+        if (!m_bCoreDataChanged)
         {
             m_xBtnCancel->set_label(m_aStrClose);
             m_bCoreDataChanged = true;
@@ -304,44 +293,44 @@ IMPL_LINK_NOARG(SwAutoFormatDlg, RemoveHdl, weld::Button&, void)
 IMPL_LINK_NOARG(SwAutoFormatDlg, RenameHdl, weld::Button&, void)
 {
     bool bOk = false;
-    while( !bOk )
+    while (!bOk)
     {
-        SwStringInputDlg aDlg(m_xDialog.get(), m_aStrRenameTitle, m_aStrLabel, m_xLbFormat->get_selected_text());
+        SwStringInputDlg aDlg(m_xDialog.get(), m_aStrRenameTitle, m_aStrLabel,
+                              m_xLbFormat->get_selected_text());
         if (aDlg.run() == RET_OK)
         {
             bool bFormatRenamed = false;
             const OUString aFormatName(aDlg.GetInputString());
 
-            if ( !aFormatName.isEmpty() )
+            if (!aFormatName.isEmpty())
             {
                 size_t n;
-                for( n = 0; n < m_xTableTable->size(); ++n )
+                for (n = 0; n < m_xTableTable->size(); ++n)
                     if ((*m_xTableTable)[n].GetName() == aFormatName)
                         break;
 
-                if( n >= m_xTableTable->size() )
+                if (n >= m_xTableTable->size())
                 {
                     sal_uInt8 nIndex = m_nIndex;
 
                     // no format with this name exists, so rename it
                     m_xLbFormat->remove(m_nDfltStylePos + nIndex);
-                    std::unique_ptr<SwTableAutoFormat> p(
-                            m_xTableTable->ReleaseAutoFormat(nIndex));
+                    std::unique_ptr<SwTableAutoFormat> p(m_xTableTable->ReleaseAutoFormat(nIndex));
 
-                    p->SetName( aFormatName );
+                    p->SetName(TableStyleName(aFormatName));
 
                     // keep all arrays sorted!
-                    for( n = 1; n < m_xTableTable->size(); ++n )
-                        if ((*m_xTableTable)[n].GetName() > aFormatName)
+                    for (n = 1; n < m_xTableTable->size(); ++n)
+                        if ((*m_xTableTable)[n].GetName().toString() > aFormatName)
                         {
                             break;
                         }
 
-                    m_xTableTable->InsertAutoFormat( n, std::move(p) );
+                    m_xTableTable->InsertAutoFormat(n, std::move(p));
                     m_xLbFormat->insert_text(m_nDfltStylePos + n, aFormatName);
                     m_xLbFormat->select(m_nDfltStylePos + n);
 
-                    if ( !m_bCoreDataChanged )
+                    if (!m_bCoreDataChanged)
                     {
                         m_xBtnCancel->set_label(m_aStrClose);
                         m_bCoreDataChanged = true;
@@ -353,9 +342,11 @@ IMPL_LINK_NOARG(SwAutoFormatDlg, RenameHdl, weld::Button&, void)
                 }
             }
 
-            if( !bFormatRenamed )
+            if (!bFormatRenamed)
             {
-                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(m_xDialog.get(), VclMessageType::Error, VclButtonsType::OkCancel, m_aStrInvalidFormat));
+                std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(
+                    m_xDialog.get(), VclMessageType::Error, VclButtonsType::OkCancel,
+                    m_aStrInvalidFormat));
                 bOk = RET_CANCEL == xBox->run();
             }
         }
@@ -374,35 +365,38 @@ IMPL_LINK_NOARG(SwAutoFormatDlg, SelFormatHdl, weld::TreeView&, void)
         m_nIndex = nSelPos - m_nDfltStylePos;
         m_aWndPreview.NotifyChange((*m_xTableTable)[m_nIndex]);
         bBtnEnable = 0 != m_nIndex;
-        UpdateChecks( (*m_xTableTable)[m_nIndex], true );
+        UpdateChecks((*m_xTableTable)[m_nIndex], true);
     }
     else
     {
         m_nIndex = 255;
 
-        SwTableAutoFormat aTmp( SwViewShell::GetShellRes()->aStrNone );
-        aTmp.SetFont( false );
-        aTmp.SetJustify( false );
-        aTmp.SetFrame( false );
-        aTmp.SetBackground( false );
-        aTmp.SetValueFormat( false );
-        aTmp.SetWidthHeight( false );
+        SwTableAutoFormat aTmp(TableStyleName(SwViewShell::GetShellRes()->aStrNone));
+        aTmp.SetFont(false);
+        aTmp.SetJustify(false);
+        aTmp.SetFrame(false);
+        aTmp.SetBackground(false);
+        aTmp.SetValueFormat(false);
+        aTmp.SetWidthHeight(false);
 
         if (nOldIdx != m_nIndex)
             m_aWndPreview.NotifyChange(aTmp);
-        UpdateChecks( aTmp, false );
+        UpdateChecks(aTmp, false);
     }
 
     m_xBtnRemove->set_sensitive(bBtnEnable);
     m_xBtnRename->set_sensitive(bBtnEnable);
 }
 
-short SwAutoFormatDlg::run()
+void SwAutoFormatDlg::Apply()
 {
-    short nRet = SfxDialogController::run();
-    if (nRet == RET_OK && m_bSetAutoFormat)
-        m_pShell->SetTableStyle((*m_xTableTable)[m_nIndex]);
-    return nRet;
+    if (m_bSetAutoFormat)
+    {
+        if (m_nIndex == 255)
+            m_pShell->ResetTableStyle();
+        else
+            m_pShell->SetTableStyle((*m_xTableTable)[m_nIndex]);
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

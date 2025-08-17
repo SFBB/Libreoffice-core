@@ -20,6 +20,8 @@
 #include <cstddef>
 
 #if defined LIBO_INTERNAL_ONLY
+#include <limits>
+#include <new>
 #include <type_traits>
 #endif
 
@@ -115,6 +117,36 @@ using OUStringChar = OUStringChar_ const;
 
 namespace libreoffice_internal
 {
+#if defined LIBO_INTERNAL_ONLY
+template <typename I, std::enable_if_t<
+    std::is_integral_v<I> && std::is_signed_v<I>,
+    int> = 0>
+constexpr bool IsValidStrLen(I i, sal_Int32 margin = 0)
+{
+    assert(margin >= 0);
+    constexpr sal_uInt32 maxLen = std::numeric_limits<sal_Int32>::max();
+    return i >= 0 && static_cast<std::make_unsigned_t<I>>(i) <= maxLen - margin;
+}
+
+template <typename I, std::enable_if_t<
+    std::is_integral_v<I> && std::is_unsigned_v<I>,
+    int> = 0>
+constexpr bool IsValidStrLen(I i, sal_Int32 margin = 0)
+{
+    assert(margin >= 0);
+    constexpr sal_uInt32 maxLen = std::numeric_limits<sal_Int32>::max();
+    return i <= maxLen - margin;
+}
+
+template <typename I, std::enable_if_t<std::is_integral_v<I>, int> = 0>
+sal_Int32 ThrowIfInvalidStrLen(I i, sal_Int32 margin = 0)
+{
+    if (!IsValidStrLen(i, margin))
+        throw std::bad_alloc();
+    return i;
+}
+#endif
+
 /*
 These templates use SFINAE (Substitution failure is not an error) to help distinguish the various
 plain C string types: char*, const char*, char[N], const char[N], char[] and const char[].
@@ -224,7 +256,7 @@ struct ConstCharArrayDetector< const char[ N ], T >
     static char const * toPointer(char const (& literal)[N]) { return literal; }
 };
 
-#if defined(__COVERITY__)
+#if defined(__COVERITY__) && __COVERITY_MAJOR__ <= 2024
 //to silence over zealous warnings that the loop is logically dead
 //for the single char case
 template< typename T >
@@ -284,23 +316,6 @@ struct ConstCharArrayDetector<sal_Unicode const [N], T> {
         sal_Unicode const (& literal)[N])
     { return literal; }
 };
-
-#if defined(__COVERITY__)
-//to silence over zealous warnings that the loop is logically dead
-//for the single char case
-template<typename T>
-struct ConstCharArrayDetector<sal_Unicode const [1], T> {
-    using TypeUtf16 = T;
-    static constexpr bool const ok = true;
-    static constexpr std::size_t const length = 0;
-    static constexpr bool isValid(sal_Unicode const (& literal)[1]) {
-        return literal[0] == '\0';
-    }
-    static constexpr sal_Unicode const * toPointer(
-        sal_Unicode const (& literal)[1])
-    { return literal; }
-};
-#endif
 
 template<typename T> struct ConstCharArrayDetector<
     OUStringChar,

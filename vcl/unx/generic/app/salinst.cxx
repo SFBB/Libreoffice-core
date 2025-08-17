@@ -73,14 +73,11 @@ X11SalInstance::X11SalInstance(std::unique_ptr<SalYieldMutex> pMutex)
     , mpXLib(nullptr)
 {
     ImplSVData* pSVData = ImplGetSVData();
+    // [-loplugin:ostr] if we use a literal here, we get use-after-free on shutdown
     pSVData->maAppData.mxToolkitName = OUString("x11");
     m_bSupportsOpenGL = true;
 #if HAVE_FEATURE_SKIA
     X11SkiaSalGraphicsImpl::prepareSkia();
-#if SKIA_USE_BITMAP32
-    if (SkiaHelper::isVCLSkiaEnabled())
-        m_bSupportsBitmap32 = true;
-#endif
 #endif
 }
 
@@ -190,12 +187,6 @@ bool X11SalInstance::AnyInput(VclInputFlags nType)
 bool X11SalInstance::DoYield(bool bWait, bool bHandleAllCurrentEvents)
 {
     return mpXLib->Yield( bWait, bHandleAllCurrentEvents );
-}
-
-OUString X11SalInstance::GetConnectionIdentifier()
-{
-    static const char* pDisplay = getenv( "DISPLAY" );
-    return pDisplay ? OUString::createFromAscii(pDisplay) : OUString();
 }
 
 SalFrame *X11SalInstance::CreateFrame( SalFrame *pParent, SalFrameStyleFlags nSalFrameStyle )

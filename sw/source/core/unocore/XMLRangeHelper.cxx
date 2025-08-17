@@ -20,6 +20,7 @@
 #include "XMLRangeHelper.hxx"
 #include <rtl/character.hxx>
 #include <rtl/ustrbuf.hxx>
+#include <sal/log.hxx>
 #include <o3tl/string_view.hxx>
 #include <algorithm>
 
@@ -110,15 +111,15 @@ void lcl_getSingleCellAddressFromXMLString(
     static const sal_Unicode aDollar( '$' );
     static const sal_Unicode aLetterA( 'A' );
 
-    OUString aCellStr = OUString(rXMLString.substr( nStartPos, nEndPos - nStartPos + 1 )).toAsciiUpperCase();
-    const sal_Unicode* pStrArray = aCellStr.getStr();
-    sal_Int32 nLength = aCellStr.getLength();
-    sal_Int32 i = nLength - 1, nColumn = 0;
+    std::u16string_view aCellStr = rXMLString.substr( nStartPos, nEndPos - nStartPos + 1 );
+    const sal_Unicode* pStrArray = aCellStr.data();
+    sal_Int32 nLength = aCellStr.size();
+    sal_Int32 i = nLength - 1;
 
     // parse number for row
     while( rtl::isAsciiDigit( pStrArray[ i ] ) && i >= 0 )
         i--;
-    rOutCell.nRow = (o3tl::toInt32(aCellStr.subView( i + 1 ))) - 1;
+    rOutCell.nRow = (o3tl::toInt32(aCellStr.substr( i + 1 ))) - 1;
     // a dollar in XML means absolute (whereas in UI it means relative)
     if( pStrArray[ i ] == aDollar )
     {
@@ -129,13 +130,21 @@ void lcl_getSingleCellAddressFromXMLString(
         rOutCell.bRelativeRow = true;
 
     // parse rest for column
-    sal_Int32 nPower = 1;
-    while( rtl::isAsciiAlpha( pStrArray[ i ] ))
+    assert(i <= 13);
+    sal_Int64 nPower = 1;
+    sal_Int64 nColumn = 0;
+    while( i >= 0 && rtl::isAsciiAlpha( pStrArray[ i ] ))
     {
-        nColumn += (pStrArray[ i ] - aLetterA + 1) * nPower;
+        nColumn += (rtl::toAsciiUpperCase(pStrArray[ i ]) - aLetterA + 1) * nPower;
         i--;
         nPower *= 26;
     }
+    if (nColumn < SAL_MIN_INT32 || nColumn > SAL_MAX_INT32)
+    {
+        SAL_WARN("sw.uno", "out of range column");
+        nColumn = 0;
+    }
+
     rOutCell.nColumn = nColumn - 1;
 
     rOutCell.bRelativeColumn = true;
@@ -295,9 +304,7 @@ CellRange getCellRangeFromXMLString( const OUString & rXMLString )
     CellRange aResult;
 
     // iterate over different ranges
-    for( sal_Int32 i = 0;
-         nEndPos < nLength;
-         nStartPos = ++nEndPos, i++ )
+    for( ; nEndPos < nLength; )
     {
         // find start point of next range
 

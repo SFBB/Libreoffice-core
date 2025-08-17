@@ -73,7 +73,7 @@ using namespace ::com::sun::star::beans;
 
 std::span<const SfxItemPropertyMapEntry> SwUnoPropertyMapProvider::GetPropertyMapEntries(sal_uInt16 nPropertyId)
 {
-    OSL_ENSURE(nPropertyId < PROPERTY_MAP_END, "Id ?" );
+    assert(nPropertyId < PROPERTY_MAP_END);
     if( m_aMapEntriesArr[ nPropertyId ].empty() )
     {
         switch(nPropertyId)
@@ -1369,6 +1369,7 @@ std::span<const SfxItemPropertyMapEntry> SwUnoPropertyMapProvider::GetPropertyMa
                 static SfxItemPropertyMapEntry const aTextMap[] =
                 {
                     REDLINE_NODE_PROPERTIES
+                    { UNO_NAME_IS_CONTENT_EMPTY, FN_UNO_IS_CONTENT_EMPTY, cppu::UnoType<bool>::get(), PropertyAttribute::MAYBEVOID|PropertyAttribute::READONLY, 0 },
                 };
                 m_aMapEntriesArr[nPropertyId] = aTextMap;
             }
@@ -1413,7 +1414,7 @@ std::span<const SfxItemPropertyMapEntry> SwUnoPropertyMapProvider::GetPropertyMa
             break;
             case PROPERTY_MAP_TEXT_VIEW :
             {
-                static SfxItemPropertyMapEntry pTextViewMap[] =
+                static SfxItemPropertyMapEntry const pTextViewMap[] =
                 {
                     {UNO_NAME_PAGE_COUNT,             WID_PAGE_COUNT,             cppu::UnoType<sal_Int32>::get(),   PropertyAttribute::READONLY, 0},
                     {UNO_NAME_LINE_COUNT,             WID_LINE_COUNT,             cppu::UnoType<sal_Int32>::get(),   PropertyAttribute::READONLY, 0},
@@ -1495,6 +1496,8 @@ std::span<const SfxItemPropertyMapEntry> SwUnoPropertyMapProvider::GetPropertyMa
                     { UNO_NAME_CHAR_SHADOWED,          RES_CHRATR_SHADOWED,    cppu::UnoType<bool>::get(),               PROPERTY_NONE,  0                                    },
                     // SvxContouredItem
                     { UNO_NAME_CHAR_CONTOURED,         RES_CHRATR_CONTOUR,     cppu::UnoType<bool>::get(),               PROPERTY_NONE,  0                                    },
+                    // SvxNoHyphenItem
+                    { UNO_NAME_CHAR_NO_HYPHENATION,    RES_CHRATR_NOHYPHEN,    cppu::UnoType<bool>::get(),               PROPERTY_NONE,  0                                    },
                     // SvxCrossedOutItem
                     { UNO_NAME_CHAR_STRIKEOUT,     RES_CHRATR_CROSSEDOUT, cppu::UnoType<sal_Int16>::get(),PropertyAttribute::MAYBEVOID,  MID_CROSS_OUT                        },
                     // SvxUnderlineItem

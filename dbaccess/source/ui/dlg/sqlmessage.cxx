@@ -96,7 +96,7 @@ namespace
         std::shared_ptr< ImageProvider > const & getImageProvider( SQLExceptionInfo::TYPE _eType ) const
         {
             std::shared_ptr< ImageProvider >* ppProvider( &m_pErrorImage );
-            OUString sNormalImageID("dialog-error");
+            OUString sNormalImageID(u"dialog-error"_ustr);
 
             switch ( _eType )
             {
@@ -207,7 +207,7 @@ namespace
             iter.next( aCurrentElement );
 
             const SQLException* pCurrentError = aCurrentElement;
-            OSL_ENSURE( pCurrentError, "lcl_buildExceptionChain: iterator failure!" );
+            assert(pCurrentError && "lcl_buildExceptionChain: iterator failure!");
                 // hasMoreElements should not have returned <TRUE/> in this case
 
             ExceptionDisplayInfo aDisplayInfo( aCurrentElement.getType() );
@@ -228,7 +228,7 @@ namespace
             aDisplayInfo.pImageProvider = _rFactory.getImageProvider( aCurrentElement.getType() );
             aDisplayInfo.pLabelProvider = _rFactory.getLabelProvider( aCurrentElement.getType(), false );
 
-            _out_rChain.push_back( aDisplayInfo );
+            _out_rChain.push_back(std::move(aDisplayInfo));
 
             if ( aCurrentElement.getType() == SQLExceptionInfo::TYPE::SQLContext )
             {
@@ -242,15 +242,10 @@ namespace
                     aSubInfo.pLabelProvider = _rFactory.getLabelProvider( aCurrentElement.getType(), true );
                     aSubInfo.bSubEntry = true;
 
-                    _out_rChain.push_back( aSubInfo );
+                    _out_rChain.push_back(std::move(aSubInfo));
                 }
             }
         }
-    }
-
-    void lcl_insertExceptionEntry(weld::TreeView& rList, size_t nElementPos, const ExceptionDisplayInfo& rEntry)
-    {
-        rList.append(OUString::number(nElementPos), rEntry.pLabelProvider->getLabel(), rEntry.pImageProvider->getImage());
     }
 }
 
@@ -271,14 +266,17 @@ public:
 
 protected:
     DECL_LINK(OnExceptionSelected, weld::TreeView&, void);
+
+private:
+    void insertExceptionEntry(size_t nElementPos, const ExceptionDisplayInfo& rEntry);
 };
 
 }
 
 OExceptionChainDialog::OExceptionChainDialog(weld::Window* pParent, ExceptionDisplayChain&& rExceptions)
-    : GenericDialogController(pParent, "dbaccess/ui/sqlexception.ui", "SQLExceptionDialog")
-    , m_xExceptionList(m_xBuilder->weld_tree_view("list"))
-    , m_xExceptionText(m_xBuilder->weld_text_view("description"))
+    : GenericDialogController(pParent, u"dbaccess/ui/sqlexception.ui"_ustr, u"SQLExceptionDialog"_ustr)
+    , m_xExceptionList(m_xBuilder->weld_tree_view(u"list"_ustr))
+    , m_xExceptionText(m_xBuilder->weld_text_view(u"description"_ustr))
     , m_aExceptions(std::move(rExceptions))
 {
     int nListWidth = m_xExceptionText->get_approximate_digit_width() * 28;
@@ -290,14 +288,15 @@ OExceptionChainDialog::OExceptionChainDialog(weld::Window* pParent, ExceptionDis
     m_sStatusLabel = DBA_RES( STR_EXCEPTION_STATUS );
     m_sErrorCodeLabel = DBA_RES( STR_EXCEPTION_ERRORCODE );
 
-    m_xExceptionList->connect_changed(LINK(this, OExceptionChainDialog, OnExceptionSelected));
+    m_xExceptionList->connect_selection_changed(
+        LINK(this, OExceptionChainDialog, OnExceptionSelected));
 
     bool bHave22018 = false;
     size_t elementPos = 0;
 
     for (auto const& elem : m_aExceptions)
     {
-        lcl_insertExceptionEntry(*m_xExceptionList, elementPos, elem);
+        insertExceptionEntry(elementPos, elem);
         bHave22018 = elem.sSQLState == "22018";
         ++elementPos;
     }
@@ -314,7 +313,7 @@ OExceptionChainDialog::OExceptionChainDialog(weld::Window* pParent, ExceptionDis
         aInfo22018.pImageProvider = aProviderFactory.getImageProvider( SQLExceptionInfo::TYPE::SQLContext );
         m_aExceptions.push_back( aInfo22018 );
 
-        lcl_insertExceptionEntry(*m_xExceptionList, m_aExceptions.size() - 1, aInfo22018);
+        insertExceptionEntry(m_aExceptions.size() - 1, aInfo22018);
     }
 
     if (m_xExceptionList->n_children())
@@ -322,6 +321,13 @@ OExceptionChainDialog::OExceptionChainDialog(weld::Window* pParent, ExceptionDis
         m_xExceptionList->select(0);
         OnExceptionSelected(*m_xExceptionList);
     }
+}
+
+void OExceptionChainDialog::insertExceptionEntry(size_t nElementPos,
+                                                 const ExceptionDisplayInfo& rEntry)
+{
+    m_xExceptionList->append(OUString::number(nElementPos), rEntry.pLabelProvider->getLabel(),
+                             rEntry.pImageProvider->getImage());
 }
 
 IMPL_LINK_NOARG(OExceptionChainDialog, OnExceptionSelected, weld::TreeView&, void)
@@ -507,7 +513,7 @@ void OSQLMessageBox::impl_addDetailsButton()
     if ( bMoreDetailsAvailable )
     {
         m_xDialog->add_button(GetStandardText(StandardButtonType::More), RET_MORE);
-        m_xMoreButton.reset(m_xDialog->weld_widget_for_response(RET_MORE));
+        m_xMoreButton = m_xDialog->weld_button_for_response(RET_MORE);
         m_xMoreButton->connect_clicked(LINK(this, OSQLMessageBox, ButtonClickHdl));
     }
 }
@@ -546,7 +552,7 @@ void OSQLMessageBox::Construct(weld::Window* pParent, MessBoxStyle _nStyle, Mess
             break;
     }
 
-    m_xDialog.reset(Application::CreateMessageDialog(pParent, eMessageType, VclButtonsType::NONE, ""));
+    m_xDialog.reset(Application::CreateMessageDialog(pParent, eMessageType, VclButtonsType::NONE, u""_ustr));
     m_xDialog->set_title(utl::ConfigManager::getProductName() + " Base");
 
     impl_fillMessages();

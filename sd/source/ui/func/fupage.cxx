@@ -18,6 +18,7 @@
  */
 
 #include <fupage.hxx>
+#include <sal/types.h>
 
 // arrange Tab-Page
 
@@ -98,11 +99,9 @@ static void mergeItemSetsImpl( SfxItemSet& rTarget, const SfxItemSet& rSource )
     rTarget.Put(rSource);
 }
 
-FuPage::FuPage( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView,
-                 SdDrawDocument* pDoc, SfxRequest& rReq )
-:   FuPoor(pViewSh, pWin, pView, pDoc, rReq),
-    mrReq(rReq),
-    mpArgs( rReq.GetArgs() ),
+FuPage::FuPage( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView,
+                 SdDrawDocument& rDoc, SfxRequest& rReq )
+:   FuPoor(rViewSh, pWin, pView, rDoc, rReq),
     mbPageBckgrdDeleted( false ),
     mbMasterPage( false ),
     mbDisplayBackgroundTabPage( true ),
@@ -111,16 +110,16 @@ FuPage::FuPage( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView,
 {
 }
 
-rtl::Reference<FuPoor> FuPage::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuPage::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuPage( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuPage( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
 
 void FuPage::DoExecute(SfxRequest& rReq)
 {
-    mpDrawViewShell = dynamic_cast<DrawViewShell*>(mpViewShell);
+    mpDrawViewShell = dynamic_cast<DrawViewShell*>(&mrViewShell);
     DBG_ASSERT( mpDrawViewShell, "sd::FuPage::FuPage(), called without a current DrawViewShell!" );
 
     if( mpDrawViewShell )
@@ -132,20 +131,18 @@ void FuPage::DoExecute(SfxRequest& rReq)
         mpPage = mpDrawViewShell->getCurrentPage();
     }
 
-    if( !mpPage )
+    if( !mpPage ) {
         return;
-
-    // if there are no arguments given, open the dialog
-    if (!mpArgs || mpArgs->GetItemState(SID_SELECT_BACKGROUND) == SfxItemState::SET)
-    {
-        mpView->SdrEndTextEdit();
-        mpArgs = ExecuteDialog(mpWindow ? mpWindow->GetFrameWeld() : nullptr, rReq);
     }
-
-    // if we now have arguments, apply them to current page
-    if( mpArgs )
+    const SfxItemSet *args = rReq.GetArgs();
+    if (!args || args->GetItemState(SID_SELECT_BACKGROUND) == SfxItemState::SET)
     {
-        ApplyItemSet( mpArgs );
+        // No arguments given -> open the async dialog which may apply new arguments
+        mpView->SdrEndTextEdit();
+        ExecuteAsyncDialog(mpWindow ? mpWindow->GetFrameWeld() : nullptr, rReq);
+    } else {
+        // Have arguments -> apply them to current page in-thread
+        ApplyItemSet( args );
     }
 }
 
@@ -196,33 +193,30 @@ void MergePageBackgroundFilling(SdPage *pPage, SdStyleSheet *pStyleSheet, bool b
     }
 }
 
-const SfxItemSet* FuPage::ExecuteDialog(weld::Window* pParent, const SfxRequest& rReq)
+void FuPage::ExecuteAsyncDialog(weld::Window* pParent, const SfxRequest& rReq)
 {
-    if (!mpDrawViewShell)
-        return nullptr;
+    if (!mpDrawViewShell) {
+        return;
+    }
 
-    SfxItemSetFixed<
-                  XATTR_FILL_FIRST, XATTR_FILL_LAST,
-                  EE_PARA_WRITINGDIR, EE_PARA_WRITINGDIR,
-                  SID_ATTR_BORDER_OUTER, SID_ATTR_BORDER_OUTER,
-                  SID_ATTR_BORDER_SHADOW, SID_ATTR_BORDER_SHADOW,
-                  SID_ATTR_PAGE, SID_ATTR_PAGE_SHARED,
-                  SID_ATTR_CHAR_GRABBAG, SID_ATTR_CHAR_GRABBAG,
-                  SID_ATTR_PAGE_COLOR, SID_ATTR_PAGE_FILLSTYLE
-              >  aNewAttr(mpDoc->GetPool());
+    std::shared_ptr<SfxItemSet> aNewAttr = std::make_shared<SfxItemSet>(SfxItemSet::makeFixedSfxItemSet<
+        XATTR_FILL_FIRST, XATTR_FILL_LAST, EE_PARA_WRITINGDIR, EE_PARA_WRITINGDIR,
+        SID_ATTR_BORDER_OUTER, SID_ATTR_BORDER_OUTER, SID_ATTR_BORDER_SHADOW,
+        SID_ATTR_BORDER_SHADOW, SID_ATTR_PAGE, SID_ATTR_PAGE_SHARED, SID_ATTR_CHAR_GRABBAG,
+        SID_ATTR_CHAR_GRABBAG, SID_ATTR_PAGE_COLOR, SID_ATTR_PAGE_FILLSTYLE>(mrDoc.GetPool()));
     // Keep it sorted
-    aNewAttr.MergeRange(mpDoc->GetPool().GetWhich(SID_ATTR_LRSPACE),
-                        mpDoc->GetPool().GetWhich(SID_ATTR_ULSPACE));
+    aNewAttr->MergeRange(mrDoc.GetPool().GetWhichIDFromSlotID(SID_ATTR_LRSPACE),
+                         mrDoc.GetPool().GetWhichIDFromSlotID(SID_ATTR_ULSPACE));
 
     // Retrieve additional data for dialog
 
     SvxShadowItem aShadowItem(SID_ATTR_BORDER_SHADOW);
-    aNewAttr.Put( aShadowItem );
+    aNewAttr->Put( aShadowItem );
     SvxBoxItem aBoxItem( SID_ATTR_BORDER_OUTER );
-    aNewAttr.Put( aBoxItem );
+    aNewAttr->Put( aBoxItem );
 
-    aNewAttr.Put( SvxFrameDirectionItem(
-        mpDoc->GetDefaultWritingMode() == css::text::WritingMode_RL_TB ? SvxFrameDirection::Horizontal_RL_TB : SvxFrameDirection::Horizontal_LR_TB,
+    aNewAttr->Put( SvxFrameDirectionItem(
+        mrDoc.GetDefaultWritingMode() == css::text::WritingMode_RL_TB ? SvxFrameDirection::Horizontal_RL_TB : SvxFrameDirection::Horizontal_LR_TB,
         EE_PARA_WRITINGDIR ) );
 
     // Retrieve page-data for dialog
@@ -231,43 +225,46 @@ const SfxItemSet* FuPage::ExecuteDialog(weld::Window* pParent, const SfxRequest&
     aPageItem.SetDescName( mpPage->GetName() );
     aPageItem.SetPageUsage( SvxPageUsage::All );
     aPageItem.SetLandscape( mpPage->GetOrientation() == Orientation::Landscape );
-    aPageItem.SetNumType( mpDoc->GetPageNumType() );
-    aNewAttr.Put( aPageItem );
+    aPageItem.SetNumType( mrDoc.GetPageNumType() );
+    aNewAttr->Put( aPageItem );
 
     // size
     maSize = mpPage->GetSize();
     SvxSizeItem aSizeItem( SID_ATTR_PAGE_SIZE, maSize );
-    aNewAttr.Put( aSizeItem );
+    aNewAttr->Put( aSizeItem );
 
     // Max size
     SvxSizeItem aMaxSizeItem( SID_ATTR_PAGE_MAXSIZE, Size( MAXWIDTH, MAXHEIGHT ) );
-    aNewAttr.Put( aMaxSizeItem );
+    aNewAttr->Put( aMaxSizeItem );
 
     // paperbin
     SvxPaperBinItem aPaperBinItem( SID_ATTR_PAGE_PAPERBIN, static_cast<sal_uInt8>(mpPage->GetPaperBin()) );
-    aNewAttr.Put( aPaperBinItem );
+    aNewAttr->Put( aPaperBinItem );
 
-    SvxLRSpaceItem aLRSpaceItem( static_cast<sal_uInt16>(mpPage->GetLeftBorder()), static_cast<sal_uInt16>(mpPage->GetRightBorder()), 0, mpDoc->GetPool().GetWhich(SID_ATTR_LRSPACE));
-    aNewAttr.Put( aLRSpaceItem );
+    SvxLRSpaceItem aLRSpaceItem(SvxIndentValue::twips(mpPage->GetLeftBorder()),
+                                SvxIndentValue::twips(mpPage->GetRightBorder()),
+                                SvxIndentValue::zero(),
+                                mrDoc.GetPool().GetWhichIDFromSlotID(SID_ATTR_LRSPACE));
+    aNewAttr->Put( aLRSpaceItem );
 
-    SvxULSpaceItem aULSpaceItem( static_cast<sal_uInt16>(mpPage->GetUpperBorder()), static_cast<sal_uInt16>(mpPage->GetLowerBorder()), mpDoc->GetPool().GetWhich(SID_ATTR_ULSPACE));
-    aNewAttr.Put( aULSpaceItem );
+    SvxULSpaceItem aULSpaceItem( static_cast<sal_uInt16>(mpPage->GetUpperBorder()), static_cast<sal_uInt16>(mpPage->GetLowerBorder()), mrDoc.GetPool().GetWhichIDFromSlotID(SID_ATTR_ULSPACE));
+    aNewAttr->Put( aULSpaceItem );
 
     // Application
-    bool bScale = mpDoc->GetDocumentType() != DocumentType::Draw;
-    aNewAttr.Put( SfxBoolItem( SID_ATTR_PAGE_EXT1, bScale ) );
+    bool bScale = mrDoc.GetDocumentType() != DocumentType::Draw;
+    aNewAttr->Put( SfxBoolItem( SID_ATTR_PAGE_EXT1, bScale ) );
 
     bool bFullSize = mpPage->IsMasterPage() ?
         mpPage->IsBackgroundFullSize() : static_cast<SdPage&>(mpPage->TRG_GetMasterPage()).IsBackgroundFullSize();
 
-    SfxGrabBagItem grabBag(SID_ATTR_CHAR_GRABBAG);
-    grabBag.GetGrabBag()["BackgroundFullSize"] <<= bFullSize;
+    SfxGrabBagItem grabBag(SID_ATTR_CHAR_GRABBAG,
+        std::map<OUString, css::uno::Any>{{u"BackgroundFullSize"_ustr, uno::Any(bFullSize)}});
 
-    aNewAttr.Put(grabBag);
+    aNewAttr->Put(grabBag);
 
     // Merge ItemSet for dialog
 
-    const WhichRangesContainer& rRanges = aNewAttr.GetRanges();
+    const WhichRangesContainer& rRanges = aNewAttr->GetRanges();
     sal_uInt16 p1 = rRanges[0].first, p2 = rRanges[0].second;
     sal_Int32 idx = 1;
     while(idx < rRanges.size() && (rRanges[idx].first - p2 == 1))
@@ -275,29 +272,27 @@ const SfxItemSet* FuPage::ExecuteDialog(weld::Window* pParent, const SfxRequest&
         p2 = rRanges[idx].second;
         ++idx;
     }
-    SfxItemSet aMergedAttr( *aNewAttr.GetPool(), p1, p2 );
+    std::shared_ptr<SfxItemSet> aMergedAttr = std::make_shared<SfxItemSet>( *aNewAttr->GetPool(), p1, p2 );
 
-    mergeItemSetsImpl( aMergedAttr, aNewAttr );
+    mergeItemSetsImpl( *aMergedAttr, *aNewAttr );
 
     SdStyleSheet* pStyleSheet = mpPage->getPresentationStyle(HID_PSEUDOSHEET_BACKGROUND);
 
     // merge page background filling to the dialogs input set
     if( mbDisplayBackgroundTabPage )
     {
-        MergePageBackgroundFilling(mpPage, pStyleSheet, mbMasterPage, aMergedAttr);
+        MergePageBackgroundFilling(mpPage, pStyleSheet, mbMasterPage, *aMergedAttr);
     }
-
-    std::optional< SfxItemSet > pTempSet;
 
     const sal_uInt16 nId = GetSlotID();
     if (nId == SID_SAVE_BACKGROUND)
     {
-        const XFillStyleItem& rStyleItem = aMergedAttr.Get(XATTR_FILLSTYLE);
+        const XFillStyleItem& rStyleItem = aMergedAttr->Get(XATTR_FILLSTYLE);
         if (drawing::FillStyle_BITMAP == rStyleItem.GetValue())
         {
-            const XFillBitmapItem& rBitmap = aMergedAttr.Get(XATTR_FILLBITMAP);
+            const XFillBitmapItem& rBitmap = aMergedAttr->Get(XATTR_FILLBITMAP);
             const GraphicObject& rGraphicObj = rBitmap.GetGraphicObject();
-            GraphicHelper::ExportGraphic(pParent, rGraphicObj.GetGraphic(), "");
+            GraphicHelper::ExportGraphic(pParent, rGraphicObj.GetGraphic(), u""_ustr);
         }
     }
     else if (nId == SID_SELECT_BACKGROUND)
@@ -332,159 +327,165 @@ const SfxItemSet* FuPage::ExecuteDialog(weld::Window* pParent, const SfxRequest&
 
         if (nError == ERRCODE_NONE)
         {
-            pTempSet.emplace( mpDoc->GetPool(), svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST> );
+            SfxItemSet tempSet( mrDoc.GetPool(), svl::Items<XATTR_FILL_FIRST, XATTR_FILL_LAST> );
 
-            pTempSet->Put( XFillStyleItem( drawing::FillStyle_BITMAP ) );
+            tempSet.Put( XFillStyleItem( drawing::FillStyle_BITMAP ) );
 
             // MigrateItemSet makes sure the XFillBitmapItem will have a unique name
-            SfxItemSetFixed<XATTR_FILLBITMAP, XATTR_FILLBITMAP> aMigrateSet( mpDoc->GetPool() );
-            aMigrateSet.Put(XFillBitmapItem("background", std::move(aGraphic)));
-            SdrModel::MigrateItemSet( &aMigrateSet, &*pTempSet, mpDoc );
+            SfxItemSet aMigrateSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILLBITMAP, XATTR_FILLBITMAP>(mrDoc.GetPool()));
+            aMigrateSet.Put(XFillBitmapItem(u"background"_ustr, std::move(aGraphic)));
+            SdrModel::MigrateItemSet( &aMigrateSet, &tempSet, mrDoc );
 
-            pTempSet->Put( XFillBmpStretchItem( true ));
-            pTempSet->Put( XFillBmpTileItem( false ));
+            tempSet.Put( XFillBmpStretchItem( true ));
+            tempSet.Put( XFillBmpTileItem( false ));
+            if( pStyleSheet ) {
+                ApplyItemSet(*pStyleSheet, aNewAttr, tempSet, aMergedAttr);
+            }
         }
-    }
-
-    else
-    {
+    } else {
         bool bIsImpressDoc = mpDrawViewShell->GetDoc()->GetDocumentType() == DocumentType::Impress;
 
-        // create the dialog
+        // create the dialog and start async execution
         SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
-        ScopedVclPtr<SfxAbstractTabDialog> pDlg( pFact->CreateSdTabPageDialog(mpViewShell->GetFrameWeld(), &aMergedAttr, mpDocSh, mbDisplayBackgroundTabPage, bIsImpressDoc) );
-        if( pDlg->Execute() == RET_OK )
-            pTempSet.emplace( *pDlg->GetOutputItemSet() );
+        VclPtr<SfxAbstractTabDialog> xDlg( pFact->CreateSdTabPageDialog(mrViewShell.GetFrameWeld(),
+                                           aMergedAttr.get(), mpDocSh, mbDisplayBackgroundTabPage, bIsImpressDoc) );
+        rtl::Reference<FuPage> xThis( this ); // avoid destruction within async processing
+        xDlg->StartExecuteAsync([xDlg, xThis, pStyleSheet, aNewAttr=std::move(aNewAttr),
+                                 aMergedAttr=std::move(aMergedAttr)](sal_Int32 nResult) {
+            if (nResult == RET_OK && pStyleSheet) {
+                SfxItemSet tempSet(*xDlg->GetOutputItemSet());
+                xThis->ApplyItemSet(*pStyleSheet, aNewAttr, tempSet, aMergedAttr);
+            }
+            xDlg->disposeOnce();
+            // Final release of xThis (post async use, RIAA)
+        });
     }
+}
 
-    if (pTempSet && pStyleSheet)
+void FuPage::ApplyItemSet(SdStyleSheet& styleSheet, const std::shared_ptr<SfxItemSet>& newAttr,
+                          SfxItemSet& tempSet, const std::shared_ptr<SfxItemSet>& mergedAttr) {
+    styleSheet.AdjustToFontHeight(tempSet);
+
+    if( mbDisplayBackgroundTabPage )
     {
-        pStyleSheet->AdjustToFontHeight(*pTempSet);
-
-        if( mbDisplayBackgroundTabPage )
+        // if some fillstyle-items are not set in the dialog, then
+        // try to use the items before
+        bool bChanges = false;
+        for( sal_uInt16 i=XATTR_FILL_FIRST; i<XATTR_FILL_LAST; i++ )
         {
-            // if some fillstyle-items are not set in the dialog, then
-            // try to use the items before
-            bool bChanges = false;
-            for( sal_uInt16 i=XATTR_FILL_FIRST; i<XATTR_FILL_LAST; i++ )
+            if( mergedAttr->GetItemState( i ) != SfxItemState::DEFAULT )
             {
-                if( aMergedAttr.GetItemState( i ) != SfxItemState::DEFAULT )
-                {
-                    if( pTempSet->GetItemState( i ) == SfxItemState::DEFAULT )
-                        pTempSet->Put( aMergedAttr.Get( i ) );
-                    else
-                        if( !SfxPoolItem::areSame(aMergedAttr.GetItem( i ), pTempSet->GetItem( i ) ) )
-                            bChanges = true;
+                if( tempSet.GetItemState( i ) == SfxItemState::DEFAULT )
+                    tempSet.Put( mergedAttr->Get( i ) );
+                else {
+                    if( !SfxPoolItem::areSame(mergedAttr->GetItem( i ), tempSet.GetItem( i ) ) ) {
+                        bChanges = true;
+                    }
                 }
             }
-
-            // if the background for this page was set to invisible, the background-object has to be deleted, too.
-            const XFillStyleItem* pTempFillStyleItem = pTempSet->GetItem<XFillStyleItem>(XATTR_FILLSTYLE);
-            assert(pTempFillStyleItem);
-            if (pTempFillStyleItem->GetValue() == drawing::FillStyle_NONE)
-                mbPageBckgrdDeleted = true;
-            else
-            {
-                if (pTempSet->GetItemState(XATTR_FILLSTYLE) == SfxItemState::DEFAULT)
-                {
-                    const XFillStyleItem* pMergedFillStyleItem = aMergedAttr.GetItem<XFillStyleItem>(XATTR_FILLSTYLE);
-                    assert(pMergedFillStyleItem);
-                    if (pMergedFillStyleItem->GetValue() == drawing::FillStyle_NONE)
-                        mbPageBckgrdDeleted = true;
-                }
-            }
-
-            const XFillGradientItem* pTempGradItem = pTempSet->GetItem<XFillGradientItem>(XATTR_FILLGRADIENT);
-            if (pTempGradItem && pTempGradItem->GetName().isEmpty())
-            {
-                // MigrateItemSet guarantees unique gradient names
-                SfxItemSetFixed<XATTR_FILLGRADIENT, XATTR_FILLGRADIENT> aMigrateSet( mpDoc->GetPool() );
-                aMigrateSet.Put( XFillGradientItem("gradient", pTempGradItem->GetGradientValue()) );
-                SdrModel::MigrateItemSet( &aMigrateSet, &*pTempSet, mpDoc);
-            }
-
-            const XFillHatchItem* pTempHatchItem = pTempSet->GetItem<XFillHatchItem>(XATTR_FILLHATCH);
-            if (pTempHatchItem && pTempHatchItem->GetName().isEmpty())
-            {
-                // MigrateItemSet guarantees unique hatch names
-                SfxItemSetFixed<XATTR_FILLHATCH, XATTR_FILLHATCH> aMigrateSet( mpDoc->GetPool() );
-                aMigrateSet.Put( XFillHatchItem("hatch", pTempHatchItem->GetHatchValue()) );
-                SdrModel::MigrateItemSet( &aMigrateSet, &*pTempSet, mpDoc);
-            }
-
-            if( !mbMasterPage && bChanges && mbPageBckgrdDeleted )
-            {
-                 mpBackgroundObjUndoAction.reset( new SdBackgroundObjUndoAction(
-                     *mpDoc, *mpPage, mpPage->getSdrPageProperties().GetItemSet()) );
-
-                 if(!mpPage->IsMasterPage())
-                 {
-                     // on normal pages, switch off fill attribute usage
-                     SdrPageProperties& rPageProperties = mpPage->getSdrPageProperties();
-                     rPageProperties.ClearItem( XATTR_FILLBITMAP );
-                     rPageProperties.ClearItem( XATTR_FILLGRADIENT );
-                     rPageProperties.ClearItem( XATTR_FILLHATCH );
-                     rPageProperties.PutItem(XFillStyleItem(drawing::FillStyle_NONE));
-                 }
-            }
-
-
-            /* Special treatment: reset the INVALIDS to
-               NULL-Pointer (otherwise INVALIDs or pointer point
-               to DefaultItems in the template; both would
-               prevent the attribute inheritance) */
-            pTempSet->ClearInvalidItems();
-
-            if( mbMasterPage )
-            {
-                mpDocSh->GetUndoManager()->AddUndoAction(std::make_unique<StyleSheetUndoAction>(
-                    mpDoc, static_cast<SfxStyleSheet*>(pStyleSheet), &(*pTempSet)));
-                pStyleSheet->GetItemSet().Put( *pTempSet );
-                sdr::properties::CleanupFillProperties( pStyleSheet->GetItemSet() );
-                pStyleSheet->Broadcast(SfxHint(SfxHintId::DataChanged));
-            }
-
-            // if background filling is set to master pages then clear from page set
-            if( mbMasterPage )
-            {
-                for( sal_uInt16 nWhich = XATTR_FILL_FIRST; nWhich <= XATTR_FILL_LAST; nWhich++ )
-                {
-                    pTempSet->ClearItem( nWhich );
-                }
-                pTempSet->Put(XFillStyleItem(drawing::FillStyle_NONE));
-            }
-
-            if( const SvxFrameDirectionItem* pItem = pTempSet->GetItemIfSet( EE_PARA_WRITINGDIR, false ) )
-            {
-                SvxFrameDirection nVal = pItem->GetValue();
-                mpDoc->SetDefaultWritingMode( nVal == SvxFrameDirection::Horizontal_RL_TB ? css::text::WritingMode_RL_TB : css::text::WritingMode_LR_TB );
-            }
-
-            mpDoc->SetChanged();
-
-            // BackgroundFill of Masterpage: no hard attributes allowed
-            SdrPage& rUsedMasterPage = mpPage->IsMasterPage() ? *mpPage : mpPage->TRG_GetMasterPage();
-            OSL_ENSURE(rUsedMasterPage.IsMasterPage(), "No MasterPage (!)");
-            rUsedMasterPage.getSdrPageProperties().ClearItem();
-            OSL_ENSURE(nullptr != rUsedMasterPage.getSdrPageProperties().GetStyleSheet(),
-                "MasterPage without StyleSheet detected (!)");
         }
 
-        aNewAttr.Put(*pTempSet);
-        mrReq.Done( aNewAttr );
+        // if the background for this page was set to invisible, the background-object has to be deleted, too.
+        const XFillStyleItem* pTempFillStyleItem = tempSet.GetItem<XFillStyleItem>(XATTR_FILLSTYLE);
+        assert(pTempFillStyleItem);
+        if (pTempFillStyleItem->GetValue() == drawing::FillStyle_NONE)
+            mbPageBckgrdDeleted = true;
+        else
+        {
+            if (tempSet.GetItemState(XATTR_FILLSTYLE) == SfxItemState::DEFAULT)
+            {
+                const XFillStyleItem* pMergedFillStyleItem = mergedAttr->GetItem<XFillStyleItem>(XATTR_FILLSTYLE);
+                assert(pMergedFillStyleItem);
+                if (pMergedFillStyleItem->GetValue() == drawing::FillStyle_NONE)
+                    mbPageBckgrdDeleted = true;
+            }
+        }
 
-        return mrReq.GetArgs();
+        const XFillGradientItem* pTempGradItem = tempSet.GetItem<XFillGradientItem>(XATTR_FILLGRADIENT);
+        if (pTempGradItem && pTempGradItem->GetName().isEmpty())
+        {
+            // MigrateItemSet guarantees unique gradient names
+            SfxItemSet aMigrateSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILLGRADIENT, XATTR_FILLGRADIENT>(mrDoc.GetPool()));
+            aMigrateSet.Put( XFillGradientItem(u"gradient"_ustr, pTempGradItem->GetGradientValue()) );
+            SdrModel::MigrateItemSet( &aMigrateSet, &tempSet, mrDoc);
+        }
+
+        const XFillHatchItem* pTempHatchItem = tempSet.GetItem<XFillHatchItem>(XATTR_FILLHATCH);
+        if (pTempHatchItem && pTempHatchItem->GetName().isEmpty())
+        {
+            // MigrateItemSet guarantees unique hatch names
+            SfxItemSet aMigrateSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILLHATCH, XATTR_FILLHATCH>(mrDoc.GetPool()));
+            aMigrateSet.Put( XFillHatchItem(u"hatch"_ustr, pTempHatchItem->GetHatchValue()) );
+            SdrModel::MigrateItemSet( &aMigrateSet, &tempSet, mrDoc);
+        }
+
+        if( !mbMasterPage && bChanges && mbPageBckgrdDeleted )
+        {
+            mpBackgroundObjUndoAction.reset( new SdBackgroundObjUndoAction(
+                mrDoc, *mpPage, mpPage->getSdrPageProperties().GetItemSet()) );
+
+            if(!mpPage->IsMasterPage())
+            {
+                // on normal pages, switch off fill attribute usage
+                SdrPageProperties& rPageProperties = mpPage->getSdrPageProperties();
+                rPageProperties.ClearItem( XATTR_FILLBITMAP );
+                rPageProperties.ClearItem( XATTR_FILLGRADIENT );
+                rPageProperties.ClearItem( XATTR_FILLHATCH );
+                rPageProperties.PutItem(XFillStyleItem(drawing::FillStyle_NONE));
+            }
+        }
+
+
+        /* Special treatment: reset the INVALIDS to
+           NULL-Pointer (otherwise INVALIDs or pointer point
+           to DefaultItems in the template; both would
+           prevent the attribute inheritance) */
+        tempSet.ClearInvalidItems();
+
+        if( mbMasterPage )
+        {
+            mpDocSh->GetUndoManager()->AddUndoAction(std::make_unique<StyleSheetUndoAction>(
+                mrDoc, *static_cast<SfxStyleSheet*>(&styleSheet), &tempSet));
+            styleSheet.GetItemSet().Put( tempSet );
+            sdr::properties::CleanupFillProperties( styleSheet.GetItemSet() );
+            styleSheet.Broadcast(SfxHint(SfxHintId::DataChanged));
+        }
+
+        // if background filling is set to master pages then clear from page set
+        if( mbMasterPage )
+        {
+            for( sal_uInt16 nWhich = XATTR_FILL_FIRST; nWhich <= XATTR_FILL_LAST; nWhich++ )
+            {
+                tempSet.ClearItem( nWhich );
+            }
+            tempSet.Put(XFillStyleItem(drawing::FillStyle_NONE));
+        }
+
+        if( const SvxFrameDirectionItem* pItem = tempSet.GetItemIfSet( EE_PARA_WRITINGDIR, false ) )
+        {
+            SvxFrameDirection nVal = pItem->GetValue();
+            mrDoc.SetDefaultWritingMode( nVal == SvxFrameDirection::Horizontal_RL_TB ? css::text::WritingMode_RL_TB : css::text::WritingMode_LR_TB );
+        }
+
+        mrDoc.SetChanged();
+
+        // BackgroundFill of Masterpage: no hard attributes allowed
+        SdrPage& rUsedMasterPage = mpPage->IsMasterPage() ? *mpPage : mpPage->TRG_GetMasterPage();
+        OSL_ENSURE(rUsedMasterPage.IsMasterPage(), "No MasterPage (!)");
+        rUsedMasterPage.getSdrPageProperties().ClearItem();
+        OSL_ENSURE(nullptr != rUsedMasterPage.getSdrPageProperties().GetStyleSheet(),
+            "MasterPage without StyleSheet detected (!)");
     }
-    else
-    {
-        return nullptr;
-    }
+
+    newAttr->Put( tempSet );
+    ApplyItemSet( newAttr.get() );
 }
 
 void FuPage::ApplyItemSet( const SfxItemSet* pArgs )
 {
-    if (!pArgs || !mpDrawViewShell)
+    if (!pArgs || !mpDrawViewShell) {
         return;
+    }
 
     // Set new page-attributes
     PageKind ePageKind = mpDrawViewShell->GetPageKind();
@@ -500,7 +501,7 @@ void FuPage::ApplyItemSet( const SfxItemSet* pArgs )
 
     if( pArgs->GetItemState(SID_ATTR_PAGE, true, &pPoolItem) == SfxItemState::SET )
     {
-        mpDoc->SetPageNumType(static_cast<const SvxPageItem*>(pPoolItem)->GetNumType());
+        mrDoc.SetPageNumType(static_cast<const SvxPageItem*>(pPoolItem)->GetNumType());
 
         eOrientation = static_cast<const SvxPageItem*>(pPoolItem)->IsLandscape() ?
             Orientation::Landscape : Orientation::Portrait;
@@ -519,18 +520,18 @@ void FuPage::ApplyItemSet( const SfxItemSet* pArgs )
             bSetPageSizeAndBorder = true;
     }
 
-    if( pArgs->GetItemState(mpDoc->GetPool().GetWhich(SID_ATTR_LRSPACE),
+    if( pArgs->GetItemState(mrDoc.GetPool().GetWhichIDFromSlotID(SID_ATTR_LRSPACE),
                             true, &pPoolItem) == SfxItemState::SET )
     {
-        nLeft = static_cast<const SvxLRSpaceItem*>(pPoolItem)->GetLeft();
-        nRight = static_cast<const SvxLRSpaceItem*>(pPoolItem)->GetRight();
+        nLeft = static_cast<const SvxLRSpaceItem*>(pPoolItem)->ResolveLeft({});
+        nRight = static_cast<const SvxLRSpaceItem*>(pPoolItem)->ResolveRight({});
 
         if( mpPage->GetLeftBorder() != nLeft || mpPage->GetRightBorder() != nRight )
             bSetPageSizeAndBorder = true;
 
     }
 
-    if( pArgs->GetItemState(mpDoc->GetPool().GetWhich(SID_ATTR_ULSPACE),
+    if( pArgs->GetItemState(mrDoc.GetPool().GetWhichIDFromSlotID(SID_ATTR_ULSPACE),
                             true, &pPoolItem) == SfxItemState::SET )
     {
         nUpper = static_cast<const SvxULSpaceItem*>(pPoolItem)->GetUpper();
@@ -540,7 +541,7 @@ void FuPage::ApplyItemSet( const SfxItemSet* pArgs )
             bSetPageSizeAndBorder = true;
     }
 
-    if( pArgs->GetItemState(mpDoc->GetPool().GetWhich(SID_ATTR_PAGE_EXT1), true, &pPoolItem) == SfxItemState::SET )
+    if( pArgs->GetItemState(mrDoc.GetPool().GetWhichIDFromSlotID(SID_ATTR_PAGE_EXT1), true, &pPoolItem) == SfxItemState::SET )
     {
         bScaleAll = static_cast<const SfxBoolItem*>(pPoolItem)->GetValue();
     }
@@ -548,9 +549,9 @@ void FuPage::ApplyItemSet( const SfxItemSet* pArgs )
     if (SfxItemState::SET == pArgs->GetItemState(SID_ATTR_CHAR_GRABBAG, true, &pPoolItem))
     {
         SfxGrabBagItem const*const pGrabBag(static_cast<SfxGrabBagItem const*>(pPoolItem));
-        const auto pGrabBagInner = pGrabBag->GetGrabBag();
-        const auto iter = pGrabBagInner.find("BackgroundFullSize");
-        assert(iter != pGrabBagInner.end());
+        const auto& rGrabBagInner = pGrabBag->GetGrabBag();
+        const auto iter = rGrabBagInner.find(u"BackgroundFullSize"_ustr);
+        assert(iter != rGrabBagInner.end());
         if (iter->second >>= bFullSize)
         {
             if (pMasterPage->IsBackgroundFullSize() != bFullSize)
@@ -561,7 +562,7 @@ void FuPage::ApplyItemSet( const SfxItemSet* pArgs )
     }
 
     // Paper Bin
-    if( pArgs->GetItemState(mpDoc->GetPool().GetWhich(SID_ATTR_PAGE_PAPERBIN), true, &pPoolItem) == SfxItemState::SET )
+    if( pArgs->GetItemState(mrDoc.GetPool().GetWhichIDFromSlotID(SID_ATTR_PAGE_PAPERBIN), true, &pPoolItem) == SfxItemState::SET )
     {
         nPaperBin = static_cast<const SvxPaperBinItem*>(pPoolItem)->GetValue();
 
@@ -596,7 +597,7 @@ void FuPage::ApplyItemSet( const SfxItemSet* pArgs )
         {
             // Only this page
             mpBackgroundObjUndoAction.reset( new SdBackgroundObjUndoAction(
-                *mpDoc, *mpPage, mpPage->getSdrPageProperties().GetItemSet()) );
+                mrDoc, *mpPage, mpPage->getSdrPageProperties().GetItemSet()) );
             SfxItemSet aSet( *pArgs );
             sdr::properties::CleanupFillProperties(aSet);
             mpPage->getSdrPageProperties().ClearItem();
@@ -612,9 +613,9 @@ void FuPage::ApplyItemSet( const SfxItemSet* pArgs )
     }
 
     // Objects can not be bigger than ViewSize
-    Size aPageSize = mpDoc->GetSdPage(0, ePageKind)->GetSize();
+    Size aPageSize = mrDoc.GetSdPage(0, ePageKind)->GetSize();
     Size aViewSize(aPageSize.Width() * 3, aPageSize.Height() * 2);
-    mpDoc->SetMaxObjSize(aViewSize);
+    mrDoc.SetMaxObjSize(aViewSize);
 
     // if necessary, we tell Preview the new context
     mpDrawViewShell->UpdatePreview( mpDrawViewShell->GetActualPage() );

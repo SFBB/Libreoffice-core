@@ -20,19 +20,18 @@
 #pragma once
 
 #include <com/sun/star/uno/Reference.hxx>
-
+#include <framework/ConfigurationChangeEvent.hxx>
+#include <rtl/ref.hxx>
 #include <unordered_map>
 #include <vector>
 
-namespace com::sun::star::drawing::framework { class XConfigurationChangeListener; }
-namespace com::sun::star::drawing::framework { class XConfigurationController; }
-namespace com::sun::star::drawing::framework { class XResource; }
-namespace com::sun::star::drawing::framework { class XResourceId; }
-namespace com::sun::star::drawing::framework { struct ConfigurationChangeEvent; }
-
 namespace sd::framework {
+class ConfigurationChangeListener;
+class ConfigurationController;
+class AbstractResource;
+class ResourceId;
 
-/** This class manages the set of XConfigurationChangeListeners and
+/** This class manages the set of ConfigurationChangeListeners and
     calls them when the ConfigurationController wants to broadcast an
     event.
 
@@ -47,8 +46,7 @@ public:
     /** The given controller is used as origin of thrown exceptions.
     */
     explicit ConfigurationControllerBroadcaster (
-        const css::uno::Reference<
-            css::drawing::framework::XConfigurationController>& rxController);
+        const rtl::Reference<ConfigurationController>& rxController);
 
     /** Add a listener for one type of event.  When one listener is
         interested in more than one event type this method has to be called
@@ -60,18 +58,13 @@ public:
             The type of event that the listener will be called for.  The
             empty string is a special value in that the listener will be
             called for all event types.
-        @param rUserData
-            This object is passed to the listener whenever it is called for
-            the specified event type.  For different event types different
-            user data objects can be provided.
         @throws IllegalArgumentException
             when an empty listener reference is given.
     */
     void AddListener(
-        const css::uno::Reference<
-            css::drawing::framework::XConfigurationChangeListener>& rxListener,
-        const OUString& rsEventType,
-        const css::uno::Any& rUserData);
+        const rtl::Reference<
+            sd::framework::ConfigurationChangeListener>& rxListener,
+        ConfigurationChangeEventType rsEventType);
 
     /** Remove all references to the given listener.  When one listener has
         been registered for more than one type of event then it is removed
@@ -82,8 +75,8 @@ public:
             when an empty listener reference is given.
     */
     void RemoveListener(
-        const css::uno::Reference<
-            css::drawing::framework::XConfigurationChangeListener>& rxListener);
+        const rtl::Reference<
+            sd::framework::ConfigurationChangeListener>& rxListener);
 
     /** Broadcast the given event to all listeners that have been registered
         for its type of event as well as all universal listeners.
@@ -92,15 +85,15 @@ public:
         the listener is unregistered automatically.
     */
     void NotifyListeners (
-        const css::drawing::framework::ConfigurationChangeEvent& rEvent);
+        const sd::framework::ConfigurationChangeEvent& rEvent);
 
     /** This convenience variant of NotifyListeners create the event from
         the given arguments.
     */
     void NotifyListeners (
-        const OUString& rsEventType,
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxResourceId,
-        const css::uno::Reference<css::drawing::framework::XResource>& rxResourceObject);
+        ConfigurationChangeEventType rsEventType,
+        const rtl::Reference<sd::framework::ResourceId>& rxResourceId,
+        const rtl::Reference<sd::framework::AbstractResource>& rxResourceObject);
 
     /** Call all listeners and inform them that the
         ConfigurationController is being disposed.  When this method returns
@@ -110,16 +103,10 @@ public:
     void DisposeAndClear();
 
 private:
-    css::uno::Reference<css::drawing::framework::XConfigurationController> mxConfigurationController;
-    class ListenerDescriptor
-    {
-    public:
-        css::uno::Reference<css::drawing::framework::XConfigurationChangeListener> mxListener;
-        css::uno::Any maUserData;
-    };
-    typedef std::vector<ListenerDescriptor> ListenerList;
+    rtl::Reference<ConfigurationController> mxConfigurationController;
+    typedef std::vector<rtl::Reference<sd::framework::ConfigurationChangeListener>> ListenerList;
     typedef std::unordered_map
-        <OUString,
+        <ConfigurationChangeEventType,
          ListenerList> ListenerMap;
     ListenerMap maListenerMap;
 
@@ -130,7 +117,7 @@ private:
     */
     void NotifyListeners (
         const ListenerList& rList,
-        const css::drawing::framework::ConfigurationChangeEvent& rEvent);
+        const sd::framework::ConfigurationChangeEvent& rEvent);
 };
 
 } // end of namespace sd::framework

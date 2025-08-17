@@ -21,6 +21,7 @@
 
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <basegfx/range/b2drectangle.hxx>
 #include <i18nlangtag/languagetag.hxx>
 #include <tools/gen.hxx>
 #include <tools/degree.hxx>
@@ -30,7 +31,7 @@
 
 class LogicalFontInstance;
 namespace vcl::text { class ImplLayoutArgs; }
-namespace vcl::font { class PhysicalFontFace; }
+namespace basegfx { class BColor; }
 class SalGraphics;
 class GlyphItem;
 
@@ -44,7 +45,6 @@ class GlyphItem;
 // For instance, I *think* the important virtual functions in the
 // layout engines are called in this order:
 
-// * InitFont()
 // * LayoutText()
 // * AdjustLayout(), any number of times (but presumably
 // usually not at all or just once)
@@ -71,13 +71,12 @@ public:
     // used by upper layers
     basegfx::B2DPoint& DrawBase()                           { return maDrawBase; }
     const basegfx::B2DPoint& DrawBase() const               { return maDrawBase; }
-    Point&          DrawOffset()                            { return maDrawOffset; }
-    const Point&    DrawOffset() const                      { return maDrawOffset; }
+    basegfx::B2DPoint& DrawOffset() { return maDrawOffset; }
+    const basegfx::B2DPoint& DrawOffset() const { return maDrawOffset; }
     basegfx::B2DPoint GetDrawPosition( const basegfx::B2DPoint& rRelative = basegfx::B2DPoint(0,0) ) const;
 
     virtual bool    LayoutText( vcl::text::ImplLayoutArgs&, const SalLayoutGlyphsImpl* ) = 0;  // first step of layouting
     virtual void    AdjustLayout( vcl::text::ImplLayoutArgs& );    // adjusting after fallback etc.
-    virtual void    InitFont() const {}
     virtual void    DrawText( SalGraphics& ) const = 0;
 
     Degree10        GetOrientation() const                  { return mnOrientation; }
@@ -96,16 +95,32 @@ public:
     virtual sal_Int32 GetTextBreak(double nMaxWidth, double nCharExtra, int nFactor) const = 0;
     virtual double  FillDXArray( std::vector<double>* pDXArray, const OUString& rStr ) const = 0;
     virtual double  GetTextWidth() const { return FillDXArray( nullptr, {} ); }
+
+    virtual double FillPartialDXArray(std::vector<double>* pDXArray, const OUString& rStr,
+                                      sal_Int32 skipStart, sal_Int32 amt) const
+        = 0;
+
+    virtual double GetPartialTextWidth(sal_Int32 skipStart, sal_Int32 amt) const
+    {
+        return FillPartialDXArray(nullptr, {}, skipStart, amt);
+    }
+
     virtual void    GetCaretPositions( std::vector<double>& rCaretPositions, const OUString& rStr ) const = 0;
+
+    virtual bool HasFontKashidaPositions() const = 0;
     virtual bool    IsKashidaPosValid ( int /*nCharPos*/, int /*nNextCharPos*/ ) const = 0; // i60594
 
     // methods using glyph indexing
     virtual bool    GetNextGlyph(const GlyphItem** pGlyph, basegfx::B2DPoint& rPos, int& nStart,
                                  const LogicalFontInstance** ppGlyphFont = nullptr) const = 0;
     virtual bool GetOutline(basegfx::B2DPolyPolygonVector&) const;
-    bool GetBoundRect(tools::Rectangle&) const;
+    bool GetBoundRect(basegfx::B2DRectangle&) const;
+
+    static tools::Rectangle BoundRect2Rectangle(const basegfx::B2DRectangle&);
 
     virtual SalLayoutGlyphs GetGlyphs() const;
+
+    virtual void drawSalLayout(void* /*pSurface*/, const basegfx::BColor& /*rTextColor*/, bool /*bAntiAliased*/) const {}
 
 protected:
     // used by layout engines
@@ -122,7 +137,7 @@ protected:
 
     Degree10        mnOrientation;
 
-    mutable Point   maDrawOffset;
+    basegfx::B2DPoint maDrawOffset;
     basegfx::B2DPoint maDrawBase;
 
     bool            mbSubpixelPositioning;

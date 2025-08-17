@@ -49,15 +49,15 @@ using drawinglayer::primitive2d::Primitive2DReference;
 namespace vcl::bitmap
 {
 
-BitmapEx loadFromName(const OUString& rFileName, const ImageLoadFlags eFlags)
+Bitmap loadFromName(const OUString& rFileName, const ImageLoadFlags eFlags)
 {
     bool bSuccess = true;
     OUString aIconTheme;
-    BitmapEx aBitmapEx;
+    Bitmap aBitmap;
     try
     {
         aIconTheme = Application::GetSettings().GetStyleSettings().DetermineIconTheme();
-        ImageTree::get().loadImage(rFileName, aIconTheme, aBitmapEx, true, eFlags);
+        ImageTree::get().loadImage(rFileName, aIconTheme, aBitmap, true, eFlags);
     }
     catch (...)
     {
@@ -66,12 +66,12 @@ BitmapEx loadFromName(const OUString& rFileName, const ImageLoadFlags eFlags)
 
     SAL_WARN_IF(!bSuccess, "vcl", "vcl::bitmap::loadFromName : could not load image " << rFileName << " via icon theme " << aIconTheme);
 
-    return aBitmapEx;
+    return aBitmap;
 }
 
-void loadFromSvg(SvStream& rStream, const OUString& sPath, BitmapEx& rBitmapEx, double fScalingFactor)
+void loadFromSvg(SvStream& rStream, const OUString& sPath, Bitmap& rBitmap, double fScalingFactor)
 {
-    uno::Reference<uno::XComponentContext> xContext(comphelper::getProcessComponentContext());
+    const uno::Reference<uno::XComponentContext>& xContext(comphelper::getProcessComponentContext());
     const uno::Reference<graphic::XSvgParser> xSvgParser = graphic::SvgTools::create(xContext);
 
     std::size_t nSize = rStream.remainingSize();
@@ -114,7 +114,7 @@ void loadFromSvg(SvStream& rStream, const OUString& sPath, BitmapEx& rBitmapEx, 
     if (xBitmap.is())
     {
         const css::uno::Reference<css::rendering::XIntegerReadOnlyBitmap> xIntBmp(xBitmap, uno::UNO_QUERY_THROW);
-        rBitmapEx = vcl::unotools::bitmapExFromXBitmap(xIntBmp);
+        rBitmap = vcl::unotools::bitmapFromXBitmap(xIntBmp);
     }
 
 }
@@ -129,7 +129,7 @@ void loadFromSvg(SvStream& rStream, const OUString& sPath, BitmapEx& rBitmapEx, 
     @param bReversColors
     In case the endianness of pData is wrong, you could reverse colors
 */
-BitmapEx CreateFromData(sal_uInt8 const *pData, sal_Int32 nWidth, sal_Int32 nHeight,
+Bitmap CreateFromData(sal_uInt8 const *pData, sal_Int32 nWidth, sal_Int32 nHeight,
                         sal_Int32 nStride, sal_Int8 nBitCount,
                         bool bReversColors, bool bReverseAlpha)
 {
@@ -159,15 +159,28 @@ BitmapEx CreateFromData(sal_uInt8 const *pData, sal_Int32 nWidth, sal_Int32 nHei
     BitmapScopedWriteAccess pWrite(aBmp);
     assert(pWrite.get());
     if( !pWrite )
-        return BitmapEx();
-    std::optional<AlphaMask> pAlphaMask;
-    BitmapScopedWriteAccess xMaskAcc;
+        return Bitmap();
     if (nBitCount == 32)
     {
-        pAlphaMask.emplace( Size(nWidth, nHeight) );
-        xMaskAcc = *pAlphaMask;
+        for( tools::Long y = 0; y < nHeight; ++y )
+        {
+            sal_uInt8 const *p = pData + (y * nStride);
+            Scanline pScanline = pWrite->GetScanline(y);
+            for (tools::Long x = 0; x < nWidth; ++x)
+            {
+                // FIXME this parameter is badly named
+                const sal_uInt8 nAlphaValue = bReverseAlpha ? p[3] : 0xff - p[3];
+                BitmapColor col;
+                if ( bReversColors )
+                    col = BitmapColor( ColorAlpha, p[2], p[1], p[0], nAlphaValue );
+                else
+                    col = BitmapColor( ColorAlpha, p[0], p[1], p[2], nAlphaValue );
+                pWrite->SetPixelOnData(pScanline, x, col);
+                p += 4;
+            }
+        }
     }
-    if (nBitCount == 1)
+    else if (nBitCount == 1)
     {
         for( tools::Long y = 0; y < nHeight; ++y )
         {
@@ -199,33 +212,17 @@ BitmapEx CreateFromData(sal_uInt8 const *pData, sal_Int32 nWidth, sal_Int32 nHei
                 pWrite->SetPixelOnData(pScanline, x, col);
                 p += nBitCount/8;
             }
-            if (nBitCount == 32)
-            {
-                p = pData + (y * nStride) + 3;
-                Scanline pMaskScanLine = xMaskAcc->GetScanline(y);
-                for (tools::Long x = 0; x < nWidth; ++x)
-                {
-                    // FIXME this parameter is badly named
-                    const sal_uInt8 nValue = bReverseAlpha ? *p : 0xff - *p;
-                    xMaskAcc->SetPixelOnData(pMaskScanLine, x, BitmapColor(nValue));
-                    p += 4;
-                }
-            }
         }
     }
     // Avoid further bitmap use with unfinished write access
     pWrite.reset();
-    xMaskAcc.reset();
-    if (nBitCount == 32)
-        return BitmapEx(aBmp, *pAlphaMask);
-    else
-        return BitmapEx(aBmp);
+    return aBmp;
 }
 
 /** Copy block of image data into the bitmap.
     Assumes that the Bitmap has been constructed with the desired size.
 */
-BitmapEx CreateFromData( RawBitmap&& rawBitmap )
+Bitmap CreateFromData( RawBitmap&& rawBitmap )
 {
     auto nBitCount = rawBitmap.GetBitCount();
     assert( nBitCount == 24 || nBitCount == 32);
@@ -244,51 +241,76 @@ BitmapEx CreateFromData( RawBitmap&& rawBitmap )
     BitmapScopedWriteAccess pWrite(aBmp);
     assert(pWrite.get());
     if( !pWrite )
-        return BitmapEx();
-    std::optional<AlphaMask> pAlphaMask;
-    BitmapScopedWriteAccess xMaskAcc;
-    if (nBitCount == 32)
-    {
-        pAlphaMask.emplace( rawBitmap.maSize );
-        xMaskAcc = *pAlphaMask;
-    }
+        return Bitmap();
 
     auto nHeight = rawBitmap.maSize.getHeight();
     auto nWidth = rawBitmap.maSize.getWidth();
     auto nStride = nWidth * nBitCount / 8;
-    for( tools::Long y = 0; y < nHeight; ++y )
+    if (nBitCount == 32)
     {
-        sal_uInt8 const *p = rawBitmap.mpData.get() + (y * nStride);
-        Scanline pScanline = pWrite->GetScanline(y);
-        for (tools::Long x = 0; x < nWidth; ++x)
+        for( tools::Long y = 0; y < nHeight; ++y )
         {
-            BitmapColor col(p[0], p[1], p[2]);
-            pWrite->SetPixelOnData(pScanline, x, col);
-            p += nBitCount/8;
-        }
-        if (nBitCount == 32)
-        {
-            p = rawBitmap.mpData.get() + (y * nStride) + 3;
-            Scanline pMaskScanLine = xMaskAcc->GetScanline(y);
+            sal_uInt8 const *p = rawBitmap.mpData.get() + (y * nStride);
+            Scanline pScanline = pWrite->GetScanline(y);
             for (tools::Long x = 0; x < nWidth; ++x)
             {
-                xMaskAcc->SetPixelOnData(pMaskScanLine, x, BitmapColor(*p));
+                BitmapColor col(ColorAlpha, p[0], p[1], p[2], p[3]);
+                pWrite->SetPixelOnData(pScanline, x, col);
                 p += 4;
             }
         }
     }
-
-    xMaskAcc.reset();
+    else
+    {
+        for( tools::Long y = 0; y < nHeight; ++y )
+        {
+            sal_uInt8 const *p = rawBitmap.mpData.get() + (y * nStride);
+            Scanline pScanline = pWrite->GetScanline(y);
+            for (tools::Long x = 0; x < nWidth; ++x)
+            {
+                BitmapColor col(p[0], p[1], p[2]);
+                pWrite->SetPixelOnData(pScanline, x, col);
+                p += nBitCount/8;
+            }
+        }
+    }
     pWrite.reset();
 
-    if (nBitCount == 32)
-        return BitmapEx(aBmp, *pAlphaMask);
-    else
-        return BitmapEx(aBmp);
+    return aBmp;
 }
 
+void fillWithData(sal_uInt8* pData, BitmapEx const& rBitmapEx)
+{
+    const Bitmap& aBitmap = rBitmapEx.GetBitmap();
+    const AlphaMask& aAlphaMask = rBitmapEx.GetAlphaMask();
+    BitmapScopedReadAccess aReadAccessBitmap(aBitmap);
+    BitmapScopedReadAccess aReadAccessAlpha(aAlphaMask);
+
+    assert(!aReadAccessAlpha || aReadAccessBitmap->Height() == aReadAccessAlpha->Height());
+    assert(!aReadAccessAlpha || aReadAccessBitmap->Width() == aReadAccessAlpha->Width());
+
+    sal_uInt8* p = pData;
+
+    for (tools::Long y = 0, nHeight = aReadAccessBitmap->Height(); y < nHeight; ++y)
+    {
+        Scanline dataBitmap = aReadAccessBitmap->GetScanline(y);
+        Scanline dataAlpha = aReadAccessAlpha ? aReadAccessAlpha->GetScanline(y) : nullptr;
+
+        for (tools::Long x = 0, nWidth = aReadAccessBitmap->Width(); x < nWidth; ++x)
+        {
+            BitmapColor aColor = aReadAccessBitmap->GetPixelFromData(dataBitmap, x);
+            sal_uInt8 aAlpha = dataAlpha ? aReadAccessAlpha->GetPixelFromData(dataAlpha, x).GetBlue() : 255;
+            *p++ = aColor.GetBlue();
+            *p++ = aColor.GetGreen();
+            *p++ = aColor.GetRed();
+            *p++ = aAlpha;
+        }
+    }
+}
+
+
 #if ENABLE_CAIRO_CANVAS
-BitmapEx* CreateFromCairoSurface(Size aSize, cairo_surface_t * pSurface)
+Bitmap CreateFromCairoSurface(Size aSize, cairo_surface_t * pSurface)
 {
     // FIXME: if we could teach VCL/ about cairo handles, life could
     // be significantly better here perhaps.
@@ -297,7 +319,7 @@ BitmapEx* CreateFromCairoSurface(Size aSize, cairo_surface_t * pSurface)
             CAIRO_FORMAT_ARGB32, aSize.Width(), aSize.Height());
     cairo_t *pCairo = cairo_create( pPixels );
     if( !pPixels || !pCairo || cairo_status(pCairo) != CAIRO_STATUS_SUCCESS )
-        return nullptr;
+        return Bitmap();
 
     // suck ourselves from the X server to this buffer so then we can fiddle with
     // Alpha to turn it into the ultra-lame vcl required format and then push it
@@ -306,18 +328,12 @@ BitmapEx* CreateFromCairoSurface(Size aSize, cairo_surface_t * pSurface)
     cairo_set_operator( pCairo, CAIRO_OPERATOR_SOURCE );
     cairo_paint( pCairo );
 
-    Bitmap aRGB(aSize, vcl::PixelFormat::N24_BPP);
-    ::AlphaMask aMask( aSize );
+    Bitmap aRGBA(aSize, vcl::PixelFormat::N32_BPP);
 
-    BitmapScopedWriteAccess pRGBWrite(aRGB);
-    assert(pRGBWrite);
-    if (!pRGBWrite)
-        return nullptr;
-
-    BitmapScopedWriteAccess pMaskWrite(aMask);
-    assert(pMaskWrite);
-    if (!pMaskWrite)
-        return nullptr;
+    BitmapScopedWriteAccess pRGBAWrite(aRGBA);
+    assert(pRGBAWrite);
+    if (!pRGBAWrite)
+        return Bitmap();
 
     cairo_surface_flush(pPixels);
     unsigned char *pSrc = cairo_image_surface_get_data( pPixels );
@@ -345,54 +361,51 @@ BitmapEx* CreateFromCairoSurface(Size aSize, cairo_surface_t * pSurface)
             {
                 // Cairo uses pre-multiplied alpha - we do not => re-multiply
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                nR = vcl::bitmap::unpremultiply(nAlpha, nR);
-                nG = vcl::bitmap::unpremultiply(nAlpha, nG);
-                nB = vcl::bitmap::unpremultiply(nAlpha, nB);
+                nR = vcl::bitmap::unpremultiply(nR, nAlpha);
+                nG = vcl::bitmap::unpremultiply(nG, nAlpha);
+                nB = vcl::bitmap::unpremultiply(nB, nAlpha);
 #else
                 nR = unpremultiply_table[nAlpha][nR];
                 nG = unpremultiply_table[nAlpha][nG];
                 nB = unpremultiply_table[nAlpha][nB];
 #endif
             }
-            pRGBWrite->SetPixel( y, x, BitmapColor( nR, nG, nB ) );
-            pMaskWrite->SetPixelIndex( y, x, nAlpha );
+            pRGBAWrite->SetPixel( y, x, BitmapColor( ColorAlpha, nR, nG, nB, nAlpha ) );
             pPix++;
         }
     }
 
+    pRGBAWrite.reset();
+
     // ignore potential errors above. will get caller a
     // uniformly white bitmap, but not that there would
     // be error handling in calling code ...
-    ::BitmapEx *pBitmapEx = new ::BitmapEx( aRGB, aMask );
 
     cairo_destroy( pCairo );
     cairo_surface_destroy( pPixels );
-    return pBitmapEx;
+    return aRGBA;
 }
 #endif
 
-BitmapEx CanvasTransformBitmap( const BitmapEx&                 rBitmap,
+Bitmap CanvasTransformBitmap( const Bitmap&                 rSrcBitmap,
                                 const ::basegfx::B2DHomMatrix&  rTransform,
                                 ::basegfx::B2DRectangle const & rDestRect,
                                 ::basegfx::B2DHomMatrix const & rLocalTransform )
 {
-    const Size aBmpSize( rBitmap.GetSizePixel() );
-    Bitmap aSrcBitmap( rBitmap.GetBitmap() );
-    Bitmap aSrcAlpha;
+    const Size aDestBmpSize( ::basegfx::fround<tools::Long>( rDestRect.getWidth() ),
+                             ::basegfx::fround<tools::Long>( rDestRect.getHeight() ) );
+
+    if( aDestBmpSize.IsEmpty() )
+        return Bitmap();
+
+    const Size aBmpSize( rSrcBitmap.GetSizePixel() );
 
     // differentiate mask and alpha channel (on-off
     // vs. multi-level transparency)
-    if( rBitmap.IsAlpha() )
-    {
-        aSrcAlpha = rBitmap.GetAlphaMask().GetBitmap();
-    }
 
-    BitmapScopedReadAccess pReadAccess( aSrcBitmap );
-    BitmapScopedReadAccess pAlphaReadAccess;
-    if (rBitmap.IsAlpha())
-        pAlphaReadAccess = aSrcAlpha;
+    BitmapScopedReadAccess pReadAccess( rSrcBitmap );
 
-    if( !pReadAccess || (!pAlphaReadAccess && rBitmap.IsAlpha()) )
+    if( !pReadAccess )
     {
         // TODO(E2): Error handling!
         ENSURE_OR_THROW( false,
@@ -404,7 +417,7 @@ BitmapEx CanvasTransformBitmap( const BitmapEx&                 rBitmap,
     // paletted 1-bit masks).
     sal_uInt8 aAlphaMap[256];
 
-    if( rBitmap.IsAlpha() )
+    if( rSrcBitmap.HasAlpha() )
     {
         // source already has alpha channel - 1:1 mapping,
         // i.e. aAlphaMap[0]=0,...,aAlphaMap[255]=255.
@@ -416,14 +429,7 @@ BitmapEx CanvasTransformBitmap( const BitmapEx&                 rBitmap,
     }
     // else: mapping table is not used
 
-    const Size aDestBmpSize( ::basegfx::fround( rDestRect.getWidth() ),
-                             ::basegfx::fround( rDestRect.getHeight() ) );
-
-    if( aDestBmpSize.IsEmpty() )
-        return BitmapEx();
-
-    Bitmap aDstBitmap(aDestBmpSize, aSrcBitmap.getPixelFormat(), &pReadAccess->GetPalette());
-    Bitmap aDstAlpha( AlphaMask( aDestBmpSize ).GetBitmap() );
+    Bitmap aDstBitmap(aDestBmpSize, rSrcBitmap.getPixelFormat(), &pReadAccess->GetPalette());
 
     {
         // just to be on the safe side: let the
@@ -432,11 +438,8 @@ BitmapEx CanvasTransformBitmap( const BitmapEx&                 rBitmap,
         // rule out the possibility that cached accessor data
         // is not yet written back.
         BitmapScopedWriteAccess pWriteAccess( aDstBitmap );
-        BitmapScopedWriteAccess pAlphaWriteAccess( aDstAlpha );
-
 
         if( pWriteAccess.get() != nullptr &&
-            pAlphaWriteAccess.get() != nullptr &&
             rTransform.isInvertible() )
         {
             // we're doing inverse mapping here, i.e. mapping
@@ -450,52 +453,51 @@ BitmapEx CanvasTransformBitmap( const BitmapEx&                 rBitmap,
             {
                 // differentiate mask and alpha channel (on-off
                 // vs. multi-level transparency)
-                if( rBitmap.IsAlpha() )
+                if( rSrcBitmap.HasAlpha() )
                 {
                     Scanline pScan = pWriteAccess->GetScanline( y );
-                    Scanline pScanAlpha = pAlphaWriteAccess->GetScanline( y );
                     // Handling alpha and mask just the same...
                     for( tools::Long x=0; x<aDestBmpSize.Width(); ++x )
                     {
                         ::basegfx::B2DPoint aPoint(x,y);
                         aPoint *= aTransform;
 
-                        const int nSrcX( ::basegfx::fround( aPoint.getX() ) );
-                        const int nSrcY( ::basegfx::fround( aPoint.getY() ) );
+                        const tools::Long nSrcX( ::basegfx::fround<tools::Long>( aPoint.getX() ) );
+                        const tools::Long nSrcY( ::basegfx::fround<tools::Long>( aPoint.getY() ) );
                         if( nSrcX < 0 || nSrcX >= aBmpSize.Width() ||
                             nSrcY < 0 || nSrcY >= aBmpSize.Height() )
                         {
-                            pAlphaWriteAccess->SetPixelOnData( pScanAlpha, x, BitmapColor(0) );
+                            pWriteAccess->SetPixelOnData( pScan, x, BitmapColor(ColorAlpha, 0, 0, 0, 0) );
                         }
                         else
                         {
-                            const sal_uInt8 cAlphaIdx = pAlphaReadAccess->GetPixelIndex( nSrcY, nSrcX );
-                            pAlphaWriteAccess->SetPixelOnData( pScanAlpha, x, BitmapColor(aAlphaMap[ cAlphaIdx ]) );
-                            pWriteAccess->SetPixelOnData( pScan, x, pReadAccess->GetPixel( nSrcY, nSrcX ) );
+                            BitmapColor aCol = pReadAccess->GetPixel( nSrcY, nSrcX );
+                            const sal_uInt8 cAlphaIdx = aCol.GetAlpha();
+                            aCol.SetAlpha(aAlphaMap[ cAlphaIdx ]);
+                            pWriteAccess->SetPixelOnData( pScan, x, aCol );
                         }
                     }
                 }
                 else
                 {
                     Scanline pScan = pWriteAccess->GetScanline( y );
-                    Scanline pScanAlpha = pAlphaWriteAccess->GetScanline( y );
                     for( tools::Long x=0; x<aDestBmpSize.Width(); ++x )
                     {
                         ::basegfx::B2DPoint aPoint(x,y);
                         aPoint *= aTransform;
 
-                        const int nSrcX( ::basegfx::fround( aPoint.getX() ) );
-                        const int nSrcY( ::basegfx::fround( aPoint.getY() ) );
+                        const tools::Long nSrcX( ::basegfx::fround<tools::Long>( aPoint.getX() ) );
+                        const tools::Long nSrcY( ::basegfx::fround<tools::Long>( aPoint.getY() ) );
                         if( nSrcX < 0 || nSrcX >= aBmpSize.Width() ||
                             nSrcY < 0 || nSrcY >= aBmpSize.Height() )
                         {
-                            pAlphaWriteAccess->SetPixelOnData( pScanAlpha, x, BitmapColor(0) );
+                            pWriteAccess->SetPixelOnData( pScan, x, BitmapColor(ColorAlpha, 0, 0, 0, 0) );
                         }
                         else
                         {
-                            pAlphaWriteAccess->SetPixelOnData( pScanAlpha, x, BitmapColor(255) );
-                            pWriteAccess->SetPixelOnData( pScan, x, pReadAccess->GetPixel( nSrcY,
-                                                                                 nSrcX ) );
+                            BitmapColor aCol = pReadAccess->GetPixel( nSrcY, nSrcX );
+                            aCol.SetAlpha(255);
+                            pWriteAccess->SetPixelOnData( pScan, x, aCol );
                         }
                     }
                 }
@@ -509,71 +511,55 @@ BitmapEx CanvasTransformBitmap( const BitmapEx&                 rBitmap,
         }
     }
 
-    return BitmapEx(aDstBitmap, AlphaMask(aDstAlpha));
+    return aDstBitmap;
 }
 
-
-void DrawAlphaBitmapAndAlphaGradient(BitmapEx & rBitmapEx, bool bFixedTransparence, float fTransparence, AlphaMask & rNewMask)
+// mix existing and new alpha mask
+void DrawAlphaBitmapAndAlphaGradient(Bitmap & rBitmap, bool bFixedTransparence, float fTransparence, const AlphaMask & rNewMask)
 {
-    // mix existing and new alpha mask
-    AlphaMask aOldMask;
+    const double fFactor(1.0 / 255.0);
+    BitmapScopedWriteAccess pOld(rBitmap);
+    assert(pOld && "Got no access to old alpha mask (!)");
 
-    if(rBitmapEx.IsAlpha())
+    if(bFixedTransparence)
     {
-        aOldMask = rBitmapEx.GetAlphaMask();
-    }
+        const double fOpNew(1.0 - fTransparence);
 
-    {
-
-        BitmapScopedWriteAccess pOld(aOldMask);
-
-        assert(pOld && "Got no access to old alpha mask (!)");
-
-        const double fFactor(1.0 / 255.0);
-
-        if(bFixedTransparence)
+        for(tools::Long y(0),nHeight(pOld->Height()); y < nHeight; y++)
         {
-            const double fOpNew(1.0 - fTransparence);
-
-            for(tools::Long y(0); y < pOld->Height(); y++)
+            Scanline pScanline = pOld->GetScanline( y );
+            for(tools::Long x(0),nWidth(pOld->Width()); x < nWidth; x++)
             {
-                Scanline pScanline = pOld->GetScanline( y );
-                for(tools::Long x(0); x < pOld->Width(); x++)
-                {
-                    const double fOpOld(pOld->GetIndexFromData(pScanline, x) * fFactor);
-                    const sal_uInt8 aCol(basegfx::fround((fOpOld * fOpNew) * 255.0));
+                BitmapColor aCol = pOld->GetPixelFromData(pScanline, x);
+                const double fOpOld(aCol.GetAlpha() * fFactor);
+                aCol.SetAlpha(basegfx::fround((fOpOld * fOpNew) * 255.0));
 
-                    pOld->SetPixelOnData(pScanline, x, BitmapColor(aCol));
-                }
+                pOld->SetPixelOnData(pScanline, x, aCol);
             }
         }
-        else
+    }
+    else
+    {
+        BitmapScopedReadAccess pNew(rNewMask);
+        assert(pNew && "Got no access to new alpha mask (!)");
+
+        assert(pOld->Width() == pNew->Width() && pOld->Height() == pNew->Height() &&
+                "Alpha masks have different sizes (!)");
+
+        for(tools::Long y(0),nHeight(pOld->Height()); y < nHeight; y++)
         {
-            BitmapScopedReadAccess pNew(rNewMask);
-
-            assert(pNew && "Got no access to new alpha mask (!)");
-
-            assert(pOld->Width() == pNew->Width() && pOld->Height() == pNew->Height() &&
-                    "Alpha masks have different sizes (!)");
-
-            for(tools::Long y(0); y < pOld->Height(); y++)
+            Scanline pScanline = pOld->GetScanline( y );
+            for(tools::Long x(0),nWidth(pOld->Width()); x < nWidth; x++)
             {
-                Scanline pScanline = pOld->GetScanline( y );
-                for(tools::Long x(0); x < pOld->Width(); x++)
-                {
-                    const double fOpOld(pOld->GetIndexFromData(pScanline, x) * fFactor);
-                    const double fOpNew(pNew->GetIndexFromData(pScanline, x) * fFactor);
-                    const sal_uInt8 aCol(basegfx::fround((fOpOld * fOpNew) * 255.0));
+                BitmapColor aCol = pOld->GetPixelFromData(pScanline, x);
+                const double fOpOld(aCol.GetAlpha() * fFactor);
+                const double fOpNew(pNew->GetIndexFromData(pScanline, x) * fFactor);
+                aCol.SetAlpha(basegfx::fround((fOpOld * fOpNew) * 255.0));
 
-                    pOld->SetPixelOnData(pScanline, x, BitmapColor(aCol));
-                }
+                pOld->SetPixelOnData(pScanline, x, aCol);
             }
         }
-
     }
-
-    // apply combined bitmap as mask
-    rBitmapEx = BitmapEx(rBitmapEx.GetBitmap(), aOldMask);
 }
 
 
@@ -644,17 +630,24 @@ void DrawAndClipBitmap(const Point& rPos, const Size& rSize, const BitmapEx& rBi
     }
 }
 
-
 css::uno::Sequence< sal_Int8 > GetMaskDIB(BitmapEx const & aBmpEx)
 {
     if ( aBmpEx.IsAlpha() )
     {
         SvMemoryStream aMem;
-        WriteDIB(aBmpEx.GetAlphaMask().GetBitmap(), aMem, false, true);
+        AlphaMask aMask = aBmpEx.GetAlphaMask();
+        // for backwards compatibility for extensions, we need to convert from alpha to transparency
+        aMask.Invert();
+        WriteDIB(aMask.GetBitmap(), aMem, false, true);
         return css::uno::Sequence< sal_Int8 >( static_cast<sal_Int8 const *>(aMem.GetData()), aMem.Tell() );
     }
 
     return css::uno::Sequence< sal_Int8 >();
+}
+
+css::uno::Sequence< sal_Int8 > GetMaskDIB(Bitmap const & rBmp)
+{
+    return GetMaskDIB(BitmapEx(rBmp));
 }
 
 static bool readAlpha( BitmapReadAccess const * pAlphaReadAcc, tools::Long nY, const tools::Long nWidth, unsigned char* data, tools::Long nOff )
@@ -701,9 +694,9 @@ static bool readAlpha( BitmapReadAccess const * pAlphaReadAcc, tools::Long nY, c
  * @param data will be filled with alpha data, if xBitmap is alpha/transparent image
  * @param bHasAlpha will be set to true if resulting surface has alpha
  **/
-void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, unsigned char*& data, bool& bHasAlpha, tools::Long& rnWidth, tools::Long& rnHeight )
+void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, const Bitmap & aBitmap, unsigned char*& data, bool& bHasAlpha, tools::Long& rnWidth, tools::Long& rnHeight )
 {
-    AlphaMask aAlpha = aBmpEx.GetAlphaMask();
+    const AlphaMask& aAlpha = aBmpEx.GetAlphaMask();
 
     BitmapScopedReadAccess pBitmapReadAcc( aBitmap );
     BitmapScopedReadAccess pAlphaReadAcc;
@@ -753,9 +746,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
 
 #ifdef OSL_BIGENDIAN
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetRed());
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetGreen());
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetBlue());
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetRed()];
                 data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
@@ -763,9 +756,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
 #endif
 #else
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetBlue());
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetGreen());
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetRed());
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetBlue()];
                 data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
@@ -789,9 +782,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 else
                     nAlpha = data[ nOff ] = 255;
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff + 3 ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
-                data[ nOff + 2 ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
-                data[ nOff + 1 ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
+                data[ nOff + 3 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff + 2 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff + 1 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
 #else
                 data[ nOff + 3 ] = premultiply_table[nAlpha][*pReadScan++];
                 data[ nOff + 2 ] = premultiply_table[nAlpha][*pReadScan++];
@@ -804,9 +797,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 else
                     nAlpha = data[ nOff + 3 ] = 255;
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
                 data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
@@ -830,9 +823,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 else
                     nAlpha = data[ nOff++ ] = 255;
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
                 data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
@@ -844,9 +837,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 else
                     nAlpha = data[ nOff + 3 ] = 255;
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, pReadScan[ 2 ]);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, pReadScan[ 1 ]);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, pReadScan[ 0 ]);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
                 data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
@@ -858,6 +851,7 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
             }
             break;
         case ScanlineFormat::N32BitTcBgra:
+        case ScanlineFormat::N32BitTcBgrx:
             pReadScan = pBitmapReadAcc->GetScanline( nY );
             if( pAlphaReadAcc )
                 if( readAlpha( pAlphaReadAcc.get(), nY, nWidth, data, nOff ) )
@@ -871,9 +865,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 else
                     nAlpha = data[ nOff++ ] = 255;
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, pReadScan[ 2 ]);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, pReadScan[ 1 ]);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, pReadScan[ 0 ]);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
                 data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
@@ -886,9 +880,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 else
                     nAlpha = data[ nOff + 3 ] = 255;
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
                 data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
@@ -900,6 +894,7 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
             }
             break;
         case ScanlineFormat::N32BitTcRgba:
+        case ScanlineFormat::N32BitTcRgbx:
             pReadScan = pBitmapReadAcc->GetScanline( nY );
             if( pAlphaReadAcc )
                 if( readAlpha( pAlphaReadAcc.get(), nY, nWidth, data, nOff ) )
@@ -913,9 +908,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 else
                     nAlpha = data[ nOff ++ ] = 255;
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, *pReadScan++);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
                 data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
@@ -928,9 +923,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 else
                     nAlpha = data[ nOff + 3 ] = 255;
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, pReadScan[ 2 ]);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, pReadScan[ 1 ]);
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, pReadScan[ 0 ]);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
                 data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
@@ -960,9 +955,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 else
                     nAlpha = data[ nOff++ ] = 255;
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetRed());
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetGreen());
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetBlue());
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetRed()];
                 data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
@@ -974,9 +969,9 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 else
                     nAlpha = data[ nOff + 3 ] = 255;
 #if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetBlue());
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetGreen());
-                data[ nOff++ ] = vcl::bitmap::premultiply(nAlpha, aColor.GetRed());
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
 #else
                 data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetBlue()];
                 data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
@@ -992,20 +987,234 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
 
 }
 
-    uno::Sequence< sal_Int8 > CanvasExtractBitmapData(BitmapEx const & rBitmapEx, const geometry::IntegerRectangle2D& rect)
+/**
+ * @param data will be filled with alpha data, if xBitmap is alpha/transparent image
+ * @param bHasAlpha will be set to true if resulting surface has alpha
+ **/
+void CanvasCairoExtractBitmapData( const Bitmap & aBitmap, unsigned char*& data, bool& bHasAlpha, tools::Long& rnWidth, tools::Long& rnHeight )
+{
+    BitmapScopedReadAccess pBitmapReadAcc( aBitmap );
+    const tools::Long      nWidth = rnWidth = pBitmapReadAcc->Width();
+    const tools::Long      nHeight = rnHeight = pBitmapReadAcc->Height();
+    tools::Long nX, nY;
+    bool bIsAlpha = false;
+
+    data = static_cast<unsigned char*>(malloc( nWidth*nHeight*4 ));
+    if (!data)
+        std::abort();
+
+    tools::Long nOff = 0;
+    ::Color aColor;
+    unsigned int nAlpha = 255;
+
+#if !ENABLE_WASM_STRIP_PREMULTIPLY
+    vcl::bitmap::lookup_table const & premultiply_table = vcl::bitmap::get_premultiply_table();
+#endif
+    for( nY = 0; nY < nHeight; nY++ )
     {
-        Bitmap aBitmap( rBitmapEx.GetBitmap() );
-        Bitmap aAlpha( rBitmapEx.GetAlphaMask().GetBitmap() );
+        ::Scanline pReadScan;
 
-        BitmapScopedReadAccess pReadAccess( aBitmap );
-        BitmapScopedReadAccess pAlphaReadAccess;
-        if (!aAlpha.IsEmpty())
-            pAlphaReadAccess = aAlpha;
+        switch( pBitmapReadAcc->GetScanlineFormat() )
+        {
+        case ScanlineFormat::N8BitPal:
+            pReadScan = pBitmapReadAcc->GetScanline( nY );
 
+            for( nX = 0; nX < nWidth; nX++ )
+            {
+#ifdef OSL_BIGENDIAN
+                nAlpha = data[ nOff++ ] = 255;
+#else
+                nAlpha = data[ nOff + 3 ] = 255;
+#endif
+                aColor = pBitmapReadAcc->GetPaletteColor(*pReadScan++);
+
+#ifdef OSL_BIGENDIAN
+#if ENABLE_WASM_STRIP_PREMULTIPLY
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
+#else
+                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetRed()];
+                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
+                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetBlue()];
+#endif
+#else
+#if ENABLE_WASM_STRIP_PREMULTIPLY
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
+#else
+                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetBlue()];
+                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
+                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetRed()];
+#endif
+                nOff++;
+#endif
+            }
+            break;
+        case ScanlineFormat::N24BitTcBgr:
+            pReadScan = pBitmapReadAcc->GetScanline( nY );
+
+            for( nX = 0; nX < nWidth; nX++ )
+            {
+#ifdef OSL_BIGENDIAN
+                nAlpha = data[ nOff ] = 255;
+#if ENABLE_WASM_STRIP_PREMULTIPLY
+                data[ nOff + 3 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff + 2 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff + 1 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+#else
+                data[ nOff + 3 ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff + 2 ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff + 1 ] = premultiply_table[nAlpha][*pReadScan++];
+#endif
+                nOff += 4;
+#else
+                nAlpha = data[ nOff + 3 ] = 255;
+#if ENABLE_WASM_STRIP_PREMULTIPLY
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+#else
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+#endif
+                nOff++;
+#endif
+            }
+            break;
+        case ScanlineFormat::N24BitTcRgb:
+            pReadScan = pBitmapReadAcc->GetScanline( nY );
+
+            for( nX = 0; nX < nWidth; nX++ )
+            {
+#ifdef OSL_BIGENDIAN
+                nAlpha = data[ nOff++ ] = 255;
+#if ENABLE_WASM_STRIP_PREMULTIPLY
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+#else
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+#endif
+#else
+                nAlpha = data[ nOff + 3 ] = 255;
+#if ENABLE_WASM_STRIP_PREMULTIPLY
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
+#else
+                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
+                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
+                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 0 ]];
+#endif
+                pReadScan += 3;
+                nOff++;
+#endif
+            }
+            break;
+        case ScanlineFormat::N32BitTcBgra:
+            bIsAlpha = true;
+            [[fallthrough]];
+        case ScanlineFormat::N32BitTcBgrx:
+            pReadScan = pBitmapReadAcc->GetScanline( nY );
+
+            for( nX = 0; nX < nWidth; nX++ )
+            {
+#ifdef OSL_BIGENDIAN
+                if( bIsAlpha )
+                    nAlpha = pReadScan[3];
+                else
+                    nAlpha = data[ nOff++ ] = 255;
+#if ENABLE_WASM_STRIP_PREMULTIPLY
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
+#else
+                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
+                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
+                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 0 ]];
+#endif
+                pReadScan += 4;
+#else
+                if( bIsAlpha )
+                    nAlpha = pReadScan[3];
+                else
+                    nAlpha = data[ nOff + 3 ] = 255;
+#if ENABLE_WASM_STRIP_PREMULTIPLY
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+#else
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+#endif
+                pReadScan++;
+                nOff++;
+#endif
+            }
+            break;
+        case ScanlineFormat::N32BitTcRgba:
+            bIsAlpha = true;
+            [[fallthrough]];
+        case ScanlineFormat::N32BitTcRgbx:
+            pReadScan = pBitmapReadAcc->GetScanline( nY );
+
+            for( nX = 0; nX < nWidth; nX++ )
+            {
+#ifdef OSL_BIGENDIAN
+                if( bIsAlpha )
+                    nAlpha = pReadScan[3];
+                else
+                    nAlpha = data[ nOff ++ ] = 255;
+#if ENABLE_WASM_STRIP_PREMULTIPLY
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+#else
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+#endif
+                pReadScan++;
+#else
+                if( bIsAlpha )
+                    nAlpha = pReadScan[3];
+                else
+                    nAlpha = data[ nOff + 3 ] = 255;
+#if ENABLE_WASM_STRIP_PREMULTIPLY
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
+                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
+#else
+                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
+                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
+                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 0 ]];
+#endif
+                pReadScan += 4;
+                nOff++;
+#endif
+            }
+            break;
+        default:
+            assert(false && "unknown format");
+        }
+    }
+
+    bHasAlpha = bIsAlpha;
+}
+
+    uno::Sequence< sal_Int8 > CanvasExtractBitmapData(Bitmap const & rBitmap, const geometry::IntegerRectangle2D& rect)
+    {
+        BitmapScopedReadAccess pReadAccess( rBitmap );
         assert( pReadAccess );
 
         // TODO(F1): Support more formats.
-        const Size aBmpSize( aBitmap.GetSizePixel() );
+        const Size aBmpSize( rBitmap.GetSizePixel() );
 
         // for the time being, always return as BGRA
         uno::Sequence< sal_Int8 > aRes( 4*aBmpSize.Width()*aBmpSize.Height() );
@@ -1016,36 +1225,21 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
              y<aBmpSize.Height() && y<rect.Y2;
              ++y )
         {
-            if( pAlphaReadAccess.get() != nullptr )
+            for( tools::Long x=rect.X1;
+                 x<aBmpSize.Width() && x<rect.X2;
+                 ++x )
             {
-                Scanline pScanlineReadAlpha = pAlphaReadAccess->GetScanline( y );
-                for( tools::Long x=rect.X1;
-                     x<aBmpSize.Width() && x<rect.X2;
-                     ++x )
-                {
-                    pRes[ nCurrPos++ ] = pReadAccess->GetColor( y, x ).GetRed();
-                    pRes[ nCurrPos++ ] = pReadAccess->GetColor( y, x ).GetGreen();
-                    pRes[ nCurrPos++ ] = pReadAccess->GetColor( y, x ).GetBlue();
-                    pRes[ nCurrPos++ ] = 255 - pAlphaReadAccess->GetIndexFromData( pScanlineReadAlpha, x );
-                }
-            }
-            else
-            {
-                for( tools::Long x=rect.X1;
-                     x<aBmpSize.Width() && x<rect.X2;
-                     ++x )
-                {
-                    pRes[ nCurrPos++ ] = pReadAccess->GetColor( y, x ).GetRed();
-                    pRes[ nCurrPos++ ] = pReadAccess->GetColor( y, x ).GetGreen();
-                    pRes[ nCurrPos++ ] = pReadAccess->GetColor( y, x ).GetBlue();
-                    pRes[ nCurrPos++ ] = sal_uInt8(255);
-                }
+                BitmapColor aCol = pReadAccess->GetColor( y, x );
+                pRes[ nCurrPos++ ] = aCol.GetRed();
+                pRes[ nCurrPos++ ] = aCol.GetGreen();
+                pRes[ nCurrPos++ ] = aCol.GetBlue();
+                pRes[ nCurrPos++ ] = 255 - aCol.GetAlpha();
             }
         }
         return aRes;
     }
 
-    BitmapEx createHistorical8x8FromArray(std::array<sal_uInt8,64> const & pArray, Color aColorPix, Color aColorBack)
+    Bitmap createHistorical8x8FromArray(std::array<sal_uInt8,64> const & pArray, Color aColorPix, Color aColorBack)
     {
         BitmapPalette aPalette(2);
 
@@ -1070,18 +1264,16 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
             }
         }
 
-        return BitmapEx(aBitmap);
+        return aBitmap;
     }
 
-    bool isHistorical8x8(const BitmapEx& rBitmapEx, Color& o_rBack, Color& o_rFront)
+    bool isHistorical8x8(const Bitmap& rBitmap, Color& o_rBack, Color& o_rFront)
     {
         bool bRet(false);
 
-        if(!rBitmapEx.IsAlpha())
+        if(!rBitmap.HasAlpha())
         {
-            Bitmap aBitmap(rBitmapEx.GetBitmap());
-
-            if(8 == aBitmap.GetSizePixel().Width() && 8 == aBitmap.GetSizePixel().Height())
+            if(8 == rBitmap.GetSizePixel().Width() && 8 == rBitmap.GetSizePixel().Height())
             {
                 // Historical 1bpp images are getting really historical,
                 // even to the point that e.g. the png loader actually loads
@@ -1089,11 +1281,11 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
                 // assumption that any 2-color 1bpp bitmap is a pattern, and so it would
                 // get confused by RGB. Try to detect if this image is really
                 // just two colors and say it's a pattern bitmap if so.
-                BitmapScopedReadAccess access(aBitmap);
+                BitmapScopedReadAccess access(rBitmap);
                 o_rBack = access->GetColor(0,0);
                 bool foundSecondColor = false;;
-                for(tools::Long y = 0; y < access->Height(); ++y)
-                    for(tools::Long x = 0; x < access->Width(); ++x)
+                for(tools::Long y = 0, nHeight = access->Height(); y < nHeight; ++y)
+                    for(tools::Long x = 0, nWidth = access->Width(); x < nWidth; ++x)
                     {
                         if(!foundSecondColor)
                         {
@@ -1192,7 +1384,7 @@ void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, Bitmap & aBitmap, un
 
 bool convertBitmap32To24Plus8(BitmapEx const & rInput, BitmapEx & rResult)
 {
-    Bitmap aBitmap(rInput.GetBitmap());
+    const Bitmap& aBitmap(rInput.GetBitmap());
     if (aBitmap.getPixelFormat() != vcl::PixelFormat::N32_BPP)
         return false;
 
@@ -1277,13 +1469,13 @@ Bitmap GetDownsampledBitmap(Size const& rDstSizeTwip, Point const& rSrcPt, Size 
 
                 if (fBmpWH < fMaxWH)
                 {
-                    aNewBmpSize.setWidth(FRound(fMaxPixelY * fBmpWH));
-                    aNewBmpSize.setHeight(FRound(fMaxPixelY));
+                    aNewBmpSize.setWidth(basegfx::fround<tools::Long>(fMaxPixelY * fBmpWH));
+                    aNewBmpSize.setHeight(basegfx::fround<tools::Long>(fMaxPixelY));
                 }
                 else if (fBmpWH > 0.0)
                 {
-                    aNewBmpSize.setWidth(FRound(fMaxPixelX));
-                    aNewBmpSize.setHeight(FRound(fMaxPixelX / fBmpWH));
+                    aNewBmpSize.setWidth(basegfx::fround<tools::Long>(fMaxPixelX));
+                    aNewBmpSize.setHeight(basegfx::fround<tools::Long>(fMaxPixelX / fBmpWH));
                 }
 
                 if( aNewBmpSize.Width() && aNewBmpSize.Height() )
@@ -1295,6 +1487,20 @@ Bitmap GetDownsampledBitmap(Size const& rDstSizeTwip, Point const& rSrcPt, Size 
     }
 
     return aBmp;
+}
+
+BitmapColor premultiply(const BitmapColor c)
+{
+    return BitmapColor(ColorAlpha, premultiply(c.GetRed(), c.GetAlpha()),
+                       premultiply(c.GetGreen(), c.GetAlpha()),
+                       premultiply(c.GetBlue(), c.GetAlpha()), c.GetAlpha());
+}
+
+BitmapColor unpremultiply(const BitmapColor c)
+{
+    return BitmapColor(ColorAlpha, unpremultiply(c.GetRed(), c.GetAlpha()),
+                       unpremultiply(c.GetGreen(), c.GetAlpha()),
+                       unpremultiply(c.GetBlue(), c.GetAlpha()), c.GetAlpha());
 }
 
 } // end vcl::bitmap

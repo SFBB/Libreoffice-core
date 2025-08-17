@@ -96,6 +96,8 @@ FeatureState ShapeController::getState( const OUString& rCommand )
             case ChartCommandID::ShapeTransformDialog:
             case ChartCommandID::ShapeObjectTitleDescription:
             case ChartCommandID::ShapeRenameObject:
+            case ChartCommandID::ShapeFontDialog:
+            case ChartCommandID::ShapeParagraphDialog:
                 {
                     aReturn.bEnabled = bWritable;
                     aReturn.aState <<= false;
@@ -113,13 +115,6 @@ FeatureState ShapeController::getState( const OUString& rCommand )
                 {
 
                     aReturn.bEnabled = ( bWritable && isBackwardPossible() );
-                    aReturn.aState <<= false;
-                }
-                break;
-            case ChartCommandID::ShapeFontDialog:
-            case ChartCommandID::ShapeParagraphDialog:
-                {
-                    aReturn.bEnabled = bWritable;
                     aReturn.aState <<= false;
                 }
                 break;
@@ -201,24 +196,23 @@ void ShapeController::execute( const OUString& rCommand, const Sequence< beans::
 
 void ShapeController::describeSupportedFeatures()
 {
-    implDescribeSupportedFeature( ".uno:FormatLine",                ChartCommandID::ShapeFormatLine,                 CommandGroup::FORMAT );
-    implDescribeSupportedFeature( ".uno:FormatArea",                ChartCommandID::ShapeFormatArea,                 CommandGroup::FORMAT );
-    implDescribeSupportedFeature( ".uno:TextAttributes",            ChartCommandID::ShapeTextAttributes,             CommandGroup::FORMAT );
-    implDescribeSupportedFeature( ".uno:TransformDialog",           ChartCommandID::ShapeTransformDialog,            CommandGroup::FORMAT );
-    implDescribeSupportedFeature( ".uno:ObjectTitleDescription",    ChartCommandID::ShapeObjectTitleDescription,    CommandGroup::FORMAT );
-    implDescribeSupportedFeature( ".uno:RenameObject",              ChartCommandID::ShapeRenameObject,               CommandGroup::FORMAT );
-    implDescribeSupportedFeature( ".uno:BringToFront",              ChartCommandID::ShapeBringToFront,              CommandGroup::FORMAT );
-    implDescribeSupportedFeature( ".uno:Forward",                   ChartCommandID::ShapeForward,                     CommandGroup::FORMAT );
-    implDescribeSupportedFeature( ".uno:Backward",                  ChartCommandID::ShapeBackward,                    CommandGroup::FORMAT );
-    implDescribeSupportedFeature( ".uno:SendToBack",                ChartCommandID::ShapeSendToBack,                CommandGroup::FORMAT );
-    implDescribeSupportedFeature( ".uno:FontDialog",                ChartCommandID::ShapeFontDialog,                 CommandGroup::EDIT );
-    implDescribeSupportedFeature( ".uno:ParagraphDialog",           ChartCommandID::ShapeParagraphDialog,            CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:FormatLine"_ustr,             ChartCommandID::ShapeFormatLine,             CommandGroup::FORMAT );
+    implDescribeSupportedFeature( u".uno:FormatArea"_ustr,             ChartCommandID::ShapeFormatArea,             CommandGroup::FORMAT );
+    implDescribeSupportedFeature( u".uno:TextAttributes"_ustr,         ChartCommandID::ShapeTextAttributes,         CommandGroup::FORMAT );
+    implDescribeSupportedFeature( u".uno:TransformDialog"_ustr,        ChartCommandID::ShapeTransformDialog,        CommandGroup::FORMAT );
+    implDescribeSupportedFeature( u".uno:ObjectTitleDescription"_ustr, ChartCommandID::ShapeObjectTitleDescription, CommandGroup::FORMAT );
+    implDescribeSupportedFeature( u".uno:RenameObject"_ustr,           ChartCommandID::ShapeRenameObject,           CommandGroup::FORMAT );
+    implDescribeSupportedFeature( u".uno:BringToFront"_ustr,           ChartCommandID::ShapeBringToFront,           CommandGroup::FORMAT );
+    implDescribeSupportedFeature( u".uno:Forward"_ustr,                ChartCommandID::ShapeForward,                CommandGroup::FORMAT );
+    implDescribeSupportedFeature( u".uno:Backward"_ustr,               ChartCommandID::ShapeBackward,               CommandGroup::FORMAT );
+    implDescribeSupportedFeature( u".uno:SendToBack"_ustr,             ChartCommandID::ShapeSendToBack,             CommandGroup::FORMAT );
+    implDescribeSupportedFeature( u".uno:FontDialog"_ustr,             ChartCommandID::ShapeFontDialog,             CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:ParagraphDialog"_ustr,        ChartCommandID::ShapeParagraphDialog,        CommandGroup::EDIT );
 }
 
 IMPL_LINK( ShapeController, CheckNameHdl, AbstractSvxObjectNameDialog&, rDialog, bool )
 {
-    OUString aName;
-    rDialog.GetName( aName );
+    OUString aName = rDialog.GetName();
 
     if ( !aName.isEmpty() )
     {
@@ -245,7 +239,7 @@ void ShapeController::executeDispatch_FormatLine()
 
     SdrObject* pSelectedObj = pDrawViewWrapper->getSelectedObject();
     SfxItemSet aAttr( pDrawViewWrapper->GetDefaultAttr() );
-    bool bHasMarked = pDrawViewWrapper->AreObjectsMarked();
+    bool bHasMarked = pDrawViewWrapper->GetMarkedObjectList().GetMarkCount() != 0;
     if ( bHasMarked )
     {
         pDrawViewWrapper->MergeAttrFromMarked( aAttr, false );
@@ -281,7 +275,7 @@ void ShapeController::executeDispatch_FormatArea()
         return;
 
     SfxItemSet aAttr( pDrawViewWrapper->GetDefaultAttr() );
-    bool bHasMarked = pDrawViewWrapper->AreObjectsMarked();
+    bool bHasMarked = pDrawViewWrapper->GetMarkedObjectList().GetMarkCount() != 0;
     if ( bHasMarked )
     {
         pDrawViewWrapper->MergeAttrFromMarked( aAttr, false );
@@ -315,26 +309,32 @@ void ShapeController::executeDispatch_TextAttributes()
         return;
 
     SfxItemSet aAttr( pDrawViewWrapper->GetDefaultAttr() );
-    bool bHasMarked = pDrawViewWrapper->AreObjectsMarked();
+    bool bHasMarked = pDrawViewWrapper->GetMarkedObjectList().GetMarkCount() != 0;
     if ( bHasMarked )
     {
         pDrawViewWrapper->MergeAttrFromMarked( aAttr, false );
     }
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-    ScopedVclPtr< SfxAbstractTabDialog > pDlg(
+    VclPtr< SfxAbstractTabDialog > pDlg(
         pFact->CreateTextTabDialog(pChartWindow, &aAttr, pDrawViewWrapper));
-    if ( pDlg->Execute() == RET_OK )
-    {
-        const SfxItemSet* pOutAttr = pDlg->GetOutputItemSet();
-        if ( bHasMarked )
+    pDlg->StartExecuteAsync(
+        [pDlg, bHasMarked, pDrawViewWrapper] (sal_Int32 nResult)->void
         {
-            pDrawViewWrapper->SetAttributes( *pOutAttr );
+            if ( RET_OK == nResult )
+            {
+                const SfxItemSet* pOutAttr = pDlg->GetOutputItemSet();
+                if ( bHasMarked )
+                {
+                    pDrawViewWrapper->SetAttributes( *pOutAttr );
+                }
+                else
+                {
+                    pDrawViewWrapper->SetDefaultAttr( *pOutAttr, false );
+                }
+            }
+            pDlg->disposeOnce();
         }
-        else
-        {
-            pDrawViewWrapper->SetDefaultAttr( *pOutAttr, false );
-        }
-    }
+    );
 }
 
 void ShapeController::executeDispatch_TransformDialog()
@@ -359,8 +359,7 @@ void ShapeController::executeDispatch_TransformDialog()
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
         ScopedVclPtr< SfxAbstractTabDialog > pDlg(
             pFact->CreateCaptionDialog(pChartWindow, pDrawViewWrapper));
-        const WhichRangesContainer& pRange = pDlg->GetInputRanges( *aAttr.GetPool() );
-        SfxItemSet aCombAttr( *aAttr.GetPool(), pRange );
+        SfxItemSet aCombAttr(*aAttr.GetPool(), pDlg->GetInputRanges(*aAttr.GetPool()));
         aCombAttr.Put( aAttr );
         aCombAttr.Put( aGeoAttr );
         pDlg->SetInputSet( &aCombAttr );
@@ -392,7 +391,7 @@ void ShapeController::executeDispatch_ObjectTitleDescription()
         return;
 
     DrawViewWrapper* pDrawViewWrapper = m_pChartController->GetDrawViewWrapper();
-    if ( !(pDrawViewWrapper && pDrawViewWrapper->GetMarkedObjectCount() == 1) )
+    if ( !(pDrawViewWrapper && pDrawViewWrapper->GetMarkedObjectList().GetMarkCount() == 1) )
         return;
 
     SdrObject* pSelectedObj = pDrawViewWrapper->getSelectedObject();
@@ -404,17 +403,20 @@ void ShapeController::executeDispatch_ObjectTitleDescription()
     bool isDecorative(pSelectedObj->IsDecorative());
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
     weld::Window* pChartWindow(m_pChartController->GetChartFrame());
-    ScopedVclPtr< AbstractSvxObjectTitleDescDialog > pDlg(
+    VclPtr< AbstractSvxObjectTitleDescDialog > pDlg(
         pFact->CreateSvxObjectTitleDescDialog(pChartWindow, aTitle, aDescription, isDecorative));
-    if ( pDlg->Execute() == RET_OK )
-    {
-        pDlg->GetTitle( aTitle );
-        pDlg->GetDescription( aDescription );
-        pDlg->IsDecorative(isDecorative);
-        pSelectedObj->SetTitle( aTitle );
-        pSelectedObj->SetDescription( aDescription );
-        pSelectedObj->SetDecorative(isDecorative);
-    }
+    pDlg->StartExecuteAsync(
+        [pDlg, pSelectedObj] (sal_Int32 nResult)->void
+        {
+            if (nResult == RET_OK)
+            {
+                pSelectedObj->SetTitle( pDlg->GetTitle() );
+                pSelectedObj->SetDescription( pDlg->GetDescription() );
+                pSelectedObj->SetDecorative(pDlg->IsDecorative());
+            }
+            pDlg->disposeOnce();
+        }
+    );
 }
 
 void ShapeController::executeDispatch_RenameObject()
@@ -424,27 +426,32 @@ void ShapeController::executeDispatch_RenameObject()
         return;
 
     DrawViewWrapper* pDrawViewWrapper = m_pChartController->GetDrawViewWrapper();
-    if ( !(pDrawViewWrapper && pDrawViewWrapper->GetMarkedObjectCount() == 1) )
+    if ( !(pDrawViewWrapper && pDrawViewWrapper->GetMarkedObjectList().GetMarkCount() == 1) )
         return;
 
     SdrObject* pSelectedObj = pDrawViewWrapper->getSelectedObject();
     if ( !pSelectedObj )
         return;
 
-    OUString aName = pSelectedObj->GetName();
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
     weld::Window* pChartWindow(m_pChartController->GetChartFrame());
-    ScopedVclPtr< AbstractSvxObjectNameDialog > pDlg(
-        pFact->CreateSvxObjectNameDialog(pChartWindow, aName));
+    VclPtr< AbstractSvxObjectNameDialog > pDlg(
+        pFact->CreateSvxObjectNameDialog(pChartWindow, pSelectedObj->GetName()));
     pDlg->SetCheckNameHdl( LINK( this, ShapeController, CheckNameHdl ) );
-    if ( pDlg->Execute() == RET_OK )
-    {
-        pDlg->GetName(aName);
-        if (pSelectedObj->GetName() == aName)
+    pDlg->StartExecuteAsync(
+        [pDlg, pSelectedObj] (sal_Int32 nResult)->void
         {
-            pSelectedObj->SetName( aName );
+            if (nResult == RET_OK)
+            {
+                OUString aName = pDlg->GetName();
+                if (pSelectedObj->GetName() != aName)
+                {
+                    pSelectedObj->SetName( aName );
+                }
+            }
+            pDlg->disposeOnce();
         }
-    }
+    );
 }
 
 void ShapeController::executeDispatch_ChangeZOrder( ChartCommandID nId )
@@ -572,7 +579,7 @@ SdrObject* ShapeController::getFirstAdditionalShape()
                 {
                     if ( xShape.is() && xShape != xChartRoot )
                     {
-                        xFirstShape = xShape;
+                        xFirstShape = std::move(xShape);
                         break;
                     }
                 }
@@ -611,7 +618,7 @@ SdrObject* ShapeController::getLastAdditionalShape()
                 {
                     if ( xShape.is() && xShape != xChartRoot )
                     {
-                        xLastShape = xShape;
+                        xLastShape = std::move(xShape);
                         break;
                     }
                 }

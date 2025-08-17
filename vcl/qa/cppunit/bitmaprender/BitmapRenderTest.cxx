@@ -45,6 +45,7 @@ public:
     void testDrawAlphaBitmapEx();
     void testAlphaVirtualDevice();
     void testTdf116888();
+    void testAlphaErase();
 
     CPPUNIT_TEST_SUITE(BitmapRenderTest);
     CPPUNIT_TEST(testTdf104141);
@@ -52,12 +53,16 @@ public:
     CPPUNIT_TEST(testDrawAlphaBitmapEx);
     CPPUNIT_TEST(testAlphaVirtualDevice);
     CPPUNIT_TEST(testTdf116888);
+    CPPUNIT_TEST(testAlphaErase);
 
     CPPUNIT_TEST_SUITE_END();
 };
 
 void BitmapRenderTest::testTdf104141()
 {
+    // Noting, for people who may debug this test, that it is not particularly useful.
+    // The GIF we load is 100% transparent, so we are only actually testing that
+    // drawing 100% transparent image with DrawBitmapEx() does not change the output.
     ScopedVclPtrInstance<VirtualDevice> pVDev;
     pVDev->SetOutputSizePixel(Size(400, 400));
     pVDev->SetBackground(Wallpaper(COL_GREEN));
@@ -140,33 +145,24 @@ void BitmapRenderTest::testDrawAlphaBitmapEx()
     SvFileStream aFileStream(getFullUrl(u"ImageRGBA.png"), StreamMode::READ);
 
     vcl::PngImageReader aPngReader(aFileStream);
-    BitmapEx aBitmapEx;
-    aPngReader.read(aBitmapEx);
+    Bitmap aBitmap;
+    aPngReader.read(aBitmap);
 
-    // Check backend capabilities, if the backend support 32-bit bitmap
-    if (ImplGetSVData()->mpDefInst->supportsBitmap32())
-    {
-        CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N32_BPP, aBitmapEx.GetBitmap().getPixelFormat());
-    }
-    else
-    {
-        CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aBitmapEx.GetBitmap().getPixelFormat());
-        CPPUNIT_ASSERT_EQUAL(true, aBitmapEx.IsAlpha());
-        CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N8_BPP, aBitmapEx.GetAlphaMask().getPixelFormat());
-    }
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N32_BPP, aBitmap.getPixelFormat());
+    CPPUNIT_ASSERT_EQUAL(true, aBitmap.HasAlpha());
 
     // Check the bitmap has pixels we expect
     CPPUNIT_ASSERT_EQUAL(Color(ColorTransparency, 0xFF, 0x00, 0x00, 0x00),
-                         aBitmapEx.GetPixelColor(0, 0));
+                         aBitmap.GetPixelColor(0, 0));
     CPPUNIT_ASSERT_EQUAL(Color(ColorTransparency, 0x00, 0xFF, 0xFF, 0x00),
-                         aBitmapEx.GetPixelColor(1, 1));
+                         aBitmap.GetPixelColor(1, 1));
     CPPUNIT_ASSERT_EQUAL(Color(ColorTransparency, 0x7F, 0x00, 0xFF, 0x00),
-                         aBitmapEx.GetPixelColor(2, 2));
+                         aBitmap.GetPixelColor(2, 2));
 
-    pVDev->DrawBitmapEx(Point(), aBitmapEx);
+    pVDev->DrawBitmapEx(Point(), aBitmap);
 
-    CPPUNIT_ASSERT_EQUAL(Color(0xFF, 0xFF, 0xFF), pVDev->GetPixel(Point(0, 0)));
-    CPPUNIT_ASSERT_EQUAL(Color(0xFF, 0xFF, 0x00), pVDev->GetPixel(Point(1, 1)));
+    CPPUNIT_ASSERT_EQUAL(COL_WHITE, pVDev->GetPixel(Point(0, 0)));
+    CPPUNIT_ASSERT_EQUAL(COL_YELLOW, pVDev->GetPixel(Point(1, 1)));
 
 #if defined(_WIN32) || defined(MACOSX) || defined(IOS)
     // sometimes on Windows we get rounding error in blending so let's ignore this on Windows for now.
@@ -187,15 +183,21 @@ void BitmapRenderTest::testAlphaVirtualDevice()
 
     // Set it up
     pAlphaVirtualDevice->SetOutputSizePixel(Size(4, 4));
+    CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xff, 0xff, 0xff, 0xff),
+                         pAlphaVirtualDevice->GetPixel(Point(1, 1)));
     pAlphaVirtualDevice->SetBackground(Wallpaper(COL_TRANSPARENT));
     pAlphaVirtualDevice->Erase();
+    // the backends use pre-multiplied alpha, so pure transparency does not round-trip properly
+    CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x00, 0x00, 0x00, 0x00),
+                         pAlphaVirtualDevice->GetPixel(Point(1, 1)));
 
     // Get a BitmapEx from the VirDev -> Colors should have alpha
-    BitmapEx aBitmap = pAlphaVirtualDevice->GetBitmapEx(Point(), Size(4, 4));
+    BitmapEx aBitmap(pAlphaVirtualDevice->GetBitmap(Point(), Size(4, 4)));
     CPPUNIT_ASSERT_EQUAL(tools::Long(4), aBitmap.GetSizePixel().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(4), aBitmap.GetSizePixel().Height());
     Color aColor = aBitmap.GetPixelColor(1, 1);
-    CPPUNIT_ASSERT_EQUAL(COL_TRANSPARENT, aColor);
+    // the backends use pre-multiplied alpha, so pure transparency does not round-trip properly
+    CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x00, 0x00, 0x00, 0x00), aColor);
 
     // Draw an opaque pixel to the VirDev
     pAlphaVirtualDevice->DrawPixel(Point(1, 1), Color(0x0022ff55));
@@ -209,7 +211,7 @@ void BitmapRenderTest::testAlphaVirtualDevice()
 #endif
 
     // Read back the BitmapEx and check the opaque pixel
-    aBitmap = pAlphaVirtualDevice->GetBitmapEx(Point(), Size(4, 4));
+    aBitmap = pAlphaVirtualDevice->GetBitmap(Point(), Size(4, 4));
     CPPUNIT_ASSERT_EQUAL(tools::Long(4), aBitmap.GetSizePixel().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(4), aBitmap.GetSizePixel().Height());
 
@@ -232,7 +234,7 @@ void BitmapRenderTest::testAlphaVirtualDevice()
 #endif
 
     // Read back the BitmapEx and check the semi-transparent pixel
-    aBitmap = pAlphaVirtualDevice->GetBitmapEx(Point(), Size(4, 4));
+    aBitmap = pAlphaVirtualDevice->GetBitmap(Point(), Size(4, 4));
     CPPUNIT_ASSERT_EQUAL(tools::Long(4), aBitmap.GetSizePixel().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(4), aBitmap.GetSizePixel().Height());
 
@@ -277,6 +279,14 @@ void BitmapRenderTest::testTdf116888()
     CPPUNIT_ASSERT_EQUAL(white, pAccess->GetColor(pAccess->Height() - 1, 0));
     CPPUNIT_ASSERT_EQUAL(BitmapColor(COL_BLACK),
                          pAccess->GetColor(pAccess->Height() - 1, pAccess->Width() - 1));
+}
+
+void BitmapRenderTest::testAlphaErase()
+{
+    // verify that SetOutputSizePixel correctly produces a transparent background
+    ScopedVclPtrInstance<VirtualDevice> xDev(DeviceFormat::WITH_ALPHA);
+    xDev->SetOutputSizePixel(Size(10, 10), /*bErase*/ true, /*bAlphaMaskTransparent*/ true);
+    CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x00, 0x00, 0x00, 0x00), xDev->GetPixel(Point(0, 0)));
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(BitmapRenderTest);

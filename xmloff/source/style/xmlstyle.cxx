@@ -21,18 +21,19 @@
 
 #include <sal/config.h>
 
+#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/style/XAutoStylesSupplier.hpp>
 #include <com/sun/star/style/XAutoStyleFamily.hpp>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include <PageMasterPropMapper.hxx>
+
+#include <comphelper/diagnose_ex.hxx>
 #include <sal/log.hxx>
 #include <svl/style.hxx>
 #include <utility>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 
@@ -99,8 +100,6 @@ void SvXMLStyleContext::SetAttribute( sal_Int32 nElement,
             maLinked = rValue;
             break;
         case XML_ELEMENT(STYLE, XML_HIDDEN):
-            mbHidden = rValue.toBoolean();
-            break;
         case XML_ELEMENT(LO_EXT, XML_HIDDEN):
             mbHidden = rValue.toBoolean();
             break;
@@ -154,67 +153,42 @@ bool SvXMLStyleContext::IsTransient() const
 }
 
 namespace {
-
-class SvXMLStyleIndex_Impl
+struct StyleIndexCompareByName
 {
-    OUString               sName;
-    XmlStyleFamily         nFamily;
-    // we deliberately don't use a reference here, to avoid creating a ref-count-cycle
-    SvXMLStyleContext*     mpStyle;
-
-public:
-
-    SvXMLStyleIndex_Impl( XmlStyleFamily nFam, OUString aName ) :
-        sName(std::move( aName )),
-        nFamily( nFam ),
-        mpStyle(nullptr)
+    bool operator()(const SvXMLStyleContext* r1, const SvXMLStyleContext* r2) const
     {
-    }
-
-    SvXMLStyleIndex_Impl( const rtl::Reference<SvXMLStyleContext> &rStl ) :
-        sName( rStl->GetName() ),
-        nFamily( rStl->GetFamily() ),
-        mpStyle ( rStl.get() )
-    {
-    }
-
-    const OUString& GetName() const { return sName; }
-    XmlStyleFamily GetFamily() const { return nFamily; }
-    const SvXMLStyleContext *GetStyle() const { return mpStyle; }
-};
-
-struct SvXMLStyleIndexCmp_Impl
-{
-    bool operator()(const SvXMLStyleIndex_Impl& r1, const SvXMLStyleIndex_Impl& r2) const
-    {
-        sal_Int32 nRet;
-
-        if( r1.GetFamily() < r2.GetFamily() )
-            nRet = -1;
-        else if( r1.GetFamily() > r2.GetFamily() )
-            nRet = 1;
-        else
-            nRet = r1.GetName().compareTo( r2.GetName() );
-
-        return nRet < 0;
+        if( r1->GetFamily() < r2->GetFamily() )
+            return true;
+        if( r1->GetFamily() > r2->GetFamily() )
+            return false;
+        return r1->GetName() < r2->GetName();
     }
 };
-
+struct StyleIndexCompareByDisplayName
+{
+    bool operator()(const SvXMLStyleContext* r1, const SvXMLStyleContext* r2) const
+    {
+        if( r1->GetFamily() < r2->GetFamily() )
+            return true;
+        if( r1->GetFamily() > r2->GetFamily() )
+            return false;
+        return r1->GetDisplayName() < r2->GetDisplayName();
+    }
+};
 }
 
 class SvXMLStylesContext_Impl
 {
-    typedef std::set<SvXMLStyleIndex_Impl, SvXMLStyleIndexCmp_Impl> IndicesType;
-
     std::vector<rtl::Reference<SvXMLStyleContext>> aStyles;
-    mutable std::unique_ptr<IndicesType> pIndices;
+    // it would be better if we could share one vector for the styles and the index, but some code in calc
+    // is sensitive to having styles re-ordered
+    mutable SvXMLStylesContext::StyleIndex maStylesIndexByName;
+    mutable SvXMLStylesContext::StyleIndex maStylesIndexByDisplayName;
     bool bAutomaticStyle;
 
 #if OSL_DEBUG_LEVEL > 0
     mutable sal_uInt32 m_nIndexCreated;
 #endif
-
-    void FlushIndex() { pIndices.reset(); }
 
 public:
     explicit SvXMLStylesContext_Impl( bool bAuto );
@@ -232,7 +206,16 @@ public:
     const SvXMLStyleContext *FindStyleChildContext( XmlStyleFamily nFamily,
                                                     const OUString& rName,
                                                     bool bCreateIndex ) const;
+
+    std::pair<SvXMLStylesContext::StyleIndex::const_iterator, SvXMLStylesContext::StyleIndex::const_iterator>
+    FindStyleChildContextByDisplayNamePrefix( XmlStyleFamily nFamily,
+                                    const OUString& rPrefix ) const;
+
     bool IsAutomaticStyle() const { return bAutomaticStyle; }
+
+private:
+    void BuildNameIndex() const;
+    void BuildDisplayNameIndex() const;
 };
 
 SvXMLStylesContext_Impl::SvXMLStylesContext_Impl( bool bAuto ) :
@@ -251,12 +234,12 @@ inline void SvXMLStylesContext_Impl::AddStyle( SvXMLStyleContext *pStyle )
 #endif
     aStyles.emplace_back(pStyle );
 
-    FlushIndex();
+    maStylesIndexByName.clear();
+    maStylesIndexByDisplayName.clear();
 }
 
 void SvXMLStylesContext_Impl::dispose()
 {
-    FlushIndex();
     aStyles.clear();
 }
 
@@ -266,23 +249,22 @@ const SvXMLStyleContext *SvXMLStylesContext_Impl::FindStyleChildContext( XmlStyl
 {
     const SvXMLStyleContext *pStyle = nullptr;
 
-    if( !pIndices && bCreateIndex && !aStyles.empty() )
-    {
-        pIndices = std::make_unique<IndicesType>(aStyles.begin(), aStyles.end());
-        SAL_WARN_IF(pIndices->size() != aStyles.size(), "xmloff.style", "Here is a duplicate Style");
-#if OSL_DEBUG_LEVEL > 0
-        SAL_WARN_IF(0 != m_nIndexCreated, "xmloff.style",
-                    "Performance warning: sdbcx::Index created multiple times");
-        ++m_nIndexCreated;
-#endif
-    }
+    if( maStylesIndexByName.empty() && bCreateIndex && !aStyles.empty() )
+        BuildNameIndex();
 
-    if( pIndices )
+    if( !maStylesIndexByName.empty() )
     {
-        SvXMLStyleIndex_Impl aIndex( nFamily, rName );
-        IndicesType::iterator aFind = pIndices->find(aIndex);
-        if( aFind != pIndices->end() )
-            pStyle = aFind->GetStyle();
+        auto it = std::lower_bound(maStylesIndexByName.begin(), maStylesIndexByName.end(), true,
+            [&nFamily, &rName](const SvXMLStyleContext* lhs, bool /*rhs*/)
+            {
+                if (lhs->GetFamily() < nFamily)
+                    return true;
+                if (lhs->GetFamily() > nFamily)
+                    return false;
+                return lhs->GetName() < rName;
+            });
+        if (it != maStylesIndexByName.end() && (*it)->GetFamily() == nFamily && (*it)->GetName() == rName)
+            pStyle = *it;
     }
     else
     {
@@ -297,6 +279,81 @@ const SvXMLStyleContext *SvXMLStylesContext_Impl::FindStyleChildContext( XmlStyl
     return pStyle;
 }
 
+namespace
+{
+struct PrefixProbeLowerBound
+{
+    XmlStyleFamily nFamily;
+    const OUString& rPrefix;
+
+    bool operator()(const SvXMLStyleContext* lhs, bool /*rhs*/)
+    {
+        if (lhs->GetFamily() < nFamily)
+            return true;
+        if (lhs->GetFamily() > nFamily)
+            return false;
+        return lhs->GetDisplayName() < rPrefix;
+    }
+};
+struct PrefixProbeUpperBound
+{
+    XmlStyleFamily nFamily;
+    const OUString& rPrefix;
+
+    bool operator()(bool /*lhs*/, const SvXMLStyleContext* rhs)
+    {
+        if (nFamily < rhs->GetFamily())
+            return true;
+        if (nFamily > rhs->GetFamily())
+            return false;
+        std::u16string_view rhsName = rhs->GetDisplayName();
+        // For the upper bound we want to view the vector's data as if
+        // every element was truncated to the size of the prefix.
+        // Then perform a normal match.
+        rhsName = rhsName.substr(0, rPrefix.getLength());
+        // compare UP TO the length of the prefix and no farther
+        if (int cmp = rPrefix.compareTo(rhsName))
+            return cmp < 0;
+        // The strings are equal to the length of the prefix so
+        // behave as if they are equal. That means s1 < s2 == false
+        return false;
+    }
+};
+}
+
+std::pair<SvXMLStylesContext::StyleIndex::const_iterator, SvXMLStylesContext::StyleIndex::const_iterator>
+SvXMLStylesContext_Impl::FindStyleChildContextByDisplayNamePrefix( XmlStyleFamily nFamily,
+                                                        const OUString& rPrefix ) const
+{
+    if( maStylesIndexByDisplayName.empty() )
+        BuildDisplayNameIndex();
+    auto itStart = std::lower_bound(maStylesIndexByDisplayName.begin(), maStylesIndexByDisplayName.end(), true, PrefixProbeLowerBound{nFamily,rPrefix});
+    auto itEnd = std::upper_bound(itStart, maStylesIndexByDisplayName.end(), true, PrefixProbeUpperBound{nFamily,rPrefix});
+    return {itStart, itEnd};
+}
+
+void SvXMLStylesContext_Impl::BuildNameIndex() const
+{
+    maStylesIndexByName.reserve(aStyles.size());
+
+    for (const auto & i : aStyles)
+        maStylesIndexByName.push_back(i.get());
+    std::sort(maStylesIndexByName.begin(), maStylesIndexByName.end(), StyleIndexCompareByName());
+
+#if OSL_DEBUG_LEVEL > 0
+    SAL_WARN_IF(0 != m_nIndexCreated, "xmloff.style",
+                "Performance warning: sdbcx::Index created multiple times");
+    ++m_nIndexCreated;
+#endif
+}
+
+void SvXMLStylesContext_Impl::BuildDisplayNameIndex() const
+{
+    maStylesIndexByDisplayName.reserve(aStyles.size());
+    for (const auto & i : aStyles)
+        maStylesIndexByDisplayName.push_back(i.get());
+    std::sort(maStylesIndexByDisplayName.begin(), maStylesIndexByDisplayName.end(), StyleIndexCompareByDisplayName());
+}
 
 sal_uInt32 SvXMLStylesContext::GetStyleCount() const
 {
@@ -519,87 +576,70 @@ XmlStyleFamily SvXMLStylesContext::GetFamily( std::u16string_view rValue )
     return nFamily;
 }
 
-rtl::Reference < SvXMLImportPropertyMapper > SvXMLStylesContext::GetImportPropertyMapper(
+SvXMLImportPropertyMapper* SvXMLStylesContext::GetImportPropertyMapper(
                         XmlStyleFamily nFamily ) const
 {
-    rtl::Reference < SvXMLImportPropertyMapper > xMapper;
+    SvXMLImportPropertyMapper* pMapper = nullptr;
 
+    SvXMLStylesContext * pThis = const_cast<SvXMLStylesContext *>(this);
     switch( nFamily )
     {
     case XmlStyleFamily::TEXT_PARAGRAPH:
-        if( !mxParaImpPropMapper.is() )
-        {
-            SvXMLStylesContext * pThis = const_cast<SvXMLStylesContext *>(this);
-            pThis->mxParaImpPropMapper =
-                pThis->GetImport().GetTextImport()
-                     ->GetParaImportPropertySetMapper();
-        }
-        xMapper = mxParaImpPropMapper;
+        pMapper =
+            pThis->GetImport().GetTextImport()
+                 ->GetParaImportPropertySetMapper();
         break;
     case XmlStyleFamily::TEXT_TEXT:
-        if( !mxTextImpPropMapper.is() )
-        {
-            SvXMLStylesContext * pThis = const_cast<SvXMLStylesContext *>(this);
-            pThis->mxTextImpPropMapper =
-                pThis->GetImport().GetTextImport()
-                     ->GetTextImportPropertySetMapper();
-        }
-        xMapper = mxTextImpPropMapper;
+        pMapper =
+            pThis->GetImport().GetTextImport()
+                 ->GetTextImportPropertySetMapper();
         break;
 
     case XmlStyleFamily::TEXT_SECTION:
-        // don't cache section mapper, as it's rarely used
         // *sigh*, cast to non-const, because this is a const method,
         // but SvXMLImport::GetTextImport() isn't.
-        xMapper = const_cast<SvXMLStylesContext*>(this)->GetImport().GetTextImport()->
-            GetSectionImportPropertySetMapper();
+        pMapper = pThis->GetImport().GetTextImport()->
+                GetSectionImportPropertySetMapper();
         break;
 
     case XmlStyleFamily::TEXT_RUBY:
-        // don't cache section mapper, as it's rarely used
         // *sigh*, cast to non-const, because this is a const method,
         // but SvXMLImport::GetTextImport() isn't.
-        xMapper = const_cast<SvXMLStylesContext*>(this)->GetImport().GetTextImport()->
+        pMapper = pThis->GetImport().GetTextImport()->
             GetRubyImportPropertySetMapper();
         break;
 
     case XmlStyleFamily::SD_GRAPHICS_ID:
     case XmlStyleFamily::SD_PRESENTATION_ID:
     case XmlStyleFamily::SD_POOL_ID:
-        if(!mxShapeImpPropMapper.is())
-        {
-            rtl::Reference< XMLShapeImportHelper > aImpHelper = const_cast<SvXMLImport&>(GetImport()).GetShapeImport();
-            const_cast<SvXMLStylesContext*>(this)->mxShapeImpPropMapper =
-                aImpHelper->GetPropertySetMapper();
-        }
-        xMapper = mxShapeImpPropMapper;
+        pMapper = const_cast<SvXMLImport&>(GetImport()).GetShapeImport()->GetPropertySetMapper();
         break;
 #if !ENABLE_WASM_STRIP_CHART
     // WASM_CHART change
     case XmlStyleFamily::SCH_CHART_ID:
-        if( ! mxChartImpPropMapper.is() )
+        if( ! mxChartImpPropMapper )
         {
             XMLPropertySetMapper *const pPropMapper = new XMLChartPropertySetMapper(nullptr);
-            mxChartImpPropMapper = new XMLChartImportPropertyMapper( pPropMapper, GetImport() );
+            mxChartImpPropMapper = std::make_unique<XMLChartImportPropertyMapper>( pPropMapper, GetImport() );
         }
-        xMapper = mxChartImpPropMapper;
+        pMapper = mxChartImpPropMapper.get();
         break;
 #endif
     case XmlStyleFamily::PAGE_MASTER:
-        if( ! mxPageImpPropMapper.is() )
+        if( ! mxPageImpPropMapper )
         {
             XMLPropertySetMapper *pPropMapper =
                 new XMLPageMasterPropSetMapper();
             mxPageImpPropMapper =
-                new PageMasterImportPropertyMapper( pPropMapper,
+                std::make_unique<PageMasterImportPropertyMapper>( pPropMapper,
                                     const_cast<SvXMLStylesContext*>(this)->GetImport() );
         }
-        xMapper = mxPageImpPropMapper;
+        pMapper = mxPageImpPropMapper.get();
         break;
     default: break;
     }
 
-    return xMapper;
+    return pMapper;
 }
 
 Reference < XAutoStyleFamily > SvXMLStylesContext::GetAutoStyles( XmlStyleFamily nFamily ) const
@@ -685,6 +725,26 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > SvXMLStylesContext::cr
 {
     if (nElement ==  XML_ELEMENT(LO_EXT, XML_THEME))
     {
+        if (auto xImportInfo = GetImport().getImportInfo())
+        {
+            try
+            {
+                if (auto xPropertySetInfo = xImportInfo->getPropertySetInfo())
+                {
+                    if (xPropertySetInfo->hasPropertyByName(u"IsInPaste"_ustr))
+                    {
+                        css::uno::Any value = xImportInfo->getPropertyValue(u"IsInPaste"_ustr);
+                        if (bool b; (value >>= b) && b)
+                            return nullptr; // do not import themes in paste mode
+                    }
+                }
+            }
+            catch (const css::uno::Exception&)
+            {
+                DBG_UNHANDLED_EXCEPTION("xmloff");
+            }
+        }
+
         uno::Reference<uno::XInterface> xObject(GetImport().GetModel(), uno::UNO_QUERY);
         uno::Reference<drawing::XDrawPageSupplier> const xDrawPageSupplier(GetImport().GetModel(), uno::UNO_QUERY);
         if (xDrawPageSupplier.is())
@@ -790,6 +850,14 @@ const SvXMLStyleContext *SvXMLStylesContext::FindStyleChildContext(
                                   bool bCreateIndex ) const
 {
     return mpImpl->FindStyleChildContext( nFamily, rName, bCreateIndex );
+}
+
+std::pair<SvXMLStylesContext::StyleIndex::const_iterator, SvXMLStylesContext::StyleIndex::const_iterator>
+SvXMLStylesContext::FindStyleChildContextByDisplayNamePrefix(
+                                  XmlStyleFamily nFamily,
+                                  const OUString& rNamePrefix ) const
+{
+    return mpImpl->FindStyleChildContextByDisplayNamePrefix( nFamily, rNamePrefix );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

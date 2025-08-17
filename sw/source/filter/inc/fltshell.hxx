@@ -32,12 +32,7 @@
 #include <memory>
 
 class SwTOXBase;
-class SwField;
-class SwFieldType;
-class Graphic;
-class SwTableBox;
 class SwDoc;
-class SwPaM;
 
 inline bool SwFltGetFlag(sal_uLong nFieldFlags, int no)
     { return (nFieldFlags & (sal_uLong(1) << no)) != 0; }
@@ -99,8 +94,8 @@ public:
 
     enum class RegionMode { NoCheck = 0, CheckNodes = 1<<0, CheckFieldmark = 1<<1 };
     SW_DLLPUBLIC void SetEndPos(  const SwPosition & rEndPos);
-    SW_DLLPUBLIC bool MakeRegion(SwDoc& rDoc, SwPaM& rRegion, RegionMode eCheck) const;
-    SW_DLLPUBLIC static bool MakeRegion(SwDoc& rDoc, SwPaM& rRegion,
+    SW_DLLPUBLIC bool MakeRegion(SwPaM& rRegion, RegionMode eCheck) const;
+    SW_DLLPUBLIC static bool MakeRegion(SwPaM& rRegion,
         RegionMode eCheck, const SwFltPosition &rMkPos, const SwFltPosition &rPtPos,
         sal_uInt16 nWhich=0);
 };
@@ -169,6 +164,7 @@ class SW_DLLPUBLIC SwFltAnchor final : public SfxPoolItem
     std::unique_ptr<SwFltAnchorListener> m_pListener;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFltAnchor)
     SwFltAnchor(SwFrameFormat* pFlyFormat);
     SwFltAnchor(const SwFltAnchor&);
     virtual ~SwFltAnchor() override;
@@ -197,10 +193,12 @@ public:
     RedlineType     m_eType;
     std::size_t     m_nAutorNo;
 
+    DECLARE_ITEM_TYPE_FUNCTION(SwFltRedline)
     SwFltRedline(RedlineType   eType_,
                  std::size_t     nAutorNo_,
                  const DateTime& rStamp_)
-        : SfxPoolItem(RES_FLTR_REDLINE), m_aStamp(rStamp_),
+        : SfxPoolItem(RES_FLTR_REDLINE)
+        , m_aStamp(rStamp_),
         m_eType(eType_),
         m_nAutorNo(nAutorNo_)
     {
@@ -221,6 +219,7 @@ private:
     bool mbIsTOCBookmark;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFltBookmark)
     SwFltBookmark( const OUString& rNa,
                    OUString aVa,
                    tools::Long nHand,
@@ -246,6 +245,7 @@ class SW_DLLPUBLIC SwFltRDFMark final : public SfxPoolItem
     std::vector< std::pair<OUString, OUString> > m_aAttributes;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFltRDFMark)
     SwFltRDFMark();
 
     virtual bool operator==(const SfxPoolItem&) const override;
@@ -263,6 +263,7 @@ class SW_DLLPUBLIC SwFltTOX final : public SfxPoolItem
     bool m_bHadBreakItem; // there was a break item BEFORE insertion of the TOX
     bool m_bHadPageDescItem;
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFltTOX)
     SwFltTOX(std::shared_ptr<SwTOXBase> xBase);
     // "purely virtual methods" of SfxPoolItem
     virtual bool operator==(const SfxPoolItem&) const override;

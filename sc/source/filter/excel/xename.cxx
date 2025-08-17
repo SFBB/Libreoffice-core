@@ -36,6 +36,7 @@
 #include <oox/export/utils.hxx>
 #include <oox/token/tokens.hxx>
 #include <com/sun/star/sheet/NamedRangeFlag.hdl>
+#include <xihelper.hxx>
 
 using namespace ::oox;
 using namespace ::com::sun::star;
@@ -161,7 +162,7 @@ private:
      *
      * @return excel's name index.
      */
-    sal_uInt16          FindNamedExp( SCTAB nTab, OUString sName );
+    sal_uInt16          FindNamedExp( SCTAB nTab, const OUString& sName );
 
     /** Returns the index of an existing built-in NAME record with the passed definition, otherwise 0. */
     sal_uInt16          FindBuiltInNameIdx( const OUString& rName,
@@ -321,12 +322,17 @@ OUString XclExpName::GetWithDefaultRangeSeparator( const OUString& rSymbol ) con
             }
         }
     }
+    if (rSymbol.isEmpty())
+        return u"#NAME?"_ustr;
     return rSymbol;
 }
 
 void XclExpName::SaveXml( XclExpXmlStream& rStrm )
 {
     sax_fastparser::FSHelperPtr& rWorkbook = rStrm.GetCurrentStream();
+    // Sheets where IsExportTab is not true are not exported, so use mnXclTab
+    // (1 based) to get the sheetid as of the exported document's perspective.
+    SCTAB nXlsxTab = mnXclTab - 1;
     rWorkbook->startElement( XML_definedName,
             // OOXTODO: XML_comment, "",
             // OOXTODO: XML_customMenu, "",
@@ -335,7 +341,7 @@ void XclExpName::SaveXml( XclExpXmlStream& rStrm )
             // OOXTODO: XML_functionGroupId, "",
             // OOXTODO: XML_help, "",
             XML_hidden, ToPsz( ::get_flag( mnFlags, EXC_NAME_HIDDEN ) ),
-            XML_localSheetId, sax_fastparser::UseIf(OString::number( mnScTab ), mnScTab != SCTAB_GLOBAL),
+            XML_localSheetId, sax_fastparser::UseIf(OString::number(nXlsxTab), mnScTab != SCTAB_GLOBAL),
             XML_name, maOrigName.toUtf8(),
             // OOXTODO: XML_publishToServer, "",
             // OOXTODO: XML_shortcutKey, "",
@@ -547,7 +553,7 @@ void XclExpNameManagerImpl::SaveXml( XclExpXmlStream& rStrm )
 
 // private --------------------------------------------------------------------
 
-sal_uInt16 XclExpNameManagerImpl::FindNamedExp( SCTAB nTab, OUString sName )
+sal_uInt16 XclExpNameManagerImpl::FindNamedExp( SCTAB nTab, const OUString& sName )
 {
     NamedExpMap::key_type key(nTab, sName);
     NamedExpMap::const_iterator itr = maNamedExpMap.find(key);
@@ -713,10 +719,17 @@ void XclExpNameManagerImpl::CreateBuiltInNames()
                     aRange.aStart.SetTab( nScTab );
                     aRange.aEnd.SetTab( nScTab );
                     aRange.PutInOrder();
-                    aRangeList.push_back( aRange );
+
+                    // tdf#148170 - convert print range to an excel cell range
+                    XclRange aXclRange(ScAddress::UNINITIALIZED);
+                    // create no warning if ranges are shrunken
+                    if (GetAddressConverter().ConvertRange(aXclRange, aRange, false))
+                    {
+                        XclImpAddressConverter::FillRange(aXclRange, aRange);
+                        aRangeList.push_back(aRange);
+                    }
                 }
-                // create the NAME record (do not warn if ranges are shrunken)
-                GetAddressConverter().ValidateRangeList( aRangeList, false );
+                // create the NAME record
                 if( !aRangeList.empty() )
                     GetNameManager().InsertBuiltInName( EXC_BUILTIN_PRINTAREA, aRangeList );
             }

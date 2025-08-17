@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_OSX_SALFRAME_H
-#define INCLUDED_VCL_INC_OSX_SALFRAME_H
+#pragma once
 
 #include <premac.h>
 #include <IOKit/pwr_mgt/IOPMLib.h>
@@ -58,9 +57,7 @@ public:
     int                             mnMinHeight;            // min. client height in pixels
     int                             mnMaxWidth;             // max. client width in pixels
     int                             mnMaxHeight;            // max. client height in pixels
-    NSRect                          maFullScreenRect;       // old window size when in FullScreen
-    bool                            mbGraphics;             // is Graphics used?
-    bool                            mbFullScreen;           // is Window in FullScreen?
+    bool                            mbGraphicsAcquired;     // is Graphics used?
     bool                            mbShown;
     bool                            mbInitShow;
     bool                            mbPositioned;
@@ -98,7 +95,21 @@ public:
     int                             mnBlinkCursorDelay;
 
     // tdf#155266 force flush after scrolling
-    bool                            mbForceFlush;
+    bool                            mbForceFlushScrolling;
+    // tdf#164428 force flush after drawing a progress bar
+    bool                            mbForceFlushProgressBar;
+
+    // Is window in LibreOffice full screen mode
+    bool                            mbInternalFullScreen;
+    // Window size to restore to when exiting LibreOffice full screen mode
+    NSRect                          maInternalFullScreenRestoreRect;
+    // Desired window size when entering exiting LibreOffice full screen mode
+    NSRect                          maInternalFullScreenExpectedRect;
+
+    // Is window in native full screen mode
+    bool                            mbNativeFullScreen;
+    // Window size to restore to when exiting LibreOffice full screen mode
+    NSRect                          maNativeFullScreenRestoreRect;
 
 public:
     /** Constructor
@@ -145,7 +156,7 @@ public:
     virtual LanguageType        GetInputLanguage() override;
     virtual void                UpdateSettings( AllSettings& rSettings ) override;
     virtual void                Beep() override;
-    virtual const SystemEnvData*    GetSystemData() const override;
+    virtual const SystemEnvData&  GetSystemData() const override;
     virtual SalPointerState     GetPointerState() override;
     virtual KeyIndicatorState   GetIndicatorState() override;
     virtual void                SimulateKeyPress( sal_uInt16 nKeyCode ) override;
@@ -215,6 +226,10 @@ private: // methods
 
     void doResetClipRegion();
 
+    bool doFlush();
+
+    void doUpdateSettings( AllSettings& rSettings );
+
 private: // data
     static AquaSalFrame*       s_pCaptureFrame;
 
@@ -227,7 +242,5 @@ inline bool AquaSalFrame::isAlive( const AquaSalFrame* pFrame )
     AquaSalInstance *pInst = GetSalData()->mpInstance;
     return pInst && pInst->isFrameAlive( pFrame );
 }
-
-#endif // INCLUDED_VCL_INC_OSX_SALFRAME_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

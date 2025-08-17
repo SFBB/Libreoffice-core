@@ -64,7 +64,7 @@ ScVbaFormat< Ifc... >::ScVbaFormat( const uno::Reference< XHelperInterface >& xP
                                     uno::Reference< frame::XModel > xModel,
                                     bool bCheckAmbiguoity )
     : ScVbaFormat_BASE( xParent, xContext ),
-      m_aDefaultLocale( "en", "US", OUString() ),
+      m_aDefaultLocale( u"en"_ustr, u"US"_ustr, OUString() ),
       mxPropertySet(std::move( _xPropertySet )),
       mxModel(std::move( xModel )),
       mbCheckAmbiguoity( bCheckAmbiguoity ),
@@ -135,13 +135,11 @@ ScVbaFormat< Ifc... >::getVerticalAlignment(  )
             switch( aAPIAlignment )
             {
                 case table::CellVertJustify2::BOTTOM:
+                case table::CellVertJustify2::STANDARD:
                     aResult <<= excel::XlVAlign::xlVAlignBottom;
                     break;
                 case table::CellVertJustify2::CENTER:
                     aResult <<= excel::XlVAlign::xlVAlignCenter;
-                    break;
-                case table::CellVertJustify2::STANDARD:
-                    aResult <<= excel::XlVAlign::xlVAlignBottom;
                     break;
                 case table::CellVertJustify2::TOP:
                     aResult <<= excel::XlVAlign::xlVAlignTop;
@@ -171,13 +169,11 @@ ScVbaFormat< Ifc... >::setHorizontalAlignment( const uno::Any& HorizontalAlignme
         switch ( nAlignment )
         {
             case excel::XlHAlign::xlHAlignJustify:
+            case excel::XlHAlign::xlHAlignDistributed:
                 aVal <<= table::CellHoriJustify_BLOCK;
                 break;
             case excel::XlHAlign::xlHAlignCenter:
                 aVal <<= table::CellHoriJustify_CENTER;
-                break;
-            case excel::XlHAlign::xlHAlignDistributed:
-                aVal <<= table::CellHoriJustify_BLOCK;
                 break;
             case excel::XlHAlign::xlHAlignLeft:
                 aVal <<= table::CellHoriJustify_LEFT;
@@ -574,7 +570,7 @@ ScVbaFormat< Ifc... >::getLocked(  )
             {
                 const ScProtectionAttr& rProtAttr = pDataSet->Get(ATTR_PROTECTION);
                 SfxItemState eState = pDataSet->GetItemState(ATTR_PROTECTION);
-                if(eState != SfxItemState::DONTCARE)
+                if(eState != SfxItemState::INVALID)
                     aCellProtection <<= rProtAttr.GetProtection();
             }
             else // fallback to propertyset
@@ -607,7 +603,7 @@ ScVbaFormat< Ifc... >::getFormulaHidden(  )
             {
                 const ScProtectionAttr& rProtAttr = pDataSet->Get(ATTR_PROTECTION);
                 SfxItemState eState = pDataSet->GetItemState(ATTR_PROTECTION);
-                if(eState != SfxItemState::DONTCARE)
+                if(eState != SfxItemState::INVALID)
                     aBoolRet <<= rProtAttr.GetHideFormula();
             }
             else
@@ -805,7 +801,7 @@ ScVbaFormat< Ifc... >::getCurrentDataSet()
 {
     SfxItemSet* pDataSet = excel::ScVbaCellRangeAccess::GetDataSet( getCellRangesBase() );
     if ( !pDataSet )
-        throw uno::RuntimeException("Can't access Itemset for XPropertySet" );
+        throw uno::RuntimeException(u"Can't access Itemset for XPropertySet"_ustr );
     return pDataSet;
 }
 

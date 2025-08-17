@@ -12,8 +12,10 @@ $(eval $(call gb_UnpackedTarball_UnpackedTarball,beanshell))
 $(eval $(call gb_UnpackedTarball_set_tarball,beanshell,$(BSH_TARBALL),,beanshell))
 
 $(eval $(call gb_UnpackedTarball_fix_end_of_line,beanshell,\
-	engine/src/TestBshScriptEngine.java \
+	engine/src/bsh/TestBshScriptEngine.java \
 ))
+
+$(eval $(call gb_UnpackedTarball_set_patchlevel,beanshell,2))
 
 $(eval $(call gb_UnpackedTarball_add_patches,beanshell,\
 	external/beanshell/bsh-2.0b1-src.patch \

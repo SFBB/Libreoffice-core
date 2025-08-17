@@ -34,15 +34,14 @@ import java.util.Map;
 
 public class CommandMetaData extends DBMetaData
 {
-
-    public Map<String, String> FieldTitleSet = new HashMap<String, String>();
-    public String[] m_aAllFieldNames = new String[]
+    protected Map<String, String> FieldTitleSet = new HashMap<String, String>();
+    protected String[] m_aAllFieldNames = new String[]
     {
     };
-    public FieldColumn[] FieldColumns = new FieldColumn[]
+    protected FieldColumn[] FieldColumns = new FieldColumn[]
     {
     };
-    public String[] GroupFieldNames = new String[]
+    private String[] GroupFieldNames = new String[]
     {
     };
     private String[][] SortFieldNames = new String[][]
@@ -54,10 +53,10 @@ public class CommandMetaData extends DBMetaData
     public String[][] AggregateFieldNames = new String[][]
     {
     };
-    public String[] NumericFieldNames = new String[]
+    private String[] NumericFieldNames = new String[]
     {
     };
-    public String[] NonAggregateFieldNames;
+    protected String[] NonAggregateFieldNames;
     private int CommandType;
     private String Command;
     private String sIdentifierQuote = PropertyNames.EMPTY_STRING;
@@ -106,9 +105,24 @@ public class CommandMetaData extends DBMetaData
         }
     }
 
+    public String[] getNumericFieldNames()
+    {
+        return NumericFieldNames;
+    }
+
     public Map<String, String> getFieldTitleSet()
     {
         return FieldTitleSet;
+    }
+
+    public String[] getAllFieldNames()
+    {
+        return m_aAllFieldNames;
+    }
+
+    public String[] getNonAggregateFieldNames()
+    {
+        return NonAggregateFieldNames;
     }
 
     public XPropertySet getColumnObjectByFieldName(String _FieldName, boolean _bgetByDisplayName)
@@ -255,6 +269,16 @@ public class CommandMetaData extends DBMetaData
             }
         }
         throw new com.sun.star.uno.RuntimeException();
+    }
+
+    public FieldColumn[] getFieldColumns()
+    {
+        return FieldColumns;
+    }
+
+    public void setFieldColumns(FieldColumn[] _fieldColumns)
+    {
+        FieldColumns = _fieldColumns;
     }
 
     public boolean getFieldNamesOfCommand(String _commandname, int _commandtype)
@@ -515,8 +539,7 @@ public class CommandMetaData extends DBMetaData
     {
         try
         {
-            xDBMetaData.getCatalogSeparator();
-            sIdentifierQuote = xDBMetaData.getIdentifierQuoteString();
+            sIdentifierQuote = getDBMetaData().getIdentifierQuoteString();
             bCommandComposerAttributesalreadyRetrieved = true;
         }
         catch (SQLException e)

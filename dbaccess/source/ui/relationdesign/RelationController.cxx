@@ -58,16 +58,13 @@ org_openoffice_comp_dbu_ORelationDesign_get_implementation(
 }
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::ui::dialogs;
-using namespace ::com::sun::star::util;
 using namespace ::dbtools;
 using namespace ::dbaui;
 using namespace ::comphelper;
@@ -75,12 +72,12 @@ using namespace ::osl;
 
 OUString SAL_CALL ORelationController::getImplementationName()
 {
-    return "org.openoffice.comp.dbu.ORelationDesign";
+    return u"org.openoffice.comp.dbu.ORelationDesign"_ustr;
 }
 
 Sequence< OUString> SAL_CALL ORelationController::getSupportedServiceNames()
 {
-    return { "com.sun.star.sdb.RelationDesign" };
+    return { u"com.sun.star.sdb.RelationDesign"_ustr };
 }
 
 ORelationController::ORelationController(const Reference< XComponentContext >& _rM)
@@ -159,9 +156,9 @@ void ORelationController::Execute(sal_uInt16 _nId, const Sequence< PropertyValue
     InvalidateFeature(_nId);
 }
 
-void ORelationController::impl_initialize()
+void ORelationController::impl_initialize(const ::comphelper::NamedValueCollection& rArguments)
 {
-    OJoinController::impl_initialize();
+    OJoinController::impl_initialize(rArguments);
 
     if( !getSdbMetaData().supportsRelations() )
     {// check if this database supports relations
@@ -221,8 +218,8 @@ short ORelationController::saveModified()
     short nSaved = RET_YES;
     if(haveDataSource() && isModified())
     {
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(getFrameWeld(), "dbaccess/ui/designsavemodifieddialog.ui"));
-        std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog("DesignSaveModifiedDialog"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(getFrameWeld(), u"dbaccess/ui/designsavemodifieddialog.ui"_ustr));
+        std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog(u"DesignSaveModifiedDialog"_ustr));
         nSaved = xQuery->run();
         if(nSaved == RET_YES)
             Execute(ID_BROWSER_SAVEDOC,Sequence<PropertyValue>());
@@ -233,7 +230,7 @@ short ORelationController::saveModified()
 void ORelationController::describeSupportedFeatures()
 {
     OJoinController::describeSupportedFeatures();
-    implDescribeSupportedFeature( ".uno:DBAddRelation", SID_RELATION_ADD_RELATION, CommandGroup::EDIT );
+    implDescribeSupportedFeature( u".uno:DBAddRelation"_ustr, SID_RELATION_ADD_RELATION, CommandGroup::EDIT );
 }
 
 namespace
@@ -257,7 +254,7 @@ namespace
                         ,const Sequence< OUString>& _aTableList
                         ,const sal_Int32 _nStartIndex
                         ,const sal_Int32 _nEndIndex)
-            :m_aTableData(_xMetaData.is() && _xMetaData->supportsMixedCaseQuotedIdentifiers())
+            :m_aTableData(comphelper::UStringMixLess(_xMetaData.is() && _xMetaData->supportsMixedCaseQuotedIdentifiers()))
             ,m_aTableList(_aTableList)
             ,m_pParent(_pParent)
             ,m_xMetaData(_xMetaData)
@@ -296,10 +293,15 @@ namespace
             try
             {
                 Reference< XResultSet > xResult = m_xMetaData->getImportedKeys(aCatalog, sSchema,sTable);
-                if ( xResult.is() && xResult->next() )
+                if ( xResult.is() )
                 {
-                    ::comphelper::disposeComponent(xResult);
-                    loadTableData(m_xTables->getByName(m_aTableList[i]));
+                    if ( xResult->next() )
+                        loadTableData(m_xTables->getByName(m_aTableList[i]));
+                    Reference<XCloseable> xCloseable(xResult,UNO_QUERY);
+                    if (xCloseable.is())
+                        xCloseable->close();
+                    else
+                        ::comphelper::disposeComponent(xResult);
                 }
             }
             catch( const Exception& )

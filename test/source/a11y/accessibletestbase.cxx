@@ -9,13 +9,13 @@
 
 #include <test/a11y/accessibletestbase.hxx>
 
-#include <string>
-
+#include <com/sun/star/accessibility/AccessibleRelationType.hpp>
+#include <com/sun/star/accessibility/XAccessibleContext.hpp>
+#include <com/sun/star/accessibility/XAccessibleText.hpp>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleAction.hpp>
-#include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/awt/XDialog2.hpp>
 #include <com/sun/star/awt/XExtendedToolkit.hpp>
 #include <com/sun/star/awt/XTopWindow.hpp>
@@ -28,10 +28,13 @@
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
-
+#include <comphelper/OAccessible.hxx>
+#include <rtl/ustrbuf.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/idle.hxx>
 #include <vcl/scheduler.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/window.hxx>
 
 #include <cppuhelper/implbase.hxx>
 
@@ -43,7 +46,7 @@ void test::AccessibleTestBase::setUp()
 {
     test::BootstrapFixture::setUp();
 
-    mxDesktop = frame::Desktop::create(mxComponentContext);
+    mxDesktop = frame::Desktop::create(m_xContext);
 }
 
 void test::AccessibleTestBase::close()
@@ -62,7 +65,8 @@ void test::AccessibleTestBase::load(const rtl::OUString& sURL)
 {
     // make sure there is no open document in case it is called more than once
     close();
-    mxDocument = mxDesktop->loadComponentFromURL(sURL, "_blank", frame::FrameSearchFlag::AUTO, {});
+    mxDocument
+        = mxDesktop->loadComponentFromURL(sURL, u"_blank"_ustr, frame::FrameSearchFlag::AUTO, {});
 
     uno::Reference<frame::XModel> xModel(mxDocument, uno::UNO_QUERY_THROW);
     mxWindow.set(xModel->getCurrentController()->getFrame()->getContainerWindow());
@@ -77,12 +81,11 @@ void test::AccessibleTestBase::loadFromSrc(const rtl::OUString& sSrcPath)
     load(m_directories.getURLFromSrc(sSrcPath));
 }
 
-uno::Reference<accessibility::XAccessibleContext>
-test::AccessibleTestBase::getWindowAccessibleContext()
+rtl::Reference<comphelper::OAccessible> test::AccessibleTestBase::getWindowAccessible()
 {
-    uno::Reference<accessibility::XAccessible> xAccessible(mxWindow, uno::UNO_QUERY_THROW);
-
-    return xAccessible->getAccessibleContext();
+    vcl::Window* pWindow = VCLUnoHelper::GetWindow(mxWindow);
+    assert(pWindow);
+    return pWindow->GetAccessible();
 }
 
 bool test::AccessibleTestBase::isDocumentRole(const sal_Int16 role)
@@ -97,8 +100,12 @@ uno::Reference<accessibility::XAccessibleContext>
 test::AccessibleTestBase::getDocumentAccessibleContext()
 {
     uno::Reference<frame::XModel> xModel(mxDocument, uno::UNO_QUERY_THROW);
-    uno::Reference<accessibility::XAccessible> xAccessible(
-        xModel->getCurrentController()->getFrame()->getComponentWindow(), uno::UNO_QUERY_THROW);
+    uno::Reference<css::awt::XWindow> xComponentWin
+        = xModel->getCurrentController()->getFrame()->getComponentWindow();
+    assert(xComponentWin.is());
+    uno::Reference<accessibility::XAccessible> xAccessible
+        = VCLUnoHelper::GetWindow(xComponentWin)->GetAccessible();
+    assert(xAccessible.is());
 
     return AccessibilityTools::getAccessibleObjectForPredicate(
         xAccessible->getAccessibleContext(),
@@ -109,36 +116,27 @@ test::AccessibleTestBase::getDocumentAccessibleContext()
 }
 
 uno::Reference<accessibility::XAccessibleContext>
-test::AccessibleTestBase::getFirstRelationTargetOfType(
-    const uno::Reference<accessibility::XAccessibleContext>& xContext, sal_Int16 relationType)
+test::AccessibleTestBase::getPreviousFlowingSibling(
+    const uno::Reference<accessibility::XAccessibleContext>& xContext)
 {
-    auto relset = xContext->getAccessibleRelationSet();
-
-    if (relset.is())
-    {
-        for (sal_Int32 i = 0; i < relset->getRelationCount(); ++i)
-        {
-            const auto& rel = relset->getRelation(i);
-            if (rel.RelationType == relationType)
-            {
-                for (auto& target : rel.TargetSet)
-                {
-                    uno::Reference<accessibility::XAccessible> targetAccessible(target,
-                                                                                uno::UNO_QUERY);
-                    if (targetAccessible.is())
-                        return targetAccessible->getAccessibleContext();
-                }
-            }
-        }
-    }
-
-    return nullptr;
+    return getFirstRelationTargetOfType(xContext,
+                                        accessibility::AccessibleRelationType_CONTENT_FLOWS_FROM);
 }
 
+uno::Reference<accessibility::XAccessibleContext> test::AccessibleTestBase::getNextFlowingSibling(
+    const uno::Reference<accessibility::XAccessibleContext>& xContext)
+{
+    return getFirstRelationTargetOfType(xContext,
+                                        accessibility::AccessibleRelationType_CONTENT_FLOWS_TO);
+}
+
+/* Care has to be taken not to walk sideways as the relation is also used
+ * with children of nested containers (possibly as the "natural"/"perceived" flow?). */
 std::deque<uno::Reference<accessibility::XAccessibleContext>>
 test::AccessibleTestBase::getAllChildren(
     const uno::Reference<accessibility::XAccessibleContext>& xContext)
 {
+    /* first, get all "natural" children */
     std::deque<uno::Reference<accessibility::XAccessibleContext>> children;
     auto childCount = xContext->getAccessibleChildCount();
 
@@ -148,7 +146,120 @@ test::AccessibleTestBase::getAllChildren(
         children.push_back(child->getAccessibleContext());
     }
 
+    if (!children.size())
+        return children;
+
+    /* then, try and find flowing siblings at the same levels that are not included in the list */
+    /* first, backwards: */
+    auto child = getPreviousFlowingSibling(children.front());
+    while (child.is() && children.size() < AccessibilityTools::MAX_CHILDREN)
+    {
+        auto childParent = child->getAccessibleParent();
+        if (childParent.is()
+            && AccessibilityTools::equals(xContext, childParent->getAccessibleContext()))
+            children.push_front(child);
+        child = getPreviousFlowingSibling(child);
+    }
+    /* then forward */
+    child = getNextFlowingSibling(children.back());
+    while (child.is() && children.size() < AccessibilityTools::MAX_CHILDREN)
+    {
+        auto childParent = child->getAccessibleParent();
+        if (childParent.is()
+            && AccessibilityTools::equals(xContext, childParent->getAccessibleContext()))
+            children.push_back(child);
+        child = getNextFlowingSibling(child);
+    }
+
     return children;
+}
+
+void test::AccessibleTestBase::collectText(
+    const uno::Reference<accessibility::XAccessibleContext>& xContext, rtl::OUStringBuffer& buffer,
+    bool onlyChildren)
+{
+    const auto roleName = AccessibilityTools::getRoleName(xContext->getAccessibleRole());
+
+    std::cout << "collecting text for child of role " << roleName << "..." << std::endl;
+
+    if (!onlyChildren)
+    {
+        const struct
+        {
+            std::u16string_view name;
+            rtl::OUString value;
+        } attrs[] = {
+            { u"name", xContext->getAccessibleName() },
+            { u"description", xContext->getAccessibleDescription() },
+        };
+
+        buffer.append('<');
+        buffer.append(roleName);
+        for (auto& attr : attrs)
+        {
+            if (attr.value.getLength() == 0)
+                continue;
+            buffer.append(' ');
+            buffer.append(attr.name);
+            buffer.append(u"=\"" + attr.value.replaceAll(u"\"", u"&quot;") + "\"");
+        }
+        buffer.append('>');
+    }
+    auto openTagLength = buffer.getLength();
+
+    uno::Reference<accessibility::XAccessibleText> xText(xContext, uno::UNO_QUERY);
+    if (xText.is())
+        buffer.append(xText->getText());
+
+    for (auto& childContext : getAllChildren(xContext))
+        collectText(childContext, buffer);
+
+    if (!onlyChildren)
+    {
+        if (buffer.getLength() != openTagLength)
+            buffer.append("</" + roleName + ">");
+        else
+        {
+            /* there was no content, so make is a short tag for more concise output */
+            buffer[openTagLength - 1] = '/';
+            buffer.append('>');
+        }
+    }
+}
+
+OUString test::AccessibleTestBase::collectText(
+    const uno::Reference<accessibility::XAccessibleContext>& xContext)
+{
+    rtl::OUStringBuffer buf;
+    collectText(xContext, buf, isDocumentRole(xContext->getAccessibleRole()));
+    return buf.makeStringAndClear();
+}
+
+uno::Reference<accessibility::XAccessibleContext>
+test::AccessibleTestBase::getFirstRelationTargetOfType(
+    const uno::Reference<accessibility::XAccessibleContext>& xContext,
+    css::accessibility::AccessibleRelationType relationType)
+{
+    auto relset = xContext->getAccessibleRelationSet();
+
+    if (relset.is())
+    {
+        for (sal_Int32 i = 0; i < relset->getRelationCount(); ++i)
+        {
+            const auto rel = relset->getRelation(i);
+            if (rel.RelationType == relationType)
+            {
+                for (const uno::Reference<accessibility::XAccessible>& targetAccessible :
+                     rel.TargetSet)
+                {
+                    if (targetAccessible.is())
+                        return targetAccessible->getAccessibleContext();
+                }
+            }
+        }
+    }
+
+    return nullptr;
 }
 
 /** Prints the tree of accessible objects starting at @p xContext to stdout */
@@ -172,17 +283,16 @@ void test::AccessibleTestBase::dumpA11YTree(
                 if (i > 0)
                     std::cout << ", ";
 
-                const auto& rel = xRelSet->getRelation(i);
+                const auto rel = xRelSet->getRelation(i);
                 std::cout << "(type=" << AccessibilityTools::getRelationTypeName(rel.RelationType)
-                          << " (" << rel.RelationType << ")";
+                          << " (" << static_cast<int>(rel.RelationType) << ")";
                 std::cout << " targets=[";
                 int j = 0;
-                for (auto& target : rel.TargetSet)
+                for (const uno::Reference<accessibility::XAccessible>& xTarget : rel.TargetSet)
                 {
                     if (j++ > 0)
                         std::cout << ", ";
-                    uno::Reference<accessibility::XAccessible> ta(target, uno::UNO_QUERY_THROW);
-                    std::cout << AccessibilityTools::debugString(ta);
+                    std::cout << AccessibilityTools::debugString(xTarget);
                 }
                 std::cout << "])";
             }
@@ -199,6 +309,13 @@ void test::AccessibleTestBase::dumpA11YTree(
         std::cout << " * child " << i++ << ": ";
         dumpA11YTree(child, depth + 1);
     }
+}
+
+void test::AccessibleTestBase::dumpA11YTree(
+    const uno::Reference<accessibility::XAccessible>& xAccessible, const int depth)
+{
+    assert(xAccessible.is());
+    dumpA11YTree(xAccessible->getAccessibleContext(), depth);
 }
 
 /** Gets a child by name (usually in a menu) */
@@ -356,15 +473,19 @@ bool test::AccessibleTestBase::tabTo(
  * or interact with them.
  */
 
-test::AccessibleTestBase::Dialog::Dialog(uno::Reference<awt::XDialog2>& xDialog2, bool bAutoClose)
+test::AccessibleTestBase::Dialog::Dialog(const uno::Reference<awt::XDialog2>& xDialog2,
+                                         bool bAutoClose)
     : mbAutoClose(bAutoClose)
     , mxDialog2(xDialog2)
 {
     CPPUNIT_ASSERT(xDialog2.is());
 
-    mxAccessible.set(xDialog2, uno::UNO_QUERY);
-    if (mxAccessible)
-        setWindow(mxAccessible);
+    uno::Reference<css::awt::XWindow> xWindow(xDialog2, uno::UNO_QUERY_THROW);
+    vcl::Window* pWindow = VCLUnoHelper::GetWindow(xWindow);
+    assert(pWindow);
+    mpAccessible = pWindow->GetAccessible();
+    if (mpAccessible)
+        setWindow(mpAccessible);
     else
     {
         std::cerr << "WARNING: AccessibleTestBase::Dialog() constructed with awt::XDialog2 '"
@@ -423,7 +544,7 @@ test::AccessibleTestBase::awaitDialog(const std::u16string_view name,
             maIdleHandler.Stop();
         }
 
-        ListenerHelper(const std::u16string_view& name, std::function<void(Dialog&)> callback,
+        ListenerHelper(std::u16string_view name, std::function<void(Dialog&)> callback,
                        bool bAutoClose)
             : mbWaitingForDialog(true)
             , msName(name)
@@ -437,7 +558,7 @@ test::AccessibleTestBase::awaitDialog(const std::u16string_view name,
             mxToolkit->addTopWindowListener(mxTopWindowListener);
 
             maTimeoutTimer.SetInvokeHandler(LINK(this, ListenerHelper, timeoutTimerHandler));
-            maTimeoutTimer.SetTimeout(60000);
+            maTimeoutTimer.SetTimeout(120000);
             maTimeoutTimer.Start();
 
             maIdleHandler.SetInvokeHandler(LINK(this, ListenerHelper, idleHandler));
@@ -463,7 +584,7 @@ test::AccessibleTestBase::awaitDialog(const std::u16string_view name,
 
             // This is not very nice, but it should help fail earlier if we never catch the dialog
             // yet we're in a sub-loop and waitEndDialog() didn't have a chance to run yet.
-            throw new css::uno::RuntimeException("Timeout waiting for dialog");
+            throw new css::uno::RuntimeException(u"Timeout waiting for dialog"_ustr);
         }
 
         class MyTopWindowListener : public ::cppu::WeakImplHelper<awt::XTopWindowListener>

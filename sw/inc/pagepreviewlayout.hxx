@@ -36,7 +36,6 @@ class SwViewShell;
 class SwRootFrame;
 class SwPageFrame;
 class Fraction;
-struct PreviewPage;
 
 /** page preview functionality in the writer */
 class SwPagePreviewLayout
@@ -294,6 +293,12 @@ public:
     void SetSelectedPage( sal_uInt16 _nSelectedPageNum )
     {
         mnSelectedPageNum = _nSelectedPageNum;
+    }
+
+    /** get the maximal preview pages */
+    sal_uInt16 GetMaxPreviewPages() const
+    {
+        return mnPages;
     }
 
     /** paint prepared preview

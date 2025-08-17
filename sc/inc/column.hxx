@@ -26,10 +26,10 @@
 #include "rangelst.hxx"
 #include "types.hxx"
 #include "mtvelements.hxx"
+#include "attarray.hxx"
 #include <formula/types.hxx>
 #include <svl/zforlist.hxx>
 #include <svx/svdobj.hxx>
-#include "attarray.hxx"
 
 #include <optional>
 #include <set>
@@ -59,11 +59,9 @@ struct NoteEntry;
 class DocumentStreamAccess;
 class CellValues;
 class TableValues;
-struct RowSpan;
 class RowHeightContext;
 class CompileFormulaContext;
 struct SetFormulaDirtyContext;
-enum class MatrixEdge;
 class ColumnIterator;
 class Sparkline;
 
@@ -81,8 +79,6 @@ class SvxBoxItem;
 class ScDocument;
 class ScEditDataArray;
 class ScFormulaCell;
-class ScMarkData;
-class ScPatternAttr;
 class ScStyleSheet;
 class SvtBroadcaster;
 class ScTypedStrData;
@@ -93,14 +89,14 @@ struct ScSetStringParam;
 struct ScColWidthParam;
 struct ScRefCellValue;
 struct ScCellValue;
-class ScHint;
 enum class ScMF;
 struct ScFilterEntries;
 struct ScInterpreterContext;
 
 struct ScNeededSizeOptions
 {
-    const ScPatternAttr* pPattern;
+    CellAttributeHolder aPattern;
+
     bool                bFormula;
     bool                bSkipMerged;
     bool                bGetFont;
@@ -144,8 +140,9 @@ public:
 
     const ScPatternAttr*    GetPattern( SCROW nRow ) const;
     const ScPatternAttr*    GetMostUsedPattern( SCROW nStartRow, SCROW nEndRow ) const;
-    SCROW       ApplySelectionCache( ScItemPoolCache* pCache, const ScMarkData& rMark, ScEditDataArray* pDataArray, bool* const pIsChanged,
-                                     SCCOL nCol );
+    void        ApplySelectionStyle(const ScStyleSheet& rStyle, SCROW nTop, SCROW nBottom);
+    void        ApplySelectionCache(ScItemPoolCache& rCache, SCROW nStartRow, SCROW nEndRow,
+                                    ScEditDataArray* pDataArray, bool* pIsChanged);
     void        ApplyPatternArea( SCROW nStartRow, SCROW nEndRow, const ScPatternAttr& rPatAttr,
                                   ScEditDataArray* pDataArray = nullptr,
                                   bool* const pIsChanged = nullptr);
@@ -163,12 +160,12 @@ public:
     bool        HasAttrib( SCROW nRow1, SCROW nRow2, HasAttrFlags nMask ) const;
     bool        HasAttrib( SCROW nRow, HasAttrFlags nMask, SCROW* nStartRow = nullptr, SCROW* nEndRow = nullptr ) const;
 
-    std::unique_ptr<ScAttrIterator> CreateAttrIterator( SCROW nStartRow, SCROW nEndRow ) const;
+    ScAttrIterator CreateAttrIterator( SCROW nStartRow, SCROW nEndRow ) const;
 
     bool        IsAllAttrEqual( const ScColumnData& rCol, SCROW nStartRow, SCROW nEndRow ) const;
 
-    void        ClearSelectionItems( const sal_uInt16* pWhich, const ScMarkData& rMark, SCCOL nCol );
-    void        ChangeSelectionIndent( bool bIncrement, const ScMarkData& rMark, SCCOL nCol );
+    void        ClearSelectionItems(const sal_uInt16* pWhich, SCROW nStartRow, SCROW nEndRow);
+    void        ChangeSelectionIndent(bool bIncrement, SCROW nStartRow, SCROW nEndRow);
 
     bool        TestInsertRow( SCSIZE nSize ) const;
     void        InsertRow( SCROW nStartRow, SCSIZE nSize );
@@ -199,7 +196,8 @@ class ScColumn : protected ScColumnData
     // Sparklines
     sc::SparklineStoreType maSparklines;
 
-    size_t mnBlkCountFormula;
+    sal_uInt32 mnBlkCountFormula;
+    sal_uInt32 mnBlkCountCellNotes;
 
     SCCOL           nCol;
     SCTAB           nTab;
@@ -233,7 +231,7 @@ friend class sc::CellStoreEvent;
         SCROW nRow, SCTAB nTab, const OUString& rString, formula::FormulaGrammar::AddressConvention eConv,
         const ScSetStringParam* pParam );
 
-    void duplicateSparkline(sc::CopyFromClipContext& rContext, sc::ColumnBlockPosition* pBlockPos,
+    void duplicateSparkline(const sc::CopyFromClipContext& rContext, sc::ColumnBlockPosition* pBlockPos,
                             size_t nColOffset, size_t nDestSize, ScAddress aDestPosition);
 
 public:
@@ -438,10 +436,10 @@ public:
     void SetValue( sc::ColumnBlockPosition& rBlockPos, SCROW nRow, double fVal, bool bBroadcast = true );
     void        SetError( SCROW nRow, const FormulaError nError);
 
-    OUString    GetString( SCROW nRow, const ScInterpreterContext* pContext = nullptr ) const
+    OUString    GetString( SCROW nRow, ScInterpreterContext* pContext = nullptr ) const
         { return GetString( GetCellValue( nRow ), nRow, pContext ); }
     OUString    GetString( sc::ColumnBlockConstPosition& rBlockPos, SCROW nRow,
-                           const ScInterpreterContext* pContext = nullptr ) const
+                           ScInterpreterContext* pContext = nullptr ) const
         { return GetString( GetCellValue( rBlockPos, nRow ), nRow, pContext ); }
     double* GetValueCell( SCROW nRow );
     // Note that if pShared is set and a value is returned that way, the returned OUString is empty.
@@ -459,6 +457,7 @@ public:
     ScFormulaCell * const * GetFormulaCellBlockAddress( SCROW nRow, size_t& rBlockSize ) const;
     CellType    GetCellType( SCROW nRow ) const;
     SCSIZE      GetCellCount() const;
+    bool        IsCellCountZero() const;
     sal_uInt64  GetWeightedCount() const;
     sal_uInt64  GetWeightedCount(SCROW nStartRow, SCROW nEndRow) const;
     sal_uInt64  GetCodeCount() const;       // RPN-Code in formulas
@@ -541,14 +540,13 @@ public:
 
     void        ApplyAttr( SCROW nRow, const SfxPoolItem& rAttr );
     void        ApplyPattern( SCROW nRow, const ScPatternAttr& rPatAttr );
-    const ScPatternAttr* SetPattern( SCROW nRow, std::unique_ptr<ScPatternAttr> );
-    void        SetPattern( SCROW nRow, const ScPatternAttr& );
-    void        SetPatternArea( SCROW nStartRow, SCROW nEndRow, const ScPatternAttr& );
+    void        SetPattern( SCROW nRow, const CellAttributeHolder& rHolder );
+    void        SetPattern( SCROW nRow, const ScPatternAttr& rPattern );
+    void        SetPatternArea( SCROW nStartRow, SCROW nEndRow, const CellAttributeHolder& );
     void        ApplyPatternIfNumberformatIncompatible( const ScRange& rRange,
                             const ScPatternAttr& rPattern, SvNumFormatType nNewType );
 
     void        ApplyStyle( SCROW nRow, const ScStyleSheet* rStyle );
-    void        ApplySelectionStyle(const ScStyleSheet& rStyle, const ScMarkData& rMark);
     void        ApplySelectionLineStyle( const ScMarkData& rMark,
                                     const ::editeng::SvxBorderLine* pLine, bool bColorOnly );
     void        AddCondFormat(SCROW nStartRow, SCROW nEndRow, sal_uInt32 nIndex );
@@ -575,11 +573,7 @@ public:
 
     void        RemoveProtected( SCROW nStartRow, SCROW nEndRow );
 
-    SCROW       ApplySelectionCache( ScItemPoolCache* pCache, const ScMarkData& rMark, ScEditDataArray* pDataArray, bool* const pIsChanged );
     void DeleteSelection( InsertDeleteFlags nDelFlag, const ScMarkData& rMark, bool bBroadcast );
-
-    void        ClearSelectionItems( const sal_uInt16* pWhich, const ScMarkData& rMark );
-    void        ChangeSelectionIndent( bool bIncrement, const ScMarkData& rMark );
 
     tools::Long GetNeededSize(
         SCROW nRow, OutputDevice* pDev, double nPPTX, double nPPTY,
@@ -828,7 +822,7 @@ private:
         sc::CellStoreType::const_iterator& itPos, SCROW nRow, bool bForward) const;
     SCROW FindNextVisibleRow(SCROW nRow, bool bForward) const;
 
-    OUString GetString( const ScRefCellValue& cell, SCROW nRow, const ScInterpreterContext* pContext = nullptr ) const;
+    OUString GetString( const ScRefCellValue& cell, SCROW nRow, ScInterpreterContext* pContext = nullptr ) const;
     OUString GetInputString( const ScRefCellValue& cell, SCROW nRow, bool bForceSystemLocale = false ) const;
 
     /**
@@ -973,17 +967,17 @@ inline const ScPatternAttr* ScColumnData::GetPattern( SCROW nRow ) const
 
 inline const SfxPoolItem& ScColumnData::GetAttr( SCROW nRow, sal_uInt16 nWhich ) const
 {
-    return pAttrArray->GetPattern( nRow )->GetItemSet().Get(nWhich);
+    return pAttrArray->GetPattern( nRow )->GetItem(nWhich);
 }
 
 inline const SfxPoolItem& ScColumnData::GetAttr( SCROW nRow, sal_uInt16 nWhich, SCROW& nStartRow, SCROW& nEndRow ) const
 {
-    return pAttrArray->GetPatternRange( nStartRow, nEndRow, nRow )->GetItemSet().Get(nWhich);
+    return pAttrArray->GetPatternRange( nStartRow, nEndRow, nRow )->GetItem(nWhich);
 }
 
 inline sal_uInt32 ScColumnData::GetNumberFormat( const ScInterpreterContext& rContext, SCROW nRow ) const
 {
-    return pAttrArray->GetPattern( nRow )->GetNumberFormat( rContext.GetFormatTable() );
+    return pAttrArray->GetPattern( nRow )->GetNumberFormat( rContext );
 }
 
 inline void ScColumn::AddCondFormat( SCROW nStartRow, SCROW nEndRow, sal_uInt32 nIndex )
@@ -1031,20 +1025,19 @@ inline void ScColumn::ClearItems( SCROW nStartRow, SCROW nEndRow, const sal_uInt
     pAttrArray->ClearItems( nStartRow, nEndRow, pWhich );
 }
 
-inline const ScPatternAttr* ScColumn::SetPattern( SCROW nRow, std::unique_ptr<ScPatternAttr> pPatAttr )
+inline void ScColumn::SetPattern( SCROW nRow, const CellAttributeHolder& rHolder )
 {
-    return pAttrArray->SetPattern( nRow, std::move(pPatAttr), true/*bPutToPool*/ );
+    return pAttrArray->SetPattern( nRow, rHolder );
 }
 
-inline void ScColumn::SetPattern( SCROW nRow, const ScPatternAttr& rPatAttr )
+inline void ScColumn::SetPattern( SCROW nRow, const ScPatternAttr& rPattern )
 {
-    pAttrArray->SetPattern( nRow, &rPatAttr, true/*bPutToPool*/ );
+    pAttrArray->SetPattern( nRow, CellAttributeHolder(&rPattern) );
 }
 
-inline void ScColumn::SetPatternArea( SCROW nStartRow, SCROW nEndRow,
-                                const ScPatternAttr& rPatAttr )
+inline void ScColumn::SetPatternArea( SCROW nStartRow, SCROW nEndRow, const CellAttributeHolder& rHolder )
 {
-    pAttrArray->SetPatternArea( nStartRow, nEndRow, &rPatAttr, true/*bPutToPool*/ );
+    pAttrArray->SetPatternArea( nStartRow, nEndRow, rHolder );
 }
 
 inline void ScColumnData::SetAttrEntries(std::vector<ScAttrEntry> && vNewData)

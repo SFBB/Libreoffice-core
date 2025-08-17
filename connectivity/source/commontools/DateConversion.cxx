@@ -62,7 +62,7 @@ OUString DBTypeConversion::toSQLString(sal_Int32 eType, const Any& _rVal,
                 case DataType::BOOLEAN:
                 case DataType::TINYINT:
                 case DataType::SMALLINT:
-                    if (_rVal.getValueType().getTypeClass() == css::uno::TypeClass_BOOLEAN)
+                    if (_rVal.getValueTypeClass() == css::uno::TypeClass_BOOLEAN)
                     {
                         if (::cppu::any2bool(_rVal))
                             aRet.append("1");
@@ -104,14 +104,14 @@ OUString DBTypeConversion::toSQLString(sal_Int32 eType, const Any& _rVal,
                 {
                     DateTime aDateTime;
                     bool bOk = false;
-                    if (_rVal.getValueType().getTypeClass() == css::uno::TypeClass_DOUBLE)
+                    if (_rVal.getValueTypeClass() == css::uno::TypeClass_DOUBLE)
                     {
                         double nValue = 0.0;
                         _rVal >>= nValue;
                         aDateTime = DBTypeConversion::toDateTime(nValue);
                         bOk = true;
                     }
-                    else if (_rVal.getValueType().getTypeClass() == css::uno::TypeClass_STRING)
+                    else if (_rVal.getValueTypeClass() == css::uno::TypeClass_STRING)
                     {
                         OUString sValue;
                         _rVal >>= sValue;
@@ -136,14 +136,14 @@ OUString DBTypeConversion::toSQLString(sal_Int32 eType, const Any& _rVal,
                 {
                     Date aDate;
                     bool bOk = false;
-                    if (_rVal.getValueType().getTypeClass() == css::uno::TypeClass_DOUBLE)
+                    if (_rVal.getValueTypeClass() == css::uno::TypeClass_DOUBLE)
                     {
                         double nValue = 0.0;
                         _rVal >>= nValue;
                         aDate = DBTypeConversion::toDate(nValue);
                         bOk = true;
                     }
-                    else if (_rVal.getValueType().getTypeClass() == css::uno::TypeClass_STRING)
+                    else if (_rVal.getValueTypeClass() == css::uno::TypeClass_STRING)
                     {
                         OUString sValue;
                         _rVal >>= sValue;
@@ -161,14 +161,14 @@ OUString DBTypeConversion::toSQLString(sal_Int32 eType, const Any& _rVal,
                 {
                     css::util::Time aTime;
                     bool bOk = false;
-                    if (_rVal.getValueType().getTypeClass() == css::uno::TypeClass_DOUBLE)
+                    if (_rVal.getValueTypeClass() == css::uno::TypeClass_DOUBLE)
                     {
                         double nValue = 0.0;
                         _rVal >>= nValue;
                         aTime = DBTypeConversion::toTime(nValue);
                         bOk = true;
                     }
-                    else if (_rVal.getValueType().getTypeClass() == css::uno::TypeClass_STRING)
+                    else if (_rVal.getValueTypeClass() == css::uno::TypeClass_STRING)
                     {
                         OUString sValue;
                         _rVal >>= sValue;
@@ -203,7 +203,7 @@ Date DBTypeConversion::getNULLDate(const Reference< XNumberFormatsSupplier > &xS
         {
             // get the null date
             Date aDate;
-            xSupplier->getNumberFormatSettings()->getPropertyValue("NullDate") >>= aDate;
+            xSupplier->getNumberFormatSettings()->getPropertyValue(u"NullDate"_ustr) >>= aDate;
             return aDate;
         }
         catch ( const Exception&  )
@@ -243,7 +243,7 @@ void DBTypeConversion::setValue(const Reference<XColumnUpdate>& xVariant,
                 if (xFormatProps.is())
                 {
                     css::lang::Locale loc;
-                    if (xFormatProps->getPropertyValue("Locale") >>= loc)
+                    if (xFormatProps->getPropertyValue(u"Locale"_ustr) >>= loc)
                         nStandardKey = xFormatTypes->getStandardIndex(loc);
                     else
                     {
@@ -469,7 +469,7 @@ OUString DBTypeConversion::getFormattedValue(const Reference<XColumn>& xVariant,
                          {
                              Reference< XNumberFormatsSupplier > xSupplier( xFormatter->getNumberFormatsSupplier(), UNO_SET_THROW );
                              Reference< XPropertySet > xFormatterSettings( xSupplier->getNumberFormatSettings(), UNO_SET_THROW );
-                             OSL_VERIFY( xFormatterSettings->getPropertyValue("NullDate") >>= aFormatterNullDate );
+                             OSL_VERIFY( xFormatterSettings->getPropertyValue(u"NullDate"_ustr) >>= aFormatterNullDate );
                          }
                          catch( const Exception& )
                          {

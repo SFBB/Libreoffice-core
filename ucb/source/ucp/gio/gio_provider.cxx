@@ -37,7 +37,7 @@ ContentProvider::queryContent(
     osl::MutexGuard aGuard( m_aMutex );
 
     // Check, if a content with given id already exists...
-    css::uno::Reference< css::ucb::XContent > xContent = queryExistingContent( Identifier );
+    rtl::Reference< ucbhelper::ContentImplHelper > xContent = queryExistingContent( Identifier );
     if ( xContent.is() )
         return xContent;
 
@@ -96,12 +96,12 @@ XTYPEPROVIDER_IMPL_3( ContentProvider,
 
 css::uno::Sequence< OUString > SAL_CALL ContentProvider::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.GIOContentProvider" };
+    return { u"com.sun.star.ucb.GIOContentProvider"_ustr };
 }
 
 OUString SAL_CALL ContentProvider::getImplementationName()
 {
-    return "com.sun.star.comp.GIOContentProvider";
+    return u"com.sun.star.comp.GIOContentProvider"_ustr;
 }
 
 sal_Bool SAL_CALL ContentProvider::supportsService(const OUString& aServiceName)

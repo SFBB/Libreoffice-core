@@ -390,13 +390,13 @@ FrameMap const aVAsCharHtmlMap[] =
 
 const WhichRangesContainer SwFramePage::s_aPageRg(svl::Items<
     RES_FRM_SIZE, RES_FRM_SIZE,
+    RES_PROTECT, RES_PROTECT,
     RES_VERT_ORIENT, RES_ANCHOR,
     RES_COL, RES_COL,
     RES_FOLLOW_TEXT_FLOW, RES_FOLLOW_TEXT_FLOW
 >);
 const WhichRangesContainer SwFrameAddPage::s_aAddPgRg(svl::Items<
     RES_PRINT,              RES_PRINT,
-    RES_PROTECT,            RES_PROTECT,
     FN_SET_FRM_NAME,        FN_SET_FRM_NAME,
     FN_SET_FRM_ALT_NAME,    FN_SET_FRM_ALT_NAME,
     FN_UNO_DESCRIPTION,     FN_UNO_DESCRIPTION
@@ -452,27 +452,27 @@ static size_t lcl_GetFrameMapCount( const FrameMap* pMap)
 }
 
 static void lcl_InsertVectors(weld::ComboBox& rBox,
-    const std::vector< OUString >& rPrev, const std::vector< OUString >& rThis,
-    const std::vector< OUString >& rNext, const std::vector< OUString >& rRemain)
+    const std::vector< UIName >& rPrev, const std::vector< UIName >& rThis,
+    const std::vector< UIName >& rNext, const std::vector< UIName >& rRemain)
 {
     for(const auto& rItem : rPrev)
-        rBox.append_text(rItem);
+        rBox.append_text(rItem.toString());
     for(const auto& rItem : rThis)
-        rBox.append_text(rItem);
+        rBox.append_text(rItem.toString());
     for(const auto& rItem : rNext)
-        rBox.append_text(rItem);
-    rBox.append_separator("");
+        rBox.append_text(rItem.toString());
+    rBox.append_separator(u""_ustr);
     //now insert all strings sorted
     const auto nStartPos = rBox.get_count();
 
     for(const auto& rItem : rPrev)
-        ::InsertStringSorted("", rItem, rBox, nStartPos );
+        ::InsertStringSorted(u""_ustr, rItem.toString(), rBox, nStartPos );
     for(const auto& rItem : rThis)
-        ::InsertStringSorted("", rItem, rBox, nStartPos );
+        ::InsertStringSorted(u""_ustr, rItem.toString(), rBox, nStartPos );
     for(const auto& rItem : rNext)
-        ::InsertStringSorted("", rItem, rBox, nStartPos );
+        ::InsertStringSorted(u""_ustr, rItem.toString(), rBox, nStartPos );
     for(const auto& rItem : rRemain)
-        ::InsertStringSorted("", rItem, rBox, nStartPos );
+        ::InsertStringSorted(u""_ustr, rItem.toString(), rBox, nStartPos );
 }
 
 // --> OD 2009-08-31 #mongolianlayout#
@@ -619,7 +619,7 @@ namespace
 }
 
 SwFramePage::SwFramePage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/frmtypepage.ui", "FrameTypePage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/frmtypepage.ui"_ustr, u"FrameTypePage"_ustr, &rSet)
     , m_bAtHorzPosModified(false)
     , m_bAtVertPosModified(false)
     , m_bFormat(false)
@@ -643,42 +643,51 @@ SwFramePage::SwFramePage(weld::Container* pPage, weld::DialogController* pContro
     , m_bAllowVertPositioning( true )
     , m_bIsMathOLE(false)
     , m_bIsMathBaselineAlignment(true)
-    , m_xWidthFT(m_xBuilder->weld_label("widthft"))
-    , m_xWidthAutoFT(m_xBuilder->weld_label("autowidthft"))
-    , m_xRelWidthCB(m_xBuilder->weld_check_button("relwidth"))
-    , m_xRelWidthRelationLB(m_xBuilder->weld_combo_box("relwidthrelation"))
-    , m_xAutoWidthCB(m_xBuilder->weld_check_button("autowidth"))
-    , m_xHeightFT(m_xBuilder->weld_label("heightft"))
-    , m_xHeightAutoFT(m_xBuilder->weld_label("autoheightft"))
-    , m_xRelHeightCB(m_xBuilder->weld_check_button("relheight"))
-    , m_xRelHeightRelationLB(m_xBuilder->weld_combo_box("relheightrelation"))
-    , m_xAutoHeightCB(m_xBuilder->weld_check_button("autoheight"))
-    , m_xFixedRatioCB(m_xBuilder->weld_check_button("ratio"))
-    , m_xRealSizeBT(m_xBuilder->weld_button("origsize"))
-    , m_xAnchorFrame(m_xBuilder->weld_widget("anchorframe"))
-    , m_xAnchorAtPageRB(m_xBuilder->weld_radio_button("topage"))
-    , m_xAnchorAtParaRB(m_xBuilder->weld_radio_button("topara"))
-    , m_xAnchorAtCharRB(m_xBuilder->weld_radio_button("tochar"))
-    , m_xAnchorAsCharRB(m_xBuilder->weld_radio_button("aschar"))
-    , m_xAnchorAtFrameRB(m_xBuilder->weld_radio_button("toframe"))
-    , m_xHorizontalFT(m_xBuilder->weld_label("horiposft"))
-    , m_xHorizontalDLB(m_xBuilder->weld_combo_box("horipos"))
-    , m_xAtHorzPosFT(m_xBuilder->weld_label("horibyft"))
-    , m_xAtHorzPosED(m_xBuilder->weld_metric_spin_button("byhori", FieldUnit::CM))
-    , m_xHoriRelationFT(m_xBuilder->weld_label("horitoft"))
-    , m_xHoriRelationLB(m_xBuilder->weld_combo_box("horianchor"))
-    , m_xMirrorPagesCB(m_xBuilder->weld_check_button("mirror"))
-    , m_xVerticalFT(m_xBuilder->weld_label("vertposft"))
-    , m_xVerticalDLB(m_xBuilder->weld_combo_box("vertpos"))
-    , m_xAtVertPosFT(m_xBuilder->weld_label("vertbyft"))
-    , m_xAtVertPosED(m_xBuilder->weld_metric_spin_button("byvert", FieldUnit::CM))
-    , m_xVertRelationFT(m_xBuilder->weld_label("verttoft"))
-    , m_xVertRelationLB(m_xBuilder->weld_combo_box("vertanchor"))
-    , m_xFollowTextFlowCB(m_xBuilder->weld_check_button("followtextflow"))
-    , m_xFlySplitCB(m_xBuilder->weld_check_button("flysplit"))
-    , m_xExampleWN(new weld::CustomWeld(*m_xBuilder, "preview", m_aExampleWN))
-    , m_xWidthED(new SwPercentField(m_xBuilder->weld_metric_spin_button("width", FieldUnit::CM)))
-    , m_xHeightED(new SwPercentField(m_xBuilder->weld_metric_spin_button("height", FieldUnit::CM)))
+    , m_aRatioTop(ConnectorType::Top)
+    , m_aRatioBottom(ConnectorType::Bottom)
+    , m_xWidthFT(m_xBuilder->weld_label(u"widthft"_ustr))
+    , m_xWidthAutoFT(m_xBuilder->weld_label(u"autowidthft"_ustr))
+    , m_xRelWidthCB(m_xBuilder->weld_check_button(u"relwidth"_ustr))
+    , m_xRelWidthRelationLB(m_xBuilder->weld_combo_box(u"relwidthrelation"_ustr))
+    , m_xAutoWidthCB(m_xBuilder->weld_check_button(u"autowidth"_ustr))
+    , m_xHeightFT(m_xBuilder->weld_label(u"heightft"_ustr))
+    , m_xHeightAutoFT(m_xBuilder->weld_label(u"autoheightft"_ustr))
+    , m_xRelHeightCB(m_xBuilder->weld_check_button(u"relheight"_ustr))
+    , m_xRelHeightRelationLB(m_xBuilder->weld_combo_box(u"relheightrelation"_ustr))
+    , m_xAutoHeightCB(m_xBuilder->weld_check_button(u"autoheight"_ustr))
+    , m_xFixedRatioCB(m_xBuilder->weld_check_button(u"CBX_SCALE"_ustr))
+    , m_xCbxScaleImg(m_xBuilder->weld_image(u"imRatio"_ustr))
+    , m_xImgRatioTop(new weld::CustomWeld(*m_xBuilder, u"daRatioTop"_ustr, m_aRatioTop))
+    , m_xImgRatioBottom(new weld::CustomWeld(*m_xBuilder, u"daRatioBottom"_ustr, m_aRatioBottom))
+    , m_xRealSizeBT(m_xBuilder->weld_button(u"origsize"_ustr))
+    , m_xProtectFrame(m_xBuilder->weld_widget(u"protect"_ustr))
+    , m_xProtectContentCB(m_xBuilder->weld_check_button(u"protectcontent"_ustr))
+    , m_xProtectFrameCB(m_xBuilder->weld_check_button(u"protectframe"_ustr))
+    , m_xProtectSizeCB(m_xBuilder->weld_check_button(u"protectsize"_ustr))
+    , m_xAnchorFrame(m_xBuilder->weld_widget(u"anchorframe"_ustr))
+    , m_xAnchorAtPageRB(m_xBuilder->weld_radio_button(u"topage"_ustr))
+    , m_xAnchorAtParaRB(m_xBuilder->weld_radio_button(u"topara"_ustr))
+    , m_xAnchorAtCharRB(m_xBuilder->weld_radio_button(u"tochar"_ustr))
+    , m_xAnchorAsCharRB(m_xBuilder->weld_radio_button(u"aschar"_ustr))
+    , m_xAnchorAtFrameRB(m_xBuilder->weld_radio_button(u"toframe"_ustr))
+    , m_xHorizontalFT(m_xBuilder->weld_label(u"horiposft"_ustr))
+    , m_xHorizontalDLB(m_xBuilder->weld_combo_box(u"horipos"_ustr))
+    , m_xAtHorzPosFT(m_xBuilder->weld_label(u"horibyft"_ustr))
+    , m_xAtHorzPosED(m_xBuilder->weld_metric_spin_button(u"byhori"_ustr, FieldUnit::CM))
+    , m_xHoriRelationFT(m_xBuilder->weld_label(u"horitoft"_ustr))
+    , m_xHoriRelationLB(m_xBuilder->weld_combo_box(u"horianchor"_ustr))
+    , m_xMirrorPagesCB(m_xBuilder->weld_check_button(u"mirror"_ustr))
+    , m_xVerticalFT(m_xBuilder->weld_label(u"vertposft"_ustr))
+    , m_xVerticalDLB(m_xBuilder->weld_combo_box(u"vertpos"_ustr))
+    , m_xAtVertPosFT(m_xBuilder->weld_label(u"vertbyft"_ustr))
+    , m_xAtVertPosED(m_xBuilder->weld_metric_spin_button(u"byvert"_ustr, FieldUnit::CM))
+    , m_xVertRelationFT(m_xBuilder->weld_label(u"verttoft"_ustr))
+    , m_xVertRelationLB(m_xBuilder->weld_combo_box(u"vertanchor"_ustr))
+    , m_xFollowTextFlowCB(m_xBuilder->weld_check_button(u"followtextflow"_ustr))
+    , m_xFlySplitCB(m_xBuilder->weld_check_button(u"flysplit"_ustr))
+    , m_xExampleWN(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, m_aExampleWN))
+    , m_xWidthED(new SwPercentField(m_xBuilder->weld_metric_spin_button(u"width"_ustr, FieldUnit::CM)))
+    , m_xHeightED(new SwPercentField(m_xBuilder->weld_metric_spin_button(u"height"_ustr, FieldUnit::CM)))
 {
     const auto nWidthRequest = m_xAtHorzPosED->get_preferred_size().Width();
     m_xAtHorzPosED->set_size_request(nWidthRequest, -1);
@@ -717,6 +726,8 @@ SwFramePage::SwFramePage(weld::Container* pPage, weld::DialogController* pContro
 
     m_xAutoWidthCB->connect_toggled(LINK(this, SwFramePage, AutoWidthClickHdl));
     m_xAutoHeightCB->connect_toggled(LINK(this, SwFramePage, AutoHeightClickHdl));
+
+    m_xFixedRatioCB->connect_toggled(LINK(this, SwFramePage, RatioClickHdl));
 
     if (comphelper::LibreOfficeKit::isActive())
     {
@@ -975,7 +986,10 @@ void SwFramePage::Reset( const SfxItemSet *rSet )
         }
 
         if (m_sDlgType == "PictureDialog")
+        {
             m_xFixedRatioCB->set_active(false);
+            m_xCbxScaleImg->set_from_icon_name(RID_SVXBMP_UNLOCKED);
+        }
         else
         {
             if ( m_bNew )
@@ -1056,6 +1070,7 @@ void SwFramePage::Reset( const SfxItemSet *rSet )
             m_xFixedRatioCB->set_sensitive(false);
         // i#18732 hide checkbox in HTML mode
         m_xFollowTextFlowCB->hide();
+        m_xProtectFrame->hide();
     }
     else
     {
@@ -1092,11 +1107,17 @@ void SwFramePage::Reset( const SfxItemSet *rSet )
             m_xFlySplitCB->hide();
         }
     }
-    else if (pFlyFormat && !m_bNew && InTextBox(*pFlyFormat))
+    else if (!m_bNew && InTextBox(*pFlyFormat))
     {
         // Disallow split flys in fly frames which form a textbox, i.e. non-editeng shape text.
         m_xFlySplitCB->hide();
     }
+
+    // Pos Protected
+    const SvxProtectItem& rProt = rSet->Get(RES_PROTECT);
+    m_xProtectFrameCB->set_active(rProt.IsPosProtected());
+    m_xProtectContentCB->set_active(rProt.IsContentProtected());
+    m_xProtectSizeCB->set_active(rProt.IsSizeProtected());
 
     Init(*rSet);
     m_xAtVertPosED->save_value();
@@ -1128,8 +1149,16 @@ bool SwFramePage::FillItemSet(SfxItemSet *rSet)
 {
     bool bRet = false;
 
+    const SfxPoolItem* pOldItem;
+    SvxProtectItem aProt(GetItemSet().Get(RES_PROTECT));
+    aProt.SetContentProtect(m_xProtectContentCB->get_active());
+    aProt.SetSizeProtect(m_xProtectSizeCB->get_active());
+    aProt.SetPosProtect(m_xProtectFrameCB->get_active());
+    if (nullptr == (pOldItem = GetOldItem(*rSet, FN_SET_PROTECT)) || aProt != *pOldItem)
+        bRet |= nullptr != rSet->Put(aProt);
+
     const SfxItemSet& rOldSet = GetItemSet();
-    const SfxPoolItem* pOldItem = nullptr;
+    pOldItem = nullptr;
 
     RndStdIds eAnchorId = GetAnchor();
 
@@ -1322,6 +1351,21 @@ bool SwFramePage::FillItemSet(SfxItemSet *rSet)
             aSz.SetHeightSizeType(SwFrameSize::Minimum);
 
         bRet |= nullptr != rSet->Put( aSz );
+        // and now set the size for "external" - e.g.:Crop - tabpages
+        if (bRet)
+        {
+            SwFormatFrameSize aSizeCopy = rSet->Get(RES_FRM_SIZE);
+            SvxSizeItem aSzItm( SID_ATTR_GRAF_FRMSIZE, aSizeCopy.GetSize() );
+            rSet->Put( aSzItm );
+
+            Size aGrpSz( aSizeCopy.GetWidthPercent(), aSizeCopy.GetHeightPercent() );
+            if( SwFormatFrameSize::SYNCED == aGrpSz.Width() )   aGrpSz.setWidth( 0 );
+            if( SwFormatFrameSize::SYNCED == aGrpSz.Height() )  aGrpSz.setHeight( 0 );
+
+            aSzItm.SetSize( aGrpSz );
+            aSzItm.SetWhich( SID_ATTR_GRAF_FRMSIZE_PERCENT );
+            bRet |= nullptr != rSet->Put( aSzItm );
+        }
     }
     if (m_xFollowTextFlowCB->get_state_changed_from_saved())
     {
@@ -2163,11 +2207,16 @@ IMPL_LINK_NOARG(SwFramePage, AutoHeightClickHdl, weld::Toggleable&, void)
         HandleAutoCB(m_xAutoHeightCB->get_active(), *m_xHeightFT, *m_xHeightAutoFT, *m_xWidthED->get());
 }
 
+IMPL_LINK_NOARG(SwFramePage, RatioClickHdl, weld::Toggleable&, void)
+{
+    m_xCbxScaleImg->set_from_icon_name(m_xFixedRatioCB->get_active() ? RID_SVXBMP_LOCKED : RID_SVXBMP_UNLOCKED);
+}
+
 IMPL_LINK( SwFramePage, ModifyHdl, weld::MetricSpinButton&, rEdit, void )
 {
     SwTwips nWidth  = static_cast< SwTwips >(m_xWidthED->DenormalizePercent(m_xWidthED->get_value(FieldUnit::TWIP)));
     SwTwips nHeight = static_cast< SwTwips >(m_xHeightED->DenormalizePercent(m_xHeightED->get_value(FieldUnit::TWIP)));
-    if (m_xFixedRatioCB->get_active())
+    if (m_xFixedRatioCB->get_active() && !m_bIgnoreFixedRatio)
     {
         if (&rEdit == m_xWidthED->get())
         {
@@ -2227,7 +2276,7 @@ void SwFramePage::Init(const SfxItemSet& rSet)
         if ( m_sDlgType == "ObjectDialog" && ! m_bNew )
         {
             // disable width and height for math objects
-            const SvGlobalName& rFactNm( pSh->GetOLEObject()->getClassID() );
+            const SvGlobalName aFactNm( pSh->GetOLEObject()->getClassID() );
 
             static struct GlobalNameId {
                 sal_uInt32 n1;
@@ -2241,7 +2290,7 @@ void SwFramePage::Init(const SfxItemSet& rSet)
                                      rId.b8, rId.b9, rId.b10, rId.b11,
                                      rId.b12, rId.b13, rId.b14, rId.b15 );
 
-                if( rFactNm == aGlbNm )
+                if( aFactNm == aGlbNm )
                 {
                     // disable size controls for math OLE objects
                     m_xWidthFT->set_sensitive(false);
@@ -2262,7 +2311,26 @@ void SwFramePage::Init(const SfxItemSet& rSet)
         }
     }
 
-    const SwFormatFrameSize& rSize = rSet.Get(RES_FRM_SIZE);
+    SwFormatFrameSize rSize = rSet.Get(RES_FRM_SIZE);
+    // size could already have been set from another (Crop) page
+    if (const SvxSizeItem* pSizeItem = rSet.GetItemIfSet(SID_ATTR_GRAF_FRMSIZE, false))
+    {
+        if (pSizeItem->GetSize() != rSize.GetSize())
+        {
+            const Size& rSz = pSizeItem->GetSize();
+            rSize.SetWidth(rSz.Width());
+            rSize.SetHeight(rSz.Height());
+
+            pSizeItem = rSet.GetItemIfSet(SID_ATTR_GRAF_FRMSIZE_PERCENT, false);
+            if (pSizeItem)
+            {
+                const Size& rRelativeSize = pSizeItem->GetSize();
+                rSize.SetWidthPercent(static_cast<sal_uInt8>(rRelativeSize.Width()));
+                rSize.SetHeightPercent(static_cast<sal_uInt8>(rRelativeSize.Height()));
+            }
+        }
+    }
+
     sal_Int64 nWidth  = m_xWidthED->NormalizePercent(rSize.GetWidth());
     sal_Int64 nHeight = m_xHeightED->NormalizePercent(rSize.GetHeight());
 
@@ -2306,6 +2374,8 @@ void SwFramePage::Init(const SfxItemSet& rSet)
 
     if (SfxItemState::SET == rSet.GetItemState(FN_KEEP_ASPECT_RATIO))
         m_xFixedRatioCB->set_active(rSet.Get(FN_KEEP_ASPECT_RATIO).GetValue());
+    // see tdf#132591 and tdf#151382 for some examples of FN_KEEP_ASPECT_RATIO cases
+    m_xFixedRatioCB->save_state();
 
     // columns
     SwFormatCol aCol( rSet.Get(RES_COL) );
@@ -2364,19 +2434,22 @@ void SwFramePage::Init(const SfxItemSet& rSet)
 
     if (rSize.GetWidthPercent() == SwFormatFrameSize::SYNCED || rSize.GetHeightPercent() == SwFormatFrameSize::SYNCED)
         m_xFixedRatioCB->set_active(true);
-    m_xFixedRatioCB->save_state();
     if (rSize.GetWidthPercent() && rSize.GetWidthPercent() != SwFormatFrameSize::SYNCED &&
         !m_xRelWidthCB->get_active())
     {
         m_xRelWidthCB->set_active(true);
+        m_bIgnoreFixedRatio = true;
         RelSizeClickHdl(*m_xRelWidthCB);
+        m_bIgnoreFixedRatio = false;
         m_xWidthED->set_value(rSize.GetWidthPercent(), FieldUnit::PERCENT);
     }
     if (rSize.GetHeightPercent() && rSize.GetHeightPercent() != SwFormatFrameSize::SYNCED &&
         !m_xRelHeightCB->get_active())
     {
         m_xRelHeightCB->set_active(true);
+        m_bIgnoreFixedRatio = true;
         RelSizeClickHdl(*m_xRelHeightCB);
+        m_bIgnoreFixedRatio = false;
         m_xHeightED->set_value(rSize.GetHeightPercent(), FieldUnit::PERCENT);
     }
     m_xRelWidthCB->save_state();
@@ -2391,6 +2464,7 @@ void SwFramePage::Init(const SfxItemSet& rSet)
         m_xRelHeightRelationLB->set_active(1);
     else
         m_xRelHeightRelationLB->set_active(0);
+    m_xCbxScaleImg->set_from_icon_name(m_xFixedRatioCB->get_active() ? RID_SVXBMP_LOCKED : RID_SVXBMP_UNLOCKED);
 }
 
 void SwFramePage::SetFormatUsed(bool bFormatUsed)
@@ -2412,27 +2486,27 @@ void SwFramePage::EnableVerticalPositioning( bool bEnable )
 }
 
 SwGrfExtPage::SwGrfExtPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/picturepage.ui", "PicturePage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/picturepage.ui"_ustr, u"PicturePage"_ustr, &rSet)
     , m_bHtmlMode(false)
-    , m_xMirror(m_xBuilder->weld_widget("flipframe"))
-    , m_xMirrorVertBox(m_xBuilder->weld_check_button("vert"))
-    , m_xMirrorHorzBox(m_xBuilder->weld_check_button("hori"))
-    , m_xAllPagesRB(m_xBuilder->weld_radio_button("allpages"))
-    , m_xLeftPagesRB(m_xBuilder->weld_radio_button("leftpages"))
-    , m_xRightPagesRB(m_xBuilder->weld_radio_button("rightpages"))
-    , m_xConnectED(m_xBuilder->weld_entry("entry"))
-    , m_xBrowseBT(m_xBuilder->weld_button("browse"))
-    , m_xLinkFrame(m_xBuilder->weld_frame("linkframe"))
+    , m_xMirror(m_xBuilder->weld_widget(u"flipframe"_ustr))
+    , m_xMirrorVertBox(m_xBuilder->weld_check_button(u"vert"_ustr))
+    , m_xMirrorHorzBox(m_xBuilder->weld_check_button(u"hori"_ustr))
+    , m_xAllPagesRB(m_xBuilder->weld_radio_button(u"allpages"_ustr))
+    , m_xLeftPagesRB(m_xBuilder->weld_radio_button(u"leftpages"_ustr))
+    , m_xRightPagesRB(m_xBuilder->weld_radio_button(u"rightpages"_ustr))
+    , m_xConnectED(m_xBuilder->weld_entry(u"entry"_ustr))
+    , m_xBrowseBT(m_xBuilder->weld_button(u"browse"_ustr))
+    , m_xLinkFrame(m_xBuilder->weld_frame(u"linkframe"_ustr))
     // RotGrfFlyFrame: Need Angle and RotateControls now
-    , m_xFlAngle(m_xBuilder->weld_frame("FL_ANGLE"))
-    , m_xNfAngle(m_xBuilder->weld_metric_spin_button("NF_ANGLE", FieldUnit::DEGREE))
+    , m_xFlAngle(m_xBuilder->weld_frame(u"FL_ANGLE"_ustr))
+    , m_xNfAngle(m_xBuilder->weld_metric_spin_button(u"NF_ANGLE"_ustr, FieldUnit::DEGREE))
     , m_xCtlAngle(new svx::DialControl)
-    , m_xCtlAngleWin(new weld::CustomWeld(*m_xBuilder, "CTL_ANGLE", *m_xCtlAngle))
-    , m_xBmpWin(new weld::CustomWeld(*m_xBuilder, "preview", m_aBmpWin))
+    , m_xCtlAngleWin(new weld::CustomWeld(*m_xBuilder, u"CTL_ANGLE"_ustr, *m_xCtlAngle))
+    , m_xBmpWin(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, m_aBmpWin))
     // tdf#138843 place holder for the graphic type
-    , m_xLabelGraphicType(m_xBuilder->weld_label("label-graphic-type"))
+    , m_xLabelGraphicType(m_xBuilder->weld_label(u"label-graphic-type"_ustr))
 {
-    m_aBmpWin.SetBitmapEx(BitmapEx(RID_BMP_PREVIEW_FALLBACK));
+    m_aBmpWin.SetBitmapEx(BitmapEx(Bitmap(RID_BMP_PREVIEW_FALLBACK)));
 
     m_xCtlAngle->SetLinkedField(m_xNfAngle.get(), 2);
 
@@ -2788,13 +2862,13 @@ void BmpWindow::SetBitmapEx(const BitmapEx& rBmp)
 
 // set URL and ImageMap at frames
 SwFrameURLPage::SwFrameURLPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/frmurlpage.ui", "FrameURLPage", &rSet)
-    , m_xURLED(m_xBuilder->weld_entry("url"))
-    , m_xSearchPB(m_xBuilder->weld_button("search"))
-    , m_xNameED(m_xBuilder->weld_entry("name"))
-    , m_xFrameCB(m_xBuilder->weld_combo_box("frame"))
-    , m_xServerCB(m_xBuilder->weld_check_button("server"))
-    , m_xClientCB(m_xBuilder->weld_check_button("client"))
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/frmurlpage.ui"_ustr, u"FrameURLPage"_ustr, &rSet)
+    , m_xURLED(m_xBuilder->weld_entry(u"url"_ustr))
+    , m_xSearchPB(m_xBuilder->weld_button(u"search"_ustr))
+    , m_xNameED(m_xBuilder->weld_entry(u"name"_ustr))
+    , m_xFrameCB(m_xBuilder->weld_combo_box(u"frame"_ustr))
+    , m_xServerCB(m_xBuilder->weld_check_button(u"server"_ustr))
+    , m_xClientCB(m_xBuilder->weld_check_button(u"client"_ustr))
 {
     m_xSearchPB->connect_clicked(LINK(this, SwFrameURLPage, InsertFileHdl));
 }
@@ -2899,33 +2973,29 @@ IMPL_LINK_NOARG(SwFrameURLPage, InsertFileHdl, weld::Button&, void)
 }
 
 SwFrameAddPage::SwFrameAddPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/frmaddpage.ui", "FrameAddPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/frmaddpage.ui"_ustr, u"FrameAddPage"_ustr, &rSet)
     , m_pWrtSh(nullptr)
     , m_bHtmlMode(false)
     , m_bFormat(false)
     , m_bNew(false)
-    , m_xNameFrame(m_xBuilder->weld_widget("nameframe"))
-    , m_xNameFT(m_xBuilder->weld_label("name_label"))
-    , m_xNameED(m_xBuilder->weld_entry("name"))
-    , m_xAltNameFT(m_xBuilder->weld_label("altname_label"))
-    , m_xAltNameED(m_xBuilder->weld_entry("altname"))
-    , m_xDescriptionFT(m_xBuilder->weld_label("description_label"))
-    , m_xDescriptionED(m_xBuilder->weld_text_view("description"))
-    , m_xDecorativeCB(m_xBuilder->weld_check_button("decorative"))
-    , m_xSequenceFrame(m_xBuilder->weld_widget("frmSequence"))
-    , m_xPrevLB(m_xBuilder->weld_combo_box("prev"))
-    , m_xNextLB(m_xBuilder->weld_combo_box("next"))
-    , m_xProtectFrame(m_xBuilder->weld_widget("protect"))
-    , m_xProtectContentCB(m_xBuilder->weld_check_button("protectcontent"))
-    , m_xProtectFrameCB(m_xBuilder->weld_check_button("protectframe"))
-    , m_xProtectSizeCB(m_xBuilder->weld_check_button("protectsize"))
-    , m_xContentAlignFrame(m_xBuilder->weld_widget("contentalign"))
-    , m_xVertAlignLB(m_xBuilder->weld_combo_box("vertalign"))
-    , m_xPropertiesFrame(m_xBuilder->weld_widget("properties"))
-    , m_xEditInReadonlyCB(m_xBuilder->weld_check_button("editinreadonly"))
-    , m_xPrintFrameCB(m_xBuilder->weld_check_button("printframe"))
-    , m_xTextFlowFT(m_xBuilder->weld_label("textflow_label"))
-    , m_xTextFlowLB(new svx::FrameDirectionListBox(m_xBuilder->weld_combo_box("textflow")))
+    , m_xNameFrame(m_xBuilder->weld_widget(u"nameframe"_ustr))
+    , m_xNameFT(m_xBuilder->weld_label(u"name_label"_ustr))
+    , m_xNameED(m_xBuilder->weld_entry(u"name"_ustr))
+    , m_xAltNameFT(m_xBuilder->weld_label(u"altname_label"_ustr))
+    , m_xAltNameED(m_xBuilder->weld_entry(u"altname"_ustr))
+    , m_xDescriptionFT(m_xBuilder->weld_label(u"description_label"_ustr))
+    , m_xDescriptionED(m_xBuilder->weld_text_view(u"description"_ustr))
+    , m_xDecorativeCB(m_xBuilder->weld_check_button(u"decorative"_ustr))
+    , m_xSequenceFrame(m_xBuilder->weld_widget(u"frmSequence"_ustr))
+    , m_xPrevLB(m_xBuilder->weld_combo_box(u"prev"_ustr))
+    , m_xNextLB(m_xBuilder->weld_combo_box(u"next"_ustr))
+    , m_xContentAlignFrame(m_xBuilder->weld_widget(u"contentalign"_ustr))
+    , m_xVertAlignLB(m_xBuilder->weld_combo_box(u"vertalign"_ustr))
+    , m_xPropertiesFrame(m_xBuilder->weld_widget(u"properties"_ustr))
+    , m_xEditInReadonlyCB(m_xBuilder->weld_check_button(u"editinreadonly"_ustr))
+    , m_xPrintFrameCB(m_xBuilder->weld_check_button(u"printframe"_ustr))
+    , m_xTextFlowFT(m_xBuilder->weld_label(u"textflow_label"_ustr))
+    , m_xTextFlowLB(new svx::FrameDirectionListBox(m_xBuilder->weld_combo_box(u"textflow"_ustr)))
 {
     m_xTextFlowLB->append(SvxFrameDirection::Horizontal_LR_TB, SvxResId(RID_SVXSTR_FRAMEDIR_LTR));
     m_xTextFlowLB->append(SvxFrameDirection::Horizontal_RL_TB, SvxResId(RID_SVXSTR_FRAMEDIR_RTL));
@@ -2954,7 +3024,6 @@ void SwFrameAddPage::Reset(const SfxItemSet *rSet )
     m_bHtmlMode = (nHtmlMode & HTMLMODE_ON) != 0;
     if (m_bHtmlMode)
     {
-        m_xProtectFrame->hide();
         m_xEditInReadonlyCB->hide();
         m_xPrintFrameCB->hide();
     }
@@ -2985,10 +3054,10 @@ void SwFrameAddPage::Reset(const SfxItemSet *rSet )
     {
         // insert graphic - properties
         // bNew is not set, so recognise by selection
-        OUString aTmpName1;
+        UIName aTmpName1;
         if(const SfxStringItem* pNameItem = rSet->GetItemIfSet(FN_SET_FRM_NAME, false))
         {
-            aTmpName1 = pNameItem->GetValue();
+            aTmpName1 = UIName(pNameItem->GetValue());
         }
 
         OSL_ENSURE(m_pWrtSh, "no Shell?");
@@ -3004,7 +3073,7 @@ void SwFrameAddPage::Reset(const SfxItemSet *rSet )
             m_pWrtSh->SetFlyName(aTmpName1);
         }
 
-        m_xNameED->set_text( aTmpName1 );
+        m_xNameED->set_text( aTmpName1.toString() );
         m_xNameED->save_value();
     }
     else
@@ -3032,7 +3101,7 @@ void SwFrameAddPage::Reset(const SfxItemSet *rSet )
         {
             const SwFormatChain &rChain = pFormat->GetChain();
             const SwFlyFrameFormat* pFlyFormat;
-            OUString sNextChain, sPrevChain;
+            UIName sNextChain, sPrevChain;
             pFlyFormat = rChain.GetPrev();
             if (pFlyFormat != nullptr)
             {
@@ -3045,20 +3114,20 @@ void SwFrameAddPage::Reset(const SfxItemSet *rSet )
                 sNextChain = pFlyFormat->GetName();
             }
             //determine chainable frames
-            std::vector< OUString > aPrevPageFrames;
-            std::vector< OUString > aThisPageFrames;
-            std::vector< OUString > aNextPageFrames;
-            std::vector< OUString > aRemainFrames;
-            m_pWrtSh->GetConnectableFrameFormats(*pFormat, sNextChain, false,
+            std::vector< UIName > aPrevPageFrames;
+            std::vector< UIName > aThisPageFrames;
+            std::vector< UIName > aNextPageFrames;
+            std::vector< UIName > aRemainFrames;
+            m_pWrtSh->GetConnectableFrameFormats(*pFormat, sNextChain.toString(), false,
                             aPrevPageFrames, aThisPageFrames, aNextPageFrames, aRemainFrames );
             for (sal_Int32 nEntry = m_xPrevLB->get_count(); nEntry > 1; nEntry--)
                 m_xPrevLB->remove(nEntry - 1);
             lcl_InsertVectors(*m_xPrevLB, aPrevPageFrames, aThisPageFrames, aNextPageFrames, aRemainFrames);
             if(!sPrevChain.isEmpty())
             {
-                if (m_xPrevLB->find_text(sPrevChain) == -1)
-                    m_xPrevLB->insert_text(1, sPrevChain);
-                m_xPrevLB->set_active_text(sPrevChain);
+                if (m_xPrevLB->find_text(sPrevChain.toString()) == -1)
+                    m_xPrevLB->insert_text(1, sPrevChain.toString());
+                m_xPrevLB->set_active_text(sPrevChain.toString());
             }
             else
                 m_xPrevLB->set_active(0);
@@ -3067,16 +3136,16 @@ void SwFrameAddPage::Reset(const SfxItemSet *rSet )
             aThisPageFrames.clear();
             aRemainFrames.clear();
 
-            m_pWrtSh->GetConnectableFrameFormats(*pFormat, sPrevChain, true,
+            m_pWrtSh->GetConnectableFrameFormats(*pFormat, sPrevChain.toString(), true,
                             aPrevPageFrames, aThisPageFrames, aNextPageFrames, aRemainFrames );
             for (sal_Int32 nEntry = m_xNextLB->get_count(); nEntry > 1; nEntry--)
                 m_xNextLB->remove(nEntry - 1);
             lcl_InsertVectors(*m_xNextLB, aPrevPageFrames, aThisPageFrames, aNextPageFrames, aRemainFrames);
             if(!sNextChain.isEmpty())
             {
-                if (m_xNextLB->find_text(sNextChain) == -1)
-                    m_xNextLB->insert_text(1, sNextChain);
-                m_xNextLB->set_active_text(sNextChain);
+                if (m_xNextLB->find_text(sNextChain.toString()) == -1)
+                    m_xNextLB->insert_text(1, sNextChain.toString());
+                m_xNextLB->set_active_text(sNextChain.toString());
             }
             else
                 m_xNextLB->set_active(0);
@@ -3085,11 +3154,6 @@ void SwFrameAddPage::Reset(const SfxItemSet *rSet )
             m_xNextLB->connect_changed(aLink);
         }
     }
-    // Pos Protected
-    const SvxProtectItem& rProt = rSet->Get(RES_PROTECT);
-    m_xProtectFrameCB->set_active(rProt.IsPosProtected());
-    m_xProtectContentCB->set_active(rProt.IsContentProtected());
-    m_xProtectSizeCB->set_active(rProt.IsSizeProtected());
 
     const SwFormatEditInReadonly& rEdit = rSet->Get(RES_EDIT_IN_READONLY);
     m_xEditInReadonlyCB->set_active(rEdit.GetValue());
@@ -3156,15 +3220,6 @@ bool SwFrameAddPage::FillItemSet(SfxItemSet *rSet)
     if (m_xDescriptionED->get_value_changed_from_saved())
         bRet |= nullptr != rSet->Put(SfxStringItem(FN_UNO_DESCRIPTION, m_xDescriptionED->get_text()));
 
-    const SfxPoolItem* pOldItem;
-    SvxProtectItem aProt ( GetItemSet().Get(RES_PROTECT) );
-    aProt.SetContentProtect( m_xProtectContentCB->get_active() );
-    aProt.SetSizeProtect ( m_xProtectSizeCB->get_active() );
-    aProt.SetPosProtect  ( m_xProtectFrameCB->get_active() );
-    if ( nullptr == (pOldItem = GetOldItem(*rSet, FN_SET_PROTECT)) ||
-                aProt != *pOldItem )
-        bRet |= nullptr != rSet->Put( aProt);
-
     if ( m_xEditInReadonlyCB->get_state_changed_from_saved() )
         bRet |= nullptr != rSet->Put( SwFormatEditInReadonly( RES_EDIT_IN_READONLY, m_xEditInReadonlyCB->get_active()));
 
@@ -3197,11 +3252,11 @@ bool SwFrameAddPage::FillItemSet(SfxItemSet *rSet)
             OUString sNextChain, sPrevChain;
             pFlyFormat = rChain.GetPrev();
             if (pFlyFormat != nullptr)
-                sPrevChain = pFlyFormat->GetName();
+                sPrevChain = pFlyFormat->GetName().toString();
 
             pFlyFormat = rChain.GetNext();
             if (pFlyFormat != nullptr)
-                sNextChain = pFlyFormat->GetName();
+                sNextChain = pFlyFormat->GetName().toString();
             if(sPrevChain != sCurrentPrevChain)
                 bRet |= nullptr != rSet->Put(SfxStringItem(FN_PARAM_CHAIN_PREVIOUS, sCurrentPrevChain));
             if(sNextChain != sCurrentNextChain)
@@ -3266,10 +3321,10 @@ IMPL_LINK(SwFrameAddPage, ChainModifyHdl, weld::ComboBox&, rBox, void)
     for (sal_Int32 nEntry = rChangeLB.get_count(); nEntry > 1; nEntry--)
         rChangeLB.remove(nEntry - 1);
     //determine chainable frames
-    std::vector< OUString > aPrevPageFrames;
-    std::vector< OUString > aThisPageFrames;
-    std::vector< OUString > aNextPageFrames;
-    std::vector< OUString > aRemainFrames;
+    std::vector< UIName > aPrevPageFrames;
+    std::vector< UIName > aThisPageFrames;
+    std::vector< UIName > aNextPageFrames;
+    std::vector< UIName > aRemainFrames;
     m_pWrtSh->GetConnectableFrameFormats(*pFormat, bNextBox ? sCurrentNextChain : sCurrentPrevChain, !bNextBox,
                     aPrevPageFrames, aThisPageFrames, aNextPageFrames, aRemainFrames );
     lcl_InsertVectors(rChangeLB,

@@ -47,7 +47,7 @@ namespace
 {
 OUString lcl_getThemeDefinitionPath()
 {
-    OUString sPath("$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/theme_definitions/");
+    OUString sPath(u"$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/theme_definitions/"_ustr);
     rtl::Bootstrap::expandMacros(sPath);
     return sPath;
 }
@@ -152,14 +152,11 @@ bool FileDefinitionWidgetDraw::isNativeControlSupported(ControlType eType, Contr
         case ControlType::Radiobutton:
         case ControlType::Checkbox:
             return true;
-        case ControlType::Combobox:
-            if (ePart == ControlPart::HasBackgroundTexture)
-                return false;
-            return true;
         case ControlType::Editbox:
         case ControlType::EditboxNoBorder:
         case ControlType::MultilineEditbox:
             return true;
+        case ControlType::Combobox:
         case ControlType::Listbox:
             if (ePart == ControlPart::HasBackgroundTexture)
                 return false;
@@ -276,8 +273,8 @@ void drawFromDrawCommands(gfx::DrawRoot const& rDrawRoot, SalGraphics& rGraphics
                     aInputRectangle.getMinX(), aInputRectangle.getMinY(),
                     aInputRectangle.getMaxX() + fDeltaX, aInputRectangle.getMaxY() + fDeltaY);
 
-                aFinalRectangle.transform(basegfx::utils::createTranslateB2DHomMatrix(
-                    aTargetSurface.getMinX() - 0.5, aTargetSurface.getMinY() - 0.5));
+                aFinalRectangle.translate(aTargetSurface.getMinX() - 0.5,
+                                          aTargetSurface.getMinY() - 0.5);
 
                 basegfx::B2DPolygon aB2DPolygon = basegfx::utils::createPolygonFromRect(
                     aFinalRectangle, rRectangle.mnRx / aFinalRectangle.getWidth() * 2.0,
@@ -310,9 +307,8 @@ void drawFromDrawCommands(gfx::DrawRoot const& rDrawRoot, SalGraphics& rGraphics
                         if (y > aSVGRect.getCenterY())
                             y = y + fDeltaY;
 
-                        aGradient.maPoint1 = basegfx::B2DPoint(x, y);
-                        aGradient.maPoint1 *= basegfx::utils::createTranslateB2DHomMatrix(
-                            aTargetSurface.getMinX() - 0.5, aTargetSurface.getMinY() - 0.5);
+                        aGradient.maPoint1 = basegfx::B2DPoint(x + aTargetSurface.getMinX() - 0.5,
+                                                               y + aTargetSurface.getMinY() - 0.5);
 
                         x = pLinearGradient->x2;
                         y = pLinearGradient->y2;
@@ -322,9 +318,8 @@ void drawFromDrawCommands(gfx::DrawRoot const& rDrawRoot, SalGraphics& rGraphics
                         if (y > aSVGRect.getCenterY())
                             y = y + fDeltaY;
 
-                        aGradient.maPoint2 = basegfx::B2DPoint(x, y);
-                        aGradient.maPoint2 *= basegfx::utils::createTranslateB2DHomMatrix(
-                            aTargetSurface.getMinX() - 0.5, aTargetSurface.getMinY() - 0.5);
+                        aGradient.maPoint2 = basegfx::B2DPoint(x + aTargetSurface.getMinX() - 0.5,
+                                                               y + aTargetSurface.getMinY() - 0.5);
 
                         for (gfx::GradientStop const& rStop : pLinearGradient->maGradientStops)
                         {
@@ -372,8 +367,8 @@ void drawFromDrawCommands(gfx::DrawRoot const& rDrawRoot, SalGraphics& rGraphics
                         rPolygon.setB2DPoint(i, basegfx::B2DPoint(x, y));
                     }
                 }
-                aPolyPolygon.transform(basegfx::utils::createTranslateB2DHomMatrix(
-                    aTargetSurface.getMinX() - 0.5, aTargetSurface.getMinY() - 0.5));
+                aPolyPolygon.translate(aTargetSurface.getMinX() - 0.5,
+                                       aTargetSurface.getMinY() - 0.5);
 
                 if (rPath.mpFillColor)
                 {
@@ -471,12 +466,12 @@ void munchDrawCommands(std::vector<std::shared_ptr<WidgetDrawAction>> const& rDr
                 OUString rCacheKey = rWidgetDraw.msSource + "@" + OUString::number(nScaleFactor);
                 auto aIterator = rCacheImages.find(rCacheKey);
 
-                BitmapEx aBitmap;
+                Bitmap aBitmap;
                 if (aIterator == rCacheImages.end())
                 {
                     SvFileStream aFileStream(rWidgetDraw.msSource, StreamMode::READ);
 
-                    vcl::bitmap::loadFromSvg(aFileStream, "", aBitmap, nScaleFactor);
+                    vcl::bitmap::loadFromSvg(aFileStream, u""_ustr, aBitmap, nScaleFactor);
                     if (!aBitmap.IsEmpty())
                     {
                         rCacheImages.insert(std::make_pair(rCacheKey, aBitmap));
@@ -493,17 +488,19 @@ void munchDrawCommands(std::vector<std::shared_ptr<WidgetDrawAction>> const& rDr
                                nImageHeight / nScaleFactor);
                 if (!aBitmap.IsEmpty())
                 {
-                    const std::shared_ptr<SalBitmap> pSalBitmap
-                        = aBitmap.GetBitmap().ImplGetSalBitmap();
-                    if (aBitmap.IsAlpha())
+                    if (aBitmap.HasAlpha())
                     {
+                        BitmapEx aTmp(aBitmap);
+                        const std::shared_ptr<SalBitmap> pSalBitmap
+                            = aTmp.GetBitmap().ImplGetSalBitmap();
                         const std::shared_ptr<SalBitmap> pSalBitmapAlpha
-                            = aBitmap.GetAlphaMask().GetBitmap().ImplGetSalBitmap();
+                            = aTmp.GetAlphaMask().GetBitmap().ImplGetSalBitmap();
                         FileDefinitionWidgetDraw::drawBitmap(rGraphics, aTR, *pSalBitmap,
                                                              *pSalBitmapAlpha);
                     }
                     else
                     {
+                        const std::shared_ptr<SalBitmap> pSalBitmap = aBitmap.ImplGetSalBitmap();
                         FileDefinitionWidgetDraw::drawBitmap(rGraphics, aTR, *pSalBitmap);
                     }
                 }
@@ -522,7 +519,7 @@ void munchDrawCommands(std::vector<std::shared_ptr<WidgetDrawAction>> const& rDr
                 {
                     SvFileStream aFileStream(rWidgetDraw.msSource, StreamMode::READ);
 
-                    uno::Reference<uno::XComponentContext> xContext(
+                    const uno::Reference<uno::XComponentContext>& xContext(
                         comphelper::getProcessComponentContext());
                     const uno::Reference<graphic::XSvgParser> xSvgParser
                         = graphic::SvgTools::create(xContext);
@@ -536,7 +533,7 @@ void munchDrawCommands(std::vector<std::shared_ptr<WidgetDrawAction>> const& rDr
                     uno::Reference<io::XInputStream> aInputStream(
                         new comphelper::SequenceInputStream(aData));
 
-                    uno::Any aAny = xSvgParser->getDrawCommands(aInputStream, "");
+                    uno::Any aAny = xSvgParser->getDrawCommands(aInputStream, u""_ustr);
                     if (aAny.has<sal_uInt64>())
                     {
                         auto* pDrawRoot = reinterpret_cast<gfx::DrawRoot*>(aAny.get<sal_uInt64>());
@@ -567,10 +564,10 @@ bool FileDefinitionWidgetDraw::resolveDefinition(ControlType eType, ControlPart 
                                                  tools::Long nHeight)
 {
     bool bOK = false;
-    auto const& pPart = m_pWidgetDefinition->getDefinition(eType, ePart);
+    auto const pPart = m_pWidgetDefinition->getDefinition(eType, ePart);
     if (pPart)
     {
-        auto const& aStates = pPart->getStates(eType, ePart, eState, rValue);
+        auto const aStates = pPart->getStates(eType, ePart, eState, rValue);
         if (!aStates.empty())
         {
             // use last defined state
@@ -796,20 +793,19 @@ bool FileDefinitionWidgetDraw::getNativeControlRegion(
     {
         case ControlType::Spinbox:
         {
-            auto const& pButtonUpPart
+            auto const pButtonUpPart
                 = m_pWidgetDefinition->getDefinition(eType, ControlPart::ButtonUp);
             if (!pButtonUpPart)
                 return false;
             Size aButtonSizeUp(pButtonUpPart->mnWidth, pButtonUpPart->mnHeight);
 
-            auto const& pButtonDownPart
+            auto const pButtonDownPart
                 = m_pWidgetDefinition->getDefinition(eType, ControlPart::ButtonDown);
             if (!pButtonDownPart)
                 return false;
             Size aButtonSizeDown(pButtonDownPart->mnWidth, pButtonDownPart->mnHeight);
 
-            auto const& pEntirePart
-                = m_pWidgetDefinition->getDefinition(eType, ControlPart::Entire);
+            auto const pEntirePart = m_pWidgetDefinition->getDefinition(eType, ControlPart::Entire);
 
             OString sOrientation = pEntirePart->msOrientation;
 
@@ -894,18 +890,9 @@ bool FileDefinitionWidgetDraw::getNativeControlRegion(
         }
         break;
         case ControlType::Checkbox:
-        {
-            auto const& pPart = m_pWidgetDefinition->getDefinition(eType, ControlPart::Entire);
-            if (!pPart)
-                return false;
-
-            Size aSize(pPart->mnWidth, pPart->mnHeight);
-            rNativeContentRegion = tools::Rectangle(Point(), aSize);
-            return true;
-        }
         case ControlType::Radiobutton:
         {
-            auto const& pPart = m_pWidgetDefinition->getDefinition(eType, ControlPart::Entire);
+            auto const pPart = m_pWidgetDefinition->getDefinition(eType, ControlPart::Entire);
             if (!pPart)
                 return false;
 
@@ -915,7 +902,7 @@ bool FileDefinitionWidgetDraw::getNativeControlRegion(
         }
         case ControlType::TabItem:
         {
-            auto const& pPart = m_pWidgetDefinition->getDefinition(eType, ControlPart::Entire);
+            auto const pPart = m_pWidgetDefinition->getDefinition(eType, ControlPart::Entire);
             if (!pPart)
                 return false;
 
@@ -935,7 +922,7 @@ bool FileDefinitionWidgetDraw::getNativeControlRegion(
         {
             sal_Int32 nHeight = rBoundingControlRegion.GetHeight();
 
-            auto const& pPart = m_pWidgetDefinition->getDefinition(eType, ControlPart::Entire);
+            auto const pPart = m_pWidgetDefinition->getDefinition(eType, ControlPart::Entire);
             if (pPart)
                 nHeight = std::max(nHeight, pPart->mnHeight);
 
@@ -966,7 +953,7 @@ bool FileDefinitionWidgetDraw::getNativeControlRegion(
         case ControlType::Combobox:
         case ControlType::Listbox:
         {
-            auto const& pPart = m_pWidgetDefinition->getDefinition(eType, ControlPart::ButtonDown);
+            auto const pPart = m_pWidgetDefinition->getDefinition(eType, ControlPart::ButtonDown);
             Size aComboButtonSize(pPart->mnWidth, pPart->mnHeight);
 
             if (ePart == ControlPart::ButtonDown)
@@ -1091,7 +1078,7 @@ bool FileDefinitionWidgetDraw::updateSettings(AllSettings& rSettings)
     vcl::Font aFont(FAMILY_SWISS, Size(0, nFontSize));
     aFont.SetCharSet(osl_getThreadTextEncoding());
     aFont.SetWeight(WEIGHT_NORMAL);
-    aFont.SetFamilyName("Liberation Sans");
+    aFont.SetFamilyName(u"Liberation Sans"_ustr);
     aStyleSet.SetAppFont(aFont);
     aStyleSet.SetHelpFont(aFont);
     aStyleSet.SetMenuFont(aFont);

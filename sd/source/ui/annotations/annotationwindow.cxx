@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <config_wasm_strip.h>
+
 #include <editeng/eeitem.hxx>
 #include <editeng/udlnitem.hxx>
 #include <editeng/langitem.hxx>
@@ -29,6 +31,7 @@
 #include <editeng/wghtitem.hxx>
 #include <editeng/crossedoutitem.hxx>
 #include <editeng/editund2.hxx>
+#include <officecfg/Office/Common.hxx>
 #include <svx/svxids.hrc>
 #include <unotools/useroptions.hxx>
 
@@ -39,11 +42,13 @@
 
 #include <vcl/commandevent.hxx>
 #include <vcl/commandinfoprovider.hxx>
+#include <vcl/decoview.hxx>
 #include <vcl/vclenum.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/gradient.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/ptrstyle.hxx>
+#include <vcl/virdev.hxx>
 
 #include <strings.hrc>
 #include "annotationwindow.hxx"
@@ -53,16 +58,15 @@
 #include <DrawDocShell.hxx>
 #include <ViewShell.hxx>
 #include <drawdoc.hxx>
-#include <textapi.hxx>
+#include <svx/annotation/TextAPI.hxx>
+#include <svx/annotation/Annotation.hxx>
+#include <svx/annotation/ObjectAnnotationData.hxx>
+#include <svx/svdorect.hxx>
 #include <sdresid.hxx>
 
 #include <memory>
 
-using namespace ::sd;
-using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::office;
-using namespace ::com::sun::star::text;
+using namespace css;
 
 #define METABUTTON_WIDTH        16
 #define METABUTTON_HEIGHT       18
@@ -145,7 +149,10 @@ bool AnnotationTextWindow::KeyInput(const KeyEvent& rKeyEvt)
         }
     }
 
-    return bDone;
+    if (bDone)
+        return true;
+
+    return WeldEditView::KeyInput(rKeyEvt);
 }
 
 AnnotationTextWindow::AnnotationTextWindow(AnnotationWindow& rContents)
@@ -166,7 +173,7 @@ EditEngine* AnnotationTextWindow::GetEditEngine() const
     OutlinerView* pOutlinerView = mrContents.GetOutlinerView();
     if (!pOutlinerView)
         return nullptr;
-    return pOutlinerView->GetEditView().GetEditEngine();
+    return &pOutlinerView->GetEditView().getEditEngine();
 }
 
 void AnnotationTextWindow::SetDrawingArea(weld::DrawingArea* pDrawingArea)
@@ -202,16 +209,18 @@ void AnnotationTextWindow::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 
     pDrawingArea->set_cursor(PointerStyle::Text);
 
+#if !ENABLE_WASM_STRIP_ACCESSIBILITY
     InitAccessible();
+#endif
 }
 
 // see SwAnnotationWin in sw for something similar
 AnnotationWindow::AnnotationWindow(weld::Window* pParent, const ::tools::Rectangle& rRect,
                                    DrawDocShell* pDocShell,
-                                   const Reference<XAnnotation>& xAnnotation)
-    : mxBuilder(Application::CreateBuilder(pParent, "modules/simpress/ui/annotation.ui"))
-    , mxPopover(mxBuilder->weld_popover("Annotation"))
-    , mxContainer(mxBuilder->weld_widget("container"))
+                                   rtl::Reference<sdr::annotation::Annotation> const& xAnnotation)
+    : mxBuilder(Application::CreateBuilder(pParent, u"modules/simpress/ui/annotation.ui"_ustr))
+    , mxPopover(mxBuilder->weld_popover(u"Annotation"_ustr))
+    , mxContainer(mxBuilder->weld_widget(u"container"_ustr))
     , mpDocShell(pDocShell)
     , mpDoc(pDocShell->GetDoc())
     , mbReadonly(pDocShell->IsReadOnly())
@@ -236,7 +245,7 @@ AnnotationWindow::~AnnotationWindow()
 void AnnotationWindow::InitControls()
 {
     // window control for author and date
-    mxMeta = mxBuilder->weld_label("meta");
+    mxMeta = mxBuilder->weld_label(u"meta"_ustr);
     mxMeta->set_direction(AllSettings::GetLayoutRTL());
 
     maLabelFont = Application::GetSettings().GetStyleSettings().GetLabelFont();
@@ -253,34 +262,31 @@ void AnnotationWindow::InitControls()
     if (OutputDevice* pDev = mpDoc->GetRefDevice())
         mpOutliner->SetRefDevice( pDev );
 
-    mpOutlinerView.reset( new OutlinerView ( mpOutliner.get(), nullptr) );
+    mpOutlinerView.reset(new OutlinerView(*mpOutliner, nullptr));
     mpOutliner->InsertView(mpOutlinerView.get() );
 
     //create Scrollbars
-    mxVScrollbar = mxBuilder->weld_scrolled_window("scrolledwindow", true);
+    mxVScrollbar = mxBuilder->weld_scrolled_window(u"scrolledwindow"_ustr, true);
 
     // actual window which holds the user text
     mxTextControl.reset(new AnnotationTextWindow(*this));
-    mxTextControlWin.reset(new weld::CustomWeld(*mxBuilder, "editview", *mxTextControl));
+    mxTextControlWin.reset(new weld::CustomWeld(*mxBuilder, u"editview"_ustr, *mxTextControl));
     mxTextControl->SetPointer(PointerStyle::Text);
 
     Rescale();
     OutputDevice& rDevice = mxTextControl->GetDrawingArea()->get_ref_device();
 
     mxVScrollbar->set_direction(false);
-    mxVScrollbar->connect_vadjustment_changed(LINK(this, AnnotationWindow, ScrollHdl));
+    mxVScrollbar->connect_vadjustment_value_changed(LINK(this, AnnotationWindow, ScrollHdl));
 
     mpOutlinerView->SetBackgroundColor(COL_TRANSPARENT);
     mpOutlinerView->SetOutputArea(rDevice.PixelToLogic(::tools::Rectangle(0, 0, 1, 1)));
 
-    mxMenuButton = mxBuilder->weld_menu_button("menubutton");
+    mxMenuButton = mxBuilder->weld_menu_button(u"menubutton"_ustr);
     if (mbReadonly)
         mxMenuButton->hide();
     else
-    {
-        mxMenuButton->set_size_request(METABUTTON_WIDTH, METABUTTON_HEIGHT);
         mxMenuButton->connect_selected(LINK(this, AnnotationWindow, MenuItemSelectedHdl));
-    }
 
     EEControlBits nCntrl = mpOutliner->GetControlWord();
     nCntrl |= EEControlBits::PASTESPECIAL | EEControlBits::AUTOCORRECT | EEControlBits::USECHARATTRIBS | EEControlBits::NOCOLORS;
@@ -304,15 +310,18 @@ IMPL_LINK(AnnotationWindow, MenuItemSelectedHdl, const OUString&, rIdent, void)
     if (!pDispatcher)
         return;
 
+    uno::Reference<office::XAnnotation> xUnoAnnotation(mxAnnotation);
+
     if (rIdent == ".uno:ReplyToAnnotation")
     {
-        const SfxUnoAnyItem aItem( SID_REPLYTO_POSTIT, Any( mxAnnotation ) );
+
+        const SfxUnoAnyItem aItem(SID_REPLYTO_POSTIT, uno::Any(xUnoAnnotation));
         pDispatcher->ExecuteList(SID_REPLYTO_POSTIT,
                 SfxCallMode::ASYNCHRON, { &aItem });
     }
     else if (rIdent == ".uno:DeleteAnnotation")
     {
-        const SfxUnoAnyItem aItem( SID_DELETE_POSTIT, Any( mxAnnotation ) );
+        const SfxUnoAnyItem aItem(SID_DELETE_POSTIT, uno::Any(xUnoAnnotation));
         pDispatcher->ExecuteList(SID_DELETE_POSTIT, SfxCallMode::ASYNCHRON,
                 { &aItem });
     }
@@ -332,24 +341,24 @@ void AnnotationWindow::FillMenuButton()
     OUString sCurrentAuthor( aUserOptions.GetFullName() );
     OUString sAuthor( mxAnnotation->getAuthor() );
 
-    OUString aStr(mxMenuButton->get_item_label(".uno:DeleteAllAnnotationByAuthor"));
+    OUString aStr(mxMenuButton->get_item_label(u".uno:DeleteAllAnnotationByAuthor"_ustr));
     OUString aReplace( sAuthor );
     if( aReplace.isEmpty() )
         aReplace = SdResId( STR_ANNOTATION_NOAUTHOR );
     aStr = aStr.replaceFirst("%1", aReplace);
-    mxMenuButton->set_item_label(".uno:DeleteAllAnnotationByAuthor", aStr);
+    mxMenuButton->set_item_label(u".uno:DeleteAllAnnotationByAuthor"_ustr, aStr);
 
     bool bShowReply = sAuthor != sCurrentAuthor && !mbReadonly;
-    mxMenuButton->set_item_visible(".uno:ReplyToAnnotation", bShowReply);
-    mxMenuButton->set_item_visible("separator", bShowReply);
-    mxMenuButton->set_item_visible(".uno:DeleteAnnotation", mxAnnotation.is() && !mbReadonly);
-    mxMenuButton->set_item_visible(".uno:DeleteAllAnnotationByAuthor", !mbReadonly);
-    mxMenuButton->set_item_visible(".uno:DeleteAllAnnotation", !mbReadonly);
+    mxMenuButton->set_item_visible(u".uno:ReplyToAnnotation"_ustr, bShowReply);
+    mxMenuButton->set_item_visible(u"separator"_ustr, bShowReply);
+    mxMenuButton->set_item_visible(u".uno:DeleteAnnotation"_ustr, mxAnnotation.is() && !mbReadonly);
+    mxMenuButton->set_item_visible(u".uno:DeleteAllAnnotationByAuthor"_ustr, !mbReadonly);
+    mxMenuButton->set_item_visible(u".uno:DeleteAllAnnotation"_ustr, !mbReadonly);
 }
 
 void AnnotationWindow::StartEdit()
 {
-    GetOutlinerView()->SetSelection(ESelection(EE_PARA_MAX_COUNT,EE_TEXTPOS_MAX_COUNT,EE_PARA_MAX_COUNT,EE_TEXTPOS_MAX_COUNT));
+    GetOutlinerView()->SetSelection(ESelection::AtEnd());
     GetOutlinerView()->ShowCursor();
 }
 
@@ -428,8 +437,8 @@ void AnnotationWindow::DoResize()
     */
     nPageSize = std::min(nPageSize, nUpper);
 
-    mxVScrollbar->vadjustment_configure(nCurrentDocPos, 0, nUpper,
-                                        nStepIncrement, nPageIncrement, nPageSize);
+    mxVScrollbar->vadjustment_configure(nCurrentDocPos, nUpper, nStepIncrement, nPageIncrement,
+                                        nPageSize);
 }
 
 void AnnotationWindow::SetScrollbar()
@@ -450,8 +459,7 @@ void AnnotationWindow::SetLanguage(const SvxLanguageItem &aNewItem)
     mpOutliner->SetModifyHdl( Link<LinkParamNone*,void>() );
     ESelection aOld = GetOutlinerView()->GetSelection();
 
-    ESelection aNewSelection( 0, 0, mpOutliner->GetParagraphCount()-1, EE_TEXTPOS_ALL );
-    GetOutlinerView()->SetSelection( aNewSelection );
+    GetOutlinerView()->SetSelection(ESelection::All());
     SfxItemSet aEditAttr(GetOutlinerView()->GetAttribs());
     aEditAttr.Put(aNewItem);
     GetOutlinerView()->SetAttribs( aEditAttr );
@@ -483,19 +491,19 @@ IMPL_LINK(AnnotationWindow, ScrollHdl, weld::ScrolledWindow&, rScrolledWindow, v
     GetOutlinerView()->Scroll( 0, nDiff );
 }
 
-TextApiObject* getTextApiObject( const Reference< XAnnotation >& xAnnotation )
+sdr::annotation::TextApiObject* getTextApiObject(const uno::Reference<office::XAnnotation>& xAnnotation)
 {
     if( xAnnotation.is() )
     {
-        Reference< XText > xText( xAnnotation->getTextRange() );
-        return TextApiObject::getImplementation( xText );
+        uno::Reference<text::XText> xText( xAnnotation->getTextRange() );
+        return sdr::annotation::TextApiObject::getImplementation(xText);
     }
     return nullptr;
 }
 
-void AnnotationWindow::setAnnotation( const Reference< XAnnotation >& xAnnotation )
+void AnnotationWindow::setAnnotation(rtl::Reference<sdr::annotation::Annotation> const& xAnnotation)
 {
-    if( (xAnnotation == mxAnnotation) || !xAnnotation.is() )
+    if (xAnnotation == mxAnnotation || !xAnnotation.is())
         return;
 
     mxAnnotation = xAnnotation;
@@ -506,7 +514,7 @@ void AnnotationWindow::setAnnotation( const Reference< XAnnotation >& xAnnotatio
     mbProtected = aUserOptions.GetFullName() != xAnnotation->getAuthor();
 
     mpOutliner->Clear();
-    TextApiObject* pTextApi = getTextApiObject( mxAnnotation );
+    auto* pTextApi = getTextApiObject(mxAnnotation);
 
     if( pTextApi )
     {
@@ -551,10 +559,36 @@ void AnnotationWindow::SetColor()
         maColorLight = AnnotationManagerImpl::GetColorLight( nAuthorIdx );
     }
 
-    mpOutliner->ForceAutoColor( bHighContrast || SvtAccessibilityOptions::GetIsAutomaticFontColor() );
+    mpOutliner->ForceAutoColor( bHighContrast || officecfg::Office::Common::Accessibility::IsAutomaticFontColor::get() );
 
     mxPopover->set_background(maColor);
     mxMenuButton->set_background(maColor);
+
+    ScopedVclPtrInstance<VirtualDevice> xVirDev;
+    xVirDev->SetLineColor();
+    xVirDev->SetFillColor(maColor);
+
+    Size aSize(METABUTTON_WIDTH, METABUTTON_HEIGHT);
+    ::tools::Rectangle aRect(Point(0, 0), aSize);
+    xVirDev->SetOutputSizePixel(aSize);
+    xVirDev->DrawRect(aRect);
+
+    ::tools::Rectangle aSymbolRect(aRect);
+    // 25% distance to the left and right button border
+    const ::tools::Long nBorderDistanceLeftAndRight = ((aSymbolRect.GetWidth() * 250) + 500) / 1000;
+    aSymbolRect.AdjustLeft(nBorderDistanceLeftAndRight );
+    aSymbolRect.AdjustRight( -nBorderDistanceLeftAndRight );
+    // 40% distance to the top button border
+    const ::tools::Long nBorderDistanceTop = ((aSymbolRect.GetHeight() * 400) + 500) / 1000;
+    aSymbolRect.AdjustTop(nBorderDistanceTop );
+    // 15% distance to the bottom button border
+    const ::tools::Long nBorderDistanceBottom = ((aSymbolRect.GetHeight() * 150) + 500) / 1000;
+    aSymbolRect.AdjustBottom( -nBorderDistanceBottom );
+    DecorationView aDecoView(xVirDev.get());
+    aDecoView.DrawSymbol(aSymbolRect, SymbolType::SPIN_DOWN, COL_BLACK,
+                         DrawSymbolFlags::NONE);
+    mxMenuButton->set_image(xVirDev);
+    mxMenuButton->set_size_request(aSize.Width() + 4, aSize.Height() + 4);
 
     mxMeta->set_font_color(bHighContrast ? maColorLight : maColorDark);
 
@@ -566,12 +600,12 @@ void AnnotationWindow::SetColor()
 
 void AnnotationWindow::SaveToDocument()
 {
-    Reference< XAnnotation > xAnnotation( mxAnnotation );
+    uno::Reference<office::XAnnotation> xAnnotation(mxAnnotation);
 
     // write changed text back to annotation
     if (mpOutliner->IsModified())
     {
-        TextApiObject* pTextApi = getTextApiObject( xAnnotation );
+        auto* pTextApi = getTextApiObject( xAnnotation );
 
         if( pTextApi )
         {
@@ -586,6 +620,18 @@ void AnnotationWindow::SaveToDocument()
 
                 // set current time to changed annotation
                 xAnnotation->setDateTime( getCurrentDateTime() );
+
+                rtl::Reference<sdr::annotation::Annotation> xSdrAnnotation = dynamic_cast<sdr::annotation::Annotation*>(xAnnotation.get());
+                if (xSdrAnnotation && xSdrAnnotation->getCreationInfo().meType == sdr::annotation::AnnotationType::FreeText)
+                {
+                    SdrObject* pObject = xSdrAnnotation->findAnnotationObject();
+                    SdrRectObj* pRectangleObject = pObject ? dynamic_cast<SdrRectObj*>(pObject) : nullptr;
+                    if (pRectangleObject)
+                    {
+                        OUString aString = xSdrAnnotation->getTextRange()->getString();
+                        pRectangleObject->SetText(aString);
+                    }
+                }
 
                 if( mpDoc->IsUndoEnabled() )
                     mpDoc->EndUndo();
@@ -604,8 +650,7 @@ bool AnnotationTextWindow::Command(const CommandEvent& rCEvt)
 {
     if (rCEvt.GetCommand() == CommandEventId::ContextMenu)
     {
-        const bool bReadOnly = mrContents.DocShell()->IsReadOnly();
-        if (bReadOnly)
+        if (mrContents.DocShell()->IsReadOnly())
             return true;
 
         SfxDispatcher* pDispatcher = mrContents.DocShell()->GetViewShell()->GetViewFrame()->GetDispatcher();
@@ -621,8 +666,8 @@ bool AnnotationTextWindow::Command(const CommandEvent& rCEvt)
 
         ::tools::Rectangle aRect(rCEvt.GetMousePosPixel(), Size(1, 1));
         weld::Widget* pPopupParent = GetDrawingArea();
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "modules/simpress/ui/annotationtagmenu.ui"));
-        std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu("menu"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"modules/simpress/ui/annotationtagmenu.ui"_ustr));
+        std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu(u"menu"_ustr));
 
         auto xAnnotation = mrContents.getAnnotation();
 
@@ -630,92 +675,92 @@ bool AnnotationTextWindow::Command(const CommandEvent& rCEvt)
         OUString sCurrentAuthor( aUserOptions.GetFullName() );
         OUString sAuthor( xAnnotation->getAuthor() );
 
-        OUString aStr(xMenu->get_label(".uno:DeleteAllAnnotationByAuthor"));
+        OUString aStr(xMenu->get_label(u".uno:DeleteAllAnnotationByAuthor"_ustr));
         OUString aReplace( sAuthor );
         if( aReplace.isEmpty() )
             aReplace = SdResId( STR_ANNOTATION_NOAUTHOR );
         aStr = aStr.replaceFirst("%1", aReplace);
-        xMenu->set_label(".uno:DeleteAllAnnotationByAuthor", aStr);
+        xMenu->set_label(u".uno:DeleteAllAnnotationByAuthor"_ustr, aStr);
 
-        bool bShowReply = sAuthor != sCurrentAuthor && !bReadOnly;
-        xMenu->set_visible(".uno:ReplyToAnnotation", bShowReply);
-        xMenu->set_visible("separator", bShowReply);
-        xMenu->set_visible(".uno:DeleteAnnotation", xAnnotation.is() && !bReadOnly);
-        xMenu->set_visible(".uno:DeleteAllAnnotationByAuthor", !bReadOnly);
-        xMenu->set_visible(".uno:DeleteAllAnnotation", !bReadOnly);
+        bool bShowReply = sAuthor != sCurrentAuthor;
+        xMenu->set_visible(u".uno:ReplyToAnnotation"_ustr, bShowReply);
+        xMenu->set_visible(u"separator"_ustr, bShowReply);
+        xMenu->set_visible(u".uno:DeleteAnnotation"_ustr, xAnnotation.is());
+        xMenu->set_visible(u".uno:DeleteAllAnnotationByAuthor"_ustr, true);
+        xMenu->set_visible(u".uno:DeleteAllAnnotation"_ustr, true);
 
         int nInsertPos = 2;
 
         auto xFrame = mrContents.DocShell()->GetViewShell()->GetViewFrame()->GetFrame().GetFrameInterface();
         OUString aModuleName(vcl::CommandInfoProvider::GetModuleIdentifier(xFrame));
 
-        bool bEditable = !mrContents.IsProtected() && !bReadOnly;
+        bool bEditable = !mrContents.IsProtected();
         if (bEditable)
         {
             SfxItemSet aSet(mrContents.GetOutlinerView()->GetAttribs());
 
-            xMenu->insert(nInsertPos++, ".uno:Bold",
+            xMenu->insert(nInsertPos++, u".uno:Bold"_ustr,
                           vcl::CommandInfoProvider::GetMenuLabelForCommand(
-                              vcl::CommandInfoProvider::GetCommandProperties(".uno:Bold", aModuleName)),
-                          nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(".uno:Bold", xFrame),
+                              vcl::CommandInfoProvider::GetCommandProperties(u".uno:Bold"_ustr, aModuleName)),
+                          nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(u".uno:Bold"_ustr, xFrame),
                           TRISTATE_TRUE);
 
             if ( aSet.GetItemState( EE_CHAR_WEIGHT ) == SfxItemState::SET )
             {
                 if( aSet.Get( EE_CHAR_WEIGHT ).GetWeight() == WEIGHT_BOLD )
-                    xMenu->set_active(".uno:Bold", true);
+                    xMenu->set_active(u".uno:Bold"_ustr, true);
             }
 
-            xMenu->insert(nInsertPos++, ".uno:Italic",
+            xMenu->insert(nInsertPos++, u".uno:Italic"_ustr,
                           vcl::CommandInfoProvider::GetMenuLabelForCommand(
-                              vcl::CommandInfoProvider::GetCommandProperties(".uno:Italic", aModuleName)),
-                          nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(".uno:Italic", xFrame),
+                              vcl::CommandInfoProvider::GetCommandProperties(u".uno:Italic"_ustr, aModuleName)),
+                          nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(u".uno:Italic"_ustr, xFrame),
                           TRISTATE_TRUE);
 
             if ( aSet.GetItemState( EE_CHAR_ITALIC ) == SfxItemState::SET )
             {
                 if( aSet.Get( EE_CHAR_ITALIC ).GetPosture() != ITALIC_NONE )
-                    xMenu->set_active(".uno:Italic", true);
+                    xMenu->set_active(u".uno:Italic"_ustr, true);
 
             }
 
-            xMenu->insert(nInsertPos++, ".uno:Underline",
+            xMenu->insert(nInsertPos++, u".uno:Underline"_ustr,
                           vcl::CommandInfoProvider::GetMenuLabelForCommand(
-                              vcl::CommandInfoProvider::GetCommandProperties(".uno:Underline", aModuleName)),
-                          nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(".uno:Underline", xFrame),
+                              vcl::CommandInfoProvider::GetCommandProperties(u".uno:Underline"_ustr, aModuleName)),
+                          nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(u".uno:Underline"_ustr, xFrame),
                           TRISTATE_TRUE);
 
             if ( aSet.GetItemState( EE_CHAR_UNDERLINE ) == SfxItemState::SET )
             {
                 if( aSet.Get( EE_CHAR_UNDERLINE ).GetLineStyle() != LINESTYLE_NONE )
-                    xMenu->set_active(".uno:Underline", true);
+                    xMenu->set_active(u".uno:Underline"_ustr, true);
             }
 
-            xMenu->insert(nInsertPos++, ".uno:Strikeout",
+            xMenu->insert(nInsertPos++, u".uno:Strikeout"_ustr,
                           vcl::CommandInfoProvider::GetMenuLabelForCommand(
-                              vcl::CommandInfoProvider::GetCommandProperties(".uno:Strikeout", aModuleName)),
-                          nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(".uno:Strikeout", xFrame),
+                              vcl::CommandInfoProvider::GetCommandProperties(u".uno:Strikeout"_ustr, aModuleName)),
+                          nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(u".uno:Strikeout"_ustr, xFrame),
                           TRISTATE_TRUE);
 
             if ( aSet.GetItemState( EE_CHAR_STRIKEOUT ) == SfxItemState::SET )
             {
                 if( aSet.Get( EE_CHAR_STRIKEOUT ).GetStrikeout() != STRIKEOUT_NONE )
-                    xMenu->set_active(".uno:Strikeout", true);
+                    xMenu->set_active(u".uno:Strikeout"_ustr, true);
             }
 
-            xMenu->insert_separator(nInsertPos++, "separator2");
+            xMenu->insert_separator(nInsertPos++, u"separator2"_ustr);
         }
 
-        xMenu->insert(nInsertPos++, ".uno:Copy",
+        xMenu->insert(nInsertPos++, u".uno:Copy"_ustr,
                       vcl::CommandInfoProvider::GetMenuLabelForCommand(
-                          vcl::CommandInfoProvider::GetCommandProperties(".uno:Copy", aModuleName)),
-                      nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(".uno:Copy", xFrame),
+                          vcl::CommandInfoProvider::GetCommandProperties(u".uno:Copy"_ustr, aModuleName)),
+                      nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(u".uno:Copy"_ustr, xFrame),
                       TRISTATE_INDET);
 
-        xMenu->insert(nInsertPos++, ".uno:Paste",
+        xMenu->insert(nInsertPos++, u".uno:Paste"_ustr,
                       vcl::CommandInfoProvider::GetMenuLabelForCommand(
-                          vcl::CommandInfoProvider::GetCommandProperties(".uno:Paste", aModuleName)),
-                      nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(".uno:Paste", xFrame),
+                          vcl::CommandInfoProvider::GetCommandProperties(u".uno:Paste"_ustr, aModuleName)),
+                      nullptr, nullptr, vcl::CommandInfoProvider::GetXGraphicForCommand(u".uno:Paste"_ustr, xFrame),
                       TRISTATE_INDET);
 
         bool bCanPaste = false;
@@ -725,22 +770,24 @@ bool AnnotationTextWindow::Command(const CommandEvent& rCEvt)
             bCanPaste = aDataHelper.GetFormatCount() != 0;
         }
 
-        xMenu->insert_separator(nInsertPos++, "separator3");
+        xMenu->insert_separator(nInsertPos++, u"separator3"_ustr);
 
-        xMenu->set_sensitive(".uno:Copy", mrContents.GetOutlinerView()->HasSelection());
-        xMenu->set_sensitive(".uno:Paste", bCanPaste);
+        xMenu->set_sensitive(u".uno:Copy"_ustr, mrContents.GetOutlinerView()->HasSelection());
+        xMenu->set_sensitive(u".uno:Paste"_ustr, bCanPaste);
 
         auto sId = xMenu->popup_at_rect(pPopupParent, aRect);
 
+        uno::Reference<office::XAnnotation> xUnoAnnotation(mrContents.getAnnotation());
+
         if (sId == ".uno:ReplyToAnnotation")
         {
-            const SfxUnoAnyItem aItem( SID_REPLYTO_POSTIT, Any( xAnnotation ) );
+            const SfxUnoAnyItem aItem(SID_REPLYTO_POSTIT, uno::Any(xUnoAnnotation));
             pDispatcher->ExecuteList(SID_REPLYTO_POSTIT,
                     SfxCallMode::ASYNCHRON, { &aItem });
         }
         else if (sId == ".uno:DeleteAnnotation")
         {
-            const SfxUnoAnyItem aItem( SID_DELETE_POSTIT, Any( xAnnotation ) );
+            const SfxUnoAnyItem aItem(SID_DELETE_POSTIT, uno::Any(xUnoAnnotation));
             pDispatcher->ExecuteList(SID_DELETE_POSTIT, SfxCallMode::ASYNCHRON,
                     { &aItem });
         }

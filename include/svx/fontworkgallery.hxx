@@ -53,12 +53,14 @@ class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC FontWorkGalleryDialog final : public wel
     rtl::Reference<SdrObject> mxSdrObject;
     SdrModel*           mpDestModel;
 
-    std::vector<VclPtr< VirtualDevice >> maFavoritesHorizontal;
+    std::vector<Bitmap> maFavoritesHorizontal;
     // mapping between item ID and item title
     std::map<OUString, OUString> maIdToTitleMap;
 
     std::unique_ptr<weld::IconView> maCtlFavorites;
     std::unique_ptr<weld::Button> mxOKButton;
+
+    css::uno::Reference<css::frame::XFrame> mxFrame;
 
     void            initFavorites(sal_uInt16 nThemeId);
     void            insertSelectedFontwork();
@@ -69,7 +71,8 @@ class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC FontWorkGalleryDialog final : public wel
     DECL_DLLPRIVATE_LINK(QueryTooltipHandler, const weld::TreeIter&, OUString);
 
 public:
-    FontWorkGalleryDialog(weld::Window* pParent, SdrView& rView);
+    FontWorkGalleryDialog(weld::Window* pParent, SdrView& rView,
+                          css::uno::Reference<css::frame::XFrame> xFrame);
     virtual ~FontWorkGalleryDialog() override;
 
     // SJ: if the SdrObject** is set, the SdrObject is not inserted into the page when executing the dialog

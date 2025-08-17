@@ -25,7 +25,6 @@
 #include <memory>
 #include <drawdoc.hxx>
 
-class SdrPageView;
 class SwDoc;
 
 namespace sw
@@ -42,10 +41,11 @@ public:
     //IDocumentDrawModelAccess
     virtual const SwDrawModel* GetDrawModel() const override;
     virtual SwDrawModel* GetDrawModel() override;
-    virtual SwDrawModel* MakeDrawModel_() override;
-    virtual SwDrawModel* GetOrCreateDrawModel() override;
+    virtual SwDrawModel& MakeDrawModel_() override;
+    virtual SwDrawModel& GetOrCreateDrawModel() override;
     virtual SdrLayerID GetHeavenId() const override;
     virtual SdrLayerID GetHellId() const override;
+    virtual SdrLayerID GetHeaderFooterHellId() const override;
     virtual SdrLayerID GetControlsId() const override;
     virtual SdrLayerID GetInvisibleHeavenId() const override;
     virtual SdrLayerID GetInvisibleHellId() const override;
@@ -70,10 +70,12 @@ private:
     /** Draw Model Layer IDs
      * LayerIds, Heaven == above document
      *           Hell   == below document
+     *           HeaderFooterHell = below document but above header/footer
      *         Controls == at the very top
      */
     SdrLayerID mnHeaven;
     SdrLayerID mnHell;
+    SdrLayerID mnHeaderFooterHell;
     SdrLayerID mnControls;
     SdrLayerID mnInvisibleHeaven;
     SdrLayerID mnInvisibleHell;

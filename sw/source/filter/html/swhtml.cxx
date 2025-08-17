@@ -40,6 +40,7 @@
 #include <utility>
 #include <vcl/errinf.hxx>
 #include <svl/stritem.hxx>
+#include <svl/itemiter.hxx>
 #include <vcl/imap.hxx>
 #include <svtools/htmltokn.h>
 #include <svtools/htmlkywd.hxx>
@@ -192,7 +193,7 @@ OUString HTMLReader::GetTemplateName(SwDoc& rDoc) const
 
 bool HTMLReader::SetStrmStgPtr()
 {
-    OSL_ENSURE( m_pMedium, "Where is the medium??" );
+    assert(m_pMedium && "Where is the medium??");
 
     if( m_pMedium->IsRemote() || !m_pMedium->IsStorage() )
     {
@@ -453,7 +454,7 @@ SwHTMLParser::SwHTMLParser( SwDoc* pD, SwPaM& rCursor, SvStream& rIn,
     }
 
     comphelper::SequenceAsHashMap aLoadMap(pMed->GetArgs());
-    auto it = aLoadMap.find("AllowedRTFOLEMimeTypes");
+    auto it = aLoadMap.find(u"AllowedRTFOLEMimeTypes"_ustr);
     if (it == aLoadMap.end())
     {
         return;
@@ -487,18 +488,21 @@ SwHTMLParser::~SwHTMLParser()
         Application::RemoveUserEvent( m_nEventId );
 
     // the DocumentDetected maybe can delete the DocShells, therefore fetch again
-    if( m_xDoc->GetDocShell() )
+    if (SwDocShell* pShell = m_xDoc->GetDocShell())
     {
         // update linked sections
         sal_uInt16 nLinkMode = m_xDoc->getIDocumentSettingAccess().getLinkUpdateMode( true );
         if( nLinkMode != NEVER && bAsync &&
-            SfxObjectCreateMode::INTERNAL!=m_xDoc->GetDocShell()->GetCreateMode() )
-            m_xDoc->getIDocumentLinksAdministration().GetLinkManager().UpdateAllLinks( nLinkMode == MANUAL, false, nullptr );
+            SfxObjectCreateMode::INTERNAL != pShell->GetCreateMode() )
+        {
+            SfxMedium * medium = pShell->GetMedium();
+            m_xDoc->getIDocumentLinksAdministration().GetLinkManager().UpdateAllLinks( nLinkMode == MANUAL, false, nullptr, medium == nullptr ? OUString() : medium->GetName() );
+        }
 
-        if ( m_xDoc->GetDocShell()->IsLoading() )
+        if ( pShell->IsLoading() )
         {
             // #i59688#
-            m_xDoc->GetDocShell()->LoadingFinished();
+            pShell->LoadingFinished();
         }
     }
 
@@ -531,8 +535,9 @@ SwHTMLParser::~SwHTMLParser()
         m_pTempViewFrame->DoClose();
 
         // the temporary view frame is hidden, so the hidden flag might need to be removed
-        if ( m_bRemoveHidden && m_xDoc.is() && m_xDoc->GetDocShell() && m_xDoc->GetDocShell()->GetMedium() )
-            m_xDoc->GetDocShell()->GetMedium()->GetItemSet().ClearItem( SID_HIDDEN );
+        SwDocShell* pShell = m_xDoc.is() ? m_xDoc->GetDocShell() : nullptr;
+        if ( m_bRemoveHidden && pShell && pShell->GetMedium() )
+            pShell->GetMedium()->GetItemSet().ClearItem( SID_HIDDEN );
     }
 }
 
@@ -542,7 +547,8 @@ IMPL_LINK_NOARG( SwHTMLParser, AsyncCallback, void*, void )
 
     // #i47907# - If the document has already been destructed,
     // the parser should be aware of this:
-    if( ( m_xDoc->GetDocShell() && m_xDoc->GetDocShell()->IsAbortingImport() )
+    SwDocShell* pShell = m_xDoc->GetDocShell();
+    if( ( pShell && pShell->IsAbortingImport() )
         || 1 == m_xDoc->getReferenceCount() )
     {
         // was the import aborted by SFX?
@@ -575,6 +581,17 @@ SvParserState SwHTMLParser::CallParser()
         aInsertionRangePam.Move( fnMoveBackward );
         m_xDoc->getIDocumentRedlineAccess().SplitRedline( aInsertionRangePam );
 
+        ::std::unique_ptr<SfxItemSet> pSet{new SfxItemSet(m_xDoc->GetAttrPool(),
+            svl::Items< RES_CHRATR_BEGIN, RES_CHRATR_END-1,
+                        RES_PARATR_BEGIN, RES_PARATR_NUMRULE-1,
+                        RES_PARATR_NUMRULE+1, RES_PARATR_CONNECT_BORDER,
+                        RES_LR_SPACE, RES_UL_SPACE,
+                        XATTR_FILL_FIRST, XATTR_FILL_LAST>)};
+        if (pPos->GetNode().GetTextNode()->GetParaAttr(*pSet, 0, 0, false, false))
+        {
+            m_pTargetCharAttrs = std::move(pSet);
+        }
+
         m_xDoc->SetTextFormatColl( *m_pPam,
                 m_pCSS1Parser->GetTextCollFromPool( RES_POOLCOLL_STANDARD ));
     }
@@ -587,7 +604,6 @@ SvParserState SwHTMLParser::CallParser()
         }
         else
         {
-            m_bViewCreated = true;
             m_nEventId = nullptr;
         }
     }
@@ -625,7 +641,8 @@ void SwHTMLParser::Continue( HtmlTokenId nToken )
     // we still continue, so that we clean up properly.
     OSL_ENSURE( SvParserState::Error!=eState,
             "SwHTMLParser::Continue: already set an error" );
-    if( m_xDoc->GetDocShell() && m_xDoc->GetDocShell()->IsAbortingImport() )
+    SwDocShell* pShell = m_xDoc->GetDocShell();
+    if( pShell && pShell->IsAbortingImport() )
         eState = SvParserState::Error;
 
     // Fetch SwViewShell from document, save it and set as current.
@@ -649,12 +666,12 @@ void SwHTMLParser::Continue( HtmlTokenId nToken )
     }
 
     m_bSetModEnabled = false;
-    if( m_xDoc->GetDocShell() )
+    if( pShell )
     {
-        m_bSetModEnabled = m_xDoc->GetDocShell()->IsEnableSetModified();
+        m_bSetModEnabled = pShell->IsEnableSetModified();
         if( m_bSetModEnabled )
         {
-            m_xDoc->GetDocShell()->EnableSetModified( false );
+            pShell->EnableSetModified( false );
         }
     }
 
@@ -942,9 +959,9 @@ void SwHTMLParser::Continue( HtmlTokenId nToken )
         m_xDoc->SetOle2Link( aOLELink );
         if( !bModified )
             m_xDoc->getIDocumentState().ResetModified();
-        if( m_bSetModEnabled && m_xDoc->GetDocShell() )
+        if( m_bSetModEnabled && pShell )
         {
-            m_xDoc->GetDocShell()->EnableSetModified();
+            pShell->EnableSetModified();
             m_bSetModEnabled = false; // this is unnecessary here
         }
     }
@@ -989,7 +1006,8 @@ void SwHTMLParser::DocumentDetected()
 // is called for every token that is recognised in CallParser
 void SwHTMLParser::NextToken( HtmlTokenId nToken )
 {
-    if( ( m_xDoc->GetDocShell() && m_xDoc->GetDocShell()->IsAbortingImport() )
+    SwDocShell* pShell = m_xDoc->GetDocShell();
+    if( ( pShell && pShell->IsAbortingImport() )
         || 1 == m_xDoc->getReferenceCount() )
     {
         // Was the import cancelled by SFX? If a pending stack
@@ -1038,9 +1056,10 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
                 OUString sTitle = m_sTitle.makeStringAndClear();
                 if( IsNewDoc() && !sTitle.isEmpty() )
                 {
-                    if( m_xDoc->GetDocShell() ) {
+                    if (pShell)
+                    {
                         uno::Reference<document::XDocumentPropertiesSupplier>
-                            xDPS(m_xDoc->GetDocShell()->GetModel(),
+                            xDPS(pShell->GetModel(),
                             uno::UNO_QUERY_THROW);
                         uno::Reference<document::XDocumentProperties> xDocProps(
                             xDPS->getDocumentProperties());
@@ -1049,7 +1068,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
                             xDocProps->setTitle(sTitle);
                         }
 
-                        m_xDoc->GetDocShell()->SetTitle(sTitle);
+                        pShell->SetTitle(sTitle);
                     }
                 }
                 m_bInTitle = false;
@@ -1607,7 +1626,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
     case HtmlTokenId::NOEMBED_ON:
         m_bInNoEmbed = true;
         m_bCallNextToken = bool(m_xTable);
-        ReadRawData( OOO_STRING_SVTOOLS_HTML_noembed );
+        ReadRawData( u"" OOO_STRING_SVTOOLS_HTML_noembed ""_ustr );
         break;
 
     case HtmlTokenId::DEFLIST_ON:
@@ -1875,6 +1894,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
 
     case HtmlTokenId::STRIKE_ON:
     case HtmlTokenId::STRIKETHROUGH_ON:
+    case HtmlTokenId::DELETEDTEXT_ON:
         {
             NewStdAttr( HtmlTokenId::STRIKE_ON, &m_xAttrTab->pStrike,
                         SvxCrossedOutItem(STRIKEOUT_SINGLE, RES_CHRATR_CROSSEDOUT) );
@@ -1882,6 +1902,7 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
         break;
 
     case HtmlTokenId::UNDERLINE_ON:
+    case HtmlTokenId::INSERTEDTEXT_ON:
         {
             NewStdAttr( HtmlTokenId::UNDERLINE_ON, &m_xAttrTab->pUnderline,
                         SvxUnderlineItem(LINESTYLE_SINGLE, RES_CHRATR_UNDERLINE) );
@@ -1959,8 +1980,6 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
     case HtmlTokenId::PERSON_ON:
     case HtmlTokenId::ACRONYM_ON:
     case HtmlTokenId::ABBREVIATION_ON:
-    case HtmlTokenId::INSERTEDTEXT_ON:
-    case HtmlTokenId::DELETEDTEXT_ON:
 
     case HtmlTokenId::TELETYPE_ON:
         NewCharFormat( nToken );
@@ -2019,8 +2038,8 @@ void SwHTMLParser::NextToken( HtmlTokenId nToken )
                                          m_pCSS1Parser->GetWhichMap() );
                     SvxCSS1PropertyInfo aPropInfo;
                     OUString aDummy;
-                    ParseStyleOptions( aDummy, aDummy, aDummy, aItemSet,
-                                       aPropInfo, nullptr, &rDir );
+                    (void)ParseStyleOptions(aDummy, aDummy, aDummy, aItemSet,
+                                            aPropInfo, nullptr, &rDir);
 
                     m_pCSS1Parser->SetPageDescAttrs( nullptr, &aItemSet );
                     break;
@@ -2581,7 +2600,8 @@ void SwHTMLParser::Show()
 
     Application::Reschedule();
 
-    if( ( m_xDoc->GetDocShell() && m_xDoc->GetDocShell()->IsAbortingImport() )
+    SwDocShell* pShell = m_xDoc->GetDocShell();
+    if( ( pShell && pShell->IsAbortingImport() )
         || 1 == m_xDoc->getReferenceCount() )
     {
         // was the import aborted by SFX?
@@ -2618,7 +2638,8 @@ void SwHTMLParser::ShowStatline()
     {
         Application::Reschedule();
 
-        if( ( m_xDoc->GetDocShell() && m_xDoc->GetDocShell()->IsAbortingImport() )
+        SwDocShell* pShell = m_xDoc->GetDocShell();
+        if( ( pShell && pShell->IsAbortingImport() )
             || 1 == m_xDoc->getReferenceCount() )
             // was the import aborted by SFX?
             eState = SvParserState::Error;
@@ -2693,7 +2714,7 @@ SwViewShell *SwHTMLParser::CallEndAction( bool bChkAction, bool bChkPtr )
             const Point aVisSttPos( DOCUMENTBORDER, DOCUMENTBORDER );
             if( GetMedium() && aVisSttPos == m_pActionViewShell->VisArea().Pos() )
                 ::JumpToSwMark( m_pActionViewShell,
-                                GetMedium()->GetURLObject().GetMark() );
+                                SwMarkName(GetMedium()->GetURLObject().GetMark()) );
             m_bChkJumpMark = false;
         }
     }
@@ -2825,7 +2846,7 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
                         pAttr = pPrev;
                         continue;
                     }
-                    pCNd = m_xDoc->GetNodes().GoNext( &(pAttr->m_nStartPara) );
+                    pCNd = SwNodes::GoNext(&(pAttr->m_nStartPara));
                     if( pCNd )
                         pAttr->m_nStartContent = 0;
                     else
@@ -2905,14 +2926,14 @@ void SwHTMLParser::SetAttr_( bool bChkEnd, bool bBeforeTable,
                 {
                 case RES_FLTR_BOOKMARK: // insert bookmark
                     {
-                        const OUString sName( static_cast<SfxStringItem*>(pAttr->m_pItem.get())->GetValue() );
+                        const SwMarkName sName( static_cast<SfxStringItem*>(pAttr->m_pItem.get())->GetValue() );
                         IDocumentMarkAccess* const pMarkAccess = m_xDoc->getIDocumentMarkAccess();
-                        IDocumentMarkAccess::const_iterator_t ppBkmk = pMarkAccess->findMark( sName );
+                        auto ppBkmk = pMarkAccess->findMark( sName );
                         if( ppBkmk != pMarkAccess->getAllMarksEnd() &&
                             (*ppBkmk)->GetMarkStart() == *aAttrPam.GetPoint() )
                             break; // do not generate duplicates on this position
                         aAttrPam.DeleteMark();
-                        const ::sw::mark::IMark* const pNewMark = pMarkAccess->makeMark(
+                        const ::sw::mark::MarkBase* const pNewMark = pMarkAccess->makeMark(
                             aAttrPam,
                             sName,
                             IDocumentMarkAccess::MarkType::BOOKMARK,
@@ -3729,7 +3750,7 @@ void SwHTMLParser::NewFontAttr( HtmlTokenId nToken )
     OUString aFace, aId, aStyle, aClass, aLang, aDir;
     Color aColor;
     sal_uLong nFontHeight = 0;  // actual font height to set
-    sal_uInt16 nSize = 0;       // font height in Netscape notation (1-7)
+    sal_uInt32 nSize = 0;       // font height in Netscape notation (1-7)
     bool bColor = false;
 
     const HTMLOptions& rHTMLOptions = GetOptions();
@@ -3753,7 +3774,7 @@ void SwHTMLParser::NewFontAttr( HtmlTokenId nToken )
                 else if( nSSize > 7 )
                     nSSize = 7;
 
-                nSize = o3tl::narrowing<sal_uInt16>(nSSize);
+                nSize = nSSize;
                 nFontHeight = m_aFontHeights[nSize-1];
             }
             break;
@@ -4412,7 +4433,7 @@ void SwHTMLParser::NewDefList()
         SvxTextLeftMarginItem const& rTextLeftMargin =
             m_pCSS1Parser->GetTextFormatColl(RES_POOLCOLL_HTML_DD, OUString())
                        ->GetTextLeftMargin();
-        nLeft = nLeft + static_cast<sal_uInt16>(rTextLeftMargin.GetTextLeft());
+        nLeft = nLeft + static_cast<sal_uInt16>(rTextLeftMargin.ResolveTextLeft({}));
     }
 
     xCntxt->SetMargins( nLeft, nRight, nIndent );
@@ -4753,16 +4774,16 @@ void SwHTMLParser::SetTextCollAttrs( HTMLAttrContext *pContext )
             || rItemSet.GetItemIfSet(RES_MARGIN_TEXTLEFT)
             || rItemSet.GetItemIfSet(RES_MARGIN_RIGHT))
         {
-            sal_Int32 nLeft = rItemSet.Get(RES_MARGIN_TEXTLEFT).GetTextLeft();
-            sal_Int32 nRight = rItemSet.Get(RES_MARGIN_RIGHT).GetRight();
-            nFirstLineIndent = rItemSet.Get(RES_MARGIN_FIRSTLINE).GetTextFirstLineOffset();
+            sal_Int32 nLeft = rItemSet.Get(RES_MARGIN_TEXTLEFT).ResolveTextLeft({});
+            sal_Int32 nRight = rItemSet.Get(RES_MARGIN_RIGHT).ResolveRight({});
+            nFirstLineIndent = rItemSet.Get(RES_MARGIN_FIRSTLINE).ResolveTextFirstLineOffset({});
 
             // In Definition lists the margins also contain the margins from the previous levels
             if( RES_POOLCOLL_HTML_DD == nTopColl )
             {
                 auto const*const pColl(m_pCSS1Parser->GetTextFormatColl(RES_POOLCOLL_HTML_DT, OUString()));
-                nLeft -= pColl->GetTextLeftMargin().GetTextLeft();
-                nRight -= pColl->GetRightMargin().GetRight();
+                nLeft -= pColl->GetTextLeftMargin().ResolveTextLeft({});
+                nRight -= pColl->GetRightMargin().ResolveRight({});
             }
             else if( RES_POOLCOLL_HTML_DT == nTopColl )
             {
@@ -4789,15 +4810,16 @@ void SwHTMLParser::SetTextCollAttrs( HTMLAttrContext *pContext )
         pCollToSet = m_pCSS1Parser->GetTextCollFromPool( nDfltColl );
         if( !nLeftMargin )
         {
-            nLeftMargin = static_cast<sal_uInt16>(pCollToSet->GetTextLeftMargin().GetTextLeft());
+            nLeftMargin
+                = static_cast<sal_uInt16>(pCollToSet->GetTextLeftMargin().ResolveTextLeft({}));
         }
         if( !nRightMargin )
         {
-            nRightMargin = static_cast<sal_uInt16>(pCollToSet->GetRightMargin().GetRight());
+            nRightMargin = static_cast<sal_uInt16>(pCollToSet->GetRightMargin().ResolveRight({}));
         }
         if( !nFirstLineIndent )
         {
-            nFirstLineIndent = pCollToSet->GetFirstLineIndent().GetTextFirstLineOffset();
+            nFirstLineIndent = pCollToSet->GetFirstLineIndent().ResolveTextFirstLineOffset({});
         }
     }
 
@@ -4809,22 +4831,45 @@ void SwHTMLParser::SetTextCollAttrs( HTMLAttrContext *pContext )
     // set the style
     m_xDoc->SetTextFormatColl( *m_pPam, pCollToSet );
 
+    if (m_pTargetCharAttrs)
+    {
+        std::unique_ptr<SfxItemSet> const pCharSet(new SfxItemSet(*m_pTargetCharAttrs));
+        // do not use SfxItemSet::Differentiate(), it doesn't compare values!
+        std::vector<sal_uInt16> clear;
+        for (SfxItemIter it{*pCharSet}; !it.IsAtEnd(); it.NextItem())
+        {
+            SfxPoolItem const& rItem{*it.GetCurItem()};
+            if (SfxPoolItem const*const pItem{pCollToSet->GetAttrSet().GetItem(rItem.Which(), true)})
+            {
+                if (rItem == *pItem)
+                {
+                    clear.emplace_back(rItem.Which());
+                }
+            }
+        }
+        for (auto const it : clear)
+        {
+            pCharSet->ClearItem(it);
+        }
+        m_xDoc->getIDocumentContentOperations().InsertItemSet(*m_pPam, *pCharSet);
+    }
+
     // if applicable correct the paragraph indent
     const SvxFirstLineIndentItem & rFirstLine = pCollToSet->GetFirstLineIndent();
     const SvxTextLeftMarginItem & rTextLeftMargin = pCollToSet->GetTextLeftMargin();
     const SvxRightMarginItem & rRightMargin = pCollToSet->GetRightMargin();
-    bool bSetLRSpace = nLeftMargin != rTextLeftMargin.GetTextLeft() ||
-                      nFirstLineIndent != rFirstLine.GetTextFirstLineOffset() ||
-                      nRightMargin != rRightMargin.GetRight();
+    bool bSetLRSpace = nLeftMargin != rTextLeftMargin.ResolveTextLeft({})
+                       || nFirstLineIndent != rFirstLine.ResolveTextFirstLineOffset({})
+                       || nRightMargin != rRightMargin.ResolveRight({});
 
     if( bSetLRSpace )
     {
         SvxFirstLineIndentItem firstLine(rFirstLine);
         SvxTextLeftMarginItem leftMargin(rTextLeftMargin);
         SvxRightMarginItem rightMargin(rRightMargin);
-        firstLine.SetTextFirstLineOffset(nFirstLineIndent);
-        leftMargin.SetTextLeft(nLeftMargin);
-        rightMargin.SetRight(nRightMargin);
+        firstLine.SetTextFirstLineOffset(SvxIndentValue::twips(nFirstLineIndent));
+        leftMargin.SetTextLeft(SvxIndentValue::twips(nLeftMargin));
+        rightMargin.SetRight(SvxIndentValue::twips(nRightMargin));
         if( pItemSet )
         {
             pItemSet->Put(firstLine);
@@ -5057,9 +5102,12 @@ void SwHTMLParser::InsertSpacer()
                 GetMarginsFromContextWithNumberBullet( nLeft, nRight, nIndent );
                 nIndent = nIndent + static_cast<short>(nSize);
 
-                SvxFirstLineIndentItem const firstLine(nIndent, RES_MARGIN_FIRSTLINE);
-                SvxTextLeftMarginItem const leftMargin(nLeft, RES_MARGIN_TEXTLEFT);
-                SvxRightMarginItem const rightMargin(nRight, RES_MARGIN_RIGHT);
+                SvxFirstLineIndentItem const firstLine(SvxIndentValue::twips(nIndent),
+                                                       RES_MARGIN_FIRSTLINE);
+                SvxTextLeftMarginItem const leftMargin(SvxIndentValue::twips(nLeft),
+                                                       RES_MARGIN_TEXTLEFT);
+                SvxRightMarginItem const rightMargin(SvxIndentValue::twips(nRight),
+                                                     RES_MARGIN_RIGHT);
 
                 NewAttr(m_xAttrTab, &m_xAttrTab->pFirstLineIndent, firstLine);
                 EndAttr(m_xAttrTab->pFirstLineIndent, false);
@@ -5071,7 +5119,7 @@ void SwHTMLParser::InsertSpacer()
             else
             {
                 NewAttr(m_xAttrTab, &m_xAttrTab->pKerning, SvxKerningItem( static_cast<short>(nSize), RES_CHRATR_KERNING ));
-                m_xDoc->getIDocumentContentOperations().InsertString( *m_pPam, " " );
+                m_xDoc->getIDocumentContentOperations().InsertString( *m_pPam, u" "_ustr );
                 EndAttr( m_xAttrTab->pKerning );
             }
         }
@@ -5099,7 +5147,7 @@ SwTwips SwHTMLParser::GetCurrentBrowseWidth()
         const SvxULSpaceItem& rUL = rPgFormat.GetULSpace();
         const SwFormatCol& rCol = rPgFormat.GetCol();
 
-        m_aHTMLPageSize.setWidth( rSz.GetWidth() - rLR.GetLeft() - rLR.GetRight() );
+        m_aHTMLPageSize.setWidth(rSz.GetWidth() - rLR.ResolveLeft({}) - rLR.ResolveRight({}));
         m_aHTMLPageSize.setHeight( rSz.GetHeight() - rUL.GetUpper() - rUL.GetLower() );
 
         if( 1 < rCol.GetNumCols() )
@@ -5200,7 +5248,7 @@ void SwHTMLParser::InsertLineBreak()
         if (eClear == SwLineBreakClear::NONE)
         {
             // If no CLEAR could or should be executed, a line break will be inserted
-            m_xDoc->getIDocumentContentOperations().InsertString(*m_pPam, "\x0A");
+            m_xDoc->getIDocumentContentOperations().InsertString(*m_pPam, u"\x0A"_ustr);
         }
         else
         {
@@ -5358,16 +5406,20 @@ void SwHTMLParser::InsertHorzRule()
                 switch( eAdjust )
                 {
                 case SvxAdjust::Right:
-                    oLeft.emplace(o3tl::narrowing<sal_uInt16>(nDist), RES_MARGIN_TEXTLEFT);
+                    oLeft.emplace(SvxIndentValue::twips(o3tl::narrowing<sal_uInt16>(nDist)),
+                                  RES_MARGIN_TEXTLEFT);
                     break;
                 case SvxAdjust::Left:
-                    oRight.emplace(o3tl::narrowing<sal_uInt16>(nDist), RES_MARGIN_RIGHT);
+                    oRight.emplace(SvxIndentValue::twips(o3tl::narrowing<sal_uInt16>(nDist)),
+                                   RES_MARGIN_RIGHT);
                     break;
                 case SvxAdjust::Center:
                 default:
                     nDist /= 2;
-                    oLeft.emplace(o3tl::narrowing<sal_uInt16>(nDist), RES_MARGIN_TEXTLEFT);
-                    oRight.emplace(o3tl::narrowing<sal_uInt16>(nDist), RES_MARGIN_RIGHT);
+                    oLeft.emplace(SvxIndentValue::twips(o3tl::narrowing<sal_uInt16>(nDist)),
+                                  RES_MARGIN_TEXTLEFT);
+                    oRight.emplace(SvxIndentValue::twips(o3tl::narrowing<sal_uInt16>(nDist)),
+                                   RES_MARGIN_RIGHT);
                     break;
                 }
 
@@ -5467,7 +5519,7 @@ void SwHTMLParser::ParseMoreMetaOptions()
 
     SwPostItField aPostItField(
         static_cast<SwPostItFieldType*>(m_xDoc->getIDocumentFieldsAccess().GetSysFieldType( SwFieldIds::Postit )),
-        OUString(), sText.makeStringAndClear(), OUString(), OUString(), DateTime(DateTime::SYSTEM));
+        OUString(), sText.makeStringAndClear(), OUString(), SwMarkName(), DateTime(DateTime::SYSTEM));
     SwFormatField aFormatField( aPostItField );
     InsertAttr( aFormatField,  false );
 }
@@ -5595,12 +5647,8 @@ void HTMLReader::SetupFilterOptions()
         return;
 
     OUString aFilterOptions = pItem->GetValue();
-    static constexpr OUString aXhtmlNsKey(u"xhtmlns="_ustr);
-    if (aFilterOptions.startsWith(aXhtmlNsKey))
-    {
-        OUString aNamespace = aFilterOptions.copy(aXhtmlNsKey.getLength());
+    if (OUString aNamespace; aFilterOptions.startsWith("xhtmlns=", &aNamespace))
         m_aNamespace = aNamespace;
-    }
 }
 
 namespace

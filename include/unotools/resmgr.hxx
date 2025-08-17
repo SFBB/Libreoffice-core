@@ -19,6 +19,7 @@
 #ifndef INCLUDED_UNOTOOLS_RESMGR_HXX
 #define INCLUDED_UNOTOOLS_RESMGR_HXX
 
+#include <config_options.h>
 #include <unotools/unotoolsdllapi.h>
 #include <unotools/syslocale.hxx>
 #include <rtl/ustring.hxx>
@@ -48,7 +49,7 @@ struct UNOTOOLS_DLLPUBLIC TranslateId
     inline bool operator!=(const TranslateId& other) const { return !operator==(other); }
 };
 
-struct UNOTOOLS_DLLPUBLIC TranslateNId
+struct UNLESS_MERGELIBS(UNOTOOLS_DLLPUBLIC) TranslateNId
 {
     const char* mpContext;
     const char* mpSingular;
@@ -69,6 +70,7 @@ namespace Translate
 {
     UNOTOOLS_DLLPUBLIC std::locale Create(std::string_view aPrefixName, const LanguageTag& rLocale = SvtSysLocale().GetUILanguageTag());
     UNOTOOLS_DLLPUBLIC OUString get(TranslateId sContextAndId, const std::locale &loc);
+    UNOTOOLS_DLLPUBLIC OUString getLanguage(const std::locale& loc);
     UNOTOOLS_DLLPUBLIC OUString nget(TranslateNId aContextSingularPlural, int n, const std::locale &loc);
     UNOTOOLS_DLLPUBLIC void SetReadStringHook( ResHookProc pProc );
     UNOTOOLS_DLLPUBLIC ResHookProc GetReadStringHook();

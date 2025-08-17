@@ -46,7 +46,6 @@
 
 class ExtTextEngine;
 class TextView;
-class SvxSearchItem;
 namespace com::sun::star::beans { class XMultiPropertySet; }
 
 namespace basctl
@@ -103,7 +102,12 @@ private:
     bool            bDoSyntaxHighlight;
     bool            bDelayHighlight;
 
-    virtual css::uno::Reference< css::awt::XVclWindowPeer > GetComponentInterface(bool bCreate = true) override;
+    // Used to determine if the highlighted line has changed, which would require redrawing the highlight
+    sal_uInt32      m_nLastHighlightPara;
+
+    Color           m_aLineHighlightColor;
+
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
     CodeCompleteDataCache aCodeCompleteCache;
     VclPtr<CodeCompleteWindow> pCodeCompleteWnd;
     OUString GetActualSubName( sal_uInt32 nLine ); // gets the actual subroutine name according to line number
@@ -128,6 +132,7 @@ private:
     void            DoSyntaxHighlight( sal_uInt32 nPara );
     OUString        GetWordAtCursor();
     bool            ImpCanModify();
+    void            HighlightCurrentLine(vcl::RenderContext& rRenderContext);
 
 public:
                     EditorWindow (vcl::Window* pParent, ModulWindow*);
@@ -154,6 +159,7 @@ public:
 
     void            ChangeFontColor( Color aColor );
     void            UpdateSyntaxHighlighting ();
+    void            SetLineHighlightColor(Color aColor);
 
     void            SetEditorZoomLevel(sal_uInt16 nNewZoomLevel);
     sal_uInt16      GetCurrentZoom() { return nCurrentZoomLevel; }
@@ -290,6 +296,7 @@ private:
     BasicStatus         m_aStatus;
     SbModuleRef         m_xModule;
     OUString            m_aModule;
+    OUString            m_sWinColorScheme;
 
     void                CheckCompileBasic();
     void                BasicExecute();
@@ -388,10 +395,12 @@ public:
 
     virtual void OnNewDocument () override;
     virtual OUString GetHid () const override;
-    virtual ItemType GetType () const override;
+    virtual SbxItemType GetSbxType () const override;
     virtual bool HasActiveEditor () const override;
 
     void UpdateModule ();
+    const OUString & GetEditorColorScheme() { return m_sWinColorScheme; }
+    void SetEditorColorScheme(const OUString& rColorScheme);
 };
 
 class ModulWindowLayout: public Layout
@@ -416,6 +425,8 @@ public:
     Color const & GetSyntaxBackgroundColor () const { return aSyntaxColors.GetBackgroundColor(); }
     Color const & GetFontColor () const { return aSyntaxColors.GetFontColor(); }
     Color const & GetSyntaxColor (TokenType eType) const { return aSyntaxColors.GetColor(eType); }
+    const OUString & GetActiveColorSchemeId() { return m_sColorSchemeId; }
+    void ApplyColorSchemeToCurrentWindow(const OUString& rSchemeId);
 
 protected:
     // Window:
@@ -430,6 +441,8 @@ private:
     VclPtr<WatchWindow> aWatchWindow;
     VclPtr<StackWindow> aStackWindow;
     ObjectCatalog& rObjectCatalog;
+    // Active color scheme ID
+    OUString m_sColorSchemeId;
 
     // SyntaxColors -- stores Basic syntax highlighting colors
     class SyntaxColors : public utl::ConfigurationListener
@@ -439,25 +452,26 @@ private:
         virtual ~SyntaxColors () override;
     public:
         void SetActiveEditor (EditorWindow* pEditor_) { pEditor = pEditor_; }
+        void SetActiveColorSchemeId(const OUString& rColorSchemeId) { m_sActiveSchemeId = rColorSchemeId; }
     public:
         Color const & GetBackgroundColor () const { return m_aBackgroundColor; };
         Color const & GetFontColor () const { return m_aFontColor; }
         Color const & GetColor(TokenType eType) const { return aColors[eType]; }
+        void ApplyColorScheme(const OUString& aSchemeId, bool bFirst);
 
     private:
         virtual void ConfigurationChanged (utl::ConfigurationBroadcaster*, ConfigurationHints) override;
-        void NewConfig (bool bFirst);
 
     private:
         Color m_aBackgroundColor;
         Color m_aFontColor;
+        OUString m_sActiveSchemeId;
         // the color values (the indexes are TokenType, see comphelper/syntaxhighlight.hxx)
         o3tl::enumarray<TokenType, Color> aColors;
         // the configuration
         svtools::ColorConfig aConfig;
         // the active editor
         VclPtr<EditorWindow> pEditor;
-
     } aSyntaxColors;
 };
 

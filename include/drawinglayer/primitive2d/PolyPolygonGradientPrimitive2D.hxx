@@ -46,23 +46,36 @@ private:
     /// the gradient definition
     attribute::FillGradientAttribute maFillGradient;
 
+    /// evtl. fitting alphaGradient definition
+    attribute::FillGradientAttribute maAlphaGradient;
+
+    /// the transparency in range [0.0 .. 1.0]
+    double mfTransparency;
+
     /// local decomposition.
-    virtual void
-    create2DDecomposition(Primitive2DContainer& rContainer,
-                          const geometry::ViewInformation2D& rViewInformation) const override;
+    virtual Primitive2DReference
+    create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
 public:
     /// constructors. The one without definition range will use output range as definition range
     PolyPolygonGradientPrimitive2D(const basegfx::B2DPolyPolygon& rPolyPolygon,
-                                   attribute::FillGradientAttribute rFillGradient);
+                                   const attribute::FillGradientAttribute& rFillGradient);
     PolyPolygonGradientPrimitive2D(basegfx::B2DPolyPolygon aPolyPolygon,
                                    const basegfx::B2DRange& rDefinitionRange,
-                                   attribute::FillGradientAttribute aFillGradient);
+                                   const attribute::FillGradientAttribute& rFillGradient,
+                                   const attribute::FillGradientAttribute* pAlphaGradient = nullptr,
+                                   double fTransparency = 0.0);
 
     /// data read access
     const basegfx::B2DPolyPolygon& getB2DPolyPolygon() const { return maPolyPolygon; }
     const basegfx::B2DRange& getDefinitionRange() const { return maDefinitionRange; }
     const attribute::FillGradientAttribute& getFillGradient() const { return maFillGradient; }
+
+    const attribute::FillGradientAttribute& getAlphaGradient() const { return maAlphaGradient; }
+    bool hasAlphaGradient() const { return !maAlphaGradient.isDefault(); }
+
+    double getTransparency() const { return mfTransparency; }
+    bool hasTransparency() const { return !basegfx::fTools::equalZero(mfTransparency); }
 
     /// compare operator
     virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
@@ -70,7 +83,6 @@ public:
     /// provide unique ID
     virtual sal_uInt32 getPrimitive2DID() const override;
 };
-
 } // end of namespace primitive2d::drawinglayer
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

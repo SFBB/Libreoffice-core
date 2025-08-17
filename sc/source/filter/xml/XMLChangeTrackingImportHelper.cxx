@@ -71,7 +71,7 @@ const ScCellValue& ScMyCellInfo::CreateCell(ScDocument& rDoc)
             nFormat = rDoc.GetFormatTable()->GetStandardFormat( SvNumFormatType::DATE, ScGlobal::eLnge );
         else if (nType == css::util::NumberFormat::TIME)
             nFormat = rDoc.GetFormatTable()->GetStandardFormat( SvNumFormatType::TIME, ScGlobal::eLnge );
-        rDoc.GetFormatTable()->GetInputLineString(fValue, nFormat, sInputString);
+        sInputString = rDoc.GetFormatTable()->GetInputLineString(fValue, nFormat);
     }
 
     return maCell;
@@ -196,9 +196,10 @@ sal_uInt32 ScXMLChangeTrackingImportHelper::GetIDFromString(std::string_view sID
         if (sID.substr(0, SC_CHANGE_ID_PREFIX.getLength()) == SC_CHANGE_ID_PREFIX)
         {
             sal_Int32 nValue;
-            ::sax::Converter::convertNumber(nValue, sID.substr(SC_CHANGE_ID_PREFIX.getLength()));
-            OSL_ENSURE(nValue > 0, "wrong change action ID");
-            nResult = nValue;
+            if (::sax::Converter::convertNumber(nValue, sID.substr(SC_CHANGE_ID_PREFIX.getLength()),
+                                                0, SAL_MAX_INT32))
+                nResult = nValue;
+            OSL_ENSURE(nResult > 0, "wrong change action ID");
         }
         else
         {
@@ -401,7 +402,7 @@ void ScXMLChangeTrackingImportHelper::ConvertInfo(const ScMyActionInfo& aInfo, O
 
 std::unique_ptr<ScChangeAction> ScXMLChangeTrackingImportHelper::CreateInsertAction(const ScMyInsAction* pAction)
 {
-    DateTime aDateTime( Date(0), tools::Time(0) );
+    DateTime aDateTime( Date(0), tools::Time(tools::Time::EMPTY) );
     OUString aUser;
     ConvertInfo(pAction->aInfo, aUser, aDateTime);
 
@@ -413,7 +414,7 @@ std::unique_ptr<ScChangeAction> ScXMLChangeTrackingImportHelper::CreateInsertAct
 
 std::unique_ptr<ScChangeAction> ScXMLChangeTrackingImportHelper::CreateDeleteAction(const ScMyDelAction* pAction)
 {
-    DateTime aDateTime( Date(0), tools::Time(0) );
+    DateTime aDateTime( Date(0), tools::Time(tools::Time::EMPTY) );
     OUString aUser;
     ConvertInfo(pAction->aInfo, aUser, aDateTime);
 
@@ -428,7 +429,7 @@ std::unique_ptr<ScChangeAction> ScXMLChangeTrackingImportHelper::CreateMoveActio
     OSL_ENSURE(pAction->pMoveRanges, "no move ranges");
     if (pAction->pMoveRanges)
     {
-        DateTime aDateTime( Date(0), tools::Time(0) );
+        DateTime aDateTime( Date(0), tools::Time(tools::Time::EMPTY) );
         OUString aUser;
         ConvertInfo(pAction->aInfo, aUser, aDateTime);
 
@@ -442,7 +443,7 @@ std::unique_ptr<ScChangeAction> ScXMLChangeTrackingImportHelper::CreateMoveActio
 
 std::unique_ptr<ScChangeAction> ScXMLChangeTrackingImportHelper::CreateRejectionAction(const ScMyRejAction* pAction)
 {
-    DateTime aDateTime( Date(0), tools::Time(0) );
+    DateTime aDateTime( Date(0), tools::Time(tools::Time::EMPTY) );
     OUString aUser;
     ConvertInfo(pAction->aInfo, aUser, aDateTime);
 
@@ -462,14 +463,14 @@ std::unique_ptr<ScChangeAction> ScXMLChangeTrackingImportHelper::CreateContentAc
         sInputString = pAction->pCellInfo->sInputString;
     }
 
-    DateTime aDateTime( Date(0), tools::Time(0) );
+    DateTime aDateTime( Date(0), tools::Time(tools::Time::EMPTY) );
     OUString aUser;
     ConvertInfo(pAction->aInfo, aUser, aDateTime);
 
     OUString sComment (pAction->aInfo.sComment);
 
     return std::make_unique<ScChangeActionContent>(pAction->nActionNumber, pAction->nActionState, pAction->nRejectingNumber,
-        pAction->aBigRange, aUser, aDateTime, sComment, aCell, &rDoc, sInputString);
+        pAction->aBigRange, aUser, aDateTime, sComment, aCell, rDoc, sInputString);
 }
 
 void ScXMLChangeTrackingImportHelper::CreateGeneratedActions(std::vector<ScMyGenerated>& rList, ScDocument& rDoc)
@@ -584,7 +585,7 @@ void ScXMLChangeTrackingImportHelper::SetContentDependencies(const ScMyContentAc
     if (rOldCell.isEmpty())
         return;
 
-    pPrevActContent->SetNewCell(rOldCell, &rDoc, OUString());
+    pPrevActContent->SetNewCell(rOldCell, rDoc, OUString());
 }
 
 void ScXMLChangeTrackingImportHelper::SetDependencies(ScMyBaseAction* pAction, ScDocument& rDoc)
@@ -615,7 +616,7 @@ void ScXMLChangeTrackingImportHelper::SetDependencies(ScMyBaseAction* pAction, S
                         {
                             // #i40704# Don't overwrite SetNewCell result by calling SetNewValue,
                             // instead pass the input string to SetNewCell.
-                            pContentAct->SetNewCell(rCell, &rDoc, rDeleted.pCellInfo->sInputString);
+                            pContentAct->SetNewCell(rCell, rDoc, rDeleted.pCellInfo->sInputString);
                         }
                     }
                 }
@@ -664,7 +665,7 @@ void ScXMLChangeTrackingImportHelper::SetNewCell(const ScMyContentAction* pActio
             if (aCell.getType() != CELLTYPE_FORMULA)
             {
                 aNewCell = aCell;
-                pChangeActionContent->SetNewCell(aNewCell, &rDoc, OUString());
+                pChangeActionContent->SetNewCell(aNewCell, rDoc, OUString());
                 pChangeActionContent->SetNewValue(aCell, &rDoc);
             }
             else
@@ -698,7 +699,7 @@ void ScXMLChangeTrackingImportHelper::SetNewCell(const ScMyContentAction* pActio
                     aNewCell.getFormula()->SetMatColsRows(nCols, nRows);
                 }
                 aNewCell.getFormula()->SetInChangeTrack(true);
-                pChangeActionContent->SetNewCell(aNewCell, &rDoc, OUString());
+                pChangeActionContent->SetNewCell(aNewCell, rDoc, OUString());
                 // #i40704# don't overwrite the formula string via SetNewValue()
             }
         }

@@ -96,17 +96,25 @@ private:
     OUStringBuffer maInput;
     OUStringBuffer maUtf16;
     OUStringBuffer maCombining;
-    bool mbAllowMoreChars = true;
     bool mbRequiresU = false;
     bool mbIsHexString = false;
+#ifndef NDEBUG
+    bool mbInputEnded = false;
+#endif
 
 public:
     /**
-    Build an input string of valid UTF16 units to toggle.
+    Build an input string of valid UTF16/UCS4 units to toggle.
         -do not call the other functions until the input process is complete
         -build string from Right to Left.  (Start from the character to the left of the cursor: move left.)
+        - accepted input:
+          - a sequence of 2 to 8 hex characters not preceded by U+, to convert to Unicode;
+          - a sequence of up to 256 concatenated U+ notation - like u+xxxxU+yyyy, where xxxx and
+            yyyy are sequences of 2 to 8 hexadecimal digits - to convert it all to Unicode;
+          - a single (maybe combined) "symbol" - i.e., one or several codepoints that constitute
+            one glyph - to convert from Unicode to U+ notation.
     */
-    bool AllowMoreInput(sal_Unicode uChar);
+    bool AllowMoreInput(sal_uInt32 uChar);
 
     /**
     Validates (and potentially modifies) the input string.
@@ -115,12 +123,6 @@ public:
     */
     OUString StringToReplace();
     OUString ReplacementString();
-
-    /**
-    While sInput.getLength() returns the number of utf16 units to delete,
-        this function returns the number of "characters" to delete - potentially a smaller number
-    */
-    sal_uInt32 CharsToDelete();
 };
 
 #endif

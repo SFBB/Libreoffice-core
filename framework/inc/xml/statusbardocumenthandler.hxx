@@ -24,6 +24,8 @@
 #include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 
 #include <rtl/ustring.hxx>
+#include <rtl/ref.hxx>
+#include <comphelper/attributelist.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <unordered_map>
@@ -87,14 +89,9 @@ class OReadStatusBarDocumentHandler final : public OReadStatusBarDocumentHandler
     private:
         OUString getErrorLineString();
 
-        class StatusBarHashMap : public std::unordered_map<OUString,
-                                                           StatusBar_XML_Entry >
-        {
-        };
-
         bool                                                      m_bStatusBarStartFound;
         bool                                                      m_bStatusBarItemStartFound;
-        StatusBarHashMap                                          m_aStatusBarMap;
+        std::unordered_map<OUString, StatusBar_XML_Entry >        m_aStatusBarMap;
         css::uno::Reference< css::container::XIndexContainer >    m_aStatusBarItems;
         css::uno::Reference< css::xml::sax::XLocator >            m_xLocator;
 };
@@ -122,7 +119,6 @@ class OWriteStatusBarDocumentHandler final
 
         css::uno::Reference< css::container::XIndexAccess >       m_aStatusBarItems;
         css::uno::Reference< css::xml::sax::XDocumentHandler >    m_xWriteDocumentHandler;
-        css::uno::Reference< css::xml::sax::XAttributeList >      m_xEmptyList;
         OUString                                                  m_aXMLStatusBarNS;
         OUString                                                  m_aXMLXlinkNS;
         OUString                                                  m_aAttributeURL;

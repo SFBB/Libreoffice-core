@@ -10,7 +10,6 @@
 #include <test/unoapi_test.hxx>
 #include <test/sheet/xsheetoutline.hxx>
 
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 
@@ -43,7 +42,7 @@ public:
 };
 
 ScOutlineObj::ScOutlineObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -62,7 +61,7 @@ void ScOutlineObj::setUp()
 {
     UnoApiTest::setUp();
     // create a calc document
-    loadFromURL(u"ScOutlineObj.ods");
+    loadFromFile(u"ScOutlineObj.ods");
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScOutlineObj);

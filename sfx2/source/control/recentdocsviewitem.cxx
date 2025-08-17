@@ -56,7 +56,7 @@ bool IsDocEncrypted(const OUString& rURL)
         {
             try
             {
-                xStorageProps->getPropertyValue("HasEncryptedEntries") >>= bIsEncrypted;
+                xStorageProps->getPropertyValue(u"HasEncryptedEntries"_ustr) >>= bIsEncrypted;
             }
             catch (uno::Exception&)
             {
@@ -73,16 +73,16 @@ bool IsDocEncrypted(const OUString& rURL)
 }
 
 using Ext2IconMap = std::map<sfx2::ApplicationType, OUString>;
-BitmapEx Url2Icon(std::u16string_view rURL, const Ext2IconMap& rExtToIcon, const OUString& sDefault)
+Bitmap Url2Icon(std::u16string_view rURL, const Ext2IconMap& rExtToIcon, const OUString& sDefault)
 {
     auto it = std::find_if(rExtToIcon.begin(), rExtToIcon.end(),
                            [aExt = INetURLObject(rURL).getExtension()](const auto& r)
                            { return sfx2::RecentDocsView::typeMatchesExtension(r.first, aExt); });
 
-    return BitmapEx(it != rExtToIcon.end() ? it->second : sDefault);
+    return Bitmap(it != rExtToIcon.end() ? it->second : sDefault);
 };
 
-BitmapEx getDefaultThumbnail(const OUString& rURL)
+Bitmap getDefaultThumbnail(const OUString& rURL)
 {
     static const Ext2IconMap BitmapForExtension
         = { { sfx2::ApplicationType::TYPE_WRITER, SFX_FILE_THUMBNAIL_TEXT },
@@ -106,7 +106,7 @@ BitmapEx getDefaultThumbnail(const OUString& rURL)
     return Url2Icon(rURL, rWhichMap, SFX_FILE_THUMBNAIL_DEFAULT);
 }
 
-BitmapEx getModuleOverlay(std::u16string_view rURL)
+Bitmap getModuleOverlay(std::u16string_view rURL)
 {
     static const Ext2IconMap OverlayBitmapForExtension
         = { { sfx2::ApplicationType::TYPE_WRITER, SFX_FILE_OVERLAY_TEXT },
@@ -134,7 +134,7 @@ RecentDocsViewItem::RecentDocsViewItem(sfx2::RecentDocsView &rView, const OUStri
       m_bPinned(isPinned),
       m_bPinnedIconHighlighted(false),
       m_aPinnedDocumentBitmap(BMP_PIN_DOC),
-      m_aPinnedDocumentBitmapHiglighted(BMP_PIN_DOC_HIGHLIGHTED)
+      m_aPinnedDocumentBitmapHighlighted(BMP_PIN_DOC_HIGHLIGHTED)
 {
     OUString aTitle(rTitle);
     INetURLObject aURLObj(rURL);
@@ -147,7 +147,7 @@ RecentDocsViewItem::RecentDocsViewItem(sfx2::RecentDocsView &rView, const OUStri
     if (aTitle.isEmpty())
         aTitle = aURLObj.GetLastName(INetURLObject::DecodeMechanism::WithCharset);
 
-    BitmapEx aThumbnail;
+    Bitmap aThumbnail;
 
     //fdo#74834: only load thumbnail if the corresponding option is not disabled in the configuration
     if (officecfg::Office::Common::History::RecentDocsThumbnail::get())
@@ -165,14 +165,14 @@ RecentDocsViewItem::RecentDocsViewItem(sfx2::RecentDocsView &rView, const OUStri
                                                             aURLObj.getExtension()))
         {
             aThumbnail
-                = BitmapEx(nThumbnailSize > 192 ? SFX_THUMBNAIL_BASE_256 : SFX_THUMBNAIL_BASE_192);
+                = Bitmap(nThumbnailSize > 192 ? SFX_THUMBNAIL_BASE_256 : SFX_THUMBNAIL_BASE_192);
         }
     }
 
     if (aThumbnail.IsEmpty())
     {
         // 1. Thumbnail absent: get the default thumbnail, checking for encryption.
-        BitmapEx aExt(getDefaultThumbnail(rURL));
+        Bitmap aExt(getDefaultThumbnail(rURL));
         Size aExtSize(aExt.GetSizePixel());
 
         // attempt to make it appear as if it is on a piece of paper
@@ -202,8 +202,7 @@ RecentDocsViewItem::RecentDocsViewItem(sfx2::RecentDocsView &rView, const OUStri
         }
 
         // create empty, and copy the default thumbnail in
-        sal_uInt8 nAlpha = 255;
-        aThumbnail = BitmapEx(Bitmap(aThumbnailSize, vcl::PixelFormat::N24_BPP), AlphaMask(aThumbnailSize, &nAlpha));
+        aThumbnail = Bitmap(aThumbnailSize, vcl::PixelFormat::N32_BPP);
 
         aThumbnail.CopyPixel(
                 ::tools::Rectangle(Point((aThumbnailSize.Width() - aExtSize.Width()) / 2, (aThumbnailSize.Height() - aExtSize.Height()) / 2), aExtSize),
@@ -216,7 +215,7 @@ RecentDocsViewItem::RecentDocsViewItem(sfx2::RecentDocsView &rView, const OUStri
         // Pre-scale the thumbnail to the final size before applying the overlay
         aThumbnail = TemplateLocalView::scaleImg(aThumbnail, nThumbnailSize, nThumbnailSize);
 
-        BitmapEx aModule = getModuleOverlay(rURL);
+        Bitmap aModule = getModuleOverlay(rURL);
         aModule.Scale(Size(48,48)); //tdf#155200: Thumbnails don't change their size so overlay must not too
         if (!aModule.IsEmpty())
         {
@@ -228,12 +227,12 @@ RecentDocsViewItem::RecentDocsViewItem(sfx2::RecentDocsView &rView, const OUStri
             pVirDev->DrawBitmapEx(Point(aSize.Width() - aOverlaySize.Width() - 5,
                                         aSize.Height() - aOverlaySize.Height() - 5),
                                   aModule);
-            aThumbnail = pVirDev->GetBitmapEx(Point(), aSize);
+            aThumbnail = pVirDev->GetBitmap(Point(), aSize);
         }
     }
 
     maTitle = aTitle;
-    maPreview1 = aThumbnail;
+    maPreview = std::move(aThumbnail);
 }
 
 ::tools::Rectangle RecentDocsViewItem::updateHighlight(bool bVisible, const Point& rPoint)
@@ -300,30 +299,29 @@ void RecentDocsViewItem::Paint(drawinglayer::processor2d::BaseProcessor2D *pProc
     // paint the remove/pinned icon when hovered
     if (isHighlighted())
     {
-        drawinglayer::primitive2d::Primitive2DContainer aSeq(2);
+        drawinglayer::primitive2d::Primitive2DContainer aSeq;
 
         Point aIconPos(getRemoveIconArea().TopLeft());
 
-        aSeq[0] = drawinglayer::primitive2d::Primitive2DReference(new DiscreteBitmapPrimitive2D(
+        aSeq.push_back(new DiscreteBitmapPrimitive2D(
                     m_bRemoveIconHighlighted ? m_aRemoveRecentBitmapHighlighted : m_aRemoveRecentBitmap,
                     B2DPoint(aIconPos.X(), aIconPos.Y())));
 
         // tdf#38742 - draw pinned icon
         const Point aPinnedIconPos(getPinnedIconArea().TopLeft());
-        aSeq[1] = drawinglayer::primitive2d::Primitive2DReference(new DiscreteBitmapPrimitive2D(
-            m_aPinnedDocumentBitmap, B2DPoint(aPinnedIconPos.X(), aPinnedIconPos.Y())));
+        aSeq.push_back(new DiscreteBitmapPrimitive2D(
+            m_bPinnedIconHighlighted ? m_aPinnedDocumentBitmapHighlighted : m_aPinnedDocumentBitmap,
+            B2DPoint(aPinnedIconPos.X(), aPinnedIconPos.Y())));
 
         pProcessor->process(aSeq);
     }
     // tdf#38742 - draw pinned icon if item is pinned
     else if (m_bPinned)
     {
-        drawinglayer::primitive2d::Primitive2DContainer aSeq(1);
-
         const Point aPinnedIconPos(getPinnedIconArea().TopLeft());
-        aSeq[0] = drawinglayer::primitive2d::Primitive2DReference(new DiscreteBitmapPrimitive2D(
-            m_bPinnedIconHighlighted ? m_aPinnedDocumentBitmapHiglighted : m_aPinnedDocumentBitmap,
-            B2DPoint(aPinnedIconPos.X(), aPinnedIconPos.Y())));
+        drawinglayer::primitive2d::Primitive2DContainer aSeq {
+            new DiscreteBitmapPrimitive2D(
+                m_aPinnedDocumentBitmap, B2DPoint(aPinnedIconPos.X(), aPinnedIconPos.Y())) };
 
         pProcessor->process(aSeq);
     }
@@ -368,16 +366,16 @@ void RecentDocsViewItem::OpenDocument()
     Reference<util::XURLTransformer> xTrans(util::URLTransformer::create(::comphelper::getProcessComponentContext()));
     xTrans->parseStrict(aTargetURL);
 
-    aArgsList = { comphelper::makePropertyValue("Referer", OUString("private:user")),
+    aArgsList = { comphelper::makePropertyValue(u"Referer"_ustr, u"private:user"_ustr),
                   // documents will never be opened as templates
-                  comphelper::makePropertyValue("AsTemplate", false) };
+                  comphelper::makePropertyValue(u"AsTemplate"_ustr, false) };
     if (m_isReadOnly) // tdf#149170 only add if true
     {
         aArgsList.realloc(aArgsList.size()+1);
-        aArgsList.getArray()[aArgsList.size()-1] = comphelper::makePropertyValue("ReadOnly", true);
+        aArgsList.getArray()[aArgsList.size()-1] = comphelper::makePropertyValue(u"ReadOnly"_ustr, true);
     }
 
-    xDispatch = xDesktop->queryDispatch(aTargetURL, "_default", 0);
+    xDispatch = xDesktop->queryDispatch(aTargetURL, u"_default"_ustr, 0);
 
     if (!xDispatch.is())
         return;
@@ -386,9 +384,9 @@ void RecentDocsViewItem::OpenDocument()
     // executed. VCL is not able to survive this as it wants to call listeners
     // after select!!!
     sfx2::LoadRecentFile *const pLoadRecentFile = new sfx2::LoadRecentFile;
-    pLoadRecentFile->xDispatch = xDispatch;
-    pLoadRecentFile->aTargetURL = aTargetURL;
-    pLoadRecentFile->aArgSeq = aArgsList;
+    pLoadRecentFile->xDispatch = std::move(xDispatch);
+    pLoadRecentFile->aTargetURL = std::move(aTargetURL);
+    pLoadRecentFile->aArgSeq = std::move(aArgsList);
     pLoadRecentFile->pView = &mrParentView;
 
     mrParentView.PostLoadRecentUsedFile(pLoadRecentFile);

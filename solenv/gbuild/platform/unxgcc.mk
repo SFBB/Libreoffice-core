@@ -72,6 +72,7 @@ ifeq (,$(DISABLE_DYNLOADING))
 gb_LinkTarget_LDFLAGS += \
 	-Wl,-rpath-link,$(SYSBASE)/lib:$(SYSBASE)/usr/lib \
 	-Wl,-z,combreloc \
+	$(if $(ENABLE_HARDENING_FLAGS),$(HARDENING_LDFLAGS)) \
 
 endif
 
@@ -134,7 +135,7 @@ $(if $(call gb_LinkTarget__WantLock,$2), \
    $(gb_LinkTarget__cmd_lockfile) -r -1 $(gb_LinkTarget__Lock) ;  \
    echo "$(call gb_Output_announce_str,$(2): got link lock at $$(date -u),$(true),LNK,5)" ; \
 )
-	+$(if $(filter EMSCRIPTEN,$(OS)),unset PYTHONWARNINGS ;) \
+	+$(if $(filter EMSCRIPTEN,$(OS)),unset PYTHONWARNINGS &&) \
 $(call gb_Helper_abbreviate_dirs,\
 	$(if $(call gb_LinkTarget__NeedsCxxLinker),$(or $(T_CXX),$(gb_CXX)) $(gb_CXX_LINKFLAGS),$(or $(T_CC),$(gb_CC))) \
 		$(if $(filter Library CppunitTest,$(TARGETTYPE)),$(gb_Library_TARGETTYPEFLAGS)) \
@@ -148,6 +149,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		$(foreach object,$(ASMOBJECTS),$(call gb_AsmObject_get_target,$(object))) \
 		$(foreach object,$(GENCOBJECTS),$(call gb_GenCObject_get_target,$(object))) \
 		$(foreach object,$(GENCXXOBJECTS),$(call gb_GenCxxObject_get_target,$(object))) \
+		$(foreach object,$(GENASMOBJECTS),$(call gb_GenAsmObject_get_target,$(object))) \
 		$(foreach object,$(GENNASMOBJECTS),$(call gb_GenNasmObject_get_target,$(object))) \
 		$(foreach extraobjectlist,$(EXTRAOBJECTLISTS),`cat $(extraobjectlist)`) \
 		$(if $(filter TRUE,$(DISABLE_DYNLOADING)), \
@@ -170,6 +172,7 @@ $(call gb_Helper_abbreviate_dirs,\
                 ) \
 		-o $(1) \
 	$(if $(SOVERSIONSCRIPT),&& ln -sf ../../program/$(notdir $(1)) $(ILIBTARGET)) \
+	$(if $(filter EMSCRIPTEN,$(OS)),$(if $(call gb_target_symbols_enabled,$(1)),$(if $(filter TRUE,$(HAVE_EXTERNAL_DWARF)),&& emdwp -e $(patsubst %$(gb_Executable_EXT),%.wasm.debug.wasm,$(1)) -o $(patsubst %$(gb_Executable_EXT),%.wasm.debug.wasm.dwp,$(1))))) \
 	$(if $(call gb_LinkTarget__WantLock,$(2)),; RC=$$? ; rm -f $(gb_LinkTarget__Lock); if test $$RC -ne 0; then exit $$RC; fi))
 
 $(if $(filter Library,$(TARGETTYPE)), $(call gb_Helper_abbreviate_dirs,\
@@ -180,24 +183,29 @@ $(if $(filter Library,$(TARGETTYPE)), $(call gb_Helper_abbreviate_dirs,\
         $(WORKDIR)/LinkTarget/$(2).exports,$(1))))
 $(if $(and $(filter CppunitTest Executable,$(TARGETTYPE)),$(filter EMSCRIPTEN,$(OS))), \
 $(if $(filter TRUE,$(ENABLE_QT5)), \
-    sed -e 's/@APPNAME@/$(subst $(gb_Executable_EXT),,$(notdir $(1)))/' $(QT5_PLATFORMS_SRCDIR)/wasm_shell.html > $(dir $(1))qt_$(notdir $(1)); \
-    cp $(QT5_PLATFORMS_SRCDIR)/qtlogo.svg $(QT5_PLATFORMS_SRCDIR)/qtloader.js $(dir $(1)) ; \
-) \
-    cp $(call gb_CustomTarget_get_workdir,static/emscripten_fs_image)/soffice.data $(dir $(1))/soffice.data ; \
-    cp $(call gb_CustomTarget_get_workdir,static/emscripten_fs_image)/soffice.data.js.metadata $(dir $(1))/soffice.data.js.metadata \
+    sed -e 's/@APPNAME@/$(subst $(gb_Executable_EXT),,$(notdir $(1)))/' $(QT5_PLATFORMS_SRCDIR)/wasm_shell.html > $(dir $(1))qt_$(basename $(notdir $(1))).html && \
+    sed -e 's/var Module = {}/var Module = {script: document.currentScript}/' $(QT5_PLATFORMS_SRCDIR)/qtloader.js > $(dir $(1))qtloader.js && \
+    cp $(QT5_PLATFORMS_SRCDIR)/qtlogo.svg $(dir $(1)) && \
+,$(if $(filter TRUE,$(ENABLE_QT6)), \
+    sed -z -e 's/@APPNAME@/$(basename $(notdir $(1)))/g' -e 's/@APPEXPORTNAME@/$(basename $(notdir $(1)))_entry/g' -e 's/@PRELOAD@\n                    }/}$(COMMA)$(subst ','\'',$(EMSCRIPTEN_EXTRA_QTLOADER_CONFIG))/' -e 's/}$(CLOSE_PAREN);$$/}$(CLOSE_PAREN); window.Module = instance;/' $(QT6_PLATFORMS_SRCDIR)/wasm_shell.html > $(dir $(1))qt_$(basename $(notdir $(1))).html && \
+    cp $(QT6_PLATFORMS_SRCDIR)/qtlogo.svg $(QT6_PLATFORMS_SRCDIR)/qtloader.js $(dir $(1)) && \
+)) \
+    cp $(gb_CustomTarget_workdir)/static/emscripten_fs_image/soffice.data $(dir $(1))/soffice.data && \
+    cp $(gb_CustomTarget_workdir)/static/emscripten_fs_image/soffice.data.js.metadata $(dir $(1))/soffice.data.js.metadata \
 )
 endef
 
 define gb_LinkTarget__command_staticlink
 $(call gb_Helper_abbreviate_dirs,\
 	rm -f $(1) && \
-	$(if $(filter EMSCRIPTEN,$(OS)),unset PYTHONWARNINGS ; \
+	$(if $(filter EMSCRIPTEN,$(OS)),unset PYTHONWARNINGS && \
 		RESPONSEFILE=$(call gb_var2file,$(shell $(gb_MKTEMP)), \
 			$(foreach object,$(COBJECTS),$(call gb_CObject_get_target,$(object))) \
 			$(foreach object,$(CXXOBJECTS),$(call gb_CxxObject_get_target,$(object))) \
 			$(foreach object,$(ASMOBJECTS),$(call gb_AsmObject_get_target,$(object))) \
 			$(foreach object,$(GENCOBJECTS),$(call gb_GenCObject_get_target,$(object))) \
 			$(foreach object,$(GENCXXOBJECTS),$(call gb_GenCxxObject_get_target,$(object))) \
+			$(foreach object,$(GENASMOBJECTS),$(call gb_GenAsmObject_get_target,$(object))) \
 			$(foreach object,$(GENNASMOBJECTS),$(call gb_GenNasmObject_get_target,$(object))) \
 			$(foreach extraobjectlist,$(EXTRAOBJECTLISTS),$(shell cat $(extraobjectlist)))) && ) \
 	$(gb_AR) $(gb_LTOPLUGINFLAGS) -rsu $(1) \
@@ -208,6 +216,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		$(foreach object,$(ASMOBJECTS),$(call gb_AsmObject_get_target,$(object))) \
 		$(foreach object,$(GENCOBJECTS),$(call gb_GenCObject_get_target,$(object))) \
 		$(foreach object,$(GENCXXOBJECTS),$(call gb_GenCxxObject_get_target,$(object))) \
+		$(foreach object,$(GENASMOBJECTS),$(call gb_GenAsmObject_get_target,$(object))) \
 		$(foreach object,$(GENNASMOBJECTS),$(call gb_GenNasmObject_get_target,$(object))) \
 		$(foreach extraobjectlist,$(EXTRAOBJECTLISTS),@$(extraobjectlist)) \
 		$(if $(findstring s,$(MAKEFLAGS)),2> /dev/null)))
@@ -412,14 +421,6 @@ gb_Extension_LICENSEFILE_DEFAULT := $(INSTROOT)/LICENSE
 
 gb_UnpackedTarget_TARFILE_LOCATION := $(TARFILE_LOCATION)
 
-# UnoApiHeadersTarget class
-
-ifeq ($(DISABLE_DYNLOADING),TRUE)
-gb_UnoApiHeadersTarget_select_variant = $(if $(filter udkapi,$(1)),comprehensive,$(2))
-else
-gb_UnoApiHeadersTarget_select_variant = $(2)
-endif
-
 # UIMenubarTarget class
 
 define gb_UIMenubarTarget__command
@@ -433,7 +434,8 @@ endef
 gb_UIMenubarTarget_UIMenubarTarget_platform :=
 
 # Python
-gb_Python_PRECOMMAND := PYTHONHOME="$(INSTDIR)/program/python-core-$(PYTHON_VERSION)" PYTHONPATH="$${PYPATH:+$$PYPATH:}$(INSTDIR)/program/python-core-$(PYTHON_VERSION)/lib:$(INSTDIR)/program/python-core-$(PYTHON_VERSION)/lib/lib-dynload"
+gb_Python_HOME := $(INSTDIR_FOR_BUILD)/program/python-core-$(PYTHON_VERSION)
+gb_Python_PRECOMMAND := PYTHONHOME="$(gb_Python_HOME)" PYTHONPATH="$${PYPATH:+$$PYPATH:}$(gb_Python_HOME)/lib:$(gb_Python_HOME)/lib/lib-dynload"
 gb_Python_INSTALLED_EXECUTABLE := /bin/sh $(INSTROOT)/program/python
 # this is passed to gdb as executable when running tests
 gb_Python_INSTALLED_EXECUTABLE_GDB := $(INSTROOT)/program/python.bin

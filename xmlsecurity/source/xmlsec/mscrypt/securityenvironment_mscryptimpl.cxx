@@ -22,6 +22,8 @@
 #include <cstddef>
 #include <string.h>
 
+#include <xmlsec/base64.h>
+
 #if !defined WIN32_LEAN_AND_MEAN
 # define WIN32_LEAN_AND_MEAN
 #endif
@@ -36,7 +38,6 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/supportsservice.hxx>
-#include <xmlsec-wrapper.h>
 #include "akmngr.hxx"
 
 #include <biginteger.hxx>
@@ -282,7 +283,7 @@ static BOOL WINAPI cert_enum_system_store_callback(const void *pvSystemStore,
         if (!(ERROR_FILE_NOT_FOUND == dwErr ||
               ERROR_NOT_SUPPORTED == dwErr))
         {
-            SAL_WARN("xmlsecurity.xmlsec", "CertEnumPhysicalStore failed:" << WindowsErrorString(GetLastError()));
+            SAL_WARN("xmlsecurity.xmlsec", "CertEnumPhysicalStore failed:" << comphelper::WindowsErrorString(GetLastError()));
         }
     }
     return TRUE;
@@ -721,11 +722,11 @@ static HCERTSTORE getCertStoreForIntermediatCerts(
     if (store == nullptr)
         return nullptr;
 
-    for (int i = 0; i < seqCerts.getLength(); i++)
+    for (const auto& i : seqCerts)
     {
-        SAL_INFO("xmlsecurity.xmlsec", "Added temporary certificate: " << seqCerts[i]->getSubjectName());
+        SAL_INFO("xmlsecurity.xmlsec", "Added temporary certificate: " << i->getSubjectName());
 
-        uno::Sequence<sal_Int8> data = seqCerts[i]->getEncoded();
+        uno::Sequence<sal_Int8> data = i->getEncoded();
         PCCERT_CONTEXT cert = CertCreateCertificateContext(
             X509_ASN_ENCODING, reinterpret_cast<const BYTE*>(&data[0]), data.getLength());
         //Adding the certificate creates a copy and not just increases the ref count

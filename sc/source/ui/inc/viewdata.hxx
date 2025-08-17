@@ -28,7 +28,7 @@
 #include <memory>
 #include <o3tl/typed_flags_set.hxx>
 
-#define SC_SIZE_NONE        65535
+constexpr auto SC_SIZE_NONE = std::numeric_limits<tools::Long>::max();
 
 enum class ScFillMode
 {
@@ -98,7 +98,6 @@ namespace o3tl {
 }
 
 class ScDocFunc;
-class ScDocument;
 class ScDBFunc;
 class ScTabViewShell;
 class ScDrawView;
@@ -113,8 +112,8 @@ class SfxDispatcher;
 class ScPatternAttr;
 class ScExtDocOptions;
 class ScViewData;
-class ScMarkData;
 class ScGridWindow;
+class ScSizeDeviceProvider;
 
 class ScPositionHelper
 {
@@ -136,8 +135,7 @@ private:
     std::set<value_type, Comp> mData;
 
 public:
-    ScPositionHelper(const ScDocument *pDoc, bool bColumn);
-    void setDocument(const ScDocument& rDoc, bool bColumn);
+    ScPositionHelper(const ScDocument& rDoc, bool bColumn);
 
     void insert(index_type nIndex, tools::Long nPos);
     void removeByIndex(index_type nIndex);
@@ -244,9 +242,8 @@ private:
 
     bool            bShowGrid;                  // per sheet show grid lines option.
     bool            mbOldCursorValid;           // "virtual" Cursor position when combined
-                    ScViewDataTable(const ScDocument *pDoc = nullptr);
+                    ScViewDataTable(const ScDocument& rDoc);
 
-    void            InitData(const ScDocument& rDoc);
     void            WriteUserDataSequence(
                         css::uno::Sequence <css::beans::PropertyValue>& rSettings,
                         const ScViewData& rViewData, SCTAB nTab ) const;
@@ -267,17 +264,17 @@ private:
     [[nodiscard]] ScSplitPos SanitizeWhichActive() const;
 };
 
-class SC_DLLPUBLIC ScViewData
+class ScViewData
 {
 private:
     double              nPPTX, nPPTY;               // Scaling factors
 
     ::std::vector<std::unique_ptr<ScViewDataTable>> maTabData;
+    ScDocShell&         mrDocShell;
+    ScDocument&         mrDoc;
     ScMarkData          maMarkData;
     ScMarkData          maHighlightData;
-    ScViewDataTable*    pThisTab;                   // Data of the displayed sheet
-    ScDocShell*         pDocShell;
-    ScDocument&         mrDoc;
+    ScViewDataTable* pThisTab;                   // Data of the displayed sheet
     ScTabViewShell*     pView;
     std::unique_ptr<EditView> pEditView[4];               // Belongs to the window
     ScViewOptions       maOptions;
@@ -293,10 +290,12 @@ private:
     Fraction            aDefZoomY;
     Fraction            aDefPageZoomX;              // zoom in page break preview mode
     Fraction            aDefPageZoomY;
+    // If the actual zoom values are for implementation-only purposes, then provide a value for export
+    std::optional<sal_uInt16> oExportZoom; // used for all sheets
 
     ScRefType           eRefType;
 
-    SCTAB               nTabNo;                     // displayed sheet
+    SCTAB mnTabNumber; // displayed sheet
     SCTAB               nRefTabNo;                  // sheet which contains RefInput
     SCCOL               nRefStartX;
     SCROW               nRefStartY;
@@ -328,6 +327,7 @@ private:
     bool                bPagebreak:1;               // Page break preview mode
     bool                bSelCtrlMouseClick:1;       // special selection handling for ctrl-mouse-click
     bool                bMoveArea:1;
+    bool                bEditHighlight:1;
 
     bool                bGrowing;
     sal_Int16           nFormulaBarLines;           // Visible lines in the formula bar
@@ -335,47 +335,44 @@ private:
     tools::Long                m_nLOKPageUpDownOffset;
     tools::Rectangle    maLOKVisibleArea;///< The visible area in the LibreOfficeKit client.
 
-    DECL_DLLPRIVATE_LINK( EditEngineHdl, EditStatus&, void );
+    DECL_LINK( EditEngineHdl, EditStatus&, void );
 
 
-    SAL_DLLPRIVATE void          CalcPPT();
-    SAL_DLLPRIVATE void          CreateTabData( SCTAB nNewTab );
-    SAL_DLLPRIVATE void          CreateTabData( std::vector< SCTAB >& rvTabs );
-    SAL_DLLPRIVATE void          CreateSelectedTabData();
-    SAL_DLLPRIVATE void          EnsureTabDataSize(size_t nSize);
-    SAL_DLLPRIVATE void          UpdateCurrentTab();
-    SAL_DLLPRIVATE ScViewDataTable* FetchTableData(SCTAB) const;
-
-    ScViewData(ScDocument* pDoc, ScDocShell* pDocSh, ScTabViewShell* pViewSh);
+    void          CalcPPT();
+    void          CreateTabData( SCTAB nNewTab );
+    void          CreateTabData( std::vector< SCTAB >& rvTabs );
+    void          CreateSelectedTabData();
+    void          EnsureTabDataSize(size_t nSize);
+    void          UpdateCurrentTab();
+    ScViewDataTable* FetchTableData(SCTAB) const;
 
 public:
     ScViewData( ScDocShell& rDocSh, ScTabViewShell* pViewSh );
-    ScViewData( ScDocument& rDoc );
     ~ScViewData() COVERITY_NOEXCEPT_FALSE;
 
-    ScDocShell*     GetDocShell() const     { return pDocShell; }
+    ScDocShell&     GetDocShell() const     { return mrDocShell; }
     ScDocFunc&      GetDocFunc() const;
-    ScDBFunc*       GetView() const;
+    SC_DLLPUBLIC ScDBFunc* GetView() const;
     ScTabViewShell* GetViewShell() const    { return pView; }
-    SfxObjectShell* GetSfxDocShell() const  { return pDocShell; }
+    SfxObjectShell& GetSfxDocShell() const  { return mrDocShell; }
     SfxBindings&    GetBindings();          // from ViewShell's ViewFrame
-    SfxDispatcher&  GetDispatcher();        // from ViewShell's ViewFrame
+    SC_DLLPUBLIC SfxDispatcher& GetDispatcher();        // from ViewShell's ViewFrame
 
-    ScMarkData&     GetMarkData();
+    SC_DLLPUBLIC ScMarkData& GetMarkData();
     ScMarkData&     GetHighlightData();
-    const ScMarkData& GetMarkData() const;
+    SC_DLLPUBLIC const ScMarkData& GetMarkData() const;
 
     weld::Window*   GetDialogParent();          // forwarded from tabvwsh
-    ScGridWindow*   GetActiveWin();             // from View
+    SC_DLLPUBLIC ScGridWindow* GetActiveWin();             // from View
     const ScGridWindow* GetActiveWin() const;
-    ScDrawView*     GetScDrawView();            // from View
+    SC_DLLPUBLIC ScDrawView* GetScDrawView();            // from View
     bool            IsMinimized() const;        // from View
 
     void            UpdateInputHandler( bool bForce = false );
 
     void            WriteUserData(OUString& rData);
     void            ReadUserData(std::u16string_view rData);
-    void            WriteExtOptions( ScExtDocOptions& rOpt ) const;
+    SC_DLLPUBLIC void WriteExtOptions( ScExtDocOptions& rOpt ) const;
     void            ReadExtOptions( const ScExtDocOptions& rOpt );
     void            WriteUserDataSequence(css::uno::Sequence <css::beans::PropertyValue>& rSettings) const;
     void            ReadUserDataSequence(const css::uno::Sequence <css::beans::PropertyValue>& rSettings);
@@ -395,12 +392,12 @@ public:
     SCTAB           GetRefTabNo() const                     { return nRefTabNo; }
     void            SetRefTabNo( SCTAB nNewTab )            { nRefTabNo = nNewTab; }
 
-    SCTAB           GetTabNo() const                        { return nTabNo; }
+    SCTAB GetTabNo() const { return mnTabNumber; }
     SCCOL           MaxCol() const                          { return mrDoc.MaxCol(); }
     SCROW           MaxRow() const                          { return mrDoc.MaxRow(); }
     ScSplitPos      GetActivePart() const                   { return pThisTab->eWhichActive; }
-    SCCOL           GetPosX( ScHSplitPos eWhich, SCTAB nForTab = -1 ) const;
-    SCROW           GetPosY( ScVSplitPos eWhich, SCTAB nForTab = -1 ) const;
+    SC_DLLPUBLIC SCCOL GetPosX( ScHSplitPos eWhich, SCTAB nForTab = -1 ) const;
+    SC_DLLPUBLIC SCROW GetPosY( ScVSplitPos eWhich, SCTAB nForTab = -1 ) const;
     SCCOL           GetCurX() const                         { return pThisTab->nCurX; }
     SCROW           GetCurY() const                         { return pThisTab->nCurY; }
     SCCOL           GetCurXForTab( SCTAB nTabIndex ) const;
@@ -452,7 +449,7 @@ public:
 
     void            SetZoomType( SvxZoomType eNew, bool bAll );
     void            SetZoomType( SvxZoomType eNew, std::vector< SCTAB >& tabs );
-    void            SetZoom( const Fraction& rNewX, const Fraction& rNewY, std::vector< SCTAB >& tabs );
+    SC_DLLPUBLIC void SetZoom( const Fraction& rNewX, const Fraction& rNewY, std::vector< SCTAB >& tabs );
     void            SetZoom( const Fraction& rNewX, const Fraction& rNewY, bool bAll );
     void            RefreshZoom();
 
@@ -461,6 +458,9 @@ public:
     SvxZoomType     GetZoomType() const     { return pThisTab->eZoomType; }
     const Fraction& GetZoomX() const        { return bPagebreak ? pThisTab->aPageZoomX : pThisTab->aZoomX; }
     const Fraction& GetZoomY() const        { return bPagebreak ? pThisTab->aPageZoomY : pThisTab->aZoomY; }
+
+    void SetExportZoom(sal_uInt16 nExportZoom) { oExportZoom = nExportZoom; }
+    const std::optional<sal_uInt16>& GetExportZoom() const { return oExportZoom; }
 
     void            SetShowGrid( bool bShow );
     bool            GetShowGrid() const { return pThisTab->bShowGrid; }
@@ -480,9 +480,9 @@ public:
     }
     sal_Int16 GetFormulaBarLines() const { return nFormulaBarLines; };
 
-    ScMarkType      GetSimpleArea( SCCOL& rStartCol, SCROW& rStartRow, SCTAB& rStartTab,
+    SC_DLLPUBLIC ScMarkType GetSimpleArea( SCCOL& rStartCol, SCROW& rStartRow, SCTAB& rStartTab,
                                     SCCOL& rEndCol, SCROW& rEndRow, SCTAB& rEndTab ) const;
-    ScMarkType      GetSimpleArea( ScRange& rRange ) const;
+    SC_DLLPUBLIC ScMarkType GetSimpleArea( ScRange& rRange ) const;
                     /// May modify rNewMark using MarkToSimple().
     ScMarkType      GetSimpleArea( ScRange & rRange, ScMarkData & rNewMark ) const;
     void            GetMultiArea( ScRangeListRef& rRange ) const;
@@ -555,18 +555,21 @@ public:
     inline void     GetMoveCursor( SCCOL& rCurX, SCROW& rCurY );
 
     const ScViewOptions&    GetOptions() const { return maOptions; }
-    void                    SetOptions( const ScViewOptions& rOpt );
+    SC_DLLPUBLIC void       SetOptions( const ScViewOptions& rOpt );
 
-    bool    IsGridMode      () const            { return maOptions.GetOption(VOPT_GRID); }
-    bool    IsSyntaxMode    () const            { return maOptions.GetOption(VOPT_SYNTAX); }
-    void    SetSyntaxMode   ( bool bNewMode )   { maOptions.SetOption(VOPT_SYNTAX, bNewMode); }
-    bool    IsHeaderMode    () const            { return maOptions.GetOption(VOPT_HEADER); }
-    void    SetHeaderMode   ( bool bNewMode )   { maOptions.SetOption(VOPT_HEADER, bNewMode); }
-    bool    IsTabMode       () const            { return maOptions.GetOption(VOPT_TABCONTROLS); }
-    bool    IsVScrollMode   () const            { return maOptions.GetOption(VOPT_VSCROLL); }
-    bool    IsHScrollMode   () const            { return maOptions.GetOption(VOPT_HSCROLL); }
-    bool    IsOutlineMode   () const            { return maOptions.GetOption(VOPT_OUTLINER); }
-    bool    IsThemedCursor  () const            { return maOptions.GetOption(VOPT_THEMEDCURSOR); }
+    bool    IsGridMode      () const            { return maOptions.GetOption(sc::ViewOption::GRID); }
+    bool    IsSyntaxMode    () const            { return maOptions.GetOption(sc::ViewOption::SYNTAX); }
+    void    SetSyntaxMode   ( bool bNewMode )   { maOptions.SetOption(sc::ViewOption::SYNTAX, bNewMode); }
+    bool    IsHeaderMode    () const            { return maOptions.GetOption(sc::ViewOption::HEADER); }
+    void    SetHeaderMode   ( bool bNewMode )   { maOptions.SetOption(sc::ViewOption::HEADER, bNewMode); }
+    bool    IsTabMode       () const            { return maOptions.GetOption(sc::ViewOption::TABCONTROLS); }
+    bool    IsVScrollMode   () const            { return maOptions.GetOption(sc::ViewOption::VSCROLL); }
+    bool    IsHScrollMode   () const            { return maOptions.GetOption(sc::ViewOption::HSCROLL); }
+    bool    IsOutlineMode   () const            { return maOptions.GetOption(sc::ViewOption::OUTLINER); }
+    bool    IsThemedCursor  () const            { return maOptions.GetOption(sc::ViewOption::THEMEDCURSOR); }
+
+    bool    GetEditHighlight() const            { return bEditHighlight; }
+    void    SetEditHighlight(bool bNewHighlight) { bEditHighlight = bNewHighlight; }
 
     /// Force page size for PgUp/PgDown to overwrite the computation based on m_aVisArea.
     void ForcePageUpDownOffset(tools::Long nTwips) { m_nLOKPageUpDownOffset = nTwips; }
@@ -579,7 +582,7 @@ public:
     void            KillEditView();
     void            ResetEditView();
     void            SetEditEngine( ScSplitPos eWhich,
-                                    ScEditEngineDefaulter* pNewEngine,
+                                    ScEditEngineDefaulter& rNewEngine,
                                     vcl::Window* pWin, SCCOL nNewX, SCROW nNewY );
     void            GetEditView( ScSplitPos eWhich, EditView*& rViewPtr, SCCOL& rCol, SCROW& rRow );
     bool            HasEditView( ScSplitPos eWhich ) const
@@ -616,12 +619,12 @@ public:
     void            SetTabNo( SCTAB nNewTab );
     void            SetActivePart( ScSplitPos eNewActive );
 
-    Point           GetScrPos( SCCOL nWhereX, SCROW nWhereY, ScSplitPos eWhich,
+    SC_DLLPUBLIC Point GetScrPos( SCCOL nWhereX, SCROW nWhereY, ScSplitPos eWhich,
                                 bool bAllowNeg = false, SCTAB nForTab = -1 ) const;
     Point           GetScrPos( SCCOL nWhereX, SCROW nWhereY, ScHSplitPos eWhich ) const;
     Point           GetScrPos( SCCOL nWhereX, SCROW nWhereY, ScVSplitPos eWhich ) const;
     /// returns the position (top-left corner) of the requested cell in print twips coordinates.
-    Point           GetPrintTwipsPos( SCCOL nCol, SCROW nRow ) const;
+    SC_DLLPUBLIC Point GetPrintTwipsPos( SCCOL nCol, SCROW nRow ) const;
     Point           GetPrintTwipsPosFromTileTwips(const Point& rTileTwipsPos) const;
 
     /// return json for our cursor position.
@@ -629,8 +632,10 @@ public:
     OString         describeCellCursorInPrintTwips() const { return describeCellCursorAt(GetCurX(), GetCurY(), false); }
     OString         describeCellCursorAt( SCCOL nCol, SCROW nRow, bool bPixelAligned = true ) const;
 
-    SCCOL           CellsAtX( SCCOL nPosX, SCCOL nDir, ScHSplitPos eWhichX, sal_uInt16 nScrSizeY = SC_SIZE_NONE ) const;
-    SCROW           CellsAtY( SCROW nPosY, SCROW nDir, ScVSplitPos eWhichY, sal_uInt16 nScrSizeX = SC_SIZE_NONE ) const;
+    SCCOL           CellsAtX( SCCOL nPosX, SCCOL nDir, ScHSplitPos eWhichX,
+                              tools::Long nScrSizeY = SC_SIZE_NONE ) const;
+    SCROW           CellsAtY( SCROW nPosY, SCROW nDir, ScVSplitPos eWhichY,
+                              tools::Long nScrSizeX = SC_SIZE_NONE ) const;
 
     SCCOL           VisibleCellsX( ScHSplitPos eWhichX ) const;     // Completely visible cell
     SCROW           VisibleCellsY( ScVSplitPos eWhichY ) const;
@@ -698,6 +703,8 @@ public:
     static void     AddPixelsWhileBackward( tools::Long & rScrY, tools::Long nEndPixels,
                                     SCROW & rPosY, SCROW nStartRow, double nPPTY,
                                     const ScDocument * pDoc, SCTAB nTabNo );
+
+    void setupSizeDeviceProviderForColWidth(const ScSizeDeviceProvider& rProv, Fraction& rZoomX, Fraction& rZoomY, double& rPPTX, double &rPPTY);
 };
 
 inline tools::Long ScViewData::ToPixel( sal_uInt16 nTwips, double nFactor )

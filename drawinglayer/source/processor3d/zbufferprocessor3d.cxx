@@ -103,7 +103,7 @@ private:
     double decideColorAndOpacity(basegfx::BColor& rColor) const
     {
         // init values with full opacity and material color
-        OSL_ENSURE(nullptr != mpCurrentMaterial, "CurrentMaterial not set (!)");
+        assert(nullptr != mpCurrentMaterial && "CurrentMaterial not set (!)");
         double fOpacity(1.0);
         rColor = mpCurrentMaterial->getColor();
 
@@ -119,14 +119,14 @@ private:
                 mrProcessor.getGeoTexSvx()->modifyBColor(aTexCoor, rColor, fOpacity);
             }
 
-            if(basegfx::fTools::more(fOpacity, 0.0) && mrProcessor.getTransparenceGeoTexSvx())
+            if (fOpacity > 0.0 && !basegfx::fTools::equalZero(fOpacity) && mrProcessor.getTransparenceGeoTexSvx())
             {
                 // calc opacity. Object has a 2nd texture, a transparence texture
                 mrProcessor.getTransparenceGeoTexSvx()->modifyOpacity(aTexCoor, fOpacity);
             }
         }
 
-        if(basegfx::fTools::more(fOpacity, 0.0))
+        if (fOpacity > 0.0 && !basegfx::fTools::equalZero(fOpacity))
         {
             if(mrProcessor.getGeoTexSvx())
             {
@@ -562,7 +562,7 @@ namespace drawinglayer::processor3d
                 aDeviceToView,
                 getViewInformation3D().getViewTime(),
                 getViewInformation3D().getExtendedInformationSequence());
-            updateViewInformation(aNewViewInformation3D);
+            setViewInformation3D(aNewViewInformation3D);
 
             // prepare inverse EyeToView transformation. This can be done in constructor
             // since changes in object transformations when processing TransformPrimitive3Ds

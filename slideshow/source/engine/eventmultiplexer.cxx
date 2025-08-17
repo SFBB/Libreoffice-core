@@ -390,10 +390,10 @@ void SAL_CALL EventMultiplexerListener::mousePressed(
     // might not be the main thread!
     if( mpEventQueue )
         mpEventQueue->addEvent(
-            makeEvent( std::bind( &EventMultiplexerImpl::mousePressed,
-                                    mpEventMultiplexer,
-                                    e ),
-                       "EventMultiplexerImpl::mousePressed") );
+            makeEvent( ([mpEventMux = this->mpEventMultiplexer, e] {
+                                    return mpEventMux->mousePressed(e);
+                                    }),
+                        u"EventMultiplexerImpl::mousePressed"_ustr ));
 }
 
 void SAL_CALL EventMultiplexerListener::mouseReleased(
@@ -405,10 +405,10 @@ void SAL_CALL EventMultiplexerListener::mouseReleased(
     // this might not be the main thread!
     if( mpEventQueue )
         mpEventQueue->addEvent(
-            makeEvent( std::bind( &EventMultiplexerImpl::mouseReleased,
-                                    mpEventMultiplexer,
-                                    e ),
-                       "EventMultiplexerImpl::mouseReleased") );
+            makeEvent( ([mpEventMux = this->mpEventMultiplexer, e] {
+                                    return mpEventMux->mouseReleased(e);
+                                    }),
+                       u"EventMultiplexerImpl::mouseReleased"_ustr) );
 }
 
 void SAL_CALL EventMultiplexerListener::mouseEntered(
@@ -433,10 +433,10 @@ void SAL_CALL EventMultiplexerListener::mouseDragged(
     // might not be the main thread!
     if( mpEventQueue )
         mpEventQueue->addEvent(
-            makeEvent( std::bind( &EventMultiplexerImpl::mouseDragged,
-                                    mpEventMultiplexer,
-                                    e ),
-                       "EventMultiplexerImpl::mouseDragged") );
+            makeEvent( ([mpEventMux = this->mpEventMultiplexer, e] {
+                                    return mpEventMux->mouseDragged(e);
+                                    }),
+                       u"EventMultiplexerImpl::mouseDragged"_ustr) );
 }
 
 void SAL_CALL EventMultiplexerListener::mouseMoved(
@@ -448,10 +448,10 @@ void SAL_CALL EventMultiplexerListener::mouseMoved(
     // might not be the main thread!
     if( mpEventQueue )
         mpEventQueue->addEvent(
-            makeEvent( std::bind( &EventMultiplexerImpl::mouseMoved,
-                                    mpEventMultiplexer,
-                                    e ),
-                       "EventMultiplexerImpl::mouseMoved") );
+            makeEvent( ([mpEventMux = this->mpEventMultiplexer, e] {
+                                    return mpEventMux->mouseMoved(e);
+                                    }),
+                       u"EventMultiplexerImpl::mouseMoved"_ustr) );
 }
 
 
@@ -550,7 +550,7 @@ void EventMultiplexerImpl::scheduleTick()
     EventSharedPtr pEvent(
         makeDelay( [this] () { this->tick(); },
                    mnTimeout,
-                   "EventMultiplexerImpl::tick with delay"));
+                   u"EventMultiplexerImpl::tick with delay"_ustr));
 
     // store weak reference to generated event, to notice when
     // the event queue gets cleansed (we then have to
@@ -595,8 +595,8 @@ EventMultiplexerImpl::toNormalPoint(const uno::Reference<presentation::XSlideSho
     basegfx::B2DHomMatrix aMatrix((*aIter)->getTransformation());
     aPosition *= aMatrix;
 
-    aPosition.setX(basegfx::fround(aPosition.getX()));
-    aPosition.setY(basegfx::fround(aPosition.getY()));
+    aPosition.setX(std::round(aPosition.getX()));
+    aPosition.setY(std::round(aPosition.getY()));
     return aPosition;
 }
 
@@ -621,8 +621,8 @@ EventMultiplexerImpl::toMatrixPoint(const uno::Reference<presentation::XSlideSho
                                " view matrix singular");
     aPosition *= aMatrix;
 
-    aPosition.setX(basegfx::fround(aPosition.getX()));
-    aPosition.setY(basegfx::fround(aPosition.getY()));
+    aPosition.setX(std::round(aPosition.getX()));
+    aPosition.setY(std::round(aPosition.getY()));
     return aPosition;
 }
 

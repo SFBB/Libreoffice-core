@@ -52,6 +52,7 @@
 #include <vcl/settings.hxx>
 
 #include <comphelper/lok.hxx>
+#include <comphelper/scopeguard.hxx>
 #include <officecfg/Office/Calc.hxx>
 
 using namespace com::sun::star;
@@ -90,14 +91,14 @@ void ScTabView::Init()
     for (i=0; i<2; i++)
         pColOutline[i] = pRowOutline[i] = nullptr;
 
-    pHSplitter = VclPtr<ScTabSplitter>::Create( pFrameWin, WinBits( WB_HSCROLL ), &aViewData );
-    pVSplitter = VclPtr<ScTabSplitter>::Create( pFrameWin, WinBits( WB_VSCROLL ), &aViewData );
+    pHSplitter = VclPtr<ScTabSplitter>::Create( pFrameWin, WinBits( WB_HSCROLL ), aViewData );
+    pVSplitter = VclPtr<ScTabSplitter>::Create( pFrameWin, WinBits( WB_VSCROLL ), aViewData );
 
     // SSA: override default keyboard step size to allow snap to row/column
     pHSplitter->SetKeyboardStepSize( 1 );
     pVSplitter->SetKeyboardStepSize( 1 );
 
-    pTabControl = VclPtr<ScTabControl>::Create(pFrameWin, &aViewData);
+    pTabControl = VclPtr<ScTabControl>::Create(pFrameWin, aViewData);
     if (mbInlineWithScrollbar)
         pTabControl->SetStyle(pTabControl->GetStyle() | WB_SIZEABLE);
 
@@ -141,7 +142,7 @@ ScTabView::~ScTabView()
     sal_uInt16 i;
 
     //  remove selection object
-    ScModule* pScMod = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     ScSelectionTransferObj* pOld = pScMod->GetSelectionTransfer();
     if ( pOld && pOld->GetView() == this )
     {
@@ -233,7 +234,7 @@ void ScTabView::MakeDrawView( TriState nForceDesignMode )
     OSL_ENSURE(pLayer, "Where is the Draw Layer ??");
 
     sal_uInt16 i;
-    pDrawView.reset( new ScDrawView( pGridWin[SC_SPLIT_BOTTOMLEFT]->GetOutDev(), &aViewData ) );
+    pDrawView.reset( new ScDrawView( pGridWin[SC_SPLIT_BOTTOMLEFT]->GetOutDev(), aViewData ) );
     for (i=0; i<4; i++)
         if (pGridWin[i])
         {
@@ -251,7 +252,7 @@ void ScTabView::MakeDrawView( TriState nForceDesignMode )
         }
     SfxRequest aSfxRequest(SID_OBJECT_SELECT, SfxCallMode::SLOT, aViewData.GetViewShell()->GetPool());
     SetDrawFuncPtr(new FuSelection(*aViewData.GetViewShell(), GetActiveWin(), pDrawView.get(),
-                                   pLayer,aSfxRequest));
+                                   *pLayer,aSfxRequest));
 
     //  used when switching back from page preview: restore saved design mode state
     //  (otherwise, keep the default from the draw view ctor)
@@ -277,8 +278,19 @@ void ScTabView::DoAddWin( ScGridWindow* pWin )
     pWin->SetAutoSpellContext(mpSpellCheckCxt);
 }
 
-void ScTabView::TabChanged( bool bSameTabButMoved )
+void ScTabView::ImplTabChanged(bool bSameTabButMoved)
 {
+    // For kit ignore invalidations during tab change
+    ScTabViewShell* pViewShell = aViewData.GetViewShell();
+    SfxLokCallbackInterface* pCallback = pViewShell->getLibreOfficeKitViewCallback();
+    pViewShell->setLibreOfficeKitViewCallback(nullptr);
+    comphelper::ScopeGuard aOutputGuard(
+        [this, pViewShell, pCallback] {
+            pViewShell->setLibreOfficeKitViewCallback(pCallback);
+            // But possibly update any out of date formulas on the tab we switched to
+            UpdateFormulas();
+        });
+
     if (pDrawView)
     {
         DrawDeselectAll();      // end also text edit mode
@@ -324,12 +336,17 @@ void ScTabView::TabChanged( bool bSameTabButMoved )
             break;
         }
     }
+}
+
+void ScTabView::TabChanged( bool bSameTabButMoved )
+{
+    ImplTabChanged(bSameTabButMoved);
 
     if (!comphelper::LibreOfficeKit::isActive())
         return;
 
-    ScDocShell* pDocSh = GetViewData().GetDocShell();
-    ScModelObj* pModelObj = pDocSh ? pDocSh->GetModel() : nullptr;
+    ScDocShell& rDocSh = GetViewData().GetDocShell();
+    ScModelObj* pModelObj = rDocSh.GetModel();
 
     if (!pModelObj)
         return;
@@ -339,11 +356,6 @@ void ScTabView::TabChanged( bool bSameTabButMoved )
     ss << aDocSize.Width() << ", " << aDocSize.Height();
     OString sRect(ss.str());
     ScTabViewShell* pViewShell = aViewData.GetViewShell();
-
-    // Invalidate first
-    tools::Rectangle aRectangle(0, 0, 1000000000, 1000000000);
-    pViewShell->libreOfficeKitViewInvalidateTilesCallback(&aRectangle, aViewData.GetTabNo(), 0);
-
     ScModelObj* pModel = comphelper::getFromUnoTunnel<ScModelObj>(pViewShell->GetCurrentDocument());
     SfxLokHelper::notifyDocumentSizeChanged(pViewShell, sRect, pModel, false);
 }
@@ -356,8 +368,8 @@ void ScTabView::UpdateLayerLocks()
     SCTAB nTab = aViewData.GetTabNo();
     bool bEx = aViewData.GetViewShell()->IsDrawSelMode();
     bool bProt = aViewData.GetDocument().IsTabProtected( nTab ) ||
-                 aViewData.GetSfxDocShell()->IsReadOnly();
-    bool bShared = aViewData.GetDocShell()->IsDocShared();
+                 aViewData.GetSfxDocShell().IsReadOnly();
+    bool bShared = aViewData.GetDocShell().IsDocShared();
 
     SdrLayer* pLayer;
     SdrLayerAdmin& rAdmin = pDrawView->GetModel().GetLayerAdmin();
@@ -429,10 +441,10 @@ void ScTabView::SetZoom( const Fraction& rNewX, const Fraction& rNewY, bool bAll
     ZoomChanged();
 }
 
-void ScTabView::RefreshZoom()
+void ScTabView::RefreshZoom(bool bRecalcScale)
 {
     aViewData.RefreshZoom();
-    if (pDrawView)
+    if (bRecalcScale && pDrawView)
         pDrawView->RecalcScale();
     ZoomChanged();
 }
@@ -449,6 +461,27 @@ void ScTabView::ResetDrawDragMode()
 {
     if (pDrawView)
         pDrawView->SetDragMode( SdrDragMode::Move );
+}
+
+void ScTabView::SwitchRotateMode()
+{
+    if (pDrawView)
+    {
+        SfxBindings& rBindings = aViewData.GetBindings();
+        SdrDragMode eMode;
+        if (pDrawView->GetDragMode() == SdrDragMode::Rotate)
+            eMode = SdrDragMode::Move;
+        else
+            eMode = SdrDragMode::Rotate;
+        pDrawView->SetDragMode( eMode );
+        rBindings.Invalidate( SID_OBJECT_ROTATE );
+        rBindings.Invalidate( SID_OBJECT_MIRROR );
+        if (eMode == SdrDragMode::Rotate && !pDrawView->IsFrameDragSingles())
+        {
+            pDrawView->SetFrameDragSingles();
+            rBindings.Invalidate( SID_BEZIER_EDIT );
+        }
+    }
 }
 
 void ScTabView::ViewOptionsHasChanged( bool bHScrollChanged, bool bGraphicsChanged )
@@ -505,8 +538,8 @@ void ScTabView::DrawEnableAnim(bool bSet)
         return;
 
     //  don't start animations if display of graphics is disabled
-    //  graphics are controlled by VOBJ_TYPE_OLE
-    if ( bSet && aViewData.GetOptions().GetObjMode(VOBJ_TYPE_OLE) == VOBJ_MODE_SHOW )
+    //  graphics are controlled by sc::ViewObjectType::OLE
+    if ( bSet && aViewData.GetOptions().GetObjMode(sc::ViewObjectType::OLE) == VOBJ_MODE_SHOW )
     {
         if ( !pDrawView->IsAnimationEnabled() )
         {
@@ -663,7 +696,12 @@ void ScTabView::OnLOKNoteStateChanged(const ScPostIt* pNote)
         return;
 
     const SdrCaptionObj* pCaption = pNote->GetCaption();
-    if (!pCaption) return;
+    if (!pCaption)
+        return;
+
+    SfxViewShell* pCurrentViewShell = SfxViewShell::Current();
+    if (!pCurrentViewShell)
+        return;
 
     tools::Rectangle aRect = pCaption->GetLogicRect();
     basegfx::B2DRange aTailRange = pCaption->getTailPolygon().getB2DRange();
@@ -682,7 +720,6 @@ void ScTabView::OnLOKNoteStateChanged(const ScPostIt* pNote)
     aInvalidRect.AdjustTop( -nBorderSize );
     aInvalidRect.AdjustBottom( nBorderSize );
 
-    SfxViewShell* pCurrentViewShell = SfxViewShell::Current();
     SfxViewShell* pViewShell = SfxViewShell::GetFirst();
     while (pViewShell)
     {

@@ -42,14 +42,14 @@ void TabPage::ImplInit( vcl::Window* pParent, WinBits nStyle )
         if ( nStyle & WB_AUTOHSCROLL )
         {
             bHasHoriBar = true;
-            m_pHScroll.set(VclPtr<ScrollBar>::Create(this, (WB_HSCROLL | WB_DRAG)));
+            m_pHScroll.reset(VclPtr<ScrollBar>::Create(this, (WB_HSCROLL | WB_DRAG)));
             m_pHScroll->Show();
             m_pHScroll->SetScrollHdl(aLink);
         }
         if ( nStyle &  WB_AUTOVSCROLL )
         {
             bHasVertBar = true;
-            m_pVScroll.set(VclPtr<ScrollBar>::Create(this, (WB_VSCROLL | WB_DRAG)));
+            m_pVScroll.reset(VclPtr<ScrollBar>::Create(this, (WB_VSCROLL | WB_DRAG)));
             m_pVScroll->Show();
             m_pVScroll->SetScrollHdl(aLink);
         }
@@ -163,28 +163,27 @@ void TabPage::Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle&
 
 void TabPage::Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorFlags )
 {
+    Point aPos = pDev->LogicToPixel( rPos );
     Size aSize = GetSizePixel();
 
     Wallpaper aWallpaper = GetBackground();
     if ( !aWallpaper.IsBitmap() )
         ImplInitSettings();
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
     pDev->SetLineColor();
 
     if ( aWallpaper.IsBitmap() )
-        pDev->DrawBitmapEx( rPos, aSize, aWallpaper.GetBitmap() );
+        pDev->DrawBitmapEx( aPos, aSize, aWallpaper.GetBitmap() );
     else
     {
         if( aWallpaper.GetColor() == COL_AUTO )
             pDev->SetFillColor( GetSettings().GetStyleSettings().GetDialogColor() );
         else
             pDev->SetFillColor( aWallpaper.GetColor() );
-        pDev->DrawRect( tools::Rectangle( rPos, aSize ) );
+        pDev->DrawRect( tools::Rectangle( aPos, aSize ) );
     }
-
-    pDev->Pop();
 }
 
 Size TabPage::GetOptimalSize() const

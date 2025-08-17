@@ -29,16 +29,20 @@
 #include <svsys.h>
 
 class WinSalGraphics;
+struct ITaskbarList3;
 
 class WinSalFrame final: public SalFrame
 {
     vcl::WindowState m_eState;
+    ITaskbarList3* m_pTaskbarList3;
 
 public:
     HWND                    mhWnd;                  // Window handle
     HCURSOR                 mhCursor;               // cursor handle
     HIMC                    mhDefIMEContext;        // default IME-Context
     WinSalGraphics*         mpLocalGraphics;        // current main thread frame graphics
+    /// Some threads will call vcl functions, and even though they hold the SolarMutex, the GDI
+    /// library will error, so we need to keep a separate graphics and DC for them.
     WinSalGraphics*         mpThreadGraphics;       // current frame graphics for other threads (DCX_CACHE)
     WinSalFrame*            mpNextFrame;            // pointer to next frame
     HMENU                   mSelectedhMenu;         // the menu where highlighting is currently going on
@@ -55,7 +59,7 @@ public:
     UINT                    mnInputLang;            // current Input Language
     UINT                    mnInputCodePage;        // current Input CodePage
     SalFrameStyleFlags      mnStyle;                // style
-    bool                    mbGraphics;             // is Graphics used
+    bool                    mbGraphicsAcquired;     // is Graphics used
     bool                    mbCaption;              // has window a caption
     bool                    mbBorder;               // has window a border
     bool                    mbFixBorder;            // has window a fixed border
@@ -82,13 +86,12 @@ public:
     bool                    mbFirstClipRect;
     sal_Int32               mnDisplay;              // Display used for Fullscreen, 0 is primary monitor
     bool                    mbPropertiesStored;     // has values stored in the window property store
+    POINT                   maFirstPanGesturePt;    // has value stores the start point of the panning gesture
 
     void updateScreenNumber();
 
 private:
     void ImplSetParentFrame( HWND hNewParentWnd, bool bAsChild );
-    bool InitFrameGraphicsDC( WinSalGraphics *pGraphics, HDC hDC, HWND hWnd );
-    bool ReleaseFrameGraphicsDC( WinSalGraphics* pGraphics );
 
 public:
     WinSalFrame();
@@ -126,7 +129,8 @@ public:
     virtual LanguageType        GetInputLanguage() override;
     virtual void                UpdateSettings( AllSettings& rSettings ) override;
     virtual void                Beep() override;
-    virtual const SystemEnvData*    GetSystemData() const override;
+    virtual void                FlashWindow() const override;
+    virtual const SystemEnvData& GetSystemData() const override;
     virtual SalPointerState     GetPointerState() override;
     virtual KeyIndicatorState   GetIndicatorState() override;
     virtual void                SimulateKeyPress( sal_uInt16 nKeyCode ) override;
@@ -143,8 +147,13 @@ public:
     virtual bool                GetUseReducedAnimation() const override;
 
     constexpr vcl::WindowState state() const { return m_eState; }
+    void SetMaximizedFrameGeometry(HWND hWnd, RECT* pParentRect = nullptr);
+    void UpdateFrameGeometry();
     void UpdateFrameState();
     constexpr bool isFullScreen() const { return bool(m_eState & vcl::WindowState::FullScreen); }
+
+    virtual void  SetTaskBarProgress(int nCurrentProgress) override;
+    virtual void  SetTaskBarState(VclTaskBarStates eTaskBarState) override;
 };
 
 void ImplSalGetWorkArea( HWND hWnd, RECT *pRect, const RECT *pParentRect );
@@ -153,10 +162,9 @@ bool UseDarkMode();
 bool OSSupportsDarkMode();
 
 // get foreign key names
-namespace vcl_sal {
-    OUString getKeysReplacementName(
-        std::u16string_view pLang,
-        LONG nSymbol );
+namespace vcl_sal
+{
+OUString getKeysReplacementName(std::u16string_view pLang, UINT nSymbol);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

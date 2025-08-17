@@ -17,11 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_IMPGLYPHITEM_HXX
-#define INCLUDED_VCL_IMPGLYPHITEM_HXX
+#pragma once
 
+#include <basegfx/range/b2drectangle.hxx>
 #include <o3tl/typed_flags_set.hxx>
-#include <tools/gen.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/rendercontext/SalLayoutFlags.hxx>
 #include <rtl/math.hxx>
@@ -53,7 +52,8 @@ class VCL_DLLPUBLIC GlyphItem
 {
     basegfx::B2DPoint m_aLinearPos; // absolute position of non rotated string
     double m_nOrigWidth; // original glyph width
-    sal_Int32 m_nCharPos; // index in string
+    sal_Int32 m_nCharPos; // index in string (by grapheme cluster)
+    sal_Int32 m_nOrigCharPos; // original index in string, if available
     double m_nXOffset;
     double m_nYOffset;
     double m_nNewWidth; // width after adjustments
@@ -64,10 +64,11 @@ class VCL_DLLPUBLIC GlyphItem
 public:
     GlyphItem(int nCharPos, int nCharCount, sal_GlyphId aGlyphId,
               const basegfx::B2DPoint& rLinearPos, GlyphItemFlags nFlags, double nOrigWidth,
-              double nXOffset, double nYOffset)
+              double nXOffset, double nYOffset, int nOrigCharPos)
         : m_aLinearPos(rLinearPos)
         , m_nOrigWidth(nOrigWidth)
         , m_nCharPos(nCharPos)
+        , m_nOrigCharPos(nOrigCharPos)
         , m_nXOffset(nXOffset)
         , m_nYOffset(nYOffset)
         , m_nNewWidth(nOrigWidth)
@@ -89,7 +90,7 @@ public:
         return bool(m_nFlags & GlyphItemFlags::IS_SAFE_TO_INSERT_KASHIDA);
     }
 
-    inline bool GetGlyphBoundRect(const LogicalFontInstance*, tools::Rectangle&) const;
+    inline bool GetGlyphBoundRect(const LogicalFontInstance*, basegfx::B2DRectangle&) const;
     inline bool GetGlyphOutline(const LogicalFontInstance*, basegfx::B2DPolyPolygon&) const;
     inline void dropGlyph();
 
@@ -97,6 +98,7 @@ public:
     int charCount() const { return m_nCharCount; }
     double origWidth() const { return m_nOrigWidth; }
     int charPos() const { return m_nCharPos; }
+    int origCharPos() const { return m_nOrigCharPos; }
     double xOffset() const { return m_nXOffset; }
     double yOffset() const { return m_nYOffset; }
     double newWidth() const { return m_nNewWidth; }
@@ -121,7 +123,7 @@ public:
 };
 
 bool GlyphItem::GetGlyphBoundRect(const LogicalFontInstance* pFontInstance,
-                                  tools::Rectangle& rRect) const
+                                  basegfx::B2DRectangle& rRect) const
 {
     return pFontInstance->GetGlyphBoundRect(m_aGlyphId, rRect, IsVertical());
 }
@@ -160,7 +162,5 @@ private:
     rtl::Reference<LogicalFontInstance> m_rFontInstance;
     SalLayoutFlags mnFlags = SalLayoutFlags::NONE;
 };
-
-#endif // INCLUDED_VCL_IMPGLYPHITEM_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

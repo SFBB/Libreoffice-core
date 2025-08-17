@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -9,15 +9,16 @@
  */
 
 #include <QtTransferable.hxx>
+#include <QtTransferable.moc>
 
-#include <comphelper/sequence.hxx>
 #include <sal/log.hxx>
 #include <o3tl/string_view.hxx>
+#include <tools/debug.hxx>
+#include <vcl/qt/QtUtils.hxx>
 
 #include <QtWidgets/QApplication>
 
 #include <QtInstance.hxx>
-#include <QtTools.hxx>
 
 #include <cassert>
 
@@ -43,22 +44,14 @@ static bool lcl_textMimeInfo(std::u16string_view rMimeString, bool& bHaveNoChars
 
 QtTransferable::QtTransferable(const QMimeData* pMimeData)
     : m_pMimeData(pMimeData)
-    , m_bProvideUTF16FromOtherEncoding(false)
 {
     assert(pMimeData);
 }
 
 css::uno::Sequence<css::datatransfer::DataFlavor> SAL_CALL QtTransferable::getTransferDataFlavors()
 {
-    // it's just filled once, ever, so just try to get it without locking first
-    if (m_aMimeTypeSeq.hasElements())
-        return m_aMimeTypeSeq;
-
-    // better safe then sorry; preventing broken usage
-    // DnD should not be shared and Clipboard access runs in the GUI thread
-    osl::MutexGuard aGuard(m_aMutex);
-    if (m_aMimeTypeSeq.hasElements())
-        return m_aMimeTypeSeq;
+    if (!m_pMimeData)
+        return css::uno::Sequence<css::datatransfer::DataFlavor>();
 
     QStringList aFormatList(m_pMimeData->formats());
     // we might add the UTF-16 mime text variant later
@@ -79,6 +72,19 @@ css::uno::Sequence<css::datatransfer::DataFlavor> SAL_CALL QtTransferable::getTr
         // gtk3 thinks it is not well defined - skip too
         if (rMimeType == QStringLiteral("text/plain;charset=unicode"))
             continue;
+
+        // At least the Qt6 Wasm implementation may announce text/uri-list even though the actual
+        // list of URLs is empty (presumably since
+        // <https://github.com/qt/qtbase/commit/0ffe8050bd5b55d64da37f5177a7e20dd9d14232> "wasm:
+        // implement async drag-and-drop" unconditionally calls setUrls in
+        // DataTransfer::toMimeDataWithFile's MimeContext::deref):
+        if (rMimeType == QStringLiteral("text/uri-list"))
+        {
+            if (m_pMimeData->urls().empty())
+            {
+                continue;
+            }
+        }
 
         // LO doesn't like 'text/plain', so we have to provide UTF-16
         bool bIsNoCharset = false, bIsUTF16 = false, bIsUTF8 = false;
@@ -101,8 +107,10 @@ css::uno::Sequence<css::datatransfer::DataFlavor> SAL_CALL QtTransferable::getTr
         nMimeTypeCount++;
     }
 
-    m_bProvideUTF16FromOtherEncoding = (bHaveNoCharset || bHaveUTF8) && !bHaveUTF16;
-    if (m_bProvideUTF16FromOtherEncoding)
+    // in case of text/plain data, but no UTF-16 encoded one,
+    // QtTransferable::getTransferData converts from existing encoding to UTF-16
+    const bool bProvideUTF16FromOtherEncoding = (bHaveNoCharset || bHaveUTF8) && !bHaveUTF16;
+    if (bProvideUTF16FromOtherEncoding)
     {
         aFlavor.MimeType = "text/plain;charset=utf-16";
         aFlavor.DataType = cppu::UnoType<OUString>::get();
@@ -113,8 +121,7 @@ css::uno::Sequence<css::datatransfer::DataFlavor> SAL_CALL QtTransferable::getTr
 
     aMimeTypeSeq.realloc(nMimeTypeCount);
 
-    m_aMimeTypeSeq = aMimeTypeSeq;
-    return m_aMimeTypeSeq;
+    return aMimeTypeSeq;
 }
 
 sal_Bool SAL_CALL
@@ -135,25 +142,16 @@ css::uno::Any SAL_CALL QtTransferable::getTransferData(const css::datatransfer::
     if (rFlavor.MimeType == "text/plain;charset=utf-16")
     {
         OUString aString;
-        if (m_bProvideUTF16FromOtherEncoding)
-        {
-            if (m_pMimeData->hasFormat("text/plain;charset=utf-8"))
-            {
-                QByteArray aByteData(m_pMimeData->data(QStringLiteral("text/plain;charset=utf-8")));
-                aString = OUString::fromUtf8(reinterpret_cast<const char*>(aByteData.data()));
-            }
-            else
-            {
-                QByteArray aByteData(m_pMimeData->data(QStringLiteral("text/plain")));
-                aString = OUString(reinterpret_cast<const char*>(aByteData.data()),
-                                   aByteData.size(), osl_getThreadTextEncoding());
-            }
-        }
-        else
+        // use existing UTF-16 encoded MIME data if present
+        if (m_pMimeData->hasFormat("text/plain;charset=utf-16"))
         {
             QByteArray aByteData(m_pMimeData->data(toQString(rFlavor.MimeType)));
             aString = OUString(reinterpret_cast<const sal_Unicode*>(aByteData.data()),
                                aByteData.size() / 2);
+        }
+        else
+        {
+            aString = toOUString(m_pMimeData->text());
         }
         aAny <<= aString;
     }
@@ -175,22 +173,32 @@ QtClipboardTransferable::QtClipboardTransferable(const QClipboard::Mode aMode,
 {
 }
 
-bool QtClipboardTransferable::hasInFlightChanged() const
+void QtClipboardTransferable::ensureConsistencyWithSystemClipboard()
 {
-    const bool bChanged(mimeData() != QApplication::clipboard()->mimeData(m_aMode));
-    SAL_WARN_IF(bChanged, "vcl.qt", "In flight clipboard change detected - broken clipboard read!");
-    return bChanged;
+    const QMimeData* pCurrentClipboardData = QApplication::clipboard()->mimeData(m_aMode);
+    if (mimeData() != pCurrentClipboardData)
+    {
+        SAL_WARN("vcl.qt", "In flight clipboard change detected - updating mime data with current "
+                           "clipboard contents.");
+        DBG_TESTSOLARMUTEX();
+        setMimeData(pCurrentClipboardData);
+    }
+}
+
+bool QtClipboardTransferable::hasMimeData(const QMimeData* pMimeData) const
+{
+    SolarMutexGuard aGuard;
+    return QtTransferable::mimeData() == pMimeData;
 }
 
 css::uno::Any SAL_CALL
 QtClipboardTransferable::getTransferData(const css::datatransfer::DataFlavor& rFlavor)
 {
     css::uno::Any aAny;
-    auto* pSalInst(GetQtInstance());
     SolarMutexGuard g;
-    pSalInst->RunInMainThread([&, this]() {
-        if (!hasInFlightChanged())
-            aAny = QtTransferable::getTransferData(rFlavor);
+    GetQtInstance().RunInMainThread([&, this]() {
+        ensureConsistencyWithSystemClipboard();
+        aAny = QtTransferable::getTransferData(rFlavor);
     });
     return aAny;
 }
@@ -199,11 +207,10 @@ css::uno::Sequence<css::datatransfer::DataFlavor>
     SAL_CALL QtClipboardTransferable::getTransferDataFlavors()
 {
     css::uno::Sequence<css::datatransfer::DataFlavor> aSeq;
-    auto* pSalInst(GetQtInstance());
     SolarMutexGuard g;
-    pSalInst->RunInMainThread([&, this]() {
-        if (!hasInFlightChanged())
-            aSeq = QtTransferable::getTransferDataFlavors();
+    GetQtInstance().RunInMainThread([&, this]() {
+        ensureConsistencyWithSystemClipboard();
+        aSeq = QtTransferable::getTransferDataFlavors();
     });
     return aSeq;
 }
@@ -212,11 +219,10 @@ sal_Bool SAL_CALL
 QtClipboardTransferable::isDataFlavorSupported(const css::datatransfer::DataFlavor& rFlavor)
 {
     bool bIsSupported = false;
-    auto* pSalInst(GetQtInstance());
     SolarMutexGuard g;
-    pSalInst->RunInMainThread([&, this]() {
-        if (!hasInFlightChanged())
-            bIsSupported = QtTransferable::isDataFlavorSupported(rFlavor);
+    GetQtInstance().RunInMainThread([&, this]() {
+        ensureConsistencyWithSystemClipboard();
+        bIsSupported = QtTransferable::isDataFlavorSupported(rFlavor);
     });
     return bIsSupported;
 }
@@ -258,6 +264,21 @@ QStringList QtMimeData::formats() const
     if (!m_aMimeTypeList.isEmpty())
         return m_aMimeTypeList;
 
+    // For the Qt6 Wasm backend, as a hack report only a single format for now: "text/plain" if
+    // aFormats contains any "text/plain" entries, or else (randomly) the first entry (if any) of
+    // aFormats.  This is for two reasons:  For one,
+    // <https://github.com/qt/qtbase/commit/f0be152896471aa392bb1b2b649b66feb31480cc> "wasm: improve
+    // clipboard support" has a commented-out "break;" ("Clipboard write is only supported with one
+    // ClipboardItem at the moment but somehow this still works?") in the loop in
+    // QWasmClipboard::writeToClipboardApi, and multiple formats would make that not work and would
+    // indeed cause a NotAllowedError ("Failed to execute 'write' on 'Clipboard': Support for
+    // multiple ClipboardItems is not implemented.") at least with Chrome 131.  And for another,
+    // <https://github.com/qt/qtbase/commit/f0be152896471aa392bb1b2b649b66feb31480cc> "wasm: improve
+    // clipboard support" also has code to "prefer html over text" in
+    // QWasmClipboard::writeToClipboardApi, so if we reported both "text/plain" and "text/html",
+    // that code would pick "text/html", but the HTML provided by LO apparently always contains a
+    // trailing "</p>", so would always add a newline when pasted.
+
     const css::uno::Sequence<css::datatransfer::DataFlavor> aFormats
         = m_aContents->getTransferDataFlavors();
     QStringList aList;
@@ -265,20 +286,32 @@ QStringList QtMimeData::formats() const
 
     for (const auto& rFlavor : aFormats)
     {
+#if !(QT_VERSION >= QT_VERSION_CHECK(6, 0, 0) && defined EMSCRIPTEN)
         aList << toQString(rFlavor.MimeType);
+#endif
         lcl_textMimeInfo(rFlavor.MimeType, m_bHaveNoCharset, bHaveUTF16, m_bHaveUTF8);
     }
 
     // we provide a locale encoded and a UTF-8 variant, if missing
     if (m_bHaveNoCharset || bHaveUTF16 || m_bHaveUTF8)
     {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0) && defined EMSCRIPTEN
+        aList << QStringLiteral("text/plain");
+#else
         // if there is a text representation from LO point of view, it'll be UTF-16
         assert(bHaveUTF16);
         if (!m_bHaveUTF8)
             aList << QStringLiteral("text/plain;charset=utf-8");
         if (!m_bHaveNoCharset)
             aList << QStringLiteral("text/plain");
+#endif
     }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0) && defined EMSCRIPTEN
+    else if (aFormats.hasElements())
+    {
+        aList << toQString(aFormats[0].MimeType);
+    }
+#endif
 
     m_aMimeTypeList = aList;
     return m_aMimeTypeList;
@@ -314,8 +347,7 @@ QVariant QtMimeData::retrieveData(const QString& mimeType, QMetaType) const
     try
     {
         // tdf#129809 take a reference in case m_aContents is replaced during this call
-        css::uno::Reference<com::sun::star::datatransfer::XTransferable> xCurrentContents(
-            m_aContents);
+        css::uno::Reference<css::datatransfer::XTransferable> xCurrentContents(m_aContents);
         aValue = xCurrentContents->getTransferData(aFlavor);
     }
     catch (...)
@@ -358,4 +390,4 @@ QVariant QtMimeData::retrieveData(const QString& mimeType, QMetaType) const
 
 bool QtMimeData::hasFormat(const QString& mimeType) const { return formats().contains(mimeType); }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

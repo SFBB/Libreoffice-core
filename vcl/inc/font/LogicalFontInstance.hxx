@@ -22,6 +22,7 @@
 #include <sal/config.h>
 
 #include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <basegfx/range/b2drectangle.hxx>
 #include <o3tl/hash_combine.hxx>
 #include <rtl/ref.hxx>
 #include <salhelper/simplereferenceobject.hxx>
@@ -40,6 +41,10 @@
 
 class ConvertChar;
 class ImplFontCache;
+namespace vcl::font
+{
+class PhysicalFontFace;
+}
 
 constexpr float ARTIFICIAL_ITALIC_MATRIX_XX = 1 << 16;
 constexpr float ARTIFICIAL_ITALIC_MATRIX_XY = (1 << 16) / 3.f;
@@ -81,17 +86,20 @@ public: // TODO: make data members private
     Degree10 mnOrientation; // text angle in 3600 system
     bool mbInit; // true if maFontMetric member is valid
 
-    void AddFallbackForUnicode(sal_UCS4 cChar, FontWeight eWeight, const OUString& rFontName,
-                               bool bEmbolden, const ItalicMatrix& rMatrix);
-    bool GetFallbackForUnicode(sal_UCS4 cInChar, FontWeight eInWeight, OUString* pOutFontName,
-                               bool* pOutEmbolden, ItalicMatrix* pOutItalicMatrix) const;
-    void IgnoreFallbackForUnicode(sal_UCS4, FontWeight eWeight, std::u16string_view rFontName);
+    SAL_DLLPRIVATE void AddFallbackForUnicode(sal_UCS4 cChar, FontWeight eWeight,
+                                              const OUString& rFontName, bool bEmbolden,
+                                              const ItalicMatrix& rMatrix);
+    SAL_DLLPRIVATE bool GetFallbackForUnicode(sal_UCS4 cInChar, FontWeight eInWeight,
+                                              OUString* pOutFontName, bool* pOutEmbolden,
+                                              ItalicMatrix* pOutItalicMatrix) const;
+    SAL_DLLPRIVATE void IgnoreFallbackForUnicode(sal_UCS4, FontWeight eWeight,
+                                                 std::u16string_view rFontName);
 
     inline hb_font_t* GetHbFont();
-    bool IsGraphiteFont();
+    SAL_DLLPRIVATE bool IsGraphiteFont();
     // NeedOffsetCorrection: Return if the font need offset correction in TTB direction.
     // nYOffset is the original offset. It is used to check if the correction is necessary.
-    bool NeedOffsetCorrection(sal_Int32 nYOffset);
+    SAL_DLLPRIVATE bool NeedOffsetCorrection(sal_Int32 nYOffset);
     void SetAverageWidthFactor(double nFactor) { m_nAveWidthFactor = std::abs(nFactor); }
     double GetAverageWidthFactor() const { return m_nAveWidthFactor; }
     const vcl::font::FontSelectPattern& GetFontSelectPattern() const { return m_aFontSelData; }
@@ -100,17 +108,17 @@ public: // TODO: make data members private
     vcl::font::PhysicalFontFace* GetFontFace() { return m_pFontFace.get(); }
     const ImplFontCache* GetFontCache() const { return mpFontCache; }
 
-    bool GetGlyphBoundRect(sal_GlyphId, tools::Rectangle&, bool) const;
+    bool GetGlyphBoundRect(sal_GlyphId, basegfx::B2DRectangle&, bool) const;
     virtual bool GetGlyphOutline(sal_GlyphId, basegfx::B2DPolyPolygon&, bool) const = 0;
-    basegfx::B2DPolyPolygon GetGlyphOutlineUntransformed(sal_GlyphId) const;
+    SAL_DLLPRIVATE basegfx::B2DPolyPolygon GetGlyphOutlineUntransformed(sal_GlyphId) const;
 
     sal_GlyphId GetGlyphIndex(uint32_t, uint32_t = 0) const;
 
-    double GetGlyphWidth(sal_GlyphId, bool = false, bool = true) const;
+    SAL_DLLPRIVATE double GetGlyphWidth(sal_GlyphId, bool = false, bool = true) const;
 
     double GetKashidaWidth() const;
 
-    void GetScale(double* nXScale, double* nYScale) const;
+    SAL_DLLPRIVATE void GetScale(double* nXScale, double* nYScale) const;
 
     bool NeedsArtificialItalic() const;
     bool NeedsArtificialBold() const;
@@ -119,11 +127,11 @@ protected:
     explicit LogicalFontInstance(const vcl::font::PhysicalFontFace&,
                                  const vcl::font::FontSelectPattern&);
 
-    hb_font_t* InitHbFont();
+    SAL_DLLPRIVATE hb_font_t* InitHbFont();
     virtual void ImplInitHbFont(hb_font_t*) {}
 
 private:
-    hb_font_t* GetHbFontUntransformed() const;
+    SAL_DLLPRIVATE hb_font_t* GetHbFontUntransformed() const;
 
     struct MapEntry
     {

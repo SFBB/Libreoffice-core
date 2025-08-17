@@ -25,8 +25,6 @@
 #include "swdllapi.h"
 #include "swatrset.hxx"
 
-class IntlWrapper;
-
 /// Contains the line numbering properties of this paragraph. Format -> Paragraph -> Outline & List
 /// tab, Line Numbering section is the UI for this.
 class SW_DLLPUBLIC SwFormatLineNumber final : public SfxPoolItem
@@ -35,6 +33,7 @@ class SW_DLLPUBLIC SwFormatLineNumber final : public SfxPoolItem
     bool      m_bCountLines   :1;  ///< Also count lines of paragraph.
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatLineNumber)
     SwFormatLineNumber();
     virtual ~SwFormatLineNumber() override;
 

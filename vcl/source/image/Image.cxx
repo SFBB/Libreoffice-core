@@ -35,7 +35,12 @@ Image::Image()
 
 Image::Image(const BitmapEx& rBitmapEx)
 {
-    ImplInit(rBitmapEx);
+    ImplInit(Bitmap(rBitmapEx));
+}
+
+Image::Image(const Bitmap& rBitmap)
+{
+    ImplInit(rBitmap);
 }
 
 Image::Image(uno::Reference<graphic::XGraphic> const & rxGraphic)
@@ -50,7 +55,7 @@ Image::Image(uno::Reference<graphic::XGraphic> const & rxGraphic)
         else if (aGraphic.GetType() == GraphicType::GdiMetafile)
             mpImplData = std::make_shared<ImplImage>(aGraphic.GetGDIMetaFile());
         else
-            ImplInit(aGraphic.GetBitmapEx());
+            ImplInit(Bitmap(aGraphic.GetBitmapEx()));
     }
 }
 
@@ -62,8 +67,8 @@ Image::Image(const OUString & rFileUrl)
     else
     {
         Graphic aGraphic;
-        if (ERRCODE_NONE == GraphicFilter::LoadGraphic(rFileUrl, IMP_PNG, aGraphic))
-            ImplInit(aGraphic.GetBitmapEx());
+        if (ERRCODE_NONE == GraphicFilter::LoadGraphic(rFileUrl, u"" IMP_PNG ""_ustr, aGraphic))
+            ImplInit(Bitmap(aGraphic.GetBitmapEx()));
     }
 }
 
@@ -72,17 +77,17 @@ Image::Image(StockImage, const OUString & rFileUrl)
 {
 }
 
-void Image::ImplInit(const BitmapEx& rBitmapEx)
+void Image::ImplInit(const Bitmap& rBitmap)
 {
-    if (!rBitmapEx.IsEmpty())
-        mpImplData = std::make_shared<ImplImage>(rBitmapEx);
+    if (!rBitmap.IsEmpty())
+        mpImplData = std::make_shared<ImplImage>(rBitmap);
 }
 
-OUString Image::GetStock() const
+const OUString & Image::GetStock() const
 {
     if (mpImplData)
         return mpImplData->getStock();
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 Size Image::GetSizePixel() const
@@ -93,12 +98,20 @@ Size Image::GetSizePixel() const
         return Size();
 }
 
-BitmapEx Image::GetBitmapEx() const
+Bitmap Image::GetBitmap() const
 {
     if (mpImplData)
-        return mpImplData->getBitmapEx();
+        return mpImplData->getBitmap();
     else
-        return BitmapEx();
+        return Bitmap();
+}
+
+void Image::SetOptional(bool bValue)
+{
+    if (mpImplData)
+    {
+        mpImplData->SetOptional(bValue);
+    }
 }
 
 bool Image::operator==(const Image& rImage) const
@@ -115,21 +128,19 @@ bool Image::operator==(const Image& rImage) const
     return bRet;
 }
 
-void Image::Draw(OutputDevice* pOutDev, const Point& rPos, DrawImageFlags nStyle, const Size* pSize)
+void Image::Draw(OutputDevice* pOutDev, const Point& rPos, DrawImageFlags nStyle, const Size* pSize) const
 {
     if (!mpImplData || (!pOutDev->IsDeviceOutputNecessary() && pOutDev->GetConnectMetaFile() == nullptr))
         return;
 
     Size aOutSize = pSize ? *pSize : pOutDev->PixelToLogic(mpImplData->getSizePixel());
 
-    BitmapEx aRenderBmp = mpImplData->getBitmapExForHiDPI(bool(nStyle & DrawImageFlags::Disable), pOutDev->GetGraphics());
+    Bitmap aRenderBmp = mpImplData->getBitmapForHiDPI(bool(nStyle & DrawImageFlags::Disable), pOutDev->GetGraphics());
 
     if (!(nStyle & DrawImageFlags::Disable) &&
         (nStyle & (DrawImageFlags::ColorTransform | DrawImageFlags::Highlight |
                    DrawImageFlags::Deactive | DrawImageFlags::SemiTransparent)))
     {
-        BitmapEx aTempBitmapEx(aRenderBmp);
-
         if (nStyle & (DrawImageFlags::Highlight | DrawImageFlags::Deactive))
         {
             const StyleSettings& rSettings = pOutDev->GetSettings().GetStyleSettings();
@@ -139,11 +150,12 @@ void Image::Draw(OutputDevice* pOutDev, const Point& rPos, DrawImageFlags nStyle
             else
                 aColor = rSettings.GetDeactiveColor();
 
-            BitmapFilter::Filter(aTempBitmapEx, BitmapColorizeFilter(aColor));
+            BitmapFilter::Filter(aRenderBmp, BitmapColorizeFilter(aColor));
         }
 
         if (nStyle & DrawImageFlags::SemiTransparent)
         {
+            BitmapEx aTempBitmapEx(aRenderBmp);
             if (aTempBitmapEx.IsAlpha())
             {
                 Bitmap aAlphaBmp(aTempBitmapEx.GetAlphaMask().GetBitmap());
@@ -155,8 +167,8 @@ void Image::Draw(OutputDevice* pOutDev, const Point& rPos, DrawImageFlags nStyle
                 sal_uInt8 cErase = 128;
                 aTempBitmapEx = BitmapEx(aTempBitmapEx.GetBitmap(), AlphaMask(aTempBitmapEx.GetSizePixel(), &cErase));
             }
+            aRenderBmp = Bitmap(aTempBitmapEx);
         }
-        aRenderBmp = aTempBitmapEx;
     }
 
     pOutDev->DrawBitmapEx(rPos, aOutSize, aRenderBmp);

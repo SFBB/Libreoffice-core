@@ -171,9 +171,9 @@ void SwView::SwapPageMargin(const SwPageDesc& rDesc, SvxLRSpaceItem& rLRSpace)
 
     if ( rDesc.GetUseOn() == UseOnPage::Mirror && (nPhyPage % 2) == 0 )
     {
-        tools::Long nTmp = rLRSpace.GetRight();
-        rLRSpace.SetRight( rLRSpace.GetLeft() );
-        rLRSpace.SetLeft( nTmp );
+        auto stTmp = rLRSpace.GetRight();
+        rLRSpace.SetRight(rLRSpace.GetLeft());
+        rLRSpace.SetLeft(stTmp);
     }
 }
 
@@ -229,7 +229,7 @@ static void ResizeFrameCols(SwFormatCol& rCol,
 void SwView::ExecTabWin( SfxRequest const & rReq )
 {
     SwWrtShell &rSh         = GetWrtShell();
-    const FrameTypeFlags nFrameType   = rSh.IsObjSelected() ?
+    const FrameTypeFlags nFrameType   = rSh.GetSelectedObjCount() ?
                                     FrameTypeFlags::DRAWOBJ :
                                         rSh.GetFrameType(nullptr,true);
     const bool bFrameSelection = rSh.IsFrameSelected();
@@ -339,13 +339,13 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
             else if ( nFrameType & ( FrameTypeFlags::HEADER | FrameTypeFlags::FOOTER ))
             {
                 // Subtract out page margins
-                tools::Long nOld = rDesc.GetMaster().GetLRSpace().GetLeft();
+                tools::Long nOld = rDesc.GetMaster().GetLRSpace().ResolveLeft({});
                 aLongLR.SetLeft( nOld > aLongLR.GetLeft() ? 0 : aLongLR.GetLeft() - nOld );
 
-                nOld = rDesc.GetMaster().GetLRSpace().GetRight();
+                nOld = rDesc.GetMaster().GetLRSpace().ResolveRight({});
                 aLongLR.SetRight( nOld > aLongLR.GetRight() ? 0 : aLongLR.GetRight() - nOld );
-                aLR.SetLeft(aLongLR.GetLeft());
-                aLR.SetRight(aLongLR.GetRight());
+                aLR.SetLeft(SvxIndentValue::twips(aLongLR.GetLeft()));
+                aLR.SetRight(SvxIndentValue::twips(aLongLR.GetRight()));
 
                 if ( nFrameType & FrameTypeFlags::HEADER && pHeaderFormat )
                     pHeaderFormat->SetFormatAttr( aLR );
@@ -372,8 +372,8 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
                 const SwSection* pCurrSect = rSh.GetCurrSection();
                 const SwSectionFormat* pSectFormat = pCurrSect->GetFormat();
                 SvxLRSpaceItem aLRTmp = pSectFormat->GetLRSpace();
-                aLRTmp.SetLeft(aLRTmp.GetLeft() + nLeftDiff);
-                aLRTmp.SetRight(aLRTmp.GetRight() + nRightDiff);
+                aLRTmp.SetLeft(SvxIndentValue::twips(aLRTmp.ResolveLeft({}) + nLeftDiff));
+                aLRTmp.SetRight(SvxIndentValue::twips(aLRTmp.ResolveRight({}) + nRightDiff));
                 SfxItemSetFixed<RES_LR_SPACE, RES_LR_SPACE, RES_COL, RES_COL> aSet(rSh.GetAttrPool());
                 aSet.Put(aLRTmp);
                 //change the first/last column
@@ -389,8 +389,8 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
             }
             else
             {   // Adjust page margins
-                aLR.SetLeft(aLongLR.GetLeft());
-                aLR.SetRight(aLongLR.GetRight());
+                aLR.SetLeft(SvxIndentValue::twips(aLongLR.GetLeft()));
+                aLR.SetRight(SvxIndentValue::twips(aLongLR.GetRight()));
                 SwapPageMargin( rDesc, aLR );
                 SwPageDesc aDesc( rDesc );
                 aDesc.GetMaster().SetFormatAttr( aLR );
@@ -408,8 +408,8 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
             SwPageDesc aDesc( rDesc );
             {
                 SvxLRSpaceItem aLR( RES_LR_SPACE );
-                aLR.SetLeft(aLongLR.GetLeft());
-                aLR.SetRight(aLongLR.GetRight());
+                aLR.SetLeft(SvxIndentValue::twips(aLongLR.GetLeft()));
+                aLR.SetRight(SvxIndentValue::twips(aLongLR.GetRight()));
                 SwapPageMargin( rDesc, aLR );
                 aDesc.GetMaster().SetFormatAttr( aLR );
             }
@@ -484,8 +484,8 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
                 const SwSection* pCurrSect = rSh.GetCurrSection();
                 const SwSectionFormat* pSectFormat = pCurrSect->GetFormat();
                 SvxLRSpaceItem aLR = pSectFormat->GetLRSpace();
-                aLR.SetLeft(aLR.GetLeft() + nLeftDiff);
-                aLR.SetRight(aLR.GetRight() + nRightDiff);
+                aLR.SetLeft(SvxIndentValue::twips(aLR.ResolveLeft({}) + nLeftDiff));
+                aLR.SetRight(SvxIndentValue::twips(aLR.ResolveRight({}) + nRightDiff));
                 SfxItemSetFixed<RES_LR_SPACE, RES_LR_SPACE, RES_COL, RES_COL> aSet(rSh.GetAttrPool());
                 aSet.Put(aLR);
                 //change the first/last column
@@ -582,8 +582,8 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
             const sal_uInt16 nGutterWidth = 0;
 
             const SvxLRSpaceItem aLR( rDesc.GetMaster().GetLRSpace() );
-            const tools::Long nLeft = aLR.GetLeft();
-            const tools::Long nRight = aLR.GetRight();
+            const tools::Long nLeft = aLR.ResolveLeft({});
+            const tools::Long nRight = aLR.ResolveRight({});
             const tools::Long nWidth = nPageWidth - nLeft - nRight;
 
             SwFormatCol aCols( rDesc.GetMaster().GetCol() );
@@ -619,7 +619,7 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
     case SID_ATTR_TABSTOP:
         if (pReqArgs)
         {
-            const sal_uInt16 nWhich = GetPool().GetWhich(nSlot);
+            const sal_uInt16 nWhich = GetPool().GetWhichIDFromSlotID(nSlot);
             SvxTabStopItem aTabStops( static_cast<const SvxTabStopItem&>(pReqArgs->
                                                         Get( nWhich )));
             aTabStops.SetWhich(RES_PARATR_TABSTOP);
@@ -630,7 +630,7 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
             rSh.GetCurAttr( aSet );
             const SvxFirstLineIndentItem & rFirstLine(aSet.Get(RES_MARGIN_FIRSTLINE));
 
-            if (rFirstLine.GetTextFirstLineOffset() < 0)
+            if (rFirstLine.GetTextFirstLineOffset().m_dValue < 0.0)
             {
                 SvxTabStop aSwTabStop( 0, SvxTabAdjust::Default );
                 aTabStops.Insert( aSwTabStop );
@@ -653,14 +653,9 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
     case SID_TABSTOP_ADD_OR_CHANGE:
         if (pReqArgs)
         {
-            const auto aIndexItem = static_cast<const SfxInt32Item&>(pReqArgs->Get(SID_TABSTOP_ATTR_INDEX));
-            const auto aPositionItem = static_cast<const SfxInt32Item&>(pReqArgs->Get(SID_TABSTOP_ATTR_POSITION));
-            const auto aRemoveItem = static_cast<const SfxBoolItem&>(pReqArgs->Get(SID_TABSTOP_ATTR_REMOVE));
-            const sal_Int32 nIndex = aIndexItem.GetValue();
-            const sal_Int32 nPosition = aPositionItem.GetValue();
-            const bool bRemove = aRemoveItem.GetValue();
-
-
+            const sal_Int32 nIndex = static_cast<const SfxInt32Item&>(pReqArgs->Get(SID_TABSTOP_ATTR_INDEX)).GetValue();
+            const sal_Int32 nPosition = static_cast<const SfxInt32Item&>(pReqArgs->Get(SID_TABSTOP_ATTR_POSITION)).GetValue();
+            const bool bRemove = static_cast<const SfxBoolItem&>(pReqArgs->Get(SID_TABSTOP_ATTR_REMOVE)).GetValue();
 
             SfxItemSetFixed<RES_PARATR_TABSTOP, RES_PARATR_TABSTOP> aItemSet(GetPool());
             rSh.GetCurAttr(aItemSet);
@@ -710,7 +705,8 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
             {
                 SvxFirstLineIndentItem firstLine(aLRSpaceSet.Get(RES_MARGIN_FIRSTLINE));
                 const OUString ratio = fLineIndent->GetValue();
-                firstLine.SetTextFirstLineOffset(nPageWidth * ratio.toFloat());
+                firstLine.SetTextFirstLineOffset(
+                    SvxIndentValue::twips(nPageWidth * ratio.toFloat()));
                 rSh.SetAttrItem(firstLine);
             }
             else if (const SfxStringItem *pLeftIndent = pReqArgs->GetItemIfSet(SID_PARAGRAPH_LEFT_INDENT))
@@ -718,14 +714,14 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
                 SvxTextLeftMarginItem leftMargin(aLRSpaceSet.Get(RES_MARGIN_TEXTLEFT));
                 const OUString ratio = pLeftIndent->GetValue();
                 // this used to call SetLeft() but was probably a bug
-                leftMargin.SetTextLeft(nPageWidth * ratio.toFloat());
+                leftMargin.SetTextLeft(SvxIndentValue::twips(nPageWidth * ratio.toFloat()));
                 rSh.SetAttrItem(leftMargin);
             }
             else if (const SfxStringItem *pRightIndent = pReqArgs->GetItemIfSet(SID_PARAGRAPH_RIGHT_INDENT))
             {
                 SvxRightMarginItem rightMargin(aLRSpaceSet.Get(RES_MARGIN_RIGHT));
                 const OUString ratio = pRightIndent->GetValue();
-                rightMargin.SetRight(nPageWidth * ratio.toFloat());
+                rightMargin.SetRight(SvxIndentValue::twips(nPageWidth * ratio.toFloat()));
                 rSh.SetAttrItem(rightMargin);
             }
         }
@@ -737,8 +733,19 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
         rSh.GetCurAttr( aLRSpaceSet );
         SvxFirstLineIndentItem firstLine(aLRSpaceSet.Get(RES_MARGIN_FIRSTLINE));
         SvxTextLeftMarginItem leftMargin(aLRSpaceSet.Get(RES_MARGIN_TEXTLEFT));
-        leftMargin.SetTextLeft(leftMargin.GetTextLeft() + firstLine.GetTextFirstLineOffset());
-        firstLine.SetTextFirstLineOffset((firstLine.GetTextFirstLineOffset()) * -1);
+
+        // tdf#36709: TODO: Handle font-relative hanging indent
+        tools::Long nIndentDist = firstLine.ResolveTextFirstLineOffset({});
+
+        if (nIndentDist == 0)
+        {
+            const SvxTabStopItem& rDefTabItem = rSh.GetDefault(RES_PARATR_TABSTOP);
+            nIndentDist = ::GetTabDist(rDefTabItem);
+        }
+
+        leftMargin.SetTextLeft(SvxIndentValue::twips(leftMargin.ResolveTextLeft({}) + nIndentDist));
+        firstLine.SetTextFirstLineOffset(SvxIndentValue::twips(nIndentDist * -1));
+
         firstLine.SetAutoFirst(false); // old code would do this, is it wanted?
         rSh.SetAttrItem(firstLine);
         rSh.SetAttrItem(leftMargin);
@@ -751,14 +758,17 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
         {
             SvxLRSpaceItem aParaMargin(static_cast<const SvxLRSpaceItem&>(pReqArgs->Get(nSlot)));
 
-            aParaMargin.SetRight( aParaMargin.GetRight() - m_nRightBorderDistance );
-            aParaMargin.SetTextLeft(aParaMargin.GetTextLeft() - m_nLeftBorderDistance );
+            aParaMargin.SetRight(
+                SvxIndentValue::twips(aParaMargin.ResolveRight({}) - m_nRightBorderDistance));
+            aParaMargin.SetTextLeft(
+                SvxIndentValue::twips(aParaMargin.ResolveTextLeft({}) - m_nLeftBorderDistance));
 
             aParaMargin.SetWhich( RES_LR_SPACE );
             SwTextFormatColl* pColl = rSh.GetCurTextFormatColl();
 
             SvxFirstLineIndentItem firstLine(RES_MARGIN_FIRSTLINE);
-            firstLine.SetTextFirstLineOffset(aParaMargin.GetTextFirstLineOffset(), aParaMargin.GetPropTextFirstLineOffset());
+            firstLine.SetTextFirstLineOffset(aParaMargin.GetTextFirstLineOffset(),
+                                             aParaMargin.GetPropTextFirstLineOffset());
             firstLine.SetAutoFirst(aParaMargin.IsAutoFirst());
             SvxTextLeftMarginItem const leftMargin(aParaMargin.GetTextLeft(), RES_MARGIN_TEXTLEFT);
             SvxRightMarginItem const rightMargin(aParaMargin.GetRight(), RES_MARGIN_RIGHT);
@@ -774,7 +784,9 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
 
                 SwPosition aPos(*m_pNumRuleNodeFromDoc);
                 // #i90078#
-                rSh.SetIndent(static_cast<short>(aParaMargin.GetTextLeft() - rLeftMargin.GetTextLeft()), aPos);
+                rSh.SetIndent(static_cast<short>(aParaMargin.ResolveTextLeft({})
+                                                 - rLeftMargin.ResolveTextLeft({})),
+                              aPos);
                 // #i42921# invalidate state of indent in order to get a ruler update.
                 aParaMargin.SetWhich( nSlot );
                 GetViewFrame().GetBindings().SetState( aParaMargin );
@@ -794,7 +806,7 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
                 rSh.SetAttrItem(rightMargin);
             }
 
-            if ( aParaMargin.GetTextFirstLineOffset() < 0 )
+            if (aParaMargin.GetTextFirstLineOffset().m_dValue < 0.0)
             {
                 SfxItemSetFixed<RES_PARATR_TABSTOP, RES_PARATR_TABSTOP> aSet( GetPool() );
 
@@ -1034,7 +1046,7 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
         {
             SvxColumnItem aColItem(static_cast<const SvxColumnItem&>(pReqArgs->Get(nSlot)));
 
-            if( m_bSetTabColFromDoc || (!bSect && rSh.GetTableFormat()) )
+            if( m_bSetTabColFromDoc || m_bSetTabRowFromDoc || (!bSect && rSh.GetTableFormat()) )
             {
                 OSL_ENSURE(aColItem.Count(), "ColDesc is empty!!");
 
@@ -1136,7 +1148,10 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
                     {
                         auto & rEntry = aTabCols.GetEntry(nIndex);
                         tools::Long nNewPosition = rEntry.nPos + nOffset;
-                        nNewPosition = std::clamp(nNewPosition, rEntry.nMin, rEntry.nMax - constDistanceOffset);
+                        tools::Long nMax = rEntry.nMax - constDistanceOffset;
+                        if (nMax < rEntry.nMin)
+                            nMax = rEntry.nMin;
+                        nNewPosition = std::clamp(nNewPosition, rEntry.nMin, nMax);
                         rEntry.nPos = nNewPosition;
                     }
 
@@ -1169,7 +1184,15 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
                         auto & rEntry = aTabRows.GetEntry(nIndex);
                         tools::Long nNewPosition = rEntry.nPos + nOffset;
                         nNewPosition = std::clamp(nNewPosition, rEntry.nMin, rEntry.nMax - constDistanceOffset);
+                        tools::Long nActualOffset = nNewPosition - rEntry.nPos;
                         rEntry.nPos = nNewPosition;
+                        // Maintain the size of the other rows
+                        for (size_t i = nIndex + 1; i < aTabRows.Count(); ++i)
+                        {
+                            auto& rNextEntry = aTabRows.GetEntry(i);
+                            rNextEntry.nPos += nActualOffset;
+                        }
+                        aTabRows.SetRight(aTabRows.GetRight() + nActualOffset);
                     }
 
                     rSh.SetTabRows(aTabRows, false);
@@ -1197,8 +1220,8 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
             const SvxLongLRSpaceItem& aLongLR = pReqArgs->Get(SID_ATTR_PAGE_HEADER_LRMARGIN);
             SvxLRSpaceItem aLR(RES_LR_SPACE);
             SwPageDesc aDesc(rDesc);
-            aLR.SetLeft(aLongLR.GetLeft());
-            aLR.SetRight(aLongLR.GetRight());
+            aLR.SetLeft(SvxIndentValue::twips(aLongLR.GetLeft()));
+            aLR.SetRight(SvxIndentValue::twips(aLongLR.GetRight()));
             SwFrameFormat* pFormat = const_cast<SwFrameFormat*>(aDesc.GetMaster().GetHeader().GetHeaderFormat());
             pFormat->SetFormatAttr( aLR );
             rSh.ChgPageDesc(rSh.GetCurPageDesc(), aDesc);
@@ -1250,8 +1273,8 @@ void SwView::ExecTabWin( SfxRequest const & rReq )
             const SvxLongLRSpaceItem& aLongLR = pReqArgs->Get(SID_ATTR_PAGE_FOOTER_LRMARGIN);
             SvxLRSpaceItem aLR(RES_LR_SPACE);
             SwPageDesc aDesc(rDesc);
-            aLR.SetLeft(aLongLR.GetLeft());
-            aLR.SetRight(aLongLR.GetRight());
+            aLR.SetLeft(SvxIndentValue::twips(aLongLR.GetLeft()));
+            aLR.SetRight(SvxIndentValue::twips(aLongLR.GetRight()));
             SwFrameFormat* pFormat = const_cast<SwFrameFormat*>(aDesc.GetMaster().GetFooter().GetFooterFormat());
             pFormat->SetFormatAttr( aLR );
             rSh.ChgPageDesc(rSh.GetCurPageDesc(), aDesc);
@@ -1367,7 +1390,7 @@ void SwView::StateTabWin(SfxItemSet& rSet)
     SwWrtShell &rSh = GetWrtShell();
 
     const Point* pPt = IsTabColFromDoc() || IsTabRowFromDoc() ? &m_aTabColFromDocPos : nullptr;
-    const FrameTypeFlags nFrameType   = rSh.IsObjSelected()
+    const FrameTypeFlags nFrameType   = rSh.GetSelectedObjCount()
                 ? FrameTypeFlags::DRAWOBJ
                 : rSh.GetFrameType( pPt, true );
 
@@ -1457,9 +1480,8 @@ void SwView::StateTabWin(SfxItemSet& rSet)
 
         case SID_ATTR_LONG_LRSPACE:
         {
-            SvxLongLRSpaceItem aLongLR( aPageLRSpace.GetLeft(),
-                                        aPageLRSpace.GetRight(),
-                                        SID_ATTR_LONG_LRSPACE);
+            SvxLongLRSpaceItem aLongLR(aPageLRSpace.ResolveLeft({}), aPageLRSpace.ResolveRight({}),
+                                       SID_ATTR_LONG_LRSPACE);
             if(bBrowse)
             {
                 aLongLR.SetLeft(rPagePrtRect.Left());
@@ -1476,8 +1498,8 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                     SwRect aRect( rSh.GetAnyCurRect( CurRectType::HeaderFooter, pPt));
                     aRect.Pos() -= rSh.GetAnyCurRect( CurRectType::Page, pPt ).Pos();
                     const SvxLRSpaceItem& aLR = pFormat->GetLRSpace();
-                    aLongLR.SetLeft ( aLR.GetLeft() + aRect.Left() );
-                    aLongLR.SetRight( nPageWidth - aRect.Right() + aLR.GetRight() );
+                    aLongLR.SetLeft(aLR.ResolveLeft({}) + aRect.Left());
+                    aLongLR.SetRight(nPageWidth - aRect.Right() + aLR.ResolveRight({}));
                 }
             }
             else
@@ -1510,10 +1532,9 @@ void SwView::StateTabWin(SfxItemSet& rSet)
         case SID_ATTR_PAGE_LRSPACE:
         {
             const SvxLRSpaceItem aTmpPageLRSpace( rDesc.GetMaster().GetLRSpace() );
-            const SvxLongLRSpaceItem aLongLR(
-                aTmpPageLRSpace.GetLeft(),
-                aTmpPageLRSpace.GetRight(),
-                SID_ATTR_PAGE_LRSPACE );
+            const SvxLongLRSpaceItem aLongLR(aTmpPageLRSpace.ResolveLeft({}),
+                                             aTmpPageLRSpace.ResolveRight({}),
+                                             SID_ATTR_PAGE_LRSPACE);
             rSet.Put( aLongLR );
         }
         break;
@@ -1542,9 +1563,9 @@ void SwView::StateTabWin(SfxItemSet& rSet)
             }
             else if( nFrameType & FrameTypeFlags::DRAWOBJ)
             {
-                const SwRect &rRect = rSh.GetObjRect();
-                aLongUL.SetUpper(rRect.Top() - rPageRect.Top());
-                aLongUL.SetLower(rPageRect.Bottom() - rRect.Bottom());
+                const SwRect aRect = rSh.GetObjRect();
+                aLongUL.SetUpper(aRect.Top() - rPageRect.Top());
+                aLongUL.SetLower(rPageRect.Bottom() - aRect.Bottom());
             }
             else if(bBrowse)
             {
@@ -1654,7 +1675,9 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                     SvxFirstLineIndentItem const& rFirstLine(aCoreSet.Get(RES_MARGIN_FIRSTLINE));
                     SvxTextLeftMarginItem const& rLeftMargin(aCoreSet.Get(RES_MARGIN_TEXTLEFT));
                     SvxRightMarginItem const& rRightMargin(aCoreSet.Get(RES_MARGIN_RIGHT));
-                    aLR->SetTextFirstLineOffset(rFirstLine.GetTextFirstLineOffset(), rFirstLine.GetPropTextFirstLineOffset());
+
+                    aLR->SetTextFirstLineOffset(rFirstLine.GetTextFirstLineOffset(),
+                                                rFirstLine.GetPropTextFirstLineOffset());
                     aLR->SetAutoFirst(rFirstLine.IsAutoFirst());
                     aLR->SetTextLeft(rLeftMargin.GetTextLeft(), rLeftMargin.GetPropLeft());
                     aLR->SetRight(rRightMargin.GetRight(), rRightMargin.GetPropRight());
@@ -1662,15 +1685,18 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                     // #i23726#
                     if (m_pNumRuleNodeFromDoc)
                     {
-                        short nOffset = static_cast< short >(aLR->GetTextLeft() +
-                                        // #i42922# Mouse move of numbering label
-                                        // has to consider the left indent of the paragraph
-                                        m_pNumRuleNodeFromDoc->GetLeftMarginWithNum( true ) );
+                        short nOffset
+                            = static_cast<short>(aLR->ResolveTextLeft({}) +
+                                                 // #i42922# Mouse move of numbering label
+                                                 // has to consider the left indent of the paragraph
+                                                 m_pNumRuleNodeFromDoc->GetLeftMarginWithNum(true));
 
                         short nFLOffset;
-                        m_pNumRuleNodeFromDoc->GetFirstLineOfsWithNum( nFLOffset );
 
-                        aLR->SetLeft( nOffset + nFLOffset );
+                        // tdf#36709: TODO: Handle font-relative units
+                        m_pNumRuleNodeFromDoc->GetFirstLineOfsWithNum(nFLOffset, {});
+
+                        aLR->SetLeft(SvxIndentValue::twips(nOffset + nFLOffset));
                     }
                 }
                 aLR->SetWhich(nWhich);
@@ -1732,8 +1758,8 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                     if( IsTabColFromDoc() )
                     {
                         const SwRect& rFlyPrtRect = rSh.GetAnyCurRect( CurRectType::FlyEmbeddedPrt, pPt );
-                        aDistLR.SetLeft(rFlyPrtRect.Left());
-                        aDistLR.SetRight(rFlyPrtRect.Left());
+                        aDistLR.SetLeft(SvxIndentValue::twips(rFlyPrtRect.Left()));
+                        aDistLR.SetRight(SvxIndentValue::twips(rFlyPrtRect.Left()));
                         rSet.Put(aDistLR);
                     }
                     else
@@ -1742,19 +1768,24 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                         aCoreSet2.Put(aBoxInfo);
                         rSh.GetFlyFrameAttr(aCoreSet2);
                         const SvxBoxItem& rBox = aCoreSet2.Get(RES_BOX);
-                        aDistLR.SetLeft(rBox.GetDistance(SvxBoxItemLine::LEFT));
-                        aDistLR.SetRight(rBox.GetDistance(SvxBoxItemLine::RIGHT));
+                        aDistLR.SetLeft(
+                            SvxIndentValue::twips(rBox.GetDistance(SvxBoxItemLine::LEFT)));
+                        aDistLR.SetRight(
+                            SvxIndentValue::twips(rBox.GetDistance(SvxBoxItemLine::RIGHT)));
                         rSet.Put(aDistLR);
 
                         //add the paragraph border distance
                         SfxItemSetFixed<RES_BOX, RES_BOX> aCoreSet1( GetPool() );
                         rSh.GetCurAttr( aCoreSet1 );
                         const SvxBoxItem& rParaBox = aCoreSet1.Get(RES_BOX);
-                        aDistLR.SetLeft(aDistLR.GetLeft() + rParaBox.GetDistance(SvxBoxItemLine::LEFT));
-                        aDistLR.SetRight(aDistLR.GetRight() + rParaBox.GetDistance(SvxBoxItemLine::RIGHT));
+                        aDistLR.SetLeft(SvxIndentValue::twips(
+                            aDistLR.ResolveLeft({}) + rParaBox.GetDistance(SvxBoxItemLine::LEFT)));
+                        aDistLR.SetRight(
+                            SvxIndentValue::twips(aDistLR.ResolveRight({})
+                                                  + rParaBox.GetDistance(SvxBoxItemLine::RIGHT)));
                     }
-                    m_nLeftBorderDistance  = static_cast< sal_uInt16 >(aDistLR.GetLeft());
-                    m_nRightBorderDistance = static_cast< sal_uInt16 >(aDistLR.GetRight());
+                    m_nLeftBorderDistance = static_cast<sal_uInt16>(aDistLR.ResolveLeft({}));
+                    m_nRightBorderDistance = static_cast<sal_uInt16>(aDistLR.ResolveRight({}));
                 }
                 else if ( IsTabColFromDoc() ||
                     ( rSh.GetTableFormat() && !bFrameSelection &&
@@ -1766,26 +1797,30 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                     aCoreSet2.Put(aBoxInfo);
                     rSh.GetTabBorders( aCoreSet2 );
                     const SvxBoxItem& rBox = aCoreSet2.Get(RES_BOX);
-                    aDistLR.SetLeft(rBox.GetDistance(SvxBoxItemLine::LEFT));
-                    aDistLR.SetRight(rBox.GetDistance(SvxBoxItemLine::RIGHT));
+                    aDistLR.SetLeft(SvxIndentValue::twips(rBox.GetDistance(SvxBoxItemLine::LEFT)));
+                    aDistLR.SetRight(
+                        SvxIndentValue::twips(rBox.GetDistance(SvxBoxItemLine::RIGHT)));
                     rSet.Put(aDistLR);
 
                     //add the border distance of the paragraph
                     SfxItemSetFixed<RES_BOX, RES_BOX> aCoreSet1( GetPool() );
                     rSh.GetCurAttr( aCoreSet1 );
                     const SvxBoxItem& rParaBox = aCoreSet1.Get(RES_BOX);
-                    aDistLR.SetLeft(aDistLR.GetLeft() + rParaBox.GetDistance(SvxBoxItemLine::LEFT));
-                    aDistLR.SetRight(aDistLR.GetRight() + rParaBox.GetDistance(SvxBoxItemLine::RIGHT));
-                    m_nLeftBorderDistance  = static_cast< sal_uInt16 >(aDistLR.GetLeft());
-                    m_nRightBorderDistance = static_cast< sal_uInt16 >(aDistLR.GetRight());
+                    aDistLR.SetLeft(SvxIndentValue::twips(
+                        aDistLR.ResolveLeft({}) + rParaBox.GetDistance(SvxBoxItemLine::LEFT)));
+                    aDistLR.SetRight(SvxIndentValue::twips(
+                        aDistLR.ResolveRight({}) + rParaBox.GetDistance(SvxBoxItemLine::RIGHT)));
+                    m_nLeftBorderDistance = static_cast<sal_uInt16>(aDistLR.ResolveLeft({}));
+                    m_nRightBorderDistance = static_cast<sal_uInt16>(aDistLR.ResolveRight({}));
                 }
                 else if ( !rSh.IsDirectlyInSection() )
                 {
                     //get the page/header/footer border distance
                     const SwFrameFormat& rMaster = rDesc.GetMaster();
                     const SvxBoxItem& rBox = rMaster.GetAttrSet().Get(RES_BOX);
-                    aDistLR.SetLeft(rBox.GetDistance(SvxBoxItemLine::LEFT));
-                    aDistLR.SetRight(rBox.GetDistance(SvxBoxItemLine::RIGHT));
+                    aDistLR.SetLeft(SvxIndentValue::twips(rBox.GetDistance(SvxBoxItemLine::LEFT)));
+                    aDistLR.SetRight(
+                        SvxIndentValue::twips(rBox.GetDistance(SvxBoxItemLine::RIGHT)));
 
                     const SvxBoxItem* pBox = nullptr;
                     if(nFrameType & FrameTypeFlags::HEADER)
@@ -1805,18 +1840,22 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                     }
                     if(pBox)
                     {
-                        aDistLR.SetLeft(pBox->GetDistance(SvxBoxItemLine::LEFT));
-                        aDistLR.SetRight(pBox->GetDistance(SvxBoxItemLine::RIGHT));
+                        aDistLR.SetLeft(
+                            SvxIndentValue::twips(pBox->GetDistance(SvxBoxItemLine::LEFT)));
+                        aDistLR.SetRight(
+                            SvxIndentValue::twips(pBox->GetDistance(SvxBoxItemLine::RIGHT)));
                     }
                     rSet.Put(aDistLR);
 
                     //add the border distance of the paragraph
                     rSh.GetCurAttr(aCoreSet2);
                     const SvxBoxItem& rParaBox = aCoreSet2.Get(RES_BOX);
-                    aDistLR.SetLeft(aDistLR.GetLeft() + rParaBox.GetDistance(SvxBoxItemLine::LEFT));
-                    aDistLR.SetRight(aDistLR.GetRight() + rParaBox.GetDistance(SvxBoxItemLine::RIGHT));
-                    m_nLeftBorderDistance  = static_cast< sal_uInt16 >(aDistLR.GetLeft());
-                    m_nRightBorderDistance = static_cast< sal_uInt16 >(aDistLR.GetRight());
+                    aDistLR.SetLeft(SvxIndentValue::twips(
+                        aDistLR.ResolveLeft({}) + rParaBox.GetDistance(SvxBoxItemLine::LEFT)));
+                    aDistLR.SetRight(SvxIndentValue::twips(
+                        aDistLR.ResolveRight({}) + rParaBox.GetDistance(SvxBoxItemLine::RIGHT)));
+                    m_nLeftBorderDistance = static_cast<sal_uInt16>(aDistLR.ResolveLeft({}));
+                    m_nRightBorderDistance = static_cast<sal_uInt16>(aDistLR.ResolveRight({}));
                 }
             }
         }
@@ -2071,8 +2110,8 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                         }
                         else
                         {
-                            aColItem.SetLeft (aPageLRSpace.GetLeft());
-                            aColItem.SetRight(aPageLRSpace.GetRight());
+                            aColItem.SetLeft(aPageLRSpace.ResolveLeft({}));
+                            aColItem.SetRight(aPageLRSpace.ResolveRight({}));
                         }
                     }
                     aColItem.SetOrtho(aColItem.CalcOrtho());
@@ -2302,8 +2341,8 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                     }
                     else
                     {
-                        aRectangle.SetLeft( aPageLRSpace.GetLeft() );
-                        aRectangle.SetRight( aPageLRSpace.GetRight() );
+                        aRectangle.SetLeft(aPageLRSpace.ResolveLeft({}));
+                        aRectangle.SetRight(aPageLRSpace.ResolveRight({}));
                     }
                 }
                 else
@@ -2375,8 +2414,8 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                     }
                     else if(!bBrowse)
                     {
-                        aRectangle.SetLeft( aPageLRSpace.GetLeft() + nStart );
-                        aRectangle.SetRight( nPageWidth - nEnd - aPageLRSpace.GetLeft() );
+                        aRectangle.SetLeft(aPageLRSpace.ResolveLeft({}) + nStart);
+                        aRectangle.SetRight(nPageWidth - nEnd - aPageLRSpace.ResolveLeft({}));
                     }
                     else
                     {
@@ -2393,8 +2432,8 @@ void SwView::StateTabWin(SfxItemSet& rSet)
             }
             else if ( nFrameType & ( FrameTypeFlags::HEADER  | FrameTypeFlags::FOOTER ))
             {
-                aRectangle.SetLeft( aPageLRSpace.GetLeft() );
-                aRectangle.SetRight( aPageLRSpace.GetRight() );
+                aRectangle.SetLeft(aPageLRSpace.ResolveLeft({}));
+                aRectangle.SetRight(aPageLRSpace.ResolveRight({}));
             }
             else
             {
@@ -2446,7 +2485,8 @@ void SwView::StateTabWin(SfxItemSet& rSet)
                 const SvxULSpaceItem* pUL = rHeader.GetHeaderFormat()->GetAttrSet().GetItem(SID_ATTR_ULSPACE);
                 if (pLR && pUL)
                 {
-                    SvxLongLRSpaceItem aLR(pLR->GetLeft(), pLR->GetRight(), SID_ATTR_PAGE_HEADER_LRMARGIN);
+                    SvxLongLRSpaceItem aLR(pLR->ResolveLeft({}), pLR->ResolveRight({}),
+                                           SID_ATTR_PAGE_HEADER_LRMARGIN);
                     rSet.Put(aLR);
                     SvxLongULSpaceItem aUL( pUL->GetUpper(), pUL->GetLower(), SID_ATTR_PAGE_HEADER_SPACING);
                     rSet.Put(aUL);
@@ -2472,7 +2512,8 @@ void SwView::StateTabWin(SfxItemSet& rSet)
             {
                 if (const SvxLRSpaceItem* rLR = rFooter.GetFooterFormat()->GetAttrSet().GetItem<SvxLRSpaceItem>(SID_ATTR_LRSPACE))
                 {
-                    SvxLongLRSpaceItem aLR(rLR->GetLeft(), rLR->GetRight(), SID_ATTR_PAGE_FOOTER_LRMARGIN);
+                    SvxLongLRSpaceItem aLR(rLR->ResolveLeft({}), rLR->ResolveRight({}),
+                                           SID_ATTR_PAGE_FOOTER_LRMARGIN);
                     rSet.Put(aLR);
                 }
                 if (const SvxULSpaceItem* rUL = rFooter.GetFooterFormat()->GetAttrSet().GetItem<SvxULSpaceItem>(SID_ATTR_ULSPACE))

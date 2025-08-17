@@ -44,7 +44,7 @@ SfxPoolItem* SwEnvItem::CreateDefault() { return new SwEnvItem; }
 
 OUString MakeSender()
 {
-    SvtUserOptions& rUserOpt = SW_MOD()->GetUserOptions();
+    SvtUserOptions& rUserOpt = SwModule::get()->GetUserOptions();
 
     const OUString sSenderToken(SwResId(STR_SENDER_TOKENS));
     if (sSenderToken.isEmpty())
@@ -150,7 +150,7 @@ SwEnvItem* SwEnvItem::Clone(SfxItemPool*) const
 }
 
 SwEnvCfgItem::SwEnvCfgItem() :
-    ConfigItem("Office.Writer/Envelope")
+    ConfigItem(u"Office.Writer/Envelope"_ustr)
 {
     Sequence<OUString> aNames = GetPropertyNames();
     Sequence<Any> aValues = GetProperties(aNames);
@@ -248,7 +248,7 @@ void SwEnvCfgItem::Notify( const css::uno::Sequence< OUString >& ) {}
 
 Sequence<OUString> SwEnvCfgItem::GetPropertyNames()
 {
-    static const char* aPropNames[] =
+    static const char* const aPropNames[] =
     {
         "Inscription/Addressee",    //  0
         "Inscription/Sender",       //  1

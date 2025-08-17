@@ -27,8 +27,6 @@
 
 class SwView;
 class SfxDispatcher;
-class ImageMap;
-class INetImage;
 
 class SwReadOnlyPopup
 {
@@ -55,6 +53,7 @@ class SwReadOnlyPopup
     sal_uInt16 m_nReadonlyLoadGraphic;
     sal_uInt16 m_nReadonlyGraphicoff;
     sal_uInt16 m_nReadonlyFullscreen;
+    sal_uInt16 m_nReadonlyCopyField;
     sal_uInt16 m_nReadonlyCopy;
 
     SwView &    m_rView;

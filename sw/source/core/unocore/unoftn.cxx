@@ -80,7 +80,8 @@ public:
         , m_bIsDescriptor(nullptr == pFootnote)
         , m_pFormatFootnote(pFootnote)
     {
-        m_pFormatFootnote && StartListening(m_pFormatFootnote->GetNotifier());
+        if (m_pFormatFootnote)
+            StartListening(m_pFormatFootnote->GetNotifier());
     }
 
     const SwFormatFootnote* GetFootnoteFormat() const {
@@ -90,7 +91,7 @@ public:
     SwFormatFootnote const& GetFootnoteFormatOrThrow() const {
         SwFormatFootnote const*const pFootnote( GetFootnoteFormat() );
         if (!pFootnote) {
-            throw uno::RuntimeException("SwXFootnote: disposed or invalid", nullptr);
+            throw uno::RuntimeException(u"SwXFootnote: disposed or invalid"_ustr, nullptr);
         }
         return *pFootnote;
     }
@@ -98,7 +99,6 @@ public:
     void Invalidate();
 protected:
     void Notify(const SfxHint& rHint) override;
-
 };
 
 void SwXFootnote::Impl::Invalidate()
@@ -120,6 +120,11 @@ void SwXFootnote::Impl::Notify(const SfxHint& rHint)
 {
     if(rHint.GetId() == SfxHintId::Dying)
         Invalidate();
+}
+
+void SwXFootnote::OnFormatFootnoteDeleted()
+{
+    Invalidate();
 }
 
 SwXFootnote::SwXFootnote(const bool bEndnote)
@@ -150,13 +155,14 @@ SwXFootnote::CreateXFootnote(SwDoc & rDoc, SwFormatFootnote *const pFootnoteForm
     }
     if (!xNote.is())
     {
-        xNote = pFootnoteFormat
-                ? new SwXFootnote(rDoc, *pFootnoteFormat)
-                : new SwXFootnote(isEndnote);
         if (pFootnoteFormat)
         {
+            xNote = new SwXFootnote(rDoc, *pFootnoteFormat);
             pFootnoteFormat->SetXFootnote(xNote);
         }
+        else
+            xNote = new SwXFootnote(isEndnote);
+
         // need a permanent Reference to initialize m_wThis
         xNote->m_pImpl->m_wThis = xNote.get();
     }
@@ -166,7 +172,7 @@ SwXFootnote::CreateXFootnote(SwDoc & rDoc, SwFormatFootnote *const pFootnoteForm
 OUString SAL_CALL
 SwXFootnote::getImplementationName()
 {
-    return "SwXFootnote";
+    return u"SwXFootnote"_ustr;
 }
 
 char const*const g_ServicesFootnote[] =
@@ -253,7 +259,7 @@ SwXFootnote::setLabel(const OUString& aLabel)
     if(pFormat)
     {
         const SwTextFootnote* pTextFootnote = pFormat->GetTextFootnote();
-        OSL_ENSURE(pTextFootnote, "No TextNode?");
+        assert(pTextFootnote && "No TextNode?");
         SwTextNode& rTextNode = const_cast<SwTextNode&>(pTextFootnote->GetTextNode());
 
         SwPaM aPam(rTextNode, pTextFootnote->GetStart());
@@ -347,7 +353,7 @@ void SAL_CALL SwXFootnote::dispose()
     SwFormatFootnote const& rFormat( m_pImpl->GetFootnoteFormatOrThrow() );
 
     SwTextFootnote const*const pTextFootnote = rFormat.GetTextFootnote();
-    OSL_ENSURE(pTextFootnote, "no TextNode?");
+    assert(pTextFootnote && "no TextNode?");
     SwTextNode& rTextNode = const_cast<SwTextNode&>(pTextFootnote->GetTextNode());
     const sal_Int32 nPos = pTextFootnote->GetStart();
     SwPaM aPam(rTextNode, nPos, rTextNode, nPos+1);
@@ -404,18 +410,23 @@ rtl::Reference< SwXTextCursor >
 SwXFootnote::createXTextCursorByRange(
     const uno::Reference< text::XTextRange > & xTextPosition)
 {
-    SwFormatFootnote const& rFormat( m_pImpl->GetFootnoteFormatOrThrow() );
-
     SwUnoInternalPaM aPam(*GetDoc());
     if (!::sw::XTextRangeToSwPaM(aPam, xTextPosition))
     {
         throw uno::RuntimeException();
     }
+    return createXTextCursorByRangeImpl(aPam);
+}
+
+rtl::Reference< SwXTextCursor > SwXFootnote::createXTextCursorByRangeImpl(
+        SwUnoInternalPaM& rPam)
+{
+    SwFormatFootnote const& rFormat( m_pImpl->GetFootnoteFormatOrThrow() );
 
     SwTextFootnote const*const pTextFootnote = rFormat.GetTextFootnote();
     SwNode const*const pFootnoteStartNode = &pTextFootnote->GetStartNode()->GetNode();
 
-    const SwNode* pStart = aPam.GetPointNode().FindFootnoteStartNode();
+    const SwNode* pStart = rPam.GetPointNode().FindFootnoteStartNode();
     if (pStart != pFootnoteStartNode)
     {
         throw uno::RuntimeException();
@@ -423,7 +434,7 @@ SwXFootnote::createXTextCursorByRange(
 
     const rtl::Reference< SwXTextCursor > xRet =
                 new SwXTextCursor(*GetDoc(), this, CursorType::Footnote,
-                    *aPam.GetPoint(), aPam.GetMark());
+                    *rPam.GetPoint(), rPam.GetMark());
     return xRet;
 }
 
@@ -491,7 +502,7 @@ SwXFootnote::getPropertyValue(const OUString& rPropertyName)
             if (pFormat)
             {
                 SwTextFootnote const*const pTextFootnote = pFormat->GetTextFootnote();
-                OSL_ENSURE(pTextFootnote, "no TextNode?");
+                assert(pTextFootnote && "no TextNode?");
                 aRet <<= static_cast<sal_Int16>(pTextFootnote->GetSeqRefNo());
             }
         }

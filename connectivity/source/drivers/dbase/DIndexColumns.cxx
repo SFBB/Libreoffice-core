@@ -28,12 +28,10 @@ using namespace connectivity::dbase;
 using namespace connectivity;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
 
 
-sdbcx::ObjectType ODbaseIndexColumns::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > ODbaseIndexColumns::createObject(const OUString& _rName)
 {
     const ODbaseTable* pTable = m_pIndex->getTable();
 
@@ -45,9 +43,9 @@ sdbcx::ObjectType ODbaseIndexColumns::createObject(const OUString& _rName)
         xCol = *aIter;
 
     if(!xCol.is())
-        return sdbcx::ObjectType();
+        return css::uno::Reference< css::beans::XPropertySet >();
 
-    sdbcx::ObjectType xRet = new sdbcx::OIndexColumn(true,_rName
+    css::uno::Reference< css::beans::XPropertySet > xRet = new sdbcx::OIndexColumn(true,_rName
                                                     ,getString(xCol->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_TYPENAME)))
                                                     ,OUString()
                                                     ,getINT32(xCol->getPropertyValue(OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_ISNULLABLE)))
@@ -73,7 +71,7 @@ Reference< XPropertySet > ODbaseIndexColumns::createDescriptor()
     return new sdbcx::OIndexColumn(m_pIndex->getTable()->getConnection()->getMetaData()->supportsMixedCaseQuotedIdentifiers());
 }
 
-sdbcx::ObjectType ODbaseIndexColumns::appendObject( const OUString& /*_rForName*/, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > ODbaseIndexColumns::appendObject( const OUString& /*_rForName*/, const Reference< XPropertySet >& descriptor )
 {
     return cloneDescriptor( descriptor );
 }

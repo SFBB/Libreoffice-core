@@ -37,13 +37,10 @@
 
 namespace com::sun::star {
     namespace beans { class XPropertySet; }
-    namespace beans { struct PropertyValue; }
-    namespace document { class XEmbeddedScripts; }
     namespace frame { class XModel; }
     namespace sdbc { class XConnection; }
     namespace sdbc { class XDatabaseMetaData; }
     namespace uno { class XComponentContext; }
-    namespace util { class XModifyListener; }
     namespace util { class XNumberFormatter; }
 }
 
@@ -62,7 +59,7 @@ namespace dbaui
                                          >   DBSubComponentController_Base;
 
     struct DBSubComponentController_Impl;
-    class DBACCESS_DLLPUBLIC DBSubComponentController : public DBSubComponentController_Base
+    class UNLESS_MERGELIBS_MORE(DBACCESS_DLLPUBLIC) DBSubComponentController : public DBSubComponentController_Base
     {
     private:
         ::std::unique_ptr<DBSubComponentController_Impl> m_pImpl;
@@ -75,7 +72,7 @@ namespace dbaui
 
     protected:
         // OGenericUnoController - initialization
-        virtual void impl_initialize() override;
+        virtual void impl_initialize(const ::comphelper::NamedValueCollection& rArguments) override;
 
         // OGenericUnoController
         virtual void      Execute(sal_uInt16 nId, const css::uno::Sequence< css::beans::PropertyValue>& aArgs) override;
@@ -133,7 +130,7 @@ namespace dbaui
         */
         void displayError();
 
-        /** shows an info box with the string conntection lost.
+        /** shows an info box with the string connection lost.
         */
         void connectionLostMessage() const;
 

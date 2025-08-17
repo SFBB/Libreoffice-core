@@ -71,21 +71,21 @@ void
 ToxTextGeneratorTest::EmptyStringIsReturnedForPageNumberPlaceholderOfZeroItems()
 {
     OUString actual = ToxTextGenerator::ConstructPageNumberPlaceholder(0);
-    CPPUNIT_ASSERT_EQUAL(OUString(""), actual);
+    CPPUNIT_ASSERT_EQUAL(u""_ustr, actual);
 }
 
 void
 ToxTextGeneratorTest::OneAtSignIsReturnedForPageNumberPlaceholderOfOneItem()
 {
     OUString actual = ToxTextGenerator::ConstructPageNumberPlaceholder(1);
-    CPPUNIT_ASSERT_EQUAL(OUString("@~"), actual);
+    CPPUNIT_ASSERT_EQUAL(u"@~"_ustr, actual);
 }
 
 void
 ToxTextGeneratorTest::TwoAtSignsAreReturnedForPageNumberPlaceholderOfOneItem()
 {
     OUString actual = ToxTextGenerator::ConstructPageNumberPlaceholder(2);
-    CPPUNIT_ASSERT_EQUAL(OUString("@, @~"), actual);
+    CPPUNIT_ASSERT_EQUAL(u"@, @~"_ustr, actual);
 }
 
 void
@@ -95,7 +95,7 @@ ToxTextGeneratorTest::EmptyStringIsReturnedAsNumStringIfNoTextMarkIsSet()
     sortTab.pTextMark = nullptr;
 
     OUString actual = ToxTextGenerator::GetNumStringOfFirstNode(sortTab, false, 0, nullptr);
-    CPPUNIT_ASSERT_EQUAL(OUString(""), actual);
+    CPPUNIT_ASSERT_EQUAL(u""_ustr, actual);
 }
 
 void
@@ -105,7 +105,7 @@ ToxTextGeneratorTest::EmptyStringIsReturnedAsNumStringIfToxSourcesIsEmpty()
     sortTab.pTextMark = reinterpret_cast<SwTextTOXMark*>(1);
 
     OUString actual = ToxTextGenerator::GetNumStringOfFirstNode(sortTab, false, 0, nullptr);
-    CPPUNIT_ASSERT_EQUAL(OUString(""), actual);
+    CPPUNIT_ASSERT_EQUAL(u""_ustr, actual);
 }
 
 namespace {
@@ -113,9 +113,14 @@ namespace {
 class MockedToxTabStopTokenHandler : public ToxTabStopTokenHandler {
 public:
     virtual HandledTabStopToken
-    HandleTabStopToken(const SwFormToken&, const SwTextNode&,
-            const SwRootFrame *) const override {
+    HandleTabStopToken(const SwFormToken&, const SwTextNode&) const override
+    {
         return HandledTabStopToken();
+    }
+
+    auto CalcEndStop(SwTextNode const&, SwRootFrame const*) const -> tools::Long override
+    {
+        return 0;
     }
 };
 
@@ -155,15 +160,15 @@ ToxTextGeneratorTest::ChapterNumberWithoutTextIsGeneratedForNoprepstTitle()
     ttg.GetChapterField().m_State.sTitle = "TITLE";
 
     SwFormToken token(TOKEN_CHAPTER_INFO);
-    token.nChapterFormat = CF_NUM_NOPREPST_TITLE;
+    token.nChapterFormat = SwChapterFormat::NumberNoPrePostAndTitle;
 
-    OUString expected("1");
+    OUString expected(u"1"_ustr);
     OUString actual = ttg.GenerateTextForChapterToken(token, nullptr, nullptr, nullptr);
     CPPUNIT_ASSERT_EQUAL(expected, actual);
 
     // we cannot mock the pre- and suffix generation in the chapterfield. We just test that sNumber and
     // sTitle are used and hope that the pre- and suffix addition works.
-    token.nChapterFormat = CF_NUMBER;
+    token.nChapterFormat = SwChapterFormat::Number;
     expected = ttg.GenerateTextForChapterToken(token, nullptr, nullptr, nullptr);
     CPPUNIT_ASSERT_EQUAL(expected, actual);
 }
@@ -181,15 +186,15 @@ ToxTextGeneratorTest::ChapterNumberWithTitleIsGeneratedForNumberNoPrepst()
     ttg.GetChapterField().m_State.sTitle = "myTitle";
 
     SwFormToken token(TOKEN_CHAPTER_INFO);
-    token.nChapterFormat = CF_NUMBER_NOPREPST;
+    token.nChapterFormat = SwChapterFormat::NumberNoPrePost;
 
-    OUString expected("5 myTitle");
+    OUString expected(u"5 myTitle"_ustr);
     OUString actual = ttg.GenerateTextForChapterToken(token, nullptr, nullptr, nullptr);
     CPPUNIT_ASSERT_EQUAL(expected, actual);
 
     // we cannot mock the pre- and suffix generation in the chapterfield. We just test that sNumber and
     // sTitle are used and hope that the pre- and suffix addition works.
-    token.nChapterFormat = CF_NUM_TITLE;
+    token.nChapterFormat = SwChapterFormat::NumberAndTitle;
     expected = ttg.GenerateTextForChapterToken(token, nullptr, nullptr, nullptr);
     CPPUNIT_ASSERT_EQUAL(expected, actual);
 }

@@ -56,6 +56,7 @@
 #include <svl/eitem.hxx>
 #include <svl/intitem.hxx>
 #include <unotools/syslocaleoptions.hxx>
+#include <com/sun/star/text/ParagraphHyphenationKeepType.hpp>
 
 const WhichRangesContainer SvxStdParagraphTabPage::pStdRanges(
     svl::Items<
@@ -101,6 +102,44 @@ enum LineSpaceList
     LLINESPACE_FIX  = 7
 };
 
+SvxIndentValue lcl_GetFontRelativeValue(const SvxRelativeField& rField, MapUnit eUnit)
+{
+    switch (rField.GetCurrentUnit())
+    {
+        case FieldUnit::FONT_EM:
+            return SvxIndentValue{ static_cast<double>(rField.get_value(FieldUnit::NONE)) / 100.0,
+                                   css::util::MeasureUnit::FONT_EM };
+
+        case FieldUnit::FONT_CJK_ADVANCE:
+            return SvxIndentValue{ static_cast<double>(rField.get_value(FieldUnit::NONE)) / 100.0,
+                                   css::util::MeasureUnit::FONT_CJK_ADVANCE };
+
+        default:
+            return SvxIndentValue::twips(static_cast<double>(rField.GetCoreValue(eUnit)));
+    }
+}
+
+void lcl_SetFontRelativeValue(SvxRelativeField& rField, const SvxIndentValue& rValue, MapUnit eUnit)
+{
+    switch (rValue.m_nUnit)
+    {
+        case css::util::MeasureUnit::FONT_EM:
+            rField.SetFontRelative(FieldUnit::FONT_EM);
+            rField.set_value(static_cast<sal_Int64>(std::llround(rValue.m_dValue * 100.0)),
+                             FieldUnit::FONT_EM);
+            break;
+
+        case css::util::MeasureUnit::FONT_CJK_ADVANCE:
+            rField.SetFontRelative(FieldUnit::FONT_CJK_ADVANCE);
+            rField.set_value(static_cast<sal_Int64>(std::llround(rValue.m_dValue * 100.0)),
+                             FieldUnit::FONT_CJK_ADVANCE);
+            break;
+
+        default:
+            rField.SetMetricValue(static_cast<sal_Int64>(std::llround(rValue.m_dValue)), eUnit);
+            break;
+    }
+}
 }
 
 static void SetLineSpace_Impl( SvxLineSpacingItem&, int, tools::Long lValue = 0 );
@@ -173,7 +212,7 @@ static sal_uInt16 GetHtmlMode_Impl(const SfxItemSet& rSet)
 void SvxStdParagraphTabPage::ELRLoseFocus()
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
-    DBG_ASSERT( pPool, "Where is the pool?" );
+    assert(pPool && "Where is the pool?");
     FieldUnit eUnit =
         MapToFieldUnit( pPool->GetMetric( GetWhich( SID_ATTR_LRSPACE ) ) );
 
@@ -270,7 +309,7 @@ bool SvxStdParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
 
         if ( m_bLineDistToggled ||
              !pOld || !( *static_cast<const SvxLineSpacingItem*>(pOld) == aSpacing ) ||
-             SfxItemState::DONTCARE == GetItemSet().GetItemState( nWhich ) )
+             SfxItemState::INVALID == GetItemSet().GetItemState( nWhich ) )
         {
             rOutSet->Put( aSpacing );
             bModified = true;
@@ -313,7 +352,7 @@ bool SvxStdParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
         aMargin.SetContextValue(m_xContextualCB->get_active());
 
         if ( !pOld || *static_cast<const SvxULSpaceItem*>(pOld) != aMargin ||
-             SfxItemState::DONTCARE == GetItemSet().GetItemState( nWhich ) )
+             SfxItemState::INVALID == GetItemSet().GetItemState( nWhich ) )
         {
             rOutSet->Put( aMargin );
             bModified = true;
@@ -342,15 +381,15 @@ bool SvxStdParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
             }
             else
             {
-                item.SetTextLeft(m_aLeftIndent.GetCoreValue(eUnit));
+                item.SetTextLeft(lcl_GetFontRelativeValue(m_aLeftIndent, eUnit));
             }
         }
         else
         {
-            item.SetTextLeft(m_aLeftIndent.GetCoreValue(eUnit));
+            item.SetTextLeft(lcl_GetFontRelativeValue(m_aLeftIndent, eUnit));
         }
         if (!pOld || *static_cast<const SvxTextLeftMarginItem*>(pOld) != item
-            || SfxItemState::DONTCARE == GetItemSet().GetItemState(nWhich))
+            || SfxItemState::INVALID == GetItemSet().GetItemState(nWhich))
         {
             rOutSet->Put(item);
             bModified = true;
@@ -378,15 +417,15 @@ bool SvxStdParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
             }
             else
             {
-                item.SetRight(m_aRightIndent.GetCoreValue(eUnit));
+                item.SetRight(lcl_GetFontRelativeValue(m_aRightIndent, eUnit));
             }
         }
         else
         {
-            item.SetRight(m_aRightIndent.GetCoreValue(eUnit));
+            item.SetRight(lcl_GetFontRelativeValue(m_aRightIndent, eUnit));
         }
         if (!pOld || *static_cast<const SvxRightMarginItem*>(pOld) != item
-            || SfxItemState::DONTCARE == GetItemSet().GetItemState(nWhich))
+            || SfxItemState::INVALID == GetItemSet().GetItemState(nWhich))
         {
             rOutSet->Put(item);
             bModified = true;
@@ -410,26 +449,27 @@ bool SvxStdParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
 
             if (m_aFLineIndent.IsRelative())
             {
-                item.SetTextFirstLineOffset(rOldItem.GetTextFirstLineOffset(),
+                item.SetTextFirstLineOffset(
+                    rOldItem.GetTextFirstLineOffset(),
                     static_cast<sal_uInt16>(m_aFLineIndent.get_value(FieldUnit::NONE)));
             }
             else
             {
-                item.SetTextFirstLineOffset(static_cast<sal_uInt16>(m_aFLineIndent.GetCoreValue(eUnit)));
+                item.SetTextFirstLineOffset(lcl_GetFontRelativeValue(m_aFLineIndent, eUnit));
             }
         }
         else
         {
-            item.SetTextFirstLineOffset(static_cast<sal_uInt16>(m_aFLineIndent.GetCoreValue(eUnit)));
+            item.SetTextFirstLineOffset(lcl_GetFontRelativeValue(m_aFLineIndent, eUnit));
         }
         item.SetAutoFirst(m_xAutoCB->get_active());
-        if (item.GetTextFirstLineOffset() < 0)
+        if (item.GetTextFirstLineOffset().m_dValue < 0.0)
         {
             bNullTab = true;
         }
 
         if (!pOld || *static_cast<const SvxFirstLineIndentItem*>(pOld) != item
-            || SfxItemState::DONTCARE == GetItemSet().GetItemState(nWhich))
+            || SfxItemState::INVALID == GetItemSet().GetItemState(nWhich))
         {
             rOutSet->Put(item);
             bModified = true;
@@ -458,32 +498,35 @@ bool SvxStdParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
                 aMargin.SetTextLeft( rOldItem.GetTextLeft(),
                                     static_cast<sal_uInt16>(m_aLeftIndent.get_value(FieldUnit::NONE)) );
             else
-                aMargin.SetTextLeft(m_aLeftIndent.GetCoreValue(eUnit));
+                aMargin.SetTextLeft(lcl_GetFontRelativeValue(m_aLeftIndent, eUnit));
 
             if ( m_aRightIndent.IsRelative() )
                 aMargin.SetRight( rOldItem.GetRight(),
                                   static_cast<sal_uInt16>(m_aRightIndent.get_value(FieldUnit::NONE)) );
             else
-                aMargin.SetRight(m_aRightIndent.GetCoreValue(eUnit));
+                aMargin.SetRight(lcl_GetFontRelativeValue(m_aRightIndent, eUnit));
 
             if ( m_aFLineIndent.IsRelative() )
-                aMargin.SetTextFirstLineOffset( rOldItem.GetTextFirstLineOffset(),
-                                             static_cast<sal_uInt16>(m_aFLineIndent.get_value(FieldUnit::NONE)) );
+                aMargin.SetTextFirstLineOffset(
+                    rOldItem.GetTextFirstLineOffset(),
+                    static_cast<sal_uInt16>(m_aFLineIndent.get_value(FieldUnit::NONE)));
             else
-                aMargin.SetTextFirstLineOffset(static_cast<sal_uInt16>(m_aFLineIndent.GetCoreValue(eUnit)));
+            {
+                aMargin.SetTextFirstLineOffset(lcl_GetFontRelativeValue(m_aFLineIndent, eUnit));
+            }
         }
         else
         {
-            aMargin.SetTextLeft(m_aLeftIndent.GetCoreValue(eUnit));
-            aMargin.SetRight(m_aRightIndent.GetCoreValue(eUnit));
-            aMargin.SetTextFirstLineOffset(static_cast<sal_uInt16>(m_aFLineIndent.GetCoreValue(eUnit)));
+            aMargin.SetTextLeft(lcl_GetFontRelativeValue(m_aLeftIndent, eUnit));
+            aMargin.SetRight(lcl_GetFontRelativeValue(m_aRightIndent, eUnit));
+            aMargin.SetTextFirstLineOffset(lcl_GetFontRelativeValue(m_aFLineIndent, eUnit));
         }
         aMargin.SetAutoFirst(m_xAutoCB->get_active());
-        if ( aMargin.GetTextFirstLineOffset() < 0 )
+        if (aMargin.GetTextFirstLineOffset().m_dValue < 0.0)
             bNullTab = true;
 
         if ( !pOld || *static_cast<const SvxLRSpaceItem*>(pOld) != aMargin ||
-             SfxItemState::DONTCARE == GetItemSet().GetItemState( nWhich ) )
+             SfxItemState::INVALID == GetItemSet().GetItemState( nWhich ) )
         {
             rOutSet->Put( aMargin );
             bModified = true;
@@ -599,12 +642,12 @@ void SvxStdParagraphTabPage::Reset( const SfxItemSet* rSet )
             {
                 m_aLeftIndent.SetRelative(false);
                 m_aLeftIndent.SetFieldUnit(eFUnit);
-                m_aLeftIndent.SetMetricValue(rOldLeftMargin.GetTextLeft(), eUnit);
+                lcl_SetFontRelativeValue(m_aLeftIndent, rOldLeftMargin.GetTextLeft(), eUnit);
             }
         }
         else
         {
-            m_aLeftIndent.SetMetricValue(rOldLeftMargin.GetTextLeft(), eUnit);
+            lcl_SetFontRelativeValue(m_aLeftIndent, rOldLeftMargin.GetTextLeft(), eUnit);
         }
     }
     else if (m_bSplitLRSpace)
@@ -630,12 +673,12 @@ void SvxStdParagraphTabPage::Reset( const SfxItemSet* rSet )
             {
                 m_aRightIndent.SetRelative(false);
                 m_aRightIndent.SetFieldUnit(eFUnit);
-                m_aRightIndent.SetMetricValue(rOldRightMargin.GetRight(), eUnit);
+                lcl_SetFontRelativeValue(m_aRightIndent, rOldRightMargin.GetRight(), eUnit);
             }
         }
         else
         {
-            m_aRightIndent.SetMetricValue(rOldRightMargin.GetRight(), eUnit);
+            lcl_SetFontRelativeValue(m_aRightIndent, rOldRightMargin.GetRight(), eUnit);
         }
     }
     else if (m_bSplitLRSpace)
@@ -662,13 +705,14 @@ void SvxStdParagraphTabPage::Reset( const SfxItemSet* rSet )
                 m_aFLineIndent.SetRelative(false);
                 m_aFLineIndent.set_min(-9999, FieldUnit::NONE);
                 m_aFLineIndent.SetFieldUnit(eFUnit);
-                m_aFLineIndent.SetMetricValue(rOldFirstLine.GetTextFirstLineOffset(), eUnit);
+                lcl_SetFontRelativeValue(m_aFLineIndent, rOldFirstLine.GetTextFirstLineOffset(),
+                                         eUnit);
             }
             m_xAutoCB->set_active(rOldFirstLine.IsAutoFirst());
         }
         else
         {
-            m_aFLineIndent.SetMetricValue(rOldFirstLine.GetTextFirstLineOffset(), eUnit);
+            lcl_SetFontRelativeValue(m_aFLineIndent, rOldFirstLine.GetTextFirstLineOffset(), eUnit);
             m_xAutoCB->set_active(rOldFirstLine.IsAutoFirst());
         }
         AutoHdl_Impl(*m_xAutoCB);
@@ -699,7 +743,7 @@ void SvxStdParagraphTabPage::Reset( const SfxItemSet* rSet )
             {
                 m_aLeftIndent.SetRelative(false);
                 m_aLeftIndent.SetFieldUnit(eFUnit);
-                m_aLeftIndent.SetMetricValue(rOldItem.GetTextLeft(), eUnit);
+                lcl_SetFontRelativeValue(m_aLeftIndent, rOldItem.GetTextLeft(), eUnit);
             }
 
             if ( rOldItem.GetPropRight() != 100 )
@@ -711,7 +755,7 @@ void SvxStdParagraphTabPage::Reset( const SfxItemSet* rSet )
             {
                 m_aRightIndent.SetRelative(false);
                 m_aRightIndent.SetFieldUnit(eFUnit);
-                m_aRightIndent.SetMetricValue(rOldItem.GetRight(), eUnit);
+                lcl_SetFontRelativeValue(m_aRightIndent, rOldItem.GetRight(), eUnit);
             }
 
             if ( rOldItem.GetPropTextFirstLineOffset() != 100 )
@@ -724,7 +768,7 @@ void SvxStdParagraphTabPage::Reset( const SfxItemSet* rSet )
                 m_aFLineIndent.SetRelative(false);
                 m_aFLineIndent.set_min(-9999, FieldUnit::NONE);
                 m_aFLineIndent.SetFieldUnit(eFUnit);
-                m_aFLineIndent.SetMetricValue(rOldItem.GetTextFirstLineOffset(), eUnit);
+                lcl_SetFontRelativeValue(m_aFLineIndent, rOldItem.GetTextFirstLineOffset(), eUnit);
             }
             m_xAutoCB->set_active(rOldItem.IsAutoFirst());
         }
@@ -733,9 +777,9 @@ void SvxStdParagraphTabPage::Reset( const SfxItemSet* rSet )
             const SvxLRSpaceItem& rSpace =
                 static_cast<const SvxLRSpaceItem&>(rSet->Get( _nWhich ));
 
-            m_aLeftIndent.SetMetricValue(rSpace.GetTextLeft(), eUnit);
-            m_aRightIndent.SetMetricValue(rSpace.GetRight(), eUnit);
-            m_aFLineIndent.SetMetricValue(rSpace.GetTextFirstLineOffset(), eUnit);
+            lcl_SetFontRelativeValue(m_aLeftIndent, rSpace.GetTextLeft(), eUnit);
+            lcl_SetFontRelativeValue(m_aRightIndent, rSpace.GetRight(), eUnit);
+            lcl_SetFontRelativeValue(m_aFLineIndent, rSpace.GetTextFirstLineOffset(), eUnit);
             m_xAutoCB->set_active(rSpace.IsAutoFirst());
         }
         AutoHdl_Impl(*m_xAutoCB);
@@ -904,29 +948,27 @@ DeactivateRC SvxStdParagraphTabPage::DeactivatePage( SfxItemSet* _pSet )
 }
 
 SvxStdParagraphTabPage::SvxStdParagraphTabPage(weld::Container* pPage, weld::DialogController* pController,  const SfxItemSet& rAttr)
-    : SfxTabPage(pPage, pController, "cui/ui/paraindentspacing.ui", "ParaIndentSpacing", &rAttr)
+    : SfxTabPage(pPage, pController, u"cui/ui/paraindentspacing.ui"_ustr, u"ParaIndentSpacing"_ustr, &rAttr)
     , nWidth(11905 /*567 * 50*/)
     , nMinFixDist(0)
     , bRelativeMode(false)
-    , m_aLeftIndent(m_xBuilder->weld_metric_spin_button("spinED_LEFTINDENT", FieldUnit::CM))
-    , m_aRightIndent(m_xBuilder->weld_metric_spin_button("spinED_RIGHTINDENT", FieldUnit::CM))
-    , m_xFLineLabel(m_xBuilder->weld_label("labelFT_FLINEINDENT"))
-    , m_aFLineIndent(m_xBuilder->weld_metric_spin_button("spinED_FLINEINDENT", FieldUnit::CM))
-    , m_xAutoCB(m_xBuilder->weld_check_button("checkCB_AUTO"))
-    , m_aTopDist(m_xBuilder->weld_metric_spin_button("spinED_TOPDIST", FieldUnit::CM))
-    , m_aBottomDist(m_xBuilder->weld_metric_spin_button("spinED_BOTTOMDIST", FieldUnit::CM))
-    , m_xContextualCB(m_xBuilder->weld_check_button("checkCB_CONTEXTUALSPACING"))
-    , m_xLineDist(m_xBuilder->weld_combo_box("comboLB_LINEDIST"))
-    , m_xLineDistAtPercentBox(m_xBuilder->weld_metric_spin_button("spinED_LINEDISTPERCENT", FieldUnit::PERCENT))
-    , m_xLineDistAtMetricBox(m_xBuilder->weld_metric_spin_button("spinED_LINEDISTMETRIC", FieldUnit::CM))
-    , m_xLineDistAtPlaceHolderBox(m_xBuilder->weld_metric_spin_button("spinED_BLANK", FieldUnit::CM))
-    , m_xLineDistAtLabel(m_xBuilder->weld_label("labelFT_LINEDIST"))
-    , m_xAbsDist(m_xBuilder->weld_label("labelST_LINEDIST_ABS"))
-    , m_xRegisterCB(m_xBuilder->weld_check_button("checkCB_REGISTER"))
-    , m_xExampleWin(new weld::CustomWeld(*m_xBuilder, "drawingareaWN_EXAMPLE", m_aExampleWin))
+    , m_aLeftIndent(m_xBuilder->weld_metric_spin_button(u"spinED_LEFTINDENT"_ustr, FieldUnit::CM))
+    , m_aRightIndent(m_xBuilder->weld_metric_spin_button(u"spinED_RIGHTINDENT"_ustr, FieldUnit::CM))
+    , m_xFLineLabel(m_xBuilder->weld_label(u"labelFT_FLINEINDENT"_ustr))
+    , m_aFLineIndent(m_xBuilder->weld_metric_spin_button(u"spinED_FLINEINDENT"_ustr, FieldUnit::CM))
+    , m_xAutoCB(m_xBuilder->weld_check_button(u"checkCB_AUTO"_ustr))
+    , m_aTopDist(m_xBuilder->weld_metric_spin_button(u"spinED_TOPDIST"_ustr, FieldUnit::CM))
+    , m_aBottomDist(m_xBuilder->weld_metric_spin_button(u"spinED_BOTTOMDIST"_ustr, FieldUnit::CM))
+    , m_xContextualCB(m_xBuilder->weld_check_button(u"checkCB_CONTEXTUALSPACING"_ustr))
+    , m_xLineDist(m_xBuilder->weld_combo_box(u"comboLB_LINEDIST"_ustr))
+    , m_xLineDistAtPercentBox(m_xBuilder->weld_metric_spin_button(u"spinED_LINEDISTPERCENT"_ustr, FieldUnit::PERCENT))
+    , m_xLineDistAtMetricBox(m_xBuilder->weld_metric_spin_button(u"spinED_LINEDISTMETRIC"_ustr, FieldUnit::CM))
+    , m_xLineDistAtPlaceHolderBox(m_xBuilder->weld_metric_spin_button(u"spinED_BLANK"_ustr, FieldUnit::CM))
+    , m_xLineDistAtLabel(m_xBuilder->weld_label(u"labelFT_LINEDIST"_ustr))
+    , m_xAbsDist(m_xBuilder->weld_label(u"labelST_LINEDIST_ABS"_ustr))
+    , m_xRegisterCB(m_xBuilder->weld_check_button(u"checkCB_REGISTER"_ustr))
+    , m_xExampleWin(new weld::CustomWeld(*m_xBuilder, u"drawingareaWN_EXAMPLE"_ustr, m_aExampleWin))
 {
-    sAbsDist = m_xAbsDist->get_label();
-
     // this page needs ExchangeSupport
     SetExchangeSupport();
 
@@ -936,6 +978,11 @@ SvxStdParagraphTabPage::SvxStdParagraphTabPage(weld::Container* pPage, weld::Dia
 
     Init_Impl();
     m_aFLineIndent.set_min(-9999, FieldUnit::NONE);    // is set to 0 on default
+    m_aFLineIndent.EnableNegativeMode();
+    m_aFLineIndent.EnableFontRelativeMode();
+
+    m_aLeftIndent.EnableFontRelativeMode();
+    m_aRightIndent.EnableFontRelativeMode();
 }
 
 SvxStdParagraphTabPage::~SvxStdParagraphTabPage()
@@ -1114,7 +1161,7 @@ void SvxStdParagraphTabPage::Init_Impl()
 
     m_xAutoCB->connect_toggled(LINK(this, SvxStdParagraphTabPage, AutoHdl_Impl));
     SfxItemPool* pPool = GetItemSet().GetPool();
-    DBG_ASSERT( pPool, "Where is the pool?" );
+    assert(pPool && "Where is the pool?");
     FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( GetWhich( SID_ATTR_LRSPACE ) ) );
 
     m_aTopDist.set_max( m_aTopDist.normalize( MAX_DURCH ), eUnit );
@@ -1170,12 +1217,6 @@ void SvxStdParagraphTabPage::EnableAutoFirstLine()
     m_xAutoCB->show();
 }
 
-void SvxStdParagraphTabPage::EnableAbsLineDist(tools::Long nMinTwip)
-{
-    m_xLineDist->append_text(sAbsDist);
-    nMinFixDist = nMinTwip;
-}
-
 void SvxStdParagraphTabPage::PageCreated(const SfxAllItemSet& aSet)
 {
 
@@ -1188,7 +1229,6 @@ void SvxStdParagraphTabPage::PageCreated(const SfxAllItemSet& aSet)
             */
     const SfxUInt16Item* pPageWidthItem = aSet.GetItem<SfxUInt16Item>(SID_SVXSTDPARAGRAPHTABPAGE_PAGEWIDTH, false);
     const SfxUInt32Item* pFlagSetItem = aSet.GetItem<SfxUInt32Item>(SID_SVXSTDPARAGRAPHTABPAGE_FLAGSET, false);
-    const SfxUInt32Item* pLineDistItem = aSet.GetItem<SfxUInt32Item>(SID_SVXSTDPARAGRAPHTABPAGE_ABSLINEDIST, false);
 
     if (pPageWidthItem)
         nWidth = pPageWidthItem->GetValue();
@@ -1204,9 +1244,6 @@ void SvxStdParagraphTabPage::PageCreated(const SfxAllItemSet& aSet)
         if ( ( 0x0004 & pFlagSetItem->GetValue())== 0x0004 )
             EnableAutoFirstLine();
     }
-
-    if(pLineDistItem)
-        EnableAbsLineDist(pLineDistItem->GetValue());
 
     if (pFlagSetItem)
     {
@@ -1225,24 +1262,35 @@ void SvxStdParagraphTabPage::PageCreated(const SfxAllItemSet& aSet)
 #define LASTLINECOUNT_NEW       4
 
 SvxParaAlignTabPage::SvxParaAlignTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/paragalignpage.ui", "ParaAlignPage", &rSet)
+    : SfxTabPage(pPage, pController, u"cui/ui/paragalignpage.ui"_ustr, u"ParaAlignPage"_ustr, &rSet)
     , m_bSdrVertAlign(false)
-    , m_xLeft(m_xBuilder->weld_radio_button("radioBTN_LEFTALIGN"))
-    , m_xRight(m_xBuilder->weld_radio_button("radioBTN_RIGHTALIGN"))
-    , m_xCenter(m_xBuilder->weld_radio_button("radioBTN_CENTERALIGN"))
-    , m_xJustify(m_xBuilder->weld_radio_button("radioBTN_JUSTIFYALIGN"))
-    , m_xLeftBottom(m_xBuilder->weld_label("labelST_LEFTALIGN_ASIAN"))
-    , m_xRightTop(m_xBuilder->weld_label("labelST_RIGHTALIGN_ASIAN"))
-    , m_xLastLineFT(m_xBuilder->weld_label("labelLB_LASTLINE"))
-    , m_xLastLineLB(m_xBuilder->weld_combo_box("comboLB_LASTLINE"))
-    , m_xExpandCB(m_xBuilder->weld_check_button("checkCB_EXPAND"))
-    , m_xSnapToGridCB(m_xBuilder->weld_check_button("checkCB_SNAP"))
-    , m_xExampleWin(new weld::CustomWeld(*m_xBuilder, "drawingareaWN_EXAMPLE", m_aExampleWin))
-    , m_xVertAlignFL(m_xBuilder->weld_widget("frameFL_VERTALIGN"))
-    , m_xVertAlignLB(m_xBuilder->weld_combo_box("comboLB_VERTALIGN"))
-    , m_xVertAlign(m_xBuilder->weld_label("labelFL_VERTALIGN"))
-    , m_xVertAlignSdr(m_xBuilder->weld_label("labelST_VERTALIGN_SDR"))
-    , m_xTextDirectionLB(new svx::FrameDirectionListBox(m_xBuilder->weld_combo_box("comboLB_TEXTDIRECTION")))
+    , m_xLeft(m_xBuilder->weld_radio_button(u"radioBTN_LEFTALIGN"_ustr))
+    , m_xRight(m_xBuilder->weld_radio_button(u"radioBTN_RIGHTALIGN"_ustr))
+    , m_xCenter(m_xBuilder->weld_radio_button(u"radioBTN_CENTERALIGN"_ustr))
+    , m_xJustify(m_xBuilder->weld_radio_button(u"radioBTN_JUSTIFYALIGN"_ustr))
+    , m_xLeftBottom(m_xBuilder->weld_label(u"labelST_LEFTALIGN_ASIAN"_ustr))
+    , m_xRightTop(m_xBuilder->weld_label(u"labelST_RIGHTALIGN_ASIAN"_ustr))
+    , m_xLastLineFT(m_xBuilder->weld_label(u"labelLB_LASTLINE"_ustr))
+    , m_xLastLineLB(m_xBuilder->weld_combo_box(u"comboLB_LASTLINE"_ustr))
+    , m_xExpandCB(m_xBuilder->weld_check_button(u"checkCB_EXPAND"_ustr))
+    , m_xSnapToGridCB(m_xBuilder->weld_check_button(u"checkCB_SNAP"_ustr))
+    , m_xExampleWin(new weld::CustomWeld(*m_xBuilder, u"drawingareaWN_EXAMPLE"_ustr, m_aExampleWin))
+    , m_xVertAlignFL(m_xBuilder->weld_widget(u"frameFL_VERTALIGN"_ustr))
+    , m_xVertAlignLB(m_xBuilder->weld_combo_box(u"comboLB_VERTALIGN"_ustr))
+    , m_xVertAlign(m_xBuilder->weld_label(u"labelFL_VERTALIGN"_ustr))
+    , m_xVertAlignSdr(m_xBuilder->weld_label(u"labelST_VERTALIGN_SDR"_ustr))
+    , m_xTextDirectionLB(new svx::FrameDirectionListBox(m_xBuilder->weld_combo_box(u"comboLB_TEXTDIRECTION"_ustr)))
+    , m_xLabelWordSpacing(m_xBuilder->weld_label(u"labelWordSpacing"_ustr))
+    , m_xLabelMinimum(m_xBuilder->weld_label(u"labelMinimum"_ustr))
+    , m_xLabelDesired(m_xBuilder->weld_label(u"labelDesired"_ustr))
+    , m_xLabelMaximum(m_xBuilder->weld_label(u"labelMaximum"_ustr))
+    , m_xWordSpacing(m_xBuilder->weld_metric_spin_button(u"spin_WORD_SPACING"_ustr, FieldUnit::PERCENT))
+    , m_xWordSpacingMinimum(m_xBuilder->weld_metric_spin_button(u"spin_WORD_SPACING_MIN"_ustr, FieldUnit::PERCENT))
+    , m_xWordSpacingMaximum(m_xBuilder->weld_metric_spin_button(u"spin_WORD_SPACING_MAX"_ustr, FieldUnit::PERCENT))
+    , m_xLabelLetterSpacing(m_xBuilder->weld_label(u"labelLetterSpacing"_ustr))
+    , m_xLetterSpacing(m_xBuilder->weld_metric_spin_button(u"spin_LETTER_SPACING"_ustr, FieldUnit::PERCENT))
+    , m_xLetterSpacingMinimum(m_xBuilder->weld_metric_spin_button(u"spin_LETTER_SPACING_MIN"_ustr, FieldUnit::PERCENT))
+    , m_xLetterSpacingMaximum(m_xBuilder->weld_metric_spin_button(u"spin_LETTER_SPACING_MAX"_ustr, FieldUnit::PERCENT))
 {
     SetExchangeSupport();
 
@@ -1280,6 +1328,18 @@ SvxParaAlignTabPage::SvxParaAlignTabPage(weld::Container* pPage, weld::DialogCon
     m_xTextDirectionLB->append(SvxFrameDirection::Environment, SvxResId(RID_SVXSTR_FRAMEDIR_SUPER));
     m_xTextDirectionLB->append(SvxFrameDirection::Horizontal_LR_TB, SvxResId(RID_SVXSTR_FRAMEDIR_LTR));
     m_xTextDirectionLB->append(SvxFrameDirection::Horizontal_RL_TB, SvxResId(RID_SVXSTR_FRAMEDIR_RTL));
+
+    // Minimum <= Desired <= Maximum word spacing
+    // apply these modifying the other values, if needed
+    m_xWordSpacing->connect_value_changed(LINK(this, SvxParaAlignTabPage, WordSpacingHdl_Impl));
+    m_xWordSpacingMinimum->connect_value_changed(LINK(this, SvxParaAlignTabPage, WordSpacingMinimumHdl_Impl));
+    m_xWordSpacingMaximum->connect_value_changed(LINK(this, SvxParaAlignTabPage, WordSpacingMaximumHdl_Impl));
+
+    // Minimum <= Desired <= Maximum letter spacing
+    // apply these modifying the other values, if needed
+    m_xLetterSpacing->connect_value_changed(LINK(this, SvxParaAlignTabPage, LetterSpacingHdl_Impl));
+    m_xLetterSpacingMinimum->connect_value_changed(LINK(this, SvxParaAlignTabPage, LetterSpacingMinimumHdl_Impl));
+    m_xLetterSpacingMaximum->connect_value_changed(LINK(this, SvxParaAlignTabPage, LetterSpacingMaximumHdl_Impl));
 }
 
 SvxParaAlignTabPage::~SvxParaAlignTabPage()
@@ -1325,7 +1385,13 @@ bool SvxParaAlignTabPage::FillItemSet( SfxItemSet* rOutSet )
         eAdjust = SvxAdjust::Block;
         bAdj = m_xJustify->get_saved_state() == TRISTATE_FALSE ||
             m_xExpandCB->get_state_changed_from_saved() ||
-            m_xLastLineLB->get_value_changed_from_saved();
+            m_xLastLineLB->get_value_changed_from_saved() ||
+            m_xWordSpacing->get_value_changed_from_saved() ||
+            m_xWordSpacingMinimum->get_value_changed_from_saved() ||
+            m_xWordSpacingMaximum->get_value_changed_from_saved() ||
+            m_xLetterSpacing->get_value_changed_from_saved() ||
+            m_xLetterSpacingMinimum->get_value_changed_from_saved() ||
+            m_xLetterSpacingMaximum->get_value_changed_from_saved();
     }
 
     sal_uInt16 _nWhich = GetWhich( SID_ATTR_PARA_ADJUST );
@@ -1345,6 +1411,11 @@ bool SvxParaAlignTabPage::FillItemSet( SfxItemSet* rOutSet )
         aAdj.SetAdjust( eAdjust );
         aAdj.SetOneWord( eOneWord );
         aAdj.SetLastBlock( eLastBlock );
+        aAdj.SetPropWordSpacing( m_xWordSpacing->get_value(FieldUnit::PERCENT) );
+        aAdj.SetPropWordSpacingMinimum( m_xWordSpacingMinimum->get_value(FieldUnit::PERCENT) );
+        aAdj.SetPropWordSpacingMaximum( m_xWordSpacingMaximum->get_value(FieldUnit::PERCENT) );
+        aAdj.SetPropLetterSpacingMinimum( m_xLetterSpacingMinimum->get_value(FieldUnit::PERCENT) );
+        aAdj.SetPropLetterSpacingMaximum( m_xLetterSpacingMaximum->get_value(FieldUnit::PERCENT) );
         rOutSet->Put( aAdj );
         bModified = true;
     }
@@ -1418,6 +1489,39 @@ void SvxParaAlignTabPage::Reset( const SfxItemSet* rSet )
         }
         m_xExpandCB->set_sensitive(bEnable && nLBSelect == 2);
         m_xExpandCB->set_active(SvxAdjust::Block == rAdj.GetOneWord());
+
+        if (m_xJustify->get_active())
+        {
+            m_xLabelWordSpacing->set_sensitive(true);
+            m_xLabelMinimum->set_sensitive(true);
+            m_xLabelDesired->set_sensitive(true);
+            m_xLabelMaximum->set_sensitive(true);
+            m_xWordSpacing->set_sensitive(true);
+            m_xWordSpacingMinimum->set_sensitive(true);
+            m_xWordSpacingMaximum->set_sensitive(true);
+            m_xWordSpacing->set_value(rAdj.GetPropWordSpacing(), FieldUnit::PERCENT);
+            m_xWordSpacingMinimum->set_value(rAdj.GetPropWordSpacingMinimum(), FieldUnit::PERCENT);
+            m_xWordSpacingMaximum->set_value(rAdj.GetPropWordSpacingMaximum(), FieldUnit::PERCENT);
+            m_xLabelLetterSpacing->set_sensitive(true);
+            // TODO add LetterSpacing (CharKern) and LetterSpacingMinimum
+            m_xLetterSpacingMaximum->set_sensitive(true);
+            m_xLetterSpacingMinimum->set_value(rAdj.GetPropLetterSpacingMinimum(), FieldUnit::PERCENT);
+            m_xLetterSpacingMaximum->set_value(rAdj.GetPropLetterSpacingMaximum(), FieldUnit::PERCENT);
+        }
+        else
+        {
+            m_xLabelWordSpacing->set_sensitive(false);
+            m_xLabelMinimum->set_sensitive(false);
+            m_xLabelDesired->set_sensitive(false);
+            m_xLabelMaximum->set_sensitive(false);
+            m_xWordSpacing->set_sensitive(false);
+            m_xWordSpacingMinimum->set_sensitive(false);
+            m_xWordSpacingMaximum->set_sensitive(false);
+            m_xLabelLetterSpacing->set_sensitive(false);
+            m_xLetterSpacing->set_sensitive(false);
+            m_xLetterSpacingMinimum->set_sensitive(false);
+            m_xLetterSpacingMaximum->set_sensitive(false);
+        }
     }
     else
     {
@@ -1425,6 +1529,17 @@ void SvxParaAlignTabPage::Reset( const SfxItemSet* rSet )
         m_xRight->set_active(false);
         m_xCenter->set_active(false);
         m_xJustify->set_active(false);
+        m_xLabelWordSpacing->set_sensitive(false);
+        m_xLabelMinimum->set_sensitive(false);
+        m_xLabelDesired->set_sensitive(false);
+        m_xLabelMaximum->set_sensitive(false);
+        m_xWordSpacing->set_sensitive(false);
+        m_xWordSpacingMinimum->set_sensitive(false);
+        m_xWordSpacingMaximum->set_sensitive(false);
+        m_xLabelLetterSpacing->set_sensitive(false);
+        m_xLetterSpacing->set_sensitive(false);
+        m_xLetterSpacingMinimum->set_sensitive(false);
+        m_xLetterSpacingMaximum->set_sensitive(false);
     }
     m_xLastLineLB->set_active(nLBSelect);
 
@@ -1482,6 +1597,12 @@ void SvxParaAlignTabPage::Reset( const SfxItemSet* rSet )
     m_xJustify->save_state();
     m_xLastLineLB->save_value();
     m_xExpandCB->save_state();
+    m_xWordSpacing->save_value();
+    m_xWordSpacingMinimum->save_value();
+    m_xWordSpacingMaximum->save_value();
+    m_xLetterSpacing->save_value();
+    m_xLetterSpacingMinimum->save_value();
+    m_xLetterSpacingMaximum->save_value();
 
     UpdateExample_Impl();
 }
@@ -1497,6 +1618,12 @@ void SvxParaAlignTabPage::ChangesApplied()
     m_xJustify->save_state();
     m_xLastLineLB->save_value();
     m_xExpandCB->save_state();
+    m_xWordSpacing->save_value();
+    m_xWordSpacingMinimum->save_value();
+    m_xWordSpacingMaximum->save_value();
+    m_xLetterSpacing->save_value();
+    m_xLetterSpacingMinimum->save_value();
+    m_xLetterSpacingMaximum->save_value();
 }
 
 IMPL_LINK_NOARG(SvxParaAlignTabPage, AlignHdl_Impl, weld::Toggleable&, void)
@@ -1504,6 +1631,19 @@ IMPL_LINK_NOARG(SvxParaAlignTabPage, AlignHdl_Impl, weld::Toggleable&, void)
     bool bJustify = m_xJustify->get_active();
     m_xLastLineFT->set_sensitive(bJustify);
     m_xLastLineLB->set_sensitive(bJustify);
+    m_xLabelWordSpacing->set_sensitive(bJustify);
+    m_xLabelMinimum->set_sensitive(bJustify);
+    m_xLabelDesired->set_sensitive(bJustify);
+    m_xLabelMaximum->set_sensitive(bJustify);
+    m_xWordSpacing->set_sensitive(bJustify);
+    m_xWordSpacingMinimum->set_sensitive(bJustify);
+    m_xWordSpacingMaximum->set_sensitive(bJustify);
+    m_xLabelLetterSpacing->set_sensitive(bJustify);
+    // TODO implement LetterSpacing and LetterSpaceMinimum
+    m_xLetterSpacing->set_sensitive(false);
+    m_xLetterSpacingMinimum->set_sensitive(false);
+    m_xLetterSpacingMaximum->set_sensitive(bJustify);
+
     bool bLastLineIsBlock = m_xLastLineLB->get_active() == 2;
     m_xExpandCB->set_sensitive(bJustify && bLastLineIsBlock);
     //set last line listbox to entry position 0 if not enabled
@@ -1529,6 +1669,60 @@ IMPL_LINK_NOARG(SvxParaAlignTabPage, LastLineHdl_Impl, weld::ComboBox&, void)
 IMPL_LINK_NOARG(SvxParaAlignTabPage, TextDirectionHdl_Impl, weld::ComboBox&, void)
 {
     UpdateExample_Impl();
+}
+
+IMPL_LINK_NOARG(SvxParaAlignTabPage, WordSpacingHdl_Impl, weld::MetricSpinButton&, void)
+{
+    sal_Int16 nDesired = m_xWordSpacing->get_value(FieldUnit::PERCENT);
+    if (nDesired < m_xWordSpacingMinimum->get_value(FieldUnit::PERCENT))
+        m_xWordSpacingMinimum->set_value(nDesired, FieldUnit::PERCENT);
+    if (nDesired > m_xWordSpacingMaximum->get_value(FieldUnit::PERCENT))
+        m_xWordSpacingMaximum->set_value(nDesired, FieldUnit::PERCENT);
+}
+
+IMPL_LINK_NOARG(SvxParaAlignTabPage, WordSpacingMinimumHdl_Impl, weld::MetricSpinButton&, void)
+{
+    sal_Int16 nMinimum = m_xWordSpacingMinimum->get_value(FieldUnit::PERCENT);
+    if (nMinimum > m_xWordSpacing->get_value(FieldUnit::PERCENT))
+        m_xWordSpacing->set_value(nMinimum, FieldUnit::PERCENT);
+    if (nMinimum > m_xWordSpacingMaximum->get_value(FieldUnit::PERCENT))
+        m_xWordSpacingMaximum->set_value(nMinimum, FieldUnit::PERCENT);
+}
+
+IMPL_LINK_NOARG(SvxParaAlignTabPage, WordSpacingMaximumHdl_Impl, weld::MetricSpinButton&, void)
+{
+    sal_Int16 nMaximum = m_xWordSpacingMaximum->get_value(FieldUnit::PERCENT);
+    if (nMaximum < m_xWordSpacingMinimum->get_value(FieldUnit::PERCENT))
+        m_xWordSpacingMinimum->set_value(nMaximum, FieldUnit::PERCENT);
+    if (nMaximum < m_xWordSpacing->get_value(FieldUnit::PERCENT))
+        m_xWordSpacing->set_value(nMaximum, FieldUnit::PERCENT);
+}
+
+IMPL_LINK_NOARG(SvxParaAlignTabPage, LetterSpacingHdl_Impl, weld::MetricSpinButton&, void)
+{
+    sal_Int16 nDesired = m_xLetterSpacing->get_value(FieldUnit::PERCENT);
+    if (nDesired < m_xLetterSpacingMinimum->get_value(FieldUnit::PERCENT))
+        m_xLetterSpacingMinimum->set_value(nDesired, FieldUnit::PERCENT);
+    if (nDesired > m_xLetterSpacingMaximum->get_value(FieldUnit::PERCENT))
+        m_xLetterSpacingMaximum->set_value(nDesired, FieldUnit::PERCENT);
+}
+
+IMPL_LINK_NOARG(SvxParaAlignTabPage, LetterSpacingMinimumHdl_Impl, weld::MetricSpinButton&, void)
+{
+    sal_Int16 nMinimum = m_xLetterSpacingMinimum->get_value(FieldUnit::PERCENT);
+    if (nMinimum > m_xLetterSpacing->get_value(FieldUnit::PERCENT))
+        m_xLetterSpacing->set_value(nMinimum, FieldUnit::PERCENT);
+    if (nMinimum > m_xLetterSpacingMaximum->get_value(FieldUnit::PERCENT))
+        m_xLetterSpacingMaximum->set_value(nMinimum, FieldUnit::PERCENT);
+}
+
+IMPL_LINK_NOARG(SvxParaAlignTabPage, LetterSpacingMaximumHdl_Impl, weld::MetricSpinButton&, void)
+{
+    sal_Int16 nMaximum = m_xLetterSpacingMaximum->get_value(FieldUnit::PERCENT);
+    if (nMaximum < m_xLetterSpacingMinimum->get_value(FieldUnit::PERCENT))
+        m_xLetterSpacingMinimum->set_value(nMaximum, FieldUnit::PERCENT);
+    if (nMaximum < m_xLetterSpacing->get_value(FieldUnit::PERCENT))
+        m_xLetterSpacing->set_value(nMaximum, FieldUnit::PERCENT);
 }
 
 void SvxParaAlignTabPage::UpdateExample_Impl()
@@ -1596,8 +1790,8 @@ void SvxParaAlignTabPage::EnableSdrVertAlign()
 {
     m_bSdrVertAlign = true;
 
-    m_xVertAlignLB->remove_id("0");
-    m_xVertAlignLB->remove_id("1");
+    m_xVertAlignLB->remove_id(u"0"_ustr);
+    m_xVertAlignLB->remove_id(u"1"_ustr);
     m_xVertAlign->set_label(m_xVertAlignSdr->get_label());
 }
 
@@ -1623,22 +1817,34 @@ bool SvxExtParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
     if ( m_xHyphenBox->get_state_changed_from_saved() ||
          m_xHyphenNoCapsBox->get_state_changed_from_saved() ||
          m_xHyphenNoLastWordBox->get_state_changed_from_saved() ||
+         m_xAcrossMoveLineBox->get_state_changed_from_saved() ||
          m_xExtHyphenBeforeBox->get_value_changed_from_saved() ||
          m_xExtHyphenAfterBox->get_value_changed_from_saved() ||
+         m_xExtCompoundHyphenBeforeBox->get_value_changed_from_saved() ||
          m_xMaxHyphenEdit->get_value_changed_from_saved() ||
          m_xMinWordLength->get_value_changed_from_saved() ||
-         m_aHyphenZone.get_value_changed_from_saved() )
+         m_aHyphenZone.get_value_changed_from_saved() ||
+         m_aParagraphEndZone.get_value_changed_from_saved() ||
+         m_aColumnEndZone.get_value_changed_from_saved() ||
+         m_aPageEndZone.get_value_changed_from_saved() ||
+         m_aSpreadEndZone.get_value_changed_from_saved() ||
+         m_xAcrossParagraphBox->get_state_changed_from_saved() ||
+         m_xAcrossColumnBox->get_state_changed_from_saved() ||
+         m_xAcrossPageBox->get_state_changed_from_saved() ||
+         m_xAcrossSpreadBox->get_state_changed_from_saved() )
     {
         SvxHyphenZoneItem aHyphen(
             static_cast<const SvxHyphenZoneItem&>(GetItemSet().Get( _nWhich )) );
         aHyphen.SetHyphen( eHyphenState == TRISTATE_TRUE );
-        aHyphen.SetNoCapsHyphenation(m_xHyphenNoCapsBox->get_state() == TRISTATE_TRUE);
-        aHyphen.SetNoLastWordHyphenation(m_xHyphenNoLastWordBox->get_state() == TRISTATE_TRUE);
+        aHyphen.SetNoCapsHyphenation(m_xHyphenNoCapsBox->get_state() != TRISTATE_TRUE);
+        aHyphen.SetNoLastWordHyphenation(m_xHyphenNoLastWordBox->get_state() != TRISTATE_TRUE);
+        aHyphen.SetKeepLine(m_xAcrossMoveLineBox->get_state() != TRISTATE_TRUE);
 
         if ( eHyphenState == TRISTATE_TRUE )
         {
             aHyphen.GetMinLead() = static_cast<sal_uInt8>(m_xExtHyphenBeforeBox->get_value());
             aHyphen.GetMinTrail() = static_cast<sal_uInt8>(m_xExtHyphenAfterBox->get_value());
+            aHyphen.GetCompoundMinLead() = static_cast<sal_uInt8>(m_xExtCompoundHyphenBeforeBox->get_value());
             aHyphen.GetMinWordLength() = static_cast<sal_uInt8>(m_xMinWordLength->get_value());
         }
         aHyphen.GetMaxHyphens() = static_cast<sal_uInt8>(m_xMaxHyphenEdit->get_value());
@@ -1647,6 +1853,49 @@ bool SvxExtParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
         DBG_ASSERT( pPool, "Where is the pool?" );
         MapUnit eUnit = pPool->GetMetric( _nWhich );
         aHyphen.GetTextHyphenZone() = static_cast<sal_uInt16>(m_aHyphenZone.GetCoreValue(eUnit));
+        aHyphen.GetTextHyphenZoneAlways() = static_cast<sal_uInt16>(m_aParagraphEndZone.GetCoreValue(eUnit));
+        aHyphen.GetTextHyphenZoneColumn() = static_cast<sal_uInt16>(m_aColumnEndZone.GetCoreValue(eUnit));
+        aHyphen.GetTextHyphenZonePage() = static_cast<sal_uInt16>(m_aPageEndZone.GetCoreValue(eUnit));
+        aHyphen.GetTextHyphenZoneSpread() = static_cast<sal_uInt16>(m_aSpreadEndZone.GetCoreValue(eUnit));
+        aHyphen.SetHyphen( eHyphenState == TRISTATE_TRUE );
+        aHyphen.SetNoLastWordHyphenation(m_xHyphenNoLastWordBox->get_state() != TRISTATE_TRUE);
+        const TriState eAcrossParagraphState = m_xAcrossParagraphBox->get_state();
+        const TriState eAcrossColumnState = m_xAcrossColumnBox->get_state();
+        const TriState eAcrossPageState = m_xAcrossPageBox->get_state();
+        const TriState eAcrossSpreadState = m_xAcrossSpreadBox->get_state();
+        aHyphen.SetKeep( eAcrossSpreadState != TRISTATE_TRUE );
+        if ( eAcrossSpreadState == TRISTATE_TRUE )
+        {
+            // hyphenate across column, page and spread -> ParaHyphenationKeep = false and
+            // set default value 3 (COLUMN)
+            aHyphen.GetKeepType() =
+                    static_cast<sal_uInt8>(css::text::ParagraphHyphenationKeepType::COLUMN);
+        }
+        else if ( eAcrossPageState == TRISTATE_TRUE )
+        {
+            // hyphenate across column and page, but not spread  -> 1 (SPREAD)
+            aHyphen.GetKeepType() =
+                    static_cast<sal_uInt8>(css::text::ParagraphHyphenationKeepType::SPREAD);
+        }
+        else if ( eAcrossColumnState == TRISTATE_TRUE )
+        {
+            // hyphenate across column, but not page and spread  -> 2 (PAGE)
+            aHyphen.GetKeepType() =
+                    static_cast<sal_uInt8>(css::text::ParagraphHyphenationKeepType::PAGE);
+        }
+        else if ( eAcrossParagraphState == TRISTATE_TRUE )
+        {
+            // hyphenate across last full paragraph line, but not page and spread  -> 2 (PAGE)
+            aHyphen.GetKeepType() =
+                    static_cast<sal_uInt8>(css::text::ParagraphHyphenationKeepType::COLUMN);
+        }
+        else
+        {
+            // don't hyphenate across last full paragraph line,
+            // also column, page and spread  -> 4 (COLUMN)
+            aHyphen.GetKeepType() =
+                    static_cast<sal_uInt8>(css::text::ParagraphHyphenationKeepType::ALWAYS);
+        }
 
         if ( !pOld ||
             *static_cast<const SvxHyphenZoneItem*>(pOld) != aHyphen ||
@@ -1774,14 +2023,8 @@ bool SvxExtParagraphTabPage::FillItemSet( SfxItemSet* rOutSet )
 
     if (m_xAllowSplitBox->get_state_changed_from_saved())
     {
-        pOld = GetOldItem( *rOutSet, SID_ATTR_PARA_SPLIT );
-
-        if ( !pOld || static_cast<const SvxFormatSplitItem*>(pOld)->GetValue() !=
-                      ( eState == TRISTATE_FALSE ) )
-        {
-            rOutSet->Put( SvxFormatSplitItem( eState == TRISTATE_FALSE, _nWhich ) );
-            bModified = true;
-        }
+        rOutSet->Put( SvxFormatSplitItem( eState == TRISTATE_TRUE, _nWhich ) );
+        bModified = true;
     }
 
     // keep paragraphs
@@ -1857,35 +2100,97 @@ void SvxExtParagraphTabPage::Reset( const SfxItemSet* rSet )
 
         bIsHyphen = rHyphen.IsHyphen();
         m_xHyphenBox->set_state(bIsHyphen ? TRISTATE_TRUE : TRISTATE_FALSE);
-        m_xHyphenNoCapsBox->set_state(rHyphen.IsNoCapsHyphenation() ? TRISTATE_TRUE : TRISTATE_FALSE);
-        m_xHyphenNoLastWordBox->set_state(rHyphen.IsNoLastWordHyphenation() ? TRISTATE_TRUE : TRISTATE_FALSE);
-
+        m_xHyphenNoCapsBox->set_state(rHyphen.IsNoCapsHyphenation() ? TRISTATE_FALSE : TRISTATE_TRUE);
+        m_xHyphenNoLastWordBox->set_state(rHyphen.IsNoLastWordHyphenation() ? TRISTATE_FALSE : TRISTATE_TRUE);
         m_xExtHyphenBeforeBox->set_value(rHyphen.GetMinLead());
         m_xExtHyphenAfterBox->set_value(rHyphen.GetMinTrail());
+        m_xExtCompoundHyphenBeforeBox->set_value(rHyphen.GetCompoundMinLead());
         m_xMaxHyphenEdit->set_value(rHyphen.GetMaxHyphens());
         m_xMinWordLength->set_value(rHyphen.GetMinWordLength());
         m_aHyphenZone.SetFieldUnit(eFUnit);
         m_aHyphenZone.SetMetricValue(rHyphen.GetTextHyphenZone(), MapUnit::MapTwip);
+        m_aParagraphEndZone.SetFieldUnit(eFUnit);
+        m_aParagraphEndZone.SetMetricValue(rHyphen.GetTextHyphenZoneAlways(), MapUnit::MapTwip);
+        // 0 means inheritance, mark this with empty box
+        if ( !rHyphen.GetTextHyphenZoneAlways() )
+            m_aParagraphEndZone.set_text(OUString());
+        m_aColumnEndZone.SetFieldUnit(eFUnit);
+        m_aColumnEndZone.SetMetricValue(rHyphen.GetTextHyphenZoneColumn(), MapUnit::MapTwip);
+        // 0 means inheritance, mark this with empty box
+        if ( !rHyphen.GetTextHyphenZoneColumn() )
+            m_aColumnEndZone.set_text(OUString());
+        m_aPageEndZone.SetFieldUnit(eFUnit);
+        m_aPageEndZone.SetMetricValue(rHyphen.GetTextHyphenZonePage(), MapUnit::MapTwip);
+        // 0 means inheritance, mark this with empty box
+        if ( !rHyphen.GetTextHyphenZonePage() )
+            m_aPageEndZone.set_text(OUString());
+        m_aSpreadEndZone.SetFieldUnit(eFUnit);
+        m_aSpreadEndZone.SetMetricValue(rHyphen.GetTextHyphenZoneSpread(), MapUnit::MapTwip);
+        // 0 means inheritance, mark this with empty box
+        if ( !rHyphen.GetTextHyphenZoneSpread() )
+            m_aSpreadEndZone.set_text(OUString());
+        m_xAcrossParagraphBox->set_state(!rHyphen.IsKeep() || rHyphen.GetKeepType() < 4 ? TRISTATE_TRUE : TRISTATE_FALSE);
+        m_xAcrossColumnBox->set_state(!rHyphen.IsKeep() || rHyphen.GetKeepType() < 3 ? TRISTATE_TRUE : TRISTATE_FALSE);
+        m_xAcrossPageBox->set_state(!rHyphen.IsKeep() || rHyphen.GetKeepType() < 2 ? TRISTATE_TRUE : TRISTATE_FALSE);
+        m_xAcrossSpreadBox->set_state(!rHyphen.IsKeep() || rHyphen.GetKeepType() == 0 ? TRISTATE_TRUE : TRISTATE_FALSE);
+        // always disable MoveLine, if hyphenation is forbidden across spreads
+        m_xAcrossMoveLineBox->set_state( m_xAcrossSpreadBox->get_state() == TRISTATE_TRUE || rHyphen.IsKeepLine() ? TRISTATE_FALSE : TRISTATE_TRUE);
+        aAcrossParagraphState.bTriStateEnabled = false;
+        aAcrossColumnState.bTriStateEnabled = false;
+        aAcrossPageState.bTriStateEnabled = false;
+        aAcrossSpreadState.bTriStateEnabled = false;
     }
     else
     {
         m_xHyphenBox->set_state(TRISTATE_INDET);
         m_xHyphenNoCapsBox->set_state(TRISTATE_INDET);
         m_xHyphenNoLastWordBox->set_state(TRISTATE_INDET);
+        m_xAcrossMoveLineBox->set_state(TRISTATE_INDET);
     }
     bool bEnable = bItemAvailable && bIsHyphen;
     m_xHyphenNoCapsBox->set_sensitive(bEnable);
     m_xHyphenNoLastWordBox->set_sensitive(bEnable);
     m_xExtHyphenBeforeBox->set_sensitive(bEnable);
     m_xExtHyphenAfterBox->set_sensitive(bEnable);
+    m_xExtCompoundHyphenBeforeBox->set_sensitive(bEnable);
     m_xBeforeText->set_sensitive(bEnable);
     m_xAfterText->set_sensitive(bEnable);
+    m_xCompoundBeforeText->set_sensitive(bEnable);
     m_xMaxHyphenLabel->set_sensitive(bEnable);
     m_xMaxHyphenEdit->set_sensitive(bEnable);
     m_xMinWordLabel->set_sensitive(bEnable);
     m_xMinWordLength->set_sensitive(bEnable);
     m_xHyphenZoneLabel->set_sensitive(bEnable);
     m_aHyphenZone.set_sensitive(bEnable);
+    m_xParagraphEndZoneLabel->set_sensitive(bEnable);
+    m_aParagraphEndZone.set_sensitive(bEnable);
+    m_xColumnEndZoneLabel->set_sensitive(bEnable);
+    m_aColumnEndZone.set_sensitive(bEnable);
+    m_xPageEndZoneLabel->set_sensitive(bEnable);
+    m_aPageEndZone.set_sensitive(bEnable);
+    m_xSpreadEndZoneLabel->set_sensitive(bEnable);
+    m_aSpreadEndZone.set_sensitive(bEnable);
+    m_xAcrossText->set_sensitive(bEnable);
+    m_xAcrossParagraphBox->set_sensitive(bEnable);
+    m_xAcrossColumnBox->set_sensitive(bEnable);
+    m_xAcrossPageBox->set_sensitive(bEnable);
+    m_xAcrossSpreadBox->set_sensitive(bEnable);
+    // gray out end zones, if hyphenation across is disabled
+    bool bAcross = bEnable && m_xAcrossParagraphBox->get_state() == TRISTATE_TRUE;
+    m_xParagraphEndZoneLabel->set_sensitive(bAcross);
+    m_aParagraphEndZone.set_sensitive(bAcross);
+    bAcross = bEnable && m_xAcrossColumnBox->get_state() == TRISTATE_TRUE;
+    m_xColumnEndZoneLabel->set_sensitive(bAcross);
+    m_aColumnEndZone.set_sensitive(bAcross);
+    bAcross = bEnable && m_xAcrossPageBox->get_state() == TRISTATE_TRUE;
+    m_xPageEndZoneLabel->set_sensitive(bAcross);
+    m_aPageEndZone.set_sensitive(bAcross);
+    bAcross = bEnable && m_xAcrossSpreadBox->get_state() == TRISTATE_TRUE;
+    m_xSpreadEndZoneLabel->set_sensitive(bAcross);
+    m_aSpreadEndZone.set_sensitive(bAcross);
+    // always gray out MoveLine, if hyphenation is forbidden across spreads
+    bool bAcrossSpread = m_xAcrossSpreadBox->get_state() == TRISTATE_TRUE;
+    m_xAcrossMoveLineBox->set_sensitive( bEnable && !bAcrossSpread );
 
     switch (rSet->GetItemState(SID_ATTR_PARA_PAGENUM))
     {
@@ -1894,11 +2199,12 @@ void SvxExtParagraphTabPage::Reset( const SfxItemSet* rSet )
             aPageNumState.bTriStateEnabled = false;
             m_xPageNumBox->set_state(TRISTATE_TRUE);
             SfxUInt16Item const*const pItem(rSet->GetItem<SfxUInt16Item>(SID_ATTR_PARA_PAGENUM));
+            assert(pItem && "has to exist due to GetItemState");
             const sal_uInt16 nPageNum(pItem->GetValue());
             m_xPagenumEdit->set_value(nPageNum);
             break;
         }
-        case SfxItemState::DONTCARE:
+        case SfxItemState::INVALID:
         {
             aPageNumState.bTriStateEnabled = true;
             m_xPageNumBox->set_state(TRISTATE_INDET);
@@ -1956,7 +2262,7 @@ void SvxExtParagraphTabPage::Reset( const SfxItemSet* rSet )
                 m_xApplyCollBtn->set_state(TRISTATE_FALSE);
             }
         }
-        else if ( SfxItemState::DONTCARE == eItemState )
+        else if ( SfxItemState::INVALID == eItemState )
         {
             aApplyCollState.bTriStateEnabled = true;
             m_xApplyCollBtn->set_state(TRISTATE_INDET);
@@ -2028,7 +2334,7 @@ void SvxExtParagraphTabPage::Reset( const SfxItemSet* rSet )
                 m_xBreakTypeLB->set_active(nType);
                 m_xBreakPositionLB->set_active(nPosition);
             }
-            else if ( SfxItemState::DONTCARE == eItemState )
+            else if ( SfxItemState::INVALID == eItemState )
                 m_xPageBreakBox->set_state(TRISTATE_INDET);
             else
             {
@@ -2058,7 +2364,7 @@ void SvxExtParagraphTabPage::Reset( const SfxItemSet* rSet )
         else
             m_xKeepParaBox->set_state(TRISTATE_FALSE);
     }
-    else if ( SfxItemState::DONTCARE == eItemState )
+    else if ( SfxItemState::INVALID == eItemState )
         m_xKeepParaBox->set_state(TRISTATE_INDET);
     else
         m_xKeepParaBox->set_sensitive(false);
@@ -2098,7 +2404,7 @@ void SvxExtParagraphTabPage::Reset( const SfxItemSet* rSet )
             m_xWidowBox->set_state(_bEnable ? TRISTATE_TRUE : TRISTATE_FALSE);
             m_xWidowRowNo->set_sensitive(_bEnable);
         }
-        else if ( SfxItemState::DONTCARE == eTmpState )
+        else if ( SfxItemState::INVALID == eTmpState )
             m_xWidowBox->set_state( TRISTATE_INDET );
         else
             m_xWidowBox->set_sensitive(false);
@@ -2120,13 +2426,13 @@ void SvxExtParagraphTabPage::Reset( const SfxItemSet* rSet )
             m_xOrphanRowLabel->set_sensitive(_bEnable);
 
         }
-        else if ( SfxItemState::DONTCARE == eTmpState )
+        else if ( SfxItemState::INVALID == eTmpState )
             m_xOrphanBox->set_state(TRISTATE_INDET);
         else
             m_xOrphanBox->set_sensitive(false);
         aOrphanState.eState = m_xOrphanBox->get_state();
     }
-    else if ( SfxItemState::DONTCARE == eItemState )
+    else if ( SfxItemState::INVALID == eItemState )
         m_xAllowSplitBox->set_state(TRISTATE_INDET);
     else
         m_xAllowSplitBox->set_sensitive(false);
@@ -2142,11 +2448,21 @@ void SvxExtParagraphTabPage::ChangesApplied()
     m_xHyphenBox->save_state();
     m_xHyphenNoCapsBox->save_state();
     m_xHyphenNoLastWordBox->save_state();
+    m_xAcrossMoveLineBox->save_state();
     m_xExtHyphenBeforeBox->save_value();
     m_xExtHyphenAfterBox->save_value();
+    m_xExtCompoundHyphenBeforeBox->save_value();
     m_xMaxHyphenEdit->save_value();
     m_xMinWordLength->save_value();
     m_aHyphenZone.save_value();
+    m_aParagraphEndZone.save_value();
+    m_aColumnEndZone.save_value();
+    m_aPageEndZone.save_value();
+    m_aSpreadEndZone.save_value();
+    m_xAcrossParagraphBox->save_state();
+    m_xAcrossColumnBox->save_state();
+    m_xAcrossPageBox->save_state();
+    m_xAcrossSpreadBox->save_state();
     m_xPageBreakBox->save_state();
     m_xBreakPositionLB->save_value();
     m_xBreakTypeLB->save_value();
@@ -2183,43 +2499,60 @@ void SvxExtParagraphTabPage::DisablePageBreak()
 }
 
 SvxExtParagraphTabPage::SvxExtParagraphTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rAttr)
-    : SfxTabPage(pPage, pController, "cui/ui/textflowpage.ui", "TextFlowPage", &rAttr)
+    : SfxTabPage(pPage, pController, u"cui/ui/textflowpage.ui"_ustr, u"TextFlowPage"_ustr, &rAttr)
     , bPageBreak(true)
     , bHtmlMode(false)
     , nStdPos(0)
     // Hyphenation
-    , m_xHyphenBox(m_xBuilder->weld_check_button("checkAuto"))
-    , m_xHyphenNoCapsBox(m_xBuilder->weld_check_button("checkNoCaps"))
-    , m_xHyphenNoLastWordBox(m_xBuilder->weld_check_button("checkNoLastWord"))
-    , m_xBeforeText(m_xBuilder->weld_label("labelLineBegin"))
-    , m_xExtHyphenBeforeBox(m_xBuilder->weld_spin_button("spinLineEnd"))
-    , m_xAfterText(m_xBuilder->weld_label("labelLineEnd"))
-    , m_xExtHyphenAfterBox(m_xBuilder->weld_spin_button("spinLineBegin"))
-    , m_xMaxHyphenLabel(m_xBuilder->weld_label("labelMaxNum"))
-    , m_xMaxHyphenEdit(m_xBuilder->weld_spin_button("spinMaxNum"))
-    , m_xMinWordLabel(m_xBuilder->weld_label("labelMinLen"))
-    , m_xMinWordLength(m_xBuilder->weld_spin_button("spinMinLen"))
-    , m_xHyphenZoneLabel(m_xBuilder->weld_label("labelHyphenZone"))
-    , m_aHyphenZone(m_xBuilder->weld_metric_spin_button("spinHyphenZone", FieldUnit::CM))
+    , m_xHyphenBox(m_xBuilder->weld_check_button(u"checkAuto"_ustr))
+    , m_xHyphenNoCapsBox(m_xBuilder->weld_check_button(u"checkNoCaps"_ustr))
+    , m_xHyphenNoLastWordBox(m_xBuilder->weld_check_button(u"checkNoLastWord"_ustr))
+    , m_xBeforeText(m_xBuilder->weld_label(u"labelLineBegin"_ustr))
+    , m_xExtHyphenBeforeBox(m_xBuilder->weld_spin_button(u"spinLineEnd"_ustr))
+    , m_xAfterText(m_xBuilder->weld_label(u"labelLineEnd"_ustr))
+    , m_xExtHyphenAfterBox(m_xBuilder->weld_spin_button(u"spinLineBegin"_ustr))
+    , m_xCompoundBeforeText(m_xBuilder->weld_label(u"labelCompoundLineEnd"_ustr))
+    , m_xExtCompoundHyphenBeforeBox(m_xBuilder->weld_spin_button(u"spinCompoundLineEnd"_ustr))
+    , m_xMaxHyphenLabel(m_xBuilder->weld_label(u"labelMaxNum"_ustr))
+    , m_xMaxHyphenEdit(m_xBuilder->weld_spin_button(u"spinMaxNum"_ustr))
+    , m_xMinWordLabel(m_xBuilder->weld_label(u"labelMinLen"_ustr))
+    , m_xMinWordLength(m_xBuilder->weld_spin_button(u"spinMinLen"_ustr))
+    , m_xHyphenZoneLabel(m_xBuilder->weld_label(u"labelHyphenZone"_ustr))
+    , m_aHyphenZone(m_xBuilder->weld_metric_spin_button(u"spinHyphenZone"_ustr, FieldUnit::CM))
+    , m_xParagraphEndZoneLabel(m_xBuilder->weld_label(u"labelParagraphEndZone"_ustr))
+    , m_aParagraphEndZone(m_xBuilder->weld_metric_spin_button(u"spinParagraphEndZone"_ustr, FieldUnit::CM))
+    , m_xColumnEndZoneLabel(m_xBuilder->weld_label(u"labelColumnEndZone"_ustr))
+    , m_aColumnEndZone(m_xBuilder->weld_metric_spin_button(u"spinColumnEndZone"_ustr, FieldUnit::CM))
+    , m_xPageEndZoneLabel(m_xBuilder->weld_label(u"labelPageEndZone"_ustr))
+    , m_aPageEndZone(m_xBuilder->weld_metric_spin_button(u"spinPageEndZone"_ustr, FieldUnit::CM))
+    , m_xSpreadEndZoneLabel(m_xBuilder->weld_label(u"labelSpreadEndZone"_ustr))
+    , m_aSpreadEndZone(m_xBuilder->weld_metric_spin_button(u"spinSpreadEndZone"_ustr, FieldUnit::CM))
     //Page break
-    , m_xPageBreakBox(m_xBuilder->weld_check_button("checkInsert"))
-    , m_xBreakTypeFT(m_xBuilder->weld_label("labelType"))
-    , m_xBreakTypeLB(m_xBuilder->weld_combo_box("comboBreakType"))
-    , m_xBreakPositionFT(m_xBuilder->weld_label("labelPosition"))
-    , m_xBreakPositionLB(m_xBuilder->weld_combo_box("comboBreakPosition"))
-    , m_xApplyCollBtn(m_xBuilder->weld_check_button("checkPageStyle"))
-    , m_xApplyCollBox(m_xBuilder->weld_combo_box("comboPageStyle"))
-    , m_xPageNumBox(m_xBuilder->weld_check_button("labelPageNum"))
-    , m_xPagenumEdit(m_xBuilder->weld_spin_button("spinPageNumber"))
+    , m_xPageBreakBox(m_xBuilder->weld_check_button(u"checkInsert"_ustr))
+    , m_xBreakTypeFT(m_xBuilder->weld_label(u"labelType"_ustr))
+    , m_xBreakTypeLB(m_xBuilder->weld_combo_box(u"comboBreakType"_ustr))
+    , m_xBreakPositionFT(m_xBuilder->weld_label(u"labelPosition"_ustr))
+    , m_xBreakPositionLB(m_xBuilder->weld_combo_box(u"comboBreakPosition"_ustr))
+    , m_xApplyCollBtn(m_xBuilder->weld_check_button(u"checkPageStyle"_ustr))
+    , m_xApplyCollBox(m_xBuilder->weld_combo_box(u"comboPageStyle"_ustr))
+    , m_xPageNumBox(m_xBuilder->weld_check_button(u"labelPageNum"_ustr))
+    , m_xPagenumEdit(m_xBuilder->weld_spin_button(u"spinPageNumber"_ustr))
     // Options
-    , m_xAllowSplitBox(m_xBuilder->weld_check_button("checkSplitPara"))
-    , m_xKeepParaBox(m_xBuilder->weld_check_button("checkKeepPara"))
-    , m_xOrphanBox(m_xBuilder->weld_check_button("checkOrphan"))
-    , m_xOrphanRowNo(m_xBuilder->weld_spin_button("spinOrphan"))
-    , m_xOrphanRowLabel(m_xBuilder->weld_label("labelOrphan"))
-    , m_xWidowBox(m_xBuilder->weld_check_button("checkWidow"))
-    , m_xWidowRowNo(m_xBuilder->weld_spin_button("spinWidow"))
-    , m_xWidowRowLabel(m_xBuilder->weld_label("labelWidow"))
+    , m_xAllowSplitBox(m_xBuilder->weld_check_button(u"checkSplitPara"_ustr))
+    , m_xKeepParaBox(m_xBuilder->weld_check_button(u"checkKeepPara"_ustr))
+    , m_xOrphanBox(m_xBuilder->weld_check_button(u"checkOrphan"_ustr))
+    , m_xOrphanRowNo(m_xBuilder->weld_spin_button(u"spinOrphan"_ustr))
+    , m_xOrphanRowLabel(m_xBuilder->weld_label(u"labelOrphan"_ustr))
+    , m_xWidowBox(m_xBuilder->weld_check_button(u"checkWidow"_ustr))
+    , m_xWidowRowNo(m_xBuilder->weld_spin_button(u"spinWidow"_ustr))
+    , m_xWidowRowLabel(m_xBuilder->weld_label(u"labelWidow"_ustr))
+    // Avoid hyphenation across
+    , m_xAcrossText(m_xBuilder->weld_label(u"labelHyphenAcross"_ustr))
+    , m_xAcrossParagraphBox(m_xBuilder->weld_check_button(u"checkAcrossParagraph"_ustr))
+    , m_xAcrossColumnBox(m_xBuilder->weld_check_button(u"checkAcrossColumn"_ustr))
+    , m_xAcrossPageBox(m_xBuilder->weld_check_button(u"checkAcrossPage"_ustr))
+    , m_xAcrossSpreadBox(m_xBuilder->weld_check_button(u"checkAcrossSpread"_ustr))
+    , m_xAcrossMoveLineBox(m_xBuilder->weld_check_button(u"checkMoveLine"_ustr))
 {
     // this page needs ExchangeSupport
     SetExchangeSupport();
@@ -2234,6 +2567,10 @@ SvxExtParagraphTabPage::SvxExtParagraphTabPage(weld::Container* pPage, weld::Dia
     m_xBreakPositionLB->connect_changed(LINK(this, SvxExtParagraphTabPage, PageBreakPosHdl_Impl));
     m_xPageNumBox->connect_toggled(LINK(this, SvxExtParagraphTabPage, PageNumBoxClickHdl_Impl));
     m_xKeepParaBox->connect_toggled(LINK(this, SvxExtParagraphTabPage, KeepParaBoxClickHdl_Impl));
+    m_xAcrossParagraphBox->connect_toggled(LINK(this, SvxExtParagraphTabPage, AcrossParagraphHdl_Impl));
+    m_xAcrossColumnBox->connect_toggled(LINK(this, SvxExtParagraphTabPage, AcrossColumnHdl_Impl));
+    m_xAcrossPageBox->connect_toggled(LINK(this, SvxExtParagraphTabPage, AcrossPageHdl_Impl));
+    m_xAcrossSpreadBox->connect_toggled(LINK(this, SvxExtParagraphTabPage, AcrossSpreadHdl_Impl));
 
     if (SfxObjectShell* pSh = SfxObjectShell::Current())
     {
@@ -2262,18 +2599,34 @@ SvxExtParagraphTabPage::SvxExtParagraphTabPage(weld::Container* pPage, weld::Dia
     m_xHyphenBox->set_sensitive(false);
     m_xHyphenNoCapsBox->set_sensitive(false);
     m_xHyphenNoLastWordBox->set_sensitive(false);
+    m_xAcrossMoveLineBox->set_sensitive(false);
     m_xBeforeText->set_sensitive(false);
     m_xExtHyphenBeforeBox->set_sensitive(false);
     m_xAfterText->set_sensitive(false);
     m_xExtHyphenAfterBox->set_sensitive(false);
+    m_xCompoundBeforeText->set_sensitive(false);
+    m_xExtCompoundHyphenBeforeBox->set_sensitive(false);
     m_xMaxHyphenLabel->set_sensitive(false);
     m_xMaxHyphenEdit->set_sensitive(false);
     m_xMinWordLabel->set_sensitive(false);
     m_xMinWordLength->set_sensitive(false);
     m_xHyphenZoneLabel->set_sensitive(false);
     m_aHyphenZone.set_sensitive(false);
+    m_xParagraphEndZoneLabel->set_sensitive(false);
+    m_aParagraphEndZone.set_sensitive(false);
+    m_xColumnEndZoneLabel->set_sensitive(false);
+    m_aColumnEndZone.set_sensitive(false);
+    m_xPageEndZoneLabel->set_sensitive(false);
+    m_aPageEndZone.set_sensitive(false);
+    m_xSpreadEndZoneLabel->set_sensitive(false);
+    m_aSpreadEndZone.set_sensitive(false);
     m_xPageNumBox->set_sensitive(false);
     m_xPagenumEdit->set_sensitive(false);
+    m_xAcrossText->set_sensitive(false);
+    m_xAcrossParagraphBox->set_sensitive(false);
+    m_xAcrossColumnBox->set_sensitive(false);
+    m_xAcrossPageBox->set_sensitive(false);
+    m_xAcrossSpreadBox->set_sensitive(false);
     // no column break in HTML
     m_xBreakTypeLB->remove(1);
 }
@@ -2322,9 +2675,9 @@ void SvxExtParagraphTabPage::PageBreakHdl()
     }
 }
 
-IMPL_LINK(SvxExtParagraphTabPage, PageBreakHdl_Impl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, PageBreakHdl_Impl, weld::Toggleable&, void)
 {
-    aPageBreakState.ButtonToggled(rToggle);
+    aPageBreakState.CheckButtonToggled(*m_xPageBreakBox);
     PageBreakHdl();
 }
 
@@ -2335,9 +2688,9 @@ void SvxExtParagraphTabPage::AllowSplitHdl()
     m_xOrphanBox->set_sensitive(bEnable);
 }
 
-IMPL_LINK(SvxExtParagraphTabPage, AllowSplitHdl_Impl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, AllowSplitHdl_Impl, weld::Toggleable&, void)
 {
-    aAllowSplitState.ButtonToggled(rToggle);
+    aAllowSplitState.CheckButtonToggled(*m_xAllowSplitBox);
     AllowSplitHdl();
 }
 
@@ -2361,15 +2714,15 @@ void SvxExtParagraphTabPage::WidowHdl()
     }
 }
 
-IMPL_LINK(SvxExtParagraphTabPage, WidowHdl_Impl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, WidowHdl_Impl, weld::Toggleable&, void)
 {
-    aWidowState.ButtonToggled(rToggle);
+    aWidowState.CheckButtonToggled(*m_xWidowBox);
     WidowHdl();
 }
 
-IMPL_LINK(SvxExtParagraphTabPage, OrphanHdl_Impl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, OrphanHdl_Impl, weld::Toggleable&, void)
 {
-    aOrphanState.ButtonToggled(rToggle);
+    aOrphanState.CheckButtonToggled(*m_xOrphanBox);
     OrphanHdl();
 }
 
@@ -2403,18 +2756,39 @@ void SvxExtParagraphTabPage::HyphenClickHdl()
     m_xExtHyphenBeforeBox->set_sensitive(bEnable);
     m_xAfterText->set_sensitive(bEnable);
     m_xExtHyphenAfterBox->set_sensitive(bEnable);
+    m_xCompoundBeforeText->set_sensitive(bEnable);
+    m_xExtCompoundHyphenBeforeBox->set_sensitive(bEnable);
     m_xMaxHyphenLabel->set_sensitive(bEnable);
     m_xMaxHyphenEdit->set_sensitive(bEnable);
     m_xMinWordLabel->set_sensitive(bEnable);
     m_xMinWordLength->set_sensitive(bEnable);
     m_xHyphenZoneLabel->set_sensitive(bEnable);
     m_aHyphenZone.set_sensitive(bEnable);
+    m_xAcrossText->set_sensitive(bEnable);
+    m_xAcrossParagraphBox->set_sensitive(bEnable);
+    bool bAcross = bEnable && m_xAcrossParagraphBox->get_state() == TRISTATE_TRUE;
+    m_xParagraphEndZoneLabel->set_sensitive(bAcross);
+    m_aParagraphEndZone.set_sensitive(bAcross);
+    m_xAcrossColumnBox->set_sensitive(bEnable);
+    bAcross = bEnable && m_xAcrossColumnBox->get_state() == TRISTATE_TRUE;
+    m_xColumnEndZoneLabel->set_sensitive(bAcross);
+    m_aColumnEndZone.set_sensitive(bAcross);
+    m_xAcrossPageBox->set_sensitive(bEnable);
+    bAcross = bEnable && m_xAcrossPageBox->get_state() == TRISTATE_TRUE;
+    m_xPageEndZoneLabel->set_sensitive(bAcross);
+    m_aPageEndZone.set_sensitive(bAcross);
+    m_xAcrossSpreadBox->set_sensitive(bEnable);
+    bAcross = bEnable && m_xAcrossSpreadBox->get_state() == TRISTATE_TRUE;
+    m_xSpreadEndZoneLabel->set_sensitive(bAcross);
+    m_aSpreadEndZone.set_sensitive(bAcross);
+    // only sensitive, if the hyphenation is disabled across spreads
+    m_xAcrossMoveLineBox->set_sensitive( bEnable && m_xAcrossSpreadBox->get_state() != TRISTATE_TRUE );
     m_xHyphenBox->set_state(bEnable ? TRISTATE_TRUE : TRISTATE_FALSE);
 }
 
-IMPL_LINK(SvxExtParagraphTabPage, HyphenClickHdl_Impl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, HyphenClickHdl_Impl, weld::Toggleable&, void)
 {
-    aHyphenState.ButtonToggled(rToggle);
+    aHyphenState.CheckButtonToggled(*m_xHyphenBox);
     HyphenClickHdl();
 }
 
@@ -2438,9 +2812,9 @@ void SvxExtParagraphTabPage::ApplyCollClickHdl()
     }
 }
 
-IMPL_LINK(SvxExtParagraphTabPage, ApplyCollClickHdl_Impl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, ApplyCollClickHdl_Impl, weld::Toggleable&, void)
 {
-    aApplyCollState.ButtonToggled(rToggle);
+    aApplyCollState.CheckButtonToggled(*m_xApplyCollBtn);
     ApplyCollClickHdl();
 }
 
@@ -2490,15 +2864,15 @@ void SvxExtParagraphTabPage::PageNumBoxClickHdl()
     m_xPagenumEdit->set_sensitive(m_xPageNumBox->get_state() == TRISTATE_TRUE);
 }
 
-IMPL_LINK(SvxExtParagraphTabPage, PageNumBoxClickHdl_Impl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, PageNumBoxClickHdl_Impl, weld::Toggleable&, void)
 {
-    aPageNumState.ButtonToggled(rToggle);
+    aPageNumState.CheckButtonToggled(*m_xPageNumBox);
     PageNumBoxClickHdl();
 }
 
-IMPL_LINK(SvxExtParagraphTabPage, KeepParaBoxClickHdl_Impl, weld::Toggleable&, rToggle, void)
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, KeepParaBoxClickHdl_Impl, weld::Toggleable&, void)
 {
-    aKeepParaState.ButtonToggled(rToggle);
+    aKeepParaState.CheckButtonToggled(*m_xKeepParaBox);
 }
 
 void SvxExtParagraphTabPage::PageCreated(const SfxAllItemSet& aSet)
@@ -2510,11 +2884,116 @@ void SvxExtParagraphTabPage::PageCreated(const SfxAllItemSet& aSet)
                     DisablePageBreak();
 }
 
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, AcrossParagraphHdl_Impl, weld::Toggleable&, void)
+{
+    aAcrossParagraphState.CheckButtonToggled(*m_xAcrossParagraphBox);
+    if (m_xAcrossParagraphBox->get_state() != TRISTATE_TRUE )
+    {
+        m_xAcrossColumnBox->set_state( TRISTATE_FALSE );
+        m_xAcrossPageBox->set_state( TRISTATE_FALSE );
+        m_xAcrossSpreadBox->set_state( TRISTATE_FALSE );
+        m_xAcrossMoveLineBox->set_sensitive( true );
+        m_xParagraphEndZoneLabel->set_sensitive(false);
+        m_aParagraphEndZone.set_sensitive(false);
+        m_xColumnEndZoneLabel->set_sensitive(false);
+        m_aColumnEndZone.set_sensitive(false);
+        m_xPageEndZoneLabel->set_sensitive(false);
+        m_aPageEndZone.set_sensitive(false);
+        m_xSpreadEndZoneLabel->set_sensitive(false);
+        m_aSpreadEndZone.set_sensitive(false);
+    }
+    else
+    {
+        m_xParagraphEndZoneLabel->set_sensitive(true);
+        m_aParagraphEndZone.set_sensitive(true);
+    }
+}
+
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, AcrossColumnHdl_Impl, weld::Toggleable&, void)
+{
+    aAcrossColumnState.CheckButtonToggled(*m_xAcrossColumnBox);
+    if (m_xAcrossColumnBox->get_state() != TRISTATE_TRUE )
+    {
+        m_xAcrossPageBox->set_state( TRISTATE_FALSE );
+        m_xAcrossSpreadBox->set_state( TRISTATE_FALSE );
+        m_xAcrossMoveLineBox->set_sensitive( true );
+        m_xColumnEndZoneLabel->set_sensitive(false);
+        m_aColumnEndZone.set_sensitive(false);
+        m_xPageEndZoneLabel->set_sensitive(false);
+        m_aPageEndZone.set_sensitive(false);
+        m_xSpreadEndZoneLabel->set_sensitive(false);
+        m_aSpreadEndZone.set_sensitive(false);
+    }
+    else
+    {
+        m_xAcrossParagraphBox->set_state( TRISTATE_TRUE );
+        m_xParagraphEndZoneLabel->set_sensitive(true);
+        m_aParagraphEndZone.set_sensitive(true);
+        m_xColumnEndZoneLabel->set_sensitive(true);
+        m_aColumnEndZone.set_sensitive(true);
+    }
+}
+
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, AcrossPageHdl_Impl, weld::Toggleable&, void)
+{
+    aAcrossPageState.CheckButtonToggled(*m_xAcrossPageBox);
+    if (m_xAcrossPageBox->get_state() == TRISTATE_TRUE )
+    {
+        m_xAcrossParagraphBox->set_state( TRISTATE_TRUE );
+        m_xAcrossColumnBox->set_state( TRISTATE_TRUE );
+        m_xParagraphEndZoneLabel->set_sensitive(true);
+        m_aParagraphEndZone.set_sensitive(true);
+        m_xColumnEndZoneLabel->set_sensitive(true);
+        m_aColumnEndZone.set_sensitive(true);
+        m_xPageEndZoneLabel->set_sensitive(true);
+        m_aPageEndZone.set_sensitive(true);
+        m_xSpreadEndZoneLabel->set_sensitive(false);
+        m_aSpreadEndZone.set_sensitive(false);
+    }
+    else
+    {
+        m_xAcrossSpreadBox->set_state( TRISTATE_FALSE );
+        m_xAcrossMoveLineBox->set_sensitive( true );
+        m_xPageEndZoneLabel->set_sensitive(false);
+        m_aPageEndZone.set_sensitive(false);
+        m_xSpreadEndZoneLabel->set_sensitive(false);
+        m_aSpreadEndZone.set_sensitive(false);
+    }
+}
+
+IMPL_LINK_NOARG(SvxExtParagraphTabPage, AcrossSpreadHdl_Impl, weld::Toggleable&, void)
+{
+    aAcrossSpreadState.CheckButtonToggled(*m_xAcrossSpreadBox);
+    if (m_xAcrossSpreadBox->get_state() == TRISTATE_TRUE )
+    {
+        m_xAcrossParagraphBox->set_state( TRISTATE_TRUE );
+        m_xAcrossColumnBox->set_state( TRISTATE_TRUE );
+        m_xAcrossPageBox->set_state( TRISTATE_TRUE );
+        m_xParagraphEndZoneLabel->set_sensitive(true);
+        m_aParagraphEndZone.set_sensitive(true);
+        m_xColumnEndZoneLabel->set_sensitive(true);
+        m_aColumnEndZone.set_sensitive(true);
+        m_xPageEndZoneLabel->set_sensitive(true);
+        m_aPageEndZone.set_sensitive(true);
+        m_xSpreadEndZoneLabel->set_sensitive(true);
+        m_aSpreadEndZone.set_sensitive(true);
+        m_xAcrossMoveLineBox->set_sensitive( false );
+        m_xAcrossMoveLineBox->set_state( TRISTATE_FALSE );
+    }
+    else
+    {
+        m_xSpreadEndZoneLabel->set_sensitive(false);
+        m_aSpreadEndZone.set_sensitive(false);
+        // only sensitive, if the hyphenation is disabled across spreads
+        m_xAcrossMoveLineBox->set_sensitive( true );
+    }
+}
+
 SvxAsianTabPage::SvxAsianTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/asiantypography.ui", "AsianTypography", &rSet)
-    , m_xForbiddenRulesCB(m_xBuilder->weld_check_button("checkForbidList"))
-    , m_xHangingPunctCB(m_xBuilder->weld_check_button("checkHangPunct"))
-    , m_xScriptSpaceCB(m_xBuilder->weld_check_button("checkApplySpacing"))
+    : SfxTabPage(pPage, pController, u"cui/ui/asiantypography.ui"_ustr, u"AsianTypography"_ustr, &rSet)
+    , m_xForbiddenRulesCB(m_xBuilder->weld_check_button(u"checkForbidList"_ustr))
+    , m_xHangingPunctCB(m_xBuilder->weld_check_button(u"checkHangPunct"_ustr))
+    , m_xScriptSpaceCB(m_xBuilder->weld_check_button(u"checkApplySpacing"_ustr))
 {
 }
 
@@ -2527,9 +3006,10 @@ std::unique_ptr<SfxTabPage> SvxAsianTabPage::Create(weld::Container* pPage, weld
     return std::make_unique<SvxAsianTabPage>(pPage, pController, *rSet);
 }
 
-WhichRangesContainer SvxAsianTabPage::GetRanges()
+const WhichRangesContainer & SvxAsianTabPage::GetRanges()
 {
-    return WhichRangesContainer(svl::Items<SID_ATTR_PARA_SCRIPTSPACE, SID_ATTR_PARA_FORBIDDEN_RULES>);
+    static const auto gRanges = WhichRangesContainer(svl::Items<SID_ATTR_PARA_SCRIPTSPACE, SID_ATTR_PARA_FORBIDDEN_RULES>);
+    return gRanges;
 }
 
 bool SvxAsianTabPage::FillItemSet( SfxItemSet* rSet )
@@ -2539,7 +3019,7 @@ bool SvxAsianTabPage::FillItemSet( SfxItemSet* rSet )
     if (m_xScriptSpaceCB->get_sensitive() && m_xScriptSpaceCB->get_state_changed_from_saved())
     {
         std::unique_ptr<SfxBoolItem> pNewItem(static_cast<SfxBoolItem*>(rSet->Get(
-            pPool->GetWhich(SID_ATTR_PARA_SCRIPTSPACE)).Clone()));
+            pPool->GetWhichIDFromSlotID(SID_ATTR_PARA_SCRIPTSPACE)).Clone()));
         pNewItem->SetValue(m_xScriptSpaceCB->get_active());
         rSet->Put(std::move(pNewItem));
         bRet = true;
@@ -2547,7 +3027,7 @@ bool SvxAsianTabPage::FillItemSet( SfxItemSet* rSet )
     if (m_xHangingPunctCB->get_sensitive() && m_xHangingPunctCB->get_state_changed_from_saved())
     {
         std::unique_ptr<SfxBoolItem> pNewItem(static_cast<SfxBoolItem*>(rSet->Get(
-            pPool->GetWhich(SID_ATTR_PARA_HANGPUNCTUATION)).Clone()));
+            pPool->GetWhichIDFromSlotID(SID_ATTR_PARA_HANGPUNCTUATION)).Clone()));
         pNewItem->SetValue(m_xHangingPunctCB->get_active());
         rSet->Put(std::move(pNewItem));
         bRet = true;
@@ -2555,7 +3035,7 @@ bool SvxAsianTabPage::FillItemSet( SfxItemSet* rSet )
     if (m_xForbiddenRulesCB->get_sensitive() && m_xForbiddenRulesCB->get_state_changed_from_saved())
     {
         std::unique_ptr<SfxBoolItem> pNewItem(static_cast<SfxBoolItem*>(rSet->Get(
-            pPool->GetWhich(SID_ATTR_PARA_FORBIDDEN_RULES)).Clone()));
+            pPool->GetWhichIDFromSlotID(SID_ATTR_PARA_FORBIDDEN_RULES)).Clone()));
         pNewItem->SetValue(m_xForbiddenRulesCB->get_active());
         rSet->Put(std::move(pNewItem));
         bRet = true;
@@ -2565,7 +3045,7 @@ bool SvxAsianTabPage::FillItemSet( SfxItemSet* rSet )
 
 static void lcl_SetBox(const SfxItemSet& rSet, sal_uInt16 nSlotId, weld::CheckButton& rBox)
 {
-    sal_uInt16 _nWhich = rSet.GetPool()->GetWhich(nSlotId);
+    sal_uInt16 _nWhich = rSet.GetPool()->GetWhichIDFromSlotID(nSlotId);
     SfxItemState eState = rSet.GetItemState(_nWhich);
     if( eState == SfxItemState::UNKNOWN || eState == SfxItemState::DISABLED )
         rBox.set_sensitive(false);

@@ -69,7 +69,7 @@ getRelativeReference(SvXMLExport const& rExport, OUString const& rURI)
         rExport.GetModel(), uno::UNO_QUERY_THROW );
     OUString const baseURI( xModelURI->getStringValue() );
 
-    uno::Reference<uno::XComponentContext> xContext( comphelper::getProcessComponentContext() );
+    const uno::Reference<uno::XComponentContext>& xContext( comphelper::getProcessComponentContext() );
     uno::Reference<uri::XUriReferenceFactory> const xUriFactory =
         uri::UriReferenceFactory::create( xContext );
 
@@ -162,7 +162,7 @@ RDFaExportHelper::AddRDFa(
         OUStringBuffer property;
         ::comphelper::intersperse(curies.begin(), curies.end(),
             ::comphelper::OUStringBufferAppender(property),
-            OUString(" "));
+            u" "_ustr);
 
         m_rExport.AddAttribute(XML_NAMESPACE_XHTML, token::XML_PROPERTY,
             property.makeStringAndClear());

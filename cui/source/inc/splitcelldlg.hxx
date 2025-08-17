@@ -18,13 +18,15 @@
  */
 #pragma once
 
-#include <svx/svxdlg.hxx>
+#include <sal/config.h>
+
 #include <vcl/weld.hxx>
 
 class SvxSplitTableDlg : public weld::GenericDialogController
 {
 private:
     std::unique_ptr<weld::SpinButton> m_xCountEdit;
+    std::unique_ptr<weld::Grid> m_xGrid;
     std::unique_ptr<weld::RadioButton> m_xHorzBox;
     std::unique_ptr<weld::RadioButton> m_xVertBox;
     std::unique_ptr<weld::CheckButton> m_xPropCB;
@@ -42,23 +44,6 @@ public:
     tools::Long GetCount() const;
 
     void SetSplitVerticalByDefault();
-};
-
-class SvxAbstractSplitTableDialog_Impl : public SvxAbstractSplitTableDialog
-{
-    std::shared_ptr<SvxSplitTableDlg> m_xDlg;
-
-public:
-    SvxAbstractSplitTableDialog_Impl(std::shared_ptr<SvxSplitTableDlg> pDlg) : m_xDlg(std::move(pDlg)) {}
-
-    virtual bool IsHorizontal() const override;
-    virtual bool IsProportional() const override;
-    virtual tools::Long GetCount() const override;
-
-    virtual void SetSplitVerticalByDefault() override;
-
-    virtual short Execute() override;
-    virtual bool StartExecuteAsync(AsyncContext& rContext) override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

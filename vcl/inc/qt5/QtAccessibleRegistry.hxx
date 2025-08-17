@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -32,10 +32,10 @@ private:
 
 public:
     /** Returns the related QObject* for the XAccessible. Creates a new one if none exists yet. */
-    static QObject* getQObject(css::uno::Reference<XAccessible> xAcc);
-    static void insert(css::uno::Reference<XAccessible> xAcc, QObject* pQObject);
+    static QObject* getQObject(const css::uno::Reference<XAccessible>& xAcc);
+    static void insert(const css::uno::Reference<XAccessible>& xAcc, QObject* pQObject);
     /** Removes the entry for the given XAccessible. */
-    static void remove(css::uno::Reference<XAccessible> xAcc);
+    static void remove(const css::uno::Reference<XAccessible>& xAcc);
 };
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

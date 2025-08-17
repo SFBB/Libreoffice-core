@@ -24,7 +24,10 @@
 
 #include <spin.hxx>
 
-void SpinButton::ImplInit( vcl::Window* pParent, WinBits nStyle )
+SpinButton::SpinButton( vcl::Window* pParent, WinBits nStyle )
+    : Control(WindowType::SPINBUTTON)
+    , maRepeatTimer("SpinButton maRepeatTimer")
+    , mbUpperIsFocused(false)
 {
     mbUpperIn     = false;
     mbLowerIn     = false;
@@ -47,14 +50,6 @@ void SpinButton::ImplInit( vcl::Window* pParent, WinBits nStyle )
         mbHorz = false;
 
     Control::ImplInit( pParent, nStyle, nullptr );
-}
-
-SpinButton::SpinButton( vcl::Window* pParent, WinBits nStyle )
-    : Control(WindowType::SPINBUTTON)
-    , maRepeatTimer("SpinButton maRepeatTimer")
-    , mbUpperIsFocused(false)
-{
-    ImplInit(pParent, nStyle);
 }
 
 IMPL_LINK(SpinButton, ImplTimeout, Timer*, pTimer, void)
@@ -126,7 +121,7 @@ void SpinButton::Draw(OutputDevice* pDev, const Point& rPos, SystemTextColorFlag
     Point aPos  = pDev->LogicToPixel(rPos);
     Size aSize = GetSizePixel();
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
     if ( !(nFlags & SystemTextColorFlags::Mono) )
     {
@@ -161,7 +156,6 @@ void SpinButton::Draw(OutputDevice* pDev, const Point& rPos, SystemTextColorFlag
     ImplDrawSpinButton(*pDev, this, aUpperRect, aLowerRect, false, false,
                        IsEnabled() && ImplIsUpperEnabled(),
                        IsEnabled() && ImplIsLowerEnabled(), mbHorz, true);
-    pDev->Pop();
 }
 
 void SpinButton::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& /*rRect*/)
@@ -419,14 +413,15 @@ void SpinButton::ImplCalcFocusRect( bool _bUpper )
     mbUpperIsFocused = _bUpper;
 }
 
-tools::Rectangle* SpinButton::ImplFindPartRect( const Point& rPt )
+tools::Rectangle* SpinButton::ImplFindPartRect(const Point& rPt)
 {
-    if( maUpperRect.Contains( rPt ) )
+    if (maUpperRect.Contains(rPt))
         return &maUpperRect;
-    else if( maLowerRect.Contains( rPt ) )
+
+    if (maLowerRect.Contains(rPt))
         return &maLowerRect;
-    else
-        return nullptr;
+
+    return nullptr;
 }
 
 bool SpinButton::PreNotify( NotifyEvent& rNEvt )

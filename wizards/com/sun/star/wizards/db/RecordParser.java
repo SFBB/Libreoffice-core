@@ -40,19 +40,39 @@ public class RecordParser extends QueryMetaData
 
     private XNameAccess xColumns;
     private com.sun.star.sdbc.XRow xResultSetRow;
-    public XResultSet ResultSet;
+    private XResultSet ResultSet;
     private XInterface xRowSet;
     private XCompletedExecution xExecute;
     private XComponent xRowSetComponent;
     private XInteractionHandler xInteraction;
-    public FieldColumn[] GroupFieldColumns;
-    public FieldColumn[] RecordFieldColumns;
+    private FieldColumn[] GroupFieldColumns;
+    private FieldColumn[] RecordFieldColumns;
 
     /** Creates a new instance of RecordParser */
     public RecordParser(XMultiServiceFactory _xMSF)
     {
         super(_xMSF);
         getInterfaces();
+    }
+
+    public FieldColumn[] getRecordFieldColumns()
+    {
+        return RecordFieldColumns;
+    }
+
+    public void setRecordFieldColumns(FieldColumn[] recordFieldColumns)
+    {
+        RecordFieldColumns = recordFieldColumns;
+    }
+
+    public FieldColumn[] getGroupFieldColumns()
+    {
+        return GroupFieldColumns;
+    }
+
+    public void setGroupFieldColumns(FieldColumn[] groupFieldColumns)
+    {
+        GroupFieldColumns = groupFieldColumns;
     }
 
     private void getInterfaces()
@@ -155,8 +175,8 @@ public class RecordParser extends QueryMetaData
     {
         try
         {
-            Helper.setUnoPropertyValue(xRowSet, "DataSourceName", DataSourceName);
-            Helper.setUnoPropertyValue(xRowSet, PropertyNames.ACTIVE_CONNECTION, DBConnection);
+            Helper.setUnoPropertyValue(xRowSet, "DataSourceName", getDataSourceName());
+            Helper.setUnoPropertyValue(xRowSet, PropertyNames.ACTIVE_CONNECTION, getDBConnection());
             Helper.setUnoPropertyValue(xRowSet, PropertyNames.COMMAND, Command);
             Helper.setUnoPropertyValue(xRowSet, PropertyNames.COMMAND_TYPE, Integer.valueOf(_nCommandType)); // CommandType
             xExecute.executeWithCompletion(xInteraction);
@@ -193,7 +213,7 @@ public class RecordParser extends QueryMetaData
                     throw new InvalidQueryException(xMSF, Command);
                 }
             }
-            GroupFieldColumns = getFieldColumnList(GroupFieldNames);
+            GroupFieldColumns = getFieldColumnList(getGroupFieldNames());
             RecordFieldColumns = getFieldColumnList(getRecordFieldNames());
             return true;
         }
@@ -230,6 +250,11 @@ public class RecordParser extends QueryMetaData
         }
         DataVector.add(RecordValueArray);
         return true;
+    }
+
+    public XResultSet getResultSet()
+    {
+        return ResultSet;
     }
 
     @Override

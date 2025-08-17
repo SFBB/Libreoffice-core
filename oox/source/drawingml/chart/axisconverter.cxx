@@ -149,14 +149,14 @@ void AxisConverter::convertFromModel(const Reference<XCoordinateSystem>& rxCoord
     Reference< XAxis > xAxis;
     try
     {
-        namespace cssc = ::com::sun::star::chart;
-        namespace cssc2 = ::com::sun::star::chart2;
+        namespace cssc = css::chart;
+        namespace cssc2 = css::chart2;
 
         const TypeGroupInfo& rTypeInfo = rTypeGroups.front()->getTypeInfo();
         ObjectFormatter& rFormatter = getFormatter();
 
         // create the axis object (always)
-        xAxis.set( createInstance( "com.sun.star.chart2.Axis" ), UNO_QUERY_THROW );
+        xAxis.set( createInstance( u"com.sun.star.chart2.Axis"_ustr ), UNO_QUERY_THROW );
         PropertySet aAxisProp( xAxis );
         // #i58688# axis enabled
         aAxisProp.setProperty( PROP_Show, !mrModel.mbDeleted );

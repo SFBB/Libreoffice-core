@@ -28,7 +28,6 @@
 #include <memory>
 #include <sal/log.hxx>
 
-using namespace osl;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::lang;
@@ -38,7 +37,7 @@ namespace comphelper
 {
 extern "C" {
 
-static int compare_OUString_Property_Impl(const void* arg1, const void* arg2) SAL_THROW_EXTERN_C()
+static int compare_OUString_Property_Impl(const void* arg1, const void* arg2) noexcept
 {
     return static_cast<OUString const*>(arg1)->compareTo(static_cast<Property const*>(arg2)->Name);
 }
@@ -177,6 +176,8 @@ Any OPropertySetHelper::getPropertyValueImpl(std::unique_lock<std::mutex>& rGuar
     IPropertyArrayHelper& rPH = getInfoHelper();
     // map the name to the handle
     sal_Int32 nHandle = rPH.getHandleByName(rPropertyName);
+    if (nHandle == -1)
+        throw UnknownPropertyException(rPropertyName);
     // call the method of the XFastPropertySet interface
     Any aAny;
     getFastPropertyValue(rGuard, aAny, nHandle);
@@ -510,7 +511,7 @@ void OPropertySetHelper::impl_fireAll(std::unique_lock<std::mutex>& rGuard, sal_
          additionalEvents + i_count, false);
 }
 
-void OPropertySetHelper::fire(std::unique_lock<std::mutex>& rGuard, sal_Int32* pnHandles,
+void OPropertySetHelper::fire(std::unique_lock<std::mutex>& rGuard, const sal_Int32* pnHandles,
                               const Any* pNewValues, const Any* pOldValues,
                               sal_Int32 nHandles, // This is the Count of the array
                               bool bVetoable)
@@ -756,8 +757,8 @@ void OPropertySetHelper::setPropertyValues(const Sequence<OUString>& rPropertyNa
 {
     sal_Int32 nSeqLen = rPropertyNames.getLength();
     if (nSeqLen != rValues.getLength())
-        throw IllegalArgumentException("lengths do not match", static_cast<XPropertySet*>(this),
-                                       -1);
+        throw IllegalArgumentException(u"lengths do not match"_ustr,
+                                       static_cast<XPropertySet*>(this), -1);
     std::unique_ptr<sal_Int32[]> pHandles(new sal_Int32[nSeqLen]);
     // get the map table
     IPropertyArrayHelper& rPH = getInfoHelper();
@@ -815,7 +816,6 @@ void OPropertySetHelper::firePropertiesChangeEvent(
     std::unique_ptr<sal_Int32[]> pHandles(new sal_Int32[nLen]);
     IPropertyArrayHelper& rPH = getInfoHelper();
     rPH.fillHandles(pHandles.get(), rPropertyNames);
-    const OUString* pNames = rPropertyNames.getConstArray();
 
     // get the count of matching properties
     sal_Int32 nFireLen = 0;
@@ -837,7 +837,7 @@ void OPropertySetHelper::firePropertiesChangeEvent(
             if (pHandles[i] != -1)
             {
                 pChanges[nFirePos].Source = xSource;
-                pChanges[nFirePos].PropertyName = pNames[i];
+                pChanges[nFirePos].PropertyName = rPropertyNames[i];
                 pChanges[nFirePos].PropertyHandle = pHandles[i];
                 getFastPropertyValue(aGuard, pChanges[nFirePos].OldValue, pHandles[i]);
                 pChanges[nFirePos].NewValue = pChanges[nFirePos].OldValue;

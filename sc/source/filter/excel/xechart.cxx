@@ -1769,7 +1769,7 @@ bool XclExpChSerErrorBar::Convert( XclExpChSourceLink& rValueLink, sal_uInt16& r
                         OUString aCurrRole;
                         if( aValueProp.GetProperty( aCurrRole, EXC_CHPROP_ROLE ) && (aCurrRole == aRole) )
                         {
-                            xValueSeq = xTmpValueSeq;
+                            xValueSeq = std::move(xTmpValueSeq);
                             break;
                         }
                     }
@@ -1853,17 +1853,17 @@ bool XclExpChSeries::ConvertDataSeries(
             {
                 if( !xYValueSeq.is() && (aRole == EXC_CHPROP_ROLE_YVALUES) )
                 {
-                    xYValueSeq = xTmpValueSeq;
+                    xYValueSeq = std::move(xTmpValueSeq);
                     if( !xTitleSeq.is() )
                         xTitleSeq = rLabeledSeq->getLabel(); // ignore role of label sequence
                 }
                 else if( !xXValueSeq.is() && !rTypeInfo.mbCategoryAxis && (aRole == EXC_CHPROP_ROLE_XVALUES) )
                 {
-                    xXValueSeq = xTmpValueSeq;
+                    xXValueSeq = std::move(xTmpValueSeq);
                 }
                 else if( !xBubbleSeq.is() && (rTypeInfo.meTypeId == EXC_CHTYPEID_BUBBLES) && (aRole == EXC_CHPROP_ROLE_SIZEVALUES) )
                 {
-                    xBubbleSeq = xTmpValueSeq;
+                    xBubbleSeq = std::move(xTmpValueSeq);
                     xTitleSeq = rLabeledSeq->getLabel();     // ignore role of label sequence
                 }
             }
@@ -1934,7 +1934,7 @@ bool XclExpChSeries::ConvertDataSeries(
                 Sequence< sal_Int32 > aPointIndexes;
                 if( aSeriesProp.GetProperty( aPointIndexes, EXC_CHPROP_ATTRIBDATAPOINTS ) && aPointIndexes.hasElements() )
                 {
-                    for( const sal_Int32 nPointIndex : std::as_const(aPointIndexes) )
+                    for (const sal_Int32 nPointIndex : aPointIndexes)
                     {
                         if (nPointIndex >= nMaxPointCount)
                             break;
@@ -1969,7 +1969,7 @@ bool XclExpChSeries::ConvertStockSeries( css::uno::Reference< css::chart2::XData
             OUString aRole;
             if( aValueProp.GetProperty( aRole, EXC_CHPROP_ROLE ) && (aRole == rValueRole) )
             {
-                xYValueSeq = xTmpValueSeq;
+                xYValueSeq = std::move(xTmpValueSeq);
                 xTitleSeq = rLabeledSeq->getLabel();     // ignore role of label sequence
                 break;
             }
@@ -3086,7 +3086,7 @@ sal_uInt16 XclExpChAxesSet::Convert( Reference< XDiagram > const & xDiagram, sal
         {
             /*  Process first coordinate system only. Import filter puts all
                 chart types into one coordinate system. */
-            Reference< XCoordinateSystem > xCoordSystem = aCoordSysSeq[ 0 ];
+            const Reference< XCoordinateSystem >& xCoordSystem = aCoordSysSeq[ 0 ];
             sal_Int32 nApiAxesSetIdx = GetApiAxesSetIndex();
 
             // 3d mode
@@ -3293,7 +3293,7 @@ static void lcl_getChartSubTitle(const Reference<XChartDocument>& xChartDoc,
         return;
 
     OUString aTitle;
-    Any any = xProp->getPropertyValue("String");
+    Any any = xProp->getPropertyValue(u"String"_ustr);
     if (any >>= aTitle)
         rSubTitle = aTitle;
 }

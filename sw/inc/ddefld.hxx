@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_DDEFLD_HXX
-#define INCLUDED_SW_INC_DDEFLD_HXX
+#pragma once
 
 #include <sfx2/lnkbase.hxx>
 #include <svl/hint.hxx>
@@ -34,7 +33,8 @@ namespace sw
     {
         SwNodes& m_rNodes;
         const SwNode*& m_rpFoundNode;
-        LinkAnchorSearchHint(SwNodes& rNodes, const SwNode*& rpFoundNode) : m_rNodes(rNodes), m_rpFoundNode(rpFoundNode) {};
+        LinkAnchorSearchHint(SwNodes& rNodes, const SwNode*& rpFoundNode)
+            : SfxHint(SfxHintId::SwLinkAnchorSearch), m_rNodes(rNodes), m_rpFoundNode(rpFoundNode) {};
         virtual ~LinkAnchorSearchHint() override;
     };
     struct InRangeSearchHint final : public SfxHint
@@ -42,14 +42,14 @@ namespace sw
         const SwNodeOffset m_nSttNd, m_nEndNd;
         bool& m_rIsInRange;
         InRangeSearchHint(const SwNodeOffset nSttNd, const SwNodeOffset nEndNd, bool& rIsInRange)
-            : m_nSttNd(nSttNd), m_nEndNd(nEndNd), m_rIsInRange(rIsInRange) {}
+            : SfxHint(SfxHintId::SwInRangeSearch), m_nSttNd(nSttNd), m_nEndNd(nEndNd), m_rIsInRange(rIsInRange) {}
     };
 }
 
 // FieldType for DDE
 class SW_DLLPUBLIC SwDDEFieldType final : public SwFieldType
 {
-    OUString m_aName;
+    UIName m_aName;
     OUString m_aExpansion;
 
     tools::SvRef<sfx2::SvBaseLink> m_RefLink;
@@ -62,7 +62,7 @@ class SW_DLLPUBLIC SwDDEFieldType final : public SwFieldType
     SAL_DLLPRIVATE void RefCntChgd();
 
 public:
-    SwDDEFieldType( OUString aName, const OUString& rCmd,
+    SwDDEFieldType( UIName aName, const OUString& rCmd,
                     SfxLinkUpdateMode );
     virtual ~SwDDEFieldType() override;
 
@@ -71,7 +71,7 @@ public:
                                                   m_bCRLFFlag = false; }
 
     virtual std::unique_ptr<SwFieldType> Copy() const override;
-    virtual OUString GetName() const override;
+    virtual UIName GetName() const override;
 
     virtual void QueryValue( css::uno::Any& rVal, sal_uInt16 nWhich ) const override;
     virtual void PutValue( const css::uno::Any& rVal, sal_uInt16 nWhich ) override;
@@ -122,7 +122,5 @@ public:
     virtual OUString GetPar2() const override;
     virtual void SetPar2(const OUString& rStr) override;
 };
-
-#endif // INCLUDED_SW_INC_DDEFLD_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

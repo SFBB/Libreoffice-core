@@ -44,22 +44,23 @@
 
 #include <memory>
 
-ScFormulaReferenceHelper::ScFormulaReferenceHelper(IAnyRefDialog* _pDlg,SfxBindings* _pBindings)
- : m_pDlg(_pDlg)
- , m_pRefEdit (nullptr)
- , m_pRefBtn (nullptr)
- , m_pDialog(nullptr)
- , m_pBindings(_pBindings)
- , m_nRefTab(0)
- , m_bHighlightRef(false)
+ScFormulaReferenceHelper::ScFormulaReferenceHelper(IAnyRefDialog* _pDlg, SfxBindings* _pBindings,
+                                                   weld::Dialog* pDialog)
+    : m_pDlg(_pDlg)
+    , m_pRefEdit(nullptr)
+    , m_pRefBtn(nullptr)
+    , m_pDialog(pDialog)
+    , m_pBindings(_pBindings)
+    , m_nRefTab(0)
+    , m_bHighlightRef(false)
 {
-    ScInputOptions aInputOption=SC_MOD()->GetInputOptions();
+    ScInputOptions aInputOption = ScModule::get()->GetInputOptions();
     m_bEnableColorRef=aInputOption.GetRangeFinder();
 }
 
-ScFormulaReferenceHelper::~ScFormulaReferenceHelper() COVERITY_NOEXCEPT_FALSE
+ScFormulaReferenceHelper::~ScFormulaReferenceHelper()
 {
-    dispose();
+    suppress_fun_call_w_exception(dispose());
 }
 
 void ScFormulaReferenceHelper::dispose()
@@ -68,7 +69,7 @@ void ScFormulaReferenceHelper::dispose()
     HideReference();
     enableInput( true );
 
-    ScInputHandler* pInputHdl = SC_MOD()->GetInputHdl();
+    ScInputHandler* pInputHdl = ScModule::get()->GetInputHdl();
     if ( pInputHdl )
         pInputHdl->ResetDelayTimer();   // stop the timer for disabling the input line
 
@@ -375,17 +376,15 @@ void ScFormulaReferenceHelper::RefInputStart( formula::RefEdit* pEdit, formula::
 
     // Save and adjust window title
     m_sOldDialogText = m_pDialog->get_title();
-    if (weld::Label *pLabel = m_pRefEdit->GetLabelWidgetForShrinkMode())
+    const OUString sLabel = m_pRefEdit->GetLabelTextForShrinkMode();
+    if (!sLabel.isEmpty())
     {
-        const OUString sLabel = pLabel->get_label();
-        if (!sLabel.isEmpty())
-        {
-            const OUString sNewDialogText = m_sOldDialogText + ": " + comphelper::string::stripEnd(sLabel, ':');
-            m_pDialog->set_title(pLabel->strip_mnemonic(sNewDialogText));
-        }
+        const OUString sNewDialogText = m_sOldDialogText + ": " + comphelper::string::stripEnd(sLabel, ':');
+        m_pDialog->set_title(m_pDialog->strip_mnemonic(sNewDialogText));
     }
 
-    m_pDialog->collapse(pEdit->GetWidget(), pButton ? pButton->GetWidget() : nullptr);
+    assert(pEdit && pEdit->GetWidget());
+    m_pDialog->collapse(*pEdit->GetWidget(), pButton ? pButton->GetWidget() : nullptr);
 
     // set button image
     if (pButton)
@@ -444,7 +443,7 @@ void ScFormulaReferenceHelper::DoClose( sal_uInt16 nId )
         if (pMyDisp)
             pMyViewFrm = pMyDisp->GetFrame();
     }
-    SC_MOD()->SetRefDialog( nId, false, pMyViewFrm );
+    ScModule::get()->SetRefDialog(nId, false, pMyViewFrm);
 
     pSfxApp->Broadcast( SfxHint( SfxHintId::ScKillEditView ) );
 
@@ -577,11 +576,9 @@ static void lcl_HideAllReferences()
 ScRefHandler::ScRefHandler(SfxDialogController& rController, SfxBindings* pB, bool bBindRef)
     : m_pController(&rController)
     , m_bInRefMode(false)
-    , m_aHelper(this, pB)
+    , m_aHelper(this, pB, rController.getDialog())
     , m_pMyBindings(pB)
 {
-    m_aHelper.SetDialog(rController.getDialog());
-
     if( bBindRef ) EnterRefMode();
 }
 
@@ -589,7 +586,8 @@ bool ScRefHandler::EnterRefMode()
 {
     if( m_bInRefMode ) return false;
 
-    SC_MOD()->InputEnterHandler();
+    ScModule* mod = ScModule::get();
+    mod->InputEnterHandler();
 
     ScTabViewShell* pScViewShell = nullptr;
 
@@ -617,7 +615,7 @@ bool ScRefHandler::EnterRefMode()
     if ( pParentDoc )
         m_aDocName = pParentDoc->GetTitle();
 
-    ScInputHandler* pInputHdl = SC_MOD()->GetInputHdl(pScViewShell);
+    ScInputHandler* pInputHdl = mod->GetInputHdl(pScViewShell);
 
     OSL_ENSURE( pInputHdl, "Missing input handler :-/" );
 

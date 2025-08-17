@@ -22,7 +22,7 @@
 #include <xmloff/xmlement.hxx>
 #include <xmloff/xmltypes.hxx>
 #include <xmloff/xmltoken.hxx>
-#include "xmlbahdl.hxx"
+#include <xmlbahdl.hxx>
 #include <xmloff/NamedBoolPropertyHdl.hxx>
 #include <XMLTextColumnsPropertyHandler.hxx>
 #include <xmloff/XMLConstantsPropertyHandler.hxx>
@@ -33,13 +33,11 @@
 #include <osl/diagnose.h>
 #include <XMLFillBitmapSizePropertyHandler.hxx>
 #include <XMLBitmapLogicalSizePropertyHandler.hxx>
-#include <com/sun/star/drawing/BitmapMode.hpp>
 #include <XMLBitmapRepeatOffsetPropertyHandler.hxx>
 #include <XMLRtlGutterPropertyHandler.hxx>
 
 using namespace ::xmloff::token;
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::drawing;
 
 SvXMLEnumMapEntry<sal_uInt16> const aXML_TextGridMode_ConstantMap[] =
 {

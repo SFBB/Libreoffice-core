@@ -74,12 +74,12 @@ void SAL_CALL OPackageStructureCreator::convertToPackage( const OUString& aFolde
                                                           StreamMode::READ,
                                                           false,
                                                           true );
-                tools::SvRef<SotStorage> aStorage = new SotStorage( pUCBStorage );
+                rtl::Reference<SotStorage> aStorage = new SotStorage(pUCBStorage);
 
                 if ( !aTempURL.isEmpty() )
                 {
                     SvFileStream aTempStream( aTempURL, StreamMode::STD_READWRITE );
-                    tools::SvRef<SotStorage> aTargetStorage = new SotStorage( true, aTempStream );
+                    rtl::Reference<SotStorage> aTargetStorage = new SotStorage(true, aTempStream);
                     aStorage->CopyTo( aTargetStorage.get() );
                     aTargetStorage->Commit();
 
@@ -138,7 +138,7 @@ void SAL_CALL OPackageStructureCreator::convertToPackage( const OUString& aFolde
 
 OUString SAL_CALL OPackageStructureCreator::getImplementationName()
 {
-    return "com.sun.star.comp.embed.PackageStructureCreator";
+    return u"com.sun.star.comp.embed.PackageStructureCreator"_ustr;
 }
 
 sal_Bool SAL_CALL OPackageStructureCreator::supportsService( const OUString& ServiceName )
@@ -148,7 +148,7 @@ sal_Bool SAL_CALL OPackageStructureCreator::supportsService( const OUString& Ser
 
 uno::Sequence< OUString > SAL_CALL OPackageStructureCreator::getSupportedServiceNames()
 {
-    return { "com.sun.star.embed.PackageStructureCreator", "com.sun.star.comp.embed.PackageStructureCreator" };
+    return { u"com.sun.star.embed.PackageStructureCreator"_ustr, u"com.sun.star.comp.embed.PackageStructureCreator"_ustr };
 }
 
 }

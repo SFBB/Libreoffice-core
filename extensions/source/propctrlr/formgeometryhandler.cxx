@@ -304,7 +304,7 @@ namespace pcr
                 if ( !xCheckGrid.is() )
                 {
                     Reference< XMap > xControlMap;
-                    Any any = m_xContext->getValueByName( "ControlShapeAccess" );
+                    Any any = m_xContext->getValueByName( u"ControlShapeAccess"_ustr );
                     any >>= xControlMap;
                     m_xAssociatedShape.set( xControlMap->get( Any( xControlModel ) ), UNO_QUERY_THROW );
                     m_xShapeProperties.set( m_xAssociatedShape, UNO_QUERY_THROW );
@@ -323,13 +323,13 @@ namespace pcr
 
     OUString FormGeometryHandler::getImplementationName(  )
     {
-        return "com.sun.star.comp.extensions.FormGeometryHandler";
+        return u"com.sun.star.comp.extensions.FormGeometryHandler"_ustr;
     }
 
 
     Sequence< OUString > FormGeometryHandler::getSupportedServiceNames(  )
     {
-        return { "com.sun.star.form.inspection.FormGeometryHandler" };
+        return { u"com.sun.star.form.inspection.FormGeometryHandler"_ustr };
     }
 
 
@@ -608,7 +608,7 @@ namespace pcr
             if ( !xPSI->hasPropertyByName( PROPERTY_ANCHOR ) )
                 return false;
             Reference< XServiceInfo > xSI( m_xAssociatedShape, UNO_QUERY_THROW );
-            if ( xSI->supportsService("com.sun.star.sheet.Shape") )
+            if ( xSI->supportsService(u"com.sun.star.sheet.Shape"_ustr) )
                 return true;
         }
         catch( const Exception& )
@@ -739,22 +739,22 @@ namespace pcr
         if ( _event.PropertyName == "Position" )
         {
             css::awt::Point aPos = m_xShape->getPosition();
-            aEventTranslations.push_back( EventTranslation( PROPERTY_POSITIONX, Any( aPos.X ) ) );
-            aEventTranslations.push_back( EventTranslation( PROPERTY_POSITIONY, Any( aPos.Y ) ) );
+            aEventTranslations.emplace_back(PROPERTY_POSITIONX, Any( aPos.X ));
+            aEventTranslations.emplace_back(PROPERTY_POSITIONY, Any( aPos.Y ));
         }
         else if ( _event.PropertyName == "Size" )
         {
             css::awt::Size aSize = m_xShape->getSize();
-            aEventTranslations.push_back( EventTranslation( PROPERTY_WIDTH, Any( aSize.Width ) ) );
-            aEventTranslations.push_back( EventTranslation( PROPERTY_HEIGHT, Any( aSize.Height ) ) );
+            aEventTranslations.emplace_back(PROPERTY_WIDTH, Any( aSize.Width ));
+            aEventTranslations.emplace_back(PROPERTY_HEIGHT, Any( aSize.Height ));
         }
         else if ( _event.PropertyName == PROPERTY_ANCHOR_TYPE )
         {
-            aEventTranslations.push_back( EventTranslation( PROPERTY_TEXT_ANCHOR_TYPE, _event.NewValue ) );
+            aEventTranslations.emplace_back(PROPERTY_TEXT_ANCHOR_TYPE, _event.NewValue);
         }
         else if ( _event.PropertyName == PROPERTY_ANCHOR )
         {
-            aEventTranslations.push_back( EventTranslation( PROPERTY_SHEET_ANCHOR_TYPE, _event.NewValue ) );
+            aEventTranslations.emplace_back(PROPERTY_SHEET_ANCHOR_TYPE, _event.NewValue);
         }
 
         PropertyChangeEvent aTranslatedEvent( _event );

@@ -267,7 +267,6 @@ AnimationActivitySharedPtr createShapeTransitionByType(
                         {
                             case animations::TransitionSubType::FROMLEFT:
                                 nBarWipeSubType = animations::TransitionSubType::LEFTTORIGHT;
-                                bDirectionForward = true;
                                 break;
 
                             case animations::TransitionSubType::FROMRIGHT:
@@ -277,7 +276,6 @@ AnimationActivitySharedPtr createShapeTransitionByType(
 
                             case animations::TransitionSubType::FROMTOP:
                                 nBarWipeSubType = animations::TransitionSubType::TOPTOBOTTOM;
-                                bDirectionForward = true;
                                 break;
 
                             case animations::TransitionSubType::FROMBOTTOM:
@@ -321,7 +319,7 @@ AnimationActivitySharedPtr createShapeTransitionByType(
                         pGeneratedActivity = ActivitiesFactory::createSimpleActivity(
                             rParms,
                             AnimationFactory::createNumberPropertyAnimation(
-                                "Opacity",
+                                u"Opacity"_ustr,
                                 rShape,
                                 rShapeManager,
                                 rSlideSize,

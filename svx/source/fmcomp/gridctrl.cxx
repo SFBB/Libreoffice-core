@@ -43,6 +43,7 @@
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <comphelper/diagnose_ex.hxx>
 #include <tools/debug.hxx>
+#include <tools/fract.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/commandevent.hxx>
 #include <vcl/svapp.hxx>
@@ -122,7 +123,6 @@ private:
 
 class GridFieldValueListener : protected ::comphelper::OPropertyChangeListener
 {
-    osl::Mutex                          m_aMutex;
     DbGridControl&                      m_rParent;
     rtl::Reference<::comphelper::OPropertyChangeMultiplexer> m_pRealListener;
     sal_uInt16                          m_nId;
@@ -142,7 +142,7 @@ public:
 };
 
 GridFieldValueListener::GridFieldValueListener(DbGridControl& _rParent, const Reference< XPropertySet >& _rField, sal_uInt16 _nId)
-    :OPropertyChangeListener(m_aMutex)
+    :OPropertyChangeListener()
     ,m_rParent(_rParent)
     ,m_nId(_nId)
     ,m_nSuspended(0)
@@ -239,8 +239,6 @@ class FmXGridSourcePropListener : public ::comphelper::OPropertyChangeListener
 {
     VclPtr<DbGridControl> m_pParent;
 
-    // a DbGridControl has no mutex, so we use our own as the base class expects one
-    osl::Mutex          m_aMutex;
     sal_Int16           m_nSuspended;
 
 public:
@@ -253,7 +251,7 @@ public:
 };
 
 FmXGridSourcePropListener::FmXGridSourcePropListener(DbGridControl* _pParent)
-    :OPropertyChangeListener(m_aMutex)
+    :OPropertyChangeListener()
     ,m_pParent(_pParent)
     ,m_nSuspended(0)
 {
@@ -302,29 +300,22 @@ void NavigationBar::PositionDataSource(sal_Int32 nRecord)
     m_bPositioning = false;
 }
 
-NavigationBar::NavigationBar(vcl::Window* pParent)
-    : InterimItemWindow(pParent, "svx/ui/navigationbar.ui", "NavigationBar")
-    , m_xRecordText(m_xBuilder->weld_label("recordtext"))
-    , m_xAbsolute(new NavigationBar::AbsolutePos(m_xBuilder->weld_entry("entry-noframe"), this))
-    , m_xRecordOf(m_xBuilder->weld_label("recordof"))
-    , m_xRecordCount(m_xBuilder->weld_label("recordcount"))
-    , m_xFirstBtn(m_xBuilder->weld_button("first"))
-    , m_xPrevBtn(m_xBuilder->weld_button("prev"))
-    , m_xNextBtn(m_xBuilder->weld_button("next"))
-    , m_xLastBtn(m_xBuilder->weld_button("last"))
-    , m_xNewBtn(m_xBuilder->weld_button("new"))
+NavigationBar::NavigationBar(DbGridControl* pParent)
+    : InterimItemWindow(pParent, u"svx/ui/navigationbar.ui"_ustr, u"NavigationBar"_ustr)
+    , m_xRecordText(m_xBuilder->weld_label(u"recordtext"_ustr))
+    , m_xAbsolute(new NavigationBar::AbsolutePos(m_xBuilder->weld_entry(u"entry-noframe"_ustr), this))
+    , m_xRecordOf(m_xBuilder->weld_label(u"recordof"_ustr))
+    , m_xRecordCount(m_xBuilder->weld_label(u"recordcount"_ustr))
+    , m_xFirstBtn(m_xBuilder->weld_button(u"first"_ustr))
+    , m_xPrevBtn(m_xBuilder->weld_button(u"prev"_ustr))
+    , m_xNextBtn(m_xBuilder->weld_button(u"next"_ustr))
+    , m_xLastBtn(m_xBuilder->weld_button(u"last"_ustr))
+    , m_xNewBtn(m_xBuilder->weld_button(u"new"_ustr))
     , m_xPrevRepeater(std::make_shared<weld::ButtonPressRepeater>(*m_xPrevBtn, LINK(this,NavigationBar,OnClick)))
     , m_xNextRepeater(std::make_shared<weld::ButtonPressRepeater>(*m_xNextBtn, LINK(this,NavigationBar,OnClick)))
     , m_nCurrentPos(-1)
     , m_bPositioning(false)
 {
-    vcl::Font aApplFont(Application::GetSettings().GetStyleSettings().GetToolFont());
-    m_xAbsolute->set_font(aApplFont);
-    aApplFont.SetTransparent(true);
-    m_xRecordText->set_font(aApplFont);
-    m_xRecordOf->set_font(aApplFont);
-    m_xRecordCount->set_font(aApplFont);
-
     m_xFirstBtn->set_help_id(HID_GRID_TRAVEL_FIRST);
     m_xPrevBtn->set_help_id(HID_GRID_TRAVEL_PREV);
     m_xNextBtn->set_help_id(HID_GRID_TRAVEL_NEXT);
@@ -342,9 +333,18 @@ NavigationBar::NavigationBar(vcl::Window* pParent)
     m_xRecordOf->set_label(SvxResId(RID_STR_REC_FROM_TEXT));
     m_xRecordCount->set_label(OUString('?'));
 
-    auto nReserveWidth = m_xRecordCount->get_approximate_digit_width() * nReserveNumDigits;
-    m_xAbsolute->GetWidget()->set_size_request(nReserveWidth, -1);
-    m_xRecordCount->set_size_request(nReserveWidth, -1);
+    vcl::Font aApplFont(Application::GetSettings().GetStyleSettings().GetToolFont());
+    SetPointFontAndZoom(aApplFont, Fraction(1, 1));
+
+    m_xContainer->connect_size_allocate(LINK(this, NavigationBar, SizeAllocHdl));
+}
+
+IMPL_LINK(NavigationBar, SizeAllocHdl, const Size&, rSize, void)
+{
+    if (rSize == m_aLastAllocSize)
+        return;
+    m_aLastAllocSize = rSize;
+    static_cast<DbGridControl*>(GetParent())->RearrangeAtIdle();
 }
 
 NavigationBar::~NavigationBar()
@@ -366,7 +366,7 @@ void NavigationBar::dispose()
     InterimItemWindow::dispose();
 }
 
-sal_uInt16 NavigationBar::ArrangeControls()
+sal_uInt16 NavigationBar::GetPreferredWidth() const
 {
     return m_xContainer->get_preferred_size().Width();
 }
@@ -579,6 +579,46 @@ void NavigationBar::SetState(DbGridControlNavigationBarState nWhich)
     }
 }
 
+static void ScaleButton(weld::Button& rBtn, const Fraction& rZoom)
+{
+    rBtn.set_size_request(-1, -1);
+    Size aPrefSize = rBtn.get_preferred_size();
+    aPrefSize.setWidth(std::round(double(aPrefSize.Width() * rZoom)));
+    aPrefSize.setHeight(std::round(double(aPrefSize.Height() * rZoom)));
+    rBtn.set_size_request(aPrefSize.Width(), aPrefSize.Height());
+}
+
+void NavigationBar::SetPointFontAndZoom(const vcl::Font& rFont, const Fraction& rZoom)
+{
+    vcl::Font aFont(rFont);
+    if (rZoom.GetNumerator() != rZoom.GetDenominator())
+    {
+        Size aSize = aFont.GetFontSize();
+        aSize.setWidth(std::round(double(aSize.Width() * rZoom)));
+        aSize.setHeight(std::round(double(aSize.Height() * rZoom)));
+        aFont.SetFontSize(aSize);
+    }
+
+    m_xRecordText->set_font(aFont);
+    m_xAbsolute->GetWidget()->set_font(aFont);
+    m_xRecordOf->set_font(aFont);
+    m_xRecordCount->set_font(aFont);
+
+    auto nReserveWidth = m_xRecordCount->get_approximate_digit_width() * nReserveNumDigits;
+    m_xAbsolute->GetWidget()->set_size_request(nReserveWidth, -1);
+    m_xRecordCount->set_size_request(nReserveWidth, -1);
+
+    ScaleButton(*m_xFirstBtn, rZoom);
+    ScaleButton(*m_xPrevBtn, rZoom);
+    ScaleButton(*m_xNextBtn, rZoom);
+    ScaleButton(*m_xLastBtn, rZoom);
+    ScaleButton(*m_xNewBtn, rZoom);
+
+    SetZoom(rZoom);
+
+    InvalidateChildSizeCache();
+}
+
 DbGridRow::DbGridRow():m_eStatus(GridRowStatus::Clean), m_bIsNew(true)
 {}
 
@@ -692,6 +732,7 @@ DbGridControl::DbGridControl(
             ,m_pGridListener(nullptr)
             ,m_nSeekPos(-1)
             ,m_nTotalCount(-1)
+            ,m_aRearrangeIdle("DbGridControl Rearrange Idle")
             ,m_aNullDate(::dbtools::DBTypeConversion::getStandardDate())
             ,m_nMode(DEFAULT_BROWSE_MODE)
             ,m_nCurrentPos(-1)
@@ -716,6 +757,8 @@ DbGridControl::DbGridControl(
     m_aBar->SetAccessibleName(sName);
     m_aBar->Show();
     ImplInitWindow( InitWindowFacet::All );
+
+    m_aRearrangeIdle.SetInvokeHandler(LINK(this, DbGridControl, RearrangeHdl));
 }
 
 void DbGridControl::InsertHandleColumn()
@@ -771,7 +814,16 @@ void DbGridControl::dispose()
 
     m_aBar.disposeAndClear();
 
+    m_aRearrangeIdle.Stop();
+
     EditBrowseBox::dispose();
+}
+
+void DbGridControl::RearrangeAtIdle()
+{
+    if (isDisposed())
+        return;
+    m_aRearrangeIdle.Start();
 }
 
 void DbGridControl::StateChanged( StateChangedType nType )
@@ -788,12 +840,7 @@ void DbGridControl::StateChanged( StateChangedType nType )
         case StateChangedType::Zoom:
         {
             ImplInitWindow( InitWindowFacet::Font );
-
-            // and give it a chance to rearrange
-            Point aPoint = GetControlArea().TopLeft();
-            sal_uInt16 nX = static_cast<sal_uInt16>(aPoint.X());
-            ArrangeControls(nX, static_cast<sal_uInt16>(aPoint.Y()));
-            ReserveControlArea(nX);
+            RearrangeAtIdle();
         }
         break;
         case StateChangedType::ControlFont:
@@ -853,12 +900,12 @@ void DbGridControl::ImplInitWindow( const InitWindowFacet _eInitWhat )
     {
         if ( m_bNavigationBar )
         {
-            if ( IsControlFont() )
-                m_aBar->SetControlFont( GetControlFont() );
-            else
-                m_aBar->SetControlFont();
+            const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
+            vcl::Font aFont = rStyleSettings.GetToolFont();
+            if (IsControlFont())
+                aFont.Merge(GetControlFont());
 
-            m_aBar->SetZoom( GetZoom() );
+            m_aBar->SetPointFontAndZoom(aFont, GetZoom());
         }
     }
 
@@ -926,8 +973,8 @@ void DbGridControl::ArrangeControls(sal_uInt16& nX, sal_uInt16 nY)
     if (m_bNavigationBar)
     {
         tools::Rectangle aRect(GetControlArea());
-        m_aBar->SetPosSizePixel(Point(0, nY + 1), Size(aRect.GetSize().Width(), aRect.GetSize().Height() - 1));
-        nX = m_aBar->ArrangeControls();
+        nX = m_aBar->GetPreferredWidth();
+        m_aBar->SetPosSizePixel(Point(0, nY + 1), Size(nX, aRect.GetSize().Height() - 1));
     }
 }
 
@@ -1195,7 +1242,7 @@ void DbGridControl::setDataSource(const Reference< XRowSet >& _xCursor, DbGridCo
         // retrieve the datebase of the Numberformatter
         try
         {
-            xSupplier->getNumberFormatSettings()->getPropertyValue("NullDate") >>= m_aNullDate;
+            xSupplier->getNumberFormatSettings()->getPropertyValue(u"NullDate"_ustr) >>= m_aNullDate;
         }
         catch(Exception&)
         {
@@ -2406,8 +2453,8 @@ void DbGridControl::PreExecuteRowContextMenu(weld::Menu& rMenu)
     // if only a blank row is selected then do not delete
     bDelete = bDelete && !((m_nOptions & DbGridControlOptions::Insert) && GetSelectRowCount() == 1 && IsRowSelected(GetRowCount() - 1));
 
-    rMenu.set_visible("delete", bDelete);
-    rMenu.set_visible("save", IsModified());
+    rMenu.set_visible(u"delete"_ustr, bDelete);
+    rMenu.set_visible(u"save"_ustr, IsModified());
 
     // the undo is more difficult
     bool bCanUndo = IsModified();
@@ -2416,7 +2463,7 @@ void DbGridControl::PreExecuteRowContextMenu(weld::Menu& rMenu)
         nState = m_aMasterStateProvider.Call(DbGridControlNavigationBarState::Undo);
     bCanUndo &= ( 0 != nState );
 
-    rMenu.set_visible("undo", bCanUndo);
+    rMenu.set_visible(u"undo"_ustr, bCanUndo);
 }
 
 void DbGridControl::PostExecuteRowContextMenu(const OUString& rExecutionResult)
@@ -2523,8 +2570,8 @@ void DbGridControl::copyCellText(sal_Int32 _nRow, sal_uInt16 _nColId)
 
 void DbGridControl::executeRowContextMenu(const Point& _rPreferredPos)
 {
-    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "svx/ui/rowsmenu.ui"));
-    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, u"svx/ui/rowsmenu.ui"_ustr));
+    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
 
     tools::Rectangle aRect(_rPreferredPos, Size(1,1));
     weld::Window* pParent = weld::GetPopupParent(*this, aRect);
@@ -2570,8 +2617,8 @@ void DbGridControl::Command(const CommandEvent& rEvt)
             {
                 ::tools::Rectangle aRect(rEvt.GetMousePosPixel(), Size(1, 1));
                 weld::Window* pPopupParent = weld::GetPopupParent(*this, aRect);
-                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "svx/ui/cellmenu.ui"));
-                std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
+                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"svx/ui/cellmenu.ui"_ustr));
+                std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
                 if (!xContextMenu->popup_at_rect(pPopupParent, aRect).isEmpty())
                     copyCellText(nRow, nColId);
             }
@@ -2592,6 +2639,25 @@ IMPL_LINK_NOARG(DbGridControl, OnDelete, void*, void)
 {
     m_nDeleteEvent = nullptr;
     DeleteSelectedRows();
+}
+
+IMPL_LINK_NOARG(DbGridControl, RearrangeHdl, Timer*, void)
+{
+    if (isDisposed())
+        return;
+
+    // and give it a chance to rearrange
+    Point aPoint = GetControlArea().TopLeft();
+    sal_uInt16 nX = static_cast<sal_uInt16>(aPoint.X());
+    ArrangeControls(nX, aPoint.Y());
+    // tdf#155364 like tdf#97731 if the reserved area changed size, give
+    // the controls a chance to adapt to the new size
+    bool bChanged = ReserveControlArea(nX);
+    if (bChanged)
+    {
+        ArrangeControls(nX, aPoint.Y());
+        Invalidate();
+    }
 }
 
 void DbGridControl::DeleteSelectedRows()
@@ -2683,9 +2749,9 @@ void DbGridControl::CellModified()
     }
 }
 
-void DbGridControl::Dispatch(sal_uInt16 nId)
+void DbGridControl::Dispatch(BrowserDispatchId eId)
 {
-    if (nId == BROWSER_CURSORENDOFFILE)
+    if (eId == BrowserDispatchId::CURSORENDOFFILE)
     {
         if (m_nOptions & DbGridControlOptions::Insert)
             AppendNew();
@@ -2693,7 +2759,7 @@ void DbGridControl::Dispatch(sal_uInt16 nId)
             MoveToLast();
     }
     else
-        EditBrowseBox::Dispatch(nId);
+        EditBrowseBox::Dispatch(eId);
 }
 
 void DbGridControl::Undo()
@@ -3139,7 +3205,7 @@ sal_uInt16 DbGridControl::GetColumnIdFromModelPos( sal_uInt16 nPos ) const
             if ( m_aColumns[ i ]->IsHidden())
                 --nViewPos;
 
-        DBG_ASSERT(pCol && GetColumnIdFromViewPos(nViewPos) == pCol->GetId(),
+        DBG_ASSERT(GetColumnIdFromViewPos(nViewPos) == pCol->GetId(),
             "DbGridControl::GetColumnIdFromModelPos : this isn't consistent... did I misunderstand something ?");
     }
 #endif
@@ -3320,19 +3386,16 @@ sal_Int32 DbGridControl::GetAccessibleControlCount() const
     return EditBrowseBox::GetAccessibleControlCount() + 1; // the navigation control
 }
 
-Reference<XAccessible > DbGridControl::CreateAccessibleControl( sal_Int32 _nIndex )
+rtl::Reference<comphelper::OAccessible> DbGridControl::CreateAccessibleControl(sal_Int32 _nIndex)
 {
-    Reference<XAccessible > xRet;
-    if ( _nIndex == EditBrowseBox::GetAccessibleControlCount() )
-    {
-        xRet = m_aBar->GetAccessible();
-    }
-    else
-        xRet = EditBrowseBox::CreateAccessibleControl( _nIndex );
-    return xRet;
+    if (_nIndex == EditBrowseBox::GetAccessibleControlCount())
+        return m_aBar->GetAccessible();
+
+    return EditBrowseBox::CreateAccessibleControl(_nIndex);
 }
 
-Reference< XAccessible > DbGridControl::CreateAccessibleCell( sal_Int32 _nRow, sal_uInt16 _nColumnPos )
+rtl::Reference<comphelper::OAccessible> DbGridControl::CreateAccessibleCell(sal_Int32 _nRow,
+                                                                            sal_uInt16 _nColumnPos)
 {
     sal_uInt16 nColumnId = GetColumnId( _nColumnPos );
     size_t Location = GetModelColumnPos(nColumnId);

@@ -27,7 +27,7 @@
 #include <vcl/lineinfo.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/ptrstyle.hxx>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 
 #include <window.h>
 
@@ -35,12 +35,12 @@ namespace
 {
     Wallpaper& ImplBlackWall()
     {
-        static vcl::DeleteOnDeinit< Wallpaper > SINGLETON(COL_BLACK);
+        static tools::DeleteOnDeinit< Wallpaper > SINGLETON(COL_BLACK);
         return *SINGLETON.get();
     }
     Wallpaper& ImplWhiteWall()
     {
-        static vcl::DeleteOnDeinit< Wallpaper > SINGLETON(COL_LIGHTGRAY);
+        static tools::DeleteOnDeinit< Wallpaper > SINGLETON(COL_LIGHTGRAY);
         return *SINGLETON.get();
     }
 }
@@ -154,7 +154,7 @@ void Splitter::dispose()
         TaskPaneList *pTList = pSysWin->GetTaskPaneList();
         pTList->RemoveWindow(this);
     }
-    mpRefWin.clear();
+    mpRefWin.reset();
     Window::dispose();
 }
 
@@ -460,10 +460,10 @@ void Splitter::StartDrag()
 
     StartSplit();
 
-    // Tracking starten
+    // Start tracking
     StartTracking();
 
-    // Start-Position ermitteln
+    // Determine start position
     maDragPos = mpRefWin->GetPointerPosPixel();
     ImplSplitMousePos( maDragPos );
     if ( mbHorzSplit )

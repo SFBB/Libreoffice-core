@@ -26,6 +26,8 @@
 #include <rtl/ustring.hxx>
 #include <com/sun/star/ucb/Lock.hpp>
 #include <utility>
+#include <comphelper/lok.hxx>
+#include <condition_variable>
 
 #include "CurlSession.hxx"
 
@@ -57,9 +59,12 @@ struct LockInfo
 
 typedef std::map< OUString, LockInfo > LockInfoMap;
 
-class SerfLockStore
+class SerfLockStore : public comphelper::LibreOfficeKit::ThreadJoinable
 {
+public:
     std::mutex         m_aMutex;
+    std::condition_variable m_aCondition;
+    std::chrono::milliseconds refreshLocks(std::unique_lock<std::mutex>& rGuard);
     rtl::Reference< TickerThread > m_pTickerThread;
     LockInfoMap        m_aLockInfoMap;
 
@@ -79,11 +84,13 @@ public:
 
     void removeLock(const OUString& rURI);
 
-    void refreshLocks();
+    // comphelper::LibreOfficeKit::ThreadJoinable
+    virtual bool joinThreads() override;
+    virtual void startThreads() override;
 
 private:
     void removeLockImpl(std::unique_lock<std::mutex> & rGuard, const OUString& rURI);
-    void startTicker();
+    void startTicker(std::unique_lock<std::mutex> & rGuard);
     void stopTicker(std::unique_lock<std::mutex> & rGuard);
 };
 

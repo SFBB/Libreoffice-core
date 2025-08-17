@@ -53,7 +53,6 @@
 
 using namespace css;
 using namespace css::uno;
-using namespace css::lang;
 
 const WhichRangesContainer SwDropCapsPage::s_aPageRg(svl::Items<RES_PARATR_DROP, RES_PARATR_DROP>);
 
@@ -231,9 +230,9 @@ void SwDropCapsPict::UpdatePaintSettings()
         {
             // query Font at character template
             SwCharFormat *pFormat = rWrtShell.GetCharStyle(
-                                    mpPage->m_xTemplateBox->get_active_text(),
+                                    UIName(mpPage->m_xTemplateBox->get_active_text()),
                                     SwWrtShell::GETSTYLE_CREATEANY );
-            OSL_ENSURE(pFormat, "character style doesn't exist!");
+            assert(pFormat && "character style doesn't exist!");
             const SvxFontItem &rFormatFont = pFormat->GetFont();
 
             aFont.SetFamily(rFormatFont.GetFamily());
@@ -360,7 +359,7 @@ void SwDropCapsPict::CheckScript()
     maScriptChanges.clear();
     if( !m_xBreak.is() )
     {
-        Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         m_xBreak = css::i18n::BreakIterator::create(xContext);
     }
     sal_Int16 nScript = m_xBreak->getScriptType( maText, 0 );
@@ -470,22 +469,22 @@ SwDropCapsDlg::SwDropCapsDlg(weld::Window *pParent, const SfxItemSet &rSet)
 }
 
 SwDropCapsPage::SwDropCapsPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/dropcapspage.ui", "DropCapPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/dropcapspage.ui"_ustr, u"DropCapPage"_ustr, &rSet)
     , m_bModified(false)
     , m_bFormat(true)
-    , m_xDropCapsBox(m_xBuilder->weld_check_button("checkCB_SWITCH"))
-    , m_xWholeWordCB(m_xBuilder->weld_check_button("checkCB_WORD"))
-    , m_xSwitchText(m_xBuilder->weld_label("labelFT_DROPCAPS"))
-    , m_xDropCapsField(m_xBuilder->weld_spin_button("spinFLD_DROPCAPS"))
-    , m_xLinesText(m_xBuilder->weld_label("labelTXT_LINES"))
-    , m_xLinesField(m_xBuilder->weld_spin_button("spinFLD_LINES"))
-    , m_xDistanceText(m_xBuilder->weld_label("labelTXT_DISTANCE"))
-    , m_xDistanceField(m_xBuilder->weld_metric_spin_button("spinFLD_DISTANCE", FieldUnit::CM))
-    , m_xTextText(m_xBuilder->weld_label("labelTXT_TEXT"))
-    , m_xTextEdit(m_xBuilder->weld_entry("entryEDT_TEXT"))
-    , m_xTemplateText(m_xBuilder->weld_label("labelTXT_TEMPLATE"))
-    , m_xTemplateBox(m_xBuilder->weld_combo_box("comboBOX_TEMPLATE"))
-    , m_xPict(new weld::CustomWeld(*m_xBuilder, "drawingareaWN_EXAMPLE", m_aPict))
+    , m_xDropCapsBox(m_xBuilder->weld_check_button(u"checkCB_SWITCH"_ustr))
+    , m_xWholeWordCB(m_xBuilder->weld_check_button(u"checkCB_WORD"_ustr))
+    , m_xSwitchText(m_xBuilder->weld_label(u"labelFT_DROPCAPS"_ustr))
+    , m_xDropCapsField(m_xBuilder->weld_spin_button(u"spinFLD_DROPCAPS"_ustr))
+    , m_xLinesText(m_xBuilder->weld_label(u"labelTXT_LINES"_ustr))
+    , m_xLinesField(m_xBuilder->weld_spin_button(u"spinFLD_LINES"_ustr))
+    , m_xDistanceText(m_xBuilder->weld_label(u"labelTXT_DISTANCE"_ustr))
+    , m_xDistanceField(m_xBuilder->weld_metric_spin_button(u"spinFLD_DISTANCE"_ustr, FieldUnit::CM))
+    , m_xTextText(m_xBuilder->weld_label(u"labelTXT_TEXT"_ustr))
+    , m_xTextEdit(m_xBuilder->weld_entry(u"entryEDT_TEXT"_ustr))
+    , m_xTemplateText(m_xBuilder->weld_label(u"labelTXT_TEMPLATE"_ustr))
+    , m_xTemplateBox(m_xBuilder->weld_combo_box(u"comboBOX_TEMPLATE"_ustr))
+    , m_xPict(new weld::CustomWeld(*m_xBuilder, u"drawingareaWN_EXAMPLE"_ustr, m_aPict))
 {
     m_aPict.SetDropCapsPage(this);
 
@@ -544,7 +543,7 @@ bool  SwDropCapsPage::FillItemSet(SfxItemSet *rSet)
 void  SwDropCapsPage::Reset(const SfxItemSet *rSet)
 {
     // Characters, lines, gap and text
-    SwFormatDrop aFormatDrop( rSet->Get(RES_PARATR_DROP) );
+    const SwFormatDrop& aFormatDrop( rSet->Get(RES_PARATR_DROP) );
     if (aFormatDrop.GetLines() > 1)
     {
         m_xDropCapsField->set_value(aFormatDrop.GetChars());
@@ -569,7 +568,7 @@ void  SwDropCapsPage::Reset(const SfxItemSet *rSet)
     int nSelect = 0;
     if (aFormatDrop.GetCharFormat())
     {
-        int nPos = m_xTemplateBox->find_text(aFormatDrop.GetCharFormat()->GetName());
+        int nPos = m_xTemplateBox->find_text(aFormatDrop.GetCharFormat()->GetName().toString());
         if (nPos != -1)
             nSelect = nPos;
     }
@@ -620,7 +619,7 @@ IMPL_LINK_NOARG(SwDropCapsPage, ClickHdl, weld::Toggleable&, void)
         m_xDropCapsField->grab_focus();
     }
     else
-        m_aPict.SetText("");
+        m_aPict.SetText(u""_ustr);
 
     m_bModified = true;
 }
@@ -719,21 +718,21 @@ void SwDropCapsPage::FillSet( SfxItemSet &rSet )
     if (bOn)
     {
         // quantity, lines, gap
-        aFormat.GetChars()     = static_cast<sal_uInt8>(m_xDropCapsField->get_value());
-        aFormat.GetLines()     = static_cast<sal_uInt8>(m_xLinesField->get_value());
-        aFormat.GetDistance()  = o3tl::narrowing<sal_uInt16>(m_xDistanceField->denormalize(m_xDistanceField->get_value(FieldUnit::TWIP)));
-        aFormat.GetWholeWord() = m_xWholeWordCB->get_active();
+        aFormat.SetChars(     static_cast<sal_uInt8>(m_xDropCapsField->get_value()) );
+        aFormat.SetLines(     static_cast<sal_uInt8>(m_xLinesField->get_value())  );
+        aFormat.SetDistance(  o3tl::narrowing<sal_uInt16>(m_xDistanceField->denormalize(m_xDistanceField->get_value(FieldUnit::TWIP)))  );
+        aFormat.SetWholeWord( m_xWholeWordCB->get_active() );
 
         // template
         if (SwView* pView = GetActiveView())
             if (m_xTemplateBox->get_active())
-                aFormat.SetCharFormat(pView->GetWrtShell().GetCharStyle(m_xTemplateBox->get_active_text()));
+                aFormat.SetCharFormat(pView->GetWrtShell().GetCharStyle(UIName(m_xTemplateBox->get_active_text())));
     }
     else
     {
-        aFormat.GetChars()    = 1;
-        aFormat.GetLines()    = 1;
-        aFormat.GetDistance() = 0;
+        aFormat.SetChars(1);
+        aFormat.SetLines(1);
+        aFormat.SetDistance(0);
     }
 
     // set attributes

@@ -119,12 +119,28 @@ bool FreeTypeTextRenderImpl::AddTempDevFont(vcl::font::PhysicalFontCollection* p
         int nFaceNum = rMgr.getFontFaceNumber(nFontId);
         int nVariantNum = rMgr.getFontFaceVariation(nFontId);
 
-        const OString& rFileName = rMgr.getFontFileSysPath(nFontId);
-        rFreetypeManager.AddFontFile(rFileName, nFaceNum, nVariantNum, nFontId, aDFA);
+        const OString aFileName = rMgr.getFontFileSysPath(nFontId);
+        rFreetypeManager.AddFontFile(aFileName, nFaceNum, nVariantNum, nFontId, aDFA);
     }
 
     // announce new font to device's font list
     rFreetypeManager.AnnounceFonts(pFontCollection);
+    return true;
+}
+
+bool FreeTypeTextRenderImpl::RemoveTempDevFont(const OUString& rFileURL, const OUString& /*rFontName*/)
+{
+    // inform PSP font manager
+    psp::PrintFontManager& rMgr = psp::PrintFontManager::get();
+    std::vector<psp::fontID> aFontIds = rMgr.findFontFileIDs(rFileURL);
+    if (aFontIds.empty())
+        return true; // Nothing to remove -> safe to delete the file
+
+    FreetypeManager& rFreetypeManager = FreetypeManager::get();
+    for (auto const& nFontId : aFontIds)
+        rFreetypeManager.RemoveFontFile(nFontId);
+
+    rMgr.removeFontFile(rFileURL);
     return true;
 }
 
@@ -154,8 +170,8 @@ void FreeTypeTextRenderImpl::GetDevFontList(vcl::font::PhysicalFontCollection* p
         // inform FreetypeManager about this font provided by the PsPrint subsystem
         FontAttributes aDFA = pFont->m_aFontAttributes;
         aDFA.IncreaseQualityBy(4096);
-        const OString& rFileName = rMgr.getFontFileSysPath(nFontId);
-        rFreetypeManager.AddFontFile(rFileName, nFaceNum, nVariantNum, nFontId, aDFA);
+        const OString aFileName = rMgr.getFontFileSysPath(nFontId);
+        rFreetypeManager.AddFontFile(aFileName, nFaceNum, nVariantNum, nFontId, aDFA);
     }
 
     // announce glyphcache fonts

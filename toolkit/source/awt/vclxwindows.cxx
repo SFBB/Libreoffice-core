@@ -18,14 +18,12 @@
  */
 
 #include <toolkit/awt/vclxwindows.hxx>
-#include <toolkit/helper/accessiblefactory.hxx>
 #include <com/sun/star/awt/LineEndFormat.hpp>
 #include <com/sun/star/awt/ScrollBarOrientation.hpp>
 #include <com/sun/star/graphic/GraphicProvider.hpp>
 #include <com/sun/star/graphic/XGraphicProvider.hpp>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <helper/property.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <com/sun/star/awt/VisualEffect.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/resource/XStringResourceResolver.hpp>
@@ -42,6 +40,8 @@
 #include <vcl/toolkit/button.hxx>
 #include <vcl/toolkit/fmtfield.hxx>
 #include <vcl/graph.hxx>
+#include <vcl/headbar.hxx>
+#include <vcl/toolbox.hxx>
 #include <vcl/toolkit/lstbox.hxx>
 #include <vcl/toolkit/combobox.hxx>
 #include <vcl/toolkit/field.hxx>
@@ -53,6 +53,7 @@
 #include <vcl/svapp.hxx>
 #include <vcl/tabpage.hxx>
 #include <vcl/tabctrl.hxx>
+#include <vcl/unohelp.hxx>
 #include <vcl/settings.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <tools/debug.hxx>
@@ -206,6 +207,7 @@ namespace toolkit
 
 void VCLXGraphicControl::ImplGetPropertyIds( std::vector< sal_uInt16 > &rIds )
 {
+    PushPropertyIds(rIds, BASEPROPERTY_REFERER, 0);
     VCLXWindow::ImplGetPropertyIds( rIds );
 }
 
@@ -294,7 +296,7 @@ css::uno::Any VCLXGraphicControl::getProperty( const OUString& PropertyName )
     switch ( nPropType )
     {
         case BASEPROPERTY_GRAPHIC:
-            aProp <<= Graphic(maImage.GetBitmapEx()).GetXGraphic();
+            aProp <<= Graphic(maImage.GetBitmap()).GetXGraphic();
             break;
         case BASEPROPERTY_IMAGEALIGN:
         {
@@ -378,11 +380,6 @@ VCLXButton::~VCLXButton()
 {
 }
 
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXButton::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext( this );
-}
-
 void VCLXButton::dispose()
 {
     SolarMutexGuard aGuard;
@@ -442,7 +439,7 @@ css::awt::Size VCLXButton::getMinimumSize(  )
     VclPtr< PushButton > pButton = GetAs< PushButton >();
     if ( pButton )
         aSz = pButton->CalcMinimumSize();
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXButton::getPreferredSize(  )
@@ -457,7 +454,7 @@ css::awt::Size VCLXButton::calcAdjustedSize( const css::awt::Size& rNewSize )
 {
     SolarMutexGuard aGuard;
 
-    Size aSz = VCLSize(rNewSize);
+    Size aSz = vcl::unohelper::ConvertToVCLSize(rNewSize);
     VclPtr< PushButton > pButton = GetAs< PushButton >();
     if ( pButton )
     {
@@ -478,7 +475,7 @@ css::awt::Size VCLXButton::calcAdjustedSize( const css::awt::Size& rNewSize )
                 aSz = aMinSz;
         }
     }
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 void VCLXButton::setProperty( const OUString& PropertyName, const css::uno::Any& Value)
@@ -584,7 +581,7 @@ void VCLXButton::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
                 aEvent.Source = getXWeak();
                 aEvent.ActionCommand = maActionCommand;
 
-                Callback aCallback = [ this, aEvent ]()
+                Callback aCallback = [ this, aEvent=std::move(aEvent) ]()
                                      { this->maActionListeners.actionPerformed( aEvent ); };
 
                 ImplExecuteAsyncWithoutSolarLock( aCallback );
@@ -661,7 +658,7 @@ css::awt::Size VCLXImageControl::getMinimumSize(  )
     Size aSz = GetImage().GetSizePixel();
     aSz = ImplCalcWindowSize( aSz );
 
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXImageControl::getPreferredSize(  )
@@ -779,11 +776,6 @@ VCLXCheckBox::VCLXCheckBox() :  maActionListeners( *this ), maItemListeners( *th
 {
 }
 
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXCheckBox::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext( this );
-}
-
 void VCLXCheckBox::dispose()
 {
     SolarMutexGuard aGuard;
@@ -898,7 +890,7 @@ css::awt::Size VCLXCheckBox::getMinimumSize()
     VclPtr< CheckBox > pCheckBox = GetAs< CheckBox >();
     if ( pCheckBox )
         aSz = pCheckBox->CalcMinimumSize();
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXCheckBox::getPreferredSize()
@@ -910,7 +902,7 @@ css::awt::Size VCLXCheckBox::calcAdjustedSize( const css::awt::Size& rNewSize )
 {
     SolarMutexGuard aGuard;
 
-    Size aSz = VCLSize(rNewSize);
+    Size aSz = vcl::unohelper::ConvertToVCLSize(rNewSize);
     VclPtr< CheckBox > pCheckBox = GetAs< CheckBox >();
     if ( pCheckBox )
     {
@@ -920,7 +912,7 @@ css::awt::Size VCLXCheckBox::calcAdjustedSize( const css::awt::Size& rNewSize )
         else
             aSz = aMinSz;
     }
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 void VCLXCheckBox::setProperty( const OUString& PropertyName, const css::uno::Any& Value)
@@ -1061,11 +1053,6 @@ void VCLXRadioButton::ImplGetPropertyIds( std::vector< sal_uInt16 > &rIds )
 
 VCLXRadioButton::VCLXRadioButton() : maItemListeners( *this ), maActionListeners( *this )
 {
-}
-
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXRadioButton::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext( this );
 }
 
 void VCLXRadioButton::dispose()
@@ -1223,7 +1210,7 @@ css::awt::Size VCLXRadioButton::getMinimumSize(  )
     VclPtr< RadioButton > pRadioButton = GetAs< RadioButton >();
     if ( pRadioButton )
         aSz = pRadioButton->CalcMinimumSize();
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXRadioButton::getPreferredSize(  )
@@ -1235,7 +1222,7 @@ css::awt::Size VCLXRadioButton::calcAdjustedSize( const css::awt::Size& rNewSize
 {
     SolarMutexGuard aGuard;
 
-    Size aSz = VCLSize(rNewSize);
+    Size aSz = vcl::unohelper::ConvertToVCLSize(rNewSize);
     VclPtr< RadioButton > pRadioButton = GetAs< RadioButton >();
     if ( pRadioButton )
     {
@@ -1245,7 +1232,7 @@ css::awt::Size VCLXRadioButton::calcAdjustedSize( const css::awt::Size& rNewSize
         else
             aSz = aMinSz;
     }
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 void VCLXRadioButton::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
@@ -1572,7 +1559,13 @@ sal_Int16 VCLXListBox::getSelectedItemPos()
 {
     SolarMutexGuard aGuard;
     VclPtr< ListBox > pBox = GetAs< ListBox >();
-    return pBox ? pBox->GetSelectedEntryPos() : 0;
+    if (!pBox)
+        return -1; // nothing selected
+    sal_Int32 nPos = pBox->GetSelectedEntryPos();
+    if (nPos == LISTBOX_ENTRY_NOTFOUND)
+        return -1; // nothing selected
+    assert(nPos <= SAL_MAX_INT16 && "nPos is out of the range we can represent");
+    return nPos;
 }
 
 css::uno::Sequence<sal_Int16> VCLXListBox::getSelectedItemsPos()
@@ -1782,13 +1775,6 @@ void VCLXListBox::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
     }
 }
 
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXListBox::CreateAccessibleContext()
-{
-    SolarMutexGuard aGuard;
-
-    return getAccessibleFactory().createAccessibleContext( this );
-}
-
 void VCLXListBox::setProperty( const OUString& PropertyName, const css::uno::Any& Value)
 {
     SolarMutexGuard aGuard;
@@ -1861,7 +1847,7 @@ void VCLXListBox::setProperty( const OUString& PropertyName, const css::uno::Any
         case BASEPROPERTY_HIGHLIGHT_COLOR:
         {
             Color nColor = 0;
-            bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+            bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
             if (bVoid)
             {
                 nColor = Application::GetSettings().GetStyleSettings().GetHighlightColor();
@@ -1877,7 +1863,7 @@ void VCLXListBox::setProperty( const OUString& PropertyName, const css::uno::Any
         case BASEPROPERTY_HIGHLIGHT_TEXT_COLOR:
         {
             Color nColor = 0;
-            bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+            bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
             if (bVoid)
             {
                 nColor = Application::GetSettings().GetStyleSettings().GetHighlightTextColor();
@@ -1957,7 +1943,7 @@ css::awt::Size VCLXListBox::getMinimumSize(  )
     VclPtr< ListBox > pListBox = GetAs< ListBox >();
     if ( pListBox )
         aSz = pListBox->CalcMinimumSize();
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXListBox::getPreferredSize(  )
@@ -1971,17 +1957,17 @@ css::awt::Size VCLXListBox::getPreferredSize(  )
         if ( pListBox->GetStyle() & WB_DROPDOWN )
             aSz.AdjustHeight(4 );
     }
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXListBox::calcAdjustedSize( const css::awt::Size& rNewSize )
 {
     SolarMutexGuard aGuard;
-    Size aSz = VCLSize(rNewSize);
+    Size aSz = vcl::unohelper::ConvertToVCLSize(rNewSize);
     VclPtr< ListBox > pListBox = GetAs< ListBox >();
     if ( pListBox )
         aSz = pListBox->CalcAdjustedSize( aSz );
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXListBox::getMinimumSize( sal_Int16 nCols, sal_Int16 nLines )
@@ -1991,7 +1977,7 @@ css::awt::Size VCLXListBox::getMinimumSize( sal_Int16 nCols, sal_Int16 nLines )
     VclPtr< ListBox > pListBox = GetAs< ListBox >();
     if ( pListBox )
         aSz = pListBox->CalcBlockSize( nCols, nLines );
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 void VCLXListBox::getColumnsAndLines( sal_Int16& nCols, sal_Int16& nLines )
@@ -2032,10 +2018,10 @@ namespace
 
         try
         {
-             Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+             const Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
              Reference< XGraphicProvider > xProvider(graphic::GraphicProvider::create(xContext));
              ::comphelper::NamedValueCollection aMediaProperties;
-             aMediaProperties.put( "URL", i_rImageURL );
+             aMediaProperties.put( u"URL"_ustr, i_rImageURL );
              Reference< XGraphic > xGraphic = xProvider->queryGraphic( aMediaProperties.getPropertyValues() );
              return Image( xGraphic );
         }
@@ -2112,10 +2098,10 @@ void SAL_CALL VCLXListBox::itemListChanged( const EventObject& i_rEvent )
     uno::Reference< beans::XPropertySet > xPropSet( i_rEvent.Source, uno::UNO_QUERY_THROW );
     uno::Reference< beans::XPropertySetInfo > xPSI( xPropSet->getPropertySetInfo(), uno::UNO_SET_THROW );
     uno::Reference< resource::XStringResourceResolver > xStringResourceResolver;
-    if ( xPSI->hasPropertyByName("ResourceResolver") )
+    if ( xPSI->hasPropertyByName(u"ResourceResolver"_ustr) )
     {
         xStringResourceResolver.set(
-            xPropSet->getPropertyValue("ResourceResolver"),
+            xPropSet->getPropertyValue(u"ResourceResolver"_ustr),
             uno::UNO_QUERY
         );
     }
@@ -2134,13 +2120,9 @@ void SAL_CALL VCLXListBox::itemListChanged( const EventObject& i_rEvent )
     }
 }
 
-void SAL_CALL VCLXListBox::disposing( const EventObject& i_rEvent )
+void SAL_CALL VCLXListBox::disposing(const EventObject&)
 {
-    // just disambiguate
-    VCLXWindow::disposing( i_rEvent );
 }
-
-
 
 
 void VCLXMessageBox::GetPropertyIds( std::vector< sal_uInt16 > &rIds )
@@ -2331,7 +2313,7 @@ void SAL_CALL VCLXDialog::setProperty(
     if ( !pDialog )
         return;
 
-    bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+    bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
 
     sal_uInt16 nPropType = GetPropertyId( PropertyName );
     switch ( nPropType )
@@ -2455,7 +2437,7 @@ void SAL_CALL VCLXMultiPage::setProperty(
     if ( !pTabControl )
         return;
 
-    bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+    bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
 
     sal_uInt16 nPropType = GetPropertyId( PropertyName );
     switch ( nPropType )
@@ -2558,7 +2540,7 @@ void SAL_CALL VCLXMultiPage::addTabListener( const uno::Reference< awt::XTabList
 void SAL_CALL VCLXMultiPage::removeTabListener( const uno::Reference< awt::XTabListener >& xListener )
 {
     SolarMutexGuard aGuard;
-    maTabListeners.addInterface( xListener );
+    maTabListeners.removeInterface( xListener );
 }
 
 void SAL_CALL VCLXMultiPage::setTabProps( sal_Int32 ID, const uno::Sequence< beans::NamedValue >& Properties )
@@ -2590,8 +2572,8 @@ uno::Sequence< beans::NamedValue > SAL_CALL VCLXMultiPage::getTabProps( sal_Int3
 
     uno::Sequence< beans::NamedValue > props
     {
-        { "Title",    css::uno::Any(pTabControl->GetPageText( sal::static_int_cast< sal_uInt16 >( ID ) )) },
-        { "Position", css::uno::Any(pTabControl->GetPagePos( sal::static_int_cast< sal_uInt16 >( ID ) )) }
+        { u"Title"_ustr,    css::uno::Any(pTabControl->GetPageText( sal::static_int_cast< sal_uInt16 >( ID ) )) },
+        { u"Position"_ustr, css::uno::Any(pTabControl->GetPagePos( sal::static_int_cast< sal_uInt16 >( ID ) )) }
     };
     return props;
 }
@@ -2602,14 +2584,14 @@ void VCLXMultiPage::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
     {
         case VclEventId::TabpageDeactivate:
         {
-            sal_uLong nPageID = reinterpret_cast<sal_uLong>( rVclWindowEvent.GetData() );
+            sal_uInt16 nPageID = static_cast<sal_uInt16>(reinterpret_cast<sal_uIntPtr>( rVclWindowEvent.GetData() ));
             maTabListeners.deactivated( nPageID );
             break;
 
         }
         case VclEventId::TabpageActivate:
         {
-            sal_uLong nPageID = reinterpret_cast<sal_uLong>( rVclWindowEvent.GetData() );
+            sal_uInt16 nPageID = static_cast<sal_uInt16>(reinterpret_cast<sal_uIntPtr>( rVclWindowEvent.GetData() ));
             maTabListeners.activated( nPageID );
             break;
         }
@@ -2676,7 +2658,7 @@ void SAL_CALL VCLXTabPage::setProperty(
     if ( !pTabPage )
         return;
 
-    bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+    bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
 
     sal_uInt16 nPropType = GetPropertyId( PropertyName );
     switch ( nPropType )
@@ -2770,11 +2752,6 @@ void VCLXFixedHyperlink::ProcessWindowEvent( const VclWindowEvent& rVclWindowEve
             VCLXWindow::ProcessWindowEvent( rVclWindowEvent );
             break;
     }
-}
-
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXFixedHyperlink::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext( this );
 }
 
 void VCLXFixedHyperlink::setText( const OUString& Text )
@@ -2874,7 +2851,7 @@ css::awt::Size VCLXFixedHyperlink::getMinimumSize(  )
     VclPtr< FixedText > pFixedText = GetAs< FixedText >();
     if ( pFixedText )
         aSz = pFixedText->CalcMinimumSize();
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXFixedHyperlink::getPreferredSize(  )
@@ -2885,7 +2862,7 @@ css::awt::Size VCLXFixedHyperlink::getPreferredSize(  )
 css::awt::Size VCLXFixedHyperlink::calcAdjustedSize( const css::awt::Size& rNewSize )
 {
     SolarMutexGuard aGuard;
-    Size aSz( VCLUnoHelper::ConvertToVCLSize( rNewSize ));
+    Size aSz( vcl::unohelper::ConvertToVCLSize( rNewSize ));
     VclPtr< FixedText > pFixedText = GetAs< FixedText >();
     if (pFixedText)
     {
@@ -2896,7 +2873,7 @@ css::awt::Size VCLXFixedHyperlink::calcAdjustedSize( const css::awt::Size& rNewS
             aSz = aMinSz;
     }
 
-    return VCLUnoHelper::ConvertToAWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 void VCLXFixedHyperlink::setProperty( const OUString& PropertyName, const css::uno::Any& Value)
@@ -3023,11 +3000,6 @@ VCLXFixedText::~VCLXFixedText()
 {
 }
 
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXFixedText::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext( this );
-}
-
 void VCLXFixedText::setText( const OUString& Text )
 {
     SolarMutexGuard aGuard;
@@ -3096,7 +3068,7 @@ css::awt::Size VCLXFixedText::getMinimumSize(  )
     VclPtr< FixedText > pFixedText = GetAs< FixedText >();
     if ( pFixedText )
         aSz = pFixedText->CalcMinimumSize();
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXFixedText::getPreferredSize(  )
@@ -3108,11 +3080,11 @@ css::awt::Size VCLXFixedText::calcAdjustedSize( const css::awt::Size& rMaxSize )
 {
     SolarMutexGuard aGuard;
 
-    Size aAdjustedSize( VCLUnoHelper::ConvertToVCLSize( rMaxSize ) );
+    Size aAdjustedSize( vcl::unohelper::ConvertToVCLSize( rMaxSize ) );
     VclPtr< FixedText > pFixedText = GetAs< FixedText >();
     if ( pFixedText )
         aAdjustedSize = pFixedText->CalcMinimumSize( rMaxSize.Width );
-    return VCLUnoHelper::ConvertToAWTSize( aAdjustedSize );
+    return vcl::unohelper::ConvertToAWTSize( aAdjustedSize );
 }
 
 
@@ -3148,11 +3120,6 @@ void VCLXScrollBar::ImplGetPropertyIds( std::vector< sal_uInt16 > &rIds )
 
 VCLXScrollBar::VCLXScrollBar() : maAdjustmentListeners( *this )
 {
-}
-
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXScrollBar::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext( this );
 }
 
 // css::lang::XComponent
@@ -3340,7 +3307,7 @@ void VCLXScrollBar::setProperty( const OUString& PropertyName, const css::uno::A
     if ( !pScrollBar )
         return;
 
-    bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+    bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
 
     sal_uInt16 nPropType = GetPropertyId( PropertyName );
     switch ( nPropType )
@@ -3620,11 +3587,6 @@ VCLXEdit::VCLXEdit() : maTextListeners( *this )
 {
 }
 
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXEdit::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext( this );
-}
-
 void VCLXEdit::dispose()
 {
     SolarMutexGuard aGuard;
@@ -3854,7 +3816,7 @@ css::awt::Size VCLXEdit::getMinimumSize(  )
     VclPtr< Edit > pEdit = GetAs< Edit >();
     if ( pEdit )
         aSz = pEdit->CalcMinimumSize();
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXEdit::getPreferredSize(  )
@@ -3868,7 +3830,7 @@ css::awt::Size VCLXEdit::getPreferredSize(  )
         aSz = pEdit->CalcMinimumSize();
         aSz.AdjustHeight(4 );
     }
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXEdit::calcAdjustedSize( const css::awt::Size& rNewSize )
@@ -3896,7 +3858,7 @@ css::awt::Size VCLXEdit::getMinimumSize( sal_Int16 nCols, sal_Int16 )
         else
             aSz = pEdit->CalcMinimumSize();
     }
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 void VCLXEdit::getColumnsAndLines( sal_Int16& nCols, sal_Int16& nLines )
@@ -3984,13 +3946,6 @@ VCLXComboBox::VCLXComboBox()
 VCLXComboBox::~VCLXComboBox()
 {
     SAL_INFO("toolkit", __FUNCTION__);
-}
-
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXComboBox::CreateAccessibleContext()
-{
-    SolarMutexGuard aGuard;
-
-    return getAccessibleFactory().createAccessibleContext( this );
 }
 
 void VCLXComboBox::dispose()
@@ -4137,7 +4092,7 @@ void VCLXComboBox::setProperty( const OUString& PropertyName, const css::uno::An
     if ( !pComboBox )
         return;
 
-    bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+    bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
     sal_uInt16 nPropType = GetPropertyId( PropertyName );
     switch ( nPropType )
     {
@@ -4311,7 +4266,7 @@ css::awt::Size VCLXComboBox::getMinimumSize(  )
     VclPtr< ComboBox > pComboBox = GetAs< ComboBox >();
     if ( pComboBox )
         aSz = pComboBox->CalcMinimumSize();
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXComboBox::getPreferredSize(  )
@@ -4326,18 +4281,18 @@ css::awt::Size VCLXComboBox::getPreferredSize(  )
         if ( pComboBox->GetStyle() & WB_DROPDOWN )
             aSz.AdjustHeight(4 );
     }
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXComboBox::calcAdjustedSize( const css::awt::Size& rNewSize )
 {
     SolarMutexGuard aGuard;
 
-    Size aSz = VCLSize(rNewSize);
+    Size aSz = vcl::unohelper::ConvertToVCLSize(rNewSize);
     VclPtr< ComboBox > pComboBox = GetAs< ComboBox >();
     if ( pComboBox )
         aSz = pComboBox->CalcAdjustedSize( aSz );
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 css::awt::Size VCLXComboBox::getMinimumSize( sal_Int16 nCols, sal_Int16 nLines )
@@ -4348,7 +4303,7 @@ css::awt::Size VCLXComboBox::getMinimumSize( sal_Int16 nCols, sal_Int16 nLines )
     VclPtr< ComboBox > pComboBox = GetAs< ComboBox >();
     if ( pComboBox )
         aSz = pComboBox->CalcBlockSize( nCols, nLines );
-    return AWTSize(aSz);
+    return vcl::unohelper::ConvertToAWTSize(aSz);
 }
 
 void VCLXComboBox::getColumnsAndLines( sal_Int16& nCols, sal_Int16& nLines )
@@ -4435,10 +4390,10 @@ void SAL_CALL VCLXComboBox::itemListChanged( const EventObject& i_rEvent )
     uno::Reference< beans::XPropertySetInfo > xPSI( xPropSet->getPropertySetInfo(), uno::UNO_SET_THROW );
     // bool localize = xPSI->hasPropertyByName("ResourceResolver");
     uno::Reference< resource::XStringResourceResolver > xStringResourceResolver;
-    if ( xPSI->hasPropertyByName("ResourceResolver") )
+    if ( xPSI->hasPropertyByName(u"ResourceResolver"_ustr) )
     {
         xStringResourceResolver.set(
-            xPropSet->getPropertyValue("ResourceResolver"),
+            xPropSet->getPropertyValue(u"ResourceResolver"_ustr),
             uno::UNO_QUERY
         );
     }
@@ -4457,12 +4412,9 @@ void SAL_CALL VCLXComboBox::itemListChanged( const EventObject& i_rEvent )
                 lcl_getImageFromURL(rItem.Second));
     }
 }
-void SAL_CALL VCLXComboBox::disposing( const EventObject& i_rEvent )
+void SAL_CALL VCLXComboBox::disposing(const EventObject&)
 {
-    // just disambiguate
-    VCLXEdit::disposing( i_rEvent );
 }
-
 
 
 void VCLXFormattedSpinField::ImplGetPropertyIds( std::vector< sal_uInt16 > &rIds )
@@ -4617,17 +4569,6 @@ VCLXDateField::~VCLXDateField()
 {
 }
 
-//change the window type here to match the role
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXDateField::CreateAccessibleContext()
-{
-    VclPtr< vcl::Window > pWindow = GetWindow();
-    if ( pWindow )
-    {
-        pWindow->SetType( WindowType::DATEFIELD );
-    }
-    return getAccessibleFactory().createAccessibleContext( this );
-}
-
 void VCLXDateField::setProperty( const OUString& PropertyName, const css::uno::Any& Value)
 {
     SolarMutexGuard aGuard;
@@ -4635,7 +4576,7 @@ void VCLXDateField::setProperty( const OUString& PropertyName, const css::uno::A
     if ( !(GetWindow()) )
         return;
 
-    bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+    bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
 
     sal_uInt16 nPropType = GetPropertyId( PropertyName );
     switch ( nPropType )
@@ -4750,7 +4691,7 @@ void VCLXDateField::setDate( const util::Date& aDate )
     VclPtr< DateField > pDateField = GetAs< DateField >();
     if ( pDateField )
     {
-        pDateField->SetDate( aDate );
+        pDateField->SetDate( ::Date(aDate) );
 
         // #107218# Call same listeners like VCL would do after user interaction
         SetSynthesizingVCLEvent( true );
@@ -4777,7 +4718,7 @@ void VCLXDateField::setMin( const util::Date& aDate )
 
     VclPtr< DateField > pDateField = GetAs< DateField >();
     if ( pDateField )
-        pDateField->SetMin( aDate );
+        pDateField->SetMin( ::Date(aDate) );
 }
 
 util::Date VCLXDateField::getMin()
@@ -4797,7 +4738,7 @@ void VCLXDateField::setMax( const util::Date& aDate )
 
     VclPtr< DateField > pDateField = GetAs< DateField >();
     if ( pDateField )
-        pDateField->SetMax( aDate );
+        pDateField->SetMax( ::Date(aDate) );
 }
 
 util::Date VCLXDateField::getMax()
@@ -4817,7 +4758,7 @@ void VCLXDateField::setFirst( const util::Date& aDate )
 
     VclPtr< DateField > pDateField = GetAs< DateField >();
     if ( pDateField )
-        pDateField->SetFirst( aDate );
+        pDateField->SetFirst( ::Date(aDate) );
 }
 
 util::Date VCLXDateField::getFirst()
@@ -4837,7 +4778,7 @@ void VCLXDateField::setLast( const util::Date& aDate )
 
     VclPtr< DateField > pDateField = GetAs< DateField >();
     if ( pDateField )
-        pDateField->SetLast( aDate );
+        pDateField->SetLast( ::Date(aDate) );
 }
 
 util::Date VCLXDateField::getLast()
@@ -4951,17 +4892,6 @@ VCLXTimeField::~VCLXTimeField()
 {
 }
 
-//change the window type here to match the role
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXTimeField::CreateAccessibleContext()
-{
-    VclPtr< vcl::Window > pWindow = GetWindow();
-    if ( pWindow )
-    {
-        pWindow->SetType( WindowType::TIMEFIELD );
-    }
-    return getAccessibleFactory().createAccessibleContext( this );
-}
-
 void VCLXTimeField::setTime( const util::Time& aTime )
 {
     SolarMutexGuard aGuard;
@@ -4969,7 +4899,7 @@ void VCLXTimeField::setTime( const util::Time& aTime )
     VclPtr< TimeField > pTimeField = GetAs< TimeField >();
     if ( pTimeField )
     {
-        pTimeField->SetTime( aTime );
+        pTimeField->SetTime( tools::Time(aTime) );
 
         // #107218# Call same listeners like VCL would do after user interaction
         SetSynthesizingVCLEvent( true );
@@ -4996,7 +4926,7 @@ void VCLXTimeField::setMin( const util::Time& aTime )
 
     VclPtr< TimeField > pTimeField = GetAs< TimeField >();
     if ( pTimeField )
-        pTimeField->SetMin( aTime );
+        pTimeField->SetMin( tools::Time(aTime) );
 }
 
 util::Time VCLXTimeField::getMin()
@@ -5016,7 +4946,7 @@ void VCLXTimeField::setMax( const util::Time& aTime )
 
     VclPtr< TimeField > pTimeField = GetAs< TimeField >();
     if ( pTimeField )
-        pTimeField->SetMax( aTime );
+        pTimeField->SetMax( tools::Time(aTime) );
 }
 
 util::Time VCLXTimeField::getMax()
@@ -5036,7 +4966,7 @@ void VCLXTimeField::setFirst( const util::Time& aTime )
 
     VclPtr< TimeField > pTimeField = GetAs< TimeField >();
     if ( pTimeField )
-        pTimeField->SetFirst( aTime );
+        pTimeField->SetFirst( tools::Time(aTime) );
 }
 
 util::Time VCLXTimeField::getFirst()
@@ -5056,7 +4986,7 @@ void VCLXTimeField::setLast( const util::Time& aTime )
 
     VclPtr< TimeField > pTimeField = GetAs< TimeField >();
     if ( pTimeField )
-        pTimeField->SetLast( aTime );
+        pTimeField->SetLast( tools::Time(aTime) );
 }
 
 util::Time VCLXTimeField::getLast()
@@ -5105,7 +5035,7 @@ void VCLXTimeField::setProperty( const OUString& PropertyName, const css::uno::A
     if ( !(GetWindow()) )
         return;
 
-    bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+    bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
 
     sal_uInt16 nPropType = GetPropertyId( PropertyName );
     switch ( nPropType )
@@ -5421,7 +5351,7 @@ void VCLXNumericField::setProperty( const OUString& PropertyName, const css::uno
     if ( !(GetWindow()) )
         return;
 
-    bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+    bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
 
     sal_uInt16 nPropType = GetPropertyId( PropertyName );
     switch ( nPropType )
@@ -5935,35 +5865,6 @@ css::uno::Any VCLXPatternField::getProperty( const OUString& PropertyName )
     return aProp;
 }
 
-
-
-VCLXToolBox::VCLXToolBox()
-{
-}
-
-VCLXToolBox::~VCLXToolBox()
-{
-}
-
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXToolBox::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext( this );
-}
-
-VCLXHeaderBar::VCLXHeaderBar()
-{
-}
-
-VCLXHeaderBar::~VCLXHeaderBar()
-{
-}
-
-css::uno::Reference< css::accessibility::XAccessibleContext > VCLXHeaderBar::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext( this );
-}
-
-
 VCLXFrame::VCLXFrame()
 {
 }
@@ -6179,7 +6080,7 @@ void VCLXProgressBar::setProperty( const OUString& PropertyName, const css::uno:
             VclPtr<vcl::Window> pWindow = GetWindow();
             if ( pWindow )
             {
-                bool bVoid = Value.getValueType().getTypeClass() == css::uno::TypeClass_VOID;
+                bool bVoid = Value.getValueTypeClass() == css::uno::TypeClass_VOID;
 
                 if ( bVoid )
                 {
@@ -6449,7 +6350,7 @@ css::awt::Size VCLXFileControl::getMinimumSize()
     {
         Size aTmpSize = pControl->GetEdit().CalcMinimumSize();
         aTmpSize.AdjustWidth(pControl->GetButton().CalcMinimumSize().Width() );
-        aSz = AWTSize(pControl->CalcWindowSize( aTmpSize ));
+        aSz = vcl::unohelper::ConvertToAWTSize(pControl->CalcWindowSize(aTmpSize));
     }
     return aSz;
 }
@@ -6484,7 +6385,7 @@ css::awt::Size VCLXFileControl::getMinimumSize( sal_Int16 nCols, sal_Int16 )
     VclPtr< FileControl > pControl = GetAs< FileControl >();
     if ( pControl )
     {
-        aSz = AWTSize(pControl->GetEdit().CalcSize( nCols ));
+        aSz = vcl::unohelper::ConvertToAWTSize(pControl->GetEdit().CalcSize(nCols));
         aSz.Width += pControl->GetButton().CalcMinimumSize().Width();
     }
     return aSz;
@@ -6592,7 +6493,7 @@ void SVTXFormattedField::setProperty( const OUString& PropertyName, const css::u
             case BASEPROPERTY_EFFECTIVE_VALUE:
             case BASEPROPERTY_VALUE_DOUBLE:
             {
-                const css::uno::TypeClass rTC = Value.getValueType().getTypeClass();
+                const css::uno::TypeClass rTC = Value.getValueTypeClass();
                 if (rTC != css::uno::TypeClass_STRING)
                     // no string
                     if (rTC != css::uno::TypeClass_DOUBLE)
@@ -6699,9 +6600,8 @@ css::uno::Any SVTXFormattedField::getProperty( const OUString& PropertyName )
             case BASEPROPERTY_FORMATSSUPPLIER:
             {
                 if (!bIsStandardSupplier)
-                {   // ansonsten void
-                    css::uno::Reference< css::util::XNumberFormatsSupplier >  xSupplier = m_xCurrentSupplier;
-                    aReturn <<= xSupplier;
+                {   // otherwise void
+                    aReturn <<= css::uno::Reference< css::util::XNumberFormatsSupplier >(m_xCurrentSupplier);
                 }
             }
             break;
@@ -6729,7 +6629,7 @@ css::uno::Any SVTXFormattedField::convertEffectiveValue(const css::uno::Any& rVa
         return aReturn;
 
     Formatter& rFieldFormatter = pField->GetFormatter();
-    switch (rValue.getValueType().getTypeClass())
+    switch (rValue.getValueTypeClass())
     {
         case css::uno::TypeClass_DOUBLE:
             if (rFieldFormatter.TreatingAsNumber())
@@ -6787,7 +6687,7 @@ void SVTXFormattedField::SetMinValue(const css::uno::Any& rValue)
         return;
 
     Formatter& rFormatter = pField->GetFormatter();
-    switch (rValue.getValueType().getTypeClass())
+    switch (rValue.getValueTypeClass())
 
     {
         case css::uno::TypeClass_DOUBLE:
@@ -6798,8 +6698,8 @@ void SVTXFormattedField::SetMinValue(const css::uno::Any& rValue)
             break;
         }
         default:
-            DBG_ASSERT(rValue.getValueType().getTypeClass() == css::uno::TypeClass_VOID, "SVTXFormattedField::SetMinValue : invalid argument (an exception will be thrown) !");
-            if ( rValue.getValueType().getTypeClass() != css::uno::TypeClass_VOID )
+            DBG_ASSERT(rValue.getValueTypeClass() == css::uno::TypeClass_VOID, "SVTXFormattedField::SetMinValue : invalid argument (an exception will be thrown) !");
+            if ( rValue.getValueTypeClass() != css::uno::TypeClass_VOID )
 
             {
                 throw css::lang::IllegalArgumentException();
@@ -6830,7 +6730,7 @@ void SVTXFormattedField::SetMaxValue(const css::uno::Any& rValue)
         return;
 
     Formatter& rFormatter = pField->GetFormatter();
-    switch (rValue.getValueType().getTypeClass())
+    switch (rValue.getValueTypeClass())
     {
         case css::uno::TypeClass_DOUBLE:
         {
@@ -6840,7 +6740,7 @@ void SVTXFormattedField::SetMaxValue(const css::uno::Any& rValue)
             break;
         }
         default:
-            if (rValue.getValueType().getTypeClass() != css::uno::TypeClass_VOID)
+            if (rValue.getValueTypeClass() != css::uno::TypeClass_VOID)
 
             {
                 throw css::lang::IllegalArgumentException();
@@ -6873,7 +6773,7 @@ void SVTXFormattedField::SetDefaultValue(const css::uno::Any& rValue)
     css::uno::Any aConverted = convertEffectiveValue(rValue);
 
     Formatter& rFormatter = pField->GetFormatter();
-    switch (aConverted.getValueType().getTypeClass())
+    switch (aConverted.getValueTypeClass())
     {
         case css::uno::TypeClass_DOUBLE:
         {
@@ -6959,12 +6859,12 @@ void SVTXFormattedField::SetValue(const css::uno::Any& rValue)
 
     if (!rValue.hasValue())
     {
-        pField->SetText("");
+        pField->SetText(u""_ustr);
     }
     else
     {
         Formatter& rFormatter = pField->GetFormatter();
-        if (rValue.getValueType().getTypeClass() == css::uno::TypeClass_DOUBLE )
+        if (rValue.getValueTypeClass() == css::uno::TypeClass_DOUBLE )
         {
             double d = 0.0;
             rValue >>= d;
@@ -6972,7 +6872,7 @@ void SVTXFormattedField::SetValue(const css::uno::Any& rValue)
         }
         else
         {
-            DBG_ASSERT(rValue.getValueType().getTypeClass() == css::uno::TypeClass_STRING, "SVTXFormattedField::SetValue : invalid argument !");
+            DBG_ASSERT(rValue.getValueTypeClass() == css::uno::TypeClass_STRING, "SVTXFormattedField::SetValue : invalid argument !");
 
             OUString sText;
             rValue >>= sText;
@@ -7008,7 +6908,7 @@ void SVTXFormattedField::setFormatsSupplier(const css::uno::Reference< css::util
     if (!pNew)
         return;     // TODO : how to process ?
 
-    m_xCurrentSupplier = pNew;
+    m_xCurrentSupplier = std::move(pNew);
     if (!pField)
         return;
 
@@ -7337,13 +7237,6 @@ SVTXNumericField::SVTXNumericField()
 SVTXNumericField::~SVTXNumericField()
 {
 }
-
-
-css::uno::Reference<accessibility::XAccessibleContext> SVTXNumericField::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext(this);
-}
-
 
 void SVTXNumericField::setValue( double Value )
 {
@@ -7676,7 +7569,7 @@ css::awt::Size VCLXMultiLineEdit::getMinimumSize()
     css::awt::Size aSz;
     VclPtr< MultiLineEdit > pEdit = GetAs< MultiLineEdit >();
     if ( pEdit )
-        aSz = AWTSize(pEdit->CalcMinimumSize());
+        aSz = vcl::unohelper::ConvertToAWTSize(pEdit->CalcMinimumSize());
     return aSz;
 }
 
@@ -7692,7 +7585,8 @@ css::awt::Size VCLXMultiLineEdit::calcAdjustedSize( const css::awt::Size& rNewSi
     css::awt::Size aSz = rNewSize;
     VclPtr< MultiLineEdit > pEdit = GetAs< MultiLineEdit >();
     if ( pEdit )
-        aSz = AWTSize(pEdit->CalcAdjustedSize( VCLSize(rNewSize )));
+        aSz = vcl::unohelper::ConvertToAWTSize(
+                    pEdit->CalcAdjustedSize(vcl::unohelper::ConvertToVCLSize(rNewSize)));
     return aSz;
 }
 
@@ -7703,7 +7597,7 @@ css::awt::Size VCLXMultiLineEdit::getMinimumSize( sal_Int16 nCols, sal_Int16 nLi
     css::awt::Size aSz;
     VclPtr< MultiLineEdit > pEdit = GetAs< MultiLineEdit >();
     if ( pEdit )
-        aSz = AWTSize(pEdit->CalcBlockSize( nCols, nLines ));
+        aSz = vcl::unohelper::ConvertToAWTSize(pEdit->CalcBlockSize(nCols, nLines));
     return aSz;
 }
 
@@ -7867,11 +7761,6 @@ void VCLXMultiLineEdit::ImplGetPropertyIds( std::vector< sal_uInt16 > &rIds )
                      BASEPROPERTY_HIDEINACTIVESELECTION,
                      0);
     VCLXWindow::ImplGetPropertyIds( rIds, true );
-}
-
-css::uno::Reference<css::accessibility::XAccessibleContext> VCLXMultiLineEdit::CreateAccessibleContext()
-{
-    return getAccessibleFactory().createAccessibleContext(this);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

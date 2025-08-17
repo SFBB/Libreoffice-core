@@ -23,6 +23,7 @@
 
 #include <hintids.hxx>
 #include <editeng/charscaleitem.hxx>
+#include <editeng/cmapitem.hxx>
 #include <svl/itemiter.hxx>
 #include <svx/svdobj.hxx>
 #include <vcl/svapp.hxx>
@@ -32,11 +33,13 @@
 #include <fmtflcnt.hxx>
 #include <fmtcntnt.hxx>
 #include <fmtftn.hxx>
+#include <fmtpdsc.hxx>
 #include <frmatr.hxx>
 #include <frmfmt.hxx>
 #include <fmtfld.hxx>
 #include <doc.hxx>
 #include <IDocumentLayoutAccess.hxx>
+#include <IDocumentSettingAccess.hxx>
 #include <txatbase.hxx>
 #include <viewsh.hxx>
 #include <rootfrm.hxx>
@@ -154,9 +157,7 @@ SwTextAttr *SwAttrIter::GetAttr(TextFrameIndex const nPosition) const
 
 bool SwAttrIter::SeekAndChgAttrIter(TextFrameIndex const nNewPos, OutputDevice* pOut)
 {
-    std::pair<SwTextNode const*, sal_Int32> const pos( m_pMergedPara
-        ? sw::MapViewToModel(*m_pMergedPara, nNewPos)
-        : std::make_pair(m_pTextNode, sal_Int32(nNewPos)));
+    std::pair<SwTextNode const*, sal_Int32> const pos{SeekNewPos(nNewPos, nullptr)};
     bool bChg = m_nStartIndex && pos.first == m_pTextNode && pos.second == m_nPosition
         ? m_pFont->IsFntChg()
         : Seek( nNewPos );
@@ -300,15 +301,90 @@ void SwAttrIter::SeekFwd(const sal_Int32 nOldPos, const sal_Int32 nNewPos)
         if ( pTextAttr->GetAnyEnd() > nNewPos )  Chg( pTextAttr );
         m_nStartIndex++;
     }
+}
 
+void SwAttrIter::SeekToEnd()
+{
+    if (m_pTextNode->GetDoc().getIDocumentSettingAccess().get(
+            DocumentSettingId::APPLY_PARAGRAPH_MARK_FORMAT_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH))
+    {
+        SfxItemPool & rPool{const_cast<SwAttrPool&>(m_pTextNode->GetDoc().GetAttrPool())};
+        SwFormatAutoFormat const& rListAutoFormat{m_pTextNode->GetAttr(RES_PARATR_LIST_AUTOFMT)};
+        std::shared_ptr<SfxItemSet> const pSet{rListAutoFormat.GetStyleHandle()};
+        if (!pSet)
+        {
+            return;
+        }
+        if (pSet->HasItem(RES_TXTATR_CHARFMT))
+        {
+            SwFormatCharFormat const& rCharFormat{pSet->Get(RES_TXTATR_CHARFMT)};
+            m_pEndCharFormatAttr.reset(new SwTextAttrEnd{
+                    SfxPoolItemHolder{rPool, &rCharFormat}, -1, -1});
+            Chg(m_pEndCharFormatAttr.get());
+        }
+        // note: RES_TXTATR_CHARFMT should be cleared here but it looks like
+        // SwAttrHandler only looks at RES_CHRATR_* anyway
+        m_pEndAutoFormatAttr.reset(new SwTextAttrEnd{
+                SfxPoolItemHolder{rPool, &rListAutoFormat}, -1, -1});
+        Chg(m_pEndAutoFormatAttr.get());
+    }
+}
+
+std::pair<SwTextNode const*, sal_Int32>
+SwAttrIter::SeekNewPos(TextFrameIndex const nNewPos, bool *const o_pIsToEnd)
+{
+    std::pair<SwTextNode const*, sal_Int32> newPos{ m_pMergedPara
+        ? sw::MapViewToModel(*m_pMergedPara, nNewPos)
+        : std::make_pair(m_pTextNode, sal_Int32(nNewPos))};
+
+    bool isToEnd{false};
+    if (m_pMergedPara)
+    {
+        if (m_pMergedPara->extents.empty())
+        {
+            isToEnd = true;
+            assert(m_pMergedPara->pLastNode == newPos.first);
+        }
+        else
+        {
+            auto const& rLast{m_pMergedPara->extents.back()};
+            isToEnd = rLast.pNode == newPos.first && rLast.nEnd == newPos.second;
+            // for text formatting: use *last* node if all text is hidden
+            if (isToEnd
+                && m_pMergedPara->pLastNode != newPos.first // implies there is hidden text
+                && m_pViewShell->GetLayout()->GetParagraphBreakMode() == sw::ParagraphBreakMode::Hidden
+                && m_pTextNode->GetDoc().getIDocumentSettingAccess().get(
+                    DocumentSettingId::APPLY_PARAGRAPH_MARK_FORMAT_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH))
+            {
+                TextFrameIndex nHiddenStart(COMPLETE_STRING);
+                TextFrameIndex nHiddenEnd(0);
+                m_pScriptInfo->GetBoundsOfHiddenRange(TextFrameIndex(0), nHiddenStart, nHiddenEnd);
+                if (TextFrameIndex(0) == nHiddenStart
+                    && TextFrameIndex(m_pMergedPara->mergedText.getLength()) <= nHiddenEnd)
+                {
+                    newPos.first = m_pMergedPara->pLastNode;
+                    newPos.second = m_pMergedPara->pLastNode->Len();
+                }
+            }
+        }
+    }
+    else
+    {
+        isToEnd = newPos.second == m_pTextNode->Len();
+    }
+    if (o_pIsToEnd)
+    {
+        *o_pIsToEnd = isToEnd;
+    }
+
+    return newPos;
 }
 
 bool SwAttrIter::Seek(TextFrameIndex const nNewPos)
 {
     // note: nNewPos isn't necessarily an index returned from GetNextAttr
-    std::pair<SwTextNode const*, sal_Int32> const newPos( m_pMergedPara
-        ? sw::MapViewToModel(*m_pMergedPara, nNewPos)
-        : std::make_pair(m_pTextNode, sal_Int32(nNewPos)));
+    bool isToEnd{false};
+    std::pair<SwTextNode const*, sal_Int32> const newPos{SeekNewPos(nNewPos, &isToEnd)};
 
     if ( m_pRedline && m_pRedline->ExtOn() )
         m_pRedline->LeaveExtend(*m_pFont, newPos.first->GetIndex(), newPos.second);
@@ -367,7 +443,8 @@ bool SwAttrIter::Seek(TextFrameIndex const nNewPos)
                                        m_pMergedPara->mergedText, nullptr, nullptr);
             }
         }
-        if (m_pMergedPara || m_pTextNode->GetpSwpHints())
+        // also reset it if the RES_PARATR_LIST_AUTOFMT has been applied!
+        if (m_pMergedPara || m_pTextNode->GetpSwpHints() || m_pEndAutoFormatAttr)
         {
             if( m_pRedline )
                 m_pRedline->Clear( nullptr );
@@ -375,6 +452,8 @@ bool SwAttrIter::Seek(TextFrameIndex const nNewPos)
             // reset font to its original state
             m_aAttrHandler.Reset();
             m_aAttrHandler.ResetFont( *m_pFont );
+            m_pEndCharFormatAttr.reset();
+            m_pEndAutoFormatAttr.reset();
 
             if( m_nPropFont )
                 m_pFont->SetProportion( m_nPropFont );
@@ -421,6 +500,11 @@ bool SwAttrIter::Seek(TextFrameIndex const nNewPos)
         {
             SeekFwd(m_nPosition, newPos.second);
         }
+    }
+
+    if (isToEnd && !m_pEndAutoFormatAttr)
+    {
+        SeekToEnd();
     }
 
     m_pFont->SetActual( m_pScriptInfo->WhichFont(nNewPos) );
@@ -784,6 +868,93 @@ TextFrameIndex SwAttrIter::GetNextAttr() const
     }
 }
 
+namespace
+{
+class FormatBreakTracker
+{
+private:
+    std::optional<SvxCaseMap> m_nCaseMap;
+
+    bool m_bNeedsBreak = false;
+
+    void SetCaseMap(SvxCaseMap nValue)
+    {
+        if (m_nCaseMap != nValue)
+            m_bNeedsBreak = true;
+
+        m_nCaseMap = nValue;
+    }
+
+public:
+    void HandleItemSet(const SfxItemSet& rSet)
+    {
+        if (const SvxCaseMapItem* pItem = rSet.GetItem(RES_CHRATR_CASEMAP))
+            SetCaseMap(pItem->GetCaseMap());
+    }
+
+    void Reset() { m_bNeedsBreak = false; }
+
+    bool NeedsBreak() const { return m_bNeedsBreak; }
+};
+
+bool HasFormatBreakAttribute(FormatBreakTracker* pTracker, const SwTextAttr* pAttr)
+{
+    pTracker->Reset();
+
+    switch (pAttr->Which())
+    {
+        case RES_TXTATR_AUTOFMT:
+        case RES_TXTATR_CHARFMT:
+        {
+            const SfxItemSet& rSet((pAttr->Which() == RES_TXTATR_CHARFMT)
+                                       ? static_cast<SfxItemSet const&>(
+                                             pAttr->GetCharFormat().GetCharFormat()->GetAttrSet())
+                                       : *pAttr->GetAutoFormat().GetStyleHandle());
+
+            pTracker->HandleItemSet(rSet);
+        }
+        break;
+    }
+
+    if (pAttr->IsFormatIgnoreStart() || pAttr->IsFormatIgnoreEnd())
+        pTracker->Reset();
+
+    return pTracker->NeedsBreak();
+}
+}
+
+TextFrameIndex SwAttrIter::GetNextLayoutBreakAttr() const
+{
+    size_t nStartIndex(m_nStartIndex);
+    SwTextNode const* pTextNode(m_pTextNode);
+
+    sal_Int32 nNext = std::numeric_limits<sal_Int32>::max();
+
+    auto* pHints = pTextNode->GetpSwpHints();
+    if (!pHints)
+    {
+        return TextFrameIndex{ nNext };
+    }
+
+    FormatBreakTracker stTracker;
+    stTracker.HandleItemSet(pTextNode->GetSwAttrSet());
+
+    for (size_t i = 0; i < pHints->Count(); ++i)
+    {
+        SwTextAttr* const pAttr(pHints->Get(i));
+        if (HasFormatBreakAttribute(&stTracker, pAttr))
+        {
+            if (i >= nStartIndex)
+            {
+                nNext = pAttr->GetStart();
+                break;
+            }
+        }
+    }
+
+    return TextFrameIndex{ nNext };
+}
+
 namespace {
 
 class SwMinMaxArgs
@@ -905,7 +1076,7 @@ static void lcl_MinMaxNode(SwFrameFormat* pNd, SwMinMaxNodeArgs& rIn)
     if( !bIsDrawFrameFormat )
     {
         // Does the frame contain a table at the start or the end?
-        const SwNodes& rNodes = pNd->GetDoc()->GetNodes();
+        const SwNodes& rNodes = pNd->GetDoc().GetNodes();
         const SwFormatContent& rFlyContent = pNd->GetContent();
         SwNodeOffset nStt = rFlyContent.GetContentIdx()->GetIndex();
         SwTableNode* pTableNd = rNodes[nStt+1]->GetTableNode();
@@ -952,10 +1123,10 @@ static void lcl_MinMaxNode(SwFrameFormat* pNd, SwMinMaxNodeArgs& rIn)
     }
 
     const SvxLRSpaceItem &rLR = pNd->GetLRSpace();
-    nMin += rLR.GetLeft();
-    nMin += rLR.GetRight();
-    nMax += rLR.GetLeft();
-    nMax += rLR.GetRight();
+    nMin += rLR.ResolveLeft({});
+    nMin += rLR.ResolveRight({});
+    nMax += rLR.ResolveLeft({});
+    nMax += rLR.ResolveRight({});
 
     if( css::text::WrapTextMode_THROUGH == pNd->GetSurround().GetSurround() )
     {
@@ -1028,17 +1199,17 @@ void SwTextNode::GetMinMaxSize( SwNodeOffset nIndex, sal_uLong& rMin, sal_uLong 
 
     SvxTextLeftMarginItem const& rTextLeftMargin(GetSwAttrSet().GetTextLeftMargin());
     SvxRightMarginItem const& rRightMargin(GetSwAttrSet().GetRightMargin());
-    tools::Long nLROffset = rTextLeftMargin.GetTextLeft() + GetLeftMarginWithNum( true );
+    tools::Long nLROffset = rTextLeftMargin.ResolveTextLeft({}) + GetLeftMarginWithNum(true);
     short nFLOffs;
     // For enumerations a negative first line indentation is probably filled already
-    if( !GetFirstLineOfsWithNum( nFLOffs ) || nFLOffs > nLROffset )
+    if (!GetFirstLineOfsWithNum(nFLOffs, {}) || nFLOffs > nLROffset)
         nLROffset = nFLOffs;
 
     SwMinMaxNodeArgs aNodeArgs;
     aNodeArgs.m_nMinWidth = 0;
     aNodeArgs.m_nMaxWidth = 0;
     aNodeArgs.m_nLeftRest = nLROffset;
-    aNodeArgs.m_nRightRest = rRightMargin.GetRight();
+    aNodeArgs.m_nRightRest = rRightMargin.ResolveRight({});
     aNodeArgs.m_nLeftDiff = 0;
     aNodeArgs.m_nRightDiff = 0;
     if( nIndex )
@@ -1058,7 +1229,7 @@ void SwTextNode::GetMinMaxSize( SwNodeOffset nIndex, sal_uLong& rMin, sal_uLong 
         aNodeArgs.m_nMaxWidth -= aNodeArgs.m_nLeftRest;
 
     if (aNodeArgs.m_nRightRest < 0)
-        aNodeArgs.Minimum(rRightMargin.GetRight() - aNodeArgs.m_nRightRest);
+        aNodeArgs.Minimum(rRightMargin.ResolveRight({}) - aNodeArgs.m_nRightRest);
     aNodeArgs.m_nRightRest -= aNodeArgs.m_nRightDiff;
     if (aNodeArgs.m_nRightRest < 0)
         aNodeArgs.m_nMaxWidth -= aNodeArgs.m_nRightRest;
@@ -1180,8 +1351,8 @@ void SwTextNode::GetMinMaxSize( SwNodeOffset nIndex, sal_uLong& rMin, sal_uLong 
                             else
                                 nCurrentWidth = pFrameFormat->GetFrameSize().GetWidth();
                         }
-                        nCurrentWidth += rLR.GetLeft();
-                        nCurrentWidth += rLR.GetRight();
+                        nCurrentWidth += rLR.ResolveLeft({});
+                        nCurrentWidth += rLR.ResolveRight({});
                         aArg.m_nWordAdd = nOldWidth + nOldAdd;
                         aArg.m_nWordWidth = nCurrentWidth;
                         aArg.m_nRowWidth += nCurrentWidth;
@@ -1231,7 +1402,7 @@ void SwTextNode::GetMinMaxSize( SwNodeOffset nIndex, sal_uLong& rMin, sal_uLong 
     if (static_cast<tools::Long>(rMax) < aArg.m_nRowWidth)
         rMax = aArg.m_nRowWidth;
 
-    nLROffset += rRightMargin.GetRight();
+    nLROffset += rRightMargin.ResolveRight({});
 
     rAbsMin += nLROffset;
     rAbsMin += nAdd;
@@ -1308,7 +1479,7 @@ sal_uInt16 SwTextFrame::GetScalingOfSelectedText(
     // scaling value 100 and priority flag on top of the scaling stack
     SwAttrHandler& rAH = aIter.GetAttrHandler();
     SvxCharScaleWidthItem aItem(100, RES_CHRATR_SCALEW);
-    SwTextAttrEnd aAttr( aItem, 0, COMPLETE_STRING );
+    SwTextAttrEnd aAttr( SfxPoolItemHolder(getRootFrame()->GetCurrShell()->GetAttrPool(), &aItem), 0, COMPLETE_STRING );
     aAttr.SetPriorityAttr( true );
     rAH.PushAndChg( aAttr, *(aIter.GetFnt()) );
 
@@ -1480,6 +1651,11 @@ std::vector<SwFlyAtContentFrame*> SwTextFrame::GetSplitFlyDrawObjs() const
     return aObjs;
 }
 
+bool SwTextFrame::HasSplitFlyDrawObjs() const
+{
+    return !GetSplitFlyDrawObjs().empty();
+}
+
 SwFlyAtContentFrame* SwTextFrame::HasNonLastSplitFlyDrawObj() const
 {
     const SwTextFrame* pFollow = GetFollow();
@@ -1553,12 +1729,16 @@ bool SwTextFrame::IsEmptyWithSplitFly() const
         return false;
     }
 
-    if (GetTextNodeFirst()->GetSwAttrSet().HasItem(RES_PAGEDESC))
+    if (SvxBreak const eBreak = GetBreakItem().GetBreak();
+           eBreak == SvxBreak::ColumnBefore || eBreak == SvxBreak::ColumnBoth
+        || eBreak == SvxBreak::PageBefore || eBreak == SvxBreak::PageBoth
+        || GetPageDescItem().GetPageDesc() != nullptr)
     {
         return false;
     }
 
-    if (getFrameArea().Bottom() <= GetUpper()->getFramePrintArea().Bottom())
+    SwRectFnSet fnUpper(GetUpper());
+    if (fnUpper.YDiff(fnUpper.GetBottom(getFrameArea()), fnUpper.GetPrtBottom(*GetUpper())) <= 0)
     {
         return false;
     }
@@ -1576,7 +1756,7 @@ bool SwTextFrame::IsEmptyWithSplitFly() const
     }
 
     // It has a split fly anchored to it.
-    if (pFlyFrame->GetFrameFormat().GetVertOrient().GetPos() >= 0)
+    if (pFlyFrame->GetFrameFormat()->GetVertOrient().GetPos() >= 0)
     {
         return false;
     }

@@ -27,8 +27,8 @@
 
 using writerperfect::WPXSvInputStream;
 
-namespace beans = com::sun::star::beans;
-namespace ucb = com::sun::star::ucb;
+namespace beans = css::beans;
+namespace ucb = css::ucb;
 
 bool KeynoteImportFilter::doImportDocument(weld::Window*, librevenge::RVNGInputStream& rInput,
                                            OdpGenerator& rGenerator, utl::MediaDescriptor&)
@@ -59,7 +59,7 @@ KeynoteImportFilter::detect(css::uno::Sequence<css::beans::PropertyValue>& Descr
     bool bIsPackage = false;
     bool bUCBContentChanged = false;
     const beans::PropertyValue* pValue = Descriptor.getConstArray();
-    css::uno::Reference<com::sun::star::io::XInputStream> xInputStream;
+    css::uno::Reference<css::io::XInputStream> xInputStream;
     css::uno::Reference<ucb::XContent> xContent;
     css::uno::Sequence<beans::NamedValue> lComponentDataNV;
     css::uno::Sequence<beans::PropertyValue> lComponentDataPV;
@@ -195,7 +195,7 @@ KeynoteImportFilter::detect(css::uno::Sequence<css::beans::PropertyValue>& Descr
             beans::NamedValue aValue;
             aValue.Name = "IsPackage";
             aValue.Value <<= true;
-            lComponentDataNV.getArray()[nCDSize] = aValue;
+            lComponentDataNV.getArray()[nCDSize] = std::move(aValue);
             pDescriptor[nComponentDataLocation].Value <<= lComponentDataNV;
         }
         else
@@ -207,7 +207,7 @@ KeynoteImportFilter::detect(css::uno::Sequence<css::beans::PropertyValue>& Descr
             aProp.Value <<= true;
             aProp.Handle = -1;
             aProp.State = beans::PropertyState_DIRECT_VALUE;
-            lComponentDataPV.getArray()[nCDSize] = aProp;
+            lComponentDataPV.getArray()[nCDSize] = std::move(aProp);
             pDescriptor[nComponentDataLocation].Value <<= lComponentDataPV;
         }
     }
@@ -224,7 +224,7 @@ KeynoteImportFilter::detect(css::uno::Sequence<css::beans::PropertyValue>& Descr
 // XServiceInfo
 OUString SAL_CALL KeynoteImportFilter::getImplementationName()
 {
-    return "org.libreoffice.comp.Impress.KeynoteImportFilter";
+    return u"org.libreoffice.comp.Impress.KeynoteImportFilter"_ustr;
 }
 
 sal_Bool SAL_CALL KeynoteImportFilter::supportsService(const OUString& rServiceName)
@@ -234,7 +234,8 @@ sal_Bool SAL_CALL KeynoteImportFilter::supportsService(const OUString& rServiceN
 
 css::uno::Sequence<OUString> SAL_CALL KeynoteImportFilter::getSupportedServiceNames()
 {
-    return { "com.sun.star.document.ImportFilter", "com.sun.star.document.ExtendedTypeDetection" };
+    return { u"com.sun.star.document.ImportFilter"_ustr,
+             u"com.sun.star.document.ExtendedTypeDetection"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

@@ -34,9 +34,6 @@
 #if HAVE_FEATURE_SCRIPTING
 class SfxMacroInfoItem;
 #endif
-class CuiConfigFunctionListBox;
-class SfxAcceleratorConfigPage;
-class SfxStringItem;
 
 // class SfxAcceleratorConfigPage ----------------------------------------
 
@@ -105,8 +102,6 @@ private:
     Timer m_aUpdateDataTimer;
     i18nutil::SearchOptions2 m_options;
 
-    Idle m_aFillGroupIdle;
-
     std::unique_ptr<weld::TreeView> m_xEntriesBox;
     std::unique_ptr<weld::RadioButton> m_xOfficeButton;
     std::unique_ptr<weld::RadioButton> m_xModuleButton;
@@ -130,7 +125,6 @@ private:
     DECL_LINK(RadioHdl, weld::Toggleable&, void);
     DECL_LINK(ImplUpdateDataHdl, Timer*, void);
     DECL_LINK(FocusOut_Impl, weld::Widget&, void);
-    DECL_LINK(TimeOut_Impl, Timer*, void);
 
     DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
 

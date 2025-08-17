@@ -32,6 +32,8 @@
 #include <osl/process.h>
 #endif
 #include <osl/thread.hxx>
+#include <o3tl/environment.hxx>
+#include <o3tl/string_view.hxx>
 #include <jvmfwk/framework.hxx>
 #include <vendorbase.hxx>
 #include <vendorplugin.hxx>
@@ -88,7 +90,7 @@ javaFrameworkError jfw_findAllJREs(std::vector<std::unique_ptr<JavaInfo>> *pparI
             //get the list of paths to jre locations which have been
             //added manually
             const jfw::MergedSettings settings;
-            const std::vector<OUString> vecJRELocations =
+            const std::vector<OUString>& vecJRELocations =
                 settings.getJRELocations();
             //Check if any plugin can detect JREs at the location
             // of the paths added by jfw_addJRELocation
@@ -133,35 +135,43 @@ javaFrameworkError jfw_findAllJREs(std::vector<std::unique_ptr<JavaInfo>> *pparI
     }
 }
 
-std::vector<OUString> jfw_convertUserPathList(OUString const& sUserPath)
+std::vector<OUString> jfw_convertUserPathList(std::u16string_view sUserPath)
 {
     std::vector<OUString> result;
     sal_Int32 nIdx = 0;
     do
     {
-        sal_Int32 nextColon = sUserPath.indexOf(SAL_PATHSEPARATOR, nIdx);
-        OUString sToken(sUserPath.subView(nIdx, nextColon > 0 ? nextColon - nIdx
-                                                              : sUserPath.getLength() - nIdx));
+        size_t nextColon = sUserPath.find(SAL_PATHSEPARATOR, nIdx);
+        std::u16string_view sToken;
+        if (nextColon != 0 && nextColon != std::u16string_view::npos)
+            sToken = sUserPath.substr(nIdx, nextColon - nIdx);
+        else
+            sToken = sUserPath.substr(nIdx, sUserPath.size() - nIdx);
 
         // Check if we are in bootstrap variable mode (class path starts with '$').
         // Then the class path must be in URL format.
-        if (sToken.startsWith("$"))
+        if (o3tl::starts_with(sToken, u"$"))
         {
             // Detect open bootstrap variables - they might contain colons - we need to skip those.
-            sal_Int32 nBootstrapVarStart = sToken.indexOf("${");
-            if (nBootstrapVarStart >= 0)
+            size_t nBootstrapVarStart = sToken.find(u"${");
+            if (nBootstrapVarStart != std::u16string_view::npos)
             {
-                sal_Int32 nBootstrapVarEnd = sToken.indexOf("}", nBootstrapVarStart);
-                if (nBootstrapVarEnd == -1)
+                size_t nBootstrapVarEnd = sToken.find(u"}", nBootstrapVarStart);
+                if (nBootstrapVarEnd == std::u16string_view::npos)
                 {
                     // Current colon is part of bootstrap variable - skip it!
-                    nextColon = sUserPath.indexOf(SAL_PATHSEPARATOR, nextColon + 1);
-                    sToken = sUserPath.subView(nIdx, nextColon > 0 ? nextColon - nIdx
-                                                                   : sUserPath.getLength() - nIdx);
+                    const auto nAfterColon = (nextColon != std::string_view::npos) ? (nextColon + 1) : 0;
+                    nextColon = sUserPath.find(SAL_PATHSEPARATOR, nAfterColon);
+                    if (nextColon != 0 && nextColon != std::u16string_view::npos)
+                        sToken = sUserPath.substr(nIdx, nextColon - nIdx);
+                    else
+                        sToken = sUserPath.substr(nIdx, sUserPath.size() - nIdx);
                 }
             }
         }
         result.emplace_back(sToken);
+        if (nextColon == std::u16string_view::npos)
+            break;
         nIdx = nextColon + 1;
     } while (nIdx > 0);
     return result;
@@ -221,7 +231,7 @@ javaFrameworkError jfw_startVM(
 
                 vmParams = settings.getVmParametersUtf8();
                 // Expand user classpath (might contain bootstrap vars)
-                OUString sUserPath(settings.getUserClassPath());
+                const OUString& sUserPath(settings.getUserClassPath());
                 std::vector paths = jfw_convertUserPathList(sUserPath);
                 OUString sUserPathExpanded;
                 for (auto& path : paths)
@@ -264,15 +274,12 @@ javaFrameworkError jfw_startVM(
         // java.library.path. Somehow setting java.library.path accordingly doesn't work,
         // but the PATH gets picked up, so add it there.
         // Without this hack, some features don't work in alternative JREs.
-        OUString sPATH;
-        osl_getEnvironment(OUString("PATH").pData, &sPATH.pData);
-        OUString sJRELocation;
-        osl::FileBase::getSystemPathFromFileURL(pInfo->sLocation + "/bin", sJRELocation);
-        if (sPATH.isEmpty())
-            sPATH = sJRELocation;
-        else
-            sPATH = sJRELocation + OUStringChar(SAL_PATHSEPARATOR) + sPATH;
-        osl_setEnvironment(OUString("PATH").pData, sPATH.pData);
+        OUString sOldPATH = o3tl::getEnvironment(u"PATH"_ustr);
+        OUString sNewPATH;
+        osl::FileBase::getSystemPathFromFileURL(pInfo->sLocation + "/bin", sNewPATH);
+        if (!sOldPATH.isEmpty())
+            sNewPATH += OUStringChar(SAL_PATHSEPARATOR) + sOldPATH;
+        o3tl::setEnvironment(u"PATH"_ustr, sNewPATH);
 #endif // _WIN32
 
         // create JavaVMOptions array that is passed to the plugin

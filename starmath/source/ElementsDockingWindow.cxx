@@ -460,6 +460,7 @@ const std::vector<TranslateId> s_a5Categories{
     RID_CATEGORY_FORMATS,
     RID_CATEGORY_OTHERS,
     RID_CATEGORY_EXAMPLES,
+    RID_CATEGORY_USERDEFINED,
 };
 
 template <size_t N>
@@ -493,24 +494,30 @@ struct ElementData
 {
     OUString maElementSource;
     OUString maHelpText;
-    ElementData(const OUString& aElementSource, const OUString& aHelpText)
+    int maPos;
+    ElementData(const OUString& aElementSource, const OUString& aHelpText, const int& aPos)
         : maElementSource(aElementSource)
         , maHelpText(aHelpText)
+        , maPos(aPos)
     {
     }
 };
 
-SmElementsControl::SmElementsControl(std::unique_ptr<weld::IconView> pIconView)
+SmElementsControl::SmElementsControl(std::unique_ptr<weld::IconView> pIconView,
+                                     std::unique_ptr<weld::Menu> pMenu)
     : mpDocShell(new SmDocShell(SfxModelFlags::EMBEDDED_OBJECT))
     , mnCurrentSetIndex(-1)
-    , m_nSmSyntaxVersion(SM_MOD()->GetConfig()->GetDefaultSmSyntaxVersion())
+    , m_nSmSyntaxVersion(SmModule::get()->GetConfig()->GetDefaultSmSyntaxVersion())
+    , m_bAllowDelete(false)
     , mpIconView(std::move(pIconView))
+    , mxPopup(std::move(pMenu))
 {
     maParser.reset(starmathdatabase::GetVersionSmParser(m_nSmSyntaxVersion));
     maParser->SetImportSymbolNames(true);
 
     mpIconView->connect_query_tooltip(LINK(this, SmElementsControl, QueryTooltipHandler));
     mpIconView->connect_item_activated(LINK(this, SmElementsControl, ElementActivatedHandler));
+    mpIconView->connect_mouse_press(LINK(this, SmElementsControl, MousePressHdl));
 }
 
 SmElementsControl::~SmElementsControl()
@@ -585,9 +592,11 @@ void SmElementsControl::addElement(const OUString& aElementVisual, const OUStrin
     pDevice->SetOutputSizePixel(aSize);
     SmDrawingVisitor(*pDevice, pDevice->PixelToLogic(Point(5, 0)), pNode.get(), maFormat);
 
-    maItemDatas.push_back(std::make_unique<ElementData>(aElementSource, aHelpText));
+    maItemDatas.push_back(std::make_unique<ElementData>(aElementSource, aHelpText, maItemDatas.size()));
     const OUString aId(weld::toId(maItemDatas.back().get()));
-    mpIconView->insert(-1, nullptr, &aId, pDevice, nullptr);
+    Bitmap aBitmap( pDevice->GetBitmap(Point(0,0), pDevice->GetOutputSize()) );
+    mpIconView->insert(-1, nullptr, &aId, &aBitmap, nullptr);
+    mpIconView->set_item_accessible_name(mpIconView->n_children() - 1, GetElementHelpText(aId));
     if (mpIconView->get_item_width() < aSize.Width())
         mpIconView->set_item_width(aSize.Width());
 }
@@ -602,9 +611,14 @@ OUString SmElementsControl::GetElementHelpText(const OUString& itemId)
     return weld::fromId<ElementData*>(itemId)->maHelpText;
 }
 
-void SmElementsControl::setElementSetIndex(int nSetIndex)
+int SmElementsControl::GetElementPos(const OUString& itemId)
 {
-    if (mnCurrentSetIndex == nSetIndex)
+    return weld::fromId<ElementData*>(itemId)->maPos;
+}
+
+void SmElementsControl::setElementSetIndex(int nSetIndex, bool bForceBuild)
+{
+    if (!bForceBuild && mnCurrentSetIndex == nSetIndex)
         return;
     mnCurrentSetIndex = nSetIndex;
     build();
@@ -617,25 +631,36 @@ void SmElementsControl::addElements(int nCategory)
     mpIconView->set_item_width(0);
     maItemDatas.clear();
 
-    assert(nCategory >= 0 && o3tl::make_unsigned(nCategory) < s_a5CategoryDescriptions.size());
-
-    const auto& [aElementsArray, aElementsArraySize] = s_a5CategoryDescriptions[nCategory];
-
-    for (size_t i = 0; i < aElementsArraySize; i++)
+    if (o3tl::make_unsigned(nCategory) < s_a5CategoryDescriptions.size())
     {
-        const auto& [element, elementHelp, elementVisual, visualTranslatable] = aElementsArray[i];
-        if (element.empty())
+        const auto& [aElementsArray, aElementsArraySize] = s_a5CategoryDescriptions[nCategory];
+
+        for (size_t i = 0; i < aElementsArraySize; i++)
         {
-            mpIconView->append_separator({});
+            const auto& [element, elementHelp, elementVisual, visualTranslatable] = aElementsArray[i];
+            if (element.empty())
+            {
+                mpIconView->append_separator({});
+            }
+            else
+            {
+                OUString aElement(element);
+                OUString aVisual(elementVisual.empty() ? aElement : OUString(elementVisual));
+                if (visualTranslatable)
+                    aVisual = aVisual.replaceFirst("$1", SmResId(visualTranslatable));
+                OUString aHelp(elementHelp ? SmResId(elementHelp) : OUString());
+                addElement(aVisual, aElement, aHelp);
+            }
         }
-        else
+    }
+    else
+    {
+        css::uno::Sequence<OUString> sNames = SmModule::get()->GetConfig()->LoadUserDefinedNames();
+        OUString sFormula;
+        for (int i = 0; i < sNames.getLength(); i++)
         {
-            OUString aElement(element);
-            OUString aVisual(elementVisual.empty() ? aElement : OUString(elementVisual));
-            if (visualTranslatable)
-                aVisual = aVisual.replaceFirst("$1", SmResId(visualTranslatable));
-            OUString aHelp(elementHelp ? SmResId(elementHelp) : OUString());
-            addElement(aVisual, aElement, aHelp);
+            SmModule::get()->GetConfig()->GetUserDefinedFormula(sNames[i], sFormula);
+            addElement(sFormula, sFormula, sNames[i]);
         }
     }
 
@@ -649,6 +674,7 @@ void SmElementsControl::build()
     {
         case 5:
             addElements(mnCurrentSetIndex);
+            m_sHoveredItem = "nil"; // if list is empty we must not use the previously hovered item
             break;
         case 6:
         default:
@@ -671,7 +697,10 @@ void SmElementsControl::setSmSyntaxVersion(sal_Int16 nSmSyntaxVersion)
 IMPL_LINK(SmElementsControl, QueryTooltipHandler, const weld::TreeIter&, iter, OUString)
 {
     if (const OUString id = mpIconView->get_id(iter); !id.isEmpty())
+    {
+        m_sHoveredItem = id;
         return GetElementHelpText(id);
+    }
     return {};
 }
 
@@ -684,4 +713,24 @@ IMPL_LINK_NOARG(SmElementsControl, ElementActivatedHandler, weld::IconView&, boo
     return true;
 }
 
+IMPL_LINK(SmElementsControl, MousePressHdl, const MouseEvent&, rEvt, bool)
+{
+    if (rEvt.IsRight() && m_bAllowDelete && (m_sHoveredItem != "nil"))
+    {
+        mpIconView->select( GetElementPos(m_sHoveredItem) );
+        OUString sElementId = mpIconView->get_selected_id();
+        if (!sElementId.isEmpty())
+        {
+            OUString sResponse = mxPopup->popup_at_rect(
+                mpIconView.get(), tools::Rectangle(rEvt.GetPosPixel(), Size(1, 1)));
+            if (sResponse == "delete")
+            {
+                SmModule::get()->GetConfig()->DeleteUserDefinedFormula( GetElementHelpText(m_sHoveredItem) );
+                build(); //refresh view
+            }
+            mpIconView->unselect_all();
+        }
+    }
+    return true;
+}
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

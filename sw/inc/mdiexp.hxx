@@ -22,6 +22,7 @@
 #include "tblenum.hxx"
 #include "swdllapi.h"
 #include <unotools/resmgr.hxx>
+#include "viewsh.hxx"
 
 #include <string_view>
 
@@ -29,13 +30,15 @@ class SwRect;
 class Size;
 class SwViewShell;
 class SwDocShell;
+class SwMarkName;
 
-extern void ScrollMDI(SwViewShell const * pVwSh, const SwRect &, sal_uInt16 nRangeX, sal_uInt16 nRangeY);
-extern bool IsScrollMDI(SwViewShell const * pVwSh, const SwRect &);
-extern void SizeNotify(SwViewShell const * pVwSh, const Size &);
+extern void ScrollMDI(SwViewShell const & rVwSh, const SwRect &, sal_uInt16 nRangeX, sal_uInt16 nRangeY
+    , ScrollSizeMode eScrollSizeMode = ScrollSizeMode::ScrollSizeDefault);
+extern bool IsScrollMDI(SwViewShell const & rVwSh, const SwRect &);
+extern void SizeNotify(SwViewShell const & rVwSh, const Size &);
 
 // Update of status bar during an action.
-extern void PageNumNotify(SwViewShell const * pVwSh);
+extern void PageNumNotify(SwViewShell const & rVwSh);
 
 enum FlyMode { FLY_DRAG_START, FLY_DRAG, FLY_DRAG_END };
 extern void FrameNotify( SwViewShell* pVwSh, FlyMode eMode = FLY_DRAG );
@@ -50,6 +53,6 @@ void RepaintPagePreview( SwViewShell const * pVwSh, const SwRect& rRect );
 // Read ChgMode for tables from configuration.
 TableChgMode GetTableChgDefaultMode();
 
-bool JumpToSwMark( SwViewShell const * pVwSh, std::u16string_view rMark );
+bool JumpToSwMark( SwViewShell const * pVwSh, const SwMarkName& rMark );
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

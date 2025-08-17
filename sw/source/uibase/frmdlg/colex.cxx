@@ -45,7 +45,7 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
     }
 
     SfxItemPool* pPool = rSet.GetPool();
-    sal_uInt16 nWhich = pPool->GetWhich( SID_ATTR_PAGE );
+    sal_uInt16 nWhich = pPool->GetWhichIDFromSlotID( SID_ATTR_PAGE );
     if ( rSet.GetItemState( nWhich, false ) == SfxItemState::SET )
     {
         // alignment
@@ -53,7 +53,7 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
         SetUsage(rPage.GetPageUsage());
     }
 
-    nWhich = pPool->GetWhich( SID_ATTR_PAGE_SIZE );
+    nWhich = pPool->GetWhichIDFromSlotID( SID_ATTR_PAGE_SIZE );
 
     if ( rSet.GetItemState( nWhich, false ) == SfxItemState::SET )
     {
@@ -67,8 +67,8 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
         // set left and right border
         const SvxLRSpaceItem& rLRSpace = static_cast<const SvxLRSpaceItem&>(rSet.Get( nWhich ));
 
-        SetLeft( rLRSpace.GetLeft() );
-        SetRight( rLRSpace.GetRight() );
+        SetLeft(rLRSpace.ResolveLeft({}));
+        SetRight(rLRSpace.ResolveRight({}));
     }
     else
     {
@@ -94,25 +94,25 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
 
     // evaluate header-attributes
     const SfxPoolItem* pItem;
-    if( SfxItemState::SET == rSet.GetItemState( pPool->GetWhich( SID_ATTR_PAGE_HEADERSET),
+    if( SfxItemState::SET == rSet.GetItemState( pPool->GetWhichIDFromSlotID( SID_ATTR_PAGE_HEADERSET),
             false, &pItem ) )
     {
         const SfxItemSet& rHeaderSet = static_cast<const SvxSetItem*>(pItem)->GetItemSet();
         const SfxBoolItem& rHeaderOn =
-            rHeaderSet.Get( pPool->GetWhich( SID_ATTR_PAGE_ON ) );
+            rHeaderSet.Get( pPool->GetWhichIDFromSlotID( SID_ATTR_PAGE_ON ) );
 
         if ( rHeaderOn.GetValue() )
         {
             const SvxSizeItem& rSize =
-                rHeaderSet.Get(pPool->GetWhich(SID_ATTR_PAGE_SIZE));
+                rHeaderSet.Get(pPool->GetWhichIDFromSlotID(SID_ATTR_PAGE_SIZE));
 
-            const SvxULSpaceItem& rUL = rHeaderSet.Get(pPool->GetWhich(SID_ATTR_ULSPACE));
-            const SvxLRSpaceItem& rLR = rHeaderSet.Get(pPool->GetWhich(SID_ATTR_LRSPACE));
+            const SvxULSpaceItem& rUL = rHeaderSet.Get(pPool->GetWhichIDFromSlotID(SID_ATTR_ULSPACE));
+            const SvxLRSpaceItem& rLR = rHeaderSet.Get(pPool->GetWhichIDFromSlotID(SID_ATTR_LRSPACE));
 
             SetHdHeight( rSize.GetSize().Height() - rUL.GetLower());
             SetHdDist( rUL.GetLower() );
-            SetHdLeft( rLR.GetLeft() );
-            SetHdRight( rLR.GetRight() );
+            SetHdLeft(rLR.ResolveLeft({}));
+            SetHdRight(rLR.ResolveRight({}));
             SetHeader( true );
 
             if(SfxItemState::SET == rHeaderSet.GetItemState(RES_BACKGROUND))
@@ -131,7 +131,7 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
             SetHeader( false );
     }
 
-    if( SfxItemState::SET == rSet.GetItemState( pPool->GetWhich( SID_ATTR_PAGE_FOOTERSET),
+    if( SfxItemState::SET == rSet.GetItemState( pPool->GetWhichIDFromSlotID( SID_ATTR_PAGE_FOOTERSET),
             false, &pItem ) )
     {
         const SfxItemSet& rFooterSet = static_cast<const SvxSetItem*>(pItem)->GetItemSet();
@@ -140,15 +140,15 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
         if ( rFooterOn.GetValue() )
         {
             const SvxSizeItem& rSize =
-                rFooterSet.Get( pPool->GetWhich( SID_ATTR_PAGE_SIZE ) );
+                rFooterSet.Get( pPool->GetWhichIDFromSlotID( SID_ATTR_PAGE_SIZE ) );
 
-            const SvxULSpaceItem& rUL = rFooterSet.Get(pPool->GetWhich( SID_ATTR_ULSPACE ) );
-            const SvxLRSpaceItem& rLR = rFooterSet.Get(pPool->GetWhich( SID_ATTR_LRSPACE ) );
+            const SvxULSpaceItem& rUL = rFooterSet.Get(pPool->GetWhichIDFromSlotID( SID_ATTR_ULSPACE ) );
+            const SvxLRSpaceItem& rLR = rFooterSet.Get(pPool->GetWhichIDFromSlotID( SID_ATTR_LRSPACE ) );
 
             SetFtHeight( rSize.GetSize().Height() - rUL.GetUpper());
             SetFtDist( rUL.GetUpper() );
-            SetFtLeft( rLR.GetLeft() );
-            SetFtRight( rLR.GetRight() );
+            SetFtLeft(rLR.ResolveLeft({}));
+            SetFtRight(rLR.ResolveRight({}));
             SetFooter( true );
 
             if( rFooterSet.GetItemState( RES_BACKGROUND ) == SfxItemState::SET )
@@ -210,18 +210,6 @@ void SwColExample::DrawPage(vcl::RenderContext& rRenderContext, const Point& rOr
     rRenderContext.DrawRect(aRect);
 
     const tools::Rectangle aDefineRect(aRect);
-    const drawinglayer::attribute::SdrAllFillAttributesHelperPtr& rFillAttributes = getPageFillAttributes();
-
-    if (!rFillAttributes || !rFillAttributes->isUsed())
-    {
-        // If there is no fill, use fallback color
-        const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
-        const Color& rFieldColor = rStyleSettings.GetFieldColor();
-
-        setPageFillAttributes(
-            std::make_shared<drawinglayer::attribute::SdrAllFillAttributesHelper>(
-                rFieldColor));
-    }
 
     // #97495# make sure that the automatic column width's are always equal
     bool bAutoWidth = m_pColMgr->IsAutoWidth();
@@ -326,6 +314,7 @@ SwColumnOnlyExample::SwColumnOnlyExample()
 void SwColumnOnlyExample::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& /*rRect*/)
 {
     rRenderContext.Push(vcl::PushFlags::MAPMODE);
+    rRenderContext.Erase();
 
     Fraction aScale(m_aWinSize.Height(), m_aFrameSize.Height());
     MapMode aMapMode(MapUnit::MapTwip);
@@ -334,12 +323,9 @@ void SwColumnOnlyExample::Paint(vcl::RenderContext& rRenderContext, const tools:
     rRenderContext.SetMapMode(aMapMode);
 
     const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
-    const Color& rFieldColor = rStyleSettings.GetFieldColor();
     const Color& rDlgColor = rStyleSettings.GetDialogColor();
     const Color& rFieldTextColor = SwViewOption::GetCurrentViewOptions().GetFontColor();
-    Color aGrayColor(COL_LIGHTGRAY);
-    if (rFieldColor == aGrayColor)
-        aGrayColor.Invert();
+    const Color& rDocColor = SwViewOption::GetCurrentViewOptions().GetDocColor();
 
     Size aLogSize(rRenderContext.PixelToLogic(GetOutputSizePixel()));
     tools::Rectangle aCompleteRect(Point(0,0), aLogSize);
@@ -358,10 +344,9 @@ void SwColumnOnlyExample::Paint(vcl::RenderContext& rRenderContext, const tools:
     aShadowRect.Move(aTL.Y(), aTL.Y());
     rRenderContext.DrawRect(aShadowRect);
 
-    rRenderContext.SetFillColor(rFieldColor);
+    rRenderContext.SetFillColor(rDocColor);
+    rRenderContext.SetLineColor(m_aLineColor);
     rRenderContext.DrawRect(aRect);
-
-    rRenderContext.SetFillColor(aGrayColor);
 
     //column separator?
     tools::Long nLength = aLogSize.Height() - 2 * aTL.Y();
@@ -394,8 +379,6 @@ void SwColumnOnlyExample::Paint(vcl::RenderContext& rRenderContext, const tools:
     sal_uInt16 nColCount = rCols.size();
     if (nColCount)
     {
-        rRenderContext.DrawRect(aRect);
-        rRenderContext.SetFillColor(rFieldColor);
         tools::Rectangle aFrameRect(aTL, m_aFrameSize);
         tools::Long nSum = aTL.X();
         for (sal_uInt16 i = 0; i < nColCount; i++)
@@ -495,7 +478,7 @@ void SwPageGridExample::DrawPage(vcl::RenderContext& rRenderContext, const Point
 {
     SwPageExample::DrawPage(rRenderContext, rOrg, bSecond, bEnabled);
 
-    if (!m_pGridItem || !m_pGridItem->GetGridType())
+    if (!m_pGridItem || m_pGridItem->GetGridType() == SwTextGrid::NONE)
         return;
 
     //paint the grid now
@@ -563,7 +546,7 @@ void SwPageGridExample::DrawPage(vcl::RenderContext& rRenderContext, const Point
         m_bVertical ? aCharRect.Move(nRubyHeight, 0) : aCharRect.Move(0, nRubyHeight);
 
     //vertical lines
-    bool bBothLines = m_pGridItem->GetGridType() == GRID_LINES_CHARS;
+    bool bBothLines = m_pGridItem->GetGridType() == SwTextGrid::LinesAndChars;
     rRenderContext.SetFillColor(COL_TRANSPARENT);
     sal_Int32 nXMove = m_bVertical ? nLineHeight : 0;
     sal_Int32 nYMove = m_bVertical ? 0 : nLineHeight;

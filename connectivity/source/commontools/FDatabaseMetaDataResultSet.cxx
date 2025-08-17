@@ -37,15 +37,13 @@ using namespace cppu;
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 
 ODatabaseMetaDataResultSet::ODatabaseMetaDataResultSet()
-    :ODatabaseMetaDataResultSet_BASE(m_aMutex)
-    ,::comphelper::OPropertyContainer(ODatabaseMetaDataResultSet_BASE::rBHelper)
-    ,m_nColPos(0)
+    :
+    m_nColPos(0)
     ,m_bBOF(true)
     ,m_bEOF(true)
 {
@@ -54,9 +52,8 @@ ODatabaseMetaDataResultSet::ODatabaseMetaDataResultSet()
 
 
 ODatabaseMetaDataResultSet::ODatabaseMetaDataResultSet( MetaDataResultSetType _eType )
-    :ODatabaseMetaDataResultSet_BASE(m_aMutex)
-    ,::comphelper::OPropertyContainer(ODatabaseMetaDataResultSet_BASE::rBHelper)
-    ,m_nColPos(0)
+    :
+    m_nColPos(0)
     ,m_bBOF(true)
     ,m_bEOF(true)
 {
@@ -105,12 +102,10 @@ void ODatabaseMetaDataResultSet::setType(MetaDataResultSetType _eType)
     }
 }
 
-void ODatabaseMetaDataResultSet::disposing()
+void ODatabaseMetaDataResultSet::disposing(std::unique_lock<std::mutex>& rGuard)
 {
-    OPropertySetHelper::disposing();
+    OPropertySetHelper::disposing(rGuard);
 
-    ::osl::MutexGuard aGuard(m_aMutex);
-    m_aStatement.clear();
     m_xMetaData.clear();
     m_aRowsIter = m_aRows.end();
     m_aRows.clear();
@@ -151,11 +146,10 @@ void ODatabaseMetaDataResultSet::setRows(ORows&& _rRows)
 
 sal_Int32 SAL_CALL ODatabaseMetaDataResultSet::findColumn( const OUString& columnName )
 {
-    ::osl::MutexGuard aGuard( m_aMutex );
-    checkDisposed(ODatabaseMetaDataResultSet_BASE::rBHelper.bDisposed );
+    std::unique_lock aGuard( m_aMutex );
+    throwIfDisposed(aGuard);
 
-
-    Reference< XResultSetMetaData > xMeta = getMetaData();
+    Reference< XResultSetMetaData > xMeta = getMetaData(aGuard);
     sal_Int32 nLen = xMeta->getColumnCount();
     sal_Int32 i = 1;
     for(;i<=nLen;++i)
@@ -167,10 +161,9 @@ sal_Int32 SAL_CALL ODatabaseMetaDataResultSet::findColumn( const OUString& colum
     }
 
     ::dbtools::throwInvalidColumnException( columnName, *this );
-    O3TL_UNREACHABLE;
 }
 
-void ODatabaseMetaDataResultSet::checkIndex(sal_Int32 columnIndex )
+void ODatabaseMetaDataResultSet::checkIndex(std::unique_lock<std::mutex>& /*rGuard*/, sal_Int32 columnIndex )
 {
     if(columnIndex < 1 || o3tl::make_unsigned(columnIndex) >= (*m_aRowsIter).size())
         ::dbtools::throwInvalidIndexException(*this);
@@ -243,9 +236,13 @@ sal_Int64 SAL_CALL ODatabaseMetaDataResultSet::getLong( sal_Int32 columnIndex )
 
 Reference< XResultSetMetaData > SAL_CALL ODatabaseMetaDataResultSet::getMetaData(  )
 {
-    ::osl::MutexGuard aGuard( m_aMutex );
-    checkDisposed(ODatabaseMetaDataResultSet_BASE::rBHelper.bDisposed );
+    std::unique_lock aGuard( m_aMutex );
+    return getMetaData(aGuard);
+}
 
+Reference< XResultSetMetaData > ODatabaseMetaDataResultSet::getMetaData( std::unique_lock<std::mutex>& rGuard  )
+{
+    throwIfDisposed(rGuard);
 
     if(!m_xMetaData.is())
         m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
@@ -306,24 +303,25 @@ css::util::DateTime SAL_CALL ODatabaseMetaDataResultSet::getTimestamp( sal_Int32
 }
 
 
-sal_Bool SAL_CALL ODatabaseMetaDataResultSet::isAfterLast(  )
+sal_Bool SAL_CALL ODatabaseMetaDataResultSet::isAfterLast()
 {
     return m_bEOF;
 }
 
+bool ODatabaseMetaDataResultSet::isAfterLast( std::unique_lock<std::mutex>& /*rGuard*/)
+{
+    return m_bEOF;
+}
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::isFirst(  )
 {
     ::dbtools::throwFunctionSequenceException(*this);
-    O3TL_UNREACHABLE;
 }
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::isLast(  )
 {
     ::dbtools::throwFunctionSequenceException(*this);
-    O3TL_UNREACHABLE;
 }
-
 
 void SAL_CALL ODatabaseMetaDataResultSet::beforeFirst(  )
 {
@@ -339,81 +337,76 @@ void SAL_CALL ODatabaseMetaDataResultSet::afterLast(  )
 void SAL_CALL ODatabaseMetaDataResultSet::close(  )
 {
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
-        checkDisposed(ODatabaseMetaDataResultSet_BASE::rBHelper.bDisposed );
-
+        std::unique_lock aGuard( m_aMutex );
+        throwIfDisposed(aGuard);
     }
     dispose();
 }
 
-
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::first(  )
 {
     ::dbtools::throwFunctionSequenceException(*this);
-    O3TL_UNREACHABLE;
 }
-
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::last(  )
 {
     ::dbtools::throwFunctionSequenceException(*this);
-    O3TL_UNREACHABLE;
 }
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::absolute( sal_Int32 /*row*/ )
 {
     ::dbtools::throwFunctionSequenceException(*this);
-    O3TL_UNREACHABLE;
 }
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::relative( sal_Int32 /*row*/ )
 {
     ::dbtools::throwFunctionSequenceException(*this);
-    O3TL_UNREACHABLE;
 }
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::previous(  )
 {
     ::dbtools::throwFunctionSequenceException(*this);
-    O3TL_UNREACHABLE;
 }
-
 
 Reference< XInterface > SAL_CALL ODatabaseMetaDataResultSet::getStatement(  )
 {
-    return m_aStatement.get();
+    return nullptr;
 }
-
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::rowDeleted(  )
 {
     ::dbtools::throwFunctionSequenceException(*this);
-    O3TL_UNREACHABLE;
 }
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::rowInserted(  )
 {
     ::dbtools::throwFunctionSequenceException(*this);
-    O3TL_UNREACHABLE;
 }
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::rowUpdated(  )
 {
     ::dbtools::throwFunctionSequenceException(*this);
-    O3TL_UNREACHABLE;
 }
 
-
-sal_Bool SAL_CALL ODatabaseMetaDataResultSet::isBeforeFirst(  )
+sal_Bool SAL_CALL ODatabaseMetaDataResultSet::isBeforeFirst()
 {
     return m_bBOF;
 }
 
+bool ODatabaseMetaDataResultSet::isBeforeFirst(std::unique_lock<std::mutex>& /*rGuard*/)
+{
+    return m_bBOF;
+}
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::next(  )
 {
-    ::osl::MutexGuard aGuard( m_aMutex );
-    checkDisposed(ODatabaseMetaDataResultSet_BASE::rBHelper.bDisposed );
+    std::unique_lock aGuard( m_aMutex );
+    return next(aGuard);
+}
+
+bool ODatabaseMetaDataResultSet::next( std::unique_lock<std::mutex>& rGuard )
+{
+    throwIfDisposed(rGuard);
 
     if ( m_bBOF )
     {
@@ -441,9 +434,8 @@ sal_Bool SAL_CALL ODatabaseMetaDataResultSet::next(  )
 
 sal_Bool SAL_CALL ODatabaseMetaDataResultSet::wasNull(  )
 {
-    ::osl::MutexGuard aGuard( m_aMutex );
-    checkDisposed(ODatabaseMetaDataResultSet_BASE::rBHelper.bDisposed );
-
+    std::unique_lock aGuard( m_aMutex );
+    throwIfDisposed(aGuard);
 
     if(m_aRowsIter == m_aRows.end() || !(*m_aRowsIter)[m_nColPos].is())
         return true;
@@ -483,128 +475,110 @@ Any SAL_CALL ODatabaseMetaDataResultSet::getWarnings(  )
 
 void ODatabaseMetaDataResultSet::setProceduresMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setProceduresMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setProceduresMap();
 }
 
 void ODatabaseMetaDataResultSet::setCatalogsMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setCatalogsMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setCatalogsMap();
 }
 
 void ODatabaseMetaDataResultSet::setSchemasMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setSchemasMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setSchemasMap();
 }
 
 void ODatabaseMetaDataResultSet::setColumnPrivilegesMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setColumnPrivilegesMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setColumnPrivilegesMap();
 }
 
 void ODatabaseMetaDataResultSet::setColumnsMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setColumnsMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setColumnsMap();
 }
 
 void ODatabaseMetaDataResultSet::setTablesMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setTablesMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setTablesMap();
 }
 
 void ODatabaseMetaDataResultSet::setProcedureColumnsMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setProcedureColumnsMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setProcedureColumnsMap();
 }
 
 void ODatabaseMetaDataResultSet::setPrimaryKeysMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setPrimaryKeysMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setPrimaryKeysMap();
 }
 
 void ODatabaseMetaDataResultSet::setIndexInfoMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setIndexInfoMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setIndexInfoMap();
 }
 
 void ODatabaseMetaDataResultSet::setTablePrivilegesMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setTablePrivilegesMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setTablePrivilegesMap();
 }
 
 void ODatabaseMetaDataResultSet::setCrossReferenceMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setCrossReferenceMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setCrossReferenceMap();
 }
 
 void ODatabaseMetaDataResultSet::setVersionColumnsMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setVersionColumnsMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setVersionColumnsMap();
 }
 
 void ODatabaseMetaDataResultSet::setBestRowIdentifierMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setBestRowIdentifierMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setBestRowIdentifierMap();
 }
 
 void ODatabaseMetaDataResultSet::setTypeInfoMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setTypeInfoMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setTypeInfoMap();
 }
 
 void ODatabaseMetaDataResultSet::setUDTsMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setUDTsMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setUDTsMap();
 }
 
 void ODatabaseMetaDataResultSet::setTableTypes()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setTableTypes();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setTableTypes();
 }
 
 void ODatabaseMetaDataResultSet::setExportedKeysMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setExportedKeysMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setExportedKeysMap();
 }
 
 void ODatabaseMetaDataResultSet::setImportedKeysMap()
 {
-    rtl::Reference<ODatabaseMetaDataResultSetMetaData> pMetaData = new ODatabaseMetaDataResultSetMetaData();
-    pMetaData->setImportedKeysMap();
-    m_xMetaData = pMetaData;
+    m_xMetaData = new ODatabaseMetaDataResultSetMetaData();
+    m_xMetaData->setImportedKeysMap();
 }
 
 Reference< css::beans::XPropertySetInfo > SAL_CALL ODatabaseMetaDataResultSet::getPropertySetInfo(  )
@@ -620,13 +594,13 @@ ORowSetValueDecorator& ORowSetValueDecorator::operator=(const ORowSetValue& _aVa
 
 const ORowSetValue& ODatabaseMetaDataResultSet::getValue(sal_Int32 columnIndex)
 {
-    ::osl::MutexGuard aGuard( m_aMutex );
-    checkDisposed(ODatabaseMetaDataResultSet_BASE::rBHelper.bDisposed );
+    std::unique_lock aGuard( m_aMutex );
+    throwIfDisposed(aGuard);
 
-    if ( isBeforeFirst() || isAfterLast() )
+    if ( isBeforeFirst(aGuard) || isAfterLast(aGuard) )
         ::dbtools::throwFunctionSequenceException( *this );
 
-    checkIndex(columnIndex );
+    checkIndex(aGuard, columnIndex);
     m_nColPos = columnIndex;
 
     if(m_aRowsIter != m_aRows.end() && (*m_aRowsIter)[columnIndex].is())
@@ -664,55 +638,55 @@ ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getBasicValue()
 
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getSelectValue()
 {
-    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(OUString("SELECT"));
+    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(u"SELECT"_ustr);
     return aValueRef;
 }
 
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getInsertValue()
 {
-    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(OUString("INSERT"));
+    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(u"INSERT"_ustr);
     return aValueRef;
 }
 
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getDeleteValue()
 {
-    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(OUString("DELETE"));
+    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(u"DELETE"_ustr);
     return aValueRef;
 }
 
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getUpdateValue()
 {
-    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(OUString("UPDATE"));
+    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(u"UPDATE"_ustr);
     return aValueRef;
 }
 
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getCreateValue()
 {
-    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(OUString("CREATE"));
+    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(u"CREATE"_ustr);
     return aValueRef;
 }
 
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getReadValue()
 {
-    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(OUString("READ"));
+    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(u"READ"_ustr);
     return aValueRef;
 }
 
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getAlterValue()
 {
-    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(OUString("ALTER"));
+    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(u"ALTER"_ustr);
     return aValueRef;
 }
 
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getDropValue()
 {
-    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(OUString("DROP"));
+    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(u"DROP"_ustr);
     return aValueRef;
 }
 
 ORowSetValueDecoratorRef const & ODatabaseMetaDataResultSet::getQuoteValue()
 {
-    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(OUString("'"));
+    static ORowSetValueDecoratorRef aValueRef = new ORowSetValueDecorator(u"'"_ustr);
     return aValueRef;
 }
 
@@ -731,29 +705,25 @@ void SAL_CALL ODatabaseMetaDataResultSet::initialize( const Sequence< Any >& _aA
         return;
 
     ORows aRowsToSet;
-    const Sequence<Any>* pRowsIter = aRows.getConstArray();
-    const Sequence<Any>* pRowsEnd  = pRowsIter + aRows.getLength();
-    for (; pRowsIter != pRowsEnd;++pRowsIter)
+    for (auto& row : aRows)
     {
         ORow aRowToSet;
-        const Any* pRowIter = pRowsIter->getConstArray();
-        const Any* pRowEnd = pRowIter + pRowsIter->getLength();
-        for (; pRowIter != pRowEnd;++pRowIter)
+        for (auto& field : row)
         {
             ORowSetValueDecoratorRef aValue;
-            switch( pRowIter->getValueTypeClass() )
+            switch (field.getValueTypeClass())
             {
                 case TypeClass_BOOLEAN:
                     {
                         bool bValue = false;
-                        *pRowIter >>= bValue;
+                        field >>= bValue;
                         aValue = new ORowSetValueDecorator(ORowSetValue(bValue));
                     }
                     break;
                 case TypeClass_BYTE:
                     {
                         sal_Int8 nValue(0);
-                        *pRowIter >>= nValue;
+                        field >>= nValue;
                         aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
                     }
                     break;
@@ -761,7 +731,7 @@ void SAL_CALL ODatabaseMetaDataResultSet::initialize( const Sequence< Any >& _aA
                 case TypeClass_UNSIGNED_SHORT:
                     {
                         sal_Int16 nValue(0);
-                        *pRowIter >>= nValue;
+                        field >>= nValue;
                         aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
                     }
                     break;
@@ -769,7 +739,7 @@ void SAL_CALL ODatabaseMetaDataResultSet::initialize( const Sequence< Any >& _aA
                 case TypeClass_UNSIGNED_LONG:
                     {
                         sal_Int32 nValue(0);
-                        *pRowIter >>= nValue;
+                        field >>= nValue;
                         aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
                     }
                     break;
@@ -777,28 +747,28 @@ void SAL_CALL ODatabaseMetaDataResultSet::initialize( const Sequence< Any >& _aA
                 case TypeClass_UNSIGNED_HYPER:
                     {
                         sal_Int64 nValue(0);
-                        *pRowIter >>= nValue;
+                        field >>= nValue;
                         aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
                     }
                     break;
                 case TypeClass_FLOAT:
                     {
                         float nValue(0.0);
-                        *pRowIter >>= nValue;
+                        field >>= nValue;
                         aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
                     }
                     break;
                 case TypeClass_DOUBLE:
                     {
                         double nValue(0.0);
-                        *pRowIter >>= nValue;
+                        field >>= nValue;
                         aValue = new ORowSetValueDecorator(ORowSetValue(nValue));
                     }
                     break;
                 case TypeClass_STRING:
                     {
                         OUString sValue;
-                        *pRowIter >>= sValue;
+                        field >>= sValue;
                         aValue = new ORowSetValueDecorator(ORowSetValue(sValue));
                     }
                     break;
@@ -807,7 +777,7 @@ void SAL_CALL ODatabaseMetaDataResultSet::initialize( const Sequence< Any >& _aA
             }
             aRowToSet.push_back(aValue);
         }
-        aRowsToSet.push_back(aRowToSet);
+        aRowsToSet.push_back(std::move(aRowToSet));
     } // for (; pRowsIter != pRowsEnd;++pRowsIter
     setRows(std::move(aRowsToSet));
 }
@@ -816,7 +786,7 @@ void SAL_CALL ODatabaseMetaDataResultSet::initialize( const Sequence< Any >& _aA
 
     OUString SAL_CALL ODatabaseMetaDataResultSet::getImplementationName(  )
     {
-        return "org.openoffice.comp.helper.DatabaseMetaDataResultSet";
+        return u"org.openoffice.comp.helper.DatabaseMetaDataResultSet"_ustr;
     }
 
     sal_Bool SAL_CALL ODatabaseMetaDataResultSet::supportsService( const OUString& _rServiceName )
@@ -826,7 +796,7 @@ void SAL_CALL ODatabaseMetaDataResultSet::initialize( const Sequence< Any >& _aA
 
     Sequence< OUString > SAL_CALL ODatabaseMetaDataResultSet::getSupportedServiceNames(  )
     {
-        return Sequence<OUString>{ "com.sun.star.sdbc.ResultSet" };
+        return Sequence<OUString>{ u"com.sun.star.sdbc.ResultSet"_ustr };
     }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

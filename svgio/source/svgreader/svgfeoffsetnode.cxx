@@ -37,6 +37,16 @@ void SvgFeOffsetNode::parseAttribute(SVGToken aSVGToken, const OUString& aConten
     // parse own
     switch (aSVGToken)
     {
+        case SVGToken::In:
+        {
+            maIn = aContent.trim();
+            break;
+        }
+        case SVGToken::Result:
+        {
+            maResult = aContent.trim();
+            break;
+        }
         case SVGToken::Dx:
         {
             SvgNumber aNum;
@@ -70,8 +80,15 @@ void SvgFeOffsetNode::parseAttribute(SVGToken aSVGToken, const OUString& aConten
     }
 }
 
-void SvgFeOffsetNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTarget) const
+void SvgFeOffsetNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTarget,
+                            const SvgFilterNode* pParent) const
 {
+    if (const drawinglayer::primitive2d::Primitive2DContainer* rSource
+        = pParent->findGraphicSource(maIn))
+    {
+        rTarget = *rSource;
+    }
+
     basegfx::B2DHomMatrix aTransform;
 
     if (maDx.isSet() || maDy.isSet())
@@ -84,6 +101,8 @@ void SvgFeOffsetNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTa
         new drawinglayer::primitive2d::TransformPrimitive2D(aTransform, std::move(rTarget)));
 
     rTarget = drawinglayer::primitive2d::Primitive2DContainer{ xRef };
+
+    pParent->addGraphicSourceToMapper(maResult, rTarget);
 }
 
 } // end of namespace svgio::svgreader

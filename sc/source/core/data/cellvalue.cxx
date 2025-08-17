@@ -19,6 +19,7 @@
 #include <formula/token.hxx>
 #include <formula/errorcodes.hxx>
 #include <svl/sharedstring.hxx>
+#include <svl/sharedstringpool.hxx>
 
 namespace {
 
@@ -186,7 +187,7 @@ bool hasNumericImpl( CellType eType, ScFormulaCell* pFormula )
 }
 
 template <typename T>
-OUString getStringImpl( const T& rCell, const ScDocument* pDoc )
+OUString getStringImpl( const T& rCell, const ScDocument& rDoc )
 {
     switch (rCell.getType())
     {
@@ -196,7 +197,7 @@ OUString getStringImpl( const T& rCell, const ScDocument* pDoc )
             return rCell.getSharedString()->getString();
         case CELLTYPE_EDIT:
             if (rCell.getEditText())
-                return ScEditUtil::GetString(*rCell.getEditText(), pDoc);
+                return ScEditUtil::GetString(*rCell.getEditText(), rDoc);
         break;
         case CELLTYPE_FORMULA:
             return rCell.getFormula()->GetString().getString();
@@ -217,7 +218,7 @@ OUString getRawStringImpl( const CellT& rCell, const ScDocument& rDoc )
             return rCell.getSharedString()->getString();
         case CELLTYPE_EDIT:
             if (rCell.getEditText())
-                return ScEditUtil::GetString(*rCell.getEditText(), &rDoc);
+                return ScEditUtil::GetString(*rCell.getEditText(), rDoc);
         break;
         case CELLTYPE_FORMULA:
             return rCell.getFormula()->GetRawString().getString();
@@ -513,7 +514,7 @@ void ScCellValue::release( ScColumn& rColumn, SCROW nRow, sc::StartListeningType
 
 OUString ScCellValue::getString( const ScDocument& rDoc ) const
 {
-    return getStringImpl(*this, &rDoc);
+    return getStringImpl(*this, rDoc);
 }
 
 bool ScCellValue::isEmpty() const
@@ -654,9 +655,29 @@ double ScRefCellValue::getRawValue() const
     return 0.0;
 }
 
-OUString ScRefCellValue::getString( const ScDocument* pDoc ) const
+OUString ScRefCellValue::getString( const ScDocument& rDoc ) const
 {
-    return getStringImpl(*this, pDoc);
+    return getStringImpl(*this, rDoc);
+}
+
+svl::SharedString ScRefCellValue::getSharedString( const ScDocument& rDoc, svl::SharedStringPool& rStrPool ) const
+{
+    switch (getType())
+    {
+        case CELLTYPE_VALUE:
+            return rStrPool.intern(OUString::number(getDouble()));
+        case CELLTYPE_STRING:
+            return *getSharedString();
+        case CELLTYPE_EDIT:
+            if (auto pEditText = getEditText())
+                return rStrPool.intern(ScEditUtil::GetString(*pEditText, rDoc));
+            break;
+        case CELLTYPE_FORMULA:
+            return getFormula()->GetString();
+        default:
+            ;
+    }
+    return svl::SharedString::getEmptyString();
 }
 
 OUString ScRefCellValue::getRawString( const ScDocument& rDoc ) const
@@ -683,6 +704,26 @@ bool ScRefCellValue::hasEmptyValue()
 bool ScRefCellValue::equalsWithoutFormat( const ScRefCellValue& r ) const
 {
     return equalsWithoutFormatImpl(*this, r);
+}
+
+bool ScRefCellValue::operator==( const ScRefCellValue& r ) const
+{
+    if (meType != r.meType)
+        return false;
+
+    switch (meType)
+    {
+        case CELLTYPE_NONE:
+            return true;
+        case CELLTYPE_VALUE:
+            return mfValue == r.mfValue;
+        case CELLTYPE_STRING:
+            return mpString == r.mpString;
+        case CELLTYPE_FORMULA:
+            return equalsFormulaCells(getFormula(), r.getFormula());
+        default:
+            return false;
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

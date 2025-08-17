@@ -83,12 +83,6 @@ void OutputDevice::Push(vcl::PushFlags nFlags)
 
     if (nFlags & vcl::PushFlags::REFPOINT && mbRefPoint)
         rState.mpRefPoint = maRefPoint;
-
-    if (nFlags & vcl::PushFlags::RTLENABLED)
-        rState.mbRTLEnabled = IsRTLEnabled();
-
-    if (mpAlphaVDev)
-        mpAlphaVDev->Push();
 }
 
 void OutputDevice::Pop()
@@ -105,9 +99,6 @@ void OutputDevice::Pop()
         return;
     }
     const vcl::State& rState = maOutDevStateStack.back();
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->Pop();
 
     if ( rState.mnFlags & vcl::PushFlags::LINECOLOR )
     {
@@ -186,9 +177,6 @@ void OutputDevice::Pop()
         else
             SetRefPoint();
     }
-
-    if ( rState.mnFlags & vcl::PushFlags::RTLENABLED )
-        EnableRTL( rState.mbRTLEnabled );
 
     maOutDevStateStack.pop_back();
 

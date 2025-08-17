@@ -51,8 +51,7 @@
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <sal/log.hxx>
 #include <rtl/math.hxx>
-#include <unotools/configmgr.hxx>
-#include <comphelper/string.hxx>
+#include <comphelper/configuration.hxx>
 
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
@@ -104,7 +103,7 @@ static bool InitializeFontWorkData(
         nTextAreaCount >>= 1;
 
     const SdrCustomShapeGeometryItem& rGeometryItem( rSdrObjCustomShape.GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ) );
-    const css::uno::Any* pAny = rGeometryItem.GetPropertyValueByName( "TextPath", "ScaleX" );
+    const css::uno::Any* pAny = rGeometryItem.GetPropertyValueByName( u"TextPath"_ustr, u"ScaleX"_ustr );
     if (pAny)
         *pAny >>= rFWData.bScaleX;
     else
@@ -166,9 +165,9 @@ static bool InitializeFontWorkData(
                     // retrieving some paragraph attributes
                     const SfxItemSet& rParaSet = rTextObj.GetParaAttribs(aLineParaID[nLine]);
                     aParagraphData.nFrameDirection = rParaSet.Get(EE_PARA_WRITINGDIR).GetValue();
-                    aTextArea.vParagraphs.push_back(aParagraphData);
+                    aTextArea.vParagraphs.push_back(std::move(aParagraphData));
                 }
-                rFWData.vTextAreas.push_back(aTextArea);
+                rFWData.vTextAreas.push_back(std::move(aTextArea));
                 nLinesLeft -= nLinesInPara;
                 nTextAreaCount--;
             }
@@ -403,16 +402,16 @@ static void GetTextAreaOutline(
             }
             else
             {
-                KernArray aDXArry;
+                KernArray aDXArray;
                 if ( ( nCharScaleWidth != 100 ) && nCharScaleWidth )
                 {   // applying character spacing
-                    pVirDev->GetTextArray( rText, &aDXArry);
+                    pVirDev->GetTextArray( rText, &aDXArray);
                     FontMetric aFontMetric( pVirDev->GetFontMetric() );
                     aFont.SetAverageFontWidth( static_cast<sal_Int32>( static_cast<double>(aFontMetric.GetAverageFontWidth()) * ( double(100) / static_cast<double>(nCharScaleWidth) ) ) );
                     pVirDev->SetFont( aFont );
                 }
                 FWCharacterData aCharacterData;
-                if ( pVirDev->GetTextOutlines( aCharacterData.vOutlines, rText, 0, 0, -1, nWidth, aDXArry ) )
+                if ( pVirDev->GetTextOutlines( aCharacterData.vOutlines, rText, 0, 0, -1, nWidth, aDXArray ) )
                 {
                     rParagraph.vCharacters.push_back( aCharacterData );
                 }
@@ -422,22 +421,22 @@ static void GetTextAreaOutline(
                     // not implemented. To make FontWork not fail (it is
                     // dependent of graphic content to get a Range) create
                     // a rectangle substitution for now
-                    pVirDev->GetTextArray( rText, &aDXArry);
+                    pVirDev->GetTextArray( rText, &aDXArray);
                     aCharacterData.vOutlines.clear();
 
-                    if(aDXArry.size())
+                    if(!aDXArray.empty())
                     {
-                        for(size_t a(0); a < aDXArry.size(); a++)
+                        for(size_t a(0); a < aDXArray.size(); a++)
                         {
                             const basegfx::B2DPolygon aPolygon(
                                 basegfx::utils::createPolygonFromRect(
                                 basegfx::B2DRange(
-                                    0 == a ? 0 : aDXArry[a - 1],
+                                    0 == a ? 0 : aDXArray[a - 1],
                                     0,
-                                    aDXArry[a],
+                                    aDXArray[a],
                                     aFont.GetFontHeight()
                                 )));
-                            aCharacterData.vOutlines.push_back(tools::PolyPolygon(tools::Polygon(aPolygon)));
+                            aCharacterData.vOutlines.emplace_back(tools::Polygon(aPolygon));
                         }
                     }
                     else
@@ -447,10 +446,10 @@ static void GetTextAreaOutline(
                             basegfx::B2DRange(
                                 0,
                                 0,
-                                aDXArry.empty() ? 10 : aDXArry.back(),
+                                10,
                                 aFont.GetFontHeight()
                             )));
-                        aCharacterData.vOutlines.push_back(tools::PolyPolygon(tools::Polygon(aPolygon)));
+                        aCharacterData.vOutlines.emplace_back(tools::Polygon(aPolygon));
                     }
 
 
@@ -518,7 +517,7 @@ static bool GetFontWorkOutline(
 
     bool bSameLetterHeights = false;
     const SdrCustomShapeGeometryItem& rGeometryItem(rSdrObjCustomShape.GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ));
-    const css::uno::Any* pAny = rGeometryItem.GetPropertyValueByName( "TextPath", "SameLetterHeights" );
+    const css::uno::Any* pAny = rGeometryItem.GetPropertyValueByName( u"TextPath"_ustr, u"SameLetterHeights"_ustr );
     if ( pAny )
         *pAny >>= bSameLetterHeights;
 
@@ -840,7 +839,7 @@ static void FitTextOutlinesToShapeOutlines(const tools::PolyPolygon& aOutlines2d
                             Point aPoint = rOutlinePoly.GetPoint(nPointIdx2)
                                            - rOutlinePoly.GetPoint(nPointIdx1);
 
-                            double fLen = sqrt(aPoint.X() * aPoint.X() + aPoint.Y() * aPoint.Y());
+                            double fLen = hypot(aPoint.X(), aPoint.Y());
 
                             if (fLen > 0)
                             {
@@ -879,7 +878,7 @@ static void FitTextOutlinesToShapeOutlines(const tools::PolyPolygon& aOutlines2d
                                     //calculate distances between points on the outer outline
                                     const double fDx = vCurOutline[i].X() - vCurOutline[i - 1].X();
                                     const double fDy = vCurOutline[i].Y() - vCurOutline[i - 1].Y();
-                                    vCurDistances[i] = sqrt(fDx * fDx + fDy * fDy);
+                                    vCurDistances[i] = hypot(fDx, fDy);
                                 }
                                 else
                                     vCurDistances[i] = 0;
@@ -1083,7 +1082,7 @@ static void FitTextOutlinesToShapeOutlines(const tools::PolyPolygon& aOutlines2d
                                 }
 
                                 // write back polygon
-                                rPolyPoly[ i ] = aLocalPoly;
+                                rPolyPoly[i] = std::move(aLocalPoly);
                             }
                         }
                     }
@@ -1135,7 +1134,7 @@ Reference < i18n::XBreakIterator > const & EnhancedCustomShapeFontWork::GetBreak
 {
     if ( !mxBreakIterator.is() )
     {
-        Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         mxBreakIterator = i18n::BreakIterator::create(xContext);
     }
     return mxBreakIterator;
@@ -1148,7 +1147,7 @@ rtl::Reference<SdrObject> EnhancedCustomShapeFontWork::CreateFontWork(
     rtl::Reference<SdrObject> pRet;
 
     // calculating scaling factor is too slow
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return pRet;
 
     tools::PolyPolygon aOutlines2d( GetOutlinesFromShape2d( pShape2d ) );

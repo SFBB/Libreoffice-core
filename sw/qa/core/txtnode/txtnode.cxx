@@ -41,13 +41,18 @@
 #include <rootfrm.hxx>
 #include <pagefrm.hxx>
 #include <txtfrm.hxx>
+#include <PostItMgr.hxx>
+#include <AnnotationWin.hxx>
+#include <docufld.hxx>
+#include <IDocumentFieldsAccess.hxx>
+#include <MarkManager.hxx>
 
 /// Covers sw/source/core/txtnode/ fixes.
 class SwCoreTxtnodeTest : public SwModelTestBase
 {
 public:
     SwCoreTxtnodeTest()
-        : SwModelTestBase("/sw/qa/core/txtnode/data/")
+        : SwModelTestBase(u"/sw/qa/core/txtnode/data/"_ustr)
     {
     }
 };
@@ -59,17 +64,16 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testBtlrCellChinese)
     // tbrl ("Chinese") directions. Make sure that Chinese text is handled the same way in the btlr
     // case as it's handled in the Latin case.
     createSwDoc("btlr-cell-chinese.doc");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pShell = pTextDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
     std::shared_ptr<GDIMetaFile> xMetaFile = pShell->GetPreviewMetaFile();
     MetafileXmlDump dumper;
     xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, *xMetaFile);
-    assertXPath(pXmlDoc, "//font[1]"_ostr, "orientation"_ostr, "900");
+    assertXPath(pXmlDoc, "//font[1]", "orientation", u"900");
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: false
     // - Actual  : true
     // i.e. the glyph was rotated further, so it was upside down.
-    assertXPath(pXmlDoc, "//font[1]"_ostr, "vertical"_ostr, "false");
+    assertXPath(pXmlDoc, "//font[1]", "vertical", u"false");
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testSpecialInsertAfterMergedCells)
@@ -79,8 +83,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testSpecialInsertAfterMergedCells)
     createSwDoc("special-insert-after-merged-cells.fodt");
     SwDoc* pDoc = getSwDoc();
     SwNodeOffset const nNodes(pDoc->GetNodes().Count());
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pShell = pTextDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
     SwWrtShell* pWrtShell = pShell->GetWrtShell();
     // go to the merged cell
     pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 1, /*bBasicCall=*/false);
@@ -101,8 +104,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testSpecialInsertAfterMergedCells)
 CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testTextBoxCopyAnchor)
 {
     createSwDoc("textbox-copy-anchor.docx");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pShell = pTextDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
     SwWrtShell* pWrtShell = pShell->GetWrtShell();
     SwDoc aClipboard;
     pWrtShell->SelAll();
@@ -129,8 +131,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testTextBoxCopyAnchor)
 CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testTextBoxNodeSplit)
 {
     createSwDoc("textbox-node-split.docx");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pShell = pTextDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
     SwWrtShell* pWrtShell = pShell->GetWrtShell();
     pWrtShell->SttEndDoc(/*bStart=*/false);
     // Without the accompanying fix in place, this would have crashed in
@@ -173,21 +174,20 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testTitleFieldInvalidate)
 
     // Given a document with a title field:
     createSwDoc("title-field-invalidate.fodt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    pTextDoc->initializeForTiledRendering({});
-    SwDocShell* pShell = pTextDoc->GetDocShell();
+    getSwTextDoc()->initializeForTiledRendering({});
+    SwDocShell* pShell = getSwDocShell();
     SwDoc* pDoc = pShell->GetDoc();
     SwWrtShell* pWrtShell = pShell->GetWrtShell();
     pWrtShell->SttEndDoc(/*bStt=*/false);
     ViewCallback aCallback;
     TestLokCallbackWrapper aCallbackWrapper(&ViewCallback::callback, &aCallback);
     pWrtShell->GetSfxViewShell()->setLibreOfficeKitViewCallback(&aCallbackWrapper);
-    aCallbackWrapper.setLOKViewId(SfxLokHelper::getView(pWrtShell->GetSfxViewShell()));
+    aCallbackWrapper.setLOKViewId(SfxLokHelper::getView(*pWrtShell->GetSfxViewShell()));
     Scheduler::ProcessEventsToIdle();
     aCallback.m_nInvalidations = 0;
 
     // When typing to the document:
-    pWrtShell->Insert("x");
+    pWrtShell->Insert(u"x"_ustr);
     pWrtShell->GetSfxViewShell()->flushPendingLOKInvalidateTiles();
 
     // Then make sure that only the text frame at the cursor is invalidated:
@@ -209,8 +209,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testFlyAnchorUndo)
 {
     // Given a document with a fly frame, anchored after the last char of the document:
     createSwDoc("fly-anchor-undo.odt");
-    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
-    SwDocShell* pShell = pTextDoc->GetDocShell();
+    SwDocShell* pShell = getSwDocShell();
     SwDoc* pDoc = pShell->GetDoc();
     const auto& rSpz = *pDoc->GetSpzFrameFormats();
     sal_Int32 nExpected = rSpz[0]->GetAnchor().GetAnchorContentOffset();
@@ -234,11 +233,11 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testSplitNodeSuperscriptCopy)
 {
     // Given a document with superscript text at the end of a paragraph:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
-    pWrtShell->Insert("1st");
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    pWrtShell->Insert(u"1st"_ustr);
     pWrtShell->Left(SwCursorSkipMode::Chars, /*bSelect=*/true, 2, /*bBasicCall=*/false);
-    SfxItemSetFixed<RES_CHRATR_ESCAPEMENT, RES_CHRATR_ESCAPEMENT> aSet(pWrtShell->GetAttrPool());
+    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_CHRATR_ESCAPEMENT, RES_CHRATR_ESCAPEMENT>(
+        pWrtShell->GetAttrPool()));
     SvxEscapementItem aItem(SvxEscapement::Superscript, RES_CHRATR_ESCAPEMENT);
     aSet.Put(aItem);
     pWrtShell->SetAttrSet(aSet);
@@ -271,7 +270,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testSplitNodeSuperscriptCopy)
  *    dispatchCommand(mxComponent, ".uno:InsertField", aArgs);
  *
  *    SwDoc* pDoc = getSwDoc();
- *    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+ *    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
  *    SwPosition& rCursor = *pWrtShell->GetCursor()->GetPoint();
  *    SwTextNode* pTextNode = rCursor.GetNode().GetTextNode();
  *    std::vector<SwTextAttr*> aAttrs
@@ -301,8 +300,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testInsertDropDownContentControlTwice)
 {
     // Given an already selected dropdown content control:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->InsertContentControl(SwContentControlType::DROP_DOWN_LIST);
 
     // When trying to insert an inner one, make sure that we don't crash:
@@ -313,8 +311,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testCheckboxContentControlKeyboard)
 {
     // Given an already selected checkbox content control:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->InsertContentControl(SwContentControlType::CHECKBOX);
     SwEditWin& rEditWin = pWrtShell->GetView().GetEditWin();
 
@@ -338,8 +335,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testDropdownContentControlKeyboard)
 {
     // Given an already selected dropdown content control:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->InsertContentControl(SwContentControlType::DROP_DOWN_LIST);
 
     // When checking if alt-down should open a popup:
@@ -360,8 +356,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testPictureContentControlKeyboard)
 {
     // Given an already selected picture content control:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->InsertContentControl(SwContentControlType::PICTURE);
     pWrtShell->GotoObj(/*bNext=*/true, GotoObjFlags::Any);
 
@@ -389,8 +384,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testDateContentControlKeyboard)
 {
     // Given an already selected date content control:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->InsertContentControl(SwContentControlType::DATE);
 
     // When checking if alt-down should open a popup:
@@ -412,7 +406,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testContentControlCopy)
     // Given a document with a content control:
     createSwDoc();
     SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->InsertContentControl(SwContentControlType::CHECKBOX);
 
     // When copying that content control:
@@ -445,22 +439,22 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testTdf157287)
     uno::Reference<container::XEnumeration> xFields(xFieldsAccess->createEnumeration());
     uno::Reference<text::XTextField> xField(xFields->nextElement(), uno::UNO_QUERY);
 
-    CPPUNIT_ASSERT_EQUAL(OUString("30"), xField->getPresentation(false));
+    CPPUNIT_ASSERT_EQUAL(u"30"_ustr, xField->getPresentation(false));
 
     uno::Reference<text::XTextTablesSupplier> xTextTablesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xIndexAccess(xTextTablesSupplier->getTextTables(),
                                                          uno::UNO_QUERY);
     uno::Reference<text::XTextTable> xTextTable(xIndexAccess->getByIndex(0), uno::UNO_QUERY);
 
-    uno::Reference<text::XTextRange> xCellA1(xTextTable->getCellByName("B1"), uno::UNO_QUERY);
-    xCellA1->setString("100");
+    uno::Reference<text::XTextRange> xCellA1(xTextTable->getCellByName(u"B1"_ustr), uno::UNO_QUERY);
+    xCellA1->setString(u"100"_ustr);
 
-    dispatchCommand(mxComponent, ".uno:UpdateFields", {});
+    dispatchCommand(mxComponent, u".uno:UpdateFields"_ustr, {});
 
     // Without the fix in place, this test would have failed with
     // - Expected: 120
     // - Actual  :
-    CPPUNIT_ASSERT_EQUAL(OUString("120"), xField->getPresentation(false));
+    CPPUNIT_ASSERT_EQUAL(u"120"_ustr, xField->getPresentation(false));
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testFlySplitFootnote)
@@ -521,22 +515,134 @@ CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testSplitFlyAnchorSplit)
     CPPUNIT_ASSERT(pPage2->GetSortedObjs());
     // Anchor text is now just "A":
     auto pText1 = pPage2->FindFirstBodyContent()->DynCastTextFrame();
-    CPPUNIT_ASSERT_EQUAL(OUString("A"), pText1->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"A"_ustr, pText1->GetText());
     // New text frame is just "B":
     auto pText2 = pText1->GetNext()->DynCastTextFrame();
-    CPPUNIT_ASSERT_EQUAL(OUString("B"), pText2->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"B"_ustr, pText2->GetText());
 
     // Also test that the new follow anchor text frame still has a fly portion, otherwise the anchor
     // text and the floating table would overlap:
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
-    OUString aPortionType
-        = getXPath(pXmlDoc, "//page[2]/body/txt[1]/SwParaPortion/SwLineLayout[1]/child::*[1]"_ostr,
-                   "type"_ostr);
+    OUString aPortionType = getXPath(
+        pXmlDoc, "//page[2]/body/txt[1]/SwParaPortion/SwLineLayout[1]/child::*[1]", "type");
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: PortionType::Fly
     // - Actual  : PortionType::Para
     // i.e. the fly portion was missing, text overlapped.
-    CPPUNIT_ASSERT_EQUAL(OUString("PortionType::Fly"), aPortionType);
+    CPPUNIT_ASSERT_EQUAL(u"PortionType::Fly"_ustr, aPortionType);
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testPlainContentControlCopy)
+{
+    // Given a document with a plain text content control, all text selected and copied to the
+    // clipboard:
+    createSwDoc("plain-content-control-copy.docx");
+    SwDocShell* pDocShell = getSwDocShell();
+    SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
+    pWrtShell->SelAll();
+    {
+        rtl::Reference<SwTransferable> xTransfer = new SwTransferable(*pWrtShell);
+        xTransfer->Copy();
+    }
+
+    // When closing that document, then make sure we don't crash on shutdown:
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
+    uno::Reference<util::XCloseable> xFrame(xModel->getCurrentController()->getFrame(),
+                                            uno::UNO_QUERY);
+    // Without the accompanying fix in place, this resulted in an assertion failure, a char style
+    // still had clients by the time it was deleted.
+    xFrame->close(false);
+    mxComponent.clear();
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testCopyCommentsWithReplies)
+{
+    createSwDoc("comment-reply-copy.odt");
+
+    SwXTextDocument* pTextDoc = dynamic_cast<SwXTextDocument*>(mxComponent.get());
+    SwDocShell* pShell = pTextDoc->GetDocShell();
+    SwWrtShell* pWrtShell = pShell->GetWrtShell();
+    SwDoc aClipboard;
+    pWrtShell->SelAll();
+    pWrtShell->Copy(aClipboard);
+    pWrtShell->SttEndDoc(/*bStart=*/false); // Send the cursor to the end of the document.
+    pWrtShell->Paste(aClipboard);
+
+    // Now we have selected all text (which is one line) and pasted it to the end.
+    // A comment and its reply should also be copied to the end of the document.
+    // We will check if our reply is referencing its copied parent instead of the source parent.
+
+    SwPostItMgr* postItManager = pWrtShell->GetPostItMgr();
+
+    std::vector<const SwPostItField*> comments;
+
+    Scheduler::ProcessEventsToIdle();
+
+    for (const auto& pItem : *postItManager) // There should be 4.
+    {
+        comments.push_back(pItem->mpPostIt->GetPostItField());
+    }
+
+    //                   parents (original-copied), replies (original-copied)
+    CPPUNIT_ASSERT_EQUAL(comments[0]->GetName().toString(),
+                         comments[1]->GetParentName().toString());
+    CPPUNIT_ASSERT_EQUAL(comments[2]->GetName().toString(),
+                         comments[3]->GetParentName().toString());
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testNodeSplitStyleListLevel)
+{
+    // Given a document with a 3rd paragraph where the list level as direct formatting differs from
+    // the list level from style:
+    createSwDoc("node-split-style-list-level.odt");
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    pWrtShell->Down(/*bSelect=*/false, /*nCount=*/2);
+    pWrtShell->EndPara();
+
+    // When pressing enter at the end of the paragraph:
+    pWrtShell->SplitNode();
+
+    SwTextNode* pNext = pWrtShell->GetCursor()->GetPointNode().GetTextNode();
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 4
+    // - Actual  : 3
+    // i.e. the list level for the new paragraph changed on a simple node split.
+    CPPUNIT_ASSERT_EQUAL(4, pNext->GetAttrListLevel());
+    pWrtShell->Up(/*bSelect=*/false, /*nCount=*/1);
+    SwTextNode* pPrevious = pWrtShell->GetCursor()->GetPointNode().GetTextNode();
+    // Same happened for the old paragraph.
+    CPPUNIT_ASSERT_EQUAL(4, pPrevious->GetAttrListLevel());
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreTxtnodeTest, testDOCXCommentImport)
+{
+    // Given a DOCX file with a comment in it:
+    // When loading that file:
+    createSwDoc("comment.docx");
+
+    // Then make sure that the postit field has a name that matches the name of an annotation mark:
+    SwDoc* pDoc = getSwDoc();
+    const SwFieldTypes* pFieldTypes = pDoc->getIDocumentFieldsAccess().GetFieldTypes();
+    const SwFieldType* pPostitFieldType = nullptr;
+    for (const auto& pFieldType : *pFieldTypes)
+    {
+        if (pFieldType->Which() == SwFieldIds::Postit)
+        {
+            pPostitFieldType = pFieldType.get();
+            break;
+        }
+    }
+    CPPUNIT_ASSERT(pPostitFieldType);
+    std::vector<SwFormatField*> aFormatPostits;
+    pPostitFieldType->GatherFields(aFormatPostits);
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aFormatPostits.size());
+    const SwFormatField* pFormatPostit = aFormatPostits[0];
+    auto pPostit = static_cast<const SwPostItField*>(pFormatPostit->GetField());
+    IDocumentMarkAccess* pMarkAccess = pDoc->getIDocumentMarkAccess();
+    auto it = pMarkAccess->findAnnotationMark(pPostit->GetName());
+    // Without the accompanying fix in place, this test would have failed, there were no annotation
+    // marks with the name of pPostit.
+    CPPUNIT_ASSERT(it != pMarkAccess->getAnnotationMarksEnd());
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

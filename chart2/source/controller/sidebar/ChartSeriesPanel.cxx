@@ -29,7 +29,6 @@
 #include <ChartType.hxx>
 #include <DataSeries.hxx>
 #include <DataSeriesHelper.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <RegressionCurveHelper.hxx>
 #include <RegressionCurveModel.hxx>
@@ -53,7 +52,7 @@ bool isDataLabelVisible(const rtl::Reference<::chart::ChartModel>& xModel, std::
     if (!xSeries.is())
         return false;
 
-    return DataSeriesHelper::hasDataLabelsAtSeries(xSeries);
+    return xSeries->hasDataLabelsAtSeries();
 }
 
 void setDataLabelVisible(const rtl::Reference<::chart::ChartModel>& xModel, std::u16string_view rCID, bool bVisible)
@@ -65,9 +64,9 @@ void setDataLabelVisible(const rtl::Reference<::chart::ChartModel>& xModel, std:
         return;
 
     if (bVisible)
-        DataSeriesHelper::insertDataLabelsToSeriesAndAllPoints(xSeries);
+        xSeries->insertDataLabelsToSeriesAndAllPoints();
     else
-        DataSeriesHelper::deleteDataLabelsFromSeriesAndAllPoints(xSeries);
+        xSeries->deleteDataLabelsFromSeriesAndAllPoints();
 }
 
 struct LabelPlacementMap
@@ -94,7 +93,7 @@ sal_Int32 getDataLabelPlacement(const rtl::Reference<::chart::ChartModel>& xMode
     if (!xSeries.is())
         return 0;
 
-    css::uno::Any aAny = xSeries->getPropertyValue("LabelPlacement");
+    css::uno::Any aAny = xSeries->getPropertyValue(u"LabelPlacement"_ustr);
     if (!aAny.hasValue())
         return 0;
 
@@ -129,7 +128,7 @@ void setDataLabelPlacement(const rtl::Reference<::chart::ChartModel>& xModel,
         }
     }
 
-    xSeries->setPropertyValue("LabelPlacement", css::uno::Any(nApi));
+    xSeries->setPropertyValue(u"LabelPlacement"_ustr, css::uno::Any(nApi));
 }
 
 bool isTrendlineVisible(const rtl::Reference<::chart::ChartModel>& xModel,
@@ -207,7 +206,7 @@ bool isPrimaryAxis(const rtl::Reference<::chart::ChartModel>&
     if (!xSeries.is())
         return true;
 
-    return DataSeriesHelper::getAttachedAxisIndex(xSeries) == 0;
+    return xSeries->getAttachedAxisIndex() == 0;
 }
 
 void setAttachedAxisType(const rtl::Reference<::chart::ChartModel>&
@@ -226,7 +225,7 @@ rtl::Reference<ChartType> getChartType(
         const rtl::Reference<::chart::ChartModel>& xModel)
 {
     rtl::Reference<Diagram> xDiagram = xModel->getFirstChartDiagram();
-    const std::vector< rtl::Reference< BaseCoordinateSystem > > & xCooSysSequence( xDiagram->getBaseCoordinateSystems());
+    const std::vector< rtl::Reference< BaseCoordinateSystem > > xCooSysSequence( xDiagram->getBaseCoordinateSystems());
     return xCooSysSequence[0]->getChartTypes2()[0];
 }
 
@@ -275,17 +274,17 @@ OUString getCID(const css::uno::Reference<css::frame::XModel>& xModel)
 ChartSeriesPanel::ChartSeriesPanel(
     weld::Widget* pParent,
     ChartController* pController)
-    : PanelLayout(pParent, "ChartSeriesPanel", "modules/schart/ui/sidebarseries.ui")
-    , mxCBLabel(m_xBuilder->weld_check_button("checkbutton_label"))
-    , mxCBTrendline(m_xBuilder->weld_check_button("checkbutton_trendline"))
-    , mxCBXError(m_xBuilder->weld_check_button("checkbutton_x_error"))
-    , mxCBYError(m_xBuilder->weld_check_button("checkbutton_y_error"))
-    , mxRBPrimaryAxis(m_xBuilder->weld_radio_button("radiobutton_primary_axis"))
-    , mxRBSecondaryAxis(m_xBuilder->weld_radio_button("radiobutton_secondary_axis"))
-    , mxBoxLabelPlacement(m_xBuilder->weld_widget("datalabel_box"))
-    , mxLBLabelPlacement(m_xBuilder->weld_combo_box("comboboxtext_label"))
-    , mxFTSeriesName(m_xBuilder->weld_label("label_series_name"))
-    , mxFTSeriesTemplate(m_xBuilder->weld_label("label_series_tmpl"))
+    : PanelLayout(pParent, u"ChartSeriesPanel"_ustr, u"modules/schart/ui/sidebarseries.ui"_ustr)
+    , mxCBLabel(m_xBuilder->weld_check_button(u"checkbutton_label"_ustr))
+    , mxCBTrendline(m_xBuilder->weld_check_button(u"checkbutton_trendline"_ustr))
+    , mxCBXError(m_xBuilder->weld_check_button(u"checkbutton_x_error"_ustr))
+    , mxCBYError(m_xBuilder->weld_check_button(u"checkbutton_y_error"_ustr))
+    , mxRBPrimaryAxis(m_xBuilder->weld_radio_button(u"radiobutton_primary_axis"_ustr))
+    , mxRBSecondaryAxis(m_xBuilder->weld_radio_button(u"radiobutton_secondary_axis"_ustr))
+    , mxBoxLabelPlacement(m_xBuilder->weld_widget(u"datalabel_box"_ustr))
+    , mxLBLabelPlacement(m_xBuilder->weld_combo_box(u"comboboxtext_label"_ustr))
+    , mxFTSeriesName(m_xBuilder->weld_label(u"label_series_name"_ustr))
+    , mxFTSeriesTemplate(m_xBuilder->weld_label(u"label_series_tmpl"_ustr))
     , mxModel(pController->getChartModel())
     , mxListener(new ChartSidebarModifyListener(this))
     , mxSelectionListener(new ChartSidebarSelectionListener(this, OBJECTTYPE_DATA_SERIES))
@@ -371,7 +370,7 @@ std::unique_ptr<PanelLayout> ChartSeriesPanel::Create (
     ChartController* pController)
 {
     if (pParent == nullptr)
-        throw lang::IllegalArgumentException("no parent Window given to ChartSeriesPanel::Create", nullptr, 0);
+        throw lang::IllegalArgumentException(u"no parent Window given to ChartSeriesPanel::Create"_ustr, nullptr, 0);
 
     return std::make_unique<ChartSeriesPanel>(pParent, pController);
 }

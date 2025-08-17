@@ -37,13 +37,16 @@
 #include <memory>
 #include <vector>
 #include <functional>
+#include <map>
 
 class SfxHint;
 class SwNumRule;
 class SwNodeNum;
 class SvxFirstLineIndentItem;
 class SvxTextLeftMarginItem;
+struct SvxFontUnitMetrics;
 class SwXParagraph;
+class SwMarkName;
 
 namespace utl {
     class TransliterationWrapper;
@@ -67,9 +70,13 @@ struct SwDocStat;
 enum class ExpandMode;
 enum class SwFieldIds : sal_uInt16;
 class SwField;
+class SwFormatChangeHint;
 
 namespace sw {
     class TextNodeNotificationSuppressor;
+    class RemoveUnoObjectHint;
+    class AttrSetChangeHint;
+    class UpdateAttrHint;
     namespace mark { enum class RestoreMode; }
 }
 
@@ -158,13 +165,13 @@ class SW_DLLPUBLIC SwTextNode final
     // DrawingLayer FillAttributes in a preprocessed form for primitive usage
     drawinglayer::attribute::SdrAllFillAttributesHelperPtr  maFillAttributes;
 
-    SAL_DLLPRIVATE SwTextNode( SwNode& rWhere, SwTextFormatColl *pTextColl,
+    SAL_DLLPRIVATE SwTextNode( const SwNode& rWhere, SwTextFormatColl *pTextColl,
                              const SfxItemSet* pAutoAttr = nullptr );
     virtual void SwClientNotify( const SwModify&, const SfxHint& ) override;
     /// Copies the attributes at nStart to pDest.
     SAL_DLLPRIVATE void CopyAttr( SwTextNode *pDest, const sal_Int32 nStart, const sal_Int32 nOldPos);
 
-    SAL_DLLPRIVATE SwTextNode* MakeNewTextNode( SwNode&, bool bNext = true,
+    SAL_DLLPRIVATE SwTextNode* MakeNewTextNode( const SwNode&, bool bNext = true,
                                 bool bChgFollow = true );
 
     SAL_DLLPRIVATE void CutImpl(
@@ -240,6 +247,9 @@ public:
     void UpdateDocPos(const SwTwips nDocPos, const sal_uInt32 nIndex);
     /// for hanging TextFormatCollections somewhere else (Outline-Numbering!)
     void TriggerNodeUpdate(const sw::LegacyModifyHint&);
+    void TriggerNodeUpdate(const sw::AttrSetChangeHint&);
+    void TriggerNodeUpdate(const SfxHint&);
+    void TriggerNodeUpdate(const SwFormatChangeHint&);
 
     const OUString& GetText() const { return m_Text; }
 
@@ -375,6 +385,16 @@ public:
                const SwPosition &rStart,
                sal_Int32 nLen,
                const bool bForceCopyOfAllAttrs = false );
+    /*
+        After copying a text portion with its comments, the replies will still reference to their original parent.
+        We need to set their reference to their copied-parent.
+        idMapForComments and nameMapForComments variables hold the original ids of comments as keys.
+        And they hold the new ids and names of comments as values.
+        So we can find a reply's (child comment) new parent (value) by looking up its original parent (key).
+    */
+    static void EstablishParentChildRelationsOfComments(const SwTextNode* pDest,
+                std::map<sal_Int32, sal_Int32>& idMapForComments,
+                std::map<sal_Int32, SwMarkName>& nameMapForComments);
 
     void        CutText(SwTextNode * const pDest,
                     const SwContentIndex & rStart, const sal_Int32 nLen);
@@ -386,7 +406,7 @@ public:
     /// the capacity of the node
     void ReplaceText( const SwContentIndex& rStart, const sal_Int32 nDelLen,
             const OUString & rText );
-    void ReplaceText( SwPosition& rStart, const sal_Int32 nDelLen,
+    void ReplaceText( const SwPosition& rStart, const sal_Int32 nDelLen,
             const OUString & rText );
     void ReplaceTextOnly( sal_Int32 nPos, sal_Int32 nLen,
             std::u16string_view aText,
@@ -449,13 +469,14 @@ public:
         const sal_Int32 nIndex,
         ::sw::GetTextAttrMode const eMode = ::sw::GetTextAttrMode::Expand) const;
 
-    bool Spell(SwSpellArgs*);
+    bool Spell(SwSpellArgs* , bool bIsReadOnly);
     bool Convert( SwConversionArgs & );
 
     inline SwTextFormatColl *GetTextColl() const;
-    virtual SwFormatColl *ChgFormatColl( SwFormatColl* ) override;
-    void ChgTextCollUpdateNum( const SwTextFormatColl* pOld,
-                                const SwTextFormatColl* pNew );
+    virtual SwFormatColl *ChgFormatColl( SwFormatColl*, bool bSetListLevel = true ) override;
+    void ChgTextCollUpdateNum(const SwTextFormatColl* pOld,
+                              const SwTextFormatColl* pNew,
+                              bool bSetListLevel = true );
 
     /** Copy collection with all auto formats to dest-node.
         The latter might be in another document!
@@ -530,13 +551,18 @@ public:
        Returns the combined first line indent of this text node and
        its numbering.
 
-       @param the first line indent of this text node taking the
-               numbering into account (return parameter)
+       @param rFirstOffset
+       the first line indent of this text node taking the numbering into
+       account (return parameter)
+
+       @param rMetrics
+       helper structure containing font metrics, used for resolving font-
+       relative indentation
 
        @retval true   this node has SwNodeNum and has numbering rule
        @retval false  else
      */
-    bool GetFirstLineOfsWithNum( short& rFirstOffset ) const;
+    bool GetFirstLineOfsWithNum( short& rFirstOffset, const SvxFontUnitMetrics& rMetrics ) const;
 
     SwTwips GetAdditionalIndentForStartingNewList() const;
 
@@ -613,6 +639,8 @@ public:
     /**
        Returns outline level of this text node.
 
+       @param bInlineHeading     it can return the outline level of the inline heading
+
        If a text node has an outline number (i.e. it has an SwNodeNum
        and an outline numbering rule) the outline level is the level of
        this SwNodeNum.
@@ -621,7 +649,10 @@ public:
        attached the outline level is the outline level of the
        paragraph style.
 
-       Otherwise the text node has no outline level (NO_NUMBERING).
+       Otherwise the text node has no outline level (NO_NUMBERING),
+       except if bInlineHeading is true, and there is an inline heading
+       at the beginning of the paragraph anchored as character and
+       with a different outline level.
 
        NOTE: The outline level of text nodes is subject to change. The
        plan is to have an SwTextNode::nOutlineLevel member that is
@@ -630,7 +661,7 @@ public:
 
        @return outline level or NO_NUMBERING if there is no outline level
      */
-    int GetAttrOutlineLevel() const;
+    int GetAttrOutlineLevel(bool bInlineHeading = false) const;
 
     /**
        Sets the out line level *at* a text node.
@@ -649,10 +680,9 @@ public:
 
     /**
      * @brief GetAttrOutlineContentVisible
-     * @param bOutlineContentVisibleAttr    the value stored in RES_PARATR_GRABBAG for 'OutlineContentVisibleAttr'
      * @return true if 'OutlineContentVisibleAttr' is found in RES_PARATR_GRABBAG
      */
-    void GetAttrOutlineContentVisible(bool& bOutlineContentVisibleAttr);
+    bool GetAttrOutlineContentVisible() const;
     void SetAttrOutlineContentVisible(bool bVisible);
 
     bool IsEmptyListStyleDueToSetOutlineLevelAttr() const { return mbEmptyListStyleSetDueToSetOutlineLevelAttr;}
@@ -720,7 +750,7 @@ public:
     void fillSoftPageBreakList( SwSoftPageBreakList& rBreak ) const;
 
     LanguageType GetLang( const sal_Int32 nBegin, const sal_Int32 nLen = 0,
-                    sal_uInt16 nScript = 0 ) const;
+                    sal_uInt16 nScript = 0, bool bNoneIfNoHyphenation = false ) const;
 
     /// in ndcopy.cxx
     bool IsSymbolAt(sal_Int32 nBegin) const; // In itratr.cxx.
@@ -746,7 +776,7 @@ public:
     bool CopyExpandText( SwTextNode& rDestNd, const SwContentIndex* pDestIdx,
                            sal_Int32 nIdx, sal_Int32 nLen,
                            SwRootFrame const* pLayout,
-                           bool bWithNum = false, bool bWithFootnote = true,
+                           bool bWithFootnote = true,
                            bool bReplaceTabsWithSpaces = false ) const;
 
     OUString GetRedlineText() const;
@@ -828,6 +858,7 @@ public:
     void RemoveFromListRLHidden();
     void RemoveFromListOrig();
     bool IsInList() const;
+    bool IsInListFromStyle() const;
 
     bool IsFirstOfNumRule(SwRootFrame const& rLayout) const;
 

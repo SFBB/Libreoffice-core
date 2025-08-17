@@ -24,14 +24,18 @@
 #include <sortdlg.hxx>
 #include <unotools/viewoptions.hxx>
 
+#include <vcl/tabs.hrc>
+
 ScSortDlg::ScSortDlg(weld::Window* pParent, const SfxItemSet* pArgSet)
-    : SfxTabDialogController(pParent, "modules/scalc/ui/sortdialog.ui", "SortDialog", pArgSet)
+    : SfxTabDialogController(pParent, u"modules/scalc/ui/sortdialog.ui"_ustr, u"SortDialog"_ustr, pArgSet)
 {
-    AddTabPage("criteria", ScTabPageSortFields::Create, nullptr);
-    AddTabPage("options", ScTabPageSortOptions::Create, nullptr);
+    AddTabPage(u"criteria"_ustr, TabResId(RID_TAB_SORT.aLabel), ScTabPageSortFields::Create,
+               RID_L + RID_TAB_SORT.sIconName);
+    AddTabPage(u"options"_ustr, TabResId(RID_TAB_SORTOPTIONS.aLabel), ScTabPageSortOptions::Create,
+               RID_L + RID_TAB_SORTOPTIONS.sIconName);
 
     // restore dialog size
-    SvtViewOptions aDlgOpt(EViewType::Dialog, "SortDialog");
+    SvtViewOptions aDlgOpt(EViewType::Dialog, u"SortDialog"_ustr);
     if (aDlgOpt.Exists())
         m_xDialog->set_window_state(aDlgOpt.GetWindowState());
 }
@@ -39,17 +43,17 @@ ScSortDlg::ScSortDlg(weld::Window* pParent, const SfxItemSet* pArgSet)
 ScSortDlg::~ScSortDlg()
 {
     // tdf#153852 - Make of sort dialog resizable (and remember size)
-    SvtViewOptions aDlgOpt(EViewType::Dialog, "SortDialog");
+    SvtViewOptions aDlgOpt(EViewType::Dialog, u"SortDialog"_ustr);
     OUString sWindowState = m_xDialog->get_window_state(vcl::WindowDataMask::PosSize);
     aDlgOpt.SetWindowState(sWindowState);
 }
 
 ScSortWarningDlg::ScSortWarningDlg(weld::Window* pParent,
     std::u16string_view rExtendText, std::u16string_view rCurrentText)
-    : GenericDialogController(pParent, "modules/scalc/ui/sortwarning.ui", "SortWarning")
-    , m_xFtText(m_xBuilder->weld_label("sorttext"))
-    , m_xBtnExtSort(m_xBuilder->weld_button("extend"))
-    , m_xBtnCurSort(m_xBuilder->weld_button("current"))
+    : GenericDialogController(pParent, u"modules/scalc/ui/sortwarning.ui"_ustr, u"SortWarning"_ustr)
+    , m_xFtText(m_xBuilder->weld_label(u"sorttext"_ustr))
+    , m_xBtnExtSort(m_xBuilder->weld_button(u"extend"_ustr))
+    , m_xBtnCurSort(m_xBuilder->weld_button(u"current"_ustr))
 {
     OUString sTextName = m_xFtText->get_label();
     sTextName = sTextName.replaceFirst("%1", rExtendText);

@@ -74,7 +74,7 @@ void ORelationTableView::dispose()
 {
     if ( m_pContainerListener.is() )
         m_pContainerListener->dispose();
-    m_pExistingConnection.clear();
+    m_pExistingConnection.reset();
     OJoinTableView::dispose();
 }
 
@@ -99,7 +99,7 @@ void ORelationTableView::ReSync()
     TTableWindowData::const_reverse_iterator aIter = rTabWinDataList.rbegin();
     for(;aIter != rTabWinDataList.rend();++aIter)
     {
-        TTableWindowData::value_type pData = *aIter;
+        const TTableWindowData::value_type& pData = *aIter;
         VclPtr<OTableWindow> pTabWin = createWindow(pData);
 
         if (!pTabWin->Init())
@@ -108,7 +108,8 @@ void ORelationTableView::ReSync()
             // it should be cleaned up, including its data in the document
             pTabWin->clearListBox();
             pTabWin.disposeAndClear();
-            arrInvalidTables.push_back(pData->GetTableName());
+            // get the full name of the tables to ensure uniqueness across catalogs and schema
+            arrInvalidTables.push_back(pData->GetComposedName());
 
             std::erase(rTabWinDataList, *aIter);
             continue;
@@ -132,9 +133,9 @@ void ORelationTableView::ReSync()
         if ( !arrInvalidTables.empty() )
         {
             // do the tables to the  connection exist?
-            OUString strTabExistenceTest = pTabConnData->getReferencingTable()->GetTableName();
+            OUString strTabExistenceTest = pTabConnData->getReferencingTable()->GetComposedName();
             bool bInvalid = std::find(arrInvalidTables.begin(),arrInvalidTables.end(),strTabExistenceTest) != arrInvalidTables.end();
-            strTabExistenceTest = pTabConnData->getReferencedTable()->GetTableName();
+            strTabExistenceTest = pTabConnData->getReferencedTable()->GetComposedName();
             bInvalid = bInvalid || std::find(arrInvalidTables.begin(),arrInvalidTables.end(),strTabExistenceTest) != arrInvalidTables.end();
 
             if (bInvalid)
@@ -191,7 +192,7 @@ void ORelationTableView::AddConnection(const OJoinExchangeData& jxdSource, const
     pTabConnData->SetConnLine( 0, sSourceFieldName, sDestFieldName );
 
     if ( bAskUser || m_pExistingConnection )
-        m_pCurrentlyTabConnData = pTabConnData; // this implies that we ask the user what to do
+        m_pCurrentlyTabConnData = std::move(pTabConnData); // this implies that we ask the user what to do
     else
     {
         try
@@ -290,14 +291,15 @@ void ORelationTableView::AddTabWin(const OUString& _rComposedName, const OUStrin
     }
 
     // enter the new data structure into DocShell
-    TTableWindowData::value_type pNewTabWinData(createTableWindowData( _rComposedName, rWinName,rWinName ));
+    // show the table's full name as window name to ensure uniqueness across catalogs and schema
+    TTableWindowData::value_type pNewTabWinData(createTableWindowData( _rComposedName, rWinName, _rComposedName ));
     pNewTabWinData->ShowAll(false);
 
     // link new window into the window list
     VclPtr<OTableWindow> pNewTabWin = createWindow( pNewTabWinData );
     if(pNewTabWin->Init())
     {
-        m_pView->getController().getTableWindowData().push_back( pNewTabWinData);
+        m_pView->getController().getTableWindowData().push_back(std::move(pNewTabWinData));
         // when we already have a table with this name insert the full qualified one instead
         GetTabWinMap()[_rComposedName] = pNewTabWin;
 
@@ -307,9 +309,9 @@ void ORelationTableView::AddTabWin(const OUString& _rComposedName, const OUStrin
         modified();
 
         if ( m_pAccessible )
-            m_pAccessible->notifyAccessibleEvent(   AccessibleEventId::CHILD,
-                                                    Any(),
-                                                    Any(pNewTabWin->GetAccessible()));
+            m_pAccessible->notifyAccessibleEvent(
+                AccessibleEventId::CHILD, Any(),
+                Any(css::uno::Reference<XAccessible>(pNewTabWin->GetAccessible())));
     }
     else
     {

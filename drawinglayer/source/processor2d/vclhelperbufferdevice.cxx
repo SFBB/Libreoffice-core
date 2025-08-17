@@ -30,12 +30,13 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <vcl/timer.hxx>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <vcl/dibtools.hxx>
 #include <vcl/skia/SkiaHelper.hxx>
 #include <mutex>
 
 #ifdef DBG_UTIL
+#include <o3tl/environment.hxx>
 #include <tools/stream.hxx>
 #endif
 
@@ -383,7 +384,7 @@ VDevBuffer& getVDevBuffer()
     // secure global instance with Vcl's safe destroyer of external (seen by
     // library base) stuff, the remembered VDevs need to be deleted before
     // Vcl's deinit
-    static vcl::DeleteOnDeinit<VDevBuffer> aVDevBuffer{};
+    static tools::DeleteOnDeinit<VDevBuffer> aVDevBuffer{};
     return *aVDevBuffer.get();
 }
 
@@ -458,7 +459,7 @@ void impBufferDevice::paint(double fTrans)
 #ifdef DBG_UTIL
     // VCL_DUMP_BMP_PATH should be like C:/path/ or ~/path/
     static bool bDoSaveForVisualControl(false); // loplugin:constvars:ignore
-    static const OUString sDumpPath(OUString::createFromAscii(std::getenv("VCL_DUMP_BMP_PATH")));
+    static const OUString sDumpPath(o3tl::getEnvironment(u"VCL_DUMP_BMP_PATH"_ustr));
 
     if (!sDumpPath.isEmpty() && bDoSaveForVisualControl)
     {

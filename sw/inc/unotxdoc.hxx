@@ -62,7 +62,6 @@
 #include <editeng/UnoForbiddenCharsTable.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <vcl/ITiledRenderable.hxx>
-#include <com/sun/star/tiledrendering/XTiledRenderable.hpp>
 #include <com/sun/star/text/XPasteBroadcaster.hpp>
 
 #include "unobaseclass.hxx"
@@ -72,7 +71,6 @@
 
 class SwDoc;
 class SwDocShell;
-class UnoActionContext;
 class SwXBodyText;
 class SwFmDrawPage;
 class SwUnoCursor;
@@ -84,12 +82,46 @@ class SwPrintData;
 class SwRenderData;
 class SwViewShell;
 class SfxItemPropertySet;
-namespace com::sun::star::container { class XNameContainer; }
+class SwXTextTables;
+class SwXTextFrames;
+class SwXTextGraphicObjects;
+class SwXTextEmbeddedObjects;
+class SwXTextFieldTypes;
+class SwXTextFieldMasters;
+class SwXTextSections;
+class SwXNumberingRulesCollection;
+class SwXFootnote;
+class SwXFootnotes;
+class SwXContentControls;
+class SwXDocumentIndexes;
+class SwXStyleFamilies;
+class SwXStyle;
+class SwXAutoStyles;
+class SwXBookmarks;
+class SwXChapterNumbering;
+class SwXFootnoteProperties;
+class SwXEndnoteProperties;
+class SwXLineNumberingProperties;
+class SwXReferenceMarks;
+class SwXLinkTargetSupplier;
+class SwXRedlines;
+class SwXDocumentSettings;
+class SwXTextDefaults;
+class SwXBookmark;
+class SwXTextSection;
+class SwXTextField;
+class SwXLineBreak;
+class SwXTextFrame;
+class SwXTextGraphicObject;
+class SwXPageStyle;
+class SwXContentControl;
+class SwXTextEmbeddedObject;
+class SvXMLEmbeddedObjectHelper;
+class SwXFieldmark;
+class SwXSection;
+class SwXFieldMaster;
+class SvNumberFormatsSupplierObj;
 namespace com::sun::star::frame { class XController; }
-namespace com::sun::star::lang { struct Locale; }
-namespace com::sun::star::uno { class XAggregation; }
-
-namespace com::sun::star::util { class XReplaceDescriptor; }
 
 typedef cppu::ImplInheritanceHelper
 <
@@ -134,8 +166,7 @@ SwXTextDocumentBaseClass;
 
 class SW_DLLPUBLIC SwXTextDocument final : public SwXTextDocumentBaseClass,
     public SvxFmMSFactory,
-    public vcl::ITiledRenderable,
-    public css::tiledrendering::XTiledRenderable
+    public vcl::ITiledRenderable
 {
 private:
     class Impl;
@@ -146,36 +177,35 @@ private:
     const SfxItemPropertySet* m_pPropSet;
 
     SwDocShell*             m_pDocShell;
-    bool                    m_bObjectValid;
 
     rtl::Reference<SwFmDrawPage>                                m_xDrawPage;
 
     rtl::Reference<SwXBodyText>                                 m_xBodyText;
-    css::uno::Reference< css::uno::XAggregation >               m_xNumFormatAgg;
+    rtl::Reference< SvNumberFormatsSupplierObj >                m_xNumFormatAgg;
 
-    css::uno::Reference< css::container::XIndexAccess >         mxXNumberingRules;
-    css::uno::Reference< css::container::XIndexAccess >         mxXFootnotes;
-    css::uno::Reference< css::beans::XPropertySet >             mxXFootnoteSettings;
-    css::uno::Reference< css::container::XIndexAccess >         mxXEndnotes;
-    css::uno::Reference< css::beans::XPropertySet >             mxXEndnoteSettings;
-    css::uno::Reference< css::container::XIndexAccess >         mxXContentControls;
-    css::uno::Reference< css::container::XNameAccess >          mxXReferenceMarks;
-    css::uno::Reference< css::container::XEnumerationAccess >   mxXTextFieldTypes;
-    css::uno::Reference< css::container::XNameAccess >          mxXTextFieldMasters;
-    css::uno::Reference< css::container::XNameAccess >          mxXTextSections;
-    css::uno::Reference< css::container::XNameAccess >          mxXBookmarks;
-    css::uno::Reference< css::container::XNameAccess >          mxXTextTables;
-    css::uno::Reference< css::container::XNameAccess >          mxXTextFrames;
-    css::uno::Reference< css::container::XNameAccess >          mxXGraphicObjects;
-    css::uno::Reference< css::container::XNameAccess >          mxXEmbeddedObjects;
-    css::uno::Reference< css::container::XNameAccess >          mxXStyleFamilies;
-    mutable css::uno::Reference< css::style::XAutoStyles >      mxXAutoStyles;
-    css::uno::Reference< css::container::XIndexReplace >        mxXChapterNumbering;
-    css::uno::Reference< css::container::XIndexAccess >         mxXDocumentIndexes;
+    rtl::Reference<SwXNumberingRulesCollection>                 mxXNumberingRules;
+    rtl::Reference<SwXFootnotes>                                mxXFootnotes;
+    rtl::Reference<SwXFootnoteProperties>                       mxXFootnoteSettings;
+    rtl::Reference<SwXFootnotes>                                mxXEndnotes;
+    rtl::Reference<SwXEndnoteProperties>                        mxXEndnoteSettings;
+    rtl::Reference<SwXContentControls>                          mxXContentControls;
+    rtl::Reference<SwXReferenceMarks>                           mxXReferenceMarks;
+    rtl::Reference<SwXTextFieldTypes>                           mxXTextFieldTypes;
+    rtl::Reference<SwXTextFieldMasters>                         mxXTextFieldMasters;
+    rtl::Reference<SwXTextSections>                             mxXTextSections;
+    rtl::Reference<SwXBookmarks>                                mxXBookmarks;
+    rtl::Reference<SwXTextTables>                               mxXTextTables;
+    rtl::Reference<SwXTextFrames>                               mxXTextFrames;
+    rtl::Reference<SwXTextGraphicObjects>                       mxXGraphicObjects;
+    rtl::Reference<SwXTextEmbeddedObjects>                      mxXEmbeddedObjects;
+    rtl::Reference<SwXStyleFamilies>                            mxXStyleFamilies;
+    mutable rtl::Reference<SwXAutoStyles>                       mxXAutoStyles;
+    rtl::Reference<SwXChapterNumbering>                         mxXChapterNumbering;
+    rtl::Reference<SwXDocumentIndexes>                          mxXDocumentIndexes;
 
-    css::uno::Reference< css::beans::XPropertySet >             mxXLineNumberingProperties;
-    css::uno::Reference< css::container::XNameAccess >          mxLinkTargetSupplier;
-    css::uno::Reference< css::container::XEnumerationAccess >   mxXRedlines;
+    rtl::Reference<SwXLineNumberingProperties>                  mxXLineNumberingProperties;
+    rtl::Reference<SwXLinkTargetSupplier>                       mxLinkTargetSupplier;
+    rtl::Reference<SwXRedlines>                                 mxXRedlines;
 
     //temporary frame to enable PDF export if no valid view is available
     SfxViewFrame*                                   m_pHiddenViewFrame;
@@ -203,13 +233,14 @@ private:
     // is implemented.
     bool m_bApplyPagePrintSettingsFromXPagePrintable;
 
-    using SfxBaseModel::addEventListener;
-    using SfxBaseModel::removeEventListener;
-
     /** abstract SdrModel provider */
     virtual SdrModel& getSdrModelFromUnoModel() const override;
 
     virtual ~SwXTextDocument() override;
+
+    void ThrowIfInvalid() const;
+    SwDoc& GetDocOrThrow() const;
+
 public:
     SwXTextDocument(SwDocShell* pShell);
 
@@ -230,6 +261,9 @@ public:
     virtual css::uno::Reference< css::text::XText >  SAL_CALL getText() override;
     rtl::Reference< SwXBodyText > getBodyText();
     virtual void SAL_CALL reformat() override;
+
+    using SfxBaseModel::addEventListener;
+    using SfxBaseModel::removeEventListener;
 
     //XModel
     virtual sal_Bool SAL_CALL attachResource( const OUString& aURL, const css::uno::Sequence< css::beans::PropertyValue >& aArgs ) override;
@@ -453,9 +487,6 @@ public:
     /// @see vcl::ITiledRenderable::getSearchResultRectangles().
     std::vector<basegfx::B2DRange> getSearchResultRectangles(const char* pPayload) override;
 
-    // css::tiledrendering::XTiledRenderable
-    virtual void SAL_CALL paintTile( const ::css::uno::Any& Parent, ::sal_Int32 nOutputWidth, ::sal_Int32 nOutputHeight, ::sal_Int32 nTilePosX, ::sal_Int32 nTilePosY, ::sal_Int32 nTileWidth, ::sal_Int32 nTileHeight ) override;
-
     /// @see vcl::ITiledRenderable::executeContentControlEvent().
     void executeContentControlEvent(const StringMap& aArguments) override;
 
@@ -471,7 +502,6 @@ public:
     void                        Invalidate();
     void                        Reactivate(SwDocShell* pNewDocShell);
     SwXDocumentPropertyHelper * GetPropertyHelper ();
-    bool                    IsValid() const {return m_bObjectValid;}
 
     void                        InitNewDoc();
 
@@ -482,6 +512,40 @@ public:
                                             css::uno::Reference< css::uno::XInterface > const & xLastResult);
 
     SwDocShell*                 GetDocShell() {return m_pDocShell;}
+
+    rtl::Reference<SwXDocumentIndexes> getSwDocumentIndexes();
+    rtl::Reference<SwXTextTables> getSwTextTables();
+    rtl::Reference<SwFmDrawPage> getSwDrawPage();
+    rtl::Reference<SwXFootnotes> getSwXFootnotes();
+    rtl::Reference<SwXFootnotes> getSwXEndnotes();
+    rtl::Reference<SwXTextFieldMasters> getSwXTextFieldMasters();
+    rtl::Reference<SwXFieldMaster> createFieldMaster(std::u16string_view sServiceName);
+    rtl::Reference<SwXTextField> createTextField(std::u16string_view sServiceName);
+    rtl::Reference<SwXFieldmark> createFieldmark(std::u16string_view sServiceName);
+    /// returns either SwXDocumentIndex or SwXTextSection
+    rtl::Reference<SwXSection> createSection(std::u16string_view rObjectType);
+    rtl::Reference<SwXDocumentSettings> createDocumentSettings();
+    rtl::Reference<SwXTextDefaults> createTextDefaults();
+    rtl::Reference<SwXBookmark> createBookmark();
+    rtl::Reference<SwXFieldmark> createFieldmark();
+    rtl::Reference<SwXTextSection> createTextSection();
+    rtl::Reference<SwXTextField> createFieldAnnotation();
+    rtl::Reference<SwXLineBreak> createLineBreak();
+    rtl::Reference<SwXTextFrame> createTextFrame();
+    rtl::Reference<SwXTextGraphicObject> createTextGraphicObject();
+    rtl::Reference<SwXStyle> createNumberingStyle();
+    rtl::Reference<SwXStyle> createCharacterStyle();
+    rtl::Reference<SwXStyle> createParagraphStyle();
+    rtl::Reference<SwXPageStyle> createPageStyle();
+    rtl::Reference<SwXContentControl> createContentControl();
+    rtl::Reference<SwXFootnote> createFootnote();
+    rtl::Reference<SwXFootnote> createEndnote();
+    rtl::Reference<SwXTextEmbeddedObject> createTextEmbeddedObject();
+    rtl::Reference<SvXMLEmbeddedObjectHelper> createEmbeddedObjectResolver();
+    rtl::Reference< SwXStyleFamilies > getSwStyleFamilies();
+    rtl::Reference< SwXRedlines > getSwRedlines();
+    rtl::Reference<SwXTextFieldTypes> getSwTextFields();
+    rtl::Reference<SwXTextFrames> getSwTextFrames();
 };
 
 class SwXLinkTargetSupplier final : public cppu::WeakImplHelper

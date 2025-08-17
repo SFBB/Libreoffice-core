@@ -212,7 +212,7 @@ SvXMLNumFmtExport::SvXMLNumFmtExport(
             SvXMLExport& rExp,
             const uno::Reference< util::XNumberFormatsSupplier >& rSupp ) :
     m_rExport( rExp ),
-    m_sPrefix( OUString("N") ),
+    m_sPrefix( u"N"_ustr ),
     m_pFormatter( nullptr ),
     m_bHasText( false )
 {
@@ -224,14 +224,13 @@ SvXMLNumFmtExport::SvXMLNumFmtExport(
 
     if ( m_pFormatter )
     {
-        m_pLocaleData.reset( new LocaleDataWrapper( m_pFormatter->GetComponentContext(),
-            m_pFormatter->GetLanguageTag() ) );
+        m_pLocaleData = LocaleDataWrapper::get( m_pFormatter->GetLanguageTag() );
     }
     else
     {
         LanguageTag aLanguageTag( MsLangId::getConfiguredSystemLanguage() );
 
-        m_pLocaleData.reset( new LocaleDataWrapper( m_rExport.getComponentContext(), std::move(aLanguageTag) ) );
+        m_pLocaleData = LocaleDataWrapper::get( std::move(aLanguageTag) );
     }
 
     m_pUsedList.reset(new SvXMLNumUsedList_Impl);
@@ -254,14 +253,13 @@ SvXMLNumFmtExport::SvXMLNumFmtExport(
 
     if ( m_pFormatter )
     {
-        m_pLocaleData.reset( new LocaleDataWrapper( m_pFormatter->GetComponentContext(),
-            m_pFormatter->GetLanguageTag() ) );
+        m_pLocaleData = LocaleDataWrapper::get( m_pFormatter->GetLanguageTag() );
     }
     else
     {
         LanguageTag aLanguageTag( MsLangId::getConfiguredSystemLanguage() );
 
-        m_pLocaleData.reset( new LocaleDataWrapper( m_rExport.getComponentContext(), std::move(aLanguageTag) ) );
+        m_pLocaleData = LocaleDataWrapper::get( std::move(aLanguageTag) );
     }
 
     m_pUsedList.reset(new SvXMLNumUsedList_Impl);
@@ -974,7 +972,7 @@ bool SvXMLNumFmtExport::WriteTextWithCurrency_Impl( const OUString& rString,
             AddToTextElement_Impl( rString.subView( 0, nPos ) );
         }
         //  currency symbol (empty string -> default)
-        WriteCurrencyElement_Impl( "", u"" );
+        WriteCurrencyElement_Impl( u""_ustr, u"" );
         bRet = true;
 
         //  text after currency symbol
@@ -1100,7 +1098,7 @@ void SvXMLNumFmtExport::ExportPart_Impl( const SvNumberformat& rFormat, sal_uInt
 
     //  element name
 
-    NfIndexTableOffset eBuiltIn = m_pFormatter->GetIndexTableOffset( nRealKey );
+    NfIndexTableOffset eBuiltIn = SvNumberFormatter::GetIndexTableOffset( nRealKey );
 
     SvNumFormatType nFmtType = SvNumFormatType::ALL;
     bool bThousand = false;
@@ -1247,7 +1245,7 @@ void SvXMLNumFmtExport::ExportPart_Impl( const SvNumberformat& rFormat, sal_uInt
 
     // Native number transliteration
     css::i18n::NativeNumberXmlAttributes2 aAttr;
-    rFormat.GetNatNumXml( aAttr, nPart );
+    rFormat.GetNatNumXml( aAttr, nPart, m_pFormatter->GetNatNum() );
     if ( !aAttr.Format.isEmpty() )
     {
         assert(aAttr.Spellout.isEmpty());   // mutually exclusive
@@ -1780,8 +1778,7 @@ void SvXMLNumFmtExport::ExportPart_Impl( const SvNumberformat& rFormat, sal_uInt
                         if ( nElemType == NF_KEY_NNNN )
                         {
                             //  write additional text element for separator
-                            m_pLocaleData.reset( new LocaleDataWrapper( m_pFormatter->GetComponentContext(),
-                                LanguageTag( nLang ) ) );
+                            m_pLocaleData = LocaleDataWrapper::get( LanguageTag( nLang ) );
                             AddToTextElement_Impl( m_pLocaleData->getLongDateDayOfWeekSep() );
                         }
                     }
@@ -1814,7 +1811,7 @@ void SvXMLNumFmtExport::ExportPart_Impl( const SvNumberformat& rFormat, sal_uInt
                                             nElemType == NF_KEY_R );
                         WriteYearElement_Impl(
                                 ((bImplicitOtherCalendar && !bExplicitCalendar
-                                  && (nElemType == NF_KEY_YY || nElemType == NF_KEY_YYYY)) ? "gregorian" : aCalendar),
+                                  && (nElemType == NF_KEY_YY || nElemType == NF_KEY_YYYY)) ? u"gregorian"_ustr : aCalendar),
                                 (bSystemDate ? bLongSysDate : bLong));
                         bAnyContent = true;
                     }

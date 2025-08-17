@@ -10,11 +10,11 @@
 #include "dbtest_base.cxx"
 
 #include <memory>
+#include <o3tl/environment.hxx>
 #include <osl/process.h>
 #include <osl/time.h>
 #include <rtl/ustrbuf.hxx>
 #include <tools/stream.hxx>
-#include <unotools/tempfile.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
@@ -82,9 +82,6 @@ class EmbeddedDBPerformanceTest
     : public DBTestBase
 {
 private:
-    static constexpr OUString our_sEnableTestEnvVar = u"DBA_PERFTEST"_ustr;
-
-
     // We store the results and print them at the end due to the amount of warning
     // noise present which otherwise obscures the results.
     OUStringBuffer m_aOutputBuffer;
@@ -144,10 +141,7 @@ void EmbeddedDBPerformanceTest::printTimes(
 
 void EmbeddedDBPerformanceTest::testPerformance()
 {
-    OUString sEnabled;
-    osl_getEnvironment(our_sEnableTestEnvVar.pData, &sEnabled.pData);
-
-    if (sEnabled.isEmpty())
+    if (o3tl::getEnvironment(u"DBA_PERFTEST"_ustr).isEmpty())
         return;
 
     m_aOutputBuffer.append("---------------------\n");
@@ -172,17 +166,17 @@ void EmbeddedDBPerformanceTest::testFirebird()
 {
 
     m_aOutputBuffer.append("Standard Insert\n");
-    doPerformanceTestOnODB("sdbc:embedded:firebird", u"Firebird", false);
+    doPerformanceTestOnODB(u"sdbc:embedded:firebird"_ustr, u"Firebird", false);
     m_aOutputBuffer.append("PreparedStatement Insert\n");
-    doPerformanceTestOnODB("sdbc:embedded:firebird", u"Firebird", true);
+    doPerformanceTestOnODB(u"sdbc:embedded:firebird"_ustr, u"Firebird", true);
 }
 
 void EmbeddedDBPerformanceTest::testHSQLDB()
 {
     m_aOutputBuffer.append("Standard Insert\n");
-    doPerformanceTestOnODB("sdbc:embedded:hsqldb", u"HSQLDB", false);
+    doPerformanceTestOnODB(u"sdbc:embedded:hsqldb"_ustr, u"HSQLDB", false);
     m_aOutputBuffer.append("PreparedStatement Insert\n");
-    doPerformanceTestOnODB("sdbc:embedded:hsqldb", u"HSQLDB", true);
+    doPerformanceTestOnODB(u"sdbc:embedded:hsqldb"_ustr, u"HSQLDB", true);
 }
 
 /**
@@ -194,27 +188,10 @@ void EmbeddedDBPerformanceTest::doPerformanceTestOnODB(
     std::u16string_view rDBName,
     const bool bUsePreparedStatement)
 {
-    ::utl::TempFileNamed aFile;
-    aFile.EnableKillingFile();
+    createDBDocument(rDriverURL);
+    uno::Reference< XOfficeDatabaseDocument > xDocument(mxComponent, UNO_QUERY_THROW);
 
-    {
-        uno::Reference< XOfficeDatabaseDocument > xDocument(
-            m_xSFactory->createInstance("com.sun.star.sdb.OfficeDatabaseDocument"),
-            UNO_QUERY_THROW);
-        uno::Reference< XStorable > xStorable(xDocument, UNO_QUERY_THROW);
-
-        uno::Reference< XDataSource > xDataSource = xDocument->getDataSource();
-        uno::Reference< XPropertySet > xPropertySet(xDataSource, UNO_QUERY_THROW);
-        xPropertySet->setPropertyValue("URL", Any(rDriverURL));
-
-        xStorable->storeAsURL(aFile.GetURL(), uno::Sequence< beans::PropertyValue >());
-    }
-
-    uno::Reference< XOfficeDatabaseDocument > xDocument(
-        loadFromDesktop(aFile.GetURL()), UNO_QUERY_THROW);
-
-    uno::Reference< XConnection > xConnection =
-        getConnectionForDocument(xDocument);
+    uno::Reference< XConnection > xConnection = getConnectionForDocument(xDocument);
 
     setupTestTable(xConnection);
 
@@ -234,9 +211,9 @@ void EmbeddedDBPerformanceTest::setupTestTable(
     // Although not strictly necessary we use quoted identifiers to reflect
     // the fact that Base always uses quoted identifiers.
     xStatement->execute(
-        "CREATE TABLE \"PFTESTTABLE\" ( \"ID\" INTEGER NOT NULL PRIMARY KEY "
+        u"CREATE TABLE \"PFTESTTABLE\" ( \"ID\" INTEGER NOT NULL PRIMARY KEY "
         ", \"STRINGCOLUMNA\" VARCHAR (50) "
-    ")");
+    ")"_ustr);
 
     xConnection->commit();
 }
@@ -247,9 +224,9 @@ void EmbeddedDBPerformanceTest::performPreparedStatementInsertTest(
 {
     uno::Reference< XPreparedStatement > xPreparedStatement =
         xConnection->prepareStatement(
-            "INSERT INTO \"PFTESTTABLE\" ( \"ID\", "
+            u"INSERT INTO \"PFTESTTABLE\" ( \"ID\", "
             "\"STRINGCOLUMNA\" "
-            ") VALUES ( ?, ? )"
+            ") VALUES ( ?, ? )"_ustr
         );
 
     uno::Reference< XParameters > xParameters(xPreparedStatement, UNO_QUERY_THROW);
@@ -330,7 +307,7 @@ void EmbeddedDBPerformanceTest::performReadTest(
     TimeValue aStart, aMiddle, aEnd;
     osl_getSystemTime(&aStart);
 
-    uno::Reference< XResultSet > xResults = xStatement->executeQuery("SELECT * FROM PFTESTTABLE");
+    uno::Reference< XResultSet > xResults = xStatement->executeQuery(u"SELECT * FROM PFTESTTABLE"_ustr);
 
     osl_getSystemTime(&aMiddle);
 

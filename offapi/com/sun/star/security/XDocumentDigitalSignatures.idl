@@ -29,13 +29,6 @@ module com { module sun { module star { module security {
 
 interface XDocumentDigitalSignatures : com::sun::star::uno::XInterface
 {
-    /** signs the content of the document including text and pictures.
-
-       <p>Macros will not be signed.</p>
-     */
-    boolean signDocumentContent( [in] ::com::sun::star::embed::XStorage xStorage,
-                                 [in] ::com::sun::star::io::XStream xSignStream);
-
     /** Signs the content of the document including text and pictures
         using the given XCertificate.
 
@@ -73,13 +66,6 @@ interface XDocumentDigitalSignatures : com::sun::star::uno::XInterface
      */
     string getDocumentContentSignatureDefaultStreamName();
 
-    /** signs the content of the Scripting including macros and basic dialogs
-
-        <p>The rest of document content will not be signed.</p>
-     */
-    boolean signScriptingContent( [in] ::com::sun::star::embed::XStorage xStorage,
-                                  [in] ::com::sun::star::io::XStream xSignStream);
-
     /** checks for digital signatures and their status.
 
         <p>Only Scripting content will be checked.</p>
@@ -98,31 +84,6 @@ interface XDocumentDigitalSignatures : com::sun::star::uno::XInterface
         the scripting content.
      */
     string getScriptingContentSignatureDefaultStreamName();
-
-    /** signs the full Package, which means everything in the storage except the content of META-INF
-     */
-    boolean signPackage( [in] ::com::sun::star::embed::XStorage Storage,
-                         [in] ::com::sun::star::io::XStream xSignStream);
-
-    /** checks for digital signatures and their status.
-
-        <p>Only Package content will be checked.</p>
-     */
-    sequence< com::sun::star::security::DocumentSignatureInformation > verifyPackageSignatures(
-                        [in] ::com::sun::star::embed::XStorage Storage,
-                        [in] ::com::sun::star::io::XInputStream xSignInStream );
-
-    /** shows the digital signatures of the package
-     */
-    void showPackageSignatures(
-                        [in] ::com::sun::star::embed::XStorage xStorage,
-                        [in] ::com::sun::star::io::XInputStream xSignInStream );
-
-    /** allows to get the default stream name for storing of the signature of
-        the package.
-     */
-    string getPackageSignatureDefaultStreamName();
-
 
     void showCertificate( [in] com::sun::star::security::XCertificate Certificate );
 
@@ -161,6 +122,10 @@ interface XDocumentDigitalSignatures : com::sun::star::uno::XInterface
     /**  This shows the certificate selection dialog and allows to only select the certificate
          without actually signing the document. Only certificates of the given type will be shown.
 
+        @param certificateKind
+               com::sun::star::security::CertificateKind ENUM to choose only from certificates of a certain type.
+               CertificateKind_NONE lists all types of certificates for choosing.
+
          @since LibreOffice 6.2
      */
     com::sun::star::security::XCertificate selectSigningCertificateWithType(
@@ -168,11 +133,16 @@ interface XDocumentDigitalSignatures : com::sun::star::uno::XInterface
         [out] string Description);
 
     /**  This method shows the CertificateChooser dialog with all certificates, private and
-         other people's. Useful when choosing certificate/key for encryption
+         other people's. Useful when choosing certificate/key for encryption.
 
-         @since LibreOffice 6.0
+        @param certificateKind
+               com::sun::star::security::CertificateKind ENUM to choose only from certificates of a certain type.
+               CertificateKind_NONE lists all types of certificates for choosing.
+
+         @since LibreOffice 25.2
      */
-    sequence< com::sun::star::security::XCertificate > chooseEncryptionCertificate( );
+    sequence< com::sun::star::security::XCertificate > chooseEncryptionCertificate(
+        [in] CertificateKind certificateKind);
 
     /**  This method shows the CertificateChooser dialog, used by document and PDF signing
          Shows only private certificates and returns usage string in addition to description.
@@ -205,13 +175,11 @@ interface XDocumentDigitalSignatures : com::sun::star::uno::XInterface
                                                 [in] ::com::sun::star::embed::XStorage xStorage,
                                                 [in] ::com::sun::star::io::XStream xStream);
 
-    /** signs the full Package, which means everything in the storage except the content of META-INF with the provided certificate.
+    /** queries the user if they want to trust an untrusted certificate.
 
-        @since LibreOffice 7.0
+        @since LibreOffice 24.8
     */
-    boolean signPackageWithCertificate([in] ::com::sun::star::security::XCertificate xCertificate,
-                                                [in] ::com::sun::star::embed::XStorage xStorage,
-                                                [in] ::com::sun::star::io::XStream xStream);
+    boolean trustUntrustedCertificate([in] ::com::sun::star::security::XCertificate xCertificate);
 };
 
 } ; } ; } ; } ;

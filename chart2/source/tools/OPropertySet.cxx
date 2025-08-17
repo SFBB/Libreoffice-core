@@ -66,7 +66,7 @@ OPropertySet::OPropertySet( const OPropertySet & rOther ) :
     for(auto& rProp : m_aProperties)
     {
         if( rProp.second.hasValue() &&
-            rProp.second.getValueType().getTypeClass() == uno::TypeClass_INTERFACE )
+            rProp.second.getValueTypeClass() == uno::TypeClass_INTERFACE )
         {
             Reference< util::XCloneable > xCloneable;
             if( rProp.second >>= xCloneable )
@@ -364,7 +364,7 @@ void SAL_CALL OPropertySet::setStyle( const Reference< style::XStyle >& xStyle )
 {
     if( ! SetStyle( xStyle ))
         throw lang::IllegalArgumentException(
-            "Empty Style",
+            u"Empty Style"_ustr,
             static_cast< beans::XPropertySet * >( this ),
             0 );
 }

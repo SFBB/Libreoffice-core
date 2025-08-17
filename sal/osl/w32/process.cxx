@@ -27,6 +27,8 @@
 #include <osl/mutex.hxx>
 #include <osl/nlsupport.h>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <o3tl/temporary.hxx>
+#include <systools/win32/extended_max_path.hxx>
 
 #include "filetime.hxx"
 #include "nlsupport.hxx"
@@ -149,6 +151,7 @@ oslProcess SAL_CALL osl_getProcess(oslProcessIdentifier Ident)
     if (hProcess)
     {
         pProcImpl = static_cast< oslProcessImpl*>( malloc(sizeof(oslProcessImpl)) );
+        assert(pProcImpl && "Don't handle OOM conditions");
         pProcImpl->m_hProcess  = hProcess;
         pProcImpl->m_IdProcess = Ident;
     }
@@ -226,20 +229,13 @@ oslProcessError SAL_CALL osl_getProcessInfo(oslProcess Process, oslProcessData F
 
     if (Fields & osl_Process_CPUTIMES)
     {
-        FILETIME CreationTime, ExitTime, KernelTime, UserTime;
+        FILETIME KernelTime, UserTime;
 
-        if (GetProcessTimes(hProcess, &CreationTime, &ExitTime,
+        if (GetProcessTimes(hProcess, &o3tl::temporary(FILETIME()), &o3tl::temporary(FILETIME()),
                                       &KernelTime, &UserTime))
         {
-            __int64 Value;
-
-            Value = osl::detail::getFiletime(UserTime);
-            pInfo->UserTime.Seconds   = static_cast<unsigned long>(Value / 10000000L);
-            pInfo->UserTime.Nanosec   = static_cast<unsigned long>((Value % 10000000L) * 100);
-
-            Value = osl::detail::getFiletime(KernelTime);
-            pInfo->SystemTime.Seconds = static_cast<unsigned long>(Value / 10000000L);
-            pInfo->SystemTime.Nanosec = static_cast<unsigned long>((Value % 10000000L) * 100);
+            FileTimeToTimeValue(&UserTime, &pInfo->UserTime, true);
+            FileTimeToTimeValue(&KernelTime, &pInfo->SystemTime, true);
 
             pInfo->Fields |= osl_Process_CPUTIMES;
         }
@@ -281,7 +277,7 @@ oslProcessError bootstrap_getExecutableFile(rtl_uString ** ppFileURL)
 {
     oslProcessError result = osl_Process_E_NotFound;
 
-    ::osl::LongPathBuffer< sal_Unicode > aBuffer( MAX_LONG_PATH );
+    osl::LongPathBuffer<sal_Unicode> aBuffer(EXTENDED_MAX_PATH);
     DWORD buflen = 0;
 
     if ((buflen = GetModuleFileNameW (nullptr, o3tl::toW(aBuffer), aBuffer.getBufSizeInSymbols())) > 0)
@@ -329,13 +325,14 @@ static rtl_uString ** osl_createCommandArgs_Impl (int argc, char **)
         assert( nArgs == argc );
         for (i = 0; i < nArgs; i++)
         {
-            /* Convert to unicode */
             rtl_uString_newFromStr( &(ppArgs[i]), o3tl::toU(wargv[i]) );
         }
-        if (ppArgs[0] != nullptr)
+        LocalFree(wargv);
         {
-            /* Ensure absolute path */
-            ::osl::LongPathBuffer< sal_Unicode > aBuffer( MAX_LONG_PATH );
+            /* Ensure absolute path. Additionally, this may replace possible s*.exe (from original
+               command line, passed from launcher down to this process) with soffice.bin - that
+               fixes osl_getExecutableFile */
+            osl::LongPathBuffer<sal_Unicode> aBuffer(EXTENDED_MAX_PATH);
             DWORD dwResult
                 = GetModuleFileNameW(nullptr, o3tl::toW(aBuffer), aBuffer.getBufSizeInSymbols());
             if ((0 < dwResult) && (dwResult < aBuffer.getBufSizeInSymbols()))
@@ -424,20 +421,13 @@ void SAL_CALL osl_setCommandArgs (int argc, char ** argv)
     }
 }
 
-/* TODO because of an issue with GetEnvironmentVariableW we have to
-   allocate a buffer large enough to hold the requested environment
-   variable instead of testing for the required size. This wastes
-   some stack space, maybe we should revoke this work around if
-   this is no longer a problem */
-#define ENV_BUFFER_SIZE (32*1024-1)
-
 oslProcessError SAL_CALL osl_getEnvironment(rtl_uString *ustrVar, rtl_uString **ustrValue)
 {
-    WCHAR buff[ENV_BUFFER_SIZE];
-
-    if (GetEnvironmentVariableW(o3tl::toW(ustrVar->buffer), buff, ENV_BUFFER_SIZE) > 0)
+    WCHAR buff[32 * 1024];
+    DWORD len = GetEnvironmentVariableW(o3tl::toW(ustrVar->buffer), buff, std::size(buff));
+    if (len > 0 && len < std::size(buff))
     {
-        rtl_uString_newFromStr(ustrValue, o3tl::toU(buff));
+        rtl_uString_newFromStr_WithLength(ustrValue, o3tl::toU(buff), len);
         return osl_Process_E_None;
     }
     return osl_Process_E_Unknown;
@@ -448,8 +438,7 @@ oslProcessError SAL_CALL osl_setEnvironment(rtl_uString *ustrVar, rtl_uString *u
     // set Windows environment variable
     if (SetEnvironmentVariableW(o3tl::toW(ustrVar->buffer), o3tl::toW(ustrValue->buffer)))
     {
-        OUString sAssign = OUString::unacquired(&ustrVar) + "=" + OUString::unacquired(&ustrValue);
-        _wputenv(o3tl::toW(sAssign.getStr()));
+        _wputenv_s(o3tl::toW(ustrVar->buffer), o3tl::toW(ustrValue->buffer));
         return osl_Process_E_None;
     }
     return osl_Process_E_Unknown;
@@ -461,8 +450,7 @@ oslProcessError SAL_CALL osl_clearEnvironment(rtl_uString *ustrVar)
     // by setting SetEnvironmentVariable's second parameter to NULL
     if (SetEnvironmentVariableW(o3tl::toW(ustrVar->buffer), nullptr))
     {
-        OUString sAssign = OUString::unacquired(&ustrVar) + "=";
-        _wputenv(o3tl::toW(sAssign.getStr()));
+        _wputenv_s(o3tl::toW(ustrVar->buffer), L"");
         return osl_Process_E_None;
     }
     return osl_Process_E_Unknown;
@@ -470,7 +458,7 @@ oslProcessError SAL_CALL osl_clearEnvironment(rtl_uString *ustrVar)
 
 oslProcessError SAL_CALL osl_getProcessWorkingDir( rtl_uString **pustrWorkingDir )
 {
-    ::osl::LongPathBuffer< sal_Unicode > aBuffer( MAX_LONG_PATH );
+    osl::LongPathBuffer<sal_Unicode> aBuffer(EXTENDED_MAX_PATH);
     DWORD dwLen = GetCurrentDirectoryW(aBuffer.getBufSizeInSymbols(), o3tl::toW(aBuffer));
 
     if ( dwLen && dwLen < aBuffer.getBufSizeInSymbols() )

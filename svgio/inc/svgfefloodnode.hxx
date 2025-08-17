@@ -27,6 +27,7 @@ namespace svgio::svgreader
 class SvgFeFloodNode final : public SvgFilterNode
 {
 private:
+    OUString maResult;
     SvgNumber maX;
     SvgNumber maY;
     SvgNumber maWidth;
@@ -40,7 +41,8 @@ public:
 
     virtual void parseAttribute(SVGToken aSVGToken, const OUString& aContent) override;
 
-    void apply(drawinglayer::primitive2d::Primitive2DContainer& rTarget) const override;
+    void apply(drawinglayer::primitive2d::Primitive2DContainer& rTarget,
+               const SvgFilterNode* pParent) const override;
 };
 
 } // end of namespace svgio::svgreader

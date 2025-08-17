@@ -40,7 +40,6 @@
 using namespace css::uno;
 using namespace css::lang;
 using namespace css::frame;
-using namespace css::beans;
 using namespace css::util;
 
 static bool lcl_I18nCompareString(const OUString& rStr1, const OUString& rStr2)
@@ -56,7 +55,7 @@ namespace framework
 
 OUString SAL_CALL FontMenuController::getImplementationName()
 {
-    return "com.sun.star.comp.framework.FontMenuController";
+    return u"com.sun.star.comp.framework.FontMenuController"_ustr;
 }
 
 sal_Bool SAL_CALL FontMenuController::supportsService( const OUString& sServiceName )
@@ -178,7 +177,7 @@ void SAL_CALL FontMenuController::itemActivated( const css::awt::MenuEvent& )
 }
 
 // XPopupMenuController
-void FontMenuController::impl_setPopupMenu()
+void FontMenuController::impl_setPopupMenu(std::unique_lock<std::mutex>& /*rGuard*/)
 {
     Reference< XDispatchProvider > xDispatchProvider( m_xFrame, UNO_QUERY );
 

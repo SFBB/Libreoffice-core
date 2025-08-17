@@ -26,7 +26,6 @@
 namespace weld { class CheckButton; }
 namespace weld { class MetricSpinButton; }
 namespace weld { class SpinButton; }
-namespace weld { class ToggleButton; }
 namespace weld { class Widget; }
 
 class SVX_DLLPUBLIC SvxOptionsGrid
@@ -69,7 +68,9 @@ class SVX_DLLPUBLIC SvxGridItem : public SvxOptionsGrid, public SfxPoolItem
     friend class SvxGridTabPage;
 
 public:
-    SvxGridItem( TypedWhichId<SvxGridItem> _nWhich) : SfxPoolItem(_nWhich){};
+    DECLARE_ITEM_TYPE_FUNCTION(SvxGridItem)
+    SvxGridItem( TypedWhichId<SvxGridItem> _nWhich)
+        : SfxPoolItem(_nWhich){};
 
     virtual SvxGridItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;

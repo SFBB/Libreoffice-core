@@ -31,7 +31,7 @@ namespace sdr::properties
             virtual SfxItemSet CreateObjectSpecificItemSet(SfxItemPool& rPool) override;
 
             // react on ItemSet changes
-            virtual void ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich) override;
+            virtual void ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich, bool bAdjustTextFrameWidthAndHeight = true) override;
 
         public:
             // basic constructor
@@ -48,7 +48,7 @@ namespace sdr::properties
 
             // set a new StyleSheet and broadcast
             virtual void SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast) override;
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight = true) override;
         };
 } // end of namespace sdr::properties
 

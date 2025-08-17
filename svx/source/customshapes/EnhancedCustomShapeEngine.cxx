@@ -114,7 +114,7 @@ void SAL_CALL EnhancedCustomShapeEngine::initialize( const Sequence< Any >& aArg
         if ( rArgument >>= aParameter )
             break;
     }
-    for ( const beans::PropertyValue& rProp : std::as_const(aParameter) )
+    for (const beans::PropertyValue& rProp : aParameter)
     {
         if ( rProp.Name == "CustomShape" )
             rProp.Value >>= mxShape;
@@ -126,7 +126,7 @@ void SAL_CALL EnhancedCustomShapeEngine::initialize( const Sequence< Any >& aArg
 // XServiceInfo
 OUString SAL_CALL EnhancedCustomShapeEngine::getImplementationName()
 {
-    return "com.sun.star.drawing.EnhancedCustomShapeEngine";
+    return u"com.sun.star.drawing.EnhancedCustomShapeEngine"_ustr;
 }
 sal_Bool SAL_CALL EnhancedCustomShapeEngine::supportsService( const OUString& rServiceName )
 {
@@ -134,7 +134,7 @@ sal_Bool SAL_CALL EnhancedCustomShapeEngine::supportsService( const OUString& rS
 }
 Sequence< OUString > SAL_CALL EnhancedCustomShapeEngine::getSupportedServiceNames()
 {
-    return { "com.sun.star.drawing.CustomShapeEngine" };
+    return { u"com.sun.star.drawing.CustomShapeEngine"_ustr };
 }
 
 // XCustomShapeEngine
@@ -260,7 +260,7 @@ Reference< drawing::XShape > SAL_CALL EnhancedCustomShapeEngine::render()
     // retrieving the TextPath property to check if feature is enabled
     const SdrCustomShapeGeometryItem& rGeometryItem(pSdrObjCustomShape->GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ));
     bool bTextPathOn = false;
-    const uno::Any* pAny = rGeometryItem.GetPropertyValueByName( "TextPath", "TextPath" );
+    const uno::Any* pAny = rGeometryItem.GetPropertyValueByName( u"TextPath"_ustr, u"TextPath"_ustr );
     if ( pAny )
         *pAny >>= bTextPathOn;
 
@@ -271,7 +271,7 @@ Reference< drawing::XShape > SAL_CALL EnhancedCustomShapeEngine::render()
     bool bFlipH = aCustomShape2d.IsFlipHorz();
     bool bLineGeometryNeededOnly = bTextPathOn;
 
-    rtl::Reference<SdrObject> xRenderedShape(aCustomShape2d.CreateObject(bLineGeometryNeededOnly));
+    rtl::Reference<SdrObject> xRenderedShape(aCustomShape2d.CreateObject(bLineGeometryNeededOnly, pSdrObjCustomShape->GetStyleSheet()));
     if (xRenderedShape)
     {
         if ( bTextPathOn )
@@ -324,7 +324,6 @@ Reference< drawing::XShape > SAL_CALL EnhancedCustomShapeEngine::render()
             xRenderedShape->NbcMirror( aTop, aBottom );
         }
 
-        xRenderedShape->NbcSetStyleSheet(pSdrObjCustomShape->GetStyleSheet(), true);
         xRenderedShape->RecalcSnapRect();
     }
 
@@ -335,14 +334,12 @@ Reference< drawing::XShape > SAL_CALL EnhancedCustomShapeEngine::render()
             xRenderedShape.get());
     }
 
-    Reference< drawing::XShape > xShape;
+    if (!xRenderedShape)
+        return nullptr;
 
-    if (xRenderedShape)
-    {
-        aCustomShape2d.ApplyGluePoints(xRenderedShape.get());
-        xShape = SvxDrawPage::CreateShapeByTypeAndInventor( xRenderedShape->GetObjIdentifier(),
-            xRenderedShape->GetObjInventor(), xRenderedShape.get() );
-    }
+    aCustomShape2d.ApplyGluePoints(xRenderedShape.get());
+    rtl::Reference< SvxShape > xShape = SvxDrawPage::CreateShapeByTypeAndInventor( xRenderedShape->GetObjIdentifier(),
+        xRenderedShape->GetObjInventor(), xRenderedShape.get() );
 
     return xShape;
 }

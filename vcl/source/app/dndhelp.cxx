@@ -24,7 +24,6 @@
 
 #include <cppuhelper/queryinterface.hxx>
 
-#include <com/sun/star/awt/XDisplayConnection.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 
 using namespace ::com::sun::star;
@@ -142,7 +141,7 @@ void vcl::unohelper::DragAndDropWrapper::dropActionChanged( const css::datatrans
 {
 }
 
-css::uno::Reference<css::uno::XInterface>
+void
 vcl::OleDnDHelper(const css::uno::Reference<css::lang::XInitialization>& xDnD, const sal_IntPtr pWin, DragOrDrop eDoD)
 {
     if (pWin && xDnD)
@@ -152,16 +151,6 @@ vcl::OleDnDHelper(const css::uno::Reference<css::lang::XInitialization>& xDnD, c
         else
             xDnD->initialize({ uno::Any(static_cast<sal_uInt64>(pWin)), uno::Any() });
     }
-    return xDnD;
-}
-
-css::uno::Reference<css::uno::XInterface>
-vcl::X11DnDHelper(const css::uno::Reference<css::lang::XInitialization>& xDnD, const sal_IntPtr pWin)
-{
-    if (pWin && xDnD)
-        xDnD->initialize({ uno::Any(Application::GetDisplayConnection()),
-                           uno::Any(static_cast<sal_uInt64>(pWin)) });
-    return xDnD;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -255,6 +255,36 @@ ContextHandlerRef PieTypeGroupContext::onCreateContext( sal_Int32 nElement, cons
         case C_TOKEN( holeSize ):
             mrModel.mnHoleSize = rAttribs.getInteger( XML_val, 10 );
             return nullptr;
+        case C_TOKEN( ser ):
+            return new PieSeriesContext( *this, mrModel.maSeries.create(bMSO2007Doc) );
+        case C_TOKEN( serLines ):
+            return new ShapePrWrapperContext( *this, mrModel.mxSerLines.create() );
+        case C_TOKEN( varyColors ):
+            mrModel.mbVaryColors = rAttribs.getBool( XML_val, !bMSO2007Doc );
+            return nullptr;
+    }
+    return nullptr;
+}
+
+OfPieTypeGroupContext::OfPieTypeGroupContext( ContextHandler2Helper& rParent, TypeGroupModel& rModel ) :
+    TypeGroupContextBase( rParent, rModel )
+{
+}
+
+OfPieTypeGroupContext::~OfPieTypeGroupContext()
+{
+}
+
+ContextHandlerRef OfPieTypeGroupContext::onCreateContext( sal_Int32 nElement, const AttributeList& rAttribs )
+{
+    bool bMSO2007Doc = getFilter().isMSO2007Document();
+    if( isRootElement() ) switch( nElement )
+    {
+        case C_TOKEN( dLbls ):
+            return new DataLabelsContext( *this, mrModel.mxLabels.create(bMSO2007Doc) );
+        case C_TOKEN( gapWidth ):
+            mrModel.mnGapWidth = rAttribs.getInteger( XML_val, 150 );
+            return nullptr;
         case C_TOKEN( ofPieType ):
             mrModel.mnOfPieType = rAttribs.getToken( XML_val, XML_pie );
             return nullptr;
@@ -266,7 +296,7 @@ ContextHandlerRef PieTypeGroupContext::onCreateContext( sal_Int32 nElement, cons
         case C_TOKEN( serLines ):
             return new ShapePrWrapperContext( *this, mrModel.mxSerLines.create() );
         case C_TOKEN( splitPos ):
-            mrModel.mfSplitPos = rAttribs.getDouble( XML_val, 0.0 );
+            mrModel.mfSplitPos = rAttribs.getDouble( XML_val, 2.0 );
             return nullptr;
         case C_TOKEN( splitType ):
             mrModel.mnSplitType = rAttribs.getToken( XML_val, XML_auto );
@@ -363,6 +393,75 @@ ContextHandlerRef SurfaceTypeGroupContext::onCreateContext( sal_Int32 nElement, 
             mrModel.mbWireframe = rAttribs.getBool( XML_val, !bMSO2007Doc );
             return nullptr;
     }
+    return nullptr;
+}
+
+ChartexTypeGroupContext::ChartexTypeGroupContext( ContextHandler2Helper& rParent, TypeGroupModel& rModel ) :
+    TypeGroupContextBase( rParent, rModel )
+{
+}
+
+ChartexTypeGroupContext::~ChartexTypeGroupContext()
+{
+}
+
+void ChartexTypeGroupContext::CreateSeries()
+{
+    mrModel.maSeries.create(false);
+}
+
+ContextHandlerRef ChartexTypeGroupContext::onCreateContext( [[maybe_unused]] sal_Int32 nElement,
+        [[maybe_unused]] const AttributeList& rAttribs )
+{
+    if (isRootElement()) switch (nElement) {
+        case CX_TOKEN(plotSurface) :
+            // TODO
+            return nullptr;
+        case CX_TOKEN(series) :
+            if (rAttribs.hasAttribute(XML_layoutId)) {
+                // If this is the first series, then the type ID is currently
+                // set to <cx:plotAreaRegion>. If this is not the first series
+                // in a multi-series chart, it should be set to the previous
+                // chart type in the series (which *should* only be another
+                // chartex type, not a <c> type). In either case, set it
+                // to the specific chart type based on the layoutId attribute
+                assert(mrModel.mnTypeId == CX_TOKEN(plotAreaRegion) ||
+                        mrModel.mnTypeId == CX_TOKEN(boxWhisker) ||
+                        mrModel.mnTypeId == CX_TOKEN(clusteredColumn) ||
+                        mrModel.mnTypeId == CX_TOKEN(funnel) ||
+                        mrModel.mnTypeId == CX_TOKEN(paretoLine) ||
+                        mrModel.mnTypeId == CX_TOKEN(regionMap) ||
+                        mrModel.mnTypeId == CX_TOKEN(sunburst) ||
+                        mrModel.mnTypeId == CX_TOKEN(treemap) ||
+                        mrModel.mnTypeId == CX_TOKEN(waterfall));
+                OUString sChartId = rAttribs.getStringDefaulted(XML_layoutId);
+                assert(!sChartId.isEmpty());
+
+                if (sChartId == "boxWhisker") {
+                    mrModel.mnTypeId = CX_TOKEN(boxWhisker);
+                } else if (sChartId == "clusteredColumn") {
+                    mrModel.mnTypeId = CX_TOKEN(clusteredColumn);
+                } else if (sChartId == "funnel") {
+                    mrModel.mnTypeId = CX_TOKEN(funnel);
+                } else if (sChartId == "paretoLine") {
+                    mrModel.mnTypeId = CX_TOKEN(paretoLine);
+                } else if (sChartId == "regionMap") {
+                    mrModel.mnTypeId = CX_TOKEN(regionMap);
+                } else if (sChartId == "sunburst") {
+                    mrModel.mnTypeId = CX_TOKEN(sunburst);
+                } else if (sChartId == "treemap") {
+                    mrModel.mnTypeId = CX_TOKEN(treemap);
+                } else if (sChartId == "waterfall") {
+                    mrModel.mnTypeId = CX_TOKEN(waterfall);
+                } else {
+                    assert(false);
+                }
+
+                return new ChartexSeriesContext(*this, mrModel.maSeries.create(false));
+            }
+            break;
+    }
+
     return nullptr;
 }
 

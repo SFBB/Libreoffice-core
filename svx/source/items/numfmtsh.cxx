@@ -20,6 +20,7 @@
 #include <tools/color.hxx>
 
 #include <tools/debug.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <i18nlangtag/mslangid.hxx>
 #include <o3tl/safeint.hxx>
 #include <svl/numformat.hxx>
@@ -30,6 +31,7 @@
 #include <svx/numfmtsh.hxx>
 #include <svx/flagsdef.hxx>
 #include <svx/tbcontrl.hxx>
+#include <sfx2/IDocumentModelAccessor.hxx>
 
 #include <limits>
 
@@ -713,7 +715,7 @@ bool SvxNumberFormatShell::IsEssentialFormat_Impl(SvNumFormatType eType, sal_uIn
     if (nKey == nCurFormatKey)
         return true;
 
-    const NfIndexTableOffset nIndex = pFormatter->GetIndexTableOffset(nKey);
+    const NfIndexTableOffset nIndex = SvNumberFormatter::GetIndexTableOffset(nKey);
     switch (nIndex)
     {
         // These are preferred or edit formats.
@@ -775,8 +777,6 @@ short SvxNumberFormatShell::FillEListWithSysCurrencys(std::vector<OUString>& rLi
      */
     sal_uInt16 nMyType;
 
-    DBG_ASSERT(pCurFmtTable != nullptr, "unknown NumberFormat");
-
     sal_uInt32 nNFEntry;
     OUString aNewFormNInfo;
 
@@ -812,6 +812,7 @@ short SvxNumberFormatShell::FillEListWithSysCurrencys(std::vector<OUString>& rLi
 
     if (nCurCategory != SvNumFormatType::ALL)
     {
+        assert(pCurFmtTable != nullptr && "unknown NumberFormat");
         for (const auto& rEntry : *pCurFmtTable)
         {
             sal_uInt32 nKey = rEntry.first;
@@ -856,8 +857,6 @@ short SvxNumberFormatShell::FillEListWithUserCurrencys(std::vector<OUString>& rL
      * or if there is no current format, SELPOS_NONE is delivered.
      */
     sal_uInt16 nMyType;
-
-    DBG_ASSERT(pCurFmtTable != nullptr, "unknown NumberFormat");
 
     OUString aNewFormNInfo;
 
@@ -904,6 +903,7 @@ short SvxNumberFormatShell::FillEListWithUserCurrencys(std::vector<OUString>& rL
         rShortSymbol = pTmpCurrencyEntry->BuildSymbolString(bTmpBanking, true);
     }
 
+    assert(pCurFmtTable != nullptr && "unknown NumberFormat");
     for (const auto& rEntry : *pCurFmtTable)
     {
         sal_uInt32 nKey = rEntry.first;
@@ -983,7 +983,7 @@ short SvxNumberFormatShell::FillEListWithUserCurrencys(std::vector<OUString>& rL
     for (size_t i = 0, nPos = nOldListCount; i < aWSStringsDtor.size(); ++i)
     {
         bool bFlag = true;
-        OUString aInsStr(aWSStringsDtor[i]);
+        const OUString& aInsStr(aWSStringsDtor[i]);
         size_t j;
         for (j = 0; j < aList.size(); ++j)
         {
@@ -1102,7 +1102,20 @@ void SvxNumberFormatShell::GetPreviewString_Impl(OUString& rString, const Color*
     }
     else
     {
-        pFormatter->GetOutputString(nValNum, nCurFormatKey, rString, &rpColor, bUseStarFormat);
+        double nVal = nValNum;
+        const SvNumberformat* pEntry = pFormatter->GetEntry(nCurFormatKey);
+        if (nVal == 0.0 && pEntry && pEntry->GetFormatstring().indexOf("NatNum12") >= 0)
+        {
+            sal_Int32 nEnd;
+            rtl_math_ConversionStatus eStatus;
+            LocaleDataWrapper aLocale(LanguageTag(pEntry->GetLanguage()));
+
+            nVal = aLocale.stringToDouble(aValStr, true, &eStatus, &nEnd);
+            if (rtl_math_ConversionStatus_Ok != eStatus || nEnd == 0)
+                nVal = GetDefaultValNum(pFormatter->GetType(nCurFormatKey));
+        }
+
+        pFormatter->GetOutputString(nVal, nCurFormatKey, rString, &rpColor, bUseStarFormat);
     }
 }
 
@@ -1315,6 +1328,12 @@ bool SvxNumberFormatShell::GetUserDefined4Entry(short nEntry)
     return false;
 }
 
+bool SvxNumberFormatShell::IsNotNatNum12(short nEntry) const
+{
+    const SvNumberformat* pNumEntry = pFormatter->GetEntry(aCurEntryList[nEntry]);
+    return !pNumEntry || pNumEntry->GetFormatstring().indexOf("NatNum12") < 0;
+}
+
 /*
  * Function:   Returns the format string for a given entry.
  * Input:      Number of the entry
@@ -1325,10 +1344,7 @@ OUString SvxNumberFormatShell::GetFormat4Entry(short nEntry)
     if (nEntry < 0)
         return OUString();
 
-    if (!aCurrencyFormatList.empty()
-        && (!pFormatter->GetEntry(aCurEntryList[nEntry])
-            || pFormatter->GetEntry(aCurEntryList[nEntry])->GetFormatstring().indexOf("NatNum12")
-                   < 0))
+    if (!aCurrencyFormatList.empty() && IsNotNatNum12(nEntry))
     {
         if (aCurrencyFormatList.size() > o3tl::make_unsigned(nEntry))
             return aCurrencyFormatList[nEntry];
@@ -1397,7 +1413,9 @@ void SvxNumberFormatShell::GetCurrencySymbols(std::vector<OUString>& rList, sal_
 
     bool bFlag = (pTmpCurrencyEntry == nullptr);
 
-    SvxCurrencyToolBoxControl::GetCurrencySymbols(rList, bFlag, aCurCurrencyList);
+    std::vector<sfx::CurrencyID> aDocumentCurrencyIDs;
+    SvxCurrencyToolBoxControl::GetCurrencySymbols(rList, bFlag, aCurCurrencyList,
+                                                  aDocumentCurrencyIDs);
 
     if (pPos == nullptr)
         return;

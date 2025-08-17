@@ -36,6 +36,7 @@
 #include <localizationmgr.hxx>
 #include <dlged.hxx>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
+#include <basctl/basctldllpublic.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/sfxsids.hrc>
@@ -48,7 +49,6 @@
 namespace basctl
 {
 
-using namespace comphelper;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::container;
@@ -117,6 +117,7 @@ SbMethod* CreateMacro( SbModule* pModule, const OUString& rMacroName )
 
     if (aDocument.isValid())
     {
+        assert(pBasic && "isValid cannot be false with !pBasic");
         const OUString& aLibName = pBasic->GetName();
         const OUString& aModName = pModule->GetName();
         OSL_VERIFY( aDocument.updateModule( aLibName, aModName, aOUSource ) );
@@ -232,13 +233,9 @@ BasicManager* FindBasicManager( StarBASIC const * pLib )
         if ( !pBasicMgr )
             continue;
 
-        Sequence< OUString > aLibNames( doc.getLibraryNames() );
-        sal_Int32 nLibCount = aLibNames.getLength();
-        const OUString* pLibNames = aLibNames.getConstArray();
-
-        for ( sal_Int32 i = 0 ; i < nLibCount ; i++ )
+        for (auto& rLibName : doc.getLibraryNames())
         {
-            StarBASIC* pL = pBasicMgr->GetLib( pLibNames[ i ] );
+            StarBASIC* pL = pBasicMgr->GetLib(rLibName);
             if ( pL == pLib )
                 return pBasicMgr;
         }
@@ -248,6 +245,8 @@ BasicManager* FindBasicManager( StarBASIC const * pLib )
 
 void MarkDocumentModified( const ScriptDocument& rDocument )
 {
+    SfxGetpApp()->Broadcast(SfxHint(SfxHintId::ScriptDocumentChanged));
+
     Shell* pShell = GetShell();
 
     // does not have to come from a document...
@@ -379,7 +378,7 @@ tools::Long HandleBasicError( StarBASIC const * pBasic )
 
     tools::Long nRet = 0;
     Shell* pShell = nullptr;
-    if ( SvtModuleOptions::IsBasicIDE() )
+    if (SvtModuleOptions::IsBasicIDEInstalled())
     {
         BasicManager* pBasMgr = FindBasicManager( pBasic );
         if ( pBasMgr )

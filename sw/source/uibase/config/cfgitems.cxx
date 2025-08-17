@@ -34,6 +34,10 @@ SwDocDisplayItem::SwDocDisplayItem() :
     m_bCharHiddenText     =
     m_bBookmarks          =
     m_bManualBreak        = true;
+    m_bTextBoundaries     = true;
+    m_bTextBoundariesFull = false; // default is crop
+    m_bSectionBoundaries  = true;
+    m_bTableBoundaries    = true;
     m_xDefaultAnchor      = 1; //FLY_TO_CHAR
 };
 
@@ -49,6 +53,10 @@ SwDocDisplayItem::SwDocDisplayItem(const SwViewOption& rVOpt ) :
     m_bCharHiddenText     = rVOpt.IsShowHiddenChar(true);
     m_bBookmarks          = rVOpt.IsShowBookmarks(true);
     m_bManualBreak        = rVOpt.IsLineBreak(true);
+    m_bTextBoundaries     = rVOpt.IsTextBoundaries();
+    m_bTextBoundariesFull = rVOpt.IsTextBoundariesFull();
+    m_bSectionBoundaries  = rVOpt.IsSectionBoundaries();
+    m_bTableBoundaries    = rVOpt.IsTableBoundaries();
     m_xDefaultAnchor      = rVOpt.GetDefaultAnchor();
 }
 
@@ -71,6 +79,10 @@ bool SwDocDisplayItem::operator==( const SfxPoolItem& rAttr ) const
               m_bCharHiddenText       == rItem.m_bCharHiddenText     &&
               m_bBookmarks            == rItem.m_bBookmarks          &&
               m_bManualBreak          == rItem.m_bManualBreak        &&
+              m_bTextBoundaries       == rItem.m_bTextBoundaries     &&
+              m_bTextBoundariesFull   == rItem.m_bTextBoundariesFull &&
+              m_bSectionBoundaries    == rItem.m_bSectionBoundaries  &&
+              m_bTableBoundaries      == rItem.m_bTableBoundaries    &&
               m_xDefaultAnchor        == rItem.m_xDefaultAnchor);
 }
 
@@ -84,6 +96,10 @@ void SwDocDisplayItem::FillViewOptions( SwViewOption& rVOpt) const
     rVOpt.SetShowHiddenChar(m_bCharHiddenText );
     rVOpt.SetShowBookmarks(m_bBookmarks       );
     rVOpt.SetLineBreak  (m_bManualBreak       );
+    rVOpt.SetTextBoundaries(m_bTextBoundaries);
+    rVOpt.SetTextBoundariesFull(m_bTextBoundariesFull);
+    rVOpt.SetSectionBoundaries(m_bSectionBoundaries);
+    rVOpt.SetTableBoundaries(m_bTableBoundaries);
     rVOpt.SetDefaultAnchor( m_xDefaultAnchor  );
 }
 
@@ -104,6 +120,9 @@ SwElemItem::SwElemItem() :
     m_bShowChangesInMargin =
     m_bFieldHiddenText =
     m_bShowHiddenPara  = false;
+    m_bDefaultZoom = true;
+    m_eDefaultZoomType = SvxZoomType::PERCENT;
+    m_nDefaultZoomValue = 100;
 }
 
 SwElemItem::SwElemItem(const SwViewOption& rVOpt) :
@@ -123,6 +142,9 @@ SwElemItem::SwElemItem(const SwViewOption& rVOpt) :
     m_bShowChangesInMargin = rVOpt.IsShowChangesInMargin();
     m_bFieldHiddenText = rVOpt.IsShowHiddenField();
     m_bShowHiddenPara  = rVOpt.IsShowHiddenPara();
+    m_bDefaultZoom = false;
+    m_eDefaultZoomType = rVOpt.GetZoomType();
+    m_nDefaultZoomValue = rVOpt.GetZoom();
 }
 
 SwElemItem* SwElemItem::Clone( SfxItemPool* ) const
@@ -149,7 +171,10 @@ bool SwElemItem::operator==( const SfxPoolItem& rAttr ) const
                 m_bTreatSubOutlineLevelsAsContent == rItem.m_bTreatSubOutlineLevelsAsContent &&
                 m_bShowChangesInMargin  == rItem.m_bShowChangesInMargin &&
                 m_bFieldHiddenText == rItem.m_bFieldHiddenText &&
-                m_bShowHiddenPara  == rItem.m_bShowHiddenPara);
+                m_bShowHiddenPara  == rItem.m_bShowHiddenPara &&
+                m_bDefaultZoom == rItem.m_bDefaultZoom &&
+                m_eDefaultZoomType == rItem.m_eDefaultZoomType &&
+                m_nDefaultZoomValue == rItem.m_nDefaultZoomValue );
 }
 
 void SwElemItem::FillViewOptions( SwViewOption& rVOpt) const
@@ -169,6 +194,12 @@ void SwElemItem::FillViewOptions( SwViewOption& rVOpt) const
     rVOpt.SetShowChangesInMargin( m_bShowChangesInMargin );
     rVOpt.SetShowHiddenField(m_bFieldHiddenText );
     rVOpt.SetShowHiddenPara(m_bShowHiddenPara );
+    if (!m_bDefaultZoom)
+    {
+        rVOpt.SetZoomType(m_eDefaultZoomType);
+        if (m_eDefaultZoomType == SvxZoomType::PERCENT)
+            rVOpt.SetZoom(m_nDefaultZoomValue);
+    }
 }
 
 // CTOR for empty Item
@@ -230,6 +261,31 @@ void SwShadowCursorItem::FillViewOptions( SwViewOption& rVOpt ) const
 {
     rVOpt.SetShadowCursor( m_bOn );
     rVOpt.SetShdwCursorFillMode( m_eMode );
+}
+
+SwFmtAidsAutoComplItem::SwFmtAidsAutoComplItem()
+    : SfxPoolItem(FN_PARAM_FMT_AIDS_AUTOCOMPL)
+    , m_bEncloseWithCharactersOn(true)
+{
+}
+
+SwFmtAidsAutoComplItem::SwFmtAidsAutoComplItem(const SwViewOption& rVOpt)
+    : SfxPoolItem(FN_PARAM_FMT_AIDS_AUTOCOMPL)
+    , m_bEncloseWithCharactersOn(rVOpt.IsEncloseWithCharactersOn())
+{
+}
+
+SwFmtAidsAutoComplItem* SwFmtAidsAutoComplItem::Clone(SfxItemPool*) const
+{
+    return new SwFmtAidsAutoComplItem(*this);
+}
+
+bool SwFmtAidsAutoComplItem::operator==(const SfxPoolItem& rCmp) const
+{
+    assert(SfxPoolItem::operator==(rCmp));
+    const SwFmtAidsAutoComplItem& rItem = static_cast<const SwFmtAidsAutoComplItem&>(rCmp);
+
+    return m_bEncloseWithCharactersOn == rItem.m_bEncloseWithCharactersOn;
 }
 
 #ifdef DBG_UTIL

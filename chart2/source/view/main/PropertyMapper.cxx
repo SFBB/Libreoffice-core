@@ -113,7 +113,7 @@ void PropertyMapper::setMappedProperties(
             {
                 //do not set empty anys because of performance (otherwise SdrAttrObj::ItemChange will take much longer)
                 pNames[nN]  = rTarget;
-                pValues[nN] = aAny;
+                pValues[nN] = std::move(aAny);
                 ++nN;
             }
         }
@@ -258,7 +258,7 @@ uno::Any* PropertyMapper::getValuePointerForLimitedSpace( tAnySequence& rPropVal
                          , bool bLimitedHeight)
 {
     return PropertyMapper::getValuePointer( rPropValues, rPropNames
-        , bLimitedHeight ? OUString("TextMaximumFrameHeight") : OUString("TextMaximumFrameWidth") );
+        , bLimitedHeight ? u"TextMaximumFrameHeight"_ustr : u"TextMaximumFrameWidth"_ustr );
 }
 
 const tPropertyNameMap& PropertyMapper::getPropertyNameMapForCharacterProperties()
@@ -268,7 +268,8 @@ const tPropertyNameMap& PropertyMapper::getPropertyNameMapForCharacterProperties
         {"CharColor",                "CharColor"},
         {"CharContoured",            "CharContoured"},
         {"CharEmphasis",             "CharEmphasis"},//the service style::CharacterProperties  describes a property called 'CharEmphasize' which is nowhere implemented
-
+        {"CharEscapement",           "CharEscapement"},
+        {"CharEscapementHeight",     "CharEscapementHeight"},
         {"CharFontFamily",           "CharFontFamily"},
         {"CharFontFamilyAsian",      "CharFontFamilyAsian"},
         {"CharFontFamilyComplex",    "CharFontFamilyComplex"},
@@ -551,7 +552,7 @@ void PropertyMapper::getPreparedTextShapePropertyLists(
 
     // use a line-joint showing the border of thick lines like two rectangles
     // filled in between.
-    aValueMap["LineJoint"] <<= drawing::LineJoint_ROUND;
+    aValueMap[u"LineJoint"_ustr] <<= drawing::LineJoint_ROUND;
 
     PropertyMapper::getMultiPropertyListsFromValueMap( rPropNames, rPropValues, aValueMap );
 }

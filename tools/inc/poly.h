@@ -34,11 +34,15 @@ public:
                     ImplPolygon( sal_uInt16 nInitSize );
                     ImplPolygon( sal_uInt16 nPoints, const Point* pPtAry, const PolyFlags* pInitFlags );
                     ImplPolygon( const ImplPolygon& rImplPoly );
+                    ImplPolygon( ImplPolygon&& rImplPoly ) noexcept;
                     ImplPolygon( const tools::Rectangle& rRect );
                     ImplPolygon( const tools::Rectangle& rRect, sal_uInt32 nHorzRound, sal_uInt32 nVertRound);
                     ImplPolygon( const Point& rCenter, tools::Long nRadX, tools::Long nRadY );
                     ImplPolygon( const tools::Rectangle& rBound, const Point& rStart, const Point& rEnd,
                                     PolyStyle eStyle, bool bClockWiseArcDirection );
+                    ImplPolygon( const Point& aCenter, const sal_uInt32 nRadius,
+                                    const float fStartAngle, const float fSweepAngle,
+                                    const bool bClockWiseArcDirection );
                     ImplPolygon( const Point& rBezPt1, const Point& rCtrlPt1, const Point& rBezPt2,
                                     const Point& rCtrlPt2, sal_uInt16 nPoints );
                     ImplPolygon(const basegfx::B2DPolygon& rPolygon);
@@ -56,6 +60,9 @@ public:
 struct ImplPolyPolygon
 {
     std::vector<tools::Polygon> mvPolyAry;
+
+    typedef std::vector<tools::Polygon>::iterator iterator;
+    typedef std::vector<tools::Polygon>::const_iterator const_iterator;
 
     ImplPolyPolygon( sal_uInt16 nInitSize )
     {
@@ -78,6 +85,12 @@ struct ImplPolyPolygon
     {
         return mvPolyAry == other.mvPolyAry;
     }
+
+    iterator begin() { return mvPolyAry.begin(); }
+    iterator end() { return mvPolyAry.end(); }
+
+    const_iterator begin() const { return mvPolyAry.begin(); }
+    const_iterator end() const { return mvPolyAry.end(); }
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

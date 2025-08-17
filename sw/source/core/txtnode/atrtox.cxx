@@ -21,15 +21,18 @@
 #include <txttxmrk.hxx>
 #include <tox.hxx>
 
-SwTextTOXMark::SwTextTOXMark( SwTOXMark& rAttr,
-            sal_Int32 const nStartPos, sal_Int32 const*const pEnd)
+SwTextTOXMark::SwTextTOXMark(
+    const SfxPoolItemHolder& rAttr,
+    sal_Int32 const nStartPos,
+    sal_Int32 const*const pEnd)
     : SwTextAttr( rAttr, nStartPos )
     , SwTextAttrEnd( rAttr, nStartPos, nStartPos )
     , m_pTextNode( nullptr )
     , m_pEnd( nullptr )
 {
-    rAttr.m_pTextAttr = this;
-    if ( rAttr.GetAlternativeText().isEmpty() )
+    SwTOXMark& rSwTOXMark(static_cast<SwTOXMark&>(GetAttr()));
+    rSwTOXMark.m_pTextAttr = this;
+    if ( rSwTOXMark.GetAlternativeText().isEmpty() )
     {
         m_nEnd = *pEnd;
         m_pEnd = & m_nEnd;
@@ -53,9 +56,13 @@ const sal_Int32* SwTextTOXMark::GetEnd() const
 
 void SwTextTOXMark::SetEnd(sal_Int32 n)
 {
-    *m_pEnd = n;
-    if (m_pHints)
-        m_pHints->EndPosChanged();
+    if (*m_pEnd != n)
+    {
+        sal_Int32 nOldEndPos = *m_pEnd;
+        *m_pEnd = n;
+        if (m_pHints)
+            m_pHints->EndPosChanged(Which(), GetStart(), nOldEndPos, *m_pEnd);
+    }
 }
 
 void SwTextTOXMark::CopyTOXMark( SwDoc& rDoc )
@@ -84,7 +91,7 @@ void SwTextTOXMark::CopyTOXMark( SwDoc& rDoc )
     }
 
     // register at target tox type
-    const_cast<SwTOXType*>(pType)->Add( &rTOX );
+    rTOX.StartListening(const_cast<SwTOXType*>(pType)->GetNotifier());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

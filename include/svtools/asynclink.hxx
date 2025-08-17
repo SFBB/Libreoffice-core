@@ -22,10 +22,8 @@
 #include <config_options.h>
 #include <svtools/svtdllapi.h>
 #include <tools/link.hxx>
-#include <vcl/idle.hxx>
 #include <mutex>
 
-class Timer;
 struct ImplSVEvent;
 
 namespace svtools {

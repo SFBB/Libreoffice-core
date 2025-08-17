@@ -21,18 +21,21 @@
 #include <o3tl/deleter.hxx>
 #include "atrhndl.hxx"
 #include <swfont.hxx>
+#include <txatbase.hxx>
 
 namespace sw { struct MergedPara; }
-class SwTextAttr;
 class SwTextNode;
 class SwRedlineItr;
 class SwViewShell;
 class SwTextFrame;
 
-class SwAttrIter
+class SAL_DLLPUBLIC_RTTI SwAttrIter
 {
     friend class SwFontSave;
 protected:
+    struct Destr{ void operator()(SwTextAttr *const pAttr) { SwTextAttr::Destroy(pAttr); } };
+    ::std::unique_ptr<SwTextAttr, Destr> m_pEndCharFormatAttr;
+    ::std::unique_ptr<SwTextAttr, Destr> m_pEndAutoFormatAttr;
 
     SwAttrHandler m_aAttrHandler;
     SwViewShell *m_pViewShell;
@@ -57,7 +60,9 @@ private:
     const SwTextNode* m_pTextNode;
     sw::MergedPara const* m_pMergedPara;
 
+    std::pair<SwTextNode const*, sal_Int32> SeekNewPos(TextFrameIndex nNewPos, bool * o_pIsToEnd);
     void SeekFwd(sal_Int32 nOldPos, sal_Int32 nNewPos);
+    void SeekToEnd();
     void SetFnt( SwFont* pNew ) { m_pFont = pNew; }
     void InitFontAndAttrHandler(
         SwTextNode const& rPropsNode, SwTextNode const& rTextNode,
@@ -68,7 +73,7 @@ protected:
     void Chg( SwTextAttr const *pHt );
     void Rst( SwTextAttr const *pHt );
     void CtorInitAttrIter(SwTextNode& rTextNode, SwScriptInfo& rScrInf, SwTextFrame const* pFrame = nullptr);
-    explicit SwAttrIter(SwTextNode const * pTextNode);
+    SW_DLLPUBLIC explicit SwAttrIter(SwTextNode const * pTextNode);
 
 public:
     /// All subclasses of this always have a SwTextFrame passed to the
@@ -76,12 +81,13 @@ public:
     /// SwTextFrame in certain special cases via this ctor here
     SwAttrIter(SwTextNode& rTextNode, SwScriptInfo& rScrInf, SwTextFrame const*const pFrame = nullptr);
 
-    virtual ~SwAttrIter();
+    SW_DLLPUBLIC virtual ~SwAttrIter();
 
     SwRedlineItr *GetRedln() { return m_pRedline.get(); }
     // The parameter returns the position of the next change before or at the
     // char position.
     TextFrameIndex GetNextAttr() const;
+    TextFrameIndex GetNextLayoutBreakAttr() const;
     /// Enables the attributes used at char pos nPos in the logical font
     bool Seek(TextFrameIndex nPos);
     // Creates the font at the specified position via Seek() and checks

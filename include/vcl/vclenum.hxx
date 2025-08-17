@@ -111,11 +111,14 @@ enum class WindowBorderStyle : sal_Int16
     MENU              = 0x0010,
     NWF               = 0x0020,
     NOBORDER          = 0x1000,
-    REMOVEBORDER      = 0x2000
+    REMOVEBORDER      = 0x2000,
+    // Never use native border, used to ensure consistency of form controls
+    // inside documents across platforms and in pdf/print output
+    NONATIVEBORDER    = 0x4000,
 };
 namespace o3tl
 {
-    template<> struct typed_flags<WindowBorderStyle> : is_typed_flags<WindowBorderStyle, 0x3033> {};
+    template<> struct typed_flags<WindowBorderStyle> : is_typed_flags<WindowBorderStyle, 0x7033> {};
 }
 
 enum class TimeFormat
@@ -161,7 +164,6 @@ typedef sal_uInt32 sal_UCS4;    // TODO: this should be moved to rtl
 
 enum class OutDevSupportType
 {
-    TransparentRect,
     TransparentText     // if alpha in TextColor can be honored
 };
 
@@ -195,6 +197,20 @@ enum class VclPackType
     End = 1,
     LAST = End
 };
+
+enum class VclTaskBarStates {
+    // Default, no specifics
+    Normal,
+    // Display some progress defined by SetTaskBarProgress
+    Progress,
+    // Something going on, but no exact progress scale
+    ProgressUnknown,
+    // Process on pause
+    Paused,
+    // Some error did happen
+    Error
+};
+
 
 // Return Values from Dialog::Execute
 //!!! in case of changes adjust /basic/source/runtime/methods.cxx msgbox
@@ -291,6 +307,15 @@ namespace vcl
         Size32,
         Small = Size16,
         LAST = Size32,
+    };
+
+    // Specifies a writing direction-based specialization for an image.
+    // Sets do not necessarily provide all possible specializations.
+    enum class ImageWritingDirection
+    {
+        LeftRightTopBottom = 0,
+        RightLeftTopBottom,
+        DontCare = LeftRightTopBottom,
     };
 }
 

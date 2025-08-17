@@ -203,12 +203,14 @@ sal_Int8 TabControl::ExecuteDrop( const ExecuteDropEvent& rEvt )
 
     if( bInternalMove )
     {
-        sal_uInt16 nPageId = ShowDropPos( aPos ) - 1;
+        sal_uInt16 nDropPos = ShowDropPos( aPos );
+        assert(nDropPos > 0);
+        sal_uInt16 nPageId = nDropPos - 1;
 
         switch (rEvt.mnAction)
         {
             case DND_ACTION_MOVE:
-                if( pDrViewSh->IsSwitchPageAllowed() && pDoc->MovePages( nPageId ) )
+                if( pDrViewSh->IsSwitchPageAllowed() && pDoc->MoveSelectedPages( nPageId ) )
                 {
                     SfxDispatcher* pDispatcher = pDrViewSh->GetViewFrame()->GetDispatcher();
                     pDispatcher->Execute(SID_SWITCHPAGE, SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
@@ -235,7 +237,7 @@ sal_Int8 TabControl::ExecuteDrop( const ExecuteDropEvent& rEvt )
                     sal_uInt16 nPageNum = nPageId;
                     if ((nPageNumOfCopy <= nPageNum) && (nPageNum != sal_uInt16(-1)))
                         nPageNum += 1;
-                    if (pDoc->MovePages(nPageNum))
+                    if (pDoc->MoveSelectedPages(nPageNum))
                     {
                         // 3. Switch to the copy that has been moved to its
                         // final destination.  Use an asynchron slot call to
@@ -276,7 +278,7 @@ void TabControl::Command(const CommandEvent& rCEvt)
     if ( rCEvt.GetCommand() == CommandEventId::ContextMenu )
     {
         SfxDispatcher* pDispatcher = pDrViewSh->GetViewFrame()->GetDispatcher();
-        pDispatcher->ExecutePopup("pagetab");
+        pDispatcher->ExecutePopup(u"pagetab"_ustr);
     }
 }
 

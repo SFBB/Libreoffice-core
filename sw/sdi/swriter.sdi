@@ -1043,6 +1043,7 @@ SfxVoidItem EditGlossary FN_GLOSSARY_DLG
     AutoUpdate = FALSE,
     FastCall = FALSE,
     ReadOnlyDoc = TRUE,
+    ViewerApp = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -1247,6 +1248,24 @@ SfxVoidItem FieldDialog FN_EDIT_FIELD
 ]
 
 SfxVoidItem UpdateSelectedField FN_UPDATE_SEL_FIELD
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+    Asynchron;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Edit;
+]
+
+SfxVoidItem ConvertSelectedField FN_CONVERT_SEL_FIELD
 ()
 [
     AutoUpdate = FALSE,
@@ -1900,23 +1919,6 @@ SfxVoidItem GotoNextWrongTableFormula FN_NEXT_TBLFML_ERR
     GroupId = SfxGroupId::Navigator;
 ]
 
-SfxVoidItem GotoPage FN_GOTO_PAGE
-()
-[
-    AutoUpdate = FALSE,
-    FastCall = TRUE,
-    ReadOnlyDoc = TRUE,
-    Toggle = FALSE,
-    Container = FALSE,
-    RecordAbsolute = FALSE,
-    RecordPerSet;
-
-    AccelConfig = TRUE,
-    MenuConfig = FALSE,
-    ToolBoxConfig = FALSE,
-    GroupId = SfxGroupId::Navigator;
-]
-
 SfxVoidItem GotoPrevIndexMark FN_PREV_TOXMARK
 ()
 [
@@ -2432,6 +2434,23 @@ SfxVoidItem Hyphenate FN_HYPHENATE_OPT_DLG
     GroupId = SfxGroupId::Options;
 ]
 
+SfxVoidItem NoBreak FN_NO_BREAK
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = TRUE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Format;
+]
+
 SfxVoidItem IncrementIndentValue FN_INC_INDENT_OFFSET
 ()
 [
@@ -2518,8 +2537,29 @@ SfxVoidItem IndexMarkToIndex FN_IDX_MARK_TO_IDX
     GroupId = SfxGroupId::Navigator;
 ]
 
+SfxVoidItem NavigatorSelectComment SID_NAVIGATOR_SELECT_COMMENT
+(SfxUInt16Item CommentId FN_PARAM_1)
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = TRUE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Navigator;
+]
+
 SfxVoidItem InsertAnnotation FN_POSTIT
-(SvxPostItTextItem Text SID_ATTR_POSTIT_TEXT,SvxPostItAuthorItem Author SID_ATTR_POSTIT_AUTHOR,SvxPostItDateItem Date SID_ATTR_POSTIT_DATE)
+(SvxPostItTextItem Text SID_ATTR_POSTIT_TEXT,
+ SvxPostItTextItem Html SID_ATTR_POSTIT_HTML,
+ SvxPostItAuthorItem Author SID_ATTR_POSTIT_AUTHOR,
+ SvxPostItDateItem Date SID_ATTR_POSTIT_DATE)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -2636,6 +2676,20 @@ SfxVoidItem DeleteBookmarks FN_DELETE_BOOKMARKS
 
 SfxVoidItem DeleteSections FN_DELETE_SECTIONS
 (SfxStringItem SectionNamePrefix FN_PARAM_1)
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    GroupId = SfxGroupId::Controls;
+]
+
+SfxVoidItem DeleteContentControl FN_DELETE_CONTENT_CONTROL
+
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -2797,7 +2851,7 @@ SfxImageItem InsertColumnsBefore FN_TABLE_INSERT_COL_BEFORE
     GroupId = SfxGroupId::Table;
 ]
 
-/* 2015/06 Deprecated, replaced by InsertColumsAfter */
+/* 2015/06 Deprecated, replaced by InsertColumnsAfter */
 SfxVoidItem InsertColumns FN_TABLE_INSERT_COL
 ()
 [
@@ -2994,7 +3048,7 @@ SfxVoidItem InsertEnvelope FN_ENVELOP
 ]
 
 SfxVoidItem InsertField FN_INSERT_FIELD
-(SfxUInt16Item Type FN_PARAM_FIELD_TYPE,SfxUInt16Item SubType FN_PARAM_FIELD_SUBTYPE,SfxStringItem Name FN_INSERT_FIELD,SfxStringItem Content FN_PARAM_FIELD_CONTENT,SfxUInt32Item Format FN_PARAM_FIELD_FORMAT,SfxStringItem Separator FN_PARAM_3, SfxStringItem TypeName FN_PARAM_4, SfxStringItem Wrapper FN_PARAM_5)
+(SfxUInt16Item Type FN_PARAM_FIELD_TYPE,SfxUInt16Item SubType FN_PARAM_FIELD_SUBTYPE,SfxStringItem Name FN_INSERT_FIELD,SfxStringItem Content FN_PARAM_FIELD_CONTENT,SfxUInt32Item Format FN_PARAM_FIELD_FORMAT,SfxStringItem Separator FN_PARAM_3, SfxStringItem TypeName FN_PARAM_4, SfxStringItem Wrapper FN_PARAM_5, SfxBoolItem NeverExpand FN_PARAM_6)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -3144,24 +3198,6 @@ SfxVoidItem InsertFrameInteractNoColumns FN_INSERT_FRAME_INTERACT_NOCOL
     RecordPerSet;
 
     AccelConfig = FALSE,
-    MenuConfig = TRUE,
-    ToolBoxConfig = TRUE,
-    GroupId = SfxGroupId::Insert;
-]
-
-SfxVoidItem InsertHyperlinkDlg FN_INSERT_HYPERLINK
-()
-[
-    AutoUpdate = FALSE,
-    FastCall = FALSE,
-    ReadOnlyDoc = FALSE,
-    Toggle = FALSE,
-    Container = FALSE,
-    RecordAbsolute = FALSE,
-    RecordPerItem;
-    Asynchron;
-
-    AccelConfig = TRUE,
     MenuConfig = TRUE,
     ToolBoxConfig = TRUE,
     GroupId = SfxGroupId::Insert;
@@ -3338,6 +3374,23 @@ SfxVoidItem ContentControlProperties FN_CONTENT_CONTROL_PROPERTIES
     GroupId = SfxGroupId::Insert;
 ]
 
+SfxVoidItem TransformDocumentStructure FN_TRANSFORM_DOCUMENT_STRUCTURE
+(SfxStringItem DataJson FN_PARAM_1)
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Edit;
+]
+
 SfxVoidItem InsertMultiIndex FN_INSERT_MULTI_TOX
 ()
 [
@@ -3445,6 +3498,23 @@ SfxVoidItem InsertPagebreak FN_INSERT_PAGEBREAK
 ]
 
 SfxVoidItem InsertPageCountField FN_INSERT_FLD_PGCOUNT
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Insert;
+]
+
+SfxVoidItem InsertPageCountInRangeField FN_INSERT_FLD_RANGE_PGCOUNT
 ()
 [
     AutoUpdate = FALSE,
@@ -4144,7 +4214,7 @@ SfxBoolItem HighlightCharDF FN_HIGHLIGHT_CHAR_DF
 [
     AutoUpdate = TRUE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = TRUE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -4656,6 +4726,7 @@ SfxVoidItem NewGlobalDoc FN_NEW_GLOBAL_DOC
     AutoUpdate = FALSE,
     FastCall = FALSE,
     ReadOnlyDoc = TRUE,
+    ViewerApp = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -4673,6 +4744,7 @@ SfxVoidItem NewHtmlDoc FN_NEW_HTML_DOC
     AutoUpdate = FALSE,
     FastCall = FALSE,
     ReadOnlyDoc = TRUE,
+    ViewerApp = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -4834,24 +4906,6 @@ SfxBoolItem NumberingStart FN_NUMBER_NEWSTART
 
     AccelConfig = FALSE,
     MenuConfig = FALSE,
-    ToolBoxConfig = TRUE,
-    GroupId = SfxGroupId::Enumeration;
-]
-
-SfxBoolItem NumberOrNoNumber FN_NUM_OR_NONUM
-
-[
-    AutoUpdate = FALSE,
-    FastCall = FALSE,
-    ReadOnlyDoc = FALSE,
-    Toggle = FALSE,
-    Container = FALSE,
-    RecordAbsolute = FALSE,
-    RecordPerSet;
-
-
-    AccelConfig = TRUE,
-    MenuConfig = TRUE,
     ToolBoxConfig = TRUE,
     GroupId = SfxGroupId::Enumeration;
 ]
@@ -5332,7 +5386,7 @@ SfxVoidItem Repaginate FN_REPAGINATE
 [
     AutoUpdate = FALSE,
     FastCall = TRUE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -6368,7 +6422,7 @@ SfxVoidItem SynchronizeLabelsDlg FN_SYNC_LABELS
     GroupId = SfxGroupId::Edit;
 ]
 
-SfxBoolItem TableBoundaries FN_VIEW_TABLEGRID
+SfxBoolItem TableBoundaries FN_VIEW_TABLEGRID // deprecated 25.2
 
 [
     AutoUpdate = FALSE,
@@ -6378,7 +6432,21 @@ SfxBoolItem TableBoundaries FN_VIEW_TABLEGRID
     Container = FALSE,
     RecordAbsolute = FALSE,
     RecordPerSet;
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::View;
+]
 
+SfxBoolItem ShowBoundaries FN_VIEW_BOUNDARIES
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
 
     AccelConfig = TRUE,
     MenuConfig = TRUE,
@@ -6387,6 +6455,24 @@ SfxBoolItem TableBoundaries FN_VIEW_TABLEGRID
 ]
 
 SfxVoidItem TableDialog FN_FORMAT_TABLE_DLG
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = TRUE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerItem;
+    Asynchron;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Table;
+]
+
+SfxVoidItem BreakAboveTable FN_BREAK_ABOVE_TABLE
 ()
 [
     AutoUpdate = FALSE,
@@ -6478,7 +6564,7 @@ SfxBoolItem TableNumberRecognition FN_SET_MODOPT_TBLNUMFMT
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -6740,7 +6826,7 @@ SfxVoidItem UpdateCurIndex FN_UPDATE_CUR_TOX
 ]
 
 SfxVoidItem UpdateFields FN_UPDATE_FIELDS
-(SfxStringItem TypeName FN_PARAM_1, SfxStringItem NamePrefix FN_PARAM_2, SfxUnoAnyItem Fields FN_PARAM_3)
+(SfxStringItem TypeName FN_PARAM_1, SfxStringItem NamePrefix FN_PARAM_2, SfxUnoAnyItem Fields FN_PARAM_3, SfxBoolItem NeverExpand FN_PARAM_6)
 [
     AutoUpdate = FALSE,
     FastCall = TRUE,
@@ -6787,8 +6873,7 @@ SfxVoidItem UpdateInputFields FN_UPDATE_INPUTFIELDS
     GroupId = SfxGroupId::Edit;
 ]
 
-SfxBoolItem ViewBounds FN_VIEW_BOUNDS
-
+SfxBoolItem ViewBounds FN_VIEW_BOUNDS // deprecated 25.2
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -6799,14 +6884,13 @@ SfxBoolItem ViewBounds FN_VIEW_BOUNDS
     RecordPerSet;
 
 
-    AccelConfig = TRUE,
-    MenuConfig = TRUE,
-    ToolBoxConfig = TRUE,
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
     GroupId = SfxGroupId::View;
 ]
 
-SfxBoolItem SectionBoundaries FN_VIEW_SECTION_BOUNDARIES
-
+SfxBoolItem SectionBoundaries FN_VIEW_SECTION_BOUNDARIES // deprecated 25.2
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -6817,9 +6901,9 @@ SfxBoolItem SectionBoundaries FN_VIEW_SECTION_BOUNDARIES
     RecordPerSet;
 
 
-    AccelConfig = TRUE,
-    MenuConfig = TRUE,
-    ToolBoxConfig = TRUE,
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
     GroupId = SfxGroupId::View;
 ]
 
@@ -7614,25 +7698,6 @@ SfxVoidItem TableSort FN_TABLE_SORT_DIALOG
     GroupId = SfxGroupId::Table;
 ]
 
-// #i31958#: toggle design mode for XForms; copied from SID_FM_DESIGN_MODE
-SfxBoolItem SwitchXFormsDesignMode FN_XFORMS_DESIGN_MODE
-[
-    AutoUpdate = TRUE,
-    FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
-    Toggle = TRUE,
-    Container = FALSE,
-    RecordAbsolute = FALSE,
-    RecordPerSet;
-    Asynchron;
-
-
-    AccelConfig = TRUE,
-    MenuConfig = TRUE,
-    ToolBoxConfig = TRUE,
-    GroupId = SfxGroupId::Controls;
-]
-
 SfxVoidItem RemoveDirectCharFormats FN_REMOVE_DIRECT_CHAR_FORMATS
 [
     AutoUpdate = TRUE,
@@ -7685,7 +7750,9 @@ SfxBoolItem SelectionModeDefault FN_SELECTION_MODE_DEFAULT
 ]
 
 SfxVoidItem ReplyComment FN_REPLY
-(SvxPostItIdItem Id SID_ATTR_POSTIT_ID,SvxPostItTextItem Text SID_ATTR_POSTIT_TEXT)
+(SvxPostItIdItem Id SID_ATTR_POSTIT_ID,
+ SvxPostItTextItem Text SID_ATTR_POSTIT_TEXT,
+ SvxPostItTextItem Html SID_ATTR_POSTIT_HTML)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -7852,6 +7919,23 @@ SfxStringItem HideAuthor FN_HIDE_NOTE_AUTHOR ( SfxStringItem Author FN_HIDE_NOTE
     GroupId = SfxGroupId::Edit;
 ]
 
+SfxVoidItem PromoteComment FN_PROMOTE_COMMENT
+(SvxPostItIdItem Id SID_ATTR_POSTIT_ID)
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Edit;
+]
+
 SvxViewLayoutItem ViewLayout SID_ATTR_VIEWLAYOUT
 [
         AutoUpdate = FALSE,
@@ -7907,7 +7991,7 @@ SfxBoolItem SpellingAndGrammarDialog FN_SPELL_GRAMMAR_DIALOG
 [
     AutoUpdate = TRUE,
     FastCall = FALSE,
-    ReadOnlyDoc = FALSE,
+    ReadOnlyDoc = TRUE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
@@ -7922,6 +8006,44 @@ SfxBoolItem SpellingAndGrammarDialog FN_SPELL_GRAMMAR_DIALOG
 
 SfxVoidItem AcceptTrackedChange FN_REDLINE_ACCEPT_DIRECT
 ( SfxUInt32Item AcceptTrackedChange FN_REDLINE_ACCEPT_DIRECT )
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+    Asynchron;
+
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Edit;
+]
+
+SfxVoidItem ReinstateTrackedChange FN_REDLINE_REINSTATE_DIRECT
+( SfxUInt32Item ReinstateTrackedChange FN_REDLINE_REINSTATE_DIRECT )
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+    Asynchron;
+
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Edit;
+]
+
+SfxVoidItem ReinstateTrackedChangeToNext FN_REDLINE_REINSTATE_TONEXT
+( SfxUInt32Item ReinstateTrackedChangeToNext FN_REDLINE_REINSTATE_TONEXT )
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -7977,6 +8099,24 @@ SfxVoidItem RejectTrackedChange FN_REDLINE_REJECT_DIRECT
 ]
 
 SfxVoidItem RejectAllTrackedChanges FN_REDLINE_REJECT_ALL
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+    Asynchron;
+
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Edit;
+]
+
+SfxVoidItem ReinstateAllTrackedChanges FN_REDLINE_REINSTATE_ALL
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -8472,6 +8612,57 @@ SfxBoolItem SetTrackedInsertionsInMargin FN_SET_TRACKED_INSERTIONS_IN_MARGIN
     GroupId = SfxGroupId::View;
 ]
 
+SfxVoidItem RecordTrackedChangesMenu FN_RECORD_TRACKED_CHANGES_MENU
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = TRUE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::View;
+]
+
+SfxBoolItem TrackChangesInThisView FN_TRACK_CHANGES_IN_THIS_VIEW
+()
+[
+    AutoUpdate = TRUE,
+    FastCall = TRUE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::View;
+]
+
+SfxBoolItem TrackChangesInAllViews FN_TRACK_CHANGES_IN_ALL_VIEWS
+()
+[
+    AutoUpdate = TRUE,
+    FastCall = TRUE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::View;
+]
+
 SfxBoolItem UseHeaderFooterMenu FN_USE_HEADERFOOTERMENU
 ()
 [
@@ -8710,6 +8901,104 @@ SfxUInt32Item TableColumWidth SID_ATTR_TABLE_COLUMN_WIDTH
     GroupId = SfxGroupId::Table;
 ]
 
+SfxUInt32Item TableAlignment SID_ATTR_TABLE_ALIGNMENT
+(SfxInt32Item TableLeftSpace SID_ATTR_TABLE_LEFT_SPACE, SfxInt32Item TableRightSpace SID_ATTR_TABLE_RIGHT_SPACE)
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Table;
+]
+
+SfxInt32Item TableLeftSpace SID_ATTR_TABLE_LEFT_SPACE
+[
+    AutoUpdate = FALSE,
+    FastCall = TRUE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Table;
+]
+
+SfxInt32Item TableRightSpace SID_ATTR_TABLE_RIGHT_SPACE
+[
+    AutoUpdate = FALSE,
+    FastCall = TRUE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Table;
+]
+
+SfxBoolItem SinglePagePerRow FN_SINGLE_PAGE_PER_ROW
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = TRUE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::View;
+]
+
+SfxBoolItem MultiplePagesPerRow FN_MULTIPLE_PAGES_PER_ROW
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = TRUE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::View;
+]
+
+SfxBoolItem BookView FN_BOOKVIEW
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = TRUE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::View;
+]
+
 SfxVoidItem OutlineLevelsShown FN_OUTLINE_LEVELS_SHOWN
 ()
 [
@@ -8725,4 +9014,22 @@ SfxVoidItem OutlineLevelsShown FN_OUTLINE_LEVELS_SHOWN
     MenuConfig = TRUE,
     ToolBoxConfig = TRUE,
     GroupId = SfxGroupId::View;
+]
+
+SfxVoidItem CopyFieldDialog FN_COPY_FIELD
+()
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = TRUE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+    Asynchron;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Edit;
 ]

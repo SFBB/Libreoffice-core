@@ -23,6 +23,7 @@
 #include "format.hxx"
 #include "hintids.hxx"
 #include "paratr.hxx"
+#include "deletelistener.hxx"
 #include <rtl/ustring.hxx>
 #include <tools/solar.h>
 
@@ -37,13 +38,7 @@ namespace sw{ class DocumentStylePoolManager; }
 class SAL_DLLPUBLIC_RTTI SwFormatColl: public SwFormat
 {
 protected:
-    SwFormatColl( SwAttrPool& rPool, const char* pFormatName,
-                const WhichRangesContainer& pWhichRanges, SwFormatColl* pDerFrom,
-                sal_uInt16 nFormatWhich )
-          : SwFormat( rPool, pFormatName, pWhichRanges, pDerFrom, nFormatWhich )
-    { SetAuto(false); }
-
-    SwFormatColl( SwAttrPool& rPool, const OUString &rFormatName,
+    SwFormatColl( SwAttrPool& rPool, const UIName &rFormatName,
                 const WhichRangesContainer& pWhichRanges, SwFormatColl* pDerFrom,
                 sal_uInt16 nFormatWhich )
           : SwFormat( rPool, rFormatName, pWhichRanges, pDerFrom, nFormatWhich )
@@ -75,19 +70,8 @@ class SW_DLLPUBLIC SwTextFormatColl
     SwCharFormat* mpLinkedCharFormat = nullptr;
 
 protected:
-    SwTextFormatColl( SwAttrPool& rPool, const char* pFormatCollName,
+    SwTextFormatColl( SwAttrPool& rPool, const UIName &rFormatCollName,
                     SwTextFormatColl* pDerFrom = nullptr,
-                    sal_uInt16 nFormatWh = RES_TXTFMTCOLL )
-        : SwFormatColl(rPool, pFormatCollName, aTextFormatCollSetRange, pDerFrom, nFormatWh)
-        , mbStayAssignedToListLevelOfOutlineStyle(false)
-        , mbAssignedToOutlineStyle(false)
-        , m_bInSwFntCache(false)
-    {
-        mpNextTextFormatColl = this;
-    }
-
-    SwTextFormatColl( SwAttrPool& rPool, const OUString &rFormatCollName,
-                    SwTextFormatColl* pDerFrom,
                     sal_uInt16 nFormatWh = RES_TXTFMTCOLL )
         : SwFormatColl(rPool, rFormatCollName, aTextFormatCollSetRange, pDerFrom, nFormatWh)
         , mbStayAssignedToListLevelOfOutlineStyle(false)
@@ -146,7 +130,7 @@ public:
     ::sw::ListLevelIndents AreListLevelIndentsApplicable() const;
     bool AreListLevelIndentsApplicableImpl(sal_uInt16 nWhich) const;
 
-    void dumpAsXml(xmlTextWriterPtr pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
     virtual void FormatDropNotify(const SwFormatDrop& rDrop) override
     {
         if(HasWriterListeners() && !IsModifyLocked())
@@ -160,31 +144,19 @@ public:
         {
             m_bInSwFntCache = false;
         }
-        else
-        {
-            switch(nWhich)
-            {
-                case RES_OBJECTDYING:
-                case RES_FMT_CHG:
-                case RES_ATTRSET_CHG:
-                    m_bInSwFntCache = false;
-            }
-        }
     };
+    virtual void InvalidateInSwFntCache() override
+    {
+        m_bInSwFntCache = false;
+    }
 };
 
 class SwGrfFormatColl final : public SwFormatColl
 {
     friend class SwDoc;
 
-    SwGrfFormatColl( SwAttrPool& rPool, const char* pFormatCollName,
+    SwGrfFormatColl( SwAttrPool& rPool, const UIName &rFormatCollName,
                     SwGrfFormatColl* pDerFrom = nullptr )
-        : SwFormatColl( rPool, pFormatCollName, aGrfFormatCollSetRange,
-                    pDerFrom, RES_GRFFMTCOLL )
-    {}
-
-    SwGrfFormatColl( SwAttrPool& rPool, const OUString &rFormatCollName,
-                    SwGrfFormatColl* pDerFrom )
         : SwFormatColl( rPool, rFormatCollName, aGrfFormatCollSetRange,
                     pDerFrom, RES_GRFFMTCOLL )
     {}
@@ -207,16 +179,17 @@ enum class Master_CollCondition
     PARA_IN_ENDNOTE
 };
 
-class SW_DLLPUBLIC SwCollCondition final : public SwClient
+class SW_DLLPUBLIC SwCollCondition final
 {
     Master_CollCondition m_nCondition;
     sal_uInt32 m_nSubCondition;
+    sw::WeakBroadcastingPtr<SwTextFormatColl> m_pCollection;
 
 public:
 
     SwCollCondition( SwTextFormatColl* pColl, Master_CollCondition nMasterCond,
                     sal_uInt32 nSubCond );
-    virtual ~SwCollCondition() override;
+    ~SwCollCondition();
 
     /// @@@ public copy ctor, but no copy assignment?
     SwCollCondition( const SwCollCondition& rCpy );
@@ -231,8 +204,8 @@ public:
     sal_uInt32 GetSubCondition() const   { return m_nSubCondition; }
 
     void SetCondition( Master_CollCondition nCond, sal_uInt32 nSubCond );
-    SwTextFormatColl* GetTextFormatColl() const     { return const_cast<SwTextFormatColl*>(static_cast<const SwTextFormatColl*>(GetRegisteredIn())); }
-    void RegisterToFormat( SwFormat& );
+    SwTextFormatColl* GetTextFormatColl() const { return const_cast<SwTextFormatColl*>(m_pCollection.operator->()); }
+    void RegisterToFormat( SwTextFormatColl& );
 };
 
 using SwFormatCollConditions = std::vector<std::unique_ptr<SwCollCondition>>;
@@ -244,7 +217,7 @@ class SW_DLLPUBLIC SwConditionTextFormatColl final : public SwTextFormatColl
 
     SwFormatCollConditions m_CondColls;
 
-    SwConditionTextFormatColl( SwAttrPool& rPool, const OUString &rFormatCollName,
+    SwConditionTextFormatColl( SwAttrPool& rPool, const UIName &rFormatCollName,
                             SwTextFormatColl* pDerFrom )
         : SwTextFormatColl( rPool, rFormatCollName, pDerFrom, RES_CONDTXTFMTCOLL )
     {}

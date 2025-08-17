@@ -21,9 +21,7 @@
 
 using namespace connectivity;
 
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
@@ -39,7 +37,7 @@ OResultSetPrivileges::OResultSetPrivileges( const Reference< XDatabaseMetaData>&
     {
         OUString sUserWorkingFor;
         // we want all catalogues, all schemas, all tables
-        Sequence< OUString > sTableTypes {"VIEW", "TABLE", "%"}; // this last one is just to be sure to include anything else...
+        Sequence< OUString > sTableTypes {u"VIEW"_ustr, u"TABLE"_ustr, u"%"_ustr}; // this last one is just to be sure to include anything else...
         try
         {
             m_xTables = _rxMeta->getTables(catalog,schemaPattern,tableNamePattern,sTableTypes);
@@ -55,7 +53,7 @@ OResultSetPrivileges::OResultSetPrivileges( const Reference< XDatabaseMetaData>&
         ODatabaseMetaDataResultSet::ORow aRow(8);
         aRow[5] = new ORowSetValueDecorator(sUserWorkingFor);
         aRow[6] = ODatabaseMetaDataResultSet::getSelectValue();
-        aRow[7] = new ORowSetValueDecorator(OUString("YES"));
+        aRow[7] = new ORowSetValueDecorator(u"YES"_ustr);
         aRows.push_back(aRow);
         aRow[6] = ODatabaseMetaDataResultSet::getInsertValue();
         aRows.push_back(aRow);
@@ -71,8 +69,8 @@ OResultSetPrivileges::OResultSetPrivileges( const Reference< XDatabaseMetaData>&
         aRows.push_back(aRow);
         aRow[6] = ODatabaseMetaDataResultSet::getDropValue();
         aRows.push_back(aRow);
-        aRow[6] = new ORowSetValueDecorator(OUString("REFERENCE"));
-        aRows.push_back(aRow);
+        aRow[6] = new ORowSetValueDecorator(u"REFERENCE"_ustr);
+        aRows.push_back(std::move(aRow));
 
         setRows(std::move(aRows));
     }
@@ -104,17 +102,17 @@ const ORowSetValue& OResultSetPrivileges::getValue(sal_Int32 columnIndex)
     return ODatabaseMetaDataResultSet::getValue(columnIndex);
 }
 
-void SAL_CALL OResultSetPrivileges::disposing()
+void OResultSetPrivileges::disposing(std::unique_lock<std::mutex>& rGuard)
 {
-    ODatabaseMetaDataResultSet::disposing();
+    ODatabaseMetaDataResultSet::disposing(rGuard);
     m_xTables.clear();
     m_xRow.clear();
 }
 
 sal_Bool SAL_CALL OResultSetPrivileges::next(  )
 {
-    ::osl::MutexGuard aGuard( m_aMutex );
-    checkDisposed(ODatabaseMetaDataResultSet_BASE::rBHelper.bDisposed );
+    std::unique_lock aGuard( m_aMutex );
+    throwIfDisposed(aGuard);
 
     bool bReturn = false;
     if ( m_xTables.is() )
@@ -126,7 +124,7 @@ sal_Bool SAL_CALL OResultSetPrivileges::next(  )
                 return false;
         }
 
-        bReturn = ODatabaseMetaDataResultSet::next();
+        bReturn = ODatabaseMetaDataResultSet::next(aGuard);
         if ( !bReturn )
         {
             m_bBOF = false;

@@ -30,29 +30,15 @@ IMPL_LINK_NOARG(MasterPasswordDialog, OKHdl_Impl, weld::Button&, void)
     m_xDialog->response(RET_OK);
 }
 
-MasterPasswordDialog::MasterPasswordDialog
-(
-    weld::Window*                               pParent,
-    css::task::PasswordRequestMode              nDialogMode,
-    const std::locale&                          rLocale
-)
-    : GenericDialogController(pParent, "uui/ui/masterpassworddlg.ui", "MasterPasswordDialog")
-    , m_xEDMasterPassword(m_xBuilder->weld_entry("password"))
-    , m_xOKBtn(m_xBuilder->weld_button("ok"))
+MasterPasswordDialog::MasterPasswordDialog(weld::Window* pParent)
+    : GenericDialogController(pParent, u"uui/ui/masterpassworddlg.ui"_ustr,
+                              u"MasterPasswordDialog"_ustr)
+    , m_xEDMasterPassword(m_xBuilder->weld_entry(u"password"_ustr))
+    , m_xOKBtn(m_xBuilder->weld_button(u"ok"_ustr))
 {
-    if( nDialogMode == css::task::PasswordRequestMode_PASSWORD_REENTER )
-    {
-        OUString aErrorMsg(Translate::get(STR_ERROR_MASTERPASSWORD_WRONG, rLocale));
-        std::unique_ptr<weld::MessageDialog> xErrorBox(Application::CreateMessageDialog(pParent,
-                                                       VclMessageType::Warning, VclButtonsType::Ok, aErrorMsg));
-        xErrorBox->run();
-    }
-
-    m_xOKBtn->connect_clicked( LINK( this, MasterPasswordDialog, OKHdl_Impl ) );
+    m_xOKBtn->connect_clicked(LINK(this, MasterPasswordDialog, OKHdl_Impl));
 };
 
-MasterPasswordDialog::~MasterPasswordDialog()
-{
-}
+MasterPasswordDialog::~MasterPasswordDialog() {}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,6 +21,7 @@
 
 #include <svtools/svtdllapi.h>
 #include <o3tl/typed_flags_set.hxx>
+#include <o3tl/hash_combine.hxx>
 #include <tools/long.hxx>
 
 /**
@@ -73,6 +74,7 @@ public:
 
     bool IsEmpty( ) const { return (0 == m_nRate1) && (0 == m_nRate2); }
     bool IsDouble( ) const { return (0 != m_nRate1) && (0 != m_nRate2);  }
+
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

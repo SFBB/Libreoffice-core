@@ -144,9 +144,7 @@ bool SdrExchangeView::Paste(const OUString& rStr, const Point& rPos, SdrObjList*
         aTextRect.SetSize(pPage->GetSize());
     }
     rtl::Reference<SdrRectObj> pObj = new SdrRectObj(
-        getSdrModelFromSdrView(),
-        SdrObjKind::Text,
-        aTextRect);
+        getSdrModelFromSdrView(), aTextRect, SdrObjKind::Text);
 
     pObj->SetLayer(nLayer);
     pObj->NbcSetText(rStr); // SetText before SetAttr, else SetAttr doesn't work!
@@ -183,9 +181,7 @@ bool SdrExchangeView::Paste(SvStream& rInput, EETextFormat eFormat, const Point&
         aTextRect.SetSize(pPage->GetSize());
     }
     rtl::Reference<SdrRectObj> pObj = new SdrRectObj(
-        getSdrModelFromSdrView(),
-        SdrObjKind::Text,
-        aTextRect);
+        getSdrModelFromSdrView(), aTextRect, SdrObjKind::Text);
 
     pObj->SetLayer(nLayer);
     if (mpDefaultStyleSheet!=nullptr) pObj->NbcSetStyleSheet(mpDefaultStyleSheet, false);
@@ -426,90 +422,79 @@ void SdrExchangeView::ImpPasteObject(SdrObject* pObj, SdrObjList& rLst, const Po
     }
 }
 
-BitmapEx SdrExchangeView::GetMarkedObjBitmapEx(bool bNoVDevIfOneBmpMarked, const sal_uInt32 nMaximumQuadraticPixels, const std::optional<Size>& rTargetDPI) const
+Bitmap SdrExchangeView::GetMarkedObjBitmap(bool bNoVDevIfOneBmpMarked, const sal_uInt32 nMaximumQuadraticPixels, const std::optional<Size>& rTargetDPI) const
 {
-    BitmapEx aBmp;
+    Bitmap aBmp;
 
-    if( AreObjectsMarked() )
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if(1 == rMarkList.GetMarkCount())
     {
-        if(1 == GetMarkedObjectCount())
+        if (auto pGrafObj
+            = dynamic_cast<const SdrGrafObj*>(rMarkList.GetMark(0)->GetMarkedSdrObj()))
         {
             if(bNoVDevIfOneBmpMarked)
             {
-                SdrObject*  pGrafObjTmp = GetMarkedObjectByIndex( 0 );
-                SdrGrafObj* pGrafObj = dynamic_cast<SdrGrafObj*>( pGrafObjTmp  );
-
-                if( pGrafObj && ( pGrafObj->GetGraphicType() == GraphicType::Bitmap ) )
-                {
-                    aBmp = pGrafObj->GetTransformedGraphic().GetBitmapEx();
-                }
+                if (pGrafObj->GetGraphicType() == GraphicType::Bitmap)
+                    aBmp = Bitmap(pGrafObj->GetTransformedGraphic().GetBitmapEx());
             }
             else
             {
-                const SdrGrafObj* pSdrGrafObj = dynamic_cast< const SdrGrafObj* >(GetMarkedObjectByIndex(0));
-
-                if(pSdrGrafObj && pSdrGrafObj->isEmbeddedVectorGraphicData())
-                {
-                    aBmp = pSdrGrafObj->GetGraphic().getVectorGraphicData()->getReplacement();
-                }
+                if (pGrafObj->isEmbeddedVectorGraphicData())
+                    aBmp = pGrafObj->GetGraphic().getVectorGraphicData()->getReplacement();
             }
         }
+    }
 
-        if( aBmp.IsEmpty() )
+    if (aBmp.IsEmpty() && rMarkList.GetMarkCount() != 0)
+    {
+        // choose conversion directly using primitives to bitmap to avoid
+        // rendering errors with tiled bitmap fills (these will be tiled in a
+        // in-between metafile, but tend to show 'gaps' since the target is *no*
+        // bitmap rendering)
+        ::std::vector< SdrObject* > aSdrObjects(GetMarkedObjects());
+        const size_t nCount(aSdrObjects.size());
+
+        // collect sub-primitives as group objects, thus no expensive append
+        // to existing sequence is needed
+        drawinglayer::primitive2d::Primitive2DContainer xPrimitives(nCount);
+
+        for (size_t a(0); a < nCount; a++)
         {
-            // choose conversion directly using primitives to bitmap to avoid
-            // rendering errors with tiled bitmap fills (these will be tiled in a
-            // in-between metafile, but tend to show 'gaps' since the target is *no*
-            // bitmap rendering)
-            ::std::vector< SdrObject* > aSdrObjects(GetMarkedObjects());
-            const sal_uInt32 nCount(aSdrObjects.size());
+            const SdrObject* pCandidate = aSdrObjects[a];
 
-            if(nCount)
+            if (auto pSdrGrafObj = dynamic_cast<const SdrGrafObj*>(pCandidate))
             {
-                // collect sub-primitives as group objects, thus no expensive append
-                // to existing sequence is needed
-                drawinglayer::primitive2d::Primitive2DContainer xPrimitives(nCount);
-
-                for(sal_uInt32 a(0); a < nCount; a++)
-                {
-                    SdrObject* pCandidate = aSdrObjects[a];
-                    SdrGrafObj* pSdrGrafObj = dynamic_cast< SdrGrafObj* >(pCandidate);
-
-                    if(pSdrGrafObj)
-                    {
-                        // #122753# To ensure existence of graphic content, force swap in
-                        pSdrGrafObj->ForceSwapIn();
-                    }
-
-                    drawinglayer::primitive2d::Primitive2DContainer xRetval;
-                    pCandidate->GetViewContact().getViewIndependentPrimitive2DContainer(xRetval);
-                    xPrimitives[a] = new drawinglayer::primitive2d::GroupPrimitive2D(
-                        std::move(xRetval));
-                }
-
-                // get logic range
-                const drawinglayer::geometry::ViewInformation2D aViewInformation2D;
-                const basegfx::B2DRange aRange(xPrimitives.getB2DRange(aViewInformation2D));
-
-                if(!aRange.isEmpty())
-                {
-                    o3tl::Length eRangeUnit = o3tl::Length::mm100;
-
-                    if (GetModel().IsWriter())
-                    {
-                        eRangeUnit = o3tl::Length::twip;
-                    }
-
-                    // if we have geometry and it has a range, convert to BitmapEx using
-                    // common tooling
-                    aBmp = drawinglayer::convertPrimitive2DContainerToBitmapEx(
-                        std::move(xPrimitives),
-                        aRange,
-                        nMaximumQuadraticPixels,
-                        eRangeUnit,
-                        rTargetDPI);
-                }
+                // #122753# To ensure existence of graphic content, force swap in
+                pSdrGrafObj->ForceSwapIn();
             }
+
+            drawinglayer::primitive2d::Primitive2DContainer xRetval;
+            pCandidate->GetViewContact().getViewIndependentPrimitive2DContainer(xRetval);
+            xPrimitives[a] = new drawinglayer::primitive2d::GroupPrimitive2D(
+                std::move(xRetval));
+        }
+
+        // get logic range
+        const drawinglayer::geometry::ViewInformation2D aViewInformation2D;
+        const basegfx::B2DRange aRange(xPrimitives.getB2DRange(aViewInformation2D));
+
+        if(!aRange.isEmpty())
+        {
+            o3tl::Length eRangeUnit = o3tl::Length::mm100;
+
+            if (GetModel().IsWriter())
+            {
+                eRangeUnit = o3tl::Length::twip;
+            }
+
+            // if we have geometry and it has a range, convert to BitmapEx using
+            // common tooling
+            aBmp = drawinglayer::convertPrimitive2DContainerToBitmap(
+                std::move(xPrimitives),
+                aRange,
+                nMaximumQuadraticPixels,
+                eRangeUnit,
+                rTargetDPI);
         }
     }
 
@@ -521,18 +506,17 @@ GDIMetaFile SdrExchangeView::GetMarkedObjMetaFile(bool bNoVDevIfOneMtfMarked) co
 {
     GDIMetaFile aMtf;
 
-    if( AreObjectsMarked() )
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if( rMarkList.GetMarkCount() != 0 )
     {
         tools::Rectangle   aBound( GetMarkedObjBoundRect() );
         Size        aBoundSize( aBound.GetWidth(), aBound.GetHeight() );
         MapMode aMap(GetModel().GetScaleUnit());
 
-        if( bNoVDevIfOneMtfMarked )
+        if (bNoVDevIfOneMtfMarked && rMarkList.GetMarkCount() == 1)
         {
-            SdrObject*  pGrafObjTmp = GetMarkedObjectByIndex( 0 );
-            SdrGrafObj* pGrafObj = ( GetMarkedObjectCount() ==1 ) ? dynamic_cast<SdrGrafObj*>( pGrafObjTmp  ) : nullptr;
-
-            if( pGrafObj )
+            if (auto pGrafObj
+                = dynamic_cast<const SdrGrafObj*>(rMarkList.GetMark(0)->GetMarkedSdrObj()))
             {
                 Graphic aGraphic( pGrafObj->GetTransformedGraphic() );
 
@@ -582,10 +566,11 @@ Graphic SdrExchangeView::GetAllMarkedGraphic() const
 {
     Graphic aRet;
 
-    if( AreObjectsMarked() )
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if( rMarkList.GetMarkCount() != 0 )
     {
-        if( ( 1 == GetMarkedObjectCount() ) && GetSdrMarkByIndex( 0 ) )
-            aRet = SdrExchangeView::GetObjGraphic(*GetMarkedObjectByIndex(0));
+        if( ( 1 == rMarkList.GetMarkCount() ) && rMarkList.GetMark( 0 ) )
+            aRet = SdrExchangeView::GetObjGraphic(*rMarkList.GetMark(0)->GetMarkedSdrObj());
         else
             aRet = GetMarkedObjMetaFile();
     }
@@ -599,42 +584,45 @@ Graphic SdrExchangeView::GetObjGraphic(const SdrObject& rSdrObject, bool bSVG)
 {
     Graphic aRet;
 
-    // try to get a graphic from the object first
-    const SdrGrafObj* pSdrGrafObj(dynamic_cast< const SdrGrafObj* >(&rSdrObject));
-    const SdrOle2Obj* pSdrOle2Obj(dynamic_cast< const SdrOle2Obj* >(&rSdrObject));
-
-    if(pSdrGrafObj)
+    if (!rSdrObject.HasText())
     {
-        if(pSdrGrafObj->isEmbeddedVectorGraphicData())
+        // try to get a graphic from the object first
+        const SdrGrafObj* pSdrGrafObj(dynamic_cast<const SdrGrafObj*>(&rSdrObject));
+        const SdrOle2Obj* pSdrOle2Obj(dynamic_cast<const SdrOle2Obj*>(&rSdrObject));
+
+        if (pSdrGrafObj)
         {
-            // get Metafile for Svg content
-            aRet = pSdrGrafObj->getMetafileFromEmbeddedVectorGraphicData();
+            if (pSdrGrafObj->isEmbeddedVectorGraphicData())
+            {
+                // get Metafile for Svg content
+                aRet = pSdrGrafObj->getMetafileFromEmbeddedVectorGraphicData();
+            }
+            else
+            {
+                // Make behaviour coherent with metafile
+                // recording below (which of course also takes
+                // view-transformed objects)
+                aRet = pSdrGrafObj->GetTransformedGraphic();
+            }
+        }
+        else if (pSdrOle2Obj)
+        {
+            if (const Graphic* pGraphic = pSdrOle2Obj->GetGraphic())
+            {
+                aRet = *pGraphic;
+            }
         }
         else
         {
-            // Make behaviour coherent with metafile
-            // recording below (which of course also takes
-            // view-transformed objects)
-            aRet = pSdrGrafObj->GetTransformedGraphic();
-        }
-    }
-    else if(pSdrOle2Obj)
-    {
-        if(pSdrOle2Obj->GetGraphic())
-        {
-            aRet = *pSdrOle2Obj->GetGraphic();
-        }
-    }
-    else
-    {
-        // Support extracting a snapshot from video media, if possible.
-        const SdrMediaObj* pSdrMediaObj = dynamic_cast<const SdrMediaObj*>(&rSdrObject);
-        if (pSdrMediaObj)
-        {
-            const css::uno::Reference<css::graphic::XGraphic>& xGraphic
-                = pSdrMediaObj->getSnapshot();
-            if (xGraphic.is())
-                aRet = Graphic(xGraphic);
+            // Support extracting a snapshot from video media, if possible.
+            const SdrMediaObj* pSdrMediaObj = dynamic_cast<const SdrMediaObj*>(&rSdrObject);
+            if (pSdrMediaObj)
+            {
+                const css::uno::Reference<css::graphic::XGraphic>& xGraphic
+                    = pSdrMediaObj->getSnapshot();
+                if (xGraphic.is())
+                    aRet = Graphic(xGraphic);
+            }
         }
     }
 
@@ -674,7 +662,8 @@ Graphic SdrExchangeView::GetObjGraphic(const SdrObject& rSdrObject, bool bSVG)
 
 ::std::vector< SdrObject* > SdrExchangeView::GetMarkedObjects() const
 {
-    SortMarkedObjects();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    rMarkList.ForceSort();
     ::std::vector< SdrObject* > aRetval;
 
     ::std::vector< ::std::vector< SdrMark* > >  aObjVectors( 2 );
@@ -683,9 +672,9 @@ Graphic SdrExchangeView::GetObjGraphic(const SdrObject& rSdrObject, bool bSVG)
     const SdrLayerAdmin& rLayerAdmin = GetModel().GetLayerAdmin();
     const SdrLayerID                            nControlLayerId = rLayerAdmin.GetLayerID( rLayerAdmin.GetControlLayerName() );
 
-    for( size_t n = 0, nCount = GetMarkedObjectCount(); n < nCount; ++n )
+    for( size_t n = 0, nCount = rMarkList.GetMarkCount(); n < nCount; ++n )
     {
-        SdrMark* pMark = GetSdrMarkByIndex( n );
+        SdrMark* pMark = rMarkList.GetMark( n );
 
         // paint objects on control layer on top of all other objects
         if( nControlLayerId == pMark->GetMarkedSdrObj()->GetLayer() )
@@ -712,7 +701,8 @@ void SdrExchangeView::DrawMarkedObj(OutputDevice& rOut) const
 
     if(!aSdrObjects.empty())
     {
-        sdr::contact::ObjectContactOfObjListPainter aPainter(rOut, std::move(aSdrObjects), aSdrObjects[0]->getSdrPageFromSdrObject());
+        SdrPage* pPage = aSdrObjects[0]->getSdrPageFromSdrObject();
+        sdr::contact::ObjectContactOfObjListPainter aPainter(rOut, std::move(aSdrObjects), pPage);
         sdr::contact::DisplayInfo aDisplayInfo;
 
         // do processing
@@ -724,7 +714,8 @@ std::unique_ptr<SdrModel> SdrExchangeView::CreateMarkedObjModel() const
 {
     // Sorting the MarkList here might be problematic in the future, so
     // use a copy.
-    SortMarkedObjects();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    rMarkList.ForceSort();
     std::unique_ptr<SdrModel> pNewModel(GetModel().AllocModel());
     rtl::Reference<SdrPage> pNewPage = pNewModel->AllocPage(false);
     pNewModel->InsertPage(pNewPage.get());
@@ -736,6 +727,8 @@ std::unique_ptr<SdrModel> SdrExchangeView::CreateMarkedObjModel() const
 
     for(SdrObject* pObj : aSdrObjects)
     {
+        assert(pObj);
+
         rtl::Reference<SdrObject> pNewObj;
 
         if(nullptr != dynamic_cast< const SdrPageObj* >(pObj))

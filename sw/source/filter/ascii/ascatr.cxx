@@ -263,15 +263,20 @@ static Writer& OutASC_SwTextNode( Writer& rWrt, SwContentNode& rNode )
     if (pNumRule && !nStrPos && rWrt.m_bExportParagraphNumbering && !bIsOneParagraph)
     {
         bool bIsOutlineNumRule = pNumRule == rNd.GetDoc().GetOutlineNumRule();
-
-        // indent each numbering level by 4 spaces
         OUString level;
         if (!bIsOutlineNumRule)
         {
-            for (int i = 0; i <= rNd.GetActualListLevel(); ++i)
-                level += "    ";
-        }
+            bool bSkipIndentationForHeadings = (rNd.GetLeftMarginWithNum() == 0)  //ensures the left margin of current node or numbering level is 0
+                                               && (rNd.GetAttrOutlineLevel() > 0) //all heading styles have outline level > 0
+                                               && (rNd.GetLeftMarginForTabCalculation() == 0); //ensures no indentation from tab stops is applied (left margin is 0)
 
+            if(!bSkipIndentationForHeadings)
+            {
+                // indent each numbering level by 4 spaces
+                for (int i = 0; i <= rNd.GetActualListLevel(); ++i)
+                    level += "    ";
+            }
+        }
         // set up bullets or numbering
         OUString numString(rNd.GetNumString());
         if (numString.isEmpty() && !bIsOutlineNumRule)
@@ -379,7 +384,7 @@ static Writer& OutASC_SwTextNode( Writer& rWrt, SwContentNode& rNode )
  * There are local structures that only need to be known to the ASCII DLL.
  */
 
-SwNodeFnTab aASCNodeFnTab = {
+const SwNodeFnTab aASCNodeFnTab = {
 /* RES_TXTNODE  */                   OutASC_SwTextNode,
 /* RES_GRFNODE  */                   nullptr,
 /* RES_OLENODE  */                   nullptr

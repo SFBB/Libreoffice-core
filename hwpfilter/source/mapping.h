@@ -17,24 +17,24 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_HWPFILTER_SOURCE_MAPPING_H
-#define INCLUDED_HWPFILTER_SOURCE_MAPPING_H
+#pragma once
 
 #include <string.h>
 #include <stdio.h>
+#include <algorithm>
 #include <sal/macros.h>
 
 #include "hwplib.h"
 
 
 struct FormulaEntry{
-     const char *tex;
+     std::string_view tex;
      hchar ucs;
 };
 
 // empty square
 #define DEFAULT_VALUE   0x25a1
-const struct FormulaEntry FormulaMapTab[] = {
+constexpr struct FormulaEntry FormulaMapTab[] = {
 /* Capital Greek */
 {"Alpha", 0x0391},
 {"Beta", 0x0392},
@@ -360,36 +360,25 @@ const struct FormulaEntry FormulaMapTab[] = {
 
 };
 
-#ifndef DEBUG
-hchar_string getMathMLEntity(const char *tex)
+#if OSL_DEBUG_LEVEL < 2
+OUString getMathMLEntity(std::string_view tex)
 {
-     static const size_t tabSize = SAL_N_ELEMENTS(FormulaMapTab);
-
-     hchar_string buf;
-     for (size_t i = 0 ; i < tabSize ; i++) {
-          if( !strcmp(tex, FormulaMapTab[i].tex ) ) {
-                buf.push_back(FormulaMapTab[i].ucs);
-                return buf;
-          }
+     auto it = std::find_if(std::begin(FormulaMapTab), std::end(FormulaMapTab),
+          [&tex](const auto& entry) { return entry.tex == tex; });
+     if ( it != std::end(FormulaMapTab) ) {
+          return OUString(it->ucs);
      }
 
-     size_t const len = strlen(tex);
-     for (size_t i = 0 ; i < len ; i++)
-     {
-         buf.push_back(tex[i]);
-     }
-     return buf;
+     return OUString::fromUtf8(tex);
 }
 
 #else
-::std::string getMathMLEntity(const char *tex)
+::std::string getMathMLEntity(std::string_view tex)
 {
      ::std::string buf;
      buf.append(tex);
      return buf;
 }
-#endif
-
 #endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

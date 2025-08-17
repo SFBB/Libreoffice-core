@@ -40,22 +40,19 @@ namespace dbaui
 
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::sdbc;
-    using namespace ::com::sun::star::sdbcx;
-    using namespace ::com::sun::star::sdb;
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::lang;
-    using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::util;
     using namespace ::dbtools;
     using namespace ::comphelper;
 
     // OTableSubscriptionPage
     OTableSubscriptionPage::OTableSubscriptionPage(weld::Container* pPage, OTableSubscriptionDialog* pTablesDlg, const SfxItemSet& _rCoreAttrs)
-        : OGenericAdministrationPage(pPage, pTablesDlg, "dbaccess/ui/tablesfilterpage.ui", "TablesFilterPage", _rCoreAttrs)
+        : OGenericAdministrationPage(pPage, pTablesDlg, u"dbaccess/ui/tablesfilterpage.ui"_ustr, u"TablesFilterPage"_ustr, _rCoreAttrs)
         , m_bCatalogAtStart(true)
         , m_pTablesDlg(pTablesDlg)
-        , m_xTables(m_xBuilder->weld_widget("TablesFilterPage"))
-        , m_xTablesList(new OTableTreeListBox(m_xBuilder->weld_tree_view("treeview"), true))
+        , m_xTables(m_xBuilder->weld_widget(u"TablesFilterPage"_ustr))
+        , m_xTablesList(new OTableTreeListBox(m_xBuilder->weld_tree_view(u"treeview"_ustr), true))
     {
         m_xTablesList->init();
 
@@ -204,7 +201,7 @@ namespace dbaui
                     Reference<XModifiable> xModi(getDataSourceOrModel(xProp),UNO_QUERY);
                     bool bModified = ( xModi.is() && xModi->isModified() );
 
-                    Sequence< OUString > aNewTableFilter { "%" };
+                    Sequence< OUString > aNewTableFilter { u"%"_ustr };
                     xProp->setPropertyValue(PROPERTY_TABLEFILTER,Any(aNewTableFilter));
 
                     xProp->setPropertyValue( PROPERTY_TABLETYPEFILTER, Any( Sequence< OUString >() ) );
@@ -335,7 +332,7 @@ namespace dbaui
     Sequence< OUString > OTableSubscriptionPage::collectDetailedSelection() const
     {
         Sequence< OUString > aTableFilter;
-        constexpr OUString sWildcard = u"%"_ustr;
+        static constexpr OUString sWildcard = u"%"_ustr;
 
         std::unique_ptr<weld::TreeIter> xAllObjectsEntry(m_xTablesList->getAllObjectsEntry());
         if (!xAllObjectsEntry)
@@ -463,7 +460,7 @@ namespace dbaui
             auto xRoot = m_xTablesList->getAllObjectsEntry();
             if (xRoot && m_xTablesList->isWildcardChecked(*xRoot))
             {
-                aTableFilter = { "%" };
+                aTableFilter = { u"%"_ustr };
             }
             else
             {

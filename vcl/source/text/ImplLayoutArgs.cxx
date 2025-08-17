@@ -37,8 +37,6 @@ ImplLayoutArgs::ImplLayoutArgs(const OUString& rStr, int nMinCharPos, int nEndCh
     , mnMinCharPos(nMinCharPos)
     , mnEndCharPos(nEndCharPos)
     , m_pTextLayoutCache(pLayoutCache)
-    , mpDXArray(nullptr)
-    , mpKashidaArray(nullptr)
     , mnLayoutWidth(0)
     , mnOrientation(0)
 {
@@ -90,11 +88,9 @@ ImplLayoutArgs::ImplLayoutArgs(const OUString& rStr, int nMinCharPos, int nEndCh
 
 void ImplLayoutArgs::SetLayoutWidth(double nWidth) { mnLayoutWidth = nWidth; }
 
-void ImplLayoutArgs::SetDXArray(double const* pDXArray) { mpDXArray = pDXArray; }
-
-void ImplLayoutArgs::SetKashidaArray(sal_Bool const* pKashidaArray)
+void ImplLayoutArgs::SetJustificationData(JustificationData stJustification)
 {
-    mpKashidaArray = pKashidaArray;
+    mstJustification = std::move(stJustification);
 }
 
 void ImplLayoutArgs::SetOrientation(Degree10 nOrientation) { mnOrientation = nOrientation; }
@@ -193,43 +189,8 @@ bool ImplLayoutArgs::PrepareFallback(const SalLayoutGlyphsImpl* pGlyphsImpl)
         return false;
     }
 
-    // convert the fallback requests to layout requests
-    bool bRTL;
-    int nMin, nEnd;
+    ImplLayoutRuns::PrepareFallbackRuns(&maRuns, &maFallbackRuns);
 
-    // get the individual fallback requests
-    std::vector<int> aPosVector;
-    aPosVector.reserve(mrStr.getLength());
-    maFallbackRuns.ResetPos();
-    for (; maFallbackRuns.GetRun(&nMin, &nEnd, &bRTL); maFallbackRuns.NextRun())
-        for (int i = nMin; i < nEnd; ++i)
-            aPosVector.push_back(i);
-    maFallbackRuns.Clear();
-
-    // sort the individual fallback requests
-    std::sort(aPosVector.begin(), aPosVector.end());
-
-    // adjust fallback runs to have the same order and limits of the original runs
-    ImplLayoutRuns aNewRuns;
-    maRuns.ResetPos();
-    for (; maRuns.GetRun(&nMin, &nEnd, &bRTL); maRuns.NextRun())
-    {
-        if (!bRTL)
-        {
-            auto it = std::lower_bound(aPosVector.begin(), aPosVector.end(), nMin);
-            for (; (it != aPosVector.end()) && (*it < nEnd); ++it)
-                aNewRuns.AddPos(*it, bRTL);
-        }
-        else
-        {
-            auto it = std::upper_bound(aPosVector.begin(), aPosVector.end(), nEnd);
-            while ((it != aPosVector.begin()) && (*--it >= nMin))
-                aNewRuns.AddPos(*it, bRTL);
-        }
-    }
-
-    maRuns = aNewRuns; // TODO: use vector<>::swap()
-    maRuns.ResetPos();
     return true;
 }
 
@@ -303,7 +264,7 @@ std::ostream& operator<<(std::ostream& s, vcl::text::ImplLayoutArgs const& rArgs
     s << "\"";
 
     s << ",DXArray=";
-    if (rArgs.mpDXArray)
+    if (!rArgs.mstJustification.empty())
     {
         s << "[";
         int count = rArgs.mnEndCharPos - rArgs.mnMinCharPos;
@@ -312,7 +273,7 @@ std::ostream& operator<<(std::ostream& s, vcl::text::ImplLayoutArgs const& rArgs
             lim = 7;
         for (int i = 0; i < lim; i++)
         {
-            s << rArgs.mpDXArray[i];
+            s << rArgs.mstJustification.GetTotalAdvance(rArgs.mnMinCharPos + i);
             if (i < lim - 1)
                 s << ",";
         }
@@ -320,7 +281,7 @@ std::ostream& operator<<(std::ostream& s, vcl::text::ImplLayoutArgs const& rArgs
         {
             if (count > lim + 1)
                 s << "...";
-            s << rArgs.mpDXArray[count - 1];
+            s << rArgs.mstJustification.GetTotalAdvance(rArgs.mnMinCharPos + count - 1);
         }
         s << "]";
     }
@@ -328,7 +289,7 @@ std::ostream& operator<<(std::ostream& s, vcl::text::ImplLayoutArgs const& rArgs
         s << "NULL";
 
     s << ",KashidaArray=";
-    if (rArgs.mpKashidaArray)
+    if (!rArgs.mstJustification.empty() && rArgs.mstJustification.ContainsKashidaPositions())
     {
         s << "[";
         int count = rArgs.mnEndCharPos - rArgs.mnMinCharPos;
@@ -337,7 +298,8 @@ std::ostream& operator<<(std::ostream& s, vcl::text::ImplLayoutArgs const& rArgs
             lim = 7;
         for (int i = 0; i < lim; i++)
         {
-            s << rArgs.mpKashidaArray[i];
+            s << rArgs.mstJustification.GetPositionHasKashida(rArgs.mnMinCharPos + i)
+                     .value_or(false);
             if (i < lim - 1)
                 s << ",";
         }
@@ -345,7 +307,8 @@ std::ostream& operator<<(std::ostream& s, vcl::text::ImplLayoutArgs const& rArgs
         {
             if (count > lim + 1)
                 s << "...";
-            s << rArgs.mpKashidaArray[count - 1];
+            s << rArgs.mstJustification.GetPositionHasKashida(rArgs.mnMinCharPos + count - 1)
+                     .value_or(false);
         }
         s << "]";
     }

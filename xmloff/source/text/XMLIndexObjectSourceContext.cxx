@@ -20,14 +20,11 @@
 
 #include "XMLIndexObjectSourceContext.hxx"
 
-#include <rtl/ustring.hxx>
-
 #include <com/sun/star/beans/XPropertySet.hpp>
 
 #include <sax/tools/converter.hxx>
 
 #include "XMLIndexTemplateContext.hxx"
-#include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
@@ -104,11 +101,11 @@ void XMLIndexObjectSourceContext::ProcessAttribute(const sax_fastparser::FastAtt
 
 void XMLIndexObjectSourceContext::endFastElement(sal_Int32 nElement)
 {
-    rIndexPropertySet->setPropertyValue("CreateFromStarCalc", css::uno::Any(bUseCalc));
-    rIndexPropertySet->setPropertyValue("CreateFromStarChart", css::uno::Any(bUseChart));
-    rIndexPropertySet->setPropertyValue("CreateFromStarDraw", css::uno::Any(bUseDraw));
-    rIndexPropertySet->setPropertyValue("CreateFromStarMath", css::uno::Any(bUseMath));
-    rIndexPropertySet->setPropertyValue("CreateFromOtherEmbeddedObjects", css::uno::Any(bUseOtherObjects));
+    rIndexPropertySet->setPropertyValue(u"CreateFromStarCalc"_ustr, css::uno::Any(bUseCalc));
+    rIndexPropertySet->setPropertyValue(u"CreateFromStarChart"_ustr, css::uno::Any(bUseChart));
+    rIndexPropertySet->setPropertyValue(u"CreateFromStarDraw"_ustr, css::uno::Any(bUseDraw));
+    rIndexPropertySet->setPropertyValue(u"CreateFromStarMath"_ustr, css::uno::Any(bUseMath));
+    rIndexPropertySet->setPropertyValue(u"CreateFromOtherEmbeddedObjects"_ustr, css::uno::Any(bUseOtherObjects));
 
     XMLIndexSourceBaseContext::endFastElement(nElement);
 }

@@ -89,16 +89,16 @@ void SwFieldPage::Init()
     {
         SwDoc* pDoc = pSh->GetDoc();
         pSh->InsertFieldType( SwSetExpFieldType( pDoc,
-                            "HTML_ON", 1));
+                            UIName(u"HTML_ON"_ustr), SwGetSetExpType::String));
         pSh->InsertFieldType( SwSetExpFieldType(pDoc,
-                            "HTML_OFF", 1));
+                            UIName(u"HTML_OFF"_ustr), SwGetSetExpType::String));
     }
 }
 
 // newly initialise page
 void SwFieldPage::Activate()
 {
-    EnableInsert(m_bInsert);
+    EnableInsert(m_bInsert, true);
 }
 
 // complete reset; edit new field
@@ -179,9 +179,12 @@ void SwFieldPage::InsertField(SwFieldTypesEnum nTypeId, sal_uInt16 nSubType, con
         switch( nTypeId )
         {
         case SwFieldTypesEnum::Date:
+            nSubType = static_cast< sal_uInt16 >(SwDateTimeSubType::Date |
+                       ((nSubType == DATE_VAR) ? SwDateTimeSubType::None : SwDateTimeSubType::Fixed));
+            break;
         case SwFieldTypesEnum::Time:
-            nSubType = static_cast< sal_uInt16 >(((nTypeId == SwFieldTypesEnum::Date) ? DATEFLD : TIMEFLD) |
-                       ((nSubType == DATE_VAR) ? 0 : FIXEDFLD));
+            nSubType = static_cast< sal_uInt16 >(SwDateTimeSubType::Time |
+                       ((nSubType == DATE_VAR) ? SwDateTimeSubType::None : SwDateTimeSubType::Fixed));
             break;
 
         case SwFieldTypesEnum::DatabaseName:
@@ -211,7 +214,7 @@ void SwFieldPage::InsertField(SwFieldTypesEnum nTypeId, sal_uInt16 nSubType, con
                 OUString sColumn = rPar1.getToken(0, DB_DELIM, nIdx);
 
                 auto pOldType = static_cast<SwDBFieldType*>(pTmpField->GetTyp());
-                auto pType = static_cast<SwDBFieldType*>(pSh->InsertFieldType(SwDBFieldType(pSh->GetDoc(), sColumn, aData)));
+                auto pType = static_cast<SwDBFieldType*>(pSh->InsertFieldType(SwDBFieldType(pSh->GetDoc(), sColumn, std::move(aData))));
                 if(auto pFormatField = pOldType->FindFormatForField(m_pCurField))
                 {
                     pFormatField->RegisterToFieldType(*pType);
@@ -226,25 +229,24 @@ void SwFieldPage::InsertField(SwFieldTypesEnum nTypeId, sal_uInt16 nSubType, con
                 pTyp->SetOutlineLvl( static_cast< sal_uInt8 >(nSubType & 0xff));
                 pTyp->SetDelimiter(OUString(cSeparator));
 
-                nSubType = nsSwGetSetExpType::GSE_SEQ;
+                nSubType = static_cast<sal_uInt16>(SwGetSetExpType::Sequence);
             }
             break;
 
         case SwFieldTypesEnum::Input:
             {
+                SwInputField* pField = static_cast<SwInputField*>(pTmpField.get());
                 // User- or SetField ?
                 if (m_aMgr.GetFieldType(SwFieldIds::User, sPar1) == nullptr &&
-                !(pTmpField->GetSubType() & INP_TXT)) // SETEXPFLD
+                    !(pField->GetSubType() & SwInputFieldSubType::Text)) // SETEXPFLD
                 {
-                    SwSetExpField* pField = static_cast<SwSetExpField*>(pTmpField.get());
-                    pField->SetPromptText(sPar2);
-                    sPar2 = pField->GetPar2();
+                    pField->SetPar2(sPar2); // Par2 is prompt for SwInputField
                 }
             }
             break;
         case SwFieldTypesEnum::DocumentInfo:
             {
-                if( nSubType == nsSwDocInfoSubType::DI_CUSTOM )
+                if( nSubType == static_cast<sal_uInt16>(SwDocInfoSubType::Custom) )
                 {
                     SwDocInfoField* pDocInfo = static_cast<SwDocInfoField*>( pTmpField.get() );
                     pDocInfo->SetName( rPar1 );
@@ -256,7 +258,7 @@ void SwFieldPage::InsertField(SwFieldTypesEnum nTypeId, sal_uInt16 nSubType, con
 
         pSh->StartAllAction();
 
-        pTmpField->SetSubType(nSubType);
+        pTmpField->SetUntypedSubType(nSubType);
         pTmpField->SetAutomaticLanguage(bIsAutomaticLanguage);
 
         m_aMgr.UpdateCurField( nFormatId, sPar1, sPar2, std::move(pTmpField) );
@@ -318,18 +320,25 @@ void SwFieldPage::InsertHdl(weld::Widget* pBtn)
     }
 }
 
-// enable/disable "Insert"-Button
-void SwFieldPage::EnableInsert(bool bEnable)
+bool SwFieldPage::IsCurrentPage() const
 {
-    if (SwFieldDlg *pDlg = dynamic_cast<SwFieldDlg*>(GetDialogController()))
+    if (const SwFieldDlg *pDlg = dynamic_cast<const SwFieldDlg*>(GetDialogController()))
+        return pDlg->GetCurTabPage() == this;
+    return true;
+}
+
+// enable/disable "Insert"-Button
+void SwFieldPage::EnableInsert(bool bEnable, bool bIsCurrentPage)
+{
+    if (bIsCurrentPage)
     {
-        if (pDlg->GetCurTabPage() == this)
+        if (SwFieldDlg *pDlg = dynamic_cast<SwFieldDlg*>(GetDialogController()))
             pDlg->EnableInsert(bEnable);
-    }
-    else
-    {
-        SwFieldEditDlg *pEditDlg = static_cast<SwFieldEditDlg*>(GetDialogController());
-        pEditDlg->EnableInsert(bEnable);
+        else
+        {
+            SwFieldEditDlg *pEditDlg = static_cast<SwFieldEditDlg*>(GetDialogController());
+            pEditDlg->EnableInsert(bEnable);
+        }
     }
 
     m_bInsert = bEnable;

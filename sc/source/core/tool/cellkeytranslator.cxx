@@ -17,17 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <memory>
+#include <sal/config.h>
+
+#include <vector>
+#include <unordered_map>
+
 #include <global.hxx>
 #include <cellkeytranslator.hxx>
 #include <comphelper/processfactory.hxx>
 #include <i18nlangtag/lang.h>
 #include <i18nutil/transliteration.hxx>
-#include <rtl/ustring.hxx>
 #include <unotools/syslocale.hxx>
-#include <com/sun/star/uno/Sequence.hxx>
-
-using ::com::sun::star::uno::Sequence;
+#include <unotools/transliterationwrapper.hxx>
 
 using namespace ::com::sun::star;
 
@@ -42,184 +43,183 @@ enum LocaleMatch
     LOCALE_MATCH_ALL
 };
 
-}
-
-static LocaleMatch lclLocaleCompare(const lang::Locale& rLocale1, const LanguageTag& rLanguageTag2)
+LocaleMatch lclLocaleCompare(const lang::Locale& rLocale1, const LanguageTag& rLanguageTag2)
 {
-    LocaleMatch eMatchLevel = LOCALE_MATCH_NONE;
     LanguageTag aLanguageTag1( rLocale1);
 
-    if ( aLanguageTag1.getLanguage() == rLanguageTag2.getLanguage() )
-        eMatchLevel = LOCALE_MATCH_LANG;
-    else
-        return eMatchLevel;
+    if (aLanguageTag1.getLanguage() != rLanguageTag2.getLanguage())
+        return LOCALE_MATCH_NONE;
 
-    if ( aLanguageTag1.getScript() == rLanguageTag2.getScript() )
-        eMatchLevel = LOCALE_MATCH_LANG_SCRIPT;
-    else
-        return eMatchLevel;
+    if (aLanguageTag1.getScript() != rLanguageTag2.getScript())
+        return LOCALE_MATCH_LANG;
 
-    if ( aLanguageTag1.getCountry() == rLanguageTag2.getCountry() )
-        eMatchLevel = LOCALE_MATCH_LANG_SCRIPT_COUNTRY;
-    else
-        return eMatchLevel;
+    if (aLanguageTag1.getCountry() != rLanguageTag2.getCountry())
+        return LOCALE_MATCH_LANG_SCRIPT;
 
-    if (aLanguageTag1 == rLanguageTag2)
-        return LOCALE_MATCH_ALL;
+    if (aLanguageTag1 != rLanguageTag2)
+        return LOCALE_MATCH_LANG_SCRIPT_COUNTRY;
 
-    return eMatchLevel;
+    return LOCALE_MATCH_ALL;
 }
 
-ScCellKeyword::ScCellKeyword(const char* pName, OpCode eOpCode, const lang::Locale& rLocale) :
-    mpName(pName),
-    meOpCode(eOpCode),
-    mrLocale(rLocale)
+struct ScCellKeyword
 {
-}
+    OUString msName;
+    OpCode meOpCode;
+    const css::lang::Locale& mrLocale;
 
-::std::unique_ptr<ScCellKeywordTranslator> ScCellKeywordTranslator::spInstance;
+    ScCellKeyword(const OUString& sName, OpCode eOpCode, const css::lang::Locale& rLocale)
+        : msName(sName)
+        , meOpCode(eOpCode)
+        , mrLocale(rLocale)
+    {
+    }
+};
 
-static void lclMatchKeyword(OUString& rName, const ScCellKeywordHashMap& aMap,
-                            OpCode eOpCode, const lang::Locale* pLocale)
+typedef std::unordered_map<OUString, std::vector<ScCellKeyword>> ScCellKeywordHashMap;
+
+void lclMatchKeyword(OUString& rName, const ScCellKeywordHashMap& aMap, OpCode eOpCode,
+                     const lang::Locale& rLocale)
 {
-    ScCellKeywordHashMap::const_iterator itrEnd = aMap.end();
+    assert(eOpCode != ocNone);
     ScCellKeywordHashMap::const_iterator itr = aMap.find(rName);
 
-    if ( itr == itrEnd || itr->second.empty() )
+    if (itr == aMap.end() || itr->second.empty())
         // No candidate strings exist.  Bail out.
         return;
 
-    if ( eOpCode == ocNone && !pLocale )
-    {
-        // Since no locale nor opcode matching is needed, simply return
-        // the first item on the list.
-        rName = OUString::createFromAscii( itr->second.front().mpName );
-        return;
-    }
-
-    LanguageTag aLanguageTag( pLocale ? *pLocale : lang::Locale("","",""));
-    const char* aBestMatchName = itr->second.front().mpName;
+    LanguageTag aLanguageTag(rLocale);
+    const OUString* aBestMatchName = nullptr;
     LocaleMatch eLocaleMatchLevel = LOCALE_MATCH_NONE;
-    bool bOpCodeMatched = false;
 
     for (auto const& elem : itr->second)
     {
-        if ( eOpCode != ocNone && pLocale )
-        {
-            if (elem.meOpCode == eOpCode)
-            {
-                LocaleMatch eLevel = lclLocaleCompare(elem.mrLocale, aLanguageTag);
-                if ( eLevel == LOCALE_MATCH_ALL )
-                {
-                    // Name with matching opcode and locale found.
-                    rName = OUString::createFromAscii( elem.mpName );
-                    return;
-                }
-                else if ( eLevel > eLocaleMatchLevel )
-                {
-                    // Name with a better matching locale.
-                    eLocaleMatchLevel = eLevel;
-                    aBestMatchName = elem.mpName;
-                }
-                else if ( !bOpCodeMatched )
-                    // At least the opcode matches.
-                    aBestMatchName = elem.mpName;
-
-                bOpCodeMatched = true;
-            }
-        }
-        else if ( eOpCode != ocNone && !pLocale )
-        {
-            if ( elem.meOpCode == eOpCode )
-            {
-                // Name with a matching opcode preferred.
-                rName = OUString::createFromAscii( elem.mpName );
-                return;
-            }
-        }
-        else if ( pLocale )
+        if (elem.meOpCode == eOpCode)
         {
             LocaleMatch eLevel = lclLocaleCompare(elem.mrLocale, aLanguageTag);
             if ( eLevel == LOCALE_MATCH_ALL )
             {
-                // Name with matching locale preferred.
-                rName = OUString::createFromAscii( elem.mpName );
+                // Name with matching opcode and locale found.
+                rName = elem.msName;
                 return;
             }
             else if ( eLevel > eLocaleMatchLevel )
             {
                 // Name with a better matching locale.
                 eLocaleMatchLevel = eLevel;
-                aBestMatchName = elem.mpName;
+                aBestMatchName = &elem.msName;
             }
         }
     }
 
     // No preferred strings found.  Return the best matching name.
-    rName = OUString::createFromAscii(aBestMatchName);
+    if (aBestMatchName)
+        rName = *aBestMatchName;
 }
 
-void ScCellKeywordTranslator::transKeyword(OUString& rName, const lang::Locale* pLocale, OpCode eOpCode)
+ScCellKeywordHashMap MakeMap()
 {
-    if (!spInstance)
-        spInstance.reset( new ScCellKeywordTranslator );
+    ScCellKeywordHashMap map;
 
-    LanguageType nLang = pLocale ?
-        LanguageTag(*pLocale).makeFallback().getLanguageType() : ScGlobal::oSysLocale->GetLanguageTag().getLanguageType();
-    Sequence<sal_Int32> aOffsets;
-    rName = spInstance->maTransWrapper.transliterate(rName, nLang, 0, rName.getLength(), &aOffsets);
-    lclMatchKeyword(rName, spInstance->maStringNameMap, eOpCode, pLocale);
-}
-
-struct TransItem
-{
-    const sal_Unicode*  from;
-    const char*         to;
-    OpCode              func;
-};
-
-ScCellKeywordTranslator::ScCellKeywordTranslator() :
-    maTransWrapper( ::comphelper::getProcessComponentContext(),
-                    TransliterationFlags::LOWERCASE_UPPERCASE )
-{
-    // The file below has been autogenerated by sc/workben/celltrans/parse.py.
-    // To add new locale keywords, edit sc/workben/celltrans/keywords_utf16.txt
-    // and re-run the parse.py script.
-    //
     // All keywords must be uppercase, and the mapping must be from the
     // localized keyword to the English keyword.
-    //
-    // Make sure that the original keyword file (keywords_utf16.txt) is
-    // encoded in UCS-2/UTF-16!
-
-    #include "cellkeywords.inl"
-}
-
-ScCellKeywordTranslator::~ScCellKeywordTranslator()
-{
-}
-
-void ScCellKeywordTranslator::addToMap(const OUString& rKey, const char* pName, const lang::Locale& rLocale, OpCode eOpCode)
-{
-    ScCellKeyword aKeyItem( pName, eOpCode, rLocale );
-
-    ScCellKeywordHashMap::iterator itrEnd = maStringNameMap.end();
-    ScCellKeywordHashMap::iterator itr = maStringNameMap.find(rKey);
-
-    if ( itr == itrEnd )
+    struct TransItem
     {
-        // New keyword.
-        std::vector<ScCellKeyword> aVector { aKeyItem };
-        maStringNameMap.emplace(rKey, aVector);
-    }
-    else
-        itr->second.push_back(aKeyItem);
+        OUString from;
+        OUString to;
+        OpCode func;
+    };
+
+    // French language locale
+
+    static const lang::Locale aFr(u"fr"_ustr, {}, {});
+
+    static constexpr TransItem pFr[] = {
+        { u"ADRESSE"_ustr, u"ADDRESS"_ustr, ocCell },
+        { u"COLONNE"_ustr, u"COL"_ustr, ocCell },
+        { u"CONTENU"_ustr, u"CONTENTS"_ustr, ocCell },
+        { u"COULEUR"_ustr, u"COLOR"_ustr, ocCell },
+        { u"LARGEUR"_ustr, u"WIDTH"_ustr, ocCell },
+        { u"LIGNE"_ustr, u"ROW"_ustr, ocCell },
+        { u"NOMFICHIER"_ustr, u"FILENAME"_ustr, ocCell },
+        { u"PREFIXE"_ustr, u"PREFIX"_ustr, ocCell },
+        { u"PROTEGE"_ustr, u"PROTECT"_ustr, ocCell },
+        { u"NBFICH"_ustr, u"NUMFILE"_ustr, ocInfo },
+        { u"RECALCUL"_ustr, u"RECALC"_ustr, ocInfo },
+        { u"SYSTEXPL"_ustr, u"SYSTEM"_ustr, ocInfo },
+        { u"VERSION"_ustr, u"RELEASE"_ustr, ocInfo },
+        { u"VERSIONSE"_ustr, u"OSVERSION"_ustr, ocInfo },
+    };
+
+    for (const auto& element : pFr)
+        map[element.from].emplace_back(element.to, element.func, aFr);
+
+    // Hungarian language locale
+
+    static const lang::Locale aHu(u"hu"_ustr, {}, {});
+
+    static constexpr TransItem pHu[] = {
+        { u"CÍM"_ustr, u"ADDRESS"_ustr, ocCell },
+        { u"OSZLOP"_ustr, u"COL"_ustr, ocCell },
+        { u"SZÍN"_ustr, u"COLOR"_ustr, ocCell },
+        { u"TARTALOM"_ustr, u"CONTENTS"_ustr, ocCell },
+        { u"SZÉLES"_ustr, u"WIDTH"_ustr, ocCell },
+        { u"SOR"_ustr, u"ROW"_ustr, ocCell },
+        { u"FILENÉV"_ustr, u"FILENAME"_ustr, ocCell },
+        { u"VÉDETT"_ustr, u"PROTECT"_ustr, ocCell },
+        { u"KOORD"_ustr, u"COORD"_ustr, ocCell },
+        { u"FORMA"_ustr, u"FORMAT"_ustr, ocCell },
+        { u"ZÁRÓJELEK"_ustr, u"PARENTHESES"_ustr, ocCell },
+        { u"LAP"_ustr, u"SHEET"_ustr, ocCell },
+        { u"TÍPUS"_ustr, u"TYPE"_ustr, ocCell },
+        { u"FILESZÁM"_ustr, u"NUMFILE"_ustr, ocInfo },
+        { u"SZÁMOLÁS"_ustr, u"RECALC"_ustr, ocInfo },
+        { u"RENDSZER"_ustr, u"SYSTEM"_ustr, ocInfo },
+        { u"VERZIÓ"_ustr, u"RELEASE"_ustr, ocInfo },
+        { u"OPRENDSZER"_ustr, u"OSVERSION"_ustr, ocInfo },
+    };
+
+    for (const auto& element : pHu)
+        map[element.from].emplace_back(element.to, element.func, aHu);
+
+    // German language locale
+
+    static const lang::Locale aDe(u"de"_ustr, {}, {});
+
+    static constexpr TransItem pDe[] = {
+        { u"ZEILE"_ustr, u"ROW"_ustr, ocCell },
+        { u"SPALTE"_ustr, u"COL"_ustr, ocCell },
+        { u"BREITE"_ustr, u"WIDTH"_ustr, ocCell },
+        { u"ADRESSE"_ustr, u"ADDRESS"_ustr, ocCell },
+        { u"DATEINAME"_ustr, u"FILENAME"_ustr, ocCell },
+        { u"FARBE"_ustr, u"COLOR"_ustr, ocCell },
+        { u"INHALT"_ustr, u"CONTENTS"_ustr, ocCell },
+        { u"KLAMMERN"_ustr, u"PARENTHESES"_ustr, ocCell },
+        { u"SCHUTZ"_ustr, u"PROTECT"_ustr, ocCell },
+        { u"TYP"_ustr, u"TYPE"_ustr, ocCell },
+        { u"PRÄFIX"_ustr, u"PREFIX"_ustr, ocCell },
+        { u"BLATT"_ustr, u"SHEET"_ustr, ocCell },
+        { u"KOORD"_ustr, u"COORD"_ustr, ocCell },
+    };
+
+    for (const auto& element : pDe)
+        map[element.from].emplace_back(element.to, element.func, aDe);
+
+    return map;
 }
 
-void ScCellKeywordTranslator::addToMap(const TransItem* pItems, const lang::Locale& rLocale)
+} // namespace
+
+void ScCellKeywordTranslator::transKeyword(OUString& rName, const css::lang::Locale& rLocale,
+                                           OpCode eOpCode)
 {
-    for (sal_uInt16 i = 0; pItems[i].from != nullptr; ++i)
-        addToMap(OUString(pItems[i].from), pItems[i].to, rLocale, pItems[i].func);
+    static const ScCellKeywordHashMap saStringNameMap(MakeMap());
+    static utl::TransliterationWrapper saTransWrapper(comphelper::getProcessComponentContext(),
+                                                      TransliterationFlags::LOWERCASE_UPPERCASE);
+
+    const LanguageType nLang = LanguageTag(rLocale).makeFallback().getLanguageType();
+    rName = saTransWrapper.transliterate(rName, nLang, 0, rName.getLength(), nullptr);
+    lclMatchKeyword(rName, saStringNameMap, eOpCode, rLocale);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

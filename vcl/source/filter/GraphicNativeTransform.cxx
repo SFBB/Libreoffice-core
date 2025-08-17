@@ -94,9 +94,9 @@ bool GraphicNativeTransform::rotateGeneric(Degree10 aRotation, std::u16string_vi
     GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
 
     css::uno::Sequence<css::beans::PropertyValue> aFilterData{
-        comphelper::makePropertyValue("Interlaced", sal_Int32(0)),
-        comphelper::makePropertyValue("Compression", sal_Int32(9)),
-        comphelper::makePropertyValue("Quality", sal_Int32(90))
+        comphelper::makePropertyValue(u"Interlaced"_ustr, sal_Int32(0)),
+        comphelper::makePropertyValue(u"Compression"_ustr, sal_Int32(9)),
+        comphelper::makePropertyValue(u"Quality"_ustr, sal_Int32(90))
     };
 
     sal_uInt16 nFilterFormat = rFilter.GetExportFormatNumberForShortName(aType);
@@ -110,7 +110,7 @@ bool GraphicNativeTransform::rotateGeneric(Degree10 aRotation, std::u16string_vi
     Graphic aGraphic;
     rFilter.ImportGraphic(aGraphic, u"import", aStream);
 
-    mrGraphic = aGraphic;
+    mrGraphic = std::move(aGraphic);
     return true;
 }
 
@@ -157,7 +157,7 @@ void GraphicNativeTransform::rotateJPEG(Degree10 aRotation)
         Graphic aGraphic;
         GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
         rFilter.ImportGraphic(aGraphic, u"import", aTargetStream);
-        mrGraphic = aGraphic;
+        mrGraphic = std::move(aGraphic);
     }
 }
 

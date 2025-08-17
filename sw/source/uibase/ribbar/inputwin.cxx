@@ -204,12 +204,12 @@ void SwInputWindow::ShowWin()
                                                 SelTableCellsNotify) );
         if( m_bIsTable )
         {
-            const OUString& rPos = m_pWrtShell->GetBoxNms();
+            const OUString aPos = m_pWrtShell->GetBoxNms();
             sal_Int32 nPos = 0;
             short nSrch = -1;
-            while( (nPos = rPos.indexOf( ':',nPos + 1 ) ) != -1 )
+            while( (nPos = aPos.indexOf( ':',nPos + 1 ) ) != -1 )
                 nSrch = static_cast<short>(nPos);
-            mxPos->set_text( rPos.copy( ++nSrch ) );
+            mxPos->set_text( aPos.copy( ++nSrch ) );
             m_aCurrentTableName = m_pWrtShell->GetTableFormat()->GetName();
         }
         else
@@ -322,8 +322,8 @@ IMPL_LINK_NOARG(SwInputWindow, DropdownClickHdl, ToolBox *, void)
     EndSelection(); // reset back CurItemId !
     if (nCurID == FN_FORMULA_CALC)
     {
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "modules/swriter/ui/inputwinmenu.ui"));
-        std::unique_ptr<weld::Menu> xPopMenu(xBuilder->weld_menu("menu"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, u"modules/swriter/ui/inputwinmenu.ui"_ustr));
+        std::unique_ptr<weld::Menu> xPopMenu(xBuilder->weld_menu(u"menu"_ustr));
         tools::Rectangle aRect(GetItemRect(FN_FORMULA_CALC));
         weld::Window* pParent = weld::GetPopupParent(*this, aRect);
         MenuHdl(xPopMenu->popup_at_rect(pParent, aRect));
@@ -419,7 +419,7 @@ IMPL_LINK( SwInputWindow, SelTableCellsNotify, SwWrtShell&, rCaller, void )
     {
         SwFrameFormat* pTableFormat = rCaller.GetTableFormat();
         OUString sBoxNms( rCaller.GetBoxNms() );
-        OUString sTableNm;
+        UIName sTableNm;
         if( pTableFormat && m_aCurrentTableName != pTableFormat->GetName() )
             sTableNm = pTableFormat->GetName();
 
@@ -519,7 +519,7 @@ IMPL_LINK_NOARG(InputEdit, ActivateHdl, weld::Entry&, bool)
 }
 
 void InputEdit::UpdateRange(std::u16string_view rBoxes,
-                                    const OUString& rName )
+                                    const UIName& rName )
 {
     if( rBoxes.empty() )
     {
@@ -528,7 +528,7 @@ void InputEdit::UpdateRange(std::u16string_view rBoxes,
     }
     const sal_Unicode   cOpen = '<', cClose = '>',
                 cOpenBracket = '(';
-    OUString aPrefix = rName;
+    OUString aPrefix = rName.toString();
     if(!rName.isEmpty())
         aPrefix += ".";
     OUString aBoxes = aPrefix + rBoxes;

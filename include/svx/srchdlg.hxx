@@ -24,6 +24,7 @@
 #include <svl/poolitem.hxx>
 #include <svl/srchdefs.hxx>
 #include <svl/srchitem.hxx>
+#include <svl/itemset.hxx>
 #include <svx/svxdllapi.h>
 #include <vcl/timer.hxx>
 #include <memory>
@@ -31,7 +32,6 @@
 
 class SvxSearchItem;
 class SfxStyleSheetBasePool;
-class SvxJSearchOptionsPage;
 class SvxSearchController;
 class VclAbstractDialog;
 struct SearchDlg_Impl;
@@ -40,8 +40,16 @@ enum class TransliterationFlags;
 
 struct SearchAttrInfo
 {
+    SearchAttrInfo()
+    : nSlot(0)
+    , aItemPtr() {}
+
+    SearchAttrInfo(sal_uInt16 Slot, const SfxPoolItemHolder& ItemPtr)
+    : nSlot(Slot)
+    , aItemPtr(ItemPtr) {}
+
     sal_uInt16          nSlot;
-    const SfxPoolItem*  pItemPtr;
+    SfxPoolItemHolder   aItemPtr;
 };
 
 typedef std::vector<SearchAttrInfo> SrchAttrInfoList;
@@ -51,7 +59,7 @@ class SVX_DLLPUBLIC SearchAttrItemList : private SrchAttrInfoList
 public:
     SearchAttrItemList() {}
     SearchAttrItemList( const SearchAttrItemList& rList );
-    SearchAttrItemList( SearchAttrItemList&& rList );
+    SearchAttrItemList( SearchAttrItemList&& rList ) noexcept;
     ~SearchAttrItemList();
 
     void            Put( const SfxItemSet& rSet );
@@ -123,10 +131,8 @@ public:
     // Window
     virtual void    Activate() override;
 
-    const SearchAttrItemList*   GetSearchItemList() const
-                                    { return pSearchList.get(); }
-    const SearchAttrItemList*   GetReplaceItemList() const
-                                    { return pReplaceList.get(); }
+    const SearchAttrItemList* GetSearchItemList() const { return m_pSearchList.get(); }
+    const SearchAttrItemList* GetReplaceItemList() const { return m_pReplaceList.get(); }
 
     TransliterationFlags        GetTransliterationFlags() const;
 
@@ -138,37 +144,36 @@ public:
     void Present();
 
 private:
-    SfxBindings&    rBindings;
+    SfxBindings& m_rBindings;
     Timer           m_aPresentIdle;
-    bool            bWriter;
-    bool            bSearch;
-    bool            bFormat;
-    bool            bReplaceBackwards;
-    SearchOptionFlags  nOptions;
-    bool            bSet;
-    bool            bConstruct;
-    ModifyFlags     nModifyFlag;
-    OUString        aStylesStr;
-    OUString        aLayoutStr;
-    OUString        aLayoutWriterStr;
-    OUString        aLayoutCalcStr;
-    OUString        aCalcStr;
-    sal_uInt16      nRememberSize;
+    bool m_bWriter;
+    bool m_bSearch;
+    bool m_bFormat;
+    bool m_bReplaceBackwards;
+    SearchOptionFlags m_nOptions;
+    bool m_bSet;
+    bool m_bConstruct;
+    ModifyFlags m_nModifyFlag;
+    OUString m_sStylesStr;
+    OUString m_sLayoutStr;
+    OUString m_sLayoutWriterStr;
+    OUString m_sLayoutCalcStr;
+    OUString m_sCalcStr;
+    sal_uInt16 m_nRememberSize;
 
-    std::vector<OUString> aSearchStrings;
-    std::vector<OUString> aReplaceStrings;
+    std::vector<OUString> m_aSearchStrings;
+    std::vector<OUString> m_aReplaceStrings;
 
-    std::unique_ptr<SearchDlg_Impl>      pImpl;
-    std::unique_ptr<SearchAttrItemList>  pSearchList;
-    std::unique_ptr<SearchAttrItemList>  pReplaceList;
-    std::unique_ptr<SvxSearchItem>       pSearchItem;
+    std::unique_ptr<SearchDlg_Impl> m_pImpl;
+    std::unique_ptr<SearchAttrItemList> m_pSearchList;
+    std::unique_ptr<SearchAttrItemList> m_pReplaceList;
+    std::unique_ptr<SvxSearchItem> m_pSearchItem;
 
-    std::unique_ptr<SvxSearchController> pSearchController;
-    std::unique_ptr<SvxSearchController> pOptionsController;
-    std::unique_ptr<SvxSearchController> pFamilyController;
+    std::unique_ptr<SvxSearchController> m_pSearchController;
+    std::unique_ptr<SvxSearchController> m_pOptionsController;
+    std::unique_ptr<SvxSearchController> m_pFamilyController;
 
-    mutable TransliterationFlags
-                            nTransliterationFlags;
+    mutable TransliterationFlags m_nTransliterationFlags;
 
     bool m_executingSubDialog = false;
 
@@ -178,7 +183,7 @@ private:
     std::unique_ptr<weld::Label> m_xSearchAttrText;
     std::unique_ptr<weld::Label> m_xSearchLabel;
     std::unique_ptr<weld::Image> m_xSearchIcon;
-    std::unique_ptr<weld::Box> m_xSearchBox;
+    std::unique_ptr<weld::Container> m_xSearchBox;
 
     std::unique_ptr<weld::Frame> m_xReplaceFrame;
     std::unique_ptr<weld::ComboBox> m_xReplaceLB;
@@ -248,7 +253,7 @@ private:
     SVX_DLLPRIVATE void Init_Impl( bool bHasItemSet );
     SVX_DLLPRIVATE void InitAttrList_Impl( const SfxItemSet* pSSet,
                                        const SfxItemSet* pRSet );
-    SVX_DLLPRIVATE void Remember_Impl( const OUString &rStr, bool bSearch );
+    SVX_DLLPRIVATE void Remember_Impl(bool bSearch);
     SVX_DLLPRIVATE void PaintAttrText_Impl();
     SVX_DLLPRIVATE OUString& BuildAttrText_Impl( OUString& rStr, bool bSrchFlag ) const;
 

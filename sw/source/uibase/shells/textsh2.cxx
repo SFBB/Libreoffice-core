@@ -45,12 +45,9 @@
 using namespace ::svx;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdbcx;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::frame;
 
 struct DBTextStruct_Impl
@@ -122,7 +119,7 @@ void SwTextShell::ExecDB(SfxRequest const &rReq)
                     pNew->aDBData.sDataSource   = sSourceArg;
                     pNew->aDBData.sCommand      = sCommandArg;
                     pNew->aDBData.nCommandType  = nCommandTypeArg;
-                    pNew->aSelection            = aSelection;
+                    pNew->aSelection            = std::move(aSelection);
                     //if the cursor is NULL, it must be created inside InsertDBTextHdl
                     // because it called via a PostUserEvent
                     pNew->xCursor               = xCursor;
@@ -205,48 +202,53 @@ void SwTextShell::ExecDB(SfxRequest const &rReq)
 
 IMPL_LINK( SwBaseShell, InsertDBTextHdl, void*, p, void )
 {
-    DBTextStruct_Impl* pDBStruct = static_cast<DBTextStruct_Impl*>(p);
-    if( pDBStruct )
+    std::shared_ptr<DBTextStruct_Impl> pDBStruct(static_cast<DBTextStruct_Impl*>(p));
+    if( !pDBStruct )
+        return;
+
+    bool bDispose = false;
+    Reference< sdbc::XConnection> xConnection = pDBStruct->xConnection;
+    Reference<XDataSource> xSource = SwDBManager::getDataSourceAsParent(xConnection,pDBStruct->aDBData.sDataSource);
+    // #111987# the connection is disposed and so no parent has been found
+    if(xConnection.is() && !xSource.is())
+        return;
+
+    if ( !xConnection.is()  )
     {
-        bool bDispose = false;
-        Reference< sdbc::XConnection> xConnection = pDBStruct->xConnection;
-        Reference<XDataSource> xSource = SwDBManager::getDataSourceAsParent(xConnection,pDBStruct->aDBData.sDataSource);
-        // #111987# the connection is disposed and so no parent has been found
-        if(xConnection.is() && !xSource.is())
-            return;
-
-        if ( !xConnection.is()  )
-        {
-            SwView &rSwView = GetView();
-            xConnection = SwDBManager::GetConnection(pDBStruct->aDBData.sDataSource, xSource, &rSwView);
-            bDispose = true;
-        }
-
-        Reference< XColumnsSupplier> xColSupp;
-        if(xConnection.is())
-            xColSupp = SwDBManager::GetColumnSupplier(xConnection,
-                                    pDBStruct->aDBData.sCommand,
-                                    pDBStruct->aDBData.nCommandType == CommandType::QUERY ?
-                                        SwDBSelect::QUERY : SwDBSelect::TABLE);
-
-        if( xColSupp.is() )
-        {
-            SwDBData aDBData = pDBStruct->aDBData;
-            SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-            ScopedVclPtr<AbstractSwInsertDBColAutoPilot>pDlg (pFact->CreateSwInsertDBColAutoPilot(GetView(),
-                                                                                                xSource,
-                                                                                                xColSupp,
-                                                                                                aDBData));
-            if( RET_OK == pDlg->Execute() )
-            {
-                pDlg->DataToDoc(pDBStruct->aSelection, xSource, xConnection, pDBStruct->xCursor);
-            }
-        }
-        if ( bDispose )
-            ::comphelper::disposeComponent(xConnection);
+        SwView &rSwView = GetView();
+        xConnection = SwDBManager::GetConnection(pDBStruct->aDBData.sDataSource, xSource, &rSwView);
+        bDispose = true;
     }
 
-    delete pDBStruct;
+    Reference< XColumnsSupplier> xColSupp;
+    if(xConnection.is())
+        xColSupp = SwDBManager::GetColumnSupplier(xConnection,
+                                pDBStruct->aDBData.sCommand,
+                                pDBStruct->aDBData.nCommandType == CommandType::QUERY ?
+                                    SwDBSelect::QUERY : SwDBSelect::TABLE);
+
+    if( !xColSupp )
+    {
+        if ( bDispose )
+            ::comphelper::disposeComponent(xConnection);
+        return;
+    }
+
+    SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
+    VclPtr<AbstractSwInsertDBColAutoPilot>pDlg (pFact->CreateSwInsertDBColAutoPilot(GetView(),
+                                                                                        xSource,
+                                                                                        xColSupp,
+                                                                                        pDBStruct->aDBData));
+    pDlg->StartExecuteAsync(
+        [pDlg, pDBStruct2=std::move(pDBStruct), xSource, xConnection, bDispose] (sal_Int32 nResult) mutable
+        {
+            if (nResult == RET_OK)
+                pDlg->DataToDoc(pDBStruct2->aSelection, xSource, xConnection, pDBStruct2->xCursor);
+            pDlg->disposeOnce();
+            if ( bDispose )
+                ::comphelper::disposeComponent(xConnection);
+        }
+    );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

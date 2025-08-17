@@ -160,7 +160,7 @@
       </node>
       <node oor:name=".uno:InsertAuthoritiesEntry" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">~Bibliography Entry...</value>
+          <value xml:lang="en-US">~Citation...</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>9</value>
@@ -220,7 +220,7 @@
       </node>
       <node oor:name=".uno:RemoveTableOf" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Delete index</value>
+          <value xml:lang="en-US">Delete Index</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -251,6 +251,17 @@
           <value>1</value>
         </prop>
       </node>
+      <node oor:name=".uno:ReinstateTrackedChangeToNext" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Reject but Track and Move to Next</value>
+        </prop>
+        <prop oor:name="TooltipLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Reject tracked change but keep it and select the next one</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
       <node oor:name=".uno:RejectAllTrackedChanges" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Reject All</value>
@@ -260,6 +271,17 @@
         </prop>
         <prop oor:name="PopupLabel" oor:type="xs:string">
           <value xml:lang="en-US">Reject All Changes</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:ReinstateAllTrackedChanges" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Reject but Track All</value>
+        </prop>
+        <prop oor:name="TooltipLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Reject all tracked changes but keep them</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -299,6 +321,17 @@
         </prop>
         <prop oor:name="PopupLabel" oor:type="xs:string">
           <value xml:lang="en-US">Accept All Changes</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:ReinstateTrackedChange" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Reject but Track</value>
+        </prop>
+        <prop oor:name="TooltipLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Reject tracked change but keep it</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -525,7 +558,7 @@
       </node>
       <node oor:name=".uno:AuthoritiesEntryDialog" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">~Bibliography Entry...</value>
+          <value xml:lang="en-US">~Citation...</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -562,6 +595,20 @@
         </prop>
         <prop oor:name="PopupLabel" oor:type="xs:string">
           <value xml:lang="en-US">Content Control Properties</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:DeleteContentControl" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Delete Content Control</value>
+        </prop>
+        <prop oor:name="ContextLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Delete Content Control</value>
+        </prop>
+        <prop oor:name="PopupLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Delete Content Control</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -642,7 +689,7 @@
       </node>
       <node oor:name=".uno:InsertFootnoteDialog" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">F~ootnote or Endnote...</value>
+          <value xml:lang="en-US">Insert Special F~ootnote/Endnote...</value>
         </prop>
       </node>
       <node oor:name=".uno:InsertReferenceField" oor:op="replace">
@@ -659,6 +706,9 @@
       <node oor:name=".uno:InsertHyperlinkDlg" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Insert Hyperlink</value>
+        </prop>
+        <prop oor:name="TargetURL" oor:type="xs:string">
+          <value>.uno:HyperlinkDialog</value>
         </prop>
       </node>
       <node oor:name=".uno:InsertLinebreak" oor:op="replace">
@@ -908,6 +958,22 @@
           <value xml:lang="en-US">~Insertions In Margin</value>
         </prop>
       </node>
+      <node oor:name=".uno:TrackChangesInThisView" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Record changes in this view</value>
+        </prop>
+        <prop oor:name="ContextLabel" oor:type="xs:string">
+          <value xml:lang="en-US">~Changes in this view</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:TrackChangesInAllViews" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Record changes in all views</value>
+        </prop>
+        <prop oor:name="ContextLabel" oor:type="xs:string">
+          <value xml:lang="en-US">~Changes in all views</value>
+        </prop>
+      </node>
       <node oor:name=".uno:ToggleObjectLayer" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Change Position</value>
@@ -1084,7 +1150,7 @@
       </node>
       <node oor:name=".uno:InsertDateField" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">~Date (fix)</value>
+          <value xml:lang="en-US">~Date (fixed)</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -1108,7 +1174,7 @@
       </node>
       <node oor:name=".uno:InsertTimeField" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">~Time (fix)</value>
+          <value xml:lang="en-US">~Time (fixed)</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -1150,6 +1216,14 @@
       <node oor:name=".uno:InsertPageCountField" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Page ~Count</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:InsertPageCountInRangeField" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Page Count In ~Range</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -1542,6 +1616,14 @@
           <value>1</value>
         </prop>
       </node>
+      <node oor:name=".uno:BreakAboveTable" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Insert Paragraph Break Above Table</value>
+        </prop>
+        <prop oor:name="TooltipLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Inserts a paragraph break above the table if it is the first element in the page.</value>
+        </prop>
+      </node>
       <node oor:name=".uno:FootnoteDialog" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">~Footnote/Endnote Settings...</value>
@@ -1550,9 +1632,20 @@
           <value>1</value>
         </prop>
       </node>
+      <node oor:name=".uno:EndnoteDialog" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">~Footnote/Endnote Settings...</value>
+        </prop>
+        <prop oor:name="TargetURL" oor:type="xs:string">
+          <value>.uno:FootnoteDialog</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
       <node oor:name=".uno:CurrentFootnoteDialog" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">~Footnotes and Endnotes...</value>
+          <value xml:lang="en-US">~Footnote/Endnote Settings...</value>
         </prop>
       </node>
       <node oor:name=".uno:ResetAttributes" oor:op="replace">
@@ -1700,6 +1793,14 @@
       <node oor:name=".uno:UpdateSelectedField" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Update Selected Field</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:ConvertSelectedField" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Convert Field To Text</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -2278,11 +2379,6 @@
       <node oor:name=".uno:GoToNextSentence" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">To Next Sentence</value>
-        </prop>
-      </node>
-      <node oor:name=".uno:NumberOrNoNumber" oor:op="replace">
-        <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Numbering On/Off</value>
         </prop>
       </node>
       <node oor:name=".uno:GoToPrevSentence" oor:op="replace">
@@ -2987,7 +3083,7 @@
       </node>
       <node oor:name=".uno:ViewBounds" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Te~xt Boundaries</value>
+          <value xml:lang="en-US">Te~xt Boundaries (deprecated)</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -2995,7 +3091,7 @@
       </node>
       <node oor:name=".uno:SectionBoundaries" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Sec~tion Boundaries</value>
+          <value xml:lang="en-US">Sec~tion Boundaries (deprecated)</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -3039,6 +3135,17 @@
       <node oor:name=".uno:Hyphenate" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">~Hyphenation...</value>
+        </prop>
+        <prop oor:name="TooltipLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Insert Soft Hyphen...</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>9</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:NoBreak" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">No Break</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>9</value>
@@ -3152,7 +3259,21 @@
       </node>
       <node oor:name=".uno:TableBoundaries" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
-          <value xml:lang="en-US">Table Boundaries</value>
+          <value xml:lang="en-US">Table Boundaries (deprecated)</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:ShowBoundaries" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Show Boundaries</value>
+        </prop>
+        <prop oor:name="ContextLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Boundaries</value>
+        </prop>
+        <prop oor:name="TooltipLabel" oor:type="xs:string">
+          <value xml:lang="en-US">Show boundaries for all types depending on settings at formatting aids.</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
@@ -4263,12 +4384,46 @@
           <value xml:lang="en-US">Open the Accessibility Check Deck</value>
         </prop>
       </node>
+      <node oor:name=".uno:SidebarDeck.FindDeck" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Open the Find Deck</value>
+        </prop>
+      </node>
       <node oor:name=".uno:SpotlightMenu" oor:op="replace">
         <prop oor:name="Label" oor:type="xs:string">
           <value xml:lang="en-US">Spotlight</value>
         </prop>
         <prop oor:name="Properties" oor:type="xs:int">
           <value>1</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:PagesLayout" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Page Layout</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:SinglePagePerRow" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Single Page per Row</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>8</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:MultiplePagesPerRow" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Multiple Pages per Row</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>8</value>
+        </prop>
+      </node>
+      <node oor:name=".uno:BookView" oor:op="replace">
+        <prop oor:name="Label" oor:type="xs:string">
+          <value xml:lang="en-US">Book View</value>
+        </prop>
+        <prop oor:name="Properties" oor:type="xs:int">
+          <value>8</value>
         </prop>
       </node>
     </node>

@@ -32,6 +32,7 @@
 #include <drawingml/chart/axisconverter.hxx>
 #include <drawingml/chart/plotareamodel.hxx>
 #include <drawingml/chart/typegroupconverter.hxx>
+#include <drawingml/chart/seriesmodel.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/token/namespaces.hxx>
 #include <oox/token/properties.hxx>
@@ -71,11 +72,14 @@ public:
                             const Reference< XDiagram >& rxDiagram,
                             View3DModel& rView3DModel,
                             sal_Int32 nAxesSetIdx,
+                            DataSourceCxModel::DataMap& raSourceMap,
                             bool bSupportsVaryColorsByPoint,
                             bool bUseFixedInnerSize );
 
     /** Returns the automatic chart title if the axes set contains only one series. */
     const OUString& getAutomaticTitle() const { return maAutoTitle; }
+    /** Returns true, if the chart contains only one series and have title textbox (even empty). */
+    bool         isSingleSeriesTitle() const { return mbSingleSeriesTitle; }
     /** Returns true, if the chart is three-dimensional. */
     bool         is3dChart() const { return mb3dChart; }
     /** Returns true, if chart type supports wall and floor format in 3D mode. */
@@ -88,13 +92,15 @@ private:
     bool                mb3dChart;
     bool                mbWall3dChart;
     bool                mbPieChart;
+    bool                mbSingleSeriesTitle;
 };
 
 AxesSetConverter::AxesSetConverter( const ConverterRoot& rParent, AxesSetModel& rModel ) :
     ConverterBase< AxesSetModel >( rParent, rModel ),
     mb3dChart( false ),
     mbWall3dChart( false ),
-    mbPieChart( false )
+    mbPieChart( false ),
+    mbSingleSeriesTitle( false )
 {
 }
 
@@ -108,6 +114,7 @@ ModelRef< AxisModel > lclGetOrCreateAxis( const AxesSetModel::AxisMap& rFromAxes
 
 void AxesSetConverter::convertFromModel( const Reference< XDiagram >& rxDiagram,
                                         View3DModel& rView3DModel, sal_Int32 nAxesSetIdx,
+                                        DataSourceCxModel::DataMap& raSourceMap,
                                         bool bSupportsVaryColorsByPoint, bool bUseFixedInnerSize)
 {
     // create type group converter objects for all type groups
@@ -127,7 +134,10 @@ void AxesSetConverter::convertFromModel( const Reference< XDiagram >& rxDiagram,
 
         // get automatic chart title, if there is only one type group
         if( aTypeGroups.size() == 1 )
+        {
             maAutoTitle = rFirstTypeGroup.getSingleSeriesTitle();
+            mbSingleSeriesTitle = rFirstTypeGroup.isSingleSeriesTitle();
+        }
 
         /*  Create a coordinate system. For now, all type groups from all axes sets
             have to be inserted into one coordinate system. Later, chart2 should
@@ -162,6 +172,13 @@ void AxesSetConverter::convertFromModel( const Reference< XDiagram >& rxDiagram,
             to the data provider attached to the chart document. */
         if( xCoordSystem.is() )
         {
+            // Transfer any (chartex) data, specified at the chartSpace level,
+            // into the appropriate series. This needs to happen before the
+            // calls to AxisConverter::convertFromModel() below.
+            for (auto const& typeGroup : aTypeGroups) {
+                typeGroup->moveDataToSeries(raSourceMap);
+            }
+
             bool bMSO2007Doc = getFilter().isMSO2007Document();
             // convert all axes (create missing axis models)
             ModelRef< AxisModel > xXAxis = lclGetOrCreateAxis( mrModel.maAxes, API_X_AXIS, rFirstTypeGroup.getTypeInfo().mbCategoryAxis ? C_TOKEN( catAx ) : C_TOKEN( valAx ), bMSO2007Doc );
@@ -184,7 +201,8 @@ void AxesSetConverter::convertFromModel( const Reference< XDiagram >& rxDiagram,
 
             // convert all chart type groups, this converts all series data and formatting
             for (auto const& typeGroup : aTypeGroups)
-                typeGroup->convertFromModel( rxDiagram, xCoordSystem, nAxesSetIdx, bSupportsVaryColorsByPoint );
+                typeGroup->convertFromModel( rxDiagram, xCoordSystem,
+                        nAxesSetIdx,bSupportsVaryColorsByPoint );
         }
     }
     catch( Exception& )
@@ -205,7 +223,7 @@ View3DConverter::~View3DConverter()
 
 void View3DConverter::convertFromModel( const Reference< XDiagram >& rxDiagram, TypeGroupConverter const & rTypeGroup )
 {
-    namespace cssd = ::com::sun::star::drawing;
+    namespace cssd = css::drawing;
     PropertySet aPropSet( rxDiagram );
 
     sal_Int32 nRotationY = 0;
@@ -297,7 +315,8 @@ PlotAreaConverter::PlotAreaConverter( const ConverterRoot& rParent, PlotAreaMode
     ConverterBase< PlotAreaModel >( rParent, rModel ),
     mb3dChart( false ),
     mbWall3dChart( false ),
-    mbPieChart( false )
+    mbPieChart( false ),
+    mbSingleSeriesTitle( false )
 {
 }
 
@@ -305,14 +324,15 @@ PlotAreaConverter::~PlotAreaConverter()
 {
 }
 
-void PlotAreaConverter::convertFromModel( View3DModel& rView3DModel )
+void PlotAreaConverter::convertFromModel( View3DModel& rView3DModel,
+        DataSourceCxModel& rDataCxModel )
 {
     /*  Create the diagram object and attach it to the chart document. One
         diagram is used to carry all coordinate systems and data series. */
     Reference< XDiagram > xDiagram;
     try
     {
-        xDiagram.set( createInstance( "com.sun.star.chart2.Diagram" ), UNO_QUERY_THROW );
+        xDiagram.set( createInstance( u"com.sun.star.chart2.Diagram"_ustr ), UNO_QUERY_THROW );
         getChartDocument()->setFirstDiagram( xDiagram );
     }
     catch( Exception& )
@@ -418,10 +438,11 @@ void PlotAreaConverter::convertFromModel( View3DModel& rView3DModel )
     {
         AxesSetConverter aAxesSetConv(*this, *axesSet);
         aAxesSetConv.convertFromModel(xDiagram, rView3DModel, nAxesSetIdx,
-                                      bSupportsVaryColorsByPoint, bUseFixedInnerSize);
+                rDataCxModel.maSourceMap, bSupportsVaryColorsByPoint, bUseFixedInnerSize);
         if(nAxesSetIdx == nStartAxesSetIdx)
         {
             maAutoTitle = aAxesSetConv.getAutomaticTitle();
+            mbSingleSeriesTitle = aAxesSetConv.isSingleSeriesTitle();
             mb3dChart = aAxesSetConv.is3dChart();
             mbWall3dChart = aAxesSetConv.isWall3dChart();
             mbPieChart = aAxesSetConv.isPieChart();
@@ -457,7 +478,7 @@ void PlotAreaConverter::convertPositionFromModel()
 
     try
     {
-        namespace cssc = ::com::sun::star::chart;
+        namespace cssc = css::chart;
         Reference< cssc::XChartDocument > xChart1Doc( getChartDocument(), UNO_QUERY_THROW );
         Reference< cssc::XDiagramPositioning > xPositioning( xChart1Doc->getDiagram(), UNO_QUERY_THROW );
         // for pie charts, always set inner plot area size to exclude the data labels as Excel does

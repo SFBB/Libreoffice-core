@@ -33,27 +33,22 @@
 #include <o3tl/string_view.hxx>
 #include <o3tl/typed_flags_set.hxx>
 #include <o3tl/unit_conversion.hxx>
+#include <o3tl/numeric.hxx>
 #include <osl/diagnose.h>
 #include <tools/long.hxx>
+#include <tools/time.hxx>
 
 #include <algorithm>
+#include <climits>
+#include <map>
 #include <string_view>
 
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::util;
-using namespace ::com::sun::star::i18n;
 
 
 namespace sax {
-
-const std::string_view gpsMM = "mm";
-const std::string_view gpsCM = "cm";
-const std::string_view gpsPT = "pt";
-const std::string_view gpsINCH = "in";
-const std::string_view gpsPC = "pc";
-
-const sal_Int8 XML_MAXDIGITSCOUNT_TIME = 14;
 
 static sal_Int64 toInt64_WithLength(const sal_Unicode * str, sal_Int16 radix, sal_Int32 nStrLength )
 {
@@ -66,6 +61,26 @@ static sal_Int64 toInt64_WithLength(const char * str, sal_Int16 radix, sal_Int32
 
 namespace
 {
+constexpr std::string_view gpsMM = "mm";
+constexpr std::string_view gpsCM = "cm";
+constexpr std::string_view gpsPT = "pt";
+constexpr std::string_view gpsINCH = "in";
+constexpr std::string_view gpsPC = "pc";
+constexpr std::string_view gpsPX = "px";
+constexpr std::string_view gpsPERCENT = "%";
+constexpr std::string_view gpsFONT_EM = "em";
+constexpr std::string_view gpsFONT_IC = "ic";
+
+const sal_Int8 XML_MAXDIGITSCOUNT_TIME = 14;
+
+const std::map<sal_Int16, std::string_view> stConvertMeasureUnitStrMap{
+    { MeasureUnit::MM, gpsMM },          { MeasureUnit::CM, gpsCM },
+    { MeasureUnit::INCH, gpsINCH },      { MeasureUnit::POINT, gpsPT },
+    { MeasureUnit::PICA, gpsPC },        { MeasureUnit::PERCENT, gpsPERCENT },
+    { MeasureUnit::PIXEL, gpsPX },       { MeasureUnit::FONT_EM, gpsFONT_EM },
+    { MeasureUnit::FONT_CJK_ADVANCE, gpsFONT_IC }
+};
+
 o3tl::Length Measure2O3tlUnit(sal_Int16 nUnit)
 {
     switch (nUnit)
@@ -121,14 +136,62 @@ template <typename V> bool wordEndsWith(V string, std::string_view expected)
 
 }
 
-/** convert string to measure using optional min and max values*/
-template<typename V>
-static bool lcl_convertMeasure( sal_Int32& rValue,
-                                V rString,
-                                sal_Int16 nTargetUnit /* = MeasureUnit::MM_100TH */,
-                                sal_Int32 nMin /* = SAL_MIN_INT32 */,
-                                sal_Int32 nMax /* = SAL_MAX_INT32 */ )
+/** parse unit substring into measure unit*/
+template <class V> static std::optional<sal_Int16> lcl_parseMeasureUnit(const V& rString)
 {
+    if (rString.empty())
+    {
+        return std::nullopt;
+    }
+
+    switch (rtl::toAsciiLowerCase<sal_uInt32>(rString[0]))
+    {
+        case u'%':
+            return MeasureUnit::PERCENT;
+
+        case u'c':
+            if (wordEndsWith(rString.substr(1), "m"))
+                return MeasureUnit::CM;
+            break;
+
+        case u'e':
+            if (wordEndsWith(rString.substr(1), "m"))
+                return MeasureUnit::FONT_EM;
+            break;
+
+        case u'i':
+            if (wordEndsWith(rString.substr(1), "c"))
+                return MeasureUnit::FONT_CJK_ADVANCE;
+            if (wordEndsWith(rString.substr(1), "n"))
+                return MeasureUnit::INCH;
+            break;
+
+        case u'm':
+            if (wordEndsWith(rString.substr(1), "m"))
+                return MeasureUnit::MM;
+            break;
+
+        case u'p':
+            if (wordEndsWith(rString.substr(1), "c"))
+                return MeasureUnit::PICA;
+            if (wordEndsWith(rString.substr(1), "t"))
+                return MeasureUnit::POINT;
+            if (wordEndsWith(rString.substr(1), "x"))
+                return MeasureUnit::PIXEL;
+            break;
+    }
+
+    return std::nullopt;
+}
+
+/** parse measure string into double and measure unit*/
+template <class V>
+static bool lcl_parseMeasure(double& rValue, std::optional<sal_Int16>& rSourceUnit, bool& rNeg, const V& rString)
+{
+    rValue = 0.0;
+    rSourceUnit.reset();
+    rNeg = false;
+
     bool bNeg = false;
     double nVal = 0;
 
@@ -175,21 +238,50 @@ static bool lcl_convertMeasure( sal_Int32& rValue,
     while( (nPos < nLen) && (rString[nPos] <= ' ') )
         nPos++;
 
-    if( nPos < nLen )
+    if (nPos < nLen)
     {
+        // Parse unit from the tail
+        auto nUnit = lcl_parseMeasureUnit(rString.substr(nPos));
+        if (!nUnit.has_value())
+        {
+            return false;
+        }
 
+        rSourceUnit = nUnit.value();
+    }
+
+    rValue = nVal;
+    rNeg = bNeg;
+
+    return true;
+}
+
+/** convert string to measure using optional min and max values*/
+template <class V>
+static bool lcl_convertMeasure(sal_Int32& rValue, const V& rString,
+        sal_Int16 nTargetUnit /* = MeasureUnit::MM_100TH */,
+        sal_Int32 nMin /* = SAL_MIN_INT32 */,
+        sal_Int32 nMax /* = SAL_MAX_INT32 */)
+{
+    double nVal = 0.0;
+    std::optional<sal_Int16> nSourceUnit;
+    bool bNeg = false;
+
+    if (!lcl_parseMeasure(nVal, nSourceUnit, bNeg, rString))
+    {
+        return false;
+    }
+
+    if (nSourceUnit.has_value())
+    {
         if( MeasureUnit::PERCENT == nTargetUnit )
         {
-            if( '%' != rString[nPos] )
+            if (MeasureUnit::PERCENT != nSourceUnit)
                 return false;
         }
         else if( MeasureUnit::PIXEL == nTargetUnit )
         {
-            if( nPos + 1 >= nLen ||
-                ('p' != rString[nPos] &&
-                 'P' != rString[nPos])||
-                ('x' != rString[nPos+1] &&
-                 'X' != rString[nPos+1]) )
+            if (MeasureUnit::PIXEL != nSourceUnit)
                 return false;
         }
         else
@@ -202,57 +294,52 @@ static bool lcl_convertMeasure( sal_Int32& rValue,
 
             if( MeasureUnit::TWIP == nTargetUnit )
             {
-                switch (rtl::toAsciiLowerCase<sal_uInt32>(rString[nPos]))
+                switch (nSourceUnit.value())
                 {
-                case u'c':
-                    if (wordEndsWith(rString.substr(nPos + 1), "m"))
+                    case MeasureUnit::CM:
                         eFrom = o3tl::Length::cm;
-                    break;
-                case u'i':
-                    if (wordEndsWith(rString.substr(nPos + 1), "n"))
+                        break;
+                    case MeasureUnit::INCH:
                         eFrom = o3tl::Length::in;
-                    break;
-                case u'm':
-                    if (wordEndsWith(rString.substr(nPos + 1), "m"))
+                        break;
+                    case MeasureUnit::MM:
                         eFrom = o3tl::Length::mm;
-                    break;
-                case u'p':
-                    if (wordEndsWith(rString.substr(nPos + 1), "t"))
+                        break;
+                    case MeasureUnit::POINT:
                         eFrom = o3tl::Length::pt;
-                    else if (wordEndsWith(rString.substr(nPos + 1), "c"))
+                        break;
+                    case MeasureUnit::PICA:
                         eFrom = o3tl::Length::pc;
-                    break;
+                        break;
                 }
             }
             else if( MeasureUnit::MM_100TH == nTargetUnit || MeasureUnit::MM_10TH == nTargetUnit )
             {
-                switch (rtl::toAsciiLowerCase<sal_uInt32>(rString[nPos]))
+                switch (nSourceUnit.value())
                 {
-                case u'c':
-                    if (wordEndsWith(rString.substr(nPos + 1), "m"))
+                    case MeasureUnit::CM:
                         eFrom = o3tl::Length::cm;
-                    break;
-                case u'i':
-                    if (wordEndsWith(rString.substr(nPos + 1), "n"))
+                        break;
+                    case MeasureUnit::INCH:
                         eFrom = o3tl::Length::in;
-                    break;
-                case u'm':
-                    if (wordEndsWith(rString.substr(nPos + 1), "m"))
+                        break;
+                    case MeasureUnit::MM:
                         eFrom = o3tl::Length::mm;
-                    break;
-                case u'p':
-                    if (wordEndsWith(rString.substr(nPos + 1), "t"))
+                        break;
+                    case MeasureUnit::POINT:
                         eFrom = o3tl::Length::pt;
-                    else if (wordEndsWith(rString.substr(nPos + 1), "c"))
+                        break;
+                    case MeasureUnit::PICA:
                         eFrom = o3tl::Length::pc;
-                    else if (wordEndsWith(rString.substr(nPos + 1), "x"))
+                        break;
+                    case MeasureUnit::PIXEL:
                         eFrom = o3tl::Length::px;
-                    break;
+                        break;
                 }
             }
             else if( MeasureUnit::POINT == nTargetUnit )
             {
-                if (wordEndsWith(rString.substr(nPos), "pt"))
+                if (MeasureUnit::POINT == nSourceUnit)
                     eFrom = o3tl::Length::pt;
             }
 
@@ -435,6 +522,53 @@ void Converter::convertMeasure( OUStringBuffer& rBuffer,
         rBuffer.appendAscii(psUnit.data(), psUnit.length());
 }
 
+/** convert string to measure with unit*/
+bool Converter::convertMeasureUnit(double& rValue, std::optional<sal_Int16>& rValueUnit,
+                                   std::u16string_view rString)
+{
+    bool bNeg = false;
+    bool bResult = lcl_parseMeasure(rValue, rValueUnit, bNeg, rString);
+
+    if (bNeg)
+    {
+        rValue = -rValue;
+    }
+
+    return bResult;
+}
+
+/** convert string to measure with unit*/
+bool Converter::convertMeasureUnit(double& rValue, std::optional<sal_Int16>& rValueUnit,
+                                   std::string_view rString)
+{
+    bool bNeg = false;
+    bool bResult = lcl_parseMeasure(rValue, rValueUnit, bNeg, rString);
+
+    if (bNeg)
+    {
+        rValue = -rValue;
+    }
+
+    return bResult;
+}
+
+/** convert measure with given unit to string with given unit*/
+void Converter::convertMeasureUnit(OUStringBuffer& rBuffer, double dValue,
+                                   std::optional<sal_Int16> nValueUnit)
+{
+    ::rtl::math::doubleToUStringBuffer(rBuffer, dValue, rtl_math_StringFormat_Automatic,
+                                       rtl_math_DecimalPlaces_Max, '.', true);
+
+    if (nValueUnit.has_value())
+    {
+        if (auto it = stConvertMeasureUnitStrMap.find(*nValueUnit);
+            it != stConvertMeasureUnitStrMap.end())
+        {
+            rBuffer.appendAscii(it->second.data(), it->second.length());
+        }
+    }
+}
+
 /** convert string to boolean */
 bool Converter::convertBool( bool& rBool, std::u16string_view rString )
 {
@@ -496,18 +630,6 @@ void Converter::convertMeasurePx( OUStringBuffer& rBuffer, sal_Int32 nValue )
     rBuffer.append( 'x' );
 }
 
-static int lcl_gethex( int nChar )
-{
-    if( nChar >= '0' && nChar <= '9' )
-        return nChar - '0';
-    else if( nChar >= 'a' && nChar <= 'f' )
-        return nChar - 'a' + 10;
-    else if( nChar >= 'A' && nChar <= 'F' )
-        return nChar - 'A' + 10;
-    else
-        return 0;
-}
-
 /** convert string to rgb color */
 template<typename V>
 static bool lcl_convertColor( sal_Int32& rColor, V rValue )
@@ -515,13 +637,13 @@ static bool lcl_convertColor( sal_Int32& rColor, V rValue )
     if( rValue.size() != 7 || rValue[0] != '#' )
         return false;
 
-    rColor = lcl_gethex( rValue[1] ) * 16 + lcl_gethex( rValue[2] );
+    rColor = o3tl::convertToHex<sal_Int32>(rValue[1], rValue[2]);
     rColor <<= 8;
 
-    rColor |= lcl_gethex( rValue[3] ) * 16 + lcl_gethex( rValue[4] );
+    rColor |= o3tl::convertToHex<sal_Int32>(rValue[3], rValue[4]);
     rColor <<= 8;
 
-    rColor |= lcl_gethex( rValue[5] ) * 16 + lcl_gethex( rValue[6] );
+    rColor |= o3tl::convertToHex<sal_Int32>(rValue[5], rValue[6]);
 
     return true;
 }
@@ -704,47 +826,52 @@ bool Converter::convertDouble(double& rValue,
 }
 
 /** convert string to double number (using ::rtl::math) */
-bool Converter::convertDouble(double& rValue, std::u16string_view rString)
+bool Converter::convertDouble(double& rValue, std::u16string_view rString, std::u16string_view* pRest)
 {
     rtl_math_ConversionStatus eStatus;
+    const sal_Unicode* pEnd;
     rValue = rtl_math_uStringToDouble(rString.data(),
                                      rString.data() + rString.size(),
                                      /*cDecSeparator*/'.', /*cGroupSeparator*/',',
-                                     &eStatus, nullptr);
+                                     &eStatus, &pEnd);
+    if (pRest)
+        *pRest = rString.substr(pEnd - rString.data());
     return ( eStatus == rtl_math_ConversionStatus_Ok );
 }
 
 /** convert string to double number (using ::rtl::math) */
-bool Converter::convertDouble(double& rValue, std::string_view rString)
+bool Converter::convertDouble(double& rValue, std::string_view rString, std::string_view* pRest)
 {
     rtl_math_ConversionStatus eStatus;
+    const char* pEnd;
     rValue = rtl_math_stringToDouble(rString.data(),
                                      rString.data() + rString.size(),
                                      /*cDecSeparator*/'.', /*cGroupSeparator*/',',
-                                     &eStatus, nullptr);
+                                     &eStatus, &pEnd);
+    if (pRest)
+        *pRest = rString.substr(pEnd - rString.data());
     return ( eStatus == rtl_math_ConversionStatus_Ok );
 }
 
 /** convert number, 10th of degrees with range [0..3600] to SVG angle */
-void Converter::convertAngle(OUStringBuffer& rBuffer, sal_Int16 const nAngle,
-        SvtSaveOptions::ODFSaneDefaultVersion const nVersion)
+void Converter::convert10thDegAngle(OUStringBuffer& rBuffer, sal_Int16 const nAngle,
+                                    const bool isWrongOOo10thDegAngle)
 {
-    if (nVersion < SvtSaveOptions::ODFSVER_012 || nVersion == SvtSaveOptions::ODFSVER_012_EXT_COMPAT)
+    if (isWrongOOo10thDegAngle)
     {
-        // wrong, but backward compatible with OOo/LO < 4.4
         rBuffer.append(static_cast<sal_Int32>(nAngle));
     }
     else
-    { // OFFICE-3774 tdf#89475 write valid ODF 1.2 angle; needs LO 4.4 to import
+    {
         double fAngle(double(nAngle) / 10.0);
         ::sax::Converter::convertDouble(rBuffer, fAngle);
         rBuffer.append("deg");
     }
 }
 
-/** convert SVG angle to number, 10th of degrees with range [0..3600] */
-bool Converter::convertAngle(sal_Int16& rAngle, std::u16string_view rString,
-        bool const isWrongOOo10thDegAngle)
+/** convert SVG angle to number in 10th of degrees */
+bool Converter::convert10thDegAngle(sal_Int16& rAngle, std::u16string_view rString,
+                                    bool const isWrongOOo10thDegAngle)
 {
     // ODF 1.1 leaves it undefined what the number means, but ODF 1.2 says it's
     // degrees, while OOo has historically used 10th of degrees :(
@@ -752,49 +879,36 @@ bool Converter::convertAngle(sal_Int16& rAngle, std::u16string_view rString,
     // degrees for now for the sake of existing OOo/LO documents, until the
     // new versions that can read "deg" suffix are widely deployed and we can
     // start to write the "deg" suffix.
-    sal_Int32 nValue(0);
-    double fValue(0.0);
-    bool bRet = ::sax::Converter::convertDouble(fValue, rString);
-    if (std::u16string_view::npos != rString.find(u"deg"))
-    {
-        nValue = fValue * 10.0;
-    }
-    else if (std::u16string_view::npos != rString.find(u"grad"))
-    {
-        nValue = (fValue * 9.0 / 10.0) * 10.0;
-    }
-    else if (std::u16string_view::npos != rString.find(u"rad"))
-    {
-        nValue = basegfx::rad2deg<10>(fValue);
-    }
-    else // no explicit unit
-    {
-        if (isWrongOOo10thDegAngle)
-        {
-            nValue = fValue; // wrong, but backward compatible with OOo/LO < 7.0
-        }
-        else
-        {
-            nValue = fValue * 10.0; // ODF 1.2
-        }
-    }
-    // limit to valid range [0..3600]
-    nValue = nValue % 3600;
-    if (nValue < 0)
-    {
-        nValue += 3600;
-    }
-    assert(0 <= nValue && nValue <= 3600);
+    double fAngle(0.0);
+    std::u16string_view aRest;
+    bool bRet = ::sax::Converter::convertDouble(fAngle, rString, &aRest);
     if (bRet)
     {
-        rAngle = sal::static_int_cast<sal_Int16>(nValue);
+        if (aRest == u"deg")
+            fAngle *= 10.0;
+        else if (aRest == u"grad")
+            fAngle *= 9.0; // 360deg = 400grad
+        else if (aRest == u"rad")
+            fAngle = basegfx::rad2deg<10>(fAngle);
+        else // no explicit unit
+        { // isWrongOOo10thDegAngle = true: nothing to do here. Wrong, but backward compatible.
+            if (!aRest.empty())
+            {
+                // Wrong unit. Don't change rAngle, rely on callers checking boolean return
+                return false;
+            }
+            if (!isWrongOOo10thDegAngle)
+                fAngle *= 10.0; // conform to ODF 1.2 and newer
+        }
+        fAngle = std::clamp<double>(basegfx::fround(fAngle), SHRT_MIN, SHRT_MAX);
+        rAngle = static_cast<sal_Int16>(fAngle);
     }
     return bRet;
 }
 
 /** convert SVG angle to number, 10th of degrees with range [0..3600] */
-bool Converter::convertAngle(sal_Int16& rAngle, std::string_view rString,
-        bool const isWrongOOo10thDegAngle)
+bool Converter::convert10thDegAngle(sal_Int16& rAngle, std::string_view rString,
+                                    bool const isWrongOOo10thDegAngle)
 {
     // ODF 1.1 leaves it undefined what the number means, but ODF 1.2 says it's
     // degrees, while OOo has historically used 10th of degrees :(
@@ -802,42 +916,85 @@ bool Converter::convertAngle(sal_Int16& rAngle, std::string_view rString,
     // degrees for now for the sake of existing OOo/LO documents, until the
     // new versions that can read "deg" suffix are widely deployed and we can
     // start to write the "deg" suffix.
-    sal_Int32 nValue(0);
-    double fValue(0.0);
-    bool bRet = ::sax::Converter::convertDouble(fValue, rString);
-    if (std::string_view::npos != rString.find("deg"))
-    {
-        nValue = fValue * 10.0;
-    }
-    else if (std::string_view::npos != rString.find("grad"))
-    {
-        nValue = (fValue * 9.0 / 10.0) * 10.0;
-    }
-    else if (std::string_view::npos != rString.find("rad"))
-    {
-        nValue = basegfx::rad2deg<10>(fValue);
-    }
-    else // no explicit unit
-    {
-        if (isWrongOOo10thDegAngle)
-        {
-            nValue = fValue; // wrong, but backward compatible with OOo/LO < 7.0
-        }
-        else
-        {
-            nValue = fValue * 10.0; // ODF 1.2
-        }
-    }
-    // limit to valid range [0..3600]
-    nValue = nValue % 3600;
-    if (nValue < 0)
-    {
-        nValue += 3600;
-    }
-    assert(0 <= nValue && nValue <= 3600);
+    double fAngle(0.0);
+    std::string_view aRest;
+    bool bRet = ::sax::Converter::convertDouble(fAngle, rString, &aRest);
     if (bRet)
     {
-        rAngle = sal::static_int_cast<sal_Int16>(nValue);
+        if (aRest == "deg")
+            fAngle *= 10.0;
+        else if (aRest == "grad")
+            fAngle *= 9.0; // 360deg = 400grad
+        else if (aRest == "rad")
+            fAngle = basegfx::rad2deg<10>(fAngle);
+        else // no explicit unit
+        { // isWrongOOo10thDegAngle = true: nothing to do here. Wrong, but backward compatible.
+            if (!aRest.empty())
+            {
+                // Wrong unit. Don't change rAngle, rely on callers checking boolean return
+                return false;
+            }
+            if (!isWrongOOo10thDegAngle)
+                fAngle *= 10.0; // conform to ODF 1.2 and newer
+        }
+        fAngle = std::clamp<double>(basegfx::fround(fAngle), SHRT_MIN, SHRT_MAX);
+        rAngle = static_cast<sal_Int16>(fAngle);
+    }
+    return bRet;
+}
+
+/** convert SVG angle to number, in degrees, range [0..360] */
+bool Converter::convertAngle(double& rAngle, std::u16string_view rString)
+{
+    // ODF uses in several places angles in data type 'angle' (18.3.1, ODF 1.3). That is a double
+    // followed by unit identifier deg, grad or rad or a unitless value in degrees.
+    // This method converts ODF 'angle' to double degrees and normalizes it to range
+    // [0..360]. Further type converting and range restriction are done by the caller.
+    std::u16string_view aRest;
+    bool bRet = ::sax::Converter::convertDouble(rAngle, rString, &aRest);
+    if (bRet)
+    {
+        //degrees
+        if (aRest == u"grad")
+            rAngle *= 0.9; // 360deg = 400grad
+        else if (aRest == u"rad")
+            rAngle = basegfx::rad2deg(rAngle);
+        else if (aRest != u"deg" && !aRest.empty())
+        {
+            // Wrong unit
+            rAngle = 0;
+            return false;
+        }
+        // degrees in range [0..360]
+        rAngle = basegfx::snapToZeroRange(rAngle, 360.0);
+    }
+    return bRet;
+}
+
+/** convert SVG angle to number, in degrees, range [0..360] */
+bool Converter::convertAngle(double& rAngle, std::string_view rString)
+{
+    // ODF uses in several places angles in data type 'angle' (18.3.1, ODF 1.3). That is a double
+    // followed by unit identifier deg, grad or rad or a unitless value in degrees.
+    // This method converts ODF 'angle' to double degrees and normalizes it to range
+    // [0..360]. Further type converting and range restriction are done by the caller.
+    std::string_view aRest;
+    bool bRet = ::sax::Converter::convertDouble(rAngle, rString, &aRest);
+    if (bRet)
+    {
+        // degrees
+        if (aRest == "grad")
+            rAngle *= 0.9; // 360deg = 400grad
+        else if (aRest == "rad")
+            rAngle = basegfx::rad2deg(rAngle);
+        else if (aRest != "deg" && !aRest.empty())
+        {
+            // Wrong unit
+            rAngle = 0;
+            return false;
+        }
+        // degrees in range [0..360]
+        rAngle = basegfx::snapToZeroRange(rAngle, 360.0);
     }
     return bRet;
 }
@@ -1016,16 +1173,13 @@ static bool convertDurationHelper(double& rfTime, V pStr)
 
     if ( bSuccess )
     {
-        if ( nDays )
-            nHours += nDays * 24;               // add the days to the hours part
-        double fHour = nHours;
-        double fMin = nMins;
-        double fSec = nSecs;
-        double fFraction = o3tl::toDouble(sDoubleStr);
-        double fTempTime = fHour / 24;
-        fTempTime += fMin / (24 * 60);
-        fTempTime += fSec / (24 * 60 * 60);
-        fTempTime += fFraction / (24 * 60 * 60);
+        // Calculate similar to ImpSvNumberInputScan::GetTimeRef: first, sum whole seconds, add
+        // second fraction, and finally, divide. Produces less rounding errors than calculating
+        // fractions of a day from seconds, minutes, hours separately, and then adding together.
+        double seconds = nDays * tools::Time::secondPerDay + nHours * tools::Time::secondPerHour
+                         + nMins * tools::Time::secondPerMinute + nSecs
+                         + o3tl::toDouble(sDoubleStr);
+        double fTempTime = seconds / tools::Time::secondPerDay;
 
         // negative duration?
         if ( bIsNegativeDuration )

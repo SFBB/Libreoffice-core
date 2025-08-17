@@ -41,6 +41,7 @@
 #endif
 
 #ifdef EMSCRIPTEN
+#include <emscripten/threading.h>
 #include <rtl/uri.hxx>
 extern void execute_browser(const char* sUrl);
 #endif
@@ -168,7 +169,7 @@ void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aPar
         //  in "mailto:foo?\n[0]\tcancel\n[1]\tOpen the file\tmailto:foo\n[2]\t
         //  Open the URL\tmailto:foo\n\nWhich did you mean? Cancelled." on
         //  stderr and SystemShellExecuteException.
-        // 1.2  If it does not match an exitsting pathname (relative to CWD):
+        // 1.2  If it does not match an existing pathname (relative to CWD):
         //  Results in the corresponding application being opened with the given
         //  document (e.g., Mail with a New Message).
         // 2  If the given URI reference does not match a supported scheme
@@ -179,7 +180,7 @@ void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aPar
         //  a non-executable regular file:  Results in opening it in TextEdit.
         // 2.3  If it matches an existing pathname (relative to CWD) pointing to
         //  a directory:  Results in opening it in Finder.
-        // 2.4  If it does not match an exitsting pathname (relative to CWD):
+        // 2.4  If it does not match an existing pathname (relative to CWD):
         //  Results in "The file /.../foo:bar does not exits." (where "/..." is
         //  the CWD) on stderr and SystemShellExecuteException.
         aBuffer.append("open");
@@ -207,12 +208,32 @@ void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aPar
              + aCommand,
             getXWeak(), 0);
     } else {
+#if defined MACOSX
+        auto usingOpen = false;
+        if (OString pathname8;
+            aCommand.convertToString(
+                &pathname8, RTL_TEXTENCODING_UTF8,
+                RTL_UNICODETOTEXT_FLAGS_UNDEFINED_ERROR | RTL_UNICODETOTEXT_FLAGS_INVALID_ERROR))
+        {
+            if (struct stat st; stat(pathname8.getStr(), &st) == 0 && S_ISDIR(st.st_mode)) {
+                usingOpen = true;
+                aBuffer.append("open -a ");
+            }
+        }
+#endif
         escapeForShell(aBuffer, OUStringToOString(aCommand, osl_getThreadTextEncoding()));
-        aBuffer.append(" ");
-        if( nFlags != 42 )
-            escapeForShell(aBuffer, OUStringToOString(aParameter, osl_getThreadTextEncoding()));
-        else
-            aBuffer.append(OUStringToOString(aParameter, osl_getThreadTextEncoding()));
+        if (!aParameter.isEmpty()) {
+            aBuffer.append(" ");
+#if defined MACOSX
+            if (usingOpen) {
+                aBuffer.append("--args ");
+            }
+#endif
+            if( nFlags != 42 )
+                escapeForShell(aBuffer, OUStringToOString(aParameter, osl_getThreadTextEncoding()));
+            else
+                aBuffer.append(OUStringToOString(aParameter, osl_getThreadTextEncoding()));
+        }
     }
 
     // Prefer DESKTOP_LAUNCH when available
@@ -259,7 +280,8 @@ void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aPar
 
     OUString sEscapedURI(rtl::Uri::encode(aCommand, rtl_UriCharClassUric,
                                           rtl_UriEncodeIgnoreEscapes, RTL_TEXTENCODING_UTF8));
-    execute_browser(sEscapedURI.toUtf8().getStr());
+    emscripten_sync_run_in_main_runtime_thread(
+        EM_FUNC_SIG_VI, execute_browser, sEscapedURI.toUtf8().getStr());
 #endif
 }
 
@@ -267,7 +289,7 @@ void SAL_CALL ShellExec::execute( const OUString& aCommand, const OUString& aPar
 
 OUString SAL_CALL ShellExec::getImplementationName(  )
 {
-    return "com.sun.star.comp.system.SystemShellExecute";
+    return u"com.sun.star.comp.system.SystemShellExecute"_ustr;
 }
 
 sal_Bool SAL_CALL ShellExec::supportsService( const OUString& ServiceName )
@@ -277,7 +299,7 @@ sal_Bool SAL_CALL ShellExec::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL ShellExec::getSupportedServiceNames(   )
 {
-    return { "com.sun.star.system.SystemShellExecute" };
+    return { u"com.sun.star.system.SystemShellExecute"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

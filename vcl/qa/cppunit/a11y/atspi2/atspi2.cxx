@@ -194,31 +194,33 @@ static AtspiStateType mapAtspiState(sal_Int64 nState)
     }
 }
 
-static AtspiRelationType mapRelationType(sal_Int16 nRelation)
+static AtspiRelationType mapRelationType(AccessibleRelationType eRelation)
 {
-    switch (nRelation)
+    switch (eRelation)
     {
-        case accessibility::AccessibleRelationType::CONTENT_FLOWS_FROM:
+        case accessibility::AccessibleRelationType_CONTENT_FLOWS_FROM:
             return ATSPI_RELATION_FLOWS_FROM;
-        case accessibility::AccessibleRelationType::CONTENT_FLOWS_TO:
+        case accessibility::AccessibleRelationType_CONTENT_FLOWS_TO:
             return ATSPI_RELATION_FLOWS_TO;
-        case accessibility::AccessibleRelationType::CONTROLLED_BY:
+        case accessibility::AccessibleRelationType_CONTROLLED_BY:
             return ATSPI_RELATION_CONTROLLED_BY;
-        case accessibility::AccessibleRelationType::CONTROLLER_FOR:
+        case accessibility::AccessibleRelationType_CONTROLLER_FOR:
             return ATSPI_RELATION_CONTROLLER_FOR;
-        case accessibility::AccessibleRelationType::LABEL_FOR:
+        case accessibility::AccessibleRelationType_DESCRIBED_BY:
+            return ATSPI_RELATION_DESCRIBED_BY;
+        case accessibility::AccessibleRelationType_LABEL_FOR:
             return ATSPI_RELATION_LABEL_FOR;
-        case accessibility::AccessibleRelationType::LABELED_BY:
+        case accessibility::AccessibleRelationType_LABELED_BY:
             return ATSPI_RELATION_LABELLED_BY;
-        case accessibility::AccessibleRelationType::MEMBER_OF:
+        case accessibility::AccessibleRelationType_MEMBER_OF:
             return ATSPI_RELATION_MEMBER_OF;
-        case accessibility::AccessibleRelationType::SUB_WINDOW_OF:
+        case accessibility::AccessibleRelationType_SUB_WINDOW_OF:
             return ATSPI_RELATION_SUBWINDOW_OF;
-        case accessibility::AccessibleRelationType::NODE_CHILD_OF:
+        case accessibility::AccessibleRelationType_NODE_CHILD_OF:
             return ATSPI_RELATION_NODE_CHILD_OF;
+        default:
+            return ATSPI_RELATION_NULL;
     }
-
-    return ATSPI_RELATION_NULL;
 }
 
 static std::string debugString(const Atspi::Accessible& pAtspiAccessible)
@@ -241,7 +243,7 @@ static void dumpAtspiTree(const Atspi::Accessible& pAcc, const int depth = 0)
     std::cout << debugString(pAcc) << std::endl;
 
     sal_Int32 i = 0;
-    for (const auto& pChild : pAcc)
+    for (const auto pChild : pAcc)
     {
         for (auto j = decltype(depth){ 0 }; j < depth; j++)
             std::cout << "  ";
@@ -323,9 +325,7 @@ void Atspi2TestTree::compareObjects(const uno::Reference<accessibility::XAccessi
         = uno::Reference<accessibility::XAccessibleExtendedAttributes>(xLOContext, uno::UNO_QUERY))
     {
         // see atktextattributes.cxx:attribute_set_new_from_extended_attributes
-        const uno::Any anyVal = xLOAttrs->getExtendedAttributes();
-        OUString sExtendedAttrs;
-        anyVal >>= sExtendedAttrs;
+        const OUString sExtendedAttrs = xLOAttrs->getExtendedAttributes();
         sal_Int32 nIndex = 0;
 
         const auto atspiAttrs = pAtspiAccessible.getAttributes();
@@ -369,8 +369,7 @@ void Atspi2TestTree::compareObjects(const uno::Reference<accessibility::XAccessi
         {
             for (auto j = decltype(nLOTargetsCount){ 0 }; j < nLOTargetsCount; j++)
             {
-                uno::Reference<accessibility::XAccessible> xLOTarget(xLORelation.TargetSet[j],
-                                                                     uno::UNO_QUERY_THROW);
+                uno::Reference<accessibility::XAccessible> xLOTarget = xLORelation.TargetSet[j];
                 compareObjects(xLOTarget, pAtspiRelation.getTarget(j), RecurseFlags::NONE);
             }
         }
@@ -469,19 +468,19 @@ CPPUNIT_TEST_FIXTURE(Atspi2TestTree, Test1)
     CPPUNIT_ASSERT(xLODocFirstChild.is());
     CPPUNIT_ASSERT(
         !getFirstRelationTargetOfType(xLODocFirstChild->getAccessibleContext(),
-                                      accessibility::AccessibleRelationType::CONTENT_FLOWS_FROM));
+                                      accessibility::AccessibleRelationType_CONTENT_FLOWS_FROM));
     const auto nLODocChildCount = xLODocContext->getAccessibleChildCount();
     const auto xLODocLastChild = xLODocContext->getAccessibleChild(nLODocChildCount - 1);
     CPPUNIT_ASSERT(xLODocLastChild.is());
     CPPUNIT_ASSERT(
         !getFirstRelationTargetOfType(xLODocLastChild->getAccessibleContext(),
-                                      accessibility::AccessibleRelationType::CONTENT_FLOWS_TO));
+                                      accessibility::AccessibleRelationType_CONTENT_FLOWS_TO));
     // END HACK
 
-    auto xContext = getWindowAccessibleContext();
-    CPPUNIT_ASSERT(xContext.is());
+    rtl::Reference<comphelper::OAccessible> pAccessible = getWindowAccessible();
+    CPPUNIT_ASSERT(pAccessible.is());
 
-    //~ dumpA11YTree(xContext);
+    //~ dumpA11YTree(pAccessible);
 
     // get the window manager frame
     auto xAtspiWindow = getDescendentAtPath(m_pAtspiApp, 0, ATSPI_ROLE_FRAME);
@@ -494,8 +493,7 @@ CPPUNIT_TEST_FIXTURE(Atspi2TestTree, Test1)
     auto xAtspiPane = getDescendentAtPath(xAtspiWindow, 0, ATSPI_ROLE_PANEL, 1, ATSPI_ROLE_PANEL, 0,
                                           ATSPI_ROLE_ROOT_PANE);
 
-    compareTrees(uno::Reference<accessibility::XAccessible>(mxWindow, uno::UNO_QUERY_THROW),
-                 xAtspiPane);
+    compareTrees(getWindowAccessible(), xAtspiPane);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

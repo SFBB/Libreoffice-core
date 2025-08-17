@@ -49,9 +49,7 @@ using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::sdbc;
-using namespace com::sun::star::sdbcx;
 using namespace com::sun::star::container;
-using namespace com::sun::star::io;
 using namespace com::sun::star::util;
 
 OStatement_Base::OStatement_Base(OConnection* _pConnection )
@@ -79,16 +77,18 @@ OStatement_Base::OStatement_Base(OConnection* _pConnection )
 
 OStatement_Base::~OStatement_Base()
 {
-    OSL_ENSURE(!m_aStatementHandle,"Sohould ne null here!");
+    OSL_ENSURE(!m_aStatementHandle,"Should be null here!");
 }
 
 void OStatement_Base::disposeResultSet()
 {
     // free the cursor if alive
-    Reference< XComponent > xComp(m_xResultSet.get(), UNO_QUERY);
+    rtl::Reference< OResultSet > xComp(m_xResultSet.get());
     if (xComp.is())
+    {
         xComp->dispose();
-    m_xResultSet.clear();
+        m_xResultSet.clear();
+    }
 }
 
 void SAL_CALL OStatement_Base::disposing()
@@ -104,7 +104,7 @@ void SAL_CALL OStatement_Base::disposing()
         m_pConnection->freeStatementHandle(m_aStatementHandle);
         m_pConnection.clear();
     }
-    OSL_ENSURE(!m_aStatementHandle,"Sohould ne null here!");
+    OSL_ENSURE(!m_aStatementHandle,"Should be null here!");
 
     OStatement_BASE::disposing();
 }
@@ -163,7 +163,7 @@ void SAL_CALL OStatement_Base::cancel(  )
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
-    N3SQLCancel(m_aStatementHandle);
+    functions().Cancel(m_aStatementHandle);
 }
 
 
@@ -197,7 +197,7 @@ void OStatement_Base::reset()
     }
     if(m_aStatementHandle)
     {
-        THROW_SQL(N3SQLFreeStmt(m_aStatementHandle, SQL_CLOSE));
+        THROW_SQL(functions().FreeStmt(m_aStatementHandle, SQL_CLOSE));
     }
 }
 
@@ -210,8 +210,7 @@ void OStatement_Base::clearMyResultSet()
 
     try
     {
-        Reference<XCloseable> xCloseable(
-            m_xResultSet.get(), css::uno::UNO_QUERY);
+        rtl::Reference<OResultSet> xCloseable(m_xResultSet.get());
         if ( xCloseable.is() )
             xCloseable->close();
     }
@@ -229,7 +228,7 @@ SQLLEN OStatement_Base::getRowCount()
     SQLLEN numRows = 0;
 
     try {
-        THROW_SQL(N3SQLRowCount(m_aStatementHandle,&numRows));
+        THROW_SQL(functions().RowCount(m_aStatementHandle,&numRows));
     }
     catch (const SQLException&)
     {
@@ -301,7 +300,7 @@ sal_Int32 OStatement_Base::getColumnCount()
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
 
     try {
-        THROW_SQL(N3SQLNumResultCols(m_aStatementHandle,&numCols));
+        THROW_SQL(functions().NumResultCols(m_aStatementHandle,&numCols));
     }
     catch (const SQLException&)
     {
@@ -315,9 +314,6 @@ sal_Bool SAL_CALL OStatement_Base::execute( const OUString& sql )
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
     m_sSqlStatement = sql;
-
-
-    OString aSql(OUStringToOString(sql,getOwnConnection()->getTextEncoding()));
 
     bool hasResultSet = false;
 
@@ -334,15 +330,24 @@ sal_Bool SAL_CALL OStatement_Base::execute( const OUString& sql )
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
 
     try {
-        THROW_SQL(N3SQLExecDirect(m_aStatementHandle, reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(aSql.getStr())), aSql.getLength()));
+        if (bUseWChar && functions().has(ODBC3SQLFunctionId::ExecDirectW))
+        {
+            SQLWChars directSQL(sql);
+            THROW_SQL(functions().ExecDirectW(m_aStatementHandle, directSQL.get(), directSQL.cch()));
+        }
+        else
+        {
+            SQLChars directSQL(sql, getOwnConnection()->getTextEncoding());
+            THROW_SQL(functions().ExecDirect(m_aStatementHandle, directSQL.get(), directSQL.cch()));
+        }
     }
-    catch (const SQLWarning&) {
-
+    catch (const SQLWarning&)
+    {
         //TODO: Save pointer to warning and save with ResultSet
         // object once it is created.
     }
 
-    // Now determine if there is a result set associated with
+        // Now determine if there is a result set associated with
     // the SQL statement that was executed.  Get the column
     // count, and if it is not zero, there is a result set.
 
@@ -358,7 +363,7 @@ sal_Bool SAL_CALL OStatement_Base::execute( const OUString& sql )
 // getResultSet returns the current result as a ResultSet.  It
 // returns NULL if the current result is not a ResultSet.
 
-Reference< XResultSet > OStatement_Base::getResultSet(bool checkCount)
+rtl::Reference< OResultSet > OStatement_Base::getResultSet(bool checkCount)
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
@@ -406,14 +411,14 @@ template < typename T, SQLINTEGER BufferLength > T OStatement_Base::getStmtOptio
 {
     T result (0);
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
-    N3SQLGetStmtAttr(m_aStatementHandle, fOption, &result, BufferLength, nullptr);
+    functions().GetStmtAttr(m_aStatementHandle, fOption, &result, BufferLength, nullptr);
     return result;
 }
 template < typename T, SQLINTEGER BufferLength > SQLRETURN OStatement_Base::setStmtOption (SQLINTEGER fOption, T value) const
 {
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
     SQLPOINTER sv = reinterpret_cast<SQLPOINTER>(value);
-    return N3SQLSetStmtAttr(m_aStatementHandle, fOption, sv, BufferLength);
+    return functions().SetStmtAttr(m_aStatementHandle, fOption, sv, BufferLength);
 }
 
 
@@ -423,15 +428,15 @@ Reference< XResultSet > SAL_CALL OStatement_Base::executeQuery( const OUString& 
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
 
-    Reference< XResultSet > xRS;
+    rtl::Reference< OResultSet > xRS;
 
     // Execute the statement.  If execute returns true, a result
     // set exists.
 
     if (execute (sql))
     {
-        xRS = getResultSet (false);
-        m_xResultSet = xRS;
+        xRS = getResultSet(false);
+        m_xResultSet = xRS.get();
     }
     else
     {
@@ -472,28 +477,31 @@ Sequence< sal_Int32 > SAL_CALL OStatement::executeBatch(  )
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
-    OStringBuffer aBatchSql;
     sal_Int32 nLen = m_aBatchVector.size();
 
-    for (auto const& elem : m_aBatchVector)
-    {
-        aBatchSql.append(OUStringToOString(elem,getOwnConnection()->getTextEncoding())
-            + ";");
-    }
-
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
-    auto s = aBatchSql.makeStringAndClear();
-    THROW_SQL(N3SQLExecDirect(m_aStatementHandle, reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(s.getStr())), s.getLength()));
 
+    OUStringBuffer uSql;
+    comphelper::intersperse(m_aBatchVector.begin(), m_aBatchVector.end(), comphelper::OUStringBufferAppender(uSql), u";");
+    if (bUseWChar && functions().has(ODBC3SQLFunctionId::ExecDirectW))
+    {
+        SQLWChars statement(uSql.makeStringAndClear());
+        THROW_SQL(functions().ExecDirectW(m_aStatementHandle, statement.get(), statement.cch()));
+    }
+    else
+    {
+        SQLChars statement(uSql, getOwnConnection()->getTextEncoding());
+        THROW_SQL(functions().ExecDirect(m_aStatementHandle, statement.get(), statement.cch()));
+    }
     Sequence< sal_Int32 > aRet(nLen);
     sal_Int32* pArray = aRet.getArray();
     for(sal_Int32 j=0;j<nLen;++j)
     {
-        SQLRETURN nError = N3SQLMoreResults(m_aStatementHandle);
+        SQLRETURN nError = functions().MoreResults(m_aStatementHandle);
         if(nError == SQL_SUCCESS)
         {
             SQLLEN nRowCount=0;
-            N3SQLRowCount(m_aStatementHandle,&nRowCount);
+            functions().RowCount(m_aStatementHandle,&nRowCount);
             pArray[j] = nRowCount;
         }
     }
@@ -535,8 +543,9 @@ Reference< XResultSet > SAL_CALL OStatement_Base::getResultSet(  )
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
 
-    m_xResultSet = getResultSet(true);
-    return m_xResultSet;
+    rtl::Reference<OResultSet> xRS = getResultSet(true);
+    m_xResultSet = xRS.get();
+    return xRS;
 }
 
 
@@ -575,7 +584,7 @@ sal_Bool SAL_CALL OStatement_Base::getMoreResults(  )
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
 
     try {
-        hasResultSet = N3SQLMoreResults(m_aStatementHandle) == SQL_SUCCESS;
+        hasResultSet = functions().MoreResults(m_aStatementHandle) == SQL_SUCCESS;
     }
     catch (const SQLWarning &ex) {
 
@@ -704,10 +713,19 @@ sal_Int64 OStatement_Base::getMaxFieldSize() const
 OUString OStatement_Base::getCursorName() const
 {
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
-    SQLCHAR pName[258];
     SQLSMALLINT nRealLen = 0;
-    N3SQLGetCursorName(m_aStatementHandle,pName,256,&nRealLen);
-    return OUString::createFromAscii(reinterpret_cast<char*>(pName));
+    if (bUseWChar && functions().has(ODBC3SQLFunctionId::GetCursorNameW))
+    {
+        SQLWCHAR pName[258]{};
+        functions().GetCursorNameW(m_aStatementHandle, pName, 256, &nRealLen);
+        return toUString(pName, nRealLen);
+    }
+    else
+    {
+        SQLCHAR pName[258]{};
+        functions().GetCursorName(m_aStatementHandle, pName, 256, &nRealLen);
+        return toUString(pName);
+    }
 }
 
 void OStatement_Base::setQueryTimeOut(sal_Int64 seconds)
@@ -831,11 +849,19 @@ void OStatement_Base::setMaxFieldSize(sal_Int64 _par0)
     setStmtOption<SQLULEN, SQL_IS_UINTEGER>(SQL_ATTR_MAX_LENGTH, _par0);
 }
 
-void OStatement_Base::setCursorName(std::u16string_view _par0)
+void OStatement_Base::setCursorName(const OUString& _par0)
 {
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
-    OString aName(OUStringToOString(_par0,getOwnConnection()->getTextEncoding()));
-    N3SQLSetCursorName(m_aStatementHandle, reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(aName.getStr())), static_cast<SQLSMALLINT>(aName.getLength()));
+    if (bUseWChar && functions().has(ODBC3SQLFunctionId::SetCursorNameW))
+    {
+        SQLWChars name(_par0);
+        functions().SetCursorNameW(m_aStatementHandle, name.get(), name.cch());
+    }
+    else
+    {
+        SQLChars name(_par0, getOwnConnection()->getTextEncoding());
+        functions().SetCursorName(m_aStatementHandle, name.get(), name.cch());
+    }
 }
 
 bool OStatement_Base::isUsingBookmarks() const
@@ -1079,7 +1105,7 @@ void OStatement_Base::getFastPropertyValue(Any& rValue,sal_Int32 nHandle) const
     }
 }
 
-IMPLEMENT_SERVICE_INFO(OStatement,"com.sun.star.sdbcx.OStatement","com.sun.star.sdbc.Statement");
+IMPLEMENT_SERVICE_INFO(OStatement,u"com.sun.star.sdbcx.OStatement"_ustr,u"com.sun.star.sdbc.Statement"_ustr);
 
 void SAL_CALL OStatement_Base::acquire() noexcept
 {

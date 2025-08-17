@@ -47,7 +47,6 @@ using namespace ::com::sun::star;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::frame;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::util;
 
 namespace framework
@@ -57,7 +56,7 @@ namespace framework
 
 OUString SAL_CALL LanguageSelectionMenuController::getImplementationName()
 {
-    return "com.sun.star.comp.framework.LanguageSelectionMenuController";
+    return u"com.sun.star.comp.framework.LanguageSelectionMenuController"_ustr;
 }
 
 sal_Bool SAL_CALL LanguageSelectionMenuController::supportsService( const OUString& sServiceName )
@@ -130,7 +129,7 @@ void SAL_CALL LanguageSelectionMenuController::statusChanged( const FeatureState
 }
 
 // XPopupMenuController
-void LanguageSelectionMenuController::impl_setPopupMenu()
+void LanguageSelectionMenuController::impl_setPopupMenu(std::unique_lock<std::mutex>& /*rGuard*/)
 {
     Reference< XDispatchProvider > xDispatchProvider( m_xFrame, UNO_QUERY );
 

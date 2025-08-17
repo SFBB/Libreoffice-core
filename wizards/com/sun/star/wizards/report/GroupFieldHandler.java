@@ -38,8 +38,8 @@ public class GroupFieldHandler extends FieldSelection
     public GroupFieldHandler(IReportDocument _CurReportDocument, WizardDialog _CurUnoDialog)
     {
         super(_CurUnoDialog, ReportWizard.SOGROUPPAGE, 95, 27, 210, 127,
-                _CurUnoDialog.m_oResource.getResText("RID_REPORT_19"),
-                _CurUnoDialog.m_oResource.getResText("RID_REPORT_50"), 34340, false);
+                _CurUnoDialog.getResource().getResText("RID_REPORT_19"),
+                _CurUnoDialog.getResource().getResText("RID_REPORT_50"), 34340, false);
 
         try
         {
@@ -48,7 +48,7 @@ public class GroupFieldHandler extends FieldSelection
             CurUnoDialog.setControlProperty("lstFields_2", "MultiSelection", Boolean.FALSE);
             CurUnoDialog.setControlProperty("lstSelFields_2", "MultiSelection", Boolean.FALSE);
             addFieldSelectionListener(new FieldSelectionListener());
-            String sNote = ReportWizard.getBlindTextNote(_CurReportDocument, _CurUnoDialog.m_oResource);
+            String sNote = ReportWizard.getBlindTextNote(_CurReportDocument, _CurUnoDialog.getResource());
             CurUnoDialog.insertControlModel("com.sun.star.awt.UnoControlFixedTextModel", "lblBlindTextNote_1",
                     new String[]
                     {
@@ -67,7 +67,7 @@ public class GroupFieldHandler extends FieldSelection
 
     private boolean isGroupField(String _FieldName)
     {
-        return (JavaTools.FieldInList(CurDBMetaData.GroupFieldNames, _FieldName) != -1);
+        return (JavaTools.FieldInList(CurDBMetaData.getGroupFieldNames(), _FieldName) != -1);
     }
 
     public void initialize()
@@ -112,7 +112,7 @@ public class GroupFieldHandler extends FieldSelection
     {
         String[] GroupFieldNames = new String[GroupFieldVector.size()];
         GroupFieldVector.toArray(GroupFieldNames);
-        CurDBMetaData.GroupFieldNames = GroupFieldNames;
+        CurDBMetaData.setGroupFieldNames(GroupFieldNames);
     }
     // @Override
     @Override

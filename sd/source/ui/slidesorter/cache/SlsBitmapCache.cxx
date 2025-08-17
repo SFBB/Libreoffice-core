@@ -17,12 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <officecfg/Office/Impress.hxx>
+
 #include <memory>
 #include <unordered_map>
 #include "SlsBitmapCache.hxx"
 #include "SlsCacheCompactor.hxx"
 #include "SlsBitmapCompressor.hxx"
-#include "SlsCacheConfiguration.hxx"
 
 #include <sal/log.hxx>
 
@@ -126,9 +127,7 @@ BitmapCache::BitmapCache ()
       mnMaximalNormalCacheSize(MAXIMAL_CACHE_SIZE),
       mbIsFull(false)
 {
-    Any aCacheSize (CacheConfiguration::Instance()->GetValue("CacheSize"));
-    if (aCacheSize.has<sal_Int32>())
-        aCacheSize >>= mnMaximalNormalCacheSize;
+    mnMaximalNormalCacheSize = officecfg::Office::Impress::MultiPaneGUI::SlideSorterBar::PreviewCache::CacheSize::get();
 
     mpCacheCompactor = CacheCompactor::Create(*this,mnMaximalNormalCacheSize);
 }
@@ -505,7 +504,7 @@ void BitmapCache::CacheEntry::Compress (const std::shared_ptr<BitmapCompressor>&
 
     if (mpReplacement == nullptr)
     {
-        mpReplacement = rpCompressor->Compress(maPreview);
+        mpReplacement = rpCompressor->Compress(Bitmap(maPreview));
 
 #ifdef DEBUG_SD_SLSBITMAPCACHE
         sal_uInt32 nOldSize (maPreview.GetSizeBytes());

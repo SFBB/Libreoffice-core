@@ -168,8 +168,8 @@ std::unique_ptr<sdr::contact::ViewContact> E3dScene::CreateObjectSpecificViewCon
 
 E3dScene::E3dScene(SdrModel& rSdrModel)
 :   E3dObject(rSdrModel),
-    aCamera(basegfx::B3DPoint(0.0, 0.0, 4.0), basegfx::B3DPoint()),
-    bDrawOnlySelected(false),
+    m_aCamera(basegfx::B3DPoint(0.0, 0.0, 4.0), basegfx::B3DPoint()),
+    m_bDrawOnlySelected(false),
     mbSkipSettingDirty(false)
 {
     // Set defaults
@@ -178,8 +178,8 @@ E3dScene::E3dScene(SdrModel& rSdrModel)
 
 E3dScene::E3dScene(SdrModel& rSdrModel, E3dScene const & rSource)
 :   E3dObject(rSdrModel, rSource),
-    aCamera(basegfx::B3DPoint(0.0, 0.0, 4.0), basegfx::B3DPoint()),
-    bDrawOnlySelected(false),
+    m_aCamera(basegfx::B3DPoint(0.0, 0.0, 4.0), basegfx::B3DPoint()),
+    m_bDrawOnlySelected(false),
     mbSkipSettingDirty(false)
 {
     // Set defaults
@@ -197,8 +197,8 @@ E3dScene::E3dScene(SdrModel& rSdrModel, E3dScene const & rSource)
     }
 
     // copy local data
-    aCamera = rSource.aCamera;
-    aCameraSet = rSource.aCameraSet;
+    m_aCamera = rSource.m_aCamera;
+    m_aCameraSet = rSource.m_aCameraSet;
     static_cast<sdr::properties::E3dSceneProperties&>(GetProperties()).SetSceneItemsFromCamera();
     InvalidateBoundVolume();
     RebuildLists();
@@ -208,30 +208,25 @@ E3dScene::E3dScene(SdrModel& rSdrModel, E3dScene const & rSource)
 
 void E3dScene::SetDefaultAttributes()
 {
-    // For WIN95/NT turn off the FP-Exceptions
-#if defined(_WIN32)
-    _control87( _MCW_EM, _MCW_EM );
-#endif
-
     // Set defaults
-    aCamera.SetViewWindow(-2, -2, 4, 4);
-    aCameraSet.SetDeviceRectangle(-2, 2, -2, 2);
-    aCamera.SetDeviceWindow(tools::Rectangle(0, 0, 10, 10));
+    m_aCamera.SetViewWindow(-2, -2, 4, 4);
+    m_aCameraSet.SetDeviceRectangle(-2, 2, -2, 2);
+    m_aCamera.SetDeviceWindow(tools::Rectangle(0, 0, 10, 10));
     tools::Rectangle aRect(0, 0, 10, 10);
-    aCameraSet.SetViewportRectangle(aRect);
+    m_aCameraSet.SetViewportRectangle(aRect);
 
     // set defaults for Camera from ItemPool
-    aCamera.SetProjection(GetPerspective());
-    basegfx::B3DPoint aActualPosition(aCamera.GetPosition());
+    m_aCamera.SetProjection(GetPerspective());
+    basegfx::B3DPoint aActualPosition(m_aCamera.GetPosition());
     double fNew = GetDistance();
 
     if(fabs(fNew - aActualPosition.getZ()) > 1.0)
     {
-        aCamera.SetPosition( basegfx::B3DPoint( aActualPosition.getX(), aActualPosition.getY(), fNew) );
+        m_aCamera.SetPosition( basegfx::B3DPoint( aActualPosition.getX(), aActualPosition.getY(), fNew) );
     }
 
     fNew = GetFocalLength() / 100.0;
-    aCamera.SetFocalLength(fNew);
+    m_aCamera.SetFocalLength(fNew);
 }
 
 E3dScene::~E3dScene()
@@ -317,8 +312,8 @@ void E3dScene::NbcSetSnapRect(const tools::Rectangle& rRect)
 {
     SetBoundAndSnapRectsDirty();
     E3dObject::NbcSetSnapRect(rRect);
-    aCamera.SetDeviceWindow(rRect);
-    aCameraSet.SetViewportRectangle(rRect);
+    m_aCamera.SetDeviceWindow(rRect);
+    m_aCameraSet.SetViewportRectangle(rRect);
 
     ImpCleanup3DDepthMapper();
 }
@@ -343,7 +338,7 @@ void E3dScene::NbcResize(const Point& rRef, const Fraction& rXFact,
 
 void E3dScene::SetCamera(const Camera3D& rNewCamera)
 {
-    aCamera = rNewCamera;
+    m_aCamera = rNewCamera;
     static_cast<sdr::properties::E3dSceneProperties&>(GetProperties()).SetSceneItemsFromCamera();
 
     SetBoundAndSnapRectsDirty();
@@ -352,17 +347,17 @@ void E3dScene::SetCamera(const Camera3D& rNewCamera)
     GetCameraSet().SetRatio(0.0);
 
     // Set Imaging geometry
-    basegfx::B3DPoint aVRP(aCamera.GetViewPoint());
-    basegfx::B3DVector aVPN(aVRP - aCamera.GetVRP());
-    basegfx::B3DVector aVUV(aCamera.GetVUV());
+    basegfx::B3DPoint aVRP(m_aCamera.GetViewPoint());
+    basegfx::B3DVector aVPN(aVRP - m_aCamera.GetVRP());
+    basegfx::B3DVector aVUV(m_aCamera.GetVUV());
 
     // use SetViewportValues() to set VRP, VPN and VUV as vectors, too.
     // Else these values would not be exported/imported correctly.
     GetCameraSet().SetViewportValues(aVRP, aVPN, aVUV);
 
     // Set perspective
-    GetCameraSet().SetPerspective(aCamera.GetProjection() == ProjectionType::Perspective);
-    GetCameraSet().SetViewportRectangle(aCamera.GetDeviceWindow());
+    GetCameraSet().SetPerspective(m_aCamera.GetProjection() == ProjectionType::Perspective);
+    GetCameraSet().SetViewportRectangle(m_aCamera.GetDeviceWindow());
 
     ImpCleanup3DDepthMapper();
 }
@@ -401,7 +396,8 @@ void E3dScene::removeAllNonSelectedObjects()
 {
     E3DModifySceneSnapRectUpdater aUpdater(this);
 
-    for(size_t a = 0; a < GetObjCount(); ++a)
+    size_t a = 0;
+    while (a < GetObjCount())
     {
         SdrObject* pObj = GetObj(a);
 
@@ -434,9 +430,10 @@ void E3dScene::removeAllNonSelectedObjects()
             if(bRemoveObject)
             {
                 NbcRemoveObject(pObj->GetOrdNum());
-                a--;
+                continue;
             }
         }
+        ++a;
     }
 }
 
@@ -502,7 +499,7 @@ void E3dScene::SaveGeoData(SdrObjGeoData& rGeo) const
 {
     E3dObject::SaveGeoData (rGeo);
 
-    static_cast<E3DSceneGeoData &>(rGeo).aCamera = aCamera;
+    static_cast<E3DSceneGeoData &>(rGeo).aCamera = m_aCamera;
 }
 
 void E3dScene::RestoreGeoData(const SdrObjGeoData& rGeo)
@@ -636,7 +633,7 @@ void E3dScene::RecalcSnapRect()
     {
         // The Scene is used as a 2D-Object, take the SnapRect from the
         // 2D Display settings
-        maSnapRect = pScene->aCamera.GetDeviceWindow();
+        maSnapRect = pScene->m_aCamera.GetDeviceWindow();
     }
     else
     {
@@ -749,7 +746,8 @@ void E3dScene::NbcInsertObject(SdrObject* pObj, size_t nPos)
     else
     {
         // No 3D object, inserted a page in place in a scene ...
-        getSdrObjectFromSdrObjList()->getSdrPageFromSdrObject()->InsertObject(pObj, nPos);
+        if (SdrPage* pPage = getSdrObjectFromSdrObjList()->getSdrPageFromSdrObject())
+            pPage->InsertObject(pObj, nPos);
     }
 }
 
@@ -768,7 +766,8 @@ void E3dScene::InsertObject(SdrObject* pObj, size_t nPos)
     else
     {
         // No 3D object, inserted a page in place in a scene ...
-        getSdrObjectFromSdrObjList()->getSdrPageFromSdrObject()->InsertObject(pObj, nPos);
+        if (SdrPage* pPage = getSdrObjectFromSdrObjList()->getSdrPageFromSdrObject())
+            pPage->InsertObject(pObj, nPos);
     }
 }
 

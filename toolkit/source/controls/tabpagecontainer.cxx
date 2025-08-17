@@ -38,7 +38,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::view;
 using ::com::sun::star::awt::tab::XTabPageModel;
 
 constexpr OUStringLiteral WRONG_TYPE_EXCEPTION = u"Type must be css::awt::tab::XTabPageModel!";
@@ -61,7 +60,7 @@ UnoControlTabPageContainerModel::UnoControlTabPageContainerModel( const Referenc
 
 OUString UnoControlTabPageContainerModel::getServiceName()
 {
-    return "com.sun.star.awt.tab.UnoControlTabPageContainerModel";
+    return u"com.sun.star.awt.tab.UnoControlTabPageContainerModel"_ustr;
 }
 
 uno::Any UnoControlTabPageContainerModel::ImplGetDefaultValue( sal_uInt16 nPropId ) const
@@ -69,7 +68,7 @@ uno::Any UnoControlTabPageContainerModel::ImplGetDefaultValue( sal_uInt16 nPropI
     switch(nPropId)
     {
         case BASEPROPERTY_DEFAULTCONTROL:
-            return uno::Any( OUString("com.sun.star.awt.tab.UnoControlTabPageContainer") );
+            return uno::Any( u"com.sun.star.awt.tab.UnoControlTabPageContainer"_ustr );
         case BASEPROPERTY_BORDER:
             return uno::Any(sal_Int16(0));              // No Border
         default:
@@ -96,7 +95,7 @@ namespace
         try
         {
             Reference< XPropertySetInfo > const xPSI( i_parentModel->getPropertySetInfo() );
-            bool const isGeometryControlModel = xPSI.is() && xPSI->hasPropertyByName("PositionX");
+            bool const isGeometryControlModel = xPSI.is() && xPSI->hasPropertyByName(u"PositionX"_ustr);
 
             Reference< XInterface > xInstance;
             if ( isGeometryControlModel )
@@ -214,7 +213,7 @@ UnoControlTabPageContainer::UnoControlTabPageContainer( const uno::Reference< un
 
 OUString UnoControlTabPageContainer::GetComponentServiceName() const
 {
-    return "TabPageContainer";
+    return u"TabPageContainer"_ustr;
 }
 
 void SAL_CALL UnoControlTabPageContainer::dispose(  )
@@ -305,7 +304,7 @@ void UnoControlTabPageContainer::updateFromModel()
 {
     UnoControlTabPageContainer_Base::updateFromModel();
     if (!getPeer().is())
-        throw RuntimeException("No peer for tabpage container!");
+        throw RuntimeException(u"No peer for tabpage container!"_ustr);
     Reference< XContainerListener > xContainerListener( getPeer(), UNO_QUERY );
     ENSURE_OR_RETURN_VOID( xContainerListener.is(), "UnoListBoxControl::updateFromModel: a peer which is no ItemListListener?!" );
 
@@ -324,7 +323,7 @@ void SAL_CALL UnoControlTabPageContainer::addControl( const OUString& Name, cons
     SolarMutexGuard aSolarGuard;
     ControlContainerBase::addControl(Name,Control);
     if (!getPeer().is())
-        throw RuntimeException("No peer for tabpage container!");
+        throw RuntimeException(u"No peer for tabpage container!"_ustr);
     Reference< XContainerListener > xContainerListener( getPeer(), UNO_QUERY );
     ContainerEvent aEvent;
     aEvent.Source = getModel();

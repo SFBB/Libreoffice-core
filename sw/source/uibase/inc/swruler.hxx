@@ -14,11 +14,11 @@
 #include <vcl/timer.hxx>
 #include <vcl/virdev.hxx>
 
+#include <SidebarWindowsTypes.hxx>
+
 class SwViewShell;
-class View;
 namespace vcl { class Window; }
 class SwEditWin;
-namespace tools { class JsonWriter; }
 
 /**
  * An horizontal ruler with a control for comment panel visibility for Writer.
@@ -43,23 +43,25 @@ public:
      * \param rRect ignored
      */
     virtual void Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
-    void CreateJsonNotification(tools::JsonWriter& rJsonWriter);
 
 private:
     SwViewShell * mpViewShell;     //< Shell to check if there is any comments on doc and their visibility
     VclPtr<SwEditWin> mpSwWin;         //< Used to get SwView to change the SideBar visibility
+    /// User is currently dragging the thing
+    bool        mbIsDrag;
     bool        mbIsHighlighted; //< If comment control is highlighted (mouse is over it)
     Timer       maFadeTimer;     //< Timer for high/'low'light fading
     int         mnFadeRate;      //< From 0 to 100. 0 means not highlighted.
     ScopedVclPtr<VirtualDevice> maVirDev;      //< VirtualDevice of this window. Just for convenience.
 
-    void NotifyKit();
     /**
      * Callback function to handle a mouse button down event.
      *
      * When on comment control, it toggles the comment panel visibility.
      */
     virtual void MouseButtonDown( const MouseEvent& rMEvt ) override;
+
+    virtual void MouseButtonUp( const MouseEvent& rMEvt ) override;
     /**
      * Callback function to handle a mouse move event.
      *
@@ -79,6 +81,10 @@ private:
      * current cursor position.
      */
     virtual void Update() override;
+
+    sw::sidebarwindows::SidebarPosition GetSidebarPosition();
+
+    tools::Rectangle GetDragArea();
 
     /**
      * Get the rectangle area that should be used to draw the comment control.

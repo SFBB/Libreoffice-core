@@ -112,26 +112,26 @@ bool GIFWriter::WriteGIF(const Graphic& rGraphic, FilterConfigItem* pFilterConfi
     m_pAcc.reset();
 
     if ( pFilterConfigItem )
-        nInterlaced = pFilterConfigItem->ReadInt32( "Interlaced", 0 );
+        nInterlaced = pFilterConfigItem->ReadInt32( u"Interlaced"_ustr, 0 );
 
     m_rGIF.SetEndian( SvStreamEndian::LITTLE );
 
     if( rGraphic.IsAnimated() )
     {
-        const Animation& rAnimation = rGraphic.GetAnimation();
+        const Animation aAnimation = rGraphic.GetAnimation();
 
         WriteSignature( true );
 
         if ( bStatus )
         {
-            WriteGlobalHeader( rAnimation.GetDisplaySizePixel() );
+            WriteGlobalHeader( aAnimation.GetDisplaySizePixel() );
 
             if( bStatus )
             {
-                WriteLoopExtension( rAnimation );
+                WriteLoopExtension( aAnimation );
 
                 if( bStatus )
-                    WriteAnimation( rAnimation );
+                    WriteAnimation( aAnimation );
             }
         }
     }

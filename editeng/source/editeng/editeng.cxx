@@ -67,6 +67,7 @@
 #include <rtl/strbuf.hxx>
 #include <sal/log.hxx>
 #include <vcl/help.hxx>
+#include <tools/lazydelete.hxx>
 #include <vcl/transfer.hxx>
 #include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
@@ -81,440 +82,271 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::linguistic2;
 
 
-#if (OSL_DEBUG_LEVEL > 1) || defined ( DBG_UTIL )
-static bool bDebugPaint = false;
-#endif
-
-
-static rtl::Reference<SfxItemPool> pGlobalPool;
-
-EditEngine::EditEngine( SfxItemPool* pItemPool )
+ImpEditEngine& EditEngine::getImpl() const
 {
-    pImpEditEngine.reset( new ImpEditEngine( this, pItemPool ) );
+    return *mpImpEditEngine;
 }
 
-EditEngine::~EditEngine()
+EditEngine::EditEngine(SfxItemPool* pItemPool)
+    : mpImpEditEngine(new ImpEditEngine(this, pItemPool))
 {
 }
+
+EditEngine::~EditEngine() = default;
 
 void EditEngine::EnableUndo( bool bEnable )
 {
-    pImpEditEngine->EnableUndo( bEnable );
+    getImpl().EnableUndo(bEnable);
 }
 
 bool EditEngine::IsUndoEnabled() const
 {
-    return pImpEditEngine->IsUndoEnabled();
+    return getImpl().IsUndoEnabled();
 }
 
 bool EditEngine::IsInUndo() const
 {
-    return pImpEditEngine->IsInUndo();
+    return getImpl().IsInUndo();
 }
 
 EditUndoManager& EditEngine::GetUndoManager()
 {
-    return pImpEditEngine->GetUndoManager();
+    return getImpl().GetUndoManager();
 }
 
 EditUndoManager* EditEngine::SetUndoManager(EditUndoManager* pNew)
 {
-    return pImpEditEngine->SetUndoManager(pNew);
+    return getImpl().SetUndoManager(pNew);
 }
 
 void EditEngine::UndoActionStart( sal_uInt16 nId )
 {
-    DBG_ASSERT( !pImpEditEngine->IsInUndo(), "Calling UndoActionStart in Undomode!" );
-    if ( !pImpEditEngine->IsInUndo() )
-        pImpEditEngine->UndoActionStart( nId );
+    getImpl().UndoActionStart(nId);
 }
 
 void EditEngine::UndoActionStart(sal_uInt16 nId, const ESelection& rSel)
 {
-    pImpEditEngine->UndoActionStart(nId, rSel);
+    getImpl().UndoActionStart(nId, rSel);
 }
 
 void EditEngine::UndoActionEnd()
 {
-    DBG_ASSERT( !pImpEditEngine->IsInUndo(), "Calling UndoActionEnd in Undomode!" );
-    if ( !pImpEditEngine->IsInUndo() )
-        pImpEditEngine->UndoActionEnd();
+    getImpl().UndoActionEnd();
 }
 
 bool EditEngine::HasTriedMergeOnLastAddUndo() const
 {
-    return pImpEditEngine->mbLastTryMerge;
+    return getImpl().mbLastTryMerge;
 }
 
 void EditEngine::SetRefDevice( OutputDevice* pRefDev )
 {
-    pImpEditEngine->SetRefDevice( pRefDev );
+    getImpl().SetRefDevice(pRefDev);
 }
 
 OutputDevice* EditEngine::GetRefDevice() const
 {
-    return pImpEditEngine->GetRefDevice();
+    return getImpl().GetRefDevice();
 }
 
 void EditEngine::SetRefMapMode( const MapMode& rMapMode )
 {
-    pImpEditEngine->SetRefMapMode( rMapMode );
+    getImpl().SetRefMapMode(rMapMode);
 }
 
 MapMode const & EditEngine::GetRefMapMode() const
 {
-    return pImpEditEngine->GetRefMapMode();
+    return getImpl().GetRefMapMode();
 }
 
 void EditEngine::SetBackgroundColor( const Color& rColor )
 {
-    pImpEditEngine->SetBackgroundColor( rColor );
+    getImpl().SetBackgroundColor(rColor);
 }
 
 Color const & EditEngine::GetBackgroundColor() const
 {
-    return pImpEditEngine->GetBackgroundColor();
+    return getImpl().GetBackgroundColor();
 }
 
 Color EditEngine::GetAutoColor() const
 {
-    return pImpEditEngine->GetAutoColor();
+    return getImpl().GetAutoColor();
 }
 
 void EditEngine::EnableAutoColor( bool b )
 {
-    pImpEditEngine->EnableAutoColor( b );
+    getImpl().EnableAutoColor( b );
 }
 
 void EditEngine::ForceAutoColor( bool b )
 {
-    pImpEditEngine->ForceAutoColor( b );
+    getImpl().ForceAutoColor( b );
 }
 
 bool EditEngine::IsForceAutoColor() const
 {
-    return pImpEditEngine->IsForceAutoColor();
+    return getImpl().IsForceAutoColor();
 }
 
 const SfxItemSet& EditEngine::GetEmptyItemSet() const
 {
-    return pImpEditEngine->GetEmptyItemSet();
+    return getImpl().GetEmptyItemSet();
 }
 
-void EditEngine::Draw( OutputDevice& rOutDev, const tools::Rectangle& rOutRect )
+void EditEngine::DrawText_ToPosition( OutputDevice& rOutDev, const Point& rStartPos, Degree10 nOrientation )
 {
-    Draw( rOutDev, rOutRect, Point( 0, 0 ) );
+    getImpl().DrawText_ToPosition(rOutDev, rStartPos, nOrientation);
 }
 
-void EditEngine::Draw( OutputDevice& rOutDev, const Point& rStartPos, Degree10 nOrientation )
+void EditEngine::DrawText_ToRectangle( OutputDevice& rOutDev, const tools::Rectangle& rOutRect, const Point& rStartDocPos, bool bHardClip )
 {
-    // Create with 2 points, as with positive points it will end up with
-    // LONGMAX as Size, Bottom and Right in the range > LONGMAX.
-    tools::Rectangle aBigRect( -0x3FFFFFFF, -0x3FFFFFFF, 0x3FFFFFFF, 0x3FFFFFFF );
-    if( rOutDev.GetConnectMetaFile() )
-        rOutDev.Push();
-    Point aStartPos( rStartPos );
-    if ( IsEffectivelyVertical() )
-    {
-        aStartPos.AdjustX(GetPaperSize().Width() );
-        rStartPos.RotateAround(aStartPos, nOrientation);
-    }
-    pImpEditEngine->Paint(rOutDev, aBigRect, aStartPos, false, nOrientation);
-    if( rOutDev.GetConnectMetaFile() )
-        rOutDev.Pop();
-}
-
-void EditEngine::Draw( OutputDevice& rOutDev, const tools::Rectangle& rOutRect, const Point& rStartDocPos )
-{
-    Draw( rOutDev, rOutRect, rStartDocPos, true );
-}
-
-void EditEngine::Draw( OutputDevice& rOutDev, const tools::Rectangle& rOutRect, const Point& rStartDocPos, bool bClip )
-{
-#if defined( DBG_UTIL ) || (OSL_DEBUG_LEVEL > 1)
-    if ( bDebugPaint )
-        DumpData(this, false);
-#endif
-
-    // Align to the pixel boundary, so that it becomes exactly the same
-    // as Paint ()
-    tools::Rectangle aOutRect( rOutDev.LogicToPixel( rOutRect ) );
-    aOutRect = rOutDev.PixelToLogic( aOutRect );
-
-    Point aStartPos;
-    if ( !IsEffectivelyVertical() )
-    {
-        aStartPos.setX( aOutRect.Left() - rStartDocPos.X() );
-        aStartPos.setY( aOutRect.Top() - rStartDocPos.Y() );
-    }
-    else
-    {
-        aStartPos.setX( aOutRect.Right() + rStartDocPos.Y() );
-        aStartPos.setY( aOutRect.Top() - rStartDocPos.X() );
-    }
-
-    bool bClipRegion = rOutDev.IsClipRegion();
-    bool bMetafile = rOutDev.GetConnectMetaFile();
-    vcl::Region aOldRegion = rOutDev.GetClipRegion();
-
-    // If one existed => intersection!
-    // Use Push/pop for creating the Meta file
-    if ( bMetafile )
-        rOutDev.Push();
-
-    // Always use the Intersect method, it is a must for Metafile!
-    if ( bClip )
-    {
-        // Clip only if necessary...
-        if ( rStartDocPos.X() || rStartDocPos.Y() ||
-             ( rOutRect.GetHeight() < static_cast<tools::Long>(GetTextHeight()) ) ||
-             ( rOutRect.GetWidth() < static_cast<tools::Long>(CalcTextWidth()) ) )
-        {
-            // Some printer drivers cause problems if characters graze the
-            // ClipRegion, therefore rather add a pixel more ...
-            tools::Rectangle aClipRect( aOutRect );
-            if ( rOutDev.GetOutDevType() == OUTDEV_PRINTER )
-            {
-                Size aPixSz( 1, 0 );
-                aPixSz = rOutDev.PixelToLogic( aPixSz );
-                aClipRect.AdjustRight(aPixSz.Width() );
-                aClipRect.AdjustBottom(aPixSz.Width() );
-            }
-            rOutDev.IntersectClipRegion( aClipRect );
-        }
-    }
-
-    pImpEditEngine->Paint( rOutDev, aOutRect, aStartPos );
-
-    if ( bMetafile )
-        rOutDev.Pop();
-    else if ( bClipRegion )
-        rOutDev.SetClipRegion( aOldRegion );
-    else
-        rOutDev.SetClipRegion();
+    getImpl().DrawText_ToRectangle(rOutDev, rOutRect, rStartDocPos, bHardClip);
 }
 
 void EditEngine::InsertView(EditView* pEditView, size_t nIndex)
 {
-
-    if ( nIndex > pImpEditEngine->GetEditViews().size() )
-        nIndex = pImpEditEngine->GetEditViews().size();
-
-    ImpEditEngine::ViewsType& rViews = pImpEditEngine->GetEditViews();
-    rViews.insert(rViews.begin()+nIndex, pEditView);
-
-    EditSelection aStartSel = pImpEditEngine->GetEditDoc().GetStartPaM();
-    pEditView->pImpEditView->SetEditSelection( aStartSel );
-    if ( !pImpEditEngine->GetActiveView() )
-        pImpEditEngine->SetActiveView( pEditView );
-
-    pEditView->pImpEditView->AddDragAndDropListeners();
+    getImpl().InsertView(pEditView, nIndex);
 }
 
 EditView* EditEngine::RemoveView( EditView* pView )
 {
-
-    pView->HideCursor();
-    EditView* pRemoved = nullptr;
-    ImpEditEngine::ViewsType& rViews = pImpEditEngine->GetEditViews();
-    ImpEditEngine::ViewsType::iterator it = std::find(rViews.begin(), rViews.end(), pView);
-
-    DBG_ASSERT( it != rViews.end(), "RemoveView with invalid index" );
-    if (it != rViews.end())
-    {
-        pRemoved = *it;
-        rViews.erase(it);
-        if ( pImpEditEngine->GetActiveView() == pView )
-        {
-            pImpEditEngine->SetActiveView( nullptr );
-            pImpEditEngine->GetSelEngine().SetCurView( nullptr );
-        }
-        pView->pImpEditView->RemoveDragAndDropListeners();
-
-    }
-    return pRemoved;
+    return getImpl().RemoveView(pView);
 }
 
 void EditEngine::RemoveView(size_t nIndex)
 {
-    ImpEditEngine::ViewsType& rViews = pImpEditEngine->GetEditViews();
-    if (nIndex >= rViews.size())
-        return;
-
-    EditView* pView = rViews[nIndex];
-    if ( pView )
-        RemoveView( pView );
+    getImpl().RemoveView(nIndex);
 }
 
 EditView* EditEngine::GetView(size_t nIndex) const
 {
-    return pImpEditEngine->GetEditViews()[nIndex];
+    return getImpl().GetEditViews()[nIndex];
 }
 
 size_t EditEngine::GetViewCount() const
 {
-    return pImpEditEngine->GetEditViews().size();
+    return getImpl().GetEditViews().size();
 }
 
 bool EditEngine::HasView( EditView* pView ) const
 {
-    ImpEditEngine::ViewsType& rViews = pImpEditEngine->GetEditViews();
-    return std::find(rViews.begin(), rViews.end(), pView) != rViews.end();
+    return getImpl().HasView(pView);
 }
 
 EditView* EditEngine::GetActiveView() const
 {
-    return pImpEditEngine->GetActiveView();
+    return getImpl().GetActiveView();
 }
 
 void EditEngine::SetActiveView(EditView* pView)
 {
-    pImpEditEngine->SetActiveView(pView);
+    getImpl().SetActiveView(pView);
 }
 
 void EditEngine::SetDefTab( sal_uInt16 nDefTab )
 {
-    pImpEditEngine->GetEditDoc().SetDefTab( nDefTab );
-    if ( pImpEditEngine->IsFormatted() )
-    {
-        pImpEditEngine->FormatFullDoc();
-        pImpEditEngine->UpdateViews();
-    }
+    getImpl().SetDefTab(nDefTab);
 }
 
-void EditEngine::SetPaperSize( const Size& rNewSize )
+void EditEngine::SetPaperSize(const Size& rNewSize)
 {
-
-    Size aOldSize( pImpEditEngine->GetPaperSize() );
-    pImpEditEngine->SetValidPaperSize( rNewSize );
-    Size aNewSize( pImpEditEngine->GetPaperSize() );
-
-    bool bAutoPageSize = pImpEditEngine->GetStatus().AutoPageSize();
-    if ( !(bAutoPageSize || ( aNewSize.Width() != aOldSize.Width() )) )
-        return;
-
-    for (EditView* pView : pImpEditEngine->aEditViews)
-    {
-        if ( bAutoPageSize )
-            pView->pImpEditView->RecalcOutputArea();
-        else if ( pView->pImpEditView->DoAutoSize() )
-        {
-            pView->pImpEditView->ResetOutputArea( tools::Rectangle(
-                pView->pImpEditView->GetOutputArea().TopLeft(), aNewSize ) );
-        }
-    }
-
-    if ( bAutoPageSize || pImpEditEngine->IsFormatted() )
-    {
-        // Changing the width has no effect for AutoPageSize, as this is
-        // determined by the text width.
-        // Optimization first after Vobis delivery was enabled ...
-        pImpEditEngine->FormatFullDoc();
-
-        pImpEditEngine->UpdateViews( pImpEditEngine->GetActiveView() );
-
-        if ( pImpEditEngine->IsUpdateLayout() && pImpEditEngine->GetActiveView() )
-            pImpEditEngine->pActiveView->ShowCursor( false, false );
-    }
+    getImpl().SetPaperSize(rNewSize);
 }
 
 const Size& EditEngine::GetPaperSize() const
 {
-    return pImpEditEngine->GetPaperSize();
+    return getImpl().GetPaperSize();
 }
 
 void EditEngine::SetVertical(bool bVertical)
 {
-    pImpEditEngine->SetVertical(bVertical);
+    getImpl().SetVertical(bVertical);
 }
 
 void EditEngine::SetRotation(TextRotation nRotation)
 {
-    pImpEditEngine->SetRotation(nRotation);
+    getImpl().SetRotation(nRotation);
 }
 
 TextRotation EditEngine::GetRotation() const
 {
-    return pImpEditEngine->GetRotation();
+    return getImpl().GetRotation();
 }
 
 bool EditEngine::IsEffectivelyVertical() const
 {
-    return pImpEditEngine->IsEffectivelyVertical();
+    return getImpl().IsEffectivelyVertical();
 }
 
 bool EditEngine::IsTopToBottom() const
 {
-    return pImpEditEngine->IsTopToBottom();
+    return getImpl().IsTopToBottom();
 }
 
 bool EditEngine::GetVertical() const
 {
-    return pImpEditEngine->GetVertical();
+    return getImpl().GetVertical();
 }
 
 void EditEngine::SetTextColumns(sal_Int16 nColumns, sal_Int32 nSpacing)
 {
-    pImpEditEngine->SetTextColumns(nColumns, nSpacing);
+    getImpl().SetTextColumns(nColumns, nSpacing);
 }
 
 void EditEngine::SetFixedCellHeight( bool bUseFixedCellHeight )
 {
-    pImpEditEngine->SetFixedCellHeight( bUseFixedCellHeight );
+    getImpl().SetFixedCellHeight(bUseFixedCellHeight);
 }
 
 void EditEngine::SetDefaultHorizontalTextDirection( EEHorizontalTextDirection eHTextDir )
 {
-    pImpEditEngine->SetDefaultHorizontalTextDirection( eHTextDir );
+    getImpl().SetDefaultHorizontalTextDirection(eHTextDir);
 }
 
 EEHorizontalTextDirection EditEngine::GetDefaultHorizontalTextDirection() const
 {
-    return pImpEditEngine->GetDefaultHorizontalTextDirection();
+    return getImpl().GetDefaultHorizontalTextDirection();
 }
 
 SvtScriptType EditEngine::GetScriptType( const ESelection& rSelection ) const
 {
-    EditSelection aSel( pImpEditEngine->CreateSel( rSelection ) );
-    return pImpEditEngine->GetItemScriptType( aSel );
+    return getImpl().GetItemScriptType(getImpl().CreateSel(rSelection));
 }
 
 editeng::LanguageSpan EditEngine::GetLanguage(const EditPaM& rPaM) const
 {
-    return pImpEditEngine->GetLanguage(rPaM);
+    return getImpl().GetLanguage(rPaM);
 }
 
 editeng::LanguageSpan EditEngine::GetLanguage( sal_Int32 nPara, sal_Int32 nPos ) const
 {
-    ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( nPara );
-    DBG_ASSERT( pNode, "GetLanguage - nPara is invalid!" );
-    return pNode ? pImpEditEngine->GetLanguage( EditPaM( pNode, nPos ) ) : editeng::LanguageSpan{};
+    return getImpl().GetLanguage( nPara, nPos );
 }
-
 
 void EditEngine::TransliterateText( const ESelection& rSelection, TransliterationFlags nTransliterationMode )
 {
-    pImpEditEngine->TransliterateText( pImpEditEngine->CreateSel( rSelection ), nTransliterationMode );
+    TransliterateText(CreateSelection(rSelection), nTransliterationMode);
 }
 
 EditSelection EditEngine::TransliterateText(const EditSelection& rSelection, TransliterationFlags nTransliterationMode)
 {
-    return pImpEditEngine->TransliterateText(rSelection, nTransliterationMode);
+    return getImpl().TransliterateText(rSelection, nTransliterationMode);
 }
 
 void EditEngine::SetAsianCompressionMode( CharCompressType n )
 {
-    pImpEditEngine->SetAsianCompressionMode( n );
+    getImpl().SetAsianCompressionMode( n );
 }
 
 void EditEngine::SetKernAsianPunctuation( bool b )
 {
-    pImpEditEngine->SetKernAsianPunctuation( b );
+    getImpl().SetKernAsianPunctuation( b );
 }
 
 void EditEngine::SetAddExtLeading( bool b )
 {
-    pImpEditEngine->SetAddExtLeading( b );
+    getImpl().SetAddExtLeading( b );
 }
 
 void EditEngine::SetPolygon( const basegfx::B2DPolyPolygon& rPolyPolygon )
@@ -524,243 +356,195 @@ void EditEngine::SetPolygon( const basegfx::B2DPolyPolygon& rPolyPolygon )
 
 void EditEngine::SetPolygon(const basegfx::B2DPolyPolygon& rPolyPolygon, const basegfx::B2DPolyPolygon* pLinePolyPolygon)
 {
-    bool bSimple(false);
-
-    if(pLinePolyPolygon && 1 == rPolyPolygon.count())
-    {
-        if(rPolyPolygon.getB2DPolygon(0).isClosed())
-        {
-            // open polygon
-            bSimple = true;
-        }
-    }
-
-    TextRanger* pRanger = new TextRanger( rPolyPolygon, pLinePolyPolygon, 30, 2, 2, bSimple, true );
-    pImpEditEngine->SetTextRanger( std::unique_ptr<TextRanger>(pRanger) );
-    pImpEditEngine->SetPaperSize( pRanger->GetBoundRect().GetSize() );
+    getImpl().SetPolygon(rPolyPolygon, pLinePolyPolygon);
 }
 
 void EditEngine::ClearPolygon()
 {
-    pImpEditEngine->SetTextRanger( nullptr );
+    getImpl().SetTextRanger( nullptr );
 }
 
 const Size& EditEngine::GetMinAutoPaperSize() const
 {
-    return pImpEditEngine->GetMinAutoPaperSize();
+    return getImpl().GetMinAutoPaperSize();
 }
 
 void EditEngine::SetMinAutoPaperSize( const Size& rSz )
 {
-    pImpEditEngine->SetMinAutoPaperSize( rSz );
+    getImpl().SetMinAutoPaperSize( rSz );
 }
 
 const Size& EditEngine::GetMaxAutoPaperSize() const
 {
-    return pImpEditEngine->GetMaxAutoPaperSize();
+    return getImpl().GetMaxAutoPaperSize();
 }
 
-void EditEngine::SetMaxAutoPaperSize( const Size& rSz )
+void EditEngine::SetMaxAutoPaperSize(const Size& rSize)
 {
-    pImpEditEngine->SetMaxAutoPaperSize( rSz );
+    getImpl().SetMaxAutoPaperSize(rSize);
 }
 
 void EditEngine::SetMinColumnWrapHeight(tools::Long nVal)
 {
-    pImpEditEngine->SetMinColumnWrapHeight(nVal);
+    getImpl().SetMinColumnWrapHeight(nVal);
 }
 
 OUString EditEngine::GetText( LineEnd eEnd ) const
 {
-    return pImpEditEngine->GetEditDoc().GetText( eEnd );
+    return getImpl().GetEditDoc().GetText(eEnd);
 }
 
 OUString EditEngine::GetText( const ESelection& rESelection ) const
 {
-    EditSelection aSel( pImpEditEngine->CreateSel( rESelection ) );
-    return pImpEditEngine->GetSelected( aSel );
+    return getImpl().GetText(rESelection);
 }
 
 sal_Int32 EditEngine::GetTextLen() const
 {
-    return pImpEditEngine->GetEditDoc().GetTextLen();
+    return getImpl().GetEditDoc().GetTextLen();
 }
 
 sal_Int32 EditEngine::GetParagraphCount() const
 {
-    return pImpEditEngine->maEditDoc.Count();
+    return getImpl().maEditDoc.Count();
 }
 
 sal_Int32 EditEngine::GetLineCount( sal_Int32 nParagraph ) const
 {
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
-    return pImpEditEngine->GetLineCount( nParagraph );
+    return getImpl().GetLineCount(nParagraph);
 }
 
 sal_Int32 EditEngine::GetLineLen( sal_Int32 nParagraph, sal_Int32 nLine ) const
 {
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
-    return pImpEditEngine->GetLineLen( nParagraph, nLine );
+    return getImpl().GetLineLen(nParagraph, nLine);
 }
 
 void EditEngine::GetLineBoundaries( /*out*/sal_Int32& rStart, /*out*/sal_Int32& rEnd, sal_Int32 nParagraph, sal_Int32 nLine ) const
 {
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
-    return pImpEditEngine->GetLineBoundaries( rStart, rEnd, nParagraph, nLine );
+    return getImpl().GetLineBoundaries(rStart, rEnd, nParagraph, nLine);
 }
 
 sal_Int32 EditEngine::GetLineNumberAtIndex( sal_Int32 nPara, sal_Int32 nIndex ) const
 {
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
-    return pImpEditEngine->GetLineNumberAtIndex( nPara, nIndex );
+    return getImpl().GetLineNumberAtIndex(nPara, nIndex);
 }
 
-sal_uInt32 EditEngine::GetLineHeight( sal_Int32 nParagraph )
+sal_uInt32 EditEngine::GetLineHeight( sal_Int32 nParagraph, sal_Int32 nLine )
 {
     // If someone calls GetLineHeight() with an empty Engine.
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
-    return pImpEditEngine->GetLineHeight( nParagraph, 0 );
+    return getImpl().GetLineHeight( nParagraph, nLine );
 }
 
 tools::Rectangle EditEngine::GetParaBounds( sal_Int32 nPara )
 {
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
-
-    Point aPnt = GetDocPosTopLeft( nPara );
-
-    if( IsEffectivelyVertical() )
-    {
-        sal_Int32 nTextHeight = pImpEditEngine->GetTextHeight();
-        sal_Int32 nParaWidth = pImpEditEngine->CalcParaWidth( nPara, true );
-        sal_Int32 nParaHeight = pImpEditEngine->GetParaHeight( nPara );
-
-        return tools::Rectangle( nTextHeight - aPnt.Y() - nParaHeight, 0, nTextHeight - aPnt.Y(), nParaWidth );
-    }
-    else
-    {
-        sal_Int32 nParaWidth = pImpEditEngine->CalcParaWidth( nPara, true );
-        sal_Int32 nParaHeight = pImpEditEngine->GetParaHeight( nPara );
-
-        return tools::Rectangle( 0, aPnt.Y(), nParaWidth, aPnt.Y() + nParaHeight );
-    }
+    return getImpl().GetParaBounds(nPara);
 }
 
 sal_uInt32 EditEngine::GetTextHeight( sal_Int32 nParagraph ) const
 {
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
-
-    sal_uInt32 nHeight = pImpEditEngine->GetParaHeight( nParagraph );
+    getImpl().EnsureDocumentFormatted();
+    sal_uInt32 nHeight = getImpl().GetParaHeight(nParagraph);
     return nHeight;
 }
 
-OUString EditEngine::GetWord( sal_Int32 nPara, sal_Int32 nIndex )
+OUString EditEngine::GetWord(const EPaM& rPos)
 {
-    ESelection aESel( nPara, nIndex, nPara, nIndex );
-    EditSelection aSel( pImpEditEngine->CreateSel( aESel ) );
-    aSel = pImpEditEngine->SelectWord( aSel );
-    return pImpEditEngine->GetSelected( aSel );
+    EditSelection aSel(CreateSelection(ESelection(rPos)));
+    aSel = SelectWord(aSel);
+    return GetSelected(aSel);
 }
 
 ESelection EditEngine::GetWord( const ESelection& rSelection, sal_uInt16 nWordType  ) const
 {
     // ImpEditEngine-Iteration-Methods should be const!
-    EditEngine* pE = const_cast<EditEngine*>(this);
-
-    EditSelection aSel( pE->pImpEditEngine->CreateSel( rSelection ) );
-    aSel = pE->pImpEditEngine->SelectWord( aSel, nWordType );
-    return pE->pImpEditEngine->CreateESel( aSel );
+    EditSelection aSel(getImpl().CreateSel(rSelection));
+    aSel = getImpl().SelectWord(aSel, nWordType);
+    return CreateESelection(aSel);
 }
 
 void EditEngine::CheckIdleFormatter()
 {
-    pImpEditEngine->CheckIdleFormatter();
+    getImpl().CheckIdleFormatter();
 }
 
 bool EditEngine::IsIdleFormatterActive() const
 {
-    return pImpEditEngine->aIdleFormatter.IsActive();
+    return getImpl().maIdleFormatter.IsActive();
 }
 
 ParaPortion* EditEngine::FindParaPortion(ContentNode const * pNode)
 {
-    return pImpEditEngine->FindParaPortion(pNode);
+    return getImpl().FindParaPortion(pNode);
 }
 
 const ParaPortion* EditEngine::FindParaPortion(ContentNode const * pNode) const
 {
-    return pImpEditEngine->FindParaPortion(pNode);
+    return getImpl().FindParaPortion(pNode);
 }
 
 const ParaPortion* EditEngine::GetPrevVisPortion(const ParaPortion* pCurPortion) const
 {
-    return pImpEditEngine->GetPrevVisPortion(pCurPortion);
+    return getImpl().GetPrevVisPortion(pCurPortion);
 }
 
 SvtScriptType EditEngine::GetScriptType(const EditSelection& rSel) const
 {
-    return pImpEditEngine->GetItemScriptType(rSel);
+    return getImpl().GetItemScriptType(rSel);
 }
 
 void EditEngine::RemoveParaPortion(sal_Int32 nNode)
 {
-    pImpEditEngine->GetParaPortions().Remove(nNode);
+    getImpl().GetParaPortions().Remove(nNode);
 }
 
 void EditEngine::SetCallParaInsertedOrDeleted(bool b)
 {
-    pImpEditEngine->SetCallParaInsertedOrDeleted(b);
+    getImpl().SetCallParaInsertedOrDeleted(b);
 }
 
 bool EditEngine::IsCallParaInsertedOrDeleted() const
 {
-    return pImpEditEngine->IsCallParaInsertedOrDeleted();
+    return getImpl().IsCallParaInsertedOrDeleted();
 }
 
 void EditEngine::AppendDeletedNodeInfo(DeletedNodeInfo* pInfo)
 {
-    pImpEditEngine->aDeletedNodes.push_back(std::unique_ptr<DeletedNodeInfo>(pInfo));
+    getImpl().maDeletedNodes.push_back(std::unique_ptr<DeletedNodeInfo>(pInfo));
 }
 
 void EditEngine::UpdateSelections()
 {
-    pImpEditEngine->UpdateSelections();
+    getImpl().UpdateSelections();
 }
 
-void EditEngine::InsertContent(ContentNode* pNode, sal_Int32 nPos)
+void EditEngine::InsertContent(std::unique_ptr<ContentNode> pNode, sal_Int32 nPos)
 {
-    pImpEditEngine->InsertContent(pNode, nPos);
+    getImpl().InsertContent(std::move(pNode), nPos);
 }
 
 EditPaM EditEngine::SplitContent(sal_Int32 nNode, sal_Int32 nSepPos)
 {
-    return pImpEditEngine->SplitContent(nNode, nSepPos);
+    return getImpl().SplitContent(nNode, nSepPos);
 }
 
 EditPaM EditEngine::ConnectContents(sal_Int32 nLeftNode, bool bBackward)
 {
-    return pImpEditEngine->ConnectContents(nLeftNode, bBackward);
+    return getImpl().ConnectContents(nLeftNode, bBackward);
 }
 
 void EditEngine::InsertFeature(const EditSelection& rEditSelection, const SfxPoolItem& rItem)
 {
-    pImpEditEngine->ImpInsertFeature(rEditSelection, rItem);
+    getImpl().ImpInsertFeature(rEditSelection, rItem);
 }
 
 EditSelection EditEngine::MoveParagraphs(const Range& rParagraphs, sal_Int32 nNewPos)
 {
-    return pImpEditEngine->MoveParagraphs(rParagraphs, nNewPos, nullptr);
+    return getImpl().MoveParagraphs(rParagraphs, nNewPos, nullptr);
 }
 
 void EditEngine::RemoveCharAttribs(sal_Int32 nPara, sal_uInt16 nWhich, bool bRemoveFeatures)
 {
-    pImpEditEngine->RemoveCharAttribs(nPara, nWhich, bRemoveFeatures);
+    getImpl().RemoveCharAttribs(nPara, nWhich, bRemoveFeatures);
 }
 
 void EditEngine::RemoveCharAttribs(const EditSelection& rSel, bool bRemoveParaAttribs, sal_uInt16 nWhich)
@@ -768,879 +552,398 @@ void EditEngine::RemoveCharAttribs(const EditSelection& rSel, bool bRemoveParaAt
     const EERemoveParaAttribsMode eMode = bRemoveParaAttribs?
         EERemoveParaAttribsMode::RemoveAll :
         EERemoveParaAttribsMode::RemoveCharItems;
-    pImpEditEngine->RemoveCharAttribs(rSel, eMode, nWhich);
+    getImpl().RemoveCharAttribs(rSel, eMode, nWhich);
 }
 
 void EditEngine::RemoveCharAttribs(const EditSelection& rSel, EERemoveParaAttribsMode eMode, sal_uInt16 nWhich)
 {
-    pImpEditEngine->RemoveCharAttribs(rSel, eMode, nWhich);
+    getImpl().RemoveCharAttribs(rSel, eMode, nWhich);
 }
 
 EditEngine::ViewsType& EditEngine::GetEditViews()
 {
-    return pImpEditEngine->GetEditViews();
+    return getImpl().GetEditViews();
 }
 
 const EditEngine::ViewsType& EditEngine::GetEditViews() const
 {
-    return pImpEditEngine->GetEditViews();
+    return getImpl().GetEditViews();
 }
 
 void EditEngine::SetUndoMode(bool b)
 {
-    pImpEditEngine->SetUndoMode(b);
+    getImpl().SetUndoMode(b);
 }
 
 void EditEngine::FormatAndLayout(EditView* pCurView, bool bCalledFromUndo)
 {
-    pImpEditEngine->FormatAndLayout(pCurView, bCalledFromUndo);
+    getImpl().FormatAndLayout(pCurView, bCalledFromUndo);
 }
 
 void EditEngine::Undo(EditView* pView)
 {
-    pImpEditEngine->Undo(pView);
+    getImpl().Undo(pView);
 }
 
 void EditEngine::Redo(EditView* pView)
 {
-    pImpEditEngine->Redo(pView);
+    getImpl().Redo(pView);
 }
 
 uno::Reference<datatransfer::XTransferable> EditEngine::CreateTransferable(const EditSelection& rSelection)
 {
-    return pImpEditEngine->CreateTransferable(rSelection);
+    return getImpl().CreateTransferable(rSelection);
 }
 
 void EditEngine::ParaAttribsToCharAttribs(ContentNode* pNode)
 {
-    pImpEditEngine->ParaAttribsToCharAttribs(pNode);
+    getImpl().ParaAttribsToCharAttribs(pNode);
 }
 
 EditPaM EditEngine::CreateEditPaM(const EPaM& rEPaM)
 {
-    return pImpEditEngine->CreateEditPaM(rEPaM);
+    return getImpl().CreateEditPaM(rEPaM);
 }
 
 EditPaM EditEngine::ConnectParagraphs(
         ContentNode* pLeft, ContentNode* pRight, bool bBackward)
 {
-    return pImpEditEngine->ImpConnectParagraphs(pLeft, pRight, bBackward);
+    return getImpl().ImpConnectParagraphs(pLeft, pRight, bBackward);
 }
 
 EditPaM EditEngine::InsertField(const EditSelection& rEditSelection, const SvxFieldItem& rFld)
 {
-    return pImpEditEngine->InsertField(rEditSelection, rFld);
+    return getImpl().InsertField(rEditSelection, rFld);
 }
 
 EditPaM EditEngine::InsertText(const EditSelection& aCurEditSelection, const OUString& rStr)
 {
-    return pImpEditEngine->InsertText(aCurEditSelection, rStr);
+    return getImpl().InsertText(aCurEditSelection, rStr);
 }
 
 EditSelection EditEngine::InsertText(const EditTextObject& rTextObject, const EditSelection& rSel)
 {
-    return pImpEditEngine->InsertText(rTextObject, rSel);
+    return getImpl().InsertText(rTextObject, rSel);
 }
 
 EditSelection EditEngine::InsertText(
     uno::Reference<datatransfer::XTransferable > const & rxDataObj,
     const OUString& rBaseURL, const EditPaM& rPaM, bool bUseSpecial, SotClipboardFormatId format)
 {
-    return pImpEditEngine->PasteText(rxDataObj, rBaseURL, rPaM, bUseSpecial, format);
+    return getImpl().PasteText(rxDataObj, rBaseURL, rPaM, bUseSpecial, format);
 }
 
 EditPaM EditEngine::EndOfWord(const EditPaM& rPaM)
 {
-    return pImpEditEngine->EndOfWord(rPaM);
+    return getImpl().EndOfWord(rPaM);
 }
 
 EditPaM EditEngine::GetPaM(const Point& aDocPos, bool bSmart)
 {
-    return pImpEditEngine->GetPaM(aDocPos, bSmart);
+    return getImpl().GetPaM(aDocPos, bSmart);
 }
 
 EditSelection EditEngine::SelectWord(
         const EditSelection& rCurSelection, sal_Int16 nWordType)
 {
-    return pImpEditEngine->SelectWord(rCurSelection, nWordType);
+    return getImpl().SelectWord(rCurSelection, nWordType);
 }
 
-tools::Long EditEngine::GetXPos(
-        const ParaPortion* pParaPortion, const EditLine* pLine, sal_Int32 nIndex, bool bPreferPortionStart) const
+tools::Long EditEngine::GetXPos(ParaPortion const& rParaPortion, EditLine const& rLine, sal_Int32 nIndex, bool bPreferPortionStart) const
 {
-    return pImpEditEngine->GetXPos(pParaPortion, pLine, nIndex, bPreferPortionStart);
+    return getImpl().GetXPos(rParaPortion, rLine, nIndex, bPreferPortionStart);
 }
 
-Range EditEngine::GetLineXPosStartEnd(
-        const ParaPortion* pParaPortion, const EditLine* pLine) const
+Range EditEngine::GetLineXPosStartEnd(ParaPortion const& rParaPortion, EditLine const& rLine) const
 {
-    return pImpEditEngine->GetLineXPosStartEnd(pParaPortion, pLine);
+    return getImpl().GetLineXPosStartEnd(rParaPortion, rLine);
 }
 
 bool EditEngine::IsFormatted() const
 {
-    return pImpEditEngine->IsFormatted();
+    return getImpl().IsFormatted();
 }
 
 EditPaM EditEngine::CursorLeft(const EditPaM& rPaM, sal_uInt16 nCharacterIteratorMode)
 {
-    return pImpEditEngine->CursorLeft(rPaM, nCharacterIteratorMode);
+    return getImpl().CursorLeft(rPaM, nCharacterIteratorMode);
 }
 
 EditPaM EditEngine::CursorRight(const EditPaM& rPaM, sal_uInt16 nCharacterIteratorMode)
 {
-    return pImpEditEngine->CursorRight(rPaM, nCharacterIteratorMode);
+    return getImpl().CursorRight(rPaM, nCharacterIteratorMode);
 }
 
 InternalEditStatus& EditEngine::GetInternalEditStatus()
 {
-    return pImpEditEngine->GetStatus();
+    return getImpl().GetStatus();
 }
 
 EditDoc& EditEngine::GetEditDoc()
 {
-    return pImpEditEngine->GetEditDoc();
+    return getImpl().GetEditDoc();
 }
 
 const EditDoc& EditEngine::GetEditDoc() const
 {
-    return pImpEditEngine->GetEditDoc();
+    return getImpl().GetEditDoc();
 }
 
 void EditEngine::dumpAsXmlEditDoc(xmlTextWriterPtr pWriter) const
 {
-    pImpEditEngine->GetEditDoc().dumpAsXml(pWriter);
+    getImpl().GetEditDoc().dumpAsXml(pWriter);
 }
 
 ParaPortionList& EditEngine::GetParaPortions()
 {
-    return pImpEditEngine->GetParaPortions();
+    return getImpl().GetParaPortions();
 }
 
 const ParaPortionList& EditEngine::GetParaPortions() const
 {
-    return pImpEditEngine->GetParaPortions();
+    return getImpl().GetParaPortions();
 }
 
 void EditEngine::SeekCursor(ContentNode* pNode, sal_Int32 nPos, SvxFont& rFont)
 {
-    pImpEditEngine->SeekCursor(pNode, nPos, rFont);
+    getImpl().SeekCursor(pNode, nPos, rFont);
 }
 
 EditPaM EditEngine::DeleteSelection(const EditSelection& rSel)
 {
-    return pImpEditEngine->ImpDeleteSelection(rSel);
+    return getImpl().ImpDeleteSelection(rSel);
 }
 
 ESelection EditEngine::CreateESelection(const EditSelection& rSel) const
 {
-    return pImpEditEngine->CreateESel(rSel);
+    return getImpl().CreateESel(rSel);
 }
 
 EditSelection EditEngine::CreateSelection(const ESelection& rSel)
 {
-    return pImpEditEngine->CreateSel(rSel);
+    return getImpl().CreateSel(rSel);
+}
+
+ESelection EditEngine::NormalizeESelection(const ESelection& rSel) const
+{
+    return CreateESelection(getImpl().CreateNormalizedSel(rSel));
+}
+
+EPaM EditEngine::GetEnd() const
+{
+    auto para = GetEditDoc().Count();
+    if (para)
+        --para;
+    return { para, GetTextLen(para) };
 }
 
 const SfxItemSet& EditEngine::GetBaseParaAttribs(sal_Int32 nPara) const
 {
-    return pImpEditEngine->GetParaAttribs(nPara);
+    return getImpl().GetParaAttribs(nPara);
 }
 
 void EditEngine::SetParaAttribsOnly(sal_Int32 nPara, const SfxItemSet& rSet)
 {
-    pImpEditEngine->SetParaAttribs(nPara, rSet);
+    getImpl().SetParaAttribs(nPara, rSet);
 }
 
 void EditEngine::SetAttribs(const EditSelection& rSel, const SfxItemSet& rSet, SetAttribsMode nSpecial)
 {
-    pImpEditEngine->SetAttribs(rSel, rSet, nSpecial);
+    getImpl().SetAttribs(rSel, rSet, nSpecial);
 }
 
 OUString EditEngine::GetSelected(const EditSelection& rSel) const
 {
-    return pImpEditEngine->GetSelected(rSel);
+    return getImpl().GetSelected(rSel);
 }
 
 EditPaM EditEngine::DeleteSelected(const EditSelection& rSel)
 {
-    return pImpEditEngine->DeleteSelected(rSel);
+    return getImpl().DeleteSelected(rSel);
 }
 
 void EditEngine::HandleBeginPasteOrDrop(PasteOrDropInfos& rInfos)
 {
-    pImpEditEngine->aBeginPasteOrDropHdl.Call(rInfos);
+    getImpl().maBeginPasteOrDropHdl.Call(rInfos);
 }
 
 void EditEngine::HandleEndPasteOrDrop(PasteOrDropInfos& rInfos)
 {
-    pImpEditEngine->aEndPasteOrDropHdl.Call(rInfos);
+    getImpl().maEndPasteOrDropHdl.Call(rInfos);
 }
 
 bool EditEngine::HasText() const
 {
-    return pImpEditEngine->ImplHasText();
+    return getImpl().ImplHasText();
 }
 
 const EditSelectionEngine& EditEngine::GetSelectionEngine() const
 {
-    return pImpEditEngine->aSelEngine;
+    return getImpl().maSelEngine;
 }
 
 void EditEngine::SetInSelectionMode(bool b)
 {
-    pImpEditEngine->mbInSelection = b;
+    getImpl().mbInSelection = b;
 }
 
 bool EditEngine::PostKeyEvent( const KeyEvent& rKeyEvent, EditView* pEditView, vcl::Window const * pFrameWin )
 {
-    DBG_ASSERT( pEditView, "no View - no cookie !" );
-
-    bool bDone = true;
-
-    bool bModified  = false;
-    bool bMoved     = false;
-    bool bAllowIdle = true;
-    bool bReadOnly  = pEditView->IsReadOnly();
-
-    GetCursorFlags nNewCursorFlags = GetCursorFlags::NONE;
-    bool bSetCursorFlags = true;
-
-    EditSelection aCurSel( pEditView->pImpEditView->GetEditSelection() );
-    DBG_ASSERT( !aCurSel.IsInvalid(), "Blinde Selection in EditEngine::PostKeyEvent" );
-
-    OUString aAutoText( pImpEditEngine->GetAutoCompleteText() );
-    if (!pImpEditEngine->GetAutoCompleteText().isEmpty())
-        pImpEditEngine->SetAutoCompleteText(OUString(), true);
-
-    sal_uInt16 nCode = rKeyEvent.GetKeyCode().GetCode();
-    KeyFuncType eFunc = rKeyEvent.GetKeyCode().GetFunction();
-    if ( eFunc != KeyFuncType::DONTKNOW )
-    {
-        switch ( eFunc )
-        {
-            case KeyFuncType::UNDO:
-            {
-                if ( !bReadOnly )
-                    pEditView->Undo();
-                return true;
-            }
-            case KeyFuncType::REDO:
-            {
-                if ( !bReadOnly )
-                    pEditView->Redo();
-                return true;
-            }
-
-            default:    // is then possible edited below.
-                        eFunc = KeyFuncType::DONTKNOW;
-        }
-    }
-
-    if ( eFunc == KeyFuncType::DONTKNOW )
-    {
-        switch ( nCode )
-        {
-#if defined( DBG_UTIL ) || (OSL_DEBUG_LEVEL > 1)
-            case KEY_F1:
-            {
-                if ( rKeyEvent.GetKeyCode().IsMod1() && rKeyEvent.GetKeyCode().IsMod2() )
-                {
-                    sal_Int32 nParas = GetParagraphCount();
-                    Point aPos;
-                    Point aViewStart( pEditView->GetOutputArea().TopLeft() );
-                    tools::Long n20 = 40 * pImpEditEngine->nOnePixelInRef;
-                    for ( sal_Int32 n = 0; n < nParas; n++ )
-                    {
-                        tools::Long nH = GetTextHeight( n );
-                        Point P1( aViewStart.X() + n20 + n20*(n%2), aViewStart.Y() + aPos.Y() );
-                        Point P2( P1 );
-                        P2.AdjustX(n20 );
-                        P2.AdjustY(nH );
-                        pEditView->GetWindow()->GetOutDev()->SetLineColor();
-                        pEditView->GetWindow()->GetOutDev()->SetFillColor( (n%2) ? COL_YELLOW : COL_LIGHTGREEN );
-                        pEditView->GetWindow()->GetOutDev()->DrawRect( tools::Rectangle( P1, P2 ) );
-                        aPos.AdjustY(nH );
-                    }
-                }
-                bDone = false;
-            }
-            break;
-            case KEY_F11:
-            {
-                if ( rKeyEvent.GetKeyCode().IsMod1() && rKeyEvent.GetKeyCode().IsMod2() )
-                {
-                    bDebugPaint = !bDebugPaint;
-                    OStringBuffer aInfo("DebugPaint: ");
-                    aInfo.append(bDebugPaint ? "On" : "Off");
-                    std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(pEditView->GetWindow()->GetFrameWeld(),
-                                                                  VclMessageType::Info, VclButtonsType::Ok,
-                                                                  OStringToOUString(aInfo, RTL_TEXTENCODING_ASCII_US)));
-                    xInfoBox->run();
-
-                }
-                bDone = false;
-            }
-            break;
-            case KEY_F12:
-            {
-                if ( rKeyEvent.GetKeyCode().IsMod1() && rKeyEvent.GetKeyCode().IsMod2() )
-                    DumpData(this, true);
-                bDone = false;
-            }
-            break;
-#endif
-            case KEY_UP:
-            case KEY_DOWN:
-            case KEY_LEFT:
-            case KEY_RIGHT:
-            case KEY_HOME:
-            case KEY_END:
-            case KEY_PAGEUP:
-            case KEY_PAGEDOWN:
-            case css::awt::Key::MOVE_WORD_FORWARD:
-            case css::awt::Key::SELECT_WORD_FORWARD:
-            case css::awt::Key::MOVE_WORD_BACKWARD:
-            case css::awt::Key::SELECT_WORD_BACKWARD:
-            case css::awt::Key::MOVE_TO_BEGIN_OF_LINE:
-            case css::awt::Key::MOVE_TO_END_OF_LINE:
-            case css::awt::Key::SELECT_TO_BEGIN_OF_LINE:
-            case css::awt::Key::SELECT_TO_END_OF_LINE:
-            case css::awt::Key::MOVE_TO_BEGIN_OF_PARAGRAPH:
-            case css::awt::Key::MOVE_TO_END_OF_PARAGRAPH:
-            case css::awt::Key::SELECT_TO_BEGIN_OF_PARAGRAPH:
-            case css::awt::Key::SELECT_TO_END_OF_PARAGRAPH:
-            case css::awt::Key::MOVE_TO_BEGIN_OF_DOCUMENT:
-            case css::awt::Key::MOVE_TO_END_OF_DOCUMENT:
-            case css::awt::Key::SELECT_TO_BEGIN_OF_DOCUMENT:
-            case css::awt::Key::SELECT_TO_END_OF_DOCUMENT:
-            {
-                if ( !rKeyEvent.GetKeyCode().IsMod2() || ( nCode == KEY_LEFT ) || ( nCode == KEY_RIGHT ) )
-                {
-                    if ( ImpEditEngine::DoVisualCursorTraveling() && ( ( nCode == KEY_LEFT ) || ( nCode == KEY_RIGHT ) /* || ( nCode == KEY_HOME ) || ( nCode == KEY_END ) */ ) )
-                        bSetCursorFlags = false;    // Will be manipulated within visual cursor move
-
-                    aCurSel = pImpEditEngine->MoveCursor( rKeyEvent, pEditView );
-
-                    if ( aCurSel.HasRange() ) {
-                        Reference<css::datatransfer::clipboard::XClipboard> aSelection(GetSystemPrimarySelection());
-                        pEditView->pImpEditView->CutCopy( aSelection, false );
-                    }
-
-                    bMoved = true;
-                    if ( nCode == KEY_HOME )
-                        nNewCursorFlags |= GetCursorFlags::StartOfLine;
-                    else if ( nCode == KEY_END )
-                        nNewCursorFlags |= GetCursorFlags::EndOfLine;
-
-                }
-#if OSL_DEBUG_LEVEL > 1
-                GetLanguage( pImpEditEngine->GetEditDoc().GetPos( aCurSel.Max().GetNode() ), aCurSel.Max().GetIndex() );
-#endif
-            }
-            break;
-            case KEY_BACKSPACE:
-            case KEY_DELETE:
-            case css::awt::Key::DELETE_WORD_BACKWARD:
-            case css::awt::Key::DELETE_WORD_FORWARD:
-            case css::awt::Key::DELETE_TO_BEGIN_OF_PARAGRAPH:
-            case css::awt::Key::DELETE_TO_END_OF_PARAGRAPH:
-            {
-                if ( !bReadOnly && !rKeyEvent.GetKeyCode().IsMod2() )
-                {
-                    // check if we are behind a bullet and using the backspace key
-                    ContentNode *pNode = aCurSel.Min().GetNode();
-                    const SvxNumberFormat *pFmt = pImpEditEngine->GetNumberFormat( pNode );
-                    if (pFmt && nCode == KEY_BACKSPACE &&
-                        !aCurSel.HasRange() && aCurSel.Min().GetIndex() == 0)
-                    {
-                        // if the bullet is still visible, just make it invisible.
-                        // Otherwise continue as usual.
-
-
-                        sal_Int32 nPara = pImpEditEngine->GetEditDoc().GetPos( pNode );
-                        SfxBoolItem aBulletState( pImpEditEngine->GetParaAttrib( nPara, EE_PARA_BULLETSTATE ) );
-
-                        if ( aBulletState.GetValue() )
-                        {
-
-                            aBulletState.SetValue( false );
-                            SfxItemSet aSet( pImpEditEngine->GetParaAttribs( nPara ) );
-                            aSet.Put( aBulletState );
-                            pImpEditEngine->SetParaAttribs( nPara, aSet );
-
-                            // have this and the following paragraphs formatted and repainted.
-                            // (not painting a numbering in the list may cause the following
-                            // numberings to have different numbers than before and thus the
-                            // length may have changed as well )
-                            pImpEditEngine->FormatAndLayout( pImpEditEngine->GetActiveView() );
-
-                            break;
-                        }
-                    }
-
-                    sal_uInt8 nDel = 0;
-                    DeleteMode nMode = DeleteMode::Simple;
-                    switch( nCode )
-                    {
-                    case css::awt::Key::DELETE_WORD_BACKWARD:
-                        nMode = DeleteMode::RestOfWord;
-                        nDel = DEL_LEFT;
-                        break;
-                    case css::awt::Key::DELETE_WORD_FORWARD:
-                        nMode = DeleteMode::RestOfWord;
-                        nDel = DEL_RIGHT;
-                        break;
-                    case css::awt::Key::DELETE_TO_BEGIN_OF_PARAGRAPH:
-                        nMode = DeleteMode::RestOfContent;
-                        nDel = DEL_LEFT;
-                        break;
-                    case css::awt::Key::DELETE_TO_END_OF_PARAGRAPH:
-                        nMode = DeleteMode::RestOfContent;
-                        nDel = DEL_RIGHT;
-                        break;
-                    default:
-                        nDel = ( nCode == KEY_DELETE ) ? DEL_RIGHT : DEL_LEFT;
-                        nMode = rKeyEvent.GetKeyCode().IsMod1() ? DeleteMode::RestOfWord : DeleteMode::Simple;
-                        if ( ( nMode == DeleteMode::RestOfWord ) && rKeyEvent.GetKeyCode().IsShift() )
-                            nMode = DeleteMode::RestOfContent;
-                        break;
-                    }
-
-                    pEditView->pImpEditView->DrawSelectionXOR();
-                    pImpEditEngine->UndoActionStart( EDITUNDO_DELETE );
-                    aCurSel = pImpEditEngine->DeleteLeftOrRight( aCurSel, nDel, nMode );
-                    pImpEditEngine->UndoActionEnd();
-                    bModified = true;
-                    bAllowIdle = false;
-                }
-            }
-            break;
-            case KEY_TAB:
-            {
-                if ( !bReadOnly && !rKeyEvent.GetKeyCode().IsMod1() && !rKeyEvent.GetKeyCode().IsMod2() )
-                {
-                    bool bShift = rKeyEvent.GetKeyCode().IsShift();
-                    if ( !bShift )
-                    {
-                        bool bSel = pEditView->HasSelection();
-                        if ( bSel )
-                            pImpEditEngine->UndoActionStart( EDITUNDO_INSERT );
-                        if ( pImpEditEngine->GetStatus().DoAutoCorrect() )
-                            aCurSel = pImpEditEngine->AutoCorrect( aCurSel, 0, !pEditView->IsInsertMode(), pFrameWin );
-                        aCurSel = pImpEditEngine->InsertTab( aCurSel );
-                        if ( bSel )
-                            pImpEditEngine->UndoActionEnd();
-                        bModified = true;
-                    }
-                }
-                else
-                    bDone = false;
-            }
-            break;
-            case KEY_RETURN:
-            {
-                if ( !bReadOnly )
-                {
-                    pEditView->pImpEditView->DrawSelectionXOR();
-                    if ( !rKeyEvent.GetKeyCode().IsMod1() && !rKeyEvent.GetKeyCode().IsMod2() )
-                    {
-                        pImpEditEngine->UndoActionStart( EDITUNDO_INSERT );
-                        if ( rKeyEvent.GetKeyCode().IsShift() )
-                        {
-                            aCurSel = pImpEditEngine->AutoCorrect( aCurSel, 0, !pEditView->IsInsertMode(), pFrameWin );
-                            aCurSel = pImpEditEngine->InsertLineBreak( aCurSel );
-                        }
-                        else
-                        {
-                            if (aAutoText.isEmpty())
-                            {
-                                if ( pImpEditEngine->GetStatus().DoAutoCorrect() )
-                                    aCurSel = pImpEditEngine->AutoCorrect( aCurSel, 0, !pEditView->IsInsertMode(), pFrameWin );
-                                aCurSel = pImpEditEngine->InsertParaBreak( aCurSel );
-                            }
-                            else
-                            {
-                                DBG_ASSERT( !aCurSel.HasRange(), "Selection on complete?!" );
-                                EditPaM aStart( pImpEditEngine->WordLeft( aCurSel.Max() ) );
-                                aCurSel = pImpEditEngine->InsertText(
-                                                EditSelection( aStart, aCurSel.Max() ), aAutoText );
-                                pImpEditEngine->SetAutoCompleteText( OUString(), true );
-                            }
-                        }
-                        pImpEditEngine->UndoActionEnd();
-                        bModified = true;
-                    }
-                }
-            }
-            break;
-            case KEY_INSERT:
-            {
-                if ( !rKeyEvent.GetKeyCode().IsMod1() && !rKeyEvent.GetKeyCode().IsMod2() )
-                    pEditView->SetInsertMode( !pEditView->IsInsertMode() );
-            }
-            break;
-            default:
-            {
-                #if (OSL_DEBUG_LEVEL > 1) && defined(DBG_UTIL)
-                    if ( ( nCode == KEY_W ) && rKeyEvent.GetKeyCode().IsMod1() && rKeyEvent.GetKeyCode().IsMod2() )
-                    {
-                        SfxItemSet aAttribs = pEditView->GetAttribs();
-                        const SvxFrameDirectionItem& rCurrentWritingMode = (const SvxFrameDirectionItem&)aAttribs.Get( EE_PARA_WRITINGDIR );
-                        SvxFrameDirectionItem aNewItem( SvxFrameDirection::Horizontal_LR_TB, EE_PARA_WRITINGDIR );
-                        if ( rCurrentWritingMode.GetValue() != SvxFrameDirection::Horizontal_RL_TB )
-                            aNewItem.SetValue( SvxFrameDirection::Horizontal_RL_TB );
-                        aAttribs.Put( aNewItem );
-                        pEditView->SetAttribs( aAttribs );
-                    }
-                #endif
-                if ( !bReadOnly && IsSimpleCharInput( rKeyEvent ) )
-                {
-                    sal_Unicode nCharCode = rKeyEvent.GetCharCode();
-                    pEditView->pImpEditView->DrawSelectionXOR();
-                    // Autocorrection?
-                    if ( ( pImpEditEngine->GetStatus().DoAutoCorrect() ) &&
-                        ( SvxAutoCorrect::IsAutoCorrectChar( nCharCode ) ||
-                          pImpEditEngine->IsNbspRunNext() ) )
-                    {
-                        aCurSel = pImpEditEngine->AutoCorrect(
-                            aCurSel, nCharCode, !pEditView->IsInsertMode(), pFrameWin );
-                    }
-                    else
-                    {
-                        aCurSel = pImpEditEngine->InsertTextUserInput( aCurSel, nCharCode, !pEditView->IsInsertMode() );
-                    }
-                    // AutoComplete ???
-                    if ( pImpEditEngine->GetStatus().DoAutoComplete() && ( nCharCode != ' ' ) )
-                    {
-                        // Only at end of word...
-                        sal_Int32 nIndex = aCurSel.Max().GetIndex();
-                        if ( ( nIndex >= aCurSel.Max().GetNode()->Len() ) ||
-                             ( pImpEditEngine->aWordDelimiters.indexOf( aCurSel.Max().GetNode()->GetChar( nIndex ) ) != -1 ) )
-                        {
-                            EditPaM aStart( pImpEditEngine->WordLeft( aCurSel.Max() ) );
-                            OUString aWord = pImpEditEngine->GetSelected( EditSelection( aStart, aCurSel.Max() ) );
-                            if ( aWord.getLength() >= 3 )
-                            {
-                                OUString aComplete;
-
-                                LanguageType eLang = pImpEditEngine->GetLanguage( EditPaM( aStart.GetNode(), aStart.GetIndex()+1)).nLang;
-                                LanguageTag aLanguageTag( eLang);
-
-                                if (!pImpEditEngine->xLocaleDataWrapper.isInitialized())
-                                    pImpEditEngine->xLocaleDataWrapper.init( SvtSysLocale().GetLocaleData().getComponentContext(), aLanguageTag);
-                                else
-                                    pImpEditEngine->xLocaleDataWrapper.changeLocale( aLanguageTag);
-
-                                if (!pImpEditEngine->xTransliterationWrapper.isInitialized())
-                                    pImpEditEngine->xTransliterationWrapper.init( SvtSysLocale().GetLocaleData().getComponentContext(), eLang);
-                                else
-                                    pImpEditEngine->xTransliterationWrapper.changeLocale( eLang);
-
-                                const ::utl::TransliterationWrapper* pTransliteration = pImpEditEngine->xTransliterationWrapper.get();
-                                Sequence< i18n::CalendarItem2 > xItem = pImpEditEngine->xLocaleDataWrapper->getDefaultCalendarDays();
-                                sal_Int32 nCount = xItem.getLength();
-                                const i18n::CalendarItem2* pArr = xItem.getConstArray();
-                                for( sal_Int32 n = 0; n <= nCount; ++n )
-                                {
-                                    const OUString& rDay = pArr[n].FullName;
-                                    if( pTransliteration->isMatch( aWord, rDay) )
-                                    {
-                                        aComplete = rDay;
-                                        break;
-                                    }
-                                }
-
-                                if ( aComplete.isEmpty() )
-                                {
-                                    xItem = pImpEditEngine->xLocaleDataWrapper->getDefaultCalendarMonths();
-                                    sal_Int32 nMonthCount = xItem.getLength();
-                                    const i18n::CalendarItem2* pMonthArr = xItem.getConstArray();
-                                    for( sal_Int32 n = 0; n <= nMonthCount; ++n )
-                                    {
-                                        const OUString& rMon = pMonthArr[n].FullName;
-                                        if( pTransliteration->isMatch( aWord, rMon) )
-                                        {
-                                            aComplete = rMon;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                if( !aComplete.isEmpty() && ( ( aWord.getLength() + 1 ) < aComplete.getLength() ) )
-                                {
-                                    pImpEditEngine->SetAutoCompleteText( aComplete, false );
-                                    Point aPos = pImpEditEngine->PaMtoEditCursor( aCurSel.Max() ).TopLeft();
-                                    aPos = pEditView->pImpEditView->GetWindowPos( aPos );
-                                    aPos = pEditView->pImpEditView->GetWindow()->LogicToPixel( aPos );
-                                    aPos = pEditView->GetWindow()->OutputToScreenPixel( aPos );
-                                    aPos.AdjustY( -3 );
-                                    Help::ShowQuickHelp( pEditView->GetWindow(), tools::Rectangle( aPos, Size( 1, 1 ) ), aComplete, QuickHelpFlags::Bottom|QuickHelpFlags::Left );
-                                }
-                            }
-                        }
-                    }
-                    bModified = true;
-                }
-                else
-                    bDone = false;
-            }
-        }
-    }
-
-    pEditView->pImpEditView->SetEditSelection( aCurSel );
-    if (comphelper::LibreOfficeKit::isActive())
-    {
-        pEditView->pImpEditView->DrawSelectionXOR();
-    }
-    pImpEditEngine->UpdateSelections();
-
-    if ( ( !IsEffectivelyVertical() && ( nCode != KEY_UP ) && ( nCode != KEY_DOWN ) ) ||
-         ( IsEffectivelyVertical() && ( nCode != KEY_LEFT ) && ( nCode != KEY_RIGHT ) ))
-    {
-        pEditView->pImpEditView->nTravelXPos = TRAVEL_X_DONTKNOW;
-    }
-
-    if ( /* ( nCode != KEY_HOME ) && ( nCode != KEY_END ) && */
-        ( !IsEffectivelyVertical() && ( nCode != KEY_LEFT ) && ( nCode != KEY_RIGHT ) ) ||
-         ( IsEffectivelyVertical() && ( nCode != KEY_UP ) && ( nCode != KEY_DOWN ) ))
-    {
-        pEditView->pImpEditView->SetCursorBidiLevel( CURSOR_BIDILEVEL_DONTKNOW );
-    }
-
-    if ( bSetCursorFlags )
-        pEditView->pImpEditView->nExtraCursorFlags = nNewCursorFlags;
-
-    if ( bModified )
-    {
-        DBG_ASSERT( !bReadOnly, "ReadOnly but modified???" );
-        // Idle-Formatter only when AnyInput.
-        if ( bAllowIdle && pImpEditEngine->GetStatus().UseIdleFormatter()
-                && Application::AnyInput( VclInputFlags::KEYBOARD) )
-            pImpEditEngine->IdleFormatAndLayout( pEditView );
-        else
-            pImpEditEngine->FormatAndLayout( pEditView );
-    }
-    else if ( bMoved )
-    {
-        bool bGotoCursor = pEditView->pImpEditView->DoAutoScroll();
-        pEditView->pImpEditView->ShowCursor( bGotoCursor, true );
-        pImpEditEngine->CallStatusHdl();
-    }
-
-    return bDone;
+    return getImpl().PostKeyEvent(rKeyEvent, pEditView, pFrameWin);
 }
 
 sal_uInt32 EditEngine::GetTextHeight() const
 {
-
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
-
-    sal_uInt32 nHeight = !IsEffectivelyVertical() ? pImpEditEngine->GetTextHeight() : pImpEditEngine->CalcTextWidth( true );
+    getImpl().EnsureDocumentFormatted();
+    sal_uInt32 nHeight = !IsEffectivelyVertical() ? getImpl().GetTextHeight() : getImpl().CalcTextWidth( true );
     return nHeight;
-}
-
-sal_uInt32 EditEngine::GetTextHeightNTP() const
-{
-
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
-
-    if ( IsEffectivelyVertical() )
-        return pImpEditEngine->CalcTextWidth( true );
-
-    return pImpEditEngine->GetTextHeightNTP();
 }
 
 sal_uInt32 EditEngine::CalcTextWidth()
 {
-
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
-
-    sal_uInt32 nWidth = !IsEffectivelyVertical() ? pImpEditEngine->CalcTextWidth( true ) : pImpEditEngine->GetTextHeight();
+    getImpl().EnsureDocumentFormatted();
+    sal_uInt32 nWidth = !IsEffectivelyVertical() ? getImpl().CalcTextWidth(true) : getImpl().GetTextHeight();
     return nWidth;
 }
 
 bool EditEngine::SetUpdateLayout(bool bUpdate, bool bRestoring)
 {
-    bool bPrevUpdateLayout = pImpEditEngine->SetUpdateLayout( bUpdate );
-    if (pImpEditEngine->pActiveView)
+    bool bPrevUpdateLayout = getImpl().SetUpdateLayout(bUpdate);
+    if (getImpl().mpActiveView)
     {
         // Not an activation if we are restoring the previous update mode.
-        pImpEditEngine->pActiveView->ShowCursor(false, false, /*bActivate=*/!bRestoring);
+        getImpl().mpActiveView->ShowCursor(false, false, /*bActivate=*/!bRestoring);
     }
     return bPrevUpdateLayout;
 }
 
 bool EditEngine::IsUpdateLayout() const
 {
-    return pImpEditEngine->IsUpdateLayout();
+    return getImpl().IsUpdateLayout();
 }
 
 void EditEngine::Clear()
 {
-    pImpEditEngine->Clear();
+    getImpl().Clear();
 }
 
 void EditEngine::SetText( const OUString& rText )
 {
-    pImpEditEngine->SetText( rText );
-    if ( !rText.isEmpty() && pImpEditEngine->IsUpdateLayout() )
-        pImpEditEngine->FormatAndLayout();
+    getImpl().SetText(rText);
+    if (!rText.isEmpty() && getImpl().IsUpdateLayout())
+        getImpl().FormatAndLayout();
 }
 
 ErrCode EditEngine::Read( SvStream& rInput, const OUString& rBaseURL, EETextFormat eFormat, SvKeyValueIterator* pHTTPHeaderAttrs /* = NULL */ )
 {
-    bool bUndoEnabled = pImpEditEngine->IsUndoEnabled();
-    pImpEditEngine->EnableUndo( false );
-    pImpEditEngine->SetText( OUString() );
-    EditPaM aPaM( pImpEditEngine->GetEditDoc().GetStartPaM() );
-    pImpEditEngine->Read( rInput, rBaseURL, eFormat, EditSelection( aPaM, aPaM ), pHTTPHeaderAttrs );
-    pImpEditEngine->EnableUndo( bUndoEnabled );
-    return rInput.GetError();
+    return getImpl().Read(rInput, rBaseURL, eFormat, pHTTPHeaderAttrs);
 }
 
 void EditEngine::Write( SvStream& rOutput, EETextFormat eFormat )
 {
-    EditPaM aStartPaM( pImpEditEngine->GetEditDoc().GetStartPaM() );
-    EditPaM aEndPaM( pImpEditEngine->GetEditDoc().GetEndPaM() );
-    pImpEditEngine->Write( rOutput, eFormat, EditSelection( aStartPaM, aEndPaM ) );
+    getImpl().Write(rOutput, eFormat);
 }
 
 std::unique_ptr<EditTextObject> EditEngine::CreateTextObject()
 {
-    return pImpEditEngine->CreateTextObject();
+    return getImpl().CreateTextObject();
 }
 
 std::unique_ptr<EditTextObject> EditEngine::CreateTextObject( const ESelection& rESelection )
 {
-    EditSelection aSel( pImpEditEngine->CreateSel( rESelection ) );
-    return pImpEditEngine->CreateTextObject( aSel );
+    return getImpl().CreateTextObject(CreateSelection(rESelection));
 }
 
-std::unique_ptr<EditTextObject> EditEngine::GetEmptyTextObject() const
+std::unique_ptr<EditTextObject> EditEngine::GetEmptyTextObject()
 {
-    return pImpEditEngine->GetEmptyTextObject();
+    return getImpl().GetEmptyTextObject();
 }
-
 
 void EditEngine::SetText( const EditTextObject& rTextObject )
 {
-    pImpEditEngine->SetText( rTextObject );
-    pImpEditEngine->FormatAndLayout();
+    getImpl().SetText(rTextObject);
+    getImpl().FormatAndLayout();
 }
 
 void EditEngine::ShowParagraph( sal_Int32 nParagraph, bool bShow )
 {
-    pImpEditEngine->ShowParagraph( nParagraph, bShow );
+    getImpl().ShowParagraph(nParagraph, bShow);
 }
 
 void EditEngine::SetNotifyHdl( const Link<EENotify&,void>& rLink )
 {
-    pImpEditEngine->SetNotifyHdl( rLink );
+    getImpl().SetNotifyHdl(rLink);
 }
 
 Link<EENotify&,void> const & EditEngine::GetNotifyHdl() const
 {
-    return pImpEditEngine->GetNotifyHdl();
+    return getImpl().GetNotifyHdl();
 }
 
 void EditEngine::SetStatusEventHdl( const Link<EditStatus&, void>& rLink )
 {
-    pImpEditEngine->SetStatusEventHdl( rLink );
+    getImpl().SetStatusEventHdl(rLink);
 }
 
 Link<EditStatus&, void> const & EditEngine::GetStatusEventHdl() const
 {
-    return pImpEditEngine->GetStatusEventHdl();
+    return getImpl().GetStatusEventHdl();
 }
 
 void EditEngine::SetHtmlImportHdl( const Link<HtmlImportInfo&,void>& rLink )
 {
-    pImpEditEngine->aHtmlImportHdl = rLink;
+    getImpl().maHtmlImportHdl = rLink;
 }
 
 const Link<HtmlImportInfo&,void>& EditEngine::GetHtmlImportHdl() const
 {
-    return pImpEditEngine->aHtmlImportHdl;
+    return getImpl().maHtmlImportHdl;
 }
 
 void EditEngine::SetRtfImportHdl( const Link<RtfImportInfo&,void>& rLink )
 {
-    pImpEditEngine->aRtfImportHdl = rLink;
+    getImpl().maRtfImportHdl = rLink;
 }
 
 const Link<RtfImportInfo&,void>& EditEngine::GetRtfImportHdl() const
 {
-    return pImpEditEngine->aRtfImportHdl;
+    return getImpl().maRtfImportHdl;
 }
 
 void EditEngine::SetBeginMovingParagraphsHdl( const Link<MoveParagraphsInfo&,void>& rLink )
 {
-    pImpEditEngine->aBeginMovingParagraphsHdl = rLink;
+    getImpl().maBeginMovingParagraphsHdl = rLink;
 }
 
 void EditEngine::SetEndMovingParagraphsHdl( const Link<MoveParagraphsInfo&,void>& rLink )
 {
-    pImpEditEngine->aEndMovingParagraphsHdl = rLink;
+    getImpl().maEndMovingParagraphsHdl = rLink;
 }
 
 void EditEngine::SetBeginPasteOrDropHdl( const Link<PasteOrDropInfos&,void>& rLink )
 {
 
-    pImpEditEngine->aBeginPasteOrDropHdl = rLink;
+    getImpl().maBeginPasteOrDropHdl = rLink;
 }
 
 void EditEngine::SetEndPasteOrDropHdl( const Link<PasteOrDropInfos&,void>& rLink )
 {
-    pImpEditEngine->aEndPasteOrDropHdl = rLink;
+    getImpl().maEndPasteOrDropHdl = rLink;
 }
 
 std::unique_ptr<EditTextObject> EditEngine::CreateTextObject( sal_Int32 nPara, sal_Int32 nParas )
 {
-    DBG_ASSERT( 0 <= nPara && nPara < pImpEditEngine->GetEditDoc().Count(), "CreateTextObject: Startpara out of Range" );
-    DBG_ASSERT( nParas <= pImpEditEngine->GetEditDoc().Count() - nPara, "CreateTextObject: Endpara out of Range" );
-
-    ContentNode* pStartNode = pImpEditEngine->GetEditDoc().GetObject( nPara );
-    ContentNode* pEndNode = pImpEditEngine->GetEditDoc().GetObject( nPara+nParas-1 );
-    DBG_ASSERT( pStartNode, "Start-Paragraph does not exist: CreateTextObject" );
-    DBG_ASSERT( pEndNode, "End-Paragraph does not exist: CreateTextObject" );
-
-    if ( pStartNode && pEndNode )
-    {
-        EditSelection aTmpSel;
-        aTmpSel.Min() = EditPaM( pStartNode, 0 );
-        aTmpSel.Max() = EditPaM( pEndNode, pEndNode->Len() );
-        return pImpEditEngine->CreateTextObject( aTmpSel );
-    }
-    return nullptr;
+    return getImpl().CreateTextObject(nPara, nParas);
 }
 
 void EditEngine::RemoveParagraph( sal_Int32 nPara )
 {
-    DBG_ASSERT( pImpEditEngine->GetEditDoc().Count() > 1, "The first paragraph should not be deleted!" );
-    if( pImpEditEngine->GetEditDoc().Count() <= 1 )
-        return;
-
-    ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( nPara );
-    const ParaPortion* pPortion = pImpEditEngine->GetParaPortions().SafeGetObject( nPara );
-    DBG_ASSERT( pPortion && pNode, "Paragraph not found: RemoveParagraph" );
-    if ( pNode && pPortion )
-    {
-        // No Undo encapsulation needed.
-        pImpEditEngine->ImpRemoveParagraph( nPara );
-        pImpEditEngine->InvalidateFromParagraph( nPara );
-        pImpEditEngine->UpdateSelections();
-        if (pImpEditEngine->IsUpdateLayout())
-            pImpEditEngine->FormatAndLayout();
-    }
+    getImpl().RemoveParagraph(nPara);
 }
 
 sal_Int32 EditEngine::GetTextLen( sal_Int32 nPara ) const
 {
-    ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( nPara );
+    ContentNode* pNode = getImpl().GetEditDoc().GetObject(nPara);
     DBG_ASSERT( pNode, "Paragraph not found: GetTextLen" );
     if ( pNode )
         return pNode->Len();
@@ -1650,156 +953,101 @@ sal_Int32 EditEngine::GetTextLen( sal_Int32 nPara ) const
 OUString EditEngine::GetText( sal_Int32 nPara ) const
 {
     OUString aStr;
-    if ( 0 <= nPara && nPara < pImpEditEngine->GetEditDoc().Count() )
-        aStr = pImpEditEngine->GetEditDoc().GetParaAsString( nPara );
+    if (0 <= nPara && nPara < getImpl().GetEditDoc().Count())
+        aStr = getImpl().GetEditDoc().GetParaAsString(nPara);
     return aStr;
 }
 
 void EditEngine::SetModifyHdl( const Link<LinkParamNone*,void>& rLink )
 {
-    pImpEditEngine->SetModifyHdl( rLink );
+    getImpl().SetModifyHdl(rLink);
 }
 
 void EditEngine::ClearModifyFlag()
 {
-    pImpEditEngine->SetModifyFlag( false );
+    getImpl().SetModifyFlag(false);
 }
 
 void EditEngine::SetModified()
 {
-    pImpEditEngine->SetModifyFlag( true );
+    getImpl().SetModifyFlag(true);
 }
 
 bool EditEngine::IsModified() const
 {
-    return pImpEditEngine->IsModified();
+    return getImpl().IsModified();
 }
 
 bool EditEngine::IsInSelectionMode() const
 {
-    return ( pImpEditEngine->IsInSelectionMode() ||
-                pImpEditEngine->GetSelEngine().IsInSelection() );
+    return getImpl().IsInSelectionMode() || getImpl().GetSelEngine().IsInSelection();
 }
 
 void EditEngine::InsertParagraph( sal_Int32 nPara, const EditTextObject& rTxtObj, bool bAppend )
 {
-    if ( nPara > GetParagraphCount() )
-    {
-        SAL_WARN_IF( nPara != EE_PARA_APPEND, "editeng", "Paragraph number too large, but not EE_PARA_APPEND!" );
-        nPara = GetParagraphCount();
-    }
-
-    pImpEditEngine->UndoActionStart( EDITUNDO_INSERT );
-
-    // No Undo compounding needed.
-    EditPaM aPaM( pImpEditEngine->InsertParagraph( nPara ) );
-    // When InsertParagraph from the outside, no hard attributes
-    // should be taken over!
-    pImpEditEngine->RemoveCharAttribs( nPara );
-    pImpEditEngine->InsertText( rTxtObj, EditSelection( aPaM, aPaM ) );
-
-    if ( bAppend && nPara )
-        pImpEditEngine->ConnectContents( nPara-1, /*bBackwards=*/false );
-
-    pImpEditEngine->UndoActionEnd();
-
-    if (pImpEditEngine->IsUpdateLayout())
-        pImpEditEngine->FormatAndLayout();
+    getImpl().InsertParagraph(nPara, rTxtObj, bAppend);
 }
 
 void EditEngine::InsertParagraph(sal_Int32 nPara, const OUString& rTxt)
 {
-    if ( nPara > GetParagraphCount() )
-    {
-        SAL_WARN_IF( nPara != EE_PARA_APPEND, "editeng", "Paragraph number too large, but not EE_PARA_APPEND!" );
-        nPara = GetParagraphCount();
-    }
-
-    pImpEditEngine->UndoActionStart( EDITUNDO_INSERT );
-    EditPaM aPaM( pImpEditEngine->InsertParagraph( nPara ) );
-    // When InsertParagraph from the outside, no hard attributes
-    // should be taken over!
-    pImpEditEngine->RemoveCharAttribs( nPara );
-    pImpEditEngine->UndoActionEnd();
-    pImpEditEngine->ImpInsertText( EditSelection( aPaM, aPaM ), rTxt );
-    if (pImpEditEngine->IsUpdateLayout())
-        pImpEditEngine->FormatAndLayout();
+    getImpl().InsertParagraph(nPara, rTxt);
 }
 
 void EditEngine::SetText(sal_Int32 nPara, const OUString& rTxt)
 {
-    std::optional<EditSelection> pSel = pImpEditEngine->SelectParagraph( nPara );
-    if ( pSel )
-    {
-        pImpEditEngine->UndoActionStart( EDITUNDO_INSERT );
-        pImpEditEngine->ImpInsertText( *pSel, rTxt );
-        pImpEditEngine->UndoActionEnd();
-        if (pImpEditEngine->IsUpdateLayout())
-            pImpEditEngine->FormatAndLayout();
-    }
+    getImpl().SetParagraphText(nPara, rTxt);
 }
 
 void EditEngine::SetParaAttribs( sal_Int32 nPara, const SfxItemSet& rSet )
 {
-    pImpEditEngine->SetParaAttribs( nPara, rSet );
-    if ( pImpEditEngine->IsUpdateLayout() )
-        pImpEditEngine->FormatAndLayout();
+    getImpl().SetParaAttribs(nPara, rSet);
+    if (getImpl().IsUpdateLayout())
+        getImpl().FormatAndLayout();
 }
 
 const SfxItemSet& EditEngine::GetParaAttribs( sal_Int32 nPara ) const
 {
-    return pImpEditEngine->GetParaAttribs( nPara );
+    return getImpl().GetParaAttribs(nPara);
 }
 
 bool EditEngine::HasParaAttrib( sal_Int32 nPara, sal_uInt16 nWhich ) const
 {
-    return pImpEditEngine->HasParaAttrib( nPara, nWhich );
+    return getImpl().HasParaAttrib(nPara, nWhich);
 }
 
 const SfxPoolItem& EditEngine::GetParaAttrib( sal_Int32 nPara, sal_uInt16 nWhich ) const
 {
-    return pImpEditEngine->GetParaAttrib( nPara, nWhich );
+    return getImpl().GetParaAttrib(nPara, nWhich);
 }
 
 void EditEngine::SetCharAttribs(sal_Int32 nPara, const SfxItemSet& rSet)
 {
-    EditSelection aSel(pImpEditEngine->ConvertSelection(nPara, 0, nPara, GetTextLen(nPara)));
+    EditSelection aSel(getImpl().ConvertSelection(nPara, 0, nPara, GetTextLen(nPara)));
     // This is called by sd::View::OnBeginPasteOrDrop(), updating the cursor position on undo is not
     // wanted.
-    pImpEditEngine->SetAttribs(aSel, rSet, /*nSpecial=*/SetAttribsMode::NONE, /*bSetSelection=*/false);
-    if (pImpEditEngine->IsUpdateLayout())
-        pImpEditEngine->FormatAndLayout();
+    getImpl().SetAttribs(aSel, rSet, /*nSpecial=*/SetAttribsMode::NONE, /*bSetSelection=*/false);
+    if (getImpl().IsUpdateLayout())
+        getImpl().FormatAndLayout();
 }
 
-void EditEngine::GetCharAttribs( sal_Int32 nPara, std::vector<EECharAttrib>& rLst ) const
+void EditEngine::GetCharAttribs( sal_Int32 nPara, std::vector<EECharAttrib>& rList ) const
 {
-    pImpEditEngine->GetCharAttribs( nPara, rLst );
+    getImpl().GetCharAttribs(nPara, rList);
 }
 
 SfxItemSet EditEngine::GetAttribs( const ESelection& rSel, EditEngineAttribs nOnlyHardAttrib )
 {
-    EditSelection aSel( pImpEditEngine->
-        ConvertSelection( rSel.nStartPara, rSel.nStartPos, rSel.nEndPara, rSel.nEndPos ) );
-    return pImpEditEngine->GetAttribs( aSel, nOnlyHardAttrib );
+    return getImpl().GetAttribs(getImpl().CreateNormalizedSel(rSel), nOnlyHardAttrib);
 }
 
 SfxItemSet EditEngine::GetAttribs( sal_Int32 nPara, sal_Int32 nStart, sal_Int32 nEnd, GetAttribsFlags nFlags ) const
 {
-    return pImpEditEngine->GetAttribs( nPara, nStart, nEnd, nFlags );
+    return getImpl().GetAttribs(nPara, nStart, nEnd, nFlags);
 }
 
 void EditEngine::RemoveAttribs( const ESelection& rSelection, bool bRemoveParaAttribs, sal_uInt16 nWhich )
 {
-    const EERemoveParaAttribsMode eMode = bRemoveParaAttribs?
-        EERemoveParaAttribsMode::RemoveAll :
-        EERemoveParaAttribsMode::RemoveCharItems;
-
-    pImpEditEngine->UndoActionStart( EDITUNDO_RESETATTRIBS );
-    EditSelection aSel( pImpEditEngine->ConvertSelection( rSelection.nStartPara, rSelection.nStartPos, rSelection.nEndPara, rSelection.nEndPos ) );
-    pImpEditEngine->RemoveCharAttribs( aSel, eMode, nWhich  );
-    pImpEditEngine->UndoActionEnd();
-    if (pImpEditEngine->IsUpdateLayout())
-        pImpEditEngine->FormatAndLayout();
+    getImpl().RemoveAttribs(rSelection, bRemoveParaAttribs, nWhich);
 }
 
 vcl::Font EditEngine::GetStandardFont( sal_Int32 nPara )
@@ -1809,11 +1057,11 @@ vcl::Font EditEngine::GetStandardFont( sal_Int32 nPara )
 
 SvxFont EditEngine::GetStandardSvxFont( sal_Int32 nPara )
 {
-    ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( nPara );
+    ContentNode* pNode = getImpl().GetEditDoc().GetObject( nPara );
     return pNode->GetCharAttribs().GetDefFont();
 }
 
-void EditEngine::StripPortions()
+void EditEngine::StripPortions(StripPortionsHelper& rStripPortionsHelper)
 {
     ScopedVclPtrInstance< VirtualDevice > aTmpDev;
     tools::Rectangle aBigRect( Point( 0, 0 ), Size( 0x7FFFFFFF, 0x7FFFFFFF ) );
@@ -1830,15 +1078,16 @@ void EditEngine::StripPortions()
             aBigRect.SetBottom( 0 );
         }
     }
-    pImpEditEngine->Paint(*aTmpDev, aBigRect, Point(), true);
+
+    getImpl().StripAllPortions(*aTmpDev, aBigRect, rStripPortionsHelper);
 }
 
 void EditEngine::GetPortions( sal_Int32 nPara, std::vector<sal_Int32>& rList )
 {
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatFullDoc();
+    if (!getImpl().IsFormatted())
+        getImpl().FormatFullDoc();
 
-    const ParaPortion* pParaPortion = pImpEditEngine->GetParaPortions().SafeGetObject( nPara );
+    const ParaPortion* pParaPortion = getImpl().GetParaPortions().SafeGetObject(nPara);
     if ( pParaPortion )
     {
         sal_Int32 nEnd = 0;
@@ -1853,113 +1102,44 @@ void EditEngine::GetPortions( sal_Int32 nPara, std::vector<sal_Int32>& rList )
 
 void EditEngine::SetFlatMode( bool bFlat)
 {
-    pImpEditEngine->SetFlatMode( bFlat );
+    getImpl().SetFlatMode(bFlat);
 }
 
 bool EditEngine::IsFlatMode() const
 {
-    return !( pImpEditEngine->GetStatus().UseCharAttribs() );
+    return !getImpl().GetStatus().UseCharAttribs();
 }
 
 void EditEngine::SetSingleLine(bool bValue)
 {
-    if (bValue == pImpEditEngine->GetStatus().IsSingleLine())
+    if (bValue == getImpl().GetStatus().IsSingleLine())
         return;
 
     if (bValue)
-        pImpEditEngine->GetStatus().TurnOnFlags(EEControlBits::SINGLELINE);
+        getImpl().GetStatus().TurnOnFlags(EEControlBits::SINGLELINE);
     else
-        pImpEditEngine->GetStatus().TurnOffFlags(EEControlBits::SINGLELINE);
+        getImpl().GetStatus().TurnOffFlags(EEControlBits::SINGLELINE);
 }
 
 void EditEngine::SetControlWord( EEControlBits nWord )
 {
-
-    if ( nWord == pImpEditEngine->GetStatus().GetControlWord() )
-        return;
-
-    EEControlBits nPrev = pImpEditEngine->GetStatus().GetControlWord();
-    pImpEditEngine->GetStatus().GetControlWord() = nWord;
-
-    EEControlBits nChanges = nPrev ^ nWord;
-    if ( pImpEditEngine->IsFormatted() )
-    {
-        // possibly reformat:
-        if ( ( nChanges & EEControlBits::USECHARATTRIBS ) ||
-             ( nChanges & EEControlBits::ONECHARPERLINE ) ||
-             ( nChanges & EEControlBits::STRETCHING ) ||
-             ( nChanges & EEControlBits::OUTLINER ) ||
-             ( nChanges & EEControlBits::NOCOLORS ) ||
-             ( nChanges & EEControlBits::OUTLINER2 ) )
-        {
-            if ( nChanges & EEControlBits::USECHARATTRIBS )
-            {
-                pImpEditEngine->GetEditDoc().CreateDefFont( true );
-            }
-
-            pImpEditEngine->FormatFullDoc();
-            pImpEditEngine->UpdateViews( pImpEditEngine->GetActiveView() );
-        }
-    }
-
-    bool bSpellingChanged = bool(nChanges & EEControlBits::ONLINESPELLING);
-
-    if ( !bSpellingChanged )
-        return;
-
-    pImpEditEngine->StopOnlineSpellTimer();
-    if (nWord & EEControlBits::ONLINESPELLING)
-    {
-        // Create WrongList, start timer...
-        sal_Int32 nNodes = pImpEditEngine->GetEditDoc().Count();
-        for ( sal_Int32 n = 0; n < nNodes; n++ )
-        {
-            ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( n );
-            pNode->CreateWrongList();
-        }
-        if (pImpEditEngine->IsFormatted())
-            pImpEditEngine->StartOnlineSpellTimer();
-    }
-    else
-    {
-        tools::Long nY = 0;
-        sal_Int32 nNodes = pImpEditEngine->GetEditDoc().Count();
-        for ( sal_Int32 n = 0; n < nNodes; n++ )
-        {
-            ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( n );
-            const ParaPortion* pPortion = pImpEditEngine->GetParaPortions()[n];
-            bool bWrongs = false;
-            if (pNode->GetWrongList() != nullptr)
-                bWrongs = !pNode->GetWrongList()->empty();
-            pNode->DestroyWrongList();
-            if ( bWrongs )
-            {
-                pImpEditEngine->aInvalidRect.SetLeft( 0 );
-                pImpEditEngine->aInvalidRect.SetRight( pImpEditEngine->GetPaperSize().Width() );
-                pImpEditEngine->aInvalidRect.SetTop( nY+1 );
-                pImpEditEngine->aInvalidRect.SetBottom( nY+pPortion->GetHeight()-1 );
-                pImpEditEngine->UpdateViews( pImpEditEngine->pActiveView );
-            }
-            nY += pPortion->GetHeight();
-        }
-    }
+    getImpl().SetControlWord(nWord);
 }
 
 EEControlBits EditEngine::GetControlWord() const
 {
-    return pImpEditEngine->GetStatus().GetControlWord();
+    return getImpl().GetStatus().GetControlWord();
 }
 
 tools::Long EditEngine::GetFirstLineStartX( sal_Int32 nParagraph )
 {
 
     tools::Long nX = 0;
-    const ParaPortion* pPPortion = pImpEditEngine->GetParaPortions().SafeGetObject( nParagraph );
+    const ParaPortion* pPPortion = getImpl().GetParaPortions().SafeGetObject(nParagraph);
     if ( pPPortion )
     {
-        DBG_ASSERT( pImpEditEngine->IsFormatted() || !pImpEditEngine->IsFormatting(), "GetFirstLineStartX: Doc not formatted - unable to format!" );
-        if ( !pImpEditEngine->IsFormatted() )
-            pImpEditEngine->FormatDoc();
+        DBG_ASSERT(getImpl().IsFormatted() || !getImpl().IsFormatting(), "GetFirstLineStartX: Doc not formatted - unable to format!");
+        getImpl().EnsureDocumentFormatted();
         const EditLine& rFirstLine = pPPortion->GetLines()[0];
         nX = rFirstLine.GetStartPosX();
     }
@@ -1987,36 +1167,7 @@ Point EditEngine::GetDocPos( const Point& rPaperPos ) const
 
 Point EditEngine::GetDocPosTopLeft( sal_Int32 nParagraph )
 {
-    const ParaPortion* pPPortion = pImpEditEngine->GetParaPortions().SafeGetObject( nParagraph );
-    DBG_ASSERT( pPPortion, "Paragraph not found: GetWindowPosTopLeft" );
-    Point aPoint;
-    if ( pPPortion )
-    {
-
-        // If someone calls GetLineHeight() with an empty Engine.
-        DBG_ASSERT( pImpEditEngine->IsFormatted() || !pImpEditEngine->IsFormatting(), "GetDocPosTopLeft: Doc not formatted - unable to format!" );
-        if ( !pImpEditEngine->IsFormatted() )
-            pImpEditEngine->FormatAndLayout();
-        if ( pPPortion->GetLines().Count() )
-        {
-            // Correct it if large Bullet.
-            const EditLine& rFirstLine = pPPortion->GetLines()[0];
-            aPoint.setX( rFirstLine.GetStartPosX() );
-        }
-        else
-        {
-            const SvxLRSpaceItem& rLRItem = pImpEditEngine->GetLRSpaceItem( pPPortion->GetNode() );
-            sal_Int32 nSpaceBefore = 0;
-            pImpEditEngine->GetSpaceBeforeAndMinLabelWidth( pPPortion->GetNode(), &nSpaceBefore );
-            short nX = static_cast<short>(rLRItem.GetTextLeft()
-                            + rLRItem.GetTextFirstLineOffset()
-                            + nSpaceBefore);
-
-            aPoint.setX(pImpEditEngine->scaleXSpacingValue(nX));
-        }
-        aPoint.setY( pImpEditEngine->GetParaPortions().GetYOffset( pPPortion ) );
-    }
-    return aPoint;
+    return getImpl().GetDocPosTopLeft(nParagraph);
 }
 
 const SvxNumberFormat* EditEngine::GetNumberFormat( sal_Int32 ) const
@@ -2028,49 +1179,43 @@ const SvxNumberFormat* EditEngine::GetNumberFormat( sal_Int32 ) const
 
 bool EditEngine::IsRightToLeft( sal_Int32 nPara ) const
 {
-    return pImpEditEngine->IsRightToLeft( nPara );
+    return getImpl().IsRightToLeft(nPara);
 }
 
 bool EditEngine::IsTextPos( const Point& rPaperPos, sal_uInt16 nBorder )
 {
-
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
+    getImpl().EnsureDocumentFormatted();
 
     // take unrotated positions for calculation here
     Point aDocPos = GetDocPos( rPaperPos );
 
-    if ( ( aDocPos.Y() > 0  ) && ( o3tl::make_unsigned(aDocPos.Y()) < pImpEditEngine->GetTextHeight() ) )
-        return pImpEditEngine->IsTextPos(aDocPos, nBorder);
+    if ((aDocPos.Y() > 0) && (o3tl::make_unsigned(aDocPos.Y()) < getImpl().GetTextHeight()))
+        return getImpl().IsTextPos(aDocPos, nBorder);
     return false;
 }
 
-void EditEngine::SetEditTextObjectPool( SfxItemPool* pPool )
+void EditEngine::SetItemPool( SfxItemPool* pPool )
 {
-    pImpEditEngine->SetEditTextObjectPool( pPool );
+    getImpl().GetEditDoc().SetItemPool(pPool);
 }
 
-SfxItemPool* EditEngine::GetEditTextObjectPool() const
+SfxItemPool* EditEngine::GetItemPool() const
 {
-    return pImpEditEngine->GetEditTextObjectPool();
+    return &getImpl().GetEditDoc().GetItemPool();
 }
 
 void EditEngine::QuickSetAttribs( const SfxItemSet& rSet, const ESelection& rSel )
 {
-
-    EditSelection aSel( pImpEditEngine->
-        ConvertSelection( rSel.nStartPara, rSel.nStartPos, rSel.nEndPara, rSel.nEndPos ) );
-
-    pImpEditEngine->SetAttribs( aSel, rSet );
+    getImpl().SetAttribs(getImpl().CreateNormalizedSel(rSel), rSet);
 }
 
 void EditEngine::QuickMarkInvalid( const ESelection& rSel )
 {
-    DBG_ASSERT( rSel.nStartPara < pImpEditEngine->GetEditDoc().Count(), "MarkInvalid: Start out of Range!" );
-    DBG_ASSERT( rSel.nEndPara < pImpEditEngine->GetEditDoc().Count(), "MarkInvalid: End out of Range!" );
-    for ( sal_Int32 nPara = rSel.nStartPara; nPara <= rSel.nEndPara; nPara++ )
+    DBG_ASSERT(rSel.start.nPara < getImpl().GetEditDoc().Count(), "MarkInvalid: Start out of Range!");
+    DBG_ASSERT(rSel.end.nPara < getImpl().GetEditDoc().Count(), "MarkInvalid: End out of Range!");
+    for (sal_Int32 nPara = rSel.start.nPara; nPara <= rSel.end.nPara; nPara++)
     {
-        ParaPortion* pPortion = pImpEditEngine->GetParaPortions().SafeGetObject( nPara );
+        ParaPortion* pPortion = getImpl().GetParaPortions().SafeGetObject(nPara);
         if ( pPortion )
             pPortion->MarkSelectionInvalid( 0 );
     }
@@ -2078,128 +1223,112 @@ void EditEngine::QuickMarkInvalid( const ESelection& rSel )
 
 void EditEngine::QuickInsertText(const OUString& rText, const ESelection& rSel)
 {
-
-    EditSelection aSel( pImpEditEngine->
-        ConvertSelection( rSel.nStartPara, rSel.nStartPos, rSel.nEndPara, rSel.nEndPos ) );
-
-    pImpEditEngine->ImpInsertText( aSel, rText );
+    getImpl().ImpInsertText(getImpl().CreateNormalizedSel(rSel), rText);
 }
 
 void EditEngine::QuickDelete( const ESelection& rSel )
 {
-
-    EditSelection aSel( pImpEditEngine->
-        ConvertSelection( rSel.nStartPara, rSel.nStartPos, rSel.nEndPara, rSel.nEndPos ) );
-
-    pImpEditEngine->ImpDeleteSelection( aSel );
+    getImpl().ImpDeleteSelection(getImpl().CreateNormalizedSel(rSel));
 }
 
 void EditEngine::QuickMarkToBeRepainted( sal_Int32 nPara )
 {
-    ParaPortion* pPortion = pImpEditEngine->GetParaPortions().SafeGetObject( nPara );
+    ParaPortion* pPortion = getImpl().GetParaPortions().SafeGetObject(nPara);
     if ( pPortion )
         pPortion->SetMustRepaint( true );
 }
 
 void EditEngine::QuickInsertLineBreak( const ESelection& rSel )
 {
-
-    EditSelection aSel( pImpEditEngine->
-        ConvertSelection( rSel.nStartPara, rSel.nStartPos, rSel.nEndPara, rSel.nEndPos ) );
-
-    pImpEditEngine->InsertLineBreak( aSel );
+    getImpl().InsertLineBreak(getImpl().CreateNormalizedSel(rSel));
 }
 
 void EditEngine::QuickInsertField( const SvxFieldItem& rFld, const ESelection& rSel )
 {
-
-    EditSelection aSel( pImpEditEngine->
-        ConvertSelection( rSel.nStartPara, rSel.nStartPos, rSel.nEndPara, rSel.nEndPos ) );
-
-    pImpEditEngine->ImpInsertFeature( aSel, rFld );
+    getImpl().ImpInsertFeature(getImpl().CreateNormalizedSel(rSel), rFld);
 }
 
 void EditEngine::QuickFormatDoc( bool bFull )
 {
-    if ( bFull )
-        pImpEditEngine->FormatFullDoc();
+    if (bFull)
+        getImpl().FormatFullDoc();
     else
-        pImpEditEngine->FormatDoc();
+        getImpl().FormatDoc();
 
     // Don't pass active view, maybe selection is not updated yet...
-    pImpEditEngine->UpdateViews();
+    getImpl().UpdateViews();
 }
 
 void EditEngine::SetStyleSheet(const EditSelection& aSel, SfxStyleSheet* pStyle)
 {
-    pImpEditEngine->SetStyleSheet(aSel, pStyle);
+    getImpl().SetStyleSheet(aSel, pStyle);
 }
 
 void EditEngine::SetStyleSheet( sal_Int32 nPara, SfxStyleSheet* pStyle )
 {
-    pImpEditEngine->SetStyleSheet( nPara, pStyle );
+    getImpl().SetStyleSheet(nPara, pStyle);
 }
 
 const SfxStyleSheet* EditEngine::GetStyleSheet( sal_Int32 nPara ) const
 {
-    return pImpEditEngine->GetStyleSheet( nPara );
+    return getImpl().GetStyleSheet(nPara);
 }
 
 SfxStyleSheet* EditEngine::GetStyleSheet( sal_Int32 nPara )
 {
-    return pImpEditEngine->GetStyleSheet( nPara );
+    return getImpl().GetStyleSheet(nPara);
 }
 
 void EditEngine::SetStyleSheetPool( SfxStyleSheetPool* pSPool )
 {
-    pImpEditEngine->SetStyleSheetPool( pSPool );
+    getImpl().SetStyleSheetPool(pSPool);
 }
 
 SfxStyleSheetPool* EditEngine::GetStyleSheetPool()
 {
-    return pImpEditEngine->GetStyleSheetPool();
+    return getImpl().GetStyleSheetPool();
 }
 
 void EditEngine::SetWordDelimiters( const OUString& rDelimiters )
 {
-    pImpEditEngine->aWordDelimiters = rDelimiters;
-    if (pImpEditEngine->aWordDelimiters.indexOf(CH_FEATURE) == -1)
-        pImpEditEngine->aWordDelimiters += OUStringChar(CH_FEATURE);
+    getImpl().maWordDelimiters = rDelimiters;
+    if (getImpl().maWordDelimiters.indexOf(CH_FEATURE) == -1)
+        getImpl().maWordDelimiters += OUStringChar(CH_FEATURE);
 }
 
 const OUString& EditEngine::GetWordDelimiters() const
 {
-    return pImpEditEngine->aWordDelimiters;
+    return getImpl().maWordDelimiters;
 }
 
 void EditEngine::EraseVirtualDevice()
 {
-    pImpEditEngine->EraseVirtualDevice();
+    getImpl().EraseVirtualDevice();
 }
 
 void EditEngine::SetSpeller( Reference< XSpellChecker1 > const &xSpeller )
 {
-    pImpEditEngine->SetSpeller( xSpeller );
+    getImpl().SetSpeller(xSpeller);
 }
 
 Reference< XSpellChecker1 > const & EditEngine::GetSpeller()
 {
-    return pImpEditEngine->GetSpeller();
+    return getImpl().GetSpeller();
 }
 
 void EditEngine::SetHyphenator( Reference< XHyphenator > const & xHyph )
 {
-    pImpEditEngine->SetHyphenator( xHyph );
+    getImpl().SetHyphenator(xHyph);
 }
 
 void EditEngine::GetAllMisspellRanges( std::vector<editeng::MisspellRanges>& rRanges ) const
 {
-    pImpEditEngine->GetAllMisspellRanges(rRanges);
+    getImpl().GetAllMisspellRanges(rRanges);
 }
 
 void EditEngine::SetAllMisspellRanges( const std::vector<editeng::MisspellRanges>& rRanges )
 {
-    pImpEditEngine->SetAllMisspellRanges(rRanges);
+    getImpl().SetAllMisspellRanges(rRanges);
 }
 
 void EditEngine::SetForbiddenCharsTable(const std::shared_ptr<SvxForbiddenCharactersTable>& xForbiddenChars)
@@ -2209,12 +1338,12 @@ void EditEngine::SetForbiddenCharsTable(const std::shared_ptr<SvxForbiddenCharac
 
 void EditEngine::SetDefaultLanguage( LanguageType eLang )
 {
-    pImpEditEngine->SetDefaultLanguage( eLang );
+    getImpl().SetDefaultLanguage(eLang);
 }
 
 LanguageType EditEngine::GetDefaultLanguage() const
 {
-    return pImpEditEngine->GetDefaultLanguage();
+    return getImpl().GetDefaultLanguage();
 }
 
 bool EditEngine::SpellNextDocument()
@@ -2224,35 +1353,35 @@ bool EditEngine::SpellNextDocument()
 
 EESpellState EditEngine::HasSpellErrors()
 {
-    if ( !pImpEditEngine->GetSpeller().is()  )
+    if (!getImpl().GetSpeller().is())
         return EESpellState::NoSpeller;
 
-    return pImpEditEngine->HasSpellErrors();
+    return getImpl().HasSpellErrors();
 }
 
 void EditEngine::ClearSpellErrors()
 {
-    pImpEditEngine->ClearSpellErrors();
+    getImpl().ClearSpellErrors();
 }
 
 bool EditEngine::SpellSentence(EditView const & rView, svx::SpellPortions& rToFill )
 {
-    return pImpEditEngine->SpellSentence( rView, rToFill );
+    return getImpl().SpellSentence(rView, rToFill);
 }
 
 void EditEngine::PutSpellingToSentenceStart( EditView const & rEditView )
 {
-    pImpEditEngine->PutSpellingToSentenceStart( rEditView );
+    getImpl().PutSpellingToSentenceStart(rEditView);
 }
 
 void EditEngine::ApplyChangedSentence(EditView const & rEditView, const svx::SpellPortions& rNewPortions, bool bRecheck )
 {
-    pImpEditEngine->ApplyChangedSentence( rEditView, rNewPortions, bRecheck  );
+    getImpl().ApplyChangedSentence(rEditView, rNewPortions, bRecheck);
 }
 
 bool EditEngine::HasConvertibleTextPortion( LanguageType nLang )
 {
-    return pImpEditEngine->HasConvertibleTextPortion( nLang );
+    return getImpl().HasConvertibleTextPortion(nLang);
 }
 
 bool EditEngine::ConvertNextDocument()
@@ -2262,121 +1391,79 @@ bool EditEngine::ConvertNextDocument()
 
 bool EditEngine::HasText( const SvxSearchItem& rSearchItem )
 {
-    return pImpEditEngine->HasText( rSearchItem );
+    return getImpl().HasText(rSearchItem);
 }
 
-void EditEngine::setGlobalScale(double fFontScaleX, double fFontScaleY, double fSpacingScaleX, double fSpacingScaleY)
+const ScalingParameters & EditEngine::getScalingParameters() const
 {
-    pImpEditEngine->setScale(fFontScaleX, fFontScaleY, fSpacingScaleX, fSpacingScaleY);
+    return getImpl().getScalingParameters();
 }
 
-void EditEngine::getGlobalSpacingScale(double& rX, double& rY) const
+void EditEngine::setScalingParameters(ScalingParameters const& rScalingParameters)
 {
-    pImpEditEngine->getSpacingScale(rX, rY);
+    getImpl().setScalingParameters(rScalingParameters);
 }
 
-basegfx::B2DTuple EditEngine::getGlobalSpacingScale() const
+void EditEngine::setRoundFontSizeToPt(bool bRound)
 {
-    double x = 0.0;
-    double y = 0.0;
-    pImpEditEngine->getSpacingScale(x, y);
-    return {x, y};
-}
-
-void EditEngine::getGlobalFontScale(double& rX, double& rY) const
-{
-    pImpEditEngine->getFontScale(rX, rY);
-}
-
-basegfx::B2DTuple EditEngine::getGlobalFontScale() const
-{
-    double x = 0.0;
-    double y = 0.0;
-    pImpEditEngine->getFontScale(x, y);
-    return {x, y};
-}
-
-void EditEngine::setRoundFontSizeToPt(bool bRound) const
-{
-    pImpEditEngine->setRoundToNearestPt(bRound);
+    getImpl().setRoundToNearestPt(bRound);
 }
 
 bool EditEngine::ShouldCreateBigTextObject() const
 {
     sal_Int32 nTextPortions = 0;
-    sal_Int32 nParas = pImpEditEngine->GetEditDoc().Count();
-    for ( sal_Int32 nPara = 0; nPara < nParas; nPara++  )
+    sal_Int32 nParas = getImpl().GetEditDoc().Count();
+    for (sal_Int32 nPara = 0; nPara < nParas; nPara++)
     {
-        ParaPortion* pParaPortion = pImpEditEngine->GetParaPortions()[nPara];
-        nTextPortions = nTextPortions + pParaPortion->GetTextPortions().Count();
+        ParaPortion& rParaPortion = getImpl().GetParaPortions().getRef(nPara);
+        nTextPortions = nTextPortions + rParaPortion.GetTextPortions().Count();
     }
-    return nTextPortions >= pImpEditEngine->GetBigTextObjectStart();
+    return nTextPortions >= getImpl().GetBigTextObjectStart();
 }
 
-sal_uInt16 EditEngine::GetFieldCount( sal_Int32 nPara ) const
+std::vector<EFieldInfo> EditEngine::GetFieldInfo( sal_Int32 nPara ) const
 {
-    sal_uInt16 nFields = 0;
-    ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( nPara );
+    std::vector<EFieldInfo> aFieldInfos;
+    ContentNode* pNode = getImpl().GetEditDoc().GetObject(nPara);
     if ( pNode )
     {
-        for (auto const& attrib : pNode->GetCharAttribs().GetAttribs())
-        {
-            if (attrib->Which() == EE_FEATURE_FIELD)
-                ++nFields;
-        }
-    }
-
-    return nFields;
-}
-
-EFieldInfo EditEngine::GetFieldInfo( sal_Int32 nPara, sal_uInt16 nField ) const
-{
-    ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( nPara );
-    if ( pNode )
-    {
-        sal_uInt16 nCurrentField = 0;
         for (auto const& attrib : pNode->GetCharAttribs().GetAttribs())
         {
             const EditCharAttrib& rAttr = *attrib;
             if (rAttr.Which() == EE_FEATURE_FIELD)
             {
-                if ( nCurrentField == nField )
-                {
-                    const SvxFieldItem* p = static_cast<const SvxFieldItem*>(rAttr.GetItem());
-                    EFieldInfo aInfo(*p, nPara, rAttr.GetStart());
-                    aInfo.aCurrentText = static_cast<const EditCharAttribField&>(rAttr).GetFieldValue();
-                    return aInfo;
-                }
-
-                ++nCurrentField;
+                const SvxFieldItem* p = static_cast<const SvxFieldItem*>(rAttr.GetItem());
+                EFieldInfo aInfo(*p, nPara, rAttr.GetStart());
+                aInfo.aCurrentText = static_cast<const EditCharAttribField&>(rAttr).GetFieldValue();
+                aFieldInfos.push_back(aInfo);
             }
         }
     }
-    return EFieldInfo();
+    return aFieldInfos;
 }
 
 
 bool EditEngine::UpdateFields()
 {
-    bool bChanges = pImpEditEngine->UpdateFields();
-    if ( bChanges && pImpEditEngine->IsUpdateLayout())
-        pImpEditEngine->FormatAndLayout();
+    bool bChanges = getImpl().UpdateFields();
+    if (bChanges && getImpl().IsUpdateLayout())
+        getImpl().FormatAndLayout();
     return bChanges;
 }
 
 bool EditEngine::UpdateFieldsOnly()
 {
-    return pImpEditEngine->UpdateFields();
+    return getImpl().UpdateFields();
 }
 
 void EditEngine::RemoveFields( const std::function<bool ( const SvxFieldData* )>& isFieldData )
 {
-    pImpEditEngine->UpdateFields();
+    getImpl().UpdateFields();
 
-    sal_Int32 nParas = pImpEditEngine->GetEditDoc().Count();
+    sal_Int32 nParas = getImpl().GetEditDoc().Count();
     for ( sal_Int32 nPara = 0; nPara < nParas; nPara++  )
     {
-        ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( nPara );
+        ContentNode* pNode = getImpl().GetEditDoc().GetObject(nPara);
         const CharAttribList::AttribsType& rAttrs = pNode->GetCharAttribs().GetAttribs();
         for (size_t nAttr = rAttrs.size(); nAttr; )
         {
@@ -2389,7 +1476,7 @@ void EditEngine::RemoveFields( const std::function<bool ( const SvxFieldData* )>
                     DBG_ASSERT( dynamic_cast<const SvxFieldItem*>(rAttr.GetItem()), "no field item..." );
                     EditSelection aSel( EditPaM(pNode, rAttr.GetStart()), EditPaM(pNode, rAttr.GetEnd()) );
                     OUString aFieldText = static_cast<const EditCharAttribField&>(rAttr).GetFieldValue();
-                    pImpEditEngine->ImpInsertText( aSel, aFieldText );
+                    getImpl().ImpInsertText(aSel, aFieldText);
                 }
             }
         }
@@ -2398,10 +1485,10 @@ void EditEngine::RemoveFields( const std::function<bool ( const SvxFieldData* )>
 
 bool EditEngine::HasOnlineSpellErrors() const
 {
-    sal_Int32 nNodes = pImpEditEngine->GetEditDoc().Count();
+    sal_Int32 nNodes = getImpl().GetEditDoc().Count();
     for ( sal_Int32 n = 0; n < nNodes; n++ )
     {
-        ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( n );
+        ContentNode* pNode = getImpl().GetEditDoc().GetObject(n);
         if ( pNode->GetWrongList() && !pNode->GetWrongList()->empty() )
             return true;
     }
@@ -2410,44 +1497,41 @@ bool EditEngine::HasOnlineSpellErrors() const
 
 void EditEngine::CompleteOnlineSpelling()
 {
-    if ( pImpEditEngine->GetStatus().DoOnlineSpelling() )
+    if (getImpl().GetStatus().DoOnlineSpelling())
     {
-        if( !pImpEditEngine->IsFormatted() )
-            pImpEditEngine->FormatAndLayout();
+        if (!getImpl().IsFormatted())
+            getImpl().FormatAndLayout();
 
-        pImpEditEngine->StopOnlineSpellTimer();
-        pImpEditEngine->DoOnlineSpelling( nullptr, true, false );
+        getImpl().StopOnlineSpellTimer();
+        getImpl().DoOnlineSpelling(nullptr, true, false);
     }
 }
 
 sal_Int32 EditEngine::FindParagraph( tools::Long nDocPosY )
 {
-    return pImpEditEngine->GetParaPortions().FindParagraph( nDocPosY );
+    return getImpl().GetParaPortions().FindParagraph(nDocPosY);
 }
 
-EPosition EditEngine::FindDocPosition( const Point& rDocPos ) const
+EPaM EditEngine::FindDocPosition(const Point& rDocPos) const
 {
-    EPosition aPos;
     // From the point of the API, this is const...
-    EditPaM aPaM = const_cast<EditEngine*>(this)->pImpEditEngine->GetPaM( rDocPos, false );
+    EditPaM aPaM = getImpl().GetPaM(rDocPos, false);
     if ( aPaM.GetNode() )
-    {
-        aPos.nPara = pImpEditEngine->maEditDoc.GetPos( aPaM.GetNode() );
-        aPos.nIndex = aPaM.GetIndex();
-    }
-    return aPos;
+        return getImpl().CreateEPaM(aPaM);
+    return EPaM::NotFound();
 }
 
-tools::Rectangle EditEngine::GetCharacterBounds( const EPosition& rPos ) const
+tools::Rectangle EditEngine::GetCharacterBounds(const EPaM& rPos) const
 {
     tools::Rectangle aBounds;
-    ContentNode* pNode = pImpEditEngine->GetEditDoc().GetObject( rPos.nPara );
+    ContentNode* pNode = getImpl().GetEditDoc().GetObject(rPos.nPara);
 
     // Check against index, not paragraph
     if ( pNode && ( rPos.nIndex < pNode->Len() ) )
     {
-        aBounds = pImpEditEngine->PaMtoEditCursor( EditPaM( pNode, rPos.nIndex ), GetCursorFlags::TextOnly );
-        tools::Rectangle aR2 = pImpEditEngine->PaMtoEditCursor( EditPaM( pNode, rPos.nIndex+1 ), GetCursorFlags::TextOnly|GetCursorFlags::EndOfLine );
+        aBounds = getImpl().PaMtoEditCursor(EditPaM(pNode, rPos.nIndex), CursorFlags{.bTextOnly = true});
+        CursorFlags aFlags { .bTextOnly = true, .bEndOfLine = true};
+        tools::Rectangle aR2 = getImpl().PaMtoEditCursor(EditPaM(pNode, rPos.nIndex + 1), aFlags);
         if ( aR2.Right() > aBounds.Right() )
             aBounds.SetRight( aR2.Right() );
     }
@@ -2456,20 +1540,17 @@ tools::Rectangle EditEngine::GetCharacterBounds( const EPosition& rPos ) const
 
 ParagraphInfos EditEngine::GetParagraphInfos( sal_Int32 nPara )
 {
-
     // This only works if not already in the format ...
-    if ( !pImpEditEngine->IsFormatted() )
-        pImpEditEngine->FormatDoc();
+    getImpl().EnsureDocumentFormatted();
 
     ParagraphInfos aInfos;
-    aInfos.bValid = pImpEditEngine->IsFormatted();
-    if ( pImpEditEngine->IsFormatted() )
+    aInfos.bValid = getImpl().IsFormatted();
+    if (getImpl().IsFormatted() && getImpl().GetParaPortions().exists(nPara))
     {
-        const ParaPortion* pParaPortion = pImpEditEngine->GetParaPortions()[nPara];
-        const EditLine* pLine = (pParaPortion && pParaPortion->GetLines().Count()) ?
-                &pParaPortion->GetLines()[0] : nullptr;
-        DBG_ASSERT( pParaPortion && pLine, "GetParagraphInfos - Paragraph out of range" );
-        if ( pParaPortion && pLine )
+        ParaPortion const& rParaPortion = getImpl().GetParaPortions().getRef(nPara);
+        const EditLine* pLine = (rParaPortion.GetLines().Count()) ? &rParaPortion.GetLines()[0] : nullptr;
+        DBG_ASSERT(pLine, "GetParagraphInfos - Paragraph out of range");
+        if (pLine)
         {
             aInfos.nFirstLineHeight = pLine->GetHeight();
             aInfos.nFirstLineTextHeight = pLine->GetTxtHeight();
@@ -2479,58 +1560,39 @@ ParagraphInfos EditEngine::GetParagraphInfos( sal_Int32 nPara )
     return aInfos;
 }
 
-css::uno::Reference< css::datatransfer::XTransferable >
-                    EditEngine::CreateTransferable( const ESelection& rSelection ) const
+uno::Reference<datatransfer::XTransferable>
+EditEngine::CreateTransferable(const ESelection& rSelection)
 {
-    EditSelection aSel( pImpEditEngine->CreateSel( rSelection ) );
-    return pImpEditEngine->CreateTransferable( aSel );
+    return getImpl().CreateTransferable(CreateSelection(rSelection));
 }
 
 
 // ======================    Virtual Methods    ========================
 
-void EditEngine::DrawingText( const Point&, const OUString&, sal_Int32, sal_Int32,
-                              std::span<const sal_Int32>, std::span<const sal_Bool>,
-                              const SvxFont&, sal_Int32 /*nPara*/, sal_uInt8 /*nRightToLeft*/,
-                              const EEngineData::WrongSpellVector*, const SvxFieldData*, bool, bool,
-                              const css::lang::Locale*, const Color&, const Color&)
-
-{
-}
-
-void EditEngine::DrawingTab( const Point& /*rStartPos*/, tools::Long /*nWidth*/,
-                             const OUString& /*rChar*/, const SvxFont& /*rFont*/,
-                             sal_Int32 /*nPara*/, sal_uInt8 /*nRightToLeft*/, bool /*bEndOfLine*/,
-                             bool /*bEndOfParagraph*/, const Color& /*rOverlineColor*/,
-                             const Color& /*rTextLineColor*/)
-{
-}
-
-void EditEngine::PaintingFirstLine(sal_Int32, const Point&, const Point&, Degree10, OutputDevice&)
+void EditEngine::ProcessFirstLineOfParagraph(sal_Int32, const Point&, OutputDevice&, StripPortionsHelper&)
 {
 }
 
 void EditEngine::ParagraphInserted( sal_Int32 nPara )
 {
-
     if ( GetNotifyHdl().IsSet() )
     {
         EENotify aNotify( EE_NOTIFY_PARAGRAPHINSERTED );
         aNotify.nParagraph = nPara;
-        pImpEditEngine->GetNotifyHdl().Call( aNotify );
+        getImpl().GetNotifyHdl().Call(aNotify);
     }
 }
 
 void EditEngine::ParagraphDeleted( sal_Int32 nPara )
 {
-
     if ( GetNotifyHdl().IsSet() )
     {
         EENotify aNotify( EE_NOTIFY_PARAGRAPHREMOVED );
         aNotify.nParagraph = nPara;
-        pImpEditEngine->GetNotifyHdl().Call( aNotify );
+        getImpl().GetNotifyHdl().Call(aNotify);
     }
 }
+
 void EditEngine::ParagraphConnected( sal_Int32 /*nLeftParagraph*/, sal_Int32 /*nRightParagraph*/ )
 {
 }
@@ -2549,11 +1611,11 @@ void EditEngine::ParagraphHeightChanged( sal_Int32 nPara )
     {
         EENotify aNotify( EE_NOTIFY_TextHeightChanged );
         aNotify.nParagraph = nPara;
-        pImpEditEngine->GetNotifyHdl().Call( aNotify );
+        getImpl().GetNotifyHdl().Call(aNotify);
     }
 
-    for (EditView* pView : pImpEditEngine->aEditViews)
-        pView->pImpEditView->ScrollStateChange();
+    for (EditView* pView : getImpl().maEditViews)
+        pView->getImpl().ScrollStateChange();
 }
 
 OUString EditEngine::GetUndoComment( sal_uInt16 nId ) const
@@ -2629,37 +1691,10 @@ rtl::Reference<SfxItemPool> EditEngine::CreatePool()
 }
 
 
-/** If we let the libc runtime clean us up, we trigger a crash */
-namespace
-{
-class TerminateListener : public ::cppu::WeakImplHelper< css::frame::XTerminateListener >
-{
-    void SAL_CALL queryTermination( const lang::EventObject& ) override
-    {}
-    void SAL_CALL notifyTermination( const lang::EventObject& ) override
-    {
-        pGlobalPool.clear();
-    }
-    virtual void SAL_CALL disposing( const ::css::lang::EventObject& ) override
-    {}
-};
-};
-
 SfxItemPool& EditEngine::GetGlobalItemPool()
 {
-    if ( !pGlobalPool )
-    {
-        pGlobalPool = CreatePool();
-#if defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION)
-        // TerminateListener option not available, force it to leak
-        pGlobalPool->acquire();
-#else
-        uno::Reference< frame::XDesktop2 > xDesktop = frame::Desktop::create(comphelper::getProcessComponentContext());
-        uno::Reference< frame::XTerminateListener > xListener( new TerminateListener );
-        xDesktop->addTerminateListener( xListener );
-#endif
-    }
-    return *pGlobalPool;
+    static tools::DeleteOnDeinit<rtl::Reference<SfxItemPool>> pGlobalPool(CreatePool());
+    return **pGlobalPool.get();
 }
 
 void EditEngine::SetFontInfoInItemSet( SfxItemSet& rSet, const vcl::Font& rFont )
@@ -2777,9 +1812,7 @@ bool EditEngine::DoesKeyChangeText( const KeyEvent& rKeyEvent )
 
 bool EditEngine::IsSimpleCharInput( const KeyEvent& rKeyEvent )
 {
-    return EditEngine::IsPrintable( rKeyEvent.GetCharCode() ) &&
-        ( KEY_MOD2 != (rKeyEvent.GetKeyCode().GetModifier() & ~KEY_SHIFT ) ) &&
-        ( KEY_MOD1 != (rKeyEvent.GetKeyCode().GetModifier() & ~KEY_SHIFT ) );
+    return ImpEditEngine::IsSimpleCharInput(rKeyEvent);
 }
 
 bool EditEngine::HasValidData( const css::uno::Reference< css::datatransfer::XTransferable >& rTransferable )
@@ -2795,6 +1828,13 @@ bool EditEngine::HasValidData( const css::uno::Reference< css::datatransfer::XTr
         datatransfer::DataFlavor aFlavor;
         SotExchange::GetFormatDataFlavor( SotClipboardFormatId::STRING, aFlavor );
         bValidData = rTransferable->isDataFlavorSupported( aFlavor );
+
+        if (!bValidData)
+        {
+            // Allow HTML-only clipboard, i.e. without plain text.
+            SotExchange::GetFormatDataFlavor(SotClipboardFormatId::HTML, aFlavor);
+            bValidData = rTransferable->isDataFlavorSupported(aFlavor);
+        }
     }
 
     return bValidData;
@@ -2803,104 +1843,104 @@ bool EditEngine::HasValidData( const css::uno::Reference< css::datatransfer::XTr
 /** sets a link that is called at the beginning of a drag operation at an edit view */
 void EditEngine::SetBeginDropHdl( const Link<EditView*,void>& rLink )
 {
-    pImpEditEngine->SetBeginDropHdl( rLink );
+    getImpl().SetBeginDropHdl(rLink);
 }
 
 Link<EditView*,void> const & EditEngine::GetBeginDropHdl() const
 {
-    return pImpEditEngine->GetBeginDropHdl();
+    return getImpl().GetBeginDropHdl();
 }
 
 /** sets a link that is called at the end of a drag operation at an edit view */
 void EditEngine::SetEndDropHdl( const Link<EditView*,void>& rLink )
 {
-    pImpEditEngine->SetEndDropHdl( rLink );
+    getImpl().SetEndDropHdl(rLink);
 }
 
 Link<EditView*,void> const & EditEngine::GetEndDropHdl() const
 {
-    return pImpEditEngine->GetEndDropHdl();
+    return getImpl().GetEndDropHdl();
 }
 
 void EditEngine::SetFirstWordCapitalization( bool bCapitalize )
 {
-    pImpEditEngine->SetFirstWordCapitalization( bCapitalize );
+    getImpl().SetFirstWordCapitalization(bCapitalize);
 }
 
 void EditEngine::SetReplaceLeadingSingleQuotationMark( bool bReplace )
 {
-    pImpEditEngine->SetReplaceLeadingSingleQuotationMark( bReplace );
+    getImpl().SetReplaceLeadingSingleQuotationMark(bReplace);
 }
 
 bool EditEngine::IsHtmlImportHandlerSet() const
 {
-    return pImpEditEngine->aHtmlImportHdl.IsSet();
+    return getImpl().maHtmlImportHdl.IsSet();
 }
 
 bool EditEngine::IsRtfImportHandlerSet() const
 {
-    return pImpEditEngine->aRtfImportHdl.IsSet();
+    return getImpl().maRtfImportHdl.IsSet();
 }
 
 bool EditEngine::IsImportRTFStyleSheetsSet() const
 {
-    return pImpEditEngine->GetStatus().DoImportRTFStyleSheets();
+    return getImpl().GetStatus().DoImportRTFStyleSheets();
 }
 
 void EditEngine::CallHtmlImportHandler(HtmlImportInfo& rInfo)
 {
-    pImpEditEngine->aHtmlImportHdl.Call(rInfo);
+    getImpl().maHtmlImportHdl.Call(rInfo);
 }
 
 void EditEngine::CallRtfImportHandler(RtfImportInfo& rInfo)
 {
-    pImpEditEngine->aRtfImportHdl.Call(rInfo);
+    getImpl().maRtfImportHdl.Call(rInfo);
 }
 
 EditPaM EditEngine::InsertParaBreak(const EditSelection& rEditSelection)
 {
-    return pImpEditEngine->ImpInsertParaBreak(rEditSelection);
+    return getImpl().ImpInsertParaBreak(rEditSelection);
 }
 
 EditPaM EditEngine::InsertLineBreak(const EditSelection& rEditSelection)
 {
-    return pImpEditEngine->InsertLineBreak(rEditSelection);
+    return getImpl().InsertLineBreak(rEditSelection);
 }
 
 sal_Int32 EditEngine::GetOverflowingParaNum() const {
-    return pImpEditEngine->GetOverflowingParaNum();
+    return getImpl().GetOverflowingParaNum();
 }
 
 sal_Int32 EditEngine::GetOverflowingLineNum() const {
-    return pImpEditEngine->GetOverflowingLineNum();
+    return getImpl().GetOverflowingLineNum();
 }
 
 void EditEngine::ClearOverflowingParaNum() {
-    pImpEditEngine->ClearOverflowingParaNum();
+    getImpl().ClearOverflowingParaNum();
 }
 
 bool EditEngine::IsPageOverflow() {
-    pImpEditEngine->CheckPageOverflow();
-    return pImpEditEngine->IsPageOverflow();
+    getImpl().CheckPageOverflow();
+    return getImpl().IsPageOverflow();
 }
 
 void EditEngine::DisableAttributeExpanding() {
-    pImpEditEngine->GetEditDoc().DisableAttributeExpanding();
+    getImpl().GetEditDoc().DisableAttributeExpanding();
 }
 
-void EditEngine::EnableSkipOutsideFormat(bool set)
+void EditEngine::EnableSkipOutsideFormat(bool bValue)
 {
-    pImpEditEngine->EnableSkipOutsideFormat(set);
+    getImpl().EnableSkipOutsideFormat(bValue);
 }
 
 void EditEngine::SetLOKSpecialPaperSize(const Size& rSize)
 {
-    pImpEditEngine->SetLOKSpecialPaperSize(rSize);
+    getImpl().SetLOKSpecialPaperSize(rSize);
 }
 
 const Size& EditEngine::GetLOKSpecialPaperSize() const
 {
-    return pImpEditEngine->GetLOKSpecialPaperSize();
+    return getImpl().GetLOKSpecialPaperSize();
 }
 
 EFieldInfo::EFieldInfo()

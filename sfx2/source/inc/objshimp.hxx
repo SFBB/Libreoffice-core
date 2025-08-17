@@ -23,6 +23,7 @@
 #include <rtl/ustring.hxx>
 #include <rtl/ref.hxx>
 #include <tools/datetime.hxx>
+#include <tools/ref.hxx>
 
 #include <sfx2/objsh.hxx>
 #include <sfx2/docmacromode.hxx>
@@ -31,12 +32,6 @@
 #include <vcl/timer.hxx>
 
 #include "appbaslib.hxx"
-
-namespace svtools { class AsynchronLink; }
-
-class SfxViewFrame;
-
-class SfxBasicManagerHolder;
 
 class AutoReloadTimer_Impl final : public Timer
 {
@@ -54,9 +49,9 @@ struct SfxObjectShell_Impl final : public ::sfx2::IMacroDocumentAccess
     std::unique_ptr<::comphelper::EmbeddedObjectContainer> mxObjectContainer;
     SfxBasicManagerHolder aBasicManager;
     SfxObjectShell&     rDocShell;
-    css::uno::Reference< css::script::XLibraryContainer >
+    css::uno::Reference< css::script::XStorageBasedLibraryContainer >
                         xBasicLibraries;
-    css::uno::Reference< css::script::XLibraryContainer >
+    css::uno::Reference< css::script::XStorageBasedLibraryContainer >
                         xDialogLibraries;
     ::sfx2::DocumentMacroMode
                         aMacroMode;
@@ -138,8 +133,11 @@ struct SfxObjectShell_Impl final : public ::sfx2::IMacroDocumentAccess
     // Recent colors used by toolbar buttons
     std::unordered_map<sal_uInt16, NamedColor> m_aRecentColors;
 
+    mutable oslInterlockedCount m_nClosingLockLevel = 0;
+    mutable bool m_bCloseModelScheduled = false;
+
     SfxObjectShell_Impl( SfxObjectShell& _rDocShell );
-    virtual ~SfxObjectShell_Impl();
+    ~SfxObjectShell_Impl();
 
     // IMacroDocumentAccess overridables
     virtual sal_Int16 getCurrentMacroExecMode() const override;

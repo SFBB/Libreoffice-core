@@ -18,9 +18,7 @@
 #include <map>
 #include <set>
 
-class ScCheckListMenuControl;
 class ScViewData;
-struct ScCheckListMember;
 struct ImplSVEvent;
 
 struct ScCheckListMember
@@ -36,6 +34,8 @@ struct ScCheckListMember
     OUString                 maRealName;
     double                   mnValue; // number value of filter condition
     bool                     mbVisible;
+    bool                     mbMarked;
+    bool                     mbCheck;
     bool                     mbHiddenByOtherFilter;
     bool                     mbDate;
     bool                     mbLeaf;
@@ -47,7 +47,6 @@ struct ScCheckListMember
     std::unique_ptr<weld::TreeIter> mxParent;
 };
 
-class ScCheckListMenuWindow;
 class ScListSubMenuControl;
 
 /**
@@ -94,6 +93,18 @@ public:
     };
     typedef std::set<ResultEntry> ResultType;
 
+
+    enum RestoreFocus
+    {
+        Menu,
+        EdSearch,
+        Checks,
+        ChkToggleAll,
+        ChkLockChecked,
+        BtnSelectSingle,
+        BtnUnselectSingle
+    };
+
     struct MenuItemData
     {
         bool     mbEnabled:1;
@@ -139,7 +150,7 @@ public:
     void addMember(const OUString& rName, const double nVal, bool bVisible, bool bHiddenByOtherFilter,
                    bool bValue = false);
     void clearMembers();
-    size_t initMembers(int nMaxMemberWidth = -1);
+    size_t initMembers(int nMaxMemberWidth = -1, bool bUnlock=false);
     void setConfig(const Config& rConfig);
 
     bool isAllSelected() const;
@@ -188,6 +199,11 @@ public:
 
     void addFields(const std::vector<OUString>& aFields);
     tools::Long getField();
+
+    void SetRestoreFocus(RestoreFocus eFocus)
+    {
+        meRestoreFocus = eFocus;
+    }
 private:
 
     std::vector<MenuItemData>         maMenuItems;
@@ -231,6 +247,7 @@ private:
 
     DECL_LINK(ButtonHdl, weld::Button&, void);
     DECL_LINK(TriStateHdl, weld::Toggleable&, void);
+    DECL_LINK(LockCheckedHdl, weld::Toggleable&, void);
 
     void Check(const weld::TreeIter* pIter);
 
@@ -263,6 +280,9 @@ private:
 
     void DropPendingEvents();
 
+    RestoreFocus DetermineRestoreFocus() const;
+    void RestorePreviousFocus();
+
 private:
     std::unique_ptr<weld::Builder> mxBuilder;
     std::unique_ptr<weld::Popover> mxPopover;
@@ -279,6 +299,7 @@ private:
     weld::TreeView* mpChecks;
 
     std::unique_ptr<weld::CheckButton> mxChkToggleAll;
+    std::unique_ptr<weld::CheckButton> mxChkLockChecked;
     std::unique_ptr<weld::Button> mxBtnSelectSingle;
     std::unique_ptr<weld::Button> mxBtnUnselectSingle;
 
@@ -311,6 +332,8 @@ private:
 
     ImplSVEvent* mnAsyncPostPopdownId;
     ImplSVEvent* mnAsyncSetDropdownPosId;
+
+    RestoreFocus meRestoreFocus;
 
     bool mbHasDates;
     bool mbIsPoppedUp;

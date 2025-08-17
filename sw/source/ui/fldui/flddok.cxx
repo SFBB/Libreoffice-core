@@ -32,24 +32,24 @@
 #define USER_DATA_VERSION USER_DATA_VERSION_1
 
 SwFieldDokPage::SwFieldDokPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *const pCoreSet)
-    : SwFieldPage(pPage, pController, "modules/swriter/ui/flddocumentpage.ui",
-                  "FieldDocumentPage", pCoreSet)
+    : SwFieldPage(pPage, pController, u"modules/swriter/ui/flddocumentpage.ui"_ustr,
+                  u"FieldDocumentPage"_ustr, pCoreSet)
     , m_nOldSel(0)
     , m_nOldFormat(0)
-    , m_xTypeLB(m_xBuilder->weld_tree_view("type"))
-    , m_xSelection(m_xBuilder->weld_widget("selectframe"))
-    , m_xSelectionLB(m_xBuilder->weld_tree_view("select"))
-    , m_xValueFT(m_xBuilder->weld_label("valueft"))
-    , m_xValueED(m_xBuilder->weld_entry("value"))
-    , m_xLevelFT(m_xBuilder->weld_label("levelft"))
-    , m_xLevelED(m_xBuilder->weld_combo_box("level"))
-    , m_xDateFT(m_xBuilder->weld_label("daysft"))
-    , m_xTimeFT(m_xBuilder->weld_label("minutesft"))
-    , m_xDateOffsetED(m_xBuilder->weld_spin_button("offset"))
-    , m_xFormat(m_xBuilder->weld_widget("formatframe"))
-    , m_xFormatLB(m_xBuilder->weld_tree_view("format"))
-    , m_xNumFormatLB(new SwNumFormatTreeView(m_xBuilder->weld_tree_view("numformat")))
-    , m_xFixedCB(m_xBuilder->weld_check_button("fixed"))
+    , m_xTypeLB(m_xBuilder->weld_tree_view(u"type"_ustr))
+    , m_xSelection(m_xBuilder->weld_widget(u"selectframe"_ustr))
+    , m_xSelectionLB(m_xBuilder->weld_tree_view(u"select"_ustr))
+    , m_xValueFT(m_xBuilder->weld_label(u"valueft"_ustr))
+    , m_xValueED(m_xBuilder->weld_entry(u"value"_ustr))
+    , m_xLevelFT(m_xBuilder->weld_label(u"levelft"_ustr))
+    , m_xLevelED(m_xBuilder->weld_combo_box(u"level"_ustr))
+    , m_xDateFT(m_xBuilder->weld_label(u"daysft"_ustr))
+    , m_xTimeFT(m_xBuilder->weld_label(u"minutesft"_ustr))
+    , m_xDateOffsetED(m_xBuilder->weld_spin_button(u"offset"_ustr))
+    , m_xFormat(m_xBuilder->weld_widget(u"formatframe"_ustr))
+    , m_xFormatLB(m_xBuilder->weld_tree_view(u"format"_ustr))
+    , m_xNumFormatLB(new SwNumFormatTreeView(m_xBuilder->weld_tree_view(u"numformat"_ustr)))
+    , m_xFixedCB(m_xBuilder->weld_check_button(u"fixed"_ustr))
 {
     m_xTypeLB->make_sorted();
     m_xFormatLB->make_sorted();
@@ -137,7 +137,7 @@ void SwFieldDokPage::Reset(const SfxItemSet* )
             pSh = ::GetActiveWrtShell();
         if(pSh)
         {
-            const SvNumberformat* pFormat = pSh->GetNumberFormatter()->GetEntry(pCurField->GetFormat());
+            const SvNumberformat* pFormat = pSh->GetNumberFormatter()->GetEntry(pCurField->GetUntypedFormat());
             if(pFormat)
                 m_xNumFormatLB->SetLanguage(pFormat->GetLanguage());
         }
@@ -150,8 +150,8 @@ void SwFieldDokPage::Reset(const SfxItemSet* )
     RestorePos(*m_xTypeLB);
 
     m_xTypeLB->connect_row_activated(LINK(this, SwFieldDokPage, TreeViewInsertHdl));
-    m_xTypeLB->connect_changed(LINK(this, SwFieldDokPage, TypeHdl));
-    m_xFormatLB->connect_changed(LINK(this, SwFieldDokPage, FormatHdl));
+    m_xTypeLB->connect_selection_changed(LINK(this, SwFieldDokPage, TypeHdl));
+    m_xFormatLB->connect_selection_changed(LINK(this, SwFieldDokPage, FormatHdl));
 
     if( !IsRefresh() )
     {
@@ -178,7 +178,7 @@ void SwFieldDokPage::Reset(const SfxItemSet* )
     if (IsFieldEdit())
     {
         m_nOldSel = m_xSelectionLB->get_selected_index();
-        m_nOldFormat = GetCurField()->GetFormat();
+        m_nOldFormat = GetCurField()->GetUntypedFormat();
         m_xFixedCB->save_state();
         m_xValueED->save_value();
         m_xLevelED->save_value();
@@ -250,9 +250,13 @@ IMPL_LINK_NOARG(SwFieldDokPage, TypeHdl, weld::TreeView&, void)
                             m_xSelectionLB->select_id(sId);
                         break;
                     case SwFieldTypesEnum::ExtendedUser:
+                        m_xSelectionLB->append(sId, aLst[i]);
+                        if (static_cast<sal_uInt16>(static_cast<const SwExtUserField*>(GetCurField())->GetSubType()) == i)
+                            m_xSelectionLB->select_id(sId);
+                        break;
                     case SwFieldTypesEnum::DocumentStatistics:
                         m_xSelectionLB->append(sId, aLst[i]);
-                        if (GetCurField()->GetSubType() == i)
+                        if (static_cast<sal_uInt16>(static_cast<const SwDocStatField*>(GetCurField())->GetSubType()) == i)
                             m_xSelectionLB->select_id(sId);
                         break;
 
@@ -260,7 +264,7 @@ IMPL_LINK_NOARG(SwFieldDokPage, TypeHdl, weld::TreeView&, void)
                     {
                         const OUString sFormat(GetFieldMgr().GetFormatStr(nTypeId, i));
                         m_xSelectionLB->append(sId, sFormat);
-                        m_xSelectionLB->select_text(GetFieldMgr().GetFormatStr(nTypeId, GetCurField()->GetFormat()));
+                        m_xSelectionLB->select_text(GetFieldMgr().GetFormatStr(*GetCurField()));
                         break;
                     }
 
@@ -276,7 +280,7 @@ IMPL_LINK_NOARG(SwFieldDokPage, TypeHdl, weld::TreeView&, void)
                 }
             }
         }
-        m_xSelectionLB->connect_changed(Link<weld::TreeView&,void>());
+        m_xSelectionLB->connect_selection_changed(Link<weld::TreeView&, void>());
     }
     else
     {
@@ -285,7 +289,7 @@ IMPL_LINK_NOARG(SwFieldDokPage, TypeHdl, weld::TreeView&, void)
         AddSubType(SwFieldTypesEnum::NextPage);
         nTypeId = static_cast<SwFieldTypesEnum>(m_xSelectionLB->get_id(0).toUInt32());
         nCount = 3;
-        m_xSelectionLB->connect_changed(LINK(this, SwFieldDokPage, SubTypeHdl));
+        m_xSelectionLB->connect_selection_changed(LINK(this, SwFieldDokPage, SubTypeHdl));
     }
 
     bool bEnable = nCount != 0;
@@ -384,7 +388,7 @@ IMPL_LINK_NOARG(SwFieldDokPage, TypeHdl, weld::TreeView&, void)
     {
         if (IsFieldEdit())
         {
-            m_xNumFormatLB->SetDefFormat(GetCurField()->GetFormat());
+            m_xNumFormatLB->SetDefFormat(GetCurField()->GetUntypedFormat());
 
             if (m_xNumFormatLB->GetFormatType() == (SvNumFormatType::DATE|SvNumFormatType::TIME))
             {
@@ -393,7 +397,7 @@ IMPL_LINK_NOARG(SwFieldDokPage, TypeHdl, weld::TreeView&, void)
                 m_xNumFormatLB->SetFormatType(SvNumFormatType::ALL);
                 m_xNumFormatLB->SetFormatType(nFormatType);
                 // set correct format once again
-                m_xNumFormatLB->SetDefFormat(GetCurField()->GetFormat());
+                m_xNumFormatLB->SetDefFormat(GetCurField()->GetUntypedFormat());
             }
         }
         else
@@ -416,7 +420,14 @@ IMPL_LINK_NOARG(SwFieldDokPage, TypeHdl, weld::TreeView&, void)
     m_xFixedCB->set_sensitive(bFixed);
 
     if (IsFieldEdit())
-        m_xFixedCB->set_active((GetCurField()->GetFormat() & AF_FIXED) != 0 && bFixed);
+    {
+        if (nTypeId == SwFieldTypesEnum::Author)
+            m_xFixedCB->set_active((static_cast<const SwAuthorField*>(GetCurField())->GetFormat() & SwAuthorFormat::Fixed) && bFixed);
+        else if (nTypeId == SwFieldTypesEnum::ExtendedUser)
+            m_xFixedCB->set_active((static_cast<const SwExtUserField*>(GetCurField())->GetFormat() & SwAuthorFormat::Fixed) && bFixed);
+        else
+            m_xFixedCB->set_active(false);
+    }
 
     if (m_xNumFormatLB->get_selected_index() == -1)
         m_xNumFormatLB->select(0);
@@ -480,7 +491,13 @@ sal_Int32 SwFieldDokPage::FillFormatLB(SwFieldTypesEnum nTypeId)
 
     if (IsFieldEdit())
     {
-        m_xFormatLB->select_id(OUString::number(GetCurField()->GetFormat() & ~AF_FIXED));
+        if (nTypeId == SwFieldTypesEnum::ExtendedUser)
+        {
+            SwAuthorFormat nFormat = static_cast<const SwExtUserField*>(GetCurField())->GetFormat() & ~SwAuthorFormat::Fixed;
+            m_xFormatLB->select_id(OUString::number(static_cast<sal_uInt32>(nFormat)));
+        }
+        else
+            m_xFormatLB->select_id(OUString::number(GetCurField()->GetUntypedFormat()));
     }
     else
     {
@@ -567,11 +584,11 @@ bool SwFieldDokPage::FillItemSet(SfxItemSet* )
             nSubType = 0;
             [[fallthrough]];
         case SwFieldTypesEnum::ExtendedUser:
-            nFormat |= m_xFixedCB->get_active() ? AF_FIXED : 0;
+            nFormat |= m_xFixedCB->get_active() ? static_cast<sal_uInt32>(SwAuthorFormat::Fixed) : 0;
             break;
 
         case SwFieldTypesEnum::Filename:
-            nFormat |= m_xFixedCB->get_active() ? FF_FIXED : 0;
+            nFormat |= m_xFixedCB->get_active() ? static_cast<sal_uInt32>(SwFileNameFormat::Fixed) : 0;
             break;
 
         case SwFieldTypesEnum::Date:
@@ -601,7 +618,7 @@ bool SwFieldDokPage::FillItemSet(SfxItemSet* )
         }
 
         case SwFieldTypesEnum::Chapter:
-            aVal = OUString::number(m_xLevelED->get_active());
+            aVal = m_xLevelED->get_active_text();
             break;
 
         default:

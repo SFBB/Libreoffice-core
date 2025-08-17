@@ -22,17 +22,14 @@
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 
-// forward declaractions
+// forward declarations
 namespace com::sun::star
 {
     namespace xml
     {
-        namespace dom { class XNode; }
-        namespace dom { class XNodeset; }
         namespace xpath { class XXPathAPI; }
         namespace xpath { class XXPathObject; }
     }
-    namespace container { class XNameContainer; }
 }
 namespace xforms { class EvaluationContext; }
 

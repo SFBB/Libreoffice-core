@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <accessibility/vclxaccessiblescrollbar.hxx>
+
 #include <vcl/event.hxx>
 #include <vcl/decoview.hxx>
 #include <vcl/timer.hxx>
@@ -25,6 +27,7 @@
 #include <vcl/vclevent.hxx>
 
 #include <sal/log.hxx>
+#include <scrollbarvalue.hxx>
 
 /*  #i77549#
     HACK: for scrollbars in case of thumb rect, page up and page down rect we
@@ -85,6 +88,7 @@ void ScrollBar::ImplInit( vcl::Window* pParent, WinBits nStyle )
     meScrollType        = ScrollType::DontKnow;
     mbCalcSize          = true;
     mbFullDrag          = false;
+    mbSwapArrows        = false;
 
     ImplInitStyle( nStyle );
     Control::ImplInit( pParent, nStyle, nullptr );
@@ -238,20 +242,22 @@ void ScrollBar::ImplCalc( bool bUpdate )
     {
         Size aOldSize = getCurrentCalcSize();
 
-        const tools::Rectangle aControlRegion( Point(0,0), aSize );
         tools::Rectangle aBtn1Region, aBtn2Region, aTrackRegion, aBoundingRegion;
+        const bool bSwapArrows = mbSwapArrows || IsRTLEnabled();
 
         // reset rectangles to empty *and* (0,0) position
         maThumbRect = tools::Rectangle();
         maPage1Rect = tools::Rectangle();
         maPage2Rect = tools::Rectangle();
 
+        const tools::Rectangle aScrollbarRegion = GetScrollbarRegion();
+
         if ( GetStyle() & WB_HORZ )
         {
-            if ( GetNativeControlRegion( ControlType::Scrollbar, IsRTLEnabled()? ControlPart::ButtonRight: ControlPart::ButtonLeft,
-                        aControlRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aBtn1Region ) &&
-                 GetNativeControlRegion( ControlType::Scrollbar, IsRTLEnabled()? ControlPart::ButtonLeft: ControlPart::ButtonRight,
-                        aControlRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aBtn2Region ) )
+            if ( GetNativeControlRegion( ControlType::Scrollbar, bSwapArrows? ControlPart::ButtonRight: ControlPart::ButtonLeft,
+                        aScrollbarRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aBtn1Region ) &&
+                 GetNativeControlRegion( ControlType::Scrollbar, bSwapArrows? ControlPart::ButtonLeft: ControlPart::ButtonRight,
+                        aScrollbarRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aBtn2Region ) )
             {
                 maBtn1Rect = aBtn1Region;
                 maBtn2Rect = aBtn2Region;
@@ -265,8 +271,8 @@ void ScrollBar::ImplCalc( bool bUpdate )
                 maBtn2Rect.SetSize( aBtnSize );
             }
 
-            if ( GetNativeControlRegion( ControlType::Scrollbar, ControlPart::TrackHorzArea,
-                     aControlRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aTrackRegion ) )
+            if (GetNativeControlRegion( ControlType::Scrollbar, ControlPart::TrackHorzArea,
+                     aScrollbarRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aTrackRegion ) )
                 maTrackRect = aTrackRegion;
             else
                 maTrackRect = tools::Rectangle::Normalize( maBtn1Rect.TopRight(), maBtn2Rect.BottomLeft() );
@@ -286,9 +292,9 @@ void ScrollBar::ImplCalc( bool bUpdate )
         else // WB_VERT
         {
             if ( GetNativeControlRegion( ControlType::Scrollbar, ControlPart::ButtonUp,
-                        aControlRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aBtn1Region ) &&
+                        aScrollbarRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aBtn1Region ) &&
                  GetNativeControlRegion( ControlType::Scrollbar, ControlPart::ButtonDown,
-                        aControlRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aBtn2Region ) )
+                        aScrollbarRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aBtn2Region ) )
             {
                 maBtn1Rect = aBtn1Region;
                 maBtn2Rect = aBtn2Region;
@@ -303,7 +309,7 @@ void ScrollBar::ImplCalc( bool bUpdate )
             }
 
             if ( GetNativeControlRegion( ControlType::Scrollbar, ControlPart::TrackVertArea,
-                     aControlRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aTrackRegion ) )
+                     aScrollbarRegion, ControlState::NONE, ImplControlValue(), aBoundingRegion, aTrackRegion ) )
                 maTrackRect = aTrackRegion;
             else
                 maTrackRect = tools::Rectangle::Normalize( maBtn1Rect.BottomLeft()+Point(0,1), maBtn2Rect.TopRight() );
@@ -374,7 +380,7 @@ void ScrollBar::Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorFlag
 {
     Point aPos  = pDev->LogicToPixel( rPos );
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
     if ( !(nFlags & SystemTextColorFlags::Mono) )
     {
@@ -407,7 +413,6 @@ void ScrollBar::Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorFlag
     maPage2Rect+=aPos;
 
     ImplDraw(*pDev);
-    pDev->Pop();
 
     mbCalcSize = true;
 }
@@ -719,19 +724,11 @@ void ScrollBar::ImplDoMouseAction( const Point& rMousePos, bool bCallAction )
 {
     sal_uInt16  nOldStateFlags = mnStateFlags;
     bool    bAction = false;
-    bool        bHorizontal = ( GetStyle() & WB_HORZ ) != 0;
-    bool        bIsInside = false;
-
-    Point aPoint( 0, 0 );
-    tools::Rectangle aControlRegion( aPoint, GetOutputSizePixel() );
 
     switch ( meScrollType )
     {
         case ScrollType::LineUp:
-            if ( GetOutDev()->HitTestNativeScrollbar( bHorizontal? (IsRTLEnabled()? ControlPart::ButtonRight: ControlPart::ButtonLeft): ControlPart::ButtonUp,
-                        aControlRegion, rMousePos, bIsInside )?
-                    bIsInside:
-                    maBtn1Rect.Contains( rMousePos ) )
+            if (ImplHitTestBtn1(rMousePos))
             {
                 bAction = bCallAction;
                 mnStateFlags |= SCRBAR_STATE_BTN1_DOWN;
@@ -741,10 +738,7 @@ void ScrollBar::ImplDoMouseAction( const Point& rMousePos, bool bCallAction )
             break;
 
         case ScrollType::LineDown:
-            if ( GetOutDev()->HitTestNativeScrollbar( bHorizontal? (IsRTLEnabled()? ControlPart::ButtonLeft: ControlPart::ButtonRight): ControlPart::ButtonDown,
-                        aControlRegion, rMousePos, bIsInside )?
-                    bIsInside:
-                    maBtn2Rect.Contains( rMousePos ) )
+            if (ImplHitTestBtn2(rMousePos))
             {
                 bAction = bCallAction;
                 mnStateFlags |= SCRBAR_STATE_BTN2_DOWN;
@@ -755,10 +749,7 @@ void ScrollBar::ImplDoMouseAction( const Point& rMousePos, bool bCallAction )
 
         case ScrollType::PageUp:
             // HitTestNativeScrollbar, see remark at top of file
-            if ( GetOutDev()->HitTestNativeScrollbar( bHorizontal? ControlPart::TrackHorzLeft: ControlPart::TrackVertUpper,
-                                       maPage1Rect, rMousePos, bIsInside )?
-                    bIsInside:
-                    maPage1Rect.Contains( rMousePos ) )
+            if (ImplHitTestPageUp(rMousePos))
             {
                 bAction = bCallAction;
                 mnStateFlags |= SCRBAR_STATE_PAGE1_DOWN;
@@ -769,10 +760,7 @@ void ScrollBar::ImplDoMouseAction( const Point& rMousePos, bool bCallAction )
 
         case ScrollType::PageDown:
             // HitTestNativeScrollbar, see remark at top of file
-            if ( GetOutDev()->HitTestNativeScrollbar( bHorizontal? ControlPart::TrackHorzRight: ControlPart::TrackVertLower,
-                                       maPage2Rect, rMousePos, bIsInside )?
-                    bIsInside:
-                    maPage2Rect.Contains( rMousePos ) )
+            if (ImplHitTestPageDown(rMousePos))
             {
                 bAction = bCallAction;
                 mnStateFlags |= SCRBAR_STATE_PAGE2_DOWN;
@@ -788,6 +776,105 @@ void ScrollBar::ImplDoMouseAction( const Point& rMousePos, bool bCallAction )
         Invalidate();
     if ( bAction )
         ImplDoAction( false );
+}
+
+bool ScrollBar::ImplHitTestBtn1(const Point& rPt) const
+{
+    ControlPart ePart;
+
+    if (IsHorizontal())
+    {
+        if (IsRTLEnabled())
+            ePart = ControlPart::ButtonRight;
+        else
+            ePart = ControlPart::ButtonLeft;
+    }
+    else
+    {
+        ePart = ControlPart::ButtonUp;
+    }
+
+    bool bIsInside = false;
+
+    if (GetOutDev()->HitTestNativeScrollbar(ePart, GetScrollbarRegion(), rPt, bIsInside))
+        return bIsInside;
+
+    return maBtn1Rect.Contains(rPt);
+}
+
+bool ScrollBar::ImplHitTestBtn2(const Point& rPt) const
+{
+    ControlPart ePart;
+
+    if (IsHorizontal())
+    {
+        if (IsRTLEnabled())
+            ePart = ControlPart::ButtonLeft;
+        else
+            ePart = ControlPart::ButtonRight;
+    }
+    else
+    {
+        ePart = ControlPart::ButtonDown;
+    }
+
+    bool bIsInside = false;
+
+    if (GetOutDev()->HitTestNativeScrollbar(ePart, GetScrollbarRegion(), rPt, bIsInside))
+        return bIsInside;
+
+    return maBtn2Rect.Contains(rPt);
+}
+
+bool ScrollBar::ImplHitTestPageUp(const Point& rPt) const
+{
+    ControlPart ePart;
+
+    if (IsHorizontal())
+        ePart = ControlPart::TrackHorzLeft;
+    else
+        ePart = ControlPart::TrackVertUpper;
+
+    bool bIsInside = false;
+
+    if (GetOutDev()->HitTestNativeScrollbar(ePart, maPage1Rect, rPt, bIsInside))
+        return bIsInside;
+
+    return maPage1Rect.Contains(rPt);
+}
+
+bool ScrollBar::ImplHitTestPageDown(const Point& rPt) const
+{
+    ControlPart ePart;
+
+    if (IsHorizontal())
+        ePart = ControlPart::TrackHorzRight;
+    else
+        ePart = ControlPart::TrackVertLower;
+
+    bool bIsInside = false;
+
+    if (GetOutDev()->HitTestNativeScrollbar(ePart, maPage2Rect, rPt, bIsInside))
+        return bIsInside;
+
+    return maPage2Rect.Contains(rPt);
+}
+
+bool ScrollBar::ImplHitTestThumb(const Point& rPt) const
+{
+    ControlPart ePart;
+
+    if (IsHorizontal())
+        ePart = ControlPart::ThumbHorz;
+    else
+        ePart = ControlPart::ThumbVert;
+
+    bool bIsInside = false;
+
+    if (GetOutDev()->HitTestNativeScrollbar(ePart, maThumbRect, rPt, bIsInside))
+        return bIsInside;
+
+    return maThumbRect.Contains(rPt);
 }
 
 void ScrollBar::ImplDragThumb( const Point& rMousePos )
@@ -829,9 +916,31 @@ void ScrollBar::ImplDragThumb( const Point& rMousePos )
     mnDelta = 0;
 }
 
+bool ScrollBar::IsHorizontal() const
+{
+    return (GetStyle() & WB_HORZ) != 0;
+}
+
+tools::Rectangle ScrollBar::GetScrollbarRegion() const
+{
+    return tools::Rectangle(Point(0, 0), GetOutputSizePixel());
+}
+
+rtl::Reference<comphelper::OAccessible> ScrollBar::CreateAccessible()
+{
+    return new VCLXAccessibleScrollBar(this);
+}
+
 void ScrollBar::MouseButtonDown( const MouseEvent& rMEvt )
 {
     bool bPrimaryWarps = GetSettings().GetStyleSettings().GetPrimaryButtonWarpsSlider();
+#ifdef MACOSX
+    // tdf#147067 Jump to clicked spot if left mouse click with Option key
+    // Most macOS applications such as TextEdit and Safari jump to the
+    // clicked spot if the Option key is pressed during a left mouse click.
+    if (!bPrimaryWarps && rMEvt.IsLeft() && rMEvt.GetModifier() == KEY_MOD2)
+        bPrimaryWarps = true;
+#endif
     bool bWarp = bPrimaryWarps ? rMEvt.IsLeft() : rMEvt.IsMiddle();
     bool bPrimaryWarping = bWarp && rMEvt.IsLeft();
     bool bPage = bPrimaryWarps ? rMEvt.IsRight() : rMEvt.IsLeft();
@@ -843,27 +952,19 @@ void ScrollBar::MouseButtonDown( const MouseEvent& rMEvt )
     if (!IsMapModeEnabled() && GetMapMode().GetMapUnit() == MapUnit::MapTwip)
     {
         // rMEvt coordinates are in twips.
-        GetOutDev()->Push(vcl::PushFlags::MAPMODE);
+        auto popIt = GetOutDev()->ScopedPush(vcl::PushFlags::MAPMODE);
         EnableMapMode();
         MapMode aMapMode = GetMapMode();
         aMapMode.SetOrigin(Point(0, 0));
         SetMapMode(aMapMode);
         aPosPixel = LogicToPixel(rMEvt.GetPosPixel());
-        GetOutDev()->Pop();
     }
     const Point&        rMousePos = (GetMapMode().GetMapUnit() != MapUnit::MapTwip ? rMEvt.GetPosPixel() : aPosPixel);
     StartTrackingFlags  nTrackFlags = StartTrackingFlags::NONE;
-    bool                bHorizontal = ( GetStyle() & WB_HORZ ) != 0;
     bool                bIsInside = false;
     bool                bDragToMouse = false;
 
-    Point aPoint( 0, 0 );
-    tools::Rectangle aControlRegion( aPoint, GetOutputSizePixel() );
-
-    if ( GetOutDev()->HitTestNativeScrollbar( bHorizontal? (IsRTLEnabled()? ControlPart::ButtonRight: ControlPart::ButtonLeft): ControlPart::ButtonUp,
-                aControlRegion, rMousePos, bIsInside )?
-            bIsInside:
-            maBtn1Rect.Contains( rMousePos ) )
+    if (ImplHitTestBtn1(rMousePos))
     {
         if (rMEvt.IsLeft() && !(mnStateFlags & SCRBAR_STATE_BTN1_DISABLE) )
         {
@@ -871,10 +972,7 @@ void ScrollBar::MouseButtonDown( const MouseEvent& rMEvt )
             meScrollType    = ScrollType::LineUp;
         }
     }
-    else if ( GetOutDev()->HitTestNativeScrollbar( bHorizontal? (IsRTLEnabled()? ControlPart::ButtonLeft: ControlPart::ButtonRight): ControlPart::ButtonDown,
-                aControlRegion, rMousePos, bIsInside )?
-            bIsInside:
-            maBtn2Rect.Contains( rMousePos ) )
+    else if (ImplHitTestBtn2(rMousePos))
     {
         if (rMEvt.IsLeft() && !(mnStateFlags & SCRBAR_STATE_BTN2_DISABLE) )
         {
@@ -884,10 +982,7 @@ void ScrollBar::MouseButtonDown( const MouseEvent& rMEvt )
     }
     else
     {
-        bool bThumbHit = GetOutDev()->HitTestNativeScrollbar( bHorizontal? ControlPart::ThumbHorz : ControlPart::ThumbVert,
-                                               maThumbRect, rMousePos, bIsInside )
-                         ? bIsInside : maThumbRect.Contains( rMousePos );
-
+        bool bThumbHit = ImplHitTestThumb(rMousePos);
         bool bThumbAction = bWarp || bPage;
 
         bool bDragHandling = bWarp || (bThumbHit && bThumbAction);
@@ -929,17 +1024,14 @@ void ScrollBar::MouseButtonDown( const MouseEvent& rMEvt )
                 Invalidate();
             }
         }
-        else if(bPage && (!GetOutDev()->HitTestNativeScrollbar( bHorizontal? ControlPart::TrackHorzArea : ControlPart::TrackVertArea,
-                                       aControlRegion, rMousePos, bIsInside ) ||
+        else if(bPage && (!GetOutDev()->HitTestNativeScrollbar(IsHorizontal() ? ControlPart::TrackHorzArea : ControlPart::TrackVertArea,
+                                       GetScrollbarRegion(), rMousePos, bIsInside ) ||
             bIsInside) )
         {
             nTrackFlags = StartTrackingFlags::ButtonRepeat;
 
             // HitTestNativeScrollbar, see remark at top of file
-            if ( GetOutDev()->HitTestNativeScrollbar( bHorizontal? ControlPart::TrackHorzLeft : ControlPart::TrackVertUpper,
-                                       maPage1Rect, rMousePos, bIsInside )?
-                bIsInside:
-                maPage1Rect.Contains( rMousePos ) )
+            if (ImplHitTestPageUp(rMousePos))
             {
                 meScrollType    = ScrollType::PageUp;
             }
@@ -1016,13 +1108,12 @@ void ScrollBar::Tracking( const TrackingEvent& rTEvt )
         if (!IsMapModeEnabled() && GetMapMode().GetMapUnit() == MapUnit::MapTwip)
         {
             // rTEvt coordinates are in twips.
-            GetOutDev()->Push(vcl::PushFlags::MAPMODE);
+            auto popIt = GetOutDev()->ScopedPush(vcl::PushFlags::MAPMODE);
             EnableMapMode();
             MapMode aMapMode = GetMapMode();
             aMapMode.SetOrigin(Point(0, 0));
             SetMapMode(aMapMode);
             aPosPixel = LogicToPixel(rTEvt.GetMouseEvent().GetPosPixel());
-            GetOutDev()->Pop();
         }
         const Point rMousePos = (GetMapMode().GetMapUnit() != MapUnit::MapTwip ? rTEvt.GetMouseEvent().GetPosPixel() : aPosPixel);
 
@@ -1211,42 +1302,24 @@ void ScrollBar::DataChanged( const DataChangedEvent& rDCEvt )
 
 tools::Rectangle* ScrollBar::ImplFindPartRect( const Point& rPt )
 {
-    bool    bHorizontal = ( GetStyle() & WB_HORZ ) != 0;
-    bool    bIsInside = false;
+    // HitTestNativeScrollbar, see remark at top of file
 
-    Point aPoint( 0, 0 );
-    tools::Rectangle aControlRegion( aPoint, GetOutputSizePixel() );
-
-    if( GetOutDev()->HitTestNativeScrollbar( bHorizontal? (IsRTLEnabled()? ControlPart::ButtonRight: ControlPart::ButtonLeft): ControlPart::ButtonUp,
-                aControlRegion, rPt, bIsInside )?
-            bIsInside:
-            maBtn1Rect.Contains( rPt ) )
+    if (ImplHitTestBtn1(rPt))
         return &maBtn1Rect;
-    else if( GetOutDev()->HitTestNativeScrollbar( bHorizontal? (IsRTLEnabled()? ControlPart::ButtonLeft: ControlPart::ButtonRight): ControlPart::ButtonDown,
-                aControlRegion, rPt, bIsInside )?
-            bIsInside:
-            maBtn2Rect.Contains( rPt ) )
+
+    if (ImplHitTestBtn2(rPt))
         return &maBtn2Rect;
-    // HitTestNativeScrollbar, see remark at top of file
-    else if( GetOutDev()->HitTestNativeScrollbar( bHorizontal ? ControlPart::TrackHorzLeft : ControlPart::TrackVertUpper,
-                maPage1Rect, rPt, bIsInside)?
-            bIsInside:
-            maPage1Rect.Contains( rPt ) )
+
+    if (ImplHitTestPageUp(rPt))
         return &maPage1Rect;
-    // HitTestNativeScrollbar, see remark at top of file
-    else if( GetOutDev()->HitTestNativeScrollbar( bHorizontal ? ControlPart::TrackHorzRight : ControlPart::TrackVertLower,
-                maPage2Rect, rPt, bIsInside)?
-            bIsInside:
-            maPage2Rect.Contains( rPt ) )
+
+    if (ImplHitTestPageDown(rPt))
         return &maPage2Rect;
-    // HitTestNativeScrollbar, see remark at top of file
-    else if( GetOutDev()->HitTestNativeScrollbar( bHorizontal ? ControlPart::ThumbHorz : ControlPart::ThumbVert,
-                maThumbRect, rPt, bIsInside)?
-             bIsInside:
-             maThumbRect.Contains( rPt ) )
+
+    if (ImplHitTestThumb(rPt))
         return &maThumbRect;
-    else
-        return nullptr;
+
+    return nullptr;
 }
 
 bool ScrollBar::PreNotify( NotifyEvent& rNEvt )

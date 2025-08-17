@@ -38,11 +38,14 @@
 #define HINT_INDENT     3
 #define HINT_MARGIN     4
 
-ScOverlayHint::ScOverlayHint(OUString aTit, const OUString& rMsg, const Color& rColor, vcl::Font aFont)
-    : OverlayObject(rColor)
+ScOverlayHint::ScOverlayHint(OUString aTit, const OUString& rMsg,
+                             const Color& rBackColor, const Color& rTextColor,
+                             vcl::Font aFont)
+    : OverlayObject(rBackColor)
     , m_aTitle(std::move(aTit))
     , m_aMessage(convertLineEnd(rMsg, LINEEND_CR))
     , m_aTextFont(std::move(aFont))
+    , m_aTextColor(rTextColor)
     , m_aMapMode(MapUnit::MapPixel)
     , m_nLeft(0)
     , m_nTop(0)
@@ -57,8 +60,6 @@ drawinglayer::primitive2d::Primitive2DContainer ScOverlayHint::createOverlaySequ
     MapMode aOld = pDefaultDev->GetMapMode();
     pDefaultDev->SetMapMode(rMapMode);
 
-    const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-    const Color& rColor = rStyleSettings.GetLabelTextColor();
     vcl::Font aTextFont = m_aTextFont;
     aTextFont.SetFontSize(pDefaultDev->PixelToLogic(aTextFont.GetFontSize(), rMapMode));
     vcl::Font aHeadFont = aTextFont;
@@ -84,7 +85,7 @@ drawinglayer::primitive2d::Primitive2DContainer ScOverlayHint::createOverlaySequ
         new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
                         aTextMatrix, m_aTitle, 0, m_aTitle.getLength(),
                         std::vector<double>(), {}, std::move(aFontAttr), css::lang::Locale(),
-                        rColor.getBColor());
+                        m_aTextColor.getBColor());
 
     Point aTextStart(nLeft + aHintMargin.Width() + aIndent.Width(),
                      nTop + aHintMargin.Height() + aFontMetric.GetLineHeight() + aIndent.Height());
@@ -92,7 +93,8 @@ drawinglayer::primitive2d::Primitive2DContainer ScOverlayHint::createOverlaySequ
     drawinglayer::geometry::ViewInformation2D aDummy;
     rRange.expand(pTitle->getB2DRange(aDummy));
 
-    drawinglayer::primitive2d::Primitive2DContainer aSeq { pTitle };
+    // insert two empty elements as placeholders for bg and border
+    drawinglayer::primitive2d::Primitive2DContainer aSeq { nullptr, nullptr, pTitle };
 
     aFontMetric = pDefaultDev->GetFontMetric(aTextFont);
     pDefaultDev->SetMapMode(aOld);
@@ -124,7 +126,7 @@ drawinglayer::primitive2d::Primitive2DContainer ScOverlayHint::createOverlaySequ
                                         new drawinglayer::primitive2d::TextSimplePortionPrimitive2D(
                                                 aTextMatrix, aLine, 0, aLine.getLength(),
                                                 std::vector<double>(), {}, aFontAttr, css::lang::Locale(),
-                                                rColor.getBColor());
+                                                m_aTextColor.getBColor());
 
         rRange.expand(pMessage->getB2DRange(aDummy));
 
@@ -145,16 +147,13 @@ drawinglayer::primitive2d::Primitive2DContainer ScOverlayHint::createOverlaySequ
 
     basegfx::B2DPolygon aPoly(basegfx::utils::createPolygonFromRect(rRange));
 
-    const drawinglayer::primitive2d::Primitive2DReference aBg(
+    // background
+    aSeq[0] = drawinglayer::primitive2d::Primitive2DReference(
         new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(basegfx::B2DPolyPolygon(aPoly), getBaseColor().getBColor()));
-
-    basegfx::BColor aBorderColor(0.5, 0.5, 0.5);
-    const drawinglayer::primitive2d::Primitive2DReference aBorder(
+    // border
+    aSeq[1] = drawinglayer::primitive2d::Primitive2DReference(
         new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(
-            std::move(aPoly), aBorderColor));
-
-    aSeq.insert(aSeq.begin(), aBorder);
-    aSeq.insert(aSeq.begin(), aBg);
+            std::move(aPoly), basegfx::BColor(0.5, 0.5, 0.5)));
 
     return aSeq;
 }

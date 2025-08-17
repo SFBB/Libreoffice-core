@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_UIBASE_INC_ROWHT_HXX
-#define INCLUDED_SW_SOURCE_UIBASE_INC_ROWHT_HXX
+#pragma once
 
 #include <vcl/weld.hxx>
 
@@ -30,14 +29,9 @@ class SwTableHeightDlg final : public weld::GenericDialogController
     std::unique_ptr<weld::MetricSpinButton> m_xHeightEdit;
     std::unique_ptr<weld::CheckButton> m_xAutoHeightCB;
 
-private:
-    void Apply();
-
 public:
     SwTableHeightDlg(weld::Window* pParent, SwWrtShell& rS);
-    virtual short run() override;
+    void Apply();
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

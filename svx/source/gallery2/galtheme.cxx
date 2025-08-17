@@ -50,21 +50,21 @@
 using namespace ::com::sun::star;
 
 GalleryTheme::GalleryTheme( Gallery* pGallery, GalleryThemeEntry* pThemeEntry )
-    : pParent(pGallery)
-    , pThm(pThemeEntry)
+    : mpParent(pGallery)
+    , mpThm(pThemeEntry)
     , mnThemeLockCount(0)
     , mnBroadcasterLockCount(0)
-    , nDragPos(0)
-    , bDragging(false)
-    , bAbortActualize(false)
+    , mnDragPos(0)
+    , mbDragging(false)
+    , mbAbortActualize(false)
 {
-    mpGalleryStorageEngine = pThm->createGalleryStorageEngine(maGalleryObjectCollection);
+    mpGalleryStorageEngine = mpThm->createGalleryStorageEngine(maGalleryObjectCollection);
 }
 
 GalleryTheme::~GalleryTheme()
 {
-    if(pThm->IsModified())
-        if(!mpGalleryStorageEngine->implWrite(*this, pThm))
+    if(mpThm->IsModified())
+        if(!mpGalleryStorageEngine->implWrite(*this, mpThm))
             ImplSetModified(false);
 
     for (auto & pEntry : maGalleryObjectCollection.getObjectList())
@@ -88,7 +88,7 @@ void GalleryTheme::ImplBroadcast(sal_uInt32 nUpdatePos)
         if( GetObjectCount() && ( nUpdatePos >= GetObjectCount() ) )
             nUpdatePos = GetObjectCount() - 1;
 
-        Broadcast( GalleryHint( GalleryHintType::THEME_UPDATEVIEW, GetName(), reinterpret_cast<void*>(nUpdatePos) ) );
+        Broadcast( GalleryHint( GalleryHintType::THEME_UPDATEVIEW, GetName(), reinterpret_cast<void*>(static_cast<sal_uIntPtr>(nUpdatePos)) ) );
     }
 }
 
@@ -134,7 +134,8 @@ bool GalleryTheme::InsertObject(const SgaObject& rObj, sal_uInt32 nInsertPos)
     mpGalleryStorageEngine->insertObject(rObj, pFoundEntry, nInsertPos);
 
     ImplSetModified(true);
-    ImplBroadcast(pFoundEntry? iFoundPos: nInsertPos);
+    Broadcast( GalleryHint( GalleryHintType::ADD_OBJECT, GetName(),
+        reinterpret_cast<void*>(static_cast<sal_uIntPtr>(pFoundEntry? iFoundPos: nInsertPos)) ) );
 
     return true;
 }
@@ -144,21 +145,21 @@ std::unique_ptr<SgaObject> GalleryTheme::AcquireObject(sal_uInt32 nPos)
     return mpGalleryStorageEngine->implReadSgaObject(maGalleryObjectCollection.getForPosition(nPos));
 }
 
-void GalleryTheme::GetPreviewBitmapExAndStrings(sal_uInt32 nPos, BitmapEx& rBitmapEx, Size& rSize, OUString& rTitle, OUString& rPath)
+void GalleryTheme::GetPreviewBitmapAndStrings(sal_uInt32 nPos, Bitmap& rBitmap, Size& rSize, OUString& rTitle, OUString& rPath)
 {
     const GalleryObject* pGalleryObject = maGalleryObjectCollection.get(nPos).get();
 
-    rBitmapEx = pGalleryObject->maPreviewBitmapEx;
+    rBitmap = pGalleryObject->maPreviewBitmap;
     rSize = pGalleryObject->maPreparedSize;
     rTitle = pGalleryObject->maTitle;
     rPath = pGalleryObject->maPath;
 }
 
-void GalleryTheme::SetPreviewBitmapExAndStrings(sal_uInt32 nPos, const BitmapEx& rBitmapEx, const Size& rSize, const OUString& rTitle, const OUString& rPath)
+void GalleryTheme::SetPreviewBitmapAndStrings(sal_uInt32 nPos, const Bitmap& rBitmap, const Size& rSize, const OUString& rTitle, const OUString& rPath)
 {
     GalleryObject* pGalleryObject = maGalleryObjectCollection.get(nPos).get();
 
-    pGalleryObject->maPreviewBitmapEx = rBitmapEx;
+    pGalleryObject->maPreviewBitmap = rBitmap;
     pGalleryObject->maPreparedSize = rSize;
     pGalleryObject->maTitle = rTitle;
     pGalleryObject->maPath = rPath;
@@ -210,13 +211,13 @@ void GalleryTheme::Actualize( const Link<const INetURLObject&, void>& rActualize
     const sal_uInt32 nCount = maGalleryObjectCollection.size();
 
     LockBroadcaster();
-    bAbortActualize = false;
+    mbAbortActualize = false;
 
     // reset delete flag
     for (sal_uInt32 i = 0; i < nCount; i++)
         maGalleryObjectCollection.get(i)->mbDelete = false;
 
-    for (sal_uInt32 i = 0; ( i < nCount ) && !bAbortActualize; i++)
+    for (sal_uInt32 i = 0; ( i < nCount ) && !mbAbortActualize; i++)
     {
         if( pProgress )
             pProgress->Update( i, nCount - 1 );
@@ -288,13 +289,13 @@ void GalleryTheme::Actualize( const Link<const INetURLObject&, void>& rActualize
     // update theme
     mpGalleryStorageEngine->updateTheme();
     ImplSetModified( true );
-    if (pThm->IsModified())
-        if (!mpGalleryStorageEngine->implWrite(*this, pThm))
+    if (mpThm->IsModified())
+        if (!mpGalleryStorageEngine->implWrite(*this, mpThm))
             ImplSetModified(false);
     UnlockBroadcaster();
 }
 
-bool GalleryTheme::GetThumb(sal_uInt32 nPos, BitmapEx& rBmp)
+bool GalleryTheme::GetThumb(sal_uInt32 nPos, Bitmap& rBmp)
 {
     std::unique_ptr<SgaObject> pObj = AcquireObject( nPos );
     bool        bRet = false;
@@ -456,31 +457,31 @@ bool GalleryTheme::InsertModel(const FmFormModel& rModel, sal_uInt32 nInsertPos)
     return bRet;
 }
 
-bool GalleryTheme::GetModelStream(sal_uInt32 nPos, tools::SvRef<SotTempStream> const & rxModelStream)
+bool GalleryTheme::GetModelStream(sal_uInt32 nPos, SvStream& rModelStream)
 {
     const GalleryObject*    pObject = maGalleryObjectCollection.getForPosition( nPos );
     bool                    bRet = false;
 
     if( pObject && ( SgaObjKind::SvDraw == pObject->eObjKind ) )
     {
-        bRet = mpGalleryStorageEngine->readModelStream(pObject, rxModelStream);
+        bRet = mpGalleryStorageEngine->readModelStream(pObject, rModelStream);
     }
 
     return bRet;
 }
 
-bool GalleryTheme::InsertModelStream(const tools::SvRef<SotTempStream>& rxModelStream, sal_uInt32 nInsertPos)
+bool GalleryTheme::InsertModelStream(SvStream& rModelStream, sal_uInt32 nInsertPos)
 {
     bool            bRet = false;
 
-    const SgaObjectSvDraw aObjSvDraw = mpGalleryStorageEngine->insertModelStream(rxModelStream, GetParent()->GetUserURL());
+    const SgaObjectSvDraw aObjSvDraw = mpGalleryStorageEngine->insertModelStream(rModelStream, GetParent()->GetUserURL());
     if(aObjSvDraw.IsValid())
         bRet = InsertObject( aObjSvDraw, nInsertPos );
 
     return bRet;
 }
 
-bool GalleryTheme::GetURL(sal_uInt32 nPos, INetURLObject& rURL)
+bool GalleryTheme::GetURL(sal_uInt32 nPos, INetURLObject& rURL) const
 {
     const GalleryObject*    pObject = maGalleryObjectCollection.getForPosition( nPos );
     bool                    bRet = false;
@@ -510,7 +511,7 @@ bool GalleryTheme::InsertURL(const INetURLObject& rURL, sal_uInt32 nInsertPos)
             pNewObj.reset(new SgaObjectBmp( aGraphic, rURL ));
     }
 #if HAVE_FEATURE_AVMEDIA
-    else if( ::avmedia::MediaWindow::isMediaURL( rURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ), ""/*TODO?*/ ) )
+    else if( ::avmedia::MediaWindow::isMediaURL( rURL.GetMainURL( INetURLObject::DecodeMechanism::Unambiguous ), u""_ustr/*TODO?*/ ) )
         pNewObj.reset(new SgaObjectSound( rURL ));
 #endif
     if( pNewObj && InsertObject( *pNewObj, nInsertPos ) )
@@ -542,10 +543,8 @@ bool GalleryTheme::InsertTransferable(const uno::Reference< datatransfer::XTrans
 
         if( aDataHelper.HasFormat( SotClipboardFormatId::DRAWING ) )
         {
-            tools::SvRef<SotTempStream> xModelStm;
-
-            if( aDataHelper.GetSotStorageStream( SotClipboardFormatId::DRAWING, xModelStm ) )
-                bRet = InsertModelStream( xModelStm, nInsertPos );
+            if (std::unique_ptr<SvStream> xModelStm = aDataHelper.GetSotStorageStream( SotClipboardFormatId::DRAWING ) )
+                bRet = InsertModelStream( *xModelStm, nInsertPos );
         }
         else if( aDataHelper.HasFormat( SotClipboardFormatId::FILE_LIST ) ||
                  aDataHelper.HasFormat( SotClipboardFormatId::SIMPLE_FILE ) )
@@ -766,15 +765,15 @@ SvStream& GalleryTheme::ReadData( SvStream& rIStm )
 
 void GalleryTheme::ImplSetModified( bool bModified )
 {
-    pThm->SetModified(bModified);
+    mpThm->SetModified(bModified);
 }
 
-sal_uInt32 GalleryTheme::GetId() const { return pThm->GetId(); }
-void GalleryTheme::SetId( sal_uInt32 nNewId, bool bResetThemeName ) { pThm->SetId( nNewId, bResetThemeName ); }
-bool GalleryTheme::IsReadOnly() const { return pThm->IsReadOnly(); }
-bool GalleryTheme::IsDefault() const { return pThm->IsDefault(); }
+sal_uInt32 GalleryTheme::GetId() const { return mpThm->GetId(); }
+void GalleryTheme::SetId( sal_uInt32 nNewId, bool bResetThemeName ) { mpThm->SetId( nNewId, bResetThemeName ); }
+bool GalleryTheme::IsReadOnly() const { return mpThm->IsReadOnly(); }
+bool GalleryTheme::IsDefault() const { return mpThm->IsDefault(); }
 
-const OUString& GalleryTheme::GetName() const { return pThm->GetThemeName(); }
+const OUString& GalleryTheme::GetName() const { return mpThm->GetThemeName(); }
 const INetURLObject& GalleryTheme::getThemeURL() const { return mpGalleryStorageEngine->getThemeURL(); }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

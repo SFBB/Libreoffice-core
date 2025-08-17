@@ -36,8 +36,6 @@
 namespace frm
 {
 
-class OGridColumn;
-
 // OGridControlModel
 
 typedef ::cppu::ImplHelper7 <   css::awt::XControlModel
@@ -106,7 +104,7 @@ public:
 
     // XServiceInfo
     OUString SAL_CALL getImplementationName() override
-    { return "com.sun.star.form.OGridControlModel"; }
+    { return u"com.sun.star.form.OGridControlModel"_ustr; }
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
@@ -176,7 +174,7 @@ private:
             ElementDescription* _pElement
         ) override;
 
-    css::uno::Reference< css::beans::XPropertySet>  createColumnById(sal_Int32 nTypeId) const;
+    rtl::Reference<OGridColumn> createColumnById(sal_Int32 nTypeId) const;
 
     virtual ElementDescription* createElementMetaData( ) override;
 

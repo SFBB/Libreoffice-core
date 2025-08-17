@@ -17,9 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "CommandDispatch.hxx"
+#include <sal/config.h>
+
+#include <CommandDispatch.hxx>
 #include <com/sun/star/util/URLTransformer.hpp>
-#include <comphelper/diagnose_ex.hxx>
 
 using namespace ::com::sun::star;
 

@@ -9,7 +9,7 @@
 
 #include "lokclipboard.hxx"
 #include <unordered_map>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <vcl/svapp.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <sal/log.hxx>
@@ -20,14 +20,20 @@ using namespace css;
 using namespace css::uno;
 
 /* static */ osl::Mutex LOKClipboardFactory::gMutex;
-static vcl::DeleteOnDeinit<std::unordered_map<int, rtl::Reference<LOKClipboard>>> gClipboards{};
+static tools::DeleteOnDeinit<std::unordered_map<int, rtl::Reference<LOKClipboard>>>& getClipboards()
+{
+    static tools::DeleteOnDeinit<std::unordered_map<int, rtl::Reference<LOKClipboard>>>
+        gClipboards{};
+    return gClipboards;
+}
 
 rtl::Reference<LOKClipboard> LOKClipboardFactory::getClipboardForCurView()
 {
-    int nViewId = SfxLokHelper::getView(); // currently active.
+    int nViewId = SfxLokHelper::getCurrentView(); // currently active.
 
     osl::MutexGuard aGuard(gMutex);
 
+    auto& gClipboards = getClipboards();
     auto it = gClipboards.get()->find(nViewId);
     if (it != gClipboards.get()->end())
     {
@@ -44,6 +50,7 @@ void LOKClipboardFactory::releaseClipboardForView(int nViewId)
 {
     osl::MutexGuard aGuard(gMutex);
 
+    auto& gClipboards = getClipboards();
     if (nViewId < 0) // clear all
     {
         gClipboards.get()->clear();
@@ -77,11 +84,14 @@ LOKClipboard::LOKClipboard()
 
 Sequence<OUString> LOKClipboard::getSupportedServiceNames_static()
 {
-    Sequence<OUString> aRet{ "com.sun.star.datatransfer.clipboard.LokClipboard" };
+    Sequence<OUString> aRet{ u"com.sun.star.datatransfer.clipboard.LokClipboard"_ustr };
     return aRet;
 }
 
-OUString LOKClipboard::getImplementationName() { return "com.sun.star.datatransfer.LOKClipboard"; }
+OUString LOKClipboard::getImplementationName()
+{
+    return u"com.sun.star.datatransfer.LOKClipboard"_ustr;
+}
 
 Sequence<OUString> LOKClipboard::getSupportedServiceNames()
 {
@@ -156,7 +166,7 @@ LOKTransferable::LOKTransferable()
 {
     m_aContent.reserve(1);
     m_aFlavors = css::uno::Sequence<css::datatransfer::DataFlavor>(1);
-    initFlavourFromMime(m_aFlavors.getArray()[0], "text/plain");
+    initFlavourFromMime(m_aFlavors.getArray()[0], u"text/plain"_ustr);
     uno::Any aContent;
     aContent <<= OUString();
     m_aContent.push_back(aContent);

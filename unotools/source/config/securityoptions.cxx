@@ -83,6 +83,9 @@ bool IsReadOnly( EOption eOption )
         case SvtSecurityOptions::EOption::DocWarnKeepDocVersionInfo:
             bReadonly = officecfg::Office::Common::Security::Scripting::KeepDocVersionInfoOnSaving::isReadOnly();
             break;
+        case SvtSecurityOptions::EOption::DocKeepPrinterSettings:
+            bReadonly = officecfg::Office::Common::Security::Scripting::KeepDocPrinterSettingsOnSaving::isReadOnly();
+            break;
         case SvtSecurityOptions::EOption::DocWarnRecommendPassword:
             bReadonly = officecfg::Office::Common::Security::Scripting::RecommendPasswordProtection::isReadOnly();
             break;
@@ -90,15 +93,17 @@ bool IsReadOnly( EOption eOption )
             bReadonly = officecfg::Office::Common::Security::Scripting::MacroSecurityLevel::isReadOnly();
             break;
         case SvtSecurityOptions::EOption::MacroTrustedAuthors:
-            // the officecfg does not expose isReadOnly for a ConfigurationSet, so we have to code this ourself
-            bReadonly =
-              comphelper::detail::ConfigurationWrapper::get().isReadOnly(u"/org.openoffice.Office.Common/Security/Scripting/TrustedAuthors"_ustr);
+            bReadonly = officecfg::Office::Common::Security::Scripting::TrustedAuthors::isReadOnly();
             break;
         case SvtSecurityOptions::EOption::CtrlClickHyperlink:
             bReadonly = officecfg::Office::Common::Security::Scripting::HyperlinksWithCtrlClick::isReadOnly();
             break;
         case SvtSecurityOptions::EOption::BlockUntrustedRefererLinks:
             bReadonly = officecfg::Office::Common::Security::Scripting::BlockUntrustedRefererLinks::isReadOnly();
+            break;
+        case SvtSecurityOptions::EOption::DisableActiveContent:
+            bReadonly = officecfg::Office::Common::Security::Scripting::DisableActiveContent::isReadOnly() ||
+                        officecfg::Office::Common::Security::Scripting::DisableOLEAutomation::isReadOnly();
             break;
 
         default:
@@ -111,7 +116,7 @@ bool IsReadOnly( EOption eOption )
 
 std::vector< OUString > GetSecureURLs()
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return {};
     std::vector<OUString> aRet = comphelper::sequenceToContainer<std::vector<OUString>>(
             officecfg::Office::Common::Security::Scripting::SecureURL::get());
@@ -182,12 +187,12 @@ bool isTrustedLocationUriForUpdatingLinks(OUString const & uri)
 
 sal_Int32 GetMacroSecurityLevel()
 {
-    return utl::ConfigManager::IsFuzzing() ? 3 : officecfg::Office::Common::Security::Scripting::MacroSecurityLevel::get();
+    return comphelper::IsFuzzing() ? 3 : officecfg::Office::Common::Security::Scripting::MacroSecurityLevel::get();
 }
 
 void SetMacroSecurityLevel( sal_Int32 _nLevel )
 {
-    if (utl::ConfigManager::IsFuzzing() || officecfg::Office::Common::Security::Scripting::MacroSecurityLevel::isReadOnly())
+    if (comphelper::IsFuzzing() || officecfg::Office::Common::Security::Scripting::MacroSecurityLevel::isReadOnly())
         return;
 
     if( _nLevel > 3 || _nLevel < 0 )
@@ -200,7 +205,9 @@ void SetMacroSecurityLevel( sal_Int32 _nLevel )
 
 bool IsMacroDisabled()
 {
-    return utl::ConfigManager::IsFuzzing() || officecfg::Office::Common::Security::Scripting::DisableMacrosExecution::get();
+    return comphelper::IsFuzzing()
+           || officecfg::Office::Common::Security::Scripting::DisableMacrosExecution::get()
+           || officecfg::Office::Common::Misc::ViewerAppMode::get();
 }
 
 std::vector< SvtSecurityOptions::Certificate > GetTrustedAuthors()
@@ -215,7 +222,7 @@ std::vector< SvtSecurityOptions::Certificate > GetTrustedAuthors()
     Sequence< OUString >    lAllAuthors( c2 );
     auto plAllAuthors = lAllAuthors.getArray();
     sal_Int32               i2 = 0;
-    OUString                aSep( "/" );
+    OUString                aSep( u"/"_ustr );
     for( const auto& rAuthor : lAuthors )
     {
         plAllAuthors[ i2 ] = PROPERTYNAME_MACRO_TRUSTEDAUTHORS + aSep + rAuthor + aSep + PROPERTYNAME_TRUSTEDAUTHOR_SUBJECTNAME;
@@ -293,7 +300,7 @@ void SetTrustedAuthors( const std::vector< Certificate >& rAuthors )
 
 bool IsOptionSet( EOption eOption )
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return false;
     bool    bSet = false;
     switch(eOption)
@@ -310,6 +317,9 @@ bool IsOptionSet( EOption eOption )
         case SvtSecurityOptions::EOption::DocWarnCreatePdf:
             bSet = officecfg::Office::Common::Security::Scripting::WarnCreatePDF::get();
             break;
+        case SvtSecurityOptions::EOption::DocWarnRemoveEditingTimeInfo:
+            bSet = officecfg::Office::Common::Security::Scripting::RemoveEditingTimeOnSaving::get();
+            break;
         case SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo:
             bSet = officecfg::Office::Common::Security::Scripting::RemovePersonalInfoOnSaving::get();
             break;
@@ -325,6 +335,9 @@ bool IsOptionSet( EOption eOption )
         case SvtSecurityOptions::EOption::DocWarnKeepDocVersionInfo:
             bSet = officecfg::Office::Common::Security::Scripting::KeepDocVersionInfoOnSaving::get();
             break;
+        case SvtSecurityOptions::EOption::DocKeepPrinterSettings:
+            bSet = officecfg::Office::Common::Security::Scripting::KeepDocPrinterSettingsOnSaving::get();
+            break;
         case SvtSecurityOptions::EOption::DocWarnRecommendPassword:
             bSet = officecfg::Office::Common::Security::Scripting::RecommendPasswordProtection::get();
             break;
@@ -333,6 +346,10 @@ bool IsOptionSet( EOption eOption )
             break;
         case SvtSecurityOptions::EOption::BlockUntrustedRefererLinks:
             bSet = officecfg::Office::Common::Security::Scripting::BlockUntrustedRefererLinks::get();
+            break;
+        case SvtSecurityOptions::EOption::DisableActiveContent:
+            bSet = officecfg::Office::Common::Security::Scripting::DisableActiveContent::get() &&
+                   officecfg::Office::Common::Security::Scripting::DisableOLEAutomation::get();
             break;
 
         default:
@@ -359,6 +376,9 @@ void SetOption( EOption eOption, bool bValue )
         case SvtSecurityOptions::EOption::DocWarnCreatePdf:
              officecfg::Office::Common::Security::Scripting::WarnCreatePDF::set(bValue, xChanges);
             break;
+        case SvtSecurityOptions::EOption::DocWarnRemoveEditingTimeInfo:
+            officecfg::Office::Common::Security::Scripting::RemoveEditingTimeOnSaving::set(bValue, xChanges);
+            break;
         case SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo:
              officecfg::Office::Common::Security::Scripting::RemovePersonalInfoOnSaving::set(bValue, xChanges);
             break;
@@ -374,6 +394,9 @@ void SetOption( EOption eOption, bool bValue )
         case SvtSecurityOptions::EOption::DocWarnKeepDocVersionInfo:
              officecfg::Office::Common::Security::Scripting::KeepDocVersionInfoOnSaving::set(bValue, xChanges);
             break;
+        case SvtSecurityOptions::EOption::DocKeepPrinterSettings:
+             officecfg::Office::Common::Security::Scripting::KeepDocPrinterSettingsOnSaving::set(bValue, xChanges);
+            break;
         case SvtSecurityOptions::EOption::DocWarnRecommendPassword:
              officecfg::Office::Common::Security::Scripting::RecommendPasswordProtection::set(bValue, xChanges);
             break;
@@ -382,6 +405,10 @@ void SetOption( EOption eOption, bool bValue )
             break;
         case SvtSecurityOptions::EOption::BlockUntrustedRefererLinks:
              officecfg::Office::Common::Security::Scripting::BlockUntrustedRefererLinks::set(bValue, xChanges);
+            break;
+        case SvtSecurityOptions::EOption::DisableActiveContent:
+            officecfg::Office::Common::Security::Scripting::DisableActiveContent::set(bValue, xChanges);
+            officecfg::Office::Common::Security::Scripting::DisableOLEAutomation::set(bValue, xChanges);
             break;
 
         default:
@@ -394,7 +421,7 @@ void SetOption( EOption eOption, bool bValue )
 
 
 // map personal info strings to 1, 2, ... to remove personal info
-size_t SvtSecurityMapPersonalInfo::GetInfoID( const OUString sPersonalInfo )
+size_t SvtSecurityMapPersonalInfo::GetInfoID( const OUString& sPersonalInfo )
 {
     auto aIter = aInfoIDs.find( sPersonalInfo );
     if ( aIter == aInfoIDs.end() )

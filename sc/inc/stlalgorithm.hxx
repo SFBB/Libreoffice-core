@@ -49,7 +49,6 @@ public:
     static void destroy(T* p)
     {
         p->~value_type();
-        (void)p; // avoid bogus MSVC '12 "unreferenced formal parameter" warning
     }
 
     static size_type max_size()

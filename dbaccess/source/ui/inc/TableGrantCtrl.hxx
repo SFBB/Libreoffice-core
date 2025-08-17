@@ -28,7 +28,6 @@
 #include <com/sun/star/sdbcx/XAuthorizable.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-class Edit;
 namespace dbaui
 {
 
@@ -72,10 +71,9 @@ public:
     /** Creates the accessible object of a data table cell.
         @param nRow  The row index of the cell.
         @param nColumnId  The column ID of the cell.
-        @return  The XAccessible interface of the specified cell. */
-    virtual css::uno::Reference<
-        css::accessibility::XAccessible >
-    CreateAccessibleCell( sal_Int32 nRow, sal_uInt16 nColumnId ) override;
+        @return  The accessible object of the specified cell. */
+    virtual rtl::Reference<comphelper::OAccessible>
+    CreateAccessibleCell(sal_Int32 nRow, sal_uInt16 nColumnId) override;
 
 protected:
     virtual bool PreNotify(NotifyEvent& rNEvt ) override;

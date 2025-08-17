@@ -13,6 +13,9 @@
 #include <editeng/editobj.hxx>
 #include <editeng/wghtitem.hxx>
 #include <editeng/eeitem.hxx>
+#include <editeng/boxitem.hxx>
+#include <editeng/borderline.hxx>
+#include <editeng/justifyitem.hxx>
 
 #include <editutil.hxx>
 
@@ -20,6 +23,8 @@
 #include <formulacell.hxx>
 #include <docfunc.hxx>
 #include <docsh.hxx>
+
+using namespace ::editeng;
 
 FormulaTemplate::FormulaTemplate(ScDocument* pDoc)
     : mpDoc(pDoc)
@@ -149,17 +154,17 @@ void AddressWalker::push(SCCOL aRelativeCol, SCROW aRelativeRow, SCTAB aRelative
     mAddressStack.push_back(mCurrentAddress);
 }
 
-AddressWalkerWriter::AddressWalkerWriter(const ScAddress& aInitialAddress, ScDocShell* pDocShell, ScDocument& rDocument,
+AddressWalkerWriter::AddressWalkerWriter(const ScAddress& aInitialAddress, ScDocShell& rDocShell, ScDocument& rDocument,
         formula::FormulaGrammar::Grammar eGrammar ) :
     AddressWalker(aInitialAddress),
-    mpDocShell(pDocShell),
+    mrDocShell(rDocShell),
     mrDocument(rDocument),
     meGrammar(eGrammar)
 {}
 
 void AddressWalkerWriter::writeFormula(const OUString& aFormula)
 {
-    mpDocShell->GetDocFunc().SetFormulaCell(mCurrentAddress,
+    mrDocShell.GetDocFunc().SetFormulaCell(mCurrentAddress,
             new ScFormulaCell(mrDocument, mCurrentAddress, aFormula, meGrammar), true);
 }
 
@@ -169,7 +174,7 @@ void AddressWalkerWriter::writeFormulas(const std::vector<OUString>& rFormulas)
     if (!nLength)
         return;
 
-    const size_t nMaxLen = mpDocShell->GetDocument().MaxRow() - mCurrentAddress.Row() + 1;
+    const size_t nMaxLen = mrDocShell.GetDocument().MaxRow() - mCurrentAddress.Row() + 1;
     // If not done already, trim the length to fit.
     if (nLength > nMaxLen)
         nLength = nMaxLen;
@@ -182,7 +187,7 @@ void AddressWalkerWriter::writeFormulas(const std::vector<OUString>& rFormulas)
         aAddr.IncRow(1);
     }
 
-    mpDocShell->GetDocFunc().SetFormulaCells(mCurrentAddress, aFormulaCells, true);
+    mrDocShell.GetDocFunc().SetFormulaCells(mCurrentAddress, aFormulaCells, true);
 }
 
 void AddressWalkerWriter::writeMatrixFormula(const OUString& aFormula, SCCOL nCols, SCROW nRows)
@@ -194,12 +199,12 @@ void AddressWalkerWriter::writeMatrixFormula(const OUString& aFormula, SCCOL nCo
         aRange.aEnd.IncCol(nCols - 1);
     if (nRows > 1)
         aRange.aEnd.IncRow(nRows - 1);
-    mpDocShell->GetDocFunc().EnterMatrix(aRange, nullptr, nullptr, aFormula, false, false, OUString(), meGrammar );
+    mrDocShell.GetDocFunc().EnterMatrix(aRange, nullptr, nullptr, aFormula, false, false, OUString(), meGrammar );
 }
 
 void AddressWalkerWriter::writeString(const OUString& aString)
 {
-    mpDocShell->GetDocFunc().SetStringCell(mCurrentAddress, aString, true);
+    mrDocShell.GetDocFunc().SetStringCell(mCurrentAddress, aString, true);
 }
 
 void AddressWalkerWriter::writeString(const char* aCharArray)
@@ -213,15 +218,58 @@ void AddressWalkerWriter::writeBoldString(const OUString& aString)
     rEngine.SetTextCurrentDefaults(aString);
     SfxItemSet aItemSet = rEngine.GetEmptyItemSet();
     SvxWeightItem aWeight(WEIGHT_BOLD, EE_CHAR_WEIGHT);
+    SvxHorJustifyItem aJustify(SvxCellHorJustify::Center, ATTR_HOR_JUSTIFY);
     aItemSet.Put(aWeight);
+    aItemSet.Put(aJustify);
     rEngine.QuickSetAttribs(aItemSet, ESelection(0, 0, 0, aString.getLength()) );
     std::unique_ptr<EditTextObject> pEditText(rEngine.CreateTextObject());
-    mpDocShell->GetDocFunc().SetEditCell(mCurrentAddress, *pEditText, true);
+    mrDocShell.GetDocFunc().SetEditCell(mCurrentAddress, *pEditText, true);
 }
 
 void AddressWalkerWriter::writeValue(double aValue)
 {
-    mpDocShell->GetDocFunc().SetValueCell(mCurrentAddress, aValue, true);
+    mrDocShell.GetDocFunc().SetValueCell(mCurrentAddress, aValue, true);
+}
+
+// Applies a column header format to the current cell and subsequent (nCols - 1) columns
+// Header format = bold font, horizontally centered, text wrap and top/bottom borders
+void AddressWalkerWriter::formatAsColumnHeader(SCCOL nCols)
+{
+    ScPatternAttr aPattern(mrDocument.getCellAttributeHelper());
+    SvxHorJustifyItem aHJustify(SvxCellHorJustify::Center, ATTR_HOR_JUSTIFY);
+    SvxVerJustifyItem aVJustify(SvxCellVerJustify::Center, ATTR_VER_JUSTIFY);
+    SvxWeightItem aWeight(WEIGHT_BOLD, ATTR_FONT_WEIGHT);
+    ScLineBreakCell aWrap(true);
+    SvxBoxItem aBorderOuter(ATTR_BORDER);
+    SvxBorderLine aLine;
+    aLine.GuessLinesWidths(aLine.GetBorderLineStyle(), SvxBorderLineWidth::Thin);
+    aBorderOuter.SetLine(&aLine, SvxBoxItemLine::TOP);
+    aBorderOuter.SetLine(&aLine, SvxBoxItemLine::BOTTOM);
+
+    aPattern.ItemSetPut(aHJustify);
+    aPattern.ItemSetPut(aVJustify);
+    aPattern.ItemSetPut(aWeight);
+    aPattern.ItemSetPut(aWrap);
+    aPattern.ItemSetPut(aBorderOuter);
+
+    mrDocument.ApplyPatternAreaTab(mCurrentAddress.Col(), mCurrentAddress.Row(),
+                                   mCurrentAddress.Col() + nCols - 1, mCurrentAddress.Row(),
+                                   mCurrentAddress.Tab(), aPattern);
+}
+
+// Formats as the bottom end of a table with a bottom line
+// Starts in the current cell and formats nCols in total
+void AddressWalkerWriter::formatTableBottom(SCCOL nCols)
+{
+    ScPatternAttr aPattern(mrDocument.getCellAttributeHelper());
+    SvxBoxItem aBorderOuter(ATTR_BORDER);
+    SvxBorderLine aLine;
+    aLine.GuessLinesWidths(aLine.GetBorderLineStyle(), SvxBorderLineWidth::Thin);
+    aBorderOuter.SetLine(&aLine, SvxBoxItemLine::BOTTOM);
+    aPattern.ItemSetPut(aBorderOuter);
+    mrDocument.ApplyPatternAreaTab(mCurrentAddress.Col(), mCurrentAddress.Row(),
+                                   mCurrentAddress.Col() + nCols - 1, mCurrentAddress.Row(),
+                                   mCurrentAddress.Tab(), aPattern);
 }
 
 // DataCellIterator

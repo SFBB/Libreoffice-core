@@ -42,30 +42,36 @@ namespace
 void GetInfoBarColors(InfobarType ibType, BColor& rBackgroundColor, BColor& rForegroundColor,
                       BColor& rMessageColor)
 {
-    rMessageColor = basegfx::BColor(0.0, 0.0, 0.0);
-
+    const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
+    const bool bIsDark = rSettings.GetWindowColor().IsDark();
     switch (ibType)
     {
         case InfobarType::INFO: // blue; #004785/0,71,133; #BDE5F8/189,229,248
-            rBackgroundColor = basegfx::BColor(0.741, 0.898, 0.973);
-            rForegroundColor = basegfx::BColor(0.0, 0.278, 0.522);
+            rBackgroundColor = bIsDark ? basegfx::BColor(0.000, 0.278, 0.522)
+                                       : basegfx::BColor(0.741, 0.898, 0.973);
+            rForegroundColor = bIsDark ? basegfx::BColor(0.741, 0.898, 0.973)
+                                       : basegfx::BColor(0.000, 0.278, 0.522);
+            rMessageColor = rForegroundColor;
             break;
         case InfobarType::SUCCESS: // green; #32550C/50,85,12; #DFF2BF/223,242,191
-            rBackgroundColor = basegfx::BColor(0.874, 0.949, 0.749);
-            rForegroundColor = basegfx::BColor(0.196, 0.333, 0.047);
+            rBackgroundColor = bIsDark ? basegfx::BColor(0.196, 0.333, 0.047)
+                                       : basegfx::BColor(0.874, 0.949, 0.749);
+            rForegroundColor = bIsDark ? basegfx::BColor(0.874, 0.949, 0.749)
+                                       : basegfx::BColor(0.196, 0.333, 0.047);
+            rMessageColor = rForegroundColor;
             break;
         case InfobarType::WARNING: // orange; #704300/112,67,0; #FEEFB3/254,239,179
-            rBackgroundColor = basegfx::BColor(0.996, 0.937, 0.702);
-            rForegroundColor = basegfx::BColor(0.439, 0.263, 0.0);
+            rBackgroundColor = rSettings.GetWarningColor().getBColor();
+            rForegroundColor = rSettings.GetWarningTextColor().getBColor();
+            rMessageColor = rSettings.GetWarningTextColor().getBColor();
             break;
         case InfobarType::DANGER: // red; #7A0006/122,0,6; #FFBABA/255,186,186
-            rBackgroundColor = basegfx::BColor(1.0, 0.729, 0.729);
-            rForegroundColor = basegfx::BColor(0.478, 0.0, 0.024);
+            rBackgroundColor = rSettings.GetErrorColor().getBColor();
+            rForegroundColor = rSettings.GetErrorTextColor().getBColor();
+            rMessageColor = rSettings.GetErrorTextColor().getBColor();
             break;
     }
 
-    //remove this?
-    const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
     if (rSettings.GetHighContrastMode())
     {
         rBackgroundColor = rSettings.GetLightColor().getBColor();
@@ -103,9 +109,12 @@ void SfxInfoBarWindow::SetCloseButtonImage()
     aSize = Size(aSize.Width() * 1.5, aSize.Height() * 1.5);
 
     ScopedVclPtr<VirtualDevice> xDevice(m_xCloseBtn->create_virtual_device());
-    xDevice->SetOutputSizePixel(aSize);
+    xDevice->SetOutputSizePixel(Size(24, 24));
+    xDevice->SetBackground(Color(m_aBackgroundColor));
+    xDevice->Erase();
 
-    Point aBtnPos(0, 0);
+    const int nPos = (24 - aSize.getWidth()) / 2;
+    Point aBtnPos(nPos, nPos);
 
     const ViewInformation2D aNewViewInfos;
     const std::unique_ptr<BaseProcessor2D> pProcessor(
@@ -146,7 +155,7 @@ void SfxInfoBarWindow::SetCloseButtonImage()
 
     pProcessor->process(aSeq);
 
-    m_xCloseBtn->set_item_image("close", xDevice);
+    m_xCloseBtn->set_item_image(u"close"_ustr, xDevice);
 }
 
 class ExtraButton
@@ -163,9 +172,9 @@ private:
 
 public:
     ExtraButton(weld::Container* pContainer, const OUString* pCommand)
-        : m_xBuilder(Application::CreateBuilder(pContainer, "sfx/ui/extrabutton.ui"))
-        , m_xContainer(m_xBuilder->weld_container("ExtraButton"))
-        , m_xButton(m_xBuilder->weld_button("button"))
+        : m_xBuilder(Application::CreateBuilder(pContainer, u"sfx/ui/extrabutton.ui"_ustr))
+        , m_xContainer(m_xBuilder->weld_container(u"ExtraButton"_ustr))
+        , m_xButton(m_xBuilder->weld_button(u"button"_ustr))
     {
         if (pCommand)
         {
@@ -194,15 +203,15 @@ SfxInfoBarWindow::SfxInfoBarWindow(vcl::Window* pParent, OUString sId,
                                    const OUString& sPrimaryMessage,
                                    const OUString& sSecondaryMessage, InfobarType ibType,
                                    bool bShowCloseButton)
-    : InterimItemWindow(pParent, "sfx/ui/infobar.ui", "InfoBar")
+    : InterimItemWindow(pParent, u"sfx/ui/infobar.ui"_ustr, u"InfoBar"_ustr)
     , m_sId(std::move(sId))
     , m_eType(ibType)
     , m_bLayingOut(false)
-    , m_xImage(m_xBuilder->weld_image("image"))
-    , m_xPrimaryMessage(m_xBuilder->weld_label("primary"))
-    , m_xSecondaryMessage(m_xBuilder->weld_text_view("secondary"))
-    , m_xButtonBox(m_xBuilder->weld_container("buttonbox"))
-    , m_xCloseBtn(m_xBuilder->weld_toolbar("closebar"))
+    , m_xImage(m_xBuilder->weld_image(u"image"_ustr))
+    , m_xPrimaryMessage(m_xBuilder->weld_label(u"primary"_ustr))
+    , m_xSecondaryMessage(m_xBuilder->weld_text_view(u"secondary"_ustr))
+    , m_xButtonBox(m_xBuilder->weld_container(u"buttonbox"_ustr))
+    , m_xCloseBtn(m_xBuilder->weld_toolbar(u"closebar"_ustr))
 {
     SetStyle(GetStyle() | WB_DIALOGCONTROL);
 
@@ -458,9 +467,9 @@ void SfxInfoBarContainerWindow::Resize()
     if (m_bResizing)
         return;
     m_bResizing = true;
-    const Size& rOrigSize = GetSizePixel();
-    auto nOrigWidth = rOrigSize.getWidth();
-    auto nOrigHeight = rOrigSize.getHeight();
+    const Size aWindowOrigSize = GetSizePixel();
+    auto nOrigWidth = aWindowOrigSize.getWidth();
+    auto nOrigHeight = aWindowOrigSize.getHeight();
 
     tools::Long nHeight = 0;
 

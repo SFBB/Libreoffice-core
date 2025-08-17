@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <o3tl/string_view.hxx>
 #include <svx/Palette.hxx>
 #include <tools/stream.hxx>
 
@@ -78,6 +79,102 @@ static void lcl_CMYKtoRGB( float fCyan, float fMagenta, float fYellow, float fKe
     dB = std::clamp( 1.0 - fYellow, 0.0, 1.0 );
 }
 
+// This function based on code under ALv2 - Copyright 2013 István Ujj-Mészáros
+// credit Avisek Das and István Ujj-Mészáros
+static void lcl_XYZtoRGB( float fX, float fY, float fZ, float& dR, float& dG, float& dB)
+{
+    // Observer = 2°, Illuminant = D65
+    fX = fX / 100;
+    fY = fY / 100;
+    fZ = fZ / 100;
+
+    // X from 0 to 95.047
+    dR = fX * 3.2406 + fY * -1.5372 + fZ * -0.4986;
+    // Y from 0 to 100.000
+    dG = fX * -0.9689 + fY * 1.8758 + fZ * 0.0415;
+    // Z from 0 to 108.883
+    dB = fX * 0.0557 + fY * -0.2040 + fZ * 1.0570;
+
+    if (dR > 0.0031308)
+    {
+        dR = 1.055 * (std::pow(dR, 0.41666667)) - 0.055;
+    }
+    else
+    {
+        dR = 12.92 * dR;
+    }
+
+    if (dG > 0.0031308)
+    {
+        dG = 1.055 * (std::pow(dG, 0.41666667)) - 0.055;
+    }
+    else
+    {
+        dG = 12.92 * dG;
+    }
+
+    if (dB > 0.0031308)
+    {
+        dB = 1.055 * (std::pow(dB, 0.41666667)) - 0.055;
+    }
+    else
+    {
+        dB = 12.92 * dB;
+    }
+    dR *= 255;
+    dG *= 255;
+    dB *= 255;
+}
+
+// This function based on code under ALv2 - Copyright 2013 István Ujj-Mészáros
+// credit Avisek Das and István Ujj-Mészáros
+static void lcl_LABtoXYZ( float fL, float fa, float fb, float& dX, float& dY, float& dZ)
+{
+    dY = (fL + 16) / 116;
+    dX = (fa / 500) + dY;
+    dZ = dY - (fb / 200);
+
+    if (std::pow(dY, 3) > 0.008856)
+    {
+        dY = std::pow(dY, 3);
+    }
+    else
+    {
+        dY = (dY - 0.137931034) /  7.787;
+    }
+
+    if (std::pow(dX, 3) > 0.008856)
+    {
+        dX = std::pow(dX, 3);
+    }
+    else
+    {
+        dX = (dX - 0.137931034) /  7.787;
+    }
+
+    if (std::pow(dZ, 3) > 0.008856)
+    {
+        dZ = std::pow(dZ, 3);
+    }
+    else
+    {
+        dZ = (dZ - 0.137931034) /  7.787;
+    }
+
+    // Observer = 2°, Illuminant = D65
+    dX = 95.047 * dX;
+    dY = 100.000 * dY;
+    dZ = 108.883 * dZ;
+}
+
+static void lcl_LABtoRGB( float fL, float fa, float fb, float& dR, float& dG, float& dB)
+{
+    float x, y, z;
+    lcl_LABtoXYZ(fL, fa, fb, x, y, z);
+
+    lcl_XYZtoRGB(x, y, z, dR, dG, dB);
+}
+
 void PaletteASE::LoadPalette()
 {
     SvFileStream aFile(maFPath, StreamMode::READ);
@@ -109,7 +206,7 @@ void PaletteASE::LoadPalette()
         aFile.ReadUInt16(nChunkSize);
         aFile.ReadUInt16(nChars);
 
-        OUString aPaletteName("");
+        OUString aPaletteName(u""_ustr);
         if (nChars > 1)
             aPaletteName = read_uInt16s_ToOUString(aFile, nChars);
         else
@@ -153,14 +250,13 @@ void PaletteASE::LoadPalette()
             aFile.ReadFloat(nVal);
             r = g = b = nVal;
         }
-        else
+        else if (aColorModel.equalsIgnoreAsciiCase("LAB "))
         {
-            float nL = 0, nA = 0, nB = 0;
-            aFile.ReadFloat(nL);
-            aFile.ReadFloat(nA);
-            aFile.ReadFloat(nB);
-            // TODO: How to convert LAB to RGB?
-            r = g = b = 0;
+            float fL = 0, fA = 0, fB = 0;
+            aFile.ReadFloat(fL);
+            aFile.ReadFloat(fA);
+            aFile.ReadFloat(fB);
+            lcl_LABtoRGB(fL, fA, fB, r, g, b);
         }
 
         // Ignore color type
@@ -169,11 +265,6 @@ void PaletteASE::LoadPalette()
     }
 
     mbValidPalette = true;
-}
-
-Palette* PaletteASE::Clone() const
-{
-    return new PaletteASE(*this);
 }
 
 // PaletteGPL ------------------------------------------------------------------
@@ -223,17 +314,17 @@ bool PaletteGPL::IsValid()
 
 bool PaletteGPL::ReadPaletteHeader(SvFileStream& rFileStream)
 {
-    OString aLine;
-    OString aPaletteName;
+    OStringBuffer aLine;
 
     rFileStream.ReadLine(aLine);
-    if( !aLine.startsWith("GIMP Palette") ) return false;
+    if (!std::string_view(aLine).starts_with("GIMP Palette"))
+        return false;
     rFileStream.ReadLine(aLine);
-    if( aLine.startsWith("Name: ", &aPaletteName) )
+    if (std::string_view aPaletteName; o3tl::starts_with(aLine, "Name: ", &aPaletteName))
     {
         maGPLPaletteName = OStringToOUString(aPaletteName, RTL_TEXTENCODING_ASCII_US);
         rFileStream.ReadLine(aLine);
-        if( aLine.startsWith("Columns: "))
+        if (std::string_view(aLine).starts_with("Columns: "))
             rFileStream.ReadLine(aLine); // we can ignore this
     }
     else
@@ -294,17 +385,12 @@ void PaletteGPL::LoadPalette()
     } while (aFile.ReadLine(aLine));
 }
 
-Palette* PaletteGPL::Clone() const
-{
-    return new PaletteGPL(*this);
-}
-
 // finds first token in rStr from index, separated by whitespace
 // returns position of next token in index
 static OString lcl_getToken(OStringBuffer& rStr, sal_Int32& index)
 {
     sal_Int32 substart, toklen = 0;
-    OUString aWhitespaceChars( " \n\t" );
+    OUString aWhitespaceChars( u" \n\t"_ustr );
 
     while(index < rStr.getLength() &&
             aWhitespaceChars.indexOf( rStr[index] ) != -1)
@@ -373,11 +459,6 @@ void PaletteSOC::LoadColorSet(SvxColorValueSet& rColorSet)
 bool PaletteSOC::IsValid()
 {
     return true;
-}
-
-Palette* PaletteSOC::Clone() const
-{
-    return new PaletteSOC(*this);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

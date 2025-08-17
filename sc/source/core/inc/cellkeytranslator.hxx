@@ -20,34 +20,18 @@
 #pragma once
 
 #include <formula/opcode.hxx>
-#include <unotools/transliterationwrapper.hxx>
-#include <vector>
-#include <memory>
-#include <unordered_map>
+#include <rtl/ustring.hxx>
 
 namespace com::sun::star::lang
 {
 struct Locale;
 }
 
-struct TransItem;
-
-struct ScCellKeyword
-{
-    const char* mpName;
-    OpCode meOpCode;
-    const css::lang::Locale& mrLocale;
-
-    ScCellKeyword(const char* pName, OpCode eOpCode, const css::lang::Locale& rLocale);
-};
-
-typedef std::unordered_map<OUString, ::std::vector<ScCellKeyword>> ScCellKeywordHashMap;
-
 /** Translate cell function keywords.
 
-    This class provides a convenient way to translate a string keyword used as
+    Provides a convenient way to translate a string keyword used as
     a cell function argument.  Since Calc's built-in cell functions don't
-    localize string keywords, this class is used mainly to deal with an Excel
+    localize string keywords, this is used mainly to deal with an Excel
     document where string names may be localized.
 
     To use, simply call the
@@ -56,27 +40,11 @@ typedef std::unordered_map<OUString, ::std::vector<ScCellKeyword>> ScCellKeyword
 
     function.
 
-    Note that when the locale and/or the opcode is specified, the function
-    tries to find a string with matching locale and/or opcode. But when it
-    fails to find one that satisfies the specified locale and/or opcode, it
-    returns a translated string with non-matching locale and/or opcode if
-    available. */
-class ScCellKeywordTranslator
+    Note that the function only finds a string with matching locale and opcode.
+    Locale is matched as close as possible */
+namespace ScCellKeywordTranslator
 {
-public:
-    static void transKeyword(OUString& rName, const css::lang::Locale* pLocale, OpCode eOpCode);
-    ~ScCellKeywordTranslator();
-
-private:
-    ScCellKeywordTranslator();
-
-    void addToMap(const OUString& rKey, const char* pName, const css::lang::Locale& rLocale,
-                  OpCode eOpCode);
-    void addToMap(const TransItem* pItems, const css::lang::Locale& rLocale);
-
-    static ::std::unique_ptr<ScCellKeywordTranslator> spInstance;
-    ScCellKeywordHashMap maStringNameMap;
-    ::utl::TransliterationWrapper maTransWrapper;
+void transKeyword(OUString& rName, const css::lang::Locale& rLocale, OpCode eOpCode);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

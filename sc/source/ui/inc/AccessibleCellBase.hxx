@@ -22,17 +22,12 @@
 #include "AccessibleContextBase.hxx"
 #include <address.hxx>
 #include <com/sun/star/accessibility/XAccessibleValue.hpp>
-#include <cppuhelper/implbase1.hxx>
-
-typedef cppu::ImplHelper1< css::accessibility::XAccessibleValue>
-                    ScAccessibleCellBaseImpl;
 
 class ScAccessibleCellBase
-    :   public ScAccessibleContextBase,
-        public ScAccessibleCellBaseImpl
+    : public cppu::ImplInheritanceHelper<ScAccessibleContextBase,
+                                         css::accessibility::XAccessibleValue>
 {
 public:
-    //=====  internal  ========================================================
     ScAccessibleCellBase(
         const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
         ScDocument* pDoc,
@@ -43,15 +38,6 @@ protected:
 public:
 
     virtual bool isVisible() override;
-
-    ///=====  XInterface  =====================================================
-
-    virtual css::uno::Any SAL_CALL queryInterface(
-        css::uno::Type const & rType ) override;
-
-    virtual void SAL_CALL acquire() noexcept override;
-
-    virtual void SAL_CALL release() noexcept override;
 
     ///=====  XAccessibleComponent  ============================================
 
@@ -91,24 +77,6 @@ public:
 
     virtual css::uno::Any SAL_CALL
         getMinimumIncrement(  ) override;
-
-    ///=====  XServiceInfo  ====================================================
-
-    /** Returns an identifier for the implementation of this object.
-    */
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    ///=====  XTypeProvider  ===================================================
-
-    /// returns the possible types
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL
-        getTypes() override;
-
-    /** Returns an implementation id.
-    */
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL
-        getImplementationId() override;
 
 protected:
     ScAddress maCellAddress;

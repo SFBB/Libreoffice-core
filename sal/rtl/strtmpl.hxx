@@ -67,8 +67,6 @@ template <typename C> struct null_terminated
     {
         friend bool operator==(EndDetector, C* iter) { return *iter == 0; }
         friend bool operator==(C* iter, EndDetector) { return *iter == 0; }
-        friend bool operator!=(EndDetector, C* iter) { return *iter != 0; }
-        friend bool operator!=(C* iter, EndDetector) { return *iter != 0; }
     };
     static auto end() { return EndDetector{}; }
 };
@@ -923,7 +921,7 @@ void newConcat(rtl_tString** ppThis, const C1* pLeft, sal_Int32 nLeftLength,
             *ppThis = nullptr;
         else
         {
-#if !defined(__COVERITY__)
+#if !defined(__COVERITY__) || __COVERITY_MAJOR__ > 2024
             throw std::length_error("newConcat");
 #else
             //coverity doesn't report std::bad_alloc as an unhandled exception when
@@ -1081,13 +1079,6 @@ void newReplaceStrAt(rtl_tString** ppThis, rtl_tString* pStr, sal_Int32 nIndex, 
                 return assign(ppThis, pNewSubStr);
         }
         nCount = pStr->length - nIndex;
-    }
-
-    /* Assign of Str? */
-    if (!nCount && (!pNewSubStr || !pNewSubStr->length))
-    {
-        assign(ppThis, pStr);
-        return;
     }
 
     const auto* pNewSubStrBuf = pNewSubStr ? pNewSubStr->buffer : nullptr;
@@ -1427,7 +1418,7 @@ void doubleToString(rtl_tString** pResult, sal_Int32* pResultCapacity, sal_Int32
     if (std::isnan(fValue))
     {
         // #i112652# XMLSchema-2
-        constexpr std::string_view nan{ "NaN" };
+        static constexpr std::string_view nan{ "NaN" };
         return append(pResult, pResultCapacity, nResultOffset, nan);
     }
 
@@ -1527,6 +1518,11 @@ void doubleToString(rtl_tString** pResult, sal_Int32* pResultCapacity, sal_Int32
             }
             else
             {
+                if (nOrigDigits <= nDecPlaces && aParts.exponent >= 0 && fValue < 0x1p53)
+                {
+                    // Use integer representation with highest accuracy.
+                    nRoundDigits = nOrigDigits; // no rounding
+                }
                 nDecPlaces = std::max<sal_Int32>(0, nDecPlaces - nExp - 1);
                 eFormat = rtl_math_StringFormat_F;
             }

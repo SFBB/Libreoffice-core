@@ -31,35 +31,11 @@
 #include "outdevprovider.hxx"
 
 
-class OutputDevice;
 class Point;
-class Size;
-
-namespace basegfx
-{
-    namespace matrix
-    {
-        class B2DHomMatrix;
-    }
-}
-
-namespace com::sun::star::awt
-{
-    struct Point;
-    struct Size;
-    struct Rectangle;
-}
-
-namespace com::sun::star::drawing
-{
-    struct HomogenMatrix3;
-}
 
 namespace com::sun::star::geometry
 {
     struct RealPoint2D;
-    struct RealSize2D;
-    struct RealRectangle2D;
     struct Matrix2D;
 }
 
@@ -75,8 +51,8 @@ namespace vclcanvas
 {
     namespace tools
     {
-        ::BitmapEx
-        bitmapExFromXBitmap( const css::uno::Reference<
+        ::Bitmap
+        bitmapFromXBitmap( const css::uno::Reference<
                              css::rendering::XBitmap >& );
 
         /** Setup VCL font and output position
@@ -173,8 +149,8 @@ namespace vclcanvas
                                       const css::rendering::ViewState&     rViewState,
                                       const css::rendering::RenderState&   rRenderState );
 
-        ::BitmapEx transformBitmap( const BitmapEx&                                     rBitmap,
-                                    const ::basegfx::B2DHomMatrix&                      rTransform );
+        ::Bitmap transformBitmap( const ::Bitmap&                                   rBitmap,
+                                  const ::basegfx::B2DHomMatrix&                    rTransform );
 
         void SetDefaultDeviceAntiAliasing( OutputDevice* pDevice );
     }

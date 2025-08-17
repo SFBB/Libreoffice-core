@@ -26,7 +26,6 @@
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <tools/debug.hxx>
-#include <comphelper/processfactory.hxx>
 
 using namespace ::com::sun::star;
 
@@ -41,7 +40,7 @@ using ::xmloff::token::XML_AUTO_TEXT_EVENTS;
 
 XMLAutoTextEventImport::XMLAutoTextEventImport(
     const css::uno::Reference<css::uno::XComponentContext>& xContext)
-    : SvXMLImport(xContext, "com.sun.star.comp.Writer.XMLOasisAutotextEventsImporter")
+    : SvXMLImport(xContext, u"com.sun.star.comp.Writer.XMLOasisAutotextEventsImporter"_ustr)
 {
 }
 
@@ -53,18 +52,14 @@ void XMLAutoTextEventImport::initialize(const Sequence<Any>& rArguments)
 
     for (const auto& rArgument : rArguments)
     {
-        const Type& rType = rArgument.getValueType();
-        if (rType == cppu::UnoType<XEventsSupplier>::get())
+        if (Reference<XEventsSupplier> xSupplier; rArgument >>= xSupplier)
         {
-            Reference<XEventsSupplier> xSupplier;
-            rArgument >>= xSupplier;
             DBG_ASSERT(xSupplier.is(), "need XEventsSupplier or XNameReplace");
 
             xEvents = xSupplier->getEvents();
         }
-        else if (rType == cppu::UnoType<XNameReplace>::get())
+        else if (rArgument >>= xEvents)
         {
-            rArgument >>= xEvents;
             DBG_ASSERT(xEvents.is(), "need XEventsSupplier or XNameReplace");
         }
     }

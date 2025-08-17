@@ -126,13 +126,13 @@ bool DiagramData::removeNode(const OUString& rNodeId)
 
     // remove connections
     std::erase_if(maConnections,
-                                       [aIdsToRemove](const Connection& rCxn) {
+                                       [&aIdsToRemove](const Connection& rCxn) {
                                            return aIdsToRemove.count(rCxn.msSourceId) || aIdsToRemove.count(rCxn.msDestId);
                                        });
 
     // remove data and presentation nodes
     std::erase_if(maPoints,
-                                  [aIdsToRemove](const Point& rPoint) {
+                                  [&aIdsToRemove](const Point& rPoint) {
                                       return aIdsToRemove.count(rPoint.msModelId);
                                   });
 
@@ -272,8 +272,8 @@ OUString DiagramData::addNode(const OUString& rText)
     addConnection(svx::diagram::TypeConstant::XML_presOf, aDataPoint.msModelId, aPresPoint.msModelId);
 
     // adding at the end, so that references are not invalidated in between
-    maPoints.push_back(aDataPoint);
-    maPoints.push_back(aPresPoint);
+    maPoints.push_back(std::move(aDataPoint));
+    maPoints.push_back(std::move(aPresPoint));
 
     return sNewNodeId;
 }

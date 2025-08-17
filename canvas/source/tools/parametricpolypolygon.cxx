@@ -35,9 +35,9 @@ namespace canvas
 {
     uno::Sequence<OUString> ParametricPolyPolygon::getAvailableServiceNames()
     {
-        return {"LinearGradient",
-                "EllipticalGradient",
-                "RectangularGradient"};
+        return {u"LinearGradient"_ustr,
+                u"EllipticalGradient"_ustr,
+                u"RectangularGradient"_ustr};
     }
 
     rtl::Reference<ParametricPolyPolygon> ParametricPolyPolygon::create(
@@ -181,7 +181,7 @@ namespace canvas
 
     OUString SAL_CALL ParametricPolyPolygon::getImplementationName(  )
     {
-        return "Canvas::ParametricPolyPolygon";
+        return u"Canvas::ParametricPolyPolygon"_ustr;
     }
 
     sal_Bool SAL_CALL ParametricPolyPolygon::supportsService( const OUString& ServiceName )
@@ -191,7 +191,7 @@ namespace canvas
 
     uno::Sequence< OUString > SAL_CALL ParametricPolyPolygon::getSupportedServiceNames(  )
     {
-        return { "com.sun.star.rendering.ParametricPolyPolygon" };
+        return { u"com.sun.star.rendering.ParametricPolyPolygon"_ustr };
     }
 
     ParametricPolyPolygon::~ParametricPolyPolygon()
@@ -226,7 +226,7 @@ namespace canvas
     {
     }
 
-    ParametricPolyPolygon::Values ParametricPolyPolygon::getValues() const
+    const ParametricPolyPolygon::Values & ParametricPolyPolygon::getValues() const
     {
         return maValues;
     }

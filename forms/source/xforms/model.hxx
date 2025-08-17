@@ -31,18 +31,13 @@
 #include <map>
 
 
-// forward declaractions
+// forward declarations
 namespace com::sun::star
 {
     namespace xml::dom { class XDocument; }
     namespace xml::dom { class XNode; }
-    namespace uno { template<typename T> class Sequence; }
-    namespace lang { class IndexOutOfBoundsException; }
-    namespace lang { class IllegalArgumentException; }
     namespace beans { class XPropertySet; }
-    namespace container { class XSet; }
     namespace container { class XNameContainer; }
-    namespace frame { class XModel; }
 }
 namespace xforms
 {
@@ -50,6 +45,7 @@ namespace xforms
     class SubmissionCollection;
     class InstanceCollection;
     class EvaluationContext;
+    class ODataTypeRepository;
 }
 
 
@@ -87,7 +83,7 @@ private:
     rtl::Reference<SubmissionCollection> mxSubmissions;  /// the submissions
     rtl::Reference<InstanceCollection>   mxInstances;    /// the instance(s)
 
-    css::uno::Reference<css::xforms::XDataTypeRepository> mxDataTypes;      /// the XSD data-types used
+    rtl::Reference<ODataTypeRepository> mxDataTypes;      /// the XSD data-types used
     css::uno::Reference<css::xml::dom::XDocument> mxForeignSchema;            /// the XSD-schema part we cannot
                                             /// map onto data types
     OUString msSchemaRef;              /// xforms:model/@schema attribute

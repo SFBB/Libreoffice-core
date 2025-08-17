@@ -73,8 +73,7 @@ $(eval $(call gb_CppunitTest_use_vcl,chart2_dump))
 $(eval $(call gb_CppunitTest_use_components,chart2_dump,\
     basic/util/sb \
     animations/source/animcore/animcore \
-    chart2/source/controller/chartcontroller \
-    chart2/source/chartcore \
+    chart2/source/chart2 \
     comphelper/util/comphelp \
     configmgr/source/configmgr \
     embeddedobj/util/embobj \
@@ -110,6 +109,7 @@ $(eval $(call gb_CppunitTest_use_components,chart2_dump,\
     svtools/util/svt \
     svx/util/svx \
     svx/util/svxcore \
+    sw/util/sw_writerfilter \
     toolkit/util/tk \
     vcl/vcl.common \
     ucb/source/core/ucb1 \
@@ -119,7 +119,6 @@ $(eval $(call gb_CppunitTest_use_components,chart2_dump,\
     unotools/util/utl \
     unoxml/source/rdf/unordf \
     unoxml/source/service/unoxml \
-    writerfilter/util/writerfilter \
     xmloff/util/xo \
 ))
 

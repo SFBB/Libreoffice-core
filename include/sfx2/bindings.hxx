@@ -100,8 +100,8 @@ friend class SfxBindings_Impl;
     sal_uInt16       nRegLevel;      // Lock-Level while Reconfig
 
 private:
-    SAL_DLLPRIVATE SfxPoolItemHolder Execute_Impl( sal_uInt16 nSlot, const SfxPoolItem **pArgs, sal_uInt16 nModi,
-                                    SfxCallMode nCall, const SfxPoolItem **pInternalArgs, bool bGlobalOnly=false);
+    SAL_DLLPRIVATE SfxPoolItemHolder Execute_Impl(sal_uInt16 nSlot, const SfxPoolItem** pArgs,
+                                                  SfxCallMode nCall);
     SAL_DLLPRIVATE void SetSubBindings_Impl( SfxBindings* );
     SAL_DLLPRIVATE void UpdateSlotServer_Impl(); // Update SlotServer
     SAL_DLLPRIVATE std::optional<SfxItemSet> CreateSet_Impl(SfxStateCache& rCache, const SfxSlot* &pRealSlot,
@@ -158,7 +158,7 @@ public:
 
     SfxPoolItemHolder ExecuteSynchron( sal_uInt16 nSlot,
                                  const SfxPoolItem **pArgs = nullptr);
-    bool             Execute( sal_uInt16 nSlot,
+    SfxPoolItemHolder Execute( sal_uInt16 nSlot,
                                  const SfxPoolItem **pArgs = nullptr,
                                  SfxCallMode nCall = SfxCallMode::SLOT);
 
@@ -188,6 +188,7 @@ public:
     SAL_DLLPRIVATE void SetRecorder_Impl( css::uno::Reference< css::frame::XDispatchRecorder > const & );
     SAL_DLLPRIVATE void InvalidateSlotsInMap_Impl();
     SAL_DLLPRIVATE void AddSlotToInvalidateSlotsMap_Impl( sal_uInt16 nId );
+    Timer& GetTimer();
 };
 
 #ifdef DBG_UTIL

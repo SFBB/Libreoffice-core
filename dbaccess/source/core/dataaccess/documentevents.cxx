@@ -41,55 +41,48 @@ namespace dbaccess
         // helper
         struct DocumentEventData
         {
-            const char* pAsciiEventName;
+            OUString    aAsciiEventName;
             bool        bNeedsSyncNotify;
         };
 
-        const DocumentEventData* lcl_getDocumentEventData()
-        {
-            static const DocumentEventData s_aData[] = {
-                { "OnCreate",               true  },
-                { "OnLoadFinished",         true  },
-                { "OnNew",                  false },    // compatibility, see https://bz.apache.org/ooo/show_bug.cgi?id=46484
-                { "OnLoad",                 false },    // compatibility, see https://bz.apache.org/ooo/show_bug.cgi?id=46484
-                { "OnSaveAs",               true  },
-                { "OnSaveAsDone",           false },
-                { "OnSaveAsFailed",         false },
-                { "OnSave",                 true  },
-                { "OnSaveDone",             false },
-                { "OnSaveFailed",           false },
-                { "OnSaveTo",               true  },
-                { "OnSaveToDone",           false },
-                { "OnSaveToFailed",         false },
-                { "OnPrepareUnload",        true  },
-                { "OnUnload",               true  },
-                { "OnFocus",                false },
-                { "OnUnfocus",              false },
-                { "OnModifyChanged",        false },
-                { "OnViewCreated",          false },
-                { "OnPrepareViewClosing",   true  },
-                { "OnViewClosed",           false },
-                { "OnTitleChanged",         false },
-                { "OnSubComponentOpened",   false },
-                { "OnSubComponentClosed",   false },
-                { nullptr, false }
-            };
-            return s_aData;
-        }
+        constexpr DocumentEventData s_DocumentEventData[] {
+            { u"OnCreate"_ustr,               true  },
+            { u"OnLoadFinished"_ustr,         true  },
+            { u"OnNew"_ustr,                  false },    // compatibility, see https://bz.apache.org/ooo/show_bug.cgi?id=46484
+            { u"OnLoad"_ustr,                 false },    // compatibility, see https://bz.apache.org/ooo/show_bug.cgi?id=46484
+            { u"OnSaveAs"_ustr,               true  },
+            { u"OnSaveAsDone"_ustr,           false },
+            { u"OnSaveAsFailed"_ustr,         false },
+            { u"OnSave"_ustr,                 true  },
+            { u"OnSaveDone"_ustr,             false },
+            { u"OnSaveFailed"_ustr,           false },
+            { u"OnSaveTo"_ustr,               true  },
+            { u"OnSaveToDone"_ustr,           false },
+            { u"OnSaveToFailed"_ustr,         false },
+            { u"OnPrepareUnload"_ustr,        true  },
+            { u"OnUnload"_ustr,               true  },
+            { u"OnFocus"_ustr,                false },
+            { u"OnUnfocus"_ustr,              false },
+            { u"OnModifyChanged"_ustr,        false },
+            { u"OnViewCreated"_ustr,          false },
+            { u"OnPrepareViewClosing"_ustr,   true  },
+            { u"OnViewClosed"_ustr,           false },
+            { u"OnTitleChanged"_ustr,         false },
+            { u"OnSubComponentOpened"_ustr,   false },
+            { u"OnSubComponentClosed"_ustr,   false },
+        };
     }
 
     // DocumentEvents
     DocumentEvents::DocumentEvents( ::cppu::OWeakObject& _rParent, ::osl::Mutex& _rMutex, DocumentEventsData& _rEventsData )
         :mrParent(_rParent), mrMutex(_rMutex), mrEventsData(_rEventsData)
     {
-        const DocumentEventData* pEventData = lcl_getDocumentEventData();
-        while ( pEventData->pAsciiEventName )
+        for (const auto & rEventData : s_DocumentEventData)
         {
-            OUString sEventName = OUString::createFromAscii( pEventData->pAsciiEventName );
+            OUString sEventName = rEventData.aAsciiEventName;
             DocumentEventsData::const_iterator existingPos = mrEventsData.find( sEventName );
             if ( existingPos == mrEventsData.end() )
                 mrEventsData[ sEventName ] = Sequence< PropertyValue >();
-            ++pEventData;
         }
     }
 
@@ -109,12 +102,10 @@ namespace dbaccess
 
     bool DocumentEvents::needsSynchronousNotification( std::u16string_view _rEventName )
     {
-        const DocumentEventData* pEventData = lcl_getDocumentEventData();
-        while ( pEventData->pAsciiEventName )
+        for (const auto & rEventData : s_DocumentEventData)
         {
-            if ( o3tl::equalsAscii( _rEventName, pEventData->pAsciiEventName ) )
-                return pEventData->bNeedsSyncNotify;
-            ++pEventData;
+            if ( _rEventName == rEventData.aAsciiEventName )
+                return rEventData.bNeedsSyncNotify;
         }
 
         // this is an unknown event ... assume async notification
@@ -136,22 +127,22 @@ namespace dbaccess
         // Weird enough, the event assignment UI has (well: had) the idea of using an empty "EventType"/"Script"
         // to indicate the event descriptor should be reset, instead of just passing an empty event descriptor.
         ::comphelper::NamedValueCollection aCheck( aEventDescriptor );
-        if ( aCheck.has( "EventType" ) )
+        if ( aCheck.has( u"EventType"_ustr ) )
         {
-            OUString sEventType = aCheck.getOrDefault( "EventType", OUString() );
+            OUString sEventType = aCheck.getOrDefault( u"EventType"_ustr, OUString() );
             OSL_ENSURE( !sEventType.isEmpty(), "DocumentEvents::replaceByName: doing a reset via an empty EventType is weird!" );
             if ( sEventType.isEmpty() )
                 aEventDescriptor.realloc( 0 );
         }
-        if ( aCheck.has( "Script" ) )
+        if ( aCheck.has( u"Script"_ustr ) )
         {
-            OUString sScript = aCheck.getOrDefault( "Script", OUString() );
+            OUString sScript = aCheck.getOrDefault( u"Script"_ustr, OUString() );
             OSL_ENSURE( !sScript.isEmpty(), "DocumentEvents::replaceByName: doing a reset via an empty Script is weird!" );
             if ( sScript.isEmpty() )
                 aEventDescriptor.realloc( 0 );
         }
 
-        elementPos->second = aEventDescriptor;
+        elementPos->second = std::move(aEventDescriptor);
     }
 
     Any SAL_CALL DocumentEvents::getByName( const OUString& Name )

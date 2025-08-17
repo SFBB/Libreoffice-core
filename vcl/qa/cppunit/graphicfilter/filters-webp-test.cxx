@@ -9,7 +9,6 @@
 
 #include <unotest/filters-test.hxx>
 #include <test/bootstrapfixture.hxx>
-#include <vcl/FilterConfigItem.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
 #include <tools/stream.hxx>
 #include <vcl/graph.hxx>
@@ -95,7 +94,7 @@ void WebpFilterTest::testRoundtrip(bool lossy)
         pAccess->SetFillColor(COL_BLUE);
         pAccess->FillRect(tools::Rectangle(Point(10, 10), Size(10, 10)));
         BitmapScopedWriteAccess pAccessAlpha(aAlpha);
-        pAccessAlpha->SetFillColor(BitmapColor(0)); // opaque
+        pAccessAlpha->SetFillColor(BitmapColor(COL_WHITE)); // opaque
         pAccessAlpha->FillRect(tools::Rectangle(Point(0, 0), Size(10, 10)));
         pAccessAlpha->FillRect(tools::Rectangle(Point(10, 0), Size(10, 10)));
         pAccessAlpha->FillRect(tools::Rectangle(Point(0, 10), Size(10, 10)));
@@ -108,8 +107,8 @@ void WebpFilterTest::testRoundtrip(bool lossy)
     GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
     sal_uInt16 nFilterFormat = rFilter.GetExportFormatNumberForShortName(u"webp");
     css::uno::Sequence<css::beans::PropertyValue> aFilterData{
-        comphelper::makePropertyValue("Lossless", !lossy),
-        comphelper::makePropertyValue("Quality", sal_Int32(100))
+        comphelper::makePropertyValue(u"Lossless"_ustr, !lossy),
+        comphelper::makePropertyValue(u"Quality"_ustr, sal_Int32(100))
     };
     rFilter.ExportGraphic(Graphic(aBitmapEx), u"none", aStream, nFilterFormat, &aFilterData);
     aStream.Seek(STREAM_SEEK_TO_BEGIN);
@@ -141,14 +140,14 @@ void WebpFilterTest::testRoundtrip(bool lossy)
         }
         AlphaMask tmpAlpha = aResultBitmap.GetAlphaMask();
         BitmapScopedReadAccess pAccessAlpha(tmpAlpha);
-        CPPUNIT_ASSERT_EQUAL(sal_uInt8(0), pAccessAlpha->GetPixelIndex(0, 0));
-        CPPUNIT_ASSERT_EQUAL(sal_uInt8(0), pAccessAlpha->GetPixelIndex(0, 19));
-        CPPUNIT_ASSERT_EQUAL(sal_uInt8(0), pAccessAlpha->GetPixelIndex(19, 0));
+        CPPUNIT_ASSERT_EQUAL(sal_uInt8(255), pAccessAlpha->GetPixelIndex(0, 0));
+        CPPUNIT_ASSERT_EQUAL(sal_uInt8(255), pAccessAlpha->GetPixelIndex(0, 19));
+        CPPUNIT_ASSERT_EQUAL(sal_uInt8(255), pAccessAlpha->GetPixelIndex(19, 0));
         CPPUNIT_ASSERT_EQUAL(sal_uInt8(64), pAccessAlpha->GetPixelIndex(19, 19));
     }
 
     aStream.Seek(STREAM_SEEK_TO_BEGIN);
-    vcl::GraphicFormatDetector aDetector(aStream, "");
+    vcl::GraphicFormatDetector aDetector(aStream, u""_ustr);
 
     CPPUNIT_ASSERT_EQUAL(true, aDetector.detect());
     CPPUNIT_ASSERT_EQUAL(true, aDetector.checkWEBP());
@@ -192,8 +191,8 @@ void WebpFilterTest::testRead(std::u16string_view rName, bool lossy, bool alpha)
         {
             AlphaMask tmpAlpha = aResultBitmap.GetAlphaMask();
             BitmapScopedReadAccess pAccessAlpha(tmpAlpha);
-            CPPUNIT_ASSERT_EQUAL(sal_uInt8(0), pAccessAlpha->GetPixelIndex(0, 0));
-            CPPUNIT_ASSERT_EQUAL(sal_uInt8(255), pAccessAlpha->GetPixelIndex(0, 9));
+            CPPUNIT_ASSERT_EQUAL(sal_uInt8(255), pAccessAlpha->GetPixelIndex(0, 0));
+            CPPUNIT_ASSERT_EQUAL(sal_uInt8(0), pAccessAlpha->GetPixelIndex(0, 9));
         }
     }
 }

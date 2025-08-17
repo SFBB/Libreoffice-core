@@ -28,11 +28,11 @@
 #include "baside2.hxx"
 #include <baside3.hxx>
 #include <basidesh.hxx>
-#include <basobj.hxx>
 #include <iderdll.hxx>
 #include "iderdll2.hxx"
 
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
+#include <basctl/basctldllpublic.hxx>
 #include <sal/log.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/infobar.hxx>
@@ -82,8 +82,8 @@ void BaseWindow::dispose()
         pShellVScrollBar->SetScrollHdl( Link<weld::Scrollbar&,void>() );
     if (pShellHScrollBar && !pShellHScrollBar->isDisposed())
         pShellHScrollBar->SetScrollHdl( Link<weld::Scrollbar&,void>() );
-    pShellVScrollBar.clear();
-    pShellHScrollBar.clear();
+    pShellVScrollBar.reset();
+    pShellHScrollBar.reset();
     vcl::Window::dispose();
 }
 
@@ -279,22 +279,22 @@ void BaseWindow::OnNewDocument ()
 void BaseWindow::InsertLibInfo () const
 {
     if (ExtraData* pData = GetExtraData())
-        pData->GetLibInfo().InsertInfo(m_aDocument, m_aLibName, m_aName, GetType());
+        pData->GetLibInfo().InsertInfo(m_aDocument, m_aLibName, m_aName, GetSbxType());
 }
 
 bool BaseWindow::Is (
     ScriptDocument const& rDocument,
     std::u16string_view rLibName, std::u16string_view rName,
-    ItemType eType, bool bFindSuspended
+    SbxItemType eSbxType, bool bFindSuspended
 )
 {
     if (bFindSuspended || !IsSuspended())
     {
         // any non-suspended window is ok
-        if (rLibName.empty() || rName.empty() || eType == TYPE_UNKNOWN)
+        if (rLibName.empty() || rName.empty() || eSbxType == SBX_TYPE_UNKNOWN)
             return true;
         // ok if the parameters match
-        if (m_aDocument == rDocument && m_aLibName == rLibName && m_aName == rName && GetType() == eType)
+        if (m_aDocument == rDocument && m_aLibName == rLibName && m_aName == rName && GetSbxType() == eSbxType)
             return true;
     }
     return false;
@@ -338,7 +338,7 @@ void DockingWindow::dispose()
 {
     m_xContainer.reset();
     m_xBuilder.reset();
-    pLayout.clear();
+    pLayout.reset();
     ResizableDockingWindow::dispose();
 }
 
@@ -509,7 +509,7 @@ void TabBar::Command( const CommandEvent& rCEvt )
             ::TabBar::MouseButtonDown( aMouseEvent ); // base class
         }
         if (SfxDispatcher* pDispatcher = GetDispatcher())
-            pDispatcher->ExecutePopup("tabbar", this, &aPos);
+            pDispatcher->ExecutePopup(u"tabbar"_ustr, this, &aPos);
     }
 }
 
@@ -694,7 +694,7 @@ void LibInfo::InsertInfo (
     ScriptDocument const& rDocument,
     OUString const& rLibName,
     OUString const& rCurrentName,
-    ItemType eCurrentType
+    SbxItemType eCurrentType
 )
 {
     Key aKey(rDocument, rLibName);
@@ -737,7 +737,7 @@ size_t LibInfo::Key::Hash::operator () (Key const& rKey) const
 
 LibInfo::Item::Item (
     OUString aCurrentName,
-    ItemType eCurrentType
+    SbxItemType eCurrentType
 ) :
     m_aCurrentName(std::move(aCurrentName)),
     m_eCurrentType(eCurrentType)
@@ -764,21 +764,26 @@ bool QueryReplaceMacro( std::u16string_view rName, weld::Widget* pParent )
 
 bool QueryDelDialog( std::u16string_view rName, weld::Widget* pParent )
 {
+    EnsureIde();
     return QueryDel( rName, IDEResId( RID_STR_QUERYDELDIALOG ), pParent );
 }
 
 bool QueryDelLib( std::u16string_view rName, bool bRef, weld::Widget* pParent )
 {
+    EnsureIde();
     return QueryDel( rName, IDEResId( bRef ? RID_STR_QUERYDELLIBREF : RID_STR_QUERYDELLIB ), pParent );
 }
 
 bool QueryDelModule( std::u16string_view rName, weld::Widget* pParent )
 {
+    EnsureIde();
     return QueryDel( rName, IDEResId( RID_STR_QUERYDELMODULE ), pParent );
 }
 
 bool QueryPassword(weld::Widget* pDialogParent, const Reference< script::XLibraryContainer >& xLibContainer, const OUString& rLibName, OUString& rPassword, bool bRepeat, bool bNewTitle)
 {
+    EnsureIde();
+
     bool bOK = false;
     sal_uInt16 nRet = 0;
 

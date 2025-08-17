@@ -21,6 +21,7 @@
 #include <hintids.hxx>
 #include <poolfmt.hxx>
 #include <unomid.h>
+#include <editeng/memberids.h>
 
 #include <o3tl/any.hxx>
 #include <svl/macitem.hxx>
@@ -49,6 +50,7 @@
 #include <unometa.hxx>
 #include <unotext.hxx>
 #include <docsh.hxx>
+#include <names.hxx>
 #include <osl/diagnose.h>
 
 #include <algorithm>
@@ -59,18 +61,24 @@ using namespace ::com::sun::star;
 
 SfxPoolItem* SwFormatINetFormat::CreateDefault() { return new SwFormatINetFormat; }
 
-SwFormatCharFormat::SwFormatCharFormat( SwCharFormat *pFormat )
-    : SfxPoolItem( RES_TXTATR_CHARFMT ),
-    SwClient(pFormat),
-    m_pTextAttribute( nullptr )
+SwFormatCharFormat::SwFormatCharFormat(SwCharFormat* pFormat)
+    : SfxPoolItem(RES_TXTATR_CHARFMT)
+    , m_pTextAttribute(nullptr)
+    , m_pCharFormat(pFormat)
 {
+    if(m_pCharFormat)
+        StartListening(m_pCharFormat->GetNotifier());
+    setNonShareable();
 }
 
 SwFormatCharFormat::SwFormatCharFormat( const SwFormatCharFormat& rAttr )
-    : SfxPoolItem( RES_TXTATR_CHARFMT ),
-    SwClient( rAttr.GetCharFormat() ),
-    m_pTextAttribute( nullptr )
+    : SfxPoolItem(RES_TXTATR_CHARFMT)
+    , m_pTextAttribute(nullptr)
+    , m_pCharFormat(rAttr.m_pCharFormat)
 {
+    setNonShareable();
+    if(m_pCharFormat)
+        StartListening(m_pCharFormat->GetNotifier());
 }
 
 SwFormatCharFormat::~SwFormatCharFormat() {}
@@ -78,7 +86,7 @@ SwFormatCharFormat::~SwFormatCharFormat() {}
 bool SwFormatCharFormat::operator==( const SfxPoolItem& rAttr ) const
 {
     assert(SfxPoolItem::operator==(rAttr));
-    return GetCharFormat() == static_cast<const SwFormatCharFormat&>(rAttr).GetCharFormat();
+    return m_pCharFormat == static_cast<const SwFormatCharFormat&>(rAttr).m_pCharFormat;
 }
 
 SwFormatCharFormat* SwFormatCharFormat::Clone( SfxItemPool* ) const
@@ -87,27 +95,39 @@ SwFormatCharFormat* SwFormatCharFormat::Clone( SfxItemPool* ) const
 }
 
 // forward to the TextAttribute
-void SwFormatCharFormat::SwClientNotify(const SwModify&, const SfxHint& rHint)
+void SwFormatCharFormat::Notify(const SfxHint& rHint)
 {
-    if(rHint.GetId() == SfxHintId::SwAutoFormatUsedHint)
+    if(!m_pTextAttribute)
+        return;
+    switch(rHint.GetId())
     {
-        if(m_pTextAttribute)
+        case SfxHintId::SwAutoFormatUsedHint:
             m_pTextAttribute->HandleAutoFormatUsedHint(static_cast<const sw::AutoFormatUsedHint&>(rHint));
-        return;
+            break;
+        case SfxHintId::SwFormatChange:
+            m_pTextAttribute->TriggerNodeUpdate(*static_cast<const SwFormatChangeHint*>(&rHint));
+            break;
+        case SfxHintId::SwAttrSetChange:
+            m_pTextAttribute->TriggerNodeUpdate(*static_cast<const sw::AttrSetChangeHint*>(&rHint));
+            break;
+        case SfxHintId::SwObjectDying:
+            m_pTextAttribute->TriggerNodeUpdate(*static_cast<const sw::ObjectDyingHint*>(&rHint));
+            m_pCharFormat = nullptr;
+            break;
+        case SfxHintId::SwLegacyModify:
+            m_pTextAttribute->TriggerNodeUpdate(*static_cast<const sw::LegacyModifyHint*>(&rHint));
+            break;
+        default:
+            break;
     }
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    if(m_pTextAttribute)
-        m_pTextAttribute->TriggerNodeUpdate(*pLegacy);
 }
 
 bool SwFormatCharFormat::QueryValue( uno::Any& rVal, sal_uInt8 ) const
 {
-    OUString sCharFormatName;
-    if(GetCharFormat())
-        SwStyleNameMapper::FillProgName(GetCharFormat()->GetName(), sCharFormatName,  SwGetPoolIdFromName::ChrFmt );
-    rVal <<= sCharFormatName;
+    ProgName sCharFormatName;
+    if(m_pCharFormat)
+        SwStyleNameMapper::FillProgName(m_pCharFormat->GetName(), sCharFormatName,  SwGetPoolIdFromName::ChrFmt );
+    rVal <<= sCharFormatName.toString();
     return true;
 }
 bool SwFormatCharFormat::PutValue( const uno::Any& , sal_uInt8   )
@@ -123,13 +143,14 @@ void SwFormatCharFormat::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("text-attribute"), "%p", m_pTextAttribute);
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("char-format"), "%p", GetCharFormat());
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("char-format-name"),
-                                      BAD_CAST(GetCharFormat()->GetName().toUtf8().getStr()));
+                                      BAD_CAST(GetCharFormat()->GetName().toString().toUtf8().getStr()));
     (void)xmlTextWriterEndElement(pWriter);
 }
 
 SwFormatAutoFormat::SwFormatAutoFormat( sal_uInt16 nInitWhich )
-    : SfxPoolItem( nInitWhich )
+    : SfxPoolItem( nInitWhich  )
 {
+    setNonShareable();
 }
 
 bool SwFormatAutoFormat::operator==( const SfxPoolItem& rAttr ) const
@@ -168,7 +189,7 @@ void SwFormatAutoFormat::dumpAsXml(xmlTextWriterPtr pWriter) const
 }
 
 SwFormatINetFormat::SwFormatINetFormat()
-    : SfxPoolItem( RES_TXTATR_INETFMT )
+    : SfxPoolItem( RES_TXTATR_INETFMT  )
     , msURL()
     , msTargetFrame()
     , msINetFormatName()
@@ -177,7 +198,9 @@ SwFormatINetFormat::SwFormatINetFormat()
     , mpTextAttr( nullptr )
     , mnINetFormatId( 0 )
     , mnVisitedFormatId( 0 )
-{}
+{
+    setNonShareable();
+}
 
 SwFormatINetFormat::SwFormatINetFormat( OUString aURL, OUString aTarget )
     : SfxPoolItem( RES_TXTATR_INETFMT )
@@ -190,12 +213,13 @@ SwFormatINetFormat::SwFormatINetFormat( OUString aURL, OUString aTarget )
     , mnINetFormatId( RES_POOLCHR_INET_NORMAL )
     , mnVisitedFormatId( RES_POOLCHR_INET_VISIT )
 {
+    setNonShareable();
     SwStyleNameMapper::FillUIName( mnINetFormatId, msINetFormatName );
     SwStyleNameMapper::FillUIName( mnVisitedFormatId, msVisitedFormatName );
 }
 
 SwFormatINetFormat::SwFormatINetFormat( const SwFormatINetFormat& rAttr )
-    : SfxPoolItem( RES_TXTATR_INETFMT )
+    : SfxPoolItem( RES_TXTATR_INETFMT  )
     , sw::BroadcasterMixin()
     , msURL( rAttr.GetValue() )
     , msTargetFrame( rAttr.msTargetFrame )
@@ -206,6 +230,7 @@ SwFormatINetFormat::SwFormatINetFormat( const SwFormatINetFormat& rAttr )
     , mnINetFormatId( rAttr.mnINetFormatId )
     , mnVisitedFormatId( rAttr.mnVisitedFormatId )
 {
+    setNonShareable();
     if ( rAttr.GetMacroTable() )
         mpMacroTable.reset( new SvxMacroTableDtor( *rAttr.GetMacroTable() ) );
 }
@@ -293,24 +318,26 @@ bool SwFormatINetFormat::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
         break;
         case MID_URL_VISITED_FMT:
         {
-            OUString sVal = msVisitedFormatName;
+            UIName sVal = msVisitedFormatName;
             if (sVal.isEmpty() && mnVisitedFormatId != 0)
                 SwStyleNameMapper::FillUIName(mnVisitedFormatId, sVal);
+            ProgName aRet;
             if (!sVal.isEmpty())
-                SwStyleNameMapper::FillProgName(sVal, sVal,
+                SwStyleNameMapper::FillProgName(sVal, aRet,
                         SwGetPoolIdFromName::ChrFmt);
-            rVal <<= sVal;
+            rVal <<= aRet.toString();
         }
         break;
         case MID_URL_UNVISITED_FMT:
         {
-            OUString sVal = msINetFormatName;
+            UIName sVal = msINetFormatName;
             if (sVal.isEmpty() && mnINetFormatId != 0)
                 SwStyleNameMapper::FillUIName(mnINetFormatId, sVal);
+            ProgName aRet;
             if (!sVal.isEmpty())
-                SwStyleNameMapper::FillProgName(sVal, sVal,
+                SwStyleNameMapper::FillProgName(sVal, aRet,
                         SwGetPoolIdFromName::ChrFmt);
-            rVal <<= sVal;
+            rVal <<= aRet.toString();
         }
         break;
         case MID_URL_HYPERLINKEVENTS:
@@ -377,9 +404,9 @@ bool SwFormatINetFormat::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             {
                 OUString sVal;
                 rVal >>= sVal;
-                OUString aString;
-                SwStyleNameMapper::FillUIName( sVal, aString, SwGetPoolIdFromName::ChrFmt );
-                msVisitedFormatName = aString;
+                UIName aString;
+                SwStyleNameMapper::FillUIName( ProgName(sVal), aString, SwGetPoolIdFromName::ChrFmt );
+                msVisitedFormatName = std::move(aString);
                 mnVisitedFormatId = SwStyleNameMapper::GetPoolIdFromUIName( msVisitedFormatName,
                                                SwGetPoolIdFromName::ChrFmt );
             }
@@ -388,9 +415,9 @@ bool SwFormatINetFormat::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
             {
                 OUString sVal;
                 rVal >>= sVal;
-                OUString aString;
-                SwStyleNameMapper::FillUIName( sVal, aString, SwGetPoolIdFromName::ChrFmt );
-                msINetFormatName = aString;
+                UIName aString;
+                SwStyleNameMapper::FillUIName( ProgName(sVal), aString, SwGetPoolIdFromName::ChrFmt );
+                msINetFormatName = std::move(aString);
                 mnINetFormatId = SwStyleNameMapper::GetPoolIdFromUIName( msINetFormatName, SwGetPoolIdFromName::ChrFmt );
             }
             break;
@@ -402,17 +429,18 @@ bool SwFormatINetFormat::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 }
 
 SwFormatRuby::SwFormatRuby( OUString aRubyText )
-    : SfxPoolItem( RES_TXTATR_CJK_RUBY ),
+    : SfxPoolItem( RES_TXTATR_CJK_RUBY  ),
     m_sRubyText( std::move(aRubyText) ),
     m_pTextAttr( nullptr ),
     m_nCharFormatId( 0 ),
     m_nPosition( 0 ),
     m_eAdjustment( css::text::RubyAdjust_LEFT )
 {
+    setNonShareable();
 }
 
 SwFormatRuby::SwFormatRuby( const SwFormatRuby& rAttr )
-    : SfxPoolItem( RES_TXTATR_CJK_RUBY ),
+    : SfxPoolItem( RES_TXTATR_CJK_RUBY  ),
     m_sRubyText( rAttr.m_sRubyText ),
     m_sCharFormatName( rAttr.m_sCharFormatName ),
     m_pTextAttr( nullptr ),
@@ -420,6 +448,7 @@ SwFormatRuby::SwFormatRuby( const SwFormatRuby& rAttr )
     m_nPosition( rAttr.m_nPosition ),
     m_eAdjustment( rAttr.m_eAdjustment )
 {
+    setNonShareable();
 }
 
 SwFormatRuby::~SwFormatRuby()
@@ -480,9 +509,9 @@ bool SwFormatRuby::QueryValue( uno::Any& rVal,
         case MID_RUBY_ADJUST:  rVal <<= static_cast<sal_Int16>(m_eAdjustment);    break;
         case MID_RUBY_CHARSTYLE:
         {
-            OUString aString;
+            ProgName aString;
             SwStyleNameMapper::FillProgName(m_sCharFormatName, aString, SwGetPoolIdFromName::ChrFmt );
-            rVal <<= aString;
+            rVal <<= aString.toString();
         }
         break;
         case MID_RUBY_ABOVE:
@@ -545,7 +574,7 @@ bool SwFormatRuby::PutValue( const uno::Any& rVal,
             OUString sTmp;
             bRet = rVal >>= sTmp;
             if(bRet)
-                m_sCharFormatName = SwStyleNameMapper::GetUIName(sTmp, SwGetPoolIdFromName::ChrFmt );
+                m_sCharFormatName = SwStyleNameMapper::GetUIName(ProgName(sTmp), SwGetPoolIdFromName::ChrFmt );
         }
         break;
         default:
@@ -564,16 +593,18 @@ SwFormatMeta::SwFormatMeta(const sal_uInt16 i_nWhich)
     , m_pMeta()
     , m_pTextAttr( nullptr )
 {
-   OSL_ENSURE((RES_TXTATR_META == i_nWhich) || (RES_TXTATR_METAFIELD == i_nWhich),
-            "ERROR: SwFormatMeta: invalid which id!");
+    setNonShareable();
+    OSL_ENSURE((RES_TXTATR_META == i_nWhich) || (RES_TXTATR_METAFIELD == i_nWhich),
+             "ERROR: SwFormatMeta: invalid which id!");
 }
 
 SwFormatMeta::SwFormatMeta( std::shared_ptr< ::sw::Meta > i_pMeta,
                         const sal_uInt16 i_nWhich )
-    : SfxPoolItem( i_nWhich )
+    : SfxPoolItem( i_nWhich  )
     , m_pMeta( std::move(i_pMeta) )
     , m_pTextAttr( nullptr )
 {
+    setNonShareable();
     OSL_ENSURE((RES_TXTATR_META == i_nWhich) || (RES_TXTATR_METAFIELD == i_nWhich),
             "ERROR: SwFormatMeta: invalid which id!");
     OSL_ENSURE(m_pMeta, "SwFormatMeta: no Meta ?");
@@ -693,7 +724,7 @@ void Meta::NotifyChangeTextNode(SwTextNode *const pTextNode)
     m_pTextNode = pTextNode;
     if (m_pTextNode && (GetRegisteredIn() != m_pTextNode))
     {
-        m_pTextNode->Add(this);
+        m_pTextNode->Add(*this);
     }
     else if (!m_pTextNode)
     {
@@ -707,15 +738,22 @@ void Meta::NotifyChangeTextNode(SwTextNode *const pTextNode)
 
 void Meta::SwClientNotify(const SwModify&, const SfxHint& rHint)
 {
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    CallSwClientNotify(rHint);
-    GetNotifier().Broadcast(SfxHint(SfxHintId::DataChanged));
-    if(RES_REMOVE_UNO_OBJECT == pLegacy->GetWhich())
-    {   // invalidate cached uno object
+    if(SfxHintId::SwRemoveUnoObject == rHint.GetId())
+    {
+        CallSwClientNotify(rHint);
+        GetNotifier().Broadcast(SfxHint(SfxHintId::DataChanged));
+        // invalidate cached uno object
         SetXMeta(nullptr);
         GetNotifier().Broadcast(SfxHint(SfxHintId::Deinitializing));
+    }
+    else if (rHint.GetId() == SfxHintId::SwLegacyModify
+            || rHint.GetId() == SfxHintId::SwFormatChange
+            || rHint.GetId() == SfxHintId::SwAttrSetChange
+            || rHint.GetId() == SfxHintId::SwObjectDying
+            || rHint.GetId() == SfxHintId::SwUpdateAttr)
+    {
+        CallSwClientNotify(rHint);
+        GetNotifier().Broadcast(SfxHint(SfxHintId::DataChanged));
     }
 }
 
@@ -815,7 +853,7 @@ std::shared_ptr<MetaField>
 MetaFieldManager::makeMetaField(SwFormatMeta * const i_pFormat,
         const sal_uInt32 nNumberFormat, const bool bIsFixedLanguage)
 {
-    const std::shared_ptr<MetaField> pMetaField(
+    std::shared_ptr<MetaField> pMetaField(
         new MetaField(i_pFormat, nNumberFormat, bIsFixedLanguage) );
     m_MetaFields.push_back(pMetaField);
     return pMetaField;

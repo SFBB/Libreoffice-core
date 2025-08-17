@@ -32,6 +32,7 @@
 #include <com/sun/star/util/XURLTransformer.hpp>
 
 #include <comphelper/propertyvalue.hxx>
+#include <helper/persistentwindowstate.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/commandinfoprovider.hxx>
@@ -45,22 +46,67 @@
 
 //  Defines
 constexpr OUString aSlotNewDocDirect = u".uno:AddDirect"_ustr;
-constexpr OUStringLiteral aSlotAutoPilot = u".uno:AutoPilotMenu";
+constexpr OUString aSlotAutoPilot = u".uno:AutoPilotMenu"_ustr;
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::frame;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::util;
-using namespace com::sun::star::container;
 using namespace com::sun::star::ui;
+
+namespace
+{
+/**
+ * A simple status listener, storing the "enabled" status from the last status notification
+ */
+class SlotStatusGetter : public comphelper::WeakImplHelper<css::frame::XStatusListener>
+{
+public:
+    bool isEnabled() const { return m_bEnabled; }
+
+private:
+    // XStatusListener
+    void SAL_CALL statusChanged(const css::frame::FeatureStateEvent& state) override
+    {
+        m_bEnabled = state.IsEnabled;
+    }
+
+    // XEventListener
+    void SAL_CALL disposing(const css::lang::EventObject&) override {} // unused
+
+    bool m_bEnabled = false;
+};
+
+bool isSlotActive(const OUString& slot, const css::uno::Reference<css::frame::XFrame>& frame,
+    const css::uno::Reference<css::util::XURLTransformer>& transformer)
+{
+    if (auto provider = frame.query<css::frame::XDispatchProvider>())
+    {
+        css::util::URL url;
+        url.Complete = slot;
+        transformer->parseStrict(url);
+        if (auto dispatch = provider->queryDispatch(url, {}, 0))
+        {
+            rtl::Reference slotStatus(new SlotStatusGetter);
+            // Adding as listener will automatically emit an initial notification. The status
+            // reported in the notification will be stored in the SlotStatusGetter instance.
+            dispatch->addStatusListener(slotStatus, url);
+            dispatch->removeStatusListener(slotStatus, url);
+            return slotStatus->isEnabled();
+        }
+    }
+
+    return false;
+}
+}
 
 namespace framework
 {
 
 OUString SAL_CALL NewMenuController::getImplementationName()
 {
-    return "com.sun.star.comp.framework.NewMenuController";
+    return u"com.sun.star.comp.framework.NewMenuController"_ustr;
 }
 
 sal_Bool SAL_CALL NewMenuController::supportsService( const OUString& sServiceName )
@@ -242,6 +288,7 @@ void NewMenuController::setAccelerators()
     }
 }
 
+// static
 void NewMenuController::retrieveShortcutsFromConfiguration(
     const Reference< XAcceleratorConfiguration >& rAccelCfg,
     const Sequence< OUString >& rCommands,
@@ -271,7 +318,7 @@ NewMenuController::NewMenuController( const css::uno::Reference< css::uno::XComp
     m_bNewMenu( false ),
     m_bModuleIdentified( false ),
     m_bAcceleratorCfg( false ),
-    m_aTargetFrame( "_default" ),
+    m_aTargetFrame( u"_default"_ustr ),
     m_xContext( xContext )
 {
 }
@@ -295,12 +342,7 @@ void NewMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu > const &
     if ( !pVCLPopupMenu )
         return;
 
-    Reference< XDispatchProvider > xDispatchProvider( m_xFrame, UNO_QUERY );
-    URL aTargetURL;
-    aTargetURL.Complete = m_bNewMenu ? aSlotNewDocDirect : OUString(aSlotAutoPilot);
-    m_xURLTransformer->parseStrict( aTargetURL );
-    Reference< XDispatch > xMenuItemDispatch = xDispatchProvider->queryDispatch( aTargetURL, OUString(), 0 );
-    if(xMenuItemDispatch == nullptr)
+    if (!isSlotActive(m_bNewMenu ? aSlotNewDocDirect : aSlotAutoPilot, m_xFrame, m_xURLTransformer))
         return;
 
     const std::vector< SvtDynMenuEntry > aDynamicMenuEntries =
@@ -355,7 +397,7 @@ void SAL_CALL NewMenuController::statusChanged( const FeatureStateEvent& Event )
 // XMenuListener
 void SAL_CALL NewMenuController::itemSelected( const css::awt::MenuEvent& rEvent )
 {
-    Reference< css::awt::XPopupMenu > xPopupMenu;
+    rtl::Reference< VCLXPopupMenu > xPopupMenu;
     Reference< XComponentContext >    xContext;
 
     {
@@ -367,24 +409,24 @@ void SAL_CALL NewMenuController::itemSelected( const css::awt::MenuEvent& rEvent
     if ( !xPopupMenu.is() )
         return;
 
-    VCLXPopupMenu* pPopupMenu = static_cast<VCLXPopupMenu *>(dynamic_cast<VCLXMenu*>( xPopupMenu.get() ));
-    if ( !pPopupMenu )
-        return;
-
     OUString aURL;
     OUString aTargetFrame( m_aTargetFrame );
 
     {
         SolarMutexGuard aSolarMutexGuard;
-        aURL = pPopupMenu->getCommand(rEvent.MenuId);
-        void* nAttributePtr = pPopupMenu->getUserValue(rEvent.MenuId);
+        aURL = xPopupMenu->getCommand(rEvent.MenuId);
+        void* nAttributePtr = xPopupMenu->getUserValue(rEvent.MenuId);
         MenuAttributes* pAttributes = static_cast<MenuAttributes *>(nAttributePtr);
         if (pAttributes)
             aTargetFrame = pAttributes->aTargetFrame;
     }
 
-    Sequence< PropertyValue > aArgsList{ comphelper::makePropertyValue("Referer",
-                                                                       OUString( "private:user" )) };
+    // tdf#144407 save the current window state so a new window of the same type will
+    // open with the same settings
+    PersistentWindowState::SaveWindowStateToConfig(m_xContext, m_xFrame);
+
+    Sequence< PropertyValue > aArgsList{ comphelper::makePropertyValue(u"Referer"_ustr,
+                                                                       u"private:user"_ustr) };
 
     dispatchCommand( aURL, aArgsList, aTargetFrame );
 }
@@ -412,7 +454,7 @@ void SAL_CALL NewMenuController::itemActivated( const css::awt::MenuEvent& )
 }
 
 // XPopupMenuController
-void NewMenuController::impl_setPopupMenu()
+void NewMenuController::impl_setPopupMenu(std::unique_lock<std::mutex>& /*rGuard*/)
 {
 
     if ( m_xPopupMenu.is() )

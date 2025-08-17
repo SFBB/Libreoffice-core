@@ -28,9 +28,6 @@
 
 #include <sal/types.h>
 
-namespace com::sun::star::rendering {
-    class XBitmapCanvas;
-}
 namespace com::sun::star::uno { template <class interface_type> class Reference; }
 namespace basegfx { class BColorModifierStack; }
 
@@ -39,7 +36,6 @@ class SAL_WARN_UNUSED VCL_DLLPUBLIC BitmapEx
 public:
 
                         BitmapEx();
-    explicit            BitmapEx( const OUString& rIconName );
                         BitmapEx( const BitmapEx& rBitmapEx );
                         BitmapEx( const BitmapEx& rBitmapEx, Point aSrc, Size aSize );
                         BitmapEx(Size aSize, vcl::PixelFormat ePixelFormat);
@@ -55,10 +51,10 @@ public:
 
     bool                IsEmpty() const;
     void                SetEmpty();
-    void                Clear();
-    void                ClearAlpha();
+    SAL_DLLPRIVATE void Clear();
+    SAL_DLLPRIVATE void ClearAlpha();
 
-    void                Draw( OutputDevice* pOutDev,
+    SAL_DLLPRIVATE void Draw( OutputDevice* pOutDev,
                               const Point& rDestPt ) const;
     void                Draw( OutputDevice* pOutDev,
                               const Point& rDestPt, const Size& rDestSize ) const;
@@ -71,7 +67,6 @@ public:
     const AlphaMask &   GetAlphaMask() const { return maAlphaMask; }
 
     const Size&         GetSizePixel() const { return maBitmapSize; }
-    void                SetSizePixel(const Size& rNewSize);
 
     const Size&         GetPrefSize() const { return maBitmap.GetPrefSize(); }
     void                SetPrefSize( const Size& rPrefSize ) { maBitmap.SetPrefSize( rPrefSize ); }
@@ -251,7 +246,7 @@ public:
         rSearchColor and the individual pixel values, such that the
         corresponding pixel is still regarded a match.
      */
-    void                Replace(
+    SAL_DLLPRIVATE void Replace(
                             const Color& rSearchColor,
                             const Color& rReplaceColor,
                             sal_uInt8 nTolerance );
@@ -412,7 +407,7 @@ public:
         @return The transformed bitmap
     */
     [[nodiscard]]
-    BitmapEx            getTransformed(
+    SAL_DLLPRIVATE BitmapEx getTransformed(
                             const basegfx::B2DHomMatrix& rTransformation,
                             const basegfx::B2DRange& rVisibleRange,
                             double fMaximumArea) const;
@@ -428,14 +423,18 @@ public:
     [[nodiscard]]
     static BitmapEx     AutoScaleBitmap( BitmapEx const & aBitmap, const tools::Long aStandardSize );
 
-    /// populate from a canvas implementation
-    bool                Create(
-                            const css::uno::Reference< css::rendering::XBitmapCanvas > &xBitmapCanvas,
-                            const Size &rSize );
+    SAL_DLLPRIVATE void ChangeColorAlpha( sal_uInt8 cIndexFrom, sal_Int8 nAlphaTo );
 
-    void                ChangeColorAlpha( sal_uInt8 cIndexFrom, sal_Int8 nAlphaTo );
+    /**
+     * Adds a constant value to the alpha layer
+     */
+    SAL_DLLPRIVATE void AdjustTransparency( sal_uInt8 cTrans );
 
-    void                AdjustTransparency( sal_uInt8 cTrans );
+    /**
+     * Blends, i.e. multiplies the alpha layer with the new alpha value.
+     */
+    void BlendAlpha( sal_uInt8 nAlpha );
+
 
     void                CombineMaskOr(Color maskColor, sal_uInt8 nTol);
 
@@ -460,15 +459,13 @@ private:
                                     const int nHeight,
                                     const int nStride);
 
-    void  loadFromIconTheme( const OUString& rIconName );
-
     Bitmap              maBitmap;
     AlphaMask           maAlphaMask;
     Size                maBitmapSize;
 };
 
 
-/** Create a blend frame as BitmapEx
+/** Create a blend frame as BitmapEx using an alpha value
 
     @param nAlpha
     The blend value defines how strong the frame will be blended with the
@@ -481,14 +478,13 @@ private:
     @param rSize
     The size of the frame in pixels
     */
-BitmapEx VCL_DLLPUBLIC createBlendFrame(
+BitmapEx VCL_DLLPUBLIC createAlphaBlendFrame(
     const Size& rSize,
     sal_uInt8 nAlpha,
-    Color aColorTopLeft,
-    Color aColorBottomRight);
+    const Color& rColorTopLeft,
+    const Color& rColorBottomRight);
 
-
-/** Create a blend frame as BitmapEx
+/** Create a blend frame as BitmapEx using an alpha value
 
     @param nAlpha
     The blend value defines how strong the frame will be blended with the
@@ -500,13 +496,13 @@ BitmapEx VCL_DLLPUBLIC createBlendFrame(
     @param rSize
     The size of the frame in pixels
     */
-BitmapEx createBlendFrame(
+BitmapEx createAlphaBlendFrame(
     const Size& rSize,
     sal_uInt8 nAlpha,
-    Color aColorTopLeft,
-    Color aColorTopRight,
-    Color aColorBottomRight,
-    Color aColorBottomLeft);
+    const Color& rColorTopLeft,
+    const Color& rColorTopRight,
+    const Color& rColorBottomRight,
+    const Color& rColorBottomLeft);
 
 #endif // INCLUDED_VCL_BITMAPEX_HXX
 

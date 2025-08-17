@@ -142,8 +142,7 @@ void VclProcessor2D::RenderTextSimpleOrDecoratedPortionPrimitive2D(
     // especially if the effect is less than a pixel.
     if (std::abs(aFontScaling.getY() * fShearX) < 1)
     {
-        if (basegfx::fTools::less(aFontScaling.getX(), 0.0)
-            && basegfx::fTools::less(aFontScaling.getY(), 0.0))
+        if (aFontScaling.getX() < 0.0 && aFontScaling.getY() < 0.0)
         {
             // handle special case: If scale is negative in (x,y) (3rd quadrant), it can
             // be expressed as rotation by PI. Use this since the Font rendering will not
@@ -152,8 +151,7 @@ void VclProcessor2D::RenderTextSimpleOrDecoratedPortionPrimitive2D(
             fRotate += M_PI;
         }
 
-        if (basegfx::fTools::more(aFontScaling.getX(), 0.0)
-            && basegfx::fTools::more(aFontScaling.getY(), 0.0))
+        if (aFontScaling.getX() > 0.0 && aFontScaling.getY() > 0.0)
         {
             double fIgnoreRotate, fIgnoreShearX;
 
@@ -182,7 +180,8 @@ void VclProcessor2D::RenderTextSimpleOrDecoratedPortionPrimitive2D(
             }
 
             // Don't draw fonts without height
-            if (aFont.GetFontHeight() <= 0)
+            Size aResultFontSize = aFont.GetFontSize();
+            if (aResultFontSize.Height() <= 0)
                 return;
 
             // set FillColor Attribute
@@ -310,12 +309,14 @@ void VclProcessor2D::RenderTextSimpleOrDecoratedPortionPrimitive2D(
 
                 aDXArray.reserve(rTextCandidate.getDXArray().size());
                 for (auto const& elem : rTextCandidate.getDXArray())
-                    aDXArray.push_back(basegfx::fround(elem * fPixelVectorFactor));
+                    aDXArray.push_back(elem * fPixelVectorFactor);
             }
 
             // set parameters and paint text snippet
             const basegfx::BColor aRGBFontColor(
                 maBColorModifierStack.getModifiedColor(rTextCandidate.getFontColor()));
+
+            // Store previous complex text layout state, to be restored after drawing
             const vcl::text::ComplexTextLayoutFlags nOldLayoutMode(mpOutputDevice->GetLayoutMode());
 
             if (rTextCandidate.getFontAttribute().getRTL())
@@ -326,38 +327,13 @@ void VclProcessor2D::RenderTextSimpleOrDecoratedPortionPrimitive2D(
                                   | vcl::text::ComplexTextLayoutFlags::TextOriginLeft;
                 mpOutputDevice->SetLayoutMode(nRTLLayoutMode);
             }
-
-            mpOutputDevice->SetTextColor(Color(aRGBFontColor));
-
-            OUString aText(rTextCandidate.getText());
-            sal_Int32 nPos = rTextCandidate.getTextPosition();
-            sal_Int32 nLen = rTextCandidate.getTextLength();
-
-            // this contraption is used in editeng, with format paragraph used to
-            // set a tab with a tab-fill character
-            if (rTextCandidate.isFilled())
+            else
             {
-                tools::Long nWidthToFill = rTextCandidate.getWidthToFill();
-
-                tools::Long nWidth
-                    = mpOutputDevice->GetTextArray(rTextCandidate.getText(), &aDXArray, 0, 1);
-                sal_Int32 nChars = 2;
-                if (nWidth)
-                    nChars = nWidthToFill / nWidth;
-
-                OUStringBuffer aFilled(nChars);
-                comphelper::string::padToLength(aFilled, nChars, aText[0]);
-                aText = aFilled.makeStringAndClear();
-                nPos = 0;
-                nLen = nChars;
-
-                if (!aDXArray.empty())
-                {
-                    sal_Int32 nDX = aDXArray[0];
-                    aDXArray.resize(nLen);
-                    for (sal_Int32 i = 1; i < nLen; ++i)
-                        aDXArray.set(i, aDXArray[i - 1] + nDX);
-                }
+                // tdf#101686: This is LTR text, but the output device may have RTL state.
+                vcl::text::ComplexTextLayoutFlags nLTRLayoutMode(nOldLayoutMode);
+                nLTRLayoutMode = nLTRLayoutMode & ~vcl::text::ComplexTextLayoutFlags::BiDiRtl;
+                nLTRLayoutMode = nLTRLayoutMode & ~vcl::text::ComplexTextLayoutFlags::BiDiStrong;
+                mpOutputDevice->SetLayoutMode(nLTRLayoutMode);
             }
 
             Point aStartPoint;
@@ -374,8 +350,9 @@ void VclProcessor2D::RenderTextSimpleOrDecoratedPortionPrimitive2D(
                                              fIgnoreShearX);
 
                 const Point aOrigin(
-                    basegfx::fround(aCurrentTranslate.getX() / aCurrentScaling.getX()),
-                    basegfx::fround(aCurrentTranslate.getY() / aCurrentScaling.getY()));
+                    basegfx::fround<tools::Long>(aCurrentTranslate.getX() / aCurrentScaling.getX()),
+                    basegfx::fround<tools::Long>(aCurrentTranslate.getY()
+                                                 / aCurrentScaling.getY()));
 
                 Fraction aScaleX(aCurrentScaling.getX());
                 if (!aScaleX.IsValid())
@@ -396,7 +373,8 @@ void VclProcessor2D::RenderTextSimpleOrDecoratedPortionPrimitive2D(
 
                 if (fCurrentRotate)
                     aTextTranslate *= basegfx::utils::createRotateB2DHomMatrix(fCurrentRotate);
-                aStartPoint = Point(aTextTranslate.getX(), aTextTranslate.getY());
+                aStartPoint = Point(basegfx::fround<tools::Long>(aTextTranslate.getX()),
+                                    basegfx::fround<tools::Long>(aTextTranslate.getY()));
 
                 bChangeMapMode = aMapMode != mpOutputDevice->GetMapMode();
                 if (bChangeMapMode)
@@ -408,30 +386,92 @@ void VclProcessor2D::RenderTextSimpleOrDecoratedPortionPrimitive2D(
             else
             {
                 const basegfx::B2DPoint aPoint(aLocalTransform * basegfx::B2DPoint(0.0, 0.0));
-                aStartPoint = Point(basegfx::fround(aPoint.getX()), basegfx::fround(aPoint.getY()));
+                double aPointX = aPoint.getX(), aPointY = aPoint.getY();
+
+                if (!comphelper::LibreOfficeKit::isActive())
+                {
+                    // aFont has an integer size; we must scale a bit for precision
+                    double nFontScalingFixY = aFontScaling.getY() / aResultFontSize.Height();
+                    double nFontScalingFixX
+                        = aFontScaling.getX()
+                          / (aResultFontSize.Width() ? aResultFontSize.Width()
+                                                     : aResultFontSize.Height());
+
+#ifdef _WIN32
+                    if (aResultFontSize.Width()
+                        && aResultFontSize.Width() != aResultFontSize.Height())
+                    {
+                        // See getVclFontFromFontAttribute in drawinglayer/source/primitive2d/textlayoutdevice.cxx
+                        vcl::Font aUnscaledTest(aFont);
+                        aUnscaledTest.SetFontSize({ 0, aResultFontSize.Height() });
+                        const FontMetric aUnscaledFontMetric(
+                            Application::GetDefaultDevice()->GetFontMetric(aUnscaledTest));
+                        if (aUnscaledFontMetric.GetAverageFontWidth() > 0)
+                        {
+                            double nExistingXScale = static_cast<double>(aResultFontSize.Width())
+                                                     / aUnscaledFontMetric.GetAverageFontWidth();
+                            nFontScalingFixX
+                                = aFontScaling.getX() / aFontScaling.getY() / nExistingXScale;
+                        }
+                    }
+#endif
+
+                    if (!rtl_math_approxEqual(nFontScalingFixY, 1.0)
+                        || !rtl_math_approxEqual(nFontScalingFixX, 1.0))
+                    {
+                        MapMode aMapMode = mpOutputDevice->GetMapMode();
+                        aMapMode.SetScaleX(aMapMode.GetScaleX() * nFontScalingFixX);
+                        aMapMode.SetScaleY(aMapMode.GetScaleY() * nFontScalingFixY);
+
+                        const bool bValidScaling
+                            = aMapMode.GetScaleX().IsValid() && aMapMode.GetScaleY().IsValid();
+                        if (!bValidScaling)
+                            SAL_WARN("drawinglayer", "skipping invalid scaling");
+                        else
+                        {
+                            assert(nFontScalingFixX != 0 && nFontScalingFixY != 0
+                                   && "or bValidScaling would be false");
+
+                            Point origin = aMapMode.GetOrigin();
+
+                            mpOutputDevice->Push(vcl::PushFlags::MAPMODE);
+                            mpOutputDevice->SetRelativeMapMode(aMapMode);
+                            bChangeMapMode = true;
+
+                            aPointX = (aPointX + origin.X()) / nFontScalingFixX - origin.X();
+                            aPointY = (aPointY + origin.Y()) / nFontScalingFixY - origin.Y();
+                        }
+                    }
+                }
+
+                aStartPoint = Point(basegfx::fround<tools::Long>(aPointX),
+                                    basegfx::fround<tools::Long>(aPointY));
             }
 
             // tdf#152990 set the font after the MapMode is (potentially) set so canvas uses the desired
             // font size
             mpOutputDevice->SetFont(aFont);
+            mpOutputDevice->SetTextColor(Color(aRGBFontColor));
 
             if (!aDXArray.empty())
             {
                 const SalLayoutGlyphs* pGlyphs = SalLayoutGlyphsCache::self()->GetLayoutGlyphs(
-                    mpOutputDevice, aText, nPos, nLen);
-                mpOutputDevice->DrawTextArray(aStartPoint, aText, aDXArray,
-                                              rTextCandidate.getKashidaArray(), nPos, nLen,
-                                              SalLayoutFlags::NONE, pGlyphs);
+                    mpOutputDevice, rTextCandidate.getText(), rTextCandidate.getTextPosition(),
+                    rTextCandidate.getTextLength());
+                mpOutputDevice->DrawTextArray(
+                    aStartPoint, rTextCandidate.getText(), aDXArray,
+                    rTextCandidate.getKashidaArray(), rTextCandidate.getTextPosition(),
+                    rTextCandidate.getTextLength(), SalLayoutFlags::NONE, pGlyphs);
             }
             else
             {
-                mpOutputDevice->DrawText(aStartPoint, aText, nPos, nLen);
+                mpOutputDevice->DrawText(aStartPoint, rTextCandidate.getText(),
+                                         rTextCandidate.getTextPosition(),
+                                         rTextCandidate.getTextLength());
             }
 
-            if (rTextCandidate.getFontAttribute().getRTL())
-            {
-                mpOutputDevice->SetLayoutMode(nOldLayoutMode);
-            }
+            // Restore previous layout mode
+            mpOutputDevice->SetLayoutMode(nOldLayoutMode);
 
             if (bChangeMapMode)
                 mpOutputDevice->Pop();
@@ -509,6 +549,13 @@ void VclProcessor2D::RenderBitmapPrimitive2D(const primitive2d::BitmapPrimitive2
 void VclProcessor2D::RenderFillGraphicPrimitive2D(
     const primitive2d::FillGraphicPrimitive2D& rFillBitmapCandidate)
 {
+    if (rFillBitmapCandidate.getTransparency() < 0.0
+        || rFillBitmapCandidate.getTransparency() > 1.0)
+    {
+        // invalid transparence, done
+        return;
+    }
+
     bool bPrimitiveAccepted = RenderFillGraphicPrimitive2DImpl(rFillBitmapCandidate);
 
     if (!bPrimitiveAccepted)
@@ -598,6 +645,10 @@ bool VclProcessor2D::RenderFillGraphicPrimitive2DImpl(
         aBitmapEx.Scale(aNeededBitmapSizePixel, BmpScaleFlag::Interpolate);
     }
 
+    if (rFillBitmapCandidate.hasTransparency())
+        aBitmapEx.BlendAlpha(
+            static_cast<sal_uInt8>(255 - (rFillBitmapCandidate.getTransparency() * 255)));
+
     if (maBColorModifierStack.count())
     {
         // when color modifier, apply to bitmap
@@ -669,8 +720,18 @@ bool VclProcessor2D::RenderFillGraphicPrimitive2DImpl(
 
     // check if offset is used
     const sal_Int32 nOffsetX(basegfx::fround(rFillGraphicAttribute.getOffsetX() * nBWidth));
+    const sal_Int32 nOffsetY(basegfx::fround(rFillGraphicAttribute.getOffsetY() * nBHeight));
 
-    if (nOffsetX)
+    // if the tile is a single pixel big, just flood fill with that pixel color
+    if (nOffsetX == 0 && nOffsetY == 0 && aNeededBitmapSizePixel.getWidth() == 1
+        && aNeededBitmapSizePixel.getHeight() == 1)
+    {
+        Color col = aBitmapEx.GetPixelColor(0, 0);
+        mpOutputDevice->SetLineColor(col);
+        mpOutputDevice->SetFillColor(col);
+        mpOutputDevice->DrawRect(aVisiblePixel);
+    }
+    else if (nOffsetX)
     {
         // offset in X, so iterate over Y first and draw lines
         for (sal_Int32 nYPos(nBTop); nYPos < nOTop + nOHeight; nYPos += nBHeight, nPosY++)
@@ -695,11 +756,8 @@ bool VclProcessor2D::RenderFillGraphicPrimitive2DImpl(
             }
         }
     }
-    else
+    else // nOffsetY is used
     {
-        // check if offset is used
-        const sal_Int32 nOffsetY(basegfx::fround(rFillGraphicAttribute.getOffsetY() * nBHeight));
-
         // possible offset in Y, so iterate over X first and draw columns
         for (sal_Int32 nXPos(nBLeft); nXPos < nOLeft + nOWidth; nXPos += nBWidth, nPosX++)
         {
@@ -759,7 +817,8 @@ void VclProcessor2D::RenderPolyPolygonGraphicPrimitive2D(
             case GraphicType::Bitmap:
             {
                 if (!rFillGraphicAttribute.getGraphic().IsTransparent()
-                    && !rFillGraphicAttribute.getGraphic().IsAlpha())
+                    && !rFillGraphicAttribute.getGraphic().IsAlpha()
+                    && !rPolygonCandidate.hasTransparency())
                 {
                     // bitmap is not transparent and has no alpha
                     const sal_uInt32 nBColorModifierStackCount(maBColorModifierStack.count());
@@ -860,10 +919,9 @@ void VclProcessor2D::RenderMaskPrimitive2DPixel(const primitive2d::MaskPrimitive
     // Unless smooth edges are needed, simply use clipping.
     if (basegfx::utils::isRectangle(aMask) || !getViewInformation2D().getUseAntiAliasing())
     {
-        mpOutputDevice->Push(vcl::PushFlags::CLIPREGION);
+        auto popIt = mpOutputDevice->ScopedPush(vcl::PushFlags::CLIPREGION);
         mpOutputDevice->IntersectClipRegion(vcl::Region(aMask));
         process(rMaskCandidate.getChildren());
-        mpOutputDevice->Pop();
         return;
     }
 
@@ -974,7 +1032,7 @@ void VclProcessor2D::RenderTransparencePrimitive2D(
     process(rTransCandidate.getTransparence());
 
     // back to old color stack
-    maBColorModifierStack = aLastBColorModifierStack;
+    maBColorModifierStack = std::move(aLastBColorModifierStack);
 
     // back to old OutDev
     mpOutputDevice = pLastOutputDevice;
@@ -997,14 +1055,14 @@ void VclProcessor2D::RenderTransformPrimitive2D(
     geometry::ViewInformation2D aViewInformation2D(getViewInformation2D());
     aViewInformation2D.setObjectTransformation(getViewInformation2D().getObjectTransformation()
                                                * rTransformCandidate.getTransformation());
-    updateViewInformation(aViewInformation2D);
+    setViewInformation2D(aViewInformation2D);
 
     // process content
     process(rTransformCandidate.getChildren());
 
     // restore transformations
     maCurrentTransformation = aLastCurrentTransformation;
-    updateViewInformation(aLastViewInformation2D);
+    setViewInformation2D(aLastViewInformation2D);
 }
 
 // new XDrawPage for ViewInformation2D
@@ -1017,13 +1075,13 @@ void VclProcessor2D::RenderPagePreviewPrimitive2D(
     // create new local ViewInformation2D
     geometry::ViewInformation2D aViewInformation2D(getViewInformation2D());
     aViewInformation2D.setVisualizedPage(rPagePreviewCandidate.getXDrawPage());
-    updateViewInformation(aViewInformation2D);
+    setViewInformation2D(aViewInformation2D);
 
     // process decomposed content
     process(rPagePreviewCandidate);
 
     // restore transformations
-    updateViewInformation(aLastViewInformation2D);
+    setViewInformation2D(aLastViewInformation2D);
 }
 
 // marker
@@ -1038,7 +1096,7 @@ void VclProcessor2D::RenderMarkerArrayPrimitive2D(
         return;
 
     // get pixel size
-    const BitmapEx& rMarker(rMarkArrayCandidate.getMarker());
+    const Bitmap& rMarker(rMarkArrayCandidate.getMarker());
     const Size aBitmapSize(rMarker.GetSizePixel());
 
     if (!(aBitmapSize.Width() && aBitmapSize.Height()))
@@ -1062,8 +1120,8 @@ void VclProcessor2D::RenderMarkerArrayPrimitive2D(
     {
         const basegfx::B2DPoint aDiscreteTopLeft((maCurrentTransformation * pos)
                                                  - aDiscreteHalfSize);
-        const Point aDiscretePoint(basegfx::fround(aDiscreteTopLeft.getX()),
-                                   basegfx::fround(aDiscreteTopLeft.getY()));
+        const Point aDiscretePoint(basegfx::fround<tools::Long>(aDiscreteTopLeft.getX()),
+                                   basegfx::fround<tools::Long>(aDiscreteTopLeft.getY()));
 
         mpOutputDevice->DrawBitmapEx(aDiscretePoint + aOrigin, rMarker);
     }
@@ -1083,8 +1141,8 @@ void VclProcessor2D::RenderPointArrayPrimitive2D(
     for (auto const& pos : rPositions)
     {
         const basegfx::B2DPoint aViewPosition(maCurrentTransformation * pos);
-        const Point aPos(basegfx::fround(aViewPosition.getX()),
-                         basegfx::fround(aViewPosition.getY()));
+        const Point aPos(basegfx::fround<tools::Long>(aViewPosition.getX()),
+                         basegfx::fround<tools::Long>(aViewPosition.getY()));
 
         mpOutputDevice->DrawPixel(aPos, aVCLColor);
     }
@@ -1099,7 +1157,7 @@ void VclProcessor2D::RenderPolygonStrokePrimitive2D(
     const double fLineWidth(rLineAttribute.getWidth());
     bool bDone(false);
 
-    if (basegfx::fTools::more(fLineWidth, 0.0))
+    if (fLineWidth > 0.0)
     {
         const basegfx::B2DVector aDiscreteUnit(maCurrentTransformation
                                                * basegfx::B2DVector(fLineWidth, 0.0));
@@ -1348,7 +1406,7 @@ void VclProcessor2D::RenderSvgLinearAtomPrimitive2D(
 {
     const double fDelta(rCandidate.getOffsetB() - rCandidate.getOffsetA());
 
-    if (!basegfx::fTools::more(fDelta, 0.0))
+    if (fDelta <= 0.0)
         return;
 
     const basegfx::BColor aColorA(maBColorModifierStack.getModifiedColor(rCandidate.getColorA()));
@@ -1392,7 +1450,7 @@ void VclProcessor2D::RenderSvgRadialAtomPrimitive2D(
 {
     const double fDeltaScale(rCandidate.getScaleB() - rCandidate.getScaleA());
 
-    if (!basegfx::fTools::more(fDeltaScale, 0.0))
+    if (fDeltaScale <= 0.0)
         return;
 
     const basegfx::BColor aColorA(maBColorModifierStack.getModifiedColor(rCandidate.getColorA()));
@@ -1540,21 +1598,40 @@ void VclProcessor2D::adaptTextToFillDrawMode() const
     mpOutputDevice->SetDrawMode(nAdaptedDrawMode);
 }
 
-// process support
+void VclProcessor2D::onViewInformation2DChanged()
+{
+    // apply AntiAlias information to target device
+    if (getViewInformation2D().getUseAntiAliasing())
+        mpOutputDevice->SetAntialiasing(mpOutputDevice->GetAntialiasing()
+                                        | AntialiasingFlags::Enable);
+    else
+        mpOutputDevice->SetAntialiasing(mpOutputDevice->GetAntialiasing()
+                                        & ~AntialiasingFlags::Enable);
 
+    // apply DrawModeFlags to target device
+    if (getViewInformation2D().getDrawModeFlags() != mpOutputDevice->GetDrawMode())
+        mpOutputDevice->SetDrawMode(getViewInformation2D().getDrawModeFlags());
+}
+
+// process support
 VclProcessor2D::VclProcessor2D(const geometry::ViewInformation2D& rViewInformation,
-                               OutputDevice& rOutDev, basegfx::BColorModifierStack aInitStack)
+                               OutputDevice& rOutDev)
     : BaseProcessor2D(rViewInformation)
     , mpOutputDevice(&rOutDev)
-    , maBColorModifierStack(std::move(aInitStack))
+    , maBColorModifierStack()
     , mnPolygonStrokePrimitive2D(0)
+    , mnOriginalAA(rOutDev.GetAntialiasing())
 {
     // set digit language, derived from SvtCTLOptions to have the correct
     // number display for arabic/hindi numerals
     rOutDev.SetDigitLanguage(drawinglayer::detail::getDigitLanguage());
+
+    // NOTE: to save/restore original AntiAliasing mode we need
+    // to use mnOriginalAA here - OutputDevice::Push/Pop does not
+    // offer that
 }
 
-VclProcessor2D::~VclProcessor2D() {}
+VclProcessor2D::~VclProcessor2D() { mpOutputDevice->SetAntialiasing(mnOriginalAA); }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

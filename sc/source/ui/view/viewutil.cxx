@@ -23,7 +23,7 @@
 #include <sfx2/dispatch.hxx>
 #include <editeng/fontitem.hxx>
 #include <editeng/langitem.hxx>
-#include <editeng/scripttypeitem.hxx>
+#include <editeng/scriptsetitem.hxx>
 #include <i18nutil/transliteration.hxx>
 #include <svl/itempool.hxx>
 #include <svl/itemset.hxx>
@@ -57,7 +57,7 @@ void ScViewUtil::PutItemScript( SfxItemSet& rShellSet, const SfxItemSet& rCoreSe
     SvxScriptSetItem aSetItem( rPool.GetSlotId(nWhichId), rPool );
     //  use PutExtended with eDefaultAs = SfxItemState::SET, so defaults from rCoreSet
     //  (document pool) are read and put into rShellSet (MessagePool)
-    aSetItem.GetItemSet().PutExtended( rCoreSet, SfxItemState::DONTCARE, SfxItemState::SET );
+    aSetItem.GetItemSet().PutExtended( rCoreSet, SfxItemState::INVALID, SfxItemState::SET );
     const SfxPoolItem* pI = aSetItem.GetItemOfScript( nScript );
     if (pI)
     {
@@ -322,10 +322,15 @@ void ScViewUtil::ExecuteCharMap(const SvxFontItem& rOldFont,
     SfxViewFrame& rFrame = rShell.GetViewFrame();
     SfxAllItemSet aSet( rFrame.GetObjectShell()->GetPool() );
     aSet.Put( SfxBoolItem( FN_PARAM_1, false ) );
-    aSet.Put( SvxFontItem( rOldFont.GetFamily(), rOldFont.GetFamilyName(), rOldFont.GetStyleName(), rOldFont.GetPitch(), rOldFont.GetCharSet(), aSet.GetPool()->GetWhich( SID_ATTR_CHAR_FONT ) ) );
+    aSet.Put( SvxFontItem( rOldFont.GetFamily(), rOldFont.GetFamilyName(), rOldFont.GetStyleName(), rOldFont.GetPitch(), rOldFont.GetCharSet(), aSet.GetPool()->GetWhichIDFromSlotID( SID_ATTR_CHAR_FONT ) ) );
     auto xFrame = rFrame.GetFrame().GetFrameInterface();
-    ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateCharMapDialog(rShell.GetFrameWeld(), aSet, xFrame));
-    pDlg->Execute();
+    VclPtr<SfxAbstractDialog> pDlg(pFact->CreateCharMapDialog(rShell.GetFrameWeld(), aSet, xFrame));
+    pDlg->StartExecuteAsync(
+        [pDlg] (sal_Int32 /*nResult*/)->void
+        {
+            pDlg->disposeOnce();
+        }
+    );
 }
 
 bool ScViewUtil::IsFullScreen( const SfxViewShell& rViewShell )

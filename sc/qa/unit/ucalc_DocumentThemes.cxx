@@ -10,14 +10,10 @@
 #include "helper/qahelper.hxx"
 
 #include <docmodel/theme/Theme.hxx>
-#include <svx/svdpage.hxx>
 #include <editeng/brushitem.hxx>
 #include <editeng/colritem.hxx>
 
-#include <docsh.hxx>
 #include <patattr.hxx>
-#include <attrib.hxx>
-#include <docpool.hxx>
 #include <scitems.hxx>
 #include <undomanager.hxx>
 #include <ThemeColorChanger.hxx>
@@ -33,7 +29,7 @@ namespace
 CPPUNIT_TEST_FIXTURE(DocumentThemesTest, testGetTheme)
 {
     m_pDoc->InitDrawLayer();
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     ScDrawLayer* pDrawLayer = m_pDoc->GetDrawLayer();
     CPPUNIT_ASSERT(pDrawLayer);
@@ -44,7 +40,7 @@ CPPUNIT_TEST_FIXTURE(DocumentThemesTest, testGetTheme)
 CPPUNIT_TEST_FIXTURE(DocumentThemesTest, testChangeTheme)
 {
     m_pDoc->InitDrawLayer();
-    m_pDoc->InsertTab(0, "Test");
+    m_pDoc->InsertTab(0, u"Test"_ustr);
 
     ScDrawLayer* pDrawLayer = m_pDoc->GetDrawLayer();
     CPPUNIT_ASSERT(pDrawLayer);
@@ -57,18 +53,18 @@ CPPUNIT_TEST_FIXTURE(DocumentThemesTest, testChangeTheme)
     auto eBackgroundThemeType = model::ThemeColorType::Accent5;
     auto eCellTextThemeType = model::ThemeColorType::Accent2;
 
-    ScPatternAttr aNewPattern(m_pDoc->GetPool());
+    ScPatternAttr aNewPattern(m_pDoc->getCellAttributeHelper());
     {
         model::ComplexColor aComplexColor;
         aComplexColor.setThemeColor(eBackgroundThemeType);
         Color aColor = pTheme->getColorSet()->resolveColor(aComplexColor);
-        aNewPattern.GetItemSet().Put(SvxBrushItem(aColor, aComplexColor, ATTR_BACKGROUND));
+        aNewPattern.ItemSetPut(SvxBrushItem(aColor, aComplexColor, ATTR_BACKGROUND));
     }
     {
         model::ComplexColor aComplexColor;
         aComplexColor.setThemeColor(eCellTextThemeType);
         Color aColor = pTheme->getColorSet()->resolveColor(aComplexColor);
-        aNewPattern.GetItemSet().Put(SvxColorItem(aColor, aComplexColor, ATTR_FONT_COLOR));
+        aNewPattern.ItemSetPut(SvxColorItem(aColor, aComplexColor, ATTR_FONT_COLOR));
     }
 
     // Apply the pattern to cells C3:E5 (2,2 - 4,4) on the first sheet

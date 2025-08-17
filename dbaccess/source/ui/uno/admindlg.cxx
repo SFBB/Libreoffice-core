@@ -33,7 +33,6 @@ org_openoffice_comp_dbu_ODatasourceAdministrationDialog_get_implementation(
 namespace dbaui
 {
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 
 ODataSourcePropertyDialog::ODataSourcePropertyDialog(const Reference<XComponentContext>& _rxORB)
@@ -48,12 +47,12 @@ Sequence<sal_Int8> SAL_CALL ODataSourcePropertyDialog::getImplementationId()
 
 OUString SAL_CALL ODataSourcePropertyDialog::getImplementationName()
 {
-    return "org.openoffice.comp.dbu.ODatasourceAdministrationDialog";
+    return u"org.openoffice.comp.dbu.ODatasourceAdministrationDialog"_ustr;
 }
 
 css::uno::Sequence<OUString> SAL_CALL ODataSourcePropertyDialog::getSupportedServiceNames()
 {
-    return { "com.sun.star.sdb.DatasourceAdministrationDialog" };
+    return { u"com.sun.star.sdb.DatasourceAdministrationDialog"_ustr };
 }
 
 Reference<XPropertySetInfo> SAL_CALL ODataSourcePropertyDialog::getPropertySetInfo()

@@ -50,17 +50,10 @@ using namespace utl;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::util;
-using namespace com::sun::star::lang;
 
 #define SEARCHPATH_DELIMITER  ';'
 #define SIGN_STARTVARIABLE    "$("
 #define SIGN_ENDVARIABLE      ")"
-
-// Supported variables by the old SvtPathOptions implementation
-#define SUBSTITUTE_INSTPATH   "$(instpath)"
-#define SUBSTITUTE_PROGPATH   "$(progpath)"
-#define SUBSTITUTE_USERPATH   "$(userpath)"
-#define SUBSTITUTE_PATH       "$(path)"
 
 #define STRPOS_NOTFOUND       -1
 
@@ -116,12 +109,14 @@ class SvtPathOptions_Impl
         const OUString& GetFingerprintPath() { return GetPath( SvtPathOptions::Paths::Fingerprint ); }
         const OUString& GetNumbertextPath() { return GetPath( SvtPathOptions::Paths::NumberText ); }
         const OUString& GetClassificationPath() { return GetPath( SvtPathOptions::Paths::Classification ); }
+        const OUString& GetDocumentThemePath() { return GetPath( SvtPathOptions::Paths::DocumentTheme ); }
 
         // set the paths
         void            SetPath( SvtPathOptions::Paths, const OUString& rNewPath );
         void            SetAutoTextPath( const OUString& rPath ) { SetPath( SvtPathOptions::Paths::AutoText, rPath ); }
         void            SetBasicPath( const OUString& rPath ) { SetPath( SvtPathOptions::Paths::Basic, rPath ); }
         void            SetTempPath( const OUString& rPath ) { SetPath( SvtPathOptions::Paths::Temp, rPath ); }
+        void            SetWorkPath( const OUString& rPath ) { SetPath( SvtPathOptions::Paths::Work, rPath ); }
 
         OUString   SubstVar( const OUString& rVar ) const;
         OUString   ExpandMacros( const OUString& rPath ) const;
@@ -137,54 +132,56 @@ namespace {
 // functions -------------------------------------------------------------
 struct PropertyStruct
 {
-    const char*             pPropName;  // The ascii name of the Office path
+    OUString                aPropName;  // The ascii name of the Office path
     SvtPathOptions::Paths   ePath;      // The enum value used by SvtPathOptions
 };
 
 struct VarNameAttribute
 {
-    const char*             pVarName;       // The name of the path variable
+    OUString aVarName;       // The name of the path variable
 };
 
 }
 
-const PropertyStruct aPropNames[] =
+constexpr PropertyStruct aPropNames[] =
 {
-    { "Addin",          SvtPathOptions::Paths::AddIn          },
-    { "AutoCorrect",    SvtPathOptions::Paths::AutoCorrect    },
-    { "AutoText",       SvtPathOptions::Paths::AutoText       },
-    { "Backup",         SvtPathOptions::Paths::Backup         },
-    { "Basic",          SvtPathOptions::Paths::Basic          },
-    { "Bitmap",         SvtPathOptions::Paths::Bitmap         },
-    { "Config",         SvtPathOptions::Paths::Config         },
-    { "Dictionary",     SvtPathOptions::Paths::Dictionary     },
-    { "Favorite",       SvtPathOptions::Paths::Favorites      },
-    { "Filter",         SvtPathOptions::Paths::Filter         },
-    { "Gallery",        SvtPathOptions::Paths::Gallery        },
-    { "Graphic",        SvtPathOptions::Paths::Graphic        },
-    { "Help",           SvtPathOptions::Paths::Help           },
-    { "Iconset",        SvtPathOptions::Paths::IconSet        },
-    { "Linguistic",     SvtPathOptions::Paths::Linguistic     },
-    { "Module",         SvtPathOptions::Paths::Module         },
-    { "Palette",        SvtPathOptions::Paths::Palette        },
-    { "Plugin",         SvtPathOptions::Paths::Plugin         },
-    { "Storage",        SvtPathOptions::Paths::Storage        },
-    { "Temp",           SvtPathOptions::Paths::Temp           },
-    { "Template",       SvtPathOptions::Paths::Template       },
-    { "UserConfig",     SvtPathOptions::Paths::UserConfig     },
-    { "Work",           SvtPathOptions::Paths::Work           },
-    { "UIConfig",       SvtPathOptions::Paths::UIConfig       },
-    { "Fingerprint",    SvtPathOptions::Paths::Fingerprint    },
-    { "Numbertext",     SvtPathOptions::Paths::NumberText     },
-    { "Classification", SvtPathOptions::Paths::Classification }
+    { u"Addin"_ustr,          SvtPathOptions::Paths::AddIn          },
+    { u"AutoCorrect"_ustr,    SvtPathOptions::Paths::AutoCorrect    },
+    { u"AutoText"_ustr,       SvtPathOptions::Paths::AutoText       },
+    { u"Backup"_ustr,         SvtPathOptions::Paths::Backup         },
+    { u"Basic"_ustr,          SvtPathOptions::Paths::Basic          },
+    { u"Bitmap"_ustr,         SvtPathOptions::Paths::Bitmap         },
+    { u"Config"_ustr,         SvtPathOptions::Paths::Config         },
+    { u"Dictionary"_ustr,     SvtPathOptions::Paths::Dictionary     },
+    { u"Favorite"_ustr,       SvtPathOptions::Paths::Favorites      },
+    { u"Filter"_ustr,         SvtPathOptions::Paths::Filter         },
+    { u"Gallery"_ustr,        SvtPathOptions::Paths::Gallery        },
+    { u"Graphic"_ustr,        SvtPathOptions::Paths::Graphic        },
+    { u"Help"_ustr,           SvtPathOptions::Paths::Help           },
+    { u"Iconset"_ustr,        SvtPathOptions::Paths::IconSet        },
+    { u"Linguistic"_ustr,     SvtPathOptions::Paths::Linguistic     },
+    { u"Module"_ustr,         SvtPathOptions::Paths::Module         },
+    { u"Palette"_ustr,        SvtPathOptions::Paths::Palette        },
+    { u"Plugin"_ustr,         SvtPathOptions::Paths::Plugin         },
+    { u"Storage"_ustr,        SvtPathOptions::Paths::Storage        },
+    { u"Temp"_ustr,           SvtPathOptions::Paths::Temp           },
+    { u"Template"_ustr,       SvtPathOptions::Paths::Template       },
+    { u"UserConfig"_ustr,     SvtPathOptions::Paths::UserConfig     },
+    { u"Work"_ustr,           SvtPathOptions::Paths::Work           },
+    { u"UIConfig"_ustr,       SvtPathOptions::Paths::UIConfig       },
+    { u"Fingerprint"_ustr,    SvtPathOptions::Paths::Fingerprint    },
+    { u"Numbertext"_ustr,     SvtPathOptions::Paths::NumberText     },
+    { u"Classification"_ustr, SvtPathOptions::Paths::Classification },
+    { u"DocumentTheme"_ustr, SvtPathOptions::Paths::DocumentTheme },
 };
 
-const VarNameAttribute aVarNameAttribute[] =
+// Supported variables by the old SvtPathOptions implementation
+constexpr VarNameAttribute aVarNameAttribute[] =
 {
-    { SUBSTITUTE_INSTPATH },    // $(instpath)
-    { SUBSTITUTE_PROGPATH },    // $(progpath)
-    { SUBSTITUTE_USERPATH },    // $(userpath)
-    { SUBSTITUTE_PATH },    // $(path)
+    { u"$(instpath)"_ustr },    // $(instpath)
+    { u"$(progpath)"_ustr },    // $(progpath)
+    { u"$(userpath)"_ustr },    // $(userpath)
+    { u"$(path)"_ustr },    // $(path)
 };
 
 // class SvtPathOptions_Impl ---------------------------------------------
@@ -209,7 +206,7 @@ const OUString& SvtPathOptions_Impl::GetPath( SvtPathOptions::Paths ePath )
             ePath == SvtPathOptions::Paths::Storage
           )
         {
-            // These office paths have to be converted to system pates
+            // These office paths have to be converted to system paths
             OUString    aResult;
             osl::FileBase::getSystemPathFromFileURL( aPathValue, aResult );
             aPathValue = aResult;
@@ -217,7 +214,7 @@ const OUString& SvtPathOptions_Impl::GetPath( SvtPathOptions::Paths ePath )
         else if (ePath == SvtPathOptions::Paths::Palette ||
                  ePath == SvtPathOptions::Paths::IconSet)
         {
-            auto ctx = comphelper::getProcessComponentContext();
+            const auto& ctx = comphelper::getProcessComponentContext();
             OUStringBuffer buf(aPathValue.getLength()*2);
             for (sal_Int32 i = 0;;)
             {
@@ -372,7 +369,7 @@ OUString SvtPathOptions_Impl::SubstVar( const OUString& rVar ) const
 
 SvtPathOptions_Impl::SvtPathOptions_Impl()
 {
-    Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
 
     // Create necessary services
     Reference< XPathSettings > xPathSettings = thePathSettings::get(xContext);
@@ -393,8 +390,7 @@ SvtPathOptions_Impl::SvtPathOptions_Impl()
     // Create mapping between internal enum (SvtPathOptions::Paths) and property handle
     for ( auto const & p : aPropNames )
     {
-        NameToHandleMap::const_iterator pIter =
-            aTempHashMap.find( OUString::createFromAscii( p.pPropName ));
+        NameToHandleMap::const_iterator pIter = aTempHashMap.find( p.aPropName );
 
         if ( pIter != aTempHashMap.end() )
         {
@@ -407,7 +403,7 @@ SvtPathOptions_Impl::SvtPathOptions_Impl()
     // Create hash map for path variables that need a system path as a return value!
     for ( auto const & i : aVarNameAttribute )
     {
-        m_aSystemPathVarNames.insert( OUString::createFromAscii( i.pVarName ) );
+        m_aSystemPathVarNames.insert( i.aVarName );
     }
 }
 
@@ -574,6 +570,11 @@ const OUString& SvtPathOptions::GetClassificationPath() const
     return pImpl->GetClassificationPath();
 }
 
+const OUString& SvtPathOptions::GetDocumentThemePath() const
+{
+    return pImpl->GetDocumentThemePath();
+}
+
 void SvtPathOptions::SetAutoTextPath( const OUString& rPath )
 {
     pImpl->SetAutoTextPath( rPath );
@@ -587,6 +588,11 @@ void SvtPathOptions::SetBasicPath( const OUString& rPath )
 void SvtPathOptions::SetTempPath( const OUString& rPath )
 {
     pImpl->SetTempPath( rPath );
+}
+
+void SvtPathOptions::SetWorkPath( const OUString& rPath )
+{
+    pImpl->SetWorkPath( rPath );
 }
 
 OUString SvtPathOptions::SubstituteVariable( const OUString& rVar ) const
@@ -676,6 +682,7 @@ bool SvtPathOptions::SearchFile( OUString& rIniFile, SvtPathOptions::Paths ePath
                 case SvtPathOptions::Paths::Fingerprint:  aPath = GetFingerprintPath();   break;
                 case SvtPathOptions::Paths::NumberText:   aPath = GetNumbertextPath();    break;
                 case SvtPathOptions::Paths::Classification: aPath = GetClassificationPath(); break;
+                case SvtPathOptions::Paths::DocumentTheme: aPath = GetDocumentThemePath(); break;
                 // coverity[dead_error_begin] - following conditions exist to avoid compiler warning
                 case SvtPathOptions::Paths::UserConfig:
                 case SvtPathOptions::Paths::LAST:

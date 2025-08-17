@@ -32,11 +32,11 @@ class E3dDefaultAttributes;
  * SphereObject with diameter r3DSize.
  * The count of planes depends on the horizontal and vertical segment count.
  */
-class SVXCORE_DLLPUBLIC E3dSphereObj final : public E3dCompoundObject
+class E3dSphereObj final : public E3dCompoundObject
 {
 private:
-    basegfx::B3DPoint               aCenter;
-    basegfx::B3DVector              aSize;
+    basegfx::B3DPoint               m_aCenter;
+    basegfx::B3DVector              m_aSize;
 
     virtual std::unique_ptr<sdr::contact::ViewContact> CreateObjectSpecificViewContact() override;
     virtual std::unique_ptr<sdr::properties::BaseProperties> CreateObjectSpecificProperties() override;
@@ -47,7 +47,7 @@ private:
     virtual ~E3dSphereObj() override;
 
 public:
-    E3dSphereObj(
+    SVXCORE_DLLPUBLIC E3dSphereObj(
         SdrModel& rSdrModel,
         const E3dDefaultAttributes& rDefault,
         const basegfx::B3DPoint& rCenter,
@@ -72,8 +72,8 @@ public:
 
     virtual rtl::Reference<SdrObject> CloneSdrObject(SdrModel& rTargetModel) const override;
 
-    const basegfx::B3DPoint& Center() const { return aCenter; }
-    const basegfx::B3DVector& Size() const { return aSize; }
+    const basegfx::B3DPoint& Center() const { return m_aCenter; }
+    const basegfx::B3DVector& Size() const { return m_aSize; }
 
     // set local parameters when the geometry is recreated
     void SetCenter(const basegfx::B3DPoint& rNew);

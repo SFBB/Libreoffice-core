@@ -27,12 +27,6 @@
 #include <memory>
 #include <vector>
 
-class MouseEvent;
-class TrackingEvent;
-class HelpEvent;
-class KeyEvent;
-class DataChangedEvent;
-class ScrollBar;
 class UserDrawEvent;
 class VirtualDevice;
 class ValueSetAcc;
@@ -209,6 +203,7 @@ private:
     sal_uInt16      mnUserVisLines;
     sal_uInt16      mnFirstLine;
     sal_uInt16      mnSpacing;
+    sal_uInt16      mnMargin;
     DrawFrameStyle  mnFrameStyle;
     Color           maColor;
     OUString        maText;
@@ -263,8 +258,7 @@ private:
     ValueSet & operator= (const ValueSet &) = delete;
 
 protected:
-    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
-    weld::ScrolledWindow* GetScrollBar() const { return mxScrolledWindow.get(); }
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
 public:
     ValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow);
@@ -349,8 +343,7 @@ public:
     {
         return mbNoSelection;
     }
-
-    void            RecalculateItemSizes();
+    sal_uInt16 GetHighlightedItemId() const { return mnHighItemId; }
 
     void            SetItemImage( sal_uInt16 nItemId, const Image& rImage );
     Image           GetItemImage( sal_uInt16 nItemId ) const;
@@ -359,7 +352,7 @@ public:
     void            SetItemData( sal_uInt16 nItemId, void* pData );
     void*           GetItemData( sal_uInt16 nItemId ) const;
     void            SetItemText( sal_uInt16 nItemId, const OUString& rStr );
-    OUString        GetItemText( sal_uInt16 nItemId ) const;
+    const OUString & GetItemText( sal_uInt16 nItemId ) const;
     void            SetColor( const Color& rColor );
     void            SetColor()
     {
@@ -371,6 +364,7 @@ public:
     }
 
     void            SetExtraSpacing( sal_uInt16 nNewSpacing );
+    void            SetMargin( sal_uInt16 nNewMargin );
 
     void            Format(vcl::RenderContext const & rRenderContext);
     void            SetFormat();

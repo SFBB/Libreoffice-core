@@ -35,21 +35,17 @@
 #include <crstate.hxx>
 #include <authratr.hxx>
 #include <svtools/colorcfg.hxx>
-#include <svtools/accessibilityoptions.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/syslocale.hxx>
 
 #include <editeng/acorrcfg.hxx>
 #include <comphelper/lok.hxx>
 #include <comphelper/configurationlistener.hxx>
 
-sal_uInt16 SwViewOption::s_nPixelTwips = 0;   // one pixel on the screen
 SwViewColors SwViewOption::s_aInitialColorConfig {};
 
 SwViewColors::SwViewColors() :
     m_aDocColor(COL_LIGHTGRAY),
     m_aDocBoundColor(COL_LIGHTGRAY),
-    m_aObjectBoundColor(COL_LIGHTGRAY),
     m_aAppBackgroundColor(COL_LIGHTGRAY),
     m_aTableBoundColor(COL_LIGHTGRAY),
     m_aFontColor(COL_BLACK),
@@ -63,6 +59,7 @@ SwViewColors::SwViewColors() :
     m_aFieldShadingsColor(COL_LIGHTGRAY),
     m_aSectionBoundColor(COL_LIGHTGRAY),
     m_aPageBreakColor(COL_BLUE),
+    m_aNonPrintingCharacterColor(Color(0x268bd2)),
     m_aScriptIndicatorColor(COL_GREEN),
     m_aShadowColor(COL_GRAY),
     m_aHeaderFooterMarkColor(COL_BLUE),
@@ -73,23 +70,12 @@ SwViewColors::SwViewColors(const svtools::ColorConfig& rConfig)
 {
     m_aDocColor = rConfig.GetColorValue(svtools::DOCCOLOR).nColor;
 
-    svtools::ColorConfigValue aValue = rConfig.GetColorValue(svtools::DOCBOUNDARIES);
-    m_aDocBoundColor = aValue.nColor;
+    m_aDocBoundColor = rConfig.GetColorValue(svtools::DOCBOUNDARIES).nColor;
     m_nAppearanceFlags = ViewOptFlags::NONE;
-    if(aValue.bIsVisible)
-        m_nAppearanceFlags |= ViewOptFlags::DocBoundaries;
-
     m_aAppBackgroundColor = rConfig.GetColorValue(svtools::APPBACKGROUND).nColor;
+    m_aTableBoundColor = rConfig.GetColorValue(svtools::TABLEBOUNDARIES).nColor;
 
-    aValue = rConfig.GetColorValue(svtools::OBJECTBOUNDARIES);
-    m_aObjectBoundColor = aValue.nColor;
-    if(aValue.bIsVisible)
-        m_nAppearanceFlags |= ViewOptFlags::ObjectBoundaries;
-
-    aValue = rConfig.GetColorValue(svtools::TABLEBOUNDARIES);
-    m_aTableBoundColor = aValue.nColor;
-    if(aValue.bIsVisible)
-        m_nAppearanceFlags |= ViewOptFlags::TableBoundaries;
+    svtools::ColorConfigValue aValue;
 
     aValue = rConfig.GetColorValue(svtools::WRITERIDXSHADINGS);
     m_aIndexShadingsColor = aValue.nColor;
@@ -127,13 +113,13 @@ SwViewColors::SwViewColors(const svtools::ColorConfig& rConfig)
     if (aValue.bIsVisible && !comphelper::LibreOfficeKit::isActive())
         m_nAppearanceFlags |= ViewOptFlags::FieldShadings;
 
-    aValue = rConfig.GetColorValue(svtools::WRITERSECTIONBOUNDARIES);
-    m_aSectionBoundColor = aValue.nColor;
-    if(aValue.bIsVisible)
-        m_nAppearanceFlags |= ViewOptFlags::SectionBoundaries;
+    m_aSectionBoundColor = rConfig.GetColorValue(svtools::WRITERSECTIONBOUNDARIES).nColor;
 
     aValue = rConfig.GetColorValue(svtools::WRITERPAGEBREAKS);
     m_aPageBreakColor = aValue.nColor;
+
+    aValue = rConfig.GetColorValue(svtools::WRITERNONPRINTCHARS);
+    m_aNonPrintingCharacterColor = aValue.nColor;
 
     aValue = rConfig.GetColorValue(svtools::WRITERHEADERFOOTERMARK);
     m_aHeaderFooterMarkColor = aValue.nColor;
@@ -184,12 +170,6 @@ bool SwViewOption::IsTreatSubOutlineLevelsAsContent() const
     return m_nCoreOptions.bTreatSubOutlineLevelsAsContent;
 }
 
-bool SwViewOption::IsShowHiddenChar(bool bHard) const
-{
-    bool bCharHidden = comphelper::LibreOfficeKit::isActive() ? true : m_nCoreOptions.bCharHidden;
-    return !m_bReadonly && bCharHidden && (m_nCoreOptions.bViewMetachars || bHard);
-}
-
 void SwViewOption::DrawRect( OutputDevice *pOut,
                              const SwRect &rRect, ::Color nCol )
 {
@@ -217,10 +197,10 @@ void SwViewOption::DrawRectPrinter( OutputDevice *pOut,
     pOut->SetLineColor( aOldColor );
 }
 
-sal_uInt16 SwViewOption::GetPostItsWidth( const OutputDevice *pOut )
+SwTwips SwViewOption::GetPostItsWidth(const OutputDevice* pOut)
 {
     assert(pOut && "no Outdev");
-    return sal_uInt16(pOut->GetTextWidth("  "));
+    return pOut->GetTextWidth(u"  "_ustr);
 }
 
 void SwViewOption::PaintPostIts( OutputDevice *pOut, const SwRect &rRect, bool bIsScript ) const
@@ -231,7 +211,7 @@ void SwViewOption::PaintPostIts( OutputDevice *pOut, const SwRect &rRect, bool b
     Color aOldLineColor( pOut->GetLineColor() );
     pOut->SetLineColor( COL_GRAY );
     // to make it look nice, we subtract two pixels everywhere
-    sal_uInt16 nPix = s_nPixelTwips * 2;
+    SwTwips nPix = o3tl::narrowing<sal_uInt16>(pOut->PixelToLogic( Size(1,1) ).Height()) * 2;
     if( rRect.Width() <= 2 * nPix || rRect.Height() <= 2 * nPix )
         nPix = 0;
     const Point aTopLeft(  rRect.Left()  + nPix, rRect.Top()    + nPix );
@@ -242,8 +222,8 @@ void SwViewOption::PaintPostIts( OutputDevice *pOut, const SwRect &rRect, bool b
 }
 
 SwViewOption::SwViewOption() :
-    m_sThemeName( "Default" ),
-    m_sSymbolFont( "symbol" ),
+    m_sThemeName( u"Default"_ustr ),
+    m_sSymbolFont( u"symbol"_ustr ),
     m_aRetouchColor( COL_TRANSPARENT ),
     mnViewLayoutColumns( 0 ),
     m_nPagePreviewRow( 1 ),
@@ -259,6 +239,7 @@ SwViewOption::SwViewOption() :
     mbViewLayoutBookMode(false),
     mbHideWhitespaceMode(false),
     m_bShowPlaceHolderFields( true ),
+    m_bEncloseWithCharactersOn( true ),
     m_nZoom( 100 ),
     m_eZoom( SvxZoomType::PERCENT ),
     m_nTableDestination(TBL_DEST_CELL)
@@ -273,7 +254,7 @@ SwViewOption::SwViewOption() :
         ViewOptFlags2::ResolvedPostits |
         ViewOptFlags2::AnyRuler;
 
-    if (!utl::ConfigManager::IsFuzzing() && MeasurementSystem::Metric != SvtSysLocale().GetLocaleData().getMeasurementSystemEnum())
+    if (!comphelper::IsFuzzing() && MeasurementSystem::Metric != SvtSysLocale().GetLocaleData().getMeasurementSystemEnum())
     {
         m_aSnapSize.setWidth(720);   // 1/2"
         m_aSnapSize.setHeight(720);   // 1/2"
@@ -286,7 +267,7 @@ SwViewOption::SwViewOption() :
     }
     m_nDivisionX = m_nDivisionY = 1;
 
-    m_bSelectionInReadonly = utl::ConfigManager::IsFuzzing() || SvtAccessibilityOptions::IsSelectionInReadonly();
+    m_bSelectionInReadonly = officecfg::Office::Common::Accessibility::IsSelectionInReadonly::get();
 
     m_bIdle = true;
 
@@ -335,6 +316,7 @@ SwViewOption::SwViewOption(const SwViewOption& rVOpt)
     mbViewLayoutBookMode = rVOpt.mbViewLayoutBookMode;
     mbHideWhitespaceMode = rVOpt.mbHideWhitespaceMode;
     m_bShowPlaceHolderFields = rVOpt.m_bShowPlaceHolderFields;
+    m_bEncloseWithCharactersOn = rVOpt.m_bEncloseWithCharactersOn;
     m_bIdle           = rVOpt.m_bIdle;
     m_nDefaultAnchor  = rVOpt.m_nDefaultAnchor;
     m_nTocEntryLvl = rVOpt.m_nTocEntryLvl;
@@ -381,6 +363,7 @@ SwViewOption& SwViewOption::operator=( const SwViewOption &rVOpt )
     mbViewLayoutBookMode = rVOpt.mbViewLayoutBookMode;
     mbHideWhitespaceMode = rVOpt.mbHideWhitespaceMode;
     m_bShowPlaceHolderFields = rVOpt.m_bShowPlaceHolderFields;
+    m_bEncloseWithCharactersOn = rVOpt.m_bEncloseWithCharactersOn;
     m_bIdle           = rVOpt.m_bIdle;
     m_nDefaultAnchor  = rVOpt.m_nDefaultAnchor;
     m_aColorConfig    = rVOpt.m_aColorConfig;
@@ -401,14 +384,6 @@ SwViewOption& SwViewOption::operator=( const SwViewOption &rVOpt )
 
 SwViewOption::~SwViewOption()
 {
-}
-
-void SwViewOption::Init(const OutputDevice* pWin)
-{
-    if( !s_nPixelTwips && pWin )
-    {
-        s_nPixelTwips = o3tl::narrowing<sal_uInt16>(pWin->PixelToLogic( Size(1,1) ).Height());
-    }
 }
 
 bool SwViewOption::IsAutoCompleteWords()
@@ -469,11 +444,6 @@ const Color& SwViewOption::GetDocColor() const
 const Color& SwViewOption::GetDocBoundariesColor() const
 {
     return m_aColorConfig.m_aDocBoundColor;
-}
-
-const Color& SwViewOption::GetObjectBoundariesColor() const
-{
-    return m_aColorConfig.m_aObjectBoundColor;
 }
 
 const Color& SwViewOption::GetAppBackgroundColor() const
@@ -546,6 +516,11 @@ const Color& SwViewOption::GetPageBreakColor() const
     return m_aColorConfig.m_aPageBreakColor;
 }
 
+const Color& SwViewOption::GetNonPrintingCharacterColor() const
+{
+    return m_aColorConfig.m_aNonPrintingCharacterColor;
+}
+
 const Color& SwViewOption::GetHeaderFooterMarkColor() const
 {
     return m_aColorConfig.m_aHeaderFooterMarkColor;
@@ -569,27 +544,20 @@ void SwViewOption::SetAppearanceFlag(ViewOptFlags nFlag, bool bSet, bool bSaveIn
     };
     static const FlagToConfig_Impl aFlags[] =
     {
-        { ViewOptFlags::DocBoundaries     ,   svtools::DOCBOUNDARIES },
-        { ViewOptFlags::ObjectBoundaries  ,   svtools::OBJECTBOUNDARIES },
-        { ViewOptFlags::TableBoundaries   ,   svtools::TABLEBOUNDARIES },
         { ViewOptFlags::IndexShadings     ,   svtools::WRITERIDXSHADINGS },
         { ViewOptFlags::Links             ,   svtools::LINKS },
         { ViewOptFlags::VisitedLinks      ,   svtools::LINKSVISITED },
         { ViewOptFlags::FieldShadings     ,   svtools::WRITERFIELDSHADINGS },
-        { ViewOptFlags::SectionBoundaries ,   svtools::WRITERSECTIONBOUNDARIES },
         { ViewOptFlags::Shadow            ,   svtools::SHADOWCOLOR },
-        { ViewOptFlags::NONE              ,   svtools::ColorConfigEntryCount }
     };
-    sal_uInt16 nPos = 0;
-    while(aFlags[nPos].nFlag != ViewOptFlags::NONE)
+    for (auto& item : aFlags)
     {
-        if(nFlag & aFlags[nPos].nFlag)
+        if (nFlag & item.nFlag)
         {
-            svtools::ColorConfigValue aValue = aEditableConfig.GetColorValue(aFlags[nPos].eEntry);
+            svtools::ColorConfigValue aValue = aEditableConfig.GetColorValue(item.eEntry);
             aValue.bIsVisible = bSet;
-            aEditableConfig.SetColorValue(aFlags[nPos].eEntry, aValue);
+            aEditableConfig.SetColorValue(item.eEntry, aValue);
         }
-        nPos++;
     }
 }
 
@@ -601,17 +569,29 @@ bool SwViewOption::IsAppearanceFlag(ViewOptFlags nFlag) const
 namespace{
 rtl::Reference<comphelper::ConfigurationListener> const & getWCOptionListener()
 {
-    static rtl::Reference<comphelper::ConfigurationListener> xListener(new comphelper::ConfigurationListener("/org.openoffice.Office.Writer/Cursor/Option"));
+    static rtl::Reference<comphelper::ConfigurationListener> xListener(new comphelper::ConfigurationListener(u"/org.openoffice.Office.Writer/Cursor/Option"_ustr));
     return xListener;
 }
 }
 
 bool SwViewOption::IsIgnoreProtectedArea()
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return false;
-    static comphelper::ConfigurationListenerProperty<bool> gIgnoreProtectedArea(getWCOptionListener(), "IgnoreProtectedArea");
+    static comphelper::ConfigurationListenerProperty<bool> gIgnoreProtectedArea(getWCOptionListener(), u"IgnoreProtectedArea"_ustr);
     return gIgnoreProtectedArea.get();
+}
+
+void SwViewOption::SyncLayoutRelatedViewOptions(const SwViewOption& rOpt)
+{
+    SetFieldName(rOpt.IsFieldName());
+    SetShowHiddenField(rOpt.IsShowHiddenField());
+    SetShowHiddenPara(rOpt.IsShowHiddenPara());
+    SetShowHiddenChar(rOpt.IsShowHiddenChar());
+    SetViewLayoutBookMode(rOpt.IsViewLayoutBookMode());
+    SetHideWhitespaceMode(rOpt.IsHideWhitespaceMode());
+    SetViewLayoutColumns(rOpt.GetViewLayoutColumns());
+    SetPostIts(rOpt.IsPostIts());
 }
 
 const SwViewOption& SwViewOption::GetCurrentViewOptions()
@@ -626,6 +606,151 @@ const SwViewOption& SwViewOption::GetCurrentViewOptions()
     // Some unit tests don't have a SfxViewShell, so we need to return something
     static SwViewOption aDefaultViewOptions;
     return aDefaultViewOptions;
+}
+
+void SwViewOption::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwViewOption"));
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
+    m_nCoreOptions.dumpAsXml(pWriter);
+    (void)xmlTextWriterEndElement(pWriter);
+}
+
+void ViewOptFlags1::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("ViewOptFlags1"));
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bUseHeaderFooterMenu"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bUseHeaderFooterMenu).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bTab"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bTab).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bBlank"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bBlank).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bHardBlank"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bHardBlank).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bParagraph"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bParagraph).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bLinebreak"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bLinebreak).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bPagebreak"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bPagebreak).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bColumnbreak"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bColumnbreak).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bSoftHyph"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bSoftHyph).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bBookmarks"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bBookmarks).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bRef"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bRef).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bFieldName"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bFieldName).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bPostits"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bPostits).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bFieldHidden"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bFieldHidden).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bCharHidden"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bCharHidden).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bGraphic"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bGraphic).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bTable"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bTable).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bDraw"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bDraw).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bControl"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bControl).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bCrosshair"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bCrosshair).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bSnap"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bSnap).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bSynchronize"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bSynchronize).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bGridVisible"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bGridVisible).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bOnlineSpell"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bOnlineSpell).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bTreatSubOutlineLevelsAsContent"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bTreatSubOutlineLevelsAsContent).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bShowInlineTooltips"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bShowInlineTooltips).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bViewMetachars"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bViewMetachars).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bRedlineRecordingOn"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bRedlineRecordingOn).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bPageback"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bPageback).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bShowOutlineContentVisibilityButton"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bShowOutlineContentVisibilityButton).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bShowChangesInMargin"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bShowChangesInMargin).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("bShowChangesInMargin2"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(bShowChangesInMargin2).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterEndElement(pWriter);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

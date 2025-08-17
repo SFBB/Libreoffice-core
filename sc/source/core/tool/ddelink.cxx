@@ -165,12 +165,10 @@ sfx2::SvBaseLink::UpdateResult ScDdeLink::DataChanged(
         //  SC_DDE_DEFAULT - number format from cell template "Standard"
         //  SC_DDE_ENGLISH - standard number format for English/US
         //  SC_DDE_TEXT    - without NumberFormatter directly as string
-        sal_uLong nStdFormat = 0;
+        sal_uInt32 nStdFormat = 0;
         if ( nMode == SC_DDE_DEFAULT )
         {
-            ScPatternAttr* pDefPattern = rDoc.GetDefPattern();     // contains standard template
-            if ( pDefPattern )
-                nStdFormat = pDefPattern->GetNumberFormat( pFormatter );
+            nStdFormat = rDoc.getCellAttributeHelper().getDefaultCellAttribute().GetNumberFormat( pFormatter );
         }
         else if ( nMode == SC_DDE_ENGLISH )
             nStdFormat = pFormatter->GetStandardIndex(LANGUAGE_ENGLISH_US);

@@ -32,6 +32,7 @@
 #include <comphelper/solarmutex.hxx>
 
 #include <comphelper/lok.hxx>
+#include <o3tl/test_info.hxx>
 
 #include <osl/process.h>
 
@@ -106,6 +107,11 @@ public:
 
     virtual void Invoke() override
     {
+        // Related: tdf#156855 force reload of both native and theme colors
+        AppearanceMode eMode = MiscSettings::GetAppColorMode();
+        if (eMode == AppearanceMode::AUTO)
+            MiscSettings::SetAppColorMode(eMode);
+
         AquaSalInstance *pInst = GetSalData()->mpInstance;
         SalFrame *pAnyFrame = pInst->anyFrame();
         if( pAnyFrame )
@@ -468,7 +474,7 @@ void AquaSalInstance::handleAppDefinedEvent( NSEvent* pEvent )
         for( auto pSalFrame : pInst->getFrames() )
         {
             const AquaSalFrame* pFrame = static_cast<const AquaSalFrame*>( pSalFrame );
-            if ( pFrame->mbFullScreen )
+            if ( pFrame->mbInternalFullScreen )
             {
                 bIsFullScreenMode = true;
                 break;
@@ -636,6 +642,8 @@ bool AquaSalInstance::DoYield(bool bWait, bool bHandleAllCurrentEvents)
         // Some events and timers call Application::Reschedule() or
         // Application::Yield() so don't block and wait for events when a
         // window is in live resize
+        bool bOldIsWaitingForNativeEvent = ImplGetSVData()->mpWinData->mbIsWaitingForNativeEvent;
+        ImplGetSVData()->mpWinData->mbIsWaitingForNativeEvent = !o3tl::IsRunningUnitTest();
         if( bWait && ! bHadEvent && !ImplGetSVData()->mpWinData->mbIsLiveResize )
         {
             SolarMutexReleaser aReleaser;
@@ -647,7 +655,7 @@ bool AquaSalInstance::DoYield(bool bWait, bool bHandleAllCurrentEvents)
             // events, we can end up blocking and waiting forever so
             // don't block and wait when running unit tests.
             pEvent = [NSApp nextEventMatchingMask: NSEventMaskAny
-                            untilDate: SalInstance::IsRunningUnitTest() ? [NSDate distantPast] : [NSDate distantFuture]
+                            untilDate: o3tl::IsRunningUnitTest() ? [NSDate distantPast] : [NSDate distantFuture]
                             inMode: NSDefaultRunLoopMode
                             dequeue: YES];
             if( pEvent )
@@ -658,6 +666,8 @@ bool AquaSalInstance::DoYield(bool bWait, bool bHandleAllCurrentEvents)
             }
             [NSApp updateWindows];
         }
+
+        ImplGetSVData()->mpWinData->mbIsWaitingForNativeEvent = bOldIsWaitingForNativeEvent;
 
         // collect update rectangles
         for( auto pSalFrame : GetSalData()->mpInstance->getFrames() )
@@ -739,7 +749,7 @@ bool AquaSalInstance::AnyInput( VclInputFlags nType )
             NSEventMaskLeftMouseUp      | NSEventMaskRightMouseUp      | NSEventMaskOtherMouseUp      |
             NSEventMaskLeftMouseDragged | NSEventMaskRightMouseDragged | NSEventMaskOtherMouseDragged |
             NSEventMaskScrollWheel      |
-            // NSEventMaskMouseMoved    |
+            NSEventMaskMouseMoved       |
             NSEventMaskMouseEntered     | NSEventMaskMouseExited;
 
         // Related: tdf#155266 stop delaying painting timer while swiping
@@ -750,7 +760,22 @@ bool AquaSalInstance::AnyInput( VclInputFlags nType )
         // not NSEventTypeScrollWheel.
         NSEvent* pCurrentEvent = [NSApp currentEvent];
         if( pCurrentEvent && [pCurrentEvent type] == NSEventTypeScrollWheel )
-            nEventMask &= ~NSEventMaskScrollWheel;
+        {
+            // tdf#160767 skip fix for tdf#155266 when the event hasn't changed
+            // When scrolling in Writer with automatic spellchecking enabled,
+            // the current event never changes because the fix for tdf#155266
+            // causes Writer to get stuck in a loop. So, if the current event
+            // has not changed since the last pass through this code, skip
+            // the fix for tdf#155266.
+            static NSEvent *pLastCurrentEvent = nil;
+            if( pLastCurrentEvent != pCurrentEvent )
+            {
+                if( pLastCurrentEvent )
+                    [pLastCurrentEvent release];
+                pLastCurrentEvent = [pCurrentEvent retain];
+                nEventMask &= ~NSEventMaskScrollWheel;
+            }
+        }
     }
 
     if( nType & VclInputFlags::KEYBOARD)
@@ -904,11 +929,6 @@ void AquaSalInstance::DestroyInfoPrinter( SalInfoPrinter* pPrinter )
     delete pPrinter;
 }
 
-OUString AquaSalInstance::GetConnectionIdentifier()
-{
-    return OUString();
-}
-
 // We need to re-encode file urls because osl_getFileURLFromSystemPath converts
 // to UTF-8 before encoding non ascii characters, which is not what other apps expect.
 static OUString translateToExternalUrl(const OUString& internalUrl)
@@ -998,7 +1018,7 @@ OUString AquaSalInstance::getOSVersion()
     if ( sysVersionDict )
         versionString = [ sysVersionDict valueForKey: @"ProductVersion" ];
 
-    OUString aVersion = "macOS ";
+    OUString aVersion = u"macOS "_ustr;
     if ( versionString )
         aVersion += OUString::fromUtf8( [ versionString UTF8String ] );
     else
@@ -1014,8 +1034,7 @@ CGImageRef CreateCGImage( const Image& rImage )
         return SkiaHelper::createCGImage( rImage );
 #endif
 
-    BitmapEx aBmpEx( rImage.GetBitmapEx() );
-    Bitmap aBmp( aBmpEx.GetBitmap() );
+    Bitmap aBmp( rImage.GetBitmap() );
 
     if( aBmp.IsEmpty() || ! aBmp.ImplGetSalBitmap() )
         return nullptr;
@@ -1027,10 +1046,11 @@ CGImageRef CreateCGImage( const Image& rImage )
         return nullptr;
 
     CGImageRef xImage = nullptr;
-    if( !aBmpEx.IsAlpha() )
+    if( !aBmp.HasAlpha() )
         xImage = pSalBmp->CreateCroppedImage( 0, 0, pSalBmp->mnWidth, pSalBmp->mnHeight );
     else
     {
+        BitmapEx aBmpEx(aBmp);
         AlphaMask aAlphaMask( aBmpEx.GetAlphaMask() );
         Bitmap aMask( aAlphaMask.GetBitmap() );
         QuartzSalBitmap* pMaskBmp = static_cast<QuartzSalBitmap*>(aMask.ImplGetSalBitmap().get());
@@ -1078,7 +1098,7 @@ bool AquaSalInstance::SVMainHook(int* pnInit)
     osl_getSystemPathFromFileURL( aExeURL.pData, &aExe.pData );
     OString aByteExe( OUStringToOString( aExe, osl_getThreadTextEncoding() ) );
 
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
     aByteExe += OString ( " NSAccessibilityDebugLogLevel 1" );
     const char* pArgv[] = { aByteExe.getStr(), NULL };
     NSApplicationMain( 3, pArgv );

@@ -23,7 +23,6 @@
 #include <com/sun/star/i18n/BreakType.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
 
-using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
 
@@ -35,55 +34,7 @@ namespace i18npool {
 
 BreakIterator_CJK::BreakIterator_CJK()
 {
-    cBreakIterator = "com.sun.star.i18n.BreakIterator_CJK";
-}
-
-Boundary SAL_CALL
-BreakIterator_CJK::previousWord(const OUString& text, sal_Int32 anyPos,
-        const css::lang::Locale& nLocale, sal_Int16 wordType)
-{
-    if (m_oDict) {
-        result = m_oDict->previousWord(text, anyPos, wordType);
-        // #109813# for non-CJK, single character word, fallback to ICU breakiterator.
-        if (result.endPos - result.startPos != 1 ||
-                getScriptType(text, result.startPos) == ScriptType::ASIAN)
-            return result;
-        result = BreakIterator_Unicode::getWordBoundary(text, result.startPos, nLocale, wordType, true);
-        if (result.endPos < anyPos)
-            return result;
-    }
-    return BreakIterator_Unicode::previousWord(text, anyPos, nLocale, wordType);
-}
-
-Boundary SAL_CALL
-BreakIterator_CJK::nextWord(const OUString& text, sal_Int32 anyPos,
-        const css::lang::Locale& nLocale, sal_Int16 wordType)
-{
-    if (m_oDict) {
-        result = m_oDict->nextWord(text, anyPos, wordType);
-        // #109813# for non-CJK, single character word, fallback to ICU breakiterator.
-        if (result.endPos - result.startPos != 1 ||
-                getScriptType(text, result.startPos) == ScriptType::ASIAN)
-            return result;
-        result = BreakIterator_Unicode::getWordBoundary(text, result.startPos, nLocale, wordType, true);
-        if (result.startPos > anyPos)
-            return result;
-    }
-    return BreakIterator_Unicode::nextWord(text, anyPos, nLocale, wordType);
-}
-
-Boundary SAL_CALL
-BreakIterator_CJK::getWordBoundary( const OUString& text, sal_Int32 anyPos,
-        const css::lang::Locale& nLocale, sal_Int16 wordType, sal_Bool bDirection )
-{
-    if (m_oDict) {
-        result = m_oDict->getWordBoundary(text, anyPos, wordType, bDirection);
-        // #109813# for non-CJK, single character word, fallback to ICU breakiterator.
-        if (result.endPos - result.startPos != 1 ||
-                getScriptType(text, result.startPos) == ScriptType::ASIAN)
-            return result;
-    }
-    return BreakIterator_Unicode::getWordBoundary(text, anyPos, nLocale, wordType, bDirection);
+    cBreakIterator = u"com.sun.star.i18n.BreakIterator_CJK"_ustr;
 }
 
 namespace {
@@ -96,46 +47,91 @@ bool isHangul( sal_Unicode cCh )
 }
 
 LineBreakResults SAL_CALL BreakIterator_CJK::getLineBreak(
-        const OUString& Text, sal_Int32 nStartPos,
-        const css::lang::Locale& /*rLocale*/, sal_Int32 /*nMinBreakPos*/,
-        const LineBreakHyphenationOptions& /*hOptions*/,
-        const LineBreakUserOptions& bOptions )
+    const OUString& Text, sal_Int32 nStartPos, const css::lang::Locale& rLocale,
+    sal_Int32 nMinBreakPos, const LineBreakHyphenationOptions& hOptions,
+    const LineBreakUserOptions& bOptions)
 {
-    LineBreakResults lbr;
-
-    const sal_Int32 nOldStartPos = nStartPos;
-
-    if (bOptions.allowPunctuationOutsideMargin &&
-            nStartPos != Text.getLength() &&
-            hangingCharacters.indexOf(Text[nStartPos]) != -1 &&
-            (Text.iterateCodePoints( &nStartPos ), nStartPos == Text.getLength())) {
-        ; // do nothing
-    } else if (bOptions.applyForbiddenRules && 0 < nStartPos && nStartPos < Text.getLength()) {
-
-        while (nStartPos > 0 &&
-                (bOptions.forbiddenBeginCharacters.indexOf(Text[nStartPos]) != -1 ||
-                 bOptions.forbiddenEndCharacters.indexOf(Text[nStartPos-1]) != -1))
-            Text.iterateCodePoints( &nStartPos, -1);
-    }
-
-    // Prevent cutting Korean words in the middle.
-    if (nOldStartPos == nStartPos && nStartPos < Text.getLength()
-        && isHangul(Text[nStartPos]))
+    auto fnIsForbiddenBreak = [&](sal_Int32 nBreakPos)
     {
-        while ( nStartPos >= 0 && isHangul( Text[nStartPos] ) )
-            --nStartPos;
+        return nBreakPos > 0
+               && (bOptions.forbiddenBeginCharacters.indexOf(Text[nBreakPos]) != -1
+                   || bOptions.forbiddenEndCharacters.indexOf(Text[nBreakPos - 1]) != -1);
+    };
 
-        // beginning of the last Korean word.
-        if ( nStartPos < nOldStartPos )
-            ++nStartPos;
+    while (nStartPos > 0 && nStartPos < Text.getLength())
+    {
+        // Apply hanging punctuation
+        if (bOptions.allowPunctuationOutsideMargin
+            && hangingCharacters.indexOf(Text[nStartPos]) != -1)
+        {
+            // The current character is allowed to overhang the margin.
+            sal_Int32 nNextPos = nStartPos;
+            Text.iterateCodePoints(&nNextPos);
 
-        if ( nStartPos == 0 )
-            nStartPos = nOldStartPos;
+            // tdf#130592: The original code always allowed a line break after hanging
+            // punctuation, even if it's not a valid ICU break. This refactor preserves the
+            // original behavior in order to avoid regressing tdf#58604.
+            if (nNextPos >= Text.getLength() || !fnIsForbiddenBreak(nNextPos))
+            {
+                LineBreakResults stBreak;
+                stBreak.breakIndex = nNextPos;
+                stBreak.breakType = BreakType::HANGINGPUNCTUATION;
+                return stBreak;
+            }
+        }
+
+        const sal_Int32 nOldStartPos = nStartPos;
+
+        // Apply forbidden rules
+        if (bOptions.applyForbiddenRules)
+        {
+            while (fnIsForbiddenBreak(nStartPos))
+            {
+                Text.iterateCodePoints(&nStartPos, -1);
+            }
+        }
+
+        // Prevent cutting Korean words in the middle
+        if (nOldStartPos == nStartPos && isHangul(Text[nStartPos]))
+        {
+            while (nStartPos >= 0 && isHangul(Text[nStartPos]))
+                --nStartPos;
+
+            // beginning of the last Korean word.
+            if (nStartPos < nOldStartPos)
+                ++nStartPos;
+
+            if (nStartPos == 0)
+                nStartPos = nOldStartPos;
+        }
+
+        // tdf#130592: Fall back to the ICU breakiterator after applying CJK-specific rules
+        auto stBreak = BreakIterator_Unicode::getLineBreak(Text, nStartPos, rLocale, nMinBreakPos,
+                                                           hOptions, bOptions);
+        if (stBreak.breakIndex == nStartPos)
+        {
+            // Located break is valid under both iterators
+            return stBreak;
+        }
+
+        // CJK break is not valid; restart search from the next candidate
+        sal_Int32 nNextCandidate = stBreak.breakIndex;
+        while (bOptions.allowPunctuationOutsideMargin && nStartPos > stBreak.breakIndex)
+        {
+            if (hangingCharacters.indexOf(Text[nStartPos]) != -1)
+            {
+                nNextCandidate = nStartPos;
+                break;
+            }
+
+            Text.iterateCodePoints(&nStartPos, -1);
+        }
+
+        nStartPos = nNextCandidate;
     }
 
-    lbr.breakIndex = nStartPos;
-    lbr.breakType = BreakType::WORDBOUNDARY;
-    return lbr;
+    return BreakIterator_Unicode::getLineBreak(Text, nStartPos, rLocale, nMinBreakPos, hOptions,
+                                               bOptions);
 }
 
 #define LOCALE(language, country) css::lang::Locale(language, country, OUString())
@@ -144,10 +140,9 @@ LineBreakResults SAL_CALL BreakIterator_CJK::getLineBreak(
 //      ----------------------------------------------------;
 BreakIterator_zh::BreakIterator_zh()
 {
-    m_oDict.emplace("zh");
     assert(hangingCharacters.pData);
-    hangingCharacters = LocaleDataImpl::get()->getHangingCharacters(LOCALE("zh", "CN"));
-    cBreakIterator = "com.sun.star.i18n.BreakIterator_zh";
+    hangingCharacters = LocaleDataImpl::get()->getHangingCharacters(LOCALE(u"zh"_ustr, u"CN"_ustr));
+    cBreakIterator = u"com.sun.star.i18n.BreakIterator_zh"_ustr;
 }
 
 //      ----------------------------------------------------
@@ -155,10 +150,9 @@ BreakIterator_zh::BreakIterator_zh()
 //      ----------------------------------------------------;
 BreakIterator_zh_TW::BreakIterator_zh_TW()
 {
-    m_oDict.emplace("zh");
     assert(hangingCharacters.pData);
-    hangingCharacters = LocaleDataImpl::get()->getHangingCharacters(LOCALE("zh", "TW"));
-    cBreakIterator = "com.sun.star.i18n.BreakIterator_zh_TW";
+    hangingCharacters = LocaleDataImpl::get()->getHangingCharacters(LOCALE(u"zh"_ustr, u"TW"_ustr));
+    cBreakIterator = u"com.sun.star.i18n.BreakIterator_zh_TW"_ustr;
 }
 
 //      ----------------------------------------------------
@@ -166,11 +160,9 @@ BreakIterator_zh_TW::BreakIterator_zh_TW()
 //      ----------------------------------------------------;
 BreakIterator_ja::BreakIterator_ja()
 {
-    m_oDict.emplace("ja");
-    m_oDict->setJapaneseWordBreak();
     assert(hangingCharacters.pData);
-    hangingCharacters = LocaleDataImpl::get()->getHangingCharacters(LOCALE("ja", "JP"));
-    cBreakIterator = "com.sun.star.i18n.BreakIterator_ja";
+    hangingCharacters = LocaleDataImpl::get()->getHangingCharacters(LOCALE(u"ja"_ustr, u"JP"_ustr));
+    cBreakIterator = u"com.sun.star.i18n.BreakIterator_ja"_ustr;
 }
 
 //      ----------------------------------------------------
@@ -179,8 +171,8 @@ BreakIterator_ja::BreakIterator_ja()
 BreakIterator_ko::BreakIterator_ko()
 {
     assert(hangingCharacters.pData);
-    hangingCharacters = LocaleDataImpl::get()->getHangingCharacters(LOCALE("ko", "KR"));
-    cBreakIterator = "com.sun.star.i18n.BreakIterator_ko";
+    hangingCharacters = LocaleDataImpl::get()->getHangingCharacters(LOCALE(u"ko"_ustr, u"KR"_ustr));
+    cBreakIterator = u"com.sun.star.i18n.BreakIterator_ko"_ustr;
 }
 
 }

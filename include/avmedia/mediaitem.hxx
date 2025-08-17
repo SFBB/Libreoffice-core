@@ -72,6 +72,7 @@ class AVMEDIA_DLLPUBLIC MediaItem final : public SfxPoolItem
 public:
                             static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(MediaItem)
     explicit                MediaItem( sal_uInt16 i_nWhich = 0,
                                        AVMediaSetMask nMaskSet = AVMediaSetMask::NONE );
                             MediaItem( const MediaItem& rMediaItem );
@@ -117,8 +118,11 @@ public:
                                    const OUString& rReferer);
     const OUString&         getURL() const;
 
+    bool                    setFallbackURL(const OUString& rURL);
+    const OUString&         getFallbackURL() const;
+
     bool                    setMimeType(const OUString& rMimeType);
-    OUString                getMimeType() const;
+    const OUString&         getMimeType() const;
     bool setGraphic(const Graphic& rGraphic);
     const Graphic & getGraphic() const;
     bool setCrop(const css::text::GraphicCrop& rCrop);

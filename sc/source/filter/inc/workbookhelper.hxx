@@ -36,8 +36,6 @@ namespace com::sun::star {
     namespace container { class XNameContainer; }
     namespace sheet { class XDatabaseRange; }
     namespace sheet { class XSpreadsheet; }
-    namespace sheet { class XSpreadsheetDocument; }
-    namespace sheet { struct FormulaToken; }
     namespace style { class XStyle; }
     namespace table { class XCellRange; }
 }
@@ -59,6 +57,8 @@ class ScEditEngineDefaulter;
 class ScDBData;
 class ScRangeData;
 class ScModelObj;
+class ScDatabaseRangeObj;
+class ScTableSheetObj;
 
 namespace oox::xls {
 
@@ -193,7 +193,7 @@ public:
     const rtl::Reference< ScModelObj >& getDocument() const;
 
     /** Returns a reference to the specified spreadsheet in the document model. */
-    css::uno::Reference< css::sheet::XSpreadsheet >
+    rtl::Reference< ScTableSheetObj >
                         getSheetFromDoc( sal_Int32 nSheet ) const;
     /** Returns a reference to the specified spreadsheet in the document model. */
     css::uno::Reference< css::sheet::XSpreadsheet >
@@ -232,8 +232,7 @@ public:
     /** Creates and returns a database range on-the-fly in the Calc document.
         The range will not be buffered in the global table buffer.
         @param orName  (in/out-parameter) Returns the resulting used name. */
-    css::uno::Reference< css::sheet::XDatabaseRange >
-                        createDatabaseRangeObject(
+    rtl::Reference<ScDatabaseRangeObj> createDatabaseRangeObject(
                             OUString& orName,
                             const ScRange& rRangeAddr ) const;
 

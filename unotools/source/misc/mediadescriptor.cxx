@@ -117,7 +117,7 @@ bool MediaDescriptor::isStreamReadOnly() const
                 ::ucbhelper::Content aContent(xContent,
                                               utl::UCBContentHelper::getDefaultCommandEnvironment(),
                                               comphelper::getProcessComponentContext());
-                aContent.getPropertyValue("IsReadOnly") >>= bReadOnly;
+                aContent.getPropertyValue(u"IsReadOnly"_ustr) >>= bReadOnly;
             }
         }
     }
@@ -223,7 +223,7 @@ bool MediaDescriptor::addInputStream()
 /*-----------------------------------------------*/
 bool MediaDescriptor::addInputStreamOwnLock()
 {
-    const bool bLock = !utl::ConfigManager::IsFuzzing()
+    const bool bLock = !comphelper::IsFuzzing()
         && officecfg::Office::Common::Misc::UseDocumentSystemFileLocking::get();
     return impl_addInputStream(bLock);
 }
@@ -253,7 +253,7 @@ bool MediaDescriptor::impl_addInputStream( bool bLockFile )
         // b) ... or we must get it from the given URL
         OUString sURL = getUnpackedValueOrDefault(MediaDescriptor::PROP_URL, OUString());
         if (sURL.isEmpty())
-            throw css::uno::Exception("Found no URL.",
+            throw css::uno::Exception(u"Found no URL."_ustr,
                     css::uno::Reference< css::uno::XInterface >());
 
         return impl_openStreamWithURL( removeFragment(sURL), bLockFile );
@@ -268,7 +268,7 @@ bool MediaDescriptor::impl_addInputStream( bool bLockFile )
 bool MediaDescriptor::impl_openStreamWithPostData( const css::uno::Reference< css::io::XInputStream >& _rxPostData )
 {
     if ( !_rxPostData.is() )
-        throw css::lang::IllegalArgumentException("Found invalid PostData.",
+        throw css::lang::IllegalArgumentException(u"Found invalid PostData."_ustr,
                 css::uno::Reference< css::uno::XInterface >(), 1);
 
     // PostData can't be used in read/write mode!
@@ -311,7 +311,7 @@ bool MediaDescriptor::impl_openStreamWithPostData( const css::uno::Reference< cs
         aPostArgument.MediaType = sMediaType;
         aPostArgument.Referer = getUnpackedValueOrDefault( PROP_REFERRER, OUString() );
 
-        aContent.executeCommand( "post", css::uno::Any( aPostArgument ) );
+        aContent.executeCommand( u"post"_ustr, css::uno::Any( aPostArgument ) );
 
         // get result
         xResultStream = xSink->getInputStream();
@@ -334,8 +334,12 @@ bool MediaDescriptor::impl_openStreamWithPostData( const css::uno::Reference< cs
 /*-----------------------------------------------*/
 bool MediaDescriptor::impl_openStreamWithURL( const OUString& sURL, bool bLockFile )
 {
-    if (sURL.matchIgnoreAsciiCase(".component:"))
-        return false; // No UCB content for .component URLs
+    if (sURL.matchIgnoreAsciiCase(".component:") || sURL.matchIgnoreAsciiCase("private:factory/"))
+        return false; // No UCB content for .component URLs and factory URLs
+
+
+    if (INetURLObject(sURL).IsExoticProtocol())
+        return false;
 
     OUString referer(getUnpackedValueOrDefault(PROP_REFERRER, OUString()));
     if (SvtSecurityOptions::isUntrustedReferer(referer)) {
@@ -449,7 +453,7 @@ bool MediaDescriptor::impl_openStreamWithURL( const OUString& sURL, bool bLockFi
             else
             {
                 bool bRequestReadOnly = bReadOnly;
-                aContent.getPropertyValue("IsReadOnly") >>= bReadOnly;
+                aContent.getPropertyValue(u"IsReadOnly"_ustr) >>= bReadOnly;
                 if ( bReadOnly && !bRequestReadOnly && bModeRequestedExplicitly )
                         return false; // the document is explicitly requested with WRITABLE mode
             }

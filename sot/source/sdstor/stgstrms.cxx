@@ -22,6 +22,7 @@
 #include <string.h>
 #include <sal/log.hxx>
 #include <o3tl/safeint.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <unotools/tempfile.hxx>
 
@@ -1201,7 +1202,7 @@ StgTmpStrm::~StgTmpStrm()
     {
         m_pStrm->Close();
         osl::File::remove( m_aName );
-        delete m_pStrm;
+        m_pStrm.reset();
     }
 }
 
@@ -1270,7 +1271,7 @@ void StgTmpStrm::SetSize(sal_uInt64 n)
                 SetError( s->GetError() );
                 return;
             }
-            m_pStrm = s.release();
+            m_pStrm = std::move(s);
             // Shrink the memory to 16 bytes, which seems to be the minimum
             ReAllocateMemory( - ( static_cast<tools::Long>(nEndOfData) - 16 ) );
         }

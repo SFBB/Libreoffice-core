@@ -197,8 +197,7 @@ XclChSerTrendLine::XclChSerTrendLine() :
     /*  Set all bits in mfIntercept to 1 (that is -1.#NAN) to indicate that
         there is no interception point. Cannot use ::rtl::math::setNan() here
         cause it misses the sign bit. */
-    sal_math_Double* pDouble = reinterpret_cast< sal_math_Double* >( &mfIntercept );
-    pDouble->w32_parts.msw = pDouble->w32_parts.lsw = 0xFFFFFFFF;
+    reinterpret_cast<sal_math_Double*>(&mfIntercept)->intrep = 0xFFFFFFFFFFFFFFFF;
 }
 
 XclChSerErrorBar::XclChSerErrorBar() :
@@ -400,7 +399,7 @@ bool XclChartHelper::HasMarkerFillColor( sal_uInt16 nMarkerType )
     return (nMarkerType < SAL_N_ELEMENTS( spbFilled )) && spbFilled[ nMarkerType ];
 }
 
-OUString XclChartHelper::GetErrorBarValuesRole( sal_uInt8 nBarType )
+const OUString & XclChartHelper::GetErrorBarValuesRole( sal_uInt8 nBarType )
 {
     switch( nBarType )
     {
@@ -410,7 +409,7 @@ OUString XclChartHelper::GetErrorBarValuesRole( sal_uInt8 nBarType )
         case EXC_CHSERERR_YMINUS:   return EXC_CHPROP_ROLE_ERRORBARS_NEGY;
         default:    OSL_FAIL( "XclChartHelper::GetErrorBarValuesRole - unknown bar type" );
     }
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 // Chart formatting info provider =============================================
@@ -1163,7 +1162,7 @@ namespace {
 uno::Reference<drawing::XShape> lclGetMainTitleShape(const uno::Reference<chart::XChartDocument> & rxChart1Doc)
 {
     ScfPropertySet aPropSet(rxChart1Doc);
-    if (rxChart1Doc.is() && aPropSet.GetBoolProperty("HasMainTitle"))
+    if (rxChart1Doc.is() && aPropSet.GetBoolProperty(u"HasMainTitle"_ustr))
         return rxChart1Doc->getTitle();
     return uno::Reference<drawing::XShape>();
 }
@@ -1172,7 +1171,7 @@ uno::Reference<drawing::XShape> lclGetXAxisTitleShape(const uno::Reference<chart
 {
     uno::Reference<chart::XAxisXSupplier> xAxisSupp(rxChart1Doc->getDiagram(), uno::UNO_QUERY);
     ScfPropertySet aPropSet(xAxisSupp);
-    if (xAxisSupp.is() && aPropSet.GetBoolProperty("HasXAxisTitle"))
+    if (xAxisSupp.is() && aPropSet.GetBoolProperty(u"HasXAxisTitle"_ustr))
         return xAxisSupp->getXAxisTitle();
     return uno::Reference<drawing::XShape>();
 }
@@ -1181,7 +1180,7 @@ uno::Reference<drawing::XShape> lclGetYAxisTitleShape(const uno::Reference<chart
 {
     uno::Reference<chart::XAxisYSupplier> xAxisSupp(rxChart1Doc->getDiagram(), uno::UNO_QUERY);
     ScfPropertySet aPropSet(xAxisSupp);
-    if (xAxisSupp.is() && aPropSet.GetBoolProperty("HasYAxisTitle"))
+    if (xAxisSupp.is() && aPropSet.GetBoolProperty(u"HasYAxisTitle"_ustr))
         return xAxisSupp->getYAxisTitle();
     return uno::Reference<drawing::XShape>();
 }
@@ -1190,7 +1189,7 @@ uno::Reference<drawing::XShape> lclGetZAxisTitleShape(const uno::Reference<chart
 {
     uno::Reference<chart::XAxisZSupplier> xAxisSupp(rxChart1Doc->getDiagram(), uno::UNO_QUERY);
     ScfPropertySet aPropSet(xAxisSupp);
-    if (xAxisSupp.is() && aPropSet.GetBoolProperty("HasZAxisTitle"))
+    if (xAxisSupp.is() && aPropSet.GetBoolProperty(u"HasZAxisTitle"_ustr))
         return xAxisSupp->getZAxisTitle();
     return uno::Reference<drawing::XShape>();
 }
@@ -1199,7 +1198,7 @@ uno::Reference<drawing::XShape> lclGetSecXAxisTitleShape(const uno::Reference<ch
 {
     uno::Reference<chart::XSecondAxisTitleSupplier> xAxisSupp(rxChart1Doc->getDiagram(), uno::UNO_QUERY);
     ScfPropertySet aPropSet(xAxisSupp);
-    if (xAxisSupp.is() && aPropSet.GetBoolProperty("HasSecondaryXAxisTitle"))
+    if (xAxisSupp.is() && aPropSet.GetBoolProperty(u"HasSecondaryXAxisTitle"_ustr))
         return xAxisSupp->getSecondXAxisTitle();
     return uno::Reference<drawing::XShape>();
 }
@@ -1208,7 +1207,7 @@ uno::Reference<drawing::XShape> lclGetSecYAxisTitleShape(const uno::Reference<ch
 {
     uno::Reference<chart::XSecondAxisTitleSupplier> xAxisSupp(rxChart1Doc->getDiagram(), uno::UNO_QUERY);
     ScfPropertySet aPropSet(xAxisSupp);
-    if (xAxisSupp.is() && aPropSet.GetBoolProperty("HasSecondaryYAxisTitle"))
+    if (xAxisSupp.is() && aPropSet.GetBoolProperty(u"HasSecondaryYAxisTitle"_ustr))
         return xAxisSupp->getSecondYAxisTitle();
     return uno::Reference<drawing::XShape>();
 }

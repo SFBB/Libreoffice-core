@@ -18,6 +18,7 @@
  */
 
 #include <CommandDispatchContainer.hxx>
+#include <ControllerCommandDispatch.hxx>
 #include "UndoCommandDispatch.hxx"
 #include "StatusBarCommandDispatch.hxx"
 #include <DisposeHelper.hxx>
@@ -48,6 +49,8 @@ CommandDispatchContainer::CommandDispatchContainer(
 {
 }
 
+CommandDispatchContainer::~CommandDispatchContainer() = default;
+
 void CommandDispatchContainer::setModel(
     const rtl::Reference<::chart::ChartModel> & xModel )
 {
@@ -59,85 +62,80 @@ void CommandDispatchContainer::setModel(
 }
 
 void CommandDispatchContainer::setChartDispatch(
-    const Reference< frame::XDispatch >& rChartDispatch,
-    o3tl::sorted_vector< OUString > && rChartCommands )
+    const rtl::Reference< ControllerCommandDispatch >& rChartDispatch,
+    const o3tl::sorted_vector< std::u16string_view > & rChartCommands )
 {
     OSL_ENSURE(rChartDispatch.is(),"Invalid fall back dispatcher!");
-    m_xChartDispatcher.set( rChartDispatch );
-    m_aChartCommands = std::move(rChartCommands);
+    m_xChartDispatcher = rChartDispatch;
+    m_aAdditionalChartCommands = rChartCommands;
     m_aToBeDisposedDispatches.push_back( m_xChartDispatcher );
 }
 
 Reference< frame::XDispatch > CommandDispatchContainer::getDispatchForURL(
     const util::URL & rURL )
 {
-    static const o3tl::sorted_vector< OUString >  s_aContainerDocumentCommands {
-        "AddDirect",    "NewDoc",             "Open",
-        "Save",         "SaveAs",             "SendMail",
-        "EditDoc",      "ExportDirectToPDF",  "PrintDefault"};
+    static const o3tl::sorted_vector< std::u16string_view >  s_aContainerDocumentCommands {
+        u"AddDirect",    u"NewDoc",             u"Open",
+        u"Save",         u"SaveAs",             u"SendMail",
+        u"EditDoc",      u"ExportDirectToPDF",  u"PrintDefault",
+        u"ChangeTheme", };
 
-    Reference< frame::XDispatch > xResult;
-    tDispatchMap::const_iterator aIt( m_aCachedDispatches.find( rURL.Complete ));
-    if( aIt != m_aCachedDispatches.end())
-    {
-        xResult.set( (*aIt).second );
-    }
-    else
-    {
-        rtl::Reference< ::chart::ChartModel > xModel( m_xModel );
+    if (auto aIt = m_aCachedDispatches.find(rURL.Complete); aIt != m_aCachedDispatches.end())
+        return aIt->second;
 
-        if( xModel.is() && ( rURL.Path == "Undo" || rURL.Path == "Redo" ||
-                             rURL.Path == "GetUndoStrings" || rURL.Path == "GetRedoStrings" ) )
+    auto cacheIt = [this, url = rURL.Complete](const Reference<frame::XDispatch>& val)
+    {
+        m_aCachedDispatches[url].set(val);
+        return val;
+    };
+
+    if (rtl::Reference<::chart::ChartModel> xModel{ m_xModel })
+    {
+        if (rURL.Path == "Undo" || rURL.Path == "Redo" ||
+            rURL.Path == "GetUndoStrings" || rURL.Path == "GetRedoStrings")
         {
             rtl::Reference<CommandDispatch> pDispatch = new UndoCommandDispatch( m_xContext, xModel );
-            xResult.set( pDispatch );
             pDispatch->initialize();
-            m_aCachedDispatches[ ".uno:Undo" ].set( xResult );
-            m_aCachedDispatches[ ".uno:Redo" ].set( xResult );
-            m_aCachedDispatches[ ".uno:GetUndoStrings" ].set( xResult );
-            m_aCachedDispatches[ ".uno:GetRedoStrings" ].set( xResult );
-            m_aToBeDisposedDispatches.push_back( xResult );
+            m_aCachedDispatches[u".uno:Undo"_ustr].set(pDispatch);
+            m_aCachedDispatches[u".uno:Redo"_ustr].set(pDispatch);
+            m_aCachedDispatches[u".uno:GetUndoStrings"_ustr].set(pDispatch);
+            m_aCachedDispatches[u".uno:GetRedoStrings"_ustr].set(pDispatch);
+            m_aToBeDisposedDispatches.push_back(pDispatch);
+            return pDispatch;
         }
-        else if( xModel.is() && ( rURL.Path == "Context" || rURL.Path == "ModifiedStatus" ) )
+        if (rURL.Path == "Context" || rURL.Path == "ModifiedStatus")
         {
             Reference< view::XSelectionSupplier > xSelSupp( xModel->getCurrentController(), uno::UNO_QUERY );
             rtl::Reference<CommandDispatch> pDispatch = new StatusBarCommandDispatch( m_xContext, xModel, xSelSupp );
-            xResult.set( pDispatch );
             pDispatch->initialize();
-            m_aCachedDispatches[ ".uno:Context" ].set( xResult );
-            m_aCachedDispatches[ ".uno:ModifiedStatus" ].set( xResult );
-            m_aToBeDisposedDispatches.push_back( xResult );
+            m_aCachedDispatches[u".uno:Context"_ustr].set(pDispatch);
+            m_aCachedDispatches[u".uno:ModifiedStatus"_ustr].set(pDispatch);
+            m_aToBeDisposedDispatches.push_back(pDispatch);
+            return pDispatch;
         }
-        else if( xModel.is() &&
-                 (s_aContainerDocumentCommands.find( rURL.Path ) != s_aContainerDocumentCommands.end()) )
+        if (s_aContainerDocumentCommands.count(rURL.Path) > 0)
         {
-            xResult.set( getContainerDispatchForURL( xModel->getCurrentController(), rURL ));
             // ToDo: can those dispatches be cached?
-            m_aCachedDispatches[ rURL.Complete ].set( xResult );
-        }
-        else if( m_xChartDispatcher.is() &&
-                 (m_aChartCommands.find( rURL.Path ) != m_aChartCommands.end()) )
-        {
-            xResult.set( m_xChartDispatcher );
-            m_aCachedDispatches[ rURL.Complete ].set( xResult );
-        }
-        // #i12587# support for shapes in chart
-        // Note, that the chart dispatcher must be queried first, because
-        // the chart dispatcher is the default dispatcher for all context
-        // sensitive commands.
-        else if ( m_pDrawCommandDispatch && m_pDrawCommandDispatch->isFeatureSupported( rURL.Complete ) )
-        {
-            xResult.set( m_pDrawCommandDispatch );
-            m_aCachedDispatches[ rURL.Complete ].set( xResult );
-        }
-        else if ( m_pShapeController && m_pShapeController->isFeatureSupported( rURL.Complete ) )
-        {
-            xResult.set( m_pShapeController );
-            m_aCachedDispatches[ rURL.Complete ].set( xResult );
+            return cacheIt(getContainerDispatchForURL(xModel->getCurrentController(), rURL));
         }
     }
 
-    return xResult;
+    if (m_xChartDispatcher.is()
+        && (m_xChartDispatcher->commandHandled(rURL.Complete)
+            || m_aAdditionalChartCommands.count(rURL.Path) > 0))
+        return cacheIt(m_xChartDispatcher);
+
+    // #i12587# support for shapes in chart
+    // Note, that the chart dispatcher must be queried first, because
+    // the chart dispatcher is the default dispatcher for all context
+    // sensitive commands.
+    if (m_pDrawCommandDispatch && m_pDrawCommandDispatch->isFeatureSupported(rURL.Complete))
+        return cacheIt(m_pDrawCommandDispatch);
+
+    if (m_pShapeController && m_pShapeController->isFeatureSupported(rURL.Complete))
+        return cacheIt(m_pShapeController);
+
+    return {};
 }
 
 Sequence< Reference< frame::XDispatch > > CommandDispatchContainer::getDispatchesForURLs(
@@ -149,7 +147,7 @@ Sequence< Reference< frame::XDispatch > > CommandDispatchContainer::getDispatche
 
     for( sal_Int32 nPos = 0; nPos < nCount; ++nPos )
     {
-        if ( aDescriptors[ nPos ].FrameName == "_self" )
+        if (aDescriptors[nPos].FrameName.isEmpty() || aDescriptors[nPos].FrameName == "_self")
             aRetRange[ nPos ] = getDispatchForURL( aDescriptors[ nPos ].FeatureURL );
     }
     return aRet;
@@ -161,7 +159,7 @@ void CommandDispatchContainer::DisposeAndClear()
     DisposeHelper::DisposeAllElements( m_aToBeDisposedDispatches );
     m_aToBeDisposedDispatches.clear();
     m_xChartDispatcher.clear();
-    m_aChartCommands.clear();
+    m_aAdditionalChartCommands.clear();
     m_pDrawCommandDispatch = nullptr;
     m_pShapeController = nullptr;
 }
@@ -178,7 +176,7 @@ Reference< frame::XDispatch > CommandDispatchContainer::getContainerDispatchForU
         {
             Reference< frame::XDispatchProvider > xDispProv( xFrame->getCreator(), uno::UNO_QUERY );
             if( xDispProv.is())
-                xResult.set( xDispProv->queryDispatch( rURL, "_self", 0 ));
+                xResult.set( xDispProv->queryDispatch( rURL, u"_self"_ustr, 0 ));
         }
     }
     return xResult;

@@ -29,7 +29,6 @@
 #include <svx/sdrpagewindow.hxx>
 
 #include <com/sun/star/awt/XControl.hpp>
-#include <com/sun/star/awt/XControlModel.hpp>
 #include <com/sun/star/awt/XControlContainer.hpp>
 #include <com/sun/star/awt/XWindow2.hpp>
 #include <com/sun/star/awt/PosSize.hpp>
@@ -46,6 +45,7 @@
 
 #include <vcl/canvastools.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/unohelp.hxx>
 #include <vcl/window.hxx>
 #include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
@@ -57,6 +57,7 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <drawinglayer/primitive2d/controlprimitive2d.hxx>
+#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 
 #include <utility>
 /*
@@ -230,7 +231,7 @@ namespace sdr::contact {
     ::tools::Rectangle ControlHolder::getPosSize() const
     {
         // no check whether we're valid, this is the responsibility of the caller
-        return VCLUnoHelper::ConvertToVCLRect( m_xControlWindow->getPosSize() );
+        return vcl::unohelper::ConvertToVCLRect( m_xControlWindow->getPosSize() );
     }
 
 
@@ -280,7 +281,9 @@ namespace sdr::contact {
         const basegfx::B2DHomMatrix& _rViewTransformation, const ::basegfx::B2DHomMatrix& _rZoomLevelNormalization )
     {
         // In the LOK case, control geometry is handled by LokControlHandler
-        if (comphelper::LibreOfficeKit::isActive())
+        // except when the document is exported to PDF or printed,
+        // so we use isTiledPainting() in place of the more generic isActive()
+        if (comphelper::LibreOfficeKit::isTiledPainting())
             return;
 
         OSL_PRECOND( _rControl.is(), "UnoControlContactHelper::adjustControlGeometry_throw: illegal control!" );
@@ -795,8 +798,7 @@ namespace sdr::contact {
                 const ::drawinglayer::geometry::ViewInformation2D& rViewInformation
             ) const override;
 
-        virtual void create2DDecomposition(
-                ::drawinglayer::primitive2d::Primitive2DContainer& rContainer,
+        virtual ::drawinglayer::primitive2d::Primitive2DReference create2DDecomposition(
                 const ::drawinglayer::geometry::ViewInformation2D& rViewInformation
             ) const override;
 
@@ -1046,7 +1048,7 @@ namespace sdr::contact {
             return false;
 
         m_pOutputDeviceForWindow = const_cast< OutputDevice * >( &_rDevice );
-        m_aControl = aControl;
+        m_aControl = std::move(aControl);
         m_xContainer.set(_rPageView.getControlContainer( _rDevice ), css::uno::UNO_QUERY);
         DBG_ASSERT( (   m_xContainer.is()                                           // either have a XControlContainer
                     ||  (   ( !_rPageView.getControlContainer( _rDevice ).is() )    // or don't have any container,
@@ -1092,14 +1094,14 @@ namespace sdr::contact {
         {
             const OUString& sControlServiceName( _rUnoObject.GetUnoControlTypeName() );
 
-            Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+            const Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
             _out_rControl = Reference<XControl>( xContext->getServiceManager()->createInstanceWithContext(sControlServiceName, xContext), UNO_QUERY_THROW );
 
             // tdf#150886 for calc/writer/impress make forms ignore the platform theme
             Reference<XPropertySet> xModelProperties(xControlModel, UNO_QUERY);
             Reference<XPropertySetInfo> xInfo = xModelProperties ? xModelProperties->getPropertySetInfo() : nullptr;
-            if (xInfo && xInfo->hasPropertyByName("StandardTheme"))
-                xModelProperties->setPropertyValue("StandardTheme", Any(!_rUnoObject.getSdrModelFromSdrObject().AreControlsThemed()));
+            if (xInfo && xInfo->hasPropertyByName(u"StandardTheme"_ustr))
+                xModelProperties->setPropertyValue(u"StandardTheme"_ustr, Any(!_rUnoObject.getSdrModelFromSdrObject().AreControlsThemed()));
 
             // knit the model and the control
             _out_rControl.setModel( xControlModel );
@@ -1291,7 +1293,7 @@ namespace sdr::contact {
         try
         {
             Reference< XPropertySet > xModelProperties( pUnoObject->GetUnoControlModel(), UNO_QUERY_THROW );
-            OSL_VERIFY( xModelProperties->getPropertyValue( "Printable" ) >>= bIsPrintable );
+            OSL_VERIFY( xModelProperties->getPropertyValue( u"Printable"_ustr ) >>= bIsPrintable );
         }
         catch( const Exception& )
         {
@@ -1532,7 +1534,7 @@ namespace sdr::contact {
     }
 
 
-    void LazyControlCreationPrimitive2D::create2DDecomposition( ::drawinglayer::primitive2d::Primitive2DContainer& rContainer, const ::drawinglayer::geometry::ViewInformation2D& _rViewInformation ) const
+    ::drawinglayer::primitive2d::Primitive2DReference LazyControlCreationPrimitive2D::create2DDecomposition( const ::drawinglayer::geometry::ViewInformation2D& _rViewInformation ) const
     {
     #if OSL_DEBUG_LEVEL > 0
         ::basegfx::B2DVector aScale, aTranslate;
@@ -1560,8 +1562,9 @@ namespace sdr::contact {
             // use the default mechanism. This will create a ControlPrimitive2D without
             // handing over a XControl. If not even a XControlModel exists, it will
             // create the SdrObject fallback visualisation
-            rViewContactOfUnoControl.getViewIndependentPrimitive2DContainer(rContainer);
-            return;
+            ::drawinglayer::primitive2d::Primitive2DContainer aContainer;
+            rViewContactOfUnoControl.getViewIndependentPrimitive2DContainer(aContainer);
+            return new drawinglayer::primitive2d::GroupPrimitive2D(std::move(aContainer));
         }
 
         SdrObject const& rSdrObj(m_pVOCImpl->getViewContact().GetSdrObject());
@@ -1573,9 +1576,9 @@ namespace sdr::contact {
 
         // create a primitive and hand over the existing xControl. This will
         // allow the primitive to not need to create another one on demand.
-        rContainer.push_back( new ::drawinglayer::primitive2d::ControlPrimitive2D(
+        return new ::drawinglayer::primitive2d::ControlPrimitive2D(
             m_aTransformation, xControlModel, rControl.getControl(),
-            rSdrObj.GetTitle(), rSdrObj.GetDescription(), pAnchorKey) );
+            rSdrObj.GetTitle(), rSdrObj.GetDescription(), pAnchorKey);
     }
 
     sal_uInt32 LazyControlCreationPrimitive2D::getPrimitive2DID() const

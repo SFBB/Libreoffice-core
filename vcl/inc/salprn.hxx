@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_SALPRN_HXX
-#define INCLUDED_VCL_INC_SALPRN_HXX
+#pragma once
 
 #include <i18nutil/paper.hxx>
 #include <rtl/ustring.hxx>
@@ -32,7 +31,6 @@
 #include <optional>
 
 class SalGraphics;
-class SalFrame;
 class ImplJobSetup;
 namespace vcl { class PrinterController; }
 namespace weld { class Window; }
@@ -82,6 +80,11 @@ public:
     virtual sal_uInt32              GetCapabilities( const ImplJobSetup* pSetupData, PrinterCapType nType ) = 0;
     virtual sal_uInt16              GetPaperBinCount( const ImplJobSetup* pSetupData ) = 0;
     virtual OUString                GetPaperBinName( const ImplJobSetup* pSetupData, sal_uInt16 nPaperBin ) = 0;
+    virtual sal_uInt16              GetPaperBinBySourceIndex(const ImplJobSetup* pSetupData,
+                                                             sal_uInt16 nPaperSource) = 0;
+    virtual sal_uInt16              GetSourceIndexByPaperBin(const ImplJobSetup* pSetupData,
+                                                             sal_uInt16 nPaperSource) = 0;
+
     // fills m_aPaperFormats and sets m_bPapersInit to true
     virtual void                    InitPaperFormats( const ImplJobSetup* pSetupData ) = 0;
     // returns angle that a landscape page will be turned counterclockwise wrt to portrait
@@ -119,7 +122,5 @@ public:
     virtual SalPrinterError         GetErrorCode() { return SalPrinterError::NONE; }
 
 };
-
-#endif // INCLUDED_VCL_INC_SALPRN_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

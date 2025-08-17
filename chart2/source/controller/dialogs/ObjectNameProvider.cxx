@@ -27,9 +27,7 @@
 #include <Axis.hxx>
 #include <AxisHelper.hxx>
 #include <ChartModel.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartType.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <DataSeries.hxx>
 #include <DataSeriesHelper.hxx>
@@ -40,13 +38,13 @@
 #include <RegressionCurveHelper.hxx>
 #include <BaseCoordinateSystem.hxx>
 #include <RegressionCurveModel.hxx>
+#include <RegressionCurveCalculator.hxx>
 #include <rtl/math.hxx>
 #include <rtl/ustring.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 #include <unotools/localedatawrapper.hxx>
 
-#include <com/sun/star/chart2/XTitle.hpp>
 #include <com/sun/star/chart2/MovingAverageType.hpp>
 #include <comphelper/diagnose_ex.hxx>
 #include <o3tl/string_view.hxx>
@@ -84,7 +82,7 @@ OUString lcl_getDataSeriesName( std::u16string_view rObjectCID, const rtl::Refer
 OUString lcl_getFullSeriesName( std::u16string_view rObjectCID, const rtl::Reference<::chart::ChartModel>& xChartModel )
 {
     OUString aRet(SchResId(STR_TIP_DATASERIES));
-    OUString aWildcard( "%SERIESNAME" );
+    OUString aWildcard( u"%SERIESNAME"_ustr );
     sal_Int32 nIndex = aRet.indexOf( aWildcard );
     if( nIndex != -1 )
         aRet = aRet.replaceAt( nIndex, aWildcard.getLength(), lcl_getDataSeriesName( rObjectCID, xChartModel ) );
@@ -134,7 +132,7 @@ OUString lcl_getDataPointValueText( const rtl::Reference< DataSeries >& xSeries,
             uno::Reference<beans::XPropertySet> xProp(xDataSequence, uno::UNO_QUERY );
             if( xProp.is())
             {
-                uno::Any aARole = xProp->getPropertyValue( "Role" );
+                uno::Any aARole = xProp->getPropertyValue( u"Role"_ustr );
                 OUString aRole;
                 aARole >>= aRole;
 
@@ -202,7 +200,7 @@ OUString lcl_getDataPointValueText( const rtl::Reference< DataSeries >& xSeries,
         aRet = aX;
     }
 
-    OUString aSeparator( " " );
+    OUString aSeparator( u" "_ustr );
 
     lcl_addText( aRet, aSeparator, aY );
     lcl_addText( aRet, aSeparator, aY_First );
@@ -256,6 +254,7 @@ OUString ObjectNameProvider::getName( ObjectType eObjectType, bool bPlural )
             }
                 break;
         case OBJECTTYPE_AXIS_UNITLABEL:
+        case OBJECTTYPE_DATA_LABEL:
                 aRet=SchResId(STR_OBJECT_LABEL);//@todo maybe a more concrete name
                 break;
         case OBJECTTYPE_GRID:
@@ -285,9 +284,6 @@ OUString ObjectNameProvider::getName( ObjectType eObjectType, bool bPlural )
                 break;
         case OBJECTTYPE_DATA_LABELS:
                 aRet=SchResId(STR_OBJECT_DATALABELS);
-                break;
-        case OBJECTTYPE_DATA_LABEL:
-                aRet=SchResId(STR_OBJECT_LABEL);
                 break;
         case OBJECTTYPE_DATA_ERRORS_X:
                 aRet=SchResId(STR_OBJECT_ERROR_BARS_X);
@@ -516,7 +512,7 @@ OUString ObjectNameProvider::getHelpText( std::u16string_view rObjectCID, const 
             sal_Int32 nPointIndex = o3tl::toInt32(ObjectIdentifier::getParticleID(rObjectCID));
 
             //replace data point index
-            OUString aWildcard(  "%POINTNUMBER" );
+            OUString aWildcard(  u"%POINTNUMBER"_ustr );
             sal_Int32 nIndex = aRet.indexOf( aWildcard );
             if( nIndex != -1 )
             {
@@ -572,29 +568,29 @@ OUString ObjectNameProvider::getHelpText( std::u16string_view rObjectCID, const 
                 {
                     try
                     {
-                        Reference< chart2::XRegressionCurveCalculator > xCalculator( xCurve->getCalculator(), uno::UNO_SET_THROW );
+                        rtl::Reference< RegressionCurveCalculator > xCalculator( xCurve->getCurveCalculator() );
                         sal_Int32 aDegree = 2;
                         sal_Int32 aPeriod = 2;
                         sal_Int32 aMovingType = css::chart2::MovingAverageType::Prior;
                         bool bForceIntercept = false;
                         double aInterceptValue = 0.0;
-                        OUString aXName ("x"), aYName ("f(x)");
+                        OUString aXName (u"x"_ustr), aYName (u"f(x)"_ustr);
                         const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
                         const OUString& aNumDecimalSep = rLocaleDataWrapper.getNumDecimalSep();
                         sal_Unicode cDecSeparator = aNumDecimalSep[0];
 
-                        xCurve->getPropertyValue( "PolynomialDegree") >>= aDegree;
-                        xCurve->getPropertyValue( "MovingAveragePeriod") >>= aPeriod;
-                        xCurve->getPropertyValue( "MovingAverageType") >>= aMovingType;
-                        xCurve->getPropertyValue( "ForceIntercept") >>= bForceIntercept;
+                        xCurve->getPropertyValue( u"PolynomialDegree"_ustr) >>= aDegree;
+                        xCurve->getPropertyValue( u"MovingAveragePeriod"_ustr) >>= aPeriod;
+                        xCurve->getPropertyValue( u"MovingAverageType"_ustr) >>= aMovingType;
+                        xCurve->getPropertyValue( u"ForceIntercept"_ustr) >>= bForceIntercept;
                         if (bForceIntercept)
-                                xCurve->getPropertyValue( "InterceptValue") >>= aInterceptValue;
+                                xCurve->getPropertyValue( u"InterceptValue"_ustr) >>= aInterceptValue;
                         uno::Reference< beans::XPropertySet > xEqProp( xCurve->getEquationProperties());
                         if( xEqProp.is())
                         {
-                            if ( !(xEqProp->getPropertyValue( "XName") >>= aXName) )
+                            if ( !(xEqProp->getPropertyValue( u"XName"_ustr) >>= aXName) )
                                 aXName = "x";
-                            if ( !(xEqProp->getPropertyValue( "YName") >>= aYName) )
+                            if ( !(xEqProp->getPropertyValue( u"YName"_ustr) >>= aYName) )
                                 aYName = "f(x)";
                         }
                         xCalculator->setRegressionProperties(aDegree, bForceIntercept, aInterceptValue, aPeriod, aMovingType);
@@ -609,7 +605,7 @@ OUString ObjectNameProvider::getHelpText( std::u16string_view rObjectCID, const 
                         else
                         {
                             // replace formula
-                            OUString aWildcard = "%FORMULA";
+                            OUString aWildcard = u"%FORMULA"_ustr;
                             sal_Int32 nIndex = aRet.indexOf( aWildcard );
                             if( nIndex != -1 )
                             {
@@ -670,14 +666,14 @@ OUString ObjectNameProvider::getHelpText( std::u16string_view rObjectCID, const 
                 {
                     try
                     {
-                        Reference< chart2::XRegressionCurveCalculator > xCalculator( xCurve->getCalculator(), uno::UNO_SET_THROW );
+                        rtl::Reference< RegressionCurveCalculator > xCalculator( xCurve->getCurveCalculator() );
                         RegressionCurveHelper::initializeCurveCalculator( xCalculator, xSeries, xChartModel );
 
                         const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
                         const OUString& aNumDecimalSep = rLocaleDataWrapper.getNumDecimalSep();
                         sal_Unicode cDecSeparator = aNumDecimalSep[0];
 
-                        OUString aWildcard( "%AVERAGE_VALUE" );
+                        OUString aWildcard( u"%AVERAGE_VALUE"_ustr );
                         sal_Int32 nIndex = aRet.indexOf( aWildcard );
                         // as the curve is constant, the value at any x-value is ok
                         if( nIndex != -1 )

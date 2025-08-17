@@ -18,7 +18,7 @@
  */
 
 #include <doceventnotifier.hxx>
-#include <scriptdocument.hxx>
+#include <basctl/scriptdocument.hxx>
 
 #include <com/sun/star/frame/theGlobalEventBroadcaster.hpp>
 
@@ -105,12 +105,7 @@ namespace basctl
 
     DocumentEventNotifier::Impl::~Impl ()
     {
-        std::unique_lock aGuard(m_aMutex);
-        if ( !impl_isDisposed_nothrow(aGuard) )
-        {
-            acquire();
-            dispose();
-        }
+        disposeOnDestruct();
     }
 
     void SAL_CALL DocumentEventNotifier::Impl::documentEventOccured( const DocumentEvent& _rEvent )
@@ -202,7 +197,7 @@ namespace basctl
                 xBroadcaster.set( m_xModel, UNO_QUERY_THROW );
             else
             {
-                Reference< css::uno::XComponentContext > aContext(
+                const Reference< css::uno::XComponentContext >& aContext(
                     comphelper::getProcessComponentContext() );
                 xBroadcaster = theGlobalEventBroadcaster::get(aContext);
             }

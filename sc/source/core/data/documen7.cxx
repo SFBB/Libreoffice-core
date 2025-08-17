@@ -137,7 +137,7 @@ void ScDocument::Broadcast( const ScHint& rHint )
 bool ScDocument::BroadcastHintInternal( const ScHint& rHint )
 {
     bool bIsBroadcasted = false;
-    const ScAddress address(rHint.GetStartAddress());
+    const ScAddress& address(rHint.GetStartAddress());
     SvtBroadcaster* pLastBC = nullptr;
     // Process all broadcasters for the given row range.
     for( SCROW nRow = 0; nRow < rHint.GetRowCount(); ++nRow )
@@ -281,7 +281,7 @@ void ScDocument::PutInFormulaTree( ScFormulaCell* pCell )
 void ScDocument::RemoveFromFormulaTree( ScFormulaCell* pCell )
 {
     ScMutationGuard aGuard(*this, ScMutationGuardFlags::CORE);
-    OSL_ENSURE( pCell, "RemoveFromFormulaTree: pCell Null" );
+    assert(pCell && "RemoveFromFormulaTree: pCell Null");
     ScFormulaCell* pPrev = pCell->GetPrevious();
     assert(pPrev != pCell);                 // pointing to itself?!?
     // if the cell is first or somewhere in chain
@@ -468,7 +468,7 @@ void ScDocument::AppendToFormulaTrack( ScFormulaCell* pCell )
 
 void ScDocument::RemoveFromFormulaTrack( ScFormulaCell* pCell )
 {
-    OSL_ENSURE( pCell, "RemoveFromFormulaTrack: pCell Null" );
+    assert(pCell && "RemoveFromFormulaTrack: pCell Null");
     ScFormulaCell* pPrev = pCell->GetPreviousTrack();
     assert(pPrev != pCell);                     // pointing to itself?!?
     // if the cell is first or somewhere in chain
@@ -593,7 +593,7 @@ void ScDocument::UpdateBroadcastAreas( UpdateRefMode eUpdateRefMode,
 {
     bool bExpandRefsOld = IsExpandRefs();
     if ( eUpdateRefMode == URM_INSDEL && (nDx > 0 || nDy > 0 || nDz > 0) )
-        SetExpandRefs( SC_MOD()->GetInputOptions().GetExpandRefs() );
+        SetExpandRefs(ScModule::get()->GetInputOptions().GetExpandRefs());
     if ( pBASM )
         pBASM->UpdateBroadcastAreas( eUpdateRefMode, rRange, nDx, nDy, nDz );
     SetExpandRefs( bExpandRefsOld );

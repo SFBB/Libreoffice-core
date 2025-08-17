@@ -50,8 +50,7 @@ public:
     virtual void SAL_CALL
     notifyEvent(const css::accessibility::AccessibleEventObject& aEvent) override;
 
-    //for name changed event
-    virtual void HandleNameChangedEvent(css::uno::Any name);
+    virtual void HandleNameChangedEvent();
 
     virtual void HandleChildChangedEvent(css::uno::Any oldValue, css::uno::Any newValue);
     virtual void HandleDescriptionChangedEvent();
@@ -73,7 +72,7 @@ public:
     //get the accessible parent's role
     virtual short GetParentRole();
 
-    void RemoveMeFromBroadcaster(bool isNotifyDestroy);
+    void RemoveMeFromBroadcaster();
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

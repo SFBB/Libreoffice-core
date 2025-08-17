@@ -37,6 +37,7 @@
 #include <tools/stream.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <o3tl/string_view.hxx>
+#include <officecfg/Office/Impress.hxx>
 
 #include <vcl/svapp.hxx>
 #include <unotools/ucbstreamhelper.hxx>
@@ -50,7 +51,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::animations;
 using namespace ::com::sun::star::presentation;
 
-using ::com::sun::star::io::XInputStream;
 using ::com::sun::star::lang::XMultiServiceFactory;
 using ::com::sun::star::container::XNameAccess;
 using ::com::sun::star::util::XCloneable;
@@ -70,7 +70,7 @@ static Reference< XNameAccess > getNodeAccess( const Reference< XMultiServiceFac
         }));
 
         xConfigAccess.set(
-            xConfigProvider->createInstanceWithArguments( "com.sun.star.configuration.ConfigurationAccess", aArgs ),
+            xConfigProvider->createInstanceWithArguments( u"com.sun.star.configuration.ConfigurationAccess"_ustr, aArgs ),
             UNO_QUERY);
     }
     catch (const Exception&)
@@ -96,7 +96,7 @@ void implImportLabels( const Reference< XMultiServiceFactory >& xConfigProvider,
                 if( xNameAccess.is() )
                 {
                     OUString aUIName;
-                    xNameAccess->getByName( "Label" ) >>= aUIName;
+                    xNameAccess->getByName( u"Label"_ustr ) >>= aUIName;
                     if( !aUIName.isEmpty() )
                     {
                         rStringMap[ rName ] = aUIName;
@@ -224,7 +224,7 @@ Reference< XAnimationNode > implImportEffects( const Reference< XMultiServiceFac
         aParserInput.aInputStream.set(new utl::OInputStreamWrapper(std::move(pIStm)));
 
         // get filter
-        Reference< xml::sax::XFastParser > xFilter( xServiceFactory->createInstance("com.sun.star.comp.Xmloff.AnimationsImport" ), UNO_QUERY_THROW );
+        Reference< xml::sax::XFastParser > xFilter( xServiceFactory->createInstance(u"com.sun.star.comp.Xmloff.AnimationsImport"_ustr ), UNO_QUERY_THROW );
 
         xFilter->parseStream( aParserInput );
 
@@ -243,7 +243,7 @@ void CustomAnimationPresets::importEffects()
 {
     try
     {
-        uno::Reference< uno::XComponentContext > xContext(
+        const uno::Reference< uno::XComponentContext >& xContext(
             comphelper::getProcessComponentContext() );
         Reference< XMultiServiceFactory > xServiceFactory(
             xContext->getServiceManager(), UNO_QUERY_THROW );
@@ -252,18 +252,9 @@ void CustomAnimationPresets::importEffects()
             configuration::theDefaultProvider::get( xContext );
 
         // read path to transition effects files from config
-        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
-        {
-            {"nodepath", uno::Any(OUString("/org.openoffice.Office.Impress/Misc"))}
-        }));
-        Reference<container::XNameAccess> xNameAccess(
-            xConfigProvider->createInstanceWithArguments(
-                "com.sun.star.configuration.ConfigurationAccess",
-                aArgs ), UNO_QUERY_THROW );
         uno::Sequence< OUString > aFiles;
-        xNameAccess->getByName( "EffectFiles" ) >>= aFiles;
-
-        for( const auto& rFile : std::as_const(aFiles) )
+        aFiles = officecfg::Office::Impress::Misc::EffectFiles::get();
+        for (const auto& rFile : aFiles)
         {
             OUString aURL = comphelper::getExpandedUri(xContext, rFile);
 
@@ -289,7 +280,7 @@ void CustomAnimationPresets::importEffects()
                     {
                         pDescriptor = std::make_shared<CustomAnimationPreset>( pEffect );
                         pDescriptor->maLabel = getUINameForPresetId( pEffect->getPresetId() );
-                        maEffectDescriptorMap[aPresetId] = pDescriptor;
+                        maEffectDescriptorMap[aPresetId] = std::move(pDescriptor);
                     }
 
                     ++aIter;
@@ -308,26 +299,26 @@ void CustomAnimationPresets::importResources()
     try
     {
         // Get service factory
-        Reference< XComponentContext > xContext( comphelper::getProcessComponentContext() );
+        const Reference< XComponentContext >& xContext( comphelper::getProcessComponentContext() );
 
         Reference< XMultiServiceFactory > xConfigProvider =
              configuration::theDefaultProvider::get( xContext );
 
-        implImportLabels( xConfigProvider, "/org.openoffice.Office.UI.Effects/UserInterface/Properties", maPropertyNameMap );
+        implImportLabels( xConfigProvider, u"/org.openoffice.Office.UI.Effects/UserInterface/Properties"_ustr, maPropertyNameMap );
 
-        implImportLabels( xConfigProvider, "/org.openoffice.Office.UI.Effects/UserInterface/Effects", maEffectNameMap );
+        implImportLabels( xConfigProvider, u"/org.openoffice.Office.UI.Effects/UserInterface/Effects"_ustr, maEffectNameMap );
 
         importEffects();
 
-        importPresets( xConfigProvider, "/org.openoffice.Office.UI.Effects/Presets/Entrance", maEntrancePresets );
+        importPresets( xConfigProvider, u"/org.openoffice.Office.UI.Effects/Presets/Entrance"_ustr, maEntrancePresets );
 
-        importPresets( xConfigProvider, "/org.openoffice.Office.UI.Effects/Presets/Emphasis", maEmphasisPresets );
+        importPresets( xConfigProvider, u"/org.openoffice.Office.UI.Effects/Presets/Emphasis"_ustr, maEmphasisPresets );
 
-        importPresets( xConfigProvider, "/org.openoffice.Office.UI.Effects/Presets/Exit", maExitPresets );
+        importPresets( xConfigProvider, u"/org.openoffice.Office.UI.Effects/Presets/Exit"_ustr, maExitPresets );
 
-        importPresets( xConfigProvider, "/org.openoffice.Office.UI.Effects/Presets/MotionPaths", maMotionPathsPresets );
+        importPresets( xConfigProvider, u"/org.openoffice.Office.UI.Effects/Presets/MotionPaths"_ustr, maMotionPathsPresets );
 
-        importPresets( xConfigProvider, "/org.openoffice.Office.UI.Effects/Presets/Misc", maMiscPresets );
+        importPresets( xConfigProvider, u"/org.openoffice.Office.UI.Effects/Presets/Misc"_ustr, maMiscPresets );
     }
     catch (const Exception&)
     {
@@ -337,7 +328,7 @@ void CustomAnimationPresets::importResources()
 
 void CustomAnimationPresets::importPresets( const Reference< XMultiServiceFactory >& xConfigProvider, const OUString& rNodePath, PresetCategoryList& rPresetMap  )
 {
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
     OUString aMissedPresetIds;
 #endif
 
@@ -353,24 +344,24 @@ void CustomAnimationPresets::importPresets( const Reference< XMultiServiceFactor
             {
                 xTypeAccess->getByName( rName ) >>= xCategoryAccess;
 
-                if( xCategoryAccess.is() && xCategoryAccess->hasByName( "Label" ) && xCategoryAccess->hasByName( "Effects" ) )
+                if( xCategoryAccess.is() && xCategoryAccess->hasByName( u"Label"_ustr ) && xCategoryAccess->hasByName( u"Effects"_ustr ) )
                 {
                     OUString aLabel;
-                    xCategoryAccess->getByName( "Label" ) >>= aLabel;
+                    xCategoryAccess->getByName( u"Label"_ustr ) >>= aLabel;
 
                     Sequence< OUString > aEffects;
-                    xCategoryAccess->getByName( "Effects" ) >>= aEffects;
+                    xCategoryAccess->getByName( u"Effects"_ustr ) >>= aEffects;
 
                     EffectDescriptorList aEffectsList;
 
-                    for( const OUString& rEffectName : std::as_const(aEffects) )
+                    for (const OUString& rEffectName : aEffects)
                     {
                         CustomAnimationPresetPtr pEffect = getEffectDescriptor( rEffectName );
                         if( pEffect )
                         {
-                            aEffectsList.push_back( pEffect );
+                            aEffectsList.push_back(std::move(pEffect));
                         }
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
                         else
                         {
                             aMissedPresetIds += OUString(rEffectName);
@@ -388,7 +379,7 @@ void CustomAnimationPresets::importPresets( const Reference< XMultiServiceFactor
         TOOLS_WARN_EXCEPTION( "sd", "sd::CustomAnimationPresets::importPresets()" );
     }
 
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
     SAL_WARN_IF(!aMissedPresetIds.isEmpty(), "sd", "sd::CustomAnimationPresets::importPresets(), invalid preset id: "
                     << aMissedPresetIds);
 #endif

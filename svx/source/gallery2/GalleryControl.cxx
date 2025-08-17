@@ -20,22 +20,18 @@
 #include <GalleryControl.hxx>
 
 #include <svx/gallery1.hxx>
-#include "galbrws1.hxx"
-#include <galbrws2.hxx>
+#include <galbrws1.hxx>
 
 namespace svx::sidebar {
 
 GalleryControl::GalleryControl(weld::Widget* pParent)
-    : PanelLayout(pParent, "GalleryPanel", "svx/ui/sidebargallery.ui")
+    : PanelLayout(pParent, u"GalleryPanel"_ustr, u"svx/ui/sidebargallery.ui"_ustr)
     , mpGallery(Gallery::GetGalleryInstance())
-    , mxBrowser1(new GalleryBrowser1(
+    , mpBrowser(new GalleryBrowser(
               *m_xBuilder,
-              mpGallery,
-              [this] ()
-                  { return mxBrowser2->SelectTheme(mxBrowser1->GetSelectedTheme()); }))
-    , mxBrowser2(new GalleryBrowser2(*m_xBuilder, mpGallery))
+              mpGallery))
 {
-    mxBrowser1->SelectTheme(0);
+    mpBrowser->SelectTheme(0);
 }
 
 GalleryControl::~GalleryControl()

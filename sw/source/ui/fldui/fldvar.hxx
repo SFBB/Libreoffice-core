@@ -35,7 +35,7 @@ class SwFieldVarPage : public SwFieldPage
     std::unique_ptr<weld::Label> m_xNameFT;
     std::unique_ptr<weld::Entry> m_xNameED;
     std::unique_ptr<weld::Label> m_xValueFT;
-    std::unique_ptr<ConditionEdit> m_xValueED;
+    std::unique_ptr<ConditionEdit<weld::TextView>> m_xValueED;
     std::unique_ptr<weld::Widget> m_xFormat;
     std::unique_ptr<SwNumFormatTreeView> m_xNumFormatLB;
     std::unique_ptr<weld::TreeView> m_xFormatLB;
@@ -56,6 +56,7 @@ class SwFieldVarPage : public SwFieldPage
     DECL_LINK( TypeHdl, weld::TreeView&, void );
     DECL_LINK( SubTypeListBoxHdl, weld::TreeView&, void );
     DECL_LINK( ModifyHdl, weld::Entry&, void );
+    DECL_LINK( ModifyValueHdl, weld::TextView&, void );
     DECL_LINK( TBClickHdl, weld::Button&, void );
     DECL_LINK( ChapterHdl, weld::ComboBox&, void );
     DECL_LINK( SeparatorHdl, weld::Entry&, void );

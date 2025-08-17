@@ -45,11 +45,9 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::style;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::document;
-using namespace ::com::sun::star::io;
 using namespace ::xmloff::token;
 
 namespace {
@@ -148,27 +146,27 @@ static void lcl_addFrameProperties(
         return;
 
     bool bIsAutoScroll = false, bIsScrollingMode = false;
-    Any aAny = xSet->getPropertyValue("FrameIsAutoScroll");
+    Any aAny = xSet->getPropertyValue(u"FrameIsAutoScroll"_ustr);
     aAny >>= bIsAutoScroll;
     if ( !bIsAutoScroll )
     {
-        aAny = xSet->getPropertyValue("FrameIsScrollingMode");
+        aAny = xSet->getPropertyValue(u"FrameIsScrollingMode"_ustr);
         aAny >>= bIsScrollingMode;
     }
 
     bool bIsBorderSet = false, bIsAutoBorder = false;
-    aAny = xSet->getPropertyValue("FrameIsAutoBorder");
+    aAny = xSet->getPropertyValue(u"FrameIsAutoBorder"_ustr);
     aAny >>= bIsAutoBorder;
     if ( !bIsAutoBorder )
     {
-        aAny = xSet->getPropertyValue("FrameIsBorder");
+        aAny = xSet->getPropertyValue(u"FrameIsBorder"_ustr);
         aAny >>= bIsBorderSet;
     }
 
     sal_Int32 nWidth, nHeight;
-    aAny = xSet->getPropertyValue("FrameMarginWidth");
+    aAny = xSet->getPropertyValue(u"FrameMarginWidth"_ustr);
     aAny >>= nWidth;
-    aAny = xSet->getPropertyValue("FrameMarginHeight");
+    aAny = xSet->getPropertyValue(u"FrameMarginHeight"_ustr);
     aAny >>= nHeight;
 
     if( !bIsAutoScroll )
@@ -317,7 +315,7 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
         }
         if( SV_EMBEDDED_OWN == nType && !pOLENd->GetChartTableName().isEmpty() )
         {
-            OUString sRange( pOLENd->GetChartTableName() );
+            OUString sRange( pOLENd->GetChartTableName().toString() );
             OUStringBuffer aBuffer( sRange.getLength() + 2 );
             for( sal_Int32 i=0; i < sRange.getLength(); i++ )
             {
@@ -359,27 +357,27 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
             {
                 uno::Reference < beans::XPropertySet > xSet( rObjRef->getComponent(), uno::UNO_QUERY );
                 OUString aStr;
-                Any aAny2 = xSet->getPropertyValue("AppletCodeBase");
+                Any aAny2 = xSet->getPropertyValue(u"AppletCodeBase"_ustr);
                 aAny2 >>= aStr;
                 if (!aStr.isEmpty() )
                     lcl_addURL(rXMLExport, aStr);
 
-                aAny2 = xSet->getPropertyValue("AppletName");
+                aAny2 = xSet->getPropertyValue(u"AppletName"_ustr);
                 aAny2 >>= aStr;
                 if (!aStr.isEmpty())
                     rXMLExport.AddAttribute( XML_NAMESPACE_DRAW, XML_APPLET_NAME, aStr );
 
-                aAny2 = xSet->getPropertyValue("AppletCode");
+                aAny2 = xSet->getPropertyValue(u"AppletCode"_ustr);
                 aAny2 >>= aStr;
                 rXMLExport.AddAttribute( XML_NAMESPACE_DRAW, XML_CODE, aStr );
 
                 bool bScript = false;
-                aAny2 = xSet->getPropertyValue("AppletIsScript");
+                aAny2 = xSet->getPropertyValue(u"AppletIsScript"_ustr);
                 aAny2 >>= bScript;
                 rXMLExport.AddAttribute( XML_NAMESPACE_DRAW, XML_MAY_SCRIPT, bScript ? XML_TRUE : XML_FALSE );
 
                 uno::Sequence < beans::PropertyValue > aProps;
-                aAny2 = xSet->getPropertyValue("AppletCommands");
+                aAny2 = xSet->getPropertyValue(u"AppletCommands"_ustr);
                 aAny2 >>= aProps;
 
                 sal_Int32 i = aProps.getLength();
@@ -406,11 +404,11 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
             {
                 uno::Reference < beans::XPropertySet > xSet( rObjRef->getComponent(), uno::UNO_QUERY );
                 OUString aStr;
-                Any aAny2 = xSet->getPropertyValue("PluginURL");
+                Any aAny2 = xSet->getPropertyValue(u"PluginURL"_ustr);
                 aAny2 >>= aStr;
                 lcl_addURL( rXMLExport, aStr );
 
-                aAny2 = xSet->getPropertyValue("PluginMimeType");
+                aAny2 = xSet->getPropertyValue(u"PluginMimeType"_ustr);
                 aAny2 >>= aStr;
                 if (!aStr.isEmpty())
                     rXMLExport.AddAttribute( XML_NAMESPACE_DRAW, XML_MIME_TYPE, aStr );
@@ -425,12 +423,12 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
             {
                 uno::Reference < beans::XPropertySet > xSet( rObjRef->getComponent(), uno::UNO_QUERY );
                 OUString aStr;
-                Any aAny2 = xSet->getPropertyValue("FrameURL");
+                Any aAny2 = xSet->getPropertyValue(u"FrameURL"_ustr);
                 aAny2 >>= aStr;
 
                 lcl_addURL( rXMLExport, aStr );
 
-                aAny2 = xSet->getPropertyValue("FrameName");
+                aAny2 = xSet->getPropertyValue(u"FrameName"_ustr);
                 aAny2 >>= aStr;
 
                 if (!aStr.isEmpty())
@@ -474,7 +472,7 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
                 {
                     uno::Reference < beans::XPropertySet > xSet( rObjRef->getComponent(), uno::UNO_QUERY );
                     uno::Sequence < beans::PropertyValue > aProps;
-                    aAny = xSet->getPropertyValue("AppletCommands");
+                    aAny = xSet->getPropertyValue(u"AppletCommands"_ustr);
                     aAny >>= aProps;
 
                     sal_Int32 i = aProps.getLength();
@@ -500,7 +498,7 @@ void SwXMLTextParagraphExport::_exportTextEmbedded(
                 {
                     uno::Reference < beans::XPropertySet > xSet( rObjRef->getComponent(), uno::UNO_QUERY );
                     uno::Sequence < beans::PropertyValue > aProps;
-                    aAny = xSet->getPropertyValue("PluginCommands");
+                    aAny = xSet->getPropertyValue(u"PluginCommands"_ustr);
                     aAny >>= aProps;
 
                     sal_Int32 i = aProps.getLength();

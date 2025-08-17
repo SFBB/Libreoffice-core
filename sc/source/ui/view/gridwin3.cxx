@@ -31,15 +31,40 @@
 #include <output.hxx>
 #include <drawview.hxx>
 #include <fupoor.hxx>
+#include <fusel.hxx>
+#include <scmod.hxx>
+#include <appoptio.hxx>
 
 #include <drawutil.hxx>
 #include <document.hxx>
 #include <comphelper/lok.hxx>
 
+static bool lcl_HasSelectionChanged(const SdrMarkList & rBeforeList, const SdrMarkList & rAfterList)
+{
+    if (rBeforeList.GetMarkCount() != rAfterList.GetMarkCount())
+        return true;
+    for (size_t nObject = 0; nObject < rBeforeList.GetMarkCount(); ++nObject)
+    {
+        if (rBeforeList.GetMark(nObject)->GetMarkedSdrObj() !=
+            rAfterList.GetMark(nObject)->GetMarkedSdrObj())
+            return true;
+    }
+    return false;
+}
+
+static bool lcl_PosUnchanged(const tools::Rectangle& rSelectionRect, const Point& rDrawSelectionPos)
+{
+    return rDrawSelectionPos.X() == rSelectionRect.Left() &&
+        rDrawSelectionPos.Y() == rSelectionRect.Top();
+}
+
 bool ScGridWindow::DrawMouseButtonDown(const MouseEvent& rMEvt)
 {
     bool bRet = false;
     FuPoor* pDraw = mrViewData.GetView()->GetDrawFuncPtr();
+    if (pDraw)
+        pDraw->ResetSelectionHasChanged();
+    ScDrawView* pDrView = mrViewData.GetScDrawView();
     if (pDraw && !mrViewData.IsRefMode())
     {
         MapMode aDrawMode = GetDrawMapMode();
@@ -49,6 +74,15 @@ bool ScGridWindow::DrawMouseButtonDown(const MouseEvent& rMEvt)
 
         pDraw->SetWindow( this );
         Point aLogicPos = PixelToLogic(rMEvt.GetPosPixel());
+        SdrMarkList aPreMarkList = pDrView->GetMarkedObjectList();
+        if(!aPreMarkList.GetMarkCount())
+            aDrawSelectionPos = Point(0,0);
+        else
+        {
+            tools::Rectangle aRect = pDrView->GetAllMarkedRect();
+            aDrawSelectionPos = Point(aRect.Left(), aRect.Top());
+        }
+
         if ( pDraw->IsDetectiveHit( aLogicPos ) )
         {
             // nothing on detective arrows (double click is evaluated on ButtonUp)
@@ -57,8 +91,12 @@ bool ScGridWindow::DrawMouseButtonDown(const MouseEvent& rMEvt)
         else
         {
             bRet = pDraw->MouseButtonDown( rMEvt );
-            if ( bRet )
+            if (bRet)
+            {
+                if (lcl_HasSelectionChanged(aPreMarkList, pDrView->GetMarkedObjectList()))
+                    pDraw->SetSelectionHasChanged();
                 UpdateStatusPosSize();
+            }
         }
 
         if ( comphelper::LibreOfficeKit::isActive() && aOldMode != aDrawMode )
@@ -66,7 +104,6 @@ bool ScGridWindow::DrawMouseButtonDown(const MouseEvent& rMEvt)
     }
 
     // cancel draw with right key
-    ScDrawView* pDrView = mrViewData.GetScDrawView();
     if ( pDrView && !rMEvt.IsLeft() && !bRet )
     {
         pDrView->BrkAction();
@@ -79,12 +116,13 @@ bool ScGridWindow::DrawMouseButtonUp(const MouseEvent& rMEvt)
 {
     ScViewFunc* pView = mrViewData.GetView();
     bool bRet = false;
+    bool bLOKitActive = comphelper::LibreOfficeKit::isActive();
     FuPoor* pDraw = pView->GetDrawFuncPtr();
     if (pDraw && !mrViewData.IsRefMode())
     {
         MapMode aDrawMode = GetDrawMapMode();
         MapMode aOldMode = GetMapMode();
-        if ( comphelper::LibreOfficeKit::isActive() && aOldMode != aDrawMode )
+        if ( bLOKitActive && aOldMode != aDrawMode )
             SetMapMode( aDrawMode );
 
         pDraw->SetWindow( this );
@@ -92,9 +130,9 @@ bool ScGridWindow::DrawMouseButtonUp(const MouseEvent& rMEvt)
 
         // execute "format paint brush" for drawing objects
         SfxItemSet* pDrawBrush = pView->GetDrawBrushSet();
+        ScDrawView* pDrView = mrViewData.GetScDrawView();
         if ( pDrawBrush )
         {
-            ScDrawView* pDrView = mrViewData.GetScDrawView();
             if ( pDrView )
             {
                 pDrView->SetAttrToMarked(*pDrawBrush, true/*bReplaceAll*/);
@@ -103,8 +141,18 @@ bool ScGridWindow::DrawMouseButtonUp(const MouseEvent& rMEvt)
             if ( !pView->IsPaintBrushLocked() )
                 pView->ResetBrushDocument(); // end paint brush mode if not locked
         }
+        else if (!bLOKitActive && pDrView->GetMarkedObjectList().GetMarkCount() > 0
+                 && rMEvt.IsLeft()
+                 && rMEvt.GetClicks() == 1
+            && ScModule::get()->GetAppOptions().IsClickChangeRotation()
+            && !pDraw->HasSelectionChanged()
+            && dynamic_cast<FuSelection*>(pDraw)
+            && lcl_PosUnchanged(pDrView->GetAllMarkedRect(), aDrawSelectionPos))
+        {
+            mrViewData.GetView()->SwitchRotateMode();
+        }
 
-        if ( comphelper::LibreOfficeKit::isActive() && aOldMode != aDrawMode )
+        if ( bLOKitActive && aOldMode != aDrawMode )
             SetMapMode( aOldMode );
     }
 
@@ -180,12 +228,13 @@ bool ScGridWindow::DrawKeyInput(const KeyEvent& rKEvt, vcl::Window* pWin)
     if (pDrView && pDraw && !mrViewData.IsRefMode())
     {
         pDraw->SetWindow( this );
-        bool bOldMarked = pDrView->AreObjectsMarked();
+        const SdrMarkList& rMarkList = pDrView->GetMarkedObjectList();
+        bool bOldMarked = rMarkList.GetMarkCount() != 0;
         if (pDraw->KeyInput( rKEvt ))
         {
             bool bLeaveDraw = false;
             bool bUsed = true;
-            bool bNewMarked = pDrView->AreObjectsMarked();
+            bool bNewMarked = rMarkList.GetMarkCount() != 0;
             if ( !mrViewData.GetView()->IsDrawSelMode() )
                 if ( !bNewMarked )
                 {
@@ -211,9 +260,9 @@ void ScGridWindow::DrawRedraw( ScOutputData& rOutputData, SdrLayerID nLayer )
     const ScViewOptions& rOpts = mrViewData.GetOptions();
 
     // use new flags at SdrPaintView for hiding objects
-    const bool bDrawOle(VOBJ_MODE_SHOW == rOpts.GetObjMode(VOBJ_TYPE_OLE));
-    const bool bDrawChart(VOBJ_MODE_SHOW == rOpts.GetObjMode(VOBJ_TYPE_CHART));
-    const bool bDrawDraw(VOBJ_MODE_SHOW == rOpts.GetObjMode(VOBJ_TYPE_DRAW));
+    const bool bDrawOle(VOBJ_MODE_SHOW == rOpts.GetObjMode(sc::ViewObjectType::OLE));
+    const bool bDrawChart(VOBJ_MODE_SHOW == rOpts.GetObjMode(sc::ViewObjectType::CHART));
+    const bool bDrawDraw(VOBJ_MODE_SHOW == rOpts.GetObjMode(sc::ViewObjectType::DRAW));
 
     if(!(bDrawOle || bDrawChart || bDrawDraw))
         return;
@@ -320,7 +369,7 @@ void ScGridWindow::CreateAnchorHandle(SdrHdlList& rHdl, const ScAddress& rAddres
     if (pDrView)
     {
         const ScViewOptions& rOpts = mrViewData.GetOptions();
-        if(rOpts.GetOption( VOPT_ANCHOR ))
+        if(rOpts.GetOption(sc::ViewOption::ANCHOR))
         {
             bool bNegativePage = mrViewData.GetDocument().IsNegativePage( mrViewData.GetTabNo() );
             Point aPos = mrViewData.GetScrPos( rAddress.Col(), rAddress.Row(), eWhich, true );
@@ -363,7 +412,8 @@ void ScGridWindow::UpdateStatusPosSize()
     }
     if ( !bActionItem )
     {
-        if ( pDrView->AreObjectsMarked() ) // selected objects
+        const SdrMarkList& rMarkList = pDrView->GetMarkedObjectList();
+        if ( rMarkList.GetMarkCount() != 0 ) // selected objects
         {
             tools::Rectangle aRect = pDrView->GetAllMarkedRect();
             pPV->LogicToPagePos(aRect);
@@ -386,7 +436,7 @@ void ScGridWindow::UpdateStatusPosSize()
 bool ScGridWindow::DrawHasMarkedObj()
 {
     ScDrawView* p = mrViewData.GetScDrawView();
-    return p && p->AreObjectsMarked();
+    return p && p->GetMarkedObjectList().GetMarkCount() != 0;
 }
 
 void ScGridWindow::DrawMarkDropObj( SdrObject* pObj )

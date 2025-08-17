@@ -23,8 +23,6 @@
 #include "layfrm.hxx"
 
 class SwTableBox;
-struct SwCursorMoveState;
-class SwBorderAttrs;
 
 /// SwCellFrame is one table cell in the document layout.
 class SW_DLLPUBLIC SwCellFrame final : public SwLayoutFrame
@@ -42,7 +40,7 @@ public:
     SwCellFrame( const SwTableBox &, SwFrame*, bool bInsertContent );
 
     virtual bool GetModelPositionForViewPoint( SwPosition *, Point&, SwCursorMoveState* = nullptr, bool bTestBackground = false ) const override;
-    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const& ) const override;
+    virtual void PaintSwFrame( vcl::RenderContext& rRenderContext, SwRect const&, PaintFrameMode mode = PAINT_ALL ) const override;
     virtual void CheckDirection( bool bVert ) override;
 
     // #i103961#

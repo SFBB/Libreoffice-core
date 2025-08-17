@@ -28,6 +28,7 @@
 #include <svx/swframetypes.hxx>
 #include <sfx2/zoomitem.hxx>
 #include "swdllapi.h"
+#include "swtypes.hxx"
 
 class SwRect;
 class OutputDevice;
@@ -64,10 +65,20 @@ struct ViewOptFlags1
     bool bTreatSubOutlineLevelsAsContent : 1;
     bool bShowInlineTooltips : 1; //tooltips on tracked changes
     bool bViewMetachars : 1;
+
+    /// Track changes: recording is on
+    bool bRedlineRecordingOn : 1;
+
     bool bPageback : 1;
     bool bShowOutlineContentVisibilityButton : 1;
     bool bShowChangesInMargin : 1; //tracked deletions in margin
     bool bShowChangesInMargin2 : 1; //tracked insertions in margin
+    bool bTextBoundaries : 1;   // text boundaries
+    bool bTextBoundariesFull : 1;   // true = frame around text, false = crop marks at edges
+    bool bSectionBoundaries : 1;   // section boundaries
+    bool bTableBoundaries : 1;   // table boundaries
+    bool bShowBoundaries : 1;   // show all boundaries
+    bool bClickChangeRotation : 1; // change with single click into rotate mode
 
     ViewOptFlags1()
         : bUseHeaderFooterMenu(false)
@@ -97,10 +108,17 @@ struct ViewOptFlags1
         , bTreatSubOutlineLevelsAsContent(false)
         , bShowInlineTooltips(false)
         , bViewMetachars(false)
+        , bRedlineRecordingOn(false)
         , bPageback(true)
         , bShowOutlineContentVisibilityButton(false)
         , bShowChangesInMargin(false)
         , bShowChangesInMargin2(false)
+        , bTextBoundaries(true)
+        , bTextBoundariesFull(false)
+        , bSectionBoundaries(true)
+        , bTableBoundaries(true)
+        , bShowBoundaries(true)
+        , bClickChangeRotation(false)
     {}
 
     bool operator==(const ViewOptFlags1& rOther) const
@@ -132,11 +150,20 @@ struct ViewOptFlags1
             && bTreatSubOutlineLevelsAsContent == rOther.bTreatSubOutlineLevelsAsContent
             && bShowInlineTooltips == rOther.bShowInlineTooltips
             && bViewMetachars == rOther.bViewMetachars
+            && bRedlineRecordingOn == rOther.bRedlineRecordingOn
             && bPageback == rOther.bPageback
             && bShowOutlineContentVisibilityButton == rOther.bShowOutlineContentVisibilityButton
             && bShowChangesInMargin == rOther.bShowChangesInMargin
-            && bShowChangesInMargin2 == rOther.bShowChangesInMargin2;
+            && bShowChangesInMargin2 == rOther.bShowChangesInMargin2
+            && bTextBoundaries == rOther.bTextBoundaries
+            && bTextBoundariesFull == rOther.bTextBoundariesFull
+            && bSectionBoundaries == rOther.bSectionBoundaries
+            && bTableBoundaries == rOther.bTableBoundaries
+            && bShowBoundaries == rOther.bShowBoundaries
+            && bClickChangeRotation == rOther.bClickChangeRotation;
     }
+
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
 };
 
 enum class ViewOptCoreFlags2 {
@@ -179,15 +206,11 @@ namespace o3tl {
 // Appearance flags.
 enum class ViewOptFlags {
     NONE               = 0x0000,
-    DocBoundaries      = 0x0001,
-    ObjectBoundaries   = 0x0002,
-    TableBoundaries    = 0x0004,
-    IndexShadings      = 0x0008,
-    Links              = 0x0010,
-    VisitedLinks       = 0x0020,
-    FieldShadings      = 0x0040,
-    SectionBoundaries  = 0x0080,
-    Shadow             = 0x0100,
+    IndexShadings      = 0x0001,
+    Links              = 0x0002,
+    VisitedLinks       = 0x0004,
+    FieldShadings      = 0x0008,
+    Shadow             = 0x0010,
 };
 namespace o3tl {
     template<> struct typed_flags<ViewOptFlags> : is_typed_flags<ViewOptFlags, 0x01ff> {};
@@ -201,7 +224,6 @@ struct SwViewColors
     {
         return m_aDocColor == rOther.m_aDocColor
             && m_aDocBoundColor == rOther.m_aDocBoundColor
-            && m_aObjectBoundColor == rOther.m_aObjectBoundColor
             && m_aAppBackgroundColor == rOther.m_aAppBackgroundColor
             && m_aTableBoundColor == rOther.m_aTableBoundColor
             && m_aFontColor == rOther.m_aFontColor
@@ -215,6 +237,7 @@ struct SwViewColors
             && m_aFieldShadingsColor == rOther.m_aFieldShadingsColor
             && m_aSectionBoundColor == rOther.m_aSectionBoundColor
             && m_aPageBreakColor == rOther.m_aPageBreakColor
+            && m_aNonPrintingCharacterColor == rOther.m_aNonPrintingCharacterColor
             && m_aScriptIndicatorColor == rOther.m_aScriptIndicatorColor
             && m_aShadowColor == rOther.m_aShadowColor
             && m_aHeaderFooterMarkColor == rOther.m_aHeaderFooterMarkColor
@@ -222,7 +245,6 @@ struct SwViewColors
     }
     Color m_aDocColor;  // color of document boundaries
     Color m_aDocBoundColor;  // color of document boundaries
-    Color m_aObjectBoundColor; // color of object boundaries
     Color m_aAppBackgroundColor; // application background
     Color m_aTableBoundColor; // color of table boundaries
     Color m_aFontColor;
@@ -236,53 +258,53 @@ struct SwViewColors
     Color m_aFieldShadingsColor;
     Color m_aSectionBoundColor;
     Color m_aPageBreakColor;
+    Color m_aNonPrintingCharacterColor;
     Color m_aScriptIndicatorColor;
     Color m_aShadowColor;
     Color m_aHeaderFooterMarkColor;
     ViewOptFlags m_nAppearanceFlags;
 };
 
-class SW_DLLPUBLIC SwViewOption
+class SwViewOption
 {
     SwViewColors m_aColorConfig;
     static SwViewColors s_aInitialColorConfig;
     OUString m_sThemeName;
 
-    static sal_uInt16   s_nPixelTwips;// 1 Pixel == ? Twips
-
-    OUString        m_sSymbolFont;        // Symbolfont.
-    ViewOptFlags1   m_nCoreOptions;       // Bits for SwViewShell.
-    ViewOptCoreFlags2 m_nCore2Options;    // Bits for SwViewShell.
-    ViewOptFlags2   m_nUIOptions;         // UI-Bits
-    Color           m_aRetouchColor;      // DefaultBackground for BrowseView
-    Size            m_aSnapSize;          // Describes horizontal and vertical snap.
-    sal_uInt16      mnViewLayoutColumns;  // # columns for edit view
-    short           m_nDivisionX;         // Grid division.
-    short           m_nDivisionY;
-    sal_uInt8       m_nPagePreviewRow;       // Page Preview Row/Columns.
-    sal_uInt8       m_nPagePreviewCol;       // Page Preview Row/Columns.
-    SwFillMode      m_nShadowCursorFillMode;  // FillMode for ShadowCursor.
-    bool            m_bReadonly : 1;      // Readonly-Doc.
-    bool            m_bStarOneSetting : 1;// Prevent from UI automatics (no scrollbars in readonly documents).
-    bool            m_bIsPagePreview : 1; // The preview mustn't print field/footnote/... shadings.
-    bool            m_bSelectionInReadonly : 1; // Determines whether selection is switched on in readonly documents.
-    bool            mbFormView : 1;
-    bool            mbBrowseMode : 1;
-    bool            mbBookView : 1;      // View mode for page preview.
-    bool            mbViewLayoutBookMode : 1; // Book view mode for edit view.
-    bool            mbHideWhitespaceMode : 1; // Hide header, footer, and pagebreak.
-    bool            m_bShowPlaceHolderFields : 1; // Only used in printing!
-    mutable bool    m_bIdle;
-    sal_Int32       m_nDefaultAnchor;     // GetDefaultAnchorType() to convert int to RndStdIds
+    OUString          m_sSymbolFont;                // Symbolfont.
+    ViewOptFlags1     m_nCoreOptions;               // Bits for SwViewShell.
+    ViewOptCoreFlags2 m_nCore2Options;              // Bits for SwViewShell.
+    ViewOptFlags2     m_nUIOptions;                 // UI-Bits
+    Color             m_aRetouchColor;              // DefaultBackground for BrowseView
+    Size              m_aSnapSize;                  // Describes horizontal and vertical snap.
+    sal_uInt16        mnViewLayoutColumns;          // # columns for edit view
+    short             m_nDivisionX;                 // Grid division.
+    short             m_nDivisionY;
+    sal_uInt8         m_nPagePreviewRow;            // Page Preview Row/Columns.
+    sal_uInt8         m_nPagePreviewCol;            // Page Preview Row/Columns.
+    SwFillMode        m_nShadowCursorFillMode;      // FillMode for ShadowCursor.
+    bool              m_bReadonly : 1;              // Readonly-Doc.
+    bool              m_bStarOneSetting : 1;        // Prevent from UI automatics (no scrollbars in readonly documents).
+    bool              m_bIsPagePreview : 1;         // The preview mustn't print field/footnote/... shadings.
+    bool              m_bSelectionInReadonly : 1;   // Determines whether selection is switched on in readonly documents.
+    bool              mbFormView : 1;
+    bool              mbBrowseMode : 1;
+    bool              mbBookView : 1;               // View mode for page preview.
+    bool              mbViewLayoutBookMode : 1;     // Book view mode for edit view.
+    bool              mbHideWhitespaceMode : 1;     // Hide header, footer, and pagebreak.
+    bool              m_bShowPlaceHolderFields : 1; // Only used in printing!
+    bool              m_bEncloseWithCharactersOn : 1;
+    mutable bool      m_bIdle;
+    sal_Int32         m_nDefaultAnchor;             // GetDefaultAnchorType() to convert int to RndStdIds
     // tdf#135266 - tox dialog: remember last used entry level depending on the index type
-    sal_uInt8 m_nTocEntryLvl;
-    sal_uInt8 m_nIdxEntryLvl;
+    sal_uInt8         m_nTocEntryLvl;
+    sal_uInt8         m_nIdxEntryLvl;
 
     // Scale
-    sal_uInt16          m_nZoom;          // In percent.
-    SvxZoomType     m_eZoom;              // 'enum' for zoom.
+    sal_uInt16        m_nZoom;                     // In percent.
+    SvxZoomType       m_eZoom;                     // 'enum' for zoom.
 
-    sal_uInt8            m_nTableDestination;      // Destination for table background.
+    sal_uInt8         m_nTableDestination;         // Destination for table background.
 
 #ifdef DBG_UTIL
     // Corresponds to statements in ui/config/cfgvw.src.
@@ -298,11 +320,9 @@ class SW_DLLPUBLIC SwViewOption
 #endif
 
 public:
-            SwViewOption();                     // CTOR
-            SwViewOption(const SwViewOption&);
-            ~SwViewOption();
-
-    static void Init(const OutputDevice* pWin);        // Initializing of static data.
+    SW_DLLPUBLIC SwViewOption();                     // CTOR
+    SW_DLLPUBLIC SwViewOption(const SwViewOption&);
+    SW_DLLPUBLIC ~SwViewOption();
 
     inline void     SetUIOptions( const SwViewOption& );
 
@@ -321,7 +341,7 @@ public:
         m_sThemeName = rThemeName;
     }
 
-    OUString GetThemeName() const
+    const OUString & GetThemeName() const
     {
         return m_sThemeName;
     }
@@ -443,7 +463,7 @@ public:
 
     void PaintPostIts( OutputDevice *pOut, const SwRect &rRect,
                               bool bIsScript ) const;
-    static sal_uInt16 GetPostItsWidth( const OutputDevice *pOut );
+    static SwTwips GetPostItsWidth(const OutputDevice* pOut);
 
     //show/hide tooltips on tracked changes
     bool IsShowInlineTooltips() const
@@ -479,7 +499,7 @@ public:
     { m_nCoreOptions.bUseHeaderFooterMenu = b; }
 
     //show/hide outline content visibility button
-    bool IsShowOutlineContentVisibilityButton() const;
+    SW_DLLPUBLIC bool IsShowOutlineContentVisibilityButton() const;
     void SetShowOutlineContentVisibilityButton(bool b)
     { m_nCoreOptions.bShowOutlineContentVisibilityButton = b; }
 
@@ -487,7 +507,10 @@ public:
     void SetTreatSubOutlineLevelsAsContent(bool b)
     { m_nCoreOptions.bTreatSubOutlineLevelsAsContent = b; }
 
-    bool IsShowHiddenChar(bool bHard = false) const;
+    bool IsShowHiddenChar(bool bHard = false) const
+    { return !m_bReadonly && m_nCoreOptions.bCharHidden &&
+                            (m_nCoreOptions.bViewMetachars || bHard); }
+
     void SetShowHiddenChar( bool b )
     { m_nCoreOptions.bCharHidden = b; }
 
@@ -536,7 +559,7 @@ public:
 
     bool IsOnlineSpell() const
     {
-        return !m_bReadonly && m_nCoreOptions.bOnlineSpell;
+        return m_nCoreOptions.bOnlineSpell;
     }
     void SetOnlineSpell( bool b )
     {
@@ -547,6 +570,10 @@ public:
     { return !m_bReadonly && m_nCoreOptions.bViewMetachars; }
     void SetViewMetaChars( bool b)
     { m_nCoreOptions.bViewMetachars = b; }
+
+    bool IsRedlineRecordingOn() const { return m_nCoreOptions.bRedlineRecordingOn; }
+
+    void SetRedlineRecordingOn(bool b) { m_nCoreOptions.bRedlineRecordingOn = b; }
 
     bool IsSynchronize() const
     {  return m_nCoreOptions.bSynchronize; }
@@ -652,6 +679,24 @@ public:
     bool   IsWhitespaceHidden() const { return IsHideWhitespaceMode() && !IsMultipageView(); }
     bool   IsMultipageView() const { return IsViewLayoutBookMode() ||
                                             GetViewLayoutColumns() == 0; }
+
+    bool IsTextBoundaries() const { return m_nCoreOptions.bTextBoundaries; }
+    void SetTextBoundaries( bool b) { m_nCoreOptions.bTextBoundaries = b; }
+
+    bool IsTextBoundariesFull() const { return m_nCoreOptions.bTextBoundariesFull; }
+    void SetTextBoundariesFull( bool b) { m_nCoreOptions.bTextBoundariesFull = b; }
+
+    bool IsSectionBoundaries() const { return m_nCoreOptions.bSectionBoundaries; }
+    void SetSectionBoundaries( bool b) { m_nCoreOptions.bSectionBoundaries = b; }
+
+    bool IsTableBoundaries() const { return m_nCoreOptions.bTableBoundaries; }
+    void SetTableBoundaries( bool b) { m_nCoreOptions.bTableBoundaries = b; }
+
+    bool IsShowBoundaries() const { return m_nCoreOptions.bShowBoundaries; }
+    void SetShowBoundaries( bool b ) { m_nCoreOptions.bShowBoundaries = b; }
+
+    bool IsClickChangeRotation() const { return m_nCoreOptions.bClickChangeRotation; }
+    void SetClickChangeRotation( bool b ) { m_nCoreOptions.bClickChangeRotation = b; }
 
 #ifdef DBG_UTIL
     // Correspond to statements in ui/config/cfgvw.src.
@@ -787,6 +832,25 @@ public:
     void   SetShadowCursor(bool b)
         { SetUIOption(b, ViewOptFlags2::ShadowCursor); }
 
+    // Enclose with characters autocomplete, switch on/off
+    bool IsEncloseWithCharactersOn() const { return m_bEncloseWithCharactersOn; }
+    void SetEncloseWithCharactersOn(bool b) { m_bEncloseWithCharactersOn = b; }
+
+    static bool IsEncloseWithCharactersTrigger(sal_Unicode cChar)
+    {
+        switch (cChar)
+        {
+            case '(':  [[fallthrough]];
+            case '{':  [[fallthrough]];
+            case '[':  [[fallthrough]];
+            case '\'': [[fallthrough]];
+            case '\"':
+                return true;
+            default:
+                return false;
+        }
+    }
+
     //move vertical ruler to the right
     bool    IsVRulerRight()    const
         { return bool(m_nUIOptions & ViewOptFlags2::VRulerRight); }
@@ -805,10 +869,9 @@ public:
     bool        IsShowPlaceHolderFields() const { return m_bShowPlaceHolderFields; }
     void            SetShowPlaceHolderFields(bool bSet) { m_bShowPlaceHolderFields = bSet; }
 
-    const Color& GetDocColor() const;
-    const Color& GetDocBoundariesColor() const;
+    SW_DLLPUBLIC const Color& GetDocColor() const;
+    SW_DLLPUBLIC const Color& GetDocBoundariesColor() const;
     const Color& GetAppBackgroundColor() const;
-    const Color& GetObjectBoundariesColor() const;
     const Color& GetTableBoundariesColor() const;
     const Color& GetIndexShadingsColor() const;
     const Color& GetLinksColor() const;
@@ -818,27 +881,22 @@ public:
     const Color& GetGrammarColor() const;
     const Color& GetSmarttagColor() const;
     const Color& GetShadowColor() const;
-    const Color& GetFontColor() const;
+    SW_DLLPUBLIC const Color& GetFontColor() const;
     const Color& GetFieldShadingsColor() const;
     const Color& GetSectionBoundColor() const;
     const Color& GetPageBreakColor() const;
+    const Color& GetNonPrintingCharacterColor() const;
     const Color& GetHeaderFooterMarkColor() const;
 
     bool IsAppearanceFlag(ViewOptFlags nFlag) const;
 
-    bool IsDocBoundaries() const {return IsAppearanceFlag(ViewOptFlags::DocBoundaries);}
-    bool IsObjectBoundaries() const {return IsAppearanceFlag(ViewOptFlags::ObjectBoundaries);}
-    bool IsTableBoundaries() const {return IsAppearanceFlag(ViewOptFlags::TableBoundaries);}
     bool IsIndexShadings() const {return IsAppearanceFlag(ViewOptFlags::IndexShadings);}
     bool IsLinks() const {return IsAppearanceFlag(ViewOptFlags::Links);}
     bool IsVisitedLinks() const {return IsAppearanceFlag(ViewOptFlags::VisitedLinks);}
     bool IsFieldShadings() const {return IsAppearanceFlag(ViewOptFlags::FieldShadings);}
-    bool IsSectionBoundaries() const {return IsAppearanceFlag(ViewOptFlags::SectionBoundaries);}
     bool IsShadow() const {return IsAppearanceFlag(ViewOptFlags::Shadow);}
 
     void     SetAppearanceFlag(ViewOptFlags nFlag, bool bSet, bool bSaveInConfig = false);
-
-    void     SetDocBoundaries(bool bSet)   {SetAppearanceFlag(ViewOptFlags::DocBoundaries, bSet);}
 
     // get/set default anchor (0..2); use GetDefaultAnchorType() to convert into RndStdIds::FLY_*
     sal_Int32 GetDefaultAnchor() const
@@ -854,8 +912,12 @@ public:
     sal_uInt8 GetIdxEntryLvl() const { return m_nIdxEntryLvl; }
     void SetIdxEntryLvl(sal_uInt8 n) { m_nIdxEntryLvl = n; }
 
+    void dumpAsXml(xmlTextWriterPtr pWriter) const;
+
     // Useful for when getting the current view SwViewOption is not possible otherwise
-    static const SwViewOption& GetCurrentViewOptions();
+    SW_DLLPUBLIC static const SwViewOption& GetCurrentViewOptions();
+
+    void SyncLayoutRelatedViewOptions(const SwViewOption& rOpt);
 };
 
 inline bool SwViewOption::operator==( const SwViewOption &rOpt ) const
@@ -868,6 +930,7 @@ inline void SwViewOption::SetUIOptions( const SwViewOption& rVOpt )
     m_nUIOptions = rVOpt.m_nUIOptions;
     m_nTableDestination = rVOpt.m_nTableDestination;
     m_nShadowCursorFillMode = rVOpt.m_nShadowCursorFillMode;
+    m_bEncloseWithCharactersOn = rVOpt.m_bEncloseWithCharactersOn;
 }
 
 // Helper function for checking HTML-capabilities.

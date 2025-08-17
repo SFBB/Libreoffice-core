@@ -30,12 +30,11 @@ namespace dbaui
 {
     using namespace ::com::sun::star::accessibility;
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star;
 
     OConnectionLineAccess::OConnectionLineAccess(OTableConnection* _pLine)
-        : ImplInheritanceHelper(_pLine->GetComponentInterface().is() ? _pLine->GetWindowPeer() : nullptr)
+        : ImplInheritanceHelper(_pLine)
         ,m_pLine(_pLine)
     {
     }
@@ -46,7 +45,7 @@ namespace dbaui
     }
     OUString SAL_CALL OConnectionLineAccess::getImplementationName()
     {
-        return "org.openoffice.comp.dbu.ConnectionLineAccessibility";
+        return u"org.openoffice.comp.dbu.ConnectionLineAccessibility"_ustr;
     }
     // XAccessibleContext
     sal_Int64 SAL_CALL OConnectionLineAccess::getAccessibleChildCount(  )
@@ -87,7 +86,7 @@ namespace dbaui
     }
     OUString SAL_CALL OConnectionLineAccess::getAccessibleDescription(  )
     {
-        return "Relation";
+        return u"Relation"_ustr;
     }
     Reference< XAccessibleRelationSet > SAL_CALL OConnectionLineAccess::getAccessibleRelationSet(  )
     {
@@ -99,30 +98,13 @@ namespace dbaui
     {
         return Reference< XAccessible >();
     }
-    awt::Rectangle SAL_CALL OConnectionLineAccess::getBounds(  )
+
+    awt::Rectangle OConnectionLineAccess::implGetBounds()
     {
-        ::osl::MutexGuard aGuard( m_aMutex  );
         tools::Rectangle aRect(m_pLine ? m_pLine->GetBoundingRect() : tools::Rectangle());
         return awt::Rectangle(aRect.Left(),aRect.Top(),aRect.getOpenWidth(),aRect.getOpenHeight());
     }
-    awt::Point SAL_CALL OConnectionLineAccess::getLocation(  )
-    {
-        ::osl::MutexGuard aGuard( m_aMutex  );
-        Point aPoint(m_pLine ? m_pLine->GetBoundingRect().TopLeft() : Point());
-        return awt::Point(aPoint.X(),aPoint.Y());
-    }
-    awt::Point SAL_CALL OConnectionLineAccess::getLocationOnScreen(  )
-    {
-        ::osl::MutexGuard aGuard( m_aMutex  );
-        Point aPoint(m_pLine ? m_pLine->GetParent()->ScreenToOutputPixel(m_pLine->GetBoundingRect().TopLeft()) : Point());
-        return awt::Point(aPoint.X(),aPoint.Y());
-    }
-    awt::Size SAL_CALL OConnectionLineAccess::getSize(  )
-    {
-        ::osl::MutexGuard aGuard( m_aMutex  );
-        Size aSize(m_pLine ? m_pLine->GetBoundingRect().GetSize() : Size());
-        return awt::Size(aSize.Width(),aSize.Height());
-    }
+
     // XAccessibleRelationSet
     sal_Int32 SAL_CALL OConnectionLineAccess::getRelationCount(  )
     {
@@ -134,26 +116,26 @@ namespace dbaui
         if( nIndex < 0 || nIndex >= getRelationCount() )
             throw IndexOutOfBoundsException();
 
-        Sequence< Reference<XInterface> > aSeq;
+        Sequence<Reference<XAccessible>> aSeq;
         if( m_pLine )
         {
             aSeq = { m_pLine->GetSourceWin()->GetAccessible(),
                      m_pLine->GetDestWin()->GetAccessible() };
         }
 
-        return AccessibleRelation(AccessibleRelationType::CONTROLLED_BY,aSeq);
+        return AccessibleRelation(AccessibleRelationType_CONTROLLED_BY,aSeq);
     }
-    sal_Bool SAL_CALL OConnectionLineAccess::containsRelation( sal_Int16 aRelationType )
+    sal_Bool SAL_CALL OConnectionLineAccess::containsRelation(AccessibleRelationType eRelationType)
     {
-        return AccessibleRelationType::CONTROLLED_BY == aRelationType;
+        return AccessibleRelationType_CONTROLLED_BY == eRelationType;
     }
-    AccessibleRelation SAL_CALL OConnectionLineAccess::getRelationByType( sal_Int16 aRelationType )
+    AccessibleRelation SAL_CALL OConnectionLineAccess::getRelationByType(AccessibleRelationType eRelationType)
     {
-        if( AccessibleRelationType::CONTROLLED_BY == aRelationType )
+        if (AccessibleRelationType_CONTROLLED_BY == eRelationType)
             return getRelation(0);
         return AccessibleRelation();
     }
-    Reference< XAccessible > OTableConnection::CreateAccessible()
+    rtl::Reference<comphelper::OAccessible> OTableConnection::CreateAccessible()
     {
         return new OConnectionLineAccess(this);
     }
@@ -165,12 +147,8 @@ namespace dbaui
     {
         // clear vector
         clearLineData();
-        m_pParent.clear();
+        m_pParent.reset();
         vcl::Window::dispose();
-    }
-    Reference< XAccessibleContext > SAL_CALL OConnectionLineAccess::getAccessibleContext(  )
-    {
-        return this;
     }
 }
 

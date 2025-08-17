@@ -61,17 +61,17 @@ namespace svgio::svgreader
             {
                 const SvgStyleAttributes* pStyles = getSvgStyleAttributes();
 
-                if(pStyles && pStyles->getParentStyle())
+                if(pStyles && pStyles->getCssStyleOrParentStyle())
                 {
                     // SVG has a parent style (probably CssStyle), check if fill is set there anywhere
                     // already. If yes, do not set the default fill (black)
                     bool bFillSet(false);
-                    const SvgStyleAttributes* pParentStyle = pStyles->getParentStyle();
+                    const SvgStyleAttributes* pParentStyle = pStyles->getCssStyleOrParentStyle();
 
                     while(pParentStyle && !bFillSet)
                     {
                         bFillSet = pParentStyle->isFillSet();
-                        pParentStyle = pParentStyle->getParentStyle();
+                        pParentStyle = pParentStyle->getCssStyleOrParentStyle();
                     }
 
                     if(bFillSet)
@@ -408,7 +408,7 @@ namespace svgio::svgreader
                     {
                         // SVG 1.1 defines in section 7.7 that a negative value for width or height
                         // in viewBox is an error and that 0.0 disables rendering
-                        if(basegfx::fTools::more(getViewBox()->getWidth(),0.0) && basegfx::fTools::more(getViewBox()->getHeight(),0.0))
+                        if (getViewBox()->getWidth() > 0.0 && getViewBox()->getHeight() > 0.0 && !basegfx::fTools::equalZero(getViewBox()->getWidth()) && !basegfx::fTools::equalZero(getViewBox()->getHeight()))
                         {
                             // create target range homing x,y, width and height as calculated above
                             const basegfx::B2DRange aTarget(fX, fY, fX + fW, fY + fH);
@@ -421,10 +421,7 @@ namespace svgio::svgreader
                             else
                             {
                                 // create mapping
-                                // #i122610 SVG 1.1 defines in section 5.1.2 that if the attribute preserveAspectRatio is not specified,
-                                // then the effect is as if a value of 'xMidYMid meet' were specified.
-                                SvgAspectRatio aRatioDefault(SvgAlign::xMidYMid,true);
-                                const SvgAspectRatio& rRatio = getSvgAspectRatio().isSet()? getSvgAspectRatio() : aRatioDefault;
+                                const SvgAspectRatio& rRatio = getSvgAspectRatio();
 
                                 // let mapping be created from SvgAspectRatio
                                 const basegfx::B2DHomMatrix aEmbeddingTransform(
@@ -457,7 +454,7 @@ namespace svgio::svgreader
                     else // no viewBox attribute
                     {
                         // Svg defines that a negative value is an error and that 0.0 disables rendering
-                        if(basegfx::fTools::more(fW, 0.0) && basegfx::fTools::more(fH, 0.0))
+                        if (fW > 0.0 && fH > 0.0 && !basegfx::fTools::equalZero(fW) && !basegfx::fTools::equalZero(fH))
                         {
                             if(!basegfx::fTools::equalZero(fX) || !basegfx::fTools::equalZero(fY))
                             {
@@ -487,20 +484,18 @@ namespace svgio::svgreader
                 {
                     // Svg defines that a negative value is an error and that 0.0 disables rendering
                     // isPositive() not usable because it allows 0.0 in contrast to mathematical definition of 'positive'
-                    const bool bWidthInvalid(getWidth().isSet() && basegfx::fTools::lessOrEqual(getWidth().getNumber(), 0.0));
-                    const bool bHeightInvalid(getHeight().isSet() && basegfx::fTools::lessOrEqual(getHeight().getNumber(), 0.0));
+                    const bool bWidthInvalid(getWidth().isSet() && getWidth().getNumber() <= 0.0);
+                    const bool bHeightInvalid(getHeight().isSet() && getHeight().getNumber() <= 0.0);
                     if(!bWidthInvalid && !bHeightInvalid)
                     {
                         basegfx::B2DRange aSvgCanvasRange; // viewport
-                        double fW = 0.0; // dummy values
-                        double fH = 0.0;
                         if (const basegfx::B2DRange* pBox = getViewBox())
                         {
                             // SVG 1.1 defines in section 7.7 that a negative value for width or height
                             // in viewBox is an error and that 0.0 disables rendering
                             const double fViewBoxWidth = pBox->getWidth();
                             const double fViewBoxHeight = pBox->getHeight();
-                            if(basegfx::fTools::more(fViewBoxWidth,0.0) && basegfx::fTools::more(fViewBoxHeight,0.0))
+                            if (fViewBoxWidth > 0.0 && fViewBoxHeight > 0.0 && !basegfx::fTools::equalZero(fViewBoxWidth) && !basegfx::fTools::equalZero(fViewBoxHeight))
                             {
                                 // The intrinsic aspect ratio of the svg element is given by absolute values of svg width and svg height
                                 // or by the width and height of the viewBox, if svg width or svg height is relative.
@@ -511,20 +506,20 @@ namespace svgio::svgreader
                                 const double fViewBoxRatio(fViewBoxWidth/fViewBoxHeight);
                                 if(bWidthIsAbsolute && bHeightIsAbsolute)
                                 {
-                                    fW = getWidth().solveNonPercentage(*this);
-                                    fH = getHeight().solveNonPercentage(*this);
+                                    double fW = getWidth().solveNonPercentage(*this);
+                                    double fH = getHeight().solveNonPercentage(*this);
                                     aSvgCanvasRange = basegfx::B2DRange(0.0, 0.0, fW, fH);
                                 }
                                 else if (bWidthIsAbsolute)
                                 {
-                                    fW = getWidth().solveNonPercentage(*this);
-                                    fH = fW / fViewBoxRatio ;
+                                    double fW = getWidth().solveNonPercentage(*this);
+                                    double fH = fW / fViewBoxRatio;
                                     aSvgCanvasRange = basegfx::B2DRange(0.0, 0.0, fW, fH);
                                 }
                                 else if (bHeightIsAbsolute)
                                 {
-                                    fH = getHeight().solveNonPercentage(*this);
-                                    fW = fH * fViewBoxRatio ;
+                                    double fH = getHeight().solveNonPercentage(*this);
+                                    double fW = fH * fViewBoxRatio;
                                     aSvgCanvasRange = basegfx::B2DRange(0.0, 0.0, fW, fH);
                                 }
                                 else
@@ -539,6 +534,7 @@ namespace svgio::svgreader
                                     const double fChildHeight(pBox->getHeight());
                                     const double fLeft(pBox->getMinX());
                                     const double fTop(pBox->getMinY());
+                                    double fW, fH;
                                     if ( fChildWidth / fViewBoxWidth > fChildHeight / fViewBoxHeight )
                                     {  // expand y
                                         fW = fChildWidth;
@@ -580,8 +576,8 @@ namespace svgio::svgreader
                             const bool bHeightIsAbsolute(getHeight().isSet() && SvgUnit::percent != getHeight().getUnit());
                             if (bWidthIsAbsolute && bHeightIsAbsolute)
                             {
-                                fW =getWidth().solveNonPercentage(*this);
-                                fH =getHeight().solveNonPercentage(*this);
+                                double fW = getWidth().solveNonPercentage(*this);
+                                double fH = getHeight().solveNonPercentage(*this);
                                 aSvgCanvasRange = basegfx::B2DRange(0.0, 0.0, fW, fH);
                             }
                             else
@@ -595,8 +591,8 @@ namespace svgio::svgreader
                                 const double fChildHeight(aChildRange.getHeight());
                                 const double fChildLeft(aChildRange.getMinX());
                                 const double fChildTop(aChildRange.getMinY());
-                                fW = bWidthIsAbsolute ? getWidth().solveNonPercentage(*this) : fChildWidth;
-                                fH = bHeightIsAbsolute ? getHeight().solveNonPercentage(*this) : fChildHeight;
+                                double fW = bWidthIsAbsolute ? getWidth().solveNonPercentage(*this) : fChildWidth;
+                                double fH = bHeightIsAbsolute ? getHeight().solveNonPercentage(*this) : fChildHeight;
                                 const double fLeft(bWidthIsAbsolute ? 0.0 : fChildLeft);
                                 const double fTop(bHeightIsAbsolute ? 0.0 : fChildTop);
                                 aSvgCanvasRange = basegfx::B2DRange(fLeft, fTop, fLeft+fW, fTop+fH);
@@ -668,7 +664,7 @@ namespace svgio::svgreader
                             // but does not need to be.
                             bool bEmbedInFinalTransformPxTo100ThMM(true);
 
-                            if(getDocument().findSvgNodeById("ooo:meta_slides")
+                            if(getDocument().findSvgNodeById(u"ooo:meta_slides"_ustr)
                                 && !getWidth().isSet()
                                 && !getHeight().isSet())
                             {

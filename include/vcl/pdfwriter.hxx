@@ -48,6 +48,10 @@ namespace tools {
     class Polygon;
     class PolyPolygon;
 }
+namespace svl::crypto
+{
+class SigningContext;
+}
 class Bitmap;
 class BitmapEx;
 class Gradient;
@@ -60,16 +64,7 @@ namespace vcl
 class PDFExtOutDevData;
 class PDFWriterImpl;
 
-struct PDFNote
-{
-    OUString          Title;          // optional title for the popup containing the note
-    OUString          Contents;       // contents of the note
-    css::util::DateTime maModificationDate;
-    bool isFreeText = false;
-    std::vector<basegfx::B2DPolygon> maPolygons;
-    Color annotColor;
-    Color interiorColor;
-};
+namespace pdf { struct PDFNote; }
 
 class VCL_DLLPUBLIC PDFOutputStream
 {
@@ -78,7 +73,118 @@ class VCL_DLLPUBLIC PDFOutputStream
     virtual void write( const css::uno::Reference< css::io::XOutputStream >& xStream ) = 0;
 };
 
-class VCL_DLLPUBLIC PDFWriter
+/** Parameters that are needed when encrypting */
+struct EncryptionParams
+{
+    bool mbCanEncrypt = false;
+    std::vector<sal_uInt8> maKey;
+};
+
+/* The following structure describes the permissions used in PDF security */
+struct PDFEncryptionProperties
+{
+    //for both 40 and 128 bit security, see 3.5.2 PDF v 1.4 table 3.15, v 1.5 and v 1.6 table 3.20.
+    bool CanPrintTheDocument = false;
+    bool CanModifyTheContent = false;
+    bool CanCopyOrExtract = false;
+    bool CanAddOrModify = false;
+
+    //for revision 3 (bit 128 security) only
+    bool CanFillInteractive = false;
+    bool CanExtractForAccessibility = true;
+    bool CanAssemble = false;
+    bool CanPrintFull = false;
+
+    // encryption will only happen if EncryptionKey is not empty
+    // EncryptionKey is actually a construct out of OValue, UValue and DocumentIdentifier
+    // if these do not match, behavior is undefined, most likely an invalid PDF will be produced
+    // OValue, UValue, EncryptionKey and DocumentIdentifier can be computed from
+    // PDFDocInfo, Owner password and User password used the InitEncryption method which
+    // implements the algorithms described in the PDF reference chapter 3.5: Encryption
+    std::vector<sal_uInt8> OValue;
+    std::vector<sal_uInt8> OE; // needed by R6 algorithm
+
+    std::vector<sal_uInt8> UValue;
+    std::vector<sal_uInt8> UE; // needed by R6 algorithm
+
+    std::vector<sal_uInt8> EncryptionKey;
+    std::vector<sal_uInt8> DocumentIdentifier;
+
+    std::optional<EncryptionParams> moParameters;
+
+    bool canEncrypt() const
+    {
+        return !OValue.empty() && !UValue.empty() && !DocumentIdentifier.empty();
+    }
+
+    void clear()
+    {
+        OValue.clear();
+        OE.clear();
+        UValue.clear();
+        UE.clear();
+        EncryptionKey.clear();
+    }
+
+    sal_Int32 getAccessPermissions() const
+    {
+        sal_Int32 nAccessPermissions = 0xfffff0c0;
+
+        nAccessPermissions |= CanPrintTheDocument ? 1 << 2 : 0;
+        nAccessPermissions |= CanModifyTheContent ? 1 << 3 : 0;
+        nAccessPermissions |= CanCopyOrExtract ? 1 << 4 : 0;
+        nAccessPermissions |= CanAddOrModify ? 1 << 5 : 0;
+        nAccessPermissions |= CanFillInteractive ? 1 << 8 : 0;
+        nAccessPermissions |= CanExtractForAccessibility ? 1 << 9 : 0;
+        nAccessPermissions |= CanAssemble ? 1 << 10 : 0;
+        nAccessPermissions |= CanPrintFull ? 1 << 11 : 0;
+
+        return nAccessPermissions;
+    }
+
+    EncryptionParams const& getParams()
+    {
+        if (!moParameters)
+        {
+            moParameters = EncryptionParams{ canEncrypt(), EncryptionKey };
+        }
+        return *moParameters;
+    }
+};
+
+namespace pdf
+{
+// For a definition of structural element types please refer to
+// PDF Reference, 3rd ed. section 9.7.4.
+//
+// In PDF 2.0 specification (ISO 32000-2) refer to section 14.8.4
+enum class StructElement
+{
+    // Special element to place outside the structure hierarchy
+    NonStructElement,
+
+    // Grouping elements
+    Document, Part, Article, Section, Division, BlockQuote,
+    Caption, TOC, TOCI, Index,
+
+    // Block level elements
+    Paragraph, Heading, H1, H2, H3, H4, H5, H6,
+    List, ListItem, LILabel, LIBody,
+    Table, TableRow, TableHeader, TableData,
+    Title, // PDF 2.0
+
+    // Inline level elements
+    Span, Quote, Note, Reference, BibEntry, Code, Link, Annot,
+    Ruby, RB, RT, RP, Warichu, WT, WP,
+    Emphasis, Strong, // PDF 2.0
+
+    // Illustration elements
+    Figure, Formula, Form
+};
+
+}
+
+class PDFWriter
 {
     ScopedVclPtr<PDFWriterImpl> xImplementation;
 
@@ -108,34 +214,24 @@ public:
 
     enum class Orientation { Portrait, Inherit };
 
-    // in case the below enum is added PDF_2_0, please add just after PDF_1_7
-    enum class PDFVersion { PDF_1_4, PDF_1_5, PDF_1_6, PDF_1_7, PDF_A_1, PDF_A_2, PDF_A_3 };//i59651, PDF/A-1b & -1a, only -1b implemented for now
+
+    enum class PDFVersion
+    {
+        PDF_1_4,
+        PDF_1_5,
+        PDF_1_6,
+        PDF_1_7,
+        PDF_2_0,
+        PDF_A_1, // PDF/A-1b - Based on PDF 1.4. PDF/A-1a is not implemented.
+        PDF_A_2, // Based on PDF 1.7
+        PDF_A_3, // Based on PDF 1.7 + allows embedded
+        PDF_A_4, // Based on PDF 2.0
+        Default = PDF_1_7
+    };
+
     // for the meaning of DestAreaType please look at PDF Reference Manual
     // version 1.4 section 8.2.1, page 475
     enum class DestAreaType { XYZ, FitRectangle };
-
-    // for a definition of structural element types please refer to
-    // PDF Reference, 3rd ed. section 9.7.4
-    enum StructElement
-    {
-        // special element to place outside the structure hierarchy
-        NonStructElement,
-        // Grouping elements
-        Document, Part, Article, Section, Division, BlockQuote,
-        Caption, TOC, TOCI, Index,
-
-        // block level elements
-        Paragraph, Heading, H1, H2, H3, H4, H5, H6,
-        List, ListItem, LILabel, LIBody,
-        Table, TableRow, TableHeader, TableData,
-
-        // inline level elements
-        Span, Quote, Note, Reference, BibEntry, Code, Link, Annot,
-        Ruby, RB, RT, RP, Warichu, WT, WP,
-
-        // illustration elements
-        Figure, Formula, Form
-    };
 
     enum StructAttribute
     {
@@ -157,6 +253,9 @@ public:
         // case the arbitrary id has to be passed again when the
         // actual link annotation is created via SetLinkPropertyID
         LinkAnnotation,
+        // note destination is an artificial attribute that sets
+        // the note annotation ID of a Note element
+        NoteAnnotation,
         // Language currently sets a LanguageType (see i18nlangtag/lang.h)
         // which will be internally changed to a corresponding locale
         Language
@@ -510,52 +609,8 @@ public:
     {
         URIAction,
         URIActionDestination,
-        LaunchAction
-    };
-
-/*
-The following structure describes the permissions used in PDF security
- */
-    struct PDFEncryptionProperties
-    {
-
-        //for both 40 and 128 bit security, see 3.5.2 PDF v 1.4 table 3.15, v 1.5 and v 1.6 table 3.20.
-        bool CanPrintTheDocument;
-        bool CanModifyTheContent;
-        bool CanCopyOrExtract;
-        bool CanAddOrModify;
-        //for revision 3 (bit 128 security) only
-        bool CanFillInteractive;
-        bool CanExtractForAccessibility;
-        bool CanAssemble;
-        bool CanPrintFull;
-
-        // encryption will only happen if EncryptionKey is not empty
-        // EncryptionKey is actually a construct out of OValue, UValue and DocumentIdentifier
-        // if these do not match, behavior is undefined, most likely an invalid PDF will be produced
-        // OValue, UValue, EncryptionKey and DocumentIdentifier can be computed from
-        // PDFDocInfo, Owner password and User password used the InitEncryption method which
-        // implements the algorithms described in the PDF reference chapter 3.5: Encryption
-        std::vector<sal_uInt8> OValue;
-        std::vector<sal_uInt8> UValue;
-        std::vector<sal_uInt8> EncryptionKey;
-        std::vector<sal_uInt8> DocumentIdentifier;
-
-        //permission default set for 128 bit, accessibility only
-        PDFEncryptionProperties() :
-            CanPrintTheDocument         ( false ),
-            CanModifyTheContent         ( false ),
-            CanCopyOrExtract            ( false ),
-            CanAddOrModify              ( false ),
-            CanFillInteractive          ( false ),
-            CanExtractForAccessibility  ( true ),
-            CanAssemble                 ( false ),
-            CanPrintFull                ( false )
-            {}
-
-
-        bool Encrypt() const
-        { return ! OValue.empty() && ! UValue.empty() && ! DocumentIdentifier.empty(); }
+        LaunchAction,
+        RemoveExternalLinks
     };
 
     struct PDFDocInfo
@@ -639,7 +694,7 @@ The following structure describes the permissions used in PDF security
         sal_Int32                       InitialPage;
         sal_Int32                       OpenBookmarkLevels; // -1 means all levels
 
-        PDFWriter::PDFEncryptionProperties  Encryption;
+        PDFEncryptionProperties  Encryption;
         PDFWriter::PDFDocInfo           DocumentInfo;
 
         bool                            SignPDF;
@@ -661,7 +716,7 @@ The following structure describes the permissions used in PDF security
                 DefaultLinkAction( PDFWriter::URIAction ),
                 ConvertOOoTargetToPDFTarget( false ),
                 ForcePDFAction( false ),
-                Version(PDFWriter::PDFVersion::PDF_1_7),
+                Version(PDFWriter::PDFVersion::Default),
                 UniversalAccessibilityCompliance( false ),
                 Tagged( false ),
                 SubmitFormat( PDFWriter::FDF ),
@@ -688,8 +743,8 @@ The following structure describes the permissions used in PDF security
         {}
     };
 
-    PDFWriter( const PDFWriterContext& rContext, const css::uno::Reference< css::beans::XMaterialHolder >& );
-    ~PDFWriter();
+    VCL_DLLPUBLIC PDFWriter( const PDFWriterContext& rContext, const css::uno::Reference< css::beans::XMaterialHolder >& );
+    VCL_DLLPUBLIC ~PDFWriter();
 
     /** Returns an OutputDevice for formatting
         This Output device is guaranteed to use the same
@@ -698,7 +753,7 @@ The following structure describes the permissions used in PDF security
         @returns
         the reference output device
     */
-    OutputDevice* GetReferenceDevice();
+    VCL_DLLPUBLIC OutputDevice* GetReferenceDevice();
 
     /** Creates a new page to fill
         If width and height are not set the page size
@@ -708,7 +763,7 @@ The following structure describes the permissions used in PDF security
         Colors and other state information MUST
         be set again or are undefined.
     */
-    void NewPage( double nPageWidth, double nPageHeight, Orientation eOrientation = Orientation::Inherit );
+    VCL_DLLPUBLIC void NewPage( double nPageWidth, double nPageHeight, Orientation eOrientation = Orientation::Inherit );
     /** Play a metafile like an outputdevice would do
     */
     struct PlayMetafileContext
@@ -726,36 +781,30 @@ The following structure describes the permissions used in PDF security
         {}
 
     };
-    void PlayMetafile( const GDIMetaFile&, const PlayMetafileContext&, vcl::PDFExtOutDevData* pDevDat = nullptr );
+    VCL_DLLPUBLIC void PlayMetafile( const GDIMetaFile&, const PlayMetafileContext&, vcl::PDFExtOutDevData* pDevDat = nullptr );
 
     /* sets the document locale originally passed with the context to a new value
      * only affects the output if used before calling Emit.
      */
-    void SetDocumentLocale( const css::lang::Locale& rDocLocale );
+    VCL_DLLPUBLIC void SetDocumentLocale( const css::lang::Locale& rDocLocale );
 
     /* finishes the file */
-    bool Emit();
+    VCL_DLLPUBLIC bool Emit();
 
     /*
      * Get a list of errors that occurred during processing
      * this should enable the producer to give feedback about
      * any anomalies that might have occurred
      */
-    std::set< ErrorCode > const & GetErrors() const;
-
-    // uses 128bit encryption
-    static css::uno::Reference< css::beans::XMaterialHolder >
-           InitEncryption( const OUString& i_rOwnerPassword,
-                           const OUString& i_rUserPassword
-                         );
+    VCL_DLLPUBLIC std::set< ErrorCode > const & GetErrors() const;
 
     /* functions for graphics state */
     /* flag values: see vcl/outdev.hxx */
-    void                Push( PushFlags nFlags = PushFlags::ALL );
-    void                Pop();
+    VCL_DLLPUBLIC void Push( PushFlags nFlags = PushFlags::ALL );
+    VCL_DLLPUBLIC void Pop();
 
-    void               SetClipRegion();
-    void               SetClipRegion( const basegfx::B2DPolyPolygon& rRegion );
+    VCL_DLLPUBLIC void SetClipRegion();
+    VCL_DLLPUBLIC void SetClipRegion( const basegfx::B2DPolyPolygon& rRegion );
     void               MoveClipRegion( tools::Long nHorzMove, tools::Long nVertMove );
     void               IntersectClipRegion( const tools::Rectangle& rRect );
     void               IntersectClipRegion( const basegfx::B2DPolyPolygon& rRegion );
@@ -769,8 +818,8 @@ The following structure describes the permissions used in PDF security
     void               SetFillColor( const Color& rColor );
     void               SetFillColor() { SetFillColor( COL_TRANSPARENT ); }
 
-    void               SetFont( const vcl::Font& rNewFont );
-    void               SetTextColor( const Color& rColor );
+    VCL_DLLPUBLIC void SetFont( const vcl::Font& rNewFont );
+    VCL_DLLPUBLIC void SetTextColor( const Color& rColor );
     void               SetTextFillColor();
     void               SetTextFillColor( const Color& rColor );
 
@@ -780,25 +829,23 @@ The following structure describes the permissions used in PDF security
     void               SetOverlineColor( const Color& rColor );
     void               SetTextAlign( ::TextAlign eAlign );
 
-    void               SetMapMode( const MapMode& rNewMapMode );
+    VCL_DLLPUBLIC void SetMapMode( const MapMode& rNewMapMode );
 
 
     /* actual drawing functions */
-    void                DrawText( const Point& rPos, const OUString& rText );
+    VCL_DLLPUBLIC void  DrawText( const Point& rPos, const OUString& rText );
 
     void                DrawTextLine( const Point& rPos, tools::Long nWidth,
                                       FontStrikeout eStrikeout,
                                       FontLineStyle eUnderline,
                                       FontLineStyle eOverline );
-    void                DrawTextArray( const Point& rStartPt, const OUString& rStr,
-                                       KernArraySpan aKernArray,
-                                       std::span<const sal_Bool> pKashidaAry,
-                                       sal_Int32 nIndex,
-                                       sal_Int32 nLen );
+    void DrawTextArray(const Point& rStartPt, const OUString& rStr, KernArraySpan aKernArray,
+                       std::span<const sal_Bool> pKashidaAry, sal_Int32 nIndex, sal_Int32 nLen,
+                       sal_Int32 nLayoutContextIndex, sal_Int32 nLayoutContextLen);
     void                DrawStretchText( const Point& rStartPt, sal_Int32 nWidth,
                                          const OUString& rStr,
                                          sal_Int32 nIndex, sal_Int32 nLen );
-    void                DrawText( const tools::Rectangle& rRect,
+    VCL_DLLPUBLIC void  DrawText( const tools::Rectangle& rRect,
                                   const OUString& rStr, DrawTextFlags nStyle );
 
     void                DrawPixel( const Point& rPt, const Color& rColor );
@@ -808,7 +855,7 @@ The following structure describes the permissions used in PDF security
     void                DrawLine( const Point& rStartPt, const Point& rEndPt );
     void                DrawLine( const Point& rStartPt, const Point& rEndPt,
                                   const LineInfo& rLineInfo );
-    void                DrawPolyLine( const tools::Polygon& rPoly );
+    VCL_DLLPUBLIC void  DrawPolyLine( const tools::Polygon& rPoly );
     void                DrawPolyLine( const tools::Polygon& rPoly,
                                       const LineInfo& rLineInfo );
     void                DrawPolyLine( const tools::Polygon& rPoly, const ExtLineInfo& rInfo );
@@ -829,7 +876,7 @@ The following structure describes the permissions used in PDF security
                                     const Bitmap& rBitmap, const Graphic& rGraphic );
 
     void                DrawBitmapEx( const Point& rDestPt, const Size& rDestSize,
-                                      const BitmapEx& rBitmapEx );
+                                      const Bitmap& rBitmap );
 
     void                DrawGradient( const tools::Rectangle& rRect, const Gradient& rGradient );
     void                DrawGradient( const tools::PolyPolygon& rPolyPoly, const Gradient& rGradient );
@@ -858,7 +905,7 @@ The following structure describes the permissions used in PDF security
     will be ignored if the produced PDF has a lower version. The drawing
     operations will be emitted normally.
     */
-    void                BeginTransparencyGroup();
+    VCL_DLLPUBLIC void BeginTransparencyGroup();
 
     /** End a transparency group with constant transparency factor
 
@@ -871,7 +918,7 @@ The following structure describes the permissions used in PDF security
     @param nTransparencePercent
     The transparency factor
     */
-    void                EndTransparencyGroup( const tools::Rectangle& rBoundRect, sal_uInt16 nTransparencePercent );
+    VCL_DLLPUBLIC void EndTransparencyGroup( const tools::Rectangle& rBoundRect, sal_uInt16 nTransparencePercent );
 
     /** Insert a JPG encoded image (optionally with mask)
 
@@ -1053,6 +1100,9 @@ The following structure describes the permissions used in PDF security
     active rectangle of the note (that is the area that has to be
     hit to popup the annotation)
 
+    @param rPopupRect
+    specifies the rectangle of the popup window for the note
+
     @param rNote
     specifies the contents of the note
 
@@ -1060,7 +1110,7 @@ The following structure describes the permissions used in PDF security
     number of page the note is on (as returned by NewPage)
     or -1 in which case the current page is used
     */
-    void CreateNote( const tools::Rectangle& rRect, const PDFNote& rNote, sal_Int32 nPageNr );
+    sal_Int32 CreateNote( const tools::Rectangle& rRect, const tools::Rectangle& rPopupRect, const vcl::pdf::PDFNote& rNote, sal_Int32 nPageNr );
 
     /** begin a new logical structure element
 
@@ -1109,9 +1159,9 @@ The following structure describes the permissions used in PDF security
     @returns
     the new structure element's id for use in SetCurrentStructureElement
      */
-    void BeginStructureElement(sal_Int32 id);
-    sal_Int32 EnsureStructureElement();
-    void InitStructureElement(sal_Int32 id, PDFWriter::StructElement eType, std::u16string_view rAlias);
+    VCL_DLLPUBLIC void BeginStructureElement(sal_Int32 id);
+    VCL_DLLPUBLIC sal_Int32 EnsureStructureElement();
+    VCL_DLLPUBLIC void InitStructureElement(sal_Int32 id, vcl::pdf::StructElement eType, std::u16string_view rAlias);
 
     /** end the current logical structure element
 
@@ -1120,7 +1170,7 @@ The following structure describes the permissions used in PDF security
 
     @see BeginStructureElement
      */
-    void EndStructureElement();
+    VCL_DLLPUBLIC void EndStructureElement();
     /** set the current structure element
 
     For different purposes it may be useful to paint a structure element's
@@ -1148,7 +1198,7 @@ The following structure describes the permissions used in PDF security
     @param eVal
     the value to set the attribute to
      */
-    void SetStructureAttribute( enum StructAttribute eAttr, enum StructAttributeValue eVal );
+    VCL_DLLPUBLIC void SetStructureAttribute( enum StructAttribute eAttr, enum StructAttributeValue eVal );
     /** set a structure attribute on the current structural element
 
     SetStructureAttributeNumerical sets an attribute of the current structural element
@@ -1249,13 +1299,10 @@ The following structure describes the permissions used in PDF security
     @param pStream
     the interface to the additional stream
     */
-    void AddAttachedFile(OUString const& rFileName, OUString const& rMimeType, OUString const& rDescription, std::unique_ptr<PDFOutputStream> pStream);
-
-    /// Write rString as a PDF hex string into rBuffer.
-    static void AppendUnicodeTextString(const OUString& rString, OStringBuffer& rBuffer);
+    VCL_DLLPUBLIC void AddAttachedFile(OUString const& rFileName, OUString const& rMimeType, OUString const& rDescription, std::unique_ptr<PDFOutputStream> pStream);
 
     /// Get current date/time in PDF D:YYYYMMDDHHMMSS form.
-    static OString GetDateTime();
+    static OString GetDateTime(svl::crypto::SigningContext* pSigningContext = nullptr);
 };
 
 }

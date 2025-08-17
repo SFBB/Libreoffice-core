@@ -54,7 +54,7 @@
 #include <SwUndoPageDesc.hxx>
 #include <pagedeschint.hxx>
 #include <tgrditem.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/syslocale.hxx>
 #include <svx/swframetypes.hxx>
 #include <o3tl/unit_conversion.hxx>
@@ -93,7 +93,7 @@ static void lcl_DefaultPageFormat( sal_uInt16 nPoolFormatId,
         nMinRight = nMinTop = nMinBottom = o3tl::toTwips(1, o3tl::Length::cm);
         nMinLeft = o3tl::toTwips(2, o3tl::Length::cm);
     }
-    else if (!utl::ConfigManager::IsFuzzing() && MeasurementSystem::Metric == SvtSysLocale().GetLocaleData().getMeasurementSystemEnum() )
+    else if (!comphelper::IsFuzzing() && MeasurementSystem::Metric == SvtSysLocale().GetLocaleData().getMeasurementSystemEnum() )
     {
         nMinTop = nMinBottom = nMinLeft = nMinRight = o3tl::toTwips(2, o3tl::Length::cm);
     }
@@ -109,8 +109,8 @@ static void lcl_DefaultPageFormat( sal_uInt16 nPoolFormatId,
 
     aUL.SetUpper( o3tl::narrowing<sal_uInt16>(nMinTop) );
     aUL.SetLower( o3tl::narrowing<sal_uInt16>(nMinBottom) );
-    aLR.SetRight( nMinRight );
-    aLR.SetLeft( nMinLeft );
+    aLR.SetRight(SvxIndentValue::twips(nMinRight));
+    aLR.SetLeft(SvxIndentValue::twips(nMinLeft));
 
     rFormat1.SetFormatAttr( aFrameSize );
     rFormat1.SetFormatAttr( aLR );
@@ -289,7 +289,7 @@ void SwDoc::CopyMasterHeader(const SwPageDesc &rChged, const SwFormatHeader &rHe
                      (bFirst ? rDesc.IsFirstShared() : rDesc.IsHeaderShared()))
                 {
                     SwFrameFormat *pFormat = new SwFrameFormat( GetAttrPool(),
-                            bFirst ? "First header" : "Left header",
+                            UIName(bFirst ? u"First header"_ustr : u"Left header"_ustr),
                                                     GetDfltFrameFormat() );
                     ::lcl_DescSetAttr( *pRight, *pFormat, false );
                     // The section which the right header attribute is pointing
@@ -366,7 +366,7 @@ void SwDoc::CopyMasterFooter(const SwPageDesc &rChged, const SwFormatFooter &rFo
                      (bFirst ? rDesc.IsFirstShared() : rDesc.IsFooterShared()))
                 {
                     SwFrameFormat *pFormat = new SwFrameFormat( GetAttrPool(),
-                            bFirst ? "First footer" : "Left footer",
+                            UIName(bFirst ? u"First footer"_ustr : u"Left footer"_ustr),
                                                     GetDfltFrameFormat() );
                     ::lcl_DescSetAttr( *pRight, *pFormat, false );
                     // The section to which the right footer attribute is pointing
@@ -428,28 +428,28 @@ void SwDoc::ChgPageDesc( size_t i, const SwPageDesc &rChged )
         if (bStashFirstLeftFoot && rFirstLeftFoot.GetRegisteredIn()  && !rDesc.HasStashedFormat(false, true, true))
             rDesc.StashFrameFormat(rChged.GetFirstLeft(), false, true, true);
 
-        GetIDocumentUndoRedo().AppendUndo(std::make_unique<SwUndoPageDesc>(rDesc, rChged, this));
+        GetIDocumentUndoRedo().AppendUndo(std::make_unique<SwUndoPageDesc>(rDesc, rChged, *this));
     }
     else
     {
         SwUndoId nBeingUndone(SwUndoId::EMPTY);
         GetIDocumentUndoRedo().GetFirstRedoInfo(nullptr, &nBeingUndone);
-        if (SwUndoId::HEADER_FOOTER == nBeingUndone)
+        if (SwUndoId::HEADER_FOOTER == nBeingUndone || SwUndoId::INSERT_PAGE_NUMBER == nBeingUndone)
         {
             // The last format change is currently being undone. Remove header/footer and corresponding nodes.
-            auto rDescMasterHeaderFormat = rDesc.GetMaster().GetFormatAttr(RES_HEADER);
-            auto rDescLeftHeaderFormat = rDesc.GetLeft().GetFormatAttr(RES_HEADER);
-            auto rDescFirstLeftHeaderFormat = rDesc.GetFirstLeft().GetFormatAttr(RES_HEADER);
-            auto rDescMasterFooterFormat = rDesc.GetMaster().GetFormatAttr(RES_FOOTER);
-            auto rDescLeftFooterFormat = rDesc.GetLeft().GetFormatAttr(RES_FOOTER);
-            auto rDescFirstLeftFooterFormat = rDesc.GetFirstLeft().GetFormatAttr(RES_FOOTER);
+            SwFormatHeader aDescMasterHeaderFormat = rDesc.GetMaster().GetFormatAttr(RES_HEADER);
+            SwFormatHeader aDescLeftHeaderFormat = rDesc.GetLeft().GetFormatAttr(RES_HEADER);
+            SwFormatHeader aDescFirstLeftHeaderFormat = rDesc.GetFirstLeft().GetFormatAttr(RES_HEADER);
+            SwFormatFooter aDescMasterFooterFormat = rDesc.GetMaster().GetFormatAttr(RES_FOOTER);
+            SwFormatFooter aDescLeftFooterFormat = rDesc.GetLeft().GetFormatAttr(RES_FOOTER);
+            SwFormatFooter aDescFirstLeftFooterFormat = rDesc.GetFirstLeft().GetFormatAttr(RES_FOOTER);
 
-            auto rChgedMasterHeaderFormat = rChged.GetMaster().GetFormatAttr(RES_HEADER);
-            auto rChgedLeftHeaderFormat = rChged.GetLeft().GetFormatAttr(RES_HEADER);
-            auto rChgedFirstLeftHeaderFormat = rChged.GetFirstLeft().GetFormatAttr(RES_HEADER);
-            auto rChgedMasterFooterFormat = rChged.GetMaster().GetFormatAttr(RES_FOOTER);
-            auto rChgedLeftFooterFormat = rChged.GetLeft().GetFormatAttr(RES_FOOTER);
-            auto rChgedFirstLeftFooterFormat = rChged.GetFirstLeft().GetFormatAttr(RES_FOOTER);
+            SwFormatHeader aChgedMasterHeaderFormat = rChged.GetMaster().GetFormatAttr(RES_HEADER);
+            SwFormatHeader aChgedLeftHeaderFormat = rChged.GetLeft().GetFormatAttr(RES_HEADER);
+            SwFormatHeader aChgedFirstLeftHeaderFormat = rChged.GetFirstLeft().GetFormatAttr(RES_HEADER);
+            SwFormatFooter aChgedMasterFooterFormat = rChged.GetMaster().GetFormatAttr(RES_FOOTER);
+            SwFormatFooter aChgedLeftFooterFormat = rChged.GetLeft().GetFormatAttr(RES_FOOTER);
+            SwFormatFooter aChgedFirstLeftFooterFormat = rChged.GetFirstLeft().GetFormatAttr(RES_FOOTER);
 
             rDesc.GetMaster().ResetFormatAttr(RES_HEADER);
             rDesc.GetLeft().ResetFormatAttr(RES_HEADER);
@@ -458,10 +458,10 @@ void SwDoc::ChgPageDesc( size_t i, const SwPageDesc &rChged )
             rDesc.GetLeft().ResetFormatAttr(RES_FOOTER);
             rDesc.GetFirstLeft().ResetFormatAttr(RES_FOOTER);
 
-            auto lDelHFFormat = [this](SwClient* pToRemove, SwFrameFormat* pFormat)
+            auto lDelHFFormat = [this](sw::ClientBase<SwFrameFormat>* pToRemove, SwFrameFormat* pFormat)
             {
                 // Code taken from lcl_DelHFFormat
-                pFormat->Remove(pToRemove);
+                pFormat->Remove(*pToRemove);
                 SwFormatContent& rCnt = const_cast<SwFormatContent&>(pFormat->GetContent());
                 if (rCnt.GetContentIdx())
                 {
@@ -496,19 +496,24 @@ void SwDoc::ChgPageDesc( size_t i, const SwPageDesc &rChged )
                 delete pFormat;
             };
 
-            if (rDescMasterHeaderFormat.GetHeaderFormat() && rDescMasterHeaderFormat != rChgedMasterHeaderFormat)
-                lDelHFFormat(&rDescMasterHeaderFormat, rDescMasterHeaderFormat.GetHeaderFormat());
-            else if (rDescLeftHeaderFormat.GetHeaderFormat() && rDescLeftHeaderFormat != rChgedLeftHeaderFormat)
-                lDelHFFormat(&rDescLeftHeaderFormat, rDescLeftHeaderFormat.GetHeaderFormat());
-            else if (rDescFirstLeftHeaderFormat.GetHeaderFormat() && rDescFirstLeftHeaderFormat != rChgedFirstLeftHeaderFormat)
-                lDelHFFormat(&rDescFirstLeftHeaderFormat, rDescFirstLeftHeaderFormat.GetHeaderFormat());
+            if (aDescMasterHeaderFormat.GetHeaderFormat() && aDescMasterHeaderFormat != aChgedMasterHeaderFormat)
+                lDelHFFormat(&aDescMasterHeaderFormat, aDescMasterHeaderFormat.GetHeaderFormat());
+            else if (aDescLeftHeaderFormat.GetHeaderFormat() && aDescLeftHeaderFormat != aChgedLeftHeaderFormat)
+                lDelHFFormat(&aDescLeftHeaderFormat, aDescLeftHeaderFormat.GetHeaderFormat());
+            else if (aDescFirstLeftHeaderFormat.GetHeaderFormat() && aDescFirstLeftHeaderFormat != aChgedFirstLeftHeaderFormat)
+                lDelHFFormat(&aDescFirstLeftHeaderFormat, aDescFirstLeftHeaderFormat.GetHeaderFormat());
 
-            else if (rDescMasterFooterFormat.GetFooterFormat() && rDescMasterFooterFormat != rChgedMasterFooterFormat)
-                lDelHFFormat(&rDescMasterFooterFormat, rDescMasterFooterFormat.GetFooterFormat());
-            else if (rDescLeftFooterFormat.GetFooterFormat() && rDescLeftFooterFormat != rChgedLeftFooterFormat)
-                lDelHFFormat(&rDescLeftFooterFormat, rDescLeftFooterFormat.GetFooterFormat());
-            else if (rDescFirstLeftFooterFormat.GetFooterFormat() && rDescFirstLeftFooterFormat != rChgedFirstLeftFooterFormat)
-                lDelHFFormat(&rDescFirstLeftFooterFormat, rDescFirstLeftFooterFormat.GetFooterFormat());
+            else if (aDescMasterFooterFormat.GetFooterFormat() && aDescMasterFooterFormat != aChgedMasterFooterFormat)
+                lDelHFFormat(&aDescMasterFooterFormat, aDescMasterFooterFormat.GetFooterFormat());
+            else if (aDescLeftFooterFormat.GetFooterFormat() && aDescLeftFooterFormat != aChgedLeftFooterFormat)
+                lDelHFFormat(&aDescLeftFooterFormat, aDescLeftFooterFormat.GetFooterFormat());
+            else if (aDescFirstLeftFooterFormat.GetFooterFormat() && aDescFirstLeftFooterFormat != aChgedFirstLeftFooterFormat)
+                lDelHFFormat(&aDescFirstLeftFooterFormat, aDescFirstLeftFooterFormat.GetFooterFormat());
+
+            // tdf#141613 FIXME: Disable redoing header/footer changes for now.
+            // The proper solution would be to write a SwUndoHeaderFooter class
+            // to represent the addition of a header or footer to the current page.
+            GetIDocumentUndoRedo().ClearRedo();
         }
     }
     ::sw::UndoGuard const undoGuard(GetIDocumentUndoRedo());
@@ -655,15 +660,24 @@ void SwDoc::ChgPageDesc( size_t i, const SwPageDesc &rChged )
     }
     getIDocumentState().SetModified();
 
-    SfxBindings* pBindings =
-        ( GetDocShell() && GetDocShell()->GetDispatcher() ) ? GetDocShell()->GetDispatcher()->GetBindings() : nullptr;
-    if ( pBindings )
+    if (SwDocShell* pShell = GetDocShell())
     {
-        pBindings->Invalidate( SID_ATTR_PAGE_COLUMN );
-        pBindings->Invalidate( SID_ATTR_PAGE );
-        pBindings->Invalidate( SID_ATTR_PAGE_SIZE );
-        pBindings->Invalidate( SID_ATTR_PAGE_ULSPACE );
-        pBindings->Invalidate( SID_ATTR_PAGE_LRSPACE );
+        if (SfxDispatcher* pDispatcher = pShell->GetDispatcher())
+        {
+            if (SfxBindings* pBindings = pDispatcher->GetBindings())
+            {
+                pBindings->Invalidate( SID_ATTR_PAGE_COLUMN );
+                pBindings->Invalidate( SID_ATTR_PAGE );
+                pBindings->Invalidate( SID_ATTR_PAGE_SIZE );
+                pBindings->Invalidate( SID_ATTR_PAGE_ULSPACE );
+                pBindings->Invalidate( SID_ATTR_PAGE_LRSPACE );
+                pBindings->Invalidate(SID_ATTR_PAGE_FILLSTYLE);
+                pBindings->Invalidate(SID_ATTR_PAGE_COLOR);
+                pBindings->Invalidate(SID_ATTR_PAGE_GRADIENT);
+                pBindings->Invalidate(SID_ATTR_PAGE_HATCH);
+                pBindings->Invalidate(SID_ATTR_PAGE_BITMAP);
+            }
+        }
     }
 
     //h/f of first-left page must not be unique but same as first master or left
@@ -720,7 +734,7 @@ void SwDoc::PreDelPageDesc(SwPageDesc const * pDel)
     }
 }
 
-void SwDoc::BroadcastStyleOperation(const OUString& rName, SfxStyleFamily eFamily,
+void SwDoc::BroadcastStyleOperation(const UIName& rName, SfxStyleFamily eFamily,
                                     SfxHintId nOp)
 {
     if (mpDocShell)
@@ -729,7 +743,7 @@ void SwDoc::BroadcastStyleOperation(const OUString& rName, SfxStyleFamily eFamil
 
         if (pPool)
         {
-            SfxStyleSheetBase* pBase = pPool->Find(rName, eFamily);
+            SfxStyleSheetBase* pBase = pPool->Find(rName.toString(), eFamily);
 
             if (pBase != nullptr)
                 pPool->Broadcast(SfxStyleSheetHint( nOp, *pBase ));
@@ -753,7 +767,7 @@ void SwDoc::DelPageDesc( size_t i, bool bBroadcast )
     if (GetIDocumentUndoRedo().DoesUndo())
     {
         GetIDocumentUndoRedo().AppendUndo(
-            std::make_unique<SwUndoPageDescDelete>(rDel, this));
+            std::make_unique<SwUndoPageDescDelete>(rDel, *this));
     }
 
     PreDelPageDesc(&rDel); // #i7983#
@@ -762,8 +776,8 @@ void SwDoc::DelPageDesc( size_t i, bool bBroadcast )
     getIDocumentState().SetModified();
 }
 
-SwPageDesc* SwDoc::MakePageDesc(const OUString &rName, const SwPageDesc *pCpy,
-                            bool bRegardLanguage, bool bBroadcast)
+SwPageDesc* SwDoc::MakePageDesc(const UIName &rName, const SwPageDesc *pCpy,
+                            bool bRegardLanguage)
 {
     SwPageDesc *pNew;
     if( pCpy )
@@ -779,7 +793,7 @@ SwPageDesc* SwDoc::MakePageDesc(const OUString &rName, const SwPageDesc *pCpy,
     }
     else
     {
-        pNew = new SwPageDesc( rName, GetDfltFrameFormat(), this );
+        pNew = new SwPageDesc( rName, GetDfltFrameFormat(), *this );
         // Set the default page format.
         lcl_DefaultPageFormat( USHRT_MAX, pNew->GetMaster(), pNew->GetLeft(), pNew->GetFirstMaster(), pNew->GetFirstLeft() );
 
@@ -796,13 +810,9 @@ SwPageDesc* SwDoc::MakePageDesc(const OUString &rName, const SwPageDesc *pCpy,
     std::pair<SwPageDescs::const_iterator, bool> res = m_PageDescs.push_back( pNew );
     SAL_WARN_IF(!res.second, "sw", "MakePageDesc called with existing name" );
 
-    if (bBroadcast)
-        BroadcastStyleOperation(rName, SfxStyleFamily::Page,
-                                SfxHintId::StyleSheetCreated);
-
     if (GetIDocumentUndoRedo().DoesUndo())
     {
-        GetIDocumentUndoRedo().AppendUndo(std::make_unique<SwUndoPageDescCreate>(pNew, this));
+        GetIDocumentUndoRedo().AppendUndo(std::make_unique<SwUndoPageDescCreate>(pNew, *this));
     }
 
     getIDocumentState().SetModified();
@@ -929,7 +939,7 @@ IMPL_LINK_NOARG( SwDoc, DoUpdateModifiedOLE, Timer *, void )
 }
 
 static SwPageDesc* lcl_FindPageDesc( const SwPageDescs *pPageDescs,
-                                     size_t *pPos, const OUString &rName )
+                                     size_t *pPos, const UIName &rName )
 {
     SwPageDesc* res = nullptr;
     SwPageDescs::const_iterator it = pPageDescs->find( rName );
@@ -944,7 +954,7 @@ static SwPageDesc* lcl_FindPageDesc( const SwPageDescs *pPageDescs,
     return res;
 }
 
-SwPageDesc* SwDoc::FindPageDesc( const OUString & rName, size_t* pPos ) const
+SwPageDesc* SwDoc::FindPageDesc( const UIName & rName, size_t* pPos ) const
 {
     return lcl_FindPageDesc( &m_PageDescs, pPos, rName );
 }
@@ -967,7 +977,7 @@ bool SwDoc::ContainsPageDesc( const SwPageDesc *pDesc, size_t* pPos ) const
     return true;
 }
 
-void SwDoc::DelPageDesc( const OUString & rName, bool bBroadcast )
+void SwDoc::DelPageDesc( const UIName & rName, bool bBroadcast )
 {
     size_t nI;
 
@@ -975,7 +985,7 @@ void SwDoc::DelPageDesc( const OUString & rName, bool bBroadcast )
         DelPageDesc(nI, bBroadcast);
 }
 
-void SwDoc::ChgPageDesc( const OUString & rName, const SwPageDesc & rDesc)
+void SwDoc::ChgPageDesc( const UIName & rName, const SwPageDesc & rDesc)
 {
     size_t nI;
 

@@ -29,6 +29,8 @@ $(eval $(call gb_Library_set_include,basctl,\
 	-I$(WORKDIR)/SdiTarget/basctl/sdi \
 ))
 
+$(eval $(call gb_Library_add_defs,basctl,-DBASCTL_DLLIMPLEMENTATION))
+
 $(eval $(call gb_Library_use_external,basctl,boost_headers))
 
 $(eval $(call gb_Library_use_custom_headers,basctl,\
@@ -95,14 +97,17 @@ $(eval $(call gb_Library_add_exception_objects,basctl,\
 	basctl/source/basicide/iderdll \
 	basctl/source/basicide/layout \
 	basctl/source/basicide/linenumberwindow \
+	basctl/source/basicide/LineStatusControl \
 	basctl/source/basicide/localizationmgr \
 	basctl/source/basicide/macrodlg \
 	basctl/source/basicide/moduldl2 \
 	basctl/source/basicide/moduldlg \
+	basctl/source/basicide/BasicColorConfig \
+	basctl/source/basicide/ColorSchemeDialog \
 	basctl/source/basicide/ObjectCatalog \
 	basctl/source/basicide/sbxitem \
 	basctl/source/basicide/scriptdocument \
-	basctl/source/basicide/textwindowpeer \
+	basctl/source/basicide/textwindowaccessibility \
 	basctl/source/basicide/uiobject \
 	basctl/source/basicide/unomodel \
 	basctl/source/dlged/dlgedclip \

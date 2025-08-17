@@ -46,18 +46,21 @@ namespace o3tl {
     template<> struct typed_flags<SwSectionFrameInvFlags> : is_typed_flags<SwSectionFrameInvFlags, 0x0011> {};
 }
 
-class SwSectionFrame final: public SwLayoutFrame, public SwFlowFrame
+class SAL_DLLPUBLIC_RTTI SwSectionFrame final: public SwLayoutFrame, public SwFlowFrame
     , public SvtListener // TODO?
 {
     SwSection* m_pSection;
     bool m_bFootnoteAtEnd; // footnotes at the end of section
     bool m_bEndnAtEnd; // endnotes at the end of section
+    /// If this is a section for endnotes, then the SwSection is not backed by an SwSectionNode.
+    bool m_bEndNoteSection = false;
     bool m_bContentLock; // content locked
     bool m_bOwnFootnoteNum; // special numbering of footnotes
     bool m_bFootnoteLock; // ftn, don't leave this section bwd
 
     void UpdateAttr_( const SfxPoolItem*, const SfxPoolItem*, SwSectionFrameInvFlags &,
                       SwAttrSetChg *pa = nullptr, SwAttrSetChg *pb = nullptr );
+    void UpdateAttrForFormatChange( SwSectionFrameInvFlags & );
     void Cut_( bool bRemove );
     // Is there a FootnoteContainer?
     // An empty sectionfrm without FootnoteCont is superfluous
@@ -88,6 +91,8 @@ public:
     virtual void Cut() override;
     virtual void Paste( SwFrame* pParent, SwFrame* pSibling = nullptr ) override;
 
+    virtual bool IsHiddenNow() const override;
+
     inline const SwSectionFrame *GetFollow() const;
     inline       SwSectionFrame *GetFollow();
     SwSectionFrame* FindMaster() const;
@@ -114,7 +119,7 @@ public:
     SwFootnoteContFrame* ContainsFootnoteCont( const SwFootnoteContFrame* pCont = nullptr ) const;
     bool Growable() const;
     SwTwips Shrink_( SwTwips, bool bTst );
-    SwTwips Grow_  ( SwTwips, bool bTst );
+    SwTwips Grow_(SwTwips, SwResizeLimitReason&, bool bTst);
 
     /**
      * A sectionfrm has to maximize, if he has a follow or a ftncontainer at
@@ -169,6 +174,8 @@ public:
 
     void SetFootnoteLock( bool bNew ) { m_bFootnoteLock = bNew; }
     bool IsFootnoteLock() const { return m_bFootnoteLock; }
+    void SetEndNoteSection(bool bEndNoteSection) { m_bEndNoteSection = bEndNoteSection; }
+    bool IsEndNoteSection() const { return m_bEndNoteSection; }
 };
 
 inline const SwSectionFrame *SwSectionFrame::GetFollow() const

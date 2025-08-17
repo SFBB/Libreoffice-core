@@ -28,6 +28,7 @@
 #include <tools/zcodec.hxx>
 #include <tools/fract.hxx>
 #include <filter/WebpReader.hxx>
+#include "igif/gifread.hxx"
 #include <vcl/TypeSerializer.hxx>
 #include <vcl/outdev.hxx>
 #include <utility>
@@ -650,36 +651,24 @@ bool GraphicFormatDetector::checkPCX()
         bRet = (cByte == 0 || cByte == 1);
         if (bRet)
         {
-            sal_uInt16 nTemp16;
-            sal_uInt16 nXmin;
-            sal_uInt16 nXmax;
-            sal_uInt16 nYmin;
-            sal_uInt16 nYmax;
-            sal_uInt16 nDPIx;
-            sal_uInt16 nDPIy;
-
             // Bits/Pixel
             mrStream.ReadUChar(cByte);
             maMetadata.mnBitsPerPixel = cByte;
 
             // image dimensions
-            mrStream.ReadUInt16(nTemp16);
-            nXmin = nTemp16;
-            mrStream.ReadUInt16(nTemp16);
-            nYmin = nTemp16;
-            mrStream.ReadUInt16(nTemp16);
-            nXmax = nTemp16;
-            mrStream.ReadUInt16(nTemp16);
-            nYmax = nTemp16;
+            sal_uInt16 nXmin(0), nXmax(0), nYmin(0), nYmax(0);
+            mrStream.ReadUInt16(nXmin);
+            mrStream.ReadUInt16(nYmin);
+            mrStream.ReadUInt16(nXmax);
+            mrStream.ReadUInt16(nYmax);
 
             maMetadata.maPixSize.setWidth(nXmax - nXmin + 1);
             maMetadata.maPixSize.setHeight(nYmax - nYmin + 1);
 
             // resolution
-            mrStream.ReadUInt16(nTemp16);
-            nDPIx = nTemp16;
-            mrStream.ReadUInt16(nTemp16);
-            nDPIy = nTemp16;
+            sal_uInt16 nDPIx(0), nDPIy(0);
+            mrStream.ReadUInt16(nDPIx);
+            mrStream.ReadUInt16(nDPIy);
 
             // set logical size
             MapMode aMap(MapUnit::MapInch, Point(), Fraction(1, nDPIx), Fraction(1, nDPIy));
@@ -736,27 +725,33 @@ bool GraphicFormatDetector::checkTIF()
 
                 if (mbExtendedInfo)
                 {
+                    bool bOk = true;
+
                     sal_uInt32 nIfdOffset = 0;
 
                     // Offset of the first IFD
                     mrStream.ReadUInt32(nIfdOffset);
-                    mrStream.SeekRel(nIfdOffset - 8); // read 6 bytes until here
-
-                    sal_uInt16 nNumberOfTags = 0;
-                    mrStream.ReadUInt16(nNumberOfTags);
-
-                    bool bOk = true;
-                    sal_Int32 nCount = 0;
-
-                    // read tags till we find Tag256(Width)
-                    mrStream.ReadUInt16(nTemp16);
-                    while (nTemp16 != 256 && bOk)
+                    if (nIfdOffset < 8)
+                        bOk = false;
+                    else
                     {
-                        mrStream.SeekRel(10);
+                        mrStream.SeekRel(nIfdOffset - 8); // read 6 bytes until here
+
+                        sal_uInt16 nNumberOfTags = 0;
+                        mrStream.ReadUInt16(nNumberOfTags);
+
+                        sal_Int32 nCount = 0;
+
+                        // read tags till we find Tag256(Width)
                         mrStream.ReadUInt16(nTemp16);
-                        nCount++;
-                        if (nCount > nNumberOfTags)
-                            bOk = false;
+                        while (nTemp16 != 256 && bOk)
+                        {
+                            mrStream.SeekRel(10);
+                            mrStream.ReadUInt16(nTemp16);
+                            nCount++;
+                            if (nCount > nNumberOfTags)
+                                bOk = false;
+                        }
                     }
 
                     if (bOk)
@@ -824,6 +819,8 @@ bool GraphicFormatDetector::checkTIF()
 
 bool GraphicFormatDetector::checkGIF()
 {
+    SeekGuard aGuard(mrStream, mnStreamPosition);
+
     if (mnFirstLong == 0x47494638 && (maFirstBytes[4] == 0x37 || maFirstBytes[4] == 0x39)
         && maFirstBytes[5] == 0x61)
     {
@@ -834,6 +831,14 @@ bool GraphicFormatDetector::checkGIF()
             sal_uInt16 nHeight = maFirstBytes[8] | (maFirstBytes[9] << 8);
             maMetadata.maPixSize = Size(nWidth, nHeight);
             maMetadata.mnBitsPerPixel = ((maFirstBytes[10] & 112) >> 4) + 1;
+
+            Size aLogicSize;
+            bool bAnimated = IsGIFAnimated(mrStream, aLogicSize);
+            if (aLogicSize.getWidth() && aLogicSize.getHeight())
+            {
+                maMetadata.maLogSize = aLogicSize;
+            }
+            maMetadata.mbIsAnimated = bAnimated;
         }
         return true;
     }
@@ -954,6 +959,7 @@ bool GraphicFormatDetector::checkAPNG()
     if (PngImageReader::isAPng(mrStream))
     {
         maMetadata.mnFormat = GraphicFileFormat::APNG;
+        maMetadata.mbIsAnimated = true;
         return true;
     }
     return false;

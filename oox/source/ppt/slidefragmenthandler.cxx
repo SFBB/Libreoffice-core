@@ -65,8 +65,15 @@ SlideFragmentHandler::SlideFragmentHandler( XmlFilterBase& rFilter, const OUStri
 
 SlideFragmentHandler::~SlideFragmentHandler()
 {
-    // convert and insert all VML shapes (mostly form controls)
-    mpSlidePersistPtr->getDrawing()->convertAndInsert();
+    try
+    {
+        // convert and insert all VML shapes (mostly form controls)
+        mpSlidePersistPtr->getDrawing()->convertAndInsert();
+    }
+    catch (const uno::Exception&)
+    {
+        TOOLS_WARN_EXCEPTION("oox", "SlideFragmentHandler dtor: VML shape insertion failed");
+    }
 }
 
 ::oox::core::ContextHandlerRef SlideFragmentHandler::onCreateContext( sal_Int32 aElementToken, const AttributeList& rAttribs )
@@ -84,7 +91,7 @@ SlideFragmentHandler::~SlideFragmentHandler()
 
         std::optional<bool> aShowMasterShapes = rAttribs.getBool(XML_showMasterSp);
         if (aShowMasterShapes.has_value() && !aShowMasterShapes.value())
-            xSet->setPropertyValue("IsBackgroundObjectsVisible", Any(false));
+            xSet->setPropertyValue(u"IsBackgroundObjectsVisible"_ustr, Any(false));
 
         aPropMap.setProperty( PROP_Visible, rAttribs.getBool( XML_show, true ));
         aSlideProp.setProperties( aPropMap );
@@ -112,7 +119,7 @@ SlideFragmentHandler::~SlideFragmentHandler()
         if( !bNotesFragmentPathFound && !mpSlidePersistPtr->getMasterPersist() )
         {
             SlidePersistPtr pMasterPersistPtr = std::make_shared<SlidePersist>( rFilter, true, true, mpSlidePersistPtr->getPage(),
-                                std::make_shared<PPTShape>( Master, "com.sun.star.drawing.GroupShape" ), mpSlidePersistPtr->getNotesTextStyle() );
+                                std::make_shared<PPTShape>( Master, u"com.sun.star.drawing.GroupShape"_ustr ), mpSlidePersistPtr->getNotesTextStyle() );
             pMasterPersistPtr->setPath( aNotesFragmentPath );
             rFilter.getMasterPages().push_back( pMasterPersistPtr );
             FragmentHandlerRef xMasterFragmentHandler( new SlideFragmentHandler( rFilter, aNotesFragmentPath, pMasterPersistPtr, Master ) );
@@ -131,7 +138,7 @@ SlideFragmentHandler::~SlideFragmentHandler()
         {
             return new PPTShapeGroupContext(
                 *this, mpSlidePersistPtr, meShapeLocation, mpSlidePersistPtr->getShapes(),
-                std::make_shared<PPTShape>( meShapeLocation, "com.sun.star.drawing.GroupShape" ) );
+                std::make_shared<PPTShape>( meShapeLocation, u"com.sun.star.drawing.GroupShape"_ustr ) );
         }
         break;
 

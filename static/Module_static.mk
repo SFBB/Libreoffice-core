@@ -18,13 +18,20 @@ $(eval $(call gb_Module_add_targets,static,\
 ifeq (EMSCRIPTEN,$(OS))
 $(eval $(call gb_Module_add_targets,static,\
     CustomTarget_emscripten_fs_image \
-    $(if $(ENABLE_QT5), \
-        CustomTarget_wasm-qt5-mandelbrot_moc \
-        Executable_wasm-qt5-mandelbrot \
-    ) \
+    CustomTarget_unoembind \
+    Package_favicon \
+    Package_unoembind \
+    StaticLibrary_unoembind \
 ))
 endif
 
+endif
+
+ifneq ($(filter EMSCRIPTEN,$(BUILD_TYPE_FOR_HOST)),)
+$(eval $(call gb_Module_add_targets,static, \
+    Executable_embindmaker \
+    Executable_wasmbridgegen \
+))
 endif
 
 # vim: set noet sw=4 ts=4:

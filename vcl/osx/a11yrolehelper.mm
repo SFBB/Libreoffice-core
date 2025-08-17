@@ -83,7 +83,8 @@ using namespace ::com::sun::star::uno;
         MAP( AccessibleRole::MENU_BAR, NSAccessibilityMenuBarRole );
         MAP( AccessibleRole::MENU_ITEM, NSAccessibilityMenuItemRole );
         MAP( AccessibleRole::OPTION_PANE, NSAccessibilityUnknownRole ); // FIXME
-        MAP( AccessibleRole::PAGE_TAB, NSAccessibilityButtonRole );
+        // tdf#67943 tabs must have radio button role and tab button subrole
+        MAP( AccessibleRole::PAGE_TAB, NSAccessibilityRadioButtonRole );
         MAP( AccessibleRole::PAGE_TAB_LIST, NSAccessibilityTabGroupRole );
         MAP( AccessibleRole::PANEL, NSAccessibilityGroupRole );
         MAP( AccessibleRole::PARAGRAPH, NSAccessibilityTextAreaRole );
@@ -144,17 +145,14 @@ using namespace ::com::sun::star::uno;
     id nativeRole = [ AquaA11yRoleHelper simpleMapNativeRoleFrom: accessibleContext ];
     if ( accessibleContext -> getAccessibleRole() == AccessibleRole::LABEL ) {
         if ( accessibleContext -> getAccessibleChildCount() > 0 ) {
-            [ nativeRole release ];
             nativeRole = NSAccessibilityOutlineRole;
         } else if ( accessibleContext -> getAccessibleParent().is() ) {
             Reference < XAccessibleContext > rxParentContext = accessibleContext -> getAccessibleParent() -> getAccessibleContext();
             if ( rxParentContext.is() ) {
                 NSString * roleParent = static_cast<NSString *>([ AquaA11yRoleHelper simpleMapNativeRoleFrom: rxParentContext.get() ]);
                 if ( [ roleParent isEqualToString: NSAccessibilityOutlineRole ] ) {
-                    [ nativeRole release ];
                     nativeRole = NSAccessibilityRowRole;
                 }
-                [ roleParent release ];
             }
         }
     } else if ( accessibleContext -> getAccessibleRole() == AccessibleRole::COMBO_BOX ) {
@@ -165,7 +163,6 @@ using namespace ::com::sun::star::uno;
                 if ( rxAccessibleContext.is() && rxAccessibleContext -> getAccessibleRole() == AccessibleRole::TEXT ) {
                     sal_Int64 nStateSet = rxAccessibleContext -> getAccessibleStateSet();
                     if ( !(nStateSet & AccessibleStateType::EDITABLE ) ) {
-                        [ nativeRole release ];
                         nativeRole = NSAccessibilityPopUpButtonRole;
                     }
                 }
@@ -224,7 +221,8 @@ using namespace ::com::sun::star::uno;
         MAP( AccessibleRole::MENU_BAR, @"" );
         MAP( AccessibleRole::MENU_ITEM, @"" );
         MAP( AccessibleRole::OPTION_PANE, @"" );
-        MAP( AccessibleRole::PAGE_TAB, @"" );
+        // tdf#67943 tabs must have radio button role and tab button subrole
+        MAP( AccessibleRole::PAGE_TAB, NSAccessibilityTabButtonSubrole );
         MAP( AccessibleRole::PAGE_TAB_LIST, @"" );
         MAP( AccessibleRole::PANEL, @"" );
         MAP( AccessibleRole::PARAGRAPH, @"" );

@@ -62,13 +62,16 @@ void ImplMultiTextLineInfo::Clear()
 
 namespace vcl
 {
-    OUString TextLayoutCommon::GetCenterEllipsisString(OUString const& rOrigStr, sal_Int32 nIndex, tools::Long nMaxWidth)
+    TextLayoutCommon::~TextLayoutCommon() COVERITY_NOEXCEPT_FALSE
+    {}
+
+    OUString TextLayoutCommon::GetCenterEllipsisString(std::u16string_view rOrigStr, sal_Int32 nIndex, tools::Long nMaxWidth)
     {
         OUStringBuffer aTmpStr(rOrigStr);
 
         // speed it up by removing all but 1.33x as many as the break pos.
-        sal_Int32 nEraseChars = std::max<sal_Int32>(4, rOrigStr.getLength() - (nIndex*4)/3);
-        while(nEraseChars < rOrigStr.getLength() && GetTextWidth(aTmpStr.toString(), 0, aTmpStr.getLength()) > nMaxWidth)
+        sal_Int32 nEraseChars = std::max<sal_Int32>(4, rOrigStr.size() - (nIndex*4)/3);
+        while(nEraseChars < static_cast<sal_Int32>(rOrigStr.size()) && GetTextWidth(aTmpStr.toString(), 0, aTmpStr.getLength()) > nMaxWidth)
         {
             aTmpStr = rOrigStr;
             sal_Int32 i = (aTmpStr.getLength() - nEraseChars)/2;
@@ -218,12 +221,18 @@ namespace vcl
         return aStr;
     }
 
-    sal_Int32 TextLayoutCommon::BreakLinesWithIterator(const tools::Long nWidth, OUString const& rStr,
+    std::tuple<sal_Int32, sal_Int32> TextLayoutCommon::BreakLine(const tools::Long nWidth, OUString const& rStr,
                         css::uno::Reference< css::linguistic2::XHyphenator > const& xHyph,
-                        css::uno::Reference<css::i18n::XBreakIterator> const& xBI,
-                        const bool bHyphenate,
+                        css::uno::Reference<css::i18n::XBreakIterator>& xBI,
+                        const bool bHyphenate, const tools::Long nOrigLineWidth,
                         const sal_Int32 nPos, const sal_Int32 nLen)
     {
+        if (!xBI.is())
+            xBI = vcl::unohelper::CreateBreakIterator();
+
+        if (!xBI.is())
+            return BreakLineSimple(nWidth, rStr, nPos, nLen, nOrigLineWidth);
+
         const css::lang::Locale& rDefLocale(Application::GetSettings().GetUILanguageTag().getLocale());
 
         sal_Int32 nSoftBreak = GetTextBreak(rStr, nWidth, nPos, nLen - nPos);
@@ -241,16 +250,14 @@ namespace vcl
         if (nBreakPos <= nPos)
             nBreakPos = nSoftBreak;
 
-        if (!bHyphenate)
-            return nBreakPos;
+        if (!bHyphenate || !xHyph.is())
+            return { nBreakPos, GetTextWidth(rStr, nPos, nBreakPos - nPos) };
 
         // Whether hyphen or not: Put the word after the hyphen through
         // the word boundary.
 
         // We run into a problem if the doc is so narrow, that a word
         // is broken into more than two lines ...
-        if ( !xHyph.is() )
-            return nBreakPos;
 
         css::i18n::Boundary aBoundary = xBI->getWordBoundary( rStr, nBreakPos, rDefLocale, css::i18n::WordType::DICTIONARY_WORD, true );
         sal_Int32 nWordStart = nPos;
@@ -258,27 +265,28 @@ namespace vcl
         SAL_WARN_IF(nWordEnd <= nWordStart, "vcl", "Start >= End?");
 
         sal_Int32 nWordLen = nWordEnd - nWordStart;
-        if ( ( nWordEnd < nSoftBreak ) || ( nWordLen <= 3 ) )
-            return nBreakPos;
+        if ((nWordEnd < nSoftBreak) || (nWordLen <= 3))
+            return { nBreakPos, GetTextWidth(rStr, nPos, nBreakPos - nPos) };
 
         OUString aWord = rStr.copy( nWordStart, nWordLen );
         sal_Int32 nMinTrail = nWordEnd-nSoftBreak+1;  //+1: Before the "broken off" char
         css::uno::Reference< css::linguistic2::XHyphenatedWord > xHyphWord;
         if (xHyph.is())
             xHyphWord = xHyph->hyphenate( aWord, rDefLocale, aWord.getLength() - nMinTrail, css::uno::Sequence< css::beans::PropertyValue >() );
+
         if (!xHyphWord.is())
-            return nBreakPos;
+            return { nBreakPos, GetTextWidth(rStr, nPos, nBreakPos - nPos) };
 
         bool bAlternate = xHyphWord->isAlternativeSpelling();
         sal_Int32 _nWordLen = 1 + xHyphWord->getHyphenPos();
 
-        if ( ( _nWordLen < 2 ) || ( (nWordStart+_nWordLen) < 2 ) )
-            return nBreakPos;
+        if ((_nWordLen < 2 ) || ( (nWordStart + _nWordLen) < 2))
+            return { nBreakPos, GetTextWidth(rStr, nPos, nBreakPos - nPos) };
 
-        if ( bAlternate )
+        if (bAlternate)
         {
             nBreakPos = nWordStart + _nWordLen;
-            return nBreakPos;
+            return { nBreakPos, GetTextWidth(rStr, nPos, nBreakPos - nPos) };
         }
 
         OUString aAlt( xHyphWord->getHyphenatedWord() );
@@ -329,14 +337,18 @@ namespace vcl
         nBreakPos = nWordStart + nTxtStart;
         if ( cAlternateReplChar )
             nBreakPos++;
-        return nBreakPos;
+
+        return { nBreakPos, GetTextWidth(rStr, nPos, nBreakPos - nPos) };
     }
 
-    sal_Int32 TextLayoutCommon::BreakLinesSimple(const tools::Long nWidth, OUString const& rStr,
-                                                 const sal_Int32 nPos, sal_Int32 nBreakPos, tools::Long& nLineWidth)
+    std::tuple<sal_Int32, sal_Int32> TextLayoutCommon::BreakLineSimple(const tools::Long nWidth, OUString const& rStr,
+                                                 const sal_Int32 nPos, const sal_Int32 nLen, const tools::Long nOrigLineWidth)
     {
+        sal_Int32 nBreakPos = nLen;
+        tools::Long nLineWidth = nOrigLineWidth;
         sal_Int32 nSpacePos = rStr.getLength();
         tools::Long nW = 0;
+
         do
         {
             nSpacePos = rStr.lastIndexOf( ' ', nSpacePos );
@@ -355,7 +367,8 @@ namespace vcl
             if( nBreakPos < rStr.getLength()-1 )
                 nBreakPos++;
         }
-        return nBreakPos;
+
+        return { nBreakPos, nLineWidth };
     }
 
     namespace
@@ -398,7 +411,7 @@ namespace vcl
         if (bHyphenate)
         {
             // get service provider
-            css::uno::Reference<css::uno::XComponentContext> xContext(comphelper::getProcessComponentContext());
+            const css::uno::Reference<css::uno::XComponentContext>& xContext(comphelper::getProcessComponentContext());
             css::uno::Reference<css::linguistic2::XLinguServiceManager2> xLinguMgr = css::linguistic2::LinguServiceManager::create(xContext);
             xHyph = xLinguMgr->getHyphenator();
         }
@@ -413,20 +426,9 @@ namespace vcl
             sal_Int32 nBreakPos = lcl_GetEndOfLine(rStr, nPos, nLen);
             tools::Long nLineWidth = GetTextWidth(rStr, nPos, nBreakPos-nPos);
 
-            if (lcl_ShouldBreakWord(nLineWidth, nWidth, nStyle))
-            {
-                if (!xBI.is())
-                    xBI = vcl::unohelper::CreateBreakIterator();
 
-                if (xBI.is())
-                {
-                    nBreakPos = BreakLinesWithIterator(nWidth, rStr, xHyph, xBI, bHyphenate, nPos, nBreakPos);
-                    nLineWidth = GetTextWidth(rStr, nPos, nBreakPos - nPos);
-                }
-                else
-                    // fallback to something really simple
-                    nBreakPos = BreakLinesSimple(nWidth, rStr, nPos, nBreakPos, nLineWidth);
-            }
+            if (lcl_ShouldBreakWord(nLineWidth, nWidth, nStyle))
+                std::tie(nBreakPos, nLineWidth) = BreakLine(nWidth, rStr, xHyph, xBI, bHyphenate, nLineWidth, nPos, nBreakPos);
 
             if ( nLineWidth > nMaxLineWidth )
                 nMaxLineWidth = nLineWidth;
@@ -484,7 +486,8 @@ namespace vcl
     tools::Long DefaultTextLayout::GetTextArray( const OUString& _rText, KernArray* _pDXArray,
         sal_Int32 _nStartIndex, sal_Int32 _nLength, bool bCaret ) const
     {
-        return m_rTargetDevice.GetTextArray( _rText, _pDXArray, _nStartIndex, _nLength, bCaret );
+        return basegfx::fround<tools::Long>(
+            m_rTargetDevice.GetTextArray(_rText, _pDXArray, _nStartIndex, _nLength, bCaret));
     }
 
     sal_Int32 DefaultTextLayout::GetTextBreak( const OUString& _rText, tools::Long _nMaxTextWidth, sal_Int32 _nStartIndex, sal_Int32 _nLength ) const
@@ -503,7 +506,7 @@ namespace vcl
         ReferenceDeviceTextLayout( const Control& _rControl, OutputDevice& _rTargetDevice, OutputDevice& _rReferenceDevice );
         virtual ~ReferenceDeviceTextLayout();
 
-        // ITextLayout
+        // TextLayoutCommon
         virtual tools::Long        GetTextWidth( const OUString& rStr, sal_Int32 nIndex, sal_Int32 nLen ) const override;
         virtual void        DrawText( const Point& _rStartPoint, const OUString& _rText, sal_Int32 _nStartIndex, sal_Int32 _nLength, std::vector< tools::Rectangle >* _pVector, OUString* _pDisplayText ) override;
         virtual tools::Long GetTextArray( const OUString& _rText, KernArray* _pDXAry, sal_Int32 _nStartIndex, sal_Int32 _nLength, bool bCaret = false ) const override;
@@ -592,7 +595,8 @@ namespace vcl
             return 0;
 
         // retrieve the character widths from the reference device
-        tools::Long nTextWidth = m_rReferenceDevice.GetTextArray( _rText, _pDXAry, _nStartIndex, _nLength, bCaret );
+        tools::Long nTextWidth = basegfx::fround<tools::Long>(
+            m_rReferenceDevice.GetTextArray(_rText, _pDXAry, _nStartIndex, _nLength, bCaret));
 #if OSL_DEBUG_LEVEL > 1
         if ( _pDXAry )
         {
@@ -604,7 +608,7 @@ namespace vcl
             aTrace.append( " = ( " );
             for ( sal_Int32 i=0; i<_nLength; )
             {
-                aTrace.append( _pDXAry->at(i) );
+                aTrace.append( _pDXAry->get(i) );
                 if ( ++i < _nLength )
                     aTrace.append( ", " );
             }

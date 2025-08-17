@@ -48,6 +48,7 @@ inline constexpr OUString SC_UNO_SHEETLINKS           = u"SheetLinks"_ustr;
 inline constexpr OUString SC_UNO_FORBIDDEN            = u"ForbiddenCharacters"_ustr;
 inline constexpr OUString SC_UNO_HASDRAWPAGES         = u"HasDrawPages"_ustr;
 inline constexpr OUString SC_UNO_THEME                = u"Theme"_ustr;
+inline constexpr OUString SC_UNO_SOLVERSETTINGS       = u"SolverSettings"_ustr;
 
 //  CharacterProperties
 inline constexpr OUString SC_UNONAME_CCOLOR           = u"CharColor"_ustr;
@@ -191,6 +192,7 @@ inline constexpr OUString SC_UNONAME_TABLAYOUT        = u"TableLayout"_ustr;
 inline constexpr OUString SC_UNONAME_AUTOPRINT        = u"AutomaticPrintArea"_ustr;
 inline constexpr OUString SC_UNONAME_TABCOLOR         = u"TabColor"_ustr;
 inline constexpr OUString SC_UNONAME_CONDFORMAT       = u"ConditionalFormats"_ustr;
+inline constexpr OUString SC_UNONAME_TOTALBELOW       = u"TotalsRowBelow"_ustr;
 
 inline constexpr OUString SC_UNONAME_VISFLAG          = u"VisibleFlag"_ustr;
 
@@ -561,6 +563,7 @@ inline constexpr OUString SC_UNO_SHOWFORM             = u"ShowFormulas"_ustr;
 inline constexpr OUString SC_UNO_SHOWGRID             = u"ShowGrid"_ustr;
 inline constexpr OUString SC_UNO_SHOWHELP             = u"ShowHelpLines"_ustr;
 inline constexpr OUString SC_UNO_SHOWNOTES            = u"ShowNotes"_ustr;
+inline constexpr OUString SC_UNO_SHOWNOTEAUTHOR       = u"ShowNoteAuthor"_ustr;
 inline constexpr OUString SC_UNO_SHOWFORMULASMARKS    = u"ShowFormulasMarks"_ustr;
 inline constexpr OUString SC_UNO_SHOWOBJ              = u"ShowObjects"_ustr;
 inline constexpr OUString SC_UNO_SHOWPAGEBR           = u"ShowPageBreaks"_ustr;

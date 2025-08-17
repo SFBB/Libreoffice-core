@@ -33,7 +33,7 @@
 #include <sfx2/shell.hxx>
 
 namespace com::sun::star::frame { class XFrame; }
-namespace com::sun::star::script { class XLibraryContainer; }
+namespace com::sun::star::script { class XStorageBasedLibraryContainer; }
 
 namespace weld { class Window; }
 
@@ -78,9 +78,17 @@ enum class SfxToolsModule
 class SFX2_DLLPUBLIC SfxLinkItem final : public SfxPoolItem
 {
     Link<SfxPoolItem const *, void> aLink;
+
+    SfxLinkItem(SfxLinkItem const &) = default;
+    void operator =(SfxLinkItem const &) = delete;
+
 public:
-    SfxLinkItem( sal_uInt16 nWhichId, const Link<SfxPoolItem const *, void>& rValue ) : SfxPoolItem( nWhichId )
+    DECLARE_ITEM_TYPE_FUNCTION(SfxLinkItem)
+    SfxLinkItem( sal_uInt16 nWhichId, const Link<SfxPoolItem const *, void>& rValue )
+        : SfxPoolItem( nWhichId )
     {   aLink = rValue; }
+
+    virtual ~SfxLinkItem() override;
 
     virtual SfxLinkItem*     Clone( SfxItemPool* = nullptr ) const override
     {   return new SfxLinkItem( *this ); }
@@ -98,18 +106,18 @@ class SFX2_DLLPUBLIC SfxApplication final : public SfxShell
 
     DECL_DLLPRIVATE_STATIC_LINK( SfxApplication, GlobalBasicErrorHdl_Impl, StarBASIC*, bool );
 
-    void                        Deinitialize();
+    SAL_DLLPRIVATE void        Deinitialize();
 
 public:
                                 SFX_DECL_INTERFACE(SFX_INTERFACE_SFXAPP)
 
 private:
     /// SfxInterface initializer.
-    static void InitInterface_Impl();
-    SfxApplication();
+    SAL_DLLPRIVATE static void InitInterface_Impl();
+    SAL_DLLPRIVATE SfxApplication();
 
 public:
-    virtual ~SfxApplication() override;
+    SAL_DLLPRIVATE virtual ~SfxApplication() override;
     static SfxApplication*      GetOrCreate();
     static SfxApplication*      Get();
 
@@ -117,8 +125,8 @@ public:
 #if defined(_WIN32)
     static bool                 DdeExecute( const OUString& rCmd );
 #endif
-    bool                        InitializeDde();
-    const DdeService*           GetDdeService() const;
+    SAL_DLLPRIVATE bool         InitializeDde();
+    SAL_DLLPRIVATE const DdeService* GetDdeService() const;
     DdeService*                 GetDdeService();
 #if defined(_WIN32)
     void                        AddDdeTopic( SfxObjectShell* );
@@ -134,32 +142,31 @@ public:
 
     // members
     SfxFilterMatcher&           GetFilterMatcher();
-    SfxProgress*                GetProgress() const;
-    sal_uInt16                  GetFreeIndex();
-    void                        ReleaseIndex(sal_uInt16 i);
+    SAL_DLLPRIVATE SfxProgress* GetProgress() const;
+    SAL_DLLPRIVATE sal_uInt16   GetFreeIndex();
+    SAL_DLLPRIVATE void         ReleaseIndex(sal_uInt16 i);
 
     // Basic/Scripting
     static bool                 IsXScriptURL( const OUString& rScriptURL );
     static OUString             ChooseScript(weld::Window *pParent);
     // if xDocFrame is present, then select that document in the macro organizer by default, otherwise it is typically "Application Macros"
     // that is preselected
-    static void                 MacroOrganizer(weld::Window* pParent, const css::uno::Reference<css::frame::XFrame>& xDocFrame, sal_Int16 nTabId);
+    SAL_DLLPRIVATE static void  MacroOrganizer(weld::Window* pParent, const css::uno::Reference<css::frame::XFrame>& xDocFrame, sal_Int16 nTabId);
     static ErrCode              CallBasic( const OUString&, BasicManager*, SbxArray *pArgs, SbxValue *pRet );
     static ErrCode              CallAppBasic( const OUString& i_macroName )
                                 { return CallBasic( i_macroName, SfxApplication::GetBasicManager(), nullptr, nullptr ); }
     static BasicManager*        GetBasicManager();
-    css::script::XLibraryContainer * GetDialogContainer();
-    css::script::XLibraryContainer * GetBasicContainer();
+    css::script::XStorageBasedLibraryContainer* GetDialogContainer();
+    css::script::XStorageBasedLibraryContainer* GetBasicContainer();
     static StarBASIC*           GetBasic();
     void                        SaveBasicAndDialogContainer() const;
 
     // misc.
     static void                 GetOptions(SfxItemSet &);
     static void                 SetOptions(const SfxItemSet &);
-    virtual void                Invalidate(sal_uInt16 nId = 0) override;
+    SAL_DLLPRIVATE virtual void Invalidate(sal_uInt16 nId = 0) override;
     void                        NotifyEvent(const SfxEventHint& rEvent, bool bSynchron = true );
     bool                        IsDowning() const;
-    void                        ResetLastDir();
 
     SAL_DLLPRIVATE SfxDispatcher* GetAppDispatcher_Impl();
     SAL_DLLPRIVATE SfxDispatcher* GetDispatcher_Impl();
@@ -198,8 +205,6 @@ public:
     SAL_DLLPRIVATE static void  OfaState_Impl(SfxItemSet &);
 
     SAL_DLLPRIVATE void         SetProgress_Impl(SfxProgress *);
-    SAL_DLLPRIVATE const OUString& GetLastDir_Impl() const;
-    SAL_DLLPRIVATE void         SetLastDir_Impl( const OUString & );
 
     SAL_DLLPRIVATE static void  Registrations_Impl();
     SAL_DLLPRIVATE SfxWorkWindow* GetWorkWindow_Impl(const SfxViewFrame *pFrame) const;
@@ -213,10 +218,10 @@ public:
     static void                 SetModule(SfxToolsModule nSharedLib, std::unique_ptr<SfxModule> pModule);
     static SfxModule*           GetModule(SfxToolsModule nSharedLib);
 
-    static bool loadBrandSvg(const char *pName, BitmapEx &rBitmap, int nWidth);
+    static bool loadBrandSvg(const char *pName, Bitmap& rBitmap, int nWidth);
 
     /** loads the application logo as used in the impress slideshow pause screen */
-    static BitmapEx GetApplicationLogo(tools::Long nWidth);
+    static Bitmap GetApplicationLogo(tools::Long nWidth);
 
     /** if true then dialog/infobar notifications like the tip of the day or
         version change infobar should be suppressed */
@@ -225,7 +230,7 @@ public:
     static bool IsTipOfTheDayDue();
 
     /** this Theme contains Images so must be deleted before DeInitVCL */
-    sfx2::sidebar::Theme & GetSidebarTheme();
+    SAL_DLLPRIVATE sfx2::sidebar::Theme & GetSidebarTheme();
 };
 
 inline SfxApplication* SfxGetpApp()

@@ -23,7 +23,7 @@
 
 #include <cassert>
 
-#include <com/sun/star/script/XLibraryContainer.hpp>
+#include <com/sun/star/script/XStorageBasedLibraryContainer.hpp>
 #include <officecfg/Office/Common.hxx>
 #include <svl/intitem.hxx>
 #include <svl/eitem.hxx>
@@ -48,7 +48,6 @@
 #include <sfxslots.hxx>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::script;
 
 using ::basic::BasicManagerRepository;
@@ -65,18 +64,18 @@ BasicManager* SfxApplication::GetBasicManager()
 #if !HAVE_FEATURE_SCRIPTING
     return nullptr;
 #else
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return nullptr;
     return BasicManagerRepository::getApplicationBasicManager();
 #endif
 }
 
-XLibraryContainer * SfxApplication::GetDialogContainer()
+XStorageBasedLibraryContainer* SfxApplication::GetDialogContainer()
 {
 #if !HAVE_FEATURE_SCRIPTING
     return nullptr;
 #else
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return nullptr;
     if ( !pImpl->pBasicManager->isValid() )
         GetBasicManager();
@@ -85,12 +84,12 @@ XLibraryContainer * SfxApplication::GetDialogContainer()
 }
 
 
-XLibraryContainer * SfxApplication::GetBasicContainer()
+XStorageBasedLibraryContainer* SfxApplication::GetBasicContainer()
 {
 #if !HAVE_FEATURE_SCRIPTING
     return nullptr;
 #else
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return nullptr;
     if ( !pImpl->pBasicManager->isValid() )
         GetBasicManager();
@@ -103,7 +102,7 @@ StarBASIC* SfxApplication::GetBasic()
 #if !HAVE_FEATURE_SCRIPTING
     return nullptr;
 #else
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return nullptr;
     return GetBasicManager()->GetLib(0);
 #endif

@@ -51,6 +51,7 @@ using namespace com::sun::star::util;
 namespace {
 
 constexpr OUString CMD_CLEAR_LIST = u".uno:ClearRecentFileList"_ustr;
+constexpr OUString CMD_TOGGLE_CURRENTMODULE = u".uno:ToggleCurrentModule"_ustr;
 constexpr OUString CMD_OPEN_AS_TEMPLATE = u".uno:OpenTemplate"_ustr;
 constexpr OUString CMD_OPEN_REMOTE = u".uno:OpenRemote"_ustr;
 
@@ -65,7 +66,7 @@ public:
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.RecentFilesMenuController";
+        return u"com.sun.star.comp.framework.RecentFilesMenuController"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -75,7 +76,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.frame.PopupMenuController"};
+        return {u"com.sun.star.frame.PopupMenuController"_ustr};
     }
 
     // XStatusListener
@@ -95,9 +96,10 @@ public:
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
 
 private:
-    virtual void impl_setPopupMenu() override;
-    void fillPopupMenu( css::uno::Reference< css::awt::XPopupMenu > const & rPopupMenu );
+    virtual void impl_setPopupMenu(std::unique_lock<std::mutex>& rGuard) override;
+    void fillPopupMenu(std::unique_lock<std::mutex>& rGuard, css::uno::Reference<css::awt::XPopupMenu > const & rPopupMenu );
     void executeEntry( sal_Int32 nIndex );
+    void executeEntryImpl(std::unique_lock<std::mutex>& rGuard, sal_Int32 nIndex);
 
     std::vector<std::pair<OUString, bool>>   m_aRecentFilesItems;
     bool                      m_bDisabled : 1;
@@ -148,7 +150,7 @@ void InsertItem(const css::uno::Reference<css::awt::XPopupMenu>& rPopupMenu,
 
 
 // private function
-void RecentFilesMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu > const & rPopupMenu )
+void RecentFilesMenuController::fillPopupMenu(std::unique_lock<std::mutex>& /*rGuard*/, Reference<css::awt::XPopupMenu> const & rPopupMenu)
 {
     SolarMutexGuard aSolarMutexGuard;
 
@@ -179,7 +181,9 @@ void RecentFilesMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >
             nItemPos++;
         };
 
-        if (m_aModuleName != "com.sun.star.frame.StartModule")
+        if (m_aModuleName != "com.sun.star.frame.StartModule"
+            // tdf#164794 - show complete list of recent documents in the macro window
+            && m_aModuleName != "com.sun.star.script.BasicIDE")
         {
             ::comphelper::MimeConfigurationHelper aConfigHelper(
                 comphelper::getProcessComponentContext());
@@ -198,10 +202,14 @@ void RecentFilesMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >
                     nItemPosModule++;
                 }
                 // tdf#56696 - insert documents of the current module
-                else if ((bShowCurrentModuleOnly
+                else if (const auto aDocServiceName
+                         = aConfigHelper.GetDocServiceNameFromFilter(rPickListEntry.sFilter);
+                         (bShowCurrentModuleOnly
                           || (nItemPosModule - nItemPosPinned) < MAX_MENU_ITEMS_PER_MODULE)
-                         && aConfigHelper.GetDocServiceNameFromFilter(rPickListEntry.sFilter)
-                                == m_aModuleName)
+                         && (m_aModuleName == aDocServiceName
+                             // tdf#166764 - show list of recent documents in Base subdialogs
+                             || (m_aModuleName.startsWith("com.sun.star.sdb")
+                                 && aDocServiceName.startsWith("com.sun.star.sdb"))))
                 {
                     insertHistoryItemAtPos(rPickListEntry, nItemPosModule);
                     nItemPosModule++;
@@ -273,7 +281,7 @@ void RecentFilesMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >
             if ( bIsIconsAllowed ) {
                 // tdf#146219: don't use SvFileInformationManager::GetImageId,
                 // which needs to access the URL to detect if it's a directory
-                BitmapEx aThumbnail(SvFileInformationManager::GetFileImageId(aURL));
+                Bitmap aThumbnail(SvFileInformationManager::GetFileImageId(aURL));
                 rPopupMenu->setItemImage(sal_uInt16(i + 1), Graphic(aThumbnail).GetXGraphic(), false);
             }
 
@@ -294,6 +302,12 @@ void RecentFilesMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >
         rPopupMenu->insertItem(sal_uInt16(nCount + 1), FwkResId(STR_CLEAR_RECENT_FILES), 0, -1);
         rPopupMenu->setCommand(sal_uInt16(nCount + 1), CMD_CLEAR_LIST);
         rPopupMenu->setHelpText(sal_uInt16(nCount + 1), FwkResId(STR_CLEAR_RECENT_FILES_HELP));
+
+        // Toggle current module only
+        rPopupMenu->insertItem(sal_uInt16(nCount + 2), FwkResId(STR_TOGGLE_CURRENT_MODULE), 0, -1);
+        rPopupMenu->checkItem(sal_uInt16(nCount + 2), bShowCurrentModuleOnly);
+        rPopupMenu->setCommand(sal_uInt16(nCount + 2), CMD_TOGGLE_CURRENTMODULE);
+        rPopupMenu->setHelpText(sal_uInt16(nCount + 2), FwkResId(STR_TOGGLE_CURRENT_MODULE_HELP));
 
         // Open remote menu entry
         if ( m_bShowToolbarEntries )
@@ -323,27 +337,33 @@ void RecentFilesMenuController::fillPopupMenu( Reference< css::awt::XPopupMenu >
     }
 }
 
-void RecentFilesMenuController::executeEntry( sal_Int32 nIndex )
+void RecentFilesMenuController::executeEntryImpl(std::unique_lock<std::mutex>& rGuard, sal_Int32 nIndex)
 {
     if (( nIndex < 0 ) ||
         ( nIndex >= sal::static_int_cast<sal_Int32>( m_aRecentFilesItems.size() )))
         return;
 
     Sequence< PropertyValue > aArgsList{
-        comphelper::makePropertyValue("Referer", OUString( "private:user" )),
+        comphelper::makePropertyValue(u"Referer"_ustr, u"private:user"_ustr),
 
         // documents in the picklist will never be opened as templates
-        comphelper::makePropertyValue("AsTemplate", false),
+        comphelper::makePropertyValue(u"AsTemplate"_ustr, false),
 
         // Type detection needs to know which app we are opening it from.
-        comphelper::makePropertyValue("DocumentService", m_aModuleName)
+        comphelper::makePropertyValue(u"DocumentService"_ustr, m_aModuleName)
     };
     if (m_aRecentFilesItems[nIndex].second) // tdf#149170 only add if true
     {
         aArgsList.realloc(aArgsList.size()+1);
-        aArgsList.getArray()[aArgsList.size()-1] = comphelper::makePropertyValue("ReadOnly", true);
+        aArgsList.getArray()[aArgsList.size()-1] = comphelper::makePropertyValue(u"ReadOnly"_ustr, true);
     }
-    dispatchCommand(m_aRecentFilesItems[nIndex].first, aArgsList, "_default");
+    dispatchCommandImpl(rGuard, m_aRecentFilesItems[nIndex].first, aArgsList, u"_default"_ustr);
+}
+
+void RecentFilesMenuController::executeEntry( sal_Int32 nIndex )
+{
+    std::unique_lock aLock(m_aMutex);
+    executeEntryImpl(aLock, nIndex);
 }
 
 // XEventListener
@@ -369,7 +389,7 @@ void SAL_CALL RecentFilesMenuController::statusChanged( const FeatureStateEvent&
 
 void SAL_CALL RecentFilesMenuController::itemSelected( const css::awt::MenuEvent& rEvent )
 {
-    Reference< css::awt::XPopupMenu > xPopupMenu;
+    rtl::Reference< VCLXPopupMenu > xPopupMenu;
 
     {
         std::unique_lock aLock(m_aMutex);
@@ -385,8 +405,15 @@ void SAL_CALL RecentFilesMenuController::itemSelected( const css::awt::MenuEvent
     {
         SvtHistoryOptions::Clear( EHistoryType::PickList, false );
         dispatchCommand(
-            "vnd.org.libreoffice.recentdocs:ClearRecentFileList",
+            u"vnd.org.libreoffice.recentdocs:ClearRecentFileList"_ustr,
             css::uno::Sequence< css::beans::PropertyValue >() );
+    }
+    if ( aCommand == CMD_TOGGLE_CURRENTMODULE )
+    {
+        bool bIsExclusive = officecfg::Office::Common::History::ShowCurrentModuleOnly::get();
+        std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
+        officecfg::Office::Common::History::ShowCurrentModuleOnly::set(!bIsExclusive, batch);
+        batch->commit();
     }
     else if ( aCommand == CMD_OPEN_REMOTE )
     {
@@ -405,14 +432,14 @@ void SAL_CALL RecentFilesMenuController::itemSelected( const css::awt::MenuEvent
 void SAL_CALL RecentFilesMenuController::itemActivated( const css::awt::MenuEvent& )
 {
     std::unique_lock aLock( m_aMutex );
-    impl_setPopupMenu();
+    impl_setPopupMenu(aLock);
 }
 
 // XPopupMenuController
-void RecentFilesMenuController::impl_setPopupMenu()
+void RecentFilesMenuController::impl_setPopupMenu(std::unique_lock<std::mutex>& rGuard)
 {
     if ( m_xPopupMenu.is() )
-        fillPopupMenu( m_xPopupMenu );
+        fillPopupMenu(rGuard, m_xPopupMenu);
 }
 
 // XDispatchProvider
@@ -463,7 +490,7 @@ void SAL_CALL RecentFilesMenuController::dispatch(
         aEntryArg = aURL.Complete.subView( nEntryPos, nAddArgs-nEntryPos );
 
     sal_Int32 nEntry = o3tl::toInt32(aEntryArg);
-    executeEntry( nEntry );
+    executeEntryImpl(aLock, nEntry);
 }
 
 }

@@ -18,6 +18,8 @@
 
 package com.sun.star.script.framework.container;
 
+import com.sun.star.script.framework.log.LogUtils;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -29,6 +31,7 @@ import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+import javax.xml.XMLConstants;
 
 import org.w3c.dom.Document;
 
@@ -60,6 +63,30 @@ public class XMLParserFactory {
 
         public DefaultParser() {
             factory = DocumentBuilderFactory.newInstance();
+
+            try {
+                factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            } catch (ParserConfigurationException e) {
+                LogUtils.DEBUG(LogUtils.getTrace(e));
+            }
+
+            try {
+                factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            } catch (ParserConfigurationException e) {
+                LogUtils.DEBUG(LogUtils.getTrace(e));
+            }
+
+            try {
+                factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            } catch (ParserConfigurationException e) {
+                LogUtils.DEBUG(LogUtils.getTrace(e));
+            }
+
+            try {
+                factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            } catch (ParserConfigurationException e) {
+                LogUtils.DEBUG(LogUtils.getTrace(e));
+            }
         }
 
         public Document parse(InputStream inputStream) throws IOException {
@@ -94,7 +121,11 @@ public class XMLParserFactory {
 
         public void write(Document doc, OutputStream out) throws IOException {
             try {
-                TransformerFactory.newInstance().newTransformer().transform(
+                TransformerFactory transformerFactory = TransformerFactory.newInstance();
+                transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+                transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
+                transformerFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+                transformerFactory.newTransformer().transform(
                     new DOMSource(doc), new StreamResult(out));
             } catch (TransformerException ex1) {
                 IOException ex2 = new IOException();

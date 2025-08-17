@@ -39,15 +39,15 @@ OutlinerEditEng::~OutlinerEditEng()
 {
 }
 
-void OutlinerEditEng::PaintingFirstLine(sal_Int32 nPara, const Point& rStartPos, const Point& rOrigin, Degree10 nOrientation, OutputDevice& rOutDev)
+void OutlinerEditEng::ProcessFirstLineOfParagraph(sal_Int32 nPara, const Point& rStartPos, OutputDevice& rOutDev, StripPortionsHelper& rStripPortionsHelper)
 {
     if( GetControlWord() & EEControlBits::OUTLINER )
     {
-        PaintFirstLineInfo aInfo(nPara, rStartPos, &rOutDev);
+        PaintFirstLineInfo aInfo(nPara, rStartPos, &rOutDev, rStripPortionsHelper);
         pOwner->maPaintFirstLineHdl.Call( &aInfo );
     }
 
-    pOwner->PaintBullet(nPara, rStartPos, rOrigin, nOrientation, rOutDev);
+    pOwner->StripBullet(nPara, rStartPos, rOutDev, rStripPortionsHelper);
 }
 
 const SvxNumberFormat* OutlinerEditEng::GetNumberFormat( sal_Int32 nPara ) const
@@ -150,30 +150,6 @@ OUString OutlinerEditEng::GetUndoComment( sal_uInt16 nUndoId ) const
     }
 }
 
-void OutlinerEditEng::DrawingText( const Point& rStartPos, const OUString& rText, sal_Int32 nTextStart, sal_Int32 nTextLen,
-                                   std::span<const sal_Int32> pDXArray, std::span<const sal_Bool> pKashidaArray,
-                                   const SvxFont& rFont, sal_Int32 nPara, sal_uInt8 nRightToLeft,
-                                   const EEngineData::WrongSpellVector* pWrongSpellVector,
-                                   const SvxFieldData* pFieldData,
-                                   bool bEndOfLine,
-                                   bool bEndOfParagraph,
-                                   const css::lang::Locale* pLocale,
-                                   const Color& rOverlineColor,
-                                   const Color& rTextLineColor)
-{
-    pOwner->DrawingText(rStartPos,rText,nTextStart,nTextLen,pDXArray,pKashidaArray,rFont,nPara,nRightToLeft,
-        pWrongSpellVector, pFieldData, bEndOfLine, bEndOfParagraph, false/*bEndOfBullet*/, pLocale, rOverlineColor, rTextLineColor);
-}
-
-void OutlinerEditEng::DrawingTab( const Point& rStartPos, tools::Long nWidth, const OUString& rChar,
-    const SvxFont& rFont, sal_Int32 nPara, sal_uInt8 nRightToLeft,
-    bool bEndOfLine, bool bEndOfParagraph,
-    const Color& rOverlineColor, const Color& rTextLineColor)
-{
-    pOwner->DrawingTab(rStartPos, nWidth, rChar, rFont, nPara, nRightToLeft,
-            bEndOfLine, bEndOfParagraph, rOverlineColor, rTextLineColor );
-}
-
 OUString OutlinerEditEng::CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rpTxtColor, std::optional<Color>& rpFldColor, std::optional<FontLineStyle>& rpFldLineStyle )
 {
     return pOwner->CalcFieldValue( rField, nPara, nPos, rpTxtColor, rpFldColor, rpFldLineStyle );
@@ -198,6 +174,11 @@ void OutlinerEditEng::SetParaAttribs( sal_Int32 nPara, const SfxItemSet& rSet )
 
     if ( !IsInUndo() && IsUndoEnabled() )
         pOwner->UndoActionEnd();
+}
+
+sal_Int16 OutlinerEditEng::GetDepth(sal_Int32 nPara) const
+{
+    return pOwner->GetDepth(nPara);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

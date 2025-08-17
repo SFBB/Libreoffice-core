@@ -26,16 +26,11 @@
 #include <svl/undo.hxx>
 #include <memory>
 
-class Printer;
-class StarBASIC;
-class SfxItemSet;
-class SfxUndoManager;
 class SdrUndoAction;
 
 namespace basctl
 {
 
-class DlgEditor;
 class DlgEdModel;
 class DlgEdPage;
 class DlgEdView;
@@ -105,10 +100,10 @@ public:
     virtual void        Activating () override;
     virtual void        Deactivating () override;
 
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     virtual OUString GetHid () const override;
-    virtual ItemType GetType () const override;
+    virtual SbxItemType GetSbxType () const override;
 };
 
 

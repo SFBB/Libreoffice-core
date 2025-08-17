@@ -28,6 +28,7 @@
 #include <com/sun/star/sheet/ReferenceFlags.hpp>
 #include <com/sun/star/sheet/AddressConvention.hpp>
 #include <com/sun/star/sheet/NameToken.hpp>
+#include <com/sun/star/sheet/TableRefToken.hpp>
 #include <com/sun/star/table/CellAddress.hpp>
 
 #include <svl/itemprop.hxx>
@@ -70,7 +71,7 @@ const formula::FormulaGrammar::AddressConvention aConvMap[] = {
 constexpr sal_Int16 nConvMapCount = SAL_N_ELEMENTS(aConvMap);
 
 
-SC_SIMPLE_SERVICE_INFO( ScFormulaParserObj, "ScFormulaParserObj", SC_SERVICENAME_FORMULAPARS )
+SC_SIMPLE_SERVICE_INFO( ScFormulaParserObj, u"ScFormulaParserObj"_ustr, SC_SERVICENAME_FORMULAPARS )
 
 ScFormulaParserObj::ScFormulaParserObj(ScDocShell* pDocSh) :
     mpDocShell( pDocSh ),
@@ -143,6 +144,14 @@ uno::Sequence<sheet::FormulaToken> SAL_CALL ScFormulaParserObj::parseFormula(
         SetCompilerFlags( aCompiler );
 
         std::unique_ptr<ScTokenArray> pCode = aCompiler.CompileString( aFormula );
+        if (pCode->HasOpCode(ocTableRef))
+        {
+            FormulaError nErr = pCode->GetCodeError();
+            aCompiler.EnableJumpCommandReorder(true);
+            aCompiler.CompileTokenArray();  // needed for corresponding inner reference
+            pCode->DelRPN();                // can be discarded
+            pCode->SetCodeError(nErr);      // reset to parsing error, if any
+        }
         ScTokenConversion::ConvertToTokenSequence( rDoc, aRet, *pCode );
     }
 
@@ -200,8 +209,6 @@ void SAL_CALL ScFormulaParserObj::setPropertyValue(
         // CompileEnglish _before_ OpCodeMap!
         if (mxOpCodeMap && mbEnglish != bOldEnglish)
         {
-            ScDocument& rDoc = mpDocShell->GetDocument();
-            ScCompiler aCompiler( rDoc, ScAddress(), rDoc.GetGrammar());
             mxOpCodeMap = formula::FormulaCompiler::CreateOpCodeMap( maOpCodeMapping, mbEnglish);
         }
 
@@ -219,8 +226,6 @@ void SAL_CALL ScFormulaParserObj::setPropertyValue(
         // had been set for CONV_XL_OOX.
         if (mxOpCodeMap && mbEnglish != bOldEnglish)
         {
-            ScDocument& rDoc = mpDocShell->GetDocument();
-            ScCompiler aCompiler( rDoc, ScAddress(), rDoc.GetGrammar());
             mxOpCodeMap = formula::FormulaCompiler::CreateOpCodeMap( maOpCodeMapping, mbEnglish);
         }
     }
@@ -233,8 +238,6 @@ void SAL_CALL ScFormulaParserObj::setPropertyValue(
         if (!(aValue >>= maOpCodeMapping))
             throw lang::IllegalArgumentException();
 
-        ScDocument& rDoc = mpDocShell->GetDocument();
-        ScCompiler aCompiler(rDoc, ScAddress(), rDoc.GetGrammar());
         mxOpCodeMap = formula::FormulaCompiler::CreateOpCodeMap( maOpCodeMapping, mbEnglish);
 
     }
@@ -378,7 +381,8 @@ bool ScTokenConversion::ConvertToTokenArray( ScDocument& rDoc,
 }
 
 void ScTokenConversion::ConvertToTokenSequence( const ScDocument& rDoc,
-        uno::Sequence<sheet::FormulaToken>& rSequence, const ScTokenArray& rTokenArray )
+        uno::Sequence<sheet::FormulaToken>& rSequence, const ScTokenArray& rTokenArray,
+        bool bIgnoreTableRefNoInnerReference )
 {
     sal_Int32 nLen = static_cast<sal_Int32>(rTokenArray.GetLen());
     formula::FormulaToken** pTokens = rTokenArray.GetArray();
@@ -442,10 +446,41 @@ void ScTokenConversion::ConvertToTokenSequence( const ScDocument& rDoc,
                     break;
                 case svIndex:
                     {
-                        sheet::NameToken aNameToken;
-                        aNameToken.Index = static_cast<sal_Int32>( rToken.GetIndex() );
-                        aNameToken.Sheet = rToken.GetSheet();
-                        rAPI.Data <<= aNameToken;
+                        const ScTableRefToken* pTR;
+                        if (rToken.GetOpCode() == ocTableRef && (pTR = dynamic_cast<const ScTableRefToken*>(&rToken)))
+                        {
+                            sheet::TableRefToken aTableRefToken;
+                            aTableRefToken.Index = static_cast<sal_Int32>( pTR->GetIndex());
+                            aTableRefToken.Item = static_cast<sal_Int16>( pTR->GetItem());
+                            const FormulaToken* pRef = pTR->GetAreaRefRPN();
+                            assert((pRef || bIgnoreTableRefNoInnerReference)
+                                    && "something forgot to create RPN for ocTableRef inner reference");
+                            (void)bIgnoreTableRefNoInnerReference;
+                            if (pRef)
+                            {
+                                switch (pRef->GetType())
+                                {
+                                    case svSingleRef:
+                                        lcl_SingleRefToApi( aTableRefToken.Reference.Reference1, *pRef->GetSingleRef());
+                                        aTableRefToken.Reference.Reference2 = aTableRefToken.Reference.Reference1;
+                                    break;
+                                    case svDoubleRef:
+                                        lcl_SingleRefToApi( aTableRefToken.Reference.Reference1, *pRef->GetSingleRef());
+                                        lcl_SingleRefToApi( aTableRefToken.Reference.Reference2, *pRef->GetSingleRef2());
+                                    break;
+                                    default:
+                                        ;   // nothing
+                                }
+                            }
+                            rAPI.Data <<= aTableRefToken;
+                        }
+                        else
+                        {
+                            sheet::NameToken aNameToken;
+                            aNameToken.Index = static_cast<sal_Int32>( rToken.GetIndex() );
+                            aNameToken.Sheet = rToken.GetSheet();
+                            rAPI.Data <<= aNameToken;
+                        }
                     }
                     break;
                 case svMatrix:

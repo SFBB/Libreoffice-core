@@ -71,7 +71,7 @@ void call(bridges::cpp_uno::shared::CppInterfaceProxy* proxy,
     typelib_TypeDescription** argtds
         = static_cast<typelib_TypeDescription**>(alloca(count * sizeof(typelib_TypeDescription*)));
 
-    sal_Int32 ngpr = 1;
+    sal_Int32 ngpr = retKind == RETURN_KIND_INDIRECT ? 2 : 1;
     sal_Int32 nfpr = 0;
     sal_Int32 sp = 0;
     for (sal_Int32 i = 0; i != count; ++i)
@@ -201,34 +201,9 @@ void call(bridges::cpp_uno::shared::CppInterfaceProxy* proxy,
                     assert(false);
             }
             break;
-        case RETURN_KIND_HFA_FLOAT:
-            assert(rtd != 0);
-            switch (rtd->nSize)
-            {
-                case 16:
-                    std::memcpy(fpr + 3, static_cast<char*>(retin) + 12, 4);
-                    [[fallthrough]];
-                case 12:
-                    std::memcpy(fpr + 2, static_cast<char*>(retin) + 8, 4);
-                    [[fallthrough]];
-                case 8:
-                    std::memcpy(fpr + 1, static_cast<char*>(retin) + 4, 4);
-                    [[fallthrough]];
-                case 4:
-                    std::memcpy(fpr, retin, 4);
-                    break;
-                default:
-                    assert(false);
-            }
-            assert(!retConv);
-            break;
-        case RETURN_KIND_HFA_DOUBLE:
-            assert(rtd != 0);
-            std::memcpy(fpr, retin, rtd->nSize);
-            assert(!retConv);
-            break;
         case RETURN_KIND_INDIRECT:
             retout = indirectRet;
+            gpr[0] = reinterpret_cast<sal_uInt64>(retout);
             break;
     }
 
@@ -243,11 +218,12 @@ void call(bridges::cpp_uno::shared::CppInterfaceProxy* proxy,
 }
 
 extern "C" void vtableCall(sal_Int32 functionIndex, sal_Int32 vtableOffset, sal_uInt64* gpr,
-                           sal_uInt64* fpr, sal_uInt64* stack, void* indirectRet)
+                           sal_uInt64* fpr, sal_uInt64* stack)
 {
     bridges::cpp_uno::shared::CppInterfaceProxy* proxy
         = bridges::cpp_uno::shared::CppInterfaceProxy::castInterfaceToProxy(
             reinterpret_cast<char*>(gpr[0]) - vtableOffset);
+    void* indirectRet = reinterpret_cast<void*>(gpr[1]);
     typelib_InterfaceTypeDescription* pInterfaceTD = proxy->getTypeDescr();
     assert(functionIndex < pInterfaceTD->nMapFunctionIndexToMemberIndex);
     sal_Int32 nMemberPos = pInterfaceTD->pMapFunctionIndexToMemberIndex[functionIndex];
@@ -288,7 +264,7 @@ extern "C" void vtableCall(sal_Int32 functionIndex, sal_Int32 vtableOffset, sal_
                 {
                     typelib_TypeDescription* td = nullptr;
                     TYPELIB_DANGER_GET(&td,
-                                       (reinterpret_cast<uno::Type*>(gpr[1])->getTypeLibType()));
+                                       (reinterpret_cast<uno::Type*>(gpr[2])->getTypeLibType()));
                     if (td != 0 && td->eTypeClass == typelib_TypeClass_INTERFACE)
                     {
                         uno::XInterface* ifc = nullptr;
@@ -302,6 +278,7 @@ extern "C" void vtableCall(sal_Int32 functionIndex, sal_Int32 vtableOffset, sal_
                                               reinterpret_cast<uno_AcquireFunc>(uno::cpp_acquire));
                             ifc->release();
                             TYPELIB_DANGER_RELEASE(td);
+                            gpr[0] = reinterpret_cast<sal_uInt64>(indirectRet);
                             break;
                         }
                         TYPELIB_DANGER_RELEASE(td);

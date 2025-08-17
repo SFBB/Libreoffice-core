@@ -33,7 +33,8 @@ namespace svgio::svgreader
             maMarkerWidth(3),
             maMarkerHeight(3),
             mfAngle(0.0),
-            maMarkerOrient(MarkerOrient::notset)
+            maMarkerOrient(MarkerOrient::notset),
+            maContextStyleAttibutes(nullptr)
         {
         }
 
@@ -174,7 +175,7 @@ namespace svgio::svgreader
 
         const drawinglayer::primitive2d::Primitive2DContainer& SvgMarkerNode::getMarkerPrimitives() const
         {
-            if(aPrimitives.empty() && Display::None != getDisplay())
+            if(Display::None != getDisplay())
             {
                 decomposeSvgNode(const_cast< SvgMarkerNode* >(this)->aPrimitives, true);
             }

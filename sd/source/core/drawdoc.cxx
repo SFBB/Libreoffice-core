@@ -36,6 +36,7 @@
 #include <unotools/configmgr.hxx>
 #include <unotools/useroptions.hxx>
 #include <officecfg/Office/Impress.hxx>
+#include <officecfg/Office/Draw.hxx>
 
 #include <sfx2/linkmgr.hxx>
 #include <Outliner.hxx>
@@ -53,6 +54,8 @@
 #include <unotools/charclass.hxx>
 #include <comphelper/processfactory.hxx>
 #include <unotools/lingucfg.hxx>
+#include <unotools/localedatawrapper.hxx>
+#include <unotools/syslocale.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/xml/dom/XDocumentBuilder.hpp>
 #include <com/sun/star/xml/dom/XDocument.hpp>
@@ -87,7 +90,6 @@ namespace com::sun::star::linguistic2 { class XSpellChecker1; }
 using namespace ::sd;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::linguistic2;
 
 using namespace com::sun::star::xml::dom;
@@ -109,7 +111,8 @@ PresentationSettings::PresentationSettings()
     mbAnimationAllowed( true ),
     mnPauseTimeout( 0 ),
     mbShowPauseLogo( false ),
-    mbStartCustomShow( false )
+    mbStartCustomShow( false ),
+    mbInteractive( true )
 {
 }
 
@@ -123,7 +126,7 @@ SdDrawDocument::SdDrawDocument(DocumentType eType, SfxObjectShell* pDrDocSh)
 , mbInitialOnlineSpellingEnabled(true)
 , mbNewOrLoadCompleted(false)
 , mbOnlineSpell(false)
-, mbStartWithPresentation( false )
+, mnStartWithPresentation(0)
 , mbExitAfterPresenting( false )
 , meLanguage( LANGUAGE_SYSTEM )
 , meLanguageCJK( LANGUAGE_SYSTEM )
@@ -143,6 +146,8 @@ SdDrawDocument::SdDrawDocument(DocumentType eType, SfxObjectShell* pDrDocSh)
     mpDrawPageListWatcher.reset(new ImpDrawPageListWatcher(*this));
     mpMasterPageListWatcher.reset(new ImpMasterPageListWatcher(*this));
 
+    this->SetImpress(true);
+
     InitLayoutVector();
     InitObjectVector();
     SetObjectShell(pDrDocSh);       // for VCDrawModel
@@ -154,20 +159,27 @@ SdDrawDocument::SdDrawDocument(DocumentType eType, SfxObjectShell* pDrDocSh)
 
     // Set measuring unit (of the application) and scale (of SdMod)
     sal_Int32 nX, nY;
-    SdOptions* pOptions = SD_MOD()->GetSdOptions(meDocType);
-    pOptions->GetScale( nX, nY );
+    SdOptions* pOptions = SdModule::get()->GetSdOptions(meDocType);
+    nX = officecfg::Office::Draw::Zoom::ScaleX::get();
+    nY = officecfg::Office::Draw::Zoom::ScaleY::get();
+    SvtSysLocale aSysLocale;
 
     // Allow UI scale only for draw documents.
     if( eType == DocumentType::Draw )
-        SetUIUnit( static_cast<FieldUnit>(pOptions->GetMetric()), Fraction( nX, nY ) );  // user-defined
+        if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+            SetUIUnit( static_cast<FieldUnit>(officecfg::Office::Draw::Layout::Other::MeasureUnit::Metric::get()), Fraction( nX, nY ) );  // user-defined
+        else
+            SetUIUnit( static_cast<FieldUnit>(officecfg::Office::Draw::Layout::Other::MeasureUnit::NonMetric::get()), Fraction( nX, nY ) );  // user-defined
     else
-        SetUIUnit( static_cast<FieldUnit>(pOptions->GetMetric()), Fraction( 1, 1 ) );    // default
+        if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+            SetUIUnit( static_cast<FieldUnit>(officecfg::Office::Impress::Layout::Other::MeasureUnit::Metric::get()), Fraction( 1, 1 ) );    // default
+        else
+            SetUIUnit( static_cast<FieldUnit>(officecfg::Office::Impress::Layout::Other::MeasureUnit::NonMetric::get()), Fraction( 1, 1 ) );    // default
 
     SetScaleUnit(MapUnit::Map100thMM);
     SetDefaultFontHeight(o3tl::convert(24, o3tl::Length::pt, o3tl::Length::mm100));
 
     m_pItemPool->SetDefaultMetric(MapUnit::Map100thMM);
-    m_pItemPool->FreezeIdRanges();
     SetTextDefaults();
 
     // DrawingEngine has to know where it is...
@@ -181,7 +193,7 @@ SdDrawDocument::SdDrawDocument(DocumentType eType, SfxObjectShell* pDrDocSh)
     SetCalcFieldValueHdl( &rOutliner );
 
     // set linguistic options
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         const SvtLinguConfig    aLinguConfig;
         SvtLinguOptions         aOptions;
@@ -206,12 +218,20 @@ SdDrawDocument::SdDrawDocument(DocumentType eType, SfxObjectShell* pDrDocSh)
     // for korean and japanese languages we have a different default for apply spacing between asian, latin and ctl text
     if (MsLangId::isKorean(eRealCTLLanguage) || (LANGUAGE_JAPANESE == eRealCTLLanguage))
     {
-        GetPool().GetSecondaryPool()->SetPoolDefaultItem( SvxScriptSpaceItem( false, EE_PARA_ASIANCJKSPACING ) );
+        GetPool().GetSecondaryPool()->SetUserDefaultItem( SvxScriptSpaceItem( false, EE_PARA_ASIANCJKSPACING ) );
     }
 
     // Set DefTab and SpellOptions for the SD module
-    sal_uInt16 nDefTab = pOptions->GetDefTab();
-    SetDefaultTabulator( nDefTab );
+    if (eType == DocumentType::Impress)
+        if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+            SetDefaultTabulator( static_cast<sal_uInt16>(officecfg::Office::Impress::Layout::Other::TabStop::Metric::get()) );
+        else
+            SetDefaultTabulator( static_cast<sal_uInt16>(officecfg::Office::Impress::Layout::Other::TabStop::NonMetric::get()) );
+    else
+        if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+            SetDefaultTabulator( static_cast<sal_uInt16>(officecfg::Office::Draw::Layout::Other::TabStop::Metric::get()) );
+        else
+            SetDefaultTabulator( static_cast<sal_uInt16>(officecfg::Office::Draw::Layout::Other::TabStop::NonMetric::get()) );
 
     try
     {
@@ -439,7 +459,7 @@ void SdDrawDocument::AdaptPageSizeForAllPages(
         {
             SdUndoAction* pUndo(
                 new SdPageFormatUndoAction(
-                    this,
+                    *this,
                     pPage,
                     pPage->GetSize(),
                     pPage->GetLeftBorder(), pPage->GetRightBorder(),
@@ -494,7 +514,7 @@ void SdDrawDocument::AdaptPageSizeForAllPages(
         {
             SdUndoAction* pUndo(
                 new SdPageFormatUndoAction(
-                    this,
+                    *this,
                     pPage,
                     pPage->GetSize(),
                     pPage->GetLeftBorder(), pPage->GetRightBorder(),
@@ -822,7 +842,7 @@ void SdDrawDocument::UpdateAllLinks()
         rEmbeddedObjectContainer.setUserAllowsLinkUpdate(true);
     }
 
-    m_pLinkManager->UpdateAllLinks(true, false, nullptr);  // query box: update all links?
+    m_pLinkManager->UpdateAllLinks(true, false, nullptr, u""_ustr);  // query box: update all links?
 
     if (s_pDocLockedInsertingLinks == this)
         s_pDocLockedInsertingLinks = nullptr;  // unlock inserting links
@@ -912,10 +932,10 @@ SdOutliner* SdDrawDocument::GetOutliner(bool bCreateOutliner)
 {
     if (!mpOutliner && bCreateOutliner)
     {
-        mpOutliner.reset(new SdOutliner( this, OutlinerMode::TextObject ));
+        mpOutliner.reset(new SdOutliner( *this, OutlinerMode::TextObject ));
 
         if (mpDocSh)
-            mpOutliner->SetRefDevice( SD_MOD()->GetVirtualRefDevice() );
+            mpOutliner->SetRefDevice(SdModule::get()->GetVirtualRefDevice());
 
         mpOutliner->SetDefTab( m_nDefaultTabulator );
         mpOutliner->SetStyleSheetPool(static_cast<SfxStyleSheetPool*>(GetStyleSheetPool()));
@@ -930,7 +950,7 @@ SdOutliner* SdDrawDocument::GetInternalOutliner(bool bCreateOutliner)
 {
     if ( !mpInternalOutliner && bCreateOutliner )
     {
-        mpInternalOutliner.reset( new SdOutliner( this, OutlinerMode::TextObject ) );
+        mpInternalOutliner.reset( new SdOutliner( *this, OutlinerMode::TextObject ) );
 
         // This outliner is only used to create special text objects. As no
         // information about portions is saved in this outliner, the update mode
@@ -939,7 +959,7 @@ SdOutliner* SdDrawDocument::GetInternalOutliner(bool bCreateOutliner)
         mpInternalOutliner->EnableUndo( false );
 
         if (mpDocSh)
-            mpInternalOutliner->SetRefDevice( SD_MOD()->GetVirtualRefDevice() );
+            mpInternalOutliner->SetRefDevice(SdModule::get()->GetVirtualRefDevice());
 
         mpInternalOutliner->SetDefTab( m_nDefaultTabulator );
         mpInternalOutliner->SetStyleSheetPool(static_cast<SfxStyleSheetPool*>(GetStyleSheetPool()));
@@ -1055,9 +1075,9 @@ void SdDrawDocument::SetPrinterIndependentLayout (sal_Int32 nMode)
     }
 }
 
-void SdDrawDocument::SetStartWithPresentation( bool bStartWithPresentation )
+void SdDrawDocument::SetStartWithPresentation(sal_uInt16 nStartingSlide)
 {
-    mbStartWithPresentation = bStartWithPresentation;
+    mnStartWithPresentation = nStartingSlide;
 }
 
 void SdDrawDocument::SetExitAfterPresenting( bool bExitAfterPresenting )
@@ -1077,7 +1097,7 @@ void SdDrawDocument::MasterPageListChanged()
 
 void SdDrawDocument::SetCalcFieldValueHdl(::Outliner* pOutliner)
 {
-    pOutliner->SetCalcFieldValueHdl(LINK(SD_MOD(), SdModule, CalcFieldValueHdl));
+    pOutliner->SetCalcFieldValueHdl(LINK(SdModule::get(), SdModule, CalcFieldValueHdl));
 }
 
 sal_uInt16 SdDrawDocument::GetAnnotationAuthorIndex( const OUString& rAuthor )
@@ -1102,10 +1122,10 @@ sal_uInt16 SdDrawDocument::GetAnnotationAuthorIndex( const OUString& rAuthor )
 
 void SdDrawDocument::InitLayoutVector()
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
 
-    const Reference<css::uno::XComponentContext> xContext(
+    const Reference<css::uno::XComponentContext>& xContext(
         ::comphelper::getProcessComponentContext() );
 
     // get file list from configuration
@@ -1126,7 +1146,7 @@ void SdDrawDocument::InitLayoutVector()
         {
             // loop over every layout entry in current file
             const Reference<XDocument> xDoc = xDocBuilder->parseURI( sFilename );
-            const Reference<XNodeList> layoutlist = xDoc->getElementsByTagName("layout");
+            const Reference<XNodeList> layoutlist = xDoc->getElementsByTagName(u"layout"_ustr);
             const int nElements = layoutlist->getLength();
             for(int index=0; index < nElements; index++)
                 maLayoutInfo.push_back( layoutlist->item(index) );
@@ -1140,10 +1160,10 @@ void SdDrawDocument::InitLayoutVector()
 
 void SdDrawDocument::InitObjectVector()
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
 
-    const Reference<css::uno::XComponentContext> xContext(
+    const Reference<css::uno::XComponentContext>& xContext(
         ::comphelper::getProcessComponentContext() );
 
     // get file list from configuration
@@ -1163,7 +1183,7 @@ void SdDrawDocument::InitObjectVector()
         {
             // loop over every object entry in current file
             const Reference<XDocument> xDoc = xDocBuilder->parseURI( sFilename );
-            const Reference<XNodeList> objectlist = xDoc->getElementsByTagName("object");
+            const Reference<XNodeList> objectlist = xDoc->getElementsByTagName(u"object"_ustr);
             const int nElements = objectlist->getLength();
             for(int index=0; index < nElements; index++)
                 maPresObjectInfo.push_back( objectlist->item(index) );

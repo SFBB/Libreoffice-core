@@ -1882,7 +1882,7 @@
           <value xml:lang="en-US">Current Slide (%CURRENT_SLIDE_NUMBER% of %SLIDE_COUNT%)</value>
         </prop>
         <prop oor:name="AccessibleTitle">
-          <value xml:lang="en-US">Current Slide, %CURRENT_SLIDE_NAME%, %CURRENT_SLIDE_NUMBER% of %SLIDE_COUNT%</value>
+          <value xml:lang="en-US">Current Slide (%CURRENT_SLIDE_NUMBER% of %SLIDE_COUNT%), %CURRENT_SLIDE_NAME%</value>
         </prop>
         <prop oor:name="IsOpaque">
           <value>true</value>
@@ -2088,17 +2088,17 @@
     <node oor:name="Accessibility">
       <node oor:name="Console" oor:op="replace">
         <prop oor:name="String">
-          <value xml:lang="en-US">Presenter Console</value>
+          <value xml:lang="en-US">DUMMY_NO_MORE_USED</value>
         </prop>
       </node>
       <node oor:name="Preview" oor:op="replace">
         <prop oor:name="String">
-          <value xml:lang="en-US">Current Slide Info</value>
+          <value xml:lang="en-US">DUMMY_NO_MORE_USED</value>
         </prop>
       </node>
       <node oor:name="Notes" oor:op="replace">
         <prop oor:name="String">
-          <value xml:lang="en-US">Presenter Notes</value>
+          <value xml:lang="en-US">DUMMY_NO_MORE_USED</value>
         </prop>
       </node>
     </node>

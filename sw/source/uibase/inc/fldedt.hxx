@@ -41,14 +41,15 @@ class SwFieldEditDlg final : public SfxSingleTabDialogController
     SfxTabPage* CreatePage(sal_uInt16 nGroup);
 
     void EnsureSelection(SwField *pCurField, SwFieldMgr &rMgr);
+
+    void ImplDestroy();
+
 public:
 
     SwFieldEditDlg(SwView const & rVw);
     virtual ~SwFieldEditDlg() override;
 
     DECL_LINK(OKHdl, weld::Button&, void);
-
-    virtual short   run() override;
 
     void            EnableInsert(bool bEnable);
     void            InsertHdl();

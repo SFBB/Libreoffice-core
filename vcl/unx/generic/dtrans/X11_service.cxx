@@ -17,6 +17,10 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <o3tl/test_info.hxx>
+#include <unx/salframe.h>
 #include <unx/salinst.h>
 #include <dndhelper.hxx>
 #include <vcl/sysdata.hxx>
@@ -28,39 +32,38 @@ using namespace cppu;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::datatransfer::clipboard;
-using namespace com::sun::star::awt;
 using namespace x11;
 
 Sequence< OUString > x11::X11Clipboard_getSupportedServiceNames()
 {
-    return { "com.sun.star.datatransfer.clipboard.SystemClipboard" };
+    return { u"com.sun.star.datatransfer.clipboard.SystemClipboard"_ustr };
 }
 
 Sequence< OUString > x11::Xdnd_getSupportedServiceNames()
 {
-    return { "com.sun.star.datatransfer.dnd.X11DragSource" };
+    return { u"com.sun.star.datatransfer.dnd.X11DragSource"_ustr };
 }
 
 Sequence< OUString > x11::Xdnd_dropTarget_getSupportedServiceNames()
 {
-    return { "com.sun.star.datatransfer.dnd.X11DropTarget" };
+    return { u"com.sun.star.datatransfer.dnd.X11DropTarget"_ustr };
 }
 
-css::uno::Reference< XInterface > X11SalInstance::CreateClipboard( const Sequence< Any >& arguments )
+css::uno::Reference<css::datatransfer::clipboard::XClipboard>
+X11SalInstance::CreateClipboard(const Sequence<Any>& arguments)
 {
-    if ( IsRunningUnitTest() )
+    if ( o3tl::IsRunningUnitTest() || o3tl::IsRunningUITest() )
         return SalInstance::CreateClipboard( arguments );
 
     SelectionManager& rManager = SelectionManager::get();
-    css::uno::Sequence<css::uno::Any> mgrArgs{ css::uno::Any(Application::GetDisplayConnection()) };
-    rManager.initialize(mgrArgs);
+    rManager.initialize();
 
     OUString sel;
     if (!arguments.hasElements()) {
         sel = "CLIPBOARD";
     } else if (arguments.getLength() != 1 || !(arguments[0] >>= sel)) {
         throw css::lang::IllegalArgumentException(
-            "bad X11SalInstance::CreateClipboard arguments",
+            u"bad X11SalInstance::CreateClipboard arguments"_ustr,
             css::uno::Reference<css::uno::XInterface>(), -1);
     }
     Atom nSelection = rManager.getAtom(sel);
@@ -75,14 +78,26 @@ css::uno::Reference< XInterface > X11SalInstance::CreateClipboard( const Sequenc
     return pClipboard;
 }
 
-css::uno::Reference<XInterface> X11SalInstance::ImplCreateDragSource(const SystemEnvData* pSysEnv)
+css::uno::Reference<css::datatransfer::dnd::XDragSource>
+X11SalInstance::ImplCreateDragSource(const SystemEnvData&)
 {
-    return vcl::X11DnDHelper(new SelectionManagerHolder(), pSysEnv->aShellWindow);
+    rtl::Reference<SelectionManagerHolder> xSelectionManagerHolder = new SelectionManagerHolder();
+    xSelectionManagerHolder->initialize();
+
+    return xSelectionManagerHolder;
 }
 
-css::uno::Reference<XInterface> X11SalInstance::ImplCreateDropTarget(const SystemEnvData* pSysEnv)
+css::uno::Reference<css::datatransfer::dnd::XDropTarget>
+X11SalInstance::ImplCreateDropTarget(const SystemEnvData& rSysEnv)
 {
-    return vcl::X11DnDHelper(new DropTarget(), pSysEnv->aShellWindow);
+    rtl::Reference<X11DropTarget> xDropTarget = new X11DropTarget();
+
+    X11SalFrame* pFrame = static_cast<X11SalFrame*>(rSysEnv.pSalFrame);
+    ::Window aShellWindow = pFrame ? pFrame->GetShellWindow() : 0;
+    if (aShellWindow)
+        xDropTarget->initialize(aShellWindow);
+
+    return xDropTarget;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

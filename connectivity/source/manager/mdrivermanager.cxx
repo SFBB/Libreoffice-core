@@ -32,6 +32,7 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/weak.hxx>
 #include <osl/diagnose.h>
+#include <officecfg/Office/DataAccess.hxx>
 
 #include <algorithm>
 #include <iterator>
@@ -158,43 +159,6 @@ namespace
         return _rDriver.is() && _rDriver->acceptsURL( _rURL );
     }
 
-#if !ENABLE_FUZZERS
-    sal_Int32 lcl_getDriverPrecedence( const Reference<XComponentContext>& _rContext, Sequence< OUString >& _rPrecedence )
-    {
-        _rPrecedence.realloc( 0 );
-        try
-        {
-            // create a configuration provider
-            Reference< XMultiServiceFactory > xConfigurationProvider(
-                css::configuration::theDefaultProvider::get( _rContext ) );
-
-            // one argument for creating the node access: the path to the configuration node
-            Sequence< Any > aCreationArgs{ Any(NamedValue(
-                "nodepath", Any( OUString("org.openoffice.Office.DataAccess/DriverManager") ) )) };
-
-            // create the node access
-            Reference< XNameAccess > xDriverManagerNode(
-                xConfigurationProvider->createInstanceWithArguments("com.sun.star.configuration.ConfigurationAccess", aCreationArgs),
-                UNO_QUERY);
-
-            OSL_ENSURE(xDriverManagerNode.is(), "lcl_getDriverPrecedence: could not open my configuration node!");
-            if (xDriverManagerNode.is())
-            {
-                // obtain the preference list
-                Any aPreferences = xDriverManagerNode->getByName("DriverPrecedence");
-                bool bSuccess = aPreferences >>= _rPrecedence;
-                OSL_ENSURE(bSuccess || !aPreferences.hasValue(), "lcl_getDriverPrecedence: invalid value for the preferences node (no string sequence but not NULL)!");
-            }
-        }
-        catch( const Exception& )
-        {
-            DBG_UNHANDLED_EXCEPTION("connectivity.manager");
-        }
-
-        return _rPrecedence.getLength();
-    }
-#endif
-
     /// an STL algorithm compatible predicate comparing two DriverAccess instances by their implementation names
     struct CompareDriverAccessByName
     {
@@ -318,8 +282,8 @@ void OSDBCDriverManager::initializeDriverPrecedence()
     try
     {
         // get the precedence of the drivers from the configuration
-        Sequence< OUString > aDriverOrder;
-        if ( 0 == lcl_getDriverPrecedence( m_xContext, aDriverOrder ) )
+        Sequence< OUString > aDriverOrder = officecfg::Office::DataAccess::DriverManager::DriverPrecedence::get();
+        if ( 0 == aDriverOrder.getLength() )
             // nothing to do
             return;
 
@@ -343,7 +307,7 @@ void OSDBCDriverManager::initializeDriverPrecedence()
             // at the moment this is the first of all drivers we know
 
         // loop through the names in the precedence order
-        for ( const OUString& rDriverOrder : std::as_const(aDriverOrder) )
+        for (const OUString& rDriverOrder : aDriverOrder)
         {
             if (aNoPrefDriversStart == m_aDriversBS.end())
                 break;
@@ -492,7 +456,7 @@ sal_Bool SAL_CALL OSDBCDriverManager::hasElements(  )
 
 OUString SAL_CALL OSDBCDriverManager::getImplementationName(  )
 {
-    return "com.sun.star.comp.sdbc.OSDBCDriverManager";
+    return u"com.sun.star.comp.sdbc.OSDBCDriverManager"_ustr;
 }
 
 sal_Bool SAL_CALL OSDBCDriverManager::supportsService( const OUString& _rServiceName )
@@ -503,7 +467,7 @@ sal_Bool SAL_CALL OSDBCDriverManager::supportsService( const OUString& _rService
 
 Sequence< OUString > SAL_CALL OSDBCDriverManager::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.sdbc.DriverManager" };
+    return { u"com.sun.star.sdbc.DriverManager"_ustr };
 }
 
 
@@ -591,8 +555,8 @@ Reference< XDriver > OSDBCDriverManager::implGetDriverForURL(const OUString& _rU
     {
         const OUString sDriverFactoryName = m_aDriverConfig.getDriverFactoryName(_rURL);
 
-        EqualDriverAccessToName aEqual(sDriverFactoryName);
-        DriverAccessArray::const_iterator aFind = std::find_if(m_aDriversBS.begin(),m_aDriversBS.end(),aEqual);
+        DriverAccessArray::const_iterator aFind = std::find_if(m_aDriversBS.begin(), m_aDriversBS.end(),
+                                                               EqualDriverAccessToName(sDriverFactoryName));
         if ( aFind == m_aDriversBS.end() )
         {
             // search all bootstrapped drivers
@@ -601,12 +565,12 @@ Reference< XDriver > OSDBCDriverManager::implGetDriverForURL(const OUString& _rU
                 m_aDriversBS.end(),         // end of search range
                 [&_rURL, this] (const DriverAccessArray::value_type& driverAccess) {
                     // extract the driver from the access, then ask the resulting driver for acceptance
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 13
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 13 && __GNUC__ <= 16
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdangling-reference"
 #endif
                     const DriverAccess& ensuredAccess = EnsureDriver(m_xContext)(driverAccess);
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 13
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 13 && __GNUC__ <= 16
 #pragma GCC diagnostic pop
 #endif
                     const Reference<XDriver> driver = ExtractDriverFromAccess()(ensuredAccess);

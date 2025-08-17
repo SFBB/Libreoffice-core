@@ -37,7 +37,6 @@
 class KeyEvent;
 class EditView;
 class SfxErrorHandler;
-class SvtAccessibilityOptions;
 class SvtCTLOptions;
 class SvtUserOptions;
 
@@ -71,7 +70,6 @@ class ScAddInCfg;
 class ScTransferObj;
 class ScDrawTransferObj;
 class ScSelectionTransferObj;
-class ScFormEditData;
 class ScMarkData;
 struct ScDragData;
 class SfxDialogController;
@@ -94,7 +92,6 @@ class SAL_DLLPUBLIC_RTTI ScModule final : public SfxModule, public SfxListener, 
     std::unique_ptr<ScNavipiCfg>      m_pNavipiCfg;
     std::unique_ptr<ScAddInCfg>       m_pAddInCfg;
     std::unique_ptr<svtools::ColorConfig>    m_pColorConfig;
-    std::unique_ptr<SvtAccessibilityOptions> m_pAccessOptions;
     std::unique_ptr<SvtCTLOptions>           m_pCTLOptions;
     std::unique_ptr<SvtUserOptions>          m_pUserOptions;
     std::unique_ptr<SfxErrorHandler>  m_pErrorHdl;
@@ -137,7 +134,7 @@ public:
     void                AnythingChanged();
 
     //  Drag & Drop:
-    const ScDragData&   GetDragData() const;
+    const ScDragData*   GetDragData() const;
     void                SetDragObject( ScTransferObj* pCellObj, ScDrawTransferObj* pDrawObj );
     void                ResetDragObject();
     void                SetDragLink(
@@ -175,10 +172,11 @@ public:
     SC_DLLPUBLIC void   SetInputOptions ( const ScInputOptions& rOpt );
     void                SetPrintOptions ( const ScPrintOptions& rOpt );
     void                InsertEntryToLRUList(sal_uInt16 nFIndex);
+    void                InsertOrEraseFavouritesListEntry(sal_uInt16 nFIndex, bool bInsert);
 
-    static void         GetSpellSettings( LanguageType& rDefLang, LanguageType& rCjkLang, LanguageType& rCtlLang,
-                                          bool& rAutoSpell );
+    static void         GetSpellSettings( LanguageType& rDefLang, LanguageType& rCjkLang, LanguageType& rCtlLang );
     static void         SetAutoSpellProperty( bool bSet );
+    static bool         GetAutoSpellProperty();
     static bool         HasThesaurusLanguage( LanguageType nLang );
 
     static LanguageType GetOptDigitLanguage();      // from CTL options
@@ -186,7 +184,9 @@ public:
     ScNavipiCfg&        GetNavipiCfg();
     ScAddInCfg&         GetAddInCfg();
     svtools::ColorConfig&   GetColorConfig();
+    static bool         IsLOKViewInDarkMode();
     SC_DLLPUBLIC SvtUserOptions& GetUserOptions();
+    SC_DLLPUBLIC FieldUnit GetMetric();
 
     void                ModifyOptions( const SfxItemSet& rOptSet );
 
@@ -229,7 +229,7 @@ public:
     virtual std::optional<SfxItemSet> CreateItemSet( sal_uInt16 nId ) override;
     virtual void         ApplyItemSet( sal_uInt16 nId, const SfxItemSet& rSet ) override;
     virtual std::unique_ptr<SfxTabPage> CreateTabPage( sal_uInt16 nId, weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet ) override;
-    virtual std::optional<SfxStyleFamilies> CreateStyleFamilies() override;
+    virtual SfxStyleFamilies CreateStyleFamilies() override;
 
     void                SetInSharedDocLoading( bool bNew )  { m_bIsInSharedDocLoading = bNew; }
     bool                IsInSharedDocLoading() const        { return m_bIsInSharedDocLoading; }
@@ -242,9 +242,9 @@ public:
 
     SC_DLLPUBLIC void RegisterAutomationApplicationEventsCaller(css::uno::Reference< ooo::vba::XSinkCaller > const& xCaller);
     SC_DLLPUBLIC void CallAutomationApplicationEventSinks(const OUString& Method, css::uno::Sequence< css::uno::Any >& Arguments);
-};
 
-#define SC_MOD() ( static_cast<ScModule*>(SfxApplication::GetModule(SfxToolsModule::Calc)) )
+    static auto get() { return static_cast<ScModule*>(SfxApplication::GetModule(SfxToolsModule::Calc)); }
+};
 
 void global_InitAppOptions();
 

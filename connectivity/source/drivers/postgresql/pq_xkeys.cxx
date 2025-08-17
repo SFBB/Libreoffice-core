@@ -127,7 +127,7 @@ void Keys::refresh()
         fillAttnum2attnameMap( mainMap, m_origin, m_schemaName, m_tableName );
 
         Reference< XPreparedStatement > stmt = m_origin->prepareStatement(
-                "SELECT  conname, "            // 1
+                u"SELECT  conname, "            // 1
                         "contype, "            // 2
                         "confupdtype, "        // 3
                         "confdeltype, "        // 4
@@ -139,7 +139,7 @@ void Keys::refresh()
                       "INNER JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid "
                       "LEFT JOIN pg_class AS class2 ON confrelid = class2.oid "
                       "LEFT JOIN pg_namespace AS nmsp2 ON class2.relnamespace=nmsp2.oid "
-                "WHERE pg_class.relname = ? AND pg_namespace.nspname = ?" );
+                "WHERE pg_class.relname = ? AND pg_namespace.nspname = ?"_ustr );
 
         Reference< XParameters > paras( stmt, UNO_QUERY );
         paras->setString( 1 , m_tableName );
@@ -155,7 +155,6 @@ void Keys::refresh()
         {
             rtl::Reference<Key> pKey =
                 new Key( m_xMutex, m_origin, m_pSettings , m_schemaName, m_tableName );
-            Reference< css::beans::XPropertySet > prop = pKey;
 
             pKey->setPropertyValue_NoBroadcast_public(
                 st.NAME, Any( xRow->getString( 1 ) ) );
@@ -191,7 +190,7 @@ void Keys::refresh()
 
             {
                 map[ xRow->getString( 1 ) ] = keyIndex;
-                m_values.push_back( Any( prop ) );
+                m_values.push_back( Any( Reference< css::beans::XPropertySet >(pKey) ) );
                 ++keyIndex;
             }
         }

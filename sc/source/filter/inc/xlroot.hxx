@@ -20,7 +20,7 @@
 #pragma once
 
 #include <i18nlangtag/lang.h>
-#include <tools/ref.hxx>
+#include <rtl/ref.hxx>
 #include <tools/long.hxx>
 #include "xlconst.hxx"
 #include <memory>
@@ -30,6 +30,7 @@ namespace comphelper { class IDocPasswordVerifier; }
 
 // Forward declarations of objects in public use ==============================
 
+class Date;
 class DateTime;
 class SotStorage;
 class SotStorageStream;
@@ -76,7 +77,7 @@ struct XclRootData
     XclBiff             meBiff;             /// Current BIFF version.
     XclOutput           meOutput;           /// Current Output format.
     SfxMedium&          mrMedium;           /// The medium to import from.
-    tools::SvRef<SotStorage>       mxRootStrg;         /// The root OLE storage of imported/exported file.
+    rtl::Reference<SotStorage> mxRootStrg;  /// The root OLE storage of imported/exported file.
     ScDocument&         mrDoc;              /// The source or destination document.
     OUString            maDocUrl;           /// Document URL of imported/exported file.
     OUString            maBasePath;         /// Base path of imported/exported file (path of maDocUrl).
@@ -110,12 +111,11 @@ struct XclRootData
     const bool          mbExport;           /// false = Import, true = Export.
 
     explicit            XclRootData( XclBiff eBiff, SfxMedium& rMedium,
-                            tools::SvRef<SotStorage> xRootStrg, ScDocument& rDoc,
+                            rtl::Reference<SotStorage> xRootStrg, ScDocument& rDoc,
                             rtl_TextEncoding eTextEnc, bool bExport );
     virtual             ~XclRootData();
 };
 
-class SfxObjectShell;
 class ScModelObj;
 class OutputDevice;
 class SvNumberFormatter;
@@ -177,28 +177,28 @@ public:
     const OUString& GetUserName() const { return mrData.maUserName; }
 
     /** Returns the default password used for stream encryption. */
-    static OUString GetDefaultPassword() { return XclRootData::gaDefPassword; }
+    static const OUString & GetDefaultPassword() { return XclRootData::gaDefPassword; }
     /** Requests and verifies a password from the medium or the user. */
     css::uno::Sequence< css::beans::NamedValue >
         RequestEncryptionData( ::comphelper::IDocPasswordVerifier& rVerifier ) const;
 
     /** Returns the OLE2 root storage of the imported/exported file.
         @return  Pointer to root storage or 0, if the file is a simple stream. */
-    const tools::SvRef<SotStorage>& GetRootStorage() const { return mrData.mxRootStrg; }
+    const rtl::Reference<SotStorage>& GetRootStorage() const { return mrData.mxRootStrg; }
     /** Returns true, if the document contains a VBA storage. */
     bool                HasVbaStorage() const;
 
     /** Tries to open a storage as child of the specified storage for reading or writing. */
-    tools::SvRef<SotStorage>       OpenStorage( tools::SvRef<SotStorage> const & xStrg, const OUString& rStrgName ) const;
+    rtl::Reference<SotStorage>       OpenStorage( rtl::Reference<SotStorage> const & xStrg, const OUString& rStrgName ) const;
     /** Tries to open a storage as child of the root storage for reading or writing. */
-    tools::SvRef<SotStorage>       OpenStorage( const OUString& rStrgName ) const;
+    rtl::Reference<SotStorage> OpenStorage(const OUString& rStrgName) const;
     /** Tries to open a new stream in the specified storage for reading or writing. */
-    tools::SvRef<SotStorageStream> OpenStream( tools::SvRef<SotStorage> const & xStrg, const OUString& rStrmName ) const;
+    rtl::Reference<SotStorageStream> OpenStream( rtl::Reference<SotStorage> const & xStrg, const OUString& rStrmName ) const;
     /** Tries to open a new stream in the root storage for reading or writing. */
-    tools::SvRef<SotStorageStream> OpenStream( const OUString& rStrmName ) const;
+    rtl::Reference<SotStorageStream> OpenStream(const OUString& rStrmName) const;
 
     /** Returns reference to the destination document (import) or source document (export). */
-    ScDocument& GetDoc() const;
+    ScDocument& GetDoc() const { return mrData.mrDoc; }
 
     /** Returns the object shell of the Calc document. May be 0 (i.e. import from clipboard). */
     ScDocShell*         GetDocShell() const;
@@ -216,7 +216,7 @@ public:
     /** Returns the number formatter of the Calc document. */
     SvNumberFormatter&  GetFormatter() const;
     /** Returns the null date of the current number formatter. */
-    DateTime            GetNullDate() const;
+    const Date &        GetNullDate() const;
     /** Returns the base year depending on the current null date (1900 or 1904). */
     sal_uInt16          GetBaseYear() const;
     /** Converts a date/time value to a floating-point value. */

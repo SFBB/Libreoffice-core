@@ -20,11 +20,7 @@
 #include <ConfigColorScheme.hxx>
 
 #include <unotools/configitem.hxx>
-#include <sal/macros.h>
 #include <cppuhelper/supportsservice.hxx>
-#include <comphelper/sequence.hxx>
-
-#include <set>
 
 using namespace ::com::sun::star;
 
@@ -65,7 +61,7 @@ private:
 };
 
 ChartConfigItem::ChartConfigItem( ConfigColorScheme & rListener ) :
-        ::utl::ConfigItem( "Office.Chart/DefaultColor" ),
+        ::utl::ConfigItem( u"Office.Chart/DefaultColor"_ustr ),
     m_rListener( rListener )
 {
     EnableNotification( { aSeriesPropName } );
@@ -97,8 +93,8 @@ uno::Any ChartConfigItem::getProperty( const OUString & aPropertyName )
 // explicit
 ConfigColorScheme::ConfigColorScheme(
     const Reference< uno::XComponentContext > & xContext ) :
+        BaseColorScheme(),
         m_xContext( xContext  ),
-        m_nNumberOfColors( 0 ),
         m_bNeedsUpdate( true )
 {
 }
@@ -155,17 +151,7 @@ void ConfigColorScheme::notify()
 
 OUString SAL_CALL ConfigColorScheme::getImplementationName()
 {
-    return "com.sun.star.comp.chart2.ConfigDefaultColorScheme" ;
-}
-
-sal_Bool SAL_CALL ConfigColorScheme::supportsService( const OUString& rServiceName )
-{
-    return cppu::supportsService(this, rServiceName);
-}
-
-css::uno::Sequence< OUString > SAL_CALL ConfigColorScheme::getSupportedServiceNames()
-{
-    return { "com.sun.star.chart2.ColorScheme" };
+    return u"com.sun.star.comp.chart2.ConfigDefaultColorScheme"_ustr ;
 }
 
 } //  namespace chart

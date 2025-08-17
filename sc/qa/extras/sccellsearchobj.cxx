@@ -15,7 +15,6 @@
 #include <test/util/xsearchdescriptor.hxx>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheets.hpp>
@@ -68,9 +67,9 @@ public:
 };
 
 ScCellSearchObj::ScCellSearchObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
-    , XServiceInfo("ScCellSearchObj",
-                   { "com.sun.star.util.ReplaceDescriptor", "com.sun.star.util.SearchDescriptor" })
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
+    , XServiceInfo(u"ScCellSearchObj"_ustr, { u"com.sun.star.util.ReplaceDescriptor"_ustr,
+                                              u"com.sun.star.util.SearchDescriptor"_ustr })
 {
 }
 
@@ -89,7 +88,7 @@ void ScCellSearchObj::setUp()
 {
     UnoApiTest::setUp();
     // create calc document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScCellSearchObj);

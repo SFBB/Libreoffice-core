@@ -15,7 +15,6 @@
 #include <test/table/xtablerows.hxx>
 
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheets.hpp>
@@ -75,10 +74,10 @@ public:
 };
 
 ScTableRowsObj::ScTableRowsObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
     , XElementAccess(cppu::UnoType<table::XCellRange>::get())
     , XIndexAccess(ScSheetLimits::CreateDefault().GetMaxRowCount())
-    , XServiceInfo("ScTableRowsObj", "com.sun.star.table.TableRows")
+    , XServiceInfo(u"ScTableRowsObj"_ustr, u"com.sun.star.table.TableRows"_ustr)
 {
 }
 
@@ -115,7 +114,7 @@ uno::Reference<uno::XInterface> ScTableRowsObj::getXCellRange()
 void ScTableRowsObj::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScTableRowsObj);

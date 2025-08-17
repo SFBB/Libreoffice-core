@@ -47,7 +47,6 @@ namespace basegfx
     class B2DHomMatrix;
     class B2ISize;
 }
-namespace cppcanvas{ class Canvas; }
 
 class GDIMetaFile;
 
@@ -57,8 +56,6 @@ namespace slideshow
     namespace internal
     {
         class UnoView;
-        class Shape;
-        class ShapeAttributeLayer;
         typedef std::shared_ptr< UnoView > UnoViewSharedPtr;
         typedef std::shared_ptr< GDIMetaFile > GDIMetaFileSharedPtr;
 
@@ -77,6 +74,10 @@ namespace slideshow
                 return hash_value(val);
             }
         };
+
+#if defined(DBG_UTIL)
+        bool isShowingMoreDebugInfo();
+#endif
     }
 }
 
@@ -282,7 +283,7 @@ namespace slideshow
             OUString const & propName )
         {
             try {
-                const css::uno::Any& a(
+                const css::uno::Any a(
                     xPropSet->getPropertyValue( propName ) );
                 bool const bRet = css::uno::fromAny(a, &rValue);
 #if OSL_DEBUG_LEVEL > 0
@@ -310,7 +311,7 @@ namespace slideshow
         {
             try
             {
-                const css::uno::Any& a(xPropSet->getPropertyValue( propName ));
+                const css::uno::Any a(xPropSet->getPropertyValue( propName ));
                 rIfc.set( a, css::uno::UNO_QUERY );
 
                 bool const bRet = rIfc.is();

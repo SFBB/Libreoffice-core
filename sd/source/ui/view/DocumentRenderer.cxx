@@ -43,7 +43,11 @@
 #include <comphelper/sequence.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <editeng/editstat.hxx>
+#include <editeng/eeitem.hxx>
 #include <editeng/outlobj.hxx>
+#include <editeng/ulspitem.hxx>
+#include <svx/sdtfsitm.hxx>
+#include <svx/sdooitm.hxx>
 #include <svx/svdetc.hxx>
 #include <svx/svditer.hxx>
 #include <svx/svdopage.hxx>
@@ -61,6 +65,9 @@
 #include <xmloff/autolayout.hxx>
 #include <sfx2/objsh.hxx>
 
+#include <svl/cjkoptions.hxx>
+#include <svl/ctloptions.hxx>
+
 #include <officecfg/Office/Draw.hxx>
 #include <officecfg/Office/Impress.hxx>
 
@@ -74,6 +81,20 @@ using namespace ::com::sun::star::uno;
 namespace sd {
 
 namespace {
+
+    void lcl_AdjustPageSize(Size& rPageSize, const Size& rPrintPageSize)
+    {
+        bool bOrientationDiff = (rPageSize.Width() < rPageSize.Height()
+                                 && rPrintPageSize.Width() > rPrintPageSize.Height())
+                                || (rPageSize.Width() > rPageSize.Height()
+                                    && rPrintPageSize.Width() < rPrintPageSize.Height());
+        if (bOrientationDiff)
+        {
+            ::tools::Long nTmp = rPageSize.Width();
+            rPageSize.setWidth(rPageSize.Height());
+            rPageSize.setHeight(nTmp);
+        }
+    }
 
     /** Convenience class to extract values from the sequence of properties
         given to one of the XRenderable methods.
@@ -174,6 +195,11 @@ namespace {
         bool IsBooklet() const
         {
             return GetBoolValue("PrintProspect", false);
+        }
+
+        bool IsProspectRTL() const
+        {
+            return mrProperties.getIntValue( "PrintProspectRTL",  0 ) != 0;
         }
 
         bool IsPrinterPreferred(DocumentType eDocType) const
@@ -372,41 +398,41 @@ namespace {
 
         void ProcessResource()
         {
-            // load the writer PrinterOptions into the custom tab
+            // load the impress or draw PrinterOptions into the custom tab
             beans::PropertyValue aOptionsUIFile;
             aOptionsUIFile.Name = "OptionsUIFile";
             if( mbImpress )
-                aOptionsUIFile.Value <<= OUString("modules/simpress/ui/impressprinteroptions.ui");
+                aOptionsUIFile.Value <<= u"modules/simpress/ui/impressprinteroptions.ui"_ustr;
             else
-                aOptionsUIFile.Value <<= OUString("modules/sdraw/ui/drawprinteroptions.ui");
+                aOptionsUIFile.Value <<= u"modules/sdraw/ui/drawprinteroptions.ui"_ustr;
             maProperties.push_back(aOptionsUIFile);
 
             SvtModuleOptions aOpt;
             OUString aAppGroupname(SdResId(STR_IMPRESS_PRINT_UI_GROUP_NAME));
             aAppGroupname = aAppGroupname.replaceFirst("%s", aOpt.GetModuleName(
                 mbImpress ? SvtModuleOptions::EModule::IMPRESS : SvtModuleOptions::EModule::DRAW));
-            AddDialogControl(vcl::PrinterOptionsHelper::setGroupControlOpt("tabcontrol-page2", aAppGroupname, ".HelpID:vcl:PrintDialog:TabPage:AppPage"));
+            AddDialogControl(vcl::PrinterOptionsHelper::setGroupControlOpt(u"tabcontrol-page2"_ustr, aAppGroupname, u".HelpID:vcl:PrintDialog:TabPage:AppPage"_ustr));
 
             uno::Sequence< OUString > aHelpIds, aWidgetIds;
             if( mbImpress )
             {
-                aHelpIds = { ".HelpID:vcl:PrintDialog:PageContentType:ListBox" };
+                aHelpIds = { u".HelpID:vcl:PrintDialog:PageContentType:ListBox"_ustr };
                 AddDialogControl( vcl::PrinterOptionsHelper::setChoiceListControlOpt(
-                                    "impressdocument",
+                                    u"impressdocument"_ustr,
                                     SdResId(STR_IMPRESS_PRINT_UI_CONTENT),
                                     aHelpIds,
-                                    "PageContentType" ,
+                                    u"PageContentType"_ustr ,
                                     CreateChoice(STR_IMPRESS_PRINT_UI_CONTENT_CHOICES, SAL_N_ELEMENTS(STR_IMPRESS_PRINT_UI_CONTENT_CHOICES)),
                                     0)
                                 );
 
-                aHelpIds = { ".HelpID:vcl:PrintDialog:SlidesPerPage:ListBox" };
-                vcl::PrinterOptionsHelper::UIControlOptions aContentOpt( "PageContentType" , 1 );
+                aHelpIds = { u".HelpID:vcl:PrintDialog:SlidesPerPage:ListBox"_ustr };
+                vcl::PrinterOptionsHelper::UIControlOptions aContentOpt( u"PageContentType"_ustr , 1 );
                 AddDialogControl( vcl::PrinterOptionsHelper::setChoiceListControlOpt(
-                                    "slidesperpage",
+                                    u"slidesperpage"_ustr,
                                     SdResId(STR_IMPRESS_PRINT_UI_SLIDESPERPAGE),
                                     aHelpIds,
-                                    "SlidesPerPage" ,
+                                    u"SlidesPerPage"_ustr ,
                                     GetSlidesPerPageSequence(),
                                     0,
                                     Sequence< sal_Bool >(),
@@ -414,13 +440,13 @@ namespace {
                                     )
                                 );
 
-                aHelpIds = { ".HelpID:vcl:PrintDialog:SlidesPerPageOrder:ListBox" };
-                vcl::PrinterOptionsHelper::UIControlOptions aSlidesPerPageOpt( "SlidesPerPage" , -1, true );
+                aHelpIds = { u".HelpID:vcl:PrintDialog:SlidesPerPageOrder:ListBox"_ustr };
+                vcl::PrinterOptionsHelper::UIControlOptions aSlidesPerPageOpt( u"SlidesPerPage"_ustr , -1, true );
                 AddDialogControl( vcl::PrinterOptionsHelper::setChoiceListControlOpt(
-                                    "slidesperpageorder",
+                                    u"slidesperpageorder"_ustr,
                                     SdResId(STR_IMPRESS_PRINT_UI_ORDER),
                                     aHelpIds,
-                                    "SlidesPerPageOrder" ,
+                                    u"SlidesPerPageOrder"_ustr ,
                                     CreateChoice(STR_IMPRESS_PRINT_UI_ORDER_CHOICES, SAL_N_ELEMENTS(STR_IMPRESS_PRINT_UI_ORDER_CHOICES)),
                                     0,
                                     Sequence< sal_Bool >(),
@@ -428,34 +454,34 @@ namespace {
                                 );
             }
 
-            AddDialogControl( vcl::PrinterOptionsHelper::setSubgroupControlOpt("contents",
-                               SdResId(STR_IMPRESS_PRINT_UI_INCLUDE_CONTENT), "" ) );
+            AddDialogControl( vcl::PrinterOptionsHelper::setSubgroupControlOpt(u"contents"_ustr,
+                               SdResId(STR_IMPRESS_PRINT_UI_INCLUDE_CONTENT), u""_ustr ) );
 
             if( mbImpress )
             {
-                AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt("printname",
+                AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt(u"printname"_ustr,
                                     SdResId(STR_IMPRESS_PRINT_UI_IS_PRINT_NAME),
-                                    ".HelpID:vcl:PrintDialog:IsPrintName:CheckBox" ,
-                                    "IsPrintName" ,
+                                    u".HelpID:vcl:PrintDialog:IsPrintName:CheckBox"_ustr ,
+                                    u"IsPrintName"_ustr ,
                                     officecfg::Office::Impress::Print::Other::PageName::get()
                                     )
                                 );
             }
             else
             {
-                AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt("printname",
+                AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt(u"printname"_ustr,
                                     SdResId(STR_DRAW_PRINT_UI_IS_PRINT_NAME),
-                                    ".HelpID:vcl:PrintDialog:IsPrintName:CheckBox" ,
-                                    "IsPrintName" ,
+                                    u".HelpID:vcl:PrintDialog:IsPrintName:CheckBox"_ustr ,
+                                    u"IsPrintName"_ustr ,
                                     officecfg::Office::Draw::Print::Other::PageName::get()
                                     )
                                 );
             }
 
-            AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt("printdatetime",
+            AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt(u"printdatetime"_ustr,
                                 SdResId(STR_IMPRESS_PRINT_UI_IS_PRINT_DATE),
-                                ".HelpID:vcl:PrintDialog:IsPrintDateTime:CheckBox" ,
-                                "IsPrintDateTime" ,
+                                u".HelpID:vcl:PrintDialog:IsPrintDateTime:CheckBox"_ustr ,
+                                u"IsPrintDateTime"_ustr ,
                                 // Separate settings for time and date in Impress/Draw -> Print page, check that both are set
                                 mbImpress ?
                                 officecfg::Office::Impress::Print::Other::Date::get() &&
@@ -467,41 +493,41 @@ namespace {
 
             if( mbImpress )
             {
-                AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt("printhidden",
+                AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt(u"printhidden"_ustr,
                                     SdResId(STR_IMPRESS_PRINT_UI_IS_PRINT_HIDDEN),
-                                    ".HelpID:vcl:PrintDialog:IsPrintHidden:CheckBox" ,
-                                    "IsPrintHidden" ,
+                                    u".HelpID:vcl:PrintDialog:IsPrintHidden:CheckBox"_ustr ,
+                                    u"IsPrintHidden"_ustr ,
                                     officecfg::Office::Impress::Print::Other::HiddenPage::get()
                                     )
                                 );
             }
 
-            AddDialogControl( vcl::PrinterOptionsHelper::setSubgroupControlOpt("color",
-                               SdResId(STR_IMPRESS_PRINT_UI_QUALITY), "" ) );
+            AddDialogControl( vcl::PrinterOptionsHelper::setSubgroupControlOpt(u"color"_ustr,
+                               SdResId(STR_IMPRESS_PRINT_UI_QUALITY), u""_ustr ) );
 
-            aHelpIds = { ".HelpID:vcl:PrintDialog:Quality:RadioButton:0",
-                         ".HelpID:vcl:PrintDialog:Quality:RadioButton:1",
-                         ".HelpID:vcl:PrintDialog:Quality:RadioButton:2" };
-            aWidgetIds = { "originalcolors", "grayscale", "blackandwhite" };
+            aHelpIds = { u".HelpID:vcl:PrintDialog:Quality:RadioButton:0"_ustr,
+                         u".HelpID:vcl:PrintDialog:Quality:RadioButton:1"_ustr,
+                         u".HelpID:vcl:PrintDialog:Quality:RadioButton:2"_ustr };
+            aWidgetIds = { u"originalcolors"_ustr, u"grayscale"_ustr, u"blackandwhite"_ustr };
             AddDialogControl( vcl::PrinterOptionsHelper::setChoiceRadiosControlOpt(
                                 aWidgetIds,
-                                "",
+                                u""_ustr,
                                 aHelpIds,
-                                "Quality" ,
+                                u"Quality"_ustr ,
                                 CreateChoice(STR_IMPRESS_PRINT_UI_QUALITY_CHOICES, SAL_N_ELEMENTS(STR_IMPRESS_PRINT_UI_QUALITY_CHOICES)),
                                 mbImpress ? officecfg::Office::Impress::Print::Other::Quality::get() :
                                             officecfg::Office::Draw::Print::Other::Quality::get() )
 
                             );
 
-            AddDialogControl( vcl::PrinterOptionsHelper::setSubgroupControlOpt("pagesizes",
-                               SdResId(STR_IMPRESS_PRINT_UI_PAGE_OPTIONS), "" ) );
+            AddDialogControl( vcl::PrinterOptionsHelper::setSubgroupControlOpt(u"pagesizes"_ustr,
+                               SdResId(STR_IMPRESS_PRINT_UI_PAGE_OPTIONS), u""_ustr ) );
 
-            aHelpIds = { ".HelpID:vcl:PrintDialog:PageOptions:RadioButton:0",
-                         ".HelpID:vcl:PrintDialog:PageOptions:RadioButton:1",
-                         ".HelpID:vcl:PrintDialog:PageOptions:RadioButton:2",
-                         ".HelpID:vcl:PrintDialog:PageOptions:RadioButton:3" };
-            aWidgetIds = { "originalsize", "fittoprintable", "distributeonmultiple", "tilesheet" };
+            aHelpIds = { u".HelpID:vcl:PrintDialog:PageOptions:RadioButton:0"_ustr,
+                         u".HelpID:vcl:PrintDialog:PageOptions:RadioButton:1"_ustr,
+                         u".HelpID:vcl:PrintDialog:PageOptions:RadioButton:2"_ustr,
+                         u".HelpID:vcl:PrintDialog:PageOptions:RadioButton:3"_ustr };
+            aWidgetIds = { u"originalsize"_ustr, u"fittoprintable"_ustr, u"distributeonmultiple"_ustr, u"tilesheet"_ustr };
 
             // Mutually exclusive page options settings are stored in separate config keys...
             // TODO: There is no config key to set the distributeonmultiple option as default
@@ -516,12 +542,12 @@ namespace {
             {
                 nDefaultChoice = 3;
             }
-            vcl::PrinterOptionsHelper::UIControlOptions aPageOptionsOpt("PrintProspect", 0);
+            vcl::PrinterOptionsHelper::UIControlOptions aPageOptionsOpt(u"PrintProspect"_ustr, 0);
             AddDialogControl( vcl::PrinterOptionsHelper::setChoiceRadiosControlOpt(
                                 aWidgetIds,
-                                "",
+                                u""_ustr,
                                 aHelpIds,
-                                "PageOptions" ,
+                                u"PageOptions"_ustr ,
                                 mbImpress ? CreateChoice(STR_IMPRESS_PRINT_UI_PAGE_OPTIONS_CHOICES, SAL_N_ELEMENTS(STR_IMPRESS_PRINT_UI_PAGE_OPTIONS_CHOICES)) :
                                             CreateChoice(STR_IMPRESS_PRINT_UI_PAGE_OPTIONS_CHOICES_DRAW, SAL_N_ELEMENTS(STR_IMPRESS_PRINT_UI_PAGE_OPTIONS_CHOICES_DRAW)),
                                 nDefaultChoice,
@@ -532,44 +558,51 @@ namespace {
 
             vcl::PrinterOptionsHelper::UIControlOptions aBrochureOpt;
             aBrochureOpt.maGroupHint = "LayoutPage" ;
-            AddDialogControl( vcl::PrinterOptionsHelper::setSubgroupControlOpt("pagesides",
-                               SdResId(STR_IMPRESS_PRINT_UI_PAGE_SIDES), "",
+            AddDialogControl( vcl::PrinterOptionsHelper::setSubgroupControlOpt(u"pagesides"_ustr,
+                               SdResId(STR_IMPRESS_PRINT_UI_PAGE_SIDES), u""_ustr,
                                aBrochureOpt ) );
 
             // brochure printing
-            AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt("brochure",
+            AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt(u"brochure"_ustr,
                                 SdResId(STR_IMPRESS_PRINT_UI_BROCHURE),
-                                ".HelpID:vcl:PrintDialog:PrintProspect:CheckBox" ,
-                                "PrintProspect" ,
+                                u".HelpID:vcl:PrintDialog:PrintProspect:CheckBox"_ustr ,
+                                u"PrintProspect"_ustr ,
                                 mbImpress ? officecfg::Office::Impress::Print::Page::Booklet::get() :
                                             officecfg::Office::Draw::Print::Page::Booklet::get(),
                                 aBrochureOpt
                                 )
                             );
 
-            vcl::PrinterOptionsHelper::UIControlOptions
-                aIncludeOpt( "PrintProspect" , -1, false );
-            aIncludeOpt.maGroupHint =  "LayoutPage" ;
-            aHelpIds = { ".HelpID:vcl:PrintDialog:PrintProspectInclude:ListBox" };
-            AddDialogControl( vcl::PrinterOptionsHelper::setChoiceListControlOpt(
-                                "brochureinclude",
+            // check if either CJK or CTL is enabled
+            bool bRTL = SvtCJKOptions::IsCJKFontEnabled() || SvtCTLOptions::IsCTLFontEnabled();
+
+            if(bRTL)
+            {
+                uno::Sequence< OUString > aBRTLChoices{ SdResId(STR_IMPRESS_PRINT_UI_LEFT_SCRIPT),
+                                                        SdResId(STR_IMPRESS_PRINT_UI_RIGHT_SCRIPT) };
+                vcl::PrinterOptionsHelper::UIControlOptions
+                    aIncludeOpt( u"PrintProspect"_ustr , -1, true );
+                aIncludeOpt.maGroupHint =  "LayoutPage" ;
+                aHelpIds = { u".HelpID:vcl:PrintDialog:PrintProspectRTL:ListBox"_ustr };
+                AddDialogControl( vcl::PrinterOptionsHelper::setChoiceListControlOpt(
+                                u"scriptdirection"_ustr,
                                 SdResId(STR_IMPRESS_PRINT_UI_BROCHURE_INCLUDE),
                                 aHelpIds,
-                                "PrintProspectInclude" ,
-                                CreateChoice(STR_IMPRESS_PRINT_UI_BROCHURE_INCLUDE_LIST, SAL_N_ELEMENTS(STR_IMPRESS_PRINT_UI_BROCHURE_INCLUDE_LIST)),
+                                u"PrintProspectRTL"_ustr ,
+                                aBRTLChoices,
                                 0,
                                 Sequence< sal_Bool >(),
                                 aIncludeOpt
                                 )
                             );
-
+            }
             // paper tray (on options page)
             vcl::PrinterOptionsHelper::UIControlOptions aPaperTrayOpt;
             aPaperTrayOpt.maGroupHint = "OptionsPageOptGroup" ;
-            AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt("printpaperfromsetup",
+            AddDialogControl( vcl::PrinterOptionsHelper::setBoolControlOpt(u"printpaperfromsetup"_ustr,
                                 SdResId(STR_IMPRESS_PRINT_UI_PAPER_TRAY),
-                                ".HelpID:vcl:PrintDialog:PrintPaperFromSetup:CheckBox" ,
-                                "PrintPaperFromSetup" ,
+                                u".HelpID:vcl:PrintDialog:PrintPaperFromSetup:CheckBox"_ustr ,
+                                u"PrintPaperFromSetup"_ustr ,
                                 false,
                                 aPaperTrayOpt
                                 )
@@ -578,9 +611,9 @@ namespace {
             vcl::PrinterOptionsHelper::UIControlOptions aPrintRangeOpt;
             aPrintRangeOpt.mbInternalOnly = true;
             aPrintRangeOpt.maGroupHint = "PrintRange" ;
-            AddDialogControl( vcl::PrinterOptionsHelper::setSubgroupControlOpt("printrange",
+            AddDialogControl( vcl::PrinterOptionsHelper::setSubgroupControlOpt(u"printrange"_ustr,
                                 mbImpress ? SdResId(STR_IMPRESS_PRINT_UI_SLIDE_RANGE) : SdResId(STR_IMPRESS_PRINT_UI_PAGE_RANGE),
-                                "",
+                                u""_ustr,
                                 aPrintRangeOpt )
                              );
 
@@ -620,11 +653,11 @@ namespace {
                                             CreateChoice( STR_DRAW_PRINT_UI_PAGE_RANGE_CHOICE, SAL_N_ELEMENTS(STR_DRAW_PRINT_UI_PAGE_RANGE_CHOICE ) ),
                                 nPrintRange ) );
 */
-            OUString aPrintRangeName( "PrintContent" );
-            aHelpIds = { ".HelpID:vcl:PrintDialog:PrintContent:RadioButton:0",
-                         ".HelpID:vcl:PrintDialog:PrintContent:RadioButton:1",
-                         ".HelpID:vcl:PrintDialog:PrintContent:RadioButton:2" };
-            aWidgetIds = { "rbAllPages", "rbRangePages", "rbRangeSelection" };
+            OUString aPrintRangeName( u"PrintContent"_ustr );
+            aHelpIds = { u".HelpID:vcl:PrintDialog:PrintContent:RadioButton:0"_ustr,
+                         u".HelpID:vcl:PrintDialog:PrintContent:RadioButton:1"_ustr,
+                         u".HelpID:vcl:PrintDialog:PrintContent:RadioButton:2"_ustr };
+            aWidgetIds = { u"rbAllPages"_ustr, u"rbRangePages"_ustr, u"rbRangeSelection"_ustr };
 
             AddDialogControl( vcl::PrinterOptionsHelper::setChoiceRadiosControlOpt(aWidgetIds, OUString(),
                                 aHelpIds, aPrintRangeName,
@@ -634,12 +667,12 @@ namespace {
                             );
             // create an Edit dependent on "Pages" selected
             vcl::PrinterOptionsHelper::UIControlOptions aPageRangeOpt( aPrintRangeName, 1, true );
-            AddDialogControl(vcl::PrinterOptionsHelper::setEditControlOpt("pagerange", "",
-                                ".HelpID:vcl:PrintDialog:PageRange:Edit", "PageRange",
+            AddDialogControl(vcl::PrinterOptionsHelper::setEditControlOpt(u"pagerange"_ustr, u""_ustr,
+                                u".HelpID:vcl:PrintDialog:PageRange:Edit"_ustr, u"PageRange"_ustr,
                                 aPageRange, aPageRangeOpt));
             vcl::PrinterOptionsHelper::UIControlOptions aEvenOddOpt(aPrintRangeName, -1, true);
-            AddDialogControl(vcl::PrinterOptionsHelper::setChoiceListControlOpt("evenoddbox", "",
-                                uno::Sequence<OUString>(), "EvenOdd", uno::Sequence<OUString>(),
+            AddDialogControl(vcl::PrinterOptionsHelper::setChoiceListControlOpt(u"evenoddbox"_ustr, u""_ustr,
+                                uno::Sequence<OUString>(), u"EvenOdd"_ustr, uno::Sequence<OUString>(),
                                 0, uno::Sequence<sal_Bool>(), aEvenOddOpt));
         }
 
@@ -781,6 +814,286 @@ namespace {
         const sal_uInt16 mnPageIndex;
     };
 
+    /** The NotesPrinterPage is used for printing notes pages onto one or more printer pages
+    */
+    class NotesPrinterPage : public PrinterPage
+    {
+    public:
+        NotesPrinterPage(
+            const sal_uInt16 nPageIndex,
+            const sal_Int32 nPageNumb,
+            const sal_Int32 nPageCount,
+            const bool bScaled,
+            const PageKind ePageKind,
+            const MapMode& rMapMode,
+            const bool bPrintMarkedOnly,
+            const OUString& rsPageString,
+            const Point& rPageStringOffset,
+            const DrawModeFlags nDrawMode,
+            const Orientation eOrientation,
+            const sal_uInt16 nPaperTray)
+            : PrinterPage(ePageKind, rMapMode, bPrintMarkedOnly, rsPageString, rPageStringOffset,
+                          nDrawMode, eOrientation, nPaperTray),
+              mnPageIndex(nPageIndex),
+              mnPageNumb(nPageNumb),
+              mnPageCount(nPageCount),
+              mbScaled(bScaled)
+        {
+        }
+
+        virtual void Print(
+            Printer& rPrinter,
+            SdDrawDocument& rDocument,
+            ViewShell&,
+            View* pView,
+            DrawView& rPrintView,
+            const SdrLayerIDSet& rVisibleLayers,
+            const SdrLayerIDSet& rPrintableLayers) const override
+        {
+            SdPage* pPageToPrint = rDocument.GetSdPage(mnPageIndex, mePageKind);
+            rPrinter.SetMapMode(maMap);
+
+            // Clone the current page to create an independent instance for modifications.
+            // This ensures that changes made to pNotesPage do not affect the original page.
+            rtl::Reference<SdPage> pNotesPage
+                = static_cast<SdPage*>(pPageToPrint->CloneSdrPage(rDocument).get());
+
+            Size aPageSize;
+            if (mbScaled)
+            {
+                aPageSize = pNotesPage->GetSize();
+                lcl_AdjustPageSize(aPageSize, rPrinter.GetPrintPageSize());
+            }
+            else
+                aPageSize = rPrinter.GetPrintPageSize();
+
+            // Adjusts the objects on the notes page to fit the new page size.
+            ::tools::Rectangle aNewBorderRect(-1, -1, -1, -1);
+            pNotesPage->ScaleObjects(aPageSize, aNewBorderRect, true);
+
+            SdrObject* pNotesObj = pNotesPage->GetPresObj(PresObjKind::Notes);
+            if (pNotesObj)
+            {
+                // new page(s) margins
+                sal_Int32 nLeft = aPageSize.Width() * 0.1;
+                sal_Int32 nRight = nLeft;
+                sal_Int32 nTop = aPageSize.Height() * 0.075;
+                sal_Int32 nBottom = nTop;
+
+                Point aNotesPt = pNotesObj->GetRelativePos();
+                Size aNotesSize = pNotesObj->GetLogicRect().GetSize();
+
+                Outliner* pOut = rDocument.GetInternalOutliner();
+                const OutlinerMode nSaveOutlMode(pOut->GetOutlinerMode());
+                const bool bSavedUpdateMode(pOut->IsUpdateLayout());
+                pOut->SetPaperSize(aNotesSize);
+                pOut->SetUpdateLayout(true);
+                pOut->Clear();
+                pOut->SetText(*pNotesObj->GetOutlinerParaObject());
+
+                bool bAutoGrow = pNotesObj->GetMergedItem(SDRATTR_TEXT_AUTOGROWHEIGHT).GetValue();
+
+                // If AutoGrowHeight property is enabled and the notes page has a lower border,
+                // use the lower border but if there is no lower border, use the bottom margin
+                // to determine the first page break position.
+                // If AutoGrow is not enabled, the notes object defines the first page break.
+                ::tools::Long nNotesPageBottom
+                    = bAutoGrow ? (pNotesPage->GetLowerBorder() != 0)
+                                      ? aPageSize.Height() - pNotesPage->GetLowerBorder()
+                                      : aPageSize.Height() - nBottom
+                                : aNotesPt.Y() + aNotesSize.Height();
+                if (mbScaled)
+                {
+                    sal_Int32 nTextHeight = aNotesPt.Y() + pOut->GetTextHeight();
+                    if (bAutoGrow && (nTextHeight > nNotesPageBottom))
+                    {
+                        pNotesObj->SetMergedItem(SdrOnOffItem(SDRATTR_TEXT_AUTOGROWHEIGHT, false));
+
+                        ::tools::Long nObjW = aNotesSize.Width();
+                        ::tools::Long nObjH = aPageSize.Height() - aNotesPt.Y() - nBottom;
+
+                        pNotesObj->SetLogicRect(::tools::Rectangle(aNotesPt, Size(nObjW, nObjH)));
+                    }
+                    SdrTextFitToSizeTypeItem eFitToSize = drawing::TextFitToSizeType_AUTOFIT;
+                    pNotesObj->SetMergedItem(eFitToSize);
+                }
+                else // original size
+                {
+                    bool bExit = false;
+                    sal_Int32 nPrevLineLen = 0;
+                    sal_Int32 nPrevParaIdx = 0;
+                    sal_uInt16 nActualPageNumb = 1;
+                    sal_uInt16 nPrevParaLowerSpace = 0;
+                    ::tools::Long nCurrentPosY = aNotesPt.Y();
+                    sal_Int32 nParaCount = pOut->GetParagraphCount();
+                    std::vector<std::pair<sal_Int32, sal_Int32>> aPageBreaks;
+
+                    for (sal_Int32 i = 0; i < nParaCount && !bExit; ++i)
+                    {
+                        sal_Int32 nActualLineLen = 0;
+                        sal_Int32 nLineCount = pOut->GetLineCount(i);
+
+                        sal_uInt16 nLowerSpace = 0;
+                        sal_uInt16 nUpperSpace = nPrevParaLowerSpace;
+                        const SfxItemSet* pItemSet = &pOut->GetParaAttribs(i);
+                        if(pItemSet->HasItem(EE_PARA_ULSPACE))
+                        {
+                            nLowerSpace = pItemSet->Get(EE_PARA_ULSPACE).GetLower();
+                            nUpperSpace = (i != 0) ? pItemSet->Get(EE_PARA_ULSPACE).GetUpper() : 0;
+                            if (nPrevParaLowerSpace > nUpperSpace)
+                                nUpperSpace = nPrevParaLowerSpace;
+                        }
+
+                        for (sal_Int32 j = 0; j < nLineCount; ++j)
+                        {
+                            nActualLineLen += pOut->GetLineLen(i, j);
+                            sal_Int32 nLineHeight = pOut->GetLineHeight(i, j);
+
+                            if (nUpperSpace != 0 && (i > 0) && (j == 0))
+                                nLineHeight += nUpperSpace;
+
+                            sal_Int32 nNextPosY = nCurrentPosY + nLineHeight;
+
+                            if (nNextPosY > nNotesPageBottom)
+                            {
+                                // If the current or the next page matches the print page
+                                // calculate and add a page break, since we only want to add
+                                // a page break if the page is relevant.
+                                if (mnPageNumb == nActualPageNumb
+                                    || mnPageNumb == nActualPageNumb + 1)
+                                {
+                                    if (!aPageBreaks.empty())
+                                    {
+                                        // determine the page break at the bottom of the page
+                                        // for pages that have both a previous and a following page
+                                        aPageBreaks.emplace_back(
+                                            nPrevParaIdx - aPageBreaks[0].first, nPrevLineLen);
+                                    }
+                                    else
+                                    {
+                                        if (mnPageNumb == 1 || (nLineCount > 1 && j != 0))
+                                        {
+                                            // first page or multi-line paragraphs
+                                            aPageBreaks.emplace_back(nPrevParaIdx, nPrevLineLen);
+                                        }
+                                        else
+                                        {   // single-line paragraphs
+                                            aPageBreaks.emplace_back(nPrevParaIdx + 1, 0);
+                                        }
+                                    }
+
+                                    if (mnPageNumb == nActualPageNumb || mnPageNumb == mnPageCount)
+                                    {
+                                        bExit = true;
+                                        break;
+                                    }
+                                }
+
+                                if (nUpperSpace > 0)
+                                    nLineHeight -= nUpperSpace;
+
+                                nNotesPageBottom = aPageSize.Height() - nBottom;
+                                nCurrentPosY = nTop;
+                                nActualPageNumb++;
+                                nActualLineLen = 0;
+                            }
+                            nPrevParaIdx = i;
+                            nPrevLineLen = nActualLineLen;
+                            nCurrentPosY += nLineHeight;
+                        }
+                        nPrevParaLowerSpace = nLowerSpace;
+                    }
+
+                    if (!aPageBreaks.empty())
+                    {
+                        ESelection aE;
+                        if (mnPageNumb == 1)
+                        {
+                            aE.start.nPara = aPageBreaks[0].first;
+                            aE.start.nIndex = aPageBreaks[0].second;
+                            aE.end.nPara = pOut->GetParagraphCount() - 1;
+                            aE.end.nIndex = pOut->GetText(pOut->GetParagraph(aE.end.nPara)).getLength();
+                            pOut->QuickDelete(aE);
+                        }
+                        else
+                        {
+                            sal_Int16 nDepth = pOut->GetDepth(aPageBreaks[0].first);
+                            SfxItemSet aItemSet = pOut->GetParaAttribs(aPageBreaks[0].first);
+
+                            aE.start.nPara = 0;
+                            aE.start.nIndex = 0;
+                            aE.end.nPara = aPageBreaks[0].first;
+                            aE.end.nIndex = aPageBreaks[0].second;
+                            pOut->QuickDelete(aE);
+
+                            Paragraph* pFirstPara = pOut->GetParagraph(0);
+                            pOut->SetDepth(pFirstPara, nDepth);
+                            pOut->SetParaAttribs(0, aItemSet);
+
+                            if (aPageBreaks.size() > 1)
+                            {
+                                aE.start.nPara = aPageBreaks[1].first;
+                                aE.start.nIndex = aPageBreaks[1].second;
+                                aE.end.nPara = pOut->GetParagraphCount() - 1;
+                                aE.end.nIndex = pOut->GetText(pOut->GetParagraph(aE.end.nPara)).getLength();
+                                pOut->QuickDelete(aE);
+                            }
+                        }
+                    }
+                    pNotesObj->SetOutlinerParaObject(pOut->CreateParaObject());
+
+                    Size aObjSize;
+                    if (mnPageNumb != 1) // new page(s)
+                    {
+                        SdrObjListIter aShapeIter(pNotesPage.get());
+                        while (aShapeIter.IsMore())
+                        {
+                            SdrObject* pObj = aShapeIter.Next();
+                            if (pObj && pObj->GetObjIdentifier() != SdrObjKind::Text)
+                                pNotesPage->RemoveObject(pObj->GetOrdNum());
+                        }
+
+                        aNotesPt.setX(nLeft);
+                        aNotesPt.setY(nTop);
+                        ::tools::Long nWidth = aPageSize.Width() - nLeft - nRight;
+                        aObjSize = Size(nWidth, pOut->GetTextHeight());
+                    }
+                    else // first page
+                    {
+                        if (!bAutoGrow)
+                            aObjSize = aNotesSize;
+                        else
+                            aObjSize = Size(aNotesSize.Width(), pOut->GetTextHeight());
+                    }
+                    pNotesObj->SetLogicRect(::tools::Rectangle(aNotesPt, aObjSize));
+                }
+                pOut->Clear();
+                pOut->SetUpdateLayout(bSavedUpdateMode);
+                pOut->Init(nSaveOutlMode);
+            }
+            pNotesPage->SetSize(aPageSize);
+
+            PrintPage(
+                rPrinter,
+                rPrintView,
+                *pNotesPage,
+                pView,
+                mbPrintMarkedOnly,
+                rVisibleLayers,
+                rPrintableLayers);
+            PrintMessage(
+                rPrinter,
+                msPageString,
+                maPageStringOffset);
+        }
+
+    private:
+        const sal_uInt16 mnPageIndex;
+        const sal_Int32 mnPageNumb;
+        const sal_Int32 mnPageCount;
+        const bool mbScaled;
+    };
+
     /** Print one slide multiple times on a printer page so that the whole
         printer page is covered.
     */
@@ -875,7 +1188,7 @@ namespace {
             const DrawModeFlags nDrawMode,
             const Orientation eOrientation,
             const sal_uInt16 nPaperTray)
-            : PrinterPage(ePageKind, rMapMode, bPrintMarkedOnly, "",
+            : PrinterPage(ePageKind, rMapMode, bPrintMarkedOnly, u""_ustr,
                 Point(), nDrawMode, eOrientation, nPaperTray),
               mnFirstPageIndex(nFirstPageIndex),
               mnSecondPageIndex(nSecondPageIndex),
@@ -963,6 +1276,21 @@ namespace {
             const SdrLayerIDSet& rPrintableLayers) const override
         {
             SdPage& rHandoutPage (*rDocument.GetSdPage(0, PageKind::Handout));
+
+            Size aPageSize(rHandoutPage.GetSize());
+            Size aPrintPageSize = rPrinter.GetPrintPageSize();
+
+            if ((aPageSize.Width() < aPageSize.Height()
+                 && aPrintPageSize.Width() > aPrintPageSize.Height())
+                || (aPageSize.Width() > aPageSize.Height()
+                    && aPrintPageSize.Width() < aPrintPageSize.Height()))
+            {
+                ::tools::Long nTmp = aPageSize.Width();
+                aPageSize.setWidth(aPageSize.Height());
+                aPageSize.setHeight(nTmp);
+
+                rHandoutPage.SetSize(aPageSize);
+            }
 
             Reference< css::beans::XPropertySet > xHandoutPage( rHandoutPage.getUnoPage(), UNO_QUERY );
             static constexpr OUString sPageNumber( u"Number"_ustr );
@@ -1118,7 +1446,7 @@ namespace {
             pOutliner->Clear();
             pOutliner->SetText(*mpParaObject);
 
-            pOutliner->Draw(rPrinter, aOutRect);
+            pOutliner->DrawText_ToRectangle(rPrinter, aOutRect);
 
             PrintMessage(
                 rPrinter,
@@ -1188,7 +1516,7 @@ public:
 
         // The RenderDevice property is handled specially: its value is
         // stored in mpPrinter instead of being retrieved on demand.
-        Any aDev( getValue( "RenderDevice" ) );
+        Any aDev( getValue( u"RenderDevice"_ustr ) );
         Reference<awt::XDevice> xRenderDevice;
 
         if (aDev >>= xRenderDevice)
@@ -1198,7 +1526,11 @@ public:
                                                   : VclPtr< OutputDevice >();
             mpPrinter = dynamic_cast<Printer*>(pOut.get());
             Size aPageSizePixel = mpPrinter ? mpPrinter->GetPaperSizePixel() : Size();
-            if( aPageSizePixel != maPrinterPageSizePixel )
+            Size aPrintPageSize = mpPrinter ? mpPrinter->GetPrintPageSize() : Size();
+
+            lcl_AdjustPageSize(aPageSizePixel, aPrintPageSize);
+
+            if (aPageSizePixel != maPrinterPageSizePixel)
             {
                 bIsPaperChanged = true;
                 maPrinterPageSizePixel = aPageSizePixel;
@@ -1228,11 +1560,11 @@ public:
     css::uno::Sequence<css::beans::PropertyValue> GetProperties () const
     {
         css::uno::Sequence<css::beans::PropertyValue> aProperties{
-            comphelper::makePropertyValue("ExtraPrintUIOptions",
+            comphelper::makePropertyValue(u"ExtraPrintUIOptions"_ustr,
                                           comphelper::containerToSequence(m_aUIProperties)),
-            comphelper::makePropertyValue("PageSize", maPrintSize),
+            comphelper::makePropertyValue(u"PageSize"_ustr, maPrintSize),
             // FIXME: is this always true ?
-            comphelper::makePropertyValue("PageIncludesNonprintableArea", true)
+            comphelper::makePropertyValue(u"PageIncludesNonprintableArea"_ustr, true)
         };
 
         return aProperties;
@@ -1253,10 +1585,10 @@ public:
             return;
 
         SdDrawDocument* pDocument = pViewShell->GetDoc();
-        OSL_ASSERT(pDocument!=nullptr);
+        assert(pDocument!=nullptr);
 
         std::shared_ptr<DrawViewShell> pDrawViewShell(
-            std::dynamic_pointer_cast<DrawViewShell>(mrBase.GetMainViewShell()));
+            std::dynamic_pointer_cast<DrawViewShell>(pViewShell));
 
         if (!mpPrintView)
             mpPrintView.reset(new DrawView(mrBase.GetDocShell(), &rPrinter, nullptr));
@@ -1361,11 +1693,15 @@ private:
         {
             aPaperSize.setWidth(rInfo.mpPrinter->GetPaperSize().Width());
             aPaperSize.setHeight(rInfo.mpPrinter->GetPaperSize().Height());
+
+            if (!mpOptions->IsBooklet())
+                lcl_AdjustPageSize(aPaperSize, rInfo.mpPrinter->GetPrintPageSize());
         }
 
         maPrintSize = awt::Size(aPaperSize.Width(), aPaperSize.Height());
 
-        if (mpOptions->IsPrinterPreferred(pDocument->GetDocumentType()))
+        if (mpOptions->IsPrinterPreferred(pDocument->GetDocumentType())
+            && ePageKind == PageKind::Standard && !mpOptions->IsBooklet())
         {
             if( (rInfo.meOrientation == Orientation::Landscape &&
                   (aPaperSize.Width() < aPaperSize.Height()))
@@ -1512,8 +1848,14 @@ private:
 
         const bool bDrawLines (eLayout == AUTOLAYOUT_HANDOUT3);
 
+        Size aHandoutPageSize = pHandout->GetSize();
+        lcl_AdjustPageSize(aHandoutPageSize, mpPrinter->GetPrintPageSize());
+        Orientation eOrient = aHandoutPageSize.Width() > aHandoutPageSize.Height()
+                                  ? Orientation::Landscape
+                                  : Orientation::Portrait;
+
         std::vector< ::tools::Rectangle > aAreas;
-        SdPage::CalculateHandoutAreas( rModel, eLayout, bHandoutHorizontal, aAreas );
+        SdPage::CalculateHandoutAreas( rModel, eLayout, bHandoutHorizontal, aAreas, eOrient );
 
         std::vector< ::tools::Rectangle >::iterator iter( aAreas.begin() );
         while( iter != aAreas.end() )
@@ -1741,7 +2083,7 @@ private:
     void PrepareHandout (PrintInfo& rInfo)
     {
         SdDrawDocument* pDocument = mrBase.GetDocument();
-        OSL_ASSERT(pDocument != nullptr);
+        assert(pDocument != nullptr);
         SdPage& rHandoutPage (*pDocument->GetSdPage(0, PageKind::Handout));
 
         const bool bScalePage (mpOptions->IsPageSize());
@@ -1756,28 +2098,18 @@ private:
         SdPage& rMaster (dynamic_cast<SdPage&>(rHandoutPage.TRG_GetMasterPage()));
         rInfo.meOrientation = rMaster.GetOrientation();
 
-        const Size aPaperSize (rInfo.mpPrinter->GetPaperSize());
-        if( (rInfo.meOrientation == Orientation::Landscape &&
-              (aPaperSize.Width() < aPaperSize.Height()))
-           ||
-            (rInfo.meOrientation == Orientation::Portrait &&
-              (aPaperSize.Width() > aPaperSize.Height()))
-          )
-        {
-            maPrintSize = awt::Size(aPaperSize.Height(), aPaperSize.Width());
-        }
-        else
-        {
-            maPrintSize = awt::Size(aPaperSize.Width(), aPaperSize.Height());
-        }
+        Size aPaperSize (rInfo.mpPrinter->GetPaperSize());
+        lcl_AdjustPageSize(aPaperSize, rInfo.mpPrinter->GetPrintPageSize());
+        maPrintSize = awt::Size(aPaperSize.Width(),aPaperSize.Height());
 
         MapMode aMap (rInfo.maMap);
         const Point aPageOfs (rInfo.mpPrinter->GetPageOffset());
 
         if ( bScalePage )
         {
-            const Size aPageSize (rHandoutPage.GetSize());
-            const Size aPrintSize (rInfo.mpPrinter->GetOutputSize());
+            Size aPageSize (rHandoutPage.GetSize());
+            Size aPrintSize (rInfo.mpPrinter->GetOutputSize());
+            lcl_AdjustPageSize(aPageSize, aPrintSize);
 
             const double fHorz = static_cast<double>(aPrintSize.Width())    / aPageSize.Width();
             const double fVert = static_cast<double>(aPrintSize.Height()) / aPageSize.Height();
@@ -1863,7 +2195,11 @@ private:
         if (pDocument->GetSdPageCount(ePageKind) == 0)
             return;
         SdPage* pRefPage = pDocument->GetSdPage(0, ePageKind);
-        rInfo.maPageSize = pRefPage->GetSize();
+
+        if (!mpOptions->IsPrinterPreferred(pDocument->GetDocumentType()) && mpOptions->IsNotes())
+            rInfo.maPageSize = mpPrinter->GetPrintPageSize();
+        else
+            rInfo.maPageSize = pRefPage->GetSize();
 
         SetupPaperOrientation(ePageKind, rInfo);
 
@@ -1898,19 +2234,22 @@ private:
                 continue;
 
             MapMode aMap (rInfo.maMap);
-            // is it possible that the page size changed?
-            const Size aPageSize = pPage->GetSize();
+
+            Size aPageSize = pPage->GetSize();
 
             if (mpOptions->IsPageSize())
             {
-                const double fHorz (static_cast<double>(rInfo.maPrintSize.Width())  / aPageSize.Width());
-                const double fVert (static_cast<double>(rInfo.maPrintSize.Height()) / aPageSize.Height());
+                Size aPrintSize = rInfo.maPrintSize;
+                lcl_AdjustPageSize(aPageSize, aPrintSize);
+
+                const double fHorz(static_cast<double>(aPrintSize.Width()) / aPageSize.Width());
+                const double fVert(static_cast<double>(aPrintSize.Height()) / aPageSize.Height());
 
                 Fraction aFract;
                 if (fHorz < fVert)
-                    aFract = Fraction(rInfo.maPrintSize.Width(), aPageSize.Width());
+                    aFract = Fraction(aPrintSize.Width(), aPageSize.Width());
                 else
-                    aFract = Fraction(rInfo.maPrintSize.Height(), aPageSize.Height());
+                    aFract = Fraction(aPrintSize.Height(), aPageSize.Height());
 
                 aMap.SetScaleX(aFract);
                 aMap.SetScaleY(aFract);
@@ -1950,7 +2289,7 @@ private:
             }
             else
             {
-                rInfo.maMap = aMap;
+                rInfo.maMap = std::move(aMap);
                 PrepareScaledPage(*it, *pPage, ePageKind, rInfo);
             }
         }
@@ -2044,6 +2383,8 @@ private:
             }
         }
 
+        bool bPrintBookletRTL = mpOptions->IsProspectRTL();
+
         for (sal_uInt32
                  nIndex=0,
                  nCount=aPairVector.size();
@@ -2052,7 +2393,9 @@ private:
         {
             if ( CheckForFrontBackPages( nIndex ) )
             {
-                const std::pair<sal_uInt16, sal_uInt16> aPair (aPairVector[nIndex]);
+                std::pair<sal_uInt16, sal_uInt16> aPair (aPairVector[nIndex]);
+                if( bPrintBookletRTL )
+                    std::swap(aPair.first, aPair.second);
                 Point aSecondOffset (aOffset);
                 if (rInfo.meOrientation == Orientation::Landscape)
                     aSecondOffset.AdjustX( aAdjustedPrintSize.Width() / 2 );
@@ -2123,13 +2466,10 @@ private:
         else
             nPaperBin = rInfo.mpPrinter->GetPaperBin();
 
-        // For pages larger then the printable area there
-        // are three options:
+        // For pages larger than the printable area there are three options:
         // 1. Scale down to the page to the printable area.
-        // 2. Print only the upper left part of the page
-        //    (without the unprintable borders).
-        // 3. Split the page into parts of the size of the
-        // printable area.
+        // 2. Print only the upper left part of the page (without the unprintable borders).
+        // 3. Split the page into parts of the size of the printable area.
         const bool bScalePage (mpOptions->IsPageSize());
         const bool bCutPage (mpOptions->IsCutPage());
         MapMode aMap (rInfo.maMap);
@@ -2139,17 +2479,135 @@ private:
 
             // if CutPage is set then do not move it, otherwise move the
             // scaled page to printable area
-            maPrinterPages.push_back(
-                std::make_shared<RegularPrinterPage>(
-                        sal::static_int_cast<sal_uInt16>(nPageIndex),
-                        ePageKind,
-                        aMap,
-                        rInfo.mbPrintMarkedOnly,
-                        rInfo.msPageString,
-                        aPageOffset,
-                        rInfo.mnDrawMode,
-                        rInfo.meOrientation,
-                        nPaperBin));
+            if (ePageKind == PageKind::Standard)
+            {
+                maPrinterPages.push_back(
+                    std::make_shared<RegularPrinterPage>(
+                            sal::static_int_cast<sal_uInt16>(nPageIndex),
+                            ePageKind,
+                            aMap,
+                            rInfo.mbPrintMarkedOnly,
+                            rInfo.msPageString,
+                            aPageOffset,
+                            rInfo.mnDrawMode,
+                            rInfo.meOrientation,
+                            nPaperBin));
+            }
+            else if (SdPage* pPage = GetFilteredPage(nPageIndex, PageKind::Notes))// Notes
+            {
+                SdDrawDocument* pDocument = mrBase.GetMainViewShell()->GetDoc();
+
+                // Clone the current page to create an independent instance.
+                // This ensures that changes made to pNotesPage do not affect the original page.
+                rtl::Reference<SdPage> pNotesPage
+                    = static_cast<SdPage*>(pPage->CloneSdrPage(*pDocument).get());
+
+                Size aPageSize = bScalePage ? pNotesPage->GetSize() : rInfo.mpPrinter->GetPrintPageSize();
+                // Adjusts the objects on the notes page to fit the new page size.
+                ::tools::Rectangle aNewBorderRect(-1, -1, -1, -1);
+                pNotesPage->ScaleObjects(aPageSize, aNewBorderRect, true);
+
+                SdrObject* pNotesObj = pNotesPage->GetPresObj(PresObjKind::Notes);
+                if (pNotesObj && bCutPage)
+                {
+                    // default margins
+                    sal_Int32 nTopMargin = aPageSize.Height() * 0.075;
+                    sal_Int32 nBottomMargin = nTopMargin;
+
+                    Size nNotesObjSize = pNotesObj->GetLogicRect().GetSize();
+
+                    Outliner* pOut = pDocument->GetInternalOutliner();
+                    const OutlinerMode nSaveOutlMode(pOut->GetOutlinerMode());
+                    const bool bSavedUpdateMode(pOut->IsUpdateLayout());
+                    pOut->Init(OutlinerMode::OutlineView);
+                    pOut->SetPaperSize(nNotesObjSize);
+                    pOut->SetUpdateLayout(true);
+                    pOut->Clear();
+                    pOut->SetText(*pNotesObj->GetOutlinerParaObject());
+
+                    sal_Int32 nFirstPageBottomMargin = 0;
+                    ::tools::Long nNotesHeight = nNotesObjSize.Height();
+                    bool bAutoGrow = pNotesObj->GetMergedItem(SDRATTR_TEXT_AUTOGROWHEIGHT).GetValue();
+                    if (bAutoGrow)
+                    {
+                        nNotesHeight += pNotesObj->GetRelativePos().Y();
+                        nFirstPageBottomMargin = (pNotesPage->GetLowerBorder() != 0)
+                                                     ? pNotesPage->GetLowerBorder()
+                                                     : nBottomMargin;
+                    }
+                    double nOverflowedTextHeight = 0;
+                    ::tools::Long nFirstPageBottom = aPageSize.Height() - nFirstPageBottomMargin;
+                    if (nNotesHeight > nFirstPageBottom)
+                    {
+                        // Calculate the height of the overflow text
+                        // when the AutoGrowHeight property of the notes object is enabled
+                        // and the height of the object exceeds the page height.
+                        nOverflowedTextHeight = pNotesObj->GetRelativePos().Y()
+                                                + pOut->GetTextHeight() - nFirstPageBottom;
+                    }
+                    else
+                        nOverflowedTextHeight = pOut->GetTextHeight() - nNotesObjSize.Height();
+
+                    sal_Int32 nNotePageCount = 1;
+                    double nNewPageHeight = aPageSize.Height() - nTopMargin - nBottomMargin;
+                    if (nOverflowedTextHeight > 0)
+                    {
+                        nNotePageCount += std::ceil(nOverflowedTextHeight / nNewPageHeight);
+                    }
+
+                    for (sal_Int32 i = 1; i <= nNotePageCount; i++)
+                    {
+                        // set page numbers
+                        sal_Int32 nPageNumb = i;
+                        OUString sPageNumb = rInfo.msPageString;
+                        if (!sPageNumb.isEmpty() && nNotePageCount > 1)
+                        {
+                            OUString sTmp;
+                            if (!rInfo.msTimeDate.isEmpty())
+                            {
+                                sTmp += " ";
+                            }
+                            sTmp += SdResId(STR_PAGE_NAME) + " " + OUString::number(i);
+                            sPageNumb += sTmp;
+                        }
+
+                        maPrinterPages.push_back(
+                            std::make_shared<NotesPrinterPage>(
+                                    sal::static_int_cast<sal_uInt16>(nPageIndex),
+                                    nPageNumb,
+                                    nNotePageCount,
+                                    bScalePage,
+                                    PageKind::Notes,
+                                    aMap,
+                                    rInfo.mbPrintMarkedOnly,
+                                    sPageNumb,
+                                    aPageOffset,
+                                    rInfo.mnDrawMode,
+                                    rInfo.meOrientation,
+                                    nPaperBin));
+                    }
+                    pOut->Clear();
+                    pOut->SetUpdateLayout(bSavedUpdateMode);
+                    pOut->Init(nSaveOutlMode);
+                }
+                else // scaled page
+                {
+                    maPrinterPages.push_back(
+                        std::make_shared<NotesPrinterPage>(
+                                sal::static_int_cast<sal_uInt16>(nPageIndex),
+                                sal_Int32(0),
+                                sal_Int32(0),
+                                bScalePage,
+                                PageKind::Notes,
+                                aMap,
+                                rInfo.mbPrintMarkedOnly,
+                                rInfo.msPageString,
+                                aPageOffset,
+                                rInfo.mnDrawMode,
+                                rInfo.meOrientation,
+                                nPaperBin));
+                }
+            }
         }
         else
         {

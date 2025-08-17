@@ -30,12 +30,6 @@
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
 
-namespace com::sun::star {
-    namespace document { class XUndoAction; }
-    namespace document { class XUndoManagerListener; }
-    namespace uno { class XInterface; }
-}
-
 namespace cppu {
     class OWeakObject;
 }
@@ -55,17 +49,17 @@ namespace dbaui
 
     struct UndoManager_Impl;
     typedef ::cppu::ImplHelper1< css::document::XUndoManager > UndoManager_Base;
-    class DBACCESS_DLLPUBLIC UndoManager final : public UndoManager_Base
+    class SAL_DLLPUBLIC_RTTI UndoManager final : public UndoManager_Base
     {
     public:
-        UndoManager( ::cppu::OWeakObject& i_parent, ::osl::Mutex& i_mutex );
-        virtual ~UndoManager();
+        DBACCESS_DLLPUBLIC UndoManager( ::cppu::OWeakObject& i_parent, ::osl::Mutex& i_mutex );
+        ~UndoManager();
 
-        SfxUndoManager& GetSfxUndoManager() const;
+        DBACCESS_DLLPUBLIC SfxUndoManager& GetSfxUndoManager() const;
 
         // XInterface
-        virtual void SAL_CALL acquire(  ) noexcept override;
-        virtual void SAL_CALL release(  ) noexcept override;
+        DBACCESS_DLLPUBLIC virtual void SAL_CALL acquire(  ) noexcept override;
+        DBACCESS_DLLPUBLIC virtual void SAL_CALL release(  ) noexcept override;
 
         // XComponent equivalents
         void disposing();

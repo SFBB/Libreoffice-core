@@ -52,9 +52,10 @@ constexpr auto HFDIST_CM = o3tl::convert(250, o3tl::Length::mm100, o3tl::Length:
 ScStyleSheet::ScStyleSheet( const OUString&     rName,
                             const ScStyleSheetPool& rPoolP,
                             SfxStyleFamily      eFamily,
-                            SfxStyleSearchBits  nMaskP )
+                            SfxStyleSearchBits  nMaskP,
+                            const OUString& rParentStyleSheetName)
 
-    : SfxStyleSheet   ( rName, rPoolP, eFamily, nMaskP )
+    : SfxStyleSheet   ( rName, rPoolP, eFamily, nMaskP, rParentStyleSheetName )
     , eUsage( Usage::UNKNOWN )
 {
 }
@@ -143,13 +144,12 @@ SfxItemSet& ScStyleSheet::GetItemSet()
                     // (== Standard page template)
 
                     SfxItemPool& rItemPool = GetPool()->GetPool();
-                    pSet = new SfxItemSetFixed<
-                            ATTR_USERDEF, ATTR_USERDEF,
-                            ATTR_WRITINGDIR, ATTR_WRITINGDIR,
-                            ATTR_BACKGROUND, ATTR_BACKGROUND,
-                            ATTR_BORDER, ATTR_SHADOW,
-                            ATTR_LRSPACE, ATTR_PAGE_SCALETO>(rItemPool);
-
+                    pSet = new SfxItemSet(rItemPool, WhichRangesContainer(svl::Items<
+                        ATTR_USERDEF, ATTR_USERDEF,
+                        ATTR_WRITINGDIR, ATTR_WRITINGDIR,
+                        ATTR_BACKGROUND, ATTR_BACKGROUND,
+                        ATTR_BORDER, ATTR_SHADOW,
+                        ATTR_LRSPACE, ATTR_PAGE_SCALETO>));
                     //  If being loaded also the set is then filled in from the file,
                     //  so the defaults do not need to be set.
                     //  GetPrinter would then also create a new printer,
@@ -163,7 +163,7 @@ SfxItemSet& ScStyleSheet::GetItemSet()
                         SvxSizeItem     aPaperSizeItem( ATTR_PAGE_SIZE, SvxPaperInfo::GetDefaultPaperSize() );
 
                         SvxSetItem      aHFSetItem(
-                                            rItemPool.GetDefaultItem(ATTR_PAGE_HEADERSET) );
+                                            rItemPool.GetUserOrPoolDefaultItem(ATTR_PAGE_HEADERSET) );
 
                         SfxItemSet&     rHFSet = aHFSetItem.GetItemSet();
                         SvxSizeItem     aHFSizeItem( // 0,5 cm + distance
@@ -174,10 +174,10 @@ SfxItemSet& ScStyleSheet::GetItemSet()
                                                       HFDIST_CM,// nLow
                                                       ATTR_ULSPACE );
 
-                        SvxLRSpaceItem  aLRSpaceItem( TWO_CM,   // nLeft
-                                                      TWO_CM,   // nRight
-                                                      0,        // nFirstLineOffset
-                                                      ATTR_LRSPACE );
+                        SvxLRSpaceItem aLRSpaceItem(SvxIndentValue::twips(TWO_CM), // nLeft
+                                                    SvxIndentValue::twips(TWO_CM), // nRight
+                                                    SvxIndentValue::zero(), // nFirstLineOffset
+                                                    ATTR_LRSPACE);
                         SvxULSpaceItem  aULSpaceItem( TWO_CM,   // nUp
                                                       TWO_CM,   // nLow
                                                       ATTR_ULSPACE );
@@ -192,7 +192,9 @@ SfxItemSet& ScStyleSheet::GetItemSet()
                         rHFSet.Put( aBoxInfoItem );
                         rHFSet.Put( aHFSizeItem );
                         rHFSet.Put( aHFDistItem );
-                        rHFSet.Put( SvxLRSpaceItem(0, 0, 0, ATTR_LRSPACE) ); // Set border to Null
+                        rHFSet.Put(SvxLRSpaceItem(SvxIndentValue::zero(), SvxIndentValue::zero(),
+                                                  SvxIndentValue::zero(),
+                                                  ATTR_LRSPACE)); // Set border to Null
 
                         aHFSetItem.SetWhich(ATTR_PAGE_HEADERSET);
                         pSet->Put( aHFSetItem );
@@ -210,14 +212,14 @@ SfxItemSet& ScStyleSheet::GetItemSet()
                                         SvxFrameDirection::Horizontal_RL_TB : SvxFrameDirection::Horizontal_LR_TB;
                         pSet->Put( SvxFrameDirectionItem( eDirection, ATTR_WRITINGDIR ) );
 
-                        rItemPool.SetPoolDefaultItem( aPageItem );
-                        rItemPool.SetPoolDefaultItem( aPaperSizeItem );
-                        rItemPool.SetPoolDefaultItem( aLRSpaceItem );
-                        rItemPool.SetPoolDefaultItem( aULSpaceItem );
-                        rItemPool.SetPoolDefaultItem( SfxUInt16Item( ATTR_PAGE_SCALE, 100 ) );
+                        rItemPool.SetUserDefaultItem( aPageItem );
+                        rItemPool.SetUserDefaultItem( aPaperSizeItem );
+                        rItemPool.SetUserDefaultItem( aLRSpaceItem );
+                        rItemPool.SetUserDefaultItem( aULSpaceItem );
+                        rItemPool.SetUserDefaultItem( SfxUInt16Item( ATTR_PAGE_SCALE, 100 ) );
                         ScPageScaleToItem aScaleToItem;
-                        rItemPool.SetPoolDefaultItem( aScaleToItem );
-                        rItemPool.SetPoolDefaultItem( SfxUInt16Item( ATTR_PAGE_SCALETOPAGES, 0 ) );
+                        rItemPool.SetUserDefaultItem( aScaleToItem );
+                        rItemPool.SetUserDefaultItem( SfxUInt16Item( ATTR_PAGE_SCALETOPAGES, 0 ) );
                     }
                 }
                 break;
@@ -225,24 +227,26 @@ SfxItemSet& ScStyleSheet::GetItemSet()
             case SfxStyleFamily::Frame:
             {
                 SfxItemPool* pItemPool = &GetPool()->GetPool();
+                assert(pItemPool);
                 if (dynamic_cast<SdrItemPool*>(pItemPool) == nullptr)
                     pItemPool = pItemPool->GetSecondaryPool();
                 assert(pItemPool);
 
-                pSet = new SfxItemSetFixed<
-                        XATTR_LINE_FIRST, XATTR_LINE_LAST,
-                        XATTR_FILL_FIRST, XATTR_FILL_LAST,
-                        SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST,
-                        SDRATTR_TEXT_MINFRAMEHEIGHT, SDRATTR_TEXT_WORDWRAP,
-                        SDRATTR_EDGE_FIRST, SDRATTR_MEASURE_LAST,
-                        SDRATTR_3D_FIRST, SDRATTR_3D_LAST,
-                        EE_PARA_START, EE_CHAR_END>(*pItemPool);
+                pSet = new SfxItemSet(*pItemPool, WhichRangesContainer(svl::Items<
+                            XATTR_LINE_FIRST, XATTR_LINE_LAST,
+                            XATTR_FILL_FIRST, XATTR_FILL_LAST,
+                            SDRATTR_SHADOW_FIRST, SDRATTR_SHADOW_LAST,
+                            SDRATTR_TEXT_MINFRAMEHEIGHT, SDRATTR_TEXT_WORDWRAP,
+                            SDRATTR_EDGE_FIRST, SDRATTR_MEASURE_LAST,
+                            SDRATTR_3D_FIRST, SDRATTR_3D_LAST,
+                            EE_PARA_START, EE_CHAR_END>));
             }
             break;
 
             case SfxStyleFamily::Para:
             default:
-                pSet = new SfxItemSetFixed<ATTR_PATTERN_START, ATTR_PATTERN_END>( GetPool()->GetPool() );
+                pSet = new SfxItemSet(GetPool()->GetPool(), WhichRangesContainer(svl::Items<
+                            ATTR_PATTERN_START, ATTR_PATTERN_END>));
                 break;
         }
         bMySet = true;

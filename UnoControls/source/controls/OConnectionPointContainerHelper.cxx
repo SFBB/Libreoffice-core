@@ -23,6 +23,7 @@
 
 #include <cppuhelper/queryinterface.hxx>
 #include <comphelper/sequence.hxx>
+#include <rtl/ref.hxx>
 
 //  namespaces
 
@@ -46,7 +47,6 @@ OConnectionPointContainerHelper::~OConnectionPointContainerHelper()
 }
 
 //  XInterface
-
 Any SAL_CALL OConnectionPointContainerHelper::queryInterface( const Type& aType )
 {
     // Attention:
@@ -58,18 +58,15 @@ Any SAL_CALL OConnectionPointContainerHelper::queryInterface( const Type& aType 
                                         )
                 );
 
-    // If searched interface not supported by this class ...
-    if ( !aReturn.hasValue() )
-    {
-        // ... ask baseclasses.
-        aReturn = OWeakObject::queryInterface( aType );
-    }
+    if (aReturn.hasValue())
+        return aReturn;
 
-    return aReturn;
+    // If searched interface not supported by this class ...
+    // ... ask baseclasses.
+    return OWeakObject::queryInterface( aType );
 }
 
 //  XInterface
-
 void SAL_CALL OConnectionPointContainerHelper::acquire() noexcept
 {
     // Attention:
@@ -80,7 +77,6 @@ void SAL_CALL OConnectionPointContainerHelper::acquire() noexcept
 }
 
 //  XInterface
-
 void SAL_CALL OConnectionPointContainerHelper::release() noexcept
 {
     // Attention:
@@ -103,7 +99,7 @@ Sequence< Type > SAL_CALL OConnectionPointContainerHelper::getConnectionPointTyp
 Reference< XConnectionPoint > SAL_CALL OConnectionPointContainerHelper::queryConnectionPoint( const Type& aType )
 {
     // Set default return value, if method failed.
-    Reference< XConnectionPoint > xConnectionPoint;
+    rtl::Reference< OConnectionPointHelper > xConnectionPoint;
 
     // Get all elements of the container, which have the searched type.
     comphelper::OInterfaceContainerHelper2* pSpecialContainer = m_aMultiTypeContainer.getContainer( aType );

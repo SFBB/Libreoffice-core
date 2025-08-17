@@ -20,7 +20,6 @@
 
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XViewPane.hpp>
@@ -90,7 +89,7 @@ public:
 };
 
 ScTabViewObj::ScTabViewObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
     , XElementAccess(cppu::UnoType<sheet::XViewPane>::get())
     , XIndexAccess(1)
 {
@@ -111,7 +110,7 @@ uno::Reference<uno::XInterface> ScTabViewObj::getXSpreadsheet(const sal_Int16 nN
     uno::Reference<sheet::XSpreadsheetDocument> xDoc(mxComponent, UNO_QUERY_THROW);
 
     uno::Reference<sheet::XSpreadsheets> xSheets(xDoc->getSheets(), UNO_SET_THROW);
-    xSheets->insertNewByName("Sheet2", 2);
+    xSheets->insertNewByName(u"Sheet2"_ustr, 2);
     uno::Reference<container::XIndexAccess> xIndex(xDoc->getSheets(), UNO_QUERY_THROW);
     uno::Reference<sheet::XSpreadsheet> xSheet(xIndex->getByIndex(nNumber), UNO_QUERY_THROW);
 
@@ -121,7 +120,7 @@ uno::Reference<uno::XInterface> ScTabViewObj::getXSpreadsheet(const sal_Int16 nN
 void ScTabViewObj::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScTabViewObj);

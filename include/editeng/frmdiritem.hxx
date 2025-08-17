@@ -30,7 +30,11 @@
 
 class EDITENG_DLLPUBLIC SvxFrameDirectionItem final : public SfxEnumItem<SvxFrameDirection>
 {
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
+
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SvxFrameDirectionItem)
     SvxFrameDirectionItem( SvxFrameDirection nValue, sal_uInt16 nWhich  );
     virtual ~SvxFrameDirectionItem() override;
 
@@ -49,11 +53,6 @@ public:
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
-
-    virtual sal_uInt16      GetValueCount() const override
-    {
-        return sal_uInt16(SvxFrameDirection::Vertical_RL_TB90) + 1;
-    }
 
         // SfxPoolItem copy function dichotomy
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;

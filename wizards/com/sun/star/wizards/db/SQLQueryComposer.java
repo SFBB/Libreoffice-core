@@ -39,7 +39,7 @@ public class SQLQueryComposer
 {
 
     private QueryMetaData CurDBMetaData;
-    public XSingleSelectQueryAnalyzer m_xQueryAnalyzer;
+    private XSingleSelectQueryAnalyzer m_xQueryAnalyzer;
     private ArrayList<CommandName> composedCommandNames = new ArrayList<CommandName>(1);
     private XSingleSelectQueryComposer m_queryComposer;
     private XMultiServiceFactory xMSF;
@@ -50,7 +50,7 @@ public class SQLQueryComposer
         try
         {
             setDBMetaData(_CurDBMetaData);
-            xMSF = UnoRuntime.queryInterface(XMultiServiceFactory.class, CurDBMetaData.DBConnection);
+            xMSF = UnoRuntime.queryInterface(XMultiServiceFactory.class, CurDBMetaData.getDBConnection());
             final Object oQueryComposer = xMSF.createInstance("com.sun.star.sdb.SingleSelectQueryComposer");
             m_xQueryAnalyzer = UnoRuntime.queryInterface(XSingleSelectQueryAnalyzer.class, oQueryComposer);
             m_queryComposer = UnoRuntime.queryInterface(XSingleSelectQueryComposer.class, m_xQueryAnalyzer);
@@ -63,7 +63,7 @@ public class SQLQueryComposer
 
     private boolean addtoSelectClause(String DisplayFieldName) throws SQLException
     {
-        return !(bincludeGrouping && CurDBMetaData.xDBMetaData.supportsGroupByUnrelated() && CurDBMetaData.GroupFieldNames != null && JavaTools.FieldInList(CurDBMetaData.GroupFieldNames, DisplayFieldName) > -1);
+        return !(bincludeGrouping && CurDBMetaData.getDBMetaData().supportsGroupByUnrelated() && CurDBMetaData.getGroupFieldNames() != null && JavaTools.FieldInList(CurDBMetaData.getGroupFieldNames(), DisplayFieldName) > -1);
         }
 
     public String getSelectClause(boolean _baddAliasFieldNames) throws SQLException
@@ -161,15 +161,16 @@ public class SQLQueryComposer
     private void appendSortingCriterion(int _SortIndex, boolean _baddAliasFieldNames) throws SQLException
     {
         String sSortValue = CurDBMetaData.getSortFieldNames()[_SortIndex][0];
-        XPropertySet xColumn = CurDBMetaData.getColumnObjectByFieldName(sSortValue, _baddAliasFieldNames);
+        String currentOrder = m_queryComposer.getOrder();
 
         String sSort = "ASC";
         if(CurDBMetaData.getSortFieldNames()[_SortIndex].length > 1)
         {
             sSort = CurDBMetaData.getSortFieldNames()[_SortIndex][1];
         }
-        boolean bascend = !(sSort.equals("DESC"));
-        m_queryComposer.appendOrderByColumn(xColumn, bascend);
+        String tablePrefixedFieldName = getComposedAliasDisplayName(sSortValue);
+        currentOrder += (!currentOrder.isEmpty() ? ", " : "") + tablePrefixedFieldName + " " + sSort;
+        m_queryComposer.setOrder(currentOrder);
     }
 
     private void appendSortingcriteria(boolean _baddAliasFieldNames) throws SQLException
@@ -199,9 +200,9 @@ public class SQLQueryComposer
 
     private void appendGroupByColumns(boolean _baddAliasFieldNames) throws SQLException
     {
-        for (int i = 0; i < CurDBMetaData.GroupFieldNames.length; i++)
+        for (int i = 0; i < CurDBMetaData.getGroupFieldNames().length; i++)
         {
-            XPropertySet xColumn = CurDBMetaData.getColumnObjectByFieldName(CurDBMetaData.GroupFieldNames[i], _baddAliasFieldNames);
+            XPropertySet xColumn = CurDBMetaData.getColumnObjectByFieldName(CurDBMetaData.getGroupFieldNames()[i], _baddAliasFieldNames);
             m_queryComposer.appendGroupByColumn(xColumn);
         }
     }
@@ -223,6 +224,11 @@ public class SQLQueryComposer
             }
         }
         return _filterconditions;
+    }
+
+    public void setQuery(String Query) throws SQLException
+    {
+        m_xQueryAnalyzer.setQuery(Query);
     }
 
     public String getQuery()
@@ -291,9 +297,9 @@ public class SQLQueryComposer
             if (_bincludeGrouping)
             {
                 appendGroupByColumns(_baddAliasFieldNames);
-                if (CurDBMetaData.GroupByFilterConditions.length > 0)
+                if (CurDBMetaData.getGroupByFilterConditions().length > 0)
                 {
-                    m_queryComposer.setStructuredHavingClause(CurDBMetaData.GroupByFilterConditions);
+                    m_queryComposer.setStructuredHavingClause(CurDBMetaData.getGroupByFilterConditions());
                 }
             }
             if (prependSortingCriteria)
@@ -412,7 +418,7 @@ public class SQLQueryComposer
     {
         try
         {
-            Object oErrorDialog = CurDBMetaData.xMSF.createInstance("com.sun.star.sdb.ErrorMessageDialog");
+            Object oErrorDialog = CurDBMetaData.getMSF().createInstance("com.sun.star.sdb.ErrorMessageDialog");
             XInitialization xInitialize = UnoRuntime.queryInterface(XInitialization.class, oErrorDialog);
             XExecutableDialog xExecute = UnoRuntime.queryInterface(XExecutableDialog.class, oErrorDialog);
             PropertyValue[] rDispatchArguments = new PropertyValue[3];

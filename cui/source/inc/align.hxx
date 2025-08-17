@@ -19,20 +19,24 @@
 #pragma once
 
 // list box indexes
-#define ALIGNDLG_HORALIGN_STD       0
-#define ALIGNDLG_HORALIGN_LEFT      1
-#define ALIGNDLG_HORALIGN_CENTER    2
-#define ALIGNDLG_HORALIGN_RIGHT     3
-#define ALIGNDLG_HORALIGN_BLOCK     4
-#define ALIGNDLG_HORALIGN_FILL      5
-#define ALIGNDLG_HORALIGN_DISTRIBUTED 6
+enum HorizontalAlign {
+    ALIGNDLG_HORALIGN_STD = 0,
+    ALIGNDLG_HORALIGN_LEFT = 1,
+    ALIGNDLG_HORALIGN_CENTER = 2,
+    ALIGNDLG_HORALIGN_RIGHT = 3,
+    ALIGNDLG_HORALIGN_BLOCK = 4,
+    ALIGNDLG_HORALIGN_FILL = 5,
+    ALIGNDLG_HORALIGN_DISTRIBUTED = 6
+};
 
-#define ALIGNDLG_VERALIGN_STD         0
-#define ALIGNDLG_VERALIGN_TOP         1
-#define ALIGNDLG_VERALIGN_MID         2
-#define ALIGNDLG_VERALIGN_BOTTOM      3
-#define ALIGNDLG_VERALIGN_BLOCK       4
-#define ALIGNDLG_VERALIGN_DISTRIBUTED 5
+enum VerticalAlign {
+    ALIGNDLG_VERALIGN_STD = 0,
+    ALIGNDLG_VERALIGN_TOP = 1,
+    ALIGNDLG_VERALIGN_MID = 2,
+    ALIGNDLG_VERALIGN_BOTTOM = 3,
+    ALIGNDLG_VERALIGN_BLOCK = 4,
+    ALIGNDLG_VERALIGN_DISTRIBUTED = 5
+};
 
 #include <sfx2/tabdlg.hxx>
 #include <svtools/valueset.hxx>
@@ -40,7 +44,7 @@
 #include <svx/frmdirlbox.hxx>
 #include <vcl/weld.hxx>
 
-class SfxEnumItemInterface;
+class SvxJustifyMethodItem;
 
 namespace svx {
 
@@ -54,7 +58,7 @@ public:
     static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet );
     explicit            AlignmentTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreSet);
 
-    static WhichRangesContainer GetRanges() { return s_pRanges; }
+    static const WhichRangesContainer & GetRanges() { return s_pRanges; }
 
     virtual bool        FillItemSet( SfxItemSet* rSet ) override;
     virtual void        Reset( const SfxItemSet* rSet ) override;
@@ -64,7 +68,7 @@ private:
     void                InitVsRefEgde();
     void                UpdateEnableControls();
 
-    bool                HasAlignmentChanged( const SfxItemSet& rNew, TypedWhichId<SfxEnumItemInterface> nWhich ) const;
+    bool                HasAlignmentChanged( const SfxItemSet& rNew, TypedWhichId<SvxJustifyMethodItem> nWhich ) const;
 
     DECL_LINK(UpdateEnableHdl, weld::ComboBox&, void);
     DECL_LINK(StackedClickHdl, weld::Toggleable&, void);

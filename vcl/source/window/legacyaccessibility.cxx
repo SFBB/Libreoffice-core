@@ -25,7 +25,7 @@
 using namespace ::com::sun::star;
 
 
-static vcl::Window* ImplGetLabelFor( vcl::Window* pFrameWindow, WindowType nMyType, vcl::Window* pLabel, sal_Unicode nAccel )
+static vcl::Window* ImplGetLabelFor(vcl::Window* pFrameWindow, WindowType nMyType, const vcl::Window* pLabel, sal_Unicode nAccel)
 {
     vcl::Window* pWindow = nullptr;
 
@@ -66,14 +66,14 @@ static vcl::Window* ImplGetLabelFor( vcl::Window* pFrameWindow, WindowType nMyTy
                                                  false );
                 if( pSWindow && isVisibleInLayout(pSWindow) && ! (pSWindow->GetStyle() & WB_NOLABEL) )
                 {
-                    WindowType nType = pSWindow->GetType();
-                    if( nType != WindowType::FIXEDTEXT   &&
-                        nType != WindowType::FIXEDLINE   &&
-                        nType != WindowType::GROUPBOX )
+                    WindowType eType = pSWindow->GetType();
+                    if( eType != WindowType::FIXEDTEXT   &&
+                        eType != WindowType::FIXEDLINE   &&
+                        eType != WindowType::GROUPBOX )
                     {
                         pWindow = pSWindow;
                     }
-                    else if( bThisIsAGroupControl && ( nType == WindowType::FIXEDTEXT ) )
+                    else if( bThisIsAGroupControl && ( eType == WindowType::FIXEDTEXT ) )
                     {
                         pWindow = pSWindow;
                     }
@@ -100,16 +100,16 @@ Window* Window::getLegacyNonLayoutAccessibleRelationLabelFor() const
 
     sal_Unicode nAccel = getAccel( GetText() );
 
-    Window* pWindow = ImplGetLabelFor( pFrameWindow, GetType(), const_cast<Window*>(this), nAccel );
+    Window* pWindow = ImplGetLabelFor(pFrameWindow, GetType(), this, nAccel);
     if( ! pWindow && mpWindowImpl->mpRealParent )
-        pWindow = ImplGetLabelFor( mpWindowImpl->mpRealParent, GetType(), const_cast<Window*>(this), nAccel );
+        pWindow = ImplGetLabelFor(mpWindowImpl->mpRealParent, GetType(), this, nAccel);
     return pWindow;
 }
 
-static Window* ImplGetLabeledBy( Window* pFrameWindow, WindowType nMyType, Window* pLabeled )
+static Window* ImplGetLabeledBy(Window* pFrameWindow, WindowType nMyType, const Window* pLabeled)
 {
     Window* pWindow = nullptr;
-    if ( (nMyType != WindowType::GROUPBOX) && (nMyType != WindowType::FIXEDLINE) )
+    if (pFrameWindow && nMyType != WindowType::GROUPBOX && nMyType != WindowType::FIXEDLINE)
     {
         // search for a control that labels this window
         // a label is considered the last fixed text, fixed line or group box
@@ -142,13 +142,13 @@ static Window* ImplGetLabeledBy( Window* pFrameWindow, WindowType nMyType, Windo
                                                  false );
                 if( pSWindow && isVisibleInLayout(pSWindow) && !(pSWindow->GetStyle() & WB_NOLABEL) )
                 {
-                    WindowType nType = pSWindow->GetType();
-                    if ( nType == WindowType::FIXEDTEXT ||
-                         nType == WindowType::FIXEDLINE ||
-                         nType == WindowType::GROUPBOX )
+                    WindowType eType = pSWindow->GetType();
+                    if ( eType == WindowType::FIXEDTEXT ||
+                         eType == WindowType::FIXEDLINE ||
+                         eType == WindowType::GROUPBOX )
                     {
                         // a fixed text can't be labelled by a fixed text.
-                        if ( ( nMyType != WindowType::FIXEDTEXT ) || ( nType != WindowType::FIXEDTEXT ) )
+                        if ( ( nMyType != WindowType::FIXEDTEXT ) || ( eType != WindowType::FIXEDTEXT ) )
                             pWindow = pSWindow;
                         break;
                     }
@@ -175,9 +175,9 @@ Window* Window::getLegacyNonLayoutAccessibleRelationLabeledBy() const
     // #i100833# MT 2010/02: Group box and fixed lines can also label a fixed text.
     // See tools/options/print for example.
 
-    Window* pWindow = ImplGetLabeledBy( pFrameWindow, GetType(), const_cast<Window*>(this) );
+    Window* pWindow = ImplGetLabeledBy(pFrameWindow, GetType(), this);
     if( ! pWindow && mpWindowImpl->mpRealParent )
-        pWindow = ImplGetLabeledBy( mpWindowImpl->mpRealParent, GetType(), const_cast<Window*>(this) );
+        pWindow = ImplGetLabeledBy(mpWindowImpl->mpRealParent, GetType(), this);
 
     return pWindow;
 }
@@ -200,11 +200,8 @@ Window* Window::getLegacyNonLayoutAccessibleRelationMemberOf() const
         // is directly before the control
         // get form start and form end and index of this control
         sal_uInt16 nIndex, nFormStart, nFormEnd;
-        Window* pSWindow = ::ImplFindDlgCtrlWindow( pFrameWindow,
-            const_cast<Window*>(this),
-            nIndex,
-            nFormStart,
-            nFormEnd );
+        Window* pSWindow
+            = ::ImplFindDlgCtrlWindow(pFrameWindow, this, nIndex, nFormStart, nFormEnd);
         if( pSWindow && nIndex != nFormStart )
         {
             if( GetType() == WindowType::PUSHBUTTON      ||

@@ -32,7 +32,7 @@ interface ViewShellBaseView
         ExecMethod = Execute;
         StateMethod = GetState;
     ]
-    SID_NOTES_WINDOW
+    SID_BOTTOM_PANE_IMPRESS
     [
         ExecMethod = Execute;
         StateMethod = GetState;
@@ -141,6 +141,16 @@ interface ViewShellBaseView
     [
         ExecMethod = Execute ;
         StateMethod = GetState ;
+    ]
+    SID_PROTECTPOS
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState;
+    ]
+    SID_PROTECTSIZE
+    [
+        ExecMethod = Execute ;
+        StateMethod = GetState;
     ]
     SID_INSERT_DRAW
     []

@@ -25,7 +25,6 @@
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
-using namespace com::sun::star::util;
 using namespace ::com::sun::star::ui;
 using namespace framework;
 
@@ -38,7 +37,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.ToolBarFactory";
+        return u"com.sun.star.comp.framework.ToolBarFactory"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -48,7 +47,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.ui.ToolBarFactory"};
+        return {u"com.sun.star.ui.ToolBarFactory"_ustr};
     }
 
     // XUIElementFactory

@@ -741,10 +741,10 @@ XPolygon SdrEdgeObj::ImpCalcEdgeTrack(const XPolygon& rTrack0, SdrObjConnection&
     }
     else
     {
-        auto aRectangle = getOutRectangle();
-        if (!aRectangle.IsEmpty()) {
-            aPt1 = aRectangle.TopLeft();
-            aPt2 = aRectangle.BottomRight();
+        const tools::Rectangle& rRectangle = getOutRectangle();
+        if (!rRectangle.IsEmpty()) {
+            aPt1 = rRectangle.TopLeft();
+            aPt2 = rRectangle.BottomRight();
         }
     }
 
@@ -1273,9 +1273,10 @@ XPolygon SdrEdgeObj::ImpCalcEdgeTrack(const Point& rPt1, tools::Long nAngle1, co
     XPolygon aXP2(ImpCalcObjToCenter(aPt2,nAngle2,aBewareRect2,aMeeting));
     sal_uInt16 nXP1Cnt=aXP1.GetPointCount();
     sal_uInt16 nXP2Cnt=aXP2.GetPointCount();
+    assert(nXP1Cnt >= 2 && nXP2Cnt >= 2 && "ImpCalcObjToCenter inserts a min of 2 points");
     if (pInfo) {
-        pInfo->m_nObj1Lines=nXP1Cnt; if (nXP1Cnt>1) pInfo->m_nObj1Lines--;
-        pInfo->m_nObj2Lines=nXP2Cnt; if (nXP2Cnt>1) pInfo->m_nObj2Lines--;
+        pInfo->m_nObj1Lines=nXP1Cnt; pInfo->m_nObj1Lines--;
+        pInfo->m_nObj2Lines=nXP2Cnt; pInfo->m_nObj2Lines--;
     }
     Point aEP1(aXP1[nXP1Cnt-1]);
     Point aEP2(aXP2[nXP2Cnt-1]);
@@ -1310,7 +1311,7 @@ XPolygon SdrEdgeObj::ImpCalcEdgeTrack(const Point& rPt1, tools::Long nAngle1, co
         pInfo->m_nMiddleLine=nXP1Cnt-1;
     }
     sal_uInt16 nNum=aXP2.GetPointCount();
-    if (aXP1[nXP1Cnt-1]==aXP2[nXP2Cnt-1] && nXP1Cnt>1 && nXP2Cnt>1) nNum--;
+    if (nXP1Cnt > 1 && nXP2Cnt > 1 && aXP1[nXP1Cnt-1] == aXP2[nXP2Cnt-1]) nNum--;
     while (nNum>0) {
         nNum--;
         aXP1.Insert(XPOLY_APPEND,aXP2[nNum],PolyFlags::Normal);
@@ -1517,8 +1518,8 @@ XPolygon SdrEdgeObj::ImpCalcEdgeTrack(const Point& rPt1, tools::Long nAngle1, co
         // corresponding bentConnector as calculated above.
         auto SegmentPoint = [&aXP1](const sal_uInt16& nEnd, const double& fFactor) {
             return Point(
-                aXP1[nEnd - 1].X() + FRound(fFactor * (aXP1[nEnd].X() - aXP1[nEnd - 1].X())),
-                aXP1[nEnd - 1].Y() + FRound(fFactor * (aXP1[nEnd].Y() - aXP1[nEnd - 1].Y())));
+                aXP1[nEnd - 1].X() + basegfx::fround<tools::Long>(fFactor * (aXP1[nEnd].X() - aXP1[nEnd - 1].X())),
+                aXP1[nEnd - 1].Y() + basegfx::fround<tools::Long>(fFactor * (aXP1[nEnd].Y() - aXP1[nEnd - 1].Y())));
         };
 
         // We change the path going from end to start. Thus inserting points does not affect the index
@@ -1708,13 +1709,13 @@ void SdrEdgeObj::Reformat()
     if( nullptr != m_aCon1.m_pSdrObj )
     {
         SfxHint aHint( SfxHintId::DataChanged );
-        Notify( *const_cast<SfxBroadcaster*>(m_aCon1.m_pSdrObj->GetBroadcaster()), aHint );
+        Notify( *m_aCon1.m_pSdrObj->GetBroadcaster(), aHint );
     }
 
     if( nullptr != m_aCon2.m_pSdrObj )
     {
         SfxHint aHint( SfxHintId::DataChanged );
-        Notify( *const_cast<SfxBroadcaster*>(m_aCon2.m_pSdrObj->GetBroadcaster()), aHint );
+        Notify( *m_aCon2.m_pSdrObj->GetBroadcaster(), aHint );
     }
 }
 
@@ -2071,15 +2072,15 @@ basegfx::B2DPolygon SdrEdgeObj::ImplAddConnectorOverlay(const SdrDragMethod& rDr
         if (bTail1)
         {
             const basegfx::B2DPoint aTemp(rDragMethod.getCurrentTransformation() * basegfx::B2DPoint(aMyCon1.m_aObjOfs.X(), aMyCon1.m_aObjOfs.Y()));
-            aMyCon1.m_aObjOfs.setX( basegfx::fround(aTemp.getX()) );
-            aMyCon1.m_aObjOfs.setY( basegfx::fround(aTemp.getY()) );
+            aMyCon1.m_aObjOfs.setX( basegfx::fround<tools::Long>(aTemp.getX()) );
+            aMyCon1.m_aObjOfs.setY( basegfx::fround<tools::Long>(aTemp.getY()) );
         }
 
         if (bTail2)
         {
             const basegfx::B2DPoint aTemp(rDragMethod.getCurrentTransformation() * basegfx::B2DPoint(aMyCon2.m_aObjOfs.X(), aMyCon2.m_aObjOfs.Y()));
-            aMyCon2.m_aObjOfs.setX( basegfx::fround(aTemp.getX()) );
-            aMyCon2.m_aObjOfs.setY( basegfx::fround(aTemp.getY()) );
+            aMyCon2.m_aObjOfs.setX( basegfx::fround<tools::Long>(aTemp.getX()) );
+            aMyCon2.m_aObjOfs.setY( basegfx::fround<tools::Long>(aTemp.getY()) );
         }
 
         SdrEdgeInfoRec aInfo(m_aEdgeInfo);
@@ -2104,15 +2105,15 @@ basegfx::B2DPolygon SdrEdgeObj::ImplAddConnectorOverlay(const SdrDragMethod& rDr
         if (bTail1)
         {
             const basegfx::B2DPoint aTemp(rDragMethod.getCurrentTransformation() * basegfx::B2DPoint(aPt1.X(), aPt1.Y()));
-            aPt1.setX( basegfx::fround(aTemp.getX()) );
-            aPt1.setY( basegfx::fround(aTemp.getY()) );
+            aPt1.setX( basegfx::fround<tools::Long>(aTemp.getX()) );
+            aPt1.setY( basegfx::fround<tools::Long>(aTemp.getY()) );
         }
 
         if (bTail2)
         {
             const basegfx::B2DPoint aTemp(rDragMethod.getCurrentTransformation() * basegfx::B2DPoint(aPt2.X(), aPt2.Y()));
-            aPt2.setX( basegfx::fround(aTemp.getX()) );
-            aPt2.setY( basegfx::fround(aTemp.getY()) );
+            aPt2.setX( basegfx::fround<tools::Long>(aTemp.getX()) );
+            aPt2.setY( basegfx::fround<tools::Long>(aTemp.getY()) );
         }
 
         aResult.append(basegfx::B2DPoint(aPt1.X(), aPt1.Y()));
@@ -2235,6 +2236,7 @@ bool SdrEdgeObj::ImpFindConnector(const Point& rPt, const SdrPageView& rPV, SdrO
         // issue: group objects on different layers return LayerID=0!
         no--;
         SdrObject* pObj=pOL->GetObj(no);
+        assert(pObj);
         if (bHasRequestedOrdNum)
         {
             if (pObj->GetOrdNumDirect() != static_cast<sal_uInt32>(requestedOrdNum))

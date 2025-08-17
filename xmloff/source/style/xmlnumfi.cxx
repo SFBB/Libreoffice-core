@@ -33,12 +33,10 @@
 #include <utility>
 #include <xmloff/xmlement.hxx>
 #include <xmloff/xmlnumfi.hxx>
-#include <xmloff/xmltkmap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmluconv.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/families.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/languagetagodf.hxx>
@@ -67,15 +65,11 @@ struct SvXMLNumFmtEntry
 class SvXMLNumImpData
 {
     SvNumberFormatter*  pFormatter;
-    std::unique_ptr<LocaleDataWrapper>  pLocaleData;
+    const LocaleDataWrapper*  pLocaleData { nullptr };
     std::vector<SvXMLNumFmtEntry> m_NameEntries;
 
-    uno::Reference< uno::XComponentContext > m_xContext;
-
 public:
-    SvXMLNumImpData(
-        SvNumberFormatter* pFmt,
-        const uno::Reference<uno::XComponentContext>& rxContext );
+    SvXMLNumImpData(SvNumberFormatter* pFmt);
 
     SvNumberFormatter*      GetNumberFormatter() const  { return pFormatter; }
     const LocaleDataWrapper&    GetLocaleData( LanguageType nLang );
@@ -291,12 +285,9 @@ const SvXMLDefaultDateFormat aDefaultDateFormats[] =
 
 
 SvXMLNumImpData::SvXMLNumImpData(
-    SvNumberFormatter* pFmt,
-    const uno::Reference<uno::XComponentContext>& rxContext )
-:   pFormatter(pFmt),
-    m_xContext(rxContext)
+    SvNumberFormatter* pFmt )
+:   pFormatter(pFmt)
 {
-    SAL_WARN_IF( !rxContext.is(), "xmloff", "got no service manager" );
 }
 
 sal_uInt32 SvXMLNumImpData::GetKeyForName( std::u16string_view rName )
@@ -372,9 +363,7 @@ void SvXMLNumImpData::RemoveVolatileFormats()
 const LocaleDataWrapper& SvXMLNumImpData::GetLocaleData( LanguageType nLang )
 {
     if ( !pLocaleData || pLocaleData->getLanguageTag() != LanguageTag(nLang) )
-        pLocaleData = std::make_unique<LocaleDataWrapper>(
-               pFormatter ? pFormatter->GetComponentContext() : m_xContext,
-            LanguageTag( nLang ) );
+        pLocaleData = LocaleDataWrapper::get( LanguageTag( nLang ) );
     return *pLocaleData;
 }
 
@@ -605,7 +594,7 @@ static void lcl_EnquoteIfNecessary( OUStringBuffer& rContent, const SvXMLNumForm
     {
         // A quote is turned into "\"" - a quote to end quoted text, an escaped quote,
         // and a quote to resume quoting.
-        OUString aInsert(  "\"\\\""  );
+        OUString aInsert(  u"\"\\\""_ustr  );
 
         sal_Int32 nPos = 0;
         while ( nPos < rContent.getLength() )
@@ -1343,7 +1332,7 @@ SvXMLNumFormatContext::SvXMLNumFormatContext( SvXMLImport& rImport,
         SvNumberFormatter* pFormatter = m_pData->GetNumberFormatter();
         if ( !pFormatter ) return;
 
-        sal_Int32 nNatNum = pFormatter->GetNatNum()->convertFromXmlAttributes( aNatNumAttr );
+        sal_Int32 nNatNum = pFormatter->GetNatNum().convertFromXmlAttributes( aNatNumAttr );
         m_aFormatCode.append( "[NatNum" );
         m_aFormatCode.append( nNatNum );
     }
@@ -1534,7 +1523,7 @@ sal_Int32 SvXMLNumFormatContext::GetKey()
     }
 }
 
-sal_Int32 SvXMLNumFormatContext::PrivateGetKey()
+sal_Int32 SvXMLNumFormatContext::PrivateGetKey(std::vector<SvXMLNumFormatContext*>& rCreateStack)
 {
     //  used for map elements in CreateAndInsert - don't reset bRemoveAfterUse flag
 
@@ -1542,7 +1531,7 @@ sal_Int32 SvXMLNumFormatContext::PrivateGetKey()
         return m_nKey;
     else
     {
-        CreateAndInsert(true);
+        CreateAndInsert(true, rCreateStack);
         return m_nKey;
     }
 }
@@ -1558,7 +1547,10 @@ sal_Int32 SvXMLNumFormatContext::CreateAndInsert( css::uno::Reference< css::util
             pFormatter = pObj->GetNumberFormatter();
 
         if ( pFormatter )
-            return CreateAndInsert( pFormatter );
+        {
+            std::vector<SvXMLNumFormatContext*> aCreateStack;
+            return CreateAndInsert(pFormatter, aCreateStack);
+        }
         else
             return -1;
     }
@@ -1566,13 +1558,19 @@ sal_Int32 SvXMLNumFormatContext::CreateAndInsert( css::uno::Reference< css::util
         return m_nKey;
 }
 
-void SvXMLNumFormatContext::CreateAndInsert(bool /*bOverwrite*/)
+void SvXMLNumFormatContext::CreateAndInsert(bool bOverwrite)
 {
-    if (m_nKey <= -1)
-        CreateAndInsert(m_pData->GetNumberFormatter());
+    std::vector<SvXMLNumFormatContext*> aCreateStack;
+    return CreateAndInsert(bOverwrite, aCreateStack);
 }
 
-sal_Int32 SvXMLNumFormatContext::CreateAndInsert(SvNumberFormatter* pFormatter)
+void SvXMLNumFormatContext::CreateAndInsert(bool /*bOverwrite*/, std::vector<SvXMLNumFormatContext*>& rCreateStack)
+{
+    if (m_nKey <= -1)
+        CreateAndInsert(m_pData->GetNumberFormatter(), rCreateStack);
+}
+
+sal_Int32 SvXMLNumFormatContext::CreateAndInsert(SvNumberFormatter* pFormatter, std::vector<SvXMLNumFormatContext*>& rCreateStack)
 {
     if (!pFormatter)
     {
@@ -1580,20 +1578,22 @@ sal_Int32 SvXMLNumFormatContext::CreateAndInsert(SvNumberFormatter* pFormatter)
         return -1;
     }
 
+    rCreateStack.push_back(this);
+
     sal_uInt32 nIndex = NUMBERFORMAT_ENTRY_NOT_FOUND;
 
     for (size_t i = 0; i < m_aMyConditions.size(); i++)
     {
         SvXMLNumFormatContext* pStyle = const_cast<SvXMLNumFormatContext*>( static_cast<const SvXMLNumFormatContext *>(m_pStyles->FindStyleChildContext(
             XmlStyleFamily::DATA_STYLE, m_aMyConditions[i].sMapName)));
-        if (this == pStyle)
+        if (std::find(rCreateStack.begin(), rCreateStack.end(), pStyle) != rCreateStack.end())
         {
             SAL_INFO("xmloff.style", "invalid style:map references containing style");
             pStyle = nullptr;
         }
         if (pStyle)
         {
-            if (pStyle->PrivateGetKey() > -1)     // don't reset pStyle's bRemoveAfterUse flag
+            if (pStyle->PrivateGetKey(rCreateStack) > -1)     // don't reset pStyle's bRemoveAfterUse flag
                 AddCondition(i);
         }
     }
@@ -1690,7 +1690,7 @@ sal_Int32 SvXMLNumFormatContext::CreateAndInsert(SvNumberFormatter* pFormatter)
         //  use fixed-order formats instead of SYS... if bAutoOrder is false
         //  (only if the format strings are equal for the locale)
 
-        NfIndexTableOffset eOffset = pFormatter->GetIndexTableOffset( nIndex );
+        NfIndexTableOffset eOffset = SvNumberFormatter::GetIndexTableOffset( nIndex );
         if ( eOffset == NF_DATE_SYS_DMMMYYYY )
         {
             sal_uInt32 nNewIndex = pFormatter->GetFormatIndex( NF_DATE_DIN_DMMMYYYY, m_nFormatLang );
@@ -1734,6 +1734,8 @@ sal_Int32 SvXMLNumFormatContext::CreateAndInsert(SvNumberFormatter* pFormatter)
 
     if (!m_bRemoveAfterUse)
         GetImport().AddNumberStyle( m_nKey, GetName() );
+
+    rCreateStack.pop_back();
 
     return m_nKey;
 }
@@ -2286,27 +2288,20 @@ bool SvXMLNumFormatContext::IsSystemLanguage() const
 
 
 SvXMLNumFmtHelper::SvXMLNumFmtHelper(
-    const uno::Reference<util::XNumberFormatsSupplier>& rSupp,
-    const uno::Reference<uno::XComponentContext>& rxContext )
+    const uno::Reference<util::XNumberFormatsSupplier>& rSupp )
 {
-    SAL_WARN_IF( !rxContext.is(), "xmloff", "got no service manager" );
-
     SvNumberFormatter* pFormatter = nullptr;
     SvNumberFormatsSupplierObj* pObj =
                     comphelper::getFromUnoTunnel<SvNumberFormatsSupplierObj>( rSupp );
     if (pObj)
         pFormatter = pObj->GetNumberFormatter();
 
-    m_pData = std::make_unique<SvXMLNumImpData>( pFormatter, rxContext );
+    m_pData = std::make_unique<SvXMLNumImpData>( pFormatter );
 }
 
-SvXMLNumFmtHelper::SvXMLNumFmtHelper(
-    SvNumberFormatter* pNumberFormatter,
-    const uno::Reference<uno::XComponentContext>& rxContext )
+SvXMLNumFmtHelper::SvXMLNumFmtHelper( SvNumberFormatter* pNumberFormatter )
 {
-    SAL_WARN_IF( !rxContext.is(), "xmloff", "got no service manager" );
-
-    m_pData = std::make_unique<SvXMLNumImpData>( pNumberFormatter, rxContext );
+    m_pData = std::make_unique<SvXMLNumImpData>( pNumberFormatter );
 }
 
 SvXMLNumFmtHelper::~SvXMLNumFmtHelper()

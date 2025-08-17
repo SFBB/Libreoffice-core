@@ -27,7 +27,7 @@ SwUndoFormatColl::SwUndoFormatColl( const SwPaM& rRange,
                               const SwFormatColl* pColl,
                               const bool bReset,
                               const bool bResetListAttrs )
-    : SwUndo( SwUndoId::SETFMTCOLL, &rRange.GetDoc() ),
+    : SwUndo( SwUndoId::SETFMTCOLL, rRange.GetDoc() ),
       SwUndRng( rRange ),
       mpHistory( new SwHistory ),
       mbReset( bReset ),
@@ -45,7 +45,7 @@ SwUndoFormatColl::~SwUndoFormatColl()
 void SwUndoFormatColl::UndoImpl(::sw::UndoRedoContext & rContext)
 {
     // restore old values
-    mpHistory->TmpRollback(& rContext.GetDoc(), 0);
+    mpHistory->TmpRollback(rContext.GetDoc(), 0);
     mpHistory->SetTmpEnd( mpHistory->Count() );
 
     // create cursor for undo range

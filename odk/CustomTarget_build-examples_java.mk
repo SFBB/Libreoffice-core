@@ -9,7 +9,7 @@
 
 my_example_dirs_java = \
     DevelopersGuide/BasicAndDialogs/CreatingDialogs \
-    DevelopersGuide/Charts \
+    DevelopersGuide/Charts/java \
     DevelopersGuide/Components/Addons/JobsAddon \
     DevelopersGuide/Components/Addons/ProtocolHandlerAddon_java \
     DevelopersGuide/Components/JavaComponent \
@@ -26,16 +26,16 @@ my_example_dirs_java = \
     DevelopersGuide/GUI \
     DevelopersGuide/OfficeBean \
     DevelopersGuide/OfficeDev \
-    DevelopersGuide/OfficeDev/Clipboard \
+    DevelopersGuide/OfficeDev/Clipboard/java \
     DevelopersGuide/OfficeDev/DesktopEnvironment \
     DevelopersGuide/OfficeDev/DisableCommands \
     DevelopersGuide/OfficeDev/FilterDevelopment/AsciiFilter \
     DevelopersGuide/OfficeDev/FilterDevelopment/FlatXmlFilterDetection \
     DevelopersGuide/OfficeDev/FilterDevelopment/FlatXmlFilter_java \
     DevelopersGuide/OfficeDev/Linguistic \
-    DevelopersGuide/OfficeDev/PathSettings \
-    DevelopersGuide/OfficeDev/PathSubstitution \
-    DevelopersGuide/OfficeDev/TerminationTest \
+    DevelopersGuide/OfficeDev/PathSettings/java \
+    DevelopersGuide/OfficeDev/PathSubstitution/java \
+    DevelopersGuide/OfficeDev/TerminationTest/java \
     DevelopersGuide/ProfUNO/InterprocessConn \
     DevelopersGuide/ProfUNO/Lifetime \
     DevelopersGuide/ProfUNO/SimpleBootstrap_java \
@@ -54,7 +54,6 @@ my_example_dirs_java = \
     java/ToDo \
 
 #    java/ConverterServlet \
-#    java/EmbedDocument/Container1 \
 #    java/EmbedDocument/EmbeddedObject \
 #    java/NotesAccess \
 #    java/Storage \

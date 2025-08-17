@@ -28,7 +28,7 @@
 #include <editeng/lrspitem.hxx>
 #include <editeng/ulspitem.hxx>
 #include <editeng/brushitem.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <document.hxx>
 #include <stlsheet.hxx>
 #include <attrib.hxx>
@@ -125,7 +125,7 @@ void XclImpPageSettings::ReadHeaderFooter( XclImpStream& rStrm )
         default:    OSL_FAIL( "XclImpPageSettings::ReadHeaderFooter - unknown record" );
     }
 
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
     {
         if (maData.maHeader.getLength() > 10)
             maData.maHeader = maData.maHeader.copy(0, 10);
@@ -153,18 +153,18 @@ void XclImpPageSettings::ReadPageBreaks( XclImpStream& rStrm )
 
     bool bIgnore = GetBiff() == EXC_BIFF8;  // ignore start/end columns or rows in BIFF8
 
-    sal_uInt16 nCount, nBreak;
-    nCount = rStrm.ReaduInt16();
+    sal_uInt16 nCount = rStrm.ReaduInt16();
     pVec->clear();
     pVec->reserve( nCount );
 
-    while( nCount-- )
+    while (nCount)
     {
-        nBreak = rStrm.ReaduInt16();
+        sal_uInt16 nBreak = rStrm.ReaduInt16();
         if( nBreak )
             pVec->push_back( nBreak );
         if( bIgnore )
             rStrm.Ignore( 4 );
+        --nCount;
     }
 }
 
@@ -214,10 +214,10 @@ void lclPutMarginItem( SfxItemSet& rItemSet, sal_uInt16 nRecId, double fMarginIn
         case EXC_ID_RIGHTMARGIN:
         {
             SvxLRSpaceItem aItem( rItemSet.Get( ATTR_LRSPACE ) );
-            if( nRecId == EXC_ID_LEFTMARGIN )
-                aItem.SetLeftValue( nMarginTwips );
+            if (nRecId == EXC_ID_LEFTMARGIN)
+                aItem.SetLeft(SvxIndentValue::twips(nMarginTwips));
             else
-                aItem.SetRightValue( nMarginTwips );
+                aItem.SetRight(SvxIndentValue::twips(nMarginTwips));
             rItemSet.Put( aItem );
         }
         break;

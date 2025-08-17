@@ -44,7 +44,6 @@
   <menu:menu menu:id=".uno:ViewMenu">
     <menu:menupopup>
       <menu:menuitem menu:id=".uno:AvailableToolbars"/>
-      <menu:menuitem menu:id=".uno:StatusBarVisible"/>
       <menu:menuitem menu:id=".uno:Sidebar" menu:style="text"/>
       <menu:menuseparator/>
       <menu:menuitem menu:id=".uno:DiagramData"/>
@@ -120,6 +119,7 @@
         <menu:menuitem menu:id=".uno:View3D"/>
       <menu:menuseparator/>
       <menu:menuitem menu:id=".uno:FormatSelection" menu:style="text"/>
+      <menu:menuitem menu:id=".uno:FontDialog" menu:style="text"/>
       <menu:menuitem menu:id=".uno:TransformDialog" menu:style="text"/>
       <menu:menu menu:id=".uno:ArrangeRow">
         <menu:menupopup>
@@ -133,6 +133,8 @@
     <menu:menupopup>
       <menu:menu menu:id=".uno:MacrosMenu">
         <menu:menupopup>
+          <menu:menuitem menu:id=".uno:MacroManager"/>
+          <menu:menuseparator/>
           <menu:menuitem menu:id=".uno:MacroRecorder"/>
           <menu:menuitem menu:id=".uno:RunMacro"/>
           <menu:menuitem menu:id=".uno:BasicIDEAppear"/>

@@ -30,39 +30,47 @@
 #include <editeng/editids.hrc>
 #include <editeng/flstitem.hxx>
 #include <osl/diagnose.h>
-#include <comphelper/lok.hxx>
+
+#include <vcl/tabs.hrc>
 
 ScAttrDlg::ScAttrDlg(weld::Window* pParent, const SfxItemSet* pCellAttrs)
-    : SfxTabDialogController(pParent, "modules/scalc/ui/formatcellsdialog.ui",
-                             "FormatCellsDialog", pCellAttrs)
+    : SfxTabDialogController(pParent, u"modules/scalc/ui/formatcellsdialog.ui"_ustr,
+                             u"FormatCellsDialog"_ustr, pCellAttrs)
 {
     SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
 
-    OSL_ENSURE(pFact->GetTabPageCreatorFunc( RID_SVXPAGE_NUMBERFORMAT ), "GetTabPageCreatorFunc fail!");
-    AddTabPage( "numbers", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_NUMBERFORMAT ), nullptr );
-    OSL_ENSURE(pFact->GetTabPageCreatorFunc( RID_SVXPAGE_CHAR_NAME ), "GetTabPageCreatorFunc fail!");
-    AddTabPage( "font", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_CHAR_NAME ), nullptr );
-    OSL_ENSURE(pFact->GetTabPageCreatorFunc( RID_SVXPAGE_CHAR_EFFECTS ), "GetTabPageCreatorFunc fail!");
-    AddTabPage( "fonteffects", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_CHAR_EFFECTS ), nullptr );
-    OSL_ENSURE(pFact->GetTabPageCreatorFunc( RID_SVXPAGE_ALIGNMENT ), "GetTabPageCreatorFunc fail!");
-    AddTabPage( "alignment", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_ALIGNMENT ),    nullptr );
+    OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_NUMBERFORMAT), "GetTabPageCreatorFunc fail!");
+    AddTabPage(u"numbers"_ustr, TabResId(RID_TAB_NUMBERS.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_NUMBERFORMAT),
+               RID_M + RID_TAB_NUMBERS.sIconName);
+    OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_NAME), "GetTabPageCreatorFunc fail!");
+    AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_NAME),
+               RID_M + RID_TAB_FONT.sIconName);
+    OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_EFFECTS), "GetTabPageCreatorFunc fail!");
+    AddTabPage(u"fonteffects"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_CHAR_EFFECTS),
+               RID_M + RID_TAB_FONTEFFECTS.sIconName);
+    OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_ALIGNMENT), "GetTabPageCreatorFunc fail!");
+    AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_ALIGNMENT),
+               RID_M + RID_TAB_ALIGNMENT.sIconName);
 
     if (SvtCJKOptions::IsAsianTypographyEnabled())
     {
         OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PARA_ASIAN), "GetTabPageCreatorFunc fail!");
-        AddTabPage( "asiantypography",   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PARA_ASIAN),       nullptr );
+        AddTabPage(u"asiantypography"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel),
+                   pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PARA_ASIAN),
+                   RID_M + RID_TAB_ASIANTYPO.sIconName);
     }
-    else
-        RemoveTabPage( "asiantypography" );
-    OSL_ENSURE(pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BORDER ), "GetTabPageCreatorFunc fail!");
-    AddTabPage( "borders",      pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BORDER ),     nullptr );
-    OSL_ENSURE(pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BKG ), "GetTabPageCreatorFunc fail!");
-    AddTabPage( "background",  pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BKG ), nullptr );
-
-    if (!comphelper::LibreOfficeKit::isActive())
-        AddTabPage( "cellprotection" ,  ScTabPageProtection::Create,    nullptr );
-    else
-        RemoveTabPage( "cellprotection" );
+    OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BORDER), "GetTabPageCreatorFunc fail!");
+    AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BORDER), RID_M + RID_TAB_BORDER.sIconName);
+    OSL_ENSURE(pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BKG), "GetTabPageCreatorFunc fail!");
+    AddTabPage(u"background"_ustr, TabResId(RID_TAB_BACKGROUND.aLabel),
+               pFact->GetTabPageCreatorFunc(RID_SVXPAGE_BKG), RID_M + RID_TAB_BACKGROUND.sIconName);
+    AddTabPage(u"cellprotection"_ustr, TabResId(RID_TAB_PROTECTION.aLabel),
+               ScTabPageProtection::Create, RID_M + RID_TAB_PROTECTION.sIconName);
 }
 
 ScAttrDlg::~ScAttrDlg()

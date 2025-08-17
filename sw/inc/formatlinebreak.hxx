@@ -27,12 +27,11 @@
 #include <unotools/weakref.hxx>
 #include <com/sun/star/text/XTextContent.hpp>
 
-class SwDoc;
 class SwTextLineBreak;
 class SwXLineBreak;
 class SwXTextRange;
 
-/// Defines the location of a line break text wrapping restart.
+/// Defines the location of a line break text wrapping restart; corresponds to RTF's \lbrN.
 enum class SwLineBreakClear
 {
     NONE,
@@ -44,7 +43,7 @@ enum class SwLineBreakClear
 
 /// SfxPoolItem subclass that wraps an SwLineBreakClear.
 class SW_DLLPUBLIC SwFormatLineBreak final : public SfxEnumItem<SwLineBreakClear>,
-                                             public sw::BroadcastingModify
+                                             public SvtBroadcaster
 {
     /// The SwTextAttr that knows the position of the line break in the doc model.
     SwTextLineBreak* m_pTextAttr;
@@ -56,6 +55,7 @@ class SW_DLLPUBLIC SwFormatLineBreak final : public SfxEnumItem<SwLineBreakClear
     SwFormatLineBreak(const SwFormatLineBreak&) = delete;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatLineBreak)
     SwFormatLineBreak(SwLineBreakClear eClear);
     virtual ~SwFormatLineBreak() override;
 
@@ -64,11 +64,6 @@ public:
 
     /// See SfxPoolItem::Clone().
     SwFormatLineBreak* Clone(SfxItemPool* pPool = nullptr) const override;
-
-    /// See SwModify::SwClientNotify().
-    void SwClientNotify(const SwModify&, const SfxHint&) override;
-
-    sal_uInt16 GetValueCount() const override;
 
     rtl::Reference<SwXTextRange> GetAnchor() const;
 

@@ -55,6 +55,7 @@ $(eval $(call gb_Library_use_externals,sc,\
     icuuc \
     libxml2 \
     mdds_headers \
+    md4c \
 ))
 
 ifneq ($(SYSTEM_LIBORCUS),)
@@ -90,6 +91,7 @@ $(eval $(call gb_Library_use_libraries,sc,\
     svt \
     svx \
     svxcore \
+	textconversiondlgs \
     tk \
     tl \
     ucbhelper \
@@ -161,6 +163,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/core/data/drwlayer \
     sc/source/core/data/edittextiterator \
     sc/source/core/data/fillinfo \
+    sc/source/core/data/FilterData \
     sc/source/core/data/formulacell \
     sc/source/core/data/formulaiter \
     sc/source/core/data/funcdesc \
@@ -178,6 +181,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/core/data/pagepar \
     sc/source/core/data/patattr \
     sc/source/core/data/pivot2 \
+    sc/source/core/data/PivotTableFormatOutput \
     sc/source/core/data/poolcach \
     sc/source/core/data/poolhelp \
     sc/source/core/data/postit \
@@ -377,6 +381,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/Accessibility/AccessibleTableBase \
     sc/source/ui/Accessibility/AccessibleText \
     sc/source/ui/Accessibility/DrawModelBroadcaster \
+    sc/source/ui/app/acctrl \
     sc/source/ui/app/client \
     sc/source/ui/app/drwtrans \
     sc/source/ui/app/inputhdl \
@@ -398,7 +403,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/cctrl/tbzoomsliderctrl \
     sc/source/ui/condformat/condformatdlg \
     sc/source/ui/condformat/condformatdlgentry \
-    sc/source/ui/condformat/condformatdlgitem \
+    sc/source/ui/condformat/condformatdlgdata \
     sc/source/ui/condformat/condformateasydlg \
     sc/source/ui/condformat/condformathelper \
     sc/source/ui/condformat/colorformat \
@@ -444,6 +449,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/docshell/docsh6 \
     sc/source/ui/docshell/docsh8 \
     sc/source/ui/docshell/documentlinkmgr \
+    sc/source/ui/docshell/DocumentModelAccessor \
     sc/source/ui/docshell/editable \
     sc/source/ui/docshell/externalrefmgr \
     sc/source/ui/docshell/impex \
@@ -494,8 +500,10 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/miscdlgs/datatableview \
     sc/source/ui/miscdlgs/highred \
     sc/source/ui/miscdlgs/mergecellsdialog \
+    sc/source/ui/miscdlgs/onlyactivesheetsaveddlg \
     sc/source/ui/miscdlgs/optsolver \
     sc/source/ui/miscdlgs/protectiondlg \
+    sc/source/ui/miscdlgs/duplicaterecordsdlg \
     sc/source/ui/miscdlgs/redcom \
     sc/source/ui/miscdlgs/retypepassdlg \
     sc/source/ui/miscdlgs/sharedocdlg \
@@ -613,6 +621,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/unoobj/ChartTools \
     sc/source/ui/unoobj/servuno \
     sc/source/ui/unoobj/shapeuno \
+    sc/source/ui/unoobj/solveruno \
     sc/source/ui/unoobj/srchuno \
     sc/source/ui/unoobj/styleuno \
     sc/source/ui/unoobj/targuno \
@@ -714,7 +723,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
 ))
 endif
 
-ifneq (,$(gb_ENABLE_DBGUTIL))
+ifneq (,$(ENABLE_DBGUTIL))
 $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/view/gridwin_dbgutil \
 ))

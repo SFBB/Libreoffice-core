@@ -149,6 +149,7 @@ inline void _copyConstructAnyFromData(
         break;
     case typelib_TypeClass_LONG:
     case typelib_TypeClass_UNSIGNED_LONG:
+    case typelib_TypeClass_ENUM: // enum is forced to 32bit long
         pDestAny->pData = &pDestAny->pReserved;
         *static_cast<sal_Int32 *>(pDestAny->pData) = *static_cast<sal_Int32 *>(pSource);
         break;
@@ -189,11 +190,6 @@ inline void _copyConstructAnyFromData(
         break;
     case typelib_TypeClass_ANY:
         OSL_FAIL( "### unexpected nested any!" );
-        break;
-    case typelib_TypeClass_ENUM:
-        pDestAny->pData = &pDestAny->pReserved;
-        // enum is forced to 32bit long
-        *static_cast<sal_Int32 *>(pDestAny->pData) = *static_cast<sal_Int32 *>(pSource);
         break;
     case typelib_TypeClass_STRUCT:
     case typelib_TypeClass_EXCEPTION:
@@ -469,7 +465,6 @@ inline uno_Sequence * icopyConstructSequence(
             }
             case typelib_TypeClass_SEQUENCE: // sequence of sequence
             {
-                // coverity[suspicious_sizeof] - sizeof(uno_Sequence*) is correct here
                 pDest = allocSeq( sizeof (uno_Sequence *), nElements );
                 if (pDest != nullptr)
                 {
@@ -562,6 +557,7 @@ inline void _copyConstructData(
         break;
     case typelib_TypeClass_LONG:
     case typelib_TypeClass_UNSIGNED_LONG:
+    case typelib_TypeClass_ENUM:
         *static_cast<sal_Int32 *>(pDest) = *static_cast<sal_Int32 *>(pSource);
         break;
     case typelib_TypeClass_HYPER:
@@ -587,9 +583,6 @@ inline void _copyConstructData(
             static_cast<uno_Any *>(pDest), static_cast<uno_Any *>(pSource)->pData,
             static_cast<uno_Any *>(pSource)->pType, nullptr,
             acquire, mapping );
-        break;
-    case typelib_TypeClass_ENUM:
-        *static_cast<sal_Int32 *>(pDest) = *static_cast<sal_Int32 *>(pSource);
         break;
     case typelib_TypeClass_STRUCT:
     case typelib_TypeClass_EXCEPTION:

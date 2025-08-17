@@ -22,6 +22,7 @@
 #include <tools/urlobj.hxx>
 #include <unotools/bootstrap.hxx>
 #include <sal/log.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
@@ -133,7 +134,7 @@ namespace migration
 
     OUString BasicMigration::getImplementationName()
     {
-        return "com.sun.star.comp.desktop.migration.Basic";
+        return u"com.sun.star.comp.desktop.migration.Basic"_ustr;
     }
 
 
@@ -145,7 +146,7 @@ namespace migration
 
     Sequence< OUString > BasicMigration::getSupportedServiceNames()
     {
-        return { "com.sun.star.migration.Basic" };
+        return { u"com.sun.star.migration.Basic"_ustr };
     }
 
 

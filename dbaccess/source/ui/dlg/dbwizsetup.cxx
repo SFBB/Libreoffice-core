@@ -72,7 +72,6 @@ using namespace vcl;
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::sdbc;
-using namespace com::sun::star::sdbcx;
 using namespace com::sun::star::task;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::io;
@@ -138,7 +137,7 @@ ODbTypeWizDialogSetup::ODbTypeWizDialogSetup(weld::Window* _pParent
 
     ::dbaccess::ODsnTypeCollection::TypeIterator aIter = m_pCollection->begin();
     ::dbaccess::ODsnTypeCollection::TypeIterator aEnd = m_pCollection->end();
-    for(PathId i = 1;aIter != aEnd;++aIter,++i)
+    for(auto i = 1;aIter != aEnd;++aIter,++i)
     {
         const OUString& sURLPrefix = aIter.getURLPrefix();
         WizardPath aPath;
@@ -147,7 +146,7 @@ ODbTypeWizDialogSetup::ODbTypeWizDialogSetup(weld::Window* _pParent
         aPath.push_back(PAGE_DBSETUPWIZARD_AUTHENTIFICATION);
         aPath.push_back(PAGE_DBSETUPWIZARD_FINAL);
 
-        declareAuthDepPath(sURLPrefix,i,aPath);
+        declareAuthDepPath(sURLPrefix,static_cast<PathId>(i),aPath);
     }
 
     WizardPath aPath;
@@ -262,16 +261,9 @@ IMPL_LINK_NOARG(ODbTypeWizDialogSetup, OnTypeSelected, OGeneralPage&, void)
 static void lcl_removeUnused(const ::comphelper::NamedValueCollection& _aOld,const ::comphelper::NamedValueCollection& _aNew,::comphelper::NamedValueCollection& _rDSInfo)
 {
     _rDSInfo.merge(_aNew,true);
-    uno::Sequence< beans::NamedValue > aOldValues = _aOld.getNamedValues();
-    const beans::NamedValue* pIter = aOldValues.getConstArray();
-    const beans::NamedValue* pEnd  = pIter + aOldValues.getLength();
-    for(;pIter != pEnd;++pIter)
-    {
-        if ( !_aNew.has(pIter->Name) )
-        {
-            _rDSInfo.remove(pIter->Name);
-        }
-    }
+    for (auto& val : _aOld.getNamedValues())
+        if (!_aNew.has(val.Name))
+            _rDSInfo.remove(val.Name);
 }
 
 void DataSourceInfoConverter::convert(const Reference<XComponentContext> & xContext, const ::dbaccess::ODsnTypeCollection* _pCollection, std::u16string_view _sOldURLPrefix, std::u16string_view _sNewURLPrefix,const css::uno::Reference< css::beans::XPropertySet >& _xDatasource)
@@ -312,6 +304,9 @@ void ODbTypeWizDialogSetup::activateDatabasePath()
     {
         OUString sOld = m_sURL;
         m_sURL = m_pGeneralPage->GetSelectedType();
+        if (m_sURL.startsWith("sdbc:mysql:") && sOld.startsWith("sdbc:mysql:"))
+            m_sURL = sOld; // The type of MySQL connection was already set elsewhere; just use it,
+                           // instead of the hardcoded one from the selector
         DataSourceInfoConverter::convert(getORB(), m_pCollection,sOld,m_sURL,m_pImpl->getCurrentDataSource());
         ::dbaccess::DATASOURCE_TYPE eType = VerifyDataSourceType(m_pCollection->determineType(m_sURL));
         if (eType ==  ::dbaccess::DST_UNKNOWN)
@@ -681,10 +676,10 @@ bool ODbTypeWizDialogSetup::SaveDatabaseDocument()
                 CreateDatabase();
 
             ::comphelper::NamedValueCollection aArgs( xModel->getArgs() );
-            aArgs.put( "Overwrite", true );
-            aArgs.put( "InteractionHandler", xHandler );
-            aArgs.put( "MacroExecutionMode", MacroExecMode::USE_CONFIG );
-            aArgs.put( "IgnoreFirebirdMigration", true );
+            aArgs.put( u"Overwrite"_ustr, true );
+            aArgs.put( u"InteractionHandler"_ustr, xHandler );
+            aArgs.put( u"MacroExecutionMode"_ustr, MacroExecMode::USE_CONFIG );
+            aArgs.put( u"IgnoreFirebirdMigration"_ustr, true );
 
             OUString sPath = ODbDataSourceAdministrationHelper::getDocumentUrl( *m_pOutSet );
             xStore->storeAsURL( sPath, aArgs.getPropertyValues() );
@@ -920,14 +915,14 @@ bool ODbTypeWizDialogSetup::SaveDatabaseDocument()
                 if ( m_xFrameLoader.is() )
                 {
                     ::comphelper::NamedValueCollection aLoadArgs;
-                    aLoadArgs.put( "InteractionHandler", m_xInteractionHandler );
-                    aLoadArgs.put( "MacroExecutionMode", MacroExecMode::USE_CONFIG );
+                    aLoadArgs.put( u"InteractionHandler"_ustr, m_xInteractionHandler );
+                    aLoadArgs.put( u"MacroExecutionMode"_ustr, MacroExecMode::USE_CONFIG );
 
                     Sequence< PropertyValue > aLoadArgPV;
                     aLoadArgs >>= aLoadArgPV;
 
                     m_xFrameLoader->loadComponentFromURL( m_sURL,
-                        "_default",
+                        u"_default"_ustr,
                         FrameSearchFlag::ALL,
                         aLoadArgPV
                     );

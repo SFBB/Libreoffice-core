@@ -21,7 +21,7 @@
 #include <osl/thread.h>
 #include <tools/stream.hxx>
 #include <tools/vcompat.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <vcl/filter/SvmReader.hxx>
 #include <vcl/rendercontext/DrawTextFlags.hxx>
@@ -718,14 +718,39 @@ rtl::Reference<MetaAction> SvmReader::TextArrayHandler(const ImplMetaReadData* p
             // aKashidaArray, if not empty, must be the same size as aArray
             std::vector<sal_Bool> aKashidaArray(pAction->GetDXArray().size(), 0);
 
-            // [-loplugin:fakebool] false positive:
-            sal_Bool val(sal_False);
             for (sal_uInt32 i = 0; i < nTmpLen; i++)
             {
-                mrStream.ReadUChar(val);
-                aKashidaArray[i] = val;
+                mrStream.ReadUChar(aKashidaArray[i]);
             }
             pAction->SetKashidaArray(std::move(aKashidaArray));
+        }
+    }
+
+    if (aCompat.GetVersion() >= 4) // Version 4
+    {
+        bool bTmpHasContext = false;
+        mrStream.ReadCharAsBool(bTmpHasContext);
+
+        if (bTmpHasContext)
+        {
+            sal_uInt16 nTmpContextIndex = 0;
+            mrStream.ReadUInt16(nTmpContextIndex);
+
+            sal_uInt16 nTmpContextLen = 0;
+            mrStream.ReadUInt16(nTmpContextLen);
+
+            sal_uInt16 nTmpEnd = nTmpIndex + nTmpLen;
+            sal_uInt16 nTmpContextEnd = nTmpContextIndex + nTmpContextLen;
+            if ((nTmpContextEnd <= aStr.getLength()) && (nTmpContextIndex <= nTmpIndex)
+                && (nTmpContextEnd >= nTmpEnd))
+            {
+                pAction->SetLayoutContextIndex(nTmpContextIndex);
+                pAction->SetLayoutContextLen(nTmpContextLen);
+            }
+            else
+            {
+                SAL_WARN("vcl.gdi", "inconsistent layout context offset and len");
+            }
         }
     }
 
@@ -791,7 +816,7 @@ rtl::Reference<MetaAction> SvmReader::TextRectHandler(const ImplMetaReadData* pD
     pAction->SetRect(aRect);
 
     DrawTextFlags nFlags(static_cast<DrawTextFlags>(nTmp));
-    const static bool bFuzzing = utl::ConfigManager::IsFuzzing();
+    const static bool bFuzzing = comphelper::IsFuzzing();
     if (bFuzzing)
         nFlags = nFlags & ~DrawTextFlags::MultiLine;
 
@@ -1233,15 +1258,16 @@ rtl::Reference<MetaAction> SvmReader::TextAlignHandler()
 
 rtl::Reference<MetaAction> SvmReader::MapModeHandler()
 {
-    rtl::Reference<MetaMapModeAction> pAction(new MetaMapModeAction);
-
     VersionCompatRead aCompat(mrStream);
     TypeSerializer aSerializer(mrStream);
+
     MapMode aMapMode;
-    aSerializer.readMapMode(aMapMode);
+    const bool bSuccess = aSerializer.readMapMode(aMapMode);
+    if (!bSuccess)
+        return nullptr;
 
+    rtl::Reference<MetaMapModeAction> pAction(new MetaMapModeAction);
     pAction->SetMapMode(aMapMode);
-
     return pAction;
 }
 

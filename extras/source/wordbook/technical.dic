@@ -9,9 +9,11 @@ Add-in
 Adobe
 ADSL
 Advanced
+AGI
 AI
 AIX=
 Alibaba
+AlphaFold
 Amazon
 AMD
 Amiga=
@@ -54,6 +56,7 @@ Carefx
 Cassandra
 CDMA
 CentOS=
+ChatGPT
 Chrome
 Cisco=
 CLI=
@@ -112,6 +115,8 @@ Fujitsu
 Gateway
 gcc
 gcj
+Gemini
+GenAI
 Gentoo
 Gerrit
 GHz
@@ -121,6 +126,7 @@ GNOME
 GNU
 Google
 GPS
+GPT
 GroupWise
 GSM=
 GSoC
@@ -174,6 +180,7 @@ LG
 LibreOffice=
 LINE
 Linux
+LLM
 LTE=
 Lubuntu
 Lucid
@@ -214,13 +221,17 @@ NetIdentity
 NetMail
 NetStorage
 NetWare
+Nextcloud
 Nixie
 NNTP
 Nokia
+NoSQL
 Novell
 NRadius
+Nvidia
 ODBC
 Ogg
+Ollama
 OnDemand
 OnePlus
 Online
@@ -281,6 +292,7 @@ SMTP
 Solaris=
 Sony
 Soyuz
+SpaceX
 Spamassassin
 SPI
 SQLite
@@ -294,6 +306,7 @@ SunHSI=
 SunOS=
 SunSAI=
 SUSE
+SynthID
 Systemd
 Tahr
 TCL

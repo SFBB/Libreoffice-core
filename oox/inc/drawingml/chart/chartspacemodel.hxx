@@ -39,6 +39,7 @@ struct ChartSpaceModel
     typedef ModelRef< View3DModel >     View3DRef;
     typedef ModelRef< TitleModel >      TitleRef;
     typedef ModelRef< LegendModel >     LegendRef;
+    typedef ModelRef< DataSourceCxModel > DataSourceRef;
 
     ShapeRef            mxShapeProp;        /// Chart frame formatting.
     TextBodyRef         mxTextProp;         /// Global chart text formatting.
@@ -54,10 +55,13 @@ struct ChartSpaceModel
     OUString            maSheetPath;        /// Path to embedded charts.
     sal_Int32           mnDispBlanksAs;     /// Mode how to display blank values.
     sal_Int32           mnStyle;            /// Index to default formatting.
+    bool                mbExplicitStyle;    /// Is there a <c:style> tag?
     bool                mbAutoTitleDel;     /// True = automatic title deleted manually.
     bool                mbPlotVisOnly;      /// True = plot visible cells in a sheet only.
     bool                mbShowLabelsOverMax;/// True = show labels over chart maximum.
     bool                mbPivotChart;       /// True = pivot chart.
+    DataSourceRef       maCxData;           /// Data for Chartex.
+    bool                mbDate1904;         /// True = default is 1904 date system
 
     explicit            ChartSpaceModel(bool bMSO2007Doc);
                         ~ChartSpaceModel();

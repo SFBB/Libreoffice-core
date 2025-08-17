@@ -23,6 +23,7 @@
 #include <unotools/bootstrap.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <sal/log.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
@@ -88,9 +89,9 @@ namespace migration
         }
     }
 
-#define MAX_HEADER_LENGTH 16
 static bool IsUserWordbook( const OUString& rFile )
 {
+    constexpr sal_uInt16 MAX_HEADER_LENGTH = 16;
     bool bRet = false;
     std::unique_ptr<SvStream> pStream = ::utl::UcbStreamHelper::CreateStream( rFile, StreamMode::STD_READ );
     if ( pStream && !pStream->GetError() )
@@ -164,7 +165,7 @@ static bool IsUserWordbook( const OUString& rFile )
 
     OUString WordbookMigration::getImplementationName()
     {
-        return "com.sun.star.comp.desktop.migration.Wordbooks";
+        return u"com.sun.star.comp.desktop.migration.Wordbooks"_ustr;
     }
 
 
@@ -176,7 +177,7 @@ static bool IsUserWordbook( const OUString& rFile )
 
     Sequence< OUString > WordbookMigration::getSupportedServiceNames()
     {
-        return { "com.sun.star.migration.Wordbooks" };
+        return { u"com.sun.star.migration.Wordbooks"_ustr };
     }
 
 

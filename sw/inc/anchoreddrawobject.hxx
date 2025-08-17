@@ -16,13 +16,10 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_ANCHOREDDRAWOBJECT_HXX
-#define INCLUDED_SW_INC_ANCHOREDDRAWOBJECT_HXX
+#pragma once
 
 #include "anchoredobject.hxx"
 #include <optional>
-
-namespace tools { class Rectangle; }
 
 /** class for the positioning of drawing objects */
 class SwAnchoredDrawObject final : public SwAnchoredObject
@@ -115,8 +112,8 @@ class SwAnchoredDrawObject final : public SwAnchoredObject
         }
 
         // accessors to the format
-        virtual SwFrameFormat& GetFrameFormat() override;
-        virtual const SwFrameFormat& GetFrameFormat() const override;
+        virtual SwFrameFormat* GetFrameFormat() override;
+        virtual const SwFrameFormat* GetFrameFormat() const override;
 
         // accessors to the object area and its position
         virtual SwRect GetObjRect() const override;
@@ -163,7 +160,5 @@ class SwAnchoredDrawObject final : public SwAnchoredObject
         /** The element name to show in the XML dump.  */
         virtual const char* getElementName( ) const override { return "SwAnchoredDrawObject"; }
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

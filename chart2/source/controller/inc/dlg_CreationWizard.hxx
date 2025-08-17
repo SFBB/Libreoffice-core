@@ -19,18 +19,14 @@
 
 #pragma once
 
-#include "TimerTriggeredControllerLock.hxx"
+#include <TimerTriggeredControllerLock.hxx>
 #include "TabPageNotifiable.hxx"
 
 #include <rtl/ref.hxx>
-#include <vcl/roadmapwizard.hxx>
+#include <vcl/roadmapwizardmachine.hxx>
 
 #include <memory>
 
-namespace com::sun::star::chart2
-{
-class XChartDocument;
-}
 namespace com::sun::star::uno
 {
 class XComponentContext;

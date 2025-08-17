@@ -66,7 +66,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.DocumentAcceleratorConfiguration";
+        return u"com.sun.star.comp.framework.DocumentAcceleratorConfiguration"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -76,7 +76,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.ui.DocumentAcceleratorConfiguration"};
+        return {u"com.sun.star.ui.DocumentAcceleratorConfiguration"_ustr};
     }
 
     // XUIConfigurationStorage
@@ -97,13 +97,13 @@ DocumentAcceleratorConfiguration::DocumentAcceleratorConfiguration(
     css::uno::Reference<css::embed::XStorage> xRoot;
     if (lArguments.getLength() == 1 && (lArguments[0] >>= xRoot))
     {
-        m_xDocumentRoot = xRoot;
+        m_xDocumentRoot = std::move(xRoot);
     }
     else
     {
         ::comphelper::SequenceAsHashMap lArgs(lArguments);
         m_xDocumentRoot = lArgs.getUnpackedValueOrDefault(
-            "DocumentRoot",
+            u"DocumentRoot"_ustr,
             css::uno::Reference< css::embed::XStorage >());
     }
 }

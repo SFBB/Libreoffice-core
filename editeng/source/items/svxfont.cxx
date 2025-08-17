@@ -38,7 +38,8 @@ static tools::Long GetTextArray( const OutputDevice* pOut, const OUString& rStr,
 
 {
     const SalLayoutGlyphs* layoutGlyphs = SalLayoutGlyphsCache::self()->GetLayoutGlyphs(pOut, rStr, nIndex, nLen);
-    return pOut->GetTextArray( rStr, pDXAry, nIndex, nLen, true, nullptr, layoutGlyphs);
+    return basegfx::fround<tools::Long>(
+        pOut->GetTextArray(rStr, pDXAry, nIndex, nLen, true, nullptr, layoutGlyphs));
 }
 
 SvxFont::SvxFont()
@@ -76,12 +77,12 @@ void SvxFont::SetNonAutoEscapement(short nNewEsc, const OutputDevice* pOutDev)
         double fAutoDescent = .2;
         if ( pOutDev )
         {
-            const FontMetric& rFontMetric = pOutDev->GetFontMetric();
-            double fFontHeight = rFontMetric.GetAscent() + rFontMetric.GetDescent();
+            const FontMetric aFontMetric = pOutDev->GetFontMetric();
+            double fFontHeight = aFontMetric.GetAscent() + aFontMetric.GetDescent();
             if ( fFontHeight )
             {
-                fAutoAscent = rFontMetric.GetAscent() / fFontHeight;
-                fAutoDescent = rFontMetric.GetDescent() / fFontHeight;
+                fAutoAscent = aFontMetric.GetAscent() / fFontHeight;
+                fAutoDescent = aFontMetric.GetDescent() / fFontHeight;
             }
         }
 
@@ -429,20 +430,20 @@ Size SvxFont::GetPhysTxtSize( const OutputDevice *pOut, const OUString &rTxt,
 Size SvxFont::GetPhysTxtSize( const OutputDevice *pOut )
 {
     if ( !IsCaseMap() && !IsFixKerning() )
-        return Size( pOut->GetTextWidth( "" ), pOut->GetTextHeight() );
+        return Size( pOut->GetTextWidth( u""_ustr ), pOut->GetTextHeight() );
 
     Size aTxtSize;
     aTxtSize.setHeight( pOut->GetTextHeight() );
     if ( !IsCaseMap() )
-        aTxtSize.setWidth( pOut->GetTextWidth( "" ) );
+        aTxtSize.setWidth( pOut->GetTextWidth( u""_ustr ) );
     else
-        aTxtSize.setWidth( pOut->GetTextWidth( CalcCaseMap( "" ) ) );
+        aTxtSize.setWidth( pOut->GetTextWidth( CalcCaseMap( u""_ustr ) ) );
 
     return aTxtSize;
 }
 
 Size SvxFont::QuickGetTextSize( const OutputDevice *pOut, const OUString &rTxt,
-                         const sal_Int32 nIdx, const sal_Int32 nLen, KernArray* pDXArray ) const
+                         const sal_Int32 nIdx, const sal_Int32 nLen, KernArray* pDXArray, bool bStacked ) const
 {
     if ( !IsCaseMap() && !IsFixKerning() )
     {
@@ -477,12 +478,12 @@ Size SvxFont::QuickGetTextSize( const OutputDevice *pOut, const OUString &rTxt,
     }
     SAL_INFO( "editeng.quicktextsize", "SvxFont::QuickGetTextSize after GetTextArray(): Text length: " << nLen << " Text size: " << aTxtSize.Width() << "x" << aTxtSize.Height());
 
-    if( IsFixKerning() && ( nLen > 1 ) )
+    if( IsFixKerning() && ( nLen > 1 ) && !bStacked)
     {
-        auto nKern = GetFixKerning();
-        tools::Long nOldValue = (*pDXArray)[0];
+        short nKern = GetFixKerning();
+        double nOldValue = (*pDXArray)[0];
         tools::Long nSpaceSum = nKern;
-        pDXArray->adjust(0, nSpaceSum);
+        (*pDXArray)[0] += nSpaceSum;
 
         for ( sal_Int32 i = 1; i < nLen; i++ )
         {
@@ -491,14 +492,14 @@ Size SvxFont::QuickGetTextSize( const OutputDevice *pOut, const OUString &rTxt,
                 nOldValue = (*pDXArray)[i];
                 nSpaceSum += nKern;
             }
-            pDXArray->adjust(i, nSpaceSum);
+            (*pDXArray)[i] += nSpaceSum;
         }
 
         // The last one is a nKern too big:
         nOldValue = (*pDXArray)[nLen - 1];
-        tools::Long nNewValue = nOldValue - nKern;
+        double nNewValue = nOldValue - nKern;
         for ( sal_Int32 i = nLen - 1; i >= 0 && (*pDXArray)[i] == nOldValue; --i)
-            pDXArray->set(i, nNewValue);
+            (*pDXArray)[i] = nNewValue;
 
         aTxtSize.AdjustWidth(nSpaceSum - nKern);
     }
@@ -524,7 +525,7 @@ Size SvxFont::GetTextSize(const OutputDevice& rOut, const OUString &rTxt,
 }
 
 static void DrawTextArray( OutputDevice* pOut, const Point& rStartPt, const OUString& rStr,
-                           std::span<const sal_Int32> pDXAry,
+                           KernArraySpan pDXAry,
                            std::span<const sal_Bool> pKashidaAry,
                            sal_Int32 nIndex, sal_Int32 nLen )
 {
@@ -535,7 +536,7 @@ static void DrawTextArray( OutputDevice* pOut, const Point& rStartPt, const OUSt
 void SvxFont::QuickDrawText( OutputDevice *pOut,
     const Point &rPos, const OUString &rTxt,
     const sal_Int32 nIdx, const sal_Int32 nLen,
-    std::span<const sal_Int32> pDXArray,
+    KernArraySpan pDXArray,
     std::span<const sal_Bool> pKashidaArray) const
 {
 
@@ -669,6 +670,12 @@ SvxFont& SvxFont::operator=( const SvxFont& rFont )
     return *this;
 }
 
+bool SvxFont::SvxFontSubsetEquals(const SvxFont& rFont) const
+{
+    return nEsc == rFont.GetEscapement() && nPropr == rFont.GetPropr()
+        && eCaseMap == rFont.GetCaseMap();
+}
+
 namespace {
 
 class SvxDoGetCapitalSize : public SvxDoCapitals
@@ -719,15 +726,13 @@ void SvxDoGetCapitalSize::Do( const OUString &_rTxt, const sal_Int32 _nIdx,
     if (pDXAry)
     {
         KernArray aKernArray;
-        aPartSize.setWidth(pOut->GetTextArray(_rTxt, &aKernArray, _nIdx, _nLen));
-        assert(pDXAry->get_factor() == aKernArray.get_factor());
-        auto& dest = pDXAry->get_subunit_array();
-        sal_Int32 nStart = dest.empty() ? 0 : dest.back();
+        aPartSize.setWidth(basegfx::fround<tools::Long>(
+            pOut->GetTextArray(_rTxt, &aKernArray, _nIdx, _nLen)));
+        double nStart = pDXAry->empty() ? 0 : pDXAry->back();
         size_t nSrcLen = aKernArray.size();
-        dest.reserve(dest.size() + nSrcLen);
-        const auto& src = aKernArray.get_subunit_array();
+        pDXAry->reserve(pDXAry->size() + nSrcLen);
         for (size_t i = 0; i < nSrcLen; ++i)
-            dest.push_back(src[i] + nStart);
+            (*pDXAry).push_back(aKernArray[i] + nStart);
     }
     else
     {
@@ -774,11 +779,11 @@ protected:
     Point aPos;
     Point aSpacePos;
     short nKern;
-    std::span<const sal_Int32> pDXArray;
+    KernArraySpan pDXArray;
     std::span<const sal_Bool> pKashidaArray;
 public:
     SvxDoDrawCapital( SvxFont *pFnt, OutputDevice *_pOut, const OUString &_rTxt,
-                      std::span<const sal_Int32> _pDXArray,
+                      KernArraySpan _pDXArray,
                       std::span<const sal_Bool> _pKashidaArray,
                       const sal_Int32 _nIdx, const sal_Int32 _nLen,
                       const Point &rPos, const short nKrn )
@@ -812,7 +817,7 @@ void SvxDoDrawCapital::DoSpace( const bool bDraw )
         pFont->SetWordLineMode( false );
         pFont->SetTransparent( true );
         pFont->SetPhysFont(*pOut);
-        pOut->DrawStretchText( aSpacePos, nDiff, "  ", 0, 2 );
+        pOut->DrawStretchText( aSpacePos, nDiff, u"  "_ustr, 0, 2 );
         pFont->SetWordLineMode( bWordWise );
         pFont->SetTransparent( bTrans );
         pFont->SetPhysFont(*pOut);
@@ -864,10 +869,10 @@ void SvxDoDrawCapital::Do( const OUString &_rTxt, const sal_Int32 nSpanIdx,
 
         Point aStartPos(aPos.X() + nStartX, aPos.Y());
 
-        std::vector<sal_Int32> aDXArray;
-        aDXArray.reserve(nSpanLen);
+        KernArray aDXArray;
+        aDXArray.resize(nSpanLen);
         for (sal_Int32 i = 0; i < nSpanLen; ++i)
-            aDXArray.push_back(pDXArray[nStartOffset + i] - nStartX);
+            aDXArray[i] = pDXArray[nStartOffset + i] - nStartX;
 
         auto aKashidaArray = !pKashidaArray.empty() ?
             std::span<const sal_Bool>(pKashidaArray.data() + nStartOffset, nSpanLen) :
@@ -893,7 +898,7 @@ void SvxDoDrawCapital::Do( const OUString &_rTxt, const sal_Int32 nSpanIdx,
 
 void SvxFont::DrawCapital( OutputDevice *pOut,
                const Point &rPos, const OUString &rTxt,
-               std::span<const sal_Int32> pDXArray,
+               KernArraySpan pDXArray,
                std::span<const sal_Bool> pKashidaArray,
                const sal_Int32 nIdx, const sal_Int32 nLen ) const
 {

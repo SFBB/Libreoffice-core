@@ -61,8 +61,9 @@ interface CellSelection
     SID_SUBTOTALS           [ ExecMethod = ExecuteDB; StateMethod = GetDBState; ]
     SID_PIVOT_TABLE         [ ExecMethod = ExecuteDB; StateMethod = GetDBState; ]
     FID_VALIDATION          [ ExecMethod = ExecuteDB; StateMethod = GetBlockState; ]
-    FID_CURRENTVALIDATION   [ ExecMethod = ExecuteDB; StateMethod = GetState; ]
+    FID_CURRENTVALIDATION   [ ExecMethod = ExecuteDB; StateMethod = GetBlockState; ]
     SID_TEXT_TO_COLUMNS     [ ExecMethod = ExecuteDB; StateMethod = GetDBState; ]
+    SID_CLEAR_AUTO_FILTER   [ ExecMethod = ExecuteDB; StateMethod = GetDBState; ]
 
     // } database operations
 
@@ -171,6 +172,7 @@ interface CellSelection
     SID_FOCUS_INPUTLINE [ ExecMethod = ExecuteMove; StateMethod = GetStateCursor; ]
     SID_CUT             [ ExecMethod = ExecuteEdit; StateMethod = GetBlockState; ]
     SID_COPY            [ ExecMethod = ExecuteEdit; StateMethod = GetBlockState; ]
+    SID_COPYDELETE      [ ExecMethod = ExecuteEdit; StateMethod = GetBlockState; ]
     SID_PASTE           [ ExecMethod = ExecuteEdit; StateMethod = GetClipState; ]
     SID_PASTE_SPECIAL   [ ExecMethod = ExecuteEdit; StateMethod = GetClipState; ]
     SID_PASTE_UNFORMATTED [ ExecMethod = ExecuteEdit; StateMethod = GetClipState; ]
@@ -182,6 +184,9 @@ interface CellSelection
     SID_PASTE_TEXTIMPORT_DIALOG [ ExecMethod = ExecuteEdit; StateMethod = GetClipState; ]
     SID_CLIPBOARD_FORMAT_ITEMS  [ ExecMethod = ExecuteEdit; StateMethod = GetClipState; ]
     SID_EXTERNAL_SOURCE [ ExecMethod = ExecuteEdit; StateMethod = GetBlockState; ]
+    SID_COPY_HYPERLINK_LOCATION [ ExecMethod = ExecuteEdit; StateMethod = GetBlockState; ]
+    SID_EDIT_HYPERLINK [ ExecMethod = ExecuteEdit; StateMethod = GetBlockState; ]
+    SID_REMOVE_HYPERLINK [ ExecMethod = ExecuteEdit; StateMethod = GetBlockState; ]
     FID_MERGE_ON        [ ExecMethod = Execute; StateMethod = GetState; ]
     FID_MERGE_OFF       [ ExecMethod = Execute; StateMethod = GetState; ]
     FID_MERGE_TOGGLE    [ ExecMethod = Execute; StateMethod = GetState; ]
@@ -446,6 +451,8 @@ interface CellMovement
     ]
     SID_DATA_SELECT         [ ExecMethod = Execute; StateMethod = GetState; ]
     SID_DETECTIVE_FILLMODE  [ ExecMethod = Execute; StateMethod = GetState; ] // api:
+
+    FID_MOVE_KEEP_INSERT_MODE [ ExecMethod = Execute; ]
 }
 
 

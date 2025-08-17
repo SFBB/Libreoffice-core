@@ -44,13 +44,13 @@ class SvxLanguageItem;
 class SvxEscapementItem;
 class SvxCaseMapItem;
 class SvxNoHyphenItem;
-class SvxBlinkItem;
 class SvxEmphasisMarkItem;
 class SvxTwoLinesItem;
 class SvxCharScaleWidthItem;
 class SvxCharRotateItem;
 class SvxCharReliefItem;
 class SvxCharHiddenItem;
+class SvxScriptHintItem;
 
 // Frame attributes
 class SwFormatFillOrder;
@@ -146,16 +146,16 @@ private:
     friend void InitCore();            // For creating/deleting of version maps.
     friend void FinitCore();
 
-    SwDoc* m_pDoc;
+    SwDoc& m_rDoc;
 
 public:
-    SwAttrPool( SwDoc* pDoc );
+    SwAttrPool( SwDoc& rDoc );
 private:
     virtual ~SwAttrPool() override;
 public:
 
-          SwDoc* GetDoc()           { return m_pDoc; }
-    const SwDoc* GetDoc() const     { return m_pDoc; }
+          SwDoc& GetDoc()           { return m_rDoc; }
+    const SwDoc& GetDoc() const     { return m_rDoc; }
 
 };
 
@@ -165,19 +165,9 @@ class SW_DLLPUBLIC SwAttrSet final : public SfxItemSet
     SwAttrSet *m_pOldSet;
     SwAttrSet *m_pNewSet;
 
-    // helper class for change callback & local instance
-    // needed to forward the processing call to the correct instance
-    class callbackHolder final
-    {
-    private:
-        SwAttrSet* m_Set;
-    public:
-        callbackHolder(SwAttrSet* pSet) : m_Set(pSet) {}
-        void operator () (const SfxPoolItem* pOld, const SfxPoolItem* pNew) { m_Set->changeCallback(pOld, pNew); }
-    } m_aCallbackHolder;
-
     // processor for change callback
-    void changeCallback(const SfxPoolItem* pOld, const SfxPoolItem* pNew) const;
+    virtual void Changed(const SfxPoolItem* pOld, const SfxPoolItem* pNew) const override;
+
 public:
     SwAttrSet( SwAttrPool&, sal_uInt16 nWhich1, sal_uInt16 nWhich2 );
     SwAttrSet( SwAttrPool&, const WhichRangesContainer& nWhichPairTable );
@@ -213,8 +203,8 @@ public:
     bool SetModifyAtAttr( const sw::BroadcastingModify* pModify );
 
     // Document is set at SwAttrPool. Therefore it is always accessible.
-    const SwDoc *GetDoc() const { return GetPool()->GetDoc(); }
-          SwDoc *GetDoc()       { return GetPool()->GetDoc(); }
+    const SwDoc &GetDoc() const { return GetPool()->GetDoc(); }
+          SwDoc &GetDoc()       { return GetPool()->GetDoc(); }
 
     // Get methods: bool indicates whether to search only in Set (when false)
     // or also in parents. If nothing is found then default attribute is returned.

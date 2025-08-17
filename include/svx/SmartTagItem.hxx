@@ -16,8 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SVX_SMARTTAGITEM_HXX
-#define INCLUDED_SVX_SMARTTAGITEM_HXX
+
+#pragma once
 
 #include <svl/poolitem.hxx>
 #include <com/sun/star/uno/Reference.hxx>
@@ -50,6 +50,7 @@ class SVX_DLLPUBLIC SvxSmartTagItem final : public SfxPoolItem
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxSmartTagItem)
     SvxSmartTagItem( const TypedWhichId<SvxSmartTagItem> nId,
                      const css::uno::Sequence < css::uno::Sequence< css::uno::Reference< css::smarttags::XSmartTagAction > > >& rActionComponentsSequence,
                      const css::uno::Sequence < css::uno::Sequence< sal_Int32 > >& rActionIndicesSequence,
@@ -75,8 +76,6 @@ public:
     const OUString& GetApplicationName() const { return maApplicationName; }
     const OUString& GetRangeText() const { return maRangeText; }
 };
-
-#endif // INCLUDED_SVX_SMARTTAGITEM_HXX
 
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

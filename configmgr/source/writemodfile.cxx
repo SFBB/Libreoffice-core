@@ -30,6 +30,7 @@
 #include <o3tl/safeint.hxx>
 #include <osl/file.h>
 #include <osl/file.hxx>
+#include <osl/mutex.hxx>
 #include <rtl/string.h>
 #include <rtl/string.hxx>
 #include <rtl/textcvt.h>
@@ -40,6 +41,7 @@
 #include <sal/types.h>
 #include <xmlreader/span.hxx>
 
+#include "components.hxx"
 #include "data.hxx"
 #include "groupnode.hxx"
 #include "localizedpropertynode.hxx"
@@ -67,7 +69,7 @@ OString convertToUtf8(std::u16string_view text) {
              RTL_UNICODETOTEXT_FLAGS_INVALID_ERROR)))
     {
         throw css::uno::RuntimeException(
-            "cannot convert to UTF-8");
+            u"cannot convert to UTF-8"_ustr);
     }
     return s;
 }
@@ -209,7 +211,7 @@ template< typename T > void writeListValue(
         if (i != 0) {
             handle.writeString(" ");
         }
-        writeValueContent_(handle, std::as_const(val)[i]);
+        writeValueContent_(handle, val[i]);
     }
     handle.writeString("</value>");
 }
@@ -220,7 +222,7 @@ template< typename T > void writeItemListValue(
     handle.writeString(">");
     css::uno::Sequence< T > val;
     value >>= val;
-    for (const auto & i : std::as_const(val)) {
+    for (const auto & i : val) {
         handle.writeString("<it>");
         writeValueContent_(handle, i);
         handle.writeString("</it>");
@@ -601,36 +603,41 @@ void writeModFile(
     // come from the .xcs/.xcu files, anyway (but had been added dynamically
     // instead):
 
-    // For profilesafemode it is necessary to detect changes in the
-    // registrymodifications file, this is done based on file size in bytes and crc32.
-    // Unfortunately this write is based on writing unordered map entries, which creates
-    // valid and semantically equal XML-Files, bubt with different crc32 checksums. For
-    // the future usage it will be preferable to have easily comparable config files
-    // which is guaranteed by writing the entries in sorted order. Indeed with this change
-    // (and in the recursive writeModifications call) the same config files get written
-
-    // copy configmgr::Modifications::Node's to a sortable list. Use pointers
-    // to just reference the data instead of copying it
-    std::vector< const ModNodePairEntry* > ModNodePairEntryVector;
-    ModNodePairEntryVector.reserve(data.modifications.getRoot().children.size());
-
-    for (const auto& rCand : data.modifications.getRoot().children)
     {
-        ModNodePairEntryVector.push_back(&rCand);
+        osl::MutexGuard g(components.getLock());
+
+        // For profilesafemode it is necessary to detect changes in the
+        // registrymodifications file, this is done based on file size in bytes and crc32.
+        // Unfortunately this write is based on writing unordered map entries, which creates
+        // valid and semantically equal XML-Files, bubt with different crc32 checksums. For
+        // the future usage it will be preferable to have easily comparable config files
+        // which is guaranteed by writing the entries in sorted order. Indeed with this change
+        // (and in the recursive writeModifications call) the same config files get written
+
+        // copy configmgr::Modifications::Node's to a sortable list. Use pointers
+        // to just reference the data instead of copying it
+        std::vector< const ModNodePairEntry* > ModNodePairEntryVector;
+        ModNodePairEntryVector.reserve(data.modifications.getRoot().children.size());
+
+        for (const auto& rCand : data.modifications.getRoot().children)
+        {
+            ModNodePairEntryVector.push_back(&rCand);
+        }
+
+        // sort the list
+        std::sort(ModNodePairEntryVector.begin(), ModNodePairEntryVector.end(), PairEntrySorter());
+
+        // now use the list to write entries in sorted order
+        // instead of random as from the unordered map
+        for (const auto& j : ModNodePairEntryVector)
+        {
+            writeModifications(
+                components, tmp, u"", rtl::Reference< Node >(), j->first,
+                data.getComponents().findNode(Data::NO_LAYER, j->first),
+                j->second);
+        }
     }
 
-    // sort the list
-    std::sort(ModNodePairEntryVector.begin(), ModNodePairEntryVector.end(), PairEntrySorter());
-
-    // now use the list to write entries in sorted order
-    // instead of random as from the unordered map
-    for (const auto& j : ModNodePairEntryVector)
-    {
-        writeModifications(
-            components, tmp, u"", rtl::Reference< Node >(), j->first,
-            data.getComponents().findNode(Data::NO_LAYER, j->first),
-            j->second);
-    }
     tmp.writeString("</oor:items>\n");
     tmp.closeAndRename(url);
 }

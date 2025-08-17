@@ -236,7 +236,7 @@ OUString PivotCacheItem::getName() const
     return OUString();
 }
 
-OUString PivotCacheItem::getFormattedName(const ScDPSaveDimension& rSaveDim, ScDPObject* pObj, const DateTime& rNullDate) const
+OUString PivotCacheItem::getFormattedName(const ScDPSaveDimension& rSaveDim, ScDPObject* pObj, const Date& rNullDate) const
 {
     switch( mnType )
     {
@@ -253,7 +253,7 @@ OUString PivotCacheItem::getFormattedName(const ScDPSaveDimension& rSaveDim, ScD
                 SAL_WARN("sc", "PivotCacheField::getFormattedName - invalid date");
                 return OUString();
             }
-            return pObj->GetFormattedString(rSaveDim.GetName(), DateTime::Sub(aDateTime, rNullDate));
+            return pObj->GetFormattedString(rSaveDim.GetName(), DateTime::Sub(DateTime(aDateTime), DateTime(rNullDate)));
         }
         case XML_e: return maValue.get< OUString >();
     }
@@ -714,7 +714,7 @@ OUString PivotCacheField::createParentGroupField( const Reference< XDataPilotFie
                 Reference< XDataPilotField > xDPNewField = xDPGrouping->createNameGroup( comphelper::containerToSequence( aMembers ) );
                 SAL_WARN_IF( xDPGroupField.is() == xDPNewField.is(), "sc", "PivotCacheField::createParentGroupField - missing group field" );
                 if( !xDPGroupField.is() )
-                    xDPGroupField = xDPNewField;
+                    xDPGroupField = std::move(xDPNewField);
 
                 // get current grouping info
                 DataPilotFieldGroupInfo aGroupInfo;
@@ -922,7 +922,9 @@ void PivotCache::importWorksheetSource( const AttributeList& rAttribs, const Rel
     // resolve URL of external document
     maTargetUrl = rRelations.getExternalTargetFromRelId( maSheetSrcModel.maRelId );
     // store range address unchecked with sheet index 0, will be resolved/checked later
-    AddressConverter::convertToCellRangeUnchecked( maSheetSrcModel.maRange, rAttribs.getString( XML_ref, OUString() ), 0 );
+    AddressConverter::convertToCellRangeUnchecked(maSheetSrcModel.maRange,
+                                                  rAttribs.getString(XML_ref, OUString()), 0,
+                                                  getScDocument());
 }
 
 void PivotCache::importPCDefinition( SequenceInputStream& rStrm )
@@ -1060,7 +1062,7 @@ sal_Int32 PivotCache::getCacheDatabaseIndex( sal_Int32 nFieldIdx ) const
 
 void PivotCache::writeSourceHeaderCells( const WorksheetHelper& rSheetHelper ) const
 {
-    OSL_ENSURE( static_cast< size_t >( maSheetSrcModel.maRange.aEnd.Col() - maSheetSrcModel.maRange.aStart.Col() + 1 ) == maDatabaseFields.size(),
+    OSL_ENSURE( static_cast< size_t >( maSheetSrcModel.maRange.aEnd.Col()) - maSheetSrcModel.maRange.aStart.Col() + 1 == maDatabaseFields.size(),
         "PivotCache::writeSourceHeaderCells - source cell range width does not match number of source fields" );
     SCCOL nCol = maSheetSrcModel.maRange.aStart.Col();
     SCCOL nMaxCol = getAddressConverter().getMaxApiAddress().Col();

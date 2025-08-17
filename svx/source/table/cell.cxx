@@ -39,6 +39,7 @@
 #include <sdr/properties/cellproperties.hxx>
 #include <editeng/outlobj.hxx>
 #include <editeng/writingmodeitem.hxx>
+#include <svx/sdtfchim.hxx>
 #include <svx/svdotable.hxx>
 #include <svx/svdoutl.hxx>
 #include <svx/unoshtxt.hxx>
@@ -72,7 +73,6 @@ using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::table;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::style;
-using namespace ::com::sun::star::container;
 
 
 static const SvxItemPropertySet* ImplGetSvxCellPropertySet()
@@ -83,6 +83,7 @@ static const SvxItemPropertySet* ImplGetSvxCellPropertySet()
         FILL_PROPERTIES
 //      { "HasLevels",                    OWN_ATTR_HASLEVELS,             cppu::UnoType<bool>::get(), css::beans::PropertyAttribute::READONLY,      0},
         { u"Style"_ustr,                        OWN_ATTR_STYLE,                 cppu::UnoType< css::style::XStyle >::get(),                                    css::beans::PropertyAttribute::MAYBEVOID, 0},
+        { UNO_NAME_TEXT_FONTINDEPENDENTLINESPACING, SDRATTR_TEXT_USEFIXEDCELLHEIGHT, cppu::UnoType<bool>::get(), 0, 0},
         { UNO_NAME_TEXT_WRITINGMODE,      SDRATTR_TEXTDIRECTION,          cppu::UnoType<css::text::WritingMode>::get(),                         0,      0},
         { UNO_NAME_TEXT_HORZADJUST,       SDRATTR_TEXT_HORZADJUST,        cppu::UnoType<css::drawing::TextHorizontalAdjust>::get(),  0,      0},
         { UNO_NAME_TEXT_LEFTDIST,         SDRATTR_TEXT_LEFTDIST,          cppu::UnoType<sal_Int32>::get(),        0,      0, PropertyMoreFlags::METRIC_ITEM},
@@ -184,7 +185,7 @@ SdrText* CellTextProvider::getText(sal_Int32 nIndex) const
             // deliberately do not run superclass ForceDefaultAttributes, we don't want any default attributes
         }
 
-        void CellProperties::ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich)
+        void CellProperties::ItemSetChanged(std::span< const SfxPoolItem* const > aChangedItems, sal_uInt16 nDeletedWhich, bool bAdjustTextFrameWidthAndHeight)
         {
             SdrTextObj& rObj = static_cast<SdrTextObj&>(GetSdrObject());
 
@@ -253,7 +254,7 @@ SdrText* CellTextProvider::getText(sal_Int32 nIndex) const
             }
 
             // call parent
-            AttributeProperties::ItemSetChanged(aChangedItems, nDeletedWhich);
+            AttributeProperties::ItemSetChanged(aChangedItems, nDeletedWhich, bAdjustTextFrameWidthAndHeight);
 
             if( mxCell.is() )
                 mxCell->notifyModified();
@@ -563,7 +564,7 @@ bool Cell::hasText() const
         {
             if( rTextObj.GetParagraphCount() == 1 )
             {
-                if( rTextObj.GetText(0).isEmpty() )
+                if( !rTextObj.HasText(0) )
                     return false;
             }
             return true;
@@ -705,15 +706,21 @@ sal_Int32 Cell::getMinimumHeight()
     {
         Outliner& rOutliner=rTableObj.ImpGetDrawOutliner();
         rOutliner.SetPaperSize(aSize);
-        rOutliner.SetUpdateLayout(true);
         ForceOutlinerParaObject( OutlinerMode::TextObject );
 
         if( GetOutlinerParaObject() )
         {
+            rOutliner.SetFixedCellHeight(
+                GetItemSet().Get(SDRATTR_TEXT_USEFIXEDCELLHEIGHT).GetValue());
             rOutliner.SetText(*GetOutlinerParaObject());
         }
+
+        rOutliner.SetUpdateLayout(true);
         nMinimumHeight=rOutliner.GetTextHeight()+1;
+
+        // cleanup outliner
         rOutliner.Clear();
+        rOutliner.SetFixedCellHeight(false);
     }
 
     nMinimumHeight += GetTextUpperDistance() + GetTextLowerDistance();
@@ -761,7 +768,7 @@ void Cell::SetOutlinerParaObject( std::optional<OutlinerParaObject> pTextObject 
 {
     bool bNullTextObject = !pTextObject;
     SdrText::SetOutlinerParaObject( std::move(pTextObject) );
-    maSelection.nStartPara = EE_PARA_MAX_COUNT;
+    maSelection.start.nPara = EE_PARA_MAX;
 
     if( bNullTextObject )
         ForceOutlinerParaObject( OutlinerMode::TextObject );
@@ -835,7 +842,7 @@ void SAL_CALL Cell::release() noexcept
 Sequence< Type > SAL_CALL Cell::getTypes(  )
 {
     return comphelper::concatSequences( SvxUnoTextBase::getTypes(),
-        Sequence {
+        std::initializer_list<Type>{
             cppu::UnoType<XMergeableCell>::get(),
             cppu::UnoType<XLayoutConstrains>::get() });
 }
@@ -1104,7 +1111,7 @@ void SAL_CALL Cell::setPropertyValue( const OUString& rPropertyName, const Any& 
                     {
                         // fetch the default from ItemPool
                         if(SfxItemPool::IsWhich(pMap->nWID))
-                            aSet.Put(GetObject().getSdrModelFromSdrObject().GetItemPool().GetDefaultItem(pMap->nWID));
+                            aSet.Put(GetObject().getSdrModelFromSdrObject().GetItemPool().GetUserOrPoolDefaultItem(pMap->nWID));
                     }
 
                     if( aSet.GetItemState( pMap->nWID ) == SfxItemState::SET )
@@ -1208,7 +1215,7 @@ Any SAL_CALL Cell::getPropertyValue( const OUString& PropertyName )
                 {
                     // fetch the default from ItemPool
                     if(SfxItemPool::IsWhich(pMap->nWID))
-                        aSet.Put(GetObject().getSdrModelFromSdrObject().GetItemPool().GetDefaultItem(pMap->nWID));
+                        aSet.Put(GetObject().getSdrModelFromSdrObject().GetItemPool().GetUserOrPoolDefaultItem(pMap->nWID));
                 }
 
                 if( aSet.Count() )
@@ -1255,7 +1262,7 @@ void SAL_CALL Cell::setPropertyValues( const Sequence< OUString >& aPropertyName
 
     const sal_Int32 nCount = aPropertyNames.getLength();
     if (nCount != aValues.getLength())
-        throw css::lang::IllegalArgumentException("lengths do not match",
+        throw css::lang::IllegalArgumentException(u"lengths do not match"_ustr,
                                                   getXWeak(), -1);
 
     const OUString* pNames = aPropertyNames.getConstArray();
@@ -1586,7 +1593,7 @@ Any SAL_CALL Cell::getPropertyDefault( const OUString& aPropertyName )
             if( SfxItemPool::IsWhich(pMap->nWID) )
             {
                 SfxItemSet aSet(GetObject().getSdrModelFromSdrObject().GetItemPool(), pMap->nWID, pMap->nWID);
-                aSet.Put(GetObject().getSdrModelFromSdrObject().GetItemPool().GetDefaultItem(pMap->nWID));
+                aSet.Put(GetObject().getSdrModelFromSdrObject().GetItemPool().GetUserOrPoolDefaultItem(pMap->nWID));
                 return GetAnyForItem( aSet, pMap );
             }
         }
@@ -1614,7 +1621,7 @@ void SAL_CALL Cell::setAllPropertiesToDefault()
 
     if(nParaCount)
     {
-        ESelection aSelection( 0, 0, EE_PARA_ALL, EE_TEXTPOS_ALL);
+        auto aSelection = ESelection::All();
         rOutliner.RemoveAttribs(aSelection, true, 0);
 
         std::optional<OutlinerParaObject> pTemp = rOutliner.CreateParaObject(0, nParaCount);
@@ -1683,7 +1690,7 @@ void SAL_CALL Cell::insertControlCharacter( const Reference< XTextRange >& xRang
 
 OUString SAL_CALL Cell::getString(  )
 {
-    maSelection.nStartPara = EE_PARA_MAX_COUNT;
+    maSelection.start.nPara = EE_PARA_MAX;
     return SvxUnoTextBase::getString();
 }
 

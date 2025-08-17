@@ -38,8 +38,12 @@ $(call gb_StaticLibrary__StaticLibrary_impl,$(1),$(call gb_StaticLibrary_get_lin
 
 endef
 
+define gb_StaticLibrary_register_target
+endef
+
 # call gb_StaticLibrary__StaticLibrary_impl,staticlib,linktarget
 define gb_StaticLibrary__StaticLibrary_impl
+$(call gb_StaticLibrary_register_target, $(1), $(2))
 $(call gb_LinkTarget_LinkTarget,$(2),StaticLibrary_$(1),NONE)
 $(call gb_LinkTarget_set_targettype,$(2),StaticLibrary)
 $(call gb_StaticLibrary_get_clean_target,$(1)) : $(call gb_LinkTarget_get_clean_target,$(2))
@@ -62,6 +66,8 @@ endef
 gb_StaticLibrary_add_cobject = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_cobjects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_cxxobject = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
+gb_StaticLibrary_add_objcobject = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
+gb_StaticLibrary_add_objcobjects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_cxxobjects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_objcxxobject = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_objcxxobjects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
@@ -70,9 +76,7 @@ gb_StaticLibrary_add_cxxclrobjects = $(call gb_StaticLibrary__forward_to_Linktar
 gb_StaticLibrary_add_asmobject = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_asmobjects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_exception_objects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
-gb_StaticLibrary_add_x64_generated_exception_objects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_generated_cobjects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
-gb_StaticLibrary_add_x64_generated_cobjects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_generated_exception_objects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_generated_objcobjects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_generated_objcxxobjects = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
@@ -87,7 +91,6 @@ gb_StaticLibrary_add_defs = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),
 gb_StaticLibrary_set_include = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_ldflags = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_set_ldflags = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
-gb_StaticLibrary_set_x64 = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_add_libs = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_set_library_path_flags = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))
 gb_StaticLibrary_use_api = $(call gb_StaticLibrary__forward_to_Linktarget,$(0),$(1),$(2),$(3))

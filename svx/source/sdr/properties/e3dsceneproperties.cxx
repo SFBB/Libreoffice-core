@@ -83,13 +83,13 @@ namespace sdr::properties
                             // and always equal.
                             if(nWhich <= SDRATTR_3DSCENE_FIRST || nWhich >= SDRATTR_3DSCENE_LAST)
                             {
-                                if(SfxItemState::DONTCARE == aIter.GetItemState(false))
+                                if(SfxItemState::INVALID == aIter.GetItemState(false))
                                 {
                                     moItemSet->InvalidateItem(nWhich);
                                 }
                                 else
                                 {
-                                    moItemSet->MergeValue(rSet.Get(nWhich), true);
+                                    moItemSet->MergeValue(rSet.Get(nWhich));
                                 }
                             }
 
@@ -102,7 +102,7 @@ namespace sdr::properties
             return E3dProperties::GetMergedItemSet();
         }
 
-        void E3dSceneProperties::SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems)
+        void E3dSceneProperties::SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems, bool bAdjustTextFrameWidthAndHeight)
         {
             // Set SDRATTR_3DOBJ_ range at contained objects.
             const SdrObjList* pSub(static_cast<const E3dScene&>(GetSdrObject()).GetSubList());
@@ -127,14 +127,14 @@ namespace sdr::properties
                         if(dynamic_cast<const E3dCompoundObject* >(pObj.get()))
                         {
                             // set merged ItemSet at contained 3d object.
-                            pObj->SetMergedItemSet(*xNewSet, bClearAllItems);
+                            pObj->SetMergedItemSet(*xNewSet, bClearAllItems, bAdjustTextFrameWidthAndHeight);
                         }
                     }
                 }
             }
 
             // call parent. This will set items on local object, too.
-            E3dProperties::SetMergedItemSet(rSet, bClearAllItems);
+            E3dProperties::SetMergedItemSet(rSet, bClearAllItems, bAdjustTextFrameWidthAndHeight);
         }
 
         void E3dSceneProperties::SetMergedItem(const SfxPoolItem& rItem)
@@ -220,7 +220,7 @@ namespace sdr::properties
         }
 
         void E3dSceneProperties::SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast)
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight)
         {
             const SdrObjList* pSub(static_cast<const E3dScene&>(GetSdrObject()).GetSubList());
             OSL_ENSURE(nullptr != pSub, "Children of SdrObject expected (!)");
@@ -231,7 +231,7 @@ namespace sdr::properties
                 if(bBroadcast)
                     pObj->SetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
                 else
-                    pObj->NbcSetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr);
+                    pObj->NbcSetStyleSheet(pNewStyleSheet, bDontRemoveHardAttr, bAdjustTextFrameWidthAndHeight);
             }
         }
 

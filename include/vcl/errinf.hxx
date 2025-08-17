@@ -31,9 +31,8 @@ namespace weld { class Window; }
 
 class ErrorHandler;
 class ErrorContext;
-enum class DialogMask;
 
-class VCL_DLLPUBLIC ErrorStringFactory
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) ErrorStringFactory
 {
 public:
     static bool CreateString(const ErrCodeMsg&, OUString&);

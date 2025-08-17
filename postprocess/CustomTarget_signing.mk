@@ -17,22 +17,20 @@ $(eval $(call gb_CustomTarget_register_targets,postprocess/signing,\
 # PFXFILE and PFXPASSWORD should be set in environment
 TIMESTAMPURL ?= "http://timestamp.globalsign.com/scripts/timestamp.dll"
 
-$(call gb_CustomTarget_get_workdir,postprocess/signing)/signing.done: \
+$(gb_CustomTarget_workdir)/postprocess/signing/signing.done: \
 	$(SRCDIR)/postprocess/signing/signing.pl \
-	$(SRCDIR)/postprocess/signing/no_signing.txt \
+	$(call gb_Module_get_target,extras) \
 	$(call gb_Postprocess_get_target,AllLibraries) \
 	$(call gb_Postprocess_get_target,AllExecutables) \
 	$(call gb_Postprocess_get_target,AllModuleTests) \
 	$(call gb_Postprocess_get_target,AllModuleSlowtests)
 
-$(call gb_CustomTarget_get_workdir,postprocess/signing)/signing.done:
+$(gb_CustomTarget_workdir)/postprocess/signing/signing.done:
 	$(call gb_Output_announce,$(subst $(WORKDIR)/,,$@),$(true),PRL,2)
 	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),PRL)
 ifeq ($(COM),MSC)
 	EXCLUDELIST=$(shell $(gb_MKTEMP)) && \
-	cat $(SRCDIR)/postprocess/signing/no_signing.txt > $$EXCLUDELIST && \
-	echo "$(foreach lib,$(gb_MERGEDLIBS),$(call gb_Library_get_filename,$(lib)))" | tr ' ' '\n' >> $$EXCLUDELIST && \
-	$(if $(BUILD_X64),chmod u+w $(foreach lib,$(MSVC_DLLS),$(INSTDIR)/program/shlxthdl/$(lib)) &&) \
+	echo "$(foreach lib,$(gb_MERGEDLIBS),$(call gb_Library_get_filename,$(lib)))" | tr ' ' '\n' > $$EXCLUDELIST && \
 	$(PERL) $(SRCDIR)/postprocess/signing/signing.pl \
 			-e $$EXCLUDELIST \
 			-l $(subst .done,_log.txt,$@) \
@@ -53,6 +51,7 @@ ifeq ($(COM),MSC)
 			$(INSTDIR)/$(LIBO_BIN_FOLDER)/python-core-$(PYTHON_VERSION)/lib/*.pyd \
 			$(INSTDIR)/$(LIBO_BIN_FOLDER)/python-core-$(PYTHON_VERSION)/lib/distutils/command/*.exe \
 			$(INSTDIR)/program/shlxthdl/*.dll \
+			$(INSTDIR)/intl/*.dll \
 			$(INSTDIR)/sdk/cli/*.dll \
 			$(INSTDIR)/sdk/bin/*.exe \
 	&& rm $$EXCLUDELIST && touch $@

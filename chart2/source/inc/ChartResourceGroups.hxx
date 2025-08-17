@@ -27,7 +27,6 @@
 namespace chart
 {
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 
 class SplinePropertiesDialog;
 class SteppedPropertiesDialog;
@@ -113,8 +112,8 @@ private:
     DECL_LINK(LineTypeChangeHdl, weld::ComboBox&, void);
     DECL_LINK(SplineDetailsDialogHdl, weld::Button&, void);
     DECL_LINK(SteppedDetailsDialogHdl, weld::Button&, void);
-    std::shared_ptr<SplinePropertiesDialog> getSplinePropertiesDialog();
-    std::shared_ptr<SteppedPropertiesDialog> getSteppedPropertiesDialog();
+    const std::shared_ptr<SplinePropertiesDialog>& getSplinePropertiesDialog();
+    const std::shared_ptr<SteppedPropertiesDialog>& getSteppedPropertiesDialog();
 
 private:
     weld::Window* m_pParent;

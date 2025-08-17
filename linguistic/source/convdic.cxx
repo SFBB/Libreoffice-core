@@ -68,7 +68,7 @@ static void ReadThroughDic( const OUString &rMainURL, ConvDicXMLImport &rImport 
         return;
     DBG_ASSERT(!INetURLObject( rMainURL ).HasError(), "invalid URL");
 
-    uno::Reference< uno::XComponentContext > xContext( comphelper::getProcessComponentContext() );
+    const uno::Reference< uno::XComponentContext >& xContext( comphelper::getProcessComponentContext() );
 
     // get xInputStream stream
     uno::Reference< io::XInputStream > xIn;
@@ -86,7 +86,7 @@ static void ReadThroughDic( const OUString &rMainURL, ConvDicXMLImport &rImport 
 
     // prepare ParserInputSource
     xml::sax::InputSource aParserInput;
-    aParserInput.aInputStream = xIn;
+    aParserInput.aInputStream = std::move(xIn);
 
     // finally, parser the stream
     try
@@ -207,7 +207,7 @@ void ConvDic::Save()
         return;
     DBG_ASSERT(!INetURLObject( aMainURL ).HasError(), "invalid URL");
 
-    uno::Reference< uno::XComponentContext > xContext( comphelper::getProcessComponentContext() );
+    const uno::Reference< uno::XComponentContext >& xContext( comphelper::getProcessComponentContext() );
 
     // get XOutputStream stream
     uno::Reference< io::XStream > xStream;
@@ -566,7 +566,7 @@ void SAL_CALL ConvDic::removeFlushListener(
 
 OUString SAL_CALL ConvDic::getImplementationName(  )
 {
-    return "com.sun.star.lingu2.ConvDic";
+    return u"com.sun.star.lingu2.ConvDic"_ustr;
 }
 
 sal_Bool SAL_CALL ConvDic::supportsService( const OUString& rServiceName )

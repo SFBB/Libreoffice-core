@@ -396,29 +396,29 @@ const SvXMLEnumMapEntry<sal_Int16> aAnimations_EnumMap_Command[] =
 
 const struct ImplAttributeNameConversion* getAnimationAttributeNamesConversionList()
 {
-    static const struct ImplAttributeNameConversion gImplConversionList[] =
+    static constexpr struct ImplAttributeNameConversion gImplConversionList[]
     {
-        { XML_X,                        "X" },
-        { XML_Y,                        "Y" },
-        { XML_WIDTH,                    "Width" },
-        { XML_HEIGHT,                   "Height" },
-        { XML_ROTATE,                   "Rotate" },
-        { XML_SKEWX,                    "SkewX" },
-        { XML_FILL_COLOR,               "FillColor" },
-        { XML_FILL,                     "FillStyle" },
-        { XML_STROKE_COLOR,             "LineColor" },
-        { XML_STROKE,                   "LineStyle" },
-        { XML_COLOR,                    "CharColor" },
-        { XML_TEXT_ROTATION_ANGLE,      "CharRotation" },
-        { XML_FONT_WEIGHT,              "CharWeight" },
-        { XML_TEXT_UNDERLINE,           "CharUnderline" },
-        { XML_FONT_FAMILY,              "CharFontName" },
-        { XML_FONT_SIZE,                "CharHeight" },
-        { XML_FONT_STYLE,               "CharPosture" },
-        { XML_VISIBILITY,               "Visibility" },
-        { XML_OPACITY,                  "Opacity" },
-        { XML_DIM,                      "DimColor" },
-        { XML_TOKEN_INVALID,            nullptr }
+        { XML_X,                        u"X"_ustr },
+        { XML_Y,                        u"Y"_ustr },
+        { XML_WIDTH,                    u"Width"_ustr },
+        { XML_HEIGHT,                   u"Height"_ustr },
+        { XML_ROTATE,                   u"Rotate"_ustr },
+        { XML_SKEWX,                    u"SkewX"_ustr },
+        { XML_FILL_COLOR,               u"FillColor"_ustr },
+        { XML_FILL,                     u"FillStyle"_ustr },
+        { XML_STROKE_COLOR,             u"LineColor"_ustr },
+        { XML_STROKE,                   u"LineStyle"_ustr },
+        { XML_COLOR,                    u"CharColor"_ustr },
+        { XML_TEXT_ROTATION_ANGLE,      u"CharRotation"_ustr },
+        { XML_FONT_WEIGHT,              u"CharWeight"_ustr },
+        { XML_TEXT_UNDERLINE,           u"CharUnderline"_ustr },
+        { XML_FONT_FAMILY,              u"CharFontName"_ustr },
+        { XML_FONT_SIZE,                u"CharHeight"_ustr },
+        { XML_FONT_STYLE,               u"CharPosture"_ustr },
+        { XML_VISIBILITY,               u"Visibility"_ustr },
+        { XML_OPACITY,                  u"Opacity"_ustr },
+        { XML_DIM,                      u"DimColor"_ustr },
+        { XML_TOKEN_INVALID,            u""_ustr }
     };
 
     return gImplConversionList;
@@ -441,7 +441,7 @@ public:
     static Reference< XInterface > getParagraphTarget( const ParagraphTarget& pTarget );
 
     static void convertPath( OUStringBuffer& sTmp, const Any& rPath );
-    void convertValue( XMLTokenEnum eAttributeName, OUStringBuffer& sTmp, const Any& rValue ) const;
+    bool convertValue( XMLTokenEnum eAttributeName, OUStringBuffer& sTmp, const Any& rValue ) const;
     void convertTiming( OUStringBuffer& sTmp, const Any& rTiming ) const;
     void convertTarget( OUStringBuffer& sTmp, const Any& rTarget ) const;
 
@@ -514,8 +514,7 @@ char const s_PkgScheme[] = "vnd.sun.star.Package:";
 
 static OUString lcl_StoreMediaAndGetURL(SvXMLExport & rExport, OUString const& rURL)
 {
-    OUString urlPath;
-    if (rURL.startsWithIgnoreAsciiCase(s_PkgScheme, &urlPath))
+    if (rURL.startsWithIgnoreAsciiCase(s_PkgScheme))
     {
         try // video is embedded
         {
@@ -528,7 +527,7 @@ static OUString lcl_StoreMediaAndGetURL(SvXMLExport & rExport, OUString const& r
             uno::Reference<embed::XStorage> const xTarget(
                     rExport.GetTargetStorage(), uno::UNO_SET_THROW);
 
-            urlPath = rURL.copy(SAL_N_ELEMENTS(s_PkgScheme)-1);
+            OUString urlPath = rURL.copy(SAL_N_ELEMENTS(s_PkgScheme)-1);
 
             lcl_CopyStream(xSource, xTarget, urlPath);
 
@@ -552,9 +551,9 @@ void AnimationsExporterImpl::exportTransitionNode()
         return;
 
     sal_Int16 nTransition = 0;
-    mxPageProps->getPropertyValue("TransitionType") >>= nTransition;
+    mxPageProps->getPropertyValue(u"TransitionType"_ustr) >>= nTransition;
 
-    Any aSound( mxPageProps->getPropertyValue("Sound") );
+    Any aSound( mxPageProps->getPropertyValue(u"Sound"_ustr) );
     OUString sSoundURL;
     aSound >>= sSoundURL;
     bool bStopSound = false;
@@ -583,10 +582,10 @@ void AnimationsExporterImpl::exportTransitionNode()
         bool bDirection = false;
         sal_Int32 nFadeColor = 0;
         double fDuration = 0.0;
-        mxPageProps->getPropertyValue("TransitionSubtype") >>= nSubtype;
-        mxPageProps->getPropertyValue("TransitionDirection") >>= bDirection;
-        mxPageProps->getPropertyValue("TransitionFadeColor") >>= nFadeColor;
-        mxPageProps->getPropertyValue("TransitionDuration") >>= fDuration;
+        mxPageProps->getPropertyValue(u"TransitionSubtype"_ustr) >>= nSubtype;
+        mxPageProps->getPropertyValue(u"TransitionDirection"_ustr) >>= bDirection;
+        mxPageProps->getPropertyValue(u"TransitionFadeColor"_ustr) >>= nFadeColor;
+        mxPageProps->getPropertyValue(u"TransitionDuration"_ustr) >>= fDuration;
 
         ::sax::Converter::convertDouble( sTmp, fDuration );
         sTmp.append( 's');
@@ -625,7 +624,7 @@ void AnimationsExporterImpl::exportTransitionNode()
         mxExport->AddAttribute( XML_NAMESPACE_XLINK, XML_HREF, sSoundURL );
 
         bool bLoopSound = false;
-        mxPageProps->getPropertyValue("LoopSound") >>= bLoopSound;
+        mxPageProps->getPropertyValue(u"LoopSound"_ustr) >>= bLoopSound;
 
         if( bLoopSound )
             mxExport->AddAttribute( XML_NAMESPACE_SMIL, XML_REPEATCOUNT, XML_INDEFINITE );
@@ -641,14 +640,14 @@ void AnimationsExporterImpl::prepareTransitionNode()
     try
     {
         sal_Int16 nTransition = 0;
-        mxPageProps->getPropertyValue("TransitionType") >>= nTransition;
+        mxPageProps->getPropertyValue(u"TransitionType"_ustr) >>= nTransition;
 
         bool bStopSound = false;
         OUString sSoundURL;
 
         if( nTransition == 0 )
         {
-            Any aSound( mxPageProps->getPropertyValue("Sound") );
+            Any aSound( mxPageProps->getPropertyValue(u"Sound"_ustr) );
             aSound >>= sSoundURL;
 
             if( !(aSound >>= bStopSound) )
@@ -1104,9 +1103,9 @@ void AnimationsExporterImpl::exportAnimate( const Reference< XAnimate >& xAnimat
             if( !sTemp.isEmpty() )
             {
                 const struct ImplAttributeNameConversion* p = getAnimationAttributeNamesConversionList();
-                while( p->mpAPIName )
+                while( !p->maAPIName.isEmpty() )
                 {
-                    if( sTemp.equalsAscii( p->mpAPIName ) )
+                    if( sTemp == p->maAPIName )
                     {
                         sTemp = GetXMLToken( p->meXMLToken );
                         eAttributeName = p->meXMLToken;
@@ -1120,16 +1119,19 @@ void AnimationsExporterImpl::exportAnimate( const Reference< XAnimate >& xAnimat
             }
             else
             {
-                mxExport->AddAttribute( XML_NAMESPACE_SMIL, XML_ATTRIBUTENAME, "invalid" );
+                mxExport->AddAttribute( XML_NAMESPACE_SMIL, XML_ATTRIBUTENAME, u"invalid"_ustr );
             }
         }
 
+        bool bExportedValues = false;
         Sequence< Any > aValues( xAnimate->getValues() );
         if( aValues.hasElements() )
         {
             aTemp <<= aValues;
-            convertValue( eAttributeName, sTmp, aTemp );
-            mxExport->AddAttribute( XML_NAMESPACE_SMIL, XML_VALUES, sTmp.makeStringAndClear() );
+            bExportedValues = convertValue(eAttributeName, sTmp, aTemp);
+            SAL_WARN_IF(!bExportedValues, "xmloff", "exportAnimate(), unable to export smil:values");
+            if (bExportedValues)
+                mxExport->AddAttribute(XML_NAMESPACE_SMIL, XML_VALUES, sTmp.makeStringAndClear());
         }
         else
         {
@@ -1158,7 +1160,8 @@ void AnimationsExporterImpl::exportAnimate( const Reference< XAnimate >& xAnimat
         if(nNodeType != AnimationNodeType::SET)
         {
             const Sequence< double > aKeyTimes( xAnimate->getKeyTimes() );
-            if( aKeyTimes.hasElements() )
+            SAL_WARN_IF(aKeyTimes.hasElements() && !bExportedValues, "xmloff", "exportAnimate() no smil:values exported so skipping smil:keyTimes");
+            if (aKeyTimes.hasElements() && bExportedValues)
             {
                 for( const auto& rKeyTime : aKeyTimes )
                 {
@@ -1458,17 +1461,18 @@ void AnimationsExporterImpl::convertPath( OUStringBuffer& sTmp, const Any& rPath
     sTmp = aStr;
 }
 
-void AnimationsExporterImpl::convertValue( XMLTokenEnum eAttributeName, OUStringBuffer& sTmp, const Any& rValue ) const
+bool AnimationsExporterImpl::convertValue( XMLTokenEnum eAttributeName, OUStringBuffer& sTmp, const Any& rValue ) const
 {
     if( !rValue.hasValue() )
-        return;
+        return false;
 
+    bool bSuccess = true;
     if( auto pValuePair = o3tl::tryAccess<ValuePair>(rValue) )
     {
         OUStringBuffer sTmp2;
-        convertValue( eAttributeName, sTmp, pValuePair->First );
+        bSuccess &= convertValue( eAttributeName, sTmp, pValuePair->First );
         sTmp.append( ',' );
-        convertValue( eAttributeName, sTmp2, pValuePair->Second );
+        bSuccess &= convertValue( eAttributeName, sTmp2, pValuePair->Second );
         sTmp.append( sTmp2 );
     }
     else if( auto pSequence = o3tl::tryAccess<Sequence<Any>>(rValue) )
@@ -1483,7 +1487,7 @@ void AnimationsExporterImpl::convertValue( XMLTokenEnum eAttributeName, OUString
         {
             if( !sTmp.isEmpty() )
                 sTmp.append( ';' );
-            convertValue( eAttributeName, sTmp2, *pAny );
+            bSuccess &= convertValue( eAttributeName, sTmp2, *pAny );
             sTmp.append( sTmp2 );
             sTmp2.setLength(0);
         }
@@ -1513,8 +1517,9 @@ void AnimationsExporterImpl::convertValue( XMLTokenEnum eAttributeName, OUString
             else
             {
                 OSL_FAIL( "xmloff::AnimationsExporterImpl::convertValue(), invalid value type!" );
+                bSuccess = false;
             }
-            return;
+            return bSuccess;
         }
 
         case XML_SKEWX:
@@ -1540,13 +1545,17 @@ void AnimationsExporterImpl::convertValue( XMLTokenEnum eAttributeName, OUString
 
         //const XMLPropertyHandler* pHandler = static_cast<SdXMLExport*>(&mrExport)->GetSdPropHdlFactory()->GetPropertyHandler( nType );
         const XMLPropertyHandler* pHandler = mxSdPropHdlFactory->GetPropertyHandler( nType );
-        if( pHandler )
+        if (!pHandler)
+            bSuccess = false;
+        else
         {
             OUString aString;
-            pHandler->exportXML( aString, rValue, mxExport->GetMM100UnitConverter() );
+            bSuccess = pHandler->exportXML( aString, rValue, mxExport->GetMM100UnitConverter() );
             sTmp.append( aString );
         }
     }
+
+    return bSuccess;
 }
 
 void AnimationsExporterImpl::convertTiming( OUStringBuffer& sTmp, const Any& rValue ) const

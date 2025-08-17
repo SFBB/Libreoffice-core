@@ -31,21 +31,21 @@
 #define USER_DATA_VERSION USER_DATA_VERSION_1
 
 SwFieldDBPage::SwFieldDBPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *const pCoreSet)
-    : SwFieldPage(pPage, pController, "modules/swriter/ui/flddbpage.ui", "FieldDbPage", pCoreSet)
+    : SwFieldPage(pPage, pController, u"modules/swriter/ui/flddbpage.ui"_ustr, u"FieldDbPage"_ustr, pCoreSet)
     , m_nOldFormat(0)
     , m_nOldSubType(0)
-    , m_xTypeLB(m_xBuilder->weld_tree_view("type"))
-    , m_xDatabaseTLB(new SwDBTreeList(m_xBuilder->weld_tree_view("select")))
-    , m_xAddDBPB(m_xBuilder->weld_button("browse"))
-    , m_xCondition(m_xBuilder->weld_widget("condgroup"))
-    , m_xConditionED(new ConditionEdit(m_xBuilder->weld_entry("condition")))
-    , m_xValue(m_xBuilder->weld_widget("recgroup"))
-    , m_xValueED(m_xBuilder->weld_entry("recnumber"))
-    , m_xDBFormatRB(m_xBuilder->weld_radio_button("fromdatabasecb"))
-    , m_xNewFormatRB(m_xBuilder->weld_radio_button("userdefinedcb"))
-    , m_xNumFormatLB(new NumFormatListBox(m_xBuilder->weld_combo_box("numformat")))
-    , m_xFormatLB(m_xBuilder->weld_combo_box("format"))
-    , m_xFormat(m_xBuilder->weld_widget("formatframe"))
+    , m_xTypeLB(m_xBuilder->weld_tree_view(u"type"_ustr))
+    , m_xDatabaseTLB(new SwDBTreeList(m_xBuilder->weld_tree_view(u"select"_ustr)))
+    , m_xAddDBPB(m_xBuilder->weld_button(u"browse"_ustr))
+    , m_xCondition(m_xBuilder->weld_widget(u"condgroup"_ustr))
+    , m_xConditionED(new ConditionEdit<weld::Entry>(m_xBuilder->weld_entry(u"condition"_ustr)))
+    , m_xValue(m_xBuilder->weld_widget(u"recgroup"_ustr))
+    , m_xValueED(m_xBuilder->weld_entry(u"recnumber"_ustr))
+    , m_xDBFormatRB(m_xBuilder->weld_radio_button(u"fromdatabasecb"_ustr))
+    , m_xNewFormatRB(m_xBuilder->weld_radio_button(u"userdefinedcb"_ustr))
+    , m_xNumFormatLB(new NumFormatListBox(m_xBuilder->weld_combo_box(u"numformat"_ustr)))
+    , m_xFormatLB(m_xBuilder->weld_combo_box(u"format"_ustr))
+    , m_xFormat(m_xBuilder->weld_widget(u"formatframe"_ustr))
 {
     SetTypeSel(-1); //TODO
 
@@ -170,7 +170,7 @@ void SwFieldDBPage::Reset(const SfxItemSet*)
     }
     TypeHdl(nullptr);
 
-    m_xTypeLB->connect_changed(LINK(this, SwFieldDBPage, TypeListBoxHdl));
+    m_xTypeLB->connect_selection_changed(LINK(this, SwFieldDBPage, TypeListBoxHdl));
     m_xTypeLB->connect_row_activated(LINK(this, SwFieldDBPage, TreeViewInsertHdl));
 
     if (IsFieldEdit())
@@ -178,8 +178,8 @@ void SwFieldDBPage::Reset(const SfxItemSet*)
         m_xConditionED->save_value();
         m_xValueED->save_value();
         m_sOldDBName = m_xDatabaseTLB->GetDBName(m_sOldTableName, m_sOldColumnName);
-        m_nOldFormat = GetCurField()->GetFormat();
-        m_nOldSubType = GetCurField()->GetSubType();
+        m_nOldFormat = GetCurField()->GetUntypedFormat();
+        m_nOldSubType = GetCurField()->GetUntypedSubType();
     }
 }
 
@@ -230,7 +230,7 @@ bool SwFieldDBPage::FillItemSet(SfxItemSet* )
         case SwFieldTypesEnum::Database:
             nFormat = m_xNumFormatLB->GetFormat();
             if (m_xNewFormatRB->get_sensitive() && m_xNewFormatRB->get_active())
-                nSubType = nsSwExtendedSubType::SUB_OWN_FMT;
+                nSubType = static_cast<sal_uInt16>(SwDBFieldSubType::OwnFormat);
             aName = sDBName;
             break;
 
@@ -337,10 +337,12 @@ void SwFieldDBPage::TypeHdl(const weld::TreeView* pBox)
 
             if (IsFieldEdit())
             {
-                if (GetCurField()->GetFormat() != 0 && GetCurField()->GetFormat() != SAL_MAX_UINT32)
-                    m_xNumFormatLB->SetDefFormat(GetCurField()->GetFormat());
+                auto pDBField = static_cast<SwDBField*>(GetCurField());
+                auto nFormat = pDBField->GetFormat();
+                if (nFormat != 0 && nFormat != SAL_MAX_UINT32)
+                    m_xNumFormatLB->SetDefFormat(nFormat);
 
-                if (GetCurField()->GetSubType() & nsSwExtendedSubType::SUB_OWN_FMT)
+                if (pDBField->GetSubType() & SwDBFieldSubType::OwnFormat)
                     m_xNewFormatRB->set_active(true);
                 else
                     m_xDBFormatRB->set_active(true);
@@ -373,9 +375,11 @@ void SwFieldDBPage::TypeHdl(const weld::TreeView* pBox)
 
             if( IsFieldEdit() )
             {
+                auto pValueField = static_cast<SwValueField*>(GetCurField());
+                auto nFormat = pValueField->GetFormat();
                 for (sal_Int32 nI = m_xFormatLB->get_count(); nI;)
                 {
-                    if (GetCurField()->GetFormat() == m_xFormatLB->get_id(--nI).toUInt32())
+                    if (nFormat == m_xFormatLB->get_id(--nI).toUInt32())
                     {
                         m_xFormatLB->set_active( nI );
                         break;
@@ -402,7 +406,7 @@ void SwFieldDBPage::TypeHdl(const weld::TreeView* pBox)
     {
         m_xValueED->set_text(OUString());
         if (bCond)
-            m_xConditionED->set_text("TRUE");
+            m_xConditionED->set_text(u"TRUE"_ustr);
         else
             m_xConditionED->set_text(OUString());
     }
@@ -441,7 +445,7 @@ void SwFieldDBPage::CheckInsert()
         bInsert &= bHasValue;
     }
 
-    EnableInsert(bInsert);
+    EnableInsert(bInsert, IsCurrentPage());
 }
 
 IMPL_LINK(SwFieldDBPage, TreeSelectHdl, weld::TreeView&, rBox, void)
@@ -515,7 +519,7 @@ void SwFieldDBPage::ActivateMailMergeAddress()
 {
     m_xTypeLB->select_id(OUString::number(static_cast<sal_uInt16>(SwFieldTypesEnum::Database)));
     TypeListBoxHdl(*m_xTypeLB);
-    const SwDBData& rData = SW_MOD()->GetDBConfig()->GetAddressSource();
+    const SwDBData& rData = SwModule::get()->GetDBConfig()->GetAddressSource();
     m_xDatabaseTLB->Select(rData.sDataSource, rData.sCommand, u"");
 }
 

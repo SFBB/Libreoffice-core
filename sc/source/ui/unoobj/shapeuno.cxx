@@ -25,10 +25,12 @@
 #include <svtools/unoimap.hxx>
 #include <svx/svdobj.hxx>
 #include <svx/ImageMapInfo.hxx>
+#include <vcl/dropcache.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/unohelp.hxx>
 #include <sfx2/event.hxx>
 #include <editeng/unofield.hxx>
-#include <toolkit/helper/convert.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/diagnose_ex.hxx>
@@ -211,6 +213,64 @@ static uno::Reference<text::XTextRange> lcl_GetTextRange( const uno::Reference<u
     return xRet;
 }
 
+namespace {
+
+struct PropertySetInfoCache : public CacheOwner
+{
+    uno::Reference<beans::XPropertySetInfo> getPropertySetInfo(const uno::Reference<beans::XPropertySetInfo>& rxPropSetInfo)
+    {
+        std::unique_lock l(gCacheMutex);
+        // prevent memory leaks, possibly we could use an LRU map here.
+        if (gCacheMap.size() > 100)
+            gCacheMap.clear();
+        auto it = gCacheMap.find(rxPropSetInfo);
+        if (it != gCacheMap.end())
+            return it->second;
+        uno::Reference<beans::XPropertySetInfo> xCombined = new SfxExtItemPropertySetInfo( lcl_GetShapeMap(), rxPropSetInfo->getProperties() );
+        gCacheMap.emplace(rxPropSetInfo, xCombined);
+        return xCombined;
+    }
+
+private:
+    virtual OUString getCacheName() const override
+    {
+        return "PropertySetInfoCache";
+    }
+
+    virtual bool dropCaches() override
+    {
+        std::unique_lock l(gCacheMutex);
+        map_t(gCacheMap.get_allocator()).swap(gCacheMap);
+        return true;
+    }
+
+    virtual void dumpState(rtl::OStringBuffer& rState) override
+    {
+        THREAD_UNSAFE_DUMP_BEGIN
+        rState.append("\nPropertySetInfoCache:\t");
+        rState.append(static_cast<sal_Int32>(gCacheMap.size()));
+        THREAD_UNSAFE_DUMP_END
+    }
+
+    std::mutex gCacheMutex;
+    typedef std::unordered_map<uno::Reference<beans::XPropertySetInfo>, uno::Reference<beans::XPropertySetInfo>> map_t;
+    map_t gCacheMap;
+};
+
+}
+
+/**
+ * If there are lots of shapes, the cost of allocating the XPropertySetInfo structures adds up.
+ * But we have a static set of properties, and most of the underlying types have one static
+ * set per class. So we can cache the combination of them, which dramatically reduces the number
+ * of these we need to allocate.
+ */
+static uno::Reference<beans::XPropertySetInfo> getPropertySetInfoFromCache(const uno::Reference<beans::XPropertySetInfo>& rxPropSetInfo)
+{
+    static PropertySetInfoCache aCache;
+    return aCache.getPropertySetInfo(rxPropSetInfo);
+}
+
 //  XPropertySet
 
 uno::Reference<beans::XPropertySetInfo> SAL_CALL ScShapeObj::getPropertySetInfo()
@@ -225,8 +285,7 @@ uno::Reference<beans::XPropertySetInfo> SAL_CALL ScShapeObj::getPropertySetInfo(
         if (pShapePropertySet)
         {
             uno::Reference<beans::XPropertySetInfo> xAggInfo(pShapePropertySet->getPropertySetInfo());
-            const uno::Sequence<beans::Property> aPropSeq(xAggInfo->getProperties());
-            mxPropSetInfo.set(new SfxExtItemPropertySetInfo( lcl_GetShapeMap(), aPropSeq ));
+            mxPropSetInfo = getPropertySetInfoFromCache(xAggInfo);
         }
     }
     return mxPropSetInfo;
@@ -255,7 +314,7 @@ static bool lcl_GetCaptionPoint( const uno::Reference< drawing::XShape >& xShape
         uno::Reference < beans::XPropertySet > xShapeProp (xShape, uno::UNO_QUERY);
         if (xShapeProp.is())
         {
-            xShapeProp->getPropertyValue("CaptionPoint") >>= rCaptionPoint;
+            xShapeProp->getPropertyValue(u"CaptionPoint"_ustr) >>= rCaptionPoint;
             bReturn = true;
         }
     }
@@ -279,7 +338,9 @@ static ScRange lcl_GetAnchorCell( const uno::Reference< drawing::XShape >& xShap
             if (rCaptionPoint.Y < 0)
                 rUnoPoint.Y += rCaptionPoint.Y;
         }
-        aReturn = pDoc->GetRange( nTab, tools::Rectangle( VCLPoint(rUnoPoint), VCLPoint(rUnoPoint) ));
+        aReturn
+            = pDoc->GetRange(nTab, tools::Rectangle(vcl::unohelper::ConvertToVCLPoint(rUnoPoint),
+                                                    vcl::unohelper::ConvertToVCLPoint(rUnoPoint)));
     }
     else
     {
@@ -290,7 +351,9 @@ static ScRange lcl_GetAnchorCell( const uno::Reference< drawing::XShape >& xShap
             if (rCaptionPoint.Y < 0)
                 rUnoPoint.Y += rCaptionPoint.Y;
         }
-        aReturn = pDoc->GetRange( nTab, tools::Rectangle( VCLPoint(rUnoPoint), VCLPoint(rUnoPoint) ));
+        aReturn
+            = pDoc->GetRange(nTab, tools::Rectangle(vcl::unohelper::ConvertToVCLPoint(rUnoPoint),
+                                                    vcl::unohelper::ConvertToVCLPoint(rUnoPoint)));
     }
 
     return aReturn;
@@ -316,7 +379,7 @@ void SAL_CALL ScShapeObj::setPropertyValue(const OUString& aPropertyName, const 
     {
         uno::Reference<sheet::XCellRangeAddressable> xRangeAdd(aValue, uno::UNO_QUERY);
         if (!xRangeAdd.is())
-            throw lang::IllegalArgumentException("only XCell or XSpreadsheet objects allowed", getXWeak(), 0);
+            throw lang::IllegalArgumentException(u"only XCell or XSpreadsheet objects allowed"_ustr, getXWeak(), 0);
 
         SdrObject *pObj = GetSdrObject();
         if (pObj)
@@ -1361,7 +1424,7 @@ public:
         uno::Sequence< beans::PropertyValue > aProperties;
         aElement >>= aProperties;
         bool isEventType = false;
-        for( const beans::PropertyValue& rProperty : std::as_const(aProperties) )
+        for (const beans::PropertyValue& rProperty : aProperties)
         {
             if ( rProperty.Name == SC_EVENTACC_EVENTTYPE )
             {
@@ -1436,7 +1499,7 @@ ScShapeObj::getEvents(  )
 
 OUString SAL_CALL ScShapeObj::getImplementationName(  )
 {
-    return "com.sun.star.comp.sc.ScShapeObj";
+    return u"com.sun.star.comp.sc.ScShapeObj"_ustr;
 }
 
 sal_Bool SAL_CALL ScShapeObj::supportsService( const OUString& ServiceName )

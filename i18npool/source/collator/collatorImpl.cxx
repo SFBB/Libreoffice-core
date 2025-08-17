@@ -68,7 +68,7 @@ CollatorImpl::compareString( const OUString& in_str1, const OUString& in_str2)
 sal_Int32 SAL_CALL
 CollatorImpl::loadDefaultCollator(const lang::Locale& rLocale, sal_Int32 collatorOptions)
 {
-    const Sequence< Implementation > &imp = mxLocaleData->getCollatorImplementations(rLocale);
+    const Sequence< Implementation > imp = mxLocaleData->getCollatorImplementations(rLocale);
     auto pImpl = std::find_if(imp.begin(), imp.end(),
         [](const Implementation& rImp) { return rImp.isDefault; });
     if (pImpl != imp.end())
@@ -105,7 +105,7 @@ Sequence< OUString > SAL_CALL
 CollatorImpl::listCollatorAlgorithms( const lang::Locale& rLocale )
 {
     nLocale = rLocale;
-    const Sequence< Implementation > &imp = mxLocaleData->getCollatorImplementations(rLocale);
+    const Sequence< Implementation > imp = mxLocaleData->getCollatorImplementations(rLocale);
     Sequence< OUString > list(imp.getLength());
     auto pBegin = list.getArray();
     auto pId = pBegin;
@@ -196,7 +196,7 @@ CollatorImpl::loadCachedCollator(const lang::Locale& rLocale, const OUString& rS
     if (!bLoaded)
     {
         // load default service with name <base>_Unicode
-        bLoaded = createCollator( rLocale, "Unicode", rSortAlgorithm);
+        bLoaded = createCollator( rLocale, u"Unicode"_ustr, rSortAlgorithm);
         if (!bLoaded)
         {
             cachedItem.reset();
@@ -207,7 +207,7 @@ CollatorImpl::loadCachedCollator(const lang::Locale& rLocale, const OUString& rS
 
 OUString SAL_CALL CollatorImpl::getImplementationName()
 {
-    return "com.sun.star.i18n.Collator";
+    return u"com.sun.star.i18n.Collator"_ustr;
 }
 
 sal_Bool SAL_CALL CollatorImpl::supportsService(const OUString& rServiceName)
@@ -218,7 +218,7 @@ sal_Bool SAL_CALL CollatorImpl::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 CollatorImpl::getSupportedServiceNames()
 {
-    return { "com.sun.star.i18n.Collator" };
+    return { u"com.sun.star.i18n.Collator"_ustr };
 }
 
 }

@@ -60,7 +60,7 @@ namespace oox::drawingml { class DrawingML; }
 struct FieldInfos
 {
     std::shared_ptr<const SwField> pField;
-    const ::sw::mark::IFieldmark* pFieldmark;
+    const ::sw::mark::Fieldmark* pFieldmark;
     ww::eField  eType;
     bool        bOpen;
     bool        bSep;
@@ -204,11 +204,11 @@ public:
     virtual void RTLAndCJKState( bool bIsRTL, sal_uInt16 nScript ) override;
 
     /// Start of the paragraph.
-    virtual sal_Int32 StartParagraph(ww8::WW8TableNodeInfo::Pointer_t pTextNodeInfo,
+    virtual sal_Int32 StartParagraph(const ww8::WW8TableNodeInfo::Pointer_t& pTextNodeInfo,
                                      bool bGenerateParaId) override;
 
     /// End of the paragraph.
-    virtual void EndParagraph( ww8::WW8TableNodeInfoInner::Pointer_t pTextNodeInfoInner ) override;
+    virtual void EndParagraph( const ww8::WW8TableNodeInfoInner::Pointer_t& pTextNodeInfoInner ) override;
 
     /// Empty paragraph.
     virtual void EmptyParagraph() override;
@@ -250,10 +250,10 @@ public:
     virtual void StartRuby( const SwTextNode& rNode, sal_Int32 nPos, const SwFormatRuby& rRuby ) override;
 
     /// Output ruby end.
-    virtual void EndRuby(const SwTextNode& rNode, sal_Int32 nPos) override;
+    virtual void EndRuby(const SwTextNode& rNode, sal_Int32 nPos, bool bEmptyBaseText) override;
 
     /// Output URL start.
-    virtual bool StartURL( const OUString& rUrl, const OUString& rTarget ) override;
+    virtual bool StartURL( const OUString& rUrl, const OUString& rTarget, const OUString& rName = OUString() ) override;
 
     /// Output URL end.
     virtual bool EndURL(bool) override;
@@ -269,12 +269,13 @@ public:
     ///
     /// Start of the tag that encloses the run, fills the info according to
     /// the value of pRedlineData.
-    void StartRedline( const SwRedlineData * pRedlineData, bool bLastRun );
+    void StartRedline(const SwRedlineData* pRedlineData, bool bLastRun,
+                      bool bParagraphProps = false);
 
     /// Output redlining.
     ///
     /// End of the tag that encloses the run.
-    void EndRedline( const SwRedlineData * pRedlineData, bool bLastRun );
+    void EndRedline(const SwRedlineData* pRedlineData, bool bLastRun, bool bParagraphProps = false);
 
     virtual void SetStateOfFlyFrame( FlyProcessingState nStateOfFlyFrame ) override;
     virtual void SetAnchorIsLinkedToNode( bool bAnchorLinkedToNode ) override;
@@ -433,14 +434,17 @@ public:
         const SvxBrushItem* pBrush,
         bool isLegal ) override;
 
+    /// Output the floating tables attached to the text node
+    virtual void CheckAndWriteFloatingTables(const SwNode& rNode) override;
+
     void WriteField_Impl(const SwField* pField, ww::eField eType,
             const OUString& rFieldCmd, FieldFlags nMode,
             OUString const* pBookmarkName = nullptr);
-    void WriteFormData_Impl( const ::sw::mark::IFieldmark& rFieldmark );
+    void WriteFormData_Impl( const ::sw::mark::Fieldmark& rFieldmark );
 
     void WriteBookmarks_Impl( std::vector< OUString >& rStarts, std::vector< OUString >& rEnds, const SwRedlineData* pRedlineData = nullptr );
     void WriteFinalBookmarks_Impl( std::vector< OUString >& rStarts, std::vector< OUString >& rEnds );
-    void WriteAnnotationMarks_Impl( std::vector< OUString >& rStarts, std::vector< OUString >& rEnds );
+    void WriteAnnotationMarks_Impl( std::vector< SwMarkName >& rStarts, std::vector< SwMarkName >& rEnds );
     /// End possibly opened paragraph sdt block.
     void EndParaSdtBlock();
 
@@ -505,14 +509,13 @@ private:
     void EndTable();
     void SyncNodelessCells(ww8::WW8TableNodeInfoInner::Pointer_t const & pInner, sal_Int32 nCell, sal_uInt32 nRow);
     void PopulateFrameProperties(const SwFrameFormat* pFrameFormat, const Size& rSize);
-    static bool TextBoxIsFramePr(const SwFrameFormat& rFrameFormat);
     /// End cell, row, and even the entire table if necessary.
     void FinishTableRowCell( ww8::WW8TableNodeInfoInner::Pointer_t const & pInner, bool bForceEmptyParagraph = false );
 
     void WriteFFData( const FieldInfos& rInfos );
     void WritePendingPlaceholder();
 
-    void EmbedFontStyle( std::u16string_view name, int tag, FontFamily family, FontItalic italic, FontWeight weight,
+    bool EmbedFontStyle( std::u16string_view name, int tag, FontFamily family, FontItalic italic, FontWeight weight,
         FontPitch pitch );
 
     /**
@@ -609,9 +612,6 @@ protected:
     /// Sfx item RES_CHRATR_BidiRTL
     virtual void CharBidiRTL( const SfxPoolItem& ) override;
 
-    /// Sfx item RES_CHRATR_IdctHint
-    virtual void CharIdctHint( const SfxPoolItem& ) override;
-
     /// Sfx item RES_CHRATR_ROTATE
     virtual void CharRotate( const SvxCharRotateItem& rRotate ) override;
 
@@ -631,10 +631,13 @@ protected:
     virtual void CharHidden( const SvxCharHiddenItem& rHidden ) override;
 
     /// Sfx item RES_CHRATR_BOX
-    virtual void CharBorder( const ::editeng::SvxBorderLine* pAllBorder, const sal_uInt16 nDist, const bool bShadow ) override;
+    virtual void CharBorder( const SvxBoxItem& rBox ) override;
 
     /// Sfx item RES_CHRATR_HIGHLIGHT
     virtual void CharHighlight( const SvxBrushItem& rHighlight ) override;
+
+    /// SfxItem RES_CHRATR_SCRIPT_HINT
+    virtual void CharScriptHint(const SvxScriptHintItem& rHint) override;
 
     /// Sfx item RES_TXTATR_INETFMT
     virtual void TextINetFormat( const SwFormatINetFormat& ) override;
@@ -780,12 +783,13 @@ private:
             bool bFrom, const SwRedlineData* pRedlineData);
     void DoWriteMoveRangeTagEnd(sal_Int32 nId, bool bFrom);
     void DoWriteBookmarksStart(std::vector<OUString>& rStarts, const SwRedlineData* pRedlineData = nullptr);
-    void DoWriteBookmarksEnd(std::vector<OUString>& rEnds);
+    void DoWriteBookmarksEnd(std::vector<OUString>& rEnds, bool bWriteAllBookmarks = true,
+                             bool bWriteOnlyMoveRanges = false);
     void DoWriteBookmarkStartIfExist(sal_Int32 nRunPos);
     void DoWriteBookmarkEndIfExist(sal_Int32 nRunPos);
 
-    void DoWritePermissionTagStart(std::u16string_view permission);
-    void DoWritePermissionTagEnd(std::u16string_view permission);
+    void DoWritePermissionTagStart(const OUString& permission);
+    void DoWritePermissionTagEnd(const OUString& permission);
     void DoWritePermissionsStart();
     void DoWritePermissionsEnd();
 
@@ -837,6 +841,7 @@ private:
     /// Attributes of the run color
     rtl::Reference<sax_fastparser::FastAttributeList> m_pColorAttrList;
     sal_uInt8 m_nCharTransparence = 0;
+    model::ComplexColor m_aComplexColor;
     /// Attributes of the paragraph background
     rtl::Reference<sax_fastparser::FastAttributeList> m_pBackgroundAttrList;
     OUString m_sOriginalBackgroundColor;
@@ -858,6 +863,8 @@ private:
     bool m_bOpenedSectPr;
     /// Did we have a section break in this paragraph? Set by StartSection(), reset by the next StartParagraph().
     bool m_bHadSectPr;
+    /// Flag indicating that the paragraph properties are being written
+    bool m_bOpenedParaPr;
 
     /// Flag indicating that the Run Text is being written
     bool m_bRunTextIsOn;
@@ -907,8 +914,8 @@ private:
     std::vector<OUString> m_rPermissionsEnd;
 
     /// Annotation marks to output
-    std::vector<OUString> m_rAnnotationMarksStart;
-    std::vector<OUString> m_rAnnotationMarksEnd;
+    std::vector<SwMarkName> m_rAnnotationMarksStart;
+    std::vector<SwMarkName> m_rAnnotationMarksEnd;
 
     /// Maps of the bookmarks ids
     std::map<OUString, sal_Int32> m_rOpenedBookmarksIds;
@@ -920,10 +927,13 @@ private:
     std::unordered_set<sal_Int32> m_rSavedBookmarksIds;
 
     /// Maps of the annotation marks ids
-    std::map<OUString, sal_Int32> m_rOpenedAnnotationMarksIds;
+    std::map<SwMarkName, sal_Int32> m_rOpenedAnnotationMarksIds;
 
     /// Name of the last opened annotation mark.
-    OUString m_sLastOpenedAnnotationMark;
+    SwMarkName m_sLastOpenedAnnotationMark;
+
+    /// Set of currently opened permissions
+    std::unordered_set<OUString> m_aOpenedPermissions;
 
     /// If there are bookmarks around sequence fields, this map contains the
     /// names of these bookmarks for each sequence.
@@ -931,6 +941,9 @@ private:
 
     /// GrabBag for text effects like glow, shadow, ...
     std::vector<css::beans::PropertyValue> m_aTextEffectsGrabBag;
+
+    /// GrabBag for text fill effects
+    std::vector<css::beans::PropertyValue> m_aTextFillGrabBag;
 
     /// The current table helper
     std::unique_ptr<SwWriteTable> m_xTableWrt;
@@ -1041,7 +1054,6 @@ private:
     std::vector<std::pair<const SwPostItField*, PostItDOCXData>> m_postitFields;
     /// Number of postit fields which already have a commentReference written.
     unsigned int m_postitFieldsMaxId;
-    int m_anchorId;
     int m_nextFontId;
     struct EmbeddedFontRef
     {
@@ -1070,6 +1082,8 @@ private:
     bool m_bParaBeforeAutoSpacing,m_bParaAfterAutoSpacing;
     // store hardcoded value which was set during import.
     sal_Int32 m_nParaBeforeSpacing,m_nParaAfterSpacing;
+    // flag inline heading
+    bool m_bParaInlineHeading;
 
     SdtBlockHelper m_aParagraphSdt;
     SdtBlockHelper m_aRunSdt;
@@ -1109,7 +1123,7 @@ public:
     void FootnotesEndnotes( bool bFootnotes );
 
     /// writes the footnotePr/endnotePr (depending on tag) section
-    static void WriteFootnoteEndnotePr( ::sax_fastparser::FSHelperPtr const & fs, int tag, const SwEndNoteInfo& info, int listtag );
+    void WriteFootnoteEndnotePr( ::sax_fastparser::FSHelperPtr const & fs, int tag, const SwEndNoteInfo& info, int listtag );
 
     bool HasPostitFields() const;
     enum class hasProperties { no, yes };

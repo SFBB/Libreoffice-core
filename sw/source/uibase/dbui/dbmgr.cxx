@@ -86,6 +86,7 @@
 #include <comphelper/processfactory.hxx>
 #include <comphelper/property.hxx>
 #include <comphelper/propertyvalue.hxx>
+#include <comphelper/scopeguard.hxx>
 #include <comphelper/storagehelper.hxx>
 #include <comphelper/string.hxx>
 #include <comphelper/types.hxx>
@@ -139,7 +140,7 @@ void lcl_emitEvent(SfxEventHintId nEventId, sal_Int32 nStrId, SfxObjectShell* pD
 // Construct vnd.sun.star.pkg:// URL
 OUString ConstructVndSunStarPkgUrl(const OUString& rMainURL, std::u16string_view rStreamRelPath)
 {
-    auto xContext(comphelper::getProcessComponentContext());
+    const auto& xContext(comphelper::getProcessComponentContext());
     auto xUri = css::uri::UriReferenceFactory::create(xContext)->parse(rMainURL);
     assert(xUri.is());
     xUri = css::uri::VndSunStarPkgUrlReferenceFactory::create(xContext)
@@ -187,14 +188,14 @@ static bool lcl_getCountFromResultSet( sal_Int32& rCount, const SwDSParam* pPara
         try
         {
             bool bFinal = false;
-            uno::Any aFinal = xPrSet->getPropertyValue("IsRowCountFinal");
+            uno::Any aFinal = xPrSet->getPropertyValue(u"IsRowCountFinal"_ustr);
             aFinal >>= bFinal;
             if(!bFinal)
             {
                 pParam->xResultSet->last();
                 pParam->xResultSet->first();
             }
-            uno::Any aCount = xPrSet->getPropertyValue("RowCount");
+            uno::Any aCount = xPrSet->getPropertyValue(u"RowCount"_ustr);
             if( aCount >>= rCount )
                 return true;
         }
@@ -243,7 +244,7 @@ public:
 SwDataSourceRemovedListener::SwDataSourceRemovedListener(SwDBManager& rDBManager)
     : m_pDBManager(&rDBManager)
 {
-    uno::Reference<uno::XComponentContext> xComponentContext(comphelper::getProcessComponentContext());
+    const uno::Reference<uno::XComponentContext>& xComponentContext(comphelper::getProcessComponentContext());
     m_xDatabaseContext = sdb::DatabaseContext::create(xComponentContext);
     m_xDatabaseContext->addDatabaseRegistrationsListener(this);
 }
@@ -324,7 +325,7 @@ struct SwDBManager::SwDBManager_Impl
 
 static void lcl_InitNumberFormatter(SwDSParam& rParam, uno::Reference<sdbc::XDataSource> const & xSource)
 {
-    uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference<uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
     rParam.xFormatter = util::NumberFormatter::create(xContext);
     uno::Reference<beans::XPropertySet> xSourceProps(
         (xSource.is()
@@ -335,7 +336,7 @@ static void lcl_InitNumberFormatter(SwDSParam& rParam, uno::Reference<sdbc::XDat
     if(!xSourceProps.is())
         return;
 
-    uno::Any aFormats = xSourceProps->getPropertyValue("NumberFormatsSupplier");
+    uno::Any aFormats = xSourceProps->getPropertyValue(u"NumberFormatsSupplier"_ustr);
     if(!aFormats.hasValue())
         return;
 
@@ -344,7 +345,7 @@ static void lcl_InitNumberFormatter(SwDSParam& rParam, uno::Reference<sdbc::XDat
     if(xSuppl.is())
     {
         uno::Reference< beans::XPropertySet > xSettings = xSuppl->getNumberFormatSettings();
-        uno::Any aNull = xSettings->getPropertyValue("NullDate");
+        uno::Any aNull = xSettings->getPropertyValue(u"NullDate"_ustr);
         aNull >>= rParam.aNullDate;
         if(rParam.xFormatter.is())
             rParam.xFormatter->attachNumberFormatsSupplier(xSuppl);
@@ -520,6 +521,7 @@ bool SwDBManager::Merge( const SwMergeDescriptor& rMergeDesc )
 
     lcl_InitNumberFormatter(*m_pImpl->pMergeData, xSource);
 
+    assert(pWorkShell);
     pWorkShell->ChgDBData(aData);
     m_bInMerge = true;
 
@@ -653,7 +655,7 @@ bool SwDBManager::GetTableNames(weld::ComboBox& rBox, const OUString& rDBName)
             uno::Reference<container::XNameAccess> xTables = xTSupplier->getTables();
             const uno::Sequence<OUString> aTables = xTables->getElementNames();
             for (const OUString& rTable : aTables)
-                rBox.append("0", rTable);
+                rBox.append(u"0"_ustr, rTable);
         }
         uno::Reference<sdb::XQueriesSupplier> xQSupplier(xConnection, uno::UNO_QUERY);
         if(xQSupplier.is())
@@ -661,7 +663,7 @@ bool SwDBManager::GetTableNames(weld::ComboBox& rBox, const OUString& rDBName)
             uno::Reference<container::XNameAccess> xQueries = xQSupplier->getQueries();
             const uno::Sequence<OUString> aQueries = xQueries->getElementNames();
             for (const OUString& rQuery : aQueries)
-                rBox.append("1", rQuery);
+                rBox.append(u"1"_ustr, rQuery);
         }
         if (!sOldTableName.isEmpty())
             rBox.set_active_text(sOldTableName);
@@ -792,10 +794,10 @@ static void lcl_SaveDebugDoc( SfxObjectShell *xTargetDocShell,
     // aTempFile is not deleted, but that seems to be intentional
     utl::TempFileNamed aTempFile( basename, true, u".odt", &sTempDirURL );
     INetURLObject aTempFileURL( aTempFile.GetURL() );
-    auto pDstMed = std::make_unique<SfxMedium>(
+    SfxMedium aDstMed(
         aTempFileURL.GetMainURL( INetURLObject::DecodeMechanism::NONE ),
         StreamMode::STD_READWRITE );
-    bool bAnyError = !xTargetDocShell->DoSaveAs( *pDstMed );
+    bool bAnyError = !xTargetDocShell->DoSaveAs( aDstMed );
     // xObjectShell->DoSaveCompleted crashes the mail merge unit tests, so skip it
     bAnyError |= (ERRCODE_NONE != xTargetDocShell->GetErrorIgnoreWarning());
     if( bAnyError )
@@ -853,7 +855,7 @@ static void lcl_PreparePrinterOptions(
     // printing should be done synchronously otherwise the document
     // might already become invalid during the process
 
-    rOutPrintOptions = { comphelper::makePropertyValue("Wait", true) };
+    rOutPrintOptions = { comphelper::makePropertyValue(u"Wait"_ustr, true) };
 
     // copy print options
     sal_Int32 nIndex = 1;
@@ -878,8 +880,8 @@ static void lcl_PrepareSaveFilterDataOptions(
     const OUString& sPassword)
 {
     rOutSaveFilterDataOptions
-        = { comphelper::makePropertyValue("EncryptFile", true),
-            comphelper::makePropertyValue("DocumentOpenPassword", sPassword) };
+        = { comphelper::makePropertyValue(u"EncryptFile"_ustr, true),
+            comphelper::makePropertyValue(u"DocumentOpenPassword"_ustr, sPassword) };
 
     // copy other options
     sal_Int32 nIndex = 2;
@@ -1128,18 +1130,21 @@ bool SwDBManager::MergeMailFiles(SwWrtShell* pSourceShell,
         if( bMT_EMAIL )
         {
             // Reset internal mail accounting data
-            m_pImpl->m_xLastMessage.clear();
+            {
+                std::unique_lock aGuard(m_pImpl->m_aAllEmailSendMutex);
+                m_pImpl->m_xLastMessage.clear();
+            }
 
             xMailDispatcher.set( new MailDispatcher(rMergeDescriptor.xSmtpServer) );
             xMailListener = new MailDispatcherListener_Impl( *this );
             xMailDispatcher->addListener( xMailListener );
             if(!rMergeDescriptor.bSendAsAttachment && rMergeDescriptor.bSendAsHTML)
             {
-                sMailBodyMimeType = "text/html; charset=utf-8";
+                sMailBodyMimeType = u"text/html; charset=utf-8"_ustr;
                 sMailEncoding = RTL_TEXTENCODING_UTF8;
             }
             else
-                sMailBodyMimeType = "text/plain; charset=UTF-8; format=flowed";
+                sMailBodyMimeType = u"text/plain; charset=UTF-8; format=flowed"_ustr;
         }
     }
 
@@ -1154,7 +1159,7 @@ bool SwDBManager::MergeMailFiles(SwWrtShell* pSourceShell,
     // if a save_to filter is set then use it - otherwise use the default
     if( bMT_EMAIL && !rMergeDescriptor.bSendAsAttachment )
     {
-        OUString sExtension = rMergeDescriptor.bSendAsHTML ? OUString("html") : OUString("txt");
+        OUString sExtension = rMergeDescriptor.bSendAsHTML ? u"html"_ustr : u"txt"_ustr;
         pStoreToFilter = pFilterContainer->GetFilter4Extension(sExtension, SfxFilterFlags::EXPORT);
     }
     else if( !rMergeDescriptor.sSaveToFilter.isEmpty())
@@ -1163,7 +1168,7 @@ bool SwDBManager::MergeMailFiles(SwWrtShell* pSourceShell,
                 pFilterContainer->GetFilter4FilterName( rMergeDescriptor.sSaveToFilter );
         if(pFilter)
         {
-            pStoreToFilter = pFilter;
+            pStoreToFilter = std::move(pFilter);
             if(!rMergeDescriptor.sSaveToFilterOptions.isEmpty())
                 pStoreToFilterOptions = &rMergeDescriptor.sSaveToFilterOptions;
         }
@@ -1185,6 +1190,10 @@ bool SwDBManager::MergeMailFiles(SwWrtShell* pSourceShell,
 
     std::shared_ptr<weld::GenericDialogController> xProgressDlg;
 
+    comphelper::ScopeGuard restoreInMailMerge(
+        [pSourceShell, val = pSourceShell->GetDoc()->IsInMailMerge()]
+        { pSourceShell->GetDoc()->SetInMailMerge(val); });
+    pSourceShell->GetDoc()->SetInMailMerge(true);
     try
     {
         vcl::Window *pSourceWindow = nullptr;
@@ -1315,7 +1324,7 @@ bool SwDBManager::MergeMailFiles(SwWrtShell* pSourceShell,
                     if (!sColumnData.isEmpty())
                         sLeading = sColumnData;
                     else
-                        sLeading = "_";
+                        sLeading = u"_"_ustr;
                 }
                 else
                 {
@@ -1325,7 +1334,9 @@ bool SwDBManager::MergeMailFiles(SwWrtShell* pSourceShell,
                     sPrefix = aEntry.GetMainURL( INetURLObject::DecodeMechanism::NONE );
                 }
 
-                OUString sExt(comphelper::string::stripStart(pStoreToFilter->GetDefaultExtension(), '*'));
+                OUString sExt;
+                if (pStoreToFilter)
+                    sExt = comphelper::string::stripStart(pStoreToFilter->GetDefaultExtension(), '*');
                 aTempFile.reset( new utl::TempFileNamed(sLeading, sColumnData.isEmpty(), sExt, &sPrefix, true) );
                 if( !aTempFile->IsValid() )
                 {
@@ -1451,7 +1462,7 @@ bool SwDBManager::MergeMailFiles(SwWrtShell* pSourceShell,
                         SwDocMergeInfo aMergeInfo;
                         // Name of the mark is actually irrelevant, UNO bookmarks have internals names.
                         aMergeInfo.startPageInTarget = pTargetDoc->getIDocumentMarkAccess()->makeMark(
-                            SwPaM(appendedDocStart), "", IDocumentMarkAccess::MarkType::UNO_BOOKMARK,
+                            SwPaM(appendedDocStart), SwMarkName(), IDocumentMarkAccess::MarkType::UNO_BOOKMARK,
                             ::sw::mark::InsertMode::New);
                         aMergeInfo.nDBRow = nStartRow;
                         rMergeDescriptor.pMailMergeConfigItem->AddMergedDocument( aMergeInfo );
@@ -1496,7 +1507,7 @@ bool SwDBManager::MergeMailFiles(SwWrtShell* pSourceShell,
                         }
                         else
                         {
-                            uno::Reference< mail::XMailMessage > xMessage = lcl_CreateMailFromDoc(
+                            rtl::Reference< SwMailMessage > xMessage = lcl_CreateMailFromDoc(
                                 rMergeDescriptor, sFileURL, sColumnData, sMailBodyMimeType,
                                 sMailEncoding, pStoreToFilter->GetMimeType() );
                             if( xMessage.is() )
@@ -1626,7 +1637,7 @@ bool SwDBManager::MergeMailFiles(SwWrtShell* pSourceShell,
             pViewFrame = SfxViewFrame::GetNext(*pViewFrame, pSourceDocSh);
         }
 
-        SW_MOD()->SetView(&pSourceShell->GetView());
+        SwModule::get()->SetView(&pSourceShell->GetView());
 
         if( xMailDispatcher.is() )
         {
@@ -1780,7 +1791,7 @@ sal_uInt32 SwDBManager::GetColumnFormat( uno::Reference< sdbc::XDataSource> cons
         uno::Reference< util::XNumberFormats > xNumberFormats;
         if(xSourceProps.is())
         {
-            uno::Any aFormats = xSourceProps->getPropertyValue("NumberFormatsSupplier");
+            uno::Any aFormats = xSourceProps->getPropertyValue(u"NumberFormatsSupplier"_ustr);
             if(aFormats.hasValue())
             {
                 uno::Reference<util::XNumberFormatsSupplier> xSuppl;
@@ -1794,7 +1805,7 @@ sal_uInt32 SwDBManager::GetColumnFormat( uno::Reference< sdbc::XDataSource> cons
         bool bUseDefault = true;
         try
         {
-            uno::Any aFormatKey = xColumn->getPropertyValue("FormatKey");
+            uno::Any aFormatKey = xColumn->getPropertyValue(u"FormatKey"_ustr);
             if(aFormatKey.hasValue())
             {
                 sal_Int32 nFormat = 0;
@@ -1804,8 +1815,8 @@ sal_uInt32 SwDBManager::GetColumnFormat( uno::Reference< sdbc::XDataSource> cons
                     try
                     {
                         uno::Reference<beans::XPropertySet> xNumProps = xNumberFormats->getByKey( nFormat );
-                        uno::Any aFormatString = xNumProps->getPropertyValue("FormatString");
-                        uno::Any aLocaleVal = xNumProps->getPropertyValue("Locale");
+                        uno::Any aFormatString = xNumProps->getPropertyValue(u"FormatString"_ustr);
+                        uno::Any aLocaleVal = xNumProps->getPropertyValue(u"Locale"_ustr);
                         OUString sFormat;
                         aFormatString >>= sFormat;
                         lang::Locale aLoc;
@@ -1869,7 +1880,7 @@ sal_Int32 SwDBManager::GetColumnType( const OUString& rDBName,
             uno::Any aCol = xCols->getByName(rColNm);
             uno::Reference<beans::XPropertySet> xCol;
             aCol >>= xCol;
-            uno::Any aType = xCol->getPropertyValue("Type");
+            uno::Any aType = xCol->getPropertyValue(u"Type"_ustr);
             aType >>= nRet;
         }
         if(bDispose)
@@ -1882,17 +1893,18 @@ uno::Reference< sdbc::XConnection> SwDBManager::GetConnection(const OUString& rD
                                                               uno::Reference<sdbc::XDataSource>& rxSource, const SwView *pView)
 {
     uno::Reference< sdbc::XConnection> xConnection;
-    uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const uno::Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
     try
     {
         uno::Reference<sdb::XCompletedConnection> xComplConnection(dbtools::getDataSource(rDataSource, xContext), uno::UNO_QUERY);
-        if ( xComplConnection.is() )
-        {
-            rxSource.set(xComplConnection, uno::UNO_QUERY);
-            weld::Window* pWindow = pView ? pView->GetFrameWeld() : nullptr;
-            uno::Reference< task::XInteractionHandler > xHandler( task::InteractionHandler::createWithParent(xContext, pWindow ? pWindow->GetXWindow() : nullptr), uno::UNO_QUERY_THROW );
-            xConnection = xComplConnection->connectWithCompletion( xHandler );
-        }
+        if ( !xComplConnection )
+            return xConnection;
+        rxSource.set(xComplConnection, uno::UNO_QUERY);
+        weld::Window* pWindow = pView ? pView->GetFrameWeld() : nullptr;
+        uno::Reference< task::XInteractionHandler > xHandler( task::InteractionHandler::createWithParent(xContext, pWindow ? pWindow->GetXWindow() : nullptr) );
+        if (!xHandler)
+            return xConnection;
+        xConnection = xComplConnection->connectWithCompletion( xHandler );
     }
     catch(const uno::Exception&)
     {
@@ -1922,22 +1934,22 @@ uno::Reference< sdbcx::XColumnsSupplier> SwDBManager::GetColumnSupplier(uno::Ref
         sal_Int32 nCommandType = SwDBSelect::TABLE == eTableOrQuery ?
                 sdb::CommandType::TABLE : sdb::CommandType::QUERY;
         uno::Reference< lang::XMultiServiceFactory > xMgr( ::comphelper::getProcessServiceFactory() );
-        uno::Reference<sdbc::XRowSet> xRowSet(xMgr->createInstance("com.sun.star.sdb.RowSet"), uno::UNO_QUERY);
+        uno::Reference<sdbc::XRowSet> xRowSet(xMgr->createInstance(u"com.sun.star.sdb.RowSet"_ustr), uno::UNO_QUERY);
 
         OUString sDataSource;
         uno::Reference<sdbc::XDataSource> xSource = SwDBManager::getDataSourceAsParent(xConnection, sDataSource);
         uno::Reference<beans::XPropertySet> xSourceProperties(xSource, uno::UNO_QUERY);
         if(xSourceProperties.is())
         {
-            xSourceProperties->getPropertyValue("Name") >>= sDataSource;
+            xSourceProperties->getPropertyValue(u"Name"_ustr) >>= sDataSource;
         }
 
         uno::Reference<beans::XPropertySet> xRowProperties(xRowSet, uno::UNO_QUERY);
-        xRowProperties->setPropertyValue("DataSourceName", uno::Any(sDataSource));
-        xRowProperties->setPropertyValue("Command", uno::Any(rTableOrQuery));
-        xRowProperties->setPropertyValue("CommandType", uno::Any(nCommandType));
-        xRowProperties->setPropertyValue("FetchSize", uno::Any(sal_Int32(10)));
-        xRowProperties->setPropertyValue("ActiveConnection", uno::Any(xConnection));
+        xRowProperties->setPropertyValue(u"DataSourceName"_ustr, uno::Any(sDataSource));
+        xRowProperties->setPropertyValue(u"Command"_ustr, uno::Any(rTableOrQuery));
+        xRowProperties->setPropertyValue(u"CommandType"_ustr, uno::Any(nCommandType));
+        xRowProperties->setPropertyValue(u"FetchSize"_ustr, uno::Any(sal_Int32(10)));
+        xRowProperties->setPropertyValue(u"ActiveConnection"_ustr, uno::Any(xConnection));
         xRowSet->execute();
         xRet.set( xRowSet, uno::UNO_QUERY );
     }
@@ -1959,7 +1971,7 @@ OUString SwDBManager::GetDBField(uno::Reference<beans::XPropertySet> const & xCo
     if(!xColumn.is())
         return sRet;
 
-    uno::Any aType = xColumnProps->getPropertyValue("Type");
+    uno::Any aType = xColumnProps->getPropertyValue(u"Type"_ustr);
     sal_Int32 eDataType = sdbc::DataType::SQLNULL;
     aType >>= eDataType;
     switch(eDataType)
@@ -2150,7 +2162,7 @@ bool SwDBManager::FillCalcWithMergeData( SvNumberFormatter *pDocFormatter,
             uno::Any aCol = xCols->getByName( rColName );
             uno::Reference<beans::XPropertySet> xColumnProps;
             aCol >>= xColumnProps;
-            uno::Any aType = xColumnProps->getPropertyValue( "Type" );
+            uno::Any aType = xColumnProps->getPropertyValue( u"Type"_ustr );
             aType >>= nColumnType;
             double aNumber = DBL_MAX;
 
@@ -2530,12 +2542,12 @@ SwDSParam*  SwDBManager::FindDSConnection(const OUString& rDataSource, bool bCre
 
 const SwDBData& SwDBManager::GetAddressDBName()
 {
-    return SW_MOD()->GetDBConfig()->GetAddressSource();
+    return SwModule::get()->GetDBConfig()->GetAddressSource();
 }
 
 uno::Sequence<OUString> SwDBManager::GetExistingDatabaseNames()
 {
-    uno::Reference<uno::XComponentContext> xContext( ::comphelper::getProcessComponentContext() );
+    const uno::Reference<uno::XComponentContext>& xContext( ::comphelper::getProcessComponentContext() );
     uno::Reference<sdb::XDatabaseContext> xDBContext = sdb::DatabaseContext::create(xContext);
     return xDBContext->getElementNames();
 }
@@ -2571,11 +2583,8 @@ DBConnURIType GetDBunoType(const INetURLObject &rURL)
         type = DBConnURIType::FLAT;
     }
 #ifdef _WIN32
-    else if (sExt.equalsIgnoreAsciiCase("mdb") || sExt.equalsIgnoreAsciiCase("mde"))
-    {
-        type = DBConnURIType::MSJET;
-    }
-    else if (sExt.equalsIgnoreAsciiCase("accdb") || sExt.equalsIgnoreAsciiCase("accde"))
+    else if (sExt.equalsIgnoreAsciiCase("accdb") || sExt.equalsIgnoreAsciiCase("accde")
+             || sExt.equalsIgnoreAsciiCase("mdb") || sExt.equalsIgnoreAsciiCase("mde"))
     {
         type = DBConnURIType::MSACE;
     }
@@ -2631,14 +2640,6 @@ uno::Any GetDBunoURI(const INetURLObject &rURL, DBConnURIType& rType)
             aUrlTmp.GetMainURL(INetURLObject::DecodeMechanism::NONE);
         aURLAny <<= sDBURL;
     }
-    break;
-    case DBConnURIType::MSJET:
-#ifdef _WIN32
-    {
-        OUString sDBURL("sdbc:ado:access:PROVIDER=Microsoft.Jet.OLEDB.4.0;DATA SOURCE=" + rURL.PathToFileName());
-        aURLAny <<= sDBURL;
-    }
-#endif
     break;
     case DBConnURIType::MSACE:
 #ifdef _WIN32
@@ -2698,7 +2699,6 @@ OUString LoadAndRegisterDataSource_Impl(DBConnURIType type, const uno::Reference
             aTableFilterAny <<= aFilters;
         }
         break;
-    case DBConnURIType::MSJET:
     case DBConnURIType::MSACE:
         aSuppressVersionsAny <<= true;
         break;
@@ -2706,7 +2706,7 @@ OUString LoadAndRegisterDataSource_Impl(DBConnURIType type, const uno::Reference
 
     try
     {
-        uno::Reference<uno::XComponentContext> xContext(::comphelper::getProcessComponentContext());
+        const uno::Reference<uno::XComponentContext>& xContext(::comphelper::getProcessComponentContext());
         uno::Reference<sdb::XDatabaseContext> xDBContext = sdb::DatabaseContext::create(xContext);
 
         OUString sNewName = rURL.getName(
@@ -2733,21 +2733,21 @@ OUString LoadAndRegisterDataSource_Impl(DBConnURIType type, const uno::Reference
             uno::Reference<beans::XPropertySet> xDataProperties(xNewInstance, uno::UNO_QUERY);
 
             if (aURLAny.hasValue())
-                xDataProperties->setPropertyValue("URL", aURLAny);
+                xDataProperties->setPropertyValue(u"URL"_ustr, aURLAny);
             if (aTableFilterAny.hasValue())
-                xDataProperties->setPropertyValue("TableFilter", aTableFilterAny);
+                xDataProperties->setPropertyValue(u"TableFilter"_ustr, aTableFilterAny);
             if (aSuppressVersionsAny.hasValue())
-                xDataProperties->setPropertyValue("SuppressVersionColumns", aSuppressVersionsAny);
+                xDataProperties->setPropertyValue(u"SuppressVersionColumns"_ustr, aSuppressVersionsAny);
             if (aInfoAny.hasValue())
-                xDataProperties->setPropertyValue("Info", aInfoAny);
+                xDataProperties->setPropertyValue(u"Info"_ustr, aInfoAny);
 
             if (DBConnURIType::FLAT == type && pSettings)
             {
-                uno::Any aSettings = xDataProperties->getPropertyValue("Settings");
+                uno::Any aSettings = xDataProperties->getPropertyValue(u"Settings"_ustr);
                 uno::Reference < beans::XPropertySet > xDSSettings;
                 aSettings >>= xDSSettings;
                 ::comphelper::copyProperties(*pSettings, xDSSettings);
-                xDSSettings->setPropertyValue("Extension", uno::Any(sExt));
+                xDSSettings->setPropertyValue(u"Extension"_ustr, uno::Any(sExt));
             }
 
             uno::Reference<sdb::XDocumentDataSource> xDS(xNewInstance, uno::UNO_QUERY_THROW);
@@ -2763,14 +2763,14 @@ OUString LoadAndRegisterDataSource_Impl(DBConnURIType type, const uno::Reference
             else
             {
                 // Embed.
-                OUString aStreamRelPath = "EmbeddedDatabase";
+                OUString aStreamRelPath = u"EmbeddedDatabase"_ustr;
                 uno::Reference<embed::XStorage> xStorage = pDocShell->GetStorage();
 
                 // Refer to the sub-storage name in the document settings, so
                 // we can load it again next time the file is imported.
                 uno::Reference<lang::XMultiServiceFactory> xFactory(pDocShell->GetModel(), uno::UNO_QUERY);
-                uno::Reference<beans::XPropertySet> xPropertySet(xFactory->createInstance("com.sun.star.document.Settings"), uno::UNO_QUERY);
-                xPropertySet->setPropertyValue("EmbeddedDatabaseName", uno::Any(aStreamRelPath));
+                uno::Reference<beans::XPropertySet> xPropertySet(xFactory->createInstance(u"com.sun.star.document.Settings"_ustr), uno::UNO_QUERY);
+                xPropertySet->setPropertyValue(u"EmbeddedDatabaseName"_ustr, uno::Any(aStreamRelPath));
 
                 // Store it only after setting the above property, so that only one data source gets registered.
                 SwDBManager::StoreEmbeddedDataSource(xStore, xStorage, aStreamRelPath, aOwnURL);
@@ -2796,17 +2796,16 @@ OUString SwDBManager::LoadAndRegisterDataSource(weld::Window* pParent, SwDocShel
     OUString sFilterAllData(SwResId(STR_FILTER_ALL_DATA));
 
     const std::vector<std::pair<OUString, OUString>> filters{
-        { SwResId(STR_FILTER_SXB), "*.odb" },
-        { SwResId(STR_FILTER_SXC), "*.ods;*.sxc" },
-        { SwResId(STR_FILTER_SXW), "*.odt;*.sxw" },
-        { SwResId(STR_FILTER_DBF), "*.dbf" },
-        { SwResId(STR_FILTER_XLS), "*.xls;*.xlsx" },
-        { SwResId(STR_FILTER_DOC), "*.doc;*.docx" },
-        { SwResId(STR_FILTER_TXT), "*.txt" },
-        { SwResId(STR_FILTER_CSV), "*.csv" },
+        { SwResId(STR_FILTER_SXB), u"*.odb"_ustr },
+        { SwResId(STR_FILTER_SXC), u"*.ods;*.sxc"_ustr },
+        { SwResId(STR_FILTER_SXW), u"*.odt;*.sxw"_ustr },
+        { SwResId(STR_FILTER_DBF), u"*.dbf"_ustr },
+        { SwResId(STR_FILTER_XLS), u"*.xls;*.xlsx"_ustr },
+        { SwResId(STR_FILTER_DOC), u"*.doc;*.docx"_ustr },
+        { SwResId(STR_FILTER_TXT), u"*.txt"_ustr },
+        { SwResId(STR_FILTER_CSV), u"*.csv"_ustr },
 #ifdef _WIN32
-        { SwResId(STR_FILTER_MDB), "*.mdb;*.mde" },
-        { SwResId(STR_FILTER_ACCDB), "*.accdb;*.accde" },
+        { SwResId(STR_FILTER_ACCDB), u"*.accdb;*.accde;*.mdb;*.mde"_ustr },
 #endif
     };
 
@@ -2819,7 +2818,7 @@ OUString SwDBManager::LoadAndRegisterDataSource(weld::Window* pParent, SwDocShel
         sAllDataFilter.append(filter);
     }
 
-    xFP->appendFilter( sFilterAll, "*" );
+    xFP->appendFilter( sFilterAll, u"*"_ustr );
     xFP->appendFilter( sFilterAllData, sAllDataFilter.makeStringAndClear());
 
     // Similar to sfx2::addExtension from sfx2/source/dialog/filtergrouping.cxx
@@ -2836,7 +2835,7 @@ OUString SwDBManager::LoadAndRegisterDataSource(weld::Window* pParent, SwDocShel
 
         if( DBConnURIType::FLAT == type )
         {
-            uno::Reference<uno::XComponentContext> xContext( ::comphelper::getProcessComponentContext() );
+            const uno::Reference<uno::XComponentContext>& xContext( ::comphelper::getProcessComponentContext() );
             uno::Reference < sdb::XTextConnectionSettings > xSettingsDlg = sdb::TextConnectionSettings::create(xContext);
             if( xSettingsDlg->execute() )
                 aSettings.set( uno::Reference < beans::XPropertySet >( xSettingsDlg, uno::UNO_QUERY_THROW ) );
@@ -2907,7 +2906,7 @@ void SwDBManager::LoadAndRegisterEmbeddedDataSource(const SwDBData& rData, const
 
     // Fallback, just in case the document would contain an embedded data source, but no DB fields.
     if (sDataSource.isEmpty())
-        sDataSource = "EmbeddedDatabase";
+        sDataSource = u"EmbeddedDatabase"_ustr;
 
     SwDBManager::RevokeDataSource( sDataSource );
 
@@ -3056,7 +3055,7 @@ void SwDBManager::InsertText(SwWrtShell& rSh,
         OSL_FAIL("PropertyValues missing or unset");
         return;
     }
-    uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const uno::Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
     uno::Reference<sdbc::XDataSource> xSource;
     uno::Reference<container::XChild> xChild(xConnection, uno::UNO_QUERY);
     if(xChild.is())
@@ -3070,24 +3069,32 @@ void SwDBManager::InsertText(SwWrtShell& rSh,
     aDBData.nCommandType = nCmdType;
 
     SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-    ScopedVclPtr<AbstractSwInsertDBColAutoPilot> pDlg(pFact->CreateSwInsertDBColAutoPilot( rSh.GetView(),
+    VclPtr<AbstractSwInsertDBColAutoPilot> pDlg(pFact->CreateSwInsertDBColAutoPilot( rSh.GetView(),
                                                                                 xSource,
                                                                                 xColSupp,
                                                                                 aDBData ));
-    if( RET_OK != pDlg->Execute() )
-        return;
+    pDlg->StartExecuteAsync(
+        [xConnection, xSource, pDlg, xResSet, aSelection] (sal_Int32 nResult)->void
+        {
+            if (nResult == RET_OK)
+            {
+                OUString sDummy;
+                auto xTmpConnection = xConnection;
+                if(!xTmpConnection.is())
+                    xTmpConnection = xSource->getConnection(sDummy, sDummy);
+                try
+                {
+                    pDlg->DataToDoc( aSelection , xSource, xTmpConnection, xResSet);
+                }
+                catch (const uno::Exception&)
+                {
+                    TOOLS_WARN_EXCEPTION("sw.mailmerge", "");
+                }
+                pDlg->disposeOnce();
+            }
+        }
+    );
 
-    OUString sDummy;
-    if(!xConnection.is())
-        xConnection = xSource->getConnection(sDummy, sDummy);
-    try
-    {
-        pDlg->DataToDoc( aSelection , xSource, xConnection, xResSet);
-    }
-    catch (const uno::Exception&)
-    {
-        TOOLS_WARN_EXCEPTION("sw.mailmerge", "");
-    }
 }
 
 uno::Reference<sdbc::XDataSource> SwDBManager::getDataSourceAsParent(const uno::Reference< sdbc::XConnection>& _xConnection,const OUString& _sDataSourceName)
@@ -3120,14 +3127,14 @@ uno::Reference<sdbc::XResultSet> SwDBManager::createCursor(const OUString& _sDat
         uno::Reference< lang::XMultiServiceFactory > xMgr( ::comphelper::getProcessServiceFactory() );
         if( xMgr.is() )
         {
-            uno::Reference<uno::XInterface> xInstance = xMgr->createInstance("com.sun.star.sdb.RowSet");
+            uno::Reference<uno::XInterface> xInstance = xMgr->createInstance(u"com.sun.star.sdb.RowSet"_ustr);
             uno::Reference<beans::XPropertySet> xRowSetPropSet(xInstance, uno::UNO_QUERY);
             if(xRowSetPropSet.is())
             {
-                xRowSetPropSet->setPropertyValue("DataSourceName", uno::Any(_sDataSourceName));
-                xRowSetPropSet->setPropertyValue("ActiveConnection", uno::Any(_xConnection));
-                xRowSetPropSet->setPropertyValue("Command", uno::Any(_sCommand));
-                xRowSetPropSet->setPropertyValue("CommandType", uno::Any(_nCommandType));
+                xRowSetPropSet->setPropertyValue(u"DataSourceName"_ustr, uno::Any(_sDataSourceName));
+                xRowSetPropSet->setPropertyValue(u"ActiveConnection"_ustr, uno::Any(_xConnection));
+                xRowSetPropSet->setPropertyValue(u"Command"_ustr, uno::Any(_sCommand));
+                xRowSetPropSet->setPropertyValue(u"CommandType"_ustr, uno::Any(_nCommandType));
 
                 uno::Reference< sdb::XCompletedExecution > xRowSet(xInstance, uno::UNO_QUERY);
 

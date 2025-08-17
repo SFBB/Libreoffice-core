@@ -26,16 +26,13 @@
 #include <editeng/svxenum.hxx>
 #include <vcl/weld.hxx>
 #include "View.hxx"
-#include <cui/numberingpreview.hxx>
+#include <svx/numberingpreview.hxx>
+#include <svx/dlgutil.hxx>
 
 #define MN_GALLERY_ENTRY 100
 
 class ColorListBox;
-class SvxNumValueSet;
 class SvxNumRule;
-class SvxBmpNumValueSet;
-class SvxBrushItem;
-class SdDrawDocument;
 
 namespace sd
 {
@@ -43,7 +40,7 @@ class View;
 }
 
 /// Main class for handling the bullets, numbering format and their position.
-class SvxBulletAndPositionDlg : public weld::GenericDialogController
+class SvxBulletAndPositionDlg final : public weld::GenericDialogController
 {
     OUString m_sNumCharFmtName;
 
@@ -71,6 +68,8 @@ class SvxBulletAndPositionDlg : public weld::GenericDialogController
     MapUnit eCoreUnit;
 
     SvxNumberingPreview m_aPreviewWIN;
+    SvxRatioConnector m_aRatioTop;
+    SvxRatioConnector m_aRatioBottom;
     std::unique_ptr<weld::Widget> m_xGrid;
     std::unique_ptr<weld::TreeView> m_xLevelLB;
     std::unique_ptr<weld::ComboBox> m_xFmtLB;
@@ -93,6 +92,9 @@ class SvxBulletAndPositionDlg : public weld::GenericDialogController
     std::unique_ptr<weld::Label> m_xHeightFT;
     std::unique_ptr<weld::MetricSpinButton> m_xHeightMF;
     std::unique_ptr<weld::CheckButton> m_xRatioCB;
+    std::unique_ptr<weld::Image> m_xCbxScaleImg;
+    std::unique_ptr<weld::CustomWeld> m_xImgRatioTop;
+    std::unique_ptr<weld::CustomWeld> m_xImgRatioBottom;
     std::unique_ptr<weld::Menu> m_xGalleryMenu;
     std::unique_ptr<weld::CustomWeld> m_xPreviewWIN;
     std::unique_ptr<weld::Label> m_xDistBorderFT;
@@ -108,6 +110,7 @@ class SvxBulletAndPositionDlg : public weld::GenericDialogController
     std::unique_ptr<weld::Button> m_xReset;
 
     void InitControls();
+    void PopulateGalleryMenu();
     /** To switch between the numbering type
         0 - Number;
         1 - Bullet;
@@ -117,7 +120,6 @@ class SvxBulletAndPositionDlg : public weld::GenericDialogController
 
     DECL_LINK(NumberTypeSelectHdl_Impl, weld::ComboBox&, void);
     DECL_LINK(LevelHdl_Impl, weld::TreeView&, void);
-    DECL_LINK(PopupActivateHdl_Impl, weld::Toggleable&, void);
     DECL_LINK(GraphicHdl_Impl, const OUString&, void);
     DECL_LINK(BulletHdl_Impl, weld::Button&, void);
     DECL_LINK(SizeHdl_Impl, weld::MetricSpinButton&, void);

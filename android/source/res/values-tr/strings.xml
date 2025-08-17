@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">LibreOffice Görüntüleyici</string>
     <string name="app_name_settings">LibreOffice Görüntüleyici Ayarları</string>
-    <string name="app_version">Versiyon: %1$s&lt;br&gt;Build ID: &lt;a href="https://hub.libreoffice.org/git-core/%2$s"&gt;%2$s&lt;/a&gt;</string>
+    <string name="app_version">Versiyon: %1$s&lt;br&gt;Build ID: &lt;a href=https://hub.libreoffice.org/git-core/%2$s&gt;%2$s&lt;/a&gt;</string>
     <string name="app_description">LibreOffice Görüntüleyici LibreOffice tabanlı bir belge görüntüleyicisidir.</string>
     <string name="app_credits">https://www.libreoffice.org</string>
     <string name="app_vendor">Bu sürüm $VENDOR tarafından derlenmiştir.</string>
@@ -116,8 +116,6 @@
     <string name="alert_ok">Tamam</string>
     <string name="alert_cancel">İptal</string>
     <string name="current_uno_command">Şuan ki UNO komutu</string>
-    <string name="display_language">Uygulama Dili</string>
-    <string name="display_language_summary">Varsayılan dili değiştir</string>
     <string name="unable_to_export_pdf">Pdf dışa aktarılamıyor.</string>
     <string name="error">Hata</string>
     <string name="enter_part_name">Bölüm ismi girin.</string>
@@ -131,4 +129,12 @@
     <string name="action_rename_slide">Slaytı yeniden adlandır</string>
     <string name="about_privacy_policy">Gizlilik Politikası</string>
     <string name="action_save_as">Farklı Kaydet…</string>
+    <string name="automatic">Otomatik</string>
+    <string name="create_file">Yeni Dosya Oluştur</string>
+    <string name="search_find_next">Sonrakini Bul</string>
+    <string name="search_find_previous">Öncekini Bul</string>
+    <string name="pdf_export_finished">PDF dışa aktarıldı</string>
+    <string name="unable_to_save">Dosya kaydedilemiyor</string>
+    <string name="message_saving_failed">Belge kaydedilemedi.</string>
+    <string name="select_file_to_open">Açılacak dosyayı seçin</string>
 </resources>

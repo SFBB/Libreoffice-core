@@ -15,6 +15,7 @@
 
 #include <com/sun/star/frame/Desktop.hpp>
 #include <comphelper/processfactory.hxx>
+#include <o3tl/environment.hxx>
 #include <vcl/abstdlg.hxx>
 #include <vcl/filter/PngImageWriter.hxx>
 #include <vcl/svapp.hxx>
@@ -24,15 +25,23 @@
 
 
 namespace {
-    void splitHelpId( const OUString& rHelpId, OUString& rDirname, OUString &rBasename )
+    void splitHelpId( std::u16string_view rHelpId, std::u16string_view& rDirname, std::u16string_view& rBasename )
     {
-        sal_Int32 nIndex = rHelpId.lastIndexOf( '/' );
+        size_t nIndex = rHelpId.rfind( '/' );
 
-        if( nIndex > 0 )
-            rDirname = rHelpId.subView( 0, nIndex );
+        if( nIndex != 0 && nIndex != std::u16string_view::npos)
+            rDirname = rHelpId.substr( 0, nIndex );
 
-        if( rHelpId.getLength() > nIndex+1 )
-            rBasename = rHelpId.subView( nIndex+1 );
+        if (nIndex == std::u16string_view::npos)
+        {
+            if( rHelpId.size() > 0 )
+                rBasename = rHelpId;
+        }
+        else
+        {
+            if( rHelpId.size() > nIndex+1 )
+                rBasename = rHelpId.substr( nIndex+1 );
+        }
     }
 }
 
@@ -43,12 +52,10 @@ using namespace css::uno;
 constexpr OUString g_aScreenshotDirectory(u"screenshots"_ustr);
 
 ScreenshotTest::ScreenshotTest()
-    : maParent(nullptr, "vcl/ui/screenshotparent.ui", "ScreenShot")
+    : maCurrentLanguage(o3tl::getEnvironment(u"LO_TEST_LOCALE"_ustr))
+    , maParent(nullptr, u"vcl/ui/screenshotparent.ui"_ustr, u"ScreenShot"_ustr)
     , mxParentWidget(maParent.getDialog()->weld_content_area())
 {
-    if (auto const env = getenv("LO_TEST_LOCALE")) {
-        maCurrentLanguage = OUString::fromUtf8(env);
-    }
 }
 
 ScreenshotTest::~ScreenshotTest()
@@ -71,11 +78,11 @@ void ScreenshotTest::setUp()
     }
 }
 
-void ScreenshotTest::implSaveScreenshot(const BitmapEx& rScreenshot, const OUString& rScreenshotId)
+void ScreenshotTest::implSaveScreenshot(const Bitmap& rScreenshot, std::u16string_view rScreenshotId)
 {
-    OUString aDirname, aBasename;
-    splitHelpId(rScreenshotId, aDirname, aBasename);
-    aDirname = g_aScreenshotDirectory + "/" + aDirname +
+    std::u16string_view aSplitDirname, aBasename;
+    splitHelpId(rScreenshotId, aSplitDirname, aBasename);
+    OUString aDirname = g_aScreenshotDirectory + "/" + aSplitDirname +
                ( (maCurrentLanguage == "en-US") ? OUString() : "/" + maCurrentLanguage );
 
     auto const dirUrl = m_directories.getURLFromWorkdir(aDirname);
@@ -98,7 +105,7 @@ void ScreenshotTest::implSaveScreenshot(const BitmapEx& rScreenshot, const OUStr
 
 void ScreenshotTest::saveScreenshot(VclAbstractDialog const & rDialog)
 {
-    const BitmapEx aScreenshot(rDialog.createScreenshot());
+    const Bitmap aScreenshot(rDialog.createScreenshot());
 
     if (!aScreenshot.IsEmpty())
     {
@@ -114,7 +121,7 @@ void ScreenshotTest::saveScreenshot(VclAbstractDialog const & rDialog)
 void ScreenshotTest::saveScreenshot(weld::Window& rDialog)
 {
     VclPtr<VirtualDevice> xDialogSurface(rDialog.screenshot());
-    const BitmapEx aScreenshot(xDialogSurface->GetBitmapEx(Point(), xDialogSurface->GetOutputSizePixel()));
+    const Bitmap aScreenshot(xDialogSurface->GetBitmap(Point(), xDialogSurface->GetOutputSizePixel()));
 
     if (!aScreenshot.IsEmpty())
     {
@@ -164,7 +171,7 @@ void ScreenshotTest::dumpDialogToPath(weld::Builder& rBuilder)
 {
     std::unique_ptr<weld::Window> xDialog(rBuilder.create_screenshot_window());
 
-    auto xTabCtrl = rBuilder.weld_notebook("tabcontrol");
+    auto xTabCtrl = rBuilder.weld_notebook(u"tabcontrol"_ustr);
 
     int nPages = xTabCtrl ? xTabCtrl->get_n_pages() : 0;
     if (nPages)

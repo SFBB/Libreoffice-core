@@ -23,8 +23,6 @@
 #include <algorithm>
 #include <com/sun/star/sheet/XArrayFormulaTokens.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
-#include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/util/NumberFormat.hpp>
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
@@ -50,6 +48,7 @@
 #include <formulabuffer.hxx>
 #include <numformat.hxx>
 #include <sax/tools/converter.hxx>
+#include <cellsuno.hxx>
 #include <docuno.hxx>
 
 namespace oox::xls {
@@ -170,7 +169,7 @@ void SheetDataBuffer::setDateTimeCell( const CellModel& rModel, const css::util:
 void SheetDataBuffer::setBooleanCell( const CellModel& rModel, bool bValue )
 {
     getFormulaBuffer().setCellFormula(
-        rModel.maCellAddr, bValue ? OUString("TRUE()") : OUString("FALSE()"));
+        rModel.maCellAddr, bValue ? u"TRUE()"_ustr : u"FALSE()"_ustr);
 
     // #108770# set 'Standard' number format for all Boolean cells
     setCellFormat( rModel );
@@ -283,15 +282,14 @@ void SheetDataBuffer::setRowFormat( sal_Int32 nRow, sal_Int32 nXfId, bool bCusto
         // try to expand cached row range, if formatting is equal
         if( (maXfIdRowRange.maRowRange.mnLast < 0) || !maXfIdRowRange.tryExpand( nRow, nXfId ) )
         {
-
-            maXfIdRowRangeList[ maXfIdRowRange.mnXfId ].push_back( maXfIdRowRange.maRowRange );
+            maXfIdRowRangeList.push_back( maXfIdRowRange );
             maXfIdRowRange.set( nRow, nXfId );
         }
     }
     else if( maXfIdRowRange.maRowRange.mnLast >= 0 )
     {
         // finish last cached row range
-        maXfIdRowRangeList[ maXfIdRowRange.mnXfId ].push_back( maXfIdRowRange.maRowRange );
+        maXfIdRowRangeList.push_back( maXfIdRowRange );
         maXfIdRowRange.set( -1, -1 );
     }
 }
@@ -378,75 +376,83 @@ void SheetDataBuffer::addColXfStyleProcessRowRanges()
     // count the number of row-range-styles we have
     AddressConverter& rAddrConv = getAddressConverter();
     int cnt = 0;
-    for ( const auto& [nXfId, rRowRangeList] : maXfIdRowRangeList )
+    for ( const auto& rRange : maXfIdRowRangeList )
     {
-        if ( nXfId == -1 ) // it's a dud skip it
+        if ( rRange.mnXfId == -1 ) // it's a dud skip it
             continue;
-        cnt += rRowRangeList.size();
+        ++cnt;
     }
-    // pre-allocate space in the sorted_vector
-    for ( sal_Int32 nCol = 0; nCol <= rAddrConv.getMaxApiAddress().Col(); ++nCol )
-    {
-       RowStyles& rRowStyles = maStylesPerColumn[ nCol ];
-       rRowStyles.reserve(rRowStyles.size() + cnt);
-    }
+    // sort the row ranges, so we spend less time moving data around
+    // when we insert into aStyleRows
+    std::sort(maXfIdRowRangeList.begin(), maXfIdRowRangeList.end(),
+        [](const XfIdRowRange& lhs, const XfIdRowRange& rhs)
+        {
+            return lhs.maRowRange.mnFirst < rhs.maRowRange.mnFirst;
+        });
     const auto nMaxCol = rAddrConv.getMaxApiAddress().Col();
     for ( sal_Int32 nCol = 0; nCol <= nMaxCol; ++nCol )
     {
         RowStyles& rRowStyles = maStylesPerColumn[ nCol ];
-        for ( auto& [nXfId, rRowRangeList] : maXfIdRowRangeList )
+        TmpRowStyles aTempRowStyles;
+        aTempRowStyles.reserve(rRowStyles.size() + cnt);
+        RowStyles::const_iterator rows_it = rRowStyles.begin();
+        // get all row ranges for id
+        for ( const auto& rRange : maXfIdRowRangeList )
         {
-            if ( nXfId == -1 ) // it's a dud skip it
+            if ( rRange.mnXfId == -1 ) // it's a dud skip it
                 continue;
-            // sort the row ranges, so we spend less time moving data around
-            // when we insert into aStyleRows
-            std::sort(rRowRangeList.begin(), rRowRangeList.end(),
-                [](const ValueRange& lhs, const ValueRange& rhs)
-                {
-                    return lhs.mnFirst < rhs.mnFirst;
-                });
-            // get all row ranges for id
-            for ( const auto& rRange : rRowRangeList )
+            RowRangeStyle aStyleRows;
+            aStyleRows.mnNumFmt.first = rRange.mnXfId;
+            aStyleRows.mnNumFmt.second = -1;
+
+            // Reset row range for each column
+            aStyleRows.mnStartRow = rRange.maRowRange.mnFirst;
+            aStyleRows.mnEndRow = rRange.maRowRange.mnLast;
+
+            // If aStyleRows includes rows already allocated to a style
+            // in rRowStyles, then we need to split it into parts.
+            // ( to occupy only rows that have no style definition)
+
+            // Start iterating at the first element that is not completely before aStyleRows
+            while (rows_it != rRowStyles.end() && rows_it->mnEndRow < aStyleRows.mnStartRow)
             {
-                RowRangeStyle aStyleRows;
-                aStyleRows.mnNumFmt.first = nXfId;
-                aStyleRows.mnNumFmt.second = -1;
-
-                // Reset row range for each column
-                aStyleRows.mnStartRow = rRange.mnFirst;
-                aStyleRows.mnEndRow = rRange.mnLast;
-
-                // If aStyleRows includes rows already allocated to a style
-                // in rRowStyles, then we need to split it into parts.
-                // ( to occupy only rows that have no style definition)
-
-                // Start iterating at the first element that is not completely before aStyleRows
-                RowStyles::const_iterator rows_it = rRowStyles.lower_bound(aStyleRows);
-                bool bAddRange = true;
-                for ( ; rows_it != rRowStyles.end(); ++rows_it )
-                {
-                    // Add the part of aStyleRows that does not overlap with r
-                    if ( aStyleRows.mnStartRow < rows_it->mnStartRow )
-                    {
-                        RowRangeStyle aSplit = aStyleRows;
-                        aSplit.mnEndRow = std::min(aStyleRows.mnEndRow, rows_it->mnStartRow - 1);
-                        rows_it = rRowStyles.insert( aSplit ).first;
-                    }
-
-                    // Done if no part of aStyleRows extends beyond r
-                    if ( aStyleRows.mnEndRow <= rows_it->mnEndRow )
-                    {
-                        bAddRange = false;
-                        break;
-                    }
-
-                    // Cut off the part aStyleRows that was handled above
-                    aStyleRows.mnStartRow = rows_it->mnEndRow + 1;
-                }
-                if ( bAddRange )
-                    rRowStyles.insert( aStyleRows );
+                aTempRowStyles.push_back(*rows_it);
+                ++rows_it;
             }
+            bool bAddRange = true;
+            while ( rows_it != rRowStyles.end() )
+            {
+                // Add the part of aStyleRows that does not overlap with r
+                if ( aStyleRows.mnStartRow < rows_it->mnStartRow )
+                {
+                    RowRangeStyle aSplit = aStyleRows;
+                    aSplit.mnEndRow = std::min(aStyleRows.mnEndRow, rows_it->mnStartRow - 1);
+                    aTempRowStyles.push_back(aSplit);
+                }
+
+                // Done if no part of aStyleRows extends beyond r
+                if ( aStyleRows.mnEndRow <= rows_it->mnEndRow )
+                {
+                    bAddRange = false;
+                    break;
+                }
+
+                // Cut off the part aStyleRows that was handled above
+                aStyleRows.mnStartRow = rows_it->mnEndRow + 1;
+
+                aTempRowStyles.push_back(*rows_it);
+                ++rows_it;
+            }
+            if ( bAddRange )
+                aTempRowStyles.push_back( aStyleRows );
         }
+        while ( rows_it != rRowStyles.end() )
+        {
+            aTempRowStyles.push_back(*rows_it);
+            ++rows_it;
+        }
+        rRowStyles.clear();
+        rRowStyles.insert_sorted_unique_vector(std::move(aTempRowStyles));
     }
 }
 
@@ -474,7 +480,7 @@ void SheetDataBuffer::finalizeImport()
         finalizeTableOperation( rRange, rModel );
 
     // write default formatting of remaining row range
-    maXfIdRowRangeList[ maXfIdRowRange.mnXfId ].push_back( maXfIdRowRange.maRowRange );
+    maXfIdRowRangeList.push_back( maXfIdRowRange );
 
     addColXfStyles();
 
@@ -508,7 +514,7 @@ void SheetDataBuffer::finalizeImport()
             nScRow++;
         }
         if ( !pDefPattern || nScRow == rDoc.MaxRow() )
-            pDefPattern = rDoc.GetDefPattern();
+            pDefPattern = &rDoc.getCellAttributeHelper().getDefaultCellAttribute();
 
         Xf::AttrList aAttrs(pDefPattern);
         for ( const auto& rRowStyle : rRowStyles )
@@ -523,11 +529,10 @@ void SheetDataBuffer::finalizeImport()
         {
             ScAttrEntry aEntry;
             aEntry.nEndRow = rDoc.MaxRow();
-            aEntry.pPattern = pDefPattern;
-            rDoc.GetPool()->DirectPutItemInPool(*aEntry.pPattern);
+            aEntry.setScPatternAttr(pDefPattern, false);
             aAttrs.maAttrs.push_back(aEntry);
 
-            if (!sc::NumFmtUtil::isLatinScript(*aEntry.pPattern, rDoc))
+            if (!sc::NumFmtUtil::isLatinScript(*aEntry.getScPatternAttr(), rDoc))
                 aAttrs.mbLatinNumFmtOnly = false;
         }
 
@@ -627,12 +632,10 @@ ApiTokenSequence SheetDataBuffer::resolveSharedFormula( const ScAddress& rAddr )
     return aTokens;
 }
 
-void SheetDataBuffer::finalizeArrayFormula( const ScRange& rRange, const ApiTokenSequence& rTokens ) const
+void SheetDataBuffer::finalizeArrayFormula( const ScRange& rRange, const ApiTokenSequence& rTokens )
 {
-    Reference< XArrayFormulaTokens > xTokens( getCellRange( rRange ), UNO_QUERY );
-    OSL_ENSURE( xTokens.is(), "SheetDataBuffer::finalizeArrayFormula - missing formula token interface" );
-    if( xTokens.is() )
-        xTokens->setArrayTokens( rTokens );
+    rtl::Reference<ScCellRangeObj> xCellRangeObj(new ScCellRangeObj(getScDocument().GetDocumentShell(), rRange));
+    xCellRangeObj->setArrayTokens(rTokens);
 }
 
 void SheetDataBuffer::finalizeTableOperation( const ScRange& rRange, const DataTableModel& rModel )
@@ -721,7 +724,7 @@ void SheetDataBuffer::setCellFormat( const CellModel& rModel )
      * It is sufficient to check if the row range size is one
      */
     if (!rRangeList.empty() &&
-        *pLastRange == rModel.maCellAddr)
+        *pLastRange == ScRange(rModel.maCellAddr))
         ; // do nothing - this probably bad data
     else if (!rRangeList.empty() &&
         pLastRange->aStart.Tab() == rModel.maCellAddr.Tab() &&

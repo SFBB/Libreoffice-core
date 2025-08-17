@@ -41,17 +41,13 @@
 #include <com/sun/star/ucb/XContentProvider.hpp>
 #include <com/sun/star/ucb/XUniversalContentBroker.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/dibtools.hxx>
-#include <vcl/event.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <vcl/filter/PngImageReader.hxx>
-#include <vcl/filter/SvmReader.hxx>
+#include <vcl/font/EOTConverter.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/virdev.hxx>
 #include <vcl/wmf.hxx>
-#include <vcl/wrkwin.hxx>
-#include <fltcall.hxx>
 #include <filter/TiffReader.hxx>
 #include <filter/TgaReader.hxx>
 #include <filter/PictReader.hxx>
@@ -125,17 +121,17 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         Reference< XComponentContext > xContext = defaultBootstrap_InitialComponentContext();
         Reference< XMultiServiceFactory > xServiceManager( xContext->getServiceManager(), UNO_QUERY );
         if( !xServiceManager.is() )
-            Application::Abort( "Failed to bootstrap" );
+            Application::Abort( u"Failed to bootstrap"_ustr );
         comphelper::setProcessServiceFactory( xServiceManager );
-        utl::ConfigManager::EnableFuzzing();
+        comphelper::EnableFuzzing();
 
         // initialise unconfigured UCB:
         css::uno::Reference<css::ucb::XUniversalContentBroker> xUcb(comphelper::getProcessServiceFactory()->
-            createInstance("com.sun.star.ucb.UniversalContentBroker"), css::uno::UNO_QUERY_THROW);
-        css::uno::Sequence<css::uno::Any> aArgs{ css::uno::Any(OUString("NoConfig")) };
+            createInstance(u"com.sun.star.ucb.UniversalContentBroker"_ustr), css::uno::UNO_QUERY_THROW);
+        css::uno::Sequence<css::uno::Any> aArgs{ css::uno::Any(u"NoConfig"_ustr) };
         css::uno::Reference<css::ucb::XContentProvider> xFileProvider(comphelper::getProcessServiceFactory()->
-            createInstanceWithArguments("com.sun.star.ucb.FileContentProvider", aArgs), css::uno::UNO_QUERY_THROW);
-        xUcb->registerContentProvider(xFileProvider, "file", true);
+            createInstanceWithArguments(u"com.sun.star.ucb.FileContentProvider"_ustr, aArgs), css::uno::UNO_QUERY_THROW);
+        xUcb->registerContentProvider(xFileProvider, u"file"_ustr, true);
 
         Application::EnableHeadlessMode(false);
         InitVCL();
@@ -148,27 +144,27 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         }
         else if (strcmp(argv[2], "jpg") == 0)
         {
-            Graphic aGraphic;
+            ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
-            ret = static_cast<int>(ImportJPEG(aFileStream, aGraphic, GraphicFilterImportFlags::NONE, nullptr));
+            ret = static_cast<int>(ImportJPEG(aFileStream, aImportOutput, GraphicFilterImportFlags::NONE, nullptr));
         }
         else if (strcmp(argv[2], "gif") == 0)
         {
+            ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
-            Graphic aGraphic;
-            ret = static_cast<int>(ImportGIF(aFileStream, aGraphic));
+            ret = static_cast<int>(ImportGIF(aFileStream, aImportOutput));
         }
         else if (strcmp(argv[2], "xbm") == 0)
         {
-            Graphic aGraphic;
+            ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
-            ret = static_cast<int>(ImportXBM(aFileStream, aGraphic));
+            ret = static_cast<int>(ImportXBM(aFileStream, aImportOutput));
         }
         else if (strcmp(argv[2], "xpm") == 0)
         {
-            Graphic aGraphic;
+            ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
-            ret = static_cast<int>(ImportXPM(aFileStream, aGraphic));
+            ret = static_cast<int>(ImportXPM(aFileStream, aImportOutput));
         }
         else if (strcmp(argv[2], "png") == 0)
         {
@@ -184,27 +180,27 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         }
         else if (strcmp(argv[2], "pcd") == 0)
         {
-            Graphic aGraphic;
+            ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
-            ret = static_cast<int>(ImportPcdGraphic(aFileStream, aGraphic, nullptr));
+            ret = static_cast<int>(ImportPcdGraphic(aFileStream, aImportOutput, nullptr));
         }
         else if (strcmp(argv[2], "dxf") == 0)
         {
-            Graphic aGraphic;
+            ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
-            ret = static_cast<int>(ImportDxfGraphic(aFileStream, aGraphic));
+            ret = static_cast<int>(ImportDxfGraphic(aFileStream, aImportOutput));
         }
         else if (strcmp(argv[2], "met") == 0)
         {
-            Graphic aGraphic;
+            ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
-            ret = static_cast<int>(ImportMetGraphic(aFileStream, aGraphic));
+            ret = static_cast<int>(ImportMetGraphic(aFileStream, aImportOutput));
         }
         else if ((strcmp(argv[2], "pbm") == 0) || strcmp(argv[2], "ppm") == 0)
         {
-            Graphic aGraphic;
+            ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
-            ret = static_cast<int>(ImportPbmGraphic(aFileStream, aGraphic));
+            ret = static_cast<int>(ImportPbmGraphic(aFileStream, aImportOutput));
         }
         else if (strcmp(argv[2], "psd") == 0)
         {
@@ -226,9 +222,9 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         }
         else if (strcmp(argv[2], "pcx") == 0)
         {
-            Graphic aGraphic;
+            ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
-            ret = static_cast<int>(ImportPcxGraphic(aFileStream, aGraphic));
+            ret = static_cast<int>(ImportPcxGraphic(aFileStream, aImportOutput));
         }
         else if (strcmp(argv[2], "ras") == 0)
         {
@@ -238,9 +234,9 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
         }
         else if (strcmp(argv[2], "tga") == 0)
         {
-            Graphic aGraphic;
+            ImportOutput aImportOutput;
             SvFileStream aFileStream(out, StreamMode::READ);
-            ret = static_cast<int>(ImportTgaGraphic(aFileStream, aGraphic));
+            ret = static_cast<int>(ImportTgaGraphic(aFileStream, aImportOutput));
         }
         else if (strcmp(argv[2], "tif") == 0)
         {
@@ -260,6 +256,13 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
             std::vector<sal_uInt8> aData(aFileStream.remainingSize());
             aFileStream.ReadBytes(aData.data(), aData.size());
             ret = TestFontSubset(aData.data(), aData.size());
+        }
+        else if (strcmp(argv[2], "eot") == 0)
+        {
+            SvFileStream aFileStream(out, StreamMode::READ);
+            std::vector<sal_uInt8> aData(aFileStream.remainingSize());
+            aFileStream.ReadBytes(aData.data(), aData.size());
+            ret = TestEOT(aData.data(), aData.size());
         }
 #ifndef DISABLE_DYNLOADING
         else if ((strcmp(argv[2], "doc") == 0) || (strcmp(argv[2], "ww8") == 0))
@@ -328,6 +331,26 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
             if (!pfnImport)
             {
                 pfnImport = load(u"libswlo.so", "TestPDFExportFODT");
+            }
+            SvFileStream aFileStream(out, StreamMode::READ);
+            ret = static_cast<int>((*pfnImport)(aFileStream));
+        }
+        else if (strcmp(argv[2], "rtf2pdf") == 0)
+        {
+            static FFilterCall pfnImport(nullptr);
+            if (!pfnImport)
+            {
+                pfnImport = load(u"libmswordlo.so", "TestPDFExportRTF");
+            }
+            SvFileStream aFileStream(out, StreamMode::READ);
+            ret = static_cast<int>((*pfnImport)(aFileStream));
+        }
+        else if (strcmp(argv[2], "fods2xls") == 0)
+        {
+            static FFilterCall pfnImport(nullptr);
+            if (!pfnImport)
+            {
+                pfnImport = load(u"libsclo.so", "TestFODSExportXLS");
             }
             SvFileStream aFileStream(out, StreamMode::READ);
             ret = static_cast<int>((*pfnImport)(aFileStream));
@@ -488,6 +511,16 @@ SAL_IMPLEMENT_MAIN_WITH_ARGS(argc, argv)
             if (!pfnImport)
             {
                 pfnImport = load(u"libscfiltlo.so", "TestImportCalcRTF");
+            }
+            SvFileStream aFileStream(out, StreamMode::READ);
+            ret = static_cast<int>((*pfnImport)(aFileStream));
+        }
+        else if (strcmp(argv[2], "sc-html") == 0)
+        {
+            static FFilterCall pfnImport(nullptr);
+            if (!pfnImport)
+            {
+                pfnImport = load(u"libscfiltlo.so", "TestImportCalcHTML");
             }
             SvFileStream aFileStream(out, StreamMode::READ);
             ret = static_cast<int>((*pfnImport)(aFileStream));

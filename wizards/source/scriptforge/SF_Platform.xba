@@ -218,10 +218,18 @@ Property Get SystemLocale() As String
 End Property	&apos;	ScriptForge.SF_Platform.SystemLocale (get)
 
 REM -----------------------------------------------------------------------------
+Property Get UntitledPrefix() As String
+&apos;&apos;&apos;	Returns the prefix used to name new documents (in English = &quot;Untitled &quot;)
+&apos;&apos;&apos;	Example:
+&apos;&apos;&apos;		MsgBox platform.UntitledPrefix
+	UntitledPrefix = _PropertyGet(&quot;UntitledPrefix&quot;)
+End Property	&apos;	ScriptForge.SF_Platform.UntitledPrefix (get)
+
+REM -----------------------------------------------------------------------------
 Property Get UserData() As Variant
 &apos;&apos;&apos;	Returns a dictionary of all Options + User Data values
 &apos;&apos;&apos;	Example:
-&apos;&apos;&apos;		MsgBox platform.UserData
+&apos;&apos;&apos;		dict = platform.UserData
 	UserData = _PropertyGet(&quot;UserData&quot;)
 End Property	&apos;	ScriptForge.SF_Platform.UserData (get)
 
@@ -293,6 +301,7 @@ Public Function Properties() As Variant
 					, &quot;Processor&quot; _
 					, &quot;PythonVersion&quot; _
 					, &quot;SystemLocale&quot; _
+					, &quot;UntitledPrefix&quot; _
 					, &quot;UserData&quot; _
 					)
 
@@ -383,6 +392,7 @@ Dim sFont As String				&apos;	A single font name
 Dim vExtensionsList As Variant	&apos;	Array of extension descriptors
 Dim sExtensions As String		&apos;	Comma separated list of extensions
 Dim sExtension As String		&apos;	A single extension name
+Dim oDesktop As Object			&apos;	StarDesktop
 Dim vUserDataInternal As Variant&apos;	The internal names of the supported user data items
 Dim vUserDataExternal As Variant&apos;	The external names of the supported user data items
 Dim vUserData As Variant		&apos;	A SF_Dictionary instance linking user data external names and values
@@ -451,6 +461,9 @@ Const cstSubArgs = &quot;&quot;
 		Case &quot;SystemLocale&quot;, &quot;Locale&quot;
 			Set oLocale = SF_Utils._GetUNOService(&quot;SystemLocale&quot;)
 			_PropertyGet = oLocale.Language &amp; &quot;-&quot; &amp; oLocale.Country
+		Case &quot;UntitledPrefix&quot;
+			Set oDesktop = StarDesktop
+			If Not IsNull(oDesktop) Then _PropertyGet = oDesktop.UntitledPrefix Else _PropertyGet = &quot;&quot;
 		Case &quot;UserData&quot;
 			vUserDataExternal = Array( _
 				&quot;city&quot;, &quot;company&quot;, &quot;country&quot;, &quot;email&quot;, &quot;encryptionkey&quot;, &quot;encrypttoself&quot;, &quot;fax&quot; _
@@ -464,8 +477,8 @@ Const cstSubArgs = &quot;&quot;
 				)
 			&apos;	Get the UserData page from the Options database
 			vUserDataOptions = SF_Utils._GetRegistryKeyContent(&quot;org.openoffice.UserProfile/Data&quot;)
-			&apos;	Create and feed the output dictionary
-			vUserData = CreateScriptService(&quot;ScriptForge.Dictionary&quot;)
+			&apos;	Create and feed an output dictionary with case-sensitive comparison of keys
+			vUserData = CreateScriptService(&quot;ScriptForge.Dictionary&quot;, True)
 			For i = 0 To UBound(vUserDataExternal)
 				vUserData.Add(vUserDataExternal(i), vUserDataOptions.getByName(vUserDataInternal(i)))
 			Next i

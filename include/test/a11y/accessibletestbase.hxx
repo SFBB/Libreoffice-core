@@ -23,6 +23,7 @@
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/uno/Reference.hxx>
+#include <comphelper/OAccessible.hxx>
 
 #include <vcl/ITiledRenderable.hxx>
 #include <vcl/window.hxx>
@@ -37,6 +38,10 @@ namespace test
 {
 class OOO_DLLPUBLIC_TEST AccessibleTestBase : public test::BootstrapFixture
 {
+private:
+    void collectText(const css::uno::Reference<css::accessibility::XAccessibleContext>& xContext,
+                     rtl::OUStringBuffer& buffer, bool onlyChildren = false);
+
 protected:
     css::uno::Reference<css::frame::XDesktop2> mxDesktop;
     css::uno::Reference<css::lang::XComponent> mxDocument;
@@ -47,9 +52,21 @@ protected:
     virtual void load(const rtl::OUString& sURL);
     virtual void loadFromSrc(const rtl::OUString& sSrcPath);
     void close();
-    css::uno::Reference<css::accessibility::XAccessibleContext> getWindowAccessibleContext();
+    rtl::Reference<comphelper::OAccessible> getWindowAccessible();
     virtual css::uno::Reference<css::accessibility::XAccessibleContext>
     getDocumentAccessibleContext();
+
+    static css::uno::Reference<css::accessibility::XAccessibleContext> getPreviousFlowingSibling(
+        const css::uno::Reference<css::accessibility::XAccessibleContext>& xContext);
+    static css::uno::Reference<css::accessibility::XAccessibleContext> getNextFlowingSibling(
+        const css::uno::Reference<css::accessibility::XAccessibleContext>& xContext);
+
+    /** Collects contents of @p xContext in a dummy markup form */
+    OUString
+    collectText(const css::uno::Reference<css::accessibility::XAccessibleContext>& xContext);
+
+    /** Collects contents of the current document */
+    OUString collectText() { return collectText(getDocumentAccessibleContext()); }
 
     void documentPostKeyEvent(int nType, int nCharCode, int nKeyCode)
     {
@@ -61,7 +78,7 @@ protected:
 
     static css::uno::Reference<css::accessibility::XAccessibleContext> getFirstRelationTargetOfType(
         const css::uno::Reference<css::accessibility::XAccessibleContext>& xContext,
-        sal_Int16 relationType);
+        css::accessibility::AccessibleRelationType relationType);
 
     /**
      * @brief Tries to list all children of an accessible
@@ -80,6 +97,8 @@ protected:
     getAllChildren(const css::uno::Reference<css::accessibility::XAccessibleContext>& xContext);
 
     void dumpA11YTree(const css::uno::Reference<css::accessibility::XAccessibleContext>& xContext,
+                      const int depth = 0);
+    void dumpA11YTree(const css::uno::Reference<css::accessibility::XAccessible>& xAccessible,
                       const int depth = 0);
 
     css::uno::Reference<css::accessibility::XAccessibleContext>
@@ -127,7 +146,8 @@ protected:
     template <typename... Ts> bool activateMenuItem(Ts... names)
     {
         auto menuBar = AccessibilityTools::getAccessibleObjectForRole(
-            getWindowAccessibleContext(), css::accessibility::AccessibleRole::MENU_BAR);
+            css::uno::Reference<css::accessibility::XAccessibleContext>(getWindowAccessible()),
+            css::accessibility::AccessibleRole::MENU_BAR);
         CPPUNIT_ASSERT(menuBar.is());
         return activateMenuItem(menuBar, names...);
     }
@@ -188,17 +208,17 @@ protected:
     private:
         bool mbAutoClose;
         css::uno::Reference<css::awt::XDialog2> mxDialog2;
-        css::uno::Reference<css::accessibility::XAccessible> mxAccessible;
+        rtl::Reference<comphelper::OAccessible> mpAccessible;
 
     public:
-        Dialog(css::uno::Reference<css::awt::XDialog2>& xDialog2, bool bAutoClose = true);
+        Dialog(const css::uno::Reference<css::awt::XDialog2>& xDialog2, bool bAutoClose = true);
         virtual ~Dialog();
 
         void setAutoClose(bool bAutoClose) { mbAutoClose = bAutoClose; }
 
         css::uno::Reference<css::accessibility::XAccessible> getAccessible() const
         {
-            return mxAccessible;
+            return mpAccessible;
         }
 
         void close(sal_Int32 result = VclResponseType::RET_CANCEL);

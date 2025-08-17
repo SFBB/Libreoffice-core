@@ -29,6 +29,7 @@
 #include <vcl/accessibility/AccessibleTextAttributeHelper.hxx>
 #include <vcl/svapp.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <systools/win32/oleauto.hxx>
 
 #include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/AccessibleTextType.hpp>
@@ -48,15 +49,15 @@ sal_Int16 lcl_matchIA2TextBoundaryType(IA2TextBoundaryType boundaryType)
     switch (boundaryType)
     {
     case IA2_TEXT_BOUNDARY_CHAR:
-        return com::sun::star::accessibility::AccessibleTextType::CHARACTER;
+        return css::accessibility::AccessibleTextType::CHARACTER;
     case IA2_TEXT_BOUNDARY_WORD:
-       return com::sun::star::accessibility::AccessibleTextType::WORD;
+       return css::accessibility::AccessibleTextType::WORD;
     case IA2_TEXT_BOUNDARY_SENTENCE:
-        return com::sun::star::accessibility::AccessibleTextType::SENTENCE;
+        return css::accessibility::AccessibleTextType::SENTENCE;
     case IA2_TEXT_BOUNDARY_PARAGRAPH:
-        return com::sun::star::accessibility::AccessibleTextType::PARAGRAPH;
+        return css::accessibility::AccessibleTextType::PARAGRAPH;
     case IA2_TEXT_BOUNDARY_LINE:
-        return com::sun::star::accessibility::AccessibleTextType::LINE;
+        return css::accessibility::AccessibleTextType::LINE;
     case IA2_TEXT_BOUNDARY_ALL:
         // assert here, better handle it directly at call site
         assert(false
@@ -104,7 +105,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_addSelection(long startOffse
 
     if( pRExtension.is() )
     {
-        pRExtension->addSelection(0, startOffset, endOffset);
+        pRExtension->addSelection(startOffset, endOffset);
         return S_OK;
     }
     else
@@ -148,7 +149,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_attributes(long offset, long
 
     if(*textAttributes)
         SysFreeString(*textAttributes);
-    *textAttributes = SysAllocString(o3tl::toW(sAttrs.getStr()));
+    *textAttributes = sal::systools::BStr::newBSTR(sAttrs);
 
     return S_OK;
 
@@ -438,27 +439,15 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_text(long startOffset, long 
     if(!pRXText.is())
         return E_FAIL;
 
-    if (endOffset < -1 || endOffset < startOffset )
-    {
+    if (endOffset == -1)
+        endOffset = pRXText->getCharacterCount();
+
+    if (endOffset < 0 || endOffset < startOffset)
         return E_FAIL;
-    }
 
-    OUString ouStr;
-    if (endOffset == -1 )
-    {
-        long nLen=0;
-        if(SUCCEEDED(get_characterCount(&nLen)))
-        {
-            ouStr = pRXText->getTextRange(0, nLen);
-        }
-    }
-    else
-    {
-        ouStr = pRXText->getTextRange(startOffset, endOffset);
-    }
-
+    const OUString ouStr = pRXText->getTextRange(startOffset, endOffset);
     SysFreeString(*text);
-    *text = SysAllocString(o3tl::toW(ouStr.getStr()));
+    *text = sal::systools::BStr::newBSTR(ouStr);
     return S_OK;
 
     } catch(...) { return E_FAIL; }
@@ -499,9 +488,8 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_textBeforeOffset(long offset
         return E_FAIL;
 
     TextSegment segment = pRXText->getTextBeforeIndex(offset, nUnoBoundaryType);
-    OUString ouStr = segment.SegmentText;
     SysFreeString(*text);
-    *text = SysAllocString(o3tl::toW(ouStr.getStr()));
+    *text = sal::systools::BStr::newBSTR(segment.SegmentText);
     *startOffset = segment.SegmentStart;
     *endOffset = segment.SegmentEnd;
 
@@ -545,9 +533,8 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_textAfterOffset(long offset,
         return E_FAIL;
 
     TextSegment segment = pRXText->getTextBehindIndex(offset, nUnoBoundaryType);
-    OUString ouStr = segment.SegmentText;
     SysFreeString(*text);
-    *text = SysAllocString(o3tl::toW(ouStr.getStr()));
+    *text = sal::systools::BStr::newBSTR(segment.SegmentText);
     *startOffset = segment.SegmentStart;
     *endOffset = segment.SegmentEnd;
 
@@ -591,9 +578,8 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::get_textAtOffset(long offset, IA
         return E_FAIL;
 
     TextSegment segment = pRXText->getTextAtIndex(offset, nUnoBoundaryType);
-    OUString ouStr = segment.SegmentText;
     SysFreeString(*text);
-    *text = SysAllocString(o3tl::toW(ouStr.getStr()));
+    *text = sal::systools::BStr::newBSTR(segment.SegmentText);
     *startOffset = segment.SegmentStart;
     *endOffset = segment.SegmentEnd;
 
@@ -630,7 +616,8 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::removeSelection(long selectionIn
     }
     else
     {
-        pRXText->setSelection(0, 0);
+        const sal_Int32 nCaretPos = pRXText->getCaretPosition();
+        pRXText->setSelection(nCaretPos, nCaretPos);
         return S_OK;
     }
 
@@ -792,7 +779,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CAccTextBase::put_XInterface(hyper pXInterface
     try {
 
     CUNOXWrapper::put_XInterface(pXInterface);
-    //special query.
+
     if(pUNOInterface == nullptr)
         return E_FAIL;
     Reference<XAccessibleContext> pRContext = pUNOInterface->getAccessibleContext();

@@ -28,39 +28,38 @@
 #include <com/sun/star/awt/XPointer.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
+#include <framework/AbstractPane.hxx>
+#include <ResourceId.hxx>
+#include <framework/AbstractView.hxx>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/presentation/XSlideShowController.hpp>
 #include <com/sun/star/rendering/XPolyPolygon2D.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/compbase.hxx>
-#include <cppuhelper/basemutex.hxx>
+#include <comphelper/interfacecontainer4.hxx>
 
 namespace sdext::presenter {
 
-typedef cppu::WeakComponentImplHelper<
+typedef cppu::ImplInheritanceHelper<
+    sd::framework::AbstractView,
     css::presentation::XSlideShowView,
     css::awt::XPaintListener,
     css::awt::XMouseListener,
     css::awt::XMouseMotionListener,
     css::awt::XWindowListener,
-    css::drawing::framework::XView,
     css::drawing::XDrawView
     > PresenterSlideShowViewInterfaceBase;
 
 /** Life view in a secondary window of a full screen slide show.
 */
 class PresenterSlideShowView
-    : protected ::cppu::BaseMutex,
-      public PresenterSlideShowViewInterfaceBase,
+    : public PresenterSlideShowViewInterfaceBase,
       public CachablePresenterView
 {
 public:
     PresenterSlideShowView (
         css::uno::Reference<css::uno::XComponentContext> xContext,
-        css::uno::Reference<css::drawing::framework::XResourceId> xViewId,
+        rtl::Reference<sd::framework::ResourceId> xViewId,
         const rtl::Reference<::sd::DrawController>& rxController,
         ::rtl::Reference<PresenterController> xPresenterController);
     virtual ~PresenterSlideShowView() override;
@@ -68,7 +67,7 @@ public:
     PresenterSlideShowView& operator=(const PresenterSlideShowView&) = delete;
 
     void LateInit();
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     // CachablePresenterView
 
@@ -154,10 +153,10 @@ public:
 
     // XView
 
-    virtual css::uno::Reference<css::drawing::framework::XResourceId> SAL_CALL
+    virtual rtl::Reference<sd::framework::ResourceId>
         getResourceId() override;
 
-    virtual sal_Bool SAL_CALL isAnchorOnly() override;
+    virtual bool isAnchorOnly() override;
 
     // XDrawView
 
@@ -175,7 +174,7 @@ public:
 private:
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
     ::rtl::Reference<PresenterController> mpPresenterController;
-    css::uno::Reference<css::drawing::framework::XResourceId> mxViewId;
+    rtl::Reference<sd::framework::ResourceId> mxViewId;
     rtl::Reference<::sd::DrawController> mxController;
     css::uno::Reference<css::presentation::XSlideShowController> mxSlideShowController;
     css::uno::Reference<css::presentation::XSlideShow> mxSlideShow;
@@ -184,8 +183,7 @@ private:
     css::uno::Reference<css::awt::XPointer> mxPointer;
     css::uno::Reference<css::awt::XWindow> mxWindow;
     css::uno::Reference<css::awt::XWindow> mxViewWindow;
-    css::uno::Reference<css::drawing::framework::XPane> mxTopPane;
-    css::uno::Reference<css::drawing::XPresenterHelper> mxPresenterHelper;
+    rtl::Reference<sd::framework::AbstractPane> mxTopPane;
     css::uno::Reference<css::rendering::XPolyPolygon2D> mxBackgroundPolygon1;
     css::uno::Reference<css::rendering::XPolyPolygon2D> mxBackgroundPolygon2;
     bool mbIsViewAdded;
@@ -197,7 +195,10 @@ private:
     /** This broadcast helper is used to notify listeners registered to a
         SlideShowView object.
     */
-    ::cppu::OBroadcastHelper maBroadcaster;
+    comphelper::OInterfaceContainerHelper4<css::awt::XMouseListener> maMouseListeners;
+    comphelper::OInterfaceContainerHelper4<css::awt::XMouseMotionListener> maMouseMotionListeners;
+    comphelper::OInterfaceContainerHelper4<css::awt::XPaintListener> maPaintListeners;
+    comphelper::OInterfaceContainerHelper4<css::util::XModifyListener> maModifyListeners;
 
     SharedBitmapDescriptor mpBackground;
 
@@ -225,11 +226,6 @@ private:
     void PaintEndSlide (const css::awt::Rectangle& rRepaintBox);
 
     void CreateBackgroundPolygons();
-
-    /** @throws css::lang::DisposedException when the object has already been
-        disposed.
-    */
-    void ThrowIfDisposed();
 
     void impl_addAndConfigureView();
 };

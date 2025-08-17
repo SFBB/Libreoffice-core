@@ -20,6 +20,7 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/frame/XModel.hpp>
+#include <unotxdoc.hxx>
 
 using namespace com::sun::star;
 using namespace oox;
@@ -123,11 +124,13 @@ void DocxTableStyleExport::CnfStyle(const uno::Sequence<beans::PropertyValue>& r
 
 void DocxTableStyleExport::TableStyles(sal_Int32 nCountStylesToWrite)
 {
+    SwDocShell* pShell = m_pImpl->getDoc().GetDocShell();
+    if (!pShell)
+        return;
     // Do we have table styles from InteropGrabBag available?
-    uno::Reference<beans::XPropertySet> xPropertySet(
-        m_pImpl->getDoc().GetDocShell()->GetBaseModel(), uno::UNO_QUERY_THROW);
+    rtl::Reference<SwXTextDocument> xPropertySet(pShell->GetBaseModel());
     uno::Sequence<beans::PropertyValue> aInteropGrabBag;
-    xPropertySet->getPropertyValue("InteropGrabBag") >>= aInteropGrabBag;
+    xPropertySet->getPropertyValue(u"InteropGrabBag"_ustr) >>= aInteropGrabBag;
     uno::Sequence<beans::PropertyValue> aTableStyles;
     auto pProp = std::find_if(
         std::cbegin(aInteropGrabBag), std::cend(aInteropGrabBag),
@@ -167,8 +170,9 @@ void DocxTableStyleExport::Impl::tableStyleTableCellMar(
             comphelper::SequenceAsHashMap aMap(
                 rProp.Value.get<uno::Sequence<beans::PropertyValue>>());
             m_pSerializer->singleElementNS(XML_w, nToken, FSNS(XML_w, XML_w),
-                                           OString::number(aMap["w"].get<sal_Int32>()),
-                                           FSNS(XML_w, XML_type), aMap["type"].get<OUString>());
+                                           OString::number(aMap[u"w"_ustr].get<sal_Int32>()),
+                                           FSNS(XML_w, XML_type),
+                                           aMap[u"type"_ustr].get<OUString>());
         }
     }
     m_pSerializer->endElementNS(XML_w, nType);
@@ -713,7 +717,7 @@ void DocxTableStyleExport::Impl::TableStyle(const uno::Sequence<beans::PropertyV
     tableStyleRPr(aRPr);
     tableStyleTablePr(aTablePr);
     tableStyleTcPr(aTcPr);
-    for (const uno::Sequence<beans::PropertyValue>& i : std::as_const(aTableStylePrs))
+    for (const uno::Sequence<beans::PropertyValue>& i : aTableStylePrs)
         tableStyleTableStylePr(i);
 
     m_pSerializer->endElementNS(XML_w, XML_style);

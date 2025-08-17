@@ -29,15 +29,11 @@
 
 using namespace oox::core;
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::drawing;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::xml::sax;
 
 namespace oox::drawingml {
 
 ConnectorShapePropertiesContext::ConnectorShapePropertiesContext(
-    ContextHandler2Helper const& rParent, ShapePtr& pShapePtr,
+    ContextHandler2Helper const& rParent, const ShapePtr& pShapePtr,
     std::vector<ConnectorShapeProperties>& rConnectorShapePropertiesList)
     : ContextHandler2(rParent)
     , mrConnectorShapePropertiesList(rConnectorShapePropertiesList)

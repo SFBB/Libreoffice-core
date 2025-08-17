@@ -132,7 +132,7 @@ private:
     RTFCellDefault* mpActDefault;
     RTFCellDefault* mpDefMerge;
 
-    Reference< XTable > mxTable;
+    rtl::Reference< TableModel > mxTable;
 
     RTFColumnVectorPtr mxLastRow;
     // Copy assignment is forbidden and not implemented.
@@ -152,7 +152,7 @@ SdrTableRTFParser::SdrTableRTFParser( SdrTableObj& rTableObj )
 , mnVMergeIdx ( 0 )
 , mpActDefault( nullptr )
 , mpDefMerge( nullptr )
-, mxTable( rTableObj.getTable() )
+, mxTable( rTableObj.getUnoTable() )
 {
     mpOutliner->SetUpdateLayout(true);
     mpOutliner->SetStyleSheet( 0, mrTableObj.GetStyleSheet() );
@@ -189,11 +189,11 @@ IMPL_LINK( SdrTableRTFParser, RTFImportHdl, RtfImportInfo&, rInfo, void )
         }
             break;
         case RtfImportState::End:
-            if ( rInfo.aSelection.nEndPos )
+            if ( rInfo.aSelection.end.nIndex )
             {
                 mpActDefault = nullptr;
                 rInfo.nToken = RTF_PAR;
-                rInfo.aSelection.nEndPara++;
+                rInfo.aSelection.end.nPara++;
                 ProcToken( &rInfo );
             }
             break;
@@ -219,7 +219,7 @@ void SdrTableRTFParser::InsertCell( RtfImportInfo const * pInfo )
     RTFCellInfoPtr xCellInfo = std::make_shared<RTFCellInfo>(mrItemPool);
 
     xCellInfo->mnStartPara = mnStartPara;
-    xCellInfo->mnParaCount = pInfo->aSelection.nEndPara - 1 - mnStartPara;
+    xCellInfo->mnParaCount = pInfo->aSelection.end.nPara - 1 - mnStartPara;
     xCellInfo->mnCellX = mpActDefault->mnCellX;
     xCellInfo->mnRowSpan = mpActDefault->mnRowSpan;
 
@@ -235,7 +235,7 @@ void SdrTableRTFParser::InsertCell( RtfImportInfo const * pInfo )
         {
             RTFCellInfoPtr xLastCell( (*mxLastRow)[mnVMergeIdx] );
             if (xLastCell->mnRowSpan)
-                xCellInfo->mxVMergeCell = xLastCell;
+                xCellInfo->mxVMergeCell = std::move(xLastCell);
             else
                 xCellInfo->mxVMergeCell = xLastCell->mxVMergeCell;
         }
@@ -251,10 +251,10 @@ void SdrTableRTFParser::InsertCell( RtfImportInfo const * pInfo )
                 xCellInfo->mxVMergeCell->mnRowSpan++;
         }
 
-        xColumn->push_back( xCellInfo );
+        xColumn->push_back(std::move(xCellInfo));
     }
 
-    mnStartPara = pInfo->aSelection.nEndPara - 1;
+    mnStartPara = pInfo->aSelection.end.nPara - 1;
 }
 
 void SdrTableRTFParser::InsertColumnEdge( sal_Int32 nEdge )
@@ -308,7 +308,7 @@ void SdrTableRTFParser::FillTable()
             {
                 RTFCellInfoPtr xCellInfo( (*xColumn)[nIdx] );
 
-                CellRef xCell( dynamic_cast< Cell* >( mxTable->getCellByPosition( nCol, nRow ).get() ) );
+                CellRef xCell( mxTable->getCell( nCol, nRow ) );
                 if( xCell.is() && xCellInfo )
                 {
                     const SfxPoolItem *pPoolItem = nullptr;

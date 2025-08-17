@@ -21,7 +21,6 @@
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/drawing/XShapes.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/uno/XInterface.hpp>
 
@@ -70,10 +69,10 @@ public:
 };
 
 ScDrawPageObj::ScDrawPageObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
     , XElementAccess(cppu::UnoType<drawing::XShape>::get())
     , XIndexAccess(2)
-    , XServiceInfo("ScPageObj", "com.sun.star.sheet.SpreadsheetDrawPage")
+    , XServiceInfo(u"ScPageObj"_ustr, u"com.sun.star.sheet.SpreadsheetDrawPage"_ustr)
 {
 }
 
@@ -108,7 +107,7 @@ void ScDrawPageObj::setUp()
 {
     UnoApiTest::setUp();
     // create calc document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScDrawPageObj);

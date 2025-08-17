@@ -22,7 +22,6 @@
 #include <o3tl/any.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlexppr.hxx>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
@@ -38,7 +37,6 @@
 #include <xmloff/xmlexp.hxx>
 #include <xmloff/XMLEventExport.hxx>
 #include <xmloff/maptype.hxx>
-#include <memory>
 #include <set>
 #include <prstylecond.hxx>
 #include <sal/log.hxx>
@@ -82,12 +80,12 @@ void XMLStyleExport::exportStyleContent( const Reference< XStyle >& rStyle )
 
     try
     {
-        uno::Any aProperty = xPropSet->getPropertyValue( "ParaStyleConditions" );
+        uno::Any aProperty = xPropSet->getPropertyValue( u"ParaStyleConditions"_ustr );
         uno::Sequence< beans::NamedValue > aSeq;
 
         aProperty >>= aSeq;
 
-        for (beans::NamedValue const& rNamedCond : std::as_const(aSeq))
+        for (beans::NamedValue const& rNamedCond : aSeq)
         {
             OUString aStyleName;
 
@@ -130,19 +128,19 @@ void ExportStyleListlevel(const uno::Reference<beans::XPropertySetInfo>& xPropSe
                           const uno::Reference<beans::XPropertyState>& xPropState,
                           const uno::Reference<beans::XPropertySet>& xPropSet, SvXMLExport& rExport)
 {
-    if (!xPropSetInfo->hasPropertyByName("NumberingLevel"))
+    if (!xPropSetInfo->hasPropertyByName(u"NumberingLevel"_ustr))
     {
         SAL_WARN("xmloff", "ExportStyleListlevel: no NumberingLevel for a Writer paragraph style");
         return;
     }
 
-    if (xPropState->getPropertyState("NumberingLevel") != beans::PropertyState_DIRECT_VALUE)
+    if (xPropState->getPropertyState(u"NumberingLevel"_ustr) != beans::PropertyState_DIRECT_VALUE)
     {
         return;
     }
 
     sal_Int16 nNumberingLevel{};
-    if (!(xPropSet->getPropertyValue("NumberingLevel") >>= nNumberingLevel))
+    if (!(xPropSet->getPropertyValue(u"NumberingLevel"_ustr) >>= nNumberingLevel))
     {
         return;
     }
@@ -198,15 +196,15 @@ bool XMLStyleExport::exportStyle(
     if( !rXMLFamily.isEmpty() )
         GetExport().AddAttribute( XML_NAMESPACE_STYLE, XML_FAMILY, rXMLFamily);
 
-    if ( xPropSetInfo->hasPropertyByName( "Hidden" ) )
+    if ( xPropSetInfo->hasPropertyByName( u"Hidden"_ustr ) )
     {
-        aAny = xPropSet->getPropertyValue( "Hidden" );
+        aAny = xPropSet->getPropertyValue( u"Hidden"_ustr );
         bool bHidden = false;
         if ((aAny >>= bHidden) && bHidden
             && GetExport().getSaneDefaultVersion() & SvtSaveOptions::ODFSVER_EXTENDED)
         {
-            GetExport().AddAttribute(XML_NAMESPACE_LO_EXT, XML_HIDDEN, "true");
-            GetExport().AddAttribute(XML_NAMESPACE_STYLE, XML_HIDDEN, "true"); // FIXME for compatibility
+            GetExport().AddAttribute(XML_NAMESPACE_LO_EXT, XML_HIDDEN, u"true"_ustr);
+            GetExport().AddAttribute(XML_NAMESPACE_STYLE, XML_HIDDEN, u"true"_ustr); // FIXME for compatibility
         }
     }
 
@@ -239,9 +237,9 @@ bool XMLStyleExport::exportStyle(
     }
 
     // style:linked-style-name="..." (SW paragraph and character styles only)
-    if (xPropSetInfo->hasPropertyByName("LinkStyle"))
+    if (xPropSetInfo->hasPropertyByName(u"LinkStyle"_ustr))
     {
-        aAny = xPropSet->getPropertyValue("LinkStyle");
+        aAny = xPropSet->getPropertyValue(u"LinkStyle"_ustr);
         OUString sLinkName;
         aAny >>= sLinkName;
         if (!sLinkName.isEmpty()
@@ -286,7 +284,7 @@ bool XMLStyleExport::exportStyle(
                 {
                     GetExport().AddAttribute( XML_NAMESPACE_STYLE,
                                               XML_DEFAULT_OUTLINE_LEVEL,
-                                              OUString( "" ));
+                                              u""_ustr);
                 }
             }
         }
@@ -319,25 +317,24 @@ bool XMLStyleExport::exportStyle(
                 {
                     // Written OpenDocument file format doesn't fit to the created text document (#i69627#)
                     bool bSuppressListStyle( false );
+
+                    if ( !GetExport().writeOutlineStyleAsNormalListStyle() )
                     {
-                        if ( !GetExport().writeOutlineStyleAsNormalListStyle() )
+                        Reference< XChapterNumberingSupplier > xCNSupplier
+                            (GetExport().GetModel(), UNO_QUERY);
+
+                        if (xCNSupplier.is())
                         {
-                            Reference< XChapterNumberingSupplier > xCNSupplier
-                                (GetExport().GetModel(), UNO_QUERY);
+                            Reference< XIndexReplace > xNumRule
+                                ( xCNSupplier->getChapterNumberingRules() );
+                            assert(xNumRule.is());
 
-                            if (xCNSupplier.is())
-                            {
-                                Reference< XIndexReplace > xNumRule
-                                    ( xCNSupplier->getChapterNumberingRules() );
-                                assert(xNumRule.is());
-
-                                Reference< XPropertySet > xNumRulePropSet
-                                    (xNumRule, UNO_QUERY);
-                                OUString sOutlineName;
-                                xNumRulePropSet->getPropertyValue("Name")
-                                    >>= sOutlineName;
-                                bSuppressListStyle = sListName == sOutlineName;
-                            }
+                            Reference< XPropertySet > xNumRulePropSet
+                                (xNumRule, UNO_QUERY);
+                            OUString sOutlineName;
+                            xNumRulePropSet->getPropertyValue(u"Name"_ustr)
+                                >>= sOutlineName;
+                            bSuppressListStyle = sListName == sOutlineName;
                         }
                     }
 
@@ -386,7 +383,7 @@ bool XMLStyleExport::exportStyle(
             if ( bNoInheritedListStyle )
                 GetExport().AddAttribute( XML_NAMESPACE_STYLE,
                                           XML_LIST_STYLE_NAME,
-                                          OUString( "" ));
+                                          u""_ustr);
         }
     }
 

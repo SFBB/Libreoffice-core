@@ -49,7 +49,7 @@ enum BitmapAdjustment
     BA_RIGHT_DOWN
 };
 
-class SdDisplay : public weld::CustomWidgetController
+class SdDisplay final : public weld::CustomWidgetController
 {
 private:
     BitmapEx    aBitmapEx;
@@ -67,7 +67,7 @@ public:
     virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 };
 
-class AnimationWindow : public SfxDockingWindow
+class AnimationWindow final : public SfxDockingWindow
 {
  friend class AnimationChildWindow;
  friend class AnimationControllerItem;
@@ -112,7 +112,7 @@ private:
     std::unique_ptr<weld::Button> m_xBtnHelp;
 
     ::std::vector< ::std::pair<BitmapEx, ::tools::Time> > m_FrameList;
-    static const size_t EMPTY_FRAMELIST;
+    static constexpr size_t EMPTY_FRAMELIST = std::numeric_limits<size_t>::max();
     size_t          m_nCurrentFrame;
     std::unique_ptr<SdDrawDocument> pMyDoc;
 
@@ -145,7 +145,7 @@ private:
 /**
  * ControllerItem for Animator
  */
-class AnimationControllerItem : public SfxControllerItem
+class AnimationControllerItem final : public SfxControllerItem
 {
 
 public:

@@ -24,6 +24,7 @@
 #include <com/sun/star/io/TempFile.hpp>
 #include <com/sun/star/io/XOutputStream.hpp>
 
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 
 #include <comphelper/seekableinput.hxx>
 #include <utility>
@@ -64,7 +65,7 @@ OSeekableInputWrapper::OSeekableInputWrapper(
 , m_xOriginalStream(std::move( xInStream ))
 {
     if ( !m_xContext.is() )
-        throw uno::RuntimeException();
+        throw lang::IllegalArgumentException(u"no component context"_ustr, *this, 1);
 }
 
 
@@ -91,7 +92,7 @@ void OSeekableInputWrapper::PrepareCopy_Impl()
     if ( !m_xCopyInput.is() )
     {
         if ( !m_xContext.is() )
-            throw uno::RuntimeException();
+            throw uno::RuntimeException(u"no component context"_ustr);
 
         uno::Reference< io::XOutputStream > xTempOut(
                 io::TempFile::create(m_xContext),
@@ -106,12 +107,16 @@ void OSeekableInputWrapper::PrepareCopy_Impl()
             xTempSeek->seek( 0 );
             m_xCopyInput.set( xTempOut, uno::UNO_QUERY );
             if ( m_xCopyInput.is() )
-                m_xCopySeek = xTempSeek;
+            {
+                m_xCopySeek = std::move(xTempSeek);
+                m_pCopyByteReader = dynamic_cast<comphelper::ByteReader*>(xTempOut.get());
+                assert(m_pCopyByteReader);
+            }
         }
     }
 
     if ( !m_xCopyInput.is() )
-        throw io::IOException("no m_xCopyInput");
+        throw io::IOException(u"no m_xCopyInput"_ustr);
 }
 
 // XInputStream
@@ -139,6 +144,18 @@ sal_Int32 SAL_CALL OSeekableInputWrapper::readSomeBytes( uno::Sequence< sal_Int8
     PrepareCopy_Impl();
 
     return m_xCopyInput->readSomeBytes( aData, nMaxBytesToRead );
+}
+
+sal_Int32 OSeekableInputWrapper::readSomeBytes( sal_Int8* aData, sal_Int32 nMaxBytesToRead )
+{
+    std::scoped_lock aGuard( m_aMutex );
+
+    if ( !m_xOriginalStream.is() )
+        throw io::NotConnectedException();
+
+    PrepareCopy_Impl();
+
+    return m_pCopyByteReader->readSomeBytes( aData, nMaxBytesToRead );
 }
 
 
@@ -185,6 +202,7 @@ void SAL_CALL OSeekableInputWrapper::closeInput()
     }
 
     m_xCopySeek.clear();
+    m_pCopyByteReader = nullptr;
 }
 
 

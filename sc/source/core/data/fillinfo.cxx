@@ -184,11 +184,6 @@ public:
     }
 };
 
-bool isRotateItemUsed(const ScDocumentPool *pPool)
-{
-    return pPool->GetItemSurrogates(ATTR_ROTATE_VALUE).size() > 0;
-}
-
 void initRowInfo(const ScDocument* pDoc, RowInfo* pRowInfo, const SCSIZE nMaxRow,
         double fRowScale, SCROW nRow1, SCTAB nTab, SCROW& rYExtra, SCSIZE& rArrRow, SCROW& rRow2)
 {
@@ -296,7 +291,7 @@ bool handleConditionalFormat(ScConditionalFormatList& rCondFormList, const ScCon
 
         ScCondFormatData aData = pCondForm->GetData(
                 pInfo->maCell, rAddr);
-        if (!aData.aStyleName.isEmpty())
+        if (!bAnyCondition && !aData.aStyleName.isEmpty())
         {
             SfxStyleSheetBase* pStyleSheet =
                 pStlPool->Find( aData.aStyleName, SfxStyleFamily::Para );
@@ -337,7 +332,7 @@ bool handleConditionalFormat(ScConditionalFormatList& rCondFormList, const ScCon
             pTableInfo->addIconSetInfo(std::move(aData.pIconSet));
         }
 
-        if (pInfo->mxColorScale && pInfo->pIconSet && pInfo->pDataBar)
+        if (bAnyCondition && pInfo->mxColorScale && pInfo->pIconSet && pInfo->pDataBar)
             break;
     }
 
@@ -361,11 +356,11 @@ void ScDocument::FillInfo(
     RowInfo* pRowInfo = rTabInfo.mpRowInfo.get();
 
     const SvxBrushItem* pDefBackground =
-            &pPool->GetDefaultItem( ATTR_BACKGROUND );
+            &pPool->GetUserOrPoolDefaultItem( ATTR_BACKGROUND );
     const ScMergeAttr* pDefMerge =
-            &pPool->GetDefaultItem( ATTR_MERGE );
+            &pPool->GetUserOrPoolDefaultItem( ATTR_MERGE );
     const SvxShadowItem* pDefShadow =
-            &pPool->GetDefaultItem( ATTR_SHADOW );
+            &pPool->GetUserOrPoolDefaultItem( ATTR_SHADOW );
 
     SCSIZE nArrRow;
     SCSIZE nArrCount;
@@ -386,16 +381,13 @@ void ScDocument::FillInfo(
 
     // Rotated text...
 
-    // Is Attribute really used in document?
-    bool bAnyItem = isRotateItemUsed(pPool);
-
     SCCOL nRotMax = nCol2;
-    if ( bAnyItem && HasAttrib( 0, nRow1, nTab, MaxCol(), nRow2+1, nTab,
+    if ( HasAttrib( 0, nRow1, nTab, MaxCol(), nRow2+1, nTab,
                                 HasAttrFlags::Rotate | HasAttrFlags::Conditional ) )
     {
         //TODO: check Conditionals also for HasAttrFlags::Rotate ????
 
-        OSL_ENSURE( nArrCount>2, "nArrCount too small" );
+        assert( nArrCount>2 && "nArrCount too small" );
         FindMaxRotCol( nTab, &pRowInfo[1], nArrCount-1, nCol1, nCol2 );
         //  FindMaxRotCol sets nRotMaxCol
 
@@ -473,12 +465,12 @@ void ScDocument::FillInfo(
                         if ( pThisAttrArr->Count() )
                         {
                             nThisRow = pThisAttrArr->mvData[nIndex].nEndRow;              // End of range
-                            pPattern = pThisAttrArr->mvData[nIndex].pPattern;
+                            pPattern = pThisAttrArr->mvData[nIndex].getScPatternAttr();
                         }
                         else
                         {
                             nThisRow = MaxRow();
-                            pPattern = GetDefPattern();
+                            pPattern = &getCellAttributeHelper().getDefaultCellAttribute();
                         }
 
                         const SvxBrushItem* pBackground = &pPattern->GetItem(ATTR_BACKGROUND);
@@ -543,7 +535,7 @@ void ScDocument::FillInfo(
 
                                 ScCellInfo* pInfo = &pThisRowInfo->cellInfo(nCol);
                                 ScBasicCellInfo* pBasicInfo = &pThisRowInfo->basicCellInfo(nCol);
-                                pInfo->pBackground  = pBackground;
+                                pInfo->maBackground = SfxPoolItemHolder(*pPool, pBackground);
                                 pInfo->pPatternAttr = pPattern;
                                 pInfo->bMerged      = bMerged;
                                 pInfo->bHOverlapped = bHOverlapped;
@@ -563,7 +555,7 @@ void ScDocument::FillInfo(
 
                                 if (bScenario)
                                 {
-                                    pInfo->pBackground = ScGlobal::GetButtonBrushItem();
+                                    pInfo->maBackground = SfxPoolItemHolder(*pPool, ScGlobal::GetButtonBrushItem());
                                     pThisRowInfo->bEmptyBack = false;
                                 }
 
@@ -664,7 +656,7 @@ void ScDocument::FillInfo(
                             // Background
                     if ( const SvxBrushItem* pItem = pCondSet->GetItemIfSet( ATTR_BACKGROUND ) )
                     {
-                        pInfo->pBackground = pItem;
+                        pInfo->maBackground = SfxPoolItemHolder(*pPool, pItem);
                         pRowInfo[nArrRow].bEmptyBack = false;
                     }
 
@@ -687,7 +679,8 @@ void ScDocument::FillInfo(
                 if( bAnyCondition && pInfo->mxColorScale)
                 {
                     pRowInfo[nArrRow].bEmptyBack = false;
-                    pInfo->pBackground = &pPool->DirectPutItemInPool(SvxBrushItem(*pInfo->mxColorScale, ATTR_BACKGROUND));
+                    const SvxBrushItem aBrushItem(*pInfo->mxColorScale, ATTR_BACKGROUND);
+                    pInfo->maBackground = SfxPoolItemHolder(*pPool, &aBrushItem);
                 }
             }
         }
@@ -725,7 +718,7 @@ void ScDocument::FillInfo(
                     if ( !pStartCond ||
                         !(pBrushItem = pStartCond->GetItemIfSet(ATTR_BACKGROUND)) )
                         pBrushItem = &pStartPattern->GetItem(ATTR_BACKGROUND);
-                    pInfo->pBackground = pBrushItem;
+                    pInfo->maBackground = SfxPoolItemHolder(*pPool, pBrushItem);
                     pRowInfo[nArrRow].bEmptyBack = false;
 
                     // Shadow
@@ -1069,13 +1062,21 @@ void ScDocument::FillInfo(
         rArray.MirrorSelfX();
 }
 
-ScTableInfo::ScTableInfo(const SCSIZE capacity)
-    : mpRowInfo(new RowInfo[capacity])
-    , mnArrCount(0)
-    , mnArrCapacity(capacity)
+/// We seem to need to allocate three extra rows here, not sure why
+///
+ScTableInfo::ScTableInfo(SCROW nStartRow, SCROW nEndRow, bool bHintOnly)
+    : mnArrCount(0)
+    , mnArrCapacity(nEndRow - nStartRow + 4)
     , mbPageMode(false)
 {
-    memset(static_cast<void*>(mpRowInfo.get()), 0, mnArrCapacity * sizeof(RowInfo));
+    assert(nStartRow >= 0);
+    assert(nEndRow >= nStartRow);
+    if (bHintOnly && mnArrCapacity > 1024)
+    {
+        SAL_INFO("sc.core", "ScTableInfo excessive capacity: " << mnArrCapacity << " start: " << nStartRow << " end: " << nEndRow);
+        mnArrCapacity = 1024;
+    }
+    mpRowInfo.reset(new RowInfo[mnArrCapacity] {});
 }
 
 ScTableInfo::~ScTableInfo()

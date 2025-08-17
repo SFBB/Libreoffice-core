@@ -43,12 +43,10 @@
 
 #include <memory>
 
-using namespace ::osl;
 using namespace ::cppu;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::xml::sax;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::io;
 
 #define LINEFEED 10
@@ -233,7 +231,7 @@ sal_uInt32 SaxWriterHelper::writeSequence()
     catch (const IOException&)
     {
         css::uno::Any anyEx = cppu::getCaughtException();
-        throw SAXException("IO exception during writing", Reference<XInterface>(), anyEx);
+        throw SAXException(u"IO exception during writing"_ustr, Reference<XInterface>(), anyEx);
     }
     nLastLineFeedPos -= SEQUENCESIZE;
     return 0;
@@ -689,14 +687,14 @@ SaxInvalidCharacterError SaxWriterHelper::startElement(const OUString& rName,
         if (nCurrentPos == SEQUENCESIZE)
             nCurrentPos = writeSequence();
 
-        OUString const& rAttrName(xAttribs->getNameByIndex(i));
+        OUString const aAttrName(xAttribs->getNameByIndex(i));
 #ifdef DBG_UTIL
         // Well-formedness constraint: Unique Att Spec
-        assert(DebugAttributes.find(rAttrName) == DebugAttributes.end());
-        DebugAttributes.insert(rAttrName);
+        assert(DebugAttributes.find(aAttrName) == DebugAttributes.end());
+        DebugAttributes.insert(aAttrName);
 #endif
-        CheckValidName(rAttrName);
-        if (!writeString(rAttrName, false, false))
+        CheckValidName(aAttrName);
+        if (!writeString(aAttrName, false, false))
             eRet = SAX_ERROR;
 
         mp_Sequence[nCurrentPos] = '=';
@@ -1106,7 +1104,10 @@ sal_Int32 SAXWriter::getIndentPrefixLength(sal_Int32 nFirstLineBreakOccurrence) 
 bool isFirstCharWhitespace(const sal_Unicode* p) noexcept { return *p == ' '; }
 
 // XServiceInfo
-OUString SAXWriter::getImplementationName() { return "com.sun.star.extensions.xml.sax.Writer"; }
+OUString SAXWriter::getImplementationName()
+{
+    return u"com.sun.star.extensions.xml.sax.Writer"_ustr;
+}
 
 // XServiceInfo
 sal_Bool SAXWriter::supportsService(const OUString& ServiceName)
@@ -1117,7 +1118,7 @@ sal_Bool SAXWriter::supportsService(const OUString& ServiceName)
 // XServiceInfo
 Sequence<OUString> SAXWriter::getSupportedServiceNames()
 {
-    return { "com.sun.star.xml.sax.Writer" };
+    return { u"com.sun.star.xml.sax.Writer"_ustr };
 }
 
 void SAXWriter::startDocument()
@@ -1134,12 +1135,12 @@ void SAXWriter::endDocument()
 {
     if (!m_bDocStarted)
     {
-        throw SAXException("endDocument called before startDocument", Reference<XInterface>(),
+        throw SAXException(u"endDocument called before startDocument"_ustr, Reference<XInterface>(),
                            Any());
     }
     if (m_nLevel)
     {
-        throw SAXException("unexpected end of document", Reference<XInterface>(), Any());
+        throw SAXException(u"unexpected end of document"_ustr, Reference<XInterface>(), Any());
     }
     m_pSaxWriterHelper->endDocument();
     try
@@ -1149,8 +1150,8 @@ void SAXWriter::endDocument()
     catch (const IOException&)
     {
         css::uno::Any anyEx = cppu::getCaughtException();
-        throw SAXException("IO exception during closing the IO Stream", Reference<XInterface>(),
-                           anyEx);
+        throw SAXException(u"IO exception during closing the IO Stream"_ustr,
+                           Reference<XInterface>(), anyEx);
     }
 }
 
@@ -1158,11 +1159,11 @@ void SAXWriter::startElement(const OUString& aName, const Reference<XAttributeLi
 {
     if (!m_bDocStarted)
     {
-        throw SAXException("startElement called before startDocument", {}, {});
+        throw SAXException(u"startElement called before startDocument"_ustr, {}, {});
     }
     if (m_bIsCDATA)
     {
-        throw SAXException("startElement call not allowed with CDATA sections", {}, {});
+        throw SAXException(u"startElement call not allowed with CDATA sections"_ustr, {}, {});
     }
 
     sal_Int32 nLength(0);
@@ -1207,11 +1208,11 @@ void SAXWriter::startElement(const OUString& aName, const Reference<XAttributeLi
     if (eRet == SAX_WARNING)
     {
         throw SAXInvalidCharacterException(
-            "Invalid character during XML-Export in an attribute value", {}, {});
+            u"Invalid character during XML-Export in an attribute value"_ustr, {}, {});
     }
     else if (eRet == SAX_ERROR)
     {
-        throw SAXException("Invalid character during XML-Export", {}, {});
+        throw SAXException(u"Invalid character during XML-Export"_ustr, {}, {});
     }
 }
 
@@ -1255,7 +1256,7 @@ void SAXWriter::endElement(const OUString& aName)
 
     if (!bRet)
     {
-        throw SAXException("Invalid character during XML-Export", {}, {});
+        throw SAXException(u"Invalid character during XML-Export"_ustr, {}, {});
     }
 }
 
@@ -1263,7 +1264,7 @@ void SAXWriter::characters(const OUString& aChars)
 {
     if (!m_bDocStarted)
     {
-        throw SAXException("characters method called before startDocument", {}, {});
+        throw SAXException(u"characters method called before startDocument"_ustr, {}, {});
     }
 
     bool bThrowException(false);
@@ -1303,7 +1304,7 @@ void SAXWriter::characters(const OUString& aChars)
     }
     if (bThrowException)
     {
-        throw SAXInvalidCharacterException("Invalid character during XML-Export", {}, {});
+        throw SAXInvalidCharacterException(u"Invalid character during XML-Export"_ustr, {}, {});
     }
 }
 
@@ -1344,7 +1345,7 @@ void SAXWriter::processingInstruction(const OUString& aTarget, const OUString& a
 
     if (!m_pSaxWriterHelper->processingInstruction(aTarget, aData))
     {
-        throw SAXException("Invalid character during XML-Export", {}, {});
+        throw SAXException(u"Invalid character during XML-Export"_ustr, {}, {});
     }
 }
 
@@ -1376,7 +1377,7 @@ void SAXWriter::endCDATA()
 {
     if (!m_bDocStarted || !m_bIsCDATA)
     {
-        throw SAXException("endCDATA was called without startCDATA", {}, {});
+        throw SAXException(u"endCDATA was called without startCDATA"_ustr, {}, {});
     }
 
     sal_Int32 nPrefix = getIndentPrefixLength(3);
@@ -1410,7 +1411,7 @@ void SAXWriter::comment(const OUString& sComment)
 
     if (!m_pSaxWriterHelper->comment(sComment))
     {
-        throw SAXException("Invalid character during XML-Export", {}, {});
+        throw SAXException(u"Invalid character during XML-Export"_ustr, {}, {});
     }
 }
 
@@ -1448,7 +1449,7 @@ void SAXWriter::unknown(const OUString& sString)
 
     if (!m_pSaxWriterHelper->writeString(sString, false, false))
     {
-        throw SAXException("Invalid character during XML-Export", {}, {});
+        throw SAXException(u"Invalid character during XML-Export"_ustr, {}, {});
     }
 }
 

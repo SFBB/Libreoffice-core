@@ -20,22 +20,16 @@
 
 #include <math.h>
 
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/ucb/UniversalContentBroker.hpp>
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/bootstrap.hxx>
-#include <osl/file.hxx>
 #include <sal/log.hxx>
 #include <tools/stream.hxx>
-#include <vcl/builder.hxx>
-#include <vcl/toolkit/button.hxx>
-#include <vcl/toolkit/dialog.hxx>
 #include <vcl/toolkit/fixed.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/graphicfilter.hxx>
-#include <vcl/image.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/vclmain.hxx>
 #include <vcl/wrkwin.hxx>
@@ -65,7 +59,7 @@ public:
 
     MyWorkWindow( vcl::Window* pParent, WinBits nWinStyle );
     virtual ~MyWorkWindow() override { disposeOnce(); }
-    virtual void dispose() override { mpFixedBitmap.clear(); WorkWindow::dispose(); }
+    virtual void dispose() override { mpFixedBitmap.reset(); WorkWindow::dispose(); }
     void LoadGraphic( const OUString& sImageFile );
 
     virtual void Paint( vcl::RenderContext& /*rRenderContext*/, const tools::Rectangle& rRect ) override;
@@ -87,7 +81,7 @@ MyWorkWindow::MyWorkWindow( vcl::Window* pParent, WinBits nWinStyle )
 void MyWorkWindow::LoadGraphic( const OUString& sImageFile )
 {
     SvFileStream aFileStream( sImageFile, StreamMode::READ );
-    GraphicFilter aGraphicFilter(false);
+    GraphicFilter aGraphicFilter;
     if (aGraphicFilter.ImportGraphic(maGraphic, sImageFile, aFileStream) != ERRCODE_NONE)
     {
         SAL_WARN("vcl.icontest", "Could not import image '" << sImageFile << "'");
@@ -109,11 +103,11 @@ void MyWorkWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Rectan
     aSize.setWidth( aSize.Width() * (1 + (0.1*sin(mnPaintCount/60.))) );
     aSize.setHeight( aSize.Height() * (1 + (0.1*sin(mnPaintCount/50.))) );
 
-    BitmapEx aEmpty;
+    Bitmap aEmpty;
     mpFixedBitmap->SetBitmap( aEmpty );
     GraphicConversionParameters aConv( aSize );
     mpBitmap = new BitmapEx(maGraphic.GetBitmapEx( aConv ));
-    mpFixedBitmap->SetBitmap( *mpBitmap );
+    mpFixedBitmap->SetBitmap( Bitmap(*mpBitmap) );
     mpFixedBitmap->SetSizePixel( aSize );
 
     WorkWindow::Paint(rRenderContext, rRect);
@@ -183,7 +177,7 @@ void IconTestApp::DoItWithVcl( const OUString& sImageFile)
     {
         VclPtrInstance<MyWorkWindow> pWindow( nullptr, WB_APP | WB_STDWORK | WB_SIZEABLE | WB_CLOSEABLE | WB_CLIPCHILDREN );
 
-        pWindow->SetText("VCL Image Test");
+        pWindow->SetText(u"VCL Image Test"_ustr);
 
         pWindow->LoadGraphic( sImageFile );
         pWindow->mpFixedBitmap = VclPtr<FixedBitmap>::Create( pWindow );

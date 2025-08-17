@@ -38,8 +38,7 @@ ScInputStatusItem::ScInputStatusItem(
     aStartPos   ( rStartPos ),
     aEndPos     ( rEndPos ),
     aString     (std::move( _aString )),
-    pEditData   ( pData ? pData->Clone() : nullptr ),
-    mpMisspellRanges(nullptr)
+    pEditData   ( pData ? pData->Clone() : nullptr )
 {
 }
 
@@ -50,7 +49,7 @@ ScInputStatusItem::ScInputStatusItem( const ScInputStatusItem& rItem ) :
     aEndPos     ( rItem.aEndPos ),
     aString     ( rItem.aString ),
     pEditData   ( rItem.pEditData ? rItem.pEditData->Clone() : nullptr ),
-    mpMisspellRanges(rItem.mpMisspellRanges)
+    maMisspellRanges(rItem.maMisspellRanges)
 {
 }
 
@@ -74,9 +73,9 @@ ScInputStatusItem* ScInputStatusItem::Clone( SfxItemPool * ) const
     return new ScInputStatusItem( *this );
 }
 
-void ScInputStatusItem::SetMisspellRanges( const std::vector<editeng::MisspellRanges>* pRanges )
+void ScInputStatusItem::SetMisspellRanges( const sc::MisspellRangeResult& rRanges )
 {
-    mpMisspellRanges = pRanges;
+    maMisspellRanges = rRanges;
 }
 
 // ScPaintHint was moved to hints.cxx
@@ -85,6 +84,7 @@ void ScInputStatusItem::SetMisspellRanges( const std::vector<editeng::MisspellRa
  * Adapt Views when inserting/deleting a table
  */
 ScTablesHint::ScTablesHint(sal_uInt16 nNewId, SCTAB nTable1, SCTAB nTable2) :
+    SfxHint(SfxHintId::ScTables),
     nId( nNewId ),
     nTab1( nTable1 ),
     nTab2( nTable2 )
@@ -108,8 +108,9 @@ ScIndexHint::~ScIndexHint()
 /**
  * Create new EditView for Cursorposition
  */
-ScEditViewHint::ScEditViewHint( ScEditEngineDefaulter* pEngine, const ScAddress& rCurPos ) :
-    pEditEngine( pEngine ),
+ScEditViewHint::ScEditViewHint( ScEditEngineDefaulter& rEngine, const ScAddress& rCurPos ) :
+    SfxHint(SfxHintId::ScEditView),
+    rEditEngine( rEngine ),
     aCursorPos( rCurPos )
 {
 }
@@ -126,14 +127,6 @@ ScSortItem::ScSortItem( sal_uInt16              nWhichP,
                         const ScSortParam*  pSortData ) :
         SfxPoolItem ( nWhichP ),
         pViewData   ( ptrViewData )
-{
-    if ( pSortData ) theSortData = *pSortData;
-}
-
-ScSortItem::ScSortItem( sal_uInt16              nWhichP,
-                        const ScSortParam*  pSortData ) :
-        SfxPoolItem ( nWhichP ),
-        pViewData   ( nullptr )
 {
     if ( pSortData ) theSortData = *pSortData;
 }
@@ -164,22 +157,8 @@ bool ScSortItem::QueryValue( css::uno::Any& rVal, sal_uInt8 /* nMemberUd */ ) co
  * Data for the Filter dialog
  */
 ScQueryItem::ScQueryItem( sal_uInt16                nWhichP,
-                          ScViewData*           ptrViewData,
                           const ScQueryParam*   pQueryData ) :
         SfxPoolItem ( nWhichP ),
-        pViewData   ( ptrViewData ),
-        bIsAdvanced ( false )
-{
-    if (pQueryData)
-        mpQueryData.reset(new ScQueryParam(*pQueryData));
-    else
-        mpQueryData.reset(new ScQueryParam);
-}
-
-ScQueryItem::ScQueryItem( sal_uInt16                nWhichP,
-                          const ScQueryParam*   pQueryData ) :
-        SfxPoolItem ( nWhichP ),
-        pViewData   ( nullptr ),
         bIsAdvanced ( false )
 {
     if (pQueryData)
@@ -191,7 +170,6 @@ ScQueryItem::ScQueryItem( sal_uInt16                nWhichP,
 ScQueryItem::ScQueryItem( const ScQueryItem& rItem ) :
         SfxPoolItem ( rItem ),
         mpQueryData(new ScQueryParam(*rItem.mpQueryData)),
-        pViewData   ( rItem.pViewData ),
         aAdvSource  ( rItem.aAdvSource ),
         bIsAdvanced ( rItem.bIsAdvanced )
 {
@@ -229,8 +207,7 @@ bool ScQueryItem::operator==( const SfxPoolItem& rItem ) const
 
     const ScQueryItem& rQueryItem = static_cast<const ScQueryItem&>(rItem);
 
-    return (   (pViewData    == rQueryItem.pViewData)
-            && (bIsAdvanced  == rQueryItem.bIsAdvanced)
+    return ( (bIsAdvanced  == rQueryItem.bIsAdvanced)
             && (aAdvSource   == rQueryItem.aAdvSource)
             && (*mpQueryData == *rQueryItem.mpQueryData) );
 }

@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -35,6 +35,11 @@ class QtFont final : public QFont, public LogicalFontInstance
     bool GetGlyphOutline(sal_GlyphId, basegfx::B2DPolyPolygon&, bool) const override;
 
     explicit QtFont(const vcl::font::PhysicalFontFace&, const vcl::font::FontSelectPattern&);
+
+public:
+    static void applyStretch(QFont& rFont, FontWidth eWidthType);
+    static void applyStyle(QFont& rFont, FontItalic eItalic);
+    static void applyWeight(QFont& rFont, FontWeight eWeight);
 };
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

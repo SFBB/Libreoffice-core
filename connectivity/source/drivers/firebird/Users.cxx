@@ -17,8 +17,6 @@ using namespace ::cppu;
 using namespace ::osl;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::uno;
 
@@ -41,7 +39,7 @@ void Users::impl_refresh()
     // TODO: IMPLEMENT ME
 }
 
-ObjectType Users::createObject(const OUString& rName)
+css::uno::Reference< css::beans::XPropertySet > Users::createObject(const OUString& rName)
 {
     return new User(m_xMetaData->getConnection(), rName);
 }
@@ -55,7 +53,7 @@ uno::Reference< XPropertySet > Users::createDescriptor()
 }
 
 //----- XAppend ---------------------------------------------------------------
-ObjectType Users::appendObject(const OUString& rName,
+css::uno::Reference< css::beans::XPropertySet > Users::appendObject(const OUString& rName,
                                 const uno::Reference< XPropertySet >&)
 {
     // TODO: set sSql as appropriate

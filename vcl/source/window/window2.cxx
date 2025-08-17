@@ -420,8 +420,8 @@ void Window::SetZoomedPointFont(vcl::RenderContext& rRenderContext, const vcl::F
     {
         vcl::Font aFont(rFont);
         Size aSize = aFont.GetFontSize();
-        aSize.setWidth( FRound(double(aSize.Width() * rZoom)) );
-        aSize.setHeight( FRound(double(aSize.Height() * rZoom)) );
+        aSize.setWidth(basegfx::fround<tools::Long>(double(aSize.Width() * rZoom)));
+        aSize.setHeight(basegfx::fround<tools::Long>(double(aSize.Height() * rZoom)));
         aFont.SetFontSize(aSize);
         SetPointFont(rRenderContext, aFont);
     }
@@ -438,7 +438,7 @@ tools::Long Window::CalcZoom( tools::Long nCalc ) const
     if ( rZoom.GetNumerator() != rZoom.GetDenominator() )
     {
         double n = double(nCalc * rZoom);
-        nCalc = FRound( n );
+        nCalc = basegfx::fround<tools::Long>(n);
     }
     return nCalc;
 }
@@ -632,7 +632,7 @@ static double lcl_HandleScrollHelper( Scrollable* pScrl, double nN, bool isMulti
         }
 
         // compute how many quantized units to scroll
-        tools::Long magnitude = o3tl::saturating_cast<tools::Long>(abs(nN));
+        tools::Long magnitude = o3tl::saturating_cast<tools::Long>(fabs(nN));
         tools::Long change = copysign(magnitude, nN);
 
         nNewPos = nNewPos - change;
@@ -791,21 +791,53 @@ bool Window::HandleScrollCommand( const CommandEvent& rCmd,
 
             case CommandEventId::GesturePan:
             {
-                if (pVScrl)
+                const CommandGesturePanData* pData = rCmd.GetGesturePanData();
+                if (pData)
                 {
-                    const CommandGesturePanData* pData = rCmd.GetGesturePanData();
                     if (pData->meEventType == GestureEventPanType::Begin)
                     {
-                        mpWindowImpl->mpFrameData->mnTouchPanPosition = pVScrl->GetThumbPos();
+                        if (pHScrl)
+                            mpWindowImpl->mpFrameData->mnTouchPanPositionX = pHScrl->GetThumbPos();
+                        if (pVScrl)
+                            mpWindowImpl->mpFrameData->mnTouchPanPositionY = pVScrl->GetThumbPos();
                     }
-                    else if(pData->meEventType == GestureEventPanType::Update)
+                    else if (pData->meEventType == GestureEventPanType::Update)
                     {
-                        tools::Long nOriginalPosition = mpWindowImpl->mpFrameData->mnTouchPanPosition;
-                        pVScrl->DoScroll(nOriginalPosition + (pData->mfOffset / pVScrl->GetVisibleSize()));
+                        bool bHorz = pData->meOrientation == PanningOrientation::Horizontal;
+                        Scrollable* pScrl = bHorz ? pHScrl : pVScrl;
+                        if (pScrl)
+                        {
+                            Point aGesturePt(pData->mfX, pData->mfY);
+                            tools::Rectangle aWinRect(this->GetOutputRectPixel());
+                            bool bContains = aWinRect.Contains(aGesturePt);
+                            if (bContains)
+                            {
+                                double nWinSize;
+                                tools::Long nOriginalPos;
+                                if (bHorz)
+                                {
+                                    nWinSize = GetOutputSizePixel().getWidth();
+                                    nOriginalPos = mpWindowImpl->mpFrameData->mnTouchPanPositionX;
+                                }
+                                else
+                                {
+                                    nWinSize = GetOutputSizePixel().getHeight();
+                                    nOriginalPos = mpWindowImpl->mpFrameData->mnTouchPanPositionY;
+                                }
+                                double nOffset = pData->mfOffset;
+                                double nRatio = nOffset / nWinSize;
+                                tools::Long nVisibleSize = pScrl->GetVisibleSize();
+                                tools::Long nDeltaInLogic = tools::Long(nVisibleSize * nRatio);
+                                tools::Long nNewPos = nOriginalPos - nDeltaInLogic;
+
+                                pScrl->DoScroll(nNewPos);
+                            }
+                        }
                     }
-                    if (pData->meEventType == GestureEventPanType::End)
+                    else if (pData->meEventType == GestureEventPanType::End)
                     {
-                        mpWindowImpl->mpFrameData->mnTouchPanPosition = -1;
+                        mpWindowImpl->mpFrameData->mnTouchPanPositionX = -1;
+                        mpWindowImpl->mpFrameData->mnTouchPanPositionY = -1;
                     }
                     bRet = true;
                 }
@@ -999,16 +1031,16 @@ WindowExtendedStyle Window::GetExtendedStyle() const
     return mpWindowImpl ? mpWindowImpl->mnExtendedStyle : WindowExtendedStyle::NONE;
 }
 
-void Window::SetType( WindowType nType )
+void Window::SetType( WindowType eType )
 {
     if (mpWindowImpl)
-        mpWindowImpl->mnType = nType;
+        mpWindowImpl->meType = eType;
 }
 
 WindowType Window::GetType() const
 {
     if (mpWindowImpl)
-        return mpWindowImpl->mnType;
+        return mpWindowImpl->meType;
     else
         return WindowType::NONE;
 }
@@ -1041,11 +1073,6 @@ bool Window::IsDialog() const
 bool Window::IsMenuFloatingWindow() const
 {
     return mpWindowImpl && mpWindowImpl->mbMenuFloatingWindow;
-}
-
-bool Window::IsToolbarFloatingWindow() const
-{
-    return mpWindowImpl && mpWindowImpl->mbToolbarFloatingWindow;
 }
 
 bool Window::IsNativeFrame() const
@@ -1630,7 +1657,7 @@ bool Window::set_property(const OUString &rKey, const OUString &rValue)
     else if (rKey == "accessible-role")
     {
         sal_Int16 role = BuilderUtils::getRoleFromName(rValue);
-        if (role != com::sun::star::accessibility::AccessibleRole::UNKNOWN)
+        if (role != css::accessibility::AccessibleRole::UNKNOWN)
             SetAccessibleRole(role);
     }
     else if (rKey == "use-markup")

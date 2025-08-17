@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SW_SOURCE_CORE_INC_UNOMETA_HXX
-#define INCLUDED_SW_SOURCE_CORE_INC_UNOMETA_HXX
+#pragma once
 
 #include <memory>
 #include <deque>
@@ -94,7 +93,7 @@ public:
     static rtl::Reference<SwXMeta>
         CreateXMeta(
             ::sw::Meta & rMeta,
-            css::uno::Reference<SwXText> xParentText,
+            const css::uno::Reference<SwXText>& xParentText,
             std::unique_ptr<TextRangeList_t const> && pPortions);
 
     static rtl::Reference<SwXMeta>
@@ -195,7 +194,7 @@ private:
 
     friend rtl::Reference<SwXMeta>
         SwXMeta::CreateXMeta(::sw::Meta &,
-            css::uno::Reference<SwXText>,
+            const css::uno::Reference<SwXText>&,
             std::unique_ptr<TextRangeList_t const> && pPortions);
 
     SwXMetaField(SwDoc *const pDoc, ::sw::Meta *const pMeta,
@@ -259,7 +258,5 @@ void getPrefixAndSuffix(
         const css::uno::Reference< css::frame::XModel>& xModel,
         const css::uno::Reference< css::rdf::XMetadatable>& xMetaField,
         OUString *const o_pPrefix, OUString *const o_pSuffix, OUString *const o_pShadowColor);
-
-#endif // INCLUDED_SW_SOURCE_CORE_INC_UNOMETA_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

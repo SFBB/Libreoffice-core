@@ -28,11 +28,13 @@
 #include <com/sun/star/linguistic2/XThesaurus.hpp>
 
 #include <i18nutil/transliteration.hxx>
+#include <sfx2/namedcolor.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/request.hxx>
+#include <editeng/colritem.hxx>
 #include <editeng/editund2.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/flstitem.hxx>
@@ -50,6 +52,7 @@
 #include <editeng/udlnitem.hxx>
 #include <editeng/fontitem.hxx>
 #include <svx/clipfmtitem.hxx>
+#include <svx/chinese_translation_unodialog.hxx>
 #include <svl/stritem.hxx>
 #include <svl/slstitm.hxx>
 #include <editeng/frmdiritem.hxx>
@@ -61,7 +64,7 @@
 #include <svx/hlnkitem.hxx>
 #include <sfx2/htmlmode.hxx>
 #include <editeng/langitem.hxx>
-#include <editeng/scripttypeitem.hxx>
+#include <editeng/scriptsetitem.hxx>
 #include <swundo.hxx>
 #include <doc.hxx>
 #include <viewopt.hxx>
@@ -94,8 +97,8 @@
 #include <swabstdlg.hxx>
 
 #include <comphelper/string.hxx>
+#include <comphelper/processfactory.hxx>
 #include <comphelper/propertysequence.hxx>
-#include <cppuhelper/bootstrap.hxx>
 
 #include <langhelper.hxx>
 
@@ -117,7 +120,7 @@ void SwAnnotationShell::InitInterface_Impl()
 {
     GetStaticInterface()->RegisterObjectBar(SFX_OBJECTBAR_OBJECT, SfxVisibilityFlags::Invisible, ToolbarId::Text_Toolbox_Sw);
 
-    GetStaticInterface()->RegisterPopupMenu("annotation");
+    GetStaticInterface()->RegisterPopupMenu(u"annotation"_ustr);
 }
 
 
@@ -149,7 +152,7 @@ SfxUndoManager* SwAnnotationShell::GetUndoManager()
         OSL_ENSURE(pPostItMgr,"PostItMgr::Layout(): We are looping forever");
         return nullptr;
     }
-    return &pPostItMgr->GetActiveSidebarWin()->GetOutlinerView()->GetOutliner()->GetUndoManager();
+    return &pPostItMgr->GetActiveSidebarWin()->GetOutlinerView()->GetOutliner().GetUndoManager();
 }
 
 void SwAnnotationShell::Exec( SfxRequest &rReq )
@@ -163,8 +166,8 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
     SfxItemSet aEditAttr(pOLV->GetAttribs());
     SfxItemSet aNewAttr(*aEditAttr.GetPool(), aEditAttr.GetRanges());
 
-    sal_uInt16 nSlot = rReq.GetSlot();
-    sal_uInt16 nWhich = GetPool().GetWhich(nSlot);
+    const sal_uInt16 nSlot = rReq.GetSlot();
+    const sal_uInt16 nWhich = GetPool().GetWhichIDFromSlotID(nSlot);
     const SfxItemSet *pNewAttrs = rReq.GetArgs();
     sal_uInt16 nEEWhich = 0;
     switch (nSlot)
@@ -206,7 +209,7 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
         case SID_ATTR_PARA_LINESPACE:
             {
                 SvxLineSpacingItem aParaMargin = static_cast<const SvxLineSpacingItem&>(pNewAttrs->Get(
-                                                            GetPool().GetWhich(nSlot)));
+                                                            GetPool().GetWhichIDFromSlotID(nSlot)));
                 aParaMargin.SetWhich( EE_PARA_SBL );
 
                 aNewAttr.Put(aParaMargin);
@@ -216,7 +219,7 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
         case SID_ATTR_PARA_ULSPACE:
             {
                 SvxULSpaceItem aULSpace = static_cast<const SvxULSpaceItem&>(pNewAttrs->Get(
-                    GetPool().GetWhich(nSlot)));
+                    GetPool().GetWhichIDFromSlotID(nSlot)));
                 aULSpace.SetWhich( EE_PARA_ULSPACE );
                 aNewAttr.Put( aULSpace );
                 rReq.Done();
@@ -248,7 +251,39 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
                 break;
             }
         case SID_ATTR_CHAR_COLOR: nEEWhich = EE_CHAR_COLOR; break;
-        case SID_ATTR_CHAR_BACK_COLOR: nEEWhich = EE_CHAR_BKGCOLOR; break;
+
+        case SID_ATTR_CHAR_COLOR2:
+        {
+            if (!rReq.GetArgs())
+            {
+                const std::optional<NamedColor> oColor
+                    = m_rView.GetDocShell()->GetRecentColor(SID_ATTR_CHAR_COLOR);
+                if (oColor.has_value())
+                {
+                    nEEWhich = GetPool().GetWhichIDFromSlotID(SID_ATTR_CHAR_COLOR);
+                    const model::ComplexColor aCol = (*oColor).getComplexColor();
+                    aNewAttr.Put(SvxColorItem(aCol.getFinalColor(), aCol, nEEWhich));
+                    rReq.SetArgs(aNewAttr);
+                    rReq.SetSlot(SID_ATTR_CHAR_COLOR);
+                }
+            }
+            break;
+        }
+        case SID_ATTR_CHAR_BACK_COLOR:
+        {
+            nEEWhich = GetPool().GetWhichIDFromSlotID(nSlot);
+            if (!rReq.GetArgs())
+            {
+                const std::optional<NamedColor> oColor
+                    = m_rView.GetDocShell()->GetRecentColor(nSlot);
+                if (oColor.has_value())
+                {
+                    const model::ComplexColor aCol = (*oColor).getComplexColor();
+                    aNewAttr.Put(SvxColorItem(aCol.getFinalColor(), aCol, nEEWhich));
+                }
+            }
+            break;
+        }
         case SID_ATTR_CHAR_UNDERLINE:
         {
             if( rReq.GetArgs() )
@@ -325,13 +360,10 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
         break;
         case SID_SELECTALL:
         {
-            Outliner * pOutliner = pOLV->GetOutliner();
-            if(pOutliner)
-            {
-                sal_Int32 nParaCount = pOutliner->GetParagraphCount();
-                if (nParaCount > 0)
-                    pOLV->SelectRange(0, nParaCount );
-            }
+            Outliner& rOutliner = pOLV->GetOutliner();
+            sal_Int32 nParaCount = rOutliner.GetParagraphCount();
+            if (nParaCount > 0)
+                pOLV->SelectRange(0, nParaCount );
             break;
         }
         case FN_FORMAT_RESET:
@@ -343,7 +375,7 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
         case FN_SET_SUPER_SCRIPT:
         {
             SvxEscapementItem aItem(EE_CHAR_ESCAPEMENT);
-            SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+            SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
 
             if( eEsc == SvxEscapement::Superscript )
                 aItem.SetEscapement( SvxEscapement::Off );
@@ -355,7 +387,7 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
         case FN_SET_SUB_SCRIPT:
         {
             SvxEscapementItem aItem(EE_CHAR_ESCAPEMENT);
-            SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+            SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
 
             if( eEsc == SvxEscapement::Subscript )
                 aItem.SetEscapement( SvxEscapement::Off );
@@ -382,7 +414,7 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
                 {
                     // Select the field so that it will be deleted during insert
                     ESelection aSel = pOLV->GetSelection();
-                    aSel.nEndPos++;
+                    aSel.end.nIndex++;
                     pOLV->SetSelection(aSel);
                 }
                 if (pPostItMgr->GetActiveSidebarWin()->GetLayoutStatus()!=SwPostItHelper::DELETED)
@@ -463,9 +495,9 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
                 /* mod
                 SwView* pView = &GetView();
                 FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebView*>( pView) !=  nullptr );
-                SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, eMetric));
+                SwModule::get()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, eMetric));
                 */
-                SfxItemSetFixed<XATTR_FILLSTYLE, XATTR_FILLCOLOR, EE_ITEMS_START, EE_ITEMS_END> aDlgAttr(GetPool());
+                SfxItemSet aDlgAttr(SfxItemSet::makeFixedSfxItemSet<XATTR_FILLSTYLE, XATTR_FILLCOLOR, EE_ITEMS_START, EE_ITEMS_END>(GetPool()));
 
                 // util::Language does not exist in the EditEngine! Therefore not included in the set.
 
@@ -473,28 +505,36 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
                 aDlgAttr.Put( SvxKerningItem(0, RES_CHRATR_KERNING) );
 
                 SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSwCharDlg(m_rView.GetFrameWeld(), m_rView, aDlgAttr, SwCharDlgMode::Ann));
+                VclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSwCharDlg(m_rView.GetFrameWeld(), m_rView, aDlgAttr, SwCharDlgMode::Ann));
                 if (nSlot == SID_CHAR_DLG_EFFECT)
                 {
-                    pDlg->SetCurPageId("fonteffects");
+                    pDlg->SetCurPageId(u"fonteffects"_ustr);
                 }
                 if (nSlot == SID_CHAR_DLG_POSITION)
                 {
-                    pDlg->SetCurPageId("position");
+                    pDlg->SetCurPageId(u"position"_ustr);
                 }
                 else if (pItem)
                 {
                     pDlg->SetCurPageId(pItem->GetValue());
                 }
 
-                sal_uInt16 nRet = pDlg->Execute();
-                if(RET_OK == nRet )
-                {
-                    rReq.Done( *( pDlg->GetOutputItemSet() ) );
-                    aNewAttr.Put(*pDlg->GetOutputItemSet());
-                }
-                if(RET_OK != nRet)
-                    return ;
+                auto xRequest = std::make_shared<SfxRequest>(rReq);
+                rReq.Ignore(); // the 'old' request is not relevant any more
+                pDlg->StartExecuteAsync(
+                    [this, pDlg, xRequest=std::move(xRequest), nEEWhich,
+                     aNewAttr2=std::move(aNewAttr), pOLV] (sal_Int32 nResult) mutable ->void
+                    {
+                        if (nResult == RET_OK)
+                        {
+                            xRequest->Done( *( pDlg->GetOutputItemSet() ) );
+                            aNewAttr2.Put(*pDlg->GetOutputItemSet());
+                            ExecPost(*xRequest, nEEWhich, aNewAttr2, pOLV);
+                        }
+                        pDlg->disposeOnce();
+                    }
+                );
+                return;
             }
             else
                 aNewAttr.Put(*pArgs);
@@ -509,12 +549,11 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
                 /* mod todo ???
                 SwView* pView = &GetView();
                 FieldUnit eMetric = ::GetDfltMetric(dynamic_cast<SwWebView*>( pView) !=  nullptr );
-                SW_MOD()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, eMetric));
+                SwModule::get()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, eMetric));
                 */
-                SfxItemSetFixed<
-                        EE_ITEMS_START, EE_ITEMS_END,
-                        SID_ATTR_PARA_HYPHENZONE, SID_ATTR_PARA_WIDOWS>
-                    aDlgAttr( GetPool() );
+                SfxItemSet aDlgAttr(SfxItemSet::makeFixedSfxItemSet<
+                    EE_ITEMS_START, EE_ITEMS_END,
+                    SID_ATTR_PARA_HYPHENZONE, SID_ATTR_PARA_WIDOWS>(GetPool()));
 
                 aDlgAttr.Put(aEditAttr);
 
@@ -556,10 +595,9 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
                 if( !static_cast<const SfxBoolItem*>(pPoolItem)->GetValue() )
                     bLeftToRight = !bLeftToRight;
             }
-            SfxItemSetFixed<
-                    EE_PARA_WRITINGDIR, EE_PARA_WRITINGDIR,
-                    EE_PARA_JUST, EE_PARA_JUST>
-                aAttr( *aNewAttr.GetPool() );
+            SfxItemSet aAttr(SfxItemSet::makeFixedSfxItemSet<
+                EE_PARA_WRITINGDIR, EE_PARA_WRITINGDIR,
+                EE_PARA_JUST, EE_PARA_JUST>(*aNewAttr.GetPool()));
 
             SvxAdjust nAdjust = SvxAdjust::Left;
             if( const SvxAdjustItem* pAdjustItem = aEditAttr.GetItemIfSet(EE_PARA_JUST ) )
@@ -582,9 +620,18 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
         }
     }
 
+    ExecPost(rReq, nEEWhich, aNewAttr, pOLV );
+}
+
+void SwAnnotationShell::ExecPost( const SfxRequest& rReq, sal_uInt16 nEEWhich, SfxItemSet& rNewAttr, OutlinerView* pOLV )
+{
+    const SfxItemSet *pNewAttrs = rReq.GetArgs();
+    const sal_uInt16 nSlot = rReq.GetSlot();
+    const sal_uInt16 nWhich = GetPool().GetWhichIDFromSlotID(nSlot);
+
     if(nEEWhich && pNewAttrs)
     {
-        aNewAttr.Put(pNewAttrs->Get(nWhich).CloneSetWhich(nEEWhich));
+        rNewAttr.Put(pNewAttrs->Get(nWhich).CloneSetWhich(nEEWhich));
     }
     else if (nEEWhich == EE_CHAR_COLOR)
     {
@@ -597,13 +644,12 @@ void SwAnnotationShell::Exec( SfxRequest &rReq )
 
 
     tools::Rectangle aOutRect = pOLV->GetOutputArea();
-    if (tools::Rectangle() != aOutRect && aNewAttr.Count())
-        pOLV->SetAttribs(aNewAttr);
+    if (tools::Rectangle() != aOutRect && rNewAttr.Count())
+        pOLV->SetAttribs(rNewAttr);
 
     m_rView.GetViewFrame().GetBindings().InvalidateAll(false);
-    if ( pOLV->GetOutliner()->IsModified() )
+    if ( pOLV->GetOutliner().IsModified() )
         m_rView.GetWrtShell().SetModified();
-
 }
 
 void SwAnnotationShell::GetState(SfxItemSet& rSet)
@@ -709,6 +755,7 @@ void SwAnnotationShell::GetState(SfxItemSet& rSet)
                         rSet.InvalidateItem( nWhich );
                 }
                 break;
+            case SID_ATTR_CHAR_COLOR2:
             case SID_ATTR_CHAR_COLOR: nEEWhich = EE_CHAR_COLOR; break;
             case SID_ATTR_CHAR_BACK_COLOR: nEEWhich = EE_CHAR_BKGCOLOR; break;
             case SID_ATTR_CHAR_UNDERLINE: nEEWhich = EE_CHAR_UNDERLINE;break;
@@ -801,7 +848,7 @@ void SwAnnotationShell::GetState(SfxItemSet& rSet)
             case SID_AUTOSPELL_CHECK:
             {
                 const SfxPoolItemHolder aResult(m_rView.GetSlotState(nWhich));
-                if (nullptr != aResult.getItem())
+                if (aResult)
                     rSet.Put(SfxBoolItem(nWhich, static_cast<const SfxBoolItem*>(aResult.getItem())->GetValue()));
                 else
                     rSet.DisableItem( nWhich );
@@ -814,7 +861,7 @@ void SwAnnotationShell::GetState(SfxItemSet& rSet)
                     rSet.DisableItem( nWhich );
                 else
                 {
-                    if(pOLV->GetOutliner() && pOLV->GetOutliner()->IsVertical())
+                    if (pOLV->GetOutliner().IsVertical())
                         rSet.DisableItem( nWhich );
                     else
                     {
@@ -860,7 +907,7 @@ void SwAnnotationShell::GetState(SfxItemSet& rSet)
             if(nEEWhich == EE_CHAR_KERNING)
             {
                 SfxItemState eState = aEditAttr.GetItemState( EE_CHAR_KERNING );
-                if ( eState == SfxItemState::DONTCARE )
+                if ( eState == SfxItemState::INVALID )
                 {
                     rSet.InvalidateItem(EE_CHAR_KERNING);
                 }
@@ -1114,6 +1161,7 @@ void SwAnnotationShell::NoteExec(SfxRequest const &rReq)
         case FN_DELETE_COMMENT_THREAD:
         case FN_RESOLVE_NOTE:
         case FN_RESOLVE_NOTE_THREAD:
+        case FN_PROMOTE_COMMENT:
             if ( pPostItMgr->HasActiveSidebarWin() )
                 pPostItMgr->GetActiveSidebarWin()->ExecuteCommand(nSlot);
             break;
@@ -1240,6 +1288,15 @@ void SwAnnotationShell::GetNoteState(SfxItemSet &rSet)
                 }
                 break;
             }
+        case FN_PROMOTE_COMMENT:
+            {
+                if (!pPostItMgr || !pPostItMgr->HasActiveAnnotationWin()
+                    || pPostItMgr->GetActiveSidebarWin()->IsRootNote())
+                {
+                    rSet.DisableItem(nWhich);
+                }
+                break;
+            }
             default:
                 rSet.InvalidateItem( nWhich );
                 break;
@@ -1302,70 +1359,29 @@ void SwAnnotationShell::ExecLingu(SfxRequest &rReq)
 
         case SID_CHINESE_CONVERSION:
         {
-                //open ChineseTranslationDialog
-                Reference< XComponentContext > xContext(
-                    ::cppu::defaultBootstrap_InitialComponentContext() ); //@todo get context from calc if that has one
-                if(xContext.is())
-                {
-                    Reference< lang::XMultiComponentFactory > xMCF( xContext->getServiceManager() );
-                    if(xMCF.is())
-                    {
-                        Reference< ui::dialogs::XExecutableDialog > xDialog(
-                                xMCF->createInstanceWithContext(
-                                    "com.sun.star.linguistic2.ChineseTranslationDialog", xContext),
-                                UNO_QUERY);
-                        Reference< lang::XInitialization > xInit( xDialog, UNO_QUERY );
-                        if( xInit.is() )
-                        {
-                            //  initialize dialog
-                            uno::Sequence<uno::Any> aSeq(comphelper::InitAnyPropertySequence(
-                            {
-                                {"ParentWindow", uno::Any(Reference<awt::XWindow>())}
-                            }));
-                            xInit->initialize( aSeq );
+            //open ChineseTranslationDialog
+            rtl::Reference< textconversiondlgs::ChineseTranslation_UnoDialog > xDialog(new textconversiondlgs::ChineseTranslation_UnoDialog({}));
 
-                            //execute dialog
-                            sal_Int16 nDialogRet = xDialog->execute();
-                            if( RET_OK == nDialogRet )
-                            {
-                                //get some parameters from the dialog
-                                bool bToSimplified = true;
-                                bool bUseVariants = true;
-                                bool bCommonTerms = true;
-                                Reference< beans::XPropertySet >  xProp( xDialog, UNO_QUERY );
-                                if( xProp.is() )
-                                {
-                                    try
-                                    {
-                                        xProp->getPropertyValue( "IsDirectionToSimplified" ) >>= bToSimplified;
-                                        xProp->getPropertyValue( "IsUseCharacterVariants" ) >>= bUseVariants;
-                                        xProp->getPropertyValue( "IsTranslateCommonTerms" ) >>= bCommonTerms;
-                                    }
-                                    catch (const Exception&)
-                                    {
-                                    }
-                                }
+            //execute dialog
+            sal_Int16 nDialogRet = xDialog->execute();
+            if( RET_OK == nDialogRet )
+            {
+                //get some parameters from the dialog
+                bool bToSimplified = xDialog->getIsDirectionToSimplified();
+                bool bCommonTerms = xDialog->getIsTranslateCommonTerms();
 
-                                //execute translation
-                                LanguageType nSourceLang = bToSimplified ? LANGUAGE_CHINESE_TRADITIONAL : LANGUAGE_CHINESE_SIMPLIFIED;
-                                LanguageType nTargetLang = bToSimplified ? LANGUAGE_CHINESE_SIMPLIFIED : LANGUAGE_CHINESE_TRADITIONAL;
-                                sal_Int32 nOptions       = bUseVariants ? i18n::TextConversionOption::USE_CHARACTER_VARIANTS : 0;
-                                if( !bCommonTerms )
-                                    nOptions = nOptions | i18n::TextConversionOption::CHARACTER_BY_CHARACTER;
+                //execute translation
+                LanguageType nSourceLang = bToSimplified ? LANGUAGE_CHINESE_TRADITIONAL : LANGUAGE_CHINESE_SIMPLIFIED;
+                LanguageType nTargetLang = bToSimplified ? LANGUAGE_CHINESE_SIMPLIFIED : LANGUAGE_CHINESE_TRADITIONAL;
+                sal_Int32 nOptions       = !bCommonTerms ? i18n::TextConversionOption::CHARACTER_BY_CHARACTER : 0;
 
-                                vcl::Font aTargetFont = OutputDevice::GetDefaultFont( DefaultFontType::CJK_TEXT,
-                                            nTargetLang, GetDefaultFontFlags::OnlyOne );
+                vcl::Font aTargetFont = OutputDevice::GetDefaultFont( DefaultFontType::CJK_TEXT,
+                            nTargetLang, GetDefaultFontFlags::OnlyOne );
 
-                                pOLV->StartTextConversion(rReq.GetFrameWeld(), nSourceLang, nTargetLang, &aTargetFont, nOptions, false, false);
-                            }
-                        }
-                        Reference< lang::XComponent > xComponent( xDialog, UNO_QUERY );
-                        if( xComponent.is() )
-                            xComponent->dispose();
-                    }
-                }
+                pOLV->StartTextConversion(rReq.GetFrameWeld(), nSourceLang, nTargetLang, &aTargetFont, nOptions, false, false);
             }
-            break;
+        }
+        break;
     }
 
     if (bRestoreSelection)
@@ -1791,21 +1807,25 @@ void SwAnnotationShell::InsertSymbol(SfxRequest& rReq)
 
         // If character is selected then it can be shown.
         auto xFrame = m_rView.GetViewFrame().GetFrame().GetFrameInterface();
-        ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateCharMapDialog(m_rView.GetFrameWeld(), aAllSet, xFrame));
-        pDlg->Execute();
+        VclPtr<SfxAbstractDialog> pDlg(pFact->CreateCharMapDialog(m_rView.GetFrameWeld(), aAllSet, xFrame));
+        pDlg->StartExecuteAsync(
+            [pDlg] (sal_Int32 /*nResult*/)->void
+            {
+                pDlg->disposeOnce();
+            }
+        );
         return;
     }
 
     // do not flicker
     pOLV->HideCursor();
-    Outliner * pOutliner = pOLV->GetOutliner();
-    pOutliner->SetUpdateLayout(false);
+    Outliner& rOutliner = pOLV->GetOutliner();
+    rOutliner.SetUpdateLayout(false);
 
     SfxItemSet aOldSet( pOLV->GetAttribs() );
-    SfxItemSetFixed<
-            EE_CHAR_FONTINFO, EE_CHAR_FONTINFO,
-            EE_CHAR_FONTINFO_CJK, EE_CHAR_FONTINFO_CTL>
-        aFontSet( *aOldSet.GetPool() );
+    SfxItemSet aFontSet(SfxItemSet::makeFixedSfxItemSet<
+        EE_CHAR_FONTINFO, EE_CHAR_FONTINFO, EE_CHAR_FONTINFO_CJK,
+        EE_CHAR_FONTINFO_CTL>(*aOldSet.GetPool()));
     aFontSet.Set( aOldSet );
 
     // Insert string
@@ -1813,8 +1833,8 @@ void SwAnnotationShell::InsertSymbol(SfxRequest& rReq)
 
     // Attributing (set font)
     SfxItemSet aSetFont( *aFontSet.GetPool(), aFontSet.GetRanges() );
-    SvxFontItem aFontItem (aFont.GetFamilyType(), aFont.GetFamilyName(),
-                            aFont.GetStyleName(), aFont.GetPitch(),
+    SvxFontItem aFontItem (aFont.GetFamilyTypeMaybeAskConfig(), aFont.GetFamilyName(),
+                            aFont.GetStyleName(), aFont.GetPitchMaybeAskConfig(),
                             aFont.GetCharSet(),
                             EE_CHAR_FONTINFO );
     SvtScriptType nScriptBreak = g_pBreakIt->GetAllScriptsOfText( sSym );
@@ -1834,15 +1854,14 @@ void SwAnnotationShell::InsertSymbol(SfxRequest& rReq)
 
     // Erase selection
     ESelection aSel(pOLV->GetSelection());
-    aSel.nStartPara = aSel.nEndPara;
-    aSel.nStartPos = aSel.nEndPos;
+    aSel.CollapseToEnd();
     pOLV->SetSelection(aSel);
 
     // Restore old font
     pOLV->SetAttribs( aFontSet );
 
     // From now on show it again
-    pOutliner->SetUpdateLayout(true);
+    rOutliner.SetUpdateLayout(true);
     pOLV->ShowCursor();
 
     rReq.AppendItem( SfxStringItem( SID_CHARMAP, sSym ) );

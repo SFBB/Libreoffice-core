@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -24,6 +24,7 @@
 
 #include <QtCore/QObject>
 #include <QtGui/QRegion>
+#include <QtGui/QWindow>
 #include <QtWidgets/QWidget>
 
 class QtFrame;
@@ -36,7 +37,11 @@ class QtObject final : public QObject, public SalObject
 
     SystemEnvData m_aSystemData;
     QtFrame* m_pParent;
-    QtObjectWidget* m_pQWidget;
+
+    // window, required for OpenGL rendering
+    QWindow* m_pQWindow;
+    QWidget* m_pQWidget;
+
     QRegion m_pRegion;
     bool m_bForwardKey;
 
@@ -61,7 +66,7 @@ public:
 
     virtual void SetForwardKey(bool bEnable) override;
 
-    virtual const SystemEnvData* GetSystemData() const override { return &m_aSystemData; }
+    virtual const SystemEnvData& GetSystemData() const override { return m_aSystemData; }
 
     virtual void Reparent(SalFrame* pFrame) override;
 };
@@ -83,4 +88,4 @@ public:
 
 QWidget* QtObject::widget() const { return m_pQWidget; }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

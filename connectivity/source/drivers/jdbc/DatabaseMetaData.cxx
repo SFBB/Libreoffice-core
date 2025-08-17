@@ -37,10 +37,7 @@ using namespace ::comphelper;
 
 using namespace connectivity;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 
 jclass java_sql_DatabaseMetaData::theClass              = nullptr;
 
@@ -612,8 +609,8 @@ Reference< XResultSet > java_sql_DatabaseMetaData::impl_callResultSetMethodWithS
     // log the call
     if ( m_aLogger.isLoggable( LogLevel::FINEST ) )
     {
-        OUString sCatalogLog = bCatalog ? sCatalog : OUString( "null" );
-        OUString sSchemaLog = bSchema ? _rSchemaPattern : OUString( "null" );
+        OUString sCatalogLog = bCatalog ? sCatalog : u"null"_ustr;
+        OUString sSchemaLog = bSchema ? _rSchemaPattern : u"null"_ustr;
         if ( _pOptionalAdditionalString )
             m_aLogger.log( LogLevel::FINEST, STR_LOG_META_DATA_METHOD_ARG4, _pMethodName, sCatalogLog, sSchemaLog, _rLeastPattern, *_pOptionalAdditionalString );
         else

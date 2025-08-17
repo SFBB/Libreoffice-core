@@ -22,9 +22,9 @@
 #include <sal/config.h>
 
 #include <rtl/ref.hxx>
+#include <rtl/ustring.hxx>
 
 namespace codemaker { class GeneratedTypeSet; }
-namespace rtl { class OUString; }
 class CppuOptions;
 class TypeManager;
 
@@ -32,8 +32,7 @@ namespace codemaker::cppumaker {
 enum class FileType
 {
     HDL,
-    HPP,
-    EMBIND_CXX
+    HPP
 };
 }
 

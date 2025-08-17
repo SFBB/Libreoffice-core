@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">LibreOffice Viewer</string>
     <string name="app_name_settings">LibreOffice-Viewer-Einstellungen</string>
-    <string name="app_version">Version: %1$s&lt;br&gt;Build ID: &lt;a href="https://hub.libreoffice.org/git-core/%2$s"&gt;%2$s&lt;/a&gt;</string>
+    <string name="app_version">Version: %1$s&lt;br&gt;Build-ID: &lt;a href=https://hub.libreoffice.org/git-core/%2$s&gt;%2$s&lt;/a&gt;</string>
     <string name="app_description">LibreOffice Viewer ist ein Dokumentenbetrachter, der auf LibreOffice basiert.</string>
     <string name="app_credits">https://www.libreoffice.org</string>
     <string name="app_vendor">Dieses Release wurde bereitgestellt durch $VENDOR.</string>
@@ -38,7 +38,7 @@
     <string name="message_saved">Speichern beendet</string>
     <string name="message_saving">Dokument wird gespeichert…</string>
     <string name="message_saving_failed">Speichern des Dokuments ist fehlgeschlagen.</string>
-    <string name="password">Passwort</string>
+    <string name="password">Kennwort</string>
     <string name="action_undo">Rückgängig</string>
     <string name="action_redo">Wiederherstellen</string>
     <!-- Save Alert dialog strings -->
@@ -68,7 +68,7 @@
     <!-- Password dialog strings -->
     <string name="action_pwd_dialog_OK">OK</string>
     <string name="action_pwd_dialog_cancel">Abbrechen</string>
-    <string name="action_pwd_dialog_title">Bitte Passwort eingeben</string>
+    <string name="action_pwd_dialog_title">Bitte Kennwort eingeben</string>
     <!-- Insert Image Strings -->
     <string name="take_photo">Foto Machen</string>
     <string name="select_photo">Foto Auswählen</string>
@@ -120,8 +120,6 @@
     <string name="alert_ok">OK</string>
     <string name="alert_cancel">Abbrechen</string>
     <string name="current_uno_command">Aktuelles UNO-Kommando</string>
-    <string name="display_language">Anzeigesprache</string>
-    <string name="display_language_summary">Wählen Sie die Standard-Anzeigesprache</string>
     <string name="pdf_export_finished">PDF-Export abgeschlossen</string>
     <string name="unable_to_export_pdf">PDF-Export nicht möglich</string>
     <string name="unable_to_save">Speichern nicht möglich</string>
@@ -136,4 +134,7 @@
     <string name="font_color">Schriftfarbe</string>
     <string name="action_rename_slide">Folie umbenennen</string>
     <string name="automatic">Automatisch</string>
+    <string name="create_file">Neue Datei erstellen</string>
+    <string name="search_find_next">Nächste suchen</string>
+    <string name="search_find_previous">Vorherige suchen</string>
 </resources>

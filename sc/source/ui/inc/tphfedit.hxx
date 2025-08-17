@@ -27,10 +27,7 @@
 
 #include <functional>
 
-namespace com::sun::star::accessibility { class XAccessible; }
-
 class ScPatternAttr;
-class EditView;
 class EditTextObject;
 class SvxFieldItem;
 class ScAccessibleEditObject;
@@ -58,7 +55,7 @@ public:
 
     void            SetNumType(SvxNumType eNumType);
 
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     ScHeaderEditEngine* GetEditEngine() const override;
     void SetObjectSelectHdl( const Link<ScEditWindow&,void>& aLink) { aObjectSelectLink = aLink; }

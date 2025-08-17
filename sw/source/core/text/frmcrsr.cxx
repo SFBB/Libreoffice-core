@@ -129,7 +129,7 @@ bool sw_ChangeOffset(SwTextFrame* pFrame, TextFrameIndex nNew)
                     nNew = TextFrameIndex(0);
                 }
                 pFrame->SetOffset( nNew );
-                pFrame->SetPara( nullptr );
+                pFrame->SetPara(nullptr);
                 pFrame->GetFormatted();
                 if( pFrame->getFrameArea().HasArea() )
                     pFrame->getRootFrame()->GetCurrShell()->InvalidateWindows( pFrame->getFrameArea() );
@@ -216,7 +216,7 @@ bool SwTextFrame::GetCharRect( SwRect& rOrig, const SwPosition &rPos,
         Point aPnt1 = pFrame->getFrameArea().Pos() + pFrame->getFramePrintArea().Pos();
         SwTextNode const*const pTextNd(GetTextNodeForParaProps());
         short nFirstOffset;
-        pTextNd->GetFirstLineOfsWithNum( nFirstOffset );
+        pTextNd->GetFirstLineOfsWithNum(nFirstOffset, {});
 
         Point aPnt2;
         if ( aRectFnSet.IsVert() )
@@ -339,7 +339,7 @@ bool SwTextFrame::GetCharRect( SwRect& rOrig, const SwPosition &rPos,
     if( bRet )
     {
         SwPageFrame *pPage = pFrame->FindPageFrame();
-        OSL_ENSURE( pPage, "Text escaped from page?" );
+        assert(pPage && "Text escaped from page?");
         const SwTwips nOrigTop = aRectFnSet.GetTop(rOrig);
         const SwTwips nPageTop = aRectFnSet.GetTop(pPage->getFrameArea());
         const SwTwips nPageBott = aRectFnSet.GetBottom(pPage->getFrameArea());
@@ -695,6 +695,48 @@ bool SwTextFrame::LeftMargin(SwPaM *pPam) const
     *pPam->GetPoint() = pFrame->MapViewToModelPos(nIndx);
     SwTextCursor::SetRightMargin( false );
     return true;
+}
+
+bool SwTextFrame::IsInHyphenatedWord(SwPaM *pPam, bool bSelection) const
+{
+    assert(GetMergedPara() || &pPam->GetPointNode() == static_cast<SwContentNode const*>(GetDep()));
+
+    SwTextFrame *pFrame = GetAdjFrameAtPos( const_cast<SwTextFrame*>(this), *pPam->GetPoint(),
+                                     SwTextCursor::IsRightMargin() );
+    pFrame->GetFormatted();
+    if (!IsEmpty())
+    {
+        SwTextSizeInfo aInf( pFrame );
+        SwTextCursor  aLine( pFrame, &aInf );
+        TextFrameIndex const nCursorPos(MapModelToViewPos(*pPam->GetPoint()));
+        aLine.CharCursorToLine(nCursorPos);
+        if ( aLine.GetCurr()->IsEndHyph() )
+        {
+           TextFrameIndex nPos(aLine.GetStart() + aLine.GetCurr()->GetLen());
+           while( nPos > nCursorPos && ' ' != aInf.GetText()[sal_Int32(nPos) - 1] )
+               --nPos;
+           if ( nPos == nCursorPos && ( bSelection ||
+                // without selection, the cursor must be inside the word, not before that
+                // to apply the character formatting, as usual
+                ( nPos > aLine.GetStart() && ' ' != aInf.GetText()[sal_Int32(nPos) - 1] ) ) )
+                return true;
+        }
+        // the hyphenated word starts in the previous line
+        if ( aLine.GetStart() > TextFrameIndex(0) )
+        {
+            TextFrameIndex nPos(aLine.GetStart());
+            aLine.CharCursorToLine(nPos - TextFrameIndex(1));
+            if ( aLine.GetCurr()->IsEndHyph() )
+            {
+                while( nPos < nCursorPos && ' ' != aInf.GetText()[sal_Int32(nPos)] )
+                    ++nPos;
+                if ( nPos == nCursorPos &&
+                     ( bSelection || ' ' != aInf.GetText()[sal_Int32(nPos)] ) )
+                     return true;
+            }
+        }
+    }
+    return false;
 }
 
 /*
@@ -1440,9 +1482,10 @@ void SwTextFrame::FillCursorPos( SwFillData& rFill ) const
             if( nFirst && nDiff > -1 )
                 rRect.Top( rRect.Top() + nFirst );
             rRect.Height( nLineHeight );
-            SwTwips nLeft = rFill.Left() + rTextLeftMargin.GetLeft(rFirstLine) +
-                            GetTextNodeForParaProps()->GetLeftMarginWithNum();
-            SwTwips nRight = rFill.Right() - rRightMargin.GetRight();
+
+            SwTwips nLeft = rFill.Left() + rTextLeftMargin.ResolveLeft(rFirstLine, /*metrics*/ {})
+                            + GetTextNodeForParaProps()->GetLeftMarginWithNum();
+            SwTwips nRight = rFill.Right() - rRightMargin.ResolveRight({});
             SwTwips nCenter = ( nLeft + nRight ) / 2;
             rRect.Left( nLeft );
             if( SwFillMode::Margin == rFill.Mode() )
@@ -1477,7 +1520,7 @@ void SwTextFrame::FillCursorPos( SwFillData& rFill ) const
                 SwTwips nSpace = 0;
                 if( SwFillMode::Tab != rFill.Mode() )
                 {
-                    SwDrawTextInfo aDrawInf( pSh, *pOut, "  ", 0, 2 );
+                    SwDrawTextInfo aDrawInf( pSh, *pOut, u"  "_ustr, 0, 2 );
                     nSpace = pFnt->GetTextSize_( aDrawInf ).Width()/2;
                 }
                 if( rFill.X() >= nRight )
@@ -1512,15 +1555,15 @@ void SwTextFrame::FillCursorPos( SwFillData& rFill ) const
                 }
                 else if( rFill.X() > nLeft )
                 {
-                    SwTwips nTextLeft = rFill.Left() + rTextLeftMargin.GetTextLeft() +
-                        GetTextNodeForParaProps()->GetLeftMarginWithNum(true);
+                    SwTwips nTextLeft = rFill.Left() + rTextLeftMargin.ResolveTextLeft({})
+                                        + GetTextNodeForParaProps()->GetLeftMarginWithNum(true);
                     rFill.nLineWidth += rFill.bFirstLine ? nLeft : nTextLeft;
                     SwTwips nLeftTab;
                     SwTwips nRightTab = nLeft;
                     sal_uInt16 nSpaceCnt = 0;
                     sal_uInt16 nSpaceOnlyCnt = 0;
-                    sal_uInt16 nTabCnt = 0;
                     sal_uInt16 nIdx = 0;
+                    int nTabCnt = 0;
                     do
                     {
                         nLeftTab = nRightTab;
@@ -1538,7 +1581,7 @@ void SwTextFrame::FillCursorPos( SwFillData& rFill ) const
                         else
                         {
                             const SvxTabStopItem& rTab =
-                                pSet->GetPool()->GetDefaultItem( RES_PARATR_TABSTOP );
+                                pSet->GetPool()->GetUserOrPoolDefaultItem( RES_PARATR_TABSTOP );
                             const SwTwips nDefTabDist = rTab[0].GetTabPos();
                             nRightTab = nLeftTab - nTextLeft;
                             nRightTab /= nDefTabDist;

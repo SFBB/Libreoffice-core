@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_SALFRAME_HXX
-#define INCLUDED_VCL_INC_SALFRAME_HXX
+#pragma once
 
 #include "impdel.hxx"
 #include "salwtype.hxx"
@@ -119,16 +118,18 @@ private:
     SALFRAMEPROC            m_pProc;
     Link<bool, void>        m_aModalHierarchyHdl;
 protected:
+    // subclasses need to either keep this up to date
+    // or override GetUnmirroredGeometry()
+    SalFrameGeometry maGeometry; ///< absolute, unmirrored values
+
     mutable std::unique_ptr<weld::Window> m_xFrameWeld;
 public:
                             SalFrame();
     virtual                 ~SalFrame() override;
 
-    SalFrameGeometry maGeometry; ///< absolute, unmirrored values
-
     // SalGeometryProvider
-    virtual tools::Long GetWidth() const override { return maGeometry.width(); }
-    virtual tools::Long GetHeight() const override { return maGeometry.height(); }
+    virtual tools::Long GetWidth() const override { return GetUnmirroredGeometry().width(); }
+    virtual tools::Long GetHeight() const override { return GetUnmirroredGeometry().height(); }
     virtual bool IsOffScreen() const override { return false; }
 
     // SalGraphics or NULL, but two Graphics for all SalFrames
@@ -162,7 +163,10 @@ public:
     virtual SalFrame*       GetParent() const = 0;
     // Note: x will be mirrored at parent if UI mirroring is active
     SalFrameGeometry        GetGeometry() const;
-    const SalFrameGeometry& GetUnmirroredGeometry() const { return maGeometry; }
+
+    // subclasses either have to keep maGeometry up to date or override this
+    // method to return an up-to-date SalFrameGeometry
+    virtual SalFrameGeometry GetUnmirroredGeometry() const { return maGeometry; }
 
     virtual void SetWindowState(const vcl::WindowData*) = 0;
     // return the absolute, unmirrored system frame state
@@ -211,9 +215,10 @@ public:
 
     virtual void            Beep() = 0;
 
+    virtual void            FlashWindow() const {};
+
     // returns system data (most prominent: window handle)
-    virtual const SystemEnvData*
-                            GetSystemData() const = 0;
+    virtual const SystemEnvData& GetSystemData() const = 0;
 
     // tdf#139609 SystemEnvData::GetWindowHandle() calls this to on-demand fill the aWindow
     // member of SystemEnvData for backends that want to defer doing that
@@ -256,11 +261,6 @@ public:
 
     virtual void            SetModal(bool /*bModal*/)
     {
-    }
-
-    virtual bool            GetModal() const
-    {
-        return false;
     }
 
     // return true to indicate tooltips are shown natively, false otherwise
@@ -312,14 +312,11 @@ public:
     // Helper method for input method handling: Calculate cursor index in (UTF-16) OUString,
     // starting at nCursorIndex, moving number of characters (not UTF-16 codepoints) specified
     // in nOffset, nChars.
-    static Selection        CalcDeleteSurroundingSelection(const OUString& rSurroundingText,
+    static Selection        CalcDeleteSurroundingSelection(std::u16string_view rSurroundingText,
                                                            sal_Int32 nCursorIndex, int nOffset, int nChars);
+
+    virtual void  SetTaskBarProgress(int /*nCurrentProgress*/) {}
+    virtual void  SetTaskBarState(VclTaskBarStates /*eTaskBarState*/) {}
 };
-
-#ifdef _WIN32
-bool HasAtHook();
-#endif
-
-#endif // INCLUDED_VCL_INC_SALFRAME_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

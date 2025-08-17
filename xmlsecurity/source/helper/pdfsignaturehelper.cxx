@@ -33,6 +33,7 @@
 #include <vcl/checksum.hxx>
 #include <svl/cryptosign.hxx>
 #include <vcl/filter/PDFiumLibrary.hxx>
+#include <sfx2/viewsh.hxx>
 
 using namespace ::com::sun::star;
 
@@ -53,7 +54,7 @@ bool GetSignatureLinePage(const uno::Reference<frame::XModel>& xModel, sal_Int32
         return false;
     }
 
-    return xPage->getPropertyValue("Number") >>= rPage;
+    return xPage->getPropertyValue(u"Number"_ustr) >>= rPage;
 }
 
 /// If the currently selected shape is a Draw signature line, export that to PDF.
@@ -70,21 +71,14 @@ void GetSignatureLineShape(const uno::Reference<frame::XModel>& xModel, sal_Int3
         return;
     }
 
+    SfxViewShell* pViewShell = SfxViewShell::Get(xModel->getCurrentController());
+    if (!pViewShell || !pViewShell->GetSignPDFCertificate().Is())
+    {
+        return;
+    }
+
     uno::Reference<drawing::XShapes> xShapes(xModel->getCurrentSelection(), uno::UNO_QUERY);
     if (!xShapes.is() || xShapes->getCount() < 1)
-    {
-        return;
-    }
-
-    uno::Reference<beans::XPropertySet> xShapeProps(xShapes->getByIndex(0), uno::UNO_QUERY);
-    if (!xShapeProps.is())
-    {
-        return;
-    }
-
-    comphelper::SequenceAsHashMap aMap(xShapeProps->getPropertyValue("InteropGrabBag"));
-    auto it = aMap.find("SignatureCertificate");
-    if (it == aMap.end())
     {
         return;
     }
@@ -99,14 +93,14 @@ void GetSignatureLineShape(const uno::Reference<frame::XModel>& xModel, sal_Int3
 
     // Export just the signature line.
     utl::MediaDescriptor aMediaDescriptor;
-    aMediaDescriptor["FilterName"] <<= OUString("draw_pdf_Export");
+    aMediaDescriptor[u"FilterName"_ustr] <<= u"draw_pdf_Export"_ustr;
     SvMemoryStream aStream;
     uno::Reference<io::XOutputStream> xStream(new utl::OStreamWrapper(aStream));
-    aMediaDescriptor["OutputStream"] <<= xStream;
+    aMediaDescriptor[u"OutputStream"_ustr] <<= xStream;
     uno::Sequence<beans::PropertyValue> aFilterData(
         comphelper::InitPropertySequence({ { "Selection", uno::Any(xShapes) } }));
-    aMediaDescriptor["FilterData"] <<= aFilterData;
-    xStorable->storeToURL("private:stream", aMediaDescriptor.getAsConstPropertyValueList());
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+    xStorable->storeToURL(u"private:stream"_ustr, aMediaDescriptor.getAsConstPropertyValueList());
     xStream->flush();
 
     aStream.Seek(0);
@@ -293,7 +287,7 @@ void AnalyizeSignatureStream(SvMemoryStream& rStream, std::vector<PageChecksum>&
                     break;
             }
         }
-        rPageChecksums.push_back(aPageChecksum);
+        rPageChecksums.push_back(std::move(aPageChecksum));
     }
 }
 
@@ -453,7 +447,7 @@ bool PDFSignatureHelper::ReadAndVerifySignatureSvStream(SvStream& rStream)
         std::unique_ptr<vcl::pdf::PDFiumSignature> pSignature = pPdfDocument->getSignature(i);
         std::vector<std::pair<size_t, size_t>> aByteRanges;
         GetByteRangesFromPDF(pSignature, aByteRanges);
-        aSignatures[i] = Signature{ std::move(pSignature), aByteRanges };
+        aSignatures[i] = Signature{ std::move(pSignature), std::move(aByteRanges) };
     }
 
     std::set<unsigned int> aSignatureEOFs;
@@ -482,7 +476,7 @@ bool PDFSignatureHelper::ReadAndVerifySignatureSvStream(SvStream& rStream)
             SAL_WARN("xmlsecurity.helper", "failed to determine digest match");
         }
 
-        m_aSignatureInfos.push_back(aInfo);
+        m_aSignatureInfos.push_back(std::move(aInfo));
     }
 
     return true;
@@ -536,10 +530,9 @@ PDFSignatureHelper::GetDocumentSignatureInformations(
 
 sal_Int32 PDFSignatureHelper::GetNewSecurityId() const { return m_aSignatureInfos.size(); }
 
-void PDFSignatureHelper::SetX509Certificate(
-    const uno::Reference<security::XCertificate>& xCertificate)
+void PDFSignatureHelper::SetX509Certificate(svl::crypto::SigningContext& rSigningContext)
 {
-    m_xCertificate = xCertificate;
+    m_pSigningContext = &rSigningContext;
 }
 
 void PDFSignatureHelper::SetDescription(const OUString& rDescription)
@@ -571,9 +564,12 @@ bool PDFSignatureHelper::Sign(const uno::Reference<frame::XModel>& xModel,
         aDocument.SetSignatureLine(std::move(aSignatureLineShape));
     }
 
-    if (!aDocument.Sign(m_xCertificate, m_aDescription, bAdES))
+    if (!m_pSigningContext || !aDocument.Sign(*m_pSigningContext, m_aDescription, bAdES))
     {
-        SAL_WARN("xmlsecurity.helper", "failed to sign");
+        if (m_pSigningContext && m_pSigningContext->m_xCertificate.is())
+        {
+            SAL_WARN("xmlsecurity.helper", "failed to sign");
+        }
         return false;
     }
 

@@ -19,14 +19,12 @@
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
-#include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/range/b2drange.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 #include <basegfx/utils/canvastools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/utils/unopolypolygon.hxx>
-#include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <utility>
 
@@ -95,8 +93,8 @@ namespace basegfx::unotools
                 // found - contract violation.
                 if( !xLinePoly.is() )
                     throw lang::IllegalArgumentException(
-                        "UnoPolyPolygon::addPolyPolygon(): Invalid input "
-                        "poly-polygon, cannot retrieve vertex data",
+                        u"UnoPolyPolygon::addPolyPolygon(): Invalid input "
+                        "poly-polygon, cannot retrieve vertex data"_ustr,
                         getXWeak(), 1);
 
                 aSrcPoly = unotools::polyPolygonFromPoint2DSequenceSequence(
@@ -113,8 +111,7 @@ namespace basegfx::unotools
 
         if( !aOffset.equalZero() )
         {
-            const B2DHomMatrix aTranslate(utils::createTranslateB2DHomMatrix(aOffset));
-            aSrcPoly.transform( aTranslate );
+            aSrcPoly.translate( aOffset );
         }
 
         maPolyPoly.append( aSrcPoly );
@@ -204,18 +201,18 @@ namespace basegfx::unotools
         std::unique_lock const guard( m_aMutex );
         modifying();
 
-        const B2DPolyPolygon& rNewPolyPoly(
+        const B2DPolyPolygon aNewPolyPoly(
             unotools::polyPolygonFromPoint2DSequenceSequence( points ) );
 
         if( nPolygonIndex == -1 )
         {
-            maPolyPoly = rNewPolyPoly;
+            maPolyPoly = aNewPolyPoly;
         }
         else
         {
             checkIndex( nPolygonIndex );
 
-            maPolyPoly.insert( nPolygonIndex, rNewPolyPoly );
+            maPolyPoly.insert( nPolygonIndex, aNewPolyPoly );
         }
     }
 
@@ -272,18 +269,18 @@ namespace basegfx::unotools
     {
         std::unique_lock const guard( m_aMutex );
         modifying();
-        const B2DPolyPolygon& rNewPolyPoly(
+        const B2DPolyPolygon aNewPolyPoly(
             unotools::polyPolygonFromBezier2DSequenceSequence( points ) );
 
         if( nPolygonIndex == -1 )
         {
-            maPolyPoly = rNewPolyPoly;
+            maPolyPoly = aNewPolyPoly;
         }
         else
         {
             checkIndex( nPolygonIndex );
 
-            maPolyPoly.insert( nPolygonIndex, rNewPolyPoly );
+            maPolyPoly.insert( nPolygonIndex, aNewPolyPoly );
         }
     }
 
@@ -300,15 +297,15 @@ namespace basegfx::unotools
             throw lang::IndexOutOfBoundsException();
 
         const B2DPoint& rPt( rPoly.getB2DPoint( nPointIndex ) );
-        const B2DPoint& rCtrl0( rPoly.getNextControlPoint(nPointIndex) );
-        const B2DPoint& rCtrl1( rPoly.getPrevControlPoint((nPointIndex + 1) % nPointCount) );
+        const B2DPoint aCtrl0( rPoly.getNextControlPoint(nPointIndex) );
+        const B2DPoint aCtrl1( rPoly.getPrevControlPoint((nPointIndex + 1) % nPointCount) );
 
         return geometry::RealBezierSegment2D( rPt.getX(),
                                               rPt.getY(),
-                                              rCtrl0.getX(),
-                                              rCtrl0.getY(),
-                                              rCtrl1.getX(),
-                                              rCtrl1.getY() );
+                                              aCtrl0.getX(),
+                                              aCtrl0.getY(),
+                                              aCtrl1.getX(),
+                                              aCtrl1.getY() );
     }
 
     void SAL_CALL UnoPolyPolygon::setBezierSegment( const geometry::RealBezierSegment2D& segment,
@@ -421,7 +418,7 @@ namespace basegfx::unotools
 
     OUString SAL_CALL UnoPolyPolygon::getImplementationName()
     {
-        return "gfx::internal::UnoPolyPolygon";
+        return u"gfx::internal::UnoPolyPolygon"_ustr;
     }
 
     sal_Bool SAL_CALL UnoPolyPolygon::supportsService( const OUString& ServiceName )
@@ -431,7 +428,7 @@ namespace basegfx::unotools
 
     uno::Sequence< OUString > SAL_CALL UnoPolyPolygon::getSupportedServiceNames()
     {
-        return { "com.sun.star.rendering.PolyPolygon2D" };
+        return { u"com.sun.star.rendering.PolyPolygon2D"_ustr };
     }
 
     B2DPolyPolygon UnoPolyPolygon::getPolyPolygon() const

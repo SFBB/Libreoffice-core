@@ -19,17 +19,10 @@
 
 #pragma once
 
-#include <com/sun/star/drawing/framework/XResourceFactory.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-
-#include <comphelper/compbase.hxx>
+#include <framework/ResourceFactory.hxx>
 #include <rtl/ref.hxx>
-
 #include <vcl/vclptr.hxx>
 #include <memory>
-
-namespace com::sun::star::drawing::framework { class XConfigurationController; }
-namespace com::sun::star::drawing::framework { class XPane; }
 
 namespace sd {
 class DrawController;
@@ -41,10 +34,8 @@ class SfxViewFrame;
 namespace vcl { class Window; }
 
 namespace sd::framework {
-
-typedef comphelper::WeakComponentImplHelper <
-    css::drawing::framework::XResourceFactory
-    > BasicViewFactoryInterfaceBase;
+class ConfigurationController;
+class AbstractPane;
 
 /** Factory for the frequently used standard views of the drawing framework:
         private:resource/view/
@@ -59,7 +50,7 @@ typedef comphelper::WeakComponentImplHelper <
     For some views in some panes this class also acts as a cache.
 */
 class BasicViewFactory final
-    : public BasicViewFactoryInterfaceBase
+    : public sd::framework::ResourceFactory
 {
 public:
     BasicViewFactory(const rtl::Reference<::sd::DrawController>& rxController);
@@ -69,39 +60,36 @@ public:
 
     // XViewFactory
 
-    virtual css::uno::Reference<css::drawing::framework::XResource>
-        SAL_CALL createResource (
-            const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId) override;
+    virtual rtl::Reference<sd::framework::AbstractResource>
+        createResource (
+            const rtl::Reference<sd::framework::ResourceId>& rxViewId) override;
 
-    virtual void SAL_CALL releaseResource (
-        const css::uno::Reference<css::drawing::framework::XResource>& xView) override;
+    virtual void releaseResource (
+        const rtl::Reference<sd::framework::AbstractResource>& xView) override;
 
 private:
-    css::uno::Reference<css::drawing::framework::XConfigurationController>
-        mxConfigurationController;
+    rtl::Reference<ConfigurationController> mxConfigurationController;
     class ViewDescriptor;
-    class ViewShellContainer;
-    std::unique_ptr<ViewShellContainer> mpViewShellContainer;
+    using ViewShellContainer = std::vector<std::shared_ptr<ViewDescriptor>>;
+    ViewShellContainer maViewShellContainer;
     ViewShellBase* mpBase;
     FrameView* mpFrameView;
 
-    class ViewCache;
+    using ViewCache = std::vector<std::shared_ptr<ViewDescriptor>>;
     ScopedVclPtr<vcl::Window> mpWindow;
-    std::shared_ptr<ViewCache> mpViewCache;
+    ViewCache maViewCache;
 
-    css::uno::Reference<css::drawing::framework::XPane> mxLocalPane;
+    rtl::Reference<framework::AbstractPane> mxLocalPane;
 
     std::shared_ptr<ViewDescriptor> CreateView (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
-        SfxViewFrame& rFrame,
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
         vcl::Window& rWindow,
-        const css::uno::Reference<css::drawing::framework::XPane>& rxPane,
+        const rtl::Reference<framework::AbstractPane>& rxPane,
         FrameView* pFrameView,
         const bool bIsCenterView);
 
     std::shared_ptr<ViewShell> CreateViewShell (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
-        SfxViewFrame& rFrame,
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
         vcl::Window& rWindow,
         FrameView* pFrameView);
 
@@ -116,8 +104,8 @@ private:
         const std::shared_ptr<ViewDescriptor>& rpDescriptor);
 
     std::shared_ptr<ViewDescriptor> GetViewFromCache (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
-        const css::uno::Reference<css::drawing::framework::XPane>& rxPane);
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
+        const rtl::Reference<AbstractPane>& rxPane);
 };
 
 } // end of namespace sd::framework

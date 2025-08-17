@@ -23,7 +23,6 @@
 #include <LinePropertiesHelper.hxx>
 #include <UserDefinedProperties.hxx>
 #include <PropertyHelper.hxx>
-#include <CloneHelper.hxx>
 #include <AxisHelper.hxx>
 #include <EventListenerHelper.hxx>
 #include <ModifyListenerHelper.hxx>
@@ -355,7 +354,7 @@ Axis::~Axis()
 
 void Axis::AllocateSubGrids()
 {
-    Reference< util::XModifyListener > xModifyEventForwarder;
+    rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
     Reference< lang::XEventListener > xEventListener;
     std::vector< rtl::Reference< GridProperties > > aOldBroadcasters;
     std::vector< rtl::Reference< GridProperties > > aNewBroadcasters;
@@ -398,7 +397,7 @@ void Axis::AllocateSubGrids()
 // ____ XAxis ____
 void SAL_CALL Axis::setScaleData( const chart2::ScaleData& rScaleData )
 {
-    Reference< util::XModifyListener > xModifyEventForwarder;
+    rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
     Reference< lang::XEventListener > xEventListener;
     Reference< chart2::data::XLabeledDataSequence > xOldCategories;
     Reference< chart2::data::XLabeledDataSequence > xNewCategories = rScaleData.Categories;
@@ -481,7 +480,7 @@ void SAL_CALL Axis::setTitleObject( const Reference< chart2::XTitle >& xNewTitle
 
 void Axis::setTitleObject( const rtl::Reference< Title >& xNewTitle )
 {
-    Reference< util::XModifyListener > xModifyEventForwarder;
+    rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
     rtl::Reference< Title > xOldTitle;
     {
         MutexGuard aGuard( m_aMutex );
@@ -574,7 +573,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( Axis, Axis_Base, ::property::OPropertySet )
 // implement XServiceInfo methods basing upon getSupportedServiceNames_Static
 OUString SAL_CALL Axis::getImplementationName()
 {
-    return "com.sun.star.comp.chart2.Axis";
+    return u"com.sun.star.comp.chart2.Axis"_ustr;
 }
 
 sal_Bool SAL_CALL Axis::supportsService( const OUString& rServiceName )
@@ -585,8 +584,8 @@ sal_Bool SAL_CALL Axis::supportsService( const OUString& rServiceName )
 css::uno::Sequence< OUString > SAL_CALL Axis::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.chart2.Axis",
-        "com.sun.star.beans.PropertySet" };
+        u"com.sun.star.chart2.Axis"_ustr,
+        u"com.sun.star.beans.PropertySet"_ustr };
 }
 
 } //  namespace chart

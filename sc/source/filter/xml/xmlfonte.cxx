@@ -41,7 +41,7 @@ private:
     void AddFontItems(const sal_uInt16* pWhichIds, sal_uInt8 nIdCount, const SfxItemPool* pItemPool, const bool bExportDefaults);
 
 public:
-    ScXMLFontAutoStylePool_Impl( ScXMLExport& rExport, bool bEmbedFonts);
+    ScXMLFontAutoStylePool_Impl(ScDocument* pDoc, ScXMLExport& rExport);
 };
 
 }
@@ -53,13 +53,13 @@ void ScXMLFontAutoStylePool_Impl::AddFontItems(const sal_uInt16* pWhichIds, sal_
         sal_uInt16 nWhichId(pWhichIds[i]);
         if (bExportDefaults)
         {
-            const SfxPoolItem* pItem = &pItemPool->GetDefaultItem(nWhichId);
+            const SfxPoolItem* pItem = &pItemPool->GetUserOrPoolDefaultItem(nWhichId);
             const SvxFontItem *pFont(static_cast<const SvxFontItem *>(pItem));
             Add( pFont->GetFamilyName(), pFont->GetStyleName(),
                     pFont->GetFamily(), pFont->GetPitch(),
                     pFont->GetCharSet() );
         }
-        for (const SfxPoolItem* pItem : pItemPool->GetItemSurrogates( nWhichId ))
+        for (const SfxPoolItem* pItem : pItemPool->GetItemSurrogates(nWhichId))
         {
             const SvxFontItem *pFont(static_cast<const SvxFontItem *>(pItem));
             Add( pFont->GetFamilyName(), pFont->GetStyleName(),
@@ -69,28 +69,26 @@ void ScXMLFontAutoStylePool_Impl::AddFontItems(const sal_uInt16* pWhichIds, sal_
     }
 }
 
-ScXMLFontAutoStylePool_Impl::ScXMLFontAutoStylePool_Impl(ScXMLExport& rExportP, bool bEmbedFonts)
-    : XMLFontAutoStylePool(rExportP, bEmbedFonts)
+ScXMLFontAutoStylePool_Impl::ScXMLFontAutoStylePool_Impl(ScDocument* pDoc, ScXMLExport& rExportP)
+    : XMLFontAutoStylePool(rExportP)
 {
+    if (!pDoc)
+        return;
+
     sal_uInt16 const aWhichIds[]     { ATTR_FONT, ATTR_CJK_FONT,
                                        ATTR_CTL_FONT };
     sal_uInt16 const aEditWhichIds[] { EE_CHAR_FONTINFO, EE_CHAR_FONTINFO_CJK,
                                        EE_CHAR_FONTINFO_CTL };
-    sal_uInt16 const aPageWhichIds[] { ATTR_PAGE_HEADERLEFT, ATTR_PAGE_FOOTERLEFT,
+    TypedWhichId<ScPageHFItem> const aPageWhichIds[] { ATTR_PAGE_HEADERLEFT, ATTR_PAGE_FOOTERLEFT,
                                        ATTR_PAGE_HEADERRIGHT, ATTR_PAGE_FOOTERRIGHT,
                                        ATTR_PAGE_HEADERFIRST, ATTR_PAGE_FOOTERFIRST };
 
-    const SfxItemPool* pItemPool(rExportP.GetDocument()->GetPool());
+    const SfxItemPool* pItemPool(pDoc->GetPool());
     AddFontItems(aWhichIds, 3, pItemPool, true);
-    const SfxItemPool* pEditPool(rExportP.GetDocument()->GetEditPool());
+    const SfxItemPool* pEditPool(pDoc->GetEditEnginePool());
     AddFontItems(aEditWhichIds, 3, pEditPool, false);
 
-    std::unique_ptr<SfxStyleSheetIterator> pItr = rExportP.GetDocument()->GetStyleSheetPool()->CreateIterator(SfxStyleFamily::Page);
-
-    m_bEmbedUsedOnly = rExportP.GetDocument()->IsEmbedUsedFontsOnly();
-    m_bEmbedLatinScript = rExportP.GetDocument()->IsEmbedFontScriptLatin();
-    m_bEmbedAsianScript = rExportP.GetDocument()->IsEmbedFontScriptAsian();
-    m_bEmbedComplexScript = rExportP.GetDocument()->IsEmbedFontScriptComplex();
+    std::unique_ptr<SfxStyleSheetIterator> pItr = pDoc->GetStyleSheetPool()->CreateIterator(SfxStyleFamily::Page);
 
     if(!pItr)
         return;
@@ -107,31 +105,27 @@ ScXMLFontAutoStylePool_Impl::ScXMLFontAutoStylePool_Impl(ScXMLExport& rExportP, 
 
     while (pStyle)
     {
-        const SfxItemPool& rPagePool(pStyle->GetPool()->GetPool());
-
-        for (sal_uInt16 nPageWhichId : aPageWhichIds)
+        for (const TypedWhichId<ScPageHFItem>& nPageWhichId : aPageWhichIds)
         {
-            for (const SfxPoolItem* pItem : rPagePool.GetItemSurrogates( nPageWhichId ))
+            const SfxItemSet& rItemSet = pStyle->GetItemSet();
+            const ScPageHFItem* pPageItem = &rItemSet.Get( nPageWhichId );
+            const EditTextObject* pLeftArea(pPageItem->GetLeftArea());
+            if (pLeftArea)
             {
-                const ScPageHFItem* pPageItem = static_cast<const ScPageHFItem*>(pItem);
-                const EditTextObject* pLeftArea(pPageItem->GetLeftArea());
-                if (pLeftArea)
-                {
-                    aEditEngine.SetText(*pLeftArea);
-                    AddFontItems(aEditWhichIds, 3, mpEditEnginePool.get(), false);
-                }
-                const EditTextObject* pCenterArea(pPageItem->GetCenterArea());
-                if (pCenterArea)
-                {
-                    aEditEngine.SetText(*pCenterArea);
-                    AddFontItems(aEditWhichIds, 3, mpEditEnginePool.get(), false);
-                }
-                const EditTextObject* pRightArea(pPageItem->GetRightArea());
-                if (pRightArea)
-                {
-                    aEditEngine.SetText(*pRightArea);
-                    AddFontItems(aEditWhichIds, 3, mpEditEnginePool.get(), false);
-                }
+                aEditEngine.SetText(*pLeftArea);
+                AddFontItems(aEditWhichIds, 3, mpEditEnginePool.get(), false);
+            }
+            const EditTextObject* pCenterArea(pPageItem->GetCenterArea());
+            if (pCenterArea)
+            {
+                aEditEngine.SetText(*pCenterArea);
+                AddFontItems(aEditWhichIds, 3, mpEditEnginePool.get(), false);
+            }
+            const EditTextObject* pRightArea(pPageItem->GetRightArea());
+            if (pRightArea)
+            {
+                aEditEngine.SetText(*pRightArea);
+                AddFontItems(aEditWhichIds, 3, mpEditEnginePool.get(), false);
             }
         }
 
@@ -141,16 +135,42 @@ ScXMLFontAutoStylePool_Impl::ScXMLFontAutoStylePool_Impl(ScXMLExport& rExportP, 
 
 XMLFontAutoStylePool* ScXMLExport::CreateFontAutoStylePool()
 {
-    bool blockFontEmbedding = false;
-    // We write font info to both content.xml and styles.xml, but they are both
-    // written by different ScXMLExport instance, and would therefore write each
-    // font file twice without complicated checking for duplicates, so handle
-    // the embedding only in one of them.
-    if(!( getExportFlags() & SvXMLExportFlags::CONTENT ))
-        blockFontEmbedding = true;
-    if (!GetDocument()->IsEmbedFonts())
-        blockFontEmbedding = true;
-    return new ScXMLFontAutoStylePool_Impl( *this, !blockFontEmbedding );
+    return new ScXMLFontAutoStylePool_Impl(GetDocument(), *this);
+}
+
+bool ScXMLExport::getEmbedFonts()
+{
+    if (ScDocument* pDoc = GetDocument())
+        return pDoc->IsEmbedFonts();
+    return SvXMLExport::getEmbedFonts();
+}
+
+bool ScXMLExport::getEmbedOnlyUsedFonts()
+{
+    if (ScDocument* pDoc = GetDocument())
+        return pDoc->IsEmbedUsedFontsOnly();
+    return SvXMLExport::getEmbedOnlyUsedFonts();
+}
+
+bool ScXMLExport::getEmbedLatinScript()
+{
+    if (ScDocument* pDoc = GetDocument())
+        return pDoc->IsEmbedFontScriptLatin();
+    return SvXMLExport::getEmbedLatinScript();
+}
+
+bool ScXMLExport::getEmbedAsianScript()
+{
+    if (ScDocument* pDoc = GetDocument())
+        return pDoc->IsEmbedFontScriptAsian();
+    return SvXMLExport::getEmbedAsianScript();
+}
+
+bool ScXMLExport::getEmbedComplexScript()
+{
+    if (ScDocument* pDoc = GetDocument())
+        return pDoc->IsEmbedFontScriptComplex();
+    return SvXMLExport::getEmbedComplexScript();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -46,7 +46,6 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
-using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::util;
@@ -125,8 +124,7 @@ sal_Int64 SAL_CALL OGridColumn::getSomething( const Sequence<sal_Int8>& _rIdenti
     }
     else
     {
-        Reference< XUnoTunnel > xAggTunnel;
-        if ( query_aggregation( m_xAggregate, xAggTunnel ) )
+        if (auto xAggTunnel = query_aggregation<XUnoTunnel>(m_xAggregate))
             return xAggTunnel->getSomething( _rIdentifier );
     }
     return nReturn;
@@ -151,8 +149,7 @@ Sequence<Type> SAL_CALL OGridColumn::getTypes()
     // but re-add their base class(es)
     aTypes.addType( cppu::UnoType<XChild>::get() );
 
-    Reference< XTypeProvider > xProv;
-    if ( query_aggregation( m_xAggregate, xProv ))
+    if (auto xProv = query_aggregation<XTypeProvider>(m_xAggregate))
         aTypes.addTypes( xProv->getTypes() );
 
     aTypes.removeType( cppu::UnoType<XTextRange>::get() );
@@ -265,8 +262,7 @@ void SAL_CALL OGridColumn::disposing(const EventObject& _rSource)
 {
     OPropertySetAggregationHelper::disposing(_rSource);
 
-    Reference<XEventListener>  xEvtLstner;
-    if (query_aggregation(m_xAggregate, xEvtLstner))
+    if (auto xEvtLstner = query_aggregation<XEventListener>(m_xAggregate))
         xEvtLstner->disposing(_rSource);
 }
 
@@ -277,8 +273,7 @@ void OGridColumn::disposing()
     OGridColumn_BASE::disposing();
     OPropertySetAggregationHelper::disposing();
 
-    Reference<XComponent>  xComp;
-    if (query_aggregation(m_xAggregate, xComp))
+    if (auto xComp = query_aggregation<XComponent>(m_xAggregate))
         xComp->dispose();
 }
 
@@ -339,7 +334,7 @@ void OGridColumn::clearAggregateProperties( Sequence< Property >& _rProps, bool 
     }
 
     aNewProps.realloc( pNewProps - aNewProps.getArray() );
-    _rProps = aNewProps;
+    _rProps = std::move(aNewProps);
 }
 
 
@@ -418,7 +413,7 @@ void OGridColumn::setFastPropertyValue_NoBroadcast( sal_Int32 nHandle, const Any
     switch (nHandle)
     {
         case PROPERTY_ID_LABEL:
-            DBG_ASSERT(rValue.getValueType().getTypeClass() == TypeClass_STRING, "invalid type" );
+            DBG_ASSERT(rValue.getValueTypeClass() == TypeClass_STRING, "invalid type" );
             rValue >>= m_aLabel;
             break;
         case PROPERTY_ID_WIDTH:
@@ -468,8 +463,7 @@ void OGridColumn::write(const Reference<XObjectOutputStream>& _rxOutStream)
     sal_Int32 nLen = 0;
     _rxOutStream->writeLong(nLen);
 
-    Reference<XPersistObject>  xPersist;
-    if (query_aggregation(m_xAggregate, xPersist))
+    if (auto xPersist = query_aggregation<XPersistObject>(m_xAggregate))
         xPersist->write(_rxOutStream);
 
     // Calculate the length
@@ -483,7 +477,7 @@ void OGridColumn::write(const Reference<XObjectOutputStream>& _rxOutStream)
     _rxOutStream->writeShort(0x0002);
 
     sal_uInt16 nAnyMask = 0;
-    if (m_aWidth.getValueType().getTypeClass() == TypeClass_LONG)
+    if (m_aWidth.getValueTypeClass() == TypeClass_LONG)
         nAnyMask |= WIDTH;
 
     if (m_aAlign.getValueTypeClass() == TypeClass_SHORT)
@@ -515,8 +509,7 @@ void OGridColumn::read(const Reference<XObjectInputStream>& _rxInStream)
     {
         Reference<XMarkableStream>  xMark(_rxInStream, UNO_QUERY);
         sal_Int32 nMark = xMark->createMark();
-        Reference<XPersistObject>  xPersist;
-        if (query_aggregation(m_xAggregate, xPersist))
+        if (auto xPersist = query_aggregation<XPersistObject>(m_xAggregate))
             xPersist->read(_rxInStream);
 
         xMark->jumpToMark(nMark);

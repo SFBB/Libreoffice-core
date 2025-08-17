@@ -44,6 +44,9 @@
 #include <o3tl/typed_flags_set.hxx>
 #include <functional>
 #include <sfx2/AccessibilityIssue.hxx>
+#include <sfx2/redlinerecordingmode.hxx>
+
+#include <unotools/ucbstreamhelper.hxx>
 
 namespace weld {class Button; }
 namespace model {class ColorSet; }
@@ -89,25 +92,26 @@ namespace sfx2
 {
     class SvLinkSource;
     class StyleManager;
+    class IXmlIdRegistry;
 }
+
+namespace sfx { class IDocumentModelAccessor; }
 
 namespace com::sun::star::awt { class XWindow; }
 namespace com::sun::star::beans { struct PropertyValue; }
 namespace com::sun::star::document { struct CmisVersion; }
 namespace com::sun::star::document { class XDocumentProperties; }
 namespace com::sun::star::embed { class XStorage; }
-namespace com::sun::star::frame { class XModel; }
 namespace com::sun::star::graphic { class XGraphic; }
 namespace com::sun::star::io { class XStream; }
-namespace com::sun::star::script { class XLibraryContainer; }
+namespace com::sun::star::script { class XStorageBasedLibraryContainer ; }
 namespace com::sun::star::security { class XCertificate; }
 namespace com::sun::star::security { class XDocumentDigitalSignatures; }
 namespace com::sun::star::security { struct DocumentSignatureInformation; }
 namespace com::sun::star::task { class XInteractionHandler; }
 namespace com::sun::star::lang { class XComponent; }
 namespace com::sun::star::text { class XTextRange; }
-
-namespace sfx2 { class IXmlIdRegistry; }
+namespace svl::crypto { class CertificateOrName; }
 
 #define SFX_TITLE_TITLE    0
 #define SFX_TITLE_FILENAME 1
@@ -144,6 +148,7 @@ namespace o3tl
 }
 
 namespace weld { class Window; }
+namespace svl::crypto { class SigningContext; }
 
 enum class HiddenWarningFact
 {
@@ -175,7 +180,7 @@ template<class T> bool checkSfxObjectShell(const SfxObjectShell* pShell)
 }
 
 class SFX2_DLLPUBLIC SfxObjectShell :
-    public SfxShell, virtual public SotObject,
+    public SfxShell, public SotObject,
     public ::comphelper::IEmbeddedHelper
 {
 friend struct ModifyBlocker_Impl;
@@ -238,6 +243,7 @@ private:
 
 public:
     static const css::uno::Sequence<sal_Int8>& getUnoTunnelId();
+
     /* Stampit disable/enable cancel button for print jobs
        default = true = enable! */
     void                        Stamp_SetPrintCancelState(bool bState);
@@ -246,12 +252,12 @@ public:
     static OUString CreateShellID( const SfxObjectShell* pShell );
 
     // Document-Shell Iterator
-    SAL_WARN_UNUSED_RESULT static SfxObjectShell* GetFirst( const std::function<bool ( const SfxObjectShell* )>& isObjectShell = nullptr,
-                                          bool bOnlyVisible = true );
-    SAL_WARN_UNUSED_RESULT static SfxObjectShell* GetNext( const SfxObjectShell& rPrev,
-                                         const std::function<bool ( const SfxObjectShell* )>& isObjectShell = nullptr,
-                                         bool bOnlyVisible = true );
-    SAL_WARN_UNUSED_RESULT static SfxObjectShell* Current();
+    SAL_RET_MAYBENULL static SfxObjectShell* GetFirst( const std::function<bool ( const SfxObjectShell* )>& isObjectShell = nullptr,
+                  bool bOnlyVisible = true );
+    SAL_RET_MAYBENULL static SfxObjectShell* GetNext( const SfxObjectShell& rPrev,
+                  const std::function<bool ( const SfxObjectShell* )>& isObjectShell = nullptr,
+                  bool bOnlyVisible = true );
+    SAL_RET_MAYBENULL static SfxObjectShell* Current();
     static css::uno::Reference< css::uno::XInterface >
                                 GetCurrentComponent();
     static void                 SetCurrentComponent( const css::uno::Reference< css::uno::XInterface >& _rxComponent );
@@ -357,13 +363,14 @@ public:
     void AfterSigning(bool bSignSuccess, bool bSignScriptingContent);
     bool HasValidSignatures() const;
     SignatureState              GetDocumentSignatureState();
-    bool                        SignDocumentContent(weld::Window* pDialogParent);
+    void SignDocumentContent(weld::Window* pDialogParent, const std::function<void(bool)>& rCallback);
+    void AfterSignContent(bool bHaveWeSigned, weld::Window* pDialogParent);
     css::uno::Sequence<css::security::DocumentSignatureInformation> GetDocumentSignatureInformation(
         bool bScriptingContent,
         const css::uno::Reference<css::security::XDocumentDigitalSignatures>& xSigner
         = css::uno::Reference<css::security::XDocumentDigitalSignatures>());
 
-    bool SignDocumentContentUsingCertificate(const css::uno::Reference<css::security::XCertificate>& xCertificate);
+    bool SignDocumentContentUsingCertificate(svl::crypto::SigningContext& rSigningContext);
     bool ResignDocument(css::uno::Sequence< css::security::DocumentSignatureInformation >& rSignaturesInfo);
 
     void SignSignatureLine(weld::Window* pDialogParent, const OUString& aSignatureLineId,
@@ -372,7 +379,7 @@ public:
                            const css::uno::Reference<css::graphic::XGraphic>& xInvalidGraphic,
                            const OUString& aComment);
     SignatureState              GetScriptingSignatureState();
-    bool                        SignScriptingContent(weld::Window* pDialogParent);
+    void SignScriptingContent(weld::Window* pDialogParent, const std::function<void(bool)>& rCallback);
     DECL_DLLPRIVATE_LINK(SignDocumentHandler, weld::Button&, void);
 
     virtual std::shared_ptr<SfxDocumentInfoDialog> CreateDocumentInfoDialog(weld::Window* pParent, const SfxItemSet& rItemSet);
@@ -418,6 +425,7 @@ public:
     void                        SetHeaderAttributesForSourceViewHack();
 
     bool                        IsQueryLoadTemplate() const;
+    bool                        IsBasedOnTemplate() const; // Whether the document is based on a template
     bool                        IsUseUserData() const;
     bool                        IsUseThumbnailSave() const;
     bool                        IsLoadReadonly() const;
@@ -442,6 +450,10 @@ public:
     const css::uno::Sequence< css::beans::PropertyValue >& GetModifyPasswordInfo() const;
     bool                        SetModifyPasswordInfo( const css::uno::Sequence< css::beans::PropertyValue >& aInfo );
 
+    static void                 DetectCharSet(SvStream& stream, rtl_TextEncoding& eCharSet, SvStreamEndian& endian);
+    static void                 DetectCsvSeparators(SvStream& stream, rtl_TextEncoding eCharSet, OUString& separators, sal_Unicode cStringDelimiter);
+    static void                 DetectCsvFilterOptions(SvStream& stream, OUString& aFilterOptions);
+    static void                 DetectFilterOptions(SfxMedium* pMedium);
     static ErrCode              HandleFilter( SfxMedium* pMedium, SfxObjectShell const * pDoc );
 
     virtual bool                PrepareClose(bool bUI = true);
@@ -452,8 +464,8 @@ public:
 
     Size                        GetFirstPageSize() const;
     bool                        DoClose();
-    std::shared_ptr<GDIMetaFile> GetPreviewMetaFile( bool bFullContent = false ) const;
-    BitmapEx                    GetPreviewBitmap() const;
+    std::shared_ptr<GDIMetaFile> GetPreviewMetaFile( bool bFullContent = false, bool bOutputForScreen = false ) const;
+    Bitmap                      GetPreviewBitmap() const;
     virtual void                CancelTransfers();
 
     bool                        GenerateAndStoreThumbnail(
@@ -470,6 +482,7 @@ public:
     bool                        IsAvoidRecentDocs() const { return mbAvoidRecentDocs; }
 
     bool                        IsRememberingSignature() const { return bRememberSignature; }
+    void                        SetRememberCurrentSignature(bool bRemember);
 
     /// Don't add to the recent documents - it's an expensive operation, sometimes it is not wanted.
     void                        AvoidRecentDocs(bool bAvoid) { mbAvoidRecentDocs = bAvoid; }
@@ -565,16 +578,17 @@ public:
     sal_uInt16                  GetAutoStyleFilterIndex() const;
     bool                        HasBasic() const;
     BasicManager*               GetBasicManager() const;
-    css::uno::Reference< css::script::XLibraryContainer >
+    css::uno::Reference< css::script::XStorageBasedLibraryContainer >
                                 GetBasicContainer();
-    css::uno::Reference< css::script::XLibraryContainer >
+    css::uno::Reference< css::script::XStorageBasedLibraryContainer >
                                 GetDialogContainer();
     StarBASIC*                  GetBasic() const;
 
     std::optional<NamedColor> GetRecentColor(sal_uInt16 nSlotId);
-    void SetRecentColor(sal_uInt16 nSlotId, const NamedColor& rColor);
+    void SetRecentColor(sal_uInt16 nSlotId, const NamedColor& rColor, bool bBroadcast = true);
 
-    virtual std::set<Color>     GetDocColors();
+    virtual std::shared_ptr<sfx::IDocumentModelAccessor> GetDocumentModelAccessor() const;
+    virtual std::set<Color> GetDocColors();
     virtual std::shared_ptr<model::ColorSet> GetThemeColors();
 
     // Accessibility Check
@@ -682,9 +696,9 @@ public:
     // change recording and respective passwword protection for Writer and Calc
     // slots available for Writer:  FN_REDLINE_ON, FN_REDLINE_ON
     // slots used for Calc:         FID_CHG_RECORD, SID_CHG_PROTECT
-    virtual bool    IsChangeRecording() const;
+    virtual bool    IsChangeRecording(SfxViewShell* pViewShell = nullptr, bool bRecordAllViews = true) const;
     virtual bool    HasChangeRecordProtection() const;
-    virtual void    SetChangeRecording( bool bActivate, bool bLockAllViews = false );
+    virtual void    SetChangeRecording( bool bActivate, bool bLockAllViews = false, SfxRedlineRecordingMode eRedlineRecordingMode = SfxRedlineRecordingMode::ViewAgnostic );
     virtual void    SetProtectionPassword( const OUString &rPassword );
     virtual bool    GetProtectionHash( /*out*/ css::uno::Sequence< sal_Int8 > &rPasswordHash );
 
@@ -697,7 +711,10 @@ public:
                                 bool bShowCloseButton = true);
     std::vector<InfobarData>& getPendingInfobars();
 
-    SAL_DLLPRIVATE bool CreatePreview_Impl(bool bFullContent, VirtualDevice* pDevice, GDIMetaFile* pFile) const;
+    // Destruction of storages and streams
+    void InternalCloseAndRemoveFiles();
+
+    SAL_DLLPRIVATE bool CreatePreview_Impl(bool bFullContent, bool bOutputForScreen, VirtualDevice* pDevice, GDIMetaFile* pFile) const;
 
     SAL_DLLPRIVATE static bool IsPackageStorageFormat_Impl(const SfxMedium &);
 
@@ -797,9 +814,6 @@ public:
     /// Is this read-only object shell opened via .uno:SignPDF?
     bool IsSignPDF() const;
 
-    /// Gets the certificate that is already picked by the user but not yet used for signing.
-    css::uno::Reference<css::security::XCertificate> GetSignPDFCertificate() const;
-
     /// Gets grab-bagged password info to unprotect change tracking with verification
     css::uno::Sequence< css::beans::PropertyValue > GetDocumentProtectionFromGrabBag() const;
 
@@ -834,8 +848,17 @@ public:
         }
     };
 
+class SFX2_DLLPUBLIC SfxCloseVetoLock
+{
+public:
+    SfxCloseVetoLock(const SfxObjectShell* pDocShell);
+    ~SfxCloseVetoLock();
 
-typedef tools::SvRef<SfxObjectShell> SfxObjectShellRef;
+private:
+    const SfxObjectShell* mpDocShell;
+};
+
+typedef rtl::Reference<SfxObjectShell> SfxObjectShellRef;
 
 class SfxObjectShellLock
 {
@@ -918,6 +941,7 @@ class SFX2_DLLPUBLIC SfxObjectShellItem final : public SfxPoolItem
 public:
                             static SfxPoolItem* CreateDefault();
 
+                            DECLARE_ITEM_TYPE_FUNCTION(SfxObjectShellItem)
                             SfxObjectShellItem() :
                                 SfxPoolItem( 0 ),
                                 pObjSh( nullptr )

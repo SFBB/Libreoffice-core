@@ -16,10 +16,8 @@
 #   the License at http://www.apache.org/licenses/LICENSE-2.0 .
 #
 
-import uno
 import unohelper
 
-from com.sun.star.awt import Rectangle
 from com.sun.star.awt.MessageBoxButtons import BUTTONS_OK
 from com.sun.star.awt.MessageBoxType import INFOBOX
 from com.sun.star.frame import XDispatch, XDispatchProvider
@@ -77,8 +75,8 @@ class Dispatch(unohelper.Base, XServiceInfo, XDispatch):
                     "com.sun.star.frame.Desktop", self.context). \
                     getCurrentFrame().getComponentWindow(), \
                 INFOBOX, BUTTONS_OK, "passive", "python")
-        box.execute();
-        box.dispose();
+        box.execute()
+        box.dispose()
 
     def addStatusListener(self, Control, URL):
         pass

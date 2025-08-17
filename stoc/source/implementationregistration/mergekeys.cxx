@@ -27,7 +27,6 @@
 
 #include "mergekeys.hxx"
 
-using namespace ::osl;
 using namespace css::uno;
 using namespace ::com::sun::star;
 
@@ -60,11 +59,11 @@ static void mergeKeys(
 {
     if (!xSource.is() || !xSource->isValid()) {
         throw registry::InvalidRegistryException(
-            "source key is null or invalid!" );
+            u"source key is null or invalid!"_ustr );
     }
     if (!xDest.is() || !xDest->isValid()) {
         throw registry::InvalidRegistryException(
-            "destination key is null or invalid!" );
+            u"destination key is null or invalid!"_ustr );
     }
 
     // write value
@@ -100,11 +99,10 @@ static void mergeKeys(
 
     // sub keys
     Sequence< OUString > sourceKeys( xSource->getKeyNames() );
-    OUString const * pSourceKeys = sourceKeys.getConstArray();
     for ( sal_Int32 nPos = sourceKeys.getLength(); nPos--; )
     {
         // key name
-        OUString name( pSourceKeys[ nPos ] );
+        OUString name( sourceKeys[ nPos ] );
         sal_Int32 nSlash = name.lastIndexOf( '/' );
         if (nSlash >= 0)
         {
@@ -138,7 +136,7 @@ static void mergeKeys(
             }
 
             links.push_back( Link(
-                pSourceKeys[ nPos ], // abs path
+                sourceKeys[ nPos ], // abs path
                 xSource->getResolvedName( name ) // abs resolved name
                 ) );
         }
@@ -153,12 +151,12 @@ void mergeKeys(
 {
     if (!xDest.is() || !xDest->isValid()) {
         throw registry::InvalidRegistryException(
-            "destination key is null or invalid!" );
+            u"destination key is null or invalid!"_ustr );
     }
     if (xDest->isReadOnly())
     {
         throw registry::InvalidRegistryException(
-            "destination registry is read-only!  cannot merge!" );
+            u"destination registry is read-only!  cannot merge!"_ustr );
     }
 
     t_links links;

@@ -32,8 +32,6 @@
 #include <map>
 #include <vector>
 
-struct AcceptDropEvent;
-struct ExecuteDropEvent;
 class SfxUndoAction;
 
 namespace dbaui
@@ -42,7 +40,6 @@ namespace dbaui
     class OTableWindow;
     struct OJoinExchangeData;
     class OJoinDesignView;
-    class OTableWindowData;
     class OJoinDesignViewAccess;
 
     // this class contains only the scrollbars to avoid that
@@ -116,8 +113,8 @@ namespace dbaui
         virtual void GetFocus() override;
         virtual void LoseFocus() override;
         virtual void KeyInput( const KeyEvent& rEvt ) override;
-        // Accessibility
-        virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+
+        virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
         // own methods
         ScrollAdaptor& GetHScrollBar() { return static_cast<OScrollWindowHelper*>(GetParent())->GetHScrollBar(); }

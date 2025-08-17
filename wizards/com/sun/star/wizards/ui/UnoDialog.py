@@ -18,12 +18,10 @@
 #
 import uno
 import traceback
-from .PeerConfig import PeerConfig
-from .UIConsts import UIConsts
 from ..common.PropertyNames import PropertyNames
-
 from com.sun.star.awt import Rectangle
 from com.sun.star.awt.PosSize import POS
+
 
 class UnoDialog(object):
 
@@ -108,7 +106,7 @@ class UnoDialog(object):
 
     def setVisible(self, parent):
         self.calculateDialogPosition(parent.xUnoDialog.getPosSize())
-        if self.xWindowPeer == None:
+        if self.xWindowPeer is None:
             self.createWindowPeer()
 
         self.xUnoDialog.setVisible(True)
@@ -224,31 +222,25 @@ class UnoDialog(object):
                 nLuminance = ((nBlue * 28 + nGreen * 151 + nRed * 77) / 256)
                 bisactivated = (nLuminance <= 25)
                 self.BisHighContrastModeActivated = bool(bisactivated)
-                return bisactivated;
+                return bisactivated
             else:
                 return self.BisHighContrastModeActivated
         else:
             return False
 
-
     def getRedColorShare(self, _nColor):
-        nRed = _nColor / 65536
-        nRedModulo = _nColor % 65536
-        nGreen = nRedModulo / 256
-        nGreenModulo = (nRedModulo % 256)
-        nBlue = nGreenModulo
-        return nRed
+        # previously these methods contained other calculations that had no
+        # effect on the return value nRed
+        return _nColor / 65536
 
     def getGreenColorShare(self, _nColor):
-        nRed = _nColor / 65536
+        # previously these methods contained other calculations that had no
+        # effect on the return value nGreen
         nRedModulo = _nColor % 65536
-        nGreen = nRedModulo / 256
-        return nGreen
+        return nRedModulo / 256
 
     def getBlueColorShare(self, _nColor):
-        nRed = _nColor / 65536
+        # previously these methods contained other calculations that had no
+        # effect on the return value nGreen
         nRedModulo = _nColor % 65536
-        nGreen = nRedModulo / 256
-        nGreenModulo = (nRedModulo % 256)
-        nBlue = nGreenModulo
-        return nBlue
+        return nRedModulo % 256

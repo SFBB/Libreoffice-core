@@ -19,7 +19,6 @@
 #include <clipcontext.hxx>
 #include <attrib.hxx>
 #include <patattr.hxx>
-#include <docpool.hxx>
 #include <conditio.hxx>
 #include <formulagroup.hxx>
 #include <tokenarray.hxx>
@@ -30,7 +29,6 @@
 #include <compiler.hxx>
 #include <recursionhelper.hxx>
 #include <docsh.hxx>
-#include <editutil.hxx>
 #include <broadcast.hxx>
 
 #include <SparklineGroup.hxx>
@@ -135,8 +133,8 @@ void ScColumn::DeleteBeforeCopyFromClip(
 
             if (rCxt.isTableProtected())
             {
-                ScPatternAttr aPattern(rDocument.GetPool());
-                aPattern.GetItemSet().Put(ScProtectionAttr(false));
+                ScPatternAttr aPattern(rDocument.getCellAttributeHelper());
+                aPattern.ItemSetPut(ScProtectionAttr(false));
                 ApplyPatternArea(aRange.mnRow1, aRange.mnRow2, aPattern);
             }
 
@@ -230,8 +228,8 @@ void ScColumn::DeleteBeforeCopyFromClip(
 
             if (rCxt.isTableProtected())
             {
-                ScPatternAttr aPattern(rDocument.GetPool());
-                aPattern.GetItemSet().Put(ScProtectionAttr(false));
+                ScPatternAttr aPattern(rDocument.getCellAttributeHelper());
+                aPattern.ItemSetPut(ScProtectionAttr(false));
                 ApplyPatternArea(nRow1, nRow2, aPattern);
             }
 
@@ -265,10 +263,13 @@ void ScColumn::CopyOneCellFromClip( sc::CopyFromClipContext& rCxt, SCROW nRow1, 
     {
         if (!rCxt.isSkipEmptyCells() || rSrcCell.getType() != CELLTYPE_NONE)
         {
-            const ScPatternAttr* pAttr = (bSameDocPool ? rCxt.getSingleCellPattern(nColOffset) :
-                    rCxt.getSingleCellPattern(nColOffset)->PutInPool( &rDocument, rCxt.getClipDoc()));
+            CellAttributeHolder aNewPattern;
+            if (bSameDocPool)
+                aNewPattern.setScPatternAttr(rCxt.getSingleCellPattern(nColOffset));
+            else
+                aNewPattern = rCxt.getSingleCellPattern(nColOffset)->MigrateToDocument( &rDocument, rCxt.getClipDoc());
 
-            pAttrArray->SetPatternArea(nRow1, nRow2, pAttr, true);
+            pAttrArray->SetPatternArea(nRow1, nRow2, aNewPattern);
         }
     }
 
@@ -367,13 +368,13 @@ void ScColumn::CopyOneCellFromClip( sc::CopyFromClipContext& rCxt, SCROW nRow1, 
     }
 }
 
-void ScColumn::duplicateSparkline(sc::CopyFromClipContext& rContext, sc::ColumnBlockPosition* pBlockPos,
+void ScColumn::duplicateSparkline(const sc::CopyFromClipContext& rContext, sc::ColumnBlockPosition* pBlockPos,
                                   size_t nColOffset, size_t nDestSize, ScAddress aDestPosition)
 {
     if ((rContext.getInsertFlag() & InsertDeleteFlags::SPARKLINES) == InsertDeleteFlags::NONE)
         return;
 
-    auto pSparkline = rContext.getSingleSparkline(nColOffset);
+    const auto& pSparkline = rContext.getSingleSparkline(nColOffset);
     if (pSparkline)
     {
         auto const& pSparklineGroup = pSparkline->getSparklineGroup();
@@ -388,7 +389,7 @@ void ScColumn::duplicateSparkline(sc::CopyFromClipContext& rContext, sc::ColumnB
         {
             auto pNewSparkline = std::make_shared<sc::Sparkline>(aCurrentPosition.Col(), aCurrentPosition.Row(), pDuplicatedGroup);
             pNewSparkline->setInputRange(pSparkline->getInputRange());
-            aSparklines[i] = new sc::SparklineCell(pNewSparkline);
+            aSparklines[i] = new sc::SparklineCell(std::move(pNewSparkline));
             aCurrentPosition.IncRow();
         }
 
@@ -865,8 +866,7 @@ void ScColumn::GetNotesInRange(SCROW nStartRow, SCROW nEndRow,
         std::vector<sc::NoteEntry>& rNotes ) const
 {
     std::pair<sc::CellNoteStoreType::const_iterator,size_t> aPos = maCellNotes.position(nStartRow);
-    sc::CellNoteStoreType::const_iterator it = aPos.first;
-    if (it == maCellNotes.end())
+    if (aPos.first == maCellNotes.end())
         // Invalid row number.
         return;
 
@@ -874,7 +874,7 @@ void ScColumn::GetNotesInRange(SCROW nStartRow, SCROW nEndRow,
         maCellNotes.position(nEndRow);
     sc::CellNoteStoreType::const_iterator itEnd = aEndPos.first;
 
-    std::for_each(it, ++itEnd, NoteEntryCollector(rNotes, nTab, nCol, nStartRow, nEndRow));
+    std::for_each(aPos.first, ++itEnd, NoteEntryCollector(rNotes, nTab, nCol, nStartRow, nEndRow));
 }
 
 bool ScColumn::HasCellNote(SCROW nStartRow, SCROW nEndRow) const
@@ -1125,12 +1125,12 @@ class ScriptTypeUpdater
     sc::CellTextAttrStoreType& mrTextAttrs;
     sc::CellTextAttrStoreType::iterator miPosAttr;
     ScConditionalFormatList* mpCFList;
-    SvNumberFormatter* mpFormatter;
+    ScInterpreterContext& mrContext;
     ScAddress maPos;
     bool mbUpdated;
 
 private:
-    void updateScriptType( size_t nRow, ScRefCellValue& rCell )
+    void updateScriptType( size_t nRow, const ScRefCellValue& rCell )
     {
         sc::CellTextAttrStoreType::position_type aAttrPos = mrTextAttrs.position(miPosAttr, nRow);
         miPosAttr = aAttrPos.first;
@@ -1158,8 +1158,8 @@ private:
         }
 
         const Color* pColor;
-        sal_uInt32 nFormat = pPat->GetNumberFormat(mpFormatter, pCondSet);
-        OUString aStr = ScCellFormat::GetString(rCell, nFormat, &pColor, *mpFormatter, mrCol.GetDoc());
+        sal_uInt32 nFormat = pPat->GetNumberFormat(mrContext, pCondSet);
+        OUString aStr = ScCellFormat::GetString(rCell, nFormat, &pColor, &mrContext, mrCol.GetDoc());
 
         rAttr.mnScriptType = mrCol.GetDoc().GetStringScriptType(aStr);
         mbUpdated = true;
@@ -1171,7 +1171,7 @@ public:
         mrTextAttrs(rCol.GetCellAttrStore()),
         miPosAttr(mrTextAttrs.begin()),
         mpCFList(rCol.GetDoc().GetCondFormList(rCol.GetTab())),
-        mpFormatter(rCol.GetDoc().GetFormatTable()),
+        mrContext(rCol.GetDoc().GetNonThreadedContext()),
         maPos(rCol.GetCol(), 0, rCol.GetTab()),
         mbUpdated(false)
     {}
@@ -1248,12 +1248,11 @@ void ScColumn::Swap( ScColumn& rOther, SCROW nRow1, SCROW nRow2, bool bPattern )
         {
             const ScPatternAttr* pPat1 = GetPattern(nRow);
             const ScPatternAttr* pPat2 = rOther.GetPattern(nRow);
-            if (!SfxPoolItem::areSame(pPat1, pPat2))
+            if (!ScPatternAttr::areSame(pPat1, pPat2))
             {
-                if (pPat1->GetRefCount() == 1)
-                    pPat1 = &rOther.GetDoc().GetPool()->DirectPutItemInPool(*pPat1);
+                CellAttributeHolder aTemp(pPat1);
                 SetPattern(nRow, *pPat2);
-                rOther.SetPattern(nRow, *pPat1);
+                rOther.SetPattern(nRow, aTemp);
             }
         }
     }
@@ -2210,27 +2209,46 @@ void ScColumn::RestoreFromCache(SvStream& rStrm)
 
 void ScColumn::CheckIntegrity() const
 {
-    const ScColumn* pColTest = maCells.event_handler().getColumn();
-
-    if (pColTest != this)
+    auto checkEventHandlerColumnRef = [this](const auto& rStore, std::string_view pStoreName)
     {
-        std::ostringstream os;
-        os << "cell store's event handler references wrong column instance (this=" << this
-            << "; stored=" << pColTest << ")";
-        throw std::runtime_error(os.str());
-    }
+        if (const ScColumn* pColTest = rStore.event_handler().getColumn(); pColTest != this)
+        {
+            std::ostringstream os;
+            os << pStoreName << "'s event handler references wrong column instance (this=" << this
+                << "; stored=" << pColTest << ")";
+            throw std::runtime_error(os.str());
+        }
+    };
 
-    size_t nCount = std::count_if(maCells.cbegin(), maCells.cend(),
-        [](const auto& blk) { return blk.type == sc::element_type_formula; }
-    );
-
-    if (mnBlkCountFormula != nCount)
+    auto countBlocks = [](const auto& rStore, mdds::mtv::element_t nBlockType)
     {
-        std::ostringstream os;
-        os << "incorrect cached formula block count (expected=" << nCount << "; actual="
-            << mnBlkCountFormula << ")";
-        throw std::runtime_error(os.str());
-    }
+        std::size_t nCount = std::count_if(rStore.cbegin(), rStore.cend(),
+            [nBlockType](const auto& blk) { return blk.type == nBlockType; }
+        );
+
+        return nCount;
+    };
+
+    auto checkCachedBlockCount = [countBlocks](
+        const auto& rStore, mdds::mtv::element_t nBlockType, std::size_t nCachedBlkCount,
+        std::string_view pName)
+    {
+        std::size_t nCount = countBlocks(rStore, nBlockType);
+
+        if (nCachedBlkCount != nCount)
+        {
+            std::ostringstream os;
+            os << "incorrect cached " << pName << " block count (expected=" << nCount << "; actual="
+                << nCachedBlkCount << ")";
+            throw std::runtime_error(os.str());
+        }
+    };
+
+    checkEventHandlerColumnRef(maCells, "cell store");
+    checkEventHandlerColumnRef(maCellNotes, "cell-note store");
+
+    checkCachedBlockCount(maCells, sc::element_type_formula, mnBlkCountFormula, "formula");
+    checkCachedBlockCount(maCellNotes, sc::element_type_cellnote, mnBlkCountCellNotes, "cell note");
 }
 
 void ScColumn::CollectBroadcasterState(sc::BroadcasterState& rState) const

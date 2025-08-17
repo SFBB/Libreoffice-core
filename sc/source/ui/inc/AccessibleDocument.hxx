@@ -38,23 +38,13 @@ namespace utl
     class AccessibleRelationSetHelper;
 }
 
-/** @descr
-        This base class provides an implementation of the
-        <code>AccessibleContext</code> service.
-*/
-
-typedef cppu::ImplHelper3< css::accessibility::XAccessibleSelection,
-                            css::accessibility::XAccessibleExtendedAttributes,
-                            css::view::XSelectionChangeListener >
-                    ScAccessibleDocumentImpl;
-
-class ScAccessibleDocument
-    :   public ScAccessibleDocumentBase,
-        public ScAccessibleDocumentImpl,
-        public accessibility::IAccessibleViewForwarder
+class ScAccessibleDocument final
+    : public cppu::ImplInheritanceHelper<
+          ScAccessibleDocumentBase, css::accessibility::XAccessibleSelection,
+          css::accessibility::XAccessibleExtendedAttributes, css::view::XSelectionChangeListener>,
+      public accessibility::IAccessibleViewForwarder
 {
 public:
-    //=====  internal  ========================================================
     ScAccessibleDocument(
         const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
         ScTabViewShell* pViewShell,
@@ -77,15 +67,6 @@ public:
    ///=====  SfxListener  =====================================================
 
     virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
-
-    ///=====  XInterface  =====================================================
-
-    virtual css::uno::Any SAL_CALL queryInterface(
-        css::uno::Type const & rType ) override;
-
-    virtual void SAL_CALL acquire() noexcept override;
-
-    virtual void SAL_CALL release() noexcept override;
 
     ///=====  XAccessibleComponent  ============================================
 
@@ -112,7 +93,7 @@ public:
     virtual OUString SAL_CALL
         getAccessibleName() override;
 
-    virtual css::uno::Any SAL_CALL getExtendedAttributes() override ;
+    virtual OUString SAL_CALL getExtendedAttributes() override ;
     ///=====  XAccessibleSelection  ===========================================
 
     virtual void SAL_CALL
@@ -142,29 +123,6 @@ public:
     virtual void SAL_CALL selectionChanged( const css::lang::EventObject& aEvent ) override;
 
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;
-
-    ///=====  XServiceInfo  ===================================================
-
-    /** Returns an identifier for the implementation of this object.
-    */
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    /** Returns a list of all supported services.
-    */
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
-    ///=====  XTypeProvider  ===================================================
-
-    /// returns the possible types
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL
-        getTypes() override;
-
-    /** Returns an implementation id.
-    */
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL
-        getImplementationId() override;
 
     ///=====  IAccessibleViewForwarder  ========================================
 
@@ -217,10 +175,10 @@ protected:
         createAccessibleName() override;
 
     /// Return the object's current bounding box relative to the desktop.
-    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() const override;
+    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() override;
 
     /// Return the object's current bounding box relative to the parent object.
-    virtual tools::Rectangle GetBoundingBox() const override;
+    virtual tools::Rectangle GetBoundingBox() override;
 
 private:
     ScTabViewShell* mpViewShell;
@@ -246,9 +204,9 @@ private:
     void RemoveChild(const css::uno::Reference<css::accessibility::XAccessible>& xAcc, bool bFireEvent);
 
     OUString GetCurrentCellName() const;
-    static OUString GetCurrentCellDescription();
+    static const OUString & GetCurrentCellDescription();
 
-    tools::Rectangle GetVisibleArea_Impl() const;
+    tools::Rectangle GetVisibleArea_Impl();
 public:
     ScDocument *GetDocument() const ;
     ScAddress   GetCurCellAddress() const;

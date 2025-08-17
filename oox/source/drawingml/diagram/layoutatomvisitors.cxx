@@ -24,9 +24,7 @@
 #include <sal/log.hxx>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::xml::sax;
-using namespace ::oox::core;
 
 namespace oox::drawingml
 {
@@ -75,7 +73,7 @@ void ShapeCreationVisitor::visit(LayoutNode& rAtom)
     if (!bIsChild)
         return;
 
-    ShapePtr pCurrParent(mpParentShape);
+    ShapePtr xCurrParent(mpParentShape);
 
     if (rAtom.getExistingShape())
     {
@@ -85,7 +83,7 @@ void ShapeCreationVisitor::visit(LayoutNode& rAtom)
         {
             pShape->setInternalName(rAtom.getName());
             rAtom.addNodeShape(pShape);
-            mrDgm.getLayout()->getPresPointShapeMap()[pNewNode] = pShape;
+            mrDgm.getLayout()->getPresPointShapeMap()[pNewNode] = std::move(pShape);
         }
     }
     else
@@ -103,10 +101,10 @@ void ShapeCreationVisitor::visit(LayoutNode& rAtom)
             if (rAtom.setupShape(pShape, pNewNode, mnCurrIdx))
             {
                 pShape->setInternalName(rAtom.getName());
-                pCurrParent->addChild(pShape);
-                pCurrParent = pShape;
+                xCurrParent->addChild(pShape);
+                xCurrParent = pShape;
                 rAtom.addNodeShape(pShape);
-                mrDgm.getLayout()->getPresPointShapeMap()[pNewNode] = pShape;
+                mrDgm.getLayout()->getPresPointShapeMap()[pNewNode] = std::move(pShape);
             }
         }
         else
@@ -121,8 +119,8 @@ void ShapeCreationVisitor::visit(LayoutNode& rAtom)
     mpCurrentNode = pNewNode;
 
     // set new parent for children
-    ShapePtr pPreviousParent(mpParentShape);
-    mpParentShape = pCurrParent;
+    ShapePtr xPreviousParent(mpParentShape);
+    mpParentShape = std::move(xCurrParent);
 
     // process children
     meLookFor = LAYOUT_NODE;
@@ -133,7 +131,7 @@ void ShapeCreationVisitor::visit(LayoutNode& rAtom)
     meLookFor = LAYOUT_NODE;
 
     // restore parent
-    mpParentShape = pPreviousParent;
+    mpParentShape = std::move(xPreviousParent);
     mpCurrentNode = pPreviousNode;
 }
 

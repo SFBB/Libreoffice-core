@@ -21,8 +21,6 @@
 
 #include "fudraw.hxx"
 
-namespace com::sun::star::media { class XPlayer; }
-
 class SdrHdl;
 class SdrObject;
 
@@ -33,7 +31,7 @@ class FuSelection final
 {
 public:
 
-    static rtl::Reference<FuPoor> Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq );
+    static rtl::Reference<FuPoor> Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq );
     virtual void DoExecute( SfxRequest& rReq ) override;
 
                                        // Mouse- & Key-Events
@@ -63,10 +61,10 @@ public:
     virtual void ForcePointer(const MouseEvent* pMEvt = nullptr) override;
 
 private:
-    FuSelection (ViewShell* pViewSh,
+    FuSelection (ViewShell& rViewSh,
         ::sd::Window* pWin,
         ::sd::View* pView,
-        SdDrawDocument* pDoc,
+        SdDrawDocument& rDoc,
         SfxRequest& rReq);
 
     virtual ~FuSelection() override;

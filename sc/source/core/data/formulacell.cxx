@@ -947,7 +947,7 @@ size_t ScFormulaCell::GetHash() const
     return pCode->GetHash();
 }
 
-OUString ScFormulaCell::GetFormula( const FormulaGrammar::Grammar eGrammar, const ScInterpreterContext* pContext ) const
+OUString ScFormulaCell::GetFormula( const FormulaGrammar::Grammar eGrammar, ScInterpreterContext* pContext ) const
 {
     if( pCode->GetCodeError() != FormulaError::NONE && !pCode->GetLen() )
     {
@@ -1001,7 +1001,7 @@ OUString ScFormulaCell::GetFormula( const FormulaGrammar::Grammar eGrammar, cons
     return buffer.makeStringAndClear();
 }
 
-OUString ScFormulaCell::GetFormula( sc::CompileFormulaContext& rCxt, const ScInterpreterContext* pContext ) const
+OUString ScFormulaCell::GetFormula( sc::CompileFormulaContext& rCxt, ScInterpreterContext* pContext ) const
 {
     OUStringBuffer aBuf;
     if (pCode->GetCodeError() != FormulaError::NONE && !pCode->GetLen())
@@ -2088,7 +2088,7 @@ void ScFormulaCell::InterpretTail( ScInterpreterContext& rContext, ScInterpretTa
                     nFormatType = rContext.GetFormatTable()->GetType( nOldFormatIndex);
                 }
                 if (nOldFormatIndex !=
-                        ScGlobal::GetStandardFormat( *rContext.GetFormatTable(), nOldFormatIndex, nFormatType))
+                        ScGlobal::GetStandardFormat(rContext, nOldFormatIndex, nFormatType))
                     bForceNumberFormat = false;
             }
         }
@@ -2138,8 +2138,7 @@ void ScFormulaCell::InterpretTail( ScInterpreterContext& rContext, ScInterpretTa
             }
 
             if (bSetFormat && (bForceNumberFormat || ((nFormatIndex % SV_COUNTRY_LANGUAGE_OFFSET) == 0)))
-                nFormatIndex = ScGlobal::GetStandardFormat(*rContext.GetFormatTable(),
-                        nFormatIndex, nFormatType);
+                nFormatIndex = ScGlobal::GetStandardFormat(rContext, nFormatIndex, nFormatType);
 
             // Do not replace a General format (which was the reason why
             // mbNeedsNumberFormat was set) with a General format.
@@ -2273,7 +2272,7 @@ void ScFormulaCell::InterpretTail( ScInterpreterContext& rContext, ScInterpretTa
 
         if ( pCode->IsRecalcModeForced() )
         {
-            sal_uLong nValidation = rDocument.GetAttr(
+            sal_uInt32 nValidation = rDocument.GetAttr(
                     aPos.Col(), aPos.Row(), aPos.Tab(), ATTR_VALIDDATA )->GetValue();
             if ( nValidation )
             {
@@ -2337,6 +2336,8 @@ void ScFormulaCell::InterpretTail( ScInterpreterContext& rContext, ScInterpretTa
 
 void ScFormulaCell::HandleStuffAfterParallelCalculation(ScInterpreter* pInterpreter)
 {
+    aResult.HandleStuffAfterParallelCalculation();
+
     if( !pCode->GetCodeLen() )
         return;
 
@@ -2687,20 +2688,20 @@ void ScFormulaCell::GetURLResult( OUString& rURL, OUString& rCellText )
 
     // Cell Text uses the Cell format while the URL uses
     // the default format for the type.
-    const sal_uInt32 nCellFormat = rDocument.GetNumberFormat( aPos );
-    SvNumberFormatter* pFormatter = rDocument.GetFormatTable();
+    const sal_uInt32 nCellFormat = rDocument.GetNumberFormat( ScRange(aPos) );
+    ScInterpreterContext& rContext = rDocument.GetNonThreadedContext();
 
-    const sal_uInt32 nURLFormat = ScGlobal::GetStandardFormat( *pFormatter, nCellFormat, SvNumFormatType::NUMBER);
+    const sal_uInt32 nURLFormat = ScGlobal::GetStandardFormat(rContext, nCellFormat, SvNumFormatType::NUMBER);
 
     if ( IsValue() )
     {
         double fValue = GetValue();
-        pFormatter->GetOutputString( fValue, nCellFormat, rCellText, &pColor );
+        rContext.NFGetOutputString( fValue, nCellFormat, rCellText, &pColor );
     }
     else
     {
         aCellString = GetString().getString();
-        pFormatter->GetOutputString( aCellString, nCellFormat, rCellText, &pColor );
+        rContext.NFGetOutputString( aCellString, nCellFormat, rCellText, &pColor );
     }
     ScConstMatrixRef xMat( aResult.GetMatrix());
     if (xMat)
@@ -2709,16 +2710,16 @@ void ScFormulaCell::GetURLResult( OUString& rURL, OUString& rCellText )
         if (!xMat->IsValue(0, 1))
             rURL = xMat->GetString(0, 1).getString();
         else
-            pFormatter->GetOutputString(
+            rContext.NFGetOutputString(
                 xMat->GetDouble(0, 1), nURLFormat, rURL, &pColor);
     }
 
     if(rURL.isEmpty())
     {
         if(IsValue())
-            pFormatter->GetOutputString( GetValue(), nURLFormat, rURL, &pColor );
+            rContext.NFGetOutputString( GetValue(), nURLFormat, rURL, &pColor );
         else
-            pFormatter->GetOutputString( aCellString, nURLFormat, rURL, &pColor );
+            rContext.NFGetOutputString( aCellString, nURLFormat, rURL, &pColor );
     }
 }
 
@@ -3260,10 +3261,9 @@ bool ScFormulaCell::UpdateReferenceOnShift(
 
     // Check presence of any references or column row names.
     bool bHasRefs = pCode->HasReferences();
-    bool bHasColRowNames = false;
+    bool bHasColRowNames = (formula::FormulaTokenArrayPlainIterator(*pCode).GetNextColRowName() != nullptr);
     if (!bHasRefs)
     {
-        bHasColRowNames = (formula::FormulaTokenArrayPlainIterator(*pCode).GetNextColRowName() != nullptr);
         bHasRefs = bHasColRowNames;
     }
     bool bOnRefMove = pCode->IsRecalcModeOnRefMove();
@@ -4419,10 +4419,10 @@ struct ScDependantsCalculator
             // This can end up negative! Was that the original intent, or
             // is it accidental? Was it not like that originally but the
             // surrounding conditions changed?
-            nRowLen = nLastRow - nRow + 1;
+            const bool bFail = o3tl::checked_sub(nLastRow + 1, nRow, nRowLen);
             // Anyway, let's assume it doesn't make sense to return a
             // negative or zero value here.
-            if (nRowLen <= 0)
+            if (bFail || nRowLen <= 0)
                 nRowLen = 1;
         }
         else if (nLastRow == 0)
@@ -4498,7 +4498,7 @@ struct ScDependantsCalculator
                 // The dependency evaluator evaluates all arguments of IF/IFS/SWITCH irrespective
                 // of the result of the condition expression.
                 // This is a perf problem if we *don't* intent on recalc'ing all dirty cells
-                // in the document. So lets disable threading and stop dependency evaluation if
+                // in the document. So let's disable threading and stop dependency evaluation if
                 // the call did not originate from ScDocShell::DoRecalc()/ScDocShell::DoHardRecalc()
                 // for formulae with IF/IFS/SWITCH
                 OpCode nOpCode = p->GetOpCode();
@@ -4607,10 +4607,17 @@ struct ScDependantsCalculator
                         continue;
                     }
 
+                    SCROW nFirstRefStartRow = bIsRef1RowRel ? aAbs.aStart.Row() + mnStartOffset : aAbs.aStart.Row();
+                    SCROW nLastRefEndRow =  bIsRef2RowRel ? aAbs.aEnd.Row() + mnEndOffset : aAbs.aEnd.Row();
+
+                    SCROW nFirstRefEndRow = bIsRef1RowRel ? aAbs.aStart.Row() + mnEndOffset : aAbs.aStart.Row();
+                    SCROW nLastRefStartRow =  bIsRef2RowRel ? aAbs.aEnd.Row() + mnStartOffset : aAbs.aEnd.Row();
+
                     // The first row that will be referenced through the doubleref.
-                    SCROW nFirstRefRow = bIsRef1RowRel ? aAbs.aStart.Row() + mnStartOffset : aAbs.aStart.Row();
+                    SCROW nFirstRefRow = std::min(nFirstRefStartRow, nLastRefStartRow);
                     // The last row that will be referenced through the doubleref.
-                    SCROW nLastRefRow =  bIsRef2RowRel ? aAbs.aEnd.Row() + mnEndOffset : aAbs.aEnd.Row();
+                    SCROW nLastRefRow =  std::max(nLastRefEndRow, nFirstRefEndRow);
+
                     // Number of rows to be evaluated from nFirstRefRow.
                     SCROW nArrayLength = nLastRefRow - nFirstRefRow + 1;
                     assert(nArrayLength > 0);
@@ -4628,7 +4635,7 @@ struct ScDependantsCalculator
         }
 
         // Compute dependencies irrespective of the presence of any self references.
-        // These dependencies would get computed via InterpretTail anyway when we disable group calc, so lets do it now.
+        // These dependencies would get computed via InterpretTail anyway when we disable group calc, so let's do it now.
         // The advantage is that the FG's get marked for cycles early if present, and can avoid lots of complications.
         for (size_t i = 0; i < aRangeList.size(); ++i)
         {
@@ -4653,7 +4660,7 @@ struct ScDependantsCalculator
             mxGroup->mbPartOfCycle = true;
 
         if (pSuccessfulDependencies && !bHasSelfReferences)
-            *pSuccessfulDependencies = aRangeList;
+            *pSuccessfulDependencies = std::move(aRangeList);
 
         return !bHasSelfReferences;
     }
@@ -4671,7 +4678,7 @@ bool ScFormulaCell::InterpretFormulaGroup(SCROW nStartOffset, SCROW nEndOffset)
 
     if (mxGroup->mbPartOfCycle)
     {
-        aScope.addMessage("This formula-group is part of a cycle");
+        aScope.addMessage(u"This formula-group is part of a cycle"_ustr);
         return false;
     }
 
@@ -4697,7 +4704,7 @@ bool ScFormulaCell::InterpretFormulaGroup(SCROW nStartOffset, SCROW nEndOffset)
     if (cMatrixFlag != ScMatrixMode::NONE)
     {
         mxGroup->meCalcState = sc::GroupCalcDisabled;
-        aScope.addMessage("matrix skipped");
+        aScope.addMessage(u"matrix skipped"_ustr);
         return false;
     }
 
@@ -4711,7 +4718,7 @@ bool ScFormulaCell::InterpretFormulaGroup(SCROW nStartOffset, SCROW nEndOffset)
         if( rDocument.GetFormulaCell( aPos ) != this )
         {
             mxGroup->meCalcState = sc::GroupCalcDisabled;
-            aScope.addMessage("cell not in document");
+            aScope.addMessage(u"cell not in document"_ustr);
             return false;
         }
     }
@@ -4762,7 +4769,7 @@ bool ScFormulaCell::CheckComputeDependencies(sc::FormulaLogger::GroupScope& rSco
     // to avoid writing during the calculation
     if (bCalcDependencyOnly)
     {
-        // Lets not use "ScFormulaGroupDependencyComputeGuard" here as there is no corresponding
+        // Let's not use "ScFormulaGroupDependencyComputeGuard" here as there is no corresponding
         // "ScFormulaGroupCycleCheckGuard" for this formula-group.
         // (We can only reach here from a multi-group dependency evaluation attempt).
         // (These two have to be in pairs always for any given formula-group)
@@ -4776,7 +4783,7 @@ bool ScFormulaCell::CheckComputeDependencies(sc::FormulaLogger::GroupScope& rSco
         if (mxGroup->mbPartOfCycle)
         {
             mxGroup->meCalcState = sc::GroupCalcDisabled;
-            rScope.addMessage("found circular formula-group dependencies");
+            rScope.addMessage(u"found circular formula-group dependencies"_ustr);
             return false;
         }
 
@@ -4789,14 +4796,14 @@ bool ScFormulaCell::CheckComputeDependencies(sc::FormulaLogger::GroupScope& rSco
     if (rRecursionHelper.IsInRecursionReturn())
     {
         mxGroup->meCalcState = sc::GroupCalcDisabled;
-        rScope.addMessage("Recursion limit reached, cannot thread this formula group now");
+        rScope.addMessage(u"Recursion limit reached, cannot thread this formula group now"_ustr);
         return false;
     }
 
     if (mxGroup->mbPartOfCycle)
     {
         mxGroup->meCalcState = sc::GroupCalcDisabled;
-        rScope.addMessage("found circular formula-group dependencies");
+        rScope.addMessage(u"found circular formula-group dependencies"_ustr);
         return false;
     }
 
@@ -4804,14 +4811,14 @@ bool ScFormulaCell::CheckComputeDependencies(sc::FormulaLogger::GroupScope& rSco
     {
         // This call resulted from a dependency calculation for a multigroup-threading attempt,
         // but found dependency among the groups.
-        rScope.addMessage("multi-group-dependency failed");
+        rScope.addMessage(u"multi-group-dependency failed"_ustr);
         return false;
     }
 
     if (!bOKToParallelize)
     {
         mxGroup->meCalcState = sc::GroupCalcDisabled;
-        rScope.addMessage("could not do new dependencies calculation thing");
+        rScope.addMessage(u"could not do new dependencies calculation thing"_ustr);
         return false;
     }
 
@@ -5004,6 +5011,13 @@ bool ScFormulaCell::InterpretFormulaGroupThreading(sc::FormulaLogger::GroupScope
 
             ScMutationDisable aGuard(rDocument, ScMutationGuardFlags::CORE);
 
+            // Here we turn off ref-counting for the contents of pCode on the basis
+            // that pCode is not modified by interpreting and when interpreting is
+            // complete all token refcounts will be back to their initial ref count
+            FormulaToken** pArray = pCode->GetArray();
+            for (sal_uInt16 i = 0, n = pCode->GetLen(); i < n; ++i)
+                pArray[i]->SetRefCntPolicy(RefCntPolicy::None);
+
             // Start nThreadCount new threads
             std::shared_ptr<comphelper::ThreadTaskTag> aTag = comphelper::ThreadPool::createThreadTaskTag();
             ScThreadedInterpreterContextGetterGuard aContextGetterGuard(nThreadCount, rDocument, pNonThreadedFormatter);
@@ -5024,6 +5038,13 @@ bool ScFormulaCell::InterpretFormulaGroupThreading(sc::FormulaLogger::GroupScope
             // Do not join the threads here. They will get joined in ScDocument destructor
             // if they don't get joined from elsewhere before (via ThreadPool::waitUntilDone).
             rThreadPool.waitUntilDone(aTag, false);
+
+            // Drop any caches that reference Tokens before restoring ref counting policy
+            for (int i = 0; i < nThreadCount; ++i)
+                aInterpreters[i]->DropTokenCaches();
+
+            for (sal_uInt16 i = 0, n = pCode->GetLen(); i < n; ++i)
+                pArray[i]->SetRefCntPolicy(RefCntPolicy::ThreadSafe);
 
             rDocument.SetThreadedGroupCalcInProgress(false);
 
@@ -5065,18 +5086,18 @@ bool ScFormulaCell::InterpretFormulaGroupOpenCL(sc::FormulaLogger::GroupScope& a
 
         // Not good.
         case FormulaVectorDisabledByOpCode:
-            aScope.addMessage("group calc disabled due to vector state (non-vector-supporting opcode)");
+            aScope.addMessage(u"group calc disabled due to vector state (non-vector-supporting opcode)"_ustr);
             break;
         case FormulaVectorDisabledByStackVariable:
-            aScope.addMessage("group calc disabled due to vector state (non-vector-supporting stack variable)");
+            aScope.addMessage(u"group calc disabled due to vector state (non-vector-supporting stack variable)"_ustr);
             break;
         case FormulaVectorDisabledNotInSubSet:
-            aScope.addMessage("group calc disabled due to vector state (opcode not in subset)");
+            aScope.addMessage(u"group calc disabled due to vector state (opcode not in subset)"_ustr);
             break;
         case FormulaVectorDisabled:
         case FormulaVectorUnknown:
         default:
-            aScope.addMessage("group calc disabled due to vector state (unknown)");
+            aScope.addMessage(u"group calc disabled due to vector state (unknown)"_ustr);
             return false;
     }
 
@@ -5085,7 +5106,7 @@ bool ScFormulaCell::InterpretFormulaGroupOpenCL(sc::FormulaLogger::GroupScope& a
 
     if (!ScCalcConfig::isOpenCLEnabled())
     {
-        aScope.addMessage("opencl not enabled");
+        aScope.addMessage(u"opencl not enabled"_ustr);
         return false;
     }
 
@@ -5181,7 +5202,7 @@ bool ScFormulaCell::InterpretFormulaGroupOpenCL(sc::FormulaLogger::GroupScope& a
                 mxGroup->mpCode = std::move(xGroup->mpCode);
             }
 
-            aScope.addMessage("group token conversion failed");
+            aScope.addMessage(u"group token conversion failed"_ustr);
             return false;
         }
 
@@ -5205,7 +5226,7 @@ bool ScFormulaCell::InterpretFormulaGroupOpenCL(sc::FormulaLogger::GroupScope& a
                 mxGroup->mpCode = std::move(xGroup->mpCode);
             }
 
-            aScope.addMessage("group interpretation unsuccessful");
+            aScope.addMessage(u"group interpretation unsuccessful"_ustr);
             return false;
         }
 

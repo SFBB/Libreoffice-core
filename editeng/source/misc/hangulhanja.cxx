@@ -363,7 +363,7 @@ namespace editeng
                         )
                     {
                         // then use the second finding
-                        aResult = aSecondResult;
+                        aResult = std::move(aSecondResult);
 
                         // our current conversion direction changed now
                         m_eCurrentConversionDirection = ( HHC::eHangulToHanja == m_eCurrentConversionDirection )
@@ -416,7 +416,7 @@ namespace editeng
                             nDiff=0;
                         pTmp[n]=m_aCurrentSuggestions[n-nDiff];
                     }
-                    m_aCurrentSuggestions = aTmp;
+                    m_aCurrentSuggestions = std::move(aTmp);
                 }
             }
         }

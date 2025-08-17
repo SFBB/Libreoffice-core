@@ -25,15 +25,13 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <shellio.hxx>
 
-class SwPaM;
-class SfxMedium;
+#include <vector>
 
 namespace com::sun::star {
     namespace uno { template<class A> class Reference; }
     namespace uno { template<class A> class Sequence; }
     namespace uno { class Any; }
     namespace lang { class XComponent; }
-    namespace lang { class XMultiServiceFactory; }
     namespace beans { struct PropertyValue; }
 }
 
@@ -55,6 +53,7 @@ public:
     virtual ErrCodeMsg Write( SwPaM&, SfxMedium&, const OUString* ) override;
 
 private:
+    std::unordered_map<OString, OUString> maEmbeddedFontFiles;
 
     // helper methods to write XML streams
 
@@ -73,7 +72,7 @@ private:
 
     // write a single output stream
     // (to be called either directly or by WriteThroughComponent(...))
-    static bool WriteThroughComponent(
+    bool WriteThroughComponent(
         const css::uno::Reference<css::io::XOutputStream> & xOutputStream,
         const css::uno::Reference<css::lang::XComponent> & xComponent,
         const css::uno::Reference<css::uno::XComponentContext> & rFactory,

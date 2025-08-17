@@ -23,10 +23,10 @@
 #include <optional>
 #include <svx/svxdllapi.h>
 #include <unotools/weakref.hxx>
+#include <editeng/StripPortionsHelper.hxx>
 
 class SdrTextObj;
 class SdrPage;
-enum class SdrCompatibilityFlag;
 
 class SVXCORE_DLLPUBLIC SdrOutliner : public Outliner
 {
@@ -52,5 +52,36 @@ public:
     virtual std::optional<bool> GetCompatFlag(SdrCompatibilityFlag eFlag) const override;
 };
 
+class TextHierarchyBreakupBlockText : public TextHierarchyBreakupOutliner
+{
+    // ClipRange for BlockText decomposition; only text portions completely
+    // inside are to be accepted, so this is different from geometric clipping
+    // (which would allow e.g. upper parts of portions to remain)
+    const basegfx::B2DRange&    mrClipRange;
+
+public:
+    virtual void processDrawPortionInfo(const DrawPortionInfo& rDrawPortionInfo) override;
+
+    TextHierarchyBreakupBlockText(
+        SdrOutliner& rOutliner,
+        const basegfx::B2DHomMatrix& rNewTransformA,
+        const basegfx::B2DHomMatrix& rNewTransformB,
+        const basegfx::B2DRange& rClipRange);
+};
+
+class TextHierarchyBreakupContourText : public TextHierarchyBreakupOutliner
+{
+    // the visible area for contour text decomposition
+    basegfx::B2DVector              maScale;
+
+public:
+    virtual void processDrawPortionInfo(const DrawPortionInfo& rDrawPortionInfo) override;
+
+    TextHierarchyBreakupContourText(
+        SdrOutliner& rOutliner,
+        const basegfx::B2DHomMatrix& rNewTransformA,
+        const basegfx::B2DHomMatrix& rNewTransformB,
+        const basegfx::B2DVector& rScale);
+};
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

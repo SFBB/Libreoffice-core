@@ -22,20 +22,13 @@
 #include <file/FCatalog.hxx>
 
 using namespace connectivity;
-using namespace ::comphelper;
 using namespace connectivity::flat;
 using namespace connectivity::file;
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbcx;
-using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::container;
 
-sdbcx::ObjectType OFlatTables::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OFlatTables::createObject(const OUString& _rName)
 {
     rtl::Reference<OFlatTable> pRet = new OFlatTable(this, static_cast<OFlatConnection*>(static_cast<OFileCatalog&>(m_rParent).getConnection()),
-                                        _rName,"TABLE");
+                                        _rName,u"TABLE"_ustr);
     pRet->construct();
     return pRet;
 }

@@ -154,7 +154,7 @@ void SwSearchProperties_Impl::FillItemSet(SfxItemSet& rSet, bool bIsValueSearch)
     auto funcClone = [&rSet](sal_uInt16 nWID, std::unique_ptr<SfxPoolItem> & rpPoolItem)
     {
         if(!rpPoolItem)
-            rpPoolItem.reset(rSet.GetPool()->GetDefaultItem(nWID).Clone());
+            rpPoolItem.reset(rSet.GetPool()->GetUserOrPoolDefaultItem(nWID).Clone());
         return rpPoolItem.get();
     };
     for(auto const & rPair : maValues)
@@ -438,7 +438,7 @@ void SwXTextSearch::setPropertyValue(const OUString& rPropertyName, const uno::A
         case WID_SIMILARITY_EXCHANGE:   aValue >>= m_nLevExchange; break;
         case WID_SIMILARITY_ADD:        aValue >>= m_nLevAdd; break;
         case WID_SIMILARITY_REMOVE :    aValue >>= m_nLevRemove;break;
-    };
+    }
 
 }
 
@@ -552,7 +552,7 @@ bool    SwXTextSearch::HasReplaceAttributes() const
 
 OUString SwXTextSearch::getImplementationName()
 {
-    return "SwXTextSearch";
+    return u"SwXTextSearch"_ustr;
 }
 
 sal_Bool SwXTextSearch::supportsService(const OUString& rServiceName)
@@ -562,7 +562,7 @@ sal_Bool SwXTextSearch::supportsService(const OUString& rServiceName)
 
 uno::Sequence< OUString > SwXTextSearch::getSupportedServiceNames()
 {
-    return { "com.sun.star.util.SearchDescriptor", "com.sun.star.util.ReplaceDescriptor" };
+    return { u"com.sun.star.util.SearchDescriptor"_ustr, u"com.sun.star.util.ReplaceDescriptor"_ustr };
 }
 
 void SwXTextSearch::FillSearchOptions( i18nutil::SearchOptions2& rSearchOpt ) const

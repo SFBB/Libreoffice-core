@@ -24,8 +24,8 @@
                 <property name="label" translatable="yes" context="stock">_OK</property>
                 <property name="visible">True</property>
                 <property name="can-focus">True</property>
-                <property name="can_default">True</property>
-                <property name="has_default">True</property>
+                <property name="can-default">True</property>
+                <property name="has-default">True</property>
                 <property name="receives-default">True</property>
                 <property name="use-underline">True</property>
               </object>
@@ -212,6 +212,50 @@
                   </packing>
                 </child>
                 <child>
+                  <object class="GtkCheckButton" id="pagerangetotalCheckbox">
+                    <property name="label" translatable="yes" context="pagenumberdlg|pagerangetotalCheckbox">Include page total in page numbering range</property>
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">False</property>
+                    <property name="margin-start">18</property>
+                    <property name="margin-top">4</property>
+                    <property name="use-underline">True</property>
+                    <property name="draw-indicator">True</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="pagerangetotalCheckbox-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="pagenumberdlg|extended_tip|pagerangetotalCheckbox">Insert the total number of pages in the range lasting until the page numbering is modified.</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">6</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkCheckButton" id="fitintoexistingmarginsCheckbox">
+                    <property name="label" translatable="yes" context="pagenumberdlg|fitintoexistingmarginsCheckbox">Fit into existing margins</property>
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">False</property>
+                    <property name="margin-start">18</property>
+                    <property name="margin-top">3</property>
+                    <property name="use-underline">True</property>
+                    <property name="draw-indicator">True</property>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="fitintoexistingmarginsCheckbox-atkobject">
+                        <property name="AtkObject::accessible-description" translatable="yes" context="pagenumberdlg|extended_tip|fitintoexistingmarginsCheckbox">Reduce the margin so that adding the page number will not change the page layout</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">7</property>
+                  </packing>
+                </child>
+                <child>
                   <object class="GtkLabel" id="numfmtLabel">
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
@@ -232,7 +276,7 @@
                   <packing>
                     <property name="expand">False</property>
                     <property name="fill">True</property>
-                    <property name="position">6</property>
+                    <property name="position">8</property>
                   </packing>
                 </child>
                 <child>
@@ -251,7 +295,7 @@
                   <packing>
                     <property name="expand">False</property>
                     <property name="fill">True</property>
-                    <property name="position">7</property>
+                    <property name="position">9</property>
                   </packing>
                 </child>
               </object>

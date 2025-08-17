@@ -22,14 +22,7 @@
 #include <editeng/editdata.hxx>
 #include <map>
 
-class ImpChainLinkProperties;
 class SdrTextObj;
-class SdrModel;
-
-namespace rtl
-{
-class OUString;
-}
 
 typedef OUString ChainLinkId;
 
@@ -46,24 +39,16 @@ class ImpChainLinkProperties
 protected:
     friend class TextChain;
 
-    ImpChainLinkProperties()
-    {
-        aNilChainingEvent = false;
-        aCursorEvent = CursorChainingEvent::NULL_EVENT;
-        aPreChainingSel = ESelection(0, 0, 0, 0);
-        aPostChainingSel = ESelection(0, 0, 0, 0);
-        aIsPartOfLastParaInNextLink = false; // XXX: Should come from file
-        aSwitchingToNextBox = false;
-    }
+    ImpChainLinkProperties() = default;
 
 private:
     // NOTE: Remember to set default value in constructor when adding field
     ESelection aPreChainingSel;
     ESelection aPostChainingSel;
-    CursorChainingEvent aCursorEvent;
-    bool aNilChainingEvent;
-    bool aIsPartOfLastParaInNextLink;
-    bool aSwitchingToNextBox;
+    CursorChainingEvent aCursorEvent = CursorChainingEvent::NULL_EVENT;
+    bool aNilChainingEvent = false;
+    bool aIsPartOfLastParaInNextLink = false;
+    bool aSwitchingToNextBox = false;
 };
 
 class TextChain

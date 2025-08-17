@@ -84,15 +84,8 @@ constexpr OUString cThes(SN_THESAURUS);
 static sal_Int32 lcl_SeqGetEntryPos(
     const Sequence< OUString > &rSeq, std::u16string_view rEntry )
 {
-    sal_Int32 i;
-    sal_Int32 nLen = rSeq.getLength();
-    const OUString *pItem = rSeq.getConstArray();
-    for (i = 0;  i < nLen;  ++i)
-    {
-        if (rEntry == pItem[i])
-            break;
-    }
-    return i < nLen ? i : -1;
+    auto it = std::find(rSeq.begin(), rSeq.end(), rEntry);
+    return it == rSeq.end() ? -1 : std::distance(rSeq.begin(), it);
 }
 
 static bool KillFile_Impl( const OUString& rURL )
@@ -101,7 +94,7 @@ static bool KillFile_Impl( const OUString& rURL )
     try
     {
         Content aCnt( rURL, uno::Reference< css::ucb::XCommandEnvironment >(), comphelper::getProcessComponentContext() );
-        aCnt.executeCommand( "delete", Any( true ) );
+        aCnt.executeCommand( u"delete"_ustr, Any( true ) );
     }
     catch( ... )
     {
@@ -205,7 +198,7 @@ enum EID_OPTIONS
 
 }
 
-static OUString lcl_GetPropertyName( EID_OPTIONS eEntryId )
+static const OUString & lcl_GetPropertyName( EID_OPTIONS eEntryId )
 {
     switch (eEntryId)
     {
@@ -236,27 +229,27 @@ class OptionsBreakSet : public weld::GenericDialogController
 
 public:
     OptionsBreakSet(weld::Window* pParent, sal_uInt16 nRID)
-        : GenericDialogController(pParent, "cui/ui/breaknumberoption.ui", "BreakNumberOption")
-        , m_xBeforeFrame(m_xBuilder->weld_widget("beforeframe"))
-        , m_xAfterFrame(m_xBuilder->weld_widget("afterframe"))
-        , m_xMinimalFrame(m_xBuilder->weld_widget("miniframe"))
+        : GenericDialogController(pParent, u"cui/ui/breaknumberoption.ui"_ustr, u"BreakNumberOption"_ustr)
+        , m_xBeforeFrame(m_xBuilder->weld_widget(u"beforeframe"_ustr))
+        , m_xAfterFrame(m_xBuilder->weld_widget(u"afterframe"_ustr))
+        , m_xMinimalFrame(m_xBuilder->weld_widget(u"miniframe"_ustr))
     {
         assert(EID_NUM_PRE_BREAK == nRID || EID_NUM_POST_BREAK == nRID || EID_NUM_MIN_WORDLEN == nRID); //unexpected ID
 
         if (nRID == EID_NUM_PRE_BREAK)
         {
             m_xBeforeFrame->show();
-            m_xBreakNF = m_xBuilder->weld_spin_button("beforebreak");
+            m_xBreakNF = m_xBuilder->weld_spin_button(u"beforebreak"_ustr);
         }
         else if(nRID == EID_NUM_POST_BREAK)
         {
             m_xAfterFrame->show();
-            m_xBreakNF = m_xBuilder->weld_spin_button("afterbreak");
+            m_xBreakNF = m_xBuilder->weld_spin_button(u"afterbreak"_ustr);
         }
         else if(nRID == EID_NUM_MIN_WORDLEN)
         {
             m_xMinimalFrame->show();
-            m_xBreakNF = m_xBuilder->weld_spin_button("wordlength");
+            m_xBreakNF = m_xBuilder->weld_spin_button(u"wordlength"_ustr);
         }
     }
 
@@ -407,20 +400,6 @@ public:
 };
 
 
-static sal_Int32 lcl_SeqGetIndex( const Sequence< OUString > &rSeq, std::u16string_view rTxt )
-{
-    sal_Int32 nRes = -1;
-    sal_Int32 nLen = rSeq.getLength();
-    const OUString *pString = rSeq.getConstArray();
-    for (sal_Int32 i = 0;  i < nLen  &&  nRes == -1;  ++i)
-    {
-        if (pString[i] == rTxt)
-            nRes = i;
-    }
-    return nRes;
-}
-
-
 Sequence< OUString > SvxLinguData_Impl::GetSortedImplNames( LanguageType nLang, sal_uInt8 nType )
 {
     LangImplNameTable *pTable = nullptr;
@@ -457,7 +436,7 @@ Sequence< OUString > SvxLinguData_Impl::GetSortedImplNames( LanguageType nLang, 
             case TYPE_GRAMMAR   : aImplName = rInfo.sGrammarImplName; break;
         }
 
-        if (!aImplName.isEmpty()  &&  (lcl_SeqGetIndex( aRes, aImplName) == -1))    // name not yet added
+        if (!aImplName.isEmpty()  &&  (lcl_SeqGetEntryPos( aRes, aImplName) == -1))    // name not yet added
         {
             DBG_ASSERT( nIdx < aRes.getLength(), "index out of range" );
             if (nIdx < aRes.getLength())
@@ -545,7 +524,7 @@ static void lcl_MergeDisplayArray(
 SvxLinguData_Impl::SvxLinguData_Impl() :
     nDisplayServices    (0)
 {
-    uno::Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const uno::Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     xLinguSrvcMgr = LinguServiceManager::create(xContext);
 
     const Locale& rCurrentLocale = Application::GetSettings().GetUILanguageTag().getLocale();
@@ -647,7 +626,7 @@ SvxLinguData_Impl::SvxLinguData_Impl() :
     }
 
     Sequence< OUString > aCfgSvcs;
-    for(auto const & locale : std::as_const(aAllServiceLocales))
+    for (auto const& locale : aAllServiceLocales)
     {
         LanguageType nLang = LanguageTag::convertToLanguageType( locale );
 
@@ -745,20 +724,12 @@ void SvxLinguData_Impl::Reconfigure( std::u16string_view rDisplayName, bool bEna
 
     pInfo->bConfigured = bEnable;
 
-    Sequence< Locale > aLocales;
-    const Locale *pLocale = nullptr;
-    sal_Int32 nLocales = 0;
-    sal_Int32 i;
-
     // update configured spellchecker entries
     if (pInfo->xSpell.is())
     {
-        aLocales = pInfo->xSpell->getLocales();
-        pLocale = aLocales.getConstArray();
-        nLocales = aLocales.getLength();
-        for (i = 0;  i < nLocales;  ++i)
+        for (auto& locale : pInfo->xSpell->getLocales())
         {
-            LanguageType nLang = LanguageTag::convertToLanguageType( pLocale[i] );
+            LanguageType nLang = LanguageTag::convertToLanguageType(locale);
             if (!aCfgSpellTable.count( nLang ) && bEnable)
                 aCfgSpellTable[ nLang ] = Sequence< OUString >();
             if (aCfgSpellTable.count( nLang ))
@@ -769,12 +740,9 @@ void SvxLinguData_Impl::Reconfigure( std::u16string_view rDisplayName, bool bEna
     // update configured grammar checker entries
     if (pInfo->xGrammar.is())
     {
-        aLocales = pInfo->xGrammar->getLocales();
-        pLocale = aLocales.getConstArray();
-        nLocales = aLocales.getLength();
-        for (i = 0;  i < nLocales;  ++i)
+        for (auto& locale : pInfo->xGrammar->getLocales())
         {
-            LanguageType nLang = LanguageTag::convertToLanguageType( pLocale[i] );
+            LanguageType nLang = LanguageTag::convertToLanguageType(locale);
             if (!aCfgGrammarTable.count( nLang ) && bEnable)
                 aCfgGrammarTable[ nLang ] = Sequence< OUString >();
             if (aCfgGrammarTable.count( nLang ))
@@ -785,12 +753,9 @@ void SvxLinguData_Impl::Reconfigure( std::u16string_view rDisplayName, bool bEna
     // update configured hyphenator entries
     if (pInfo->xHyph.is())
     {
-        aLocales = pInfo->xHyph->getLocales();
-        pLocale = aLocales.getConstArray();
-        nLocales = aLocales.getLength();
-        for (i = 0;  i < nLocales;  ++i)
+        for (auto& locale : pInfo->xHyph->getLocales())
         {
-            LanguageType nLang = LanguageTag::convertToLanguageType( pLocale[i] );
+            LanguageType nLang = LanguageTag::convertToLanguageType(locale);
             if (!aCfgHyphTable.count( nLang ) && bEnable)
                 aCfgHyphTable[ nLang ] = Sequence< OUString >();
             if (aCfgHyphTable.count( nLang ))
@@ -802,12 +767,9 @@ void SvxLinguData_Impl::Reconfigure( std::u16string_view rDisplayName, bool bEna
     if (!pInfo->xThes.is())
         return;
 
-    aLocales = pInfo->xThes->getLocales();
-    pLocale = aLocales.getConstArray();
-    nLocales = aLocales.getLength();
-    for (i = 0;  i < nLocales;  ++i)
+    for (auto& locale : pInfo->xThes->getLocales())
     {
-        LanguageType nLang = LanguageTag::convertToLanguageType( pLocale[i] );
+        LanguageType nLang = LanguageTag::convertToLanguageType(locale);
         if (!aCfgThesTable.count( nLang ) && bEnable)
             aCfgThesTable[ nLang ] = Sequence< OUString >();
         if (aCfgThesTable.count( nLang ))
@@ -819,7 +781,7 @@ void SvxLinguData_Impl::Reconfigure( std::u16string_view rDisplayName, bool bEna
 // class SvxLinguTabPage -------------------------------------------------
 
 SvxLinguTabPage::SvxLinguTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/optlingupage.ui", "OptLinguPage", &rSet)
+    : SfxTabPage(pPage, pController, u"cui/ui/optlingupage.ui"_ustr, u"OptLinguPage"_ustr, &rSet)
     , sCapitalWords   (CuiResId(RID_CUISTR_CAPITAL_WORDS))
     , sWordsWithDigits(CuiResId(RID_CUISTR_WORDS_WITH_DIGITS))
     , sSpellSpecial   (CuiResId(RID_CUISTR_SPELL_SPECIAL))
@@ -836,38 +798,38 @@ SvxLinguTabPage::SvxLinguTabPage(weld::Container* pPage, weld::DialogController*
     , nUPN_HYPH_MIN_LEADING(-1)
     , nUPN_HYPH_MIN_TRAILING(-1)
     , m_nDlbClickEventId(nullptr)
-    , m_xLinguModulesFT(m_xBuilder->weld_label("lingumodulesft"))
-    , m_xLinguModulesCLB(m_xBuilder->weld_tree_view("lingumodules"))
-    , m_xLinguModulesEditPB(m_xBuilder->weld_button("lingumodulesedit"))
-    , m_xLinguDicsFT(m_xBuilder->weld_label("lingudictsft"))
-    , m_xLinguDicsCLB(m_xBuilder->weld_tree_view("lingudicts"))
-    , m_xLinguDicsNewPB(m_xBuilder->weld_button("lingudictsnew"))
-    , m_xLinguDicsEditPB(m_xBuilder->weld_button("lingudictsedit"))
-    , m_xLinguDicsDelPB(m_xBuilder->weld_button("lingudictsdelete"))
-    , m_xLinguOptionsCLB(m_xBuilder->weld_tree_view("linguoptions"))
-    , m_xLinguOptionsEditPB(m_xBuilder->weld_button("linguoptionsedit"))
-    , m_xMoreDictsBox(m_xBuilder->weld_box("moredictsbox"))
-    , m_xMoreDictsLink(m_xBuilder->weld_link_button("moredictslink"))
+    , m_xLinguModulesFrame(m_xBuilder->weld_container(u"lingumodulesframe"_ustr))
+    , m_xLinguModulesCLB(m_xBuilder->weld_tree_view(u"lingumodules"_ustr))
+    , m_xLinguModulesEditPB(m_xBuilder->weld_button(u"lingumodulesedit"_ustr))
+    , m_xLinguDicsFT(m_xBuilder->weld_label(u"lingudictsft"_ustr))
+    , m_xLinguDicsCLB(m_xBuilder->weld_tree_view(u"lingudicts"_ustr))
+    , m_xLinguDicsNewPB(m_xBuilder->weld_button(u"lingudictsnew"_ustr))
+    , m_xLinguDicsEditPB(m_xBuilder->weld_button(u"lingudictsedit"_ustr))
+    , m_xLinguDicsDelPB(m_xBuilder->weld_button(u"lingudictsdelete"_ustr))
+    , m_xLinguOptionsCLB(m_xBuilder->weld_tree_view(u"linguoptions"_ustr))
+    , m_xLinguOptionsEditPB(m_xBuilder->weld_button(u"linguoptionsedit"_ustr))
+    , m_xMoreDictsBox(m_xBuilder->weld_box(u"moredictsbox"_ustr))
+    , m_xMoreDictsLink(m_xBuilder->weld_link_button(u"moredictslink"_ustr))
 {
     m_xLinguModulesCLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
     m_xLinguDicsCLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
     m_xLinguOptionsCLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
 
-    m_xLinguModulesCLB->connect_changed( LINK( this, SvxLinguTabPage, SelectHdl_Impl ));
+    m_xLinguModulesCLB->connect_selection_changed(LINK(this, SvxLinguTabPage, SelectHdl_Impl));
     m_xLinguModulesCLB->connect_row_activated(LINK(this, SvxLinguTabPage, BoxDoubleClickHdl_Impl));
     m_xLinguModulesCLB->connect_toggled(LINK(this, SvxLinguTabPage, ModulesBoxCheckButtonHdl_Impl));
 
     m_xLinguModulesEditPB->connect_clicked( LINK( this, SvxLinguTabPage, ClickHdl_Impl ));
     m_xLinguOptionsEditPB->connect_clicked( LINK( this, SvxLinguTabPage, ClickHdl_Impl ));
 
-    m_xLinguDicsCLB->connect_changed( LINK( this, SvxLinguTabPage, SelectHdl_Impl ));
+    m_xLinguDicsCLB->connect_selection_changed(LINK(this, SvxLinguTabPage, SelectHdl_Impl));
     m_xLinguDicsCLB->connect_toggled(LINK(this, SvxLinguTabPage, DicsBoxCheckButtonHdl_Impl));
 
     m_xLinguDicsNewPB->connect_clicked( LINK( this, SvxLinguTabPage, ClickHdl_Impl ));
     m_xLinguDicsEditPB->connect_clicked( LINK( this, SvxLinguTabPage, ClickHdl_Impl ));
     m_xLinguDicsDelPB->connect_clicked( LINK( this, SvxLinguTabPage, ClickHdl_Impl ));
 
-    m_xLinguOptionsCLB->connect_changed( LINK( this, SvxLinguTabPage, SelectHdl_Impl ));
+    m_xLinguOptionsCLB->connect_selection_changed(LINK(this, SvxLinguTabPage, SelectHdl_Impl));
     m_xLinguOptionsCLB->connect_row_activated(LINK(this, SvxLinguTabPage, BoxDoubleClickHdl_Impl));
 
     m_xMoreDictsLink->connect_activate_link(LINK(this, SvxLinguTabPage, OnLinkClick));
@@ -877,7 +839,7 @@ SvxLinguTabPage::SvxLinguTabPage(weld::Container* pPage, weld::DialogController*
     if (comphelper::LibreOfficeKit::isActive())
     {
         // hide User-defined Dictionaries part
-        m_xBuilder->weld_frame("dictsframe")->hide();
+        m_xBuilder->weld_frame(u"dictsframe"_ustr)->hide();
         // hide Get more dictionaries URL + icon
         m_xMoreDictsBox->hide();
     }
@@ -927,11 +889,11 @@ std::unique_ptr<SfxTabPage> SvxLinguTabPage::Create( weld::Container* pPage, wel
 OUString SvxLinguTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "lingumodulesft", "lingudictsft", "label4" };
+    OUString labels[] = { u"lingumodulesft"_ustr, u"lingudictsft"_ustr, u"label4"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -1017,7 +979,7 @@ bool SvxLinguTabPage::FillItemSet( SfxItemSet* rCoreSet )
         if (aData.GetEntryId() < nDics)
         {
             bool bChecked = m_xLinguDicsCLB->get_toggle(i) == TRISTATE_TRUE;
-            uno::Reference< XDictionary > xDic( aDics.getConstArray()[ i ] );
+            uno::Reference<XDictionary> xDic(aDics[i]);
             if (xDic.is())
             {
                 if (LinguMgr::GetIgnoreAllList() == xDic)
@@ -1124,11 +1086,9 @@ void SvxLinguTabPage::UpdateDicBox_Impl()
     m_xLinguDicsCLB->freeze();
     m_xLinguDicsCLB->clear();
 
-    sal_Int32 nDics  = aDics.getLength();
-    const uno::Reference< XDictionary > *pDic = aDics.getConstArray();
-    for (sal_Int32 i = 0;  i < nDics;  ++i)
+    for (sal_Int32 i = 0;  i < aDics.getLength();  ++i)
     {
-        const uno::Reference< XDictionary > &rDic = pDic[i];
+        const uno::Reference<XDictionary>& rDic = aDics[i];
         if (rDic.is())
             AddDicBoxEntry( rDic, static_cast<sal_uInt16>(i) );
     }
@@ -1373,7 +1333,7 @@ IMPL_LINK(SvxLinguTabPage, ModulesBoxCheckButtonHdl_Impl, const weld::TreeView::
 
 IMPL_LINK(SvxLinguTabPage, DicsBoxCheckButtonHdl_Impl, const weld::TreeView::iter_col&, rRowCol, void)
 {
-    const uno::Reference<XDictionary> &rDic = aDics.getConstArray()[m_xLinguDicsCLB->get_iter_index_in_parent(rRowCol.first)];
+    const uno::Reference<XDictionary> &rDic = aDics[m_xLinguDicsCLB->get_iter_index_in_parent(rRowCol.first)];
     if (LinguMgr::GetIgnoreAllList() == rDic)
         m_xLinguDicsCLB->set_toggle(rRowCol.first, TRISTATE_TRUE);
 }
@@ -1385,10 +1345,10 @@ IMPL_LINK(SvxLinguTabPage, ClickHdl_Impl, weld::Button&, rBtn, void)
         if (!pLinguData)
             pLinguData.reset( new SvxLinguData_Impl );
 
-        SvxLinguData_Impl   aOldLinguData( *pLinguData );
+        SvxLinguData_Impl aOldLinguData(*pLinguData);
         SvxEditModulesDlg aDlg(GetFrameWeld(), *pLinguData);
         if (aDlg.run() != RET_OK)
-            *pLinguData = aOldLinguData;
+            *pLinguData = std::move(aOldLinguData);
 
         // evaluate new status of 'bConfigured' flag
         sal_uInt32 nLen = pLinguData->GetDisplayServiceCount();
@@ -1438,7 +1398,7 @@ IMPL_LINK(SvxLinguTabPage, ClickHdl_Impl, weld::Button&, rBtn, void)
             sal_Int32 nDics = aDics.getLength();
             if (nDicPos < nDics)
             {
-                uno::Reference< XDictionary > xDic = aDics.getConstArray()[ nDicPos ];
+                uno::Reference<XDictionary> xDic = aDics[nDicPos];
                 if (xDic.is())
                 {
                     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
@@ -1450,8 +1410,8 @@ IMPL_LINK(SvxLinguTabPage, ClickHdl_Impl, weld::Button&, rBtn, void)
     }
     else if (m_xLinguDicsDelPB.get() == &rBtn)
     {
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "cui/ui/querydeletedictionarydialog.ui"));
-        std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog("QueryDeleteDictionaryDialog"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), u"cui/ui/querydeletedictionarydialog.ui"_ustr));
+        std::unique_ptr<weld::MessageDialog> xQuery(xBuilder->weld_message_dialog(u"QueryDeleteDictionaryDialog"_ustr));
         if (RET_NO == xQuery->run())
             return;
 
@@ -1463,7 +1423,7 @@ IMPL_LINK(SvxLinguTabPage, ClickHdl_Impl, weld::Button&, rBtn, void)
             sal_Int32 nDics = aDics.getLength();
             if (nDicPos < nDics)
             {
-                uno::Reference< XDictionary > xDic = aDics.getConstArray()[ nDicPos ];
+                uno::Reference<XDictionary> xDic = aDics[nDicPos];
                 if (xDic.is())
                 {
                     if (LinguMgr::GetIgnoreAllList() == xDic)
@@ -1575,42 +1535,37 @@ IMPL_LINK(SvxLinguTabPage, SelectHdl_Impl, weld::TreeView&, rBox, void)
     }
 }
 
-void SvxLinguTabPage::HideGroups( sal_uInt16 nGrp )
+void SvxLinguTabPage::HideModulesGroup()
 {
-    if ( 0 != ( GROUP_MODULES & nGrp ) )
-    {
-        m_xLinguModulesFT->hide();
-        m_xLinguModulesCLB->hide();
-        m_xLinguModulesEditPB->hide();
+    m_xLinguModulesFrame->hide();
 
-        if (officecfg::Office::Security::Hyperlinks::Open::get() != SvtExtendedSecurityOptions::OPEN_NEVER &&
-            !comphelper::LibreOfficeKit::isActive())
-        {
-            m_xMoreDictsBox->show();
-        }
+    if (officecfg::Office::Security::Hyperlinks::Open::get() != SvtExtendedSecurityOptions::OPEN_NEVER &&
+        !comphelper::LibreOfficeKit::isActive())
+    {
+        m_xMoreDictsBox->show();
     }
 }
 
 IMPL_STATIC_LINK_NOARG(SvxLinguTabPage, OnLinkClick, weld::LinkButton&, bool)
 {
-    comphelper::dispatchCommand(".uno:MoreDictionaries", {});
+    comphelper::dispatchCommand(u".uno:MoreDictionaries"_ustr, {});
     return true;
 }
 
 SvxEditModulesDlg::SvxEditModulesDlg(weld::Window* pParent, SvxLinguData_Impl& rData)
-    : GenericDialogController(pParent, "cui/ui/editmodulesdialog.ui", "EditModulesDialog")
+    : GenericDialogController(pParent, u"cui/ui/editmodulesdialog.ui"_ustr, u"EditModulesDialog"_ustr)
     , sSpell(CuiResId(RID_CUISTR_SPELL))
     , sHyph(CuiResId(RID_CUISTR_HYPH))
     , sThes(CuiResId(RID_CUISTR_THES))
     , sGrammar(CuiResId(RID_CUISTR_GRAMMAR))
     , rLinguData(rData)
-    , m_xModulesCLB(m_xBuilder->weld_tree_view("lingudicts"))
-    , m_xPrioUpPB(m_xBuilder->weld_button("up"))
-    , m_xPrioDownPB(m_xBuilder->weld_button("down"))
-    , m_xBackPB(m_xBuilder->weld_button("back"))
-    , m_xMoreDictsLink(m_xBuilder->weld_link_button("moredictslink"))
-    , m_xClosePB(m_xBuilder->weld_button("close"))
-    , m_xLanguageLB(new SvxLanguageBox(m_xBuilder->weld_combo_box("language")))
+    , m_xModulesCLB(m_xBuilder->weld_tree_view(u"lingudicts"_ustr))
+    , m_xPrioUpPB(m_xBuilder->weld_button(u"up"_ustr))
+    , m_xPrioDownPB(m_xBuilder->weld_button(u"down"_ustr))
+    , m_xBackPB(m_xBuilder->weld_button(u"back"_ustr))
+    , m_xMoreDictsLink(m_xBuilder->weld_link_button(u"moredictslink"_ustr))
+    , m_xClosePB(m_xBuilder->weld_button(u"close"_ustr))
+    , m_xLanguageLB(new SvxLanguageBox(m_xBuilder->weld_combo_box(u"language"_ustr)))
 {
     m_xModulesCLB->set_size_request(m_xModulesCLB->get_approximate_digit_width() * 40,
                                     m_xModulesCLB->get_height_rows(12));
@@ -1619,7 +1574,7 @@ SvxEditModulesDlg::SvxEditModulesDlg(weld::Window* pParent, SvxLinguData_Impl& r
 
     pDefaultLinguData.reset( new SvxLinguData_Impl( rLinguData ) );
 
-    m_xModulesCLB->connect_changed( LINK( this, SvxEditModulesDlg, SelectHdl_Impl ));
+    m_xModulesCLB->connect_selection_changed(LINK(this, SvxEditModulesDlg, SelectHdl_Impl));
     m_xModulesCLB->connect_toggled(LINK(this, SvxEditModulesDlg, BoxCheckButtonHdl_Impl));
 
     m_xClosePB->connect_clicked( LINK( this, SvxEditModulesDlg, ClickHdl_Impl ));
@@ -1649,8 +1604,8 @@ SvxEditModulesDlg::SvxEditModulesDlg(weld::Window* pParent, SvxLinguData_Impl& r
     if (m_xLanguageLB->get_active_id() != eSysLang)
         m_xLanguageLB->set_active(0);
 
-    css::uno::Reference < css::uno::XComponentContext > xContext(::comphelper::getProcessComponentContext());
-    m_xReadWriteAccess = css::configuration::ReadWriteAccess::create(xContext, "*");
+    const css::uno::Reference < css::uno::XComponentContext >& xContext(::comphelper::getProcessComponentContext());
+    m_xReadWriteAccess = css::configuration::ReadWriteAccess::create(xContext, u"*"_ustr);
 
     m_xLanguageLB->connect_changed( LINK( this, SvxEditModulesDlg, LangSelectListBoxHdl_Impl ));
     LangSelectHdl_Impl(m_xLanguageLB.get());
@@ -1766,7 +1721,7 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
         if(bChanged)
         {
             aChange.realloc(nStart);
-            rLinguData.GetThesTable()[ nLang ] = aChange;
+            rLinguData.GetThesTable()[ nLang ] = std::move(aChange);
         }
     }
 
@@ -1778,8 +1733,6 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
 
     if (LANGUAGE_DONTKNOW != eCurLanguage)
     {
-        sal_Int32 n;
-        ServiceInfo_Impl* pInfo;
         bool bReadOnly = false;
 
         int nRow = 0;
@@ -1802,16 +1755,13 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
             bReadOnly = (aProperty.Attributes & css::beans::PropertyAttribute::READONLY) != 0;
         }
 
-        Sequence< OUString > aNames( rLinguData.GetSortedImplNames( eCurLanguage, TYPE_SPELL ) );
-        const OUString *pName = aNames.getConstArray();
-        sal_Int32 nNames = aNames.getLength();
         sal_Int32 nLocalIndex = 0;  // index relative to parent
-        for (n = 0;  n < nNames;  ++n)
+        for (auto& name : rLinguData.GetSortedImplNames(eCurLanguage, TYPE_SPELL))
         {
             OUString aImplName;
             bool     bIsSuppLang = false;
 
-            pInfo = rLinguData.GetInfoByImplName( pName[n] );
+            ServiceInfo_Impl* pInfo = rLinguData.GetInfoByImplName(name);
             if (pInfo)
             {
                 bIsSuppLang = pInfo->xSpell.is()  &&
@@ -1860,16 +1810,13 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
             bReadOnly = (aProperty.Attributes & css::beans::PropertyAttribute::READONLY) != 0;
         }
 
-        aNames = rLinguData.GetSortedImplNames( eCurLanguage, TYPE_GRAMMAR );
-        pName = aNames.getConstArray();
-        nNames = aNames.getLength();
         nLocalIndex = 0;
-        for (n = 0;  n < nNames;  ++n)
+        for (auto& name : rLinguData.GetSortedImplNames(eCurLanguage, TYPE_GRAMMAR))
         {
             OUString aImplName;
             bool     bIsSuppLang = false;
 
-            pInfo = rLinguData.GetInfoByImplName( pName[n] );
+            ServiceInfo_Impl* pInfo = rLinguData.GetInfoByImplName(name);
             if (pInfo)
             {
                 bIsSuppLang = pInfo->xGrammar.is()  &&
@@ -1919,16 +1866,13 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
             bReadOnly = (aProperty.Attributes & css::beans::PropertyAttribute::READONLY) != 0;
         }
 
-        aNames = rLinguData.GetSortedImplNames( eCurLanguage, TYPE_HYPH );
-        pName = aNames.getConstArray();
-        nNames = aNames.getLength();
         nLocalIndex = 0;
-        for (n = 0;  n < nNames;  ++n)
+        for (auto& name : rLinguData.GetSortedImplNames(eCurLanguage, TYPE_HYPH))
         {
             OUString aImplName;
             bool     bIsSuppLang = false;
 
-            pInfo = rLinguData.GetInfoByImplName( pName[n] );
+            ServiceInfo_Impl* pInfo = rLinguData.GetInfoByImplName(name);
             if (pInfo)
             {
                 bIsSuppLang = pInfo->xHyph.is()  &&
@@ -1977,16 +1921,13 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
             bReadOnly = (aProperty.Attributes & css::beans::PropertyAttribute::READONLY) != 0;
         }
 
-        aNames = rLinguData.GetSortedImplNames( eCurLanguage, TYPE_THES );
-        pName = aNames.getConstArray();
-        nNames = aNames.getLength();
         nLocalIndex = 0;
-        for (n = 0;  n < nNames;  ++n)
+        for (auto& name : rLinguData.GetSortedImplNames(eCurLanguage, TYPE_THES))
         {
             OUString aImplName;
             bool     bIsSuppLang = false;
 
-            pInfo = rLinguData.GetInfoByImplName( pName[n] );
+            ServiceInfo_Impl* pInfo = rLinguData.GetInfoByImplName(name);
             if (pInfo)
             {
                 bIsSuppLang = pInfo->xThes.is()  &&
@@ -2018,7 +1959,7 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
             }
         }
     }
-    aLastLocale = aCurLocale;
+    aLastLocale = std::move(aCurLocale);
 }
 
 IMPL_LINK( SvxEditModulesDlg, UpDownHdl_Impl, weld::Button&, rBtn, void )
@@ -2063,7 +2004,7 @@ IMPL_LINK_NOARG(SvxEditModulesDlg, BackHdl_Impl, weld::Button&, void)
 
 IMPL_STATIC_LINK_NOARG(SvxEditModulesDlg, OnLinkClick, weld::LinkButton&, bool)
 {
-    comphelper::dispatchCommand(".uno:MoreDictionaries", {});
+    comphelper::dispatchCommand(u".uno:MoreDictionaries"_ustr, {});
     return true;
 }
 

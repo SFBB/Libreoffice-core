@@ -16,9 +16,9 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SFX2_MAILMODELAPI_HXX
-#define INCLUDED_SFX2_MAILMODELAPI_HXX
+#pragma once
 
+#include <config_options.h>
 #include <com/sun/star/uno/Reference.hxx>
 #include <rtl/ustring.hxx>
 #include <sfx2/dllapi.h>
@@ -38,7 +38,7 @@ typedef ::std::vector< OUString > AddressList_Impl;
 
 // class SfxMailModel_Impl -----------------------------------------------
 
-class SFX2_DLLPUBLIC SfxMailModel
+class UNLESS_MERGELIBS_MORE(SFX2_DLLPUBLIC) SfxMailModel
 {
 protected:
     enum SaveResult
@@ -98,7 +98,5 @@ public:
 };
 
 bool CreateFromAddress_Impl( OUString& rFrom );
-
-#endif // INCLUDED_SFX2_MAILMODELAPI_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

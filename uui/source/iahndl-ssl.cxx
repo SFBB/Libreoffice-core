@@ -58,12 +58,10 @@ OUString
 getContentPart( std::u16string_view _rRawString )
 {
     // search over some parts to find a string
-    static char const * aIDs[] = { "CN=", "OU=", "O=", "E=", nullptr };
+    static constexpr OUString aIDs[] = { u"CN="_ustr, u"OU="_ustr, u"O="_ustr, u"E="_ustr };
     OUString sPart;
-    int i = 0;
-    while ( aIDs[i] )
+    for (const OUString & sPartId : aIDs )
     {
-        OUString sPartId = OUString::createFromAscii( aIDs[i++] );
         size_t nContStart = _rRawString.find( sPartId );
         if ( nContStart != std::u16string_view::npos )
         {
@@ -259,7 +257,7 @@ handleCertificateValidationRequest_(
     uno::Reference< security::XSanExtension > sanExtension;
     auto pExtension = std::find_if(extensions.begin(), extensions.end(),
         [](const uno::Reference< security::XCertificateExtension >& element) {
-            OString aId ( reinterpret_cast<const char *>(element->getExtensionId().getConstArray()), element->getExtensionId().getLength());
+            std::string_view aId ( reinterpret_cast<const char *>(element->getExtensionId().getConstArray()), element->getExtensionId().getLength());
             return aId == OID_SUBJECT_ALTERNATIVE_NAME;
         });
     if (pExtension != extensions.end())
@@ -273,10 +271,9 @@ handleCertificateValidationRequest_(
         altNames = comphelper::sequenceToContainer<std::vector<security::CertAltNameEntry>>(sanExtension->getAlternativeNames());
     }
 
-    OUString certHostName = getContentPart( rRequest.Certificate->getSubjectName() );
     uno::Sequence< OUString > certHostNames(altNames.size() + 1);
     auto pcertHostNames = certHostNames.getArray();
-    pcertHostNames[0] = certHostName;
+    pcertHostNames[0] = getContentPart(rRequest.Certificate->getSubjectName());
 
     for (size_t n = 0; n < altNames.size(); ++n)
     {

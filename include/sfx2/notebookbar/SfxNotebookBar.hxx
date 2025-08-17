@@ -16,7 +16,6 @@
 #include <vcl/WeldedTabbedNotebookbar.hxx>
 #include <vcl/EnumContext.hxx>
 
-#include <map>
 #include <memory>
 #include <string_view>
 
@@ -33,7 +32,6 @@ class SfxBindings;
 class SfxViewFrame;
 class SfxViewShell;
 class SystemWindow;
-class WeldedTabbedNotebookbar;
 
 namespace sfx2
 {
@@ -74,10 +72,6 @@ public:
 private:
     static bool m_bLock;
     static bool m_bHide;
-
-    static std::map<const SfxViewShell*, std::shared_ptr<WeldedTabbedNotebookbar>>
-        m_pNotebookBarWeldedWrapper;
-    static std::map<const SfxViewShell*, VclPtr<NotebookBar>> m_pNotebookBarInstance;
 
     static void ResetActiveToolbarModeToDefault(vcl::EnumContext::Application eApp);
     static void RemoveCurrentLOKWrapper();

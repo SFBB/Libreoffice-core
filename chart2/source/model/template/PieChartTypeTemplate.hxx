@@ -23,6 +23,7 @@
 
 #include <ChartTypeTemplate.hxx>
 #include <com/sun/star/chart2/PieChartOffsetMode.hpp>
+#include <com/sun/star/chart2/PieChartSubType.hpp>
 
 namespace chart
 {
@@ -37,7 +38,9 @@ public:
         const OUString & rServiceName,
         css::chart2::PieChartOffsetMode eMode,
         bool bRings,
-        sal_Int32 nDim = 2 );
+        css::chart2::PieChartSubType eSubType,
+        sal_Int32 nCompositeSize,
+        sal_Int32 nDim );
     virtual ~PieChartTypeTemplate() override;
 
     /// merge XInterface implementations

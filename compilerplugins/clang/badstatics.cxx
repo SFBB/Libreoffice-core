@@ -113,7 +113,7 @@ public:
         if (!pDefinition) { // maybe no definition if it's a pointer/reference
             return std::make_pair(false, std::vector<FieldDecl const*>());
         }
-        if (   type.Class("DeleteOnDeinit").Namespace("vcl").GlobalNamespace()
+        if (   type.Class("DeleteOnDeinit").Namespace("tools").GlobalNamespace()
             || type.Class("weak_ptr").StdNamespace() // not owning
             || type.Class("ImplWallpaper").GlobalNamespace() // very odd static instance here
             || type.Class("Application").GlobalNamespace() // numerous odd subclasses in vclmain::createApplication()
@@ -208,10 +208,10 @@ public:
                 || (loplugin::DeclCheck(pVarDecl).Var("maThreadSpecific")
                     .Class("ScDocument").GlobalNamespace()) // not owning
                 || name == "s_aLOKWindowsMap" // LOK only, guarded by assert, and LOK never tries to perform a VCL cleanup
-                || name == "s_aLOKWeldBuildersMap" // LOK only, similar case as above
-                || name == "s_aLOKPopupsMap" // LOK only, similar case as above
-                || name == "m_pNotebookBarWeldedWrapper" // LOK only, warning about map's key, no VCL cleanup performed
-                || name == "m_pNotebookBarInstance" // LOK only case, when notebookbar is closed - VclPtr instance is removed
+                    // vcl/inc/jsdialog/jsdialogbuilder.hxx
+                || name == "m_aWidgetRegister" // LOK only, similar case as above
+                    //
+                || name == "gNotebookBarManager" // LOK only case, when notebookbar is closed - VclPtr instance is removed
                 || name == "gStaticManager" // vcl/source/graphic/Manager.cxx - stores non-owning pointers
                 || name == "aThreadedInterpreterPool"    // ScInterpreterContext(Pool), not owning
                 || name == "aNonThreadedInterpreterPool" // ScInterpreterContext(Pool), not owning
@@ -234,6 +234,9 @@ public:
                    // AquaA11yFocusTracker::m_aDocumentWindowList elements symmetrically added and
                    // removed in AquaA11yFocusTracker::window_got_focus and
                    // AquaA11yFocusTracker::WindowEventHandler (TODO: is that guaranteed?)
+                || (loplugin::DeclCheck(pVarDecl).Var("maEditViewHistory")
+                        .Class("LOKEditViewHistory").GlobalNamespace())
+                   // sfx2/lokhelper.hxx, only handling pointers, not owning
                ) // these variables appear unproblematic
             {
                 return true;

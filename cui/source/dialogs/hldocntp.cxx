@@ -43,7 +43,6 @@
 #include <dialmgr.hxx>
 #include <strings.hrc>
 
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::ui::dialogs;
 using namespace ::com::sun::star::uno;
 
@@ -107,12 +106,12 @@ bool SvxHyperlinkNewDocTp::ImplGetURLObject( const OUString& rPath, std::u16stri
 |************************************************************************/
 
 SvxHyperlinkNewDocTp::SvxHyperlinkNewDocTp(weld::Container* pParent, SvxHpLinkDlg* pDlg, const SfxItemSet* pItemSet)
-    : SvxHyperlinkTabPageBase(pParent, pDlg, "cui/ui/hyperlinknewdocpage.ui", "HyperlinkNewDocPage", pItemSet)
-    , m_xRbtEditNow(xBuilder->weld_radio_button("editnow"))
-    , m_xRbtEditLater(xBuilder->weld_radio_button("editlater"))
-    , m_xCbbPath(new SvxHyperURLBox(xBuilder->weld_combo_box("path")))
-    , m_xBtCreate(xBuilder->weld_button("create"))
-    , m_xLbDocTypes(xBuilder->weld_tree_view("types"))
+    : SvxHyperlinkTabPageBase(pParent, pDlg, u"cui/ui/hyperlinknewdocpage.ui"_ustr, u"HyperlinkNewDocPage"_ustr, pItemSet)
+    , m_xRbtEditNow(xBuilder->weld_radio_button(u"editnow"_ustr))
+    , m_xRbtEditLater(xBuilder->weld_radio_button(u"editlater"_ustr))
+    , m_xCbbPath(new SvxHyperURLBox(xBuilder->weld_combo_box(u"path"_ustr)))
+    , m_xBtCreate(xBuilder->weld_button(u"create"_ustr))
+    , m_xLbDocTypes(xBuilder->weld_tree_view(u"types"_ustr))
 {
     m_xCbbPath->SetSmartProtocol(INetProtocol::File);
     m_xLbDocTypes->set_size_request(-1, m_xLbDocTypes->get_height_rows(5));
@@ -200,8 +199,7 @@ void SvxHyperlinkNewDocTp::FillDocumentList()
 |************************************************************************/
 
 void SvxHyperlinkNewDocTp::GetCurrentItemData ( OUString& rStrURL, OUString& aStrName,
-                                               OUString& aStrIntName, OUString& aStrFrame,
-                                               SvxLinkInsertMode& eMode )
+                                               OUString& aStrIntName, SvxLinkInsertMode& eMode )
 {
     // get data from dialog-controls
     rStrURL = m_xCbbPath->get_active_text();
@@ -211,7 +209,7 @@ void SvxHyperlinkNewDocTp::GetCurrentItemData ( OUString& rStrURL, OUString& aSt
         rStrURL = aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
     }
 
-    GetDataFromCommonFields( aStrName, aStrIntName, aStrFrame, eMode );
+    GetDataFromCommonFields( aStrName, aStrIntName, eMode );
 }
 
 /*************************************************************************
@@ -263,8 +261,8 @@ IMPL_STATIC_LINK(SvxHyperlinkNewDocTp, DispatchDocument, void*, p, void)
 
         // create items
         SfxStringItem aName( SID_FILE_NAME, xExecuteInfo->aStrDocName );
-        SfxStringItem aReferer( SID_REFERER, "private:user" );
-        SfxStringItem aFrame( SID_TARGETNAME, "_blank");
+        SfxStringItem aReferer( SID_REFERER, u"private:user"_ustr );
+        SfxStringItem aFrame( SID_TARGETNAME, u"_blank"_ustr);
 
         OUString aStrFlags('S');
         if (xExecuteInfo->bRbtEditLater)
@@ -366,7 +364,7 @@ void SvxHyperlinkNewDocTp::DoApply()
     sal_Int32 nPos = m_xLbDocTypes->get_selected_index();
     if (nPos == -1)
         nPos = 0;
-    pExecuteInfo->aURL = aURL;
+    pExecuteInfo->aURL = std::move(aURL);
     pExecuteInfo->aStrDocName = weld::fromId<DocumentTypeData*>(m_xLbDocTypes->get_id(nPos))->aStrURL;
 
     // current document
@@ -384,7 +382,7 @@ void SvxHyperlinkNewDocTp::DoApply()
 IMPL_LINK_NOARG(SvxHyperlinkNewDocTp, ClickNewHdl_Impl, weld::Button&, void)
 {
     DisableClose( true );
-    uno::Reference < XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const uno::Reference < XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
     uno::Reference < XFolderPicker2 >  xFolderPicker = sfx2::createFolderPicker(xContext, mpDialog->getDialog());
 
     OUString            aStrURL;

@@ -51,118 +51,110 @@
 #include <cppuhelper/basemutex.hxx>
 #include <rtl/ref.hxx>
 #include <comphelper/interfacecontainer3.hxx>
+#include <comphelper/interfacecontainer4.hxx>
 #include <xmlscript/xmllib_imexp.hxx>
 
 class BasicManager;
 
 namespace basic
 {
-typedef ::cppu::WeakImplHelper<
-    css::container::XNameContainer,
-    css::container::XContainer,
-    css::util::XChangesNotifier > NameContainer_BASE;
-
-
-class NameContainer final : public ::cppu::BaseMutex, public NameContainer_BASE
+class NameContainer final
 {
-    typedef std::unordered_map < OUString, sal_Int32 > NameContainerNameMap;
+    cppu::OWeakObject& rOwner;
 
-    NameContainerNameMap mHashMap;
-    std::vector< OUString > mNames;
-    std::vector< css::uno::Any > mValues;
-    sal_Int32 mnElementCount;
+    std::unordered_map<OUString, css::uno::Any> maMap;
 
     css::uno::Type mType;
     css::uno::XInterface* mpxEventSource;
 
-    ::comphelper::OInterfaceContainerHelper3<css::container::XContainerListener> maContainerListeners;
-    ::comphelper::OInterfaceContainerHelper3<css::util::XChangesListener> maChangesListeners;
+    ::comphelper::OInterfaceContainerHelper4<css::container::XContainerListener> maContainerListeners;
+    ::comphelper::OInterfaceContainerHelper4<css::util::XChangesListener> maChangesListeners;
 
 public:
-    NameContainer( const css::uno::Type& rType )
-        : mnElementCount( 0 )
+    NameContainer(const css::uno::Type& rType, cppu::OWeakObject& owner)
+        : rOwner(owner)
         , mType( rType )
         , mpxEventSource( nullptr )
-        , maContainerListeners( m_aMutex )
-        , maChangesListeners( m_aMutex )
     {}
 
     void setEventSource( css::uno::XInterface* pxEventSource )
         { mpxEventSource = pxEventSource; }
 
     /// @throws css::lang::IllegalArgumentException
-    /// @throws css::container::ElementExistException
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
-    void insertCheck(const OUString& aName, const css::uno::Any& aElement);
-
-    /// @throws css::lang::IllegalArgumentException
-    /// @throws css::lang::WrappedTargetException
-    /// @throws css::uno::RuntimeException
-    void insertNoCheck(const OUString& aName, const css::uno::Any& aElement);
+    void insertNoCheck(const OUString& aName, const css::uno::Any& aElement,
+                       std::unique_lock<std::mutex>& guard);
 
     // Methods XElementAccess
-    virtual css::uno::Type SAL_CALL getElementType(  ) override;
-    virtual sal_Bool SAL_CALL hasElements(  ) override;
+    css::uno::Type getElementType();
+    sal_Bool hasElements();
 
     // Methods XNameAccess
-    virtual css::uno::Any SAL_CALL getByName( const OUString& aName ) override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getElementNames(  ) override;
-    virtual sal_Bool SAL_CALL hasByName( const OUString& aName ) override;
+    css::uno::Any getByName(const OUString& aName);
+    css::uno::Sequence<OUString> getElementNames();
+    sal_Bool hasByName(const OUString& aName);
 
     // Methods XNameReplace
-    virtual void SAL_CALL replaceByName( const OUString& aName, const css::uno::Any& aElement ) override;
+    void replaceByName(const OUString& aName, const css::uno::Any& aElement,
+                       std::unique_lock<std::mutex>& guard);
 
     // Methods XNameContainer
-    virtual void SAL_CALL insertByName( const OUString& aName, const css::uno::Any& aElement ) override;
-    virtual void SAL_CALL removeByName( const OUString& Name ) override;
+    void insertByName(const OUString& aName, const css::uno::Any& aElement,
+                      std::unique_lock<std::mutex>& guard);
+    void removeByName(const OUString& Name, std::unique_lock<std::mutex>& guard);
 
     // Methods XContainer
-    virtual void SAL_CALL addContainerListener( const css::uno::Reference<css::container::XContainerListener >& xListener ) override;
-    virtual void SAL_CALL removeContainerListener( const css::uno::Reference<css::container::XContainerListener >& xListener ) override;
+    void addContainerListener(
+        const css::uno::Reference<css::container::XContainerListener>& xListener,
+        std::unique_lock<std::mutex>& guard);
+    void removeContainerListener(
+        const css::uno::Reference<css::container::XContainerListener>& xListener,
+        std::unique_lock<std::mutex>& guard);
 
     // Methods XChangesNotifier
-    virtual void SAL_CALL addChangesListener( const css::uno::Reference<css::util::XChangesListener >& xListener ) override;
-    virtual void SAL_CALL removeChangesListener( const css::uno::Reference<css::util::XChangesListener >& xListener ) override;
+    void addChangesListener(const css::uno::Reference<css::util::XChangesListener>& xListener,
+                            std::unique_lock<std::mutex>& guard);
+    void removeChangesListener(const css::uno::Reference<css::util::XChangesListener>& xListener,
+                               std::unique_lock<std::mutex>& guard);
 };
 
 
 class ModifiableHelper
 {
 private:
-    ::comphelper::OInterfaceContainerHelper3<css::util::XModifyListener> m_aModifyListeners;
+    comphelper::OInterfaceContainerHelper4<css::util::XModifyListener> m_aModifyListeners;
     ::cppu::OWeakObject&                m_rEventSource;
     bool                                mbModified;
 
 public:
-    ModifiableHelper( ::cppu::OWeakObject& _rEventSource, ::osl::Mutex& _rMutex )
-        :m_aModifyListeners( _rMutex )
-        ,m_rEventSource( _rEventSource )
+    ModifiableHelper( ::cppu::OWeakObject& _rEventSource )
+        :m_rEventSource( _rEventSource )
         ,mbModified( false )
     {
     }
 
     bool    isModified() const  { return mbModified; }
-    void    setModified( bool _bModified );
+    void    setModified( bool _bModified, std::unique_lock<std::mutex>& guard );
 
-    void    addModifyListener( const css::uno::Reference< css::util::XModifyListener >& _rxListener )
+    void    addModifyListener( const css::uno::Reference< css::util::XModifyListener >& _rxListener, std::unique_lock<std::mutex>& guard )
     {
-        m_aModifyListeners.addInterface( _rxListener );
+        m_aModifyListeners.addInterface(guard, _rxListener);
     }
 
-    void    removeModifyListener( const css::uno::Reference< css::util::XModifyListener >& _rxListener )
+    void    removeModifyListener( const css::uno::Reference< css::util::XModifyListener >& _rxListener, std::unique_lock<std::mutex>& guard )
     {
-        m_aModifyListeners.removeInterface( _rxListener );
+        m_aModifyListeners.removeInterface(guard, _rxListener);
     }
 };
 
 
-typedef ::comphelper::OInterfaceContainerHelper3<
+typedef comphelper::OInterfaceContainerHelper4<
     css::script::vba::XVBAScriptListener > VBAScriptListenerContainer;
 
 class SfxLibrary;
 
-typedef ::cppu::WeakComponentImplHelper<
+typedef comphelper::WeakComponentImplHelper<
     css::lang::XInitialization,
     css::script::XStorageBasedLibraryContainer,
     css::script::XLibraryContainerPassword,
@@ -175,15 +167,14 @@ typedef ::cppu::WeakComponentImplHelper<
     css::beans::XPropertySet> SfxLibraryContainer_BASE;
 
 class SfxLibraryContainer
-    : public ::cppu::BaseMutex
-    , public SfxLibraryContainer_BASE
+    : public SfxLibraryContainer_BASE
     , public ::utl::OEventListenerAdapter
 {
     VBAScriptListenerContainer maVBAScriptListeners;
     sal_Int32 mnRunningVBAScripts;
     bool mbVBACompat;
-    OUString msProjectName;
     rtl_TextEncoding meVBATextEncoding;
+    OUString msProjectName;
 protected:
     css::uno::Reference< css::uno::XComponentContext >       mxContext;
     css::uno::Reference< css::ucb::XSimpleFileAccess3 >      mxSFI;
@@ -192,9 +183,7 @@ protected:
 
     ModifiableHelper    maModifiable;
 
-    rtl::Reference<NameContainer> maNameContainer;
-    bool    mbOldInfoFormat;
-    bool    mbOasis2OOoFormat;
+    NameContainer maNameContainer;
 
     OUString maInitialDocumentURL;
     OUString maInfoFileName;
@@ -206,6 +195,9 @@ protected:
     css::uno::Reference< css::embed::XStorage > mxStorage;
     BasicManager*   mpBasMgr;
     bool        mbOwnBasMgr;
+
+    bool    mbOldInfoFormat;
+    bool    mbOasis2OOoFormat;
 
     enum InitMode
     {
@@ -240,9 +232,11 @@ protected:
     bool implLoadLibraryIndexFile( SfxLibrary* pLib,
                                     ::xmlscript::LibDescriptor& rLib,
                                     const css::uno::Reference< css::embed::XStorage >& xStorage,
-                                    const OUString& aIndexFileName );
+                                    const OUString& aIndexFileName,
+                                    std::unique_lock<std::mutex>& guard );
 
-    void implImportLibDescriptor( SfxLibrary* pLib, ::xmlscript::LibDescriptor const & rLib );
+    void implImportLibDescriptor(SfxLibrary* pLib, ::xmlscript::LibDescriptor const& rLib,
+                                 std::unique_lock<std::mutex>& guard);
 
     // Methods to distinguish between different library types
     virtual rtl::Reference<SfxLibrary> implCreateLibrary( const OUString& aName ) = 0;
@@ -280,7 +274,8 @@ protected:
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
     virtual bool implLoadPasswordLibrary( SfxLibrary* pLib, const OUString& Name,
-                                          bool bVerifyPasswordOnly=false );
+                                          bool bVerifyPasswordOnly,
+                                          std::unique_lock<std::mutex>& guard );
 
     virtual void onNewRootStorage() = 0;
 
@@ -295,7 +290,8 @@ protected:
     OUString createAppLibraryFolder( SfxLibrary* pLib, std::u16string_view aName );
 
     void init( const OUString& rInitialDocumentURL,
-               const css::uno::Reference< css::embed::XStorage >& _rxInitialStorage );
+               const css::uno::Reference< css::embed::XStorage >& _rxInitialStorage,
+               std::unique_lock<std::mutex>& guard );
 
     virtual OUString getInfoFileName() const = 0;
     virtual OUString getOldInfoFileName() const = 0;
@@ -317,20 +313,31 @@ protected:
 
     void storeLibraries_Impl(
                             const css::uno::Reference< css::embed::XStorage >& xStorage,
-                            bool bComplete );
+                            bool bComplete,
+                            std::unique_lock<std::mutex>& guard );
 
-    void initializeFromDocument( const css::uno::Reference< css::document::XStorageBasedDocument >& _rxDocument );
+    void initializeFromDocument( const css::uno::Reference< css::document::XStorageBasedDocument >& _rxDocument,
+                                 std::unique_lock<std::mutex>& guard );
+
+    css::uno::Reference<css::container::XNameContainer>
+    createLibrary_Impl(const OUString& Name, std::unique_lock<std::mutex>& guard);
+    css::uno::Reference<css::container::XNameAccess>
+    createLibraryLink_Impl(const OUString& Name, const OUString& StorageURL, sal_Bool ReadOnly,
+                           std::unique_lock<std::mutex>& guard);
+    void loadLibrary_Impl(const OUString& Name, std::unique_lock<std::mutex>& guard);
+
 
     // OEventListenerAdapter
     virtual void _disposing( const css::lang::EventObject& _rSource ) override;
 
-    // OComponentHelper
-    virtual void SAL_CALL disposing() override;
+    // WeakComponentImplHelperBase
+    virtual void disposing(std::unique_lock<std::mutex>& guard) override;
 
 private:
     void init_Impl( const OUString& rInitialDocumentURL,
-                    const css::uno::Reference< css::embed::XStorage >& _rxInitialStorage );
-    void implScanExtensions();
+                    const css::uno::Reference< css::embed::XStorage >& _rxInitialStorage,
+                    std::unique_lock<std::mutex>& guard );
+    void implScanExtensions(std::unique_lock<std::mutex>& guard);
     static constexpr OUString sVBATextEncodingPropName = u"VBATextEncoding"_ustr;
 
 public:
@@ -466,10 +473,8 @@ public:
 
 
 class SfxLibrary
-    : public css::container::XNameContainer
-    , public css::container::XContainer
-    , public css::util::XChangesNotifier
-    , public ::comphelper::WeakComponentImplHelper<>
+    : public comphelper::WeakComponentImplHelper<
+          css::container::XNameContainer, css::container::XContainer, css::util::XChangesNotifier>
 {
     friend class SfxLibraryContainer;
     friend class SfxDialogLibraryContainer;
@@ -478,11 +483,20 @@ class SfxLibrary
     css::uno::Reference< css::ucb::XSimpleFileAccess3 >   mxSFI;
 
     ModifiableHelper&                                     mrModifiable;
-    rtl::Reference<NameContainer>                         maNameContainer;
+    NameContainer maNameContainer;
 
     bool mbLoaded;
     bool mbIsModified;
     bool mbInitialised;
+    bool mbLink;
+    bool mbReadOnly;
+    bool mbReadOnlyLink;
+    bool mbPreload;
+    bool mbPasswordProtected;
+    bool mbPasswordVerified;
+    bool mbDoc50Password;
+    bool mbSharedIndexFile;
+    bool mbExtension;
 
 private:
 
@@ -491,21 +505,7 @@ private:
     OUString maStorageURL;
     OUString maUnexpandedStorageURL;
     OUString maOriginalStorageURL;
-
-    bool mbLink;
-    bool mbReadOnly;
-    bool mbReadOnlyLink;
-    bool mbPreload;
-
-protected:
-    bool mbPasswordProtected;
-private:
-    bool mbPasswordVerified;
-    bool mbDoc50Password;
     OUString maPassword;
-
-    bool mbSharedIndexFile;
-    bool mbExtension;
 
     // Additional functionality for localisation
     // Provide modify state including resources
@@ -518,7 +518,8 @@ private:
 
 protected:
     bool    implIsModified() const  { return mbIsModified; }
-            void    implSetModified( bool _bIsModified );
+    void implSetModified(bool _bIsModified, std::unique_lock<std::mutex>& guard);
+    bool isPasswordProtected() const { return mbPasswordProtected; }
 
 private:
     /** checks whether the lib is readonly, or a readonly link, throws an IllegalArgumentException if so
@@ -530,7 +531,8 @@ private:
     void    impl_checkLoaded();
 
 private:
-    void    impl_removeWithoutChecks( const OUString& _rElementName );
+    void impl_removeWithoutChecks(const OUString& _rElementName,
+                                  std::unique_lock<std::mutex>& guard);
 
 public:
     SfxLibrary(
@@ -546,11 +548,6 @@ public:
         OUString aStorageURL,
         bool ReadOnly
     );
-
-    // Methods XInterface
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& rType ) override;
-    virtual void SAL_CALL acquire() noexcept override { WeakComponentImplHelper::acquire(); }
-    virtual void SAL_CALL release() noexcept override { WeakComponentImplHelper::release(); }
 
     // Methods XElementAccess
     virtual css::uno::Type SAL_CALL getElementType(  ) override;
@@ -568,10 +565,6 @@ public:
     virtual void SAL_CALL insertByName( const OUString& aName, const css::uno::Any& aElement ) override;
     virtual void SAL_CALL removeByName( const OUString& Name ) override;
 
-    // XTypeProvider
-    css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
-    css::uno::Sequence<sal_Int8> SAL_CALL getImplementationId(  ) override;
-
     // Methods XContainer
     virtual void SAL_CALL addContainerListener( const css::uno::Reference<
         css::container::XContainerListener >& xListener ) override;
@@ -583,13 +576,6 @@ public:
         css::util::XChangesListener >& xListener ) override;
     virtual void SAL_CALL removeChangesListener( const css::uno::Reference<
         css::util::XChangesListener >& xListener ) override;
-
-public:
-    struct LibraryContainerAccess { friend class SfxLibraryContainer; private: LibraryContainerAccess() { } };
-    void    removeElementWithoutChecks( const OUString& _rElementName, LibraryContainerAccess )
-    {
-        impl_removeWithoutChecks( _rElementName );
-    }
 
 protected:
     virtual bool isLoadedStorable();

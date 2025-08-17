@@ -48,6 +48,15 @@ struct TableColumnAttributes
     std::optional<OUString> maTotalsFunction = std::nullopt;
 };
 
+// xmlColumnPr attributes
+struct XmlColumnPrAttributes
+{
+    sal_uInt32          mnMapId;
+    OUString            msXpath;
+    OUString            msXmlDataType;
+    bool                mbDenormalized;
+};
+
 /** Container base class to provide selected access for ScDBData. */
 class ScDBDataContainerBase
 {
@@ -99,6 +108,7 @@ private:
 
     ::std::vector< OUString > maTableColumnNames;   ///< names of table columns
     ::std::vector< TableColumnAttributes > maTableColumnAttributes; ///< attributes of table columns
+    ::std::vector< XmlColumnPrAttributes > maXmlColumnPrAttributes; ///< attributes of <xmlColumnPr>
     bool            mbTableColumnNamesDirty;
     SCSIZE          nFilteredRowCount;
 
@@ -155,6 +165,8 @@ public:
     SC_DLLPUBLIC const ::std::vector< OUString >& GetTableColumnNames() const { return maTableColumnNames; }
     SC_DLLPUBLIC void SetTableColumnAttributes( ::std::vector< TableColumnAttributes >&& rAttributes );
     SC_DLLPUBLIC const ::std::vector< TableColumnAttributes >& GetTableColumnAttributes() const { return maTableColumnAttributes; }
+    SC_DLLPUBLIC void SetXmlColumnPrAttributes( const XmlColumnPrAttributes& rAttributes );
+    SC_DLLPUBLIC const ::std::vector< XmlColumnPrAttributes >& GetXmlColumnPrAttributes() const { return maXmlColumnPrAttributes; }
     bool        AreTableColumnNamesDirty() const { return mbTableColumnNamesDirty; }
 
     /** Refresh/update the column names with the header row's cell contents. */
@@ -162,7 +174,7 @@ public:
 
     /** Refresh/update the column names with the header row's cell contents
         within the given range. */
-    void RefreshTableColumnNames( ScDocument* pDoc, const ScRange& rRange );
+    void RefreshTableColumnNames( ScDocument& rDoc, const ScRange& rRange );
 
     /** Finds the column named rName and returns the corresponding offset
         within the table.
@@ -175,7 +187,7 @@ public:
 
     /** Returns table column name if nCol is within column range and name
         is stored, else empty string. */
-    OUString GetTableColumnName( SCCOL nCol ) const;
+    const OUString & GetTableColumnName( SCCOL nCol ) const;
 
     OUString GetSourceString() const;
     OUString GetOperations() const;
@@ -192,7 +204,7 @@ public:
     SC_DLLPUBLIC bool       GetAdvancedQuerySource(ScRange& rSource) const;
     SC_DLLPUBLIC void       SetAdvancedQuerySource(const ScRange* pSource);
 
-    void        GetSubTotalParam(ScSubTotalParam& rSubTotalParam) const;
+    SC_DLLPUBLIC void       GetSubTotalParam(ScSubTotalParam& rSubTotalParam) const;
     void        SetSubTotalParam(const ScSubTotalParam& rSubTotalParam);
 
     void        GetImportParam(ScImportParam& rImportParam) const;
@@ -216,7 +228,7 @@ public:
     void        SetModified(bool bMod)      { bModified = bMod; }
 
     void    UpdateMoveTab( SCTAB nOldPos, SCTAB nNewPos );
-    bool    UpdateReference(const ScDocument* pDoc, UpdateRefMode eUpdateRefMode, SCCOL nCol1,
+    bool    UpdateReference(const ScDocument& rDoc, UpdateRefMode eUpdateRefMode, SCCOL nCol1,
                             SCROW nRow1, SCTAB nTab1, SCCOL nCol2, SCROW nRow2, SCTAB nTab2,
                             SCCOL nDx, SCROW nDy, SCTAB nDz);
 
@@ -232,7 +244,7 @@ private:
     void InvalidateTableColumnNames( bool bSwapToEmptyNames );
 };
 
-class SC_DLLPUBLIC ScDBCollection
+class ScDBCollection
 {
 public:
     enum RangeType { GlobalNamed, GlobalAnonymous, SheetAnonymous };
@@ -282,7 +294,7 @@ public:
     /**
      * Stores global anonymous database ranges.
      */
-    class SAL_DLLPRIVATE AnonDBs
+    class AnonDBs
     {
         typedef ::std::vector<std::unique_ptr<ScDBData>> DBsType;
         DBsType m_DBs;
@@ -331,9 +343,9 @@ public:
     const ScDBData* GetDBAtCursor(SCCOL nCol, SCROW nRow, SCTAB nTab, ScDBDataPortion ePortion) const;
     ScDBData* GetDBAtCursor(SCCOL nCol, SCROW nRow, SCTAB nTab, ScDBDataPortion ePortion);
     const ScDBData* GetDBAtArea(SCTAB nTab, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2) const;
-    ScDBData* GetDBAtArea(SCTAB nTab, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2);
-    ScDBData* GetDBNearCursor(SCCOL nCol, SCROW nRow, SCTAB nTab );
-    std::vector<ScDBData*> GetAllDBsFromTab(SCTAB nTab);
+    SC_DLLPUBLIC ScDBData* GetDBAtArea(SCTAB nTab, SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2);
+    SC_DLLPUBLIC ScDBData* GetDBNearCursor(SCCOL nCol, SCROW nRow, SCTAB nTab );
+    SC_DLLPUBLIC std::vector<ScDBData*> GetAllDBsFromTab(SCTAB nTab);
 
     void RefreshDirtyTableColumnNames();
 
@@ -349,7 +361,7 @@ public:
                         { aRefreshHandler = rLink; }
     const Link<Timer *, void>& GetRefreshHandler() const { return aRefreshHandler; }
 
-    bool empty() const;
+    SC_DLLPUBLIC bool empty() const;
     bool operator== (const ScDBCollection& r) const;
 };
 

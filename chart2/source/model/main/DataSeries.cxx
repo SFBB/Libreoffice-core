@@ -27,8 +27,12 @@
 #include <CloneHelper.hxx>
 #include <RegressionCurveModel.hxx>
 #include <ModifyListenerHelper.hxx>
+#include <unonames.hxx>
+#include <com/sun/star/chart2/DataPointLabel.hpp>
+#include <com/sun/star/chart2/Symbol.hpp>
 #include <com/sun/star/chart2/data/XTextualDataSequence.hpp>
 #include <com/sun/star/container/NoSuchElementException.hpp>
+#include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/diagnose_ex.hxx>
@@ -279,7 +283,7 @@ void SAL_CALL DataSeries::setFastPropertyValue_NoBroadcast(
             ModifyListenerHelper::removeListener( xBroadcaster, m_xModifyEventForwarder );
         }
 
-        OSL_ASSERT( rValue.getValueType().getTypeClass() == uno::TypeClass_INTERFACE );
+        OSL_ASSERT( rValue.getValueTypeClass() == uno::TypeClass_INTERFACE );
         if( rValue.hasValue() &&
             (rValue >>= xBroadcaster) &&
             xBroadcaster.is())
@@ -303,7 +307,7 @@ Reference< beans::XPropertySet >
     }
 
     std::vector< uno::Reference< chart2::data::XLabeledDataSequence > > aValuesSeries(
-        DataSeriesHelper::getAllDataSequencesByRole( aSequences , "values" ) );
+        DataSeriesHelper::getAllDataSequencesByRole( aSequences , u"values"_ustr ) );
 
     if (aValuesSeries.empty())
         throw lang::IndexOutOfBoundsException();
@@ -320,7 +324,7 @@ Reference< beans::XPropertySet >
         if( !xResult.is() )
         {
             Reference< beans::XPropertySet > xParentProperties;
-            Reference< util::XModifyListener > xModifyEventForwarder;
+            rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
             {
                 MutexGuard aGuard( m_aMutex );
                 xParentProperties = this;
@@ -343,7 +347,7 @@ Reference< beans::XPropertySet >
 void SAL_CALL DataSeries::resetDataPoint( sal_Int32 nIndex )
 {
     Reference< beans::XPropertySet > xDataPointProp;
-    Reference< util::XModifyListener > xModifyEventForwarder;
+    rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
     {
         MutexGuard aGuard( m_aMutex );
         xModifyEventForwarder = m_xModifyEventForwarder;
@@ -367,7 +371,7 @@ void SAL_CALL DataSeries::resetDataPoint( sal_Int32 nIndex )
 void SAL_CALL DataSeries::resetAllDataPoints()
 {
     tDataPointAttributeContainer  aOldAttributedDataPoints;
-    Reference< util::XModifyListener > xModifyEventForwarder;
+    rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
     {
         MutexGuard aGuard( m_aMutex );
         xModifyEventForwarder = m_xModifyEventForwarder;
@@ -383,7 +387,7 @@ void SAL_CALL DataSeries::setData( const uno::Sequence< Reference< chart2::data:
 {
     tDataSequenceContainer aOldDataSequences;
     tDataSequenceContainer aNewDataSequences;
-    Reference< util::XModifyListener > xModifyEventForwarder;
+    rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
     {
         MutexGuard aGuard( m_aMutex );
         xModifyEventForwarder = m_xModifyEventForwarder;
@@ -403,7 +407,7 @@ void DataSeries::setData( const std::vector< uno::Reference< chart2::data::XLabe
 {
     tDataSequenceContainer aOldDataSequences;
     tDataSequenceContainer aNewDataSequences;
-    Reference< util::XModifyListener > xModifyEventForwarder;
+    rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
     {
         MutexGuard aGuard( m_aMutex );
         xModifyEventForwarder = m_xModifyEventForwarder;
@@ -414,6 +418,11 @@ void DataSeries::setData( const std::vector< uno::Reference< chart2::data::XLabe
     ModifyListenerHelper::removeListenerFromAllElements( aOldDataSequences, xModifyEventForwarder );
     ModifyListenerHelper::addListenerToAllElements( aNewDataSequences, xModifyEventForwarder );
     fireModifyEvent();
+}
+
+void DataSeries::addDataSequence(css::uno::Reference<css::chart2::data::XLabeledDataSequence> const& rSequence)
+{
+    m_aDataSequences.push_back(rSequence);
 }
 
 // ____ XDataSource ____
@@ -429,13 +438,13 @@ void SAL_CALL DataSeries::addRegressionCurve(
 {
     auto pRegressionCurve = dynamic_cast<RegressionCurveModel*>(xRegressionCurve.get());
     assert(pRegressionCurve);
-    Reference< util::XModifyListener > xModifyEventForwarder;
+    rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
     {
         MutexGuard aGuard( m_aMutex );
         xModifyEventForwarder = m_xModifyEventForwarder;
         if( std::find( m_aRegressionCurves.begin(), m_aRegressionCurves.end(), pRegressionCurve )
             != m_aRegressionCurves.end())
-            throw lang::IllegalArgumentException("curve not found", static_cast<cppu::OWeakObject*>(this), 1);
+            throw lang::IllegalArgumentException(u"curve not found"_ustr, static_cast<cppu::OWeakObject*>(this), 1);
         m_aRegressionCurves.push_back( pRegressionCurve );
     }
     ModifyListenerHelper::addListener( rtl::Reference<RegressionCurveModel>(pRegressionCurve), xModifyEventForwarder );
@@ -450,7 +459,7 @@ void SAL_CALL DataSeries::removeRegressionCurve(
     auto pRegressionCurve = dynamic_cast<RegressionCurveModel*>(xRegressionCurve.get());
     assert(pRegressionCurve);
 
-    Reference< util::XModifyListener > xModifyEventForwarder;
+    rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
     {
         MutexGuard aGuard( m_aMutex );
         xModifyEventForwarder = m_xModifyEventForwarder;
@@ -458,7 +467,7 @@ void SAL_CALL DataSeries::removeRegressionCurve(
             std::find( m_aRegressionCurves.begin(), m_aRegressionCurves.end(), pRegressionCurve ) );
         if( aIt == m_aRegressionCurves.end())
             throw container::NoSuchElementException(
-                "The given regression curve is no element of this series",
+                u"The given regression curve is no element of this series"_ustr,
                 static_cast< uno::XWeak * >( this ));
         m_aRegressionCurves.erase( aIt );
     }
@@ -484,7 +493,7 @@ void SAL_CALL DataSeries::setRegressionCurves(
         assert(pRegressionCurve);
         aNewCurves.push_back(pRegressionCurve);
     }
-    Reference< util::XModifyListener > xModifyEventForwarder;
+    rtl::Reference< ModifyEventForwarder > xModifyEventForwarder;
     {
         MutexGuard aGuard( m_aMutex );
         xModifyEventForwarder = m_xModifyEventForwarder;
@@ -538,7 +547,7 @@ IMPLEMENT_FORWARD_XTYPEPROVIDER2( DataSeries, DataSeries_Base, OPropertySet )
 // implement XServiceInfo methods basing upon getSupportedServiceNames_Static
 OUString SAL_CALL DataSeries::getImplementationName()
 {
-    return "com.sun.star.comp.chart.DataSeries";
+    return u"com.sun.star.comp.chart.DataSeries"_ustr;
 }
 
 sal_Bool SAL_CALL DataSeries::supportsService( const OUString& rServiceName )
@@ -549,9 +558,9 @@ sal_Bool SAL_CALL DataSeries::supportsService( const OUString& rServiceName )
 css::uno::Sequence< OUString > SAL_CALL DataSeries::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.chart2.DataSeries",
-        "com.sun.star.chart2.DataPointProperties",
-        "com.sun.star.beans.PropertySet" };
+        u"com.sun.star.chart2.DataSeries"_ustr,
+        u"com.sun.star.chart2.DataPointProperties"_ustr,
+        u"com.sun.star.beans.PropertySet"_ustr };
 }
 
 static Reference< chart2::data::XLabeledDataSequence > lcl_findLSequenceWithOnlyLabel(
@@ -694,7 +703,7 @@ static bool lcl_SequenceHasUnhiddenData( const uno::Reference< chart2::data::XDa
         uno::Sequence< sal_Int32 > aHiddenValues;
         try
         {
-            xProp->getPropertyValue( "HiddenValues" ) >>= aHiddenValues;
+            xProp->getPropertyValue( u"HiddenValues"_ustr ) >>= aHiddenValues;
             if( !aHiddenValues.hasElements() )
                 return true;
         }
@@ -720,6 +729,316 @@ bool DataSeries::hasUnhiddenData()
     return false;
 }
 
+bool DataSeries::hasPointOwnColor(
+        sal_Int32 nPointIndex
+        , const css::uno::Reference< css::beans::XPropertySet >& xDataPointProperties //may be NULL this is just for performance
+         )
+{
+    if( hasPointOwnProperties( nPointIndex ))
+    {
+        uno::Reference< beans::XPropertyState > xPointState( xDataPointProperties, uno::UNO_QUERY );
+        if( !xPointState.is() )
+        {
+            xPointState.set( getDataPointByIndex( nPointIndex ), uno::UNO_QUERY );
+        }
+        if( !xPointState.is() )
+            return false;
+
+        return (xPointState->getPropertyState( u"Color"_ustr) != beans::PropertyState_DEFAULT_VALUE );
+    }
+
+    return false;
+}
+
+bool DataSeries::hasPointOwnProperties( sal_Int32 nPointIndex )
+{
+    MutexGuard aGuard( m_aMutex );
+    return m_aAttributedDataPoints.contains(nPointIndex);
+}
+
+sal_Int32 DataSeries::getAttachedAxisIndex()
+{
+    sal_Int32 nRet = 0;
+    try
+    {
+        getFastPropertyValue( ::chart::DataSeriesProperties::PROP_DATASERIES_ATTACHED_AXIS_INDEX ) >>= nRet;
+    }
+    catch( const uno::Exception & )
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
+    }
+    return nRet;
+}
+
+void DataSeries::switchSymbolsOnOrOff( bool bSymbolsOn, sal_Int32 nSeriesIndex )
+{
+    css::chart2::Symbol aSymbProp;
+    if( getPropertyValue( u"Symbol"_ustr) >>= aSymbProp )
+    {
+        if( !bSymbolsOn )
+            aSymbProp.Style = chart2::SymbolStyle_NONE;
+        else if( aSymbProp.Style == chart2::SymbolStyle_NONE )
+        {
+            aSymbProp.Style = chart2::SymbolStyle_STANDARD;
+            aSymbProp.StandardSymbol = nSeriesIndex;
+        }
+        setPropertyValue( u"Symbol"_ustr, uno::Any( aSymbProp ));
+    }
+    //todo: check attributed data points
+}
+
+void DataSeries::switchLinesOnOrOff( bool bLinesOn )
+{
+    if( bLinesOn )
+    {
+        // keep line-styles that are not NONE
+        css::drawing::LineStyle eLineStyle;
+        if( (getPropertyValue( u"LineStyle"_ustr) >>= eLineStyle ) &&
+            eLineStyle == drawing::LineStyle_NONE )
+        {
+            setPropertyValue( u"LineStyle"_ustr, uno::Any( drawing::LineStyle_SOLID ) );
+        }
+    }
+    else
+        setPropertyValue( u"LineStyle"_ustr, uno::Any( drawing::LineStyle_NONE ) );
+}
+
+void DataSeries::makeLinesThickOrThin( bool bThick )
+{
+    sal_Int32 nNewValue = bThick ? 80 : 0;
+    sal_Int32 nOldValue = 0;
+    if( (getPropertyValue( u"LineWidth"_ustr) >>= nOldValue ) &&
+        nOldValue != nNewValue )
+    {
+        if( !(bThick && nOldValue>0))
+            setPropertyValue( u"LineWidth"_ustr, uno::Any( nNewValue ) );
+    }
+}
+
+void DataSeries::setPropertyAlsoToAllAttributedDataPoints( const OUString& rPropertyName, const uno::Any& rPropertyValue )
+{
+    setPropertyValue( rPropertyName, rPropertyValue );
+
+    std::vector<sal_Int32> aAttributedDataPointIndexList;
+    {
+        MutexGuard aGuard( m_aMutex );
+        aAttributedDataPointIndexList.reserve(m_aAttributedDataPoints.size());
+        for (const auto & rPair : m_aAttributedDataPoints)
+            aAttributedDataPointIndexList.push_back(rPair.first);
+    }
+
+    for(sal_Int32 nIdx : aAttributedDataPointIndexList)
+    {
+        Reference< beans::XPropertySet > xPointProp( getDataPointByIndex(nIdx) );
+        if(!xPointProp.is())
+            continue;
+        xPointProp->setPropertyValue( rPropertyName, rPropertyValue );
+        if( rPropertyName == "LabelPlacement" )
+        {
+            xPointProp->setPropertyValue(u"CustomLabelPosition"_ustr, uno::Any());
+            xPointProp->setPropertyValue(u"CustomLabelSize"_ustr, uno::Any());
+        }
+    }
+}
+
+bool DataSeries::hasAttributedDataPointDifferentValue(
+                                              const OUString& rPropertyName, const uno::Any& rPropertyValue )
+{
+    std::vector<sal_Int32> aAttributedDataPointIndexList;
+    {
+        MutexGuard aGuard( m_aMutex );
+        aAttributedDataPointIndexList.reserve(m_aAttributedDataPoints.size());
+        for (const auto & rPair : m_aAttributedDataPoints)
+            aAttributedDataPointIndexList.push_back(rPair.first);
+    }
+
+    for(sal_Int32 nIdx : aAttributedDataPointIndexList)
+    {
+        Reference< beans::XPropertySet > xPointProp( getDataPointByIndex(nIdx) );
+        if(!xPointProp.is())
+            continue;
+        uno::Any aPointValue( xPointProp->getPropertyValue( rPropertyName ) );
+        if( rPropertyValue != aPointValue )
+            return true;
+    }
+
+    return false;
+}
+
+bool DataSeries::hasDataLabelsAtSeries()
+{
+    bool bRet = false;
+    try
+    {
+        chart2::DataPointLabel aLabel;
+        if( getPropertyValue(CHART_UNONAME_LABEL) >>= aLabel )
+            bRet = aLabel.ShowNumber || aLabel.ShowNumberInPercent || aLabel.ShowCategoryName
+                   || aLabel.ShowSeriesName;
+    }
+    catch(const uno::Exception &)
+    {
+        TOOLS_WARN_EXCEPTION("chart2", "" );
+    }
+    return bRet;
+}
+
+bool DataSeries::hasDataLabelsAtPoints()
+{
+    bool bRet = false;
+    try
+    {
+        std::vector<sal_Int32> aAttributedDataPointIndexList;
+        {
+            MutexGuard aGuard( m_aMutex );
+            aAttributedDataPointIndexList.reserve(m_aAttributedDataPoints.size());
+            for (const auto & rPair : m_aAttributedDataPoints)
+                aAttributedDataPointIndexList.push_back(rPair.first);
+        }
+        for(sal_Int32 nIdx : aAttributedDataPointIndexList)
+        {
+            Reference< beans::XPropertySet > xPointProp( getDataPointByIndex(nIdx) );
+            if( xPointProp.is() )
+            {
+                chart2::DataPointLabel aLabel;
+                if( xPointProp->getPropertyValue(CHART_UNONAME_LABEL) >>= aLabel )
+                    bRet = aLabel.ShowNumber || aLabel.ShowNumberInPercent
+                           || aLabel.ShowCategoryName || aLabel.ShowCustomLabel
+                           || aLabel.ShowSeriesName;
+                if( bRet )
+                    break;
+            }
+        }
+    }
+    catch(const uno::Exception &)
+    {
+        TOOLS_WARN_EXCEPTION("chart2", "" );
+    }
+    return bRet;
+}
+
+bool DataSeries::hasDataLabelAtPoint( sal_Int32 nPointIndex )
+{
+    bool bRet = false;
+    try
+    {
+        Reference< beans::XPropertySet > xProp;
+        bool bFound = false;
+        {
+            MutexGuard aGuard( m_aMutex );
+            bFound = m_aAttributedDataPoints.contains(nPointIndex);
+        }
+        if (bFound)
+            xProp = getDataPointByIndex(nPointIndex);
+        else
+            xProp = this;
+        if( xProp.is() )
+        {
+            chart2::DataPointLabel aLabel;
+            if( xProp->getPropertyValue(CHART_UNONAME_LABEL) >>= aLabel )
+                bRet = aLabel.ShowNumber || aLabel.ShowNumberInPercent
+                       || aLabel.ShowCategoryName || aLabel.ShowCustomLabel
+                       || aLabel.ShowSeriesName;
+        }
+    }
+    catch(const uno::Exception &)
+    {
+        TOOLS_WARN_EXCEPTION("chart2", "" );
+    }
+    return bRet;
+}
+
+void DataSeries::insertDataLabelsToSeriesAndAllPoints()
+{
+    impl_insertOrDeleteDataLabelsToSeriesAndAllPoints( true /*bInsert*/ );
+}
+
+void DataSeries::deleteDataLabelsFromSeriesAndAllPoints()
+{
+    impl_insertOrDeleteDataLabelsToSeriesAndAllPoints( false /*bInsert*/ );
+}
+
+void DataSeries::impl_insertOrDeleteDataLabelsToSeriesAndAllPoints( bool bInsert )
+{
+    try
+    {
+        chart2::DataPointLabel aLabelAtSeries;
+        getPropertyValue(CHART_UNONAME_LABEL) >>= aLabelAtSeries;
+        aLabelAtSeries.ShowNumber = bInsert;
+        if( !bInsert )
+        {
+            aLabelAtSeries.ShowNumberInPercent = false;
+            aLabelAtSeries.ShowCategoryName = false;
+        }
+        setPropertyValue(CHART_UNONAME_LABEL, uno::Any(aLabelAtSeries));
+        std::vector<sal_Int32> aAttributedDataPointIndexList;
+        {
+            MutexGuard aGuard( m_aMutex );
+            aAttributedDataPointIndexList.reserve(m_aAttributedDataPoints.size());
+            for (const auto & rPair : m_aAttributedDataPoints)
+                aAttributedDataPointIndexList.push_back(rPair.first);
+        }
+        for(sal_Int32 nIdx : aAttributedDataPointIndexList)
+        {
+            Reference< beans::XPropertySet > xPointProp( getDataPointByIndex(nIdx) );
+            if( xPointProp.is() )
+            {
+                chart2::DataPointLabel aLabel;
+                xPointProp->getPropertyValue(CHART_UNONAME_LABEL) >>= aLabel;
+                aLabel.ShowNumber = bInsert;
+                if( !bInsert )
+                {
+                    aLabel.ShowNumberInPercent = false;
+                    aLabel.ShowCategoryName = false;
+                    aLabel.ShowCustomLabel = false;
+                    aLabel.ShowSeriesName = false;
+                }
+                xPointProp->setPropertyValue(CHART_UNONAME_LABEL, uno::Any(aLabel));
+                xPointProp->setPropertyValue(CHART_UNONAME_CUSTOM_LABEL_FIELDS, uno::Any());
+            }
+        }
+    }
+    catch(const uno::Exception &)
+    {
+        TOOLS_WARN_EXCEPTION("chart2", "" );
+    }
+}
+
+sal_Int32 DataSeries::getExplicitNumberFormatKeyForDataLabel()
+{
+    sal_Int32 nFormat = 0;
+    try
+    {
+        bool bLinkToSource = true;
+        getPropertyValue(CHART_UNONAME_LINK_TO_SRC_NUMFMT) >>= bLinkToSource;
+        getPropertyValue(CHART_UNONAME_NUMFMT) >>= nFormat;
+
+        if (bLinkToSource)
+        {
+            MutexGuard aGuard( m_aMutex );
+
+            if (!m_aDataSequences.empty())
+            {
+                Reference<chart2::data::XLabeledDataSequence> xLabeledSeq(m_aDataSequences[0]);
+                if( xLabeledSeq.is() )
+                {
+                    Reference< chart2::data::XDataSequence > xSeq( xLabeledSeq->getValues());
+                    if( xSeq.is() )
+                    {
+                        nFormat = xSeq->getNumberFormatKeyByIndex( -1 );
+                    }
+                }
+            }
+        }
+    }
+    catch (const beans::UnknownPropertyException&)
+    {
+    }
+
+    if (nFormat < 0)
+        nFormat = 0;
+    return nFormat;
+
+}
 
 }  // namespace chart
 

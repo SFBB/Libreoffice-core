@@ -21,6 +21,8 @@
 
 #include <memory>
 
+#include <basegfx/numeric/ftools.hxx>
+#include <officecfg/Office/Common.hxx>
 #include <sal/macros.h>
 #include <tools/helpers.hxx>
 #include <tools/long.hxx>
@@ -30,6 +32,10 @@
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <vcl/commandevent.hxx>
+#include <vcl/toolkit/edit.hxx>
+
+#include <com/sun/star/frame/Desktop.hpp>
+#include <com/sun/star/text/XTextRange.hpp>
 
 #include <osx/a11yfactory.h>
 #include <osx/salframe.h>
@@ -40,6 +46,9 @@
 
 #if HAVE_FEATURE_SKIA
 #include <vcl/skia/SkiaHelper.hxx>
+#include <premac.h>
+#include <QuartzCore/QuartzCore.h>
+#include <postmac.h>
 #endif
 
 #define WHEEL_EVENT_FACTOR 1.5
@@ -211,6 +220,176 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
     }
 }
 
+static void freezeWindowSizeAndReschedule( NSWindow *pWindow )
+{
+    if ( pWindow )
+    {
+        // Application::Reschedule() can potentially display a modal
+        // dialog which will cause a hang so temporarily disable any
+        // resizing by clamping the window's minimum and maximum sizes
+        // to the current frame size which in Application::Reschedule().
+        bool bIsLiveResize = ImplGetSVData()->mpWinData->mbIsLiveResize;
+        NSSize aMinSize = [pWindow minSize];
+        NSSize aMaxSize = [pWindow maxSize];
+        if ( bIsLiveResize )
+        {
+            NSRect aFrame = [pWindow frame];
+            [pWindow setMinSize:aFrame.size];
+            [pWindow setMaxSize:aFrame.size];
+        }
+        Application::Reschedule( true );
+        if ( bIsLiveResize )
+        {
+            [pWindow setMinSize:aMinSize];
+            [pWindow setMaxSize:aMaxSize];
+        }
+    }
+}
+
+static bool isMouseScrollWheelEvent( NSEvent *pEvent )
+{
+    // tdf#151423 allow trackpad or Magic Mouse to behave like a regular mouse
+    // Give both trackpad and Magic Mouse users the option to restore
+    // the legacy zoom via Command+swipe gesture.
+    // The IgnoreKeysWhenScrollingWithTrackpadOrMagicMouse preference is
+    // set to true by default and that disables zooming via swiping.
+    // The problem is that while trackpad users are able to zoom via a
+    // magnify gesture, the Magic Mouse doesn't have a magnify gesture.
+    // Since I have not found a reliable way to distinguish a Magic Mouse
+    // from a trackpad, Magic Mouse users have no obvious replacement
+    // for the zoom via Command+swipe gesture.
+    if ( !officecfg::Office::Common::VCL::macOS::IgnoreKeysWhenScrollingWithTrackpadOrMagicMouse::get() )
+        return true;
+
+    return ( pEvent && [pEvent type] == NSEventTypeScrollWheel && [pEvent phase] == NSEventPhaseNone && [pEvent momentumPhase] == NSEventPhaseNone );
+}
+
+static void updateMenuBarVisibility( const AquaSalFrame *pFrame )
+{
+    // Show the menubar if application is in native full screen mode
+    // since hiding the menubar in that mode will cause the window's
+    // titlebar to fail to display or fail to hide when expected.
+    if( [NSApp presentationOptions] & NSApplicationPresentationFullScreen )
+    {
+        [NSMenu setMenuBarVisible: YES];
+    }
+    // Hide the dock and the menubar if the key window or one of its
+    // parent windows are in LibreOffice full screen mode. Otherwise,
+    // show the dock and the menubar.
+    else if( AquaSalFrame::isAlive( pFrame ) )
+    {
+        bool bInternalFullScreen = false;
+        bool bNativeFullScreen = false;
+        const AquaSalFrame *pParentFrame = pFrame;
+        while( pParentFrame )
+        {
+            bInternalFullScreen |= pParentFrame->mbInternalFullScreen;
+            bNativeFullScreen |= pParentFrame->mbNativeFullScreen;
+            pParentFrame = AquaSalFrame::isAlive( pParentFrame->mpParent ) ? pParentFrame->mpParent : nullptr;
+        }
+
+        if( bInternalFullScreen && !bNativeFullScreen )
+        {
+            const NSWindow *pParentWindow = [NSApp keyWindow];
+            while( pParentWindow && pParentWindow != pFrame->getNSWindow() )
+                pParentWindow = [pParentWindow parentWindow];
+
+            // Related: tdf#161623 disable menubar visibility if no key window
+            // If a window is in LibreOffice's internal full screen mode
+            // and not in native full screen mode and then the user switches
+            // to a different application and back using the Command-Tab keys.
+            // the menubar and Dock would unexpectedly appear.
+            // It appears that the key window will still be nil in this
+            // case, so only enable menubar visibility if the key window
+            // is not nil.
+            if( pParentWindow && pParentWindow != pFrame->getNSWindow() )
+                [NSMenu setMenuBarVisible: YES];
+            else
+                [NSMenu setMenuBarVisible: NO];
+        }
+        else
+        {
+            [NSMenu setMenuBarVisible: YES];
+        }
+    }
+}
+
+static void updateWindowCollectionBehavior( const SalFrameStyleFlags nStyle, const AquaSalFrame *pParent, NSWindow *pNSWindow )
+{
+    if( !pNSWindow )
+        return;
+
+    // Enable fullscreen options if available and useful
+    NSWindowCollectionBehavior eOldCollectionBehavior = [pNSWindow collectionBehavior];
+    NSWindowCollectionBehavior eCollectionBehavior = NSWindowCollectionBehaviorFullScreenNone;
+    if ( officecfg::Office::Common::VCL::macOS::EnableNativeFullScreenWindows::get() )
+    {
+        bool bAllowFullScreen = (SalFrameStyleFlags::NONE == (nStyle & (SalFrameStyleFlags::DIALOG | SalFrameStyleFlags::TOOLTIP | SalFrameStyleFlags::SYSTEMCHILD | SalFrameStyleFlags::FLOAT | SalFrameStyleFlags::TOOLWINDOW | SalFrameStyleFlags::INTRO)));
+        bAllowFullScreen &= (SalFrameStyleFlags::NONE == (~nStyle & SalFrameStyleFlags::SIZEABLE));
+        bAllowFullScreen &= (pParent == nullptr);
+
+        eCollectionBehavior = bAllowFullScreen ? NSWindowCollectionBehaviorFullScreenPrimary : NSWindowCollectionBehaviorFullScreenAuxiliary;
+    }
+    if ( eCollectionBehavior != eOldCollectionBehavior )
+        [pNSWindow setCollectionBehavior: eCollectionBehavior];
+}
+
+static NSString* getCurrentSelection()
+{
+    SolarMutexGuard aGuard;
+
+    // The following is needed for text fields in dialogs, etc.
+    vcl::Window *pWin = ImplGetSVData()->mpWinData->mpFocusWin;
+    if (pWin)
+    {
+        Edit *pEditWin = dynamic_cast<Edit*>(pWin);
+        if (pEditWin)
+            return [CreateNSString(pEditWin->GetSelected()) autorelease];
+    }
+
+    css::uno::Reference<css::frame::XDesktop> xDesktop = css::frame::Desktop::create(::comphelper::getProcessComponentContext());
+    if (xDesktop.is())
+    {
+        css::uno::Reference<css::frame::XModel> xModel(xDesktop->getCurrentComponent(), css::uno::UNO_QUERY);
+        if (xModel)
+        {
+            css::uno::Reference<css::uno::XInterface> xSelection(xModel->getCurrentSelection(), css::uno::UNO_QUERY);
+            if (xSelection)
+            {
+                css::uno::Reference<css::container::XIndexAccess> xIndexAccess(xSelection, css::uno::UNO_QUERY);
+                if (xIndexAccess.is())
+                {
+                    if (xIndexAccess->getCount() > 0)
+                    {
+                        css::uno::Reference<css::text::XTextRange> xTextRange(xIndexAccess->getByIndex(0), css::uno::UNO_QUERY);
+                        if (xTextRange.is())
+                            return [CreateNSString(xTextRange->getString()) autorelease];
+                    }
+                }
+
+                // The Basic IDE returns a XEnumeration with a single item
+                // Note: the following code was adapted from
+                // svx/source/tbxctrls/tbunosearchcontrollers.cxx
+                css::uno::Reference<css::container::XEnumeration> xEnum(xSelection, css::uno::UNO_QUERY);
+                if (xEnum.is() && xEnum->hasMoreElements())
+                {
+                    OUString aString;
+                    xEnum->nextElement() >>= aString;
+                    return [CreateNSString(aString) autorelease];
+                }
+
+                // The following is needed for cells and text fields in Calc
+                // and Impress
+                css::uno::Reference<css::text::XTextRange> xTextRange(xSelection, css::uno::UNO_QUERY);
+                if (xTextRange.is())
+                    return [CreateNSString(xTextRange->getString()) autorelease];
+            }
+        }
+    }
+
+    return nil;
+}
+
 @interface NSResponder (SalFrameWindow)
 -(BOOL)accessibilityIsIgnored;
 @end
@@ -221,34 +400,21 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
     mDraggingDestinationHandler = nil;
     mbInWindowDidResize = NO;
     mpLiveResizeTimer = nil;
+    mpResetParentWindowTimer = nil;
+    mbInSetFrame = false;
     mpFrame = pFrame;
-    NSRect aRect = { { static_cast<CGFloat>(pFrame->maGeometry.x()), static_cast<CGFloat>(pFrame->maGeometry.y()) },
-                     { static_cast<CGFloat>(pFrame->maGeometry.width()), static_cast<CGFloat>(pFrame->maGeometry.height()) } };
+    const SalFrameGeometry rFrameGeometry = pFrame->GetUnmirroredGeometry();
+    NSRect aRect = { { static_cast<CGFloat>(rFrameGeometry.x()), static_cast<CGFloat>(rFrameGeometry.y()) },
+                     { static_cast<CGFloat>(rFrameGeometry.width()), static_cast<CGFloat>(rFrameGeometry.height()) } };
     pFrame->VCLToCocoa( aRect );
     NSWindow* pNSWindow = [super initWithContentRect: aRect
                                  styleMask: mpFrame->getStyleMask()
                                  backing: NSBackingStoreBuffered
                                  defer: Application::IsHeadlessModeEnabled()];
 
-    // Disallow full-screen mode on macOS >= 10.11 where it is enabled by default. We don't want it
-    // for now as it will just be confused with LibreOffice's home-grown full-screen concept, with
-    // which it has nothing to do, and one can get into all kinds of weird states by using them
-    // intermixedly.
+    updateWindowCollectionBehavior( mpFrame->mnStyle, mpFrame->mpParent, pNSWindow );
 
-    // Ideally we should use the system full-screen mode and adapt the code for the home-grown thing
-    // to be in sync with that instead. (And we would then not need the button to get out of
-    // full-screen mode, as the normal way to get out of it is to either click on the green bubble
-    // again, or invoke the keyboard command again.)
-
-    // (Confusingly, at the moment the home-grown full-screen mode is bound to Cmd+Shift+F, which is
-    // the keyboard command normally used in apps to get in and out of the system full-screen mode.)
-
-    // Disabling system full-screen mode makes the green button on the title bar (on macOS >= 10.11)
-    // show a plus sign instead, and clicking it becomes identical to double-clicking the title bar,
-    // i.e. it maximizes / unmaximises the window. Sure, that state can also be confused with LO's
-    // home-grown full-screen mode. Oh well.
-
-    [pNSWindow setCollectionBehavior: NSWindowCollectionBehaviorFullScreenNone];
+    [pNSWindow setReleasedWhenClosed: NO];
 
     // Disable window restoration until we support it directly
     [pNSWindow setRestorable: NO];
@@ -271,9 +437,20 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
     }
 }
 
+-(void)clearResetParentWindowTimer
+{
+    if ( mpResetParentWindowTimer )
+    {
+        [mpResetParentWindowTimer invalidate];
+        [mpResetParentWindowTimer release];
+        mpResetParentWindowTimer = nil;
+    }
+}
+
 -(void)dealloc
 {
     [self clearLiveResizeTimer];
+    [self clearResetParentWindowTimer];
     [super dealloc];
 }
 
@@ -310,7 +487,7 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         return YES;
     if( mpFrame->mnStyle & SalFrameStyleFlags::OWNERDRAWDECORATION )
         return YES;
-    if( mpFrame->mbFullScreen )
+    if( mpFrame->mbInternalFullScreen )
         return YES;
     return [super canBecomeKeyWindow];
 }
@@ -322,6 +499,8 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 
     if( mpFrame && AquaSalFrame::isAlive( mpFrame ) )
     {
+        updateWindowCollectionBehavior( mpFrame->mnStyle, mpFrame->mpParent, mpFrame->mpNSWindow);
+
         static const SalFrameStyleFlags nGuessDocument = SalFrameStyleFlags::MOVEABLE|
                                             SalFrameStyleFlags::SIZEABLE|
                                             SalFrameStyleFlags::CLOSEABLE;
@@ -336,12 +515,14 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
             mpFrame->mpMenu->setMainMenu();
         else if( ! mpFrame->mpParent &&
                  ( (mpFrame->mnStyle & nGuessDocument) == nGuessDocument || // set default menu for e.g. help
-                    mpFrame->mbFullScreen ) )                               // set default menu for e.g. presentation
+                    mpFrame->mbInternalFullScreen ) )                               // set default menu for e.g. presentation
         {
             AquaSalMenu::setDefaultMenu();
         }
         mpFrame->CallCallback( SalEvent::GetFocus, nullptr );
         mpFrame->SendPaintEvent(); // repaint controls as active
+
+        updateMenuBarVisibility( mpFrame );
     }
 
     // Prevent the same native input method popup that was cancelled in a
@@ -363,6 +544,25 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         mpFrame->CallCallback(SalEvent::LoseFocus, nullptr);
         mpFrame->SendPaintEvent(); // repaint controls as inactive
     }
+
+    // Show the menubar if application is in native full screen mode
+    // since hiding the menubar in that mode will cause the window's
+    // titlebar to fail to display or fail to hide when expected.
+    if( [NSApp presentationOptions] & NSApplicationPresentationFullScreen )
+    {
+        [NSMenu setMenuBarVisible: YES];
+    }
+    // Show the dock and the menubar if there is no native modal dialog
+    // and if the key window is nil or is not a SalFrameWindow instance.
+    // If a SalFrameWindow is the key window, it should have already set
+    // the menubar visibility to match its LibreOffice full screen mode
+    // state.
+    else if ( ![NSApp modalWindow] )
+    {
+        NSWindow *pKeyWindow = [NSApp keyWindow];
+        if( !pKeyWindow || ![pKeyWindow isKindOfClass: [SalFrameWindow class]] )
+            [NSMenu setMenuBarVisible: YES];
+    }
 }
 
 -(void)windowDidChangeScreen: (NSNotification*)pNotification
@@ -372,6 +572,18 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 
     if( mpFrame && AquaSalFrame::isAlive( mpFrame ) )
         mpFrame->screenParametersChanged();
+
+    // Start timer to handle hiding of native child windows that have been
+    // dragged to a different screen.
+    if( !mpResetParentWindowTimer )
+    {
+        mpResetParentWindowTimer = [NSTimer scheduledTimerWithTimeInterval: 0.1f target: self selector: @selector(resetParentWindow) userInfo: nil repeats: YES];
+        if( mpResetParentWindowTimer )
+        {
+            [mpResetParentWindowTimer retain];
+            [[NSRunLoop currentRunLoop] addTimer: mpResetParentWindowTimer forMode: NSEventTrackingRunLoopMode];
+        }
+    }
 }
 
 -(void)windowDidMove: (NSNotification*)pNotification
@@ -383,6 +595,25 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
     {
         mpFrame->UpdateFrameGeometry();
         mpFrame->CallCallback( SalEvent::Move, nullptr );
+
+#if HAVE_FEATURE_SKIA
+        // tdf#163734 Flush parent frame when Skia is enabled
+        // When a dockable window is dragged by its titlebar, a rectangle
+        // may be drawn in its parent window. However, the Skia flush
+        // timer doesn't run until after the mouse button has been
+        // released (probably due to lowering of the Skia flush timer's
+        // priority to fix tdf#163734). So run the parent frame's Skia
+        // flush timer immediately to display the rectangle.
+        if ( SkiaHelper::isVCLSkiaEnabled() &&
+             mpFrame->mbShown && mpFrame->mpParent &&
+             AquaSalFrame::isAlive( mpFrame->mpParent ) &&
+             mpFrame->mpParent->mbShown )
+        {
+            AquaSalGraphics* pGraphics = mpFrame->mpParent->mpGraphics;
+            if ( pGraphics )
+                pGraphics->Flush();
+        }
+#endif
     }
 }
 
@@ -403,45 +634,21 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         updateWinDataInLiveResize( [self inLiveResize] );
         if ( ImplGetSVData()->mpWinData->mbIsLiveResize )
         {
-#if HAVE_FEATURE_SKIA
-            // Related: tdf#152703 Eliminate empty window with Skia/Metal while resizing
-            // The window will clear its background so when Skia/Metal is
-            // enabled, explicitly flush the Skia graphics to the window
-            // during live resizing or else nothing will be drawn until after
-            // live resizing has ended.
-            // Also, flushing during [self windowDidResize:] eliminates flicker
-            // by forcing this window's SkSurface to recreate its underlying
-            // CAMetalLayer with the new size. Flushing in
-            // [self displayIfNeeded] does not eliminate flicker so apparently
-            // [self windowDidResize:] is called earlier.
-            if ( SkiaHelper::isVCLSkiaEnabled() )
-            {
-                AquaSalGraphics* pGraphics = mpFrame->mpGraphics;
-                if ( pGraphics )
-                    pGraphics->Flush();
-            }
-#endif
-
             // tdf#152703 Force relayout during live resizing of window
             // During a live resize, macOS floods the application with
             // windowDidResize: notifications so sending a paint event does
             // not trigger redrawing with the new size.
             // Instead, force relayout by dispatching all pending internal
             // events and firing any pending timers.
-            // Also, Application::Reschedule() can potentially display a
-            // modal dialog which will cause a hang so temporarily disable
-            // live resize by clamping the window's minimum and maximum sizes
-            // to the current frame size which in Application::Reschedule().
-            NSRect aFrame = [self frame];
-            NSSize aMinSize = [self minSize];
-            NSSize aMaxSize = [self maxSize];
-            [self setMinSize:aFrame.size];
-            [self setMaxSize:aFrame.size];
-            Application::Reschedule( true );
-            [self setMinSize:aMinSize];
-            [self setMaxSize:aMaxSize];
+            freezeWindowSizeAndReschedule( self );
 
-            if ( ImplGetSVData()->mpWinData->mbIsLiveResize )
+            // Related: tdf128186 Always run timer in full screen mode windows
+            // When opening new windows by pressing and holding Command-N
+            // in a full screen window, some of the new windows will have
+            // content that does not fill the new window. So still run the
+            // timer on full screen windows even if live resizing ended
+            // during the call to freezeWindowSizeAndReschedule().
+            if ( ImplGetSVData()->mpWinData->mbIsLiveResize || [self styleMask] & NSWindowStyleMaskFullScreen )
             {
                 // tdf#152703 Force repaint after live resizing ends
                 // Repost this notification so that this selector will be called
@@ -471,6 +678,26 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         // When using Skia/Metal, the window content will flicker while
         // live resizing a window if we don't send a paint event.
         mpFrame->SendPaintEvent();
+
+#if HAVE_FEATURE_SKIA
+        // Related: tdf#152703 Eliminate empty window with Skia/Metal while resizing
+        // The window will clear its background so when Skia/Metal is
+        // enabled, explicitly flush the Skia graphics to the window
+        // during live resizing or else nothing will be drawn until after
+        // live resizing has ended.
+        // Also, flushing during [self windowDidResize:] eliminates flicker
+        // by forcing this window's SkSurface to recreate its underlying
+        // CAMetalLayer with the new size. Flushing in
+        // [self displayIfNeeded] does not eliminate flicker so apparently
+        // [self windowDidResize:] is called earlier.
+        // Lastly, flush after calling AquaSalFrame::SendPaintEvent().
+        if ( SkiaHelper::isVCLSkiaEnabled() )
+        {
+            AquaSalGraphics* pGraphics = mpFrame->mpGraphics;
+            if ( pGraphics )
+                pGraphics->Flush();
+        }
+#endif
     }
 
     mbInWindowDidResize = NO;
@@ -525,24 +752,119 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
     return bRet;
 }
 
--(void)windowDidEnterFullScreen: (NSNotification*)pNotification
+-(void)windowWillEnterFullScreen: (NSNotification*)pNotification
 {
+    (void)pNotification;
     SolarMutexGuard aGuard;
 
-    if( !mpFrame || !AquaSalFrame::isAlive( mpFrame))
-        return;
-    mpFrame->mbFullScreen = true;
+    if( AquaSalFrame::isAlive( mpFrame) )
+    {
+        mpFrame->mbNativeFullScreen = true;
+
+        if( mpFrame->mbInternalFullScreen && !NSIsEmptyRect( mpFrame->maInternalFullScreenRestoreRect ) )
+        {
+            mpFrame->maNativeFullScreenRestoreRect = mpFrame->maInternalFullScreenRestoreRect;
+        }
+        else
+        {
+            // Related: tdf#128186 restore rectangles are in VCL coordinates
+            NSRect aFrame = [mpFrame->getNSWindow() frame];
+            NSRect aContentRect = [mpFrame->getNSWindow() contentRectForFrameRect: aFrame];
+            mpFrame->CocoaToVCL( aContentRect );
+            mpFrame->maNativeFullScreenRestoreRect = aContentRect;
+        }
+
+        updateMenuBarVisibility( mpFrame );
+
+        // Related: tdf#128186 Let vcl use the CAMetalLayer's hidden property
+        // to skip the fix for tdf#152703 in external/skia/macosmetal.patch.1
+        // and create a new CAMetalLayer when the window resizes. When using
+        // Skia/Metal, flushing to an NSWindow during transitions into or out
+        // of native full screen mode causes the Skia/Metal surface to be
+        // drawn at the wrong window position which results in a noticeable
+        // flicker.
+        assert( SkiaHelper::isVCLSkiaEnabled() && "macos requires skia" );
+        if( SkiaHelper::renderMethodToUse() != SkiaHelper::RenderRaster )
+        {
+            if( [mpFrame->getNSView() wantsLayer] )
+            {
+                CALayer *pLayer = [mpFrame->getNSView() layer];
+                if( pLayer && [pLayer isKindOfClass:[CAMetalLayer class]] )
+                    [pLayer setHidden: YES];
+            }
+        }
+    }
+}
+
+-(void)windowDidFailToEnterFullScreen: (NSWindow *)pWindow
+{
+    (void)pWindow;
+    SolarMutexGuard aGuard;
+
+    if( AquaSalFrame::isAlive( mpFrame) )
+    {
+        mpFrame->mbNativeFullScreen = false;
+
+        mpFrame->maNativeFullScreenRestoreRect = NSZeroRect;
+
+        updateMenuBarVisibility( mpFrame );
+    }
+}
+
+-(void)windowWillExitFullScreen: (NSNotification*)pNotification
+{
     (void)pNotification;
+    SolarMutexGuard aGuard;
+
+    // Related: tdf#128186 Let vcl use the CAMetalLayer's hidden property
+    // to skip the fix for tdf#152703 in external/skia/macosmetal.patch.1
+    // and create a new CAMetalLayer when the window resizes. When using
+    // Skia/Metal, flushing to an NSWindow during transitions into or out
+    // of native full screen mode causes the Skia/Metal surface to be
+    // drawn at the wrong window position which results in a noticeable
+    // flicker.
+    assert( SkiaHelper::isVCLSkiaEnabled() && "macos requires skia" );
+    if( AquaSalFrame::isAlive( mpFrame ) && SkiaHelper::renderMethodToUse() != SkiaHelper::RenderRaster )
+    {
+        if( [mpFrame->getNSView() wantsLayer] )
+        {
+            CALayer *pLayer = [mpFrame->getNSView() layer];
+            if( pLayer && [pLayer isKindOfClass:[CAMetalLayer class]] )
+                [pLayer setHidden: YES];
+        }
+    }
 }
 
 -(void)windowDidExitFullScreen: (NSNotification*)pNotification
 {
+    (void)pNotification;
     SolarMutexGuard aGuard;
 
-    if( !mpFrame || !AquaSalFrame::isAlive( mpFrame))
-        return;
-    mpFrame->mbFullScreen = false;
-    (void)pNotification;
+    if( AquaSalFrame::isAlive( mpFrame) && mpFrame->mbNativeFullScreen )
+    {
+        mpFrame->mbNativeFullScreen = false;
+
+        if( !NSIsEmptyRect( mpFrame->maNativeFullScreenRestoreRect ) )
+        {
+            // Related: tdf#128186 set window frame before exiting native full screen mode
+            // Setting the window frame just before exiting native full
+            // screen mode appears to set the desired non-full screen
+            // window frame without causing a noticeable flicker during
+            // the macOS default "exit full screen" animation.
+            NSRect aContentRect;
+            if( mpFrame->mbInternalFullScreen && !NSIsEmptyRect( mpFrame->maInternalFullScreenRestoreRect ) )
+                aContentRect = mpFrame->maInternalFullScreenRestoreRect;
+            else
+                aContentRect = mpFrame->maNativeFullScreenRestoreRect;
+            mpFrame->VCLToCocoa( aContentRect );
+            NSRect aFrame = [NSWindow frameRectForContentRect: aContentRect styleMask: [mpFrame->getNSWindow() styleMask] & ~NSWindowStyleMaskFullScreen];
+            [mpFrame->getNSWindow() setFrame: aFrame display: mpFrame->mbShown ? YES : NO];
+
+            mpFrame->maNativeFullScreenRestoreRect = NSZeroRect;
+        }
+
+        updateMenuBarVisibility( mpFrame );
+    }
 }
 
 -(void)windowDidChangeBackingProperties:(NSNotification *)pNotification
@@ -691,6 +1013,81 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         [self windowDidResize:[pTimer userInfo]];
 }
 
+-(void)resetParentWindow
+{
+    // Wait until the left mouse button has been released. Otherwise
+    // the code below will cause native child windows to flicker while
+    // dragging the window in a different screen than its parent window.
+    if( [NSEvent pressedMouseButtons] & 0x1 )
+        return;
+
+    // Stop hiding of child windows when dragged to a different screen
+    // LibreOffice sets all dialog windows as a native child window of
+    // its related document window in order to force the dialog windows
+    // to always remain in front of their related document window.
+    // However, for some unknown reason, if a native child window is
+    // dragged to a different screen than its native parent window,
+    // macOS will hide the native child window when the drag has ended.
+    // So, once the current drag has finished, unattach and reattach
+    // the native child window to its native parent window. This should
+    // cause macOS to force the native child window to jump back to the
+    // same screen as its native parent window.
+    NSWindow *pParentWindow = [self parentWindow];
+    if( pParentWindow && [pParentWindow screen] != [self screen] )
+    {
+        [pParentWindow removeChildWindow: self];
+        [pParentWindow addChildWindow: self ordered: NSWindowAbove];
+    }
+
+    [self clearResetParentWindowTimer];
+}
+
+-(NSRect)constrainFrameRect: (NSRect)aFrameRect toScreen: (NSScreen *)pScreen
+{
+    SolarMutexGuard aGuard;
+
+    NSRect aRet = [super constrainFrameRect: aFrameRect toScreen: pScreen];
+
+    // Related: tdf#161623 the menubar and Dock are both hidden when a
+    // window enters LibreOffice full screen mode. However, the call to
+    // -[super constrainFrameRect:toScreen:] shrinks the window frame to
+    // allow room for the menubar if the window is on the main screen. So,
+    // force the return value to match the frame that LibreOffice expects.
+    // Related: tdf#165448 skip fix for menu items inserted by macOS
+    // If the window is in LibreOffice's internal full screen mode and
+    // any of the menu items that macOS inserts into the windows menu
+    // is selected, the frame size will be changed without calling
+    // -[SalFrameWindow setFrame:display:]. So only use the fix for
+    // tdf#161623 when the LibreOffice code explicitly resizes the frame.
+    // Otherwise, selecting any of the menu items inserted by macOS will
+    // cause the window to snap back to full screen size.
+    if( mbInSetFrame && AquaSalFrame::isAlive( mpFrame ) && mpFrame->mbInternalFullScreen && !NSIsEmptyRect( mpFrame->maInternalFullScreenExpectedRect ) )
+        aRet = mpFrame->maInternalFullScreenExpectedRect;
+
+    return aRet;
+}
+
+- (NSArray<NSWindow *> *)customWindowsToExitFullScreenForWindow: (NSWindow *)pWindow
+{
+    SolarMutexGuard aGuard;
+
+    // Related: tdf#161623 suppress animation when in internal full screen mode
+    // LibreOffice's internal full screen mode fills the screen with a
+    // regular window so suppress animation when exiting native full
+    // screen mode.
+    if( AquaSalFrame::isAlive( mpFrame) && mpFrame->mbInternalFullScreen && !NSIsEmptyRect( mpFrame->maInternalFullScreenExpectedRect ) )
+        return [NSArray arrayWithObject: self];
+
+    return nil;
+}
+
+-(void)setFrame: (NSRect)aFrameRect display: (BOOL)bFlag
+{
+    mbInSetFrame = true;
+    [super setFrame: aFrameRect display: bFlag];
+    mbInSetFrame = false;
+}
+
 @end
 
 @implementation SalFrameView
@@ -719,15 +1116,45 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         mbInCommitMarkedText = NO;
         mpLastMarkedText = nil;
         mbTextInputWantsNonRepeatKeyDown = NO;
+        mpLastTrackingArea = nil;
+
+        mbInViewDidChangeEffectiveAppearance = NO;
+
+        mpMouseDraggedTimer = nil;
+        mpPendingMouseDraggedEvent = nil;
     }
 
     return self;
 }
 
+-(void)clearMouseDraggedTimer
+{
+    if ( mpMouseDraggedTimer )
+    {
+        [mpMouseDraggedTimer invalidate];
+        [mpMouseDraggedTimer release];
+        mpMouseDraggedTimer = nil;
+    }
+
+    // Clear the pending mouse dragged event as well
+    [self clearPendingMouseDraggedEvent];
+}
+
+-(void)clearPendingMouseDraggedEvent
+{
+    if ( mpPendingMouseDraggedEvent )
+    {
+        [mpPendingMouseDraggedEvent release];
+        mpPendingMouseDraggedEvent = nil;
+    }
+}
+
 -(void)dealloc
 {
+    [self clearMouseDraggedTimer];
     [self clearLastEvent];
     [self clearLastMarkedText];
+    [self clearLastTrackingArea];
     [self revokeWrapper];
 
     [super dealloc];
@@ -743,7 +1170,7 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
     if( mpFrame && AquaSalFrame::isAlive( mpFrame ) )
     {
         // FIXME: does this leak the returned NSCursor of getCurrentCursor ?
-        const NSRect aRect = { NSZeroPoint, NSMakeSize(mpFrame->maGeometry.width(), mpFrame->maGeometry.height()) };
+        const NSRect aRect = { NSZeroPoint, NSMakeSize(mpFrame->GetUnmirroredGeometry().width(), mpFrame->GetUnmirroredGeometry().height()) };
         [self addCursorRect: aRect cursor: mpFrame->getCurrentCursor()];
     }
 }
@@ -864,19 +1291,19 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 
         SalMouseEvent aEvent;
         aEvent.mnTime   = pDispatchFrame->mnLastEventTime;
-        aEvent.mnX = static_cast<tools::Long>(aPt.x) - pDispatchFrame->maGeometry.x();
-        aEvent.mnY = static_cast<tools::Long>(aPt.y) - pDispatchFrame->maGeometry.y();
+        aEvent.mnX = static_cast<tools::Long>(aPt.x) - pDispatchFrame->GetUnmirroredGeometry().x();
+        aEvent.mnY = static_cast<tools::Long>(aPt.y) - pDispatchFrame->GetUnmirroredGeometry().y();
         aEvent.mnButton = nButton;
         aEvent.mnCode   =  aEvent.mnButton | nModMask;
 
         if( AllSettings::GetLayoutRTL() )
-            aEvent.mnX = pDispatchFrame->maGeometry.width() - 1 - aEvent.mnX;
+            aEvent.mnX = pDispatchFrame->GetWidth() - 1 - aEvent.mnX;
 
         pDispatchFrame->CallCallback( nEvent, &aEvent );
 
         // tdf#155266 force flush after scrolling
         if (nButton == MOUSE_LEFT && nEvent == SalEvent::MouseMove)
-            mpFrame->mbForceFlush = true;
+            mpFrame->mbForceFlushScrolling = true;
     }
 }
 
@@ -885,7 +1312,7 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
     if ( mpMouseEventListener != nil &&
         [mpMouseEventListener respondsToSelector: @selector(mouseDown:)])
     {
-        [mpMouseEventListener mouseDown: [pEvent copyWithZone: nullptr]];
+        [mpMouseEventListener mouseDown: pEvent];
     }
 
     s_nLastButton = MOUSE_LEFT;
@@ -894,17 +1321,47 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 
 -(void)mouseDragged: (NSEvent*)pEvent
 {
-    if ( mpMouseEventListener != nil &&
-         [mpMouseEventListener respondsToSelector: @selector(mouseDragged:)])
+    // tdf#163945 Coalesce mouse dragged events
+    // When dragging a selection box on an empty background in Impress
+    // while using Skia/Metal, the selection box would not keep up with
+    // the pointer. The selection box would repaint sporadically or not
+    // at all if the pointer was dragged rapidly and the status bar was
+    // visible.
+    // Apparently, flushing a graphics doesn't actually do much of
+    // anything with Skia/Raster and Skia disabled so the selection box
+    // repaints without any noticeable delay.
+    // However, with Skia/Metal every flush of a graphics creates and
+    // queues a new CAMetalLayer drawable. During rapid dragging, this
+    // can lead to creating and queueing up to 200 drawables per second
+    // leaving no spare time for the Impress selection box painting
+    // timer to fire. So coalesce mouse dragged events so that only
+    // a maximum of 50 mouse dragged events are dispatched per second.
+    [self clearPendingMouseDraggedEvent];
+    mpPendingMouseDraggedEvent = [pEvent retain];
+    if ( !mpMouseDraggedTimer )
     {
-        [mpMouseEventListener mouseDragged: [pEvent copyWithZone: nullptr]];
+        mpMouseDraggedTimer = [NSTimer scheduledTimerWithTimeInterval:0.025f target:self selector:@selector(mouseDraggedWithTimer:) userInfo:nil repeats:YES];
+        if ( mpMouseDraggedTimer )
+        {
+            [mpMouseDraggedTimer retain];
+
+            // The timer won't fire without a call to
+            // Application::Reschedule() unless we copy the fix for
+            // #i84055# from vcl/osx/saltimer.cxx and add the timer
+            // to the NSEventTrackingRunLoopMode run loop mode
+            [[NSRunLoop currentRunLoop] addTimer:mpMouseDraggedTimer forMode:NSEventTrackingRunLoopMode];
+        }
     }
-    s_nLastButton = MOUSE_LEFT;
-    [self sendMouseEventToFrame:pEvent button:MOUSE_LEFT eventtype:SalEvent::MouseMove];
 }
 
 -(void)mouseUp: (NSEvent*)pEvent
 {
+    // Dispatch any pending mouse dragged event before dispatching the
+    // mouse up event
+    if ( mpPendingMouseDraggedEvent )
+        [self mouseDraggedWithTimer: nil];
+    [self clearMouseDraggedTimer];
+
     s_nLastButton = 0;
     [self sendMouseEventToFrame:pEvent button:MOUSE_LEFT eventtype:SalEvent::MouseButtonUp];
 }
@@ -1012,7 +1469,7 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         // adapt NSEvent-sensitivity to application expectations
         // TODO: rather make CommandWheelMode::ZOOM handlers smarter
         const float fDeltaZ = mfMagnifyDeltaSum * fMagnifyFactor;
-        int nDeltaZ = FRound( fDeltaZ );
+        int nDeltaZ = basegfx::fround<int>( fDeltaZ );
         if( !nDeltaZ )
         {
             // handle new series immediately
@@ -1028,14 +1485,14 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 
         SalWheelMouseEvent aEvent;
         aEvent.mnTime           = mpFrame->mnLastEventTime;
-        aEvent.mnX = static_cast<tools::Long>(aPt.x) - mpFrame->maGeometry.x();
-        aEvent.mnY = static_cast<tools::Long>(aPt.y) - mpFrame->maGeometry.y();
+        aEvent.mnX = static_cast<tools::Long>(aPt.x) - mpFrame->GetUnmirroredGeometry().x();
+        aEvent.mnY = static_cast<tools::Long>(aPt.y) - mpFrame->GetUnmirroredGeometry().y();
         aEvent.mnCode           = ImplGetModifierMask( mpFrame->mnLastModifierFlags );
         aEvent.mnCode           |= KEY_MOD1; // we want zooming, no scrolling
         aEvent.mbDeltaIsPixel   = true;
 
         if( AllSettings::GetLayoutRTL() )
-            aEvent.mnX = mpFrame->maGeometry.width() - 1 - aEvent.mnX;
+            aEvent.mnX = mpFrame->GetWidth() - 1 - aEvent.mnX;
 
         aEvent.mnDelta = nDeltaZ;
         aEvent.mnNotchDelta = (nDeltaZ >= 0) ? +1 : -1;
@@ -1073,7 +1530,7 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         {
             dX += [pEvent deltaX];
             dY += [pEvent deltaY];
-            NSEvent* pNextEvent = [NSApp nextEventMatchingMask: NSEventMaskScrollWheel
+            NSEvent* pNextEvent = [NSApp nextEventMatchingMask: NSEventMaskSwipe
             untilDate: nil inMode: NSDefaultRunLoopMode dequeue: YES ];
             if( !pNextEvent )
                 break;
@@ -1085,17 +1542,21 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 
         SalWheelMouseEvent aEvent;
         aEvent.mnTime           = mpFrame->mnLastEventTime;
-        aEvent.mnX = static_cast<tools::Long>(aPt.x) - mpFrame->maGeometry.x();
-        aEvent.mnY = static_cast<tools::Long>(aPt.y) - mpFrame->maGeometry.y();
-        aEvent.mnCode           = ImplGetModifierMask( mpFrame->mnLastModifierFlags );
+        aEvent.mnX = static_cast<tools::Long>(aPt.x) - mpFrame->GetUnmirroredGeometry().x();
+        aEvent.mnY = static_cast<tools::Long>(aPt.y) - mpFrame->GetUnmirroredGeometry().y();
+        // tdf#151423 Ignore all modifiers for swipe events
+        // It appears that devices that generate swipe events can generate
+        // both vertical and horizontal swipe events. So, behave like most
+        // macOS applications and ignore all modifiers if this a swipe event.
+        aEvent.mnCode           = 0;
         aEvent.mbDeltaIsPixel   = true;
 
         if( AllSettings::GetLayoutRTL() )
-            aEvent.mnX = mpFrame->maGeometry.width() - 1 - aEvent.mnX;
+            aEvent.mnX = mpFrame->GetWidth() - 1 - aEvent.mnX;
 
         if( dX != 0.0 )
         {
-            aEvent.mnDelta = static_cast<tools::Long>(floor(dX));
+            aEvent.mnDelta = static_cast<tools::Long>(dX < 0 ? floor(dX) : ceil(dX));
             aEvent.mnNotchDelta = (dX < 0) ? -1 : +1;
             if( aEvent.mnDelta == 0 )
                 aEvent.mnDelta = aEvent.mnNotchDelta;
@@ -1105,7 +1566,7 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         }
         if( dY != 0.0 && AquaSalFrame::isAlive( mpFrame ))
         {
-            aEvent.mnDelta = static_cast<tools::Long>(floor(dY));
+            aEvent.mnDelta = static_cast<tools::Long>(dY < 0 ? floor(dY) : ceil(dY));
             aEvent.mnNotchDelta = (dY < 0) ? -1 : +1;
             if( aEvent.mnDelta == 0 )
                 aEvent.mnDelta = aEvent.mnNotchDelta;
@@ -1113,6 +1574,9 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
             aEvent.mnScrollLines = SAL_WHEELMOUSE_EVENT_PAGESCROLL;
             mpFrame->CallCallback( SalEvent::WheelMouse, &aEvent );
         }
+
+        // tdf#155266 force flush after scrolling
+        mpFrame->mbForceFlushScrolling = true;
     }
 }
 
@@ -1128,13 +1592,14 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         // merge pending scroll wheel events
         CGFloat dX = 0.0;
         CGFloat dY = 0.0;
+        bool bAllowModifiers = isMouseScrollWheelEvent( pEvent );
         for(;;)
         {
             dX += [pEvent deltaX];
             dY += [pEvent deltaY];
             NSEvent* pNextEvent = [NSApp nextEventMatchingMask: NSEventMaskScrollWheel
                 untilDate: nil inMode: NSDefaultRunLoopMode dequeue: YES ];
-            if( !pNextEvent )
+            if( !pNextEvent || ( isMouseScrollWheelEvent( pNextEvent ) != bAllowModifiers ) )
                 break;
             pEvent = pNextEvent;
         }
@@ -1144,17 +1609,26 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 
         SalWheelMouseEvent aEvent;
         aEvent.mnTime         = mpFrame->mnLastEventTime;
-        aEvent.mnX = static_cast<tools::Long>(aPt.x) - mpFrame->maGeometry.x();
-        aEvent.mnY = static_cast<tools::Long>(aPt.y) - mpFrame->maGeometry.y();
-        aEvent.mnCode         = ImplGetModifierMask( mpFrame->mnLastModifierFlags );
+        aEvent.mnX = static_cast<tools::Long>(aPt.x) - mpFrame->GetUnmirroredGeometry().x();
+        aEvent.mnY = static_cast<tools::Long>(aPt.y) - mpFrame->GetUnmirroredGeometry().y();
+        // tdf#151423 Only allow modifiers for mouse scrollwheel events
+        // The Command modifier converts scrollwheel events into
+        // magnification events and the Shift modifier converts vertical
+        // scrollwheel events into horizontal scrollwheel events. This
+        // behavior is reasonable for mouse scrollwheel events since many
+        // mice only have a single, vertical scrollwheel but trackpads
+        // already have specific gestures for magnification and horizontal
+        // scrolling. So, behave like most macOS applications and ignore
+        // all modifiers if this a trackpad scrollwheel event.
+        aEvent.mnCode         = bAllowModifiers ? ImplGetModifierMask( mpFrame->mnLastModifierFlags ) : 0;
         aEvent.mbDeltaIsPixel = false;
 
         if( AllSettings::GetLayoutRTL() )
-            aEvent.mnX = mpFrame->maGeometry.width() - 1 - aEvent.mnX;
+            aEvent.mnX = mpFrame->GetWidth() - 1 - aEvent.mnX;
 
         if( dX != 0.0 )
         {
-            aEvent.mnDelta = static_cast<tools::Long>(floor(dX));
+            aEvent.mnDelta = static_cast<tools::Long>(dX < 0 ? floor(dX) : ceil(dX));
             aEvent.mnNotchDelta = (dX < 0) ? -1 : +1;
             if( aEvent.mnDelta == 0 )
                 aEvent.mnDelta = aEvent.mnNotchDelta;
@@ -1168,7 +1642,7 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         }
         if( dY != 0.0 && AquaSalFrame::isAlive( mpFrame ) )
         {
-            aEvent.mnDelta = static_cast<tools::Long>(floor(dY));
+            aEvent.mnDelta = static_cast<tools::Long>(dY < 0 ? floor(dY) : ceil(dY));
             aEvent.mnNotchDelta = (dY < 0) ? -1 : +1;
             if( aEvent.mnDelta == 0 )
                 aEvent.mnDelta = aEvent.mnNotchDelta;
@@ -1182,7 +1656,7 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         }
 
         // tdf#155266 force flush after scrolling
-        mpFrame->mbForceFlush = true;
+        mpFrame->mbForceFlushScrolling = true;
     }
 }
 
@@ -1747,9 +2221,37 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 -(void)noop: (id)aSender
 {
     (void)aSender;
-    if( ! mbKeyHandled )
+    if( ! mbKeyHandled && mpLastEvent )
     {
-        if( ! [self sendSingleCharacter:mpLastEvent] )
+        // Related tdf#162843: replace the event's string parameter
+        // When using the Dvorak - QWERTY keyboard and the Command key
+        // is pressed, any key events that match a disabled menu item
+        // are handled here. However, the Dvorak - QWERTY event's
+        // charactersIgnoringModifiers string can cause cutting and
+        // copying to fail in the Find toolbar and the Find and Replace
+        // dialog so replace the event's charactersIgnoringModifiers
+        // string with the event's character string.
+        NSEvent* pEvent = mpLastEvent;
+        NSEventModifierFlags nModMask = [mpLastEvent modifierFlags];
+        if( nModMask & NSEventModifierFlagCommand )
+        {
+            switch( [mpLastEvent type] )
+            {
+                case NSEventTypeKeyDown:
+                case NSEventTypeKeyUp:
+                case NSEventTypeFlagsChanged:
+                {
+                    NSString* pCharacters = [mpLastEvent characters];
+                    NSString* pCharactersIgnoringModifiers = ( nModMask & NSEventModifierFlagShift ) ? [pCharacters uppercaseString] : pCharacters;
+                    pEvent = [NSEvent keyEventWithType: [pEvent type] location: [pEvent locationInWindow] modifierFlags: nModMask timestamp: [pEvent timestamp] windowNumber: [pEvent windowNumber] context: nil characters: pCharacters charactersIgnoringModifiers: pCharactersIgnoringModifiers isARepeat: [pEvent isARepeat] keyCode: [pEvent keyCode]];
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+
+        if( ! [self sendSingleCharacter:pEvent] )
         {
             /* prevent recursion */
             if( mpLastEvent != mpLastSuperEvent && [NSApp respondsToSelector: @selector(sendSuperEvent:)] )
@@ -1846,36 +2348,11 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         mbNeedSpecialKeyHandle = true;
     }
 
-    // FIXME:
-    // #i106901#
-    // if we come here outside of mbInKeyInput, this is likely to be because
-    // of the keyboard viewer. For unknown reasons having no marked range
-    // in this case causes a crash. So we say we have a marked range anyway
-    // This is a hack, since it is not understood what a) causes that crash
-    // and b) why we should have a marked range at this point.
-    if( ! mbInKeyInput )
-        bHasMarkedText = true;
-
     return bHasMarkedText;
 }
 
 - (NSRange)markedRange
 {
-    // FIXME:
-    // #i106901#
-    // if we come here outside of mbInKeyInput, this is likely to be because
-    // of the keyboard viewer. For unknown reasons having no marked range
-    // in this case causes a crash. So we say we have a marked range anyway
-    // This is a hack, since it is not understood what a) causes that crash
-    // and b) why we should have a marked range at this point. Stop the native
-    // input method popup from appearing in the bottom left corner of the
-    // screen by returning the marked range if is valid when called outside of
-    // mbInKeyInput. If a zero length range is returned, macOS won't call
-    // [self firstRectForCharacterRange:actualRange:] for any newly appended
-    // uncommitted text.
-    if( ! mbInKeyInput )
-        return mMarkedRange.location != NSNotFound ? mMarkedRange : NSMakeRange( 0, 0 );
-
     return [self hasMarkedText] ? mMarkedRange : NSMakeRange( NSNotFound, 0 );
 }
 
@@ -1886,6 +2363,20 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
     // NSNotFound, -[NSResponder interpretKeyEvents:] will not call
     // [self firstRectForCharacterRange:actualRange:] and will not display the
     // special character input method popup.
+    // tdf#128600 Implement handling of macOS "Reverse Conversion" menu item
+    // When a Japanese keyboard is selected, the keyboard's "Reverse Conversion"
+    // menu item would silently fail when an empty range was returned by
+    // -[SalFrameView selectedRange].
+    // So return a valid range in that call using the following steps:
+    // 1. If there is marked text, return the marked text range
+    // 2. If LibreOffice is selected text, return the selected text length
+    // Similar steps in the same order are in
+    // -[SalFrameView attributedSubstringForProposedRange:actualRange:].
+    if ( [self hasMarkedText] )
+        return ( mMarkedRange.location == NSNotFound ? NSMakeRange( 0, 0 ) : mMarkedRange );
+    NSString *pSelectedText = getCurrentSelection();
+    if ( pSelectedText )
+        return NSMakeRange( 0, [pSelectedText length] );
     return ( mSelectedRange.location == NSNotFound ? NSMakeRange( 0, 0 ) : mSelectedRange );
 }
 
@@ -1901,9 +2392,24 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         aString = [[[NSAttributedString alloc] initWithString:aString] autorelease];
 
     // Reset cached state
+    bool bOldHasMarkedText = [self hasMarkedText];
     [self unmarkText];
 
+    // tdf#163876 ignore marked text generated from Command-` events
+    // For some unknown reason, when using the standard macOS French
+    // layout, pressing Command-` causes -[NSView interpretKeyEvents:]
+    // to temporarily set and unset the marked text.
+    // Command-` should only cycle through the application's windows
+    // so ignore marked text changes from such key down events.
+    if( !bOldHasMarkedText && mpLastEvent && [mpLastEvent type] == NSEventTypeKeyDown && [mpLastEvent keyCode] == 42 && ( [mpLastEvent modifierFlags] & ( NSEventModifierFlagCommand | NSEventModifierFlagOption | NSEventModifierFlagControl | NSEventModifierFlagShift ) ) == NSEventModifierFlagCommand )
+    {
+        NSString* pUnmodifiedString = [mpLastEvent charactersIgnoringModifiers];
+        if( pUnmodifiedString && ![pUnmodifiedString length] )
+            return;
+    }
+
     int len = [aString length];
+    bool bReschedule = false;
     SalExtTextInputEvent aInputEvent;
     if( len > 0 ) {
         // Set the marked and selected ranges to the marked text and selected
@@ -1968,16 +2474,35 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
         aInputEvent.mnCursorPos = nSelectionStart;
         aInputEvent.mnCursorFlags = 0;
         aInputEvent.mpTextAttr = aInputFlags.data();
-        mpFrame->CallCallback( SalEvent::ExtTextInput, static_cast<void *>(&aInputEvent) );
+        if( AquaSalFrame::isAlive( mpFrame ) )
+        {
+            bReschedule = true;
+            mpFrame->CallCallback( SalEvent::ExtTextInput, static_cast<void *>(&aInputEvent) );
+        }
     } else {
         aInputEvent.maText.clear();
         aInputEvent.mnCursorPos = 0;
         aInputEvent.mnCursorFlags = 0;
         aInputEvent.mpTextAttr = nullptr;
-        mpFrame->CallCallback( SalEvent::ExtTextInput, static_cast<void *>(&aInputEvent) );
-        mpFrame->CallCallback( SalEvent::EndExtTextInput, nullptr );
+        if( AquaSalFrame::isAlive( mpFrame ) )
+        {
+            bReschedule = true;
+            mpFrame->CallCallback( SalEvent::ExtTextInput, static_cast<void *>(&aInputEvent) );
+            if( AquaSalFrame::isAlive( mpFrame ) )
+                mpFrame->CallCallback( SalEvent::EndExtTextInput, nullptr );
+        }
     }
-    mbKeyHandled= true;
+
+    // tdf#163764 force pending timers to run after marked text changes
+    // During native dictation, waiting for the next native event is
+    // blocked while dictation runs in a loop within a native callback.
+    // Because of this, LibreOffice's painting timers won't fire until
+    // dictation is cancelled or the user pauses speaking. So, force
+    // any pending timers to fire after the marked text changes.
+    if( bReschedule && ImplGetSVData()->mpWinData->mbIsWaitingForNativeEvent )
+        freezeWindowSizeAndReschedule( [self window] );
+
+    mbKeyHandled = true;
 }
 
 - (void)unmarkText
@@ -1989,10 +2514,39 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)aRange actualRange:(NSRangePointer)actualRange
 {
-    (void) aRange;
-    (void) actualRange;
+    (void)aRange;
 
-    // FIXME - Implement
+    // tdf#128600 Implement handling of macOS "Reverse Conversion" menu item
+    // When a Japanese keyboard is selected, the keyboard's "Reverse Conversion"
+    // menu item would silently fail when nil was returned by the unimplemented
+    // -[SalFrameView attributedSubstringForProposedRange:actualRange:].
+    // So return a valid string in that call using the following steps:
+    // 1. If there is marked text, return the last marked text
+    // 2. If LibreOffice is selected text, return the selected text
+    // Similar steps in the same order are in -[SalFrameView selectedRange].
+    if ( [self hasMarkedText] )
+    {
+        if ( actualRange )
+            *actualRange = mMarkedRange;
+        return mpLastMarkedText;
+    }
+    NSString *pSelectedText = getCurrentSelection();
+    if ( pSelectedText )
+    {
+        // Related: tdf#128600 "Reverse Conversion" with Japanese keyboards
+        // only edits the first non-whitespace chunk of selected text but
+        // I don't know how to adjust LibreOffice's selected range to match
+        // the substring that the input method will edit. This causes the
+        // entire LibreOffice selection to be overwritten by the substring
+        // so return nil if there is any whitespace in the selection.
+        NSRange aWhitespaceRange = [pSelectedText rangeOfCharacterFromSet: [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if ( aWhitespaceRange.location == NSNotFound )
+        {
+            if ( actualRange )
+                *actualRange = NSMakeRange( 0, [pSelectedText length] );
+            return [[[NSAttributedString alloc] initWithString: pSelectedText] autorelease];
+        }
+    }
     return nil;
 }
 
@@ -2046,6 +2600,38 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
     mbTextInputWantsNonRepeatKeyDown = NO;
 }
 
+-(void)clearLastTrackingArea
+{
+    if (mpLastTrackingArea)
+    {
+        [self removeTrackingArea: mpLastTrackingArea];
+        [mpLastTrackingArea release];
+        mpLastTrackingArea = nil;
+    }
+}
+
+-(void)updateTrackingAreas
+{
+    [super updateTrackingAreas];
+
+    // tdf#155092 use tracking areas instead of tracking rectangles
+    // Apparently, the older, tracking rectangles selectors cause
+    // unexpected window resizing upon the first mouse down after the
+    // window has been manually resized so switch to the newer,
+    // tracking areas selectors. Also, the NSTrackingInVisibleRect
+    // option allows us to create one single tracking area that
+    // resizes itself automatically over the lifetime of the view.
+    // Note: for some unknown reason, both NSTrackingMouseMoved and
+    // NSTrackingAssumeInside are necessary options for this fix
+    // to work.
+    // Note: for some unknown reason, [mpLastTrackingArea rect]
+    // returns an empty NSRect (at least on macOS Sequoia) so always
+    // remove the old tracking area and add a new one.
+    [self clearLastTrackingArea];
+    mpLastTrackingArea = [[NSTrackingArea alloc] initWithRect: [self bounds] options: ( NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSTrackingActiveAlways | NSTrackingAssumeInside | NSTrackingInVisibleRect ) owner: self userInfo: nil];
+    [self addTrackingArea: mpLastTrackingArea];
+}
+
 - (NSRect)firstRectForCharacterRange:(NSRange)aRange actualRange:(NSRangePointer)actualRange
 {
      // FIXME - These should probably be used?
@@ -2062,7 +2648,15 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
     // and then dispatch a SalEvent::EndExtTextInput event.
     NSString *pNewMarkedText = nullptr;
     NSString *pChars = [mpLastEvent characters];
-    bool bNeedsExtTextInput = ( pChars && mbInKeyInput && !mpLastMarkedText && mpLastEvent && [mpLastEvent type] == NSEventTypeKeyDown && [mpLastEvent isARepeat] );
+
+    // tdf#158124 KEY_DELETE events do not need an ExtTextInput event
+    // When using various Japanese input methods, the last event will be a
+    // repeating key down event with a single delete character while the
+    // Backspace key, Delete key, or Fn-Delete keys are pressed. These key
+    // events are now ignored since setting mbTextInputWantsNonRepeatKeyDown
+    // to YES for these events will trigger an assert or crash when saving a
+    // .docx document.
+    bool bNeedsExtTextInput = ( pChars && mbInKeyInput && !mpLastMarkedText && mpLastEvent && [mpLastEvent type] == NSEventTypeKeyDown && [mpLastEvent isARepeat] && ImplMapKeyCode( [mpLastEvent keyCode] ) != KEY_DELETE );
     if ( bNeedsExtTextInput )
     {
         // tdf#154708 Preserve selection for repeating Shift-arrow on Japanese keyboard
@@ -2126,8 +2720,8 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 
     if ( mpFrame && AquaSalFrame::isAlive( mpFrame ) )
     {
-        rect.origin.x = aPosEvent.mnX + mpFrame->maGeometry.x();
-        rect.origin.y = aPosEvent.mnY + mpFrame->maGeometry.y() + 4; // add some space for underlines
+        rect.origin.x = aPosEvent.mnX + mpFrame->GetUnmirroredGeometry().x();
+        rect.origin.y = aPosEvent.mnY + mpFrame->GetUnmirroredGeometry().y() + 4; // add some space for underlines
         rect.size.width = aPosEvent.mnWidth;
         rect.size.height = aPosEvent.mnHeight;
 
@@ -2522,6 +3116,52 @@ static void updateWinDataInLiveResize(bool bInLiveResize)
 -(NSArray <id<NSAccessibilityElement>> *)accessibilityChildrenInNavigationOrder
 {
     return [self accessibilityChildren];
+}
+
+-(void)viewDidChangeEffectiveAppearance
+{
+    if (mbInViewDidChangeEffectiveAppearance)
+        return;
+
+    mbInViewDidChangeEffectiveAppearance = YES;
+
+    // Related: tdf#156855 force the current theme to reload its colors
+    // This call is called when the macOS light/dark mode changes while
+    // LibreOffice is running. Send a SalEvent::SettingsChanged event
+    // but do it in an idle timer. Otherwise, an infinite recursion
+    // can occur.
+    NSWindow *pWindow = [self window];
+    if (pWindow && ([pWindow isVisible] || [pWindow isMiniaturized]))
+    {
+        SolarMutexGuard aGuard;
+
+        GetSalData()->mpInstance->delayedSettingsChanged(true);
+    }
+
+    mbInViewDidChangeEffectiveAppearance = NO;
+}
+
+-(void)mouseDraggedWithTimer: (NSTimer *)pTimer
+{
+    (void)pTimer;
+
+    if ( mpPendingMouseDraggedEvent )
+    {
+        if ( mpMouseEventListener != nil &&
+             [mpMouseEventListener respondsToSelector: @selector(mouseDragged:)])
+        {
+            [mpMouseEventListener mouseDragged: mpPendingMouseDraggedEvent];
+        }
+
+        s_nLastButton = MOUSE_LEFT;
+        [self sendMouseEventToFrame:mpPendingMouseDraggedEvent button:MOUSE_LEFT eventtype:SalEvent::MouseMove];
+
+        [self clearPendingMouseDraggedEvent];
+    }
+    else
+    {
+        [self clearMouseDraggedTimer];
+    }
 }
 
 @end

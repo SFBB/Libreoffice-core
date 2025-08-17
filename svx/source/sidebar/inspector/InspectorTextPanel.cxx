@@ -17,6 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sfx2/dispatch.hxx>
+#include <sfx2/msg.hxx>
+#include <sfx2/sfxsids.hrc>
+#include <sfx2/viewfrm.hxx>
+#include <svl/eitem.hxx>
+#include <svl/flagitem.hxx>
+#include <svl/itemset.hxx>
 #include <o3tl/safeint.hxx>
 #include <sal/config.h>
 
@@ -24,8 +31,6 @@
 
 #include <svx/sidebar/InspectorTextPanel.hxx>
 
-#include <svl/cjkoptions.hxx>
-#include <svl/ctloptions.hxx>
 #include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <inspectorvalues.hrc>
@@ -36,23 +41,30 @@ const int MinimumPanelWidth = 250;
 
 namespace svx::sidebar
 {
-std::unique_ptr<PanelLayout> InspectorTextPanel::Create(weld::Widget* pParent)
-{
-    if (pParent == nullptr)
-        throw lang::IllegalArgumentException("no parent Window given to InspectorTextPanel::Create",
-                                             nullptr, 0);
-    return std::make_unique<InspectorTextPanel>(pParent);
-}
-
-InspectorTextPanel::InspectorTextPanel(weld::Widget* pParent)
-    : PanelLayout(pParent, "InspectorTextPanel", "svx/ui/inspectortextpanel.ui")
-    , mpListBoxStyles(m_xBuilder->weld_tree_view("listbox_fonts"))
+InspectorTextPanel::InspectorTextPanel(weld::Widget* pParent, SfxBindings* pBindings)
+    : PanelLayout(pParent, u"InspectorTextPanel"_ustr, u"svx/ui/inspectortextpanel.ui"_ustr)
+    , mpListBoxStyles(m_xBuilder->weld_tree_view(u"listbox_fonts"_ustr))
+    , nSlotDFStyles(pBindings->GetDispatcher()->GetSlot(".uno:HighlightCharDF")->GetSlotId())
+    , mParaController(SID_SPOTLIGHT_PARASTYLES, *pBindings, *this)
+    , mCharController(SID_SPOTLIGHT_CHARSTYLES, *pBindings, *this)
+    , mDFController(nSlotDFStyles, *pBindings, *this)
 {
     mpListBoxStyles->set_size_request(MinimumPanelWidth, -1);
     float fWidth = mpListBoxStyles->get_approximate_digit_width();
     std::vector<int> aWidths{ o3tl::narrowing<int>(fWidth * 29) };
     // 2nd column will fill remaining space
     mpListBoxStyles->set_column_fixed_widths(aWidths);
+
+    mpToolbar = m_xBuilder->weld_toolbar(u"toolbar"_ustr);
+    mpToolbar->connect_clicked(LINK(this, InspectorTextPanel, ToolbarHdl));
+    mpToolbar->set_item_icon_name("paragraphstyles", "sw/res/sf01.png");
+    mpToolbar->set_item_icon_name("characterstyles", "sw/res/sf02.png");
+    mpToolbar->set_item_icon_name("directformatting", "sw/res/sr20012.png");
+
+    // Setup listening and set initial state
+    pBindings->Update(SID_SPOTLIGHT_PARASTYLES);
+    pBindings->Update(SID_SPOTLIGHT_CHARSTYLES);
+    pBindings->Update(nSlotDFStyles);
 }
 
 static bool GetPropertyValues(std::u16string_view rPropName, const uno::Any& rAny,
@@ -118,7 +130,7 @@ static void FillBox_Impl(weld::TreeView& rListBoxStyles, const TreeNode& rCurren
     else
     {
         // Necessary, without this the selection line will be truncated.
-        rListBoxStyles.set_text(*pResult, "", 1);
+        rListBoxStyles.set_text(*pResult, u""_ustr, 1);
     }
 
     for (const TreeNode& rChildNode : rCurrent.children)
@@ -159,7 +171,53 @@ void InspectorTextPanel::updateEntries(const std::vector<TreeNode>& rStore, cons
     mpListBoxStyles->collapse_row(*pEntry);
 }
 
-InspectorTextPanel::~InspectorTextPanel() {}
+void InspectorTextPanel::NotifyItemUpdate(const sal_uInt16 nSId, const SfxItemState eState,
+                                          const SfxPoolItem* pState)
+{
+    if (eState >= SfxItemState::DEFAULT)
+    {
+        if (const SfxBoolItem* pItem = dynamic_cast<const SfxBoolItem*>(pState))
+        {
+            if (nSId == SID_SPOTLIGHT_PARASTYLES)
+            {
+                mpToolbar->set_item_active("paragraphstyles", pItem->GetValue());
+            }
+            else if (nSId == SID_SPOTLIGHT_CHARSTYLES)
+            {
+                mpToolbar->set_item_active("characterstyles", pItem->GetValue());
+            }
+            else
+            {
+                mpToolbar->set_item_active("directformatting", pItem->GetValue());
+            }
+        }
+    }
+}
+
+IMPL_LINK(InspectorTextPanel, ToolbarHdl, const OUString&, rEntry, void)
+{
+    SfxDispatcher* pDispatcher = SfxViewFrame::Current()->GetDispatcher();
+    if (rEntry == "paragraphstyles")
+    {
+        pDispatcher->Execute(SID_SPOTLIGHT_PARASTYLES, SfxCallMode::SYNCHRON);
+    }
+    else if (rEntry == "characterstyles")
+    {
+        pDispatcher->Execute(SID_SPOTLIGHT_CHARSTYLES, SfxCallMode::SYNCHRON);
+    }
+    else
+    {
+        SfxBoolItem aItem(nSlotDFStyles, mpToolbar->get_item_active(rEntry));
+        pDispatcher->ExecuteList(nSlotDFStyles, SfxCallMode::SYNCHRON, { &aItem });
+    }
+}
+
+InspectorTextPanel::~InspectorTextPanel()
+{
+    mParaController.dispose();
+    mCharController.dispose();
+    mDFController.dispose();
+}
 
 } // end of namespace svx::sidebar
 

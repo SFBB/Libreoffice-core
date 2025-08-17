@@ -19,13 +19,19 @@
 #include <unx/gtk/gtkgdi.hxx>
 #include <unx/gtk/gtkbackend.hxx>
 #include <vcl/BitmapTools.hxx>
+#include <vcl/CairoFormats.hxx>
 #include <vcl/decoview.hxx>
 #include <vcl/settings.hxx>
 #include <unx/fontmanager.hxx>
+#include <o3tl/string_view.hxx>
+#include <scrollbarvalue.hxx>
 
+#include <IconThemeSelector.hxx>
+#include "custom-theme.hxx"
+#include <vcl/themecolors.hxx>
 #include "gtkcairo.hxx"
-#include <optional>
 
+GtkCssProvider*  GtkSalGraphics::mpCustomThemeProvider = nullptr;
 GtkStyleContext* GtkSalGraphics::mpWindowStyle = nullptr;
 GtkStyleContext* GtkSalGraphics::mpButtonStyle = nullptr;
 GtkStyleContext* GtkSalGraphics::mpLinkButtonStyle = nullptr;
@@ -355,7 +361,6 @@ static GtkWidget* gCacheWindow;
 static GtkWidget* gDumbContainer;
 #if GTK_CHECK_VERSION(4, 0, 0)
 static GtkWidget* gVScrollbar;
-static GtkWidget* gHScrollbar;
 static GtkWidget* gTextView;
 #else
 static GtkWidget* gComboBox;
@@ -363,6 +368,7 @@ static GtkWidget* gListBox;
 static GtkWidget* gSpinBox;
 static GtkWidget* gTreeViewWidget;
 #endif
+static GtkWidget* gHScrollbar;
 static GtkWidget* gEntryBox;
 
 namespace
@@ -1389,6 +1395,7 @@ GtkStyleContext* GtkSalGraphics::createStyleContext(GtkControlPart ePart)
             GtkWidgetPath *path = gtk_widget_path_copy(gtk_style_context_get_path(mpWindowStyle));
             gtk_widget_path_append_type(path, GTK_TYPE_MENU_BAR);
             gtk_widget_path_iter_set_object_name(path, -1, "menubar");
+            gtk_widget_path_iter_add_class(path, -1, "background");
             return makeContext(path, mpWindowStyle);
         }
         case GtkControlPart::MenuBarItem:
@@ -2307,6 +2314,12 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
     GtkSettings* pSettings = gtk_widget_get_settings(pTopLevel);
     StyleSettings aStyleSet = rSettings.GetStyleSettings();
 
+#if GTK_CHECK_VERSION(4, 0, 0)
+    CustomTheme::ApplyCustomTheme(gtk_widget_get_display(pTopLevel), &mpCustomThemeProvider);
+#else
+    CustomTheme::ApplyCustomTheme(gtk_widget_get_screen(pTopLevel), &mpCustomThemeProvider);
+#endif
+
     // text colors
     GdkRGBA text_color;
     style_context_set_state(pStyle, GTK_STATE_FLAG_NORMAL);
@@ -2326,12 +2339,14 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
     // background colors
     ::Color aBackColor = style_context_get_background_color(pStyle);
     aStyleSet.BatchSetBackgrounds( aBackColor );
+    aStyleSet.SetWindowColor(aBackColor);
 
     // UI font
 #if GTK_CHECK_VERSION(4, 0, 0)
     gchar* pFontname = nullptr;
     g_object_get(pSettings, "gtk-font-name", &pFontname, nullptr);
     PangoFontDescription* pFontDesc = pango_font_description_from_string(pFontname);
+    g_free(pFontname);
     vcl::Font aFont(pango_to_vcl(pFontDesc, rSettings.GetUILanguageTag().getLocale()));
     pango_font_description_free(pFontDesc);
 #else
@@ -2423,6 +2438,7 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
         ::Color aHighlightTextColor = getColor( text_color );
         aStyleSet.SetAccentColor( aHighlightColor ); // https://debugpointnews.com/gnome-native-accent-colour-announcement/
         aStyleSet.SetHighlightColor( aHighlightColor );
+        aStyleSet.SetMenuHighlightColor( aHighlightColor );
         aStyleSet.SetHighlightTextColor( aHighlightTextColor );
         aStyleSet.SetListBoxWindowHighlightColor( aHighlightColor );
         aStyleSet.SetListBoxWindowHighlightTextColor( aHighlightTextColor );
@@ -2433,17 +2449,10 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
         aStyleSet.SetActiveColor( aHighlightColor );
         aStyleSet.SetActiveTextColor( aHighlightTextColor );
 
-        // warning color
-        GdkRGBA warning_color;
-        if (gtk_style_context_lookup_color(pCStyle, "warning_color", &warning_color))
-            aStyleSet.SetWarningColor(getColor(warning_color));
-
         // field background color
         style_context_set_state(pCStyle, GTK_STATE_FLAG_NORMAL);
         ::Color aBackFieldColor = style_context_get_background_color(pCStyle);
         aStyleSet.SetFieldColor( aBackFieldColor );
-        // This baby is the default page/paper color
-        aStyleSet.SetWindowColor( aBackFieldColor );
         // listbox background color
         aStyleSet.SetListBoxWindowBackgroundColor( aBackFieldColor );
 
@@ -2471,6 +2480,13 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
             aShadowColor.DecreaseLuminance(64);
         aStyleSet.SetShadowColor(aShadowColor);
 
+        ::Color aDisabledColor(aBackFieldColor);
+        if (aBackFieldColor.GetLuminance() > aBackColor.GetLuminance())
+            aDisabledColor.IncreaseLuminance(8);
+        else
+            aDisabledColor.DecreaseLuminance(8);
+        aStyleSet.SetDisableColor(aDisabledColor);
+
         aContextState.restore();
 #if !GTK_CHECK_VERSION(4, 0, 0)
         g_object_unref( pCStyle );
@@ -2497,17 +2513,20 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
     style_context_set_state(mpMenuBarStyle, GTK_STATE_FLAG_NORMAL);
     aBackColor = style_context_get_background_color(mpMenuBarStyle);
     aStyleSet.SetMenuBarColor( aBackColor );
+
+    style_context_set_state(mpMenuBarStyle, GTK_STATE_FLAG_SELECTED);
+    aBackColor = style_context_get_background_color(mpMenuBarStyle);
     aStyleSet.SetMenuBarRolloverColor( aBackColor );
 
     style_context_set_state(mpMenuBarItemStyle, GTK_STATE_FLAG_NORMAL);
     style_context_get_color(mpMenuBarItemStyle, &text_color);
-    aTextColor = aStyleSet.GetPersonaMenuBarTextColor().value_or( getColor( text_color ) );
+    aTextColor = getColor( text_color );
     aStyleSet.SetMenuBarTextColor( aTextColor );
     aStyleSet.SetMenuBarRolloverTextColor( aTextColor );
 
     style_context_set_state(mpMenuBarItemStyle, GTK_STATE_FLAG_PRELIGHT);
     style_context_get_color(mpMenuBarItemStyle, &text_color);
-    aTextColor = aStyleSet.GetPersonaMenuBarTextColor().value_or( getColor( text_color ) );
+    aTextColor =  getColor( text_color );
     aStyleSet.SetMenuBarHighlightTextColor( aTextColor );
 
     // menu items
@@ -2517,9 +2536,6 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
     aStyleSet.SetMenuTextColor(aTextColor);
 
     style_context_set_state(mpMenuItemLabelStyle, GTK_STATE_FLAG_PRELIGHT);
-    ::Color aHighlightColor = style_context_get_background_color(mpMenuItemLabelStyle);
-    aStyleSet.SetMenuHighlightColor( aHighlightColor );
-
     style_context_get_color(mpMenuItemLabelStyle, &color);
     ::Color aHighlightTextColor = getColor( color );
     aStyleSet.SetMenuHighlightTextColor( aHighlightTextColor );
@@ -2582,6 +2598,10 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
     }
 #endif
 
+    // match native GtkComboBox behavior of putting text cursor to start of text
+    // without text selection when combobox entry is selected
+    aStyleSet.SetComboBoxTextSelectionMode(ComboBoxTextSelectionMode::CursorToStart);
+
     // get cursor blink time
     gboolean blink = false;
 
@@ -2624,10 +2644,11 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
     // set scrollbar settings
     gint min_slider_length = 21;
 
+    GtkRequisition natural_horz_scroll_size;
+    gtk_widget_get_preferred_size(gHScrollbar, nullptr, &natural_horz_scroll_size);
+
 #if GTK_CHECK_VERSION(4, 0, 0)
-    GtkRequisition natural_size;
-    gtk_widget_get_preferred_size(gHScrollbar, nullptr, &natural_size);
-    aStyleSet.SetScrollBarSize(natural_size.height);
+    aStyleSet.SetScrollBarSize(natural_horz_scroll_size.height);
 #else
     // Grab some button style attributes
     Size aSize;
@@ -2645,6 +2666,10 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
     if (has_forward || has_backward || has_forward2 || has_backward2)
         QuerySize(mpHScrollbarButtonStyle, aSize);
 
+    // Recent breeze (Mar 2024) has 17 vs 10, while Adwaita still reports 14 vs 14.
+    if (natural_horz_scroll_size.height > aSize.Height())
+        aSize.setHeight(natural_horz_scroll_size.height);
+
     aStyleSet.SetScrollBarSize(aSize.Height());
 
     gtk_style_context_get(mpVScrollbarSliderStyle, gtk_style_context_get_state(mpVScrollbarSliderStyle),
@@ -2654,14 +2679,22 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
     aStyleSet.SetMinThumbSize(min_slider_length);
 
     // preferred icon style
-    gchar* pIconThemeName = nullptr;
-    gboolean bDarkIconTheme = false;
-    g_object_get(pSettings, "gtk-icon-theme-name", &pIconThemeName,
-                            "gtk-application-prefer-dark-theme", &bDarkIconTheme,
-                            nullptr );
-    OUString sIconThemeName(OUString::createFromAscii(pIconThemeName));
-    aStyleSet.SetPreferredIconTheme(sIconThemeName, bDarkIconTheme);
-    g_free( pIconThemeName );
+    if (!ThemeColors::VclPluginCanUseThemeColors())
+    {
+        gchar* pIconThemeName = nullptr;
+        gboolean bDarkIconTheme = false;
+        g_object_get(pSettings, "gtk-icon-theme-name", &pIconThemeName,
+                "gtk-application-prefer-dark-theme", &bDarkIconTheme,
+                nullptr );
+        OUString sIconThemeName(OUString::createFromAscii(pIconThemeName));
+        aStyleSet.SetPreferredIconTheme(sIconThemeName, bDarkIconTheme);
+        g_free( pIconThemeName );
+    }
+    else
+    {
+        aStyleSet.SetPreferredIconTheme(vcl::IconThemeSelector::GetIconThemeForDesktopEnvironment(
+            Application::GetDesktopEnvironment(), ThemeColors::GetThemeColors().GetWindowColor().IsDark()));
+    }
 
     aStyleSet.SetToolbarIconSize( ToolbarIconSize::Large );
 
@@ -2673,6 +2706,7 @@ bool GtkSalGraphics::updateSettings(AllSettings& rSettings)
     // High contrast
     aStyleSet.SetHighContrastMode(g_strcmp0(pThemeName, "HighContrast") == 0);
     g_free(pThemeName);
+    aStyleSet.SetSystemColorsLoaded(true);
 
     // finally update the collected settings
     rSettings.SetStyleSettings( aStyleSet );
@@ -2931,20 +2965,21 @@ GtkSalGraphics::GtkSalGraphics( GtkSalFrame *pFrame, GtkWidget *pWindow )
     mpToolButtonStyle = gtk_widget_get_style_context(GTK_WIDGET(pButton));
 #endif
 
+    gHScrollbar = gtk_scrollbar_new(GTK_ORIENTATION_HORIZONTAL, nullptr);
+    gtk_fixed_put(GTK_FIXED(gDumbContainer), gHScrollbar, 0, 0);
+    gtk_widget_set_visible(gHScrollbar, true);
+
 #if GTK_CHECK_VERSION(4, 0, 0)
     gVScrollbar = gtk_scrollbar_new(GTK_ORIENTATION_VERTICAL, nullptr);
     gtk_fixed_put(GTK_FIXED(gDumbContainer), gVScrollbar, 0, 0);
-    gtk_widget_show(gVScrollbar);
+    gtk_widget_set_visible(gVScrollbar, true);
     mpVScrollbarStyle = gtk_widget_get_style_context(gVScrollbar);
 
-    gHScrollbar = gtk_scrollbar_new(GTK_ORIENTATION_HORIZONTAL, nullptr);
-    gtk_fixed_put(GTK_FIXED(gDumbContainer), gHScrollbar, 0, 0);
-    gtk_widget_show(gHScrollbar);
     mpHScrollbarStyle = gtk_widget_get_style_context(gHScrollbar);
 
     gTextView = gtk_text_view_new();
     gtk_fixed_put(GTK_FIXED(gDumbContainer), gTextView, 0, 0);
-    gtk_widget_show(gTextView);
+    gtk_widget_set_visible(gTextView, true);
 #else
     mpVScrollbarStyle = createStyleContext(GtkControlPart::ScrollbarVertical);
     mpVScrollbarContentsStyle = createStyleContext(GtkControlPart::ScrollbarVerticalContents);
@@ -3060,8 +3095,7 @@ void GtkSalGraphics::GetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY)
     char* pForceDpi;
     if ((pForceDpi = getenv("SAL_FORCEDPI")))
     {
-        OString sForceDPI(pForceDpi);
-        rDPIX = rDPIY = sForceDPI.toInt32();
+        rDPIX = rDPIY = o3tl::toInt32(std::string_view(pForceDpi));
         return;
     }
 

@@ -59,13 +59,13 @@
 
 #include <memory>
 
-ScEEImport::ScEEImport( ScDocument* pDocP, const ScRange& rRange ) :
+ScEEImport::ScEEImport( ScDocument& rDoc, const ScRange& rRange ) :
     maRange( rRange ),
-    mpDoc( pDocP )
+    mrDoc( rDoc )
 {
-    const ScPatternAttr* pPattern = mpDoc->GetPattern(
+    const ScPatternAttr* pPattern = mrDoc.GetPattern(
         maRange.aStart.Col(), maRange.aStart.Row(), maRange.aStart.Tab() );
-    mpEngine.reset( new ScTabEditEngine(*pPattern, mpDoc->GetEditPool(), mpDoc, mpDoc->GetEditPool()) );
+    mpEngine.reset( new ScTabEditEngine(*pPattern, mrDoc.GetEditEnginePool(), mrDoc) );
     mpEngine->SetUpdateLayout( false );
     mpEngine->EnableUndo( false );
 }
@@ -86,16 +86,16 @@ ErrCode ScEEImport::Read( SvStream& rStream, const OUString& rBaseURL )
     if ( nEndCol != 0 )
     {
         nEndCol += maRange.aStart.Col() - 1;
-        if ( nEndCol > mpDoc->MaxCol() )
-            nEndCol = mpDoc->MaxCol();
+        if ( nEndCol > mrDoc.MaxCol() )
+            nEndCol = mrDoc.MaxCol();
     }
     else
         nEndCol = maRange.aStart.Col();
     if ( nEndRow != 0 )
     {
         nEndRow += maRange.aStart.Row() - 1;
-        if ( nEndRow > mpDoc->MaxRow() )
-            nEndRow = mpDoc->MaxRow();
+        if ( nEndRow > mrDoc.MaxRow() )
+            nEndRow = mrDoc.MaxRow();
     }
     else
         nEndRow = maRange.aStart.Row();
@@ -109,14 +109,14 @@ namespace
     bool IsValidSel(const ScTabEditEngine& rEngine, const ESelection& rSel)
     {
         const auto nParaCount = rEngine.GetParagraphCount();
-        return rSel.nStartPara < nParaCount && rSel.nEndPara < nParaCount;
+        return rSel.start.nPara < nParaCount && rSel.end.nPara < nParaCount;
     }
 }
 
 void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNumberFormatter* pFormatter, bool bConvertDate,
     bool bConvertScientific )
 {
-    std::unique_ptr<ScProgress> pProgress( new ScProgress( mpDoc->GetDocumentShell(),
+    std::unique_ptr<ScProgress> pProgress( new ScProgress( mrDoc.GetDocumentShell(),
         ScResId( STR_LOAD_DOC ), mpParser->ListSize(), true ) );
     sal_uLong nProgress = 0;
 
@@ -136,15 +136,14 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
     bool bHasGraphics = false;
     ScEEParseEntry* pE;
     if (!pFormatter)
-        pFormatter = mpDoc->GetFormatTable();
+        pFormatter = mrDoc.GetFormatTable();
     bool bNumbersEnglishUS = false;
-    if (pFormatter->GetLanguage() == LANGUAGE_SYSTEM && !utl::ConfigManager::IsFuzzing())
+    if (pFormatter->GetLanguage() == LANGUAGE_SYSTEM && !comphelper::IsFuzzing())
     {
         // Automatic language option selected.  Check for the global 'use US English' option.
         bNumbersEnglishUS = officecfg::Office::Common::Filter::HTML::Import::NumbersEnglishUS::get();
     }
-    ScDocumentPool* pDocPool = mpDoc->GetPool();
-    ScRangeName* pRangeNames = mpDoc->GetRangeName();
+    ScRangeName* pRangeNames = mrDoc.GetRangeName();
     for ( size_t i = 0, n = mpParser->ListSize(); i < n; ++i )
     {
         pE = mpParser->ListEntry( i );
@@ -154,9 +153,9 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
         SCCOL nCol = nStartCol + pE->nCol + nMergeColAdd;
         // Determine RowMerge
         // Pure ColMerge and ColMerge of the first MergeRow already done during parsing
-        if (nRow <= nOverlapRowMax && mpDoc->ValidCol(nCol))
+        if (nRow <= nOverlapRowMax && mrDoc.ValidCol(nCol))
         {
-            while ( nCol <= mpDoc->MaxCol() && mpDoc->HasAttrib( nCol, nRow, nTab,
+            while ( nCol <= mrDoc.MaxCol() && mrDoc.HasAttrib( nCol, nRow, nTab,
                 nCol, nRow, nTab, HasAttrFlags::Overlapped ) )
             {
                 nCol++;
@@ -167,7 +166,7 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
         // Add for second run
         pE->nCol = nCol;
         pE->nRow = nRow;
-        if ( mpDoc->ValidCol(nCol) && mpDoc->ValidRow(nRow) )
+        if ( mrDoc.ValidCol(nCol) && mrDoc.ValidRow(nRow) )
         {
             SfxItemSet aSet = mpEngine->GetAttribs( pE->aSel );
             // Remove default: we set left/right ourselves depending on Text or
@@ -179,18 +178,18 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
                 aSet.ClearItem( EE_PARA_JUST );
 
             // Test whether simple String without mixed attributes
-            bool bSimple = ( pE->aSel.nStartPara == pE->aSel.nEndPara );
+            bool bSimple = (pE->aSel.start.nPara == pE->aSel.end.nPara);
             for (sal_uInt16 nId = EE_CHAR_START; nId <= EE_CHAR_END && bSimple; nId++)
             {
                 const SfxPoolItem* pItem = nullptr;
                 SfxItemState eState = aSet.GetItemState( nId, true, &pItem );
-                if (eState == SfxItemState::DONTCARE)
+                if (eState == SfxItemState::INVALID)
                     bSimple = false;
                 else if (eState == SfxItemState::SET)
                 {
                     if ( nId == EE_CHAR_ESCAPEMENT ) // Super-/Subscript always via EE
                     {
-                        if ( static_cast<SvxEscapement>(static_cast<const SvxEscapementItem*>(pItem)->GetEnumValue())
+                        if ( pItem->StaticWhichCast(EE_CHAR_ESCAPEMENT).GetEscapement()
                                 != SvxEscapement::Off )
                             bSimple = false;
                     }
@@ -199,7 +198,7 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
             if ( bSimple )
             {   //  Contains field commands?
                 SfxItemState eFieldState = aSet.GetItemState( EE_FEATURE_FIELD, false );
-                if ( eFieldState == SfxItemState::DONTCARE || eFieldState == SfxItemState::SET )
+                if ( eFieldState == SfxItemState::INVALID || eFieldState == SfxItemState::SET )
                     bSimple = false;
             }
 
@@ -218,9 +217,9 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
             }
 
             // Set attributes
-            auto pAttr = std::make_unique<ScPatternAttr>( pDocPool );
+            ScPatternAttr* pAttr(new ScPatternAttr(mrDoc.getCellAttributeHelper()));
             pAttr->GetFromEditItemSet( &aSet );
-            SfxItemSet* pAttrItemSet = &pAttr->GetItemSet();
+            SfxItemSet* pAttrItemSet = &pAttr->GetItemSetWritable();
             if (!aNumStr.isEmpty())
             {
                 pAttrItemSet->Put( SfxUInt32Item( ATTR_VALUE_FORMAT, nNumForm ) );
@@ -247,6 +246,8 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
                     pAttrItemSet->Put( *pItem );
                 if ( rESet.GetItemState( ATTR_FONT_UNDERLINE, false, &pItem) == SfxItemState::SET )
                     pAttrItemSet->Put( *pItem );
+                if ( rESet.GetItemState( ATTR_FONT_CROSSEDOUT, false, &pItem) == SfxItemState::SET )
+                    pAttrItemSet->Put( *pItem );
                 // HTML LATIN/CJK/CTL script type dependent
                 const SfxPoolItem* pFont;
                 if ( rESet.GetItemState( ATTR_FONT, false, &pFont) != SfxItemState::SET )
@@ -267,7 +268,7 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
                 if ( pFont || pHeight || pWeight || pPosture )
                 {
                     OUString aStr( mpEngine->GetText( pE->aSel ) );
-                    SvtScriptType nScriptType = mpDoc->GetStringScriptType( aStr );
+                    SvtScriptType nScriptType = mrDoc.GetStringScriptType( aStr );
                     const SvtScriptType nScripts[3] = { SvtScriptType::LATIN,
                         SvtScriptType::ASIAN, SvtScriptType::COMPLEX };
                     for (SvtScriptType nScript : nScripts)
@@ -305,27 +306,29 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
                 pAttrItemSet->Put( aMerge );
                 SCROW nRO = 0;
                 if ( pE->nColOverlap > 1 )
-                    mpDoc->ApplyFlagsTab( nCol+1, nRow,
+                    mrDoc.ApplyFlagsTab( nCol+1, nRow,
                         nCol + pE->nColOverlap - 1, nRow, nTab,
                         ScMF::Hor );
                 if ( pE->nRowOverlap > 1 )
                 {
-                    nRO = nRow + pE->nRowOverlap - 1;
-                    mpDoc->ApplyFlagsTab( nCol, nRow+1,
+                    nRO = o3tl::saturating_add(nRow, pE->nRowOverlap - 1);
+                    mrDoc.ApplyFlagsTab( nCol, nRow+1,
                         nCol, nRO , nTab,
                         ScMF::Ver );
                     if ( nRO > nOverlapRowMax )
                         nOverlapRowMax = nRO;
                 }
                 if ( pE->nColOverlap > 1 && pE->nRowOverlap > 1 )
-                    mpDoc->ApplyFlagsTab( nCol+1, nRow+1,
+                    mrDoc.ApplyFlagsTab( nCol+1, nRow+1,
                         nCol + pE->nColOverlap - 1, nRO, nTab,
                         ScMF::Hor | ScMF::Ver );
             }
             const ScStyleSheet* pStyleSheet =
-                mpDoc->GetPattern( nCol, nRow, nTab )->GetStyleSheet();
+                mrDoc.GetPattern( nCol, nRow, nTab )->GetStyleSheet();
             pAttr->SetStyleSheet( const_cast<ScStyleSheet*>(pStyleSheet) );
-            auto rAttrItemSet2 = mpDoc->SetPattern( nCol, nRow, nTab, std::move(pAttr) )->GetItemSet();
+            CellAttributeHolder aHolder(pAttr, true);
+            mrDoc.SetPattern( nCol, nRow, nTab, aHolder);
+            const SfxItemSet& rAttrItemSet2(aHolder.getScPatternAttr()->GetItemSet());
 
             // Add data
             if (bSimple)
@@ -338,11 +341,16 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
                 aParam.mbCheckLinkFormula = true;
 
                 if (!aValStr.isEmpty())
-                    mpDoc->SetValue( nCol, nRow, nTab, fVal );
+                    mrDoc.SetValue( nCol, nRow, nTab, fVal );
+                else if (pE->moFormulaStr && pE->moFormulaGrammar)
+                {
+                    mrDoc.SetFormula(ScAddress(nCol, nRow, nTab), *pE->moFormulaStr,
+                                      *pE->moFormulaGrammar);
+                }
                 else if ( !pE->aSel.HasRange() )
                 {
                     // maybe ALT text of IMG or similar
-                    mpDoc->SetString( nCol, nRow, nTab, pE->aAltText, &aParam );
+                    mrDoc.SetString( nCol, nRow, nTab, pE->aAltText, &aParam );
                     // If SelRange is completely empty, the succeeding text can be in the same paragraph!
                 }
                 else
@@ -350,7 +358,7 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
                     OUString aStr;
                     if( pE->bEntirePara )
                     {
-                        aStr = mpEngine->GetText( pE->aSel.nStartPara );
+                        aStr = mpEngine->GetText(pE->aSel.start.nPara);
                     }
                     else
                     {
@@ -382,17 +390,12 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
                                 pFormatter->GetFormatForLanguageIfBuiltIn(
                                         nIndex, LANGUAGE_SYSTEM);
                             OSL_ENSURE( nNewIndex != nIndex, "ScEEImport::WriteToDocument: NumbersEnglishUS not a built-in format?");
-                            pFormatter->GetInputLineString( fEnVal, nNewIndex, aStr);
+                            aStr = pFormatter->GetInputLineString( fEnVal, nNewIndex );
                         }
                         else
                             bTextFormat = true;
                         pFormatter->ChangeIntl( LANGUAGE_SYSTEM);
                     }
-
-                    //  #105460#, #i4180# String cells can't contain tabs or linebreaks
-                    //  -> replace with spaces
-                    aStr = aStr.replaceAll( "\t", " " );
-                    aStr = aStr.replaceAll( "\n", " " );
 
                     if (bTextFormat)
                     {
@@ -406,13 +409,14 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
                         aParam.mbDetectScientificNumberFormat = bConvertScientific;
                     }
 
-                    mpDoc->SetString(nCol, nRow, nTab, aStr, &aParam);
+                    // tdf#117436 - set text cell to accommodate potential multiline cells
+                    mrDoc.SetTextCell(ScAddress(nCol, nRow, nTab), aStr, &aParam);
                 }
             }
             else if (std::unique_ptr<EditTextObject> pTextObject = IsValidSel(*mpEngine, pE->aSel) ? mpEngine->CreateTextObject(pE->aSel) : nullptr)
             {
                 // The cell will own the text object instance.
-                mpDoc->SetEditText(ScAddress(nCol,nRow,nTab), std::move(pTextObject));
+                mrDoc.SetEditText(ScAddress(nCol,nRow,nTab), std::move(pTextObject));
             }
             if ( !pE->maImageList.empty() )
                 bHasGraphics |= GraphicSize( nCol, nRow, pE );
@@ -420,7 +424,7 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
             {   // Anchor Name => RangeName
                 if (!pRangeNames->findByUpperName(ScGlobal::getCharClass().uppercase(*pE->pName)))
                 {
-                    ScRangeData* pData = new ScRangeData( *mpDoc, *pE->pName,
+                    ScRangeData* pData = new ScRangeData( mrDoc, *pE->pName,
                         ScAddress( nCol, nRow, nTab ) );
                     pRangeNames->insert( pData );
                 }
@@ -443,7 +447,7 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
                 if ( it != rColWidths.end() )
                     nWidth = it->second;
                 if ( nWidth )
-                    mpDoc->SetColWidth( nCol, nTab, nWidth );
+                    mrDoc.SetColWidth( nCol, nTab, nWidth );
                 pProgress->SetState( ++nProgress );
             }
         }
@@ -454,9 +458,9 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
         double nPPTX = ScGlobal::nScreenPPTX * static_cast<double>(aZoom) / nOutputFactor;
         double nPPTY = ScGlobal::nScreenPPTY * static_cast<double>(aZoom);
         ScopedVclPtrInstance< VirtualDevice > pVirtDev;
-        sc::RowHeightContext aCxt(mpDoc->MaxRow(), nPPTX, nPPTY, aZoom, aZoom, pVirtDev);
+        sc::RowHeightContext aCxt(mrDoc.MaxRow(), nPPTX, nPPTY, aZoom, aZoom, pVirtDev);
         aCxt.setExtraHeight(ScGlobal::nLastRowHeightExtra);
-        mpDoc->SetOptimalHeight(aCxt, 0, nEndRow, 0, true);
+        mrDoc.SetOptimalHeight(aCxt, 0, nEndRow, 0, true);
 
         if ( !maRowHeights.empty() )
         {
@@ -464,8 +468,8 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
             {
                 RowHeightMap::const_iterator it = maRowHeights.find( nRow );
                 sal_uInt16 nHeight = it == maRowHeights.end() ? 0 : it->second;
-                if ( nHeight > mpDoc->GetRowHeight( nRow, nTab ) )
-                    mpDoc->SetRowHeight( nRow, nTab, nHeight );
+                if ( nHeight > mrDoc.GetRowHeight( nRow, nTab ) )
+                    mrDoc.SetRowHeight( nRow, nTab, nHeight );
             }
         }
     }
@@ -480,7 +484,7 @@ void ScEEImport::WriteToDocument( bool bSizeColsRows, double nOutputFactor, SvNu
         {
             SCCOL nCol = pE->nCol;
             SCROW nRow = pE->nRow;
-            if ( mpDoc->ValidCol(nCol) && mpDoc->ValidRow(nRow) )
+            if ( mrDoc.ValidCol(nCol) && mrDoc.ValidRow(nRow) )
                 InsertGraphic( nCol, nRow, nTab, pE );
         }
     }
@@ -560,18 +564,18 @@ void ScEEImport::InsertGraphic( SCCOL nCol, SCROW nRow, SCTAB nTab,
 {
     if ( pE->maImageList.empty() )
         return ;
-    ScDrawLayer* pModel = mpDoc->GetDrawLayer();
+    ScDrawLayer* pModel = mrDoc.GetDrawLayer();
     if (!pModel)
     {
-        mpDoc->InitDrawLayer();
-        pModel = mpDoc->GetDrawLayer();
+        mrDoc.InitDrawLayer();
+        pModel = mrDoc.GetDrawLayer();
     }
     SdrPage* pPage = pModel->GetPage( static_cast<sal_uInt16>(nTab) );
     OutputDevice* pDefaultDev = Application::GetDefaultDevice();
 
     Point aCellInsertPos(
-        o3tl::convert(mpDoc->GetColOffset(nCol, nTab), o3tl::Length::twip, o3tl::Length::mm100),
-        o3tl::convert(mpDoc->GetRowOffset(nRow, nTab), o3tl::Length::twip, o3tl::Length::mm100));
+        o3tl::convert(mrDoc.GetColOffset(nCol, nTab), o3tl::Length::twip, o3tl::Length::mm100),
+        o3tl::convert(mrDoc.GetRowOffset(nRow, nTab), o3tl::Length::twip, o3tl::Length::mm100));
 
     Point aInsertPos( aCellInsertPos );
     Point aSpace;
@@ -638,7 +642,6 @@ ScEEParser::ScEEParser( EditEngine* pEditP ) :
 {
     // pPool is foisted on SvxRTFParser at RtfImportState::Start later on
     pPool->SetSecondaryPool( pDocPool.get() );
-    pPool->FreezeIdRanges();
     NewActEntry( nullptr );
 }
 
@@ -656,8 +659,8 @@ ScEEParser::~ScEEParser()
 void ScEEParser::NewActEntry( const ScEEParseEntry* pE )
 {   // New free-flying mxActEntry
     mxActEntry = std::make_shared<ScEEParseEntry>(pPool.get());
-    mxActEntry->aSel.nStartPara = (pE ? pE->aSel.nEndPara + 1 : 0);
-    mxActEntry->aSel.nStartPos = 0;
+    mxActEntry->aSel.start.nPara = (pE ? pE->aSel.end.nPara + 1 : 0);
+    mxActEntry->aSel.start.nIndex = 0;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

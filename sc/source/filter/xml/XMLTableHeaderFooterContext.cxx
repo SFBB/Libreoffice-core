@@ -49,10 +49,6 @@ XMLTableHeaderFooterContext::XMLTableHeaderFooterContext( SvXMLImport& rImport, 
     bContainsCenter(false)
 {
     OUString sOn( bFooter ? SC_UNO_PAGE_FTRON : SC_UNO_PAGE_HDRON );
-    OUString sContent( bFooter ? SC_UNO_PAGE_RIGHTFTRCON : SC_UNO_PAGE_RIGHTHDRCON );
-    OUString sContentLeft( bFooter ? SC_UNO_PAGE_LEFTFTRCONT : SC_UNO_PAGE_LEFTHDRCONT );
-    OUString sContentFirst( bFooter ? SC_UNO_PAGE_FIRSTFTRCONT : SC_UNO_PAGE_FIRSTHDRCONT );
-    OUString sShareContent( bFooter ? SC_UNO_PAGE_FTRSHARED : SC_UNO_PAGE_HDRSHARED );
     OUString sShareFirstContent( bFooter ? SC_UNO_PAGE_FIRSTFTRSHARED : SC_UNO_PAGE_FIRSTHDRSHARED );
     bool bDisplay( true );
     for( auto &aIter : sax_fastparser::castToFastAttributeList( xAttrList ) )
@@ -65,6 +61,7 @@ XMLTableHeaderFooterContext::XMLTableHeaderFooterContext( SvXMLImport& rImport, 
     bool bOn(::cppu::any2bool(xPropSet->getPropertyValue( sOn )));
     if( bLeft || bFirst )
     {
+        OUString sShareContent( bFooter ? SC_UNO_PAGE_FTRSHARED : SC_UNO_PAGE_HDRSHARED );
         const OUString sShare = bLeft ? sShareContent : sShareFirstContent;
         if( bOn && bDisplay )
         {
@@ -86,16 +83,16 @@ XMLTableHeaderFooterContext::XMLTableHeaderFooterContext( SvXMLImport& rImport, 
     }
     if (bLeft)
     {
-        sCont = sContentLeft;
+        sCont = bFooter ? SC_UNO_PAGE_LEFTFTRCONT : SC_UNO_PAGE_LEFTHDRCONT;
     }
     else if (bFirst)
     {
-        sCont = sContentFirst;
+        sCont = bFooter ? SC_UNO_PAGE_FIRSTFTRCONT : SC_UNO_PAGE_FIRSTHDRCONT;
         xPropSet->setPropertyValue( sShareFirstContent, uno::Any(!bDisplay) );
     }
     else
     {
-        sCont = sContent;
+        sCont = bFooter ? SC_UNO_PAGE_RIGHTFTRCON : SC_UNO_PAGE_RIGHTHDRCON;
     }
     xPropSet->getPropertyValue( sCont ) >>= xHeaderFooterContent;
 }
@@ -129,7 +126,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLTableHeaderFooterCo
         }
         if (xText.is())
         {
-            xText->setString("");
+            xText->setString(u""_ustr);
             uno::Reference < text::XTextCursor > xTempTextCursor(xText->createTextCursor());
             return new XMLHeaderFooterRegionContext( GetImport(), xTempTextCursor);
         }
@@ -142,7 +139,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLTableHeaderFooterCo
             if( xHeaderFooterContent.is() )
             {
                 uno::Reference < text::XText > xText(xHeaderFooterContent->getCenterText());
-                xText->setString("");
+                xText->setString(u""_ustr);
                 xTextCursor.set(xText->createTextCursor());
                 xOldTextCursor.set(GetImport().GetTextImport()->GetCursor());
                 GetImport().GetTextImport()->SetCursor( xTextCursor );
@@ -167,7 +164,7 @@ void XMLTableHeaderFooterContext::endFastElement(sal_Int32 )
         if( GetImport().GetTextImport()->GetCursor()->goLeft( 1, true ) )
         {
             GetImport().GetTextImport()->GetText()->insertString(
-                GetImport().GetTextImport()->GetCursorAsRange(), "",
+                GetImport().GetTextImport()->GetCursorAsRange(), u""_ustr,
                 true );
         }
         GetImport().GetTextImport()->ResetCursor();
@@ -177,11 +174,11 @@ void XMLTableHeaderFooterContext::endFastElement(sal_Int32 )
     if (xHeaderFooterContent.is())
     {
         if (!bContainsLeft)
-            xHeaderFooterContent->getLeftText()->setString("");
+            xHeaderFooterContent->getLeftText()->setString(u""_ustr);
         if (!bContainsCenter)
-            xHeaderFooterContent->getCenterText()->setString("");
+            xHeaderFooterContent->getCenterText()->setString(u""_ustr);
         if (!bContainsRight)
-            xHeaderFooterContent->getRightText()->setString("");
+            xHeaderFooterContent->getRightText()->setString(u""_ustr);
 
         xPropSet->setPropertyValue( sCont, uno::Any(xHeaderFooterContent) );
     }
@@ -225,7 +222,7 @@ void XMLHeaderFooterRegionContext::endFastElement(sal_Int32 )
         if( GetImport().GetTextImport()->GetCursor()->goLeft( 1, true ) )
         {
             GetImport().GetTextImport()->GetText()->insertString(
-                GetImport().GetTextImport()->GetCursorAsRange(), "",
+                GetImport().GetTextImport()->GetCursorAsRange(), u""_ustr,
                 true );
         }
         GetImport().GetTextImport()->ResetCursor();

@@ -16,20 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_VCL_WIZARDMACHINE_HXX
-#define INCLUDED_VCL_WIZARDMACHINE_HXX
+#pragma once
 
 #include <memory>
 #include <vcl/dllapi.h>
 #include <vcl/builderpage.hxx>
 
-namespace weld {
-    class Builder;
-    class Container;
-}
-
 struct WizPageData;
-struct ImplWizButtonData;
 
 // wizard states
 #define WZS_INVALID_STATE (::vcl::WizardTypes::WizardState(-1))
@@ -146,8 +139,8 @@ namespace vcl
         bool ShowPrevPage();
 
         void                AddPage( std::unique_ptr<BuilderPage> xPage );
-        void                RemovePage( const BuilderPage* pPage );
-        void                SetPage( WizardTypes::WizardState nLevel, std::unique_ptr<BuilderPage> xPage );
+        SAL_DLLPRIVATE void RemovePage( const BuilderPage* pPage );
+        SAL_DLLPRIVATE void SetPage( WizardTypes::WizardState nLevel, std::unique_ptr<BuilderPage> xPage );
         BuilderPage*        GetPage( WizardTypes::WizardState eState ) const;
 
         /// enable (or disable) buttons
@@ -234,11 +227,11 @@ namespace vcl
             enabled if and only if determineNextState does not return WZS_INVALID_STATE.
         */
         void                enableAutomaticNextButtonState();
-        bool                isAutomaticNextButtonStateEnabled() const;
+        SAL_DLLPRIVATE bool isAutomaticNextButtonStateEnabled() const;
 
         /** removes a page from the history. Should be called when the page is being disabled
         */
-        void                removePageFromHistory(WizardTypes::WizardState nToRemove);
+        SAL_DLLPRIVATE void removePageFromHistory(WizardTypes::WizardState nToRemove);
 
         /** skip a state
 
@@ -300,7 +293,7 @@ namespace vcl
 
         /** retrieves a copy of the state history, i.e. all states we already visited
         */
-        void                    getStateHistory(std::vector<WizardTypes::WizardState>& out_rHistory);
+        SAL_DLLPRIVATE void getStateHistory(std::vector<WizardTypes::WizardState>& out_rHistory);
 
         virtual OUString         getPageIdentForState(WizardTypes::WizardState nState) const;
         virtual WizardTypes::WizardState getStateFromPageIdent(const OUString& rIdent) const;
@@ -313,9 +306,9 @@ namespace vcl
             AccessGuard() { }
         };
 
-        void                   suspendTraveling( AccessGuard );
-        void                   resumeTraveling( AccessGuard );
-        bool                   isTravelingSuspended() const;
+        SAL_DLLPRIVATE void    suspendTraveling( AccessGuard );
+        SAL_DLLPRIVATE void    resumeTraveling( AccessGuard );
+        SAL_DLLPRIVATE bool    isTravelingSuspended() const;
 
     protected:
         BuilderPage* GetOrCreatePage(const WizardTypes::WizardState i_nState);
@@ -326,8 +319,8 @@ namespace vcl
         DECL_DLLPRIVATE_LINK(OnFinish, weld::Button&, void);
         DECL_DLLPRIVATE_LINK(OnCancel, weld::Button&, void);
 
-        VCL_DLLPRIVATE void     implUpdateTitle();
-        VCL_DLLPRIVATE void     implConstruct( const WizardButtonFlags _nButtonFlags );
+        SAL_DLLPRIVATE void     implUpdateTitle();
+        SAL_DLLPRIVATE void     implConstruct( const WizardButtonFlags _nButtonFlags );
     };
 
 
@@ -350,10 +343,5 @@ namespace vcl
         WizardMachine* m_pWizard;
     };
 }   // namespace vcl
-
-#define WIZARDDIALOG_BUTTON_STDOFFSET_X         6
-#define WIZARDDIALOG_BUTTON_SMALLSTDOFFSET_X    3
-
-#endif // INCLUDED_VCL_WIZARDMACHINE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,18 +21,21 @@
 #include <sal/config.h>
 
 #include <framework/factories/BasicPaneFactory.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
 
 #include "ChildWindowPane.hxx"
 #include "FrameWindowPane.hxx"
 #include "FullScreenPane.hxx"
 
+#include <comphelper/processfactory.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <framework/FrameworkHelper.hxx>
+#include <framework/ConfigurationController.hxx>
 #include <PaneShells.hxx>
 #include <ViewShellBase.hxx>
 #include <PaneChildWindows.hxx>
 #include <DrawController.hxx>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
+#include <ResourceId.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -46,23 +49,21 @@ namespace {
         CenterPaneId,
         FullScreenPaneId,
         LeftImpressPaneId,
+        BottomImpressPaneId,
         LeftDrawPaneId
     };
-
-    const sal_Int32 gnConfigurationUpdateStartEvent(0);
-    const sal_Int32 gnConfigurationUpdateEndEvent(1);
 }
 
 namespace sd::framework {
 
-/** Store URL, XPane reference and (local) PaneId for every pane factory
+/** Store URL, AbstractPane reference and (local) PaneId for every pane factory
     that is registered at the PaneController.
 */
 class BasicPaneFactory::PaneDescriptor
 {
 public:
     OUString msPaneURL;
-    Reference<XResource> mxPane;
+    rtl::Reference<AbstractResource> mxPane;
     PaneId mePaneId;
     /** The mbReleased flag is set when the pane has been released.  Some
         panes are just hidden and destroyed.  When the pane is reused this
@@ -71,32 +72,22 @@ public:
     bool mbIsReleased;
 
     bool CompareURL(std::u16string_view rsPaneURL) const { return msPaneURL == rsPaneURL; }
-    bool ComparePane(const Reference<XResource>& rxPane) const { return mxPane == rxPane; }
-};
-
-class BasicPaneFactory::PaneContainer
-    : public ::std::vector<PaneDescriptor>
-{
-public:
-    PaneContainer() {}
+    bool ComparePane(const rtl::Reference<AbstractResource>& rxPane) const { return mxPane == rxPane; }
 };
 
 //===== PaneFactory ===========================================================
 
-BasicPaneFactory::BasicPaneFactory (
-    const Reference<XComponentContext>& rxContext,
+BasicPaneFactory::BasicPaneFactory(
     const rtl::Reference<::sd::DrawController>& rxController)
-    : mxComponentContext(rxContext),
-      mpViewShellBase(nullptr),
-      mpPaneContainer(new PaneContainer)
+    : mxListener(new Listener(*this)), mpViewShellBase(nullptr)
 {
     try
     {
         // Tunnel through the controller to obtain access to the ViewShellBase.
         mpViewShellBase = rxController->GetViewShellBase();
 
-        Reference<XConfigurationController> xCC (rxController->getConfigurationController());
-        mxConfigurationControllerWeak = xCC;
+        rtl::Reference<sd::framework::ConfigurationController> xCC (rxController->getConfigurationController());
+        mxConfigurationControllerWeak = xCC.get();
 
         // Add pane factories for the two left panes (one for Impress and one for
         // Draw) and the center pane.
@@ -106,22 +97,27 @@ BasicPaneFactory::BasicPaneFactory (
             aDescriptor.msPaneURL = FrameworkHelper::msCenterPaneURL;
             aDescriptor.mePaneId = CenterPaneId;
             aDescriptor.mbIsReleased = false;
-            mpPaneContainer->push_back(aDescriptor);
+            maPaneContainer.push_back(aDescriptor);
             xCC->addResourceFactory(aDescriptor.msPaneURL, this);
 
             aDescriptor.msPaneURL = FrameworkHelper::msFullScreenPaneURL;
             aDescriptor.mePaneId = FullScreenPaneId;
-            mpPaneContainer->push_back(aDescriptor);
+            maPaneContainer.push_back(aDescriptor);
             xCC->addResourceFactory(aDescriptor.msPaneURL, this);
 
             aDescriptor.msPaneURL = FrameworkHelper::msLeftImpressPaneURL;
             aDescriptor.mePaneId = LeftImpressPaneId;
-            mpPaneContainer->push_back(aDescriptor);
+            maPaneContainer.push_back(aDescriptor);
+            xCC->addResourceFactory(aDescriptor.msPaneURL, this);
+
+            aDescriptor.msPaneURL = FrameworkHelper::msBottomImpressPaneURL;
+            aDescriptor.mePaneId = BottomImpressPaneId;
+            maPaneContainer.push_back(aDescriptor);
             xCC->addResourceFactory(aDescriptor.msPaneURL, this);
 
             aDescriptor.msPaneURL = FrameworkHelper::msLeftDrawPaneURL;
             aDescriptor.mePaneId = LeftDrawPaneId;
-            mpPaneContainer->push_back(aDescriptor);
+            maPaneContainer.push_back(aDescriptor);
             xCC->addResourceFactory(aDescriptor.msPaneURL, this);
         }
 
@@ -129,18 +125,16 @@ BasicPaneFactory::BasicPaneFactory (
         if (xCC.is())
         {
             xCC->addConfigurationChangeListener(
-                this,
-                FrameworkHelper::msConfigurationUpdateStartEvent,
-                Any(gnConfigurationUpdateStartEvent));
+                mxListener,
+                ConfigurationChangeEventType::ConfigurationUpdateStart);
             xCC->addConfigurationChangeListener(
-                this,
-                FrameworkHelper::msConfigurationUpdateEndEvent,
-                Any(gnConfigurationUpdateEndEvent));
+                mxListener,
+                ConfigurationChangeEventType::ConfigurationUpdateEnd);
         }
     }
     catch (RuntimeException&)
     {
-        Reference<XConfigurationController> xCC (mxConfigurationControllerWeak);
+        rtl::Reference<ConfigurationController> xCC (mxConfigurationControllerWeak);
         if (xCC.is())
             xCC->removeResourceFactoryForReference(this);
     }
@@ -152,52 +146,51 @@ BasicPaneFactory::~BasicPaneFactory()
 
 void BasicPaneFactory::disposing(std::unique_lock<std::mutex>&)
 {
-    Reference<XConfigurationController> xCC (mxConfigurationControllerWeak);
+    rtl::Reference<ConfigurationController> xCC (mxConfigurationControllerWeak);
     if (xCC.is())
     {
         xCC->removeResourceFactoryForReference(this);
-        xCC->removeConfigurationChangeListener(this);
+        xCC->removeConfigurationChangeListener(mxListener);
         mxConfigurationControllerWeak.clear();
     }
 
-    for (const auto& rDescriptor : *mpPaneContainer)
+    for (const auto& rDescriptor : maPaneContainer)
     {
         if (rDescriptor.mbIsReleased)
         {
-            Reference<XComponent> xComponent (rDescriptor.mxPane, UNO_QUERY);
-            if (xComponent.is())
+            if (rDescriptor.mxPane.is())
             {
-                xComponent->removeEventListener(this);
-                xComponent->dispose();
+                rDescriptor.mxPane->removeEventListener(mxListener);
+                rDescriptor.mxPane->dispose();
             }
         }
     }
 }
 
-//===== XPaneFactory ==========================================================
+//===== AbstractPaneFactory ==========================================================
 
-Reference<XResource> SAL_CALL BasicPaneFactory::createResource (
-    const Reference<XResourceId>& rxPaneId)
+rtl::Reference<AbstractResource> BasicPaneFactory::createResource (
+    const rtl::Reference<ResourceId>& rxPaneId)
 {
     ThrowIfDisposed();
 
-    Reference<XResource> xPane;
+    rtl::Reference<AbstractResource> xPane;
 
     // Based on the ResourceURL of the given ResourceId look up the
     // corresponding factory descriptor.
     PaneContainer::iterator iDescriptor (
         ::std::find_if (
-            mpPaneContainer->begin(),
-            mpPaneContainer->end(),
+            maPaneContainer.begin(),
+            maPaneContainer.end(),
             [&] (PaneDescriptor const& rPane) {
                 return rPane.CompareURL(rxPaneId->getResourceURL());
             } ));
 
-    if (iDescriptor == mpPaneContainer->end())
+    if (iDescriptor == maPaneContainer.end())
     {
         // The requested pane can not be created by any of the factories
         // managed by the called BasicPaneFactory object.
-        throw lang::IllegalArgumentException("BasicPaneFactory::createPane() called for unknown resource id",
+        throw lang::IllegalArgumentException(u"BasicPaneFactory::createPane() called for unknown resource id"_ustr,
             nullptr,
             0);
     }
@@ -218,10 +211,11 @@ Reference<XResource> SAL_CALL BasicPaneFactory::createResource (
                 break;
 
             case FullScreenPaneId:
-                xPane = CreateFullScreenPane(mxComponentContext, rxPaneId);
+                xPane = CreateFullScreenPane(rxPaneId);
                 break;
 
             case LeftImpressPaneId:
+            case BottomImpressPaneId:
             case LeftDrawPaneId:
                 xPane = CreateChildWindowPane(
                     rxPaneId,
@@ -231,9 +225,8 @@ Reference<XResource> SAL_CALL BasicPaneFactory::createResource (
         iDescriptor->mxPane = xPane;
 
         // Listen for the pane being disposed.
-        Reference<lang::XComponent> xComponent (xPane, UNO_QUERY);
-        if (xComponent.is())
-            xComponent->addEventListener(this);
+        if (xPane.is())
+            xPane->addEventListener(mxListener);
     }
     iDescriptor->mbIsReleased = false;
 
@@ -241,25 +234,25 @@ Reference<XResource> SAL_CALL BasicPaneFactory::createResource (
     return xPane;
 }
 
-void SAL_CALL BasicPaneFactory::releaseResource (
-    const Reference<XResource>& rxPane)
+void BasicPaneFactory::releaseResource (
+    const rtl::Reference<AbstractResource>& rxPane)
 {
     ThrowIfDisposed();
 
-    // Based on the given XPane reference look up the corresponding factory
+    // Based on the given AbstractPane reference look up the corresponding factory
     // descriptor.
     PaneContainer::iterator iDescriptor (
         ::std::find_if(
-            mpPaneContainer->begin(),
-            mpPaneContainer->end(),
+            maPaneContainer.begin(),
+            maPaneContainer.end(),
             [&] (PaneDescriptor const& rPane) { return rPane.ComparePane(rxPane); } ));
 
-    if (iDescriptor == mpPaneContainer->end())
+    if (iDescriptor == maPaneContainer.end())
     {
-        // The given XPane reference is either empty or the pane was not
+        // The given AbstractPane reference is either empty or the pane was not
         // created by any of the factories managed by the called
         // BasicPaneFactory object.
-        throw lang::IllegalArgumentException("BasicPaneFactory::releasePane() called for pane that was not created by same factory.",
+        throw lang::IllegalArgumentException(u"BasicPaneFactory::releasePane() called for pane that was not created by same factory."_ustr,
             nullptr,
             0);
     }
@@ -278,21 +271,20 @@ void SAL_CALL BasicPaneFactory::releaseResource (
     else
     {
         iDescriptor->mxPane = nullptr;
-        Reference<XComponent> xComponent (rxPane, UNO_QUERY);
-        if (xComponent.is())
+        if (rxPane.is())
         {
             // We are disposing the pane and do not have to be informed of
             // that.
-            xComponent->removeEventListener(this);
-            xComponent->dispose();
+            rxPane->removeEventListener(mxListener);
+            rxPane->dispose();
         }
     }
 
 }
 
-//===== XConfigurationChangeListener ==========================================
+//===== ConfigurationChangeListener ==========================================
 
-void SAL_CALL BasicPaneFactory::notifyConfigurationChange (
+void BasicPaneFactory::Listener::notifyConfigurationChange (
     const ConfigurationChangeEvent& /* rEvent */ )
 {
     // FIXME: nothing to do
@@ -300,103 +292,102 @@ void SAL_CALL BasicPaneFactory::notifyConfigurationChange (
 
 //===== lang::XEventListener ==================================================
 
-void SAL_CALL BasicPaneFactory::disposing (
+void SAL_CALL BasicPaneFactory::Listener::disposing (
     const lang::EventObject& rEventObject)
 {
-    if (mxConfigurationControllerWeak.get() == rEventObject.Source)
+    if (uno::Reference<XInterface>(cppu::getXWeak(mrParent.mxConfigurationControllerWeak.get().get())) == rEventObject.Source)
     {
-        mxConfigurationControllerWeak.clear();
+        mrParent.mxConfigurationControllerWeak.clear();
     }
     else
     {
         // Has one of the panes been disposed?  If so, then release the
         // reference to that pane, but not the pane descriptor.
-        Reference<XResource> xPane (rEventObject.Source, UNO_QUERY);
+        rtl::Reference<AbstractResource> xPane = dynamic_cast<AbstractResource*>(rEventObject.Source.get());
         PaneContainer::iterator iDescriptor (
-            ::std::find_if (
-                mpPaneContainer->begin(),
-                mpPaneContainer->end(),
+            ::std::find_if(
+                mrParent.maPaneContainer.begin(),
+                mrParent.maPaneContainer.end(),
                 [&] (PaneDescriptor const& rPane) { return rPane.ComparePane(xPane); } ));
-        if (iDescriptor != mpPaneContainer->end())
+        if (iDescriptor != mrParent.maPaneContainer.end())
         {
             iDescriptor->mxPane = nullptr;
         }
     }
 }
 
-Reference<XResource> BasicPaneFactory::CreateFrameWindowPane (
-    const Reference<XResourceId>& rxPaneId)
+rtl::Reference<AbstractResource> BasicPaneFactory::CreateFrameWindowPane (
+    const rtl::Reference<ResourceId>& rxPaneId)
 {
-    Reference<XResource> xPane;
+    if (!mpViewShellBase)
+        return nullptr;
 
-    if (mpViewShellBase != nullptr)
-    {
-        xPane = new FrameWindowPane(rxPaneId, mpViewShellBase->GetViewWindow());
-    }
-
-    return xPane;
+    return new FrameWindowPane(rxPaneId, mpViewShellBase->GetViewWindow());
 }
 
-Reference<XResource> BasicPaneFactory::CreateFullScreenPane (
-    const Reference<XComponentContext>& rxComponentContext,
-    const Reference<XResourceId>& rxPaneId)
+rtl::Reference<AbstractResource> BasicPaneFactory::CreateFullScreenPane(
+    const rtl::Reference<ResourceId>& rxPaneId)
 {
-    Reference<XResource> xPane (
+    const Reference<uno::XComponentContext>& xContext = comphelper::getProcessComponentContext();
+
+    rtl::Reference<AbstractResource> xPane (
         new FullScreenPane(
-            rxComponentContext,
+            xContext,
             rxPaneId,
-            mpViewShellBase->GetViewWindow()));
+            mpViewShellBase->GetViewWindow(),
+            mpViewShellBase->GetDocShell()));
 
     return xPane;
 }
 
-Reference<XResource> BasicPaneFactory::CreateChildWindowPane (
-    const Reference<XResourceId>& rxPaneId,
+rtl::Reference<AbstractResource> BasicPaneFactory::CreateChildWindowPane (
+    const rtl::Reference<ResourceId>& rxPaneId,
     const PaneDescriptor& rDescriptor)
 {
-    Reference<XResource> xPane;
+    if (!mpViewShellBase)
+        return nullptr;
 
-    if (mpViewShellBase != nullptr)
+    // Create the corresponding shell and determine the id of the child window.
+    sal_uInt16 nChildWindowId = 0;
+    ::std::unique_ptr<SfxShell> pShell;
+    switch (rDescriptor.mePaneId)
     {
-        // Create the corresponding shell and determine the id of the child window.
-        sal_uInt16 nChildWindowId = 0;
-        ::std::unique_ptr<SfxShell> pShell;
-        switch (rDescriptor.mePaneId)
-        {
-            case LeftImpressPaneId:
-                pShell.reset(new LeftImpressPaneShell());
-                nChildWindowId = ::sd::LeftPaneImpressChildWindow::GetChildWindowId();
-                break;
+        case LeftImpressPaneId:
+            pShell.reset(new LeftImpressPaneShell());
+            nChildWindowId = ::sd::LeftPaneImpressChildWindow::GetChildWindowId();
+            break;
 
-            case LeftDrawPaneId:
-                pShell.reset(new LeftDrawPaneShell());
-                nChildWindowId = ::sd::LeftPaneDrawChildWindow::GetChildWindowId();
-                break;
+        case BottomImpressPaneId:
+            pShell.reset(new BottomImpressPaneShell());
+            nChildWindowId = ::sd::BottomPaneImpressChildWindow::GetChildWindowId();
+            break;
 
-            default:
-                break;
-        }
+        case LeftDrawPaneId:
+            pShell.reset(new LeftDrawPaneShell());
+            nChildWindowId = ::sd::LeftPaneDrawChildWindow::GetChildWindowId();
+            break;
 
-        // With shell and child window id create the ChildWindowPane
-        // wrapper.
-        if (pShell != nullptr)
-        {
-            xPane = new ChildWindowPane(
-                rxPaneId,
-                nChildWindowId,
-                *mpViewShellBase,
-                std::move(pShell));
-        }
+        default:
+            break;
     }
 
-    return xPane;
+    // With shell and child window id create the ChildWindowPane
+    // wrapper.
+    if (!pShell)
+        return nullptr;
+
+    return new ChildWindowPane(
+            rxPaneId,
+            nChildWindowId,
+            *mpViewShellBase,
+            std::move(pShell));
 }
 
 void BasicPaneFactory::ThrowIfDisposed() const
 {
     if (m_bDisposed)
     {
-        throw lang::DisposedException ("BasicPaneFactory object has already been disposed",
+        throw lang::DisposedException (u"BasicPaneFactory object has already been disposed"_ustr,
             const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
     }
 }

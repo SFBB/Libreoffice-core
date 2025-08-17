@@ -55,8 +55,6 @@ static void ImplPALToPAL( const BitmapBuffer& rSrcBuffer, BitmapBuffer& rDstBuff
                           Scanline* pSrcScanMap, Scanline* pDstScanMap, sal_Int32 const * pMapX, const sal_Int32* pMapY )
 {
     const tools::Long          nHeight1 = rDstBuffer.mnHeight - 1;
-    const ColorMask&    rSrcMask = rSrcBuffer.maColorMask;
-    const ColorMask&    rDstMask = rDstBuffer.maColorMask;
     BitmapPalette       aColMap( rSrcBuffer.maPalette.GetEntryCount() );
     BitmapColor*        pColMapBuf = aColMap.ImplGetColorBuffer();
     BitmapColor         aIndex( 0 );
@@ -77,7 +75,7 @@ static void ImplPALToPAL( const BitmapBuffer& rSrcBuffer, BitmapBuffer& rDstBuff
         Scanline pSrcScan(pSrcScanMap[nMapY]), pDstScan(pDstScanMap[nActY]);
 
         for (tools::Long nX = 0; nX < rDstBuffer.mnWidth; ++nX)
-            pFncSetPixel( pDstScan, nX, pColMapBuf[ pFncGetPixel( pSrcScan, pMapX[ nX ], rSrcMask ).GetIndex() ], rDstMask );
+            pFncSetPixel( pDstScan, nX, pColMapBuf[ pFncGetPixel( pSrcScan, pMapX[ nX ] ).GetIndex() ] );
 
         DOUBLE_SCANLINES();
     }
@@ -88,11 +86,9 @@ static void ImplPALToTC( const BitmapBuffer& rSrcBuffer, BitmapBuffer const & rD
                          Scanline* pSrcScanMap, Scanline* pDstScanMap, sal_Int32 const * pMapX, const sal_Int32* pMapY )
 {
     const tools::Long          nHeight1 = rDstBuffer.mnHeight - 1;
-    const ColorMask&    rSrcMask = rSrcBuffer.maColorMask;
-    const ColorMask&    rDstMask = rDstBuffer.maColorMask;
     const BitmapColor*  pColBuf = rSrcBuffer.maPalette.ImplGetColorBuffer();
 
-    if( RemoveScanline( rSrcBuffer.mnFormat ) == ScanlineFormat::N1BitMsbPal )
+    if (rSrcBuffer.meFormat == ScanlineFormat::N1BitMsbPal)
     {
         const BitmapColor   aCol0( pColBuf[ 0 ] );
         const BitmapColor   aCol1( pColBuf[ 1 ] );
@@ -107,14 +103,13 @@ static void ImplPALToTC( const BitmapBuffer& rSrcBuffer, BitmapBuffer const & rD
             {
                 nMapX = pMapX[ nX ];
                 pFncSetPixel( pDstScan, nX++,
-                              pSrcScan[ nMapX >> 3 ] & ( 1 << ( 7 - ( nMapX & 7 ) ) ) ? aCol1 : aCol0,
-                              rDstMask );
+                              pSrcScan[ nMapX >> 3 ] & ( 1 << ( 7 - ( nMapX & 7 ) ) ) ? aCol1 : aCol0 );
             }
 
             DOUBLE_SCANLINES();
         }
     }
-    else if( RemoveScanline( rSrcBuffer.mnFormat ) == ScanlineFormat::N8BitPal )
+    else if (rSrcBuffer.meFormat == ScanlineFormat::N8BitPal)
     {
         for (tools::Long nActY = 0; nActY < rDstBuffer.mnHeight; ++nActY)
         {
@@ -122,7 +117,7 @@ static void ImplPALToTC( const BitmapBuffer& rSrcBuffer, BitmapBuffer const & rD
             Scanline pSrcScan(pSrcScanMap[nMapY]), pDstScan(pDstScanMap[nActY]);
 
             for (tools::Long nX = 0; nX < rDstBuffer.mnWidth; ++nX)
-                pFncSetPixel( pDstScan, nX, pColBuf[ pSrcScan[ pMapX[ nX ] ] ], rDstMask );
+                pFncSetPixel( pDstScan, nX, pColBuf[ pSrcScan[ pMapX[ nX ] ] ] );
 
             DOUBLE_SCANLINES();
         }
@@ -135,7 +130,7 @@ static void ImplPALToTC( const BitmapBuffer& rSrcBuffer, BitmapBuffer const & rD
             Scanline pSrcScan(pSrcScanMap[nMapY]), pDstScan(pDstScanMap[nActY]);
 
             for (tools::Long nX = 0; nX < rDstBuffer.mnWidth; ++nX)
-                pFncSetPixel( pDstScan, nX, pColBuf[ pFncGetPixel( pSrcScan, pMapX[ nX ], rSrcMask ).GetIndex() ], rDstMask );
+                pFncSetPixel( pDstScan, nX, pColBuf[ pFncGetPixel( pSrcScan, pMapX[ nX ] ).GetIndex() ] );
 
             DOUBLE_SCANLINES();
         }
@@ -147,10 +142,8 @@ static void ImplTCToTC( const BitmapBuffer& rSrcBuffer, BitmapBuffer const & rDs
                         Scanline* pSrcScanMap, Scanline* pDstScanMap, sal_Int32 const * pMapX, const sal_Int32* pMapY )
 {
     const tools::Long          nHeight1 = rDstBuffer.mnHeight - 1;
-    const ColorMask&    rSrcMask = rSrcBuffer.maColorMask;
-    const ColorMask&    rDstMask = rDstBuffer.maColorMask;
 
-    if( RemoveScanline( rSrcBuffer.mnFormat ) == ScanlineFormat::N24BitTcBgr )
+    if (rSrcBuffer.meFormat == ScanlineFormat::N24BitTcBgr)
     {
         BitmapColor aCol;
         sal_uInt8* pPixel = nullptr;
@@ -166,7 +159,7 @@ static void ImplTCToTC( const BitmapBuffer& rSrcBuffer, BitmapBuffer const & rDs
                 aCol.SetBlue( *pPixel++ );
                 aCol.SetGreen( *pPixel++ );
                 aCol.SetRed( *pPixel );
-                pFncSetPixel( pDstScan, nX, aCol, rDstMask );
+                pFncSetPixel( pDstScan, nX, aCol );
             }
 
             DOUBLE_SCANLINES()
@@ -180,20 +173,18 @@ static void ImplTCToTC( const BitmapBuffer& rSrcBuffer, BitmapBuffer const & rDs
             Scanline pSrcScan(pSrcScanMap[nMapY]), pDstScan(pDstScanMap[nActY]);
 
             for (tools::Long nX = 0; nX < rDstBuffer.mnWidth; ++nX)
-                pFncSetPixel( pDstScan, nX, pFncGetPixel( pSrcScan, pMapX[ nX ], rSrcMask ), rDstMask );
+                pFncSetPixel( pDstScan, nX, pFncGetPixel( pSrcScan, pMapX[ nX ] ) );
 
             DOUBLE_SCANLINES();
         }
     }
 }
 
-static void ImplTCToPAL( const BitmapBuffer& rSrcBuffer, BitmapBuffer const & rDstBuffer,
+static void ImplTCToPAL( BitmapBuffer const & rDstBuffer,
                          FncGetPixel pFncGetPixel, FncSetPixel pFncSetPixel,
                          Scanline* pSrcScanMap, Scanline* pDstScanMap, sal_Int32 const * pMapX, const sal_Int32* pMapY )
 {
     const tools::Long          nHeight1 = rDstBuffer.mnHeight- 1;
-    const ColorMask&    rSrcMask = rSrcBuffer.maColorMask;
-    const ColorMask&    rDstMask = rDstBuffer.maColorMask;
     std::unique_ptr<sal_uInt8[]> pColToPalMap(new sal_uInt8[ TC_TO_PAL_COLORS ]);
     BitmapColor         aIndex( 0 );
 
@@ -218,8 +209,8 @@ static void ImplTCToPAL( const BitmapBuffer& rSrcBuffer, BitmapBuffer const & rD
 
         for (tools::Long nX = 0; nX < rDstBuffer.mnWidth; ++nX)
         {
-            aIndex.SetIndex( pColToPalMap[ ImplIndexFromColor( pFncGetPixel( pSrcScan, pMapX[ nX ], rSrcMask ) ) ] );
-            pFncSetPixel( pDstScan, nX, aIndex, rDstMask );
+            aIndex.SetIndex( pColToPalMap[ ImplIndexFromColor( pFncGetPixel( pSrcScan, pMapX[ nX ] ) ) ] );
+            pFncSetPixel( pDstScan, nX, aIndex );
         }
 
         DOUBLE_SCANLINES();
@@ -228,14 +219,16 @@ static void ImplTCToPAL( const BitmapBuffer& rSrcBuffer, BitmapBuffer const & rD
 
 std::optional<BitmapBuffer> StretchAndConvert(
     const BitmapBuffer& rSrcBuffer, const SalTwoRect& rTwoRect,
-    ScanlineFormat nDstBitmapFormat, std::optional<BitmapPalette> pDstPal, const ColorMask* pDstMask )
+    ScanlineFormat nDstBitmapFormat, std::optional<BitmapPalette> pDstPal )
 {
     FncGetPixel     pFncGetPixel;
     FncSetPixel     pFncSetPixel;
     std::optional<BitmapBuffer> pDstBuffer(std::in_place);
 
+
+    pDstBuffer->meDirection = rSrcBuffer.meDirection;
     // set function for getting pixels
-    pFncGetPixel = BitmapReadAccess::GetPixelFunction( rSrcBuffer.mnFormat );
+    pFncGetPixel = BitmapReadAccess::GetPixelFunction(rSrcBuffer.meFormat);
     if( !pFncGetPixel )
     {
         // should never come here
@@ -246,18 +239,20 @@ std::optional<BitmapBuffer> StretchAndConvert(
     }
 
     // set function for setting pixels
-    const ScanlineFormat nDstScanlineFormat = RemoveScanline( nDstBitmapFormat );
-    switch( nDstScanlineFormat )
+    switch (nDstBitmapFormat)
     {
         IMPL_CASE_SET_FORMAT( N1BitMsbPal, 1 );
         IMPL_CASE_SET_FORMAT( N8BitPal, 8 );
         IMPL_CASE_SET_FORMAT( N24BitTcBgr, 24 );
         IMPL_CASE_SET_FORMAT( N24BitTcRgb, 24 );
         IMPL_CASE_SET_FORMAT( N32BitTcAbgr, 32 );
+        IMPL_CASE_SET_FORMAT( N32BitTcXbgr, 32 );
         IMPL_CASE_SET_FORMAT( N32BitTcArgb, 32 );
+        IMPL_CASE_SET_FORMAT( N32BitTcXrgb, 32 );
         IMPL_CASE_SET_FORMAT( N32BitTcBgra, 32 );
+        IMPL_CASE_SET_FORMAT( N32BitTcBgrx, 32 );
         IMPL_CASE_SET_FORMAT( N32BitTcRgba, 32 );
-        IMPL_CASE_SET_FORMAT( N32BitTcMask, 32 );
+        IMPL_CASE_SET_FORMAT( N32BitTcRgbx, 32 );
 
         default:
             // should never come here
@@ -265,12 +260,12 @@ std::optional<BitmapBuffer> StretchAndConvert(
             // least likely to crash
             pFncSetPixel = BitmapReadAccess::SetPixelForN1BitMsbPal;
             pDstBuffer->mnBitCount = 1;
-            OSL_FAIL( "unknown write format" );
+            assert(false && "unknown write format" );
         break;
     }
 
     // fill destination buffer
-    pDstBuffer->mnFormat = nDstBitmapFormat;
+    pDstBuffer->meFormat = nDstBitmapFormat;
     pDstBuffer->mnWidth = rTwoRect.mnDestWidth;
     pDstBuffer->mnHeight = rTwoRect.mnDestHeight;
     tools::Long nScanlineBase;
@@ -300,8 +295,8 @@ std::optional<BitmapBuffer> StretchAndConvert(
     }
 
     // do we need a destination palette or color mask?
-    if( ( nDstScanlineFormat == ScanlineFormat::N1BitMsbPal ) ||
-        ( nDstScanlineFormat == ScanlineFormat::N8BitPal ) )
+    if (nDstBitmapFormat == ScanlineFormat::N1BitMsbPal ||
+        nDstBitmapFormat == ScanlineFormat::N8BitPal)
     {
         assert(pDstPal && "destination buffer requires palette");
         if (!pDstPal)
@@ -309,15 +304,6 @@ std::optional<BitmapBuffer> StretchAndConvert(
             return std::nullopt;
         }
         pDstBuffer->maPalette = *pDstPal;
-    }
-    else if(nDstScanlineFormat == ScanlineFormat::N32BitTcMask )
-    {
-        assert(pDstMask && "destination buffer requires color mask");
-        if (!pDstMask)
-        {
-            return std::nullopt;
-        }
-        pDstBuffer->maColorMask = *pDstMask;
     }
 
     // short circuit the most important conversions
@@ -376,7 +362,7 @@ std::optional<BitmapBuffer> StretchAndConvert(
     // source scanline buffer
     Scanline pTmpScan;
     tools::Long nOffset;
-    if( rSrcBuffer.mnFormat & ScanlineFormat::TopDown )
+    if (rSrcBuffer.meDirection == ScanlineDirection::TopDown)
     {
         pTmpScan = rSrcBuffer.mpBits;
         nOffset = rSrcBuffer.mnScanlineSize;
@@ -391,7 +377,7 @@ std::optional<BitmapBuffer> StretchAndConvert(
         pSrcScan[ i ] = pTmpScan;
 
     // destination scanline buffer
-    if( pDstBuffer->mnFormat & ScanlineFormat::TopDown )
+    if (pDstBuffer->meDirection == ScanlineDirection::TopDown)
     {
         pTmpScan = pDstBuffer->mpBits;
         nOffset = pDstBuffer->mnScanlineSize;
@@ -423,7 +409,7 @@ std::optional<BitmapBuffer> StretchAndConvert(
     }
     else
     {
-        ImplTCToPAL( rSrcBuffer, *pDstBuffer, pFncGetPixel, pFncSetPixel,
+        ImplTCToPAL( *pDstBuffer, pFncGetPixel, pFncSetPixel,
                      pSrcScan.get(), pDstScan.get(), pMapX.get(), pMapY.get() );
     }
 

@@ -31,7 +31,6 @@
 #include <cppuhelper/weak.hxx>
 #include <com/sun/star/lang/Locale.hpp>
 
-using namespace utl;
 using namespace osl;
 using namespace com::sun::star;
 using namespace com::sun::star::beans;
@@ -90,29 +89,28 @@ struct WID_Name
 
 //! order of entries is import (see LinguOptions::GetName)
 //! since the WID is used as index in this table!
-WID_Name const aWID_Name[] =
+constexpr WID_Name aWID_Name[] =
 {
-    { 0,                                  "" },
+    { 0,                                  u""_ustr },
     { UPH_IS_USE_DICTIONARY_LIST,         UPN_IS_USE_DICTIONARY_LIST },
     { UPH_IS_IGNORE_CONTROL_CHARACTERS,   UPN_IS_IGNORE_CONTROL_CHARACTERS },
     { UPH_IS_SPELL_UPPER_CASE,            UPN_IS_SPELL_UPPER_CASE },
     { UPH_IS_SPELL_WITH_DIGITS,           UPN_IS_SPELL_WITH_DIGITS },
-    { UPH_IS_SPELL_CAPITALIZATION,        UPN_IS_SPELL_CAPITALIZATION },
     { UPH_HYPH_MIN_LEADING,               UPN_HYPH_MIN_LEADING },
     { UPH_HYPH_MIN_TRAILING,              UPN_HYPH_MIN_TRAILING },
     { UPH_HYPH_MIN_WORD_LENGTH,           UPN_HYPH_MIN_WORD_LENGTH },
     { UPH_DEFAULT_LOCALE,                 UPN_DEFAULT_LOCALE },
     { UPH_IS_SPELL_AUTO,                  UPN_IS_SPELL_AUTO },
-    { 0,                                  "" },
-    { 0,                                  "" },
+    { 0,                                  u""_ustr },
+    { 0,                                  u""_ustr },
     { UPH_IS_SPELL_SPECIAL,               UPN_IS_SPELL_SPECIAL },
     { UPH_IS_HYPH_AUTO,                   UPN_IS_HYPH_AUTO },
     { UPH_IS_HYPH_SPECIAL,                UPN_IS_HYPH_SPECIAL },
     { UPH_IS_WRAP_REVERSE,                UPN_IS_WRAP_REVERSE },
-    { 0,                                  "" },
-    { 0,                                  "" },
-    { 0,                                  "" },
-    { 0,                                  "" },
+    { 0,                                  u""_ustr },
+    { 0,                                  u""_ustr },
+    { 0,                                  u""_ustr },
+    { 0,                                  u""_ustr },
     { UPH_DEFAULT_LANGUAGE,               UPN_DEFAULT_LANGUAGE },
     { UPH_DEFAULT_LOCALE_CJK,             UPN_DEFAULT_LOCALE_CJK },
     { UPH_DEFAULT_LOCALE_CTL,             UPN_DEFAULT_LOCALE_CTL },
@@ -156,8 +154,6 @@ static std::span<const SfxItemPropertyMapEntry> lcl_GetLinguProps()
                 ::cppu::UnoType<sal_Int16>::get(),    0, 0 },
         { UPN_HYPH_MIN_WORD_LENGTH,       UPH_HYPH_MIN_WORD_LENGTH,
                 ::cppu::UnoType<sal_Int16>::get(),    0, 0 },
-        { UPN_IS_GERMAN_PRE_REFORM,       UPH_IS_GERMAN_PRE_REFORM,       /*! deprecated !*/
-                cppu::UnoType<bool>::get(),            0, 0 },
         { UPN_IS_HYPH_AUTO,               UPH_IS_HYPH_AUTO,
                 cppu::UnoType<bool>::get(),            0, 0 },
         { UPN_IS_HYPH_SPECIAL,            UPH_IS_HYPH_SPECIAL,
@@ -165,8 +161,6 @@ static std::span<const SfxItemPropertyMapEntry> lcl_GetLinguProps()
         { UPN_IS_IGNORE_CONTROL_CHARACTERS,   UPH_IS_IGNORE_CONTROL_CHARACTERS,
                 cppu::UnoType<bool>::get(),            0, 0 },
         { UPN_IS_SPELL_AUTO,              UPH_IS_SPELL_AUTO,
-                cppu::UnoType<bool>::get(),            0, 0 },
-        { UPN_IS_SPELL_CAPITALIZATION,    UPH_IS_SPELL_CAPITALIZATION,
                 cppu::UnoType<bool>::get(),            0, 0 },
         { UPN_IS_SPELL_CLOSED_COMPOUND,   UPH_IS_SPELL_CLOSED_COMPOUND,
                 cppu::UnoType<bool>::get(),            0, 0 },
@@ -375,7 +369,7 @@ void SAL_CALL
 // XServiceInfo
 OUString SAL_CALL LinguProps::getImplementationName()
 {
-    return "com.sun.star.lingu2.LinguProps";
+    return u"com.sun.star.lingu2.LinguProps"_ustr;
 }
 
 // XServiceInfo
@@ -387,7 +381,7 @@ sal_Bool SAL_CALL LinguProps::supportsService( const OUString& ServiceName )
 // XServiceInfo
 uno::Sequence< OUString > SAL_CALL LinguProps::getSupportedServiceNames()
 {
-    return { "com.sun.star.linguistic2.LinguProperties" };
+    return { u"com.sun.star.linguistic2.LinguProperties"_ustr };
 }
 
 bool LinguProps::getPropertyBool(const OUString& aPropertyName)

@@ -19,37 +19,24 @@
 
 #include <sal/config.h>
 
-#include <cmath>
-#include <string_view>
-
-#include <sal/log.hxx>
-#include <o3tl/string_view.hxx>
-#include <osl/diagnose.h>
-
+#include <osl/diagnose.hxx>
 #include <comphelper/string.hxx>
-#include <tools/UnitConversion.hxx>
+#include <tools/json_writer.hxx>
+#include <unotools/localedatawrapper.hxx>
+#include <o3tl/string_view.hxx>
+#include <i18nutil/unicode.hxx>
 
-#include <vcl/builder.hxx>
+#include <vcl/event.hxx>
 #include <vcl/fieldvalues.hxx>
 #include <vcl/toolkit/field.hxx>
-#include <vcl/event.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
-#include <vcl/uitest/uiobject.hxx>
 #include <vcl/uitest/metricfielduiobject.hxx>
 
 #include <svdata.hxx>
 
-#include <i18nutil/unicode.hxx>
-
-#include <rtl/math.hxx>
-
-#include <unotools/localedatawrapper.hxx>
 #include <boost/property_tree/ptree.hpp>
-#include <tools/json_writer.hxx>
 
-using namespace ::com::sun::star;
-using namespace ::comphelper;
+#include <cmath>
+#include <string_view>
 
 namespace
 {
@@ -117,6 +104,12 @@ std::string FieldUnitToString(FieldUnit unit)
 
         case FieldUnit::MILLISECOND:
             return "millisecond";
+
+        case FieldUnit::FONT_EM:
+            return "em";
+
+        case FieldUnit::FONT_CJK_ADVANCE:
+            return "ic";
     }
 
     return "";
@@ -124,11 +117,12 @@ std::string FieldUnitToString(FieldUnit unit)
 
 sal_Int64 ImplPower10( sal_uInt16 n )
 {
-    sal_uInt16  i;
-    sal_Int64   nValue = 1;
+    sal_Int64 nValue = 1;
 
-    for ( i=0; i < n; i++ )
+    for (sal_uInt16 i = 0; i < n; i++)
+    {
         nValue *= 10;
+    }
 
     return nValue;
 }
@@ -323,7 +317,7 @@ bool ImplNumericGetValue( const OUString& rStr, sal_Int64& rValue,
             aStr2.append(aStrFrac.getStr()+nDecPos+1);
         }
         else
-            aStr1 = aStrFrac;
+            aStr1 = std::move(aStrFrac);
     }
 
     // prune and round fraction
@@ -332,10 +326,10 @@ bool ImplNumericGetValue( const OUString& rStr, sal_Int64& rValue,
     {
         if (aStr2[nDecDigits] >= '5')
             bRound = true;
-        string::truncateToLength(aStr2, nDecDigits);
+        comphelper::string::truncateToLength(aStr2, nDecDigits);
     }
     if (aStr2.getLength() < nDecDigits)
-        string::padToLength(aStr2, nDecDigits, '0');
+        comphelper::string::padToLength(aStr2, nDecDigits, '0');
 
     aStr = aStr1 + aStr2;
 
@@ -492,7 +486,7 @@ void FormatterBase::SetStrictFormat( bool bStrict )
     }
 }
 
-const lang::Locale& FormatterBase::GetLocale() const
+const css::lang::Locale& FormatterBase::GetLocale() const
 {
     if ( mpField )
         return mpField->GetSettings().GetLanguageTag().getLocale();
@@ -791,13 +785,13 @@ namespace
         sal_Int32 nTextLen;
 
         nTextLen = std::u16string_view(OUString::number(rFormatter.GetMin())).size();
-        string::padToLength(aBuf, nTextLen, '9');
+        comphelper::string::padToLength(aBuf, nTextLen, '9');
         Size aMinTextSize = rSpinField.CalcMinimumSizeForText(
             rFormatter.CreateFieldText(OUString::unacquired(aBuf).toInt64()));
         aBuf.setLength(0);
 
         nTextLen = std::u16string_view(OUString::number(rFormatter.GetMax())).size();
-        string::padToLength(aBuf, nTextLen, '9');
+        comphelper::string::padToLength(aBuf, nTextLen, '9');
         Size aMaxTextSize = rSpinField.CalcMinimumSizeForText(
             rFormatter.CreateFieldText(OUString::unacquired(aBuf).toInt64()));
         aBuf.setLength(0);
@@ -810,7 +804,7 @@ namespace
         if (nDigits)
         {
             sBuf.append('.');
-            string::padToLength(aBuf, aBuf.getLength() + nDigits, '9');
+            comphelper::string::padToLength(aBuf, aBuf.getLength() + nDigits, '9');
         }
         aMaxTextSize = rSpinField.CalcMinimumSizeForText(sBuf.makeStringAndClear());
         aRet.setWidth( std::min(aRet.Width(), aMaxTextSize.Width()) );
@@ -1161,6 +1155,8 @@ namespace vcl
              eInUnit == FieldUnit::SECOND ||
              eInUnit == FieldUnit::MILLISECOND ||
              eInUnit == FieldUnit::PIXEL ||
+             eInUnit == FieldUnit::FONT_EM ||
+             eInUnit == FieldUnit::FONT_CJK_ADVANCE ||
              eOutUnit == MapUnit::MapPixel ||
              eOutUnit == MapUnit::MapSysFont ||
              eOutUnit == MapUnit::MapAppFont ||
@@ -1212,6 +1208,8 @@ namespace vcl
 
         return true;
     }
+
+    FieldUnit GetTextMetricUnit(std::u16string_view aStr) { return ImplMetricGetUnit(aStr); }
 }
 
 void MetricFormatter::ImplMetricReformat( const OUString& rStr, double& rValue, OUString& rOutStr )

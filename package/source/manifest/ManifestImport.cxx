@@ -242,11 +242,17 @@ void ManifestImport::doKeyDerivation(StringHashMap &rConvertedAttribs)
         {
             aSequence[PKG_MNFST_KDF].Value <<= xml::crypto::KDFID::Argon2id;
 
-            aString = rConvertedAttribs[ATTRIBUTE_ARGON2_T_LO];
+            aString = rConvertedAttribs.find(ATTRIBUTE_ARGON2_T) != rConvertedAttribs.end()
+                ? rConvertedAttribs[ATTRIBUTE_ARGON2_T]
+                : rConvertedAttribs[ATTRIBUTE_ARGON2_T_LO];
             sal_Int32 const t(aString.toInt32());
-            aString = rConvertedAttribs[ATTRIBUTE_ARGON2_M_LO];
+            aString = rConvertedAttribs.find(ATTRIBUTE_ARGON2_M) != rConvertedAttribs.end()
+                ? rConvertedAttribs[ATTRIBUTE_ARGON2_M]
+                : rConvertedAttribs[ATTRIBUTE_ARGON2_M_LO];
             sal_Int32 const m(aString.toInt32());
-            aString = rConvertedAttribs[ATTRIBUTE_ARGON2_P_LO];
+            aString = rConvertedAttribs.find(ATTRIBUTE_ARGON2_P) != rConvertedAttribs.end()
+                ? rConvertedAttribs[ATTRIBUTE_ARGON2_P]
+                : rConvertedAttribs[ATTRIBUTE_ARGON2_P_LO];
             sal_Int32 const p(aString.toInt32());
             if (0 < t && 0 < m && 0 < p)
             {
@@ -321,6 +327,7 @@ void SAL_CALL ManifestImport::startElement( const OUString& aName, const uno::Re
 
     switch (nLevel) {
     case 1: {
+        m_PackageVersion = aConvertedAttribs[ATTRIBUTE_VERSION];
         if (aConvertedName != ELEMENT_MANIFEST) //manifest:manifest
             aStack.back().m_bValid = false;
         break;
@@ -445,6 +452,18 @@ void SAL_CALL ManifestImport::endElement( const OUString& aName )
         return;
 
     if ( aConvertedName == ELEMENT_FILE_ENTRY && aStack.back().m_bValid ) {
+        // required for wholesome encryption: if there is no document and hence
+        // no file-entry with a version attribute, send the package's version
+        // with the first file-entry.
+        // (note: the only case when a valid ODF document has no "/" entry with
+        // a version is when it is ODF 1.0/1.1 and then it doesn't have the
+        // package version either)
+        if (rManVector.empty() && !m_PackageVersion.isEmpty()
+            && !aSequence[PKG_MNFST_VERSION].Value.hasValue())
+        {
+            aSequence[PKG_MNFST_VERSION].Name = u"Version"_ustr;
+            aSequence[PKG_MNFST_VERSION].Value <<= m_PackageVersion;
+        }
         // the first entry gets KeyInfo element if any, for PGP encryption
         if (!bIgnoreEncryptData && !aKeys.empty() && rManVector.empty())
         {

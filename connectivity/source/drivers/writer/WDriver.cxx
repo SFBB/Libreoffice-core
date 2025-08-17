@@ -31,7 +31,7 @@ namespace connectivity::writer
 {
 OUString SAL_CALL ODriver::getImplementationName()
 {
-    return "com.sun.star.comp.sdbc.writer.ODriver";
+    return u"com.sun.star.comp.sdbc.writer.ODriver"_ustr;
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
@@ -60,7 +60,7 @@ uno::Reference<sdbc::XConnection>
 
     rtl::Reference<OWriterConnection> pCon = new OWriterConnection(this);
     pCon->construct(url, info);
-    m_xConnections.emplace_back(*pCon);
+    m_xConnections.push_back(pCon.get());
 
     return pCon;
 }

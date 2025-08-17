@@ -106,7 +106,6 @@ using namespace ::com::sun::star::ucb;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::ui::dialogs;
 using namespace ::svt;
 using ::com::sun::star::ucb::InteractiveIOException;
 using ::com::sun::star::ucb::IOErrorCode_NO_FILE;
@@ -232,7 +231,7 @@ Reference< XDataSource > getDataSourceByName( const OUString& _rDataSourceName,
     {
         if ( _pErrorInfo )
         {
-            *_pErrorInfo = aSQLError;
+            *_pErrorInfo = std::move(aSQLError);
         }
         else
         {
@@ -605,7 +604,11 @@ void fillTypeInfo(  const Reference< css::sdbc::XConnection>& _rxConnection,
 
     // Close the result set/statement.
 
-    ::comphelper::disposeComponent(xRs);
+    Reference<XCloseable> xCloseable(xRs, UNO_QUERY);
+    if (xCloseable.is())
+        xCloseable->close();
+    else
+        ::comphelper::disposeComponent(xRs);
 }
 
 void setColumnProperties(const Reference<XPropertySet>& _rxColumn,const OFieldDescription* _pFieldDesc)
@@ -643,12 +646,20 @@ OUString createDefaultName(const Reference< XDatabaseMetaData>& _xMetaData,const
                 if ( sCatalog.isEmpty() )
                 {
                     Reference<XResultSet> xRes = _xMetaData->getCatalogs();
-                    Reference<XRow> xRow(xRes,UNO_QUERY);
-                    while(xRes.is() && xRes->next())
+                    if ( xRes.is() )
                     {
-                        sCatalog = xRow->getString(1);
-                        if(!xRow->wasNull())
-                            break;
+                        Reference<XRow> xRow(xRes,UNO_QUERY);
+                        while(xRes->next())
+                        {
+                            sCatalog = xRow->getString(1);
+                            if(!xRow->wasNull())
+                                break;
+                        }
+                        Reference<XCloseable> xCloseable(xRes, UNO_QUERY);
+                        if (xCloseable.is())
+                            xCloseable->close();
+                        else
+                            ::comphelper::disposeComponent(xRes);
                     }
                 }
             }
@@ -751,6 +762,31 @@ void callColumnFormatDialog(const Reference<XPropertySet>& xAffectedCol,
     }
 }
 
+static ItemInfoPackage& getItemInfoPackageColumnFormatDialog()
+{
+    class ItemInfoPackageColumnFormatDialog : public ItemInfoPackage
+    {
+        typedef std::array<ItemInfoStatic, SBA_ATTR_ALIGN_HOR_JUSTIFY - SBA_DEF_RANGEFORMAT + 1> ItemInfoArrayColumnFormatDialog;
+        ItemInfoArrayColumnFormatDialog maItemInfos {{
+            // m_nWhich, m_pItem, m_nSlotID, m_nItemInfoFlags
+            { SBA_DEF_RANGEFORMAT, new SfxRangeItem(SBA_DEF_RANGEFORMAT, SBA_DEF_FMTVALUE, SBA_ATTR_ALIGN_HOR_JUSTIFY), 0, SFX_ITEMINFOFLAG_NONE },
+            { SBA_DEF_FMTVALUE, new SfxUInt32Item(SBA_DEF_FMTVALUE), SID_ATTR_NUMBERFORMAT_VALUE, SFX_ITEMINFOFLAG_NONE },
+            { SBA_ATTR_ALIGN_HOR_JUSTIFY, new SvxHorJustifyItem(SvxCellHorJustify::Standard, SBA_ATTR_ALIGN_HOR_JUSTIFY), SID_ATTR_ALIGN_HOR_JUSTIFY, SFX_ITEMINFOFLAG_NONE },
+        }};
+
+        virtual const ItemInfoStatic& getItemInfoStatic(size_t nIndex) const override { return maItemInfos[nIndex]; }
+
+    public:
+        virtual size_t size() const override { return maItemInfos.size(); }
+        virtual const ItemInfo& getItemInfo(size_t nIndex, SfxItemPool& /*rPool*/) override { return maItemInfos[nIndex]; }
+    };
+
+    static std::unique_ptr<ItemInfoPackageColumnFormatDialog> g_aItemInfoPackageColumnFormatDialog;
+    if (!g_aItemInfoPackageColumnFormatDialog)
+        g_aItemInfoPackageColumnFormatDialog.reset(new ItemInfoPackageColumnFormatDialog);
+    return *g_aItemInfoPackageColumnFormatDialog;
+}
+
 bool callColumnFormatDialog(weld::Widget* _pParent,
                                 SvNumberFormatter* _pFormatter,
                                 sal_Int32 _nDataType,
@@ -761,33 +797,15 @@ bool callColumnFormatDialog(weld::Widget* _pParent,
     bool bRet = false;
 
     // UNO->ItemSet
-    static SfxItemInfo aItemInfos[] =
-    {
-        // _nSID, _bNeedsPoolRegistration, _bShareable
-        { 0,                                false, true },    // SBA_DEF_RANGEFORMAT
-        { SID_ATTR_NUMBERFORMAT_VALUE,      false, true },    // SBA_DEF_FMTVALUE
-        { SID_ATTR_ALIGN_HOR_JUSTIFY,       false, true },    // SBA_ATTR_ALIGN_HOR_JUSTIFY
-        { SID_ATTR_NUMBERFORMAT_INFO,       false, true },    // SID_ATTR_NUMBERFORMAT_INFO
-        { SID_ATTR_NUMBERFORMAT_ONE_AREA,   false, true }     // SID_ATTR_NUMBERFORMAT_ONE_AREA
-    };
     static const auto aAttrMap = svl::Items<
         SBA_DEF_RANGEFORMAT, SBA_ATTR_ALIGN_HOR_JUSTIFY,
         SID_ATTR_NUMBERFORMAT_INFO, SID_ATTR_NUMBERFORMAT_INFO,
         SID_ATTR_NUMBERFORMAT_ONE_AREA, SID_ATTR_NUMBERFORMAT_ONE_AREA
     >;
 
-    std::vector<SfxPoolItem*> pDefaults
-    {
-        new SfxRangeItem(SBA_DEF_RANGEFORMAT, SBA_DEF_FMTVALUE, SBA_ATTR_ALIGN_HOR_JUSTIFY),
-        new SfxUInt32Item(SBA_DEF_FMTVALUE),
-        new SvxHorJustifyItem(SvxCellHorJustify::Standard, SBA_ATTR_ALIGN_HOR_JUSTIFY),
-        new SvxNumberInfoItem(SID_ATTR_NUMBERFORMAT_INFO),
-        new SfxBoolItem(SID_ATTR_NUMBERFORMAT_ONE_AREA, false)
-    };
-
-    rtl::Reference<SfxItemPool> pPool(new SfxItemPool("GridBrowserProperties", SBA_DEF_RANGEFORMAT, SBA_ATTR_ALIGN_HOR_JUSTIFY, aItemInfos, &pDefaults));
+    rtl::Reference<SfxItemPool> pPool(new SfxItemPool(u"GridBrowserProperties"_ustr));
+    pPool->registerItemInfoPackage(getItemInfoPackageColumnFormatDialog());
     pPool->SetDefaultMetric( MapUnit::MapTwip );    // ripped, don't understand why
-    pPool->FreezeIdRanges();                        // the same
 
     std::optional<SfxItemSet> pFormatDescriptor(SfxItemSet(*pPool, aAttrMap));
     // fill it
@@ -853,15 +871,13 @@ bool callColumnFormatDialog(weld::Widget* _pParent,
 
     pFormatDescriptor.reset();
     pPool.clear();
-    for (SfxPoolItem* pDefault : pDefaults)
-        delete pDefault;
 
     return bRet;
 }
 
 std::shared_ptr<const SfxFilter> getStandardDatabaseFilter()
 {
-    std::shared_ptr<const SfxFilter> pFilter = SfxFilter::GetFilterByName("StarOffice XML (Base)");
+    std::shared_ptr<const SfxFilter> pFilter = SfxFilter::GetFilterByName(u"StarOffice XML (Base)"_ustr);
     OSL_ENSURE(pFilter,"Filter: StarOffice XML (Base) could not be found!");
     return pFilter;
 }
@@ -882,7 +898,7 @@ bool appendToFilter(const Reference<XConnection>& _xConnection,
             xProp->getPropertyValue(PROPERTY_TABLEFILTER) >>= aFilter;
             // first check if we have something like SCHEMA.%
             bool bHasToInsert = true;
-            for (const OUString& rItem : std::as_const(aFilter))
+            for (const OUString& rItem : aFilter)
             {
                 if(rItem.indexOf('%') != -1)
                 {
@@ -1043,33 +1059,44 @@ void setEvalDateFormatForFormatter(Reference< css::util::XNumberFormatter > cons
     if ( pSupplierImpl )
     {
         SvNumberFormatter* pFormatter = pSupplierImpl->GetNumberFormatter();
-        pFormatter->SetEvalDateFormat(NF_EVALDATEFORMAT_FORMAT);
+        pFormatter->SetEvalDateFormat(NfEvalDateFormat::Format);
     }
+}
+
+static bool TypeIsGreater(const TOTypeInfoSP& lhs, const TOTypeInfoSP& rhs)
+{
+    assert(lhs);
+    if (!rhs)
+        return true;
+    if (lhs->nNumPrecRadix == rhs->nNumPrecRadix)
+        return lhs->nPrecision > rhs->nPrecision;
+    if (lhs->nPrecision == rhs->nPrecision)
+        return lhs->nNumPrecRadix > rhs->nNumPrecRadix;
+    if ((lhs->nNumPrecRadix > rhs->nNumPrecRadix) == (lhs->nPrecision > rhs->nPrecision))
+        return lhs->nPrecision > rhs->nPrecision;
+    return std::pow(lhs->nNumPrecRadix, lhs->nPrecision)
+           > std::pow(rhs->nNumPrecRadix, rhs->nPrecision);
 }
 
 TOTypeInfoSP queryPrimaryKeyType(const OTypeInfoMap& _rTypeInfo)
 {
-    TOTypeInfoSP pTypeInfo;
-    // first we search for a type which supports autoIncrement
+    TOTypeInfoSP pTypeInfo, pFallback;
+    // first we search for a largest type which supports autoIncrement
     for (auto const& elem : _rTypeInfo)
     {
-        // OJ: we don't want to set an autoincrement column to be key
-        // because we don't have the possibility to know how to create
-        // such auto increment column later on
-        // so until we know how to do it, we create a column without autoincrement
-        // therefore we have searched
-        if ( elem.second->nType == DataType::INTEGER )
-        {
-            pTypeInfo = elem.second; // alternative
-            break;
-        }
-        else if ( !pTypeInfo && elem.second->nType == DataType::DOUBLE )
-            pTypeInfo = elem.second; // alternative
-        else if ( !pTypeInfo && elem.second->nType == DataType::REAL )
-            pTypeInfo = elem.second; // alternative
+        if (elem.second->bAutoIncrement && TypeIsGreater(elem.second, pTypeInfo))
+            pTypeInfo = elem.second;
+        if (pTypeInfo)
+            continue;
+        if (elem.second->nType == DataType::INTEGER)
+            pFallback = elem.second; // default alternative
+        else if (!pFallback && elem.second->nType == DataType::DOUBLE)
+            pFallback = elem.second; // alternative
+        else if (!pFallback && elem.second->nType == DataType::REAL)
+            pFallback = elem.second; // alternative
     }
     if ( !pTypeInfo ) // just a fallback
-        pTypeInfo = queryTypeInfoByType(DataType::VARCHAR,_rTypeInfo);
+        pTypeInfo = pFallback ? std::move(pFallback) : queryTypeInfoByType(DataType::VARCHAR, _rTypeInfo);
 
     OSL_ENSURE(pTypeInfo,"checkColumns: can't find a type which is usable as a key!");
     return pTypeInfo;
@@ -1141,7 +1168,7 @@ TOTypeInfoSP queryTypeInfoByType(sal_Int32 _nDataType,const OTypeInfoMap& _rType
     if ( !pTypeInfo )
     {
         bool bForce = true;
-        pTypeInfo = ::dbaui::getTypeInfoFromType(_rTypeInfo,DataType::VARCHAR,OUString(),"x",50,0,false,bForce);
+        pTypeInfo = ::dbaui::getTypeInfoFromType(_rTypeInfo,DataType::VARCHAR,OUString(),u"x"_ustr,50,0,false,bForce);
     }
     OSL_ENSURE(pTypeInfo,"Wrong DataType supplied!");
     return pTypeInfo;
@@ -1312,7 +1339,7 @@ bool insertHierarchyElement(weld::Window* pParent, const Reference< XComponentCo
     {
         OUString sError(DBA_RES(STR_NAME_ALREADY_EXISTS));
         sError = sError.replaceFirst("#",sNewName);
-        throw SQLException(sError,nullptr,"S1000",0,Any());
+        throw SQLException(sError,nullptr,u"S1000"_ustr,0,Any());
     }
 
     try

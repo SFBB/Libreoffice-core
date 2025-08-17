@@ -39,9 +39,7 @@ $(call gb_XcuFilterTypesTarget_get_target,%) : $(filter_MERGE_TARGET)
 	$(call gb_Trace_StartRange,$*,FIT)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
-		RESPONSEFILE=`$(gb_MKTEMP)` && \
-		echo "items=$(basename $(notdir $(filter %.xcu,$^)))" \
-			| sed "s/ /$(COMMA)/g" > $${RESPONSEFILE} && \
+		RESPONSEFILE=$(call gb_var2file,$(shell $(gb_MKTEMP)),items=$(subst $(WHITESPACE),$(COMMA),$(basename $(notdir $(filter %.xcu,$^))))) && \
 		$(filter_MERGE) tempdir=$(TMPDIR) \
 			share_subdir_name=$(LIBO_SHARE_FOLDER) \
 		 	fragmentsdir=$(dir $(firstword $(filter %.xcu,$^))).. \
@@ -82,9 +80,7 @@ $(call gb_XcuFilterFiltersTarget_get_target,%) : $(filter_MERGE_TARGET)
 	$(call gb_Trace_StartRange,$*,FIF)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
-		RESPONSEFILE=`$(gb_MKTEMP)` && \
-		echo "items=$(basename $(notdir $(filter %.xcu,$^)))" \
-			| sed "s/ /$(COMMA)/g" > $${RESPONSEFILE} && \
+		RESPONSEFILE=$(call gb_var2file,$(shell $(gb_MKTEMP)),items=$(subst $(WHITESPACE),$(COMMA),$(basename $(notdir $(filter %.xcu,$^))))) && \
 		$(filter_MERGE) tempdir=$(TMPDIR) \
 			share_subdir_name=$(LIBO_SHARE_FOLDER) \
 			fragmentsdir=$(dir $(firstword $(filter %.xcu,$^))).. \
@@ -115,12 +111,8 @@ $(call gb_XcuFilterOthersTarget_get_target,%) : $(filter_MERGE_TARGET)
 	$(call gb_Trace_StartRange,$*,FIO)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
-		RESPONSEFILE=`$(gb_MKTEMP)` && \
-		RESPONSEFILE2=`$(gb_MKTEMP)` && \
-		echo "items=$(strip $(foreach xcu,$(filter %.xcu,$^),$(if $(filter frameloaders,$(notdir $(patsubst %/,%,$(dir $(xcu))))),$(basename $(notdir $(xcu),)))))" \
-			| sed "s/ /$(COMMA)/g" > $${RESPONSEFILE} && \
-		echo "items=$(strip $(foreach xcu,$(filter %.xcu,$^),$(if $(filter contenthandlers,$(notdir $(patsubst %/,%,$(dir $(xcu))))),$(basename $(notdir $(xcu),)))))" \
-			| sed "s/ /$(COMMA)/g" > $${RESPONSEFILE2} && \
+		RESPONSEFILE=$(call gb_var2file,$(shell $(gb_MKTEMP)),items=$(subst $(WHITESPACE),$(COMMA),$(strip $(foreach xcu,$(filter %.xcu,$^),$(if $(filter frameloaders,$(notdir $(patsubst %/,%,$(dir $(xcu))))),$(basename $(notdir $(xcu),))))))) && \
+		RESPONSEFILE2=$(call gb_var2file,$(shell $(gb_MKTEMP)),items=$(subst $(WHITESPACE),$(COMMA),$(strip $(foreach xcu,$(filter %.xcu,$^),$(if $(filter contenthandlers,$(notdir $(patsubst %/,%,$(dir $(xcu))))),$(basename $(notdir $(xcu),))))))) && \
 		$(filter_MERGE) tempdir=$(TMPDIR) \
 			share_subdir_name=$(LIBO_SHARE_FOLDER) \
 			fragmentsdir=$(dir $(firstword $(filter %.xcu,$^))).. \
@@ -151,9 +143,7 @@ $(call gb_XcuFilterInternalTarget_get_target,%) : $(filter_MERGE_TARGET)
 	$(call gb_Trace_StartRange,$*,FII)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
-		RESPONSEFILE=`$(gb_MKTEMP)` && \
-		echo "items=$(basename $(notdir $(filter %.xcu,$^)))" \
-			| sed "s/ /$(COMMA)/g" > $${RESPONSEFILE} && \
+		RESPONSEFILE=$(call gb_var2file,$(shell $(gb_MKTEMP)),items=$(subst $(WHITESPACE),$(COMMA),$(basename $(notdir $(filter %.xcu,$^))))) && \
 		$(filter_MERGE) tempdir=$(TMPDIR) \
 			share_subdir_name=$(LIBO_SHARE_FOLDER) \
 			fragmentsdir=$(dir $(firstword $(filter %.xcu,$^))).. \
@@ -199,9 +189,7 @@ $(filter_XcuFilterUiTarget) : $(filter_MERGE_TARGET)
 	$(call gb_Trace_StartRange,$(subst $(WORKDIR)/,,$@),FIU)
 	$(call gb_Helper_abbreviate_dirs,\
 		mkdir -p $(dir $@) && \
-		RESPONSEFILE=`$(gb_MKTEMP)` && \
-		echo "items=$(basename $(notdir $(filter %.xcu,$^)))" \
-			| sed "s/ /$(COMMA)/g" > $${RESPONSEFILE} && \
+		RESPONSEFILE=$(call gb_var2file,$(shell $(gb_MKTEMP)),items=$(subst $(WHITESPACE),$(COMMA),$(basename $(notdir $(filter %.xcu,$^))))) && \
 		$(filter_MERGE) tempdir=$(TMPDIR) \
 			share_subdir_name=$(LIBO_SHARE_FOLDER) \
 			fragmentsdir=$(dir $(firstword $(filter %.xcu,$^))).. \
@@ -294,6 +282,7 @@ $(eval $(call filter_Configuration_add_others,fcfg_langpack,fcfg_base_others.xcu
 	contenthandlers/com_sun_star_comp_framework_oxt_handler \
 ))
 
+ifneq ($(ENABLE_WASM_STRIP_DBACCESS),TRUE)
 # fcfg_database
 $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_database_types.xcu,filter/source/config/fragments/types,\
 	StarBase \
@@ -306,6 +295,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_database_filte
 $(eval $(call filter_Configuration_add_others,fcfg_langpack,fcfg_database_others.xcu,filter/source/config/fragments,\
 	frameloaders/org_openoffice_comp_dbflt_DBContentLoader2 \
 ))
+endif
 
 ifeq ($(ENABLE_REPORTBUILDER),TRUE)
 # fcfg_reportbuilder
@@ -371,6 +361,7 @@ $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_writer_types.xcu
 	StarOffice_Writer \
 	writer_EPUB_Document \
 	writer_PocketWord_File \
+	generic_Markdown \
 ))
 
 $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_writer_filters.xcu,filter/source/config/fragments/filters,\
@@ -421,6 +412,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_writer_filters
 	StarOffice_Writer \
 	EPUB \
 	PocketWord_File \
+	Markdown \
 ))
 
 # fcfg_web
@@ -535,6 +527,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_calc_filters.x
 	SYLK \
 	StarOffice_XML__Calc_ \
 	Text___txt___csv__StarCalc_ \
+	calc_csv_Orcus \
 	calc_HTML_WebQuery \
 	calc_StarOffice_XML_Calc_Template \
 	calc_pdf_Export \
@@ -562,6 +555,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_calc_filters.x
 	MS_Multiplan \
 ))
 
+ifneq ($(ENABLE_WASM_STRIP_BASIC_DRAW_MATH_IMPRESS),TRUE)
 # fcfg_draw
 $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_draw_types.xcu,filter/source/config/fragments/types,\
 	draw_ODG_FlatXML \
@@ -660,6 +654,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_impress_filter
 	MWAW_Presentation \
 	PowerPoint3 \
 ))
+endif
 
 # fcfg_chart
 $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_chart_types.xcu,filter/source/config/fragments/types,\
@@ -676,6 +671,7 @@ $(eval $(call filter_Configuration_add_others,fcfg_langpack,fcfg_chart_others.xc
 	frameloaders/com_sun_star_comp_chart2_ChartFrameLoader \
 ))
 
+ifneq ($(ENABLE_WASM_STRIP_BASIC_DRAW_MATH_IMPRESS),TRUE)
 # fcfg_math
 $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_math_types.xcu,filter/source/config/fragments/types,\
 	math_MathML_XML_Math \
@@ -692,6 +688,7 @@ $(eval $(call filter_Configuration_add_filters,fcfg_langpack,fcfg_math_filters.x
 	math_pdf_Export \
 	math8 \
 ))
+endif
 
 # fcfg_drawgraphics
 $(eval $(call filter_Configuration_add_types,fcfg_langpack,fcfg_drawgraphics_types.xcu,filter/source/config/fragments/types,\

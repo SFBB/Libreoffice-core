@@ -81,11 +81,6 @@ namespace utl
         */
         OConfigurationNode  openNode(const OUString& _rPath) const noexcept;
 
-        OConfigurationNode  openNode( const char* _pAsciiPath ) const
-        {
-            return openNode( OUString::createFromAscii( _pAsciiPath ) );
-        }
-
         /** create a new child node
 
             If the object represents a set node, this method may be used to create a new child. For non-set-nodes, the
@@ -112,11 +107,6 @@ namespace utl
         */
         css::uno::Any       getNodeValue(const OUString& _rPath) const noexcept;
 
-        css::uno::Any       getNodeValue( const char* _pAsciiPath ) const
-        {
-            return getNodeValue( OUString::createFromAscii( _pAsciiPath ) );
-        }
-
         /** write a node value<p/>
             The value given is written into the node specified by the given relative path.<br/>
             In opposite to <method>getNodeValue</method>, _rName must refer to a leaf in the configuration tree, not an inner
@@ -124,11 +114,6 @@ namespace utl
             @return     sal_True if and only if the write was successful.
         */
         bool            setNodeValue(const OUString& _rPath, const css::uno::Any& _rValue) const noexcept;
-
-        bool            setNodeValue( const char* _pAsciiPath, const css::uno::Any& _rValue ) const
-        {
-            return setNodeValue( OUString::createFromAscii( _pAsciiPath ), _rValue );
-        }
 
         /// return the names of the existing children
         css::uno::Sequence< OUString >
@@ -156,7 +141,7 @@ namespace utl
 
     protected:
         // OEventListenerAdapter
-        virtual void _disposing( const css::lang::EventObject& _rSource ) override;
+        virtual void _disposing( const css::lang::EventObject& _rSource ) override final;
 
     protected:
         enum NAMEORIGIN

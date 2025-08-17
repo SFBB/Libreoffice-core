@@ -20,19 +20,18 @@
 #pragma once
 
 #include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/drawing/framework/XResourceFactory.hpp>
+#include <framework/ResourceFactory.hxx>
 #include <comphelper/compbase.hxx>
 #include <rtl/ref.hxx>
 
-namespace com::sun::star::frame { class XController; }
-namespace com::sun::star::drawing::framework { class XResourceId; }
-namespace com::sun::star::drawing::framework { class XConfigurationController; }
 namespace sd { class DrawController; }
 
-namespace sd::framework {
+namespace sd::framework
+{
+class ConfigurationController;
 
-typedef comphelper::WeakComponentImplHelper <
-    css::drawing::framework::XResourceFactory,
+typedef cppu::ImplInheritanceHelper <
+    sd::framework::ResourceFactory,
     css::lang::XEventListener
     > BasicToolBarFactoryInterfaceBase;
 
@@ -50,14 +49,13 @@ public:
 
     // ToolBarFactory
 
-    virtual css::uno::Reference<css::drawing::framework::XResource> SAL_CALL
+    virtual rtl::Reference<sd::framework::AbstractResource>
         createResource (
-            const css::uno::Reference<
-                css::drawing::framework::XResourceId>& rxToolBarId) override;
+            const rtl::Reference<ResourceId>& rxToolBarId) override;
 
-    virtual void SAL_CALL
+    virtual void
         releaseResource (
-            const css::uno::Reference<css::drawing::framework::XResource>&
+            const rtl::Reference<sd::framework::AbstractResource>&
                 rxToolBar) override;
 
     // lang::XEventListener
@@ -66,7 +64,7 @@ public:
         const css::lang::EventObject& rEventObject) override;
 
 private:
-    css::uno::Reference<css::drawing::framework::XConfigurationController> mxConfigurationController;
+    rtl::Reference<ConfigurationController> mxConfigurationController;
     rtl::Reference<::sd::DrawController> mxController;
 
     void Shutdown();

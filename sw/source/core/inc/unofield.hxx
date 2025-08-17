@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SW_SOURCE_CORE_INC_UNOFIELD_HXX
-#define INCLUDED_SW_SOURCE_CORE_INC_UNOFIELD_HXX
+#pragma once
 
+#include <swdllapi.h>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/util/XUpdatable.hpp>
@@ -30,10 +30,12 @@
 #include <unobaseclass.hxx>
 #include <unocoll.hxx>
 #include <fldbas.hxx>
+#include <names.hxx>
 
 class SwDoc;
 class SwFormatField;
 class SwSetExpField;
+class ProgName;
 
 typedef ::cppu::WeakImplHelper
 <   css::beans::XPropertySet
@@ -41,7 +43,7 @@ typedef ::cppu::WeakImplHelper
 ,   css::lang::XComponent
 > SwXFieldMaster_Base;
 
-class SwXFieldMaster final
+class SW_DLLPUBLIC SwXFieldMaster final
     : public SwXFieldMaster_Base
 {
 
@@ -62,7 +64,7 @@ public:
         CreateXFieldMaster(SwDoc * pDoc, SwFieldType * pType,
                 SwFieldIds nResId = SwFieldIds::Unknown);
 
-    static OUString GetProgrammaticName(const SwFieldType& rType, SwDoc& rDoc);
+    static ProgName GetProgrammaticName(const SwFieldType& rType, SwDoc& rDoc);
     static OUString LocalizeFormula(const SwSetExpField& rField, const OUString& rFormula, bool bQuery);
 
     SwFieldType* GetFieldType(bool bDontCreate = false) const;
@@ -115,7 +117,7 @@ typedef ::cppu::WeakImplHelper
  * UNO wrapper around an SwFormatField, i.e. a Writer field that the user creates via Insert ->
  * Field.
  */
-class SwXTextField final
+class SW_DLLPUBLIC SwXTextField final
     : public SwXTextField_Base
 {
 
@@ -133,7 +135,7 @@ private:
 public:
     SwServiceType GetServiceId() const;
 
-    static void TransmuteLeadToInputField(SwSetExpField & rField);
+    static void TransmuteLeadToInputField(SwSetExpField & rField, std::optional<SwGetSetExpType> oSubType);
 
     /// @return an SwXTextField, either an already existing one or a new one
     static rtl::Reference<SwXTextField>
@@ -191,6 +193,8 @@ public:
             const css::uno::Reference< css::beans::XPropertySet > & xFieldMaster) override;
     virtual css::uno::Reference< css::beans::XPropertySet> SAL_CALL getTextFieldMaster() override;
 
+    void OnFormatFieldDelete();
+
 };
 
 typedef ::cppu::WeakImplHelper
@@ -198,7 +202,7 @@ typedef ::cppu::WeakImplHelper
 ,   css::lang::XServiceInfo
 > SwXFieldEnumeration_Base;
 
-class SwXFieldEnumeration final
+class SW_DLLPUBLIC SwXFieldEnumeration final
     : public SwXFieldEnumeration_Base
 {
 
@@ -223,7 +227,5 @@ public:
     virtual css::uno::Any SAL_CALL nextElement() override;
 
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

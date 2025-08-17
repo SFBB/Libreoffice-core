@@ -31,6 +31,7 @@ $(eval $(call gb_UIConfig_add_popupmenufiles,modules/swriter,\
 	sw/uiconfig/swriter/popupmenu/table \
 	sw/uiconfig/swriter/popupmenu/text \
 	sw/uiconfig/swriter/popupmenu/showtrackedchanges \
+	sw/uiconfig/swriter/popupmenu/recordtrackedchanges \
 ))
 
 $(eval $(call gb_UIConfig_add_statusbarfiles,modules/swriter,\
@@ -138,6 +139,7 @@ $(eval $(call gb_UIConfig_add_uifiles,modules/swriter,\
 	sw/uiconfig/swriter/ui/contentcontroldropdown \
 	sw/uiconfig/swriter/ui/contentcontrollistitemdlg \
 	sw/uiconfig/swriter/ui/converttexttable \
+	sw/uiconfig/swriter/ui/copyfielddialog \
 	sw/uiconfig/swriter/ui/createaddresslist \
 	sw/uiconfig/swriter/ui/createauthorentry \
 	sw/uiconfig/swriter/ui/createautomarkdialog \
@@ -177,7 +179,6 @@ $(eval $(call gb_UIConfig_add_uifiles,modules/swriter,\
 	sw/uiconfig/swriter/ui/frmaddpage \
 	sw/uiconfig/swriter/ui/frmtypepage \
 	sw/uiconfig/swriter/ui/frmurlpage \
-	sw/uiconfig/swriter/ui/gotopagedialog \
 	sw/uiconfig/swriter/ui/hfmenubutton \
 	sw/uiconfig/swriter/ui/indexentry \
 	sw/uiconfig/swriter/ui/inputfielddialog \
@@ -243,6 +244,7 @@ $(eval $(call gb_UIConfig_add_uifiles,modules/swriter,\
 	sw/uiconfig/swriter/ui/mmsendmails \
 	sw/uiconfig/swriter/ui/mmsalutationpage \
 	sw/uiconfig/swriter/ui/navigatorcontextmenu \
+	sw/uiconfig/swriter/ui/navigatordraginsertmenu \
 	sw/uiconfig/swriter/ui/navigatorpanel \
 	sw/uiconfig/swriter/ui/notebookbar \
 	sw/uiconfig/swriter/ui/notebookbar_compact \
@@ -285,12 +287,18 @@ $(eval $(call gb_UIConfig_add_uifiles,modules/swriter,\
 	sw/uiconfig/swriter/ui/pagestylespanel \
 	sw/uiconfig/swriter/ui/pageheaderpanel \
 	sw/uiconfig/swriter/ui/pagefooterpanel \
+	sw/uiconfig/swriter/ui/commentspanel \
+	sw/uiconfig/swriter/ui/commentsthread \
+	sw/uiconfig/swriter/ui/commentwidget \
+	sw/uiconfig/swriter/ui/commentcontextmenu \
 	sw/uiconfig/swriter/ui/a11ycheckissuespanel \
 	sw/uiconfig/swriter/ui/poseditbox \
 	sw/uiconfig/swriter/ui/sidebarwrap \
 	sw/uiconfig/swriter/ui/sidebarstylepresets \
 	sw/uiconfig/swriter/ui/sidebartableedit \
 	sw/uiconfig/swriter/ui/sidebartheme \
+	sw/uiconfig/swriter/ui/sidebarquickfind \
+        sw/uiconfig/swriter/ui/sidebarquickfindoptionsdialog \
 	sw/uiconfig/swriter/ui/sortdialog \
 	sw/uiconfig/swriter/ui/spellmenu \
 	sw/uiconfig/swriter/ui/splittable \

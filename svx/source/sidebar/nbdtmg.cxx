@@ -40,6 +40,7 @@
 #include <unotools/ucbstreamhelper.hxx>
 #include <unotools/pathoptions.hxx>
 #include <editeng/eeitem.hxx>
+#include <officecfg/Office/Common.hxx>
 
 #include <com/sun/star/text/VertOrientation.hpp>
 #include <com/sun/star/style/NumberingType.hpp>
@@ -55,17 +56,16 @@ using namespace com::sun::star::beans;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::text;
 using namespace com::sun::star::container;
-using namespace com::sun::star::style;
 
 namespace svx::sidebar {
 
 namespace {
 
-const vcl::Font& lcl_GetDefaultBulletFont()
+vcl::Font& lcl_GetDefaultBulletFont()
 {
     static vcl::Font aDefBulletFont = []()
     {
-        static vcl::Font tmp("OpenSymbol", "", Size(0, 14));
+        static vcl::Font tmp(u"OpenSymbol"_ustr, u""_ustr, Size(0, 14));
         tmp.SetCharSet( RTL_TEXTENCODING_SYMBOL );
         tmp.SetFamily( FAMILY_DONTKNOW );
         tmp.SetPitch( PITCH_DONTKNOW );
@@ -75,18 +75,6 @@ const vcl::Font& lcl_GetDefaultBulletFont()
     }();
     return aDefBulletFont;
 }
-
-const sal_Unicode aDefaultBulletTypes[] =
-{
-    0x2022,
-    0x25cf,
-    0xe00c,
-    0xe00a,
-    0x2794,
-    0x27a2,
-    0x2717,
-    0x2714
-};
 
 NumSettings_Impl* lcl_CreateNumberingSettingsPtr(const Sequence<PropertyValue>& rLevelProps)
 {
@@ -165,13 +153,13 @@ void NBOTypeMgrBase::SetItems(const SfxItemSet* pArg) {
     SfxItemState eState = pSet->GetItemState(SID_ATTR_NUMBERING_RULE, false, &pItem);
     if(eState == SfxItemState::SET)
     {
-        eCoreUnit = pSet->GetPool()->GetMetric(pSet->GetPool()->GetWhich(SID_ATTR_NUMBERING_RULE));
+        eCoreUnit = pSet->GetPool()->GetMetric(pSet->GetPool()->GetWhichIDFromSlotID(SID_ATTR_NUMBERING_RULE));
     } else {
         //sd use different sid for numbering rule
         eState = pSet->GetItemState(EE_PARA_NUMBULLET, false, &pItem);
         if(eState == SfxItemState::SET)
         {
-            eCoreUnit = pSet->GetPool()->GetMetric(pSet->GetPool()->GetWhich(EE_PARA_NUMBULLET));
+            eCoreUnit = pSet->GetPool()->GetMetric(pSet->GetPool()->GetWhichIDFromSlotID(EE_PARA_NUMBULLET));
         }
     }
 }
@@ -245,8 +233,8 @@ void NBOTypeMgrBase::ImplStore(std::u16string_view filename)
 
 // Character Bullet Type lib
 BulletsSettings* BulletsTypeMgr::pActualBullets[] ={nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr};
-sal_Unicode BulletsTypeMgr::aDynamicBulletTypes[]={' ',' ',' ',' ',' ',' ',' ',' '};
-sal_Unicode BulletsTypeMgr::aDynamicRTLBulletTypes[]={' ',' ',' ',' ',' ',' ',' ',' '};
+const sal_Unicode BulletsTypeMgr::aDynamicBulletTypes[]={' ',' ',' ',' ',' ',' ',' ',' '};
+const sal_Unicode BulletsTypeMgr::aDynamicRTLBulletTypes[]={' ',' ',' ',' ',' ',' ',' ',' '};
 
 BulletsTypeMgr::BulletsTypeMgr()
 {
@@ -261,17 +249,20 @@ BulletsTypeMgr& BulletsTypeMgr::GetInstance()
 
 void BulletsTypeMgr::Init()
 {
-    const vcl::Font& rActBulletFont = lcl_GetDefaultBulletFont();
+    css::uno::Sequence< OUString > aBulletSymbols(officecfg::Office::Common::BulletsNumbering::DefaultBullets::get());
+    css::uno::Sequence< OUString > aBulletSymbolsFonts(officecfg::Office::Common::BulletsNumbering::DefaultBulletsFonts::get());
+
+    vcl::Font& rActBulletFont = lcl_GetDefaultBulletFont();
 
     for (sal_uInt16 i=0;i<DEFAULT_BULLET_TYPES;i++)
     {
         pActualBullets[i] = new BulletsSettings;
-        pActualBullets[i]->cBulletChar = aDefaultBulletTypes[i];
+        pActualBullets[i]->cBulletChar = aBulletSymbols[i].toChar();
+        rActBulletFont.SetFamilyName(aBulletSymbolsFonts[i]);
         pActualBullets[i]->aFont = rActBulletFont;
-        OString id = OString::Concat(RID_SVXSTR_BULLET_DESCRIPTION_0.getId()) + OString::number(i);
-        pActualBullets[i]->sDescription = SvxResId( TranslateId(RID_SVXSTR_BULLET_DESCRIPTION_0.mpContext, id.getStr()) );
     }
 }
+
 sal_uInt16 BulletsTypeMgr::GetNBOIndexForNumRule(SvxNumRule& aNum,sal_uInt16 mLevel,sal_uInt16 nFromIndex)
 {
     if ( mLevel == sal_uInt16(0xFFFF) || mLevel == 0)
@@ -285,9 +276,11 @@ sal_uInt16 BulletsTypeMgr::GetNBOIndexForNumRule(SvxNumRule& aNum,sal_uInt16 mLe
 
     const SvxNumberFormat& aFmt(aNum.GetLevel(nActLv));
     sal_UCS4 cChar = aFmt.GetBulletChar();
+
+    css::uno::Sequence<OUString> aBulletSymbols(officecfg::Office::Common::BulletsNumbering::DefaultBullets::get());
     for(sal_uInt16 i = nFromIndex; i < DEFAULT_BULLET_TYPES; i++)
     {
-        if ( (cChar == pActualBullets[i]->cBulletChar) ||
+        if ( (cChar == aBulletSymbols[i].toChar()) ||
              (cChar == 9830 && 57356 == pActualBullets[i]->cBulletChar) ||
              (cChar == 9632 && 57354 == pActualBullets[i]->cBulletChar)   )
         {
@@ -316,7 +309,7 @@ void BulletsTypeMgr::ReplaceNumRule(SvxNumRule& aNum, sal_uInt16 nIndex, sal_uIn
 
     SvxNumberFormat aFmt(aNum.GetLevel(nActLv));
     sal_UCS4 cChar = aFmt.GetBulletChar();
-    std::optional<vcl::Font> pFont = aFmt.GetBulletFont();
+    const std::optional<vcl::Font>& pFont = aFmt.GetBulletFont();
 
     pActualBullets[nIndex]->cBulletChar = cChar;
     if ( pFont )
@@ -328,8 +321,13 @@ void BulletsTypeMgr::ApplyNumRule(SvxNumRule& aNum, sal_uInt16 nIndex, sal_uInt1
 {
     if ( nIndex >= DEFAULT_BULLET_TYPES )
         return;
-    sal_UCS4 cChar = pActualBullets[nIndex]->cBulletChar;
-    const vcl::Font& rActBulletFont = pActualBullets[nIndex]->aFont;
+
+    css::uno::Sequence<OUString> aBulletSymbols(officecfg::Office::Common::BulletsNumbering::DefaultBullets::get());
+    css::uno::Sequence<OUString> aBulletFontSymbols(officecfg::Office::Common::BulletsNumbering::DefaultBulletsFonts::get());
+
+    sal_UCS4 cChar = aBulletSymbols[nIndex].toChar();
+    vcl::Font& rActBulletFont = pActualBullets[nIndex]->aFont;
+    rActBulletFont.SetFamilyName(aBulletFontSymbols[nIndex]);
 
     sal_uInt16 nMask = 1;
     OUString sBulletCharFormatName = GetBulletCharFmtName();
@@ -350,16 +348,31 @@ void BulletsTypeMgr::ApplyNumRule(SvxNumRule& aNum, sal_uInt16 nIndex, sal_uInt1
     }
 }
 
-OUString BulletsTypeMgr::GetDescription(sal_uInt16 nIndex, bool /*isDefault*/)
+void BulletsTypeMgr::ApplyCustomRule(SvxNumRule& aNum, std::u16string_view sBullet,
+                                     const OUString& sFont, sal_uInt16 mLevel)
 {
-    OUString sRet;
+    sal_uInt16 nMask = 1;
+    OUString sBulletCharFormatName = GetBulletCharFmtName();
+    const vcl::Font aFont(sFont, Size(1, 1));
+    for (sal_uInt16 i = 0; i < aNum.GetLevelCount(); i++)
+    {
+        if (mLevel & nMask)
+        {
+            SvxNumberFormat aFmt(aNum.GetLevel(i));
+            aFmt.SetNumberingType(SVX_NUM_CHAR_SPECIAL);
+            aFmt.SetBulletFont(&aFont);
+            aFmt.SetBulletChar(sBullet[0]);
+            aFmt.SetCharFormatName(sBulletCharFormatName);
+            aFmt.SetListFormat("");
+            aNum.SetLevel(i, aFmt);
+        }
+        nMask <<= 1;
+    }
+}
 
-    if ( nIndex >= DEFAULT_BULLET_TYPES )
-        return sRet;
-    else
-        sRet = pActualBullets[nIndex]->sDescription;
-
-    return sRet;
+OUString BulletsTypeMgr::GetDescription(sal_uInt16 /*nIndex*/, bool /*isDefault*/)
+{
+    return OUString();
 }
 
 bool BulletsTypeMgr::IsCustomized(sal_uInt16 nIndex)
@@ -406,7 +419,7 @@ NumberingTypeMgr& NumberingTypeMgr::GetInstance()
 
 void NumberingTypeMgr::Init()
 {
-    Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     Reference<XDefaultNumberingProvider> xDefNum = DefaultNumberingProvider::create( xContext );
 
     Sequence< Sequence< PropertyValue > > aNumberings;
@@ -425,7 +438,7 @@ void NumberingTypeMgr::Init()
             pNumEntry->pNumSetting = pNew;
             if ( i < 8 )
                 pNumEntry->sDescription = SvxResId(RID_SVXSTR_SINGLENUM_DESCRIPTIONS[i]);
-            maNumberSettingsArr.push_back(pNumEntry);
+            maNumberSettingsArr.push_back(std::move(pNumEntry));
         }
     }
     catch(Exception&)
@@ -575,7 +588,7 @@ OutlineTypeMgr& OutlineTypeMgr::GetInstance()
 
 void OutlineTypeMgr::Init()
 {
-    Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     Reference<XDefaultNumberingProvider> xDefNum = DefaultNumberingProvider::create( xContext );
 
     Sequence<Reference<XIndexAccess> > aOutlineAccess;

@@ -28,7 +28,6 @@
 
 #include <comphelper/sequence.hxx>
 #include <comphelper/servicehelper.hxx>
-#include <comphelper/componentguard.hxx>
 #include <comphelper/interfacecontainer4.hxx>
 #include <comphelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
@@ -140,7 +139,7 @@ private:
 
         GridColumn* const pGridColumn = dynamic_cast<GridColumn*>( i_column.get() );
         if ( pGridColumn == nullptr )
-            throw css::lang::IllegalArgumentException( "invalid column implementation", *this, 1 );
+            throw css::lang::IllegalArgumentException( u"invalid column implementation"_ustr, *this, 1 );
 
         m_aColumns.push_back( pGridColumn );
         sal_Int32 index = m_aColumns.size() - 1;
@@ -167,7 +166,7 @@ private:
             throw css::lang::IndexOutOfBoundsException( OUString(), *this );
 
         Columns::iterator const pos = m_aColumns.begin() + i_columnIndex;
-        Reference< XGridColumn > const xColumn( *pos );
+        rtl::Reference< GridColumn > const xColumn( *pos );
         m_aColumns.erase( pos );
 
         // update indexes of all subsequent columns
@@ -185,7 +184,7 @@ private:
         ContainerEvent aEvent;
         aEvent.Source = *this;
         aEvent.Accessor <<= i_columnIndex;
-        aEvent.Element <<= xColumn;
+        aEvent.Element <<= Reference< XGridColumn >(xColumn);
 
         m_aContainerListeners.notifyEach( aGuard, &XContainerListener::elementRemoved, aEvent );
 
@@ -299,7 +298,7 @@ private:
 
     OUString SAL_CALL DefaultGridColumnModel::getImplementationName(  )
     {
-        return "stardiv.Toolkit.DefaultGridColumnModel";
+        return u"stardiv.Toolkit.DefaultGridColumnModel"_ustr;
     }
 
     sal_Bool SAL_CALL DefaultGridColumnModel::supportsService( const OUString& i_serviceName )
@@ -309,7 +308,7 @@ private:
 
     Sequence< OUString > SAL_CALL DefaultGridColumnModel::getSupportedServiceNames(  )
     {
-        return { "com.sun.star.awt.grid.DefaultGridColumnModel" };
+        return { u"com.sun.star.awt.grid.DefaultGridColumnModel"_ustr };
     }
 
 

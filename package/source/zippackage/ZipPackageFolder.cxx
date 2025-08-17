@@ -159,7 +159,6 @@ void SAL_CALL ZipPackageFolder::insertByName( const OUString& aName, const uno::
         throw ElementExistException(THROW_WHERE );
 
     uno::Reference < XInterface > xRef;
-    aElement >>= xRef;
     if ( !(aElement >>= xRef) )
         throw IllegalArgumentException(THROW_WHERE, uno::Reference< uno::XInterface >(), 0 );
 
@@ -176,7 +175,12 @@ void SAL_CALL ZipPackageFolder::insertByName( const OUString& aName, const uno::
 
 void SAL_CALL ZipPackageFolder::removeByName( const OUString& Name )
 {
-    ContentHash::iterator aIter = maContents.find ( Name );
+    return removeByName(std::u16string_view(Name));
+}
+
+void ZipPackageFolder::removeByName( std::u16string_view aName )
+{
+    ContentHash::iterator aIter = maContents.find ( aName );
     if ( aIter == maContents.end() )
         throw NoSuchElementException(THROW_WHERE );
     maContents.erase( aIter );
@@ -196,7 +200,7 @@ sal_Bool SAL_CALL ZipPackageFolder::hasElements(  )
     return !maContents.empty();
 }
     // XNameAccess
-ZipContentInfo& ZipPackageFolder::doGetByName( const OUString& aName )
+ZipContentInfo& ZipPackageFolder::doGetByName( std::u16string_view aName )
 {
     ContentHash::iterator aIter = maContents.find ( aName );
     if ( aIter == maContents.end())
@@ -206,6 +210,10 @@ ZipContentInfo& ZipPackageFolder::doGetByName( const OUString& aName )
 
 uno::Any SAL_CALL ZipPackageFolder::getByName( const OUString& aName )
 {
+    return getByName(std::u16string_view(aName));
+}
+uno::Any ZipPackageFolder::getByName( std::u16string_view aName )
+{
     return uno::Any ( uno::Reference(cppu::getXWeak(doGetByName ( aName ).xPackageEntry.get())) );
 }
 uno::Sequence< OUString > SAL_CALL ZipPackageFolder::getElementNames(  )
@@ -213,6 +221,10 @@ uno::Sequence< OUString > SAL_CALL ZipPackageFolder::getElementNames(  )
     return comphelper::mapKeysToSequence(maContents);
 }
 sal_Bool SAL_CALL ZipPackageFolder::hasByName( const OUString& aName )
+{
+    return hasByName( std::u16string_view( aName ));
+}
+bool ZipPackageFolder::hasByName( std::u16string_view aName )
 {
     return maContents.find ( aName ) != maContents.end ();
 }
@@ -232,8 +244,7 @@ bool ZipPackageFolder::saveChild(
         ZipOutputStream & rZipOut,
         const uno::Sequence < sal_Int8 >& rEncryptionKey,
         ::std::optional<sal_Int32> const oPBKDF2IterationCount,
-        ::std::optional<::std::tuple<sal_Int32, sal_Int32, sal_Int32>> const oArgon2Args,
-        const rtlRandomPool &rRandomPool)
+        ::std::optional<::std::tuple<sal_Int32, sal_Int32, sal_Int32>> const oArgon2Args)
 {
     uno::Sequence < PropertyValue > aPropSet (PKG_SIZE_NOENCR_MNFST);
     OUString sTempName = rPath + "/";
@@ -251,7 +262,7 @@ bool ZipPackageFolder::saveChild(
     else
         aPropSet.realloc( 0 );
 
-    saveContents(sTempName, rManList, rZipOut, rEncryptionKey, oPBKDF2IterationCount, oArgon2Args, rRandomPool);
+    saveContents(sTempName, rManList, rZipOut, rEncryptionKey, oPBKDF2IterationCount, oArgon2Args);
 
     // folder can have a mediatype only in package format
     if ( aPropSet.hasElements() && ( m_nFormat == embed::StorageFormats::PACKAGE ) )
@@ -266,21 +277,20 @@ void ZipPackageFolder::saveContents(
         ZipOutputStream & rZipOut,
         const uno::Sequence < sal_Int8 >& rEncryptionKey,
         ::std::optional<sal_Int32> const oPBKDF2IterationCount,
-        ::std::optional<::std::tuple<sal_Int32, sal_Int32, sal_Int32>> const oArgon2Args,
-        const rtlRandomPool &rRandomPool ) const
+        ::std::optional<::std::tuple<sal_Int32, sal_Int32, sal_Int32>> const oArgon2Args) const
 {
     if ( maContents.empty() && !rPath.isEmpty() && m_nFormat != embed::StorageFormats::OFOPXML )
     {
         // it is an empty subfolder, use workaround to store it
-        ZipEntry* pTempEntry = new ZipEntry(aEntry);
+        auto pTempEntry = std::make_unique<ZipEntry>(aEntry);
         pTempEntry->nPathLen = static_cast<sal_Int16>( OUStringToOString( rPath, RTL_TEXTENCODING_UTF8 ).getLength() );
         pTempEntry->nExtraLen = -1;
         pTempEntry->sPath = rPath;
 
         try
         {
-            ZipOutputStream::setEntry(pTempEntry);
-            rZipOut.writeLOC(pTempEntry);
+            ZipOutputStream::setEntry(*pTempEntry);
+            rZipOut.writeLOC(std::move(pTempEntry));
             rZipOut.rawCloseEntry();
         }
         catch ( ZipException& )
@@ -294,7 +304,7 @@ void ZipPackageFolder::saveContents(
     }
 
     bool bMimeTypeStreamStored = false;
-    OUString aMimeTypeStreamName("mimetype");
+    OUString aMimeTypeStreamName(u"mimetype"_ustr);
     if ( m_nFormat == embed::StorageFormats::ZIP && rPath.isEmpty() )
     {
         // let the "mimetype" stream in root folder be stored as the first stream if it is zip format
@@ -303,7 +313,7 @@ void ZipPackageFolder::saveContents(
         {
             bMimeTypeStreamStored = true;
             if (!aIter->second.pStream->saveChild(rPath + aIter->first, rManList, rZipOut,
-                    rEncryptionKey, oPBKDF2IterationCount, oArgon2Args, rRandomPool))
+                    rEncryptionKey, oPBKDF2IterationCount, oArgon2Args))
             {
                 throw uno::RuntimeException( THROW_WHERE );
             }
@@ -317,7 +327,7 @@ void ZipPackageFolder::saveContents(
             if (rInfo.bFolder)
             {
                 if (!rInfo.pFolder->saveChild(rPath + rShortName, rManList, rZipOut,
-                        rEncryptionKey, oPBKDF2IterationCount, oArgon2Args, rRandomPool))
+                        rEncryptionKey, oPBKDF2IterationCount, oArgon2Args))
                 {
                     throw uno::RuntimeException( THROW_WHERE );
                 }
@@ -325,7 +335,7 @@ void ZipPackageFolder::saveContents(
             else
             {
                 if (!rInfo.pStream->saveChild(rPath + rShortName, rManList, rZipOut,
-                        rEncryptionKey, oPBKDF2IterationCount, oArgon2Args, rRandomPool))
+                        rEncryptionKey, oPBKDF2IterationCount, oArgon2Args))
                 {
                     throw uno::RuntimeException( THROW_WHERE );
                 }
@@ -381,12 +391,12 @@ void ZipPackageFolder::doInsertByName ( ZipPackageEntry *pEntry, bool bSetParent
 
 OUString ZipPackageFolder::getImplementationName()
 {
-    return "ZipPackageFolder";
+    return u"ZipPackageFolder"_ustr;
 }
 
 uno::Sequence< OUString > ZipPackageFolder::getSupportedServiceNames()
 {
-    return { "com.sun.star.packages.PackageFolder" };
+    return { u"com.sun.star.packages.PackageFolder"_ustr };
 }
 
 sal_Bool SAL_CALL ZipPackageFolder::supportsService( OUString const & rServiceName )

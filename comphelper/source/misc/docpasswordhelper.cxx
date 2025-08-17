@@ -95,10 +95,10 @@ uno::Sequence< beans::PropertyValue > DocPasswordHelper::GenerateNewModifyPasswo
     uno::Sequence< sal_Int8 > aNewHash = GeneratePBKDF2Hash(aPassword, aSalt, nPBKDF2IterationCount, 16);
     if ( aNewHash.hasElements() )
     {
-        aResult = { comphelper::makePropertyValue("algorithm-name", OUString( "PBKDF2" )),
-                    comphelper::makePropertyValue("salt", aSalt),
-                    comphelper::makePropertyValue("iteration-count", nPBKDF2IterationCount),
-                    comphelper::makePropertyValue("hash", aNewHash) };
+        aResult = { comphelper::makePropertyValue(u"algorithm-name"_ustr, u"PBKDF2"_ustr),
+                    comphelper::makePropertyValue(u"salt"_ustr, aSalt),
+                    comphelper::makePropertyValue(u"iteration-count"_ustr, nPBKDF2IterationCount),
+                    comphelper::makePropertyValue(u"hash"_ustr, aNewHash) };
     }
 
     return aResult;
@@ -118,17 +118,17 @@ DocPasswordHelper::GenerateNewModifyPasswordInfoOOXML(std::u16string_view aPassw
         OUString sSalt = aBuffer.makeStringAndClear();
 
         sal_Int32 const nIterationCount = 100000;
-        OUString sAlgorithm("SHA-512");
+        OUString sAlgorithm(u"SHA-512"_ustr);
 
-        const OUString sHash(GetOoxHashAsBase64(OUString(aPassword), sSalt, nIterationCount,
+        const OUString sHash(GetOoxHashAsBase64(aPassword, sSalt, nIterationCount,
                                                 comphelper::Hash::IterCount::APPEND, sAlgorithm));
 
         if (!sHash.isEmpty())
         {
-            aResult = { comphelper::makePropertyValue("algorithm-name", sAlgorithm),
-                        comphelper::makePropertyValue("salt", sSalt),
-                        comphelper::makePropertyValue("iteration-count", nIterationCount),
-                        comphelper::makePropertyValue("hash", sHash) };
+            aResult = { comphelper::makePropertyValue(u"algorithm-name"_ustr, sAlgorithm),
+                        comphelper::makePropertyValue(u"salt"_ustr, sSalt),
+                        comphelper::makePropertyValue(u"iteration-count"_ustr, nIterationCount),
+                        comphelper::makePropertyValue(u"hash"_ustr, sHash) };
         }
     }
 
@@ -183,10 +183,10 @@ uno::Sequence< beans::PropertyValue > DocPasswordHelper::ConvertPasswordInfo( co
     if ( !sCount.isEmpty() )
     {
         sal_Int32 nCount = sCount.toInt32();
-        aResult = { comphelper::makePropertyValue("algorithm-name", sAlgorithm),
-                    comphelper::makePropertyValue("salt", sSalt),
-                    comphelper::makePropertyValue("iteration-count", nCount),
-                    comphelper::makePropertyValue("hash", sHash) };
+        aResult = { comphelper::makePropertyValue(u"algorithm-name"_ustr, sAlgorithm),
+                    comphelper::makePropertyValue(u"salt"_ustr, sSalt),
+                    comphelper::makePropertyValue(u"iteration-count"_ustr, nCount),
+                    comphelper::makePropertyValue(u"hash"_ustr, sHash) };
     }
 
     return aResult;
@@ -239,7 +239,7 @@ bool DocPasswordHelper::IsModifyPasswordCorrect( std::u16string_view aPassword, 
             aHash >>= sHash;
             if (!sSalt.isEmpty() && !sHash.isEmpty())
             {
-                const OUString aNewHash(GetOoxHashAsBase64(OUString(aPassword), sSalt, nCount,
+                const OUString aNewHash(GetOoxHashAsBase64(aPassword, sSalt, nCount,
                                                            comphelper::Hash::IterCount::APPEND,
                                                            sAlgorithm));
                 if (!aNewHash.isEmpty())
@@ -362,7 +362,7 @@ Sequence< sal_Int8 > DocPasswordHelper::GetXLHashAsSequence(
 
 
 std::vector<unsigned char> DocPasswordHelper::GetOoxHashAsVector(
-        const OUString& rPassword,
+        std::u16string_view rPassword,
         const std::vector<unsigned char>& rSaltValue,
         sal_uInt32 nSpinCount,
         comphelper::Hash::IterCount eIterCount,
@@ -387,7 +387,7 @@ std::vector<unsigned char> DocPasswordHelper::GetOoxHashAsVector(
 
 
 css::uno::Sequence<sal_Int8> DocPasswordHelper::GetOoxHashAsSequence(
-        const OUString& rPassword,
+        std::u16string_view rPassword,
         std::u16string_view rSaltValue,
         sal_uInt32 nSpinCount,
         comphelper::Hash::IterCount eIterCount,
@@ -407,7 +407,7 @@ css::uno::Sequence<sal_Int8> DocPasswordHelper::GetOoxHashAsSequence(
 }
 
 OUString DocPasswordHelper::GetOoxHashAsBase64(
-        const OUString& rPassword,
+        std::u16string_view rPassword,
         std::u16string_view rSaltValue,
         sal_uInt32 nSpinCount,
         comphelper::Hash::IterCount eIterCount,
@@ -426,9 +426,10 @@ OUString DocPasswordHelper::GetOoxHashAsBase64(
 {
     uno::Sequence< sal_Int8 > aResult( nLength );
 
-    rtlRandomPool aRandomPool = rtl_random_createPool ();
-    rtl_random_getBytes ( aRandomPool, aResult.getArray(), nLength );
-    rtl_random_destroyPool ( aRandomPool );
+    if (rtl_random_getBytes(nullptr, aResult.getArray(), nLength) != rtl_Random_E_None)
+    {
+        throw uno::RuntimeException(u"rtl_random_getBytes failed"_ustr);
+    }
 
     return aResult;
 }
@@ -442,7 +443,7 @@ OUString DocPasswordHelper::GetOoxHashAsBase64(
         sal_uInt16 pPassData[16] = {};
 
         sal_Int32 nPassLen = std::min< sal_Int32 >( aPassword.size(), 15 );
-        memcpy( pPassData, aPassword.data(), nPassLen * sizeof(pPassData[0]) );
+        std::copy( aPassword.data(), aPassword.data() + nPassLen, pPassData );
 
         aResultKey = GenerateStd97Key( pPassData, aDocId );
     }
@@ -644,9 +645,9 @@ OUString DocPasswordHelper::GetOoxHashAsBase64(
             // 2. Add MS binary and OOXML encryption data to result
             aEncData = comphelper::concatSequences(
                 aEncData, std::initializer_list<beans::NamedValue>{
-                              { "STD97EncryptionKey", css::uno::Any(aEnc97Key) },
-                              { "STD97UniqueID", css::uno::Any(aUniqueID) },
-                              { "OOXPassword", css::uno::Any(aPassword) },
+                              { u"STD97EncryptionKey"_ustr, css::uno::Any(aEnc97Key) },
+                              { u"STD97UniqueID"_ustr, css::uno::Any(aUniqueID) },
+                              { u"OOXPassword"_ustr, css::uno::Any(aPassword) },
                           });
         }
     }
@@ -667,26 +668,23 @@ OUString DocPasswordHelper::GetOoxHashAsBase64(
     GpgME::initializeLibrary();
     GpgME::Error err = GpgME::checkEngine(GpgME::OpenPGP);
     if (err)
-        throw uno::RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw uno::RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
 
     ctx.reset( GpgME::Context::createForProtocol(GpgME::OpenPGP) );
     if (ctx == nullptr)
-        throw uno::RuntimeException("The GpgME library failed to initialize for the OpenPGP protocol.");
+        throw uno::RuntimeException(u"The GpgME library failed to initialize for the OpenPGP protocol."_ustr);
     ctx->setArmor(false);
 
-    const uno::Sequence < beans::NamedValue > *pSequence = rGpgProperties.getConstArray();
-    const sal_Int32 nLength = rGpgProperties.getLength();
-    for ( sal_Int32 i = 0; i < nLength ; i++, pSequence++ )
+    for (auto& rSequence : rGpgProperties)
     {
-        const beans::NamedValue *pValues = pSequence->getConstArray();
-        if ( pSequence->getLength() == 3 )
+        if (rSequence.getLength() == 3)
         {
             // take CipherValue and try to decrypt that - stop after
             // the first successful decryption
 
             // ctx is setup now, let's decrypt the lot!
             uno::Sequence < sal_Int8 > aVector;
-            pValues[2].Value >>= aVector;
+            rSequence[2].Value >>= aVector;
 
             GpgME::Data cipher(
                 reinterpret_cast<const char*>(aVector.getConstArray()),
@@ -713,7 +711,7 @@ OUString DocPasswordHelper::GetOoxHashAsBase64(
             result = plain.seek(0,SEEK_SET);
             assert(result == 0);
             if( plain.read(aKeyValue.getArray(), len) != len )
-                throw uno::RuntimeException("The GpgME library failed to read the encrypted value.");
+                throw uno::RuntimeException(u"The GpgME library failed to read the encrypted value."_ustr);
 
             SAL_INFO("comphelper.crypto", "Extracted gpg session key of length: " << len);
 
@@ -725,7 +723,7 @@ OUString DocPasswordHelper::GetOoxHashAsBase64(
     if ( aEncryptionData.hasElements() )
     {
         uno::Sequence< beans::NamedValue > aContainer{
-            { "GpgInfos", uno::Any(rGpgProperties) }, { "EncryptionKey", uno::Any(aEncryptionData) }
+            { u"GpgInfos"_ustr, uno::Any(rGpgProperties) }, { u"EncryptionKey"_ustr, uno::Any(aEncryptionData) }
         };
 
         return aContainer;

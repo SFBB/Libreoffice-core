@@ -30,8 +30,6 @@ namespace com::sun::star {
 
 namespace awt { class XWindow; }
 
-namespace datatransfer { class XTransferable; }
-
 namespace embed { class XEmbeddedObject; }
 
 namespace frame { class XModel; }
@@ -146,7 +144,7 @@ public:
     virtual void NbcMove(const Size& rSize) override;
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
     virtual void NbcSetSnapRect(const tools::Rectangle& rRect) override;
-    virtual void NbcSetLogicRect(const tools::Rectangle& rRect) override;
+    virtual void NbcSetLogicRect(const tools::Rectangle& rRect, bool bAdaptTextMinSize = true) override;
     virtual void SetGeoData(const SdrObjGeoData& rGeo) override;
 
     static bool CanUnloadRunningObj( const css::uno::Reference< css::embed::XEmbeddedObject >& xObj,
@@ -172,7 +170,7 @@ public:
     void SetGraphicToObj( const css::uno::Reference< css::io::XInputStream >& xGrStream,
                           const OUString& aMediaType );
 
-    css::uno::Reference< css::frame::XModel > GetParentXModel()  const;
+    const css::uno::Reference< css::frame::XModel > & GetParentXModel()  const;
     bool CalculateNewScaling( Fraction& aScaleWidth, Fraction& aScaleHeight, Size& aObjAreaSize );
     bool AddOwnLightClient();
 
@@ -183,18 +181,22 @@ public:
 
     // #i118485# missing converter added
     virtual rtl::Reference<SdrObject> DoConvertToPolyObj(bool bBezier, bool bAddText) const override;
+
+    virtual bool IsSdrOle2Obj() const final { return true; }
+
+    void SetIgnoreOLEObjectScale(bool val);
 };
 
 class SVXCORE_DLLPUBLIC SdrEmbedObjectLink final : public sfx2::SvBaseLink
 {
-    SdrOle2Obj*         pObj;
+    SdrOle2Obj*         m_pObj;
 
 public:
-    explicit            SdrEmbedObjectLink(SdrOle2Obj* pObj);
-    virtual             ~SdrEmbedObjectLink() override;
+    SAL_DLLPRIVATE explicit            SdrEmbedObjectLink(SdrOle2Obj* pObj);
+    SAL_DLLPRIVATE virtual             ~SdrEmbedObjectLink() override;
 
-    virtual void        Closed() override;
-    virtual ::sfx2::SvBaseLink::UpdateResult DataChanged(
+    SAL_DLLPRIVATE virtual void        Closed() override;
+    SAL_DLLPRIVATE virtual ::sfx2::SvBaseLink::UpdateResult DataChanged(
         const OUString& rMimeType, const css::uno::Any & rValue ) override;
 
     void                Connect() { GetRealObject(); }

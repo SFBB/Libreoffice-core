@@ -79,7 +79,7 @@ void ScDBDocFunc::ShowInBeamer( const ScImportParam& rParam, const SfxViewFrame*
     uno::Reference<frame::XFrame> xFrame = pFrame->GetFrame().GetFrameInterface();
 
     uno::Reference<frame::XFrame> xBeamerFrame = xFrame->findFrame(
-                                        "_beamer",
+                                        u"_beamer"_ustr,
                                         frame::FrameSearchFlag::CHILDREN);
     if (!xBeamerFrame.is())
         return;
@@ -112,7 +112,7 @@ void ScDBDocFunc::DoImportUno( const ScAddress& rPos,
 
     //  create database range
     ScDBData* pDBData = rDocShell.GetDBData( ScRange(rPos), SC_DB_IMPORT, ScGetDBSelection::Keep );
-    DBG_ASSERT(pDBData, "can't create DB data");
+    assert(pDBData && "can't create DB data");
     OUString sTarget = pDBData->GetName();
 
     UpdateImport( sTarget, aDesc );
@@ -452,8 +452,8 @@ bool ScDBDocFunc::DoImport( SCTAB nTab, const ScImportParam& rParam,
         //  don't set cell protection attribute if table is protected
         if (rDoc.IsTabProtected(nTab))
         {
-            ScPatternAttr aPattern(pImportDoc->GetPool());
-            aPattern.GetItemSet().Put( ScProtectionAttr( false,false,false,false ) );
+            ScPatternAttr aPattern(pImportDoc->getCellAttributeHelper());
+            aPattern.ItemSetPut(ScProtectionAttr(false,false,false,false));
             pImportDoc->ApplyPatternAreaTab( 0,0,rDoc.MaxCol(),rDoc.MaxRow(), nTab, aPattern );
         }
 
@@ -560,6 +560,10 @@ bool ScDBDocFunc::DoImport( SCTAB nTab, const ScImportParam& rParam,
                                     aNewMark, InsertDeleteFlags::CONTENTS );
         }
 
+
+        // tdf#117436 - adjust row height to accommodate potential multiline cells
+        rDoc.GetDocumentShell()->AdjustRowHeight(rParam.nRow1, nEndRow, nTab);
+
         // update database range
         pDBData->SetImportParam( rParam );
         pDBData->SetHeader( true );
@@ -580,7 +584,7 @@ bool ScDBDocFunc::DoImport( SCTAB nTab, const ScImportParam& rParam,
             std::unique_ptr<ScDBData> pRedoDBData(new ScDBData(*pDBData));
 
             rDocShell.GetUndoManager()->AddUndoAction(
-                std::make_unique<ScUndoImportData>( &rDocShell, nTab,
+                std::make_unique<ScUndoImportData>( rDocShell, nTab,
                                         rParam, nUndoEndCol, nUndoEndRow,
                                         nFormulaCols,
                                         std::move(pUndoDoc), std::move(pRedoDoc),

@@ -29,8 +29,8 @@
 #include <o3tl/deleter.hxx>
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
-#include <com/sun/star/xml/sax/XExtendedDocumentHandler.hpp>
 #include <com/sun/star/xml/sax/XFastParser.hpp>
+#include <com/sun/star/xml/sax/XDocumentHandler.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/document/XImporter.hpp>
@@ -61,7 +61,6 @@ namespace com::sun::star::uno { class XComponentContext; }
 namespace com::sun::star::util { class XNumberFormatsSupplier; }
 namespace com::sun::star::xml::sax { class XAttributeList; }
 namespace com::sun::star::xml::sax { class XFastAttributeList; }
-namespace com::sun::star::xml::sax { class XFastContextHandler; }
 namespace com::sun::star {
     namespace frame { class XModel; }
     namespace io { class XOutputStream; }
@@ -77,9 +76,8 @@ namespace xmloff {
 namespace xmloff::token {
     class FastTokenHandler;
 }
-class EmbeddedFontsHelper;
+class EmbeddedFontsManager;
 class ProgressBarHelper;
-class SvXMLNamespaceMap;
 class SvXMLImport_Impl;
 class SvXMLUnitConverter;
 class SvXMLNumFmtHelper;
@@ -87,7 +85,6 @@ class XMLFontStylesContext;
 class XMLEventImportHelper;
 class XMLErrors;
 class StyleMap;
-enum class SvXMLErrorFlags;
 
 constexpr sal_Int32 LAST_NAMESPACE = 121; // last value in xmloff/xmnspe.hxx
 constexpr size_t NMSP_SHIFT = 16;
@@ -249,8 +246,8 @@ private:
     css::uno::Reference< css::task::XStatusIndicator > mxStatusIndicator;
 
     // tdf#69060 & tdf#137643 import embedded fonts and activate them in a
-    // batch in EmbeddedFontsHelper's dtor
-    std::unique_ptr<EmbeddedFontsHelper, o3tl::default_delete<EmbeddedFontsHelper>> mxEmbeddedFontHelper;
+    // batch in EmbeddedFontsManager's dtor
+    std::unique_ptr<EmbeddedFontsManager, o3tl::default_delete<EmbeddedFontsManager>> mxEmbeddedFontManager;
 
 protected:
     bool                        mbIsFormsSupported;
@@ -309,45 +306,45 @@ public:
 
     virtual void SAL_CALL startDocument() override;
     virtual void SAL_CALL endDocument() override;
-    virtual void SAL_CALL characters(const OUString& aChars) override;
+    virtual void SAL_CALL characters(const OUString& aChars) override final;
     virtual void SAL_CALL processingInstruction(const OUString& aTarget,
-                                                const OUString& aData) override;
-    virtual void SAL_CALL setDocumentLocator(const css::uno::Reference< css::xml::sax::XLocator > & xLocator) override;
+                                                const OUString& aData) override final;
+    virtual void SAL_CALL setDocumentLocator(const css::uno::Reference< css::xml::sax::XLocator > & xLocator) override final;
 
     // ::css::xml::sax::XFastContextHandler
     virtual void SAL_CALL startFastElement(sal_Int32 Element,
-        const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override;
+        const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override final;
     virtual void SAL_CALL startUnknownElement(const OUString & Namespace,
         const OUString & Name,
-        const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override;
-    virtual void SAL_CALL endFastElement(sal_Int32 Element) override;
+        const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override final;
+    virtual void SAL_CALL endFastElement(sal_Int32 Element) override final;
     virtual void SAL_CALL endUnknownElement(const OUString & Namespace,
-        const OUString & Name) override;
+        const OUString & Name) override final;
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL
     createFastChildContext(sal_Int32 Element,
-        const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override;
+        const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override final;
     virtual css::uno::Reference< css::xml::sax::XFastContextHandler > SAL_CALL
     createUnknownChildContext(const OUString & Namespace, const OUString & Name,
-        const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override;
+        const css::uno::Reference< css::xml::sax::XFastAttributeList > & Attribs) override final;
 
     // XFastParser
-    virtual void SAL_CALL parseStream( const css::xml::sax::InputSource& aInputSource ) override;
-    virtual void SAL_CALL setFastDocumentHandler( const css::uno::Reference< css::xml::sax::XFastDocumentHandler >& Handler ) override;
-    virtual void SAL_CALL setTokenHandler( const css::uno::Reference< css::xml::sax::XFastTokenHandler >& Handler ) override;
-    virtual void SAL_CALL registerNamespace( const OUString& NamespaceURL, sal_Int32 NamespaceToken ) override;
-    virtual OUString SAL_CALL getNamespaceURL( const OUString& rPrefix ) override;
-    virtual void SAL_CALL setErrorHandler( const css::uno::Reference< css::xml::sax::XErrorHandler >& Handler ) override;
-    virtual void SAL_CALL setEntityResolver( const css::uno::Reference< css::xml::sax::XEntityResolver >& Resolver ) override;
-    virtual void SAL_CALL setLocale( const css::lang::Locale& rLocale ) override;
-    virtual void SAL_CALL setNamespaceHandler( const css::uno::Reference< css::xml::sax::XFastNamespaceHandler >& Handler) override;
-    virtual void SAL_CALL setCustomEntityNames( const ::css::uno::Sequence< ::css::beans::Pair<::rtl::OUString, ::rtl::OUString> >& replacements )  override;
+    virtual void SAL_CALL parseStream( const css::xml::sax::InputSource& aInputSource ) override final;
+    virtual void SAL_CALL setFastDocumentHandler( const css::uno::Reference< css::xml::sax::XFastDocumentHandler >& Handler ) override final;
+    virtual void SAL_CALL setTokenHandler( const css::uno::Reference< css::xml::sax::XFastTokenHandler >& Handler ) override final;
+    virtual void SAL_CALL registerNamespace( const OUString& NamespaceURL, sal_Int32 NamespaceToken ) override final;
+    virtual OUString SAL_CALL getNamespaceURL( const OUString& rPrefix ) override final;
+    virtual void SAL_CALL setErrorHandler( const css::uno::Reference< css::xml::sax::XErrorHandler >& Handler ) override final;
+    virtual void SAL_CALL setEntityResolver( const css::uno::Reference< css::xml::sax::XEntityResolver >& Resolver ) override final;
+    virtual void SAL_CALL setLocale( const css::lang::Locale& rLocale ) override final;
+    virtual void SAL_CALL setNamespaceHandler( const css::uno::Reference< css::xml::sax::XFastNamespaceHandler >& Handler) override final;
+    virtual void SAL_CALL setCustomEntityNames( const ::css::uno::Sequence< ::css::beans::Pair<::rtl::OUString, ::rtl::OUString> >& replacements )  override final;
 
     // XImporter
     virtual void SAL_CALL setTargetDocument( const css::uno::Reference< css::lang::XComponent >& xDoc ) override;
 
     // XFilter
     virtual sal_Bool SAL_CALL filter( const css::uno::Sequence< css::beans::PropertyValue >& aDescriptor ) override;
-    virtual void SAL_CALL cancel(  ) override;
+    virtual void SAL_CALL cancel(  ) override final;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -386,8 +383,8 @@ public:
     static const OUString & getNameFromToken( sal_Int32 nToken );
     static OUString getPrefixAndNameFromToken( sal_Int32 nToken );
     static OUString getNamespacePrefixFromToken(sal_Int32 nToken, const SvXMLNamespaceMap* pMap);
-    static OUString getNamespaceURIFromToken( sal_Int32 nToken );
-    static OUString getNamespacePrefixFromURI( const OUString& rURI );
+    static const OUString & getNamespaceURIFromToken( sal_Int32 nToken );
+    static const OUString & getNamespacePrefixFromURI( const OUString& rURI );
     static sal_Int32 getTokenFromName(std::u16string_view sName);
 
     SvXMLNamespaceMap& GetNamespaceMap() { return *mxNamespaceMap; }
@@ -410,7 +407,8 @@ public:
         mxNumberFormatsSupplier = _xNumberFormatSupplier;
     }
 
-    css::uno::Reference<css::graphic::XGraphic> loadGraphicByURL(OUString const & rURL);
+    css::uno::Reference<css::graphic::XGraphic> loadGraphicByURL(OUString const& rURL,
+                                                                 sal_Int32 nPageNum = -1);
     css::uno::Reference<css::graphic::XGraphic> loadGraphicFromBase64(css::uno::Reference<css::io::XOutputStream> const & rxOutputStream);
 
     css::uno::Reference< css::io::XOutputStream > GetStreamForGraphicObjectURLFromBase64() const;
@@ -555,6 +553,8 @@ public:
     static const sal_uInt16 LO_63x = 63 | LO_flag;
     static const sal_uInt16 LO_7x = 70 | LO_flag;
     static const sal_uInt16 LO_76 = 76 | LO_flag;
+    static const sal_uInt16 LO_242 = 80 | LO_flag;
+    static const sal_uInt16 LO_248 = 81 | LO_flag;
     static const sal_uInt16 LO_New = 100 | LO_flag;
     static const sal_uInt16 ProductVersionUnknown = SAL_MAX_UINT16;
 
@@ -582,7 +582,7 @@ public:
     */
     bool embeddedFontAlreadyProcessed( const OUString& url );
 
-    // see EmbeddedFontsHelper::addEmbeddedFont
+    // see EmbeddedFontsManager::addEmbeddedFont
     bool addEmbeddedFont( const css::uno::Reference< css::io::XInputStream >& stream,
         const OUString& fontName, std::u16string_view extra,
         std::vector< unsigned char > const & key, bool eot);

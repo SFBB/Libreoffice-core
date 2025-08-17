@@ -33,6 +33,7 @@
 class EDITENG_DLLPUBLIC SvxOpaqueItem final : public SfxBoolItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SvxOpaqueItem)
     explicit SvxOpaqueItem( const sal_uInt16 nId , const bool bOpa = true );
 
     // "pure virtual Methods" from SfxPoolItem

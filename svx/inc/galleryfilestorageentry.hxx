@@ -23,7 +23,6 @@
 #include <svx/galtheme.hxx>
 #include "galleryfilestorage.hxx"
 #include "gallerystoragelocations.hxx"
-#include "galleryfilestorageentry.hxx"
 
 class GalleryObjectCollection;
 
@@ -36,7 +35,7 @@ public:
     GalleryFileStorageEntry();
     static void CreateUniqueURL(const INetURLObject& rBaseURL, INetURLObject& aURL);
 
-    OUString ReadStrFromIni(std::u16string_view aKeyName) const;
+    OUString ReadStrFromIni(std::string_view aKeyName) const;
 
     const INetURLObject& GetThmURL() const { return maGalleryStorageLocations.GetThmURL(); }
     const INetURLObject& GetSdgURL() const { return maGalleryStorageLocations.GetSdgURL(); }

@@ -27,7 +27,7 @@ class ScPreviewShell;
 class EditTextObject;
 class ScAccessiblePageHeaderArea;
 
-class ScAccessiblePageHeader : public ScAccessibleContextBase
+class ScAccessiblePageHeader final : public ScAccessibleContextBase
 {
 public:
     ScAccessiblePageHeader( const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
@@ -60,17 +60,12 @@ public:
     virtual sal_Int64 SAL_CALL getAccessibleIndexInParent() override;
     virtual sal_Int64 SAL_CALL getAccessibleStateSet() override;
 
-    //=====  XServiceInfo  ====================================================
-
-    virtual OUString SAL_CALL getImplementationName() override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
 protected:
     virtual OUString createAccessibleDescription() override;
     virtual OUString createAccessibleName() override;
 
-    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() const override;
-    virtual tools::Rectangle GetBoundingBox() const override;
+    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() override;
+    virtual tools::Rectangle GetBoundingBox() override;
 
 private:
     ScPreviewShell*     mpViewShell;

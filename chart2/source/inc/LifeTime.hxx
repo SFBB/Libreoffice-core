@@ -18,10 +18,10 @@
  */
 #pragma once
 
+#include <config_options.h>
 #include <mutex>
 #include <osl/conditn.hxx>
 #include <comphelper/interfacecontainer4.hxx>
-#include "charttoolsdllapi.hxx"
 
 namespace com::sun::star::document { class XStorageChangeListener; }
 namespace com::sun::star::lang { class XComponent; }
@@ -35,7 +35,7 @@ namespace com::sun::star::view { class XSelectionChangeListener; }
 namespace apphelper
 {
 
-class OOO_DLLPUBLIC_CHARTTOOLS LifeTimeManager
+class LifeTimeManager
 {
 friend class LifeTimeGuard;
 public:
@@ -54,11 +54,11 @@ public:
     ::comphelper::OInterfaceContainerHelper4<css::view::XSelectionChangeListener> m_aSelectionChangeListeners;
 
 protected:
-    SAL_DLLPRIVATE virtual bool impl_canStartApiCall();
-    SAL_DLLPRIVATE virtual void impl_apiCallCountReachedNull(std::unique_lock<std::mutex>& /*rGuard*/){}
+    virtual bool impl_canStartApiCall();
+    virtual void impl_apiCallCountReachedNull(std::unique_lock<std::mutex>& /*rGuard*/){}
 
-    SAL_DLLPRIVATE void        impl_registerApiCall(bool bLongLastingCall);
-    SAL_DLLPRIVATE void        impl_unregisterApiCall(std::unique_lock<std::mutex>& rGuard, bool bLongLastingCall);
+    void        impl_registerApiCall(bool bLongLastingCall);
+    void        impl_unregisterApiCall(std::unique_lock<std::mutex>& rGuard, bool bLongLastingCall);
 
     css::lang::XComponent*     m_pComponent;
     ::osl::Condition        m_aNoAccessCountCondition;
@@ -74,12 +74,12 @@ class CloseableLifeTimeManager final : public LifeTimeManager
     css::util::XCloseable*         m_pCloseable;
 
     ::osl::Condition    m_aEndTryClosingCondition;
-    bool volatile       m_bClosed;
-    bool volatile       m_bInTryClose;
+    bool                m_bClosed;
+    bool                m_bInTryClose;
     //the ownership between model and controller is not clear at first
     //each controller might consider him as owner of the model first
     //at start the model is not considered as owner of itself
-    bool volatile       m_bOwnership;
+    bool                m_bOwnership;
 
 public:
     CloseableLifeTimeManager( css::util::XCloseable* pCloseable
@@ -91,7 +91,7 @@ public:
     bool    g_close_startTryClose(bool bDeliverOwnership);
 /// @throws css::util::CloseVetoException
     void    g_close_isNeedToCancelLongLastingCalls( bool bDeliverOwnership, css::util::CloseVetoException const & ex );
-    void    g_close_endTryClose(bool bDeliverOwnership );
+    void    g_close_endTryClose();
     void    g_close_endTryClose_doClose();
 /// @throws css::uno::RuntimeException
     void    g_addCloseListener( const css::uno::Reference< css::util::XCloseListener > & xListener );
@@ -100,7 +100,6 @@ private:
     virtual bool    impl_canStartApiCall() override;
     virtual void impl_apiCallCountReachedNull(std::unique_lock<std::mutex>& rGuard) override;
 
-    void        impl_setOwnership( bool bDeliverOwnership, bool bMyVeto );
     void        impl_doClose(std::unique_lock<std::mutex>& rGuard);
 };
 

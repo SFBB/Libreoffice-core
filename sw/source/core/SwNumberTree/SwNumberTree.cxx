@@ -55,7 +55,7 @@ SwNumberTreeNode::~SwNumberTreeNode()
 
     OSL_ENSURE( IsPhantom() || mpParent == nullptr, ": I'm not supposed to have a parent.");
 
-    mpParent = reinterpret_cast<SwNumberTreeNode *>(0xdeadbeef);
+    mpParent = reinterpret_cast<SwNumberTreeNode *>(sal_uIntPtr(0xdeadbeef));
 
     OSL_ENSURE(mChildren.empty(), "children left!");
 }
@@ -996,27 +996,25 @@ void SwNumberTreeNode::SetLastValid
         }
     }
 
+    if (IsContinuous())
     {
-        if (IsContinuous())
+        tSwNumberTreeChildren::const_iterator aIt = mItLastValid;
+
+        if (aIt != mChildren.end())
+            ++aIt;
+        else
+            aIt = mChildren.begin();
+
+        while (aIt != mChildren.end())
         {
-            tSwNumberTreeChildren::const_iterator aIt = mItLastValid;
+            (*aIt)->InvalidateTree();
 
-            if (aIt != mChildren.end())
-                ++aIt;
-            else
-                aIt = mChildren.begin();
+            ++aIt;
+        }
 
-            while (aIt != mChildren.end())
-            {
-                (*aIt)->InvalidateTree();
-
-                ++aIt;
-            }
-
-            if (mpParent)
-            {
-                mpParent->SetLastValid(mpParent->GetIterator(this), bValidating);
-            }
+        if (mpParent)
+        {
+            mpParent->SetLastValid(mpParent->GetIterator(this), bValidating);
         }
     }
 }

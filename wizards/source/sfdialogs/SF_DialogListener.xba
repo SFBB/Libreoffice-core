@@ -31,10 +31,16 @@ Option Explicit
 &apos;&apos;&apos;					
 &apos;&apos;&apos;			The described events are processed thru UNO listeners
 &apos;&apos;&apos;
-&apos;&apos;&apos;			&quot;On&quot; events defined by code, prefix = _SFFOCUS_, _SFKEY_, _SFMOUSE_, _SFMOVE_, _SFITEM_, _SFADJUST_, _SFTEXT_
-&apos;&apos;&apos;			-----------
+&apos;&apos;&apos;			&quot;On&quot; events defined by code, prefix =	_SFACTION_, _SFADJUST_, _SFFOCUS_, _SFKEY_, _SFMOUSE_,
+&apos;&apos;&apos;			-----------								_SFMOVE_, _SFITEM_, _SFADJUST_, _SFSELTAB_, _SFTEXT_
 &apos;&apos;&apos;				All event types applicable on dialogs and control types &lt;&gt; TreeControl
 &apos;&apos;&apos;				The events MUST NOT be preset in the Basic IDE
+&apos;&apos;&apos;
+&apos;&apos;&apos;			Closure of non-modal dialogs, prefix = _SFNONMODAL_
+&apos;&apos;&apos;			--------------------
+&apos;&apos;&apos;				Before LibreOffice 24.2 the window Close button was inoperant
+&apos;&apos;&apos;				Now a com.sun.star.awt.XTopWindowListener listener is set on the dialog closure
+&apos;&apos;&apos;				by the dialog.Execute(Modal := False) method
 &apos;&apos;&apos;
 &apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;&apos;
 
@@ -193,6 +199,37 @@ Try:
 Finally:
 	Exit Sub
 End Sub			&apos;	SFDialogs.SF_Dialoglistener._SFTAB_itemStateChanged
+
+REM -----------------------------------------------------------------------------
+Public Sub _SFTAB_tabPageActivated(Optional ByRef poEvent As Object)
+&apos;&apos;&apos;	Event triggered by a tab page container configured through the dialog page manager
+
+Dim oControl As Object			&apos;	The DialogControl instance having caused the event
+Dim sName As String				&apos;	Control name
+Dim oDialog As Object			&apos;	The parent Dialog instance
+Dim oPageManager As Object		&apos;	An entry in dialog._PageManagement
+
+Check:
+	On Local Error GoTo Finally		&apos;	Never interrupt !!
+	Set oControl = CreateScriptService(&quot;DialogEvent&quot;, poEvent)
+	If IsNull(oControl) Then GoTo Finally
+
+Try:
+	Set oDialog = oControl.Parent
+	With oDialog
+		sName = oControl.Name
+		&apos;	Find entry in page manager settings
+		For Each oPageManager In ._PageManagement
+			If oPageManager.ControlName = sName Then
+				.Page = poEvent.TabPageID
+				Exit For
+			End If
+		Next oPageManager
+	End With
+
+Finally:
+	Exit Sub
+End Sub			&apos;	SFDialogs.SF_Dialoglistener._SFTAB_actionPerformed
 
 REM -----------------------------------------------------------------------------
 Public Sub _SFTAB_disposing(Optional ByRef poEvent As Object)
@@ -379,6 +416,21 @@ Public Sub _SFMOVE_disposing()
 End Sub
 
 REM -----------------------------------------------------------------------------
+Public Sub _SFSELTAB_tabPageActivated(Optional ByRef poEvent As Object)
+&apos;&apos;&apos;	Triggered by the OnTabSelected event in a dialog control
+&apos;&apos;&apos;	The event is triggered thru a com.sun.star.awt.tab.XTabPageContainerListener
+&apos;&apos;&apos;	The argument is passed to a user routine stored in the SF_DialogControl instance
+&apos;&apos;&apos;		as a scripting framework URI
+
+	_TriggerEvent(&quot;tabPageActivated&quot;, poEvent)
+
+End Sub			&apos;	SFDialogs.SF_Dialoglistener._SFSELTAB_tabPageActivated
+
+REM -----------------------------------------------------------------------------
+Public Sub _SFSELTAB_disposing()
+End Sub
+
+REM -----------------------------------------------------------------------------
 Public Sub _SFTEXT_textChanged(Optional ByRef poEvent As Object)
 &apos;&apos;&apos;	Triggered by the OnTextChanged event in a dialog control
 &apos;&apos;&apos;	The event is triggered thru a com.sun.star.awt.XTextListener
@@ -387,10 +439,63 @@ Public Sub _SFTEXT_textChanged(Optional ByRef poEvent As Object)
 
 	_TriggerEvent(&quot;textChanged&quot;, poEvent)
 
-End Sub			&apos;	SFDialogs.SF_Dialoglistener. _SFTEXT_textChanged
+End Sub			&apos;	SFDialogs.SF_Dialoglistener._SFTEXT_textChanged
 
 REM -----------------------------------------------------------------------------
 Public Sub _SFTEXT_disposing()
+End Sub
+
+REM ================================== PUBLIC METHODS (NON-MODAL DIALOGS CLOSURE)
+
+&apos;&apos;&apos;	Next events are watched by a com.sun.star.awt.XTopWindowListener set
+&apos;&apos;&apos;	when a non-modal dialog is executed.
+&apos;&apos;&apos;	The use of the window Close button triggers the clean termination
+&apos;&apos;&apos;	of the dialog.
+
+REM -----------------------------------------------------------------------------
+Sub _SFNONMODAL_disposing&apos;(Optional ByRef poEvent As Object)
+End Sub
+
+REM -----------------------------------------------------------------------------
+Sub _SFNONMODAL_windowOpened&apos;(Optional ByRef poEvent As Object)
+End Sub
+
+REM -----------------------------------------------------------------------------
+Sub _SFNONMODAL_windowClosing(Optional ByRef poEvent As Object)
+&apos;&apos;&apos;	Identify and hide the closing dialog
+
+Dim oDialog As Object			&apos;	The dialog class instance
+
+	On Local Error GoTo Finally			&apos;	Never abort here
+
+	If Not IsNull(poEvent) Then
+		Set oDialog = CreateScriptService(&quot;SFDialogs.DialogEvent&quot;, poEvent)
+		If Not IsNull(oDialog) Then oDialog.Visible = False
+	End If
+
+Finally:
+	On Local Error GoTo 0
+	Exit Sub
+End Sub
+
+REM -----------------------------------------------------------------------------
+Sub _SFNONMODAL_windowClosed()
+End Sub
+
+REM -----------------------------------------------------------------------------
+Sub _SFNONMODAL_windowMinimized()
+End Sub
+
+REM -----------------------------------------------------------------------------
+Sub _SFNONMODAL_windowNormalized()
+End Sub
+
+REM -----------------------------------------------------------------------------
+Sub _SFNONMODAL_windowActivated()
+End Sub
+
+REM -----------------------------------------------------------------------------
+Sub _SFNONMODAL_windowDeactivated()
 End Sub
 
 REM ============================================================= PRIVATE METHODS
@@ -485,6 +590,9 @@ Try:
 			Case UCase(&quot;OnMouseReleased&quot;)
 				sPrevious = ._OnMouseReleased
 				._OnMouseReleased = psScript
+			Case UCase(&quot;OnTabSelected&quot;)
+				sPrevious = ._OnTabSelected
+				._OnTabSelected = psScript
 			Case UCase(&quot;OnTextChanged&quot;)
 				sPrevious = ._OnTextChanged
 				._OnTextChanged = psScript
@@ -505,7 +613,9 @@ Try:
 			Case &quot;XActionListener&quot;
 				._ActionCounter = ._ActionCounter + iCounterIncrement
 				If ._ActionCounter = 1 Then
-					If IsNull(._ActionListener) Then Set ._ActionListener = CreateUnoListener(&quot;_SFACTION_&quot;, cstPrefix &amp; sListener)
+					If IsNull(._ActionListener) Then
+						Set ._ActionListener = CreateUnoListener(&quot;SFDialogs.SF_DialogListener._SFACTION_&quot;, cstPrefix &amp; sListener)
+					End If
 					If iCounterIncrement = 1 Then oView.addActionListener(._ActionListener)
 				ElseIf ._ActionCounter &lt;= 0 Then
 					If Not IsNull(._ActionListener) Then oView.removeActionListener(._ActionListener)
@@ -514,7 +624,9 @@ Try:
 			Case &quot;XAdjustmentListener&quot;
 				._AdjustmentCounter = ._AdjustmentCounter + iCounterIncrement
 				If ._AdjustmentCounter = 1 Then
-					If IsNull(._AdjustmentListener) Then Set ._AdjustmentListener = CreateUnoListener(&quot;_SFADJUST_&quot;, cstPrefix &amp; sListener)
+					If IsNull(._AdjustmentListener) Then
+						Set ._AdjustmentListener = CreateUnoListener(&quot;SFDialogs.SF_DialogListener._SFADJUST_&quot;, cstPrefix &amp; sListener)
+					End If
 					If iCounterIncrement = 1 Then oView.addAdjustmentListener(._AdjustmentListener)
 				ElseIf ._AdjustmentCounter &lt;= 0 Then
 					If Not IsNull(._AdjustmentListener) Then oView.removeAdjustmentListener(._AdjustmentListener)
@@ -523,7 +635,9 @@ Try:
 			Case &quot;XFocusListener&quot;
 				._FocusCounter = ._FocusCounter + iCounterIncrement
 				If ._FocusCounter = 1 Then
-					If IsNull(._FocusListener) Then Set ._FocusListener = CreateUnoListener(&quot;_SFFOCUS_&quot;, cstPrefix &amp; sListener)
+					If IsNull(._FocusListener) Then
+						Set ._FocusListener = CreateUnoListener(&quot;SFDialogs.SF_DialogListener._SFFOCUS_&quot;, cstPrefix &amp; sListener)
+					End If
 					If iCounterIncrement = 1 Then oView.addFocusListener(._FocusListener)
 				ElseIf ._FocusCounter &lt;= 0 Then
 					If Not IsNull(._FocusListener) Then oView.removeFocusListener(._FocusListener)
@@ -532,7 +646,9 @@ Try:
 			Case &quot;XItemListener&quot;
 				._ItemCounter = ._ItemCounter + iCounterIncrement
 				If ._ItemCounter = 1 Then
-					If IsNull(._ItemListener) Then Set ._ItemListener = CreateUnoListener(&quot;_SFITEM_&quot;, cstPrefix &amp; sListener)
+					If IsNull(._ItemListener) Then
+						Set ._ItemListener = CreateUnoListener(&quot;SFDialogs.SF_DialogListener._SFITEM_&quot;, cstPrefix &amp; sListener)
+					End If
 					If iCounterIncrement = 1 Then oView.addItemListener(._ItemListener)
 				ElseIf ._ItemCounter &lt;= 0 Then
 					If Not IsNull(._ItemListener) Then oView.removeItemListener(._ItemListener)
@@ -541,7 +657,9 @@ Try:
 			Case &quot;XKeyListener&quot;
 				._KeyCounter = ._KeyCounter + iCounterIncrement
 				If ._KeyCounter= 1 Then
-					If IsNull(._KeyListener) Then Set ._KeyListener = CreateUnoListener(&quot;_SFKEY_&quot;, cstPrefix &amp; sListener)
+					If IsNull(._KeyListener) Then
+						Set ._KeyListener = CreateUnoListener(&quot;SFDialogs.SF_DialogListener._SFKEY_&quot;, cstPrefix &amp; sListener)
+					End If
 					If iCounterIncrement = 1 Then oView.addKeyListener(._KeyListener)
 				ElseIf ._KeyCounter &lt;= 0 Then
 					If Not IsNull(._KeyListener) Then oView.removeKeyListener(._KeyListener)
@@ -550,7 +668,9 @@ Try:
 			Case &quot;XMouseListener&quot;
 				._MouseCounter = ._MouseCounter + iCounterIncrement
 				If ._MouseCounter= 1 Then
-					If IsNull(._MouseListener) Then Set ._MouseListener = CreateUnoListener(&quot;_SFMOUSE_&quot;, cstPrefix &amp; sListener)
+					If IsNull(._MouseListener) Then
+						Set ._MouseListener = CreateUnoListener(&quot;SFDialogs.SF_DialogListener._SFMOUSE_&quot;, cstPrefix &amp; sListener)
+					End If
 					If iCounterIncrement = 1 Then oView.addMouseListener(._MouseListener)
 				ElseIf ._MouseCounter &lt;= 0 Then
 					If Not IsNull(._MouseListener) Then oView.removeMouseListener(._MouseListener)
@@ -559,16 +679,31 @@ Try:
 			Case &quot;XMouseMotionListener&quot;
 				._MouseMotionCounter = ._MouseMotionCounter + iCounterIncrement
 				If ._MouseMotionCounter = 1 Then
-					If IsNull(._MouseMotionListener) Then Set ._MouseMotionListener = CreateUnoListener(&quot;_SFMOVE_&quot;, cstPrefix &amp; sListener)
+					If IsNull(._MouseMotionListener) Then
+						Set ._MouseMotionListener = CreateUnoListener(&quot;SFDialogs.SF_DialogListener._SFMOVE_&quot;, cstPrefix &amp; sListener)
+					End If
 					If iCounterIncrement = 1 Then oView.addMouseMotionListener(._MouseMotionListener)
 				ElseIf ._MouseMotionCounter &lt;= 0 Then
 					If Not IsNull(._MouseMotionListener) Then oView.removeMouseMotionListener(._MouseMotionListener)
 					._MouseMotionCounter = 0		&apos;	Prevent negative values
 				End If
+			Case &quot;tab.XTabPageContainerListener&quot;
+				._TabPageContainerCounter = ._TabPageContainerCounter + iCounterIncrement
+				If ._TabPageContainerCounter = 1 Then
+					If IsNull(._TabPageContainerListener) Then
+						Set ._TabPageContainerListener = CreateUnoListener(&quot;SFDialogs.SF_DialogListener._SFSELTAB_&quot;, cstPrefix &amp; sListener)
+					End If
+					If iCounterIncrement = 1 Then oView.addTabPageContainerListener(._TabPageContainerListener)
+				ElseIf ._TabPageContainerCounter &lt;= 0 Then
+					If Not IsNull(._TabPageContainerListener) Then oView.removeTabPageContainerListener(._TabPageContainerListener)
+					._TabPageContainerCounter = 0		&apos;	Prevent negative values
+				End If
 			Case &quot;XTextListener&quot;
 				._TextCounter = ._TextCounter + iCounterIncrement
 				If ._TextCounter = 1 Then
-					If IsNull(._TextListener) Then Set ._TextListener = CreateUnoListener(&quot;_SFTEXT_&quot;, cstPrefix &amp; sListener)
+					If IsNull(._TextListener) Then
+						Set ._TextListener = CreateUnoListener(&quot;SFDialogs.SF_DialogListener._SFTEXT_&quot;, cstPrefix &amp; sListener)
+					End If
 					If iCounterIncrement = 1 Then oView.addTextListener(._TextListener)
 				ElseIf ._TextCounter &lt;= 0 Then
 					If Not IsNull(._TextListener) Then oView.removeTextListener(._TextListener)
@@ -616,6 +751,7 @@ Try:
 			Case &quot;mouseMoved&quot;				:	sScript = .OnMouseMoved
 			Case &quot;mousePressed&quot;				:	sScript = .OnMousePressed
 			Case &quot;mouseReleased&quot;			:	sScript = .OnMouseReleased
+			Case &quot;tabPageActivated&quot;			:	sScript = .OnTabSelected
 			Case &quot;textChanged&quot;				:	sScript = .OnTextChanged
 			Case Else						:	sScript = &quot;&quot;		&apos;	Should not happen
 		End Select

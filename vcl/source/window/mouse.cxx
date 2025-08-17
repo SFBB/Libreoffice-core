@@ -26,6 +26,7 @@
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
 #include <vcl/ITiledRenderable.hxx>
+#include <vcl/dndlistenercontainer.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/window.hxx>
 #include <vcl/cursor.hxx>
@@ -41,7 +42,6 @@
 #include <salframe.hxx>
 #include <salinst.hxx>
 
-#include <dndlistenercontainer.hxx>
 #include <dndeventdispatcher.hxx>
 
 #include <com/sun/star/datatransfer/dnd/XDragSource.hpp>
@@ -383,7 +383,11 @@ void Window::ImplGrabFocus( GetFocusFlags nFlags )
             if ( !ImplCallPreNotify( aNEvt ) && !xWindow->isDisposed() )
                 CompatGetFocus();
             if( !xWindow->isDisposed() )
-                ImplCallActivateListeners( (pOldFocusWindow && ! pOldFocusWindow->isDisposed()) ? pOldFocusWindow : nullptr );
+            {
+                if (pOldFocusWindow && pOldFocusWindow->isDisposed())
+                    pOldFocusWindow = nullptr;
+                ImplCallActivateListeners(pOldFocusWindow);
+            }
             if( !xWindow->isDisposed() )
             {
                 mpWindowImpl->mnGetFocusFlags = GetFocusFlags::NONE;
@@ -648,10 +652,10 @@ void Window::ImplStartDnd()
     GetDropTarget();
 }
 
-Reference< css::datatransfer::dnd::XDropTarget > Window::GetDropTarget()
+rtl::Reference<DNDListenerContainer> Window::GetDropTarget()
 {
     if( !mpWindowImpl )
-        return Reference< css::datatransfer::dnd::XDropTarget >();
+        return {};
 
     if( ! mpWindowImpl->mxDNDListenerContainer.is() )
     {
@@ -683,8 +687,7 @@ Reference< css::datatransfer::dnd::XDropTarget > Window::GetDropTarget()
 
                         if( xDragGestureRecognizer.is() )
                         {
-                            xDragGestureRecognizer->addDragGestureListener(
-                                Reference< css::datatransfer::dnd::XDragGestureListener > (mpWindowImpl->mpFrameData->mxDropTargetListener, UNO_QUERY));
+                            xDragGestureRecognizer->addDragGestureListener(mpWindowImpl->mpFrameData->mxDropTargetListener);
                         }
                         else
                             mpWindowImpl->mpFrameData->mbInternalDragGestureRecognizer = true;
@@ -701,11 +704,11 @@ Reference< css::datatransfer::dnd::XDropTarget > Window::GetDropTarget()
 
         }
 
-        mpWindowImpl->mxDNDListenerContainer = static_cast < css::datatransfer::dnd::XDropTarget * > ( new DNDListenerContainer( nDefaultActions ) );
+        mpWindowImpl->mxDNDListenerContainer = new DNDListenerContainer( nDefaultActions );
     }
 
     // this object is located in the same process, so there will be no runtime exception
-    return Reference< css::datatransfer::dnd::XDropTarget > ( mpWindowImpl->mxDNDListenerContainer, UNO_QUERY );
+    return mpWindowImpl->mxDNDListenerContainer;
 }
 
 Reference< css::datatransfer::dnd::XDragSource > Window::GetDragSource()
@@ -720,8 +723,8 @@ Reference< css::datatransfer::dnd::XDragSource > Window::GetDragSource()
     try
     {
         SalInstance* pInst = ImplGetSVData()->mpDefInst;
-        mpWindowImpl->mpFrameData->mxDragSource.set(pInst->CreateDragSource(pEnvData), UNO_QUERY);
-        mpWindowImpl->mpFrameData->mxDropTarget.set(pInst->CreateDropTarget(pEnvData), UNO_QUERY);
+        mpWindowImpl->mpFrameData->mxDragSource = pInst->CreateDragSource(*pEnvData);
+        mpWindowImpl->mpFrameData->mxDropTarget = pInst->CreateDropTarget(*pEnvData);
     }
     catch (const Exception&)
     {
@@ -732,11 +735,6 @@ Reference< css::datatransfer::dnd::XDragSource > Window::GetDragSource()
 #else
     return Reference< css::datatransfer::dnd::XDragSource > ();
 #endif
-}
-
-Reference< css::datatransfer::dnd::XDragGestureRecognizer > Window::GetDragGestureRecognizer()
-{
-    return Reference< css::datatransfer::dnd::XDragGestureRecognizer > ( GetDropTarget(), UNO_QUERY );
 }
 
 } /* namespace vcl */

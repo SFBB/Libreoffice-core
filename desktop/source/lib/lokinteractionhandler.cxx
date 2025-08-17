@@ -23,6 +23,7 @@
 #include <cppuhelper/supportsservice.hxx>
 
 #include <com/sun/star/document/BrokenPackageRequest.hpp>
+#include <com/sun/star/document/FontsDisallowEditingRequest.hpp>
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/task/XInteractionAbort.hpp>
 #include <com/sun/star/task/XInteractionApprove.hpp>
@@ -72,7 +73,7 @@ LOKInteractionHandler::~LOKInteractionHandler()
 
 OUString SAL_CALL LOKInteractionHandler::getImplementationName()
 {
-    return "com.sun.star.comp.uui.LOKInteractionHandler";
+    return u"com.sun.star.comp.uui.LOKInteractionHandler"_ustr;
 }
 
 sal_Bool SAL_CALL LOKInteractionHandler::supportsService(OUString const & rServiceName)
@@ -82,11 +83,11 @@ sal_Bool SAL_CALL LOKInteractionHandler::supportsService(OUString const & rServi
 
 uno::Sequence< OUString > SAL_CALL LOKInteractionHandler::getSupportedServiceNames()
 {
-    return { "com.sun.star.task.InteractionHandler",
+    return { u"com.sun.star.task.InteractionHandler"_ustr,
              // added to indicate support for configuration.backend.MergeRecoveryRequest
-             "com.sun.star.configuration.backend.InteractionHandler",
+             u"com.sun.star.configuration.backend.InteractionHandler"_ustr,
               // for backwards compatibility
-             "com.sun.star.uui.InteractionHandler" };
+             u"com.sun.star.uui.InteractionHandler"_ustr };
 }
 
 void SAL_CALL LOKInteractionHandler::initialize(uno::Sequence<uno::Any> const & /*rArguments*/)
@@ -120,7 +121,7 @@ void LOKInteractionHandler::postError(css::task::InteractionClassification class
     aJson.put("code", static_cast<sal_uInt32>(code));
     aJson.put("message", message.toUtf8());
 
-    std::size_t nView = SfxViewShell::Current() ? SfxLokHelper::getView() : 0;
+    std::size_t nView = SfxViewShell::Current() ? SfxLokHelper::getCurrentView() : 0;
     if (m_pLOKDocument && m_pLOKDocument->mpCallbackFlushHandlers.count(nView))
         m_pLOKDocument->mpCallbackFlushHandlers[nView]->queue(LOK_CALLBACK_ERROR, aJson.finishAndGetAsOString());
     else if (m_pLOKit->mpCallback)
@@ -138,6 +139,41 @@ void selectApproved(uno::Sequence<uno::Reference<task::XInteractionContinuation>
         if (xApprove.is())
             xApprove->select();
     }
+}
+
+bool ShouldFallbackToStandard(const uno::Reference<task::XInteractionRequest>& xRequest)
+{
+    uno::Any const request(xRequest->getRequest());
+
+    if (task::DocumentMacroConfirmationRequest aStruct; request >>= aStruct)
+        return true;
+
+    if (document::BrokenPackageRequest aStruct; request >>= aStruct)
+        return true;
+
+    if (document::FilterOptionsRequest aStruct; request >>= aStruct)
+        return true;
+
+    if (document::FontsDisallowEditingRequest aStruct; request >>= aStruct)
+        return true;
+
+    if (beans::NamedValue aStruct; request >>= aStruct)
+        if (aStruct.Name == "LoadReadOnlyRequest")
+            if (OUString aFileName; aStruct.Value >>= aFileName)
+                return true;
+
+    return false;
+}
+
+bool FallbackToStandard(const uno::Reference<task::XInteractionRequest>& xRequest)
+{
+    auto xInteraction(task::InteractionHandler::createWithParent(
+        comphelper::getProcessComponentContext(), nullptr));
+
+    if (xInteraction.is())
+        xInteraction->handleInteractionRequest(xRequest);
+
+    return true;
 }
 
 }
@@ -188,7 +224,7 @@ bool LOKInteractionHandler::handleIOException(const css::uno::Sequence<css::uno:
         ERRCODE_IO_WRONGVERSION,
     };
 
-    postError(aIoException.Classification, "io", aErrorCode[static_cast<int>(aIoException.Code)], "");
+    postError(aIoException.Classification, "io", aErrorCode[static_cast<int>(aIoException.Code)], u""_ustr);
     selectApproved(rContinuations);
 
     return true;
@@ -335,107 +371,26 @@ bool LOKInteractionHandler::handlePasswordRequest(const uno::Sequence<uno::Refer
     return true;
 }
 
-bool LOKInteractionHandler::handleMacroConfirmationRequest(const uno::Reference<task::XInteractionRequest>& xRequest)
-{
-    uno::Any const request(xRequest->getRequest());
-
-    task::DocumentMacroConfirmationRequest aConfirmRequest;
-    if (request >>= aConfirmRequest)
-    {
-        auto xInteraction(task::InteractionHandler::createWithParent(comphelper::getProcessComponentContext(), nullptr));
-
-        if (xInteraction.is())
-            xInteraction->handleInteractionRequest(xRequest);
-
-        return true;
-    }
-    return false;
-}
-
-bool LOKInteractionHandler::handlePackageReparationRequest(const uno::Reference<task::XInteractionRequest>& xRequest)
-{
-    uno::Any const request(xRequest->getRequest());
-
-    document::BrokenPackageRequest aBrokenPackageRequest;
-    if (request >>= aBrokenPackageRequest)
-    {
-        auto xInteraction(task::InteractionHandler::createWithParent(comphelper::getProcessComponentContext(), nullptr));
-
-        if (xInteraction.is())
-            xInteraction->handleInteractionRequest(xRequest);
-
-        return true;
-    }
-    return false;
-}
-
-bool LOKInteractionHandler::handleLoadReadOnlyRequest(const uno::Reference<task::XInteractionRequest>& xRequest)
-{
-    uno::Any const request(xRequest->getRequest());
-
-    OUString aFileName;
-    beans::NamedValue aLoadReadOnlyRequest;
-    if ((request >>= aLoadReadOnlyRequest) &&
-        aLoadReadOnlyRequest.Name == "LoadReadOnlyRequest" &&
-        (aLoadReadOnlyRequest.Value >>= aFileName))
-    {
-        auto xInteraction(task::InteractionHandler::createWithParent(comphelper::getProcessComponentContext(), nullptr));
-
-        if (xInteraction.is())
-            xInteraction->handleInteractionRequest(xRequest);
-
-        return true;
-    }
-    return false;
-}
-
-bool LOKInteractionHandler::handleFilterOptionsRequest(const uno::Reference<task::XInteractionRequest>& xRequest)
-{
-    document::FilterOptionsRequest aFilterOptionsRequest;
-    uno::Any const request(xRequest->getRequest());
-    if (request >>= aFilterOptionsRequest)
-    {
-        uno::Reference< task::XInteractionHandler2 > xInteraction(
-            task::InteractionHandler::createWithParent(
-                ::comphelper::getProcessComponentContext(), nullptr));
-
-        if (xInteraction.is())
-            xInteraction->handleInteractionRequest(xRequest);
-
-        return true;
-    }
-    return false;
-}
-
 sal_Bool SAL_CALL LOKInteractionHandler::handleInteractionRequest(
         const uno::Reference<task::XInteractionRequest>& xRequest)
 {
-    uno::Sequence<uno::Reference<task::XInteractionContinuation>> const &rContinuations = xRequest->getContinuations();
+    uno::Sequence<uno::Reference<task::XInteractionContinuation>> const aContinuations = xRequest->getContinuations();
     uno::Any const request(xRequest->getRequest());
 
-    if (handleIOException(rContinuations, request))
+    if (handleIOException(aContinuations, request))
         return true;
 
-    if (handleNetworkException(rContinuations, request))
+    if (handleNetworkException(aContinuations, request))
         return true;
 
-    if (handlePasswordRequest(rContinuations, request))
+    if (handlePasswordRequest(aContinuations, request))
         return true;
 
-    if (handleFilterOptionsRequest(xRequest))
-        return true;
-
-    if (handleMacroConfirmationRequest(xRequest))
-        return true;
-
-    if (handlePackageReparationRequest(xRequest))
-        return true;
-
-    if (handleLoadReadOnlyRequest(xRequest))
-        return true;
+    if (ShouldFallbackToStandard(xRequest))
+        return FallbackToStandard(xRequest);
 
     // TODO: perform more interactions 'for real' like the above
-    selectApproved(rContinuations);
+    selectApproved(aContinuations);
 
     return true;
 }

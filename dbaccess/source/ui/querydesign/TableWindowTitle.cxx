@@ -26,13 +26,11 @@
 #include <JoinController.hxx>
 
 using namespace dbaui;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::uno;
 OTableWindowTitle::OTableWindowTitle(OTableWindow* pParent)
-    : InterimItemWindow(pParent, "dbaccess/ui/tabletitle.ui", "TableTitle")
+    : InterimItemWindow(pParent, u"dbaccess/ui/tabletitle.ui"_ustr, u"TableTitle"_ustr)
     , m_pTabWin( pParent )
-    , m_xLabel(m_xBuilder->weld_label("label"))
-    , m_xImage(m_xBuilder->weld_image("image"))
+    , m_xLabel(m_xBuilder->weld_label(u"label"_ustr))
+    , m_xImage(m_xBuilder->weld_image(u"image"_ustr))
 {
     m_xLabel->connect_mouse_press(LINK(this, OTableWindowTitle, MousePressHdl));
 }
@@ -46,7 +44,7 @@ void OTableWindowTitle::dispose()
 {
     m_xImage.reset();
     m_xLabel.reset();
-    m_pTabWin.clear();
+    m_pTabWin.reset();
     InterimItemWindow::dispose();
 }
 
@@ -66,7 +64,7 @@ IMPL_LINK(OTableWindowTitle, MousePressHdl, const MouseEvent&, rEvt, bool)
                 m_pTabWin->SetSizePixel(aSize);
 
                 OJoinTableView* pView = m_pTabWin->getTableView();
-                OSL_ENSURE(pView,"No OJoinTableView!");
+                assert(pView && "No OJoinTableView!");
                 for (auto& conn : pView->getTableConnections())
                     conn->RecalcLines();
 

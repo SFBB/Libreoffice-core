@@ -33,6 +33,8 @@ public:
 
     virtual void dispose() override;
 
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
+
     // Spin-Handling
     virtual void Up() override;
     virtual void Down() override;

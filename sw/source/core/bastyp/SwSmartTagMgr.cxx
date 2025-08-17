@@ -21,11 +21,10 @@
 
 #include <docsh.hxx>
 #include <swmodule.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/svapp.hxx>
 
 using namespace com::sun::star;
-using namespace com::sun::star::uno;
 
 rtl::Reference<SwSmartTagMgr> SwSmartTagMgr::spTheSwSmartTagMgr;
 
@@ -34,7 +33,7 @@ SwSmartTagMgr& SwSmartTagMgr::Get()
     if (!spTheSwSmartTagMgr)
     {
         OUString sModuleName
-            = !utl::ConfigManager::IsFuzzing() ? SwDocShell::Factory().GetModuleName() : "Writer";
+            = !comphelper::IsFuzzing() ? SwDocShell::Factory().GetModuleName() : u"Writer"_ustr;
         spTheSwSmartTagMgr = new SwSmartTagMgr(sModuleName);
         spTheSwSmartTagMgr->Init(u"Writer");
     }

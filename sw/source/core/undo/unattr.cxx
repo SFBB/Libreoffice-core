@@ -59,6 +59,11 @@
 #include <frameformats.hxx>
 #include <editsh.hxx>
 
+#if ENABLE_YRS
+#include <docufld.hxx>
+#endif
+
+
 SwUndoFormatAttrHelper::SwUndoFormatAttrHelper(SwFormat& rFormat, bool bSvDrwPt)
     : SwClient(&rFormat)
     , m_rFormat(rFormat)
@@ -68,23 +73,16 @@ SwUndoFormatAttrHelper::SwUndoFormatAttrHelper(SwFormat& rFormat, bool bSvDrwPt)
 
 void SwUndoFormatAttrHelper::SwClientNotify(const SwModify&, const SfxHint& rHint)
 {
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    if(!pLegacy->m_pOld)
-        return;
-    assert(pLegacy->m_pOld->Which() != RES_OBJECTDYING);
-    if(!pLegacy->m_pNew)
-        return;
-    const SwDoc& rDoc = *m_rFormat.GetDoc();
-    auto pOld = pLegacy->m_pOld;
-    if(POOLATTR_END >= pLegacy->m_pOld->Which()) {
-        if(!GetUndo())
-            m_pUndo.reset(new SwUndoFormatAttr(*pOld, m_rFormat, m_bSaveDrawPt));
-        else
-            m_pUndo->PutAttr(*pOld, rDoc);
-    } else if(RES_ATTRSET_CHG == pOld->Which()) {
-        auto& rChgSet = *static_cast<const SwAttrSetChg*>(pOld)->GetChgSet();
+    if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+        if(!pChangeHint->m_pOld)
+            return;
+        if(!pChangeHint->m_pNew)
+            return;
+        const SwDoc& rDoc = m_rFormat.GetDoc();
+        auto pOld = pChangeHint->m_pOld;
+        auto& rChgSet = *pOld->GetChgSet();
         if(!GetUndo())
             m_pUndo.reset(new SwUndoFormatAttr(SfxItemSet(rChgSet), m_rFormat, m_bSaveDrawPt));
         else {
@@ -92,11 +90,32 @@ void SwUndoFormatAttrHelper::SwClientNotify(const SwModify&, const SfxHint& rHin
             for(auto pItem = aIter.GetCurItem(); pItem; pItem = aIter.NextItem())
                 m_pUndo->PutAttr(*pItem, rDoc);
         }
+        return;
+    }
+    else if (rHint.GetId() == SfxHintId::SwObjectDying)
+    {
+        assert(false);
+    }
+    if (rHint.GetId() != SfxHintId::SwLegacyModify)
+        return;
+    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
+    if(!pLegacy->m_pOld)
+        return;
+    if(!pLegacy->m_pNew)
+        return;
+    const SwDoc& rDoc = m_rFormat.GetDoc();
+    auto pOld = pLegacy->m_pOld;
+    if(POOLATTR_END >= pLegacy->m_pOld->Which())
+    {
+        if(!GetUndo())
+            m_pUndo.reset(new SwUndoFormatAttr(*pOld, m_rFormat, m_bSaveDrawPt));
+        else
+            m_pUndo->PutAttr(*pOld, rDoc);
     }
 }
 
 SwDocModifyAndUndoGuard::SwDocModifyAndUndoGuard(SwFormat& format)
-    : doc(format.GetName().isEmpty() ? nullptr : format.GetDoc())
+    : doc(format.GetName().isEmpty() ? nullptr : &format.GetDoc())
     , helper(doc ? new SwUndoFormatAttrHelper(format) : nullptr)
 {
 }
@@ -125,7 +144,7 @@ SwUndoFormatAttr::SwUndoFormatAttr( SfxItemSet&& rOldSet,
     , m_nFormatWhich( rChgFormat.Which() )
     , m_bSaveDrawPt( bSaveDrawPt )
 {
-    assert(m_sFormatName.getLength());
+    assert(!m_sFormatName.isEmpty());
 
     Init( rChgFormat );
 }
@@ -140,7 +159,7 @@ SwUndoFormatAttr::SwUndoFormatAttr( const SfxPoolItem& rItem, SwFormat& rChgForm
     , m_nFormatWhich( rChgFormat.Which() )
     , m_bSaveDrawPt( bSaveDrawPt )
 {
-    assert(m_sFormatName.getLength());
+    assert(!m_sFormatName.isEmpty());
 
     m_oOldSet->Put( rItem );
     Init( rChgFormat );
@@ -154,9 +173,9 @@ void SwUndoFormatAttr::Init( const SwFormat & rFormat )
     if ( SfxItemState::SET == m_oOldSet->GetItemState( RES_ANCHOR, false )) {
         SaveFlyAnchor( &rFormat, m_bSaveDrawPt );
     } else if ( RES_FRMFMT == m_nFormatWhich ) {
-        const SwDoc* pDoc = rFormat.GetDoc();
+        const SwDoc& rDoc = rFormat.GetDoc();
         auto pTableFormat = dynamic_cast<const SwTableFormat*>(&rFormat);
-        if (pTableFormat && pDoc->GetTableFrameFormats()->ContainsFormat(const_cast<SwTableFormat*>(pTableFormat)))
+        if (pTableFormat && rDoc.GetTableFrameFormats()->ContainsFormat(const_cast<SwTableFormat*>(pTableFormat)))
         {
             // Table Format: save table position, table formats are volatile!
             SwTable * pTable = SwIterator<SwTable,SwFormat>( rFormat ).First();
@@ -385,7 +404,7 @@ void SwUndoFormatAttr::SaveFlyAnchor( const SwFormat * pFormat, bool bSvDrwPt )
 {
     // Format is valid, otherwise you would not reach this point here
     if( bSvDrwPt ) {
-        if ( RES_DRAWFRMFMT == pFormat->Which() ) {
+        if (pFormat && RES_DRAWFRMFMT == pFormat->Which()) {
             Point aPt( static_cast<const SwFrameFormat*>(pFormat)->FindSdrObject()
                        ->GetRelativePos() );
             // store old value as attribute, to keep SwUndoFormatAttr small
@@ -591,18 +610,18 @@ void SwUndoFormatResetAttr::BroadcastStyleChange()
         nFamily = SfxStyleFamily::Char;
 
     if (nFamily != SfxStyleFamily::None)
-        m_pChangedFormat->GetDoc()->BroadcastStyleOperation(m_pChangedFormat->GetName(), nFamily, SfxHintId::StyleSheetModified);
+        m_pChangedFormat->GetDoc().BroadcastStyleOperation(m_pChangedFormat->GetName(), nFamily, SfxHintId::StyleSheetModified);
 }
 
 SwUndoResetAttr::SwUndoResetAttr( const SwPaM& rRange, sal_uInt16 nFormatId )
-    : SwUndo( SwUndoId::RESETATTR, &rRange.GetDoc() ), SwUndRng( rRange )
+    : SwUndo( SwUndoId::RESETATTR, rRange.GetDoc() ), SwUndRng( rRange )
     , m_pHistory( new SwHistory )
     , m_nFormatId( nFormatId )
 {
 }
 
 SwUndoResetAttr::SwUndoResetAttr( const SwPosition& rPos, sal_uInt16 nFormatId )
-    : SwUndo( SwUndoId::RESETATTR, &rPos.GetDoc() )
+    : SwUndo( SwUndoId::RESETATTR, rPos.GetDoc() )
     , m_pHistory( new SwHistory )
     , m_nFormatId( nFormatId )
 {
@@ -618,7 +637,7 @@ void SwUndoResetAttr::UndoImpl(::sw::UndoRedoContext & rContext)
 {
     // reset old values
     SwDoc & rDoc = rContext.GetDoc();
-    m_pHistory->TmpRollback( &rDoc, 0 );
+    m_pHistory->TmpRollback( rDoc, 0 );
     m_pHistory->SetTmpEnd( m_pHistory->Count() );
 
     if ((RES_CONDTXTFMTCOLL == m_nFormatId) &&
@@ -658,7 +677,7 @@ void SwUndoResetAttr::RedoImpl(::sw::UndoRedoContext & rContext)
         SwNodeIndex aIdx( rDoc.GetNodes(), m_nSttNode );
         SwPosition aPos( aIdx, aIdx.GetNode().GetContentNode(), m_nSttContent );
 
-        sal_uInt16 nCnt = SwDoc::GetCurTOXMark( aPos, aArr );
+        int nCnt = SwDoc::GetCurTOXMark( aPos, aArr );
         if( nCnt ) {
             if( 1 < nCnt ) {
                 // search for the right one
@@ -683,22 +702,21 @@ void SwUndoResetAttr::RedoImpl(::sw::UndoRedoContext & rContext)
     break;
     case RES_TXTATR_REFMARK:
     {
-        const registeredSfxPoolItems& aRange(rDoc.GetAttrPool().GetItemSurrogates(RES_TXTATR_REFMARK));
         SwHistoryHint* pHistoryHint = GetHistory()[0];
         if (pHistoryHint && HSTRY_SETREFMARKHNT == pHistoryHint->Which())
         {
-            for (const SfxPoolItem* pItem : aRange)
-            {
-                assert(dynamic_cast<const SwFormatRefMark*>(pItem));
-                const auto pFormatRefMark = static_cast<const SwFormatRefMark*>(pItem);
-                if (static_cast<SwHistorySetRefMark*>(pHistoryHint)->GetRefName() ==
-                        pFormatRefMark->GetRefName())
+            rDoc.ForEachRefMark(
+                [&pHistoryHint, &rDoc] (const SwFormatRefMark& rFormatRefMark) -> bool
                 {
-                    rDoc.DeleteFormatRefMark(pFormatRefMark);
-                    rDoc.GetEditShell()->SwViewShell::UpdateFields();
-                    break;
-                }
-            }
+                    if (static_cast<SwHistorySetRefMark*>(pHistoryHint)->GetRefName() ==
+                            rFormatRefMark.GetRefName())
+                    {
+                        rDoc.DeleteFormatRefMark(&rFormatRefMark);
+                        rDoc.GetEditShell()->SwViewShell::UpdateFields();
+                        return false;
+                    }
+                    return true;
+                });
         }
     }
     break;
@@ -731,7 +749,7 @@ void SwUndoResetAttr::SetAttrs( o3tl::sorted_vector<sal_uInt16> && rAttrs )
 
 SwUndoAttr::SwUndoAttr( const SwPaM& rRange, const SfxPoolItem& rAttr,
                         const SetAttrMode nFlags )
-    : SwUndo( SwUndoId::INSATTR, &rRange.GetDoc() ), SwUndRng( rRange )
+    : SwUndo( SwUndoId::INSATTR, rRange.GetDoc() ), SwUndRng( rRange )
     , m_AttrSet( rRange.GetDoc().GetAttrPool(), rAttr.Which(), rAttr.Which() )
     , m_pHistory( new SwHistory )
     , m_nNodeIndex( NODE_OFFSET_MAX )
@@ -745,13 +763,15 @@ SwUndoAttr::SwUndoAttr( const SwPaM& rRange, const SfxPoolItem& rAttr,
     {
         uno::Any aValue;
         pItem->QueryValue(aValue, RES_TXTATR_CHARFMT);
-        aValue >>= m_aChrFormatName;
+        OUString sTmp;
+        if (aValue >>= sTmp)
+            m_aChrFormatName = UIName(sTmp);
     }
 }
 
 SwUndoAttr::SwUndoAttr( const SwPaM& rRange, SfxItemSet aSet,
                         const SetAttrMode nFlags )
-    : SwUndo( SwUndoId::INSATTR, &rRange.GetDoc() ), SwUndRng( rRange )
+    : SwUndo( SwUndoId::INSATTR, rRange.GetDoc() ), SwUndRng( rRange )
     , m_AttrSet(std::move( aSet ))
     , m_pHistory( new SwHistory )
     , m_nNodeIndex( NODE_OFFSET_MAX )
@@ -763,7 +783,9 @@ SwUndoAttr::SwUndoAttr( const SwPaM& rRange, SfxItemSet aSet,
     {
         uno::Any aValue;
         pItem->QueryValue(aValue, RES_TXTATR_CHARFMT);
-        aValue >>= m_aChrFormatName;
+        OUString sTmp;
+        if (aValue >>= sTmp)
+            m_aChrFormatName = UIName(sTmp);
     }
 }
 
@@ -791,27 +813,53 @@ void SwUndoAttr::SaveRedlineData( const SwPaM& rPam, bool bIsContent )
     }
 }
 
+void SwUndoAttr::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwUndoAttr"));
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
+
+    m_AttrSet.dumpAsXml(pWriter);
+
+    if (m_pHistory)
+    {
+        m_pHistory->dumpAsXml(pWriter);
+    }
+
+    if (m_pRedlineData)
+    {
+        m_pRedlineData->dumpAsXml(pWriter);
+    }
+
+    if (m_pRedlineSaveData)
+    {
+        m_pRedlineSaveData->dumpAsXml(pWriter);
+    }
+
+    (void)xmlTextWriterEndElement(pWriter);
+}
+
+
 void SwUndoAttr::UndoImpl(::sw::UndoRedoContext & rContext)
 {
-    SwDoc *const pDoc = & rContext.GetDoc();
+    SwDoc& rDoc = rContext.GetDoc();
 
-    RemoveIdx( *pDoc );
+    RemoveIdx( rDoc );
 
     if( IDocumentRedlineAccess::IsRedlineOn( GetRedlineFlags() ) ) {
-        SwPaM aPam(pDoc->GetNodes().GetEndOfContent());
+        SwPaM aPam(rDoc.GetNodes().GetEndOfContent());
         if ( NODE_OFFSET_MAX != m_nNodeIndex ) {
             aPam.DeleteMark();
             aPam.GetPoint()->Assign( m_nNodeIndex, m_nSttContent );
             aPam.SetMark();
             aPam.GetPoint()->AdjustContent(+1);
-            pDoc->getIDocumentRedlineAccess().DeleteRedline(aPam, false, RedlineType::Any);
+            rDoc.getIDocumentRedlineAccess().DeleteRedline(aPam, false, RedlineType::Any);
         } else {
             // remove all format redlines, will be recreated if needed
             SetPaM(aPam);
-            pDoc->getIDocumentRedlineAccess().DeleteRedline(aPam, false, RedlineType::Format);
+            rDoc.getIDocumentRedlineAccess().DeleteRedline(aPam, false, RedlineType::Format);
             if (m_pRedlineSaveData)
             {
-                SetSaveData( *pDoc, *m_pRedlineSaveData );
+                SetSaveData( rDoc, *m_pRedlineSaveData );
             }
         }
     }
@@ -821,7 +869,7 @@ void SwUndoAttr::UndoImpl(::sw::UndoRedoContext & rContext)
                           && (m_AttrSet.GetRanges()[0].first <= RES_TXTATR_ANNOTATION);
 
     // restore old values
-    m_pHistory->TmpRollback( pDoc, 0, !bToLast );
+    m_pHistory->TmpRollback( rDoc, 0, !bToLast );
     m_pHistory->SetTmpEnd( m_pHistory->Count() );
 
     // set cursor onto Undo area
@@ -843,7 +891,7 @@ void SwUndoAttr::RepeatImpl(::sw::RepeatContext & rContext)
     }
 }
 
-void SwUndoAttr::redoAttribute(SwPaM& rPam, sw::UndoRedoContext & rContext)
+void SwUndoAttr::redoAttribute(SwPaM& rPam, const sw::UndoRedoContext & rContext)
 {
     SwDoc & rDoc = rContext.GetDoc();
 
@@ -872,12 +920,28 @@ void SwUndoAttr::redoAttribute(SwPaM& rPam, sw::UndoRedoContext & rContext)
             }
             rPam.DeleteMark();
         } else {
+            if (m_pRedlineSaveData)
+            {
+                // We saved some (typically non-format) redline before our action. First set that on
+                // the document, so AppendRedline() can create a hierarchical redline.
+                SetSaveData(rDoc, *m_pRedlineSaveData);
+            }
             rDoc.getIDocumentRedlineAccess().AppendRedline( new SwRangeRedline( *m_pRedlineData, rPam ), true);
         }
 
         rDoc.getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld );
     } else {
         rDoc.getIDocumentContentOperations().InsertItemSet( rPam, m_AttrSet, m_nInsertFlags );
+#if ENABLE_YRS
+        SwFormatField const*const pItem{m_AttrSet.GetItemIfSet(RES_TXTATR_ANNOTATION, false)};
+        if (pItem != nullptr && pItem->GetField()->Which() == SwFieldIds::Postit)
+        {
+            SwPosition const pos{rPam.GetPoint()->nContent, -1};
+            OString const commentId{static_cast<SwPostItField const*>(pItem->GetField())->GetYrsCommentId()};
+            assert(!commentId.isEmpty());
+            rDoc.getIDocumentState().YrsAddCommentImpl(pos, commentId);
+        }
+#endif
     }
 }
 
@@ -938,7 +1002,7 @@ void SwUndoAttr::RemoveIdx( SwDoc& rDoc )
 }
 
 SwUndoDefaultAttr::SwUndoDefaultAttr( const SfxItemSet& rSet, const SwDoc& rDoc )
-    : SwUndo( SwUndoId::SETDEFTATTR, &rDoc )
+    : SwUndo( SwUndoId::SETDEFTATTR, rDoc )
 {
     const SvxTabStopItem* pItem = rSet.GetItemIfSet( RES_PARATR_TABSTOP, false );
     if( pItem )
@@ -987,7 +1051,7 @@ void SwUndoDefaultAttr::RedoImpl(::sw::UndoRedoContext & rContext)
 
 SwUndoMoveLeftMargin::SwUndoMoveLeftMargin(
     const SwPaM& rPam, bool bFlag, bool bMod )
-    : SwUndo( bFlag ? SwUndoId::INC_LEFTMARGIN : SwUndoId::DEC_LEFTMARGIN, &rPam.GetDoc() )
+    : SwUndo( bFlag ? SwUndoId::INC_LEFTMARGIN : SwUndoId::DEC_LEFTMARGIN, rPam.GetDoc() )
     , SwUndRng( rPam )
     , m_pHistory( new SwHistory )
     , m_bModulus( bMod )
@@ -1003,7 +1067,7 @@ void SwUndoMoveLeftMargin::UndoImpl(::sw::UndoRedoContext & rContext)
     SwDoc & rDoc = rContext.GetDoc();
 
     // restore old values
-    m_pHistory->TmpRollback( & rDoc, 0 );
+    m_pHistory->TmpRollback( rDoc, 0 );
     m_pHistory->SetTmpEnd( m_pHistory->Count() );
 
     AddUndoRedoPaM(rContext);
@@ -1029,7 +1093,7 @@ void SwUndoMoveLeftMargin::RepeatImpl(::sw::RepeatContext & rContext)
 SwUndoChangeFootNote::SwUndoChangeFootNote(
     const SwPaM& rRange, OUString aText,
         bool const bIsEndNote)
-    : SwUndo( SwUndoId::CHGFTN, &rRange.GetDoc() ), SwUndRng( rRange )
+    : SwUndo( SwUndoId::CHGFTN, rRange.GetDoc() ), SwUndRng( rRange )
     , m_pHistory( new SwHistory() )
     , m_Text(std::move( aText ))
     , m_bEndNote( bIsEndNote )
@@ -1044,7 +1108,7 @@ void SwUndoChangeFootNote::UndoImpl(::sw::UndoRedoContext & rContext)
 {
     SwDoc & rDoc = rContext.GetDoc();
 
-    m_pHistory->TmpRollback( &rDoc, 0 );
+    m_pHistory->TmpRollback( rDoc, 0 );
     m_pHistory->SetTmpEnd( m_pHistory->Count() );
 
     rDoc.GetFootnoteIdxs().UpdateAllFootnote();
@@ -1067,7 +1131,7 @@ void SwUndoChangeFootNote::RepeatImpl(::sw::RepeatContext & rContext)
 }
 
 SwUndoFootNoteInfo::SwUndoFootNoteInfo( const SwFootnoteInfo &rInfo, const SwDoc& rDoc )
-    : SwUndo( SwUndoId::FTNINFO, &rDoc )
+    : SwUndo( SwUndoId::FTNINFO, rDoc )
     , m_pFootNoteInfo( new SwFootnoteInfo( rInfo ) )
 {
 }
@@ -1093,7 +1157,7 @@ void SwUndoFootNoteInfo::RedoImpl(::sw::UndoRedoContext & rContext)
 }
 
 SwUndoEndNoteInfo::SwUndoEndNoteInfo( const SwEndNoteInfo &rInfo, const SwDoc& rDoc )
-    : SwUndo( SwUndoId::FTNINFO, &rDoc )
+    : SwUndo( SwUndoId::FTNINFO, rDoc )
     , m_pEndNoteInfo( new SwEndNoteInfo( rInfo ) )
 {
 }
@@ -1119,7 +1183,7 @@ void SwUndoEndNoteInfo::RedoImpl(::sw::UndoRedoContext & rContext)
 }
 
 SwUndoDontExpandFormat::SwUndoDontExpandFormat( const SwPosition& rPos )
-    : SwUndo( SwUndoId::DONTEXPAND, &rPos.GetDoc() )
+    : SwUndo( SwUndoId::DONTEXPAND, rPos.GetDoc() )
     , m_nNodeIndex( rPos.GetNodeIndex() )
     , m_nContentIndex( rPos.GetContentIndex() )
 {

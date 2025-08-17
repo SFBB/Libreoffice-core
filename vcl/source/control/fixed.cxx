@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <accessibility/vclxaccessiblefixedtext.hxx>
+
 #include <vcl/cvtgrf.hxx>
 #include <vcl/decoview.hxx>
 #include <vcl/event.hxx>
@@ -46,8 +48,8 @@ constexpr auto FIXEDIMAGE_VIEW_STYLE = WB_3DLOOK |
                                  WB_TOP | WB_VCENTER | WB_BOTTOM |
                                  WB_SCALE;
 
-static Point ImplCalcPos( WinBits nStyle, const Point& rPos,
-                          const Size& rObjSize, const Size& rWinSize )
+static Point lcl_CalcPos(WinBits nStyle, const Point& rPos,
+                         const Size& rObjSize, const Size& rWinSize)
 {
     tools::Long    nX;
     tools::Long    nY;
@@ -66,8 +68,7 @@ static Point ImplCalcPos( WinBits nStyle, const Point& rPos,
     else
         nY = (rWinSize.Height()-rObjSize.Height())/2;
 
-    Point aPos( nX+rPos.X(), nY+rPos.Y() );
-    return aPos;
+    return Point(nX + rPos.X(), nY + rPos.Y());
 }
 
 void FixedText::ImplInit( vcl::Window* pParent, WinBits nStyle )
@@ -84,18 +85,18 @@ WinBits FixedText::ImplInitStyle( WinBits nStyle )
     return nStyle;
 }
 
-const vcl::Font& FixedText::GetCanonicalFont( const StyleSettings& _rStyle ) const
+const vcl::Font& FixedText::GetCanonicalFont(const StyleSettings& rStyle) const
 {
-    return _rStyle.GetLabelFont();
+    return rStyle.GetLabelFont();
 }
 
-const Color& FixedText::GetCanonicalTextColor( const StyleSettings& _rStyle ) const
+const Color& FixedText::GetCanonicalTextColor(const StyleSettings& rStyle) const
 {
-    return _rStyle.GetLabelTextColor();
+    return rStyle.GetLabelTextColor();
 }
 
-FixedText::FixedText( vcl::Window* pParent, WinBits nStyle )
-    : Control(WindowType::FIXEDTEXT)
+FixedText::FixedText(vcl::Window* pParent, WinBits nStyle, WindowType eType)
+    : Control(eType)
     , m_nMaxWidthChars(-1)
     , m_nMinWidthChars(-1)
     , m_pMnemonicWindow(nullptr)
@@ -163,6 +164,11 @@ void FixedText::ImplDraw(OutputDevice* pDev, SystemTextColorFlags nSystemTextCol
         bFillLayout ? &mxLayoutData->m_aDisplayText : nullptr);
 }
 
+rtl::Reference<comphelper::OAccessible> FixedText::CreateAccessible()
+{
+    return new VCLXAccessibleFixedText(this);
+}
+
 void FixedText::ApplySettings(vcl::RenderContext& rRenderContext)
 {
     Control::ApplySettings(rRenderContext);
@@ -207,7 +213,7 @@ void FixedText::Draw( OutputDevice* pDev, const Point& rPos,
     Size        aSize = GetSizePixel();
     vcl::Font   aFont = GetDrawPixelFont( pDev );
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
     pDev->SetFont( aFont );
     if ( nFlags & SystemTextColorFlags::Mono )
@@ -233,7 +239,6 @@ void FixedText::Draw( OutputDevice* pDev, const Point& rPos,
     }
 
     ImplDraw( pDev, nFlags, aPos, aSize );
-    pDev->Pop();
 }
 
 void FixedText::Resize()
@@ -426,7 +431,7 @@ FixedText::~FixedText()
 void FixedText::dispose()
 {
     set_mnemonic_widget(nullptr);
-    m_pMnemonicWindow.clear();
+    m_pMnemonicWindow.reset();
     Control::dispose();
 }
 
@@ -698,7 +703,7 @@ void FixedBitmap::ImplDraw( OutputDevice* pDev, const Point& rPos, const Size& r
             pDev->DrawBitmapEx( rPos, rSize, maBitmap );
         else
         {
-            Point aPos = ImplCalcPos( GetStyle(), rPos, maBitmap.GetSizePixel(), rSize );
+            Point aPos = lcl_CalcPos( GetStyle(), rPos, maBitmap.GetSizePixel(), rSize );
             pDev->DrawBitmapEx( aPos, maBitmap );
         }
     }
@@ -739,7 +744,7 @@ void FixedBitmap::Draw( OutputDevice* pDev, const Point& rPos,
     Size        aSize = GetSizePixel();
     tools::Rectangle   aRect( aPos, aSize );
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
 
     // Border
@@ -750,8 +755,6 @@ void FixedBitmap::Draw( OutputDevice* pDev, const Point& rPos,
     }
     pDev->IntersectClipRegion( aRect );
     ImplDraw( pDev, aRect.TopLeft(), aRect.GetSize() );
-
-    pDev->Pop();
 }
 
 void FixedBitmap::Resize()
@@ -796,7 +799,7 @@ void FixedBitmap::DataChanged( const DataChangedEvent& rDCEvt )
     }
 }
 
-void FixedBitmap::SetBitmap( const BitmapEx& rBitmap )
+void FixedBitmap::SetBitmap( const Bitmap& rBitmap )
 {
     maBitmap = rBitmap;
     CompatStateChanged( StateChangedType::Data );
@@ -839,7 +842,7 @@ void FixedImage::ImplDraw( OutputDevice* pDev,
             pDev->DrawImage( rPos, rSize, *pImage, nStyle );
         else
         {
-            Point aPos = ImplCalcPos( GetStyle(), rPos, pImage->GetSizePixel(), rSize );
+            Point aPos = lcl_CalcPos( GetStyle(), rPos, pImage->GetSizePixel(), rSize );
             pDev->DrawImage( aPos, *pImage, nStyle );
         }
     }
@@ -886,7 +889,7 @@ void FixedImage::Draw( OutputDevice* pDev, const Point& rPos,
     Size        aSize = GetSizePixel();
     tools::Rectangle   aRect( aPos, aSize );
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
 
     // Border
@@ -896,8 +899,6 @@ void FixedImage::Draw( OutputDevice* pDev, const Point& rPos,
     }
     pDev->IntersectClipRegion( aRect );
     ImplDraw( pDev, aRect.TopLeft(), aRect.GetSize() );
-
-    pDev->Pop();
 }
 
 void FixedImage::Resize()
@@ -953,11 +954,6 @@ void FixedImage::SetImage( const Image& rImage )
     }
 }
 
-Image FixedImage::loadThemeImage(const OUString &rFileName)
-{
-    return Image(StockImage::Yes, rFileName);
-}
-
 bool FixedImage::set_property(const OUString &rKey, const OUString &rValue)
 {
     if (rKey == "icon-size")
@@ -981,7 +977,7 @@ void FixedImage::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
     if (!!maImage)
     {
         SvMemoryStream aOStm(6535, 6535);
-        if(GraphicConverter::Export(aOStm, maImage.GetBitmapEx(), ConvertDataFormat::PNG) == ERRCODE_NONE)
+        if(GraphicConverter::Export(aOStm, maImage.GetBitmap(), ConvertDataFormat::PNG) == ERRCODE_NONE)
         {
             css::uno::Sequence<sal_Int8> aSeq( static_cast<sal_Int8 const *>(aOStm.GetData()), aOStm.Tell());
             OStringBuffer aBuffer("data:image/png;base64,");

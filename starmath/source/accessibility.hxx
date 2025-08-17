@@ -21,12 +21,10 @@
 
 #include <com/sun/star/accessibility/AccessibleScrollType.hpp>
 #include <com/sun/star/accessibility/XAccessible.hpp>
-#include <com/sun/star/accessibility/XAccessibleComponent.hpp>
-#include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleText.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/uno/Reference.h>
+#include <comphelper/OAccessible.hxx>
 #include <cppuhelper/implbase.hxx>
 
 #include <view.hxx>
@@ -35,27 +33,13 @@ class SmDocShell;
 
 namespace accessibility { class AccessibleTextHelper; }
 
-// classes and helper-classes used for accessibility in the graphic-window
+// class used for accessibility in the graphic-window
 
-
-typedef
-cppu::WeakImplHelper
-    <
-        css::lang::XServiceInfo,
-        css::accessibility::XAccessible,
-        css::accessibility::XAccessibleComponent,
-        css::accessibility::XAccessibleContext,
-        css::accessibility::XAccessibleText,
-        css::accessibility::XAccessibleEventBroadcaster
-    >
-SmGraphicAccessibleBaseClass;
-
-class SmGraphicAccessible final :
-    public SmGraphicAccessibleBaseClass
+class SmGraphicAccessible final
+    : public cppu::ImplInheritanceHelper<comphelper::OAccessible, css::lang::XServiceInfo,
+                                         css::accessibility::XAccessibleText>
 {
     OUString                            aAccName;
-    /// client id in the AccessibleEventNotifier queue
-    sal_uInt32                          nClientId;
 
     SmGraphicWidget*                    pWin;
 
@@ -65,26 +49,22 @@ class SmGraphicAccessible final :
     SmDocShell *    GetDoc_Impl();
     OUString        GetAccessibleText_Impl();
 
+protected:
+    virtual css::awt::Rectangle implGetBounds() override;
+
 public:
     explicit SmGraphicAccessible( SmGraphicWidget *pGraphicWin );
     virtual ~SmGraphicAccessible() override;
 
-    void                ClearWin();     // to be called when view is destroyed
     void                LaunchEvent(
                             const sal_Int16 nAccessibleEventId,
                             const css::uno::Any &rOldVal,
                             const css::uno::Any &rNewVal);
 
-    // XAccessible
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override;
+    void SAL_CALL disposing() override;
 
     // XAccessibleComponent
-    virtual sal_Bool SAL_CALL containsPoint( const css::awt::Point& aPoint ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleAtPoint( const css::awt::Point& aPoint ) override;
-    virtual css::awt::Rectangle SAL_CALL getBounds(  ) override;
-    virtual css::awt::Point SAL_CALL getLocation(  ) override;
-    virtual css::awt::Point SAL_CALL getLocationOnScreen(  ) override;
-    virtual css::awt::Size SAL_CALL getSize(  ) override;
     virtual void SAL_CALL grabFocus(  ) override;
     virtual sal_Int32 SAL_CALL getForeground(  ) override;
     virtual sal_Int32 SAL_CALL getBackground(  ) override;
@@ -93,17 +73,12 @@ public:
     virtual sal_Int64 SAL_CALL getAccessibleChildCount(  ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleChild( sal_Int64 i ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleParent(  ) override;
-    virtual sal_Int64 SAL_CALL getAccessibleIndexInParent(  ) override;
     virtual sal_Int16 SAL_CALL getAccessibleRole(  ) override;
     virtual OUString SAL_CALL getAccessibleDescription(  ) override;
     virtual OUString SAL_CALL getAccessibleName(  ) override;
     virtual css::uno::Reference< css::accessibility::XAccessibleRelationSet > SAL_CALL getAccessibleRelationSet(  ) override;
     virtual sal_Int64 SAL_CALL getAccessibleStateSet(  ) override;
     virtual css::lang::Locale SAL_CALL getLocale(  ) override;
-
-    // XAccessibleEventBroadcaster
-    virtual void SAL_CALL addAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-    virtual void SAL_CALL removeAccessibleEventListener( const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
 
     // XAccessibleText
     virtual sal_Int32 SAL_CALL getCaretPosition(  ) override;

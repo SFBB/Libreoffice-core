@@ -68,10 +68,10 @@ void XMLFormPropValueTContext_Impl::StartElement(
     sal_Int16 nAttrCount = rAttrList.is() ? rAttrList->getLength() : 0;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
     {
-        const OUString& rAttrName = rAttrList->getNameByIndex( i );
+        const OUString aAttrName = rAttrList->getNameByIndex( i );
         OUString aLocalName;
         sal_uInt16 nPrefix =
-            GetTransformer().GetNamespaceMap().GetKeyByAttrName( rAttrName,
+            GetTransformer().GetNamespaceMap().GetKeyByAttrName( aAttrName,
                                                                  &aLocalName );
         if( XML_NAMESPACE_FORM == nPrefix &&
             IsXMLToken( aLocalName, XML_PROPERTY_IS_VOID ) &&
@@ -157,23 +157,23 @@ void XMLFormPropOOoTransformerContext::StartElement(
     sal_Int16 nAttrCount = rAttrList.is() ? rAttrList->getLength() : 0;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
     {
-        const OUString& rAttrName = rAttrList->getNameByIndex( i );
+        const OUString aAttrName = rAttrList->getNameByIndex( i );
         OUString aLocalName;
         sal_uInt16 nPrefix =
-            GetTransformer().GetNamespaceMap().GetKeyByAttrName( rAttrName,
+            GetTransformer().GetNamespaceMap().GetKeyByAttrName( aAttrName,
                                                                  &aLocalName );
         XMLTransformerActions::key_type aKey( nPrefix, aLocalName );
         XMLTransformerActions::const_iterator aIter =
             pActions->find( aKey );
         if( aIter != pActions->end() )
         {
-            const OUString& rAttrValue = rAttrList->getValueByIndex( i );
+            const OUString aAttrValue = rAttrList->getValueByIndex( i );
             switch( (*aIter).second.m_nActionType )
             {
             case XML_ATACTION_RENAME:
                 if( IsXMLToken( aLocalName, XML_PROPERTY_TYPE ) )
                 {
-                    aValueType = rAttrValue;
+                    aValueType = aAttrValue;
                     m_nValueTypeAttr = i;
                 }
                 {
@@ -231,15 +231,13 @@ void XMLFormPropOOoTransformerContext::EndElement()
             OUString aAttrQName(
                     GetTransformer().GetNamespaceMap().GetQNameByKey(
                     XML_NAMESPACE_OFFICE, GetXMLToken(m_eValueToken) ) );
-            static_cast< XMLMutableAttributeList * >( m_xAttrList.get() )
-                ->AddAttribute( aAttrQName, m_xValueContext->GetTextContent() );
+            m_xAttrList->AddAttribute( aAttrQName, m_xValueContext->GetTextContent() );
         }
     }
 
     if( m_nValueTypeAttr != -1 && m_eValueTypeToken != XML_TOKEN_END )
     {
-        static_cast< XMLMutableAttributeList * >( m_xAttrList.get() )
-            ->SetValueByIndex( m_nValueTypeAttr ,
+        m_xAttrList->SetValueByIndex( m_nValueTypeAttr ,
                                 GetXMLToken( m_eValueTypeToken ) );
     }
 

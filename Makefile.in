@@ -38,6 +38,13 @@ Makefile $(BUILDDIR)/Makefile: $(BUILDDIR)/config_host.mk $(BUILDDIR)/config_hos
 	@touch $@
 
 # run configure in an environment not polluted by config_host.mk
+ifneq ($(MSYSTEM),)
+WSL:=@WSL@
+# wsl needs unix-style path into windows realm, use long form to avoid confusing autogen.sh wrt
+# builddir != srcdir when in actually it is just srcdir-in-shortform vs srcdir-in-longform
+# for the same reason cd to the longform of BUILDDIR
+$(BUILDDIR)/config_host.mk : SRCDIR:=/$(shell $(WSL) wslpath -u $(shell cygpath -ml $(SRCDIR)))
+endif
 $(BUILDDIR)/config_host.mk : $(wildcard \
 		$(SRCDIR)/autogen.sh \
 		$(SRCDIR)/config_host.mk.in \
@@ -46,14 +53,14 @@ $(BUILDDIR)/config_host.mk : $(wildcard \
 		$(SRCDIR)/instsetoo_native/util/openoffice.lst.in \
 		$(SRCDIR)/configure.ac \
 		$(SRCDIR)/config_host/*.h.in \
+		$(SRCDIR)/distro-configs/*.conf $(SRCDIR)/distro-configs/Jenkins/* \
 		$(SRCDIR)/download.lst \
 		$(SRCDIR)/m4/*.m4 \
 		$(BUILDDIR)/autogen.input \
 		$(BUILDDIR)/autogen.lastrun \
 		) \
-		$(shell . $(SRCDIR)/bin/get_config_variables JAVA_HOME && \
-			if test -n "$${JAVA_HOME}" -a ! -d "$${JAVA_HOME}/bin"; then echo force-restart; fi)
-	sh -c $(SRCDIR)/autogen.sh
+		$(shell if test -n '$(JAVA_HOME)' -a ! -d '$(JAVA_HOME)'; then echo force-restart; fi)
+	sh -c "$(if $(MSYSTEM),cd $(shell cygpath -ml $(BUILDDIR)); $(WSL) )$(SRCDIR)/autogen.sh"
 
 else # MAKE_RESTARTS
 
@@ -62,7 +69,7 @@ else # MAKE_RESTARTS
 # Nested test is to check if the systemd-detect-virt command doesn't exist or it reports we're not
 # in a container:
 check-if-root:
-	@if test ! `uname` = 'Haiku' -a `id -u` = 0; then \
+	@if test ! `uname` = 'Haiku' -a `id -u` = 0 && test -z $$container; then \
 		if test ! -x "$$(command -v systemd-detect-virt)" || ! systemd-detect-virt -c -q; then \
 			echo; \
 			echo 'Building LibreOffice as root is a very bad idea, use a regular user.'; \
@@ -87,19 +94,19 @@ define gb_Top_GbuildModuleRules
 .PHONY: $(1).allbuild $(1).buildall $(1).allcheck $(1).checkall
 
 $(1): bootstrap fetch
-	cd $(SRCDIR)/$(2) && $$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS)
+	$(KEEP_AWAKE_CMD) cd $(SRCDIR)/$(2) && $$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS)
 
 $(1).build $(1).check $(1).coverage $(foreach target,$(gb_Top_MODULE_CHECK_TARGETS),$(1).$(target)): bootstrap fetch
-	cd $(SRCDIR)/$(2) && $$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) $$(patsubst $(1).%,%,$$@)
+	$(KEEP_AWAKE_CMD) cd $(SRCDIR)/$(2) && $$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) $$(patsubst $(1).%,%,$$@)
 
 $(1).clean $(1).showdeliverables:
 	cd $(SRCDIR)/$(2) && $$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) $$(patsubst $(1).%,%,$$@)
 
-$(1).allbuild $(1).buildall: bootstrap fetch
-	$$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) -f $(SRCDIR)/Makefile.gbuild $(WORKDIR)/Module/$(1)
+$(1).allbuild $(1).buildall: bootstrap fetch $(if $(CROSS_COMPILING),cross-toolset)
+	$(KEEP_AWAKE_CMD) $$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) -f $(SRCDIR)/Makefile.gbuild $(WORKDIR)/Module/$(1)
 
-$(1).allcheck $(1).checkall: bootstrap fetch
-	$$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) -f $(SRCDIR)/Makefile.gbuild $(WORKDIR)/Module/$(1) $(WORKDIR)/Module/check/$(1) $(WORKDIR)/Module/slowcheck/$(1)
+$(1).allcheck $(1).checkall: bootstrap fetch $(if $(CROSS_COMPILING),cross-toolset)
+	$(KEEP_AWAKE_CMD) $$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) -f $(SRCDIR)/Makefile.gbuild $(WORKDIR)/Module/$(1) $(WORKDIR)/Module/check/$(1) $(WORKDIR)/Module/slowcheck/$(1)
 
 $(1).all:
 	@echo "'make $(1).all' was renamed to 'make $(1).allcheck' (or use 'make $(1).allbuild' to build without unit tests)"
@@ -133,6 +140,8 @@ gbuild_TARGETS := AllLangHelp \
 	CppunitTest \
 	CustomTarget \
 	Dictionary \
+	DotnetLibrary \
+	DotnetTest \
 	Executable \
 	Extension \
 	ExtensionPackage \
@@ -166,10 +175,10 @@ gbuild_TARGETS := AllLangHelp \
 
 # build a generic gbuild target
 $(foreach target,$(gbuild_TARGETS),$(target)_% $(foreach module,$(gbuild_modules),$(target)_$(module)/%)) UIConfig_modules/% %.genpatch: bootstrap fetch
-	$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) -f $(SRCDIR)/Makefile.gbuild $@
+	$(KEEP_AWAKE_CMD) $(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) -f $(SRCDIR)/Makefile.gbuild $@
 
 $(gbuild_TARGETS):
-	$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) -f $(SRCDIR)/Makefile.gbuild $@
+	$(KEEP_AWAKE_CMD) $(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) -f $(SRCDIR)/Makefile.gbuild $@
 
 #
 # Clean
@@ -190,7 +199,6 @@ ifeq ($(OS),ANDROID)
 	rm -fr $(BUILDDIR)/android/jniLibs
 	rm -fr $(SRCDIR)/android/source/build
 	rm -fr $(SRCDIR)/android/source/assets
-	rm -fr $(SRCDIR)/android/source/assets_fullUI
 	rm -fr $(SRCDIR)/android/source/assets_strippedUI
 	rm -fr $(SRCDIR)/android/source/res_generated
 endif
@@ -228,7 +236,10 @@ distclean : clean compilerplugins-clean mac-app-store-package.clean
         $(BUILDDIR)/solenv/lockfile/autoconf.h \
         $(BUILDDIR)/lo.xcent \
         $(BUILDDIR)/sysui/desktop/macosx/Info.plist \
-        $(BUILDDIR)/vs-code*.code-workspace*
+        $(BUILDDIR)/sysui/desktop/macosx/LaunchConstraint.plist \
+        $(BUILDDIR)/vs-code*.code-workspace* \
+        $(BUILDDIR)/extensions/source/macosx/quicklookpreview/appex/Info.plist \
+        $(BUILDDIR)/extensions/source/macosx/quicklookthumbnail/appex/Info.plist
 	$(if $(filter WNT,$(OS)),env -i PATH="$$PATH") $(FIND) $(SRCDIR)/solenv/gdb -name \*.pyc -exec rm -f {} \;
 
 #
@@ -287,9 +298,9 @@ bootstrap: check-if-root compilerplugins
 #
 build: bootstrap fetch $(if $(CROSS_COMPILING),cross-toolset,install-gdb-printers) \
     $(if $(filter check,$(MAKECMDGOALS)),$(if $(COMPILER_PLUGINS),$(if $(LODE_HOME),clang-format-check)))
-	$(MAKE) $(PARALLELISM_OPTION) $(IWYU_OPTION) $(GMAKE_OPTIONS) -f $(SRCDIR)/Makefile.gbuild $(build_goal)
+	$(KEEP_AWAKE_CMD) $(MAKE) $(PARALLELISM_OPTION) $(IWYU_OPTION) $(GMAKE_OPTIONS) -f $(SRCDIR)/Makefile.gbuild $(build_goal)
 ifeq ($(OS),iOS)
-	$(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) ios
+	$(KEEP_AWAKE_CMD) $(MAKE) $(PARALLELISM_OPTION) $(GMAKE_OPTIONS) ios
 endif
 
 build-non-l10n-only build-l10n-only check debugrun translations packageinfo coverage $(gb_Top_MODULE_CHECK_TARGETS): build
@@ -432,8 +443,8 @@ $(BUILDDIR)/$(PLATFORMID)/done: test-install
 	mkdir -p $(PLATFORMID)/Symbols
 	mv $(TESTINSTALLDIR)/$(PRODUCTNAME_WITHOUT_SPACES).app $(PLATFORMID)/"$(PRODUCTNAME)".app
 ifneq ($(ENABLE_SYMBOLS_FOR),)
-	symbols -arch all -symbolsPackageDir $(PLATFORMID)/Symbols $(PLATFORMID)/"$(PRODUCTNAME)".app/Contents/Frameworks/[^L]* $(PLATFORMID)/"$(PRODUCTNAME)".app/Contents/MacOS/*
-	strip -S                                                   $(PLATFORMID)/"$(PRODUCTNAME)".app/Contents/Frameworks/[^L]* $(PLATFORMID)/"$(PRODUCTNAME)".app/Contents/MacOS/*
+	symbols -arch all -symbolsPackageDir $(PLATFORMID)/Symbols $(PLATFORMID)/"$(PRODUCTNAME)".app/Contents/Frameworks/[^Li]* $(PLATFORMID)/"$(PRODUCTNAME)".app/Contents/Frameworks/intl/l* $(PLATFORMID)/"$(PRODUCTNAME)".app/Contents/MacOS/*
+	strip -S                                                   $(PLATFORMID)/"$(PRODUCTNAME)".app/Contents/Frameworks/[^Li]* $(PLATFORMID)/"$(PRODUCTNAME)".app/Contents/Frameworks/intl/l* $(PLATFORMID)/"$(PRODUCTNAME)".app/Contents/MacOS/*
 endif
 	touch $@
 
@@ -499,9 +510,6 @@ upload-symbols:
 create-update-info:
 	$(MAKE) -f $(SRCDIR)/Makefile.gbuild create-update-info
 
-upload-update-info:
-	$(MAKE) -f $(SRCDIR)/Makefile.gbuild upload-update-info
-
 create-partial-info:
 	$(MAKE) -f $(SRCDIR)/Makefile.gbuild create-partial-info
 
@@ -519,8 +527,9 @@ clang-format-check:
 
 define gb_Top_GbuildToIdeIntegration
 $(1)-ide-integration: gbuildtojson $(if $(filter MACOSX,$(OS_FOR_BUILD)),python3.allbuild)
-	cd $(SRCDIR) && \
+	cd $(SRCDIR) && CC="$(filter-out %ccache,$(CC))" CXX="$(filter-out %ccache,$(CXX))" \
 		$(if $(filter MACOSX,$(OS_FOR_BUILD)),PATH="$(INSTROOT_FOR_BUILD)/Frameworks/LibreOfficePython.framework/Versions/Current/bin:$(PATH)") \
+		$(if $(filter WNT,$(OS_FOR_BUILD)$(PYTHON_FOR_BUILD)),$(INSTROOT_FOR_BUILD)/program/python.exe) \
 		bin/gbuild-to-ide --ide $(1) --make $(MAKE)
 
 endef

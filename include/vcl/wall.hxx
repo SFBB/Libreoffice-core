@@ -27,10 +27,6 @@
 #include <vcl/dllapi.h>
 #include <optional>
 
-class Gradient;
-class BitmapEx;
-class ImplWallpaper;
-
 enum class WallpaperStyle
 {
     NONE,
@@ -52,8 +48,8 @@ enum class WallpaperStyle
 class VCL_DLLPUBLIC Wallpaper
 {
 public:
-    SAL_DLLPRIVATE void             ImplSetCachedBitmap( const BitmapEx& rBmp ) const;
-    SAL_DLLPRIVATE const BitmapEx*  ImplGetCachedBitmap() const;
+    SAL_DLLPRIVATE void             ImplSetCachedBitmap( const Bitmap& rBmp ) const;
+    SAL_DLLPRIVATE const Bitmap*    ImplGetCachedBitmap() const;
     SAL_DLLPRIVATE void             ImplReleaseCachedBitmap() const;
 
 private:
@@ -65,6 +61,7 @@ public:
                     Wallpaper( Wallpaper&& rWallpaper );
                     Wallpaper( const Color& rColor );
                     explicit Wallpaper( const BitmapEx& rBmpEx );
+                    explicit Wallpaper( const Bitmap& rBmpEx );
                     ~Wallpaper();
 
     void            SetColor( const Color& rColor );
@@ -73,8 +70,8 @@ public:
     void            SetStyle( WallpaperStyle eStyle );
     WallpaperStyle  GetStyle() const { return meStyle; }
 
-    void            SetBitmap( const BitmapEx& rBitmap );
-    const BitmapEx & GetBitmap() const;
+    void            SetBitmap( const Bitmap& rBitmap );
+    const Bitmap &  GetBitmap() const;
     bool            IsBitmap() const;
 
     void            SetGradient( const Gradient& rGradient );
@@ -92,8 +89,6 @@ public:
     Wallpaper&      operator=( Wallpaper&& rWallpaper );
 
     bool            operator==( const Wallpaper& rWallpaper ) const;
-    bool            operator!=( const Wallpaper& rWallpaper ) const
-                        { return !(Wallpaper::operator==( rWallpaper )); }
 
     bool            IsEmpty() const
     {
@@ -105,8 +100,8 @@ public:
     friend SvStream& WriteWallpaper( SvStream& rOStm, const Wallpaper& rWallpaper );
 private:
     tools::Rectangle            maRect;
-    BitmapEx                    maBitmap;
-    mutable BitmapEx            maCache;
+    Bitmap                      maBitmap;
+    mutable Bitmap              maCache;
     std::optional<Gradient>     mpGradient;
     Color                       maColor;
     WallpaperStyle              meStyle;

@@ -25,7 +25,6 @@
 
 #include <sax/tools/converter.hxx>
 
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmlement.hxx>
@@ -34,7 +33,6 @@
 #include <xmloff/xmluconv.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/XFootnotesSupplier.hpp>
 #include <com/sun/star/text/XEndnotesSupplier.hpp>
@@ -124,8 +122,8 @@ XMLFootnoteConfigurationImportContext::XMLFootnoteConfigurationImportContext(
     sal_Int32 /*nElement*/,
     const Reference<XFastAttributeList> & xAttrList)
 :   SvXMLStyleContext(rImport, XmlStyleFamily::TEXT_FOOTNOTECONFIG)
-,   sNumFormat("1")
-,   sNumSync("false")
+,   sNumFormat(u"1"_ustr)
+,   sNumSync(u"false"_ustr)
 ,   nOffset(0)
 ,   nNumbering(FootnoteNumbering::PER_PAGE)
 ,   bPosition(false)
@@ -178,9 +176,9 @@ void XMLFootnoteConfigurationImportContext::SetAttribute( sal_Int32 nElement,
         case XML_ELEMENT(TEXT, XML_OFFSET): // for backwards compatibility with SRC630 & earlier
         {
             sal_Int32 nTmp;
-            if (::sax::Converter::convertNumber(nTmp, rValue))
+            if (::sax::Converter::convertNumber(nTmp, rValue, 0, SAL_MAX_INT16))
             {
-                nOffset = static_cast<sal_uInt16>(nTmp);
+                nOffset = static_cast<sal_Int16>(nTmp);
             }
             break;
         }

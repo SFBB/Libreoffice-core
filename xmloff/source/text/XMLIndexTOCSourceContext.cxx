@@ -22,12 +22,10 @@
 #include <com/sun/star/container/XIndexReplace.hpp>
 #include <sax/tools/converter.hxx>
 #include "XMLIndexTemplateContext.hxx"
-#include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
-#include <rtl/ustring.hxx>
 
 
 using namespace ::xmloff::token;
@@ -117,11 +115,11 @@ void XMLIndexTOCSourceContext::ProcessAttribute(const sax_fastparser::FastAttrib
 
 void XMLIndexTOCSourceContext::endFastElement(sal_Int32 nElement)
 {
-    rIndexPropertySet->setPropertyValue("CreateFromMarks", css::uno::Any(bUseMarks));
-    rIndexPropertySet->setPropertyValue("CreateFromOutline", css::uno::Any(bUseOutline));
-    rIndexPropertySet->setPropertyValue("CreateFromLevelParagraphStyles", css::uno::Any(bUseParagraphStyles));
+    rIndexPropertySet->setPropertyValue(u"CreateFromMarks"_ustr, css::uno::Any(bUseMarks));
+    rIndexPropertySet->setPropertyValue(u"CreateFromOutline"_ustr, css::uno::Any(bUseOutline));
+    rIndexPropertySet->setPropertyValue(u"CreateFromLevelParagraphStyles"_ustr, css::uno::Any(bUseParagraphStyles));
 
-    rIndexPropertySet->setPropertyValue("Level", css::uno::Any(static_cast<sal_Int16>(nOutlineLevel)));
+    rIndexPropertySet->setPropertyValue(u"Level"_ustr, css::uno::Any(static_cast<sal_Int16>(nOutlineLevel)));
 
     // process common attributes
     XMLIndexSourceBaseContext::endFastElement(nElement);

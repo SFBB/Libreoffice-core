@@ -34,7 +34,6 @@
 
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::beans;
 using namespace dbaui;
 OQueryTableWindow::OQueryTableWindow( vcl::Window* pParent, const TTableWindowData::value_type& pTabWinData)
@@ -111,7 +110,7 @@ void OQueryTableWindow::OnEntryDoubleClicked(weld::TreeIter& rEntry)
 
     weld::TreeView& rTreeView = m_xListBox->get_widget();
     OTableFieldInfo* pInf = weld::fromId<OTableFieldInfo*>(rTreeView.get_id(rEntry));
-    OSL_ENSURE(pInf != nullptr, "OQueryTableWindow::OnEntryDoubleClicked : field doesn't have FieldInfo !");
+    assert(pInf && "OQueryTableWindow::OnEntryDoubleClicked : field doesn't have FieldInfo !");
 
     // build up DragInfo
     OTableFieldDescRef aInfo = new OTableFieldDesc(GetTableName(), rTreeView.get_text(rEntry));

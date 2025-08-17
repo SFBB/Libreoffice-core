@@ -35,8 +35,10 @@
 #include <svl/zforlist.hxx>
 #include <tools/urlobj.hxx>
 #include <tools/fract.hxx>
+#include <o3tl/environment.hxx>
 #include <o3tl/temporary.hxx>
 #include <osl/file.hxx>
+#include <osl/process.h>
 #include <sbobjmod.hxx>
 #include <basic/sbuno.hxx>
 
@@ -60,8 +62,6 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/i18n/LocaleCalendar2.hpp>
 #include <com/sun/star/sheet/XFunctionAccess.hpp>
-
-#include <officecfg/Office/Scripting.hxx>
 
 #include <memory>
 
@@ -279,15 +279,11 @@ void SbRtl_CDec(StarBASIC *, SbxArray & rPar, bool)
 void SbRtl_CDate(StarBASIC *, SbxArray & rPar, bool) // JSM
 {
     double nVal = 0.0;
-    if (rPar.Count() == 2)
-    {
-        SbxVariable* pSbxVariable = rPar.Get(1);
-        nVal = pSbxVariable->GetDate();
-    }
-    else
-    {
-        StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
-    }
+    if (rPar.Count() != 2)
+        return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
+
+    SbxVariable* pSbxVariable = rPar.Get(1);
+    nVal = pSbxVariable->GetDate();
     rPar.Get(0)->PutDate(nVal);
 }
 
@@ -323,15 +319,11 @@ void SbRtl_CDbl(StarBASIC *, SbxArray & rPar, bool)  // JSM
 void SbRtl_CInt(StarBASIC *, SbxArray & rPar, bool)  // JSM
 {
     sal_Int16 nVal = 0;
-    if (rPar.Count() == 2)
-    {
-        SbxVariable* pSbxVariable = rPar.Get(1);
-        nVal = pSbxVariable->GetInteger();
-    }
-    else
-    {
-        StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
-    }
+    if (rPar.Count() != 2)
+        return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
+
+    SbxVariable* pSbxVariable = rPar.Get(1);
+    nVal = pSbxVariable->GetInteger();
     rPar.Get(0)->PutInteger(nVal);
 }
 
@@ -478,15 +470,11 @@ void SbRtl_Green(StarBASIC *, SbxArray & rPar, bool)
 void SbRtl_Blue(StarBASIC *, SbxArray & rPar, bool)
 {
     if (rPar.Count() != 2)
-    {
-        StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
-    }
-    else
-    {
-        sal_Int32 nRGB = rPar.Get(1)->GetLong();
-        nRGB &= 0x000000FF;
-        rPar.Get(0)->PutInteger(static_cast<sal_Int16>(nRGB));
-    }
+        return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
+
+    sal_Int32 nRGB = rPar.Get(1)->GetLong();
+    nRGB &= 0x000000FF;
+    rPar.Get(0)->PutInteger(static_cast<sal_Int16>(nRGB));
 }
 
 
@@ -597,13 +585,10 @@ void SbRtl_Trim(StarBASIC *, SbxArray & rPar, bool)
 {
     if (rPar.Count() < 2)
     {
-        StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
+        return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
     }
-    else
-    {
-        OUString aStr(comphelper::string::strip(rPar.Get(1)->GetOUString(), ' '));
-        rPar.Get(0)->PutString(aStr);
-    }
+    OUString aStr(comphelper::string::strip(rPar.Get(1)->GetOUString(), ' '));
+    rPar.Get(0)->PutString(aStr);
 }
 
 void SbRtl_GetSolarVersion(StarBASIC *, SbxArray & rPar, bool)
@@ -771,7 +756,7 @@ void SbRtl_DimArray(StarBASIC *, SbxArray & rPar, bool)
 // 1st parameter = the object's name as string
 void SbRtl_FindObject(StarBASIC *, SbxArray & rPar, bool)
 {
-    if (rPar.Count() < 2)
+    if (rPar.Count() != 2)
         return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
 
 
@@ -792,7 +777,7 @@ void SbRtl_FindObject(StarBASIC *, SbxArray & rPar, bool)
 // 2nd parameter = the property's name as string
 void SbRtl_FindPropertyObject(StarBASIC *, SbxArray & rPar, bool)
 {
-    if (rPar.Count() < 3)
+    if (rPar.Count() != 3)
         return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
 
 
@@ -895,20 +880,20 @@ static bool lcl_WriteSbxVariable( const SbxVariable& rVar, SvStream* pStrm,
     case SbxSTRING:
     case SbxLPSTR:
         {
-            const OUString& rStr = rVar.GetOUString();
+            const OUString aStr = rVar.GetOUString();
             if( !bBinary || bIsArray )
             {
                 if( bIsVariant )
                 {
                     pStrm->WriteUInt16( SbxSTRING );
                 }
-                pStrm->WriteUniOrByteString( rStr, osl_getThreadTextEncoding() );
+                pStrm->WriteUniOrByteString( aStr, osl_getThreadTextEncoding() );
             }
             else
             {
                 // without any length information! without end-identifier!
                 // What does that mean for Unicode?! Choosing conversion to ByteString...
-                OString aByteStr(OUStringToOString(rStr, osl_getThreadTextEncoding()));
+                OString aByteStr(OUStringToOString(aStr, osl_getThreadTextEncoding()));
                 pStrm->WriteOString( aByteStr );
             }
         }
@@ -1148,16 +1133,7 @@ void SbRtl_Environ(StarBASIC *, SbxArray & rPar, bool)
     if (rPar.Count() != 2)
         return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
 
-    OUString aResult;
-    // should be ANSI but that's not possible under Win16 in the DLL
-    OString aByteStr(OUStringToOString(rPar.Get(1)->GetOUString(),
-                                                 osl_getThreadTextEncoding()));
-    const char* pEnvStr = getenv(aByteStr.getStr());
-    if ( pEnvStr )
-    {
-        aResult = OUString(pEnvStr, strlen(pEnvStr), osl_getThreadTextEncoding());
-    }
-    rPar.Get(0)->PutString(aResult);
+    rPar.Get(0)->PutString(o3tl::getEnvironment(rPar.Get(1)->GetOUString()));
 }
 
 static double GetDialogZoomFactor( bool bX, tools::Long nValue )
@@ -1260,6 +1236,9 @@ void SbRtl_TypeLen(StarBASIC *, SbxArray & rPar, bool)
     case SbxDIMARRAY:
     case SbxCARRAY:
     case SbxUSERDEF:
+    case SbxOBJECT:
+    case SbxVARIANT:
+    case SbxDATAOBJECT:
         nLen = 0;
         break;
 
@@ -1283,12 +1262,6 @@ void SbRtl_TypeLen(StarBASIC *, SbxArray & rPar, bool)
     case SbxSALINT64:
     case SbxSALUINT64:
         nLen = 8;
-        break;
-
-    case SbxOBJECT:
-    case SbxVARIANT:
-    case SbxDATAOBJECT:
-        nLen = 0;
         break;
 
     case SbxCHAR:
@@ -1665,7 +1638,7 @@ void SbRtl_WeekdayName(StarBASIC *, SbxArray & rPar, bool)
 void SbRtl_Weekday(StarBASIC *, SbxArray & rPar, bool)
 {
     sal_uInt32 nParCount = rPar.Count();
-    if ( nParCount < 2 )
+    if ( nParCount < 2 || nParCount > 3 )
     {
         StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
     }
@@ -2337,7 +2310,7 @@ static void CallFunctionAccessFunction( const Sequence< Any >& aArgs, const OUSt
             Reference< XMultiServiceFactory > xFactory( getProcessServiceFactory() );
             if( xFactory.is() )
             {
-                xFunc.set( xFactory->createInstance("com.sun.star.sheet.FunctionAccess"), UNO_QUERY_THROW);
+                xFunc.set( xFactory->createInstance(u"com.sun.star.sheet.FunctionAccess"_ustr), UNO_QUERY_THROW);
             }
         }
         Any aRet = xFunc->callFunction( sFuncName, aArgs );
@@ -2371,7 +2344,7 @@ void SbRtl_SYD(StarBASIC *, SbxArray & rPar, bool)
         Any(rPar.Get(4)->GetDouble())
     };
 
-    CallFunctionAccessFunction(aParams, "SYD", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"SYD"_ustr, rPar.Get(0));
 }
 
 void SbRtl_SLN(StarBASIC *, SbxArray & rPar, bool)
@@ -2393,7 +2366,7 @@ void SbRtl_SLN(StarBASIC *, SbxArray & rPar, bool)
         Any(rPar.Get(3)->GetDouble())
     };
 
-    CallFunctionAccessFunction(aParams, "SLN", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"SLN"_ustr, rPar.Get(0));
 }
 
 void SbRtl_Pmt(StarBASIC *, SbxArray & rPar, bool)
@@ -2437,7 +2410,7 @@ void SbRtl_Pmt(StarBASIC *, SbxArray & rPar, bool)
         Any(type)
     };
 
-    CallFunctionAccessFunction(aParams, "Pmt", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"Pmt"_ustr, rPar.Get(0));
 }
 
 void SbRtl_PPmt(StarBASIC *, SbxArray & rPar, bool)
@@ -2483,7 +2456,7 @@ void SbRtl_PPmt(StarBASIC *, SbxArray & rPar, bool)
         Any(type)
     };
 
-    CallFunctionAccessFunction(aParams, "PPmt", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"PPmt"_ustr, rPar.Get(0));
 }
 
 void SbRtl_PV(StarBASIC *, SbxArray & rPar, bool)
@@ -2527,7 +2500,7 @@ void SbRtl_PV(StarBASIC *, SbxArray & rPar, bool)
         Any(type)
     };
 
-    CallFunctionAccessFunction(aParams, "PV", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"PV"_ustr, rPar.Get(0));
 }
 
 void SbRtl_NPV(StarBASIC *, SbxArray & rPar, bool)
@@ -2554,7 +2527,7 @@ void SbRtl_NPV(StarBASIC *, SbxArray & rPar, bool)
         aValues
     };
 
-    CallFunctionAccessFunction(aParams, "NPV", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"NPV"_ustr, rPar.Get(0));
 }
 
 void SbRtl_NPer(StarBASIC *, SbxArray & rPar, bool)
@@ -2598,7 +2571,7 @@ void SbRtl_NPer(StarBASIC *, SbxArray & rPar, bool)
         Any(type)
     };
 
-    CallFunctionAccessFunction(aParams, "NPer", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"NPer"_ustr, rPar.Get(0));
 }
 
 void SbRtl_MIRR(StarBASIC *, SbxArray & rPar, bool)
@@ -2628,7 +2601,7 @@ void SbRtl_MIRR(StarBASIC *, SbxArray & rPar, bool)
         Any(rPar.Get(3)->GetDouble())
     };
 
-    CallFunctionAccessFunction(aParams, "MIRR", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"MIRR"_ustr, rPar.Get(0));
 }
 
 void SbRtl_IRR(StarBASIC *, SbxArray & rPar, bool)
@@ -2664,7 +2637,7 @@ void SbRtl_IRR(StarBASIC *, SbxArray & rPar, bool)
         Any(guess)
     };
 
-    CallFunctionAccessFunction(aParams, "IRR", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"IRR"_ustr, rPar.Get(0));
 }
 
 void SbRtl_IPmt(StarBASIC *, SbxArray & rPar, bool)
@@ -2710,7 +2683,7 @@ void SbRtl_IPmt(StarBASIC *, SbxArray & rPar, bool)
         Any(type)
     };
 
-    CallFunctionAccessFunction(aParams, "IPmt", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"IPmt"_ustr, rPar.Get(0));
 }
 
 void SbRtl_FV(StarBASIC *, SbxArray & rPar, bool)
@@ -2754,7 +2727,7 @@ void SbRtl_FV(StarBASIC *, SbxArray & rPar, bool)
         Any(type)
     };
 
-    CallFunctionAccessFunction(aParams, "FV", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"FV"_ustr, rPar.Get(0));
 }
 
 void SbRtl_DDB(StarBASIC *, SbxArray & rPar, bool)
@@ -2792,7 +2765,7 @@ void SbRtl_DDB(StarBASIC *, SbxArray & rPar, bool)
         Any(factor)
     };
 
-    CallFunctionAccessFunction(aParams, "DDB", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"DDB"_ustr, rPar.Get(0));
 }
 
 void SbRtl_Rate(StarBASIC *, SbxArray & rPar, bool)
@@ -2850,7 +2823,7 @@ void SbRtl_Rate(StarBASIC *, SbxArray & rPar, bool)
         Any(guess)
     };
 
-    CallFunctionAccessFunction(aParams, "Rate", rPar.Get(0));
+    CallFunctionAccessFunction(aParams, u"Rate"_ustr, rPar.Get(0));
 }
 
 void SbRtl_StrReverse(StarBASIC *, SbxArray & rPar, bool)
@@ -2942,13 +2915,6 @@ void SbRtl_Me(StarBASIC *, SbxArray & rPar, bool)
 }
 
 #endif
-
-bool LibreOffice6FloatingPointMode()
-{
-    static bool bMode = std::getenv("LIBREOFFICE6FLOATINGPOINTMODE") != nullptr;
-
-    return bMode || officecfg::Office::Scripting::Basic::Compatibility::UseLibreOffice6FloatingPointConversion::get();
-}
 
 sal_Int16 implGetWeekDay( double aDate, bool bFirstDayParam, sal_Int16 nFirstDay )
 {

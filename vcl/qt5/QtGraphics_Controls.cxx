@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -25,9 +25,10 @@
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLineEdit>
 
+#include <QtInstance.hxx>
 #include <QtTools.hxx>
 #include <QtGraphicsBase.hxx>
-#include <vcl/decoview.hxx>
+#include <scrollbarvalue.hxx>
 
 /**
   Conversion function between VCL ControlState together with
@@ -160,7 +161,7 @@ inline QRect QtGraphics_Controls::subElementRect(QStyle::SubElement element,
 void QtGraphics_Controls::draw(QStyle::ControlElement element, QStyleOption& rOption, QImage* image,
                                const Color& rBackgroundColor, QStyle::State const state, QRect rect)
 {
-    const QRect& targetRect = !rect.isNull() ? rect : image->rect();
+    const QRect targetRect = !rect.isNull() ? rect : image->rect();
 
     rOption.state |= state;
     rOption.rect = downscale(targetRect);
@@ -175,7 +176,7 @@ void QtGraphics_Controls::draw(QStyle::PrimitiveElement element, QStyleOption& r
                                QImage* image, const Color& rBackgroundColor,
                                QStyle::State const state, QRect rect)
 {
-    const QRect& targetRect = !rect.isNull() ? rect : image->rect();
+    const QRect targetRect = !rect.isNull() ? rect : image->rect();
 
     rOption.state |= state;
     rOption.rect = downscale(targetRect);
@@ -190,7 +191,7 @@ void QtGraphics_Controls::draw(QStyle::ComplexControl element, QStyleOptionCompl
                                QImage* image, const Color& rBackgroundColor,
                                QStyle::State const state)
 {
-    const QRect& targetRect = image->rect();
+    const QRect targetRect = image->rect();
 
     rOption.state |= state;
     rOption.rect = downscale(targetRect);
@@ -222,6 +223,24 @@ void QtGraphics_Controls::drawFrame(QStyle::PrimitiveElement element, QImage* im
     QApplication::style()->drawPrimitive(element, &option, &painter);
 }
 
+static QTabBar::Shape lcl_mapTabBarPosition(TabBarPosition eTabPos)
+{
+    switch (eTabPos)
+    {
+        case TabBarPosition::Bottom:
+            return QTabBar::RoundedSouth;
+        case TabBarPosition::Left:
+            return QTabBar::RoundedWest;
+        case TabBarPosition::Right:
+            return QTabBar::RoundedEast;
+        case TabBarPosition::Top:
+            return QTabBar::RoundedNorth;
+        default:
+            assert(false && "Unhandled tab bar position");
+            return QTabBar::RoundedNorth;
+    }
+}
+
 void QtGraphics_Controls::fillQStyleOptionTab(const ImplControlValue& value, QStyleOptionTab& sot)
 {
     const TabitemValue& rValue = static_cast<const TabitemValue&>(value);
@@ -231,6 +250,8 @@ void QtGraphics_Controls::fillQStyleOptionTab(const ImplControlValue& value, QSt
         sot.position = rValue.isFirst() ? QStyleOptionTab::OnlyOneTab : QStyleOptionTab::End;
     else
         sot.position = QStyleOptionTab::Middle;
+
+    sot.shape = lcl_mapTabBarPosition(rValue.meTabBarPosition);
 }
 
 void QtGraphics_Controls::fullQStyleOptionTabWidgetFrame(QStyleOptionTabWidgetFrame& option,
@@ -715,13 +736,22 @@ bool QtGraphics_Controls::drawNativeControl(ControlType type, ControlPart part,
     return returnVal;
 }
 
-bool QtGraphics_Controls::getNativeControlRegion(ControlType type, ControlPart part,
-                                                 const tools::Rectangle& controlRegion,
-                                                 ControlState controlState,
-                                                 const ImplControlValue& val, const OUString&,
-                                                 tools::Rectangle& nativeBoundingRegion,
-                                                 tools::Rectangle& nativeContentRegion)
+bool QtGraphics_Controls::getNativeControlRegion(
+    ControlType type, ControlPart part, const tools::Rectangle& controlRegion,
+    ControlState controlState, const ImplControlValue& val, const OUString& rCaption,
+    tools::Rectangle& nativeBoundingRegion, tools::Rectangle& nativeContentRegion)
 {
+    QtInstance& rQtInstance = GetQtInstance();
+    if (!rQtInstance.IsMainThread())
+    {
+        bool bRet;
+        rQtInstance.RunInMainThread([&]() {
+            bRet = getNativeControlRegion(type, part, controlRegion, controlState, val, rCaption,
+                                          nativeBoundingRegion, nativeContentRegion);
+        });
+        return bRet;
+    }
+
     bool retVal = false;
 
     QRect boundingRect = toQRect(controlRegion);
@@ -1165,4 +1195,4 @@ inline QPoint QtGraphics_Controls::upscale(const QPoint& point, Round eRound)
     return QPoint(upscale(point.x(), eRound), upscale(point.y(), eRound));
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

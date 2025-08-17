@@ -25,7 +25,10 @@
 #include <com/sun/star/table/XTable.hpp>
 #include <com/sun/star/table/XMergeableCellRange.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
+#include <com/sun/star/view/XSelectionSupplier.hpp>
 
+#include <comphelper/sequence.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <DrawDocShell.hxx>
 #include <drawdoc.hxx>
 #include <vcl/scheduler.hxx>
@@ -42,6 +45,8 @@
 #include <undo/undomanager.hxx>
 #include <GraphicViewShell.hxx>
 #include <sdpage.hxx>
+#include <app.hrc>
+#include <DrawViewShell.hxx>
 #include <LayerTabBar.hxx>
 #include <vcl/event.hxx>
 #include <vcl/keycodes.hxx>
@@ -50,6 +55,8 @@
 #include <svx/view3d.hxx>
 #include <svx/scene3d.hxx>
 #include <svx/sdmetitm.hxx>
+#include <svx/xfillit0.hxx>
+#include <svx/xbtmpit.hxx>
 #include <unomodel.hxx>
 
 using namespace ::com::sun::star;
@@ -59,12 +66,13 @@ class SdMiscTest : public SdModelTestBase
 {
 public:
     SdMiscTest()
-        : SdModelTestBase("/sd/qa/unit/data/")
+        : SdModelTestBase(u"/sd/qa/unit/data/"_ustr)
     {
     }
 
     void testTdf99396();
     void testTableObjectUndoTest();
+    void testFillColor();
     void testFillGradient();
     void testTdf44774();
     void testTdf38225();
@@ -83,11 +91,15 @@ public:
     void testTdf129898LayerDrawnInSlideshow();
     void testTdf136956();
     void testTdf39519();
+    void testTdf164284();
     void testEncodedTableStyles();
+    void testTdf157117();
+    void testPageBackgroundImages();
 
     CPPUNIT_TEST_SUITE(SdMiscTest);
     CPPUNIT_TEST(testTdf99396);
     CPPUNIT_TEST(testTableObjectUndoTest);
+    CPPUNIT_TEST(testFillColor);
     CPPUNIT_TEST(testFillGradient);
     CPPUNIT_TEST(testTdf44774);
     CPPUNIT_TEST(testTdf38225);
@@ -106,7 +118,10 @@ public:
     CPPUNIT_TEST(testTdf129898LayerDrawnInSlideshow);
     CPPUNIT_TEST(testTdf136956);
     CPPUNIT_TEST(testTdf39519);
+    CPPUNIT_TEST(testTdf164284);
     CPPUNIT_TEST(testEncodedTableStyles);
+    CPPUNIT_TEST(testTdf157117);
+    CPPUNIT_TEST(testPageBackgroundImages);
     CPPUNIT_TEST_SUITE_END();
 };
 
@@ -172,7 +187,7 @@ void SdMiscTest::testTableObjectUndoTest()
     }
     const auto& pLocalUndoManager = pView->getViewLocalUndoManager();
     CPPUNIT_ASSERT_EQUAL(size_t(1), pLocalUndoManager->GetUndoActionCount());
-    CPPUNIT_ASSERT_EQUAL(OUString("Apply attributes"), pLocalUndoManager->GetUndoActionComment());
+    CPPUNIT_ASSERT_EQUAL(u"Apply attributes"_ustr, pLocalUndoManager->GetUndoActionComment());
     {
         auto pTableController
             = dynamic_cast<sdr::table::SvxTableController*>(pView->getSelectionController().get());
@@ -182,22 +197,22 @@ void SdMiscTest::testTableObjectUndoTest()
     }
     // Global change "Format cell" is applied only - Change the vertical alignment to "Bottom"
     CPPUNIT_ASSERT_EQUAL(size_t(1), pDoc->GetUndoManager()->GetUndoActionCount());
-    CPPUNIT_ASSERT_EQUAL(OUString("Format cell"), pDoc->GetUndoManager()->GetUndoActionComment());
+    CPPUNIT_ASSERT_EQUAL(u"Format cell"_ustr, pDoc->GetUndoManager()->GetUndoActionComment());
 
     pView->SdrEndTextEdit();
 
     // End of text edit, so the text edit action is added to the undo stack
     CPPUNIT_ASSERT_EQUAL(size_t(2), pDoc->GetUndoManager()->GetUndoActionCount());
-    CPPUNIT_ASSERT_EQUAL(OUString("Edit text of Table"),
+    CPPUNIT_ASSERT_EQUAL(u"Edit text of Table"_ustr,
                          pDoc->GetUndoManager()->GetUndoActionComment(0));
-    CPPUNIT_ASSERT_EQUAL(OUString("Format cell"), pDoc->GetUndoManager()->GetUndoActionComment(1));
+    CPPUNIT_ASSERT_EQUAL(u"Format cell"_ustr, pDoc->GetUndoManager()->GetUndoActionComment(1));
 
     // Check that the result is what we expect.
     {
         uno::Reference<table::XTable> xTable = pTableObject->getTable();
         uno::Reference<beans::XPropertySet> xCell(xTable->getCellByPosition(0, 0), uno::UNO_QUERY);
-        drawing::TextVerticalAdjust eAdjust
-            = xCell->getPropertyValue("TextVerticalAdjust").get<drawing::TextVerticalAdjust>();
+        drawing::TextVerticalAdjust eAdjust = xCell->getPropertyValue(u"TextVerticalAdjust"_ustr)
+                                                  .get<drawing::TextVerticalAdjust>();
         CPPUNIT_ASSERT_EQUAL(int(drawing::TextVerticalAdjust_BOTTOM), static_cast<int>(eAdjust));
     }
     {
@@ -213,14 +228,14 @@ void SdMiscTest::testTableObjectUndoTest()
 
     // Undoing the last action - one left
     CPPUNIT_ASSERT_EQUAL(size_t(1), pDoc->GetUndoManager()->GetUndoActionCount());
-    CPPUNIT_ASSERT_EQUAL(OUString("Format cell"), pDoc->GetUndoManager()->GetUndoActionComment(0));
+    CPPUNIT_ASSERT_EQUAL(u"Format cell"_ustr, pDoc->GetUndoManager()->GetUndoActionComment(0));
 
     // Check again that the result is what we expect.
     {
         uno::Reference<table::XTable> xTable = pTableObject->getTable();
         uno::Reference<beans::XPropertySet> xCell(xTable->getCellByPosition(0, 0), uno::UNO_QUERY);
-        drawing::TextVerticalAdjust eAdjust
-            = xCell->getPropertyValue("TextVerticalAdjust").get<drawing::TextVerticalAdjust>();
+        drawing::TextVerticalAdjust eAdjust = xCell->getPropertyValue(u"TextVerticalAdjust"_ustr)
+                                                  .get<drawing::TextVerticalAdjust>();
         // This failed: Undo() did not change it from drawing::TextVerticalAdjust_BOTTOM.
         CPPUNIT_ASSERT_EQUAL(int(drawing::TextVerticalAdjust_TOP), static_cast<int>(eAdjust));
     }
@@ -234,7 +249,7 @@ void SdMiscTest::testTableObjectUndoTest()
 
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT_EQUAL(size_t(1), pDoc->GetUndoManager()->GetUndoActionCount());
-    CPPUNIT_ASSERT_EQUAL(OUString("Format cell"), pDoc->GetUndoManager()->GetUndoActionComment(0));
+    CPPUNIT_ASSERT_EQUAL(u"Format cell"_ustr, pDoc->GetUndoManager()->GetUndoActionComment(0));
 
     /*
      * now test tdf#103950 - Undo does not revert bundled font size changes for table cells
@@ -247,11 +262,70 @@ void SdMiscTest::testTableObjectUndoTest()
     }
     Scheduler::ProcessEventsToIdle();
     CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), pDoc->GetUndoManager()->GetUndoActionCount());
-    CPPUNIT_ASSERT_EQUAL(OUString("Apply attributes to Table"),
+    CPPUNIT_ASSERT_EQUAL(u"Apply attributes to Table"_ustr,
                          pDoc->GetUndoManager()->GetUndoActionComment(0));
-    CPPUNIT_ASSERT_EQUAL(OUString("Grow font size"),
-                         pDoc->GetUndoManager()->GetUndoActionComment(1));
-    CPPUNIT_ASSERT_EQUAL(OUString("Format cell"), pDoc->GetUndoManager()->GetUndoActionComment(2));
+    CPPUNIT_ASSERT_EQUAL(u"Grow font size"_ustr, pDoc->GetUndoManager()->GetUndoActionComment(1));
+    CPPUNIT_ASSERT_EQUAL(u"Format cell"_ustr, pDoc->GetUndoManager()->GetUndoActionComment(2));
+}
+
+void SdMiscTest::testFillColor()
+{
+    // Test if setting the shape fill color from color to transparent automatically turns off the fill style to none
+    createSdImpressDoc();
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPages> xDrawPages = xDrawPagesSupplier->getDrawPages();
+    // Insert a new page.
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPages->insertNewByIndex(0),
+                                                 uno::UNO_SET_THROW);
+    uno::Reference<drawing::XShapes> xShapes(xDrawPage, uno::UNO_QUERY_THROW);
+    // Create a rectangle
+    uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xFactory.is());
+    uno::Reference<drawing::XShape> xShape1(
+        xFactory->createInstance(u"com.sun.star.drawing.RectangleShape"_ustr),
+        uno::UNO_QUERY_THROW);
+    uno::Reference<beans::XPropertySet> xPropSet(xShape1, uno::UNO_QUERY_THROW);
+    // Set FillStyle and FillColor
+    xPropSet->setPropertyValue(u"FillStyle"_ustr, uno::Any(drawing::FillStyle_SOLID));
+    xPropSet->setPropertyValue(u"FillColor"_ustr, uno::Any(COL_RED));
+    // Add the rectangle to the page.
+    xShapes->add(xShape1);
+
+    // Retrieve the shape and check FillStyle and FillGradient
+    uno::Reference<container::XIndexAccess> xIndexAccess(xDrawPage, uno::UNO_QUERY_THROW);
+    uno::Reference<beans::XPropertySet> xPropSet2(xIndexAccess->getByIndex(0),
+                                                  uno::UNO_QUERY_THROW);
+    drawing::FillStyle eFillStyle;
+    Color aColor;
+    CPPUNIT_ASSERT(xPropSet2->getPropertyValue(u"FillStyle"_ustr) >>= eFillStyle);
+    CPPUNIT_ASSERT_EQUAL(int(drawing::FillStyle_SOLID), static_cast<int>(eFillStyle));
+    CPPUNIT_ASSERT(xPropSet2->getPropertyValue(u"FillColor"_ustr) >>= aColor);
+
+    CPPUNIT_ASSERT_EQUAL(COL_RED, aColor);
+
+    // Setup transparent color and check fill styles
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
+    uno::Reference<view::XSelectionSupplier> xSelectionSupplier(xModel->getCurrentController(),
+                                                                uno::UNO_QUERY);
+
+    xSelectionSupplier->select(uno::Any(xShape1));
+    CPPUNIT_ASSERT(xSelectionSupplier->getSelection().hasValue());
+
+    const char arguments[] = "{"
+                             "\"FillColor.Color\":{"
+                             "\"type\":\"long\","
+                             "\"value\":-1"
+                             "}}";
+
+    dispatchCommand(mxComponent, u".uno:FillColor"_ustr,
+                    comphelper::containerToSequence(comphelper::JsonToPropertyValues(arguments)));
+
+    uno::Reference<container::XIndexAccess> xIndexAccess2(xDrawPage, uno::UNO_QUERY_THROW);
+    uno::Reference<beans::XPropertySet> xPropSet3(xIndexAccess2->getByIndex(0),
+                                                  uno::UNO_QUERY_THROW);
+    drawing::FillStyle eFillStyle2;
+    CPPUNIT_ASSERT(xPropSet3->getPropertyValue(u"FillStyle"_ustr) >>= eFillStyle2);
+    CPPUNIT_ASSERT_EQUAL(int(drawing::FillStyle_NONE), static_cast<int>(eFillStyle2));
 }
 
 void SdMiscTest::testFillGradient()
@@ -267,14 +341,15 @@ void SdMiscTest::testFillGradient()
     uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY);
     CPPUNIT_ASSERT(xFactory.is());
     uno::Reference<drawing::XShape> xShape1(
-        xFactory->createInstance("com.sun.star.drawing.RectangleShape"), uno::UNO_QUERY_THROW);
+        xFactory->createInstance(u"com.sun.star.drawing.RectangleShape"_ustr),
+        uno::UNO_QUERY_THROW);
     uno::Reference<beans::XPropertySet> xPropSet(xShape1, uno::UNO_QUERY_THROW);
     // Set FillStyle and FillGradient
     awt::Gradient aGradient;
-    aGradient.StartColor = sal_Int32(Color(255, 0, 0));
-    aGradient.EndColor = sal_Int32(Color(0, 255, 0));
-    xPropSet->setPropertyValue("FillStyle", uno::Any(drawing::FillStyle_GRADIENT));
-    xPropSet->setPropertyValue("FillGradient", uno::Any(aGradient));
+    aGradient.StartColor = sal_Int32(COL_LIGHTRED);
+    aGradient.EndColor = sal_Int32(COL_LIGHTGREEN);
+    xPropSet->setPropertyValue(u"FillStyle"_ustr, uno::Any(drawing::FillStyle_GRADIENT));
+    xPropSet->setPropertyValue(u"FillGradient"_ustr, uno::Any(aGradient));
     // Add the rectangle to the page.
     xShapes->add(xShape1);
 
@@ -284,19 +359,19 @@ void SdMiscTest::testFillGradient()
                                                   uno::UNO_QUERY_THROW);
     drawing::FillStyle eFillStyle;
     awt::Gradient2 aGradient2;
-    CPPUNIT_ASSERT(xPropSet2->getPropertyValue("FillStyle") >>= eFillStyle);
+    CPPUNIT_ASSERT(xPropSet2->getPropertyValue(u"FillStyle"_ustr) >>= eFillStyle);
     CPPUNIT_ASSERT_EQUAL(int(drawing::FillStyle_GRADIENT), static_cast<int>(eFillStyle));
-    CPPUNIT_ASSERT(xPropSet2->getPropertyValue("FillGradient") >>= aGradient2);
+    CPPUNIT_ASSERT(xPropSet2->getPropertyValue(u"FillGradient"_ustr) >>= aGradient2);
 
     // MCGR: Use the completely imported gradient to check for correctness
     const basegfx::BColorStops aColorStops
         = model::gradient::getColorStopsFromUno(aGradient2.ColorStops);
 
     CPPUNIT_ASSERT_EQUAL(size_t(2), aColorStops.size());
-    CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[0].getStopOffset(), 0.0));
-    CPPUNIT_ASSERT_EQUAL(Color(0xff0000), Color(aColorStops[0].getStopColor()));
+    CPPUNIT_ASSERT_EQUAL(0.0, aColorStops[0].getStopOffset());
+    CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, Color(aColorStops[0].getStopColor()));
     CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[1].getStopOffset(), 1.0));
-    CPPUNIT_ASSERT_EQUAL(Color(0x00ff00), Color(aColorStops[1].getStopColor()));
+    CPPUNIT_ASSERT_EQUAL(COL_LIGHTGREEN, Color(aColorStops[1].getStopColor()));
 }
 
 void SdMiscTest::testTdf44774()
@@ -310,26 +385,26 @@ void SdMiscTest::testTdf44774()
 
     // Create a new style with an empty name, like what happens in UI when creating a new style
     SfxStyleSheetBase& rStyleA
-        = pSSPool->Make("", SfxStyleFamily::Para, SfxStyleSearchBits::UserDefined);
+        = pSSPool->Make(u""_ustr, SfxStyleFamily::Para, SfxStyleSearchBits::UserDefined);
     // Assign a new name, which does not yet set its ApiName
-    rStyleA.SetName("StyleA");
+    rStyleA.SetName(u"StyleA"_ustr);
     // Create another style
     SfxStyleSheetBase& rStyleB
-        = pSSPool->Make("StyleB", SfxStyleFamily::Para, SfxStyleSearchBits::UserDefined);
+        = pSSPool->Make(u"StyleB"_ustr, SfxStyleFamily::Para, SfxStyleSearchBits::UserDefined);
     // ... and set its parent to the first one
-    rStyleB.SetParent("StyleA");
+    rStyleB.SetParent(u"StyleA"_ustr);
 
     // Now save the file and reload
-    saveAndReload("draw8");
+    saveAndReload(u"draw8"_ustr);
     pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
     CPPUNIT_ASSERT(pXImpressDocument);
     pDocShell = pXImpressDocument->GetDocShell();
     pSSPool = pDocShell->GetStyleSheetPool();
 
-    SfxStyleSheetBase* pStyle = pSSPool->Find("StyleB", SfxStyleFamily::Para);
+    SfxStyleSheetBase* pStyle = pSSPool->Find(u"StyleB"_ustr, SfxStyleFamily::Para);
     CPPUNIT_ASSERT(pStyle);
     // The parent set in StyleB used to reset, because parent style's msApiName was empty
-    CPPUNIT_ASSERT_EQUAL(OUString("StyleA"), pStyle->GetParent());
+    CPPUNIT_ASSERT_EQUAL(u"StyleA"_ustr, pStyle->GetParent());
 }
 
 void SdMiscTest::testTdf38225()
@@ -342,32 +417,32 @@ void SdMiscTest::testTdf38225()
     SfxStyleSheetBasePool* pSSPool = pDocShell->GetStyleSheetPool();
 
     // Create a new style with a name
-    pSSPool->Make("StyleWithName1", SfxStyleFamily::Para, SfxStyleSearchBits::UserDefined);
+    pSSPool->Make(u"StyleWithName1"_ustr, SfxStyleFamily::Para, SfxStyleSearchBits::UserDefined);
 
     // Now save the file and reload
-    saveAndReload("draw8");
+    saveAndReload(u"draw8"_ustr);
     pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
     CPPUNIT_ASSERT(pXImpressDocument);
     pDocShell = pXImpressDocument->GetDocShell();
     pSSPool = pDocShell->GetStyleSheetPool();
 
-    SfxStyleSheetBase* pStyle = pSSPool->Find("StyleWithName1", SfxStyleFamily::Para);
+    SfxStyleSheetBase* pStyle = pSSPool->Find(u"StyleWithName1"_ustr, SfxStyleFamily::Para);
     CPPUNIT_ASSERT(pStyle);
 
     // Rename the style
-    CPPUNIT_ASSERT(pStyle->SetName("StyleWithName2"));
+    CPPUNIT_ASSERT(pStyle->SetName(u"StyleWithName2"_ustr));
 
     // Save the file and reload again
-    saveAndReload("draw8");
+    saveAndReload(u"draw8"_ustr);
     pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
     CPPUNIT_ASSERT(pXImpressDocument);
     pDocShell = pXImpressDocument->GetDocShell();
     pSSPool = pDocShell->GetStyleSheetPool();
 
     // The problem was that the style kept the old name upon reloading
-    pStyle = pSSPool->Find("StyleWithName1", SfxStyleFamily::Para);
+    pStyle = pSSPool->Find(u"StyleWithName1"_ustr, SfxStyleFamily::Para);
     CPPUNIT_ASSERT(!pStyle);
-    pStyle = pSSPool->Find("StyleWithName2", SfxStyleFamily::Para);
+    pStyle = pSSPool->Find(u"StyleWithName2"_ustr, SfxStyleFamily::Para);
     CPPUNIT_ASSERT(pStyle);
 }
 
@@ -379,18 +454,18 @@ void SdMiscTest::testTdf120527()
     uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY);
     CPPUNIT_ASSERT(xFactory.is());
     uno::Reference<container::XNameContainer> xBitmaps(
-        xFactory->createInstance("com.sun.star.drawing.BitmapTable"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.drawing.BitmapTable"_ustr), uno::UNO_QUERY);
     CPPUNIT_ASSERT(xBitmaps.is());
     OUString aGraphicURL = createFileURL(u"tdf120527.jpg");
-    xBitmaps->insertByName("test", uno::Any(aGraphicURL));
+    xBitmaps->insertByName(u"test"_ustr, uno::Any(aGraphicURL));
 
     // Create a graphic.
     uno::Reference<drawing::XShape> xShape(
-        xFactory->createInstance("com.sun.star.drawing.GraphicObjectShape"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.drawing.GraphicObjectShape"_ustr), uno::UNO_QUERY);
     CPPUNIT_ASSERT(xShape.is());
     uno::Reference<beans::XPropertySet> xShapeProperySet(xShape, uno::UNO_QUERY);
     CPPUNIT_ASSERT(xShapeProperySet.is());
-    xShapeProperySet->setPropertyValue("GraphicURL", xBitmaps->getByName("test"));
+    xShapeProperySet->setPropertyValue(u"GraphicURL"_ustr, xBitmaps->getByName(u"test"_ustr));
 
     // Insert it.
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
@@ -404,7 +479,7 @@ void SdMiscTest::testTdf120527()
 
     // Verify that the graphic was actually consumed.
     uno::Reference<graphic::XGraphic> xGraphic;
-    xShapeProperySet->getPropertyValue("Graphic") >>= xGraphic;
+    xShapeProperySet->getPropertyValue(u"Graphic"_ustr) >>= xGraphic;
     CPPUNIT_ASSERT(xGraphic.is());
 }
 
@@ -424,7 +499,7 @@ void SdMiscTest::testTextColumns()
         uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY);
         CPPUNIT_ASSERT(xFactory.is());
         uno::Reference<drawing::XShape> xShape(
-            xFactory->createInstance("com.sun.star.drawing.TextShape"), uno::UNO_QUERY_THROW);
+            xFactory->createInstance(u"com.sun.star.drawing.TextShape"_ustr), uno::UNO_QUERY_THROW);
         uno::Reference<beans::XPropertySet> xPropSet(xShape, uno::UNO_QUERY_THROW);
 
         // Add the shape to the page.
@@ -474,10 +549,10 @@ void SdMiscTest::testTdf101242_ODF_add_settings()
         comphelper::ConfigurationChanges::create());
     officecfg::Office::Common::Misc::WriteLayerStateAsConfigItem::set(true, pBatch);
     pBatch->commit();
-    save("draw8");
+    save(u"draw8"_ustr);
 
     // Verify, that the saved document still has the ODF attributes
-    xmlDocUniquePtr pXmlDoc = parseExport("styles.xml");
+    xmlDocUniquePtr pXmlDoc = parseExport(u"styles.xml"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to get 'styles.xml'", pXmlDoc);
     static constexpr OString sPathStart(
         "/office:document-styles/office:master-styles/draw:layer-set/draw:layer"_ostr);
@@ -487,7 +562,7 @@ void SdMiscTest::testTdf101242_ODF_add_settings()
     assertXPath(pXmlDoc, sPathStart + "[@draw:name='measurelines' and @draw:display='printer']");
 
     // Verify, that the saved document has got the items in settings.xml
-    xmlDocUniquePtr pXmlDoc2 = parseExport("settings.xml");
+    xmlDocUniquePtr pXmlDoc2 = parseExport(u"settings.xml"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to get 'settings.xml'", pXmlDoc2);
     static constexpr OString sPathStart2("/office:document-settings/office:settings/"
                                          "config:config-item-set[@config:name='ooo:view-settings']/"
@@ -528,10 +603,10 @@ void SdMiscTest::testTdf101242_ODF_no_settings()
         comphelper::ConfigurationChanges::create());
     officecfg::Office::Common::Misc::WriteLayerStateAsConfigItem::set(false, pBatch);
     pBatch->commit();
-    save("draw8");
+    save(u"draw8"_ustr);
 
     // Verify, that the saved document still has the ODF attributes
-    xmlDocUniquePtr pXmlDoc = parseExport("styles.xml");
+    xmlDocUniquePtr pXmlDoc = parseExport(u"styles.xml"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to get 'styles.xml'", pXmlDoc);
     static constexpr OString sPathStart(
         "/office:document-styles/office:master-styles/draw:layer-set/draw:layer"_ostr);
@@ -541,7 +616,7 @@ void SdMiscTest::testTdf101242_ODF_no_settings()
     assertXPath(pXmlDoc, sPathStart + "[@draw:name='measurelines' and @draw:display='printer']");
 
     // Verify, that the saved document has no layer items in settings.xml
-    xmlDocUniquePtr pXmlDoc2 = parseExport("settings.xml");
+    xmlDocUniquePtr pXmlDoc2 = parseExport(u"settings.xml"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to get 'settings.xml'", pXmlDoc2);
     static constexpr OString sPathStart2("/office:document-settings/office:settings/"
                                          "config:config-item-set[@config:name='ooo:view-settings']/"
@@ -565,10 +640,10 @@ void SdMiscTest::testTdf101242_settings_keep()
         comphelper::ConfigurationChanges::create());
     officecfg::Office::Common::Misc::WriteLayerStateAsConfigItem::set(true, pBatch);
     pBatch->commit();
-    save("draw8");
+    save(u"draw8"_ustr);
 
     // Verify, that the saved document has the ODF attributes
-    xmlDocUniquePtr pXmlDoc = parseExport("styles.xml");
+    xmlDocUniquePtr pXmlDoc = parseExport(u"styles.xml"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to get 'styles.xml'", pXmlDoc);
     static constexpr OString sPathStart(
         "/office:document-styles/office:master-styles/draw:layer-set/draw:layer"_ostr);
@@ -578,7 +653,7 @@ void SdMiscTest::testTdf101242_settings_keep()
     assertXPath(pXmlDoc, sPathStart + "[@draw:name='measurelines' and @draw:display='printer']");
 
     // Verify, that the saved document still has the items in settings.xml
-    xmlDocUniquePtr pXmlDoc2 = parseExport("settings.xml");
+    xmlDocUniquePtr pXmlDoc2 = parseExport(u"settings.xml"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to get 'settings.xml'", pXmlDoc2);
     static constexpr OString sPathStart2("/office:document-settings/office:settings/"
                                          "config:config-item-set[@config:name='ooo:view-settings']/"
@@ -620,10 +695,10 @@ void SdMiscTest::testTdf101242_settings_remove()
         comphelper::ConfigurationChanges::create());
     officecfg::Office::Common::Misc::WriteLayerStateAsConfigItem::set(false, pBatch);
     pBatch->commit();
-    save("draw8");
+    save(u"draw8"_ustr);
 
     // Verify, that the saved document has the ODF attributes
-    xmlDocUniquePtr pXmlDoc = parseExport("styles.xml");
+    xmlDocUniquePtr pXmlDoc = parseExport(u"styles.xml"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to get 'styles.xml'", pXmlDoc);
     static constexpr OString sPathStart(
         "/office:document-styles/office:master-styles/draw:layer-set/draw:layer"_ostr);
@@ -633,7 +708,7 @@ void SdMiscTest::testTdf101242_settings_remove()
     assertXPath(pXmlDoc, sPathStart + "[@draw:name='measurelines' and @draw:display='printer']");
 
     // Verify, that the saved document has no layer items in settings.xml
-    xmlDocUniquePtr pXmlDoc2 = parseExport("settings.xml");
+    xmlDocUniquePtr pXmlDoc2 = parseExport(u"settings.xml"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to get 'settings.xml'", pXmlDoc2);
     static constexpr OString sPathStart2("/office:document-settings/office:settings/"
                                          "config:config-item-set[@config:name='ooo:view-settings']/"
@@ -660,15 +735,15 @@ void SdMiscTest::testTdf119392()
     // Insert layer "-P-", not visible, printable, not locked
     sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
     SdrView* pView = pViewShell->GetView();
-    pView->InsertNewLayer("-P-", 6); // 0..4 standard layer, 5 layer "V--"
+    pView->InsertNewLayer(u"-P-"_ustr, 6); // 0..4 standard layer, 5 layer "V--"
     SdrPageView* pPageView = pView->GetSdrPageView();
-    pPageView->SetLayerVisible("-P-", false);
-    pPageView->SetLayerPrintable("-P-", true);
-    pPageView->SetLayerLocked("-P-", false);
-    save("draw8");
+    pPageView->SetLayerVisible(u"-P-"_ustr, false);
+    pPageView->SetLayerPrintable(u"-P-"_ustr, true);
+    pPageView->SetLayerLocked(u"-P-"_ustr, false);
+    save(u"draw8"_ustr);
 
     // Verify correct bit order in bitfield in the config items in settings.xml
-    xmlDocUniquePtr pXmlDoc = parseExport("settings.xml");
+    xmlDocUniquePtr pXmlDoc = parseExport(u"settings.xml"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to get 'settings.xml'", pXmlDoc);
     static constexpr OString sPathStart("/office:document-settings/office:settings/"
                                         "config:config-item-set[@config:name='ooo:view-settings']/"
@@ -767,14 +842,13 @@ void SdMiscTest::testTdf98839_ShearVFlipH()
     pShape->Mirror(Point(4000, 2000), Point(4000, 10000));
 
     // Save and examine attribute draw:transform
-    save("draw8");
-    xmlDocUniquePtr pXmlDoc = parseExport("content.xml");
+    save(u"draw8"_ustr);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"content.xml"_ustr);
     CPPUNIT_ASSERT_MESSAGE("Failed to get 'content.xml'", pXmlDoc);
     static constexpr OString sPathStart(
         "/office:document-content/office:body/office:drawing/draw:page"_ostr);
     assertXPath(pXmlDoc, sPathStart);
-    const OUString sTransform
-        = getXPath(pXmlDoc, sPathStart + "/draw:custom-shape", "transform"_ostr);
+    const OUString sTransform = getXPath(pXmlDoc, sPathStart + "/draw:custom-shape", "transform");
 
     // Error was, that the shear angle had a wrong sign.
     CPPUNIT_ASSERT_MESSAGE("expected: draw:transform='skewX (-0.64350...)",
@@ -793,7 +867,8 @@ void SdMiscTest::testTdf130988()
     pView->MarkNextObj();
     pView->ConvertMarkedObjTo3D(false, basegfx::B2DPoint(8000.0, -3000.0),
                                 basegfx::B2DPoint(3000.0, -8000.0));
-    E3dScene* pObj = dynamic_cast<E3dScene*>(pView->GetMarkedObjectByIndex(0));
+    E3dScene* pObj
+        = dynamic_cast<E3dScene*>(pView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj());
     CPPUNIT_ASSERT(pObj);
 
     // Error was, that the created 3D object had a wrong path. Instead examining
@@ -818,7 +893,8 @@ void SdMiscTest::testTdf131033()
     pView->MarkNextObj();
     pView->ConvertMarkedObjTo3D(false, basegfx::B2DPoint(11000.0, -5000.0),
                                 basegfx::B2DPoint(11000.0, -9000.0));
-    E3dScene* pObj = dynamic_cast<E3dScene*>(pView->GetMarkedObjectByIndex(0));
+    E3dScene* pObj
+        = dynamic_cast<E3dScene*>(pView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj());
     CPPUNIT_ASSERT(pObj);
 
     // Error was, that the 2D representation of the scene did not contain the default 20°
@@ -893,17 +969,38 @@ void SdMiscTest::testTdf39519()
     // Change the name of the first page in the newly created document
     SdDrawDocument* pDoc = pXImpressDocument->GetDoc();
     SdPage* pPage = static_cast<SdPage*>(pDoc->GetPage(1));
-    pPage->SetName("Test");
+    pPage->SetName(u"Test"_ustr);
 
     // Insert a bookmark as a new page using the same name
-    std::vector<OUString> aBookmarkList = { "Test" };
-    pDoc->InsertBookmarkAsPage(aBookmarkList, nullptr, false, false, 2, true, pDoc->GetDocSh(),
-                               true, false, false);
+    std::vector<OUString> aBookmarkList = { u"Test"_ustr };
+    pDoc->CopyOrMovePagesWithinDocument(aBookmarkList, 2, false);
 
     // Check if the copied page has a different name
     SdPage* pCopiedPage = static_cast<SdPage*>(pDoc->GetPage(2));
     // Without the fix in place, the names of the pages would not be different
     CPPUNIT_ASSERT(pCopiedPage->GetName() != pPage->GetName());
+}
+
+void SdMiscTest::testTdf164284()
+{
+    createSdImpressDoc();
+    SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pXImpressDocument);
+
+    // Change the name of the first page in the newly created document
+    SdDrawDocument* pDoc = pXImpressDocument->GetDoc();
+    SdPage* pPage = static_cast<SdPage*>(pDoc->GetPage(1));
+    pPage->SetName(u"Test"_ustr);
+
+    // Move a bookmark as a page using the same name
+    pDoc->DoMakePageObjectsNamesUnique(false);
+    std::vector<OUString> aBookmarkList = { u"Test"_ustr };
+    pDoc->CopyOrMovePagesWithinDocument(aBookmarkList, 2, true);
+
+    // Check if the moved page has the same name
+    SdPage* pMovedPage = static_cast<SdPage*>(pDoc->GetPage(2));
+    // Without the fix in place, the names of the pages would be different
+    CPPUNIT_ASSERT_EQUAL(pPage->GetName(), pMovedPage->GetName());
 }
 
 void SdMiscTest::testEncodedTableStyles()
@@ -918,9 +1015,11 @@ void SdMiscTest::testEncodedTableStyles()
         uno::Reference<style::XStyleFamiliesSupplier> xStyleFamiliesSupplier(mxComponent,
                                                                              uno::UNO_QUERY_THROW);
         uno::Reference<css::lang::XSingleServiceFactory> xTableStyleFamily(
-            xStyleFamiliesSupplier->getStyleFamilies()->getByName("table"), uno::UNO_QUERY_THROW);
+            xStyleFamiliesSupplier->getStyleFamilies()->getByName(u"table"_ustr),
+            uno::UNO_QUERY_THROW);
         uno::Reference<css::lang::XSingleServiceFactory> xCellStyleFamily(
-            xStyleFamiliesSupplier->getStyleFamilies()->getByName("cell"), uno::UNO_QUERY_THROW);
+            xStyleFamiliesSupplier->getStyleFamilies()->getByName(u"cell"_ustr),
+            uno::UNO_QUERY_THROW);
 
         uno::Reference<style::XStyle> xTableStyle(xTableStyleFamily->createInstance(),
                                                   uno::UNO_QUERY_THROW);
@@ -928,31 +1027,213 @@ void SdMiscTest::testEncodedTableStyles()
                                                  uno::UNO_QUERY_THROW);
 
         uno::Reference<container::XNameContainer>(xTableStyleFamily, uno::UNO_QUERY_THROW)
-            ->insertByName("table_1", uno::Any(xTableStyle));
+            ->insertByName(u"table_1"_ustr, uno::Any(xTableStyle));
         uno::Reference<container::XNameContainer>(xCellStyleFamily, uno::UNO_QUERY_THROW)
-            ->insertByName("table-body_1", uno::Any(xCellStyle));
+            ->insertByName(u"table-body_1"_ustr, uno::Any(xCellStyle));
         uno::Reference<container::XNameReplace>(xTableStyle, uno::UNO_QUERY_THROW)
-            ->replaceByName("body", uno::Any(xCellStyle));
+            ->replaceByName(u"body"_ustr, uno::Any(xCellStyle));
     }
 
-    saveAndReload("draw8");
+    saveAndReload(u"draw8"_ustr);
 
     {
         uno::Reference<style::XStyleFamiliesSupplier> xStyleFamiliesSupplier(mxComponent,
                                                                              uno::UNO_QUERY_THROW);
         uno::Reference<container::XNameAccess> xTableStyleFamily(
-            xStyleFamiliesSupplier->getStyleFamilies()->getByName("table"), uno::UNO_QUERY_THROW);
+            xStyleFamiliesSupplier->getStyleFamilies()->getByName(u"table"_ustr),
+            uno::UNO_QUERY_THROW);
         // Such style used to be exported as "table_5f_1" instead.
-        CPPUNIT_ASSERT(xTableStyleFamily->hasByName("table_1"));
+        CPPUNIT_ASSERT(xTableStyleFamily->hasByName(u"table_1"_ustr));
 
-        uno::Reference<container::XNameAccess> xTableStyle(xTableStyleFamily->getByName("table_1"),
-                                                           uno::UNO_QUERY_THROW);
-        uno::Reference<style::XStyle> xCellStyle(xTableStyle->getByName("body"), uno::UNO_QUERY);
+        uno::Reference<container::XNameAccess> xTableStyle(
+            xTableStyleFamily->getByName(u"table_1"_ustr), uno::UNO_QUERY_THROW);
+        uno::Reference<style::XStyle> xCellStyle(xTableStyle->getByName(u"body"_ustr),
+                                                 uno::UNO_QUERY);
         // Such style used to not be found by the table style, as it was
         // searching for "table-body_5f_1" instead of "table-body_1".
         CPPUNIT_ASSERT(xCellStyle.is());
-        CPPUNIT_ASSERT_EQUAL(OUString("table-body_1"), xCellStyle->getName());
+        CPPUNIT_ASSERT_EQUAL(u"table-body_1"_ustr, xCellStyle->getName());
     }
+}
+
+void SdMiscTest::testTdf157117()
+{
+    createSdImpressDoc();
+    SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
+    CPPUNIT_ASSERT(pXImpressDocument);
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+
+    // insert two pages to make a total of 3 pages
+    dispatchCommand(mxComponent, u".uno:InsertPage"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:InsertPage"_ustr, {});
+
+    // assert the document has 3 standard pages
+    SdDrawDocument* pDocument = pXImpressDocument->GetDoc();
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(3), pDocument->GetSdPageCount(PageKind::Standard));
+
+    // alternate page insert method
+    //    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    //    uno::Reference<drawing::XDrawPages> xDrawPages = xDrawPagesSupplier->getDrawPages();
+    //    xDrawPages->insertNewByIndex(0);
+    //    xDrawPages->insertNewByIndex(0);
+    //    CPPUNIT_ASSERT_EQUAL(xDrawPages->getCount(), 3);
+
+    // move to the last page
+    dispatchCommand(mxComponent, u".uno:LastPage"_ustr, {});
+
+    SdPage* pPage = pViewShell->GetActualPage();
+    auto nPageNum = pPage->GetPageNum();
+    // assert move to last page
+    CPPUNIT_ASSERT_EQUAL(2, (nPageNum - 1) / 2);
+
+    // delete the last page
+    dispatchCommand(mxComponent, u".uno:DeletePage"_ustr, {});
+    pPage = pViewShell->GetActualPage();
+    nPageNum = pPage->GetPageNum();
+
+    // Check that the new last page is moved to. Before, the first page was always moved to when
+    // the last page was deleted.
+    CPPUNIT_ASSERT_EQUAL(1, (nPageNum - 1) / 2);
+}
+
+void SdMiscTest::testPageBackgroundImages()
+{
+    // Create empty document
+    createSdDrawDoc();
+
+    auto pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
+    sd::ViewShell* pViewShell = pXImpressDocument->GetDocShell()->GetViewShell();
+    CPPUNIT_ASSERT(pViewShell);
+
+    auto* pDrawViewShell = dynamic_cast<sd::DrawViewShell*>(pViewShell);
+    CPPUNIT_ASSERT(pDrawViewShell);
+
+    SdDrawDocument* pDocument = pXImpressDocument->GetDocShell()->GetDoc();
+    CPPUNIT_ASSERT(pDocument);
+
+    // Check we have 1 Page
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(1), pDocument->GetSdPageCount(PageKind::Standard));
+
+    // Add 3 pages
+    dispatchCommand(mxComponent, u".uno:InsertPage"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:InsertPage"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:InsertPage"_ustr, {});
+
+    // Check we have 4 Pages now
+    CPPUNIT_ASSERT_EQUAL(sal_uInt16(4), pDocument->GetSdPageCount(PageKind::Standard));
+
+    // Add a background graphic to page 1
+    {
+        CPPUNIT_ASSERT_EQUAL(true, pDrawViewShell->SwitchPage(0));
+        uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence({
+            { "FileName", uno::Any(createFileURL(u"TestImage1.png")) },
+        }));
+
+        dispatchCommand(mxComponent, u".uno:SelectBackground"_ustr, aArgs);
+    }
+
+    // Add a background graphic to page 2
+    {
+        CPPUNIT_ASSERT_EQUAL(true, pDrawViewShell->SwitchPage(1));
+        uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence({
+            { "FileName", uno::Any(createFileURL(u"TestImage2.png")) },
+        }));
+
+        dispatchCommand(mxComponent, u".uno:SelectBackground"_ustr, aArgs);
+    }
+
+    // Add a background graphic to page 3
+    {
+        CPPUNIT_ASSERT_EQUAL(true, pDrawViewShell->SwitchPage(2));
+        uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence({
+            { "FileName", uno::Any(createFileURL(u"TestImage3.png")) },
+        }));
+
+        dispatchCommand(mxComponent, u".uno:SelectBackground"_ustr, aArgs);
+    }
+
+    // Add a background graphic to page 4
+    {
+        CPPUNIT_ASSERT_EQUAL(true, pDrawViewShell->SwitchPage(3));
+        uno::Sequence<beans::PropertyValue> aArgs(comphelper::InitPropertySequence({
+            { "FileName", uno::Any(createFileURL(u"TestImage4.png")) },
+        }));
+
+        dispatchCommand(mxComponent, u".uno:SelectBackground"_ustr, aArgs);
+    }
+
+    // Store graphic names
+    std::unordered_set<OUString> aGraphicNames;
+
+    // Check page 1
+    {
+        CPPUNIT_ASSERT_EQUAL(true, pDrawViewShell->SwitchPage(0));
+        SdPage* pPage = pViewShell->GetActualPage();
+
+        SfxItemSetFixed<XATTR_FILL_FIRST, XATTR_FILL_LAST> aMergedAttr(pDocument->GetPool());
+        SdStyleSheet* pStyleSheet = pPage->getPresentationStyle(HID_PSEUDOSHEET_BACKGROUND);
+        sd::MergePageBackgroundFilling(pPage, pStyleSheet, false, aMergedAttr);
+
+        // Style should be "BITMAP"
+        CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_BITMAP,
+                             aMergedAttr.Get(XATTR_FILLSTYLE).GetValue());
+        auto aItem = aMergedAttr.Get<XFillBitmapItem>(XATTR_FILLBITMAP);
+        aGraphicNames.insert(aItem.GetName());
+    }
+
+    // Check page 2
+    {
+        CPPUNIT_ASSERT_EQUAL(true, pDrawViewShell->SwitchPage(1));
+        SdPage* pPage = pViewShell->GetActualPage();
+
+        // Style should be "BITMAP"
+        SfxItemSetFixed<XATTR_FILL_FIRST, XATTR_FILL_LAST> aMergedAttr(pDocument->GetPool());
+        SdStyleSheet* pStyleSheet = pPage->getPresentationStyle(HID_PSEUDOSHEET_BACKGROUND);
+        sd::MergePageBackgroundFilling(pPage, pStyleSheet, false, aMergedAttr);
+
+        CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_BITMAP,
+                             aMergedAttr.Get(XATTR_FILLSTYLE).GetValue());
+        auto aItem = aMergedAttr.Get<XFillBitmapItem>(XATTR_FILLBITMAP);
+        aGraphicNames.insert(aItem.GetName());
+    }
+
+    // Check page 3
+    {
+        CPPUNIT_ASSERT_EQUAL(true, pDrawViewShell->SwitchPage(2));
+        SdPage* pPage = pViewShell->GetActualPage();
+
+        // Style should be "BITMAP"
+        SfxItemSetFixed<XATTR_FILL_FIRST, XATTR_FILL_LAST> aMergedAttr(pDocument->GetPool());
+        SdStyleSheet* pStyleSheet = pPage->getPresentationStyle(HID_PSEUDOSHEET_BACKGROUND);
+        sd::MergePageBackgroundFilling(pPage, pStyleSheet, false, aMergedAttr);
+
+        CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_BITMAP,
+                             aMergedAttr.Get(XATTR_FILLSTYLE).GetValue());
+        auto aItem = aMergedAttr.Get<XFillBitmapItem>(XATTR_FILLBITMAP);
+        aGraphicNames.insert(aItem.GetName());
+    }
+
+    // Check page 4
+    {
+        CPPUNIT_ASSERT_EQUAL(true, pDrawViewShell->SwitchPage(3));
+        SdPage* pPage = pViewShell->GetActualPage();
+
+        SfxItemSetFixed<XATTR_FILL_FIRST, XATTR_FILL_LAST> aMergedAttr(pDocument->GetPool());
+        SdStyleSheet* pStyleSheet = pPage->getPresentationStyle(HID_PSEUDOSHEET_BACKGROUND);
+        sd::MergePageBackgroundFilling(pPage, pStyleSheet, false, aMergedAttr);
+
+        // Style should be "BITMAP"
+        CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_BITMAP,
+                             aMergedAttr.Get(XATTR_FILLSTYLE).GetValue());
+        auto aItem = aMergedAttr.Get<XFillBitmapItem>(XATTR_FILLBITMAP);
+        aGraphicNames.insert(aItem.GetName());
+    }
+
+    // Size of graphic names should be 4 - this means each page has a unique name
+    CPPUNIT_ASSERT_EQUAL(size_t(4), aGraphicNames.size());
+    // Check none of the graphic names is empty
+    for (OUString const& rName : aGraphicNames)
+        CPPUNIT_ASSERT(!rName.isEmpty());
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(SdMiscTest);

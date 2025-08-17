@@ -84,7 +84,7 @@ Connection::Connection()
     , m_bIsFile(false)
     , m_bIsAutoCommit(true)
     , m_bIsReadOnly(false)
-    , m_aTransactionIsolation(TransactionIsolation::REPEATABLE_READ)
+    , m_aTransactionIsolation(TransactionIsolation::READ_COMMITTED)
 #if SAL_TYPES_SIZEOFPOINTER == 8
     , m_aDBHandle(0)
     , m_aTransactionHandle(0)
@@ -339,15 +339,9 @@ void Connection::construct(const OUString& url, const Sequence< PropertyValue >&
     }
 }
 
-void Connection::notifyDatabaseModified()
-{
-    if (m_xParentDocument.is()) // Only true in embedded mode
-        m_xParentDocument->setModified(true);
-}
-
 //----- XServiceInfo ---------------------------------------------------------
-IMPLEMENT_SERVICE_INFO(Connection, "com.sun.star.sdbc.drivers.firebird.Connection",
-                                                    "com.sun.star.sdbc.Connection")
+IMPLEMENT_SERVICE_INFO(Connection, u"com.sun.star.sdbc.drivers.firebird.Connection"_ustr,
+                                                    u"com.sun.star.sdbc.Connection"_ustr)
 
 Reference< XBlob> Connection::createBlob(ISC_QUAD const * pBlobId)
 {
@@ -489,8 +483,6 @@ void Connection::setupTransaction()
             aTransactionIsolation = isc_tpb_read_committed;
             break;
         case TransactionIsolation::REPEATABLE_READ:
-            aTransactionIsolation = isc_tpb_consistency;
-            break;
         case TransactionIsolation::SERIALIZABLE:
             aTransactionIsolation = isc_tpb_consistency;
             break;
@@ -580,7 +572,7 @@ isc_svc_handle Connection::attachServiceManager()
     *pSPB++ = isc_spb_version;
     *pSPB++ = isc_spb_current_version;
     *pSPB++ = isc_spb_user_name;
-    OUString sUserName("SYSDBA");
+    OUString sUserName(u"SYSDBA"_ustr);
     char aLength = static_cast<char>(sUserName.getLength());
     *pSPB++ = aLength;
     strncpy(pSPB,
@@ -717,11 +709,11 @@ Reference< XDatabaseMetaData > SAL_CALL Connection::getMetaData(  )
 
     // here we have to create the class with biggest interface
     // The answer is 42 :-)
-    Reference< XDatabaseMetaData > xMetaData = m_xMetaData;
+    rtl::Reference< ODatabaseMetaData > xMetaData = m_xMetaData.get();
     if(!xMetaData.is())
     {
         xMetaData = new ODatabaseMetaData(this); // need the connection because it can return it
-        m_xMetaData = xMetaData;
+        m_xMetaData = xMetaData.get();
     }
 
     return xMetaData;
@@ -746,13 +738,12 @@ sal_Bool SAL_CALL Connection::isReadOnly()
 
 void SAL_CALL Connection::setCatalog(const OUString& /*catalog*/)
 {
-    ::dbtools::throwFunctionNotSupportedSQLException("setCatalog", *this);
+    ::dbtools::throwFunctionNotSupportedSQLException(u"setCatalog"_ustr, *this);
 }
 
 OUString SAL_CALL Connection::getCatalog()
 {
-    ::dbtools::throwFunctionNotSupportedSQLException("getCatalog", *this);
-    return OUString();
+    ::dbtools::throwFunctionNotSupportedSQLException(u"getCatalog"_ustr, *this);
 }
 
 void SAL_CALL Connection::setTransactionIsolation( sal_Int32 level )
@@ -774,13 +765,12 @@ sal_Int32 SAL_CALL Connection::getTransactionIsolation(  )
 
 Reference< XNameAccess > SAL_CALL Connection::getTypeMap()
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XConnection::getTypeMap", *this );
-    return nullptr;
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XConnection::getTypeMap"_ustr, *this );
 }
 
 void SAL_CALL Connection::setTypeMap(const Reference< XNameAccess >&)
 {
-    ::dbtools::throwFeatureNotImplementedSQLException( "XConnection::setTypeMap", *this );
+    ::dbtools::throwFeatureNotImplementedSQLException( u"XConnection::setTypeMap"_ustr, *this );
 }
 
 //----- XCloseable -----------------------------------------------------------
@@ -822,42 +812,9 @@ void SAL_CALL Connection::documentEventOccured( const DocumentEvent& Event )
     if ( !(m_bIsEmbedded && m_xEmbeddedStorage.is()) )
         return;
 
-    SAL_INFO("connectivity.firebird", "Writing .fbk from running db");
-    try
-    {
-        runBackupService(isc_action_svc_backup);
-    }
-    catch (const SQLException& e)
-    {
-        auto a = cppu::getCaughtException();
-        throw WrappedTargetRuntimeException(e.Message, e.Context, a);
-    }
-
-
-    Reference< XStream > xDBStream(m_xEmbeddedStorage->openStreamElement(our_sFBKLocation,
-                                                    ElementModes::WRITE));
-
-    // TODO: verify the backup actually exists -- the backup service
-    // can fail without giving any sane error messages / telling us
-    // that it failed.
-    using namespace ::comphelper;
-    Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
-    Reference< XInputStream > xInputStream;
-    if (!xContext.is())
-        return;
-
-    xInputStream =
-            OStorageHelper::GetInputStreamFromURL(m_sFBKPath, xContext);
-    if (xInputStream.is())
-        OStorageHelper::CopyInputToOutput( xInputStream,
-                                    xDBStream->getOutputStream());
-
-    // remove old fdb file if exists
-    uno::Reference< ucb::XSimpleFileAccess > xFileAccess =
-        ucb::SimpleFileAccess::create(xContext);
-    if (xFileAccess->exists(m_sFirebirdURL))
-        xFileAccess->kill(m_sFirebirdURL);
+    storeDatabase();
 }
+
 // XEventListener
 void SAL_CALL Connection::disposing(const EventObject& /*rSource*/)
 {
@@ -922,7 +879,7 @@ void Connection::disposing()
 
     disposeStatements();
 
-    m_xMetaData = css::uno::WeakReference< css::sdbc::XDatabaseMetaData>();
+    m_xMetaData.clear();
 
     ISC_STATUS_ARRAY status;            /* status vector */
     if (m_aTransactionHandle)
@@ -938,12 +895,42 @@ void Connection::disposing()
             evaluateStatusVector(status, u"isc_detach_database", *this);
         }
     }
-    // TODO: write to storage again?
+
+    storeDatabase();
 
     cppu::WeakComponentImplHelperBase::disposing();
 
     m_pDatabaseFileDir.reset();
 }
+
+void Connection::storeDatabase()
+{
+    MutexGuard aGuard(m_aMutex);
+    if (m_bIsEmbedded && m_xEmbeddedStorage.is())
+    {
+        SAL_INFO("connectivity.firebird", "Writing .fbk from running db");
+        try
+        {
+            runBackupService(isc_action_svc_backup);
+        }
+        catch (const SQLException& e)
+        {
+            auto a = cppu::getCaughtException();
+            throw WrappedTargetRuntimeException(e.Message, e.Context, a);
+        }
+        Reference<XStream> xDBStream(
+            m_xEmbeddedStorage->openStreamElement(our_sFBKLocation, ElementModes::WRITE));
+        using namespace ::comphelper;
+        const Reference<XComponentContext>& xContext = comphelper::getProcessComponentContext();
+        Reference<XInputStream> xInputStream;
+        if (!xContext.is())
+            return;
+        xInputStream = OStorageHelper::GetInputStreamFromURL(m_sFBKPath, xContext);
+        if (xInputStream.is())
+            OStorageHelper::CopyInputToOutput(xInputStream, xDBStream->getOutputStream());
+    }
+}
+
 
 void Connection::disposeStatements()
 {
@@ -962,18 +949,13 @@ uno::Reference< XTablesSupplier > Connection::createCatalog()
     MutexGuard aGuard(m_aMutex);
 
     // m_xCatalog is a weak reference. Reuse it if it still exists.
-    Reference< XTablesSupplier > xCatalog = m_xCatalog;
-    if (xCatalog.is())
-    {
-        return xCatalog;
-    }
-    else
+    rtl::Reference< Catalog > xCatalog = m_xCatalog.get();
+    if (!xCatalog.is())
     {
         xCatalog = new Catalog(this);
-        m_xCatalog = xCatalog;
-        return m_xCatalog;
+        m_xCatalog = xCatalog.get();
     }
-
+    return xCatalog;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -15,6 +15,7 @@
 
 #include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/awt/Gradient2.hpp>
+#include <com/sun/star/awt/Point.hpp>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -39,6 +40,9 @@
 #include <docmodel/uno/UnoComplexColor.hxx>
 #include <docmodel/uno/UnoGradientTools.hxx>
 #include <basegfx/utils/gradienttools.hxx>
+#include <editeng/unoprnms.hxx>
+#include <sfx2/viewsh.hxx>
+#include <svx/svdview.hxx>
 
 using namespace ::com::sun::star;
 
@@ -65,7 +69,7 @@ class OoxShapeTest : public UnoApiTest
 {
 public:
     OoxShapeTest()
-        : UnoApiTest("/oox/qa/unit/data/")
+        : UnoApiTest(u"/oox/qa/unit/data/"_ustr)
     {
     }
     uno::Reference<drawing::XShape> getShapeByName(std::u16string_view aName);
@@ -91,9 +95,141 @@ uno::Reference<drawing::XShape> OoxShapeTest::getShapeByName(std::u16string_view
     return xRet;
 }
 
+CPPUNIT_TEST_FIXTURE(OoxShapeTest, testConnectorConnection)
+{
+    loadFromFile(u"connectorConnection.pptx");
+
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
+                                                 uno::UNO_QUERY);
+
+    uno::Reference<drawing::XShape> xConnector(xDrawPage->getByIndex(0), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xConnectorProps(xConnector, uno::UNO_QUERY);
+
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 4
+    // - Actual  : -1
+    // i.e. the connector shape is not attaching to the shape
+    sal_Int32 nStartGlueId;
+    xConnectorProps->getPropertyValue("StartGluePointIndex") >>= nStartGlueId;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4), nStartGlueId);
+
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 6
+    // - Actual  : -1
+    // i.e. the connector shape is not attaching to the shape
+    sal_Int32 nEndGlueId;
+    xConnectorProps->getPropertyValue("EndGluePointIndex") >>= nEndGlueId;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(6), nEndGlueId);
+}
+
+CPPUNIT_TEST_FIXTURE(OoxShapeTest, testElbowConnectors)
+{
+    loadFromFile(u"elbowConnectors.pptx");
+
+    sal_Int32 nEdgeLineDelta;
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
+                                                 uno::UNO_QUERY);
+
+    uno::Reference<drawing::XShape> xShape1(xDrawPage->getByIndex(2), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xShapeProps1(xShape1, uno::UNO_QUERY);
+    xShapeProps1->getPropertyValue(UNO_NAME_EDGELINE1DELTA) >>= nEdgeLineDelta;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(-2756), nEdgeLineDelta);
+
+    uno::Reference<drawing::XShape> xShape2(xDrawPage->getByIndex(5), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xShapeProps2(xShape2, uno::UNO_QUERY);
+    xShapeProps2->getPropertyValue(UNO_NAME_EDGELINE1DELTA) >>= nEdgeLineDelta;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(-805), nEdgeLineDelta);
+}
+
+CPPUNIT_TEST_FIXTURE(OoxShapeTest, testCurvedConnectors)
+{
+    loadFromFile(u"curvedConnectors.pptx");
+
+    sal_Int32 nEdgeLineDelta;
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
+                                                 uno::UNO_QUERY);
+
+    uno::Reference<drawing::XShape> xShape1(xDrawPage->getByIndex(2), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xShapeProps1(xShape1, uno::UNO_QUERY);
+    xShapeProps1->getPropertyValue(UNO_NAME_EDGELINE1DELTA) >>= nEdgeLineDelta;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(-2364), nEdgeLineDelta);
+    xShapeProps1->getPropertyValue(UNO_NAME_EDGELINE2DELTA) >>= nEdgeLineDelta;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4250), nEdgeLineDelta);
+    xShapeProps1->getPropertyValue(UNO_NAME_EDGELINE3DELTA) >>= nEdgeLineDelta;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2051), nEdgeLineDelta);
+
+    uno::Reference<drawing::XShape> xShape2(xDrawPage->getByIndex(5), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xShapeProps2(xShape2, uno::UNO_QUERY);
+    xShapeProps2->getPropertyValue(UNO_NAME_EDGELINE1DELTA) >>= nEdgeLineDelta;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(3019), nEdgeLineDelta);
+}
+
+CPPUNIT_TEST_FIXTURE(OoxShapeTest, testStandardConnectors)
+{
+    loadFromFile(u"standardConnectors.pptx");
+
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
+                                                 uno::UNO_QUERY);
+
+    sal_Int32 aEdgeValue[] = { -1352, -2457, 2402, // bentConnector5
+                               3977,  0,     0, // bentConnector3
+                               -2899, 0,     0, // bentConnector3
+                               -1260, 4612,  0, // bentConnector4
+                               -1431, -2642, 0, // bentConnector4
+                               3831,  3438,  -1578 }; // bentConnector5
+    sal_Int32 nCount = 0;
+    sal_Int32 nEdgeLineDelta;
+    for (size_t i = 0; i < 10; i++)
+    {
+        uno::Reference<drawing::XShape> xShape(xDrawPage->getByIndex(i), uno::UNO_QUERY);
+        uno::Reference<beans::XPropertySet> xShapeProps(xShape, uno::UNO_QUERY);
+        bool bConnector = xShapeProps->getPropertySetInfo()->hasPropertyByName(u"EdgeKind"_ustr);
+        if (bConnector)
+        {
+            xShapeProps->getPropertyValue(UNO_NAME_EDGELINE1DELTA) >>= nEdgeLineDelta;
+            CPPUNIT_ASSERT_EQUAL(aEdgeValue[nCount], nEdgeLineDelta);
+            nCount++;
+            xShapeProps->getPropertyValue(UNO_NAME_EDGELINE2DELTA) >>= nEdgeLineDelta;
+            CPPUNIT_ASSERT_EQUAL(aEdgeValue[nCount], nEdgeLineDelta);
+            nCount++;
+            xShapeProps->getPropertyValue(UNO_NAME_EDGELINE3DELTA) >>= nEdgeLineDelta;
+            CPPUNIT_ASSERT_EQUAL(aEdgeValue[nCount], nEdgeLineDelta);
+            nCount++;
+        }
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf164623)
+{
+    loadFromFile(u"tdf164623.pptx");
+
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
+                                                 uno::UNO_QUERY);
+
+    sal_Int32 nEdgeLineDelta;
+    uno::Reference<drawing::XShape> xShape(xDrawPage->getByIndex(2), uno::UNO_QUERY);
+    uno::Reference<beans::XPropertySet> xShapeProps(xShape, uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xShapeProps->getPropertySetInfo()->hasPropertyByName(u"EdgeKind"_ustr));
+    xShapeProps->getPropertyValue(UNO_NAME_EDGELINE1DELTA) >>= nEdgeLineDelta;
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: -662
+    // - Actual  : 3370
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(-662), nEdgeLineDelta);
+    xShapeProps->getPropertyValue(UNO_NAME_EDGELINE2DELTA) >>= nEdgeLineDelta;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), nEdgeLineDelta);
+    xShapeProps->getPropertyValue(UNO_NAME_EDGELINE3DELTA) >>= nEdgeLineDelta;
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), nEdgeLineDelta);
+}
+
 CPPUNIT_TEST_FIXTURE(OoxShapeTest, testGroupTransform)
 {
-    loadFromURL(u"tdf141463_GroupTransform.pptx");
+    loadFromFile(u"tdf141463_GroupTransform.pptx");
 
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
@@ -104,13 +240,13 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testGroupTransform)
     // Without the accompanying fix in place, this test would have failed in several properties.
 
     sal_Int32 nAngle;
-    xPropSet->getPropertyValue("ShearAngle") >>= nAngle;
+    xPropSet->getPropertyValue(u"ShearAngle"_ustr) >>= nAngle;
     // Failed with - Expected: 0
     //             - Actual  : -810
     // i.e. the shape was sheared although shearing does not exist in oox
     CPPUNIT_ASSERT_EQUAL(sal_Int32(0), nAngle);
 
-    xPropSet->getPropertyValue("RotateAngle") >>= nAngle;
+    xPropSet->getPropertyValue(u"RotateAngle"_ustr) >>= nAngle;
     // Failed with - Expected: 26000 (is in 1/100deg)
     //             - Actual  : 26481 (is in 1/100deg)
     // 100deg in PowerPoint UI = 360deg - 100deg in LO.
@@ -128,7 +264,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testGroupTransform)
 
 CPPUNIT_TEST_FIXTURE(OoxShapeTest, testMultipleGroupShapes)
 {
-    loadFromURL(u"multiple-group-shapes.docx");
+    loadFromFile(u"multiple-group-shapes.docx");
 
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
@@ -142,7 +278,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testMultipleGroupShapes)
 
 CPPUNIT_TEST_FIXTURE(OoxShapeTest, testCustomshapePosition)
 {
-    loadFromURL(u"customshape-position.docx");
+    loadFromFile(u"customshape-position.docx");
 
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
@@ -150,7 +286,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testCustomshapePosition)
     uno::Reference<beans::XPropertySet> xShape(xDrawPage->getByIndex(0), uno::UNO_QUERY);
 
     sal_Int32 nY{};
-    xShape->getPropertyValue("VertOrientPosition") >>= nY;
+    xShape->getPropertyValue(u"VertOrientPosition"_ustr) >>= nY;
     // <wp:posOffset>581025</wp:posOffset> in the document.
     sal_Int32 nExpected = rtl::math::round(581025.0 / 360);
     // Without the accompanying fix in place, this test would have failed with:
@@ -165,7 +301,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf125582_TextOnCircle)
     // The document contains a shape with a:prstTxWarp="textCircle" with two paragraphs.
     // PowerPoint aligns the bottom of the text with the path, LO had aligned the middle of the
     // text with the path, which resulted in smaller text.
-    loadFromURL(u"tdf125582_TextOnCircle.pptx");
+    loadFromFile(u"tdf125582_TextOnCircle.pptx");
 
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
@@ -184,7 +320,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf125582_TextOnCircle)
     }
 
     drawing::TextVerticalAdjust eAdjust;
-    xPropSet->getPropertyValue("TextVerticalAdjust") >>= eAdjust;
+    xPropSet->getPropertyValue(u"TextVerticalAdjust"_ustr) >>= eAdjust;
     CPPUNIT_ASSERT_EQUAL_MESSAGE("TextVerticalAdjust", drawing::TextVerticalAdjust_BOTTOM, eAdjust);
 }
 
@@ -193,7 +329,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf151008VertAnchor)
     // The document contains shapes with all six kind of anchor positions in pptx. The text in the
     // shapes is larger than the shape and has no word wrap. That way anchor position is visible
     // in case you inspect the file manually.
-    loadFromURL(u"tdf151008_eaVertAnchor.pptx");
+    loadFromFile(u"tdf151008_eaVertAnchor.pptx");
 
     struct anchorDesc
     {
@@ -218,9 +354,9 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf151008VertAnchor)
         uno::Reference<beans::XPropertySet> xShape(getShapeByName(aExpected[i].sShapeName),
                                                    uno::UNO_QUERY);
         drawing::TextHorizontalAdjust eHori;
-        CPPUNIT_ASSERT(xShape->getPropertyValue("TextHorizontalAdjust") >>= eHori);
+        CPPUNIT_ASSERT(xShape->getPropertyValue(u"TextHorizontalAdjust"_ustr) >>= eHori);
         drawing::TextVerticalAdjust eVert;
-        CPPUNIT_ASSERT(xShape->getPropertyValue("TextVerticalAdjust") >>= eVert);
+        CPPUNIT_ASSERT(xShape->getPropertyValue(u"TextVerticalAdjust"_ustr) >>= eVert);
         CPPUNIT_ASSERT_EQUAL(aExpected[i].eAnchorHori, eHori);
         CPPUNIT_ASSERT_EQUAL(aExpected[i].eAnchorVert, eVert);
     }
@@ -240,7 +376,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf151518VertAnchor)
 
     // The document contains SmartArt with shapes with not default text area. Without fix the
     // text was shifted up because of wrong values in TextLowerDistance and TextUpperDistance.
-    loadFromURL(u"tdf151518_SmartArtTextLocation.docx");
+    loadFromFile(u"tdf151518_SmartArtTextLocation.docx");
 
     struct TextDistance
     {
@@ -263,8 +399,8 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf151518VertAnchor)
             xDiagramShape->getByIndex(aExpected[i].nSubShapeIndex), uno::UNO_QUERY);
         sal_Int32 nLower;
         sal_Int32 nUpper;
-        CPPUNIT_ASSERT(xShapeProps->getPropertyValue("TextLowerDistance") >>= nLower);
-        CPPUNIT_ASSERT(xShapeProps->getPropertyValue("TextUpperDistance") >>= nUpper);
+        CPPUNIT_ASSERT(xShapeProps->getPropertyValue(u"TextLowerDistance"_ustr) >>= nLower);
+        CPPUNIT_ASSERT(xShapeProps->getPropertyValue(u"TextUpperDistance"_ustr) >>= nUpper);
         CPPUNIT_ASSERT_EQUAL(aExpected[i].nLowerDistance, nLower);
         CPPUNIT_ASSERT_EQUAL(aExpected[i].nUpperDistance, nUpper);
     }
@@ -295,7 +431,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf54095_SmartArtThemeTextColor)
     }
 
     // get SmartArt
-    loadFromURL(u"tdf54095_SmartArtThemeTextColor.docx");
+    loadFromFile(u"tdf54095_SmartArtThemeTextColor.docx");
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
                                                  uno::UNO_QUERY);
@@ -310,7 +446,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf54095_SmartArtThemeTextColor)
     uno::Reference<beans::XPropertySet> xPortion(xPara->createEnumeration()->nextElement(),
                                                  uno::UNO_QUERY);
     Color nActualColor{ 0 };
-    xPortion->getPropertyValue("CharColor") >>= nActualColor;
+    xPortion->getPropertyValue(u"CharColor"_ustr) >>= nActualColor;
     // Without fix the test would have failed with:
     // - Expected: rgba[1f497dff]
     // - Actual  : rgba[ffffffff], that is text was white
@@ -320,7 +456,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf54095_SmartArtThemeTextColor)
     // oox::drawingml::Color::getSchemeColorIndex()
     // Without fix the color scheme was "lt1" (1) but should be "dk2" (2).
     uno::Reference<util::XComplexColor> xComplexColor;
-    xPortion->getPropertyValue("CharComplexColor") >>= xComplexColor;
+    xPortion->getPropertyValue(u"CharComplexColor"_ustr) >>= xComplexColor;
     CPPUNIT_ASSERT(xComplexColor.is());
     auto aComplexColor = model::color::getFromXComplexColor(xComplexColor);
     CPPUNIT_ASSERT_EQUAL(model::ThemeColorType::Dark2, aComplexColor.getThemeColorType());
@@ -336,7 +472,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf54095_SmartArtThemeTextColor)
 
 CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork)
 {
-    loadFromURL(u"tdf125885_WordArt.docx");
+    loadFromFile(u"tdf125885_WordArt.docx");
     // Without the patch WordArt in text document was imported as rectangular custom shape with
     // attached frame. So there was no artistic text at all. Now it is imported as Fontwork.
     // This test covers some basic properties.
@@ -389,8 +525,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork)
     CPPUNIT_ASSERT_EQUAL(uno::Any(u"mso-spt158"_ustr), aGeoPropMap.getValue(u"Type"_ustr));
 
     // Are properties correctly copied to shape?
-    CPPUNIT_ASSERT_EQUAL(uno::Any(Color(0, 0, 255)),
-                         xShapeProps->getPropertyValue(u"FillColor"_ustr));
+    CPPUNIT_ASSERT_EQUAL(uno::Any(COL_LIGHTBLUE), xShapeProps->getPropertyValue(u"FillColor"_ustr));
 
     CPPUNIT_ASSERT_EQUAL(uno::Any(drawing::FillStyle_SOLID),
                          xShapeProps->getPropertyValue(u"FillStyle"_ustr));
@@ -399,12 +534,12 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork)
                          xShapeProps->getPropertyValue(u"CharFontName"_ustr));
 
     CPPUNIT_ASSERT_EQUAL(uno::Any(float(awt::FontWeight::BOLD)),
-                         xShapeProps->getPropertyValue("CharWeight"));
+                         xShapeProps->getPropertyValue(u"CharWeight"_ustr));
 
     lang::Locale aCharLocale;
     xShapeProps->getPropertyValue(u"CharLocale"_ustr) >>= aCharLocale;
-    CPPUNIT_ASSERT_EQUAL(OUString("en"), aCharLocale.Language);
-    CPPUNIT_ASSERT_EQUAL(OUString("US"), aCharLocale.Country);
+    CPPUNIT_ASSERT_EQUAL(u"en"_ustr, aCharLocale.Language);
+    CPPUNIT_ASSERT_EQUAL(u"US"_ustr, aCharLocale.Country);
 
     CPPUNIT_ASSERT_EQUAL(uno::Any(drawing::TextHorizontalAdjust_RIGHT),
                          xShapeProps->getPropertyValue(u"TextHorizontalAdjust"_ustr));
@@ -412,7 +547,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork)
 
 CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork2)
 {
-    loadFromURL(u"tdf125885_WordArt2.docx");
+    loadFromFile(u"tdf125885_WordArt2.docx");
     // Without the patch WordArt in text document was imported as rectangular custom shape with
     // attached frame. So there was no artistic text at all. Now it is imported as Fontwork.
     // This test covers whether theme color properties are correctly converted on import.
@@ -460,7 +595,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork2)
 
 CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork3)
 {
-    loadFromURL(u"tdf125885_WordArt3.docx");
+    loadFromFile(u"tdf125885_WordArt3.docx");
     // Without the patch WordArt in text document was imported as rectangular custom shape with
     // attached frame. So there was no artistic text at all. Now it is imported as Fontwork.
     // This test covers some aspects of import of gradient fill.
@@ -482,8 +617,8 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork3)
         aColorStops = model::gradient::getColorStopsFromUno(aGradient.ColorStops);
 
         CPPUNIT_ASSERT_EQUAL(size_t(2), aColorStops.size());
-        CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[0].getStopOffset(), 0.0));
-        CPPUNIT_ASSERT_EQUAL(Color(0x0000ff), Color(aColorStops[0].getStopColor()));
+        CPPUNIT_ASSERT_EQUAL(0.0, aColorStops[0].getStopOffset());
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTBLUE, Color(aColorStops[0].getStopColor()));
         CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[1].getStopOffset(), 1.0));
         CPPUNIT_ASSERT_EQUAL(Color(0xf79646), Color(aColorStops[1].getStopColor()));
 
@@ -509,7 +644,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork3)
         CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[0].getStopOffset(), 0.40000000000000002));
         CPPUNIT_ASSERT_EQUAL(Color(0xf79646), Color(aColorStops[0].getStopColor()));
         CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[1].getStopOffset(), 1.0));
-        CPPUNIT_ASSERT_EQUAL(Color(0x0000ff), Color(aColorStops[1].getStopColor()));
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTBLUE, Color(aColorStops[1].getStopColor()));
 
         CPPUNIT_ASSERT_EQUAL(sal_Int16(900), aGradient.Angle);
         CPPUNIT_ASSERT_EQUAL(sal_Int16(50), aGradient.XOffset);
@@ -530,10 +665,10 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork3)
         aColorStops = model::gradient::getColorStopsFromUno(aGradient.ColorStops);
 
         CPPUNIT_ASSERT_EQUAL(size_t(2), aColorStops.size());
-        CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[0].getStopOffset(), 0.0));
+        CPPUNIT_ASSERT_EQUAL(0.0, aColorStops[0].getStopOffset());
         CPPUNIT_ASSERT_EQUAL(Color(0xf79646), Color(aColorStops[0].getStopColor()));
         CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[1].getStopOffset(), 1.0));
-        CPPUNIT_ASSERT_EQUAL(Color(0x0000ff), Color(aColorStops[1].getStopColor()));
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTBLUE, Color(aColorStops[1].getStopColor()));
 
         CPPUNIT_ASSERT_EQUAL(sal_Int16(900), aGradient.Angle);
         CPPUNIT_ASSERT_EQUAL(sal_Int16(100), aGradient.XOffset);
@@ -544,7 +679,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontwork3)
 
 CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontworkNonAccentColor)
 {
-    loadFromURL(u"tdf152840_WordArt_non_accent_color.docx");
+    loadFromFile(u"tdf152840_WordArt_non_accent_color.docx");
     // The file contains WordArt which uses the theme colors "Background 1", "Text 1", "Background 2"
     // and "Text 2".
 
@@ -567,8 +702,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontworkNonAccentColor)
     uno::Reference<beans::XPropertySet> xShape1Props(xDrawPage->getByIndex(1), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(uno::Any(sal_Int16(0)),
                          xShape1Props->getPropertyValue(u"FillColorTheme"_ustr));
-    CPPUNIT_ASSERT_EQUAL(uno::Any(Color(255, 0, 0)),
-                         xShape1Props->getPropertyValue(u"FillColor"_ustr));
+    CPPUNIT_ASSERT_EQUAL(uno::Any(COL_LIGHTRED), xShape1Props->getPropertyValue(u"FillColor"_ustr));
 
     // background 2 = lt2 = ID 3
     uno::Reference<beans::XPropertySet> xShape2Props(xDrawPage->getByIndex(2), uno::UNO_QUERY);
@@ -587,7 +721,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontworkNonAccentColor)
 
 CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterShapeFillNonAccentColor)
 {
-    loadFromURL(u"tdf152840_theme_color_non_accent.docx");
+    loadFromFile(u"tdf152840_theme_color_non_accent.docx");
     // The file contains shapes which uses the theme colors "bg2", "bg1", "tx1" and "tx2" in this
     // order as fill color.
 
@@ -613,7 +747,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterShapeFillNonAccentColor)
 
 CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontworkDarkenTransparency)
 {
-    loadFromURL(u"tdf152896_WordArt_color_darken.docx");
+    loadFromFile(u"tdf152896_WordArt_color_darken.docx");
     // The file contains a WordArt shape with theme colors "Background 2", shading mode "Darken 25%"
     // and "20% Transparency". Word writes this as w:color element with additional w14:textFill
     // element. In such case the w14:textFill element supersedes the w:color element. Error was, that
@@ -634,7 +768,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWriterFontworkDarkenTransparency)
 
 CPPUNIT_TEST_FIXTURE(OoxShapeTest, testImportWordArtGradient)
 {
-    loadFromURL(u"tdf139618_ImportWordArtGradient.pptx");
+    loadFromFile(u"tdf139618_ImportWordArtGradient.pptx");
     // Without the patch all WordArt was imported with solid color. Now gradient is imported.
     // This test covers several aspects of import of gradient fill.
 
@@ -655,7 +789,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testImportWordArtGradient)
         aColorStops = model::gradient::getColorStopsFromUno(aGradient.ColorStops);
 
         CPPUNIT_ASSERT_EQUAL(size_t(2), aColorStops.size());
-        CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[0].getStopOffset(), 0.0));
+        CPPUNIT_ASSERT_EQUAL(0.0, aColorStops[0].getStopOffset());
         CPPUNIT_ASSERT_EQUAL(Color(0xffc000), Color(aColorStops[0].getStopColor()));
         CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[1].getStopOffset(), 1.0));
         CPPUNIT_ASSERT_EQUAL(Color(0xc00000), Color(aColorStops[1].getStopColor()));
@@ -687,7 +821,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testImportWordArtGradient)
         aColorStops = model::gradient::getColorStopsFromUno(aGradient.ColorStops);
 
         CPPUNIT_ASSERT_EQUAL(size_t(2), aColorStops.size());
-        CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[0].getStopOffset(), 0.0));
+        CPPUNIT_ASSERT_EQUAL(0.0, aColorStops[0].getStopOffset());
         CPPUNIT_ASSERT_EQUAL(Color(0x0083e0), Color(aColorStops[0].getStopColor()));
         CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[1].getStopOffset(), 1.0));
         CPPUNIT_ASSERT_EQUAL(Color(0xe6e600), Color(aColorStops[1].getStopColor()));
@@ -702,8 +836,8 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testImportWordArtGradient)
 
         // Transparency is encoded in gray color.
         CPPUNIT_ASSERT_EQUAL(size_t(2), aColorStops.size());
-        CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[0].getStopOffset(), 0.0));
-        CPPUNIT_ASSERT_EQUAL(Color(0x666666), Color(aColorStops[0].getStopColor()));
+        CPPUNIT_ASSERT_EQUAL(0.0, aColorStops[0].getStopOffset());
+        CPPUNIT_ASSERT_EQUAL(COL_GRAY7, Color(aColorStops[0].getStopColor()));
         CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[1].getStopOffset(), 1.0));
         CPPUNIT_ASSERT_EQUAL(Color(0x4d4d4d), Color(aColorStops[1].getStopColor()));
 
@@ -739,7 +873,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testImportWordArtGradient)
         aColorStops = model::gradient::getColorStopsFromUno(aGradient.ColorStops);
 
         CPPUNIT_ASSERT_EQUAL(size_t(2), aColorStops.size());
-        CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[0].getStopOffset(), 0.0));
+        CPPUNIT_ASSERT_EQUAL(0.0, aColorStops[0].getStopOffset());
         CPPUNIT_ASSERT_EQUAL(Color(0x4472c4), Color(aColorStops[0].getStopColor()));
         CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[1].getStopOffset(), 1.0));
         CPPUNIT_ASSERT_EQUAL(Color(0x4472c4), Color(aColorStops[1].getStopColor()));
@@ -754,10 +888,10 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testImportWordArtGradient)
 
         // Transparency is encoded in gray color.
         CPPUNIT_ASSERT_EQUAL(size_t(2), aColorStops.size());
-        CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[0].getStopOffset(), 0.0));
-        CPPUNIT_ASSERT_EQUAL(Color(0x000000), Color(aColorStops[0].getStopColor()));
+        CPPUNIT_ASSERT_EQUAL(0.0, aColorStops[0].getStopOffset());
+        CPPUNIT_ASSERT_EQUAL(COL_BLACK, Color(aColorStops[0].getStopColor()));
         CPPUNIT_ASSERT(basegfx::fTools::equal(aColorStops[1].getStopOffset(), 1.0));
-        CPPUNIT_ASSERT_EQUAL(Color(0xFFFFFF), Color(aColorStops[1].getStopColor()));
+        CPPUNIT_ASSERT_EQUAL(COL_WHITE, Color(aColorStops[1].getStopColor()));
 
         CPPUNIT_ASSERT_EQUAL(awt::GradientStyle_RECT, aGradient.Style);
         CPPUNIT_ASSERT_EQUAL(sal_Int16(100), aGradient.XOffset);
@@ -772,7 +906,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWordArtBitmapFill)
 {
     // The document has a WordArt shape with bitmap fill.
     // Without fix it was imported as solid color fill.
-    loadFromURL(u"tdf139618_WordArtBitmapFill.pptx");
+    loadFromFile(u"tdf139618_WordArtBitmapFill.pptx");
 
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
@@ -792,10 +926,10 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWordArtBitmapFill)
     xGraphic.set(xBitmap, uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xGraphicDescriptor(xGraphic, uno::UNO_QUERY_THROW);
     OUString sMimeType;
-    CPPUNIT_ASSERT(xGraphicDescriptor->getPropertyValue("MimeType") >>= sMimeType);
-    CPPUNIT_ASSERT_EQUAL(OUString("image/jpeg"), sMimeType);
+    CPPUNIT_ASSERT(xGraphicDescriptor->getPropertyValue(u"MimeType"_ustr) >>= sMimeType);
+    CPPUNIT_ASSERT_EQUAL(u"image/jpeg"_ustr, sMimeType);
     awt::Size aSize100thMM;
-    CPPUNIT_ASSERT(xGraphicDescriptor->getPropertyValue("Size100thMM") >>= aSize100thMM);
+    CPPUNIT_ASSERT(xGraphicDescriptor->getPropertyValue(u"Size100thMM"_ustr) >>= aSize100thMM);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1592), aSize100thMM.Width);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1592), aSize100thMM.Height);
 }
@@ -805,7 +939,7 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testWordArtDefaultColor)
     // The document has a WordArt shape for which the text color is not explicitly set. In such cases
     // MS Office uses the scheme color 'tx1'. Without fix it was imported as 'fill none'. The shape
     // existed but was not visible on screen.
-    loadFromURL(u"tdf155327_WordArtDefaultColor.pptx");
+    loadFromFile(u"tdf155327_WordArtDefaultColor.pptx");
 
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
@@ -822,12 +956,89 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testGlowOnGroup)
 {
     // The document contains a group of two shapes. A glow-effect is set on the group.
     // Without the fix, the children of the group were not imported at all.
-    loadFromURL(u"tdf156902_GlowOnGroup.docx");
+    loadFromFile(u"tdf156902_GlowOnGroup.docx");
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
                                                  uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xGroup(xDrawPage->getByIndex(0), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(sal_Int32(2), xGroup->getCount());
+}
+
+CPPUNIT_TEST_FIXTURE(OoxShapeTest, testDigitGuideName_funnel)
+{
+    // OOXMl allows that a guide name starts with a digit. LO had interpreted this a number.
+    loadFromFile(u"tdf144742_funnel.pptx");
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
+                                                 uno::UNO_QUERY);
+    SfxViewShell* pViewShell = SfxViewShell::Current();
+    CPPUNIT_ASSERT(pViewShell);
+    SdrView* pSdrView = pViewShell->GetDrawView();
+
+    // Test idea: Convert the shape to a Bézier curve. Test the end coordinate of the first half
+    // ellipse. Without fix the curve ended earlier in (9951|2152) instead of point (10000|2500).
+
+    // Test prstGeom object. Error was in oox-drawingml-cs-presets.
+    // Mark object and convert it to Bézier curve. Ungroup result of conversion gives two shapes.
+    uno::Reference<drawing::XShape> xShapePrst(xDrawPage->getByIndex(0), uno::UNO_QUERY);
+    SdrObject* pSdrShapePrst(SdrObject::getSdrObjectFromXShape(xShapePrst));
+    pSdrView->MarkObj(pSdrShapePrst, pSdrView->GetSdrPageView());
+    dispatchCommand(mxComponent, u".uno:ChangeBezier"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:FormatUngroup"_ustr, {});
+    pSdrView->UnmarkAll();
+
+    // Examine the geometry. The test compares relative values.
+    uno::Reference<beans::XPropertySet> xPropsPrst(xDrawPage->getByIndex(0), uno::UNO_QUERY);
+    css::drawing::PolyPolygonBezierCoords aCurveGeometryPrst;
+    xPropsPrst->getPropertyValue(u"Geometry"_ustr) >>= aCurveGeometryPrst;
+    // PolyPolygonBezierCoords has Coordinates and Flags.
+    // [0] is for the outer outline, [1] for the inner ellipse of the funnel.
+    css::awt::Point aPointPrst = aCurveGeometryPrst.Coordinates[0][22];
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2500), aPointPrst.Y);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(10000), aPointPrst.X);
+
+    // Test custGeom object. Error was in customshapegeometry.cxx
+    uno::Reference<drawing::XShape> xShapeCust(xDrawPage->getByIndex(2), uno::UNO_QUERY);
+    SdrObject* pSdrShapeCust(SdrObject::getSdrObjectFromXShape(xShapeCust));
+    pSdrView->MarkObj(pSdrShapeCust, pSdrView->GetSdrPageView());
+    dispatchCommand(mxComponent, u".uno:ChangeBezier"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:FormatUngroup"_ustr, {});
+    pSdrView->UnmarkAll();
+
+    uno::Reference<beans::XPropertySet> xPropsCust(xDrawPage->getByIndex(2), uno::UNO_QUERY);
+    css::drawing::PolyPolygonBezierCoords aCurveGeometryCust;
+    xPropsCust->getPropertyValue(u"Geometry"_ustr) >>= aCurveGeometryCust;
+    css::awt::Point aPointCust = aCurveGeometryCust.Coordinates[0][22];
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2500), aPointCust.Y);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(10000), aPointCust.X);
+}
+
+CPPUNIT_TEST_FIXTURE(OoxShapeTest, testDigitGuideName_mathEqual)
+{
+    // OOXMl allows that a guide name starts with a digit. LO had interpreted this a number.
+    // This test is about the preset types mathEqual and mathNotEqual
+    // Error was, that the handle values were not clamped correctly and thus parts of the drawing
+    // were outside the frame rect. The test shapes have handles that need to be clamped.
+    loadFromFile(u"tdf144742_mathEqual_mathNotEqual.pptx");
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
+                                                 uno::UNO_QUERY);
+
+    // Verify that drawing height is clamped to frame height, here 10cm = 10000 of 1/100mm.
+    // The values of the bounding rectangle vary slightly depending on the device.
+    // Thus test with tolerance.
+    {
+        uno::Reference<drawing::XShape> xShape(xDrawPage->getByIndex(0), uno::UNO_QUERY);
+        SdrObject* pSdrShape(SdrObject::getSdrObjectFromXShape(xShape));
+        double fBoundRectHeight = pSdrShape->GetCurrentBoundRect().GetHeight();
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(10000.0, fBoundRectHeight, 5);
+    }
+    {
+        uno::Reference<drawing::XShape> xShape(xDrawPage->getByIndex(1), uno::UNO_QUERY);
+        SdrObject* pSdrShape(SdrObject::getSdrObjectFromXShape(xShape));
+        double fBoundRectHeight = pSdrShape->GetCurrentBoundRect().GetHeight();
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(10000.0, fBoundRectHeight, 5);
+    }
 }
 CPPUNIT_PLUGIN_IMPLEMENT();
 

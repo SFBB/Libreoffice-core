@@ -54,13 +54,11 @@ using ::com::sun::star::lang::IndexOutOfBoundsException;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-//=====  internal  ============================================================
-
-ScAccessibleEditObject::ScAccessibleEditObject(
-        const uno::Reference<XAccessible>& rxParent,
-        EditView* pEditView, vcl::Window* pWin, const OUString& rName,
-        const OUString& rDescription, EditObjectType eObjectType)
-    : ScAccessibleContextBase(rxParent, AccessibleRole::TEXT_FRAME)
+ScAccessibleEditObject::ScAccessibleEditObject(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                                               EditView* pEditView, vcl::Window* pWin,
+                                               const OUString& rName, const OUString& rDescription,
+                                               EditObjectType eObjectType)
+    : ImplInheritanceHelper(rpParent, AccessibleRole::TEXT_FRAME)
     , mpEditView(pEditView)
     , mpWindow(pWin)
     , mpTextWnd(nullptr)
@@ -68,11 +66,11 @@ ScAccessibleEditObject::ScAccessibleEditObject(
     , mbHasFocus(false)
     , m_pScDoc(nullptr)
 {
-    InitAcc(rxParent, pEditView, rName, rDescription);
+    InitAcc(rpParent, pEditView, rName, rDescription);
 }
 
 ScAccessibleEditObject::ScAccessibleEditObject(EditObjectType eObjectType)
-    : ScAccessibleContextBase(nullptr, AccessibleRole::TEXT_FRAME)
+    : ImplInheritanceHelper(nullptr, AccessibleRole::TEXT_FRAME)
     , mpEditView(nullptr)
     , mpWindow(nullptr)
     , mpTextWnd(nullptr)
@@ -83,12 +81,12 @@ ScAccessibleEditObject::ScAccessibleEditObject(EditObjectType eObjectType)
 }
 
 void ScAccessibleEditObject::InitAcc(
-        const uno::Reference<XAccessible>& rxParent,
+        const rtl::Reference<comphelper::OAccessible>& rpParent,
         EditView* pEditView,
         const OUString& rName,
         const OUString& rDescription)
 {
-    SetParent(rxParent);
+    SetParent(rpParent);
     mpEditView = pEditView;
 
     CreateTextHelper();
@@ -96,7 +94,7 @@ void ScAccessibleEditObject::InitAcc(
     SetDescription(rDescription);
     if( meObjectType == CellInEditMode)
     {
-        const ScAccessibleDocument *pAccDoc = static_cast<ScAccessibleDocument*>(rxParent.get());
+        const ScAccessibleDocument* pAccDoc = static_cast<ScAccessibleDocument*>(rpParent.get());
         if (pAccDoc)
         {
             m_pScDoc = pAccDoc->GetDocument();
@@ -109,7 +107,7 @@ ScAccessibleEditObject::~ScAccessibleEditObject()
 {
     if (!ScAccessibleContextBase::IsDefunc() && !rBHelper.bInDispose)
     {
-        // increment refcount to prevent double call off dtor
+        // increment refcount to prevent double call of dtor
         osl_atomic_increment( &m_refCount );
         // call dispose to inform object which have a weak reference to this object
         dispose();
@@ -140,30 +138,6 @@ void ScAccessibleEditObject::GotFocus()
         mpTextHelper->SetFocus();
 }
 
-//=====  XInterface  ==========================================================
-
-css::uno::Any SAL_CALL
-    ScAccessibleEditObject::queryInterface (const css::uno::Type & rType)
-{
-    css::uno::Any aReturn = ScAccessibleContextBase::queryInterface (rType);
-    if ( ! aReturn.hasValue())
-        aReturn = ::cppu::queryInterface (rType,
-            static_cast< css::accessibility::XAccessibleSelection* >(this)
-            );
-    return aReturn;
-}
-void SAL_CALL
-    ScAccessibleEditObject::acquire()
-    noexcept
-{
-    ScAccessibleContextBase::acquire ();
-}
-void SAL_CALL
-    ScAccessibleEditObject::release()
-    noexcept
-{
-    ScAccessibleContextBase::release ();
-}
     //=====  XAccessibleComponent  ============================================
 
 uno::Reference< XAccessible > SAL_CALL ScAccessibleEditObject::getAccessibleAtPoint(
@@ -173,7 +147,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessibleEditObject::getAccessibleAtPo
     if (containsPoint(rPoint))
     {
         SolarMutexGuard aGuard;
-        IsObjectValid();
+        ensureAlive();
 
         CreateTextHelper();
 
@@ -183,7 +157,7 @@ uno::Reference< XAccessible > SAL_CALL ScAccessibleEditObject::getAccessibleAtPo
     return xRet;
 }
 
-AbsoluteScreenPixelRectangle ScAccessibleEditObject::GetBoundingBoxOnScreen() const
+AbsoluteScreenPixelRectangle ScAccessibleEditObject::GetBoundingBoxOnScreen()
 {
     AbsoluteScreenPixelRectangle aScreenBounds;
 
@@ -191,9 +165,9 @@ AbsoluteScreenPixelRectangle ScAccessibleEditObject::GetBoundingBoxOnScreen() co
     {
         if ( meObjectType == CellInEditMode )
         {
-            if ( mpEditView && mpEditView->GetEditEngine() )
+            if (mpEditView)
             {
-                MapMode aMapMode( mpEditView->GetEditEngine()->GetRefMapMode() );
+                MapMode aMapMode(mpEditView->getEditEngine().GetRefMapMode());
                 tools::Rectangle aScreenBoundsLog = mpWindow->LogicToPixel( mpEditView->GetOutputArea(), aMapMode );
                 Point aCellLoc = aScreenBoundsLog.TopLeft();
                 AbsoluteScreenPixelRectangle aWindowRect = mpWindow->GetWindowExtentsAbsolute();
@@ -211,29 +185,25 @@ AbsoluteScreenPixelRectangle ScAccessibleEditObject::GetBoundingBoxOnScreen() co
     return aScreenBounds;
 }
 
-tools::Rectangle ScAccessibleEditObject::GetBoundingBox() const
+tools::Rectangle ScAccessibleEditObject::GetBoundingBox()
 {
     tools::Rectangle aBounds( GetBoundingBoxOnScreen() );
 
     if ( mpWindow )
     {
-        uno::Reference< XAccessible > xThis( mpWindow->GetAccessible() );
-        if ( xThis.is() )
+        rtl::Reference<comphelper::OAccessible> pThis = mpWindow->GetAccessible();
+        if (pThis.is())
         {
-            uno::Reference< XAccessibleContext > xContext( xThis->getAccessibleContext() );
-            if ( xContext.is() )
+            uno::Reference<XAccessible> xParent = pThis->getAccessibleParent();
+            if ( xParent.is() )
             {
-                uno::Reference< XAccessible > xParent( xContext->getAccessibleParent() );
-                if ( xParent.is() )
+                uno::Reference< XAccessibleComponent > xParentComponent( xParent->getAccessibleContext(), uno::UNO_QUERY );
+                if ( xParentComponent.is() )
                 {
-                    uno::Reference< XAccessibleComponent > xParentComponent( xParent->getAccessibleContext(), uno::UNO_QUERY );
-                    if ( xParentComponent.is() )
-                    {
-                        Point aScreenLoc = aBounds.TopLeft();
-                        awt::Point aParentScreenLoc = xParentComponent->getLocationOnScreen();
-                        Point aPos( aScreenLoc.getX() - aParentScreenLoc.X, aScreenLoc.getY() - aParentScreenLoc.Y );
-                        aBounds.SetPos( aPos );
-                    }
+                    Point aScreenLoc = aBounds.TopLeft();
+                    awt::Point aParentScreenLoc = xParentComponent->getLocationOnScreen();
+                    Point aPos( aScreenLoc.getX() - aParentScreenLoc.X, aScreenLoc.getY() - aParentScreenLoc.Y );
+                    aBounds.SetPos( aPos );
                 }
             }
         }
@@ -248,7 +218,7 @@ sal_Int64 SAL_CALL
     ScAccessibleEditObject::getAccessibleChildCount()
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     CreateTextHelper();
     return mpTextHelper->GetChildCount();
 }
@@ -257,7 +227,7 @@ uno::Reference< XAccessible > SAL_CALL
     ScAccessibleEditObject::getAccessibleChild(sal_Int64 nIndex)
 {
     SolarMutexGuard aGuard;
-    IsObjectValid();
+    ensureAlive();
     CreateTextHelper();
     return mpTextHelper->GetChild(nIndex);
 }
@@ -324,23 +294,6 @@ void SAL_CALL
     ScAccessibleContextBase::removeAccessibleEventListener(xListener);
 }
 
-    //=====  XServiceInfo  ====================================================
-
-OUString SAL_CALL ScAccessibleEditObject::getImplementationName()
-{
-    return "ScAccessibleEditObject";
-}
-
-//=====  XTypeProvider  =======================================================
-
-uno::Sequence<sal_Int8> SAL_CALL
-    ScAccessibleEditObject::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
-}
-
-    //====  internal  =========================================================
-
 bool ScAccessibleEditObject::IsDefunc(sal_Int64 nParentStates)
 {
     return ScAccessibleContextBase::IsDefunc() || !getAccessibleParent().is() ||
@@ -375,7 +328,7 @@ void ScAccessibleEditObject::CreateTextHelper()
     mpTextHelper = std::make_unique<::accessibility::AccessibleTextHelper>(std::move(pEditSrc));
     mpTextHelper->SetEventSource(this);
 
-    const ScInputHandler* pInputHdl = SC_MOD()->GetInputHdl();
+    const ScInputHandler* pInputHdl = ScModule::get()->GetInputHdl();
     if ( pInputHdl && pInputHdl->IsEditMode() )
     {
         mpTextHelper->SetFocus();
@@ -517,21 +470,21 @@ uno::Reference< XAccessibleRelationSet > ScAccessibleEditObject::getAccessibleRe
         vcl::Window *pLabeledBy = pWindow->GetAccessibleRelationLabeledBy();
         if ( pLabeledBy && pLabeledBy != pWindow )
         {
-            uno::Sequence< uno::Reference< uno::XInterface > > aSequence { pLabeledBy->GetAccessible() };
-            rRelationSet->AddRelation( AccessibleRelation( AccessibleRelationType::LABELED_BY, aSequence ) );
+            uno::Sequence<uno::Reference<css::accessibility::XAccessible>> aSequence { pLabeledBy->GetAccessible() };
+            rRelationSet->AddRelation( AccessibleRelation( AccessibleRelationType_LABELED_BY, aSequence ) );
         }
         vcl::Window* pMemberOf = pWindow->GetAccessibleRelationMemberOf();
         if ( pMemberOf && pMemberOf != pWindow )
         {
-            uno::Sequence< uno::Reference< uno::XInterface > > aSequence { pMemberOf->GetAccessible() };
-            rRelationSet->AddRelation( AccessibleRelation( AccessibleRelationType::MEMBER_OF, aSequence ) );
+            uno::Sequence< uno::Reference<css::accessibility::XAccessible> > aSequence { pMemberOf->GetAccessible() };
+            rRelationSet->AddRelation( AccessibleRelation( AccessibleRelationType_MEMBER_OF, aSequence ) );
         }
         return rRelationSet;
     }
     return uno::Reference< XAccessibleRelationSet >();
 }
 
-AbsoluteScreenPixelRectangle ScAccessibleEditControlObject::GetBoundingBoxOnScreen() const
+AbsoluteScreenPixelRectangle ScAccessibleEditControlObject::GetBoundingBoxOnScreen()
 {
     AbsoluteScreenPixelRectangle aScreenBounds;
 
@@ -544,11 +497,11 @@ AbsoluteScreenPixelRectangle ScAccessibleEditControlObject::GetBoundingBoxOnScre
     return aScreenBounds;
 }
 
-tools::Rectangle ScAccessibleEditControlObject::GetBoundingBox() const
+tools::Rectangle ScAccessibleEditControlObject::GetBoundingBox()
 {
     tools::Rectangle aBounds( GetBoundingBoxOnScreen() );
 
-    uno::Reference< XAccessibleContext > xContext(const_cast<ScAccessibleEditControlObject*>(this)->getAccessibleContext());
+    uno::Reference<XAccessibleContext> xContext = getAccessibleContext();
     if ( xContext.is() )
     {
         uno::Reference< XAccessible > xParent( xContext->getAccessibleParent() );

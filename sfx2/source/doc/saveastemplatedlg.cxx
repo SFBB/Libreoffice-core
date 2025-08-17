@@ -34,11 +34,11 @@ using namespace ::com::sun::star::frame;
 // Class SfxSaveAsTemplateDialog --------------------------------------------------
 
 SfxSaveAsTemplateDialog::SfxSaveAsTemplateDialog(weld::Window* pParent, uno::Reference<frame::XModel> xModel)
-    : GenericDialogController(pParent, "sfx/ui/saveastemplatedlg.ui", "SaveAsTemplateDialog")
-    , m_xLBCategory(m_xBuilder->weld_tree_view("categorylb"))
-    , m_xCBXDefault(m_xBuilder->weld_check_button("defaultcb"))
-    , m_xTemplateNameEdit(m_xBuilder->weld_entry("name_entry"))
-    , m_xOKButton(m_xBuilder->weld_button("ok"))
+    : GenericDialogController(pParent, u"sfx/ui/saveastemplatedlg.ui"_ustr, u"SaveAsTemplateDialog"_ustr)
+    , m_xLBCategory(m_xBuilder->weld_tree_view(u"categorylb"_ustr))
+    , m_xCBXDefault(m_xBuilder->weld_check_button(u"defaultcb"_ustr))
+    , m_xTemplateNameEdit(m_xBuilder->weld_entry(u"name_entry"_ustr))
+    , m_xOKButton(m_xBuilder->weld_button(u"ok"_ustr))
     , mnRegionPos(0)
     , m_xModel(std::move(xModel))
 {
@@ -47,7 +47,8 @@ SfxSaveAsTemplateDialog::SfxSaveAsTemplateDialog(weld::Window* pParent, uno::Ref
     SetCategoryLBEntries(msCategories);
 
     m_xTemplateNameEdit->connect_changed(LINK(this, SfxSaveAsTemplateDialog, TemplateNameEditHdl));
-    m_xLBCategory->connect_changed(LINK(this, SfxSaveAsTemplateDialog, SelectCategoryHdl));
+    m_xLBCategory->connect_selection_changed(
+        LINK(this, SfxSaveAsTemplateDialog, SelectCategoryHdl));
     m_xLBCategory->set_size_request(m_xLBCategory->get_approximate_digit_width() * 32,
                                     m_xLBCategory->get_height_rows(8));
     m_xOKButton->connect_clicked(LINK(this, SfxSaveAsTemplateDialog, OkClickHdl));

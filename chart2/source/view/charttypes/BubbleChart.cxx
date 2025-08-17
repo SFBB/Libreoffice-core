@@ -33,7 +33,6 @@
 namespace chart
 {
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 
 BubbleChart::BubbleChart( const rtl::Reference<ChartType>& xChartTypeModel
                      , sal_Int32 nDimensionCount )
@@ -203,8 +202,8 @@ void BubbleChart::createShapes()
                     if(!pSeries)
                         continue;
 
-                    bool bHasFillColorMapping = pSeries->hasPropertyMapping("FillColor");
-                    bool bHasBorderColorMapping = pSeries->hasPropertyMapping("LineColor");
+                    bool bHasFillColorMapping = pSeries->hasPropertyMapping(u"FillColor"_ustr);
+                    bool bHasBorderColorMapping = pSeries->hasPropertyMapping(u"LineColor"_ustr);
 
                     rtl::Reference<SvxShapeGroupAnyD> xSeriesGroupShape_Shapes = getSeriesGroupShape(pSeries.get(), xSeriesTarget);
 
@@ -218,8 +217,31 @@ void BubbleChart::createShapes()
                     double fLogicY = pSeries->getYValue(nIndex);
                     double fBubbleSize = pSeries->getBubble_Size( nIndex );
 
-                    if( fBubbleSize<0.0 )
-                        continue;
+                    bool bInvertNeg(false);
+                    uno::Reference< beans::XPropertySet > xPointProperties =
+                        pSeries->getPropertiesOfPoint(nIndex);
+
+                    // check point properties, and if none then series
+                    // properties
+                    try {
+                        xPointProperties->getPropertyValue(u"InvertNegative"_ustr) >>= bInvertNeg;
+                    } catch (const uno::Exception&)
+                    {
+                        uno::Reference< beans::XPropertySet > xSeriesProperties =
+                            pSeries->getPropertiesOfSeries();
+                        try {
+                            xSeriesProperties->getPropertyValue(u"InvertNegative"_ustr) >>= bInvertNeg;
+                        } catch (const uno::Exception&)
+                        {}
+                    }
+
+                    if( fBubbleSize<0.0 ) {
+                        if (bInvertNeg) {
+                            fBubbleSize = -fBubbleSize;
+                        } else {
+                            continue;
+                        }
+                    }
 
                     if( fBubbleSize == 0.0 || std::isnan(fBubbleSize) )
                         continue;
@@ -239,9 +261,15 @@ void BubbleChart::createShapes()
                         rPosHelper.transformLogicToScene(fLogicX, fLogicY, fLogicZ, false));
 
                     //better performance for big data
+                    uno::Reference< beans::XPropertySet > xProps(pSeries->getPropertiesOfPoint( nIndex ));
+                    sal_Int16 nFillTransparency(0);
+                    xProps->getPropertyValue(u"FillTransparence"_ustr) >>= nFillTransparency;
+                    const bool bIsTransparent(nFillTransparency != 0);
+
                     FormerPoint aFormerPoint( aSeriesFormerPointMap[pSeries.get()] );
                     rPosHelper.setCoordinateSystemResolution(m_aCoordinateSystemResolution);
                     if (!pSeries->isAttributedDataPoint(nIndex)
+                        && !bIsTransparent  // don't short-cut if there's transparency
                         && rPosHelper.isSameForGivenResolution(
                                aFormerPoint.m_fX, aFormerPoint.m_fY, aFormerPoint.m_fZ,
                                aScaledLogicPosition.PositionX, aScaledLogicPosition.PositionY,
@@ -277,22 +305,22 @@ void BubbleChart::createShapes()
 
                         if(bHasFillColorMapping)
                         {
-                            double nPropVal = pSeries->getValueByProperty(nIndex, "FillColor");
+                            double nPropVal = pSeries->getValueByProperty(nIndex, u"FillColor"_ustr);
                             if(!std::isnan(nPropVal))
                             {
-                                xShape->SvxShape::setPropertyValue("FillColor", uno::Any(static_cast<sal_Int32>(nPropVal)));
+                                xShape->SvxShape::setPropertyValue(u"FillColor"_ustr, uno::Any(static_cast<sal_Int32>(nPropVal)));
                             }
                         }
                         if(bHasBorderColorMapping)
                         {
-                            double nPropVal = pSeries->getValueByProperty(nIndex, "LineColor");
+                            double nPropVal = pSeries->getValueByProperty(nIndex, u"LineColor"_ustr);
                             if(!std::isnan(nPropVal))
                             {
-                                xShape->SvxShape::setPropertyValue("LineColor", uno::Any(static_cast<sal_Int32>(nPropVal)));
+                                xShape->SvxShape::setPropertyValue(u"LineColor"_ustr, uno::Any(static_cast<sal_Int32>(nPropVal)));
                             }
                         }
 
-                        ::chart::ShapeFactory::setShapeName( xShape, "MarkHandles" );
+                        ::chart::ShapeFactory::setShapeName( xShape, u"MarkHandles"_ustr );
 
                         //create data point label
                         if( pSeries->getDataPointLabelIfLabel(nIndex) )

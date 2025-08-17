@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_BASIC_BASMGR_HXX
-#define INCLUDED_BASIC_BASMGR_HXX
+#pragma once
 
 #include <utility>
 #include <comphelper/errcode.hxx>
@@ -30,7 +29,7 @@
 
 namespace basic { class SfxScriptLibraryContainer; }
 namespace com::sun::star::script { class XLibraryContainer; }
-namespace com::sun::star::script { class XPersistentLibraryContainer; }
+namespace com::sun::star::script { class XStorageBasedLibraryContainer; }
 namespace com::sun::star::script { class XStarBasicAccess; }
 
 class BasicManager;
@@ -40,17 +39,6 @@ BASIC_DLLPUBLIC css::uno::Reference< css::script::XStarBasicAccess >
     getStarBasicAccess( BasicManager* pMgr );
 
 class SotStorage;
-
-enum class BasicErrorReason
-{
-    OPENLIBSTORAGE   = 0x0002,
-    OPENMGRSTREAM    = 0x0004,
-    OPENLIBSTREAM    = 0x0008,
-    LIBNOTFOUND      = 0x0010,
-    STORAGENOTFOUND  = 0x0020,
-    BASICLOADERROR   = 0x0040,
-    STDLIB           = 0x0100
-};
 
 class BasicError
 {
@@ -70,8 +58,8 @@ namespace basic { class ImplRepository; }
 
 struct LibraryContainerInfo
 {
-    css::uno::Reference< css::script::XPersistentLibraryContainer > mxScriptCont;
-    css::uno::Reference< css::script::XPersistentLibraryContainer > mxDialogCont;
+    css::uno::Reference< css::script::XStorageBasedLibraryContainer > mxScriptCont;
+    css::uno::Reference< css::script::XStorageBasedLibraryContainer > mxDialogCont;
     basic::SfxScriptLibraryContainer* mpOldBasicPassword;
 
     LibraryContainerInfo()
@@ -81,8 +69,8 @@ struct LibraryContainerInfo
 
     LibraryContainerInfo
     (
-        css::uno::Reference< css::script::XPersistentLibraryContainer > xScriptCont,
-        css::uno::Reference< css::script::XPersistentLibraryContainer > xDialogCont,
+        css::uno::Reference< css::script::XStorageBasedLibraryContainer > xScriptCont,
+        css::uno::Reference< css::script::XStorageBasedLibraryContainer > xDialogCont,
         basic::SfxScriptLibraryContainer* pOldBasicPassword
     )
         : mxScriptCont(std::move( xScriptCont ))
@@ -139,7 +127,7 @@ public:
     StarBASIC* GetLib( std::u16string_view rName ) const;
     sal_uInt16      GetLibId( std::u16string_view rName ) const;
 
-    OUString        GetLibName( sal_uInt16 nLib );
+    const OUString &        GetLibName( sal_uInt16 nLib );
 
     /** announces the library containers which belong to this BasicManager
 
@@ -148,9 +136,9 @@ public:
     */
     void            SetLibraryContainerInfo( const LibraryContainerInfo& rInfo );
 
-    const css::uno::Reference< css::script::XPersistentLibraryContainer >&
+    const css::uno::Reference< css::script::XStorageBasedLibraryContainer >&
                     GetDialogLibraryContainer()  const;
-    const css::uno::Reference< css::script::XPersistentLibraryContainer >&
+    const css::uno::Reference< css::script::XStorageBasedLibraryContainer >&
                     GetScriptLibraryContainer()  const;
 
     bool            LoadLib( sal_uInt16 nLib );
@@ -201,7 +189,5 @@ private:
     BasicManager& operator=(BasicManager const &) = delete; //MSVC2015 workaround
     BasicManager( BasicManager const&) = delete; //MSVC2015 workaround
 };
-
-#endif // INCLUDED_BASIC_BASMGR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

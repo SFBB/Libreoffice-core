@@ -28,6 +28,9 @@
 #include <globstr.hrc>
 #include <scresid.hxx>
 #include <inputhdl.hxx>
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <tools/json_writer.hxx>
+#include <output.hxx>
 
 // ---  Referenz-Eingabe / Fill-Cursor
 
@@ -42,7 +45,7 @@ void ScTabView::HideTip()
         aTipRectangle = tools::Rectangle();
         nTipAlign = QuickHelpFlags::NONE;
         sTipString.clear();
-        sTopParent.clear();
+        sTopParent.reset();
     }
 }
 
@@ -160,7 +163,7 @@ void ScTabView::DoneRefMode( bool bContinue )
 {
     ScDocument& rDoc = aViewData.GetDocument();
     if ( aViewData.GetRefType() == SC_REFTYPE_REF && bContinue )
-        SC_MOD()->AddRefEntry();
+        ScModule::get()->AddRefEntry();
 
     bool bWasRef = aViewData.IsRefMode();
     aViewData.SetRefMode( false, SC_REFTYPE_NONE );
@@ -186,13 +189,13 @@ void ScTabView::DoneRefMode( bool bContinue )
 void ScTabView::UpdateRef( SCCOL nCurX, SCROW nCurY, SCTAB nCurZ )
 {
     ScDocument& rDoc = aViewData.GetDocument();
+    ScModule* pScMod = ScModule::get();
 
     if (!aViewData.IsRefMode())
     {
         //  This will happen, when first at a reference dialog with Control in
         //  the table is clicked. Then append the new reference to the old content:
 
-        ScModule* pScMod = SC_MOD();
         if (pScMod->IsFormulaMode())
             pScMod->AddRefEntry();
 
@@ -236,7 +239,7 @@ void ScTabView::UpdateRef( SCCOL nCurX, SCROW nCurY, SCTAB nCurZ )
             ScRange aRef(
                     nStartX, nStartY, aViewData.GetRefStartZ(),
                     nEndX, nEndY, aViewData.GetRefEndZ() );
-            SC_MOD()->SetReference( aRef, rDoc, &rMark );
+            pScMod->SetReference(aRef, rDoc, &rMark);
             ShowRefTip();
         }
         else if ( eType == SC_REFTYPE_EMBED_LT || eType == SC_REFTYPE_EMBED_RB )
@@ -244,9 +247,9 @@ void ScTabView::UpdateRef( SCCOL nCurX, SCROW nCurY, SCTAB nCurZ )
             PutInOrder(nStartX,nEndX);
             PutInOrder(nStartY,nEndY);
             rDoc.SetEmbedded( ScRange(nStartX,nStartY,nTab, nEndX,nEndY,nTab) );
-            ScDocShell* pDocSh = aViewData.GetDocShell();
-            pDocSh->UpdateOle( aViewData, true );
-            pDocSh->SetDocumentModified();
+            ScDocShell& rDocSh = aViewData.GetDocShell();
+            rDocSh.UpdateOle( aViewData, true );
+            rDocSh.SetDocumentModified();
         }
 
         SCCOL nPaintStartX;
@@ -256,7 +259,7 @@ void ScTabView::UpdateRef( SCCOL nCurX, SCROW nCurY, SCTAB nCurZ )
         if (aRect.GetDiff( nPaintStartX, nPaintStartY, nPaintEndX, nPaintEndY ))
             PaintArea( nPaintStartX, nPaintStartY, nPaintEndX, nPaintEndY, ScUpdateMode::Marks );
 
-        ScInputHandler* pInputHandler = SC_MOD()->GetInputHdl();
+        ScInputHandler* pInputHandler = pScMod->GetInputHdl();
         if (pInputHandler)
         {
             pInputHandler->UpdateLokReferenceMarks();
@@ -286,7 +289,30 @@ void ScTabView::UpdateRef( SCCOL nCurX, SCROW nCurY, SCTAB nCurZ )
         aHelpStr = aHelpStr.replaceFirst("%2", OUString::number(nCols) );
     }
     else if ( aViewData.GetDelMark( aDelRange ) )
+    {
         aHelpStr = ScResId( STR_QUICKHELP_DELETE );
+
+        if (ScTabViewShell* pLOKViewShell
+            = comphelper::LibreOfficeKit::isActive() ? aViewData.GetViewShell() : nullptr)
+        {
+            // set cell addresses for deletion by autofill
+            tools::Long nX1 = aDelRange.aStart.Col();
+            tools::Long nX2 = aDelRange.aEnd.Col();
+            tools::Long nY1 = aDelRange.aStart.Row();
+            tools::Long nY2 = aDelRange.aEnd.Row();
+            tools::Long nTab = aDelRange.aStart.Tab();
+
+            std::vector<ReferenceMark> aReferenceMarks(1);
+
+            const svtools::ColorConfig& rColorCfg = ScModule::get()->GetColorConfig();
+            Color aSelColor(rColorCfg.GetColorValue(svtools::CALCHIDDENROWCOL).nColor);
+
+            aReferenceMarks[0] = ScInputHandler::GetReferenceMark(
+                aViewData, aViewData.GetDocShell(), nX1, nX2, nY1, nY2, nTab, aSelColor);
+
+            ScInputHandler::SendReferenceMarks(pLOKViewShell, aReferenceMarks);
+        }
+    }
     else if ( nEndX != aMarkRange.aEnd.Col() || nEndY != aMarkRange.aEnd.Row() )
         aHelpStr = rDoc.GetAutoFillPreview( aMarkRange, nEndX, nEndY );
 
@@ -310,6 +336,24 @@ void ScTabView::UpdateRef( SCCOL nCurX, SCROW nCurY, SCTAB nCurZ )
         nTipAlign = nAlign;
         sTipString = aHelpStr;
         sTopParent = pWin;
+
+        if (ScTabViewShell* pLOKViewShell
+            = comphelper::LibreOfficeKit::isActive() ? aViewData.GetViewShell() : nullptr)
+        {
+            // we need to use nAddX and nAddX here because we need the next row&column address
+            OUString sCol = OUString::number(nEndX + nAddX);
+            OUString sRow = OUString::number(nEndY + nAddY);
+
+            // since start and end cells are the same, duplicate them
+            OUString sCellAddress = OUString::Concat(sCol + " " + sRow + " " + sCol + " " + sRow);
+
+            tools::JsonWriter writer;
+            writer.put("type", "autofillpreviewtooltip");
+            writer.put("text", sTipString);
+            writer.put("celladdress", sCellAddress);
+            OString sPayloadString = writer.finishAndGetAsOString();
+            pLOKViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_TOOLTIP, sPayloadString);
+        }
     }
 }
 
@@ -324,6 +368,7 @@ void ScTabView::InitRefMode( SCCOL nCurX, SCROW nCurY, SCTAB nCurZ, ScRefType eT
     aViewData.SetRefStart( nCurX, nCurY, nCurZ );
     aViewData.SetRefEnd( nCurX, nCurY, nCurZ );
 
+    ScModule* mod = ScModule::get();
     if (nCurZ == aViewData.GetTabNo())
     {
         SCCOL nStartX = nCurX;
@@ -337,10 +382,10 @@ void ScTabView::InitRefMode( SCCOL nCurX, SCROW nCurY, SCTAB nCurZ, ScRefType eT
 
         //  SetReference without Merge-Adjustment
         ScRange aRef( nCurX,nCurY,nCurZ, nCurX,nCurY,nCurZ );
-        SC_MOD()->SetReference( aRef, rDoc, &rMark );
+        mod->SetReference( aRef, rDoc, &rMark );
     }
 
-    ScInputHandler* pInputHandler = SC_MOD()->GetInputHdl();
+    ScInputHandler* pInputHandler = mod->GetInputHdl();
     if (pInputHandler)
     {
         pInputHandler->UpdateLokReferenceMarks();
@@ -352,16 +397,45 @@ void ScTabView::SetScrollBar( ScrollAdaptor& rScroll, tools::Long nRangeMax, too
     if ( nVisible == 0 )
         nVisible = 1;       // #i59893# don't use visible size 0
 
-    rScroll.SetRange( Range( 0, nRangeMax ) );
-    rScroll.SetVisibleSize( nVisible );
-    rScroll.SetThumbPos( nPos );
+    //  RTL layout uses a negative range to simulate a mirrored scroll bar.
+    //  SetScrollBar/GetScrollBarPos hide this so outside of these functions normal cell
+    //  addresses can be used.
+    if ( bLayoutRTL )
+    {
+        rScroll.SetRange( Range( -nRangeMax, 0 ) );
+        rScroll.SetVisibleSize( nVisible );
+        rScroll.SetThumbPos( -nPos - nVisible );
+    }
+    else
+    {
+        rScroll.SetRange( Range( 0, nRangeMax ) );
+        rScroll.SetVisibleSize( nVisible );
+        rScroll.SetThumbPos( nPos );
+    }
 
-    rScroll.EnableRTL( bLayoutRTL );
+    // Related: tdf#93352 always disable RTL for scrollbars
+    // Enabling RTL causes the following bugs when clicking or
+    // dragging the mouse in scrollbars in Calc's RTL UI:
+    // - Click or drag events get mirrored so you must click or
+    //   drag in unexpected locations to move the scrollbar thumb
+    //   in the desired direction
+    // - Repeatedly dragging the scrollbar thumb leftward can only
+    //   move no higher than the R, S, or T columns
+    rScroll.EnableRTL( false );
+
+    // Related: tdf#93352 swap arrows if layout is RTL
+    // We cannot use EnableRTL(true) to signal that the arrows
+    // should be swapped (see comment above) so explicitly enable
+    // or disable arrow swapping.
+    rScroll.SetSwapArrows( bLayoutRTL );
 }
 
-tools::Long ScTabView::GetScrollBarPos( const ScrollAdaptor& rScroll )
+tools::Long ScTabView::GetScrollBarPos( const ScrollAdaptor& rScroll, bool bLayoutRTL )
 {
-    return rScroll.GetThumbPos();
+    if ( bLayoutRTL )
+        return -rScroll.GetThumbPos() - rScroll.GetVisibleSize();
+    else
+        return rScroll.GetThumbPos();
 }
 
 //  UpdateScrollBars - set visible area and scroll width of scroll bars
@@ -425,7 +499,7 @@ void ScTabView::UpdateScrollBars( HeaderType eHeaderType )
 
     nVisYB = aViewData.VisibleCellsY( SC_SPLIT_BOTTOM );
     tools::Long nMaxYB = lcl_GetScrollRange( nUsedY, aViewData.GetPosY(SC_SPLIT_BOTTOM), nVisYB, rDoc.MaxRow(), nStartY );
-    SetScrollBar( *aVScrollBottom, nMaxYB, nVisYB, aViewData.GetPosY( SC_SPLIT_BOTTOM ) - nStartY, bLayoutRTL );
+    SetScrollBar( *aVScrollBottom, nMaxYB, nVisYB, aViewData.GetPosY( SC_SPLIT_BOTTOM ) - nStartY, false );
 
     if (bRight)
     {
@@ -438,7 +512,7 @@ void ScTabView::UpdateScrollBars( HeaderType eHeaderType )
     {
         nVisYT = aViewData.VisibleCellsY( SC_SPLIT_TOP );
         tools::Long nMaxYT = lcl_GetScrollRange( nUsedY, aViewData.GetPosY(SC_SPLIT_TOP), nVisYT, rDoc.MaxRow(), 0 );
-        SetScrollBar( *aVScrollTop, nMaxYT, nVisYT, aViewData.GetPosY( SC_SPLIT_TOP ), bLayoutRTL );
+        SetScrollBar( *aVScrollTop, nMaxYT, nVisYT, aViewData.GetPosY( SC_SPLIT_TOP ), false );
     }
 
     //      test the range
@@ -464,7 +538,7 @@ void ScTabView::UpdateScrollBars( HeaderType eHeaderType )
     if ( aViewData.IsActive() )
     {
         if (UpdateVisibleRange())
-            SC_MOD()->AnythingChanged();                // if visible area has changed
+            ScModule::get()->AnythingChanged(); // if visible area has changed
     }
 }
 

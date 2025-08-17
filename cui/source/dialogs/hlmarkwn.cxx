@@ -66,13 +66,13 @@ struct TargetData
 //*** Window-Class ***
 // Constructor / Destructor
 SvxHlinkDlgMarkWnd::SvxHlinkDlgMarkWnd(weld::Window* pParentDialog, SvxHyperlinkTabPageBase *pParentPage)
-    : GenericDialogController(pParentDialog, "cui/ui/hyperlinkmarkdialog.ui", "HyperlinkMark")
+    : GenericDialogController(pParentDialog, u"cui/ui/hyperlinkmarkdialog.ui"_ustr, u"HyperlinkMark"_ustr)
     , mpParent(pParentPage)
     , mnError(LERR_NOERROR)
-    , mxBtApply(m_xBuilder->weld_button("ok"))
-    , mxBtClose(m_xBuilder->weld_button("close"))
-    , mxLbTree(m_xBuilder->weld_tree_view("TreeListBox"))
-    , mxError(m_xBuilder->weld_label("error"))
+    , mxBtApply(m_xBuilder->weld_button(u"ok"_ustr))
+    , mxBtClose(m_xBuilder->weld_button(u"close"_ustr))
+    , mxLbTree(m_xBuilder->weld_tree_view(u"TreeListBox"_ustr))
+    , mxError(m_xBuilder->weld_label(u"error"_ustr))
 {
     mxLbTree->set_size_request(mxLbTree->get_approximate_digit_width() * 25,
                                mxLbTree->get_height_rows(12));
@@ -201,7 +201,7 @@ void SvxHlinkDlgMarkWnd::RestoreLastSelection()
     //now to what was available at dialog close time
     if (!bSelectedEntry && !aLastSelectedPath.empty())
     {
-        std::deque<OUString> aTmpSelectedPath(aLastSelectedPath);
+        std::deque<OUString> aTmpSelectedPath(std::move(aLastSelectedPath));
         std::unique_ptr<weld::TreeIter> xEntry(mxLbTree->make_iterator());
         if (!mxLbTree->get_iter_first(*xEntry))
             xEntry.reset();
@@ -253,8 +253,8 @@ bool SvxHlinkDlgMarkWnd::RefreshFromDoc(const OUString& aURL)
         {
             try
             {
-                uno::Sequence< beans::PropertyValue > aArg { comphelper::makePropertyValue("Hidden", true) };
-                xComp = xDesktop->loadComponentFromURL( aURL, "_blank", 0, aArg );
+                uno::Sequence< beans::PropertyValue > aArg { comphelper::makePropertyValue(u"Hidden"_ustr, true) };
+                xComp = xDesktop->loadComponentFromURL( aURL, u"_blank"_ustr, 0, aArg );
             }
             catch( const io::IOException& )
             {
@@ -302,19 +302,14 @@ int SvxHlinkDlgMarkWnd::FillTree( const uno::Reference< container::XNameAccess >
     std::stack<std::pair<std::unique_ptr<weld::TreeIter>, const sal_Int32>> aHeadingsParentEntryStack;
 
     int nEntries=0;
-    const uno::Sequence< OUString > aNames( xLinks->getElementNames() );
-    const sal_Int32 nLinks = aNames.getLength();
-    const OUString* pNames = aNames.getConstArray();
 
     static constexpr OUStringLiteral aProp_LinkDisplayName( u"LinkDisplayName" );
     static constexpr OUStringLiteral aProp_LinkTarget( u"com.sun.star.document.LinkTarget" );
     static constexpr OUStringLiteral aProp_LinkDisplayBitmap( u"LinkDisplayBitmap" );
-    for( sal_Int32 i = 0; i < nLinks; i++ )
+    for (auto& aLink : xLinks->getElementNames())
     {
         uno::Any aAny;
-        OUString aLink( *pNames++ );
 
-        bool bError = false;
         try
         {
             aAny = xLinks->getByName( aLink );
@@ -323,10 +318,8 @@ int SvxHlinkDlgMarkWnd::FillTree( const uno::Reference< container::XNameAccess >
         {
             // if the name of the target was invalid (like empty headings)
             // no object can be provided
-            bError = true;
-        }
-        if(bError)
             continue;
+        }
 
         uno::Reference< beans::XPropertySet > xTarget;
 
@@ -359,12 +352,12 @@ int SvxHlinkDlgMarkWnd::FillTree( const uno::Reference< container::XNameAccess >
                                         std::pair(mxLbTree->make_iterator(pParentEntry), -1));
 
                         // get the headings name to display
-                        aAny = xTarget->getPropertyValue("ActualOutlineName");
+                        aAny = xTarget->getPropertyValue(u"ActualOutlineName"_ustr);
                         OUString sActualOutlineName;
                         aAny >>= sActualOutlineName;
 
                         // get the headings outline level
-                        aAny = xTarget->getPropertyValue("OutlineLevel");
+                        aAny = xTarget->getPropertyValue(u"OutlineLevel"_ustr);
                         sal_Int32 nOutlineLevel = *o3tl::doAccess<sal_Int32>(aAny);
 
                         // pop until the top of stack entry has an outline level less than

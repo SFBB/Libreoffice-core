@@ -277,8 +277,8 @@ void SwHTMLParser::NewNumberBulletList( HtmlTokenId nToken )
                 }
                 if( aPropInfo.m_bTextIndent )
                 {
-                    short nTextIndent =
-                        aItemSet.Get(RES_MARGIN_FIRSTLINE).GetTextFirstLineOffset();
+                    short nTextIndent
+                        = aItemSet.Get(RES_MARGIN_FIRSTLINE).ResolveTextFirstLineOffset({});
                     aNumFormat.SetFirstLineOffset( nTextIndent );
                     bChangeNumFormat = true;
                 }
@@ -476,7 +476,7 @@ void SwHTMLParser::NewNumberBulletListItem( HtmlTokenId nToken )
 
     std::unique_ptr<HTMLAttrContext> xCntxt(new HTMLAttrContext(nToken));
 
-    OUString aNumRuleName;
+    UIName aNumRuleName;
     if( GetNumInfo().GetNumRule() )
     {
         aNumRuleName = GetNumInfo().GetNumRule()->GetName();
@@ -526,7 +526,7 @@ void SwHTMLParser::NewNumberBulletListItem( HtmlTokenId nToken )
     }
 
     if( GetNumInfo().GetNumRule() )
-        GetNumInfo().GetNumRule()->SetInvalidRule( true );
+        GetNumInfo().GetNumRule()->Invalidate();
 
     // parse styles
     if( HasStyleOptions( aStyle, aId, aClass, &aLang, &aDir ) )
@@ -607,14 +607,14 @@ void SwHTMLParser::SetNodeNum( sal_uInt8 nLevel )
     }
 
     OSL_ENSURE( GetNumInfo().GetNumRule(), "No numbering rule" );
-    const OUString& rName = GetNumInfo().GetNumRule()->GetName();
+    const UIName& rName = GetNumInfo().GetNumRule()->GetName();
     static_cast<SwContentNode *>(pTextNode)->SetAttr( SwNumRuleItem(rName) );
 
     pTextNode->SetAttrListLevel( nLevel );
     pTextNode->SetCountedInList( false );
 
     // Invalidate NumRule, it may have been set valid because of an EndAction
-    GetNumInfo().GetNumRule()->SetInvalidRule( false );
+    GetNumInfo().GetNumRule()->Invalidate();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

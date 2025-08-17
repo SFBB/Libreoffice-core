@@ -44,15 +44,11 @@
 #include <connectivity/dbtools.hxx>
 
 using namespace dbaui;
-using namespace ::utl;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::sdb;
-using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::accessibility;
 
 namespace DatabaseObject = css::sdb::application::DatabaseObject;
@@ -193,7 +189,7 @@ void OTableWindow::FillListBox()
 
     if (GetData()->IsShowAll())
     {
-        rTreeView.append(weld::toId(createUserData(nullptr,false)), OUString("*"));
+        rTreeView.append(weld::toId(createUserData(nullptr,false)), u"*"_ustr);
     }
 
     Reference<XNameAccess> xPKeyColumns;
@@ -210,20 +206,16 @@ void OTableWindow::FillListBox()
         Reference< XNameAccess > xColumns = m_pData->getColumns();
         if( xColumns.is() )
         {
-            Sequence< OUString> aColumns = xColumns->getElementNames();
-            const OUString* pIter = aColumns.getConstArray();
-            const OUString* pEnd = pIter + aColumns.getLength();
-
-            for (; pIter != pEnd; ++pIter)
+            for (auto& column : xColumns->getElementNames())
             {
-                bool bPrimaryKeyColumn = xPKeyColumns.is() && xPKeyColumns->hasByName( *pIter );
+                bool bPrimaryKeyColumn = xPKeyColumns.is() && xPKeyColumns->hasByName(column);
 
                 OUString sId;
-                Reference<XPropertySet> xColumn(xColumns->getByName(*pIter),UNO_QUERY);
+                Reference<XPropertySet> xColumn(xColumns->getByName(column), UNO_QUERY);
                 if (xColumn.is())
                     sId = weld::toId(createUserData(xColumn, bPrimaryKeyColumn));
 
-                rTreeView.append(sId, *pIter);
+                rTreeView.append(sId, column);
 
                 // is this column in the primary key
                 if ( bPrimaryKeyColumn )
@@ -518,7 +510,7 @@ void OTableWindow::StateChanged( StateChangedType nType )
     Invalidate();
 }
 
-Reference< XAccessible > OTableWindow::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> OTableWindow::CreateAccessible()
 {
     return new OTableWindowAccess(this);
 }
@@ -547,8 +539,8 @@ void OTableWindow::Command(const CommandEvent& rEvt)
 
                 ::tools::Rectangle aRect(ptWhere, Size(1, 1));
                 weld::Window* pPopupParent = weld::GetPopupParent(*this, aRect);
-                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "dbaccess/ui/jointablemenu.ui"));
-                std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
+                std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"dbaccess/ui/jointablemenu.ui"_ustr));
+                std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
                 if (!xContextMenu->popup_at_rect(pPopupParent, aRect).isEmpty())
                     Remove();
             }

@@ -17,8 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/xml/sax/SAXException.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/beans/XPropertySetInfo.hpp>
 #include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
@@ -55,15 +53,15 @@ void XMLDocumentTransformerContext::StartElement( const Reference< XAttributeLis
     sal_Int16 nAttrCount = xAttrList.is() ? xAttrList->getLength() : 0;
     for( sal_Int16 i=0; i < nAttrCount; i++ )
     {
-        const OUString& rAttrName = xAttrList->getNameByIndex( i );
+        const OUString aAttrName = xAttrList->getNameByIndex( i );
         OUString aLocalName;
         sal_uInt16 nPrefix =
-            GetTransformer().GetNamespaceMap().GetKeyByAttrName( rAttrName,
+            GetTransformer().GetNamespaceMap().GetKeyByAttrName( aAttrName,
                                                                  &aLocalName );
         if( XML_NAMESPACE_OFFICE == nPrefix &&
             IsXMLToken( aLocalName, XML_MIMETYPE ) )
         {
-            const OUString& rValue = xAttrList->getValueByIndex( i );
+            const OUString aValue = xAttrList->getValueByIndex( i );
             static constexpr std::string_view aTmp[]
             {
                 "application/vnd.oasis.openoffice.",
@@ -73,9 +71,9 @@ void XMLDocumentTransformerContext::StartElement( const Reference< XAttributeLis
             };
             for (const auto & rPrefix : aTmp)
             {
-                if( rValue.matchAsciiL( rPrefix.data(), rPrefix.size() ) )
+                if( aValue.matchAsciiL( rPrefix.data(), rPrefix.size() ) )
                 {
-                    aClass = rValue.copy( rPrefix.size() );
+                    aClass = aValue.copy( rPrefix.size() );
                     break;
                 }
             }
@@ -101,7 +99,7 @@ void XMLDocumentTransformerContext::StartElement( const Reference< XAttributeLis
         {
             Reference< XPropertySetInfo > xPropSetInfo(
                 rPropSet->getPropertySetInfo() );
-            OUString aPropName("Class");
+            OUString aPropName(u"Class"_ustr);
             if( xPropSetInfo.is() && xPropSetInfo->hasPropertyByName( aPropName ) )
             {
                 Any aAny = rPropSet->getPropertyValue( aPropName );

@@ -20,6 +20,7 @@
 #include <tools/debug.hxx>
 #include <tools/poly.hxx>
 #include <vcl/event.hxx>
+#include <vcl/themecolors.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/vcllayout.hxx>
 #include <vcl/virdev.hxx>
@@ -37,7 +38,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::accessibility;
 
 #define RULER_OFF           3
@@ -230,7 +230,7 @@ void Ruler::ImplInit( WinBits nWinBits )
 
     // Setup the default size
     tools::Rectangle aRect;
-    GetOutDev()->GetTextBoundRect( aRect, "0123456789" );
+    GetOutDev()->GetTextBoundRect( aRect, u"0123456789"_ustr );
     tools::Long nDefHeight = aRect.GetHeight() + RULER_OFF * 2 + ruler_tab.textoff * 2 + mnBorderWidth;
 
     Size aDefSize;
@@ -286,7 +286,6 @@ void Ruler::dispose()
 {
     mpSaveData.reset();
     mpDragData.reset();
-    mxAccContext.clear();
     Window::dispose();
 }
 
@@ -1190,16 +1189,29 @@ void Ruler::ImplFormat(vcl::RenderContext const & rRenderContext)
     nVirTop++;
     nVirBottom--;
 
+    Color aRulerColor;
+    Color aMarginRulerColor;
+    if (ThemeColors::IsThemeEnabled())
+    {
+        aRulerColor = ThemeColors::GetThemeColors().GetBaseColor();
+        aMarginRulerColor = ThemeColors::GetThemeColors().GetWindowColor();
+    }
+    else
+    {
+        aRulerColor = rStyleSettings.GetWindowColor();
+        aMarginRulerColor = rStyleSettings.GetDialogColor();
+    }
+
     // draw margin1, margin2 and in-between
     maVirDev->SetLineColor();
-    maVirDev->SetFillColor(rStyleSettings.GetDialogColor());
+    maVirDev->SetFillColor(aMarginRulerColor);
     if (nM1 > nVirLeft)
         ImplVDrawRect(*maVirDev, nP1, nVirTop + 1, nM1, nVirBottom); //left gray rectangle
     if (nM2 < nP2)
         ImplVDrawRect(*maVirDev, nM2, nVirTop + 1, nP2, nVirBottom); //right gray rectangle
     if (nM2 - nM1 > 0)
     {
-        maVirDev->SetFillColor(rStyleSettings.GetWindowColor());
+        maVirDev->SetFillColor(aRulerColor);
         ImplVDrawRect(*maVirDev, nM1 + 1, nVirTop, nM2 - 1, nVirBottom); //center rectangle
     }
     maVirDev->SetLineColor(rStyleSettings.GetShadowColor());
@@ -1417,7 +1429,8 @@ void Ruler::ImplUpdate( bool bMustCalc )
 }
 
 bool Ruler::ImplDoHitTest( const Point& rPos, RulerSelection* pHitTest,
-                         bool bRequireStyle, RulerIndentStyle nRequiredStyle ) const
+                         bool bRequireStyle, RulerIndentStyle nRequiredStyle,
+                         tools::Long nTolerance ) const
 {
     sal_Int32   i;
     sal_uInt16  nStyle;
@@ -1558,7 +1571,7 @@ bool Ruler::ImplDoHitTest( const Point& rPos, RulerSelection* pHitTest,
     }
 
     // test the borders
-    int nBorderTolerance = 1;
+    int nBorderTolerance = nTolerance;
     if(pHitTest->bExpandTest)
     {
         nBorderTolerance++;
@@ -1574,7 +1587,6 @@ bool Ruler::ImplDoHitTest( const Point& rPos, RulerSelection* pHitTest,
         {
              n1 -= nBorderTolerance;
              n2 += nBorderTolerance;
-
         }
 
         if ( (nX >= n1) && (nX <= n2) )
@@ -1708,7 +1720,7 @@ bool Ruler::ImplDoHitTest( const Point& rPos, RulerSelection* pHitTest,
 }
 
 bool Ruler::ImplDocHitTest( const Point& rPos, RulerType eDragType,
-                                RulerSelection* pHitTest ) const
+                                RulerSelection* pHitTest, tools::Long nTolerance ) const
 {
     Point aPos = rPos;
     bool bRequiredStyle = false;
@@ -1732,7 +1744,7 @@ bool Ruler::ImplDocHitTest( const Point& rPos, RulerType eDragType,
         else
             aPos.setX( RULER_OFF + 1 );
 
-        if ( ImplDoHitTest( aPos, pHitTest, bRequiredStyle, nRequiredStyle ) )
+        if ( ImplDoHitTest( aPos, pHitTest, bRequiredStyle, nRequiredStyle, nTolerance ) )
         {
             if ( (pHitTest->eType == eDragType) || (eDragType == RulerType::DontKnow) )
                 return true;
@@ -1748,7 +1760,7 @@ bool Ruler::ImplDocHitTest( const Point& rPos, RulerType eDragType,
         else
             aPos.setX( mnWidth - RULER_OFF - 1 );
 
-        if ( ImplDoHitTest( aPos, pHitTest, bRequiredStyle, nRequiredStyle ) )
+        if ( ImplDoHitTest( aPos, pHitTest, bRequiredStyle, nRequiredStyle, nTolerance ) )
         {
             if ( (pHitTest->eType == eDragType) || (eDragType == RulerType::DontKnow) )
                 return true;
@@ -1763,7 +1775,7 @@ bool Ruler::ImplDocHitTest( const Point& rPos, RulerType eDragType,
         else
             aPos.setX( RULER_OFF + (mnVirHeight / 2) );
 
-        if ( ImplDoHitTest( aPos, pHitTest ) )
+        if ( ImplDoHitTest( aPos, pHitTest, false, RulerIndentStyle::Top, nTolerance ) )
         {
             if ( (pHitTest->eType == eDragType) || (eDragType == RulerType::DontKnow) )
                 return true;
@@ -1867,7 +1879,7 @@ void Ruler::ImplDrag( const Point& rPos )
             Invalidate(InvalidateFlags::NoErase);
 
             // reset the data as before cancel
-            *mpDragData = aTempData;
+            *mpDragData = std::move(aTempData);
         }
     }
     else
@@ -2236,7 +2248,7 @@ void Ruler::Deactivate()
     mbActive = false;
 }
 
-bool Ruler::StartDocDrag( const MouseEvent& rMEvt, RulerType eDragType )
+bool Ruler::StartDocDrag( const MouseEvent& rMEvt, RulerType eDragType, tools::Long nTolerance )
 {
     if ( !mbDrag )
     {
@@ -2262,7 +2274,7 @@ bool Ruler::StartDocDrag( const MouseEvent& rMEvt, RulerType eDragType )
 
         if ( nMouseClicks == 1 )
         {
-            if ( ImplDocHitTest( aMousePos, eDragType, &aHitTest ) )
+            if ( ImplDocHitTest( aMousePos, eDragType, &aHitTest, nTolerance ) )
             {
                 PointerStyle aPtr = PointerStyle::Arrow;
 
@@ -2286,7 +2298,7 @@ bool Ruler::StartDocDrag( const MouseEvent& rMEvt, RulerType eDragType )
         }
         else if ( nMouseClicks == 2 )
         {
-            if ( ImplDocHitTest( aMousePos, eDragType, &aHitTest ) )
+            if ( ImplDocHitTest( aMousePos, eDragType, &aHitTest, nTolerance ) )
             {
                 mnDragPos    = aHitTest.nPos;
                 mnDragAryPos = aHitTest.nAryPos;
@@ -2732,12 +2744,6 @@ tools::Long Ruler::GetMargin2() const
     return mpData->nMargin2;
 }
 
-
-bool Ruler::GetTextRTL() const
-{
-    return mpData->bTextRTL;
-}
-
 const RulerUnitData& Ruler::GetCurrentRulerUnit() const
 {
     return aImplRulerUnitTab[mnUnitIndex];
@@ -2749,15 +2755,11 @@ void Ruler::DrawTicks()
     Invalidate(InvalidateFlags::NoErase);
 }
 
-uno::Reference< XAccessible > Ruler::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> Ruler::CreateAccessible()
 {
-    vcl::Window* pParent = GetAccessibleParentWindow();
-    OSL_ENSURE( pParent, "-SvxRuler::CreateAccessible(): No Parent!" );
-    uno::Reference< XAccessible >   xAccParent  = pParent->GetAccessible();
+    uno::Reference<XAccessible> xAccParent = GetAccessibleParent();
     if( xAccParent.is() )
     {
-        // MT: Fixed compiler issue because the address from a temporary object was used.
-        // BUT: Should it really be a Pointer, instead of const&???
         OUString aStr;
         if ( mnWinStyle & WB_HORZ )
         {
@@ -2767,12 +2769,10 @@ uno::Reference< XAccessible > Ruler::CreateAccessible()
         {
             aStr = SvtResId(STR_SVT_ACC_RULER_VERT_NAME);
         }
-        mxAccContext = new SvtRulerAccessible( xAccParent, *this, aStr );
-        SetAccessible(mxAccContext);
-        return mxAccContext;
+        return new SvtRulerAccessible(xAccParent, *this, aStr);
     }
     else
-        return uno::Reference< XAccessible >();
+        return {};
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -67,7 +67,7 @@ protected:
 }
 
 WrappedTitleStringProperty::WrappedTitleStringProperty( const Reference< uno::XComponentContext >& xContext )
-    : ::chart::WrappedProperty( "String", OUString() )
+    : ::chart::WrappedProperty( u"String"_ustr, OUString() )
     , m_xContext( xContext )
 {
 }
@@ -106,6 +106,51 @@ Any WrappedTitleStringProperty::getPropertyDefault( const Reference< beans::XPro
 
 namespace {
 
+    class WrappedTitleFormStringsProperty : public WrappedProperty
+    {
+        public:
+            explicit WrappedTitleFormStringsProperty();
+
+            virtual void setPropertyValue( const Any& rOuterValue, const Reference< beans::XPropertySet >& xInnerPropertySet ) const override;
+            virtual Any getPropertyValue( const Reference< beans::XPropertySet >& xInnerPropertySet ) const override;
+            virtual Any getPropertyDefault( const Reference< beans::XPropertyState >& xInnerPropertyState ) const override;
+    };
+
+}
+
+WrappedTitleFormStringsProperty::WrappedTitleFormStringsProperty()
+    : ::chart::WrappedProperty( u"FormattedStrings"_ustr, OUString() )
+{
+}
+
+void WrappedTitleFormStringsProperty::setPropertyValue( const Any& rOuterValue, const Reference< beans::XPropertySet >& xInnerPropertySet ) const
+{
+    Title* pTitle = dynamic_cast<Title*>(xInnerPropertySet.get());
+    if (pTitle)
+    {
+        Sequence< Reference< chart2::XFormattedString >> xFormattedStrings;
+        rOuterValue >>= xFormattedStrings;
+        TitleHelper::setFormattedString(pTitle, xFormattedStrings);
+    }
+}
+Any WrappedTitleFormStringsProperty::getPropertyValue( const Reference< beans::XPropertySet >& xInnerPropertySet ) const
+{
+    Any aRet(getPropertyDefault(Reference< beans::XPropertyState >(xInnerPropertySet, uno::UNO_QUERY)));
+    Reference< chart2::XTitle > xTitle(xInnerPropertySet, uno::UNO_QUERY);
+    if (xTitle.is())
+    {
+        const Sequence< Reference< chart2::XFormattedString > > aStrings(xTitle->getText());
+        aRet <<= aStrings;
+    }
+    return aRet;
+}
+Any WrappedTitleFormStringsProperty::getPropertyDefault( const Reference< beans::XPropertyState >& /*xInnerPropertyState*/ ) const
+{
+    return uno::Any(Sequence< Reference< chart2::XFormattedString > >()); //default title is an empty Sequence of XFormattedStrings
+}
+
+namespace {
+
 class WrappedStackedTextProperty : public WrappedProperty
 {
 public:
@@ -115,7 +160,7 @@ public:
 }
 
 WrappedStackedTextProperty::WrappedStackedTextProperty()
-    : ::chart::WrappedProperty( "StackedText", "StackCharacters" )
+    : ::chart::WrappedProperty( u"StackedText"_ustr, u"StackCharacters"_ustr )
 {
 }
 
@@ -127,6 +172,8 @@ namespace
 enum
 {
     PROP_TITLE_STRING,
+    PROP_TITLE_FORMATTED_STRINGS,
+    PROP_TITLE_VISIBLE,
     PROP_TITLE_TEXT_ROTATION,
     PROP_TITLE_TEXT_STACKED
 };
@@ -136,6 +183,18 @@ void lcl_AddPropertiesToVector(
 {
     rOutProperties.emplace_back( "String",
                   PROP_TITLE_STRING,
+                  cppu::UnoType<OUString>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID );
+
+    rOutProperties.emplace_back( "FormattedStrings",
+                  PROP_TITLE_FORMATTED_STRINGS,
+                  cppu::UnoType< Sequence< Reference< chart2::XFormattedString >>>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID );
+
+    rOutProperties.emplace_back( "Visible",
+                  PROP_TITLE_VISIBLE,
                   cppu::UnoType<OUString>::get(),
                   beans::PropertyAttribute::BOUND
                   | beans::PropertyAttribute::MAYBEVOID );
@@ -210,7 +269,7 @@ void SAL_CALL TitleWrapper::setPosition( const awt::Point& aPosition )
         aRelativePosition.Anchor = drawing::Alignment_TOP_LEFT;
         aRelativePosition.Primary = double(aPosition.X)/double(aPageSize.Width);
         aRelativePosition.Secondary = double(aPosition.Y)/double(aPageSize.Height);
-        xPropertySet->setPropertyValue( "RelativePosition", uno::Any(aRelativePosition) );
+        xPropertySet->setPropertyValue( u"RelativePosition"_ustr, uno::Any(aRelativePosition) );
     }
 }
 
@@ -227,7 +286,7 @@ void SAL_CALL TitleWrapper::setSize( const awt::Size& /*aSize*/ )
 // ____ XShapeDescriptor (base of XShape) ____
 OUString SAL_CALL TitleWrapper::getShapeType()
 {
-    return "com.sun.star.chart.ChartTitle";
+    return u"com.sun.star.chart.ChartTitle"_ustr;
 }
 
 // ____ XComponent ____
@@ -254,27 +313,12 @@ void SAL_CALL TitleWrapper::removeEventListener(
     m_aEventListenerContainer.removeInterface( g, aListener );
 }
 
-Reference< beans::XPropertySet > TitleWrapper::getFirstCharacterPropertySet()
-{
-    Reference< beans::XPropertySet > xProp;
-
-    Reference< chart2::XTitle > xTitle( getTitleObject() );
-    if( xTitle.is())
-    {
-        Sequence< Reference< chart2::XFormattedString > > aStrings( xTitle->getText());
-        if( aStrings.hasElements() )
-            xProp.set( aStrings[0], uno::UNO_QUERY );
-    }
-
-    return xProp;
-}
-
 void TitleWrapper::getFastCharacterPropertyValue( sal_Int32 nHandle, Any& rValue )
 {
     OSL_ASSERT( FAST_PROPERTY_ID_START_CHAR_PROP <= nHandle &&
                 nHandle < CharacterProperties::FAST_PROPERTY_ID_END_CHAR_PROP );
 
-    Reference< beans::XPropertySet > xProp = getFirstCharacterPropertySet();
+    Reference< beans::XPropertySet > xProp = getInnerPropertySet();
     Reference< beans::XFastPropertySet > xFastProp( xProp, uno::UNO_QUERY );
     if(xProp.is())
     {
@@ -314,6 +358,16 @@ void TitleWrapper::setFastCharacterPropertyValue(
         else if( xFastPropertySet.is() )
             xFastPropertySet->setFastPropertyValue( nHandle, rValue );
     }
+
+    Reference< beans::XPropertySet > xInnerProp = getInnerPropertySet();
+    Reference< beans::XFastPropertySet > xFastInnerProp( xInnerProp, uno::UNO_QUERY );
+    if (xInnerProp.is())
+    {
+        if (pWrappedProperty)
+            pWrappedProperty->setPropertyValue(rValue, xInnerProp);
+        else if (xFastInnerProp.is())
+            xFastInnerProp->setFastPropertyValue(nHandle, rValue);
+    }
 }
 
 // WrappedPropertySet
@@ -347,7 +401,7 @@ beans::PropertyState SAL_CALL TitleWrapper::getPropertyState( const OUString& rP
     sal_Int32 nHandle = getInfoHelper().getHandleByName( rPropertyName );
     if( CharacterProperties::IsCharacterPropertyHandle( nHandle ) )
     {
-        Reference< beans::XPropertyState > xPropState( getFirstCharacterPropertySet(), uno::UNO_QUERY );
+        Reference< beans::XPropertyState > xPropState( getInnerPropertySet(), uno::UNO_QUERY);
         if( xPropState.is() )
         {
             const WrappedProperty* pWrappedProperty = getWrappedProperty( rPropertyName );
@@ -380,7 +434,7 @@ Any SAL_CALL TitleWrapper::getPropertyDefault( const OUString& rPropertyName )
     sal_Int32 nHandle = getInfoHelper().getHandleByName( rPropertyName );
     if( CharacterProperties::IsCharacterPropertyHandle( nHandle ) )
     {
-        Reference< beans::XPropertyState > xPropState( getFirstCharacterPropertySet(), uno::UNO_QUERY );
+        Reference< beans::XPropertyState > xPropState( getInnerPropertySet(), uno::UNO_QUERY );
         if( xPropState.is() )
         {
             const WrappedProperty* pWrappedProperty = getWrappedProperty( rPropertyName );
@@ -401,7 +455,7 @@ void SAL_CALL TitleWrapper::addPropertyChangeListener( const OUString& rProperty
     sal_Int32 nHandle = getInfoHelper().getHandleByName( rPropertyName );
     if( CharacterProperties::IsCharacterPropertyHandle( nHandle ) )
     {
-        Reference< beans::XPropertySet > xPropSet = getFirstCharacterPropertySet();
+        Reference< beans::XPropertySet > xPropSet = getInnerPropertySet();
         if( xPropSet.is() )
             xPropSet->addPropertyChangeListener( rPropertyName, xListener );
     }
@@ -413,7 +467,7 @@ void SAL_CALL TitleWrapper::removePropertyChangeListener( const OUString& rPrope
     sal_Int32 nHandle = getInfoHelper().getHandleByName( rPropertyName );
     if( CharacterProperties::IsCharacterPropertyHandle( nHandle ) )
     {
-        Reference< beans::XPropertySet > xPropSet = getFirstCharacterPropertySet();
+        Reference< beans::XPropertySet > xPropSet = getInnerPropertySet();
         if( xPropSet.is() )
             xPropSet->removePropertyChangeListener( rPropertyName, xListener );
     }
@@ -427,8 +481,8 @@ void TitleWrapper::updateReferenceSize()
     Reference< beans::XPropertySet > xProp( getTitleObject(), uno::UNO_QUERY );
     if( xProp.is() )
     {
-        if( xProp->getPropertyValue( "ReferencePageSize" ).hasValue() )
-            xProp->setPropertyValue( "ReferencePageSize", uno::Any(
+        if( xProp->getPropertyValue( u"ReferencePageSize"_ustr ).hasValue() )
+            xProp->setPropertyValue( u"ReferencePageSize"_ustr, uno::Any(
                             m_spChart2ModelContact->GetPageSize() ));
     }
 }
@@ -437,7 +491,7 @@ Any TitleWrapper::getReferenceSize()
     Any aRet;
     Reference< beans::XPropertySet > xProp( getTitleObject(), uno::UNO_QUERY );
     if( xProp.is() )
-        aRet = xProp->getPropertyValue( "ReferencePageSize" );
+        aRet = xProp->getPropertyValue( u"ReferencePageSize"_ustr );
 
     return aRet;
 }
@@ -468,6 +522,7 @@ std::vector< std::unique_ptr<WrappedProperty> > TitleWrapper::createWrappedPrope
     std::vector< std::unique_ptr<WrappedProperty> > aWrappedProperties;
 
     aWrappedProperties.emplace_back( new WrappedTitleStringProperty( m_spChart2ModelContact->m_xContext ) );
+    aWrappedProperties.emplace_back( new WrappedTitleFormStringsProperty() );
     aWrappedProperties.emplace_back( new WrappedTextRotationProperty( true ) );
     aWrappedProperties.emplace_back( new WrappedStackedTextProperty() );
     WrappedCharacterHeightProperty::addWrappedProperties( aWrappedProperties, this );
@@ -479,7 +534,7 @@ std::vector< std::unique_ptr<WrappedProperty> > TitleWrapper::createWrappedPrope
 
 OUString SAL_CALL TitleWrapper::getImplementationName()
 {
-    return "com.sun.star.comp.chart.Title";
+    return u"com.sun.star.comp.chart.Title"_ustr;
 }
 
 sal_Bool SAL_CALL TitleWrapper::supportsService( const OUString& rServiceName )
@@ -490,10 +545,10 @@ sal_Bool SAL_CALL TitleWrapper::supportsService( const OUString& rServiceName )
 css::uno::Sequence< OUString > SAL_CALL TitleWrapper::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.chart.ChartTitle",
-        "com.sun.star.drawing.Shape",
-        "com.sun.star.xml.UserDefinedAttributesSupplier",
-         "com.sun.star.style.CharacterProperties"
+        u"com.sun.star.chart.ChartTitle"_ustr,
+        u"com.sun.star.drawing.Shape"_ustr,
+        u"com.sun.star.xml.UserDefinedAttributesSupplier"_ustr,
+         u"com.sun.star.style.CharacterProperties"_ustr
     };
 }
 

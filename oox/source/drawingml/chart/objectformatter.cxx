@@ -23,6 +23,7 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/util/XNumberFormatsSupplier.hpp>
 #include <com/sun/star/util/XNumberFormatTypes.hpp>
+#include <comphelper/diagnose_ex.hxx>
 #include <osl/thread.h>
 #include <osl/diagnose.h>
 #include <rtl/strbuf.hxx>
@@ -44,7 +45,6 @@
 namespace oox::drawingml::chart {
 
 using namespace ::com::sun::star::chart2;
-using namespace ::com::sun::star::graphic;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::util;
@@ -636,6 +636,8 @@ public:
                             const PictureOptionsModel* pPicOptions,
                             sal_Int32 nSeriesIdx );
 
+    void                setAutoFill(sal_Int32 nAutoFill);
+
 private:
     FillPropertiesPtr   mxAutoFill;         /// Automatic fill properties.
 };
@@ -871,11 +873,6 @@ FillFormatter::FillFormatter( ObjectFormatterData& rData, const AutoFormatEntry*
     if( const Theme* pTheme = mrData.mrFilter.getCurrentTheme() )
         if( const FillProperties* pFillProps = pTheme->getFillStyle( pAutoFormatEntry->mnThemedIdx ) )
             *mxAutoFill = *pFillProps;
-
-    if (eObjType == OBJECTTYPE_CHARTSPACE)
-    {
-        mxAutoFill->moFillType = rData.mrFilter.getGraphicHelper().getDefaultChartAreaFillStyle();
-    }
 }
 
 void FillFormatter::convertFormatting( ShapePropertyMap& rPropMap, const ModelRef< Shape >& rxShapeProp, const PictureOptionsModel* pPicOptions, sal_Int32 nSeriesIdx )
@@ -888,6 +885,11 @@ void FillFormatter::convertFormatting( ShapePropertyMap& rPropMap, const ModelRe
     if( pPicOptions )
         lclConvertPictureOptions( aFillProps, *pPicOptions );
     aFillProps.pushToPropMap( rPropMap, mrData.mrFilter.getGraphicHelper(), 0, getPhColor( nSeriesIdx ) );
+}
+
+void FillFormatter::setAutoFill(sal_Int32 nFillStyle)
+{
+    mxAutoFill->moFillType = nFillStyle;
 }
 
 namespace {
@@ -948,6 +950,12 @@ ObjectTypeFormatter::ObjectTypeFormatter( ObjectFormatterData& rData, const Obje
     mrModelObjHelper( rData.maModelObjHelper ),
     mrEntry( rEntry )
 {
+    // this seems to be an undocumented quirk in the OOXML spec. Only for pptx files the first 32 theme entries
+    // force a transparent background
+    if (rChartSpace.mnStyle <= 32 && (eObjType == OBJECTTYPE_CHARTSPACE || eObjType == OBJECTTYPE_PLOTAREA2D))
+    {
+        maFillFormatter.setAutoFill(rData.mrFilter.getGraphicHelper().getDefaultChartAreaFillStyle());
+    }
 }
 
 void ObjectTypeFormatter::convertFrameFormatting( PropertySet& rPropSet, const ModelRef< Shape >& rxShapeProp, const PictureOptionsModel* pPicOptions, sal_Int32 nSeriesIdx )
@@ -986,7 +994,7 @@ void ObjectTypeFormatter::convertAutomaticFill( PropertySet& rPropSet, sal_Int32
 ObjectFormatterData::ObjectFormatterData( const XmlFilterBase& rFilter, const Reference< XChartDocument >& rxChartDoc, const ChartSpaceModel& rChartSpace ) :
     mrFilter( rFilter ),
     maModelObjHelper( Reference< XMultiServiceFactory >( rxChartDoc, UNO_QUERY ) ),
-    maEnUsLocale( "en", "US", OUString() ),
+    maEnUsLocale( u"en"_ustr, u"US"_ustr, OUString() ),
     mnMaxSeriesIdx( -1 )
 {
     for(auto const &rEntry : spObjTypeFormatEntries)
@@ -1147,6 +1155,27 @@ void ObjectFormatter::convertAutomaticFill( PropertySet& rPropSet, ObjectType eO
 bool ObjectFormatter::isAutomaticFill( const ModelRef< Shape >& rxShapeProp )
 {
     return !rxShapeProp || !rxShapeProp->getFillProperties().moFillType.has_value();
+}
+
+sal_Int32 ObjectFormatter::getNumberFormatKey(const OUString& sNumberFormat)
+{
+    if (!mxData->mxNumFmts.is() || sNumberFormat.isEmpty())
+        return -1;
+
+    sal_Int32 nIndex = -1;
+    try
+    {
+        const bool bGeneral = sNumberFormat.equalsIgnoreAsciiCase("general");
+        nIndex = bGeneral ? mxData->mxNumTypes->getStandardIndex(mxData->maFromLocale)
+                          : mxData->mxNumFmts->addNewConverted(sNumberFormat, mxData->maEnUsLocale,
+                                                               mxData->maFromLocale);
+    }
+    catch (Exception&)
+    {
+        DBG_UNHANDLED_EXCEPTION("oox.drawingml");
+    }
+
+    return nIndex;
 }
 
 } // namespace oox

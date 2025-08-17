@@ -368,8 +368,8 @@ XclExpWsbool::XclExpWsbool( bool bFitToPages )
         SetValue( GetValue() | EXC_WSBOOL_FITTOPAGE );
 }
 
-XclExpXmlSheetPr::XclExpXmlSheetPr( bool bFitToPages, SCTAB nScTab, const Color& rTabColor, XclExpFilterManager* pManager ) :
-    mnScTab(nScTab), mpManager(pManager), mbFitToPage(bFitToPages), maTabColor(rTabColor) {}
+XclExpXmlSheetPr::XclExpXmlSheetPr( bool bFitToPages, SCTAB nScTab, const Color& rTabColor, bool bSummaryBelow, XclExpFilterManager* pManager ) :
+    mnScTab(nScTab), mpManager(pManager), mbFitToPage(bFitToPages), maTabColor(rTabColor), mbSummaryBelow(bSummaryBelow) {}
 
 void XclExpXmlSheetPr::SaveXml( XclExpXmlStream& rStrm )
 {
@@ -388,10 +388,12 @@ void XclExpXmlSheetPr::SaveXml( XclExpXmlStream& rStrm )
 
     // Note : the order of child elements is significant. Don't change the order.
 
-    // OOXTODO: XML_outlinePr
-
     if (maTabColor != COL_AUTO)
         rWorksheet->singleElement(XML_tabColor, XML_rgb, XclXmlUtils::ToOString(maTabColor));
+
+    // OOXTODO: XML_outlinePr --> XML_applyStyles, XML_showOutlineSymbols, XML_summaryBelow, XML_summaryRight
+    if (!mbSummaryBelow)
+        rWorksheet->singleElement(XML_outlinePr, XML_summaryBelow, "0");
 
     rWorksheet->singleElement(XML_pageSetUpPr,
             // OOXTODO: XML_autoPageBreaks,
@@ -478,6 +480,9 @@ void XclExpSheetProtection::SaveXml( XclExpXmlStream& rStrm )
     rWorksheet->startElement(XML_protectedRanges);
     for (const auto& rProt : rProts)
     {
+        if (!rProt.maRangeList.is())
+            continue; // Excel refuses to open if sqref is missing from a protectedRange
+
         SAL_WARN_IF( rProt.maSecurityDescriptorXML.isEmpty() && !rProt.maSecurityDescriptor.empty(),
                 "sc.filter", "XclExpSheetProtection::SaveXml: losing BIFF security descriptor");
         rWorksheet->singleElement( XML_protectedRange,
@@ -492,7 +497,7 @@ void XclExpSheetProtection::SaveXml( XclExpXmlStream& rStrm )
                 XML_hashValue, sax_fastparser::UseIf(rProt.maPasswordHash.maHashValue, !rProt.maPasswordHash.maHashValue.isEmpty()),
                 XML_saltValue, sax_fastparser::UseIf(rProt.maPasswordHash.maSaltValue, !rProt.maPasswordHash.maSaltValue.isEmpty()),
                 XML_spinCount, sax_fastparser::UseIf(OString::number(rProt.maPasswordHash.mnSpinCount), rProt.maPasswordHash.mnSpinCount != 0),
-                XML_sqref, rProt.maRangeList.is() ? XclXmlUtils::ToOString( rStrm.GetRoot().GetDoc(), *rProt.maRangeList).getStr() : nullptr);
+                XML_sqref, XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), *rProt.maRangeList).getStr());
     }
     rWorksheet->endElement( XML_protectedRanges);
 }
@@ -785,8 +790,10 @@ void XclExpAutofilter::AddMultiValueEntry( const ScQueryEntry& rEntry )
     {
         if( rItem.maString.isEmpty() )
             bHasBlankValue = true;
+        else if (rItem.meType == ScQueryEntry::ByDate)
+            maDateValues.push_back(rItem.maString.getString());
         else
-            maMultiValues.push_back(std::make_pair(rItem.maString.getString(), rItem.meType == ScQueryEntry::ByDate));
+            maMultiValues.push_back(rItem.maString.getString());
     }
 }
 
@@ -886,32 +893,31 @@ void XclExpAutofilter::SaveXml( XclExpXmlStream& rStrm )
             else
                 rWorksheet->startElement(XML_filters);
 
+            // CT_Filters
             for (const auto& rMultiValue : maMultiValues)
             {
-                if( !rMultiValue.second )
+                rWorksheet->singleElement(XML_filter, XML_val, rMultiValue);
+            }
+            // CT_DateGroupItems
+            for (const auto& rDateValue : maDateValues)
+            {
+                OString aStr = OUStringToOString(rDateValue, RTL_TEXTENCODING_UTF8);
+                rtl::Reference<sax_fastparser::FastAttributeList> pAttrList = sax_fastparser::FastSerializerHelper::createAttrList();
+                sal_Int32 aDateGroup[3] = { XML_year, XML_month, XML_day };
+                sal_Int32 idx = 0;
+                for (size_t i = 0; idx >= 0 && i < 3; i++)
                 {
-                    rWorksheet->singleElement(XML_filter, XML_val, rMultiValue.first);
-                }
-                else
-                {
-                    OString aStr = OUStringToOString(rMultiValue.first, RTL_TEXTENCODING_UTF8);
-                    rtl::Reference<sax_fastparser::FastAttributeList> pAttrList = sax_fastparser::FastSerializerHelper::createAttrList();
-                    sal_Int32 aDateGroup[3] = { XML_year, XML_month, XML_day };
-                    sal_Int32 idx = 0;
-                    for (size_t i = 0; idx >= 0 && i < 3; i++)
+                    OString kw = aStr.getToken(0, '-', idx);
+                    kw = kw.trim();
+                    if (!kw.isEmpty())
                     {
-                        OString kw = aStr.getToken(0, '-', idx);
-                        kw = kw.trim();
-                        if (!kw.isEmpty())
-                        {
-                            pAttrList->add(aDateGroup[i], kw);
-                        }
+                        pAttrList->add(aDateGroup[i], kw);
                     }
-                    // TODO: date filter can only handle YYYY-MM-DD date formats, so XML_dateTimeGrouping value
-                    // will be "day" as default, until date filter cannot handle HH:MM:SS.
-                    pAttrList->add(XML_dateTimeGrouping, "day");
-                    rWorksheet->singleElement(XML_dateGroupItem, pAttrList);
                 }
+                // TODO: date filter can only handle YYYY-MM-DD date formats, so XML_dateTimeGrouping value
+                // will be "day" as default, until date filter cannot handle HH:MM:SS.
+                pAttrList->add(XML_dateTimeGrouping, "day");
+                rWorksheet->singleElement(XML_dateGroupItem, pAttrList);
             }
             rWorksheet->endElement(XML_filters);
         }
@@ -990,10 +996,10 @@ ExcAutoFilterRecs::ExcAutoFilterRecs( const XclExpRoot& rRoot, SCTAB nTab, const
             bContLoop = rEntry.bDoQuery;
             if( bContLoop )
             {
-                SCCOL nCol = static_cast<SCCOL>( rEntry.nField ) - aRange.aStart.Col();
+                SCCOL nCol = static_cast<SCCOL>(rEntry.nField);
+                XclExpAutofilter* pFilter = GetByCol( nCol - aRange.aStart.Col() );
                 auto nFlag = rDoc.GetAttr( nCol, nRow, nTab, ATTR_MERGE_FLAG )->GetValue();
                 bool bIsButtonHidden = !( nFlag & ScMF::Auto );
-                XclExpAutofilter* pFilter = GetByCol( nCol );
                 pFilter->SetButtonHidden( bIsButtonHidden );
 
                 if( nEntry > 0 )
@@ -1058,8 +1064,8 @@ ExcAutoFilterRecs::ExcAutoFilterRecs( const XclExpRoot& rRoot, SCTAB nTab, const
             ScSortParam aSortParam;
             pData->GetSortParam( aSortParam );
 
-            ScUserList* pList = ScGlobal::GetUserList();
-            if (aSortParam.bUserDef && pList && pList->size() > aSortParam.nUserIndex)
+            ScUserList& rList = ScGlobal::GetUserList();
+            if (aSortParam.bUserDef && rList.size() > aSortParam.nUserIndex)
             {
                 // get sorted area without headers
                 maSortRef = ScRange(
@@ -1067,7 +1073,7 @@ ExcAutoFilterRecs::ExcAutoFilterRecs( const XclExpRoot& rRoot, SCTAB nTab, const
                     aParam.nCol2, aParam.nRow2, aParam.nTab );
 
                 // get sorted columns with custom lists
-                const ScUserListData& rData = (*pList)[aSortParam.nUserIndex];
+                const ScUserListData& rData = rList[aSortParam.nUserIndex];
 
                 // get column index and sorting direction
                 SCCOLROW nField = 0;

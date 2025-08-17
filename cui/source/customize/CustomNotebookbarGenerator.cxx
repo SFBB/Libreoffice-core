@@ -42,13 +42,13 @@ static OUString lcl_activeAppName(vcl::EnumContext::Application eApp)
     switch (eApp)
     {
         case vcl::EnumContext::Application::Writer:
-            return "ActiveWriter";
+            return u"ActiveWriter"_ustr;
         case vcl::EnumContext::Application::Calc:
-            return "ActiveCalc";
+            return u"ActiveCalc"_ustr;
         case vcl::EnumContext::Application::Impress:
-            return "ActiveImpress";
+            return u"ActiveImpress"_ustr;
         case vcl::EnumContext::Application::Draw:
-            return "ActiveDraw";
+            return u"ActiveDraw"_ustr;
         default:
             return OUString();
     }
@@ -59,13 +59,13 @@ static OUString lcl_getAppName(vcl::EnumContext::Application eApp)
     switch (eApp)
     {
         case vcl::EnumContext::Application::Writer:
-            return "Writer";
+            return u"Writer"_ustr;
         case vcl::EnumContext::Application::Calc:
-            return "Calc";
+            return u"Calc"_ustr;
         case vcl::EnumContext::Application::Impress:
-            return "Impress";
+            return u"Impress"_ustr;
         case vcl::EnumContext::Application::Draw:
-            return "Draw";
+            return u"Draw"_ustr;
         default:
             return OUString();
     }
@@ -89,8 +89,8 @@ static OUString getAppNameRegistryPath()
 
 static OUString customizedUIPathBuffer()
 {
-    OUString sDirPath("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE(
-        "bootstrap") ":UserInstallation}/user/config/soffice.cfg/");
+    OUString sDirPath(u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE(
+        "bootstrap") ":UserInstallation}/user/config/soffice.cfg/"_ustr);
     rtl::Bootstrap::expandMacros(sDirPath);
     return sDirPath;
 }
@@ -216,8 +216,9 @@ void CustomNotebookbarGenerator::getFileNameAndAppName(OUString& sAppName,
     if (!pFrame)
         return;
 
-    const auto xContext = comphelper::getProcessComponentContext();
-    utl::OConfigurationTreeRoot aRoot(xContext, "org.openoffice.Office.UI.ToolbarMode/", false);
+    const auto& xContext = comphelper::getProcessComponentContext();
+    utl::OConfigurationTreeRoot aRoot(xContext, u"org.openoffice.Office.UI.ToolbarMode/"_ustr,
+                                      false);
     const Reference<frame::XFrame>& xFrame = pFrame->GetFrame().GetFrameInterface();
     const Reference<frame::XModuleManager> xModuleManager = frame::ModuleManager::create(xContext);
 
@@ -251,31 +252,32 @@ void CustomNotebookbarGenerator::createCustomizedUIFile()
                  "Cannot copy the file or file was present :" << sCustomizedUIPath);
 }
 
-Sequence<OUString> CustomNotebookbarGenerator::getCustomizedUIItem(OUString sNotebookbarConfigType)
+Sequence<OUString>
+CustomNotebookbarGenerator::getCustomizedUIItem(const OUString& sNotebookbarConfigType)
 {
     OUString aPath = getAppNameRegistryPath();
     const utl::OConfigurationTreeRoot aAppNode(::comphelper::getProcessComponentContext(), aPath,
                                                false);
 
-    const utl::OConfigurationNode aModesNode = aAppNode.openNode("Modes");
+    const utl::OConfigurationNode aModesNode = aAppNode.openNode(u"Modes"_ustr);
     const utl::OConfigurationNode aModeNode(aModesNode.openNode(sNotebookbarConfigType));
-    const Any aValue = aModeNode.getNodeValue("UIItemProperties");
+    const Any aValue = aModeNode.getNodeValue(u"UIItemProperties"_ustr);
     Sequence<OUString> aValues;
     aValue >>= aValues;
     return aValues;
 }
 
-void CustomNotebookbarGenerator::setCustomizedUIItem(Sequence<OUString> sUIItemProperties,
-                                                     OUString sNotebookbarConfigType)
+void CustomNotebookbarGenerator::setCustomizedUIItem(const Sequence<OUString>& rUIItemProperties,
+                                                     const OUString& rNotebookbarConfigType)
 {
     OUString aPath = getAppNameRegistryPath();
     const utl::OConfigurationTreeRoot aAppNode(::comphelper::getProcessComponentContext(), aPath,
                                                true);
-    const utl::OConfigurationNode aModesNode = aAppNode.openNode("Modes");
-    const utl::OConfigurationNode aModeNode(aModesNode.openNode(sNotebookbarConfigType));
+    const utl::OConfigurationNode aModesNode = aAppNode.openNode(u"Modes"_ustr);
+    const utl::OConfigurationNode aModeNode(aModesNode.openNode(rNotebookbarConfigType));
 
-    css::uno::Any aUIItemProperties(sUIItemProperties);
-    aModeNode.setNodeValue("UIItemProperties", aUIItemProperties);
+    css::uno::Any aUIItemProperties(rUIItemProperties);
+    aModeNode.setNodeValue(u"UIItemProperties"_ustr, aUIItemProperties);
     aAppNode.commit();
 }
 

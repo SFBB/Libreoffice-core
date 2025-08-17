@@ -31,7 +31,6 @@ namespace comphelper
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::uno;
-using namespace ::osl;
 
 
 
@@ -137,7 +136,7 @@ void SAL_CALL MemoryInputStream::closeInput(  )
 void SAL_CALL MemoryInputStream::seek( sal_Int64 location )
 {
     if ( location > m_nMemoryDataLength || location < 0 || location > SAL_MAX_INT32 )
-        throw IllegalArgumentException("bad location", static_cast<cppu::OWeakObject*>(this), 1);
+        throw IllegalArgumentException(u"bad location"_ustr, static_cast<cppu::OWeakObject*>(this), 1);
     std::scoped_lock aGuard( m_aMutex );
     m_nPos = static_cast<sal_Int32>(location);
 }

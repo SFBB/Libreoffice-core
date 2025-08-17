@@ -45,7 +45,7 @@ ScHFPage::ScHFPage(weld::Container* pPage, weld::DialogController* pController, 
     , aDataSet(*rSet.GetPool(), svl::Items<ATTR_PAGE, ATTR_PAGE, ATTR_PAGE_HEADERLEFT, ATTR_PAGE_FOOTERFIRST>)
     , nPageUsage(SvxPageUsage::All)
     , pStyleDlg(nullptr)
-    , m_xBtnEdit(m_xBuilder->weld_button("buttonEdit"))
+    , m_xBtnEdit(m_xBuilder->weld_button(u"buttonEdit"_ustr))
 {
     SetExchangeSupport();
 
@@ -238,7 +238,7 @@ std::unique_ptr<SfxTabPage> ScHeaderPage::Create(weld::Container* pPage, weld::D
     return std::make_unique<ScHeaderPage>(pPage, pController, *rCoreSet);
 }
 
-WhichRangesContainer ScHeaderPage::GetRanges()
+const WhichRangesContainer & ScHeaderPage::GetRanges()
 {
     return SvxHeaderPage::GetRanges();
 }
@@ -254,7 +254,7 @@ std::unique_ptr<SfxTabPage> ScFooterPage::Create(weld::Container* pPage, weld::D
     return std::make_unique<ScFooterPage>(pPage, pController, *rCoreSet);
 }
 
-WhichRangesContainer ScFooterPage::GetRanges()
+const WhichRangesContainer & ScFooterPage::GetRanges()
 {
     return SvxHeaderPage::GetRanges();
 }

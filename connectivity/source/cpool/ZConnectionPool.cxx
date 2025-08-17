@@ -32,7 +32,6 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
-using namespace ::osl;
 using namespace connectivity;
 
 
@@ -216,7 +215,7 @@ Reference< XConnection> OConnectionPool::createNewConnection(const OUString& _rU
         aPack.nALiveCount               = m_nALiveCount;
         TActiveConnectionInfo aActiveInfo;
         aActiveInfo.aPos                = m_aPool.emplace(nId,aPack).first;
-        aActiveInfo.xPooledConnection   = xPooledConnection;
+        aActiveInfo.xPooledConnection   = std::move(xPooledConnection);
         m_aActiveConnections.emplace(xConnection,aActiveInfo);
 
         if(m_xInvalidator->isExpired())
@@ -272,8 +271,8 @@ Reference< XConnection> OConnectionPool::getPooledConnection(TConnectionMap::ite
 
         TActiveConnectionInfo aActiveInfo;
         aActiveInfo.aPos = _rIter;
-        aActiveInfo.xPooledConnection = xPooledConnection;
-        m_aActiveConnections[xConnection] = aActiveInfo;
+        aActiveInfo.xPooledConnection = std::move(xPooledConnection);
+        m_aActiveConnections[xConnection] = std::move(aActiveInfo);
     }
     return xConnection;
 }

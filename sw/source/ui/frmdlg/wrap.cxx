@@ -51,10 +51,11 @@ const WhichRangesContainer SwWrapTabPage::s_aWrapPageRg(svl::Items<
 >);
 
 SwWrapDlg::SwWrapDlg(weld::Window* pParent, const SfxItemSet& rSet, SwWrtShell* pWrtShell, bool bDrawMode)
-    : SfxSingleTabDialogController(pParent, &rSet, "modules/swriter/ui/wrapdialog.ui", "WrapDialog")
+    : SwWrapDlgBase{rSet}, // this is an async dialog, so we need to store a copy of the rSet
+      SfxSingleTabDialogController(pParent, &maInputSet, u"modules/swriter/ui/wrapdialog.ui"_ustr, u"WrapDialog"_ustr)
 {
     // create TabPage
-    auto xNewPage = SwWrapTabPage::Create(get_content_area(), this, &rSet);
+    auto xNewPage = SwWrapTabPage::Create(get_content_area(), this, &maInputSet);
     SwWrapTabPage* pWrapPage = static_cast<SwWrapTabPage*>(xNewPage.get());
     pWrapPage->SetFormatUsed(false, bDrawMode);
     pWrapPage->SetShell(pWrtShell);
@@ -62,7 +63,7 @@ SwWrapDlg::SwWrapDlg(weld::Window* pParent, const SfxItemSet& rSet, SwWrtShell* 
 }
 
 SwWrapTabPage::SwWrapTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/wrappage.ui", "WrapPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/wrappage.ui"_ustr, u"WrapPage"_ustr, &rSet)
     , m_nAnchorId(RndStdIds::FLY_AT_PARA)
     , m_nHtmlMode(0)
     , m_pWrtSh(nullptr)
@@ -71,27 +72,27 @@ SwWrapTabPage::SwWrapTabPage(weld::Container* pPage, weld::DialogController* pCo
     , m_bHtmlMode(false)
     , m_bDrawMode(false)
     , m_bContourImage(false)
-    , m_xNoWrapImg(m_xBuilder->weld_image("noneimg"))
-    , m_xNoWrapRB(m_xBuilder->weld_radio_button("none"))
-    , m_xWrapLeftImg(m_xBuilder->weld_image("beforeimg"))
-    , m_xWrapLeftRB(m_xBuilder->weld_radio_button("before"))
-    , m_xWrapRightImg(m_xBuilder->weld_image("afterimg"))
-    , m_xWrapRightRB(m_xBuilder->weld_radio_button("after"))
-    , m_xWrapParallelImg(m_xBuilder->weld_image("parallelimg"))
-    , m_xWrapParallelRB(m_xBuilder->weld_radio_button("parallel"))
-    , m_xWrapThroughImg(m_xBuilder->weld_image("throughimg"))
-    , m_xWrapThroughRB(m_xBuilder->weld_radio_button("through"))
-    , m_xIdealWrapImg(m_xBuilder->weld_image("optimalimg"))
-    , m_xIdealWrapRB(m_xBuilder->weld_radio_button("optimal"))
-    , m_xLeftMarginED(m_xBuilder->weld_metric_spin_button("left", FieldUnit::CM))
-    , m_xRightMarginED(m_xBuilder->weld_metric_spin_button("right", FieldUnit::CM))
-    , m_xTopMarginED(m_xBuilder->weld_metric_spin_button("top", FieldUnit::CM))
-    , m_xBottomMarginED(m_xBuilder->weld_metric_spin_button("bottom", FieldUnit::CM))
-    , m_xWrapAnchorOnlyCB(m_xBuilder->weld_check_button("anchoronly"))
-    , m_xWrapTransparentCB(m_xBuilder->weld_check_button("transparent"))
-    , m_xWrapOutlineCB(m_xBuilder->weld_check_button("outline"))
-    , m_xWrapOutsideCB(m_xBuilder->weld_check_button("outside"))
-    , m_xAllowOverlapCB(m_xBuilder->weld_check_button("allowoverlap"))
+    , m_xNoWrapImg(m_xBuilder->weld_image(u"noneimg"_ustr))
+    , m_xNoWrapRB(m_xBuilder->weld_radio_button(u"none"_ustr))
+    , m_xWrapLeftImg(m_xBuilder->weld_image(u"beforeimg"_ustr))
+    , m_xWrapLeftRB(m_xBuilder->weld_radio_button(u"before"_ustr))
+    , m_xWrapRightImg(m_xBuilder->weld_image(u"afterimg"_ustr))
+    , m_xWrapRightRB(m_xBuilder->weld_radio_button(u"after"_ustr))
+    , m_xWrapParallelImg(m_xBuilder->weld_image(u"parallelimg"_ustr))
+    , m_xWrapParallelRB(m_xBuilder->weld_radio_button(u"parallel"_ustr))
+    , m_xWrapThroughImg(m_xBuilder->weld_image(u"throughimg"_ustr))
+    , m_xWrapThroughRB(m_xBuilder->weld_radio_button(u"through"_ustr))
+    , m_xIdealWrapImg(m_xBuilder->weld_image(u"optimalimg"_ustr))
+    , m_xIdealWrapRB(m_xBuilder->weld_radio_button(u"optimal"_ustr))
+    , m_xLeftMarginED(m_xBuilder->weld_metric_spin_button(u"left"_ustr, FieldUnit::CM))
+    , m_xRightMarginED(m_xBuilder->weld_metric_spin_button(u"right"_ustr, FieldUnit::CM))
+    , m_xTopMarginED(m_xBuilder->weld_metric_spin_button(u"top"_ustr, FieldUnit::CM))
+    , m_xBottomMarginED(m_xBuilder->weld_metric_spin_button(u"bottom"_ustr, FieldUnit::CM))
+    , m_xWrapAnchorOnlyCB(m_xBuilder->weld_check_button(u"anchoronly"_ustr))
+    , m_xWrapTransparentCB(m_xBuilder->weld_check_button(u"transparent"_ustr))
+    , m_xWrapOutlineCB(m_xBuilder->weld_check_button(u"outline"_ustr))
+    , m_xWrapOutsideCB(m_xBuilder->weld_check_button(u"outside"_ustr))
+    , m_xAllowOverlapCB(m_xBuilder->weld_check_button(u"allowoverlap"_ustr))
 {
     SetExchangeSupport();
 
@@ -240,8 +241,8 @@ void SwWrapTabPage::Reset(const SfxItemSet *rSet)
     const SvxLRSpaceItem& rLR = rSet->Get(RES_LR_SPACE);
 
     // gap to text
-    m_xLeftMarginED->set_value(m_xLeftMarginED->normalize(rLR.GetLeft()), FieldUnit::TWIP);
-    m_xRightMarginED->set_value(m_xRightMarginED->normalize(rLR.GetRight()), FieldUnit::TWIP);
+    m_xLeftMarginED->set_value(m_xLeftMarginED->normalize(rLR.ResolveLeft({})), FieldUnit::TWIP);
+    m_xRightMarginED->set_value(m_xRightMarginED->normalize(rLR.ResolveRight({})), FieldUnit::TWIP);
     m_xTopMarginED->set_value(m_xTopMarginED->normalize(rUL.GetUpper()), FieldUnit::TWIP);
     m_xBottomMarginED->set_value(m_xBottomMarginED->normalize(rUL.GetLower()), FieldUnit::TWIP);
 
@@ -336,8 +337,10 @@ bool SwWrapTabPage::FillItemSet(SfxItemSet *rSet)
     bool bRightMod = m_xRightMarginED->get_value_changed_from_saved();
 
     SvxLRSpaceItem aLR( RES_LR_SPACE );
-    aLR.SetLeft(o3tl::narrowing<sal_uInt16>(m_xLeftMarginED->denormalize(m_xLeftMarginED->get_value(FieldUnit::TWIP))));
-    aLR.SetRight(o3tl::narrowing<sal_uInt16>(m_xRightMarginED->denormalize(m_xRightMarginED->get_value(FieldUnit::TWIP))));
+    aLR.SetLeft(SvxIndentValue::twips(o3tl::narrowing<sal_uInt16>(
+        m_xLeftMarginED->denormalize(m_xLeftMarginED->get_value(FieldUnit::TWIP)))));
+    aLR.SetRight(SvxIndentValue::twips(o3tl::narrowing<sal_uInt16>(
+        m_xRightMarginED->denormalize(m_xRightMarginED->get_value(FieldUnit::TWIP)))));
 
     if ( bLeftMod || bRightMod )
     {

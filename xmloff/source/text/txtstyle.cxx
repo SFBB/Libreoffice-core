@@ -42,7 +42,6 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::style;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::beans;
 using namespace ::xmloff::token;
 
@@ -119,7 +118,7 @@ void XMLTextParagraphExport::exportTextStyles( bool bUsed, bool bProg )
     Reference < lang::XMultiServiceFactory > xFactory (GetExport().GetModel(), UNO_QUERY);
     if (xFactory.is())
     {
-        Reference < XPropertySet > xPropSet (xFactory->createInstance ( "com.sun.star.text.Defaults" ), UNO_QUERY);
+        Reference < XPropertySet > xPropSet (xFactory->createInstance ( u"com.sun.star.text.Defaults"_ustr ), UNO_QUERY);
         if (xPropSet.is())
         {
             exportDefaultStyle( xPropSet, GetXMLToken(XML_PARAGRAPH), GetParaPropMapper());
@@ -141,13 +140,13 @@ void XMLTextParagraphExport::exportTextStyles( bool bUsed, bool bProg )
                     GetExport() ) );
         }
     }
-    exportStyleFamily( "ParagraphStyles", GetXMLToken(XML_PARAGRAPH), GetParaPropMapper(),
+    exportStyleFamily( u"ParagraphStyles"_ustr, GetXMLToken(XML_PARAGRAPH), GetParaPropMapper(),
                        bUsed, XmlStyleFamily::TEXT_PARAGRAPH);
-    exportStyleFamily( "CharacterStyles", GetXMLToken(XML_TEXT), GetTextPropMapper(),
+    exportStyleFamily( u"CharacterStyles"_ustr, GetXMLToken(XML_TEXT), GetTextPropMapper(),
                        bUsed, XmlStyleFamily::TEXT_TEXT );
     // get shape export to make sure the frame family is added correctly.
     GetExport().GetShapeExport();
-    exportStyleFamily( "FrameStyles", XML_STYLE_FAMILY_SD_GRAPHICS_NAME, m_xFramePropMapper,
+    exportStyleFamily( u"FrameStyles"_ustr, XML_STYLE_FAMILY_SD_GRAPHICS_NAME, m_xFramePropMapper,
                        bUsed, XmlStyleFamily::TEXT_FRAME);
     exportNumStyles( bUsed );
     if( !IsBlockMode() )

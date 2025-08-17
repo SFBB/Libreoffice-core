@@ -50,7 +50,6 @@ namespace oox::core {
 
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::graphic;
 using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::lang;
@@ -152,7 +151,6 @@ struct FilterBaseImpl
     Reference< XInputStream >           mxInStream;
     Reference< XStream >                mxOutStream;
     Reference< XStatusIndicator >       mxStatusIndicator;
-    Reference< XInteractionHandler >    mxInteractionHandler;
     Reference< XShape >                 mxParentShape;
 
     bool mbExportVBA;
@@ -386,14 +384,13 @@ bool FilterBase::importBinaryData( StreamDataSequence & orDataSeq, const OUStrin
         return false;
 
     // try to open the stream (this may fail - do not assert)
-    BinaryXInputStream aInStrm( openInputStream( rStreamName ), true );
-    if( aInStrm.isEof() )
+    Reference<XInputStream> xInStream = openInputStream( rStreamName );
+    if (!xInStream)
         return false;
 
     // copy the entire stream to the passed sequence
-    SequenceOutputStream aOutStrm( orDataSeq );
-    aInStrm.copyToStream( aOutStrm );
-    return true;
+    sal_Int32 nBytesRead = xInStream->readBytes( orDataSeq, SAL_MAX_INT32);
+    return nBytesRead != -1 && nBytesRead != 0;
 }
 
 // com.sun.star.lang.XServiceInfo interface
@@ -405,7 +402,7 @@ sal_Bool SAL_CALL FilterBase::supportsService( const OUString& rServiceName )
 
 Sequence< OUString > SAL_CALL FilterBase::getSupportedServiceNames()
 {
-    return { "com.sun.star.document.ImportFilter", "com.sun.star.document.ExportFilter" };
+    return { u"com.sun.star.document.ImportFilter"_ustr, u"com.sun.star.document.ExportFilter"_ustr };
 }
 
 // com.sun.star.lang.XInitialization interface
@@ -425,7 +422,7 @@ void SAL_CALL FilterBase::initialize( const Sequence< Any >& rArgs )
 
     Sequence<css::beans::PropertyValue> aSeq;
     rArgs[0] >>= aSeq;
-    for (const auto& rVal : std::as_const(aSeq))
+    for (const auto& rVal : aSeq)
     {
         if (rVal.Name == "UserData")
         {
@@ -492,7 +489,7 @@ sal_Bool SAL_CALL FilterBase::filter( const Sequence< PropertyValue >& rMediaDes
                 if( mxImpl->mxOutStream.is() )
                 {
                     mxImpl->mxStorage = implCreateStorage( mxImpl->mxOutStream );
-                    bRet = mxImpl->mxStorage && exportDocument() && implFinalizeExport( getMediaDescriptor() );
+                    bRet = mxImpl->mxStorage && mxImpl->mxStorage->isStorage() && exportDocument() && implFinalizeExport( getMediaDescriptor() );
                 }
             break;
         }
@@ -551,22 +548,21 @@ void FilterBase::setMediaDescriptor( const Sequence< PropertyValue >& rMediaDesc
     mxImpl->maFileUrl = mxImpl->maMediaDesc.getUnpackedValueOrDefault( MediaDescriptor::PROP_URL, OUString() );
     mxImpl->mxTargetFrame = mxImpl->maMediaDesc.getUnpackedValueOrDefault( MediaDescriptor::PROP_FRAME, Reference< XFrame >() );
     mxImpl->mxStatusIndicator = mxImpl->maMediaDesc.getUnpackedValueOrDefault( MediaDescriptor::PROP_STATUSINDICATOR, Reference< XStatusIndicator >() );
-    mxImpl->mxInteractionHandler = mxImpl->maMediaDesc.getUnpackedValueOrDefault( MediaDescriptor::PROP_INTERACTIONHANDLER, Reference< XInteractionHandler >() );
-    mxImpl->mxParentShape = mxImpl->maMediaDesc.getUnpackedValueOrDefault( "ParentShape", mxImpl->mxParentShape );
-    mxImpl->maFilterData = mxImpl->maMediaDesc.getUnpackedValueOrDefault( "FilterData", Sequence< PropertyValue >() );
+    mxImpl->mxParentShape = mxImpl->maMediaDesc.getUnpackedValueOrDefault( u"ParentShape"_ustr, mxImpl->mxParentShape );
+    mxImpl->maFilterData = mxImpl->maMediaDesc.getUnpackedValueOrDefault( u"FilterData"_ustr, Sequence< PropertyValue >() );
 
     // Check for ISO OOXML
-    OUString sFilterName = mxImpl->maMediaDesc.getUnpackedValueOrDefault( "FilterName", OUString() );
+    OUString sFilterName = mxImpl->maMediaDesc.getUnpackedValueOrDefault( u"FilterName"_ustr, OUString() );
     try
     {
         Reference<XMultiServiceFactory> xFactory(getComponentContext()->getServiceManager(), UNO_QUERY_THROW);
-        Reference<XNameAccess> xFilters(xFactory->createInstance("com.sun.star.document.FilterFactory" ), UNO_QUERY_THROW );
+        Reference<XNameAccess> xFilters(xFactory->createInstance(u"com.sun.star.document.FilterFactory"_ustr ), UNO_QUERY_THROW );
         Any aValues = xFilters->getByName( sFilterName );
         Sequence<PropertyValue > aPropSeq;
         aValues >>= aPropSeq;
         SequenceAsHashMap aProps( aPropSeq );
 
-        sal_Int32 nVersion = aProps.getUnpackedValueOrDefault( "FileFormatVersion", sal_Int32( 0 ) );
+        sal_Int32 nVersion = aProps.getUnpackedValueOrDefault( u"FileFormatVersion"_ustr, sal_Int32( 0 ) );
         mxImpl->meVersion = OoxmlVersion( nVersion );
     }
     catch ( const Exception& )

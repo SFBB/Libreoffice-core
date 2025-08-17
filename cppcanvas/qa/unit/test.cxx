@@ -84,13 +84,12 @@ CPPUNIT_TEST_FIXTURE(CanvasTest, testComposite)
     uno::Reference<rendering::XBitmapCanvas> xBitmapCanvas(xBitmap, uno::UNO_QUERY);
     CPPUNIT_ASSERT(xBitmapCanvas.is());
 
-    BitmapEx aBitmapEx;
+    Bitmap aBitmap;
     {
         // clear the canvas and basic sanity check ...
         xBitmapCanvas->clear();
-        CPPUNIT_ASSERT(aBitmapEx.Create(xBitmapCanvas, aSize));
-        CPPUNIT_ASSERT(aBitmapEx.IsAlpha());
-        CPPUNIT_ASSERT(!aBitmapEx.GetAlphaMask().IsEmpty());
+        CPPUNIT_ASSERT(aBitmap.Create(xBitmapCanvas, aSize));
+        CPPUNIT_ASSERT(aBitmap.HasAlpha());
     }
 
     {
@@ -129,8 +128,8 @@ CPPUNIT_TEST_FIXTURE(CanvasTest, testTdf155810)
         pDev->GetTextArray(aText, &aDXArray);
 
         auto nKashida = 200;
-        aDXArray.set(0, aDXArray[0] + nKashida);
-        aDXArray.set(2, aDXArray[2] + nKashida);
+        aDXArray[0] += nKashida;
+        aDXArray[2] += nKashida;
         aKashidaArray = { true, false, true, false };
 
         pDev->DrawTextArray(Point(0, 0), aText, aDXArray, aKashidaArray, 0, -1);

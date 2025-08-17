@@ -21,24 +21,17 @@
 #include <cassert>
 #include <memory>
 
-#include <boost/core/noinit_adaptor.hpp>
 
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/XUnoTunnel.hpp>
 #include <com/sun/star/io/IOException.hpp>
-#include <com/sun/star/io/XStream.hpp>
-#include <com/sun/star/io/XSeekableInputStream.hpp>
-#include <com/sun/star/io/XTruncate.hpp>
 //#include <com/sun/star/uno/XComponentContext.hpp>
-#include <comphelper/bytereader.hxx>
-#include <cppuhelper/implbase.hxx>
+#include <comphelper/memorystream.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <o3tl/safeint.hxx>
 #include <osl/diagnose.h>
 
 #include <string.h>
-#include <vector>
 
 namespace com::sun::star::uno { class XComponentContext; }
 
@@ -47,58 +40,10 @@ using ::cppu::WeakImplHelper;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
-using namespace ::osl;
 
 namespace comphelper
 {
 
-namespace {
-
-class UNOMemoryStream :
-    public WeakImplHelper<XServiceInfo, XStream, XSeekableInputStream, XOutputStream, XTruncate>,
-    public comphelper::ByteWriter
-{
-public:
-    UNOMemoryStream();
-
-    // XServiceInfo
-    virtual OUString SAL_CALL getImplementationName() override;
-    virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
-    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
-
-    // XStream
-    virtual Reference< XInputStream > SAL_CALL getInputStream(  ) override;
-    virtual Reference< XOutputStream > SAL_CALL getOutputStream(  ) override;
-
-    // XInputStream
-    virtual sal_Int32 SAL_CALL readBytes( Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead ) override;
-    virtual sal_Int32 SAL_CALL readSomeBytes( Sequence< sal_Int8 >& aData, sal_Int32 nMaxBytesToRead ) override;
-    virtual void SAL_CALL skipBytes( sal_Int32 nBytesToSkip ) override;
-    virtual sal_Int32 SAL_CALL available() override;
-    virtual void SAL_CALL closeInput() override;
-
-    // XSeekable
-    virtual void SAL_CALL seek( sal_Int64 location ) override;
-    virtual sal_Int64 SAL_CALL getPosition() override;
-    virtual sal_Int64 SAL_CALL getLength() override;
-
-    // XOutputStream
-    virtual void SAL_CALL writeBytes( const Sequence< sal_Int8 >& aData ) override;
-    virtual void SAL_CALL flush() override;
-    virtual void SAL_CALL closeOutput() override;
-
-    // XTruncate
-    virtual void SAL_CALL truncate() override;
-
-    // comphelper::ByteWriter
-    virtual void writeBytes(const sal_Int8* aData, sal_Int32 nBytesToWrite) override;
-
-private:
-    std::vector< sal_Int8, boost::noinit_adaptor<std::allocator<sal_Int8>> > maData;
-    sal_Int32 mnCursor;
-};
-
-}
 
 UNOMemoryStream::UNOMemoryStream()
 : mnCursor(0)
@@ -109,7 +54,7 @@ UNOMemoryStream::UNOMemoryStream()
 // XServiceInfo
 OUString SAL_CALL UNOMemoryStream::getImplementationName()
 {
-    return "com.sun.star.comp.MemoryStream";
+    return u"com.sun.star.comp.MemoryStream"_ustr;
 }
 
 sal_Bool SAL_CALL UNOMemoryStream::supportsService(const OUString& ServiceName)
@@ -119,7 +64,7 @@ sal_Bool SAL_CALL UNOMemoryStream::supportsService(const OUString& ServiceName)
 
 css::uno::Sequence<OUString> SAL_CALL UNOMemoryStream::getSupportedServiceNames()
 {
-    return { "com.sun.star.comp.MemoryStream" };
+    return { u"com.sun.star.comp.MemoryStream"_ustr };
 }
 
 // XStream
@@ -137,7 +82,7 @@ Reference< XOutputStream > SAL_CALL UNOMemoryStream::getOutputStream(  )
 sal_Int32 SAL_CALL UNOMemoryStream::readBytes( Sequence< sal_Int8 >& aData, sal_Int32 nBytesToRead )
 {
     if( nBytesToRead < 0 )
-        throw IOException("nBytesToRead < 0");
+        throw IOException(u"nBytesToRead < 0"_ustr);
 
     nBytesToRead = std::min( nBytesToRead, available() );
     aData.realloc( nBytesToRead );
@@ -154,6 +99,26 @@ sal_Int32 SAL_CALL UNOMemoryStream::readBytes( Sequence< sal_Int8 >& aData, sal_
     return nBytesToRead;
 }
 
+// ByteReader
+sal_Int32 UNOMemoryStream::readSomeBytes( sal_Int8* aData, sal_Int32 nBytesToRead )
+{
+    if( nBytesToRead < 0 )
+        throw IOException(u"nBytesToRead < 0"_ustr);
+
+    nBytesToRead = std::min( nBytesToRead, available() );
+
+    if( nBytesToRead )
+    {
+        sal_Int8* pData = &(*maData.begin());
+        sal_Int8* pCursor = &(pData[mnCursor]);
+        memcpy( aData, pCursor, nBytesToRead );
+
+        mnCursor += nBytesToRead;
+    }
+
+    return nBytesToRead;
+}
+
 sal_Int32 SAL_CALL UNOMemoryStream::readSomeBytes( Sequence< sal_Int8 >& aData, sal_Int32 nMaxBytesToRead )
 {
     return readBytes( aData, nMaxBytesToRead );
@@ -162,7 +127,7 @@ sal_Int32 SAL_CALL UNOMemoryStream::readSomeBytes( Sequence< sal_Int8 >& aData, 
 void SAL_CALL UNOMemoryStream::skipBytes( sal_Int32 nBytesToSkip )
 {
     if( nBytesToSkip < 0 )
-        throw IOException("nBytesToSkip < 0");
+        throw IOException(u"nBytesToSkip < 0"_ustr);
 
     mnCursor += std::min( nBytesToSkip, available() );
 }
@@ -181,7 +146,7 @@ void SAL_CALL UNOMemoryStream::closeInput()
 void SAL_CALL UNOMemoryStream::seek( sal_Int64 location )
 {
     if( (location < 0) || (location > SAL_MAX_INT32) )
-        throw IllegalArgumentException("this implementation does not support more than 2GB!", static_cast<OWeakObject*>(this), 0 );
+        throw IllegalArgumentException(u"this implementation does not support more than 2GB!"_ustr, static_cast<OWeakObject*>(this), 0 );
 
     // seek operation should be able to resize the stream
     if ( o3tl::make_unsigned(location) > maData.size() )
@@ -216,7 +181,7 @@ void UNOMemoryStream::writeBytes( const sal_Int8* pInData, sal_Int32 nBytesToWri
     if( nNewSize > SAL_MAX_INT32 )
     {
         OSL_ASSERT(false);
-        throw IOException("this implementation does not support more than 2GB!", static_cast<OWeakObject*>(this) );
+        throw IOException(u"this implementation does not support more than 2GB!"_ustr, static_cast<OWeakObject*>(this) );
     }
 
     if( o3tl::make_unsigned( nNewSize ) > maData.size() )

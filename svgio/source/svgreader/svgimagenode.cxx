@@ -271,12 +271,12 @@ namespace svgio::svgreader
                 // calculate centered unit size
                 const double fAspectRatio = static_cast<double>(aBitmapEx.GetSizePixel().Width()) / static_cast<double>(aBitmapEx.GetSizePixel().Height());
 
-                if(basegfx::fTools::equal(fAspectRatio, 0.0))
+                if (basegfx::fTools::equalZero(fAspectRatio))
                 {
                     // use unit range
                     aViewBox = basegfx::B2DRange(0.0, 0.0, 1.0, 1.0);
                 }
-                else if(basegfx::fTools::more(fAspectRatio, 0.0))
+                else if (fAspectRatio > 0.0)
                 {
                     // width bigger height
                     const double fHalfHeight((1.0 / fAspectRatio) * 0.5);
@@ -301,7 +301,7 @@ namespace svgio::svgreader
                 // as transformation to map the picture data correctly
                 aNewTarget.resize(1);
                 aNewTarget[0] = new drawinglayer::primitive2d::BitmapPrimitive2D(
-                    aBitmapEx,
+                    Bitmap(aBitmapEx),
                     basegfx::utils::createScaleTranslateB2DHomMatrix(
                         aViewBox.getRange(),
                         aViewBox.getMinimum()));

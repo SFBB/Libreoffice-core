@@ -160,8 +160,7 @@ void setSuffixCell(
         return;
     }
 
-    EditEngine aEngine(rDoc.GetEnginePool());
-    aEngine.SetEditTextObjectPool(rDoc.GetEditPool());
+    EditEngine aEngine(rDoc.GetEditEnginePool());
 
     SfxItemSet aAttr = aEngine.GetEmptyItemSet();
     aAttr.Put( SvxEscapementItem( SvxEscapement::Superscript, EE_CHAR_ESCAPEMENT));
@@ -279,9 +278,10 @@ void ScTable::FillAnalyse( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
         for (SCSIZE i = 0; i < nCount; ++i)
         {
             const ScPatternAttr* pPattern = GetPattern(nColCurr, nRowCurr);
+            const ScMergeFlagAttr* pMergeFlagItem = nullptr;
             bool bOverlapped
-                = pPattern->GetItemSet().GetItemState(ATTR_MERGE_FLAG, false) == SfxItemState::SET
-                  && pPattern->GetItem(ATTR_MERGE_FLAG).IsOverlapped();
+                = pPattern->GetItemSet().GetItemState(ATTR_MERGE_FLAG, false, &pMergeFlagItem) == SfxItemState::SET
+                  && pMergeFlagItem->IsOverlapped();
 
             if (bOverlapped)
                 bHasOverlappedCells = true;
@@ -447,7 +447,7 @@ void ScTable::FillAnalyse( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
                 OUString aStr = GetString(nColCurr, nRowCurr );
                 OUString aStr2;
 
-                rListData = const_cast<ScUserListData*>(ScGlobal::GetUserList()->GetData(aStr));
+                rListData = const_cast<ScUserListData*>(ScGlobal::GetUserList().GetData(aStr));
                 if (rListData)
                 {
                     bool bMatchCase = false;
@@ -495,7 +495,7 @@ void ScTable::FillAnalyse( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
                         CellType eType = aCell.getType();
                         if (eType == CELLTYPE_STRING || eType == CELLTYPE_EDIT)
                         {
-                            aStr2 = aCell.getString(&rDocument);
+                            aStr2 = aCell.getString(rDocument);
                             nFlag2 = lcl_DecompValueString(aStr2, nVal2, &rMinDigits);
                             if (nFlag1 == nFlag2 && aStr == aStr2)
                             {
@@ -684,7 +684,7 @@ void ScTable::FillAnalyse( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
     {
         OUString aStr = GetString(nCol, nRow);
 
-        rListData = const_cast<ScUserListData*>(ScGlobal::GetUserList()->GetData(aStr));
+        rListData = const_cast<ScUserListData*>(ScGlobal::GetUserList().GetData(aStr));
         if (rListData)
         {
             bool bMatchCase = false;
@@ -739,7 +739,7 @@ void ScTable::FillAnalyse( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
                         CellType eType = aCell.getType();
                         if ( eType == CELLTYPE_STRING || eType == CELLTYPE_EDIT )
                         {
-                            aStr = aCell.getString(&rDocument);
+                            aStr = aCell.getString(rDocument);
                             nFlag2 = lcl_DecompValueString( aStr, nVal2, &rMinDigits );
                             if ( nFlag1 == nFlag2 )
                             {
@@ -987,11 +987,10 @@ void ScTable::FillAuto( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
                         if ( nOldValue != nOldValueMerge )
                         {
                             pNewPattern.reset(new ScPatternAttr(*pSrcPattern));
-                            SfxItemSet& rNewSet = pNewPattern->GetItemSet();
-                            if ( nOldValueMerge == ScMF::NONE )
-                                rNewSet.ClearItem(ATTR_MERGE_FLAG);
+                            if (nOldValueMerge == ScMF::NONE)
+                                pNewPattern->ItemSetClearItem(ATTR_MERGE_FLAG);
                             else
-                                rNewSet.Put(ScMergeFlagAttr(nOldValueMerge));
+                                pNewPattern->ItemSetPut(ScMergeFlagAttr(nOldValueMerge));
                         }
                         else
                             pNewPattern.reset();
@@ -1006,7 +1005,7 @@ void ScTable::FillAuto( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
                 if ( bVertical && nISrcStart == nISrcEnd && !bHasFiltered )
                 {
                     //  set all attributes at once (en bloc)
-                    if (pNewPattern || !SfxPoolItem::areSame(pSrcPattern, rDocument.GetDefPattern()))
+                    if (pNewPattern || !pSrcPattern->isDefault())
                     {
                         //  Default is already present (DeleteArea)
                         SCROW nY1 = static_cast<SCROW>(std::min( nIStart, nIEnd ));
@@ -1037,7 +1036,7 @@ void ScTable::FillAuto( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
                     DeleteArea(static_cast<SCCOL>(nCol), static_cast<SCROW>(nRow),
                             static_cast<SCCOL>(nCol), static_cast<SCROW>(nRow), InsertDeleteFlags::AUTOFILL);
 
-                if ( !SfxPoolItem::areSame(pSrcPattern, aCol[nCol].GetPattern( static_cast<SCROW>(nRow) ) ) )
+                if ( !ScPatternAttr::areSame(pSrcPattern, aCol[nCol].GetPattern( static_cast<SCROW>(nRow) ) ) )
                 {
                     // Transfer template too
                     //TODO: Merge ApplyPattern to AttrArray ??
@@ -1254,7 +1253,7 @@ void  ScTable::FillSparkline(bool bVertical, SCCOLROW nFixed,
     {
         auto pSparkline = bVertical ? GetSparkline(nFixed, nCurrent) : GetSparkline(nCurrent, nFixed);
         bHasSparklines = bHasSparklines || pSparkline;
-        aSparklineSeries.push_back(pSparkline);
+        aSparklineSeries.push_back(std::move(pSparkline));
     }
 
     if (bHasSparklines)
@@ -1298,7 +1297,7 @@ void ScTable::GetBackColorArea(SCCOL& rStartCol, SCROW& /*rStartRow*/,
                                SCCOL& rEndCol, SCROW& rEndRow ) const
 {
     bool bExtend;
-    const SvxBrushItem* pDefBackground = &rDocument.GetPool()->GetDefaultItem(ATTR_BACKGROUND);
+    const SvxBrushItem* pDefBackground = &rDocument.GetPool()->GetUserOrPoolDefaultItem(ATTR_BACKGROUND);
 
     rStartCol = std::min<SCCOL>(rStartCol, aCol.size() - 1);
     rEndCol = std::min<SCCOL>(rEndCol, aCol.size() - 1);
@@ -1314,7 +1313,7 @@ void ScTable::GetBackColorArea(SCCOL& rStartCol, SCROW& /*rStartRow*/,
                 const ScPatternAttr* pPattern = GetColumnData(nCol).GetPattern(rEndRow + 1);
                 const SvxBrushItem* pBackground = &pPattern->GetItem(ATTR_BACKGROUND);
                 if (!pPattern->GetItem(ATTR_CONDITIONAL).GetCondFormatData().empty() ||
-                    pBackground != pDefBackground)
+                    (pBackground->GetColor() != COL_TRANSPARENT && pBackground != pDefBackground))
                 {
                     bExtend = true;
                     break;
@@ -1466,7 +1465,7 @@ OUString ScTable::GetAutoFillPreview( const ScRange& rSource, SCCOL nEndX, SCROW
                     case CELLTYPE_STRING:
                     case CELLTYPE_EDIT:
                     {
-                        aValue = aCell.getString(&rDocument);
+                        aValue = aCell.getString(rDocument);
 
                         if ( !(nScFillModeMouseModifier & KEY_MOD1) )
                         {
@@ -1546,7 +1545,7 @@ OUString ScTable::GetAutoFillPreview( const ScRange& rSource, SCCOL nEndX, SCROW
                     case CELLTYPE_STRING:
                     case CELLTYPE_EDIT:
                     {
-                        aValue = aCell.getString(&rDocument);
+                        aValue = aCell.getString(rDocument);
                         nHeadNoneTail = lcl_DecompValueString( aValue, nVal );
                         if ( nHeadNoneTail )
                             nStart = static_cast<double>(nVal);
@@ -1807,9 +1806,9 @@ void ScTable::FillFormulaVertical(
     aCol[nCol].DeleteRanges(aSpans, InsertDeleteFlags::VALUE | InsertDeleteFlags::DATETIME | InsertDeleteFlags::STRING | InsertDeleteFlags::FORMULA | InsertDeleteFlags::OUTLINE);
     aCol[nCol].CloneFormulaCell(rSrcCell, sc::CellTextAttr(), aSpans);
 
-    auto pSet = std::make_shared<sc::ColumnBlockPositionSet>(rDocument);
-    sc::StartListeningContext aStartCxt(rDocument, pSet);
-    sc::EndListeningContext aEndCxt(rDocument, pSet);
+    auto xSet = std::make_shared<sc::ColumnBlockPositionSet>(rDocument);
+    sc::StartListeningContext aStartCxt(rDocument, xSet);
+    sc::EndListeningContext aEndCxt(rDocument, std::move(xSet));
 
     SCROW nStartRow = aSpans.front().mnRow1;
     SCROW nEndRow = aSpans.back().mnRow2;
@@ -1990,7 +1989,7 @@ void ScTable::FillAutoSimple(
                             if (aSrcCell.getType() == CELLTYPE_STRING)
                                 aValue = aSrcCell.getSharedString()->getString();
                             else
-                                aValue = ScEditUtil::GetString(*aSrcCell.getEditText(), &rDocument);
+                                aValue = ScEditUtil::GetString(*aSrcCell.getEditText(), rDocument);
                             if ( !(nScFillModeMouseModifier & KEY_MOD1) && !bHasFiltered )
                             {
                                 nCellDigits = 0;    // look at each source cell individually
@@ -2543,7 +2542,7 @@ void ScTable::FillSeries( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2,
                 if (eCellType == CELLTYPE_STRING)
                     aValue = aSrcCell.getSharedString()->getString();
                 else
-                    aValue = ScEditUtil::GetString(*aSrcCell.getEditText(), &rDocument);
+                    aValue = ScEditUtil::GetString(*aSrcCell.getEditText(), rDocument);
                 sal_Int32 nStringValue;
                 sal_uInt16 nMinDigits = nArgMinDigits;
                 short nHeadNoneTail = lcl_DecompValueString( aValue, nStringValue, &nMinDigits );
@@ -2684,7 +2683,7 @@ void ScTable::AutoFormatArea(SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SC
 }
 
 void ScTable::AutoFormat( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow,
-                            sal_uInt16 nFormatNo )
+                            sal_uInt16 nFormatNo, ScProgress* pProgress )
 {
     if (!(ValidColRow(nStartCol, nStartRow) && ValidColRow(nEndCol, nEndRow)))
         return;
@@ -2697,126 +2696,222 @@ void ScTable::AutoFormat( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW
     std::unique_ptr<ScPatternAttr> pPatternAttrs[16];
     for (sal_uInt8 i = 0; i < 16; ++i)
     {
-        pPatternAttrs[i].reset(new ScPatternAttr(rDocument.GetPool()));
-        pData->FillToItemSet(i, pPatternAttrs[i]->GetItemSet(), rDocument);
+        pPatternAttrs[i].reset(new ScPatternAttr(rDocument.getCellAttributeHelper()));
+        pData->FillToItemSet(i, pPatternAttrs[i]->GetItemSetWritable(), rDocument);
     }
 
-    SCCOL nCol = nStartCol;
-    SCROW nRow = nStartRow;
-    sal_uInt16 nIndex = 0;
+    // Important special case: when the whole rows are selected. Then applying autoformat to right
+    // column individually would create all columns. In this case, assume that right column isn't
+    // needed, to allow "to the end of row" format optimization (which doesn't create columns).
+    // Keep left column in this case, because it may be pre-formatted for categories. To enable the
+    // optimization, apply uniform format row by row where possible, not column by column.
+
+    const bool isWholeRows = nStartCol == 0 && nEndCol == rDocument.MaxCol();
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Top row data indexes:
+    // 0 - left corner style
+    // 1 - odd columns style
+    // 2 - even column style
+    // 3 - right corner style
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    SCCOL startOffset = 1;
     // Left top corner
-    AutoFormatArea(nCol, nRow, nCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
+    if (pData->HasSameData(0, 1) && pData->HasSameData(0, 2))
+        startOffset = 0; // Left corner is same as the rest of the row
+    else
+        AutoFormatArea(nStartCol, nStartRow, nStartCol, nStartRow, *pPatternAttrs[0], nFormatNo);
+
+    SCCOL endOffset = 1;
+    // Right top corner: ignore when whole rows selected
+    if (isWholeRows || (pData->HasSameData(3, 1) && pData->HasSameData(3, 2)))
+        endOffset = 0; // Right corner is same as the rest of the row (most important case)
+    else
+        AutoFormatArea(nEndCol, nStartRow, nEndCol, nStartRow, *pPatternAttrs[3], nFormatNo);
+
+    // Top row
+    if (pData->HasSameData(1, 2))
+        AutoFormatArea(nStartCol + startOffset, nStartRow, nEndCol - endOffset, nStartRow, *pPatternAttrs[1], nFormatNo);
+    else
+    {
+        sal_uInt16 nIndex = 1;
+        for (SCCOL nCol = nStartCol + startOffset; nCol <= nEndCol - endOffset; nCol++)
+        {
+            AutoFormatArea(nCol, nStartRow, nCol, nStartRow, *pPatternAttrs[nIndex], nFormatNo);
+            if (nIndex == 1)
+                nIndex = 2;
+            else
+                nIndex = 1;
+        }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Body data indexes:
+    // 4 - left column odd row style
+    // 8 - left column even row style
+    // 7 - right column odd row style
+    // 11 - right column even row style
+    // 5 - body odd column odd row style
+    // 6 - body even column odd row style
+    // 9 - body odd column even row style
+    // 10 - body even column even row style
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    startOffset = 1;
     // Left column
-    if (pData->HasSameData(4, 8))
-        AutoFormatArea(nStartCol, nStartRow + 1, nStartCol, nEndRow - 1, *pPatternAttrs[4], nFormatNo);
+    if (pData->HasSameData(4, 5) && pData->HasSameData(4, 6) && pData->HasSameData(8, 9) && pData->HasSameData(8, 10))
+        startOffset = 0; // Left column is same as the lines of the body
     else
     {
-        nIndex = 4;
-        for (nRow = nStartRow + 1; nRow < nEndRow; nRow++)
-        {
-            AutoFormatArea(nCol, nRow, nCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
-            if (nIndex == 4)
-                nIndex = 8;
-            else
-                nIndex = 4;
-        }
-    }
-    // Left bottom corner
-    nRow = nEndRow;
-    nIndex = 12;
-    AutoFormatArea(nCol, nRow, nCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
-    // Right top corner
-    nCol = nEndCol;
-    nRow = nStartRow;
-    nIndex = 3;
-    AutoFormatArea(nCol, nRow, nCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
-    // Right column
-    if (pData->HasSameData(7, 11))
-        AutoFormatArea(nEndCol, nStartRow + 1, nEndCol, nEndRow - 1, *pPatternAttrs[7], nFormatNo);
-    else
-    {
-        nIndex = 7;
-        for (nRow = nStartRow + 1; nRow < nEndRow; nRow++)
-        {
-            AutoFormatArea(nCol, nRow, nCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
-            if (nIndex == 7)
-                nIndex = 11;
-            else
-                nIndex = 7;
-        }
-    }
-    // Right bottom corner
-    nRow = nEndRow;
-    nIndex = 15;
-    AutoFormatArea(nCol, nRow, nCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
-    nRow = nStartRow;
-    nIndex = 1;
-    for (nCol = nStartCol + 1; nCol < nEndCol; nCol++)
-    {
-        AutoFormatArea(nCol, nRow, nCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
-        if (nIndex == 1)
-            nIndex = 2;
+        if (pData->HasSameData(4, 8)) // even and odd rows are same
+            AutoFormatArea(nStartCol, nStartRow + 1, nStartCol, nEndRow - 1, *pPatternAttrs[4], nFormatNo);
         else
-            nIndex = 1;
-    }
-    // Bottom row
-    nRow = nEndRow;
-    nIndex = 13;
-    for (nCol = nStartCol + 1; nCol < nEndCol; nCol++)
-    {
-        AutoFormatArea(nCol, nRow, nCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
-        if (nIndex == 13)
-            nIndex = 14;
-        else
-            nIndex = 13;
-    }
-    // Body
-    if ((pData->HasSameData(5, 6)) && (pData->HasSameData(9, 10)) && (pData->HasSameData(5, 9)))
-        AutoFormatArea(nStartCol + 1, nStartRow + 1, nEndCol-1, nEndRow - 1, *pPatternAttrs[5], nFormatNo);
-    else
-    {
-        if ((pData->HasSameData(5, 9)) && (pData->HasSameData(6, 10)))
         {
-            nIndex = 5;
-            for (nCol = nStartCol + 1; nCol < nEndCol; nCol++)
+            sal_uInt16 nIndex = 4;
+            for (SCROW nRow = nStartRow + 1; nRow < nEndRow; nRow++)
             {
-                AutoFormatArea(nCol, nStartRow + 1, nCol, nEndRow - 1, *pPatternAttrs[nIndex], nFormatNo);
-                if (nIndex == 5)
-                    nIndex = 6;
+                AutoFormatArea(nStartCol, nRow, nStartCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
+                if (nIndex == 4)
+                    nIndex = 8;
                 else
-                    nIndex = 5;
+                    nIndex = 4;
             }
         }
+    }
+
+    endOffset = 1;
+    // Right column: ignore when whole rows selected
+    if (isWholeRows || (pData->HasSameData(7, 5) && pData->HasSameData(7, 6) && pData->HasSameData(11, 9) && pData->HasSameData(11, 10)))
+        endOffset = 0; // Right column is same as the lines of the body (most important case)
+    else
+    {
+        if (pData->HasSameData(7, 11)) // even and odd rows are same
+            AutoFormatArea(nEndCol, nStartRow + 1, nEndCol, nEndRow - 1, *pPatternAttrs[7], nFormatNo);
         else
         {
-            nIndex = 5;
-            for (nCol = nStartCol + 1; nCol < nEndCol; nCol++)
+            sal_uInt16 nIndex = 7;
+            for (SCROW nRow = nStartRow + 1; nRow < nEndRow; nRow++)
             {
-                for (nRow = nStartRow + 1; nRow < nEndRow; nRow++)
-                {
-                    AutoFormatArea(nCol, nRow, nCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
-                    if ((nIndex == 5) || (nIndex == 9))
-                    {
-                        if (nIndex == 5)
-                            nIndex = 9;
-                        else
-                            nIndex = 5;
-                    }
-                    else
-                    {
-                        if (nIndex == 6)
-                            nIndex = 10;
-                        else
-                            nIndex = 6;
-                    }
-                } // for nRow
-                if ((nIndex == 5) || (nIndex == 9))
-                    nIndex = 6;
+                AutoFormatArea(nEndCol, nRow, nEndCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
+                if (nIndex == 7)
+                    nIndex = 11;
+                else
+                    nIndex = 7;
+            }
+        }
+    }
+
+    // Body
+    if (pData->HasSameData(5, 6) && pData->HasSameData(9, 10)) // Odd and even columns are same (most important case)
+    {
+        if (pData->HasSameData(5, 9)) // Everything is the same
+            AutoFormatArea(nStartCol + startOffset, nStartRow + 1, nEndCol - endOffset, nEndRow - 1, *pPatternAttrs[5], nFormatNo);
+        else // Odd and even rows differ
+        {
+            if (pProgress)
+                pProgress->SetState(1, nEndRow - nStartRow + 3); // account for elements outside the "Body" block
+            sal_uInt16 nIndex = 5;
+            for (SCROW nRow = nStartRow + 1; nRow < nEndRow; nRow++)
+            {
+                AutoFormatArea(nStartCol + startOffset, nRow, nEndCol - endOffset, nRow, *pPatternAttrs[nIndex], nFormatNo);
+                if (nIndex == 5)
+                    nIndex = 9;
                 else
                     nIndex = 5;
-            } // for nCol
-        } // if not equal Column
+                if (pProgress)
+                    pProgress->SetStateOnPercent(nRow - nStartRow + 1);
+            }
+        }
+    }
+    else if (pData->HasSameData(5, 9) && pData->HasSameData(6, 10)) // odd and even rows are same
+    {
+        if (pProgress)
+            pProgress->SetState(1, nEndCol - nStartCol + 3); // account for elements outside the "Body" block
+        sal_uInt16 nIndex = 5;
+        for (SCCOL nCol = nStartCol + startOffset; nCol <= nEndCol - endOffset; nCol++)
+        {
+            AutoFormatArea(nCol, nStartRow + 1, nCol, nEndRow - 1, *pPatternAttrs[nIndex], nFormatNo);
+            if (nIndex == 5)
+                nIndex = 6;
+            else
+                nIndex = 5;
+            if (pProgress)
+                pProgress->SetStateOnPercent(nCol - nStartCol + 1);
+        }
+    }
+    else // Everything is different
+    {
+        if (pProgress)
+            pProgress->SetState(1, nEndCol - nStartCol + 3); // account for elements outside the "Body" block
+        sal_uInt16 nIndex = 5;
+        for (SCCOL nCol = nStartCol + startOffset; nCol <= nEndCol - endOffset; nCol++)
+        {
+            for (SCROW nRow = nStartRow + 1; nRow < nEndRow; nRow++)
+            {
+                AutoFormatArea(nCol, nRow, nCol, nRow, *pPatternAttrs[nIndex], nFormatNo);
+                if ((nIndex == 5) || (nIndex == 9))
+                {
+                    if (nIndex == 5)
+                        nIndex = 9;
+                    else
+                        nIndex = 5;
+                }
+                else
+                {
+                    if (nIndex == 6)
+                        nIndex = 10;
+                    else
+                        nIndex = 6;
+                }
+            } // for nRow
+            if ((nIndex == 5) || (nIndex == 9))
+                nIndex = 6;
+            else
+                nIndex = 5;
+            if (pProgress)
+                pProgress->SetStateOnPercent(nCol - nStartCol + 1);
+
+        } // for nCol
     } // if not all equal
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Bottom row data indexes:
+    // 12 - left corner style
+    // 13 - odd columns style
+    // 14 - even column style
+    // 15 - right corner style
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    startOffset = 1;
+    // Left bottom corner
+    if (pData->HasSameData(12, 13) && pData->HasSameData(12, 14))
+        startOffset = 0;
+    else
+        AutoFormatArea(nStartCol, nEndRow, nStartCol, nEndRow, *pPatternAttrs[12], nFormatNo);
+
+    endOffset = 1;
+    // Right bottom corner: ignore when whole rows selected
+    if (isWholeRows || (pData->HasSameData(15, 13) && pData->HasSameData(15, 14)))
+        endOffset = 0;
+    else
+        AutoFormatArea(nEndCol, nEndRow, nEndCol, nEndRow, *pPatternAttrs[15], nFormatNo);
+
+    // Bottom row
+    if (pData->HasSameData(13, 14))
+        AutoFormatArea(nStartCol + startOffset, nEndRow, nEndCol - endOffset, nEndRow, *pPatternAttrs[13], nFormatNo);
+    else
+    {
+        sal_uInt16 nIndex = 13;
+        for (SCCOL nCol = nStartCol + startOffset; nCol <= nEndCol - endOffset; nCol++)
+        {
+            AutoFormatArea(nCol, nEndRow, nCol, nEndRow, *pPatternAttrs[nIndex], nFormatNo);
+            if (nIndex == 13)
+                nIndex = 14;
+            else
+                nIndex = 13;
+        }
+    }
 }
 
 void ScTable::GetAutoFormatAttr(SCCOL nCol, SCROW nRow, sal_uInt16 nIndex, ScAutoFormatData& rData)
@@ -2967,7 +3062,7 @@ void ScTable::GetAutoFormatData(SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol,
 void ScTable::SetError( SCCOL nCol, SCROW nRow, FormulaError nError)
 {
     if (ValidColRow(nCol, nRow))
-        aCol[nCol].SetError( nRow, nError );
+        CreateColumnIfNotExists(nCol).SetError(nRow, nError);
 }
 
 void ScTable::UpdateInsertTabAbs(SCTAB nTable)

@@ -35,6 +35,7 @@ void ScFormulaOptions::SetDefaults()
     mbWriteCalcConfig = true;
     meOOXMLRecalc = RECALC_ASK;
     meODFRecalc = RECALC_ASK;
+    meReCalcOptiRowHeights = RECALC_ASK;
 
     // unspecified means use the current formula syntax.
     aCalcConfig.reset();
@@ -116,7 +117,8 @@ bool ScFormulaOptions::operator==( const ScFormulaOptions& rOpt ) const
         && aFormulaSepArrayRow == rOpt.aFormulaSepArrayRow
         && aFormulaSepArrayCol == rOpt.aFormulaSepArrayCol
         && meOOXMLRecalc       == rOpt.meOOXMLRecalc
-        && meODFRecalc         == rOpt.meODFRecalc;
+        && meODFRecalc         == rOpt.meODFRecalc
+        && meReCalcOptiRowHeights == rOpt.meReCalcOptiRowHeights;
 }
 
 bool ScFormulaOptions::operator!=( const ScFormulaOptions& rOpt ) const
@@ -159,35 +161,37 @@ constexpr OUStringLiteral CFGPATH_FORMULA = u"Office.Calc/Formula";
 #define SCFORMULAOPT_EMPTY_OUSTRING_AS_ZERO 7
 #define SCFORMULAOPT_OOXML_RECALC         8
 #define SCFORMULAOPT_ODF_RECALC           9
-#define SCFORMULAOPT_OPENCL_AUTOSELECT   10
-#define SCFORMULAOPT_OPENCL_DEVICE       11
-#define SCFORMULAOPT_OPENCL_SUBSET_ONLY  12
-#define SCFORMULAOPT_OPENCL_MIN_SIZE     13
-#define SCFORMULAOPT_OPENCL_SUBSET_OPS   14
+#define SCFORMULAOPT_ROW_HEIGHT_RECALC   10
+#define SCFORMULAOPT_OPENCL_AUTOSELECT   11
+#define SCFORMULAOPT_OPENCL_DEVICE       12
+#define SCFORMULAOPT_OPENCL_SUBSET_ONLY  13
+#define SCFORMULAOPT_OPENCL_MIN_SIZE     14
+#define SCFORMULAOPT_OPENCL_SUBSET_OPS   15
 
 Sequence<OUString> ScFormulaCfg::GetPropertyNames()
 {
-    return {"Syntax/Grammar",                       // SCFORMULAOPT_GRAMMAR
-            "Syntax/EnglishFunctionName",           // SCFORMULAOPT_ENGLISH_FUNCNAME
-            "Syntax/SeparatorArg",                  // SCFORMULAOPT_SEP_ARG
-            "Syntax/SeparatorArrayRow",             // SCFORMULAOPT_SEP_ARRAY_ROW
-            "Syntax/SeparatorArrayCol",             // SCFORMULAOPT_SEP_ARRAY_COL
-            "Syntax/StringRefAddressSyntax",        // SCFORMULAOPT_STRING_REF_SYNTAX
-            "Syntax/StringConversion",              // SCFORMULAOPT_STRING_CONVERSION
-            "Syntax/EmptyStringAsZero",             // SCFORMULAOPT_EMPTY_OUSTRING_AS_ZERO
-            "Load/OOXMLRecalcMode",                 // SCFORMULAOPT_OOXML_RECALC
-            "Load/ODFRecalcMode",                   // SCFORMULAOPT_ODF_RECALC
-            "Calculation/OpenCLAutoSelect",         // SCFORMULAOPT_OPENCL_AUTOSELECT
-            "Calculation/OpenCLDevice",             // SCFORMULAOPT_OPENCL_DEVICE
-            "Calculation/OpenCLSubsetOnly",         // SCFORMULAOPT_OPENCL_SUBSET_ONLY
-            "Calculation/OpenCLMinimumDataSize",    // SCFORMULAOPT_OPENCL_MIN_SIZE
-            "Calculation/OpenCLSubsetOpCodes"};     // SCFORMULAOPT_OPENCL_SUBSET_OPS
+    return {u"Syntax/Grammar"_ustr,                       // SCFORMULAOPT_GRAMMAR
+            u"Syntax/EnglishFunctionName"_ustr,           // SCFORMULAOPT_ENGLISH_FUNCNAME
+            u"Syntax/SeparatorArg"_ustr,                  // SCFORMULAOPT_SEP_ARG
+            u"Syntax/SeparatorArrayRow"_ustr,             // SCFORMULAOPT_SEP_ARRAY_ROW
+            u"Syntax/SeparatorArrayCol"_ustr,             // SCFORMULAOPT_SEP_ARRAY_COL
+            u"Syntax/StringRefAddressSyntax"_ustr,        // SCFORMULAOPT_STRING_REF_SYNTAX
+            u"Syntax/StringConversion"_ustr,              // SCFORMULAOPT_STRING_CONVERSION
+            u"Syntax/EmptyStringAsZero"_ustr,             // SCFORMULAOPT_EMPTY_OUSTRING_AS_ZERO
+            u"Load/OOXMLRecalcMode"_ustr,                 // SCFORMULAOPT_OOXML_RECALC
+            u"Load/ODFRecalcMode"_ustr,                   // SCFORMULAOPT_ODF_RECALC
+            u"Load/RecalcOptimalRowHeightMode"_ustr,      // SCFORMULAOPT_ROW_HEIGHT_RECALC
+            u"Calculation/OpenCLAutoSelect"_ustr,         // SCFORMULAOPT_OPENCL_AUTOSELECT
+            u"Calculation/OpenCLDevice"_ustr,             // SCFORMULAOPT_OPENCL_DEVICE
+            u"Calculation/OpenCLSubsetOnly"_ustr,         // SCFORMULAOPT_OPENCL_SUBSET_ONLY
+            u"Calculation/OpenCLMinimumDataSize"_ustr,    // SCFORMULAOPT_OPENCL_MIN_SIZE
+            u"Calculation/OpenCLSubsetOpCodes"_ustr};     // SCFORMULAOPT_OPENCL_SUBSET_OPS
 }
 
 ScFormulaCfg::PropsToIds ScFormulaCfg::GetPropNamesToId()
 {
     Sequence<OUString> aPropNames = GetPropertyNames();
-    static sal_uInt16 aVals[] = {
+    static const sal_uInt16 aVals[] = {
         SCFORMULAOPT_GRAMMAR,
         SCFORMULAOPT_ENGLISH_FUNCNAME,
         SCFORMULAOPT_SEP_ARG,
@@ -198,6 +202,7 @@ ScFormulaCfg::PropsToIds ScFormulaCfg::GetPropNamesToId()
         SCFORMULAOPT_EMPTY_OUSTRING_AS_ZERO,
         SCFORMULAOPT_OOXML_RECALC,
         SCFORMULAOPT_ODF_RECALC,
+        SCFORMULAOPT_ROW_HEIGHT_RECALC,
         SCFORMULAOPT_OPENCL_AUTOSELECT,
         SCFORMULAOPT_OPENCL_DEVICE,
         SCFORMULAOPT_OPENCL_SUBSET_ONLY,
@@ -419,6 +424,30 @@ void ScFormulaCfg::UpdateFromProperties( const Sequence<OUString>& aNames )
                 SetODFRecalcOptions(eOpt);
             }
             break;
+            case SCFORMULAOPT_ROW_HEIGHT_RECALC:
+            {
+                ScRecalcOptions eOpt = RECALC_ASK;
+                if (pValues[nProp] >>= nIntVal)
+                {
+                    switch (nIntVal)
+                    {
+                    case 0:
+                        eOpt = RECALC_ALWAYS;
+                        break;
+                    case 1:
+                        eOpt = RECALC_NEVER;
+                        break;
+                    case 2:
+                        eOpt = RECALC_ASK;
+                        break;
+                    default:
+                        SAL_WARN("sc", "unknown optimal row height recalc option!");
+                    }
+                }
+
+                SetReCalcOptiRowHeights(eOpt);
+            }
+            break;
             case SCFORMULAOPT_OPENCL_AUTOSELECT:
             {
                 bool bVal = GetCalcConfig().mbOpenCLAutoSelect;
@@ -590,6 +619,27 @@ void ScFormulaCfg::ImplCommit()
                     case RECALC_ASK:
                         nVal = 2;
                         break;
+                }
+
+                pValues[nProp] <<= nVal;
+            }
+            break;
+            case SCFORMULAOPT_ROW_HEIGHT_RECALC:
+            {
+                sal_Int32 nVal = 2;
+                switch (GetReCalcOptiRowHeights())
+                {
+                    case RECALC_ALWAYS:
+                        nVal = 0;
+                        break;
+                    case RECALC_NEVER:
+                        nVal = 1;
+                        break;
+                    case RECALC_ASK:
+                        nVal = 2;
+                        break;
+                    default:
+                        SAL_WARN("sc", "unknown optimal row height recalc option!");
                 }
 
                 pValues[nProp] <<= nVal;

@@ -116,34 +116,26 @@ STDMETHODIMP CBasic::inObject(IDispatch *val)
 
 STDMETHODIMP CBasic::inoutBool(VARIANT_BOOL* val)
 {
-    VARIANT_BOOL aBool = *val;
-    *val = m_bool;
-    m_bool = aBool;
+    std::swap(*val, m_bool);
     return S_OK;
 }
 
 
 STDMETHODIMP CBasic::inoutByte(unsigned char* val)
 {
-    unsigned char aByte = *val;
-    *val = m_byte;
-    m_byte = aByte;
+    std::swap(*val, m_byte);
     return S_OK;
 }
 
 STDMETHODIMP CBasic::inoutShort(short *val)
 {
-    short aShort = *val;
-    *val = m_short;
-    m_short = aShort;
+    std::swap(*val, m_short);
     return S_OK;
 }
 
 STDMETHODIMP CBasic::inoutLong(long *val)
 {
-    long aLong = *val;
-    *val = m_long;
-    m_long = aLong;
+    std::swap(*val, m_long);
     return S_OK;
 }
 
@@ -159,17 +151,13 @@ STDMETHODIMP CBasic::inoutString(BSTR *val)
 
 STDMETHODIMP CBasic::inoutFloat(float *val)
 {
-    float aFloat = *val;
-    *val = m_float;
-    m_float = aFloat;
+    std::swap(*val, m_float);
     return S_OK;
 }
 
 STDMETHODIMP CBasic::inoutDouble(double *val)
 {
-    double aDouble = *val;
-    *val = m_double;
-    m_double  = aDouble;
+    std::swap(*val, m_double);
     return S_OK;
 }
 
@@ -1033,9 +1021,7 @@ STDMETHODIMP CBasic::outCurrency(CY* val)
 
 STDMETHODIMP CBasic::inoutCurrency(CY* val)
 {
-    CY tmp = *val;
-    *val = m_cy;
-    m_cy = tmp;
+    std::swap(*val, m_cy);
     return S_OK;
 }
 
@@ -1053,9 +1039,7 @@ STDMETHODIMP CBasic::outDate(DATE* val)
 
 STDMETHODIMP CBasic::inoutDate(DATE* val)
 {
-    DATE tmp = *val;
-    *val = m_date;
-    m_date = tmp;
+    std::swap(*val, m_date);
     return S_OK;
 }
 
@@ -1098,10 +1082,7 @@ STDMETHODIMP CBasic::outDecimal(DECIMAL* val)
 
 STDMETHODIMP CBasic::inoutDecimal(DECIMAL* val)
 {
-    DECIMAL tmp;
-    tmp = * val;
-    * val = m_decimal;
-    m_decimal = tmp;
+    std::swap(*val, m_decimal);
     return S_OK;
 }
 
@@ -1131,9 +1112,7 @@ STDMETHODIMP CBasic::outScode(SCODE* val)
 
 STDMETHODIMP CBasic::inoutSCode(SCODE* val)
 {
-    SCODE tmp = *val;
-    * val = m_scode;
-    m_scode = tmp;
+    std::swap(*val, m_scode);
     return S_OK;
 }
 
@@ -1302,9 +1281,7 @@ STDMETHODIMP CBasic::prpMultiArg2GetValues(VARIANT* val1, VARIANT* valProperty)
 
 STDMETHODIMP CBasic::get_prpMultiArg3(LONG* val1, LONG* pVal)
 {
-    long aLong = *val1;
-    *val1 = m_long;
-    m_long = aLong;
+    std::swap(*val1, m_long);
 
     * pVal = m_long2;
     return S_OK;
@@ -1312,9 +1289,7 @@ STDMETHODIMP CBasic::get_prpMultiArg3(LONG* val1, LONG* pVal)
 
 STDMETHODIMP CBasic::put_prpMultiArg3(LONG* val1, LONG newVal)
 {
-    long aLong = *val1;
-    *val1 = m_long;
-    m_long = aLong;
+    std::swap(*val1, m_long);
 
     m_long2 = newVal;
     return S_OK;

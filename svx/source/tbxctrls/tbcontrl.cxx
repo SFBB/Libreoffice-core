@@ -93,15 +93,16 @@
 #include <svx/xflclit.hxx>
 #include <svl/currencytable.hxx>
 #include <svtools/langtab.hxx>
-#include <cppu/unotype.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <o3tl/temporary.hxx>
 #include <o3tl/safeint.hxx>
 #include <o3tl/string_view.hxx>
 #include <o3tl/typed_flags_set.hxx>
 #include <bitmaps.hlst>
 #include <sal/log.hxx>
 #include <unotools/collatorwrapper.hxx>
+#include <sfx2/IDocumentModelAccessor.hxx>
 
 #include <comphelper/lok.hxx>
 #include <tools/json_writer.hxx>
@@ -111,10 +112,6 @@
 #define MAX_MRU_FONTNAME_ENTRIES    5
 
 #define COMBO_WIDTH_IN_CHARS        18
-
-#define MAX_MRU_CURRENCIES          5
-
-#define INVALID_CURRENCY            sal_uInt16(-2)
 
 // namespaces
 using namespace ::editeng;
@@ -176,6 +173,11 @@ public:
             m_xWidget->set_active(nFound);
         else
             m_xWidget->set_entry_text(rText);
+    }
+
+    int find_text(const OUString& rText)
+    {
+        return m_xWidget->find_text(rText);
     }
 
     void set_active(int nActive)
@@ -351,7 +353,7 @@ protected:
     {
         Sequence< PropertyValue > aArgs;
         const Reference<XDispatchProvider> xProvider(m_xFrame, UNO_QUERY);
-        SfxToolBoxControl::Dispatch(xProvider, ".uno:CharEndPreviewFontName", aArgs);
+        SfxToolBoxControl::Dispatch(xProvider, u".uno:CharEndPreviewFontName"_ustr, aArgs);
     }
 
     bool            CheckFontIsAvailable(std::u16string_view fontname);
@@ -437,7 +439,14 @@ public:
         disposeOnce();
     }
 
-    virtual Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
+
+    virtual void StateChanged(StateChangedType nStateChange) override
+    {
+        if (nStateChange == StateChangedType::Enable)
+            m_xWidget->set_sensitive(IsEnabled());
+        InterimItemWindow::StateChanged(nStateChange);
+    }
 
     virtual void set_sensitive(bool bSensitive) override
     {
@@ -483,9 +492,10 @@ private:
     rtl::Reference<SvxFrameToolBoxControl> mxControl;
     std::unique_ptr<SvxFrmValueSet_Impl> mxFrameSet;
     std::unique_ptr<weld::CustomWeld> mxFrameSetWin;
-    std::vector<std::pair<BitmapEx, OUString>> aImgVec;
+    std::vector<std::pair<Bitmap, OUString>> aImgVec;
     bool                        bParagraphMode;
     bool                        m_bIsWriter;
+    bool                        m_bIsCalc;
 
     void InitImageList();
     void CalcSizeValueSet();
@@ -563,7 +573,7 @@ private:
 
         void         ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long nDistance,
                                 Color nColor1, Color nColor2, Color nColorDist,
-                                SvxBorderLineStyle nStyle, BitmapEx& rBmp);
+                                SvxBorderLineStyle nStyle, Bitmap& rBmp);
 
         void            UpdatePaintLineColor();       // returns sal_True if maPaintCol has changed
 
@@ -608,7 +618,7 @@ private:
 
     void LineListBox::ImpGetLine( tools::Long nLine1, tools::Long nLine2, tools::Long nDistance,
                                 Color aColor1, Color aColor2, Color aColorDist,
-                                SvxBorderLineStyle nStyle, BitmapEx& rBmp )
+                                SvxBorderLineStyle nStyle, Bitmap& rBmp )
     {
         auto nMinWidth = GetDrawingArea()->get_ref_device().approximate_digit_width() * COMBO_WIDTH_IN_CHARS;
         Size aSize(nMinWidth, aTxtSize.Height());
@@ -662,7 +672,7 @@ private:
             aVirDev->SetFillColor( aColor2 );
             svtools::DrawLine( *aVirDev, basegfx::B2DPoint( 0, y2 ), basegfx::B2DPoint( aSize.Width(), y2 ), n2, SvxBorderLineStyle::SOLID );
         }
-        rBmp = aVirDev->GetBitmapEx( Point(), Size( aSize.Width(), n1+nDist+n2 ) );
+        rBmp = aVirDev->GetBitmap( Point(), Size( aSize.Width(), n1+nDist+n2 ) );
     }
 
     LineListBox::LineListBox()
@@ -763,7 +773,7 @@ private:
             auto& pData = m_vLineList[ n ];
             if ( pData->GetMinWidth() <= m_nWidth )
             {
-                BitmapEx aBmp;
+                Bitmap aBmp;
                 ImpGetLine( pData->GetLine1ForWidth( m_nWidth ),
                         pData->GetLine2ForWidth( m_nWidth ),
                         pData->GetDistForWidth( m_nWidth ),
@@ -871,8 +881,8 @@ SvxStyleBox_Base::SvxStyleBox_Base(std::unique_ptr<weld::ComboBox> xWidget,
                                    OUString _aMoreKey,
                                    bool bInSpec, SvxStyleToolBoxControl& rCtrl)
     : m_rCtrl(rCtrl)
-    , m_xMenuBuilder(Application::CreateBuilder(nullptr, "svx/ui/stylemenu.ui"))
-    , m_xMenu(m_xMenuBuilder->weld_menu("menu"))
+    , m_xMenuBuilder(Application::CreateBuilder(nullptr, u"svx/ui/stylemenu.ui"_ustr))
+    , m_xMenu(m_xMenuBuilder->weld_menu(u"menu"_ustr))
     , m_xWidget(std::move(xWidget))
     , eStyleFamily( eFamily )
     , m_nMaxUserDrawFontWidth(0)
@@ -915,13 +925,13 @@ SvxStyleBox_Impl::SvxStyleBox_Impl(vcl::Window* pParent,
                                    const OUString& rClearFormatKey,
                                    const OUString& rMoreKey,
                                    bool bInSpec, SvxStyleToolBoxControl& rCtrl)
-    : InterimItemWindow(pParent, "svx/ui/applystylebox.ui", "ApplyStyleBox")
-    , SvxStyleBox_Base(m_xBuilder->weld_combo_box("applystyle"), rCommand, eFamily, _xFrame,
+    : InterimItemWindow(pParent, u"svx/ui/applystylebox.ui"_ustr, u"ApplyStyleBox"_ustr)
+    , SvxStyleBox_Base(m_xBuilder->weld_combo_box(u"applystyle"_ustr), rCommand, eFamily, _xFrame,
                        rClearFormatKey, rMoreKey, bInSpec, rCtrl)
 {
     InitControlBase(m_xWidget.get());
 
-    set_id("applystyle");
+    set_id(u"applystyle"_ustr);
     SetOptimalSize();
 }
 
@@ -944,18 +954,18 @@ IMPL_LINK(SvxStyleBox_Base, MenuSelectHdl, const OUString&, rMenuIdent, void)
     OUString sEntry = m_xWidget->get_text(m_nLastItemWithMenu);
 
     ReleaseFocus(); // It must be after getting entry pos!
-    Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue("Param", sEntry),
-                                   comphelper::makePropertyValue("Family",
+    Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue(u"Param"_ustr, sEntry),
+                                   comphelper::makePropertyValue(u"Family"_ustr,
                                                                  sal_Int16( eStyleFamily )) };
 
     const Reference<XDispatchProvider> xProvider(m_xFrame, UNO_QUERY);
     if (rMenuIdent == "update")
     {
-        SfxToolBoxControl::Dispatch(xProvider, ".uno:StyleUpdateByExample", aArgs);
+        SfxToolBoxControl::Dispatch(xProvider, u".uno:StyleUpdateByExample"_ustr, aArgs);
     }
     else if (rMenuIdent == "edit")
     {
-        SfxToolBoxControl::Dispatch(xProvider, ".uno:EditStyle", aArgs);
+        SfxToolBoxControl::Dispatch(xProvider, u".uno:EditStyle"_ustr, aArgs);
     }
 }
 
@@ -996,7 +1006,7 @@ void SvxStyleBox_Base::Select(bool bNonTravelSelect)
             //not only apply default style but also call 'ClearFormatting'
             Sequence< PropertyValue > aEmptyVals;
             const Reference<XDispatchProvider> xProvider(m_xFrame, UNO_QUERY);
-            SfxToolBoxControl::Dispatch(xProvider, ".uno:ResetAttributes", aEmptyVals);
+            SfxToolBoxControl::Dispatch(xProvider, u".uno:ResetAttributes"_ustr, aEmptyVals);
         }
         else if (aSearchEntry == aMoreKey && m_xWidget->get_active() == (m_xWidget->get_count() - 1))
         {
@@ -1053,7 +1063,7 @@ void SvxStyleBox_Base::Select(bool bNonTravelSelect)
     if( bCreateNew )
     {
         pArgs[0].Name   = "Param";
-        SfxToolBoxControl::Dispatch(xProvider, ".uno:StyleNewByExample", aArgs);
+        SfxToolBoxControl::Dispatch(xProvider, u".uno:StyleNewByExample"_ustr, aArgs);
     }
     else
     {
@@ -1301,7 +1311,7 @@ void SvxStyleBox_Base::UserDrawEntry(vcl::RenderContext& rRenderContext, const t
 
 static bool GetWhich(const SfxItemSet& rSet, sal_uInt16 nSlot, sal_uInt16& rWhich)
 {
-    rWhich = rSet.GetPool()->GetWhich(nSlot);
+    rWhich = rSet.GetPool()->GetWhichIDFromSlotID(nSlot);
     return rSet.GetItemState(rWhich) >= SfxItemState::DEFAULT;
 }
 
@@ -1318,7 +1328,7 @@ static bool SetFont(const SfxItemSet& rSet, sal_uInt16 nSlot, SvxFont& rFont)
     return false;
 }
 
-static bool SetFontSize(vcl::RenderContext& rRenderContext, const SfxItemSet& rSet, sal_uInt16 nSlot, SvxFont& rFont)
+static bool SetFontSize(const vcl::RenderContext& rRenderContext, const SfxItemSet& rSet, sal_uInt16 nSlot, SvxFont& rFont)
 {
     sal_uInt16 nWhich;
     if (GetWhich(rSet, nSlot, nWhich))
@@ -1646,7 +1656,7 @@ IMPL_LINK(SvxStyleBox_Base, DumpAsPropertyTreeHdl, tools::JsonWriter&, rJsonWrit
     rJsonWriter.put("command", ".uno:StyleApply");
 }
 
-static bool lcl_GetDocFontList(const FontList** ppFontList, SvxFontNameBox_Base* pBox)
+static bool lcl_GetDocFontList(const FontList** ppFontList, SvxFontNameBox_Base& rBox)
 {
     bool bChanged = false;
     const SfxObjectShell* pDocSh = SfxObjectShell::Current();
@@ -1659,7 +1669,7 @@ static bool lcl_GetDocFontList(const FontList** ppFontList, SvxFontNameBox_Base*
     {
         ::std::unique_ptr<FontList> aFontList(new FontList(Application::GetDefaultDevice()));
         *ppFontList = aFontList.get();
-        pBox->SetOwnFontList(std::move(aFontList));
+        rBox.SetOwnFontList(std::move(aFontList));
         bChanged = true;
     }
 
@@ -1681,19 +1691,18 @@ static bool lcl_GetDocFontList(const FontList** ppFontList, SvxFontNameBox_Base*
             // When you change the font list in the Doc, you can track
             // changes here only on the Listbox, because ppFontList
             // has already been updated.
-            bChanged =
-                ( ( *ppFontList != pNewFontList ) ||
-                  pBox->GetListCount() != pNewFontList->GetFontNameCount() );
+            bChanged = !pNewFontList ||
+                       *ppFontList != pNewFontList ||
+                       rBox.GetListCount() != pNewFontList->GetFontNameCount();
             // HACK: Comparing is incomplete
 
             if ( bChanged )
                 *ppFontList = pNewFontList;
         }
 
-        if ( pBox )
-            pBox->set_sensitive(true);
+        rBox.set_sensitive(true);
     }
-    else if ( pBox && ( pDocSh || !ppFontList ))
+    else if ( pDocSh || !ppFontList)
     {
         // Disable box only when we have a SfxObjectShell and didn't get a font list OR
         // we don't have a SfxObjectShell and no current font list.
@@ -1702,16 +1711,16 @@ static bool lcl_GetDocFontList(const FontList** ppFontList, SvxFontNameBox_Base*
         // the help window with F1. After closing the help window, we disable the font name
         // combo box. The SfxObjectShell::Current() method returns in that case zero. But the
         // font list hasn't changed and therefore the combo box shouldn't be disabled!
-        pBox->set_sensitive(false);
+        rBox.set_sensitive(false);
     }
 
     // Fill the FontBox, also the new list if necessary
-    if ( pBox && bChanged )
+    if ( bChanged )
     {
-        if ( *ppFontList )
-            pBox->Fill( *ppFontList );
+        if (ppFontList && *ppFontList)
+            rBox.Fill( *ppFontList );
         else
-            pBox->Clear();
+            rBox.Clear();
     }
     return bChanged;
 }
@@ -1719,9 +1728,9 @@ static bool lcl_GetDocFontList(const FontList** ppFontList, SvxFontNameBox_Base*
 SvxFontNameBox_Base::SvxFontNameBox_Base(std::unique_ptr<weld::ComboBox> xWidget,
                                          const Reference<XFrame>& rFrame,
                                          SvxFontNameToolBoxControl& rCtrl)
-    : m_xListener(new comphelper::ConfigurationListener("/org.openoffice.Office.Common/Font/View"))
-    , m_aWYSIWYG(m_xListener, "ShowFontBoxWYSIWYG", *this)
-    , m_aHistory(m_xListener, "History", *this)
+    : m_xListener(new comphelper::ConfigurationListener(u"/org.openoffice.Office.Common/Font/View"_ustr))
+    , m_aWYSIWYG(m_xListener, u"ShowFontBoxWYSIWYG"_ustr, *this)
+    , m_aHistory(m_xListener, u"History"_ustr, *this)
     , m_rCtrl(rCtrl)
     , m_xWidget(new FontNameBox(std::move(xWidget)))
     , pFontList(nullptr)
@@ -1747,10 +1756,10 @@ SvxFontNameBox_Base::SvxFontNameBox_Base(std::unique_ptr<weld::ComboBox> xWidget
 
 SvxFontNameBox_Impl::SvxFontNameBox_Impl(vcl::Window* pParent, const Reference<XFrame>& rFrame,
                                          SvxFontNameToolBoxControl& rCtrl)
-    : InterimItemWindow(pParent, "svx/ui/fontnamebox.ui", "FontNameBox", true, reinterpret_cast<sal_uInt64>(SfxViewShell::Current()))
-    , SvxFontNameBox_Base(m_xBuilder->weld_combo_box("fontnamecombobox"), rFrame, rCtrl)
+    : InterimItemWindow(pParent, u"svx/ui/fontnamebox.ui"_ustr, u"FontNameBox"_ustr, true, reinterpret_cast<sal_uInt64>(SfxViewShell::Current()))
+    , SvxFontNameBox_Base(m_xBuilder->weld_combo_box(u"fontnamecombobox"_ustr), rFrame, rCtrl)
 {
-    set_id("fontnamecombobox");
+    set_id(u"fontnamecombobox"_ustr);
     SetOptimalSize();
 }
 
@@ -1763,14 +1772,14 @@ void SvxFontNameBox_Base::FillList()
     m_xWidget->get_entry_selection_bounds(nStartPos, nEndPos);
 
     // Did Doc-Fontlist change?
-    lcl_GetDocFontList(&pFontList, this);
+    lcl_GetDocFontList(&pFontList, *this);
 
     m_xWidget->select_entry_region(nStartPos, nEndPos);
 }
 
 bool SvxFontNameBox_Base::CheckFontIsAvailable(std::u16string_view fontname)
 {
-    lcl_GetDocFontList(&pFontList, this);
+    lcl_GetDocFontList(&pFontList, *this);
     return pFontList && pFontList->IsAvailable(fontname);
 }
 
@@ -1784,7 +1793,7 @@ void SvxFontNameBox_Base::CheckAndMarkUnknownFont()
     vcl::Font font = m_xWidget->get_entry_font();
     if (fontname.isEmpty() || CheckFontIsAvailable(fontname))
     {
-        if( font.GetItalic() != ITALIC_NONE )
+        if( font.GetItalicMaybeAskConfig() != ITALIC_NONE )
         {
             font.SetItalic( ITALIC_NONE );
             m_xWidget->set_entry_font(font);
@@ -1793,7 +1802,7 @@ void SvxFontNameBox_Base::CheckAndMarkUnknownFont()
     }
     else
     {
-        if( font.GetItalic() != ITALIC_NORMAL )
+        if( font.GetItalicMaybeAskConfig() != ITALIC_NORMAL )
         {
             font.SetItalic( ITALIC_NORMAL );
             m_xWidget->set_entry_font(font);
@@ -1815,7 +1824,7 @@ void SvxFontNameBox_Base::Update( const css::awt::FontDescriptor* pFontDesc )
     }
     OUString aCurName = aCurFont.GetFamilyName();
     OUString aText = m_xWidget->get_active_text();
-    if (aText != aCurName)
+    if (aText != aCurName || comphelper::LibreOfficeKit::isActive())
         set_active_or_entry_text(aCurName);
 }
 
@@ -1890,7 +1899,7 @@ IMPL_LINK(SvxFontNameBox_Base, LivePreviewHdl, const FontMetric&, rFontMetric, v
     aFontItem.QueryValue(pArgs[0].Value);
     pArgs[0].Name = "CharPreviewFontName";
     const Reference<XDispatchProvider> xProvider(m_xFrame, UNO_QUERY);
-    SfxToolBoxControl::Dispatch(xProvider, ".uno:CharPreviewFontName", aArgs);
+    SfxToolBoxControl::Dispatch(xProvider, u".uno:CharPreviewFontName"_ustr, aArgs);
 }
 
 IMPL_LINK_NOARG(SvxFontNameBox_Base, PopupToggledHdl, weld::ComboBox&, void)
@@ -1923,7 +1932,7 @@ void SvxFontNameBox_Impl::DataChanged( const DataChangedEvent& rDCEvt )
     {
         // The old font list in shell has likely been destroyed at this point, so we need to get
         // the new one before doing anything further.
-        lcl_GetDocFontList( &pFontList, this );
+        lcl_GetDocFontList( &pFontList, *this );
     }
 }
 
@@ -1977,20 +1986,20 @@ void SvxFontNameBox_Base::Select(bool bNonTravelSelect)
     if ( pFontList )
     {
         FontMetric aFontMetric( pFontList->Get(m_xWidget->get_active_text(),
-            aCurFont.GetWeight(),
-            aCurFont.GetItalic() ) );
+            aCurFont.GetWeightMaybeAskConfig(),
+            aCurFont.GetItalicMaybeAskConfig() ) );
         aCurFont = aFontMetric;
 
-        pFontItem.reset( new SvxFontItem( aFontMetric.GetFamilyType(),
+        pFontItem.reset( new SvxFontItem( aFontMetric.GetFamilyTypeMaybeAskConfig(),
             aFontMetric.GetFamilyName(),
             aFontMetric.GetStyleName(),
-            aFontMetric.GetPitch(),
+            aFontMetric.GetPitchMaybeAskConfig(),
             aFontMetric.GetCharSet(),
             SID_ATTR_CHAR_FONT ) );
 
         Any a;
         pFontItem->QueryValue( a );
-        pArgs[0].Value  = a;
+        pArgs[0].Value  = std::move(a);
     }
 
     const Reference<XDispatchProvider> xProvider(m_xFrame, UNO_QUERY);
@@ -2005,7 +2014,7 @@ void SvxFontNameBox_Base::Select(bool bNonTravelSelect)
         if (pFontItem)
         {
             pArgs[0].Name   = "CharFontName";
-            SfxToolBoxControl::Dispatch(xProvider, ".uno:CharFontName", aArgs);
+            SfxToolBoxControl::Dispatch(xProvider, u".uno:CharFontName"_ustr, aArgs);
         }
     }
     else
@@ -2013,7 +2022,7 @@ void SvxFontNameBox_Base::Select(bool bNonTravelSelect)
         if (pFontItem)
         {
             pArgs[0].Name   = "CharPreviewFontName";
-            SfxToolBoxControl::Dispatch(xProvider, ".uno:CharPreviewFontName", aArgs);
+            SfxToolBoxControl::Dispatch(xProvider, u".uno:CharPreviewFontName"_ustr, aArgs);
         }
     }
 }
@@ -2052,29 +2061,29 @@ ColorWindow::ColorWindow(OUString  rCommand,
                          const MenuOrToolMenuButton& rMenuButton,
                          TopLevelParentFunction  aTopLevelParentFunction,
                          ColorSelectFunction  aColorSelectFunction)
-    : WeldToolbarPopup(rFrame, rMenuButton.get_widget(), "svx/ui/colorwindow.ui", "palette_popup_window")
-    , theSlotId(nSlotId)
+    : WeldToolbarPopup(rFrame, rMenuButton.get_widget(), u"svx/ui/colorwindow.ui"_ustr, u"palette_popup_window"_ustr)
+    , mnSlotId(nSlotId)
     , maCommand(std::move(rCommand))
     , maMenuButton(rMenuButton)
     , mxPaletteManager(std::move(xPaletteManager))
     , mrColorStatus(rColorStatus)
     , maTopLevelParentFunction(std::move(aTopLevelParentFunction))
     , maColorSelectFunction(std::move(aColorSelectFunction))
-    , mxColorSet(new SvxColorValueSet(m_xBuilder->weld_scrolled_window("colorsetwin", true)))
+    , mxColorSet(new SvxColorValueSet(m_xBuilder->weld_scrolled_window(u"colorsetwin"_ustr, true)))
     , mxRecentColorSet(new SvxColorValueSet(nullptr))
-    , mxPaletteListBox(m_xBuilder->weld_combo_box("palette_listbox"))
-    , mxButtonAutoColor(m_xBuilder->weld_button("auto_color_button"))
-    , mxButtonNoneColor(m_xBuilder->weld_button("none_color_button"))
-    , mxButtonPicker(m_xBuilder->weld_button("color_picker_button"))
-    , mxAutomaticSeparator(m_xBuilder->weld_widget("separator4"))
-    , mxColorSetWin(new weld::CustomWeld(*m_xBuilder, "colorset", *mxColorSet))
-    , mxRecentColorSetWin(new weld::CustomWeld(*m_xBuilder, "recent_colorset", *mxRecentColorSet))
+    , mxPaletteListBox(m_xBuilder->weld_combo_box(u"palette_listbox"_ustr))
+    , mxButtonAutoColor(m_xBuilder->weld_button(u"auto_color_button"_ustr))
+    , mxButtonNoneColor(m_xBuilder->weld_button(u"none_color_button"_ustr))
+    , mxButtonPicker(m_xBuilder->weld_button(u"color_picker_button"_ustr))
+    , mxAutomaticSeparator(m_xBuilder->weld_widget(u"separator4"_ustr))
+    , mxColorSetWin(new weld::CustomWeld(*m_xBuilder, u"colorset"_ustr, *mxColorSet))
+    , mxRecentColorSetWin(new weld::CustomWeld(*m_xBuilder, u"recent_colorset"_ustr, *mxRecentColorSet))
     , mpDefaultButton(nullptr)
 {
     mxColorSet->SetStyle( WinBits(WB_FLATVALUESET | WB_ITEMBORDER | WB_3DLOOK | WB_NO_DIRECTSELECT | WB_TABSTOP) );
     mxRecentColorSet->SetStyle( WinBits(WB_FLATVALUESET | WB_ITEMBORDER | WB_3DLOOK | WB_NO_DIRECTSELECT | WB_TABSTOP) );
 
-    switch ( theSlotId )
+    switch ( mnSlotId )
     {
         case SID_ATTR_CHAR_COLOR_BACKGROUND:
         case SID_BACKGROUND_COLOR:
@@ -2120,7 +2129,15 @@ ColorWindow::ColorWindow(OUString  rCommand,
     for (const auto& rPalette : aPaletteList)
         mxPaletteListBox->append_text(rPalette);
     mxPaletteListBox->thaw();
-    OUString aPaletteName( officecfg::Office::Common::UserColors::PaletteName::get() );
+
+    // tdf#162104 If the current palette does not exist, select the equivalent to the localized "Standard" palette
+    // This is required because the names are now localized and in Common.xcs the "Standard" (in English)
+    // palette is selected by default
+    OUString aPaletteName(officecfg::Office::Common::UserColors::PaletteName::get());
+    auto it = std::find(aPaletteList.begin(), aPaletteList.end(), aPaletteName);
+    if (it == aPaletteList.end())
+        aPaletteName = SvxResId(RID_SVXSTR_COLOR_PALETTE_STANDARD);
+
     mxPaletteListBox->set_active_text(aPaletteName);
     const int nSelectedEntry(mxPaletteListBox->get_active());
     if (nSelectedEntry != -1)
@@ -2144,12 +2161,12 @@ ColorWindow::ColorWindow(OUString  rCommand,
     aSize = mxRecentColorSet->layoutAllVisible(mxPaletteManager->GetRecentColorCount());
     mxRecentColorSet->set_size_request(aSize.Width(), aSize.Height());
 
-    AddStatusListener( ".uno:ColorTableState" );
+    AddStatusListener( u".uno:ColorTableState"_ustr );
     AddStatusListener( maCommand );
     if ( maCommand == ".uno:FrameLineColor" )
     {
-        AddStatusListener( ".uno:BorderTLBR" );
-        AddStatusListener( ".uno:BorderBLTR" );
+        AddStatusListener( u".uno:BorderTLBR"_ustr );
+        AddStatusListener( u".uno:BorderBLTR"_ustr );
     }
 }
 
@@ -2173,7 +2190,7 @@ ColorWindow::~ColorWindow()
 NamedColor ColorWindow::GetSelectEntryColor(ValueSet const * pColorSet)
 {
     Color aColor = pColorSet->GetItemColor(pColorSet->GetSelectedItemId());
-    OUString sColorName = pColorSet->GetItemText(pColorSet->GetSelectedItemId());
+    const OUString& sColorName = pColorSet->GetItemText(pColorSet->GetSelectedItemId());
     return { aColor, sColorName };
 }
 
@@ -2282,7 +2299,7 @@ IMPL_LINK_NOARG(ColorWindow, SelectPaletteHdl, weld::ComboBox&, void)
 
 NamedColor ColorWindow::GetAutoColor() const
 {
-    return ::GetAutoColor(theSlotId);
+    return ::GetAutoColor(mnSlotId);
 }
 
 IMPL_LINK(ColorWindow, AutoColorClickHdl, weld::Button&, rButton, void)
@@ -2420,7 +2437,7 @@ void ColorStatus::statusChanged( const css::frame::FeatureStateEvent& rEvent )
     if ( rEvent.State >>= aTable )
     {
         SvxBorderLine aLine;
-        SvxBoxItem::LineToSvxLine( aTable, aLine, false );
+        (void)SvxBoxItem::LineToSvxLine( aTable, aLine, false );
         if ( !aLine.isEmpty() )
             aColor = aLine.GetColor();
     }
@@ -2458,20 +2475,25 @@ Color ColorStatus::GetColor()
 
 
 SvxFrameWindow_Impl::SvxFrameWindow_Impl(SvxFrameToolBoxControl* pControl, weld::Widget* pParent)
-    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "svx/ui/floatingframeborder.ui", "FloatingFrameBorder")
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/floatingframeborder.ui"_ustr, u"FloatingFrameBorder"_ustr)
     , mxControl(pControl)
     , mxFrameSet(new SvxFrmValueSet_Impl)
-    , mxFrameSetWin(new weld::CustomWeld(*m_xBuilder, "valueset", *mxFrameSet))
+    , mxFrameSetWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *mxFrameSet))
     , bParagraphMode(false)
     , m_bIsWriter(false)
+    , m_bIsCalc(false)
 {
 
     // check whether the document is Writer or not
+    // check also if it's Calc or not
     if (Reference<lang::XServiceInfo> xSI{ m_xFrame->getController()->getModel(), UNO_QUERY })
-        m_bIsWriter = xSI->supportsService("com.sun.star.text.TextDocument");
+    {
+        m_bIsWriter = xSI->supportsService(u"com.sun.star.text.TextDocument"_ustr);
+        m_bIsCalc = xSI->supportsService(u"com.sun.star.sheet.SpreadsheetDocument"_ustr);
+    }
 
     mxFrameSet->SetStyle(WB_ITEMBORDER | WB_DOUBLEBORDER | WB_3DLOOK | WB_NO_DIRECTSELECT);
-    AddStatusListener(".uno:BorderReducedMode");
+    AddStatusListener(u".uno:BorderReducedMode"_ustr);
     InitImageList();
 
     /*
@@ -2488,14 +2510,14 @@ SvxFrameWindow_Impl::SvxFrameWindow_Impl(SvxFrameToolBoxControl* pControl, weld:
     // diagonal borders available only for Calc.
     // Therefore, Calc uses 10 border types while
     // Writer uses 8 of them - for a single cell.
-    for ( i=1; i < (m_bIsWriter ? 9 : 11); i++ )
+    for ( i=1; i < (m_bIsCalc ? 11 : 9); i++ )
         mxFrameSet->InsertItem(i, Image(aImgVec[i-1].first), aImgVec[i-1].second);
 
     //bParagraphMode should have been set in StateChanged
     if ( !bParagraphMode )
         // when multiple cell selected:
         // Writer has 12 border types and Calc has 15 of them.
-        for ( i = (m_bIsWriter ? 9 : 11); i < (m_bIsWriter ? 13 : 16); i++ )
+        for ( i = (m_bIsCalc ? 11 : 9); i < (m_bIsCalc ? 16 : 13); i++ )
             mxFrameSet->InsertItem(i, Image(aImgVec[i-1].first), aImgVec[i-1].second);
 
     // adjust frame column for Writer
@@ -2561,7 +2583,7 @@ IMPL_LINK_NOARG(SvxFrameWindow_Impl, SelectHdl, ValueSet*, void)
     // nSel has 15 cases which means 15 border
     // types for Calc. But Writer uses only 12
     // of them - when diagonal borders excluded.
-    if (m_bIsWriter)
+    if (!m_bIsCalc)
     {
         // add appropriate increments
         // to match the correct borders.
@@ -2675,10 +2697,10 @@ IMPL_LINK_NOARG(SvxFrameWindow_Impl, SelectHdl, ValueSet*, void)
         Any a1, a2;
         aBorderOuter.QueryValue( a1 );
         aBorderInner.QueryValue( a2 );
-        Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue("OuterBorder", a1),
-                                         comphelper::makePropertyValue("InnerBorder", a2) };
+        Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue(u"OuterBorder"_ustr, a1),
+                                         comphelper::makePropertyValue(u"InnerBorder"_ustr, a2) };
 
-        mxControl->dispatchCommand( ".uno:SetBorderStyle", aArgs );
+        mxControl->dispatchCommand( u".uno:SetBorderStyle"_ustr, aArgs );
     }
 
     // coverity[ check_after_deref : FALSE]
@@ -2698,9 +2720,9 @@ void SvxFrameWindow_Impl::SetDiagonalDownBorder(const SvxLineItem& dDownLineItem
     // apply diagonal down border
     Any a;
     dDownLineItem.QueryValue(a);
-    Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue("BorderTLBR", a) };
+    Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue(u"BorderTLBR"_ustr, a) };
 
-    mxControl->dispatchCommand(".uno:BorderTLBR", aArgs);
+    mxControl->dispatchCommand(u".uno:BorderTLBR"_ustr, aArgs);
 }
 
 void SvxFrameWindow_Impl::SetDiagonalUpBorder(const SvxLineItem& dUpLineItem)
@@ -2708,9 +2730,9 @@ void SvxFrameWindow_Impl::SetDiagonalUpBorder(const SvxLineItem& dUpLineItem)
     // apply diagonal up border
     Any a;
     dUpLineItem.QueryValue(a);
-    Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue("BorderBLTR", a) };
+    Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue(u"BorderBLTR"_ustr, a) };
 
-    mxControl->dispatchCommand(".uno:BorderBLTR", aArgs);
+    mxControl->dispatchCommand(u".uno:BorderBLTR"_ustr, aArgs);
 }
 
 void SvxFrameWindow_Impl::statusChanged( const css::frame::FeatureStateEvent& rEvent )
@@ -2728,7 +2750,7 @@ void SvxFrameWindow_Impl::statusChanged( const css::frame::FeatureStateEvent& rE
         return;
 
     // set 12 border types for Writer, otherwise 15 for Calc.
-    bool bTableMode = ( mxFrameSet->GetItemCount() == static_cast<size_t>(m_bIsWriter ? 12 : 15) );
+    bool bTableMode = ( mxFrameSet->GetItemCount() == static_cast<size_t>(m_bIsCalc ? 15 : 12) );
     bool bResize    = false;
 
     if ( bTableMode && bParagraphMode )
@@ -2762,26 +2784,26 @@ void SvxFrameWindow_Impl::CalcSizeValueSet()
 
 void SvxFrameWindow_Impl::InitImageList()
 {
-    if (m_bIsWriter)
+    if (!m_bIsCalc)
     {
-        // Writer-specific aImgVec.
-        // Since Writer doesn't have diagonal borders,
+        // not Writer/Impress/Draw-specific aImgVec.
+        // Since they don't have diagonal borders,
         // we have to use 12 border types here.
         aImgVec = {
-            {BitmapEx(RID_SVXBMP_FRAME1), SvxResId(RID_SVXSTR_TABLE_PRESET_NONE)},
-            {BitmapEx(RID_SVXBMP_FRAME2), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYLEFT)},
-            {BitmapEx(RID_SVXBMP_FRAME3), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYRIGHT)},
-            {BitmapEx(RID_SVXBMP_FRAME4), SvxResId(RID_SVXSTR_PARA_PRESET_LEFTRIGHT)},
+            {Bitmap(RID_SVXBMP_FRAME1), SvxResId(RID_SVXSTR_TABLE_PRESET_NONE)},
+            {Bitmap(RID_SVXBMP_FRAME2), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYLEFT)},
+            {Bitmap(RID_SVXBMP_FRAME3), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYRIGHT)},
+            {Bitmap(RID_SVXBMP_FRAME4), SvxResId(RID_SVXSTR_PARA_PRESET_LEFTRIGHT)},
 
-            {BitmapEx(RID_SVXBMP_FRAME5), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYTOP)},
-            {BitmapEx(RID_SVXBMP_FRAME6), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYTBOTTOM)},
-            {BitmapEx(RID_SVXBMP_FRAME7), SvxResId(RID_SVXSTR_PARA_PRESET_TOPBOTTOM)},
-            {BitmapEx(RID_SVXBMP_FRAME8), SvxResId(RID_SVXSTR_TABLE_PRESET_ONLYOUTER)},
+            {Bitmap(RID_SVXBMP_FRAME5), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYTOP)},
+            {Bitmap(RID_SVXBMP_FRAME6), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYBOTTOM)},
+            {Bitmap(RID_SVXBMP_FRAME7), SvxResId(RID_SVXSTR_PARA_PRESET_TOPBOTTOM)},
+            {Bitmap(RID_SVXBMP_FRAME8), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTER)},
 
-            {BitmapEx(RID_SVXBMP_FRAME9), SvxResId(RID_SVXSTR_PARA_PRESET_TOPBOTTOMHORI)},
-            {BitmapEx(RID_SVXBMP_FRAME10), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERHORI)},
-            {BitmapEx(RID_SVXBMP_FRAME11), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERVERI)},
-            {BitmapEx(RID_SVXBMP_FRAME12), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERALL)}
+            {Bitmap(RID_SVXBMP_FRAME9), SvxResId(RID_SVXSTR_PARA_PRESET_TOPBOTTOMHORI)},
+            {Bitmap(RID_SVXBMP_FRAME10), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERHORI)},
+            {Bitmap(RID_SVXBMP_FRAME11), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERVERI)},
+            {Bitmap(RID_SVXBMP_FRAME12), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERALL)}
         };
     }
     else
@@ -2790,23 +2812,23 @@ void SvxFrameWindow_Impl::InitImageList()
         // Therefore use additional 3 diagonal border types,
         // which make border types 15 in total.
         aImgVec = {
-            {BitmapEx(RID_SVXBMP_FRAME1), SvxResId(RID_SVXSTR_TABLE_PRESET_NONE)},
-            {BitmapEx(RID_SVXBMP_FRAME2), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYLEFT)},
-            {BitmapEx(RID_SVXBMP_FRAME3), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYRIGHT)},
-            {BitmapEx(RID_SVXBMP_FRAME4), SvxResId(RID_SVXSTR_PARA_PRESET_LEFTRIGHT)},
-            {BitmapEx(RID_SVXBMP_FRAME14), SvxResId(RID_SVXSTR_PARA_PRESET_DIAGONALDOWN)}, // diagonal down border
+            {Bitmap(RID_SVXBMP_FRAME1), SvxResId(RID_SVXSTR_TABLE_PRESET_NONE)},
+            {Bitmap(RID_SVXBMP_FRAME2), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYLEFT)},
+            {Bitmap(RID_SVXBMP_FRAME3), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYRIGHT)},
+            {Bitmap(RID_SVXBMP_FRAME4), SvxResId(RID_SVXSTR_PARA_PRESET_LEFTRIGHT)},
+            {Bitmap(RID_SVXBMP_FRAME14), SvxResId(RID_SVXSTR_PARA_PRESET_DIAGONALDOWN)}, // diagonal down border
 
-            {BitmapEx(RID_SVXBMP_FRAME5), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYTOP)},
-            {BitmapEx(RID_SVXBMP_FRAME6), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYTBOTTOM)},
-            {BitmapEx(RID_SVXBMP_FRAME7), SvxResId(RID_SVXSTR_PARA_PRESET_TOPBOTTOM)},
-            {BitmapEx(RID_SVXBMP_FRAME8), SvxResId(RID_SVXSTR_TABLE_PRESET_ONLYOUTER)},
-            {BitmapEx(RID_SVXBMP_FRAME13), SvxResId(RID_SVXSTR_PARA_PRESET_DIAGONALUP)}, // diagonal up border
+            {Bitmap(RID_SVXBMP_FRAME5), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYTOP)},
+            {Bitmap(RID_SVXBMP_FRAME6), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYBOTTOM)},
+            {Bitmap(RID_SVXBMP_FRAME7), SvxResId(RID_SVXSTR_PARA_PRESET_TOPBOTTOM)},
+            {Bitmap(RID_SVXBMP_FRAME8), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTER)},
+            {Bitmap(RID_SVXBMP_FRAME13), SvxResId(RID_SVXSTR_PARA_PRESET_DIAGONALUP)}, // diagonal up border
 
-            {BitmapEx(RID_SVXBMP_FRAME9), SvxResId(RID_SVXSTR_PARA_PRESET_TOPBOTTOMHORI)},
-            {BitmapEx(RID_SVXBMP_FRAME10), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERHORI)},
-            {BitmapEx(RID_SVXBMP_FRAME11), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERVERI)},
-            {BitmapEx(RID_SVXBMP_FRAME12), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERALL)},
-            {BitmapEx(RID_SVXBMP_FRAME15), SvxResId(RID_SVXSTR_PARA_PRESET_CRISSCROSS)} // criss-cross border
+            {Bitmap(RID_SVXBMP_FRAME9), SvxResId(RID_SVXSTR_PARA_PRESET_TOPBOTTOMHORI)},
+            {Bitmap(RID_SVXBMP_FRAME10), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERHORI)},
+            {Bitmap(RID_SVXBMP_FRAME11), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERVERI)},
+            {Bitmap(RID_SVXBMP_FRAME12), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERALL)},
+            {Bitmap(RID_SVXBMP_FRAME15), SvxResId(RID_SVXSTR_PARA_PRESET_CRISSCROSS)} // criss-cross border
         };
     }
 }
@@ -2817,16 +2839,17 @@ static Color lcl_mediumColor( Color aMain, Color /*aDefault*/ )
 }
 
 SvxLineWindow_Impl::SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::Widget* pParent)
-    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "svx/ui/floatingframeborder.ui", "FloatingFrameBorder")
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/floatingframeborder.ui"_ustr, u"FloatingFrameBorder"_ustr)
     , m_xControl(pControl)
     , m_xLineStyleLb(new LineListBox)
-    , m_xLineStyleLbWin(new weld::CustomWeld(*m_xBuilder, "valueset", *m_xLineStyleLb))
+    , m_xLineStyleLbWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *m_xLineStyleLb))
     , m_bIsWriter(false)
 {
     try
     {
-        Reference< lang::XServiceInfo > xServices(m_xFrame->getController()->getModel(), UNO_QUERY_THROW);
-        m_bIsWriter = xServices->supportsService("com.sun.star.text.TextDocument");
+        Reference< lang::XServiceInfo > xServices(m_xFrame->getController()->getModel(), UNO_QUERY);
+        if (xServices)
+            m_bIsWriter = xServices->supportsService(u"com.sun.star.text.TextDocument"_ustr);
     }
     catch(const uno::Exception& )
     {
@@ -2894,9 +2917,9 @@ IMPL_LINK_NOARG(SvxLineWindow_Impl, SelectHdl, ValueSet*, void)
 
     Any a;
     aLineItem.QueryValue( a, m_bIsWriter ? CONVERT_TWIPS : 0 );
-    Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue("LineStyle", a) };
+    Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue(u"LineStyle"_ustr, a) };
 
-    m_xControl->dispatchCommand( ".uno:LineStyle", aArgs );
+    m_xControl->dispatchCommand( u".uno:LineStyle"_ustr, aArgs );
 
     m_xControl->EndPopupMode();
 }
@@ -2969,24 +2992,24 @@ struct SvxStyleToolBoxControl::Impl
         {
             Reference< style::XStyleFamiliesSupplier > xStylesSupplier( xModel, UNO_QUERY_THROW );
             Reference< lang::XServiceInfo > xServices( xModel, UNO_QUERY_THROW );
-            bSpecModeWriter = xServices->supportsService("com.sun.star.text.TextDocument");
+            bSpecModeWriter = xServices->supportsService(u"com.sun.star.text.TextDocument"_ustr);
             if(bSpecModeWriter)
             {
                 Reference<container::XNameAccess> xParaStyles;
-                xStylesSupplier->getStyleFamilies()->getByName("ParagraphStyles") >>=
+                xStylesSupplier->getStyleFamilies()->getByName(u"ParagraphStyles"_ustr) >>=
                     xParaStyles;
-                static const std::vector<OUString> aWriterStyles =
+                static constexpr OUString aWriterStyles[]
                 {
-                    "Standard",
-                    "Text body",
-                    "Title",
-                    "Subtitle",
-                    "Heading 1",
-                    "Heading 2",
-                    "Heading 3",
-                    "Heading 4",
-                    "Quotations",
-                    "Preformatted Text"
+                    u"Standard"_ustr,
+                    u"Text body"_ustr,
+                    u"Title"_ustr,
+                    u"Subtitle"_ustr,
+                    u"Heading 1"_ustr,
+                    u"Heading 2"_ustr,
+                    u"Heading 3"_ustr,
+                    u"Heading 4"_ustr,
+                    u"Quotations"_ustr,
+                    u"Preformatted Text"_ustr
                 };
                 for( const OUString& aStyle: aWriterStyles )
                 {
@@ -2995,7 +3018,7 @@ struct SvxStyleToolBoxControl::Impl
                         Reference< beans::XPropertySet > xStyle;
                         xParaStyles->getByName( aStyle ) >>= xStyle;
                         OUString sName;
-                        xStyle->getPropertyValue("DisplayName") >>= sName;
+                        xStyle->getPropertyValue(u"DisplayName"_ustr) >>= sName;
                         if( !sName.isEmpty() )
                             aDefaultStyles.push_back(
                                 std::pair<OUString, OUString>(aStyle, sName) );
@@ -3007,30 +3030,29 @@ struct SvxStyleToolBoxControl::Impl
             }
             else if( (
                 bSpecModeCalc = xServices->supportsService(
-                    "com.sun.star.sheet.SpreadsheetDocument")))
+                    u"com.sun.star.sheet.SpreadsheetDocument"_ustr)))
             {
-                static const char* aCalcStyles[] =
+                static constexpr OUString aCalcStyles[]
                 {
-                    "Default",
-                    "Accent 1",
-                    "Accent 2",
-                    "Accent 3",
-                    "Heading 1",
-                    "Heading 2",
-                    "Result"
+                    u"Default"_ustr,
+                    u"Accent 1"_ustr,
+                    u"Accent 2"_ustr,
+                    u"Accent 3"_ustr,
+                    u"Heading 1"_ustr,
+                    u"Heading 2"_ustr,
+                    u"Result"_ustr
                 };
                 Reference<container::XNameAccess> xCellStyles;
-                xStylesSupplier->getStyleFamilies()->getByName("CellStyles") >>= xCellStyles;
-                for(const char* pCalcStyle : aCalcStyles)
+                xStylesSupplier->getStyleFamilies()->getByName(u"CellStyles"_ustr) >>= xCellStyles;
+                for(const OUString & sStyleName : aCalcStyles)
                 {
                     try
                     {
-                        const OUString sStyleName( OUString::createFromAscii( pCalcStyle ) );
                         if( xCellStyles->hasByName( sStyleName ) )
                         {
                             Reference< beans::XPropertySet > xStyle( xCellStyles->getByName( sStyleName), UNO_QUERY_THROW );
                             OUString sName;
-                            xStyle->getPropertyValue("DisplayName") >>= sName;
+                            xStyle->getPropertyValue(u"DisplayName"_ustr) >>= sName;
                             if( !sName.isEmpty() )
                                 aDefaultStyles.push_back(
                                     std::pair<OUString, OUString>(sStyleName, sName) );
@@ -3051,24 +3073,24 @@ struct SvxStyleToolBoxControl::Impl
 // mapping table from bound items. BE CAREFUL this table must be in the
 // same order as the uno commands bound to the slots SID_STYLE_FAMILY1..n
 // MAX_FAMILIES must also be correctly set!
-static const char* StyleSlotToStyleCommand[MAX_FAMILIES] =
+constexpr OUString StyleSlotToStyleCommand[MAX_FAMILIES] =
 {
-    ".uno:CharStyle",
-    ".uno:ParaStyle",
-    ".uno:FrameStyle",
-    ".uno:PageStyle",
-    ".uno:TemplateFamily5"
+    u".uno:CharStyle"_ustr,
+    u".uno:ParaStyle"_ustr,
+    u".uno:FrameStyle"_ustr,
+    u".uno:PageStyle"_ustr,
+    u".uno:TemplateFamily5"_ustr
 };
 
 SvxStyleToolBoxControl::SvxStyleToolBoxControl()
-    : pImpl(new Impl)
-    , pStyleSheetPool(nullptr)
-    , nActFamily(0xffff)
+    : m_pImpl(new Impl)
+    , m_pStyleSheetPool(nullptr)
+    , m_nActFamily(0xffff)
 {
     for (sal_uInt16 i = 0; i < MAX_FAMILIES; ++i)
     {
         m_xBoundItems[i].clear();
-        pFamilyState[i]  = nullptr;
+        m_pFamilyState[i]  = nullptr;
     }
 }
 
@@ -3085,15 +3107,15 @@ void SAL_CALL SvxStyleToolBoxControl::initialize(const Sequence<Any>& rArguments
     if ( !m_xFrame.is() )
         return;
 
-    pImpl->InitializeStyles(m_xFrame->getController()->getModel());
+    m_pImpl->InitializeStyles(m_xFrame->getController()->getModel());
     Reference< XDispatchProvider > xDispatchProvider( m_xFrame->getController(), UNO_QUERY );
     for ( sal_uInt16 i=0; i<MAX_FAMILIES; i++ )
     {
         m_xBoundItems[i] = new SfxStyleControllerItem_Impl( xDispatchProvider,
                                                             SID_STYLE_FAMILY_START + i,
-                                                            OUString::createFromAscii( StyleSlotToStyleCommand[i] ),
+                                                            StyleSlotToStyleCommand[i],
                                                             *this );
-        pFamilyState[i]  = nullptr;
+        m_pFamilyState[i]  = nullptr;
     }
 }
 
@@ -3103,9 +3125,9 @@ void SAL_CALL SvxStyleToolBoxControl::dispose()
     svt::ToolboxController::dispose();
 
     SolarMutexGuard aSolarMutexGuard;
-    pImpl->m_xVclBox.disposeAndClear();
-    pImpl->m_xWeldBox.reset();
-    pImpl->m_pBox = nullptr;
+    m_pImpl->m_xVclBox.disposeAndClear();
+    m_pImpl->m_xWeldBox.reset();
+    m_pImpl->m_pBox = nullptr;
 
     for (rtl::Reference<SfxStyleControllerItem_Impl>& pBoundItem : m_xBoundItems)
     {
@@ -3129,15 +3151,15 @@ void SAL_CALL SvxStyleToolBoxControl::dispose()
 
             m_xBoundItems[i].clear();
         }
-        pFamilyState[i].reset();
+        m_pFamilyState[i].reset();
     }
-    pStyleSheetPool = nullptr;
-    pImpl.reset();
+    m_pStyleSheetPool = nullptr;
+    m_pImpl.reset();
 }
 
 OUString SvxStyleToolBoxControl::getImplementationName()
 {
-    return "com.sun.star.comp.svx.StyleToolBoxControl";
+    return u"com.sun.star.comp.svx.StyleToolBoxControl"_ustr;
 }
 
 sal_Bool SvxStyleToolBoxControl::supportsService( const OUString& rServiceName )
@@ -3147,7 +3169,7 @@ sal_Bool SvxStyleToolBoxControl::supportsService( const OUString& rServiceName )
 
 css::uno::Sequence< OUString > SvxStyleToolBoxControl::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.ToolbarController" };
+    return { u"com.sun.star.frame.ToolbarController"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
@@ -3167,7 +3189,7 @@ void SAL_CALL SvxStyleToolBoxControl::update()
 
 SfxStyleFamily SvxStyleToolBoxControl::GetActFamily() const
 {
-    switch ( nActFamily-1 + SID_STYLE_FAMILY_START )
+    switch ( m_nActFamily-1 + SID_STYLE_FAMILY_START )
     {
         case SID_STYLE_FAMILY1: return SfxStyleFamily::Char;
         case SID_STYLE_FAMILY2: return SfxStyleFamily::Para;
@@ -3183,19 +3205,19 @@ SfxStyleFamily SvxStyleToolBoxControl::GetActFamily() const
 
 void SvxStyleToolBoxControl::FillStyleBox()
 {
-    SvxStyleBox_Base* pBox = pImpl->m_pBox;
+    SvxStyleBox_Base* pBox = m_pImpl->m_pBox;
 
-    DBG_ASSERT( pStyleSheetPool, "StyleSheetPool not found!" );
+    DBG_ASSERT( m_pStyleSheetPool, "StyleSheetPool not found!" );
     DBG_ASSERT( pBox,            "Control not found!" );
 
-    if ( !(pStyleSheetPool && pBox && nActFamily!=0xffff) )
+    if ( !(m_pStyleSheetPool && pBox && m_nActFamily!=0xffff) )
         return;
 
     const SfxStyleFamily    eFamily     = GetActFamily();
     SfxStyleSheetBase*      pStyle      = nullptr;
     bool                    bDoFill     = false;
 
-    auto xIter = pStyleSheetPool->CreateIterator(eFamily, SfxStyleSearchBits::Used);
+    auto xIter = m_pStyleSheetPool->CreateIterator(eFamily, SfxStyleSearchBits::Used);
     sal_uInt16 nCount = xIter->Count();
 
     // Check whether fill is necessary
@@ -3234,28 +3256,27 @@ void SvxStyleToolBoxControl::FillStyleBox()
         pStyle = xIter->Next();
     }
 
-    if (pImpl->bSpecModeWriter || pImpl->bSpecModeCalc)
+    if (m_pImpl->bSpecModeWriter || m_pImpl->bSpecModeCalc)
     {
-        pBox->append_text(pImpl->aClearForm);
-        pBox->insert_separator(1, "separator");
+        pBox->append_text(m_pImpl->aClearForm);
+        pBox->insert_separator(1, u"separator"_ustr);
 
         // add default styles if less than 12 items
-        for( const auto &rStyle : pImpl->aDefaultStyles )
+        for( const auto &rStyle : m_pImpl->aDefaultStyles )
         {
             if ( aStyles.size() + pBox->get_count() > 12)
                 break;
-            // insert default style only if not used (and added to rStyle before)
-            if (std::find(aStyles.begin(), aStyles.end(), rStyle.second) >= aStyles.end())
-                pBox->append_text(rStyle.second);
+            pBox->append_text(rStyle.second);
         }
     }
     std::sort(aStyles.begin(), aStyles.end());
 
     for (const auto& rStyle : aStyles)
-        pBox->append_text(rStyle);
+        if (pBox->find_text(rStyle) == -1)
+            pBox->append_text(rStyle);
 
-    if ((pImpl->bSpecModeWriter || pImpl->bSpecModeCalc) && !comphelper::LibreOfficeKit::isActive())
-        pBox->append_text(pImpl->aMore);
+    if ((m_pImpl->bSpecModeWriter || m_pImpl->bSpecModeCalc) && !comphelper::LibreOfficeKit::isActive())
+        pBox->append_text(m_pImpl->aMore);
 
     pBox->thaw();
     pBox->set_active_or_entry_text(aStrSel);
@@ -3264,7 +3285,7 @@ void SvxStyleToolBoxControl::FillStyleBox()
 
 void SvxStyleToolBoxControl::SelectStyle( const OUString& rStyleName )
 {
-    SvxStyleBox_Base* pBox = pImpl->m_pBox;
+    SvxStyleBox_Base* pBox = m_pImpl->m_pBox;
     DBG_ASSERT( pBox, "Control not found!" );
 
     if ( !pBox )
@@ -3276,11 +3297,11 @@ void SvxStyleToolBoxControl::SelectStyle( const OUString& rStyleName )
     {
         OUString aNewStyle = rStyleName;
 
-        auto aFound = std::find_if(pImpl->aDefaultStyles.begin(), pImpl->aDefaultStyles.end(),
+        auto aFound = std::find_if(m_pImpl->aDefaultStyles.begin(), m_pImpl->aDefaultStyles.end(),
             [rStyleName] (auto it) { return it.first == rStyleName || it.second == rStyleName; }
         );
 
-        if (aFound != pImpl->aDefaultStyles.end())
+        if (aFound != m_pImpl->aDefaultStyles.end())
             aNewStyle = aFound->second;
 
         if ( aNewStyle != aStrSel )
@@ -3301,33 +3322,33 @@ void SvxStyleToolBoxControl::Update()
 
     sal_uInt16 i;
     for ( i=0; i<MAX_FAMILIES; i++ )
-        if( pFamilyState[i] )
+        if( m_pFamilyState[i] )
             break;
 
     if ( i==MAX_FAMILIES || !pPool )
     {
-        pStyleSheetPool = pPool;
+        m_pStyleSheetPool = pPool;
         return;
     }
 
 
     const SfxTemplateItem* pItem = nullptr;
 
-    if ( nActFamily == 0xffff || nullptr == (pItem = pFamilyState[nActFamily-1].get()) )
+    if ( m_nActFamily == 0xffff || nullptr == (pItem = m_pFamilyState[m_nActFamily-1].get()) )
     // Current range not within allowed ranges or default
     {
-        pStyleSheetPool = pPool;
-        nActFamily      = 2;
+        m_pStyleSheetPool = pPool;
+        m_nActFamily      = 2;
 
-        pItem = pFamilyState[nActFamily-1].get();
+        pItem = m_pFamilyState[m_nActFamily-1].get();
         if ( !pItem )
         {
-            nActFamily++;
-            pItem = pFamilyState[nActFamily-1].get();
+            m_nActFamily++;
+            pItem = m_pFamilyState[m_nActFamily-1].get();
         }
     }
-    else if ( pPool != pStyleSheetPool )
-        pStyleSheetPool = pPool;
+    else if ( pPool != m_pStyleSheetPool )
+        m_pStyleSheetPool = pPool;
 
     FillStyleBox(); // Decides by itself whether Fill is needed
 
@@ -3338,7 +3359,7 @@ void SvxStyleToolBoxControl::Update()
 void SvxStyleToolBoxControl::SetFamilyState( sal_uInt16 nIdx,
                                              const SfxTemplateItem* pItem )
 {
-    pFamilyState[nIdx].reset( pItem == nullptr ? nullptr : new SfxTemplateItem( *pItem ) );
+    m_pFamilyState[nIdx].reset( pItem == nullptr ? nullptr : new SfxTemplateItem( *pItem ) );
     Update();
 }
 
@@ -3369,18 +3390,18 @@ css::uno::Reference<css::awt::XWindow> SvxStyleToolBoxControl::createItemWindow(
     {
         SolarMutexGuard aSolarMutexGuard;
 
-        std::unique_ptr<weld::ComboBox> xWidget(m_pBuilder->weld_combo_box("applystyle"));
+        std::unique_ptr<weld::ComboBox> xWidget(m_pBuilder->weld_combo_box(u"applystyle"_ustr));
 
         xItemWindow = css::uno::Reference<css::awt::XWindow>(new weld::TransportAsXWindow(xWidget.get()));
 
-        pImpl->m_xWeldBox.reset(new SvxStyleBox_Base(std::move(xWidget),
-                                                     ".uno:StyleApply",
+        m_pImpl->m_xWeldBox.reset(new SvxStyleBox_Base(std::move(xWidget),
+                                                     u".uno:StyleApply"_ustr,
                                                      SfxStyleFamily::Para,
                                                      m_xFrame,
-                                                     pImpl->aClearForm,
-                                                     pImpl->aMore,
-                                                     pImpl->bSpecModeWriter || pImpl->bSpecModeCalc, *this));
-        pImpl->m_pBox = pImpl->m_xWeldBox.get();
+                                                     m_pImpl->aClearForm,
+                                                     m_pImpl->aMore,
+                                                     m_pImpl->bSpecModeWriter || m_pImpl->bSpecModeCalc, *this));
+        m_pImpl->m_pBox = m_pImpl->m_xWeldBox.get();
     }
     else
     {
@@ -3389,20 +3410,20 @@ css::uno::Reference<css::awt::XWindow> SvxStyleToolBoxControl::createItemWindow(
         {
             SolarMutexGuard aSolarMutexGuard;
 
-            pImpl->m_xVclBox = VclPtr<SvxStyleBox_Impl>::Create(pParent,
+            m_pImpl->m_xVclBox = VclPtr<SvxStyleBox_Impl>::Create(pParent,
                                                                 ".uno:StyleApply",
                                                                 SfxStyleFamily::Para,
                                                                 m_xFrame,
-                                                                pImpl->aClearForm,
-                                                                pImpl->aMore,
-                                                                pImpl->bSpecModeWriter || pImpl->bSpecModeCalc, *this);
-            pImpl->m_pBox = pImpl->m_xVclBox.get();
-            xItemWindow = VCLUnoHelper::GetInterface(pImpl->m_xVclBox);
+                                                                m_pImpl->aClearForm,
+                                                                m_pImpl->aMore,
+                                                                m_pImpl->bSpecModeWriter || m_pImpl->bSpecModeCalc, *this);
+            m_pImpl->m_pBox = m_pImpl->m_xVclBox.get();
+            xItemWindow = VCLUnoHelper::GetInterface(m_pImpl->m_xVclBox);
         }
     }
 
-    if (pImpl->m_pBox && !pImpl->aDefaultStyles.empty())
-        pImpl->m_pBox->SetDefaultStyle(pImpl->aDefaultStyles[0].second);
+    if (m_pImpl->m_pBox && !m_pImpl->aDefaultStyles.empty())
+        m_pImpl->m_pBox->SetDefaultStyle(m_pImpl->aDefaultStyles[0].second);
 
     return xItemWindow;
 }
@@ -3429,7 +3450,7 @@ void SvxFontNameBox_Base::statusChanged_Impl( const css::frame::FeatureStateEven
         else {
             // no active element; delete value in the display
             m_xWidget->set_active(-1);
-            set_active_or_entry_text("");
+            set_active_or_entry_text(u""_ustr);
         }
         m_xWidget->save_value();
     }
@@ -3460,7 +3481,7 @@ css::uno::Reference<css::awt::XWindow> SvxFontNameToolBoxControl::createItemWind
     {
         SolarMutexGuard aSolarMutexGuard;
 
-        std::unique_ptr<weld::ComboBox> xWidget(m_pBuilder->weld_combo_box("fontnamecombobox"));
+        std::unique_ptr<weld::ComboBox> xWidget(m_pBuilder->weld_combo_box(u"fontnamecombobox"_ustr));
 
         xItemWindow = css::uno::Reference<css::awt::XWindow>(new weld::TransportAsXWindow(xWidget.get()));
 
@@ -3494,7 +3515,7 @@ void SvxFontNameToolBoxControl::dispose()
 
 OUString SvxFontNameToolBoxControl::getImplementationName()
 {
-    return "com.sun.star.comp.svx.FontNameToolBoxControl";
+    return u"com.sun.star.comp.svx.FontNameToolBoxControl"_ustr;
 }
 
 sal_Bool SvxFontNameToolBoxControl::supportsService( const OUString& rServiceName )
@@ -3504,7 +3525,7 @@ sal_Bool SvxFontNameToolBoxControl::supportsService( const OUString& rServiceNam
 
 css::uno::Sequence< OUString > SvxFontNameToolBoxControl::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.ToolbarController" };
+    return { u"com.sun.star.frame.ToolbarController"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
@@ -3594,17 +3615,17 @@ void SvxColorToolBoxControl::update()
     switch( m_nSlotId )
     {
         case SID_ATTR_CHAR_COLOR2:
-            addStatusListener( ".uno:CharColorExt");
+            addStatusListener( u".uno:CharColorExt"_ustr);
             break;
 
         case SID_ATTR_CHAR_BACK_COLOR:
         case SID_ATTR_CHAR_COLOR_BACKGROUND:
-            addStatusListener( ".uno:CharBackgroundExt");
+            addStatusListener( u".uno:CharBackgroundExt"_ustr);
             break;
 
         case SID_FRAME_LINECOLOR:
-            addStatusListener( ".uno:BorderTLBR");
-            addStatusListener( ".uno:BorderBLTR");
+            addStatusListener( u".uno:BorderTLBR"_ustr);
+            addStatusListener( u".uno:BorderBLTR"_ustr);
             break;
     }
 }
@@ -3703,6 +3724,7 @@ void SvxColorToolBoxControl::statusChanged( const css::frame::FeatureStateEvent&
     bool bValue;
     if ( !m_bSplitButton )
     {
+        SolarMutexGuard aSolarMutexGuard;
         m_aColorStatus.statusChanged( rEvent );
         m_xBtnUpdater->Update( m_aColorStatus.GetColor() );
     }
@@ -3776,12 +3798,12 @@ void SvxColorToolBoxControl::functionSelected( const OUString& /*rCommand*/ )
 
 OUString SvxColorToolBoxControl::getImplementationName()
 {
-    return "com.sun.star.comp.svx.ColorToolBoxControl";
+    return u"com.sun.star.comp.svx.ColorToolBoxControl"_ustr;
 }
 
 css::uno::Sequence<OUString> SvxColorToolBoxControl::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.ToolbarController" };
+    return { u"com.sun.star.frame.ToolbarController"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
@@ -3860,12 +3882,12 @@ VclPtr<vcl::Window> SvxFrameToolBoxControl::createVclPopupWindow( vcl::Window* p
 
 OUString SvxFrameToolBoxControl::getImplementationName()
 {
-    return "com.sun.star.comp.svx.FrameToolBoxControl";
+    return u"com.sun.star.comp.svx.FrameToolBoxControl"_ustr;
 }
 
 css::uno::Sequence< OUString > SvxFrameToolBoxControl::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.ToolbarController" };
+    return { u"com.sun.star.frame.ToolbarController"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
@@ -3892,36 +3914,39 @@ namespace
     {
     private:
         rtl::Reference<SvxCurrencyToolBoxControl> m_xControl;
-        std::unique_ptr<weld::Label> m_xLabel;
         std::unique_ptr<weld::TreeView> m_xCurrencyLb;
-        std::unique_ptr<weld::Button> m_xOkBtn;
         OUString&       m_rSelectedFormat;
         LanguageType&   m_eSelectedLanguage;
 
         std::vector<OUString> m_aFormatEntries;
         LanguageType          m_eFormatLanguage;
         DECL_LINK(RowActivatedHdl, weld::TreeView&, bool);
-        DECL_LINK(OKHdl, weld::Button&, void);
 
         virtual void GrabFocus() override;
 
     public:
         SvxCurrencyList_Impl(SvxCurrencyToolBoxControl* pControl, weld::Widget* pParent, OUString& rSelectedFormat, LanguageType& eSelectedLanguage)
-            : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "svx/ui/currencywindow.ui", "CurrencyWindow")
+            : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/currencywindow.ui"_ustr, u"CurrencyWindow"_ustr)
             , m_xControl(pControl)
-            , m_xLabel(m_xBuilder->weld_label("label"))
-            , m_xCurrencyLb(m_xBuilder->weld_tree_view("currency"))
-            , m_xOkBtn(m_xBuilder->weld_button("ok"))
+            , m_xCurrencyLb(m_xBuilder->weld_tree_view(u"currency"_ustr))
             , m_rSelectedFormat(rSelectedFormat)
             , m_eSelectedLanguage(eSelectedLanguage)
         {
+            std::vector< OUString > aList;
+            std::vector< sal_uInt16 > aCurrencyList;
             const NfCurrencyTable& rCurrencyTable = SvNumberFormatter::GetTheCurrencyTable();
             sal_uInt16 nLen = rCurrencyTable.size();
 
             SvNumberFormatter aFormatter( m_xControl->getContext(), LANGUAGE_SYSTEM );
             m_eFormatLanguage = aFormatter.GetLanguage();
 
-            const SvxCurrencyToolBoxControl::SvxCurrencyVect_t &rCurrencies = pControl->GetCurrencySymbols( );
+            std::vector<sfx::CurrencyID> aCurrencyIDs;
+
+            if (SfxObjectShell* pDocShell = SfxObjectShell::Current())
+                if (auto pModelAccessor = pDocShell->GetDocumentModelAccessor())
+                    aCurrencyIDs = pModelAccessor->getDocumentCurrencies();
+
+            SvxCurrencyToolBoxControl::GetCurrencySymbols(aList, true, aCurrencyList, aCurrencyIDs);
 
             sal_uInt16 nPos = 0, nCount = 0;
             sal_Int32 nSelectedPos = -1;
@@ -3931,11 +3956,9 @@ namespace
             OUString sLongestString;
 
             m_xCurrencyLb->freeze();
-            for( const SvxCurrencyToolBoxControl::SvxCurrencyData& curr : rCurrencies )
+            for( const auto& rItem : aList )
             {
-                const OUString& rItem = curr.m_label;
-                sal_uInt16 rCurrencyIndex = rCurrencies[ nCount ].m_currencyIdx;
-
+                sal_uInt16& rCurrencyIndex = aCurrencyList[ nCount ];
                 if ( rCurrencyIndex < nLen )
                 {
                     m_xCurrencyLb->append_text(rItem);
@@ -3972,9 +3995,7 @@ namespace
             // enable multiple selection enabled so we can start with nothing selected
             m_xCurrencyLb->set_selection_mode(SelectionMode::Multiple);
             m_xCurrencyLb->connect_row_activated( LINK( this, SvxCurrencyList_Impl, RowActivatedHdl ) );
-            m_xLabel->set_label(SvxResId(RID_SVXSTR_TBLAFMT_CURRENCY));
             m_xCurrencyLb->select( nSelectedPos );
-            m_xOkBtn->connect_clicked(LINK(this, SvxCurrencyList_Impl, OKHdl));
 
             // gtk will initially make a best guess depending on the first few entries, so copy the probable
             // longest entry to the start temporarily and force in the width at this point
@@ -3987,11 +4008,6 @@ namespace
     void SvxCurrencyList_Impl::GrabFocus()
     {
         m_xCurrencyLb->grab_focus();
-    }
-
-    IMPL_LINK_NOARG(SvxCurrencyList_Impl, OKHdl, weld::Button&, void)
-    {
-        RowActivatedHdl(*m_xCurrencyLb);
     }
 
     IMPL_LINK_NOARG(SvxCurrencyList_Impl, RowActivatedHdl, weld::TreeView&, bool)
@@ -4011,8 +4027,6 @@ namespace
         m_eSelectedLanguage = m_eFormatLanguage;
 
         m_xControl->execute(nSelected + 1);
-
-        m_xCurrencyLb->scroll_to_row(0);
 
         m_xControl->EndPopupMode();
 
@@ -4035,26 +4049,6 @@ void SvxCurrencyToolBoxControl::initialize( const css::uno::Sequence< css::uno::
     ToolBoxItemId nId;
     if (getToolboxId(nId, &pToolBox) && pToolBox->GetItemCommand(nId) == m_aCommandURL)
         pToolBox->SetItemBits(nId, ToolBoxItemBits::DROPDOWN | pToolBox->GetItemBits(nId));
-}
-
-const SvxCurrencyToolBoxControl::SvxCurrencyVect_t  &SvxCurrencyToolBoxControl::GetCurrencySymbols( ) {
-    inner_GetCurrencySymbols( true, m_currencies, m_mru_currencies );
-    return m_currencies;
-}
-
-void SvxCurrencyToolBoxControl::addMruCurrency(sal_Int16 currencyPosition) {
-    if (currencyPosition == 1)
-        return;
-
-    const SvxCurrencyData& curr = m_currencies[currencyPosition];
-    auto currencyIter = std::find( m_mru_currencies.begin(), m_mru_currencies.end(), curr );
-
-    if ( currencyIter != m_mru_currencies.end() )
-        m_mru_currencies.erase( currencyIter );
-
-    m_mru_currencies.insert( m_mru_currencies.begin(), curr );
-    if (m_mru_currencies.size() > MAX_MRU_CURRENCIES)
-        m_mru_currencies.resize( MAX_MRU_CURRENCIES );
 }
 
 std::unique_ptr<WeldToolbarPopup> SvxCurrencyToolBoxControl::weldPopupWindow()
@@ -4089,12 +4083,11 @@ void SvxCurrencyToolBoxControl::execute( sal_Int16 nSelectModifier )
                 nFormatKey = rxNumberFormats->queryKey( m_aFormatString, aLocale, false );
                 if ( nFormatKey == NUMBERFORMAT_ENTRY_NOT_FOUND )
                     nFormatKey = rxNumberFormats->addNew( m_aFormatString, aLocale );
-                addMruCurrency(nSelectModifier);
-            }
-            catch( const uno::Exception& )
-            {
-                nFormatKey = m_nFormatKey;
-            }
+                }
+                catch( const uno::Exception& )
+                {
+                    nFormatKey = m_nFormatKey;
+                }
         }
         else
             nFormatKey = m_nFormatKey;
@@ -4102,7 +4095,7 @@ void SvxCurrencyToolBoxControl::execute( sal_Int16 nSelectModifier )
 
     if( nFormatKey != NUMBERFORMAT_ENTRY_NOT_FOUND )
     {
-        Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue("NumberFormatCurrency",
+        Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue(u"NumberFormatCurrency"_ustr,
                                                                        nFormatKey) };
         dispatchCommand( m_aCommandURL, aArgs );
         m_nFormatKey = nFormatKey;
@@ -4113,12 +4106,12 @@ void SvxCurrencyToolBoxControl::execute( sal_Int16 nSelectModifier )
 
 OUString SvxCurrencyToolBoxControl::getImplementationName()
 {
-    return "com.sun.star.comp.svx.CurrencyToolBoxControl";
+    return u"com.sun.star.comp.svx.CurrencyToolBoxControl"_ustr;
 }
 
 css::uno::Sequence<OUString> SvxCurrencyToolBoxControl::getSupportedServiceNames()
 {
-    return { "com.sun.star.frame.ToolbarController" };
+    return { u"com.sun.star.frame.ToolbarController"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *
@@ -4129,141 +4122,113 @@ com_sun_star_comp_svx_CurrencyToolBoxControl_get_implementation(
     return cppu::acquire( new SvxCurrencyToolBoxControl( rContext ) );
 }
 
-Reference< css::accessibility::XAccessible > SvxFontNameBox_Impl::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> SvxFontNameBox_Impl::CreateAccessible()
 {
     FillList();
     return InterimItemWindow::CreateAccessible();
 }
 
 //static
-sal_uInt16 const SvxCurrencyToolBoxControl::SvxCurrencyData::InvalidCurrency = INVALID_CURRENCY;
-
-SvxCurrencyToolBoxControl::SvxCurrencyData::SvxCurrencyData(
-        sal_uInt16 currencyIdx,
-        bool onlyIsoCode
-) :
-    m_currencyIdx(currencyIdx),
-    m_onlyIsoCode(onlyIsoCode)
-{}
-
-bool SvxCurrencyToolBoxControl::SvxCurrencyData::operator == (const SvxCurrencyData& other) const
+void SvxCurrencyToolBoxControl::GetCurrencySymbols(std::vector<OUString>& rList, bool bFlag,
+                                                   std::vector<sal_uInt16>& rCurrencyList,
+                                                   std::vector<sfx::CurrencyID> const& rDocumentCurrencyIDs)
 {
-    return
-        (m_currencyIdx == other.m_currencyIdx) &&
-        (m_onlyIsoCode == other.m_onlyIsoCode);
-}
+    rCurrencyList.clear();
 
-//static
-void SvxCurrencyToolBoxControl::GetCurrencySymbols( std::vector<OUString>& rList, bool bFlag,
-                                                    std::vector<sal_uInt16>& rCurrencyList )
-{
-    SvxCurrencyVect_t currencies, mru_currencies;
-
-    inner_GetCurrencySymbols(bFlag, currencies, mru_currencies);
-
-    rList.resize(currencies.size());
-    rCurrencyList.resize(currencies.size());
-
-    for (size_t j = 0; j < currencies.size(); j++) {
-        rList[j] = std::move(currencies[j].m_label);
-        rCurrencyList[j] = currencies[j].m_currencyIdx;
-    }
-}
-
-//static
-void SvxCurrencyToolBoxControl::inner_GetCurrencySymbols(
-        bool bFlag,
-        SvxCurrencyVect_t &pCurrencies,
-        SvxCurrencyVect_t &p_mru_currencies)
-{
+    static constexpr OUString aTwoSpace = u"  "_ustr;
     const NfCurrencyTable& rCurrencyTable = SvNumberFormatter::GetTheCurrencyTable();
     sal_uInt16 nCount = rCurrencyTable.size();
 
-    // reserving space for mru currencies on top of vector after -1 element
-    pCurrencies.resize( p_mru_currencies.size() + 1);
-    std::fill( pCurrencies.begin() + 1, pCurrencies.end(), SvxCurrencyData() );
+    sal_uInt16 nStart = 1;
 
-    // lambda for vector insertion: mru currencies are on top
-    auto addCurrency = [&pCurrencies, &p_mru_currencies]
-                (SvxCurrencyData& curr,    size_t position = SIZE_MAX)
+    LanguageTag eLangTag = Application::GetSettings().GetLanguageTag();
+    OUString aString(ApplyLreOrRleEmbedding(rCurrencyTable[0].GetBankSymbol()));
+    aString += aTwoSpace;
+    aString += ApplyLreOrRleEmbedding(rCurrencyTable[0].GetSymbol());
+    aString += aTwoSpace;
+    aString += ApplyLreOrRleEmbedding(SvtLanguageTable::GetLanguageString(eLangTag.getLanguageType()));
+    aString += aTwoSpace;
+    aString += ApplyLreOrRleEmbedding(SvtLanguageTable::GetLanguageString(rCurrencyTable[0].GetLanguage()));
+
+    rList.push_back( aString );
+    rCurrencyList.push_back( sal_uInt16(-1) ); // nAuto
+
+    if( bFlag )
     {
-        auto mruIter = std::find(p_mru_currencies.begin(), p_mru_currencies.end(), curr);
-
-        if (mruIter == p_mru_currencies.end()) {
-            if (position == SIZE_MAX)
-                pCurrencies.push_back( std::move(curr) );
-            else
-                pCurrencies.insert( pCurrencies.begin() + position, std::move(curr) );
-        }
-        else {
-            size_t index = mruIter - p_mru_currencies.begin();
-            pCurrencies[index] = std::move(curr);
-        }
-    };
-
-    SvxCurrencyData aCurr( sal_uInt16(-1) );
-    aCurr.m_label = ApplyLreOrRleEmbedding( rCurrencyTable[0].GetSymbol() ) + " ";
-    aCurr.m_label  += ApplyLreOrRleEmbedding( SvtLanguageTable::GetLanguageString(
-                                       rCurrencyTable[0].GetLanguage() ) );
-
-    pCurrencies[0] = aCurr;
-    if( bFlag ) {
-        aCurr.m_currencyIdx = 0;
-        addCurrency( aCurr );
+        rList.push_back( aString );
+        rCurrencyList.push_back( 0 );
+        ++nStart;
     }
 
-    sal_uInt16 nStart = pCurrencies.size();
-
     CollatorWrapper aCollator( ::comphelper::getProcessComponentContext() );
-    aCollator.loadDefaultCollator( Application::GetSettings().GetLanguageTag().getLocale(), 0 );
+    aCollator.loadDefaultCollator(eLangTag.getLocale(), 0);
 
-    static constexpr OUString aTwoSpace(u"  "_ustr);
-
-    // appending "long symbol" list
     for( sal_uInt16 i = 1; i < nCount; ++i )
     {
-        SvxCurrencyData curr( i );
-        curr.m_label = ApplyLreOrRleEmbedding( rCurrencyTable[i].GetBankSymbol() );
-        curr.m_label += aTwoSpace;
-        curr.m_label += ApplyLreOrRleEmbedding( rCurrencyTable[i].GetSymbol() );
-        curr.m_label += aTwoSpace;
-        curr.m_label += ApplyLreOrRleEmbedding( SvtLanguageTable::GetLanguageString(
-                                        rCurrencyTable[i].GetLanguage() ) );
+        auto& rCurrencyEntry = rCurrencyTable[i];
 
-        SvxCurrencyVect_t::size_type j = nStart;
-        for( ; j < pCurrencies.size(); ++j )
-            if ( aCollator.compareString( curr.m_label, pCurrencies[j].m_label ) < 0 )
-                break;  // insert before first greater than
+        OUString aStr( ApplyLreOrRleEmbedding(rCurrencyEntry.GetBankSymbol()));
+        aStr += aTwoSpace;
+        aStr += ApplyLreOrRleEmbedding(rCurrencyEntry.GetSymbol());
+        aStr += aTwoSpace;
+        aStr += ApplyLreOrRleEmbedding(SvtLanguageTable::GetLanguageString(rCurrencyEntry.GetLanguage()));
 
-        addCurrency( curr, j );
+        std::vector<OUString>::size_type j = nStart;
+
+        // Search if the currency is present in the document
+        auto iter = std::find_if(rDocumentCurrencyIDs.begin(), rDocumentCurrencyIDs.end(), [rCurrencyEntry](sfx::CurrencyID const& rCurrency)
+        {
+            const NfCurrencyEntry* pEntry = SvNumberFormatter::GetCurrencyEntry(o3tl::temporary(bool()), rCurrency.aSymbol, rCurrency.aExtension, rCurrency.eLanguage);
+
+            if (pEntry)
+                return rCurrencyEntry.GetLanguage() == pEntry->GetLanguage() && rCurrencyEntry.GetSymbol() == pEntry->GetSymbol();
+
+            return false;
+        });
+
+        // If currency is in document, insert it on top
+        if (iter != rDocumentCurrencyIDs.end())
+        {
+            nStart++;
+        }
+        else
+        {
+            for( ; j < rList.size(); ++j )
+            {
+                if ( aCollator.compareString( aStr, rList[j] ) < 0 )
+                    break;  // insert before first greater than
+            }
+        }
+
+        rList.insert( rList.begin() + j, aStr );
+        rCurrencyList.insert( rCurrencyList.begin() + j, i );
     }
 
     // Append ISO codes to symbol list.
     // XXX If this is to be changed, various other places would had to be
     // adapted that assume this order!
-    size_t nCont = pCurrencies.size();
+    std::vector<OUString>::size_type nCont = rList.size();
 
     for ( sal_uInt16 i = 1; i < nCount; ++i )
     {
         bool bInsert = true;
-        SvxCurrencyData curr( i, true );
-        curr.m_label = ApplyLreOrRleEmbedding(rCurrencyTable[i].GetBankSymbol());
+        auto& rCurrencyEntry = rCurrencyTable[i];
+        OUString aStr( ApplyLreOrRleEmbedding(rCurrencyEntry.GetBankSymbol()));
 
-        size_t j = nCont;
-        for ( ; j < pCurrencies.size() && bInsert; ++j )
+        std::vector<OUString>::size_type j = nCont;
+        for ( ; j < rList.size() && bInsert; ++j )
         {
-            if( pCurrencies[j].m_label == curr.m_label )
+            if( rList[j] == aStr )
                 bInsert = false;
-            else if ( aCollator.compareString( curr.m_label, pCurrencies[j].m_label ) < 0 )
+            else if ( aCollator.compareString( aStr, rList[j] ) < 0 )
                 break;  // insert before first greater than
         }
         if ( bInsert )
-            addCurrency( curr, j );
+        {
+            rList.insert( rList.begin() + j, aStr );
+            rCurrencyList.insert( rCurrencyList.begin() + j, i );
+        }
     }
-
-    for ( int j = p_mru_currencies.size() - 1; j > 0; j-- )
-        if ( pCurrencies[j].m_currencyIdx == SvxCurrencyData::InvalidCurrency )
-            pCurrencies.erase( pCurrencies.begin() + j );
 }
 
 ListBoxColorWrapper::ListBoxColorWrapper(ColorListBox* pControl)
@@ -4298,8 +4263,7 @@ void ColorListBox::SetSlotId(sal_uInt16 nSlotId, bool bShowNoneButton)
 }
 
 ColorListBox::ColorListBox(std::unique_ptr<weld::MenuButton> pControl,
-                           TopLevelParentFunction aTopLevelParentFunction,
-                           const ColorListBox* pCache)
+                           TopLevelParentFunction aTopLevelParentFunction)
     : m_xButton(std::move(pControl))
     , m_aColorWrapper(this)
     , m_aAutoDisplayColor(Application::GetSettings().GetStyleSettings().GetDialogColor())
@@ -4309,14 +4273,7 @@ ColorListBox::ColorListBox(std::unique_ptr<weld::MenuButton> pControl,
 {
     m_xButton->connect_toggled(LINK(this, ColorListBox, ToggleHdl));
     m_aSelectedColor = GetAutoColor(m_nSlotId);
-    if (!pCache)
-        LockWidthRequest(CalcBestWidthRequest());
-    else
-    {
-        LockWidthRequest(pCache->m_xButton->get_size_request().Width());
-        m_xPaletteManager.reset(pCache->m_xPaletteManager->Clone());
-        m_xPaletteManager->SetColorSelectFunction(std::ref(m_aColorWrapper));
-    }
+    LockWidthRequest(CalcBestWidthRequest());
     ShowPreview(m_aSelectedColor);
 }
 

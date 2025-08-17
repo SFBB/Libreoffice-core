@@ -17,13 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_SOURCE_INC_SVIMPBOX_HXX
-#define INCLUDED_VCL_SOURCE_INC_SVIMPBOX_HXX
+#pragma once
 
 #include <vcl/seleng.hxx>
 #include <vcl/idle.hxx>
 #include <vcl/image.hxx>
-#include <vcl/svtaccessiblefactory.hxx>
 #include <vcl/vclevent.hxx>
 #include <vcl/toolkit/scrbar.hxx>
 #include <vcl/toolkit/treelistbox.hxx>
@@ -92,9 +90,6 @@ private:
     SvLBoxTab*           m_pActiveTab;
 
     VclPtr<ScrollBarBox> m_aScrBarBox;
-
-    ::vcl::AccessibleFactoryAccess
-                        m_aFactoryAccess;
 
     static Image*       s_pDefCollapsed;
     static Image*       s_pDefExpanded;
@@ -382,7 +377,5 @@ inline void SvImpLBox::TreeInserted( SvTreeListEntry* pInsTree )
 {
     EntryInserted( pInsTree );
 }
-
-#endif // INCLUDED_VCL_SOURCE_INC_SVIMPBOX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -25,7 +25,6 @@
 #include <controller/SlsScrollBarManager.hxx>
 #include <controller/SlsProperties.hxx>
 #include <controller/SlsAnimator.hxx>
-#include <o3tl/deleter.hxx>
 #include <view/SlideSorterView.hxx>
 #include <view/SlsTheme.hxx>
 #include <model/SlideSorterModel.hxx>
@@ -45,19 +44,19 @@ namespace sd::slidesorter {
 
 //===== SlideSorter ===========================================================
 
-std::shared_ptr<SlideSorter> SlideSorter::CreateSlideSorter(
+std::unique_ptr<SlideSorter, o3tl::default_delete<SlideSorter>> SlideSorter::CreateSlideSorter(
     ViewShell& rViewShell,
     sd::Window* pContentWindow,
     ScrollAdaptor* pHorizontalScrollBar,
     ScrollAdaptor* pVerticalScrollBar)
 {
-    std::shared_ptr<SlideSorter> pSlideSorter(
+    std::unique_ptr<SlideSorter, o3tl::default_delete<SlideSorter>> pSlideSorter(
         new SlideSorter(
             rViewShell,
             pContentWindow,
             pHorizontalScrollBar,
-            pVerticalScrollBar),
-        o3tl::default_delete<SlideSorter>());
+            pVerticalScrollBar)
+        );
     pSlideSorter->Init();
     return pSlideSorter;
 }
@@ -67,7 +66,7 @@ SlideSorter::SlideSorter (
     sd::Window* pContentWindow,
     ScrollAdaptor* pHorizontalScrollBar,
     ScrollAdaptor* pVerticalScrollBar)
-    : mpViewShell(&rViewShell),
+    : mrViewShell(rViewShell),
       mpViewShellBase(&rViewShell.GetViewShellBase()),
       mpContentWindow(pContentWindow),
       mpHorizontalScrollBar(pHorizontalScrollBar),
@@ -272,10 +271,7 @@ void SlideSorter::RelocateToWindow (vcl::Window* pParentWindow)
 
     ReleaseListeners();
 
-    if (mpViewShell)
-    {
-        mpViewShell->ViewShell::RelocateToParentWindow(pParentWindow);
-    }
+    mrViewShell.ViewShell::RelocateToParentWindow(pParentWindow);
 
     SetupControls();
     SetupListeners();
@@ -294,11 +290,8 @@ void SlideSorter::RelocateToWindow (vcl::Window* pParentWindow)
 
 void SlideSorter::SetCurrentFunction (const rtl::Reference<FuPoor>& rpFunction)
 {
-    if (GetViewShell() != nullptr)
-    {
-        GetViewShell()->SetCurrentFunction(rpFunction);
-        GetViewShell()->SetOldFunction(rpFunction);
-    }
+    GetViewShell().SetCurrentFunction(rpFunction);
+    GetViewShell().SetOldFunction(rpFunction);
 }
 
 std::shared_ptr<controller::Properties> const & SlideSorter::GetProperties() const

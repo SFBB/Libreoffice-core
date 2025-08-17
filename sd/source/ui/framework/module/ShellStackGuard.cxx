@@ -20,12 +20,12 @@
 #include "ShellStackGuard.hxx"
 
 #include <framework/ConfigurationController.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
 #include <framework/FrameworkHelper.hxx>
 
 #include <DrawController.hxx>
 #include <ViewShellBase.hxx>
 #include <sfx2/printer.hxx>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <comphelper/servicehelper.hxx>
 
 using namespace ::com::sun::star;
@@ -56,8 +56,7 @@ ShellStackGuard::ShellStackGuard (rtl::Reference<sd::DrawController> const & rxC
         // prevented in case of a printing printer.
         mxConfigurationController->addConfigurationChangeListener(
             this,
-            FrameworkHelper::msConfigurationUpdateStartEvent,
-            Any());
+            ConfigurationChangeEventType::ConfigurationUpdateStart);
 
         // Prepare the printer polling.
         maPrinterPollingIdle.SetInvokeHandler(LINK(this,ShellStackGuard,TimeoutHandler));
@@ -78,10 +77,10 @@ void ShellStackGuard::disposing(std::unique_lock<std::mutex>&)
     mpBase = nullptr;
 }
 
-void SAL_CALL ShellStackGuard::notifyConfigurationChange (
+void ShellStackGuard::notifyConfigurationChange (
     const ConfigurationChangeEvent& rEvent)
 {
-    if (rEvent.Type == FrameworkHelper::msConfigurationUpdateStartEvent)
+    if (rEvent.Type == ConfigurationChangeEventType::ConfigurationUpdateStart)
     {
         if (mpUpdateLock == nullptr && IsPrinting())
         {
@@ -98,7 +97,7 @@ void SAL_CALL ShellStackGuard::disposing (
     const lang::EventObject& rEvent)
 {
     if (mxConfigurationController.is())
-        if (rEvent.Source == mxConfigurationController)
+        if (rEvent.Source == cppu::getXWeak(mxConfigurationController.get()))
         {
             mxConfigurationController = nullptr;
             mpBase = nullptr;
@@ -107,7 +106,7 @@ void SAL_CALL ShellStackGuard::disposing (
 
 IMPL_LINK(ShellStackGuard, TimeoutHandler, Timer*, pIdle, void)
 {
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
     OSL_ASSERT(pIdle==&maPrinterPollingIdle);
 #else
     (void)pIdle;

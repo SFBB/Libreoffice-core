@@ -39,11 +39,8 @@
 #include <vbahelper/vbadllapi.h>
 
 namespace com::sun::star {
-    namespace document { struct EventObject; }
     namespace frame { class XModel; }
     namespace script::vba { class XVBAModuleInfo; }
-    namespace uno { class XComponentContext; }
-    namespace util { struct ChangesEvent; }
 }
 
 class SfxObjectShell;

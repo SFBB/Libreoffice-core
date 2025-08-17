@@ -52,7 +52,7 @@
 #include <xmloff/xmlnamespace.hxx>
 #include <com/sun/star/drawing/NormalsKind.hpp>
 #include <com/sun/star/drawing/TextureProjectionMode.hpp>
-#include <com/sun/star/drawing/TextureKind.hpp>
+#include <com/sun/star/drawing/TextureKind2.hpp>
 #include <com/sun/star/drawing/TextureMode.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <xmloff/txtprmap.hxx>
@@ -65,6 +65,9 @@
 #include <sax/tools/converter.hxx>
 #include <xmlsdtypes.hxx>
 #include <xmlprop.hxx>
+#include <xmlbahdl.hxx>
+#include <climits>
+#include <algorithm>
 
 using ::com::sun::star::uno::Any;
 
@@ -78,6 +81,7 @@ using namespace ::xmloff::token;
 #define GMAPV(name,prefix,token,type,context,version) MAPV_(name,prefix,token,type|XML_TYPE_PROP_GRAPHIC,context,version)
 #define DPMAP(name,prefix,token,type,context) MAP_(name,prefix,token,type|XML_TYPE_PROP_DRAWING_PAGE,context)
 #define TMAP(name,prefix,token,type,context) MAP_(name,prefix,token,type|XML_TYPE_PROP_TEXT,context)
+#define TMAPV(name,prefix,token,type,context,version) MAPV_(name,prefix,token,type|XML_TYPE_PROP_TEXT,context,version)
 #define PMAP(name,prefix,token,type,context) MAP_(name,prefix,token,type|XML_TYPE_PROP_PARAGRAPH,context)
 #define MAP_END() { nullptr }
 
@@ -171,6 +175,11 @@ const XMLPropertyMapEntry aXMLSDProperties[] =
     // soft edge attributes
     GMAPV( PROP_SoftEdgeRadius,                XML_NAMESPACE_LO_EXT, XML_SOFTEDGE_RADIUS,      XML_TYPE_MEASURE          , 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
 
+    // glow text attributes
+    TMAPV( PROP_GlowTextEffectRadius,           XML_NAMESPACE_LO_EXT, XML_GLOW_TEXT_RADIUS,          XML_TYPE_MEASURE  , 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
+    TMAPV( PROP_GlowTextEffectColor,            XML_NAMESPACE_LO_EXT, XML_GLOW_TEXT_COLOR,           XML_TYPE_COLOR    , 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
+    TMAPV( PROP_GlowTextEffectTransparency,     XML_NAMESPACE_LO_EXT, XML_GLOW_TEXT_TRANSPARENCY,    XML_TYPE_PERCENT16, 0, SvtSaveOptions::ODFSVER_FUTURE_EXTENDED),
+
     // graphic attributes
     GMAP( PROP_GraphicColorMode,               XML_NAMESPACE_DRAW, XML_COLOR_MODE,             XML_TYPE_COLOR_MODE, 0 ), // exists in SW, too, with same property name
     GMAP( PROP_AdjustLuminance,                XML_NAMESPACE_DRAW, XML_LUMINANCE,              XML_TYPE_PERCENT16, 0 ), // signed? exists in SW, too, with same property name
@@ -219,7 +228,7 @@ const XMLPropertyMapEntry aXMLSDProperties[] =
     GMAP( PROP_D3DVerticalSegments,                XML_NAMESPACE_DR3D, XML_VERTICAL_SEGMENTS,      XML_TYPE_NUMBER, 0 ),
     GMAP( PROP_D3DPercentDiagonal,             XML_NAMESPACE_DR3D, XML_EDGE_ROUNDING,          XML_TYPE_PERCENT, 0 ),
     GMAP( PROP_D3DBackscale,                   XML_NAMESPACE_DR3D, XML_BACK_SCALE,             XML_TYPE_PERCENT, 0 ),
-    GMAP( PROP_D3DEndAngle,                        XML_NAMESPACE_DR3D, XML_END_ANGLE,              XML_TYPE_NUMBER, 0 ),
+    GMAP( PROP_D3DEndAngle,                    XML_NAMESPACE_DR3D, XML_END_ANGLE,              XML_SD_TYPE_LATHE_ENDANGLE, 0 ),
     GMAP( PROP_D3DDepth,                       XML_NAMESPACE_DR3D, XML_DEPTH,                  XML_TYPE_MEASURE, 0 ),
     GMAP( PROP_D3DDoubleSided,                 XML_NAMESPACE_DR3D, XML_BACKFACE_CULLING,       XML_SD_TYPE_BACKFACE_CULLING, 0 ),
 
@@ -549,11 +558,12 @@ SvXMLEnumMapEntry<drawing::TextureProjectionMode> const  aXML_TexGenerationY_Enu
     { XML_TOKEN_INVALID, drawing::TextureProjectionMode(0) }
 };
 
-SvXMLEnumMapEntry<drawing::TextureKind> const  aXML_TexKind_EnumMap[] =
+SvXMLEnumMapEntry<drawing::TextureKind2> const  aXML_TexKind_EnumMap[] =
 {
-    { XML_LUMINANCE,    drawing::TextureKind_LUMINANCE },
-    { XML_COLOR,        drawing::TextureKind_COLOR },
-    { XML_TOKEN_INVALID, drawing::TextureKind(0) }
+    { XML_LUMINANCE,    drawing::TextureKind2_LUMINANCE },
+    { XML_INTENSITY,    drawing::TextureKind2_INTENSITY },
+    { XML_COLOR,        drawing::TextureKind2_COLOR },
+    { XML_TOKEN_INVALID, drawing::TextureKind2(0) }
 };
 
 SvXMLEnumMapEntry<drawing::TextureMode> const  aXML_TexMode_EnumMap[] =
@@ -984,12 +994,66 @@ public:
         if (!rValue.hasValue() ||
             rValue.get<drawing::TextFitToSizeType>() < any.get<drawing::TextFitToSizeType>())
         {
-            rValue = any;
+            rValue = std::move(any);
         }
         return true;
     }
 };
+}
 
+namespace
+{
+class XMLLatheEndAngleHdl : public XMLDoublePropHdl
+{
+public:
+    virtual bool importXML(const OUString& rStrImpValue, css::uno::Any& rValue,
+                           const SvXMLUnitConverter& rUnitConverter) const override;
+    virtual bool exportXML(OUString& rStrExpValue, const css::uno::Any& rValue,
+                           const SvXMLUnitConverter& rUnitConverter) const override;
+};
+}
+
+bool XMLLatheEndAngleHdl::importXML(const OUString& rStrImpValue, uno::Any& rValue,
+                                    const SvXMLUnitConverter& rUC) const
+{
+    // tdf#161327. We keep reading unit-less values as being in 1/10th of a degree for backward
+    // compatibility for now. Values with unit are interpreted correctly.
+    SAL_WARN_IF(
+        SvtSaveOptions::ODFSaneDefaultVersion::ODFSVER_013_EXTENDED < rUC.getSaneDefaultVersion(),
+        "xmloff.draw",
+        "Check whether parameter isWrongOOo10thDegAngle can be false for newer LO version.");
+    sal_Int16 nAngle; // Angles are limited to 'short' in UNO property D3DEndAngle.
+    bool const bRet = ::sax::Converter::convert10thDegAngle(nAngle, rStrImpValue, true);
+    if (bRet)
+    {
+        rValue <<= nAngle;
+        return true;
+    }
+    else
+        return false;
+}
+
+bool XMLLatheEndAngleHdl::exportXML(OUString& rStrExpValue, const uno::Any& rValue,
+                                    const SvXMLUnitConverter& rUC) const
+{
+    sal_Int16 nAngle; // type of D3DEndAngle is 'short'.
+    bool bRet = rValue >>= nAngle;
+    if (bRet)
+    {
+        // tdf#161327. Adapt version to write unit deg, when most users have a LO version, that can
+        // read angle units. Write 1/10 of a degree for all versions for backward compatibility till
+        // then. Adapt test when LO writes a new default ODF version.
+        if (SvtSaveOptions::ODFSaneDefaultVersion::ODFSVER_013_EXTENDED
+            >= rUC.getSaneDefaultVersion())
+            rStrExpValue = OUString::number(nAngle); // wrong, but backward compatible
+        else
+        {
+            SAL_WARN("xmloff.draw", "Check whether writing unit is indeed possible now.");
+            double fAngle = static_cast<double>(nAngle) / 10.0;
+            rStrExpValue = OUString::number(fAngle) + "deg";
+        }
+    }
+    return bRet;
 }
 
 XMLSdPropHdlFactory::XMLSdPropHdlFactory( uno::Reference< frame::XModel > xModel, SvXMLImport& rImport )
@@ -1135,12 +1199,17 @@ const XMLPropertyHandler* XMLSdPropHdlFactory::GetPropertyHandler( sal_Int32 nTy
                 pHdl = new XMLEnumPropertyHdl( aXML_TexMode_EnumMap );
                 break;
             }
+            case XML_SD_TYPE_LATHE_ENDANGLE:
+            {
+                pHdl = new XMLLatheEndAngleHdl;
+                break;
+            }
             case XML_SD_TYPE_NUMBULLET:
             {
                 uno::Reference<ucb::XAnyCompareFactory> xCompareFac( mxModel, uno::UNO_QUERY );
                 uno::Reference<ucb::XAnyCompare> xCompare;
                 if( xCompareFac.is() )
-                    xCompare = xCompareFac->createAnyCompareByName( "NumberingRules" );
+                    xCompare = xCompareFac->createAnyCompareByName( u"NumberingRules"_ustr );
 
                 pHdl = new XMLNumRulePropHdl( xCompare );
                 break;
@@ -1565,7 +1634,7 @@ void XMLShapeExportPropertyMapper::ContextFilter(
             try
             {
                 awt::Rectangle aRect;
-                if( rPropSet->getPropertyValue( "VisibleArea" ) >>= aRect )
+                if( rPropSet->getPropertyValue( u"VisibleArea"_ustr ) >>= aRect )
                 {
                     if( pOLEVisAreaLeft )
                     {

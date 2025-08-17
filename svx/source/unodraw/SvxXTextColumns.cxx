@@ -35,7 +35,6 @@
 #include <o3tl/safeint.hxx>
 #include <svl/itemprop.hxx>
 #include <svx/SvxXTextColumns.hxx>
-#include <tools/UnitConversion.hxx>
 #include <vcl/svapp.hxx>
 
 #include <numeric>
@@ -59,8 +58,8 @@ SfxItemPropertyMapEntry const saTextColumns_Impl[] = {
       css::beans::PropertyAttribute::READONLY, 0 },
     { u"AutomaticDistance"_ustr, WID_TXTCOL_AUTO_DISTANCE, cppu::UnoType<sal_Int32>::get(), 0, 0 },
     { u"SeparatorLineWidth"_ustr, WID_TXTCOL_LINE_WIDTH, cppu::UnoType<sal_Int32>::get(), 0, 0 },
-    { u"SeparatorLineColor"_ustr, WID_TXTCOL_LINE_COLOR,
-      cppu::UnoType<com::sun::star::util::Color>::get(), 0, 0 },
+    { u"SeparatorLineColor"_ustr, WID_TXTCOL_LINE_COLOR, cppu::UnoType<css::util::Color>::get(), 0,
+      0 },
     { u"SeparatorLineRelativeHeight"_ustr, WID_TXTCOL_LINE_REL_HGT, cppu::UnoType<sal_Int32>::get(),
       0, 0 },
     { u"SeparatorLineVerticalAlignment"_ustr, WID_TXTCOL_LINE_ALIGN,
@@ -118,14 +117,17 @@ private:
 
     //separator line
     sal_Int32 m_nSepLineWidth = 0;
-    com::sun::star::util::Color m_nSepLineColor = 0; // black
+    css::util::Color m_nSepLineColor = 0; // black
     sal_Int32 m_nSepLineHeightRelative = 100; // full height
     css::style::VerticalAlignment m_nSepLineVertAlign = css::style::VerticalAlignment_MIDDLE;
     bool m_bSepLineIsOn = false;
     sal_Int16 m_nSepLineStyle = css::text::ColumnSeparatorStyle::NONE;
 };
 
-OUString SvxXTextColumns::getImplementationName() { return "com.sun.star.comp.svx.TextColumns"; }
+OUString SvxXTextColumns::getImplementationName()
+{
+    return u"com.sun.star.comp.svx.TextColumns"_ustr;
+}
 
 sal_Bool SvxXTextColumns::supportsService(const OUString& rServiceName)
 {
@@ -134,7 +136,7 @@ sal_Bool SvxXTextColumns::supportsService(const OUString& rServiceName)
 
 css::uno::Sequence<OUString> SvxXTextColumns::getSupportedServiceNames()
 {
-    return { "com.sun.star.text.TextColumns" };
+    return { u"com.sun.star.text.TextColumns"_ustr };
 }
 
 sal_Int32 SvxXTextColumns::getReferenceValue()

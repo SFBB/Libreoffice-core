@@ -26,7 +26,6 @@
 #include <com/sun/star/connection/SocketPermission.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-using namespace ::osl;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 
@@ -39,7 +38,7 @@ AccessControl::AccessControl( Reference< XComponentContext > const & xContext )
 {
     if (! (xContext->getValueByName( ACCESS_CONTROLLER_SINGLETON ) >>= m_xController))
     {
-        throw SecurityException( "no access controller!" );
+        throw SecurityException( u"no access controller!"_ustr );
     }
 }
 
@@ -49,7 +48,7 @@ AccessControl::AccessControl(
 {
     if (! m_xController.is())
     {
-        throw SecurityException( "no access controller!" );
+        throw SecurityException( u"no access controller!"_ustr );
     }
 }
 
@@ -58,7 +57,7 @@ AccessControl::AccessControl( AccessControl const & ac )
 {
     if (! m_xController.is())
     {
-        throw SecurityException( "no access controller!" );
+        throw SecurityException( u"no access controller!"_ustr );
     }
 }
 

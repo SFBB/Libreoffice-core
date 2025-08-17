@@ -18,7 +18,6 @@
  */
 
 #include <com/sun/star/beans/PropertyAttribute.hpp>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/util/URL.hpp>
 
@@ -37,6 +36,7 @@
 #include <sfx2/sfxsids.hrc>
 
 #include <framework/FrameworkHelper.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
 #include <comphelper/extract.hxx>
 
 #include <FrameView.hxx>
@@ -60,6 +60,7 @@
 #include <optsitem.hxx>
 #include <strings.hrc>
 #include <sdresid.hxx>
+#include <ResourceId.hxx>
 
 using ::com::sun::star::presentation::XSlideShowController;
 using ::sd::framework::FrameworkHelper;
@@ -72,7 +73,6 @@ using namespace ::com::sun::star::drawing;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::animations;
-using namespace ::com::sun::star::drawing::framework;
 
 namespace {
     /** This local version of the work window overrides DataChanged() so that it
@@ -193,6 +193,16 @@ bool SlideShow::StartPreview( ViewShellBase const & rBase,
     if( !xSlideShow.is() )
         return false;
 
+    // end an already running IASS Preview (when someone is fast)
+    if (xSlideShow->IsInteractiveSlideshow() && xSlideShow->isInteractiveSetup())
+        xSlideShow->endInteractivePreview();
+
+    // check if IASS re-use of running Slideshow can/should be done
+    // and do it
+    if (xSlideShow->IsInteractiveSlideshow() && xSlideShow->isFullScreen()) // IASS
+        return xSlideShow->startInteractivePreview( xDrawPage, xAnimationNode );
+
+    // fallback to usual mode
     xSlideShow->startPreview( xDrawPage, xAnimationNode );
     return true;
 }
@@ -216,6 +226,22 @@ bool SlideShow::IsRunning( const ViewShell& rViewShell )
     return xSlideShow.is() && xSlideShow->isRunning() && (xSlideShow->mxController->getViewShell() == &rViewShell);
 }
 
+/// returns true if the interactive slideshow mode is activated
+bool SlideShow::IsInteractiveSlideshow(const ViewShellBase* pViewShellBase)
+{
+    if (nullptr == pViewShellBase)
+        return false;
+    rtl::Reference< SlideShow > xSlideShow(GetSlideShow(*pViewShellBase));
+    if (!xSlideShow.is())
+        return false;
+    return xSlideShow->IsInteractiveSlideshow();
+}
+
+bool SlideShow::IsInteractiveSlideshow() const
+{
+    return mpDoc->getPresentationSettings().mbInteractive;
+}
+
 void SlideShow::CreateController(  ViewShell* pViewSh, ::sd::View* pView, vcl::Window* pParentWindow )
 {
     SAL_INFO_IF( !mxController.is(), "sd.slideshow", "sd::SlideShow::CreateController(), clean up old controller first!" );
@@ -233,7 +259,7 @@ void SlideShow::CreateController(  ViewShell* pViewSh, ::sd::View* pView, vcl::W
 // XServiceInfo
 OUString SAL_CALL SlideShow::getImplementationName(  )
 {
-    return "com.sun.star.comp.sd.SlideShow";
+    return u"com.sun.star.comp.sd.SlideShow"_ustr;
 }
 
 sal_Bool SAL_CALL SlideShow::supportsService( const OUString& ServiceName )
@@ -243,7 +269,7 @@ sal_Bool SAL_CALL SlideShow::supportsService( const OUString& ServiceName )
 
 Sequence< OUString > SAL_CALL SlideShow::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.presentation.Presentation" };
+    return { u"com.sun.star.presentation.Presentation"_ustr };
 }
 
 // XPropertySet
@@ -494,7 +520,7 @@ void SAL_CALL SlideShow::setPropertyValue( const OUString& aPropertyName, const 
         {
             bIllegalArgument = false;
 
-            SdOptions* pOptions = SD_MOD()->GetSdOptions(DocumentType::Impress);
+            SdOptions* pOptions = SdModule::get()->GetSdOptions(DocumentType::Impress);
             pOptions->SetDisplay( nDisplay );
 
             FullScreenWorkWindow *pWin = dynamic_cast<FullScreenWorkWindow *>(GetWorkWindow());
@@ -573,7 +599,7 @@ Any SAL_CALL SlideShow::getPropertyValue( const OUString& PropertyName )
         return Any( rPresSettings.mbShowPauseLogo );
     case ATTR_PRESENT_DISPLAY:
     {
-        SdOptions* pOptions = SD_MOD()->GetSdOptions(DocumentType::Impress);
+        SdOptions* pOptions = SdModule::get()->GetSdOptions(DocumentType::Impress);
         return Any(pOptions->GetDisplay());
     }
 
@@ -613,10 +639,14 @@ WorkWindow *SlideShow::GetWorkWindow()
 
     PresentationViewShell* pShell = dynamic_cast<PresentationViewShell*>(mpFullScreenViewShellBase->GetMainViewShell().get());
 
-    if( !pShell || !pShell->GetViewFrame() )
+    if( !pShell)
         return nullptr;
 
-    return dynamic_cast<WorkWindow*>(pShell->GetViewFrame()->GetFrame().GetWindow().GetParent());
+    SfxViewFrame* pFrame = pShell->GetViewFrame();
+    if (!pFrame)
+        return nullptr;
+
+    return dynamic_cast<WorkWindow*>(pFrame->GetFrame().GetWindow().GetParent());
 }
 
 bool SlideShow::IsExitAfterPresenting() const
@@ -636,6 +666,13 @@ void SlideShow::SetExitAfterPresenting(bool bExit)
 void SAL_CALL SlideShow::end()
 {
     SolarMutexGuard aGuard;
+
+    if (IsInteractiveSlideshow() && isInteractiveSetup())
+    {
+        // If IASS was active clean that up, but do not end SlideShow
+        endInteractivePreview();
+        return;
+    }
 
     // The mbIsInStartup flag should have been reset during the start of the
     // slide show.  Reset it here just in case that something has horribly
@@ -766,8 +803,8 @@ void SAL_CALL SlideShow::end()
 
             // In case mbMouseAsPen was set, a new layer DrawnInSlideshow might have been generated
             // during slideshow, which is not known to FrameView yet.
-            if (any2bool(getPropertyValue("UsePen"))
-                && pViewShell->GetDoc()->GetLayerAdmin().GetLayer("DrawnInSlideshow"))
+            if (any2bool(getPropertyValue(u"UsePen"_ustr))
+                && pViewShell->GetDoc()->GetLayerAdmin().GetLayer(u"DrawnInSlideshow"_ustr))
             {
                 SdrLayerIDSet aDocLayerIDSet;
                 pViewShell->GetDoc()->GetLayerAdmin().getVisibleLayersODF(aDocLayerIDSet);
@@ -799,7 +836,7 @@ void SAL_CALL SlideShow::end()
 
 void SAL_CALL SlideShow::rehearseTimings()
 {
-    Sequence< PropertyValue > aArguments{ comphelper::makePropertyValue("RehearseTimings", true) };
+    Sequence< PropertyValue > aArguments{ comphelper::makePropertyValue(u"RehearseTimings"_ustr, true) };
     startWithArguments( aArguments );
 }
 
@@ -902,13 +939,35 @@ void SlideShow::disposing(std::unique_lock<std::mutex>&)
     mpDoc = nullptr;
 }
 
+bool SlideShow::startInteractivePreview( const Reference< XDrawPage >& xDrawPage, const Reference< XAnimationNode >& xAnimationNode )
+{
+    if (!mxController.is())
+        return false;
+
+    mxController->startInteractivePreview(xDrawPage, xAnimationNode);
+    return mxController->isInteractiveSetup();
+}
+
+bool SlideShow::isInteractiveSetup() const
+{
+    if (!mxController.is())
+        return false;
+
+    return mxController->isInteractiveSetup();
+}
+
+void SlideShow::endInteractivePreview()
+{
+    mxController->endInteractivePreview();
+}
+
 void SlideShow::startPreview( const Reference< XDrawPage >& xDrawPage, const Reference< XAnimationNode >& xAnimationNode )
 {
     Sequence< PropertyValue > aArguments{
-        comphelper::makePropertyValue("Preview", true),
-        comphelper::makePropertyValue("FirstPage", xDrawPage),
-        comphelper::makePropertyValue("AnimationNode", xAnimationNode),
-        comphelper::makePropertyValue("ParentWindow", Reference< XWindow >()),
+        comphelper::makePropertyValue(u"Preview"_ustr, true),
+        comphelper::makePropertyValue(u"FirstPage"_ustr, xDrawPage),
+        comphelper::makePropertyValue(u"AnimationNode"_ustr, xAnimationNode),
+        comphelper::makePropertyValue(u"ParentWindow"_ustr, Reference< XWindow >()),
     };
 
     startWithArguments( aArguments );
@@ -1066,7 +1125,7 @@ void SlideShow::StartInPlacePresentation()
 
             pHelper->RequestView( FrameworkHelper::msImpressViewURL, FrameworkHelper::msCenterPaneURL );
             pHelper->RunOnConfigurationEvent(
-                FrameworkHelper::msConfigurationUpdateEndEvent,
+                framework::ConfigurationChangeEventType::ConfigurationUpdateEnd,
                 [this] (bool const) { return this->StartInPlacePresentationConfigurationCallback(); } );
             return;
         }
@@ -1158,7 +1217,7 @@ sal_Int32 SlideShow::GetDisplay()
 {
     sal_Int32 nDisplay = 0;
 
-    SdOptions* pOptions = SD_MOD()->GetSdOptions(DocumentType::Impress);
+    SdOptions* pOptions = SdModule::get()->GetSdOptions(DocumentType::Impress);
     if( pOptions )
         nDisplay = pOptions->GetDisplay();
 

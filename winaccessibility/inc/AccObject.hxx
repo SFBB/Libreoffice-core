@@ -56,27 +56,20 @@ private:
     ::rtl::Reference<AccEventListener>  m_pListener;
 
     css::uno::Reference < css::accessibility::XAccessible > m_xAccRef;
-    css::uno::Reference < css::accessibility::XAccessibleAction > m_xAccActionRef;
     css::uno::Reference < css::accessibility::XAccessibleContext > m_xAccContextRef;
 
-    void ImplInitializeCreateObj();//create COM object
-
-    void UpdateActionDesc();
     void UpdateRole();
 
     DWORD GetMSAAStateFromUNO(sal_Int64 xState);//translate state from UNO to MSAA value
     css::accessibility::XAccessibleSelection* GetXAccessibleSelection();
-    void GetExpandedState(sal_Bool* isExpandable, sal_Bool* isExpanded);
-    OUString GetMAccessibleValueFromAny(css::uno::Any pAny);
+    static OUString GetMAccessibleValueFromAny(css::uno::Any pAny);
 
 public:
 
-    AccObject(css::accessibility::XAccessible* pXAcc = nullptr, AccObjectWinManager* pManager = nullptr,
-              AccEventListener* accListener=nullptr);
+    AccObject(css::accessibility::XAccessible* pXAcc, AccObjectWinManager* pManager);
     virtual ~AccObject();
 
     bool UpdateAccessibleInfoFromUnoToMSAA(  ); //implement accessible information mapping
-    void UpdateDefaultAction();
 
     IMAccessible*  GetIMAccessible();   //return COM interface in acc object
     css::uno::Reference<css::accessibility::XAccessible> const& GetXAccessible();
@@ -89,12 +82,11 @@ public:
     HWND GetParentHWND();
 
     ::rtl::Reference<AccEventListener> SetListener(::rtl::Reference<AccEventListener> const& pListener);
-    AccEventListener* getListener();
 
     void SetParentObj(AccObject* pParentAccObj);
     AccObject* GetParentObj();
 
-    void InsertChild( AccObject* pChild,short pos = LAST_CHILD);
+    void InsertChild(AccObject* pChild);
     void DeleteChild( AccObject* pChild );
     AccObject* NextChild();
 
@@ -103,15 +95,12 @@ public:
     void  DecreaseState( sal_Int64 xState );//call COM interface DecreaseState method
     void  IncreaseState( sal_Int64 xState );//call COM interface IncreaseState method
 
-    void  SetName( css::uno::Any newName);
     void  SetValue( css::uno::Any pAny );
 
     short GetRole() const;
 
     void  UpdateState();
-    void  UpdateName();
     void  UpdateValue();
-    void  UpdateAction();
     void  UpdateValidWindow();
 
     void  setFocus();

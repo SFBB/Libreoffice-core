@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_BITMAP_BITMAPSCALESUPER_HXX
-#define INCLUDED_VCL_INC_BITMAP_BITMAPSCALESUPER_HXX
+#pragma once
 
-#include <vcl/BitmapFilter.hxx>
+#include <vcl/bitmap/BitmapFilter.hxx>
 
 class BitmapScaleSuperFilter final : public BitmapFilter
 {
@@ -28,13 +27,11 @@ public:
     BitmapScaleSuperFilter(const double& rScaleX, const double& rScaleY);
     virtual ~BitmapScaleSuperFilter() override;
 
-    virtual BitmapEx execute(BitmapEx const& rBitmap) const override;
+    virtual Bitmap execute(Bitmap const& rBitmap) const override;
 
 private:
     double mrScaleX;
     double mrScaleY;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -40,10 +40,11 @@ const SwNoTextNode *SwAccessibleNoTextFrame::GetNoTextNode() const
 {
     const SwNoTextNode *pNd  = nullptr;
     const SwFlyFrame *pFlyFrame = static_cast< const SwFlyFrame *>( GetFrame() );
-    if( pFlyFrame->Lower() && pFlyFrame->Lower()->IsNoTextFrame() )
+    const SwFrame *pLower = pFlyFrame->Lower();
+    if( pLower && pLower->IsNoTextFrame() )
     {
         const SwNoTextFrame *pContentFrame =
-            static_cast<const SwNoTextFrame *>(pFlyFrame->Lower());
+            static_cast<const SwNoTextFrame *>(pLower);
         const SwContentNode* pSwContentNode = pContentFrame->GetNode();
         if(pSwContentNode != nullptr)
         {
@@ -58,7 +59,7 @@ SwAccessibleNoTextFrame::SwAccessibleNoTextFrame(
         std::shared_ptr<SwAccessibleMap> const& pInitMap,
         sal_Int16 nInitRole,
         const SwFlyFrame* pFlyFrame  ) :
-    SwAccessibleFrameBase( pInitMap, nInitRole, pFlyFrame )
+    SwAccessibleNoTextFrame_BASE( pInitMap, nInitRole, pFlyFrame )
 {
     const SwNoTextNode* pNd = GetNoTextNode();
     // #i73249#
@@ -97,11 +98,8 @@ void SwAccessibleNoTextFrame::Notify(const SfxHint& rHint)
                 if(rTitleChanged.m_sOld == rTitleChanged.m_sNew)
                     break;
                 msTitle = rTitleChanged.m_sNew;
-                AccessibleEventObject aEvent;
-                aEvent.EventId = AccessibleEventId::NAME_CHANGED;
-                aEvent.OldValue <<= rTitleChanged.m_sOld;
-                aEvent.NewValue <<= msTitle;
-                FireAccessibleEvent(aEvent);
+                FireAccessibleEvent(AccessibleEventId::NAME_CHANGED, uno::Any(rTitleChanged.m_sOld),
+                                    uno::Any(msTitle));
 
                 if(!pNd->GetDescription().isEmpty())
                     break;
@@ -116,11 +114,8 @@ void SwAccessibleNoTextFrame::Notify(const SfxHint& rHint)
                     msDesc = msTitle;
                 if(msDesc == sOldDesc)
                     return;
-                AccessibleEventObject aEvent;
-                aEvent.EventId = AccessibleEventId::DESCRIPTION_CHANGED;
-                aEvent.OldValue <<= sOldDesc;
-                aEvent.NewValue <<= msDesc;
-                FireAccessibleEvent(aEvent);
+                FireAccessibleEvent(AccessibleEventId::DESCRIPTION_CHANGED, uno::Any(sOldDesc),
+                                    uno::Any(msDesc));
             }
             return;
     }
@@ -155,34 +150,6 @@ OUString SAL_CALL SwAccessibleNoTextFrame::getAccessibleDescription()
     ThrowIfDisposed();
 
     return msDesc;
-}
-
-// XInterface
-
-uno::Any SAL_CALL SwAccessibleNoTextFrame::queryInterface( const uno::Type& aType )
-{
-    if( aType ==
-        ::cppu::UnoType<XAccessibleImage>::get() )
-    {
-        uno::Reference<XAccessibleImage> xImage = this;
-        return uno::Any(xImage);
-    }
-    else if ( aType == cppu::UnoType<XAccessibleHypertext>::get())
-    {
-        uno::Reference<XAccessibleHypertext> aAccHypertext = this;
-        return uno::Any( aAccHypertext );
-    }
-    else
-        return SwAccessibleContext::queryInterface( aType );
-}
-
-// XTypeProvider
-
-uno::Sequence< uno::Type > SAL_CALL SwAccessibleNoTextFrame::getTypes()
-{
-    return cppu::OTypeCollection(
-        ::cppu::UnoType<XAccessibleImage>::get(),
-        SwAccessibleFrameBase::getTypes() ).getTypes();
 }
 
 /// XAccessibleImage

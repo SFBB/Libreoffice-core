@@ -45,6 +45,7 @@ namespace com::sun::star::sheet {
 class ScDPDimensionSaveData;
 class ScDPTableData;
 enum class ScGeneralFunction;
+namespace sc { class PivotTableFormats; }
 
 // classes to save Data Pilot settings
 
@@ -90,7 +91,7 @@ public:
 #endif
 };
 
-class SC_DLLPUBLIC ScDPSaveDimension
+class ScDPSaveDimension
 {
 private:
     OUString aName;
@@ -144,16 +145,16 @@ public:
 
     void SetName( const OUString& rNew ); // used if the source dim was renamed (groups)
 
-    void SetOrientation(css::sheet::DataPilotFieldOrientation nNew);
-    void SetSubTotals(std::vector<ScGeneralFunction> && rFuncs);
+    SC_DLLPUBLIC void SetOrientation(css::sheet::DataPilotFieldOrientation nNew);
+    SC_DLLPUBLIC void SetSubTotals(std::vector<ScGeneralFunction> && rFuncs);
     tools::Long GetSubTotalsCount() const
         { return maSubTotalFuncs.size(); }
 
     ScGeneralFunction GetSubTotalFunc(tools::Long nIndex) const
         { return maSubTotalFuncs[nIndex]; }
 
-    bool HasShowEmpty() const;
-    void SetShowEmpty(bool bSet);
+    SC_DLLPUBLIC bool HasShowEmpty() const;
+    SC_DLLPUBLIC void SetShowEmpty(bool bSet);
     bool GetShowEmpty() const
         { return bool(nShowEmptyMode); }
 
@@ -161,7 +162,7 @@ public:
     bool GetRepeatItemLabels() const
         { return bRepeatItemLabels; }
 
-    void SetFunction(ScGeneralFunction nNew);
+    SC_DLLPUBLIC void SetFunction(ScGeneralFunction nNew);
     ScGeneralFunction GetFunction() const
         { return nFunction; }
 
@@ -169,11 +170,11 @@ public:
     tools::Long GetUsedHierarchy() const
         { return nUsedHierarchy; }
 
-    void SetLayoutName(const OUString& rName);
-    const std::optional<OUString> & GetLayoutName() const;
+    SC_DLLPUBLIC void SetLayoutName(const OUString& rName);
+    SC_DLLPUBLIC const std::optional<OUString> & GetLayoutName() const;
     void RemoveLayoutName();
-    void SetSubtotalName(const OUString& rName);
-    const std::optional<OUString> & GetSubtotalName() const;
+    SC_DLLPUBLIC void SetSubtotalName(const OUString& rName);
+    SC_DLLPUBLIC const std::optional<OUString> & GetSubtotalName() const;
     void RemoveSubtotalName();
 
     bool IsMemberNameInUse(const OUString& rName) const;
@@ -181,28 +182,28 @@ public:
     const css::sheet::DataPilotFieldReference* GetReferenceValue() const
         { return pReferenceValue.get(); }
 
-    void SetReferenceValue(const css::sheet::DataPilotFieldReference* pNew);
+    SC_DLLPUBLIC void SetReferenceValue(const css::sheet::DataPilotFieldReference* pNew);
 
     const css::sheet::DataPilotFieldSortInfo* GetSortInfo() const
         { return pSortInfo.get(); }
 
-    void SetSortInfo(const css::sheet::DataPilotFieldSortInfo* pNew);
+    SC_DLLPUBLIC void SetSortInfo(const css::sheet::DataPilotFieldSortInfo* pNew);
     const css::sheet::DataPilotFieldAutoShowInfo* GetAutoShowInfo() const
         { return pAutoShowInfo.get(); }
 
-    void SetAutoShowInfo(const css::sheet::DataPilotFieldAutoShowInfo* pNew);
+    SC_DLLPUBLIC void SetAutoShowInfo(const css::sheet::DataPilotFieldAutoShowInfo* pNew);
     const css::sheet::DataPilotFieldLayoutInfo* GetLayoutInfo() const
         { return pLayoutInfo.get(); }
 
-    void SetLayoutInfo(const css::sheet::DataPilotFieldLayoutInfo* pNew);
+    SC_DLLPUBLIC void SetLayoutInfo(const css::sheet::DataPilotFieldLayoutInfo* pNew);
 
-    void SetCurrentPage( const OUString* pPage ); // NULL = no selection (all)
+    SC_DLLPUBLIC void SetCurrentPage( const OUString* pPage ); // NULL = no selection (all)
     OUString GetCurrentPage() const; // only for ODF compatibility
 
     css::sheet::DataPilotFieldOrientation GetOrientation() const
         { return nOrientation; }
 
-    ScDPSaveMember* GetExistingMemberByName(const OUString& rName);
+    SC_DLLPUBLIC ScDPSaveMember* GetExistingMemberByName(const OUString& rName);
 
     /**
      * Get a member object by its name.  If one doesn't exist, create a new
@@ -213,7 +214,7 @@ public:
      *
      * @return pointer to the member object.
      */
-    ScDPSaveMember* GetMemberByName(const OUString& rName);
+    SC_DLLPUBLIC ScDPSaveMember* GetMemberByName(const OUString& rName);
 
     void SetMemberPosition( const OUString& rName, sal_Int32 nNewPos );
 
@@ -221,7 +222,7 @@ public:
 
     void UpdateMemberVisibility(const std::unordered_map< OUString, bool>& rData);
 
-    bool HasInvisibleMember() const;
+    SC_DLLPUBLIC bool HasInvisibleMember() const;
 
     void RemoveObsoleteMembers(const MemberSetType& rMembers);
 
@@ -240,19 +241,20 @@ public:
 private:
     DimsType m_DimList;
     DupNameCountType maDupNameCounts; /// keep track of number of duplicates in each name.
-    std::unique_ptr<ScDPDimensionSaveData> pDimensionData; // settings that create new dimensions
-    sal_uInt16 nColumnGrandMode;
-    sal_uInt16 nRowGrandMode;
-    sal_uInt16 nIgnoreEmptyMode;
-    sal_uInt16 nRepeatEmptyMode;
-    bool bFilterButton; // not passed to DataPilotSource
-    bool bDrillDown; // not passed to DataPilotSource
-    bool bExpandCollapse; // not passed to DataPilotSource
+    std::unique_ptr<ScDPDimensionSaveData> mpDimensionData; // settings that create new dimensions
+    sal_uInt16 mnColumnGrandMode;
+    sal_uInt16 mnRowGrandMode;
+    sal_uInt16 mnIgnoreEmptyMode;
+    sal_uInt16 mnRepeatEmptyMode;
+    bool mbFilterButton; // not passed to DataPilotSource
+    bool mbDrillDown; // not passed to DataPilotSource
+    bool mbExpandCollapse; // not passed to DataPilotSource
 
     /** if true, all dimensions already have all of their member instances
      *  created. */
     bool mbDimensionMembersBuilt;
 
+    std::unique_ptr<sc::PivotTableFormats> mpFormats;
     std::optional<OUString> mpGrandTotalName;
     mutable std::unique_ptr<DimOrderType> mpDimOrder; // dimension order for row and column dimensions, to traverse result tree.
 
@@ -264,6 +266,10 @@ public:
     ScDPSaveData& operator= ( const ScDPSaveData& r );
 
     bool operator== ( const ScDPSaveData& r ) const;
+
+    SC_DLLPUBLIC bool hasFormats();
+    SC_DLLPUBLIC sc::PivotTableFormats const& getFormats();
+    SC_DLLPUBLIC void setFormats(sc::PivotTableFormats const& rPivotTableFormats);
 
     SC_DLLPUBLIC void SetGrandTotalName(const OUString& rName);
     SC_DLLPUBLIC const std::optional<OUString> & GetGrandTotalName() const;
@@ -320,38 +326,30 @@ public:
 
     void SetPosition( ScDPSaveDimension* pDim, tools::Long nNew );
     SC_DLLPUBLIC void SetColumnGrand( bool bSet );
-    bool GetColumnGrand() const
-        { return bool(nColumnGrandMode); }
+    bool GetColumnGrand() const { return bool(mnColumnGrandMode); }
 
     SC_DLLPUBLIC void SetRowGrand( bool bSet );
-    bool GetRowGrand() const
-        { return bool(nRowGrandMode); }
+    bool GetRowGrand() const { return bool(mnRowGrandMode); }
 
     SC_DLLPUBLIC void SetIgnoreEmptyRows( bool bSet );
-    bool GetIgnoreEmptyRows() const
-        { return bool(nIgnoreEmptyMode); }
+    bool GetIgnoreEmptyRows() const { return bool(mnIgnoreEmptyMode); }
 
     SC_DLLPUBLIC void SetRepeatIfEmpty( bool bSet );
-    bool GetRepeatIfEmpty() const
-        { return bool(nRepeatEmptyMode); }
+    bool GetRepeatIfEmpty() const { return bool(mnRepeatEmptyMode); }
 
     SC_DLLPUBLIC void SetFilterButton( bool bSet );
-    bool GetFilterButton() const
-        { return bFilterButton; }
+    bool GetFilterButton() const { return mbFilterButton; }
 
     SC_DLLPUBLIC void SetDrillDown( bool bSet );
-    bool GetDrillDown() const
-        { return bDrillDown; }
+    bool GetDrillDown() const { return mbDrillDown; }
 
     SC_DLLPUBLIC void SetExpandCollapse( bool bSet );
-    bool GetExpandCollapse() const
-        { return bExpandCollapse; }
+    bool GetExpandCollapse() const { return mbExpandCollapse; }
 
     void WriteToSource( const css::uno::Reference<css::sheet::XDimensionsSupplier>& xSource );
     bool IsEmpty() const;
 
-    const ScDPDimensionSaveData* GetExistingDimensionData() const
-        { return pDimensionData.get(); }
+    const ScDPDimensionSaveData* GetExistingDimensionData() const { return mpDimensionData.get(); }
 
     void RemoveAllGroupDimensions( const OUString& rSrcDimName, std::vector<OUString>* pDeletedNames = nullptr );
 

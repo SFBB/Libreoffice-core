@@ -65,6 +65,10 @@ $(eval $(call gb_CppunitTest_use_vcl,sw_unowriter))
 
 $(eval $(call gb_CppunitTest_use_rdb,sw_unowriter,services))
 
+$(eval $(call gb_CppunitTest_use_custom_headers,sw_unowriter,\
+    officecfg/registry \
+))
+
 $(eval $(call gb_CppunitTest_use_configuration,sw_unowriter))
 
 $(eval $(call gb_CppunitTest_use_uiconfigs,sw_unowriter, \
@@ -72,8 +76,12 @@ $(eval $(call gb_CppunitTest_use_uiconfigs,sw_unowriter, \
 ))
 
 $(call gb_CppunitTest_get_target,sw_unowriter): \
-    $(call gb_Library_get_target,textconv_dict)
+    $(call gb_Library_get_target,i18npool)
 
 $(eval $(call gb_CppunitTest_use_more_fonts,sw_unowriter))
+
+ifneq ($(filter MORE_FONTS,$(BUILD_TYPE)),)
+$(eval $(call gb_CppunitTest_set_non_application_font_use,sw_unowriter,abort))
+endif
 
 # vim: set noet sw=4 ts=4:

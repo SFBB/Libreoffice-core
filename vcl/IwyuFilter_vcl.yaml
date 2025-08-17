@@ -21,9 +21,18 @@ excludelist:
     vcl/inc/svsys.h:
     # Needed for nice system abstraction
     - unx/svsys.h
+    vcl/qa/cppunit/lifecycle.cxx:
+    # Needed for template
+    - com/sun/star/awt/XVclWindowPeer.hpp
+    vcl/qa/cppunit/mnemonic.cxx:
+    # Required in C++20 mode.
+    - o3tl/cppunittraitshelper.hxx
     vcl/qa/cppunit/outdev.cxx:
     # Needed for direct member access
     - basegfx/matrix/b2dhommatrix.hxx
+    vcl/source/accessibility/AccessibleBrowseBox.cxx:
+    # Complete type is needed
+    - com/sun/star/awt/XVclWindowPeer.hdl
     vcl/source/app/salplug.cxx:
     # Needed on WIN32
     - salframe.hxx
@@ -42,7 +51,6 @@ excludelist:
     # Needed for direct member access
     - com/sun/star/task/XStatusIndicator.hpp
     vcl/source/filter/ipdf/pdfdocument.cxx:
-    - comphelper/scopeguard.hxx
     # Actually these are used
     - com/sun/star/security/XCertificate.hpp
     - vector
@@ -52,12 +60,6 @@ excludelist:
     vcl/source/filter/wmf/wmfexternal.cxx:
     # Actually these are used
     - com/sun/star/beans/PropertyValue.hpp
-    vcl/source/fontsubset/sft.cxx:
-    # Needed on WIN32 / MAC / IOS
-    - xlat.hxx
-    vcl/source/gdi/configsettings.cxx:
-    # Needed for OSL_DEBUG_LEVEL > 2
-    - sal/log.hxx
     vcl/source/gdi/salgdilayout.cxx:
     # Needed on WIN32
     - desktop/exithelper.h
@@ -71,12 +73,6 @@ excludelist:
     vcl/source/treelist/headbar.cxx:
     # Actually these are used
     - com/sun/star/accessibility/XAccessible.hpp
-    vcl/source/window/dialog.cxx:
-    # comphelper::ScopeGuard is actually used
-    - comphelper/scopeguard.hxx
-    vcl/source/window/event.cxx:
-    # comphelper::ScopeGuard is actually used
-    - comphelper/scopeguard.hxx
     vcl/unx/generic/app/saldisp.cxx:
     # needed for transitive cursor includes
     - unx/x11_cursors/salcursors.h
@@ -97,13 +93,6 @@ excludelist:
     # Actually these are used
     - KWindowSystem
     - KFileWidget
-    - QtCore/QDebug
-    - QtCore/QUrl
-    - QtWidgets/QCheckBox
-    - QtWidgets/QFileDialog
-    - QtWidgets/QGridLayout
-    - QtWidgets/QWidget
-    - QtWidgets/QApplication
     vcl/unx/gtk3_kde5/kde5_lo_filepicker_main.cxx:
     # Actually these are used
     - QApplication
@@ -116,3 +105,15 @@ excludelist:
     vcl/qa/cppunit/filter/ipdf/ipdf.cxx:
     - prewin.h
     - postwin.h
+    vcl/qt5/QtAccessibleWidget.cxx:
+    # Needed for QT 6.9
+    - com/sun/star/accessibility/XAccessibleContext2.hpp
+    # Needed for QT 6.8
+    - com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp
+    # Actually used
+    - com/sun/star/accessibility/XAccessibleContext.hpp
+    vcl/qt5/QtInstance.cxx:
+    # Needed for EMSCRIPTEN build
+    - o3tl/temporary.hxx
+    - o3tl/unreachable.hxx
+    - comphelper/emscriptenthreading.hxx

@@ -28,12 +28,6 @@
 #include <memory>
 #include <vector>
 
-class ScColorScaleFormat;
-class ScDataBarFormat;
-struct ScDataBarFormatData;
-class ScIconSetFormat;
-struct ScIconSetFormatData;
-
 namespace oox { class AttributeList; }
 
 namespace oox::xls {
@@ -80,6 +74,7 @@ struct ColorScaleRuleModelEntry
     bool mbPercentile;
     bool mbNum;
     OUString maFormula;
+    ScConditionMode meMode;
 
     ColorScaleRuleModelEntry():
         maColor(),
@@ -88,7 +83,10 @@ struct ColorScaleRuleModelEntry
         mbMax(false),
         mbPercent(false),
         mbPercentile(false),
-        mbNum(false) {}
+        mbNum(false),
+        meMode(ScConditionMode::EqGreater) {}
+
+    bool operator==(const ColorScaleRuleModelEntry &) const = default;
 };
 
 class ColorScaleRule final : public WorksheetHelper
@@ -99,8 +97,11 @@ public:
     void importCfvo( const AttributeList& rAttribs );
     void importColor( const AttributeList& rAttribs );
 
-    void AddEntries( ScColorScaleFormat* pFormat, ScDocument* pDoc, const ScAddress& rAddr );
+    void AddEntries( ScColorScaleFormat* pFormat, ScDocument& rDoc, const ScAddress& rAddr );
 
+    const std::vector< ColorScaleRuleModelEntry > & getModelEntries() const { return maColorScaleRuleEntries; }
+    sal_uInt32 getCfvo() const { return mnCfvo; }
+    sal_uInt32 getCol() const { return mnCol; }
 private:
     std::vector< ColorScaleRuleModelEntry > maColorScaleRuleEntries;
 
@@ -116,7 +117,7 @@ public:
     void importColor( const AttributeList& rAttribs );
     void importAttribs( const AttributeList& rAttribs );
 
-    void SetData( ScDataBarFormat* pFormat, ScDocument* pDoc, const ScAddress& rAddr );
+    void SetData( ScDataBarFormat* pFormat, ScDocument& rDoc, const ScAddress& rAddr );
 
     ScDataBarFormatData* getDataBarFormatData() { return mxFormat.get(); }
 
@@ -136,7 +137,7 @@ public:
     void importFormula(const OUString& rFormula);
     void importIcon(const AttributeList& rAttribs);
 
-    void SetData( ScIconSetFormat* pFormat, ScDocument* pDoc, const ScAddress& rAddr );
+    void SetData( ScIconSetFormat* pFormat, ScDocument& rDoc, const ScAddress& rAddr );
 
 private:
     std::vector< ColorScaleRuleModelEntry > maEntries;
@@ -145,10 +146,16 @@ private:
     bool mbCustom;
 };
 
-/** Represents a single rule in a conditional formatting. */
+/** Represents a single rule in a conditional formatting.
+    Unlike other objects, we hold this by unique_ptr.
+    We cannot use shared_ptr like the other objects, since
+    it wants to have a pointer to its parent,
+    and its parent might get deduplicated and deleted.
+*/
 class CondFormatRule final : public WorksheetHelper
 {
 friend class CondFormatBuffer;
+friend struct CondFormatEquals;
 public:
     explicit            CondFormatRule( const CondFormat& rCondFormat, ScConditionalFormat* pFormat );
 
@@ -169,9 +176,13 @@ public:
     /** Returns the priority of this rule. */
     sal_Int32    getPriority() const { return maModel.mnPriority; }
 
+    const CondFormatRuleModel & getRuleModel() const { return maModel; }
+
     ColorScaleRule*     getColorScale();
     DataBarRule*        getDataBar();
     IconSetRule*            getIconSet();
+
+    const CondFormat& getParentCondFormat() const { return mrCondFormat; }
 
 private:
     const CondFormat&   mrCondFormat;
@@ -183,8 +194,6 @@ private:
     std::unique_ptr<IconSetRule> mpIconSet;
 };
 
-typedef std::shared_ptr< CondFormatRule > CondFormatRuleRef;
-
 /** Model for a conditional formatting object. */
 struct CondFormatModel
 {
@@ -194,12 +203,12 @@ struct CondFormatModel
     explicit            CondFormatModel();
 };
 
-class CondFormatBuffer;
-
 /** Represents a conditional formatting object with a list of affected cell ranges. */
 class CondFormat final : public WorksheetHelper
 {
 friend class CondFormatBuffer;
+friend struct CondFormatHash;
+friend struct CondFormatEquals;
 public:
     explicit            CondFormat( const WorksheetHelper& rHelper );
     ~CondFormat();
@@ -207,7 +216,7 @@ public:
     /** Imports settings from the conditionalFormatting element. */
     void                importConditionalFormatting( const AttributeList& rAttribs );
     /** Imports a conditional formatting rule from the cfRule element. */
-    CondFormatRuleRef   importCfRule( const AttributeList& rAttribs );
+    std::unique_ptr<CondFormatRule> importCfRule( const AttributeList& rAttribs );
 
     /** Imports settings from the CONDFORMATTING record. */
     void                importCondFormatting( SequenceInputStream& rStrm );
@@ -221,17 +230,18 @@ public:
     const ScRangeList& getRanges() const { return maModel.maRanges; }
 
     void                setReadyForFinalize() { mbReadyForFinalize = true; }
-    void                insertRule( CondFormatRuleRef const & xRule );
+    void                insertRule( std::unique_ptr<CondFormatRule>  xRule );
 private:
-    CondFormatRuleRef   createRule();
+    std::unique_ptr<CondFormatRule>   createRule();
 
 private:
-    typedef RefMap< sal_Int32, CondFormatRule > CondFormatRuleMap;
+    typedef std::map< sal_Int32, std::unique_ptr<CondFormatRule> > CondFormatRuleMap;
 
     CondFormatModel     maModel;            /// Model of this conditional formatting.
     CondFormatRuleMap   maRules;            /// Maps formatting rules by priority.
     ScConditionalFormat* mpFormat;
     bool                mbReadyForFinalize;
+    bool                mbOwnsFormat;
 };
 
 struct ExCfRuleModel
@@ -249,7 +259,7 @@ struct ExCfRuleModel
     bool mbIsLower; // Cfvo
 };
 
-class ExtCfDataBarRule : public WorksheetHelper
+class ExtCfDataBarRule final : public WorksheetHelper
 {
     enum RuleType
     {
@@ -313,15 +323,16 @@ public:
     static sal_Int32    convertToApiOperator( sal_Int32 nToken );
     static ScConditionMode convertToInternalOperator( sal_Int32 nToken );
     void                finalizeImport();
-    bool                insertRule(CondFormatRef const & xCondFmt, CondFormatRuleRef const & xRule);
 
 private:
     CondFormatRef       createCondFormat();
     void                updateImport(const ScDataBarFormatData* pTarget);
+    void                deduplicateCondFormats();
 
 private:
     typedef RefVector< CondFormat > CondFormatVec;
     typedef RefVector< ExtCfDataBarRule > ExtCfDataBarRuleVec;
+
     CondFormatVec       maCondFormats;      /// All conditional formatting in a sheet.
     ExtCfDataBarRuleVec        maCfRules;          /// All external conditional formatting rules in a sheet.
     std::vector< std::unique_ptr<ExtCfCondFormat> > maExtCondFormats;

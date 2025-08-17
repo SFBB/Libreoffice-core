@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <com/sun/star/util/XCloneable.hpp>
 #include "IgnoreTContext.hxx"
 #include "TransformerBase.hxx"
 #include "MutableAttrList.hxx"
@@ -26,7 +25,6 @@
 
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::xml::sax;
 
 void XMLPersAttrListTContext::AddAttribute(
@@ -137,7 +135,7 @@ void XMLPersAttrListTContext::StartElement(
     }
     else if( pMutableAttrList )
     {
-        m_xAttrList = xAttrList;
+        m_xAttrList = std::move(xAttrList);
     }
     else
     {

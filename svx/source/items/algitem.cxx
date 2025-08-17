@@ -28,6 +28,7 @@
 #include <editeng/itemtype.hxx>
 #include <editeng/eerdll.hxx>
 #include <svx/unomid.hxx>
+#include <o3tl/hash_combine.hxx>
 
 #include <climits>
 
@@ -117,11 +118,6 @@ OUString SvxOrientationItem::GetValueText( SvxCellOrientation nVal )
 SvxOrientationItem* SvxOrientationItem::Clone( SfxItemPool* ) const
 {
     return new SvxOrientationItem( *this );
-}
-
-sal_uInt16 SvxOrientationItem::GetValueCount() const
-{
-    return static_cast<sal_uInt16>(SvxCellOrientation::Stacked) + 1; // last enum value + 1
 }
 
 bool SvxOrientationItem::IsStacked() const
@@ -260,6 +256,7 @@ bool SvxMarginItem::QueryValue( uno::Any& rVal, sal_uInt8 nMemberId ) const
 
 bool SvxMarginItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     bool bConvert = ( ( nMemberId & CONVERT_TWIPS ) != 0 );
     tools::Long nMaxVal = bConvert ? convertTwipToMm100(SHRT_MAX) : SHRT_MAX;   // members are sal_Int16
     sal_Int32 nVal = 0;
@@ -290,24 +287,28 @@ bool SvxMarginItem::PutValue( const uno::Any& rVal, sal_uInt8 nMemberId )
 
 void SvxMarginItem::SetLeftMargin( sal_Int16 nLeft )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     nLeftMargin = nLeft;
 }
 
 
 void SvxMarginItem::SetTopMargin( sal_Int16 nTop )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     nTopMargin = nTop;
 }
 
 
 void SvxMarginItem::SetRightMargin( sal_Int16 nRight )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     nRightMargin = nRight;
 }
 
 
 void SvxMarginItem::SetBottomMargin( sal_Int16 nBottom )
 {
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
     nBottomMargin = nBottom;
 }
 

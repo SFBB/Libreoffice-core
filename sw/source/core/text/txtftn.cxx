@@ -32,6 +32,7 @@
 #include <txtftn.hxx>
 #include <flyfrm.hxx>
 #include <fmtftn.hxx>
+#include <fmtsrnd.hxx>
 #include <ftninfo.hxx>
 #include <charfmt.hxx>
 #include <rowfrm.hxx>
@@ -165,7 +166,7 @@ bool SwTextFrame::CalcPrepFootnoteAdjust()
             SwTextFormatInfo aInf( getRootFrame()->GetCurrShell()->GetOut(), this );
             SwTextFormatter aLine( this, &aInf );
             aLine.TruncLines();
-            SetPara( nullptr ); // May be deleted!
+            SetPara(nullptr); // May be deleted!
             ResetPreps();
             return false;
         }
@@ -240,12 +241,18 @@ static SwTwips lcl_GetFootnoteLower( const SwTextFrame* pFrame, SwTwips nLower )
     SwTwips nFlyLower = aRectFnSet.IsVert() ? LONG_MAX : 0;
     while ( pStartFrame != pFrame )
     {
-        OSL_ENSURE( pStartFrame, "Frame chain is broken" );
+        assert(pStartFrame && "Frame chain is broken");
         if ( pStartFrame->GetDrawObjs() )
         {
             const SwSortedObjs &rObjs = *pStartFrame->GetDrawObjs();
             for (SwAnchoredObject* pAnchoredObj : rObjs)
             {
+                if (pAnchoredObj->GetFrameFormat()->GetSurround().GetSurround()
+                        == text::WrapTextMode_THROUGH)
+                {
+                    continue; // tdf#161718 no effect on text flow, skip
+                }
+
                 SwRect aRect( pAnchoredObj->GetObjRect() );
 
                 auto pFlyFrame = pAnchoredObj->DynCastFlyFrame();
@@ -344,8 +351,9 @@ SwTwips SwTextFrame::GetFootnoteFrameHeight_() const
             const SwLayoutFrame* pTmp = GetUpper();
             while( !bInvalidPos && pTmp )
             {
+                const SwFrame* pLower = pTmp->Lower();
                 bInvalidPos = !pTmp->isFrameAreaPositionValid() ||
-                               !pTmp->Lower()->isFrameAreaPositionValid();
+                                !pLower || !pLower->isFrameAreaPositionValid();
                 if( pTmp == pCont )
                     break;
                 pTmp = pTmp->GetUpper();
@@ -530,7 +538,7 @@ void SwTextFrame::RemoveFootnote(TextFrameIndex const nStart, TextFrameIndex con
                 else
                 {
                     if (!bEndDoc || ( bEndn && pEndBoss->IsInSct() &&
-                        !SwLayouter::Collecting( &GetDoc(),
+                        !SwLayouter::Collecting( GetDoc(),
                         pEndBoss->FindSctFrame(), nullptr ) ))
                     {
                         if( bEndn )
@@ -598,8 +606,6 @@ void SwTextFrame::ConnectFootnote( SwTextFootnote *pFootnote, const SwTwips nDea
     mbFootnote = true;
     mbInFootnoteConnect = true; // Just reset!
     // See if pFootnote is an endnote on a separate endnote page.
-    const IDocumentSettingAccess& rSettings = GetDoc().getIDocumentSettingAccess();
-    const bool bContinuousEndnotes = rSettings.get(DocumentSettingId::CONTINUOUS_ENDNOTES);
     const bool bEnd = pFootnote->GetFootnote().IsEndNote();
 
     // We want to store this value, because it is needed as a fallback
@@ -630,15 +636,11 @@ void SwTextFrame::ConnectFootnote( SwTextFootnote *pFootnote, const SwTwips nDea
 
     if( bDocEnd )
     {
-        if ((pSect || bContinuousEndnotes) && pSrcFrame)
+        if (pSect && pSrcFrame)
         {
             SwFootnoteFrame *pFootnoteFrame = SwFootnoteBossFrame::FindFootnote( pSrcFrame, pFootnote );
-            if (pFootnoteFrame && (pFootnoteFrame->IsInSct() || bContinuousEndnotes))
+            if (pFootnoteFrame && pFootnoteFrame->IsInSct())
             {
-                // We either have a foot/endnote that goes to the end of the section or are in Word
-                // compatibility mode where endnotes go to the end of the document.  Handle both
-                // cases by removing the footnote here, then later appending them to the correct
-                // last page of the document or section.
                 pBoss->RemoveFootnote( pSrcFrame, pFootnote );
                 pSrcFrame = nullptr;
             }
@@ -649,15 +651,15 @@ void SwTextFrame::ConnectFootnote( SwTextFootnote *pFootnote, const SwTwips nDea
         SwFootnoteFrame *pFootnoteFrame = pSrcFrame ? SwFootnoteBossFrame::FindFootnote( pSrcFrame, pFootnote ) : nullptr;
         if( pFootnoteFrame && !pFootnoteFrame->GetUpper() )
             pFootnoteFrame = nullptr;
-        SwDoc *const pDoc = &GetDoc();
-        if( SwLayouter::Collecting( pDoc, pSect, pFootnoteFrame ) )
+        SwDoc& rDoc = GetDoc();
+        if( SwLayouter::Collecting( rDoc, pSect, pFootnoteFrame ) )
         {
             if( !pSrcFrame )
             {
-                SwFootnoteFrame *pNew = new SwFootnoteFrame(pDoc->GetDfltFrameFormat(),this,this,pFootnote);
+                SwFootnoteFrame *pNew = new SwFootnoteFrame(rDoc.GetDfltFrameFormat(),this,this,pFootnote);
                 SwNodeIndex aIdx( *pFootnote->GetStartNode(), 1 );
-                ::InsertCnt_( pNew, pDoc, aIdx.GetIndex() );
-                pDoc->getIDocumentLayoutAccess().GetLayouter()->CollectEndnote( pNew );
+                ::InsertCnt_( pNew, rDoc, aIdx.GetIndex() );
+                rDoc.getIDocumentLayoutAccess().GetLayouter()->CollectEndnote( pNew );
             }
             else if( pSrcFrame != this )
                 SwFootnoteBossFrame::ChangeFootnoteRef( pSrcFrame, pFootnote, this );
@@ -796,10 +798,10 @@ SwFootnotePortion *SwTextFormatter::NewFootnotePortion( SwTextFormatInfo &rInf,
     OSL_ENSURE( ! m_pFrame->IsVertical() || m_pFrame->IsSwapped(),
             "NewFootnotePortion with unswapped frame" );
 
-    SwTextFootnote  *pFootnote = static_cast<SwTextFootnote*>(pHint);
+    if (!m_pFrame->IsFootnoteAllowed())
+        return new SwFootnotePortion(u""_ustr, nullptr);
 
-    if( !m_pFrame->IsFootnoteAllowed() )
-        return new SwFootnotePortion("", pFootnote);
+    SwTextFootnote  *pFootnote = static_cast<SwTextFootnote*>(pHint);
 
     const SwFormatFootnote& rFootnote = pFootnote->GetFootnote();
     SwDoc *const pDoc = &m_pFrame->GetDoc();
@@ -809,11 +811,11 @@ SwFootnotePortion *SwTextFormatter::NewFootnotePortion( SwTextFormatInfo &rInf,
 
     SwSwapIfSwapped swap(m_pFrame);
 
-    sal_uInt16 nReal;
+    SwTwips nReal;
     {
-        sal_uInt16 nOldReal = m_pCurr->GetRealHeight();
-        sal_uInt16 nOldAscent = m_pCurr->GetAscent();
-        sal_uInt16 nOldHeight = m_pCurr->Height();
+        SwTwips nOldReal = m_pCurr->GetRealHeight();
+        SwTwips nOldAscent = m_pCurr->GetAscent();
+        SwTwips nOldHeight = m_pCurr->Height();
         CalcRealHeight();
         nReal = m_pCurr->GetRealHeight();
         if( nReal < nOldReal )
@@ -975,12 +977,12 @@ SwNumberPortion *SwTextFormatter::NewFootnoteNumPortion( SwTextFormatInfo const 
     const rtl::Reference<SwXTextRange> xAnchor = rFootnote.getAnchor(*pDoc);
     if (xAnchor.is())
     {
-        auto aAny = xAnchor->getPropertyValue("CharFontCharSet");
+        auto aAny = xAnchor->getPropertyValue(u"CharFontCharSet"_ustr);
         sal_Int16 eCharSet;
         if ((aAny >>= eCharSet) && eCharSet == awt::CharSet::SYMBOL)
         {
             OUString aFontName;
-            aAny = xAnchor->getPropertyValue("CharFontName");
+            aAny = xAnchor->getPropertyValue(u"CharFontName"_ustr);
             if (aAny  >>= aFontName)
             {
                 pNumFnt->SetName(aFontName, SwFontScript::Latin);
@@ -1014,9 +1016,9 @@ SwNumberPortion *SwTextFormatter::NewFootnoteNumPortion( SwTextFormatInfo const 
                     : pRedline->GetAuthor();
 
             if ( RedlineType::Delete == pRedline->GetType() )
-                SW_MOD()->GetDeletedAuthorAttr(aAuthor, aSet);
+                SwModule::get()->GetDeletedAuthorAttr(aAuthor, aSet);
             else
-                SW_MOD()->GetInsertAuthorAttr(aAuthor, aSet);
+                SwModule::get()->GetInsertAuthorAttr(aAuthor, aSet);
 
             if (const SvxColorItem* pItem = aSet.GetItemIfSet(RES_CHRATR_COLOR))
                 pNumFnt->SetColor(pItem->GetValue());
@@ -1034,7 +1036,7 @@ SwNumberPortion *SwTextFormatter::NewFootnoteNumPortion( SwTextFormatInfo const 
 
 static OUString lcl_GetPageNumber( const SwPageFrame* pPage )
 {
-    OSL_ENSURE( pPage, "GetPageNumber: Homeless TextFrame" );
+    assert(pPage && "GetPageNumber: Homeless TextFrame");
     const sal_uInt16 nVirtNum = pPage->GetVirtPageNum();
     const SvxNumberType& rNum = pPage->GetPageDesc()->GetNumType();
     return rNum.GetNumStr( nVirtNum );
@@ -1120,7 +1122,7 @@ TextFrameIndex SwTextFormatter::FormatQuoVadis(TextFrameIndex const nOffset)
     // position we want to insert the Quovadis text
     // Let's see if it is that bad indeed:
     SwLinePortion *pPor = m_pCurr->GetFirstPortion();
-    sal_uInt16 nLastLeft = 0;
+    SwTwips nLastLeft = 0;
     while( pPor )
     {
         if ( pPor->IsFlyPortion() )
@@ -1132,7 +1134,7 @@ TextFrameIndex SwTextFormatter::FormatQuoVadis(TextFrameIndex const nOffset)
     // The old game all over again: we want the Line to wrap around
     // at a certain point, so we adjust the width.
     // nLastLeft is now basically the right margin
-    const sal_uInt16 nOldRealWidth = rInf.RealWidth();
+    const SwTwips nOldRealWidth = rInf.RealWidth();
     rInf.RealWidth( nOldRealWidth - nLastLeft );
 
     OUString aErgo = lcl_GetPageNumber( pErgoFrame->FindPageFrame() );
@@ -1140,7 +1142,7 @@ TextFrameIndex SwTextFormatter::FormatQuoVadis(TextFrameIndex const nOffset)
     pQuo->SetAscent( rInf.GetAscent()  );
     pQuo->Height( rInf.GetTextHeight() );
     pQuo->Format( rInf );
-    sal_uInt16 nQuoWidth = pQuo->Width();
+    SwTwips nQuoWidth = pQuo->Width();
     SwLinePortion* pCurrPor = pQuo;
 
     while ( rInf.GetRest() )
@@ -1218,12 +1220,12 @@ TextFrameIndex SwTextFormatter::FormatQuoVadis(TextFrameIndex const nOffset)
                     if( nDiff < 0 )
                     {
                         nLastLeft = pQuo->GetAscent();
-                        nQuoWidth = o3tl::narrowing<sal_uInt16>(-nDiff + nLastLeft);
+                        nQuoWidth = -nDiff + nLastLeft;
                     }
                     else
                     {
                         nQuoWidth = 0;
-                        nLastLeft = sal_uInt16(( pQuo->GetAscent() + nDiff ) / 2);
+                        nLastLeft = (pQuo->GetAscent() + nDiff) / 2;
                     }
                     break;
                 }
@@ -1274,7 +1276,7 @@ TextFrameIndex SwTextFormatter::FormatQuoVadis(TextFrameIndex const nOffset)
  */
 void SwTextFormatter::MakeDummyLine()
 {
-    sal_uInt16 nRstHeight = GetFrameRstHeight();
+    SwTwips nRstHeight = GetFrameRstHeight();
     if( m_pCurr && nRstHeight > m_pCurr->Height() )
     {
         SwLineLayout *pLay = new SwLineLayout;
@@ -1375,8 +1377,7 @@ SwFootnoteSave::~SwFootnoteSave() COVERITY_NOEXCEPT_FALSE
     }
 }
 
-SwFootnotePortion::SwFootnotePortion( const OUString &rExpand,
-                            SwTextFootnote *pFootn, sal_uInt16 nReal )
+SwFootnotePortion::SwFootnotePortion(const OUString& rExpand, SwTextFootnote* pFootn, SwTwips nReal)
         : SwFieldPortion( rExpand, nullptr )
         , m_pFootnote(pFootn)
         , m_nOrigHeight( nReal )
@@ -1408,7 +1409,7 @@ bool SwFootnotePortion::Format( SwTextFormatInfo &rInf )
     SetAscent( rInf.GetAscent() );
     Height( rInf.GetTextHeight() );
     rInf.SetFootnoteDone( !bFull );
-    if( !bFull )
+    if (!bFull && m_pFootnote)
         rInf.SetParaFootnote();
     return bFull;
 }
@@ -1422,7 +1423,7 @@ void SwFootnotePortion::Paint( const SwTextPaintInfo &rInf ) const
     SwExpandPortion::Paint( rInf );
 }
 
-SwPosSize SwFootnotePortion::GetTextSize( const SwTextSizeInfo &rInfo ) const
+SwPositiveSize SwFootnotePortion::GetTextSize( const SwTextSizeInfo &rInfo ) const
 {
     // #i98418#
 //    SwFootnoteSave aFootnoteSave( rInfo, pFootnote );
@@ -1464,7 +1465,7 @@ bool SwQuoVadisPortion::Format( SwTextFormatInfo &rInf )
         SetLen(TextFrameIndex(0));
         if( bFull  )
             // Third try; we're done: we crush
-            Width( sal_uInt16(rInf.Width() - rInf.X()) );
+            Width(rInf.Width() - rInf.X());
 
         // No multiline Fields for QuoVadis and ErgoSum
         if( rInf.GetRest() )
@@ -1520,7 +1521,7 @@ SwErgoSumPortion::SwErgoSumPortion(const OUString &rExp, std::u16string_view rSt
     SetWhichPor( PortionType::ErgoSum );
 }
 
-TextFrameIndex SwErgoSumPortion::GetModelPositionForViewPoint(const sal_uInt16) const
+TextFrameIndex SwErgoSumPortion::GetModelPositionForViewPoint(const SwTwips) const
 {
     return TextFrameIndex(0);
 }

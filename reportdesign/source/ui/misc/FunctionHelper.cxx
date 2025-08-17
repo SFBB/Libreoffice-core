@@ -51,8 +51,17 @@ sal_Unicode FunctionManager::getSingleToken(const formula::IFunctionManager::ETo
             return '{';
         case eArrayClose:
             return '}';
+        case eTableRefOpen:
+            return '[';
+        case eTableRefClose:
+            return ']';
     }
     return 0;
+}
+
+const formula::IFunctionDescription* FunctionManager::Get(sal_uInt16 /*nFIndex*/) const
+{
+    return nullptr;
 }
 
 sal_uInt32 FunctionManager::getCount() const
@@ -71,7 +80,16 @@ const formula::IFunctionCategory* FunctionManager::getCategory(sal_uInt32 _nPos)
     return m_aCategoryIndex[_nPos]->second.get();
 }
 
+sal_uInt16 FunctionManager::getFunctionIndex(const formula::IFunctionDescription* /*_pDesc*/) const
+{
+    return 0;
+}
+
 void FunctionManager::fillLastRecentlyUsedFunctions(::std::vector< const formula::IFunctionDescription*>& /*_rLastRUFunctions*/) const
+{
+}
+
+void FunctionManager::fillFavouriteFunctions(::std::unordered_set<sal_uInt16>& /*rFavouriteFunctions*/) const
 {
 }
 
@@ -117,8 +135,7 @@ const formula::IFunctionDescription* FunctionCategory::getFunction(sal_uInt32 _n
     if ( _nPos >= m_aFunctions.size() && _nPos < m_nFunctionCount )
     {
         uno::Reference< report::meta::XFunctionDescription> xFunctionDescription = m_xCategory->getFunction(_nPos);
-        std::shared_ptr< FunctionDescription > pFunction = m_pFunctionManager->get(xFunctionDescription);
-        m_aFunctions.push_back( pFunction );
+        m_aFunctions.push_back(m_pFunctionManager->get(xFunctionDescription));
     }
     return m_aFunctions[_nPos].get();
 }

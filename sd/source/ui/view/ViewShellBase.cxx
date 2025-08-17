@@ -19,6 +19,8 @@
 
 #include <comphelper/processfactory.hxx>
 
+#include <boost/property_tree/json_parser.hpp>
+
 #include <ViewShellBase.hxx>
 #include <algorithm>
 #include <EventMultiplexer.hxx>
@@ -32,6 +34,7 @@
 #include <DrawController.hxx>
 #include <FrameView.hxx>
 #include <ViewTabBar.hxx>
+#include <ResourceId.hxx>
 #include <sfx2/event.hxx>
 #include <drawdoc.hxx>
 #include <sdpage.hxx>
@@ -39,10 +42,12 @@
 #include <sfx2/request.hxx>
 #include <sfx2/printer.hxx>
 #include <DrawViewShell.hxx>
+#include <OutlineViewShell.hxx>
 #include <FormShellManager.hxx>
 #include <ToolBarManager.hxx>
 #include <Window.hxx>
 #include <framework/ConfigurationController.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
 #include <DocumentRenderer.hxx>
 #include <optsitem.hxx>
 #include <sdmod.hxx>
@@ -51,9 +56,7 @@
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/drawing/XMasterPagesSupplier.hpp>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/ResourceId.hpp>
+#include <com/sun/star/uno/DeploymentException.hpp>
 #include <framework/FrameworkHelper.hxx>
 
 #include <sal/log.hxx>
@@ -61,7 +64,9 @@
 #include <sfx2/msg.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/viewfrm.hxx>
+#include <svl/intitem.hxx>
 #include <svl/whiter.hxx>
+#include <svx/theme/ThemeColorChangerCommon.hxx>
 #include <vcl/commandinfoprovider.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
@@ -69,6 +74,7 @@
 #include <sfx2/notebookbar/SfxNotebookBar.hxx>
 
 #include <comphelper/diagnose_ex.hxx>
+#include <comphelper/lok.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <editeng/editview.hxx>
@@ -109,6 +115,8 @@ namespace sd {
 class ViewShellBase::Implementation
 {
 public:
+    SdViewOptions maViewOptions;
+
     /** Main controller of the view shell.  During the switching from one
         stacked shell to another this pointer may be NULL.
     */
@@ -134,7 +142,7 @@ public:
     std::shared_ptr<ToolBarManager> mpToolBarManager;
     std::shared_ptr<ViewShellManager> mpViewShellManager;
     std::shared_ptr<tools::EventMultiplexer> mpEventMultiplexer;
-    std::shared_ptr<FormShellManager> mpFormShellManager;
+    std::unique_ptr<FormShellManager> mpFormShellManager;
 
     explicit Implementation (ViewShellBase& rBase);
     ~Implementation();
@@ -298,7 +306,7 @@ void ViewShellBase::LateInit (const OUString& rsDefaultView)
 
     mpImpl->mpEventMultiplexer = std::make_shared<tools::EventMultiplexer>(*this);
 
-    mpImpl->mpFormShellManager = std::make_shared<FormShellManager>(*this);
+    mpImpl->mpFormShellManager = std::make_unique<FormShellManager>(*this);
 
     mpImpl->mpToolBarManager = ToolBarManager::Create(
         *this,
@@ -308,7 +316,7 @@ void ViewShellBase::LateInit (const OUString& rsDefaultView)
     try
     {
         rtl::Reference<::sd::DrawController> xControllerManager (GetDrawController());
-        Reference<XConfigurationController> xConfigurationController;
+        rtl::Reference<::sd::framework::ConfigurationController> xConfigurationController;
         if (xControllerManager)
             xConfigurationController = xControllerManager->getConfigurationController();
         if (xConfigurationController.is())
@@ -320,27 +328,21 @@ void ViewShellBase::LateInit (const OUString& rsDefaultView)
             FrameworkHelper::Instance(*this);
 
             // Create the resource ids for the center pane and view.
-            const Reference<drawing::framework::XResourceId> xCenterPaneId (
-                FrameworkHelper::CreateResourceId(FrameworkHelper::msCenterPaneURL));
-            const Reference<drawing::framework::XResourceId> xCenterViewId (
-                FrameworkHelper::CreateResourceId(sView, xCenterPaneId));
+            const rtl::Reference<framework::ResourceId> xCenterPaneId (
+                new ::sd::framework::ResourceId(FrameworkHelper::msCenterPaneURL));
+            const rtl::Reference<framework::ResourceId> xCenterViewId (
+                new ::sd::framework::ResourceId(sView, xCenterPaneId));
 
             // Request center pane and view.
-            xConfigurationController->requestResourceActivation(xCenterPaneId, ResourceActivationMode_ADD);
-            xConfigurationController->requestResourceActivation(xCenterViewId, ResourceActivationMode_REPLACE);
+            xConfigurationController->requestResourceActivation(xCenterPaneId, framework::ResourceActivationMode::ADD);
+            xConfigurationController->requestResourceActivation(xCenterViewId, framework::ResourceActivationMode::REPLACE);
 
             // Process configuration events synchronously until the center view
             // has been created.
-            sd::framework::ConfigurationController* pConfigurationController
-                = dynamic_cast<sd::framework::ConfigurationController*>(xConfigurationController.get());
-            if (pConfigurationController != nullptr)
+            while ( !xConfigurationController->getResource(xCenterViewId).is()
+                    && xConfigurationController->hasPendingRequests())
             {
-                while (
-                    ! pConfigurationController->getResource(xCenterViewId).is()
-                        && pConfigurationController->hasPendingRequests())
-                {
-                    pConfigurationController->ProcessEvent();
-                }
+                xConfigurationController->ProcessEvent();
             }
         }
     }
@@ -362,7 +364,7 @@ void ViewShellBase::LateInit (const OUString& rsDefaultView)
             pFrameView->SetViewShellTypeOnLoad(pViewShell->GetShellType());
     }
     // Show/Hide the TabBar
-    SdOptions* pOptions = SD_MOD()->GetSdOptions(GetDocument()->GetDocumentType());
+    SdOptions* pOptions = SdModule::get()->GetSdOptions(GetDocument()->GetDocumentType());
     bool bIsTabBarVisible = pOptions->IsTabBarVisible();
     mpImpl->SetUserWantsTabBar( bIsTabBarVisible );
 }
@@ -409,13 +411,17 @@ void ViewShellBase::Notify(SfxBroadcaster& rBC, const SfxHint& rHint)
         switch (static_cast<const SfxEventHint&>(rHint).GetEventId())
         {
             case SfxEventHintId::OpenDoc:
-                if( GetDocument() && GetDocument()->IsStartWithPresentation() )
+            {
+                const sal_uInt16 nStartingSlide
+                    = GetDocument() ? GetDocument()->GetStartWithPresentation() : 0;
+                if (nStartingSlide)
                 {
-                    GetViewFrame().GetDispatcher()->Execute(
-                        SID_PRESENTATION, SfxCallMode::ASYNCHRON );
+                    SfxUInt16Item aItem(FN_PARAM_1, nStartingSlide);
+                    GetViewFrame().GetDispatcher()->ExecuteList(
+                        SID_PRESENTATION, SfxCallMode::ASYNCHRON, { &aItem });
                 }
                 break;
-
+            }
             default:
                 break;
         }
@@ -604,11 +610,11 @@ void ViewShellBase::Execute (SfxRequest& rRequest)
     {
         case SID_SWITCH_SHELL:
         {
-            Reference<XControllerManager> xControllerManager (GetController(), UNO_QUERY);
-            if (xControllerManager.is())
+            DrawController* pDrawController(GetDrawController());
+            if (pDrawController)
             {
-                Reference<XConfigurationController> xConfigurationController (
-                    xControllerManager->getConfigurationController());
+                rtl::Reference<framework::ConfigurationController> xConfigurationController (
+                    pDrawController->getConfigurationController());
                 if (xConfigurationController.is())
                     xConfigurationController->update();
             }
@@ -629,9 +635,16 @@ void ViewShellBase::Execute (SfxRequest& rRequest)
                 framework::FrameworkHelper::msSlideSorterURL);
             break;
 
+        case SID_BOTTOM_PANE_IMPRESS:
+            mpImpl->SetPaneVisibility(
+                rRequest,
+                framework::FrameworkHelper::msBottomImpressPaneURL,
+                framework::FrameworkHelper::msNotesPanelViewURL);
+            break;
+
         case SID_TOGGLE_TABBAR_VISIBILITY:
         {
-            SdOptions* pOptions = SD_MOD()->GetSdOptions(GetDocument()->GetDocumentType());
+            SdOptions* pOptions = SdModule::get()->GetSdOptions(GetDocument()->GetDocumentType());
             bool bIsTabBarVisible = pOptions->IsTabBarVisible();
             pOptions->SetTabBarVisible( !bIsTabBarVisible );
             mpImpl->SetUserWantsTabBar( !bIsTabBarVisible );
@@ -661,6 +674,26 @@ void ViewShellBase::Execute (SfxRequest& rRequest)
         case SID_RESTORE_EDITING_VIEW:
             mpImpl->ProcessRestoreEditingViewSlot();
             break;
+
+        case SID_PROTECTPOS:
+        case SID_PROTECTSIZE:
+        {
+            ::sd::DrawDocShell* pDocSh = dynamic_cast< ::sd::DrawDocShell *>( SfxObjectShell::Current() );
+            if (!pDocSh)
+                break;
+            ::sd::View* pView = pDocSh->GetViewShell()->GetView();
+
+            const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+            assert ( rMarkList.GetMarkCount() == 1 );
+
+            SdrObject* pGraphicObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
+            if (nSlotId == SID_PROTECTSIZE)
+                pGraphicObj->SetResizeProtect(!pGraphicObj->IsResizeProtect());
+            else
+                pGraphicObj->SetMoveProtect(!pGraphicObj->IsMoveProtect());
+
+        }
+        break;
 
         default:
             // Ignore any other slot.
@@ -734,11 +767,11 @@ void ViewShellBase::Activate (bool bIsMDIActivate)
 {
     SfxViewShell::Activate(bIsMDIActivate);
 
-    Reference<XControllerManager> xControllerManager (GetController(), UNO_QUERY);
-    if (xControllerManager.is())
+    DrawController* pDrawController(GetDrawController());
+    if (pDrawController)
     {
-        Reference<XConfigurationController> xConfigurationController (
-            xControllerManager->getConfigurationController());
+        rtl::Reference<framework::ConfigurationController> xConfigurationController (
+            pDrawController->getConfigurationController());
         if (xConfigurationController.is())
             xConfigurationController->update();
     }
@@ -799,8 +832,8 @@ SdrView* ViewShellBase::GetDrawView() const
     ViewShell* pShell = GetMainViewShell().get();
     if (pShell != nullptr)
         return pShell->GetDrawView ();
-    else
-        return SfxViewShell::GetDrawView();
+
+    return nullptr;
 }
 
 void ViewShellBase::SetBusyState (bool bBusy)
@@ -905,6 +938,16 @@ OUString ViewShellBase::GetInitialViewShellType() const
     return sRequestedView;
 }
 
+const SdViewOptions& ViewShellBase::GetViewOptions() const
+{
+    return mpImpl->maViewOptions;
+}
+
+void ViewShellBase::SetViewOptions(const SdViewOptions& rOptions) const
+{
+    mpImpl->maViewOptions = rOptions;
+}
+
 std::shared_ptr<tools::EventMultiplexer> const & ViewShellBase::GetEventMultiplexer() const
 {
     OSL_ASSERT(mpImpl != nullptr);
@@ -926,12 +969,12 @@ std::shared_ptr<ToolBarManager> const & ViewShellBase::GetToolBarManager() const
     return mpImpl->mpToolBarManager;
 }
 
-std::shared_ptr<FormShellManager> const & ViewShellBase::GetFormShellManager() const
+FormShellManager* ViewShellBase::GetFormShellManager() const
 {
     OSL_ASSERT(mpImpl != nullptr);
     OSL_ASSERT(mpImpl->mpFormShellManager != nullptr);
 
-    return mpImpl->mpFormShellManager;
+    return mpImpl->mpFormShellManager.get();
 }
 
 DrawController* ViewShellBase::GetDrawController() const
@@ -957,7 +1000,9 @@ vcl::Window* ViewShellBase::GetViewWindow()
 
 OUString ViewShellBase::RetrieveLabelFromCommand( const OUString& aCmdURL ) const
 {
-    OUString aModuleName(vcl::CommandInfoProvider::GetModuleIdentifier(GetMainViewShell()->GetViewFrame()->GetFrame().GetFrameInterface()));
+    OUString aModuleName;
+    if (SfxViewFrame* pViewFrame = GetMainViewShell()->GetViewFrame())
+        aModuleName = vcl::CommandInfoProvider::GetModuleIdentifier(pViewFrame->GetFrame().GetFrameInterface());
     auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(aCmdURL, aModuleName);
     return vcl::CommandInfoProvider::GetLabelForCommand(aProperties);
 }
@@ -983,9 +1028,25 @@ int ViewShellBase::getEditMode() const
         switch ( pDrawViewShell->GetEditMode() )
         {
         case EditMode::Page:
-            return 0;
+            switch (pDrawViewShell->GetPageKind())
+            {
+                case PageKind::Standard:
+                    return 0;
+                case PageKind::Notes:
+                    return 2;
+                default:
+                    assert(!"Unhandled page kind");
+                    return 0;
+            }
         case EditMode::MasterPage:
-            return 1;
+            switch (pDrawViewShell->GetPageKind())
+            {
+                case PageKind::Standard:
+                    return 1;
+                default:
+                    assert(!"Unhandled page kind");
+                    return 1;
+            }
         }
     }
 
@@ -998,15 +1059,63 @@ void ViewShellBase::setEditMode(int nMode)
 
     if (DrawViewShell* pDrawViewShell = dynamic_cast<DrawViewShell*>(pViewShell))
     {
+        EditMode eOrigEditMode = pDrawViewShell->GetEditMode();
+        PageKind eOrigPageKind = pDrawViewShell->GetPageKind();
+        sal_uInt16 nSelectedPage = pDrawViewShell->GetCurPagePos();
+
         switch ( nMode )
         {
         case 0:
+            pDrawViewShell->SetPageKind(PageKind::Standard);
             pDrawViewShell->ChangeEditMode(EditMode::Page, false);
             break;
         case 1:
+            pDrawViewShell->SetPageKind(PageKind::Standard);
             pDrawViewShell->ChangeEditMode(EditMode::MasterPage, false);
             break;
+        case 2:
+            pDrawViewShell->SetPageKind(PageKind::Notes);
+            pDrawViewShell->ChangeEditMode(EditMode::Page, false);
+            break;
         }
+
+        /*
+           If the EditMode is unchanged, then ChangeEditMode was typically a
+           no-op, and an additional explicit SwitchPage is required to reselect
+           the equivalent page from the other mode, otherwise a switch from
+           e.g. Notes to Standard will still render the still selected Note
+           page.
+        */
+        if (eOrigEditMode == pDrawViewShell->GetEditMode() &&
+            eOrigPageKind != pDrawViewShell->GetPageKind())
+        {
+            pDrawViewShell->SwitchPage(nSelectedPage);
+        }
+    }
+}
+
+void ViewShellBase::afterCallbackRegistered()
+{
+    // common tasks
+    SfxViewShell::afterCallbackRegistered();
+
+    SfxObjectShell* pDocShell = GetObjectShell();
+    if (pDocShell)
+    {
+        std::shared_ptr<model::ColorSet> pThemeColors = pDocShell->GetThemeColors();
+        std::set<Color> aDocumentColors = pDocShell->GetDocColors();
+        svx::theme::notifyLOK(pThemeColors, aDocumentColors);
+    }
+
+    if (comphelper::LibreOfficeKit::isActive() && mpDocument && mpDocument->GetStartWithPresentation())
+    {
+        // Be consistent with SidebarController, emit JSON.
+        boost::property_tree::ptree aTree;
+        aTree.put("commandName", ".uno:StartWithPresentation");
+        aTree.put("state", "true");
+        std::stringstream aStream;
+        boost::property_tree::write_json(aStream, aTree);
+        libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED, OString(aStream.str()));
     }
 }
 
@@ -1043,7 +1152,7 @@ void ViewShellBase::NotifyCursor(SfxViewShell* pOtherShell) const
             if (pWin && pWin->GetMapMode().GetMapUnit() == MapUnit::Map100thMM)
                 aRectangle = o3tl::toTwips(aRectangle, o3tl::Length::mm100);
             OString sRectangle = aRectangle.toString();
-            SfxLokHelper::notifyOtherView(&pDrawViewShell->GetViewShellBase(), pOtherShell, LOK_CALLBACK_VIEW_LOCK, "rectangle", sRectangle);
+            SfxLokHelper::notifyOtherView(pDrawViewShell->GetViewShellBase(), pOtherShell, LOK_CALLBACK_VIEW_LOCK, "rectangle", sRectangle);
         }
     }
     else
@@ -1055,28 +1164,24 @@ void ViewShellBase::NotifyCursor(SfxViewShell* pOtherShell) const
 
 ::Color ViewShellBase::GetColorConfigColor(svtools::ColorConfigEntry nColorType) const
 {
-    if (DrawViewShell* pCurrentDrawShell = dynamic_cast<DrawViewShell*>(GetMainViewShell().get()))
+    Color aColor;
+
+    const SdViewOptions& rViewOptions = GetViewOptions();
+    switch (nColorType)
     {
-        const SdViewOptions& rViewOptions = pCurrentDrawShell->GetViewOptions();
-        switch (nColorType)
+        case svtools::ColorConfigEntry::DOCCOLOR:
         {
-            case svtools::ColorConfigEntry::DOCCOLOR:
-            {
-                return rViewOptions.mnDocBackgroundColor;
-            }
-            // Should never be called for an unimplemented color type
-            default:
-            {
-                O3TL_UNREACHABLE;
-            }
+            aColor = rViewOptions.mnDocBackgroundColor;
+            break;
+        }
+        // Should never be called for an unimplemented color type
+        default:
+        {
+            O3TL_UNREACHABLE;
         }
     }
-    else
-    {
-        SAL_WARN("sd", "dynamic_cast to DrawViewShell failed");
-    }
 
-    return {};
+    return aColor;
 }
 
 //===== ViewShellBase::Implementation =========================================
@@ -1125,7 +1230,7 @@ void ViewShellBase::Implementation::ProcessRestoreEditingViewSlot()
     pHelper->RequestView(
         FrameworkHelper::GetViewURL(pFrameView->GetViewShellTypeOnLoad()),
         FrameworkHelper::msCenterPaneURL);
-    pHelper->RunOnConfigurationEvent("ConfigurationUpdateEnd", CurrentPageSetter(mrBase));
+    pHelper->RunOnConfigurationEvent(framework::ConfigurationChangeEventType::ConfigurationUpdateEnd, CurrentPageSetter(mrBase));
 }
 
 void ViewShellBase::Implementation::SetUserWantsTabBar(bool inValue)
@@ -1203,14 +1308,14 @@ void ViewShellBase::Implementation::SetPaneVisibility (
 {
     try
     {
-        Reference<XControllerManager> xControllerManager (mrBase.GetController(), UNO_QUERY_THROW);
+        DrawController* pDrawController(mrBase.GetDrawController());
+        if (!pDrawController)
+            return;
 
-        const Reference< XComponentContext > xContext(
-            ::comphelper::getProcessComponentContext() );
-        Reference<XResourceId> xPaneId (ResourceId::create(
-            xContext, rsPaneURL));
-        Reference<XResourceId> xViewId (ResourceId::createWithAnchorURL(
-            xContext, rsViewURL, rsPaneURL));
+        rtl::Reference<framework::ResourceId> xPaneId (new sd::framework::ResourceId(
+            rsPaneURL));
+        rtl::Reference<framework::ResourceId> xViewId (new sd::framework::ResourceId(
+            rsViewURL, rsPaneURL));
 
         // Determine the new visibility state.
         const SfxItemSet* pArguments = rRequest.GetArgs();
@@ -1221,11 +1326,11 @@ void ViewShellBase::Implementation::SetPaneVisibility (
                 pArguments->Get(nSlotId)).GetValue();
         else
         {
-            Reference<XConfigurationController> xConfigurationController (
-                xControllerManager->getConfigurationController());
+            rtl::Reference<sd::framework::ConfigurationController> xConfigurationController (
+                pDrawController->getConfigurationController());
             if ( ! xConfigurationController.is())
                 throw RuntimeException();
-            Reference<XConfiguration> xConfiguration (
+            rtl::Reference<framework::Configuration> xConfiguration (
                 xConfigurationController->getRequestedConfiguration());
             if ( ! xConfiguration.is())
                 throw RuntimeException();
@@ -1235,18 +1340,18 @@ void ViewShellBase::Implementation::SetPaneVisibility (
 
         // Set the desired visibility state at the current configuration
         // and update it accordingly.
-        Reference<XConfigurationController> xConfigurationController (
-            xControllerManager->getConfigurationController());
+        rtl::Reference<sd::framework::ConfigurationController> xConfigurationController (
+            pDrawController->getConfigurationController());
         if ( ! xConfigurationController.is())
             throw RuntimeException();
         if (bShowChildWindow)
         {
             xConfigurationController->requestResourceActivation(
                 xPaneId,
-                ResourceActivationMode_ADD);
+                framework::ResourceActivationMode::ADD);
             xConfigurationController->requestResourceActivation(
                 xViewId,
-                ResourceActivationMode_REPLACE);
+                framework::ResourceActivationMode::REPLACE);
         }
         else
             xConfigurationController->requestResourceDeactivation(
@@ -1263,79 +1368,85 @@ void ViewShellBase::Implementation::GetSlotState (SfxItemSet& rSet)
     try
     {
         // Get some frequently used values.
-        Reference<XControllerManager> xControllerManager (mrBase.GetController(), UNO_QUERY_THROW);
-        Reference<XConfigurationController> xConfigurationController (
-            xControllerManager->getConfigurationController());
+        DrawController* pDrawController(mrBase.GetDrawController());
+        if (!pDrawController)
+            return;
+        rtl::Reference<sd::framework::ConfigurationController> xConfigurationController (
+            pDrawController->getConfigurationController());
         if ( ! xConfigurationController.is())
             throw RuntimeException();
-        Reference<XConfiguration> xConfiguration (
+        rtl::Reference<sd::framework::Configuration> xConfiguration (
             xConfigurationController->getRequestedConfiguration());
         if ( ! xConfiguration.is())
             throw RuntimeException();
 
-        const Reference< XComponentContext > xContext(
-            ::comphelper::getProcessComponentContext() );
         SfxWhichIter aSetIterator (rSet);
         sal_uInt16 nItemId (aSetIterator.FirstWhich());
 
         while (nItemId > 0)
         {
             bool bState (false);
-            Reference<XResourceId> xResourceId;
+            bool bEnabled;
+            rtl::Reference<framework::ResourceId> xResourceId;
             try
             {
+                bEnabled = true;
                 // Check if the right view is active
                 switch (nItemId)
                 {
                     case SID_LEFT_PANE_IMPRESS:
-                        xResourceId = ResourceId::create(
-                            xContext, FrameworkHelper::msLeftImpressPaneURL);
+                        xResourceId = new sd::framework::ResourceId(
+                            FrameworkHelper::msLeftImpressPaneURL);
                         bState = xConfiguration->hasResource(xResourceId);
                         break;
 
                     case SID_LEFT_PANE_DRAW:
-                        xResourceId = ResourceId::create(
-                            xContext, FrameworkHelper::msLeftDrawPaneURL);
+                        xResourceId = new sd::framework::ResourceId(
+                            FrameworkHelper::msLeftDrawPaneURL);
+                        bState = xConfiguration->hasResource(xResourceId);
+                        break;
+
+                    case SID_BOTTOM_PANE_IMPRESS:
+                        xResourceId = new sd::framework::ResourceId(
+                            FrameworkHelper::msBottomImpressPaneURL);
                         bState = xConfiguration->hasResource(xResourceId);
                         break;
 
                     case SID_DRAWINGMODE:
                     case SID_NORMAL_MULTI_PANE_GUI:
                     case SID_SLIDE_MASTER_MODE:
-                        xResourceId = ResourceId::createWithAnchorURL(
-                            xContext, FrameworkHelper::msImpressViewURL,
+                        xResourceId = new sd::framework::ResourceId(
+                            FrameworkHelper::msImpressViewURL,
                             FrameworkHelper::msCenterPaneURL);
                         bState = xConfiguration->hasResource(xResourceId);
                         break;
 
                     case SID_SLIDE_SORTER_MULTI_PANE_GUI:
                     case SID_SLIDE_SORTER_MODE:
-                        xResourceId = ResourceId::createWithAnchorURL(
-                            xContext,
+                        xResourceId = new sd::framework::ResourceId(
                             FrameworkHelper::msSlideSorterURL,
                             FrameworkHelper::msCenterPaneURL);
                         bState = xConfiguration->hasResource(xResourceId);
                         break;
 
                     case SID_OUTLINE_MODE:
-                        xResourceId = ResourceId::createWithAnchorURL(
-                            xContext,
+                        xResourceId = new sd::framework::ResourceId(
                             FrameworkHelper::msOutlineViewURL,
                             FrameworkHelper::msCenterPaneURL);
                         bState = xConfiguration->hasResource(xResourceId);
                         break;
 
                     case SID_HANDOUT_MASTER_MODE:
-                        xResourceId = ResourceId::createWithAnchorURL(
-                            xContext, FrameworkHelper::msHandoutViewURL,
+                        xResourceId = new sd::framework::ResourceId(
+                            FrameworkHelper::msHandoutViewURL,
                             FrameworkHelper::msCenterPaneURL);
                         bState = xConfiguration->hasResource(xResourceId);
                         break;
 
                     case SID_NOTES_MODE:
                     case SID_NOTES_MASTER_MODE:
-                        xResourceId = ResourceId::createWithAnchorURL(
-                            xContext, FrameworkHelper::msNotesViewURL,
+                        xResourceId = new sd::framework::ResourceId(
+                            FrameworkHelper::msNotesViewURL,
                             FrameworkHelper::msCenterPaneURL);
                         bState = xConfiguration->hasResource(xResourceId);
                         break;
@@ -1343,6 +1454,37 @@ void ViewShellBase::Implementation::GetSlotState (SfxItemSet& rSet)
                     case SID_TOGGLE_TABBAR_VISIBILITY:
                         bState = GetUserWantsTabBar();
                         break;
+                    case SID_PROTECTPOS:
+                    case SID_PROTECTSIZE:
+                    {
+                        ::sd::DrawDocShell* pDocSh = dynamic_cast<::sd::DrawDocShell*>(SfxObjectShell::Current());
+                        if (pDocSh)
+                        {
+                            ::sd::View* pView = pDocSh->GetViewShell()->GetView();
+                            const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+                            if ( rMarkList.GetMarkCount() == 1 ) // graphic menu only effective on single item
+                            {
+                                const SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
+                                const SdrObjKind nSdrObjKind = pObj->GetObjIdentifier();
+
+                                if ( nSdrObjKind == SdrObjKind::Graphic )
+                                {
+                                    if ( nItemId == SID_PROTECTSIZE )
+                                    {
+                                        bState = pObj->IsResizeProtect();
+                                        if ( pObj->IsMoveProtect() )
+                                            bEnabled = false;
+                                    }
+                                    else
+                                        bState = pObj->IsMoveProtect();
+
+                                    break;
+                                }
+                            }
+                        }
+                        bEnabled = false;
+                    }
+                    break;
 
                     default:
                         // Ignore all other items.  They are not meant to be
@@ -1355,7 +1497,7 @@ void ViewShellBase::Implementation::GetSlotState (SfxItemSet& rSet)
             }
 
             // Check if edit mode fits too
-            if (bState)
+            if (bState && bEnabled)
             {
                 ViewShell* const pCenterViewShell = FrameworkHelper::Instance(mrBase)->GetViewShell(
                     FrameworkHelper::msCenterPaneURL).get();
@@ -1379,6 +1521,8 @@ void ViewShellBase::Implementation::GetSlotState (SfxItemSet& rSet)
 
             // And finally set the state.
             rSet.Put(SfxBoolItem(nItemId, bState));
+            if (!bEnabled)
+                rSet.DisableItem( nItemId );
 
             nItemId = aSetIterator.NextWhich();
         }
@@ -1405,9 +1549,9 @@ void CurrentPageSetter::operator() (bool)
 {
     FrameView* pFrameView = nullptr;
 
-    if (mrBase.GetMainViewShell() != nullptr)
+    if (auto pViewShell = mrBase.GetMainViewShell().get())
     {
-        pFrameView = mrBase.GetMainViewShell()->GetFrameView();
+        pFrameView = pViewShell->GetFrameView();
     }
 
     if (pFrameView==nullptr)
@@ -1436,8 +1580,8 @@ void CurrentPageSetter::operator() (bool)
         }
         // Switch to the page last edited by setting the CurrentPage
         // property.
-        Reference<beans::XPropertySet> xSet (mrBase.GetController(), UNO_QUERY_THROW);
-        xSet->setPropertyValue ("CurrentPage", aPage);
+        DrawController* pDrawController = mrBase.GetDrawController();
+        pDrawController->setPropertyValue (u"CurrentPage"_ustr, aPage);
     }
     catch (const RuntimeException&)
     {
@@ -1452,6 +1596,14 @@ void CurrentPageSetter::operator() (bool)
 }
 
 } // end of anonymous namespace
+
+SdViewOptions::SdViewOptions()
+    : msColorSchemeName(u"Default"_ustr)
+{
+    const svtools::ColorConfig& rColorConfig = SdModule::get()->GetColorConfig();
+    mnAppBackgroundColor = rColorConfig.GetColorValue(svtools::APPBACKGROUND).nColor;
+    mnDocBackgroundColor = rColorConfig.GetColorValue(svtools::DOCCOLOR).nColor;
+}
 
 //===== FocusForwardingWindow =================================================
 

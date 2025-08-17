@@ -17,17 +17,18 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERBITMAPCONTAINER_HXX
-#define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERBITMAPCONTAINER_HXX
+#pragma once
+
+#include <PresenterHelper.hxx>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/drawing/XPresenterHelper.hpp>
 #include <com/sun/star/rendering/XBitmap.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/util/Color.hpp>
+#include <rtl/ref.hxx>
 #include <map>
 #include <memory>
 
@@ -89,20 +90,14 @@ public:
         const OUString& rsConfigurationBase,
         std::shared_ptr<PresenterBitmapContainer> xParentContainer,
         const css::uno::Reference<css::uno::XComponentContext>& rxComponentContext,
-        css::uno::Reference<css::rendering::XCanvas> xCanvas,
-        css::uno::Reference<css::drawing::XPresenterHelper> xPresenterHelper = nullptr);
+        css::uno::Reference<css::rendering::XCanvas> xCanvas);
     PresenterBitmapContainer (
         const css::uno::Reference<css::container::XNameAccess>& rsRootNode,
         std::shared_ptr<PresenterBitmapContainer> xParentContainer,
-        const css::uno::Reference<css::uno::XComponentContext>& rxComponentContext,
-        css::uno::Reference<css::rendering::XCanvas> xCanvas,
-        css::uno::Reference<css::drawing::XPresenterHelper> xPresenterHelper = nullptr);
+        css::uno::Reference<css::rendering::XCanvas> xCanvas);
     ~PresenterBitmapContainer();
     PresenterBitmapContainer(const PresenterBitmapContainer&) = delete;
     PresenterBitmapContainer& operator=(const PresenterBitmapContainer&) = delete;
-
-    void Initialize (
-        const css::uno::Reference<css::uno::XComponentContext>& rxComponentContext);
 
     /** Return the bitmap set that is associated with the given name.
     */
@@ -111,7 +106,6 @@ public:
     static std::shared_ptr<BitmapDescriptor> LoadBitmap (
         const css::uno::Reference<css::container::XHierarchicalNameAccess>& rxNode,
         const OUString& rsPathToBitmapNode,
-        const css::uno::Reference<css::drawing::XPresenterHelper>& rxPresenterHelper,
         const css::uno::Reference<css::rendering::XCanvas>& rxCanvas,
         const std::shared_ptr<BitmapDescriptor>& rpDefaultBitmap);
 
@@ -120,7 +114,6 @@ private:
     typedef ::std::map<OUString, std::shared_ptr<BitmapDescriptor> > BitmapContainer;
     BitmapContainer maIconContainer;
     css::uno::Reference<css::rendering::XCanvas> mxCanvas;
-    css::uno::Reference<css::drawing::XPresenterHelper> mxPresenterHelper;
 
     void LoadBitmaps (
         const css::uno::Reference<css::container::XNameAccess>& rsRootNode);
@@ -129,7 +122,6 @@ private:
         const css::uno::Reference<css::beans::XPropertySet>& rProperties);
     static std::shared_ptr<BitmapDescriptor> LoadBitmap (
         const css::uno::Reference<css::beans::XPropertySet>& rxProperties,
-        const css::uno::Reference<css::drawing::XPresenterHelper>& rxPresenterHelper,
         const css::uno::Reference<css::rendering::XCanvas>& rxCanvas,
         const std::shared_ptr<PresenterBitmapContainer::BitmapDescriptor>& rpDefault);
     static BitmapDescriptor::TexturingMode
@@ -140,7 +132,5 @@ typedef PresenterBitmapContainer::BitmapDescriptor PresenterBitmapDescriptor;
 typedef std::shared_ptr<PresenterBitmapContainer::BitmapDescriptor> SharedBitmapDescriptor;
 
 } // end of namespace ::sdext::presenter
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

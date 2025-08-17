@@ -63,8 +63,8 @@ TypeDetection::TypeDetection(const css::uno::Reference< css::uno::XComponentCont
    , m_bCancel(false)
 {
     css::frame::Desktop::create(m_xContext)->addTerminateListener(m_xTerminateListener);
-    BaseContainer::init("com.sun.star.comp.filter.config.TypeDetection"   ,
-                        { "com.sun.star.document.TypeDetection" },
+    BaseContainer::init(u"com.sun.star.comp.filter.config.TypeDetection"_ustr   ,
+                        { u"com.sun.star.document.TypeDetection"_ustr },
                         FilterCache::E_TYPE                           );
 }
 
@@ -137,7 +137,7 @@ int getFlatTypeRank(std::u16string_view rType)
 {
     // List formats from more complex to less complex.
     // TODO: Add more.
-    static const char* ranks[] = {
+    static const char* const ranks[] = {
 
         // Compressed XML (ODF XML zip formats)
         "writer8_template",
@@ -275,6 +275,7 @@ int getFlatTypeRank(std::u16string_view rType)
         "writer_Rich_Text_Format",
         "writer_web_HTML_help",
         "generic_HTML",
+        "generic_Markdown",
 
         "generic_Text", // Plain text (catch all)
 
@@ -393,7 +394,7 @@ OUString SAL_CALL TypeDetection::queryTypeByDescriptor(css::uno::Sequence< css::
         sURL = stlDescriptor.getUnpackedValueOrDefault(utl::MediaDescriptor::PROP_URL, OUString());
 
 #if OSL_DEBUG_LEVEL > 0
-        if (stlDescriptor.find( "FileName" ) != stlDescriptor.end())
+        if (stlDescriptor.find( u"FileName"_ustr ) != stlDescriptor.end())
             OSL_FAIL("Detect using of deprecated and already unsupported MediaDescriptor property \"FileName\"!");
 #endif
 
@@ -869,31 +870,31 @@ static bool isBrokenZIP(const css::uno::Reference<css::io::XInputStream>& xStrea
 
     std::vector<css::uno::Any> aArguments{
         css::uno::Any(xStream),
-        css::uno::Any(css::beans::NamedValue("AllowRemoveOnInsert", css::uno::Any(false))),
-        css::uno::Any(css::beans::NamedValue("StorageFormat",
+        css::uno::Any(css::beans::NamedValue(u"AllowRemoveOnInsert"_ustr, css::uno::Any(false))),
+        css::uno::Any(css::beans::NamedValue(u"StorageFormat"_ustr,
                                              css::uno::Any(css::embed::StorageFormats::ZIP))),
     };
     try
     {
         // If this is a broken ZIP package, or not a ZIP, this would throw ZipIOException
         xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-            "com.sun.star.packages.comp.ZipPackage", comphelper::containerToSequence(aArguments),
+            u"com.sun.star.packages.comp.ZipPackage"_ustr, comphelper::containerToSequence(aArguments),
             xContext);
     }
     catch (const css::packages::zip::ZipIOException&)
     {
         // Now test if repair will succeed
-        aArguments.emplace_back(css::beans::NamedValue("RepairPackage", css::uno::Any(true)));
+        aArguments.emplace_back(css::beans::NamedValue(u"RepairPackage"_ustr, css::uno::Any(true)));
         try
         {
             // If this is a broken ZIP package that can be repaired, this would succeed,
             // and the result will be not empty
             if (css::uno::Reference<css::beans::XPropertySet> xPackage{
                     xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                        "com.sun.star.packages.comp.ZipPackage",
+                        u"com.sun.star.packages.comp.ZipPackage"_ustr,
                         comphelper::containerToSequence(aArguments), xContext),
                     css::uno::UNO_QUERY })
-                if (bool bHasElements; xPackage->getPropertyValue("HasElements") >>= bHasElements)
+                if (bool bHasElements; xPackage->getPropertyValue(u"HasElements"_ustr) >>= bHasElements)
                     return bHasElements;
         }
         catch (const css::uno::Exception&)
@@ -920,12 +921,18 @@ OUString TypeDetection::impl_detectTypeFlatAndDeep(      utl::MediaDescriptor& r
     // tdf#96401: First of all, check if this is a broken ZIP package. Not doing this here would
     // make some filters silently not recognize their content in broken packages, and some filters
     // show a warning and mistakenly claim own content based on user choice.
-    if (bAllowDeep && !rDescriptor.getUnpackedValueOrDefault("RepairPackage", false)
-        && rDescriptor.getUnpackedValueOrDefault("RepairAllowed", true)
+    if (bAllowDeep && !rDescriptor.getUnpackedValueOrDefault(u"RepairPackage"_ustr, false)
+        && rDescriptor.getUnpackedValueOrDefault(u"RepairAllowed"_ustr, true)
         && rDescriptor.contains(utl::MediaDescriptor::PROP_INTERACTIONHANDLER))
     {
         try
         {
+            // tdf#161573: do not interact with the user about possible unrelated failures (e.g.,
+            // missing file). If needed, that will happen later, in the main detection phase.
+            auto aInteraction(rDescriptor[utl::MediaDescriptor::PROP_INTERACTIONHANDLER]);
+            rDescriptor.erase(utl::MediaDescriptor::PROP_INTERACTIONHANDLER);
+            comphelper::ScopeGuard interactionHelperGuard([&rDescriptor, &aInteraction]
+                { rDescriptor[utl::MediaDescriptor::PROP_INTERACTIONHANDLER] = aInteraction; });
             impl_openStream(rDescriptor);
             if (auto xStream = rDescriptor.getUnpackedValueOrDefault(
                     utl::MediaDescriptor::PROP_INPUTSTREAM,
@@ -943,7 +950,7 @@ OUString TypeDetection::impl_detectTypeFlatAndDeep(      utl::MediaDescriptor& r
                 if (isBrokenZIP(xStream, xContext))
                 {
                     if (css::uno::Reference<css::task::XInteractionHandler> xInteraction{
-                            rDescriptor.getValue(utl::MediaDescriptor::PROP_INTERACTIONHANDLER),
+                            aInteraction,
                             css::uno::UNO_QUERY })
                     {
                         INetURLObject aURL(rDescriptor.getUnpackedValueOrDefault(
@@ -962,10 +969,10 @@ OUString TypeDetection::impl_detectTypeFlatAndDeep(      utl::MediaDescriptor& r
                             const bool bIsLOK = comphelper::LibreOfficeKit::isActive();
                             rDescriptor[utl::MediaDescriptor::PROP_DOCUMENTTITLE] <<= aDocumentTitle;
                             rDescriptor[utl::MediaDescriptor::PROP_ASTEMPLATE] <<= !bIsLOK;
-                            rDescriptor["RepairPackage"] <<= true;
+                            rDescriptor[u"RepairPackage"_ustr] <<= true;
                         }
                         else
-                            rDescriptor["RepairAllowed"] <<= false; // Do not ask again
+                            rDescriptor[u"RepairAllowed"_ustr] <<= false; // Do not ask again
                     }
                 }
             }

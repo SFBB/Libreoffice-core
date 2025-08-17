@@ -279,7 +279,7 @@ UndoManager::StartUndo(SwUndoId const i_eUndoId,
 
     assert(SwUndoId::END != eUndoId);
     OUString comment( (SwUndoId::START == eUndoId)
-        ?   OUString("??")
+        ?   u"??"_ustr
         :   GetUndoComment(eUndoId) );
     if (pRewriter)
     {
@@ -352,6 +352,10 @@ UndoManager::EndUndo(SwUndoId eUndoId, SwRewriter const*const pRewriter)
         {
             OSL_ENSURE(false, "EndUndo(): no comment?");
         }
+    }
+    else
+    {
+        eUndoId = SwUndoId::EMPTY;
     }
 
     return eUndoId;
@@ -629,7 +633,8 @@ void UndoManager::AddUndoAction(std::unique_ptr<SfxUndoAction> pAction, bool bTr
     // if the undo nodes array is too large, delete some actions
     while (UNDO_ACTION_LIMIT < sal_Int32(GetUndoNodes().Count()))
     {
-        RemoveOldestUndoAction();
+        if (!RemoveOldestUndoAction())
+            break;
     }
 }
 
@@ -697,11 +702,30 @@ bool UndoManager::impl_DoUndoRedo(UndoOrRedoType undoOrRedo, size_t nUndoOffset)
     // N.B. these may throw!
     if (UndoOrRedoType::Undo == undoOrRedo)
     {
+#if ENABLE_YRS
+        SfxUndoAction * pUndo{GetUndoActionCount() ? GetUndoAction() : nullptr};
+        if (auto const*const pListAction = dynamic_cast<SfxListUndoAction*>(pUndo))
+        {
+            if (pListAction->GetId() == sal_uInt16(SwUndoId::HEADER_FOOTER))
+            {   // urgh! argh! this one destroys itself! aieeeee!
+                pUndo = nullptr;
+            }
+        }
+#endif
         bRet = SdrUndoManager::UndoWithContext(context);
+#if ENABLE_YRS
+        m_rState.YrsDoUndo(pUndo);
+#endif
     }
     else
     {
+#if ENABLE_YRS
+        SfxUndoAction *const pUndo{GetRedoActionCount() ? GetRedoAction() : nullptr};
+#endif
         bRet = SdrUndoManager::RedoWithContext(context);
+#if ENABLE_YRS
+        m_rState.YrsDoRedo(pUndo);
+#endif
     }
 
     if (bRet)

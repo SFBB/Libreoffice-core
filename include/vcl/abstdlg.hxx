@@ -21,6 +21,8 @@
 
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
+#include <tools/color.hxx>
+#include <vcl/ColorDialog.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/vclptr.hxx>
 #include <vcl/vclreferencebase.hxx>
@@ -32,8 +34,7 @@ namespace com::sun::star::uno { template <class interface_type> class Reference;
 
 namespace com::sun::star::frame { class XModel; }
 
-class Dialog;
-class BitmapEx;
+class Bitmap;
 class SdrObjGroup;
 namespace weld
 {
@@ -65,6 +66,12 @@ public:
         bool isSet() const { return !!maEndDialogFn; }
     };
 
+    /**
+    * Usual codepath for modal dialogs. Some uno command decides to open a dialog,
+      we call StartExecuteAsync() with a callback to handle the dialog result
+      and that handler will be executed at some stage in the future,
+      instead of right now.
+    */
     bool StartExecuteAsync(const std::function<void(sal_Int32)> &rEndDialogFn)
     {
         AsyncContext aCtx;
@@ -79,7 +86,7 @@ public:
     // Screenshot interface
     virtual std::vector<OUString> getAllPageUIXMLDescriptions() const;
     virtual bool selectPageByUIXMLDescription(const OUString& rUIXMLDescription);
-    virtual BitmapEx createScreenshot() const;
+    virtual Bitmap createScreenshot() const;
     virtual OUString GetScreenshotId() const { return {}; };
 };
 
@@ -89,6 +96,18 @@ protected:
     virtual             ~VclAbstractTerminatedDialog() override = default;
 public:
     virtual void        EndDialog(sal_Int32 nResult) = 0;
+};
+
+class AbstractColorPickerDialog : virtual public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractColorPickerDialog() override = default;
+
+public:
+    virtual void SetColor(const Color& rColor) = 0;
+    virtual Color GetColor() const = 0;
+
+    virtual weld::Dialog* GetDialog() const = 0;
 };
 
 class VCL_DLLPUBLIC AbstractPasswordToOpenModifyDialog : public VclAbstractDialog
@@ -103,6 +122,14 @@ public:
     virtual void        AllowEmpty() = 0;
 };
 
+class VCL_DLLPUBLIC AbstractSecurityOptionsDialog : public VclAbstractDialog
+{
+protected:
+    virtual             ~AbstractSecurityOptionsDialog() override = default;
+public:
+    virtual bool        SetSecurityOptions() = 0;
+};
+
 class VCL_DLLPUBLIC AbstractScreenshotAnnotationDlg : public VclAbstractDialog
 {
 protected:
@@ -113,12 +140,16 @@ class VCL_DLLPUBLIC AbstractSignatureLineDialog : public VclAbstractDialog
 {
 protected:
     virtual ~AbstractSignatureLineDialog() override = default;
+public:
+    virtual void Apply() = 0;
 };
 
 class VCL_DLLPUBLIC AbstractSignSignatureLineDialog : public VclAbstractDialog
 {
 protected:
     virtual ~AbstractSignSignatureLineDialog() override = default;
+public:
+    virtual void Apply() = 0;
 };
 
 class VCL_DLLPUBLIC AbstractQrCodeGenDialog : public VclAbstractDialog
@@ -140,6 +171,16 @@ protected:
     virtual ~AbstractDiagramDialog() override = default;
 };
 
+class VCL_DLLPUBLIC AbstractQueryDialog : public VclAbstractDialog
+{
+protected:
+    virtual ~AbstractQueryDialog() override = default;
+public:
+    virtual bool ShowAgain() const = 0;
+    virtual void SetYesLabel(const OUString& sLabel) = 0;
+    virtual void SetNoLabel(const OUString& sLabel) = 0;
+};
+
 class VCL_DLLPUBLIC VclAbstractDialogFactory
 {
 public:
@@ -147,6 +188,9 @@ public:
     static VclAbstractDialogFactory* Create();
     // The Id is an implementation detail of the factory
     virtual VclPtr<VclAbstractDialog> CreateVclDialog(weld::Window* pParent, sal_uInt32 nId) = 0;
+
+    virtual VclPtr<AbstractColorPickerDialog>
+    CreateColorPickerDialog(weld::Window* pParent, Color nColor, vcl::ColorPickerMode eMode) = 0;
 
     // creates instance of PasswordToOpenModifyDialog from cui
     virtual VclPtr<AbstractPasswordToOpenModifyDialog> CreatePasswordToOpenModifyDialog(weld::Window * pParent, sal_uInt16 nMaxPasswdLen, bool bIsPasswordToModify) = 0;
@@ -182,6 +226,11 @@ public:
     virtual VclPtr<AbstractDiagramDialog> CreateDiagramDialog(
         weld::Window* pParent,
         SdrObjGroup& rDiagram) = 0;
+
+    virtual VclPtr<AbstractQueryDialog> CreateQueryDialog(
+        weld::Window* pParent,
+        const OUString& sTitle, const OUString& sText, const OUString& sQuestion,
+        bool bShowAgain) = 0;
 
 #ifdef _WIN32
     virtual VclPtr<VclAbstractDialog>

@@ -33,7 +33,7 @@ static sal_uInt16 nCountHash = 0, nAddHash, nItemHash, nRemoveHash;
 
 
 SbxCollection::SbxCollection()
-             : SbxObject( "" )
+             : SbxObject( u""_ustr )
 {
     if( !nCountHash )
     {
@@ -103,47 +103,42 @@ SbxVariable* SbxCollection::Find( const OUString& rName, SbxClassType t )
 
 void SbxCollection::Notify( SfxBroadcaster& rCst, const SfxHint& rHint )
 {
-    const SbxHint* p = dynamic_cast<const SbxHint*>(&rHint);
-    if( p )
+    const SfxHintId nId = rHint.GetId();
+    if( nId == SfxHintId::BasicDataWanted || nId == SfxHintId::BasicDataChanged )
     {
-        const SfxHintId nId = p->GetId();
-        bool bRead  = ( nId == SfxHintId::BasicDataWanted );
-        bool bWrite = ( nId == SfxHintId::BasicDataChanged );
+        const SbxHint* p = static_cast<const SbxHint*>(&rHint);
         SbxVariable* pVar = p->GetVar();
         SbxArray* pArg = pVar->GetParameters();
-        if( bRead || bWrite )
+        OUString aVarName( pVar->GetName() );
+        if( pVar == this )
         {
-            OUString aVarName( pVar->GetName() );
-            if( pVar == this )
-            {
-                CollItem( pArg );
-            }
-            else if( pVar->GetHashCode() == nCountHash
-                  && aVarName.equalsIgnoreAsciiCase( pCount ) )
-            {
-                pVar->PutLong(sal::static_int_cast<sal_Int32>(pObjs->Count()));
-            }
-            else if( pVar->GetHashCode() == nAddHash
-                  && aVarName.equalsIgnoreAsciiCase( pAdd ) )
-            {
-                CollAdd( pArg );
-            }
-            else if( pVar->GetHashCode() == nItemHash
-                  && aVarName.equalsIgnoreAsciiCase( pItem ) )
-            {
-                CollItem( pArg );
-            }
-            else if( pVar->GetHashCode() == nRemoveHash
-                  && aVarName.equalsIgnoreAsciiCase( pRemove ) )
-            {
-                CollRemove( pArg );
-            }
-            else
-            {
-                SbxObject::Notify( rCst, rHint );
-            }
-            return;
+            CollItem( pArg );
         }
+        else if( pVar->GetHashCode() == nCountHash
+              && aVarName.equalsIgnoreAsciiCase( pCount ) )
+        {
+            pVar->PutLong(sal::static_int_cast<sal_Int32>(pObjs->Count()));
+        }
+        else if( pVar->GetHashCode() == nAddHash
+              && aVarName.equalsIgnoreAsciiCase( pAdd ) )
+        {
+            CollAdd( pArg );
+        }
+        else if( pVar->GetHashCode() == nItemHash
+              && aVarName.equalsIgnoreAsciiCase( pItem ) )
+        {
+            CollItem( pArg );
+        }
+        else if( pVar->GetHashCode() == nRemoveHash
+              && aVarName.equalsIgnoreAsciiCase( pRemove ) )
+        {
+            CollRemove( pArg );
+        }
+        else
+        {
+            SbxObject::Notify( rCst, rHint );
+        }
+        return;
     }
     SbxObject::Notify( rCst, rHint );
 }
@@ -295,7 +290,7 @@ bool SbxStdCollection::LoadData( SvStream& rStrm, sal_uInt16 nVer )
 
 std::pair<bool, sal_uInt32> SbxStdCollection::StoreData( SvStream& rStrm ) const
 {
-    const auto& [bRes, nVersion] = SbxCollection::StoreData(rStrm);
+    const auto [bRes, nVersion] = SbxCollection::StoreData(rStrm);
     if( bRes )
     {
         write_uInt16_lenPrefixed_uInt8s_FromOUString(rStrm, aElemClass,

@@ -49,17 +49,14 @@ namespace calc
     using namespace ::com::sun::star::form::binding;
 
     OCellListSource::OCellListSource( const Reference< XSpreadsheetDocument >& _rxDocument )
-        :OCellListSource_Base( m_aMutex )
-        ,OCellListSource_PBase( OCellListSource_Base::rBHelper )
-        ,m_xDocument( _rxDocument )
-        ,m_aListEntryListeners( m_aMutex )
+        :m_xDocument( _rxDocument )
         ,m_bInitialized( false )
     {
         OSL_PRECOND( m_xDocument.is(), "OCellListSource::OCellListSource: invalid document!" );
 
         // register our property at the base class
         registerPropertyNoMember(
-            "CellRange",
+            u"CellRange"_ustr,
             PROP_HANDLE_RANGE_ADDRESS,
             PropertyAttribute::BOUND | PropertyAttribute::READONLY,
             cppu::UnoType<CellRangeAddress>::get(),
@@ -69,7 +66,7 @@ namespace calc
 
     OCellListSource::~OCellListSource( )
     {
-        if ( !OCellListSource_Base::rBHelper.bDisposed )
+        if ( !m_bDisposed )
         {
             acquire();  // prevent duplicate dtor
             dispose();
@@ -80,10 +77,8 @@ namespace calc
 
     IMPLEMENT_FORWARD_XTYPEPROVIDER2( OCellListSource, OCellListSource_Base, OCellListSource_PBase )
 
-    void SAL_CALL OCellListSource::disposing()
+    void OCellListSource::disposing(std::unique_lock<std::mutex>& rGuard)
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
-
         Reference<XModifyBroadcaster> xBroadcaster( m_xRange, UNO_QUERY );
         if ( xBroadcaster.is() )
         {
@@ -91,9 +86,9 @@ namespace calc
         }
 
         EventObject aDisposeEvent( *this );
-        m_aListEntryListeners.disposeAndClear( aDisposeEvent );
+        m_aListEntryListeners.disposeAndClear( rGuard, aDisposeEvent );
 
-        WeakComponentImplHelperBase::disposing();
+        WeakComponentImplHelperBase::disposing(rGuard);
 
         // TODO: clean up here whatever you need to clean up (e.g. revoking listeners etc.)
     }
@@ -103,7 +98,7 @@ namespace calc
         return createPropertySetInfo( getInfoHelper() ) ;
     }
 
-    ::cppu::IPropertyArrayHelper& SAL_CALL OCellListSource::getInfoHelper()
+    ::cppu::IPropertyArrayHelper& OCellListSource::getInfoHelper()
     {
         return *OCellListSource_PABase::getArrayHelper();
     }
@@ -115,7 +110,7 @@ namespace calc
         return new ::cppu::OPropertyArrayHelper(aProps);
     }
 
-    void SAL_CALL OCellListSource::getFastPropertyValue( Any& _rValue, sal_Int32 _nHandle ) const
+    void OCellListSource::getFastPropertyValue( std::unique_lock<std::mutex>& /*rGuard*/, Any& _rValue, sal_Int32 _nHandle ) const
     {
         OSL_ENSURE( _nHandle == PROP_HANDLE_RANGE_ADDRESS, "OCellListSource::getFastPropertyValue: invalid handle!" );
             // we only have this one property...
@@ -123,22 +118,15 @@ namespace calc
         _rValue <<= getRangeAddress( );
     }
 
-    void OCellListSource::checkDisposed( ) const
-    {
-        if ( OCellListSource_Base::rBHelper.bInDispose || OCellListSource_Base::rBHelper.bDisposed )
-            throw DisposedException();
-            // TODO: is it worth having an error message here?
-    }
-
     void OCellListSource::checkInitialized()
     {
         if ( !m_bInitialized )
-            throw NotInitializedException("CellListSource is not initialized", getXWeak());
+            throw NotInitializedException(u"CellListSource is not initialized"_ustr, getXWeak());
     }
 
     OUString SAL_CALL OCellListSource::getImplementationName(  )
     {
-        return "com.sun.star.comp.sheet.OCellListSource";
+        return u"com.sun.star.comp.sheet.OCellListSource"_ustr;
     }
 
     sal_Bool SAL_CALL OCellListSource::supportsService( const OUString& _rServiceName )
@@ -148,8 +136,8 @@ namespace calc
 
     Sequence< OUString > SAL_CALL OCellListSource::getSupportedServiceNames(  )
     {
-        return {"com.sun.star.table.CellRangeListSource",
-                "com.sun.star.form.binding.ListEntrySource"};
+        return {u"com.sun.star.table.CellRangeListSource"_ustr,
+                u"com.sun.star.form.binding.ListEntrySource"_ustr};
     }
 
     CellRangeAddress OCellListSource::getRangeAddress( ) const
@@ -163,7 +151,7 @@ namespace calc
         return aAddress;
     }
 
-    OUString OCellListSource::getCellTextContent_noCheck( sal_Int32 _nRangeRelativeRow, css::uno::Any* pAny )
+    OUString OCellListSource::getCellTextContent_noCheck( std::unique_lock<std::mutex>& /*rGuard*/, sal_Int32 _nRangeRelativeRow, css::uno::Any* pAny )
     {
         OUString sText;
 
@@ -205,7 +193,7 @@ namespace calc
                         if (xProp.is())
                         {
                             sal_Int32 nResultType;
-                            if ((xProp->getPropertyValue("FormulaResultType2") >>= nResultType) &&
+                            if ((xProp->getPropertyValue(u"FormulaResultType2"_ustr) >>= nResultType) &&
                                     nResultType == FormulaResult::VALUE)
                                 *pAny <<= xCell->getValue();
                             else
@@ -226,37 +214,41 @@ namespace calc
 
     sal_Int32 SAL_CALL OCellListSource::getListEntryCount(  )
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
-        checkDisposed();
+        std::unique_lock<std::mutex> aGuard( m_aMutex );
+        throwIfDisposed(aGuard);
         checkInitialized();
+        return getListEntryCount(aGuard);
+    }
 
+    sal_Int32 OCellListSource::getListEntryCount( std::unique_lock<std::mutex>& /*rGuard*/ )
+    {
         CellRangeAddress aAddress( getRangeAddress( ) );
         return aAddress.EndRow - aAddress.StartRow + 1;
     }
 
     OUString SAL_CALL OCellListSource::getListEntry( sal_Int32 _nPosition )
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
-        checkDisposed();
+        std::unique_lock<std::mutex> aGuard( m_aMutex );
+        throwIfDisposed(aGuard);
         checkInitialized();
 
         if ( _nPosition >= getListEntryCount() )
             throw IndexOutOfBoundsException();
 
-        return getCellTextContent_noCheck( _nPosition, nullptr );
+        return getCellTextContent_noCheck( aGuard, _nPosition, nullptr );
     }
 
     Sequence< OUString > SAL_CALL OCellListSource::getAllListEntries(  )
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
-        checkDisposed();
+        std::unique_lock<std::mutex> aGuard( m_aMutex );
+        throwIfDisposed(aGuard);
         checkInitialized();
 
-        Sequence< OUString > aAllEntries( getListEntryCount() );
+        Sequence< OUString > aAllEntries( getListEntryCount(aGuard) );
         OUString* pAllEntries = aAllEntries.getArray();
         for ( sal_Int32 i = 0; i < aAllEntries.getLength(); ++i )
         {
-            *pAllEntries++ = getCellTextContent_noCheck( i, nullptr );
+            *pAllEntries++ = getCellTextContent_noCheck( aGuard, i, nullptr );
         }
 
         return aAllEntries;
@@ -264,18 +256,18 @@ namespace calc
 
     Sequence< OUString > SAL_CALL OCellListSource::getAllListEntriesTyped( Sequence< Any >& rDataValues )
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
-        checkDisposed();
+        std::unique_lock<std::mutex> aGuard( m_aMutex );
+        throwIfDisposed(aGuard);
         checkInitialized();
 
-        const sal_Int32 nCount = getListEntryCount();
+        const sal_Int32 nCount = getListEntryCount(aGuard);
         Sequence< OUString > aAllEntries( nCount );
         rDataValues = Sequence< Any >( nCount );
         OUString* pAllEntries = aAllEntries.getArray();
         Any* pDataValues = rDataValues.getArray();
         for ( sal_Int32 i = 0; i < nCount; ++i )
         {
-            *pAllEntries++ = getCellTextContent_noCheck( i, pDataValues++ );
+            *pAllEntries++ = getCellTextContent_noCheck( aGuard, i, pDataValues++ );
         }
 
         return aAllEntries;
@@ -283,26 +275,26 @@ namespace calc
 
     void SAL_CALL OCellListSource::addListEntryListener( const Reference< XListEntryListener >& _rxListener )
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
-        checkDisposed();
+        std::unique_lock<std::mutex> aGuard( m_aMutex );
+        throwIfDisposed(aGuard);
         checkInitialized();
 
         if ( !_rxListener.is() )
             throw NullPointerException();
 
-        m_aListEntryListeners.addInterface( _rxListener );
+        m_aListEntryListeners.addInterface( aGuard, _rxListener );
     }
 
     void SAL_CALL OCellListSource::removeListEntryListener( const Reference< XListEntryListener >& _rxListener )
     {
-        ::osl::MutexGuard aGuard( m_aMutex );
-        checkDisposed();
+        std::unique_lock<std::mutex> aGuard( m_aMutex );
+        throwIfDisposed(aGuard);
         checkInitialized();
 
         if ( !_rxListener.is() )
             throw NullPointerException();
 
-        m_aListEntryListeners.removeInterface( _rxListener );
+        m_aListEntryListeners.removeInterface( aGuard, _rxListener );
     }
 
     void SAL_CALL OCellListSource::modified( const EventObject& /* aEvent */ )
@@ -312,26 +304,26 @@ namespace calc
 
     void OCellListSource::notifyModified()
     {
+        std::unique_lock<std::mutex> aGuard( m_aMutex );
         EventObject aEvent;
         aEvent.Source.set(*this);
 
-        ::comphelper::OInterfaceIteratorHelper3 aIter( m_aListEntryListeners );
-        while ( aIter.hasMoreElements() )
-        {
-            try
+        m_aListEntryListeners.forEach(aGuard,
+            [&aEvent] (const css::uno::Reference<css::form::binding::XListEntryListener>& l)
             {
-                aIter.next()->allEntriesChanged( aEvent );
-            }
-            catch( const RuntimeException& )
-            {
-                // silent this
-            }
-            catch( const Exception& )
-            {
-                TOOLS_WARN_EXCEPTION( "sc", "OCellListSource::notifyModified: caught a (non-runtime) exception!" );
-            }
-        }
-
+                try
+                {
+                    l->allEntriesChanged( aEvent );
+                }
+                catch( const RuntimeException& )
+                {
+                    // silent this
+                }
+                catch( const Exception& )
+                {
+                    TOOLS_WARN_EXCEPTION( "sc", "OCellListSource::notifyModified: caught a (non-runtime) exception!" );
+                }
+            });
     }
 
     void SAL_CALL OCellListSource::disposing( const EventObject& aEvent )
@@ -347,7 +339,7 @@ namespace calc
     void SAL_CALL OCellListSource::initialize( const Sequence< Any >& _rArguments )
     {
         if ( m_bInitialized )
-            throw RuntimeException("CellListSource is already initialized", getXWeak());
+            throw RuntimeException(u"CellListSource is already initialized"_ustr, getXWeak());
 
         // get the cell address
         CellRangeAddress aRangeAddress;
@@ -370,7 +362,7 @@ namespace calc
         }
 
         if ( !bFoundAddress )
-            throw RuntimeException("Cell not found", getXWeak());
+            throw RuntimeException(u"Cell not found"_ustr, getXWeak());
 
         // determine the range we're bound to
         try
@@ -404,7 +396,7 @@ namespace calc
         }
 
         if ( !m_xRange.is() )
-            throw RuntimeException("Failed to retrieve cell range", getXWeak());
+            throw RuntimeException(u"Failed to retrieve cell range"_ustr, getXWeak());
 
         Reference<XModifyBroadcaster> xBroadcaster( m_xRange, UNO_QUERY );
         if ( xBroadcaster.is() )

@@ -7,30 +7,31 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <svx/theme/ThemeColorChangerCommon.hxx>
+#include <comphelper/lok.hxx>
 
-#include <sal/config.h>
-#include <editeng/colritem.hxx>
-#include <editeng/unoprnms.hxx>
-#include <docmodel/uno/UnoComplexColor.hxx>
 #include <docmodel/theme/ColorSet.hxx>
 
-#include <com/sun/star/text/XTextRange.hpp>
-#include <com/sun/star/container/XEnumerationAccess.hpp>
-#include <com/sun/star/container/XEnumeration.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/util/XComplexColor.hpp>
-
-#include <svx/xlnclit.hxx>
-#include <svx/xflclit.hxx>
-#include <svx/xdef.hxx>
+#include <editeng/colritem.hxx>
+#include <editeng/editeng.hxx>
 #include <editeng/eeitem.hxx>
-#include <svx/svdundo.hxx>
+#include <editeng/section.hxx>
+
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
+
+#include <sal/config.h>
+
+#include <sfx2/lokhelper.hxx>
+
+#include <svx/PaletteManager.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svdotext.hxx>
-
-#include <editeng/editeng.hxx>
-#include <editeng/section.hxx>
+#include <svx/svdundo.hxx>
+#include <svx/theme/ThemeColorChangerCommon.hxx>
+#include <svx/theme/ThemeColorPaletteManager.hxx>
+#include <svx/xdef.hxx>
+#include <svx/xlnclit.hxx>
+#include <svx/xflclit.hxx>
+#include <tools/json_writer.hxx>
 
 using namespace css;
 
@@ -62,9 +63,7 @@ bool updateEditEngTextSections(model::ColorSet const& rColorSet, SdrObject* pObj
     if (!pOutlinerView)
         return false;
 
-    auto* pEditEngine = pOutlinerView->GetEditView().GetEditEngine();
-    if (!pEditEngine)
-        return false;
+    auto& rEditEngine = pOutlinerView->GetEditView().getEditEngine();
 
     OutlinerParaObject* pOutlinerParagraphObject = pTextObject->GetOutlinerParaObject();
     if (pOutlinerParagraphObject)
@@ -82,9 +81,9 @@ bool updateEditEngTextSections(model::ColorSet const& rColorSet, SdrObject* pObj
             model::ComplexColor const& rComplexColor = pItem->getComplexColor();
             if (rComplexColor.isValidThemeType())
             {
-                SfxItemSet aSet(pEditEngine->GetAttribs(rSection.mnParagraph, rSection.mnStart,
-                                                        rSection.mnEnd,
-                                                        GetAttribsFlags::CHARATTRIBS));
+                SfxItemSet aSet(rEditEngine.GetAttribs(rSection.mnParagraph, rSection.mnStart,
+                                                       rSection.mnEnd,
+                                                       GetAttribsFlags::CHARATTRIBS));
                 Color aNewColor = rColorSet.resolveColor(rComplexColor);
                 std::unique_ptr<SvxColorItem> pNewItem(pItem->Clone());
                 pNewItem->setColor(aNewColor);
@@ -92,7 +91,7 @@ bool updateEditEngTextSections(model::ColorSet const& rColorSet, SdrObject* pObj
 
                 ESelection aSelection(rSection.mnParagraph, rSection.mnStart, rSection.mnParagraph,
                                       rSection.mnEnd);
-                pEditEngine->QuickSetAttribs(aSet, aSelection);
+                rEditEngine.QuickSetAttribs(aSet, aSelection);
             }
         }
     }
@@ -170,6 +169,25 @@ void updateSdrObject(model::ColorSet const& rColorSet, SdrObject* pObject, SdrVi
     updateObjectAttributes(rColorSet, *pObject, pUndoManager);
     if (pView)
         updateEditEngTextSections(rColorSet, pObject, *pView);
+}
+
+void notifyLOK(std::shared_ptr<model::ColorSet> const& pColorSet,
+               const std::set<Color>& rDocumentColors)
+{
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        svx::ThemeColorPaletteManager aManager(pColorSet);
+        tools::JsonWriter aTree;
+
+        if (pColorSet)
+            aManager.generateJSON(aTree);
+        if (rDocumentColors.size())
+            PaletteManager::generateJSON(aTree, rDocumentColors);
+
+        PaletteManager::generateColorNamesJSON(aTree);
+
+        SfxLokHelper::notifyAllViews(LOK_CALLBACK_COLOR_PALETTES, aTree.finishAndGetAsOString());
+    }
 }
 
 } // end svx::theme namespace

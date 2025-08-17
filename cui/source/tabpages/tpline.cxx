@@ -63,6 +63,7 @@
 #include <cuitabarea.hxx>
 #include <svtools/unitconv.hxx>
 #include <comphelper/lok.hxx>
+#include <o3tl/string_view.hxx>
 
 #define MAX_BMP_WIDTH   16
 #define MAX_BMP_HEIGHT  16
@@ -77,7 +78,7 @@ const WhichRangesContainer SvxLineTabPage::pLineRanges(svl::Items<
 >);
 
 SvxLineTabPage::SvxLineTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SfxTabPage(pPage, pController, "cui/ui/linetabpage.ui", "LineTabPage", &rInAttrs)
+    : SfxTabPage(pPage, pController, u"cui/ui/linetabpage.ui"_ustr, u"LineTabPage"_ustr, &rInAttrs)
     , m_pSymbolList(nullptr)
     , m_bNewSize(false)
     , m_nSymbolType(SVX_SYMBOLTYPE_UNKNOWN) // unknown respectively unchanged
@@ -95,36 +96,36 @@ SvxLineTabPage::SvxLineTabPage(weld::Container* pPage, weld::DialogController* p
     , m_nDlgType(0)
     , m_pPosDashLb(nullptr)
     , m_pPosLineEndLb(nullptr)
-    , m_xBoxColor(m_xBuilder->weld_widget("boxCOLOR"))
-    , m_xLbLineStyle(new SvxLineLB(m_xBuilder->weld_combo_box("LB_LINE_STYLE")))
-    , m_xLbColor(new ColorListBox(m_xBuilder->weld_menu_button("LB_COLOR"),
+    , m_xBoxColor(m_xBuilder->weld_widget(u"boxCOLOR"_ustr))
+    , m_xLbLineStyle(new SvxLineLB(m_xBuilder->weld_combo_box(u"LB_LINE_STYLE"_ustr)))
+    , m_xLbColor(new ColorListBox(m_xBuilder->weld_menu_button(u"LB_COLOR"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xBoxWidth(m_xBuilder->weld_widget("boxWIDTH"))
-    , m_xMtrLineWidth(m_xBuilder->weld_metric_spin_button("MTR_FLD_LINE_WIDTH", FieldUnit::CM))
-    , m_xBoxTransparency(m_xBuilder->weld_widget("boxTRANSPARENCY"))
-    , m_xMtrTransparent(m_xBuilder->weld_metric_spin_button("MTR_LINE_TRANSPARENT", FieldUnit::PERCENT))
-    , m_xFlLineEnds(m_xBuilder->weld_widget("FL_LINE_ENDS"))
-    , m_xBoxArrowStyles(m_xBuilder->weld_widget("boxARROW_STYLES"))
-    , m_xLbStartStyle(new SvxLineEndLB(m_xBuilder->weld_combo_box("LB_START_STYLE")))
-    , m_xBoxStart(m_xBuilder->weld_widget("boxSTART"))
-    , m_xMtrStartWidth(m_xBuilder->weld_metric_spin_button("MTR_FLD_START_WIDTH", FieldUnit::CM))
-    , m_xTsbCenterStart(m_xBuilder->weld_check_button("TSB_CENTER_START"))
-    , m_xBoxEnd(m_xBuilder->weld_widget("boxEND"))
-    , m_xLbEndStyle(new SvxLineEndLB(m_xBuilder->weld_combo_box("LB_END_STYLE")))
-    , m_xMtrEndWidth(m_xBuilder->weld_metric_spin_button("MTR_FLD_END_WIDTH", FieldUnit::CM))
-    , m_xTsbCenterEnd(m_xBuilder->weld_check_button("TSB_CENTER_END"))
-    , m_xCbxSynchronize(m_xBuilder->weld_check_button("CBX_SYNCHRONIZE"))
-    , m_xCtlPreview(new weld::CustomWeld(*m_xBuilder, "CTL_PREVIEW", m_aCtlPreview))
-    , m_xFLEdgeStyle(m_xBuilder->weld_widget("FL_EDGE_STYLE"))
-    , m_xGridEdgeCaps(m_xBuilder->weld_widget("gridEDGE_CAPS"))
-    , m_xLBEdgeStyle(m_xBuilder->weld_combo_box("LB_EDGE_STYLE"))
-    , m_xLBCapStyle(m_xBuilder->weld_combo_box("LB_CAP_STYLE")) // LineCaps
-    , m_xFlSymbol(m_xBuilder->weld_widget("FL_SYMBOL_FORMAT")) //#58425# Symbols on a line (e.g. StarChart)
-    , m_xGridIconSize(m_xBuilder->weld_widget("gridICON_SIZE"))
-    , m_xSymbolMB(m_xBuilder->weld_menu_button("MB_SYMBOL_BITMAP"))
-    , m_xSymbolWidthMF(m_xBuilder->weld_metric_spin_button("MF_SYMBOL_WIDTH", FieldUnit::CM))
-    , m_xSymbolHeightMF(m_xBuilder->weld_metric_spin_button("MF_SYMBOL_HEIGHT", FieldUnit::CM))
-    , m_xSymbolRatioCB(m_xBuilder->weld_check_button("CB_SYMBOL_RATIO"))
+    , m_xBoxWidth(m_xBuilder->weld_widget(u"boxWIDTH"_ustr))
+    , m_xMtrLineWidth(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_LINE_WIDTH"_ustr, FieldUnit::CM))
+    , m_xBoxTransparency(m_xBuilder->weld_widget(u"boxTRANSPARENCY"_ustr))
+    , m_xMtrTransparent(m_xBuilder->weld_metric_spin_button(u"MTR_LINE_TRANSPARENT"_ustr, FieldUnit::PERCENT))
+    , m_xFlLineEnds(m_xBuilder->weld_widget(u"FL_LINE_ENDS"_ustr))
+    , m_xBoxArrowStyles(m_xBuilder->weld_widget(u"boxARROW_STYLES"_ustr))
+    , m_xLbStartStyle(new SvxLineEndLB(m_xBuilder->weld_combo_box(u"LB_START_STYLE"_ustr)))
+    , m_xBoxStart(m_xBuilder->weld_widget(u"boxSTART"_ustr))
+    , m_xMtrStartWidth(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_START_WIDTH"_ustr, FieldUnit::CM))
+    , m_xTsbCenterStart(m_xBuilder->weld_check_button(u"TSB_CENTER_START"_ustr))
+    , m_xBoxEnd(m_xBuilder->weld_widget(u"boxEND"_ustr))
+    , m_xLbEndStyle(new SvxLineEndLB(m_xBuilder->weld_combo_box(u"LB_END_STYLE"_ustr)))
+    , m_xMtrEndWidth(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_END_WIDTH"_ustr, FieldUnit::CM))
+    , m_xTsbCenterEnd(m_xBuilder->weld_check_button(u"TSB_CENTER_END"_ustr))
+    , m_xCbxSynchronize(m_xBuilder->weld_check_button(u"CBX_SYNCHRONIZE"_ustr))
+    , m_xCtlPreview(new weld::CustomWeld(*m_xBuilder, u"CTL_PREVIEW"_ustr, m_aCtlPreview))
+    , m_xFLEdgeStyle(m_xBuilder->weld_widget(u"FL_EDGE_STYLE"_ustr))
+    , m_xGridEdgeCaps(m_xBuilder->weld_widget(u"gridEDGE_CAPS"_ustr))
+    , m_xLBEdgeStyle(m_xBuilder->weld_combo_box(u"LB_EDGE_STYLE"_ustr))
+    , m_xLBCapStyle(m_xBuilder->weld_combo_box(u"LB_CAP_STYLE"_ustr)) // LineCaps
+    , m_xFlSymbol(m_xBuilder->weld_widget(u"FL_SYMBOL_FORMAT"_ustr)) //#58425# Symbols on a line (e.g. StarChart)
+    , m_xGridIconSize(m_xBuilder->weld_widget(u"gridICON_SIZE"_ustr))
+    , m_xSymbolMB(m_xBuilder->weld_menu_button(u"MB_SYMBOL_BITMAP"_ustr))
+    , m_xSymbolWidthMF(m_xBuilder->weld_metric_spin_button(u"MF_SYMBOL_WIDTH"_ustr, FieldUnit::CM))
+    , m_xSymbolHeightMF(m_xBuilder->weld_metric_spin_button(u"MF_SYMBOL_HEIGHT"_ustr, FieldUnit::CM))
+    , m_xSymbolRatioCB(m_xBuilder->weld_check_button(u"CB_SYMBOL_RATIO"_ustr))
 {
     // This Page requires ExchangeSupport
     SetExchangeSupport();
@@ -157,7 +158,7 @@ SvxLineTabPage::SvxLineTabPage(weld::Container* pPage, weld::DialogController* p
 
     // determine PoolUnit
     SfxItemPool* pPool = m_rOutAttrs.GetPool();
-    DBG_ASSERT( pPool, "Where is the pool?" );
+    assert(pPool && "Where is the pool?");
     m_ePoolUnit = pPool->GetMetric( SID_ATTR_LINE_WIDTH );
 
     m_xLbLineStyle->connect_changed(LINK(this, SvxLineTabPage, ClickInvisibleHdl_Impl));
@@ -181,7 +182,6 @@ SvxLineTabPage::SvxLineTabPage(weld::Container* pPage, weld::DialogController* p
 
     // Symbols on a line (eg star charts), MB-handler set
     m_xSymbolMB->connect_selected(LINK(this, SvxLineTabPage, GraphicHdl_Impl));
-    m_xSymbolMB->connect_toggled(LINK(this, SvxLineTabPage, MenuCreateHdl_Impl));
     m_xSymbolWidthMF->connect_value_changed(LINK(this, SvxLineTabPage, SizeHdl_Impl));
     m_xSymbolHeightMF->connect_value_changed(LINK(this, SvxLineTabPage, SizeHdl_Impl));
     m_xSymbolRatioCB->connect_toggled(LINK(this, SvxLineTabPage, RatioHdl_Impl));
@@ -215,6 +215,7 @@ SvxLineTabPage::~SvxLineTabPage()
 void SvxLineTabPage::Construct()
 {
     FillListboxes();
+    PopulateMenus();
 }
 
 void SvxLineTabPage::FillListboxes()
@@ -623,8 +624,8 @@ bool SvxLineTabPage::FillItemSet( SfxItemSet* rAttrs )
     if(m_nSymbolType!=SVX_SYMBOLTYPE_UNKNOWN || m_bNewSize)
     {
         // Was set by selection or the size is different
-        SvxSizeItem  aSItem(rAttrs->GetPool()->GetWhich(SID_ATTR_SYMBOLSIZE),m_aSymbolSize);
-        const SfxPoolItem* pSOld = GetOldItem( *rAttrs, rAttrs->GetPool()->GetWhich(SID_ATTR_SYMBOLSIZE) );
+        SvxSizeItem  aSItem(rAttrs->GetPool()->GetWhichIDFromSlotID(SID_ATTR_SYMBOLSIZE),m_aSymbolSize);
+        const SfxPoolItem* pSOld = GetOldItem( *rAttrs, rAttrs->GetPool()->GetWhichIDFromSlotID(SID_ATTR_SYMBOLSIZE) );
         m_bNewSize  = pSOld ? *static_cast<const SvxSizeItem *>(pSOld) != aSItem : m_bNewSize ;
         if(m_bNewSize)
         {
@@ -632,8 +633,8 @@ bool SvxLineTabPage::FillItemSet( SfxItemSet* rAttrs )
             bModified=true;
         }
 
-        SfxInt32Item aTItem(rAttrs->GetPool()->GetWhich(SID_ATTR_SYMBOLTYPE),m_nSymbolType);
-        const SfxPoolItem* pTOld = GetOldItem( *rAttrs, rAttrs->GetPool()->GetWhich(SID_ATTR_SYMBOLTYPE) );
+        SfxInt32Item aTItem(rAttrs->GetPool()->GetWhichIDFromSlotID(SID_ATTR_SYMBOLTYPE),m_nSymbolType);
+        const SfxPoolItem* pTOld = GetOldItem( *rAttrs, rAttrs->GetPool()->GetWhichIDFromSlotID(SID_ATTR_SYMBOLTYPE) );
         bool bNewType = pTOld == nullptr || *static_cast<const SfxInt32Item*>(pTOld) != aTItem;
         if(bNewType && m_nSymbolType==SVX_SYMBOLTYPE_UNKNOWN)
             bNewType=false; // a small fix, type wasn't set -> don't create a type item after all!
@@ -645,8 +646,8 @@ bool SvxLineTabPage::FillItemSet( SfxItemSet* rAttrs )
 
         if(m_nSymbolType!=SVX_SYMBOLTYPE_NONE)
         {
-            SvxBrushItem aBItem(m_aSymbolGraphic,GPOS_MM,rAttrs->GetPool()->GetWhich(SID_ATTR_BRUSH));
-            const SfxPoolItem* pBOld = GetOldItem( *rAttrs, rAttrs->GetPool()->GetWhich(SID_ATTR_BRUSH) );
+            SvxBrushItem aBItem(m_aSymbolGraphic,GPOS_MM,rAttrs->GetPool()->GetWhichIDFromSlotID(SID_ATTR_BRUSH));
+            const SfxPoolItem* pBOld = GetOldItem( *rAttrs, rAttrs->GetPool()->GetWhichIDFromSlotID(SID_ATTR_BRUSH) );
             bool bNewBrush =
                 pBOld == nullptr || *static_cast<const SvxBrushItem*>(pBOld) != aBItem;
             if(bNewBrush)
@@ -794,7 +795,7 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
     bool bEnable=true;
     bool bIgnoreGraphic=false;
     bool bIgnoreSize=false;
-    if(const SfxInt32Item* pSymbolTypeItem = rAttrs->GetItemIfSet(rAttrs->GetPool()->GetWhich(SID_ATTR_SYMBOLTYPE)))
+    if(const SfxInt32Item* pSymbolTypeItem = rAttrs->GetItemIfSet(rAttrs->GetPool()->GetWhichIDFromSlotID(SID_ATTR_SYMBOLTYPE)))
     {
         nSymType = pSymbolTypeItem->GetValue();
     }
@@ -818,7 +819,6 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
 
         std::unique_ptr<SdrModel> pModel(
             new SdrModel(nullptr, nullptr, true));
-        pModel->GetItemPool().FreezeIdRanges();
         rtl::Reference<SdrPage> pPage = new SdrPage( *pModel, false );
         pPage->SetSize(Size(1000,1000));
         pModel->InsertPage( pPage.get(), 0 );
@@ -881,7 +881,7 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
         }
         }
     }
-    if(const SvxBrushItem* pBrushItem = rAttrs->GetItemIfSet(rAttrs->GetPool()->GetWhich(SID_ATTR_BRUSH)))
+    if(const SvxBrushItem* pBrushItem = rAttrs->GetItemIfSet(rAttrs->GetPool()->GetWhichIDFromSlotID(SID_ATTR_BRUSH)))
     {
         const Graphic* pGraphic = pBrushItem->GetGraphic();
         if( pGraphic )
@@ -900,7 +900,7 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
         }
     }
 
-    if(const SvxSizeItem* pSymbolSizeItem = rAttrs->GetItemIfSet(rAttrs->GetPool()->GetWhich(SID_ATTR_SYMBOLSIZE)))
+    if(const SvxSizeItem* pSymbolSizeItem = rAttrs->GetItemIfSet(rAttrs->GetPool()->GetWhichIDFromSlotID(SID_ATTR_SYMBOLSIZE)))
     {
         m_aSymbolSize = pSymbolSizeItem->GetSize();
     }
@@ -915,7 +915,7 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
         m_aSymbolLastSize=m_aSymbolSize;
     }
 
-    if( rAttrs->GetItemState( XATTR_LINESTYLE ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( XATTR_LINESTYLE ) != SfxItemState::INVALID )
     {
         eXLS = rAttrs->Get( XATTR_LINESTYLE ).GetValue();
 
@@ -943,17 +943,17 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
     }
 
     // Line strength
-    if( rAttrs->GetItemState( XATTR_LINEWIDTH ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( XATTR_LINEWIDTH ) != SfxItemState::INVALID )
     {
         SetMetricValue( *m_xMtrLineWidth, rAttrs->Get( XATTR_LINEWIDTH ).GetValue(), m_ePoolUnit );
     }
     else
-        m_xMtrLineWidth->set_text("");
+        m_xMtrLineWidth->set_text(u""_ustr);
 
     // Line color
     m_xLbColor->SetNoSelection();
 
-    if ( rAttrs->GetItemState( XATTR_LINECOLOR ) != SfxItemState::DONTCARE )
+    if ( rAttrs->GetItemState( XATTR_LINECOLOR ) != SfxItemState::INVALID )
     {
         Color aCol = rAttrs->Get( XATTR_LINECOLOR ).GetColorValue();
         m_xLbColor->SelectEntry( aCol );
@@ -964,7 +964,7 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
     {
         m_xLbStartStyle->set_sensitive(false);
     }
-    else if( rAttrs->GetItemState( XATTR_LINESTART ) != SfxItemState::DONTCARE )
+    else if( rAttrs->GetItemState( XATTR_LINESTART ) != SfxItemState::INVALID )
     {
         // #86265# select entry using list and polygon, not string
         bool bSelected(false);
@@ -996,7 +996,7 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
     {
         m_xLbEndStyle->set_sensitive(false);
     }
-    else if( rAttrs->GetItemState( XATTR_LINEEND ) != SfxItemState::DONTCARE )
+    else if( rAttrs->GetItemState( XATTR_LINEEND ) != SfxItemState::INVALID )
     {
         // #86265# select entry using list and polygon, not string
         bool bSelected(false);
@@ -1028,35 +1028,35 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
     {
         m_xMtrStartWidth->set_sensitive(false);
     }
-    else if( rAttrs->GetItemState( XATTR_LINESTARTWIDTH ) != SfxItemState::DONTCARE )
+    else if( rAttrs->GetItemState( XATTR_LINESTARTWIDTH ) != SfxItemState::INVALID )
     {
         SetMetricValue( *m_xMtrStartWidth,
                         rAttrs->Get( XATTR_LINESTARTWIDTH ).GetValue(),
                         m_ePoolUnit );
     }
     else
-        m_xMtrStartWidth->set_text( "" );
+        m_xMtrStartWidth->set_text( u""_ustr );
 
     // Line end strength
     if( m_bObjSelected && rAttrs->GetItemState( XATTR_LINEENDWIDTH ) == SfxItemState::DEFAULT )
     {
         m_xMtrEndWidth->set_sensitive(false);
     }
-    else if( rAttrs->GetItemState( XATTR_LINEENDWIDTH ) != SfxItemState::DONTCARE )
+    else if( rAttrs->GetItemState( XATTR_LINEENDWIDTH ) != SfxItemState::INVALID )
     {
         SetMetricValue( *m_xMtrEndWidth,
                         rAttrs->Get( XATTR_LINEENDWIDTH ).GetValue(),
                         m_ePoolUnit );
     }
     else
-        m_xMtrEndWidth->set_text("");
+        m_xMtrEndWidth->set_text(u""_ustr);
 
     // Centered line end (start)
     if( m_bObjSelected && rAttrs->GetItemState( XATTR_LINESTARTCENTER ) == SfxItemState::DEFAULT )
     {
         m_xTsbCenterStart->set_sensitive(false);
     }
-    else if( rAttrs->GetItemState( XATTR_LINESTARTCENTER ) != SfxItemState::DONTCARE )
+    else if( rAttrs->GetItemState( XATTR_LINESTARTCENTER ) != SfxItemState::INVALID )
     {
         if( rAttrs->Get( XATTR_LINESTARTCENTER ).GetValue() )
             m_xTsbCenterStart->set_state(TRISTATE_TRUE);
@@ -1073,7 +1073,7 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
     {
         m_xTsbCenterEnd->set_sensitive(false);
     }
-    else if( rAttrs->GetItemState( XATTR_LINEENDCENTER ) != SfxItemState::DONTCARE )
+    else if( rAttrs->GetItemState( XATTR_LINEENDCENTER ) != SfxItemState::INVALID )
     {
         if( rAttrs->Get( XATTR_LINEENDCENTER ).GetValue() )
             m_xTsbCenterEnd->set_state(TRISTATE_TRUE);
@@ -1086,14 +1086,14 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
     }
 
     // Transparency
-    if( rAttrs->GetItemState( XATTR_LINETRANSPARENCE ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( XATTR_LINETRANSPARENCE ) != SfxItemState::INVALID )
     {
         sal_uInt16 nTransp = rAttrs->Get( XATTR_LINETRANSPARENCE ).GetValue();
         m_xMtrTransparent->set_value(nTransp, FieldUnit::PERCENT);
         ChangeTransparentHdl_Impl(*m_xMtrTransparent);
     }
     else
-        m_xMtrTransparent->set_text( "" );
+        m_xMtrTransparent->set_text( u""_ustr );
 
     if( !m_xLbStartStyle->get_sensitive()  &&
         !m_xLbEndStyle->get_sensitive()    &&
@@ -1116,7 +1116,7 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
 //         maFTEdgeStyle.set_sensitive(false);
         m_xLBEdgeStyle->set_sensitive(false);
     }
-    else if(SfxItemState::DONTCARE != rAttrs->GetItemState(XATTR_LINEJOINT))
+    else if(SfxItemState::INVALID != rAttrs->GetItemState(XATTR_LINEJOINT))
     {
         const css::drawing::LineJoint eLineJoint = rAttrs->Get(XATTR_LINEJOINT).GetValue();
 
@@ -1140,7 +1140,7 @@ void SvxLineTabPage::Reset( const SfxItemSet* rAttrs )
     {
         m_xLBCapStyle->set_sensitive(false);
     }
-    else if(SfxItemState::DONTCARE != rAttrs->GetItemState(XATTR_LINECAP))
+    else if(SfxItemState::INVALID != rAttrs->GetItemState(XATTR_LINECAP))
     {
         const css::drawing::LineCap eLineCap(rAttrs->Get(XATTR_LINECAP).GetValue());
 
@@ -1377,16 +1377,14 @@ void SvxLineTabPage::FillUserData()
 }
 
 // #58425# Symbols on a list (e.g. StarChart)
-// Handler for the symbol selection's popup menu (NumMenueButton)
-// The following link originates from SvxNumOptionsTabPage
-IMPL_LINK_NOARG(SvxLineTabPage, MenuCreateHdl_Impl, weld::Toggleable&, void)
+void SvxLineTabPage::PopulateMenus()
 {
     ScopedVclPtrInstance< VirtualDevice > pVD;
 
     // Initialize popup
     if (!m_xGalleryMenu)
     {
-        m_xGalleryMenu = m_xBuilder->weld_menu("gallerysubmenu");
+        m_xGalleryMenu = m_xBuilder->weld_menu(u"gallerysubmenu"_ustr);
         weld::WaitObject aWait(GetFrameWeld());
         // Get gallery entries
         GalleryExplorer::FillObjList(GALLERY_THEME_BULLETS, m_aGrfNames);
@@ -1405,7 +1403,7 @@ IMPL_LINK_NOARG(SvxLineTabPage, MenuCreateHdl_Impl, weld::Toggleable&, void)
             }
 
             SvxBmpItemInfo* pInfo = new SvxBmpItemInfo;
-            pInfo->pBrushItem.reset(new SvxBrushItem(grfName, "", GPOS_AREA, SID_ATTR_BRUSH));
+            pInfo->pBrushItem.reset(new SvxBrushItem(grfName, u""_ustr, GPOS_AREA, SID_ATTR_BRUSH));
             pInfo->sItemId = "gallery" + OUString::number(i);
             m_aGalleryBrushItems.emplace_back(pInfo);
             const Graphic* pGraphic = pInfo->pBrushItem->GetGraphic();
@@ -1435,18 +1433,17 @@ IMPL_LINK_NOARG(SvxLineTabPage, MenuCreateHdl_Impl, weld::Toggleable&, void)
         }
 
         if (m_aGrfNames.empty())
-            m_xSymbolMB->set_item_sensitive("gallery", false);
+            m_xSymbolMB->set_item_sensitive(u"gallery"_ustr, false);
     }
 
     if (m_xSymbolsMenu || !m_pSymbolList)
         return;
 
-    m_xSymbolsMenu = m_xBuilder->weld_menu("symbolssubmenu");
+    m_xSymbolsMenu = m_xBuilder->weld_menu(u"symbolssubmenu"_ustr);
     ScopedVclPtrInstance< VirtualDevice > pVDev;
     pVDev->SetMapMode(MapMode(MapUnit::Map100thMM));
     std::unique_ptr<SdrModel> pModel(
         new SdrModel(nullptr, nullptr, true));
-    pModel->GetItemPool().FreezeIdRanges();
     // Page
     rtl::Reference<SdrPage> pPage = new SdrPage( *pModel, false );
     pPage->SetSize(Size(1000,1000));
@@ -1487,7 +1484,7 @@ IMPL_LINK_NOARG(SvxLineTabPage, MenuCreateHdl_Impl, weld::Toggleable&, void)
                 pObj->SetMergedItemSet(m_rOutAttrs);
             }
             aView.MarkAll();
-            BitmapEx aBitmapEx(aView.GetMarkedObjBitmapEx());
+            Bitmap aBitmap(aView.GetMarkedObjBitmap());
             GDIMetaFile aMeta(aView.GetMarkedObjMetaFile());
             aView.UnmarkAll();
             pPage->RemoveObject(1);
@@ -1498,24 +1495,24 @@ IMPL_LINK_NOARG(SvxLineTabPage, MenuCreateHdl_Impl, weld::Toggleable&, void)
             pInfo->sItemId = "symbol" + OUString::number(i);
             m_aSymbolBrushItems.emplace_back(pInfo);
 
-            Size aSize(aBitmapEx.GetSizePixel());
+            Size aSize(aBitmap.GetSizePixel());
             if(aSize.Width() > MAX_BMP_WIDTH || aSize.Height() > MAX_BMP_HEIGHT)
             {
                 bool bWidth = aSize.Width() > aSize.Height();
                 double nScale = bWidth ?
                                     double(MAX_BMP_WIDTH) / static_cast<double>(aSize.Width()):
                                     double(MAX_BMP_HEIGHT) / static_cast<double>(aSize.Height());
-                aBitmapEx.Scale(nScale, nScale);
+                aBitmap.Scale(nScale, nScale);
             }
-            pVD->SetOutputSizePixel(aBitmapEx.GetSizePixel());
-            pVD->DrawBitmapEx(Point(), aBitmapEx);
-            m_xSymbolsMenu->append(pInfo->sItemId, "", *pVD);
+            pVD->SetOutputSizePixel(aBitmap.GetSizePixel());
+            pVD->DrawBitmapEx(Point(), aBitmap);
+            m_xSymbolsMenu->append(pInfo->sItemId, u""_ustr, *pVD);
         }
         pPage->RemoveObject(0);
         pInvisibleSquare.clear();
 
         if (m_aGrfNames.empty())
-            m_xSymbolMB->set_item_sensitive("symbols", false);
+            m_xSymbolMB->set_item_sensitive(u"symbols"_ustr, false);
     }
 }
 
@@ -1529,16 +1526,16 @@ IMPL_LINK(SvxLineTabPage, GraphicHdl_Impl, const OUString&, rIdent, void)
     bool bEnable = true;
     tools::Long nPreviousSymbolType = m_nSymbolType;
 
-    OUString sNumber;
+    std::u16string_view sNumber;
     if (rIdent.startsWith("gallery", &sNumber))
     {
-        SvxBmpItemInfo* pInfo = m_aGalleryBrushItems[sNumber.toUInt32()].get();
+        SvxBmpItemInfo* pInfo = m_aGalleryBrushItems[o3tl::toUInt32(sNumber)].get();
         pGraphic = pInfo->pBrushItem->GetGraphic();
         m_nSymbolType = SVX_SYMBOLTYPE_BRUSHITEM;
     }
     else if (rIdent.startsWith("symbol", &sNumber))
     {
-        m_nSymbolType = sNumber.toUInt32();
+        m_nSymbolType = o3tl::toUInt32(sNumber);
         SvxBmpItemInfo* pInfo = m_aSymbolBrushItems[m_nSymbolType].get();
         pGraphic = pInfo->pBrushItem->GetGraphic();
     }
@@ -1683,7 +1680,6 @@ void SvxLineTabPage::PageCreated(const SfxAllItemSet& aSet)
         SetPageType(static_cast<PageType>(pPageTypeItem->GetValue()));
     if (pDlgTypeItem)
         SetDlgType(pDlgTypeItem->GetValue());
-    Construct();
 
     if(pSdrObjListItem) //symbols
     {
@@ -1694,6 +1690,8 @@ void SvxLineTabPage::PageCreated(const SfxAllItemSet& aSet)
         if(pGraphicItem)
             m_aAutoSymbolGraphic = pGraphicItem->GetGraphic();
     }
+
+    Construct();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

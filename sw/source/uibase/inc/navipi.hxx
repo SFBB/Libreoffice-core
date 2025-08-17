@@ -37,8 +37,6 @@ class SwWrtShell;
 class SfxBindings;
 class SwNavigationConfig;
 class SwView;
-enum class RegionMode;
-class SpinField;
 
 class SwNavigationPI final : public PanelLayout
                      , public ::sfx2::sidebar::ControllerItem::ItemUpdateReceiverInterface
@@ -47,9 +45,13 @@ class SwNavigationPI final : public PanelLayout
     friend class SwNavigatorWin;
     friend class SwContentTree;
     friend class SwGlobalTree;
+    friend class SwView;
 
     ::sfx2::sidebar::ControllerItem m_aDocFullName;
     ::sfx2::sidebar::ControllerItem m_aPageStats;
+    ::sfx2::sidebar::ControllerItem m_aNavElement;
+
+    css::uno::Reference<css::frame::XFrame> m_xFrame;
 
     std::unique_ptr<weld::Toolbar> m_xContent1ToolBox;
     std::unique_ptr<weld::Toolbar> m_xContent2ToolBox;
@@ -60,19 +62,16 @@ class SwNavigationPI final : public PanelLayout
     std::unique_ptr<ToolbarUnoDispatcher> m_xContent2Dispatch;
     std::unique_ptr<ToolbarUnoDispatcher> m_xContent3Dispatch;
     std::unique_ptr<weld::Menu> m_xHeadingsMenu;
-    std::unique_ptr<weld::Menu> m_xDragModeMenu;
     std::unique_ptr<weld::Menu> m_xUpdateMenu;
     std::unique_ptr<weld::Menu> m_xInsertMenu;
     std::unique_ptr<weld::Toolbar> m_xGlobalToolBox;
-    std::unique_ptr<weld::SpinButton> m_xEdit;
+    std::unique_ptr<weld::SpinButton> m_xGotoPageSpinButton;
     std::unique_ptr<weld::Widget> m_xContentBox;
     std::unique_ptr<SwContentTree> m_xContentTree;
     std::unique_ptr<weld::Widget> m_xGlobalBox;
     std::unique_ptr<SwGlobalTree> m_xGlobalTree;
     std::unique_ptr<weld::ComboBox> m_xDocListBox;
-    Idle                m_aPageChgIdle;
     OUString            m_sContentFileName;
-    OUString            m_aStatusArr[4];
 
     VclPtr<SfxNavigator> m_xNavigatorDlg;
 
@@ -85,13 +84,22 @@ class SwNavigationPI final : public PanelLayout
     SwNavigationConfig  *m_pConfig;
     SfxBindings         &m_rBindings;
 
-    RegionMode  m_nRegionMode; // 0 - URL, 1 - region with link 2 - region without link
     Size        m_aExpandedSize;
 
     bool    m_bIsZoomedIn : 1;
     bool    m_bGlobalMode : 1;
 
     weld::ComboBox* m_pNavigateByComboBox;
+
+    std::unique_ptr<weld::Toolbar> m_xHeadingsContentFunctionsToolbar;
+    std::unique_ptr<weld::Toolbar> m_xDeleteFunctionToolbar;
+    std::unordered_map<ContentTypeId, std::unique_ptr<weld::Toolbar>> m_aContentTypeUnoToolbarMap;
+    std::unordered_map<ContentTypeId, std::unique_ptr<ToolbarUnoDispatcher>> m_aContentTypeToolbarUnoDispatcherMap;
+    std::unordered_map<ContentTypeId, std::unique_ptr<weld::Toolbar>> m_aContentUnoToolbarMap;
+    std::unordered_map<ContentTypeId, std::unique_ptr<ToolbarUnoDispatcher>> m_aContentToolbarUnoDispatcherMap;
+    void InitContentFunctionsToolbar();
+    void UpdateContentFunctionsToolbar();
+    DECL_LINK(ContentFunctionsToolbarSelectHdl, const OUString&, void );
 
     bool IsZoomedIn() const {return m_bIsZoomedIn;}
     void ZoomOut();
@@ -103,20 +111,12 @@ class SwNavigationPI final : public PanelLayout
     DECL_LINK( ToolBoxSelectHdl, const OUString&, void );
     DECL_LINK( ToolBoxClickHdl, const OUString&, void );
     DECL_LINK( ToolBox5DropdownClickHdl, const OUString&, void );
-    DECL_LINK( ToolBox6DropdownClickHdl, const OUString&, void );
     DECL_LINK( DoneLink, SfxPoolItem const *, void );
-    DECL_LINK( DropModeMenuSelectHdl, const OUString&, void );
     DECL_LINK( HeadingsMenuSelectHdl, const OUString&, void );
     DECL_LINK( GlobalMenuSelectHdl, const OUString&, void );
-    DECL_LINK( ChangePageHdl, Timer*, void );
-    DECL_LINK( PageEditModifyHdl, weld::SpinButton&, void );
-    DECL_LINK( EditActionHdl, weld::Entry&, bool );
     DECL_LINK( SetFocusChildHdl, weld::Container&, void );
     DECL_LINK( NavigateByComboBoxSelectHdl, weld::ComboBox&, void );
-    DECL_LINK( PageModifiedHdl, weld::Entry&, void );
-
-    bool EditAction();
-    void UsePage();
+    DECL_LINK(GotoPageSpinButtonValueChangedHdl, weld::SpinButton&, void);
 
     void UpdateInitShow();
 
@@ -128,13 +128,15 @@ class SwNavigationPI final : public PanelLayout
 
     void UpdateNavigateBy();
 
+    void SetContent3And4ToolBoxVisibility();
+
 public:
 
     static std::unique_ptr<PanelLayout> Create(weld::Widget* pParent,
-            const ::com::sun::star::uno::Reference< ::com::sun::star::frame::XFrame >& rxFrame,
+            const css::uno::Reference< css::frame::XFrame >& rxFrame,
             SfxBindings* pBindings);
     SwNavigationPI(weld::Widget* pParent,
-            const ::com::sun::star::uno::Reference< ::com::sun::star::frame::XFrame >& rxFrame,
+            const css::uno::Reference< css::frame::XFrame >& rxFrame,
             SfxBindings* _pBindings, SfxNavigator* pNavigatorDlg);
     virtual ~SwNavigationPI() override;
 
@@ -151,9 +153,6 @@ public:
     static OUString CreateDropFileName( const TransferableDataHelper& rData );
     static OUString CleanEntry(const OUString& rEntry);
 
-    RegionMode      GetRegionDropMode() const {return m_nRegionMode;}
-    void            SetRegionDropMode(RegionMode nNewMode);
-
     sal_Int8        AcceptDrop();
     sal_Int8        ExecuteDrop( const ExecuteDropEvent& rEvt );
 
@@ -167,12 +166,32 @@ public:
     void SelectNavigateByContentType(const OUString& rContentTypeName);
 };
 
+class SwNavigatorWin : public SfxNavigator
+{
+    friend class SwView;
+private:
+    std::unique_ptr<SwNavigationPI> m_xNavi;
+public:
+    SwNavigatorWin(SfxBindings* _pBindings, SfxChildWindow* _pMgr,
+                   vcl::Window* pParent, SfxChildWinInfo* pInfo);
+    virtual void StateChanged(StateChangedType nStateChange) override;
+    virtual void dispose() override
+    {
+        m_xNavi.reset();
+        SfxNavigator::dispose();
+    }
+    virtual ~SwNavigatorWin() override
+    {
+        disposeOnce();
+    }
+};
+
 class SwNavigatorWrapper final : public SfxNavigatorWrapper
 {
 public:
     SwNavigatorWrapper(vcl::Window *pParent, sal_uInt16 nId,
                        SfxBindings* pBindings, SfxChildWinInfo* pInfo);
-    SFX_DECL_CHILDWINDOW(SwNavigatorWrapper);
+    SFX_DECL_CHILDWINDOW_WITHID(SwNavigatorWrapper);
 };
 
 #endif

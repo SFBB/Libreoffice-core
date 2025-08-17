@@ -39,6 +39,7 @@ public: //methods
 
     bool isResizeableObjectSelected() const;
     bool isRotateableObjectSelected( const rtl::Reference<::chart::ChartModel>& xChartModel ) const;
+    bool isTitleObjectSelected() const;
     bool isDragableObjectSelected() const;
 
     bool isAdditionalShapeSelected() const;
@@ -96,7 +97,7 @@ public:
                     , const rtl::Reference<::chart::ChartModel>& xChartModel );
 
     explicit SelectionHelper( SdrObject* pSelectedObj );
-    virtual ~SelectionHelper();
+    ~SelectionHelper();
 
     //MarkHandleProvider:
     virtual bool getMarkHandles( SdrHdlList& rHdlList ) override;

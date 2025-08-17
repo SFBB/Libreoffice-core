@@ -26,12 +26,10 @@
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
 
-namespace com::sun::star::task { class XInteractionAbort; }
-
 namespace comphelper {
 
 class PasswordContinuation;
-
+class AbortContinuation;
 
 /** Selects which UNO document password request type to use. */
 enum class DocPasswordRequestType
@@ -62,7 +60,7 @@ private:
 
 private:
     css::uno::Any                         maRequest;
-    css::uno::Reference<css::task::XInteractionAbort> mxAbort;
+    rtl::Reference<AbortContinuation>     mxAbort;
     rtl::Reference<PasswordContinuation>  mxPassword;
 };
 
@@ -98,7 +96,7 @@ private:
 
 private:
     css::uno::Any                         maRequest;
-    css::uno::Reference<css::task::XInteractionAbort> mxAbort;
+    rtl::Reference<AbortContinuation>     mxAbort;
     rtl::Reference<PasswordContinuation>  mxPassword;
 };
 

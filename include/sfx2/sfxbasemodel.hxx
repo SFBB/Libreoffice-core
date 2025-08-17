@@ -32,7 +32,6 @@
 #include <com/sun/star/document/XDocumentRecovery2.hpp>
 #include <com/sun/star/document/XUndoManagerSupplier.hpp>
 #include <com/sun/star/rdf/XDocumentMetadataAccess.hpp>
-#include <com/sun/star/document/XEventBroadcaster.hpp>
 #include <com/sun/star/document/XShapeEventBroadcaster.hpp>
 #include <com/sun/star/document/XDocumentEventBroadcaster.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
@@ -66,7 +65,6 @@
 
 #include <memory>
 
-class ErrCode;
 class ErrCodeMsg;
 class SfxMedium;
 class   SfxObjectShell                      ;
@@ -78,17 +76,9 @@ namespace sfx::intern {
 }
 
 namespace com::sun::star::beans { struct PropertyValue; }
-namespace com::sun::star::container { class XNameContainer; }
-namespace com::sun::star::container { class XNameReplace; }
-namespace com::sun::star::document { class XEventListener; }
-namespace com::sun::star::document { struct CmisProperty; }
-namespace com::sun::star::document { struct CmisVersion; }
 namespace com::sun::star::document { struct EventObject; }
 namespace com::sun::star::frame { class XController2; }
-namespace com::sun::star::task { class XInteractionHandler; }
 namespace com::sun::star::ui { class XUIConfigurationManager2; }
-namespace com::sun::star::util { class XCloseListener; }
-namespace com::sun::star::util { class XModifyListener; }
 
 
 

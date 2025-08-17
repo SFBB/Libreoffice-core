@@ -7,8 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_VCL_INC_SKIA_WIN_GDIIMPL_HXX
-#define INCLUDED_VCL_INC_SKIA_WIN_GDIIMPL_HXX
+#pragma once
 
 #include <memory>
 #include <systools/win32/comtools.hxx>
@@ -30,10 +29,39 @@
 class SkTypeface;
 class ControlCacheKey;
 
-class SkiaCompatibleDC : public CompatibleDC
+/** Class that creates (and destroys) a compatible Device Context.
+
+This is to be used for GDI drawing into a DIB that we later use for a different
+drawing method, such as a texture for OpenGL drawing or surface for Skia drawing.
+*/
+class SkiaCompatibleDC
 {
+    /// The compatible DC that we create for our purposes.
+    HDC mhCompatibleDC;
+
+    /// Mapping between the GDI position and OpenGL, to use for OpenGL drawing.
+    SalTwoRect maRects;
+
+    /// DIBSection that we use for the GDI drawing, and later obtain.
+    HBITMAP mhBitmap;
+
+    /// Return the previous bitmap to undo the SelectObject.
+    HBITMAP mhOrigBitmap;
+
+    /// DIBSection data.
+    sal_uInt32* mpData;
+
+    /// The SalGraphicsImpl where we will draw.  If null, we ignore the drawing, it means it happened directly to the DC...
+    WinSalGraphicsImplBase* mpImpl;
+
 public:
-    SkiaCompatibleDC(SalGraphics& rGraphics, int x, int y, int width, int height);
+    SkiaCompatibleDC(WinSalGraphics& rGraphics, int x, int y, int width, int height);
+    ~SkiaCompatibleDC();
+
+    HDC getCompatibleHDC() const { return mhCompatibleDC; }
+
+    /// Reset the DC with the defined color.
+    void fill(sal_uInt32 color);
 
     sk_sp<SkImage> getAsImageDiff(const SkiaCompatibleDC& white) const;
 };
@@ -49,14 +77,14 @@ public:
     virtual bool UseRenderNativeControl() const override { return true; }
     virtual bool TryRenderCachedNativeControl(ControlCacheKey const& rControlCacheKey, int nX,
                                               int nY) override;
-    virtual bool RenderAndCacheNativeControl(CompatibleDC& rWhite, CompatibleDC& rBlack, int nX,
-                                             int nY, ControlCacheKey& aControlCacheKey) override;
+    virtual bool RenderAndCacheNativeControl(SkiaCompatibleDC& rWhite, SkiaCompatibleDC& rBlack,
+                                             int nX, int nY,
+                                             ControlCacheKey& aControlCacheKey) override;
 
     virtual bool DrawTextLayout(const GenericSalLayout& layout) override;
     virtual void ClearDevFontCache() override;
     virtual void ClearNativeControlCache() override;
 
-    virtual void freeResources() override;
     virtual void Flush() override;
 
     static void prepareSkia();
@@ -65,8 +93,7 @@ protected:
     virtual void createWindowSurfaceInternal(bool forceRaster = false) override;
     static sk_sp<SkTypeface> createDirectWriteTypeface(const WinFontInstance* pWinFont);
     static void initFontInfo();
-    inline static sal::systools::COMReference<IDWriteFontSetBuilder> dwriteFontSetBuilder;
-    inline static sal::systools::COMReference<IDWriteFontCollection1> dwritePrivateCollection;
+    inline static sal::systools::COMReference<IDWriteFontCollection> dwritePrivateCollection;
     inline static sk_sp<SkFontMgr> dwriteFontMgr;
     inline static bool dwriteDone = false;
     static SkFont::Edging fontEdging;
@@ -85,7 +112,5 @@ class SkiaControlsCache
 public:
     static SkiaControlCacheType& get();
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

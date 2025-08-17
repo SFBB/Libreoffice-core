@@ -21,16 +21,11 @@
 #include <sal/log.hxx>
 
 #include <cstring>
-
 #include <headless/svpbmp.hxx>
-#include <headless/svpgdi.hxx>
-#include <headless/svpinst.hxx>
-
-#include <basegfx/vector/b2ivector.hxx>
-#include <basegfx/range/b2ibox.hxx>
 #include <o3tl/safeint.hxx>
 #include <tools/helpers.hxx>
 #include <vcl/bitmap.hxx>
+#include <vcl/CairoFormats.hxx>
 
 using namespace basegfx;
 
@@ -47,7 +42,8 @@ static std::optional<BitmapBuffer> ImplCreateDIB(
     const Size& rSize,
     vcl::PixelFormat ePixelFormat,
     const BitmapPalette& rPal,
-    bool bClear)
+    bool bClear,
+    bool bWithoutAlpha)
 {
     if (!rSize.Width() || !rSize.Height())
         return std::nullopt;
@@ -57,17 +53,23 @@ static std::optional<BitmapBuffer> ImplCreateDIB(
     switch (ePixelFormat)
     {
         case vcl::PixelFormat::N8_BPP:
-            pDIB->mnFormat = ScanlineFormat::N8BitPal;
+            pDIB->meFormat = ScanlineFormat::N8BitPal;
             break;
         case vcl::PixelFormat::N24_BPP:
-            pDIB->mnFormat = SVP_24BIT_FORMAT;
+            pDIB->meFormat = SVP_24BIT_FORMAT;
             break;
         case vcl::PixelFormat::N32_BPP:
-            pDIB->mnFormat = SVP_CAIRO_FORMAT;
+#if ENABLE_CAIRO_RGBA
+            pDIB->meFormat = bWithoutAlpha ? ScanlineFormat::N32BitTcRgbx : SVP_CAIRO_FORMAT;
+#elif defined OSL_BIGENDIAN
+            pDIB->meFormat = bWithoutAlpha ? ScanlineFormat::N32BitTcXrgb : SVP_CAIRO_FORMAT;
+#else
+            pDIB->meFormat = bWithoutAlpha ? ScanlineFormat::N32BitTcBgrx : SVP_CAIRO_FORMAT;
+#endif
             break;
         case vcl::PixelFormat::INVALID:
             assert(false);
-            pDIB->mnFormat = SVP_CAIRO_FORMAT;
+            pDIB->meFormat = SVP_CAIRO_FORMAT;
             break;
     }
 
@@ -75,7 +77,7 @@ static std::optional<BitmapBuffer> ImplCreateDIB(
     if (ePixelFormat <= vcl::PixelFormat::N8_BPP)
         nColors = vcl::numberOfColors(ePixelFormat);
 
-    pDIB->mnFormat |= ScanlineFormat::TopDown;
+    pDIB->meDirection = ScanlineDirection::TopDown;
     pDIB->mnWidth = rSize.Width();
     pDIB->mnHeight = rSize.Height();
     tools::Long nScanlineBase;
@@ -137,10 +139,10 @@ void SvpSalBitmap::Create(const std::optional<BitmapBuffer>& pBuf)
 }
 
 bool SvpSalBitmap::ImplCreate(const Size& rSize, vcl::PixelFormat ePixelFormat,
-                              const BitmapPalette& rPal, bool bClear)
+                              const BitmapPalette& rPal, bool bClear, bool bWithoutAlpha)
 {
     Destroy();
-    moDIB = ImplCreateDIB(rSize, ePixelFormat, rPal, bClear);
+    moDIB = ImplCreateDIB(rSize, ePixelFormat, rPal, bClear, bWithoutAlpha);
     return moDIB.has_value();
 }
 
@@ -194,7 +196,7 @@ bool SvpSalBitmap::Create(const SalBitmap& /*rSalBmp*/,
     return false;
 }
 
-bool SvpSalBitmap::Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& /*xBitmapCanvas*/, Size& /*rSize*/, bool /*bMask*/ )
+bool SvpSalBitmap::Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& /*xBitmapCanvas*/, Size& /*rSize*/ )
 {
     return false;
 }
@@ -262,11 +264,6 @@ bool SvpSalBitmap::Scale( const double& /*rScaleX*/, const double& /*rScaleY*/, 
 bool SvpSalBitmap::Replace( const ::Color& /*rSearchColor*/, const ::Color& /*rReplaceColor*/, sal_uInt8 /*nTol*/ )
 {
     return false;
-}
-
-const basegfx::SystemDependentDataHolder* SvpSalBitmap::accessSystemDependentDataHolder() const
-{
-    return this;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

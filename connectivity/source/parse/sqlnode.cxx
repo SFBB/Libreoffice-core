@@ -244,7 +244,7 @@ void OSQLParseNode::parseNodeToStr(OUString& rString,
     parseNodeToStr(
         rString, _rxConnection, nullptr, nullptr, OUString(),
         pContext ? pContext->getPreferredLocale() : OParseContext::getDefaultLocale(),
-        pContext, _bIntl, _bQuote, OUString("."), false );
+        pContext, _bIntl, _bQuote, u"."_ustr, false );
 }
 
 
@@ -287,7 +287,7 @@ void OSQLParseNode::parseNodeToStr(OUString& rString,
                       const IParseContext* pContext,
                       bool _bIntl,
                       bool _bQuote,
-                      OUString _sDecSep,
+                      const OUString& _rDecSep,
                       bool _bPredicate) const
 {
     OSL_ENSURE( _rxConnection.is(), "OSQLParseNode::parseNodeToStr: invalid connection!" );
@@ -301,7 +301,7 @@ void OSQLParseNode::parseNodeToStr(OUString& rString,
         OSQLParseNode::impl_parseNodeToString_throw( sBuffer,
             SQLParseNodeParameter(
                  _rxConnection, xFormatter, _xField, _sPredicateTableAlias, rIntl, pContext,
-                _bIntl, _bQuote, _sDecSep, _bPredicate, false
+                _bIntl, _bQuote, _rDecSep, _bPredicate, false
             ) );
     }
     catch( const SQLException& )
@@ -320,7 +320,7 @@ bool OSQLParseNode::parseNodeToExecutableStatement( OUString& _out_rString, cons
 {
     OSL_PRECOND( _rxConnection.is(), "OSQLParseNode::parseNodeToExecutableStatement: invalid connection!" );
     SQLParseNodeParameter aParseParam( _rxConnection,
-        nullptr, nullptr, OUString(), OParseContext::getDefaultLocale(), nullptr, false, true, OUString("."), false, true );
+        nullptr, nullptr, OUString(), OParseContext::getDefaultLocale(), nullptr, false, true, u"."_ustr, false, true );
 
     if ( aParseParam.aMetaData.supportsSubqueriesInFrom() )
     {
@@ -360,7 +360,7 @@ bool OSQLParseNode::parseNodeToExecutableStatement( OUString& _out_rString, cons
 
     if(sLimitValue.getLength() > 0)
     {
-        constexpr char SELECT_KEYWORD[] = "SELECT";
+        static constexpr char SELECT_KEYWORD[] = "SELECT";
         sBuffer.insert(sBuffer.indexOf(SELECT_KEYWORD) + strlen(SELECT_KEYWORD),
                 Concat2View(" FIRST " + sLimitValue));
     }
@@ -387,7 +387,7 @@ void OSQLParseNode::impl_parseNodeToString_throw(OUStringBuffer& rString, const 
         return;
     }
 
-    // Lets see how many nodes this subtree has
+    // Let's see how many nodes this subtree has
     sal_uInt32 nCount = count();
 
     bool bHandled = false;
@@ -497,10 +497,31 @@ void OSQLParseNode::impl_parseNodeToString_throw(OUStringBuffer& rString, const 
         }
         bHandled = true;
         break;
+
+    case factor:
+        bSimple = false;
+        if (nCount == 2 && m_aChildren[0] && m_aChildren[1]
+            && (SQL_ISPUNCTUATION(m_aChildren[0], "-") || SQL_ISPUNCTUATION(m_aChildren[0], "+"))
+            && (m_aChildren[1]->getNodeType() == SQLNodeType::IntNum
+                || m_aChildren[1]->getNodeType() == SQLNodeType::ApproxNum))
+        {
+            // A signed number ("+" or "-" plus either IntNum or ApproxNum)
+            // The default processing would first add the sign, then process the number, which
+            // would see that rString is not empty already, and insert a space between the sign
+            // and the digits. Avoid that unneeded space.
+            OUStringBuffer aFactorPara;
+            m_aChildren[1]->impl_parseNodeToString_throw(aFactorPara, rParam, bSimple);
+            // Insert a space before the signed number, similar to parseLeaf for IntNum / ApproxNum
+            if (!rString.isEmpty())
+                rString.append(" ");
+            rString.append(m_aChildren[0]->getTokenValue() + aFactorPara);
+            bHandled = true;
+        }
+        break;
+
     case odbc_call_spec:
     case subquery:
     case term:
-    case factor:
     case window_function:
     case cast_spec:
     case num_value_exp:
@@ -729,7 +750,7 @@ void OSQLParseNode::impl_parseLikeNodeToString_throw( OUStringBuffer& rString, c
     const OSQLParseNode* pEscNode = nullptr;
     const OSQLParseNode* pParaNode = nullptr;
 
-    SQLParseNodeParameter aNewParam(rParam);
+    const SQLParseNodeParameter& aNewParam(rParam);
     //aNewParam.bQuote = sal_True; // why setting this to true? @see https://bz.apache.org/ooo/show_bug.cgi?id=75557
 
     if ( !(bSimple && rParam.bPredicate && rParam.xField.is() && SQL_ISRULE(m_aChildren[0],column_ref) && columnMatchP(m_aChildren[0].get(), rParam)) )
@@ -803,6 +824,7 @@ void OSQLParser::killThousandSeparator(OSQLParseNode* pLiteral)
 {
     if ( pLiteral )
     {
+        auto& s_xLocaleData = getLocaleData();
         if ( s_xLocaleData.get()->get()->getLocaleItem( m_pData->aLocale ).decimalSeparator.toChar() == ',' )
         {
             pLiteral->m_aNodeValue = pLiteral->m_aNodeValue.replace('.', sal_Unicode());
@@ -1008,7 +1030,7 @@ sal_Int16 OSQLParser::buildLikeRule(OSQLParseNode* pAppend, OSQLParseNode*& pLit
                             sal_Int16 nScale = 0;
                             try
                             {
-                                Any aValue = getNumberFormatProperty( m_xFormatter, m_nFormatKey, "Decimals" );
+                                Any aValue = getNumberFormatProperty( m_xFormatter, m_nFormatKey, u"Decimals"_ustr );
                                 aValue >>= nScale;
                             }
                             catch( Exception& )
@@ -1095,7 +1117,7 @@ OSQLParseNode* OSQLParser::buildNode_STR_NUM(OSQLParseNode*& _pLiteral)
             sal_Int16 nScale = 0;
             try
             {
-                Any aValue = getNumberFormatProperty( m_xFormatter, m_nFormatKey, "Decimals" );
+                Any aValue = getNumberFormatProperty( m_xFormatter, m_nFormatKey, u"Decimals"_ustr );
                 aValue >>= nScale;
             }
             catch( Exception& )
@@ -1118,6 +1140,7 @@ OUString OSQLParser::stringToDouble(const OUString& _rValue,sal_Int16 _nScale)
     OUString aValue;
     if(!m_xCharClass.is())
         m_xCharClass  = CharacterClassification::create( m_xContext );
+    auto& s_xLocaleData = getLocaleData();
     if( s_xLocaleData.get() )
     {
         try
@@ -1221,7 +1244,7 @@ std::unique_ptr<OSQLParseNode> OSQLParser::predicateTree(OUString& rErrorMessage
                         css::lang::Locale aLocale;
                         aLocale.Language = "en";
                         aLocale.Country = "US";
-                        OUString sFormat("YYYY-MM-DD");
+                        OUString sFormat(u"YYYY-MM-DD"_ustr);
                         m_nDateFormatKey = xFormats->queryKey(sFormat,aLocale,false);
                         if ( m_nDateFormatKey == sal_Int32(-1) )
                             m_nDateFormatKey = xFormats->addNew(sFormat, aLocale);
@@ -1248,10 +1271,13 @@ std::unique_ptr<OSQLParseNode> OSQLParser::predicateTree(OUString& rErrorMessage
                 s_pScanner->SetRule(OSQLScanner::GetSTRINGRule());
                 break;
             default:
+            {
+                auto& s_xLocaleData = getLocaleData();
                 if ( s_xLocaleData.get()->get()->getLocaleItem( m_pData->aLocale ).decimalSeparator.toChar() == ',' )
                     s_pScanner->SetRule(OSQLScanner::GetGERRule());
                 else
                     s_pScanner->SetRule(OSQLScanner::GetENGRule());
+            }
         }
 
     }
@@ -1334,6 +1360,7 @@ OSQLParser::OSQLParser(css::uno::Reference< css::uno::XComponentContext > xConte
         s_pScanner->setScanner();
         s_pGarbageCollector = new OSQLParseNodesGarbageCollector();
 
+        auto& s_xLocaleData = getLocaleData();
         if(!s_xLocaleData.get())
             s_xLocaleData.set(LocaleData::create(m_xContext));
 
@@ -1473,6 +1500,12 @@ OSQLParser::OSQLParser(css::uno::Reference< css::uno::XComponentContext > xConte
     m_pData->aLocale = m_pContext->getPreferredLocale();
 }
 
+//static
+tools::DeleteOnDeinit<css::uno::Reference< css::i18n::XLocaleData4>>& OSQLParser::getLocaleData()
+{
+    static tools::DeleteOnDeinit<css::uno::Reference< css::i18n::XLocaleData4>> s_xLocaleData(tools::DeleteOnDeinitFlag::Empty);
+    return s_xLocaleData;
+}
 
 OSQLParser::~OSQLParser()
 {
@@ -1676,10 +1709,9 @@ OSQLParseNode::~OSQLParseNode()
 {
 }
 
-
 void OSQLParseNode::append(OSQLParseNode* pNewNode)
 {
-    OSL_ENSURE(pNewNode != nullptr, "OSQLParseNode: invalid NewSubTree");
+    assert(pNewNode != nullptr && "OSQLParseNode: invalid NewSubTree");
     OSL_ENSURE(pNewNode->getParent() == nullptr, "OSQLParseNode: Node is not an orphan");
     OSL_ENSURE(std::none_of(m_aChildren.begin(), m_aChildren.end(),
                    [&] (std::unique_ptr<OSQLParseNode> const & r) { return r.get() == pNewNode; }),
@@ -1706,7 +1738,7 @@ bool OSQLParseNode::addDateValue(OUStringBuffer& rString, const SQLParseNodePara
         SQL_ISTOKEN(pODBCNodeChild, TS) ))
         return false;
 
-    OUString suQuote("'");
+    OUString suQuote(u"'"_ustr);
     if (rParam.bPredicate)
     {
          if (rParam.aMetaData.shouldEscapeDateTime())
@@ -2707,15 +2739,16 @@ OSQLParseNode::Rule OSQLParseNode::getKnownRuleID() const
 
 OUString OSQLParseNode::getTableRange(const OSQLParseNode* _pTableRef)
 {
-    OSL_ENSURE(_pTableRef && _pTableRef->count() > 1 && _pTableRef->getKnownRuleID() == OSQLParseNode::table_ref,"Invalid node give, only table ref is allowed!");
+    assert(_pTableRef);
+    OSL_ENSURE(_pTableRef->count() > 1 && _pTableRef->getKnownRuleID() == OSQLParseNode::table_ref,"Invalid node give, only table ref is allowed!");
     const sal_uInt32 nCount = _pTableRef->count();
     OUString sTableRange;
     if ( nCount == 2 || (nCount == 3 && !_pTableRef->getChild(0)->isToken()) )
     {
         const OSQLParseNode* pNode = _pTableRef->getChild(nCount - (nCount == 2 ? 1 : 2));
-        OSL_ENSURE(pNode && (pNode->getKnownRuleID() == OSQLParseNode::table_primary_as_range_column
-                          || pNode->getKnownRuleID() == OSQLParseNode::range_variable)
-                         ,"SQL grammar changed!");
+        assert(pNode);
+        OSL_ENSURE(pNode->getKnownRuleID() == OSQLParseNode::table_primary_as_range_column ||
+                   pNode->getKnownRuleID() == OSQLParseNode::range_variable, "SQL grammar changed!");
         if ( !pNode->isLeaf() )
             sTableRange = pNode->getChild(1)->getTokenValue();
     } // if ( nCount == 2 || nCount == 3 )

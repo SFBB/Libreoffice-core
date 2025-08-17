@@ -153,7 +153,7 @@ ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpSt
 
     if( nFormulaLen == 0 )
     {
-        aPool.Store( "-/-" );
+        aPool.Store( u"-/-"_ustr );
         aPool >> aStack;
         rpTokArray = aPool.GetTokenArray( GetDocImport().getDoc(), aStack.Get());
         return ConvErr::OK;
@@ -301,11 +301,6 @@ ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpSt
                 nEptg = aIn.ReaduInt8();
                 switch( nEptg )
                 {                           //  name        size    ext     type
-                    case 0x01:              //  Lel         4       -       err
-                        aIn.Ignore( 4 );
-                        aPool << ocBad;
-                        aPool >> aStack;
-                    break;
                     case 0x02:              //  Rw          4       -       ref
                     case 0x03:              //  Col         4       -       ref
                     case 0x06:              //  RwV         4       -       val
@@ -356,6 +351,7 @@ ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpSt
                         aPool << ocBad;
                         aPool >> aStack;
                         break;
+                    case 0x01:              //  Lel         4       -       err
                     case 0x10:              //  RadicalLel  4       -       err
                     case 0x1D:              //  SxName      4       -       val
                         aIn.Ignore( 4 );
@@ -576,17 +572,10 @@ ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpSt
             case 0x47:
             case 0x67:
             case 0x27: // Erroneous Constant Reference Subexpr. [322 272]
-                aIn.Ignore( 6 );   // There isn't any more
-                break;
             case 0x48:
             case 0x68:
             case 0x28: // Incomplete Constant Reference Subexpr.[331 281]
                 aIn.Ignore( 6 );   // There isn't any more
-                break;
-            case 0x49:
-            case 0x69:
-            case 0x29: // Variable Reference Subexpression      [331 281]
-                aIn.Ignore( 2 );   // There isn't any more
                 break;
             case 0x4C:
             case 0x6C:
@@ -637,11 +626,12 @@ ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpSt
                 aStack << aPool.Store( aCRD );
                 break;
             }
+            case 0x49:
+            case 0x69:
+            case 0x29: // Variable Reference Subexpression      [331 281]
             case 0x4E:
             case 0x6E:
             case 0x2E: // Reference Subexpression Within a Name [332 282]
-                aIn.Ignore( 2 );   // There isn't any more
-                break;
             case 0x4F:
             case 0x6F:
             case 0x2F: // Incomplete Reference Subexpression... [332 282]
@@ -651,7 +641,7 @@ ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpSt
             case 0x78:
             case 0x38: // Command-Equivalent Function           [333    ]
             {
-                OUString aString = "COMM_EQU_FUNC";
+                OUString aString = u"COMM_EQU_FUNC"_ustr;
                 sal_uInt8 nByte = aIn.ReaduInt8();
                 aString += OUString::number( nByte );
                 nByte = aIn.ReaduInt8();
@@ -976,18 +966,11 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
 
         switch( nOp )   //                              book page:
         {           //                                      SDK4 SDK5
-            case 0x01: // Array Formula                         [325    ]
-                       // Array Formula or Shared Formula       [    277]
-                aIn.Ignore( 4 );
-                break;
-            case 0x02: // Data Table                            [325 277]
-                aIn.Ignore( 4 );
-                break;
             case 0x03: // Addition                              [312 264]
             case 0x04: // Subtraction                           [313 264]
             case 0x05: // Multiplication                        [313 264]
             case 0x06: // Division                              [313 264]
-            case 0x07: // Exponetiation                         [313 265]
+            case 0x07: // Exponentiation                         [313 265]
             case 0x08: // Concatenation                         [313 265]
             case 0x09: // Less Than                             [313 265]
             case 0x0A: // Less Than or Equal                    [313 265]
@@ -1045,11 +1028,9 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
             case 0x21: // Function, Fixed Number of Arguments   [333 282]
                 aIn.Ignore( 2 );
                 break;
-            case 0x42:
-            case 0x62:
-            case 0x22: // Function, Variable Number of Arg.     [333 283]
-                aIn.Ignore( 3 );
-                break;
+            case 0x01: // Array Formula                         [325    ]
+                       // Array Formula or Shared Formula       [    277]
+            case 0x02: // Data Table                            [325 277]
             case 0x43:
             case 0x63:
             case 0x23: // Name                                  [318 269]
@@ -1102,31 +1083,18 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
                 rRangeList.Append(aCRD.toAbs(GetDocImport().getDoc(), aEingPos), nTab);
             }
                 break;
-            case 0x46:
-            case 0x66:
-            case 0x26: // Constant Reference Subexpression      [321 271]
-            case 0x47:
-            case 0x67:
-            case 0x27: // Erroneous Constant Reference Subexpr. [322 272]
-            case 0x48:
-            case 0x68:
-            case 0x28: // Incomplete Constant Reference Subexpr.[331 281]
-                aIn.Ignore( 6 );   // There isn't any more
-                break;
             case 0x49:
             case 0x69:
             case 0x29: // Variable Reference Subexpression      [331 281]
                 aIn.Ignore( 2 );   // There isn't any more
                 break;
+            case 0x42:
+            case 0x62:
+            case 0x22: // Function, Variable Number of Arg.     [333 283]
             case 0x4A:
             case 0x6A:
             case 0x2A: // Deleted Cell Reference                [323 273]
                 aIn.Ignore( 3 );
-                break;
-            case 0x4B:
-            case 0x6B:
-            case 0x2B: // Deleted Area Reference                [323 273]
-                aIn.Ignore( 6 );
                 break;
             case 0x4C:
             case 0x6C:
@@ -1255,6 +1223,18 @@ ConvErr ExcelToSc8::Convert( ScRangeListTabs& rRangeList, XclImpStream& aIn, std
                 }
             }
                 break;
+            case 0x46:
+            case 0x66:
+            case 0x26: // Constant Reference Subexpression      [321 271]
+            case 0x47:
+            case 0x67:
+            case 0x27: // Erroneous Constant Reference Subexpr. [322 272]
+            case 0x48:
+            case 0x68:
+            case 0x28: // Incomplete Constant Reference Subexpr.[331 281]
+            case 0x4B:
+            case 0x6B:
+            case 0x2B: // Deleted Area Reference                [323 273]
             case 0x5C:
             case 0x7C:
             case 0x3C: // Deleted 3-D Cell Reference            [    277]
@@ -1300,7 +1280,7 @@ void ExcelToSc8::ConvertExternName( std::unique_ptr<ScTokenArray>& rpArray, XclI
 
     if (nFormulaLen == 0)
     {
-        aPool.Store("-/-");
+        aPool.Store(u"-/-"_ustr);
         aPool >> aStack;
         rpArray = aPool.GetTokenArray( GetDocImport().getDoc(), aStack.Get());
         return;
@@ -1361,7 +1341,7 @@ void ExcelToSc8::ConvertExternName( std::unique_ptr<ScTokenArray>& rpArray, XclI
                 aSRD.SetFlag3D(true);
                 ExcRelToScRel8(nRow, nGrbitCol, aSRD, true);
                 aCRD.Ref1 = aCRD.Ref2 = aSRD;
-                OUString aTabName = rTabNames[nExtTab1];
+                const OUString& aTabName = rTabNames[nExtTab1];
 
                 if (nExtTab1 == nExtTab2)
                 {
@@ -1404,7 +1384,7 @@ void ExcelToSc8::ConvertExternName( std::unique_ptr<ScTokenArray>& rpArray, XclI
                 rR2.SetFlag3D(true);
                 ExcRelToScRel8(nRow2, nGrbitCol2, rR2, true);
 
-                OUString aTabName = rTabNames[nExtTab1];
+                const OUString& aTabName = rTabNames[nExtTab1];
                 aStack << aPool.StoreExtRef(nFileId, aTabName, aCRD);
             }
             break;

@@ -16,8 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_VCL_PPDPARSER_HXX
-#define INCLUDED_VCL_PPDPARSER_HXX
+
+#pragma once
 
 #include <sal/config.h>
 
@@ -41,7 +41,14 @@ enum class orientation;
 class PPDCache;
 class PPDTranslator;
 
-enum PPDValueType { eInvocation, eQuoted, eSymbol, eString, eNo };
+enum class PPDValueType
+{
+    Invocation,
+    Quoted,
+    Symbol,
+    String,
+    No
+};
 
 struct VCL_DLLPUBLIC PPDValue
 {
@@ -67,11 +74,10 @@ class PPDKey
     friend class CPDManager;
 
     typedef std::unordered_map< OUString, PPDValue > hash_type;
-    typedef std::vector< PPDValue* > value_type;
 
     OUString            m_aKey;
     hash_type           m_aValues;
-    value_type          m_aOrderedValues;
+    std::vector<PPDValue*> m_aOrderedValues;
     const PPDValue*     m_pDefaultValue;
     bool                m_bQueryValue;
     OUString            m_aGroup;
@@ -114,13 +120,11 @@ struct PPDKeyhash
 
 class PPDParser
 {
-    friend class PPDContext;
     friend class CUPSManager;
     friend class CPDManager;
     friend class PPDCache;
 
     typedef std::unordered_map< OUString, std::unique_ptr<PPDKey> > hash_type;
-    typedef std::vector< PPDKey* > value_type;
 
     void insertKey( std::unique_ptr<PPDKey> pKey );
 public:
@@ -135,7 +139,7 @@ public:
     };
 private:
     hash_type                                   m_aKeys;
-    value_type                                  m_aOrderedKeys;
+    std::vector<PPDKey*>                        m_aOrderedKeys;
     ::std::vector< PPDConstraint >              m_aConstraints;
 
     // the full path of the PPD file
@@ -172,7 +176,7 @@ private:
     static void initPPDFiles(PPDCache &rPPDCache);
     static OUString getPPDFile( const OUString& rFile );
 
-    OUString        matchPaperImpl(int nWidth, int nHeight, bool bDontSwap = false, psp::orientation* pOrientation = nullptr) const;
+    OUString        matchPaperImpl(int nWidth, int nHeight, bool bSwapped, psp::orientation* pOrientation = nullptr) const;
 
 public:
     ~PPDParser();
@@ -185,7 +189,7 @@ public:
 
     const ::std::vector< PPDConstraint >& getConstraints() const { return m_aConstraints; }
 
-    OUString        getDefaultPaperDimension() const;
+    const OUString & getDefaultPaperDimension() const;
     void            getDefaultPaperDimension( int& rWidth, int& rHeight ) const
     { getPaperDimension( getDefaultPaperDimension(), rWidth, rHeight ); }
     bool getPaperDimension( std::u16string_view rPaperName,
@@ -204,7 +208,7 @@ public:
 
     // values int pt
 
-    OUString        getDefaultInputSlot() const;
+    const OUString & getDefaultInputSlot() const;
 
     void            getDefaultResolution( int& rXRes, int& rYRes ) const;
     // values in dpi
@@ -263,7 +267,5 @@ public:
 };
 
 } // namespace
-
-#endif // INCLUDED_VCL_PPDPARSER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

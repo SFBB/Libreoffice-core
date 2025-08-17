@@ -41,10 +41,8 @@ namespace rptui
 {
     using namespace ::com::sun::star;
     using namespace uno;
-    using namespace lang;
     using namespace beans;
     using namespace awt;
-    using namespace util;
     using namespace container;
     using namespace report;
 
@@ -127,7 +125,7 @@ OSectionUndo::~OSectionUndo()
     if ( m_bInserted )
         return;
 
-    OXUndoEnvironment& rEnv = static_cast< OReportModel& >( rMod ).GetUndoEnv();
+    OXUndoEnvironment& rEnv = static_cast< OReportModel& >( m_rMod ).GetUndoEnv();
     for (uno::Reference<drawing::XShape>& xShape : m_aControls)
     {
         rEnv.RemoveElement(xShape);

@@ -20,8 +20,6 @@
 #include <config_wasm_strip.h>
 
 #include <vcl/event.hxx>
-#include <vcl/svapp.hxx>
-#include <vcl/settings.hxx>
 #include <vcl/virdev.hxx>
 
 #include <svx/ucsubset.hxx>
@@ -33,8 +31,6 @@
 
 #include <rtl/ustrbuf.hxx>
 
-using namespace ::com::sun::star::accessibility;
-using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star;
 
 
@@ -174,7 +170,7 @@ void SvxSearchCharSet::RecalculateFont(vcl::RenderContext& rRenderContext)
 
     Size aSize(GetOutputSizePixel());
 
-    vcl::Font aFont = rRenderContext.GetFont();
+    vcl::Font aFont = maFont;
     aFont.SetWeight(WEIGHT_LIGHT);
     aFont.SetAlignment(ALIGN_TOP);
     int nFontHeight = (aSize.Height() - 5) * 2 / (3 * ROW_COUNT);
@@ -203,7 +199,8 @@ void SvxSearchCharSet::UpdateScrollRange()
 {
     //scrollbar settings
     int nLastRow = (getMaxCharCount() - 1 + COLUMN_COUNT) / COLUMN_COUNT;
-    mxScrollArea->vadjustment_configure(mxScrollArea->vadjustment_get_value(), 0, nLastRow, 1, ROW_COUNT - 1, ROW_COUNT);
+    mxScrollArea->vadjustment_configure(mxScrollArea->vadjustment_get_value(), nLastRow, 1,
+                                        ROW_COUNT - 1, ROW_COUNT);
 }
 
 void SvxSearchCharSet::SelectIndex(int nNewIndex, bool bFocus)

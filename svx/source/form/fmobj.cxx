@@ -39,11 +39,9 @@
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
-using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::form;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::script;
@@ -64,7 +62,7 @@ FmFormObj::FmFormObj(
 }
 
 FmFormObj::FmFormObj(SdrModel& rSdrModel)
-:   SdrUnoObj(rSdrModel, "")
+:   SdrUnoObj(rSdrModel, u""_ustr)
     ,m_nPos(-1)
     ,m_pLastKnownRefDevice(nullptr)
 {
@@ -82,7 +80,7 @@ FmFormObj::FmFormObj(SdrModel& rSdrModel, FmFormObj const & rSource)
 
     // If UnoControlModel is part of an event environment,
     // events may assigned to it.
-    Reference< XFormComponent >  xContent(rSource.xUnoControlModel, UNO_QUERY);
+    Reference< XFormComponent >  xContent(rSource.m_xUnoControlModel, UNO_QUERY);
     if (xContent.is())
     {
         Reference< XEventAttacherManager >  xManager(xContent->getParent(), UNO_QUERY);
@@ -166,8 +164,7 @@ void FmFormObj::impl_checkRefDevice_nothrow( bool _force )
         {
             rtl::Reference<VCLXDevice> pUnoRefDevice = new VCLXDevice;
             pUnoRefDevice->SetOutputDevice( m_pLastKnownRefDevice );
-            Reference< XDevice > xRefDevice( pUnoRefDevice );
-            xModelProps->setPropertyValue( sRefDevicePropName, Any( xRefDevice ) );
+            xModelProps->setPropertyValue( sRefDevicePropName, Any( Reference< XDevice >( pUnoRefDevice ) ) );
         }
     }
     catch( const Exception& )
@@ -523,7 +520,7 @@ Reference< XInterface >  FmFormObj::ensureModelEnv(const Reference< XInterface >
                 {
                     // create and insert (into the destination) a copy of the form
                     xCurrentDestForm.set(
-                        ::comphelper::getProcessServiceFactory()->createInstance("com.sun.star.form.component.DataForm"),
+                        ::comphelper::getProcessServiceFactory()->createInstance(u"com.sun.star.form.component.DataForm"_ustr),
                         UNO_QUERY_THROW );
                     ::comphelper::copyProperties( xCurrentSourceForm, xCurrentDestForm );
 
@@ -605,7 +602,7 @@ bool FmFormObj::EndCreate( SdrDragStat& rStat, SdrCreateCmd eCmd )
         {
             try
             {
-                Reference< XFormComponent >  xContent( xUnoControlModel, UNO_QUERY_THROW );
+                Reference< XFormComponent >  xContent( m_xUnoControlModel, UNO_QUERY_THROW );
                 Reference< XForm > xParentForm( xContent->getParent(), UNO_QUERY );
 
                 Reference< XIndexContainer > xFormToInsertInto;

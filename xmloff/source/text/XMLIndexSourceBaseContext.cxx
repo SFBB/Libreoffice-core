@@ -24,7 +24,6 @@
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/xmlnamespace.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <sax/tools/converter.hxx>
 #include <rtl/ustring.hxx>
@@ -93,8 +92,8 @@ void XMLIndexSourceBaseContext::ProcessAttribute(const sax_fastparser::FastAttri
 
 void XMLIndexSourceBaseContext::endFastElement(sal_Int32 )
 {
-    rIndexPropertySet->setPropertyValue("IsRelativeTabstops", css::uno::Any(bRelativeTabs));
-    rIndexPropertySet->setPropertyValue("CreateFromChapter", css::uno::Any(bChapterIndex));
+    rIndexPropertySet->setPropertyValue(u"IsRelativeTabstops"_ustr, css::uno::Any(bRelativeTabs));
+    rIndexPropertySet->setPropertyValue(u"CreateFromChapter"_ustr, css::uno::Any(bChapterIndex));
 }
 
 css::uno::Reference< css::xml::sax::XFastContextHandler > XMLIndexSourceBaseContext::createFastChildContext(
@@ -123,7 +122,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLIndexSourceBaseCont
         {
             OUString const convertedStyleName(GetImport().GetStyleDisplayName(
                         XmlStyleFamily::TEXT_PARAGRAPH, styleName));
-            rIndexPropertySet->setPropertyValue("CreateFromParagraphStyle", css::uno::Any(convertedStyleName));
+            rIndexPropertySet->setPropertyValue(u"CreateFromParagraphStyle"_ustr, css::uno::Any(convertedStyleName));
         }
     }
 

@@ -27,8 +27,6 @@
 
 #include <svtools/imageresourceaccess.hxx>
 #include <sfx2/filedlghelper.hxx>
-#include <com/sun/star/awt/PopupMenu.hpp>
-#include <com/sun/star/awt/XPopupMenu.hpp>
 #include <com/sun/star/awt/PopupMenuDirection.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/form/FormComponentType.hpp>
@@ -47,13 +45,15 @@
 #include <comphelper/diagnose_ex.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/svapp.hxx>
-#include <unotools/streamhelper.hxx>
 #include <comphelper/guarding.hxx>
 #include <comphelper/property.hxx>
 #include <comphelper/types.hxx>
 #include <cppuhelper/queryinterface.hxx>
+#include <unotools/securityoptions.hxx>
+#include <unotools/streamwrap.hxx>
 #include <unotools/ucbstreamhelper.hxx>
 #include <svl/urihelper.hxx>
+#include <toolkit/awt/vclxmenu.hxx>
 
 #include <memory>
 
@@ -129,7 +129,7 @@ Sequence<Type> OImageControlModel::_getTypes()
 
 OImageControlModel::OImageControlModel(const Reference<XComponentContext>& _rxFactory)
     :OBoundControlModel( _rxFactory, VCL_CONTROLMODEL_IMAGECONTROL, FRM_SUN_CONTROL_IMAGECONTROL, false, false, false )
-                    // use the old control name for compytibility reasons
+                    // use the old control name for compatibility reasons
     ,m_bExternalGraphic( true )
     ,m_bReadOnly( false )
 {
@@ -142,7 +142,7 @@ OImageControlModel::OImageControlModel(const Reference<XComponentContext>& _rxFa
 
 OImageControlModel::OImageControlModel( const OImageControlModel* _pOriginal, const Reference< XComponentContext >& _rxFactory )
     :OBoundControlModel( _pOriginal, _rxFactory )
-                // use the old control name for compytibility reasons
+                // use the old control name for compatibility reasons
     ,m_bExternalGraphic( true )
     ,m_bReadOnly( _pOriginal->m_bReadOnly )
     ,m_sImageURL( _pOriginal->m_sImageURL )
@@ -247,7 +247,7 @@ void OImageControlModel::setFastPropertyValue_NoBroadcast(sal_Int32 nHandle, con
     switch (nHandle)
     {
         case PROPERTY_ID_READONLY :
-            DBG_ASSERT(rValue.getValueType().getTypeClass() == TypeClass_BOOLEAN, "OImageControlModel::setFastPropertyValue_NoBroadcast : invalid type !" );
+            DBG_ASSERT(rValue.getValueTypeClass() == TypeClass_BOOLEAN, "OImageControlModel::setFastPropertyValue_NoBroadcast : invalid type !" );
             m_bReadOnly = getBOOL(rValue);
             break;
 
@@ -398,8 +398,13 @@ void OImageControlModel::read(const Reference<XObjectInputStream>& _rxInStream)
 
 bool OImageControlModel::impl_updateStreamForURL_lck( const OUString& _rURL, ValueChangeInstigator _eInstigator )
 {
+    OUString referer;
+    getPropertyValue(u"Referer"_ustr) >>= referer;
+    if (SvtSecurityOptions::isUntrustedReferer(referer) || INetURLObject(_rURL).IsExoticProtocol()) {
+        return false;
+    }
+
     // create a stream for the image specified by the URL
-    std::unique_ptr< SvStream > pImageStream;
     Reference< XInputStream > xImageStream;
 
     if ( ::svt::GraphicAccess::isSupportedURL( _rURL ) )
@@ -408,19 +413,11 @@ bool OImageControlModel::impl_updateStreamForURL_lck( const OUString& _rURL, Val
     }
     else
     {
-        pImageStream = ::utl::UcbStreamHelper::CreateStream( _rURL, StreamMode::READ );
+        std::unique_ptr< SvStream > pImageStream = ::utl::UcbStreamHelper::CreateStream( _rURL, StreamMode::READ );
         bool bSetNull = (pImageStream == nullptr) || (ERRCODE_NONE != pImageStream->GetErrorCode());
 
         if ( !bSetNull )
-        {
-            // get the size of the stream
-            sal_uInt64 const nSize = pImageStream->remainingSize();
-            if (pImageStream->GetBufferSize() < 8192)
-                pImageStream->SetBufferSize(8192);
-            pImageStream->Seek(STREAM_SEEK_TO_BEGIN);
-
-            xImageStream = new ::utl::OInputStreamHelper( new SvLockBytes( pImageStream.get(), false ), nSize );
-        }
+            xImageStream = new ::utl::OInputStreamWrapper( std::move(pImageStream) );
     }
 
     if ( xImageStream.is() )
@@ -685,9 +682,7 @@ OImageControlControl::OImageControlControl(const Reference<XComponentContext>& _
     osl_atomic_increment(&m_refCount);
     {
         // Add as Focus- and MouseListener
-        Reference< XWindow > xComp;
-        query_aggregation( m_xAggregate, xComp );
-        if ( xComp.is() )
+        if (auto xComp = query_aggregation<XWindow>(m_xAggregate))
             xComp->addMouseListener( this );
     }
     osl_atomic_decrement(&m_refCount);
@@ -761,7 +756,7 @@ void OImageControlControl::implClearGraphics( bool _bForce )
         if ( sOldImageURL.isEmpty() )
             // the ImageURL is already empty, so simply setting a new empty one would not suffice
             // (since it would be ignored)
-            xSet->setPropertyValue( PROPERTY_IMAGE_URL, Any( OUString( "private:emptyImage" ) ) );
+            xSet->setPropertyValue( PROPERTY_IMAGE_URL, Any( u"private:emptyImage"_ustr ) );
                 // (the concrete URL we're passing here doesn't matter. It's important that
                 // the model cannot resolve it to a valid resource describing an image stream
     }
@@ -847,7 +842,7 @@ bool OImageControlControl::impl_isEmptyGraphics_nothrow() const
     {
         Reference< XPropertySet > xModelProps( const_cast< OImageControlControl* >( this )->getModel(), UNO_QUERY_THROW );
         Reference< XGraphic > xGraphic;
-        OSL_VERIFY( xModelProps->getPropertyValue("Graphic") >>= xGraphic );
+        OSL_VERIFY( xModelProps->getPropertyValue(u"Graphic"_ustr) >>= xGraphic );
         bIsEmpty = !xGraphic.is();
     }
     catch( const Exception& )
@@ -871,8 +866,7 @@ void OImageControlControl::mousePressed(const css::awt::MouseEvent& e)
     // is this a request for a context menu?
     if ( e.PopupTrigger )
     {
-        Reference< XPopupMenu > xMenu( awt::PopupMenu::create( m_xContext ) );
-        DBG_ASSERT( xMenu.is(), "OImageControlControl::mousePressed: could not create a popup menu!" );
+        rtl::Reference< VCLXPopupMenu > xMenu( new VCLXPopupMenu() );
 
         Reference< XWindowPeer > xWindowPeer = getPeer();
         DBG_ASSERT( xWindowPeer.is(), "OImageControlControl::mousePressed: no window!" );

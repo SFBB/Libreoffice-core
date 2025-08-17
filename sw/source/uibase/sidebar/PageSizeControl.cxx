@@ -60,7 +60,7 @@ namespace
     MapUnit lcl_GetUnit()
     {
         SfxItemPool &rPool = SfxGetpApp()->GetPool();
-        sal_uInt16 nWhich = rPool.GetWhich( SID_ATTR_PAGE_SIZE );
+        sal_uInt16 nWhich = rPool.GetWhichIDFromSlotID( SID_ATTR_PAGE_SIZE );
         return rPool.GetMetric( nWhich );
     }
 }
@@ -68,11 +68,11 @@ namespace
 namespace sw::sidebar {
 
 PageSizeControl::PageSizeControl(PageSizePopup* pControl, weld::Widget* pParent)
-    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, "modules/swriter/ui/pagesizecontrol.ui", "PageSizeControl")
-    , mxMoreButton(m_xBuilder->weld_button("moreoptions"))
-    , mxWidthHeightField(m_xBuilder->weld_metric_spin_button("metric", FieldUnit::CM))
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"modules/swriter/ui/pagesizecontrol.ui"_ustr, u"PageSizeControl"_ustr)
+    , mxMoreButton(m_xBuilder->weld_button(u"moreoptions"_ustr))
+    , mxWidthHeightField(m_xBuilder->weld_metric_spin_button(u"metric"_ustr, FieldUnit::CM))
     , mxSizeValueSet(new svx::sidebar::ValueSetWithTextControl)
-    , mxSizeValueSetWin(new weld::CustomWeld(*m_xBuilder, "pagesizevalueset", *mxSizeValueSet))
+    , mxSizeValueSetWin(new weld::CustomWeld(*m_xBuilder, u"pagesizevalueset"_ustr, *mxSizeValueSet))
     , mxControl(pControl)
 {
     mxWidthHeightField->set_unit(FieldUnit::CM);
@@ -90,7 +90,7 @@ PageSizeControl::PageSizeControl(PageSizePopup* pControl, weld::Widget* pParent)
     maPaperList.push_back( PAPER_LETTER );
     maPaperList.push_back( PAPER_LEGAL );
 
-    mxSizeValueSet->SetStyle( mxSizeValueSet->GetStyle() | WB_3DLOOK | WB_NO_DIRECTSELECT );
+    mxSizeValueSet->SetStyle( mxSizeValueSet->GetStyle() | WB_3DLOOK | WB_NO_DIRECTSELECT | WB_FLATVALUESET );
     mxSizeValueSet->SetColor( Application::GetSettings().GetStyleSettings().GetMenuColor() );
 
     sal_uInt16 nSelectedItem = 0;
@@ -168,7 +168,6 @@ PageSizeControl::PageSizeControl(PageSizePopup* pControl, weld::Widget* pParent)
     }
     mxSizeValueSet->SetNoSelection();
     mxSizeValueSet->SetSelectHdl( LINK(this, PageSizeControl, ImplSizeHdl ) );
-    mxSizeValueSet->SetOptimalDrawingAreaHeight();
     mxSizeValueSet->Show();
     mxSizeValueSet->Resize();
 

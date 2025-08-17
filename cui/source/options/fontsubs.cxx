@@ -33,22 +33,22 @@
 /*********************************************************************/
 
 SvxFontSubstTabPage::SvxFontSubstTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/optfontspage.ui", "OptFontsPage", &rSet)
-    , m_xUseTableCB(m_xBuilder->weld_check_button("usetable"))
-    , m_xUseTableImg(m_xBuilder->weld_widget("lockusetable"))
-    , m_xFont1CB(m_xBuilder->weld_combo_box("font1"))
-    , m_xFont2CB(m_xBuilder->weld_combo_box("font2"))
-    , m_xApply(m_xBuilder->weld_button("apply"))
-    , m_xDelete(m_xBuilder->weld_button("delete"))
-    , m_xCheckLB(m_xBuilder->weld_tree_view("checklb"))
-    , m_xFontNameLB(m_xBuilder->weld_combo_box("fontname"))
-    , m_xFontNameLabel(m_xBuilder->weld_label("label8"))
-    , m_xFontNameImg(m_xBuilder->weld_widget("lockfontname"))
-    , m_xNonPropFontsOnlyCB(m_xBuilder->weld_check_button("nonpropfontonly"))
-    , m_xNonPropFontsOnlyImg(m_xBuilder->weld_widget("locknonpropfontonly"))
-    , m_xFontHeightLB(m_xBuilder->weld_combo_box("fontheight"))
-    , m_xFontHeightLabel(m_xBuilder->weld_label("label9"))
-    , m_xFontHeightImg(m_xBuilder->weld_widget("lockfontheight"))
+    : SfxTabPage(pPage, pController, u"cui/ui/optfontspage.ui"_ustr, u"OptFontsPage"_ustr, &rSet)
+    , m_xUseTableCB(m_xBuilder->weld_check_button(u"usetable"_ustr))
+    , m_xUseTableImg(m_xBuilder->weld_widget(u"lockusetable"_ustr))
+    , m_xFont1CB(m_xBuilder->weld_combo_box(u"font1"_ustr))
+    , m_xFont2CB(m_xBuilder->weld_combo_box(u"font2"_ustr))
+    , m_xApply(m_xBuilder->weld_button(u"apply"_ustr))
+    , m_xDelete(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xCheckLB(m_xBuilder->weld_tree_view(u"checklb"_ustr))
+    , m_xFontNameLB(m_xBuilder->weld_combo_box(u"fontname"_ustr))
+    , m_xFontNameLabel(m_xBuilder->weld_label(u"label8"_ustr))
+    , m_xFontNameImg(m_xBuilder->weld_widget(u"lockfontname"_ustr))
+    , m_xNonPropFontsOnlyCB(m_xBuilder->weld_check_button(u"nonpropfontonly"_ustr))
+    , m_xNonPropFontsOnlyImg(m_xBuilder->weld_widget(u"locknonpropfontonly"_ustr))
+    , m_xFontHeightLB(m_xBuilder->weld_combo_box(u"fontheight"_ustr))
+    , m_xFontHeightLabel(m_xBuilder->weld_label(u"label9"_ustr))
+    , m_xFontHeightImg(m_xBuilder->weld_widget(u"lockfontheight"_ustr))
 {
     m_xFont1CB->make_sorted();
     m_xFont1CB->set_size_request(1, -1);
@@ -72,7 +72,7 @@ SvxFontSubstTabPage::SvxFontSubstTabPage(weld::Container* pPage, weld::DialogCon
     Link<weld::ComboBox&,void> aLink2(LINK(this, SvxFontSubstTabPage, SelectComboBoxHdl));
     Link<weld::Button&,void> aClickLink(LINK(this, SvxFontSubstTabPage, ClickHdl));
 
-    m_xCheckLB->connect_changed(LINK(this, SvxFontSubstTabPage, TreeListBoxSelectHdl));
+    m_xCheckLB->connect_selection_changed(LINK(this, SvxFontSubstTabPage, TreeListBoxSelectHdl));
     m_xCheckLB->connect_column_clicked(LINK(this, SvxFontSubstTabPage, HeaderBarClick));
     m_xUseTableCB->connect_toggled(LINK(this, SvxFontSubstTabPage, ToggleHdl));
     m_xFont1CB->connect_changed(aLink2);
@@ -149,19 +149,19 @@ std::unique_ptr<SfxTabPage> SvxFontSubstTabPage::Create( weld::Container* pPage,
 OUString SvxFontSubstTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label4", "label2", "label3", "label1", "label8", "label9" };
+    OUString labels[] = { u"label4"_ustr, u"label2"_ustr, u"label3"_ustr, u"label1"_ustr, u"label8"_ustr, u"label9"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString checkButton[] = { "usetable", "nonpropfontonly" };
+    OUString checkButton[] = { u"usetable"_ustr, u"nonpropfontonly"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 

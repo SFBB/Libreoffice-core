@@ -15,9 +15,8 @@ $(eval $(call gb_Module_add_targets,extras,\
 	CustomTarget_glade \
 	CustomTarget_gallsystem \
 	CustomTarget_templates \
-	CustomTarget_tplpresnt \
-	CustomTarget_tplwizard \
 	Package_autocorr \
+	Package_autotext \
 	Package_autotextuser \
 	Package_cfgsrvnolang \
 	Package_cfgusr \
@@ -34,6 +33,7 @@ $(eval $(call gb_Module_add_targets,extras,\
 	Package_labels \
 	$(if $(filter WNT,$(OS)),Package_newfiles) \
 	Package_palettes \
+	Package_tplpresnt \
 	Package_tplwizdesktop \
 	Package_wordbook \
 ))
@@ -53,7 +53,6 @@ endif
 ifneq ($(WITH_TEMPLATES),)
 $(eval $(call gb_Module_add_targets,extras,\
 	Package_templates \
-	Package_tplpresnt \
 	Package_tplwizard \
 	Package_tplwizbitmap \
 ))

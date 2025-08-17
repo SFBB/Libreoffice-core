@@ -27,38 +27,43 @@
 
 // View options
 
-enum ScViewOption
+namespace sc
 {
-    VOPT_FORMULAS = 0,
-    VOPT_NULLVALS,
-    VOPT_SYNTAX,
-    VOPT_NOTES,
-    VOPT_FORMULAS_MARKS,
-    VOPT_VSCROLL,
-    VOPT_HSCROLL,
-    VOPT_TABCONTROLS,
-    VOPT_OUTLINER,
-    VOPT_HEADER,
-    VOPT_GRID,
-    VOPT_GRID_ONTOP,
-    VOPT_HELPLINES,
-    VOPT_ANCHOR,
-    VOPT_PAGEBREAKS,
-    VOPT_SUMMARY,
+enum class ViewOption : sal_Int32
+{
+    FORMULAS = 0,
+    NULLVALS,
+    SYNTAX,
+    NOTES,
+    NOTEAUTHOR,
+    FORMULAS_MARKS,
+    VSCROLL,
+    HSCROLL,
+    TABCONTROLS,
+    OUTLINER,
+    HEADER,
+    GRID,
+    GRID_ONTOP,
+    HELPLINES,
+    ANCHOR,
+    PAGEBREAKS,
+    SUMMARY,
     // tdf#96854 - move/copy sheet dialog: last used option for action (true: copy, false: move)
-    VOPT_COPY_SHEET,
-    VOPT_THEMEDCURSOR,
+    COPY_SHEET,
+    THEMEDCURSOR,
 };
 
-enum ScVObjType
+enum class ViewObjectType : sal_Int32
 {
-    VOBJ_TYPE_OLE = 0,
-    VOBJ_TYPE_CHART,
-    VOBJ_TYPE_DRAW
+    OLE = 0,
+    CHART,
+    DRAW,
 };
 
-#define MAX_OPT             sal_uInt16(VOPT_THEMEDCURSOR)+1
-#define MAX_TYPE            sal_uInt16(VOBJ_TYPE_DRAW)+1
+} // end sc
+
+constexpr sal_uInt16 MAX_OPT = sal_uInt16(sc::ViewOption::THEMEDCURSOR) + 1;
+constexpr sal_uInt16 MAX_TYPE = sal_uInt16(sc::ViewObjectType::DRAW) + 1;
 
 // SvxGrid options with standard operators
 
@@ -70,7 +75,26 @@ public:
 
     void                    SetDefaults();
     bool                    operator== ( const ScGridOptions& rOpt ) const;
-    bool                    operator!= ( const ScGridOptions& rOpt ) const { return !(operator==(rOpt)); }
+};
+
+class SC_DLLPUBLIC ScViewRenderingOptions
+{
+public:
+    ScViewRenderingOptions();
+
+    const OUString& GetColorSchemeName() const { return msColorSchemeName; }
+    void SetColorSchemeName( const OUString& rName ) { msColorSchemeName = rName; }
+
+    const Color& GetDocColor() const { return maDocumentColor; }
+    void SetDocColor(const Color& rDocColor) { maDocumentColor = rDocColor; }
+
+    bool operator==(const ScViewRenderingOptions& rOther) const;
+
+private:
+    // The name of the color scheme
+    OUString msColorSchemeName;
+    // The background color of the document
+    Color maDocumentColor;
 };
 
 // Options - View
@@ -84,11 +108,23 @@ public:
 
     void                    SetDefaults();
 
-    void                    SetOption( ScViewOption eOpt, bool bNew )    { aOptArr[eOpt] = bNew; }
-    bool                    GetOption( ScViewOption eOpt ) const         { return aOptArr[eOpt]; }
+    void SetOption(sc::ViewOption eOption, bool bNew)
+    {
+        aOptArr[sal_Int32(eOption)] = bNew;
+    }
+    bool GetOption(sc::ViewOption eOption) const
+    {
+        return aOptArr[sal_Int32(eOption)];
+    }
 
-    void                    SetObjMode( ScVObjType eObj, ScVObjMode eMode ) { aModeArr[eObj] = eMode; }
-    ScVObjMode              GetObjMode( ScVObjType eObj ) const             { return aModeArr[eObj]; }
+    void SetObjMode(sc::ViewObjectType eObject, ScVObjMode eMode)
+    {
+        aModeArr[sal_Int32(eObject)] = eMode;
+    }
+    ScVObjMode GetObjMode(sc::ViewObjectType eObject) const
+    {
+        return aModeArr[sal_Int32(eObject)];
+    }
 
     void                    SetGridColor( const Color& rCol, const OUString& rName ) { aGridCol = rCol; aGridColName = rName;}
     Color const &           GetGridColor( OUString* pStrName = nullptr ) const;
@@ -97,15 +133,8 @@ public:
     void                    SetGridOptions( const ScGridOptions& rNew ) { aGridOpt = rNew; }
     std::unique_ptr<SvxGridItem> CreateGridItem() const;
 
-    const OUString& GetColorSchemeName() const { return sColorSchemeName; }
-    void SetColorSchemeName( const OUString& rName ) { sColorSchemeName = rName; }
-
-    const Color& GetDocColor() const { return aDocCol; }
-    void SetDocColor(const Color& rDocColor) { aDocCol = rDocColor; }
-
     ScViewOptions&          operator=  ( const ScViewOptions& rCpy );
     bool                    operator== ( const ScViewOptions& rOpt ) const;
-    bool                    operator!= ( const ScViewOptions& rOpt ) const { return !(operator==(rOpt)); }
 
 private:
     bool            aOptArr     [MAX_OPT];
@@ -113,10 +142,6 @@ private:
     Color           aGridCol;
     OUString        aGridColName;
     ScGridOptions   aGridOpt;
-    // The name of the color scheme
-    OUString sColorSchemeName = "Default";
-    // The background color of the document
-    Color aDocCol;
 };
 
 // Item for the options dialog - View
@@ -127,6 +152,7 @@ public:
                 ScTpViewItem( const ScViewOptions& rOpt );
                 virtual ~ScTpViewItem() override;
 
+    DECLARE_ITEM_TYPE_FUNCTION(ScTpViewItem)
     ScTpViewItem(ScTpViewItem const &) = default;
     ScTpViewItem(ScTpViewItem &&) = default;
     ScTpViewItem & operator =(ScTpViewItem const &) = delete; // due to SfxPoolItem
@@ -151,7 +177,12 @@ class ScViewCfg : public ScViewOptions
 
     DECL_LINK( LayoutCommitHdl, ScLinkConfigItem&, void );
     DECL_LINK( DisplayCommitHdl, ScLinkConfigItem&, void );
+    DECL_LINK( DisplayNotifyHdl, ScLinkConfigItem&, void );
     DECL_LINK( GridCommitHdl, ScLinkConfigItem&, void );
+    DECL_LINK( GridNotifyHdl, ScLinkConfigItem&, void );
+
+    void ReadDisplayCfg();
+    void ReadGridCfg();
 
     static css::uno::Sequence<OUString> GetLayoutPropertyNames();
     static css::uno::Sequence<OUString> GetDisplayPropertyNames();

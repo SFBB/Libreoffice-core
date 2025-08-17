@@ -257,7 +257,6 @@ excludelist:
     - com/sun/star/beans/XPropertySet.hpp
     - com/sun/star/chart2/data/DataSequenceRole.hpp
     - com/sun/star/chart2/data/XDataSequence.hpp
-    - com/sun/star/chart2/data/XDataSequence.hpp
     - com/sun/star/chart2/data/XNumericalDataSequence.hpp
     - com/sun/star/chart2/data/XTextualDataSequence.hpp
     - com/sun/star/lang/XServiceInfo.hpp
@@ -287,9 +286,13 @@ excludelist:
     sc/inc/scitems.hxx:
     # needed for defines
     - svl/typedwhich.hxx
+    # needed in --fwdecl mode
+    - class ScConsolidateItem
     sc/inc/scmatrix.hxx:
     # base class has to be a complete type
     - svl/sharedstringpool.hxx
+    # needed in --fwdecl mode, quotation needed for handling the colon
+    - 'enum class FormulaError : sal_uInt16'
     sc/inc/scmod.hxx:
     # Needed for macro define
     - sfx2/app.hxx
@@ -352,9 +355,6 @@ excludelist:
     sc/inc/unitconv.hxx:
     # base class has to be a complete type
     - map
-    sc/qa/unit/uicalc/uicalc.cxx:
-    # Actually used
-    - comphelper/scopeguard.hxx
     sc/qa/unit/ucalc.cxx:
     # Needed for namespace shortcuts
     - helper/debughelper.hxx
@@ -379,16 +379,8 @@ excludelist:
     # Needed for template
     - sfx2/sfxdlg.hxx
     sc/qa/unit/subsequent_export_test.cxx:
-    # Actually used
-    - comphelper/scopeguard.hxx
     # Needed for namespace shortcuts
     - helper/debughelper.hxx
-    sc/qa/unit/subsequent_export_test2.cxx:
-    # Actually used
-    - comphelper/scopeguard.hxx
-    sc/qa/unit/subsequent_filters_test2.cxx:
-    # Actually used
-    - comphelper/scopeguard.hxx
     sc/source/core/inc/addinlis.hxx:
     # base class has to be a complete type
     - com/sun/star/lang/XServiceInfo.hpp
@@ -475,9 +467,6 @@ excludelist:
     sc/source/ui/inc/AnalysisOfVarianceDialog.hxx:
     # base class has to be a complete type
     - viewdata.hxx
-    sc/source/ui/inc/anyrefdg.hxx:
-    # base struct has to be a complete type
-    - sfx2/basedlgs.hxx
     sc/source/ui/inc/anyrefdg.hxx:
     # base struct has to be a complete type
     - sfx2/basedlgs.hxx
@@ -1113,3 +1102,6 @@ excludelist:
     sc/source/ui/view/tabvwshc.cxx:
     # Needed for ScFormulaDlg instantiation for some weird reason
     - funcdesc.hxx
+    sc/source/core/data/stlpool.cxx:
+    # access into incomplete type 'SfxItemPool'
+    - docpool.hxx

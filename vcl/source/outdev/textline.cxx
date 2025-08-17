@@ -23,11 +23,13 @@
 #include <tools/helpers.hxx>
 #include <o3tl/hash_combine.hxx>
 #include <o3tl/lru_map.hxx>
-#include <unotools/configmgr.hxx>
-#include <vcl/lazydelete.hxx>
+#include <comphelper/configuration.hxx>
+#include <tools/lazydelete.hxx>
+#include <vcl/dropcache.hxx>
 #include <vcl/metaact.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/virdev.hxx>
+#include <vcl/skia/SkiaHelper.hxx>
 
 #include <drawmode.hxx>
 #include <salgdi.hxx>
@@ -39,11 +41,18 @@
 #define STRIKEOUT_LAST      STRIKEOUT_X
 
 namespace {
-    struct WavyLineCache final
+    struct WavyLineCache final : public CacheOwner
     {
-        WavyLineCache () : m_aItems( 10 ) {}
+        WavyLineCache()
+#if defined __cpp_lib_memory_resource
+            : m_aItems(10, &GetMemoryResource())
+#else
+            : m_aItems(10)
+#endif
+        {
+        }
 
-        bool find( Color aLineColor, size_t nLineWidth, size_t nWaveHeight, size_t nWordWidth, BitmapEx& rOutput )
+        bool find( Color aLineColor, size_t nLineWidth, size_t nWaveHeight, size_t nWordWidth, Bitmap& rOutput )
         {
             Key aKey = { nWaveHeight, sal_uInt32(aLineColor) };
             auto item = m_aItems.find( aKey );
@@ -58,11 +67,25 @@ namespace {
             return true;
         }
 
-        void insert( const BitmapEx& aBitmap, const Color& aLineColor, const size_t nLineWidth, const size_t nWaveHeight, const size_t nWordWidth, BitmapEx& rOutput )
+        void insert( const Bitmap& aBitmap, const Color& aLineColor, const size_t nLineWidth, const size_t nWaveHeight, const size_t nWordWidth, Bitmap& rOutput )
         {
             Key aKey = { nWaveHeight, sal_uInt32(aLineColor) };
             m_aItems.insert( std::pair< Key, WavyLineCacheItem>( aKey, { nLineWidth, nWordWidth, aBitmap } ) );
             rOutput = aBitmap;
+        }
+
+        virtual OUString getCacheName() const override { return "WavyLineCache"; }
+
+        virtual bool dropCaches() override
+        {
+            m_aItems.clear();
+            return true;
+        }
+
+        virtual void dumpState(rtl::OStringBuffer& rState) override
+        {
+            rState.append("\nWavyLineCache:\t");
+            rState.append(static_cast<sal_Int32>(m_aItems.size()));
         }
 
         private:
@@ -70,7 +93,7 @@ namespace {
         {
             size_t m_aLineWidth;
             size_t m_aWordWidth;
-            BitmapEx m_Bitmap;
+            Bitmap m_Bitmap;
         };
 
         struct Key
@@ -271,16 +294,17 @@ void OutputDevice::ImplDrawWaveLine( tools::Long nBaseX, tools::Long nBaseY,
 }
 
 void OutputDevice::ImplDrawWaveTextLine( tools::Long nBaseX, tools::Long nBaseY,
-                                         tools::Long nDistX, tools::Long nDistY, tools::Long nWidth,
+                                         tools::Long nDistX, tools::Long nDistY,
+                                         tools::Long nWidth, tools::Long nLayoutWidth,
                                          FontLineStyle eTextLine,
                                          Color aColor,
                                          bool bIsAbove )
 {
-    static bool bFuzzing = utl::ConfigManager::IsFuzzing();
-    if (bFuzzing && nWidth > 10000)
+    static bool bFuzzing = comphelper::IsFuzzing();
+    if (bFuzzing && nLayoutWidth > 10000)
     {
         SAL_WARN("vcl.gdi", "drawLine, skipping suspicious WaveTextLine of length: "
-                                << nWidth << " for fuzzing performance");
+                                << nLayoutWidth << " for fuzzing performance");
         return;
     }
 
@@ -352,8 +376,8 @@ void OutputDevice::ImplDrawStraightTextLine( tools::Long nBaseX, tools::Long nBa
                                              Color aColor,
                                              bool bIsAbove )
 {
-    static bool bFuzzing = utl::ConfigManager::IsFuzzing();
-    if (bFuzzing && nWidth > 100000)
+    static bool bFuzzing = comphelper::IsFuzzing();
+    if (bFuzzing && nWidth > 25000)
     {
         SAL_WARN("vcl.gdi", "drawLine, skipping suspicious TextLine of length: "
                                 << nWidth << " for fuzzing performance");
@@ -494,8 +518,8 @@ void OutputDevice::ImplDrawStraightTextLine( tools::Long nBaseX, tools::Long nBa
                 nDashWidth = 100;
                 nSpaceWidth = 50;
             }
-            nDashWidth = ((nDashWidth*mnDPIX)+1270)/2540;
-            nSpaceWidth = ((nSpaceWidth*mnDPIX)+1270)/2540;
+            nDashWidth = o3tl::convert(nDashWidth * mnDPIX, o3tl::Length::mm100, o3tl::Length::in);
+            nSpaceWidth = o3tl::convert(nSpaceWidth * mnDPIX, o3tl::Length::mm100, o3tl::Length::in);
             // DashWidth will be increased if the line is getting too thick
             // in proportion to the line's length
             if ( nDashWidth < nMinDashWidth )
@@ -521,7 +545,7 @@ void OutputDevice::ImplDrawStraightTextLine( tools::Long nBaseX, tools::Long nBa
             nDotWidth += mnDPIY/2;
             nDotWidth /= mnDPIY;
 
-            tools::Long nDashWidth = ((100*mnDPIX)+1270)/2540;
+            tools::Long nDashWidth = o3tl::convert(100 * mnDPIX, o3tl::Length::mm100, o3tl::Length::in);
             tools::Long nMinDashWidth = nDotWidth*4;
             // DashWidth will be increased if the line is getting too thick
             // in proportion to the line's length
@@ -556,7 +580,7 @@ void OutputDevice::ImplDrawStraightTextLine( tools::Long nBaseX, tools::Long nBa
             nDotWidth += mnDPIY/2;
             nDotWidth /= mnDPIY;
 
-            tools::Long nDashWidth = ((100*mnDPIX)+1270)/2540;
+            tools::Long nDashWidth = o3tl::convert(100 * mnDPIX, o3tl::Length::mm100, o3tl::Length::in);
             tools::Long nMinDashWidth = nDotWidth*4;
             // DashWidth will be increased if the line is getting too thick
             // in proportion to the line's length
@@ -755,6 +779,7 @@ void OutputDevice::ImplDrawStrikeoutChar( tools::Long nBaseX, tools::Long nBaseY
 
 void OutputDevice::ImplDrawTextLine( tools::Long nX, tools::Long nY,
                                      tools::Long nDistX, double nWidth,
+                                     double nLayoutWidth,
                                      FontStrikeout eStrikeout,
                                      FontLineStyle eUnderline,
                                      FontLineStyle eOverline,
@@ -774,7 +799,7 @@ void OutputDevice::ImplDrawTextLine( tools::Long nX, tools::Long nY,
     {
         tools::Long nXAdd = nWidth - nDistX;
         if( mpFontInstance->mnOrientation )
-            nXAdd = FRound( nXAdd * cos( toRadians(mpFontInstance->mnOrientation) ) );
+            nXAdd = basegfx::fround<tools::Long>( nXAdd * cos( toRadians(mpFontInstance->mnOrientation) ) );
 
         nX += nXAdd - 1;
     }
@@ -790,7 +815,7 @@ void OutputDevice::ImplDrawTextLine( tools::Long nX, tools::Long nY,
          (eUnderline == LINESTYLE_DOUBLEWAVE) ||
          (eUnderline == LINESTYLE_BOLDWAVE) )
     {
-        ImplDrawWaveTextLine( nX, nY, nDistX, 0, nWidth, eUnderline, aUnderlineColor, bUnderlineAbove );
+        ImplDrawWaveTextLine( nX, nY, nDistX, 0, nWidth, nLayoutWidth, eUnderline, aUnderlineColor, bUnderlineAbove );
         bUnderlineDone = true;
     }
     if ( (eOverline == LINESTYLE_SMALLWAVE) ||
@@ -798,7 +823,7 @@ void OutputDevice::ImplDrawTextLine( tools::Long nX, tools::Long nY,
          (eOverline == LINESTYLE_DOUBLEWAVE) ||
          (eOverline == LINESTYLE_BOLDWAVE) )
     {
-        ImplDrawWaveTextLine( nX, nY, nDistX, 0, nWidth, eOverline, aOverlineColor, true );
+        ImplDrawWaveTextLine( nX, nY, nDistX, 0, nWidth, nLayoutWidth, eOverline, aOverlineColor, true );
         bOverlineDone = true;
     }
 
@@ -823,6 +848,7 @@ void OutputDevice::ImplDrawTextLines( SalLayout& rSalLayout, FontStrikeout eStri
                                       FontLineStyle eUnderline, FontLineStyle eOverline,
                                       bool bWordLine, bool bUnderlineAbove )
 {
+    double nLayoutWidth = rSalLayout.GetTextWidth();
     if( bWordLine )
     {
         // draw everything relative to the layout base point
@@ -847,7 +873,7 @@ void OutputDevice::ImplDrawTextLines( SalLayout& rSalLayout, FontStrikeout eStri
                     {
                         const double nDY = aPos.getY() - aStartPt.getY();
                         const double fRad = toRadians(mpFontInstance->mnOrientation);
-                        nDist = FRound( nDist*cos(fRad) - nDY*sin(fRad) );
+                        nDist = basegfx::fround<tools::Long>(nDist * cos(fRad) - nDY * sin(fRad));
                     }
                 }
 
@@ -857,7 +883,7 @@ void OutputDevice::ImplDrawTextLines( SalLayout& rSalLayout, FontStrikeout eStri
             else if( nWidth > 0 )
             {
                 // draw the textline for each word
-                ImplDrawTextLine( aStartPt.getX(), aStartPt.getY(), nDist, nWidth,
+                ImplDrawTextLine( aStartPt.getX(), aStartPt.getY(), nDist, nWidth, nLayoutWidth,
                                   eStrikeout, eUnderline, eOverline, bUnderlineAbove );
                 nWidth = 0;
             }
@@ -866,7 +892,7 @@ void OutputDevice::ImplDrawTextLines( SalLayout& rSalLayout, FontStrikeout eStri
         // draw textline for the last word
         if( nWidth > 0 )
         {
-            ImplDrawTextLine( aStartPt.getX(), aStartPt.getY(), nDist, nWidth,
+            ImplDrawTextLine( aStartPt.getX(), aStartPt.getY(), nDist, nWidth, nLayoutWidth,
                               eStrikeout, eUnderline, eOverline, bUnderlineAbove );
         }
     }
@@ -874,7 +900,7 @@ void OutputDevice::ImplDrawTextLines( SalLayout& rSalLayout, FontStrikeout eStri
     {
         basegfx::B2DPoint aStartPt = rSalLayout.GetDrawPosition();
         ImplDrawTextLine( aStartPt.getX(), aStartPt.getY(), 0,
-                          rSalLayout.GetTextWidth(),
+                          nLayoutWidth, nLayoutWidth,
                           eStrikeout, eUnderline, eOverline, bUnderlineAbove );
     }
 }
@@ -888,19 +914,15 @@ void OutputDevice::ImplDrawMnemonicLine( tools::Long nX, tools::Long nY, tools::
         nX = nBaseX - nWidth - (nX - nBaseX - 1);
     }
 
-    ImplDrawTextLine( nX, nY, 0, nWidth, STRIKEOUT_NONE, LINESTYLE_SINGLE, LINESTYLE_NONE, false );
+    ImplDrawTextLine( nX, nY, 0, nWidth, nWidth, STRIKEOUT_NONE, LINESTYLE_SINGLE, LINESTYLE_NONE, false );
 }
 
 void OutputDevice::SetTextLineColor()
 {
-
     if ( mpMetaFile )
         mpMetaFile->AddAction( new MetaTextLineColorAction( Color(), false ) );
 
     maTextLineColor = COL_TRANSPARENT;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetTextLineColor();
 }
 
 void OutputDevice::SetTextLineColor( const Color& rColor )
@@ -911,21 +933,14 @@ void OutputDevice::SetTextLineColor( const Color& rColor )
         mpMetaFile->AddAction( new MetaTextLineColorAction( aColor, true ) );
 
     maTextLineColor = aColor;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetTextLineColor( COL_ALPHA_OPAQUE );
 }
 
 void OutputDevice::SetOverlineColor()
 {
-
     if ( mpMetaFile )
         mpMetaFile->AddAction( new MetaOverlineColorAction( Color(), false ) );
 
     maOverlineColor = COL_TRANSPARENT;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetOverlineColor();
 }
 
 void OutputDevice::SetOverlineColor( const Color& rColor )
@@ -936,9 +951,6 @@ void OutputDevice::SetOverlineColor( const Color& rColor )
         mpMetaFile->AddAction( new MetaOverlineColorAction( aColor, true ) );
 
     maOverlineColor = aColor;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetOverlineColor( COL_ALPHA_OPAQUE );
 }
 
 void OutputDevice::DrawTextLine( const Point& rPos, tools::Long nWidth,
@@ -975,10 +987,7 @@ void OutputDevice::DrawTextLine( const Point& rPos, tools::Long nWidth,
     Point aPos = ImplLogicToDevicePixel( rPos );
     double fWidth = ImplLogicWidthToDeviceSubPixel(nWidth);
     aPos += Point( mnTextOffX, mnTextOffY );
-    ImplDrawTextLine( aPos.X(), aPos.X(), 0, fWidth, eStrikeout, eUnderline, eOverline, bUnderlineAbove );
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawTextLine( rPos, nWidth, eStrikeout, eUnderline, eOverline, bUnderlineAbove );
+    ImplDrawTextLine( aPos.X(), aPos.X(), 0, fWidth, fWidth, eStrikeout, eUnderline, eOverline, bUnderlineAbove );
 }
 
 void OutputDevice::DrawWaveLine(const Point& rStartPos, const Point& rEndPos, tools::Long nLineWidth, tools::Long nWaveHeight)
@@ -1036,7 +1045,12 @@ void OutputDevice::DrawWaveLine(const Point& rStartPos, const Point& rEndPos, to
 
     // #109280# make sure the waveline does not exceed the descent to avoid paint problems
     LogicalFontInstance* pFontInstance = mpFontInstance.get();
-    if (nWaveHeight > pFontInstance->mxFontMetric->GetWavelineUnderlineSize())
+    if (nWaveHeight > pFontInstance->mxFontMetric->GetWavelineUnderlineSize()
+    // tdf#153223 polyline with lineheight >0 not drawn when skia is off
+#ifdef MACOSX
+        || !SkiaHelper::isVCLSkiaEnabled()
+#endif
+       )
     {
         nWaveHeight = pFontInstance->mxFontMetric->GetWavelineUnderlineSize();
         // tdf#124848 hairline
@@ -1045,11 +1059,11 @@ void OutputDevice::DrawWaveLine(const Point& rStartPos, const Point& rEndPos, to
 
     if ( fOrientation == 0.0 )
     {
-        static vcl::DeleteOnDeinit< WavyLineCache > snLineCache {};
+        static tools::DeleteOnDeinit< WavyLineCache > snLineCache {};
         if ( !snLineCache.get() )
             return;
         WavyLineCache& rLineCache = *snLineCache.get();
-        BitmapEx aWavylinebmp;
+        Bitmap aWavylinebmp;
         if ( !rLineCache.find( GetLineColor(), nLineWidth, nWaveHeight, nEndX - nStartX, aWavylinebmp ) )
         {
             size_t nWordLength = nEndX - nStartX;
@@ -1062,19 +1076,11 @@ void OutputDevice::DrawWaveLine(const Point& rStartPos, const Point& rEndPos, to
             pVirtDev->Erase();
             pVirtDev->SetAntialiasing( AntialiasingFlags::Enable );
             pVirtDev->ImplDrawWaveLineBezier( 0, 0, nWordLength, 0, nWaveHeight, fOrientation, nLineWidth );
-            BitmapEx aBitmapEx(pVirtDev->GetBitmapEx(Point(0, 0), pVirtDev->GetOutputSize()));
+            Bitmap aBitmap(pVirtDev->GetBitmap(Point(0, 0), pVirtDev->GetOutputSize()));
 
-            // Ideally we don't need this block, but in the split rgb surface + separate alpha surface
-            // with Antialiasing enabled and the svp/cairo backend we get both surfaces antialiased
-            // so their combination of aliases merge to overly wash-out the color. Hack it by taking just
-            // the alpha surface and use it to blend the original solid line color
-            Bitmap aSolidColor(aBitmapEx.GetBitmap());
-            aSolidColor.Erase(GetLineColor());
-            aBitmapEx = BitmapEx(aSolidColor, aBitmapEx.GetAlphaMask());
-
-            rLineCache.insert( aBitmapEx, GetLineColor(), nLineWidth, nWaveHeight, nWordLength, aWavylinebmp );
+            rLineCache.insert( aBitmap, GetLineColor(), nLineWidth, nWaveHeight, nWordLength, aWavylinebmp );
         }
-        if ( aWavylinebmp.ImplGetBitmapSalBitmap() != nullptr )
+        if ( aWavylinebmp.ImplGetSalBitmap() != nullptr )
         {
             Size _size( nEndX - nStartX, aWavylinebmp.GetSizePixel().Height() );
             DrawBitmapEx(Point( rStartPos.X(), rStartPos.Y() ), PixelToLogic( _size ), Point(), _size, aWavylinebmp);
@@ -1118,9 +1124,6 @@ void OutputDevice::ImplDrawWaveLineBezier(tools::Long nStartX, tools::Long nStar
             basegfx::deg2rad(15.0),
             bPixelSnapHairline,
             *this);
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->ImplDrawWaveLineBezier(nStartX, nStartY, nEndX, nEndY, nWaveHeight, fOrientation, nLineWidth);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

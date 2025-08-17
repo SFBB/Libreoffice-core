@@ -17,14 +17,19 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_HELPWIN_HXX
-#define INCLUDED_VCL_INC_HELPWIN_HXX
+#pragma once
 
 #include <vcl/toolkit/floatwin.hxx>
 #include <vcl/timer.hxx>
 
 enum class QuickHelpFlags;
 struct ImplSVHelpData;
+
+enum class HelpWinStyle
+{
+    Quick,
+    Balloon,
+};
 
 /// A tooltip: adds tips to widgets in a floating / popup window.
 class HelpTextWindow final : public FloatingWindow
@@ -39,7 +44,7 @@ private:
     Timer               maShowTimer;
     Timer               maHideTimer;
 
-    sal_uInt16          mnHelpWinStyle;
+    HelpWinStyle        meHelpWinStyle;
     QuickHelpFlags      mnStyle;
 
 private:
@@ -54,12 +59,13 @@ private:
 
     virtual void        dispose() override;
 public:
-                        HelpTextWindow( vcl::Window* pParent, const OUString& rText, sal_uInt16 nHelpWinStyle, QuickHelpFlags nStyle );
+    HelpTextWindow(vcl::Window* pParent, const OUString& rText, HelpWinStyle eHelpWinStyle,
+                   QuickHelpFlags nStyle);
     virtual             ~HelpTextWindow() override;
 
     const OUString&     GetHelpText() const { return maHelpText; }
     void                SetHelpText( const OUString& rHelpText );
-    sal_uInt16          GetWinStyle() const { return mnHelpWinStyle; }
+    HelpWinStyle GetWinStyle() const { return meHelpWinStyle; }
     QuickHelpFlags      GetStyle() const { return mnStyle; }
 
     // only remember:
@@ -73,14 +79,7 @@ public:
     void ResetHideTimer();
 };
 
-void ImplShowHelpWindow( vcl::Window* pParent, sal_uInt16 nHelpWinStyle, QuickHelpFlags nStyle,
-        const OUString& rHelpText,
-        const Point& rScreenPos, const tools::Rectangle& rHelpArea );
 VCL_DLLPUBLIC void ImplDestroyHelpWindow( bool bUpdateHideTime );
 void ImplDestroyHelpWindow(ImplSVHelpData& rHelpData, bool bUpdateHideTime);
-void ImplSetHelpWindowPos( vcl::Window* pHelpWindow, sal_uInt16 nHelpWinStyle, QuickHelpFlags nStyle,
-                            const Point& rPos, const tools::Rectangle& rHelpArea );
-
-#endif // INCLUDED_VCL_INC_HELPWIN_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

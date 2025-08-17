@@ -24,7 +24,6 @@
 #include <com/sun/star/chart2/data/XDataReceiver.hpp>
 #include <com/sun/star/embed/XEmbeddedObject.hpp>
 
-#include <sfx2/objsh.hxx>
 #include <svx/svditer.hxx>
 #include <svx/svdoole2.hxx>
 #include <svtools/embedhlp.hxx>
@@ -83,16 +82,16 @@ static void lcl_SetChartParameters( const uno::Reference< chart2::data::XDataRec
 
     uno::Sequence< beans::PropertyValue > aArgs{
         beans::PropertyValue(
-            "CellRangeRepresentation", -1,
+            u"CellRangeRepresentation"_ustr, -1,
             uno::Any( rRanges ), beans::PropertyState_DIRECT_VALUE ),
         beans::PropertyValue(
-            "HasCategories", -1,
+            u"HasCategories"_ustr, -1,
             uno::Any( bHasCategories ), beans::PropertyState_DIRECT_VALUE ),
         beans::PropertyValue(
-            "FirstCellAsLabel", -1,
+            u"FirstCellAsLabel"_ustr, -1,
             uno::Any( bFirstCellAsLabel ), beans::PropertyState_DIRECT_VALUE ),
         beans::PropertyValue(
-            "DataRowSource", -1,
+            u"DataRowSource"_ustr, -1,
             uno::Any( eDataRowSource ), beans::PropertyState_DIRECT_VALUE )
     };
     xReceiver->setArguments( aArgs );
@@ -178,7 +177,7 @@ void ScDocument::GetChartRanges( std::u16string_view rChartName, ::std::vector< 
         {
             ScRangeList aRanges;
             aRanges.Parse( aRangeString, rSheetNameDoc, rSheetNameDoc.GetAddressConvention() );
-            rRangesVector.push_back(aRanges);
+            rRangesVector.push_back(std::move(aRanges));
         }
     }
 }
@@ -194,7 +193,7 @@ void ScDocument::SetChartRanges( std::u16string_view rChartName, const ::std::ve
     auto aRangeStringsRange = asNonConstRange(aRangeStrings);
     for( sal_Int32 nN=0; nN<nCount; nN++ )
     {
-        ScRangeList aScRangeList( rRangesVector[nN] );
+        const ScRangeList& aScRangeList( rRangesVector[nN] );
         OUString sRangeStr;
         aScRangeList.Format( sRangeStr, ScRefFlags::RANGE_ABS_3D, *this, GetAddressConvention() );
         aRangeStringsRange[nN]=sRangeStr;
@@ -418,7 +417,7 @@ void ScDocument::UpdateChartRef( UpdateRefMode eUpdateRefMode,
             SCROW theRow2 = rRange.aEnd.Row();
             SCTAB theTab2 = rRange.aEnd.Tab();
             ScRefUpdateRes eRes = ScRefUpdate::Update(
-                this, eUpdateRefMode,
+                *this, eUpdateRefMode,
                 nCol1,nRow1,nTab1, nCol2,nRow2,nTab2,
                 nDx,nDy,nDz,
                 theCol1,theRow1,theTab1,

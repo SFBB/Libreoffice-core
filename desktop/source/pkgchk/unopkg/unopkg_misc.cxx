@@ -142,7 +142,7 @@ bool readArgument(
     {
         if (*pIndex < osl_getCommandArgCount())
         {
-            OSL_ASSERT( pValue != nullptr );
+            assert(pValue != nullptr);
             osl_getCommandArg( *pIndex, &pValue->pData );
             dp_misc::TRACE(__FILE__ ": argument value: "
                 + *pValue + "\n");
@@ -155,17 +155,18 @@ bool readArgument(
 }
 
 
+static OUString getExecutableDirInit()
+{
+    OUString path;
+    if (osl_getExecutableFile( &path.pData ) != osl_Process_E_None) {
+        throw RuntimeException(u"cannot locate executable directory!"_ustr,nullptr);
+    }
+    return path.copy( 0, path.lastIndexOf( '/' ) );
+}
+
 OUString const & getExecutableDir()
 {
-    static const OUString EXEC =
-        []()
-        {
-            OUString path;
-            if (osl_getExecutableFile( &path.pData ) != osl_Process_E_None) {
-                throw RuntimeException("cannot locate executable directory!",nullptr);
-            }
-            return path.copy( 0, path.lastIndexOf( '/' ) );
-        }();
+    static const OUString EXEC = getExecutableDirInit();
     return EXEC;
 }
 
@@ -349,9 +350,8 @@ Reference<XComponentContext> connectToOffice(
     bool verbose )
 {
     OUString pipeId( ::dp_misc::generateRandomPipeId() );
-    OUString acceptArg = "--accept=pipe,name=" + pipeId + ";urp;";
 
-    Sequence<OUString> args { "--nologo", "--nodefault", acceptArg };
+    Sequence<OUString> args { u"--nologo"_ustr, u"--nodefault"_ustr, "--accept=pipe,name=" + pipeId + ";urp;" };
     OUString appURL( getExecutableDir() + "/soffice" );
 
     if (verbose)
@@ -386,11 +386,11 @@ Reference<XComponentContext> connectToOffice(
 static OUString getLockFilePath()
 {
     OUString ret;
-    OUString sBootstrap("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}");
+    OUString sBootstrap(u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}"_ustr);
     rtl::Bootstrap::expandMacros(sBootstrap);
     OUString sAbs;
     if (::osl::File::E_None ==  ::osl::File::getAbsoluteFileURL(
-        sBootstrap, ".lock", sAbs))
+        sBootstrap, u".lock"_ustr, sAbs))
     {
         if (::osl::File::E_None ==
             ::osl::File::getSystemPathFromFileURL(sAbs, sBootstrap))
@@ -408,7 +408,7 @@ Reference<XComponentContext> getUNO(
 {
     // do not create any user data (for the root user) in --shared mode:
     if (!sTempDir.isEmpty())
-        rtl::Bootstrap::set("UserInstallation", sTempDir);
+        rtl::Bootstrap::set(u"UserInstallation"_ustr, sTempDir);
 
     // hold lock during process runtime:
     static ::desktop::Lockfile s_lockfile( false /* no IPC server */ );
@@ -432,7 +432,7 @@ Reference<XComponentContext> getUNO(
                 //We show a message box or print to the console that there
                 //is another instance already running
                 if ( ! InitVCL() )
-                    throw RuntimeException( "Cannot initialize VCL!" );
+                    throw RuntimeException( u"Cannot initialize VCL!"_ustr );
                 {
                     std::unique_ptr<weld::MessageDialog> xWarn(Application::CreateMessageDialog(nullptr,
                                                                VclMessageType::Warning, VclButtonsType::Ok,

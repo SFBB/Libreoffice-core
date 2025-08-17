@@ -17,11 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <sal/config.h>
-
-#include <sal/types.h>
 #include <vcl/fontcharmap.hxx>
-#include <basegfx/range/b2ibox.hxx>
+#include <sal/config.h>
 #include <headless/svpgdi.hxx>
 #include <font/FontMetricData.hxx>
 #include <sallayout.hxx>
@@ -62,6 +59,11 @@ bool SvpSalGraphics::AddTempDevFont( vcl::font::PhysicalFontCollection* pFontCol
     return m_aTextRenderImpl.AddTempDevFont(pFontCollection, rFileURL, rFontName);
 }
 
+bool SvpSalGraphics::RemoveTempDevFont(const OUString& rFileURL, const OUString& rFontName)
+{
+    return m_aTextRenderImpl.RemoveTempDevFont(rFileURL, rFontName);
+}
+
 std::unique_ptr<GenericSalLayout> SvpSalGraphics::GetTextLayout(int nFallbackLevel)
 {
     return m_aTextRenderImpl.GetTextLayout(nFallbackLevel);
@@ -70,6 +72,16 @@ std::unique_ptr<GenericSalLayout> SvpSalGraphics::GetTextLayout(int nFallbackLev
 void SvpSalGraphics::DrawTextLayout(const GenericSalLayout& rLayout)
 {
     m_aTextRenderImpl.DrawTextLayout(rLayout, *this);
+}
+
+void SvpSalGraphics::DrawSalLayout(const GenericSalLayout& rLayout, void* pSurface, const basegfx::BColor& rTextColor, bool bAntiAliased) const
+{
+    CairoTextRender::ImplDrawTextLayout(
+        static_cast<cairo_t*>(pSurface),
+        Color(rTextColor),
+        rLayout,
+        nullptr,
+        bAntiAliased);
 }
 
 void SvpSalGraphics::SetTextColor( Color nColor )

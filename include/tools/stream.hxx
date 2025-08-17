@@ -30,8 +30,6 @@
 #include <memory>
 #include <string_view>
 
-class StreamData;
-
 inline rtl_TextEncoding GetStoreCharSet( rtl_TextEncoding eEncoding )
 {
     if ( eEncoding == RTL_TEXTENCODING_ISO_8859_1 )
@@ -99,10 +97,12 @@ struct SvLockBytesStat
     SvLockBytesStat() : nSize(0) {}
 };
 
-class TOOLS_DLLPUBLIC SvLockBytes: public SvRefBase
+/** This is only extended by UcbLockBytes in ucb/ and appears to exist
+to allow UCB to do delayed feeding of data into a SvStream i.e. a kind of a pipe
+mechanism to allow asynchronous fetching of data.
+*/
+class UNLESS_MERGELIBS(TOOLS_DLLPUBLIC) SvLockBytes: public SvRefBase
 {
-    SvStream * m_pStream;
-    bool m_bOwner;
     bool m_bSync;
 
 protected:
@@ -110,14 +110,9 @@ protected:
 
 public:
 
-    SvLockBytes() : m_pStream(nullptr), m_bOwner(false), m_bSync(false) {}
-
-    SvLockBytes(SvStream * pTheStream, bool bTheOwner = false) :
-        m_pStream(pTheStream), m_bOwner(bTheOwner), m_bSync(false) {}
+    SvLockBytes() : m_bSync(false) {}
 
     virtual ~SvLockBytes() override { close(); }
-
-    const SvStream * GetStream() const { return m_pStream; }
 
     void            SetSynchronMode(bool bTheSync = true) { m_bSync = bTheSync; }
     bool            IsSynchronMode() const { return m_bSync; }
@@ -210,6 +205,8 @@ public:
     SvStreamEndian  GetEndian() const;
     /// returns status of endian swap flag
     bool            IsEndianSwap() const { return m_isSwap; }
+    /// sets native endianness
+    void            ResetEndianSwap() { m_isSwap = false; }
 
     void            SetCompressMode( SvStreamCompressFlags nNewMode )
                         { m_nCompressMode = nNewMode; }
@@ -366,8 +363,8 @@ public:
         eDestCharSet==RTL_TEXTENCODING_UNICODE, otherwise write a sequence of
         Bytecodes converted to eDestCharSet. Write trailing zero, if bZero is true. */
     bool            WriteUnicodeOrByteText(std::u16string_view rStr, rtl_TextEncoding eDestCharSet, bool bZero = false);
-    bool            WriteUnicodeOrByteText(std::u16string_view rStr, bool bZero = false)
-                    { return WriteUnicodeOrByteText(rStr, GetStreamCharSet(), bZero); }
+    bool            WriteUnicodeOrByteText(std::u16string_view rStr)
+                    { return WriteUnicodeOrByteText(rStr, GetStreamCharSet(), /*bZero*/false); }
 
     /** Write a Unicode character if eDestCharSet==RTL_TEXTENCODING_UNICODE,
         otherwise write as Bytecode converted to eDestCharSet.
@@ -638,7 +635,7 @@ public:
                     SvMemoryStream( std::size_t nInitSize=512, std::size_t nResize=64 );
                     virtual ~SvMemoryStream() override;
 
-    virtual void    ResetError() override;
+    virtual void    ResetError() override final;
 
     sal_uInt64      GetSize() { return TellEnd(); }
     std::size_t     GetEndOfData() const { return nEndOfData; }
@@ -655,7 +652,7 @@ public:
     /// @since LibreOffice 7.5
     void            MakeReadOnly();
     void            SetResizeOffset( std::size_t nNewResize ) { nResize = nNewResize; }
-    virtual sal_uInt64 TellEnd() override { FlushBuffer(); return nEndOfData; }
+    virtual sal_uInt64 TellEnd() override final { FlushBuffer(); return nEndOfData; }
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

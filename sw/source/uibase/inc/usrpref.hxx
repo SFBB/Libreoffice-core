@@ -103,6 +103,24 @@ public:
     using ConfigItem::SetModified;
 };
 
+class SwFmtAidsAutoComplConfig final : public utl::ConfigItem
+{
+private:
+    SwMasterUsrPref& m_rParent;
+
+    static css::uno::Sequence<OUString> GetPropertyNames();
+
+    virtual void ImplCommit() override;
+
+public:
+    SwFmtAidsAutoComplConfig(SwMasterUsrPref& rParent);
+    virtual ~SwFmtAidsAutoComplConfig() override;
+
+    virtual void Notify(const css::uno::Sequence<OUString>& aPropertyNames) override;
+    void Load();
+    using ConfigItem::SetModified;
+};
+
 class SwWebColorConfig final : public utl::ConfigItem
 {
 private:
@@ -127,6 +145,7 @@ class SwMasterUsrPref : public SwViewOption
     friend class SwGridConfig;
     friend class SwCursorConfig;
     friend class SwWebColorConfig;
+    friend class SwFmtAidsAutoComplConfig;
 
     SwFieldUpdateFlags m_eFieldUpdateFlags;    //update of fields and charts
     sal_Int32   m_nLinkUpdateMode;
@@ -141,13 +160,23 @@ class SwMasterUsrPref : public SwViewOption
     bool    m_bIsSquaredPageMode; //default page mode for text grid
     bool    m_bIsAlignMathObjectsToBaseline;
 
+    bool m_bApplyCharUnit; // apply_char_unit
+
+    // Scale
+    bool              m_bUseDefaultZoom;
+    sal_uInt16        m_nDefaultZoomValue;  // percent.
+    SvxZoomType       m_eDefaultZoomType;
+
+    // Note that these write to SwMasterUsrPref during their ctor
+    // so any members initialized after their ctor's are called
+    // will overwrite their loaded config settings
     SwContentViewConfig m_aContentConfig;
     SwLayoutViewConfig  m_aLayoutConfig;
     SwGridConfig        m_aGridConfig;
     SwCursorConfig      m_aCursorConfig;
     std::unique_ptr<SwWebColorConfig>   m_pWebColorConfig;
+    SwFmtAidsAutoComplConfig m_aFmtAidsAutoComplConfig;
 
-    bool m_bApplyCharUnit; // apply_char_unit
 public:
     SwMasterUsrPref(bool bWeb);
     ~SwMasterUsrPref();
@@ -162,6 +191,7 @@ public:
             m_aCursorConfig.SetModified();
             if(m_pWebColorConfig)
                 m_pWebColorConfig->SetModified();
+            m_aFmtAidsAutoComplConfig.SetModified();
         }
 
     void SetUpdateLinkMode(sal_Int32 nSet, bool bNoModify = false)
@@ -241,6 +271,28 @@ public:
         }
     }
 
+    bool IsDefaultZoom() const { return m_bUseDefaultZoom;}
+    void SetDefaultZoom( bool bSet, bool bNoModify = false )
+    {
+        m_bUseDefaultZoom = bSet;
+        if(!bNoModify)
+            m_aContentConfig.SetModified();
+    }
+    sal_uInt16 GetDefaultZoomValue() const { return m_nDefaultZoomValue; }
+    void SetDefaultZoomValue ( sal_uInt16 nValue, bool bNoModify = false )
+    {
+        m_nDefaultZoomValue = nValue;
+        if(!bNoModify)
+          m_aContentConfig.SetModified();
+    }
+    SvxZoomType GetDefaultZoomType() const { return m_eDefaultZoomType;}
+    void SetDefaultZoomType( SvxZoomType eType, bool bNoModify = false )
+    {
+        m_eDefaultZoomType = eType;
+        if(!bNoModify)
+            m_aContentConfig.SetModified();
+    }
+
     sal_Int32   GetDefTabInMm100() const { return m_nDefTabInMm100;}
     void        SetDefTabInMm100( sal_Int32  nSet, bool bNoModify = false )
                 {
@@ -266,6 +318,15 @@ public:
                         m_aLayoutConfig.SetModified();
                     }
                 }
+
+    void SetEncloseWithCharactersOn(bool bVal, bool noModify = false)
+    {
+        this->SwViewOption::SetEncloseWithCharactersOn(bVal);
+        if (!noModify)
+        {
+            m_aFmtAidsAutoComplConfig.SetModified();
+        }
+    }
 };
 
 #endif

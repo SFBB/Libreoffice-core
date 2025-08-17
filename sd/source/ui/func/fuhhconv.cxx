@@ -24,9 +24,10 @@
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <comphelper/processfactory.hxx>
 #include <comphelper/propertysequence.hxx>
-#include <cppuhelper/bootstrap.hxx>
 #include <svl/style.hxx>
+#include <svx/chinese_translation_unodialog.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/langitem.hxx>
 #include <editeng/fontitem.hxx>
@@ -52,24 +53,24 @@ namespace sd {
 
 
 FuHangulHanjaConversion::FuHangulHanjaConversion (
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window* pWin,
     ::sd::View* pView,
-    SdDrawDocument* pDocument,
+    SdDrawDocument& rDocument,
     SfxRequest& rReq )
-       : FuPoor(pViewSh, pWin, pView, pDocument, rReq),
+       : FuPoor(rViewSh, pWin, pView, rDocument, rReq),
     pSdOutliner(nullptr),
     bOwnOutliner(false)
 {
-    if ( dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr )
+    if ( dynamic_cast< const DrawViewShell *>( &mrViewShell ) !=  nullptr )
     {
         bOwnOutliner = true;
-        pSdOutliner = new SdOutliner( mpDoc, OutlinerMode::TextObject );
+        pSdOutliner = new SdOutliner( mrDoc, OutlinerMode::TextObject );
     }
-    else if ( dynamic_cast< const OutlineViewShell *>( mpViewShell ) !=  nullptr )
+    else if ( dynamic_cast< const OutlineViewShell *>( &mrViewShell ) !=  nullptr )
     {
         bOwnOutliner = false;
-        pSdOutliner = mpDoc->GetOutliner();
+        pSdOutliner = mrDoc.GetOutliner();
     }
 
     if (pSdOutliner)
@@ -85,9 +86,9 @@ FuHangulHanjaConversion::~FuHangulHanjaConversion()
         delete pSdOutliner;
 }
 
-rtl::Reference<FuPoor> FuHangulHanjaConversion::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuHangulHanjaConversion::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuHangulHanjaConversion( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuHangulHanjaConversion( rViewSh, pWin, pView, rDoc, rReq ) );
     return xFunc;
 }
 
@@ -101,26 +102,25 @@ void FuHangulHanjaConversion::StartConversion( LanguageType nSourceLanguage, Lan
     mpView->BegUndo(SdResId(STR_UNDO_HANGULHANJACONVERSION));
 
     ViewShellBase* pBase = dynamic_cast<ViewShellBase*>( SfxViewShell::Current() );
-    if (pBase != nullptr)
-        mpViewShell = pBase->GetMainViewShell().get();
+    ViewShell* pViewShell = pBase ? pBase->GetMainViewShell().get() : nullptr;
 
-    if( mpViewShell )
+    if( pViewShell )
     {
-        if ( pSdOutliner && dynamic_cast< const DrawViewShell *>( mpViewShell ) !=  nullptr && !bOwnOutliner )
+        if ( pSdOutliner && dynamic_cast< const DrawViewShell *>( pViewShell ) !=  nullptr && !bOwnOutliner )
         {
             pSdOutliner->EndConversion();
 
             bOwnOutliner = true;
-            pSdOutliner = new SdOutliner( mpDoc, OutlinerMode::TextObject );
+            pSdOutliner = new SdOutliner( mrDoc, OutlinerMode::TextObject );
             pSdOutliner->BeginConversion();
         }
-        else if ( pSdOutliner && dynamic_cast< const OutlineViewShell *>( mpViewShell ) !=  nullptr && bOwnOutliner )
+        else if ( pSdOutliner && dynamic_cast< const OutlineViewShell *>( pViewShell ) !=  nullptr && bOwnOutliner )
         {
             pSdOutliner->EndConversion();
             delete pSdOutliner;
 
             bOwnOutliner = false;
-            pSdOutliner = mpDoc->GetOutliner();
+            pSdOutliner = mrDoc.GetOutliner();
             pSdOutliner->BeginConversion();
         }
 
@@ -130,11 +130,11 @@ void FuHangulHanjaConversion::StartConversion( LanguageType nSourceLanguage, Lan
 
     // Due to changing between edit mode, notes mode, and handout mode the
     // view has most likely changed.  Get the new one.
-    mpViewShell = pBase ? pBase->GetMainViewShell().get() : nullptr;
-    if (mpViewShell != nullptr)
+    pViewShell = pBase ? pBase->GetMainViewShell().get() : nullptr;
+    if (pViewShell != nullptr)
     {
-        mpView = mpViewShell->GetView();
-        mpWindow = mpViewShell->GetActiveWindow();
+        mpView = pViewShell->GetView();
+        mpWindow = pViewShell->GetActiveWindow();
     }
     else
     {
@@ -148,10 +148,7 @@ void FuHangulHanjaConversion::StartConversion( LanguageType nSourceLanguage, Lan
 
 void FuHangulHanjaConversion::ConvertStyles( LanguageType nTargetLanguage, const vcl::Font *pTargetFont )
 {
-    if( !mpDoc )
-        return;
-
-    SfxStyleSheetBasePool* pStyleSheetPool = mpDoc->GetStyleSheetPool();
+    SfxStyleSheetBasePool* pStyleSheetPool = mrDoc.GetStyleSheetPool();
     if( !pStyleSheetPool )
         return;
 
@@ -181,75 +178,34 @@ void FuHangulHanjaConversion::ConvertStyles( LanguageType nTargetLanguage, const
         pStyle = pStyleSheetPool->Next();
     }
 
-    mpDoc->SetLanguage( nTargetLanguage, EE_CHAR_LANGUAGE_CJK );
+    mrDoc.SetLanguage( nTargetLanguage, EE_CHAR_LANGUAGE_CJK );
 }
 
 void FuHangulHanjaConversion::StartChineseConversion()
 {
     //open ChineseTranslationDialog
-    Reference< XComponentContext > xContext(
-        ::cppu::defaultBootstrap_InitialComponentContext() ); //@todo get context from calc if that has one
-    if(!xContext.is())
-        return;
+    rtl::Reference< textconversiondlgs::ChineseTranslation_UnoDialog > xDialog(new textconversiondlgs::ChineseTranslation_UnoDialog({}));
 
-    Reference< lang::XMultiComponentFactory > xMCF( xContext->getServiceManager() );
-    if(!xMCF.is())
-        return;
-
-    Reference< ui::dialogs::XExecutableDialog > xDialog(
-            xMCF->createInstanceWithContext("com.sun.star.linguistic2.ChineseTranslationDialog"
-                , xContext), UNO_QUERY);
-    Reference< lang::XInitialization > xInit( xDialog, UNO_QUERY );
-    if( xInit.is() )
+    //execute dialog
+    sal_Int16 nDialogRet = xDialog->execute();
+    if( RET_OK == nDialogRet )
     {
-        //  initialize dialog
-        Reference< awt::XWindow > xDialogParentWindow;
-        Sequence<Any> aSeq(comphelper::InitAnyPropertySequence(
-        {
-            {"ParentWindow", uno::Any(xDialogParentWindow)}
-        }));
-        xInit->initialize( aSeq );
+        //get some parameters from the dialog
+        bool bToSimplified = xDialog->getIsDirectionToSimplified();
+        bool bCommonTerms = xDialog->getIsTranslateCommonTerms();
 
-        //execute dialog
-        sal_Int16 nDialogRet = xDialog->execute();
-        if( RET_OK == nDialogRet )
-        {
-            //get some parameters from the dialog
-            bool bToSimplified = true;
-            bool bUseVariants = true;
-            bool bCommonTerms = true;
-            Reference< beans::XPropertySet >  xProp( xDialog, UNO_QUERY );
-            if( xProp.is() )
-            {
-                try
-                {
-                    xProp->getPropertyValue( "IsDirectionToSimplified" ) >>= bToSimplified;
-                    xProp->getPropertyValue( "IsUseCharacterVariants" ) >>= bUseVariants;
-                    xProp->getPropertyValue( "IsTranslateCommonTerms" ) >>= bCommonTerms;
-                }
-                catch( Exception& )
-                {
-                }
-            }
+        //execute translation
+        LanguageType nSourceLang = bToSimplified ? LANGUAGE_CHINESE_TRADITIONAL : LANGUAGE_CHINESE_SIMPLIFIED;
+        LanguageType nTargetLang = bToSimplified ? LANGUAGE_CHINESE_SIMPLIFIED : LANGUAGE_CHINESE_TRADITIONAL;
+        sal_Int32 nOptions       = !bCommonTerms ? i18n::TextConversionOption::CHARACTER_BY_CHARACTER : 0;
 
-            //execute translation
-            LanguageType nSourceLang = bToSimplified ? LANGUAGE_CHINESE_TRADITIONAL : LANGUAGE_CHINESE_SIMPLIFIED;
-            LanguageType nTargetLang = bToSimplified ? LANGUAGE_CHINESE_SIMPLIFIED : LANGUAGE_CHINESE_TRADITIONAL;
-            sal_Int32 nOptions       = bUseVariants ? i18n::TextConversionOption::USE_CHARACTER_VARIANTS : 0;
-            if( !bCommonTerms )
-                nOptions = nOptions | i18n::TextConversionOption::CHARACTER_BY_CHARACTER;
+        vcl::Font aTargetFont = OutputDevice::GetDefaultFont(
+                            DefaultFontType::CJK_PRESENTATION,
+                            nTargetLang, GetDefaultFontFlags::OnlyOne );
 
-            vcl::Font aTargetFont = OutputDevice::GetDefaultFont(
-                                DefaultFontType::CJK_PRESENTATION,
-                                nTargetLang, GetDefaultFontFlags::OnlyOne );
-
-            StartConversion( nSourceLang, nTargetLang, &aTargetFont, nOptions, false );
-            ConvertStyles( nTargetLang, &aTargetFont );
-        }
+        StartConversion( nSourceLang, nTargetLang, &aTargetFont, nOptions, false );
+        ConvertStyles( nTargetLang, &aTargetFont );
     }
-    Reference< lang::XComponent > xComponent( xDialog, UNO_QUERY );
-    if( xComponent.is() )
-        xComponent->dispose();
 }
 } // end of namespace
 

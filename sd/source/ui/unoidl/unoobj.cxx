@@ -104,6 +104,8 @@ using ::com::sun::star::drawing::XShape;
 #define WID_PLACEHOLDERTEXT 24
 #define WID_LEGACYFRAGMENT  25
 
+#define WID_CUSTOMPROMPT    26
+
 #define IMPRESS_MAP_ENTRIES \
         { u"" UNO_NAME_OBJ_LEGACYFRAGMENT ""_ustr,WID_LEGACYFRAGMENT, cppu::UnoType<drawing::XShape>::get(),                 0, 0},\
         { u"" UNO_NAME_OBJ_ANIMATIONPATH ""_ustr, WID_ANIMPATH, cppu::UnoType<drawing::XShape>::get(),                 0, 0},\
@@ -112,7 +114,7 @@ using ::com::sun::star::drawing::XShape;
         { u"" UNO_NAME_OBJ_DIMHIDE ""_ustr, WID_DIMHIDE,       cppu::UnoType<bool>::get(),                            0, 0},\
         { u"" UNO_NAME_OBJ_DIMPREV ""_ustr, WID_DIMPREV,       cppu::UnoType<bool>::get(),                            0, 0},\
         { u"" UNO_NAME_OBJ_EFFECT ""_ustr, WID_EFFECT,         cppu::UnoType<presentation::AnimationEffect>::get(),   0, 0},\
-        { u"" UNO_NAME_OBJ_ISEMPTYPRESOBJ ""_ustr,WID_ISEMPTYPRESOBJ, cppu::UnoType<bool>::get(),                            0, 0},\
+        { u"" UNO_NAME_OBJ_ISEMPTYPRESOBJ_SD ""_ustr,WID_ISEMPTYPRESOBJ, cppu::UnoType<bool>::get(),                            0, 0},\
         { u"" UNO_NAME_OBJ_ISPRESOBJ ""_ustr, WID_ISPRESOBJ,   cppu::UnoType<bool>::get(),                            css::beans::PropertyAttribute::READONLY, 0},\
         { u"" UNO_NAME_OBJ_MASTERDEPENDENT ""_ustr,WID_MASTERDEPEND, cppu::UnoType<bool>::get(),                            0, 0},\
         { u"" UNO_NAME_OBJ_CLICKACTION ""_ustr, WID_CLICKACTION, cppu::UnoType<presentation::ClickAction>::get(),       0, 0},\
@@ -128,6 +130,7 @@ using ::com::sun::star::drawing::XShape;
         { u"IsAnimation"_ustr,         WID_ISANIMATION,     cppu::UnoType<bool>::get(),                            0, 0},\
         { u"NavigationOrder"_ustr,     WID_NAVORDER,        cppu::UnoType<sal_Int32>::get(),                       0, 0},\
         { u"PlaceholderText"_ustr,     WID_PLACEHOLDERTEXT, cppu::UnoType<OUString>::get(),                        0, 0},\
+        { u"" UNO_NAME_OBJ_CUSTOMPROMPT ""_ustr, WID_CUSTOMPROMPT, cppu::UnoType<OUString>::get(),                        0, 0},\
 
     static std::span<const SfxItemPropertyMapEntry> lcl_GetImpress_SdXShapePropertyGraphicMap_Impl()
     {
@@ -307,7 +310,7 @@ uno::Sequence< uno::Type > SAL_CALL SdXShape::getTypes()
     {
         SdrObjKind nObjId = mpShape->getShapeKind();
         uno::Sequence< uno::Type > aTypes;
-        SdTypesCache& gImplTypesCache = SD_MOD()->gImplTypesCache;
+        SdTypesCache& gImplTypesCache = SdModule::get()->gImplTypesCache;
         SdTypesCache::iterator aIter( gImplTypesCache.find( nObjId ) );
         if( aIter == gImplTypesCache.end() )
         {
@@ -382,12 +385,12 @@ css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL SdXShape::getProper
     css::uno::Reference<css::beans::XPropertySetInfo> pInfo;
 
     SdExtPropertySetInfoCache& rCache = (mpModel && mpModel->IsImpressDocument()) ?
-        SD_MOD()->gImplImpressPropertySetInfoCache : SD_MOD()->gImplDrawPropertySetInfoCache;
+        SdModule::get()->gImplImpressPropertySetInfoCache : SdModule::get()->gImplDrawPropertySetInfoCache;
 
     SdExtPropertySetInfoCache::iterator aIter( rCache.find( nObjId ) );
     if( aIter == rCache.end() )
     {
-        uno::Reference< beans::XPropertySetInfo > xInfo( mpShape->_getPropertySetInfo() );
+        rtl::Reference< SfxItemPropertySetInfo > xInfo( mpShape->_getPropertySetInfo() );
         pInfo = new SfxExtItemPropertySetInfo( mpMap, xInfo->getProperties() );
 
         rCache.insert(std::make_pair(nObjId, pInfo));
@@ -574,6 +577,14 @@ void SAL_CALL SdXShape::setPropertyValue( const OUString& aPropertyName, const c
                 case WID_ISEMPTYPRESOBJ:
                     SetEmptyPresObj( ::cppu::any2bool(aValue) );
                     break;
+                case WID_CUSTOMPROMPT:
+                {
+                    OUString aString;
+                    if (!(aValue >>= aString))
+                        throw lang::IllegalArgumentException();
+                    SetCustomPromptText(aString);
+                    break;
+                }
                 case WID_MASTERDEPEND:
                     SetMasterDepend( ::cppu::any2bool(aValue) );
                     break;
@@ -671,6 +682,9 @@ css::uno::Any SAL_CALL SdXShape::getPropertyValue( const OUString& PropertyName 
             break;
         case WID_ISEMPTYPRESOBJ:
             aRet <<= IsEmptyPresObj();
+            break;
+        case WID_CUSTOMPROMPT:
+            aRet <<= GetCustomPromptText();
             break;
         case WID_MASTERDEPEND:
             aRet <<= IsMasterDepend();
@@ -948,6 +962,38 @@ void SdXShape::SetEmptyPresObj(bool bEmpty)
     pObj->SetEmptyPresObj(bEmpty);
 }
 
+OUString SdXShape::GetCustomPromptText() const
+{
+    if (!IsPresObj())
+        return OUString();
+
+    SdrObject* pObj = mpShape->GetSdrObject();
+    if (pObj == nullptr)
+        return OUString();
+
+    return pObj->GetCustomPromptText();
+}
+
+void SdXShape::SetCustomPromptText(const OUString& aVal)
+{
+    if (!IsPresObj() || aVal.isEmpty())
+        return;
+
+    SdrObject* pObj = mpShape->GetSdrObject();
+    if (pObj == nullptr)
+        return;
+
+    if (!pObj->getSdrPageFromSdrObject()->IsMasterPage())
+    {
+        if (pObj->getSdrPageFromSdrObject()->RestoreDefaultText(pObj, aVal))
+            pObj->SetCustomPromptText(aVal);
+    }
+    else
+    {
+        pObj->SetCustomPromptText(aVal);
+    }
+}
+
 bool SdXShape::IsMasterDepend() const noexcept
 {
     SdrObject* pObj = mpShape->GetSdrObject();
@@ -1095,7 +1141,7 @@ namespace o3tl {
 
 static void clearEventsInAnimationInfo( SdAnimationInfo* pInfo )
 {
-    pInfo->SetBookmark( "" );
+    pInfo->SetBookmark( u""_ustr );
     pInfo->mbSecondSoundOn = false;
     pInfo->mbSecondPlayFull = false;
     pInfo->meClickAction = presentation::ClickAction_NONE;
@@ -1127,7 +1173,7 @@ void SAL_CALL SdUnoEventsAccess::replaceByName( const OUString& aName, const uno
     OUString aStrLibrary;
     OUString aStrBookmark;
 
-    for( const beans::PropertyValue& rProperty : std::as_const(aProperties) )
+    for (const beans::PropertyValue& rProperty : aProperties)
     {
         if( !( nFound & FoundFlags::EventType ) && rProperty.Name == gaStrEventType )
         {
@@ -1466,7 +1512,7 @@ uno::Any SAL_CALL SdUnoEventsAccess::getByName( const OUString& aName )
             pProperties->State = beans::PropertyState_DIRECT_VALUE;
             pProperties++;
 
-            aAny <<= OUString( "StarOffice" );
+            aAny <<= u"StarOffice"_ustr;
             pProperties->Name = gaStrLibrary;
             pProperties->Handle = -1;
             pProperties->Value = aAny;
@@ -1600,7 +1646,7 @@ sal_Bool SAL_CALL SdUnoEventsAccess::hasElements(  )
 // XServiceInfo
 OUString SAL_CALL SdUnoEventsAccess::getImplementationName(  )
 {
-    return "SdUnoEventsAccess";
+    return u"SdUnoEventsAccess"_ustr;
 }
 
 sal_Bool SAL_CALL SdUnoEventsAccess::supportsService( const OUString& ServiceName )

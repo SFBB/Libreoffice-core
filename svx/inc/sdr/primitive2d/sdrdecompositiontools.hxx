@@ -21,6 +21,7 @@
 
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <drawinglayer/attribute/sdrglowattribute.hxx>
+#include <drawinglayer/attribute/sdrglowtextattribute.hxx>
 #include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 
 #include <svx/svxdllapi.h>
@@ -29,7 +30,6 @@
 namespace basegfx {
     class B2DPolygon;
     class B2DPolyPolygon;
-    class B2DHomMatrix;
 }
 
 namespace drawinglayer::attribute {
@@ -47,13 +47,13 @@ namespace drawinglayer::primitive2d
         Primitive2DReference SVXCORE_DLLPUBLIC createPolyPolygonFillPrimitive(
             const basegfx::B2DPolyPolygon& rPolyPolygon,
             const attribute::SdrFillAttribute& rFill,
-            const attribute::FillGradientAttribute& rFillGradient);
+            const attribute::FillGradientAttribute& rAlphaGradient);
 
         Primitive2DReference SVXCORE_DLLPUBLIC createPolyPolygonFillPrimitive(
             const basegfx::B2DPolyPolygon& rPolyPolygon,
             const basegfx::B2DRange& rDefinitionRange,
             const attribute::SdrFillAttribute& rFill,
-            const attribute::FillGradientAttribute& rFillGradient);
+            const attribute::FillGradientAttribute& rAlphaGradient);
 
         Primitive2DReference SVXCORE_DLLPUBLIC createPolygonLinePrimitive(
             const basegfx::B2DPolygon& rPolygon,
@@ -77,6 +77,10 @@ namespace drawinglayer::primitive2d
         Primitive2DContainer SVXCORE_DLLPUBLIC createEmbeddedGlowPrimitive(
             Primitive2DContainer&& rContent,
             const attribute::SdrGlowAttribute& rGlow);
+
+        Primitive2DContainer SVXCORE_DLLPUBLIC createEmbeddedTextGlowPrimitive(
+            Primitive2DContainer&& rContent,
+            const attribute::SdrGlowTextAttribute& rGlow);
 
         Primitive2DContainer SVXCORE_DLLPUBLIC createEmbeddedSoftEdgePrimitive(
             Primitive2DContainer&& aContent,

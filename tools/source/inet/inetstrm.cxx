@@ -75,10 +75,7 @@ int INetMIMEMessageStream::GetBodyLine(char* pData, sal_uInt32 nSize)
 
     if (pSourceMsg->GetDocumentLB())
     {
-        if (pMsgStrm == nullptr)
-            pMsgStrm.reset(new SvStream (pSourceMsg->GetDocumentLB()));
-
-        sal_uInt32 nRead = pMsgStrm->ReadBytes(pWBuf, (pWEnd - pWBuf));
+        sal_uInt32 nRead = pSourceMsg->GetDocumentLB()->ReadBytes(pWBuf, (pWEnd - pWBuf));
         pWBuf += nRead;
     }
 
@@ -97,13 +94,13 @@ int INetMIMEMessageStream::GetMsgLine(char* pData, sal_uInt32 nSize)
             {
                 OUString aPCT(pSourceMsg->GetParent()->GetContentType());
                 if (aPCT.startsWithIgnoreAsciiCase("message/rfc822"))
-                    pSourceMsg->SetMIMEVersion("1.0");
+                    pSourceMsg->SetMIMEVersion(u"1.0"_ustr);
                 else
                     pSourceMsg->SetMIMEVersion(OUString());
             }
             else
             {
-                pSourceMsg->SetMIMEVersion("1.0");
+                pSourceMsg->SetMIMEVersion(u"1.0"_ustr);
             }
 
             // Check ContentType.

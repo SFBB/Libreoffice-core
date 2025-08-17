@@ -45,25 +45,25 @@ UnoScriptTypeDetector::endOfScriptDirection( const OUString& Text, sal_Int32 nPo
 sal_Int16 SAL_CALL
 UnoScriptTypeDetector::getCTLScriptType( const OUString&, sal_Int32 )
 {
-    throw css::uno::RuntimeException("not implemented");
+    throw css::uno::RuntimeException(u"not implemented"_ustr);
 }
 
 sal_Int32 SAL_CALL
 UnoScriptTypeDetector::beginOfCTLScriptType( const OUString&, sal_Int32 )
 {
-    throw css::uno::RuntimeException("not implemented");
+    throw css::uno::RuntimeException(u"not implemented"_ustr);
 }
 
 sal_Int32 SAL_CALL
 UnoScriptTypeDetector::endOfCTLScriptType( const OUString&, sal_Int32 )
 {
-    throw css::uno::RuntimeException("not implemented");
+    throw css::uno::RuntimeException(u"not implemented"_ustr);
 }
 
 OUString SAL_CALL
 UnoScriptTypeDetector::getImplementationName()
 {
-    return "com.sun.star.i18n.ScriptTypeDetector";
+    return u"com.sun.star.i18n.ScriptTypeDetector"_ustr;
 }
 
 sal_Bool SAL_CALL
@@ -75,7 +75,7 @@ UnoScriptTypeDetector::supportsService(const OUString& ServiceName)
 css::uno::Sequence< OUString > SAL_CALL
 UnoScriptTypeDetector::getSupportedServiceNames()
 {
-    return { "com.sun.star.i18n.ScriptTypeDetector" };
+    return { u"com.sun.star.i18n.ScriptTypeDetector"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *

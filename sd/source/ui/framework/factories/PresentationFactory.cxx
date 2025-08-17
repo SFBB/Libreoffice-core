@@ -18,12 +18,12 @@
  */
 
 #include <framework/PresentationFactory.hxx>
+#include <framework/ConfigurationController.hxx>
 
 #include <DrawController.hxx>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
+#include <framework/AbstractView.hxx>
+#include <ResourceId.hxx>
 #include <comphelper/servicehelper.hxx>
-#include <comphelper/compbase.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <slideshow.hxx>
 
@@ -39,29 +39,26 @@ namespace sd::framework {
 
 namespace {
 
-typedef comphelper::WeakComponentImplHelper<XView> PresentationViewInterfaceBase;
-
 /** The PresentationView is not an actual view, it is a marker whose
     existence in a configuration indicates that a slideshow is running
     (in another application window).
 */
-class PresentationView
-    : public PresentationViewInterfaceBase
+class PresentationView : public AbstractView
 {
 public:
-    explicit PresentationView (const Reference<XResourceId>& rxViewId)
+    explicit PresentationView (const rtl::Reference<ResourceId>& rxViewId)
         : mxResourceId(rxViewId) {};
 
     // XView
 
-    virtual Reference<XResourceId> SAL_CALL getResourceId() override
+    virtual rtl::Reference<ResourceId> getResourceId() override
     { return mxResourceId; };
 
-    virtual sal_Bool SAL_CALL isAnchorOnly() override
+    virtual bool isAnchorOnly() override
     { return false; }
 
 private:
-    Reference<XResourceId> mxResourceId;
+    rtl::Reference<ResourceId> mxResourceId;
 };
 
 } // end of anonymous namespace.
@@ -82,22 +79,28 @@ PresentationFactory::~PresentationFactory()
 
 //----- XViewFactory ----------------------------------------------------------
 
-Reference<XResource> SAL_CALL PresentationFactory::createResource (
-    const Reference<XResourceId>& rxViewId)
+rtl::Reference<AbstractResource> PresentationFactory::createResource (
+    const rtl::Reference<ResourceId>& rxViewId)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
 
     if (rxViewId.is())
         if ( ! rxViewId->hasAnchor() && rxViewId->getResourceURL() == gsPresentationViewURL)
             return new PresentationView(rxViewId);
 
-    return Reference<XResource>();
+    return rtl::Reference<AbstractResource>();
 }
 
-void SAL_CALL PresentationFactory::releaseResource (
-    const Reference<XResource>&)
+void PresentationFactory::releaseResource (
+    const rtl::Reference<AbstractResource>&)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
 
     if (mxController)
     {
@@ -107,32 +110,11 @@ void SAL_CALL PresentationFactory::releaseResource (
     }
 }
 
-//===== XConfigurationChangeListener ==========================================
-
-void SAL_CALL PresentationFactory::notifyConfigurationChange (
-    const ConfigurationChangeEvent&)
-{}
-
-//===== lang::XEventListener ==================================================
-
-void SAL_CALL PresentationFactory::disposing (
-    const lang::EventObject&)
-{}
-
-void PresentationFactory::ThrowIfDisposed() const
-{
-    if (m_bDisposed)
-    {
-        throw lang::DisposedException ("PresentationFactory object has already been disposed",
-            const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
-    }
-}
-
 void PresentationFactory::install(const rtl::Reference<::sd::DrawController>& rxController)
 {
     try
     {
-        Reference<XConfigurationController> xCC (rxController->getConfigurationController());
+        rtl::Reference<ConfigurationController> xCC (rxController->getConfigurationController());
         if (xCC.is())
             xCC->addResourceFactory(
                 gsPresentationViewURL,

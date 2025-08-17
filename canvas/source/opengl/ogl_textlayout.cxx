@@ -87,7 +87,7 @@ namespace oglcanvas
         if( aPositions.hasElements() && aPositions.getLength() != maText.Length )
         {
             SAL_WARN("canvas.ogl", "TextLayout::applyKashidaPositions(): mismatching number of positions" );
-            throw lang::IllegalArgumentException("mismatching number of positions", getXWeak(), 1);
+            throw lang::IllegalArgumentException(u"mismatching number of positions"_ustr, getXWeak(), 1);
         }
 
         maKashidaPositions = aPositions;
@@ -102,9 +102,9 @@ namespace oglcanvas
 
         // fake text bounds by either taking the advancement values,
         // or assuming square glyph boxes (width similar to height)
-        const rendering::FontRequest& rFontRequest( mpFont->getFontRequest() );
-        const double nFontSize( std::max( rFontRequest.CellSize,
-                                            rFontRequest.ReferenceAdvancement ) );
+        const rendering::FontRequest aFontRequest( mpFont->getFontRequest() );
+        const double nFontSize( std::max( aFontRequest.CellSize,
+                                            aFontRequest.ReferenceAdvancement ) );
         if( maLogicalAdvancements.hasElements() )
         {
             return geometry::RealRectangle2D( 0, -nFontSize/2,

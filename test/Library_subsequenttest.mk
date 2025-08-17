@@ -47,9 +47,14 @@ $(eval $(call gb_Library_add_exception_objects,subsequenttest,\
 	test/source/unoapi_test \
 	test/source/unoapixml_test \
 	test/source/a11y/AccessibilityTools \
+	test/source/a11y/XAccessibleActionTester \
+	test/source/a11y/XAccessibleComponentTester \
+	test/source/a11y/XAccessibleContextTester \
+	test/source/a11y/XAccessibleEventBroadcasterTester \
+	test/source/a11y/XAccessibleExtendedComponentTester \
+	test/source/a11y/XAccessibleTextTester \
 	test/source/a11y/accessibletestbase \
 	test/source/a11y/eventposter \
-	test/source/a11y/swaccessibletestbase \
 	test/source/beans/xpropertyset \
 	test/source/chart/xchartdata \
 	test/source/container/xchild \

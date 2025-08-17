@@ -46,8 +46,6 @@ class OOO_DLLPUBLIC_TEST BootstrapFixture : public BootstrapFixtureBase
     bool m_bAssertOnDialog;
 
 protected:
-    css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
-
     // A convenience function to be used to conditionally exclude tests not behaving properly
     // on UI scaling other than 1:1. Using this should be considered a temporary workaround,
     // until a proper fix is implemented that either considers the DPI properly in the test, or
@@ -63,7 +61,7 @@ public:
 
     virtual void setUp() override;
 
-    void validate(const OUString& rURL, ValidationFormat) const;
+    void validate(const OUString& rURL, std::u16string_view rFilter) const;
 
     // Allows to exclude tests dependent on color depth of the default virtual device
     static sal_uInt16 getDefaultDeviceBitCount();

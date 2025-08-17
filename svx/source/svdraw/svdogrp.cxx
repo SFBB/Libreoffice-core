@@ -207,8 +207,8 @@ SdrObjList* SdrObjGroup::GetSubList() const
 
 static bool containsOOXData(const css::uno::Any& rVal)
 {
-    const css::uno::Sequence<css::beans::PropertyValue>& propList(rVal.get< css::uno::Sequence<css::beans::PropertyValue> >());
-    for (const auto& rProp : std::as_const(propList))
+    const css::uno::Sequence<css::beans::PropertyValue> propList(rVal.get< css::uno::Sequence<css::beans::PropertyValue> >());
+    for (const auto& rProp : propList)
     {
         if(rProp.Name.startsWith("OOX"))
         {
@@ -384,7 +384,7 @@ void SdrObjGroup::NbcSetSnapRect(const tools::Rectangle& rRect)
 }
 
 
-void SdrObjGroup::NbcSetLogicRect(const tools::Rectangle& rRect)
+void SdrObjGroup::NbcSetLogicRect(const tools::Rectangle& rRect, bool /*bAdaptTextMinSize*/)
 {
     NbcSetSnapRect(rRect);
 }

@@ -26,6 +26,8 @@
 #include <editeng/flditem.hxx>
 
 #include <com/sun/star/text/XTextField.hpp>
+#include <com/sun/star/style/XStyle.hpp>
+#include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
@@ -58,8 +60,8 @@ using namespace ::com::sun::star::presentation;
 
 namespace oox::ppt {
 
-PPTShape::PPTShape( const oox::ppt::ShapeLocation eShapeLocation, const char* pServiceName )
-: Shape( pServiceName )
+PPTShape::PPTShape( const oox::ppt::ShapeLocation eShapeLocation, const OUString& rServiceName )
+: Shape( rServiceName )
 , meShapeLocation( eShapeLocation )
 , mbReferenced( false )
 , mbHasNoninheritedShapeProperties( false )
@@ -157,6 +159,66 @@ bool PPTShape::IsPlaceHolderCandidate(const SlidePersist& rSlidePersist) const
     return ShapeHasNoVisualPropertiesOnImport(*this);
 }
 
+void PPTShape::setTextMasterStyles( const SlidePersist& rSlidePersist, const oox::core::XmlFilterBase& rFilterBase, const std::u16string_view& sType )
+{
+    if (!rSlidePersist.isMasterPage())
+        return;
+
+    try
+    {
+        Reference< style::XStyleFamiliesSupplier > aXStyleFamiliesSupplier(rFilterBase.getModel(), UNO_QUERY_THROW);
+        Reference< container::XNameAccess > aXNameAccess(aXStyleFamiliesSupplier->getStyleFamilies());
+        Reference< container::XNamed > aXNamed(rSlidePersist.getPage(), UNO_QUERY_THROW);
+
+        if (aXNameAccess.is())
+        {
+            OUString aStyle;
+            OUString aFamily;
+
+            if (sType == u"com.sun.star.presentation.TitleTextShape") // title style
+            {
+                aStyle = u"title"_ustr;
+                aFamily = aXNamed->getName();
+            }
+            else if (sType == u"com.sun.star.presentation.SubtitleShape") // subtitle
+            {
+                aStyle = u"subtitle"_ustr;
+                aFamily = aXNamed->getName();
+            }
+            else if (sType == u"com.sun.star.presentation.OutlinerShape") // body style
+            {
+                aStyle = u"outline1"_ustr;
+                aFamily = aXNamed->getName();
+            }
+            else if (sType == u"com.sun.star.presentation.NotesShape") // notes style
+            {
+                aStyle = u"title"_ustr;
+                aFamily = aXNamed->getName();
+            }
+
+            Reference< container::XNameAccess > xFamilies;
+            if (aXNameAccess->hasByName(aFamily))
+            {
+                if (aXNameAccess->getByName(aFamily) >>= xFamilies)
+                {
+                    if (xFamilies->hasByName(aStyle))
+                    {
+                        Reference< style::XStyle > aXStyle;
+                        if (xFamilies->getByName(aStyle) >>= aXStyle)
+                        {
+                            TextCharacterProperties aCharStyleProperties;
+                            getTextBody()->ApplyMasterTextStyle(rFilterBase, aXStyle, aCharStyleProperties, mpMasterTextListStyle);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    catch (const Exception&)
+    {
+    }
+}
+
 void PPTShape::addShape(
         oox::core::XmlFilterBase& rFilterBase,
         const SlidePersist& rSlidePersist,
@@ -195,12 +257,8 @@ void PPTShape::addShape(
                 break;
                 case XML_subTitle :
                 {
-                    if ((meShapeLocation == Master) || (meShapeLocation == Layout))
-                        sServiceName = OUString();
-                    else {
-                        sServiceName = "com.sun.star.presentation.SubtitleShape";
-                        aMasterTextListStyle = rSlidePersist.getMasterPersist() ? rSlidePersist.getMasterPersist()->getBodyTextStyle() : rSlidePersist.getBodyTextStyle();
-                    }
+                    sServiceName = "com.sun.star.presentation.SubtitleShape";
+                    aMasterTextListStyle = rSlidePersist.getMasterPersist() ? rSlidePersist.getMasterPersist()->getBodyTextStyle() : rSlidePersist.getBodyTextStyle();
                 }
                 break;
                    case XML_obj :
@@ -245,9 +303,9 @@ void PPTShape::addShape(
                                     // and looks for time format in the 4 bits after that
                                     sal_Int32 nDateTimeFormat = static_cast<sal_Int32>(eDateFormat) |
                                                                 static_cast<sal_Int32>(eTimeFormat) << 4;
-                                    xPropertySet->setPropertyValue( "IsDateTimeVisible", Any(true) );
-                                    xPropertySet->setPropertyValue( "IsDateTimeFixed", Any(false) );
-                                    xPropertySet->setPropertyValue( "DateTimeFormat", Any(nDateTimeFormat) );
+                                    xPropertySet->setPropertyValue( u"IsDateTimeVisible"_ustr, Any(true) );
+                                    xPropertySet->setPropertyValue( u"IsDateTimeFixed"_ustr, Any(false) );
+                                    xPropertySet->setPropertyValue( u"DateTimeFormat"_ustr, Any(nDateTimeFormat) );
                                     return;
                                 }
                             }
@@ -263,15 +321,15 @@ void PPTShape::addShape(
                 case XML_ftr :
                     if (IsPlaceHolderCandidate(rSlidePersist))
                     {
-                        const OUString& rFooterText = getTextBody()->toString();
+                        const OUString aFooterText = getTextBody()->toString();
 
-                        if( !rFooterText.isEmpty() )
+                        if( !aFooterText.isEmpty() )
                         {
                             // if it is possible to get the footer as a property the LO way,
                             // get it and discard the shape
                             Reference< XPropertySet > xPropertySet( rSlidePersist.getPage(), UNO_QUERY );
-                            xPropertySet->setPropertyValue( "IsFooterVisible", Any( true ) );
-                            xPropertySet->setPropertyValue( "FooterText", Any(rFooterText) );
+                            xPropertySet->setPropertyValue( u"IsFooterVisible"_ustr, Any( true ) );
+                            xPropertySet->setPropertyValue( u"FooterText"_ustr, Any(aFooterText) );
                             return;
                         }
                     }
@@ -291,7 +349,7 @@ void PPTShape::addShape(
                             // do that and discard the shape
                             Reference<XPropertySet> xPropertySet(rSlidePersist.getPage(),
                                                                  UNO_QUERY);
-                            xPropertySet->setPropertyValue("IsPageNumberVisible", Any(true));
+                            xPropertySet->setPropertyValue(u"IsPageNumberVisible"_ustr, Any(true));
                             return;
                         }
                     }
@@ -335,9 +393,14 @@ void PPTShape::addShape(
         // Since it is not possible to represent custom shaped placeholders in Impress
         // Need to use service name css.drawing.CustomShape if they have a non default shape.
         // This workaround has the drawback of them not really being processed as placeholders
-        // so it is only done for slide footers...
-        bool convertInSlideMode = meShapeLocation == Slide &&
-            (mnSubType == XML_sldNum || mnSubType == XML_dt || mnSubType == XML_ftr || mnSubType == XML_body);
+        // so it is done for slide footers and obj placeholder
+        bool convertInSlideMode
+            = meShapeLocation == Slide
+              && (mnSubType == XML_sldNum || mnSubType == XML_dt || mnSubType == XML_ftr
+                  || mnSubType == XML_body
+                  || (mnSubType == XML_obj
+                      && sServiceName != "com.sun.star.drawing.GraphicObjectShape"));
+
         bool convertInLayoutMode = meShapeLocation == Layout && (mnSubType == XML_body);
         if ((convertInSlideMode || convertInLayoutMode) && !mpCustomShapePropertiesPtr->representsDefaultShape())
         {
@@ -414,7 +477,7 @@ void PPTShape::addShape(
             } else if (!mpPlaceholder) {
                 aMasterTextListStyle.reset();
             }
-            SAL_INFO("oox.ppt","placeholder id: " << (pPlaceholder ? pPlaceholder->getId() : "not found"));
+            SAL_INFO("oox.ppt","placeholder id: " << (pPlaceholder ? pPlaceholder->getId() : u"not found"_ustr));
         }
 
         if (!sServiceName.isEmpty())
@@ -432,7 +495,7 @@ void PPTShape::addShape(
                 }
                 else
                 {
-                    aMasterTextListStyle = aSlideStyle;
+                    aMasterTextListStyle = std::move(aSlideStyle);
                 }
             }
 
@@ -449,7 +512,7 @@ void PPTShape::addShape(
             } else
                 setMasterTextListStyle( aMasterTextListStyle );
 
-            Reference< XShape > xShape( createAndInsert( rFilterBase, sServiceName, pTheme, rxShapes, bClearText, bool(mpPlaceholder), aTransformation, getFillProperties() ) );
+            Reference< XShape > xShape( createAndInsert( rFilterBase, sServiceName, pTheme, rxShapes, bClearText, mpPlaceholder, aTransformation, getFillProperties() ) );
 
             // Apply text properties on placeholder text inside this placeholder shape
             if (meShapeLocation == Slide && mpPlaceholder && getTextBody() && getTextBody()->isEmpty())
@@ -460,6 +523,11 @@ void PPTShape::addShape(
                     TextCharacterProperties aCharStyleProperties;
                     getTextBody()->ApplyStyleEmpty(rFilterBase, xText, aCharStyleProperties, mpMasterTextListStyle);
                 }
+            }
+            // Apply text properties on master placeholder styles
+            if (meShapeLocation == Layout && getTextBody() && !getTextBody()->isEmpty())
+            {
+                setTextMasterStyles(rSlidePersist, rFilterBase, sServiceName);
             }
             if (pShapeMap)
             {
@@ -489,7 +557,7 @@ void PPTShape::addShape(
                 Reference < XText > xText(mxShape, UNO_QUERY);
                 if(xText.is())
                 {
-                    xText->setString("");
+                    xText->setString(u""_ustr);
                     Reference < XTextCursor > xTextCursor = xText->createTextCursor();
                     xText->insertTextContent( xTextCursor, xField, false);
                 }
@@ -590,7 +658,7 @@ void PPTShape::addShape(
 
                     pProperties->Name = "EventType";
                     pProperties->Handle = -1;
-                    pProperties->Value <<= OUString("Presentation");
+                    pProperties->Value <<= u"Presentation"_ustr;
                     pProperties->State = beans::PropertyState_DIRECT_VALUE;
                     pProperties++;
 

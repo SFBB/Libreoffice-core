@@ -31,12 +31,7 @@
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
-#include <com/sun/star/drawing/framework/AnchorBindingMode.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
-#include <com/sun/star/drawing/framework/XResource.hpp>
+#include <com/sun/star/drawing/XSlideSorterSelectionSupplier.hpp>
 
 #include <unotools/mediadescriptor.hxx>
 #include <unotools/ucbstreamhelper.hxx>
@@ -147,6 +142,63 @@ sal_Bool SAL_CALL SVGFilter::filter( const Sequence< PropertyValue >& rDescripto
         }
     }
     return filterImpressOrDraw(rDescriptor);
+}
+
+css::uno::Reference<css::frame::XController> SVGFilter::getSourceController() const
+{
+    uno::Reference<frame::XController> xController;
+    // Current frame may be e.g. Basic. Try to get a controller from the source model first.
+    if (auto xModel = mxSrcDoc.query<frame::XModel>())
+        xController = xModel->getCurrentController();
+    // Try current frame as a fallback.
+    if (!xController)
+    {
+        uno::Reference<frame::XDesktop2> xDesktop(frame::Desktop::create(mxContext));
+        if (auto xFrame = xDesktop->getCurrentFrame()) // Manage headless case
+            xController = xFrame->getController();
+    }
+    return xController;
+}
+
+css::uno::Reference<css::frame::XController> SVGFilter::fillDrawImpressSelectedPages()
+{
+    uno::Reference<frame::XController> xController = getSourceController();
+
+    uno::Reference<drawing::XSlideSorterSelectionSupplier> xSlideSorterSelection(xController, uno::UNO_QUERY);
+    if (xSlideSorterSelection)
+    {
+        Sequence<Reference<XInterface>> aSelectedPageSequence;
+        if (xSlideSorterSelection->getSlideSorterSelection() >>= aSelectedPageSequence)
+        {
+            for (auto& xInterface : aSelectedPageSequence)
+            {
+                uno::Reference<drawing::XDrawPage> xDrawPage(xInterface, uno::UNO_QUERY);
+
+                if (Reference<XPropertySet> xPropSet{ xDrawPage, UNO_QUERY })
+                {
+                    Reference<XPropertySetInfo> xPropSetInfo = xPropSet->getPropertySetInfo();
+                    if (xPropSetInfo && xPropSetInfo->hasPropertyByName(u"Visible"_ustr))
+                    {
+                        bool bIsSlideVisible = true; // default: true
+                        xPropSet->getPropertyValue(u"Visible"_ustr) >>= bIsSlideVisible;
+                        if (!bIsSlideVisible)
+                            continue;
+                    }
+                }
+                mSelectedPages.push_back(xDrawPage);
+            }
+            if (!mSelectedPages.empty())
+                return xController;
+        }
+    }
+
+    if (mSelectedPages.empty())
+    {
+        // apparently failed to get a selection - fallback to current page
+        if (auto xDrawView = xController.query<drawing::XDrawView>())
+            mSelectedPages.push_back(xDrawView->getCurrentPage());
+    }
+    return xController;
 }
 
 bool SVGFilter::filterImpressOrDraw( const Sequence< PropertyValue >& rDescriptor )
@@ -327,7 +379,7 @@ bool SVGFilter::filterImpressOrDraw( const Sequence< PropertyValue >& rDescripto
                 static_cast< double >(pTargetSdrPage->GetRightBorder()) / aPageSize.Width() +
                 static_cast< double >(pTargetSdrPage->GetUpperBorder()) / aPageSize.Height() +
                 static_cast< double >(pTargetSdrPage->GetLowerBorder()) / aPageSize.Height()) / 4.0);
-            const tools::Long nAllBorder(basegfx::fround((aGraphicSize.Width() + aGraphicSize.Height()) * fBorderRelation * 0.5));
+            const tools::Long nAllBorder(basegfx::fround<tools::Long>((aGraphicSize.Width() + aGraphicSize.Height()) * fBorderRelation * 0.5));
 
             // Adapt PageSize and Border stuff. To get all MasterPages and PresObjs
             // correctly adapted, do not just use
@@ -390,85 +442,9 @@ bool SVGFilter::filterImpressOrDraw( const Sequence< PropertyValue >& rDescripto
             }
         }
 
-        uno::Reference<frame::XDesktop2> xDesktop(frame::Desktop::create(mxContext));
         uno::Reference<frame::XController > xController;
-        if (xDesktop->getCurrentFrame().is() && !bPageProvided) // Manage headless case
-        {
-            uno::Reference<frame::XFrame> xFrame(xDesktop->getCurrentFrame(), uno::UNO_SET_THROW);
-            xController.set(xFrame->getController(), uno::UNO_SET_THROW);
-            uno::Reference<drawing::XDrawView> xDrawView(xController, uno::UNO_QUERY_THROW);
-            uno::Reference<drawing::framework::XControllerManager> xManager(xController, uno::UNO_QUERY_THROW);
-            uno::Reference<drawing::framework::XConfigurationController> xConfigController(xManager->getConfigurationController());
-
-            // which view configuration are we in?
-            //
-            // * traverse Impress resources to find slide preview pane, grab selection from there
-            // * otherwise, fallback to current slide
-            //
-            const uno::Sequence<uno::Reference<drawing::framework::XResourceId> > aResIds(
-                xConfigController->getCurrentConfiguration()->getResources(
-                    uno::Reference<drawing::framework::XResourceId>(),
-                    "",
-                    drawing::framework::AnchorBindingMode_INDIRECT));
-
-            for( const uno::Reference<drawing::framework::XResourceId>& rResId : aResIds )
-            {
-                // can we somehow obtain the slidesorter from the Impress framework?
-                if( rResId->getResourceURL() == "private:resource/view/SlideSorter" )
-                {
-                    // got it, grab current selection from there
-                    uno::Reference<drawing::framework::XResource> xRes(
-                        xConfigController->getResource(rResId));
-
-                    uno::Reference< view::XSelectionSupplier > xSelectionSupplier(
-                        xRes,
-                        uno::UNO_QUERY );
-                    if( xSelectionSupplier.is() )
-                    {
-                        uno::Any aSelection = xSelectionSupplier->getSelection();
-                        if( aSelection.hasValue() )
-                        {
-                            Sequence< Reference< XInterface > > aSelectedPageSequence;
-                            aSelection >>= aSelectedPageSequence;
-                            sal_Int32 nCount = aSelectedPageSequence.getLength();
-                            if (nCount > 0)
-                            {
-                                size_t nSelectedPageCount = nCount;
-                                for( size_t j=0; j<nSelectedPageCount; ++j )
-                                {
-                                    uno::Reference< drawing::XDrawPage > xDrawPage( aSelectedPageSequence[j],
-                                                                                    uno::UNO_QUERY );
-
-                                    Reference< XPropertySet > xPropSet( xDrawPage, UNO_QUERY );
-                                    bool bIsSlideVisible = true;     // default: true
-                                    if (xPropSet.is())
-                                    {
-                                        Reference< XPropertySetInfo > xPropSetInfo = xPropSet->getPropertySetInfo();
-                                        if (xPropSetInfo.is() && xPropSetInfo->hasPropertyByName("Visible"))
-                                        {
-                                            xPropSet->getPropertyValue( "Visible" )  >>= bIsSlideVisible;
-                                            if (!bIsSlideVisible)
-                                                continue;
-                                        }
-                                    }
-                                    mSelectedPages.push_back(xDrawPage);
-                                }
-                            }
-
-                            // and stop looping. It is likely not getting better
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if( mSelectedPages.empty() )
-            {
-                // apparently failed to clean selection - fallback to current page
-                mSelectedPages.resize( 1 );
-                mSelectedPages[0] = xDrawView->getCurrentPage();
-            }
-        }
+        if (!bPageProvided)
+            xController = fillDrawImpressSelectedPages();
 
         /*
          * Export all slides, or requested "PagePos"
@@ -503,9 +479,9 @@ bool SVGFilter::filterImpressOrDraw( const Sequence< PropertyValue >& rDescripto
                             if (xPropSet.is())
                             {
                                 Reference< XPropertySetInfo > xPropSetInfo = xPropSet->getPropertySetInfo();
-                                if (xPropSetInfo.is() && xPropSetInfo->hasPropertyByName("Visible"))
+                                if (xPropSetInfo.is() && xPropSetInfo->hasPropertyByName(u"Visible"_ustr))
                                 {
-                                    xPropSet->getPropertyValue( "Visible" )  >>= bIsSlideVisible;
+                                    xPropSet->getPropertyValue( u"Visible"_ustr )  >>= bIsSlideVisible;
                                     if (!bIsSlideVisible)
                                         continue;
                                 }
@@ -588,15 +564,7 @@ bool SVGFilter::filterWriterOrCalc( const Sequence< PropertyValue >& rDescriptor
     if(!bSelectionOnly) // For Writer only the selection-only mode is supported
         return false;
 
-    uno::Reference<frame::XDesktop2> xDesktop(frame::Desktop::create(mxContext));
-    uno::Reference<frame::XController > xController;
-    if (xDesktop->getCurrentFrame().is())
-    {
-        uno::Reference<frame::XFrame> xFrame(xDesktop->getCurrentFrame(), uno::UNO_SET_THROW);
-        xController.set(xFrame->getController(), uno::UNO_SET_THROW);
-    }
-
-    Reference< view::XSelectionSupplier > xSelection (xController, UNO_QUERY);
+    Reference<view::XSelectionSupplier> xSelection(getSourceController(), UNO_QUERY);
     if (!xSelection.is())
         return false;
 
@@ -732,7 +700,7 @@ private:
         if(!mbIsSVG)
         {
             const sal_Int8 aMagic[] = {'<', 's', 'v', 'g'};
-            const sal_Int32 nMagicSize(SAL_N_ELEMENTS(aMagic));
+            const sal_Int32 nMagicSize(std::size(aMagic));
 
             mbIsSVG = impCheckForMagic(aMagic, nMagicSize);
         }
@@ -740,7 +708,7 @@ private:
         if(!mbIsSVG)
         {
             const sal_Int8 aMagic[] = {'D', 'O', 'C', 'T', 'Y', 'P', 'E', ' ', 's', 'v', 'g'};
-            const sal_Int32 nMagicSize(SAL_N_ELEMENTS(aMagic));
+            const sal_Int32 nMagicSize(std::size(aMagic));
 
             mbIsSVG = impCheckForMagic(aMagic, nMagicSize);
         }
@@ -784,7 +752,7 @@ public:
         {
             // xmlns:ooo
             const sal_Int8 aMagic[] = {'x', 'm', 'l', 'n', 's', ':', 'o', 'o', 'o'};
-            const sal_Int32 nMagicSize(SAL_N_ELEMENTS(aMagic));
+            const sal_Int32 nMagicSize(std::size(aMagic));
 
             return impCheckForMagic(aMagic, nMagicSize);
         }
@@ -800,7 +768,7 @@ public:
         {
             // ooo:meta_slides
             const sal_Int8 aMagic[] = {'o', 'o', 'o', ':', 'm', 'e', 't', 'a', '_', 's', 'l', 'i', 'd', 'e', 's'};
-            const sal_Int32 nMagicSize(SAL_N_ELEMENTS(aMagic));
+            const sal_Int32 nMagicSize(std::size(aMagic));
 
             return impCheckForMagic(aMagic, nMagicSize);
         }
@@ -858,13 +826,13 @@ sal_Bool SVGFilter::supportsService(const OUString& sServiceName)
 }
 OUString SVGFilter::getImplementationName()
 {
-    return "com.sun.star.comp.Draw.SVGFilter";
+    return u"com.sun.star.comp.Draw.SVGFilter"_ustr;
 }
 css::uno::Sequence< OUString > SVGFilter::getSupportedServiceNames()
 {
-    return { "com.sun.star.document.ImportFilter",
-            "com.sun.star.document.ExportFilter",
-            "com.sun.star.document.ExtendedTypeDetection" };
+    return { u"com.sun.star.document.ImportFilter"_ustr,
+            u"com.sun.star.document.ExportFilter"_ustr,
+            u"com.sun.star.document.ExtendedTypeDetection"_ustr };
 }
 
 

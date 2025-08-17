@@ -42,8 +42,13 @@ public:
     {
     }
 
+    explicit ImplB2DPolyPolygon(ImplB2DPolyPolygon&& rSource) noexcept
+        : maPolygons(std::move(rSource.maPolygons))
+    {
+    }
+
     explicit ImplB2DPolyPolygon(const ImplB2DPolyPolygon& rSource)
-    :   maPolygons(rSource.maPolygons)
+        : maPolygons(rSource.maPolygons)
     {
     }
 
@@ -73,14 +78,14 @@ public:
         mpSystemDependentDataHolder->addOrReplaceSystemDependentData(rData);
     }
 
-    basegfx::SystemDependentData_SharedPtr getSystemDependentData(size_t hash_code) const
+    basegfx::SystemDependentData_SharedPtr getSystemDependentData(SDD_Type aType) const
     {
         if(!mpSystemDependentDataHolder)
         {
             return basegfx::SystemDependentData_SharedPtr();
         }
 
-        return mpSystemDependentDataHolder->getSystemDependentData(hash_code);
+        return mpSystemDependentDataHolder->getSystemDependentData(aType);
     }
 
     bool operator==(const ImplB2DPolyPolygon& rPolygonList) const
@@ -172,6 +177,12 @@ public:
             aPolygon.transform(rMatrix);
     }
 
+    void translate(double fTranslateX, double fTranslateY)
+    {
+        for (auto& aPolygon : maPolygons)
+            aPolygon.translate(fTranslateX, fTranslateY);
+    }
+
     void makeUnique()
     {
         for (auto& aPolygon : maPolygons)
@@ -239,11 +250,6 @@ public:
             return true;
 
         return ((*mpPolyPolygon) == (*rPolyPolygon.mpPolyPolygon));
-    }
-
-    bool B2DPolyPolygon::operator!=(const B2DPolyPolygon& rPolyPolygon) const
-    {
-        return !((*this) == rPolyPolygon);
     }
 
     sal_uInt32 B2DPolyPolygon::count() const
@@ -397,6 +403,14 @@ public:
         }
     }
 
+    void B2DPolyPolygon::translate(double fTranslateX, double fTranslateY)
+    {
+        if(count())
+        {
+            mpPolyPolygon->translate(fTranslateX, fTranslateY);
+        }
+    }
+
     const B2DPolygon* B2DPolyPolygon::begin() const
     {
         return mpPolyPolygon->begin();
@@ -422,9 +436,9 @@ public:
         mpPolyPolygon->addOrReplaceSystemDependentData(rData);
     }
 
-    SystemDependentData_SharedPtr B2DPolyPolygon::getSystemDependantDataInternal(size_t hash_code) const
+    SystemDependentData_SharedPtr B2DPolyPolygon::getSystemDependantDataInternal(SDD_Type aType) const
     {
-        return mpPolyPolygon->getSystemDependentData(hash_code);
+        return mpPolyPolygon->getSystemDependentData(aType);
     }
 
 } // end of namespace basegfx

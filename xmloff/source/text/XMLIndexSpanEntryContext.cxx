@@ -31,7 +31,7 @@ using ::com::sun::star::beans::PropertyValue;
 XMLIndexSpanEntryContext::XMLIndexSpanEntryContext(
     SvXMLImport& rImport,
     XMLIndexTemplateContext& rTemplate ) :
-        XMLIndexSimpleEntryContext(rImport, "TokenText",
+        XMLIndexSimpleEntryContext(rImport, u"TokenText"_ustr,
                                    rTemplate)
 {
     m_nValues++;  // one more for the text string
@@ -54,10 +54,8 @@ void XMLIndexSpanEntryContext::FillPropertyValues(
 
     // content
     auto pValues = rValues.getArray();
-    Any aAny;
-    aAny <<= sContent.makeStringAndClear();
     pValues[m_nValues-1].Name = "Text";
-    pValues[m_nValues-1].Value = aAny;
+    pValues[m_nValues-1].Value <<= sContent.makeStringAndClear();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

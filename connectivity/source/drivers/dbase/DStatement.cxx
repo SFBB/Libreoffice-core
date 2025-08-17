@@ -22,7 +22,6 @@
 
 using namespace connectivity::dbase;
 using namespace connectivity::file;
-using namespace com::sun::star::uno;
 
 
 rtl::Reference<OResultSet> ODbaseStatement::createResultSet()
@@ -30,6 +29,6 @@ rtl::Reference<OResultSet> ODbaseStatement::createResultSet()
     return new ODbaseResultSet(this,m_aSQLIterator);
 }
 
-IMPLEMENT_SERVICE_INFO(ODbaseStatement,"com.sun.star.sdbc.driver.dbase.Statement","com.sun.star.sdbc.Statement");
+IMPLEMENT_SERVICE_INFO(ODbaseStatement,u"com.sun.star.sdbc.driver.dbase.Statement"_ustr,u"com.sun.star.sdbc.Statement"_ustr);
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

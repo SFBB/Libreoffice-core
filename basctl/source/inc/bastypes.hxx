@@ -18,9 +18,8 @@
  */
 #pragma once
 
-#include "scriptdocument.hxx"
-
-#include "sbxitem.hxx"
+#include <basctl/scriptdocument.hxx>
+#include <basctl/sbxitem.hxx>
 #include <svtools/scrolladaptor.hxx>
 #include <svtools/tabbar.hxx>
 #include <basic/sbdef.hxx>
@@ -30,7 +29,6 @@
 #include <string_view>
 #include <unordered_map>
 
-class SbModule;
 class SfxItemSet;
 class SfxRequest;
 class SvxSearchItem;
@@ -47,8 +45,6 @@ namespace basctl
 {
 
 class Layout;
-class ModulWindow;
-class DialogWindow;
 
 constexpr auto LINE_SEP_CR = 0x0D;
 constexpr auto LINE_SEP = 0x0A;
@@ -238,9 +234,9 @@ public:
 
     virtual void OnNewDocument ();
     virtual OUString GetHid () const = 0;
-    virtual ItemType GetType () const = 0;
+    virtual SbxItemType GetSbxType () const = 0;
     void InsertLibInfo () const;
-    bool Is (ScriptDocument const&, std::u16string_view, std::u16string_view, ItemType, bool bFindSuspended);
+    bool Is (ScriptDocument const&, std::u16string_view, std::u16string_view, SbxItemType, bool bFindSuspended);
     virtual bool HasActiveEditor () const;
 };
 
@@ -252,7 +248,7 @@ public:
     LibInfo ();
     ~LibInfo ();
 public:
-    void InsertInfo (ScriptDocument const&, OUString const& rLibName, OUString const& rCurrentName, ItemType eCurrentType);
+    void InsertInfo (ScriptDocument const&, OUString const& rLibName, OUString const& rCurrentName, SbxItemType eCurrentType);
     void RemoveInfoFor (ScriptDocument const&);
     Item const* GetInfo (ScriptDocument const&, OUString const& rLibName);
 
@@ -279,12 +275,12 @@ public:
     {
     private:
         OUString        m_aCurrentName;
-        ItemType        m_eCurrentType;
+        SbxItemType     m_eCurrentType;
 
     public:
-        Item (OUString aCurrentName, ItemType eCurrentType);
+        Item (OUString aCurrentName, SbxItemType eCurrentType);
         const OUString& GetCurrentName()        const { return m_aCurrentName; }
-        ItemType        GetCurrentType()        const { return m_eCurrentType; }
+        SbxItemType     GetCurrentType()        const { return m_eCurrentType; }
     };
 private:
     typedef std::unordered_map<Key, Item, Key::Hash> Map;
@@ -297,10 +293,6 @@ sal_uInt32           CalcLineCount( SvStream& rStream );
 
 bool QueryReplaceMacro( std::u16string_view rName, weld::Widget* pParent );
 bool QueryDelMacro( std::u16string_view rName, weld::Widget* pParent );
-bool QueryDelDialog( std::u16string_view rName, weld::Widget* pParent );
-bool QueryDelModule( std::u16string_view rName, weld::Widget* pParent );
-bool QueryDelLib( std::u16string_view rName, bool bRef, weld::Widget* pParent );
-bool QueryPassword(weld::Widget* pDialogParent, const css::uno::Reference< css::script::XLibraryContainer >& xLibContainer, const OUString& rLibName, OUString& rPassword, bool bRepeat = false, bool bNewTitle = false);
 
 class ModuleInfoHelper
 {

@@ -23,6 +23,7 @@
 #include <rtl/ustrbuf.hxx>
 #include <unotools/localedatawrapper.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <officecfg/VCL.hxx>
 
 #include <utility>
 #include <vcl/QueueInfo.hxx>
@@ -40,7 +41,6 @@
 #include <vcl/windowstate.hxx>
 
 #include <bitmaps.hlst>
-#include <configsettings.hxx>
 #include <printdlg.hxx>
 #include <strings.hrc>
 #include <svdata.hxx>
@@ -50,7 +50,6 @@
 using namespace vcl;
 using namespace com::sun::star;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::lang;
 using namespace com::sun::star::container;
 using namespace com::sun::star::beans;
 
@@ -120,9 +119,9 @@ void PrintDialog::PrintPreviewWindow::Resize()
 
 void PrintDialog::PrintPreviewWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&)
 {
-    rRenderContext.Push();
+    auto popIt = rRenderContext.ScopedPush();
     weld::SetPointFont(rRenderContext, rRenderContext.GetSettings().GetStyleSettings().GetLabelFont());
-
+    rRenderContext.SetTextColor(rRenderContext.GetSettings().GetStyleSettings().GetLabelTextColor());
     rRenderContext.SetBackground(Wallpaper(Application::GetSettings().GetStyleSettings().GetDialogColor()));
     rRenderContext.Erase();
 
@@ -146,7 +145,7 @@ void PrintDialog::PrintPreviewWindow::Paint(vcl::RenderContext& rRenderContext, 
 
     // vertical line
     {
-        rRenderContext.Push(PushFlags::FONT);
+        auto popIt2 = rRenderContext.ScopedPush(PushFlags::FONT);
         vcl::Font aFont(rRenderContext.GetFont());
         aFont.SetOrientation(900_deg10);
         rRenderContext.SetFont(aFont);
@@ -162,8 +161,6 @@ void PrintDialog::PrintPreviewWindow::Paint(vcl::RenderContext& rRenderContext, 
         nLeft = aOffset.X() - (nTextHeight / 2);
         aDecoView.DrawSeparator(Point(nLeft, aOffset.Y()), Point(nLeft, nStart - nWidth - 2), true);
         aDecoView.DrawSeparator(Point(nLeft, nStart + 2), Point(nLeft, aOffset.Y() + maPreviewSize.Height()), true);
-
-        rRenderContext.Pop();
     }
 
     if (!maReplacementString.isEmpty())
@@ -189,8 +186,6 @@ void PrintDialog::PrintPreviewWindow::Paint(vcl::RenderContext& rRenderContext, 
     tools::Rectangle aFrameRect(aOffset + Point(-1, -1), Size(maPreviewSize.Width() + 2, maPreviewSize.Height() + 2));
     DecorationView aDecorationView(&rRenderContext);
     aDecorationView.DrawFrame(aFrameRect, DrawFrameStyle::Group);
-
-    rRenderContext.Pop();
 }
 
 bool PrintDialog::PrintPreviewWindow::Command( const CommandEvent& rEvt )
@@ -199,9 +194,9 @@ bool PrintDialog::PrintPreviewWindow::Command( const CommandEvent& rEvt )
     {
         const CommandWheelData* pWheelData = rEvt.GetWheelData();
         if(pWheelData->GetDelta() > 0)
-            mpDialog->previewForward();
-        else if (pWheelData->GetDelta() < 0)
             mpDialog->previewBackward();
+        else if (pWheelData->GetDelta() < 0)
+            mpDialog->previewForward();
         return true;
     }
     return CustomWidgetController::Command(rEvt);
@@ -325,7 +320,7 @@ void PrintDialog::PrintPreviewWindow::preparePreviewBitmap()
     const double fRatio(static_cast<double>(maPreviewSize.getWidth()) / static_cast<double>(maPreviewSize.getHeight()));
     const double fNewWidth(sqrt(static_cast<double>(nPlannedSquarePixels) * fRatio));
     const double fNewHeight(sqrt(static_cast<double>(nPlannedSquarePixels) / fRatio));
-    const Size aScaledSize(basegfx::fround(fNewWidth), basegfx::fround(fNewHeight));
+    const Size aScaledSize(basegfx::fround<tools::Long>(fNewWidth), basegfx::fround<tools::Long>(fNewHeight));
 
     // check if this eventual maximum is already reached
     // due to having hit the MaxSquarePixels. Due to using
@@ -404,7 +399,7 @@ void PrintDialog::PrintPreviewWindow::preparePreviewBitmap()
             fScale *= fCorrection;
         }
 
-        const Size aScaledSize2(basegfx::fround(fWidth), basegfx::fround(fHeight));
+        const Size aScaledSize2(basegfx::fround<tools::Long>(fWidth), basegfx::fround<tools::Long>(fHeight));
         pPrerenderVDev->SetOutputSizePixel(aScaledSize2, false);
         aLogicSize = pPrerenderVDev->PixelToLogic( aScaledSize2, MapMode( MapUnit::Map100thMM ) );
     }
@@ -426,7 +421,7 @@ void PrintDialog::PrintPreviewWindow::preparePreviewBitmap()
     aMtf.Play(*pPrerenderVDev, Point(0, 0), aLogicSize);
 
     pPrerenderVDev->SetMapMode(MapMode(MapUnit::MapPixel));
-    maPreviewBitmap = pPrerenderVDev->GetBitmapEx(Point(0, 0), pPrerenderVDev->GetOutputSizePixel());
+    maPreviewBitmap = pPrerenderVDev->GetBitmap(Point(0, 0), pPrerenderVDev->GetOutputSizePixel());
 
     if(0.0 != fFactor)
     {
@@ -525,64 +520,63 @@ Size const & PrintDialog::getJobPageSize()
 }
 
 PrintDialog::PrintDialog(weld::Window* i_pWindow, std::shared_ptr<PrinterController> i_xController)
-    : GenericDialogController(i_pWindow, "vcl/ui/printdialog.ui", "PrintDialog")
+    : GenericDialogController(i_pWindow, u"vcl/ui/printdialog.ui"_ustr, u"PrintDialog"_ustr)
     , maPController(std::move( i_xController ))
-    , mxTabCtrl(m_xBuilder->weld_notebook("tabcontrol"))
-    , mxScrolledWindow(m_xBuilder->weld_scrolled_window("scrolledwindow"))
-    , mxPageLayoutFrame(m_xBuilder->weld_frame("layoutframe"))
-    , mxPrinters(m_xBuilder->weld_combo_box("printersbox"))
-    , mxStatusTxt(m_xBuilder->weld_label("status"))
-    , mxSetupButton(m_xBuilder->weld_button("setup"))
-    , mxCopyCountField(m_xBuilder->weld_spin_button("copycount"))
-    , mxCollateBox(m_xBuilder->weld_check_button("collate"))
-    , mxCollateImage(m_xBuilder->weld_image("collateimage"))
-    , mxPageRangeEdit(m_xBuilder->weld_entry("pagerange"))
-    , mxPageRangesRadioButton(m_xBuilder->weld_radio_button("rbRangePages"))
-    , mxPaperSidesBox(m_xBuilder->weld_combo_box("sidesbox"))
-    , mxSingleJobsBox(m_xBuilder->weld_check_button("singlejobs"))
-    , mxReverseOrderBox(m_xBuilder->weld_check_button("reverseorder"))
-    , mxOKButton(m_xBuilder->weld_button("ok"))
-    , mxCancelButton(m_xBuilder->weld_button("cancel"))
-    , mxBackwardBtn(m_xBuilder->weld_button("backward"))
-    , mxForwardBtn(m_xBuilder->weld_button("forward"))
-    , mxFirstBtn(m_xBuilder->weld_button("btnFirst"))
-    , mxLastBtn(m_xBuilder->weld_button("btnLast"))
-    , mxPreviewBox(m_xBuilder->weld_check_button("previewbox"))
-    , mxNumPagesText(m_xBuilder->weld_label("totalnumpages"))
+    , mxTabCtrl(m_xBuilder->weld_notebook(u"tabcontrol"_ustr))
+    , mxScrolledWindow(m_xBuilder->weld_scrolled_window(u"scrolledwindow"_ustr))
+    , mxPageLayoutFrame(m_xBuilder->weld_frame(u"layoutframe"_ustr))
+    , mxPrinters(m_xBuilder->weld_combo_box(u"printersbox"_ustr))
+    , mxStatusTxt(m_xBuilder->weld_label(u"status"_ustr))
+    , mxSetupButton(m_xBuilder->weld_button(u"setup"_ustr))
+    , mxCopyCountField(m_xBuilder->weld_spin_button(u"copycount"_ustr))
+    , mxCollateBox(m_xBuilder->weld_check_button(u"collate"_ustr))
+    , mxCollateImage(m_xBuilder->weld_image(u"collateimage"_ustr))
+    , mxPageRangeEdit(m_xBuilder->weld_entry(u"pagerange"_ustr))
+    , mxPageRangesRadioButton(m_xBuilder->weld_radio_button(u"rbRangePages"_ustr))
+    , mxPaperSidesBox(m_xBuilder->weld_combo_box(u"sidesbox"_ustr))
+    , mxSingleJobsBox(m_xBuilder->weld_check_button(u"singlejobs"_ustr))
+    , mxReverseOrderBox(m_xBuilder->weld_check_button(u"reverseorder"_ustr))
+    , mxOKButton(m_xBuilder->weld_button(u"ok"_ustr))
+    , mxCancelButton(m_xBuilder->weld_button(u"cancel"_ustr))
+    , mxBackwardBtn(m_xBuilder->weld_button(u"backward"_ustr))
+    , mxForwardBtn(m_xBuilder->weld_button(u"forward"_ustr))
+    , mxFirstBtn(m_xBuilder->weld_button(u"btnFirst"_ustr))
+    , mxLastBtn(m_xBuilder->weld_button(u"btnLast"_ustr))
+    , mxPreviewBox(m_xBuilder->weld_check_button(u"previewbox"_ustr))
+    , mxNumPagesText(m_xBuilder->weld_label(u"totalnumpages"_ustr))
     , mxPreview(new PrintPreviewWindow(this))
-    , mxPreviewWindow(new weld::CustomWeld(*m_xBuilder, "preview", *mxPreview))
-    , mxPageEdit(m_xBuilder->weld_entry("pageedit"))
-    , mxPagesBtn(m_xBuilder->weld_radio_button("pagespersheetbtn"))
-    , mxBrochureBtn(m_xBuilder->weld_radio_button("brochure"))
-    , mxPagesBoxTitleTxt(m_xBuilder->weld_label("pagespersheettxt"))
-    , mxNupPagesBox(m_xBuilder->weld_combo_box("pagespersheetbox"))
-    , mxNupNumPagesTxt(m_xBuilder->weld_label("pagestxt"))
-    , mxNupColEdt(m_xBuilder->weld_spin_button("pagecols"))
-    , mxNupTimesTxt(m_xBuilder->weld_label("by"))
-    , mxNupRowsEdt(m_xBuilder->weld_spin_button("pagerows"))
-    , mxPageMarginTxt1(m_xBuilder->weld_label("pagemargintxt1"))
-    , mxPageMarginEdt(m_xBuilder->weld_metric_spin_button("pagemarginsb", FieldUnit::MM))
-    , mxPageMarginTxt2(m_xBuilder->weld_label("pagemargintxt2"))
-    , mxSheetMarginTxt1(m_xBuilder->weld_label("sheetmargintxt1"))
-    , mxSheetMarginEdt(m_xBuilder->weld_metric_spin_button("sheetmarginsb", FieldUnit::MM))
-    , mxSheetMarginTxt2(m_xBuilder->weld_label("sheetmargintxt2"))
-    , mxPaperSizeBox(m_xBuilder->weld_combo_box("papersizebox"))
-    , mxOrientationBox(m_xBuilder->weld_combo_box("pageorientationbox"))
-    , mxNupOrderTxt(m_xBuilder->weld_label("labelorder"))
-    , mxNupOrderBox(m_xBuilder->weld_combo_box("orderbox"))
+    , mxPreviewWindow(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, *mxPreview))
+    , mxPageEdit(m_xBuilder->weld_entry(u"pageedit"_ustr))
+    , mxPagesBtn(m_xBuilder->weld_radio_button(u"pagespersheetbtn"_ustr))
+    , mxBrochureBtn(m_xBuilder->weld_radio_button(u"brochure"_ustr))
+    , mxPagesBoxTitleTxt(m_xBuilder->weld_label(u"pagespersheettxt"_ustr))
+    , mxNupPagesBox(m_xBuilder->weld_combo_box(u"pagespersheetbox"_ustr))
+    , mxNupNumPagesTxt(m_xBuilder->weld_label(u"pagestxt"_ustr))
+    , mxNupColEdt(m_xBuilder->weld_spin_button(u"pagecols"_ustr))
+    , mxNupTimesTxt(m_xBuilder->weld_label(u"by"_ustr))
+    , mxNupRowsEdt(m_xBuilder->weld_spin_button(u"pagerows"_ustr))
+    , mxPageMarginTxt1(m_xBuilder->weld_label(u"pagemargintxt1"_ustr))
+    , mxPageMarginEdt(m_xBuilder->weld_metric_spin_button(u"pagemarginsb"_ustr, FieldUnit::MM))
+    , mxPageMarginTxt2(m_xBuilder->weld_label(u"pagemargintxt2"_ustr))
+    , mxSheetMarginTxt1(m_xBuilder->weld_label(u"sheetmargintxt1"_ustr))
+    , mxSheetMarginEdt(m_xBuilder->weld_metric_spin_button(u"sheetmarginsb"_ustr, FieldUnit::MM))
+    , mxSheetMarginTxt2(m_xBuilder->weld_label(u"sheetmargintxt2"_ustr))
+    , mxPaperSizeBox(m_xBuilder->weld_combo_box(u"papersizebox"_ustr))
+    , mxOrientationBox(m_xBuilder->weld_combo_box(u"pageorientationbox"_ustr))
+    , mxNupOrderTxt(m_xBuilder->weld_label(u"labelorder"_ustr))
+    , mxNupOrderBox(m_xBuilder->weld_combo_box(u"orderbox"_ustr))
     , mxNupOrder(new ShowNupOrderWindow)
-    , mxNupOrderWin(new weld::CustomWeld(*m_xBuilder, "orderpreview", *mxNupOrder))
-    , mxBorderCB(m_xBuilder->weld_check_button("bordercb"))
-    , mxRangeExpander(m_xBuilder->weld_expander("exRangeExpander"))
-    , mxLayoutExpander(m_xBuilder->weld_expander("exLayoutExpander"))
-    , mxCustom(m_xBuilder->weld_widget("customcontents"))
+    , mxNupOrderWin(new weld::CustomWeld(*m_xBuilder, u"orderpreview"_ustr, *mxNupOrder))
+    , mxBorderCB(m_xBuilder->weld_check_button(u"bordercb"_ustr))
+    , mxRangeExpander(m_xBuilder->weld_expander(u"exRangeExpander"_ustr))
+    , mxLayoutExpander(m_xBuilder->weld_expander(u"exLayoutExpander"_ustr))
+    , mxCustom(m_xBuilder->weld_widget(u"customcontents"_ustr))
     , maPrintToFileText( VclResId( SV_PRINT_TOFILE_TXT ) )
     , maDefPrtText( VclResId( SV_PRINT_DEFPRT_TXT ) )
     , maNoPageStr( VclResId( SV_PRINT_NOPAGES ) )
     , maNoPreviewStr( VclResId( SV_PRINT_NOPREVIEW ) )
     , mnCurPage( 0 )
     , mnCachedPages( 0 )
-    , mbCollateAlwaysOff(false)
     , mbShowLayoutFrame( true )
     , maUpdatePreviewIdle("Print Dialog Update Preview Idle")
     , maUpdatePreviewNoCacheIdle("Print Dialog Update Preview (no cache) Idle")
@@ -591,8 +585,6 @@ PrintDialog::PrintDialog(weld::Window* i_pWindow, std::shared_ptr<PrinterControl
     maPrintText = mxOKButton->get_label();
 
     maPageStr = mxNumPagesText->get_label();
-
-    Printer::updatePrinters();
 
     mxPrinters->append_text(maPrintToFileText);
     // fill printer listbox
@@ -608,9 +600,7 @@ PrintDialog::PrintDialog(weld::Window* i_pWindow, std::shared_ptr<PrinterControl
     else
     {
         // fall back to last printer
-        SettingsConfigItem* pItem = SettingsConfigItem::get();
-        OUString aValue( pItem->getValue( "PrintDialog",
-                                        "LastPrinter" ) );
+        OUString aValue( officecfg::VCL::VCLSettings::PrintDialog::LastPrinter::get() );
         if (mxPrinters->find_text(aValue) != -1)
         {
             mxPrinters->set_active_text(aValue);
@@ -636,9 +626,8 @@ PrintDialog::PrintDialog(weld::Window* i_pWindow, std::shared_ptr<PrinterControl
     // setup paper sides box
     setupPaperSidesBox();
 
-    // set initial focus to "Number of copies"
-    mxCopyCountField->grab_focus();
-    mxCopyCountField->select_region(0, -1);
+    // set initial focus to "Printer"
+    mxPrinters->grab_focus();
 
     // setup sizes for N-Up
     Size aNupSize( maPController->getPrinter()->PixelToLogic(
@@ -751,50 +740,32 @@ void PrintDialog::setupPaperSidesBox()
 
 void PrintDialog::storeToSettings()
 {
-    SettingsConfigItem* pItem = SettingsConfigItem::get();
+    std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
 
-    pItem->setValue( "PrintDialog",
-                     "LastPrinter",
+    officecfg::VCL::VCLSettings::PrintDialog::LastPrinter::set(
                       isPrintToFile() ? Printer::GetDefaultPrinterName()
-                                      : mxPrinters->get_active_text() );
+                                      : mxPrinters->get_active_text(), batch );
 
-    pItem->setValue( "PrintDialog",
-                     "LastPage",
-                     mxTabCtrl->get_tab_label_text(mxTabCtrl->get_current_page_ident()));
+    officecfg::VCL::VCLSettings::PrintDialog::LastPage::set(
+                     mxTabCtrl->get_tab_label_text(mxTabCtrl->get_current_page_ident()), batch);
 
-    pItem->setValue( "PrintDialog",
-                     "WindowState",
-                     m_xDialog->get_window_state(vcl::WindowDataMask::All) );
+    officecfg::VCL::VCLSettings::PrintDialog::WindowState::set(
+                     m_xDialog->get_window_state(vcl::WindowDataMask::All), batch );
 
-    pItem->setValue( "PrintDialog",
-                     "CopyCount",
-                     mxCopyCountField->get_text() );
+    officecfg::VCL::VCLSettings::PrintDialog::Collate::set( mxCollateBox->get_active(), batch );
 
-    pItem->setValue( "PrintDialog",
-                     "Collate",
-                     mxCollateBox->get_active() ? OUString("true") :
-                                                 OUString("false") );
+    officecfg::VCL::VCLSettings::PrintDialog::CollateSingleJobs::set(
+                     mxSingleJobsBox->get_active(), batch );
 
-    pItem->setValue( "PrintDialog",
-                     "CollateSingleJobs",
-                     mxSingleJobsBox->get_active() ? OUString("true") :
-                                                     OUString("false") );
+    officecfg::VCL::VCLSettings::PrintDialog::HasPreview::set( hasPreview(), batch);
 
-    pItem->setValue( "PrintDialog",
-                     "HasPreview",
-                     hasPreview() ? OUString("true") :
-                                    OUString("false") );
-
-    pItem->Commit();
+    batch->commit();
 }
 
 void PrintDialog::readFromSettings()
 {
-    SettingsConfigItem* pItem = SettingsConfigItem::get();
-
     // read last selected tab page; if it exists, activate it
-    OUString aValue = pItem->getValue( "PrintDialog",
-                              "LastPage" );
+    OUString aValue = officecfg::VCL::VCLSettings::PrintDialog::LastPage::get();
     sal_uInt16 nCount = mxTabCtrl->get_n_pages();
     for (sal_uInt16 i = 0; i < nCount; ++i)
     {
@@ -807,58 +778,52 @@ void PrintDialog::readFromSettings()
     }
 
     // persistent window state
-    aValue = pItem->getValue( "PrintDialog",
-                              "WindowState" );
+    aValue = officecfg::VCL::VCLSettings::PrintDialog::WindowState::get();
     if (!aValue.isEmpty())
         m_xDialog->set_window_state(aValue);
 
     // collate
-    aValue = pItem->getValue( "PrintDialog",
-                              "CollateBox" );
-    if( aValue.equalsIgnoreAsciiCase("alwaysoff") )
-    {
-        mbCollateAlwaysOff = true;
-        mxCollateBox->set_active( false );
-        mxCollateBox->set_sensitive( false );
-    }
-    else
-    {
-        mbCollateAlwaysOff = false;
-        aValue = pItem->getValue( "PrintDialog",
-                                  "Collate" );
-        mxCollateBox->set_active( aValue.equalsIgnoreAsciiCase("true") );
-    }
+    mxCollateBox->set_sensitive( officecfg::VCL::VCLSettings::PrintDialog::Collate::isReadOnly() );
+    mxCollateBox->set_active( officecfg::VCL::VCLSettings::PrintDialog::Collate::get() );
 
     // collate single jobs
-    aValue = pItem->getValue( "PrintDialog",
-                              "CollateSingleJobs" );
-    mxSingleJobsBox->set_active(aValue.equalsIgnoreAsciiCase("true"));
+    mxSingleJobsBox->set_active( officecfg::VCL::VCLSettings::PrintDialog::CollateSingleJobs::get() );
 
     // preview box
-    aValue = pItem->getValue( "PrintDialog",
-                              "HasPreview" );
-    if ( aValue.equalsIgnoreAsciiCase("false") )
-        mxPreviewBox->set_active( false );
-    else
-        mxPreviewBox->set_active( true );
+    mxPreviewBox->set_active( officecfg::VCL::VCLSettings::PrintDialog::HasPreview::get() );
 
 }
 
 void PrintDialog::setPaperSizes()
 {
     mxPaperSizeBox->clear();
+    mxPaperSizeBox->set_active(-1);
 
     VclPtr<Printer> aPrt( maPController->getPrinter() );
     mePaper = aPrt->GetPaper();
 
+    // Related: tdf#159995 allow setting the page size when printing to file
+    // On macOS, printing to file just saves to PDF using a native print
+    // job just like the native print dialog's PDF > Save as PDF... option.
+    // Also, as noted in tdf#163558, the native print dialog could support
+    // changing the page size eventually (and already does in Apple's
+    // Safari and TextEdit applications) so allow changing of the page
+    // size in the non-native print dialog on macOS as well.
+#ifndef MACOSX
     if ( isPrintToFile() )
     {
         mxPaperSizeBox->set_sensitive( false );
     }
     else
+#endif
     {
+        int nExactMatch = -1;
+        int nSizeMatch = -1;
+        int nRotatedSizeMatch = -1;
         Size aSizeOfPaper = aPrt->GetSizeOfPaper();
         PaperInfo aPaperInfo(aSizeOfPaper.getWidth(), aSizeOfPaper.getHeight());
+        // coverity[swapped_arguments : FALSE] - this is in the correct order
+        PaperInfo aRotatedPaperInfo(aSizeOfPaper.getHeight(), aSizeOfPaper.getWidth());
         const LocaleDataWrapper& rLocWrap(Application::GetSettings().GetLocaleDataWrapper());
         o3tl::Length eUnit = o3tl::Length::mm;
         int nDigits = 0;
@@ -878,7 +843,7 @@ void PrintDialog::setPaperSizes()
 
             OUString aWidth( rLocWrap.getNum( aLogicPaperSize.Width(), nDigits ) );
             OUString aHeight( rLocWrap.getNum( aLogicPaperSize.Height(), nDigits ) );
-            OUString aUnit = eUnit == o3tl::Length::mm ? OUString("mm") : OUString("in");
+            OUString aUnit = eUnit == o3tl::Length::mm ? u"mm"_ustr : u"in"_ustr;
             OUString aPaperName;
 
             // Paper sizes that we don't know of but the system printer driver lists are not "User
@@ -890,10 +855,22 @@ void PrintDialog::setPaperSizes()
 
             mxPaperSizeBox->append_text(aPaperName);
 
-            if ( (ePaper != PAPER_USER && ePaper == mePaper) ||
-                 (ePaper == PAPER_USER && aInfo.sloppyEqual(aPaperInfo) ) )
-                 mxPaperSizeBox->set_active( nPaper );
+            if (ePaper != PAPER_USER && ePaper == mePaper)
+                nExactMatch = nPaper;
+
+            if (ePaper == PAPER_USER && aInfo.sloppyEqual(aPaperInfo))
+                nSizeMatch = nPaper;
+
+            if (ePaper == PAPER_USER && aInfo.sloppyEqual(aRotatedPaperInfo))
+                nRotatedSizeMatch = nPaper;
         }
+
+        if (nExactMatch != -1)
+            mxPaperSizeBox->set_active(nExactMatch);
+        else if (nSizeMatch != -1)
+            mxPaperSizeBox->set_active(nSizeMatch);
+        else if (nRotatedSizeMatch != -1)
+            mxPaperSizeBox->set_active(nRotatedSizeMatch);
 
         mxPaperSizeBox->set_sensitive( true );
     }
@@ -944,6 +921,9 @@ void PrintDialog::preparePreview( bool i_bMayUseCache )
     // page range may have changed depending on options
     sal_Int32 nPages = maPController->getFilteredPageCount();
     mnCachedPages = nPages;
+
+    if (!i_bMayUseCache)
+        updatePageRange(nPages);
 
     setPreviewText();
 
@@ -1001,6 +981,51 @@ void PrintDialog::preparePreview( bool i_bMayUseCache )
     mxPageEdit->set_sensitive( nPages > 1 );
 }
 
+void PrintDialog::updatePageRange(sal_Int32 nPages)
+{
+    if (nPages > 0 && !mxPageRangesRadioButton->get_active())
+    {
+        OUStringBuffer aBuf(32);
+        aBuf.append("1");
+        if (nPages > 1)
+        {
+            aBuf.append("-" + OUString::number(nPages));
+        }
+        OUString sRange = aBuf.makeStringAndClear();
+        mxPageRangeEdit->set_text(sRange);
+        maPController->setValue(u"PageRange"_ustr, Any(sRange));
+    }
+}
+
+void PrintDialog::updatePageSize(int nOrientation)
+{
+    VclPtr<Printer> aPrt(maPController->getPrinter());
+
+    Size aSize;
+    if (mxNupPagesBox->get_active_id() == "1")
+    {
+        PaperInfo aInfo = aPrt->GetPaperInfo(mxPaperSizeBox->get_active());
+        aSize = Size(aInfo.getWidth(), aInfo.getHeight());
+        if (aSize.IsEmpty())
+            aSize = aPrt->GetSizeOfPaper();
+
+        if (nOrientation != ORIENTATION_AUTOMATIC)
+        {
+            if ((nOrientation == ORIENTATION_PORTRAIT && aSize.Width() > aSize.Height())
+                || (nOrientation == ORIENTATION_LANDSCAPE && aSize.Width() < aSize.Height()))
+            {
+                // coverity[swapped_arguments : FALSE] - this is in the intended order
+                aSize = Size(aSize.Height(), aSize.Width());
+            }
+        }
+    }
+    else
+        aSize = getJobPageSize();
+
+    aPrt->SetPrintPageSize(aSize);
+    aPrt->SetUsePrintDialogSetting(true);
+}
+
 void PrintDialog::updateOrientationBox( const bool bAutomatic )
 {
     if ( !bAutomatic )
@@ -1035,7 +1060,7 @@ void PrintDialog::checkControlDependencies()
 {
     if (mxCopyCountField->get_value() > 1)
     {
-        mxCollateBox->set_sensitive( !mbCollateAlwaysOff );
+        mxCollateBox->set_sensitive( officecfg::VCL::VCLSettings::PrintDialog::Collate::isReadOnly() );
         mxSingleJobsBox->set_sensitive( mxCollateBox->get_active() );
     }
     else
@@ -1057,6 +1082,8 @@ void PrintDialog::checkOptionalControlDependencies()
 {
     for( const auto& rEntry : maControlToPropertyMap )
     {
+        assert(rEntry.first);
+
         bool bShouldbeEnabled = maPController->isUIOptionEnabled( rEntry.second );
 
         if (bShouldbeEnabled && dynamic_cast<weld::RadioButton*>(rEntry.first))
@@ -1329,8 +1356,8 @@ void PrintDialog::setupOptionalUI()
             OUString sOptionsUIFile;
             rOption.Value >>= sOptionsUIFile;
             mxCustomOptionsUIBuilder = Application::CreateBuilder(mxCustom.get(), sOptionsUIFile);
-            std::unique_ptr<weld::Container> xWindow = mxCustomOptionsUIBuilder->weld_container("box");
-            xWindow->set_help_id("vcl/ui/printdialog/PrintDialog");
+            std::unique_ptr<weld::Container> xWindow = mxCustomOptionsUIBuilder->weld_container(u"box"_ustr);
+            xWindow->set_help_id(u"vcl/ui/printdialog/PrintDialog"_ustr);
             xWindow->show();
             continue;
         }
@@ -1351,7 +1378,7 @@ void PrintDialog::setupOptionalUI()
         sal_Int64 nMinValue = 0, nMaxValue = 0;
         OUString aGroupingHint;
 
-        for( const beans::PropertyValue& rEntry : std::as_const(aOptProp) )
+        for (const beans::PropertyValue& rEntry : aOptProp)
         {
             if ( rEntry.Name == "ID" )
             {
@@ -1589,7 +1616,7 @@ void PrintDialog::setupOptionalUI()
                 continue;
 
             // iterate options
-            for( const auto& rChoice : std::as_const(aChoices) )
+            for (const auto& rChoice : aChoices)
                 xList->append_text(rChoice);
 
             sal_Int32 nSelectVal = 0;
@@ -1813,13 +1840,13 @@ IMPL_LINK(PrintDialog, ToggleHdl, weld::Toggleable&, rButton, void)
     }
     else if (&rButton == mxSingleJobsBox.get())
     {
-        maPController->setValue( "SinglePrintJobs",
+        maPController->setValue( u"SinglePrintJobs"_ustr,
                                  Any( isSingleJobs() ) );
         checkControlDependencies();
     }
     else if( &rButton == mxCollateBox.get() )
     {
-        maPController->setValue( "Collate",
+        maPController->setValue( u"Collate"_ustr,
                                  Any( isCollate() ) );
         checkControlDependencies();
     }
@@ -1827,7 +1854,7 @@ IMPL_LINK(PrintDialog, ToggleHdl, weld::Toggleable&, rButton, void)
     {
         bool bChecked = mxReverseOrderBox->get_active();
         maPController->setReversePrint( bChecked );
-        maPController->setValue( "PrintReverse",
+        maPController->setValue( u"PrintReverse"_ustr,
                                  Any( bChecked ) );
         maUpdatePreviewIdle.Start();
     }
@@ -1857,6 +1884,7 @@ IMPL_LINK(PrintDialog, ToggleHdl, weld::Toggleable&, rButton, void)
         {
             mxOrientationBox->set_sensitive( true );
             mxOrientationBox->set_active( ORIENTATION_AUTOMATIC );
+            updatePageSize(mxOrientationBox->get_active());
             enableNupControls( true );
             updateNupFromPages();
         }
@@ -1913,6 +1941,9 @@ IMPL_LINK(PrintDialog, ClickHdl, weld::Button&, rButton, void)
             }
 
             updateOrientationBox( false );
+
+            updatePageSize(mxOrientationBox->get_active());
+
             setupPaperSidesBox();
 
             // tdf#63905 don't use cache: page size may change
@@ -1933,12 +1964,17 @@ IMPL_LINK( PrintDialog, SelectHdl, weld::ComboBox&, rBox, void )
             // set new printer
             maPController->setPrinter( VclPtrInstance<Printer>( aNewPrinter ) );
             maPController->resetPrinterOptions( false  );
+            // invalidate page cache and start fresh
+            maPController->invalidatePageCache();
+            maFirstPageSize = Size();
 
             updateOrientationBox();
+            updatePageSize(mxOrientationBox->get_active());
 
             // update text fields
             mxOKButton->set_label(maPrintText);
             updatePrinterText();
+            updateNup(false);
             setPaperSizes();
             maUpdatePreviewIdle.Start();
         }
@@ -1951,10 +1987,20 @@ IMPL_LINK( PrintDialog, SelectHdl, weld::ComboBox&, rBox, void )
 
             setPaperSizes();
             updateOrientationBox();
+            updatePageSize(mxOrientationBox->get_active());
             maUpdatePreviewIdle.Start();
         }
 
         setupPaperSidesBox();
+
+        // Related: tdf#159995 changing a listbox's active item does not
+        // trigger an update to the preview so force an update to the
+        // preview by calling each active listbox's select handler after
+        // changing the active printer.
+        if ( mxOrientationBox->get_sensitive() )
+            LINK( this, PrintDialog, SelectHdl ).Call( *mxOrientationBox );
+        if ( mxPaperSizeBox->get_sensitive() )
+            LINK( this, PrintDialog, SelectHdl ).Call( *mxPaperSizeBox );
     }
     else if ( &rBox == mxPaperSidesBox.get() )
     {
@@ -1967,6 +2013,7 @@ IMPL_LINK( PrintDialog, SelectHdl, weld::ComboBox&, rBox, void )
         if ( nOrientation != ORIENTATION_AUTOMATIC )
             setPaperOrientation( static_cast<Orientation>( nOrientation - 1 ), true );
 
+        updatePageSize(nOrientation);
         updateNup( false );
     }
     else if ( &rBox == mxNupOrderBox.get() )
@@ -1977,6 +2024,7 @@ IMPL_LINK( PrintDialog, SelectHdl, weld::ComboBox&, rBox, void )
     {
         if( !mxPagesBtn->get_active() )
             mxPagesBtn->set_active(true);
+        updatePageSize(mxOrientationBox->get_active());
         updateNupFromPages( false );
     }
     else if ( &rBox == mxPaperSizeBox.get() )
@@ -1993,7 +2041,9 @@ IMPL_LINK( PrintDialog, SelectHdl, weld::ComboBox&, rBox, void )
 
         maPController->setPaperSizeFromUser( Size( aInfo.getWidth(), aInfo.getHeight() ) );
 
-        maUpdatePreviewIdle.Start();
+        updatePageSize(mxOrientationBox->get_active());
+
+        maUpdatePreviewNoCacheIdle.Start();
     }
 }
 
@@ -2014,7 +2064,7 @@ IMPL_LINK_NOARG(PrintDialog, ActivateHdl, weld::Entry&, bool)
     if (nPage < 1)
     {
         nPage = 1;
-        mxPageEdit->set_text("1");
+        mxPageEdit->set_text(u"1"_ustr);
     }
     else if (nPage > mnCachedPages)
     {
@@ -2039,9 +2089,9 @@ IMPL_LINK( PrintDialog, SpinModifyHdl, weld::SpinButton&, rEdit, void )
     }
     else if( &rEdit == mxCopyCountField.get() )
     {
-        maPController->setValue( "CopyCount",
+        maPController->setValue( u"CopyCount"_ustr,
                                Any( sal_Int32(mxCopyCountField->get_value()) ) );
-        maPController->setValue( "Collate",
+        maPController->setValue( u"Collate"_ustr,
                                Any( isCollate() ) );
     }
 }
@@ -2110,9 +2160,21 @@ IMPL_LINK( PrintDialog, UIOption_SelectHdl, weld::ComboBox&, i_rBox, void )
     //n-up print, we will assume notes are in landscape unless we throw
     //away maFirstPageSize when we change page content type
     if (pVal->Name == "PageContentType")
+    {
         maFirstPageSize = Size();
 
+        css::uno::Sequence<sal_Bool> aChoicesDisabled{
+            false, // Original size
+            false, // Fit to printable page
+            (nVal == 2) /*Notes*/ ? true : false, // disable/enable Multiple sheets of paper
+            (nVal == 2) /*Notes*/ ? true : false  // disable/enable Tile sheet of paper
+        };
+        maPController->setUIChoicesDisabled(u"PageOptions"_ustr, aChoicesDisabled);
+    }
+
     checkOptionalControlDependencies();
+
+    updatePageSize(mxOrientationBox->get_active());
 
     // update preview and page settings
     maUpdatePreviewNoCacheIdle.Start();
@@ -2138,7 +2200,7 @@ IMPL_LINK( PrintDialog, UIOption_SpinModifyHdl, weld::SpinButton&, i_rBox, void 
 IMPL_LINK( PrintDialog, UIOption_EntryModifyHdl, weld::Entry&, i_rBox, void )
 {
     PropertyValue* pVal = getValueForWindow( &i_rBox );
-    if( pVal )
+    if( pVal && mxPageRangesRadioButton->get_active() )
     {
         makeEnabled( &i_rBox );
 
@@ -2174,7 +2236,7 @@ void PrintDialog::previewBackward()
 
 void PrintDialog::previewFirst()
 {
-    mxPageEdit->set_text("1");
+    mxPageEdit->set_text(u"1"_ustr);
     ActivateHdl(*mxPageEdit);
 }
 
@@ -2195,13 +2257,13 @@ static OUString getNewLabel(const OUString& aLabel, int i_nCurr, int i_nMax)
 
 // PrintProgressDialog
 PrintProgressDialog::PrintProgressDialog(weld::Window* i_pParent, int i_nMax)
-    : GenericDialogController(i_pParent, "vcl/ui/printprogressdialog.ui", "PrintProgressDialog")
+    : GenericDialogController(i_pParent, u"vcl/ui/printprogressdialog.ui"_ustr, u"PrintProgressDialog"_ustr)
     , mbCanceled(false)
     , mnCur(0)
     , mnMax(i_nMax)
-    , mxText(m_xBuilder->weld_label("label"))
-    , mxProgress(m_xBuilder->weld_progress_bar("progressbar"))
-    , mxButton(m_xBuilder->weld_button("cancel"))
+    , mxText(m_xBuilder->weld_label(u"label"_ustr))
+    , mxProgress(m_xBuilder->weld_progress_bar(u"progressbar"_ustr))
+    , mxButton(m_xBuilder->weld_button(u"cancel"_ustr))
 {
     if( mnMax < 1 )
         mnMax = 1;

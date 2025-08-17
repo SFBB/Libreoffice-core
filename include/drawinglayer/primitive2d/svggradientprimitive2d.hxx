@@ -100,7 +100,6 @@ namespace drawinglayer::primitive2d
             /// how to spread
             SpreadMethod                maSpreadMethod;
 
-            bool                        mbPreconditionsChecked : 1;
             bool                        mbCreatesContent : 1;
             bool                        mbSingleEntry : 1;
             bool                        mbFullyOpaque : 1;
@@ -118,7 +117,7 @@ namespace drawinglayer::primitive2d
 
         protected:
             /// local helpers
-            void createSingleGradientEntryFill(Primitive2DContainer& rContainer) const;
+            Primitive2DReference createSingleGradientEntryFill() const;
             virtual void createAtom(
                 Primitive2DContainer& rTargetColor,
                 Primitive2DContainer& rTargetOpacity,
@@ -132,19 +131,19 @@ namespace drawinglayer::primitive2d
                 double fStart,
                 double fEnd) const;
             virtual void checkPreconditions();
-            void createResult(
-                Primitive2DContainer& rContainer,
+            Primitive2DReference createResult(
                 Primitive2DContainer aTargetColor,
                 Primitive2DContainer aTargetOpacity,
                 const basegfx::B2DHomMatrix& rUnitGradientToObject,
                 bool bInvert = false) const;
-            bool getCreatesContent() const { return mbCreatesContent; }
-            bool getSingleEntry() const { return mbSingleEntry; }
+
             void setSingleEntry() { mbSingleEntry = true; }
-            bool getPreconditionsChecked() const { return mbPreconditionsChecked; }
             bool getFullyOpaque() const { return mbFullyOpaque; }
 
         public:
+            bool getCreatesContent() const { return mbCreatesContent; }
+            bool getSingleEntry() const { return mbSingleEntry; }
+
             /// constructor
             SvgGradientHelper(
                 basegfx::B2DHomMatrix aGradientTransform,
@@ -165,6 +164,9 @@ namespace drawinglayer::primitive2d
 
             /// compare operator
             bool operator==(const SvgGradientHelper& rSvgGradientHelper) const;
+
+            /// create transformation from UnitGrandient to ObjectTransform
+            virtual basegfx::B2DHomMatrix createUnitGradientToObjectTransformation() const = 0;
         };
 
         /// the basic linear gradient primitive
@@ -185,7 +187,7 @@ namespace drawinglayer::primitive2d
             virtual void checkPreconditions() override;
 
             /// local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
             /// constructor
@@ -210,6 +212,9 @@ namespace drawinglayer::primitive2d
 
             /// provide unique ID
             virtual sal_uInt32 getPrimitive2DID() const override;
+
+            /// create transformation from UnitGrandient to ObjectTransform
+            virtual basegfx::B2DHomMatrix createUnitGradientToObjectTransformation() const override;
         };
 
         /// the basic radial gradient primitive
@@ -221,10 +226,7 @@ namespace drawinglayer::primitive2d
 
             /// Focal only used when focal is set at all, see constructors
             basegfx::B2DPoint                       maFocal;
-            basegfx::B2DVector                      maFocalVector;
             double                                  maFocalLength;
-
-            bool                                    mbFocalSet : 1;
 
             /// local helpers
             virtual void createAtom(
@@ -237,7 +239,7 @@ namespace drawinglayer::primitive2d
             virtual void checkPreconditions() override;
 
             /// local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
             /// constructor
@@ -255,7 +257,7 @@ namespace drawinglayer::primitive2d
             /// data read access
             double getRadius() const { return mfRadius; }
             const basegfx::B2DPoint& getFocal() const { return maFocal; }
-            bool isFocalSet() const { return mbFocalSet; }
+            bool isFocalSet() const { return !maFocal.equal(getStart()); }
 
             /// compare operator
             virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;
@@ -265,6 +267,9 @@ namespace drawinglayer::primitive2d
 
             /// provide unique ID
             virtual sal_uInt32 getPrimitive2DID() const override;
+
+            /// create transformation from UnitGrandient to ObjectTransform
+            virtual basegfx::B2DHomMatrix createUnitGradientToObjectTransformation() const override;
         };
 
         // SvgLinearAtomPrimitive2D class
@@ -283,7 +288,7 @@ namespace drawinglayer::primitive2d
             double                      mfOffsetB;
 
             /// local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
             /// constructor
@@ -336,7 +341,7 @@ namespace drawinglayer::primitive2d
             std::unique_ptr<VectorPair> mpTranslate;
 
             /// local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
             /// constructor

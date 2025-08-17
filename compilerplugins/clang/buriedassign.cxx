@@ -87,8 +87,6 @@ public:
             return;
         if (fn == SRCDIR "/basic/source/sbx/sbxvalue.cxx")
             return;
-        if (fn == SRCDIR "/basic/source/sbx/sbxvalue.cxx")
-            return;
         if (fn == SRCDIR "/sfx2/source/dialog/templdlg.cxx")
             return;
         if (fn == SRCDIR "/sfx2/source/view/viewfrm.cxx")
@@ -129,9 +127,9 @@ public:
             return;
         if (fn == SRCDIR "/dbaccess/source/core/dataaccess/intercept.cxx")
             return;
-        if (fn == SRCDIR "/writerfilter/source/dmapper/DomainMapper.cxx")
+        if (fn == SRCDIR "/sw/writerfilter/dmapper/DomainMapper.cxx")
             return;
-        if (fn == SRCDIR "/writerfilter/source/dmapper/DomainMapper_Impl.cxx")
+        if (fn == SRCDIR "/sw/writerfilter/dmapper/DomainMapper_Impl.cxx")
             return;
         if (fn == SRCDIR "/lotuswordpro/source/filter/lwptablelayout.cxx")
             return;

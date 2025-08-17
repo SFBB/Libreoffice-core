@@ -30,7 +30,7 @@
 #include "PresenterUIPainter.hxx"
 #include "PresenterWindowManager.hxx"
 #include <DrawController.hxx>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
+#include <framework/ConfigurationController.hxx>
 #include <com/sun/star/rendering/XBitmapCanvas.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 #include <com/sun/star/rendering/TextDirection.hpp>
@@ -227,11 +227,10 @@ private:
 
 PresenterSlideSorter::PresenterSlideSorter (
     const Reference<uno::XComponentContext>& rxContext,
-    const Reference<XResourceId>& rxViewId,
+    const rtl::Reference<sd::framework::ResourceId>& rxViewId,
     const rtl::Reference<::sd::DrawController>& rxController,
     const ::rtl::Reference<PresenterController>& rpPresenterController)
-    : PresenterSlideSorterInterfaceBase(m_aMutex),
-      mxComponentContext(rxContext),
+    : mxComponentContext(rxContext),
       mxViewId(rxViewId),
       mpPresenterController(rpPresenterController),
       mxSlideShowController(mpPresenterController->GetSlideShowController()),
@@ -255,12 +254,11 @@ PresenterSlideSorter::PresenterSlideSorter (
     try
     {
         // Get pane and window.
-        Reference<XConfigurationController> xCC (
-            rxController->getConfigurationController(), UNO_SET_THROW);
+        rtl::Reference<sd::framework::ConfigurationController> xCC (rxController->getConfigurationController());
         Reference<lang::XMultiComponentFactory> xFactory (
             mxComponentContext->getServiceManager(), UNO_SET_THROW);
 
-        mxPane.set(xCC->getResource(rxViewId->getAnchor()), UNO_QUERY_THROW);
+        mxPane = dynamic_cast<sd::framework::AbstractPane*>(xCC->getResource(rxViewId->getAnchor()).get());
         mxWindow = mxPane->getWindow();
 
         // Add window listener.
@@ -287,12 +285,12 @@ PresenterSlideSorter::PresenterSlideSorter (
             mpPresenterController->GetTheme(),
             mxWindow,
             mxCanvas,
-            "SlideSorterCloser");
+            u"SlideSorterCloser"_ustr);
 
         if (mpPresenterController->GetTheme() != nullptr)
         {
             PresenterTheme::SharedFontDescriptor pFont (
-                mpPresenterController->GetTheme()->GetFont("ButtonFont"));
+                mpPresenterController->GetTheme()->GetFont(u"ButtonFont"_ustr));
             if (pFont)
                 maSeparatorColor = pFont->mnColor;
         }
@@ -301,11 +299,7 @@ PresenterSlideSorter::PresenterSlideSorter (
         mpLayout = std::make_shared<Layout>(mpVerticalScrollBar);
 
         // Create the preview cache.
-        mxPreviewCache.set(
-            xFactory->createInstanceWithContext(
-                "com.sun.star.drawing.PresenterPreviewCache",
-                mxComponentContext),
-            UNO_QUERY_THROW);
+        mxPreviewCache = new sd::presenter::PresenterPreviewCache();
         Reference<container::XIndexAccess> xSlides (mxSlideShowController, UNO_QUERY);
         mxPreviewCache->setDocumentSlides(xSlides, rxController->getModel());
         mxPreviewCache->addPreviewCreationNotifyListener(this);
@@ -323,7 +317,7 @@ PresenterSlideSorter::PresenterSlideSorter (
 
         // Listen for changes of the current slide.
         rxController->addPropertyChangeListener(
-            "CurrentPage",
+            u"CurrentPage"_ustr,
             this);
 
         // Move the current slide in the center of the window.
@@ -333,7 +327,10 @@ PresenterSlideSorter::PresenterSlideSorter (
     }
     catch (RuntimeException&)
     {
-        disposing();
+        {
+            std::unique_lock l(m_aMutex);
+            disposing(l);
+        }
         throw;
     }
 }
@@ -342,7 +339,7 @@ PresenterSlideSorter::~PresenterSlideSorter()
 {
 }
 
-void SAL_CALL PresenterSlideSorter::disposing()
+void PresenterSlideSorter::disposing(std::unique_lock<std::mutex>&)
 {
     mxComponentContext = nullptr;
     mxViewId = nullptr;
@@ -350,15 +347,13 @@ void SAL_CALL PresenterSlideSorter::disposing()
 
     if (mpVerticalScrollBar.is())
     {
-        Reference<lang::XComponent> xComponent = mpVerticalScrollBar;
-        mpVerticalScrollBar = nullptr;
+        rtl::Reference<PresenterScrollBar> xComponent = std::move(mpVerticalScrollBar);
         if (xComponent.is())
             xComponent->dispose();
     }
     if (mpCloseButton.is())
     {
-        Reference<lang::XComponent> xComponent = mpCloseButton;
-        mpCloseButton = nullptr;
+        rtl::Reference<PresenterButton> xComponent = std::move(mpCloseButton);
         if (xComponent.is())
             xComponent->dispose();
     }
@@ -378,11 +373,9 @@ void SAL_CALL PresenterSlideSorter::disposing()
     if (mxPreviewCache.is())
     {
         mxPreviewCache->removePreviewCreationNotifyListener(this);
-
-        Reference<XComponent> xComponent (mxPreviewCache, UNO_QUERY);
+        if (mxPreviewCache.is())
+            mxPreviewCache->dispose();
         mxPreviewCache = nullptr;
-        if (xComponent.is())
-            xComponent->dispose();
     }
 
     if (mxWindow.is())
@@ -403,7 +396,7 @@ void SAL_CALL PresenterSlideSorter::disposing (const lang::EventObject& rEventOb
         mxWindow = nullptr;
         dispose();
     }
-    else if (rEventObject.Source == mxPreviewCache)
+    else if (rEventObject.Source == cppu::getXWeak(mxPreviewCache.get()))
     {
         mxPreviewCache = nullptr;
         dispose();
@@ -421,26 +414,34 @@ void SAL_CALL PresenterSlideSorter::disposing (const lang::EventObject& rEventOb
 
 void SAL_CALL PresenterSlideSorter::windowResized (const awt::WindowEvent&)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     mbIsLayoutPending = true;
     mpPresenterController->GetPaintManager()->Invalidate(mxWindow);
 }
 
 void SAL_CALL PresenterSlideSorter::windowMoved (const awt::WindowEvent&)
 {
-    ThrowIfDisposed();
+    std::unique_lock l(m_aMutex);
+    throwIfDisposed(l);
 }
 
 void SAL_CALL PresenterSlideSorter::windowShown (const lang::EventObject&)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     mbIsLayoutPending = true;
     mpPresenterController->GetPaintManager()->Invalidate(mxWindow);
 }
 
 void SAL_CALL PresenterSlideSorter::windowHidden (const lang::EventObject&)
 {
-    ThrowIfDisposed();
+    std::unique_lock l(m_aMutex);
+    throwIfDisposed(l);
 }
 
 //----- XPaintListener --------------------------------------------------------
@@ -542,15 +543,18 @@ void SAL_CALL PresenterSlideSorter::mouseMoved (const css::awt::MouseEvent& rEve
 
 void SAL_CALL PresenterSlideSorter::mouseDragged (const css::awt::MouseEvent&) {}
 
-//----- XResourceId -----------------------------------------------------------
+//----- AbstractResource -----------------------------------------------------------
 
-Reference<XResourceId> SAL_CALL PresenterSlideSorter::getResourceId()
+rtl::Reference<sd::framework::ResourceId> PresenterSlideSorter::getResourceId()
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     return mxViewId;
 }
 
-sal_Bool SAL_CALL PresenterSlideSorter::isAnchorOnly()
+bool PresenterSlideSorter::isAnchorOnly()
 {
     return false;
 }
@@ -576,7 +580,10 @@ void SAL_CALL PresenterSlideSorter::notifyPreviewCreation (
 
 void SAL_CALL PresenterSlideSorter::setCurrentPage (const Reference<drawing::XDrawPage>&)
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     ::osl::MutexGuard aGuard (::osl::Mutex::getGlobalMutex());
 
     if (!mxSlideShowController.is())
@@ -601,11 +608,16 @@ void SAL_CALL PresenterSlideSorter::setCurrentPage (const Reference<drawing::XDr
     mpPresenterController->GetPaintManager()->Invalidate(
         mxWindow,
         maCurrentSlideFrameBoundingBox);
+
+    ScrollSlideIntoView(mnCurrentSlideIndex);
 }
 
 Reference<drawing::XDrawPage> SAL_CALL PresenterSlideSorter::getCurrentPage()
 {
-    ThrowIfDisposed();
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
     return nullptr;
 }
 
@@ -631,14 +643,14 @@ void PresenterSlideSorter::UpdateLayout()
         if ( ! pPane->mxPane.is())
             break;
 
-        Reference<drawing::framework::XPaneBorderPainter> xBorderPainter (
+        rtl::Reference<PresenterPaneBorderPainter> xBorderPainter (
             pPane->mxPane->GetPaneBorderPainter());
         if ( ! xBorderPainter.is())
             break;
         xBorderPainter->addBorder (
             mxViewId->getAnchor()->getResourceURL(),
             awt::Rectangle(0, 0, aWindowBox.Width, aWindowBox.Height),
-            drawing::framework::BorderType_INNER_BORDER);
+            BorderType::INNER);
     }
     while(false);
 
@@ -778,8 +790,8 @@ double PresenterSlideSorter::GetSlideAspectRatio() const
             Reference<beans::XPropertySet> xProperties(xSlides->getByIndex(0),UNO_QUERY_THROW);
             sal_Int32 nWidth (28000);
             sal_Int32 nHeight (21000);
-            if ((xProperties->getPropertyValue("Width") >>= nWidth)
-                && (xProperties->getPropertyValue("Height") >>= nHeight)
+            if ((xProperties->getPropertyValue(u"Width"_ustr) >>= nWidth)
+                && (xProperties->getPropertyValue(u"Height"_ustr) >>= nHeight)
                 && nHeight > 0)
             {
                 nSlideAspectRatio = double(nWidth) / double(nHeight);
@@ -828,7 +840,7 @@ void PresenterSlideSorter::PaintPreview (
                                                                       mpLayout->GetPoint(nSlideIndex, isRTL?1:-1, -1)));
 
     PresenterBitmapContainer aContainer (
-        "PresenterScreenSettings/ScrollBar/Bitmaps",
+        u"PresenterScreenSettings/ScrollBar/Bitmaps"_ustr,
         std::shared_ptr<PresenterBitmapContainer>(),
         mxComponentContext,
         rxCanvas);
@@ -887,7 +899,7 @@ void PresenterSlideSorter::PaintPreview (
             if( bCustomAnimation )
             {
                 const awt::Rectangle aAnimationPreviewBox(aTopLeft.X+3, aTopLeft.Y+aSize.Height-40, 0, 0);
-                SharedBitmapDescriptor aAnimationDescriptor = aContainer.GetBitmap("Animation");
+                SharedBitmapDescriptor aAnimationDescriptor = aContainer.GetBitmap(u"Animation"_ustr);
                 Reference<rendering::XBitmap> xAnimationIcon (aAnimationDescriptor->GetNormalBitmap());
                 rendering::RenderState aAnimationRenderState (
                     geometry::AffineMatrix2D(
@@ -901,7 +913,7 @@ void PresenterSlideSorter::PaintPreview (
             if( bTransition )
             {
                 const awt::Rectangle aTransitionPreviewBox(aTopLeft.X+3, aTopLeft.Y+aSize.Height-20, 0, 0);
-                SharedBitmapDescriptor aTransitionDescriptor = aContainer.GetBitmap("Transition");
+                SharedBitmapDescriptor aTransitionDescriptor = aContainer.GetBitmap(u"Transition"_ustr);
                 Reference<rendering::XBitmap> xTransitionIcon (aTransitionDescriptor->GetNormalBitmap());
                 rendering::RenderState aTransitionRenderState (
                     geometry::AffineMatrix2D(
@@ -1016,6 +1028,20 @@ void PresenterSlideSorter::GotoSlide (const sal_Int32 nSlideIndex)
     mxSlideShowController->gotoSlideIndex(nSlideIndex);
 }
 
+void PresenterSlideSorter::ScrollSlideIntoView(sal_Int32 nSlideIndex)
+{
+    const double fThumbPos = mpVerticalScrollBar->GetThumbPosition();
+    const double fThumbSize = mpVerticalScrollBar->GetThumbSize();
+    const double fSlidePos = mpLayout->GetPoint(nSlideIndex, -1, -1).Y;
+
+    const bool bFullyVisible
+        = (fSlidePos - mpLayout->mnVerticalBorder >= fThumbPos)
+          && (fSlidePos + mpLayout->maPreviewSize.Height + mpLayout->mnVerticalBorder
+              <= fThumbPos + fThumbSize);
+    if (!bFullyVisible)
+        mpVerticalScrollBar->SetThumbPosition(fSlidePos - mpLayout->mnVerticalBorder, false);
+}
+
 bool PresenterSlideSorter::ProvideCanvas()
 {
     if ( ! mxCanvas.is())
@@ -1033,16 +1059,6 @@ bool PresenterSlideSorter::ProvideCanvas()
             std::make_shared<CurrentSlideFrameRenderer>(mxComponentContext, mxCanvas);
     }
     return mxCanvas.is();
-}
-
-void PresenterSlideSorter::ThrowIfDisposed()
-{
-    if (rBHelper.bDisposed || rBHelper.bInDispose)
-    {
-        throw lang::DisposedException (
-            "PresenterSlideSorter has been already disposed",
-            static_cast<uno::XWeak*>(this));
-    }
 }
 
 //===== PresenterSlideSorter::Layout ==========================================
@@ -1413,12 +1429,12 @@ PresenterSlideSorter::MouseOverManager::MouseOverManager (
         std::shared_ptr<PresenterBitmapContainer> pBitmaps (rpTheme->GetBitmapContainer());
         if (pBitmaps != nullptr)
         {
-            mpLeftLabelBitmap = pBitmaps->GetBitmap("LabelLeft");
-            mpCenterLabelBitmap = pBitmaps->GetBitmap("LabelCenter");
-            mpRightLabelBitmap = pBitmaps->GetBitmap("LabelRight");
+            mpLeftLabelBitmap = pBitmaps->GetBitmap(u"LabelLeft"_ustr);
+            mpCenterLabelBitmap = pBitmaps->GetBitmap(u"LabelCenter"_ustr);
+            mpRightLabelBitmap = pBitmaps->GetBitmap(u"LabelRight"_ustr);
         }
 
-        mpFont = rpTheme->GetFont("SlideSorterLabelFont");
+        mpFont = rpTheme->GetFont(u"SlideSorterLabelFont"_ustr);
     }
 }
 
@@ -1486,7 +1502,7 @@ void PresenterSlideSorter::MouseOverManager::SetSlide (
 
             Reference<beans::XPropertySet> xSlideProperties(mxSlides->getByIndex(nSlideIndex), UNO_QUERY);
             if (xSlideProperties.is())
-                xSlideProperties->getPropertyValue("LinkDisplayName") >>= msText;
+                xSlideProperties->getPropertyValue(u"LinkDisplayName"_ustr) >>= msText;
 
             if (msText.isEmpty())
                 msText = "Slide " + OUString::number(nSlideIndex + 1);
@@ -1690,29 +1706,29 @@ PresenterSlideSorter::CurrentSlideFrameRenderer::CurrentSlideFrameRenderer (
 {
     PresenterConfigurationAccess aConfiguration (
         rxContext,
-        "/org.openoffice.Office.PresenterScreen/",
+        u"/org.openoffice.Office.PresenterScreen/"_ustr,
         PresenterConfigurationAccess::READ_ONLY);
     Reference<container::XHierarchicalNameAccess> xBitmaps (
         aConfiguration.GetConfigurationNode(
-            "PresenterScreenSettings/SlideSorter/CurrentSlideBorderBitmaps"),
+            u"PresenterScreenSettings/SlideSorter/CurrentSlideBorderBitmaps"_ustr),
         UNO_QUERY);
     if ( ! xBitmaps.is())
         return;
 
     PresenterBitmapContainer aContainer (
-        "PresenterScreenSettings/SlideSorter/CurrentSlideBorderBitmaps",
+        u"PresenterScreenSettings/SlideSorter/CurrentSlideBorderBitmaps"_ustr,
         std::shared_ptr<PresenterBitmapContainer>(),
         rxContext,
         rxCanvas);
 
-    mpTopLeft = aContainer.GetBitmap("TopLeft");
-    mpTop = aContainer.GetBitmap("Top");
-    mpTopRight = aContainer.GetBitmap("TopRight");
-    mpLeft = aContainer.GetBitmap("Left");
-    mpRight = aContainer.GetBitmap("Right");
-    mpBottomLeft = aContainer.GetBitmap("BottomLeft");
-    mpBottom = aContainer.GetBitmap("Bottom");
-    mpBottomRight = aContainer.GetBitmap("BottomRight");
+    mpTopLeft = aContainer.GetBitmap(u"TopLeft"_ustr);
+    mpTop = aContainer.GetBitmap(u"Top"_ustr);
+    mpTopRight = aContainer.GetBitmap(u"TopRight"_ustr);
+    mpLeft = aContainer.GetBitmap(u"Left"_ustr);
+    mpRight = aContainer.GetBitmap(u"Right"_ustr);
+    mpBottomLeft = aContainer.GetBitmap(u"BottomLeft"_ustr);
+    mpBottom = aContainer.GetBitmap(u"Bottom"_ustr);
+    mpBottomRight = aContainer.GetBitmap(u"BottomRight"_ustr);
 
     // Determine size of frame.
     if (mpTop)

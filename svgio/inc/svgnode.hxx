@@ -21,6 +21,7 @@
 
 #include "SvgNumber.hxx"
 #include "svgtoken.hxx"
+#include "svgtools.hxx"
 #include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
 #include <memory>
@@ -31,7 +32,6 @@
 // predefines
 namespace svgio::svgreader
 {
-    class SvgNode;
     class SvgDocument;
     class SvgStyleAttributes;
 }
@@ -94,6 +94,9 @@ namespace svgio::svgreader
 
             /// Class svan value
             std::optional<OUString>   mpClass;
+
+            /// systemLanguage values
+            SvgStringVector  maSystemLanguage;
 
             /// XmlSpace value
             XmlSpace                    maXmlSpace;
@@ -160,11 +163,8 @@ namespace svgio::svgreader
 
             /// InfoProvider support for %, em and ex values
             virtual basegfx::B2DRange getCurrentViewPort() const override;
-            virtual double getCurrentFontSizeInherited() const override;
-            virtual double getCurrentXHeightInherited() const override;
-
-            double getCurrentFontSize() const;
-            double getCurrentXHeight() const;
+            virtual double getCurrentFontSize() const override;
+            virtual double getCurrentXHeight() const override;
 
             /// Id access
             std::optional<OUString> const & getId() const { return mpId; }
@@ -173,6 +173,9 @@ namespace svgio::svgreader
             /// Class access
             std::optional<OUString> const & getClass() const { return mpClass; }
             void setClass(OUString const &);
+
+            /// SystemLanguage access
+            std::vector<OUString> const & getSystemLanguage() const { return maSystemLanguage; }
 
             /// XmlSpace access
             XmlSpace getXmlSpace() const;
@@ -184,9 +187,6 @@ namespace svgio::svgreader
 
             /// alternative parent
             void setAlternativeParent(const SvgNode* pAlternativeParent = nullptr) { mpAlternativeParent = pAlternativeParent; }
-
-            /// Check if there is a local css style
-            bool hasLocalCssStyle() { return static_cast<bool>(mpLocalCssStyle); }
         };
 
       class Visitor

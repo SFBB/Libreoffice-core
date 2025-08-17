@@ -19,6 +19,7 @@
 
 
 #include <sot/storinfo.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <unotools/tempfile.hxx>
 #include <tools/stream.hxx>
@@ -440,7 +441,7 @@ void Storage::Init( bool bCreate )
     bool bHdrLoaded = false;
     bIsRoot = true;
 
-    OSL_ENSURE( pIo, "The pointer may not be empty at this point!" );
+    assert(pIo && "The pointer may not be empty at this point!");
     if( pIo->Good() && pIo->GetStrm() )
     {
         sal_uInt64 nSize = pIo->GetStrm()->TellEnd();
@@ -684,7 +685,7 @@ bool Storage::CopyTo( const OUString& rElem, BaseStorage* pDest, const OUString&
                 if( !nTmpErr )
                 {
                     p2->SetClassId( p1->GetClassId() );
-                    p1->CopyTo( p2.get() );
+                    p1->CopyTo( *p2 );
                     SetError( p1->GetError() );
 
                     nTmpErr = p2->GetError();
@@ -730,27 +731,27 @@ bool Storage::CopyTo( const OUString& rElem, BaseStorage* pDest, const OUString&
     return false;
 }
 
-bool Storage::CopyTo( BaseStorage* pDest ) const
+bool Storage::CopyTo( BaseStorage& rDest ) const
 {
-    if( !Validate() || !pDest || !pDest->Validate( true ) || Equals( *pDest ) )
+    if( !Validate() || !rDest.Validate( true ) || Equals( rDest ) )
     {
         SetError( SVSTREAM_ACCESS_DENIED );
         return false;
     }
     Storage* pThis = const_cast<Storage*>(this);
-    pDest->SetClassId( GetClassId() );
-    pDest->SetDirty();
+    rDest.SetClassId( GetClassId() );
+    rDest.SetDirty();
     SvStorageInfoList aList;
     FillInfoList( &aList );
     bool bRes = true;
     for( size_t i = 0; i < aList.size() && bRes; i++ )
     {
         SvStorageInfo& rInfo = aList[ i ];
-        bRes = pThis->CopyTo( rInfo.GetName(), pDest, rInfo.GetName() );
+        bRes = pThis->CopyTo( rInfo.GetName(), &rDest, rInfo.GetName() );
     }
     if( !bRes )
-        SetError( pDest->GetError() );
-    return Good() && pDest->Good();
+        SetError( rDest.GetError() );
+    return Good() && rDest.Good();
 }
 
 bool Storage::IsStorage( const OUString& rName ) const

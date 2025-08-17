@@ -32,34 +32,36 @@ std::unique_ptr<PanelLayout> TextPropertyPanel::Create (
     const css::uno::Reference<css::frame::XFrame>& rxFrame)
 {
     if (pParent == nullptr)
-        throw lang::IllegalArgumentException("no parent Window given to TextPropertyPanel::Create", nullptr, 0);
+        throw lang::IllegalArgumentException(u"no parent Window given to TextPropertyPanel::Create"_ustr, nullptr, 0);
     if ( ! rxFrame.is())
-        throw lang::IllegalArgumentException("no XFrame given to TextPropertyPanel::Create", nullptr, 1);
+        throw lang::IllegalArgumentException(u"no XFrame given to TextPropertyPanel::Create"_ustr, nullptr, 1);
 
     return std::make_unique<TextPropertyPanel>(pParent, rxFrame);
 }
 
 TextPropertyPanel::TextPropertyPanel(weld::Widget* pParent, const css::uno::Reference<css::frame::XFrame>& rxFrame)
-    : PanelLayout(pParent, "SidebarTextPanel", "svx/ui/sidebartextpanel.ui")
-    , mxFont(m_xBuilder->weld_toolbar("font"))
+    : PanelLayout(pParent, u"SidebarTextPanel"_ustr, u"svx/ui/sidebartextpanel.ui"_ustr)
+    , mxFont(m_xBuilder->weld_toolbar(u"font"_ustr))
     , mxFontDispatch(new ToolbarUnoDispatcher(*mxFont, *m_xBuilder, rxFrame))
-    , mxFontHeight(m_xBuilder->weld_toolbar("fontheight"))
+    , mxFontHeight(m_xBuilder->weld_toolbar(u"fontheight"_ustr))
     , mxFontHeightDispatch(new ToolbarUnoDispatcher(*mxFontHeight, *m_xBuilder, rxFrame))
-    , mxFontEffects(m_xBuilder->weld_toolbar("fonteffects"))
+    , mxFontEffects(m_xBuilder->weld_toolbar(u"fonteffects"_ustr))
     , mxFontEffectsDispatch(new ToolbarUnoDispatcher(*mxFontEffects, *m_xBuilder, rxFrame))
-    , mxFontAdjust(m_xBuilder->weld_toolbar("fontadjust"))
+    , mxFontAdjust(m_xBuilder->weld_toolbar(u"fontadjust"_ustr))
     , mxFontAdjustDispatch(new ToolbarUnoDispatcher(*mxFontAdjust, *m_xBuilder, rxFrame))
-    , mxToolBoxFontColor(m_xBuilder->weld_toolbar("colorbar"))
+    , mxToolBoxFontColor(m_xBuilder->weld_toolbar(u"colorbar"_ustr))
     , mxToolBoxFontColorDispatch(new ToolbarUnoDispatcher(*mxToolBoxFontColor, *m_xBuilder, rxFrame))
-    , mxToolBoxBackgroundColor(m_xBuilder->weld_toolbar("colorbar_background"))
+    , mxToolBoxBackgroundColor(m_xBuilder->weld_toolbar(u"colorbar_background"_ustr))
     , mxToolBoxBackgroundColorDispatch(new ToolbarUnoDispatcher(*mxToolBoxBackgroundColor, *m_xBuilder, rxFrame))
-    , mxResetBar(m_xBuilder->weld_toolbar("resetattr"))
+    , mxResetBar(m_xBuilder->weld_toolbar(u"resetattr"_ustr))
     , mxResetBarDispatch(new ToolbarUnoDispatcher(*mxResetBar, *m_xBuilder, rxFrame))
-    , mxDefaultBar(m_xBuilder->weld_toolbar("defaultattr"))
+    , mxDefaultBar(m_xBuilder->weld_toolbar(u"defaultattr"_ustr))
     , mxDefaultBarDispatch(new ToolbarUnoDispatcher(*mxDefaultBar, *m_xBuilder, rxFrame))
-    , mxPositionBar(m_xBuilder->weld_toolbar("position"))
+    , mxHyphenationBar(m_xBuilder->weld_toolbar(u"hyphenation"_ustr))
+    , mxHyphenationBarDispatch(new ToolbarUnoDispatcher(*mxHyphenationBar, *m_xBuilder, rxFrame))
+    , mxPositionBar(m_xBuilder->weld_toolbar(u"position"_ustr))
     , mxPositionBarDispatch(new ToolbarUnoDispatcher(*mxPositionBar, *m_xBuilder, rxFrame))
-    , mxSpacingBar(m_xBuilder->weld_toolbar("spacingbar"))
+    , mxSpacingBar(m_xBuilder->weld_toolbar(u"spacingbar"_ustr))
     , mxSpacingBarDispatch(new ToolbarUnoDispatcher(*mxSpacingBar, *m_xBuilder, rxFrame))
 {
     bool isMobilePhone = false;
@@ -74,6 +76,7 @@ TextPropertyPanel::~TextPropertyPanel()
 {
     mxResetBarDispatch.reset();
     mxDefaultBarDispatch.reset();
+    mxHyphenationBarDispatch.reset();
     mxPositionBarDispatch.reset();
     mxSpacingBarDispatch.reset();
     mxToolBoxFontColorDispatch.reset();
@@ -85,6 +88,7 @@ TextPropertyPanel::~TextPropertyPanel()
 
     mxResetBar.reset();
     mxDefaultBar.reset();
+    mxHyphenationBar.reset();
     mxPositionBar.reset();
     mxSpacingBar.reset();
     mxToolBoxFontColor.reset();
@@ -106,6 +110,7 @@ void TextPropertyPanel::HandleContextChange (
     bool bWriterText = false;
     bool bDrawText = false;
     bool bCalcText = false;
+    bool bChartText = false;
 
     switch (maContext.GetCombinedContext_DI())
     {
@@ -135,13 +140,28 @@ void TextPropertyPanel::HandleContextChange (
             bCalcText = true;
             break;
 
+        //case CombinedEnumContext(Application::Chart, Context::Chart):
+        case CombinedEnumContext(Application::Chart, Context::Axis):
+        case CombinedEnumContext(Application::Chart, Context::ChartLabel):
+        case CombinedEnumContext(Application::Chart, Context::ChartLegend):
+        case CombinedEnumContext(Application::Chart, Context::ChartTitle):
+            bChartText = true;
+            break;
+
         default:
             break;
     }
 
     mxToolBoxBackgroundColor->set_visible(bWriterText || bDrawText);
-    mxResetBar->set_visible(bWriterText || bCalcText);
+    mxResetBar->set_visible(bWriterText || bCalcText || bChartText);
     mxDefaultBar->set_visible(bDrawText);
+    mxHyphenationBar->set_visible(bWriterText);
+    mxSpacingBar->set_item_visible(".uno:NoBreak", bWriterText);
+
+    bool bChartTitleOrNonChart
+        = (maContext.GetContext() == vcl::EnumContext::Context::ChartTitle) || !bChartText;
+    mxPositionBar->set_visible(bChartTitleOrNonChart);
+    mxSpacingBar->set_visible(bChartTitleOrNonChart);
 }
 
 } // end of namespace svx::sidebar

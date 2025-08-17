@@ -77,7 +77,7 @@ IndexColumns::IndexColumns(
         OUString tableName,
         OUString indexName,
         const css::uno::Sequence< OUString > &columns )
-    : Container( refMutex, origin, pSettings,  "INDEX_COLUMN" ),
+    : Container( refMutex, origin, pSettings,  u"INDEX_COLUMN"_ustr ),
       m_schemaName(std::move( schemaName )),
       m_tableName(std::move( tableName )),
       m_indexName(std::move( indexName )),
@@ -127,13 +127,12 @@ void IndexColumns::refresh()
 
             rtl::Reference<IndexColumn> pIndexColumn =
                 new IndexColumn( m_xMutex, m_origin, m_pSettings );
-            Reference< css::beans::XPropertySet > prop = pIndexColumn;
 
             columnMetaData2SDBCX( pIndexColumn.get(), xRow );
             pIndexColumn->setPropertyValue_NoBroadcast_public(
                 st.IS_ASCENDING , Any( false ) );
 
-            m_values[ index ] <<= prop;
+            m_values[ index ] <<= Reference< css::beans::XPropertySet >(pIndexColumn);
             m_name2index[ columnName ] = index;
         }
     }
@@ -152,7 +151,7 @@ void IndexColumns::appendByDescriptor(
     const css::uno::Reference< css::beans::XPropertySet >& /*future*/ )
 {
     throw css::sdbc::SQLException(
-        "SDBC-POSTGRESQL: IndexesColumns.appendByDescriptor not yet implemented",
+        u"SDBC-POSTGRESQL: IndexesColumns.appendByDescriptor not yet implemented"_ustr,
         *this, OUString(), 1, Any() );
 //     osl::MutexGuard guard( m_xMutex->GetMutex() );
 //     Statics & st = getStatics();
@@ -166,7 +165,7 @@ void IndexColumns::appendByDescriptor(
 void IndexColumns::dropByName( const OUString& )
 {
     throw css::sdbc::SQLException(
-        "SDBC-POSTGRESQL: IndexesColumns.dropByName not yet implemented",
+        u"SDBC-POSTGRESQL: IndexesColumns.dropByName not yet implemented"_ustr,
         *this, OUString(), 1, Any() );
 //     String2IntMap::const_iterator ii = m_name2index.find( elementName );
 //     if( ii == m_name2index.end() )
@@ -188,7 +187,7 @@ void IndexColumns::dropByName( const OUString& )
 void IndexColumns::dropByIndex( sal_Int32 )
 {
     throw css::sdbc::SQLException(
-        "SDBC-POSTGRESQL: IndexesColumns.dropByIndex not yet implemented",
+        u"SDBC-POSTGRESQL: IndexesColumns.dropByIndex not yet implemented"_ustr,
         *this, OUString(), 1, Any() );
 //     osl::MutexGuard guard( m_xMutex->GetMutex() );
 //     if( index < 0 ||  index >= m_values.getLength() )

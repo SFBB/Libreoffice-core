@@ -58,6 +58,11 @@
 #include <svx/svdview.hxx>
 #include <DrawViewShell.hxx>
 
+#include <svx/svdoashp.hxx>
+#include <svx/sdasitm.hxx>
+#include <svl/poolitem.hxx>
+#include <svl/stritem.hxx>
+
 using namespace com::sun::star;
 
 namespace {
@@ -69,13 +74,6 @@ sd::DrawViewShell* lcl_getDrawViewShell(const SdDrawDocument* pDoc)
     return static_cast<sd::DrawViewShell*>(pDoc->GetDocSh()->GetViewShell());
 }
 
-}
-
-bool SdPageObjsTLV::bIsInDrag = false;
-
-bool SdPageObjsTLV::IsInDrag()
-{
-    return bIsInDrag;
 }
 
 SotClipboardFormatId SdPageObjsTLV::SdPageObjsTransferable::mnListBoxDropFormatId = static_cast<SotClipboardFormatId>(SAL_MAX_UINT32);
@@ -123,12 +121,6 @@ bool SdPageObjsTLV::SdPageObjsTransferable::GetData( const css::datatransfer::Da
     }
 }
 
-void SdPageObjsTLV::SdPageObjsTransferable::DragFinished( sal_Int8 nDropAction )
-{
-    SdPageObjsTLV::OnDragFinished();
-    SdTransferable::DragFinished(nDropAction);
-}
-
 SdPageObjsTLV::SdPageObjsTransferable* SdPageObjsTLV::SdPageObjsTransferable::getImplementation( const css::uno::Reference< css::uno::XInterface >& rxData )
     noexcept
 {
@@ -138,7 +130,7 @@ SdPageObjsTLV::SdPageObjsTransferable* SdPageObjsTLV::SdPageObjsTransferable::ge
 SotClipboardFormatId SdPageObjsTLV::SdPageObjsTransferable::GetListBoxDropFormatId()
 {
     if (mnListBoxDropFormatId == static_cast<SotClipboardFormatId>(SAL_MAX_UINT32))
-        mnListBoxDropFormatId = SotExchange::RegisterFormatMimeType("application/x-openoffice-treelistbox-moveonly;windows_formatname=\"SV_LBOX_DD_FORMAT_MOVE\"");
+        mnListBoxDropFormatId = SotExchange::RegisterFormatMimeType(u"application/x-openoffice-treelistbox-moveonly;windows_formatname=\"SV_LBOX_DD_FORMAT_MOVE\""_ustr);
     return mnListBoxDropFormatId;
 }
 
@@ -296,12 +288,16 @@ bool SdPageObjsTLV::IsEqualToDoc( const SdDrawDocument* pInDoc )
 
 IMPL_LINK(SdPageObjsTLV, CommandHdl, const CommandEvent&, rCEvt, bool)
 {
-    if (IsEditingActive())
-        return false;
+    if (m_bEditing)
+    {
+        // Set the editing flag false here because gtk3 in-place editing ends but EditedEntryHdl
+        // doesn't get called. This isn't needed for sal in-place editing because EditedEntryHdl
+        // gets called when focus is lost.
+        m_bEditing = false;
+    }
 
     if (rCEvt.GetCommand() == CommandEventId::ContextMenu)
     {
-        m_bMouseReleased = false;
         m_xTreeView->grab_focus();
 
         // select clicked entry
@@ -316,7 +312,6 @@ IMPL_LINK(SdPageObjsTLV, CommandHdl, const CommandEvent&, rCEvt, bool)
         }
 
         bool bRet = m_aPopupMenuHdl.Call(rCEvt);
-        m_bMouseReleased = true;
         return bRet;
     }
 
@@ -325,16 +320,17 @@ IMPL_LINK(SdPageObjsTLV, CommandHdl, const CommandEvent&, rCEvt, bool)
 
 IMPL_LINK(SdPageObjsTLV, KeyInputHdl, const KeyEvent&, rKEvt, bool)
 {
+    if (m_bEditing)
+        return false;
+
     const vcl::KeyCode& rKeyCode = rKEvt.GetKeyCode();
     if (m_xAccel->execute(rKeyCode))
     {
-        m_bEditing = false;
         // the accelerator consumed the event
         return true;
     }
     if (rKeyCode.GetCode() == KEY_RETURN)
     {
-        m_bEditing = false;
         std::unique_ptr<weld::TreeIter> xCursor(m_xTreeView->make_iterator());
         if (m_xTreeView->get_cursor(xCursor.get()) && m_xTreeView->iter_has_child(*xCursor))
         {
@@ -349,16 +345,16 @@ IMPL_LINK(SdPageObjsTLV, KeyInputHdl, const KeyEvent&, rKEvt, bool)
         return true;
     }
     bool bRet = m_aKeyPressHdl.Call(rKEvt);
-    // m_bEditing needs to be set after key press handler call back or x11 won't end editing on
-    // Esc key press. See SdNavigatorWin::KeyInputHdl.
-    m_bEditing = false;
     return bRet;
 }
 
 IMPL_LINK(SdPageObjsTLV, MousePressHdl, const MouseEvent&, rMEvt, bool)
 {
-    m_bMouseReleased = false;
-    m_bEditing = false;
+    // Don't set m_bEditing false here. Sal in-place editing doesn't like that because the in-place
+    // editing mouse presses also end up here.
+    if (m_bEditing)
+        return false;
+
     m_bSelectionHandlerNavigates = rMEvt.GetClicks() == 1;
     m_bNavigationGrabsFocus = rMEvt.GetClicks() != 1;
     return false;
@@ -366,7 +362,9 @@ IMPL_LINK(SdPageObjsTLV, MousePressHdl, const MouseEvent&, rMEvt, bool)
 
 IMPL_LINK_NOARG(SdPageObjsTLV, MouseReleaseHdl, const MouseEvent&, bool)
 {
-    m_bMouseReleased = true;
+    if (m_bEditing)
+        return false;
+
     if (m_aMouseReleaseHdl.IsSet() && m_aMouseReleaseHdl.Call(MouseEvent()))
         return false;
 
@@ -446,7 +444,6 @@ bool SdPageObjsTLV::DoDrag()
 
     m_xDropTargetHelper->SetDrawView(pViewShell->GetDrawView());
     m_xDropTargetHelper->SetOrderFrontToBack(m_bOrderFrontToBack);
-    bIsInDrag = true;
 
     std::unique_ptr<weld::TreeIter> xEntry = m_xTreeView->make_iterator();
     bool bUserData = m_xTreeView->get_cursor(xEntry.get());
@@ -464,7 +461,7 @@ bool SdPageObjsTLV::DoDrag()
         {
             AddShapeToTransferable(*m_xHelper, *pObject);
             m_xHelper->SetView(pView);
-            SD_MOD()->pTransferDrag = m_xHelper.get();
+            SdModule::get()->pTransferDrag = m_xHelper.get();
         }
 
         // Unnamed shapes have to be selected to be recognized by the
@@ -478,15 +475,10 @@ bool SdPageObjsTLV::DoDrag()
     else
     {
         m_xHelper->SetView(pView);
-        SD_MOD()->pTransferDrag = m_xHelper.get();
+        SdModule::get()->pTransferDrag = m_xHelper.get();
     }
 
     return false;
-}
-
-void SdPageObjsTLV::OnDragFinished()
-{
-    bIsInDrag = false;
 }
 
 SdPageObjsTLVDropTarget::SdPageObjsTLVDropTarget(weld::TreeView& rTreeView)
@@ -690,7 +682,7 @@ void SdPageObjsTLV::AddShapeToTransferable (
     try
     {
         // Get a component enumeration from the desktop and search it for documents.
-        uno::Reference<uno::XComponentContext> xContext( ::comphelper::getProcessComponentContext());
+        const uno::Reference<uno::XComponentContext>& xContext( ::comphelper::getProcessComponentContext());
 
         uno::Reference<frame::XDesktop2> xDesktop = frame::Desktop::create(xContext);
 
@@ -751,7 +743,7 @@ SdPageObjsTLV::SdPageObjsTLV(std::unique_ptr<weld::TreeView> xTreeView)
     , m_nRowActivateEventId(nullptr)
 {
     m_xTreeView->connect_expanding(LINK(this, SdPageObjsTLV, RequestingChildrenHdl));
-    m_xTreeView->connect_changed(LINK(this, SdPageObjsTLV, SelectHdl));
+    m_xTreeView->connect_selection_changed(LINK(this, SdPageObjsTLV, SelectHdl));
     m_xTreeView->connect_row_activated(LINK(this, SdPageObjsTLV, RowActivatedHdl));
     m_xTreeView->connect_drag_begin(LINK(this, SdPageObjsTLV, DragBeginHdl));
     m_xTreeView->connect_key_press(LINK(this, SdPageObjsTLV, KeyInputHdl));
@@ -766,12 +758,11 @@ SdPageObjsTLV::SdPageObjsTLV(std::unique_ptr<weld::TreeView> xTreeView)
     m_xTreeView->set_column_editables({true});
 }
 
-IMPL_LINK(SdPageObjsTLV, EditEntryAgain, void*, p, void)
+IMPL_LINK(SdPageObjsTLV, EditEntryAgain, void*, pTreeIter, void)
 {
     m_xTreeView->grab_focus();
-    std::unique_ptr<weld::TreeIter> xEntry(static_cast<weld::TreeIter*>(p));
+    std::unique_ptr<weld::TreeIter> xEntry(static_cast<weld::TreeIter*>(pTreeIter));
     m_xTreeView->start_editing(*xEntry);
-    m_bEditing = true;
 }
 
 IMPL_LINK_NOARG(SdPageObjsTLV, EditingEntryHdl, const weld::TreeIter&, bool)
@@ -789,7 +780,8 @@ IMPL_LINK(SdPageObjsTLV, EditedEntryHdl, const IterString&, rIterString, bool)
         return true;
 
     // If the new name is empty or not unique, start editing again.
-    if (rIterString.second.isEmpty() || m_pDoc->GetObj(rIterString.second))
+    if (rIterString.second.isEmpty() || m_pDoc->GetObj(rIterString.second)
+        || m_pDoc->IsPageNameUnique(rIterString.second))
     {
         std::unique_ptr<weld::TreeIter> xEntry(m_xTreeView->make_iterator(&rIterString.first));
         Application::PostUserEvent(LINK(this, SdPageObjsTLV, EditEntryAgain), xEntry.release());
@@ -797,8 +789,8 @@ IMPL_LINK(SdPageObjsTLV, EditedEntryHdl, const IterString&, rIterString, bool)
     }
 
     // set the new name
-    const auto& rEntryId = m_xTreeView->get_id(rIterString.first);
-    if (rEntryId.toInt64() == 1)
+    const auto aEntryId = m_xTreeView->get_id(rIterString.first);
+    if (aEntryId.toInt64() == 1)
     {
         // page name
         if (::sd::DrawDocShell* pDocShell = m_pDoc->GetDocSh())
@@ -810,7 +802,7 @@ IMPL_LINK(SdPageObjsTLV, EditedEntryHdl, const IterString&, rIterString, bool)
             }
         }
     }
-    else if (SdrObject* pCursorEntryObject = weld::fromId<SdrObject*>(rEntryId))
+    else if (SdrObject* pCursorEntryObject = weld::fromId<SdrObject*>(aEntryId))
     {
         // object name
         pCursorEntryObject->SetName(rIterString.second);
@@ -845,8 +837,7 @@ void SdPageObjsTLV::Select()
 {
     m_nSelectEventId = nullptr;
 
-    // m_bMouseReleased is a hack to make inplace editing work for X11
-    if (m_bMouseReleased)
+    if (m_bEditing)
         return;
 
     m_bLinkableSelected = true;
@@ -918,7 +909,25 @@ OUString SdPageObjsTLV::GetObjectName(
         && aRet.isEmpty()
         && pObject!=nullptr)
     {
-        aRet = SdResId(STR_NAVIGATOR_SHAPE_BASE_NAME) + " (" + pObject->TakeObjNameSingul() +")";
+        OUString sObjName;
+        if (pObject->GetObjIdentifier() == SdrObjKind::CustomShape)
+        {
+            // taken from SdrObjCustomShape::GetCustomShapeName
+            OUString aEngine(pObject->GetMergedItem(SDRATTR_CUSTOMSHAPE_ENGINE).GetValue());
+            if (aEngine.isEmpty() || aEngine == "com.sun.star.drawing.EnhancedCustomShapeEngine")
+            {
+                OUString sShapeType;
+                const SdrCustomShapeGeometryItem& rGeometryItem
+                    = pObject->GetMergedItem(SDRATTR_CUSTOMSHAPE_GEOMETRY);
+                const uno::Any* pAny = rGeometryItem.GetPropertyValueByName(u"Type"_ustr);
+                if (pAny && (*pAny >>= sShapeType))
+                    sObjName = SdResId(STR_NAVIGATOR_CUSTOMSHAPE) + u": " + sShapeType;
+            }
+        }
+        else
+            sObjName = pObject->TakeObjNameSingul();
+
+        aRet = SdResId(STR_NAVIGATOR_SHAPE_BASE_NAME) + " (" + sObjName +")";
         aRet = aRet.replaceFirst("%1", OUString::number(pObject->GetOrdNum() + 1));
     }
 
@@ -1097,11 +1106,16 @@ void SdPageObjsTLV::SetSdNavigator(SdNavigatorWin* pNavigator)
 
 void SdPageObjsTLV::SetViewFrame(const SfxViewFrame* pViewFrame)
 {
-    sd::ViewShellBase* pBase = sd::ViewShellBase::GetViewShellBase(pViewFrame);
-    std::shared_ptr<sd::ViewShell> xViewShell = pBase->GetMainViewShell();
-    SAL_WARN_IF(!xViewShell, "sd", "null pBaseViewFrame");
-    const css::uno::Reference< css::frame::XFrame > xFrame = xViewShell ? xViewShell->GetViewFrame()->GetFrame().GetFrameInterface() : nullptr;
-    m_xAccel->init(::comphelper::getProcessComponentContext(), xFrame);
+    if (sd::ViewShellBase* pBase = sd::ViewShellBase::GetViewShellBase(pViewFrame))
+    {
+        css::uno::Reference< css::frame::XFrame > xFrame;
+        if (std::shared_ptr<sd::ViewShell> xViewShell = pBase->GetMainViewShell())
+        {
+            if (SfxViewFrame* pFrame = xViewShell->GetViewFrame())
+                xFrame = pFrame->GetFrame().GetFrameInterface();
+        }
+        m_xAccel->init(::comphelper::getProcessComponentContext(), xFrame);
+    }
 }
 
 /**
@@ -1181,7 +1195,7 @@ void SdPageObjsTLV::AddShapeList (
     else if (pShape != nullptr)
         aIcon = BMP_GROUP;
 
-    OUString aUserData("1");
+    OUString aUserData(u"1"_ustr);
     if (pShape != nullptr)
         aUserData = weld::toId(pShape);
 
@@ -1196,7 +1210,7 @@ void SdPageObjsTLV::AddShapeList (
     while( aIter.IsMore() )
     {
         SdrObject* pObj = aIter.Next();
-        OSL_ASSERT(pObj!=nullptr);
+        assert(pObj!=nullptr);
 
         // Get the shape name.
         OUString aStr (GetObjectName( pObj ) );
@@ -1223,7 +1237,7 @@ void SdPageObjsTLV::AddShapeList (
             }
             else
             {
-                InsertEntry(xEntry.get(), sId, aStr, BMP_OBJECTS);
+                InsertEntry(xEntry.get(), sId, aStr, BMP_OBJECTS); // BMP_OBJECTS
             }
         }
     }
@@ -1255,10 +1269,9 @@ void SdPageObjsTLV::Fill(const SdDrawDocument* pInDoc, bool bAllPages, const OUS
     sal_uInt16 nPage = 0;
     const sal_uInt16 nMaxPages = m_pDoc->GetPageCount();
 
-    sd::DrawViewShell* pDrawViewShell = lcl_getDrawViewShell(m_pDoc);
-    if (!pDrawViewShell)
-        return;
-    PageKind eDrawViewShellPageKind = pDrawViewShell->GetPageKind();
+    PageKind eDrawViewShellPageKind = PageKind::Standard;
+    if (sd::DrawViewShell* pDrawViewShell = lcl_getDrawViewShell(m_pDoc))
+        eDrawViewShellPageKind = pDrawViewShell->GetPageKind();
 
     while( nPage < nMaxPages )
     {

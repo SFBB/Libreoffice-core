@@ -45,7 +45,6 @@ using namespace     ::com::sun::star::ui::dialogs;
 using namespace     ::com::sun::star::uno;
 using namespace     ::com::sun::star::beans;
 using namespace     ::com::sun::star::awt;
-using namespace     ::utl;
 
 
 struct FilterEntry
@@ -142,7 +141,7 @@ void SvtFilePicker::prepareExecute()
             INetURLObject aPath;
             INetURLObject givenPath( m_aDisplayDirectory );
             if (!givenPath.HasError())
-                aPath = givenPath;
+                aPath = std::move(givenPath);
             else
             {
                 aPath = INetURLObject( SvtPathOptions().GetWorkPath() );
@@ -160,12 +159,6 @@ void SvtFilePicker::prepareExecute()
             m_xDlg->SetPath( m_aDefaultName );
             m_xDlg->SetHasFilename( true );
         }
-    }
-    else
-    {
-        // set the default standard dir
-        INetURLObject aStdDirObj( SvtPathOptions().GetWorkPath() );
-        m_xDlg->SetPath( aStdDirObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ) );
     }
 
     // set the control values and set the control labels, too
@@ -272,6 +265,10 @@ PickerFlags SvtFilePicker::getPickerFlags() const
     else if ( m_nServiceType == TemplateDescription::FILEOPEN_READONLY_VERSION )
     {
         nBits = PickerFlags::Open | PickerFlags::ReadOnly | PickerFlags::ShowVersions;
+    }
+    else if ( m_nServiceType == TemplateDescription::FILEOPEN_READONLY_VERSION_FILTEROPTIONS )
+    {
+        nBits = PickerFlags::Open | PickerFlags::ReadOnly | PickerFlags::ShowVersions | PickerFlags::FilterOptions;
     }
     else if ( m_nServiceType == TemplateDescription::FILEOPEN_LINK_PREVIEW )
     {
@@ -436,43 +433,11 @@ std::shared_ptr<SvtFileDialog_Base> SvtFilePicker::implCreateDialog( weld::Windo
 {
     PickerFlags nBits = getPickerFlags();
 
-    auto dialog = o3tl::make_shared<SvtFileDialog>(pParent, nBits);
-
-    // Set StandardDir if present
-    if ( !m_aStandardDir.isEmpty())
-    {
-        OUString sStandardDir = m_aStandardDir;
-        dialog->SetStandardDir( sStandardDir );
-        dialog->SetDenyList( m_aDenyList );
-    }
+    auto dialog = std::make_shared<SvtFileDialog>(pParent, nBits);
+    dialog->SetDenyList( m_aDenyList );
 
     return dialog;
 }
-
-
-// disambiguate XInterface
-
-IMPLEMENT_FORWARD_XINTERFACE2( SvtFilePicker, OCommonPicker, SvtFilePicker_Base )
-
-
-// disambiguate XTypeProvider
-
-IMPLEMENT_FORWARD_XTYPEPROVIDER2( SvtFilePicker, OCommonPicker, SvtFilePicker_Base )
-
-IMPLEMENT_FORWARD_XINTERFACE3( SvtRemoteFilePicker, SvtFilePicker, OCommonPicker, SvtFilePicker_Base )
-
-
-// disambiguate XTypeProvider
-
-css::uno::Sequence< css::uno::Type > SAL_CALL SvtRemoteFilePicker::getTypes(  )
-{
-    return ::comphelper::concatSequences(
-        SvtFilePicker::getTypes(),
-        OCommonPicker::getTypes(),
-        SvtFilePicker_Base::getTypes()
-    );
-}
-IMPLEMENT_GET_IMPLEMENTATION_ID( SvtRemoteFilePicker )
 
 
 // XExecutableDialog functions
@@ -880,7 +845,7 @@ void SAL_CALL SvtFilePicker::appendFilterGroup( const OUString& sGroupTitle,
     // check the names
     if ( FilterNameExists( aFilters ) )
         throw IllegalArgumentException(
-            "filter name exists",
+            u"filter name exists"_ustr,
             getXWeak(), 1);
 
     // ensure that we have a filter list
@@ -974,19 +939,7 @@ void SAL_CALL SvtFilePicker::initialize( const Sequence< Any >& _rArguments )
             if (aArguments[i] >>= namedValue )
             {
 
-                if ( namedValue.Name == "StandardDir" )
-                {
-                    OUString sStandardDir;
-
-                    namedValue.Value >>= sStandardDir;
-
-                    // Set the directory for the "back to the default dir" button
-                    if ( !sStandardDir.isEmpty() )
-                    {
-                        m_aStandardDir = sStandardDir;
-                    }
-                }
-                else if ( namedValue.Name == "DenyList" )
+                if ( namedValue.Name == "DenyList" )
                 {
                     namedValue.Value >>= m_aDenyList;
                 }
@@ -1007,11 +960,6 @@ bool SvtFilePicker::implHandleInitializationArgument( const OUString& _rName, co
         OSL_VERIFY( _rValue >>= m_nServiceType );
         return true;
     }
-    if ( _rName == "StandardDir" )
-    {
-        OSL_VERIFY( _rValue >>= m_aStandardDir );
-        return true;
-    }
 
     if ( _rName == "DenyList" )
     {
@@ -1030,7 +978,7 @@ bool SvtFilePicker::implHandleInitializationArgument( const OUString& _rName, co
 /* XServiceInfo */
 OUString SAL_CALL SvtFilePicker::getImplementationName()
 {
-    return "com.sun.star.svtools.OfficeFilePicker";
+    return u"com.sun.star.svtools.OfficeFilePicker"_ustr;
 }
 
 /* XServiceInfo */
@@ -1042,7 +990,7 @@ sal_Bool SAL_CALL SvtFilePicker::supportsService( const OUString& sServiceName )
 /* XServiceInfo */
 Sequence< OUString > SAL_CALL SvtFilePicker::getSupportedServiceNames()
 {
-    return { "com.sun.star.ui.dialogs.OfficeFilePicker" };
+    return { u"com.sun.star.ui.dialogs.OfficeFilePicker"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
@@ -1064,14 +1012,7 @@ std::shared_ptr<SvtFileDialog_Base> SvtRemoteFilePicker::implCreateDialog(weld::
     PickerFlags nBits = getPickerFlags();
 
     auto dialog = std::make_shared<RemoteFilesDialog>(pParent, nBits);
-
-    // Set StandardDir if present
-    if ( !m_aStandardDir.isEmpty())
-    {
-        OUString sStandardDir = m_aStandardDir;
-        dialog->SetStandardDir( sStandardDir );
-        dialog->SetDenyList( m_aDenyList );
-    }
+    dialog->SetDenyList( m_aDenyList );
 
     return dialog;
 }
@@ -1082,7 +1023,7 @@ std::shared_ptr<SvtFileDialog_Base> SvtRemoteFilePicker::implCreateDialog(weld::
 /* XServiceInfo */
 OUString SAL_CALL SvtRemoteFilePicker::getImplementationName()
 {
-    return "com.sun.star.svtools.RemoteFilePicker";
+    return u"com.sun.star.svtools.RemoteFilePicker"_ustr;
 }
 
 /* XServiceInfo */
@@ -1094,7 +1035,7 @@ sal_Bool SAL_CALL SvtRemoteFilePicker::supportsService( const OUString& sService
 /* XServiceInfo */
 Sequence< OUString > SAL_CALL SvtRemoteFilePicker::getSupportedServiceNames()
 {
-    return { "com.sun.star.ui.dialogs.RemoteFilePicker" };
+    return { u"com.sun.star.ui.dialogs.RemoteFilePicker"_ustr };
 }
 
 

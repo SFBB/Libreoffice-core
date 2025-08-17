@@ -46,6 +46,11 @@ void SvgFeImageNode::parseAttribute(SVGToken aSVGToken, const OUString& aContent
             readLocalCssStyle(aContent);
             break;
         }
+        case SVGToken::Result:
+        {
+            maResult = aContent.trim();
+            break;
+        }
         case SVGToken::Href:
         case SVGToken::XlinkHref:
         {
@@ -66,7 +71,8 @@ void SvgFeImageNode::parseAttribute(SVGToken aSVGToken, const OUString& aContent
     }
 }
 
-void SvgFeImageNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTarget) const
+void SvgFeImageNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTarget,
+                           const SvgFilterNode* pParent) const
 {
     BitmapEx aBitmapEx;
 
@@ -121,11 +127,13 @@ void SvgFeImageNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTar
             = rTarget.getB2DRange(drawinglayer::geometry::ViewInformation2D());
         const drawinglayer::primitive2d::Primitive2DReference xRef(
             new drawinglayer::primitive2d::BitmapPrimitive2D(
-                aBitmapEx, basegfx::utils::createScaleTranslateB2DHomMatrix(
-                               aViewBox.getRange(), aViewBox.getMinimum())));
+                Bitmap(aBitmapEx), basegfx::utils::createScaleTranslateB2DHomMatrix(
+                                       aViewBox.getRange(), aViewBox.getMinimum())));
 
         rTarget = drawinglayer::primitive2d::Primitive2DContainer{ xRef };
     }
+
+    pParent->addGraphicSourceToMapper(maResult, rTarget);
 }
 
 } // end of namespace svgio::svgreader

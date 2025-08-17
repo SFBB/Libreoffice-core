@@ -19,25 +19,32 @@
 
 #include <basegfx/vector/b3dvector.hxx>
 #include <basegfx/matrix/b3dhommatrix.hxx>
+#include <cassert>
 
 namespace basegfx
 {
     B3DVector& B3DVector::normalize()
     {
-        double fLen(scalar(*this));
+        double fLen(std::hypot(mnX, mnY, mnZ));
 
         if(!::basegfx::fTools::equalZero(fLen))
         {
+            assert(fLen != 0.0 && "help coverity see it's not zero");
+
             const double fOne(1.0);
 
             if(!::basegfx::fTools::equal(fOne, fLen))
             {
-                fLen = sqrt(fLen);
-
                 mnX /= fLen;
                 mnY /= fLen;
                 mnZ /= fLen;
             }
+        }
+        else
+        {
+            mnX = 0.0;
+            mnY = 0.0;
+            mnZ = 0.0;
         }
 
         return *this;

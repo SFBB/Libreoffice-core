@@ -13,6 +13,8 @@ $(eval $(call gb_UnpackedTarball_set_tarball,cppunit,$(CPPUNIT_TARBALL),,cppunit
 
 $(eval $(call gb_UnpackedTarball_update_autoconf_configs,cppunit))
 
+$(eval $(call gb_UnpackedTarball_set_patchlevel,cppunit,2))
+
 # * external/cppunit/order.patch.0 upstreamed at <https://gerrit.libreoffice.org/c/cppunit/+/123963>
 #   "Run tests in deterministic order";
 # * external/cppunit/propagate-exceptions.patch.0 upstreamed at
@@ -23,6 +25,10 @@ $(eval $(call gb_UnpackedTarball_update_autoconf_configs,cppunit))
 # * external/cppunit/clang.patch.0 upstreamed at
 #   <https://gerrit.libreoffice.org/c/cppunit/+/147384> "Don't mis-apply GCC < 4.6 workaround for
 #   Clang":
+# * external/cppunit/0001-cid-1546460-COPY_INSTEAD_OF_MOVE.patch.1 upstreamed at
+#   <https://gerrit.libreoffice.org/c/cppunit/+/161455> "cid#1546460 COPY_INSTEAD_OF_MOVE";
+# * external/cppunit/0001-cid-1660438-Variable-copied-when-it-could-be-moved.patch.1 upstreamed at
+#   <https://gerrit.libreoffice.org/c/cppunit/+/189407> "cid#1660438 Variable copied when it could be moved";
 $(eval $(call gb_UnpackedTarball_add_patches,cppunit,\
 	external/cppunit/windows.patch \
 	external/cppunit/unix.patch \
@@ -34,6 +40,9 @@ $(eval $(call gb_UnpackedTarball_add_patches,cppunit,\
 	external/cppunit/propagate-exceptions.patch.0 \
 	external/cppunit/sprintf.patch.0 \
 	external/cppunit/clang.patch.0 \
+	external/cppunit/0001-cid-1546460-COPY_INSTEAD_OF_MOVE.patch.1 \
+	external/cppunit/0001-cid-1660438-Variable-copied-when-it-could-be-moved.patch.1 \
+	external/cppunit/help-msvc-analyzer.patch \
 ))
 ifeq ($(DISABLE_DYNLOADING),TRUE)
 $(eval $(call gb_UnpackedTarball_add_patches,cppunit,\

@@ -38,7 +38,7 @@ LokStarMathHelper::LokStarMathHelper(const SfxViewShell* pViewShell)
             {
                 css::uno::Reference<css::lang::XServiceInfo> xComp(xEmbObj->getComponent(),
                                                                    css::uno::UNO_QUERY);
-                if (xComp && xComp->supportsService("com.sun.star.formula.FormulaProperties"))
+                if (xComp && xComp->supportsService(u"com.sun.star.formula.FormulaProperties"_ustr))
                 {
                     if (css::uno::Reference<css::frame::XModel> xModel{ xComp,
                                                                         css::uno::UNO_QUERY })
@@ -111,7 +111,7 @@ vcl::Window* LokStarMathHelper::GetGraphicWindow()
         if (mxFrame)
         {
             css::uno::Reference<css::awt::XWindow> xDockerWin = mxFrame->getContainerWindow();
-            mpGraphicWindow.set(FindSmGraphicWindow(VCLUnoHelper::GetWindow(xDockerWin)));
+            mpGraphicWindow.reset(FindSmGraphicWindow(VCLUnoHelper::GetWindow(xDockerWin)));
         }
     }
 
@@ -121,7 +121,7 @@ vcl::Window* LokStarMathHelper::GetGraphicWindow()
 vcl::Window* LokStarMathHelper::GetWidgetWindow()
 {
     if (!mpWidgetWindow)
-        mpWidgetWindow.set(FindChildSmGraphicWidgetWindow(GetGraphicWindow()));
+        mpWidgetWindow.reset(FindChildSmGraphicWidgetWindow(GetGraphicWindow()));
 
     return mpWidgetWindow.get();
 }
@@ -130,8 +130,8 @@ const SfxViewShell* LokStarMathHelper::GetSmViewShell()
 {
     if (vcl::Window* pGraphWindow = GetGraphicWindow())
     {
-        return SfxViewShell::GetFirst(false, [pGraphWindow](const SfxViewShell* shell) {
-            return shell->GetWindow() && shell->GetWindow()->IsChild(pGraphWindow);
+        return SfxViewShell::GetFirst(false, [pGraphWindow](const SfxViewShell& shell) {
+            return shell.GetWindow() && shell.GetWindow()->IsChild(pGraphWindow);
         });
     }
     return nullptr;

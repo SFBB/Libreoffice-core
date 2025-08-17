@@ -90,14 +90,14 @@ SwTableFormatCmp::SwTableFormatCmp(SwFrameFormat* pO, SwFrameFormat* pN, sal_Int
     , m_nType(nT)
 {
     if (m_pOld)
-        m_pOld->Add(this);
+        m_pOld->Add(*this);
 }
 
 SwTableFormatCmp::~SwTableFormatCmp()
 {
     if (m_pOld)
     {
-        m_pOld->Remove(this);
+        m_pOld->Remove(*this);
         if (!m_pOld->HasWriterListeners())
             delete m_pOld;
     }
@@ -555,8 +555,8 @@ bool SwDoc::HasRowNotTracked( const SwCursor& rCursor )
         return false;
 
     SwRedlineTable::size_type nRedlinePos = 0;
-    SwDoc* pDoc = aRowArr[0]->GetFrameFormat()->GetDoc();
-    const IDocumentRedlineAccess& rIDRA = pDoc->getIDocumentRedlineAccess();
+    SwDoc& rDoc = aRowArr[0]->GetFrameFormat()->GetDoc();
+    const IDocumentRedlineAccess& rIDRA = rDoc.getIDocumentRedlineAccess();
 
     for( auto pLn : aRowArr )
     {
@@ -620,8 +620,8 @@ void SwDoc::SetRowNotTracked( const SwCursor& rCursor,
             SwRedlineTable::size_type nPos = pLn->UpdateTextChangesOnly(nRedlinePos);
             if ( nPos != SwRedlineTable::npos )
             {
-                SwDoc* pDoc = pLn->GetFrameFormat()->GetDoc();
-                IDocumentRedlineAccess& rIDRA = pDoc->getIDocumentRedlineAccess();
+                SwDoc& rDoc = pLn->GetFrameFormat()->GetDoc();
+                IDocumentRedlineAccess& rIDRA = rDoc.getIDocumentRedlineAccess();
                 const SwRedlineTable& aRedlineTable = rIDRA.GetRedlineTable();
                 SwRangeRedline* pTmp = aRedlineTable[ nPos ];
                 if ( RedlineType::Insert == pTmp->GetType() &&
@@ -672,7 +672,7 @@ static void lcl_CollectCells( std::vector<SwCellFrame*> &rArr, const SwRect &rUn
         // in order to get to the Cell
         while ( !pCell->IsCellFrame() )
             pCell = pCell->GetUpper();
-        OSL_ENSURE( pCell, "Frame is not a Cell" );
+        assert(pCell && "Frame is not a Cell");
         if ( rUnion.Overlaps( pCell->getFrameArea() ) )
             ::InsertCell( rArr, static_cast<SwCellFrame*>(pCell) );
 

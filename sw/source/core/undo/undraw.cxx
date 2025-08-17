@@ -50,7 +50,7 @@ struct SwUndoGroupObjImpl
     SwNodeOffset nNodeIdx;
 };
 
-// Draw-Objecte
+// Draw-Object
 
 void SwDoc::AddDrawUndo( std::unique_ptr<SdrUndoAction> pUndo )
 {
@@ -67,7 +67,7 @@ void SwDoc::AddDrawUndo( std::unique_ptr<SdrUndoAction> pUndo )
 }
 
 SwSdrUndo::SwSdrUndo( std::unique_ptr<SdrUndoAction> pUndo, const SdrMarkList* pMrkLst, const SwDoc& rDoc )
-    : SwUndo( SwUndoId::DRAWUNDO, &rDoc ), m_pSdrUndo( std::move(pUndo) )
+    : SwUndo( SwUndoId::DRAWUNDO, rDoc ), m_pSdrUndo( std::move(pUndo) )
 {
     if( pMrkLst && pMrkLst->GetMarkCount() )
         m_pMarkList.reset( new SdrMarkList( *pMrkLst ) );
@@ -113,8 +113,8 @@ static void lcl_SaveAnchor( SwFrameFormat* pFormat, SwNodeOffset& rNodePos )
         nContentPos = rAnchor.GetAnchorContentOffset();
 
         // destroy TextAttribute
-        SwTextNode *pTextNd = pFormat->GetDoc()->GetNodes()[ rNodePos ]->GetTextNode();
-        OSL_ENSURE( pTextNd, "No text node found!" );
+        SwTextNode *pTextNd = pFormat->GetDoc().GetNodes()[ rNodePos ]->GetTextNode();
+        assert(pTextNd && "No text node found!");
         SwTextFlyCnt* pAttr = static_cast<SwTextFlyCnt*>(
             pTextNd->GetTextAttrForCharAt( nContentPos, RES_TXTATR_FLYCNT ));
         // attribute still in text node, delete
@@ -144,7 +144,7 @@ static void lcl_RestoreAnchor( SwFrameFormat* pFormat, SwNodeOffset nNodePos )
         return;
 
     const sal_Int32 nContentPos = rAnchor.GetPageNum();
-    SwNodes& rNds = pFormat->GetDoc()->GetNodes();
+    SwNodes& rNds = pFormat->GetDoc().GetNodes();
 
     SwNodeIndex aIdx( rNds, nNodePos );
     SwPosition aPos( aIdx );
@@ -169,7 +169,7 @@ static void lcl_RestoreAnchor( SwFrameFormat* pFormat, SwNodeOffset nNodePos )
 }
 
 SwUndoDrawGroup::SwUndoDrawGroup( sal_uInt16 nCnt, const SwDoc& rDoc )
-    : SwUndo( SwUndoId::DRAWGROUP, &rDoc ), m_nSize( nCnt + 1 ), m_bDeleteFormat( true )
+    : SwUndo( SwUndoId::DRAWGROUP, rDoc ), m_nSize( nCnt + 1 ), m_bDeleteFormat( true )
 {
     m_pObjArray.reset( new SwUndoGroupObjImpl[ m_nSize ] );
 }
@@ -216,8 +216,8 @@ void SwUndoDrawGroup::UndoImpl(::sw::UndoRedoContext &)
     pFormat->RemoveAllUnos();
 
     // remove from array
-    SwDoc* pDoc = pFormat->GetDoc();
-    sw::SpzFrameFormats& rFlyFormats = *pDoc->GetSpzFrameFormats();
+    SwDoc& rDoc = pFormat->GetDoc();
+    sw::SpzFrameFormats& rFlyFormats = *rDoc.GetSpzFrameFormats();
     rFlyFormats.erase( std::find( rFlyFormats.begin(), rFlyFormats.end(), pFormat ));
 
     for( sal_uInt16 n = 1; n < m_nSize; ++n )
@@ -261,8 +261,8 @@ void SwUndoDrawGroup::RedoImpl(::sw::UndoRedoContext &)
     m_bDeleteFormat = true;
 
     // remove from array
-    SwDoc* pDoc = m_pObjArray[0].pFormat->GetDoc();
-    sw::SpzFrameFormats& rFlyFormats = *pDoc->GetSpzFrameFormats();
+    SwDoc& rDoc = m_pObjArray[0].pFormat->GetDoc();
+    sw::SpzFrameFormats& rFlyFormats = *rDoc.GetSpzFrameFormats();
 
     // This will store the textboxes from the ex-group-shapes
     std::vector<std::pair<SdrObject*, SwFrameFormat*>> vTextBoxes;
@@ -274,6 +274,8 @@ void SwUndoDrawGroup::RedoImpl(::sw::UndoRedoContext &)
         SdrObject* pObj = rSave.pObj;
 
         SwDrawContact *pContact = static_cast<SwDrawContact*>(GetUserCall(pObj));
+        if (!pContact)
+            continue;
 
         // Save the textboxes
         if (auto pOldTextBoxNode = rSave.pFormat->GetOtherTextBoxFormats())
@@ -334,7 +336,7 @@ void SwUndoDrawGroup::AddObj( sal_uInt16 nPos, SwDrawFrameFormat* pFormat, SdrOb
     pFormat->RemoveAllUnos();
 
     // remove from array
-    sw::SpzFrameFormats& rFlyFormats = *pFormat->GetDoc()->GetSpzFrameFormats();
+    sw::SpzFrameFormats& rFlyFormats = *pFormat->GetDoc().GetSpzFrameFormats();
     rFlyFormats.erase( std::find( rFlyFormats.begin(), rFlyFormats.end(), pFormat ));
 }
 
@@ -345,28 +347,30 @@ void SwUndoDrawGroup::SetGroupFormat( SwDrawFrameFormat* pFormat )
 }
 
 SwUndoDrawUnGroup::SwUndoDrawUnGroup( SdrObjGroup* pObj, const SwDoc& rDoc )
-    : SwUndo( SwUndoId::DRAWUNGROUP, &rDoc ), m_bDeleteFormat( false )
+    : SwUndo( SwUndoId::DRAWUNGROUP, rDoc ), m_bDeleteFormat( false )
 {
     m_nSize = o3tl::narrowing<sal_uInt16>(pObj->GetSubList()->GetObjCount()) + 1;
     m_pObjArray.reset( new SwUndoGroupObjImpl[ m_nSize ] );
 
-    SwDrawContact *pContact = static_cast<SwDrawContact*>(GetUserCall(pObj));
-    SwDrawFrameFormat* pFormat = static_cast<SwDrawFrameFormat*>(pContact->GetFormat());
+    if (SwDrawContact *pContact = static_cast<SwDrawContact*>(GetUserCall(pObj)))
+    {
+        SwDrawFrameFormat* pFormat = static_cast<SwDrawFrameFormat*>(pContact->GetFormat());
 
-    m_pObjArray[0].pObj = pObj;
-    m_pObjArray[0].pFormat = pFormat;
+        m_pObjArray[0].pObj = pObj;
+        m_pObjArray[0].pFormat = pFormat;
 
-    // object will destroy itself
-    pContact->Changed( *pObj, SdrUserCallType::Delete, pObj->GetLastBoundRect() );
-    pObj->SetUserCall( nullptr );
+        // object will destroy itself
+        pContact->Changed( *pObj, SdrUserCallType::Delete, pObj->GetLastBoundRect() );
+        pObj->SetUserCall( nullptr );
 
-    ::lcl_SaveAnchor( pFormat, m_pObjArray[0].nNodeIdx );
+        ::lcl_SaveAnchor( pFormat, m_pObjArray[0].nNodeIdx );
 
-    pFormat->RemoveAllUnos();
+        pFormat->RemoveAllUnos();
 
-    // remove from array
-    sw::SpzFrameFormats& rFlyFormats = *pFormat->GetDoc()->GetSpzFrameFormats();
-    rFlyFormats.erase( std::find( rFlyFormats.begin(), rFlyFormats.end(), pFormat ));
+        // remove from array
+        sw::SpzFrameFormats& rFlyFormats = *pFormat->GetDoc().GetSpzFrameFormats();
+        rFlyFormats.erase( std::find( rFlyFormats.begin(), rFlyFormats.end(), pFormat ));
+    }
 }
 
 SwUndoDrawUnGroup::~SwUndoDrawUnGroup()
@@ -385,8 +389,8 @@ void SwUndoDrawUnGroup::UndoImpl(::sw::UndoRedoContext & rContext)
 {
     m_bDeleteFormat = true;
 
-    SwDoc *const pDoc = & rContext.GetDoc();
-    sw::SpzFrameFormats& rFlyFormats = *pDoc->GetSpzFrameFormats();
+    SwDoc& rDoc = rContext.GetDoc();
+    sw::SpzFrameFormats& rFlyFormats = *rDoc.GetSpzFrameFormats();
 
     // This will store the textboxes what were owned by this group
     std::vector<std::pair<SdrObject*, SwFrameFormat*>> vTextBoxes;
@@ -477,8 +481,8 @@ void SwUndoDrawUnGroup::RedoImpl(::sw::UndoRedoContext &)
     pFormat->RemoveAllUnos();
 
     // remove from array
-    SwDoc* pDoc = pFormat->GetDoc();
-    sw::SpzFrameFormats& rFlyFormats = *pDoc->GetSpzFrameFormats();
+    SwDoc& rDoc = pFormat->GetDoc();
+    sw::SpzFrameFormats& rFlyFormats = *rDoc.GetSpzFrameFormats();
     rFlyFormats.erase( std::find( rFlyFormats.begin(), rFlyFormats.end(), pFormat ));
 
     for( sal_uInt16 n = 1; n < m_nSize; ++n )
@@ -519,7 +523,7 @@ void SwUndoDrawUnGroup::AddObj( sal_uInt16 nPos, SwDrawFrameFormat* pFormat )
 }
 
 SwUndoDrawUnGroupConnectToLayout::SwUndoDrawUnGroupConnectToLayout(const SwDoc& rDoc)
-    : SwUndo( SwUndoId::DRAWUNGROUP, &rDoc )
+    : SwUndo( SwUndoId::DRAWUNGROUP, rDoc )
 {
 }
 
@@ -566,7 +570,7 @@ void SwUndoDrawUnGroupConnectToLayout::AddFormatAndObj( SwDrawFrameFormat* pDraw
 }
 
 SwUndoDrawDelete::SwUndoDrawDelete( sal_uInt16 nCnt, const SwDoc& rDoc )
-    : SwUndo( SwUndoId::DRAWDELETE, &rDoc ), m_bDeleteFormat( true )
+    : SwUndo( SwUndoId::DRAWDELETE, rDoc ), m_bDeleteFormat( true )
 {
     m_pObjArray.reset( new SwUndoGroupObjImpl[ nCnt ] );
     m_pMarkList.reset( new SdrMarkList() );
@@ -622,6 +626,9 @@ void SwUndoDrawDelete::RedoImpl(::sw::UndoRedoContext & rContext)
         SwUndoGroupObjImpl& rSave = m_pObjArray[n];
         SdrObject *pObj = rSave.pObj;
         SwDrawContact *pContact = static_cast<SwDrawContact*>(GetUserCall(pObj));
+        if (!pContact)
+            continue;
+
         SwDrawFrameFormat *pFormat = static_cast<SwDrawFrameFormat*>(pContact->GetFormat());
 
         // object will destroy itself
@@ -646,8 +653,8 @@ void SwUndoDrawDelete::AddObj( SwDrawFrameFormat* pFormat,
     pFormat->RemoveAllUnos();
 
     // remove from array
-    SwDoc* pDoc = pFormat->GetDoc();
-    sw::SpzFrameFormats& rFlyFormats = *pDoc->GetSpzFrameFormats();
+    SwDoc& rDoc = pFormat->GetDoc();
+    sw::SpzFrameFormats& rFlyFormats = *rDoc.GetSpzFrameFormats();
     rFlyFormats.erase( std::find( rFlyFormats.begin(), rFlyFormats.end(), pFormat ));
 
     m_pMarkList->InsertEntry( rMark );

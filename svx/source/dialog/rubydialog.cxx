@@ -20,6 +20,7 @@
 #include <sal/config.h>
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
+#include <comphelper/processfactory.hxx>
 
 #include <svx/rubydialog.hxx>
 #include <sfx2/dispatch.hxx>
@@ -38,11 +39,14 @@
 #include <com/sun/star/text/RubyAdjust.hpp>
 #include <com/sun/star/view/XSelectionChangeListener.hpp>
 #include <com/sun/star/view/XSelectionSupplier.hpp>
+#include <com/sun/star/i18n/BreakIterator.hpp>
+#include <com/sun/star/i18n/CharacterIteratorMode.hpp>
 #include <cppuhelper/implbase.hxx>
 #include <svtools/colorcfg.hxx>
 #include <vcl/event.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <svl/itemset.hxx>
 
 using namespace css::uno;
@@ -79,6 +83,7 @@ SfxChildWinInfo SvxRubyChildWindow::GetInfo() const { return SfxChildWindow::Get
 
 class SvxRubyData_Impl : public cppu::WeakImplHelper<css::view::XSelectionChangeListener>
 {
+    Reference<css::i18n::XBreakIterator> xBreak;
     Reference<XModel> xModel;
     Reference<XRubySelection> xSelection;
     Sequence<PropertyValues> aRubyValues;
@@ -119,12 +124,195 @@ public:
 
     virtual void SAL_CALL selectionChanged(const css::lang::EventObject& aEvent) override;
     virtual void SAL_CALL disposing(const css::lang::EventObject& Source) override;
+
+    bool IsSelectionGrouped() { return aRubyValues.getLength() < 2; }
+
+    void MakeSelectionGrouped()
+    {
+        if (aRubyValues.getLength() < 2)
+        {
+            return;
+        }
+
+        OUString sBaseTmp;
+        OUStringBuffer aBaseString;
+        for (const PropertyValues& rVals : aRubyValues)
+        {
+            sBaseTmp.clear();
+            for (const PropertyValue& rVal : rVals)
+            {
+                if (rVal.Name == cRubyBaseText)
+                {
+                    rVal.Value >>= sBaseTmp;
+                }
+            }
+
+            aBaseString.append(sBaseTmp);
+        }
+
+        Sequence<PropertyValues> aNewRubyValues{ 1 };
+        PropertyValues* pNewRubyValues = aNewRubyValues.getArray();
+
+        // Copy some reasonable style values from the previous ruby array
+        pNewRubyValues[0] = aRubyValues[0];
+        for (const PropertyValues& rVals : aRubyValues)
+        {
+            for (const PropertyValue& rVal : rVals)
+            {
+                if (rVal.Name == cRubyText)
+                {
+                    rVal.Value >>= sBaseTmp;
+                    if (!sBaseTmp.isEmpty())
+                    {
+                        pNewRubyValues[0] = rVals;
+                        break;
+                    }
+                }
+            }
+        }
+
+        PropertyValue* pNewValues = pNewRubyValues[0].getArray();
+        for (sal_Int32 i = 0; i < pNewRubyValues[0].getLength(); ++i)
+        {
+            if (pNewValues[i].Name == cRubyBaseText)
+            {
+                sBaseTmp = aBaseString;
+                pNewValues[i].Value <<= sBaseTmp;
+            }
+            else if (pNewValues[i].Name == cRubyText)
+            {
+                sBaseTmp.clear();
+                pNewValues[i].Value <<= sBaseTmp;
+            }
+        }
+
+        aRubyValues = std::move(aNewRubyValues);
+    }
+
+    bool IsSelectionMono()
+    {
+        if (!xBreak.is())
+        {
+            // Cannot continue if BreakIterator is not available
+            // Disable the button
+            return true;
+        }
+
+        // Locale does not matter in this case; default ICU BreakIterator is sufficient
+        Locale aLocale;
+
+        OUString sBaseTmp;
+        return std::all_of(
+            aRubyValues.begin(), aRubyValues.end(), [&](const PropertyValues& rVals) {
+                return !std::any_of(rVals.begin(), rVals.end(), [&](const PropertyValue& rVal) {
+                    if (rVal.Name == cRubyBaseText)
+                    {
+                        rVal.Value >>= sBaseTmp;
+                        sal_Int32 nDone = 0;
+                        auto nPos = xBreak->nextCharacters(
+                            sBaseTmp, 0, aLocale, css::i18n::CharacterIteratorMode::SKIPCELL, 1,
+                            nDone);
+                        return nPos < sBaseTmp.getLength();
+                    }
+
+                    return false;
+                });
+            });
+    }
+
+    void MakeSelectionMono()
+    {
+        if (!xBreak.is())
+        {
+            // Cannot continue if BreakIterator is not available
+            return;
+        }
+
+        // Locale does not matter in this case; default ICU BreakIterator is sufficient
+        Locale aLocale;
+
+        OUString sBaseTmp;
+
+        // Count the grapheme clusters
+        sal_Int32 nTotalGraphemeClusters = 0;
+        for (const PropertyValues& rVals : aRubyValues)
+        {
+            for (const PropertyValue& rVal : rVals)
+            {
+                if (rVal.Name == cRubyBaseText)
+                {
+                    rVal.Value >>= sBaseTmp;
+
+                    sal_Int32 nPos = 0;
+                    while (nPos < sBaseTmp.getLength())
+                    {
+                        sal_Int32 nDone = 0;
+                        nPos = xBreak->nextCharacters(sBaseTmp, nPos, aLocale,
+                                                      css::i18n::CharacterIteratorMode::SKIPCELL, 1,
+                                                      nDone);
+                        ++nTotalGraphemeClusters;
+                    }
+                }
+            }
+        }
+
+        // Put each grapheme cluster in its own entry
+        Sequence<PropertyValues> aNewRubyValues{ nTotalGraphemeClusters };
+        PropertyValues* pNewRubyValues = aNewRubyValues.getArray();
+
+        sal_Int32 nCurrGraphemeCluster = 0;
+        for (const PropertyValues& rVals : aRubyValues)
+        {
+            for (const PropertyValue& rVal : rVals)
+            {
+                if (rVal.Name == cRubyBaseText)
+                {
+                    rVal.Value >>= sBaseTmp;
+
+                    sal_Int32 nPos = 0;
+                    while (nPos < sBaseTmp.getLength())
+                    {
+                        sal_Int32 nDone = 0;
+                        auto nNextPos = xBreak->nextCharacters(
+                            sBaseTmp, nPos, aLocale, css::i18n::CharacterIteratorMode::SKIPCELL, 1,
+                            nDone);
+
+                        PropertyValues& rNewVals = pNewRubyValues[nCurrGraphemeCluster++];
+
+                        // Initialize new property values with values from current run
+                        rNewVals = rVals;
+
+                        PropertyValue* aNewVals = rNewVals.getArray();
+                        for (sal_Int32 i = 0; i < rNewVals.getLength(); ++i)
+                        {
+                            PropertyValue& rNewVal = aNewVals[i];
+
+                            if (rNewVal.Name == cRubyText)
+                            {
+                                rNewVal.Value <<= OUString{};
+                            }
+                            else if (rNewVal.Name == cRubyBaseText)
+                            {
+                                rNewVal.Value <<= sBaseTmp.copy(nPos, nNextPos - nPos);
+                            }
+                        }
+
+                        nPos = nNextPos;
+                    }
+                }
+            }
+        }
+
+        aRubyValues = std::move(aNewRubyValues);
+    }
 };
 
 SvxRubyData_Impl::SvxRubyData_Impl()
     : bHasSelectionChanged(false)
     , bDisposing(false)
 {
+    const Reference<XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
+    xBreak = css::i18n::BreakIterator::create(xContext);
 }
 
 SvxRubyData_Impl::~SvxRubyData_Impl() {}
@@ -186,33 +374,35 @@ void SvxRubyData_Impl::AssertOneEntry()
 }
 
 SvxRubyDialog::SvxRubyDialog(SfxBindings* pBind, SfxChildWindow* pCW, weld::Window* pParent)
-    : SfxModelessDialogController(pBind, pCW, pParent, "svx/ui/asianphoneticguidedialog.ui",
-                                  "AsianPhoneticGuideDialog")
+    : SfxModelessDialogController(pBind, pCW, pParent, u"svx/ui/asianphoneticguidedialog.ui"_ustr,
+                                  u"AsianPhoneticGuideDialog"_ustr)
     , nLastPos(0)
     , nCurrentEdit(0)
     , bModified(false)
     , pBindings(pBind)
     , m_pImpl(new SvxRubyData_Impl)
-    , m_xLeft1ED(m_xBuilder->weld_entry("Left1ED"))
-    , m_xRight1ED(m_xBuilder->weld_entry("Right1ED"))
-    , m_xLeft2ED(m_xBuilder->weld_entry("Left2ED"))
-    , m_xRight2ED(m_xBuilder->weld_entry("Right2ED"))
-    , m_xLeft3ED(m_xBuilder->weld_entry("Left3ED"))
-    , m_xRight3ED(m_xBuilder->weld_entry("Right3ED"))
-    , m_xLeft4ED(m_xBuilder->weld_entry("Left4ED"))
-    , m_xRight4ED(m_xBuilder->weld_entry("Right4ED"))
-    , m_xScrolledWindow(m_xBuilder->weld_scrolled_window("scrolledwindow", true))
-    , m_xAdjustLB(m_xBuilder->weld_combo_box("adjustlb"))
-    , m_xPositionLB(m_xBuilder->weld_combo_box("positionlb"))
-    , m_xCharStyleFT(m_xBuilder->weld_label("styleft"))
-    , m_xCharStyleLB(m_xBuilder->weld_combo_box("stylelb"))
-    , m_xStylistPB(m_xBuilder->weld_button("styles"))
-    , m_xApplyPB(m_xBuilder->weld_button("ok"))
-    , m_xClosePB(m_xBuilder->weld_button("close"))
+    , m_xLeft1ED(m_xBuilder->weld_entry(u"Left1ED"_ustr))
+    , m_xRight1ED(m_xBuilder->weld_entry(u"Right1ED"_ustr))
+    , m_xLeft2ED(m_xBuilder->weld_entry(u"Left2ED"_ustr))
+    , m_xRight2ED(m_xBuilder->weld_entry(u"Right2ED"_ustr))
+    , m_xLeft3ED(m_xBuilder->weld_entry(u"Left3ED"_ustr))
+    , m_xRight3ED(m_xBuilder->weld_entry(u"Right3ED"_ustr))
+    , m_xLeft4ED(m_xBuilder->weld_entry(u"Left4ED"_ustr))
+    , m_xRight4ED(m_xBuilder->weld_entry(u"Right4ED"_ustr))
+    , m_xScrolledWindow(m_xBuilder->weld_scrolled_window(u"scrolledwindow"_ustr, true))
+    , m_xAdjustLB(m_xBuilder->weld_combo_box(u"adjustlb"_ustr))
+    , m_xPositionLB(m_xBuilder->weld_combo_box(u"positionlb"_ustr))
+    , m_xCharStyleFT(m_xBuilder->weld_label(u"styleft"_ustr))
+    , m_xCharStyleLB(m_xBuilder->weld_combo_box(u"stylelb"_ustr))
+    , m_xStylistPB(m_xBuilder->weld_button(u"styles"_ustr))
+    , m_xSelectionGroupPB(m_xBuilder->weld_button(u"selection-group"_ustr))
+    , m_xSelectionMonoPB(m_xBuilder->weld_button(u"selection-mono"_ustr))
+    , m_xApplyPB(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xClosePB(m_xBuilder->weld_button(u"close"_ustr))
     , m_xContentArea(m_xDialog->weld_content_area())
-    , m_xGrid(m_xBuilder->weld_widget("grid"))
+    , m_xGrid(m_xBuilder->weld_widget(u"grid"_ustr))
     , m_xPreviewWin(new RubyPreview)
-    , m_xPreview(new weld::CustomWeld(*m_xBuilder, "preview", *m_xPreviewWin))
+    , m_xPreview(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, *m_xPreviewWin))
 {
     m_xCharStyleLB->make_sorted();
     m_xPreviewWin->setRubyDialog(this);
@@ -228,6 +418,8 @@ SvxRubyDialog::SvxRubyDialog(SfxBindings* pBind, SfxChildWindow* pCW, weld::Wind
     aEditArr[6] = m_xLeft4ED.get();
     aEditArr[7] = m_xRight4ED.get();
 
+    m_xSelectionGroupPB->connect_clicked(LINK(this, SvxRubyDialog, SelectionGroup_Impl));
+    m_xSelectionMonoPB->connect_clicked(LINK(this, SvxRubyDialog, SelectionMono_Impl));
     m_xApplyPB->connect_clicked(LINK(this, SvxRubyDialog, ApplyHdl_Impl));
     m_xClosePB->connect_clicked(LINK(this, SvxRubyDialog, CloseHdl_Impl));
     m_xStylistPB->connect_clicked(LINK(this, SvxRubyDialog, StylistHdl_Impl));
@@ -236,7 +428,7 @@ SvxRubyDialog::SvxRubyDialog(SfxBindings* pBind, SfxChildWindow* pCW, weld::Wind
     m_xCharStyleLB->connect_changed(LINK(this, SvxRubyDialog, CharStyleHdl_Impl));
 
     Link<weld::ScrolledWindow&, void> aScrLk(LINK(this, SvxRubyDialog, ScrollHdl_Impl));
-    m_xScrolledWindow->connect_vadjustment_changed(aScrLk);
+    m_xScrolledWindow->connect_vadjustment_value_changed(aScrLk);
 
     Link<weld::Entry&, void> aEditLk(LINK(this, SvxRubyDialog, EditModifyHdl_Impl));
     Link<weld::Widget&, void> aFocusLk(LINK(this, SvxRubyDialog, EditFocusHdl_Impl));
@@ -301,13 +493,13 @@ void SvxRubyDialog::Activate()
             try
             {
                 Reference<XNameAccess> xFam = xSupplier->getStyleFamilies();
-                Any aChar = xFam->getByName("CharacterStyles");
+                Any aChar = xFam->getByName(u"CharacterStyles"_ustr);
                 Reference<XNameContainer> xChar;
                 aChar >>= xChar;
                 Reference<XIndexAccess> xCharIdx(xChar, UNO_QUERY);
                 if (xCharIdx.is())
                 {
-                    OUString sUIName("DisplayName");
+                    OUString sUIName(u"DisplayName"_ustr);
                     for (sal_Int32 nStyle = 0; nStyle < xCharIdx->getCount(); nStyle++)
                     {
                         Any aStyle = xCharIdx->getByIndex(nStyle);
@@ -405,9 +597,13 @@ void SvxRubyDialog::GetRubyText()
 
 void SvxRubyDialog::Update()
 {
+    // Only enable selection grouping options when they can be applied
+    m_xSelectionGroupPB->set_sensitive(!m_pImpl->IsSelectionGrouped());
+    m_xSelectionMonoPB->set_sensitive(!m_pImpl->IsSelectionMono());
+
     const Sequence<PropertyValues>& aRubyValues = m_pImpl->GetRubyValues();
     sal_Int32 nLen = aRubyValues.getLength();
-    m_xScrolledWindow->vadjustment_configure(0, 0, !nLen ? 1 : nLen, 1, 4, 4);
+    m_xScrolledWindow->vadjustment_configure(0, !nLen ? 1 : nLen, 1, 4, 4);
     if (nLen > 4)
         m_xScrolledWindow->set_vpolicy(VclPolicyType::ALWAYS);
     else
@@ -503,6 +699,18 @@ IMPL_LINK(SvxRubyDialog, ScrollHdl_Impl, weld::ScrolledWindow&, rScroll, void)
     SetRubyText(nPos, *m_xLeft4ED, *m_xRight4ED);
     SetLastPos(nPos - 3);
     m_xPreviewWin->Invalidate();
+}
+
+IMPL_LINK_NOARG(SvxRubyDialog, SelectionGroup_Impl, weld::Button&, void)
+{
+    m_pImpl->MakeSelectionGrouped();
+    Update();
+}
+
+IMPL_LINK_NOARG(SvxRubyDialog, SelectionMono_Impl, weld::Button&, void)
+{
+    m_pImpl->MakeSelectionMono();
+    Update();
 }
 
 IMPL_LINK_NOARG(SvxRubyDialog, ApplyHdl_Impl, weld::Button&, void)
@@ -796,7 +1004,7 @@ void RubyPreview::Paint(vcl::RenderContext& rRenderContext, const tools::Rectang
             break;
         case RubyAdjust_INDENT_BLOCK:
         {
-            tools::Long nCharWidth = rRenderContext.GetTextWidth("X");
+            tools::Long nCharWidth = rRenderContext.GetTextWidth(u"X"_ustr);
             if (nOutTextWidth < (nRightEnd - nLeftStart - nCharWidth))
             {
                 nCharWidth /= 2;

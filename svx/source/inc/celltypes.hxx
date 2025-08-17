@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVX_SOURCE_INC_CELLTYPES_HXX
-#define INCLUDED_SVX_SOURCE_INC_CELLTYPES_HXX
+#pragma once
 
 #include <rtl/ref.hxx>
 #include <vector>
@@ -29,8 +28,6 @@ class Cell;
 class TableModel;
 class TableRow;
 class TableColumn;
-class TableRows;
-class TableColumns;
 typedef rtl::Reference<Cell> CellRef;
 typedef rtl::Reference<TableModel> TableModelRef;
 typedef rtl::Reference<TableRow> TableRowRef;
@@ -80,7 +77,5 @@ private:
     T maIter;
 };
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

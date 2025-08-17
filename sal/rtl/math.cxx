@@ -24,6 +24,7 @@
 #include <rtl/math.hxx>
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cfenv>
 #include <cmath>
@@ -118,18 +119,6 @@ bool isRepresentableInteger(double fAbsValue)
     return nInt == fAbsValue;
 }
 
-// Returns 1-based index of least significant bit in a number, or zero if number is zero
-int findFirstSetBit(unsigned n)
-{
-#if defined _WIN32
-    unsigned long pos;
-    unsigned char bNonZero = _BitScanForward(&pos, n);
-    return (bNonZero == 0) ? 0 : pos + 1;
-#else
-    return __builtin_ffs(n);
-#endif
-}
-
 /** Returns number of binary bits for fractional part of the number
     Expects a proper non-negative double value, not +-INF, not NAN
  */
@@ -138,19 +127,13 @@ int getBitsInFracPart(double fAbsValue)
     assert(std::isfinite(fAbsValue) && fAbsValue >= 0.0);
     if (fAbsValue == 0.0)
         return 0;
-    auto pValParts = reinterpret_cast<const sal_math_Double*>(&fAbsValue);
-    int nExponent = pValParts->inf_parts.exponent - 1023;
+    auto& rValParts = reinterpret_cast<const sal_math_Double*>(&fAbsValue)->parts;
+    int nExponent = rValParts.exponent - 1023;
     if (nExponent >= 52)
         return 0; // All bits in fraction are in integer part of the number
-    int nLeastSignificant = findFirstSetBit(pValParts->inf_parts.fraction_lo);
-    if (nLeastSignificant == 0)
-    {
-        nLeastSignificant = findFirstSetBit(pValParts->inf_parts.fraction_hi);
-        if (nLeastSignificant == 0)
-            nLeastSignificant = 53; // the implied leading 1 is the least significant
-        else
-            nLeastSignificant += 32;
-    }
+    int nLeastSignificant = rValParts.fraction
+                                ? std::countr_zero(rValParts.fraction) + 1
+                                : 53; // the implied leading 1 is the least significant
     int nFracSignificant = 53 - nLeastSignificant;
     int nBitsInFracPart = nFracSignificant - nExponent;
 
@@ -162,8 +145,8 @@ void SAL_CALL rtl_math_doubleToString(rtl_String** pResult, sal_Int32* pResultCa
                                       sal_Int32 nResultOffset, double fValue,
                                       rtl_math_StringFormat eFormat, sal_Int32 nDecPlaces,
                                       char cDecSeparator, sal_Int32 const* pGroups,
-                                      char cGroupSeparator, sal_Bool bEraseTrailingDecZeros)
-    SAL_THROW_EXTERN_C()
+                                      char cGroupSeparator,
+                                      sal_Bool bEraseTrailingDecZeros) noexcept
 {
     rtl::str::doubleToString(pResult, pResultCapacity, nResultOffset, fValue, eFormat, nDecPlaces,
                              cDecSeparator, pGroups, cGroupSeparator, bEraseTrailingDecZeros);
@@ -173,8 +156,8 @@ void SAL_CALL rtl_math_doubleToUString(rtl_uString** pResult, sal_Int32* pResult
                                        sal_Int32 nResultOffset, double fValue,
                                        rtl_math_StringFormat eFormat, sal_Int32 nDecPlaces,
                                        sal_Unicode cDecSeparator, sal_Int32 const* pGroups,
-                                       sal_Unicode cGroupSeparator, sal_Bool bEraseTrailingDecZeros)
-    SAL_THROW_EXTERN_C()
+                                       sal_Unicode cGroupSeparator,
+                                       sal_Bool bEraseTrailingDecZeros) noexcept
 {
     rtl::str::doubleToString(pResult, pResultCapacity, nResultOffset, fValue, eFormat, nDecPlaces,
                              cDecSeparator, pGroups, cGroupSeparator, bEraseTrailingDecZeros);
@@ -414,8 +397,7 @@ double stringToDouble(CharT const* pBegin, CharT const* pEnd, CharT cDecSeparato
 
     // overflow also if more than DBL_MAX_10_EXP digits without decimal
     // separator, or 0. and more than DBL_MIN_10_EXP digits, ...
-    bool bHuge = fVal == HUGE_VAL; // g++ 3.0.1 requires it this way...
-    if (bHuge)
+    if (std::isinf(fVal))
         eStatus = rtl_math_ConversionStatus_OutOfRange;
 
     if (bSign)
@@ -433,7 +415,7 @@ double stringToDouble(CharT const* pBegin, CharT const* pEnd, CharT cDecSeparato
 
 double SAL_CALL rtl_math_stringToDouble(char const* pBegin, char const* pEnd, char cDecSeparator,
                                         char cGroupSeparator, rtl_math_ConversionStatus* pStatus,
-                                        char const** pParsedEnd) SAL_THROW_EXTERN_C()
+                                        char const** pParsedEnd) noexcept
 {
     return stringToDouble(reinterpret_cast<unsigned char const*>(pBegin),
                           reinterpret_cast<unsigned char const*>(pEnd),
@@ -445,38 +427,19 @@ double SAL_CALL rtl_math_stringToDouble(char const* pBegin, char const* pEnd, ch
 double SAL_CALL rtl_math_uStringToDouble(sal_Unicode const* pBegin, sal_Unicode const* pEnd,
                                          sal_Unicode cDecSeparator, sal_Unicode cGroupSeparator,
                                          rtl_math_ConversionStatus* pStatus,
-                                         sal_Unicode const** pParsedEnd) SAL_THROW_EXTERN_C()
+                                         sal_Unicode const** pParsedEnd) noexcept
 {
     return stringToDouble(pBegin, pEnd, cDecSeparator, cGroupSeparator, pStatus, pParsedEnd);
 }
 
-double SAL_CALL rtl_math_round(double fValue, int nDecPlaces, enum rtl_math_RoundingMode eMode)
-    SAL_THROW_EXTERN_C()
+double SAL_CALL rtl_math_round(double fValue, int nDecPlaces,
+                               enum rtl_math_RoundingMode eMode) noexcept
 {
     if (!std::isfinite(fValue))
         return fValue;
 
     if (fValue == 0.0)
         return fValue;
-
-    if (nDecPlaces == 0)
-    {
-        switch (eMode)
-        {
-            case rtl_math_RoundingMode_Corrected:
-                return std::round(fValue);
-            case rtl_math_RoundingMode_HalfEven:
-                if (const int oldMode = std::fegetround(); std::fesetround(FE_TONEAREST) == 0)
-                {
-                    fValue = std::nearbyint(fValue);
-                    std::fesetround(oldMode);
-                    return fValue;
-                }
-                break;
-            default:
-                break;
-        }
-    }
 
     const double fOrigValue = fValue;
 
@@ -570,27 +533,12 @@ double SAL_CALL rtl_math_round(double fValue, int nDecPlaces, enum rtl_math_Roun
             }
             break;
             case rtl_math_RoundingMode_HalfEven:
-#if defined FLT_ROUNDS
-                /*
-                   Use fast version. FLT_ROUNDS may be defined to a function by some compilers!
-
-                   DBL_EPSILON is the smallest fractional number which can be represented,
-                   its reciprocal is therefore the smallest number that cannot have a
-                   fractional part. Once you add this reciprocal to `x', its fractional part
-                   is stripped off. Simply subtracting the reciprocal back out returns `x'
-                   without its fractional component.
-                   Simple, clever, and elegant - thanks to Ross Cottrell, the original author,
-                   who placed it into public domain.
-
-                   volatile: prevent compiler from being too smart
-                */
-                if (FLT_ROUNDS == 1)
+                if (const int oldMode = std::fegetround(); std::fesetround(FE_TONEAREST) == 0)
                 {
-                    volatile double x = fValue + 1.0 / DBL_EPSILON;
-                    fValue = x - 1.0 / DBL_EPSILON;
+                    fValue = std::nearbyint(fValue);
+                    std::fesetround(oldMode);
                 }
                 else
-#endif // FLT_ROUNDS
                 {
                     double f = floor(fValue);
                     if ((fValue - f) != 0.5)
@@ -624,15 +572,15 @@ double SAL_CALL rtl_math_round(double fValue, int nDecPlaces, enum rtl_math_Roun
     return bSign ? -fValue : fValue;
 }
 
-double SAL_CALL rtl_math_pow10Exp(double fValue, int nExp) SAL_THROW_EXTERN_C()
+double SAL_CALL rtl_math_pow10Exp(double fValue, int nExp) noexcept
 {
     return fValue * getN10Exp(nExp);
 }
 
-double SAL_CALL rtl_math_approxValue(double fValue) SAL_THROW_EXTERN_C()
+double SAL_CALL rtl_math_approxValue(double fValue) noexcept
 {
     const double fBigInt = 0x1p41; // 2^41 -> only 11 bits left for fractional part, fine as decimal
-    if (fValue == 0.0 || fValue == HUGE_VAL || !std::isfinite(fValue) || fValue > fBigInt)
+    if (fValue == 0.0 || !std::isfinite(fValue) || fValue > fBigInt)
     {
         // We don't handle these conditions.  Bail out.
         return fValue;
@@ -678,7 +626,7 @@ double SAL_CALL rtl_math_approxValue(double fValue) SAL_THROW_EXTERN_C()
     return bSign ? -fValue : fValue;
 }
 
-bool SAL_CALL rtl_math_approxEqual(double a, double b) SAL_THROW_EXTERN_C()
+bool SAL_CALL rtl_math_approxEqual(double a, double b) noexcept
 {
     static const double e48 = 0x1p-48;
 
@@ -705,9 +653,9 @@ bool SAL_CALL rtl_math_approxEqual(double a, double b) SAL_THROW_EXTERN_C()
     return true;
 }
 
-double SAL_CALL rtl_math_expm1(double fValue) SAL_THROW_EXTERN_C() { return expm1(fValue); }
+double SAL_CALL rtl_math_expm1(double fValue) noexcept { return expm1(fValue); }
 
-double SAL_CALL rtl_math_log1p(double fValue) SAL_THROW_EXTERN_C()
+double SAL_CALL rtl_math_log1p(double fValue) noexcept
 {
 #ifdef __APPLE__
     if (fValue == -0.0)
@@ -717,18 +665,18 @@ double SAL_CALL rtl_math_log1p(double fValue) SAL_THROW_EXTERN_C()
     return log1p(fValue);
 }
 
-double SAL_CALL rtl_math_atanh(double fValue) SAL_THROW_EXTERN_C() { return ::atanh(fValue); }
+double SAL_CALL rtl_math_atanh(double fValue) noexcept { return ::atanh(fValue); }
 
 /** Parent error function (erf) */
-double SAL_CALL rtl_math_erf(double x) SAL_THROW_EXTERN_C() { return erf(x); }
+double SAL_CALL rtl_math_erf(double x) noexcept { return erf(x); }
 
 /** Parent complementary error function (erfc) */
-double SAL_CALL rtl_math_erfc(double x) SAL_THROW_EXTERN_C() { return erfc(x); }
+double SAL_CALL rtl_math_erfc(double x) noexcept { return erfc(x); }
 
 /** improved accuracy of asinh for |x| large and for x near zero
     @see #i97605#
  */
-double SAL_CALL rtl_math_asinh(double fX) SAL_THROW_EXTERN_C()
+double SAL_CALL rtl_math_asinh(double fX) noexcept
 {
     if (fX == 0.0)
         return 0.0;
@@ -752,9 +700,9 @@ double SAL_CALL rtl_math_asinh(double fX) SAL_THROW_EXTERN_C()
 /** improved accuracy of acosh for x large and for x near 1
     @see #i97605#
  */
-double SAL_CALL rtl_math_acosh(double fX) SAL_THROW_EXTERN_C()
+double SAL_CALL rtl_math_acosh(double fX) noexcept
 {
-    volatile double fZ = fX - 1.0;
+    double fZ = fX - 1.0;
     if (fX < 1.0)
         return std::numeric_limits<double>::quiet_NaN();
     if (fX == 1.0)

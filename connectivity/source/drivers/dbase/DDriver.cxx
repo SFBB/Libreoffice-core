@@ -36,7 +36,7 @@ using namespace ::com::sun::star::lang;
 
 OUString SAL_CALL ODriver::getImplementationName(  )
 {
-    return "com.sun.star.comp.sdbc.dbase.ODriver";
+    return u"com.sun.star.comp.sdbc.dbase.ODriver"_ustr;
 }
 
 
@@ -66,7 +66,7 @@ Reference< XConnection > SAL_CALL ODriver::connect( const OUString& url, const S
 
     rtl::Reference<ODbaseConnection> pCon = new ODbaseConnection(this);
     pCon->construct(url,info);
-    m_xConnections.push_back(WeakReferenceHelper(*pCon));
+    m_xConnections.push_back(pCon.get());
 
     return pCon;
 }
@@ -80,29 +80,29 @@ Sequence< DriverPropertyInfo > SAL_CALL ODriver::getPropertyInfo( const OUString
 {
     if ( acceptsURL(url) )
     {
-        Sequence< OUString > aBoolean { "0", "1" };
+        Sequence< OUString > aBoolean { u"0"_ustr, u"1"_ustr };
 
         return
         {
             {
-                "CharSet"
-                ,"CharSet of the database."
+                u"CharSet"_ustr
+                ,u"CharSet of the database."_ustr
                 ,false
                 ,OUString()
                 ,Sequence< OUString >()
             },
             {
-                "ShowDeleted"
-                ,"Display inactive records."
+                u"ShowDeleted"_ustr
+                ,u"Display inactive records."_ustr
                 ,false
-                ,"0"
+                ,u"0"_ustr
                 ,aBoolean
             },
             {
-                "EnableSQL92Check"
-                ,"Use SQL92 naming constraints."
+                u"EnableSQL92Check"_ustr
+                ,u"Use SQL92 naming constraints."_ustr
                 ,false
-                ,"0"
+                ,u"0"_ustr
                 ,aBoolean
             }
         };
@@ -111,7 +111,6 @@ Sequence< DriverPropertyInfo > SAL_CALL ODriver::getPropertyInfo( const OUString
     SharedResources aResources;
     const OUString sMessage = aResources.getResourceString(STR_URI_SYNTAX_ERROR);
     ::dbtools::throwGenericSQLException(sMessage ,*this);
-    return Sequence< DriverPropertyInfo >();
 }
 
 

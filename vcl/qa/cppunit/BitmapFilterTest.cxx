@@ -9,14 +9,20 @@
 
 #include <test/bootstrapfixture.hxx>
 
-#include <vcl/bitmap.hxx>
-#include <vcl/BitmapWriteAccess.hxx>
-
 #include <tools/stream.hxx>
+
+#include <vcl/BitmapWriteAccess.hxx>
+#include <vcl/bitmap/BitmapAlphaClampFilter.hxx>
+#include <vcl/bitmap/BitmapArithmeticBlendFilter.hxx>
+#include <vcl/bitmap/BitmapDarkenBlendFilter.hxx>
+#include <vcl/bitmap/BitmapLightenBlendFilter.hxx>
+#include <vcl/bitmap/BitmapMultiplyBlendFilter.hxx>
+#include <vcl/bitmap/BitmapNormalBlendFilter.hxx>
+#include <vcl/bitmap/BitmapScreenBlendFilter.hxx>
+#include <vcl/bitmap/BitmapBasicMorphologyFilter.hxx>
+#include <vcl/bitmap/BitmapFilterStackBlur.hxx>
 #include <vcl/graphicfilter.hxx>
 
-#include <vcl/BitmapBasicMorphologyFilter.hxx>
-#include <vcl/BitmapFilterStackBlur.hxx>
 #include <BitmapSymmetryCheck.hxx>
 
 #include <chrono>
@@ -35,16 +41,30 @@ public:
     {
     }
 
+    void testClampAlpha();
     void testBlurCorrectness();
     void testBasicMorphology();
     void testPerformance();
     void testGenerateStripRanges();
+    void testMultiplyBlendFilter();
+    void testNormalBlendFilter();
+    void testDarkenBlendFilter();
+    void testLightenBlendFilter();
+    void testScreenBlendFilter();
+    void testArithmeticBlendFilter();
 
     CPPUNIT_TEST_SUITE(BitmapFilterTest);
+    CPPUNIT_TEST(testClampAlpha);
     CPPUNIT_TEST(testBlurCorrectness);
     CPPUNIT_TEST(testBasicMorphology);
     CPPUNIT_TEST(testPerformance);
     CPPUNIT_TEST(testGenerateStripRanges);
+    CPPUNIT_TEST(testMultiplyBlendFilter);
+    CPPUNIT_TEST(testNormalBlendFilter);
+    CPPUNIT_TEST(testDarkenBlendFilter);
+    CPPUNIT_TEST(testLightenBlendFilter);
+    CPPUNIT_TEST(testScreenBlendFilter);
+    CPPUNIT_TEST(testArithmeticBlendFilter);
     CPPUNIT_TEST_SUITE_END();
 
 private:
@@ -72,6 +92,22 @@ private:
         rFilter.compressAsPNG(BitmapEx(rBmp), aStream);
     }
 };
+
+void BitmapFilterTest::testClampAlpha()
+{
+    // Setup test bitmap
+    Size aSize(1, 1);
+    Bitmap aBitmap24Bit(aSize, vcl::PixelFormat::N24_BPP);
+
+    {
+        BitmapScopedWriteAccess aWriteAccess(aBitmap24Bit);
+        aWriteAccess->Erase(COL_RED);
+    }
+
+    BitmapEx aBitmapEx24Bit(aBitmap24Bit);
+    BitmapFilter::Filter(aBitmapEx24Bit, BitmapAlphaClampFilter(0x7F));
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt8>(0xFF), aBitmapEx24Bit.GetAlpha(0, 0));
+}
 
 void BitmapFilterTest::testBlurCorrectness()
 {
@@ -106,18 +142,18 @@ void BitmapFilterTest::testBlurCorrectness()
 
     if (constWriteResultBitmap)
     {
-        savePNG("~/blurBefore.png", aBitmap24Bit);
+        savePNG(u"~/blurBefore.png"_ustr, aBitmap24Bit);
     }
 
     // Perform blur
     BitmapFilterStackBlur aBlurFilter(2);
-    aBitmap24Bit = aBlurFilter.filter(aBitmap24Bit);
+    aBitmap24Bit = aBlurFilter.execute(aBitmap24Bit);
 
     // Check the result
 
     if (constWriteResultBitmap)
     {
-        savePNG("~/blurAfter.png", aBitmap24Bit);
+        savePNG(u"~/blurAfter.png"_ustr, aBitmap24Bit);
     }
 
     // Check blurred bitmap parameters
@@ -148,21 +184,21 @@ void BitmapFilterTest::testBasicMorphology()
     BitmapEx aTransformBitmap = aOrigBitmap;
     BitmapFilter::Filter(aTransformBitmap, BitmapDilateFilter(1));
     if (constWriteResultBitmap)
-        savePNG("~/Dilated1.png", aTransformBitmap);
+        savePNG(u"~/Dilated1.png"_ustr, aTransformBitmap);
     CPPUNIT_ASSERT_EQUAL(aRefBitmapDilated1.GetChecksum(), aTransformBitmap.GetChecksum());
     BitmapFilter::Filter(aTransformBitmap, BitmapErodeFilter(1));
     if (constWriteResultBitmap)
-        savePNG("~/Dilated1Eroded1.png", aTransformBitmap);
+        savePNG(u"~/Dilated1Eroded1.png"_ustr, aTransformBitmap);
     CPPUNIT_ASSERT_EQUAL(aRefBitmapDilated1Eroded1.GetChecksum(), aTransformBitmap.GetChecksum());
 
     aTransformBitmap = aOrigBitmap;
     BitmapFilter::Filter(aTransformBitmap, BitmapDilateFilter(2));
     if (constWriteResultBitmap)
-        savePNG("~/Dilated2.png", aTransformBitmap);
+        savePNG(u"~/Dilated2.png"_ustr, aTransformBitmap);
     CPPUNIT_ASSERT_EQUAL(aRefBitmapDilated2.GetChecksum(), aTransformBitmap.GetChecksum());
     BitmapFilter::Filter(aTransformBitmap, BitmapErodeFilter(1));
     if (constWriteResultBitmap)
-        savePNG("~/Dilated2Eroded1.png", aTransformBitmap);
+        savePNG(u"~/Dilated2Eroded1.png"_ustr, aTransformBitmap);
     CPPUNIT_ASSERT_EQUAL(aRefBitmapDilated2Eroded1.GetChecksum(), aTransformBitmap.GetChecksum());
 }
 
@@ -193,19 +229,19 @@ void BitmapFilterTest::testPerformance()
     for (int i = 0; i < nIterations; i++)
     {
         BitmapFilterStackBlur aBlurFilter(250);
-        aResult = aBlurFilter.filter(aBigBitmap);
+        aResult = aBlurFilter.execute(aBigBitmap);
     }
     auto end = std::chrono::high_resolution_clock::now();
     auto elapsed = (end - start) / nIterations;
 
     if (constWriteResultBitmap)
     {
-        std::unique_ptr<SvFileStream> pStream(
-            new SvFileStream("~/BlurBigPerformance.png", StreamMode::WRITE | StreamMode::TRUNC));
+        std::unique_ptr<SvFileStream> pStream(new SvFileStream(
+            u"~/BlurBigPerformance.png"_ustr, StreamMode::WRITE | StreamMode::TRUNC));
         GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
         rFilter.compressAsPNG(BitmapEx(aResult), *pStream);
 
-        pStream.reset(new SvFileStream("~/BlurBigPerformance.txt", StreamMode::WRITE));
+        pStream.reset(new SvFileStream(u"~/BlurBigPerformance.txt"_ustr, StreamMode::WRITE));
         pStream->WriteOString("Blur average time: ");
         pStream->WriteOString(OString::number(
             std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()));
@@ -273,6 +309,480 @@ void BitmapFilterTest::testGenerateStripRanges()
         CPPUNIT_ASSERT_EQUAL(tools::Long(64), std::get<0>(aRanges[2]));
         CPPUNIT_ASSERT_EQUAL(tools::Long(95), std::get<1>(aRanges[2]));
         CPPUNIT_ASSERT_EQUAL(true, std::get<2>(aRanges[2]));
+    }
+}
+
+void BitmapFilterTest::testMultiplyBlendFilter()
+{
+    Bitmap aRedBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aRedBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aRedBitmap);
+        aWriteAccess->Erase(COL_LIGHTRED);
+    }
+
+    Bitmap aGreenBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aGreenBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aGreenBitmap);
+        aWriteAccess->Erase(COL_GREEN);
+    }
+
+    Bitmap aTransparentBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aTransparentBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aTransparentBitmap);
+        aWriteAccess->Erase(COL_AUTO);
+    }
+
+    // same color
+    {
+        BitmapMultiplyBlendFilter* pArithmeticFilter
+            = new BitmapMultiplyBlendFilter(aRedBitmap, aRedBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(2, 2));
+    }
+
+    // different color
+    {
+        BitmapMultiplyBlendFilter* pArithmeticFilter
+            = new BitmapMultiplyBlendFilter(aRedBitmap, aGreenBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0x00, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(2, 2));
+    }
+
+    // transparent
+    {
+        BitmapMultiplyBlendFilter* pArithmeticFilter
+            = new BitmapMultiplyBlendFilter(aRedBitmap, aTransparentBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(2, 2));
+    }
+}
+
+void BitmapFilterTest::testNormalBlendFilter()
+{
+    Bitmap aRedBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aRedBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aRedBitmap);
+        aWriteAccess->Erase(COL_LIGHTRED);
+    }
+
+    Bitmap aGreenBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aGreenBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aGreenBitmap);
+        aWriteAccess->Erase(COL_GREEN);
+    }
+
+    Bitmap aTransparentBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aTransparentBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aTransparentBitmap);
+        aWriteAccess->Erase(COL_AUTO);
+    }
+
+    // same color
+    {
+        BitmapNormalBlendFilter* pArithmeticFilter
+            = new BitmapNormalBlendFilter(aRedBitmap, aRedBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(2, 2));
+    }
+
+    // different color
+    {
+        BitmapNormalBlendFilter* pArithmeticFilter
+            = new BitmapNormalBlendFilter(aRedBitmap, aGreenBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(2, 2));
+    }
+
+    // transparent
+    {
+        BitmapNormalBlendFilter* pArithmeticFilter
+            = new BitmapNormalBlendFilter(aRedBitmap, aTransparentBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(2, 2));
+    }
+}
+
+void BitmapFilterTest::testDarkenBlendFilter()
+{
+    Bitmap aRedBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aRedBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aRedBitmap);
+        aWriteAccess->Erase(COL_LIGHTRED);
+    }
+
+    Bitmap aGreenBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aGreenBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aGreenBitmap);
+        aWriteAccess->Erase(COL_GREEN);
+    }
+
+    Bitmap aTransparentBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aTransparentBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aTransparentBitmap);
+        aWriteAccess->Erase(COL_AUTO);
+    }
+
+    // same color
+    {
+        BitmapDarkenBlendFilter aArithmeticFilter(aRedBitmap);
+        Bitmap aResBitmap = aArithmeticFilter.execute(aRedBitmap);
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(2, 2));
+    }
+
+    // different color
+    {
+        BitmapDarkenBlendFilter aArithmeticFilter(aGreenBitmap);
+        Bitmap aResBitmap = aArithmeticFilter.execute(aRedBitmap);
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0x00, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(2, 2));
+    }
+
+    // transparent
+    {
+        BitmapDarkenBlendFilter aArithmeticFilter(aTransparentBitmap);
+        Bitmap aResBitmap = aArithmeticFilter.execute(aRedBitmap);
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(2, 2));
+    }
+}
+
+void BitmapFilterTest::testLightenBlendFilter()
+{
+    Bitmap aRedBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aRedBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aRedBitmap);
+        aWriteAccess->Erase(COL_LIGHTRED);
+    }
+
+    Bitmap aGreenBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aGreenBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aGreenBitmap);
+        aWriteAccess->Erase(COL_GREEN);
+    }
+
+    Bitmap aTransparentBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aTransparentBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aTransparentBitmap);
+        aWriteAccess->Erase(COL_AUTO);
+    }
+
+    // same color
+    {
+        BitmapLightenBlendFilter* pArithmeticFilter
+            = new BitmapLightenBlendFilter(aRedBitmap, aRedBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(2, 2));
+    }
+
+    // different color
+    {
+        BitmapLightenBlendFilter* pArithmeticFilter
+            = new BitmapLightenBlendFilter(aRedBitmap, aGreenBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0x80, 0x00),
+                             aResBitmap.GetPixelColor(2, 2));
+    }
+
+    // transparent
+    {
+        BitmapLightenBlendFilter* pArithmeticFilter
+            = new BitmapLightenBlendFilter(aRedBitmap, aTransparentBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0xFF, 0xFF),
+                             aResBitmap.GetPixelColor(2, 2));
+    }
+}
+
+void BitmapFilterTest::testScreenBlendFilter()
+{
+    Bitmap aRedBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aRedBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aRedBitmap);
+        aWriteAccess->Erase(COL_LIGHTRED);
+    }
+
+    Bitmap aGreenBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aGreenBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aGreenBitmap);
+        aWriteAccess->Erase(COL_GREEN);
+    }
+
+    Bitmap aTransparentBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aTransparentBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aTransparentBitmap);
+        aWriteAccess->Erase(COL_AUTO);
+    }
+
+    // same color
+    {
+        BitmapScreenBlendFilter* pArithmeticFilter
+            = new BitmapScreenBlendFilter(aRedBitmap, aRedBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(2, 2));
+    }
+
+    // different color
+    {
+        BitmapScreenBlendFilter* pArithmeticFilter
+            = new BitmapScreenBlendFilter(aRedBitmap, aGreenBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0x80, 0x00),
+                             aResBitmap.GetPixelColor(2, 2));
+    }
+
+    // transparent
+    {
+        BitmapScreenBlendFilter* pArithmeticFilter
+            = new BitmapScreenBlendFilter(aRedBitmap, aTransparentBitmap);
+        Bitmap aResBitmap = pArithmeticFilter->execute();
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0xFF, 0xFF),
+                             aResBitmap.GetPixelColor(2, 2));
+    }
+}
+
+void BitmapFilterTest::testArithmeticBlendFilter()
+{
+    Bitmap aRedBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aRedBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aRedBitmap);
+        aWriteAccess->Erase(COL_LIGHTRED);
+    }
+
+    Bitmap aGreenBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aGreenBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aGreenBitmap);
+        aWriteAccess->Erase(COL_GREEN);
+    }
+
+    Bitmap aTransparentBitmap(Size(4, 4), vcl::PixelFormat::N24_BPP);
+    CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N24_BPP, aTransparentBitmap.getPixelFormat());
+    {
+        BitmapScopedWriteAccess aWriteAccess(aTransparentBitmap);
+        aWriteAccess->Erase(COL_AUTO);
+    }
+
+    // same color
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aRedBitmap, 0, 0, 0, 0));
+
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x00, 0x00, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aRedBitmap, 1, 0, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aRedBitmap, 0, 1, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aRedBitmap, 0, 0, 1, 0));
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aRedBitmap, 0, 0, 0, 1));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0xFF, 0xFF),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aRedBitmap, 0.5, 0, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0xFF, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aRedBitmap, 0, 0.5, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0xFF, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aRedBitmap, 0, 0, 0.5, 0));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0xFF, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        BitmapEx aResBitmapEx(aRedBitmap);
+        BitmapFilter::Filter(aResBitmapEx, BitmapArithmeticBlendFilter(aRedBitmap, 0, 0, 0, 0.5));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0xFF, 0xFF, 0xFF),
+                             aResBitmapEx.GetPixelColor(0, 0));
+    }
+
+    // Different colors
+    {
+        BitmapEx aResBitmapEx(aRedBitmap);
+        BitmapFilter::Filter(aResBitmapEx, BitmapArithmeticBlendFilter(aGreenBitmap, 0, 0, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x00, 0x00, 0x00, 0x00),
+                             aResBitmapEx.GetPixelColor(0, 0));
+    }
+
+    {
+        BitmapEx aResBitmapEx(aRedBitmap);
+        BitmapFilter::Filter(aResBitmapEx, BitmapArithmeticBlendFilter(aGreenBitmap, 1, 0, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(COL_BLACK, aResBitmapEx.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aGreenBitmap, 0, 1, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aGreenBitmap, 0, 0, 1, 0));
+        CPPUNIT_ASSERT_EQUAL(COL_GREEN, aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aGreenBitmap, 0, 0, 0, 1));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0xFF, 0xFF),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aGreenBitmap, 0.5, 0, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0x00, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aGreenBitmap, 0, 0.5, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0xFF, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aGreenBitmap, 0, 0, 0.5, 0));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0x00, 0x81, 0x00),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap, BitmapArithmeticBlendFilter(aGreenBitmap, 0, 0, 0, 0.5));
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0xFF, 0xFF, 0xFF),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    // transparent
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap,
+                             BitmapArithmeticBlendFilter(aTransparentBitmap, 0, 0, 0, 0));
+
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x00, 0x00, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap,
+                             BitmapArithmeticBlendFilter(aTransparentBitmap, 1, 0, 0, 0));
+
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap,
+                             BitmapArithmeticBlendFilter(aTransparentBitmap, 0, 1, 0, 0));
+
+        CPPUNIT_ASSERT_EQUAL(COL_LIGHTRED, aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap,
+                             BitmapArithmeticBlendFilter(aTransparentBitmap, 0, 0, 1, 0));
+
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0xFF, 0xFF),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap,
+                             BitmapArithmeticBlendFilter(aTransparentBitmap, 0, 0, 0, 1));
+
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0xFF, 0xFF, 0xFF, 0xFF),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap,
+                             BitmapArithmeticBlendFilter(aTransparentBitmap, 0.5, 0, 0, 0));
+
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0xFF, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap,
+                             BitmapArithmeticBlendFilter(aTransparentBitmap, 0, 0.5, 0, 0));
+
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0xFF, 0x00, 0x00),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap,
+                             BitmapArithmeticBlendFilter(aTransparentBitmap, 0, 0, 0.5, 0));
+
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0xFF, 0xFF, 0xFF),
+                             aResBitmap.GetPixelColor(0, 0));
+    }
+
+    {
+        Bitmap aResBitmap(aRedBitmap);
+        BitmapFilter::Filter(aResBitmap,
+                             BitmapArithmeticBlendFilter(aTransparentBitmap, 0, 0, 0, 0.5));
+
+        CPPUNIT_ASSERT_EQUAL(Color(ColorAlpha, 0x7F, 0xFF, 0xFF, 0xFF),
+                             aResBitmap.GetPixelColor(0, 0));
     }
 }
 

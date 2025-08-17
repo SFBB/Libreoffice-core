@@ -21,8 +21,8 @@
 
 #include "breakpoint.hxx"
 #include "brkdlg.hxx"
-#include <basobj.hxx>
 
+#include <basctl/basctldllpublic.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <svl/itemset.hxx>
@@ -55,16 +55,17 @@ bool lcl_ParseText(OUString const& rText, size_t& rLineNr)
 } // namespace
 
 BreakPointDialog::BreakPointDialog(weld::Window* pParent, BreakPointList& rBrkPntList)
-    : GenericDialogController(pParent, "modules/BasicIDE/ui/managebreakpoints.ui",
-                              "ManageBreakpointsDialog")
+    : GenericDialogController(pParent, u"modules/BasicIDE/ui/managebreakpoints.ui"_ustr,
+                              u"ManageBreakpointsDialog"_ustr)
     , m_rOriginalBreakPointList(rBrkPntList)
     , m_aModifiedBreakPointList(rBrkPntList)
-    , m_xComboBox(m_xBuilder->weld_entry_tree_view("entriesgrid", "entries", "entrieslist"))
-    , m_xOKButton(m_xBuilder->weld_button("ok"))
-    , m_xNewButton(m_xBuilder->weld_button("new"))
-    , m_xDelButton(m_xBuilder->weld_button("delete"))
-    , m_xCheckBox(m_xBuilder->weld_check_button("active"))
-    , m_xNumericField(m_xBuilder->weld_spin_button("pass"))
+    , m_xComboBox(m_xBuilder->weld_entry_tree_view(u"entriesgrid"_ustr, u"entries"_ustr,
+                                                   u"entrieslist"_ustr))
+    , m_xOKButton(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xNewButton(m_xBuilder->weld_button(u"new"_ustr))
+    , m_xDelButton(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xCheckBox(m_xBuilder->weld_check_button(u"active"_ustr))
+    , m_xNumericField(m_xBuilder->weld_spin_button(u"pass"_ustr))
 {
     m_xComboBox->set_size_request(m_xComboBox->get_approximate_digit_width() * 20, -1);
     m_xComboBox->set_height_request_by_rows(12);
@@ -121,14 +122,14 @@ void BreakPointDialog::CheckButtons()
         m_xNewButton->set_sensitive(true);
         m_xOKButton->set_sensitive(false);
         m_xDelButton->set_sensitive(false);
-        m_xDialog->change_default_widget(m_xDelButton.get(), m_xNewButton.get());
+        m_xDialog->change_default_button(m_xDelButton.get(), m_xNewButton.get());
     }
     else
     {
         m_xNewButton->set_sensitive(false);
         m_xOKButton->set_sensitive(true);
         m_xDelButton->set_sensitive(true);
-        m_xDialog->change_default_widget(m_xNewButton.get(), m_xDelButton.get());
+        m_xDialog->change_default_button(m_xNewButton.get(), m_xDelButton.get());
     }
 }
 

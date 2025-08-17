@@ -79,6 +79,7 @@
 #include <viewsh.hxx>
 #include <unodraw.hxx>
 #include <unotextrange.hxx>
+#include <unotxdoc.hxx>
 
 #include "swcss1.hxx"
 #include "swhtml.hxx"
@@ -123,7 +124,7 @@ HTMLOptionEnum<HTMLWordWrapMode> const aHTMLTextAreaWrapTable[] =
     { nullptr,                             HTMLWordWrapMode(0) }
 };
 
-static SvMacroItemId aEventTypeTable[] =
+const SvMacroItemId aEventTypeTable[] =
 {
     SvMacroItemId::HtmlOnSubmitForm,
     SvMacroItemId::HtmlOnResetForm,
@@ -136,31 +137,31 @@ static SvMacroItemId aEventTypeTable[] =
     SvMacroItemId::NONE
 };
 
-const char * aEventListenerTable[] =
+const OUString aEventListenerTable[] =
 {
-    "XSubmitListener",
-    "XResetListener",
-    "XFocusListener",
-    "XFocusListener",
-    "XApproveActionListener",
-    "XItemListener",
-    "XChangeListener",
-    ""
+    u"XSubmitListener"_ustr,
+    u"XResetListener"_ustr,
+    u"XFocusListener"_ustr,
+    u"XFocusListener"_ustr,
+    u"XApproveActionListener"_ustr,
+    u"XItemListener"_ustr,
+    u"XChangeListener"_ustr,
+    u""_ustr
 };
 
-const char * aEventMethodTable[] =
+const OUString aEventMethodTable[] =
 {
-    "approveSubmit",
-    "approveReset",
-    "focusGained",
-    "focusLost",
-    "approveAction",
-    "itemStateChanged",
-    "changed",
-    ""
+    u"approveSubmit"_ustr,
+    u"approveReset"_ustr,
+    u"focusGained"_ustr,
+    u"focusLost"_ustr,
+    u"approveAction"_ustr,
+    u"itemStateChanged"_ustr,
+    u"changed"_ustr,
+    u""_ustr
 };
 
-const char * aEventSDOptionTable[] =
+const char * const aEventSDOptionTable[] =
 {
     OOO_STRING_SVTOOLS_HTML_O_SDonsubmit,
     OOO_STRING_SVTOOLS_HTML_O_SDonreset,
@@ -172,7 +173,7 @@ const char * aEventSDOptionTable[] =
     nullptr
 };
 
-const char * aEventOptionTable[] =
+const char * const aEventOptionTable[] =
 {
     OOO_STRING_SVTOOLS_HTML_O_onsubmit,
     OOO_STRING_SVTOOLS_HTML_O_onreset,
@@ -280,8 +281,7 @@ const uno::Reference< XMultiServiceFactory >& SwHTMLForm_Impl::GetServiceFactory
     if( !m_xServiceFactory.is() && m_pDocShell )
     {
         m_xServiceFactory =
-            uno::Reference< XMultiServiceFactory >( m_pDocShell->GetBaseModel(),
-                                               UNO_QUERY );
+            uno::Reference< XMultiServiceFactory >( m_pDocShell->GetBaseModel() );
         OSL_ENSURE( m_xServiceFactory.is(),
                 "XServiceFactory not received from model" );
     }
@@ -292,8 +292,7 @@ void SwHTMLForm_Impl::GetDrawPage()
 {
     if( !m_xDrawPage.is() && m_pDocShell )
     {
-        uno::Reference< drawing::XDrawPageSupplier > xTextDoc( m_pDocShell->GetBaseModel(),
-                                                         UNO_QUERY );
+        rtl::Reference< SwXTextDocument > xTextDoc( m_pDocShell->GetBaseModel() );
         OSL_ENSURE( xTextDoc.is(),
                 "drawing::XDrawPageSupplier not received from model" );
         m_xDrawPage = xTextDoc->getDrawPage();
@@ -506,7 +505,7 @@ void SwHTMLImageWatcher::init( sal_Int32 Width, sal_Int32 Height )
         {
             SwFrameFormat *pFrameFormat = pSwShape->GetFrameFormat();
 
-            const SwDoc *pDoc = pFrameFormat->GetDoc();
+            const SwDoc& rDoc = pFrameFormat->GetDoc();
             SwNode* pAnchorNode = pFrameFormat->GetAnchor().GetAnchorNode();
             SwTableNode *pTableNd;
             if (pAnchorNode && nullptr != (pTableNd = pAnchorNode->FindTableNode()))
@@ -517,7 +516,7 @@ void SwHTMLImageWatcher::init( sal_Int32 Width, sal_Int32 Height )
                 if( pLayout )
                 {
                     const sal_uInt16 nBrowseWidth =
-                        pLayout->GetBrowseWidthByTable( *pDoc );
+                        pLayout->GetBrowseWidthByTable( rDoc );
 
                     if ( nBrowseWidth )
                     {
@@ -591,24 +590,24 @@ static void lcl_html_setFixedFontProperty(
                                     GetDefaultFontFlags::OnlyOne )  );
     Any aTmp;
     aTmp <<= aFixedFont.GetFamilyName();
-    rPropSet->setPropertyValue("FontName", aTmp );
+    rPropSet->setPropertyValue(u"FontName"_ustr, aTmp );
 
     aTmp <<= aFixedFont.GetStyleName();
-    rPropSet->setPropertyValue("FontStyleName",
+    rPropSet->setPropertyValue(u"FontStyleName"_ustr,
                                 aTmp );
 
-    aTmp <<= static_cast<sal_Int16>(aFixedFont.GetFamilyType());
-    rPropSet->setPropertyValue("FontFamily", aTmp );
+    aTmp <<= static_cast<sal_Int16>(aFixedFont.GetFamilyTypeMaybeAskConfig());
+    rPropSet->setPropertyValue(u"FontFamily"_ustr, aTmp );
 
     aTmp <<= static_cast<sal_Int16>(aFixedFont.GetCharSet());
-    rPropSet->setPropertyValue("FontCharset",
+    rPropSet->setPropertyValue(u"FontCharset"_ustr,
                                 aTmp );
 
-    aTmp <<= static_cast<sal_Int16>(aFixedFont.GetPitch());
-    rPropSet->setPropertyValue("FontPitch", aTmp );
+    aTmp <<= static_cast<sal_Int16>(aFixedFont.GetPitchMaybeAskConfig());
+    rPropSet->setPropertyValue(u"FontPitch"_ustr, aTmp );
 
     aTmp <<= float(10.0);
-    rPropSet->setPropertyValue("FontHeight", aTmp );
+    rPropSet->setPropertyValue(u"FontHeight"_ustr, aTmp );
 }
 
 void SwHTMLParser::SetControlSize( const uno::Reference< drawing::XShape >& rShape,
@@ -735,7 +734,7 @@ static bool lcl_html_setEvents(
     {
         const SvxMacro *pMacro = rMacroTable.Get( aEventTypeTable[i] );
         // As long as not all events are implemented the table also holds empty strings
-        if( pMacro && aEventListenerTable[i] )
+        if( pMacro && !aEventListenerTable[i].isEmpty() )
             nEvents++;
     }
     for( const auto &rStr : rUnoMacroTable )
@@ -759,12 +758,11 @@ static bool lcl_html_setEvents(
     for( int i=0; SvMacroItemId::NONE != aEventTypeTable[i]; ++i )
     {
         const SvxMacro *pMacro = rMacroTable.Get( aEventTypeTable[i] );
-        if( pMacro && aEventListenerTable[i] )
+        if( pMacro && !aEventListenerTable[i].isEmpty() )
         {
             script::ScriptEventDescriptor& rDesc = pDescs[nEvent++];
-            rDesc.ListenerType =
-                    OUString::createFromAscii(aEventListenerTable[i]);
-            rDesc.EventMethod = OUString::createFromAscii(aEventMethodTable[i]);
+            rDesc.ListenerType = aEventListenerTable[i];
+            rDesc.EventMethod = aEventMethodTable[i];
             rDesc.ScriptType = pMacro->GetLanguage();
             rDesc.ScriptCode = pMacro->GetMacName();
         }
@@ -857,7 +855,7 @@ uno::Reference< drawing::XShape > SwHTMLParser::InsertControl(
         if( !rServiceFactory.is() )
             return xShape;
 
-        uno::Reference< XInterface > xCreate = rServiceFactory->createInstance( "com.sun.star.drawing.ControlShape" );
+        uno::Reference< XInterface > xCreate = rServiceFactory->createInstance( u"com.sun.star.drawing.ControlShape"_ustr );
         if( !xCreate.is() )
             return xShape;
 
@@ -878,7 +876,7 @@ uno::Reference< drawing::XShape > SwHTMLParser::InsertControl(
             if( rCSS1PropInfo.m_bLeftMargin )
             {
                 // should be SvxLeftMarginItem... "cast" it
-                nLeftSpace = convertTwipToMm100(pLeft->GetTextLeft());
+                nLeftSpace = convertTwipToMm100(pLeft->ResolveTextLeft({}));
                 rCSS1PropInfo.m_bLeftMargin = false;
             }
             rCSS1ItemSet.ClearItem(RES_MARGIN_TEXTLEFT);
@@ -887,7 +885,7 @@ uno::Reference< drawing::XShape > SwHTMLParser::InsertControl(
         {
             if( rCSS1PropInfo.m_bRightMargin )
             {
-                nRightSpace = convertTwipToMm100(pRight->GetRight());
+                nRightSpace = convertTwipToMm100(pRight->ResolveRight({}));
                 rCSS1PropInfo.m_bRightMargin = false;
             }
             rCSS1ItemSet.ClearItem(RES_MARGIN_RIGHT);
@@ -896,10 +894,10 @@ uno::Reference< drawing::XShape > SwHTMLParser::InsertControl(
         {
             Any aAny2;
             aAny2 <<= nLeftSpace;
-            xShapePropSet->setPropertyValue("LeftMargin", aAny2 );
+            xShapePropSet->setPropertyValue(u"LeftMargin"_ustr, aAny2 );
 
             aAny2 <<= nRightSpace;
-            xShapePropSet->setPropertyValue("RightMargin", aAny2 );
+            xShapePropSet->setPropertyValue(u"RightMargin"_ustr, aAny2 );
         }
 
         // set upper/lower border
@@ -923,15 +921,15 @@ uno::Reference< drawing::XShape > SwHTMLParser::InsertControl(
         {
             uno::Any aAny2;
             aAny2 <<= nUpperSpace;
-            xShapePropSet->setPropertyValue("TopMargin", aAny2 );
+            xShapePropSet->setPropertyValue(u"TopMargin"_ustr, aAny2 );
 
             aAny2 <<= nLowerSpace;
-            xShapePropSet->setPropertyValue("BottomMargin", aAny2 );
+            xShapePropSet->setPropertyValue(u"BottomMargin"_ustr, aAny2 );
         }
 
         uno::Reference< beans::XPropertySetInfo > xPropSetInfo =
             rFCompPropSet->getPropertySetInfo();
-        OUString sPropName = "BackgroundColor";
+        OUString sPropName = u"BackgroundColor"_ustr;
         const SvxBrushItem* pBrushItem = rCSS1ItemSet.GetItemIfSet( RES_BACKGROUND );
         if( pBrushItem && xPropSetInfo->hasPropertyByName( sPropName ) )
         {
@@ -1031,7 +1029,7 @@ uno::Reference< drawing::XShape > SwHTMLParser::InsertControl(
             rFCompPropSet->setPropertyValue( sPropName, aTmp );
         }
 
-        uno::Reference< text::XTextRange >  xTextRg;
+        rtl::Reference< SwXTextRange >  xTextRg;
         text::TextContentAnchorType nAnchorType = text::TextContentAnchorType_AS_CHARACTER;
         bool bSetPos = false, bSetSurround = false;
         sal_Int32 nXPos = 0, nYPos = 0;
@@ -1110,16 +1108,16 @@ uno::Reference< drawing::XShape > SwHTMLParser::InsertControl(
                 break;
             }
             aTmp <<= nVertOri ;
-            xShapePropSet->setPropertyValue("VertOrient", aTmp );
+            xShapePropSet->setPropertyValue(u"VertOrient"_ustr, aTmp );
         }
 
         aTmp <<= nAnchorType ;
-        xShapePropSet->setPropertyValue("AnchorType", aTmp );
+        xShapePropSet->setPropertyValue(u"AnchorType"_ustr, aTmp );
 
         if( text::TextContentAnchorType_AT_PAGE == nAnchorType )
         {
             aTmp <<= sal_Int16(1) ;
-            xShapePropSet->setPropertyValue("AnchorPageNo", aTmp );
+            xShapePropSet->setPropertyValue(u"AnchorPageNo"_ustr, aTmp );
         }
         else
         {
@@ -1129,26 +1127,26 @@ uno::Reference< drawing::XShape > SwHTMLParser::InsertControl(
                 xTextRg = new SwXTextRange( *m_pPam, xDummyTextRef );
             }
 
-            aTmp <<= xTextRg;
-            xShapePropSet->setPropertyValue("TextRange", aTmp );
+            aTmp <<= uno::Reference< text::XTextRange >(xTextRg);
+            xShapePropSet->setPropertyValue(u"TextRange"_ustr, aTmp );
         }
 
         if( bSetPos )
         {
             aTmp <<= sal_Int16(text::HoriOrientation::NONE);
-            xShapePropSet->setPropertyValue("HoriOrient", aTmp );
+            xShapePropSet->setPropertyValue(u"HoriOrient"_ustr, aTmp );
             aTmp <<= nXPos ;
-            xShapePropSet->setPropertyValue("HoriOrientPosition", aTmp );
+            xShapePropSet->setPropertyValue(u"HoriOrientPosition"_ustr, aTmp );
 
             aTmp <<= sal_Int16(text::VertOrientation::NONE);
-            xShapePropSet->setPropertyValue("VertOrient", aTmp );
+            xShapePropSet->setPropertyValue(u"VertOrient"_ustr, aTmp );
             aTmp <<= nYPos ;
-            xShapePropSet->setPropertyValue("VertOrientPosition", aTmp );
+            xShapePropSet->setPropertyValue(u"VertOrientPosition"_ustr, aTmp );
         }
         if( bSetSurround )
         {
             aTmp <<= nSurround ;
-            xShapePropSet->setPropertyValue("Surround", aTmp );
+            xShapePropSet->setPropertyValue(u"Surround"_ustr, aTmp );
         }
 
         m_pFormImpl->GetShapes()->add(xShape);
@@ -1279,7 +1277,7 @@ void SwHTMLParser::NewForm( bool bAppend )
     uno::Reference<XForm> xForm;
     try
     {
-        xInt = rSrvcMgr->createInstance("com.sun.star.form.component.Form");
+        xInt = rSrvcMgr->createInstance(u"com.sun.star.form.component.Form"_ustr);
         if (!xInt.is())
             return;
         xForm.set(xInt, UNO_QUERY);
@@ -1300,7 +1298,7 @@ void SwHTMLParser::NewForm( bool bAppend )
 
     Any aTmp;
     aTmp <<= sName;
-    xFormPropSet->setPropertyValue("Name", aTmp );
+    xFormPropSet->setPropertyValue(u"Name"_ustr, aTmp );
 
     if( !aAction.isEmpty() )
     {
@@ -1313,20 +1311,20 @@ void SwHTMLParser::NewForm( bool bAppend )
         aAction = aURLObj.GetPartBeforeLastName();
     }
     aTmp <<= aAction;
-    xFormPropSet->setPropertyValue("TargetURL",
+    xFormPropSet->setPropertyValue(u"TargetURL"_ustr,
                                     aTmp );
 
     aTmp <<= nMethod;
-    xFormPropSet->setPropertyValue("SubmitMethod",
+    xFormPropSet->setPropertyValue(u"SubmitMethod"_ustr,
                                     aTmp );
 
     aTmp <<= nEncType;
-    xFormPropSet->setPropertyValue("SubmitEncoding", aTmp );
+    xFormPropSet->setPropertyValue(u"SubmitEncoding"_ustr, aTmp );
 
     if( !sTarget.isEmpty() )
     {
         aTmp <<= sTarget;
-        xFormPropSet->setPropertyValue( "TargetFrame", aTmp );
+        xFormPropSet->setPropertyValue( u"TargetFrame"_ustr, aTmp );
     }
 
     const uno::Reference< container::XIndexContainer > & rForms =
@@ -1595,19 +1593,19 @@ void SwHTMLParser::InsertInput()
 
     Any aTmp;
     aTmp <<= sName;
-    xPropSet->setPropertyValue("Name", aTmp );
+    xPropSet->setPropertyValue(u"Name"_ustr, aTmp );
 
     if( HTMLInputType::Hidden != eType  )
     {
         if( nTabIndex >= TABINDEX_MIN && nTabIndex <= TABINDEX_MAX  )
         {
             aTmp <<= static_cast<sal_Int16>(nTabIndex) ;
-            xPropSet->setPropertyValue("TabIndex", aTmp );
+            xPropSet->setPropertyValue(u"TabIndex"_ustr, aTmp );
         }
 
         if( bDisabled )
         {
-            xPropSet->setPropertyValue("Enabled", Any(false) );
+            xPropSet->setPropertyValue(u"Enabled"_ustr, Any(false) );
         }
     }
 
@@ -1623,11 +1621,11 @@ void SwHTMLParser::InsertInput()
     case HTMLInputType::Radio:
         {
             if( !bValue )
-                aTmp <<= OUString( OOO_STRING_SVTOOLS_HTML_on );
-            xPropSet->setPropertyValue("RefValue",
+                aTmp <<= u"" OOO_STRING_SVTOOLS_HTML_on ""_ustr;
+            xPropSet->setPropertyValue(u"RefValue"_ustr,
                                         aTmp );
             aTmp <<= OUString();
-            xPropSet->setPropertyValue("Label",
+            xPropSet->setPropertyValue(u"Label"_ustr,
                                         aTmp );
             // RadioButton: The DefaultChecked property should only be set
             // if the control has been created and activateTabOrder has been called
@@ -1635,7 +1633,7 @@ void SwHTMLParser::InsertInput()
             if( HTMLInputType::Checkbox == eType )
             {
                 aTmp <<= nChecked ;
-                xPropSet->setPropertyValue("DefaultState", aTmp );
+                xPropSet->setPropertyValue(u"DefaultState"_ustr, aTmp );
             }
 
             const SvxMacro* pMacro = aMacroTable.Get( SvMacroItemId::HtmlOnClick );
@@ -1655,10 +1653,10 @@ void SwHTMLParser::InsertInput()
             aSz.setWidth(o3tl::convert(nWidth, o3tl::Length::px, o3tl::Length::mm100));
             aSz.setHeight(o3tl::convert(nHeight, o3tl::Length::px, o3tl::Length::mm100));
             aTmp <<= FormButtonType_SUBMIT;
-            xPropSet->setPropertyValue("ButtonType", aTmp );
+            xPropSet->setPropertyValue(u"ButtonType"_ustr, aTmp );
 
             aTmp <<= sal_Int16(0)  ;
-            xPropSet->setPropertyValue("Border",
+            xPropSet->setPropertyValue(u"Border"_ustr,
                                         aTmp );
         }
         break;
@@ -1687,11 +1685,11 @@ void SwHTMLParser::InsertInput()
                 ;
             }
             aTmp <<= sText;
-            xPropSet->setPropertyValue("Label",
+            xPropSet->setPropertyValue(u"Label"_ustr,
                                         aTmp );
 
             aTmp <<= eButtonType;
-            xPropSet->setPropertyValue("ButtonType", aTmp );
+            xPropSet->setPropertyValue(u"ButtonType"_ustr, aTmp );
 
             bMinWidth = bMinHeight = true;
             bUseSize = true;
@@ -1704,18 +1702,18 @@ void SwHTMLParser::InsertInput()
         if( HTMLInputType::File != eType )
         {
             // The VALUE of file control will be ignored for security reasons
-            xPropSet->setPropertyValue("DefaultText", aTmp );
+            xPropSet->setPropertyValue(u"DefaultText"_ustr, aTmp );
             if( nMaxLen != 0 )
             {
                 aTmp <<= nMaxLen ;
-                xPropSet->setPropertyValue("MaxTextLen", aTmp );
+                xPropSet->setPropertyValue(u"MaxTextLen"_ustr, aTmp );
             }
         }
 
         if( HTMLInputType::Password == eType )
         {
             aTmp <<= sal_Int16('*') ;
-            xPropSet->setPropertyValue("EchoChar", aTmp );
+            xPropSet->setPropertyValue(u"EchoChar"_ustr, aTmp );
         }
 
         lcl_html_setFixedFontProperty( xPropSet );
@@ -1727,7 +1725,7 @@ void SwHTMLParser::InsertInput()
         break;
 
     case HTMLInputType::Hidden:
-        xPropSet->setPropertyValue("HiddenValue", aTmp );
+        xPropSet->setPropertyValue(u"HiddenValue"_ustr, aTmp );
         bHidden = true;
         break;
     default:
@@ -1745,7 +1743,7 @@ void SwHTMLParser::InsertInput()
     SvxCSS1PropertyInfo aCSS1PropInfo;
     if( HasStyleOptions( aStyle, aId, aClass ) )
     {
-        ParseStyleOptions( aStyle, aId, aClass, aCSS1ItemSet, aCSS1PropInfo );
+        (void)ParseStyleOptions(aStyle, aId, aClass, aCSS1ItemSet, aCSS1PropInfo);
         if( !aId.isEmpty() )
             InsertBookmark( aId );
     }
@@ -1800,7 +1798,7 @@ void SwHTMLParser::InsertInput()
     if( HTMLInputType::Radio == eType )
     {
         aTmp <<= nChecked ;
-        xPropSet->setPropertyValue("DefaultState", aTmp );
+        xPropSet->setPropertyValue(u"DefaultState"_ustr, aTmp );
     }
 
     if( HTMLInputType::Image == eType )
@@ -1808,7 +1806,7 @@ void SwHTMLParser::InsertInput()
         // Set the URL after inserting the graphic because the Download can
         // only register with XModel after the control has been inserted.
         aTmp <<= URIHelper::SmartRel2Abs(INetURLObject(m_sBaseURL), sImgSrc, Link<OUString *, bool>(), false);
-        xPropSet->setPropertyValue("ImageURL",
+        xPropSet->setPropertyValue(u"ImageURL"_ustr,
                                     aTmp );
     }
 
@@ -1955,7 +1953,7 @@ void SwHTMLParser::NewTextArea()
         return;
     }
     uno::Reference< uno::XInterface >  xInt = rSrvcMgr->createInstance(
-        "com.sun.star.form.component.TextField" );
+        u"com.sun.star.form.component.TextField"_ustr );
     if( !xInt.is() )
     {
         FinishTextArea();
@@ -1969,27 +1967,27 @@ void SwHTMLParser::NewTextArea()
 
     Any aTmp;
     aTmp <<= sName;
-    xPropSet->setPropertyValue("Name", aTmp );
+    xPropSet->setPropertyValue(u"Name"_ustr, aTmp );
 
     aTmp <<= true;
-    xPropSet->setPropertyValue("MultiLine", aTmp );
-    xPropSet->setPropertyValue("VScroll", aTmp );
+    xPropSet->setPropertyValue(u"MultiLine"_ustr, aTmp );
+    xPropSet->setPropertyValue(u"VScroll"_ustr, aTmp );
     if( HTML_WM_OFF == nWrap )
-        xPropSet->setPropertyValue("HScroll", aTmp );
+        xPropSet->setPropertyValue(u"HScroll"_ustr, aTmp );
     if( HTML_WM_HARD == nWrap )
-        xPropSet->setPropertyValue("HardLineBreaks", aTmp );
+        xPropSet->setPropertyValue(u"HardLineBreaks"_ustr, aTmp );
 
     if( nTabIndex >= TABINDEX_MIN && nTabIndex <= TABINDEX_MAX  )
     {
         aTmp <<= static_cast<sal_Int16>(nTabIndex) ;
-        xPropSet->setPropertyValue("TabIndex", aTmp );
+        xPropSet->setPropertyValue(u"TabIndex"_ustr, aTmp );
     }
 
     lcl_html_setFixedFontProperty( xPropSet );
 
     if( bDisabled )
     {
-        xPropSet->setPropertyValue("Enabled", Any(false) );
+        xPropSet->setPropertyValue(u"Enabled"_ustr, Any(false) );
     }
 
     OSL_ENSURE( m_pFormImpl->GetText().isEmpty(), "Text is not empty!" );
@@ -2005,7 +2003,7 @@ void SwHTMLParser::NewTextArea()
     SvxCSS1PropertyInfo aCSS1PropInfo;
     if( HasStyleOptions( aStyle, aId, aClass ) )
     {
-        ParseStyleOptions( aStyle, aId, aClass, aCSS1ItemSet, aCSS1PropInfo );
+        (void)ParseStyleOptions(aStyle, aId, aClass, aCSS1ItemSet, aCSS1PropInfo);
         if( !aId.isEmpty() )
             InsertBookmark( aId );
     }
@@ -2048,15 +2046,15 @@ void SwHTMLParser::NewTextArea()
 void SwHTMLParser::EndTextArea()
 {
     OSL_ENSURE( m_bTextArea, "no TextArea or wrong type" );
-    OSL_ENSURE( m_pFormImpl && m_pFormImpl->GetFCompPropSet().is(),
-            "TextArea missing" );
+    assert(m_pFormImpl && m_pFormImpl->GetFCompPropSet().is() &&
+            "TextArea missing");
 
     const uno::Reference< beans::XPropertySet > & rPropSet =
         m_pFormImpl->GetFCompPropSet();
 
     Any aTmp;
     aTmp <<= m_pFormImpl->GetText();
-    rPropSet->setPropertyValue("DefaultText", aTmp );
+    rPropSet->setPropertyValue(u"DefaultText"_ustr, aTmp );
     m_pFormImpl->EraseText();
 
     m_pFormImpl->ReleaseFCompPropSet();
@@ -2222,7 +2220,7 @@ void SwHTMLParser::NewSelect()
         return;
     }
     uno::Reference< uno::XInterface >  xInt = rSrvcMgr->createInstance(
-        "com.sun.star.form.component.ListBox" );
+        u"com.sun.star.form.component.ListBox"_ustr );
     if( !xInt.is() )
     {
         FinishTextArea();
@@ -2236,24 +2234,24 @@ void SwHTMLParser::NewSelect()
 
     Any aTmp;
     aTmp <<= sName;
-    xPropSet->setPropertyValue("Name", aTmp );
+    xPropSet->setPropertyValue(u"Name"_ustr, aTmp );
 
     if( nTabIndex >= TABINDEX_MIN && nTabIndex <= TABINDEX_MAX  )
     {
         aTmp <<= static_cast<sal_Int16>(nTabIndex) ;
-        xPropSet->setPropertyValue("TabIndex", aTmp );
+        xPropSet->setPropertyValue(u"TabIndex"_ustr, aTmp );
     }
 
     if( bDisabled )
     {
-        xPropSet->setPropertyValue("Enabled", Any(false) );
+        xPropSet->setPropertyValue(u"Enabled"_ustr, Any(false) );
     }
 
     Size aTextSz( 0, 0 );
     bool bMinWidth = true, bMinHeight = true;
     if( !bMultiple && 1==m_nSelectEntryCnt )
     {
-        xPropSet->setPropertyValue("Dropdown", Any(true) );
+        xPropSet->setPropertyValue(u"Dropdown"_ustr, Any(true) );
     }
     else
     {
@@ -2262,7 +2260,7 @@ void SwHTMLParser::NewSelect()
 
         if( bMultiple )
         {
-            xPropSet->setPropertyValue("MultiSelection", Any(true) );
+            xPropSet->setPropertyValue(u"MultiSelection"_ustr, Any(true) );
         }
         aTextSz.setHeight( m_nSelectEntryCnt );
         bMinHeight = false;
@@ -2272,7 +2270,7 @@ void SwHTMLParser::NewSelect()
     SvxCSS1PropertyInfo aCSS1PropInfo;
     if( HasStyleOptions( aStyle, aId, aClass ) )
     {
-        ParseStyleOptions( aStyle, aId, aClass, aCSS1ItemSet, aCSS1PropInfo );
+        (void)ParseStyleOptions(aStyle, aId, aClass, aCSS1ItemSet, aCSS1PropInfo);
         if( !aId.isEmpty() )
             InsertBookmark( aId );
     }
@@ -2321,8 +2319,8 @@ void SwHTMLParser::EndSelect()
     assert(m_vPendingStack.empty());
 
     OSL_ENSURE( m_bSelect, "no Select" );
-    OSL_ENSURE( m_pFormImpl && m_pFormImpl->GetFCompPropSet().is(),
-            "no select control" );
+    assert(m_pFormImpl && m_pFormImpl->GetFCompPropSet().is() &&
+            "no select control");
 
     const uno::Reference< beans::XPropertySet > & rPropSet =
         m_pFormImpl->GetFCompPropSet();
@@ -2345,11 +2343,11 @@ void SwHTMLParser::EndSelect()
             pValues[i] = sText;
         }
 
-        rPropSet->setPropertyValue("StringItemList", Any(aList) );
+        rPropSet->setPropertyValue(u"StringItemList"_ustr, Any(aList) );
 
-        rPropSet->setPropertyValue("ListSourceType", Any(ListSourceType_VALUELIST) );
+        rPropSet->setPropertyValue(u"ListSourceType"_ustr, Any(ListSourceType_VALUELIST) );
 
-        rPropSet->setPropertyValue("ListSource", Any(aValueList) );
+        rPropSet->setPropertyValue(u"ListSource"_ustr, Any(aValueList) );
 
         size_t nSelCnt = m_pFormImpl->GetSelectedList().size();
         if( !nSelCnt && 1 == m_nSelectEntryCnt && nEntryCnt )
@@ -2364,7 +2362,7 @@ void SwHTMLParser::EndSelect()
         {
             pSels[i] = static_cast<sal_Int16>(m_pFormImpl->GetSelectedList()[i]);
         }
-        rPropSet->setPropertyValue("DefaultSelection", Any(aSelList) );
+        rPropSet->setPropertyValue(u"DefaultSelection"_ustr, Any(aSelList) );
 
         m_pFormImpl->EraseStringList();
         m_pFormImpl->EraseValueList();

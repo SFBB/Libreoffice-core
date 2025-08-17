@@ -25,6 +25,7 @@
 #include "SlsBitmapCache.hxx"
 #include <cache/SlsPageCacheManager.hxx>
 #include <tools/debug.hxx>
+#include <unomodel.hxx>
 
 namespace sd::slidesorter::cache {
 
@@ -257,20 +258,6 @@ void GenericPageCache::SetPreciousFlag (
     }
 
     mpBitmapCache->SetPrecious(mpCacheContext->GetPage(aKey), bIsPrecious);
-}
-
-void GenericPageCache::Pause()
-{
-    ProvideCacheAndProcessor();
-    if (mpQueueProcessor != nullptr)
-        mpQueueProcessor->Pause();
-}
-
-void GenericPageCache::Resume()
-{
-    ProvideCacheAndProcessor();
-    if (mpQueueProcessor != nullptr)
-        mpQueueProcessor->Resume();
 }
 
 } // end of namespace ::sd::slidesorter::cache

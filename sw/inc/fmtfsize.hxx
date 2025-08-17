@@ -28,8 +28,6 @@
 #include "swtypes.hxx"
 #include "format.hxx"
 
-class IntlWrapper;
-
 //Frame size.
 
 enum class SwFrameSize
@@ -73,10 +71,12 @@ class SW_DLLPUBLIC SwFormatFrameSize final : public SvxSizeItem
     bool HasMetrics() const override;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatFrameSize)
     SwFormatFrameSize( SwFrameSize eSize = SwFrameSize::Variable,
                   SwTwips nWidth = 0, SwTwips nHeight = 0 );
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
+    virtual size_t          hashCode() const override;
     virtual SwFormatFrameSize* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
@@ -87,10 +87,12 @@ public:
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     SwFrameSize GetHeightSizeType() const { return m_eFrameHeightType; }
-    void SetHeightSizeType( SwFrameSize eSize ) { m_eFrameHeightType = eSize; }
+    void SetHeightSizeType( SwFrameSize eSize )
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_eFrameHeightType = eSize; }
 
     SwFrameSize GetWidthSizeType() const { return m_eFrameWidthType; }
-    void SetWidthSizeType( SwFrameSize eSize ) { m_eFrameWidthType = eSize; }
+    void SetWidthSizeType( SwFrameSize eSize )
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_eFrameWidthType = eSize; }
 
     enum PercentFlags { SYNCED = 0xff };
     //0xff is reserved to indicate height is synced to width
@@ -99,12 +101,19 @@ public:
     //0xff is reserved to indicate width is synced to height
     sal_uInt8   GetWidthPercent() const { return m_nWidthPercent;  }
     sal_Int16   GetWidthPercentRelation() const { return m_eWidthPercentRelation;  }
-    void    SetHeightPercent( sal_uInt8 n ) { m_nHeightPercent = n; }
-    void    SetHeightPercentRelation ( sal_Int16 n ) { m_eHeightPercentRelation  = n; }
-    void    SetWidthPercent ( sal_uInt8 n ) { m_nWidthPercent  = n; }
-    void    SetWidthPercentRelation ( sal_Int16 n ) { m_eWidthPercentRelation  = n; }
+    void    SetHeightPercent( sal_uInt8 n )
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nHeightPercent = n; }
+    void    SetHeightPercentRelation ( sal_Int16 n )
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_eHeightPercentRelation  = n; }
+    void    SetWidthPercent ( sal_uInt8 n )
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_nWidthPercent  = n; }
+    void    SetWidthPercentRelation ( sal_Int16 n )
+    { ASSERT_CHANGE_REFCOUNTED_ITEM; m_eWidthPercentRelation  = n; }
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
 };
 
 inline const SwFormatFrameSize &SwAttrSet::GetFrameSize(bool bInP) const

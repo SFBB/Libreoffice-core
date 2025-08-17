@@ -14,7 +14,6 @@ $(eval $(call gb_CppunitTest_CppunitTest,sd_tiledrendering))
 $(eval $(call gb_CppunitTest_use_common_precompiled_header,sd_tiledrendering))
 
 $(eval $(call gb_CppunitTest_add_exception_objects,sd_tiledrendering, \
-    sd/qa/unit/tiledrendering/LOKitSearchTest \
     sd/qa/unit/tiledrendering/tiledrendering \
 ))
 
@@ -31,6 +30,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sd_tiledrendering, \
     svt \
     svxcore \
     sd \
+    sdqahelper \
     test \
     unotest \
     vcl \
@@ -40,6 +40,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sd_tiledrendering, \
 
 $(eval $(call gb_CppunitTest_use_externals,sd_tiledrendering,\
     boost_headers \
+    frozen \
     libxml2 \
 ))
 
@@ -47,6 +48,7 @@ $(eval $(call gb_CppunitTest_set_include,sd_tiledrendering,\
     -I$(SRCDIR)/sd/inc \
     -I$(SRCDIR)/sd/source/ui/inc \
     -I$(SRCDIR)/sd/qa/unit \
+	-I$(SRCDIR)/sd/qa/inc \
     $$(INCLUDE) \
 ))
 

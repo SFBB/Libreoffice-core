@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <comphelper/diagnose_ex.hxx>
 #include <comphelper/string.hxx>
 #include <comphelper/processfactory.hxx>
 
@@ -25,6 +26,9 @@
 # include <com/sun/star/xml/crypto/GPGSEInitializer.hpp>
 # include <com/sun/star/xml/crypto/XXMLSecurityContext.hpp>
 #endif
+#include <com/sun/star/xml/crypto/SEInitializer.hpp>
+#include <comphelper/xmlsechelper.hxx>
+#include <com/sun/star/security/DocumentDigitalSignatures.hpp>
 
 #include <i18nlangtag/languagetag.hxx>
 #include <i18nlangtag/mslangid.hxx>
@@ -87,20 +91,20 @@ struct
     // which language is this row for?
     unsigned nLangFlags;
 }
-const vRowInfo[] =
+constexpr vRowInfo[] =
 {
-    { "lockcompanyft",  "companyft",   Lang::All },
-    { "locknameft",     "nameft",      Lang::All & ~Lang::Russian & ~Lang::Eastern },
-    { "lockrusnameft",  "rusnameft",   Lang::Russian },
-    { "lockeastnameft", "eastnameft",  Lang::Eastern },
-    { "lockstreetft",   "streetft",    Lang::All & ~Lang::Russian },
-    { "lockrusstreetft","russtreetft", Lang::Russian },
-    { "lockicityft",    "icityft",     Lang::All & ~Lang::US },
-    { "lockcityft",     "cityft",      Lang::US },
-    { "lockcountryft",  "countryft",   Lang::All },
-    { "locktitleft",    "titleft",     Lang::All },
-    { "lockphoneft",    "phoneft",     Lang::All },
-    { "lockfaxft",      "faxft",       Lang::All },
+    { u"lockcompanyft"_ustr,  u"companyft"_ustr,   Lang::All },
+    { u"locknameft"_ustr,     u"nameft"_ustr,      Lang::All & ~Lang::Russian & ~Lang::Eastern },
+    { u"lockrusnameft"_ustr,  u"rusnameft"_ustr,   Lang::Russian },
+    { u"lockeastnameft"_ustr, u"eastnameft"_ustr,  Lang::Eastern },
+    { u"lockstreetft"_ustr,   u"streetft"_ustr,    Lang::All & ~Lang::Russian },
+    { u"lockrusstreetft"_ustr,u"russtreetft"_ustr, Lang::Russian },
+    { u"lockicityft"_ustr,    u"icityft"_ustr,     Lang::All & ~Lang::US },
+    { u"lockcityft"_ustr,     u"cityft"_ustr,      Lang::US },
+    { u"lockcountryft"_ustr,  u"countryft"_ustr,   Lang::All },
+    { u"locktitleft"_ustr,    u"titleft"_ustr,     Lang::All },
+    { u"lockphoneft"_ustr,    u"phoneft"_ustr,     Lang::All },
+    { u"lockfaxft"_ustr,      u"faxft"_ustr,       Lang::All },
 };
 
 
@@ -118,46 +122,46 @@ struct
     // id for settings the focus (defined in svx/optgenrl.hxx)
     EditPosition nGrabFocusId;
 }
-const vFieldInfo[] =
+constexpr vFieldInfo[] =
 {
     // Company
-    { Row_Company, "company", UserOptToken::Company, EditPosition::COMPANY },
+    { Row_Company, u"company"_ustr, UserOptToken::Company, EditPosition::COMPANY },
     // Name
-    { Row_Name, "firstname", UserOptToken::FirstName, EditPosition::FIRSTNAME },
-    { Row_Name, "lastname", UserOptToken::LastName, EditPosition::LASTNAME  },
-    { Row_Name, "shortname", UserOptToken::ID, EditPosition::SHORTNAME },
+    { Row_Name, u"firstname"_ustr, UserOptToken::FirstName, EditPosition::FIRSTNAME },
+    { Row_Name, u"lastname"_ustr, UserOptToken::LastName, EditPosition::LASTNAME  },
+    { Row_Name, u"shortname"_ustr, UserOptToken::ID, EditPosition::SHORTNAME },
     // Name (russian)
-    { Row_Name_Russian, "ruslastname", UserOptToken::LastName, EditPosition::LASTNAME  },
-    { Row_Name_Russian, "rusfirstname", UserOptToken::FirstName, EditPosition::FIRSTNAME },
-    { Row_Name_Russian, "rusfathersname", UserOptToken::FathersName, EditPosition::UNKNOWN },
-    { Row_Name_Russian, "russhortname", UserOptToken::ID, EditPosition::SHORTNAME },
+    { Row_Name_Russian, u"ruslastname"_ustr, UserOptToken::LastName, EditPosition::LASTNAME  },
+    { Row_Name_Russian, u"rusfirstname"_ustr, UserOptToken::FirstName, EditPosition::FIRSTNAME },
+    { Row_Name_Russian, u"rusfathersname"_ustr, UserOptToken::FathersName, EditPosition::UNKNOWN },
+    { Row_Name_Russian, u"russhortname"_ustr, UserOptToken::ID, EditPosition::SHORTNAME },
     // Name (eastern: reversed name ord
-    { Row_Name_Eastern, "eastlastname", UserOptToken::LastName, EditPosition::LASTNAME  },
-    { Row_Name_Eastern, "eastfirstname", UserOptToken::FirstName, EditPosition::FIRSTNAME },
-    { Row_Name_Eastern, "eastshortname", UserOptToken::ID, EditPosition::SHORTNAME },
+    { Row_Name_Eastern, u"eastlastname"_ustr, UserOptToken::LastName, EditPosition::LASTNAME  },
+    { Row_Name_Eastern, u"eastfirstname"_ustr, UserOptToken::FirstName, EditPosition::FIRSTNAME },
+    { Row_Name_Eastern, u"eastshortname"_ustr, UserOptToken::ID, EditPosition::SHORTNAME },
     // Street
-    { Row_Street, "street", UserOptToken::Street, EditPosition::STREET },
+    { Row_Street, u"street"_ustr, UserOptToken::Street, EditPosition::STREET },
     // Street (russian)
-    { Row_Street_Russian, "russtreet", UserOptToken::Street, EditPosition::STREET },
-    { Row_Street_Russian, "apartnum", UserOptToken::Apartment, EditPosition::UNKNOWN },
+    { Row_Street_Russian, u"russtreet"_ustr, UserOptToken::Street, EditPosition::STREET },
+    { Row_Street_Russian, u"apartnum"_ustr, UserOptToken::Apartment, EditPosition::UNKNOWN },
     // City
-    { Row_City, "izip", UserOptToken::Zip, EditPosition::PLZ },
-    { Row_City, "icity", UserOptToken::City, EditPosition::CITY },
+    { Row_City, u"izip"_ustr, UserOptToken::Zip, EditPosition::PLZ },
+    { Row_City, u"icity"_ustr, UserOptToken::City, EditPosition::CITY },
     // City (US)
-    { Row_City_US, "city", UserOptToken::City, EditPosition::CITY },
-    { Row_City_US, "state", UserOptToken::State, EditPosition::STATE },
-    { Row_City_US, "zip", UserOptToken::Zip, EditPosition::PLZ },
+    { Row_City_US, u"city"_ustr, UserOptToken::City, EditPosition::CITY },
+    { Row_City_US, u"state"_ustr, UserOptToken::State, EditPosition::STATE },
+    { Row_City_US, u"zip"_ustr, UserOptToken::Zip, EditPosition::PLZ },
     // Country
-    { Row_Country, "country", UserOptToken::Country, EditPosition::COUNTRY },
+    { Row_Country, u"country"_ustr, UserOptToken::Country, EditPosition::COUNTRY },
     // Title/Position
-    { Row_TitlePos, "title", UserOptToken::Title,    EditPosition::TITLE },
-    { Row_TitlePos, "position", UserOptToken::Position, EditPosition::POSITION },
+    { Row_TitlePos, u"title"_ustr, UserOptToken::Title,    EditPosition::TITLE },
+    { Row_TitlePos, u"position"_ustr, UserOptToken::Position, EditPosition::POSITION },
     // Phone
-    { Row_Phone, "home", UserOptToken::TelephoneHome, EditPosition::TELPRIV },
-    { Row_Phone, "work", UserOptToken::TelephoneWork, EditPosition::TELCOMPANY },
+    { Row_Phone, u"home"_ustr, UserOptToken::TelephoneHome, EditPosition::TELPRIV },
+    { Row_Phone, u"work"_ustr, UserOptToken::TelephoneWork, EditPosition::TELCOMPANY },
     // Fax/Mail
-    { Row_FaxMail, "fax", UserOptToken::Fax, EditPosition::FAX },
-    { Row_FaxMail, "email", UserOptToken::Email, EditPosition::EMAIL },
+    { Row_FaxMail, u"fax"_ustr, UserOptToken::Fax, EditPosition::FAX },
+    { Row_FaxMail, u"email"_ustr, UserOptToken::Email, EditPosition::EMAIL },
 };
 
 
@@ -213,18 +217,22 @@ public:
 };
 
 SvxGeneralTabPage::SvxGeneralTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreSet)
-    : SfxTabPage(pPage, pController, "cui/ui/optuserpage.ui", "OptUserPage", &rCoreSet)
-    , m_xUseDataCB(m_xBuilder->weld_check_button("usefordocprop"))
-    , m_xUseDataImg(m_xBuilder->weld_widget("lockusefordocprop"))
-    , m_xCryptoFrame(m_xBuilder->weld_widget( "cryptography"))
-    , m_xSigningKeyLB(m_xBuilder->weld_combo_box("signingkey"))
-    , m_xSigningKeyFT(m_xBuilder->weld_label("signingkeylabel"))
-    , m_xSigningKeyImg(m_xBuilder->weld_widget("locksigningkey"))
-    , m_xEncryptionKeyLB(m_xBuilder->weld_combo_box("encryptionkey"))
-    , m_xEncryptionKeyFT(m_xBuilder->weld_label("encryptionkeylabel"))
-    , m_xEncryptionKeyImg(m_xBuilder->weld_widget("lockencryptionkey"))
-    , m_xEncryptToSelfCB(m_xBuilder->weld_check_button("encrypttoself"))
-    , m_xEncryptToSelfImg(m_xBuilder->weld_widget("lockencrypttoself"))
+    : SfxTabPage(pPage, pController, u"cui/ui/optuserpage.ui"_ustr, u"OptUserPage"_ustr, &rCoreSet)
+    , m_xUseDataCB(m_xBuilder->weld_check_button(u"usefordocprop"_ustr))
+    , m_xUseDataImg(m_xBuilder->weld_widget(u"lockusefordocprop"_ustr))
+    , m_xCryptoFrame(m_xBuilder->weld_widget( u"cryptography"_ustr))
+    , m_xSigningKeyLB(m_xBuilder->weld_entry(u"signingkey"_ustr))
+    , m_xSigningKeyFT(m_xBuilder->weld_label(u"signingkeylabel"_ustr))
+    , m_xSigningKeyImg(m_xBuilder->weld_widget(u"locksigningkey"_ustr))
+    , m_xSigningKeyButton(m_xBuilder->weld_button(u"picksigningkey"_ustr))
+    , m_xRemoveSigningKeyButton(m_xBuilder->weld_button(u"removesigningkey"_ustr))
+    , m_xEncryptionKeyLB(m_xBuilder->weld_entry(u"encryptionkey"_ustr))
+    , m_xEncryptionKeyFT(m_xBuilder->weld_label(u"encryptionkeylabel"_ustr))
+    , m_xEncryptionKeyImg(m_xBuilder->weld_widget(u"lockencryptionkey"_ustr))
+    , m_xEncryptionKeyButton(m_xBuilder->weld_button(u"pickencryptionkey"_ustr))
+    , m_xRemoveEncryptionKeyButton(m_xBuilder->weld_button(u"removeencryptionkey"_ustr))
+    , m_xEncryptToSelfCB(m_xBuilder->weld_check_button(u"encrypttoself"_ustr))
+    , m_xEncryptToSelfImg(m_xBuilder->weld_widget(u"lockencrypttoself"_ustr))
 {
     InitControls();
 #if HAVE_FEATURE_GPGME
@@ -299,42 +307,89 @@ void SvxGeneralTabPage::InitCryptography()
 {
 #if HAVE_FEATURE_GPGME
     m_xCryptoFrame->show();
+    m_xSigningKeyButton->connect_clicked(LINK(this, SvxGeneralTabPage, ChooseKeyButtonHdl));
+    m_xEncryptionKeyButton->connect_clicked(LINK(this, SvxGeneralTabPage, ChooseKeyButtonHdl));
 
-    uno::Reference< xml::crypto::XSEInitializer > xSEInitializer;
-    try
-    {
-        xSEInitializer = xml::crypto::GPGSEInitializer::create( comphelper::getProcessComponentContext() );
-        uno::Reference<xml::crypto::XXMLSecurityContext> xSC = xSEInitializer->createSecurityContext( OUString() );
-        if (xSC.is())
-        {
-            uno::Reference<xml::crypto::XSecurityEnvironment> xSE = xSC->getSecurityEnvironment();
-            uno::Sequence<uno::Reference<security::XCertificate>> xCertificates = xSE->getPersonalCertificates();
-
-            if (xCertificates.hasElements())
-            {
-                for (auto& xCert : asNonConstRange(xCertificates))
-                {
-                    m_xSigningKeyLB->append_text( xCert->getIssuerName());
-                    m_xEncryptionKeyLB->append_text( xCert->getIssuerName());
-                }
-            }
-
-             //tdf#115015: wrap checkbox text and listboxes if necessary
-            int nPrefWidth(m_xEncryptToSelfCB->get_preferred_size().Width());
-            int nMaxWidth = m_xEncryptToSelfCB->get_approximate_digit_width() * 40;
-            if (nPrefWidth > nMaxWidth)
-            {
-                 m_xSigningKeyLB->set_size_request(nMaxWidth, -1);
-                 m_xEncryptionKeyLB->set_size_request(nMaxWidth, -1);
-                 m_xEncryptToSelfCB->set_label_wrap(true);
-                 m_xEncryptToSelfCB->set_size_request(nMaxWidth, -1);
-            }
-        }
-    }
-    catch ( uno::Exception const & )
-    {}
+    m_xRemoveSigningKeyButton->connect_clicked(LINK(this, SvxGeneralTabPage, RemoveKeyButtonHdl));
+    m_xRemoveEncryptionKeyButton->connect_clicked(LINK(this, SvxGeneralTabPage, RemoveKeyButtonHdl));
 #endif
 
+}
+
+IMPL_LINK(SvxGeneralTabPage, ChooseKeyButtonHdl, weld::Button&, rButton, void)
+{
+    try
+    {
+        uno::Reference<security::XDocumentDigitalSignatures> xD(
+            security::DocumentDigitalSignatures::createDefault(
+                comphelper::getProcessComponentContext()));
+        xD->setParentWindow(GetDialogController()->getDialog()->GetXWindow());
+
+        OUString aDescription;
+
+        uno::Reference<security::XCertificate> xCertificate;
+        if (m_xSigningKeyButton.get() == &rButton)
+        {
+            xCertificate = xD->selectSigningCertificate(aDescription);
+        }
+        else if (m_xEncryptionKeyButton.get() == &rButton)
+        {
+            auto xCerts = xD->chooseEncryptionCertificate(css::security::CertificateKind_OPENPGP);
+            if(xCerts.hasElements())
+                xCertificate = xCerts[0];
+        }
+
+        if(!xCertificate.is())
+            return;
+
+        OUString aKeyThumbprint
+            = comphelper::xmlsec::GetHexString(xCertificate->getSHA1Thumbprint(), "");
+        OUString aIssuer = comphelper::xmlsec::GetContentPart(xCertificate->getIssuerName(),
+                                                              xCertificate->getCertificateKind());
+        OUString aSubject = comphelper::xmlsec::GetContentPart(xCertificate->getSubjectName(),
+                                                               xCertificate->getCertificateKind());
+        OUString aKeyDisplayName;
+        switch (xCertificate->getCertificateKind())
+        {
+            case security::CertificateKind::CertificateKind_X509:
+                aKeyDisplayName = u"(X.509) "_ustr + aIssuer + u" "_ustr + aSubject;
+                break;
+            case security::CertificateKind::CertificateKind_OPENPGP:
+                aKeyDisplayName = u"(OpenPGP) "_ustr + aIssuer;
+                break;
+            default:
+                break;
+        }
+
+        if (m_xSigningKeyButton.get() == &rButton)
+        {
+            msCurrentSigningKey = aKeyThumbprint;
+            m_xSigningKeyLB->set_text(aKeyDisplayName);
+        }
+        else if (m_xEncryptionKeyButton.get() == &rButton)
+        {
+            msCurrentEncryptionKey = aKeyThumbprint;
+            m_xEncryptionKeyLB->set_text(aKeyDisplayName);
+        }
+    }
+    catch (const css::uno::Exception&)
+    {
+        TOOLS_WARN_EXCEPTION("cui.options", "" );
+    }
+}
+
+IMPL_LINK(SvxGeneralTabPage, RemoveKeyButtonHdl, weld::Button&, rButton, void)
+{
+        if (m_xRemoveSigningKeyButton.get() == &rButton)
+        {
+            msCurrentSigningKey.clear();
+            m_xSigningKeyLB->set_text(u""_ustr);
+        }
+        else if (m_xRemoveEncryptionKeyButton.get() == &rButton)
+        {
+            msCurrentEncryptionKey.clear();
+            m_xEncryptionKeyLB->set_text(u""_ustr);
+        }
 }
 
 void SvxGeneralTabPage::SetLinks ()
@@ -356,14 +411,14 @@ OUString SvxGeneralTabPage::GetAllStrings()
 {
     OUString sAllStrings;
     OUString labels[]
-        = { "label1",     "companyft",         "nameft",          "rusnameft",
-            "eastnameft", "streetft",          "russtreetft",     "icityft",
-            "cityft",     "countryft",         "titleft",         "phoneft",
-            "faxft",      "cryptographylabel", "signingkeylabel", "encryptionkeylabel" };
+        = { u"label1"_ustr,     u"companyft"_ustr,         u"nameft"_ustr,          u"rusnameft"_ustr,
+            u"eastnameft"_ustr, u"streetft"_ustr,          u"russtreetft"_ustr,     u"icityft"_ustr,
+            u"cityft"_ustr,     u"countryft"_ustr,         u"titleft"_ustr,         u"phoneft"_ustr,
+            u"faxft"_ustr,      u"cryptographylabel"_ustr, u"signingkeylabel"_ustr, u"encryptionkeylabel"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -469,13 +524,10 @@ bool SvxGeneralTabPage::GetData_Impl()
     }
 
 #if HAVE_FEATURE_GPGME
-    OUString aSK = m_xSigningKeyLB->get_active() == 0 ? OUString() //i.e. no key
-                       : m_xSigningKeyLB->get_active_text();
-    OUString aEK = m_xEncryptionKeyLB->get_active() == 0 ? OUString()
-                       : m_xEncryptionKeyLB->get_active_text();
-
-    aUserOpt.SetToken( UserOptToken::SigningKey, aSK );
-    aUserOpt.SetToken( UserOptToken::EncryptionKey, aEK );
+    aUserOpt.SetToken( UserOptToken::SigningKey, msCurrentSigningKey );
+    aUserOpt.SetToken( UserOptToken::SigningKeyDisplayName, m_xSigningKeyLB->get_text() );
+    aUserOpt.SetToken( UserOptToken::EncryptionKey, msCurrentEncryptionKey );
+    aUserOpt.SetToken( UserOptToken::EncryptionKeyDisplayName, m_xEncryptionKeyLB->get_text() );
     aUserOpt.SetBoolValue( UserOptToken::EncryptToSelf, m_xEncryptToSelfCB->get_active() );
 
     bModified |= m_xSigningKeyLB->get_value_changed_from_saved() ||
@@ -522,12 +574,12 @@ void SvxGeneralTabPage::SetData_Impl()
 
 #if HAVE_FEATURE_GPGME
     bEnable = !aUserOpt.IsTokenReadonly(UserOptToken::SigningKey);
-    m_xSigningKeyLB->set_sensitive(bEnable);
+    m_xSigningKeyButton->set_sensitive(bEnable);
     m_xSigningKeyFT->set_sensitive(bEnable);
     m_xSigningKeyImg->set_visible(!bEnable);
 
     bEnable = !aUserOpt.IsTokenReadonly(UserOptToken::EncryptionKey);
-    m_xEncryptionKeyLB->set_sensitive(bEnable);
+    m_xEncryptionKeyButton->set_sensitive(bEnable);
     m_xEncryptionKeyFT->set_sensitive(bEnable);
     m_xEncryptionKeyImg->set_visible(!bEnable);
 
@@ -535,13 +587,11 @@ void SvxGeneralTabPage::SetData_Impl()
     m_xEncryptToSelfCB->set_sensitive(bEnable);
     m_xEncryptToSelfImg->set_visible(!bEnable);
 
-    OUString aSK = aUserOpt.GetToken(UserOptToken::SigningKey);
-    aSK.isEmpty() ? m_xSigningKeyLB->set_active( 0 ) //i.e. 'No Key'
-                  : m_xSigningKeyLB->set_active_text( aSK );
+    msCurrentSigningKey = aUserOpt.GetToken(UserOptToken::SigningKey);
+    m_xSigningKeyLB->set_text(aUserOpt.GetToken(UserOptToken::SigningKeyDisplayName));
 
-    OUString aEK = aUserOpt.GetToken(UserOptToken::EncryptionKey);
-    aEK.isEmpty() ? m_xEncryptionKeyLB->set_active( 0 ) //i.e. 'No Key'
-                  : m_xEncryptionKeyLB->set_active_text( aEK );
+    msCurrentEncryptionKey = aUserOpt.GetToken(UserOptToken::EncryptionKey);
+    m_xEncryptionKeyLB->set_text(aUserOpt.GetToken(UserOptToken::EncryptionKeyDisplayName));
 
     m_xEncryptToSelfCB->set_active( aUserOpt.GetEncryptToSelf() );
 #endif

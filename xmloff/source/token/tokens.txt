@@ -424,6 +424,7 @@ consecutive-numbering
 consolidation
 constant
 contains-error
+contains-footer
 contains-header
 content
 content-validation
@@ -896,8 +897,11 @@ gcd
 generator
 geq
 glow-radius
+glow-text-radius
 glow-color
+glow-text-color
 glow-transparency
+glow-text-transparency
 gouraud
 gradient
 angle
@@ -969,6 +973,8 @@ hyperlink
 hyperlink-behaviour
 hyphenate
 hyphenation-keep
+hyphenation-keep-line
+hyphenation-keep-type
 hyphenation-ladder-count
 hyphenation-push-char-count
 hyphenation-remain-char-count
@@ -976,6 +982,11 @@ hyphenation-no-caps
 hyphenation-no-last-word
 hyphenation-word-char-count
 hyphenation-zone
+hyphenation-zone-always
+hyphenation-zone-column
+hyphenation-zone-page
+hyphenation-zone-spread
+hyphenation-compound-remain-char-count
 i
 icon
 icon-set
@@ -1101,6 +1112,8 @@ let-text
 keep-text
 letter-kerning
 letter-spacing
+letter-spacing-maximum
+letter-spacing-minimum
 letters
 level
 library
@@ -1395,6 +1408,7 @@ page-breaks-on-group-change
 page-content
 page-continuation-string
 page-count
+page-count-range
 page-end-margin
 page-height
 page-master
@@ -1607,6 +1621,7 @@ score-spaces
 script
 script-asian
 script-complex
+script-type
 scroll
 sdev
 search-criteria-must-apply-to-whole-cell
@@ -1754,6 +1769,7 @@ split
 split-column
 split-position
 split-row
+spread
 spreadsheet
 spreadMethod
 sql-statement
@@ -1822,7 +1838,10 @@ style-ref
 styles
 stylesheet
 sub-table
+sub-bar
+sub-none
 subject
+sub-pie
 subset
 subtitle
 subtotal-field
@@ -1831,6 +1850,7 @@ subtotal-rules
 sub-view-size
 suffix
 sum
+summary-below
 swiss
 symbol
 symbol-height
@@ -1997,6 +2017,7 @@ uplimit
 upright
 url
 use
+use-autofilter
 use-caption
 use-cell-protection
 use-chart-objects
@@ -2014,6 +2035,7 @@ use-objects
 use-optimal-column-width
 use-optimal-row-height
 use-other-objects
+use-pivot
 use-spreadsheet-objects
 use-styles
 use-tables
@@ -2094,6 +2116,9 @@ width
 window-font-color
 word
 word-count
+word-spacing
+word-spacing-maximum
+word-spacing-minimum
 wrap
 wrap-contour
 wrap-contour-mode
@@ -2420,11 +2445,17 @@ handle-mirror-vertical
 handle-mirror-horizontal
 handle-switched
 handle-position
+handle-position-x
+handle-position-y
 handle-range-x-minimum
 handle-range-x-maximum
 handle-range-y-minimum
 handle-range-y-maximum
 handle-polar
+handle-polar-angle
+handle-polar-radius
+handle-polar-pole-x
+handle-polar-pole-y
 handle-radius-range-minimum
 handle-radius-range-maximum
 rectangle
@@ -3296,4 +3327,7 @@ gradient-stop
 opacity-stop
 color-value
 color-type
+latin
+asian
+complex
 TOKEN_END_DUMMY

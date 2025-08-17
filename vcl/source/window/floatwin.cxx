@@ -50,7 +50,7 @@ FloatingWindow::ImplData::ImplData()
     mpBox = nullptr;
 }
 
-AbsoluteScreenPixelRectangle FloatingWindow::ImplGetItemEdgeClipRect()
+const AbsoluteScreenPixelRectangle & FloatingWindow::ImplGetItemEdgeClipRect()
 {
     return mpImplData->maItemEdgeClipRect;
 }
@@ -173,13 +173,9 @@ FloatingWindow::FloatingWindow(vcl::Window* pParent, const OUString& rID, const 
     loadUI(pParent, rID, rUIXMLDescription, rFrame);
 }
 
-//Find the real parent stashed in mpDialogParent.
-void FloatingWindow::doDeferredInit(WinBits nBits)
+void FloatingWindow::ImplDeferredInit(vcl::Window* pParent, WinBits nBits)
 {
-    vcl::Window *pParent = mpDialogParent;
-    mpDialogParent = nullptr;
     ImplInitFloating(pParent, nBits);
-    mbIsDeferredInit = false;
 }
 
 void FloatingWindow::ApplySettings(vcl::RenderContext& rRenderContext)
@@ -222,9 +218,9 @@ void FloatingWindow::dispose()
 
     mpImplData.reset();
 
-    mpNextFloat.clear();
-    mpFirstPopupModeWin.clear();
-    mxPrevFocusWin.clear();
+    mpNextFloat.reset();
+    mpFirstPopupModeWin.reset();
+    mxPrevFocusWin.reset();
     SystemWindow::dispose();
 }
 
@@ -408,18 +404,23 @@ Point FloatingWindow::ImplCalcPos(vcl::Window* pWindow,
         if (bLOKActive)
             break;
 
+        // set bBreak true on last attempt
+        if (nArrangeIndex + 1 == nArrangeAttempts)
+            bBreak = true;
+
         // adjust if necessary
         if (bBreak)
         {
-            if ( (nArrangeAry[nArrangeIndex] == FloatWinPopupFlags::Left)  ||
-                 (nArrangeAry[nArrangeIndex] == FloatWinPopupFlags::Right) )
+            if (aPos.Y() + aSize.Height() > aScreenRect.Bottom())
             {
-                if ( aPos.Y()+aSize.Height() > aScreenRect.Bottom() )
-                {
-                    aPos.setY( devRect.Bottom()-aSize.Height()+1 );
-                    if ( aPos.Y() < aScreenRect.Top() )
-                        aPos.setY( aScreenRect.Top() );
-                }
+                aPos.setY(devRect.Bottom() - aSize.Height() + 1);
+                if (aPos.Y() < aScreenRect.Top())
+                    aPos.setY(aScreenRect.Top());
+                // move to the right or left of the parent if possible
+                if (devRect.Right() + 4 + aSize.Width() < aScreenRect.Right())
+                    aPos.setX(devRect.Right() + 4);
+                else if (devRect.Left() - 4 - aSize.Width() > aScreenRect.Left())
+                    aPos.setX(devRect.Left() - 4 - aSize.Width());
             }
             else
             {
@@ -440,8 +441,6 @@ Point FloatingWindow::ImplCalcPos(vcl::Window* pWindow,
         if ( bBreak )
             break;
     }
-    if (nArrangeIndex >= nArrangeAttempts)
-        nArrangeIndex = nArrangeAttempts - 1;
 
     rArrangeIndex = nArrangeIndex;
 
@@ -662,7 +661,7 @@ void FloatingWindow::PixelInvalidate(const tools::Rectangle* /*pRectangle*/)
             std::make_pair("rectangle"_ostr, aRect.toString())
         };
         const vcl::ILibreOfficeKitNotifier* pNotifier = pParent->GetLOKNotifier();
-        pNotifier->notifyWindow(GetLOKWindowId(), "invalidate", aPayload);
+        pNotifier->notifyWindow(GetLOKWindowId(), u"invalidate"_ustr, aPayload);
     }
 }
 
@@ -708,13 +707,13 @@ void FloatingWindow::StateChanged( StateChangedType nType )
 
             }
             aItems.emplace_back("size", GetSizePixel().toString());
-            GetLOKNotifier()->notifyWindow(GetLOKWindowId(), "created", aItems);
+            GetLOKNotifier()->notifyWindow(GetLOKWindowId(), u"created"_ustr, aItems);
         }
         else if (!IsVisible() && nType == StateChangedType::Visible)
         {
             if (const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
             {
-                pNotifier->notifyWindow(GetLOKWindowId(), "close");
+                pNotifier->notifyWindow(GetLOKWindowId(), u"close"_ustr);
                 ReleaseLOKNotifier();
             }
         }
@@ -960,6 +959,13 @@ void FloatingWindow::AddPopupModeWindow(vcl::Window* pWindow)
 
 bool SystemWindow::UpdatePositionData()
 {
+    // tdf#164337 don't update position data when waiting for a system resize
+    // When entering and exiting LibreOffice's internal full screen mode,
+    // updating position data causes the "exit full screen" floating
+    // toolbar to migrate after cycle.
+    if (mpWindowImpl->mbWaitSystemResize)
+        return false;
+
     auto pWin = ImplGetParent();
     if (pWin)
     {

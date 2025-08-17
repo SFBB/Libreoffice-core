@@ -57,10 +57,9 @@ using namespace ::com::sun::star::uno;
 namespace sw::mark
 {
 
-    SwPosition FindFieldSep(IFieldmark const& rMark)
+    SwPosition FindFieldSep(Fieldmark const& rMark)
     {
-        SwPosition const& rStartPos(rMark.GetMarkStart());
-        SwPosition const& rEndPos(rMark.GetMarkEnd());
+        auto [/*const SwPosition&*/ rStartPos, rEndPos] = rMark.GetMarkStartEnd();
         SwNodes const& rNodes(rStartPos.GetNodes());
         SwNodeOffset const nStartNode(rStartPos.GetNodeIndex());
         SwNodeOffset const nEndNode(rEndPos.GetNodeIndex());
@@ -264,18 +263,18 @@ namespace
     auto InvalidatePosition(SwPosition const& rPos) -> void
     {
         SwUpdateAttr const aHint(rPos.GetContentIndex(), rPos.GetContentIndex(), 0);
-        rPos.GetNode().GetTextNode()->CallSwClientNotify(sw::LegacyModifyHint(&aHint, &aHint));
+        rPos.GetNode().GetTextNode()->CallSwClientNotify(sw::UpdateAttrHint(&aHint, &aHint));
     }
 }
 
 namespace sw::mark
 {
     MarkBase::MarkBase(const SwPaM& aPaM,
-        OUString aName)
+        SwMarkName aName)
         : m_oPos1(*aPaM.GetPoint())
         , m_aName(std::move(aName))
     {
-        m_oPos1->SetMark(this);
+        m_oPos1->SetOwner(this);
         lcl_FixPosition(*m_oPos1);
         if (aPaM.HasMark() && (*aPaM.GetMark() != *aPaM.GetPoint()))
         {
@@ -292,24 +291,25 @@ namespace sw::mark
     // TextFieldmark::InitDoc/lcl_AssureFieldMarksSet.
     bool MarkBase::IsCoveringPosition(const SwPosition& rPos) const
     {
-        return GetMarkStart() <= rPos && rPos < GetMarkEnd();
+        auto [/*const SwPosition&*/ rStartPos, rEndPos] = GetMarkStartEnd();
+        return rStartPos <= rPos && rPos < rEndPos;
     }
 
     void MarkBase::SetMarkPos(const SwPosition& rNewPos)
     {
         m_oPos1.emplace(rNewPos);
-        m_oPos1->SetMark(this);
+        m_oPos1->SetOwner(this);
     }
 
     void MarkBase::SetOtherMarkPos(const SwPosition& rNewPos)
     {
         m_oPos2.emplace(rNewPos);
-        m_oPos2->SetMark(this);
+        m_oPos2->SetOwner(this);
     }
 
     OUString MarkBase::ToString( ) const
     {
-        return "Mark: ( Name, [ Node1, Index1 ] ): ( " + m_aName + ", [ "
+        return "Mark: ( Name, [ Node1, Index1 ] ): ( " + m_aName.toString() + ", [ "
             + OUString::number( sal_Int32(GetMarkPos().GetNodeIndex()) )  + ", "
             + OUString::number( GetMarkPos().GetContentIndex( ) ) + " ] )";
     }
@@ -317,7 +317,7 @@ namespace sw::mark
     void MarkBase::dumpAsXml(xmlTextWriterPtr pWriter) const
     {
         (void)xmlTextWriterStartElement(pWriter, BAD_CAST("MarkBase"));
-        (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("name"), BAD_CAST(m_aName.toUtf8().getStr()));
+        (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("name"), BAD_CAST(m_aName.toString().toUtf8().getStr()));
         (void)xmlTextWriterStartElement(pWriter, BAD_CAST("markPos"));
         GetMarkPos().dumpAsXml(pWriter);
         (void)xmlTextWriterEndElement(pWriter);
@@ -333,14 +333,14 @@ namespace sw::mark
     MarkBase::~MarkBase()
     { }
 
-    OUString MarkBase::GenerateNewName(std::u16string_view rPrefix)
+    SwMarkName MarkBase::GenerateNewName(std::u16string_view rPrefix)
     {
         static bool bHack = (getenv("LIBO_ONEWAY_STABLE_ODF_EXPORT") != nullptr);
 
         if (bHack)
         {
             static sal_Int64 nIdCounter = SAL_CONST_INT64(6000000000);
-            return rPrefix + OUString::number(nIdCounter++);
+            return SwMarkName(rPrefix + OUString::number(nIdCounter++));
         }
         else
         {
@@ -354,20 +354,16 @@ namespace sw::mark
                 nCount = 0;
             }
             // putting the counter in front of the random parts will speed up string comparisons
-            return rPrefix + OUString::number(nCount++) + sUniquePostfix;
+            return SwMarkName(rPrefix + OUString::number(nCount++) + sUniquePostfix);
         }
     }
 
     void MarkBase::SwClientNotify(const SwModify&, const SfxHint& rHint)
     {
         CallSwClientNotify(rHint);
-        if (rHint.GetId() != SfxHintId::SwLegacyModify)
-            return;
-        auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-        if(RES_REMOVE_UNO_OBJECT == pLegacy->GetWhich())
-        {   // invalidate cached uno object
+        if(SfxHintId::SwRemoveUnoObject == rHint.GetId())
+           // invalidate cached uno object
             SetXBookmark(nullptr);
-        }
     }
 
     auto MarkBase::InvalidateFrames() -> void
@@ -412,7 +408,7 @@ namespace sw::mark
 
     Bookmark::Bookmark(const SwPaM& aPaM,
         const vcl::KeyCode& rCode,
-        const OUString& rName)
+        const SwMarkName& rName)
         : DdeBookmark(aPaM)
         , m_aCode(rCode)
         , m_bHidden(false)
@@ -429,13 +425,13 @@ namespace sw::mark
         if (!pViewShell)
             return;
 
-        OUString fieldCommand = GetName();
+        SwMarkName fieldCommand = GetName();
         tools::JsonWriter aJson;
         aJson.put("commandName", ".uno:DeleteBookmark");
         aJson.put("success", true);
         {
             auto result = aJson.startNode("result");
-            aJson.put("DeleteBookmark", fieldCommand);
+            aJson.put("DeleteBookmark", fieldCommand.toString());
         }
 
         pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_UNO_COMMAND_RESULT, aJson.finishAndGetAsOString());
@@ -521,7 +517,7 @@ namespace sw::mark
     uno::Reference< rdf::XMetadatable > Bookmark::MakeUnoObject()
     {
         SwDoc& rDoc( GetMarkPos().GetDoc() );
-        const uno::Reference< rdf::XMetadatable> xMeta(
+        const rtl::Reference< SwXBookmark> xMeta(
                 SwXBookmark::CreateXBookmark(rDoc, this) );
         return xMeta;
     }
@@ -543,7 +539,7 @@ namespace sw::mark
 
     OUString Fieldmark::ToString( ) const
     {
-        return "Fieldmark: ( Name, Type, [ Nd1, Id1 ], [ Nd2, Id2 ] ): ( " + m_aName + ", "
+        return "Fieldmark: ( Name, Type, [ Nd1, Id1 ], [ Nd2, Id2 ] ): ( " + m_aName.toString() + ", "
             + m_aFieldname + ", [ " + OUString::number( sal_Int32(GetMarkPos().GetNodeIndex( )) )
             + ", " + OUString::number( GetMarkPos( ).GetContentIndex( ) ) + " ], ["
             + OUString::number( sal_Int32(GetOtherMarkPos().GetNodeIndex( )) ) + ", "
@@ -576,7 +572,7 @@ namespace sw::mark
         (void)xmlTextWriterEndElement(pWriter);
     }
 
-    TextFieldmark::TextFieldmark(const SwPaM& rPaM, const OUString& rName)
+    TextFieldmark::TextFieldmark(const SwPaM& rPaM, const SwMarkName& rName)
         : Fieldmark(rPaM)
         , m_pDocumentContentOperationsManager(nullptr)
     {
@@ -672,6 +668,11 @@ namespace sw::mark
         }
         Invalidate();
     }
+    bool TextFieldmark::HasDefaultContent() const
+    {
+        return GetContent() == vEnSpaces;
+    }
+
 
     NonTextFieldmark::NonTextFieldmark(const SwPaM& rPaM)
         : Fieldmark(rPaM)
@@ -704,7 +705,7 @@ namespace sw::mark
     }
 
 
-    CheckboxFieldmark::CheckboxFieldmark(const SwPaM& rPaM, const OUString& rName)
+    CheckboxFieldmark::CheckboxFieldmark(const SwPaM& rPaM, const SwMarkName& rName)
         : NonTextFieldmark(rPaM)
     {
         if (!rName.isEmpty())
@@ -768,7 +769,7 @@ namespace sw::mark
         m_pButton->LaunchPopup();
     }
 
-    DropDownFieldmark::DropDownFieldmark(const SwPaM& rPaM, const OUString& rName)
+    DropDownFieldmark::DropDownFieldmark(const SwPaM& rPaM, const SwMarkName& rName)
         : FieldmarkWithDropDownButton(rPaM)
     {
         if (!rName.isEmpty())
@@ -840,7 +841,7 @@ namespace sw::mark
     void DropDownFieldmark::AddContent(const OUString& rText, sal_Int32* pIndex)
     {
         uno::Sequence<OUString> aSeq;
-        sw::mark::IFieldmark::parameter_map_t* pParameters = GetParameters();
+        sw::mark::Fieldmark::parameter_map_t* pParameters = GetParameters();
         (*pParameters)[ODF_FORMDROPDOWN_LISTENTRY] >>= aSeq;
 
         // no duplicates: if it already exists, modify the given index to point to it
@@ -896,7 +897,7 @@ namespace sw::mark
             return;
 
         uno::Sequence<OUString> aSeq;
-        sw::mark::IFieldmark::parameter_map_t* pParameters = GetParameters();
+        sw::mark::Fieldmark::parameter_map_t* pParameters = GetParameters();
         (*pParameters)[ODF_FORMDROPDOWN_LISTENTRY] >>= aSeq;
         const sal_Int32 nLen = aSeq.getLength();
 
@@ -942,7 +943,7 @@ namespace sw::mark
      */
     void DropDownFieldmark::DelContent(sal_Int32 nDelIndex)
     {
-        sw::mark::IFieldmark::parameter_map_t* pParameters = GetParameters();
+        sw::mark::Fieldmark::parameter_map_t* pParameters = GetParameters();
         uno::Sequence<OUString> aSeq;
         if (nDelIndex < 0)
         {
@@ -1007,7 +1008,7 @@ namespace sw::mark
         if (pListEntriesIter != pParameters->end())
         {
             pListEntriesIter->second >>= vListEntries;
-            for (const OUString& sItem : std::as_const(vListEntries))
+            for (const OUString& sItem : vListEntries)
                 sPayload.append("\"" + OUStringToOString(sItem, RTL_TEXTENCODING_UTF8) + "\", ");
             sPayload.setLength(sPayload.getLength() - 2);
         }
@@ -1161,7 +1162,7 @@ namespace sw::mark
         if(aResult.first)
             return aResult;
 
-        const sw::mark::IFieldmark::parameter_map_t* pParameters = GetParameters();
+        const sw::mark::Fieldmark::parameter_map_t* pParameters = GetParameters();
         bool bFoundValidDate = false;
         double dCurrentDate = 0;
         OUString sDateFormat;
@@ -1206,7 +1207,7 @@ namespace sw::mark
         ReplaceContent(GetDateInCurrentDateFormat(fDate));
 
         // Also save the current date in a standard format
-        sw::mark::IFieldmark::parameter_map_t* pParameters = GetParameters();
+        sw::mark::Fieldmark::parameter_map_t* pParameters = GetParameters();
         (*pParameters)[ODF_FORMDATE_CURRENTDATE] <<= GetDateInStandardDateFormat(fDate);
     }
 
@@ -1239,7 +1240,7 @@ namespace sw::mark
         bool bFoundValidDate = false;
         double dCurrentDate = 0;
 
-        const sw::mark::IFieldmark::parameter_map_t* pParameters = GetParameters();
+        const sw::mark::Fieldmark::parameter_map_t* pParameters = GetParameters();
         auto pResult = pParameters->find(ODF_FORMDATE_CURRENTDATE);
         OUString sCurrentDate;
         if (pResult != pParameters->end())
@@ -1274,7 +1275,7 @@ namespace sw::mark
     {
         // Get current date format and language
         OUString sDateFormat;
-        const sw::mark::IFieldmark::parameter_map_t* pParameters = GetParameters();
+        const sw::mark::Fieldmark::parameter_map_t* pParameters = GetParameters();
         auto pResult = pParameters->find(ODF_FORMDATE_DATEFORMAT);
         if (pResult != pParameters->end())
         {
@@ -1320,7 +1321,7 @@ namespace sw::mark
         // Current date became invalid
         if(GetDateInCurrentDateFormat(aResult.second) != GetContent())
         {
-            sw::mark::IFieldmark::parameter_map_t* pParameters = GetParameters();
+            sw::mark::Fieldmark::parameter_map_t* pParameters = GetParameters();
             (*pParameters)[ODF_FORMDATE_CURRENTDATE] <<= OUString();
         }
     }

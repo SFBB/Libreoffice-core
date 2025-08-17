@@ -18,6 +18,7 @@
  */
 
 #include <memory>
+#include <config_emscripten.h>
 #include <config_features.h>
 #include <config_feature_desktop.h>
 #include <config_feature_opencl.h>
@@ -60,7 +61,6 @@
 #include <com/sun/star/system/SystemShellExecuteFlags.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/StartModule.hpp>
-#include <com/sun/star/view/XPrintable.hpp>
 #include <com/sun/star/awt/XTopWindow.hpp>
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <com/sun/star/util/XURLTransformer.hpp>
@@ -118,7 +118,6 @@
 #include <svl/eitem.hxx>
 #include <basic/sbstar.hxx>
 #include <desktop/crashreport.hxx>
-#include <tools/time.hxx>
 #include <tools/urlobj.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <svtools/fontsubstconfig.hxx>
@@ -128,6 +127,10 @@
 #include <vcl/window.hxx>
 #include "langselect.hxx"
 #include <salhelper/thread.hxx>
+
+#if HAVE_FEATURE_UPDATE_MAR
+#include <tools/time.hxx>
+#endif
 
 #if defined MACOSX
 #include <errno.h>
@@ -148,6 +151,15 @@
 #define GETPID getpid
 #endif
 
+#if HAVE_EMSCRIPTEN_PROXY_POSIX_SOCKETS
+#include <stdexcept>
+#include <string>
+#include <emscripten/posix_socket.h>
+#include <emscripten/threading.h>
+#include <emscripten/val.h>
+#include <emscripten/websocket.h>
+#endif
+
 #include <strings.hxx>
 
 using namespace ::com::sun::star::awt;
@@ -157,7 +169,6 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::document;
-using namespace ::com::sun::star::view;
 using namespace ::com::sun::star::task;
 using namespace ::com::sun::star::system;
 using namespace ::com::sun::star::ui;
@@ -205,11 +216,11 @@ namespace {
 // UserInstallation can be poisoned by old junk any more.
 bool cleanExtensionCache() {
     OUString buildId(
-        "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("version") ":buildid}");
+        u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("version") ":buildid}"_ustr);
     rtl::Bootstrap::expandMacros(buildId); //TODO: detect failure
     OUString extDir(
-        "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap")
-        ":UserInstallation}/user/extensions");
+        u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("bootstrap")
+        ":UserInstallation}/user/extensions"_ustr);
     rtl::Bootstrap::expandMacros(extDir); //TODO: detect failure
     OUString buildIdFile(extDir + "/buildid");
     osl::File fr(buildIdFile);
@@ -246,8 +257,8 @@ bool cleanExtensionCache() {
     }
     utl::removeTree(extDir);
     OUString userRcFile(
-        "$UNO_USER_PACKAGES_CACHE/registry/"
-        "com.sun.star.comp.deployment.component.PackageRegistryBackend/unorc");
+        u"$UNO_USER_PACKAGES_CACHE/registry/"
+        "com.sun.star.comp.deployment.component.PackageRegistryBackend/unorc"_ustr);
     rtl::Bootstrap::expandMacros(userRcFile); //TODO: detect failure
     rc = osl::File::remove(userRcFile);
     SAL_WARN_IF(
@@ -331,8 +342,8 @@ void DoRestartActionsIfNecessary(bool quickstart) {
 void RemoveIconCacheDirectory()
 {
     // See getIconCacheUrl in vcl/source/image/ImplImageTree.cxx
-    OUString sUrl = "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER
-        "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache";
+    OUString sUrl = u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER
+        "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache"_ustr;
     rtl::Bootstrap::expandMacros(sUrl);
     utl::UCBContentHelper::Kill(sUrl);
 }
@@ -341,12 +352,13 @@ void RemoveIconCacheDirectory()
 
 namespace {
 
+#if !defined(EMSCRIPTEN)
 void runGraphicsRenderTests()
 {
     if (comphelper::LibreOfficeKit::isActive())
         return;
 #if !ENABLE_WASM_STRIP_PINGUSER
-    if (!utl::isProductVersionUpgraded(false))
+    if (!utl::isProductVersionUpgraded())
     {
         return;
     }
@@ -354,6 +366,7 @@ void runGraphicsRenderTests()
     GraphicsRenderTests TestObject;
     TestObject.run();
 }
+#endif
 
 
 OUString MakeStartupErrorMessage(std::u16string_view aErrorMessage)
@@ -399,7 +412,7 @@ CommandLineArgs& Desktop::GetCommandLineArgs()
 
 OUString ReplaceStringHookProc( const OUString& rStr )
 {
-    const static OUString sBuildId(utl::Bootstrap::getBuildIdData("development")),
+    const static OUString sBuildId(utl::Bootstrap::getBuildIdData(u"development"_ustr)),
         sBrandName(utl::ConfigManager::getProductName()),
         sVersion(utl::ConfigManager::getProductVersion()),
         sAboutBoxVersion(utl::ConfigManager::getAboutBoxProductVersion()),
@@ -433,6 +446,7 @@ Desktop::Desktop()
     , m_aBootstrapStatus(BS_OK)
     , m_firstRunTimer( "desktop::Desktop m_firstRunTimer" )
 {
+    m_firstRunTimer.SetPriority(TaskPriority::DEFAULT_IDLE);
     m_firstRunTimer.SetTimeout(3000); // 3 sec.
     m_firstRunTimer.SetInvokeHandler(LINK(this, Desktop, AsyncInitFirstRun));
 }
@@ -451,7 +465,7 @@ void Desktop::Init()
 
     // We need to have service factory before going further, but see fdo#37195.
     // Doing this will mmap common.rdb, making it not overwritable on windows,
-    // so this can't happen before the synchronization above. Lets rework this
+    // so this can't happen before the synchronization above. Let's rework this
     // so that the above is called *from* CreateApplicationServiceManager or
     // something to enforce this gotcha
     try
@@ -477,6 +491,13 @@ void Desktop::Init()
     // This may prepare SafeMode or restore from it by moving data in
     // the UserConfiguration directory
     comphelper::BackupFileHelper::reactOnSafeMode(Application::IsSafeModeEnabled());
+
+    // tdf117100: do not try to re-install extensions after the requested restart
+    if (officecfg::Setup::Office::OfficeRestartInProgress::get())
+    {
+        if (!officecfg::Office::Common::Misc::FirstRun::get())
+            GetCommandLineArgs().RemoveFilesFromOpenListEndingWith(u".oxt"_ustr);
+    }
 
     try
     {
@@ -537,6 +558,35 @@ void Desktop::Init()
         RequestHandler::Disable();
     }
     pSignalHandler = osl_addSignalHandler(SalMainPipeExchangeSignal_impl, nullptr);
+
+#if HAVE_EMSCRIPTEN_PROXY_POSIX_SOCKETS
+    {
+        auto const val = emscripten::val::module_property("uno_websocket_to_posix_socket_url");
+        if (val.isUndefined()) {
+            throw std::runtime_error("Module.uno_websocket_to_posix_socket_url is undefined");
+        } else {
+            auto const url = val.as<std::string>();
+            if (url.find('\0') != std::string::npos) {
+                throw std::runtime_error(
+                    "Module.uno_websocket_to_posix_socket_url contains embedded NUL");
+            }
+            SAL_INFO("desktop.app", "connecting to <" << url << ">");
+            static auto const socket = emscripten_init_websocket_to_posix_socket_bridge(
+                url.c_str());
+            // 0 is CONNECTING, 1 is OPEN, see
+            // <https://websockets.spec.whatwg.org/#websocket-ready-state>:
+            unsigned short readyState = 0;
+            do {
+                emscripten_websocket_get_ready_state(socket, &readyState);
+                emscripten_thread_sleep(100);
+            } while (readyState == 0);
+            if (readyState != 1) {
+                throw std::runtime_error("could not connect to <" + url + ">");
+            }
+            SAL_INFO("desktop.app", "connected to <" << url << ">");
+        }
+    }
+#endif
 }
 
 void Desktop::InitFinished()
@@ -664,6 +714,8 @@ OUString    Desktop::CreateErrorMsgString(
 
         /// the bootstrap INI file could not be found or read
         case ::utl::Bootstrap::MISSING_BOOTSTRAP_FILE:
+        /// the version locator INI file could not be found or read
+        case ::utl::Bootstrap::MISSING_VERSION_FILE:
         {
             aMsg = DpResId(STR_BOOTSTRAP_ERR_FILE_MISSING);
         }
@@ -675,13 +727,6 @@ OUString    Desktop::CreateErrorMsgString(
          case ::utl::Bootstrap::INVALID_BOOTSTRAP_FILE_ENTRY:
         {
             aMsg = DpResId(STR_BOOTSTRAP_ERR_FILE_CORRUPT);
-        }
-        break;
-
-        /// the version locator INI file could not be found or read
-        case ::utl::Bootstrap::MISSING_VERSION_FILE:
-        {
-            aMsg = DpResId(STR_BOOTSTRAP_ERR_FILE_MISSING);
         }
         break;
 
@@ -920,10 +965,10 @@ void handleCrashReport()
 #if !defined ANDROID
 void handleSafeMode()
 {
-    css::uno::Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const css::uno::Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
 
     Reference< css::frame::XSynchronousDispatch > xSafeModeUI(
-        xContext->getServiceManager()->createInstanceWithContext("com.sun.star.comp.svx.SafeModeUI", xContext),
+        xContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.comp.svx.SafeModeUI"_ustr, xContext),
         css::uno::UNO_QUERY_THROW);
 
     css::util::URL aURL;
@@ -986,13 +1031,13 @@ struct RefClearGuard
 bool impl_callRecoveryUI(bool bEmergencySave     ,
                          bool bExistsRecoveryData)
 {
-    constexpr OUStringLiteral COMMAND_EMERGENCYSAVE = u"vnd.sun.star.autorecovery:/doEmergencySave";
-    constexpr OUStringLiteral COMMAND_RECOVERY = u"vnd.sun.star.autorecovery:/doAutoRecovery";
+    static constexpr OUStringLiteral COMMAND_EMERGENCYSAVE = u"vnd.sun.star.autorecovery:/doEmergencySave";
+    static constexpr OUStringLiteral COMMAND_RECOVERY = u"vnd.sun.star.autorecovery:/doAutoRecovery";
 
-    css::uno::Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const css::uno::Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
 
     g_xRecoveryUI.set(
-        xContext->getServiceManager()->createInstanceWithContext("com.sun.star.comp.svx.RecoveryUI", xContext),
+        xContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.comp.svx.RecoveryUI"_ustr, xContext),
         css::uno::UNO_QUERY_THROW);
     RefClearGuard<Reference< css::frame::XSynchronousDispatch >> refClearGuard(g_xRecoveryUI);
 
@@ -1215,15 +1260,15 @@ private:
         Reference< XMultiServiceFactory > xSMgr = comphelper::getProcessServiceFactory();
 
         Reference< css::loader::XImplementationLoader > xJavaComponentLoader(
-            xSMgr->createInstance("com.sun.star.comp.stoc.JavaComponentLoader"),
+            xSMgr->createInstance(u"com.sun.star.comp.stoc.JavaComponentLoader"_ustr),
             css::uno::UNO_QUERY_THROW);
 
         if (xJavaComponentLoader.is())
         {
-            const css::uno::Reference< ::com::sun::star::registry::XRegistryKey > xRegistryKey;
+            const css::uno::Reference< css::registry::XRegistryKey > xRegistryKey;
             try
             {
-                xJavaComponentLoader->activate("", "", "", xRegistryKey);
+                xJavaComponentLoader->activate(u""_ustr, u""_ustr, u""_ustr, xRegistryKey);
             }
             catch (...)
             {
@@ -1249,9 +1294,29 @@ struct ExecuteGlobals
 }
 
 static ExecuteGlobals* pExecGlobals = nullptr;
-
+static std::chrono::high_resolution_clock::time_point startFuncTp;
 int Desktop::Main()
 {
+    std::chrono::high_resolution_clock::time_point startT;
+
+#ifdef SAL_LOG_INFO
+    startFuncTp = std::chrono::high_resolution_clock::now();
+    startT = std::chrono::high_resolution_clock::now();
+
+    auto recordTime = [](std::chrono::high_resolution_clock::time_point& startTp, const char* message)
+    {
+        const auto endTp = std::chrono::high_resolution_clock::now();
+        auto tMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTp - startTp);
+        SAL_INFO("desktop.startuptime", message << tMs.count() << " ms");
+        startTp = std::chrono::high_resolution_clock::now();
+    };
+#else
+    auto recordTime = [](...)
+    {
+    };
+#endif
+
+
     pExecGlobals = new ExecuteGlobals();
 
     // Remember current context object
@@ -1290,6 +1355,7 @@ int Desktop::Main()
 #endif
 
     SetSplashScreenProgress(10);
+    recordTime(startT, "SetSplashScreenProgress(10): time = ");
 
     userinstall::Status inst_fin = userinstall::finalize();
     if (inst_fin != userinstall::EXISTED && inst_fin != userinstall::CREATED)
@@ -1308,15 +1374,17 @@ int Desktop::Main()
     utl::Bootstrap::reloadData();
     SetSplashScreenProgress(20);
 
-    Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    recordTime(startT, "SetSplashScreenProgress(20): time = ");
+
+    const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
 
     Reference< XRestartManager > xRestartManager( OfficeRestartManager::get(xContext) );
-
-    Reference< XDesktop2 > xDesktop;
 
     RegisterServices();
 
     SetSplashScreenProgress(25);
+
+    recordTime(startT, "SetSplashScreenProgress(25): time = ");
 
 #if HAVE_FEATURE_DESKTOP && !defined(EMSCRIPTEN)
     // check user installation directory for lockfile so we can be sure
@@ -1334,13 +1402,6 @@ int Desktop::Main()
             return EXIT_FAILURE;
         }
     }
-
-    // check if accessibility is enabled but not working and allow to quit
-    if( Application::GetSettings().GetMiscSettings().GetEnableATToolSupport() )
-    {
-        if( !InitAccessBridge() )
-            return EXIT_FAILURE;
-    }
 #endif
 
     // terminate if requested...
@@ -1353,19 +1414,25 @@ int Desktop::Main()
 
     SetSplashScreenProgress(30);
 
+    recordTime(startT, "SetSplashScreenProgress(30): time = ");
+
     // create title string
     OUString aTitle(ReplaceStringHookProc(RID_APPTITLE));
 #ifdef DBG_UTIL
     //include buildid in non product builds
-    aTitle += " [" + utl::Bootstrap::getBuildIdData("development") + "]";
+    aTitle += " [" + utl::Bootstrap::getBuildIdData(u"development"_ustr) + "]";
 #endif
 
     SetDisplayName( aTitle );
     SetSplashScreenProgress(35);
+
+    recordTime(startT, "SetSplashScreenProgress(35): time = ");
+
     pExecGlobals->pPathOptions.reset( new SvtPathOptions);
     SetSplashScreenProgress(40);
+    recordTime(startT, "SetSplashScreenProgress(40): time = ");
 
-    xDesktop = css::frame::Desktop::create( xContext );
+    Reference<XDesktop2> xDesktop = css::frame::Desktop::create(xContext);
 
 #if HAVE_FEATURE_UPDATE_MAR
     const char* pUpdaterTestEnable = std::getenv("LIBO_UPDATER_TEST_ENABLE");
@@ -1482,6 +1549,7 @@ int Desktop::Main()
     pExecGlobals->xGlobalBroadcaster->documentEventOccured(aEvent);
 
     SetSplashScreenProgress(50);
+    recordTime(startT, "SetSplashScreenProgress(50): time = ");
 
     // Backing Component
     bool bCrashed            = false;
@@ -1536,6 +1604,7 @@ int Desktop::Main()
     }
 
     SetSplashScreenProgress(55);
+    recordTime(startT, "SetSplashScreenProgress(55): time = ");
 
     svtools::ApplyFontSubstitutionsToVcl();
 
@@ -1543,6 +1612,7 @@ int Desktop::Main()
     SvtTabAppearanceCfg::SetApplicationDefaults( this );
     SvtAccessibilityOptions::SetVCLSettings();
     SetSplashScreenProgress(60);
+    recordTime(startT, "SetSplashScreenProgress(60): time = ");
 
     if ( !pExecGlobals->bRestartRequested )
     {
@@ -1550,11 +1620,13 @@ int Desktop::Main()
 
         // Preload function depends on an initialized sfx application!
         SetSplashScreenProgress(75);
+        recordTime(startT, "SetSplashScreenProgress(75): time = ");
 
         // use system window dialogs
         Application::SetSystemWindowMode( SystemWindowFlags::DIALOG );
 
         SetSplashScreenProgress(80);
+        recordTime(startT, "SetSplashScreenProgress(80): time = ");
 
         if ( !rCmdLineArgs.IsInvisible() &&
              !rCmdLineArgs.IsNoQuickstart() )
@@ -1563,6 +1635,7 @@ int Desktop::Main()
         if ( xDesktop.is() )
             xDesktop->addTerminateListener( new RequestHandlerController );
         SetSplashScreenProgress(100);
+        recordTime(startT, "SetSplashScreenProgress(100): time = ");
 
         // FIXME: move this somewhere sensible.
 #if HAVE_FEATURE_OPENCL
@@ -1713,7 +1786,7 @@ int Desktop::doShutdown()
 
         return EXITHELPER_NORMAL_RESTART;
     }
-    return EXIT_SUCCESS;
+    return rCmdLineArgs.GetAllSucceeded() ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 IMPL_STATIC_LINK( Desktop, ImplInitFilterHdl, ::ConvertData&, rData, bool )
@@ -1924,6 +1997,9 @@ IMPL_LINK_NOARG(Desktop, OpenClients_Impl, void*, void)
     const char *pExitPostStartup = getenv ("OOO_EXIT_POST_STARTUP");
     if (pExitPostStartup && *pExitPostStartup)
         new ExitTimer();
+    const auto endTp = std::chrono::high_resolution_clock::now();
+    auto tMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTp - startFuncTp);
+    SAL_INFO( "desktop.startuptime", "Total Start Up time(ms) = " << tMs.count());
 }
 
 void Desktop::OpenClients()
@@ -1935,19 +2011,19 @@ void Desktop::OpenClients()
     {
         OUString aHelpModule;
         if (rArgs.IsHelpWriter()) {
-            aHelpModule = "swriter";
+            aHelpModule = "swriter/helpwriter";
         } else if (rArgs.IsHelpCalc()) {
-            aHelpModule = "scalc";
+            aHelpModule = "scalc/helpcalc";
         } else if (rArgs.IsHelpDraw()) {
-            aHelpModule = "sdraw";
+            aHelpModule = "sdraw/helpdraw";
         } else if (rArgs.IsHelpImpress()) {
-            aHelpModule = "simpress";
+            aHelpModule = "simpress/helpimpress";
         } else if (rArgs.IsHelpBase()) {
-            aHelpModule = "sdatabase";
+            aHelpModule = "sdatabase/helpbase";
         } else if (rArgs.IsHelpBasic()) {
-            aHelpModule = "sbasic";
+            aHelpModule = "sbasic/helpbasic";
         } else if (rArgs.IsHelpMath()) {
-            aHelpModule = "smath";
+            aHelpModule = "smath/helpmath";
         }
         if (!aHelpModule.isEmpty()) {
             OUString aHelpURL = "vnd.sun.star.help://"
@@ -2011,7 +2087,7 @@ void Desktop::OpenClients()
         bool bExistsSessionData  = false;
         bool const bDisableRecovery
             = getenv("OOO_DISABLE_RECOVERY") != nullptr
-              || IsOnSystemEventLoop()
+              || IsUseSystemEventLoop()
               || !officecfg::Office::Recovery::RecoveryInfo::Enabled::get();
 
         impl_checkRecoveryState(bCrashed, bExistsRecoveryData, bExistsSessionData);
@@ -2064,7 +2140,7 @@ void Desktop::OpenClients()
     }
 
     // write this information here to avoid depending on vcl in the crash reporter lib
-    CrashReporter::addKeyValue("Language", Application::GetSettings().GetLanguageTag().getBcp47(), CrashReporter::Create);
+    CrashReporter::addKeyValue(u"Language"_ustr, Application::GetSettings().GetLanguageTag().getBcp47(), CrashReporter::Create);
 
     RequestHandler::EnableRequests();
 
@@ -2081,6 +2157,7 @@ void Desktop::OpenClients()
     aRequest.aConversionParams = rArgs.GetConversionParams();
     aRequest.aConversionOut = rArgs.GetConversionOut();
     aRequest.aImageConversionType = rArgs.GetImageConversionType();
+    aRequest.aStartListParams = rArgs.GetStartListParams();
     aRequest.aInFilter = rArgs.GetInFilter();
     aRequest.bTextCat = rArgs.IsTextCat();
     aRequest.bScriptCat = rArgs.IsScriptCat();
@@ -2099,13 +2176,13 @@ void Desktop::OpenClients()
             SvtModuleOptions    aOpt;
 
             // Support command line parameters to start a module (as preselection)
-            if ( rArgs.IsWriter() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
+            if (rArgs.IsWriter() && aOpt.IsWriterInstalled())
                 aRequest.aModule = aOpt.GetFactoryName( SvtModuleOptions::EFactory::WRITER );
-            else if ( rArgs.IsCalc() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::CALC ) )
+            else if (rArgs.IsCalc() && aOpt.IsCalcInstalled())
                 aRequest.aModule = aOpt.GetFactoryName( SvtModuleOptions::EFactory::CALC );
-            else if ( rArgs.IsImpress() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::IMPRESS ) )
+            else if (rArgs.IsImpress() && aOpt.IsImpressInstalled())
                 aRequest.aModule= aOpt.GetFactoryName( SvtModuleOptions::EFactory::IMPRESS );
-            else if ( rArgs.IsDraw() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::DRAW ) )
+            else if (rArgs.IsDraw() && aOpt.IsDrawInstalled())
                 aRequest.aModule= aOpt.GetFactoryName( SvtModuleOptions::EFactory::DRAW );
         }
 
@@ -2121,9 +2198,28 @@ void Desktop::OpenClients()
             xBox->run();
         }
 
+#ifdef MACOSX
+        // Related: tdf#41775 show Start Center before loading documents
+        // If LibreOffice is launched from the command line with a
+        // document path parameter, the Start Center doesn't get
+        // created when all of the document windows are closed. This
+        // causes the old "File only" menubar to be displayed
+        // instead of the Start Center's menubar.
+        if (!rArgs.IsQuickstart() && !rArgs.IsInvisible())
+        {
+            SvtModuleOptions aOpt;
+            if (aOpt.IsModuleInstalled(SvtModuleOptions::EModule::STARTMODULE))
+                ShowBackingComponent(nullptr);
+        }
+#endif
         // Process request
+        DispatchRequestFlags eFlags = DispatchRequestFlags::NONE;
+        aRequest.mpFlags = &eFlags;
         if ( RequestHandler::ExecuteCmdLineRequests(aRequest, false) )
         {
+            if (eFlags & DispatchRequestFlags::WithError)
+                Desktop::GetCommandLineArgs().SetAllSucceeded(false);
+
             // Don't do anything if we have successfully called terminate at desktop:
             return;
         }
@@ -2136,8 +2232,25 @@ void Desktop::OpenClients()
         return;
 
     if ( rArgs.IsQuickstart() || rArgs.IsInvisible() || Application::AnyInput( VclInputFlags::APPEVENT ) )
+    {
+#ifdef MACOSX
+        // Related: tdf#41775 show Start Center before loading documents
+        // If LibreOffice is launched from by opening a document from the
+        // Finder or dragging it onto the application's Dock icon, the
+        // the Start Center doesn't get created when all of the document
+        // windows are closed. This causes the old "File only" menubar
+        // to be displayed instead of the Start Center's menubar.
+        if (!rArgs.IsQuickstart() && !rArgs.IsInvisible())
+        {
+            SvtModuleOptions aOpt;
+            if (aOpt.IsModuleInstalled(SvtModuleOptions::EModule::STARTMODULE))
+                ShowBackingComponent(nullptr);
+        }
+#endif
+
         // soffice was started as tray icon ...
         return;
+    }
 
     OpenDefault();
 }
@@ -2152,21 +2265,21 @@ void Desktop::OpenDefault()
     if ( rArgs.HasModuleParam() )
     {
         // Support new command line parameters to start a module
-        if ( rArgs.IsWriter() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
+        if (rArgs.IsWriter() && aOpt.IsWriterInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::WRITER );
-        else if ( rArgs.IsCalc() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::CALC ) )
+        else if (rArgs.IsCalc() && aOpt.IsCalcInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::CALC );
-        else if ( rArgs.IsImpress() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::IMPRESS ) )
+        else if (rArgs.IsImpress() && aOpt.IsImpressInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::IMPRESS );
-        else if ( rArgs.IsBase() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::DATABASE ) )
+        else if (rArgs.IsBase() && aOpt.IsDataBaseInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::DATABASE );
-        else if ( rArgs.IsDraw() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::DRAW ) )
+        else if (rArgs.IsDraw() && aOpt.IsDrawInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::DRAW );
-        else if ( rArgs.IsMath() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::MATH ) )
+        else if (rArgs.IsMath() && aOpt.IsMathInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::MATH );
-        else if ( rArgs.IsGlobal() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
+        else if (rArgs.IsGlobal() && aOpt.IsModuleInstalled(SvtModuleOptions::EModule::GLOBAL))
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::WRITERGLOBAL );
-        else if ( rArgs.IsWeb() && aOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
+        else if (rArgs.IsWeb() && aOpt.IsModuleInstalled(SvtModuleOptions::EModule::WEB))
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::WRITERWEB );
     }
 
@@ -2179,19 +2292,29 @@ void Desktop::OpenDefault()
         }
 
         // Old way to create a default document
-        if ( aOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
+        if (aOpt.IsWriterInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::WRITER );
-        else if ( aOpt.IsModuleInstalled( SvtModuleOptions::EModule::CALC ) )
+        else if (aOpt.IsCalcInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::CALC );
-        else if ( aOpt.IsModuleInstalled( SvtModuleOptions::EModule::IMPRESS ) )
+        else if (aOpt.IsImpressInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::IMPRESS );
-        else if ( aOpt.IsModuleInstalled( SvtModuleOptions::EModule::DATABASE ) )
+        else if (aOpt.IsDataBaseInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::DATABASE );
-        else if ( aOpt.IsModuleInstalled( SvtModuleOptions::EModule::DRAW ) )
+        else if (aOpt.IsDrawInstalled())
             aName = aOpt.GetFactoryEmptyDocumentURL( SvtModuleOptions::EFactory::DRAW );
         else
             return;
     }
+
+#ifdef MACOSX
+    // Related: tdf#41775 show Start Center before loading documents
+    // If LibreOffice is launched from the command line with a module
+    // argument, the Start Center doesn't get created when all of the
+    // document windows are closed. This causes the old "File only"
+    // menubar to be displayed instead of the Start Center's menubar.
+    if (aOpt.IsModuleInstalled(SvtModuleOptions::EModule::STARTMODULE))
+        ShowBackingComponent(nullptr);
+#endif
 
     ProcessDocumentsRequest aRequest(rArgs.getCwdUrl());
     aRequest.aOpenList.push_back(aName);
@@ -2260,7 +2383,7 @@ void Desktop::HandleAppEvent( const ApplicationEvent& rAppEvent )
     case ApplicationEvent::Type::Appear:
         if ( !GetCommandLineArgs().IsInvisible() && !impl_bringToFrontRecoveryUI() )
         {
-            Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+            const Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
 
             // find active task - the active task is always a visible task
             Reference< css::frame::XDesktop2 > xDesktop = css::frame::Desktop::create( xContext );
@@ -2282,7 +2405,7 @@ void Desktop::HandleAppEvent( const ApplicationEvent& rAppEvent )
             {
                 // no visible task that could be activated found
                 Reference< css::awt::XWindow > xContainerWindow;
-                Reference< XFrame > xBackingFrame = xDesktop->findFrame( "_blank", 0);
+                Reference< XFrame > xBackingFrame = xDesktop->findFrame( u"_blank"_ustr, 0);
                 if (xBackingFrame.is())
                     xContainerWindow = xBackingFrame->getContainerWindow();
                 if (xContainerWindow.is())
@@ -2349,7 +2472,7 @@ void Desktop::HandleAppEvent( const ApplicationEvent& rAppEvent )
             // NOTICE: The quickstart service must be initialized inside the "main thread", so we use the
             // application events to do this (they are executed inside main thread)!!!
             // Don't start quickstart service if the user specified "--invisible" on the command line!
-            Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+            const Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
             css::office::Quickstart::createStart(xContext, true/*Quickstart*/);
         }
         break;
@@ -2359,7 +2482,7 @@ void Desktop::HandleAppEvent( const ApplicationEvent& rAppEvent )
         // The user will try it again, in case nothing happens .-)
         try
         {
-            Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+            const Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
 
             Reference< css::frame::XDesktop2 > xDesktop = css::frame::Desktop::create( xContext );
 
@@ -2429,18 +2552,18 @@ void Desktop::OpenSplashScreen()
         aAppName = "web";
 
     // Which splash to use
-    OUString aSplashService( "com.sun.star.office.SplashScreen" );
+    OUString aSplashService( u"com.sun.star.office.SplashScreen"_ustr );
     if ( rCmdLine.HasSplashPipe() )
         aSplashService = "com.sun.star.office.PipeSplashScreen";
 
     Sequence< Any > aSeq{ Any(true) /* bVisible */, Any(aAppName) };
-    css::uno::Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const css::uno::Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     m_rSplashScreen.set(
         xContext->getServiceManager()->createInstanceWithArgumentsAndContext(aSplashService, aSeq, xContext),
         UNO_QUERY);
 
     if(m_rSplashScreen.is())
-            m_rSplashScreen->start("SplashScreen", 100);
+            m_rSplashScreen->start(u"SplashScreen"_ustr, 100);
 
 }
 #endif
@@ -2488,7 +2611,10 @@ IMPL_STATIC_LINK_NOARG(Desktop, AsyncInitFirstRun, Timer *, void)
     try
     {
         Reference< XJobExecutor > xExecutor = theJobExecutor::get( ::comphelper::getProcessComponentContext() );
-        xExecutor->trigger( "onFirstRunInitialization" );
+        xExecutor->trigger( u"onFirstRunInitialization"_ustr );
+        auto batch(comphelper::ConfigurationChanges::create());
+        officecfg::Office::Common::Misc::FirstRun::set(false, batch);
+        batch->commit();
     }
     catch(const css::uno::Exception&)
     {
@@ -2502,13 +2628,13 @@ void Desktop::ShowBackingComponent(Desktop * progress)
     {
         return;
     }
-    Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
     Reference< XDesktop2 > xDesktop = css::frame::Desktop::create(xContext);
     if (progress != nullptr)
     {
         progress->SetSplashScreenProgress(60);
     }
-    Reference< XFrame > xBackingFrame = xDesktop->findFrame( "_blank", 0);
+    Reference< XFrame > xBackingFrame = xDesktop->findFrame( u"_blank"_ustr, 0);
     Reference< css::awt::XWindow > xContainerWindow;
 
     if (xBackingFrame.is())
@@ -2557,24 +2683,12 @@ void Desktop::CheckFirstRun( )
 #ifdef _WIN32
     // Check if Quickstarter should be started (on Windows only)
     OUString sRootKey = ReplaceStringHookProc("Software\\%OOOVENDOR\\%PRODUCTNAME\\%PRODUCTVERSION");
-    WCHAR szValue[8192];
-    DWORD nValueSize = sizeof(szValue);
-    HKEY hKey;
-    if (ERROR_SUCCESS == RegOpenKeyW(HKEY_LOCAL_MACHINE, o3tl::toW(sRootKey.getStr()), &hKey))
+    if (ERROR_SUCCESS == RegGetValueW(HKEY_LOCAL_MACHINE, o3tl::toW(sRootKey.getStr()), L"RunQuickstartAtFirstStart", RRF_RT_ANY, nullptr, nullptr, nullptr))
     {
-        if ( ERROR_SUCCESS == RegQueryValueExW( hKey, L"RunQuickstartAtFirstStart", nullptr, nullptr, reinterpret_cast<LPBYTE>(szValue), &nValueSize ) )
-        {
-            css::uno::Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
-            css::office::Quickstart::createAutoStart(xContext, true/*Quickstart*/, true/*bAutostart*/);
-            RegCloseKey( hKey );
-        }
+        css::uno::Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        css::office::Quickstart::createAutoStart(xContext, true/*Quickstart*/, true/*bAutostart*/);
     }
 #endif
-
-    std::shared_ptr< comphelper::ConfigurationChanges > batch(
-        comphelper::ConfigurationChanges::create());
-    officecfg::Office::Common::Misc::FirstRun::set(false, batch);
-    batch->commit();
 }
 
 }

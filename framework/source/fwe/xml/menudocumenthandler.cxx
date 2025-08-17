@@ -32,7 +32,6 @@
 
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
-#include <comphelper/attributelist.hxx>
 
 #ifdef ATTRIBUTE_HELPID
 #undef ATTRIBUTE_HELPID
@@ -332,7 +331,7 @@ void SAL_CALL OReadMenuBarHandler::startElement(
         m_bMenuMode = true;
 
         // Container must be factory to create sub container
-        Reference< XComponentContext > xComponentContext(
+        const Reference< XComponentContext >& xComponentContext(
             comphelper::getProcessComponentContext() );
 
         Reference< XIndexContainer > xSubItemContainer;
@@ -742,7 +741,7 @@ void OWriteMenuDocumentHandler::WriteMenuDocument()
 
     if ( m_bIsMenuBar ) //FIXME
         pList->AddAttribute( ATTRIBUTE_NS_ID,
-                             "menubar" );
+                             u"menubar"_ustr );
 
     OUString aRootElement;
     if ( m_bIsMenuBar )

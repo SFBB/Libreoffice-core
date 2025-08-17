@@ -99,8 +99,7 @@ $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,com/sun/star/configuration,\
     theDefaultProvider \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,com/sun/star/cui,\
-    AsynchronousColorPicker \
-    ColorPicker \
+    GetCreateDialogFactoryService \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,com/sun/star/datatransfer,\
 	DataFormatTranslator \
@@ -142,14 +141,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,com/sun/star/drawing,\
 	GraphicExportFilter \
 	ModuleDispatcher \
 	ShapeCollection \
-	SlideRenderer \
-	SlideSorter \
-))
-$(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,com/sun/star/drawing/framework,\
-	BasicPaneFactory \
-	BasicToolBarFactory \
-	BasicViewFactory \
-	ResourceId \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,com/sun/star/embed,\
 	DocumentCloser \
@@ -488,7 +479,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,com/sun/star/xml/xslt,\
 
 
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/accessibility,\
-	Accessible \
 	AccessibleContext \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/awt,\
@@ -523,7 +513,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/awt,\
 	AccessibleToolBox \
 	AccessibleToolBoxItem \
 	AccessibleTreeListBox \
-	AccessibleTreeListBoxEntry \
 	AccessibleWindow \
 	AnimatedImagesControl \
 	AnimatedImagesControlModel \
@@ -595,8 +584,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/awt/tree,\
 	TreeControlModel \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/chart,\
-	AccessibleChartDocumentView \
-	AccessibleChartElement \
 	AreaDiagram \
 	BarDiagram \
 	BubbleDiagram \
@@ -624,6 +611,7 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/chart,\
 	Dim3DDiagram \
 	DonutDiagram \
 	FilledNetDiagram \
+	HistogramDiagram \
 	LineDiagram \
 	NetDiagram \
 	PieDiagram \
@@ -766,8 +754,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/drawing,\
 	AccessibleImageBullet \
 	AccessibleOLEShape \
 	AccessibleShape \
-	AccessibleSlideView \
-	AccessibleSlideViewObject \
 	AppletShape \
 	Background \
 	BitmapTable \
@@ -1155,14 +1141,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/sdbcx,\
 	ViewDescriptor \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/sheet,\
-	AccessibleCell \
-	AccessibleCsvCell \
-	AccessibleCsvRuler \
-	AccessibleCsvTable \
-	AccessiblePageHeaderFooterAreasView \
-	AccessibleSpreadsheet \
-	AccessibleSpreadsheetDocumentView \
-	AccessibleSpreadsheetPageView \
 	AddIn \
 	CellAnnotation \
 	CellAnnotationShape \
@@ -1243,6 +1221,7 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/sheet,\
 	SheetRangesQuery \
 	SheetSortDescriptor \
 	SheetSortDescriptor2 \
+	SolverSettings \
 	Spreadsheet \
 	SpreadsheetDocument \
 	SpreadsheetDocumentSettings \
@@ -1291,8 +1270,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/style,\
 	StyleFamily \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/table,\
-	AccessibleCellView \
-	AccessibleTableView \
 	Cell \
 	CellCursor \
 	CellProperties \
@@ -1317,16 +1294,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/task,\
 	Job \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/text,\
-	AccessibleEndnoteView \
-	AccessibleFootnoteView \
-	AccessibleHeaderFooterView \
-	AccessiblePageView \
-	AccessibleParagraphView \
-	AccessibleTextDocumentPageView \
-	AccessibleTextDocumentView \
-	AccessibleTextEmbeddedObject \
-	AccessibleTextFrameView \
-	AccessibleTextGraphicObject \
 	AutoTextEntry \
 	AutoTextGroup \
 	BaseFrame \
@@ -1378,6 +1345,7 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/text,\
 	RedlinePortion \
 	ReferenceMark \
 	ReferenceMarks \
+	ScriptHintType \
 	Shape \
 	TableColumns \
 	TableIndex \
@@ -1490,9 +1458,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/text/textfield
 	Revision \
 	Subject \
 	Title \
-))
-$(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/tiledrendering,\
-	XTiledRenderable \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/ucb,\
 	CachedContentResultSet \
@@ -1898,6 +1863,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/awt,\
 	XToolkitRobot \
 	XTopWindow \
 	XTopWindow2 \
+	XTopWindow3 \
 	XTopWindowListener \
 	XUnitConversion \
 	XUnoControlContainer \
@@ -2014,6 +1980,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/chart2,\
 	LegendPosition \
 	LightSource \
 	PieChartOffsetMode \
+	PieChartSubType \
 	RelativePosition \
 	RelativeSize \
 	ScaleData \
@@ -2205,6 +2172,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/document,\
 	EventObject \
 	ExoticFileLoadException \
 	FilterOptionsRequest \
+	FontsDisallowEditingRequest \
 	LinkUpdateModes \
 	LockFileCorruptRequest \
 	LockFileIgnoreRequest \
@@ -2364,6 +2332,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/drawing,\
 	XDrawPageSummarizer \
 	XDrawPageSupplier \
 	XDrawPages \
+	XDrawPages2 \
 	XDrawPagesSupplier \
 	XDrawSubController \
 	XDrawView \
@@ -2375,7 +2344,6 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/drawing,\
 	XLayerSupplier \
 	XMasterPageTarget \
 	XMasterPagesSupplier \
-	XPresenterHelper \
 	XSelectionFunction \
 	XShape \
 	XShapeAligner \
@@ -2389,37 +2357,12 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/drawing,\
 	XShapes \
 	XShapes2 \
 	XShapes3 \
-	XSlidePreviewCache \
 	XSlidePreviewCacheListener \
-	XSlideRenderer \
-	XSlideSorterBase \
+	XSlideSorterSelectionSupplier \
 	XUniversalShapeDescriptor \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/drawing/framework,\
 	AnchorBindingMode \
-	BorderType \
-	ConfigurationChangeEvent \
-	ResourceActivationMode \
-	TabBarButton \
-	XConfiguration \
-	XConfigurationChangeListener \
-	XConfigurationChangeRequest \
-	XConfigurationController \
-	XConfigurationControllerBroadcaster \
-	XConfigurationControllerRequestQueue \
-	XControllerManager \
-	XModuleController \
-	XPane \
-	XPane2 \
-	XPaneBorderPainter \
-	XRelocatableResource \
-	XResource \
-	XResourceFactory \
-	XResourceFactoryManager \
-	XResourceId \
-	XTabBar \
-	XToolBar \
-	XView \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/embed,\
 	Actions \
@@ -2968,6 +2911,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/presentation,\
 	AnimationEffect \
 	AnimationSpeed \
 	ClickAction \
+	CreateDialogFactoryService \
 	EffectCommands \
 	EffectNodeType \
 	EffectPresetClass \
@@ -3282,9 +3226,12 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/sdbc,\
 	KeyRule \
 	ProcedureColumn \
 	ProcedureResult \
+	PseudoColumnUsage \
 	ResultSetConcurrency \
 	ResultSetType \
+	RowIdLifetime \
 	SQLException \
+	SQLState \
 	SQLWarning \
 	TransactionIsolation \
 	XArray \
@@ -3298,6 +3245,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/sdbc,\
 	XDataSource \
 	XDatabaseMetaData \
 	XDatabaseMetaData2 \
+	XDatabaseMetaData3 \
 	XDriver \
 	XDriverAccess \
 	XDriverManager \
@@ -3316,6 +3264,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/sdbc,\
 	XResultSetMetaDataSupplier \
 	XResultSetUpdate \
 	XRow \
+	XRowId \
 	XRowSet \
 	XRowSetListener \
 	XRowUpdate \
@@ -3395,6 +3344,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/sheet,\
 	ConditionFormatOperator \
 	ConditionOperator \
 	ConditionOperator2 \
+	CreateDialogFactoryService \
 	DataBarAxis \
 	DataBarEntryType \
 	DateType \
@@ -3450,6 +3400,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/sheet,\
 	LocalizedName \
 	MemberResult \
 	MemberResultFlags \
+	ModelConstraint \
 	MoveDirection \
 	NamedRangeFlag \
 	NameToken \
@@ -3458,10 +3409,13 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/sheet,\
 	RangeSelectionEvent \
 	ReferenceFlags \
 	ResultEvent \
+	SensitivityReport \
 	SheetLinkMode \
 	SingleReference \
 	SolverConstraint \
 	SolverConstraintOperator \
+	SolverStatus \
+	SolverObjectiveType \
 	SpreadsheetViewObjectsMode \
 	StatusBarFunction \
 	SubTotalColumn \
@@ -3470,6 +3424,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/sheet,\
 	TableFilterField3 \
 	TableOperationMode \
 	TablePageBreakData \
+	TableRefToken \
 	TableValidationVisibility \
 	ValidationAlertStyle \
 	ValidationType \
@@ -3582,6 +3537,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/sheet,\
 	XSheetPastable \
 	XSolver \
 	XSolverDescription \
+	XSolverSettings \
 	XSpreadsheet \
 	XSpreadsheetDocument \
 	XSpreadsheetView \
@@ -3741,6 +3697,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/text,\
 	ColumnSeparatorStyle \
 	ControlCharacter \
 	DateDisplayFormat \
+	DialogFactoryService \
 	DocumentStatistic \
 	FilenameDisplayFormat \
 	FontEmphasis \
@@ -3757,6 +3714,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/text,\
 	ModuleDispatcher \
 	NotePrintMode \
 	PageNumberType \
+	ParagraphHyphenationKeepType \
 	ParagraphVertAlign \
 	PlaceholderType \
 	PositionAndSpaceMode \
@@ -4430,6 +4388,24 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,org/freedesktop/PackageKit,\
 $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,org/freedesktop/PackageKit,\
     SyncDbusSessionHelper \
 ))
+
+ifeq ($(ENABLE_EMBINDTEST_UNO),TRUE)
+$(eval $(call gb_UnoApi_add_idlfiles,offapi,org/libreoffice/embindtest, \
+    Constants \
+    Enum \
+    Exception \
+    Struct \
+    StructLong \
+    StructString \
+    Template \
+    XAttributes \
+    XTest \
+))
+$(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,org/libreoffice/embindtest, \
+    BridgeTest \
+    Test \
+))
+endif
 
 $(eval $(call gb_UnoApi_set_reference_rdbfile,offapi,$(call gb_UnoApiTarget_get_target,udkapi) $(SRCDIR)/offapi/type_reference/offapi.idl))
 

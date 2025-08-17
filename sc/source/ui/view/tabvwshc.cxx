@@ -20,6 +20,7 @@
 #include <scitems.hxx>
 #include <sfx2/childwin.hxx>
 #include <sfx2/dispatch.hxx>
+#include <svx/theme/ThemeColorChangerCommon.hxx>
 #include <editeng/editview.hxx>
 #include <inputhdl.hxx>
 
@@ -50,7 +51,7 @@
 #include <condformatdlg.hxx>
 #include <condformateasydlg.hxx>
 #include <xmlsourcedlg.hxx>
-#include <condformatdlgitem.hxx>
+#include <condformatdlgdata.hxx>
 #include <formdata.hxx>
 #include <inputwin.hxx>
 
@@ -89,7 +90,8 @@ void ScTabViewShell::SetCurRefDlgId( sal_uInt16 nNew )
 //ugly hack to call Define Name from Manage Names
 void ScTabViewShell::SwitchBetweenRefDialogs(SfxModelessDialogController* pDialog)
 {
-   sal_uInt16 nSlotId = SC_MOD()->GetCurRefDlgId();
+   ScModule* mod = ScModule::get();
+   sal_uInt16 nSlotId = mod->GetCurRefDlgId();
    if( nSlotId == FID_ADD_NAME )
    {
         static_cast<ScNameDefDlg*>(pDialog)->GetNewData(maName, maScope);
@@ -98,7 +100,7 @@ void ScTabViewShell::SwitchBetweenRefDialogs(SfxModelessDialogController* pDialo
         SfxViewFrame& rViewFrm = GetViewFrame();
         SfxChildWindow* pWnd = rViewFrm.GetChildWindow( nId );
 
-        SC_MOD()->SetRefDialog( nId, pWnd == nullptr );
+        mod->SetRefDialog( nId, pWnd == nullptr );
    }
    else if (nSlotId == FID_DEFINE_NAME)
    {
@@ -109,7 +111,7 @@ void ScTabViewShell::SwitchBetweenRefDialogs(SfxModelessDialogController* pDialo
         SfxViewFrame& rViewFrm = GetViewFrame();
         SfxChildWindow* pWnd = rViewFrm.GetChildWindow( nId );
 
-        SC_MOD()->SetRefDialog( nId, pWnd == nullptr );
+        mod->SetRefDialog( nId, pWnd == nullptr );
    }
 }
 
@@ -121,12 +123,12 @@ std::shared_ptr<SfxModelessDialogController> ScTabViewShell::CreateRefDialogCont
     // only open dialog when called through ScModule::SetRefDialog,
     // so that it does not re appear for instance after a crash (#42341#).
 
-    if ( SC_MOD()->GetCurRefDlgId() != nSlotId )
+    if (ScModule::get()->GetCurRefDlgId() != nSlotId)
         return nullptr;
 
     if ( nCurRefDlgId != nSlotId )
     {
-        if (!(comphelper::LibreOfficeKit::isActive() && nSlotId == SID_OPENDLG_FUNCTION))
+        if (!comphelper::LibreOfficeKit::isActive())
         {
             //  the dialog has been opened in a different view
             //  -> lock the dispatcher for this view (modal mode)
@@ -263,7 +265,7 @@ std::shared_ptr<SfxModelessDialogController> ScTabViewShell::CreateRefDialogCont
             break;
         }
         case SID_OPENDLG_EDIT_PRINTAREA:
-            xResult = std::make_shared<ScPrintAreasDlg>(pB, pCW, pParent);
+            xResult = std::make_shared<ScPrintAreasDlg>(pB, pCW, pParent, GetViewData());
             break;
         case SID_DEFINE_COLROWNAMERANGES:
             xResult = std::make_shared<ScColRowNameRangesDlg>(pB, pCW, pParent, GetViewData());
@@ -325,59 +327,60 @@ std::shared_ptr<SfxModelessDialogController> ScTabViewShell::CreateRefDialogCont
         }
         case SID_EASY_CONDITIONAL_FORMAT_DIALOG:
         {
-            xResult = std::make_shared<sc::ConditionalFormatEasyDialog>(pB, pCW, pParent, &GetViewData());
+            xResult = std::make_shared<sc::ConditionalFormatEasyDialog>(pB, pCW, pParent, GetViewData());
             break;
         }
         case SID_FILTER:
         {
+            if (ScDBData* pDBData = GetDBData(false, SC_DB_MAKE, ScGetDBSelection::RowDown))
+            {
+                ScQueryParam    aQueryParam;
+                SfxItemSetFixed<SCITEM_QUERYDATA, SCITEM_QUERYDATA> aArgSet( GetPool() );
 
-            ScQueryParam    aQueryParam;
-            SfxItemSetFixed<SCITEM_QUERYDATA, SCITEM_QUERYDATA> aArgSet( GetPool() );
+                pDBData->ExtendDataArea(rDoc);
+                pDBData->ExtendBackColorArea(rDoc);
+                pDBData->GetQueryParam( aQueryParam );
 
-            ScDBData* pDBData = GetDBData(false, SC_DB_MAKE, ScGetDBSelection::RowDown);
-            pDBData->ExtendDataArea(rDoc);
-            pDBData->ExtendBackColorArea(rDoc);
-            pDBData->GetQueryParam( aQueryParam );
+                ScRange aArea;
+                pDBData->GetArea(aArea);
+                MarkRange(aArea, false);
 
-            ScRange aArea;
-            pDBData->GetArea(aArea);
-            MarkRange(aArea, false);
+                aArgSet.Put( ScQueryItem( SCITEM_QUERYDATA, &aQueryParam ) );
 
-            aArgSet.Put( ScQueryItem( SCITEM_QUERYDATA,
-                                      &GetViewData(),
-                                      &aQueryParam ) );
+                // mark current sheet (due to RefInput in dialog)
+                GetViewData().SetRefTabNo( GetViewData().GetTabNo() );
 
-            // mark current sheet (due to RefInput in dialog)
-            GetViewData().SetRefTabNo( GetViewData().GetTabNo() );
-
-            xResult = std::make_shared<ScFilterDlg>(pB, pCW, pParent, aArgSet);
+                xResult = std::make_shared<ScFilterDlg>(pB, pCW, pParent, GetViewData(), aArgSet);
+            }
             break;
         }
         case SID_SPECIAL_FILTER:
         {
-            ScQueryParam    aQueryParam;
-            SfxItemSetFixed<SCITEM_QUERYDATA,
-                                     SCITEM_QUERYDATA> aArgSet( GetPool() );
+            if (ScDBData* pDBData = GetDBData(false, SC_DB_MAKE, ScGetDBSelection::RowDown))
+            {
+                ScQueryParam    aQueryParam;
+                SfxItemSetFixed<SCITEM_QUERYDATA,
+                                         SCITEM_QUERYDATA> aArgSet( GetPool() );
 
-            ScDBData* pDBData = GetDBData(false, SC_DB_MAKE, ScGetDBSelection::RowDown);
-            pDBData->ExtendDataArea(rDoc);
-            pDBData->GetQueryParam( aQueryParam );
+                pDBData->ExtendDataArea(rDoc);
+                pDBData->GetQueryParam( aQueryParam );
 
-            ScRange aArea;
-            pDBData->GetArea(aArea);
-            MarkRange(aArea, false);
+                ScRange aArea;
+                pDBData->GetArea(aArea);
+                MarkRange(aArea, false);
 
-            ScQueryItem aItem( SCITEM_QUERYDATA, &GetViewData(), &aQueryParam );
-            ScRange aAdvSource;
-            if (pDBData->GetAdvancedQuerySource(aAdvSource))
-                aItem.SetAdvancedQuerySource( &aAdvSource );
+                ScQueryItem aItem( SCITEM_QUERYDATA, &aQueryParam );
+                ScRange aAdvSource;
+                if (pDBData->GetAdvancedQuerySource(aAdvSource))
+                    aItem.SetAdvancedQuerySource( &aAdvSource );
 
-            aArgSet.Put( aItem );
+                aArgSet.Put( aItem );
 
-            // mark current sheet (due to RefInput in dialog)
-            GetViewData().SetRefTabNo( GetViewData().GetTabNo() );
+                // mark current sheet (due to RefInput in dialog)
+                GetViewData().SetRefTabNo( GetViewData().GetTabNo() );
 
-            xResult = std::make_shared<ScSpecialFilterDlg>(pB, pCW, pParent, aArgSet);
+                xResult = std::make_shared<ScSpecialFilterDlg>(pB, pCW, pParent, GetViewData(), aArgSet);
+            }
             break;
         }
         case SID_OPENDLG_OPTSOLVER:
@@ -395,7 +398,7 @@ std::shared_ptr<SfxModelessDialogController> ScTabViewShell::CreateRefDialogCont
         }
         case SID_MANAGE_XML_SOURCE:
         {
-            xResult = std::make_shared<ScXMLSourceDlg>(pB, pCW, pParent, &rDoc);
+            xResult = std::make_shared<ScXMLSourceDlg>(pB, pCW, pParent, rDoc);
             break;
         }
         case SID_OPENDLG_PIVOTTABLE:
@@ -408,7 +411,7 @@ std::shared_ptr<SfxModelessDialogController> ScTabViewShell::CreateRefDialogCont
                 ScViewData& rViewData = GetViewData();
                 rViewData.SetRefTabNo( rViewData.GetTabNo() );
                 ScDPObject* pObj = rDoc.GetDPAtCursor(rViewData.GetCurX(), rViewData.GetCurY(), rViewData.GetTabNo());
-                xResult = std::make_shared<ScPivotLayoutDialog>(pB, pCW, pParent, &rViewData, pDialogDPObject.get(), pObj == nullptr);
+                xResult = std::make_shared<ScPivotLayoutDialog>(pB, pCW, pParent, rViewData, pDialogDPObject.get(), pObj == nullptr);
             }
 
             break;
@@ -418,30 +421,24 @@ std::shared_ptr<SfxModelessDialogController> ScTabViewShell::CreateRefDialogCont
             if (!isLOKMobilePhone())
             {
                 // dialog checks, what is in the cell
-                xResult = o3tl::make_shared<ScFormulaDlg>(pB, pCW, pParent, GetViewData(), ScGlobal::GetStarCalcFunctionMgr());
+                xResult = std::make_shared<ScFormulaDlg>(pB, pCW, pParent, GetViewData(), ScGlobal::GetStarCalcFunctionMgr());
             }
             break;
         }
         case WID_CONDFRMT_REF:
         {
-            const ScCondFormatDlgItem* pDlgItem = nullptr;
-            // Get the pool item stored by Conditional Format Manager Dialog.
-            auto itemsRange = GetPool().GetItemSurrogates(SCITEM_CONDFORMATDLGDATA);
-            if (itemsRange.begin() != itemsRange.end())
-            {
-                const SfxPoolItem* pItem = *itemsRange.begin();
-                pDlgItem = static_cast<const ScCondFormatDlgItem*>(pItem);
-            }
+            // Get the DialogData stored by Conditional Format Manager Dialog.
+            const std::shared_ptr<ScCondFormatDlgData>& rDlgData(getScCondFormatDlgData());
 
-            if (pDlgItem)
+            if (rDlgData)
             {
                 ScViewData& rViewData = GetViewData();
                 rViewData.SetRefTabNo( rViewData.GetTabNo() );
 
-                xResult = std::make_shared<ScCondFormatDlg>(pB, pCW, pParent, &rViewData, pDlgItem);
+                xResult = std::make_shared<ScCondFormatDlg>(pB, pCW, pParent, rViewData, rDlgData);
 
-                // Remove the pool item stored by Conditional Format Manager Dialog.
-                GetPool().DirectRemoveItemFromPool(*pDlgItem);
+                // Remove the DialogData stored by Conditional Format Manager Dialog.
+                setScCondFormatDlgData(nullptr);
             }
 
             break;
@@ -468,7 +465,7 @@ void ScTabViewShell::afterCallbackRegistered()
 
     UpdateInputHandler(true, false);
 
-    ScInputHandler* pHdl = mpInputHandler ? mpInputHandler.get() : SC_MOD()->GetInputHdl();
+    ScInputHandler* pHdl = mpInputHandler ? mpInputHandler.get() : ScModule::get()->GetInputHdl();
     if (pHdl)
     {
         ScInputWindow* pInputWindow = pHdl->GetInputWindow();
@@ -476,6 +473,14 @@ void ScTabViewShell::afterCallbackRegistered()
         {
             pInputWindow->NotifyLOKClient();
         }
+    }
+
+    SfxObjectShell* pDocShell = GetObjectShell();
+    if (pDocShell && !IsTabChangeInProgress())
+    {
+        std::shared_ptr<model::ColorSet> pThemeColors = pDocShell->GetThemeColors();
+        std::set<Color> aDocumentColors = pDocShell->GetDocColors();
+        svx::theme::notifyLOK(pThemeColors, aDocumentColors);
     }
 }
 
@@ -508,13 +513,12 @@ void ScTabViewShell::NotifyCursor(SfxViewShell* pOtherShell) const
 
 ::Color ScTabViewShell::GetColorConfigColor(svtools::ColorConfigEntry nColorType) const
 {
-    const ScViewOptions& rViewOptions = GetViewData().GetOptions();
-
     switch (nColorType)
     {
         case svtools::ColorConfigEntry::DOCCOLOR:
         {
-            return rViewOptions.GetDocColor();
+            const ScViewRenderingOptions& rViewRenderingOptions = GetViewRenderingData();
+            return rViewRenderingOptions.GetDocColor();
         }
         // Should never be called for an unimplemented color type
         default:
@@ -765,9 +769,9 @@ OUString ScTabViewShell::DoAutoSum(bool& rRangeFinder, bool& rSubTotal, const Op
     return aFormula;
 }
 
-void ScTabViewShell::InitFormEditData()
+void ScTabViewShell::InitFormEditData(ScDocShell& rShell)
 {
-    mpFormEditData.reset(new ScFormEditData);
+    mpFormEditData.reset(new ScFormEditData(rShell));
 }
 
 void ScTabViewShell::ClearFormEditData()

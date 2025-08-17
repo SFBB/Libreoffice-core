@@ -48,6 +48,16 @@ void SvgFeDropShadowNode::parseAttribute(SVGToken aSVGToken, const OUString& aCo
             readLocalCssStyle(aContent);
             break;
         }
+        case SVGToken::In:
+        {
+            maIn = aContent.trim();
+            break;
+        }
+        case SVGToken::Result:
+        {
+            maResult = aContent.trim();
+            break;
+        }
         case SVGToken::Dx:
         {
             SvgNumber aNum;
@@ -109,8 +119,15 @@ void SvgFeDropShadowNode::parseAttribute(SVGToken aSVGToken, const OUString& aCo
     }
 }
 
-void SvgFeDropShadowNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTarget) const
+void SvgFeDropShadowNode::apply(drawinglayer::primitive2d::Primitive2DContainer& rTarget,
+                                const SvgFilterNode* pParent) const
 {
+    if (const drawinglayer::primitive2d::Primitive2DContainer* rSource
+        = pParent->findGraphicSource(maIn))
+    {
+        rTarget = *rSource;
+    }
+
     basegfx::B2DHomMatrix aTransform;
     if (maDx.isSet() || maDy.isSet())
     {
@@ -121,24 +138,24 @@ void SvgFeDropShadowNode::apply(drawinglayer::primitive2d::Primitive2DContainer&
     drawinglayer::primitive2d::Primitive2DContainer aTempTarget;
 
     // Create the shadow
-    aTempTarget.append(drawinglayer::primitive2d::Primitive2DReference(
-        new drawinglayer::primitive2d::ShadowPrimitive2D(
-            aTransform, maFloodColor.getBColor(), maStdDeviation.getNumber(),
-            drawinglayer::primitive2d::Primitive2DContainer(rTarget))));
+    aTempTarget.append(new drawinglayer::primitive2d::ShadowPrimitive2D(
+        aTransform, maFloodColor.getBColor(), maStdDeviation.getNumber(),
+        drawinglayer::primitive2d::Primitive2DContainer(rTarget)));
 
     const double fOpacity(maFloodOpacity.solve(*this));
     if (basegfx::fTools::less(fOpacity, 1.0))
     {
         // Apply transparence to the shadow
-        aTempTarget.append(drawinglayer::primitive2d::Primitive2DReference(
-            new drawinglayer::primitive2d::UnifiedTransparencePrimitive2D(std::move(aTempTarget),
-                                                                          1.0 - fOpacity)));
+        aTempTarget.append(new drawinglayer::primitive2d::UnifiedTransparencePrimitive2D(
+            std::move(aTempTarget), 1.0 - fOpacity));
     }
 
     // Append the original target
     aTempTarget.append(rTarget);
 
-    rTarget = aTempTarget;
+    rTarget = std::move(aTempTarget);
+
+    pParent->addGraphicSourceToMapper(maResult, rTarget);
 }
 
 } // end of namespace svgio::svgreader

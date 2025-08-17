@@ -25,6 +25,8 @@
 #include <svx/svxids.hrc>
 #include <svx/flagsdef.hxx>
 
+#include <vcl/tabs.hrc>
+
 using namespace ::com::sun::star;
 
 namespace chart
@@ -32,24 +34,22 @@ namespace chart
 
 ShapeParagraphDialog::ShapeParagraphDialog(weld::Window* pParent,
     const SfxItemSet* pAttr)
-    : SfxTabDialogController(pParent, "modules/schart/ui/paradialog.ui", "ParagraphDialog", pAttr)
+    : SfxTabDialogController(pParent, u"modules/schart/ui/paradialog.ui"_ustr, u"ParagraphDialog"_ustr, pAttr)
 {
-    AddTabPage("labelTP_PARA_STD",  RID_SVXPAGE_STD_PARAGRAPH);
-    AddTabPage("labelTP_PARA_ALIGN", RID_SVXPAGE_ALIGN_PARAGRAPH );
+    AddTabPage(u"indents"_ustr, TabResId(RID_TAB_INDENTS.aLabel), RID_SVXPAGE_STD_PARAGRAPH,
+               RID_L + RID_TAB_INDENTS.sIconName );
+    AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel), RID_SVXPAGE_ALIGN_PARAGRAPH,
+               RID_L + RID_TAB_ALIGNMENT.sIconName );
     if (SvtCJKOptions::IsAsianTypographyEnabled())
-    {
-        AddTabPage("labelTP_PARA_ASIAN", RID_SVXPAGE_PARA_ASIAN);
-    }
-    else
-    {
-        RemoveTabPage("labelTP_PARA_ASIAN");
-    }
-    AddTabPage("labelTP_TABULATOR", RID_SVXPAGE_TABULATOR);
+        AddTabPage(u"asian"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel), RID_SVXPAGE_PARA_ASIAN,
+                    RID_L + RID_TAB_ASIANTYPO.sIconName);
+    AddTabPage(u"tabs"_ustr, TabResId(RID_TAB_TABS.aLabel), RID_SVXPAGE_TABULATOR,
+               RID_L + RID_TAB_TABS.sIconName);
 }
 
 void ShapeParagraphDialog::PageCreated(const OUString& rId, SfxTabPage& rPage)
 {
-    if (rId == "labelTP_TABULATOR")
+    if (rId == "tabs")
     {
         SfxAllItemSet aSet( *( GetInputSetImpl()->GetPool() ) );
         TabulatorDisableFlags const nFlags(( TabulatorDisableFlags::TypeMask &~TabulatorDisableFlags::TypeLeft ) |

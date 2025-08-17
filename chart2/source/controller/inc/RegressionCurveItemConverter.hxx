@@ -21,7 +21,6 @@
 #include "ItemConverter.hxx"
 #include <rtl/ref.hxx>
 
-namespace com::sun::star::chart2 { class XRegressionCurveContainer; }
 namespace com::sun::star::lang { class XMultiServiceFactory; }
 namespace chart { class DataSeries; }
 class SdrModel;
@@ -37,7 +36,7 @@ public:
         rtl::Reference< ::chart::DataSeries > xRegCurveCnt,
         SfxItemPool& rItemPool,
         SdrModel& rDrawModel,
-        const css::uno::Reference< css::lang::XMultiServiceFactory > & xNamedPropertyContainerFactory );
+        const rtl::Reference< ChartModel > & xChartModel );
     virtual ~RegressionCurveItemConverter() override;
 
     virtual void FillItemSet( SfxItemSet & rOutItemSet ) const override;

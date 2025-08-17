@@ -77,7 +77,7 @@ namespace drawinglayer::primitive2d
         {
         protected:
             /// local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer,
+            virtual Primitive2DReference create2DDecomposition(
                 const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
@@ -92,14 +92,14 @@ namespace drawinglayer::primitive2d
 
         }
 
-        void NonOverlappingFillGradientPrimitive2D::create2DDecomposition(
-            Primitive2DContainer& rContainer,
+        Primitive2DReference NonOverlappingFillGradientPrimitive2D::create2DDecomposition(
             const geometry::ViewInformation2D& /*rViewInformation*/) const
         {
             if (!getFillGradient().isDefault())
             {
-                createFill(rContainer, false);
+                return createFill(false);
             }
+            return nullptr;
         }
 
 } // end of namespace
@@ -343,10 +343,9 @@ namespace wmfemfhelper
             if (rClipPolyPolygon.count())
             {
                 xRetval = drawinglayer::primitive2d::Primitive2DContainer{
-                    drawinglayer::primitive2d::Primitive2DReference(
                         new drawinglayer::primitive2d::MaskPrimitive2D(
                             rClipPolyPolygon,
-                            std::move(xRetval)))
+                            std::move(xRetval))
                 };
             }
         }
@@ -586,26 +585,26 @@ namespace wmfemfhelper
         position and size in pixels. At the end it will create a view-dependent
         transformed embedding of a BitmapPrimitive2D.
     */
-    static void createBitmapExPrimitive(
-        const BitmapEx& rBitmapEx,
+    static void createBitmapPrimitive(
+        const Bitmap& rBitmap,
         const Point& rPoint,
         TargetHolder& rTarget,
         PropertyHolder const & rProperties)
     {
-        if(!rBitmapEx.IsEmpty())
+        if(!rBitmap.IsEmpty())
         {
             basegfx::B2DPoint aPoint(rPoint.X(), rPoint.Y());
             aPoint = rProperties.getTransformation() * aPoint;
 
             rTarget.append(
                 new drawinglayer::primitive2d::DiscreteBitmapPrimitive2D(
-                    rBitmapEx,
+                    rBitmap,
                     aPoint));
         }
     }
 
     /** helper to create BitmapPrimitive2D based on current context */
-    static void createBitmapExPrimitive(
+    static void createBitmapPrimitive(
         const BitmapEx& rBitmapEx,
         const Point& rPoint,
         const Size& rSize,
@@ -626,7 +625,7 @@ namespace wmfemfhelper
 
         rTarget.append(
             new drawinglayer::primitive2d::BitmapPrimitive2D(
-                rBitmapEx,
+                Bitmap(rBitmapEx),
                 aObjectTransform));
     }
 
@@ -922,12 +921,12 @@ namespace wmfemfhelper
         TargetHolder& rTarget,
         PropertyHolder const & rProperty)
     {
-        const BitmapEx aBitmapEx(rWallpaper.GetBitmap());
+        const Bitmap& aBitmap(rWallpaper.GetBitmap());
         const WallpaperStyle eWallpaperStyle(rWallpaper.GetStyle());
 
         // if bitmap visualisation is transparent, maybe background
         // needs to be filled. Create background
-        if(aBitmapEx.IsAlpha()
+        if(aBitmap.HasAlpha()
             || (WallpaperStyle::Tile != eWallpaperStyle && WallpaperStyle::Scale != eWallpaperStyle))
         {
             if(rWallpaper.IsGradient())
@@ -957,7 +956,7 @@ namespace wmfemfhelper
         rtl::Reference<drawinglayer::primitive2d::BasePrimitive2D> pBitmapWallpaperFill =
             new drawinglayer::primitive2d::WallpaperBitmapPrimitive2D(
                 aWallpaperRange,
-                aBitmapEx,
+                aBitmap,
                 eWallpaperStyle);
 
         if(rProperty.getTransformation().isIdentity())
@@ -968,12 +967,10 @@ namespace wmfemfhelper
         else
         {
             // when a transformation is set, embed to it
-            const drawinglayer::primitive2d::Primitive2DReference xPrim(pBitmapWallpaperFill);
-
             rTarget.append(
                 new drawinglayer::primitive2d::TransformPrimitive2D(
                     rProperty.getTransformation(),
-                    drawinglayer::primitive2d::Primitive2DContainer { xPrim }));
+                    drawinglayer::primitive2d::Primitive2DContainer { pBitmapWallpaperFill }));
         }
     }
 
@@ -1125,7 +1122,7 @@ namespace wmfemfhelper
                     rText,
                     nTextStart,
                     nTextLength,
-                    std::move(rDXArray),
+                    std::vector(rDXArray),
                     std::move(rKashidaArray),
                     aFontAttribute,
                     aLocale,
@@ -1155,7 +1152,7 @@ namespace wmfemfhelper
                     nTextStart,
                     nTextLength,
                     std::vector(rDXArray),
-                    std::vector(rKashidaArray),
+                    std::move(rKashidaArray),
                     std::move(aFontAttribute),
                     std::move(aLocale),
                     aFontColor);
@@ -1171,7 +1168,7 @@ namespace wmfemfhelper
             // get text width
             double fTextWidth(0.0);
 
-            if(rDXArray.empty())
+            if (rDXArray.empty())
             {
                 fTextWidth = aTextLayouterDevice.getTextWidth(rText, nTextStart, nTextLength);
             }
@@ -1180,7 +1177,7 @@ namespace wmfemfhelper
                 fTextWidth = rDXArray.back();
             }
 
-            if(basegfx::fTools::more(fTextWidth, 0.0))
+            if (fTextWidth > 0.0 && !basegfx::fTools::equalZero(fTextWidth))
             {
                 // build text range
                 const basegfx::B2DRange aTextRange(
@@ -1228,12 +1225,10 @@ namespace wmfemfhelper
         else
         {
             // when a transformation is set, embed to it
-            const drawinglayer::primitive2d::Primitive2DReference aReference(pResult);
-
             rTarget.append(
                 new drawinglayer::primitive2d::TransformPrimitive2D(
                     rProperty.getTransformation(),
-                    drawinglayer::primitive2d::Primitive2DContainer { aReference }));
+                    drawinglayer::primitive2d::Primitive2DContainer { pResult }));
         }
     }
 
@@ -1917,7 +1912,7 @@ namespace wmfemfhelper
                     const MetaBmpAction* pA = static_cast<const MetaBmpAction*>(pAction);
                     const BitmapEx aBitmapEx(pA->GetBitmap());
 
-                    createBitmapExPrimitive(aBitmapEx, pA->GetPoint(), rTargetHolders.Current(), rPropertyHolders.Current());
+                    createBitmapPrimitive(Bitmap(aBitmapEx), pA->GetPoint(), rTargetHolders.Current(), rPropertyHolders.Current());
 
                     break;
                 }
@@ -1927,7 +1922,7 @@ namespace wmfemfhelper
                     const MetaBmpScaleAction* pA = static_cast<const MetaBmpScaleAction*>(pAction);
                     const BitmapEx aBitmapEx(pA->GetBitmap());
 
-                    createBitmapExPrimitive(aBitmapEx, pA->GetPoint(), pA->GetSize(), rTargetHolders.Current(), rPropertyHolders.Current());
+                    createBitmapPrimitive(aBitmapEx, pA->GetPoint(), pA->GetSize(), rTargetHolders.Current(), rPropertyHolders.Current());
 
                     break;
                 }
@@ -1948,7 +1943,7 @@ namespace wmfemfhelper
                         }
 
                         const BitmapEx aCroppedBitmapEx(aCroppedBitmap);
-                        createBitmapExPrimitive(aCroppedBitmapEx, pA->GetDestPoint(), pA->GetDestSize(), rTargetHolders.Current(), rPropertyHolders.Current());
+                        createBitmapPrimitive(aCroppedBitmapEx, pA->GetDestPoint(), pA->GetDestSize(), rTargetHolders.Current(), rPropertyHolders.Current());
                     }
 
                     break;
@@ -1959,7 +1954,7 @@ namespace wmfemfhelper
                     const MetaBmpExAction* pA = static_cast<const MetaBmpExAction*>(pAction);
                     const BitmapEx& rBitmapEx = pA->GetBitmapEx();
 
-                    createBitmapExPrimitive(rBitmapEx, pA->GetPoint(), rTargetHolders.Current(), rPropertyHolders.Current());
+                    createBitmapPrimitive(Bitmap(rBitmapEx), pA->GetPoint(), rTargetHolders.Current(), rPropertyHolders.Current());
 
                     break;
                 }
@@ -1969,7 +1964,7 @@ namespace wmfemfhelper
                     const MetaBmpExScaleAction* pA = static_cast<const MetaBmpExScaleAction*>(pAction);
                     const BitmapEx& rBitmapEx = pA->GetBitmapEx();
 
-                    createBitmapExPrimitive(rBitmapEx, pA->GetPoint(), pA->GetSize(), rTargetHolders.Current(), rPropertyHolders.Current());
+                    createBitmapPrimitive(rBitmapEx, pA->GetPoint(), pA->GetSize(), rTargetHolders.Current(), rPropertyHolders.Current());
 
                     break;
                 }
@@ -1989,7 +1984,7 @@ namespace wmfemfhelper
                             aCroppedBitmapEx.Crop(aCropRectangle);
                         }
 
-                        createBitmapExPrimitive(aCroppedBitmapEx, pA->GetDestPoint(), pA->GetDestSize(), rTargetHolders.Current(), rPropertyHolders.Current());
+                        createBitmapPrimitive(aCroppedBitmapEx, pA->GetDestPoint(), pA->GetDestSize(), rTargetHolders.Current(), rPropertyHolders.Current());
                     }
 
                     break;
@@ -2001,7 +1996,7 @@ namespace wmfemfhelper
                     const MetaMaskAction* pA = static_cast<const MetaMaskAction*>(pAction);
                     const BitmapEx aBitmapEx(createMaskBmpEx(pA->GetBitmap(), pA->GetColor()));
 
-                    createBitmapExPrimitive(aBitmapEx, pA->GetPoint(), rTargetHolders.Current(), rPropertyHolders.Current());
+                    createBitmapPrimitive(Bitmap(aBitmapEx), pA->GetPoint(), rTargetHolders.Current(), rPropertyHolders.Current());
 
                     break;
                 }
@@ -2011,7 +2006,7 @@ namespace wmfemfhelper
                     const MetaMaskScaleAction* pA = static_cast<const MetaMaskScaleAction*>(pAction);
                     const BitmapEx aBitmapEx(createMaskBmpEx(pA->GetBitmap(), pA->GetColor()));
 
-                    createBitmapExPrimitive(aBitmapEx, pA->GetPoint(), pA->GetSize(), rTargetHolders.Current(), rPropertyHolders.Current());
+                    createBitmapPrimitive(aBitmapEx, pA->GetPoint(), pA->GetSize(), rTargetHolders.Current(), rPropertyHolders.Current());
 
                     break;
                 }
@@ -2032,7 +2027,7 @@ namespace wmfemfhelper
                         }
 
                         const BitmapEx aCroppedBitmapEx(createMaskBmpEx(aCroppedBitmap, pA->GetColor()));
-                        createBitmapExPrimitive(aCroppedBitmapEx, pA->GetDestPoint(), pA->GetDestSize(), rTargetHolders.Current(), rPropertyHolders.Current());
+                        createBitmapPrimitive(aCroppedBitmapEx, pA->GetDestPoint(), pA->GetDestSize(), rTargetHolders.Current(), rPropertyHolders.Current());
                     }
 
                     break;
@@ -2342,14 +2337,12 @@ namespace wmfemfhelper
                                 // prepare translation, add current transformation
                                 basegfx::B2DVector aVector(pA->GetHorzMove(), pA->GetVertMove());
                                 aVector *= rPropertyHolders.Current().getTransformation();
-                                basegfx::B2DHomMatrix aTransform(
-                                    basegfx::utils::createTranslateB2DHomMatrix(aVector));
 
                                 // transform existing region
                                 basegfx::B2DPolyPolygon aClipPolyPolygon(
                                     rPropertyHolders.Current().getClipPolyPolygon());
 
-                                aClipPolyPolygon.transform(aTransform);
+                                aClipPolyPolygon.translate(aVector);
                                 HandleNewClipRegion(aClipPolyPolygon, rTargetHolders, rPropertyHolders);
                             }
                         }

@@ -35,9 +35,9 @@ class SAL_DLLPUBLIC_RTTI ScDBFunc : public ScViewFunc
 {
 private:
     void GetSelectedMemberList(ScDPUniqueStringSet& rEntries, tools::Long& rDimension);
-    static void ModifiedAutoFilter(ScDocShell* pDocSh);
-    static void ApplyAutoFilter(ScDocShell* pDocSh, ScViewData* pViewData, ScDBData* pDBData,
-                                SCCOL nCol, SCROW nRow, SCTAB nTab, ScQueryParam aParam);
+    static void ModifiedAutoFilter(ScDocShell& rDocSh);
+    static void ApplyAutoFilter(ScDocShell& rDocSh, ScViewData& rViewData, ScDBData* pDBData,
+                                SCROW nRow, SCTAB nTab, const ScQueryParam& aParam);
 
     DECL_STATIC_LINK(ScDBFunc, InstallLOKNotifierHdl, void*, vcl::ILibreOfficeKitNotifier*);
 
@@ -58,6 +58,7 @@ public:
 
     void            ToggleAutoFilter();
     void            HideAutoFilter();
+    void            ClearAutoFilter();
 
     void            RepeatDB( bool bRecord = true );
 
@@ -66,7 +67,7 @@ public:
     void GotoDBArea( const OUString& rDBName );
 
                     // DB range from Cursor
-    ScDBData*       GetDBData( bool bMarkArea = true, ScGetDBMode eMode = SC_DB_MAKE, ScGetDBSelection eSel = ScGetDBSelection::Keep);
+    SAL_RET_MAYBENULL ScDBData*       GetDBData( bool bMarkArea = true, ScGetDBMode eMode = SC_DB_MAKE, ScGetDBSelection eSel = ScGetDBSelection::Keep);
     ScDBData*       GetAnonymousDBData();
 
     void            Consolidate( const ScConsolidateParam& rParam );

@@ -21,10 +21,10 @@
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERPANECONTAINER_HXX
 
 #include "PresenterPaneBase.hxx"
+#include <PresenterHelper.hxx>
 #include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/drawing/XPresenterHelper.hpp>
-#include <com/sun/star/drawing/framework/XResourceId.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
+#include <ResourceId.hxx>
+#include <framework/AbstractView.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
@@ -35,9 +35,6 @@
 #include <vector>
 
 namespace sdext::presenter {
-
-class PresenterPaneBase;
-class PresenterSprite;
 
 typedef ::cppu::WeakComponentImplHelper <
     css::lang::XEventListener
@@ -52,15 +49,14 @@ class PresenterPaneContainer
       public PresenterPaneContainerInterfaceBase
 {
 public:
-    explicit PresenterPaneContainer (
-        const css::uno::Reference<css::uno::XComponentContext>& rxContext);
+    explicit PresenterPaneContainer();
     virtual ~PresenterPaneContainer() override;
     PresenterPaneContainer(const PresenterPaneContainer&) = delete;
     PresenterPaneContainer& operator=(const PresenterPaneContainer&) = delete;
 
     virtual void SAL_CALL disposing() override;
 
-    typedef ::std::function<void (const css::uno::Reference<css::drawing::framework::XView>&)>
+    typedef ::std::function<void (const rtl::Reference<sd::framework::AbstractView>&)>
         ViewInitializationFunction;
 
     /** Each pane descriptor holds references to one pane and the view
@@ -74,15 +70,16 @@ public:
     class PaneDescriptor
     {
     public:
-        css::uno::Reference<css::drawing::framework::XResourceId> mxPaneId;
+        rtl::Reference<sd::framework::ResourceId> mxPaneId;
         OUString msViewURL;
         ::rtl::Reference<PresenterPaneBase> mxPane;
-        css::uno::Reference<css::drawing::framework::XView> mxView;
+        rtl::Reference<sd::framework::AbstractView> mxView;
         css::uno::Reference<css::awt::XWindow> mxContentWindow;
         css::uno::Reference<css::awt::XWindow> mxBorderWindow;
         OUString msTitleTemplate;
-        OUString msAccessibleTitleTemplate;
+        OUString msAccessibleNameTemplate;
         OUString msTitle;
+        OUString msAccessibleName;
         ViewInitializationFunction maViewInitialization;
         bool mbIsActive;
         bool mbIsOpaque;
@@ -95,7 +92,7 @@ public:
     PaneList maPanes;
 
     void PreparePane (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId,
+        const rtl::Reference<sd::framework::ResourceId>& rxPaneId,
         const OUString& rsViewURL,
         const OUString& rsTitle,
         const OUString& rsAccessibleTitle,
@@ -106,17 +103,17 @@ public:
         const rtl::Reference<PresenterPaneBase>& rxPane);
 
     SharedPaneDescriptor StoreBorderWindow(
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId,
+        const rtl::Reference<sd::framework::ResourceId>& rxPaneId,
         const css::uno::Reference<css::awt::XWindow>& rxBorderWindow);
 
     SharedPaneDescriptor StoreView (
-        const css::uno::Reference<css::drawing::framework::XView>& rxView);
+        const rtl::Reference<sd::framework::AbstractView>& rxView);
 
     SharedPaneDescriptor RemovePane (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId);
+        const rtl::Reference<sd::framework::ResourceId>& rxPaneId);
 
     SharedPaneDescriptor RemoveView (
-        const css::uno::Reference<css::drawing::framework::XView>& rxView);
+        const rtl::Reference<sd::framework::AbstractView>& rxView);
 
     /** Find the pane whose border window is identical to the given border
         window.
@@ -136,8 +133,7 @@ public:
 
     /** Find the pane whose resource id is identical to the given one.
     */
-    SharedPaneDescriptor FindPaneId (const css::uno::Reference<
-        css::drawing::framework::XResourceId>& rxPaneId);
+    SharedPaneDescriptor FindPaneId (const rtl::Reference<sd::framework::ResourceId>& rxPaneId);
 
     SharedPaneDescriptor FindViewURL (const OUString& rsViewURL);
 
@@ -149,9 +145,6 @@ public:
 
     virtual void SAL_CALL disposing (
         const css::lang::EventObject& rEvent) override;
-
-private:
-    css::uno::Reference<css::drawing::XPresenterHelper> mxPresenterHelper;
 };
 
 } // end of namespace ::sdext::presenter

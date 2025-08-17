@@ -28,7 +28,40 @@
 #include <tools/helpers.hxx>
 #include <tools/long.hxx>
 #include <o3tl/string_view.hxx>
+#include <o3tl/numeric.hxx>
 #include <basegfx/color/bcolortools.hxx>
+#include <basegfx/numeric/ftools.hxx>
+
+static inline double NormalizeRGB(double nValue)
+{
+    if (nValue < 0.04045)
+        return nValue/12.92;
+    else
+        return pow((nValue+0.055)/1.055, 2.4);
+}
+
+sal_uInt8 Color::GetWCAGLuminance() const
+{
+    // https://www.w3.org/TR/WCAG21/#dfn-relative-luminance
+    const double nRed = NormalizeRGB(R/255.0);
+    const double nGreen = NormalizeRGB(G/255.0);
+    const double nBlue = NormalizeRGB(B/255.0);
+    return (nRed * 0.2126 + nGreen * 0.7152 + nBlue * 0.0722) * 255UL;
+}
+
+bool Color::IsDark() const
+{
+    if (mValue == 0x729fcf) // COL_DEFAULT_SHAPE_FILLING
+        return GetLuminance() <= 62;
+    else
+        return GetWCAGLuminance() <= 87;
+}
+
+bool Color::IsBright() const
+{
+    return !IsDark();
+//    return GetLuminance() >= 245;
+}
 
 void Color::IncreaseLuminance(sal_uInt8 cLumInc)
 {
@@ -51,9 +84,9 @@ void Color::DecreaseContrast(sal_uInt8 nContDec)
         const double fM = (128.0 - 0.4985 * nContDec) / 128.0;
         const double fOff = 128.0 - fM * 128.0;
 
-        R = sal_uInt8(std::clamp(FRound(R * fM + fOff), tools::Long(0), tools::Long(255)));
-        G = sal_uInt8(std::clamp(FRound(G * fM + fOff), tools::Long(0), tools::Long(255)));
-        B = sal_uInt8(std::clamp(FRound(B * fM + fOff), tools::Long(0), tools::Long(255)));
+        R = basegfx::fround<sal_uInt8>(R * fM + fOff);
+        G = basegfx::fround<sal_uInt8>(G * fM + fOff);
+        B = basegfx::fround<sal_uInt8>(B * fM + fOff);
     }
 }
 
@@ -261,6 +294,26 @@ void Color::ApplyLumModOff(sal_Int16 nMod, sal_Int16 nOff)
     R = sal_uInt8(std::lround(aBColor.getRed()   * 255.0));
     G = sal_uInt8(std::lround(aBColor.getGreen() * 255.0));
     B = sal_uInt8(std::lround(aBColor.getBlue()  * 255.0));
+}
+
+namespace color
+{
+bool createFromString(OString const& rString, Color& rColor)
+{
+    if (rString.getLength() != 7)
+        return false;
+
+    const char aChar(rString[0]);
+
+    if (aChar != '#')
+        return false;
+
+    rColor.SetRed(o3tl::convertToHex<sal_Int32>(rString[1], rString[2]));
+    rColor.SetGreen(o3tl::convertToHex<sal_Int32>(rString[3], rString[4]));
+    rColor.SetBlue(o3tl::convertToHex<sal_Int32>(rString[5], rString[6]));
+
+    return true;
+}
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

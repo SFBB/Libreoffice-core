@@ -32,7 +32,6 @@ namespace svx
 
     using namespace ::com::sun::star::uno;
     using namespace ::com::sun::star::sdb;
-    using namespace ::com::sun::star::container;
 
     void DbRegisteredNamesConfig::GetOptions( SfxItemSet& _rFillItems )
     {
@@ -40,18 +39,15 @@ namespace svx
 
         try
         {
-            Reference<XComponentContext> xContext( ::comphelper::getProcessComponentContext() );
+            const Reference<XComponentContext>& xContext( ::comphelper::getProcessComponentContext() );
             Reference< XDatabaseContext > xRegistrations(
                 DatabaseContext::create(xContext) );
 
-            Sequence< OUString > aRegistrationNames( xRegistrations->getRegistrationNames() );
-            const OUString* pRegistrationName = aRegistrationNames.getConstArray();
-            const OUString* pRegistrationNamesEnd = pRegistrationName + aRegistrationNames.getLength();
-            for ( ; pRegistrationName != pRegistrationNamesEnd; ++pRegistrationName )
+            for (auto& registrationName : xRegistrations->getRegistrationNames())
             {
-                OUString sLocation( xRegistrations->getDatabaseLocation( *pRegistrationName ) );
-                aSettings[ *pRegistrationName ] =
-                    DatabaseRegistration( sLocation, xRegistrations->isDatabaseRegistrationReadOnly( *pRegistrationName ) );
+                aSettings[registrationName] = DatabaseRegistration(
+                    xRegistrations->getDatabaseLocation(registrationName),
+                    xRegistrations->isDatabaseRegistrationReadOnly(registrationName));
             }
         }
         catch( const Exception& )
@@ -100,13 +96,10 @@ namespace svx
             }
 
             // delete unused entries
-            Sequence< OUString > aRegistrationNames = xRegistrations->getRegistrationNames();
-            const OUString* pRegistrationName = aRegistrationNames.getConstArray();
-            const OUString* pRegistrationNamesEnd = pRegistrationName + aRegistrationNames.getLength();
-            for ( ; pRegistrationName != pRegistrationNamesEnd; ++pRegistrationName )
+            for (auto& registrationName : xRegistrations->getRegistrationNames())
             {
-                if ( rNewRegistrations.find( *pRegistrationName ) == rNewRegistrations.end() )
-                    xRegistrations->revokeDatabaseLocation( *pRegistrationName );
+                if (rNewRegistrations.find(registrationName) == rNewRegistrations.end())
+                    xRegistrations->revokeDatabaseLocation(registrationName);
             }
         }
         catch( const Exception& )

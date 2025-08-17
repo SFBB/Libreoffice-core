@@ -32,56 +32,59 @@
 #include <scmod.hxx>
 #include <svl/eitem.hxx>
 #include <svtools/unitconv.hxx>
-#include <unotools/configmgr.hxx>
 #include <unotools/localedatawrapper.hxx>
 
 ScTpContentOptions::ScTpContentOptions(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&  rArgSet)
-    : SfxTabPage(pPage, pController, "modules/scalc/ui/tpviewpage.ui", "TpViewPage", &rArgSet)
-    , m_xGridLB(m_xBuilder->weld_combo_box("grid"))
-    , m_xGridImg(m_xBuilder->weld_widget("lockgrid"))
-    , m_xBreakCB(m_xBuilder->weld_check_button("break"))
-    , m_xBreakImg(m_xBuilder->weld_widget("lockbreak"))
-    , m_xGuideLineCB(m_xBuilder->weld_check_button("guideline"))
-    , m_xGuideLineImg(m_xBuilder->weld_widget("lockguideline"))
-    , m_xFormulaCB(m_xBuilder->weld_check_button("formula"))
-    , m_xFormulaImg(m_xBuilder->weld_widget("lockformula"))
-    , m_xNilCB(m_xBuilder->weld_check_button("nil"))
-    , m_xNilImg(m_xBuilder->weld_widget("locknil"))
-    , m_xAnnotCB(m_xBuilder->weld_check_button("annot"))
-    , m_xAnnotImg(m_xBuilder->weld_widget("lockannot"))
-    , m_xFormulaMarkCB(m_xBuilder->weld_check_button("formulamark"))
-    , m_xFormulaMarkImg(m_xBuilder->weld_widget("lockformulamark"))
-    , m_xValueCB(m_xBuilder->weld_check_button("value"))
-    , m_xValueImg(m_xBuilder->weld_widget("lockvalue"))
-    , m_xColRowHighCB(m_xBuilder->weld_check_button("colrowhigh"))
-    , m_xColRowHighImg(m_xBuilder->weld_widget("lockcolrowhigh"))
-    , m_xAnchorCB(m_xBuilder->weld_check_button("anchor"))
-    , m_xAnchorImg(m_xBuilder->weld_widget("lockanchor"))
-    , m_xRangeFindCB(m_xBuilder->weld_check_button("rangefind"))
-    , m_xRangeFindImg(m_xBuilder->weld_widget("lockrangefind"))
-    , m_xObjGrfLB(m_xBuilder->weld_combo_box("objgrf"))
-    , m_xObjGrfImg(m_xBuilder->weld_widget("lockobjgrf"))
-    , m_xDiagramLB(m_xBuilder->weld_combo_box("diagram"))
-    , m_xDiagramImg(m_xBuilder->weld_widget("lockdiagram"))
-    , m_xDrawLB(m_xBuilder->weld_combo_box("draw"))
-    , m_xDrawImg(m_xBuilder->weld_widget("lockdraw"))
-    , m_xSyncZoomCB(m_xBuilder->weld_check_button("synczoom"))
-    , m_xSyncZoomImg(m_xBuilder->weld_widget("locksynczoom"))
-    , m_xRowColHeaderCB(m_xBuilder->weld_check_button("rowcolheader"))
-    , m_xRowColHeaderImg(m_xBuilder->weld_widget("lockrowcolheader"))
-    , m_xHScrollCB(m_xBuilder->weld_check_button("hscroll"))
-    , m_xHScrollImg(m_xBuilder->weld_widget("lockhscroll"))
-    , m_xVScrollCB(m_xBuilder->weld_check_button("vscroll"))
-    , m_xVScrollImg(m_xBuilder->weld_widget("lockvscroll"))
-    , m_xTblRegCB(m_xBuilder->weld_check_button("tblreg"))
-    , m_xTblRegImg(m_xBuilder->weld_widget("locktblreg"))
-    , m_xOutlineCB(m_xBuilder->weld_check_button("outline"))
-    , m_xOutlineImg(m_xBuilder->weld_widget("lockoutline"))
-    , m_xSummaryCB(m_xBuilder->weld_check_button("cbSummary"))
-    , m_xSummaryImg(m_xBuilder->weld_widget("lockcbSummary"))
-    , m_xThemedCursorRB(m_xBuilder->weld_radio_button("rbThemedCursor"))
-    , m_xSystemCursorRB(m_xBuilder->weld_radio_button("rbSystemCursor"))
-    , m_xCursorImg(m_xBuilder->weld_widget("lockCursor"))
+    : SfxTabPage(pPage, pController, u"modules/scalc/ui/tpviewpage.ui"_ustr, u"TpViewPage"_ustr, &rArgSet)
+    , m_xGridLB(m_xBuilder->weld_combo_box(u"grid"_ustr))
+    , m_xGridImg(m_xBuilder->weld_widget(u"lockgrid"_ustr))
+    , m_xBreakCB(m_xBuilder->weld_check_button(u"break"_ustr))
+    , m_xBreakImg(m_xBuilder->weld_widget(u"lockbreak"_ustr))
+    , m_xGuideLineCB(m_xBuilder->weld_check_button(u"guideline"_ustr))
+    , m_xGuideLineImg(m_xBuilder->weld_widget(u"lockguideline"_ustr))
+    , m_xFormulaCB(m_xBuilder->weld_check_button(u"formula"_ustr))
+    , m_xFormulaImg(m_xBuilder->weld_widget(u"lockformula"_ustr))
+    , m_xNilCB(m_xBuilder->weld_check_button(u"nil"_ustr))
+    , m_xNilImg(m_xBuilder->weld_widget(u"locknil"_ustr))
+    , m_xAnnotCB(m_xBuilder->weld_check_button(u"annot"_ustr))
+    , m_xAnnotImg(m_xBuilder->weld_widget(u"lockannot"_ustr))
+    , m_xNoteAuthorCB(m_xBuilder->weld_check_button(u"cbNoteAuthor"_ustr))
+    , m_xNoteAuthorImg(m_xBuilder->weld_widget(u"imNoteAuthor"_ustr))
+    , m_xFormulaMarkCB(m_xBuilder->weld_check_button(u"formulamark"_ustr))
+    , m_xFormulaMarkImg(m_xBuilder->weld_widget(u"lockformulamark"_ustr))
+    , m_xValueCB(m_xBuilder->weld_check_button(u"value"_ustr))
+    , m_xValueImg(m_xBuilder->weld_widget(u"lockvalue"_ustr))
+    , m_xColRowHighCB(m_xBuilder->weld_check_button(u"colrowhigh"_ustr))
+    , m_xColRowHighImg(m_xBuilder->weld_widget(u"lockcolrowhigh"_ustr))
+    , m_xEditCellBgHighCB(m_xBuilder->weld_check_button(u"editcellbg"_ustr))
+    , m_xEditCellBgHighImg(m_xBuilder->weld_widget(u"lockeditcellbghigh"_ustr))
+    , m_xAnchorCB(m_xBuilder->weld_check_button(u"anchor"_ustr))
+    , m_xAnchorImg(m_xBuilder->weld_widget(u"lockanchor"_ustr))
+    , m_xRangeFindCB(m_xBuilder->weld_check_button(u"rangefind"_ustr))
+    , m_xRangeFindImg(m_xBuilder->weld_widget(u"lockrangefind"_ustr))
+    , m_xObjGrfLB(m_xBuilder->weld_combo_box(u"objgrf"_ustr))
+    , m_xObjGrfImg(m_xBuilder->weld_widget(u"lockobjgrf"_ustr))
+    , m_xDiagramLB(m_xBuilder->weld_combo_box(u"diagram"_ustr))
+    , m_xDiagramImg(m_xBuilder->weld_widget(u"lockdiagram"_ustr))
+    , m_xDrawLB(m_xBuilder->weld_combo_box(u"draw"_ustr))
+    , m_xDrawImg(m_xBuilder->weld_widget(u"lockdraw"_ustr))
+    , m_xSyncZoomCB(m_xBuilder->weld_check_button(u"synczoom"_ustr))
+    , m_xSyncZoomImg(m_xBuilder->weld_widget(u"locksynczoom"_ustr))
+    , m_xRowColHeaderCB(m_xBuilder->weld_check_button(u"rowcolheader"_ustr))
+    , m_xRowColHeaderImg(m_xBuilder->weld_widget(u"lockrowcolheader"_ustr))
+    , m_xHScrollCB(m_xBuilder->weld_check_button(u"hscroll"_ustr))
+    , m_xHScrollImg(m_xBuilder->weld_widget(u"lockhscroll"_ustr))
+    , m_xVScrollCB(m_xBuilder->weld_check_button(u"vscroll"_ustr))
+    , m_xVScrollImg(m_xBuilder->weld_widget(u"lockvscroll"_ustr))
+    , m_xTblRegCB(m_xBuilder->weld_check_button(u"tblreg"_ustr))
+    , m_xTblRegImg(m_xBuilder->weld_widget(u"locktblreg"_ustr))
+    , m_xOutlineCB(m_xBuilder->weld_check_button(u"outline"_ustr))
+    , m_xOutlineImg(m_xBuilder->weld_widget(u"lockoutline"_ustr))
+    , m_xSummaryCB(m_xBuilder->weld_check_button(u"cbSummary"_ustr))
+    , m_xSummaryImg(m_xBuilder->weld_widget(u"lockcbSummary"_ustr))
+    , m_xThemedCursorRB(m_xBuilder->weld_radio_button(u"rbThemedCursor"_ustr))
+    , m_xSystemCursorRB(m_xBuilder->weld_radio_button(u"rbSystemCursor"_ustr))
+    , m_xCursorImg(m_xBuilder->weld_widget(u"lockCursor"_ustr))
 {
     SetExchangeSupport();
     Link<weld::ComboBox&,void> aSelObjHdl(LINK( this, ScTpContentOptions, SelLbObjHdl ) );
@@ -95,9 +98,11 @@ ScTpContentOptions::ScTpContentOptions(weld::Container* pPage, weld::DialogContr
     m_xNilCB->connect_toggled(aCBHdl);
     m_xAnnotCB->connect_toggled(aCBHdl);
     m_xAnnotCB->set_accessible_description(ScResId(STR_A11Y_DESC_ANNOT));
+    m_xNoteAuthorCB->connect_toggled(aCBHdl);
     m_xFormulaMarkCB->connect_toggled(aCBHdl);
     m_xValueCB->connect_toggled(aCBHdl);
     m_xColRowHighCB->connect_toggled(aCBHdl);
+    m_xEditCellBgHighCB->connect_toggled(aCBHdl);
     m_xAnchorCB->connect_toggled(aCBHdl);
 
     m_xVScrollCB->connect_toggled(aCBHdl);
@@ -124,23 +129,23 @@ std::unique_ptr<SfxTabPage> ScTpContentOptions::Create( weld::Container* pPage, 
 OUString ScTpContentOptions::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label4",   "label5", "label3",       "label1",        "grid_label",
-                          "lbCursor", "label2", "objgrf_label", "diagram_label", "draw_label" };
+    OUString labels[] = { u"label4"_ustr,   u"label5"_ustr, u"label3"_ustr,       u"label1"_ustr,        u"grid_label"_ustr,
+                          u"lbCursor"_ustr, u"label2"_ustr, u"objgrf_label"_ustr, u"diagram_label"_ustr, u"draw_label"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
     OUString checkButton[]
-        = { "formula",   "nil",          "annot",   "formulamark", "value",  "anchor",
-            "rangefind", "rowcolheader", "hscroll", "vscroll",     "tblreg", "outline",
-            "cbSummary", "synczoom",     "break",   "guideline" };
+        = { u"formula"_ustr,   u"nil"_ustr,          u"annot"_ustr,   u"formulamark"_ustr, u"value"_ustr,  u"anchor"_ustr,
+            u"rangefind"_ustr, u"rowcolheader"_ustr, u"hscroll"_ustr, u"vscroll"_ustr,     u"tblreg"_ustr, u"outline"_ustr,
+            u"cbSummary"_ustr, u"synczoom"_ustr,     u"break"_ustr,   u"guideline"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -153,6 +158,7 @@ bool    ScTpContentOptions::FillItemSet( SfxItemSet* rCoreSet )
     if( m_xFormulaCB->get_state_changed_from_saved() ||
         m_xNilCB->get_state_changed_from_saved() ||
         m_xAnnotCB->get_state_changed_from_saved() ||
+        m_xNoteAuthorCB->get_state_changed_from_saved() ||
         m_xFormulaMarkCB->get_state_changed_from_saved() ||
         m_xValueCB->get_state_changed_from_saved() ||
         m_xAnchorCB->get_state_changed_from_saved() ||
@@ -190,6 +196,13 @@ bool    ScTpContentOptions::FillItemSet( SfxItemSet* rCoreSet )
         pChange->commit();
         bRet = true;
     }
+    if (m_xEditCellBgHighCB->get_state_changed_from_saved())
+    {
+        auto pChange(comphelper::ConfigurationChanges::create());
+        officecfg::Office::Calc::Content::Display::EditCellBackgroundHighlighting::set(m_xEditCellBgHighCB->get_active(), pChange);
+        pChange->commit();
+        bRet = true;
+    }
 
     return bRet;
 }
@@ -200,33 +213,35 @@ void    ScTpContentOptions::Reset( const SfxItemSet* rCoreSet )
         m_xLocalOptions.reset( new ScViewOptions( pViewItem->GetViewOptions() ) );
     else
         m_xLocalOptions.reset( new ScViewOptions );
-    m_xFormulaCB ->set_active(m_xLocalOptions->GetOption(VOPT_FORMULAS));
-    m_xNilCB     ->set_active(m_xLocalOptions->GetOption(VOPT_NULLVALS));
-    m_xAnnotCB   ->set_active(m_xLocalOptions->GetOption(VOPT_NOTES));
-    m_xFormulaMarkCB->set_active(m_xLocalOptions->GetOption(VOPT_FORMULAS_MARKS));
-    m_xValueCB   ->set_active(m_xLocalOptions->GetOption(VOPT_SYNTAX));
+    m_xFormulaCB ->set_active(m_xLocalOptions->GetOption(sc::ViewOption::FORMULAS));
+    m_xNilCB     ->set_active(m_xLocalOptions->GetOption(sc::ViewOption::NULLVALS));
+    m_xAnnotCB   ->set_active(m_xLocalOptions->GetOption(sc::ViewOption::NOTES));
+    m_xNoteAuthorCB->set_active(m_xLocalOptions->GetOption(sc::ViewOption::NOTEAUTHOR));
+    m_xFormulaMarkCB->set_active(m_xLocalOptions->GetOption(sc::ViewOption::FORMULAS_MARKS));
+    m_xValueCB   ->set_active(m_xLocalOptions->GetOption(sc::ViewOption::SYNTAX));
     m_xColRowHighCB->set_active(officecfg::Office::Calc::Content::Display::ColumnRowHighlighting::get());
-    m_xAnchorCB  ->set_active(m_xLocalOptions->GetOption(VOPT_ANCHOR));
+    m_xEditCellBgHighCB->set_active(officecfg::Office::Calc::Content::Display::EditCellBackgroundHighlighting::get());
+    m_xAnchorCB  ->set_active(m_xLocalOptions->GetOption(sc::ViewOption::ANCHOR));
 
-    m_xObjGrfLB  ->set_active( static_cast<sal_uInt16>(m_xLocalOptions->GetObjMode(VOBJ_TYPE_OLE)) );
-    m_xDiagramLB ->set_active( static_cast<sal_uInt16>(m_xLocalOptions->GetObjMode(VOBJ_TYPE_CHART)) );
-    m_xDrawLB    ->set_active( static_cast<sal_uInt16>(m_xLocalOptions->GetObjMode(VOBJ_TYPE_DRAW)) );
+    m_xObjGrfLB  ->set_active( static_cast<sal_uInt16>(m_xLocalOptions->GetObjMode(sc::ViewObjectType::OLE)) );
+    m_xDiagramLB ->set_active( static_cast<sal_uInt16>(m_xLocalOptions->GetObjMode(sc::ViewObjectType::CHART)) );
+    m_xDrawLB    ->set_active( static_cast<sal_uInt16>(m_xLocalOptions->GetObjMode(sc::ViewObjectType::DRAW)) );
 
-    m_xRowColHeaderCB->set_active( m_xLocalOptions->GetOption(VOPT_HEADER) );
-    m_xHScrollCB->set_active( m_xLocalOptions->GetOption(VOPT_HSCROLL) );
-    m_xVScrollCB->set_active( m_xLocalOptions->GetOption(VOPT_VSCROLL) );
-    m_xTblRegCB ->set_active( m_xLocalOptions->GetOption(VOPT_TABCONTROLS) );
-    m_xOutlineCB->set_active( m_xLocalOptions->GetOption(VOPT_OUTLINER) );
-    m_xSummaryCB->set_active( m_xLocalOptions->GetOption(VOPT_SUMMARY) );
-    if ( m_xLocalOptions->GetOption(VOPT_THEMEDCURSOR) )
+    m_xRowColHeaderCB->set_active( m_xLocalOptions->GetOption(sc::ViewOption::HEADER) );
+    m_xHScrollCB->set_active( m_xLocalOptions->GetOption(sc::ViewOption::HSCROLL) );
+    m_xVScrollCB->set_active( m_xLocalOptions->GetOption(sc::ViewOption::VSCROLL) );
+    m_xTblRegCB ->set_active( m_xLocalOptions->GetOption(sc::ViewOption::TABCONTROLS) );
+    m_xOutlineCB->set_active( m_xLocalOptions->GetOption(sc::ViewOption::OUTLINER) );
+    m_xSummaryCB->set_active( m_xLocalOptions->GetOption(sc::ViewOption::SUMMARY) );
+    if ( m_xLocalOptions->GetOption(sc::ViewOption::THEMEDCURSOR) )
         m_xThemedCursorRB->set_active( true );
     else
         m_xSystemCursorRB->set_active( true );
 
     InitGridOpt();
 
-    m_xBreakCB->set_active( m_xLocalOptions->GetOption(VOPT_PAGEBREAKS) );
-    m_xGuideLineCB->set_active( m_xLocalOptions->GetOption(VOPT_HELPLINES) );
+    m_xBreakCB->set_active( m_xLocalOptions->GetOption(sc::ViewOption::PAGEBREAKS) );
+    m_xGuideLineCB->set_active( m_xLocalOptions->GetOption(sc::ViewOption::HELPLINES) );
 
     if(const SfxBoolItem* pFinderItem = rCoreSet->GetItemIfSet(SID_SC_INPUT_RANGEFINDER, false))
         m_xRangeFindCB->set_active(pFinderItem->GetValue());
@@ -258,6 +273,10 @@ void    ScTpContentOptions::Reset( const SfxItemSet* rCoreSet )
     m_xAnnotCB->set_sensitive(!bReadOnly);
     m_xAnnotImg->set_visible(bReadOnly);
 
+    bReadOnly = officecfg::Office::Calc::Content::Display::NoteAuthor::isReadOnly();
+    m_xNoteAuthorCB->set_sensitive(!bReadOnly);
+    m_xNoteAuthorImg->set_visible(bReadOnly);
+
     bReadOnly = officecfg::Office::Calc::Content::Display::FormulaMark::isReadOnly();
     m_xFormulaMarkCB->set_sensitive(!bReadOnly);
     m_xFormulaMarkImg->set_visible(bReadOnly);
@@ -269,6 +288,10 @@ void    ScTpContentOptions::Reset( const SfxItemSet* rCoreSet )
     bReadOnly = officecfg::Office::Calc::Content::Display::ColumnRowHighlighting::isReadOnly();
     m_xColRowHighCB->set_sensitive(!bReadOnly);
     m_xColRowHighImg->set_visible(bReadOnly);
+
+    bReadOnly = officecfg::Office::Calc::Content::Display::EditCellBackgroundHighlighting::isReadOnly();
+    m_xEditCellBgHighCB->set_sensitive(!bReadOnly);
+    m_xEditCellBgHighImg->set_visible(bReadOnly);
 
     bReadOnly = officecfg::Office::Calc::Content::Display::Anchor::isReadOnly();
     m_xAnchorCB->set_sensitive(!bReadOnly);
@@ -329,9 +352,11 @@ void    ScTpContentOptions::Reset( const SfxItemSet* rCoreSet )
     m_xFormulaCB->save_state();
     m_xNilCB->save_state();
     m_xAnnotCB->save_state();
+    m_xNoteAuthorCB->save_state();
     m_xFormulaMarkCB->save_state();
     m_xValueCB->save_state();
     m_xColRowHighCB->save_state();
+    m_xEditCellBgHighCB->save_state();
     m_xAnchorCB->save_state();
     m_xObjGrfLB->save_value();
     m_xDiagramLB->save_value();
@@ -364,45 +389,62 @@ DeactivateRC ScTpContentOptions::DeactivatePage( SfxItemSet* pSetP )
 IMPL_LINK( ScTpContentOptions, SelLbObjHdl, weld::ComboBox&, rLb, void )
 {
     const sal_Int32 nSelPos = rLb.get_active();
-    ScVObjMode  eMode   = ScVObjMode(nSelPos);
-    ScVObjType  eType   = VOBJ_TYPE_OLE;
+    ScVObjMode  eMode = ScVObjMode(nSelPos);
+    sc::ViewObjectType eType = sc::ViewObjectType::OLE;
 
     if ( &rLb == m_xDiagramLB.get() )
-        eType = VOBJ_TYPE_CHART;
+        eType = sc::ViewObjectType::CHART;
     else if ( &rLb == m_xDrawLB.get() )
-        eType = VOBJ_TYPE_DRAW;
+        eType = sc::ViewObjectType::DRAW;
 
     m_xLocalOptions->SetObjMode( eType, eMode );
 }
 
 IMPL_LINK( ScTpContentOptions, CBHdl, weld::Toggleable&, rBtn, void )
 {
-    ScViewOption eOption = VOPT_FORMULAS;
+    sc::ViewOption eOption =sc::ViewOption::FORMULAS;
     bool         bChecked = rBtn.get_active();
 
-    if (m_xFormulaCB.get() == &rBtn )   eOption = VOPT_FORMULAS;
-    else if ( m_xNilCB.get() == &rBtn )   eOption = VOPT_NULLVALS;
-    else if ( m_xAnnotCB.get() == &rBtn )   eOption = VOPT_NOTES;
-    else if ( m_xFormulaMarkCB.get() == &rBtn )   eOption = VOPT_FORMULAS_MARKS;
-    else if ( m_xValueCB.get() == &rBtn )   eOption = VOPT_SYNTAX;
-    else if ( m_xAnchorCB.get() == &rBtn )   eOption = VOPT_ANCHOR;
-    else if ( m_xVScrollCB.get()  == &rBtn )   eOption = VOPT_VSCROLL;
-    else if ( m_xHScrollCB.get() == &rBtn )   eOption = VOPT_HSCROLL;
-    else if ( m_xTblRegCB.get() == &rBtn )   eOption = VOPT_TABCONTROLS;
-    else if ( m_xOutlineCB.get() == &rBtn )   eOption = VOPT_OUTLINER;
-    else if ( m_xBreakCB.get() == &rBtn )   eOption = VOPT_PAGEBREAKS;
-    else if ( m_xGuideLineCB.get() == &rBtn )   eOption = VOPT_HELPLINES;
-    else if ( m_xRowColHeaderCB.get() == &rBtn )   eOption = VOPT_HEADER;
-    else if ( m_xSummaryCB.get()  == &rBtn )   eOption = VOPT_SUMMARY;
-    else if ( m_xThemedCursorRB.get() == &rBtn )   eOption = VOPT_THEMEDCURSOR;
+    if (m_xFormulaCB.get() == &rBtn )
+        eOption = sc::ViewOption::FORMULAS;
+    else if ( m_xNilCB.get() == &rBtn )
+        eOption = sc::ViewOption::NULLVALS;
+    else if ( m_xAnnotCB.get() == &rBtn )
+        eOption = sc::ViewOption::NOTES;
+    else if ( m_xNoteAuthorCB.get() == &rBtn )
+        eOption = sc::ViewOption::NOTEAUTHOR;
+    else if ( m_xFormulaMarkCB.get() == &rBtn )
+        eOption = sc::ViewOption::FORMULAS_MARKS;
+    else if ( m_xValueCB.get() == &rBtn )
+        eOption = sc::ViewOption::SYNTAX;
+    else if ( m_xAnchorCB.get() == &rBtn )
+        eOption = sc::ViewOption::ANCHOR;
+    else if ( m_xVScrollCB.get()  == &rBtn )
+        eOption = sc::ViewOption::VSCROLL;
+    else if ( m_xHScrollCB.get() == &rBtn )
+        eOption = sc::ViewOption::HSCROLL;
+    else if ( m_xTblRegCB.get() == &rBtn )
+        eOption = sc::ViewOption::TABCONTROLS;
+    else if ( m_xOutlineCB.get() == &rBtn )
+        eOption = sc::ViewOption::OUTLINER;
+    else if ( m_xBreakCB.get() == &rBtn )
+        eOption = sc::ViewOption::PAGEBREAKS;
+    else if ( m_xGuideLineCB.get() == &rBtn )
+        eOption = sc::ViewOption::HELPLINES;
+    else if ( m_xRowColHeaderCB.get() == &rBtn )
+        eOption = sc::ViewOption::HEADER;
+    else if ( m_xSummaryCB.get()  == &rBtn )
+        eOption = sc::ViewOption::SUMMARY;
+    else if ( m_xThemedCursorRB.get() == &rBtn )
+        eOption = sc::ViewOption::THEMEDCURSOR;
 
     m_xLocalOptions->SetOption( eOption, bChecked );
 }
 
 void ScTpContentOptions::InitGridOpt()
 {
-    bool    bGrid = m_xLocalOptions->GetOption( VOPT_GRID );
-    bool    bGridOnTop = m_xLocalOptions->GetOption( VOPT_GRID_ONTOP );
+    bool    bGrid = m_xLocalOptions->GetOption(sc::ViewOption::GRID);
+    bool    bGridOnTop = m_xLocalOptions->GetOption(sc::ViewOption::GRID_ONTOP);
     sal_Int32   nSelPos = 0;
 
     if ( bGrid || bGridOnTop )
@@ -424,40 +466,42 @@ IMPL_LINK( ScTpContentOptions, GridHdl, weld::ComboBox&, rLb, void )
     bool    bGrid = ( nSelPos <= 1 );
     bool    bGridOnTop = ( nSelPos == 1 );
 
-    m_xLocalOptions->SetOption( VOPT_GRID, bGrid );
-    m_xLocalOptions->SetOption( VOPT_GRID_ONTOP, bGridOnTop );
+    m_xLocalOptions->SetOption(sc::ViewOption::GRID, bGrid);
+    m_xLocalOptions->SetOption(sc::ViewOption::GRID_ONTOP, bGridOnTop);
 }
 
 ScTpLayoutOptions::ScTpLayoutOptions(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rArgSet)
-    : SfxTabPage(pPage, pController, "modules/scalc/ui/scgeneralpage.ui", "ScGeneralPage", &rArgSet)
+    : SfxTabPage(pPage, pController, u"modules/scalc/ui/scgeneralpage.ui"_ustr, u"ScGeneralPage"_ustr, &rArgSet)
     , pDoc(nullptr)
-    , m_xUnitLB(m_xBuilder->weld_combo_box("unitlb"))
-    , m_xUnitImg(m_xBuilder->weld_widget("lockunitlb"))
-    , m_xTabMF(m_xBuilder->weld_metric_spin_button("tabmf", FieldUnit::CM))
-    , m_xTabImg(m_xBuilder->weld_widget("locktabmf"))
-    , m_xAlwaysRB(m_xBuilder->weld_radio_button("alwaysrb"))
-    , m_xRequestRB(m_xBuilder->weld_radio_button("requestrb"))
-    , m_xNeverRB(m_xBuilder->weld_radio_button("neverrb"))
-    , m_xUpdateLinksImg(m_xBuilder->weld_widget("lockupdatelinks"))
-    , m_xAlignCB(m_xBuilder->weld_check_button("aligncb"))
-    , m_xAlignImg(m_xBuilder->weld_widget("lockaligncb"))
-    , m_xAlignLB(m_xBuilder->weld_combo_box("alignlb"))
-    , m_xEditModeCB(m_xBuilder->weld_check_button("editmodecb"))
-    , m_xEditModeImg(m_xBuilder->weld_widget("lockeditmodecb"))
-    , m_xFormatCB(m_xBuilder->weld_check_button("formatcb"))
-    , m_xFormatImg(m_xBuilder->weld_widget("lockformatcb"))
-    , m_xExpRefCB(m_xBuilder->weld_check_button("exprefcb"))
-    , m_xExpRefImg(m_xBuilder->weld_widget("lockexprefcb"))
-    , m_xSortRefUpdateCB(m_xBuilder->weld_check_button("sortrefupdatecb"))
-    , m_xSortRefUpdateImg(m_xBuilder->weld_widget("locksortrefupdatecb"))
-    , m_xMarkHdrCB(m_xBuilder->weld_check_button("markhdrcb"))
-    , m_xMarkHdrImg(m_xBuilder->weld_widget("lockmarkhdrcb"))
-    , m_xReplWarnCB(m_xBuilder->weld_check_button("replwarncb"))
-    , m_xReplWarnImg(m_xBuilder->weld_widget("lockreplwarncb"))
-    , m_xLegacyCellSelectionCB(m_xBuilder->weld_check_button("legacy_cell_selection_cb"))
-    , m_xLegacyCellSelectionImg(m_xBuilder->weld_widget("locklegacy_cell"))
-    , m_xEnterPasteModeCB(m_xBuilder->weld_check_button("enter_paste_mode_cb"))
-    , m_xEnterPasteModeImg(m_xBuilder->weld_widget("lockenter_paste"))
+    , m_xUnitLB(m_xBuilder->weld_combo_box(u"unitlb"_ustr))
+    , m_xUnitImg(m_xBuilder->weld_widget(u"lockunitlb"_ustr))
+    , m_xTabMF(m_xBuilder->weld_metric_spin_button(u"tabmf"_ustr, FieldUnit::CM))
+    , m_xTabImg(m_xBuilder->weld_widget(u"locktabmf"_ustr))
+    , m_xAlwaysRB(m_xBuilder->weld_radio_button(u"alwaysrb"_ustr))
+    , m_xRequestRB(m_xBuilder->weld_radio_button(u"requestrb"_ustr))
+    , m_xNeverRB(m_xBuilder->weld_radio_button(u"neverrb"_ustr))
+    , m_xUpdateLinksImg(m_xBuilder->weld_widget(u"lockupdatelinks"_ustr))
+    , m_xAlignCB(m_xBuilder->weld_check_button(u"aligncb"_ustr))
+    , m_xAlignImg(m_xBuilder->weld_widget(u"lockaligncb"_ustr))
+    , m_xAlignLB(m_xBuilder->weld_combo_box(u"alignlb"_ustr))
+    , m_xEditModeCB(m_xBuilder->weld_check_button(u"editmodecb"_ustr))
+    , m_xEditModeImg(m_xBuilder->weld_widget(u"lockeditmodecb"_ustr))
+    , m_xFormatCB(m_xBuilder->weld_check_button(u"formatcb"_ustr))
+    , m_xFormatImg(m_xBuilder->weld_widget(u"lockformatcb"_ustr))
+    , m_xExpRefCB(m_xBuilder->weld_check_button(u"exprefcb"_ustr))
+    , m_xExpRefImg(m_xBuilder->weld_widget(u"lockexprefcb"_ustr))
+    , m_xSortRefUpdateCB(m_xBuilder->weld_check_button(u"sortrefupdatecb"_ustr))
+    , m_xSortRefUpdateImg(m_xBuilder->weld_widget(u"locksortrefupdatecb"_ustr))
+    , m_xMarkHdrCB(m_xBuilder->weld_check_button(u"markhdrcb"_ustr))
+    , m_xMarkHdrImg(m_xBuilder->weld_widget(u"lockmarkhdrcb"_ustr))
+    , m_xReplWarnCB(m_xBuilder->weld_check_button(u"replwarncb"_ustr))
+    , m_xReplWarnImg(m_xBuilder->weld_widget(u"lockreplwarncb"_ustr))
+    , m_xLegacyCellSelectionCB(m_xBuilder->weld_check_button(u"legacy_cell_selection_cb"_ustr))
+    , m_xLegacyCellSelectionImg(m_xBuilder->weld_widget(u"locklegacy_cell"_ustr))
+    , m_xEnterPasteModeCB(m_xBuilder->weld_check_button(u"enter_paste_mode_cb"_ustr))
+    , m_xEnterPasteModeImg(m_xBuilder->weld_widget(u"lockenter_paste"_ustr))
+    , m_xWarnActiveSheetCB(m_xBuilder->weld_check_button(u"warnactivesheet_cb"_ustr))
+    , m_xWarnActiveSheetImg(m_xBuilder->weld_widget(u"lockwarnactivesheet"_ustr))
 {
     SetExchangeSupport();
 
@@ -507,29 +551,30 @@ std::unique_ptr<SfxTabPage> ScTpLayoutOptions::Create( weld::Container* pPage, w
 OUString ScTpLayoutOptions::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label1", "label4", "label5", "label6", "label3" };
+    OUString labels[] = { u"label1"_ustr, u"label4"_ustr, u"label5"_ustr, u"label6"_ustr, u"label3"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString checkButton[] = { "aligncb",   "editmodecb", "enter_paste_mode_cb",
-                               "formatcb",  "exprefcb",   "sortrefupdatecb",
-                               "markhdrcb", "replwarncb", "legacy_cell_selection_cb" };
+    OUString checkButton[] = { u"aligncb"_ustr,   u"editmodecb"_ustr, u"enter_paste_mode_cb"_ustr,
+                               u"formatcb"_ustr,  u"exprefcb"_ustr,   u"sortrefupdatecb"_ustr,
+                               u"markhdrcb"_ustr, u"replwarncb"_ustr, u"legacy_cell_selection_cb"_ustr,
+                               u"warnactivesheet_cb"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString radioButton[] = { "alwaysrb", "requestrb", "neverrb" };
+    OUString radioButton[] = { u"alwaysrb"_ustr, u"requestrb"_ustr, u"neverrb"_ustr };
 
     for (const auto& radio : radioButton)
     {
-        if (const auto& pString = m_xBuilder->weld_radio_button(radio))
+        if (const auto pString = m_xBuilder->weld_radio_button(radio))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -570,9 +615,10 @@ bool    ScTpLayoutOptions::FillItemSet( SfxItemSet* rCoreSet )
     {
         if(pDoc)
             pDoc->SetLinkMode(nSet);
-        ScAppOptions aAppOptions=SC_MOD()->GetAppOptions();
+        ScModule* mod = ScModule::get();
+        ScAppOptions aAppOptions = mod->GetAppOptions();
         aAppOptions.SetLinkMode(nSet );
-        SC_MOD()->SetAppOptions(aAppOptions);
+        mod->SetAppOptions(aAppOptions);
         bRet = true;
     }
     if (m_xAlignCB->get_state_changed_from_saved())
@@ -632,6 +678,12 @@ bool    ScTpLayoutOptions::FillItemSet( SfxItemSet* rCoreSet )
     if (m_xEnterPasteModeCB->get_state_changed_from_saved())
     {
         rCoreSet->Put( SfxBoolItem( SID_SC_INPUT_ENTER_PASTE_MODE, m_xEnterPasteModeCB->get_active() ) );
+        bRet = true;
+    }
+
+    if (m_xWarnActiveSheetCB->get_state_changed_from_saved())
+    {
+        rCoreSet->Put( SfxBoolItem( SID_SC_INPUT_WARNACTIVESHEET, m_xWarnActiveSheetCB->get_active() ) );
         bRet = true;
     }
 
@@ -696,7 +748,7 @@ void    ScTpLayoutOptions::Reset( const SfxItemSet* rCoreSet )
 
     if(nSet==LM_UNKNOWN)
     {
-        ScAppOptions aAppOptions=SC_MOD()->GetAppOptions();
+        ScAppOptions aAppOptions = ScModule::get()->GetAppOptions();
         nSet=aAppOptions.GetLinkMode();
     }
 
@@ -787,6 +839,13 @@ void    ScTpLayoutOptions::Reset( const SfxItemSet* rCoreSet )
     m_xEnterPasteModeCB->set_sensitive(!bReadOnly);
     m_xEnterPasteModeImg->set_visible(bReadOnly);
 
+    if( const SfxBoolItem* pWarnActiveSheetItem = rCoreSet->GetItemIfSet( SID_SC_INPUT_WARNACTIVESHEET, false ) )
+        m_xWarnActiveSheetCB->set_active( pWarnActiveSheetItem->GetValue() );
+
+    bReadOnly = officecfg::Office::Calc::Input::WarnActiveSheet::isReadOnly();
+    m_xWarnActiveSheetCB->set_sensitive(!bReadOnly);
+    m_xWarnActiveSheetImg->set_visible(bReadOnly);
+
     m_xAlignCB->save_state();
     m_xAlignLB->save_value();
     m_xEditModeCB->save_state();
@@ -799,6 +858,7 @@ void    ScTpLayoutOptions::Reset( const SfxItemSet* rCoreSet )
 
     m_xLegacyCellSelectionCB->save_state();
     m_xEnterPasteModeCB->save_state();
+    m_xWarnActiveSheetCB->save_state();
 
     AlignHdl(*m_xAlignCB);
 

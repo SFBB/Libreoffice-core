@@ -25,7 +25,6 @@
 #include <editeng/langitem.hxx>
 #include <editeng/editobj.hxx>
 #include <editeng/editview.hxx>
-#include <editeng/eeitem.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <utility>
 #include <vcl/settings.hxx>
@@ -42,7 +41,6 @@
 #include <globstr.hrc>
 #include <scresid.hxx>
 #include <markdata.hxx>
-#include <docpool.hxx>
 
 #include <memory>
 
@@ -53,8 +51,8 @@ ScConversionEngineBase::ScConversionEngineBase(
         ScDocument* pUndoDoc, ScDocument* pRedoDoc ) :
     ScEditEngineDefaulter( pEnginePoolP ),
     mrViewData( rViewData ),
-    mrDocShell( *rViewData.GetDocShell() ),
-    mrDoc( rViewData.GetDocShell()->GetDocument() ),
+    mrDocShell( rViewData.GetDocShell() ),
+    mrDoc( rViewData.GetDocShell().GetDocument() ),
     maSelState( rViewData ),
     mpUndoDoc( pUndoDoc ),
     mpRedoDoc( pRedoDoc ),
@@ -128,23 +126,23 @@ bool ScConversionEngineBase::FindNextConversionCell()
                 if (!bSimpleString || eCellType == CELLTYPE_EDIT)
                 {
                     std::unique_ptr<EditTextObject> pEditObj(CreateTextObject());
-                    mrDoc.SetEditText(aPos, *pEditObj, GetEditTextObjectPool());
+                    mrDoc.SetEditText(aPos, *pEditObj, GetItemPool());
                 }
                 else
                 {
                     // Set the new string and update the language with the cell.
                     mrDoc.SetString(aPos, aNewStr);
 
-                    const ScPatternAttr* pAttr = mrDoc.GetPattern(aPos);
-                    std::unique_ptr<ScPatternAttr> pNewAttr;
+                    const ScPatternAttr* pAttr(mrDoc.GetPattern(aPos));
+                    ScPatternAttr* pNewAttr(nullptr);
 
-                    if (pAttr)
-                        pNewAttr = std::make_unique<ScPatternAttr>(*pAttr);
+                    if (nullptr != pAttr)
+                        pNewAttr = new ScPatternAttr(*pAttr);
                     else
-                        pNewAttr = std::make_unique<ScPatternAttr>(mrDoc.GetPool());
+                        pNewAttr = new ScPatternAttr(mrDoc.getCellAttributeHelper());
 
-                    pNewAttr->GetItemSet().Put(SvxLanguageItem(aLang.nLang, EE_CHAR_LANGUAGE), ATTR_FONT_LANGUAGE);
-                    mrDoc.SetPattern(aPos, std::move(pNewAttr));
+                    pNewAttr->ItemSetPut(SvxLanguageItem(aLang.nLang, ATTR_FONT_LANGUAGE));
+                    mrDoc.SetPattern(aPos, CellAttributeHolder(pNewAttr, true));
                 }
 
                 if (mpRedoDoc && !bEmptyCell)
@@ -209,7 +207,7 @@ bool ScConversionEngineBase::FindNextConversionCell()
             {
                 // GetPattern may implicitly allocates the column if not exists,
                 pPattern = mrDoc.GetPattern( nNewCol, nNewRow, mnStartTab );
-                if( pPattern && !SfxPoolItem::areSame(pPattern, pLastPattern) )
+                if( pPattern && !ScPatternAttr::areSame(pPattern, pLastPattern) )
                 {
                     pPattern->FillEditItemSet( &aEditDefaults );
                     SetDefaults( aEditDefaults );
@@ -241,7 +239,7 @@ bool ScConversionEngineBase::FindNextConversionCell()
     {
         pViewShell->AlignToCursor( nNewCol, nNewRow, SC_FOLLOW_JUMP );
         pViewShell->SetCursor( nNewCol, nNewRow, true );
-        mrViewData.GetView()->MakeEditView( this, nNewCol, nNewRow );
+        mrViewData.GetView()->MakeEditView(*this, nNewCol, nNewRow);
         EditView* pEditView = mrViewData.GetSpellingView();
         // maSelState.GetEditSelection() returns (0,0) if not in edit mode -> ok
         pEditView->SetSelection( maSelState.GetEditSelection() );
@@ -282,10 +280,9 @@ void ScConversionEngineBase::FillFromCell( SCCOL nCol, SCROW nRow, SCTAB nTab )
     {
         case CELLTYPE_STRING:
         {
-            SvNumberFormatter* pFormatter = mrDoc.GetFormatTable();
-            sal_uInt32 nNumFmt = mrDoc.GetNumberFormat(aPos);
+            sal_uInt32 nNumFmt = mrDoc.GetNumberFormat(ScRange(aPos));
             const Color* pColor;
-            OUString aText = ScCellFormat::GetString(aCell, nNumFmt, &pColor, *pFormatter, mrDoc);
+            OUString aText = ScCellFormat::GetString(aCell, nNumFmt, &pColor, nullptr, mrDoc);
 
             SetTextCurrentDefaults(aText);
         }

@@ -23,6 +23,7 @@
 #include <editeng/editview.hxx>
 #include <editeng/scriptspaceitem.hxx>
 #include <osl/diagnose.h>
+#include <svl/itemset.hxx>
 
 
 namespace frm
@@ -30,7 +31,6 @@ namespace frm
 
 
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::util;
     using namespace ::com::sun::star::frame;
     using namespace ::com::sun::star::beans;
@@ -58,17 +58,14 @@ namespace frm
 
         checkDisposed();
 
-        EditEngine* pEngine = getEditView() ? getEditView()->GetEditEngine() : nullptr;
+        EditEngine* pEngine = getEditView() ? &getEditView()->getEditEngine() : nullptr;
         OSL_ENSURE( pEngine, "OSelectAllDispatcher::dispatch: no edit engine - but not yet disposed?" );
         if ( !pEngine )
             return;
 
-        sal_Int32 nParagraphs = pEngine->GetParagraphCount();
-        if ( nParagraphs )
+        if (pEngine->GetParagraphCount())
         {
-            sal_Int32 nLastParaNumber = nParagraphs - 1;
-            sal_Int32 nParaLen = pEngine->GetTextLen( nLastParaNumber );
-            getEditView()->SetSelection( ESelection( 0, 0, nLastParaNumber, nParaLen ) );
+            getEditView()->SetSelection(ESelection::All());
         }
     }
 
@@ -91,7 +88,7 @@ namespace frm
     {
         FeatureStateEvent aEvent( OAttributeDispatcher::buildStatusEvent() );
 
-        EditEngine* pEngine = getEditView() ? getEditView()->GetEditEngine() : nullptr;
+        EditEngine* pEngine = getEditView() ? &getEditView()->getEditEngine() : nullptr;
         OSL_ENSURE( pEngine, "OParagraphDirectionDispatcher::dispatch: no edit engine - but not yet disposed?" );
         if ( pEngine && pEngine->IsEffectivelyVertical() )
             aEvent.IsEnabled = false;
@@ -112,7 +109,7 @@ namespace frm
 
         checkDisposed();
 
-        EditEngine* pEngine = getEditView() ? getEditView()->GetEditEngine() : nullptr;
+        EditEngine* pEngine = getEditView() ? &getEditView()->getEditEngine() : nullptr;
         OSL_ENSURE( pEngine, "OTextDirectionDispatcher::dispatch: no edit engine - but not yet disposed?" );
         if ( !pEngine )
             return;
@@ -125,7 +122,7 @@ namespace frm
     {
         FeatureStateEvent aEvent( ORichTextFeatureDispatcher::buildStatusEvent() );
 
-        EditEngine* pEngine = getEditView() ? getEditView()->GetEditEngine() : nullptr;
+        EditEngine* pEngine = getEditView() ? &getEditView()->getEditEngine() : nullptr;
         OSL_ENSURE( pEngine, "OTextDirectionDispatcher::dispatch: no edit engine - but not yet disposed?" );
 
         aEvent.IsEnabled = true;
@@ -140,7 +137,7 @@ namespace frm
     }
 
 
-    const SfxPoolItem* OAsianFontLayoutDispatcher::convertDispatchArgsToItem( const Sequence< PropertyValue >& _rArguments )
+    SfxPoolItemHolder OAsianFontLayoutDispatcher::convertDispatchArgsToItem( const Sequence< PropertyValue >& _rArguments )
     {
         // look for the "Enable" parameter
         const PropertyValue* pLookup = _rArguments.getConstArray();
@@ -155,13 +152,18 @@ namespace frm
         {
             bool bEnable = true;
             OSL_VERIFY( pLookup->Value >>= bEnable );
+
             if ( m_nAttributeId == sal_uInt16(SID_ATTR_PARA_SCRIPTSPACE) )
-                return new SvxScriptSpaceItem( bEnable, static_cast<WhichId>(m_nAttributeId) );
-            return new SfxBoolItem( static_cast<WhichId>(m_nAttributeId), bEnable );
+                return SfxPoolItemHolder(
+                    *getEditView()->GetEmptyItemSet().GetPool(),
+                    new SvxScriptSpaceItem(bEnable, static_cast<WhichId>(m_nAttributeId)));
+            return SfxPoolItemHolder(
+                *getEditView()->GetEmptyItemSet().GetPool(),
+                new SfxBoolItem(static_cast<WhichId>(m_nAttributeId), bEnable));
         }
 
         OSL_FAIL( "OAsianFontLayoutDispatcher::convertDispatchArgsToItem: did not find the one and only argument!" );
-        return nullptr;
+        return SfxPoolItemHolder();
     }
 
 

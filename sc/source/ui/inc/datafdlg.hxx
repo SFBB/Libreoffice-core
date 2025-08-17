@@ -16,7 +16,7 @@
 class ScTabViewShell;
 class ScDocument;
 
-#define MAX_DATAFORM_COLS   256
+#define MAX_DATAFORM_COLS   32
 #define MAX_DATAFORM_ROWS   32000
 
 class ScDataFormDlg : public weld::GenericDialogController
@@ -41,7 +41,7 @@ private:
     std::unique_ptr<weld::Button> m_xBtnNext;
     std::unique_ptr<weld::Button> m_xBtnClose;
     std::unique_ptr<weld::ScrolledWindow> m_xSlider;
-    std::unique_ptr<weld::Container> m_xGrid;
+    std::unique_ptr<weld::Grid> m_xGrid;
     std::unique_ptr<weld::Label> m_xFixedText;
     std::vector<std::unique_ptr<ScDataFormFragment>> m_aEntries;
 

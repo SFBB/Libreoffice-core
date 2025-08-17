@@ -100,6 +100,16 @@ public:
         maVector.insert(aIndex, aStart, aEnd);
     }
 
+    void insert(sal_uInt32 nIndex, const CoordinateDataArray2D& rSource, sal_uInt32 nSourceIndex, sal_uInt32 nSourceCount)
+    {
+        // insert data
+        auto aIndex = maVector.begin();
+        aIndex += nIndex;
+        auto aStart = rSource.maVector.cbegin() + nSourceIndex;
+        auto aEnd = rSource.maVector.cbegin() + nSourceIndex + nSourceCount;
+        maVector.insert(aIndex, aStart, aEnd);
+    }
+
     void remove(sal_uInt32 nIndex, sal_uInt32 nCount)
     {
         assert(nCount > 0);
@@ -164,6 +174,14 @@ public:
         for (auto& point : maVector)
         {
             point *= rMatrix;
+        }
+    }
+
+    void translate(double fTranslateX, double fTranslateY)
+    {
+        for (auto& point : maVector)
+        {
+            point += basegfx::B2DPoint(fTranslateX, fTranslateY);
         }
     }
 };
@@ -353,6 +371,27 @@ public:
         ControlVectorPair2DVector::iterator aIndex(maVector.begin() + nIndex);
         ControlVectorPair2DVector::const_iterator aStart(rSource.maVector.begin());
         ControlVectorPair2DVector::const_iterator aEnd(rSource.maVector.end());
+        maVector.insert(aIndex, aStart, aEnd);
+
+        for(; aStart != aEnd; ++aStart)
+        {
+            if(!aStart->getPrevVector().equalZero())
+                mnUsedVectors++;
+
+            if(!aStart->getNextVector().equalZero())
+                mnUsedVectors++;
+        }
+    }
+
+    void insert(sal_uInt32 nIndex, const ControlVectorArray2D& rSource, sal_uInt32 nSourceIndex, sal_uInt32 nSourceCount)
+    {
+        assert(rSource.maVector.size() > 0);
+        assert(nIndex + nSourceCount <= maVector.size());
+
+        // insert data
+        ControlVectorPair2DVector::iterator aIndex(maVector.begin() + nIndex);
+        ControlVectorPair2DVector::const_iterator aStart(rSource.maVector.begin() + nSourceIndex);
+        ControlVectorPair2DVector::const_iterator aEnd(rSource.maVector.begin() + nSourceIndex + nSourceCount);
         maVector.insert(aIndex, aStart, aEnd);
 
         for(; aStart != aEnd; ++aStart)
@@ -580,6 +619,8 @@ public:
         }
     }
 
+    ImplB2DPolygon(ImplB2DPolygon&&) = default;
+
     ImplB2DPolygon(const ImplB2DPolygon& rToBeCopied, sal_uInt32 nIndex, sal_uInt32 nCount)
     :   maPoints(rToBeCopied.maPoints, nIndex, nCount),
         mbIsClosed(rToBeCopied.mbIsClosed)
@@ -594,24 +635,8 @@ public:
         }
     }
 
-    ImplB2DPolygon& operator=(const ImplB2DPolygon& rOther)
-    {
-        if (this != &rOther)
-        {
-            moControlVector.reset();
-            mpBufferedData.reset();
-            maPoints = rOther.maPoints;
-            mbIsClosed = rOther.mbIsClosed;
-            if (rOther.moControlVector && rOther.moControlVector->isUsed())
-            {
-                moControlVector.emplace( *rOther.moControlVector );
 
-                if(!moControlVector->isUsed())
-                    moControlVector.reset();
-            }
-        }
-        return *this;
-    }
+    ImplB2DPolygon& operator=(ImplB2DPolygon&&) = default;
 
     sal_uInt32 count() const
     {
@@ -683,8 +708,7 @@ public:
     void append(const basegfx::B2DPoint& rPoint)
     {
         mpBufferedData.reset(); // TODO: is this needed?
-        const auto aCoordinate = rPoint;
-        maPoints.append(aCoordinate);
+        maPoints.append(rPoint);
 
         if(moControlVector)
         {
@@ -697,8 +721,7 @@ public:
     {
         assert(nCount > 0);
         mpBufferedData.reset();
-        auto aCoordinate = rPoint;
-        maPoints.insert(nIndex, aCoordinate, nCount);
+        maPoints.insert(nIndex, rPoint, nCount);
 
         if(moControlVector)
         {
@@ -807,6 +830,31 @@ public:
 
         insert(nCount, rPoint, 1);
         setPrevControlVector(nCount, rPrev);
+    }
+
+    void append(const ImplB2DPolygon& rSource, sal_uInt32 nSourceIndex, sal_uInt32 nSourceCount)
+    {
+        assert(rSource.maPoints.count() > 0);
+        const sal_uInt32 nIndex = count();
+
+        mpBufferedData.reset();
+
+        maPoints.insert(nIndex, rSource.maPoints, nSourceIndex, nSourceCount);
+
+        if(rSource.moControlVector && rSource.moControlVector->isUsed())
+        {
+            if (!moControlVector)
+                moControlVector.emplace(nIndex);
+            moControlVector->insert(nIndex, *rSource.moControlVector, nSourceIndex, nSourceCount);
+
+            if(!moControlVector->isUsed())
+                moControlVector.reset();
+        }
+        else if(moControlVector)
+        {
+            ControlVectorPair2D aVectorPair;
+            moControlVector->insert(nIndex, aVectorPair, rSource.count());
+        }
     }
 
     void append(const ImplB2DPolygon& rSource)
@@ -1052,6 +1100,28 @@ public:
         }
     }
 
+    void translate(double fTranslateX, double fTranslateY)
+    {
+        mpBufferedData.reset();
+
+        if(moControlVector)
+        {
+            for(sal_uInt32 a(0); a < maPoints.count(); a++)
+            {
+                basegfx::B2DPoint aCandidate = maPoints.getCoordinate(a);
+                aCandidate += basegfx::B2DPoint(fTranslateX, fTranslateY);
+                maPoints.setCoordinate(a, aCandidate);
+            }
+
+            if(!moControlVector->isUsed())
+                moControlVector.reset();
+        }
+        else
+        {
+            maPoints.translate(fTranslateX, fTranslateY);
+        }
+    }
+
     void addOrReplaceSystemDependentData(basegfx::SystemDependentData_SharedPtr& rData) const
     {
         if(!mpBufferedData)
@@ -1062,11 +1132,11 @@ public:
         mpBufferedData->addOrReplaceSystemDependentData(rData);
     }
 
-    basegfx::SystemDependentData_SharedPtr getSystemDependentData(size_t hash_code) const
+    basegfx::SystemDependentData_SharedPtr getSystemDependentData(basegfx::SDD_Type aType) const
     {
         if(mpBufferedData)
         {
-            return mpBufferedData->getSystemDependentData(hash_code);
+            return mpBufferedData->getSystemDependentData(aType);
         }
 
         return basegfx::SystemDependentData_SharedPtr();
@@ -1380,7 +1450,7 @@ namespace basegfx
         }
         else
         {
-            mpPolygon->append(ImplB2DPolygon(*rPoly.mpPolygon, nIndex, nCount));
+            mpPolygon->append(*rPoly.mpPolygon, nIndex, nCount);
         }
     }
 
@@ -1440,14 +1510,22 @@ namespace basegfx
         }
     }
 
+    void B2DPolygon::translate(double fTranslateX, double fTranslateY)
+    {
+        if(count())
+        {
+            mpPolygon->translate(fTranslateX, fTranslateY);
+        }
+    }
+
     void B2DPolygon::addOrReplaceSystemDependentDataInternal(SystemDependentData_SharedPtr& rData) const
     {
         mpPolygon->addOrReplaceSystemDependentData(rData);
     }
 
-    SystemDependentData_SharedPtr B2DPolygon::getSystemDependantDataInternal(size_t hash_code) const
+    SystemDependentData_SharedPtr B2DPolygon::getSystemDependantDataInternal(SDD_Type aType) const
     {
-        return mpPolygon->getSystemDependentData(hash_code);
+        return mpPolygon->getSystemDependentData(aType);
     }
 
 } // end of namespace basegfx

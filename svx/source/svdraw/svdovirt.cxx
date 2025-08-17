@@ -64,7 +64,7 @@ SdrVirtObj::SdrVirtObj(
 
     mxRefObj->AddReference(*this);
 
-    aSnapRect = rSource.aSnapRect;
+    maSnapRect = rSource.maSnapRect;
     m_aAnchor = rSource.m_aAnchor;
 }
 
@@ -95,6 +95,26 @@ void SdrVirtObj::Notify(SfxBroadcaster& /*rBC*/, const SfxHint& /*rHint*/)
 void SdrVirtObj::NbcSetAnchorPos(const Point& rAnchorPos)
 {
     m_aAnchor=rAnchorPos;
+}
+
+bool SdrVirtObj::IsPrintable() const
+{
+    return mxRefObj->IsPrintable();
+}
+
+void SdrVirtObj::SetPrintable(bool const isPrintable)
+{
+    mxRefObj->SetPrintable(isPrintable);
+}
+
+bool SdrVirtObj::IsVisible() const
+{
+    return mxRefObj->IsVisible();
+}
+
+void SdrVirtObj::SetVisible(bool const isVisible)
+{
+    mxRefObj->SetVisible(isVisible);
 }
 
 void SdrVirtObj::TakeObjInfo(SdrObjTransformInfoRec& rInfo) const
@@ -219,7 +239,7 @@ basegfx::B2DPolyPolygon SdrVirtObj::TakeXorPoly() const
 
     if(m_aAnchor.X() || m_aAnchor.Y())
     {
-        aPolyPolygon.transform(basegfx::utils::createTranslateB2DHomMatrix(m_aAnchor.X(), m_aAnchor.Y()));
+        aPolyPolygon.translate(m_aAnchor.X(), m_aAnchor.Y());
     }
 
     return aPolyPolygon;
@@ -413,15 +433,15 @@ void SdrVirtObj::Shear(const Point& rRef, Degree100 nAngle, double tn, bool bVSh
 
 void SdrVirtObj::RecalcSnapRect()
 {
-    aSnapRect=mxRefObj->GetSnapRect();
-    aSnapRect+=m_aAnchor;
+    maSnapRect=mxRefObj->GetSnapRect();
+    maSnapRect+=m_aAnchor;
 }
 
 const tools::Rectangle& SdrVirtObj::GetSnapRect() const
 {
-    const_cast<SdrVirtObj*>(this)->aSnapRect=mxRefObj->GetSnapRect();
-    const_cast<SdrVirtObj*>(this)->aSnapRect+=m_aAnchor;
-    return aSnapRect;
+    const_cast<SdrVirtObj*>(this)->maSnapRect=mxRefObj->GetSnapRect();
+    const_cast<SdrVirtObj*>(this)->maSnapRect+=m_aAnchor;
+    return maSnapRect;
 }
 
 void SdrVirtObj::SetSnapRect(const tools::Rectangle& rRect)
@@ -445,9 +465,9 @@ void SdrVirtObj::NbcSetSnapRect(const tools::Rectangle& rRect)
 
 const tools::Rectangle& SdrVirtObj::GetLogicRect() const
 {
-    const_cast<SdrVirtObj*>(this)->aSnapRect=mxRefObj->GetLogicRect();  // An abuse of aSnapRect!
-    const_cast<SdrVirtObj*>(this)->aSnapRect+=m_aAnchor;                // If there's trouble, we need another Rectangle Member (or a Heap).
-    return aSnapRect;
+    const_cast<SdrVirtObj*>(this)->maSnapRect=mxRefObj->GetLogicRect();  // An abuse of aSnapRect!
+    const_cast<SdrVirtObj*>(this)->maSnapRect+=m_aAnchor;                // If there's trouble, we need another Rectangle Member (or a Heap).
+    return maSnapRect;
 }
 
 void SdrVirtObj::SetLogicRect(const tools::Rectangle& rRect)
@@ -460,12 +480,12 @@ void SdrVirtObj::SetLogicRect(const tools::Rectangle& rRect)
     SendUserCall(SdrUserCallType::Resize,aBoundRect0);
 }
 
-void SdrVirtObj::NbcSetLogicRect(const tools::Rectangle& rRect)
+void SdrVirtObj::NbcSetLogicRect(const tools::Rectangle& rRect, bool bAdaptTextMinSize)
 {
     tools::Rectangle aR(rRect);
     aR-=m_aAnchor;
     SetBoundAndSnapRectsDirty();
-    mxRefObj->NbcSetLogicRect(aR);
+    mxRefObj->NbcSetLogicRect(aR, bAdaptTextMinSize);
 }
 
 

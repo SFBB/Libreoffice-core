@@ -317,7 +317,7 @@ ScMatrixRef ScInterpreter::CreateMatrixFromDoubleRef( const FormulaToken* pToken
         {
             // Clamp the size of the matrix area to rows which actually contain data.
             // For e.g. SUM(IF over an entire column, this can make a big difference,
-            // But lets not trim the empty space from the top or left as this matters
+            // But let's not trim the empty space from the top or left as this matters
             // at least in matrix formulas involving IF().
             // Refer ScCompiler::AnnotateTrimOnDoubleRefs() where double-refs are
             // flagged for trimming.
@@ -327,8 +327,8 @@ ScMatrixRef ScInterpreter::CreateMatrixFromDoubleRef( const FormulaToken* pToken
         }
     }
 
-    SCSIZE nMatCols = static_cast<SCSIZE>(nCol2 - nCol1 + 1);
-    SCSIZE nMatRows = static_cast<SCSIZE>(nRow2 - nRow1 + 1);
+    SCSIZE nMatCols = static_cast<SCSIZE>(nCol2) - nCol1 + 1;
+    SCSIZE nMatRows = static_cast<SCSIZE>(nRow2) - nRow1 + 1;
 
     if (!ScMatrix::IsSizeAllocatable( nMatCols, nMatRows))
     {
@@ -431,7 +431,7 @@ ScMatrixRef ScInterpreter::CreateMatrixFromDoubleRef( const FormulaToken* pToken
             }
             else if (aCell.hasString())
             {
-                pMat->PutString( mrStrPool.intern( aCell.getString(&mrDoc)), nMatCol, nMatRow);
+                pMat->PutString( mrStrPool.intern( aCell.getString(mrDoc)), nMatCol, nMatRow);
             }
             else
             {
@@ -1110,6 +1110,67 @@ void ScInterpreter::ScMatMult()
         PushIllegalParameter();
 }
 
+void ScInterpreter::ScMatSequence()
+{
+    sal_uInt8 nParamCount = GetByte();
+    if (!MustHaveParamCount(nParamCount, 1, 4))
+        return;
+
+    // 4th argument is the step number (optional)
+    double nSteps = 1.0;
+    if (nParamCount == 4)
+        nSteps = GetDoubleWithDefault(nSteps);
+
+    // 3d argument is the start number (optional)
+    double nStart = 1.0;
+    if (nParamCount >= 3)
+        nStart = GetDoubleWithDefault(nStart);
+
+    // 2nd argument is the col number (optional)
+    sal_Int32 nColumns = 1;
+    if (nParamCount >= 2)
+    {
+        nColumns = GetInt32WithDefault(nColumns);
+        if (nColumns < 1)
+        {
+            PushIllegalArgument();
+            return;
+        }
+    }
+
+    // 1st argument is the row number (required)
+    sal_Int32 nRows = GetInt32WithDefault(1);
+    if (nRows < 1)
+    {
+        PushIllegalArgument();
+        return;
+    }
+
+    if (nGlobalError != FormulaError::NONE)
+    {
+        PushError(nGlobalError);
+        return;
+    }
+
+    size_t nMatrixSize = static_cast<size_t>(nColumns) * nRows;
+    ScMatrixRef pResMat = GetNewMat(nColumns, nRows, /*bEmpty*/true);
+    for (size_t iPos = 0; iPos < nMatrixSize; iPos++)
+    {
+        pResMat->PutDoubleTrans(nStart, iPos);
+        nStart = nStart + nSteps;
+    }
+
+    if (pResMat)
+    {
+        PushMatrix(pResMat);
+    }
+    else
+    {
+        PushIllegalParameter();
+        return;
+    }
+}
+
 void ScInterpreter::ScMatTrans()
 {
     if ( !MustHaveParamCount( GetByte(), 1 ) )
@@ -1176,7 +1237,7 @@ ScMatrixRef ScInterpreter::MatConcat(const ScMatrixRef& pMat1, const ScMatrixRef
     ScMatrixRef xResMat = GetNewMat(nMinC, nMinR, /*bEmpty*/true);
     if (xResMat)
     {
-        xResMat->MatConcat(nMinC, nMinR, pMat1, pMat2, *pFormatter, mrDoc.GetSharedStringPool());
+        xResMat->MatConcat(nMinC, nMinR, pMat1, pMat2, mrContext, mrDoc.GetSharedStringPool());
     }
     return xResMat;
 }
@@ -1294,11 +1355,11 @@ void ScInterpreter::CalculateAddSub(bool _bSub)
     {
         double fVal;
         bool bFlag;
-        ScMatrixRef pMat = pMat1;
+        ScMatrixRef pMat = std::move(pMat1);
         if (!pMat)
         {
             fVal = fVal1;
-            pMat = pMat2;
+            pMat = std::move(pMat2);
             bFlag = true;           // double - Matrix
         }
         else
@@ -1387,11 +1448,11 @@ void ScInterpreter::ScAmpersand()
     {
         OUString sStr;
         bool bFlag;
-        ScMatrixRef pMat = pMat1;
+        ScMatrixRef pMat = std::move(pMat1);
         if (!pMat)
         {
             sStr = sStr1;
-            pMat = pMat2;
+            pMat = std::move(pMat2);
             bFlag = true;           // double - Matrix
         }
         else
@@ -1420,7 +1481,7 @@ void ScInterpreter::ScAmpersand()
                             pResMat->PutError( nErr, i, j);
                         else
                         {
-                            OUString aTmp = sStr + pMat->GetString(*pFormatter, i, j).getString();
+                            OUString aTmp = sStr + pMat->GetString(mrContext, i, j).getString();
                             pResMat->PutString(mrStrPool.intern(aTmp), i, j);
                         }
                     }
@@ -1435,7 +1496,7 @@ void ScInterpreter::ScAmpersand()
                             pResMat->PutError( nErr, i, j);
                         else
                         {
-                            OUString aTmp = pMat->GetString(*pFormatter, i, j).getString() + sStr;
+                            OUString aTmp = pMat->GetString(mrContext, i, j).getString() + sStr;
                             pResMat->PutString(mrStrPool.intern(aTmp), i, j);
                         }
                     }
@@ -1504,11 +1565,11 @@ void ScInterpreter::ScMul()
     else if (pMat1 || pMat2)
     {
         double fVal;
-        ScMatrixRef pMat = pMat1;
+        ScMatrixRef pMat = std::move(pMat1);
         if (!pMat)
         {
             fVal = fVal1;
-            pMat = pMat2;
+            pMat = std::move(pMat2);
         }
         else
             fVal = fVal2;
@@ -1577,11 +1638,11 @@ void ScInterpreter::ScDiv()
     {
         double fVal;
         bool bFlag;
-        ScMatrixRef pMat = pMat1;
+        ScMatrixRef pMat = std::move(pMat1);
         if (!pMat)
         {
             fVal = fVal1;
-            pMat = pMat2;
+            pMat = std::move(pMat2);
             bFlag = true;           // double - Matrix
         }
         else
@@ -1644,11 +1705,11 @@ void ScInterpreter::ScPow()
     {
         double fVal;
         bool bFlag;
-        ScMatrixRef pMat = pMat1;
+        ScMatrixRef pMat = std::move(pMat1);
         if (!pMat)
         {
             fVal = fVal1;
-            pMat = pMat2;
+            pMat = std::move(pMat2);
             bFlag = true;           // double - Matrix
         }
         else
@@ -2263,7 +2324,7 @@ bool ScInterpreter::CheckMatrix(bool _bLOG, sal_uInt8& nCase, SCSIZE& nCX,
             else
                 pNewY->PutDouble(log(fVal), nElem);
         }
-        pMatY = pNewY;
+        pMatY = std::move(pNewY);
     }
 
     if (pMatX)
@@ -2449,8 +2510,8 @@ void ScInterpreter::CalculateRGPRKP(bool _bRKP)
             PushError(FormulaError::CodeOverflow);
             return;
         }
-        pMatX = pNewX;
-        pMatY = pNewY;
+        pMatX = std::move(pNewX);
+        pMatY = std::move(pNewY);
         // DeltaY is possible here; DeltaX depends on nCase, so later
         fMeanY = lcl_GetMeanOverAll(pMatY, N);
         for (SCSIZE i=0; i<N; i++)
@@ -2994,8 +3055,8 @@ void ScInterpreter::CalculateTrendGrowth(bool _bGrowth)
             PushError(FormulaError::MatrixSize);
             return;
         }
-        pMatX = pCopyX;
-        pMatY = pCopyY;
+        pMatX = std::move(pCopyX);
+        pMatY = std::move(pCopyY);
         // DeltaY is possible here; DeltaX depends on nCase, so later
         fMeanY = lcl_GetMeanOverAll(pMatY, N);
         for (SCSIZE i=0; i<N; i++)
@@ -3275,9 +3336,9 @@ void ScInterpreter::ScInfo()
         return;
 
     OUString aStr = GetString().getString();
-    ScCellKeywordTranslator::transKeyword(aStr, &ScGlobal::GetLocale(), ocInfo);
+    ScCellKeywordTranslator::transKeyword(aStr, ScGlobal::GetLocale(), ocInfo);
     if( aStr == "SYSTEM" )
-        PushString( SC_INFO_OSVERSION );
+        PushString( u"" SC_INFO_OSVERSION ""_ustr );
     else if( aStr == "OSVERSION" )
 #if (defined LINUX || defined __FreeBSD__)
         PushString(Application::GetOSVersion());

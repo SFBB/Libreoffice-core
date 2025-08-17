@@ -21,22 +21,12 @@
 #include <utility>
 
 
-SvxNumberInfoItem::SvxNumberInfoItem( const TypedWhichId<SvxNumberInfoItem> nId ) :
-    SfxPoolItem     ( nId ),
-    pFormatter      ( nullptr ),
-    eValueType      ( SvxNumberValueType::Undefined ),
-    aStringVal      ( "" ),
-    nDoubleVal      ( 0 )
-{
-}
-
-
 SvxNumberInfoItem::SvxNumberInfoItem( SvNumberFormatter* pNumFormatter,
                                       const TypedWhichId<SvxNumberInfoItem> nId ) :
     SfxPoolItem     ( nId ),
     pFormatter      ( pNumFormatter ),
     eValueType      ( SvxNumberValueType::Undefined ),
-    aStringVal      ( "" ),
+    aStringVal      ( u""_ustr ),
     nDoubleVal      ( 0 )
 {
 }
@@ -58,7 +48,7 @@ SvxNumberInfoItem::SvxNumberInfoItem( SvNumberFormatter* pNumFormatter,
     SfxPoolItem     ( nId ),
     pFormatter      ( pNumFormatter ),
     eValueType      ( SvxNumberValueType::Number ),
-    aStringVal      ( "" ),
+    aStringVal      ( u""_ustr ),
     nDoubleVal      ( rVal )
 {
 }

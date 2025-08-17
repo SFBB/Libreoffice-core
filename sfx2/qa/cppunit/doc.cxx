@@ -21,6 +21,8 @@
 #include <comphelper/sequenceashashmap.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/sequence.hxx>
+#include <svl/cryptosign.hxx>
+#include <sfx2/viewsh.hxx>
 
 using namespace com::sun::star;
 
@@ -31,7 +33,7 @@ class Test : public UnoApiTest
 {
 public:
     Test()
-        : UnoApiTest("/sfx2/qa/cppunit/data/")
+        : UnoApiTest(u"/sfx2/qa/cppunit/data/"_ustr)
     {
     }
 };
@@ -39,9 +41,9 @@ public:
 CPPUNIT_TEST_FIXTURE(Test, testNoGrabBagShape)
 {
     // Load a document and select the first shape.
-    css::uno::Sequence<css::beans::PropertyValue> aArgs{ comphelper::makePropertyValue("ReadOnly",
-                                                                                       true) };
-    mxComponent = loadFromDesktop("private:factory/simpress", "", aArgs);
+    css::uno::Sequence<css::beans::PropertyValue> aArgs{ comphelper::makePropertyValue(
+        u"ReadOnly"_ustr, true) };
+    loadWithParams(u"private:factory/simpress"_ustr, aArgs);
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(xModel, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xDrawPage(
@@ -52,20 +54,20 @@ CPPUNIT_TEST_FIXTURE(Test, testNoGrabBagShape)
     xController->select(aShape);
 
     // See if it has a signing certificate associated.
-    auto pBaseModel = dynamic_cast<SfxBaseModel*>(xModel.get());
-    CPPUNIT_ASSERT(pBaseModel);
-    SfxObjectShell* pObjectShell = pBaseModel->GetObjectShell();
+    SfxViewShell* pViewShell
+        = SfxViewShell::Get(uno::Reference<frame::XController>(xController, uno::UNO_QUERY));
+    CPPUNIT_ASSERT(pViewShell);
 
     // Without the accompanying fix in place, this test would have failed with:
     // An uncaught exception of type com.sun.star.beans.UnknownPropertyException
     // which was not caught later, resulting in a crash.
-    pObjectShell->GetSignPDFCertificate();
+    pViewShell->GetSignPDFCertificate();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTempFilePath)
 {
     // Create a test file in a directory that contains the URL-encoded "testÿ" string.
-    mxComponent = loadFromDesktop("private:factory/swriter");
+    loadFromURL(u"private:factory/swriter"_ustr);
     auto pBaseModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
     CPPUNIT_ASSERT(pBaseModel);
     OUString aTargetDir
@@ -73,16 +75,15 @@ CPPUNIT_TEST_FIXTURE(Test, testTempFilePath)
     osl::Directory::create(aTargetDir);
     OUString aTargetFile = aTargetDir + "/test.odt";
     css::uno::Sequence<css::beans::PropertyValue> aArgs{ comphelper::makePropertyValue(
-        "FilterName", OUString("writer8")) };
+        u"FilterName"_ustr, u"writer8"_ustr) };
     pBaseModel->storeAsURL(aTargetFile, aArgs);
-    mxComponent->dispose();
 
     // Load it and export to PDF.
-    mxComponent = loadFromDesktop(aTargetFile);
+    loadFromURL(aTargetFile);
     pBaseModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
     OUString aPdfTarget = aTargetDir + "/test.pdf";
     css::uno::Sequence<css::beans::PropertyValue> aPdfArgs{ comphelper::makePropertyValue(
-        "FilterName", OUString("writer_pdf_Export")) };
+        u"FilterName"_ustr, u"writer_pdf_Export"_ustr) };
     // Without the accompanying fix in place, this test would have failed on Windows with:
     // An uncaught exception of type com.sun.star.io.IOException
     // because we first tried to create a temp file next to test.odt in a directory named
@@ -93,16 +94,16 @@ CPPUNIT_TEST_FIXTURE(Test, testTempFilePath)
 CPPUNIT_TEST_FIXTURE(Test, testSetDocumentPropertiesUpdate)
 {
     // Given a document with 3 custom props, 2 Zotero ones and one other:
-    mxComponent = loadFromDesktop("private:factory/swriter");
+    loadFromURL(u"private:factory/swriter"_ustr);
     auto pBaseModel = dynamic_cast<SfxBaseModel*>(mxComponent.get());
     CPPUNIT_ASSERT(pBaseModel);
     uno::Reference<document::XDocumentProperties> xDP = pBaseModel->getDocumentProperties();
     uno::Reference<beans::XPropertyContainer> xUDP = xDP->getUserDefinedProperties();
-    xUDP->addProperty("ZOTERO_PREF_1", beans::PropertyAttribute::REMOVABLE,
-                      uno::Any(OUString("foo")));
-    xUDP->addProperty("ZOTERO_PREF_2", beans::PropertyAttribute::REMOVABLE,
-                      uno::Any(OUString("bar")));
-    xUDP->addProperty("OTHER", beans::PropertyAttribute::REMOVABLE, uno::Any(OUString("baz")));
+    xUDP->addProperty(u"ZOTERO_PREF_1"_ustr, beans::PropertyAttribute::REMOVABLE,
+                      uno::Any(u"foo"_ustr));
+    xUDP->addProperty(u"ZOTERO_PREF_2"_ustr, beans::PropertyAttribute::REMOVABLE,
+                      uno::Any(u"bar"_ustr));
+    xUDP->addProperty(u"OTHER"_ustr, beans::PropertyAttribute::REMOVABLE, uno::Any(u"baz"_ustr));
 
     // When updating the Zotero ones (1 update, 1 removal):
     std::vector<beans::PropertyValue> aArgsVec = comphelper::JsonToPropertyValues(R"json(
@@ -126,23 +127,23 @@ CPPUNIT_TEST_FIXTURE(Test, testSetDocumentPropertiesUpdate)
         }
     }
 }
-)json"_ostr);
+)json");
     uno::Sequence<beans::PropertyValue> aArgs = comphelper::containerToSequence(aArgsVec);
-    dispatchCommand(mxComponent, ".uno:SetDocumentProperties", aArgs);
+    dispatchCommand(mxComponent, u".uno:SetDocumentProperties"_ustr, aArgs);
 
     // Then make sure that OTHER is still there and that ZOTERO_PREF_1 + ZOTERO_PREF_2 gets updated
     // to the new value of a single ZOTERO_PREF_1:
     uno::Reference<beans::XPropertyAccess> xUDPAccess(xUDP, uno::UNO_QUERY);
     comphelper::SequenceAsHashMap aMap(xUDPAccess->getPropertyValues());
-    auto it = aMap.find("ZOTERO_PREF_1");
+    auto it = aMap.find(u"ZOTERO_PREF_1"_ustr);
     CPPUNIT_ASSERT(it != aMap.end());
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: test
     // - Actual  : foo
     // i.e. ZOTERO_PREF_1 was not updated.
-    CPPUNIT_ASSERT_EQUAL(OUString("test"), it->second.get<OUString>());
-    CPPUNIT_ASSERT(bool(aMap.find("ZOTERO_PREF_2") == aMap.end()));
-    CPPUNIT_ASSERT(aMap.find("OTHER") != aMap.end());
+    CPPUNIT_ASSERT_EQUAL(u"test"_ustr, it->second.get<OUString>());
+    CPPUNIT_ASSERT(!aMap.contains(u"ZOTERO_PREF_2"_ustr));
+    CPPUNIT_ASSERT(aMap.contains(u"OTHER"_ustr));
 }
 }
 

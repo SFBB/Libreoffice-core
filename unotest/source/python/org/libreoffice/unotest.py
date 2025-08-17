@@ -35,11 +35,6 @@ except ImportError:
     print("  URE_BOOTSTRAP=file:///installation/opt/program/fundamentalrc")
     raise
 
-try:
-    from urllib.parse import quote
-except ImportError:
-    from urllib import quote
-
 ### utilities ###
 
 def mkPropertyValue(name, value):
@@ -270,7 +265,7 @@ def retryInvoke(connection, test):
                 connection.postTest()
         except KeyboardInterrupt:
             raise # Ctrl+C should work
-        except:
+        except Exception:
             print("retryInvoke: caught exception")
     raise Exception("FAILED retryInvoke")
 
@@ -314,6 +309,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.verbose:
         verbose = True
+    from uitest.libreoffice.connection import PersistentConnection
     con = PersistentConnection({"verbose" : args.verbose})
     print("starting soffice ... ", end="")
     con.setUp()

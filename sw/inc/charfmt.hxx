@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_CHARFMT_HXX
-#define INCLUDED_SW_INC_CHARFMT_HXX
+#pragma once
 
 #include "format.hxx"
 #include "hintids.hxx"
@@ -30,7 +29,7 @@ class SW_DLLPUBLIC SwCharFormat final : public SwFormat
 
     SwTextFormatColl* mpLinkedParaFormat = nullptr;
 
-    SwCharFormat( SwAttrPool& rPool, const OUString &rFormatName,
+    SwCharFormat( SwAttrPool& rPool, const UIName &rFormatName,
                 SwCharFormat *pDerivedFrom )
           : SwFormat( rPool, rFormatName, aCharFormatSetRange, pDerivedFrom, RES_CHRFMT )
     {}
@@ -38,7 +37,7 @@ class SW_DLLPUBLIC SwCharFormat final : public SwFormat
 public:
     ~SwCharFormat();
 
-    void dumpAsXml(xmlTextWriterPtr pWriter) const;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 
     void SetLinkedParaFormat(SwTextFormatColl* pLink);
 
@@ -55,7 +54,5 @@ namespace CharFormat
     }
     extern bool IsItemIncluded( const sal_uInt16 nWhich, const SwTextAttr *pAttr );
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

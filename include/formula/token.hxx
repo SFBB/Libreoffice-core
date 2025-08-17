@@ -50,6 +50,7 @@ enum StackVar : sal_uInt8
     svByte,
     svDouble,
     svString,
+    svStringName,
     svSingleRef,
     svDoubleRef,
     svMatrix,
@@ -93,6 +94,7 @@ inline std::string StackVarEnumToString(StackVar const e)
         case svByte:              return "Byte";
         case svDouble:            return "Double";
         case svString:            return "String";
+        case svStringName:        return "StringName";
         case svSingleRef:         return "SingleRef";
         case svDoubleRef:         return "DoubleRef";
         case svMatrix:            return "Matrix";
@@ -120,10 +122,18 @@ inline std::string StackVarEnumToString(StackVar const e)
     return os.str();
 }
 
+enum class RefCntPolicy : sal_uInt8
+{
+    ThreadSafe, // refcounting via thread-safe oslInterlockedCount
+    UnsafeRef,  // refcounting done with no locking/guarding against concurrent access
+    None        // no ref counting done
+};
+
 class FORMULA_DLLPUBLIC FormulaToken
 {
     OpCode                      eOp;
-    const StackVar              eType;          // type of data
+    const StackVar              eType;           // type of data
+    RefCntPolicy                eRefCntPolicy;   // style of reference counting
     mutable oslInterlockedCount mnRefCnt;        // reference count
 
     FormulaToken&            operator=( const FormulaToken& ) = delete;
@@ -145,14 +155,40 @@ public:
 
     void IncRef() const
     {
-        osl_atomic_increment(&mnRefCnt);
+        switch (eRefCntPolicy)
+        {
+            case RefCntPolicy::ThreadSafe:
+            default:
+                osl_atomic_increment(&mnRefCnt);
+                break;
+            case RefCntPolicy::UnsafeRef:
+                ++mnRefCnt;
+                break;
+            case RefCntPolicy::None:
+                break;
+        }
     }
 
     void DecRef() const
     {
-        if (!osl_atomic_decrement(&mnRefCnt))
-            const_cast<FormulaToken*>(this)->Delete();
+        switch (eRefCntPolicy)
+        {
+            case RefCntPolicy::ThreadSafe:
+            default:
+                if (!osl_atomic_decrement(&mnRefCnt))
+                    const_cast<FormulaToken*>(this)->Delete();
+                break;
+            case RefCntPolicy::UnsafeRef:
+                if (!--mnRefCnt)
+                    const_cast<FormulaToken*>(this)->Delete();
+                break;
+            case RefCntPolicy::None:
+                break;
+        }
     }
+
+    void SetRefCntPolicy(RefCntPolicy ePolicy) { eRefCntPolicy = ePolicy; }
+    RefCntPolicy GetRefCntPolicy() const { return eRefCntPolicy; }
 
     oslInterlockedCount GetRef() const       { return mnRefCnt; }
     OpCode              GetOpCode() const    { return eOp; }
@@ -179,7 +215,7 @@ public:
     virtual ParamClass          GetInForceArray() const;
     virtual void                SetInForceArray( ParamClass c );
     virtual double              GetDouble() const;
-    virtual double&             GetDoubleAsReference();
+    virtual void                SetDouble(double fValue);
     virtual sal_Int16           GetDoubleType() const;
     virtual void                SetDoubleType( sal_Int16 nType );
     virtual const svl::SharedString & GetString() const;
@@ -270,10 +306,10 @@ public:
                                     eInForceArray( r.eInForceArray ) {}
 
     virtual FormulaToken*       Clone() const override { return new FormulaByteToken(*this); }
-    virtual sal_uInt8           GetByte() const override;
-    virtual void                SetByte( sal_uInt8 n ) override;
-    virtual ParamClass          GetInForceArray() const override;
-    virtual void                SetInForceArray( ParamClass c ) override;
+    virtual sal_uInt8           GetByte() const override final;
+    virtual void                SetByte( sal_uInt8 n ) override final;
+    virtual ParamClass          GetInForceArray() const override final;
+    virtual void                SetInForceArray( ParamClass c ) override final;
     virtual bool                operator==( const FormulaToken& rToken ) const override;
 };
 
@@ -307,8 +343,8 @@ public:
                                     FormulaToken( r ), fDouble( r.fDouble ) {}
 
     virtual FormulaToken*       Clone() const override { return new FormulaDoubleToken(*this); }
-    virtual double              GetDouble() const override;
-    virtual double&             GetDoubleAsReference() override;
+    virtual double              GetDouble() const override final { return fDouble; }
+    virtual void                SetDouble(double fValue) override final { fDouble = fValue; }
     virtual sal_Int16           GetDoubleType() const override;     ///< always returns 0 for "not typed"
     virtual bool                operator==( const FormulaToken& rToken ) const override;
 };
@@ -361,6 +397,21 @@ public:
     virtual void SetString( const svl::SharedString& rStr ) override;
     virtual bool operator==( const FormulaToken& rToken ) const override;
 };
+
+// FormulaStringNameToken
+class FORMULA_DLLPUBLIC FormulaStringNameToken final : public FormulaToken
+{
+    svl::SharedString maString;
+public:
+    FormulaStringNameToken(svl::SharedString r);
+    FormulaStringNameToken(const FormulaStringNameToken& r);
+
+    virtual FormulaToken* Clone() const override;
+    virtual const svl::SharedString& GetString() const override;
+    virtual void SetString(const svl::SharedString& rStr) override;
+    virtual bool operator==(const FormulaToken& rToken) const override;
+};
+
 
 class FORMULA_DLLPUBLIC FormulaIndexToken final : public FormulaToken
 {

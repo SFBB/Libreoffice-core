@@ -19,6 +19,7 @@
 class EDITENG_DLLPUBLIC SvxRsidItem final : public SfxUInt32Item
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SvxRsidItem)
     SvxRsidItem( sal_uInt32 nRsid, sal_uInt16 nId ) : SfxUInt32Item( nId, nRsid ) {}
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
@@ -32,6 +33,9 @@ public:
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
+
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
 };
 
 #endif // INCLUDED_EDITENG_RSIDITEM_HXX

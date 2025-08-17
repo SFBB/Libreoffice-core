@@ -117,34 +117,34 @@ namespace
 
         if(aWebDAVNameMapperList.empty())
         {
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("activelock"), WebDAVName_activelock));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("lockdiscovery"), WebDAVName_lockdiscovery));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("multistatus"), WebDAVName_multistatus));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("response"), WebDAVName_response));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("href"), WebDAVName_href));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("propstat"), WebDAVName_propstat));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("prop"), WebDAVName_prop));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("resourcetype"), WebDAVName_resourcetype));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("collection"), WebDAVName_collection));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("getcontenttype"), WebDAVName_getcontenttype));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("supportedlock"), WebDAVName_supportedlock));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("lockentry"), WebDAVName_lockentry));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("lockscope"), WebDAVName_lockscope));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("depth"), WebDAVName_depth));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("locktoken"), WebDAVName_locktoken));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("exclusive"), WebDAVName_exclusive));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("locktype"), WebDAVName_locktype));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("owner"), WebDAVName_owner));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("timeout"), WebDAVName_timeout));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("write"), WebDAVName_write));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("shared"), WebDAVName_shared));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("status"), WebDAVName_status));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("getlastmodified"), WebDAVName_getlastmodified));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("creationdate"), WebDAVName_creationdate));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("getcontentlength"), WebDAVName_getcontentlength));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("type"), WebDAVName_type));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("value"), WebDAVName_value));
-            aWebDAVNameMapperList.insert(WebDAVNameValueType(OUString("ucbprop"), WebDAVName_ucbprop));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"activelock"_ustr, WebDAVName_activelock));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"lockdiscovery"_ustr, WebDAVName_lockdiscovery));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"multistatus"_ustr, WebDAVName_multistatus));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"response"_ustr, WebDAVName_response));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"href"_ustr, WebDAVName_href));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"propstat"_ustr, WebDAVName_propstat));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"prop"_ustr, WebDAVName_prop));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"resourcetype"_ustr, WebDAVName_resourcetype));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"collection"_ustr, WebDAVName_collection));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"getcontenttype"_ustr, WebDAVName_getcontenttype));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"supportedlock"_ustr, WebDAVName_supportedlock));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"lockentry"_ustr, WebDAVName_lockentry));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"lockscope"_ustr, WebDAVName_lockscope));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"depth"_ustr, WebDAVName_depth));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"locktoken"_ustr, WebDAVName_locktoken));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"exclusive"_ustr, WebDAVName_exclusive));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"locktype"_ustr, WebDAVName_locktype));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"owner"_ustr, WebDAVName_owner));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"timeout"_ustr, WebDAVName_timeout));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"write"_ustr, WebDAVName_write));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"shared"_ustr, WebDAVName_shared));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"status"_ustr, WebDAVName_status));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"getlastmodified"_ustr, WebDAVName_getlastmodified));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"creationdate"_ustr, WebDAVName_creationdate));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"getcontentlength"_ustr, WebDAVName_getcontentlength));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"type"_ustr, WebDAVName_type));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"value"_ustr, WebDAVName_value));
+            aWebDAVNameMapperList.insert(WebDAVNameValueType(u"ucbprop"_ustr, WebDAVName_ucbprop));
         }
 
         const WebDAVNameMapper::const_iterator aResult(aWebDAVNameMapperList.find(rStr));
@@ -628,7 +628,7 @@ namespace
                                     http_dav_ucp::DAVPropertyValue aDAVPropertyValue;
 
                                     aDAVPropertyValue.Name = "DAV:resourcetype";
-                                    aDAVPropertyValue.Value <<= (mbResourceTypeCollection ? OUString("collection") : OUString());
+                                    aDAVPropertyValue.Value <<= (mbResourceTypeCollection ? u"collection"_ustr : OUString());
                                     maPropStatProperties.push_back(aDAVPropertyValue);
                                 }
                                 break;
@@ -820,7 +820,7 @@ namespace
 
                                             aDAVResource.uri = maHref;
                                             aDAVResource.properties = maResponseProperties;
-                                            maResult_PropFind.push_back(aDAVResource);
+                                            maResult_PropFind.push_back(std::move(aDAVResource));
                                         }
                                     }
                                     else
@@ -831,7 +831,7 @@ namespace
                                             http_dav_ucp::DAVResourceInfo aDAVResourceInfo;
 
                                             aDAVResourceInfo.properties = maResponseNames;
-                                            maResult_PropName.push_back(aDAVResourceInfo);
+                                            maResult_PropName.push_back(std::move(aDAVResourceInfo));
                                         }
                                     }
                                 }
@@ -954,8 +954,7 @@ namespace
                 // create parser; connect parser and filter
                 rtl::Reference<WebDAVResponseParser> const pWebDAVResponseParser(
                         new WebDAVResponseParser(eWebDAVResponseParserMode));
-                uno::Reference< xml::sax::XDocumentHandler > xWebDAVHdl(pWebDAVResponseParser);
-                xParser->setDocumentHandler(xWebDAVHdl);
+                xParser->setDocumentHandler(pWebDAVResponseParser);
 
                 // finally, parse the stream
                 xParser->parseStream(myInputSource);

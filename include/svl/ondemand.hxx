@@ -51,12 +51,11 @@
 
 class OnDemandLocaleDataWrapper
 {
-    css::uno::Reference<css::uno::XComponentContext> m_xContext;
     SvtSysLocale aSysLocale;
     LanguageType eCurrentLanguage;
     LanguageType eLastAnyLanguage;
-    std::optional<LocaleDataWrapper> moEnglish;
-    std::optional<LocaleDataWrapper> moAny;
+    const LocaleDataWrapper* mpEnglish{ nullptr };
+    const LocaleDataWrapper* mpAny{ nullptr };
     int nCurrent; // 0 == system, 1 == english, 2 == any
     bool bInitialized;
 
@@ -71,10 +70,8 @@ public:
 
     bool isInitialized() const { return bInitialized; }
 
-    void init(const css::uno::Reference<css::uno::XComponentContext>& rxContext,
-              const LanguageTag& rLanguageTag)
+    void init(const LanguageTag& rLanguageTag)
     {
-        m_xContext = rxContext;
         changeLocale(rLanguageTag);
         bInitialized = true;
     }
@@ -86,20 +83,20 @@ public:
             nCurrent = 0;
         else if (eLang == LANGUAGE_ENGLISH_US)
         {
-            if (!moEnglish)
-                moEnglish.emplace(m_xContext, rLanguageTag);
+            if (!mpEnglish)
+                mpEnglish = LocaleDataWrapper::get(rLanguageTag);
             nCurrent = 1;
         }
         else
         {
-            if (!moAny)
+            if (!mpAny)
             {
-                moAny.emplace(m_xContext, rLanguageTag);
+                mpAny = LocaleDataWrapper::get(rLanguageTag);
                 eLastAnyLanguage = eLang;
             }
             else if (eLastAnyLanguage != eLang)
             {
-                moAny.emplace(m_xContext, rLanguageTag);
+                mpAny = LocaleDataWrapper::get(rLanguageTag);
                 eLastAnyLanguage = eLang;
             }
             nCurrent = 2;
@@ -116,9 +113,9 @@ public:
             case 0:
                 return &aSysLocale.GetLocaleData();
             case 1:
-                return &*moEnglish;
+                return mpEnglish;
             case 2:
-                return &*moAny;
+                return mpAny;
             default:
                 assert(false);
                 return nullptr;
@@ -252,10 +249,6 @@ public:
 
 /** Load a native number service wrapper only if it's needed.
     SvNumberformatter uses it.
-
-    @ATTENTION
-    If the default ctor is used the init() method MUST be called
-    before accessing the native number supplier.
  */
 class OnDemandNativeNumberWrapper
 {
@@ -263,19 +256,16 @@ class OnDemandNativeNumberWrapper
     mutable std::optional<NativeNumberWrapper> moNativeNumber;
 
 public:
-    OnDemandNativeNumberWrapper() {}
-
-    void init(const css::uno::Reference<css::uno::XComponentContext>& rxContext)
+    OnDemandNativeNumberWrapper(const css::uno::Reference<css::uno::XComponentContext>& rContext)
+        : m_xContext(rContext)
     {
-        m_xContext = rxContext;
-        moNativeNumber.reset();
     }
 
-    NativeNumberWrapper* get() const
+    NativeNumberWrapper& get() const
     {
         if (!moNativeNumber)
             moNativeNumber.emplace(m_xContext);
-        return &*moNativeNumber;
+        return *moNativeNumber;
     }
 };
 

@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <Group.hxx>
+#include <Groups.hxx>
 #include <Section.hxx>
 #include <com/sun/star/lang/NoSupportException.hpp>
 #include <com/sun/star/report/GroupOn.hpp>
@@ -35,7 +36,7 @@ namespace reportdesign
 
     using namespace com::sun::star;
 
-OGroup::OGroup(const uno::Reference< report::XGroups >& _xParent
+OGroup::OGroup(const rtl::Reference< OGroups >& _xParent
                ,const uno::Reference< uno::XComponentContext >& _xContext)
 :GroupBase(m_aMutex)
 ,GroupPropertySet(_xContext,IMPLEMENTS_PROPERTY_SET,uno::Sequence< OUString >())
@@ -59,7 +60,7 @@ IMPLEMENT_FORWARD_XINTERFACE2(OGroup,GroupBase,GroupPropertySet)
 
 OUString SAL_CALL OGroup::getImplementationName(  )
 {
-    return "com.sun.star.comp.report.Group";
+    return u"com.sun.star.comp.report.Group"_ustr;
 }
 
 uno::Sequence< OUString> OGroup::getSupportedServiceNames_Static()
@@ -138,7 +139,7 @@ void SAL_CALL OGroup::setFooterOn( sal_Bool _footeron )
 
 uno::Reference< report::XSection > SAL_CALL OGroup::getHeader()
 {
-    uno::Reference< report::XSection > xRet;
+    rtl::Reference< OSection > xRet;
     {
         ::osl::MutexGuard aGuard(m_aMutex);
         xRet = m_xHeader;
@@ -151,7 +152,7 @@ uno::Reference< report::XSection > SAL_CALL OGroup::getHeader()
 
 uno::Reference< report::XSection > SAL_CALL OGroup::getFooter()
 {
-    uno::Reference< report::XSection > xRet;
+    rtl::Reference< OSection > xRet;
     {
         ::osl::MutexGuard aGuard(m_aMutex);
         xRet = m_xFooter;
@@ -205,7 +206,12 @@ void SAL_CALL OGroup::setKeepTogether( ::sal_Int16 _keeptogether )
 
 uno::Reference< report::XGroups > SAL_CALL OGroup::getGroups()
 {
-    return m_xParent;
+    return m_xParent.get();
+}
+
+rtl::Reference< OGroups > OGroup::getOGroups() const
+{
+    return m_xParent.get();
 }
 
 OUString SAL_CALL OGroup::getExpression()
@@ -291,12 +297,12 @@ void SAL_CALL OGroup::removeVetoableChangeListener( const OUString& PropertyName
 void OGroup::setSection(     const OUString& _sProperty
                             ,bool _bOn
                             ,const OUString& _sName
-                            ,uno::Reference< report::XSection>& _member)
+                            ,rtl::Reference< OSection>& _member)
 {
     BoundListeners l;
     {
         ::osl::MutexGuard aGuard(m_aMutex);
-        prepareSet(_sProperty, uno::Any(_member), uno::Any(_bOn), &l);
+        prepareSet(_sProperty, uno::Any(uno::Reference<report::XSection>(_member)), uno::Any(_bOn), &l);
 
         // create section if needed
         if ( _bOn && !_member.is() )

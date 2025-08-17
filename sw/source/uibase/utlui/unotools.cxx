@@ -27,6 +27,7 @@
 #include <unotools.hxx>
 #include <unoprnms.hxx>
 #include <unotextcursor.hxx>
+#include <unotxdoc.hxx>
 #include <i18nutil/unicode.hxx>
 #include <o3tl/string_view.hxx>
 #include <rtl/string.h>
@@ -58,6 +59,7 @@
 #include <swmodule.hxx>
 #include <TextCursorHelper.hxx>
 #include <doc.hxx>
+#include <unotextbodyhf.hxx>
 
 using namespace ::com::sun::star;
 
@@ -92,7 +94,7 @@ SwOneExampleFrame::SwOneExampleFrame(sal_uInt32 nFlags,
                                  const Link<SwOneExampleFrame&,void>* pInitializedLink,
                                  const OUString* pURL)
     : m_aLoadedIdle("sw uibase SwOneExampleFrame Loaded")
-    , m_pModuleView(SW_MOD()->GetView())
+    , m_pModuleView(SwModule::get()->GetView())
     , m_nStyleFlags(nFlags)
     , m_bIsInitialized(false)
 {
@@ -141,7 +143,7 @@ void SwOneExampleFrame::Paint(vcl::RenderContext& rRenderContext, const tools::R
     // invalidate on rRenderContext if it is a vcl::Window, which is the "classic" gen mode
     m_xVirDev->SetOutputSizePixel(aSize);
 
-    Color aBgColor = SW_MOD()->GetColorConfig().GetColorValue(::svtools::DOCCOLOR).nColor;
+    Color aBgColor = SwModule::get()->GetColorConfig().GetColorValue(::svtools::DOCCOLOR).nColor;
     m_xVirDev->DrawWallpaper(tools::Rectangle(Point(), aSize), aBgColor);
 
     if (m_xCursor)
@@ -182,14 +184,14 @@ void SwOneExampleFrame::CreateControl()
 
     uno::Reference<frame::XDesktop2> xDesktop = frame::Desktop::create(::comphelper::getProcessComponentContext());
     uno::Sequence<beans::PropertyValue> args( comphelper::InitPropertySequence({
-            { "DocumentService", uno::Any(OUString("com.sun.star.text.TextDocument")) },
-            { "OpenFlags", uno::Any(OUString("-RB")) },
-            { "Referer", uno::Any(OUString("private:user")) },
+            { "DocumentService", uno::Any(u"com.sun.star.text.TextDocument"_ustr) },
+            { "OpenFlags", uno::Any(u"-RB"_ustr) },
+            { "Referer", uno::Any(u"private:user"_ustr) },
             { "ReadOnly", uno::Any(true) },
             { "Hidden", uno::Any(true) }
         }));
 
-    m_xModel.set(xDesktop->loadComponentFromURL(sTempURL, "_blank", 0, args), uno::UNO_QUERY);
+    m_xModel = dynamic_cast<SwXTextDocument*>(xDesktop->loadComponentFromURL(sTempURL, u"_blank"_ustr, 0, args).get());
 
     m_aLoadedIdle.Start();
 }
@@ -222,7 +224,7 @@ IMPL_LINK( SwOneExampleFrame, TimeoutHdl, Timer*, pTimer, void )
             try
             {
                 uno::Reference< frame::XLayoutManager > xLayoutManager;
-                uno::Any aValue = xPropSet->getPropertyValue("LayoutManager");
+                uno::Any aValue = xPropSet->getPropertyValue(u"LayoutManager"_ustr);
                 aValue >>= xLayoutManager;
                 if ( xLayoutManager.is() )
                     xLayoutManager->setVisible( false );
@@ -283,11 +285,8 @@ IMPL_LINK( SwOneExampleFrame, TimeoutHdl, Timer*, pTimer, void )
             m_bIsInitialized = true;
         }
 
-        uno::Reference< text::XTextDocument >  xDoc(m_xModel, uno::UNO_QUERY);
-        uno::Reference< text::XText >  xText = xDoc->getText();
-        uno::Reference< text::XTextCursor > xTextCursor = xText->createTextCursor();
-        m_xCursor = dynamic_cast<SwXTextCursor*>(xTextCursor.get());
-        assert(bool(xTextCursor) == bool(m_xCursor) && "expect to get SwXTextCursor type here");
+        rtl::Reference< SwXBodyText > xText = m_xModel->getBodyText();
+        m_xCursor = xText->createXTextCursor();
 
         //From here, a cursor is defined, which goes through the template,
         //and overwrites the template words where it is necessary.
@@ -366,9 +365,8 @@ IMPL_LINK( SwOneExampleFrame, TimeoutHdl, Timer*, pTimer, void )
         OUString sPageStyle;
         aPageStyle >>= sPageStyle;
 
-        uno::Reference< style::XStyleFamiliesSupplier >  xSSupp( xDoc, uno::UNO_QUERY);
-        uno::Reference< container::XNameAccess >  xStyles = xSSupp->getStyleFamilies();
-        uno::Any aPFamily = xStyles->getByName( "PageStyles" );
+        uno::Reference< container::XNameAccess >  xStyles = m_xModel->getStyleFamilies();
+        uno::Any aPFamily = xStyles->getByName( u"PageStyles"_ustr );
         uno::Reference< container::XNameContainer >  xPFamily;
 
         if( EX_SHOW_DEFAULT_PAGE != m_nStyleFlags
@@ -408,14 +406,14 @@ IMPL_LINK( SwOneExampleFrame, TimeoutHdl, Timer*, pTimer, void )
         if (pDoc)
         {
             SwEditShell* pSh = pDoc->GetEditShell();
-            if( pSh->ActionCount() )
+            if( pSh && pSh->ActionCount() )
             {
                 pSh->EndAllAction();
                 pSh->UnlockPaint();
             }
         }
 
-        SW_MOD()->SetView(m_pModuleView);
+        SwModule::get()->SetView(m_pModuleView);
 
         Invalidate();
     }
@@ -450,8 +448,8 @@ bool SwOneExampleFrame::CreatePopup(const Point& rPt)
     if (EX_SHOW_ONLINE_LAYOUT != m_nStyleFlags)
         return false;
 
-    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, "modules/swriter/ui/previewmenu.ui"));
-    std::unique_ptr<weld::Menu> xPop(xBuilder->weld_menu("previewmenu"));
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(nullptr, u"modules/swriter/ui/previewmenu.ui"_ustr));
+    std::unique_ptr<weld::Menu> xPop(xBuilder->weld_menu(u"previewmenu"_ustr));
 
     uno::Reference< view::XViewSettingsSupplier >  xSettings(m_xController, uno::UNO_QUERY);
     uno::Reference< beans::XPropertySet >  xViewProps = xSettings->getViewSettings();

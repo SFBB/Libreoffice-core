@@ -44,7 +44,7 @@ namespace drawinglayer::processor2d
             to construct any processor with a given ViewInformation2D. To be able
             to handle primitives which need to change the current transformation
             (as e.g. TransformPrimitive2D) it is allowed for the processor implementation
-            to change its local value using updateViewInformation.
+            to change its local value using setViewInformation2D.
 
             The basic processing method is process(..) which gets handed over the
             sequence of primitives to process. For convenience of the C++ implementations,
@@ -158,14 +158,11 @@ namespace drawinglayer::processor2d
             geometry::ViewInformation2D                     maViewInformation2D;
 
         protected:
-            /*  access method to allow the implementations to change the current
-                ViewInformation2D if needed. This allows isolating these accesses
-                later if needed
+            /*  callback method to allow the implementations to react on changes
+                to the current ViewInformation2D if needed (e.g. when your impl/
+                derivation needs to react on AA change)
              */
-            void updateViewInformation(const geometry::ViewInformation2D& rViewInformation2D)
-            {
-                maViewInformation2D = rViewInformation2D;
-            }
+            virtual void onViewInformation2DChanged() {}
 
             /*  as tooling, the process() implementation takes over API handling and calls this
                 virtual render method when the primitive implementation is BasePrimitive2D-based.
@@ -188,8 +185,9 @@ namespace drawinglayer::processor2d
             /// the central processing method
             void process(const primitive2d::Primitive2DContainer& rSource);
 
-            /// data read access
+            /// data read/write access to ViewInformation2D
             const geometry::ViewInformation2D& getViewInformation2D() const { return maViewInformation2D; }
+            void setViewInformation2D(const geometry::ViewInformation2D& rNew);
         };
 
 } // end of namespace drawinglayer::processor2d

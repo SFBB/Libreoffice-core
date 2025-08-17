@@ -713,7 +713,7 @@ void StatusBar::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
 
     if (mbProgressMode)
     {
-        rRenderContext.Push(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR);
+        auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::FILLCOLOR | vcl::PushFlags::LINECOLOR);
 
         const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
         Color aProgressColor = rStyleSettings.GetHighlightColor();
@@ -723,8 +723,6 @@ void StatusBar::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
         rRenderContext.SetFillColor(aProgressColor);
 
         ImplDrawProgress(rRenderContext, mnPercent);
-
-        rRenderContext.Pop();
     }
     else
     {
@@ -1173,8 +1171,8 @@ void StatusBar::SetItemText( sal_uInt16 nItemId, const OUString& rText, int nCha
     tools::Long nWidth;
     if (nCharsWidth != -1)
     {
-        nWidth = GetTextWidth("0",0,-1,nullptr,
-                    SalLayoutGlyphsCache::self()->GetLayoutGlyphs(GetOutDev(),"0"));
+        nWidth = GetTextWidth(u"0"_ustr,0,-1,nullptr,
+                    SalLayoutGlyphsCache::self()->GetLayoutGlyphs(GetOutDev(),u"0"_ustr));
         nWidth = nWidth * nCharsWidth + nFudge;
     }
     else
@@ -1222,14 +1220,14 @@ void StatusBar::SetItemCommand( sal_uInt16 nItemId, const OUString& rCommand )
     }
 }
 
-OUString StatusBar::GetItemCommand( sal_uInt16 nItemId )
+const OUString & StatusBar::GetItemCommand( sal_uInt16 nItemId )
 {
     sal_uInt16 nPos = GetItemPos( nItemId );
 
     if ( nPos != STATUSBAR_ITEM_NOTFOUND )
         return mvItemList[ nPos ]->maCommand;
 
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 void StatusBar::SetItemData( sal_uInt16 nItemId, void* pNewData )
@@ -1304,9 +1302,9 @@ const OUString& StatusBar::GetHelpText( sal_uInt16 nItemId ) const
         if ( pHelp )
         {
             if ( !pItem->maCommand.isEmpty() )
-                pItem->maHelpText = pHelp->GetHelpText( pItem->maCommand, this );
+                pItem->maHelpText = pHelp->GetHelpText( pItem->maCommand );
             if ( pItem->maHelpText.isEmpty() && !pItem->maHelpId.isEmpty() )
-                pItem->maHelpText = pHelp->GetHelpText( pItem->maHelpId, this );
+                pItem->maHelpText = pHelp->GetHelpText( pItem->maHelpId );
         }
     }
 

@@ -23,6 +23,8 @@
 #include <osl/file.hxx>
 #include <tools/urlobj.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include "wordvbahelper.hxx"
+#include <unotxdoc.hxx>
 
 #ifdef _WIN32
 #include <cstddef>
@@ -34,6 +36,7 @@
 #endif
 
 using namespace ::ooo::vba;
+using namespace ::ooo::vba::word;
 using namespace ::com::sun::star;
 
 PrivateProfileStringListener::~PrivateProfileStringListener()
@@ -110,7 +113,7 @@ uno::Any PrivateProfileStringListener::getValueEvent()
             }
         }
 #else
-        throw uno::RuntimeException("Only support on Windows" );
+        throw uno::RuntimeException(u"Only support on Windows"_ustr );
 #endif
     }
 
@@ -152,7 +155,7 @@ void PrivateProfileStringListener::setValueEvent( const css::uno::Any& value )
         }
         return;
 #else
-        throw uno::RuntimeException("Not implemented" );
+        throw uno::RuntimeException(u"Not implemented"_ustr );
 #endif
     }
 
@@ -175,7 +178,7 @@ SwVbaSystem::~SwVbaSystem()
 sal_Int32 SAL_CALL
 SwVbaSystem::getCursor()
 {
-    PointerStyle nPointerStyle = getPointerStyle( getCurrentWordDoc(mxContext) );
+    PointerStyle nPointerStyle = getPointerStyle( static_cast<SfxBaseModel*>(getCurrentWordDoc(mxContext).get()) );
 
     switch( nPointerStyle )
     {
@@ -201,28 +204,28 @@ SwVbaSystem::setCursor( sal_Int32 _cursor )
         {
             case word::WdCursorType::wdCursorNorthwestArrow:
             {
-                setCursorHelper( getCurrentWordDoc(mxContext), PointerStyle::Arrow, false );
+                setCursorHelper( static_cast<SfxBaseModel*>(getCurrentWordDoc(mxContext).get()), PointerStyle::Arrow, false );
                 break;
             }
             case word::WdCursorType::wdCursorWait:
             {
                 //It will set the edit window, toobar and statusbar's mouse pointer.
-                setCursorHelper( getCurrentWordDoc(mxContext), PointerStyle::Wait, true );
+                setCursorHelper( static_cast<SfxBaseModel*>(getCurrentWordDoc(mxContext).get()), PointerStyle::Wait, true );
                 break;
             }
             case word::WdCursorType::wdCursorIBeam:
             {
                 //It will set the edit window, toobar and statusbar's mouse pointer.
-                setCursorHelper( getCurrentWordDoc( mxContext ), PointerStyle::Text, true );
+                setCursorHelper( static_cast<SfxBaseModel*>(getCurrentWordDoc( mxContext ).get()), PointerStyle::Text, true );
                 break;
             }
             case word::WdCursorType::wdCursorNormal:
             {
-                setCursorHelper( getCurrentWordDoc( mxContext ), PointerStyle::Null, false );
+                setCursorHelper( static_cast<SfxBaseModel*>(getCurrentWordDoc( mxContext ).get()), PointerStyle::Null, false );
                 break;
             }
             default:
-                throw uno::RuntimeException("Unknown value for Cursor pointer" );
+                throw uno::RuntimeException(u"Unknown value for Cursor pointer"_ustr );
                 // TODO: isn't this a flaw in the API? It should be allowed to throw an
                 // IllegalArgumentException, or so
         }
@@ -259,7 +262,7 @@ SwVbaSystem::PrivateProfileString( const OUString& rFilename, const OUString& rS
 OUString
 SwVbaSystem::getServiceImplName()
 {
-    return "SwVbaSystem";
+    return u"SwVbaSystem"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -267,7 +270,7 @@ SwVbaSystem::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.word.System"
+        u"ooo.vba.word.System"_ustr
     };
     return aServiceNames;
 }

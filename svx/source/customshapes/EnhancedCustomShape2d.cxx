@@ -43,7 +43,7 @@
 #include <svx/xbtmpit.hxx>
 #include <svx/xhatch.hxx>
 #include <svx/sdshitm.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <com/sun/star/awt/Size.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeParameterType.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeSegmentCommand.hpp>
@@ -542,25 +542,30 @@ void EnhancedCustomShape2d::ApplyShapeAttributes( const SdrCustomShapeGeometryIt
 {
     // AdjustmentValues
     static constexpr OUStringLiteral sAdjustmentValues( u"AdjustmentValues" );
-    const Any* pAny = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sAdjustmentValues );
+    const Any* pAny = rGeometryItem.GetPropertyValueByName( sAdjustmentValues );
     if ( pAny )
         *pAny >>= m_seqAdjustmentValues;
 
 
     // Coordsize
     static constexpr OUStringLiteral sViewBox( u"ViewBox" );
-    const Any* pViewBox = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sViewBox );
+    const Any* pViewBox = rGeometryItem.GetPropertyValueByName( sViewBox );
     css::awt::Rectangle aViewBox;
     if ( pViewBox && (*pViewBox >>= aViewBox ) )
     {
         m_nCoordLeft    = aViewBox.X;
         m_nCoordTop     = aViewBox.Y;
-        m_nCoordWidthG  = std::abs( aViewBox.Width );
-        m_nCoordHeightG = std::abs( aViewBox.Height);
+        m_nCoordWidthG  = aViewBox.Width;
+        if (m_nCoordWidthG < 0)
+            m_nCoordWidthG = o3tl::saturating_toggle_sign(m_nCoordWidthG);
+        m_nCoordHeightG = aViewBox.Height;
+        if (m_nCoordHeightG < 0)
+            m_nCoordHeightG = o3tl::saturating_toggle_sign(m_nCoordHeightG);
     }
     static constexpr OUString sPath( u"Path"_ustr );
     static constexpr OUStringLiteral sCoordinates( u"Coordinates" );
     static constexpr OUStringLiteral sGluePoints( u"GluePoints" );
+    static constexpr OUStringLiteral sGluePointLeavingDirections( u"GluePointLeavingDirections" );
     static constexpr OUStringLiteral sSegments( u"Segments" );
     static constexpr OUStringLiteral sSubViewSize( u"SubViewSize" );
     static constexpr OUStringLiteral sStretchX( u"StretchX" );
@@ -571,31 +576,35 @@ void EnhancedCustomShape2d::ApplyShapeAttributes( const SdrCustomShapeGeometryIt
 
 
     // Path/Coordinates
-    pAny = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sPath, sCoordinates );
+    pAny = rGeometryItem.GetPropertyValueByName( sPath, sCoordinates );
     if ( pAny )
         *pAny >>= m_seqCoordinates;
 
 
     // Path/GluePoints
-    pAny = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sPath, sGluePoints );
+    pAny = rGeometryItem.GetPropertyValueByName( sPath, sGluePoints );
     if ( pAny )
         *pAny >>= m_seqGluePoints;
 
+    // Path/GluePointLeavingDirections
+    pAny = rGeometryItem.GetPropertyValueByName(sPath, sGluePointLeavingDirections);
+    if (pAny)
+        *pAny >>= m_seqGluePointLeavingDirections;
 
     // Path/Segments
-    pAny = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sPath, sSegments );
+    pAny = rGeometryItem.GetPropertyValueByName( sPath, sSegments );
     if ( pAny )
         *pAny >>= m_seqSegments;
 
 
     // Path/SubViewSize
-    pAny = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sPath, sSubViewSize );
+    pAny = rGeometryItem.GetPropertyValueByName( sPath, sSubViewSize );
     if ( pAny )
         *pAny >>= m_seqSubViewSize;
 
 
     // Path/StretchX
-    pAny = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sPath, sStretchX );
+    pAny = rGeometryItem.GetPropertyValueByName( sPath, sStretchX );
     if ( pAny )
     {
         sal_Int32 nStretchX = 0;
@@ -605,7 +614,7 @@ void EnhancedCustomShape2d::ApplyShapeAttributes( const SdrCustomShapeGeometryIt
 
 
     // Path/StretchY
-    pAny = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sPath, sStretchY );
+    pAny = rGeometryItem.GetPropertyValueByName( sPath, sStretchY );
     if ( pAny )
     {
         sal_Int32 nStretchY = 0;
@@ -615,19 +624,19 @@ void EnhancedCustomShape2d::ApplyShapeAttributes( const SdrCustomShapeGeometryIt
 
 
     // Path/TextFrames
-    pAny = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sPath, sTextFrames );
+    pAny = rGeometryItem.GetPropertyValueByName( sPath, sTextFrames );
     if ( pAny )
         *pAny >>= m_seqTextFrames;
 
 
     // Equations
-    pAny = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sEquations );
+    pAny = rGeometryItem.GetPropertyValueByName( sEquations );
     if ( pAny )
         *pAny >>= m_seqEquations;
 
 
     // Handles
-    pAny = const_cast<SdrCustomShapeGeometryItem&>(rGeometryItem).GetPropertyValueByName( sHandles );
+    pAny = rGeometryItem.GetPropertyValueByName( sHandles );
     if ( pAny )
         *pAny >>= m_seqHandles;
 }
@@ -705,7 +714,7 @@ void EnhancedCustomShape2d::SetPathSize( sal_Int32 nIndex )
     else
         m_fYRatio = 1.0;
 
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
     {
         if (fabs(m_fXScale) > 100000)
         {
@@ -844,23 +853,7 @@ EnhancedCustomShape2d::EnhancedCustomShape2d(SdrObjCustomShape& rSdrObjCustomSha
     if ( !nLength )
         return;
 
-    m_vNodesSharedPtr.resize( nLength );
     m_vEquationResults.resize( nLength );
-    for ( sal_Int32 i = 0; i < nLength; i++ )
-    {
-        m_vEquationResults[ i ].bReady = false;
-        try
-        {
-            m_vNodesSharedPtr[ i ] = EnhancedCustomShape::FunctionParser::parseFunction( m_seqEquations[ i ], *this );
-        }
-        catch ( EnhancedCustomShape::ParseError& )
-        {
-            SAL_INFO(
-                "svx",
-                "error: equation number: " << i << ", parser failed ("
-                    << m_seqEquations[i] << ")");
-        }
-    }
 }
 
 using EnhancedCustomShape::ExpressionFunct;
@@ -907,39 +900,55 @@ double EnhancedCustomShape2d::GetEquationValueAsDouble( const sal_Int32 nIndex )
 {
     double fNumber = 0.0;
     static sal_uInt32 nLevel = 0;
-    if ( nIndex < static_cast<sal_Int32>(m_vNodesSharedPtr.size()) )
+    if ( nIndex >= static_cast<sal_Int32>(m_vEquationResults.size()) )
+        return fNumber;
+
+    if (!m_vEquationResults[nIndex].bParsed)
     {
-        if ( m_vNodesSharedPtr[ nIndex ] ) {
-            nLevel ++;
-            try
-            {
-                if ( m_vEquationResults[ nIndex ].bReady )
-                    fNumber = m_vEquationResults[ nIndex ].fValue;
-                else {
-                    // cast to non const, so that we can optimize by caching
-                    // equation results, without changing all the const in the stack
-                    struct EquationResult &aResult = const_cast<EnhancedCustomShape2d*>(this)->m_vEquationResults[ nIndex ];
-
-                    fNumber = aResult.fValue = (*m_vNodesSharedPtr[ nIndex ])();
-                    aResult.bReady = true;
-
-                    SAL_INFO("svx", "equation " << nLevel << " (level: " << m_seqEquations[nIndex] << "): "
-                             << fNumber << " --> " << 180.0*fNumber/10800000.0);
-                }
-                if ( !std::isfinite( fNumber ) )
-                    fNumber = 0.0;
-            }
-            catch ( ... )
-            {
-                SAL_WARN("svx", "EnhancedCustomShape2d::GetEquationValueAsDouble failed");
-            }
-            nLevel --;
+        m_vEquationResults[nIndex].bParsed = true;
+        try
+        {
+            m_vEquationResults[nIndex].xNode = EnhancedCustomShape::FunctionParser::parseFunction( m_seqEquations[ nIndex ], *this );
         }
-        SAL_INFO(
-            "svx",
-            "?" << nIndex << " --> " << fNumber << " (angle: "
-                << 180.0*fNumber/10800000.0 << ")");
+        catch ( EnhancedCustomShape::ParseError& )
+        {
+            SAL_INFO(
+                "svx",
+                "error: equation number: " << nIndex << ", parser failed ("
+                    << m_seqEquations[nIndex] << ")");
+        }
     }
+    if ( m_vEquationResults[ nIndex ].xNode )
+    {
+        nLevel ++;
+        try
+        {
+            if ( m_vEquationResults[ nIndex ].bReady )
+                fNumber = m_vEquationResults[ nIndex ].fValue;
+            else {
+                // cast to non const, so that we can optimize by caching
+                // equation results, without changing all the const in the stack
+                struct EquationResult &aResult = const_cast<EnhancedCustomShape2d*>(this)->m_vEquationResults[ nIndex ];
+
+                fNumber = aResult.fValue = (*m_vEquationResults[ nIndex ].xNode)();
+                aResult.bReady = true;
+
+                SAL_INFO("svx", "equation " << nLevel << " (level: " << m_seqEquations[nIndex] << "): "
+                         << fNumber << " --> " << 180.0*fNumber/10800000.0);
+            }
+            if ( !std::isfinite( fNumber ) )
+                fNumber = 0.0;
+        }
+        catch ( ... )
+        {
+            SAL_WARN("svx", "EnhancedCustomShape2d::GetEquationValueAsDouble failed");
+        }
+        nLevel --;
+    }
+    SAL_INFO(
+        "svx",
+        "?" << nIndex << " --> " << fNumber << " (angle: "
+            << 180.0*fNumber/10800000.0 << ")");
 
     return fNumber;
 }
@@ -1035,10 +1044,6 @@ void EnhancedCustomShape2d::GetParameter( double& rRetValue, const EnhancedCusto
         }
         break;
         case EnhancedCustomShapeParameterType::LEFT :
-        {
-            rRetValue  = 0.0;
-        }
-        break;
         case EnhancedCustomShapeParameterType::TOP :
         {
             rRetValue  = 0.0;
@@ -1185,9 +1190,9 @@ bool EnhancedCustomShape2d::GetHandlePosition( const sal_uInt32 nIndex, Point& r
                 double fY =-dx * sin( a );
                 rReturnPosition =
                     Point(
-                        FRound( fX + aReferencePoint.X() ),
+                        basegfx::fround<tools::Long>( fX + aReferencePoint.X() ),
                         basegfx::fTools::equalZero(m_fXScale) ? aReferencePoint.Y() :
-                        FRound( ( fY * m_fYScale ) / m_fXScale + aReferencePoint.Y() ) );
+                        basegfx::fround<tools::Long>( ( fY * m_fYScale ) / m_fXScale + aReferencePoint.Y() ) );
             }
             else
             {
@@ -1506,9 +1511,9 @@ bool EnhancedCustomShape2d::SetHandleControllerPosition( const sal_uInt32 nIndex
 
     // For ooxml-foo shapes, the way to calculate the adjustment value from the handle position depends on
     // the type of the shape, therefore need 'Type'.
-    OUString sShapeType("non-primitive"); // default for ODF
+    OUString sShapeType(u"non-primitive"_ustr); // default for ODF
     const SdrCustomShapeGeometryItem& rGeometryItem(mrSdrObjCustomShape.GetMergedItem( SDRATTR_CUSTOMSHAPE_GEOMETRY ));
-    const Any* pAny = rGeometryItem.GetPropertyValueByName("Type");
+    const Any* pAny = rGeometryItem.GetPropertyValueByName(u"Type"_ustr);
     if (pAny)
         *pAny >>= sShapeType;
 
@@ -2077,7 +2082,7 @@ void EnhancedCustomShape2d::CreateSubPath(
     sal_Int32 nSegInfoSize = m_seqSegments.getLength();
     if ( !nSegInfoSize )
     {
-        for ( const EnhancedCustomShapeParameterPair& rCoordinate : std::as_const(m_seqCoordinates) )
+        for (const EnhancedCustomShapeParameterPair& rCoordinate : m_seqCoordinates)
         {
             const Point aTempPoint(GetPoint( rCoordinate, true, true ));
             aNewB2DPolygon.append(basegfx::B2DPoint(aTempPoint.X(), aTempPoint.Y()));
@@ -2173,8 +2178,8 @@ void EnhancedCustomShape2d::CreateSubPath(
                 {
                     // Some shapes will need special handling, decide on property 'Type'.
                     OUString sShpType;
-                    SdrCustomShapeGeometryItem& rGeometryItem = const_cast<SdrCustomShapeGeometryItem&>(mrSdrObjCustomShape.GetMergedItem(SDRATTR_CUSTOMSHAPE_GEOMETRY));
-                    Any* pAny = rGeometryItem.GetPropertyValueByName("Type");
+                    const SdrCustomShapeGeometryItem& rGeometryItem = mrSdrObjCustomShape.GetMergedItem(SDRATTR_CUSTOMSHAPE_GEOMETRY);
+                    const Any* pAny = rGeometryItem.GetPropertyValueByName(u"Type"_ustr);
                     if (pAny)
                         *pAny >>= sShpType;
                     // User defined shapes in MS binary format, which contain command U or T after import
@@ -2183,8 +2188,8 @@ void EnhancedCustomShape2d::CreateSubPath(
                     // The only own or imported preset shapes with U command are those listed below.
                     // Command T is not used in preset shapes.
                     const std::unordered_set<OUString> aPresetShapesWithU =
-                        { "ellipse",  "ring", "smiley", "sun", "forbidden", "flowchart-connector",
-                          "flowchart-summing-junction", "flowchart-or", "cloud-callout"};
+                        { u"ellipse"_ustr,  u"ring"_ustr, u"smiley"_ustr, u"sun"_ustr, u"forbidden"_ustr, u"flowchart-connector"_ustr,
+                          u"flowchart-summing-junction"_ustr, u"flowchart-or"_ustr, u"cloud-callout"_ustr};
                     std::unordered_set<OUString>::const_iterator aIter = aPresetShapesWithU.find(sShpType);
                     const bool bIsPresetShapeWithU(aIter != aPresetShapesWithU.end());
 
@@ -2466,8 +2471,7 @@ void EnhancedCustomShape2d::CreateSubPath(
                             basegfx::B2DPoint aCurrentPointB2D( aNewB2DPolygon.getB2DPoint(aNewB2DPolygon.count() - 1 ) );
                             const double fDx(aCurrentPointB2D.getX() - aTempB2DPolygon.getB2DPoint(0).getX());
                             const double fDy(aCurrentPointB2D.getY() - aTempB2DPolygon.getB2DPoint(0).getY());
-                            aMatrix = basegfx::utils::createTranslateB2DHomMatrix(fDx, fDy);
-                            aTempB2DPolygon.transform(aMatrix);
+                            aTempB2DPolygon.translate(fDx, fDy);
                             aNewB2DPolygon.append(aTempB2DPolygon);
                         }
 
@@ -2668,7 +2672,7 @@ void EnhancedCustomShape2d::CreateSubPath(
             pObj = new SdrPathObj(
                 mrSdrObjCustomShape.getSdrModelFromSdrObject(),
                 SdrObjKind::Polygon,
-                aNewB2DPolyPolygon);
+                std::move(aNewB2DPolyPolygon));
         }
 
         if(bNoStroke)
@@ -2803,9 +2807,9 @@ void EnhancedCustomShape2d::AdaptObjColor(
             {
                 Color aFillColor = GetColorData(
                     rCustomShapeSet.Get( XATTR_FILLCOLOR ).GetColorValue(),
-                    std::min(nColorIndex, nColorCount-1),
+                    nColorCount ? std::min(nColorIndex, nColorCount-1) : nColorIndex,
                     dBrightness );
-                rObj.SetMergedItem( XFillColorItem( "", aFillColor ) );
+                rObj.SetMergedItem( XFillColorItem( u""_ustr, aFillColor ) );
             }
             break;
         }
@@ -2822,13 +2826,13 @@ void EnhancedCustomShape2d::AdaptObjColor(
                         candidate.getStopOffset(),
                         GetColorData(
                             Color(candidate.getStopColor()),
-                            std::min(nColorIndex, nColorCount-1),
+                            nColorCount ? std::min(nColorIndex, nColorCount-1) : nColorIndex,
                             dBrightness ).getBColor());
                 }
                 aBGradient.SetColorStops(aColorStops);
             }
 
-            rObj.SetMergedItem( XFillGradientItem( "", aBGradient ) );
+            rObj.SetMergedItem( XFillGradientItem( u""_ustr, aBGradient ) );
             break;
         }
         case drawing::FillStyle_HATCH:
@@ -2840,11 +2844,11 @@ void EnhancedCustomShape2d::AdaptObjColor(
                 aXHatch.SetColor(
                     GetColorData(
                         aXHatch.GetColor(),
-                        std::min(nColorIndex, nColorCount-1),
+                        nColorCount ? std::min(nColorIndex, nColorCount-1) : nColorIndex,
                         dBrightness ));
             }
 
-            rObj.SetMergedItem( XFillHatchItem( "", aXHatch ) );
+            rObj.SetMergedItem( XFillHatchItem( u""_ustr, aXHatch ) );
             break;
         }
         case drawing::FillStyle_BITMAP:
@@ -2854,7 +2858,7 @@ void EnhancedCustomShape2d::AdaptObjColor(
                 BitmapEx aBitmap(rObj.GetMergedItem(XATTR_FILLBITMAP).GetGraphicObject().GetGraphic().GetBitmapEx());
 
                 short nLuminancePercent = static_cast< short > ( GetLuminanceChange(
-                        std::min(nColorIndex, nColorCount-1)));
+                        nColorCount ? std::min(nColorIndex, nColorCount-1) : nColorIndex));
                 aBitmap.Adjust( nLuminancePercent, 0, 0, 0, 0 );
 
                 rObj.SetMergedItem(XFillBitmapItem(OUString(), Graphic(aBitmap)));
@@ -3037,19 +3041,59 @@ rtl::Reference<SdrObject> EnhancedCustomShape2d::CreateObject( bool bLineGeometr
     return pRet;
 }
 
-void EnhancedCustomShape2d::ApplyGluePoints( SdrObject* pObj )
+/** Set the stylesheet immediately after creation, to avoid unnecessary stylesheet adding and removing. */
+rtl::Reference<SdrObject> EnhancedCustomShape2d::CreateObject( bool bLineGeometryNeededOnly, SfxStyleSheet* pNewStyleSheet )
+{
+    rtl::Reference<SdrObject> pRet;
+
+    if ( m_eSpType == mso_sptRectangle )
+    {
+        pRet = new SdrRectObj(mrSdrObjCustomShape.getSdrModelFromSdrObject(), m_aLogicRect);
+        pRet->NbcSetStyleSheet(pNewStyleSheet, true);
+        pRet->SetMergedItemSet( *this );
+    }
+    else
+    {
+        pRet = CreatePathObj( bLineGeometryNeededOnly );
+        if (pRet)
+            pRet->NbcSetStyleSheet(pNewStyleSheet, true);
+    }
+
+    return pRet;
+}
+
+static SdrEscapeDirection lcl_GetEscapeDirection(sal_Int32 nDirection)
+{
+    switch (nDirection)
+    {
+        case 1:  return SdrEscapeDirection::LEFT;
+        case 2:  return SdrEscapeDirection::RIGHT;
+        case 3:  return SdrEscapeDirection::TOP;
+        case 4:  return SdrEscapeDirection::BOTTOM;
+        default: return SdrEscapeDirection::SMART;
+    }
+}
+
+void EnhancedCustomShape2d::ApplyGluePoints(SdrObject* pObj)
 {
     if ( !pObj )
         return;
 
-    for ( const auto& rGluePoint : std::as_const(m_seqGluePoints) )
+    SdrEscapeDirection aDirection = SdrEscapeDirection::SMART;
+    for (size_t i = 0; i < m_seqGluePoints.size(); i++)
     {
-        SdrGluePoint aGluePoint;
+        EnhancedCustomShapeParameterPair aGluePointPair = m_seqGluePoints[i];
+        if (m_seqGluePointLeavingDirections.hasElements())
+        {
+            sal_Int32 aGluePointLeavingDirection = m_seqGluePointLeavingDirections[i];
+            aDirection = lcl_GetEscapeDirection(aGluePointLeavingDirection);
+        }
 
-        aGluePoint.SetPos( GetPoint( rGluePoint, !m_bOOXMLShape, true ) );
+        SdrGluePoint aGluePoint;
+        aGluePoint.SetPos( GetPoint( aGluePointPair, !m_bOOXMLShape, true ) );
         aGluePoint.SetPercent( false );
         aGluePoint.SetAlign( SdrAlign::VERT_TOP | SdrAlign::HORZ_LEFT );
-        aGluePoint.SetEscDir( SdrEscapeDirection::SMART );
+        aGluePoint.SetEscDir( aDirection );
         SdrGluePointList* pList = pObj->ForceGluePointList();
         if( pList )
             /* sal_uInt16 nId = */ pList->Insert( aGluePoint );

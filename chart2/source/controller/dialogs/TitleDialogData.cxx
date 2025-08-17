@@ -21,7 +21,6 @@
 
 #include <TitleDialogData.hxx>
 #include <TitleHelper.hxx>
-#include <ChartModelHelper.hxx>
 #include <Diagram.hxx>
 #include <AxisHelper.hxx>
 #include <ChartModel.hxx>
@@ -29,7 +28,6 @@
 namespace chart
 {
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 
 TitleDialogData::TitleDialogData( std::optional<ReferenceSizeProvider> pRefSizeProvider )
         : aPossibilityList{ true, true, true, true, true, true, true }
@@ -100,7 +98,7 @@ bool TitleDialogData::writeDifferenceToModel(
                 TitleHelper::getTitle( static_cast< TitleHelper::eTitleType >( nN ), xChartModel ) );
             if(xTitle.is())
             {
-                TitleHelper::setCompleteString( aTextList[nN], xTitle, xContext );
+                TitleHelper::setCompleteString( aTextList[nN], xTitle, xContext, nullptr, true );
                 bChanged = true;
             }
         }

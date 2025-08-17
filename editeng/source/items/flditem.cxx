@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <utility>
 #include <vcl/metaact.hxx>
@@ -30,6 +31,7 @@
 #include <editeng/unonames.hxx>
 
 #include <tools/debug.hxx>
+#include <libxml/xmlwriter.h>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/XTextContent.hpp>
@@ -264,14 +266,11 @@ bool SvxFieldData::operator==( const SvxFieldData& rFld ) const
 }
 
 
-MetaAction* SvxFieldData::createBeginComment() const
+void SvxFieldData::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
-    return new MetaCommentAction( "FIELD_SEQ_BEGIN"_ostr );
-}
-
-MetaAction* SvxFieldData::createEndComment()
-{
-    return new MetaCommentAction( "FIELD_SEQ_END"_ostr );
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SvxFieldData"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("classId"), BAD_CAST(OString::number(GetClassId()).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
 }
 
 
@@ -316,6 +315,14 @@ bool SvxFieldItem::operator==( const SfxPoolItem& rItem ) const
             && ( *mpField == *pOtherFld );
 }
 
+void SvxFieldItem::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SvxFieldItem"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("whichId"), BAD_CAST(OString::number(Which()).getStr()));
+    if (mpField)
+        mpField->dumpAsXml(pWriter);
+    (void)xmlTextWriterEndElement(pWriter);
+}
 
 // The following are the derivatives of SvxFieldData ...
 
@@ -426,11 +433,6 @@ OUString SvxDateField::GetFormatted( Date const & aDate, SvxDateFormat eFormat, 
     return aStr;
 }
 
-MetaAction* SvxDateField::createBeginComment() const
-{
-    return new MetaCommentAction( "FIELD_SEQ_BEGIN"_ostr );
-}
-
 SvxURLField::SvxURLField()
 {
     eFormat = SvxURLFormat::Url;
@@ -463,14 +465,17 @@ bool SvxURLField::operator==( const SvxFieldData& rOther ) const
 }
 
 
-MetaAction* SvxURLField::createBeginComment() const
+void SvxURLField::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
-    // #i46618# Adding target URL to metafile comment
-    return new MetaCommentAction( "FIELD_SEQ_BEGIN"_ostr,
-                                  0,
-                                  reinterpret_cast<const sal_uInt8*>(aURL.getStr()),
-                                  2*aURL.getLength() );
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SvxURLField"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("classId"), BAD_CAST(OString::number(GetClassId()).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("format"), BAD_CAST(OString::number(static_cast<int>(eFormat)).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("url"), BAD_CAST(aURL.toUtf8().getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("representation"), BAD_CAST(aRepresentation.toUtf8().getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("targetFrame"), BAD_CAST(aTargetFrame.toUtf8().getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
 }
+
 
 //
 // SvxPageTitleField methods
@@ -486,11 +491,6 @@ std::unique_ptr<SvxFieldData> SvxPageTitleField::Clone() const
 bool SvxPageTitleField::operator==( const SvxFieldData& rCmp ) const
 {
     return ( dynamic_cast< const SvxPageTitleField *>(&rCmp) != nullptr );
-}
-
-MetaAction* SvxPageTitleField::createBeginComment() const
-{
-    return new MetaCommentAction( "FIELD_SEQ_BEGIN;PageTitleField"_ostr );
 }
 
 //
@@ -510,12 +510,6 @@ bool SvxPageField::operator==( const SvxFieldData& rCmp ) const
 {
     return ( dynamic_cast< const SvxPageField *>(&rCmp) != nullptr );
 }
-
-MetaAction* SvxPageField::createBeginComment() const
-{
-    return new MetaCommentAction( "FIELD_SEQ_BEGIN;PageField"_ostr );
-}
-
 
 SvxPagesField::SvxPagesField() {}
 
@@ -539,11 +533,6 @@ std::unique_ptr<SvxFieldData> SvxTimeField::Clone() const
 bool SvxTimeField::operator==( const SvxFieldData& rCmp ) const
 {
     return ( dynamic_cast< const SvxTimeField *>(&rCmp) != nullptr);
-}
-
-MetaAction* SvxTimeField::createBeginComment() const
-{
-    return new MetaCommentAction( "FIELD_SEQ_BEGIN"_ostr );
 }
 
 SvxFileField::SvxFileField() {}
@@ -620,11 +609,8 @@ bool SvxExtTimeField::operator==( const SvxFieldData& rOther ) const
 
 OUString SvxExtTimeField::GetFormatted( SvNumberFormatter& rFormatter, LanguageType eLang ) const
 {
-    tools::Time aTime( tools::Time::EMPTY );
-    if ( eType == SvxTimeType::Fix )
-        aTime.SetTime(m_nFixTime);
-    else
-        aTime = tools::Time( tools::Time::SYSTEM ); // current time
+    tools::Time aTime(eType == SvxTimeType::Fix ? tools::Time::fromEncodedTime(m_nFixTime)
+                                                : tools::Time(tools::Time::SYSTEM)); // current time
     return GetFormatted( aTime, eFormat, rFormatter, eLang );
 }
 
@@ -653,7 +639,7 @@ OUString SvxExtTimeField::GetFormatted( tools::Time const & aTime, SvxTimeFormat
         case SvxTimeFormat::HH12_MM_SS_00:
         {
             // no builtin format available, try to insert or reuse
-            OUString aFormatCode( "HH:MM:SS.00 AM/PM" );
+            OUString aFormatCode( u"HH:MM:SS.00 AM/PM"_ustr );
             sal_Int32 nCheckPos;
             SvNumFormatType nType;
             rFormatter.PutandConvertEntry( aFormatCode, nCheckPos, nType,
@@ -688,12 +674,6 @@ OUString SvxExtTimeField::GetFormatted( tools::Time const & aTime, SvxTimeFormat
     rFormatter.GetOutputString( fFracTime, nFormatKey, aStr, &pColor );
     return aStr;
 }
-
-MetaAction* SvxExtTimeField::createBeginComment() const
-{
-    return new MetaCommentAction( "FIELD_SEQ_BEGIN"_ostr );
-}
-
 
 //      SvxExtFileField
 

@@ -23,6 +23,7 @@
 
 #include <hlinettp.hxx>
 #include <hlmarkwn_def.hxx>
+#include <com/sun/star/datatransfer/UnsupportedFlavorException.hpp>
 
 
 /*************************************************************************
@@ -33,11 +34,11 @@
 SvxHyperlinkInternetTp::SvxHyperlinkInternetTp(weld::Container* pParent,
                                                SvxHpLinkDlg* pDlg,
                                                const SfxItemSet* pItemSet)
-    : SvxHyperlinkTabPageBase(pParent, pDlg, "cui/ui/hyperlinkinternetpage.ui", "HyperlinkInternetPage",
+    : SvxHyperlinkTabPageBase(pParent, pDlg, u"cui/ui/hyperlinkinternetpage.ui"_ustr, u"HyperlinkInternetPage"_ustr,
                               pItemSet)
     , m_bMarkWndOpen(false)
-    , m_xCbbTarget(new SvxHyperURLBox(xBuilder->weld_combo_box("target")))
-    , m_xFtTarget(xBuilder->weld_label("target_label"))
+    , m_xCbbTarget(new SvxHyperURLBox(xBuilder->weld_combo_box(u"target"_ustr)))
+    , m_xFtTarget(xBuilder->weld_label(u"target_label"_ustr))
 {
     // gtk_size_group_set_ignore_hidden, "Measuring the size of hidden widgets
     // ...  they will report a size of 0 nowadays, and thus, their size will
@@ -72,8 +73,42 @@ SvxHyperlinkInternetTp::~SvxHyperlinkInternetTp()
 |************************************************************************/
 void SvxHyperlinkInternetTp::FillDlgFields(const OUString& rStrURL)
 {
-    INetURLObject aURL(rStrURL);
-    OUString aStrScheme(GetSchemeFromURL(rStrURL));
+    // tdf#146576 - propose clipboard content when inserting a hyperlink
+    OUString aStrURL(rStrURL);
+    if (aStrURL.isEmpty())
+    {
+        if (auto xClipboard = GetSystemClipboard())
+        {
+            if (auto xTransferable = xClipboard->getContents())
+            {
+                css::datatransfer::DataFlavor aFlavor;
+                SotExchange::GetFormatDataFlavor(SotClipboardFormatId::STRING, aFlavor);
+                if (xTransferable->isDataFlavorSupported(aFlavor))
+                {
+                    OUString aClipBoardContent;
+                    try
+                    {
+                        if (xTransferable->getTransferData(aFlavor) >>= aClipBoardContent)
+                        {
+                            // tdf#162753 - allow only syntactically valid hyperlink targets
+                            INetURLObject aURL(o3tl::trim(aClipBoardContent));
+                            if (!aURL.HasError())
+                                aStrURL
+                                    = aURL.GetMainURL(INetURLObject::DecodeMechanism::Unambiguous);
+                        }
+                    }
+                    // tdf#158345: Opening Hyperlink dialog leads to crash
+                    // MimeType = "text/plain;charset=utf-16"
+                    catch (const css::datatransfer::UnsupportedFlavorException&)
+                    {
+                    }
+                }
+            }
+        }
+    }
+
+    INetURLObject aURL(aStrURL);
+    OUString aStrScheme(GetSchemeFromURL(aStrURL));
 
     // set URL-field
     // Show the scheme, #72740
@@ -92,11 +127,10 @@ void SvxHyperlinkInternetTp::FillDlgFields(const OUString& rStrURL)
 |************************************************************************/
 
 void SvxHyperlinkInternetTp::GetCurrentItemData ( OUString& rStrURL, OUString& aStrName,
-                                                 OUString& aStrIntName, OUString& aStrFrame,
-                                                 SvxLinkInsertMode& eMode )
+                                                 OUString& aStrIntName, SvxLinkInsertMode& eMode )
 {
     rStrURL = CreateAbsoluteURL();
-    GetDataFromCommonFields( aStrName, aStrIntName, aStrFrame, eMode );
+    GetDataFromCommonFields( aStrName, aStrIntName, eMode );
 }
 
 OUString SvxHyperlinkInternetTp::CreateAbsoluteURL() const

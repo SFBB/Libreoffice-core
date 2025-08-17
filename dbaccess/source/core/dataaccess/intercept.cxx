@@ -28,13 +28,11 @@ namespace dbaccess
 {
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::ucb;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::embed;
 using namespace ::com::sun::star::container;
 using namespace ::comphelper;
 using namespace ::cppu;
@@ -65,12 +63,12 @@ void OInterceptor::dispose()
 
 OInterceptor::OInterceptor( ODocumentDefinition* _pContentHolder )
     :m_pContentHolder( _pContentHolder )
-    ,m_aInterceptedURL{ /* DISPATCH_SAVEAS     */ ".uno:SaveAs",
-                        /* DISPATCH_SAVE       */ ".uno:Save",
-                        /* DISPATCH_CLOSEDOC   */ ".uno:CloseDoc",
-                        /* DISPATCH_CLOSEWIN   */ ".uno:CloseWin",
-                        /* DISPATCH_CLOSEFRAME */ ".uno:CloseFrame",
-                        /* DISPATCH_RELOAD     */ ".uno:Reload" }
+    ,m_aInterceptedURL{ /* DISPATCH_SAVEAS     */ u".uno:SaveAs"_ustr,
+                        /* DISPATCH_SAVE       */ u".uno:Save"_ustr,
+                        /* DISPATCH_CLOSEDOC   */ u".uno:CloseDoc"_ustr,
+                        /* DISPATCH_CLOSEWIN   */ u".uno:CloseWin"_ustr,
+                        /* DISPATCH_CLOSEFRAME */ u".uno:CloseFrame"_ustr,
+                        /* DISPATCH_RELOAD     */ u".uno:Reload"_ustr }
 {
     OSL_ENSURE(DISPATCH_RELOAD < m_aInterceptedURL.getLength(),"Illegal size.");
 }
@@ -142,7 +140,7 @@ void SAL_CALL OInterceptor::dispatch( const URL& URL,const Sequence<PropertyValu
                 pNewArgs[nInd].Value <<= true;
             }
 
-            Reference< XDispatch > xDispatch = m_xSlaveDispatchProvider->queryDispatch(URL, "_self", 0 );
+            Reference< XDispatch > xDispatch = m_xSlaveDispatchProvider->queryDispatch(URL, u"_self"_ustr, 0 );
             if ( xDispatch.is() )
                 xDispatch->dispatch( URL, aNewArgs );
         }
@@ -169,7 +167,7 @@ IMPL_LINK( OInterceptor, OnDispatch, void*, _pDispatcher, void )
     {
         if ( m_pContentHolder && m_pContentHolder->prepareClose() && m_xSlaveDispatchProvider.is() )
         {
-            Reference< XDispatch > xDispatch = m_xSlaveDispatchProvider->queryDispatch(pHelper->aURL, "_self", 0 );
+            Reference< XDispatch > xDispatch = m_xSlaveDispatchProvider->queryDispatch(pHelper->aURL, u"_self"_ustr, 0 );
             if ( xDispatch.is() )
             {
                 Reference< XInterface > xKeepContentHolderAlive( *m_pContentHolder );
@@ -201,7 +199,7 @@ void SAL_CALL OInterceptor::addStatusListener(
             aStateEvent.FeatureDescriptor = "SaveCopyTo";
             aStateEvent.IsEnabled = true;
             aStateEvent.Requery = false;
-            aStateEvent.State <<= OUString("($3)");
+            aStateEvent.State <<= u"($3)"_ustr;
             Control->statusChanged(aStateEvent);
         }
 
@@ -287,13 +285,9 @@ Sequence< OUString > SAL_CALL OInterceptor::getInterceptedURLs(  )
 Reference< XDispatch > SAL_CALL OInterceptor::queryDispatch( const URL& URL,const OUString& TargetFrameName,sal_Int32 SearchFlags )
 {
     osl::MutexGuard aGuard(m_aMutex);
-    const OUString* pIter = m_aInterceptedURL.getConstArray();
-    const OUString* pEnd   = pIter + m_aInterceptedURL.getLength();
-    for(;pIter != pEnd;++pIter)
-    {
-        if ( URL.Complete == *pIter )
+    for (auto& interceptedUrl : m_aInterceptedURL)
+        if (URL.Complete == interceptedUrl)
             return static_cast<XDispatch*>(this);
-    }
 
     if(m_xSlaveDispatchProvider.is())
         return m_xSlaveDispatchProvider->queryDispatch(URL,TargetFrameName,SearchFlags);
@@ -312,11 +306,9 @@ Sequence< Reference< XDispatch > > SAL_CALL OInterceptor::queryDispatches(  cons
     auto aRetRange = asNonConstRange(aRet);
     for(sal_Int32 i = 0; i < Requests.getLength(); ++i)
     {
-        const OUString* pIter = m_aInterceptedURL.getConstArray();
-        const OUString* pEnd   = pIter + m_aInterceptedURL.getLength();
-        for(;pIter != pEnd;++pIter)
+        for (auto& interceptedUrl : m_aInterceptedURL)
         {
-            if ( Requests[i].FeatureURL.Complete == *pIter )
+            if (Requests[i].FeatureURL.Complete == interceptedUrl)
             {
                 aRetRange[i] = static_cast<XDispatch*>(this);
                 break;

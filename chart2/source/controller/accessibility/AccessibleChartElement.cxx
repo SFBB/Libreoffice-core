@@ -24,24 +24,17 @@
 #include <ChartController.hxx>
 #include <ObjectIdentifier.hxx>
 #include <ObjectNameProvider.hxx>
-#include <servicenames.hxx>
 
 #include <com/sun/star/awt/XDevice.hpp>
 #include <com/sun/star/chart2/XTitle.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/view/XSelectionSupplier.hpp>
-
-#include <comphelper/diagnose_ex.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
 using ::com::sun::star::uno::UNO_QUERY;
 using ::com::sun::star::uno::Reference;
-using ::com::sun::star::uno::Sequence;
 
 namespace chart
 {
@@ -49,7 +42,7 @@ namespace chart
 AccessibleChartElement::AccessibleChartElement(
     const AccessibleElementInfo & rAccInfo,
     bool bMayHaveChildren ) :
-        impl::AccessibleChartElement_Base( rAccInfo, bMayHaveChildren, false/*bAlwaysTransparent*/ ),
+        AccessibleBase(rAccInfo, bMayHaveChildren, false/*bAlwaysTransparent*/),
         m_bHasText( false )
 {
     AddState( AccessibleStateType::TRANSIENT );
@@ -57,7 +50,7 @@ AccessibleChartElement::AccessibleChartElement(
 
 AccessibleChartElement::~AccessibleChartElement()
 {
-    OSL_ASSERT( CheckDisposeState( false /* don't throw exceptions */ ) );
+    OSL_ASSERT(!isAlive());
 }
 
 // ________ protected ________
@@ -95,7 +88,7 @@ void AccessibleChartElement::InitTextEdit()
     if( !m_xTextHelper.is())
         return;
 
-    m_xTextHelper->initialize( GetInfo().m_aOID.getObjectCID(), this, GetInfo().m_xWindow );
+    m_xTextHelper->initialize(GetInfo().m_aOID.getObjectCID(), this, GetInfo().m_pWindow);
 }
 
 //             Interfaces
@@ -125,12 +118,6 @@ sal_Int64 AccessibleChartElement::ImplGetAccessibleChildCount() const
     return AccessibleBase::ImplGetAccessibleChildCount();
 }
 
-// ________ XServiceInfo ________
-OUString SAL_CALL AccessibleChartElement::getImplementationName()
-{
-    return "AccessibleChartElement";
-}
-
 // ________ AccessibleChartElement::XAccessibleContext (override) ________
 OUString SAL_CALL AccessibleChartElement::getAccessibleName()
 {
@@ -145,83 +132,13 @@ OUString SAL_CALL AccessibleChartElement::getAccessibleDescription()
 }
 
 // ________ AccessibleChartElement::XAccessibleExtendedComponent ________
-Reference< awt::XFont > SAL_CALL AccessibleChartElement::getFont()
-{
-    CheckDisposeState();
-
-    Reference< awt::XFont > xFont;
-    Reference< awt::XDevice > xDevice( Reference< awt::XWindow >( GetInfo().m_xWindow ), uno::UNO_QUERY );
-
-    if( xDevice.is())
-    {
-        Reference< beans::XMultiPropertySet > xObjProp(
-            ObjectIdentifier::getObjectPropertySet(
-                GetInfo().m_aOID.getObjectCID(), GetInfo().m_xChartDocument ), uno::UNO_QUERY );
-        awt::FontDescriptor aDescr(
-            CharacterProperties::createFontDescriptorFromPropertySet( xObjProp ));
-        xFont = xDevice->getFont( aDescr );
-    }
-
-    return xFont;
-}
-
-OUString SAL_CALL AccessibleChartElement::getTitledBorderText()
-{
-    return OUString();
-}
 
 OUString SAL_CALL AccessibleChartElement::getToolTipText()
 {
-    CheckDisposeState();
+    ensureAlive();
 
     return ObjectNameProvider::getHelpText(
         GetInfo().m_aOID.getObjectCID(), GetInfo().m_xChartDocument );
-}
-
-// ________ XAccessibleComponent ________
-sal_Bool SAL_CALL AccessibleChartElement::containsPoint( const awt::Point& aPoint )
-{
-    return AccessibleBase::containsPoint( aPoint );
-}
-
-Reference< XAccessible > SAL_CALL AccessibleChartElement::getAccessibleAtPoint( const awt::Point& aPoint )
-{
-    return AccessibleBase::getAccessibleAtPoint( aPoint );
-}
-
-awt::Rectangle SAL_CALL AccessibleChartElement::getBounds()
-{
-    return AccessibleBase::getBounds();
-}
-
-awt::Point SAL_CALL AccessibleChartElement::getLocation()
-{
-    return AccessibleBase::getLocation();
-}
-
-awt::Point SAL_CALL AccessibleChartElement::getLocationOnScreen()
-{
-    return AccessibleBase::getLocationOnScreen();
-}
-
-awt::Size SAL_CALL AccessibleChartElement::getSize()
-{
-    return AccessibleBase::getSize();
-}
-
-void SAL_CALL AccessibleChartElement::grabFocus()
-{
-    return AccessibleBase::grabFocus();
-}
-
-sal_Int32 SAL_CALL AccessibleChartElement::getForeground()
-{
-    return AccessibleBase::getForeground();
-}
-
-sal_Int32 SAL_CALL AccessibleChartElement::getBackground()
-{
-    return AccessibleBase::getBackground();
 }
 
 } // namespace chart

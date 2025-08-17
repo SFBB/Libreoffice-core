@@ -84,7 +84,7 @@ protected:
 
 protected:
 
-    virtual void            GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const = 0;
+    virtual void            GetPropNameArray( const char* const*& ppNames, sal_uLong& rCount ) const = 0;
     virtual bool            ReadData( const css::uno::Any* pValues ) = 0;
     virtual bool            WriteData( css::uno::Any* pValues ) const = 0;
 
@@ -103,79 +103,6 @@ public:
     void                    Store();
 
     static bool             isMetricSystem();
-};
-
-class SD_DLLPUBLIC SdOptionsLayout : public SdOptionsGeneric
-{
-private:
-
-    bool    bRuler; // Layout/Display/Ruler
-    bool    bMoveOutline;   // Layout/Display/Contour
-    bool    bDragStripes;   // Layout/Display/Guide
-    bool    bHandlesBezier; // Layout/Display/Bezier
-    bool    bHelplines; // Layout/Display/Helpline
-    sal_uInt16  nMetric;                    // Layout/Other/MeasureUnit
-    sal_uInt16  nDefTab;                    // Layout/Other/TabStop
-
-protected:
-
-    virtual void GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const override;
-    virtual bool ReadData( const css::uno::Any* pValues ) override;
-    virtual bool WriteData( css::uno::Any* pValues ) const override;
-
-public:
-            SdOptionsLayout(bool bImpress, bool bUseConfig);
-
-    bool    operator==( const SdOptionsLayout& rOpt ) const;
-
-    bool    IsRulerVisible() const { Init(); return bRuler; }
-    bool    IsMoveOutline() const { Init(); return bMoveOutline; }
-    bool    IsDragStripes() const { Init(); return bDragStripes; }
-    bool    IsHandlesBezier() const { Init(); return bHandlesBezier; }
-    bool    IsHelplines() const { Init(); return bHelplines; }
-    sal_uInt16  GetMetric() const { Init(); return( ( 0xffff == nMetric ) ? static_cast<sal_uInt16>(SfxModule::GetCurrentFieldUnit()) : nMetric ); }
-    sal_uInt16  GetDefTab() const { Init(); return nDefTab; }
-
-    void    SetRulerVisible( bool bOn ) { if( bRuler != bOn ) { OptionsChanged(); bRuler = bOn; } }
-    void    SetMoveOutline( bool bOn ) { if( bMoveOutline != bOn ) { OptionsChanged(); bMoveOutline = bOn; } }
-    void    SetDragStripes( bool bOn ) { if( bDragStripes != bOn ) { OptionsChanged(); bDragStripes = bOn; } }
-    void    SetHandlesBezier( bool bOn ) { if( bHandlesBezier != bOn ) { OptionsChanged(); bHandlesBezier = bOn; } }
-    void    SetHelplines( bool bOn ) { if( bHelplines != bOn ) { OptionsChanged(); bHelplines = bOn; } }
-    void    SetMetric( sal_uInt16 nInMetric ) { if( nMetric != nInMetric ) { OptionsChanged(); nMetric = nInMetric; } }
-    void    SetDefTab( sal_uInt16 nTab ) { if( nDefTab != nTab ) { OptionsChanged(); nDefTab = nTab; } }
-};
-
-class SD_DLLPUBLIC SdOptionsLayoutItem final : public SfxPoolItem
-{
-public:
-
-                            explicit SdOptionsLayoutItem();
-                            SdOptionsLayoutItem( SdOptions const * pOpts, ::sd::FrameView const * pView );
-
-    virtual SdOptionsLayoutItem* Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual bool            operator==( const SfxPoolItem& ) const override;
-
-    void                    SetOptions( SdOptions* pOpts ) const;
-
-    SdOptionsLayout&        GetOptionsLayout() { return maOptionsLayout; }
-private:
-    SdOptionsLayout maOptionsLayout;
-};
-
-class SdOptionsContents : public SdOptionsGeneric
-{
-private:
-protected:
-
-    virtual void GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const override;
-    virtual bool ReadData( const css::uno::Any* pValues ) override;
-    virtual bool WriteData( css::uno::Any* pValues ) const override;
-
-public:
-
-            SdOptionsContents(bool bImpress);
-
-    bool    operator==( const SdOptionsContents& rOpt ) const;
 };
 
 class SD_DLLPUBLIC SdOptionsMisc : public SdOptionsGeneric
@@ -225,7 +152,7 @@ private:
 
 protected:
 
-    virtual void GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const override;
+    virtual void GetPropNameArray( const char* const*& ppNames, sal_uLong& rCount ) const override;
     virtual bool ReadData( const css::uno::Any* pValues ) override;
     virtual bool WriteData( css::uno::Any* pValues ) const override;
 
@@ -313,6 +240,7 @@ class SD_DLLPUBLIC SdOptionsMiscItem final : public SfxPoolItem
 {
 public:
 
+                            DECLARE_ITEM_TYPE_FUNCTION(SdOptionsMiscItem)
                             explicit SdOptionsMiscItem();
                             SdOptionsMiscItem( SdOptions const * pOpts, ::sd::FrameView const * pView );
 
@@ -327,99 +255,11 @@ private:
     SdOptionsMisc           maOptionsMisc;
 };
 
-class SD_DLLPUBLIC SdOptionsSnap : public SdOptionsGeneric
-{
-private:
-
-    bool    bSnapHelplines  : 1;    // Snap/Object/SnapLine
-    bool    bSnapBorder     : 1;    // Snap/Object/PageMargin
-    bool    bSnapFrame      : 1;    // Snap/Object/ObjectFrame
-    bool    bSnapPoints     : 1;    // Snap/Object/ObjectPoint
-    bool    bOrtho          : 1;    // Snap/Position/CreatingMoving
-    bool    bBigOrtho       : 1;    // Snap/Position/ExtendEdges
-    bool    bRotate         : 1;    // Snap/Position/Rotating
-    sal_Int16   nSnapArea;              // Snap/Object/Range
-    Degree100   nAngle;                 // Snap/Position/RotatingValue
-    Degree100   nBezAngle;              // Snap/Position/PointReduction
-
-protected:
-
-    virtual void GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const override;
-    virtual bool ReadData( const css::uno::Any* pValues ) override;
-    virtual bool WriteData( css::uno::Any* pValues ) const override;
-
-public:
-
-            SdOptionsSnap(bool bImpress, bool bUseConfig);
-
-    bool    operator==( const SdOptionsSnap& rOpt ) const;
-
-    bool    IsSnapHelplines() const { Init(); return bSnapHelplines; }
-    bool    IsSnapBorder() const { Init(); return bSnapBorder; }
-    bool    IsSnapFrame() const { Init(); return bSnapFrame; }
-    bool    IsSnapPoints() const { Init(); return bSnapPoints; }
-    bool    IsOrtho() const { Init(); return bOrtho; }
-    bool    IsBigOrtho() const { Init(); return bBigOrtho; }
-    bool    IsRotate() const { Init(); return bRotate; }
-    sal_Int16   GetSnapArea() const { Init(); return nSnapArea; }
-    Degree100   GetAngle() const { Init(); return nAngle; }
-    Degree100   GetEliminatePolyPointLimitAngle() const { Init(); return nBezAngle; }
-
-    void    SetSnapHelplines( bool bOn ) { if( bSnapHelplines != bOn ) { OptionsChanged(); bSnapHelplines = bOn; } }
-    void    SetSnapBorder( bool bOn ) { if( bSnapBorder != bOn ) { OptionsChanged(); bSnapBorder = bOn; } }
-    void    SetSnapFrame( bool bOn ) { if( bSnapFrame != bOn ) { OptionsChanged(); bSnapFrame = bOn; } }
-    void    SetSnapPoints( bool bOn ) { if( bSnapPoints != bOn ) { OptionsChanged(); bSnapPoints = bOn; } }
-    void    SetOrtho( bool bOn ) { if( bOrtho != bOn ) { OptionsChanged(); bOrtho = bOn; } }
-    void    SetBigOrtho( bool bOn ) { if( bBigOrtho != bOn ) { OptionsChanged(); bBigOrtho = bOn; } }
-    void    SetRotate( bool bOn ) { if( bRotate != bOn ) { OptionsChanged(); bRotate = bOn; } }
-    void    SetSnapArea( sal_Int16 nIn ) { if( nSnapArea != nIn ) { OptionsChanged(); nSnapArea = nIn; } }
-    void    SetAngle( Degree100 nIn ) { if( nAngle != nIn ) { OptionsChanged(); nAngle = nIn; } }
-    void    SetEliminatePolyPointLimitAngle( Degree100 nIn ) { if( nBezAngle != nIn ) { OptionsChanged(); nBezAngle = nIn; } }
-};
-
-class SD_DLLPUBLIC SdOptionsSnapItem final : public SfxPoolItem
-{
-public:
-
-                            explicit SdOptionsSnapItem();
-                            SdOptionsSnapItem( SdOptions const * pOpts, ::sd::FrameView const * pView );
-
-    virtual SdOptionsSnapItem* Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual bool            operator==( const SfxPoolItem& ) const override;
-
-    void                    SetOptions( SdOptions* pOpts ) const;
-
-    SdOptionsSnap&          GetOptionsSnap() { return maOptionsSnap; }
-private:
-    SdOptionsSnap           maOptionsSnap;
-};
-
-class SdOptionsZoom : public SdOptionsGeneric
-{
-private:
-
-    sal_Int32   nX; // Zoom/ScaleX
-    sal_Int32   nY; // Zoom/ScaleY
-
-protected:
-
-    virtual void GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const override;
-    virtual bool ReadData( const css::uno::Any* pValues ) override;
-    virtual bool WriteData( css::uno::Any* pValues ) const override;
-
-public:
-
-    explicit SdOptionsZoom(bool bImpress);
-
-    void    GetScale( sal_Int32& rX, sal_Int32& rY ) const { Init(); rX = nX; rY = nY; }
-    void    SetScale( sal_Int32 nInX, sal_Int32 nInY ) { if( nX != nInX || nY != nInY ) { OptionsChanged(); nX = nInX; nY = nInY; } }
-};
-
 class SdOptionsGrid : public SdOptionsGeneric, public SvxOptionsGrid
 {
 protected:
 
-    virtual void GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const override;
+    virtual void GetPropNameArray( const char* const*& ppNames, sal_uLong& rCount ) const override;
     virtual bool ReadData( const css::uno::Any* pValues ) override;
     virtual bool WriteData( css::uno::Any* pValues ) const override;
 
@@ -453,6 +293,7 @@ class SdOptionsGridItem final : public SvxGridItem
 {
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SdOptionsGridItem)
     explicit                SdOptionsGridItem( SdOptions const * pOpts );
 
     void                    SetOptions( SdOptions* pOpts ) const;
@@ -486,7 +327,7 @@ private:
 
 protected:
 
-    virtual void GetPropNameArray( const char**& ppNames, sal_uLong& rCount ) const override;
+    virtual void GetPropNameArray( const char* const*& ppNames, sal_uLong& rCount ) const override;
     virtual bool ReadData( const css::uno::Any* pValues ) override;
     virtual bool WriteData( css::uno::Any* pValues ) const override;
 
@@ -545,6 +386,7 @@ class SD_DLLPUBLIC SdOptionsPrintItem final : public SfxPoolItem
 {
 public:
 
+                            DECLARE_ITEM_TYPE_FUNCTION(SdOptionsPrintItem)
                             explicit SdOptionsPrintItem();
     explicit                SdOptionsPrintItem( SdOptions const * pOpts );
 
@@ -559,9 +401,9 @@ private:
     SdOptionsPrint  maOptionsPrint;
 };
 
-class SdOptions final : public SdOptionsLayout, public SdOptionsContents,
-                  public SdOptionsMisc, public SdOptionsSnap,
-                  public SdOptionsZoom, public SdOptionsGrid,
+class SdOptions final :
+                  public SdOptionsMisc,
+                  public SdOptionsGrid,
                   public SdOptionsPrint
 {
 public:

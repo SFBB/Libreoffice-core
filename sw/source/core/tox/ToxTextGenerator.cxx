@@ -154,31 +154,31 @@ ToxTextGenerator::GenerateTextForChapterToken(const SwFormToken& chapterToken, c
     //---> #i89791#
     // continue to support CF_NUMBER and CF_NUM_TITLE in order to handle ODF 1.0/1.1 written by OOo 3.x
     // in the same way as OOo 2.x would handle them.
-    if (CF_NUM_NOPREPST_TITLE == chapterToken.nChapterFormat || CF_NUMBER == chapterToken.nChapterFormat) {
+    if (SwChapterFormat::NumberNoPrePostAndTitle == chapterToken.nChapterFormat || SwChapterFormat::Number == chapterToken.nChapterFormat) {
         retval += aField.GetNumber(pLayout); // get the string number without pre/postfix
     }
-    else if (CF_NUMBER_NOPREPST == chapterToken.nChapterFormat || CF_NUM_TITLE == chapterToken.nChapterFormat) {
+    else if (SwChapterFormat::NumberNoPrePost == chapterToken.nChapterFormat || SwChapterFormat::NumberAndTitle == chapterToken.nChapterFormat) {
         retval += aField.GetNumber(pLayout) + " " + aField.GetTitle(pLayout);
-    } else if (CF_TITLE == chapterToken.nChapterFormat) {
+    } else if (SwChapterFormat::Title == chapterToken.nChapterFormat) {
         retval += aField.GetTitle(pLayout);
     }
     return retval;
 }
 
-// Add parameter <_TOXSectNdIdx> and <_pDefaultPageDesc> in order to control,
-// which page description is used, no appropriate one is found.
-void
-ToxTextGenerator::GenerateText(SwDoc* pDoc,
+std::optional<std::pair<SwTextNode *, SvxTabStopItem>>
+ToxTextGenerator::GenerateText(SwDoc& rDoc,
         std::unordered_map<OUString, int> & rMarkURLs,
         const std::vector<std::unique_ptr<SwTOXSortTabBase>> &entries,
         sal_uInt16 indexOfEntryToProcess, sal_uInt16 numberOfEntriesToProcess,
         SwRootFrame const*const pLayout)
 {
+    std::optional<std::pair<SwTextNode *, SvxTabStopItem>> oRet;
     // pTOXNd is only set at the first mark
     SwTextNode* pTOXNd = const_cast<SwTextNode*>(entries.at(indexOfEntryToProcess)->pTOXNd);
     // FIXME this operates directly on the node text
     OUString & rText = const_cast<OUString&>(pTOXNd->GetText());
     rText.clear();
+    OUString sAltText;
     for(sal_uInt16 nIndex = indexOfEntryToProcess; nIndex < indexOfEntryToProcess + numberOfEntriesToProcess; nIndex++)
     {
         if(nIndex > indexOfEntryToProcess)
@@ -188,7 +188,7 @@ ToxTextGenerator::GenerateText(SwDoc* pDoc,
         sal_uInt16 nLvl = rBase.GetLevel();
         OSL_ENSURE( nLvl < mToxForm.GetFormMax(), "invalid FORM_LEVEL");
 
-        SvxTabStopItem aTStops( 0, 0, SvxTabAdjust::Default, RES_PARATR_TABSTOP );
+        oRet.emplace(pTOXNd, SvxTabStopItem(0, 0, SvxTabAdjust::Default, RES_PARATR_TABSTOP));
         // create an enumerator
         // #i21237#
         SwFormTokens aPattern = mToxForm.GetPattern(nLvl);
@@ -197,7 +197,7 @@ ToxTextGenerator::GenerateText(SwDoc* pDoc,
         {
             const auto& aToken = aPattern[i];
             sal_Int32 nStartCharStyle = rText.getLength();
-            OUString aCharStyleName = aToken.sCharStyleName;
+            UIName aCharStyleName = aToken.sCharStyleName;
             switch( aToken.eTokenType )
             {
             case TOKEN_ENTRY_NO:
@@ -206,31 +206,35 @@ ToxTextGenerator::GenerateText(SwDoc* pDoc,
                 // is the entry text: it can also be e.g. a tab, or the entry number can be used
                 // in page number area like "2-15" for chapter 2, page 15.
                 rText += GetNumStringOfFirstNode(rBase,
-                    aToken.nChapterFormat == CF_NUMBER,
+                    aToken.nChapterFormat == SwChapterFormat::Number,
                     static_cast<sal_uInt8>(aToken.nOutlineLevel - 1), pLayout,
                     i < aPattern.size() - 1 && aPattern[i + 1].eTokenType == TOKEN_ENTRY_TEXT);
                 break;
 
-            case TOKEN_ENTRY_TEXT: {
-                HandledTextToken htt = HandleTextToken(rBase, pDoc->GetAttrPool(), pLayout);
+            case TOKEN_ENTRY_TEXT:
+            {
+                HandledTextToken htt = HandleTextToken(rBase, rDoc.GetAttrPool(), pLayout);
                 ApplyHandledTextToken(htt, *pTOXNd);
+                sAltText += htt.text;
             }
-                break;
+            break;
 
             case TOKEN_ENTRY:
-                {
-                    // for TOC numbering
-                    rText += GetNumStringOfFirstNode(rBase, true, MAXLEVEL, pLayout);
-                    HandledTextToken htt = HandleTextToken(rBase, pDoc->GetAttrPool(), pLayout);
-                    ApplyHandledTextToken(htt, *pTOXNd);
-                }
-                break;
+            {
+                // for TOC numbering
+                rText += GetNumStringOfFirstNode(rBase, true, MAXLEVEL, pLayout);
+                HandledTextToken htt = HandleTextToken(rBase, rDoc.GetAttrPool(), pLayout);
+                ApplyHandledTextToken(htt, *pTOXNd);
+                sAltText += htt.text;
+            }
+            break;
 
-            case TOKEN_TAB_STOP: {
+            case TOKEN_TAB_STOP:
+            {
                 ToxTabStopTokenHandler::HandledTabStopToken htst =
-                        mTabStopTokenHandler->HandleTabStopToken(aToken, *pTOXNd, pDoc->getIDocumentLayoutAccess().GetCurrentLayout());
+                    mTabStopTokenHandler->HandleTabStopToken(aToken, *pTOXNd);
                 rText += htst.text;
-                aTStops.Insert(htst.tabStop);
+                oRet->second.Insert(htst.tabStop);
                 break;
             }
 
@@ -248,6 +252,7 @@ ToxTextGenerator::GenerateText(SwDoc* pDoc,
 
             case TOKEN_LINK_START:
                 mLinkProcessor->StartNewLink(rText.getLength(), aToken.sCharStyleName);
+                sAltText = "";
                 break;
 
             case TOKEN_LINK_END:
@@ -260,7 +265,7 @@ ToxTextGenerator::GenerateText(SwDoc* pDoc,
                         ++iter->second;
                         url = "#" + OUString::number(iter->second) + url;
                     }
-                    mLinkProcessor->CloseLink(rText.getLength(), url, /*bRelative=*/true);
+                    mLinkProcessor->CloseLink(rText.getLength(), url, sAltText, /*bRelative=*/true);
                 }
                 break;
 
@@ -270,7 +275,7 @@ ToxTextGenerator::GenerateText(SwDoc* pDoc,
                     SwContentIndex aIdx( pTOXNd, rText.getLength() );
                     if (eField == ToxAuthorityField::AUTH_FIELD_URL)
                     {
-                        aCharStyleName = SwResId(STR_POOLCHR_INET_NORMAL);
+                        aCharStyleName = UIName(SwResId(STR_POOLCHR_INET_NORMAL));
                         mLinkProcessor->StartNewLink(rText.getLength(), aCharStyleName);
                     }
                     rBase.FillText( *pTOXNd, aIdx, o3tl::narrowing<sal_uInt16>(eField), pLayout );
@@ -281,7 +286,7 @@ ToxTextGenerator::GenerateText(SwDoc* pDoc,
                         OUString aURL = SwTOXAuthority::GetSourceURL(
                             rAuthority.GetText(AUTH_FIELD_URL, pLayout));
 
-                        mLinkProcessor->CloseLink(rText.getLength(), aURL, /*bRelative=*/false);
+                        mLinkProcessor->CloseLink(rText.getLength(), aURL, sAltText, /*bRelative=*/false);
                     }
                 }
                 break;
@@ -292,9 +297,9 @@ ToxTextGenerator::GenerateText(SwDoc* pDoc,
             {
                 SwCharFormat* pCharFormat;
                 if( USHRT_MAX != aToken.nPoolId )
-                    pCharFormat = pDoc->getIDocumentStylePoolAccess().GetCharFormatFromPool( aToken.nPoolId );
+                    pCharFormat = rDoc.getIDocumentStylePoolAccess().GetCharFormatFromPool( aToken.nPoolId );
                 else
-                    pCharFormat = pDoc->FindCharFormatByName(aCharStyleName);
+                    pCharFormat = rDoc.FindCharFormatByName(aCharStyleName);
 
                 if (pCharFormat)
                 {
@@ -304,10 +309,9 @@ ToxTextGenerator::GenerateText(SwDoc* pDoc,
                 }
             }
         }
-
-        pTOXNd->SetAttr( aTStops );
     }
     mLinkProcessor->InsertLinkAttributes(*pTOXNd);
+    return oRet;
 }
 
 /*static*/ std::shared_ptr<SfxItemSet>

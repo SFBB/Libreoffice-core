@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_SLIDER_HXX
-#define INCLUDED_VCL_SLIDER_HXX
+#pragma once
 
 #include <vcl/ctrl.hxx>
 
@@ -50,7 +49,6 @@ private:
 
     using Control::ImplInitSettings;
     using Window::ImplInit;
-    void ImplInit( vcl::Window* pParent, WinBits nStyle );
     void ImplInitSettings();
     void ImplUpdateRects( bool bUpdate = true );
     tools::Long ImplCalcThumbPos( tools::Long nPixPos ) const;
@@ -95,7 +93,5 @@ public:
 
     void            SetSlideHdl( const Link<Slider*,void>& rLink ) { maSlideHdl = rLink; }
 };
-
-#endif // INCLUDED_VCL_SLIDER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

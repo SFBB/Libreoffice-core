@@ -28,16 +28,21 @@
 #include <functional>
 #include <utility>
 
-
-#define GCM_PROPERTY_ID_POS_X               1
-#define GCM_PROPERTY_ID_POS_Y               2
-#define GCM_PROPERTY_ID_WIDTH               3
-#define GCM_PROPERTY_ID_HEIGHT              4
-#define GCM_PROPERTY_ID_NAME                5
-#define GCM_PROPERTY_ID_TABINDEX            6
-#define GCM_PROPERTY_ID_STEP                7
-#define GCM_PROPERTY_ID_TAG                 8
-#define GCM_PROPERTY_ID_RESOURCERESOLVER    9
+namespace
+{
+    enum GcmPropertyId : sal_Int32
+    {
+        GCM_PROPERTY_ID_POS_X            = 1,
+        GCM_PROPERTY_ID_POS_Y            = 2,
+        GCM_PROPERTY_ID_WIDTH            = 3,
+        GCM_PROPERTY_ID_HEIGHT           = 4,
+        GCM_PROPERTY_ID_NAME             = 5,
+        GCM_PROPERTY_ID_TABINDEX         = 6,
+        GCM_PROPERTY_ID_STEP             = 7,
+        GCM_PROPERTY_ID_TAG              = 8,
+        GCM_PROPERTY_ID_RESOURCERESOLVER = 9
+    };
+}
 
 constexpr OUStringLiteral GCM_PROPERTY_POS_X = u"PositionX";
 constexpr OUStringLiteral GCM_PROPERTY_POS_Y = u"PositionY";
@@ -424,8 +429,7 @@ constexpr OUStringLiteral GCM_PROPERTY_RESOURCERESOLVER = u"ResourceResolver";
         OGCM_Base::disposing();
         OPropertySetAggregationHelper::disposing();
 
-        Reference<XComponent>  xComp;
-        if ( query_aggregation( m_xAggregate, xComp ) )
+        if (auto xComp = query_aggregation<XComponent>(m_xAggregate))
             xComp->dispose();
     }
 
@@ -531,7 +535,7 @@ constexpr OUStringLiteral GCM_PROPERTY_RESOURCERESOLVER = u"ResourceResolver";
         );
 
         // now loop through our own props
-        for ( const Property& rProp : std::as_const(aProps) )
+        for (const Property& rProp : aProps)
         {
             // look for the current property in the properties of our aggregate
             const Property* pAggPropPos = ::std::find_if( std::cbegin(aAggregateProps), std::cend(aAggregateProps), PropertyNameEqual( rProp.Name ) );

@@ -37,14 +37,11 @@
 #include <unordered_map>
 
 using namespace com::sun::star::uno;
-using namespace com::sun::star::io;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::container;
 using namespace com::sun::star::beans;
-using namespace com::sun::star::embed;
 using namespace ::com::sun::star::ui;
 using namespace ::com::sun::star::frame;
-using namespace framework;
 
 namespace {
 
@@ -61,7 +58,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.ModuleUIConfigurationManagerSupplier";
+        return u"com.sun.star.comp.framework.ModuleUIConfigurationManagerSupplier"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -71,7 +68,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.ui.ModuleUIConfigurationManagerSupplier"};
+        return {u"com.sun.star.ui.ModuleUIConfigurationManagerSupplier"_ustr};
     }
 
     // XModuleUIConfigurationManagerSupplier
@@ -144,7 +141,7 @@ Reference< XUIConfigurationManager > SAL_CALL ModuleUIConfigurationManagerSuppli
         {
             Sequence< PropertyValue > lProps;
             m_xModuleMgr->getByName(sModuleIdentifier) >>= lProps;
-            for (PropertyValue const & rProp : std::as_const(lProps))
+            for (PropertyValue const& rProp : lProps)
             {
                 if ( rProp.Name == "ooSetupFactoryShortName" )
                 {

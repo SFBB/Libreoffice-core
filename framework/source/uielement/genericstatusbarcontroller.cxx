@@ -30,10 +30,8 @@
 #include <com/sun/star/awt/XGraphics2.hpp>
 #include <com/sun/star/graphic/GraphicType.hpp>
 
-using namespace ::cppu;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::frame;
 
 namespace framework
@@ -103,7 +101,7 @@ void SAL_CALL GenericStatusbarController::statusChanged(
     }
     else if ( ( rEvent.State >>= aGraphic ) && m_bOwnerDraw )
     {
-        m_xGraphic = aGraphic;
+        m_xGraphic = std::move(aGraphic);
     }
 
     // when the status is updated, and the controller is responsible for
@@ -131,7 +129,7 @@ void SAL_CALL GenericStatusbarController::paint(
     if ( xGraphicProps.is() && m_xGraphic->getType() != graphic::GraphicType::EMPTY )
     {
         awt::Size aGraphicSize;
-        xGraphicProps->getPropertyValue( "SizePixel" ) >>= aGraphicSize;
+        xGraphicProps->getPropertyValue( u"SizePixel"_ustr ) >>= aGraphicSize;
         OSL_ENSURE( aGraphicSize.Height > 0 && aGraphicSize.Width > 0, "Empty status bar graphic!" );
 
         sal_Int32 nOffset = m_xStatusbarItem->getOffset( );

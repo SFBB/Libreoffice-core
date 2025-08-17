@@ -20,16 +20,16 @@
 #ifndef INCLUDED_FRAMEWORK_TITLEHELPER_HXX
 #define INCLUDED_FRAMEWORK_TITLEHELPER_HXX
 
+#include <config_options.h>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/frame/XTitle.hpp>
 #include <com/sun/star/frame/XTitleChangeBroadcaster.hpp>
 #include <com/sun/star/frame/XFrameActionListener.hpp>
 #include <com/sun/star/document/XDocumentEventListener.hpp>
 
-#include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/weakref.hxx>
-#include <cppuhelper/implbase.hxx>
-#include <comphelper/multicontainer2.hxx>
+#include <comphelper/compbase.hxx>
+#include <comphelper/interfacecontainer4.hxx>
 
 #include <rtl/ustrbuf.hxx>
 
@@ -50,8 +50,8 @@ namespace framework{
 
     @threadsafe
  */
-class FWK_DLLPUBLIC TitleHelper final : private ::cppu::BaseMutex
-                  , public  ::cppu::WeakImplHelper< css::frame::XTitle                 ,
+class UNLESS_MERGELIBS_MORE(FWK_DLLPUBLIC) TitleHelper final :
+                  public  ::comphelper::WeakImplHelper< css::frame::XTitle                 ,
                                                      css::frame::XTitleChangeBroadcaster,
                                                      css::frame::XTitleChangeListener   ,
                                                      css::frame::XFrameActionListener   ,
@@ -131,16 +131,16 @@ class FWK_DLLPUBLIC TitleHelper final : private ::cppu::BaseMutex
         void impl_startListeningForFrame (const css::uno::Reference< css::frame::XFrame >& xFrame);
         void impl_updateListeningForFrame (const css::uno::Reference< css::frame::XFrame >& xFrame);
 
-        void impl_appendComponentTitle (      OUStringBuffer&                       sTitle    ,
+        static void impl_appendComponentTitle (      OUStringBuffer&                       sTitle    ,
                                         const css::uno::Reference< css::uno::XInterface >& xComponent);
-        void impl_appendProductName (OUStringBuffer& sTitle);
+        static void impl_appendProductName (OUStringBuffer& sTitle);
         void impl_appendModuleName (OUStringBuffer& sTitle);
-        void impl_appendDebugVersion (OUStringBuffer& sTitle);
-        void impl_appendSafeMode (OUStringBuffer& sTitle);
+        static void impl_appendDebugVersion (OUStringBuffer& sTitle);
+        static void impl_appendSafeMode (OUStringBuffer& sTitle);
 
         void impl_setSubTitle (const css::uno::Reference< css::frame::XTitle >& xSubTitle);
 
-        OUString impl_convertURL2Title(std::u16string_view sURL);
+        static OUString impl_convertURL2Title(std::u16string_view sURL);
 
 
     // member
@@ -171,7 +171,7 @@ class FWK_DLLPUBLIC TitleHelper final : private ::cppu::BaseMutex
         ::sal_Int32 m_nLeasedNumber;
 
         /** contains all title change listener */
-        comphelper::OMultiTypeInterfaceContainerHelper2 m_aListener;
+        comphelper::OInterfaceContainerHelper4<css::frame::XTitleChangeListener> m_aTitleChangeListeners;
 };
 
 } // namespace framework

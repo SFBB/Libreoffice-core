@@ -54,7 +54,6 @@ using namespace dbaui;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::accessibility;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 
 #define LINE_SIZE           50
@@ -96,7 +95,7 @@ void OScrollWindowHelper::dispose()
 {
     m_aHScrollBar.disposeAndClear();
     m_aVScrollBar.disposeAndClear();
-    m_pTableView.clear();
+    m_pTableView.reset();
     vcl::Window::dispose();
 }
 
@@ -185,11 +184,11 @@ void OJoinTableView::dispose()
     }
     // delete lists
     clearLayoutInformation();
-    m_pDragWin.clear();
-    m_pSizingWin.clear();
-    m_pSelectedConn.clear();
-    m_pLastFocusTabWin.clear();
-    m_pView.clear();
+    m_pDragWin.reset();
+    m_pSizingWin.reset();
+    m_pSelectedConn.reset();
+    m_pLastFocusTabWin.reset();
+    m_pView.reset();
     m_vTableConnection.clear();
     vcl::Window::dispose();
 }
@@ -256,9 +255,9 @@ bool OJoinTableView::RemoveConnection(VclPtr<OTableConnection>& rConn, bool _bDe
 
     modified();
     if ( m_pAccessible )
-        m_pAccessible->notifyAccessibleEvent(   AccessibleEventId::CHILD,
-                                                Any(xConn->GetAccessible()),
-                                                Any());
+        m_pAccessible->notifyAccessibleEvent(
+            AccessibleEventId::CHILD, Any(css::uno::Reference<XAccessible>(xConn->GetAccessible())),
+            Any());
     if (_bDelete)
         xConn->disposeOnce();
 
@@ -323,9 +322,9 @@ void OJoinTableView::AddTabWin(const OUString& _rComposedName, const OUString& r
     VclPtr<OTableWindow> pNewTabWin = createWindow( pNewTabWinData );
     if ( pNewTabWin->Init() )
     {
-        m_pView->getController().getTableWindowData().push_back( pNewTabWinData);
+        m_pView->getController().getTableWindowData().push_back(std::move(pNewTabWinData));
         // when we already have a table with this name insert the full qualified one instead
-        if(m_aTableMap.find(rWinName) != m_aTableMap.end())
+        if(m_aTableMap.contains(rWinName))
             m_aTableMap[_rComposedName] = pNewTabWin;
         else
             m_aTableMap[rWinName] = pNewTabWin;
@@ -335,9 +334,9 @@ void OJoinTableView::AddTabWin(const OUString& _rComposedName, const OUString& r
 
         modified();
         if ( m_pAccessible )
-            m_pAccessible->notifyAccessibleEvent(   AccessibleEventId::CHILD,
-                                                    Any(),
-                                                    Any(pNewTabWin->GetAccessible()));
+            m_pAccessible->notifyAccessibleEvent(
+                AccessibleEventId::CHILD, Any(),
+                Any(css::uno::Reference<XAccessible>(pNewTabWin->GetAccessible())));
     }
     else
     {
@@ -372,9 +371,9 @@ void OJoinTableView::RemoveTabWin( OTableWindow* pTabWin )
     if ( bRemove )
     {
         if ( m_pAccessible )
-            m_pAccessible->notifyAccessibleEvent(   AccessibleEventId::CHILD,
-                                                    Any(pTabWin->GetAccessible()),Any()
-                                                    );
+            m_pAccessible->notifyAccessibleEvent(
+                AccessibleEventId::CHILD,
+                Any(css::uno::Reference<XAccessible>(pTabWin->GetAccessible())), Any());
 
         pTabWin->Hide();
         OJoinController& rController = m_pView->getController();
@@ -492,7 +491,7 @@ bool OJoinTableView::isMovementAllowed(const Point& _rPoint,const Size& _rSize)
 void OJoinTableView::EnsureVisible(const OTableWindow* _pWin)
 {
     // data about the tab win
-    TTableWindowData::value_type pData = _pWin->GetData();
+    const TTableWindowData::value_type& pData = _pWin->GetData();
     EnsureVisible( pData->GetPosition() , pData->GetSize());
     Invalidate(InvalidateFlags::NoChildren);
 }
@@ -1120,8 +1119,8 @@ void OJoinTableView::executePopup(const Point& rPos, VclPtr<OTableConnection>& r
 {
     ::tools::Rectangle aRect(rPos, Size(1, 1));
     weld::Window* pPopupParent = weld::GetPopupParent(*this, aRect);
-    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "dbaccess/ui/joinviewmenu.ui"));
-    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"dbaccess/ui/joinviewmenu.ui"_ustr));
+    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
     OUString sIdent = xContextMenu->popup_at_rect(pPopupParent, aRect);
     if (sIdent == "delete")
         RemoveConnection(rSelConnection, true);
@@ -1513,7 +1512,7 @@ void OJoinTableView::GetFocus()
         GrabTabWinFocus();
 }
 
-Reference< XAccessible > OJoinTableView::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> OJoinTableView::CreateAccessible()
 {
     m_pAccessible = new OJoinDesignViewAccess(this);
     return m_pAccessible;
@@ -1543,9 +1542,9 @@ void OJoinTableView::addConnection(OTableConnection* _pConnection,bool _bAddData
 
     modified();
     if ( m_pAccessible )
-        m_pAccessible->notifyAccessibleEvent(   AccessibleEventId::CHILD,
-                                                Any(),
-                                                Any(_pConnection->GetAccessible()));
+        m_pAccessible->notifyAccessibleEvent(
+            AccessibleEventId::CHILD, Any(),
+            Any(css::uno::Reference<XAccessible>(_pConnection->GetAccessible())));
 }
 
 bool OJoinTableView::allowQueries() const

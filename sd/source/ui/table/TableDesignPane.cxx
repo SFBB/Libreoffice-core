@@ -66,6 +66,7 @@
 #include <ViewShell.hxx>
 #include <ViewShellBase.hxx>
 #include <EventMultiplexer.hxx>
+#include <DrawController.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -76,7 +77,6 @@ using namespace ::com::sun::star::view;
 using namespace ::com::sun::star::style;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::ui;
 
 namespace sd {
 
@@ -101,9 +101,9 @@ constexpr std::u16string_view aTableStyleBaseName = u"table";
 
 TableDesignWidget::TableDesignWidget(weld::Builder& rBuilder, ViewShellBase& rBase)
     : mrBase(rBase)
-    , m_xMenu(rBuilder.weld_menu("menu"))
-    , m_xValueSet(new TableValueSet(rBuilder.weld_scrolled_window("previewswin", true)))
-    , m_xValueSetWin(new weld::CustomWeld(rBuilder, "previews", *m_xValueSet))
+    , m_xMenu(rBuilder.weld_menu(u"menu"_ustr))
+    , m_xValueSet(new TableValueSet(rBuilder.weld_scrolled_window(u"previewswin"_ustr, true)))
+    , m_xValueSetWin(new weld::CustomWeld(rBuilder, u"previews"_ustr, *m_xValueSet))
 {
     m_xValueSet->SetStyle(m_xValueSet->GetStyle() | WB_NO_DIRECTSELECT | WB_FLATVALUESET | WB_ITEMBORDER);
     m_xValueSet->SetExtraSpacing(8);
@@ -121,14 +121,17 @@ TableDesignWidget::TableDesignWidget(weld::Builder& rBuilder, ViewShellBase& rBa
     // get current controller and initialize listeners
     try
     {
-        mxView.set(mrBase.GetController(), UNO_QUERY);
+        mxView = mrBase.GetDrawController();
         addListener();
 
-        Reference< XController > xController( mrBase.GetController(), UNO_SET_THROW );
-        Reference< XStyleFamiliesSupplier > xFamiliesSupp( xController->getModel(), UNO_QUERY_THROW );
-        Reference< XNameAccess > xFamilies( xFamiliesSupp->getStyleFamilies() );
-        mxTableFamily.set( xFamilies->getByName( "table" ), UNO_QUERY_THROW );
-        mxCellFamily.set( xFamilies->getByName( "cell" ), UNO_QUERY_THROW );
+        DrawController* pController = mrBase.GetDrawController();
+        if (pController)
+        {
+            Reference< XStyleFamiliesSupplier > xFamiliesSupp( pController->getModel(), UNO_QUERY_THROW );
+            Reference< XNameAccess > xFamilies( xFamiliesSupp->getStyleFamilies() );
+            mxTableFamily.set( xFamilies->getByName( u"table"_ustr ), UNO_QUERY_THROW );
+            mxCellFamily.set( xFamilies->getByName( u"cell"_ustr ), UNO_QUERY_THROW );
+        }
     }
     catch (const Exception&)
     {
@@ -171,18 +174,18 @@ IMPL_LINK(TableDesignWidget, implContextMenuHandler, const Point*, pPoint, void)
         {
             Reference<XStyle> xStyle(mxTableFamily->getByIndex(nClickedItemId - 1), UNO_QUERY_THROW);
 
-            m_xMenu->set_visible("clone", true);
-            m_xMenu->set_visible("format", true);
-            m_xMenu->set_visible("delete", xStyle->isUserDefined());
-            m_xMenu->set_visible("reset", !xStyle->isUserDefined());
-            m_xMenu->set_sensitive("reset", Reference<util::XModifiable>(xStyle, UNO_QUERY_THROW)->isModified());
+            m_xMenu->set_visible(u"clone"_ustr, true);
+            m_xMenu->set_visible(u"format"_ustr, true);
+            m_xMenu->set_visible(u"delete"_ustr, xStyle->isUserDefined());
+            m_xMenu->set_visible(u"reset"_ustr, !xStyle->isUserDefined());
+            m_xMenu->set_sensitive(u"reset"_ustr, Reference<util::XModifiable>(xStyle, UNO_QUERY_THROW)->isModified());
         }
         else
         {
-            m_xMenu->set_visible("clone", false);
-            m_xMenu->set_visible("format", false);
-            m_xMenu->set_visible("delete", false);
-            m_xMenu->set_visible("reset", false);
+            m_xMenu->set_visible(u"clone"_ustr, false);
+            m_xMenu->set_visible(u"format"_ustr, false);
+            m_xMenu->set_visible(u"delete"_ustr, false);
+            m_xMenu->set_visible(u"reset"_ustr, false);
         }
     }
     catch (Exception&)
@@ -232,15 +235,15 @@ void TableDesignWidget::InsertStyle()
         const OUString aName(getNewStyleName(xTableFamily, aTableStyleBaseName));
         xTableFamily->insertByName(aName, Any(xTableStyle));
 
-        Reference<XStyle> xCellStyle(mxCellFamily->getByName("default"), UNO_QUERY_THROW);
+        Reference<XStyle> xCellStyle(mxCellFamily->getByName(u"default"_ustr), UNO_QUERY_THROW);
 
-        xTableStyle->replaceByName("body", Any(xCellStyle));
-        xTableStyle->replaceByName("odd-rows" , Any(xCellStyle));
-        xTableStyle->replaceByName("odd-columns" , Any(xCellStyle));
-        xTableStyle->replaceByName("first-row" , Any(xCellStyle));
-        xTableStyle->replaceByName("first-column" , Any(xCellStyle));
-        xTableStyle->replaceByName("last-row" , Any(xCellStyle));
-        xTableStyle->replaceByName("last-column" , Any(xCellStyle));
+        xTableStyle->replaceByName(u"body"_ustr, Any(xCellStyle));
+        xTableStyle->replaceByName(u"odd-rows"_ustr , Any(xCellStyle));
+        xTableStyle->replaceByName(u"odd-columns"_ustr , Any(xCellStyle));
+        xTableStyle->replaceByName(u"first-row"_ustr , Any(xCellStyle));
+        xTableStyle->replaceByName(u"first-column"_ustr , Any(xCellStyle));
+        xTableStyle->replaceByName(u"last-row"_ustr , Any(xCellStyle));
+        xTableStyle->replaceByName(u"last-column"_ustr , Any(xCellStyle));
 
         updateControls();
         selectStyle(aName);
@@ -380,9 +383,13 @@ void TableDesignWidget::EditStyle(const OUString& rCommand)
         aBoxInfoItem.SetTable(false);
         aNewAttr.Put(aBoxInfoItem);
 
+        SdrView* pDrawView = mrBase.GetDrawView();
+        if (!pDrawView)
+            return;
+
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
         ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact ? pFact->CreateSvxFormatCellsDialog(
-            mrBase.GetFrameWeld(), aNewAttr, mrBase.GetDrawView()->GetModel(), true) : nullptr);
+            mrBase.GetFrameWeld(), aNewAttr, pDrawView->GetModel(), true) : nullptr);
         if (pDlg && pDlg->Execute() == RET_OK)
         {
             endTextEditForStyle(xTableStyle);
@@ -413,18 +420,24 @@ void TableDesignWidget::EditStyle(const OUString& rCommand)
 
 static SfxBindings* getBindings( ViewShellBase const & rBase )
 {
-    if( rBase.GetMainViewShell() && rBase.GetMainViewShell()->GetViewFrame() )
-        return &rBase.GetMainViewShell()->GetViewFrame()->GetBindings();
-    else
+    auto pViewShell = rBase.GetMainViewShell().get();
+    if( !pViewShell )
         return nullptr;
+    auto pViewFrame = pViewShell->GetViewFrame();
+    if( !pViewFrame )
+        return nullptr;
+    return &pViewFrame->GetBindings();
 }
 
 static SfxDispatcher* getDispatcher( ViewShellBase const & rBase )
 {
-    if( rBase.GetMainViewShell() && rBase.GetMainViewShell()->GetViewFrame() )
-        return rBase.GetMainViewShell()->GetViewFrame()->GetDispatcher();
-    else
+    auto pViewShell = rBase.GetMainViewShell().get();
+    if( !pViewShell )
         return nullptr;
+    auto pViewFrame = pViewShell->GetViewFrame();
+    if( !pViewFrame )
+        return nullptr;
+    return pViewFrame->GetDispatcher();
 }
 
 IMPL_LINK_NOARG(TableDesignWidget, implValueSetHdl, ValueSet*, void)
@@ -453,10 +466,9 @@ void TableDesignWidget::ApplyStyle()
         if( sStyleName.isEmpty() )
             return;
 
-        SdrView* pView = mrBase.GetDrawView();
         if( mxSelectedTable.is() )
         {
-            if( pView )
+            if (SdrView* pView = mrBase.GetDrawView())
             {
                 if (pView->IsTextEdit())
                     pView->SdrEndTextEdit();
@@ -540,8 +552,7 @@ void TableDesignWidget::onSelectionChanged()
 
     if( mxView.is() ) try
     {
-        Reference< XSelectionSupplier >  xSel( mxView, UNO_QUERY_THROW );
-        Any aSel( xSel->getSelection() );
+        Any aSel( mxView->getSelection() );
         Sequence< XShape > xShapeSeq;
         if( aSel >>= xShapeSeq )
         {
@@ -568,7 +579,7 @@ void TableDesignWidget::onSelectionChanged()
 
     if( mxSelectedTable != xNewSelection )
     {
-        mxSelectedTable = xNewSelection;
+        mxSelectedTable = std::move(xNewSelection);
         updateControls();
     }
 }
@@ -667,7 +678,7 @@ void TableDesignWidget::updateControls()
 
     if( mxSelectedTable.is() )
     {
-        Reference< XNamed > xNamed( mxSelectedTable->getPropertyValue( "TableTemplate" ), UNO_QUERY );
+        Reference< XNamed > xNamed( mxSelectedTable->getPropertyValue( u"TableTemplate"_ustr ), UNO_QUERY );
         if( xNamed.is() )
             selectStyle(xNamed->getName());
     }
@@ -690,12 +701,13 @@ void TableDesignWidget::endTextEditForStyle(const Reference<XInterface>& rStyle)
     if (!mxSelectedTable)
         return;
 
-    Reference<XInterface> xTableStyle(mxSelectedTable->getPropertyValue("TableTemplate"), UNO_QUERY);
+    Reference<XInterface> xTableStyle(mxSelectedTable->getPropertyValue(u"TableTemplate"_ustr), UNO_QUERY);
     if (xTableStyle != rStyle)
         return;
 
-    if (mrBase.GetDrawView()->IsTextEdit())
-        mrBase.GetDrawView()->SdrEndTextEdit();
+    SdrView* pDrawView = mrBase.GetDrawView();
+    if (pDrawView && pDrawView->IsTextEdit())
+        pDrawView->SdrEndTextEdit();
 }
 
 void TableDesignWidget::addListener()
@@ -726,7 +738,7 @@ IMPL_LINK(TableDesignWidget,EventMultiplexerListener,
             break;
 
         case EventMultiplexerEventId::MainViewAdded:
-            mxView.set( mrBase.GetController(), UNO_QUERY );
+            mxView = mrBase.GetDrawController();
             onSelectionChanged();
             break;
 
@@ -890,12 +902,12 @@ static void FillCellInfoMatrix( const CellInfoVector& rStyle, const TableStyleSe
                 xCellInfo = rStyle[sdr::table::body_style];
             }
 
-            rMatrix[(nCol * nPreviewColumns) + nRow] = xCellInfo;
+            rMatrix[(nCol * nPreviewColumns) + nRow] = std::move(xCellInfo);
         }
     }
 }
 
-static BitmapEx CreateDesignPreview( const Reference< XIndexAccess >& xTableStyle, const TableStyleSettings& rSettings, bool bIsPageDark )
+static Bitmap CreateDesignPreview( const Reference< XIndexAccess >& xTableStyle, const TableStyleSettings& rSettings, bool bIsPageDark )
 {
     CellInfoVector aCellInfoVector(sdr::table::style_count);
     FillCellInfoVector( xTableStyle, aCellInfoVector );
@@ -1006,7 +1018,7 @@ static BitmapEx CreateDesignPreview( const Reference< XIndexAccess >& xTableStyl
         }
     }
 
-    return pVirDev->GetBitmapEx(Point(0,0), aBmpSize);
+    return pVirDev->GetBitmap(Point(0,0), aBmpSize);
 }
 
 void TableDesignWidget::FillDesignPreviewControl()
@@ -1032,7 +1044,7 @@ void TableDesignWidget::FillDesignPreviewControl()
             Reference< XPropertySet > xPageSet( mxView->getCurrentPage(), UNO_QUERY );
             if( xPageSet.is() )
             {
-                xPageSet->getPropertyValue("IsBackgroundDark") >>= bIsPageDark;
+                xPageSet->getPropertyValue(u"IsBackgroundDark"_ustr) >>= bIsPageDark;
             }
         }
 

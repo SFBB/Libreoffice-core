@@ -478,12 +478,12 @@ void BrowseBox::Resize()
     pDataWin->bResizeOnPaint = false;
 
     // calc the size of the scrollbars
-    sal_uLong nSBHeight = GetBarHeight();
-    sal_uLong nSBWidth = GetSettings().GetStyleSettings().GetScrollBarSize();
+    tools::Long nSBHeight = GetBarHeight();
+    tools::Long nSBWidth = GetSettings().GetStyleSettings().GetScrollBarSize();
     if (IsZoom())
     {
-        nSBHeight = static_cast<sal_uLong>(nSBHeight * static_cast<double>(GetZoom()));
-        nSBWidth = static_cast<sal_uLong>(nSBWidth * static_cast<double>(GetZoom()));
+        nSBHeight = static_cast<tools::Long>(nSBHeight * static_cast<double>(GetZoom()));
+        nSBWidth = static_cast<tools::Long>(nSBWidth * static_cast<double>(GetZoom()));
     }
 
     DoHideCursor();
@@ -800,12 +800,12 @@ void BrowseBox::ImplPaintData(OutputDevice& _rOut, const tools::Rectangle& _rRec
     tools::Long nDataRowHeight = GetDataRowHeight();
 
     // compute relative rows to redraw
-    sal_uLong nRelTopRow = 0;
-    sal_uLong nRelBottomRow = aOverallAreaSize.Height();
+    sal_Int32 nRelTopRow = 0;
+    sal_Int32 nRelBottomRow = aOverallAreaSize.Height();
     if (!_bForeignDevice && nDataRowHeight)
     {
-        nRelTopRow = (static_cast<sal_uLong>(_rRect.Top()) / nDataRowHeight);
-        nRelBottomRow = static_cast<sal_uLong>(_rRect.Bottom()) / nDataRowHeight;
+        nRelTopRow = static_cast<sal_Int32>((_rRect.Top()) / nDataRowHeight);
+        nRelBottomRow = static_cast<sal_Int32>((_rRect.Bottom()) / nDataRowHeight);
     }
 
     // cache frequently used values
@@ -824,8 +824,8 @@ void BrowseBox::ImplPaintData(OutputDevice& _rOut, const tools::Rectangle& _rRec
     Color aDelimiterLineColor( ::svtools::ColorConfig().GetColorValue( ::svtools::CALCGRID ).nColor );
 
     // redraw the invalid fields
-    for ( sal_uLong nRelRow = nRelTopRow;
-          nRelRow <= nRelBottomRow && static_cast<sal_uLong>(nTopRow)+nRelRow < o3tl::make_unsigned(nRowCount);
+    for ( sal_Int32 nRelRow = nRelTopRow;
+          nRelRow <= nRelBottomRow && nTopRow+nRelRow < nRowCount;
           ++nRelRow, aPos.AdjustY(nDataRowHeight ) )
     {
         // get row
@@ -835,7 +835,7 @@ void BrowseBox::ImplPaintData(OutputDevice& _rOut, const tools::Rectangle& _rRec
             continue;
 
         // prepare row
-        sal_uLong nRow = nTopRow+nRelRow;
+        sal_Int32 nRow = nTopRow+nRelRow;
         if ( !SeekRow( nRow) ) {
             OSL_FAIL("BrowseBox::ImplPaintData: SeekRow failed");
         }
@@ -897,7 +897,7 @@ void BrowseBox::ImplPaintData(OutputDevice& _rOut, const tools::Rectangle& _rRec
                 _rOut.DrawRect( aFieldRect );
             }
 
-            if (!m_bFocusOnlyCursor && (pCol->GetId() == GetCurColumnId()) && (nRow == static_cast<sal_uLong>(GetCurRow())))
+            if (!m_bFocusOnlyCursor && (pCol->GetId() == GetCurColumnId()) && (nRow == GetCurRow()))
                 DrawCursor();
 
             // draw a single field.
@@ -1067,8 +1067,8 @@ void BrowseBox::UpdateScrollbars()
     m_nCornerWidth = GetSettings().GetStyleSettings().GetScrollBarSize();
     if (IsZoom())
     {
-        m_nCornerHeight = static_cast<sal_uLong>(m_nCornerHeight * static_cast<double>(GetZoom()));
-        m_nCornerWidth = static_cast<sal_uLong>(m_nCornerWidth * static_cast<double>(GetZoom()));
+        m_nCornerHeight = static_cast<tools::Long>(m_nCornerHeight * static_cast<double>(GetZoom()));
+        m_nCornerWidth = static_cast<tools::Long>(m_nCornerWidth * static_cast<double>(GetZoom()));
     }
 
     bool bNeedsVScroll = false;
@@ -1100,7 +1100,7 @@ void BrowseBox::UpdateScrollbars()
     }
 
     // needs HScroll?
-    sal_uLong nLastCol = GetColumnAtXPosPixel( aDataWinSize.Width() - 1 );
+    sal_uInt16 nLastCol = GetColumnAtXPosPixel( aDataWinSize.Width() - 1 );
 
     sal_uInt16 nFrozenCols = FrozenColCount();
     bool bNeedsHScroll =    pDataWin->bAutoHScroll
@@ -1124,7 +1124,7 @@ void BrowseBox::UpdateScrollbars()
     }
 
     // adjust position and Width of horizontal scrollbar
-    sal_uLong nHScrX = nControlAreaWidth == USHRT_MAX
+    tools::Long nHScrX = nControlAreaWidth == USHRT_MAX
         ? 0
         : nControlAreaWidth;
 
@@ -1657,65 +1657,110 @@ bool BrowseBox::ProcessKey( const KeyEvent& rEvt )
     bool       bCtrl = rEvt.GetKeyCode().IsMod1();
     bool       bAlt = rEvt.GetKeyCode().IsMod2();
 
-    sal_uInt16 nId = BROWSER_NONE;
+    BrowserDispatchId eId = BrowserDispatchId::NONE;
 
     if ( !bAlt && !bCtrl && !bShift )
     {
         switch ( nCode )
         {
-            case KEY_DOWN:          nId = BROWSER_CURSORDOWN; break;
-            case KEY_UP:            nId = BROWSER_CURSORUP; break;
-            case KEY_HOME:          nId = BROWSER_CURSORHOME; break;
-            case KEY_END:           nId = BROWSER_CURSOREND; break;
+            case KEY_DOWN:
+                eId = BrowserDispatchId::CURSORDOWN;
+                break;
+            case KEY_UP:
+                eId = BrowserDispatchId::CURSORUP;
+                break;
+            case KEY_HOME:
+                eId = BrowserDispatchId::CURSORHOME;
+                break;
+            case KEY_END:
+                eId = BrowserDispatchId::CURSOREND;
+                break;
             case KEY_TAB:
                 if ( !bColumnCursor )
                     break;
                 [[fallthrough]];
-            case KEY_RIGHT:         nId = BROWSER_CURSORRIGHT; break;
-            case KEY_LEFT:          nId = BROWSER_CURSORLEFT; break;
-            case KEY_SPACE:         nId = BROWSER_SELECT; break;
+            case KEY_RIGHT:
+                eId = BrowserDispatchId::CURSORRIGHT;
+                break;
+            case KEY_LEFT:
+                eId = BrowserDispatchId::CURSORLEFT;
+                break;
+            case KEY_SPACE:
+                eId = BrowserDispatchId::SELECT;
+                break;
         }
-        if ( BROWSER_NONE != nId )
+        if (BrowserDispatchId::NONE != eId)
             SetNoSelection();
 
         switch ( nCode )
         {
-            case KEY_PAGEDOWN:      nId = BROWSER_CURSORPAGEDOWN; break;
-            case KEY_PAGEUP:        nId = BROWSER_CURSORPAGEUP; break;
+            case KEY_PAGEDOWN:
+                eId = BrowserDispatchId::CURSORPAGEDOWN;
+                break;
+            case KEY_PAGEUP:
+                eId = BrowserDispatchId::CURSORPAGEUP;
+                break;
         }
     }
 
     if ( !bAlt && !bCtrl && bShift )
         switch ( nCode )
         {
-            case KEY_DOWN:          nId = BROWSER_SELECTDOWN; break;
-            case KEY_UP:            nId = BROWSER_SELECTUP; break;
+            case KEY_DOWN:
+                eId = BrowserDispatchId::SELECTDOWN;
+                break;
+            case KEY_UP:
+                eId = BrowserDispatchId::SELECTUP;
+                break;
             case KEY_TAB:
                 if ( !bColumnCursor )
                     break;
-                                    nId = BROWSER_CURSORLEFT; break;
-            case KEY_HOME:          nId = BROWSER_SELECTHOME; break;
-            case KEY_END:           nId = BROWSER_SELECTEND; break;
+                eId = BrowserDispatchId::CURSORLEFT;
+                break;
+            case KEY_HOME:
+                eId = BrowserDispatchId::SELECTHOME;
+                break;
+            case KEY_END:
+                eId = BrowserDispatchId::SELECTEND;
+                break;
         }
 
 
     if ( !bAlt && bCtrl && !bShift )
         switch ( nCode )
         {
-            case KEY_DOWN:          nId = BROWSER_CURSORDOWN; break;
-            case KEY_UP:            nId = BROWSER_CURSORUP; break;
-            case KEY_PAGEDOWN:      nId = BROWSER_CURSORENDOFFILE; break;
-            case KEY_PAGEUP:        nId = BROWSER_CURSORTOPOFFILE; break;
-            case KEY_HOME:          nId = BROWSER_CURSORTOPOFSCREEN; break;
-            case KEY_END:           nId = BROWSER_CURSORENDOFSCREEN; break;
-            case KEY_SPACE:         nId = BROWSER_ENHANCESELECTION; break;
-            case KEY_LEFT:          nId = BROWSER_MOVECOLUMNLEFT; break;
-            case KEY_RIGHT:         nId = BROWSER_MOVECOLUMNRIGHT; break;
+            case KEY_DOWN:
+                eId = BrowserDispatchId::CURSORDOWN;
+                break;
+            case KEY_UP:
+                eId = BrowserDispatchId::CURSORUP;
+                break;
+            case KEY_PAGEDOWN:
+                eId = BrowserDispatchId::CURSORENDOFFILE;
+                break;
+            case KEY_PAGEUP:
+                eId = BrowserDispatchId::CURSORTOPOFFILE;
+                break;
+            case KEY_HOME:
+                eId = BrowserDispatchId::CURSORTOPOFSCREEN;
+                break;
+            case KEY_END:
+                eId = BrowserDispatchId::CURSORENDOFSCREEN;
+                break;
+            case KEY_SPACE:
+                eId = BrowserDispatchId::ENHANCESELECTION;
+                break;
+            case KEY_LEFT:
+                eId = BrowserDispatchId::MOVECOLUMNLEFT;
+                break;
+            case KEY_RIGHT:
+                eId = BrowserDispatchId::MOVECOLUMNRIGHT;
+                break;
         }
 
-    if ( nId != BROWSER_NONE )
-        Dispatch( nId );
-    return nId != BROWSER_NONE;
+    if (eId != BrowserDispatchId::NONE)
+        Dispatch( eId );
+    return eId != BrowserDispatchId::NONE;
 }
 
 void BrowseBox::ChildFocusIn()
@@ -1726,27 +1771,27 @@ void BrowseBox::ChildFocusOut()
 {
 }
 
-void BrowseBox::Dispatch( sal_uInt16 nId )
+void BrowseBox::Dispatch(BrowserDispatchId eId)
 {
 
     tools::Long nRowsOnPage = pDataWin->GetSizePixel().Height() / GetDataRowHeight();
 
-    switch ( nId )
+    switch (eId)
     {
-        case BROWSER_SELECTCOLUMN:
+        case BrowserDispatchId::SELECTCOLUMN:
             if ( ColCount() )
                 SelectColumnId( GetCurColumnId() );
             break;
 
-        case BROWSER_CURSORDOWN:
+        case BrowserDispatchId::CURSORDOWN:
             if ( ( GetCurRow() + 1 ) < nRowCount )
                 GoToRow( GetCurRow() + 1, false );
             break;
-        case BROWSER_CURSORUP:
+        case BrowserDispatchId::CURSORUP:
             if ( GetCurRow() > 0 )
                 GoToRow( GetCurRow() - 1, false );
             break;
-        case BROWSER_SELECTHOME:
+        case BrowserDispatchId::SELECTHOME:
             if ( GetRowCount() )
             {
                 DoHideCursor();
@@ -1756,7 +1801,7 @@ void BrowseBox::Dispatch( sal_uInt16 nId )
                 DoShowCursor();
             }
             break;
-        case BROWSER_SELECTEND:
+        case BrowserDispatchId::SELECTEND:
             if ( GetRowCount() )
             {
                 DoHideCursor();
@@ -1767,7 +1812,7 @@ void BrowseBox::Dispatch( sal_uInt16 nId )
                 DoShowCursor();
             }
             break;
-        case BROWSER_SELECTDOWN:
+        case BrowserDispatchId::SELECTDOWN:
         {
             if ( GetRowCount() && ( GetCurRow() + 1 ) < nRowCount )
             {
@@ -1785,7 +1830,7 @@ void BrowseBox::Dispatch( sal_uInt16 nId )
                 ScrollRows( 1 );
             break;
         }
-        case BROWSER_SELECTUP:
+        case BrowserDispatchId::SELECTUP:
             if ( GetRowCount() )
             {
                 // deselect the current row, if it isn't the first
@@ -1799,13 +1844,13 @@ void BrowseBox::Dispatch( sal_uInt16 nId )
                     SelectRow( GetCurRow() );
             }
             break;
-        case BROWSER_CURSORPAGEDOWN:
+        case BrowserDispatchId::CURSORPAGEDOWN:
             ScrollRows( nRowsOnPage );
             break;
-        case BROWSER_CURSORPAGEUP:
+        case BrowserDispatchId::CURSORPAGEUP:
             ScrollRows( -nRowsOnPage );
             break;
-        case BROWSER_CURSOREND:
+        case BrowserDispatchId::CURSOREND:
             if ( bColumnCursor )
             {
                 sal_uInt16 nNewId = GetColumnId(ColCount() -1);
@@ -1813,10 +1858,10 @@ void BrowseBox::Dispatch( sal_uInt16 nId )
                 break;
             }
             [[fallthrough]];
-        case BROWSER_CURSORENDOFFILE:
+        case BrowserDispatchId::CURSORENDOFFILE:
             GoToRow( nRowCount - 1, false );
             break;
-        case BROWSER_CURSORRIGHT:
+        case BrowserDispatchId::CURSORRIGHT:
             if ( bColumnCursor )
             {
                 sal_uInt16 nNewPos = GetColumnPos( GetCurColumnId() ) + 1;
@@ -1842,7 +1887,7 @@ void BrowseBox::Dispatch( sal_uInt16 nId )
             else
                 ScrollColumns( 1 );
             break;
-        case BROWSER_CURSORHOME:
+        case BrowserDispatchId::CURSORHOME:
             if ( bColumnCursor )
             {
                 sal_uInt16 nNewId = GetColumnId(1);
@@ -1853,10 +1898,10 @@ void BrowseBox::Dispatch( sal_uInt16 nId )
                 break;
             }
             [[fallthrough]];
-        case BROWSER_CURSORTOPOFFILE:
+        case BrowserDispatchId::CURSORTOPOFFILE:
             GoToRow( 0, false );
             break;
-        case BROWSER_CURSORLEFT:
+        case BrowserDispatchId::CURSORLEFT:
             if ( bColumnCursor )
             {
                 sal_uInt16 nNewPos = GetColumnPos( GetCurColumnId() ) - 1;
@@ -1879,16 +1924,16 @@ void BrowseBox::Dispatch( sal_uInt16 nId )
             else
                 ScrollColumns( -1 );
             break;
-        case BROWSER_ENHANCESELECTION:
+        case BrowserDispatchId::ENHANCESELECTION:
             if ( GetRowCount() )
                 SelectRow( GetCurRow(), !IsRowSelected( GetCurRow() ) );
             break;
-        case BROWSER_SELECT:
+        case BrowserDispatchId::SELECT:
             if ( GetRowCount() )
                 SelectRow( GetCurRow(), !IsRowSelected( GetCurRow() ), false );
             break;
-        case BROWSER_MOVECOLUMNLEFT:
-        case BROWSER_MOVECOLUMNRIGHT:
+        case BrowserDispatchId::MOVECOLUMNLEFT:
+        case BrowserDispatchId::MOVECOLUMNRIGHT:
             { // check if column moving is allowed
                 BrowserHeader* pHeaderBar = pDataWin->pHeaderBar;
                 if ( pHeaderBar && pHeaderBar->IsDragable() )
@@ -1897,12 +1942,12 @@ void BrowseBox::Dispatch( sal_uInt16 nId )
                     bool bColumnSelected = IsColumnSelected(nColId);
                     sal_uInt16 nNewPos = GetColumnPos(nColId);
                     bool bMoveAllowed = false;
-                    if ( BROWSER_MOVECOLUMNLEFT == nId && nNewPos > 1 )
+                    if (BrowserDispatchId::MOVECOLUMNLEFT == eId && nNewPos > 1)
                     {
                         --nNewPos;
                         bMoveAllowed = true;
                     }
-                    else if ( BROWSER_MOVECOLUMNRIGHT == nId && nNewPos < (ColCount()-1) )
+                    else if (BrowserDispatchId::MOVECOLUMNRIGHT == eId && nNewPos < (ColCount() - 1))
                     {
                         ++nNewPos;
                         bMoveAllowed = true;
@@ -1918,6 +1963,8 @@ void BrowseBox::Dispatch( sal_uInt16 nId )
                     }
                 }
             }
+            break;
+        default:
             break;
     }
 }
@@ -1940,12 +1987,8 @@ void BrowseBox::SetCursorColor(const Color& _rCol)
     DoShowCursor();
 }
 
-tools::Rectangle BrowseBox::calcHeaderRect(bool _bIsColumnBar, bool _bOnScreen)
+tools::Rectangle BrowseBox::calcHeaderRect(bool _bIsColumnBar)
 {
-    vcl::Window* pParent = nullptr;
-    if ( !_bOnScreen )
-        pParent = GetAccessibleParentWindow();
-
     Point aTopLeft;
     tools::Long nWidth;
     tools::Long nHeight;
@@ -1958,30 +2001,16 @@ tools::Rectangle BrowseBox::calcHeaderRect(bool _bIsColumnBar, bool _bOnScreen)
     {
         aTopLeft.setY( GetDataRowHeight() );
         nWidth = GetColumnWidth(0);
-        if (pParent)
-            nHeight = GetWindowExtentsRelative( *pParent ).GetHeight() - aTopLeft.Y() - GetControlArea().GetSize().Height();
-        else
-            nHeight = GetWindowExtentsAbsolute().GetHeight() - aTopLeft.Y() - GetControlArea().GetSize().Height();
+        nHeight = GetWindowExtentsAbsolute().GetHeight() - aTopLeft.Y() - GetControlArea().GetSize().Height();
     }
-    if (pParent)
-        aTopLeft += GetWindowExtentsRelative( *pParent ).TopLeft();
-    else
-        aTopLeft += Point(GetWindowExtentsAbsolute().TopLeft());
     return tools::Rectangle(aTopLeft,Size(nWidth,nHeight));
 }
 
-tools::Rectangle BrowseBox::calcTableRect(bool _bOnScreen)
+tools::Rectangle BrowseBox::calcTableRect()
 {
-    vcl::Window* pParent = nullptr;
-    if ( !_bOnScreen )
-        pParent = GetAccessibleParentWindow();
-
-    tools::Rectangle aRect;
-    if (pParent)
-        aRect = GetWindowExtentsRelative( *pParent );
-    else
-        aRect = tools::Rectangle(GetWindowExtentsAbsolute());
-    tools::Rectangle aRowBar = calcHeaderRect(false, pParent == nullptr);
+    tools::Rectangle aRect(GetWindowExtentsAbsolute());
+    aRect.SetPos(Point(0, 0));
+    tools::Rectangle aRowBar = calcHeaderRect(false);
 
     tools::Long nX = aRowBar.Right() - aRect.Left();
     tools::Long nY = aRowBar.Top() - aRect.Top();
@@ -1990,23 +2019,9 @@ tools::Rectangle BrowseBox::calcTableRect(bool _bOnScreen)
     return tools::Rectangle(aRowBar.TopRight(), Size(aSize.Width() - nX, aSize.Height() - nY - GetBarHeight()) );
 }
 
-tools::Rectangle BrowseBox::GetFieldRectPixel( sal_Int32 _nRowId, sal_uInt16 _nColId, bool /*_bIsHeader*/, bool _bOnScreen )
+tools::Rectangle BrowseBox::calcFieldRectPixel(sal_Int32 _nRowId, sal_uInt16 _nColId, bool /*_bIsHeader*/)
 {
-    vcl::Window* pParent = nullptr;
-    if ( !_bOnScreen )
-        pParent = GetAccessibleParentWindow();
-
-    tools::Rectangle aRect = GetFieldRectPixel(_nRowId,_nColId,_bOnScreen);
-
-    Point aTopLeft = aRect.TopLeft();
-    if (pParent)
-        aTopLeft += GetWindowExtentsRelative( *pParent ).TopLeft();
-    else
-        aTopLeft += Point(GetWindowExtentsAbsolute().TopLeft());
-
-    return tools::Rectangle(aTopLeft,aRect.GetSize());
+    return GetFieldRectPixel(_nRowId, _nColId, true);
 }
-
-// ------------------------------------------------------------------------- EOF
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -58,6 +58,7 @@
 #include <numrule.hxx>
 #include <SwNodeNum.hxx>
 #include <calbck.hxx>
+#include <names.hxx>
 
 #include <cstddef>
 #include <memory>
@@ -70,13 +71,12 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::text;
-using namespace ::com::sun::star::lang;
 
 static std::pair<OUString, bool> MakeRefNumStr(SwRootFrame const* pLayout,
       const SwTextNode& rTextNodeOfField,
       const SwTextNode& rTextNodeOfReferencedItem,
-      sal_uInt16 nSubType,
-      sal_uInt32 nRefNumFormat,
+      ReferencesSubtype nSubType,
+      RefFieldFormat nRefNumFormat,
       sal_uInt16 nFlags);
 
 static void lcl_GetLayTree( const SwFrame* pFrame, std::vector<const SwFrame*>& rArr )
@@ -351,14 +351,15 @@ static void lcl_formatReferenceLanguage( OUString& rRefText,
 
 /// get references
 SwGetRefField::SwGetRefField( SwGetRefFieldType* pFieldType,
-                              OUString aSetRef, OUString aSetReferenceLanguage, sal_uInt16 nSubTyp,
-                              sal_uInt16 nSequenceNo, sal_uInt16 nFlags, sal_uLong nFormat )
-    : SwField(pFieldType, nFormat),
+                              SwMarkName aSetRef, OUString aSetReferenceLanguage, ReferencesSubtype nSubTyp,
+                              sal_uInt16 nSequenceNo, sal_uInt16 nFlags, RefFieldFormat nFormat )
+    : SwField(pFieldType),
       m_sSetRefName(std::move(aSetRef)),
       m_sSetReferenceLanguage(std::move(aSetReferenceLanguage)),
       m_nSubType(nSubTyp),
       m_nSeqNo(nSequenceNo),
-      m_nFlags(nFlags)
+      m_nFlags(nFlags),
+      m_nFormat(nFormat)
 {
 }
 
@@ -371,12 +372,12 @@ OUString SwGetRefField::GetDescription() const
     return SwResId(STR_REFERENCE);
 }
 
-sal_uInt16 SwGetRefField::GetSubType() const
+ReferencesSubtype SwGetRefField::GetSubType() const
 {
     return m_nSubType;
 }
 
-void SwGetRefField::SetSubType( sal_uInt16 n )
+void SwGetRefField::SetSubType( ReferencesSubtype n )
 {
     m_nSubType = n;
 }
@@ -384,17 +385,17 @@ void SwGetRefField::SetSubType( sal_uInt16 n )
 // #i81002#
 bool SwGetRefField::IsRefToHeadingCrossRefBookmark() const
 {
-    return GetSubType() == REF_BOOKMARK &&
+    return GetSubType() == ReferencesSubtype::Bookmark &&
         ::sw::mark::CrossRefHeadingBookmark::IsLegalName(m_sSetRefName);
 }
 
 bool SwGetRefField::IsRefToNumItemCrossRefBookmark() const
 {
-    return GetSubType() == REF_BOOKMARK &&
+    return GetSubType() == ReferencesSubtype::Bookmark &&
         ::sw::mark::CrossRefNumItemBookmark::IsLegalName(m_sSetRefName);
 }
 
-const SwTextNode* SwGetRefField::GetReferencedTextNode(SwTextNode* pTextNode, SwFrame* pFrame) const
+const SwTextNode* SwGetRefField::GetReferencedTextNode(const SwTextNode* pTextNode, SwFrame* pFrame) const
 {
     SwGetRefFieldType *pTyp = dynamic_cast<SwGetRefFieldType*>(GetTyp());
     if (!pTyp)
@@ -417,9 +418,9 @@ static OUString lcl_formatStringByCombiningCharacter(std::u16string_view sText, 
 
 // #i85090#
 OUString SwGetRefField::GetExpandedTextOfReferencedTextNode(
-        SwRootFrame const& rLayout, SwTextNode* pTextNode, SwFrame* pFrame) const
+        SwRootFrame const& rLayout) const
 {
-    const SwTextNode* pReferencedTextNode( GetReferencedTextNode(pTextNode, pFrame) );
+    const SwTextNode* pReferencedTextNode( GetReferencedTextNode(/*pTextNode*/nullptr, /*pFrame*/nullptr) );
     if ( !pReferencedTextNode )
         return OUString();
 
@@ -450,10 +451,10 @@ OUString SwGetRefField::ExpandImpl(SwRootFrame const*const pLayout) const
 
 OUString SwGetRefField::GetFieldName() const
 {
-    const OUString aName = GetTyp()->GetName();
+    const OUString aName = GetTyp()->GetName().toString();
     if ( !aName.isEmpty() || !m_sSetRefName.isEmpty() )
     {
-        return aName + " " + m_sSetRefName;
+        return aName + " " + m_sSetRefName.toString();
     }
     return ExpandImpl(nullptr);
 }
@@ -529,9 +530,9 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
 
     // where is the category name (e.g. "Illustration")?
     const OUString aText = pTextNd->GetText();
-    const sal_Int32 nCatStart = aText.indexOf(m_sSetRefName);
+    const sal_Int32 nCatStart = aText.indexOf(m_sSetRefName.toString());
     const bool bHasCat = nCatStart>=0;
-    const sal_Int32 nCatEnd = bHasCat ? nCatStart + m_sSetRefName.getLength() : -1;
+    const sal_Int32 nCatEnd = bHasCat ? nCatStart + m_sSetRefName.toString().getLength() : -1;
 
     // length of the referenced text
     const sal_Int32 nLen = aText.getLength();
@@ -539,10 +540,10 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
     // which format?
     switch( GetFormat() )
     {
-    case REF_CONTENT:
-    case REF_ONLYNUMBER:
-    case REF_ONLYCAPTION:
-    case REF_ONLYSEQNO:
+    case RefFieldFormat::Content:
+    case RefFieldFormat::CategoryAndNumber:
+    case RefFieldFormat::CaptionText:
+    case RefFieldFormat::Numbering:
         {
             // needed part of Text
             sal_Int32 nStart;
@@ -550,12 +551,12 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
 
             switch( m_nSubType )
             {
-            case REF_SEQUENCEFLD:
+            case ReferencesSubtype::SequenceField:
 
                 switch( GetFormat() )
                 {
                 // "Category and Number"
-                case REF_ONLYNUMBER:
+                case RefFieldFormat::CategoryAndNumber:
                     if (bHasCat) {
                         nStart = std::min(nNumStart, nCatStart);
                         nEnd = std::max(nNumEnd, nCatEnd);
@@ -566,7 +567,7 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
                     break;
 
                 // "Caption Text"
-                case REF_ONLYCAPTION: {
+                case RefFieldFormat::CaptionText: {
                     // next alphanumeric character after category+number
                     if (const SwTextAttr* const pTextAttr =
                         pTextNd->GetTextAttrForCharAt(nNumStart, RES_TXTATR_FIELD)
@@ -584,13 +585,13 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
                 }
 
                 // "Numbering"
-                case REF_ONLYSEQNO:
+                case RefFieldFormat::Numbering:
                     nStart = nNumStart;
                     nEnd = std::min(nStart + 1, nLen);
                     break;
 
                 // "Reference" (whole Text)
-                case REF_CONTENT:
+                case RefFieldFormat::Content:
                     nStart = 0;
                     nEnd = nLen;
                     break;
@@ -600,19 +601,20 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
                 }
                 break;
 
-            case REF_BOOKMARK:
+            case ReferencesSubtype::Bookmark:
                 nStart = nNumStart;
                 // text is spread across multiple nodes - get whole text or only until end of node?
                 nEnd = nNumEnd<0 ? nLen : nNumEnd;
                 break;
 
-            case REF_OUTLINE:
+            case ReferencesSubtype::Outline:
+            case ReferencesSubtype::SetRefAttr:
                 nStart = nNumStart;
                 nEnd = nNumEnd;
                 break;
 
-            case REF_FOOTNOTE:
-            case REF_ENDNOTE:
+            case ReferencesSubtype::Footnote:
+            case ReferencesSubtype::Endnote:
                 // get number or numString
                 for( size_t i = 0; i < rDoc.GetFootnoteIdxs().size(); ++i )
                 {
@@ -629,14 +631,9 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
                 }
                 return;
 
-            case REF_STYLE:
+            case ReferencesSubtype::Style:
                 nStart = 0;
                 nEnd = nLen;
-                break;
-
-            case REF_SETREFATTR:
-                nStart = nNumStart;
-                nEnd = nNumEnd;
                 break;
 
             default:
@@ -647,8 +644,8 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
             {
                 if (pLayout->IsHideRedlines())
                 {
-                    if (m_nSubType == REF_OUTLINE
-                        || (m_nSubType == REF_SEQUENCEFLD && REF_CONTENT == GetFormat()))
+                    if (m_nSubType == ReferencesSubtype::Outline
+                        || (m_nSubType == ReferencesSubtype::SequenceField && RefFieldFormat::Content == GetFormat()))
                     {
                         rText = sw::GetExpandTextMerged(pLayout, *pTextNd, false, false,
                                                         ExpandMode(0));
@@ -675,8 +672,8 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
         }
         break;
 
-    case REF_PAGE:
-    case REF_PAGE_PGDESC:
+    case RefFieldFormat::Page:
+    case RefFieldFormat::AsPageStyle:
         {
             SwTextFrame const* pFrame = static_cast<SwTextFrame*>(pTextNd->getLayoutFrame(pLayout, nullptr, nullptr));
             SwTextFrame const*const pSave = pFrame;
@@ -691,7 +688,7 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
             {
                 sal_uInt16 nPageNo = pFrame->GetVirtPageNum();
                 const SwPageFrame *pPage;
-                if( REF_PAGE_PGDESC == GetFormat() &&
+                if( RefFieldFormat::AsPageStyle == GetFormat() &&
                     nullptr != ( pPage = pFrame->FindPageFrame() ) &&
                     pPage->GetPageDesc() )
                 {
@@ -708,14 +705,14 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
         }
         break;
 
-    case REF_CHAPTER:
+    case RefFieldFormat::Chapter:
     {
         // a bit tricky: search any frame
         SwFrame const* const pFrame = pTextNd->getLayoutFrame(pLayout);
         if (pFrame)
         {
             SwChapterFieldType aFieldTyp;
-            SwChapterField aField(&aFieldTyp, 0);
+            SwChapterField aField(&aFieldTyp, SwChapterFormat::Number);
             aField.SetLevel(MAXLEVEL - 1);
             aField.ChangeExpansion(*pFrame, pTextNd, true);
 
@@ -727,7 +724,7 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
         }
         break;
 
-    case REF_UPDOWN:
+    case RefFieldFormat::UpDown:
         {
             // #i81002#
             // simplified: use parameter <pFieldTextAttr>
@@ -755,9 +752,9 @@ void SwGetRefField::UpdateField(const SwTextField* pFieldTextAttr, SwFrame* pFra
         }
         break;
     // #i81002#
-    case REF_NUMBER:
-    case REF_NUMBER_NO_CONTEXT:
-    case REF_NUMBER_FULL_CONTEXT:
+    case RefFieldFormat::Number:
+    case RefFieldFormat::NumberNoContext:
+    case RefFieldFormat::NumberFullContext:
         {
             if ( pFieldTextAttr && pFieldTextAttr->GetpTextNode() )
             {
@@ -786,11 +783,11 @@ static std::pair<OUString, bool> MakeRefNumStr(
         SwRootFrame const*const pLayout,
         const SwTextNode& i_rTextNodeOfField,
         const SwTextNode& i_rTextNodeOfReferencedItem,
-        const sal_uInt16 nSubType,
-        const sal_uInt32 nRefNumFormat,
+        const ReferencesSubtype nSubType,
+        const RefFieldFormat nRefNumFormat,
         const sal_uInt16 nFlags)
 {
-    bool bHideNonNumerical = (nSubType == REF_STYLE) && ((nFlags & REFFLDFLAG_STYLE_HIDE_NON_NUMERICAL) == REFFLDFLAG_STYLE_HIDE_NON_NUMERICAL);
+    bool bHideNonNumerical = (nSubType == ReferencesSubtype::Style) && ((nFlags & REFFLDFLAG_STYLE_HIDE_NON_NUMERICAL) == REFFLDFLAG_STYLE_HIDE_NON_NUMERICAL);
     SwTextNode const& rTextNodeOfField(pLayout
             ?   *sw::GetParaPropsNode(*pLayout, i_rTextNodeOfField)
             :   i_rTextNodeOfField);
@@ -810,7 +807,7 @@ static std::pair<OUString, bool> MakeRefNumStr(
         // list labels have to be restricted, if the text node of the reference
         // field and the text node of the referenced item are in the same
         // document context.
-        if ( nRefNumFormat == REF_NUMBER &&
+        if ( nRefNumFormat == RefFieldFormat::Number &&
              rTextNodeOfField.FindFlyStartNode()
                             == rTextNodeOfReferencedItem.FindFlyStartNode() &&
              rTextNodeOfField.FindFootnoteStartNode()
@@ -856,7 +853,7 @@ static std::pair<OUString, bool> MakeRefNumStr(
         // Determine, if superior list labels have to be included
         const bool bInclSuperiorNumLabels(
             ( nRestrictInclToThisLevel < rTextNodeOfReferencedItem.GetActualListLevel() &&
-              ( nRefNumFormat == REF_NUMBER || nRefNumFormat == REF_NUMBER_FULL_CONTEXT ) ) );
+              ( nRefNumFormat == RefFieldFormat::Number || nRefNumFormat == RefFieldFormat::NumberFullContext ) ) );
 
         OSL_ENSURE( rTextNodeOfReferencedItem.GetNumRule(),
                 "<SwGetRefField::MakeRefNumStr(..)> - referenced numbered paragraph has no numbering rule set!" );
@@ -887,13 +884,13 @@ std::unique_ptr<SwField> SwGetRefField::Copy() const
 /// get reference name
 OUString SwGetRefField::GetPar1() const
 {
-    return m_sSetRefName;
+    return m_sSetRefName.toString();
 }
 
 /// set reference name
 void SwGetRefField::SetPar1( const OUString& rName )
 {
-    m_sSetRefName = rName;
+    m_sSetRefName = SwMarkName(rName);
 }
 
 OUString SwGetRefField::GetPar2() const
@@ -910,18 +907,18 @@ bool SwGetRefField::QueryValue( uno::Any& rAny, sal_uInt16 nWhichId ) const
             sal_Int16 nPart = 0;
             switch(GetFormat())
             {
-            case REF_PAGE       : nPart = ReferenceFieldPart::PAGE                ; break;
-            case REF_CHAPTER    : nPart = ReferenceFieldPart::CHAPTER             ; break;
-            case REF_CONTENT    : nPart = ReferenceFieldPart::TEXT                ; break;
-            case REF_UPDOWN     : nPart = ReferenceFieldPart::UP_DOWN             ; break;
-            case REF_PAGE_PGDESC: nPart = ReferenceFieldPart::PAGE_DESC           ; break;
-            case REF_ONLYNUMBER : nPart = ReferenceFieldPart::CATEGORY_AND_NUMBER ; break;
-            case REF_ONLYCAPTION: nPart = ReferenceFieldPart::ONLY_CAPTION        ; break;
-            case REF_ONLYSEQNO  : nPart = ReferenceFieldPart::ONLY_SEQUENCE_NUMBER; break;
+            case RefFieldFormat::Page       : nPart = ReferenceFieldPart::PAGE                ; break;
+            case RefFieldFormat::Chapter    : nPart = ReferenceFieldPart::CHAPTER             ; break;
+            case RefFieldFormat::Content    : nPart = ReferenceFieldPart::TEXT                ; break;
+            case RefFieldFormat::UpDown     : nPart = ReferenceFieldPart::UP_DOWN             ; break;
+            case RefFieldFormat::AsPageStyle: nPart = ReferenceFieldPart::PAGE_DESC           ; break;
+            case RefFieldFormat::CategoryAndNumber : nPart = ReferenceFieldPart::CATEGORY_AND_NUMBER ; break;
+            case RefFieldFormat::CaptionText: nPart = ReferenceFieldPart::ONLY_CAPTION        ; break;
+            case RefFieldFormat::Numbering  : nPart = ReferenceFieldPart::ONLY_SEQUENCE_NUMBER; break;
             // #i81002#
-            case REF_NUMBER:              nPart = ReferenceFieldPart::NUMBER;              break;
-            case REF_NUMBER_NO_CONTEXT:   nPart = ReferenceFieldPart::NUMBER_NO_CONTEXT;   break;
-            case REF_NUMBER_FULL_CONTEXT: nPart = ReferenceFieldPart::NUMBER_FULL_CONTEXT; break;
+            case RefFieldFormat::Number:              nPart = ReferenceFieldPart::NUMBER;              break;
+            case RefFieldFormat::NumberNoContext:   nPart = ReferenceFieldPart::NUMBER_NO_CONTEXT;   break;
+            case RefFieldFormat::NumberFullContext: nPart = ReferenceFieldPart::NUMBER_FULL_CONTEXT; break;
             }
             rAny <<= nPart;
         }
@@ -931,13 +928,13 @@ bool SwGetRefField::QueryValue( uno::Any& rAny, sal_uInt16 nWhichId ) const
             sal_Int16 nSource = 0;
             switch(m_nSubType)
             {
-            case  REF_SETREFATTR : nSource = ReferenceFieldSource::REFERENCE_MARK; break;
-            case  REF_SEQUENCEFLD: nSource = ReferenceFieldSource::SEQUENCE_FIELD; break;
-            case  REF_BOOKMARK   : nSource = ReferenceFieldSource::BOOKMARK; break;
-            case  REF_OUTLINE    : OSL_FAIL("not implemented"); break;
-            case  REF_FOOTNOTE   : nSource = ReferenceFieldSource::FOOTNOTE; break;
-            case  REF_ENDNOTE    : nSource = ReferenceFieldSource::ENDNOTE; break;
-            case  REF_STYLE      : nSource = ReferenceFieldSource::STYLE; break;
+            case  ReferencesSubtype::SetRefAttr : nSource = ReferenceFieldSource::REFERENCE_MARK; break;
+            case  ReferencesSubtype::SequenceField: nSource = ReferenceFieldSource::SEQUENCE_FIELD; break;
+            case  ReferencesSubtype::Bookmark   : nSource = ReferenceFieldSource::BOOKMARK; break;
+            case  ReferencesSubtype::Outline    : OSL_FAIL("not implemented"); break;
+            case  ReferencesSubtype::Footnote   : nSource = ReferenceFieldSource::FOOTNOTE; break;
+            case  ReferencesSubtype::Endnote    : nSource = ReferenceFieldSource::ENDNOTE; break;
+            case  ReferencesSubtype::Style      : nSource = ReferenceFieldSource::STYLE; break;
             }
             rAny <<= nSource;
         }
@@ -948,9 +945,9 @@ bool SwGetRefField::QueryValue( uno::Any& rAny, sal_uInt16 nWhichId ) const
     case FIELD_PROP_PAR1:
     {
         OUString sTmp(GetPar1());
-        if(REF_SEQUENCEFLD == m_nSubType)
+        if(ReferencesSubtype::SequenceField == m_nSubType)
         {
-            sal_uInt16 nPoolId = SwStyleNameMapper::GetPoolIdFromUIName( sTmp, SwGetPoolIdFromName::TxtColl );
+            sal_uInt16 nPoolId = SwStyleNameMapper::GetPoolIdFromUIName( UIName(sTmp), SwGetPoolIdFromName::TxtColl );
             switch( nPoolId )
             {
                 case RES_POOLCOLL_LABEL_ABB:
@@ -958,9 +955,24 @@ bool SwGetRefField::QueryValue( uno::Any& rAny, sal_uInt16 nWhichId ) const
                 case RES_POOLCOLL_LABEL_FRAME:
                 case RES_POOLCOLL_LABEL_DRAWING:
                 case RES_POOLCOLL_LABEL_FIGURE:
-                    SwStyleNameMapper::FillProgName(nPoolId, sTmp) ;
+                {
+                    ProgName sTmp2(sTmp);
+                    SwStyleNameMapper::FillProgName(nPoolId, sTmp2) ;
+                    sTmp = sTmp2.toString();
+                }
                 break;
             }
+        }
+        else if (ReferencesSubtype::Style == m_nSubType)
+        {
+            ProgName name;
+            SwStyleNameMapper::FillProgName(UIName{sTmp}, name, SwGetPoolIdFromName::TxtColl);
+            if (name == sTmp)
+            {
+                SwStyleNameMapper::FillProgName(UIName{sTmp}, name, SwGetPoolIdFromName::ChrFmt);
+            }
+            sTmp = name.toString();
+
         }
         rAny <<= sTmp;
     }
@@ -990,21 +1002,20 @@ bool SwGetRefField::PutValue( const uno::Any& rAny, sal_uInt16 nWhichId )
             rAny >>= nPart;
             switch(nPart)
             {
-            case ReferenceFieldPart::PAGE:                  nPart = REF_PAGE; break;
-            case ReferenceFieldPart::CHAPTER:               nPart = REF_CHAPTER; break;
-            case ReferenceFieldPart::TEXT:                  nPart = REF_CONTENT; break;
-            case ReferenceFieldPart::UP_DOWN:               nPart = REF_UPDOWN; break;
-            case ReferenceFieldPart::PAGE_DESC:             nPart = REF_PAGE_PGDESC; break;
-            case ReferenceFieldPart::CATEGORY_AND_NUMBER:   nPart = REF_ONLYNUMBER; break;
-            case ReferenceFieldPart::ONLY_CAPTION:          nPart = REF_ONLYCAPTION; break;
-            case ReferenceFieldPart::ONLY_SEQUENCE_NUMBER : nPart = REF_ONLYSEQNO; break;
+            case ReferenceFieldPart::PAGE:                  m_nFormat = RefFieldFormat::Page; break;
+            case ReferenceFieldPart::CHAPTER:               m_nFormat = RefFieldFormat::Chapter; break;
+            case ReferenceFieldPart::TEXT:                  m_nFormat = RefFieldFormat::Content; break;
+            case ReferenceFieldPart::UP_DOWN:               m_nFormat = RefFieldFormat::UpDown; break;
+            case ReferenceFieldPart::PAGE_DESC:             m_nFormat = RefFieldFormat::AsPageStyle; break;
+            case ReferenceFieldPart::CATEGORY_AND_NUMBER:   m_nFormat = RefFieldFormat::CategoryAndNumber; break;
+            case ReferenceFieldPart::ONLY_CAPTION:          m_nFormat = RefFieldFormat::CaptionText; break;
+            case ReferenceFieldPart::ONLY_SEQUENCE_NUMBER : m_nFormat = RefFieldFormat::Numbering; break;
             // #i81002#
-            case ReferenceFieldPart::NUMBER:              nPart = REF_NUMBER;              break;
-            case ReferenceFieldPart::NUMBER_NO_CONTEXT:   nPart = REF_NUMBER_NO_CONTEXT;   break;
-            case ReferenceFieldPart::NUMBER_FULL_CONTEXT: nPart = REF_NUMBER_FULL_CONTEXT; break;
+            case ReferenceFieldPart::NUMBER:              m_nFormat = RefFieldFormat::Number;              break;
+            case ReferenceFieldPart::NUMBER_NO_CONTEXT:   m_nFormat = RefFieldFormat::NumberNoContext;   break;
+            case ReferenceFieldPart::NUMBER_FULL_CONTEXT: m_nFormat = RefFieldFormat::NumberFullContext; break;
             default: return false;
             }
-            SetFormat(nPart);
         }
         break;
     case FIELD_PROP_USHORT2:
@@ -1013,19 +1024,25 @@ bool SwGetRefField::PutValue( const uno::Any& rAny, sal_uInt16 nWhichId )
             rAny >>= nSource;
             switch(nSource)
             {
-            case ReferenceFieldSource::REFERENCE_MARK : m_nSubType = REF_SETREFATTR ; break;
+            case ReferenceFieldSource::REFERENCE_MARK : m_nSubType = ReferencesSubtype::SetRefAttr ; break;
             case ReferenceFieldSource::SEQUENCE_FIELD :
             {
-                if(REF_SEQUENCEFLD == m_nSubType)
+                if(ReferencesSubtype::SequenceField == m_nSubType)
                     break;
-                m_nSubType = REF_SEQUENCEFLD;
+                m_nSubType = ReferencesSubtype::SequenceField;
                 ConvertProgrammaticToUIName();
             }
             break;
-            case ReferenceFieldSource::BOOKMARK       : m_nSubType = REF_BOOKMARK   ; break;
-            case ReferenceFieldSource::FOOTNOTE       : m_nSubType = REF_FOOTNOTE   ; break;
-            case ReferenceFieldSource::ENDNOTE        : m_nSubType = REF_ENDNOTE    ; break;
-            case ReferenceFieldSource::STYLE          : m_nSubType = REF_STYLE      ; break;
+            case ReferenceFieldSource::BOOKMARK       : m_nSubType = ReferencesSubtype::Bookmark   ; break;
+            case ReferenceFieldSource::FOOTNOTE       : m_nSubType = ReferencesSubtype::Footnote   ; break;
+            case ReferenceFieldSource::ENDNOTE        : m_nSubType = ReferencesSubtype::Endnote    ; break;
+            case ReferenceFieldSource::STYLE          :
+                if (ReferencesSubtype::Style != m_nSubType)
+                {
+                    m_nSubType = ReferencesSubtype::Style;
+                    ConvertProgrammaticToUIName();
+                }
+                break;
             }
         }
         break;
@@ -1070,7 +1087,30 @@ bool SwGetRefField::PutValue( const uno::Any& rAny, sal_uInt16 nWhichId )
 
 void SwGetRefField::ConvertProgrammaticToUIName()
 {
-    if(!(GetTyp() && REF_SEQUENCEFLD == m_nSubType))
+    if (GetTyp() && ReferencesSubtype::Style == m_nSubType)
+    {
+        // this is super ugly, but there isn't a sensible way to check in xmloff
+        SwDoc & rDoc{static_cast<SwGetRefFieldType*>(GetTyp())->GetDoc()};
+        if (rDoc.IsInXMLImport242())
+        {
+            SAL_INFO("sw.xml", "Potentially accepting erroneously produced UIName for style-ref field");
+            return;
+        }
+        ProgName const par1{GetPar1()};
+        UIName name;
+        SwStyleNameMapper::FillUIName(par1, name, SwGetPoolIdFromName::TxtColl);
+        if (name.toString() == par1.toString())
+        {
+            SwStyleNameMapper::FillUIName(par1, name, SwGetPoolIdFromName::ChrFmt);
+        }
+        if (name.toString() != par1.toString())
+        {
+            SetPar1(name.toString());
+        }
+        return;
+    }
+
+    if(!(GetTyp() && ReferencesSubtype::SequenceField == m_nSubType))
         return;
 
     SwDoc& rDoc = static_cast<SwGetRefFieldType*>(GetTyp())->GetDoc();
@@ -1079,7 +1119,7 @@ void SwGetRefField::ConvertProgrammaticToUIName()
     if (rDoc.getIDocumentFieldsAccess().GetFieldType(SwFieldIds::SetExp, rPar1, false))
         return;
 
-    sal_uInt16 nPoolId = SwStyleNameMapper::GetPoolIdFromProgName( rPar1, SwGetPoolIdFromName::TxtColl );
+    sal_uInt16 nPoolId = SwStyleNameMapper::GetPoolIdFromProgName( ProgName(rPar1), SwGetPoolIdFromName::TxtColl );
     TranslateId pResId;
     switch( nPoolId )
     {
@@ -1145,7 +1185,7 @@ void SwGetRefFieldType::UpdateStyleReferences()
         // update only the GetRef fields which are also STYLEREF fields
         SwGetRefField* pGRef = static_cast<SwGetRefField*>(pFormatField->GetField());
 
-        if (pGRef->GetSubType() != REF_STYLE) continue;
+        if (pGRef->GetSubType() != ReferencesSubtype::Style) continue;
 
         const SwTextField* pTField;
         if(!pGRef->GetLanguage() &&
@@ -1164,6 +1204,38 @@ void SwGetRefFieldType::UpdateStyleReferences()
 
 void SwGetRefFieldType::SwClientNotify(const SwModify&, const SfxHint& rHint)
 {
+    if (rHint.GetId() == SfxHintId::SwFormatChange || rHint.GetId() == SfxHintId::SwObjectDying)
+    {
+        // forward to text fields, they "expand" the text
+        CallSwClientNotify(rHint);
+        return;
+    }
+    if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+        if(!pChangeHint->m_pNew && !pChangeHint->m_pOld)
+            // update to all GetReference fields
+            // hopefully, this codepath is soon dead code, and
+            // UpdateGetReferences gets only called directly
+            UpdateGetReferences();
+        else
+            // forward to text fields, they "expand" the text
+            CallSwClientNotify(rHint);
+        return;
+    }
+    if (rHint.GetId() == SfxHintId::SwUpdateAttr)
+    {
+        auto pChangeHint = static_cast<const sw::UpdateAttrHint*>(&rHint);
+        if(!pChangeHint->m_pNew && !pChangeHint->m_pOld)
+            // update to all GetReference fields
+            // hopefully, this codepath is soon dead code, and
+            // UpdateGetReferences gets only called directly
+            UpdateGetReferences();
+        else
+            // forward to text fields, they "expand" the text
+            CallSwClientNotify(rHint);
+        return;
+    }
     if (rHint.GetId() != SfxHintId::SwLegacyModify)
         return;
     auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
@@ -1217,52 +1289,97 @@ namespace
         Marginal, /* headers, footers */
     };
 
-    /// Picks the first text node with a matching style from a double ended queue, starting at the front
-    /// This allows us to use the deque either as a stack or as a queue depending on whether we want to search up or down
-    SwTextNode* SearchForStyleAnchor(SwTextNode* pSelf, const std::deque<SwNode*>& pToSearch,
-                                    std::u16string_view rStyleName, bool bCaseSensitive = true)
+    SwTextNode* SearchForStyleAnchor(const SwTextNode* pSelf, SwNode* pCurrent,
+                                    std::u16string_view rStyleName,
+                                    sal_Int32 *const pStart, sal_Int32 *const pEnd,
+                                    bool bCaseSensitive = true)
     {
-        std::deque<SwNode*> pSearching(pToSearch);
-        while (!pSearching.empty())
+        if (pCurrent == pSelf)
+            return nullptr;
+
+        SwTextNode* pTextNode = pCurrent->GetTextNode();
+        if (!pTextNode)
+            return nullptr;
+
+        UIName const & rFormatName = pTextNode->GetFormatColl()->GetName();
+        if (bCaseSensitive
+            ? rFormatName == rStyleName
+            : rFormatName.toString().equalsIgnoreAsciiCase(rStyleName))
         {
-            SwNode* pCurrent = pSearching.front();
-            pSearching.pop_front();
-
-            if (*pCurrent == *pSelf)
-                continue;
-
-            SwTextNode* pTextNode = pCurrent->GetTextNode();
-            if (!pTextNode)
-                continue;
-
-            if (bCaseSensitive)
+            *pStart = 0;
+            if (pEnd)
             {
-                if (pTextNode->GetFormatColl()->GetName() == rStyleName)
-                    return pTextNode;
+                *pEnd = pTextNode->GetText().getLength();
             }
-            else
+            return pTextNode;
+        }
+
+        if (auto const pHints = pTextNode->GetpSwpHints())
+        {
+            for (size_t i = 0, nCnt = pHints->Count(); i < nCnt; ++i)
             {
-                if (pTextNode->GetFormatColl()->GetName().equalsIgnoreAsciiCase(rStyleName))
-                    return pTextNode;
+                auto const*const pHint(pHints->Get(i));
+                if (pHint->Which() == RES_TXTATR_CHARFMT)
+                {
+                    if (bCaseSensitive
+                        ? pHint->GetCharFormat().GetCharFormat()->HasName(rStyleName)
+                        : pHint->GetCharFormat().GetCharFormat()->GetName().toString().equalsIgnoreAsciiCase(rStyleName))
+                    {
+                        *pStart = pHint->GetStart();
+                        if (pEnd)
+                        {
+                            *pEnd = *pHint->End();
+                        }
+                        return pTextNode;
+                    }
+                }
             }
         }
 
         return nullptr;
     }
+    /// Picks the first text node with a matching style from the specified node range
+    SwTextNode* SearchForStyleAnchor(const SwTextNode* pSelf, const SwNodes& rNodes, SwNodeOffset nNodeStart, SwNodeOffset nNodeEnd, bool bSearchBackward,
+                                    std::u16string_view rStyleName,
+                                    sal_Int32 *const pStart, sal_Int32 *const pEnd,
+                                    bool bCaseSensitive = true)
+    {
+        if (!bSearchBackward)
+        {
+            for (SwNodeOffset nCurrent = nNodeStart; nCurrent <= nNodeEnd; ++nCurrent)
+            {
+                SwNode* pCurrent = rNodes[nCurrent];
+                SwTextNode* pFound = SearchForStyleAnchor(pSelf, pCurrent, rStyleName, pStart, pEnd, bCaseSensitive);
+                if (pFound)
+                    return pFound;
+            }
+        }
+        else
+        {
+            for (SwNodeOffset nCurrent = nNodeEnd; nCurrent >= nNodeStart; --nCurrent)
+            {
+                SwNode* pCurrent = rNodes[nCurrent];
+                SwTextNode* pFound = SearchForStyleAnchor(pSelf, pCurrent, rStyleName, pStart, pEnd, bCaseSensitive);
+                if (pFound)
+                    return pFound;
+            }
+        }
+        return nullptr;
+    }
 }
 
-SwTextNode* SwGetRefFieldType::FindAnchor(SwDoc* pDoc, const OUString& rRefMark,
-                                          sal_uInt16 nSubType, sal_uInt16 nSeqNo, sal_uInt16 nFlags,
-                                          sal_Int32* pStt, sal_Int32* pEnd, SwRootFrame const* const pLayout,
-                                          SwTextNode* pSelf, SwFrame* pContentFrame)
+SwTextNode* SwGetRefFieldType::FindAnchor(SwDoc* pDoc, const SwMarkName& rRefMark,
+                                          ReferencesSubtype nSubType, sal_uInt16 nSeqNo, sal_uInt16 nFlags,
+                                          sal_Int32* pStart, sal_Int32* pEnd, SwRootFrame const* const pLayout,
+                                          const SwTextNode* pSelf, SwFrame* pContentFrame)
 {
-    OSL_ENSURE( pStt, "Why did no one check the StartPos?" );
+    assert( pStart && "Why did no one check the StartPos?" );
 
     IDocumentRedlineAccess & rIDRA(pDoc->getIDocumentRedlineAccess());
     SwTextNode* pTextNd = nullptr;
     switch( nSubType )
     {
-    case REF_SETREFATTR:
+    case ReferencesSubtype::SetRefAttr:
         {
             const SwFormatRefMark *pRef = pDoc->GetRefMark( rRefMark );
             SwTextRefMark const*const pRefMark(pRef ? pRef->GetTextRefMark() : nullptr);
@@ -1270,18 +1387,18 @@ SwTextNode* SwGetRefFieldType::FindAnchor(SwDoc* pDoc, const OUString& rRefMark,
                                            pRefMark->GetTextNode(), *pRefMark)))
             {
                 pTextNd = const_cast<SwTextNode*>(&pRef->GetTextRefMark()->GetTextNode());
-                *pStt = pRef->GetTextRefMark()->GetStart();
+                *pStart = pRef->GetTextRefMark()->GetStart();
                 if( pEnd )
                     *pEnd = pRef->GetTextRefMark()->GetAnyEnd();
             }
         }
         break;
 
-    case REF_SEQUENCEFLD:
+    case ReferencesSubtype::SequenceField:
         {
             SwFieldType* pFieldType = pDoc->getIDocumentFieldsAccess().GetFieldType( SwFieldIds::SetExp, rRefMark, false );
             if( pFieldType && pFieldType->HasWriterListeners() &&
-                nsSwGetSetExpType::GSE_SEQ & static_cast<SwSetExpFieldType*>(pFieldType)->GetType() )
+                SwGetSetExpType::Sequence & static_cast<SwSetExpFieldType*>(pFieldType)->GetType() )
             {
                 std::vector<SwFormatField*> vFields;
                 pFieldType->GatherFields(vFields, false);
@@ -1294,9 +1411,9 @@ SwTextNode* SwGetRefFieldType::FindAnchor(SwDoc* pDoc, const OUString& rRefMark,
                             || !sw::IsFieldDeletedInModel(rIDRA, *pTextField)))
                     {
                         pTextNd = pTextField->GetpTextNode();
-                        *pStt = pTextField->GetStart();
+                        *pStart = pTextField->GetStart();
                         if( pEnd )
-                            *pEnd = (*pStt) + 1;
+                            *pEnd = (*pStart) + 1;
                         break;
                     }
                 }
@@ -1304,28 +1421,28 @@ SwTextNode* SwGetRefFieldType::FindAnchor(SwDoc* pDoc, const OUString& rRefMark,
         }
         break;
 
-    case REF_BOOKMARK:
+    case ReferencesSubtype::Bookmark:
         {
-            IDocumentMarkAccess::const_iterator_t ppMark = pDoc->getIDocumentMarkAccess()->findMark(rRefMark);
+            auto ppMark = pDoc->getIDocumentMarkAccess()->findMark(rRefMark);
             if (ppMark != pDoc->getIDocumentMarkAccess()->getAllMarksEnd()
                 && (!pLayout || !pLayout->IsHideRedlines()
                     || !sw::IsMarkHidden(*pLayout, **ppMark)))
             {
-                const ::sw::mark::IMark* pBkmk = *ppMark;
+                const ::sw::mark::MarkBase* pBkmk = *ppMark;
                 const SwPosition* pPos = &pBkmk->GetMarkStart();
 
                 pTextNd = pPos->GetNode().GetTextNode();
-                *pStt = pPos->GetContentIndex();
+                *pStart = pPos->GetContentIndex();
                 if(pEnd)
                 {
                     if(!pBkmk->IsExpanded())
                     {
-                        *pEnd = *pStt;
+                        *pEnd = *pStart;
                         // #i81002#
                         if(dynamic_cast< ::sw::mark::CrossRefBookmark const *>(pBkmk))
                         {
-                            OSL_ENSURE( pTextNd,
-                                    "<SwGetRefFieldType::FindAnchor(..)> - node marked by cross-reference bookmark isn't a text node --> crash" );
+                            assert(pTextNd &&
+                                    "<SwGetRefFieldType::FindAnchor(..)> - node marked by cross-reference bookmark isn't a text node --> crash");
                             *pEnd = pTextNd->Len();
                         }
                     }
@@ -1338,11 +1455,11 @@ SwTextNode* SwGetRefFieldType::FindAnchor(SwDoc* pDoc, const OUString& rRefMark,
         }
         break;
 
-    case REF_OUTLINE:
+    case ReferencesSubtype::Outline:
         break;
 
-    case REF_FOOTNOTE:
-    case REF_ENDNOTE:
+    case ReferencesSubtype::Footnote:
+    case ReferencesSubtype::Endnote:
         {
             for( auto pFootnoteIdx : pDoc->GetFootnoteIdxs() )
                 if( nSeqNo == pFootnoteIdx->GetSeqRefNo() )
@@ -1360,261 +1477,241 @@ SwTextNode* SwGetRefFieldType::FindAnchor(SwDoc* pDoc, const OUString& rRefMark,
                         SwNodeIndex aIdx( *pIdx, 1 );
                         pTextNd = aIdx.GetNode().GetTextNode();
                         if( nullptr == pTextNd )
-                            pTextNd = static_cast<SwTextNode*>(pDoc->GetNodes().GoNext( &aIdx ));
+                            pTextNd = static_cast<SwTextNode*>(SwNodes::GoNext(&aIdx));
                     }
-                    *pStt = 0;
+                    *pStart = 0;
                     if( pEnd )
                         *pEnd = 0;
                     break;
                 }
         }
         break;
-        case REF_STYLE:
-            if (!pSelf) break;
-
-            const SwNodes& nodes = pDoc->GetNodes();
-
-            StyleRefElementType elementType = StyleRefElementType::Default;
-            const SwTextNode* pReference = nullptr;
-
-            { /* Check if we're a footnote/endnote */
-                for (SwTextFootnote* pFootnoteIdx : pDoc->GetFootnoteIdxs())
-                {
-                    if (pLayout && pLayout->IsHideRedlines()
-                        && sw::IsFootnoteDeleted(rIDRA, *pFootnoteIdx))
-                    {
-                        continue;
-                    }
-                    const SwNodeIndex* pIdx = pFootnoteIdx->GetStartNode();
-                    if (pIdx)
-                    {
-                        SwNodeIndex aIdx(*pIdx, 1);
-                        SwTextNode* pFootnoteNode = aIdx.GetNode().GetTextNode();
-                        if (nullptr == pFootnoteNode)
-                            pFootnoteNode
-                                = static_cast<SwTextNode*>(pDoc->GetNodes().GoNext(&aIdx));
-
-                        if (*pSelf == *pFootnoteNode)
-                        {
-                            elementType = StyleRefElementType::Reference;
-                            pReference = &pFootnoteIdx->GetTextNode();
-                        }
-                    }
-                }
-            }
-
-            if (pDoc->IsInHeaderFooter(*pSelf))
-            {
-                elementType = StyleRefElementType::Marginal;
-            }
-
-            if (pReference == nullptr)
-            {
-                pReference = pSelf;
-            }
-
-            switch (elementType)
-            {
-                case Marginal:
-                {
-                    // For marginals, styleref tries to act on the current page first
-                    // 1. Get the page we're on, search it from top to bottom
-
-                    bool bFlagFromBottom = (nFlags & REFFLDFLAG_STYLE_FROM_BOTTOM) == REFFLDFLAG_STYLE_FROM_BOTTOM;
-
-                    Point aPt;
-                    std::pair<Point, bool> const tmp(aPt, false);
-
-                    if (!pContentFrame) SAL_WARN("xmloff.text", "<SwGetRefFieldType::FindAnchor(..)>: Missing content frame for marginal styleref");
-                    const SwPageFrame* pPageFrame = nullptr;
-
-                    if (pContentFrame)
-                        pPageFrame = pContentFrame->FindPageFrame();
-
-                    const SwNode* pPageStart(nullptr);
-                    const SwNode* pPageEnd(nullptr);
-
-                    if (pPageFrame)
-                    {
-                        const SwContentFrame* pPageStartFrame = pPageFrame->FindFirstBodyContent();
-                        const SwContentFrame* pPageEndFrame = pPageFrame->FindLastBodyContent();
-
-                        if (pPageStartFrame) {
-                            if (pPageStartFrame->IsTextFrame())
-                            {
-                                pPageStart = static_cast<const SwTextFrame*>(pPageStartFrame)
-                                                ->GetTextNodeFirst();
-                            }
-                            else
-                            {
-                                pPageStart
-                                    = static_cast<const SwNoTextFrame*>(pPageStartFrame)->GetNode();
-                            }
-                        }
-
-                        if (pPageEndFrame) {
-                            if (pPageEndFrame->IsTextFrame())
-                            {
-                                pPageEnd = static_cast<const SwTextFrame*>(pPageEndFrame)
-                                            ->GetTextNodeFirst();
-                            }
-                            else
-                            {
-                                pPageEnd = static_cast<const SwNoTextFrame*>(pPageEndFrame)->GetNode();
-                            }
-                        }
-                    }
-
-                    if (!pPageStart || !pPageEnd)
-                    {
-                        pPageStart = pReference;
-                        pPageEnd = pReference;
-                    }
-
-                    std::deque<SwNode*> pSearchSecond;
-                    std::deque<SwNode*> pInPage; /* or pSearchFirst */
-                    std::deque<SwNode*> pSearchThird;
-
-                    bool beforeStart = true;
-                    bool beforeEnd = true;
-
-                    for (SwNodeOffset n(0); n < nodes.Count(); n++)
-                    {
-                        if (beforeStart && *pPageStart == *nodes[n])
-                        {
-                            beforeStart = false;
-                        }
-
-                        if (beforeStart)
-                        {
-                            pSearchSecond.push_front(nodes[n]);
-                        }
-                        else if (beforeEnd)
-                        {
-                            if (bFlagFromBottom)
-                                pInPage.push_front(nodes[n]);
-                            else
-                                pInPage.push_back(nodes[n]);
-
-                            if (*pPageEnd == *nodes[n])
-                            {
-                                beforeEnd = false;
-                            }
-                        }
-                        else
-                            pSearchThird.push_back(nodes[n]);
-                    }
-
-                    pTextNd = SearchForStyleAnchor(pSelf, pInPage, rRefMark);
-                    if (pTextNd)
-                    {
-                        break;
-                    }
-
-                    // 2. Search up from the top of the page
-                    pTextNd = SearchForStyleAnchor(pSelf, pSearchSecond, rRefMark);
-                    if (pTextNd)
-                    {
-                        break;
-                    }
-
-                    // 3. Search down from the bottom of the page
-                    pTextNd = SearchForStyleAnchor(pSelf, pSearchThird, rRefMark);
-                    if (pTextNd)
-                    {
-                        break;
-                    }
-
-                    // Word has case insensitive styles. LO has case sensitive styles. If we didn't find
-                    // it yet, maybe we could with a case insensitive search. Let's do that
-
-                    pTextNd = SearchForStyleAnchor(pSelf, pInPage, rRefMark,
-                                                   false /* bCaseSensitive */);
-                    if (pTextNd)
-                    {
-                        break;
-                    }
-
-                    pTextNd = SearchForStyleAnchor(pSelf, pSearchSecond, rRefMark,
-                                                   false /* bCaseSensitive */);
-                    if (pTextNd)
-                    {
-                        break;
-                    }
-
-                    pTextNd = SearchForStyleAnchor(pSelf, pSearchThird, rRefMark,
-                                                   false /* bCaseSensitive */);
-                    break;
-                }
-                case Reference:
-                case Default:
-                {
-                    // Normally, styleref does searches around the field position
-                    // For references, styleref acts from the position of the reference not the field
-                    // Happily, the previous code saves either one into pReference, so the following is generic for both
-
-                    std::deque<SwNode*> pSearchFirst;
-                    std::deque<SwNode*> pSearchSecond;
-
-                    bool beforeElement = true;
-
-                    for (SwNodeOffset n(0); n < nodes.Count(); n++)
-                    {
-                        if (beforeElement)
-                        {
-                            pSearchFirst.push_front(nodes[n]);
-
-                            if (*pReference == *nodes[n])
-                            {
-                                beforeElement = false;
-                            }
-                        }
-                        pSearchSecond.push_back(nodes[n]);
-                    }
-
-                    // 1. Search up until we hit the top of the document
-
-                    pTextNd = SearchForStyleAnchor(pSelf, pSearchFirst, rRefMark);
-                    if (pTextNd)
-                    {
-                        break;
-                    }
-
-                    // 2. Search down until we hit the bottom of the document
-
-                    pTextNd = SearchForStyleAnchor(pSelf, pSearchSecond, rRefMark);
-                    if (pTextNd)
-                    {
-                        break;
-                    }
-
-                    // Again, we need to remember that Word styles are not case sensitive
-
-                    pTextNd = SearchForStyleAnchor(pSelf, pSearchFirst, rRefMark,
-                                                   false /* bCaseSensitive */);
-                    if (pTextNd)
-                    {
-                        break;
-                    }
-
-                    pTextNd = SearchForStyleAnchor(pSelf, pSearchSecond, rRefMark,
-                                                   false /* bCaseSensitive */);
-                    break;
-                }
-                default:
-                    OSL_FAIL("<SwGetRefFieldType::FindAnchor(..)> - unknown getref element type");
-            }
-
-            if (pTextNd)
-            {
-                *pStt = 0;
-                if (pEnd)
-                    *pEnd = pTextNd->GetText().getLength();
-            }
-
+        case ReferencesSubtype::Style:
+            pTextNd = FindAnchorRefStyle(pDoc, rRefMark, nFlags,
+                                          pStart, pEnd, pLayout, pSelf, pContentFrame);
             break;
     }
 
+    return pTextNd;
+}
+
+SwTextNode* SwGetRefFieldType::FindAnchorRefStyle(SwDoc* pDoc, const SwMarkName& rRefMark,
+                                          sal_uInt16 nFlags,
+                                          sal_Int32* pStart, sal_Int32* pEnd, SwRootFrame const* const pLayout,
+                                          const SwTextNode* pSelf, SwFrame* pContentFrame)
+{
+    if (!pSelf)
+        return nullptr;
+
+    SwTextNode* pTextNd = nullptr;
+
+    StyleRefElementType elementType = StyleRefElementType::Default;
+    const SwTextNode* pReference = nullptr;
+    IDocumentRedlineAccess & rIDRA(pDoc->getIDocumentRedlineAccess());
+
+    /* Check if we're a footnote/endnote */
+    for (SwTextFootnote* pFootnoteIdx : pDoc->GetFootnoteIdxs())
+    {
+        if (pLayout && pLayout->IsHideRedlines()
+            && sw::IsFootnoteDeleted(rIDRA, *pFootnoteIdx))
+        {
+            continue;
+        }
+        const SwNodeIndex* pIdx = pFootnoteIdx->GetStartNode();
+        if (pIdx)
+        {
+            SwNodeIndex aIdx(*pIdx, 1);
+            SwTextNode* pFootnoteNode = aIdx.GetNode().GetTextNode();
+            if (nullptr == pFootnoteNode)
+                pFootnoteNode = static_cast<SwTextNode*>(SwNodes::GoNext(&aIdx));
+
+            if (*pSelf == *pFootnoteNode)
+            {
+                elementType = StyleRefElementType::Reference;
+                pReference = &pFootnoteIdx->GetTextNode();
+            }
+        }
+    }
+
+    if (pDoc->IsInHeaderFooter(*pSelf))
+    {
+        elementType = StyleRefElementType::Marginal;
+    }
+
+    if (pReference == nullptr)
+    {
+        pReference = pSelf;
+    }
+
+    // undocumented Word feature: 1 = "Heading 1" etc.
+    const OUString& sRefMarkStr = rRefMark.toString();
+    OUString const styleName(
+        (sRefMarkStr.getLength() == 1 && '1' <= sRefMarkStr[0] && sRefMarkStr[0] <= '9')
+        ? SwStyleNameMapper::GetProgName(RES_POOLCOLL_HEADLINE1 + sRefMarkStr[0] - '1', UIName(sRefMarkStr)).toString()
+        : sRefMarkStr);
+
+    switch (elementType)
+    {
+        case Marginal:
+            pTextNd = FindAnchorRefStyleMarginal(pDoc, nFlags,
+                                          pStart, pEnd, pSelf, pContentFrame, pReference, styleName);
+            break;
+        case Reference:
+        case Default:
+            pTextNd = FindAnchorRefStyleOther(pDoc,
+                                          pStart, pEnd, pSelf, pReference, styleName);
+            break;
+        default:
+            OSL_FAIL("<SwGetRefFieldType::FindAnchorRefStyle(..)> - unknown getref element type");
+    }
+    return pTextNd;
+}
+
+SwTextNode* SwGetRefFieldType::FindAnchorRefStyleMarginal(SwDoc* pDoc,
+                                          sal_uInt16 nFlags,
+                                          sal_Int32* pStart, sal_Int32* pEnd,
+                                          const SwTextNode* pSelf, SwFrame* pContentFrame,
+                                          const SwTextNode* pReference, std::u16string_view styleName)
+{
+    // For marginals, styleref tries to act on the current page first
+    // 1. Get the page we're on, search it from top to bottom
+
+    SwTextNode* pTextNd = nullptr;
+
+    bool bFlagFromBottom = (nFlags & REFFLDFLAG_STYLE_FROM_BOTTOM) == REFFLDFLAG_STYLE_FROM_BOTTOM;
+
+    Point aPt;
+    std::pair<Point, bool> const tmp(aPt, false);
+
+    if (!pContentFrame) SAL_WARN("xmloff.text", "<SwGetRefFieldType::FindAnchorRefStyleMarginal(..)>: Missing content frame for marginal styleref");
+    const SwPageFrame* pPageFrame = nullptr;
+
+    if (pContentFrame)
+        pPageFrame = pContentFrame->FindPageFrame();
+
+    const SwNode* pPageStart(nullptr);
+    const SwNode* pPageEnd(nullptr);
+
+    if (pPageFrame)
+    {
+        const SwContentFrame* pPageStartFrame = pPageFrame->FindFirstBodyContent();
+        const SwContentFrame* pPageEndFrame = pPageFrame->FindLastBodyContent();
+
+        if (pPageStartFrame)
+        {
+            if (pPageStartFrame->IsTextFrame())
+            {
+                pPageStart = static_cast<const SwTextFrame*>(pPageStartFrame)
+                                ->GetTextNodeFirst();
+            }
+            else
+            {
+                pPageStart
+                    = static_cast<const SwNoTextFrame*>(pPageStartFrame)->GetNode();
+            }
+        }
+
+        if (pPageEndFrame)
+        {
+            if (pPageEndFrame->IsTextFrame())
+            {
+                pPageEnd = static_cast<const SwTextFrame*>(pPageEndFrame)
+                            ->GetTextNodeFirst();
+            }
+            else
+            {
+                pPageEnd = static_cast<const SwNoTextFrame*>(pPageEndFrame)->GetNode();
+            }
+        }
+    }
+
+    if (!pPageStart || !pPageEnd)
+    {
+        pPageStart = pReference;
+        pPageEnd = pReference;
+    }
+
+    SwNodeOffset nPageStart = pPageStart->GetIndex();
+    SwNodeOffset nPageEnd = pPageEnd->GetIndex();
+    const SwNodes& nodes = pDoc->GetNodes();
+
+    pTextNd = SearchForStyleAnchor(pSelf, nodes, nPageStart, nPageEnd, bFlagFromBottom, styleName, pStart, pEnd);
+    if (pTextNd)
+        return pTextNd;
+
+    // 2. Search up from the top of the page
+    pTextNd = SearchForStyleAnchor(pSelf, nodes, SwNodeOffset(0), nPageStart - 1, /*bBackwards*/true, styleName, pStart, pEnd);
+    if (pTextNd)
+        return pTextNd;
+
+    // 3. Search down from the bottom of the page
+    pTextNd = SearchForStyleAnchor(pSelf, nodes, nPageEnd + 1, nodes.Count() - 1, /*bBackwards*/false, styleName, pStart, pEnd);
+    if (pTextNd)
+        return pTextNd;
+
+    // Word has case insensitive styles. LO has case sensitive styles. If we didn't find
+    // it yet, maybe we could with a case insensitive search. Let's do that
+
+    pTextNd = SearchForStyleAnchor(pSelf, nodes, nPageStart, nPageEnd, bFlagFromBottom, styleName, pStart, pEnd,
+                                   false /* bCaseSensitive */);
+    if (pTextNd)
+        return pTextNd;
+
+    pTextNd = SearchForStyleAnchor(pSelf, nodes, SwNodeOffset(0), nPageStart - 1, /*bBackwards*/true, styleName, pStart, pEnd,
+                                   false /* bCaseSensitive */);
+    if (pTextNd)
+        return pTextNd;
+
+    pTextNd = SearchForStyleAnchor(pSelf, nodes, nPageEnd + 1, nodes.Count() - 1, /*bBackwards*/false, styleName, pStart, pEnd,
+                                   false /* bCaseSensitive */);
+    return pTextNd;
+}
+
+SwTextNode* SwGetRefFieldType::FindAnchorRefStyleOther(SwDoc* pDoc,
+                                          sal_Int32* pStart, sal_Int32* pEnd,
+                                          const SwTextNode* pSelf,
+                                          const SwTextNode* pReference, std::u16string_view styleName)
+{
+    // Normally, styleref does searches around the field position
+    // For references, styleref acts from the position of the reference not the field
+    // Happily, the previous code saves either one into pReference, so the following is generic for both
+
+    const SwNodes& nodes = pDoc->GetNodes();
+
+    if (&nodes != &pReference->GetNodes())
+        return nullptr;
+
+    // It is possible to end up here, with a pReference pointer which points to a node which has already been
+    // removed from the nodes array, which means that calling GetIndex() returns an incorrect index.
+    SwNodeOffset nReference;
+    if (!pReference->IsDisconnected())
+        nReference = pReference->GetIndex();
+    else
+        nReference = nodes.Count() - 1;
+
+    SwTextNode* pTextNd = nullptr;
+
+    // 1. Search up until we hit the top of the document
+
+    pTextNd = SearchForStyleAnchor(pSelf, nodes, SwNodeOffset(0), nReference, /*bBackwards*/true, styleName, pStart, pEnd);
+    if (pTextNd)
+        return pTextNd;
+
+    // 2. Search down until we hit the bottom of the document
+
+    pTextNd = SearchForStyleAnchor(pSelf, nodes, nReference + 1, nodes.Count() - 1, /*bBackwards*/false, styleName, pStart, pEnd);
+    if (pTextNd)
+        return pTextNd;
+
+    // Again, we need to remember that Word styles are not case sensitive
+
+    pTextNd = SearchForStyleAnchor(pSelf, nodes, SwNodeOffset(0), nReference, /*bBackwards*/true, styleName, pStart, pEnd,
+                                   false /* bCaseSensitive */);
+    if (pTextNd)
+        return pTextNd;
+
+    pTextNd = SearchForStyleAnchor(pSelf, nodes, nReference + 1, nodes.Count() - 1, /*bBackwards*/false, styleName, pStart, pEnd,
+                                   false /* bCaseSensitive */);
     return pTextNd;
 }
 
@@ -1623,7 +1720,7 @@ namespace {
 struct RefIdsMap
 {
 private:
-    OUString aName;
+    SwMarkName aName;
     std::set<sal_uInt16> aIds;
     std::set<sal_uInt16> aDstIds;
     std::map<sal_uInt16, sal_uInt16> sequencedIds; /// ID numbers sorted by sequence number.
@@ -1636,11 +1733,11 @@ private:
     static sal_uInt16 GetFirstUnusedId( std::set<sal_uInt16> &rIds );
 
 public:
-    explicit RefIdsMap( OUString _aName ) : aName(std::move( _aName )), bInit( false ) {}
+    explicit RefIdsMap( SwMarkName _aName ) : aName(std::move( _aName )), bInit( false ) {}
 
     void Check( SwDoc& rDoc, SwDoc& rDestDoc, SwGetRefField& rField, bool bField );
 
-    const OUString& GetName() const { return aName; }
+    const SwMarkName& GetName() const { return aName; }
 };
 
 }
@@ -1787,7 +1884,7 @@ void SwGetRefFieldType::MergeWithOtherDoc( SwDoc& rDestDoc )
 
     // then there are RefFields in the DescDox - so all RefFields in the SourceDoc
     // need to be converted to have unique IDs for both documents
-    RefIdsMap aFntMap { OUString() };
+    RefIdsMap aFntMap { SwMarkName() };
     std::vector<std::unique_ptr<RefIdsMap>> aFieldMap;
 
     std::vector<SwFormatField*> vFields;
@@ -1797,7 +1894,7 @@ void SwGetRefFieldType::MergeWithOtherDoc( SwDoc& rDestDoc )
         SwGetRefField& rRefField = *static_cast<SwGetRefField*>(pField->GetField());
         switch( rRefField.GetSubType() )
         {
-        case REF_SEQUENCEFLD:
+        case ReferencesSubtype::SequenceField:
             {
                 RefIdsMap* pMap = nullptr;
                 for( auto n = aFieldMap.size(); n; )
@@ -1818,10 +1915,11 @@ void SwGetRefFieldType::MergeWithOtherDoc( SwDoc& rDestDoc )
             }
             break;
 
-        case REF_FOOTNOTE:
-        case REF_ENDNOTE:
+        case ReferencesSubtype::Footnote:
+        case ReferencesSubtype::Endnote:
             aFntMap.Check(m_rDoc, rDestDoc, rRefField, false);
             break;
+        default: break;
         }
     }
 }

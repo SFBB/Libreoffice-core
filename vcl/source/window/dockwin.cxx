@@ -19,6 +19,7 @@
 
 #include <tools/time.hxx>
 #include <sal/log.hxx>
+#include <vcl/dndlistenercontainer.hxx>
 #include <vcl/event.hxx>
 #include <vcl/toolkit/floatwin.hxx>
 #include <vcl/layout.hxx>
@@ -120,7 +121,7 @@ void ImplDockFloatWin::dispose()
 
     disposeBuilder();
 
-    mpDockWin.clear();
+    mpDockWin.reset();
     FloatingWindow::dispose();
 }
 
@@ -344,8 +345,8 @@ void DockingWindow::ImplInitSettings()
     SetBackground( aColor );
 }
 
-DockingWindow::DockingWindow( WindowType nType, const char* pIdleDebugName ) :
-    Window(nType),
+DockingWindow::DockingWindow( WindowType eType, const char* pIdleDebugName ) :
+    Window(eType),
     maLayoutIdle( pIdleDebugName )
 {
     ImplInitDockingWindowData();
@@ -400,9 +401,9 @@ void DockingWindow::dispose()
         SetFloatingMode(false);
     }
     mpImplData.reset();
-    mpFloatWin.clear();
-    mpOldBorderWin.clear();
-    mpDialogParent.clear();
+    mpFloatWin.reset();
+    mpOldBorderWin.reset();
+    mpDialogParent.reset();
     disposeBuilder();
     Window::dispose();
 }
@@ -758,11 +759,6 @@ void DockingWindow::SetFloatingMode( bool bFloatMode )
         pWin->SetMinOutputSizePixel( maMinOutSize );
 
         pWin->SetMaxOutputSizePixel( mpImplData->maMaxOutSize );
-
-        ToggleFloatingMode();
-
-        if ( bVisible )
-            Show();
     }
     else
     {
@@ -788,12 +784,14 @@ void DockingWindow::SetFloatingMode( bool bFloatMode )
         mpWindowImpl->mpRealParent = pRealParent;
         mpFloatWin.disposeAndClear();
         SetPosPixel( maDockPos );
-
-        ToggleFloatingMode();
-
-        if ( bVisible )
-            Show();
     }
+
+    ToggleFloatingMode();
+
+    if (bVisible)
+        Show();
+
+    CallEventListeners(VclEventId::WindowToggleFloating);
 }
 
 void DockingWindow::SetFloatStyle( WinBits nStyle )
@@ -1088,11 +1086,11 @@ SystemWindow* DockingWindow::GetFloatingWindow() const
 
 DropdownDockingWindow::DropdownDockingWindow(vcl::Window* pParent, const css::uno::Reference<css::frame::XFrame>& rFrame, bool bTearable)
     : DockingWindow(pParent,
-                    !bTearable ? OUString("InterimDockParent") : OUString("InterimTearableParent"),
-                    !bTearable ? OUString("vcl/ui/interimdockparent.ui") : OUString("vcl/ui/interimtearableparent.ui"),
+                    !bTearable ? u"InterimDockParent"_ustr : u"InterimTearableParent"_ustr,
+                    !bTearable ? u"vcl/ui/interimdockparent.ui"_ustr : u"vcl/ui/interimtearableparent.ui"_ustr,
                     "vcl::DropdownDockingWindow maLayoutIdle",
                     rFrame)
-    , m_xBox(m_pUIBuilder->get("box"))
+    , m_xBox(m_pUIBuilder->get(u"box"))
 {
 }
 
@@ -1103,13 +1101,13 @@ DropdownDockingWindow::~DropdownDockingWindow()
 
 void DropdownDockingWindow::dispose()
 {
-    m_xBox.clear();
+    m_xBox.reset();
     DockingWindow::dispose();
 }
 
 ResizableDockingWindow::ResizableDockingWindow(vcl::Window* pParent, const css::uno::Reference<css::frame::XFrame>& rFrame)
-    : DockingWindow(pParent, "DockingWindow", "vcl/ui/dockingwindow.ui", "vcl::ResizableDockingWindow maLayoutIdle", rFrame)
-    , m_xBox(m_pUIBuilder->get("box"))
+    : DockingWindow(pParent, u"DockingWindow"_ustr, u"vcl/ui/dockingwindow.ui"_ustr, "vcl::ResizableDockingWindow maLayoutIdle", rFrame)
+    , m_xBox(m_pUIBuilder->get(u"box"))
 {
 }
 
@@ -1141,7 +1139,7 @@ ResizableDockingWindow::~ResizableDockingWindow()
 
 void ResizableDockingWindow::dispose()
 {
-    m_xBox.clear();
+    m_xBox.reset();
     DockingWindow::dispose();
 }
 

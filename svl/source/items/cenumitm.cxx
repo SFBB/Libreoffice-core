@@ -20,7 +20,7 @@
 #include <com/sun/star/uno/Any.hxx>
 #include <svl/cenumitm.hxx>
 #include <svl/eitem.hxx>
-
+#include <unordered_map>
 #include <comphelper/extract.hxx>
 #include <libxml/xmlwriter.h>
 #include <sal/log.hxx>
@@ -48,7 +48,7 @@ bool SfxEnumItemInterface::GetPresentation(SfxItemPresentation, MapUnit,
 bool SfxEnumItemInterface::QueryValue(css::uno::Any& rVal, sal_uInt8)
     const
 {
-    rVal <<= sal_Int32(GetEnumValue());
+    rVal <<= GetEnumValue();
     return true;
 }
 
@@ -82,6 +82,95 @@ bool SfxEnumItemInterface::GetBoolValue() const
 // virtual
 void SfxEnumItemInterface::SetBoolValue(bool)
 {}
+
+typedef std::unordered_map<sal_uInt16, std::pair<const SfxPoolItem*, const SfxPoolItem*>> SfxBoolItemMap;
+
+namespace
+{
+    class SfxBoolItemInstanceManager : public ItemInstanceManager
+    {
+        SfxBoolItemMap  maRegistered;
+
+    public:
+        SfxBoolItemInstanceManager(SfxItemType aSfxItemType)
+        : ItemInstanceManager(aSfxItemType)
+        , maRegistered()
+        {
+        }
+
+    private:
+        // standard interface, accessed exclusively
+        // by implCreateItemEntry/implCleanupItemEntry
+        virtual const SfxPoolItem* find(const SfxPoolItem&) const override;
+        virtual void add(const SfxPoolItem&) override;
+        virtual void remove(const SfxPoolItem&) override;
+    };
+
+    const SfxPoolItem* SfxBoolItemInstanceManager::find(const SfxPoolItem& rItem) const
+    {
+        SfxBoolItemMap::const_iterator aHit(maRegistered.find(rItem.Which()));
+        if (aHit == maRegistered.end())
+            return nullptr;
+
+        const SfxBoolItem& rSfxBoolItem(static_cast<const SfxBoolItem&>(rItem));
+        if (rSfxBoolItem.GetValue())
+            return aHit->second.first;
+        return aHit->second.second;
+    }
+
+    void SfxBoolItemInstanceManager::add(const SfxPoolItem& rItem)
+    {
+        SfxBoolItemMap::iterator aHit(maRegistered.find(rItem.Which()));
+        const SfxBoolItem& rSfxBoolItem(static_cast<const SfxBoolItem&>(rItem));
+
+        if (aHit == maRegistered.end())
+        {
+            if (rSfxBoolItem.GetValue())
+                maRegistered.insert({rItem.Which(), std::make_pair(&rItem, nullptr)});
+            else
+                maRegistered.insert({rItem.Which(), std::make_pair(nullptr, &rItem)});
+        }
+        else
+        {
+            if (rSfxBoolItem.GetValue())
+                aHit->second.first = &rItem;
+            else
+                aHit->second.second = &rItem;
+        }
+    }
+
+    void SfxBoolItemInstanceManager::remove(const SfxPoolItem& rItem)
+    {
+        SfxBoolItemMap::iterator aHit(maRegistered.find(rItem.Which()));
+        const SfxBoolItem& rSfxBoolItem(static_cast<const SfxBoolItem&>(rItem));
+
+        if (aHit != maRegistered.end())
+        {
+            if (rSfxBoolItem.GetValue())
+                aHit->second.first = nullptr;
+            else
+                aHit->second.second = nullptr;
+
+            if (aHit->second.first == nullptr && aHit->second.second == nullptr)
+                maRegistered.erase(aHit);
+        }
+    }
+}
+
+ItemInstanceManager* SfxBoolItem::getItemInstanceManager() const
+{
+    static SfxBoolItemInstanceManager aInstanceManager(ItemType());
+    return &aInstanceManager;
+}
+
+void SfxBoolItem::SetValue(bool const bTheValue)
+{
+    if (m_bValue == bTheValue)
+        return;
+
+    ASSERT_CHANGE_REFCOUNTED_ITEM;
+    m_bValue = bTheValue;
+}
 
 SfxPoolItem* SfxBoolItem::CreateDefault()
 {
@@ -126,6 +215,10 @@ bool SfxBoolItem::PutValue(const css::uno::Any& rVal, sal_uInt8)
     bool bTheValue = bool();
     if (rVal >>= bTheValue)
     {
+        if (m_bValue == bTheValue)
+            return true;
+
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         m_bValue = bTheValue;
         return true;
     }
@@ -142,7 +235,7 @@ SfxBoolItem* SfxBoolItem::Clone(SfxItemPool *) const
 // virtual
 OUString SfxBoolItem::GetValueTextByVal(bool bTheValue) const
 {
-    return bTheValue ?  OUString("TRUE") : OUString("FALSE");
+    return bTheValue ?  u"TRUE"_ustr : u"FALSE"_ustr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

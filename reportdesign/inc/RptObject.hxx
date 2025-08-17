@@ -34,6 +34,8 @@
 
 namespace rptui
 {
+    class OObjectListener;
+
 typedef ::std::multimap< sal_Int16, OUString > IndexToNameMap;
     enum DlgEdHintKind
     {
@@ -41,8 +43,7 @@ typedef ::std::multimap< sal_Int16, OUString > IndexToNameMap;
         RPTUI_HINT_SELECTIONCHANGED
     };
 
-    class OUnoObject;
-    class REPORTDESIGN_DLLPUBLIC DlgEdHint final : public SfxHint
+    class UNLESS_MERGELIBS_MORE(REPORTDESIGN_DLLPUBLIC) DlgEdHint final : public SfxHint
     {
     private:
         DlgEdHintKind   eHintKind;
@@ -57,14 +58,13 @@ typedef ::std::multimap< sal_Int16, OUString > IndexToNameMap;
     };
 
 
-class OReportPage;
 class OPropertyMediator;
 
-class REPORTDESIGN_DLLPUBLIC SAL_LOPLUGIN_ANNOTATE("crosscast") OObjectBase
+class UNLESS_MERGELIBS_MORE(REPORTDESIGN_DLLPUBLIC) SAL_LOPLUGIN_ANNOTATE("crosscast") OObjectBase
 {
 protected:
     mutable rtl::Reference<OPropertyMediator>                         m_xMediator;
-    mutable css::uno::Reference< css::beans::XPropertyChangeListener> m_xPropertyChangeListener;
+    mutable rtl::Reference< OObjectListener >                         m_xPropertyChangeListener;
     mutable css::uno::Reference< css::report::XReportComponent>       m_xReportComponent;
     css::uno::Reference< css::uno::XInterface >                       m_xKeepShapeAlive;
     OUString m_sComponentName;
@@ -115,7 +115,7 @@ public:
 
 // OCustomShape
 
-class REPORTDESIGN_DLLPUBLIC OCustomShape final : public SdrObjCustomShape , public OObjectBase
+class UNLESS_MERGELIBS_MORE(REPORTDESIGN_DLLPUBLIC) OCustomShape final : public SdrObjCustomShape , public OObjectBase
 {
     friend class OReportPage;
     friend class DlgEdFactory;
@@ -149,7 +149,7 @@ private:
 
     virtual void NbcMove( const Size& rSize ) override;
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
-    virtual void NbcSetLogicRect(const tools::Rectangle& rRect) override;
+    virtual void NbcSetLogicRect(const tools::Rectangle& rRect, bool bAdaptTextMinSize = true) override;
     virtual bool EndCreate(SdrDragStat& rStat, SdrCreateCmd eCmd) override;
 
     virtual SdrPage* GetImplPage() const override;
@@ -158,7 +158,7 @@ private:
 
 // OOle2Obj
 
-class REPORTDESIGN_DLLPUBLIC OOle2Obj final : public SdrOle2Obj , public OObjectBase
+class UNLESS_MERGELIBS_MORE(REPORTDESIGN_DLLPUBLIC) OOle2Obj final : public SdrOle2Obj , public OObjectBase
 {
     friend class OReportPage;
     friend class DlgEdFactory;
@@ -200,7 +200,7 @@ private:
 
     virtual void NbcMove( const Size& rSize ) override;
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
-    virtual void NbcSetLogicRect(const tools::Rectangle& rRect) override;
+    virtual void NbcSetLogicRect(const tools::Rectangle& rRect, bool bAdaptTextMinSize = true) override;
     virtual bool EndCreate(SdrDragStat& rStat, SdrCreateCmd eCmd) override;
 
     virtual SdrPage* GetImplPage() const override;
@@ -215,7 +215,7 @@ private:
 
 // OUnoObject
 
-class REPORTDESIGN_DLLPUBLIC OUnoObject final : public SdrUnoObj , public OObjectBase
+class UNLESS_MERGELIBS_MORE(REPORTDESIGN_DLLPUBLIC) OUnoObject final : public SdrUnoObj , public OObjectBase
 {
     friend class OReportPage;
     friend class OObjectBase;
@@ -241,7 +241,7 @@ class REPORTDESIGN_DLLPUBLIC OUnoObject final : public SdrUnoObj , public OObjec
 
     virtual void NbcMove( const Size& rSize ) override;
     virtual void NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact) override;
-    virtual void NbcSetLogicRect(const tools::Rectangle& rRect) override;
+    virtual void NbcSetLogicRect(const tools::Rectangle& rRect, bool bAdaptTextMinSize = true) override;
     virtual bool EndCreate(SdrDragStat& rStat, SdrCreateCmd eCmd) override;
 
     virtual SdrPage* GetImplPage() const override;

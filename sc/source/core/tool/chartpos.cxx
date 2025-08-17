@@ -33,7 +33,7 @@ namespace
         if (rDocument.HasValueData( nCol, nRow, nTab ))
         {
             //treat dates like text #i25706#
-            sal_uInt32 nNumberFormat = rDocument.GetNumberFormat( ScAddress( nCol, nRow, nTab ) );
+            sal_uInt32 nNumberFormat = rDocument.GetNumberFormat( ScRange(ScAddress( nCol, nRow, nTab )) );
             SvNumFormatType nType = rDocument.GetFormatTable()->GetType(nNumberFormat);
             bool bIsDate(nType & SvNumFormatType::DATE);
             bReturn = !bIsDate;
@@ -143,6 +143,7 @@ void ScChartPositioner::GlueState()
             pR = &(*aRangeListRef)[i];
     }
     SCCOL nC = nEndCol - nStartCol + 1;
+    assert(nC > 0 && "coverity 2023.12.2");
     if ( nC == 1 )
     {
         eGlue = ScChartGlue::Rows;

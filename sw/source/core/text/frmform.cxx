@@ -52,6 +52,7 @@
 #include <flyfrms.hxx>
 #include <frmtool.hxx>
 #include <layouter.hxx>
+#include <fmtsrnd.hxx>
 
 // Tolerance in formatting and text output
 #define SLOPPY_TWIPS    5
@@ -144,9 +145,15 @@ void SwTextFrame::ValidateBodyFrame()
     SwSwapIfSwapped swap( this );
 
      // See comment in ValidateFrame()
-    if ( !IsInFly() && !IsInTab() &&
-         !( IsInSct() && FindSctFrame()->Lower()->IsColumnFrame() ) )
-        ValidateBodyFrame_( GetUpper() );
+    if ( !IsInFly() && !IsInTab())
+    {
+        if (SwSectionFrame* pSctFrame = FindSctFrame())
+        {
+            SwFrame* pLower = pSctFrame->Lower();
+            if (pLower && !pLower->IsColumnFrame())
+                ValidateBodyFrame_( GetUpper() );
+        }
+    }
 }
 
 bool SwTextFrame::GetDropRect_( SwRect &rRect ) const
@@ -511,14 +518,16 @@ void SwTextFrame::AdjustFrame( const SwTwips nChgHght, bool bHasToFit )
         // We can get a bit of space in table cells, because there could be some
         // left through a vertical alignment to the top.
         // Assure that first lower in upper is the current one or is valid.
-        if ( IsInTab() &&
-             ( GetUpper()->Lower() == this ||
-               GetUpper()->Lower()->isFrameAreaDefinitionValid() ) )
+        if (IsInTab())
         {
-            tools::Long nAdd = aRectFnSet.YDiff( aRectFnSet.GetTop(GetUpper()->Lower()->getFrameArea()),
-                                            aRectFnSet.GetPrtTop(*GetUpper()) );
-            OSL_ENSURE( nAdd >= 0, "Ey" );
-            nRstHeight += nAdd;
+            SwFrame* pLower = GetUpper()->Lower();
+            if ( pLower == this || (pLower && pLower->isFrameAreaDefinitionValid()) )
+            {
+                tools::Long nAdd = aRectFnSet.YDiff( aRectFnSet.GetTop(pLower->getFrameArea()),
+                                                aRectFnSet.GetPrtTop(*GetUpper()) );
+                OSL_ENSURE( nAdd >= 0, "Ey" );
+                nRstHeight += nAdd;
+            }
         }
 
         // nRstHeight < 0 means that the TextFrame is located completely outside of its Upper.
@@ -603,14 +612,12 @@ css::uno::Sequence< css::style::TabStop > SwTextFrame::GetTabStopInfo( SwTwips C
 // If it's 0, the FollowFrame is deleted.
 void SwTextFrame::AdjustFollow_( SwTextFormatter &rLine,
                  const TextFrameIndex nOffset, const TextFrameIndex nEnd,
-                             const sal_uInt8 nMode )
+                             const bool bDontJoin)
 {
     SwFrameSwapper aSwapper( this, false );
 
     // We got the rest of the text mass: Delete all Follows
     // DummyPortions() are a special case.
-    // Special cases are controlled by parameter <nMode>.
-    bool bDontJoin = nMode & 1;
     if( HasFollow() && !bDontJoin && nOffset == nEnd )
     {
         while( GetFollow() )
@@ -683,7 +690,7 @@ void SwTextFrame::AdjustFollow_( SwTextFormatter &rLine,
             return;
         }
 
-        if ( nMode )
+        if (bDontJoin)
             GetFollow()->ManipOfst(TextFrameIndex(0));
 
         if ( CalcFollow( nNewOfst ) )   // CalcFollow only at the end, we do a SetOffset there
@@ -901,15 +908,18 @@ bool SwTextFrame::CalcPreps()
                 }
                 else if ( aRectFnSet.IsVert() )
                 {
+                    // Replicate the same overflow behavior that is used for horizontal portions.
+                    SwTwips const nTmp = sw::WIDOW_MAGIC - (getFrameArea().Left() + 10000);
+                    SwTwips nDiff = nTmp - getFrameArea().Width();
+
                     {
                         SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
-                        aFrm.Width( aFrm.Width() + aFrm.Left() );
-                        aFrm.Left( 0 );
+                        aFrm.Width(nTmp);
                     }
 
                     {
                         SwFrameAreaDefinition::FramePrintAreaWriteAccess aPrt(*this);
-                        aPrt.Width( aPrt.Width() + getFrameArea().Left() );
+                        aPrt.Width(aPrt.Width() + nDiff);
                     }
 
                     SetWidow( true );
@@ -1081,6 +1091,107 @@ void SwTextFrame::ChangeOffset( SwTextFrame* pFrame, TextFrameIndex nNew )
         MoveFlyInCnt( pFrame, nNew, TextFrameIndex(COMPLETE_STRING) );
 }
 
+static bool isFirstVisibleFrameInPageBody(const SwTextFrame* pFrame)
+{
+    const SwFrame* pBodyFrame = pFrame->FindBodyFrame();
+    while (pBodyFrame && !pBodyFrame->IsPageBodyFrame())
+        pBodyFrame = pBodyFrame->GetUpper()->FindBodyFrame();
+    if (!pBodyFrame)
+        return false;
+    for (const SwFrame* pCur = pFrame;;)
+    {
+        for (const SwFrame* pPrev = pCur->GetPrev(); pPrev; pPrev = pPrev->GetPrev())
+            if (!pPrev->IsHiddenNow())
+                return false;
+        pCur = pCur->GetUpper();
+        assert(pCur); // We found pBodyFrame, right?
+        if (pCur == pBodyFrame)
+            return true;
+    }
+}
+
+static bool hasFly(const SwTextFrame* pFrame)
+{
+    if (auto pDrawObjs = pFrame->GetDrawObjs(); pDrawObjs && pDrawObjs->size())
+    {
+        auto anchorId = (*pDrawObjs)[0]->GetFrameFormat()->GetAnchor().GetAnchorId();
+        if (anchorId == RndStdIds::FLY_AT_PARA || anchorId == RndStdIds::FLY_AT_CHAR)
+            return true;
+    }
+    return false;
+}
+
+static bool hasAtPageFly(const SwFrame* pFrame)
+{
+    auto pPageFrame = pFrame->FindPageFrame();
+    if (!pPageFrame)
+        return false;
+    auto pPageDrawObjs = pPageFrame->GetDrawObjs();
+    if (pPageDrawObjs)
+    {
+        for (const auto pObject : *pPageDrawObjs)
+            if (pObject->GetFrameFormat()->GetAnchor().GetAnchorId() == RndStdIds::FLY_AT_PAGE)
+                return true;
+    }
+    return false;
+}
+
+static bool isReallyEmptyMaster(const SwTextFrame* pFrame)
+{
+    return pFrame->IsEmptyMaster() && (!pFrame->GetDrawObjs() || !pFrame->GetDrawObjs()->size());
+}
+
+namespace
+{
+/// Determines if pFrame has at least one anchored object which is positioned against the page frame
+/// and uses all space available for body text.
+bool HasFullPageFly(const SwTextFrame* pFrame)
+{
+    const SwFrame* pBodyFrame = pFrame->FindBodyFrame();
+    if (!pBodyFrame)
+    {
+        // Inside a fly frame, not interesting.
+        return false;
+    }
+
+    const SwRect& rBodyFrameArea = pBodyFrame->getFrameArea();
+    const SwSortedObjs* pDrawObjs = pFrame->GetDrawObjs();
+    if (!pDrawObjs)
+    {
+        return false;
+    }
+
+    for (SwAnchoredObject* pDrawObj : *pDrawObjs)
+    {
+        SwFrameFormat* pFrameFormat = pDrawObj->GetFrameFormat();
+        if (pFrameFormat->GetHoriOrient().GetRelationOrient() != text::RelOrientation::PAGE_FRAME)
+        {
+            continue;
+        }
+
+        if (pFrameFormat->GetVertOrient().GetRelationOrient() != text::RelOrientation::PAGE_FRAME)
+        {
+            continue;
+        }
+
+        if (pFrameFormat->GetSurround().GetValue() != text::WrapTextMode::WrapTextMode_NONE)
+        {
+            // Not a case where the request is to wrap the content around the object, ignore.
+            continue;
+        }
+
+        if (pDrawObj->GetObjRectWithSpaces().Contains(rBodyFrameArea))
+        {
+            // Wrap is requested, but the object uses all available space: this is a full page
+            // object.
+            return true;
+        }
+    }
+
+    return false;
+}
+}
+
 void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
                              WidowsAndOrphans &rFrameBreak,
                              TextFrameIndex const nStrLen,
@@ -1098,45 +1209,81 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
     // Call base class method <SwTextFrameBreak::IsBreakNow(..)>
     // instead of method <WidowsAndOrphans::IsBreakNow(..)> to get a break,
     // even if due to widow rule no enough lines exists.
-    sal_uInt8 nNew = ( !GetFollow() &&
+    bool createNew = ( !GetFollow() &&
                        nEnd < nStrLen &&
                        ( rLine.IsStop() ||
                          ( bHasToFit
                            ? ( rLine.GetLineNr() > 1 &&
                                !rFrameBreak.IsInside( rLine ) )
-                           : rFrameBreak.IsBreakNow( rLine ) ) ) )
-                     ? 1 : 0;
+                           : rFrameBreak.IsBreakNow( rLine ) ) ) );
 
     SwTextFormatInfo& rInf = rLine.GetInfo();
-    if (nNew == 0 && !nStrLen && !rInf.GetTextFly().IsOn() && IsEmptyWithSplitFly())
+    bool bEmptyWithSplitFly = false;
+    if (!createNew && !nStrLen && !rInf.GetTextFly().IsOn() && IsEmptyWithSplitFly())
     {
         // Empty paragraph, so IsBreakNow() is not called, but we should split the fly portion and
         // the paragraph marker.
-        nNew = 1;
-    }
-
-    // i#84870
-    // no split of text frame, which only contains an as-character anchored object
-    bool bOnlyContainsAsCharAnchoredObj =
-            !IsFollow() && nStrLen == TextFrameIndex(1) &&
-            GetDrawObjs() && GetDrawObjs()->size() == 1 &&
-            (*GetDrawObjs())[0]->GetFrameFormat().GetAnchor().GetAnchorId() == RndStdIds::FLY_AS_CHAR;
-
-    // Still try split text frame if we have columns.
-    if (FindColFrame())
-        bOnlyContainsAsCharAnchoredObj = false;
-
-    if ( nNew && bOnlyContainsAsCharAnchoredObj )
-    {
-        nNew = 0;
-    }
-
-    if ( nNew )
-    {
-        SplitFrame( nEnd );
+        createNew = true;
+        bEmptyWithSplitFly = true;
     }
 
     const SwFrame *pBodyFrame = FindBodyFrame();
+
+    // i#84870
+    // no split of text frame, which only contains an as-character anchored object
+    bool bLoneAsCharAnchoredObj =
+            pBodyFrame &&
+            !IsFollow() && nStrLen == TextFrameIndex(1) &&
+            GetDrawObjs() && GetDrawObjs()->size() == 1 &&
+            (*GetDrawObjs())[0]->GetFrameFormat()->GetAnchor().GetAnchorId() == RndStdIds::FLY_AS_CHAR;
+
+    if (bLoneAsCharAnchoredObj)
+    {
+        // Still try split text frame if we have columns.
+        if (FindColFrame())
+            bLoneAsCharAnchoredObj = false;
+        // tdf#160526: only no split if there is no preceding frames on same page
+        else if (!isFirstVisibleFrameInPageBody(this))
+            bLoneAsCharAnchoredObj = false;
+        else
+            createNew = false;
+    }
+    else if (createNew)
+    {
+        if (IsFollow())
+        {
+            // tdf#160549: do not split the frame at the very beginning again, if its master was empty
+            auto precede = static_cast<SwTextFrame*>(GetPrecede());
+            assert(precede);
+            auto precedeText = precede->DynCastTextFrame();
+            assert(precedeText);
+            if (isReallyEmptyMaster(precedeText))
+                createNew = false;
+        }
+        else if (!bEmptyWithSplitFly)
+        {
+            // Do not split immediately in the beginning of page (unless there is an at-para or
+            // at-char or at-page fly, which pushes the rest down); tdf#136040: still try split text
+            // frame if we have columns.
+            if (pBodyFrame && !FindColFrame() && isFirstVisibleFrameInPageBody(this)
+                && !hasFly(this) && !hasAtPageFly(pBodyFrame))
+                createNew = false;
+        }
+    }
+
+    if (createNew && nEnd == TextFrameIndex(0) && !bEmptyWithSplitFly && HasFullPageFly(this))
+    {
+        // We intended to split at start, due to an anchored object which would use all space on the
+        // current page. It makes no sense to split & move all text of the frame forward: the
+        // current page would be empty and we would move back later anyway.
+        createNew = false;
+    }
+
+    if (createNew)
+    {
+        SplitFrame( nEnd );
+    }
+    bool dontJoin = createNew;
 
     const tools::Long nBodyHeight = pBodyFrame ? ( IsVertical() ?
                                           pBodyFrame->getFrameArea().Width() :
@@ -1151,7 +1298,7 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
     if( rLine.IsStop() )
     {
         rLine.TruncLines( true );
-        nNew = 1;
+        dontJoin = true;
     }
 
     // FindBreak truncates the last line
@@ -1168,7 +1315,7 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
         }
         if( GetFollow() )
         {
-            if( nNew && nOld < nEnd )
+            if (dontJoin && nOld < nEnd)
                 RemoveFootnote( nOld, nEnd - nOld );
             ChangeOffset( GetFollow(), nEnd );
             if( !bDelta )
@@ -1195,7 +1342,7 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
                  GetFollow()->IsFieldFollow() ||
                  (nStrLen == TextFrameIndex(0) && GetTextNodeForParaProps()->GetNumRule()))
             {
-                nNew |= 3;
+                dontJoin = true;
             }
             else if (FindTabFrame() && nEnd > TextFrameIndex(0) &&
                 rLine.GetInfo().GetChar(nEnd - TextFrameIndex(1)) == CH_BREAK)
@@ -1204,12 +1351,12 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
                 // ends with a hard line break. Don't join the follow just
                 // because the follow would have no content, we may still need it
                 // for the paragraph mark.
-                nNew |= 1;
+                dontJoin = true;
             }
             // move footnotes if the follow is kept - if RemoveFootnote() is
             // called in next format iteration, it will be with the *new*
             // offset so no effect!
-            if (nNew && nOld < nEnd)
+            if (dontJoin && nOld < nEnd)
             {
                 RemoveFootnote(nOld, nEnd - nOld);
             }
@@ -1239,13 +1386,14 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
             // content or contains no content, but has a numbering.
             // i#84870 - No split, if text frame only contains one
             // as-character anchored object.
-            if ( !bOnlyContainsAsCharAnchoredObj &&
-                 (nStrLen > TextFrameIndex(0) ||
-                   bHasVisibleNumRule )
+            if (!bLoneAsCharAnchoredObj
+                && (bHasVisibleNumRule
+                    || (nStrLen > TextFrameIndex(0)
+                        && (nEnd != rLine.GetStart() || rInf.GetRest())))
                )
             {
                 SplitFrame( nEnd );
-                nNew |= 3;
+                dontJoin = true;
             }
         }
         // If the remaining height changed e.g by RemoveFootnote() we need to
@@ -1265,7 +1413,7 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
     SwTwips nChg = rLine.CalcBottomLine() - nDocPrtTop - nOldHeight;
 
     //#i84870# - no shrink of text frame, if it only contains one as-character anchored object.
-    if ( nChg < 0 && !bDelta && bOnlyContainsAsCharAnchoredObj )
+    if (nChg < 0 && !bDelta && bLoneAsCharAnchoredObj)
     {
         nChg = 0;
     }
@@ -1286,7 +1434,7 @@ void SwTextFrame::FormatAdjust( SwTextFormatter &rLine,
     AdjustFrame( nChg, bHasToFit );
 
     if( HasFollow() || IsInFootnote() )
-        AdjustFollow_( rLine, nEnd, nStrLen, nNew );
+        AdjustFollow_(rLine, nEnd, nStrLen, dontJoin);
 
     pPara->SetPrepMustFit( false );
 }
@@ -1390,13 +1538,20 @@ bool SwTextFrame::FormatLine( SwTextFormatter &rLine, const bool bPrev )
             rRepaint.SetRightOfst( nRght );
 
         // Finally we enlarge the repaint rectangle if we found an underscore
-        // within our line. 40 Twips should be enough
-        const bool bHasUnderscore =
-                ( rLine.GetInfo().GetUnderScorePos() < nNewStart );
-        if ( bHasUnderscore || rLine.GetCurr()->HasUnderscore() )
-            rRepaint.Bottom( rRepaint.Bottom() + 40 );
+        // or another glyph extending beyond the line height within the line.
+        auto nBaseAscent = pNew->GetAscent();
+        auto nMaxExtraAscent
+            = std::max({ SwTwips{ 0 }, rLine.GetInfo().GetExtraAscent() - nBaseAscent,
+                         rLine.GetCurr()->GetExtraAscent() });
+        rRepaint.Top(rRepaint.Top() - nMaxExtraAscent);
+        const_cast<SwLineLayout*>(rLine.GetCurr())->SetExtraAscent(nMaxExtraAscent);
 
-        const_cast<SwLineLayout*>(rLine.GetCurr())->SetUnderscore( bHasUnderscore );
+        auto nBaseDescent = pNew->Height() - pNew->GetAscent();
+        auto nMaxExtraDescent
+            = std::max({ SwTwips{ 0 }, rLine.GetInfo().GetExtraDescent() - nBaseDescent,
+                         rLine.GetCurr()->GetExtraDescent() });
+        rRepaint.Bottom(rRepaint.Bottom() + nMaxExtraDescent);
+        const_cast<SwLineLayout*>(rLine.GetCurr())->SetExtraDescent(nMaxExtraDescent);
     }
 
     // Calculating the good ol' nDelta
@@ -1899,10 +2054,58 @@ void SwTextFrame::FormatImpl(vcl::RenderContext* pRenderContext, SwParaPortion *
     }
 }
 
+namespace
+{
+class SwTextFrameFormatScopeGuard
+{
+private:
+    VclPtr<OutputDevice> m_pOut = nullptr;
+    VclPtr<OutputDevice> m_pRef = nullptr;
+
+public:
+    SwTextFrameFormatScopeGuard(OutputDevice* pOut, SwTextFrame* pFrame)
+        : m_pOut(pOut)
+    {
+        auto pVsh = pFrame->getRootFrame()->GetCurrShell();
+        if (pVsh)
+        {
+            m_pRef = &pVsh->GetRefDev();
+        }
+
+        if (m_pOut)
+        {
+            m_pOut->Push(vcl::PushFlags::ALL);
+        }
+
+        if (m_pRef)
+        {
+            m_pRef->Push(vcl::PushFlags::ALL);
+        }
+    }
+
+    ~SwTextFrameFormatScopeGuard()
+    {
+        if (m_pRef)
+        {
+            m_pRef->Pop();
+        }
+
+        if (m_pOut)
+        {
+            m_pOut->Pop();
+        }
+    }
+};
+}
+
 // We calculate the text frame's size and send a notification.
 // Shrink() or Grow() to adjust the frame's size to the changed required space.
 void SwTextFrame::Format( vcl::RenderContext* pRenderContext, const SwBorderAttrs * )
 {
+    // tdf#92091: SwTextFrame::Format is re-entrant, but may change VCL global state.
+    // The previous state is saved here and restored after returning.
+    SwTextFrameFormatScopeGuard stSg{ pRenderContext, this };
+
     SwRectFnSet aRectFnSet(this);
 
     CalcAdditionalFirstLineOffset();

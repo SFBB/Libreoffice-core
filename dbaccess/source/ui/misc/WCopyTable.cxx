@@ -133,7 +133,7 @@ bool ObjectCopySource::isView() const
 
 void ObjectCopySource::copyUISettingsTo( const Reference< XPropertySet >& _rxObject ) const
 {
-    const OUString aCopyProperties[] = {
+    static constexpr OUString aCopyProperties[] {
         PROPERTY_FONT, PROPERTY_ROW_HEIGHT, PROPERTY_TEXTCOLOR,PROPERTY_TEXTLINECOLOR,PROPERTY_TEXTEMPHASIS,PROPERTY_TEXTRELIEF
     };
     for (const auto & aCopyProperty : aCopyProperties)
@@ -145,9 +145,9 @@ void ObjectCopySource::copyUISettingsTo( const Reference< XPropertySet >& _rxObj
 
 void ObjectCopySource::copyFilterAndSortingTo( const Reference< XConnection >& _xConnection,const Reference< XPropertySet >& _rxObject ) const
 {
-    std::pair< OUString, OUString > aProperties[] = {
-                 std::pair< OUString, OUString >(PROPERTY_FILTER,OUString(" AND "))
-                ,std::pair< OUString, OUString >(PROPERTY_ORDER,OUString(" ORDER BY "))
+    static constexpr std::pair< OUString, OUString > aProperties[] {
+                 std::pair< OUString, OUString >(PROPERTY_FILTER,u" AND "_ustr)
+                ,std::pair< OUString, OUString >(PROPERTY_ORDER,u" ORDER BY "_ustr)
     };
 
     try
@@ -220,19 +220,14 @@ OUString ObjectCopySource::getSelectStatement() const
         const OUString sQuote = m_xMetaData->getIdentifierQuoteString();
 
         Sequence< OUString > aColumnNames = getColumnNames();
-        const OUString* pColumnName = aColumnNames.getConstArray();
-        const OUString* pEnd = pColumnName + aColumnNames.getLength();
-        for ( ; pColumnName != pEnd; )
+        for (sal_Int32 i = 0; i < aColumnNames.getLength(); ++i)
         {
-            aSQL.append( ::dbtools::quoteName( sQuote, *pColumnName++ ) );
-
-            if ( pColumnName == pEnd )
-                aSQL.append( " " );
-            else
-                aSQL.append( ", " );
+            if (i > 0)
+                aSQL.append(", ");
+            aSQL.append(::dbtools::quoteName(sQuote, aColumnNames[i]));
         }
 
-        aSQL.append( "FROM " + ::dbtools::composeTableNameForSelect( m_xConnection, m_xObject ) );
+        aSQL.append( " FROM " + ::dbtools::composeTableNameForSelect( m_xConnection, m_xObject ) );
 
         sSelectStatement = aSQL.makeStringAndClear();
     }
@@ -486,7 +481,7 @@ OCopyTableWizard::OCopyTableWizard(weld::Window* pParent, const OUString& _rDefa
         const Reference< XConnection >& _xConnection, const Reference< XComponentContext >& _rxContext,
         const Reference< XInteractionHandler>& _xInteractionHandler)
     : vcl::RoadmapWizardMachine(pParent)
-    , m_mNameMapping(_xConnection->getMetaData().is() && _xConnection->getMetaData()->supportsMixedCaseQuotedIdentifiers())
+    , m_mNameMapping(comphelper::UStringMixLess(_xConnection->getMetaData().is() && _xConnection->getMetaData()->supportsMixedCaseQuotedIdentifiers()))
     , m_xDestConnection( _xConnection )
     , m_rSourceObject( _rSourceObject )
     , m_xFormatter( getNumberFormatter( _xConnection, _rxContext ) )
@@ -589,7 +584,7 @@ OCopyTableWizard::OCopyTableWizard( weld::Window* pParent, OUString _sDefaultNam
         TypeSelectionPageFactory _pTypeSelectionPageFactory, SvStream& _rTypeSelectionPageArg, const Reference< XComponentContext >& _rxContext )
     : vcl::RoadmapWizardMachine(pParent)
     , m_vSourceColumns(std::move(_rSourceColumns))
-    , m_mNameMapping(_xConnection->getMetaData().is() && _xConnection->getMetaData()->supportsMixedCaseQuotedIdentifiers())
+    , m_mNameMapping(comphelper::UStringMixLess(_xConnection->getMetaData().is() && _xConnection->getMetaData()->supportsMixedCaseQuotedIdentifiers()))
     , m_xDestConnection( _xConnection )
     , m_rSourceObject( DummyCopySource::Instance() )
     , m_xFormatter(_xFormatter)
@@ -651,9 +646,9 @@ void OCopyTableWizard::construct()
 
     if (!m_vDestColumns.empty())
         // source is a html or rtf table
-        m_xAssistant->change_default_widget(nullptr, m_xNextPage.get());
+        m_xAssistant->change_default_button(nullptr, m_xNextPage.get());
     else
-        m_xAssistant->change_default_widget(nullptr, m_xFinish.get());
+        m_xAssistant->change_default_button(nullptr, m_xFinish.get());
 
     m_pTypeInfo = std::make_shared<OTypeInfo>();
     m_pTypeInfo->aUIName = m_sTypeNames.getToken(TYPE_OTHER, ';');
@@ -737,6 +732,7 @@ bool OCopyTableWizard::CheckColumns(sal_Int32& _rnBreakPos)
                     OFieldDescription* pField = new OFieldDescription();
                     pField->SetName(m_aKeyName);
                     pField->FillFromTypeInfo(pTypeInfo,true,true);
+                    pField->SetAutoIncrement(pTypeInfo->bAutoIncrement);
                     pField->SetPrimaryKey(true);
                     m_bAddPKFirstTime = false;
                     insertColumn(0,pField);
@@ -996,14 +992,10 @@ void OCopyTableWizard::loadData(  const ICopyTableSourceObject& _rSourceObject, 
     // On drop no line must be editable.
     // On add only empty lines must be editable.
     // On Add and Drop all lines can be edited.
-    Sequence< OUString > aColumns( _rSourceObject.getColumnNames() );
-    const OUString* pColumn      = aColumns.getConstArray();
-    const OUString* pColumnEnd   = pColumn + aColumns.getLength();
-
-    for ( ; pColumn != pColumnEnd; ++pColumn )
+    for (auto& column : _rSourceObject.getColumnNames())
     {
         // get the properties of the column
-        pActFieldDescr = _rSourceObject.createFieldDescription( *pColumn );
+        pActFieldDescr = _rSourceObject.createFieldDescription(column);
         OSL_ENSURE( pActFieldDescr, "OCopyTableWizard::loadData: illegal field description!" );
         if ( !pActFieldDescr )
             continue;
@@ -1025,13 +1017,9 @@ void OCopyTableWizard::loadData(  const ICopyTableSourceObject& _rSourceObject, 
     }
 
     // determine which columns belong to the primary key
-    Sequence< OUString > aPrimaryKeyColumns( _rSourceObject.getPrimaryKeyColumnNames() );
-    const OUString* pKeyColName  = aPrimaryKeyColumns.getConstArray();
-    const OUString* pKeyColEnd   = pKeyColName + aPrimaryKeyColumns.getLength();
-
-    for( ; pKeyColName != pKeyColEnd; ++pKeyColName )
+    for (auto& keyColName : _rSourceObject.getPrimaryKeyColumnNames())
     {
-        ODatabaseExport::TColumns::const_iterator keyPos = _rColumns.find( *pKeyColName );
+        ODatabaseExport::TColumns::const_iterator keyPos = _rColumns.find(keyColName);
         if ( keyPos != _rColumns.end() )
         {
             keyPos->second->SetPrimaryKey( true );
@@ -1194,7 +1182,7 @@ Reference< XPropertySet > OCopyTableWizard::createTable()
         if(xMetaData->getDatabaseProductName() == "MySQL")
         {
             Reference< XStatement > xSelect = m_xDestConnection->createStatement();
-            Reference< XResultSet > xRs = xSelect->executeQuery("select database()");
+            Reference< XResultSet > xRs = xSelect->executeQuery(u"select database()"_ustr);
             (void)xRs->next(); // first and only result
             Reference< XRow > xRow( xRs, UNO_QUERY_THROW );
             sSchema = xRow->getString(1);
@@ -1247,12 +1235,10 @@ Reference< XPropertySet > OCopyTableWizard::createTable()
         // set column mappings
         Reference<XNameAccess> xNameAccess = xSuppDestinationColumns->getColumns();
         Sequence< OUString> aSeq = xNameAccess->getElementNames();
-        const OUString* pIter = aSeq.getConstArray();
-        const OUString* pEnd   = pIter + aSeq.getLength();
 
-        for(sal_Int32 nNewPos=1;pIter != pEnd;++pIter,++nNewPos)
+        for (sal_Int32 i = 0; i < aSeq.getLength(); ++i)
         {
-            ODatabaseExport::TColumns::const_iterator aDestIter = m_vDestColumns.find(*pIter);
+            ODatabaseExport::TColumns::const_iterator aDestIter = m_vDestColumns.find(aSeq[i]);
 
             if ( aDestIter != m_vDestColumns.end() )
             {
@@ -1269,7 +1255,7 @@ Reference< XPropertySet > OCopyTableWizard::createTable()
 
                 if ( m_vColumnPositions.end() != aPosFind )
                 {
-                    aPosFind->second = nNewPos;
+                    aPosFind->second = i + 1;
                     OSL_ENSURE( m_vColumnTypes.size() > o3tl::make_unsigned( aPosFind - m_vColumnPositions.begin() ),
                         "Invalid index for vector!" );
                     m_vColumnTypes[ aPosFind - m_vColumnPositions.begin() ] = (*aFind)->second->GetType();
@@ -1491,7 +1477,7 @@ TOTypeInfoSP OCopyTableWizard::convertType(const TOTypeInfoSP& _pType, bool& _bN
         if ( !pType )
         {
             _bNotConvert = false;
-            pType = ::dbaui::getTypeInfoFromType(m_aDestTypeInfo,DataType::VARCHAR,_pType->aTypeName,"x",50,0,false,bForce);
+            pType = ::dbaui::getTypeInfoFromType(m_aDestTypeInfo,DataType::VARCHAR,_pType->aTypeName,u"x"_ustr,50,0,false,bForce);
             if ( !pType )
                 pType = m_pTypeInfo;
         }

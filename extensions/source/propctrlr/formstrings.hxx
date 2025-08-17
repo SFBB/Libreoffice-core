@@ -114,6 +114,7 @@ inline constexpr OUString PROPERTY_SHOW_SCROLLBARS = u"ShowScrollbars"_ustr;
 inline constexpr OUString PROPERTY_TABSTOP = u"Tabstop"_ustr;
 inline constexpr OUString PROPERTY_AUTOCOMPLETE = u"Autocomplete"_ustr;
 inline constexpr OUString PROPERTY_PRINTABLE = u"Printable"_ustr;
+inline constexpr OUString PROPERTY_PRIVILEGES = u"Privileges"_ustr;
 inline constexpr OUString PROPERTY_ECHO_CHAR = u"EchoChar"_ustr;
 inline constexpr OUString PROPERTY_ROWHEIGHT = u"RowHeight"_ustr;
 inline constexpr OUString PROPERTY_HELPTEXT = u"HelpText"_ustr;
@@ -198,6 +199,7 @@ inline constexpr OUString PROPERTY_NOLABEL = u"NoLabel"_ustr;
 inline constexpr OUString PROPERTY_URL = u"URL"_ustr;
 
 inline constexpr OUString PROPERTY_SELECTION_TYPE = u"SelectionType"_ustr;
+inline constexpr OUString PROPERTY_STANDARD_THEME = u"StandardTheme"_ustr;
 inline constexpr OUString PROPERTY_ROOT_DISPLAYED = u"RootDisplayed"_ustr;
 inline constexpr OUString PROPERTY_SHOWS_HANDLES = u"ShowsHandles"_ustr;
 inline constexpr OUString PROPERTY_SHOWS_ROOT_HANDLES = u"ShowsRootHandles"_ustr;

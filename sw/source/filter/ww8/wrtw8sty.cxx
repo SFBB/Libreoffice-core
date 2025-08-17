@@ -31,6 +31,7 @@
 #include <editeng/lrspitem.hxx>
 #include <editeng/fhgtitem.hxx>
 #include <rtl/character.hxx>
+#include <unotools/securityoptions.hxx>
 
 #include <doc.hxx>
 #include "wrtww8.hxx"
@@ -218,7 +219,7 @@ sal_uInt16 MSWordStyles::GetSlot( const SwFormat* pFormat ) const
 /// Get reserved slot number during building the style table.
 static sal_uInt16 BuildGetSlot(const SwFormat& rFormat)
 {
-    switch (sal_uInt16 nRet = rFormat.GetPoolFormatId())
+    switch (sal_uInt16 nId = rFormat.GetPoolFormatId())
     {
         case RES_POOLCOLL_STANDARD:
             return 0;
@@ -232,9 +233,11 @@ static sal_uInt16 BuildGetSlot(const SwFormat& rFormat)
         case RES_POOLCOLL_HEADLINE7:
         case RES_POOLCOLL_HEADLINE8:
         case RES_POOLCOLL_HEADLINE9:
-            nRet -= RES_POOLCOLL_HEADLINE1-1;
+        {
+            sal_uInt16 nRet = nId - (RES_POOLCOLL_HEADLINE1 - 1);
             assert(nRet < WW8_RESERVED_SLOTS);
             return nRet;
+        }
     }
     return 0xfff;
 }
@@ -319,7 +322,22 @@ void MSWordStyles::BuildStylesTable()
     const SwCharFormats& rArr = *m_rExport.m_rDoc.GetCharFormats();       // first CharFormat
     // the default character style ( 0 ) will not be outputted !
     for (size_t n = 1; n < rArr.size() && m_aStyles.size() < MSWORD_MAX_STYLES_LIMIT; ++n)
+    {
+        if (m_rExport.GetExportFormat() == MSWordExportBase::DOCX
+            && rArr[n]->GetName().toString().startsWith("ListLabel"))
+        {
+            // tdf#92335 don't export redundant DOCX import style "ListLabel"
+            continue;
+        }
+
         m_aStyles.emplace_back(rArr[n]);
+    }
+
+    if (m_aStyles.size() == MSWORD_MAX_STYLES_LIMIT)
+    {
+        SAL_WARN("sw.ww8", "MSWordStyles::BuildStylesTable: too many styles, have "
+                               << rArr.size() << " char styles");
+    }
 
     const SwTextFormatColls& rArr2 = *m_rExport.m_rDoc.GetTextFormatColls();   // then TextFormatColls
     // the default paragraph style ( 0 ) will not be outputted !
@@ -354,7 +372,7 @@ void MSWordStyles::BuildStylesTable()
     for (size_t i = 0; i < rNumRuleTable.size() && m_aStyles.size() < MSWORD_MAX_STYLES_LIMIT; ++i)
     {
         const SwNumRule* pNumRule = rNumRuleTable[i];
-        if (pNumRule->IsAutoRule() || pNumRule->GetName().startsWith("WWNum"))
+        if (pNumRule->IsAutoRule() || pNumRule->GetName().toString().startsWith("WWNum"))
             continue;
         m_aStyles.emplace_back(pNumRule);
     }
@@ -391,7 +409,7 @@ void MSWordStyles::BuildWwNames()
     assert(!m_aStyles.empty());
     assert(!m_aStyles[0].format || m_aStyles[0].ww_id == ww::stiNormal);
     m_aStyles[0].ww_name = "Normal";
-    aUsed.insert("normal");
+    aUsed.insert(u"normal"_ustr);
 
     // 1. Handle styles having special wwIds, and thus pre-defined names
     for (auto& entry : m_aStyles)
@@ -412,9 +430,9 @@ void MSWordStyles::BuildWwNames()
         if (!entry.ww_name.isEmpty())
             continue;
         if (entry.format)
-            entry.ww_name = StripWWSuffix(entry.format->GetName());
+            entry.ww_name = StripWWSuffix(entry.format->GetName().toString());
         else if (entry.num_rule)
-            entry.ww_name = StripWWSuffix(entry.num_rule->GetName());
+            entry.ww_name = StripWWSuffix(entry.num_rule->GetName().toString());
         else
             continue;
         makeUniqueName(entry.ww_name);
@@ -458,14 +476,14 @@ OString const & MSWordStyles::GetStyleId(sal_uInt16 nSlot) const
     return m_aStyles[nSlot].style_id;
 }
 
-OUString MSWordStyles::GetStyleWWName(SwFormat const*const pFormat) const
+const OUString & MSWordStyles::GetStyleWWName(SwFormat const*const pFormat) const
 {
     if (auto slot = m_rExport.m_pStyles->GetSlot(pFormat); slot != 0xfff)
     {
         assert(!m_aStyles[slot].ww_name.isEmpty());
         return m_aStyles[slot].ww_name;
     }
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 /// For WW8 only - extend pO so that the size of pTableStrm is even.
@@ -552,7 +570,7 @@ void MSWordStyles::SetStyleDefaults( const SwFormat& rFormat, bool bPap )
     // dynamic defaults
     const SfxItemPool& rPool = *rFormat.GetAttrSet().GetPool();
     for( n = nStt; n < nEnd; ++n )
-        aFlags[ n - RES_CHRATR_BEGIN ] = nullptr != rPool.GetPoolDefaultItem( n )
+        aFlags[ n - RES_CHRATR_BEGIN ] = nullptr != rPool.GetUserDefaultItem( n )
             || SfxItemState::SET == m_rExport.m_rDoc.GetDfltTextFormatColl()->GetItemState( n, false );
 
     // static defaults, that differs between WinWord and SO
@@ -699,13 +717,6 @@ void MSWordStyles::OutputStyle(sal_uInt16 nSlot)
 
         GetStyleData(entry.format, bFormatColl, nBase, nWwNext, nWwLink);
 
-        if (!bFormatColl && m_rExport.GetExportFormat() == MSWordExportBase::DOCX &&
-                        entry.style_id.startsWith("ListLabel"))
-        {
-            // tdf#92335 don't export redundant DOCX import style "ListLabel"
-            return;
-        }
-
         m_rExport.AttrOutput().StartStyle(entry.ww_name, (bFormatColl ? STYLE_TYPE_PARA : STYLE_TYPE_CHAR),
                 nBase, nWwNext, nWwLink, m_aStyles[nSlot].ww_id, nSlot,
                 entry.format->IsAutoUpdateOnDirectFormat() );
@@ -732,7 +743,7 @@ void WW8AttributeOutput::StartStyles()
     rFib.m_fcStshfOrig = rFib.m_fcStshf = nCurPos;
     m_nStyleCountPos = nCurPos + 2;     // count is added later
 
-    static sal_uInt8 aStShi[] = {
+    static const sal_uInt8 aStShi[] = {
         0x12, 0x00,
         0x0F, 0x00, 0x0A, 0x00, 0x01, 0x00, 0x5B, 0x00,
         0x0F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -908,7 +919,7 @@ sal_uInt16 wwFontHelper::GetId(const wwFont &rFont)
     return nRet;
 }
 
-void wwFontHelper::InitFontTable(const SwDoc& rDoc)
+void wwFontHelper::InitFontTable(MSWordExportBase& rExport)
 {
     GetId(wwFont(u"Times New Roman", PITCH_VARIABLE,
         FAMILY_ROMAN, RTL_TEXTENCODING_MS_1252));
@@ -919,30 +930,44 @@ void wwFontHelper::InitFontTable(const SwDoc& rDoc)
     GetId(wwFont(u"Arial", PITCH_VARIABLE, FAMILY_SWISS,
         RTL_TEXTENCODING_MS_1252));
 
-    const SvxFontItem* pFont = GetDfltAttr(RES_CHRATR_FONT);
+    GetId(*GetDfltAttr(RES_CHRATR_FONT));
 
-    GetId(wwFont(pFont->GetFamilyName(), pFont->GetPitch(),
-        pFont->GetFamily(), pFont->GetCharSet()));
-
-    const SfxItemPool& rPool = rDoc.GetAttrPool();
-    pFont = rPool.GetPoolDefaultItem(RES_CHRATR_FONT);
-    if (nullptr != pFont)
-    {
-        GetId(wwFont(pFont->GetFamilyName(), pFont->GetPitch(),
-            pFont->GetFamily(), pFont->GetCharSet()));
-    }
+    if (const SvxFontItem* pFont = rExport.m_rDoc.GetAttrPool().GetUserDefaultItem(RES_CHRATR_FONT))
+        GetId(*pFont);
 
     if (!m_bLoadAllFonts)
         return;
 
-    const sal_uInt16 aTypes[] = { RES_CHRATR_FONT, RES_CHRATR_CJK_FONT, RES_CHRATR_CTL_FONT, 0 };
-    for (const sal_uInt16* pId = aTypes; *pId; ++pId)
+    const TypedWhichId<SvxFontItem> aTypes[] { RES_CHRATR_FONT, RES_CHRATR_CJK_FONT, RES_CHRATR_CTL_FONT };
+    for (const TypedWhichId<SvxFontItem> & pId : aTypes)
     {
-        for (const SfxPoolItem* pItem : rPool.GetItemSurrogates(*pId))
+        rExport.m_rDoc.ForEachCharacterFontItem(pId, /*bIgnoreAutoStyles*/false,
+            [this] (const SvxFontItem& rFontItem) -> bool
+            {
+                GetId(rFontItem);
+                return true;
+            });
+    }
+
+    // Bullets in lists may need own fonts; and may even want to substitute fonts (see
+    // MSWordExportBase::SubstituteBullet). We need to collect these here, too.
+    rExport.EnsureUsedNumberingTable();
+    for (const SwNumRule* pRule : *rExport.m_pUsedNumTable)
+    {
+        assert(pRule);
+        int n = pRule->IsContinusNum() ? WW8ListManager::nMinLevel : WW8ListManager::nMaxLevel;
+        for (int nLvl = 0; nLvl < n; ++nLvl)
         {
-            pFont = static_cast<const SvxFontItem*>(pItem);
-            GetId(wwFont(pFont->GetFamilyName(), pFont->GetPitch(),
-                         pFont->GetFamily(), pFont->GetCharSet()));
+            const SwNumFormat& rFormat = pRule->Get(nLvl);
+
+            if (rFormat.GetNumberingType() == SVX_NUM_CHAR_SPECIAL
+                || rFormat.GetNumberingType() == SVX_NUM_BITMAP)
+            {
+                const auto [s, pFont] = rExport.GetNumberingLevelBulletStringAndFont(rFormat);
+                (void)s;
+                assert(pFont);
+                GetId(*pFont);
+            }
         }
     }
 }
@@ -1717,15 +1742,16 @@ void MSWordExportBase::SectionProperties( const WW8_SepInfo& rSepInfo, WW8_PdAtt
             const SvxLRSpaceItem &rPageLR =
                 pPdFormat->GetFormatAttr( RES_LR_SPACE );
 
-            SvxLRSpaceItem aResultLR( rPageLR.GetLeft() +
-                    rSectionLR.GetLeft(), rPageLR.GetRight() +
-                    rSectionLR.GetRight(), 0, RES_LR_SPACE );
+            SvxLRSpaceItem aResultLR(
+                SvxIndentValue::twips(rPageLR.ResolveLeft({}) + rSectionLR.ResolveLeft({})),
+                SvxIndentValue::twips(rPageLR.ResolveRight({}) + rSectionLR.ResolveRight({})),
+                SvxIndentValue::zero(), RES_LR_SPACE);
             //i120133: The Section width should consider section indent value.
-            if (rSectionLR.GetLeft()+rSectionLR.GetRight()!=0)
+            if (rSectionLR.ResolveLeft({}) + rSectionLR.ResolveRight({}) != 0)
             {
                 const SwFormatCol& rCol = rSepInfo.pSectionFormat->GetFormatAttr(RES_COL);
                 SwFormatCol aCol(rCol);
-                aCol.SetAdjustValue(rSectionLR.GetLeft()+rSectionLR.GetRight());
+                aCol.SetAdjustValue(rSectionLR.ResolveLeft({}) + rSectionLR.ResolveRight({}));
                 aSet.Put(aCol);
             }
             else
@@ -2092,7 +2118,7 @@ void WW8_WrPlcSepx::WritePlcSed( WW8Export& rWrt ) const
         rWrt.m_pTableStrm->WriteUInt32(nP);
     }
 
-    static WW8_SED aSed = {{4, 0},{0, 0, 0, 0},{0, 0},{0xff, 0xff, 0xff, 0xff}};
+    WW8_SED aSed = {{4, 0},{0, 0, 0, 0},{0, 0},{0xff, 0xff, 0xff, 0xff}};
 
     for (const auto & rSectionAttribute : m_SectionAttributes)
     {
@@ -2191,27 +2217,41 @@ void WW8_WrPlcFootnoteEdn::Append( WW8_CP nCp, const SwFormatFootnote& rFootnote
 
 WW8_Annotation::WW8_Annotation(const SwPostItField* pPostIt, WW8_CP nRangeStart, WW8_CP nRangeEnd)
     :
-        maDateTime( DateTime::EMPTY ),
         m_nRangeStart(nRangeStart),
-        m_nRangeEnd(nRangeEnd)
+        m_nRangeEnd(nRangeEnd),
+        mpAuthorIDs(new SvtSecurityMapPersonalInfo)
 {
     mpRichText = pPostIt->GetTextObject();
     if (!mpRichText)
         msSimpleText = pPostIt->GetText();
-    msOwner = pPostIt->GetPar1();
-    m_sInitials = pPostIt->GetInitials();
-    maDateTime = DateTime(pPostIt->GetDate(), pPostIt->GetTime());
+    initPersonalInfo(pPostIt->GetPar1(), pPostIt->GetInitials(),
+                     DateTime(pPostIt->GetDate(), pPostIt->GetTime()));
 }
 
 WW8_Annotation::WW8_Annotation(const SwRedlineData* pRedline)
     :
         mpRichText(nullptr),
         msSimpleText(pRedline->GetComment()),
-        msOwner(SW_MOD()->GetRedlineAuthor(pRedline->GetAuthor())),
-        maDateTime(pRedline->GetTimeStamp()),
         m_nRangeStart(0),
-        m_nRangeEnd(0)
+        m_nRangeEnd(0),
+        mpAuthorIDs(new SvtSecurityMapPersonalInfo)
 {
+    initPersonalInfo(SwModule::get()->GetRedlineAuthor(pRedline->GetAuthor()), u""_ustr,
+                     pRedline->GetTimeStamp());
+}
+
+void WW8_Annotation::initPersonalInfo(const OUString& sAuthor, const OUString& sInitials,
+                                      DateTime aDateTime)
+{
+    bool bRemovePersonalInfo
+        = SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo)
+          && !SvtSecurityOptions::IsOptionSet(
+                 SvtSecurityOptions::EOption::DocWarnKeepNoteAuthorDateInfo);
+    msOwner = bRemovePersonalInfo ? "Author" + OUString::number(mpAuthorIDs->GetInfoID(sAuthor))
+                                  : sAuthor;
+    m_sInitials = bRemovePersonalInfo ? "A" + OUString::number(mpAuthorIDs->GetInfoID(sAuthor))
+                                      : sInitials;
+    maDateTime = bRemovePersonalInfo ? DateTime(DateTime::EMPTY) : aDateTime;
 }
 
 bool WW8_Annotation::HasRange() const
@@ -2234,12 +2274,12 @@ void WW8_WrPlcAnnotations::Append( WW8_CP nCp, const SwPostItField *pPostIt )
 {
     m_aCps.push_back( nCp );
     WW8_Annotation* p;
-    if( m_aRangeStartPositions.find(pPostIt->GetName()) != m_aRangeStartPositions.end() )
+    if( m_aRangeStartPositions.find(pPostIt->GetName().toString()) != m_aRangeStartPositions.end() )
     {
-        auto [nStartCp, bIgnoreEmpty] = m_aRangeStartPositions[pPostIt->GetName()];
+        auto [nStartCp, bIgnoreEmpty] = m_aRangeStartPositions[pPostIt->GetName().toString()];
         p = new WW8_Annotation(pPostIt, nStartCp, nCp);
         p->m_bIgnoreEmpty = bIgnoreEmpty;
-        m_aRangeStartPositions.erase(pPostIt->GetName());
+        m_aRangeStartPositions.erase(pPostIt->GetName().toString());
     }
     else
     {
@@ -2323,10 +2363,10 @@ bool WW8_WrPlcSubDoc::WriteGenericText( WW8Export& rWrt, sal_uInt8 nTTyp,
                     else
                     {
                         const SwFrameFormat* pFormat = ::FindFrameFormat( &rObj );
-                        OSL_ENSURE( pFormat, "where is the format?" );
+                        assert(pFormat && "where is the format?");
 
                         const SwNodeIndex* pNdIdx = pFormat->GetContent().GetContentIdx();
-                        OSL_ENSURE( pNdIdx, "where is the StartNode of the Textbox?" );
+                        assert(pNdIdx && "where is the StartNode of the Textbox?");
                         rWrt.WriteSpecialText( pNdIdx->GetIndex() + 1,
                                                pNdIdx->GetNode().EndOfSectionIndex(),
                                                nTTyp );
@@ -2350,7 +2390,7 @@ bool WW8_WrPlcSubDoc::WriteGenericText( WW8Export& rWrt, sal_uInt8 nTTyp,
                                     // Additional paragraph containing a space to
                                     // assure that by WW created RTF from written WW8
                                     // does not crash WW.
-                                    rWrt.WriteStringAsPara( " " );
+                                    rWrt.WriteStringAsPara( u" "_ustr );
                                 }
                             }
                         }
@@ -2380,7 +2420,7 @@ bool WW8_WrPlcSubDoc::WriteGenericText( WW8Export& rWrt, sal_uInt8 nTTyp,
                 const SwFormatFootnote* pFootnote = static_cast<SwFormatFootnote const *>(m_aContent[ i ]);
                 rWrt.WriteFootnoteBegin( *pFootnote );
                 const SwNodeIndex* pIdx = pFootnote->GetTextFootnote()->GetStartNode();
-                OSL_ENSURE( pIdx, "Where is the start node of Foot-/Endnote?" );
+                assert(pIdx && "Where is the start node of Foot-/Endnote?");
                 rWrt.WriteSpecialText( pIdx->GetIndex() + 1,
                                        pIdx->GetNode().EndOfSectionIndex(),
                                        nTTyp );

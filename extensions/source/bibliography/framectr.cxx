@@ -166,7 +166,7 @@ BibFrameController_Impl::~BibFrameController_Impl()
 
 OUString SAL_CALL BibFrameController_Impl::getImplementationName()
 {
-    return "com.sun.star.comp.extensions.Bibliography";
+    return u"com.sun.star.comp.extensions.Bibliography"_ustr;
 }
 
 sal_Bool SAL_CALL BibFrameController_Impl::supportsService( const OUString& sServiceName )
@@ -178,7 +178,7 @@ css::uno::Sequence< OUString > SAL_CALL BibFrameController_Impl::getSupportedSer
 {
     // return only top level services ...
     // base services are included there and should be asked by uno-rtti.
-    return { "com.sun.star.frame.Bibliography" };
+    return { u"com.sun.star.frame.Bibliography"_ustr };
 }
 
 void BibFrameController_Impl::attachFrame( const uno::Reference< XFrame > & xArg )
@@ -234,7 +234,7 @@ void BibFrameController_Impl::dispose()
     m_xImpl->aLC.disposeAndClear(aObject);
     m_xDatMan.clear();
     m_aStatusListeners.clear();
-    m_xLastQueriedFocusWin.clear();
+    m_xLastQueriedFocusWin.reset();
     m_xWindow.clear();
     m_xImpl.clear();
 }
@@ -318,7 +318,7 @@ uno::Sequence< frame::DispatchInformation > SAL_CALL BibFrameController_Impl::ge
 static bool canInsertRecords(const Reference< beans::XPropertySet>& _rxCursorSet)
 {
     sal_Int32 nPriv = 0;
-    _rxCursorSet->getPropertyValue("Privileges") >>= nPriv;
+    _rxCursorSet->getPropertyValue(u"Privileges"_ustr) >>= nPriv;
     return _rxCursorSet.is() && (nPriv & sdbcx::Privilege::INSERT) != 0;
 }
 
@@ -337,8 +337,8 @@ bool BibFrameController_Impl::SaveModified(const Reference< form::runtime::XForm
         return false;
 
     // need to save?
-    bool  bIsNew        = ::comphelper::getBOOL(_xSet->getPropertyValue("IsNew"));
-    bool  bIsModified   = ::comphelper::getBOOL(_xSet->getPropertyValue("IsModified"));
+    bool  bIsNew        = ::comphelper::getBOOL(_xSet->getPropertyValue(u"IsNew"_ustr));
+    bool  bIsModified   = ::comphelper::getBOOL(_xSet->getPropertyValue(u"IsModified"_ustr));
     bool bResult = !bIsModified;
     if (bIsModified)
     {
@@ -431,14 +431,11 @@ void BibFrameController_Impl::dispatch(const util::URL& _rURL, const uno::Sequen
             }
         }
 
-        const beans::PropertyValue* pPropertyValue = aArgs.getConstArray();
-        uno::Any aValue=pPropertyValue[0].Value;
         OUString aQuery;
-        aValue >>= aQuery;
+        aArgs[0].Value >>= aQuery;
 
-        aValue=pPropertyValue[1].Value;
         OUString aQueryField;
-        aValue >>= aQueryField;
+        aArgs[1].Value >>= aQueryField;
         BibConfig* pConfig = BibModul::GetConfig();
         pConfig->setQueryField(aQueryField);
         m_xDatMan->startQueryWith(aQuery);
@@ -447,7 +444,7 @@ void BibFrameController_Impl::dispatch(const util::URL& _rURL, const uno::Sequen
     {
         try
         {
-            uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+            const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
 
             // create the dialog object
             uno::Reference< ui::dialogs::XExecutableDialog > xDialog = sdb::FilterDialog::createWithQuery(xContext, m_xDatMan->getParser(),
@@ -516,11 +513,11 @@ void BibFrameController_Impl::dispatch(const util::URL& _rURL, const uno::Sequen
         Reference< css::sdbc::XResultSet >  xCursor(m_xDatMan->getForm(), UNO_QUERY);
         Reference< XResultSetUpdate >       xUpdateCursor(xCursor, UNO_QUERY);
         Reference< beans::XPropertySet >    xSet(m_xDatMan->getForm(), UNO_QUERY);
-        bool  bIsNew  = ::comphelper::getBOOL(xSet->getPropertyValue("IsNew"));
+        bool  bIsNew  = ::comphelper::getBOOL(xSet->getPropertyValue(u"IsNew"_ustr));
         if(!bIsNew)
         {
             sal_uInt32 nCount = 0;
-            xSet->getPropertyValue("RowCount") >>= nCount;
+            xSet->getPropertyValue(u"RowCount"_ustr) >>= nCount;
             // determine next position
             bool bSuccess = false;
             bool bLeft = false;
@@ -725,11 +722,11 @@ void BibFrameController_Impl::addStatusListener(
     else if(aURL.Path == "Bib/DeleteRecord")
     {
         Reference< beans::XPropertySet >    xSet(m_xDatMan->getForm(), UNO_QUERY);
-        bool  bIsNew  = ::comphelper::getBOOL(xSet->getPropertyValue("IsNew"));
+        bool  bIsNew  = ::comphelper::getBOOL(xSet->getPropertyValue(u"IsNew"_ustr));
         if(!bIsNew)
         {
             sal_uInt32 nCount = 0;
-            xSet->getPropertyValue("RowCount") >>= nCount;
+            xSet->getPropertyValue(u"RowCount"_ustr) >>= nCount;
             aEvent.IsEnabled  = nCount > 0;
         }
     }
@@ -806,15 +803,14 @@ void BibFrameController_Impl::RemoveFilter()
 
 void BibFrameController_Impl::ChangeDataSource(const uno::Sequence< beans::PropertyValue >& aArgs)
 {
-    const beans::PropertyValue* pPropertyValue = aArgs.getConstArray();
-    uno::Any aValue=pPropertyValue[0].Value;
+    uno::Any aValue = aArgs[0].Value;
     OUString aDBTableName;
     aValue >>= aDBTableName;
 
 
     if(aArgs.getLength() > 1)
     {
-        uno::Any aDB = pPropertyValue[1].Value;
+        uno::Any aDB = aArgs[1].Value;
         OUString aURL;
         aDB >>= aURL;
         m_xDatMan->setActiveDataSource(aURL);
@@ -822,11 +818,10 @@ void BibFrameController_Impl::ChangeDataSource(const uno::Sequence< beans::Prope
     }
     else
     {
-        Reference<css::form::XLoadable> xLoadable(m_xDatMan);
-        xLoadable->unload();
+        m_xDatMan->unload();
         m_xDatMan->setActiveDataTable(aDBTableName);
         m_xDatMan->updateGridModel();
-        xLoadable->load();
+        m_xDatMan->load();
     }
 
 

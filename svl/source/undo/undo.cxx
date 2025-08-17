@@ -34,6 +34,26 @@
 #include <limits.h>
 #include <algorithm>
 
+namespace
+{
+class SfxMarkedUndoContext final : public SfxUndoContext
+{
+public:
+    SfxMarkedUndoContext(SfxUndoManager& manager, UndoStackMark mark)
+    {
+        m_offset = manager.RemoveMark(mark);
+        size_t count = manager.GetUndoActionCount();
+        if (m_offset < count)
+            m_offset = count - m_offset - 1;
+        else
+            m_offset = std::numeric_limits<size_t>::max();
+    }
+    size_t GetUndoOffset() override { return m_offset; }
+
+private:
+    size_t m_offset;
+};
+}
 
 SfxRepeatTarget::~SfxRepeatTarget()
 {
@@ -165,6 +185,7 @@ struct SfxUndoManager_Data
     bool            mbDoing;
     bool            mbClearUntilTopLevel;
     bool            mbEmptyActions;
+    std::optional<bool> moNeedsClearRedo; // holds a requested ClearRedo until safe to clear stack
 
     UndoListeners   aListeners;
 
@@ -263,16 +284,7 @@ namespace svl::undo::impl
 
         ~UndoManagerGuard();
 
-        struct ResetGuard {
-            ResetGuard(osl::ResettableMutexGuard& r) : rGuard(r) {}
-            ~ResetGuard() { rGuard.reset(); }
-            osl::ResettableMutexGuard& rGuard;
-        };
-        ResetGuard clear()
-        {
-            m_aGuard.clear();
-            return ResetGuard(m_aGuard);
-        }
+        auto clear() { return osl::ResettableMutexGuardScopedReleaser(m_aGuard); }
 
         void cancelNotifications()
         {
@@ -463,6 +475,14 @@ void SfxUndoManager::ClearAllLevels()
 
 void SfxUndoManager::ImplClearRedo_NoLock( bool const i_currentLevel )
 {
+    if (IsDoing())
+    {
+        // cannot clear redo while undo/redo is in process. Delay ClearRedo until safe to clear.
+        // (assuming if TopLevel requests a clear, it should have priority over CurrentLevel)
+        if (!m_xData->moNeedsClearRedo.has_value() || i_currentLevel == TopLevel)
+            m_xData->moNeedsClearRedo = i_currentLevel;
+        return;
+    }
     UndoManagerGuard aGuard( *m_xData );
     ImplClearRedo( aGuard, i_currentLevel );
 }
@@ -474,7 +494,6 @@ void SfxUndoManager::ClearRedo()
         "SfxUndoManager::ClearRedo: suspicious call - do you really wish to clear the current level?" );
     ImplClearRedo_NoLock( CurrentLevel );
 }
-
 
 void SfxUndoManager::Reset()
 {
@@ -564,13 +583,9 @@ bool SfxUndoManager::ImplAddUndoAction_NoNotify( std::unique_ptr<SfxUndoAction> 
             if (m_xData->pActUndoArray->nCurUndoAction > 0)
             {
                 --m_xData->pActUndoArray->nCurUndoAction;
+                // fdo#66071 invalidate the current empty mark when removing
+                --m_xData->mnEmptyMark;
             }
-            else
-            {
-                assert(!"CurrentUndoAction going negative (!)");
-            }
-            // fdo#66071 invalidate the current empty mark when removing
-            --m_xData->mnEmptyMark;
         }
     }
 
@@ -674,6 +689,8 @@ bool SfxUndoManager::ImplUndo( SfxUndoContext* i_contextOrNull )
     assert( !IsDoing() && "SfxUndoManager::Undo: *nested* Undo/Redo actions? How this?" );
 
     ::comphelper::FlagGuard aDoingGuard( m_xData->mbDoing );
+    m_xData->mbDoing = true;
+
     LockGuard aLockGuard( *this );
 
     if ( ImplIsInListAction_Lock() )
@@ -733,6 +750,13 @@ bool SfxUndoManager::ImplUndo( SfxUndoContext* i_contextOrNull )
         }
         SAL_WARN("svl", "SfxUndoManager::Undo: can't clear the Undo stack after the failure - some other party was faster ..." );
         throw;
+    }
+
+    m_xData->mbDoing = false;
+    if (m_xData->moNeedsClearRedo.has_value())
+    {
+        ImplClearRedo_NoLock(*m_xData->moNeedsClearRedo);
+        m_xData->moNeedsClearRedo.reset();
     }
 
     aGuard.scheduleNotification( &SfxUndoListener::actionUndone, sActionComment );
@@ -799,6 +823,8 @@ bool SfxUndoManager::ImplRedo( SfxUndoContext* i_contextOrNull )
     assert( !IsDoing() && "SfxUndoManager::Redo: *nested* Undo/Redo actions? How this?" );
 
     ::comphelper::FlagGuard aDoingGuard( m_xData->mbDoing );
+    m_xData->mbDoing = true;
+
     LockGuard aLockGuard( *this );
 
     if ( ImplIsInListAction_Lock() )
@@ -845,6 +871,8 @@ bool SfxUndoManager::ImplRedo( SfxUndoContext* i_contextOrNull )
         throw;
     }
 
+    m_xData->mbDoing = false;
+    assert(!m_xData->moNeedsClearRedo.has_value() && "Assuming I don't need to handle it here. What about if thrown?");
     ImplCheckEmptyActions();
     aGuard.scheduleNotification( &SfxUndoListener::actionRedone, sActionComment );
 
@@ -1086,18 +1114,18 @@ UndoStackMark SfxUndoManager::MarkTopUndoAction()
     return m_xData->mnMarks;
 }
 
-void SfxUndoManager::RemoveMark( UndoStackMark const i_mark )
+size_t SfxUndoManager::RemoveMark(UndoStackMark i_mark)
 {
     UndoManagerGuard aGuard( *m_xData );
 
     if ((m_xData->mnEmptyMark < i_mark) || (MARK_INVALID == i_mark))
     {
-        return; // nothing to remove
+        return std::numeric_limits<size_t>::max(); // nothing to remove
     }
     else if (i_mark == m_xData->mnEmptyMark)
     {
         --m_xData->mnEmptyMark; // never returned from MarkTop => invalid
-        return;
+        return std::numeric_limits<size_t>::max();
     }
 
     for ( size_t i=0; i<m_xData->maUndoArray.maUndoActions.size(); ++i )
@@ -1107,13 +1135,15 @@ void SfxUndoManager::RemoveMark( UndoStackMark const i_mark )
         if (markPos != rAction.aMarks.end())
         {
             rAction.aMarks.erase( markPos );
-            return;
+            return i;
         }
     }
     SAL_WARN("svl", "SfxUndoManager::RemoveMark: mark not found!");
         // TODO: this might be too offensive. There are situations where we implicitly remove marks
         // without our clients, in particular the client which created the mark, having a chance to know
         // about this.
+
+    return std::numeric_limits<size_t>::max();
 }
 
 bool SfxUndoManager::HasTopUndoActionMark( UndoStackMark const i_mark )
@@ -1133,19 +1163,31 @@ bool SfxUndoManager::HasTopUndoActionMark( UndoStackMark const i_mark )
 }
 
 
-void SfxUndoManager::RemoveOldestUndoAction()
+void SfxUndoManager::UndoMark(UndoStackMark i_mark)
+{
+    SfxMarkedUndoContext context(*this, i_mark); // Removes the mark
+    if (context.GetUndoOffset() == std::numeric_limits<size_t>::max())
+        return; // nothing to undo
+
+    UndoWithContext(context);
+}
+
+
+bool SfxUndoManager::RemoveOldestUndoAction()
 {
     UndoManagerGuard aGuard( *m_xData );
 
     if ( IsInListAction() && ( m_xData->maUndoArray.nCurUndoAction == 1 ) )
     {
-        assert(!"SfxUndoManager::RemoveOldestUndoActions: cannot remove a not-yet-closed list action!");
-        return;
+        // this can happen if we are performing a very large writer edit (e.g. removing a very large table)
+        SAL_WARN("svl", "SfxUndoManager::RemoveOldestUndoActions: cannot remove a not-yet-closed list action!");
+        return false;
     }
 
     aGuard.markForDeletion( m_xData->maUndoArray.Remove( 0 ) );
     --m_xData->maUndoArray.nCurUndoAction;
     ImplCheckEmptyActions();
+    return true;
 }
 
 void SfxUndoManager::dumpAsXml(xmlTextWriterPtr pWriter) const

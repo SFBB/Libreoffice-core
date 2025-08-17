@@ -9,6 +9,7 @@
 
 #pragma once
 #include <sal/types.h>
+#include <TextFrameIndex.hxx>
 
 namespace sw::Justify
 {
@@ -58,8 +59,32 @@ SW_DLLPUBLIC tools::Long SnapToGrid(KernArray& rKernArray, std::u16string_view a
 /// @param nGridWidth width of a text grid
 /// @param nSpace amount of space distributed under justify text alignment mode.
 /// @param nKern letter spacing.
+/// @param nBaseFontSize document font size, used for MSO-compatible grid
+/// @param bUseMsoCompatibleGrid changes grid algorithm to match MSO
 SW_DLLPUBLIC void SnapToGridEdge(KernArray& rKernArray, sal_Int32 nLen, tools::Long nGridWidth,
-                                 tools::Long nSpace, tools::Long nKern);
+                                 tools::Long nSpace, tools::Long nKern, tools::Long nBaseFontSize,
+                                 bool bUseMsoCompatibleGrid);
+
+/// Performs a kashida justification on the kerning array
+/// @param aKashPositions Array of kashida insertion positions relative to paragraph
+/// @param[in,out] rKernArray text positions from OutDev::GetTextArray()
+/// @param[out] pKashidaArray Array marking locations for inserted tatweel glyphs. Optional.
+/// @param nStt String start index relative to the paragraph
+/// @param nLen Length of substring
+/// @param nSpaceAdd Amount of space to add to each kashida insertion opportunity
+SW_DLLPUBLIC bool KashidaJustify(std::span<TextFrameIndex const> aKashPositions,
+                                 KernArray& rKernArray, sal_Bool* pKashidaArray, sal_Int32 nStt,
+                                 sal_Int32 nLen, tools::Long nSpaceAdd);
+
+/// tdf#88908: Perform a CJK space balancing on the kerning array
+/// @param[in,out] rKernArray text positions from OutDev::GetTextArray().
+/// @param aText string used to determine where space and kern are inserted.
+/// @param nStt starting index of rText.
+/// @param nLen number of elements to process in rKernArray and rText.
+/// @param nSpaceWidth new size of qualifying spaces.
+/// @param bInsideCjkScript the containing script is CJK
+SW_DLLPUBLIC void BalanceCjkSpaces(KernArray& rKernArray, std::u16string_view aText, sal_Int32 nStt,
+                                   sal_Int32 nLen, double dSpaceWidth, bool bInsideCjkScript);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

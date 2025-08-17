@@ -643,7 +643,7 @@ class TopicsControl(ControlScroller):
         elif tmp_switch_var1 == 3:
             return cr.timebox
         else:
-            raise Exception("No such column");
+            raise Exception("No such column")
 
     '''getControl
     returns a control out of the given row, which is
@@ -721,7 +721,7 @@ class TopicsControl(ControlScroller):
             traceback.print_exc()
 
 '''
-A class represting a single GUI row.
+A class representing a single GUI row.
 Note that the instance methods of this class
 are being called and handle controls of
 a single row.

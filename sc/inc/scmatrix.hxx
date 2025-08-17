@@ -34,9 +34,10 @@
 #define DEBUG_MATRIX 0
 
 class ScInterpreter;
-class SvNumberFormatter;
+struct ScInterpreterContext;
 class ScMatrixImpl;
 enum class FormulaError : sal_uInt16;
+class ScJumpMatrix;
 
 namespace sc {
 
@@ -97,7 +98,7 @@ struct ScMatrixValue
  * be one of the following types: numeric, string, boolean, empty, and empty
  * path.
  */
-class SC_DLLPUBLIC ScMatrix final
+class ScMatrix final
 {
     friend class ScMatrixImpl;
 
@@ -109,8 +110,8 @@ class SC_DLLPUBLIC ScMatrix final
     ScMatrix& operator=( const ScMatrix&) = delete;
 
 public:
-    ScMatrix(SCSIZE nC, SCSIZE nR);
-    ScMatrix(SCSIZE nC, SCSIZE nR, double fInitVal);
+    SC_DLLPUBLIC ScMatrix(SCSIZE nC, SCSIZE nR);
+    SC_DLLPUBLIC ScMatrix(SCSIZE nC, SCSIZE nR, double fInitVal);
     ScMatrix( size_t nC, size_t nR, const std::vector<double>& rInitVals );
     ~ScMatrix();
 
@@ -219,7 +220,7 @@ public:
     /**
      * Resize the matrix to specified new dimension.
      */
-    void Resize(SCSIZE nC, SCSIZE nR);
+    SC_DLLPUBLIC void Resize(SCSIZE nC, SCSIZE nR);
 
     void Resize(SCSIZE nC, SCSIZE nR, double fVal);
 
@@ -227,11 +228,11 @@ public:
         MUST be at least of the size of the original matrix. */
     ScMatrix* CloneAndExtend(SCSIZE nNewCols, SCSIZE nNewRows) const;
 
-    void IncRef() const;
-    void DecRef() const;
+    SC_DLLPUBLIC void IncRef() const;
+    SC_DLLPUBLIC void DecRef() const;
 
     void SetErrorInterpreter( ScInterpreter* p);
-    void GetDimensions( SCSIZE& rC, SCSIZE& rR) const;
+    SC_DLLPUBLIC void GetDimensions( SCSIZE& rC, SCSIZE& rR) const;
     SCSIZE GetElementCount() const;
     bool ValidColRow( SCSIZE nC, SCSIZE nR) const;
 
@@ -251,20 +252,24 @@ public:
      */
     bool ValidColRowOrReplicated( SCSIZE & rC, SCSIZE & rR ) const;
 
-    void PutDouble( double fVal, SCSIZE nC, SCSIZE nR);
+    SC_DLLPUBLIC void PutDouble( double fVal, SCSIZE nC, SCSIZE nR);
     void PutDouble( double fVal, SCSIZE nIndex);
+    void PutDoubleTrans( double fVal, SCSIZE nIndex);
     void PutDouble(const double* pArray, size_t nLen, SCSIZE nC, SCSIZE nR);
 
-    void PutString( const svl::SharedString& rStr, SCSIZE nC, SCSIZE nR) ;
+    SC_DLLPUBLIC void PutString( const svl::SharedString& rStr, SCSIZE nC, SCSIZE nR) ;
     void PutString( const svl::SharedString& rStr, SCSIZE nIndex) ;
+    void PutStringTrans( const svl::SharedString& rStr, SCSIZE nIndex) ;
     void PutString( const svl::SharedString* pArray, size_t nLen, SCSIZE nC, SCSIZE nR) ;
 
-    void PutEmpty( SCSIZE nC, SCSIZE nR);
+    SC_DLLPUBLIC void PutEmpty( SCSIZE nC, SCSIZE nR);
+    void PutEmpty(SCSIZE nIndex);
+    void PutEmptyTrans( SCSIZE nIndex );
 
     /// Jump sal_False without path
     void PutEmptyPath( SCSIZE nC, SCSIZE nR) ;
-    void PutError( FormulaError nErrorCode, SCSIZE nC, SCSIZE nR ) ;
-    void PutBoolean( bool bVal, SCSIZE nC, SCSIZE nR) ;
+    SC_DLLPUBLIC void PutError( FormulaError nErrorCode, SCSIZE nC, SCSIZE nR ) ;
+    SC_DLLPUBLIC void PutBoolean( bool bVal, SCSIZE nC, SCSIZE nR) ;
 
     void FillDouble( double fVal,
             SCSIZE nC1, SCSIZE nR1, SCSIZE nC2, SCSIZE nR2 ) ;
@@ -312,11 +317,11 @@ public:
         numerical value formatted as string, or in case of an error the error
         string is returned; an empty string for empty, a "FALSE" string for
         empty path. */
-    svl::SharedString GetString( SvNumberFormatter& rFormatter, SCSIZE nC, SCSIZE nR) const ;
+    svl::SharedString GetString( ScInterpreterContext& rContext, SCSIZE nC, SCSIZE nR) const ;
 
     /// @ATTENTION: If bString the ScMatrixValue->pS may still be NULL to indicate
     /// an empty string!
-    ScMatrixValue Get( SCSIZE nC, SCSIZE nR) const ;
+    SC_DLLPUBLIC ScMatrixValue Get( SCSIZE nC, SCSIZE nR) const ;
 
     /** @return <TRUE/> if string or any empty, empty cell, empty result, empty
         path, in fact non-value. */
@@ -374,6 +379,7 @@ public:
     size_t Count(bool bCountStrings, bool bCountErrors, bool bIgnoreEmptyStrings = false) const ;
     size_t MatchDoubleInColumns(double fValue, size_t nCol1, size_t nCol2) const ;
     size_t MatchStringInColumns(const svl::SharedString& rStr, size_t nCol1, size_t nCol2) const ;
+    void IfJump( ScJumpMatrix& rJumpMatrix, const short* pJump, short nJumpCount ) const ;
 
     double GetMaxValue( bool bTextAsZero, bool bIgnoreErrorValues = false ) const ;
     double GetMinValue( bool bTextAsZero, bool bIgnoreErrorValues = false ) const ;
@@ -409,7 +415,7 @@ public:
             EmptyOpFunction aEmptyFunc) const ;
 
     void MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& xMat1, const ScMatrixRef& xMat2,
-            SvNumberFormatter& rFormatter, svl::SharedStringPool& rPool) ;
+            ScInterpreterContext& rContext, svl::SharedStringPool& rPool) ;
 
     /** Apply binary operation to values from two input matrices, storing result into this matrix. */
     void ExecuteBinaryOp(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrix& rInputMat1, const ScMatrix& rInputMat2,

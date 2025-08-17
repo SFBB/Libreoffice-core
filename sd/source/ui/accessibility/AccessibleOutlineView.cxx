@@ -39,8 +39,6 @@ using namespace ::com::sun::star::accessibility;
 
 namespace accessibility {
 
-//=====  internal  ============================================================
-
 AccessibleOutlineView::AccessibleOutlineView (
     ::sd::Window* pSdWindow,
     ::sd::OutlineViewShell* pViewShell,
@@ -96,7 +94,7 @@ void AccessibleOutlineView::ViewForwarderChanged()
 sal_Int64 SAL_CALL
     AccessibleOutlineView::getAccessibleChildCount()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     // forward
     return maTextHelper.GetChildCount();
@@ -105,7 +103,7 @@ sal_Int64 SAL_CALL
 uno::Reference<XAccessible> SAL_CALL
     AccessibleOutlineView::getAccessibleChild (sal_Int64 nIndex)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     // Forward request to children manager.
     return maTextHelper.GetChild(nIndex);
 }
@@ -142,7 +140,7 @@ OUString SAL_CALL
 void SAL_CALL AccessibleOutlineView::addAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener )
 {
     // delegate listener handling to children manager.
-    if ( ! IsDisposed())
+    if (isAlive())
         maTextHelper.AddEventListener(xListener);
     AccessibleContextBase::addEventListener(xListener);
 }
@@ -150,7 +148,7 @@ void SAL_CALL AccessibleOutlineView::addAccessibleEventListener( const uno::Refe
 void SAL_CALL AccessibleOutlineView::removeAccessibleEventListener( const uno::Reference< XAccessibleEventListener >& xListener )
 {
     // forward
-    if ( ! IsDisposed())
+    if (isAlive())
         maTextHelper.RemoveEventListener(xListener);
     AccessibleContextBase::removeEventListener(xListener);
 }
@@ -160,7 +158,7 @@ void SAL_CALL AccessibleOutlineView::removeAccessibleEventListener( const uno::R
 OUString SAL_CALL
     AccessibleOutlineView::getImplementationName()
 {
-    return "AccessibleOutlineView";
+    return u"AccessibleOutlineView"_ustr;
 }
 
 //=====  XEventListener  ======================================================
@@ -196,7 +194,7 @@ void SAL_CALL AccessibleOutlineView::disposing()
 void SAL_CALL
     AccessibleOutlineView::propertyChange (const beans::PropertyChangeEvent& rEventObject)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     AccessibleDocumentViewBase::propertyChange (rEventObject);
 

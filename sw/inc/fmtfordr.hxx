@@ -33,14 +33,17 @@ enum SwFillOrder
     SW_FILL_ORDER_END
 };
 
+/// Some kind of fill order, mostly appears in the item set of a table line.
+///
+/// Doesn't seem to be used by the layout, also no UI to get or set it.
 class SwFormatFillOrder final : public SfxEnumItem<SwFillOrder>
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatFillOrder)
     SwFormatFillOrder( SwFillOrder = ATT_TOP_DOWN );
 
     /// "Pure virtual methods" of SfxPoolItem.
     virtual SwFormatFillOrder* Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual sal_uInt16      GetValueCount() const override;
 };
 
 inline const SwFormatFillOrder &SwAttrSet::GetFillOrder(bool bInP) const

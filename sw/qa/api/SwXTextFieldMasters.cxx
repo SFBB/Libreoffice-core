@@ -36,22 +36,15 @@ class SwXTextFieldMasters final : public UnoApiTest,
 {
 public:
     SwXTextFieldMasters()
-        : UnoApiTest("")
+        : UnoApiTest(u""_ustr)
         , XElementAccess(cppu::UnoType<beans::XPropertySet>::get())
-        , XNameAccess("com.sun.star.text.fieldmaster.SetExpression.Illustration")
+        , XNameAccess(u"com.sun.star.text.fieldmaster.SetExpression.Illustration"_ustr)
     {
-    }
-
-    virtual void setUp() override
-    {
-        UnoApiTest::setUp();
-        mxDesktop.set(frame::Desktop::create(mxComponentContext));
-        mxComponent = loadFromDesktop("private:factory/swriter");
-        CPPUNIT_ASSERT(mxComponent.is());
     }
 
     Reference<XInterface> init() override
     {
+        loadFromURL(u"private:factory/swriter"_ustr);
         Reference<text::XTextDocument> xTextDocument(mxComponent, UNO_QUERY_THROW);
 
         Reference<text::XTextFieldsSupplier> xTFS;

@@ -40,33 +40,6 @@ ActionTriggerContainer::~ActionTriggerContainer()
 {
 }
 
-// XInterface
-Any SAL_CALL ActionTriggerContainer::queryInterface( const Type& aType )
-{
-    Any a = ::cppu::queryInterface(
-                aType ,
-                static_cast< XMultiServiceFactory* >(this),
-                static_cast< XServiceInfo* >(this),
-                static_cast< XTypeProvider* >(this));
-
-    if( a.hasValue() )
-    {
-        return a;
-    }
-
-    return PropertySetContainer::queryInterface( aType );
-}
-
-void ActionTriggerContainer::acquire() noexcept
-{
-    PropertySetContainer::acquire();
-}
-
-void ActionTriggerContainer::release() noexcept
-{
-    PropertySetContainer::release();
-}
-
 // XMultiServiceFactory
 Reference< XInterface > SAL_CALL ActionTriggerContainer::createInstance( const OUString& aServiceSpecifier )
 {
@@ -77,7 +50,7 @@ Reference< XInterface > SAL_CALL ActionTriggerContainer::createInstance( const O
     else if ( aServiceSpecifier == SERVICENAME_ACTIONTRIGGERSEPARATOR )
         return static_cast<OWeakObject *>( new ActionTriggerSeparatorPropertySet());
     else
-        throw css::uno::RuntimeException("Unknown service specifier!", static_cast<OWeakObject *>(this) );
+        throw css::uno::RuntimeException(u"Unknown service specifier!"_ustr, static_cast<OWeakObject *>(this) );
 }
 
 Reference< XInterface > SAL_CALL ActionTriggerContainer::createInstanceWithArguments( const OUString& ServiceSpecifier, const Sequence< Any >& /*Arguments*/ )
@@ -109,24 +82,6 @@ Sequence< OUString > SAL_CALL ActionTriggerContainer::getSupportedServiceNames()
 {
     Sequence< OUString > seqServiceNames { SERVICENAME_ACTIONTRIGGERCONTAINER };
     return seqServiceNames;
-}
-
-// XTypeProvider
-Sequence< Type > SAL_CALL ActionTriggerContainer::getTypes()
-{
-    // Create a static typecollection ...
-    static ::cppu::OTypeCollection ourTypeCollection(
-                        cppu::UnoType<XMultiServiceFactory>::get(),
-                        cppu::UnoType<XIndexContainer>::get(),
-                        cppu::UnoType<XServiceInfo>::get(),
-                        cppu::UnoType<XTypeProvider>::get());
-
-    return ourTypeCollection.getTypes();
-}
-
-Sequence< sal_Int8 > SAL_CALL ActionTriggerContainer::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
 }
 
 }

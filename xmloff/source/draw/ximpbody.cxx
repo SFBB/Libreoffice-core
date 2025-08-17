@@ -144,7 +144,7 @@ SdXMLDrawPageContext::SdXMLDrawPageContext( SdXMLImport& rImport,
         // because of content/style file split. Now the mechanism is to
         // compare the wanted masterpage-name with the existing masterpages
         // which were loaded and created in the styles section loading.
-        uno::Reference< drawing::XDrawPages > xMasterPages(GetSdImport().GetLocalMasterPages(), uno::UNO_QUERY);
+        uno::Reference< drawing::XDrawPages2 > xMasterPages(GetSdImport().GetLocalMasterPages());
         uno::Reference < drawing::XMasterPageTarget > xDrawPage(rShapes, uno::UNO_QUERY);
         uno::Reference< drawing::XDrawPage > xMasterPage;
 
@@ -164,7 +164,7 @@ SdXMLDrawPageContext::SdXMLDrawPageContext( SdXMLImport& rImport,
                     uno::Reference< beans::XPropertySet > xPropSet(xMasterPage, uno::UNO_QUERY_THROW);
                     if (xPropSet.is())
                     {
-                        OUString aPropName("SlideLayout");
+                        OUString aPropName(u"SlideLayout"_ustr);
                         uno::Reference< beans::XPropertySetInfo > xInfo(xPropSet->getPropertySetInfo());
                         if (xInfo.is() && xInfo->hasPropertyByName(aPropName))
                         {
@@ -215,7 +215,7 @@ SdXMLDrawPageContext::SdXMLDrawPageContext( SdXMLImport& rImport,
                     + aBookmarkName;
             }
 
-            xProps->setPropertyValue("BookmarkURL", uno::Any( sHREF ) );
+            xProps->setPropertyValue(u"BookmarkURL"_ustr, uno::Any( sHREF ) );
         }
     }
 

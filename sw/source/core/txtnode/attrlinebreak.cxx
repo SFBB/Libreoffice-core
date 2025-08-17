@@ -34,9 +34,9 @@ using namespace com::sun::star;
 
 SwFormatLineBreak::SwFormatLineBreak(SwLineBreakClear eClear)
     : SfxEnumItem(RES_TXTATR_LINEBREAK, eClear)
-    , sw::BroadcastingModify()
     , m_pTextAttr(nullptr)
 {
+    setNonShareable();
 }
 
 SwFormatLineBreak::~SwFormatLineBreak() {}
@@ -55,23 +55,6 @@ bool SwFormatLineBreak::operator==(const SfxPoolItem& rAttr) const
 SwFormatLineBreak* SwFormatLineBreak::Clone(SfxItemPool*) const
 {
     return new SwFormatLineBreak(GetValue());
-}
-
-void SwFormatLineBreak::SwClientNotify(const SwModify&, const SfxHint& rHint)
-{
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    CallSwClientNotify(rHint);
-    if (RES_REMOVE_UNO_OBJECT == pLegacy->GetWhich())
-    {
-        SetXLineBreak(nullptr);
-    }
-}
-
-sal_uInt16 SwFormatLineBreak::GetValueCount() const
-{
-    return static_cast<sal_uInt16>(SwLineBreakClear::LAST) + 1;
 }
 
 rtl::Reference<SwXTextRange> SwFormatLineBreak::GetAnchor() const
@@ -102,11 +85,12 @@ void SwFormatLineBreak::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterEndElement(pWriter);
 }
 
-SwTextLineBreak::SwTextLineBreak(SwFormatLineBreak& rAttr, sal_Int32 nStartPos)
+SwTextLineBreak::SwTextLineBreak(const SfxPoolItemHolder& rAttr, sal_Int32 nStartPos)
     : SwTextAttr(rAttr, nStartPos)
     , m_pTextNode(nullptr)
 {
-    rAttr.SetTextLineBreak(this);
+    SwFormatLineBreak& rSwFormatLineBreak(static_cast<SwFormatLineBreak&>(GetAttr()));
+    rSwFormatLineBreak.SetTextLineBreak(this);
     SetHasDummyChar(true);
 }
 

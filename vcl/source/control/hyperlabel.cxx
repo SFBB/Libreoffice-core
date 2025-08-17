@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <tools/color.hxx>
 #include <vcl/event.hxx>
-#include <vcl/settings.hxx>
 #include <vcl/ptrstyle.hxx>
+
 #include <hyperlabel.hxx>
 
 namespace vcl
@@ -32,7 +31,13 @@ namespace vcl
         , bInteractive(false)
         , m_bHyperMode(false)
     {
-        implInit();
+        ToggleBackgroundColor( COL_TRANSPARENT );
+
+        WinBits nWinStyle = GetStyle();
+        nWinStyle |= WB_EXTRAOFFSET;
+        SetStyle( nWinStyle );
+
+        Show();
     }
 
     Size const & HyperLabel::CalcMinimumSize( tools::Long nMaxWidth )
@@ -43,17 +48,6 @@ namespace vcl
         m_aMinSize.AdjustHeight(2 );
         m_aMinSize.AdjustWidth(1 );
         return m_aMinSize;
-    }
-
-    void HyperLabel::implInit()
-    {
-        ToggleBackgroundColor( COL_TRANSPARENT );
-
-        WinBits nWinStyle = GetStyle();
-        nWinStyle |= WB_EXTRAOFFSET;
-        SetStyle( nWinStyle );
-
-        Show();
     }
 
     void HyperLabel::ToggleBackgroundColor( const Color& _rGBColor )
@@ -160,9 +154,9 @@ namespace vcl
     {
         FixedText::DataChanged( rDCEvt );
 
-        if ((( rDCEvt.GetType() == DataChangedEventType::SETTINGS )   ||
-            ( rDCEvt.GetType() == DataChangedEventType::DISPLAY   ))  &&
-            ( rDCEvt.GetFlags() & AllSettingsFlags::STYLE        ))
+        if ((rDCEvt.GetType() == DataChangedEventType::SETTINGS
+             || rDCEvt.GetType() == DataChangedEventType::DISPLAY)
+            && rDCEvt.GetFlags() & AllSettingsFlags::STYLE)
         {
             const StyleSettings& rStyleSettings = GetSettings().GetStyleSettings();
             if (GetControlBackground() != COL_TRANSPARENT)
@@ -173,4 +167,4 @@ namespace vcl
 
 }   // namespace vcl
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

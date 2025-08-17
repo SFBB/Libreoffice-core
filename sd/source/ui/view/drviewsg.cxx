@@ -26,8 +26,14 @@
 #include <sfx2/viewfrm.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/ImageMapInfo.hxx>
+#include <officecfg/Office/Draw.hxx>
+#include <officecfg/Office/Impress.hxx>
 
 #include <app.hrc>
+
+#include <comphelper/lok.hxx>
+#include <sfx2/lokhelper.hxx>
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
 #include <drawdoc.hxx>
 #include <sdmod.hxx>
@@ -46,7 +52,8 @@ void DrawViewShell::ExecIMap( SfxRequest const & rReq )
     if ( rReq.GetSlot() != SID_IMAP_EXEC )
         return;
 
-    SdrMark* pMark = mpDrawView->GetMarkedObjectList().GetMark(0);
+    const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
+    SdrMark* pMark = rMarkList.GetMark(0);
 
     if ( !pMark )
         return;
@@ -102,7 +109,9 @@ void DrawViewShell::ExecOptionsBar( SfxRequest& rReq )
     bool   bDefault = false;
     sal_uInt16 nSlot = rReq.GetSlot();
 
-    SdOptions* pOptions = SD_MOD()->GetSdOptions(GetDoc()->GetDocumentType());
+    SdOptions* pOptions = SdModule::get()->GetSdOptions(GetDoc()->GetDocumentType());
+    std::shared_ptr<comphelper::ConfigurationChanges> batch(
+        comphelper::ConfigurationChanges::create());
 
     switch( nSlot )
     {
@@ -114,48 +123,80 @@ void DrawViewShell::ExecOptionsBar( SfxRequest& rReq )
         case SID_GRID_VISIBLE: // not here yet!
         {
             pOptions->SetGridVisible( !mpDrawView->IsGridVisible() );
+
+            SfxViewShell* pViewShell = SfxViewShell::Current();
+            if (pViewShell && comphelper::LibreOfficeKit::isActive())
+            {
+                OString state = !mpDrawView->IsGridVisible() ? ".uno:GridVisible=true"_ostr: ".uno:GridVisible=false"_ostr;
+                pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED, state);
+            }
         }
         break;
 
         case SID_GRID_USE:
         {
             pOptions->SetUseGridSnap( !mpDrawView->IsGridSnap() );
+
+            SfxViewShell* pViewShell = SfxViewShell::Current();
+            if (pViewShell && comphelper::LibreOfficeKit::isActive())
+            {
+                OString state = !mpDrawView->IsGridSnap() ? ".uno:GridUse=true"_ostr: ".uno:GridUse=false"_ostr;
+                pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED, state);
+            }
         }
         break;
 
         case SID_HELPLINES_VISIBLE: // not here yet!
         {
-            pOptions->SetHelplines( !mpDrawView->IsHlplVisible() );
+            if ( GetDoc()->GetDocumentType() == DocumentType::Impress )
+                officecfg::Office::Impress::Layout::Display::Helpline::set(!mpDrawView->IsHlplVisible(), batch);
+            else
+                officecfg::Office::Draw::Layout::Display::Helpline::set(!mpDrawView->IsHlplVisible(), batch);
         }
         break;
 
         case SID_HELPLINES_USE:
         {
-            pOptions->SetSnapHelplines( !mpDrawView->IsHlplSnap() );
+            if (GetDoc()->GetDocumentType() == DocumentType::Impress)
+                officecfg::Office::Impress::Snap::Object::SnapLine::set(!mpDrawView->IsHlplSnap(), batch);
+            else
+                officecfg::Office::Draw::Snap::Object::SnapLine::set(!mpDrawView->IsHlplSnap(), batch);
         }
         break;
 
         case SID_HELPLINES_MOVE:
         {
-            pOptions->SetDragStripes( !mpDrawView->IsDragStripes() );
+            if ( GetDoc()->GetDocumentType() == DocumentType::Impress )
+                officecfg::Office::Impress::Layout::Display::Guide::set(!mpDrawView->IsDragStripes(), batch);
+            else
+                officecfg::Office::Draw::Layout::Display::Guide::set(!mpDrawView->IsDragStripes(), batch);
         }
         break;
 
         case SID_SNAP_BORDER:
         {
-            pOptions->SetSnapBorder( !mpDrawView->IsBordSnap() );
+            if ( GetDoc()->GetDocumentType() == DocumentType::Impress )
+                officecfg::Office::Impress::Snap::Object::PageMargin::set( !mpDrawView->IsBordSnap(), batch );
+            else
+                officecfg::Office::Draw::Snap::Object::PageMargin::set( !mpDrawView->IsBordSnap(), batch );
         }
         break;
 
         case SID_SNAP_FRAME:
         {
-            pOptions->SetSnapFrame( !mpDrawView->IsOFrmSnap() );
+            if ( GetDoc()->GetDocumentType() == DocumentType::Impress )
+                officecfg::Office::Impress::Snap::Object::ObjectFrame::set(!mpDrawView->IsOFrmSnap(), batch);
+            else
+                officecfg::Office::Draw::Snap::Object::ObjectFrame::set(!mpDrawView->IsOFrmSnap(), batch);
         }
         break;
 
         case SID_SNAP_POINTS:
         {
-            pOptions->SetSnapPoints( !mpDrawView->IsOPntSnap() );
+            if ( GetDoc()->GetDocumentType() == DocumentType::Impress )
+                officecfg::Office::Impress::Snap::Object::ObjectPoint::set( !mpDrawView->IsOPntSnap(), batch );
+            else
+                officecfg::Office::Draw::Snap::Object::ObjectPoint::set( !mpDrawView->IsOPntSnap(), batch );
         }
         break;
 
@@ -192,6 +233,7 @@ void DrawViewShell::ExecOptionsBar( SfxRequest& rReq )
     if( bDefault )
         return;
 
+    batch->commit();
     pOptions->StoreConfig();
 
     // Saves the configuration IMMEDIATELY

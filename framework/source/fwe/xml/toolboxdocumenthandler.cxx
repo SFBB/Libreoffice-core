@@ -34,7 +34,6 @@
 #include <rtl/ref.hxx>
 #include <rtl/ustrbuf.hxx>
 
-#include <comphelper/attributelist.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/propertyvalue.hxx>
 
@@ -105,18 +104,18 @@ namespace {
 struct ToolBarEntryProperty
 {
     OReadToolBoxDocumentHandler::ToolBox_XML_Namespace  nNamespace;
-    char                                                aEntryName[20];
+    OUString aEntryName;
 };
 
 }
 
-ToolBarEntryProperty const ToolBoxEntries[OReadToolBoxDocumentHandler::TB_XML_ENTRY_COUNT] =
+ToolBarEntryProperty constexpr ToolBoxEntries[OReadToolBoxDocumentHandler::TB_XML_ENTRY_COUNT] =
 {
-    { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   ELEMENT_TOOLBAR             },
-    { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   ELEMENT_TOOLBARITEM         },
-    { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   ELEMENT_TOOLBARSPACE        },
-    { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   ELEMENT_TOOLBARBREAK        },
-    { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   ELEMENT_TOOLBARSEPARATOR    },
+    { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   u"toolbar"_ustr             },
+    { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   u"toolbaritem"_ustr         },
+    { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   u"toolbarspace"_ustr        },
+    { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   u"toolbarbreak"_ustr        },
+    { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   u"toolbarseparator"_ustr    },
     { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   ATTRIBUTE_TEXT              },
     { OReadToolBoxDocumentHandler::TB_NS_XLINK,     ATTRIBUTE_URL               },
     { OReadToolBoxDocumentHandler::TB_NS_TOOLBAR,   ATTRIBUTE_VISIBLE           },
@@ -138,13 +137,13 @@ OReadToolBoxDocumentHandler::OReadToolBoxDocumentHandler( const Reference< XInde
         if ( ToolBoxEntries[i].nNamespace == TB_NS_TOOLBAR )
         {
             OUString temp = XMLNS_TOOLBAR XMLNS_FILTER_SEPARATOR +
-                OUString::createFromAscii( ToolBoxEntries[i].aEntryName );
+                ToolBoxEntries[i].aEntryName;
             m_aToolBoxMap.emplace( temp, static_cast<ToolBox_XML_Entry>(i) );
         }
         else
         {
             OUString temp = XMLNS_XLINK XMLNS_FILTER_SEPARATOR +
-                OUString::createFromAscii( ToolBoxEntries[i].aEntryName );
+                ToolBoxEntries[i].aEntryName;
             m_aToolBoxMap.emplace( temp, static_cast<ToolBox_XML_Entry>(i) );
         }
     }
@@ -177,7 +176,7 @@ void SAL_CALL OReadToolBoxDocumentHandler::endDocument()
 void SAL_CALL OReadToolBoxDocumentHandler::startElement(
     const OUString& aName, const Reference< XAttributeList > &xAttribs )
 {
-    ToolBoxHashMap::const_iterator pToolBoxEntry = m_aToolBoxMap.find( aName );
+    auto pToolBoxEntry = m_aToolBoxMap.find( aName );
     if ( pToolBoxEntry == m_aToolBoxMap.end() )
         return;
 
@@ -217,7 +216,7 @@ void SAL_CALL OReadToolBoxDocumentHandler::startElement(
                     {
                         try
                         {
-                            xPropSet->setPropertyValue("UIName", Any( aUIName ) );
+                            xPropSet->setPropertyValue(u"UIName"_ustr, Any( aUIName ) );
                         }
                         catch ( const UnknownPropertyException& )
                         {
@@ -443,7 +442,7 @@ void SAL_CALL OReadToolBoxDocumentHandler::startElement(
 
 void SAL_CALL OReadToolBoxDocumentHandler::endElement(const OUString& aName)
 {
-    ToolBoxHashMap::const_iterator pToolBoxEntry = m_aToolBoxMap.find( aName );
+    auto pToolBoxEntry = m_aToolBoxMap.find( aName );
     if ( pToolBoxEntry == m_aToolBoxMap.end() )
         return;
 
@@ -575,7 +574,7 @@ void OWriteToolBoxDocumentHandler::WriteToolBoxDocument()
     {
         try
         {
-            xPropSet->getPropertyValue("UIName") >>= aUIName;
+            xPropSet->getPropertyValue(u"UIName"_ustr) >>= aUIName;
         }
         catch ( const UnknownPropertyException& )
         {
@@ -585,10 +584,10 @@ void OWriteToolBoxDocumentHandler::WriteToolBoxDocument()
     rtl::Reference<::comphelper::AttributeList> pList = new ::comphelper::AttributeList;
 
     pList->AddAttribute( ATTRIBUTE_XMLNS_TOOLBAR,
-                         XMLNS_TOOLBAR );
+                         u"" XMLNS_TOOLBAR ""_ustr );
 
     pList->AddAttribute( ATTRIBUTE_XMLNS_XLINK,
-                         XMLNS_XLINK );
+                         u"" XMLNS_XLINK ""_ustr );
 
     if ( !aUIName.isEmpty() )
         pList->AddAttribute( m_aXMLToolbarNS + ATTRIBUTE_UINAME,

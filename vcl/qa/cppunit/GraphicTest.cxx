@@ -9,10 +9,8 @@
 
 #include <sal/config.h>
 #include <config_oox.h>
-#include <com/sun/star/graphic/XGraphic.hpp>
 #include <com/sun/star/graphic/XGraphicTransformer.hpp>
 #include <cppunit/TestAssert.h>
-#include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/plugin/TestPlugIn.h>
 #include <test/bootstrapfixture.hxx>
@@ -24,13 +22,11 @@
 #include <vcl/graphicfilter.hxx>
 #include <tools/stream.hxx>
 #include <unotest/directories.hxx>
-#include <comphelper/DirectoryHelper.hxx>
 #include <comphelper/hash.hxx>
-#include <unotools/ucbstreamhelper.hxx>
 #include <unotools/tempfile.hxx>
-#include <vcl/cvtgrf.hxx>
 #include <vcl/metaact.hxx>
 #include <vcl/wmf.hxx>
+#include "CommonTools.hxx"
 
 #include <impgraph.hxx>
 #include <graphic/GraphicFormatDetector.hxx>
@@ -97,26 +93,6 @@ Graphic makeUnloadedGraphic(std::u16string_view sType, bool alpha = false)
     return rGraphicFilter.ImportUnloadedGraphic(aStream);
 }
 
-std::string toHexString(const std::vector<unsigned char>& a)
-{
-    std::stringstream aStrm;
-    for (auto& i : a)
-    {
-        aStrm << std::setw(2) << std::setfill('0') << std::hex << static_cast<int>(i);
-    }
-
-    return aStrm.str();
-}
-
-std::vector<unsigned char> calculateHash(SvStream* pStream)
-{
-    comphelper::Hash aHashEngine(comphelper::HashType::SHA1);
-    const sal_uInt32 nSize(pStream->remainingSize());
-    std::vector<sal_uInt8> aData(nSize);
-    aHashEngine.update(aData.data(), nSize);
-    return aHashEngine.finalize();
-}
-
 bool checkBitmap(Graphic& rGraphic)
 {
     bool bResult = true;
@@ -132,12 +108,12 @@ bool checkBitmap(Graphic& rGraphic)
                 {
                     sal_uInt32 nIndex = pReadAccess->GetPixelIndex(y, x);
                     Color aColor = pReadAccess->GetPaletteColor(nIndex);
-                    bResult &= (aColor == Color(0xff, 0x00, 0x00));
+                    bResult &= (aColor == COL_LIGHTRED);
                 }
                 else
                 {
                     Color aColor = pReadAccess->GetPixel(y, x);
-                    bResult &= (aColor == Color(0xff, 0x00, 0x00));
+                    bResult &= (aColor == COL_LIGHTRED);
                 }
             }
         }
@@ -364,11 +340,12 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testUnloadedGraphicSizeUnit)
 {
     GraphicFilter& rGraphicFilter = GraphicFilter::GetGraphicFilter();
     test::Directories aDirectories;
-    OUString aURL = aDirectories.getURLFromSrc(DATA_DIRECTORY) + "inch-size.emf";
+    OUString aURL = aDirectories.getURLFromSrc(DATA_DIRECTORY) + "inch-size.pct";
     Size aMtfSize100(42, 42);
     SvFileStream aStream(aURL, StreamMode::READ);
     Graphic aGraphic = rGraphicFilter.ImportUnloadedGraphic(aStream, 0, &aMtfSize100);
 
+    CPPUNIT_ASSERT_EQUAL(false, aGraphic.isAvailable());
     CPPUNIT_ASSERT_EQUAL(Size(42, 42), aGraphic.GetPrefSize());
 
     // Force it to swap in
@@ -480,7 +457,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testEmfToWmfConversion)
     // - Expected: WMF
     // - Actual  : EMF
     // i.e. EMF data was requested to be converted to WMF, but the output was still EMF.
-    CPPUNIT_ASSERT_EQUAL(OUString("WMF"),
+    CPPUNIT_ASSERT_EQUAL(u"WMF"_ustr,
                          vcl::getImportFormatShortName(aDetector.getMetadata().mnFormat));
 
     // Import the WMF result and check for traces of EMF+ in it.
@@ -525,7 +502,8 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphic_PNG_WithGfxLink)
     BitmapChecksum aChecksumBeforeSwapping = aGraphic.GetChecksum();
 
     CPPUNIT_ASSERT_EQUAL(true, aGraphic.IsGfxLink());
-    CPPUNIT_ASSERT_EQUAL(sal_uInt32(319), aGraphic.GetGfxLink().GetDataSize());
+    // Expect the compressed png is be at least W * H / 2
+    CPPUNIT_ASSERT_LESS(sal_uInt32(120 * 100 / 2), aGraphic.GetGfxLink().GetDataSize());
 
     // We loaded the Graphic and made it available
     CPPUNIT_ASSERT_EQUAL(false, aGraphic.ImplGetImpGraphic()->isSwappedOut());
@@ -603,9 +581,9 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphic_PNG_WithoutGfxLink)
         // Check size of the stream
         CPPUNIT_ASSERT_EQUAL(sal_uInt64(36079), pStream->remainingSize());
 
-        std::vector<unsigned char> aHash = calculateHash(pStream);
-        CPPUNIT_ASSERT_EQUAL(std::string("9347511e3b80dfdfaadf91a3bdef55a8ae85552b"),
-                             toHexString(aHash));
+        std::vector<unsigned char> aHash = calculateHash(*pStream);
+        CPPUNIT_ASSERT_EQUAL(std::string("5e9123e2ad3f8e90729677a531fc7e08657fe948"),
+                             comphelper::hashToString(aHash));
     }
 
     // SWAP IN
@@ -638,8 +616,8 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_PNG_WithGfxLink)
     CPPUNIT_ASSERT_EQUAL(true, aGraphic.isAvailable());
 
     // Origin URL
-    aGraphic.setOriginURL("Origin URL");
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    aGraphic.setOriginURL(u"Origin URL"_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
 
     //Set PrefMapMode
     CPPUNIT_ASSERT_EQUAL(MapUnit::Map100thMM, aGraphic.GetPrefMapMode().GetMapUnit());
@@ -660,7 +638,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_PNG_WithGfxLink)
     CPPUNIT_ASSERT_EQUAL(false, aGraphic.isAvailable());
 
     // Check properties
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
     CPPUNIT_ASSERT_EQUAL(MapUnit::MapTwip, aGraphic.GetPrefMapMode().GetMapUnit());
     CPPUNIT_ASSERT_EQUAL(tools::Long(200), aGraphic.GetPrefSize().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(100), aGraphic.GetPrefSize().Height());
@@ -672,7 +650,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_PNG_WithGfxLink)
     CPPUNIT_ASSERT_EQUAL(false, aGraphic.ImplGetImpGraphic()->isSwappedOut());
 
     // Check properties
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
     CPPUNIT_ASSERT_EQUAL(MapUnit::MapTwip, aGraphic.GetPrefMapMode().GetMapUnit());
     CPPUNIT_ASSERT_EQUAL(tools::Long(200), aGraphic.GetPrefSize().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(100), aGraphic.GetPrefSize().Height());
@@ -688,8 +666,8 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_PNG_WithoutGfxLi
     CPPUNIT_ASSERT_EQUAL(true, aGraphic.isAvailable());
 
     // Origin URL
-    aGraphic.setOriginURL("Origin URL");
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    aGraphic.setOriginURL(u"Origin URL"_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
 
     //Set PrefMapMode
     CPPUNIT_ASSERT_EQUAL(MapUnit::Map100thMM, aGraphic.GetPrefMapMode().GetMapUnit());
@@ -710,7 +688,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_PNG_WithoutGfxLi
     CPPUNIT_ASSERT_EQUAL(false, aGraphic.isAvailable());
 
     // Check properties
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
     CPPUNIT_ASSERT_EQUAL(MapUnit::MapTwip, aGraphic.GetPrefMapMode().GetMapUnit());
     CPPUNIT_ASSERT_EQUAL(tools::Long(200), aGraphic.GetPrefSize().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(100), aGraphic.GetPrefSize().Height());
@@ -722,7 +700,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_PNG_WithoutGfxLi
     CPPUNIT_ASSERT_EQUAL(false, aGraphic.ImplGetImpGraphic()->isSwappedOut());
 
     // Check properties
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
     CPPUNIT_ASSERT_EQUAL(MapUnit::MapTwip, aGraphic.GetPrefMapMode().GetMapUnit());
     CPPUNIT_ASSERT_EQUAL(tools::Long(200), aGraphic.GetPrefSize().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(100), aGraphic.GetPrefSize().Height());
@@ -839,9 +817,9 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingVectorGraphic_SVG_WithoutGfxLink)
         // Check size of the stream
         CPPUNIT_ASSERT_EQUAL(sal_uInt64(247), pStream->remainingSize());
 
-        std::vector<unsigned char> aHash = calculateHash(pStream);
-        CPPUNIT_ASSERT_EQUAL(std::string("666820973fd95e6cd9e7bc5f1c53732acbc99326"),
-                             toHexString(aHash));
+        std::vector<unsigned char> aHash = calculateHash(*pStream);
+        CPPUNIT_ASSERT_EQUAL(std::string("774c309b4b9f005f2f4d833d64f936656dfe3137"),
+                             comphelper::hashToString(aHash));
     }
 
     // Let's swap in
@@ -890,8 +868,8 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_SVG_WithGfxLink)
     CPPUNIT_ASSERT_EQUAL(true, aGraphic.isAvailable());
 
     // Origin URL
-    aGraphic.setOriginURL("Origin URL");
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    aGraphic.setOriginURL(u"Origin URL"_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
 
     // Check size in pixels
     CPPUNIT_ASSERT_EQUAL(tools::Long(51), aGraphic.GetSizePixel().Width());
@@ -911,7 +889,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_SVG_WithGfxLink)
     CPPUNIT_ASSERT_EQUAL(false, aGraphic.isAvailable());
 
     // Check properties
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
     CPPUNIT_ASSERT_EQUAL(tools::Long(200), aGraphic.GetPrefSize().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(100), aGraphic.GetPrefSize().Height());
     CPPUNIT_ASSERT_EQUAL(tools::Long(51), aGraphic.GetSizePixel().Width());
@@ -924,7 +902,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_SVG_WithGfxLink)
     CPPUNIT_ASSERT_EQUAL(false, aGraphic.ImplGetImpGraphic()->isSwappedOut());
 
     // Check properties
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
     CPPUNIT_ASSERT_EQUAL(tools::Long(200), aGraphic.GetPrefSize().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(100), aGraphic.GetPrefSize().Height());
     CPPUNIT_ASSERT_EQUAL(tools::Long(51), aGraphic.GetSizePixel().Width());
@@ -957,8 +935,8 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_SVG_WithoutGfxLi
     CPPUNIT_ASSERT_EQUAL(false, aGraphic.ImplGetImpGraphic()->isSwappedOut());
 
     // Origin URL
-    aGraphic.setOriginURL("Origin URL");
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    aGraphic.setOriginURL(u"Origin URL"_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
 
     // Check size in pixels
     CPPUNIT_ASSERT_EQUAL(tools::Long(51), aGraphic.GetSizePixel().Width());
@@ -977,7 +955,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_SVG_WithoutGfxLi
     CPPUNIT_ASSERT_EQUAL(true, aGraphic.ImplGetImpGraphic()->isSwappedOut());
     CPPUNIT_ASSERT_EQUAL(false, aGraphic.isAvailable());
 
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
 
     CPPUNIT_ASSERT_EQUAL(tools::Long(200), aGraphic.GetPrefSize().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(100), aGraphic.GetPrefSize().Height());
@@ -990,7 +968,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphicProperties_SVG_WithoutGfxLi
     CPPUNIT_ASSERT_EQUAL(true, aGraphic.isAvailable());
     CPPUNIT_ASSERT_EQUAL(false, aGraphic.ImplGetImpGraphic()->isSwappedOut());
 
-    CPPUNIT_ASSERT_EQUAL(OUString("Origin URL"), aGraphic.getOriginURL());
+    CPPUNIT_ASSERT_EQUAL(u"Origin URL"_ustr, aGraphic.getOriginURL());
 
     CPPUNIT_ASSERT_EQUAL(tools::Long(200), aGraphic.GetPrefSize().Width());
     CPPUNIT_ASSERT_EQUAL(tools::Long(100), aGraphic.GetPrefSize().Height());
@@ -1182,9 +1160,9 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingAnimationGraphic_GIF_WithoutGfxLin
         // Check size of the stream
         CPPUNIT_ASSERT_EQUAL(sal_uInt64(15139), pStream->remainingSize());
 
-        std::vector<unsigned char> aHash = calculateHash(pStream);
-        CPPUNIT_ASSERT_EQUAL(std::string("ecae5354edd9cf98553eb3153e44181f56d35338"),
-                             toHexString(aHash));
+        std::vector<unsigned char> aHash = calculateHash(*pStream);
+        CPPUNIT_ASSERT_EQUAL(std::string("f3678a6f0adc2a86450facd850c4740ba0ecb52a"),
+                             comphelper::hashToString(aHash));
     }
 
     // SWAP IN
@@ -1340,18 +1318,21 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testColorChangeToTransparent)
     ::Color nColorTo{ ColorTransparency, 0xFF, 0xFF, 0x00, 0x00 };
     sal_uInt8 nTolerance{ 15 };
 
+    const Bitmap& rBitmapBefore = aGraphic.GetBitmapRef();
+    CPPUNIT_ASSERT_EQUAL(::Color(ColorTransparency, 0x00, 0xF0, 0x00, 0x00),
+                         rBitmapBefore.GetPixelColor(386, 140));
+
     auto xGraphicAfter = xGraphicTransformer->colorChange(
         xGraphic, static_cast<sal_Int32>(nColorFrom), nTolerance, static_cast<sal_Int32>(nColorTo),
         static_cast<sal_Int8>(nColorTo.GetAlpha()));
 
     Graphic aGraphicAfter{ xGraphicAfter };
-    const BitmapEx& rBitmapAfter = aGraphicAfter.GetBitmapExRef();
-    const BitmapEx& rBitmapBefore = aGraphic.GetBitmapExRef();
+    const Bitmap& rBitmapAfter = aGraphicAfter.GetBitmapRef();
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: rgba[ff000000]
     // - Actual  : rgba[f00000ff]
     // i.e. the color change to transparent didn't apply correctly
-    CPPUNIT_ASSERT_EQUAL(nColorTo, rBitmapAfter.GetPixelColor(386, 140));
+    CPPUNIT_ASSERT_EQUAL(sal_uInt8(0x00), rBitmapAfter.GetPixelColor(386, 140).GetAlpha());
 
     // Test if color stayed same on 410,140
     // colorChange with nTolerance 15 shouldn't change this pixel.

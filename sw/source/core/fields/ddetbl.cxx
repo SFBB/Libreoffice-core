@@ -64,8 +64,8 @@ SwDDETable::SwDDETable( SwTable& rTable, SwDDEFieldType* pDDEType, bool bUpdate 
 
 SwDDETable::~SwDDETable()
 {
-    SwDoc* pDoc = GetFrameFormat()->GetDoc();
-    if (!pDoc->IsInDtor() && !m_aLines.empty())
+    SwDoc& rDoc = GetFrameFormat()->GetDoc();
+    if (!rDoc.IsInDtor() && !m_aLines.empty())
     {
         assert(m_pTableNode);
         if (m_pTableNode->GetNodes().IsDocNodes())
@@ -85,7 +85,11 @@ SwDDETable::~SwDDETable()
 
 void SwDDETable::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
 {
-    if (rHint.GetId() == SfxHintId::SwLegacyModify || rHint.GetId() == SfxHintId::SwAutoFormatUsedHint)
+    if (rHint.GetId() == SfxHintId::SwLegacyModify
+        || rHint.GetId() == SfxHintId::SwAutoFormatUsedHint
+        || rHint.GetId() == SfxHintId::SwAttrSetChange
+        || rHint.GetId() == SfxHintId::SwObjectDying
+        || rHint.GetId() == SfxHintId::SwUpdateAttr)
     {
         SwTable::SwClientNotify(rModify, rHint);
     }
@@ -96,16 +100,18 @@ void SwDDETable::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
         // replace DDETable by real table
         NoDDETable();
     }
-    else if(const auto pLinkAnchorHint = dynamic_cast<const sw::LinkAnchorSearchHint*>(&rHint))
+    else if(rHint.GetId() == SfxHintId::SwLinkAnchorSearch)
     {
+        const auto pLinkAnchorHint = static_cast<const sw::LinkAnchorSearchHint*>(&rHint);
         if(pLinkAnchorHint->m_rpFoundNode)
             return;
         const auto pNd = GetTabSortBoxes()[0]->GetSttNd();
         if( pNd && &pLinkAnchorHint->m_rNodes == &pNd->GetNodes() )
             pLinkAnchorHint->m_rpFoundNode = pNd;
     }
-    else if(const sw::InRangeSearchHint* pInRangeHint = dynamic_cast<const sw::InRangeSearchHint*>(&rHint))
+    else if(rHint.GetId() == SfxHintId::SwInRangeSearch)
     {
+        const sw::InRangeSearchHint* pInRangeHint = static_cast<const sw::InRangeSearchHint*>(&rHint);
         if(pInRangeHint->m_rIsInRange)
             return;
         const SwTableNode* pTableNd = GetTabSortBoxes()[0]->GetSttNd()->FindTableNode();
@@ -113,12 +119,15 @@ void SwDDETable::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
                 pInRangeHint->m_nSttNd < pTableNd->EndOfSectionIndex() &&
                 pInRangeHint->m_nEndNd > pTableNd->GetIndex() )
             pInRangeHint->m_rIsInRange = true;
-    } else if (const auto pGatherDdeTablesHint = dynamic_cast<const sw::GatherDdeTablesHint*>(&rHint))
+    }
+    else if (rHint.GetId() == SfxHintId::SwGatherDdeTables)
     {
+        const auto pGatherDdeTablesHint = static_cast<const sw::GatherDdeTablesHint*>(&rHint);
         pGatherDdeTablesHint->m_rvTables.push_back(this);
     }
-    else if (auto pModifyChangedHint = dynamic_cast<const sw::ModifyChangedHint*>(&rHint))
+    else if (rHint.GetId() == SfxHintId::SwModifyChanged)
     {
+        auto pModifyChangedHint = static_cast<const sw::ModifyChangedHint*>(&rHint);
         if(m_pDDEType == &rModify)
             m_pDDEType = const_cast<SwDDEFieldType*>(static_cast<const SwDDEFieldType*>(pModifyChangedHint->m_pNew));
     }
@@ -150,12 +159,16 @@ void SwDDETable::ChangeContent()
             OSL_ENSURE( pBox->GetSttIdx(), "no content box" );
             SwNodeIndex aNdIdx( *pBox->GetSttNd(), 1 );
             SwTextNode* pTextNode = aNdIdx.GetNode().GetTextNode();
-            OSL_ENSURE( pTextNode, "No Node" );
+            if (!pTextNode)
+            {
+                SAL_WARN("sw.core", "No TextNode in SwDDETable::ChangeContent");
+                continue;
+            }
             SwContentIndex aCntIdx( pTextNode, 0 );
             pTextNode->EraseText( aCntIdx );
             pTextNode->InsertText( aLine.getToken( 0, '\t', nLineTokenPos ), aCntIdx );
 
-            SwTableBoxFormat* pBoxFormat = static_cast<SwTableBoxFormat*>(pBox->GetFrameFormat());
+            SwTableBoxFormat* pBoxFormat = pBox->GetFrameFormat();
             pBoxFormat->LockModify();
             pBoxFormat->ResetFormatAttr( RES_BOXATR_VALUE );
             pBoxFormat->UnlockModify();
@@ -163,9 +176,9 @@ void SwDDETable::ChangeContent()
     }
 
     const IDocumentSettingAccess& rIDSA = GetFrameFormat()->getIDocumentSettingAccess();
-    SwDoc* pDoc = GetFrameFormat()->GetDoc();
+    SwDoc& rDoc = GetFrameFormat()->GetDoc();
     if( AUTOUPD_FIELD_AND_CHARTS == rIDSA.getFieldUpdateFlags(true) )
-        pDoc->getIDocumentFieldsAccess().SetFieldsDirty( true, nullptr, SwNodeOffset(0) );
+        rDoc.getIDocumentFieldsAccess().SetFieldsDirty( true, nullptr, SwNodeOffset(0) );
 }
 
 SwDDEFieldType* SwDDETable::GetDDEFieldType()
@@ -177,7 +190,7 @@ void SwDDETable::NoDDETable()
 {
     // search table node
     OSL_ENSURE( GetFrameFormat(), "No FrameFormat" );
-    SwDoc* pDoc = GetFrameFormat()->GetDoc();
+    SwDoc& rDoc = GetFrameFormat()->GetDoc();
 
     // Is this the correct NodesArray? (because of UNDO)
     if( m_aLines.empty() )
@@ -200,7 +213,7 @@ void SwDDETable::NoDDETable()
                                    GetTabLines().begin(), GetTabLines().end() ); // move lines
     GetTabLines().clear();
 
-    if( pDoc->getIDocumentLayoutAccess().GetCurrentViewShell() )
+    if( rDoc.getIDocumentLayoutAccess().GetCurrentViewShell() )
         m_pDDEType->DecRefCnt();
 
     pTableNd->SetNewTable( std::move(pNewTable) );       // replace table

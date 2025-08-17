@@ -26,14 +26,10 @@
 #include <jvmaccess/unovirtualmachine.hxx>
 #include <jvmaccess/virtualmachine.hxx>
 
-#include <osl/diagnose.h>
-
-#include <rtl/alloc.h>
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
 #include <utility>
 
-#include <uno/environment.h>
 #include <typelib/typedescription.h>
 
 
@@ -220,7 +216,7 @@ inline rtl_mem * rtl_mem::allocate( std::size_t bytes )
 {
     void * p = std::malloc( bytes );
     if (nullptr == p)
-        throw BridgeRuntimeError( "out of memory!" );
+        throw BridgeRuntimeError( u"out of memory!"_ustr );
     return static_cast<rtl_mem *>(p);
 }
 

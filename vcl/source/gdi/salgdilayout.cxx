@@ -31,22 +31,24 @@
 #include <rtl/math.hxx>
 #include <comphelper/lok.hxx>
 #include <toolbarvalue.hxx>
+#include <scrollbarvalue.hxx>
 
 // The only common SalFrame method
 
 SalFrameGeometry SalFrame::GetGeometry() const
 {
+    SalFrameGeometry aGeometry = GetUnmirroredGeometry();
+
     // mirror frame coordinates at parent
     SalFrame *pParent = GetParent();
     if( pParent && AllSettings::GetLayoutRTL() )
     {
-        SalFrameGeometry aGeom = maGeometry;
-        const int nParentX = aGeom.x() - pParent->maGeometry.x();
-        aGeom.setX(pParent->maGeometry.x() + pParent->maGeometry.width() - maGeometry.width() - nParentX);
-        return aGeom;
+        SalFrameGeometry aParentGeometry = pParent->GetUnmirroredGeometry();
+        const int nParentX = aGeometry.x() - aParentGeometry.x();
+        aGeometry.setX(aParentGeometry.x() + aParentGeometry.width() - aGeometry.width() - nParentX);
     }
-    else
-        return maGeometry;
+
+    return aGeometry;
 }
 
 SalGraphics::SalGraphics()
@@ -665,20 +667,6 @@ void SalGraphics::DrawBitmap( const SalTwoRect& rPosAry,
         drawBitmap( rPosAry, rSalBitmap );
 }
 
-void SalGraphics::DrawBitmap( const SalTwoRect& rPosAry,
-                              const SalBitmap& rSalBitmap,
-                              const SalBitmap& rTransparentBitmap, const OutputDevice& rOutDev )
-{
-    if( (m_nLayout & SalLayoutFlags::BiDiRtl) || rOutDev.IsRTLEnabled() )
-    {
-        SalTwoRect aPosAry2 = rPosAry;
-        mirror( aPosAry2.mnDestX, aPosAry2.mnDestWidth, rOutDev );
-        drawBitmap( aPosAry2, rSalBitmap, rTransparentBitmap );
-    }
-    else
-        drawBitmap( rPosAry, rSalBitmap, rTransparentBitmap );
-}
-
 void SalGraphics::DrawMask( const SalTwoRect& rPosAry,
                             const SalBitmap& rSalBitmap,
                             Color nMaskColor, const OutputDevice& rOutDev )
@@ -693,11 +681,11 @@ void SalGraphics::DrawMask( const SalTwoRect& rPosAry,
         drawMask( rPosAry, rSalBitmap, nMaskColor );
 }
 
-std::shared_ptr<SalBitmap> SalGraphics::GetBitmap( tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight, const OutputDevice& rOutDev )
+std::shared_ptr<SalBitmap> SalGraphics::GetBitmap( tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight, const OutputDevice& rOutDev, bool bWithoutAlpha )
 {
     if( (m_nLayout & SalLayoutFlags::BiDiRtl) || rOutDev.IsRTLEnabled() )
         mirror( nX, nWidth, rOutDev );
-    return getBitmap( nX, nY, nWidth, nHeight );
+    return getBitmap( nX, nY, nWidth, nHeight, bWithoutAlpha );
 }
 
 Color SalGraphics::GetPixel( tools::Long nX, tools::Long nY, const OutputDevice& rOutDev )
@@ -834,36 +822,6 @@ bool SalGraphics::GetNativeControlRegion( ControlType nType, ControlPart nPart, 
         return forWidget()->getNativeControlRegion(nType, nPart, rControlRegion, nState, aValue, OUString(), rNativeBoundingRegion, rNativeContentRegion);
 }
 
-bool SalGraphics::BlendBitmap( const SalTwoRect& rPosAry,
-                               const SalBitmap& rBitmap,
-                               const OutputDevice& rOutDev )
-{
-    if( (m_nLayout & SalLayoutFlags::BiDiRtl) || rOutDev.IsRTLEnabled() )
-    {
-        SalTwoRect aPosAry2 = rPosAry;
-        mirror( aPosAry2.mnDestX, aPosAry2.mnDestWidth, rOutDev );
-        return blendBitmap( aPosAry2, rBitmap );
-    }
-    else
-        return blendBitmap( rPosAry, rBitmap );
-}
-
-bool SalGraphics::BlendAlphaBitmap( const SalTwoRect& rPosAry,
-                                    const SalBitmap& rSrcBitmap,
-                                    const SalBitmap& rMaskBitmap,
-                                    const SalBitmap& rAlphaBitmap,
-                                    const OutputDevice& rOutDev )
-{
-    if( (m_nLayout & SalLayoutFlags::BiDiRtl) || rOutDev.IsRTLEnabled() )
-    {
-        SalTwoRect aPosAry2 = rPosAry;
-        mirror( aPosAry2.mnDestX, aPosAry2.mnDestWidth, rOutDev );
-        return blendAlphaBitmap( aPosAry2, rSrcBitmap, rMaskBitmap, rAlphaBitmap );
-    }
-    else
-        return blendAlphaBitmap( rPosAry, rSrcBitmap, rMaskBitmap, rAlphaBitmap );
-}
-
 bool SalGraphics::DrawAlphaBitmap( const SalTwoRect& rPosAry,
                                    const SalBitmap& rSourceBitmap,
                                    const SalBitmap& rAlphaBitmap,
@@ -930,10 +888,9 @@ OUString SalGraphics::getRenderBackendName() const
     return OUString();
 }
 
-bool SalGraphics::ShouldDownscaleIconsAtSurface(double* pScaleOut) const
+bool SalGraphics::ShouldDownscaleIconsAtSurface(double& rScaleOut) const
 {
-    if (pScaleOut)
-        *pScaleOut = comphelper::LibreOfficeKit::getDPIScale();
+    rScaleOut = comphelper::LibreOfficeKit::getDPIScale();
     return comphelper::LibreOfficeKit::isActive();
 }
 

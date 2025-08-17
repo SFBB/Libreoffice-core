@@ -20,6 +20,7 @@ $(eval $(call gb_StaticLibrary_use_externals,poppler,\
 
 $(eval $(call gb_StaticLibrary_set_warnings_disabled,poppler))
 
+# note: the "fofi" and "goo" subdirs are required for the PCH
 $(eval $(call gb_StaticLibrary_set_include,poppler,\
 	-I$(WORKDIR)/UnpackedTarball/poppler \
 	-I$(WORKDIR)/UnpackedTarball/poppler/fofi \
@@ -87,6 +88,7 @@ $(eval $(call gb_StaticLibrary_add_generated_exception_objects,poppler,\
 	UnpackedTarball/poppler/poppler/CertificateInfo \
 	UnpackedTarball/poppler/poppler/CharCodeToUnicode \
 	UnpackedTarball/poppler/poppler/CMap \
+	UnpackedTarball/poppler/poppler/CryptoSignBackend \
 	UnpackedTarball/poppler/poppler/DCTStream \
 	UnpackedTarball/poppler/poppler/DateInfo \
 	UnpackedTarball/poppler/poppler/Decrypt \
@@ -136,6 +138,7 @@ $(eval $(call gb_StaticLibrary_add_generated_exception_objects,poppler,\
 	UnpackedTarball/poppler/poppler/SecurityHandler \
 	UnpackedTarball/poppler/poppler/SignatureInfo \
 	UnpackedTarball/poppler/poppler/Sound \
+	UnpackedTarball/poppler/poppler/SplashOutputDev \
 	UnpackedTarball/poppler/poppler/Stream \
 	UnpackedTarball/poppler/poppler/StructElement \
 	UnpackedTarball/poppler/poppler/StructTreeRoot \
@@ -146,7 +149,19 @@ $(eval $(call gb_StaticLibrary_add_generated_exception_objects,poppler,\
 	UnpackedTarball/poppler/poppler/UnicodeTypeTable \
 	UnpackedTarball/poppler/poppler/ViewerPreferences \
 	UnpackedTarball/poppler/poppler/XRef \
+	UnpackedTarball/poppler/splash/Splash \
 	UnpackedTarball/poppler/splash/SplashBitmap \
+	UnpackedTarball/poppler/splash/SplashClip \
+	UnpackedTarball/poppler/splash/SplashFont \
+	UnpackedTarball/poppler/splash/SplashFontEngine \
+	UnpackedTarball/poppler/splash/SplashFontFile \
+	UnpackedTarball/poppler/splash/SplashFontFileID \
+	UnpackedTarball/poppler/splash/SplashPath \
+	UnpackedTarball/poppler/splash/SplashPattern \
+	UnpackedTarball/poppler/splash/SplashScreen \
+	UnpackedTarball/poppler/splash/SplashState \
+	UnpackedTarball/poppler/splash/SplashXPath \
+	UnpackedTarball/poppler/splash/SplashXPathScanner \
 ))
 
 # vim: set noet sw=4 ts=4:

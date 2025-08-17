@@ -74,6 +74,7 @@
 #include <unotools/securityoptions.hxx>
 #include <tools/urlobj.hxx>
 #include <comphelper/diagnose_ex.hxx>
+#include <comphelper/memorystream.hxx>
 #include <unotools/ucbhelper.hxx>
 #include <unotools/tempfile.hxx>
 #include <unotools/docinfohelper.hxx>
@@ -116,13 +117,15 @@
 #include <sfx2/viewfrm.hxx>
 #include "graphhelp.hxx"
 #include <appbaslib.hxx>
+#include <guisaveas.hxx>
 #include "objstor.hxx"
 #include "exoticfileloadexception.hxx"
+#include <unicode/ucsdet.h>
+#include <o3tl/string_view.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::ui::dialogs;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::ucb;
@@ -131,12 +134,23 @@ using namespace ::com::sun::star::document;
 using namespace ::cppu;
 
 
+static css::uno::Any getODFVersionAny(SvtSaveOptions::ODFSaneDefaultVersion v)
+{
+    if (v >= SvtSaveOptions::ODFSaneDefaultVersion::ODFSVER_014)
+        return css::uno::Any(ODFVER_014_TEXT);
+    else if (v >= SvtSaveOptions::ODFSaneDefaultVersion::ODFSVER_013)
+        return css::uno::Any(ODFVER_013_TEXT);
+    else
+        return css::uno::Any(ODFVER_012_TEXT);
+}
+
+
 void impl_addToModelCollection(const css::uno::Reference< css::frame::XModel >& xModel)
 {
     if (!xModel.is())
         return;
 
-    css::uno::Reference< css::uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const css::uno::Reference< css::uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     css::uno::Reference< css::frame::XGlobalEventBroadcaster > xModelCollection =
         css::frame::theGlobalEventBroadcaster::get(xContext);
     try
@@ -168,11 +182,14 @@ bool SfxObjectShell::QuerySlotExecutable( sal_uInt16 /*nSlotId*/ )
     return true;
 }
 
-static bool UseODFWholesomeEncryption(SvtSaveOptions::ODFSaneDefaultVersion const nODFVersion)
+namespace sfx2 {
+
+bool UseODFWholesomeEncryption(SvtSaveOptions::ODFSaneDefaultVersion const nODFVersion)
 {
-    return nODFVersion == SvtSaveOptions::ODFSVER_LATEST_EXTENDED
-        && officecfg::Office::Common::Misc::ExperimentalMode::get();
+    return nODFVersion == SvtSaveOptions::ODFSVER_LATEST_EXTENDED;
 }
+
+} // namespace sfx2
 
 bool GetEncryptionData_Impl( const SfxItemSet* pSet, uno::Sequence< beans::NamedValue >& o_rEncryptionData )
 {
@@ -209,7 +226,7 @@ bool SfxObjectShell::PutURLContentsToVersionStream_Impl(
     try
     {
         uno::Reference< embed::XStorage > xVersion = xDocStorage->openStorageElement(
-                                                        "Versions",
+                                                        u"Versions"_ustr,
                                                         embed::ElementModes::READWRITE );
 
         DBG_ASSERT( xVersion.is(),
@@ -319,15 +336,15 @@ void SfxObjectShell::SetupStorage( const uno::Reference< embed::XStorage >& xSto
 
     try
     {
-        xProps->setPropertyValue("MediaType", uno::Any( aDataFlavor.MimeType ) );
+        xProps->setPropertyValue(u"MediaType"_ustr, uno::Any( aDataFlavor.MimeType ) );
     }
     catch( uno::Exception& )
     {
         const_cast<SfxObjectShell*>( this )->SetError(ERRCODE_IO_GENERAL);
     }
 
-    SvtSaveOptions::ODFSaneDefaultVersion nDefVersion = SvtSaveOptions::ODFSVER_013;
-    if (!utl::ConfigManager::IsFuzzing())
+    SvtSaveOptions::ODFSaneDefaultVersion nDefVersion = SvtSaveOptions::ODFSVER_014;
+    if (!comphelper::IsFuzzing())
     {
         nDefVersion = GetODFSaneDefaultVersion();
     }
@@ -335,10 +352,10 @@ void SfxObjectShell::SetupStorage( const uno::Reference< embed::XStorage >& xSto
     // the default values, that should be used for ODF1.1 and older formats
     uno::Sequence< beans::NamedValue > aEncryptionAlgs
     {
-        { "StartKeyGenerationAlgorithm", css::uno::Any(xml::crypto::DigestID::SHA1) },
-        { "EncryptionAlgorithm", css::uno::Any(xml::crypto::CipherID::BLOWFISH_CFB_8) },
-        { "ChecksumAlgorithm", css::uno::Any(xml::crypto::DigestID::SHA1_1K) },
-        { "KeyDerivationFunction", css::uno::Any(xml::crypto::KDFID::PBKDF2) },
+        { u"StartKeyGenerationAlgorithm"_ustr, css::uno::Any(xml::crypto::DigestID::SHA1) },
+        { u"EncryptionAlgorithm"_ustr, css::uno::Any(xml::crypto::CipherID::BLOWFISH_CFB_8) },
+        { u"ChecksumAlgorithm"_ustr, css::uno::Any(xml::crypto::DigestID::SHA1_1K) },
+        { u"KeyDerivationFunction"_ustr, css::uno::Any(xml::crypto::KDFID::PBKDF2) },
     };
 
     if (nDefVersion >= SvtSaveOptions::ODFSVER_012)
@@ -346,18 +363,7 @@ void SfxObjectShell::SetupStorage( const uno::Reference< embed::XStorage >& xSto
         try
         {
             // older versions can not have this property set, it exists only starting from ODF1.2
-            uno::Reference<frame::XModule> const xModule(GetModel(), uno::UNO_QUERY);
-            bool const isBaseForm(xModule.is() &&
-                xModule->getIdentifier() == "com.sun.star.sdb.FormDesign");
-            SAL_INFO_IF(isBaseForm, "sfx.doc", "tdf#138209 force form export to ODF 1.2");
-            if (!isBaseForm && SvtSaveOptions::ODFSVER_013 <= nDefVersion)
-            {
-                xProps->setPropertyValue("Version", uno::Any(ODFVER_013_TEXT));
-            }
-            else
-            {
-                xProps->setPropertyValue("Version", uno::Any(ODFVER_012_TEXT));
-            }
+            xProps->setPropertyValue(u"Version"_ustr, getODFVersionAny(nDefVersion));
         }
         catch( uno::Exception& )
         {
@@ -365,7 +371,7 @@ void SfxObjectShell::SetupStorage( const uno::Reference< embed::XStorage >& xSto
 
         auto pEncryptionAlgs = aEncryptionAlgs.getArray();
         pEncryptionAlgs[0].Value <<= xml::crypto::DigestID::SHA256;
-        if (UseODFWholesomeEncryption(nDefVersion))
+        if (::sfx2::UseODFWholesomeEncryption(nDefVersion))
         {
             pEncryptionAlgs[1].Value <<= xml::crypto::CipherID::AES_GCM_W3C;
             pEncryptionAlgs[2].Value.clear();
@@ -400,6 +406,9 @@ void SfxObjectShell::PrepareSecondTryLoad_Impl()
 {
     // only for internal use
     pImpl->m_xDocStorage.clear();
+    pImpl->mxObjectContainer.reset();
+    pImpl->nDocumentSignatureState = SignatureState::UNKNOWN;
+    pImpl->nScriptingSignatureState = SignatureState::UNKNOWN;
     pImpl->m_bIsInit = false;
     ResetError();
 }
@@ -419,7 +428,7 @@ bool SfxObjectShell::GeneralInit_Impl( const uno::Reference< embed::XStorage >& 
 
         try {
             uno::Reference < beans::XPropertySet > xPropSet( xStorage, uno::UNO_QUERY_THROW );
-            Any a = xPropSet->getPropertyValue("MediaType");
+            Any a = xPropSet->getPropertyValue(u"MediaType"_ustr);
             OUString aMediaType;
             if ( !(a>>=aMediaType) || aMediaType.isEmpty() )
             {
@@ -506,7 +515,7 @@ bool SfxObjectShell::DoInitNew()
             pArgs[nLength].Name = "Title";
             pArgs[nLength].Value <<= GetTitle( SFX_TITLE_DETECT );
             xModel->attachResource( OUString(), aArgs );
-            if (!utl::ConfigManager::IsFuzzing())
+            if (!comphelper::IsFuzzing())
                 impl_addToModelCollection(xModel);
         }
 
@@ -601,9 +610,8 @@ bool SfxObjectShell::DoLoad( SfxMedium *pMed )
     SfxItemSet& rSet = pMedium->GetItemSet();
     if( pImpl->nEventId == SfxEventHintId::NONE )
     {
-        const SfxBoolItem* pTemplateItem = rSet.GetItem(SID_TEMPLATE, false);
         SetActivateEvent_Impl(
-            ( pTemplateItem && pTemplateItem->GetValue() )
+            ( IsBasedOnTemplate() )
             ? SfxEventHintId::CreateDoc : SfxEventHintId::OpenDoc );
     }
 
@@ -649,12 +657,14 @@ bool SfxObjectShell::DoLoad( SfxMedium *pMed )
             SetError(nError);
 
         if (pMedium->GetFilter()->GetFilterFlags() & SfxFilterFlags::STARTPRESENTATION)
-            rSet.Put( SfxBoolItem( SID_DOC_STARTPRESENTATION, true) );
+            rSet.Put(SfxUInt16Item(SID_DOC_STARTPRESENTATION, 1));
     }
 
     EnableSetModified( false );
 
-    pMedium->LockOrigFileOnDemand( true, false );
+    // tdf#53614 - don't try to lock file after cancelling the import process
+    if (GetErrorIgnoreWarning() != ERRCODE_ABORT)
+        pMedium->LockOrigFileOnDemand( true, false );
     if ( GetErrorIgnoreWarning() == ERRCODE_NONE && bOwnStorageFormat && ( !pFilter || !( pFilter->GetFilterFlags() & SfxFilterFlags::STARONEFILTER ) ) )
     {
         uno::Reference< embed::XStorage > xStorage;
@@ -668,14 +678,13 @@ bool SfxObjectShell::DoLoad( SfxMedium *pMed )
             try
             {
                 bool bWarnMediaTypeFallback = false;
-                const SfxBoolItem* pRepairPackageItem = rSet.GetItem(SID_REPAIRPACKAGE, false);
 
                 // treat the package as broken if the mediatype was retrieved as a fallback
                 uno::Reference< beans::XPropertySet > xStorProps( xStorage, uno::UNO_QUERY_THROW );
-                xStorProps->getPropertyValue("MediaTypeFallbackUsed")
+                xStorProps->getPropertyValue(u"MediaTypeFallbackUsed"_ustr)
                                                                     >>= bWarnMediaTypeFallback;
 
-                if ( pRepairPackageItem && pRepairPackageItem->GetValue() )
+                if (pMedium->IsRepairPackage())
                 {
                     // the macros in repaired documents should be disabled
                     pMedium->GetItemSet().Put( SfxUInt16Item( SID_MACROEXECMODE, document::MacroExecMode::NEVER_EXECUTE ) );
@@ -703,9 +712,7 @@ bool SfxObjectShell::DoLoad( SfxMedium *pMed )
                 if ( bOk )
                 {
                     // the document loaded from template has no name
-                    const SfxBoolItem* pTemplateItem = rSet.GetItem(SID_TEMPLATE, false);
-                    if ( !pTemplateItem || !pTemplateItem->GetValue() )
-                        bHasName = true;
+                    bHasName = !IsBasedOnTemplate();
                 }
                 else
                     SetError(ERRCODE_ABORT);
@@ -728,7 +735,7 @@ bool SfxObjectShell::DoLoad( SfxMedium *pMed )
         if ( GetErrorIgnoreWarning() == ERRCODE_NONE )
         {
             // Experimental PDF importing using PDFium. This is currently enabled for LOK only and
-            // we handle it not via XmlFilterAdaptor but a new SdPdfFiler.
+            // we handle it not via XmlFilterAdaptor but a new SdPdfFilter.
 #if !HAVE_FEATURE_POPPLER
             constexpr bool bUsePdfium = true;
 #else
@@ -845,7 +852,7 @@ bool SfxObjectShell::DoLoad( SfxMedium *pMed )
             const SfxBoolItem* pAsTempItem = rSet.GetItem(SID_TEMPLATE, false);
             const SfxBoolItem* pPreviewItem = rSet.GetItem(SID_PREVIEW, false);
             const SfxBoolItem* pHiddenItem = rSet.GetItem(SID_HIDDEN, false);
-            if( bOk && !pMedium->GetOrigURL().isEmpty()
+            if( !pMedium->GetOrigURL().isEmpty()
             && !( pAsTempItem && pAsTempItem->GetValue() )
             && !( pPreviewItem && pPreviewItem->GetValue() )
             && !( pHiddenItem && pHiddenItem->GetValue() ) )
@@ -873,6 +880,310 @@ bool SfxObjectShell::DoLoadExternal( SfxMedium *pMed )
     return LoadExternal(*pMedium);
 }
 
+const ::std::unordered_map<std::string, rtl_TextEncoding>  mapCharSets =
+                            {{"UTF-8", RTL_TEXTENCODING_UTF8},
+                            {"UTF-16BE", RTL_TEXTENCODING_UCS2},
+                            {"UTF-16LE", RTL_TEXTENCODING_UCS2},
+                            {"UTF-32BE", RTL_TEXTENCODING_UCS4},
+                            {"UTF-32LE", RTL_TEXTENCODING_UCS4},
+                            {"Shift_JIS", RTL_TEXTENCODING_SHIFT_JIS},
+                            {"ISO-2022-JP", RTL_TEXTENCODING_ISO_2022_JP},
+                            {"ISO-2022-CN", RTL_TEXTENCODING_ISO_2022_CN},
+                            {"ISO-2022-KR", RTL_TEXTENCODING_ISO_2022_KR},
+                            {"GB18030", RTL_TEXTENCODING_GB_18030},
+                            {"Big5", RTL_TEXTENCODING_BIG5},
+                            {"EUC-JP", RTL_TEXTENCODING_EUC_JP},
+                            {"EUC-KR", RTL_TEXTENCODING_EUC_KR},
+                            {"ISO-8859-1", RTL_TEXTENCODING_ISO_8859_1},
+                            {"ISO-8859-2", RTL_TEXTENCODING_ISO_8859_2},
+                            {"ISO-8859-5", RTL_TEXTENCODING_ISO_8859_5},
+                            {"ISO-8859-6", RTL_TEXTENCODING_ISO_8859_6},
+                            {"ISO-8859-7", RTL_TEXTENCODING_ISO_8859_7},
+                            {"ISO-8859-8", RTL_TEXTENCODING_ISO_8859_8},
+                            {"ISO-8859-9", RTL_TEXTENCODING_ISO_8859_9},
+                            {"windows-1250", RTL_TEXTENCODING_MS_1250},
+                            {"windows-1251", RTL_TEXTENCODING_MS_1251},
+                            {"windows-1252", RTL_TEXTENCODING_MS_1252},
+                            {"windows-1253", RTL_TEXTENCODING_MS_1253},
+                            {"windows-1254", RTL_TEXTENCODING_MS_1254},
+                            {"windows-1255", RTL_TEXTENCODING_MS_1255},
+                            {"windows-1256", RTL_TEXTENCODING_MS_1256},
+                            {"KOI8-R", RTL_TEXTENCODING_KOI8_R}};
+
+void SfxObjectShell::DetectCharSet(SvStream& stream, rtl_TextEncoding& eCharSet, SvStreamEndian &endian)
+{
+    constexpr size_t buffsize = 4096;
+    sal_Int8 bytes[buffsize] = { 0 };
+    sal_uInt64 nInitPos = stream.Tell();
+    sal_Int32 nRead = stream.ReadBytes(bytes, buffsize);
+
+    stream.Seek(nInitPos);
+    eCharSet = RTL_TEXTENCODING_DONTKNOW;
+
+    if (!nRead)
+        return;
+
+    UErrorCode uerr = U_ZERO_ERROR;
+    UCharsetDetector* ucd = ucsdet_open(&uerr);
+    if (!U_SUCCESS(uerr))
+        return;
+
+    const UCharsetMatch* match = nullptr;
+    const char* pEncodingName = nullptr;
+    ucsdet_setText(ucd, reinterpret_cast<const char*>(bytes), nRead, &uerr);
+    if (U_SUCCESS(uerr))
+        match = ucsdet_detect(ucd, &uerr);
+
+    if (U_SUCCESS(uerr))
+        pEncodingName = ucsdet_getName(match, &uerr);
+
+    if (U_SUCCESS(uerr) && pEncodingName)
+    {
+        const auto it = mapCharSets.find(pEncodingName);
+        if (it != mapCharSets.end())
+            eCharSet = it->second;
+
+        if (eCharSet == RTL_TEXTENCODING_UNICODE && !strcmp("UTF-16LE", pEncodingName))
+            endian = SvStreamEndian::LITTLE;
+        else if (eCharSet == RTL_TEXTENCODING_UNICODE && !strcmp("UTF-16BE", pEncodingName))
+            endian = SvStreamEndian::BIG;
+    }
+
+    ucsdet_close(ucd);
+}
+
+void SfxObjectShell::DetectCsvSeparators(SvStream& stream, rtl_TextEncoding eCharSet, OUString& separators, sal_Unicode cStringDelimiter)
+{
+    OUString sLine;
+    std::vector<std::unordered_map<sal_Unicode, sal_uInt32>> aLinesCharsCount;
+    std::unordered_map<sal_Unicode, sal_uInt32> aCharsCount;
+    std::unordered_map<sal_Unicode, std::pair<sal_uInt32, sal_uInt32>> aStats;
+    constexpr sal_uInt32 nTimeout = 500; // Timeout for detection in ms
+    sal_uInt32 nLinesCount = 0;
+    OUString sInitSeps;
+    OUString sCommonSeps = u",\t;:| \\/"_ustr;//Sorted by importance
+    std::unordered_set<sal_Unicode> usetCommonSeps;
+    bool bIsDelimiter = false;
+    // The below two are needed to handle a "not perfect" structure.
+    sal_uInt32 nMaxLinesSameChar = 0;
+    sal_uInt32 nMinDiffs = 0xFFFFFFFF;
+    sal_uInt64 nInitPos = stream.Tell();
+    sal_uInt64 nStartTime = tools::Time::GetSystemTicks();
+
+    if (!cStringDelimiter)
+        cStringDelimiter = '\"';
+
+    for (sal_Int32 nComSepIdx = sCommonSeps.getLength() - 1; nComSepIdx >= 0; nComSepIdx --)
+        usetCommonSeps.insert(sCommonSeps[nComSepIdx]);
+    aLinesCharsCount.reserve(128);
+    separators = "";
+
+    stream.StartReadingUnicodeText(eCharSet);
+    while (stream.ReadUniOrByteStringLine(sLine, eCharSet) && (tools::Time::GetSystemTicks() - nStartTime < nTimeout))
+    {
+        if (sLine.isEmpty())
+            continue;
+
+        if (!nLinesCount)
+        {
+            if (sLine.getLength() == 5 && sLine.startsWithIgnoreAsciiCase("sep="))
+            {
+                separators += OUStringChar(sLine[4]);
+                break;
+            }
+            else if (sLine.getLength() == 7 && sLine[6] == '"' && sLine.startsWithIgnoreAsciiCase("\"sep="))
+            {
+                separators += OUStringChar(sLine[5]);
+                break;
+            }
+        }
+
+        // Count the occurrences of each character within the line.
+        // Skip strings.
+        const sal_Unicode *pEnd = sLine.getStr() + sLine.getLength();
+        for (const sal_Unicode *p = sLine.getStr(); p < pEnd; p++)
+        {
+            if (*p == cStringDelimiter)
+            {
+                bIsDelimiter = !bIsDelimiter;
+                continue;
+            }
+            if (bIsDelimiter)
+                continue;
+
+            // If restricted only to common separators then skip the rest
+            if (usetCommonSeps.find(*p) == usetCommonSeps.end())
+                continue;
+
+            auto it_elem = aCharsCount.find(*p);
+            if (it_elem == aCharsCount.cend())
+                aCharsCount.insert(std::pair<sal_uInt32, sal_uInt32>(*p, 1));
+            else
+                it_elem->second ++;
+        }
+
+        if (bIsDelimiter)
+            continue;
+
+        nLinesCount ++;
+
+        // For each character count the lines that contain it and different number of occurrences.
+        // And the global maximum for the first statistic.
+        for (auto aCurLineChar=aCharsCount.cbegin(); aCurLineChar != aCharsCount.cend(); aCurLineChar++)
+        {
+            auto aCurStats = aStats.find(aCurLineChar->first);
+            if (aCurStats == aStats.cend())
+                aCurStats = aStats.insert(std::pair<sal_Unicode, std::pair<sal_uInt32, sal_uInt32>>(aCurLineChar->first, std::pair<sal_uInt32, sal_uInt32>(1, 1))).first;
+            else
+            {
+                aCurStats->second.first ++;// Increment number of lines that contain the current character
+
+                std::vector<std::unordered_map<sal_Unicode, sal_uInt32>>::const_iterator aPrevLineChar;
+                for (aPrevLineChar=aLinesCharsCount.cbegin(); aPrevLineChar != aLinesCharsCount.cend(); aPrevLineChar++)
+                {
+                    auto aPrevStats = aPrevLineChar->find(aCurLineChar->first);
+                    if (aPrevStats != aPrevLineChar->cend() && aPrevStats->second == aCurLineChar->second)
+                        break;
+                }
+                if (aPrevLineChar == aLinesCharsCount.cend())
+                    aCurStats->second.second ++;// Increment number of different number of occurrences.
+            }
+
+            // Update the maximum of number of lines that contain the same character. This is a global value.
+            if (nMaxLinesSameChar < aCurStats->second.first)
+                nMaxLinesSameChar = aCurStats->second.first;
+        }
+
+        aLinesCharsCount.emplace_back();
+        aLinesCharsCount[aLinesCharsCount.size() - 1].swap(aCharsCount);
+    }
+
+    SAL_INFO("sfx.doc", "" << nLinesCount << " lines processed in " << tools::Time::GetSystemTicks() - nStartTime << " ms while detecting separator.");
+
+    // Compute the global minimum of different number of occurrences.
+    // But only for characters which occur in a maximum number of lines (previously computed).
+    for (auto it=aStats.cbegin(); it != aStats.cend(); it++)
+        if (it->second.first == nMaxLinesSameChar && nMinDiffs > it->second.second)
+            nMinDiffs = it->second.second;
+
+    // Compute the initial list of separators: those with the maximum lines of occurrence and
+    // the minimum of different number of occurrences.
+    for (auto it=aStats.cbegin(); it != aStats.cend(); it++)
+        if (it->second.first == nMaxLinesSameChar && it->second.second == nMinDiffs)
+            sInitSeps += OUStringChar(it->first);
+
+    // If forced to most common or there are multiple separators then pick up only the most common by importance.
+    sal_Int32 nInitSepIdx;
+    sal_Int32 nComSepIdx;
+    for (nComSepIdx = 0; nComSepIdx < sCommonSeps.getLength(); nComSepIdx++)
+    {
+        sal_Unicode c = sCommonSeps[nComSepIdx];
+        for (nInitSepIdx = sInitSeps.getLength() - 1; nInitSepIdx >= 0; nInitSepIdx --)
+        {
+            if (c == sInitSeps[nInitSepIdx])
+            {
+                separators += OUStringChar(c);
+                break;
+            }
+        }
+
+    }
+
+    stream.Seek(nInitPos);
+}
+
+void SfxObjectShell::DetectCsvFilterOptions(SvStream& stream, OUString& aFilterOptions)
+{
+    rtl_TextEncoding eCharSet = RTL_TEXTENCODING_DONTKNOW;
+    std::u16string_view aSeps;
+    std::u16string_view aDelimiter;
+    std::u16string_view aCharSet;
+    std::u16string_view aRest;
+    OUString aOrigFilterOpts = aFilterOptions;
+    bool bDelimiter = false, bCharSet = false, bRest = false; // This indicates the presence of the token even if empty ;)
+
+    if (aFilterOptions.isEmpty())
+        return;
+    const std::u16string_view aDetect = u"DETECT";
+    sal_Int32 nPos = 0;
+
+    // Get first three tokens as they are the only tokens that affect detection.
+    aSeps = o3tl::getToken(aOrigFilterOpts, 0, ',', nPos);
+    bDelimiter = (nPos >= 0);
+    if (bDelimiter)
+        aDelimiter = o3tl::getToken(aOrigFilterOpts, 0, ',', nPos);
+    bCharSet = (nPos >= 0);
+    if (bCharSet)
+        aCharSet = o3tl::getToken(aOrigFilterOpts, 0, ',', nPos);
+    bRest = (nPos >= 0);
+    if (bRest)
+        aRest = std::basic_string_view<sal_Unicode>(aOrigFilterOpts.getStr() + nPos, aOrigFilterOpts.getLength() - nPos);
+
+    // Detect charset
+    if (aCharSet == aDetect)
+    {
+        SvStreamEndian endian;
+        DetectCharSet(stream, eCharSet, endian);
+        if (eCharSet == RTL_TEXTENCODING_UNICODE)
+            stream.SetEndian(endian);
+    }
+    else if (!aCharSet.empty())
+        eCharSet = o3tl::toInt32(aCharSet);
+
+
+    //Detect separators
+    if (aSeps == aDetect)
+    {
+        aFilterOptions = "";
+        OUString separators;
+        DetectCsvSeparators(stream, eCharSet, separators, static_cast<sal_Unicode>(o3tl::toInt32(aDelimiter)));
+
+        sal_Int32 nLen = separators.getLength();
+        for (sal_Int32 nSep = 0; nSep < nLen; nSep ++)
+        {
+            if (nSep)
+                aFilterOptions += "/";
+            aFilterOptions += OUString::number(separators[nSep]);
+        }
+    }
+    else
+        // For now keep the provided values.
+        aFilterOptions = aSeps;
+
+    OUStringChar cComma = u',';
+    if (bDelimiter)
+        aFilterOptions += cComma + aDelimiter;
+    if (bCharSet)
+        aFilterOptions += cComma + (aCharSet == aDetect ? OUString::number(eCharSet) : aCharSet);
+    if (bRest)
+        aFilterOptions += cComma + aRest;
+}
+
+void SfxObjectShell::DetectFilterOptions(SfxMedium* pMedium)
+{
+    std::shared_ptr<const SfxFilter> pFilter = pMedium->GetFilter();
+    SfxItemSet& rSet = pMedium->GetItemSet();
+    const SfxStringItem* pOptions = rSet.GetItem(SID_FILE_FILTEROPTIONS, false);
+
+    // Skip if filter options are missing
+    if (!pFilter || !pOptions)
+        return;
+
+    if (pFilter->GetName() == "Text - txt - csv (StarCalc)")
+    {
+        css::uno::Reference< css::io::XInputStream > xInputStream = pMedium->GetInputStream();
+        if (!xInputStream.is())
+            return;
+        std::unique_ptr<SvStream> pInStream = utl::UcbStreamHelper::CreateStream(xInputStream);
+        if (!pInStream)
+            return;
+
+        OUString aFilterOptions = pOptions->GetValue();
+        DetectCsvFilterOptions(*pInStream, aFilterOptions);
+        rSet.Put(SfxStringItem(SID_FILE_FILTEROPTIONS, aFilterOptions));
+    }
+}
+
 ErrCode SfxObjectShell::HandleFilter( SfxMedium* pMedium, SfxObjectShell const * pDoc )
 {
     ErrCode nError = ERRCODE_NONE;
@@ -880,13 +1191,20 @@ ErrCode SfxObjectShell::HandleFilter( SfxMedium* pMedium, SfxObjectShell const *
     const SfxStringItem* pOptions = rSet.GetItem(SID_FILE_FILTEROPTIONS, false);
     const SfxUnoAnyItem* pData = rSet.GetItem(SID_FILTER_DATA, false);
     const bool bTiledRendering = comphelper::LibreOfficeKit::isActive();
+
+    // Process earlier as the input could contain express detection instructions.
+    // This is relevant for "automatic" use case. For interactive use case the
+    // FilterOptions should not be detected here (the detection is done before entering
+    // interactive state). For now this is focused on CSV files.
+    DetectFilterOptions(pMedium);
+
     if ( !pData && (bTiledRendering || !pOptions) )
     {
         css::uno::Reference< XMultiServiceFactory > xServiceManager = ::comphelper::getProcessServiceFactory();
         css::uno::Reference< XNameAccess > xFilterCFG;
         if( xServiceManager.is() )
         {
-            xFilterCFG.set( xServiceManager->createInstance("com.sun.star.document.FilterFactory"),
+            xFilterCFG.set( xServiceManager->createInstance(u"com.sun.star.document.FilterFactory"_ustr),
                             UNO_QUERY );
         }
 
@@ -1001,7 +1319,7 @@ bool SfxObjectShell::DoSave()
         if (IsOwnStorageFormat(*GetMedium()))
         {
             SvtSaveOptions::ODFSaneDefaultVersion nDefVersion = SvtSaveOptions::ODFSVER_013;
-            if (!utl::ConfigManager::IsFuzzing())
+            if (!comphelper::IsFuzzing())
             {
                 nDefVersion = GetODFSaneDefaultVersion();
             }
@@ -1011,18 +1329,7 @@ bool SfxObjectShell::DoSave()
             {
                 try // tdf#134582 set Version on embedded objects as they
                 {   // could have been loaded with a different/old version
-                    uno::Reference<frame::XModule> const xModule(GetModel(), uno::UNO_QUERY);
-                    bool const isBaseForm(xModule.is() &&
-                        xModule->getIdentifier() == "com.sun.star.sdb.FormDesign");
-                    SAL_INFO_IF(isBaseForm, "sfx.doc", "tdf#138209 force form export to ODF 1.2");
-                    if (!isBaseForm && SvtSaveOptions::ODFSVER_013 <= nDefVersion)
-                    {
-                        xProps->setPropertyValue("Version", uno::Any(ODFVER_013_TEXT));
-                    }
-                    else
-                    {
-                        xProps->setPropertyValue("Version", uno::Any(ODFVER_012_TEXT));
-                    }
+                    xProps->setPropertyValue(u"Version"_ustr, getODFVersionAny(nDefVersion));
                 }
                 catch (uno::Exception&)
                 {
@@ -1160,7 +1467,7 @@ bool SfxObjectShell::SaveTo_Impl
     // tdf#41063, tdf#135244: prevent jumping to cursor at any temporary modification
     auto aViewGuard(LockAllViews());
 
-    uno::Reference<uno::XComponentContext> const xContext(
+    uno::Reference<uno::XComponentContext> const& xContext(
         ::comphelper::getProcessComponentContext());
 
     std::shared_ptr<const SfxFilter> pFilter = rMedium.GetFilter();
@@ -1187,7 +1494,7 @@ bool SfxObjectShell::SaveTo_Impl
     }
 
     SvtSaveOptions::ODFSaneDefaultVersion nVersion(SvtSaveOptions::ODFSVER_LATEST_EXTENDED);
-    if (bOwnTarget && !utl::ConfigManager::IsFuzzing())
+    if (bOwnTarget && !comphelper::IsFuzzing())
     {
         nVersion = GetODFSaneDefaultVersion();
     }
@@ -1216,8 +1523,9 @@ bool SfxObjectShell::SaveTo_Impl
             OUString aODFVersion;
             try
             {
-                uno::Reference < beans::XPropertySet > xPropSet( GetStorage(), uno::UNO_QUERY_THROW );
-                xPropSet->getPropertyValue("Version") >>= aODFVersion;
+                uno::Reference < beans::XPropertySet > xPropSet( GetStorage(), uno::UNO_QUERY );
+                if (xPropSet)
+                    xPropSet->getPropertyValue(u"Version"_ustr) >>= aODFVersion;
             }
             catch( uno::Exception& )
             {}
@@ -1238,13 +1546,13 @@ bool SfxObjectShell::SaveTo_Impl
         }
     }
 
-    uno::Reference<io::XStream> xODFDecryptedInnerPackageStream;
+    rtl::Reference< comphelper::UNOMemoryStream > xODFDecryptedInnerPackageStream;
     uno::Reference<embed::XStorage> xODFDecryptedInnerPackage;
     uno::Sequence<beans::NamedValue> aEncryptionData;
     if (GetEncryptionData_Impl(&rMedium.GetItemSet(), aEncryptionData))
     {
         assert(aEncryptionData.getLength() != 0);
-        if (bOwnTarget && UseODFWholesomeEncryption(nVersion))
+        if (bOwnTarget && ::sfx2::UseODFWholesomeEncryption(nVersion))
         {
             // when embedded objects are stored here, it should be called from
             // this function for the root document and encryption data was cleared
@@ -1252,10 +1560,7 @@ bool SfxObjectShell::SaveTo_Impl
             // clear now to store inner package (+ embedded objects) unencrypted
             rMedium.GetItemSet().ClearItem(SID_ENCRYPTIONDATA);
             rMedium.GetItemSet().ClearItem(SID_PASSWORD);
-            xODFDecryptedInnerPackageStream.set(
-                xContext->getServiceManager()->createInstanceWithContext(
-                    "com.sun.star.comp.MemoryStream", xContext),
-                UNO_QUERY_THROW);
+            xODFDecryptedInnerPackageStream = new comphelper::UNOMemoryStream();
             xODFDecryptedInnerPackage = ::comphelper::OStorageHelper::GetStorageOfFormatFromStream(
                 PACKAGE_STORAGE_FORMAT_STRING, xODFDecryptedInnerPackageStream,
                 css::embed::ElementModes::WRITE, xContext, false);
@@ -1424,7 +1729,9 @@ bool SfxObjectShell::SaveTo_Impl
     // TODO/LATER: error handling
     if( rMedium.GetErrorCode() || pMedium->GetErrorCode() || GetErrorCode() )
     {
-        SAL_WARN("sfx.doc", "SfxObjectShell::SaveTo_Impl: very early error return");
+        SAL_WARN("sfx.doc", "SfxObjectShell::SaveTo_Impl: "
+                 " very early error return " << rMedium.GetErrorCode() << " "
+                 << pMedium->GetErrorCode() << " " << GetErrorCode());
         return false;
     }
 
@@ -1453,9 +1760,10 @@ bool SfxObjectShell::SaveTo_Impl
 
                 try
                 {
-                    uno::Reference< beans::XPropertySet > xProps( rMedium.GetStorage(), uno::UNO_QUERY_THROW );
-                    xProps->setPropertyValue("MediaType",
-                                            uno::Any( aDataFlavor.MimeType ) );
+                    uno::Reference< beans::XPropertySet > xProps( rMedium.GetStorage(), uno::UNO_QUERY );
+                    if (xProps)
+                        xProps->setPropertyValue(u"MediaType"_ustr,
+                                                uno::Any( aDataFlavor.MimeType ) );
                 }
                 catch( uno::Exception& )
                 {
@@ -1640,7 +1948,7 @@ bool SfxObjectShell::SaveTo_Impl
         if (xODFDecryptedInnerPackageStream.is())
         {   // before the signature copy closes it
             mediaType = uno::Reference<beans::XPropertySet>(xODFDecryptedInnerPackage,
-                uno::UNO_QUERY_THROW)->getPropertyValue("MediaType");
+                uno::UNO_QUERY_THROW)->getPropertyValue(u"MediaType"_ustr);
         }
 
         // if ODF version of oasis format changes on saving the signature should not be preserved
@@ -1659,8 +1967,9 @@ bool SfxObjectShell::SaveTo_Impl
                 OUString aVersion;
                 try
                 {
-                    uno::Reference < beans::XPropertySet > xPropSet( rMedium.GetStorage(), uno::UNO_QUERY_THROW );
-                    xPropSet->getPropertyValue("Version") >>= aVersion;
+                    uno::Reference < beans::XPropertySet > xPropSet( rMedium.GetStorage(), uno::UNO_QUERY );
+                    if (xPropSet)
+                        xPropSet->getPropertyValue(u"Version"_ustr) >>= aVersion;
                 }
                 catch( uno::Exception& )
                 {
@@ -1694,13 +2003,13 @@ bool SfxObjectShell::SaveTo_Impl
                     if ( !xReadOrig.is() )
                         throw uno::RuntimeException();
                     uno::Reference< embed::XStorage > xMetaInf = xReadOrig->openStorageElement(
-                                "META-INF",
+                                u"META-INF"_ustr,
                                 embed::ElementModes::READ );
 
                     if ( !xTarget.is() )
                         throw uno::RuntimeException();
                     uno::Reference< embed::XStorage > xTargetMetaInf = xTarget->openStorageElement(
-                                "META-INF",
+                                u"META-INF"_ustr,
                                 embed::ElementModes::READWRITE );
 
                     if ( xMetaInf.is() && xTargetMetaInf.is() )
@@ -1764,17 +2073,18 @@ bool SfxObjectShell::SaveTo_Impl
             assert(xOuterStorage.is());
             assert(!rMedium.GetErrorCode());
             // the outer storage needs the same properties as the inner one
-            SetupStorage(xOuterStorage, SOFFICE_FILEFORMAT_CURRENT, false);
+            bool const isTemplate{rMedium.GetFilter()->IsOwnTemplateFormat()};
+            SetupStorage(xOuterStorage, SOFFICE_FILEFORMAT_CURRENT, isTemplate);
 
             uno::Reference<io::XStream> const xEncryptedInnerPackage =
                 xOuterStorage->openStreamElement(
-                    "encrypted-package", embed::ElementModes::WRITE);
+                    u"encrypted-package"_ustr, embed::ElementModes::WRITE);
             uno::Reference<beans::XPropertySet> const xEncryptedPackageProps(
                     xEncryptedInnerPackage, uno::UNO_QUERY_THROW);
-            xEncryptedPackageProps->setPropertyValue("MediaType", mediaType);
+            xEncryptedPackageProps->setPropertyValue(u"MediaType"_ustr, mediaType);
 
             // encryption: just copy into package stream
-            uno::Reference<io::XSeekable>(xODFDecryptedInnerPackageStream, uno::UNO_QUERY_THROW)->seek(0);
+            xODFDecryptedInnerPackageStream->seek(0);
             comphelper::OStorageHelper::CopyInputToOutput(
                 xODFDecryptedInnerPackageStream->getInputStream(),
                 xEncryptedInnerPackage->getOutputStream());
@@ -1834,7 +2144,8 @@ bool SfxObjectShell::SaveTo_Impl
     aLockUIGuard.Unlock();
     pImpl->bForbidReload = bOldStat;
 
-    if ( bOk )
+    // ucbhelper::Content is unable to do anything useful with a private:stream
+    if (bOk && !rMedium.GetName().equalsIgnoreAsciiCase("private:stream"))
     {
         try
         {
@@ -1970,21 +2281,10 @@ bool SfxObjectShell::ConnectTmpStorage_Impl(
             {
                 pImpl->aBasicManager.setStorage( xTmpStorage );
 
-                // Get rid of this workaround after issue i113914 is fixed
-                try
-                {
-                    uno::Reference< script::XStorageBasedLibraryContainer > xBasicLibraries( pImpl->xBasicLibraries, uno::UNO_QUERY_THROW );
-                    xBasicLibraries->setRootStorage( xTmpStorage );
-                }
-                catch( uno::Exception& )
-                {}
-                try
-                {
-                    uno::Reference< script::XStorageBasedLibraryContainer > xDialogLibraries( pImpl->xDialogLibraries, uno::UNO_QUERY_THROW );
-                    xDialogLibraries->setRootStorage( xTmpStorage );
-                }
-                catch( uno::Exception& )
-                {}
+                if (pImpl->xBasicLibraries)
+                    pImpl->xBasicLibraries->setRootStorage( xTmpStorage );
+                if (pImpl->xDialogLibraries)
+                    pImpl->xDialogLibraries->setRootStorage( xTmpStorage );
             }
         }
         catch( uno::Exception& )
@@ -2017,7 +2317,7 @@ bool SfxObjectShell::DoSaveObjectAs( SfxMedium& rMedium, bool bCommit )
     if ( !xPropSet.is() )
         return false;
 
-    Any a = xPropSet->getPropertyValue("MediaType");
+    Any a = xPropSet->getPropertyValue(u"MediaType"_ustr);
     OUString aMediaType;
     if ( !(a>>=aMediaType) || aMediaType.isEmpty() )
     {
@@ -2075,6 +2375,10 @@ bool SfxObjectShell::DoSaveCompleted( SfxMedium* pNewMed, bool bRegisterRecent )
     SfxMedium* pOld = pMedium;
     if ( bMedChanged )
     {
+        if (pMedium)
+        {
+            pMedium->TransferEmbeddedFontsTo(*pNewMed);
+        }
         pMedium = pNewMed;
         pMedium->CanDisposeStorage_Impl( true );
     }
@@ -2134,21 +2438,10 @@ bool SfxObjectShell::DoSaveCompleted( SfxMedium* pNewMed, bool bRegisterRecent )
         // Set storage in document library containers
         pImpl->aBasicManager.setStorage( xStorage );
 
-        // Get rid of this workaround after issue i113914 is fixed
-        try
-        {
-            uno::Reference< script::XStorageBasedLibraryContainer > xBasicLibraries( pImpl->xBasicLibraries, uno::UNO_QUERY_THROW );
-            xBasicLibraries->setRootStorage( xStorage );
-        }
-        catch( uno::Exception& )
-        {}
-        try
-        {
-            uno::Reference< script::XStorageBasedLibraryContainer > xDialogLibraries( pImpl->xDialogLibraries, uno::UNO_QUERY_THROW );
-            xDialogLibraries->setRootStorage( xStorage );
-        }
-        catch( uno::Exception& )
-        {}
+        if (pImpl->xBasicLibraries)
+            pImpl->xBasicLibraries->setRootStorage( xStorage );
+        if (pImpl->xDialogLibraries)
+            pImpl->xDialogLibraries->setRootStorage( xStorage );
     }
     else
     {
@@ -2187,12 +2480,9 @@ bool SfxObjectShell::DoSaveCompleted( SfxMedium* pNewMed, bool bRegisterRecent )
                 {}
             }
 
-            const SfxBoolItem* pTemplateItem = pMedium->GetItemSet().GetItem(SID_TEMPLATE, false);
-            bool bTemplate = pTemplateItem && pTemplateItem->GetValue();
-
             // before the title regenerated the document must lose the signatures
             pImpl->nDocumentSignatureState = SignatureState::NOSIGNATURES;
-            if (!bTemplate)
+            if (!IsBasedOnTemplate())
             {
                 pImpl->nScriptingSignatureState = pNewMed->GetCachedSignatureState_Impl();
                 OSL_ENSURE( pImpl->nScriptingSignatureState != SignatureState::BROKEN, "The signature must not be broken at this place" );
@@ -2302,7 +2592,7 @@ bool SfxObjectShell::ImportFrom(SfxMedium& rMedium,
 
     uno::Reference< lang::XMultiServiceFactory >  xMan = ::comphelper::getProcessServiceFactory();
     uno::Reference < lang::XMultiServiceFactory > xFilterFact (
-                xMan->createInstance( "com.sun.star.document.FilterFactory" ), uno::UNO_QUERY );
+                xMan->createInstance( u"com.sun.star.document.FilterFactory"_ustr ), uno::UNO_QUERY );
 
     uno::Sequence < beans::PropertyValue > aProps;
     uno::Reference < container::XNameAccess > xFilters ( xFilterFact, uno::UNO_QUERY );
@@ -2425,15 +2715,19 @@ bool SfxObjectShell::ImportFrom(SfxMedium& rMedium,
                 if (xPropertySet.is())
                 {
                     uno::Reference<beans::XPropertySetInfo> xPropertySetInfo = xPropertySet->getPropertySetInfo();
-                    if (xPropertySetInfo.is() && xPropertySetInfo->hasPropertyByName("_MarkAsFinal"))
+                    if (xPropertySetInfo.is() && xPropertySetInfo->hasPropertyByName(u"_MarkAsFinal"_ustr))
                     {
-                        if (xPropertySet->getPropertyValue("_MarkAsFinal").get<bool>())
+                        Any anyMarkAsFinal = xPropertySet->getPropertyValue(u"_MarkAsFinal"_ustr);
+                        if (
+                               ( (anyMarkAsFinal.getValueType() == cppu::UnoType<bool>::get()) && (anyMarkAsFinal.get<bool>()) ) ||
+                               ( (anyMarkAsFinal.getValueType() == cppu::UnoType<OUString>::get()) && (anyMarkAsFinal.get<OUString>() == "true") )
+                        )
                         {
                             uno::Reference< lang::XMultiServiceFactory > xFactory(GetModel(), uno::UNO_QUERY);
-                            uno::Reference< beans::XPropertySet > xSettings(xFactory->createInstance("com.sun.star.document.Settings"), uno::UNO_QUERY);
-                            xSettings->setPropertyValue("LoadReadonly", uno::Any(true));
+                            uno::Reference< beans::XPropertySet > xSettings(xFactory->createInstance(u"com.sun.star.document.Settings"_ustr), uno::UNO_QUERY);
+                            xSettings->setPropertyValue(u"LoadReadonly"_ustr, uno::Any(true));
                         }
-                        xPropertyContainer->removeProperty("_MarkAsFinal");
+                        xPropertyContainer->removeProperty(u"_MarkAsFinal"_ustr);
                     }
                 }
             }
@@ -2483,7 +2777,7 @@ bool SfxObjectShell::ExportTo( SfxMedium& rMedium )
     {
         uno::Reference< lang::XMultiServiceFactory >  xMan = ::comphelper::getProcessServiceFactory();
         uno::Reference < lang::XMultiServiceFactory > xFilterFact (
-                xMan->createInstance( "com.sun.star.document.FilterFactory" ), uno::UNO_QUERY );
+                xMan->createInstance( u"com.sun.star.document.FilterFactory"_ustr ), uno::UNO_QUERY );
 
         uno::Sequence < beans::PropertyValue > aProps;
         uno::Reference < container::XNameAccess > xFilters ( xFilterFact, uno::UNO_QUERY );
@@ -2713,7 +3007,8 @@ bool SfxObjectShell::DoSave_Impl( const SfxItemSet* pArgs )
     // create a medium as a copy; this medium is only for writing, because it
     // uses the same name as the original one writing is done through a copy,
     // that will be transferred to the target (of course after calling HandsOff)
-    SfxMedium* pMediumTmp = new SfxMedium( pRetrMedium->GetName(), pRetrMedium->GetOpenMode(), pFilter, std::move(pSet) );
+    SfxMedium* pMediumTmp = new SfxMedium(pRetrMedium->GetName(), pRetrMedium->GetOpenMode(),
+                                          std::move(pFilter), std::move(pSet));
     pMediumTmp->SetInCheckIn( pRetrMedium->IsInCheckIn( ) );
     pMediumTmp->SetLongName( pRetrMedium->GetLongName() );
     if ( pMediumTmp->GetErrorCode() != ERRCODE_NONE )
@@ -2727,17 +3022,24 @@ bool SfxObjectShell::DoSave_Impl( const SfxItemSet* pArgs )
     if (pImpl->bPreserveVersions)
         pMediumTmp->TransferVersionList_Impl( *pRetrMedium );
 
+    // Save the original interaction handler
+    Any aOriginalInteract;
+    if (const SfxUnoAnyItem *pItem = pRetrMedium->GetItemSet().GetItemIfSet(SID_INTERACTIONHANDLER, false))
+    {
+        aOriginalInteract = pItem->GetValue();
+#ifndef NDEBUG
+        // The original pRetrMedium and potential replacement pMediumTmp have the same interaction handler at this point
+        const SfxUnoAnyItem *pMediumItem = pMediumTmp->GetItemSet().GetItemIfSet(SID_INTERACTIONHANDLER, false);
+        assert(pMediumItem && pMediumItem->GetValue() == aOriginalInteract);
+#endif
+    }
+
     // an interaction handler here can acquire only in case of GUI Saving
     // and should be removed after the saving is done
-    Any aOriginalInteract;
     css::uno::Reference< XInteractionHandler > xInteract;
     const SfxUnoAnyItem* pxInteractionItem = SfxItemSet::GetItem<SfxUnoAnyItem>(pArgs, SID_INTERACTIONHANDLER, false);
     if ( pxInteractionItem && ( pxInteractionItem->GetValue() >>= xInteract ) && xInteract.is() )
-    {
-        if (const SfxUnoAnyItem *pItem = pMediumTmp->GetItemSet().GetItemIfSet(SID_INTERACTIONHANDLER, false))
-            aOriginalInteract = pItem->GetValue();
         pMediumTmp->GetItemSet().Put( SfxUnoAnyItem( SID_INTERACTIONHANDLER, Any( xInteract ) ) );
-    }
 
     const SfxBoolItem* pNoFileSync = pArgs->GetItem<SfxBoolItem>(SID_NO_FILE_SYNC, false);
     if (pNoFileSync && pNoFileSync->GetValue())
@@ -2777,7 +3079,10 @@ bool SfxObjectShell::DoSave_Impl( const SfxItemSet* pArgs )
         // reconnect to object storage
         DoSaveCompleted();
 
-        pRetrMedium->GetItemSet().ClearItem( SID_INTERACTIONHANDLER );
+        if (aOriginalInteract.hasValue())
+            pRetrMedium->GetItemSet().Put(SfxUnoAnyItem(SID_INTERACTIONHANDLER, aOriginalInteract));
+        else
+            pRetrMedium->GetItemSet().ClearItem(SID_INTERACTIONHANDLER);
         pRetrMedium->GetItemSet().ClearItem( SID_PROGRESS_STATUSBAR_CONTROL );
 
         delete pMediumTmp;
@@ -2807,7 +3112,8 @@ bool SfxObjectShell::Save_Impl( const SfxItemSet* pSet )
             pFilter = SfxFilterMatcher( GetFactory().GetFactoryName() ).GetFilter4FilterName( OUString() );
 
         SfxMedium *pMed = new SfxMedium(
-            pSalvageItem->GetValue(), StreamMode::READWRITE | StreamMode::SHARE_DENYWRITE | StreamMode::TRUNC, pFilter );
+            pSalvageItem->GetValue(), StreamMode::READWRITE | StreamMode::SHARE_DENYWRITE | StreamMode::TRUNC,
+            std::move(pFilter) );
 
         const SfxStringItem* pPasswordItem = GetMedium()->GetItemSet().GetItem(SID_PASSWORD, false);
         if ( pPasswordItem )
@@ -2909,7 +3215,6 @@ bool SfxObjectShell::CommonSaveAs_Impl(const INetURLObject& aURL, const OUString
         SfxItemSet& rSet = GetMedium()->GetItemSet();
         rSet.ClearItem( SID_INTERACTIONHANDLER );
         rSet.ClearItem( SID_PROGRESS_STATUSBAR_CONTROL );
-        rSet.ClearItem( SID_STANDARD_DIR );
         rSet.ClearItem( SID_PATH );
 
         if ( !bSaveTo )
@@ -2986,7 +3291,7 @@ bool SfxObjectShell::PreDoSaveAs_Impl(const OUString& rFileName, const OUString&
         {
             uno::Sequence<beans::NamedValue> aEncryptionData;
             pEncryptionDataItem->GetValue() >>= aEncryptionData;
-            for (const auto& rItem : std::as_const(aEncryptionData))
+            for (const auto& rItem : aEncryptionData)
             {
                 if (rItem.Name == "CryptoType")
                 {
@@ -3063,17 +3368,17 @@ bool SfxObjectShell::PreDoSaveAs_Impl(const OUString& rFileName, const OUString&
 
             for(int i = 0 ; i< rArgs.getLength() ; ++i)
             {
-                auto aProp = rArgs[i];
-                if(aProp.Name == "EncryptFile")
+                const auto& rProp = rArgs[i];
+                if (rProp.Name == "EncryptFile")
                 {
-                    pSaveToFilterDataOptions[0].Name = aProp.Name;
-                    pSaveToFilterDataOptions[0].Value = aProp.Value;
+                    pSaveToFilterDataOptions[0].Name = rProp.Name;
+                    pSaveToFilterDataOptions[0].Value = rProp.Value;
                     bRet = true;
                 }
-                if(aProp.Name == "DocumentOpenPassword")
+                else if (rProp.Name == "DocumentOpenPassword")
                 {
-                    pSaveToFilterDataOptions[1].Name = aProp.Name;
-                    pSaveToFilterDataOptions[1].Value = aProp.Value;
+                    pSaveToFilterDataOptions[1].Name = rProp.Name;
+                    pSaveToFilterDataOptions[1].Value = rProp.Value;
                     bRet = true;
                 }
             }
@@ -3339,7 +3644,7 @@ bool SfxObjectShell::SaveAsOwnFormat( SfxMedium& rMedium )
             // calling SwStyleNameMapper::GetTextUINameArray, which uses
             // SvtSysLocale().GetUILanguageTag() to do the mapping, saving indirectly depends
             // on the UI language. This is an unfortunate dependency. Here we use the loader's language.
-            const LanguageTag viewLanguage = comphelper::LibreOfficeKit::getLanguageTag();
+            const LanguageTag& viewLanguage = comphelper::LibreOfficeKit::getLanguageTag();
             const LanguageTag loadLanguage = SfxLokHelper::getLoadLanguage();
 
             // Use the default language for saving and restore later if necessary.
@@ -3379,7 +3684,7 @@ uno::Reference< embed::XStorage > const & SfxObjectShell::GetStorage()
 
             SetupStorage( pImpl->m_xDocStorage, SOFFICE_FILEFORMAT_CURRENT, false );
             pImpl->m_bCreateTempStor = false;
-            if (!utl::ConfigManager::IsFuzzing())
+            if (!comphelper::IsFuzzing())
                 SfxGetpApp()->NotifyEvent( SfxEventHint( SfxEventHintId::StorageChanged, GlobalEventConfig::GetEventName(GlobalEventId::STORAGECHANGED), this ) );
         }
         catch( uno::Exception& )
@@ -3430,7 +3735,7 @@ bool SfxObjectShell::SaveAsChildren( SfxMedium& rMedium )
     {
         // Don't save data source in case a temporary is being saved for preview in MM wizard
         if (pNoEmbDS->GetValue())
-            aExceptions = uno::Sequence<OUString>{ "EmbeddedDatabase" };
+            aExceptions = uno::Sequence<OUString>{ u"EmbeddedDatabase"_ustr };
     }
 
     return CopyStoragesOfUnknownMediaType(GetStorage(), xStorage, aExceptions);
@@ -3797,17 +4102,20 @@ bool SfxObjectShell::GenerateAndStoreThumbnail(bool bEncrypted, const uno::Refer
 
     try
     {
-        uno::Reference<embed::XStorage> xThumbnailStorage = xStorage->openStorageElement("Thumbnails", embed::ElementModes::READWRITE);
+        uno::Reference<embed::XStorage> xThumbnailStorage = xStorage->openStorageElement(u"Thumbnails"_ustr, embed::ElementModes::READWRITE);
 
         if (xThumbnailStorage.is())
         {
-            uno::Reference<io::XStream> xStream = xThumbnailStorage->openStreamElement("thumbnail.png", embed::ElementModes::READWRITE);
+            uno::Reference<io::XStream> xStream = xThumbnailStorage->openStreamElement(u"thumbnail.png"_ustr, embed::ElementModes::READWRITE);
 
             if (xStream.is() && WriteThumbnail(bEncrypted, xStream))
             {
-                uno::Reference<embed::XTransactedObject> xTransactedObject(xThumbnailStorage, uno::UNO_QUERY_THROW);
-                xTransactedObject->commit();
-                bResult = true;
+                uno::Reference<embed::XTransactedObject> xTransactedObject(xThumbnailStorage, uno::UNO_QUERY);
+                if (xTransactedObject)
+                {
+                    xTransactedObject->commit();
+                    bResult = true;
+                }
             }
         }
     }
@@ -3835,7 +4143,7 @@ bool SfxObjectShell::WriteThumbnail(bool bEncrypted, const uno::Reference<io::XS
 
         uno::Reference <beans::XPropertySet> xSet(xStream, uno::UNO_QUERY);
         if (xSet.is())
-            xSet->setPropertyValue("MediaType", uno::Any(OUString("image/png")));
+            xSet->setPropertyValue(u"MediaType"_ustr, uno::Any(u"image/png"_ustr));
         if (bEncrypted)
         {
             const OUString sResID = GraphicHelper::getThumbnailReplacementIDByFactoryName_Impl(
@@ -3845,7 +4153,7 @@ bool SfxObjectShell::WriteThumbnail(bool bEncrypted, const uno::Reference<io::XS
         }
         else
         {
-            BitmapEx bitmap = GetPreviewBitmap();
+            Bitmap bitmap = GetPreviewBitmap();
             if (!bitmap.IsEmpty())
             {
                 bResult = GraphicHelper::getThumbnailFormatFromBitmap_Impl(bitmap, xStream);
@@ -3894,7 +4202,7 @@ void SfxObjectShell::SetMacroCallsSeenWhileLoading()
 
 bool SfxObjectShell::GetMacroCallsSeenWhileLoading() const
 {
-    if (utl::ConfigManager::IsFuzzing() || officecfg::Office::Common::Security::Scripting::CheckDocumentEvents::get())
+    if (comphelper::IsFuzzing() || officecfg::Office::Common::Security::Scripting::CheckDocumentEvents::get())
         return pImpl->m_bMacroCallsSeenWhileLoading;
     return false;
 }
@@ -3955,14 +4263,16 @@ bool SfxObjectShell::QueryAllowExoticFormat_Impl( const uno::Reference< task::XI
 uno::Reference< task::XInteractionHandler > SfxObjectShell::getInteractionHandler() const
 {
     uno::Reference< task::XInteractionHandler > xRet;
-    if ( GetMedium() )
-        xRet = GetMedium()->GetInteractionHandler();
+    if (SfxMedium* pRetrMedium = GetMedium())
+        xRet = pRetrMedium->GetInteractionHandler();
     return xRet;
 }
 
 OUString SfxObjectShell::getDocumentBaseURL() const
 {
-    return GetMedium()->GetBaseURL();
+    if (SfxMedium* pRetrMedium = GetMedium())
+        return pRetrMedium->GetBaseURL();
+    return OUString();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

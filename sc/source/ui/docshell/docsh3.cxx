@@ -76,16 +76,16 @@
 
 //          Redraw - Notifications
 
-void ScDocShell::PostEditView( ScEditEngineDefaulter* pEditEngine, const ScAddress& rCursorPos )
+void ScDocShell::PostEditView( ScEditEngineDefaulter& rEditEngine, const ScAddress& rCursorPos )
 {
 //  Broadcast( ScEditViewHint( pEditEngine, rCursorPos ) );
 
         //  Test: only active ViewShell
 
     ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell();
-    if (pViewSh && pViewSh->GetViewData().GetDocShell() == this)
+    if (pViewSh && &pViewSh->GetViewData().GetDocShell() == this)
     {
-        ScEditViewHint aHint( pEditEngine, rCursorPos );
+        ScEditViewHint aHint(rEditEngine, rCursorPos);
         pViewSh->Notify( *this, aHint );
     }
 }
@@ -100,13 +100,13 @@ void ScDocShell::PostDataChanged()
 
 void ScDocShell::PostPaint( SCCOL nStartCol, SCROW nStartRow, SCTAB nStartTab,
                             SCCOL nEndCol, SCROW nEndRow, SCTAB nEndTab, PaintPartFlags nPart,
-                            sal_uInt16 nExtFlags )
+                            sal_uInt16 nExtFlags, tools::Long nMaxWidthAffectedHint )
 {
     ScRange aRange(nStartCol, nStartRow, nStartTab, nEndCol, nEndRow, nEndTab);
-    PostPaint(aRange, nPart, nExtFlags);
+    PostPaint(aRange, nPart, nExtFlags, nMaxWidthAffectedHint);
 }
 
-void ScDocShell::PostPaint( const ScRangeList& rRanges, PaintPartFlags nPart, sal_uInt16 nExtFlags )
+void ScDocShell::PostPaint( const ScRangeList& rRanges, PaintPartFlags nPart, sal_uInt16 nExtFlags, tools::Long nMaxWidthAffectedHint )
 {
     ScRangeList aPaintRanges;
     std::set<SCTAB> aTabsInvalidated;
@@ -118,9 +118,20 @@ void ScDocShell::PostPaint( const ScRangeList& rRanges, PaintPartFlags nPart, sa
         SCROW nRow1 = rRange.aStart.Row(), nRow2 = rRange.aEnd.Row();
         SCTAB nTab1 = rRange.aStart.Tab(), nTab2 = std::min<SCTAB>(nMaxTab, rRange.aEnd.Tab());
 
-        if (!m_pDocument->ValidCol(nCol1)) nCol1 = m_pDocument->MaxCol();
+        if (nTab1 < 0 || nTab2 < 0)
+            continue;
+
+        if (!m_pDocument->ValidCol(nCol1))
+        {
+            nMaxWidthAffectedHint = -1; // Hint no longer valid
+            nCol1 = m_pDocument->MaxCol();
+        }
         if (!m_pDocument->ValidRow(nRow1)) nRow1 = m_pDocument->MaxRow();
-        if (!m_pDocument->ValidCol(nCol2)) nCol2 = m_pDocument->MaxCol();
+        if (!m_pDocument->ValidCol(nCol2))
+        {
+            nMaxWidthAffectedHint = -1; // Hint no longer valid
+            nCol2 = m_pDocument->MaxCol();
+        }
         if (!m_pDocument->ValidRow(nRow2)) nRow2 = m_pDocument->MaxRow();
 
         if ( m_pPaintLockData )
@@ -143,8 +154,16 @@ void ScDocShell::PostPaint( const ScRangeList& rRanges, PaintPartFlags nPart, sa
         if (nExtFlags & SC_PF_LINES)            // respect space for lines
         {
                                                 //! check for hidden columns/rows!
-            if (nCol1>0) --nCol1;
-            if (nCol2<m_pDocument->MaxCol()) ++nCol2;
+            if (nCol1 > 0)
+            {
+                nMaxWidthAffectedHint = -1; // Hint no longer valid
+                --nCol1;
+            }
+            if (nCol2 < m_pDocument->MaxCol())
+            {
+                nMaxWidthAffectedHint = -1; // Hint no longer valid
+                ++nCol2;
+            }
             if (nRow1>0) --nRow1;
             if (nRow2<m_pDocument->MaxRow()) ++nRow2;
         }
@@ -166,6 +185,7 @@ void ScDocShell::PostPaint( const ScRangeList& rRanges, PaintPartFlags nPart, sa
             {
                 nCol1 = 0;
                 nCol2 = m_pDocument->MaxCol();
+                nMaxWidthAffectedHint = -1; // Hint no longer valid
             }
         }
         aPaintRanges.push_back(ScRange(nCol1, nRow1, nTab1, nCol2, nRow2, nTab2));
@@ -173,7 +193,7 @@ void ScDocShell::PostPaint( const ScRangeList& rRanges, PaintPartFlags nPart, sa
             aTabsInvalidated.insert(nTabNum);
     }
 
-    Broadcast(ScPaintHint(aPaintRanges.Combine(), nPart));
+    Broadcast(ScPaintHint(aPaintRanges.Combine(), nPart, nMaxWidthAffectedHint));
 
     // LOK: we are supposed to update the row / columns headers (and actually
     // the document size too - cell size affects that, obviously)
@@ -190,14 +210,14 @@ void ScDocShell::PostPaintGridAll()
     PostPaint( 0,0,0, m_pDocument->MaxCol(),m_pDocument->MaxRow(),MAXTAB, PaintPartFlags::Grid );
 }
 
-void ScDocShell::PostPaintCell( SCCOL nCol, SCROW nRow, SCTAB nTab )
+void ScDocShell::PostPaintCell( SCCOL nCol, SCROW nRow, SCTAB nTab, tools::Long nMaxWidthAffectedHint )
 {
-    PostPaint( nCol,nRow,nTab, nCol,nRow,nTab, PaintPartFlags::Grid, SC_PF_TESTMERGE );
+    PostPaint( nCol,nRow,nTab, nCol,nRow,nTab, PaintPartFlags::Grid, SC_PF_TESTMERGE, nMaxWidthAffectedHint );
 }
 
-void ScDocShell::PostPaintCell( const ScAddress& rPos )
+void ScDocShell::PostPaintCell( const ScAddress& rPos, tools::Long nMaxWidthAffectedHint )
 {
-    PostPaintCell( rPos.Col(), rPos.Row(), rPos.Tab() );
+    PostPaintCell( rPos.Col(), rPos.Row(), rPos.Tab(), nMaxWidthAffectedHint );
 }
 
 void ScDocShell::PostPaintExtras()
@@ -365,7 +385,7 @@ void ScDocShell::CalcOutputFactor()
         return;
     }
 
-    bool bTextWysiwyg = SC_MOD()->GetInputOptions().GetTextWysiwyg();
+    bool bTextWysiwyg = ScModule::get()->GetInputOptions().GetTextWysiwyg();
     if (bTextWysiwyg)
     {
         m_nPrtToScreenFactor = 1.0;
@@ -373,9 +393,9 @@ void ScDocShell::CalcOutputFactor()
     }
 
     OUString aTestString(
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567890123456789");
+            u"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567890123456789"_ustr);
     tools::Long nPrinterWidth = 0;
-    const ScPatternAttr* pPattern = &m_pDocument->GetPool()->GetDefaultItem(ATTR_PATTERN);
+    const ScPatternAttr& rPattern(m_pDocument->getCellAttributeHelper().getDefaultCellAttribute());
 
     vcl::Font aDefFont;
     OutputDevice* pRefDev = GetRefDevice();
@@ -383,7 +403,7 @@ void ScDocShell::CalcOutputFactor()
     vcl::Font aOldFont = pRefDev->GetFont();
 
     pRefDev->SetMapMode(MapMode(MapUnit::MapPixel));
-    pPattern->fillFontOnly(aDefFont, pRefDev); // font color doesn't matter here
+    rPattern.fillFontOnly(aDefFont, pRefDev); // font color doesn't matter here
     pRefDev->SetFont(aDefFont);
     nPrinterWidth = pRefDev->PixelToLogic(Size(pRefDev->GetTextWidth(aTestString), 0), MapMode(MapUnit::Map100thMM)).Width();
     pRefDev->SetFont(aOldFont);
@@ -391,7 +411,7 @@ void ScDocShell::CalcOutputFactor()
 
     ScopedVclPtrInstance< VirtualDevice > pVirtWindow( *Application::GetDefaultDevice() );
     pVirtWindow->SetMapMode(MapMode(MapUnit::MapPixel));
-    pPattern->fillFontOnly(aDefFont, pVirtWindow); // font color doesn't matter here
+    rPattern.fillFontOnly(aDefFont, pVirtWindow); // font color doesn't matter here
     pVirtWindow->SetFont(aDefFont);
     double nWindowWidth = pVirtWindow->GetTextWidth(aTestString) / ScGlobal::nScreenPPTX;
     nWindowWidth = o3tl::convert(nWindowWidth, o3tl::Length::twip, o3tl::Length::mm100);
@@ -410,16 +430,14 @@ void ScDocShell::InitOptions(bool bForLoading)      // called from InitNew and L
     //  Settings from the SpellCheckCfg get into Doc- and ViewOptions
 
     LanguageType nDefLang, nCjkLang, nCtlLang;
-    bool bAutoSpell;
-    ScModule::GetSpellSettings( nDefLang, nCjkLang, nCtlLang, bAutoSpell );
-    ScModule* pScMod = SC_MOD();
+    ScModule::GetSpellSettings( nDefLang, nCjkLang, nCtlLang );
+    ScModule* pScMod = ScModule::get();
 
     ScDocOptions  aDocOpt  = pScMod->GetDocOptions();
     ScFormulaOptions aFormulaOpt = pScMod->GetFormulaOptions();
     ScViewOptions aViewOpt = pScMod->GetViewOptions();
-    aDocOpt.SetAutoSpell( bAutoSpell );
 
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         // two-digit year entry from Tools->Options->General
         aDocOpt.SetYear2000(officecfg::Office::Common::DateFormat::TwoDigitYear::get());
@@ -495,10 +513,10 @@ sal_uInt16 ScDocShell::SetPrinter( VclPtr<SfxPrinter> const & pNewPrinter, SfxPr
 
             CalcOutputFactor();
             */
-            if ( SC_MOD()->GetInputOptions().GetTextWysiwyg() )
+            ScModule* pScMod = ScModule::get();
+            if (pScMod->GetInputOptions().GetTextWysiwyg())
                 UpdateFontList();
 
-            ScModule* pScMod = SC_MOD();
             SfxViewFrame *pFrame = SfxViewFrame::GetFirst( this );
             while (pFrame)
             {
@@ -831,7 +849,7 @@ void ScDocShell::MergeDocument( ScDocument& rOtherDoc, bool bShared, bool bCheck
         return;             //! nothing to do - error notification?
                             //  from here on no return
 
-    ScProgress aProgress( this, "...", nNewActionCount, true );
+    ScProgress aProgress( this, u"..."_ustr, nNewActionCount, true );
 
     sal_uLong nLastMergeAction = pSourceTrack->GetLast()->GetActionNumber();
     // UpdateReference-Undo, valid references for the last common state
@@ -923,7 +941,7 @@ void ScDocShell::MergeDocument( ScDocument& rOtherDoc, bool bShared, bool bCheck
 #if OSL_DEBUG_LEVEL > 0
                 OUString aValue;
                 if ( eSourceType == SC_CAT_CONTENT )
-                    aValue = static_cast<const ScChangeActionContent*>(pSourceAction)->GetNewString( m_pDocument.get() );
+                    aValue = static_cast<const ScChangeActionContent*>(pSourceAction)->GetNewString( *m_pDocument );
                 SAL_WARN( "sc", aValue << " omitted");
 #endif
             }
@@ -984,7 +1002,7 @@ void ScDocShell::MergeDocument( ScDocument& rOtherDoc, bool bShared, bool bCheck
 
                             OSL_ENSURE( aSourceRange.aStart == aSourceRange.aEnd, "huch?" );
                             ScAddress aPos = aSourceRange.aStart;
-                            OUString aValue = static_cast<const ScChangeActionContent*>(pSourceAction)->GetNewString( m_pDocument.get() );
+                            OUString aValue = static_cast<const ScChangeActionContent*>(pSourceAction)->GetNewString( *m_pDocument );
                             ScMatrixMode eMatrix = ScMatrixMode::NONE;
                             const ScCellValue& rCell = static_cast<const ScChangeActionContent*>(pSourceAction)->GetNewCell();
                             if (rCell.getType() == CELLTYPE_FORMULA)
@@ -1185,7 +1203,7 @@ bool ScDocShell::MergeSharedDocument( ScDocShell* pSharedDocShell )
                 pTmpDoc->CreateValidTabName( sTabName );
                 pTmpDoc->InsertTab( SC_TAB_APPEND, sTabName );
             }
-            m_pDocument->GetChangeTrack()->Clone( &*pTmpDoc );
+            m_pDocument->GetChangeTrack()->Clone( *pTmpDoc );
             ScChangeActionMergeMap aOwnInverseMergeMap;
             pSharedDocShell->MergeDocument( *pTmpDoc, true, true, 0, &aOwnInverseMergeMap, true );
             pTmpDoc.reset();
@@ -1198,25 +1216,28 @@ bool ScDocShell::MergeSharedDocument( ScDocShell* pSharedDocShell )
             if ( aFinder.Find() )
             {
                 ScConflictsListHelper::TransformConflictsList( aConflictsList, nullptr, &aOwnInverseMergeMap );
-                bool bLoop = true;
-                while ( bLoop )
+                if (ScViewData* pViewData = GetViewData())
                 {
-                    bLoop = false;
-                    weld::Window* pWin = GetActiveDialogParent();
-                    ScConflictsDlg aDlg(pWin, GetViewData(), &rSharedDoc, aConflictsList);
-                    if (aDlg.run() == RET_CANCEL)
+                    bool bLoop = true;
+                    while ( bLoop )
                     {
-                        std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(pWin,
-                                                                       VclMessageType::Question, VclButtonsType::YesNo,
-                                                                       ScResId(STR_DOC_WILLNOTBESAVED)));
-                        xQueryBox->set_default_response(RET_YES);
-                        if (xQueryBox->run() == RET_YES)
+                        bLoop = false;
+                        weld::Window* pWin = GetActiveDialogParent();
+                        ScConflictsDlg aDlg(pWin, *pViewData, rSharedDoc, aConflictsList);
+                        if (aDlg.run() == RET_CANCEL)
                         {
-                            return false;
-                        }
-                        else
-                        {
-                            bLoop = true;
+                            std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(pWin,
+                                                                           VclMessageType::Question, VclButtonsType::YesNo,
+                                                                           ScResId(STR_DOC_WILLNOTBESAVED)));
+                            xQueryBox->set_default_response(RET_YES);
+                            if (xQueryBox->run() == RET_YES)
+                            {
+                                return false;
+                            }
+                            else
+                            {
+                                bLoop = true;
+                            }
                         }
                     }
                 }
@@ -1233,7 +1254,7 @@ bool ScDocShell::MergeSharedDocument( ScDocShell* pSharedDocShell )
                 pTmpDoc->CreateValidTabName( sTabName );
                 pTmpDoc->InsertTab( SC_TAB_APPEND, sTabName );
             }
-            pThisTrack->Clone( &*pTmpDoc );
+            pThisTrack->Clone( *pTmpDoc );
 
             // undo own changes since last save in own document
             sal_uLong nStartShared = pThisAction->GetActionNumber();

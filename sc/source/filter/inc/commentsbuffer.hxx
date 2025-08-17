@@ -21,6 +21,7 @@
 
 #include "richstring.hxx"
 #include "worksheethelper.hxx"
+#include "drawingfragment.hxx"
 #include <com/sun/star/awt/Rectangle.hpp>
 
 namespace oox::xls {
@@ -58,7 +59,9 @@ public:
     RichStringRef const & createText();
 
     /** Finalizes the formatted string of the comment. */
-    void                finalizeImport();
+    void                finalizeImport(const VmlDrawing::NoteShapesMap& rNoteShapeMap);
+
+    OUString getAuthorName();
 
 private:
     CommentModel        maModel;
@@ -78,6 +81,8 @@ public:
 
     /** Finalizes the formatted string of all comments. */
     void                finalizeImport();
+
+    const std::vector<OUString> & getAuthors() const;
 
 private:
     typedef RefVector< Comment >                CommentVector;

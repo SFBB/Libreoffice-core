@@ -116,43 +116,28 @@ OUString SvxHyphenWordDialog::EraseUnusableHyphens_Impl()
         aTxt = m_xPossHyph->getPossibleHyphens();
 
         m_nHyphenationPositionsOffset = 0;
-        uno::Sequence< sal_Int16 > aHyphenationPositions(
-                m_xPossHyph->getHyphenationPositions() );
-        sal_Int32 nLen = aHyphenationPositions.getLength();
-        const sal_Int16 *pHyphenationPos = aHyphenationPositions.getConstArray();
 
         // find position nIdx after which all hyphen positions are unusable
         sal_Int32  nIdx = -1;
-        sal_Int32  nPos = 0, nPos1 = 0;
-        if (nLen)
+        for (sal_Int16 hyphenationPos : m_xPossHyph->getHyphenationPositions())
         {
-            sal_Int32 nStart = 0;
-            for (sal_Int32 i = 0;  i < nLen;  ++i)
+            if (hyphenationPos > m_nMaxHyphenationPos)
+                break;
+            else
             {
-                if (pHyphenationPos[i] > m_nMaxHyphenationPos)
-                    break;
-                else
-                {
-                    // find corresponding hyphen positions in string
-                    nPos = aTxt.indexOf( sal_Unicode( HYPH_POS_CHAR ), nStart );
+                // find corresponding hyphen positions in string
+                nIdx = aTxt.indexOf(sal_Unicode(HYPH_POS_CHAR), nIdx + 1);
 
-                    if (nPos == -1)
-                        break;
-                    else
-                    {
-                        nIdx = nPos;
-                        nStart = nPos + 1;
-                    }
-                }
+                if (nIdx == -1)
+                    break;
             }
         }
         DBG_ASSERT(nIdx != -1, "no usable hyphenation position");
 
         // 1) remove all not usable hyphenation positions from the end of the string
-        nPos = nIdx == -1 ? 0 : nIdx + 1;
-        nPos1 = nPos;   //save for later use in 2) below
+        sal_Int32 nPos1 = nIdx + 1; //save for later use in 2) below
         const OUString aTmp( sal_Unicode( HYPH_POS_CHAR ) );
-        while (nPos != -1)
+        for (sal_Int32 nPos = nPos1; nPos != -1;)
         {
             nPos++;
             aTxt = aTxt.replaceFirst( aTmp, "", &nPos);
@@ -164,13 +149,14 @@ OUString SvxHyphenWordDialog::EraseUnusableHyphens_Impl()
         if (nPos2 != std::u16string_view::npos && nPos2 != 0)
         {
             OUString aLeft( aSearchRange.substr( 0, nPos2 ) );
-            nPos = 0;
-            while (nPos != -1)
+            for (sal_Int32 nPos = 0; nPos != -1;)
             {
                 nPos++;
                 aLeft = aLeft.replaceFirst( aTmp, "", &nPos );
                 if (nPos != -1)
                     ++m_nHyphenationPositionsOffset;
+                if (nPos >= aLeft.getLength()) // tdf#158837
+                    break;
             }
             aTxt = aTxt.replaceAt( 0, nPos2, aLeft );
         }
@@ -220,7 +206,7 @@ void SvxHyphenWordDialog::ContinueHyph_Impl( sal_Int32 nInsPos )
             DBG_ASSERT(0 <= nIdxPos && nIdxPos < nLen, "index out of range");
             if (nLen && 0 <= nIdxPos && nIdxPos < nLen)
             {
-                nInsPos = aSeq.getConstArray()[ nIdxPos ];
+                nInsPos = aSeq[nIdxPos];
                 m_pHyphWrapper->InsertHyphen( nInsPos );
             }
         }
@@ -407,7 +393,7 @@ SvxHyphenWordDialog::SvxHyphenWordDialog(
     weld::Widget* pParent,
     uno::Reference< linguistic2::XHyphenator > const &xHyphen,
     SvxSpellWrapper* pWrapper)
-    : SfxDialogController(pParent, "cui/ui/hyphenate.ui", "HyphenateDialog")
+    : SfxDialogController(pParent, u"cui/ui/hyphenate.ui"_ustr, u"HyphenateDialog"_ustr)
     , m_pHyphWrapper(pWrapper)
     , m_aActWord(std::move(aWord))
     , m_nActLanguage(nLang)
@@ -415,14 +401,14 @@ SvxHyphenWordDialog::SvxHyphenWordDialog(
     , m_nOldPos(0)
     , m_nHyphenationPositionsOffset(0)
     , m_bBusy(false)
-    , m_xWordEdit(m_xBuilder->weld_entry("worded"))
-    , m_xLeftBtn(m_xBuilder->weld_button("left"))
-    , m_xRightBtn(m_xBuilder->weld_button("right"))
-    , m_xOkBtn(m_xBuilder->weld_button("ok"))
-    , m_xContBtn(m_xBuilder->weld_button("continue"))
-    , m_xDelBtn(m_xBuilder->weld_button("delete"))
-    , m_xHyphAll(m_xBuilder->weld_button("hyphall"))
-    , m_xCloseBtn(m_xBuilder->weld_button("close"))
+    , m_xWordEdit(m_xBuilder->weld_entry(u"worded"_ustr))
+    , m_xLeftBtn(m_xBuilder->weld_button(u"left"_ustr))
+    , m_xRightBtn(m_xBuilder->weld_button(u"right"_ustr))
+    , m_xOkBtn(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xContBtn(m_xBuilder->weld_button(u"continue"_ustr))
+    , m_xDelBtn(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xHyphAll(m_xBuilder->weld_button(u"hyphall"_ustr))
+    , m_xCloseBtn(m_xBuilder->weld_button(u"close"_ustr))
 {
     m_nWordEditWidth = m_xWordEdit->get_width_chars();
     m_aLabel = m_xDialog->get_title();

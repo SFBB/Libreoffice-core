@@ -18,7 +18,7 @@
 #include <osl/diagnose.h>
 
 ScDataFormDlg::ScDataFormDlg(weld::Window* pParent, ScTabViewShell* pTabViewShellOri)
-    : GenericDialogController(pParent, "modules/scalc/ui/dataform.ui", "DataFormDialog")
+    : GenericDialogController(pParent, u"modules/scalc/ui/dataform.ui"_ustr, u"DataFormDialog"_ustr)
     , pTabViewShell(pTabViewShellOri)
     , aColLength(0)
     , nCurrentRow(0)
@@ -27,15 +27,15 @@ ScDataFormDlg::ScDataFormDlg(weld::Window* pParent, ScTabViewShell* pTabViewShel
     , nStartRow(0)
     , nEndRow(0)
     , nTab(0)
-    , m_xBtnNew(m_xBuilder->weld_button("new"))
-    , m_xBtnDelete(m_xBuilder->weld_button("delete"))
-    , m_xBtnRestore(m_xBuilder->weld_button("restore"))
-    , m_xBtnPrev(m_xBuilder->weld_button("prev"))
-    , m_xBtnNext(m_xBuilder->weld_button("next"))
-    , m_xBtnClose(m_xBuilder->weld_button("close"))
-    , m_xSlider(m_xBuilder->weld_scrolled_window("scrollbar", true))
-    , m_xGrid(m_xBuilder->weld_container("grid"))
-    , m_xFixedText(m_xBuilder->weld_label("label"))
+    , m_xBtnNew(m_xBuilder->weld_button(u"new"_ustr))
+    , m_xBtnDelete(m_xBuilder->weld_button(u"delete"_ustr))
+    , m_xBtnRestore(m_xBuilder->weld_button(u"restore"_ustr))
+    , m_xBtnPrev(m_xBuilder->weld_button(u"prev"_ustr))
+    , m_xBtnNext(m_xBuilder->weld_button(u"next"_ustr))
+    , m_xBtnClose(m_xBuilder->weld_button(u"close"_ustr))
+    , m_xSlider(m_xBuilder->weld_scrolled_window(u"scrollbar"_ustr, true))
+    , m_xGrid(m_xBuilder->weld_grid(u"grid"_ustr))
+    , m_xFixedText(m_xBuilder->weld_label(u"label"_ustr))
 {
     sNewRecord = m_xFixedText->get_label();
 
@@ -172,7 +172,7 @@ ScDataFormDlg::ScDataFormDlg(weld::Window* pParent, ScTabViewShell* pTabViewShel
 
     FillCtrls();
 
-    m_xSlider->vadjustment_configure(0, 0, nEndRow - nStartRow + 1, 1, 10, 1);
+    m_xSlider->vadjustment_configure(0, nEndRow - nStartRow + 1, 1, 10, 1);
 
     m_xBtnNew->connect_clicked(LINK( this, ScDataFormDlg, Impl_NewHdl));
     m_xBtnPrev->connect_clicked(LINK( this, ScDataFormDlg, Impl_PrevHdl));
@@ -182,7 +182,7 @@ ScDataFormDlg::ScDataFormDlg(weld::Window* pParent, ScTabViewShell* pTabViewShel
     m_xBtnDelete->connect_clicked(LINK( this, ScDataFormDlg, Impl_DeleteHdl));
     m_xBtnClose->connect_clicked(LINK( this, ScDataFormDlg, Impl_CloseHdl));
 
-    m_xSlider->connect_vadjustment_changed(LINK( this, ScDataFormDlg, Impl_ScrollHdl));
+    m_xSlider->connect_vadjustment_value_changed(LINK( this, ScDataFormDlg, Impl_ScrollHdl));
 
     SetButtonState();
 }
@@ -230,7 +230,7 @@ IMPL_LINK( ScDataFormDlg, Impl_DataModifyHdl, weld::Entry&, rEdit, void)
 IMPL_LINK_NOARG(ScDataFormDlg, Impl_NewHdl, weld::Button&, void)
 {
     ScViewData& rViewData = pTabViewShell->GetViewData();
-    ScDocShell* pDocSh = rViewData.GetDocShell();
+    ScDocShell& rDocSh = rViewData.GetDocShell();
     if ( !pDoc )
         return;
 
@@ -249,8 +249,8 @@ IMPL_LINK_NOARG(ScDataFormDlg, Impl_NewHdl, weld::Button&, void)
     }
     SetButtonState();
     FillCtrls();
-    pDocSh->SetDocumentModified();
-    pDocSh->PostPaintGridAll();
+    rDocSh.SetDocumentModified();
+    rDocSh.PostPaintGridAll();
 }
 
 IMPL_LINK_NOARG(ScDataFormDlg, Impl_PrevHdl, weld::Button&, void)
@@ -288,7 +288,7 @@ IMPL_LINK_NOARG(ScDataFormDlg, Impl_RestoreHdl, weld::Button&, void)
 IMPL_LINK_NOARG(ScDataFormDlg, Impl_DeleteHdl, weld::Button&, void)
 {
     ScViewData& rViewData = pTabViewShell->GetViewData();
-    ScDocShell* pDocSh = rViewData.GetDocShell();
+    ScDocShell& rDocSh = rViewData.GetDocShell();
     if (!pDoc)
         return;
 
@@ -297,11 +297,11 @@ IMPL_LINK_NOARG(ScDataFormDlg, Impl_DeleteHdl, weld::Button&, void)
     nEndRow--;
 
     SetButtonState();
-    pDocSh->GetUndoManager()->Clear();
+    rDocSh.GetUndoManager()->Clear();
 
     FillCtrls();
-    pDocSh->SetDocumentModified();
-    pDocSh->PostPaintGridAll();
+    rDocSh.SetDocumentModified();
+    rDocSh.PostPaintGridAll();
 }
 
 IMPL_LINK_NOARG(ScDataFormDlg, Impl_CloseHdl, weld::Button&, void)
@@ -340,16 +340,16 @@ void ScDataFormDlg::SetButtonState()
         m_aEntries[0]->m_xEdit->grab_focus();
 }
 
-ScDataFormFragment::ScDataFormFragment(weld::Container* pGrid, int nLine)
-    : m_xBuilder(Application::CreateBuilder(pGrid, "modules/scalc/ui/dataformfragment.ui"))
-    , m_xLabel(m_xBuilder->weld_label("label"))
-    , m_xEdit(m_xBuilder->weld_entry("entry"))
+ScDataFormFragment::ScDataFormFragment(weld::Grid* pGrid, int nLine)
+    : m_xBuilder(Application::CreateBuilder(pGrid, u"modules/scalc/ui/dataformfragment.ui"_ustr))
+    , m_xLabel(m_xBuilder->weld_label(u"label"_ustr))
+    , m_xEdit(m_xBuilder->weld_entry(u"entry"_ustr))
 {
-    m_xLabel->set_grid_left_attach(0);
-    m_xLabel->set_grid_top_attach(nLine);
+    pGrid->set_child_left_attach(*m_xLabel, 0);
+    pGrid->set_child_top_attach(*m_xLabel, nLine);
 
-    m_xEdit->set_grid_left_attach(1);
-    m_xEdit->set_grid_top_attach(nLine);
+    pGrid->set_child_left_attach(*m_xEdit, 1);
+    pGrid->set_child_top_attach(*m_xEdit, nLine);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -12,19 +12,17 @@
 #include <o3tl/string_view.hxx>
 #include <tools/solar.h>
 #include <vcl/filter/PDFiumLibrary.hxx>
+#include <vcl/pdf/pwdinteract.hxx>
 #include <sal/log.hxx>
 
 namespace vcl::pdf
 {
 /// Decide if PDF data is old enough to be compatible.
-bool isCompatible(SvStream& rInStream, sal_uInt64 nPos, sal_uInt64 nSize)
+bool isCompatible(SvStream& rInStream)
 {
-    if (nSize < 8)
-        return false;
-
     // %PDF-x.y
     sal_uInt8 aFirstBytes[8];
-    rInStream.Seek(nPos);
+    rInStream.Seek(STREAM_SEEK_TO_BEGIN);
     sal_uLong nRead = rInStream.ReadBytes(aFirstBytes, 8);
     if (nRead < 8)
         return false;
@@ -41,11 +39,16 @@ bool isCompatible(SvStream& rInStream, sal_uInt64 nPos, sal_uInt64 nSize)
 /// Converts to highest supported format version (1.6).
 /// Usually used to deal with missing referenced objects in source
 /// pdf stream.
-bool convertToHighestSupported(SvStream& rInStream, SvStream& rOutStream)
+/// The conversion takes place if either the stream is encrypted, or 'bForce' is true
+bool convertToHighestSupported(
+    SvStream& rInStream, SvStream& rOutStream,
+    const css::uno::Reference<css::task::XInteractionHandler>& xInteractionHandler, bool bForce,
+    bool& bEncrypted)
 {
     sal_uInt64 nPos = STREAM_SEEK_TO_BEGIN;
     sal_uInt64 nSize = STREAM_SEEK_TO_END;
     rInStream.Seek(nPos);
+    bEncrypted = false;
     // Convert to PDF-1.6.
     auto pPdfium = vcl::pdf::PDFiumLibrary::get();
     if (!pPdfium)
@@ -56,46 +59,89 @@ bool convertToHighestSupported(SvStream& rInStream, SvStream& rOutStream)
     aInBuffer.WriteStream(rInStream, nSize);
 
     SvMemoryStream aSaved;
+    bool bAgain = false;
+    OUString aPassword;
+    do
     {
         // Load the buffer using pdfium.
-        std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
-            = pPdfium->openDocument(aInBuffer.GetData(), aInBuffer.GetSize(), OString());
-        if (!pPdfDocument)
-            return false;
+        OString aIsoPwd = OUStringToOString(aPassword, RTL_TEXTENCODING_ISO_8859_1);
 
-        // 16 means PDF-1.6.
-        if (!pPdfDocument->saveWithVersion(aSaved, 16))
+        std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
+            = pPdfium->openDocument(aInBuffer.GetData(), aInBuffer.GetSize(), aIsoPwd);
+        auto nPdfiumErr = pPdfium->getLastErrorCode();
+        if (!pPdfDocument && nPdfiumErr != vcl::pdf::PDFErrorType::Password)
+        {
+            SAL_WARN("vcl.filter",
+                     "convertToHighestSupported pdfium err: " << pPdfium->getLastError());
             return false;
-    }
+        }
+
+        if (!pPdfDocument && nPdfiumErr == vcl::pdf::PDFErrorType::Password)
+        {
+            if (!xInteractionHandler || !xInteractionHandler.is())
+            {
+                SAL_WARN("vcl.filter", "convertToHighestSupported no Int handler for pass");
+                return false;
+            }
+
+            // We don't have a filename for the GUI here
+            bEncrypted = true;
+            bAgain = vcl::pdf::getPassword(xInteractionHandler, aPassword, !bAgain, u"PDF"_ustr);
+            SAL_INFO("vcl.filter", "convertToHighestSupported pass result: " << bAgain);
+            if (!bAgain)
+            {
+                SAL_WARN("vcl.filter", "convertToHighestSupported Failed to get pass");
+                return false;
+            }
+            continue;
+        }
+        bAgain = false;
+
+        SAL_INFO("vcl.filter", "convertToHighestSupported do save");
+        // 16 means PDF-1.6.
+        // true means 'remove security' - i.e. not passworded
+        if (!pPdfDocument->saveWithVersion(aSaved, 16, true))
+            return false;
+    } while (bAgain);
 
     aSaved.Seek(STREAM_SEEK_TO_BEGIN);
-    rOutStream.WriteStream(aSaved);
+    if (bEncrypted || bForce)
+    {
+        SAL_INFO("vcl.filter", "convertToHighestSupported do write");
+        rOutStream.WriteStream(aSaved);
+    }
 
+    SAL_INFO("vcl.filter",
+             "convertToHighestSupported exit: encrypted: " << bEncrypted << " force: " << bForce);
     return rOutStream.good();
 }
 
 /// Takes care of transparently downgrading the version of the PDF stream in
 /// case it's too new for our PDF export.
-bool getCompatibleStream(SvStream& rInStream, SvStream& rOutStream)
+bool getCompatibleStream(
+    SvStream& rInStream, SvStream& rOutStream,
+    const css::uno::Reference<css::task::XInteractionHandler>& xInteractionHandler,
+    bool& bEncrypted)
 {
-    sal_uInt64 nPos = STREAM_SEEK_TO_BEGIN;
-    sal_uInt64 nSize = STREAM_SEEK_TO_END;
-    bool bCompatible = isCompatible(rInStream, nPos, nSize);
-    rInStream.Seek(nPos);
-    if (bCompatible)
-        // Not converting.
-        rOutStream.WriteStream(rInStream, nSize);
-    else
-        convertToHighestSupported(rInStream, rOutStream);
+    bool bCompatible = isCompatible(rInStream);
+
+    // This will convert if either the file is encrypted, or !bCompatible
+    convertToHighestSupported(rInStream, rOutStream, xInteractionHandler, !bCompatible, bEncrypted);
+    rInStream.Seek(STREAM_SEEK_TO_BEGIN);
+    if (bCompatible && !bEncrypted)
+        // Just pass the original through
+        rOutStream.WriteStream(rInStream, STREAM_SEEK_TO_END);
 
     return rOutStream.good();
 }
 
-BinaryDataContainer createBinaryDataContainer(SvStream& rStream)
+BinaryDataContainer createBinaryDataContainer(
+    SvStream& rStream, bool& bEncrypted,
+    const css::uno::Reference<css::task::XInteractionHandler>& xInteractionHandler)
 {
     // Save the original PDF stream for later use.
     SvMemoryStream aMemoryStream;
-    if (!getCompatibleStream(rStream, aMemoryStream))
+    if (!getCompatibleStream(rStream, aMemoryStream, xInteractionHandler, bEncrypted))
         return {};
 
     const sal_uInt64 nStreamLength = aMemoryStream.TellEnd();

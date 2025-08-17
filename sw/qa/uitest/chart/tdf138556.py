@@ -8,6 +8,7 @@
 #
 
 from libreoffice.uno.propertyvalue import mkPropertyValues
+from uitest.uihelper.common import get_state_as_dict
 
 from uitest.framework import UITestCase
 
@@ -27,13 +28,16 @@ class tdf138556( UITestCase ):
             #TODO: test other subtypes
             with self.ui_test.execute_dialog_through_action( xChart, "COMMAND", mkPropertyValues({ "COMMAND" : "DiagramType" })) as xDialog:
                 xChartType = xDialog.getChild( "charttype" )
-                xStockType = xChartType.getChild( "8" )
+                xStockType = xChartType.getChild( "10" )
                 xStockType.executeAction( "SELECT", tuple())
 
             #Insert Data Series
             with self.ui_test.execute_dialog_through_action( xChart, "COMMAND", mkPropertyValues({ "COMMAND" : "DiagramData" }), close_button="close") as xDialog:
                 xToolbar = xDialog.getChild( "toolbar" )
                 xToolbar.executeAction( "CLICK", mkPropertyValues({ "POS" : "1" }))
+
+                self.assertEqual("Series3", get_state_as_dict(xDialog.getChild("entry0"))["Text"])
+                self.assertEqual("Column 3", get_state_as_dict(xDialog.getChild("entry1"))["Text"])
 
             #Check Number of Sequences
             xDocument = self.ui_test.get_component()

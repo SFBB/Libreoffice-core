@@ -38,7 +38,7 @@
 constexpr tools::Long constTwips_5mm = o3tl::toTwips(5, o3tl::Length::mm);
 
 SwTextGridPage::SwTextGridPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
-    : SfxTabPage(pPage, pController, "modules/swriter/ui/textgridpage.ui", "TextGridPage", &rSet)
+    : SfxTabPage(pPage, pController, u"modules/swriter/ui/textgridpage.ui"_ustr, u"TextGridPage"_ustr, &rSet)
     , m_nRubyUserValue(0)
     , m_bRubyUserValue(false)
     , m_aPageSize(constTwips_5mm, constTwips_5mm)
@@ -46,27 +46,27 @@ SwTextGridPage::SwTextGridPage(weld::Container* pPage, weld::DialogController* p
     , m_bSquaredMode(false)
     , m_bHRulerChanged(false)
     , m_bVRulerChanged(false)
-    , m_xNoGridRB(m_xBuilder->weld_radio_button("radioRB_NOGRID"))
-    , m_xLinesGridRB(m_xBuilder->weld_radio_button("radioRB_LINESGRID"))
-    , m_xCharsGridRB(m_xBuilder->weld_radio_button("radioRB_CHARSGRID"))
-    , m_xSnapToCharsCB(m_xBuilder->weld_check_button("checkCB_SNAPTOCHARS"))
-    , m_xExampleWN(new weld::CustomWeld(*m_xBuilder, "drawingareaWN_EXAMPLE", m_aExampleWN))
-    , m_xLayoutFL(m_xBuilder->weld_widget("frameFL_LAYOUT"))
-    , m_xLinesPerPageNF(m_xBuilder->weld_spin_button("spinNF_LINESPERPAGE"))
-    , m_xLinesRangeFT(m_xBuilder->weld_label("labelFT_LINERANGE"))
-    , m_xTextSizeMF(m_xBuilder->weld_metric_spin_button("spinMF_TEXTSIZE", FieldUnit::POINT))
-    , m_xCharsPerLineFT(m_xBuilder->weld_label("labelFT_CHARSPERLINE"))
-    , m_xCharsPerLineNF(m_xBuilder->weld_spin_button("spinNF_CHARSPERLINE"))
-    , m_xCharsRangeFT(m_xBuilder->weld_label("labelFT_CHARRANGE"))
-    , m_xCharWidthFT(m_xBuilder->weld_label("labelFT_CHARWIDTH"))
-    , m_xCharWidthMF(m_xBuilder->weld_metric_spin_button("spinMF_CHARWIDTH", FieldUnit::POINT))
-    , m_xRubySizeFT(m_xBuilder->weld_label("labelFT_RUBYSIZE"))
-    , m_xRubySizeMF(m_xBuilder->weld_metric_spin_button("spinMF_RUBYSIZE", FieldUnit::POINT))
-    , m_xRubyBelowCB(m_xBuilder->weld_check_button("checkCB_RUBYBELOW"))
-    , m_xDisplayFL(m_xBuilder->weld_widget("frameFL_DISPLAY"))
-    , m_xDisplayCB(m_xBuilder->weld_check_button("checkCB_DISPLAY"))
-    , m_xPrintCB(m_xBuilder->weld_check_button("checkCB_PRINT"))
-    , m_xColorLB(new ColorListBox(m_xBuilder->weld_menu_button("listLB_COLOR"),
+    , m_xNoGridRB(m_xBuilder->weld_radio_button(u"radioRB_NOGRID"_ustr))
+    , m_xLinesGridRB(m_xBuilder->weld_radio_button(u"radioRB_LINESGRID"_ustr))
+    , m_xCharsGridRB(m_xBuilder->weld_radio_button(u"radioRB_CHARSGRID"_ustr))
+    , m_xSnapToCharsCB(m_xBuilder->weld_check_button(u"checkCB_SNAPTOCHARS"_ustr))
+    , m_xExampleWN(new weld::CustomWeld(*m_xBuilder, u"drawingareaWN_EXAMPLE"_ustr, m_aExampleWN))
+    , m_xLayoutFL(m_xBuilder->weld_widget(u"frameFL_LAYOUT"_ustr))
+    , m_xLinesPerPageNF(m_xBuilder->weld_spin_button(u"spinNF_LINESPERPAGE"_ustr))
+    , m_xLinesRangeFT(m_xBuilder->weld_label(u"labelFT_LINERANGE"_ustr))
+    , m_xTextSizeMF(m_xBuilder->weld_metric_spin_button(u"spinMF_TEXTSIZE"_ustr, FieldUnit::POINT))
+    , m_xCharsPerLineFT(m_xBuilder->weld_label(u"labelFT_CHARSPERLINE"_ustr))
+    , m_xCharsPerLineNF(m_xBuilder->weld_spin_button(u"spinNF_CHARSPERLINE"_ustr))
+    , m_xCharsRangeFT(m_xBuilder->weld_label(u"labelFT_CHARRANGE"_ustr))
+    , m_xCharWidthFT(m_xBuilder->weld_label(u"labelFT_CHARWIDTH"_ustr))
+    , m_xCharWidthMF(m_xBuilder->weld_metric_spin_button(u"spinMF_CHARWIDTH"_ustr, FieldUnit::POINT))
+    , m_xRubySizeFT(m_xBuilder->weld_label(u"labelFT_RUBYSIZE"_ustr))
+    , m_xRubySizeMF(m_xBuilder->weld_metric_spin_button(u"spinMF_RUBYSIZE"_ustr, FieldUnit::POINT))
+    , m_xRubyBelowCB(m_xBuilder->weld_check_button(u"checkCB_RUBYBELOW"_ustr))
+    , m_xDisplayFL(m_xBuilder->weld_widget(u"frameFL_DISPLAY"_ustr))
+    , m_xDisplayCB(m_xBuilder->weld_check_button(u"checkCB_DISPLAY"_ustr))
+    , m_xPrintCB(m_xBuilder->weld_check_button(u"checkCB_PRINT"_ustr))
+    , m_xColorLB(new ColorListBox(m_xBuilder->weld_menu_button(u"listLB_COLOR"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
 {
     Link<weld::SpinButton&,void> aLink = LINK(this, SwTextGridPage, CharorLineChangedHdl);
@@ -131,18 +131,18 @@ std::unique_ptr<SfxTabPage> SwTextGridPage::Create(weld::Container* pPage, weld:
 bool SwTextGridPage::FillItemSet(SfxItemSet *rSet)
 {
     bool bRet = false;
-    if (m_xNoGridRB->get_state_changed_from_saved() ||
-        m_xLinesGridRB->get_state_changed_from_saved() ||
-        m_xLinesPerPageNF->get_value_changed_from_saved() ||
-        m_xTextSizeMF->get_value_changed_from_saved() ||
-        m_xCharsPerLineNF->get_value_changed_from_saved() ||
-        m_xSnapToCharsCB->get_state_changed_from_saved() ||
-        m_xRubySizeMF->get_value_changed_from_saved() ||
-        m_xCharWidthMF->get_value_changed_from_saved() ||
-        m_xRubyBelowCB->get_state_changed_from_saved() ||
-        m_xDisplayCB->get_state_changed_from_saved() ||
-        m_xPrintCB->get_state_changed_from_saved() ||
-        m_xColorLB->IsValueChangedFromSaved())
+    if (m_xNoGridRB->get_state_changed_from_saved()
+        || m_xLinesGridRB->get_state_changed_from_saved()
+        || m_xLinesPerPageNF->get_value_changed_from_saved()
+        || m_xTextSizeMF->get_value_changed_from_saved()
+        || m_xCharsPerLineNF->get_value_changed_from_saved()
+        || m_xSnapToCharsCB->get_state_changed_from_saved()
+        || m_xRubySizeMF->get_value_changed_from_saved()
+        || m_xCharWidthMF->get_value_changed_from_saved()
+        || m_xRubyBelowCB->get_state_changed_from_saved()
+        || m_xDisplayCB->get_state_changed_from_saved()
+        || m_xPrintCB->get_state_changed_from_saved() || m_xColorLB->IsValueChangedFromSaved()
+        || m_bModified)
     {
         PutGridItem(*rSet);
         bRet = true;
@@ -169,9 +169,9 @@ void    SwTextGridPage::Reset(const SfxItemSet *rSet)
         weld::RadioButton* pButton = nullptr;
         switch(rGridItem.GetGridType())
         {
-            case GRID_NONE :        pButton = m_xNoGridRB.get();    break;
-            case GRID_LINES_ONLY  : pButton = m_xLinesGridRB.get(); break;
-            default:                pButton = m_xCharsGridRB.get();
+            case SwTextGrid::NONE :        pButton = m_xNoGridRB.get();    break;
+            case SwTextGrid::LinesOnly:    pButton = m_xLinesGridRB.get(); break;
+            default:                       pButton = m_xCharsGridRB.get();
         }
         pButton->set_active(true);
         m_xDisplayCB->set_active(rGridItem.IsDisplayGrid());
@@ -206,6 +206,8 @@ void    SwTextGridPage::Reset(const SfxItemSet *rSet)
     m_xDisplayCB->save_state();
     m_xPrintCB->save_state();
     m_xColorLB->SaveValue();
+
+    m_bModified = false;
 }
 
 void    SwTextGridPage::ActivatePage( const SfxItemSet& rSet )
@@ -225,10 +227,10 @@ DeactivateRC SwTextGridPage::DeactivatePage( SfxItemSet* )
 void SwTextGridPage::PutGridItem(SfxItemSet& rSet)
 {
     SwTextGridItem aGridItem;
-    aGridItem.SetGridType(m_xNoGridRB->get_active() ? GRID_NONE :
-        m_xLinesGridRB->get_active() ? GRID_LINES_ONLY : GRID_LINES_CHARS );
+    aGridItem.SetGridType(m_xNoGridRB->get_active() ? SwTextGrid::NONE :
+        m_xLinesGridRB->get_active() ? SwTextGrid::LinesOnly : SwTextGrid::LinesAndChars );
     aGridItem.SetSnapToChars(m_xSnapToCharsCB->get_active());
-    aGridItem.SetLines( static_cast< sal_Int32 >(m_xLinesPerPageNF->get_value()) );
+    aGridItem.SetLines(m_xLinesPerPageNF->get_value());
     aGridItem.SetBaseHeight( static_cast< sal_uInt16 >(
         m_bRubyUserValue ? m_nRubyUserValue :
             m_xTextSizeMF->denormalize(m_xTextSizeMF->get_value(FieldUnit::TWIP))) );
@@ -247,9 +249,9 @@ void SwTextGridPage::PutGridItem(SfxItemSet& rSet)
     rSet.Put(aGridItem);
 
     SwView * pView = ::GetActiveView();
-    if (pView && aGridItem.GetGridType() != GRID_NONE)
+    if (pView && aGridItem.GetGridType() != SwTextGrid::NONE)
     {
-        if ( aGridItem.GetGridType() == GRID_LINES_CHARS )
+        if ( aGridItem.GetGridType() == SwTextGrid::LinesAndChars )
         {
             m_bHRulerChanged = true;
         }
@@ -276,7 +278,7 @@ void SwTextGridPage::UpdatePageSize(const SfxItemSet& rSet)
     const SvxLRSpaceItem& rLRSpace = rSet.Get( RES_LR_SPACE );
     const SvxULSpaceItem& rULSpace = rSet.Get( RES_UL_SPACE );
     const SvxBoxItem& rBox = rSet.Get(RES_BOX);
-    sal_Int32 nDistanceLR = rLRSpace.GetLeft() + rLRSpace.GetRight();
+    sal_Int32 nDistanceLR = rLRSpace.ResolveLeft({}) + rLRSpace.ResolveRight({});
     sal_Int32 nDistanceUL = rULSpace.GetUpper() + rULSpace.GetLower();
 
     for( const TypedWhichId<SvxSetItem> & nId : { SID_ATTR_PAGE_HEADERSET, SID_ATTR_PAGE_FOOTERSET })
@@ -285,12 +287,12 @@ void SwTextGridPage::UpdatePageSize(const SfxItemSet& rSet)
         {
             const SfxItemSet& rExtraSet = pItem->GetItemSet();
             const SfxBoolItem& rOn =
-                rExtraSet.Get( rSet.GetPool()->GetWhich( SID_ATTR_PAGE_ON ) );
+                rExtraSet.Get( rSet.GetPool()->GetWhichIDFromSlotID( SID_ATTR_PAGE_ON ) );
 
             if ( rOn.GetValue() )
             {
                 const SvxSizeItem& rSizeItem =
-                    rExtraSet.Get(rSet.GetPool()->GetWhich(SID_ATTR_PAGE_SIZE));
+                    rExtraSet.Get(rSet.GetPool()->GetWhichIDFromSlotID(SID_ATTR_PAGE_SIZE));
                 nDistanceUL += rSizeItem.GetSize().Height();
             }
         }
@@ -350,9 +352,10 @@ void SwTextGridPage::SetLinesOrCharsRanges(weld::Label& rField, const sal_Int32 
     rField.set_label(aFieldStr);
 }
 
-WhichRangesContainer SwTextGridPage::GetRanges()
+const WhichRangesContainer & SwTextGridPage::GetRanges()
 {
-    return WhichRangesContainer(svl::Items<RES_TEXTGRID, RES_TEXTGRID>);
+    static const auto gRanges = WhichRangesContainer(svl::Items<RES_TEXTGRID, RES_TEXTGRID>);
+    return gRanges;
 }
 
 IMPL_LINK(SwTextGridPage, CharorLineChangedHdl, weld::SpinButton&, rField, void)
@@ -524,6 +527,7 @@ IMPL_LINK_NOARG(SwTextGridPage, DisplayGridHdl, weld::Toggleable&, void)
     bool bChecked = m_xDisplayCB->get_active();
     m_xPrintCB->set_sensitive(bChecked);
     m_xPrintCB->set_active(bChecked);
+    GridModifyHdl();
 }
 
 IMPL_LINK_NOARG(SwTextGridPage, GridModifyClickHdl, weld::Toggleable&, void)
@@ -545,6 +549,7 @@ void SwTextGridPage::GridModifyHdl()
         aSet.Put(*pExSet);
     PutGridItem(aSet);
     m_aExampleWN.UpdateExample(aSet);
+    m_bModified = true;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

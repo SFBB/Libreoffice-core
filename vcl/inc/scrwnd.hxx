@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_SCRWND_HXX
-#define INCLUDED_VCL_INC_SCRWND_HXX
+#pragma once
 
 #include <vcl/toolkit/floatwin.hxx>
 #include <vcl/bitmap.hxx>
@@ -52,8 +51,10 @@ private:
     WheelMode           mnWheelMode;
     sal_uLong           mnMaxWidth;
     sal_uLong           mnActDist;
-    tools::Long                mnActDeltaX;
-    tools::Long                mnActDeltaY;
+    tools::Long         mnStepDeltaX;       // x component of scroll direction
+    tools::Long         mnStepDeltaY;       // y component of scroll direction
+    tools::Long         mnActDeltaX;        // x component of scroll distance
+    tools::Long         mnActDeltaY;        // y component of scroll distance
     void                ImplCreateImageList();
     void                ImplSetRegion(const Bitmap& rRegionBmp);
     using Window::ImplGetMousePointer;
@@ -76,7 +77,5 @@ public:
     void                ImplStop();
     void                ImplSetWheelMode( WheelMode nWheelMode );
 };
-
-#endif // INCLUDED_VCL_INC_SCRWND_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

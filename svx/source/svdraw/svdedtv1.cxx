@@ -22,6 +22,7 @@
 #include <editeng/eeitem.hxx>
 #include <math.h>
 #include <svl/itemiter.hxx>
+#include <sal/log.hxx>
 #include <svl/whiter.hxx>
 #include <tools/bigint.hxx>
 #include <vcl/svapp.hxx>
@@ -34,7 +35,6 @@
 
 #include <AffineMatrixItem.hxx>
 #include <svx/e3dsceneupdater.hxx>
-#include <svx/obj3d.hxx>
 #include <svx/rectenum.hxx>
 #include <svx/sdr/contact/viewcontact.hxx>
 #include <svx/sdooitm.hxx>
@@ -70,6 +70,8 @@
 #include <sfx2/viewsh.hxx>
 #include <comphelper/lok.hxx>
 #include <osl/diagnose.h>
+#include <sfx2/objsh.hxx>
+#include <svl/cryptosign.hxx>
 
 // EditView
 
@@ -77,8 +79,10 @@
 void SdrEditView::SetMarkedObjRect(const tools::Rectangle& rRect)
 {
     DBG_ASSERT(!rRect.IsEmpty(),"SetMarkedObjRect() with an empty Rect does not make sense.");
-    if (rRect.IsEmpty()) return;
-    const size_t nCount=GetMarkedObjectCount();
+    if (rRect.IsEmpty())
+        return;
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nCount=rMarkList.GetMarkCount();
     if (nCount==0) return;
     tools::Rectangle aR0(GetMarkedObjRect());
     DBG_ASSERT(!aR0.IsEmpty(),"SetMarkedObjRect(): GetMarkedObjRect() is empty.");
@@ -101,7 +105,7 @@ void SdrEditView::SetMarkedObjRect(const tools::Rectangle& rRect)
 
     for (size_t nm=0; nm<nCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pO=pM->GetMarkedSdrObj();
         if (bUndo)
             AddUndo(GetModel().GetSdrUndoFactory().CreateUndoGeoObject(*pO));
@@ -183,6 +187,7 @@ void SdrEditView::AddUndoActions( std::vector< std::unique_ptr<SdrUndoAction> > 
 void SdrEditView::MoveMarkedObj(const Size& rSiz, bool bCopy)
 {
     const bool bUndo = IsUndoEnabled();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
 
     if( bUndo )
     {
@@ -191,16 +196,16 @@ void SdrEditView::MoveMarkedObj(const Size& rSiz, bool bCopy)
         if (bCopy)
             aStr += SvxResId(STR_EditWithCopy);
         // needs its own UndoGroup because of its parameters
-        BegUndo(aStr,GetDescriptionOfMarkedObjects(),SdrRepeatFunc::Move);
+        BegUndo(aStr,rMarkList.GetMarkDescription(),SdrRepeatFunc::Move);
     }
 
     if (bCopy)
         CopyMarkedObj();
 
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pO=pM->GetMarkedSdrObj();
         if( bUndo )
         {
@@ -212,6 +217,24 @@ void SdrEditView::MoveMarkedObj(const Size& rSiz, bool bCopy)
 
     if( bUndo )
         EndUndo();
+}
+
+bool SdrEditView::IsMarkedObjSizeValid(const Size& aTargetSize)
+{
+    if (SdrMark* pM=GetMarkedObjectList().GetMark(0))
+    {
+        if (SdrObject* pO=pM->GetMarkedSdrObj())
+        {
+            if (pO->IsSizeValid(aTargetSize))
+                return true;
+        }
+        else
+            SAL_WARN("svx", "no MarkedSdrObj found");
+    }
+    else
+        SAL_WARN("svx", "no SdrMark found");
+
+    return false;
 }
 
 void SdrEditView::ResizeMarkedObj(const Point& rRef, const Fraction& xFact, const Fraction& yFact, bool bCopy)
@@ -229,10 +252,11 @@ void SdrEditView::ResizeMarkedObj(const Point& rRef, const Fraction& xFact, cons
     if (bCopy)
         CopyMarkedObj();
 
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pO=pM->GetMarkedSdrObj();
         if( bUndo )
         {
@@ -258,10 +282,11 @@ void SdrEditView::ResizeMultMarkedObj(const Point& rRef,
         BegUndo(ImpGetDescriptionString(STR_EditResize));
     }
 
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pO=pM->GetMarkedSdrObj();
         if( bUndo )
         {
@@ -285,9 +310,10 @@ Degree100 SdrEditView::GetMarkedObjRotate() const
 {
     Degree100 nRetval(0);
 
-    if(GetMarkedObjectCount())
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if(rMarkList.GetMarkCount())
     {
-        SdrMark* pM = GetSdrMarkByIndex(0);
+        SdrMark* pM = rMarkList.GetMark(0);
         SdrObject* pO = pM->GetMarkedSdrObj();
 
         nRetval = pO->GetRotateAngle();
@@ -312,7 +338,8 @@ void SdrEditView::RotateMarkedObj(const Point& rRef, Degree100 nAngle, bool bCop
 
     double nSin = sin(toRadians(nAngle));
     double nCos = cos(toRadians(nAngle));
-    const size_t nMarkCount(GetMarkedObjectCount());
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount(rMarkList.GetMarkCount());
 
     if(nMarkCount)
     {
@@ -320,7 +347,7 @@ void SdrEditView::RotateMarkedObj(const Point& rRef, Degree100 nAngle, bool bCop
 
         for(size_t nm = 0; nm < nMarkCount; ++nm)
         {
-            SdrMark* pM = GetSdrMarkByIndex(nm);
+            SdrMark* pM = rMarkList.GetMark(nm);
             SdrObject* pO = pM->GetMarkedSdrObj();
 
             if( bUndo )
@@ -376,7 +403,8 @@ void SdrEditView::MirrorMarkedObj(const Point& rRef1, const Point& rRef2, bool b
     if (bCopy)
         CopyMarkedObj();
 
-    const size_t nMarkCount(GetMarkedObjectCount());
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount(rMarkList.GetMarkCount());
 
     if(nMarkCount)
     {
@@ -384,7 +412,7 @@ void SdrEditView::MirrorMarkedObj(const Point& rRef1, const Point& rRef2, bool b
 
         for(size_t nm = 0; nm < nMarkCount; ++nm)
         {
-            SdrMark* pM = GetSdrMarkByIndex(nm);
+            SdrMark* pM = rMarkList.GetMark(nm);
             SdrObject* pO = pM->GetMarkedSdrObj();
 
             if( bUndo )
@@ -437,9 +465,10 @@ Degree100 SdrEditView::GetMarkedObjShear() const
     bool b1st=true;
     bool bOk=true;
     Degree100 nAngle(0);
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount && bOk; ++nm) {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pO=pM->GetMarkedSdrObj();
         Degree100 nAngle2=pO->GetShearAngle();
         if (b1st) nAngle=nAngle2;
@@ -469,10 +498,11 @@ void SdrEditView::ShearMarkedObj(const Point& rRef, Degree100 nAngle, bool bVShe
         CopyMarkedObj();
 
     double nTan = tan(toRadians(nAngle));
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pO=pM->GetMarkedSdrObj();
         if( bUndo )
         {
@@ -559,7 +589,7 @@ void SdrEditView::ImpCrookObj(SdrObject* pO, const Point& rRef, const Point& rRa
     aCtr1 -= aCtr0;
 
     if(bRotOk)
-        pO->Rotate(aCtr0, Degree100(FRound(basegfx::rad2deg<100>(nAngle))), nSin, nCos);
+        pO->Rotate(aCtr0, Degree100(basegfx::fround(basegfx::rad2deg<100>(nAngle))), nSin, nCos);
 
     pO->Move(Size(aCtr1.X(),aCtr1.Y()));
 }
@@ -584,10 +614,11 @@ void SdrEditView::CrookMarkedObj(const Point& rRef, const Point& rRad, SdrCrookM
     if (bCopy)
         CopyMarkedObj();
 
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pO=pM->GetMarkedSdrObj();
         if (bUndo)
             AddUndo(GetModel().GetSdrUndoFactory().CreateUndoGeoObject(*pO));
@@ -658,10 +689,11 @@ void SdrEditView::DistortMarkedObj(const tools::Rectangle& rRef, const XPolygon&
     if (bCopy)
         CopyMarkedObj();
 
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pO=pM->GetMarkedSdrObj();
         if (bUndo)
             AddUndo(GetModel().GetSdrUndoFactory().CreateUndoGeoObject(*pO));
@@ -769,10 +801,11 @@ void SdrEditView::SetNotPersistAttrToMarked(const SfxItemSet& rAttr)
     const bool bUndo = IsUndoEnabled();
 
     // TODO: check if WhichRange is necessary.
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        const SdrMark* pM=GetSdrMarkByIndex(nm);
+        const SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pObj=pM->GetMarkedSdrObj();
         if (bUndo)
             AddUndo(GetModel().GetSdrUndoFactory().CreateUndoGeoObject(*pObj));
@@ -806,9 +839,10 @@ void SdrEditView::MergeNotPersistAttrFromMarked(SfxItemSet& rAttr) const
     Degree100 nShrAngle(0);      bool bShrAngleDC=false;
     tools::Rectangle aSnapRect;
     tools::Rectangle aLogicRect;
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount; ++nm) {
-        const SdrMark* pM=GetSdrMarkByIndex(nm);
+        const SdrMark* pM=rMarkList.GetMark(nm);
         const SdrObject* pObj=pM->GetMarkedSdrObj();
         if (nm==0) {
             nLayerId=pObj->GetLayer();
@@ -906,12 +940,13 @@ SfxItemSet SdrEditView::GetAttrFromMarked(bool bOnlyHardAttr) const
 
 void SdrEditView::MergeAttrFromMarked(SfxItemSet& rAttr, bool bOnlyHardAttr) const
 {
-    const size_t nMarkCount(GetMarkedObjectCount());
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount(rMarkList.GetMarkCount());
 
     for(size_t a = 0; a < nMarkCount; ++a)
     {
         // #80277# merging was done wrong in the prev version
-        SdrObject *pObj = GetMarkedObjectByIndex(a);
+        SdrObject *pObj = rMarkList.GetMark(a)->GetMarkedSdrObj();
         if (!pObj)
         {
             continue;
@@ -925,15 +960,15 @@ void SdrEditView::MergeAttrFromMarked(SfxItemSet& rAttr, bool bOnlyHardAttr) con
         {
             if(!bOnlyHardAttr)
             {
-                if(SfxItemState::DONTCARE == aIter.GetItemState(false))
+                if(SfxItemState::INVALID == aIter.GetItemState(false))
                     rAttr.InvalidateItem(nWhich);
                 else
-                    rAttr.MergeValue(rSet.Get(nWhich), true);
+                    rAttr.MergeValue(rSet.Get(nWhich));
             }
             else if(SfxItemState::SET == aIter.GetItemState(false))
             {
                 const SfxPoolItem& rItem = rSet.Get(nWhich);
-                rAttr.MergeValue(rItem, true);
+                rAttr.MergeValue(rItem);
             }
 
             if (comphelper::LibreOfficeKit::isActive())
@@ -1021,8 +1056,13 @@ void SdrEditView::MergeAttrFromMarked(SfxItemSet& rAttr, bool bOnlyHardAttr) con
                 }
 
                 if (!sPayload.isEmpty())
-                    GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED,
-                        OUStringToOString(sPayload, RTL_TEXTENCODING_ASCII_US));
+                {
+                    if (SfxViewShell* pViewShell = GetSfxViewShell())
+                    {
+                        pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED,
+                            OUStringToOString(sPayload, RTL_TEXTENCODING_ASCII_US));
+                    }
+                }
             }
 
             nWhich = aIter.NextWhich();
@@ -1062,7 +1102,8 @@ std::vector<sal_uInt16> GetAllCharPropIds(std::span< const SfxPoolItem* const > 
 
 void SdrEditView::SetAttrToMarked(const SfxItemSet& rAttr, bool bReplaceAll)
 {
-    if (!AreObjectsMarked())
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (rMarkList.GetMarkCount() == 0)
         return;
 
 #ifdef DBG_UTIL
@@ -1081,7 +1122,7 @@ void SdrEditView::SetAttrToMarked(const SfxItemSet& rAttr, bool bReplaceAll)
         {
             std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(nullptr,
                                                           VclMessageType::Info, VclButtonsType::Ok,
-                                                          "SdrEditView::SetAttrToMarked(): Setting EE_FEATURE items at the SdrView does not make sense! It only leads to overhead and unreadable documents."));
+                                                          u"SdrEditView::SetAttrToMarked(): Setting EE_FEATURE items at the SdrView does not make sense! It only leads to overhead and unreadable documents."_ustr));
             xInfoBox->run();
         }
     }
@@ -1126,10 +1167,10 @@ void SdrEditView::SetAttrToMarked(const SfxItemSet& rAttr, bool bReplaceAll)
         BegUndo(ImpGetDescriptionString(STR_EditSetAttributes));
     }
 
-    const size_t nMarkCount(GetMarkedObjectCount());
+    const size_t nMarkCount(rMarkList.GetMarkCount());
     std::vector< E3DModifySceneSnapRectUpdater* > aUpdaters;
 
-    // create ItemSet without SfxItemState::DONTCARE. Put()
+    // create ItemSet without SfxItemState::INVALID. Put()
     // uses its second parameter (bInvalidAsDefault) to
     // remove all such items to set them to default.
     SfxItemSet aAttr(*rAttr.GetPool(), rAttr.GetRanges());
@@ -1154,7 +1195,7 @@ void SdrEditView::SetAttrToMarked(const SfxItemSet& rAttr, bool bReplaceAll)
 
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pObj = pM->GetMarkedSdrObj();
 
         if( bUndo )
@@ -1208,7 +1249,7 @@ void SdrEditView::SetAttrToMarked(const SfxItemSet& rAttr, bool bReplaceAll)
 
             if(nOldLineWidth != nNewLineWidth)
             {
-                if(SfxItemState::DONTCARE != rSet.GetItemState(XATTR_LINESTARTWIDTH))
+                if(SfxItemState::INVALID != rSet.GetItemState(XATTR_LINESTARTWIDTH))
                 {
                     const sal_Int32 nValAct(rSet.Get(XATTR_LINESTARTWIDTH).GetValue());
                     const sal_Int32 nValNewStart(std::max(sal_Int32(0), nValAct + (((nNewLineWidth - nOldLineWidth) * 15) / 10)));
@@ -1216,7 +1257,7 @@ void SdrEditView::SetAttrToMarked(const SfxItemSet& rAttr, bool bReplaceAll)
                     pObj->SetMergedItem(XLineStartWidthItem(nValNewStart));
                 }
 
-                if(SfxItemState::DONTCARE != rSet.GetItemState(XATTR_LINEENDWIDTH))
+                if(SfxItemState::INVALID != rSet.GetItemState(XATTR_LINEENDWIDTH))
                 {
                     const sal_Int32 nValAct(rSet.Get(XATTR_LINEENDWIDTH).GetValue());
                     const sal_Int32 nValNewEnd(std::max(sal_Int32(0), nValAct + (((nNewLineWidth - nOldLineWidth) * 15) / 10)));
@@ -1281,9 +1322,10 @@ SfxStyleSheet* SdrEditView::GetStyleSheetFromMarked() const
 {
     SfxStyleSheet* pRet=nullptr;
     bool b1st=true;
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount; ++nm) {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SfxStyleSheet* pSS=pM->GetMarkedSdrObj()->GetStyleSheet();
         if (b1st) pRet=pSS;
         else if (pRet!=pSS) return nullptr; // different stylesheets
@@ -1294,7 +1336,8 @@ SfxStyleSheet* SdrEditView::GetStyleSheetFromMarked() const
 
 void SdrEditView::SetStyleSheetToMarked(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr)
 {
-    if (!AreObjectsMarked())
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (rMarkList.GetMarkCount() == 0)
         return;
 
     const bool bUndo = IsUndoEnabled();
@@ -1310,10 +1353,10 @@ void SdrEditView::SetStyleSheetToMarked(SfxStyleSheet* pStyleSheet, bool bDontRe
         BegUndo(aStr);
     }
 
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         if( bUndo )
         {
             AddUndo(GetModel().GetSdrUndoFactory().CreateUndoGeoObject(*pM->GetMarkedSdrObj()));
@@ -1329,7 +1372,8 @@ void SdrEditView::SetStyleSheetToMarked(SfxStyleSheet* pStyleSheet, bool bDontRe
 
 void SdrEditView::GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr) const
 {
-    if(GetMarkedObjectCount())
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if(rMarkList.GetMarkCount())
     {
         rTargetSet.Put(GetAttrFromMarked(bOnlyHardAttr), false);
     }
@@ -1341,7 +1385,8 @@ void SdrEditView::GetAttributes(SfxItemSet& rTargetSet, bool bOnlyHardAttr) cons
 
 void SdrEditView::SetAttributes(const SfxItemSet& rSet, bool bReplaceAll)
 {
-    if (GetMarkedObjectCount()!=0) {
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (rMarkList.GetMarkCount()!=0) {
         SetAttrToMarked(rSet,bReplaceAll);
     } else {
         SdrMarkView::SetAttributes(rSet,bReplaceAll);
@@ -1350,7 +1395,8 @@ void SdrEditView::SetAttributes(const SfxItemSet& rSet, bool bReplaceAll)
 
 SfxStyleSheet* SdrEditView::GetStyleSheet() const
 {
-    if (GetMarkedObjectCount()!=0) {
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (rMarkList.GetMarkCount()!=0) {
         return GetStyleSheetFromMarked();
     } else {
         return SdrMarkView::GetStyleSheet();
@@ -1359,7 +1405,8 @@ SfxStyleSheet* SdrEditView::GetStyleSheet() const
 
 void SdrEditView::SetStyleSheet(SfxStyleSheet* pStyleSheet, bool bDontRemoveHardAttr)
 {
-    if (GetMarkedObjectCount()!=0) {
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (rMarkList.GetMarkCount()!=0) {
         SetStyleSheetToMarked(pStyleSheet,bDontRemoveHardAttr);
     } else {
         SdrMarkView::SetStyleSheet(pStyleSheet,bDontRemoveHardAttr);
@@ -1376,7 +1423,8 @@ SfxItemSet SdrEditView::GetGeoAttrFromMarked() const
             SID_ATTR_TRANSFORM_POS_X, SID_ATTR_TRANSFORM_ANGLE,
             SID_ATTR_TRANSFORM_PROTECT_POS, SID_ATTR_TRANSFORM_AUTOHEIGHT>);
 
-    if (AreObjectsMarked())
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (rMarkList.GetMarkCount() != 0)
     {
         SfxItemSet aMarkAttr(GetAttrFromMarked(false)); // because of AutoGrowHeight and corner radius
         tools::Rectangle aRect(GetMarkedObjRect());
@@ -1432,7 +1480,6 @@ SfxItemSet SdrEditView::GetGeoAttrFromMarked() const
         aRetSet.Put(SfxInt32Item(SID_ATTR_TRANSFORM_SHEAR_Y,nShearRefY));
 
         // check every object whether it is protected
-        const SdrMarkList& rMarkList=GetMarkedObjectList();
         const size_t nMarkCount=rMarkList.GetMarkCount();
         SdrObject* pObj=rMarkList.GetMark(0)->GetMarkedSdrObj();
         bool bPosProt=pObj->IsMoveProtect();
@@ -1460,7 +1507,7 @@ SfxItemSet SdrEditView::GetGeoAttrFromMarked() const
 
         SfxItemState eState=aMarkAttr.GetItemState(SDRATTR_TEXT_AUTOGROWWIDTH);
         bool bAutoGrow=aMarkAttr.Get(SDRATTR_TEXT_AUTOGROWWIDTH).GetValue();
-        if (eState==SfxItemState::DONTCARE) {
+        if (eState==SfxItemState::INVALID) {
             aRetSet.InvalidateItem(SID_ATTR_TRANSFORM_AUTOWIDTH);
         } else if (eState==SfxItemState::SET) {
             aRetSet.Put(SfxBoolItem(SID_ATTR_TRANSFORM_AUTOWIDTH,bAutoGrow));
@@ -1468,7 +1515,7 @@ SfxItemSet SdrEditView::GetGeoAttrFromMarked() const
 
         eState=aMarkAttr.GetItemState(SDRATTR_TEXT_AUTOGROWHEIGHT);
         bAutoGrow=aMarkAttr.Get(SDRATTR_TEXT_AUTOGROWHEIGHT).GetValue();
-        if (eState==SfxItemState::DONTCARE) {
+        if (eState==SfxItemState::INVALID) {
             aRetSet.InvalidateItem(SID_ATTR_TRANSFORM_AUTOHEIGHT);
         } else if (eState==SfxItemState::SET) {
             aRetSet.Put(SfxBoolItem(SID_ATTR_TRANSFORM_AUTOHEIGHT,bAutoGrow));
@@ -1476,7 +1523,7 @@ SfxItemSet SdrEditView::GetGeoAttrFromMarked() const
 
         eState=aMarkAttr.GetItemState(SDRATTR_CORNER_RADIUS);
         tools::Long nRadius=aMarkAttr.Get(SDRATTR_CORNER_RADIUS).GetValue();
-        if (eState==SfxItemState::DONTCARE) {
+        if (eState==SfxItemState::INVALID) {
             aRetSet.InvalidateItem(SDRATTR_CORNER_RADIUS);
         } else if (eState==SfxItemState::SET) {
             aRetSet.Put(makeSdrEckenradiusItem(nRadius));
@@ -1545,8 +1592,6 @@ static Point ImpGetPoint(const tools::Rectangle& rRect, RectPoint eRP)
 
 void SdrEditView::SetGeoAttrToMarked(const SfxItemSet& rAttr, bool addPageMargin)
 {
-    const bool bTiledRendering = comphelper::LibreOfficeKit::isActive();
-
     tools::Rectangle aRect(GetMarkedObjRect());
 
     if(GetSdrPageView())
@@ -1629,11 +1674,24 @@ void SdrEditView::SetGeoAttrToMarked(const SfxItemSet& rAttr, bool addPageMargin
         bChgSiz=true;
         bChgHgt=true;
     }
-    if (bChgSiz) {
-        if (bTiledRendering && SfxItemState::SET != rAttr.GetItemState(SID_ATTR_TRANSFORM_SIZE_POINT))
+
+    if (bChgSiz)
+    {
+        // tdf#164285 the item was accessed even when not being set if
+        // false == comphelper::LibreOfficeKit::isActive(). For SlotIDs
+        // like SID_ATTR_TRANSFORM_SIZE_POINT this will crash by asserting
+        // due to SlotIDs having no defaults (see
+        // SfxItemPool::GetUserOrPoolDefaultItem line 725)
+        if (const SfxUInt16Item* pPoolItem = rAttr.GetItemIfSet(SID_ATTR_TRANSFORM_SIZE_POINT))
+            eSizePoint = static_cast<RectPoint>(pPoolItem->GetValue());
+        else if (comphelper::LibreOfficeKit::isActive())
+            // for TiledRendering the default which is set at the start of
+            // this method to RectPoint::MM seems purposely being changed to
+            // RectPoint::LT here - from a change 6 years ago. Note that this
+            // will make choosing another definition point in the UI for the
+            // PosSizeDialog except TopLeft not working when
+            // comphelper::LibreOfficeKit *is* active.
             eSizePoint = RectPoint::LT;
-        else
-            eSizePoint = static_cast<RectPoint>(rAttr.Get(SID_ATTR_TRANSFORM_SIZE_POINT).GetValue());
     }
 
     // rotation
@@ -1675,7 +1733,7 @@ void SdrEditView::SetGeoAttrToMarked(const SfxItemSet& rAttr, bool addPageMargin
                     double nNew = tan(toRadians(nNewShearAngle));
                     nNew-=nOld;
                     nNew = basegfx::rad2deg<100>(atan(nNew));
-                    nShearAngle=Degree100(FRound(nNew));
+                    nShearAngle = Degree100(basegfx::fround(nNew));
                 } else {
                     nShearAngle=nNewShearAngle-nOldShearAngle;
                 }
@@ -1714,7 +1772,7 @@ void SdrEditView::SetGeoAttrToMarked(const SfxItemSet& rAttr, bool addPageMargin
 
     ForcePossibilities();
 
-    BegUndo(SvxResId(STR_EditTransform),GetDescriptionOfMarkedObjects());
+    BegUndo(SvxResId(STR_EditTransform),rMarkList.GetMarkDescription());
 
     if (bSetAttr) {
         SetAttrToMarked(aSetAttr,false);
@@ -1779,7 +1837,14 @@ void SdrEditView::SetGeoAttrToMarked(const SfxItemSet& rAttr, bool addPageMargin
     }
 
     // change position
-    if (bChgPos && m_bMoveAllowed) {
+    bool bMoveAllowed = m_bMoveAllowed;
+    SfxViewShell* pViewShell = GetSfxViewShell();
+    if (!bMoveAllowed && pViewShell && pViewShell->GetSignPDFCertificate().Is())
+    {
+        // If the just added signature line shape is selected, allow moving it.
+        bMoveAllowed = true;
+    }
+    if (bChgPos && bMoveAllowed) {
         MoveMarkedObj(Size(nPosDX,nPosDY));
     }
 
@@ -1859,7 +1924,8 @@ void SdrEditView::SetGeoAttrToMarked(const SfxItemSet& rAttr, bool addPageMargin
 bool SdrEditView::IsAlignPossible() const
 {  // at least two selected objects, at least one of them movable
     ForcePossibilities();
-    const size_t nCount=GetMarkedObjectCount();
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    const size_t nCount=rMarkList.GetMarkCount();
     if (nCount==0) return false;         // nothing selected!
     if (nCount==1) return m_bMoveAllowed;  // align single object to page
     return m_bOneOrMoreMovable;          // otherwise: MarkCount>=2
@@ -1870,15 +1936,16 @@ void SdrEditView::AlignMarkedObjects(SdrHorAlign eHor, SdrVertAlign eVert)
     if (eHor==SdrHorAlign::NONE && eVert==SdrVertAlign::NONE)
         return;
 
-    SortMarkedObjects();
-    if (!GetMarkedObjectCount())
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    rMarkList.ForceSort();
+    if (!rMarkList.GetMarkCount())
         return;
 
     const bool bUndo = IsUndoEnabled();
     if( bUndo )
     {
         EndTextEditCurrentView();
-        OUString aStr(GetDescriptionOfMarkedObjects());
+        OUString aStr(rMarkList.GetMarkDescription());
         if (eHor==SdrHorAlign::NONE)
         {
             switch (eVert)
@@ -1923,11 +1990,11 @@ void SdrEditView::AlignMarkedObjects(SdrHorAlign eHor, SdrVertAlign eVert)
     }
 
     tools::Rectangle aBound;
-    const size_t nMarkCount=GetMarkedObjectCount();
+    const size_t nMarkCount=rMarkList.GetMarkCount();
     bool bHasFixed=false;
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pObj=pM->GetMarkedSdrObj();
         SdrObjTransformInfoRec aInfo;
         pObj->TakeObjInfo(aInfo);
@@ -1942,9 +2009,9 @@ void SdrEditView::AlignMarkedObjects(SdrHorAlign eHor, SdrVertAlign eVert)
     {
         if (nMarkCount==1)
         {   // align single object to page
-            const SdrObject* pObj=GetMarkedObjectByIndex(0);
+            const SdrObject* pObj=rMarkList.GetMark(0)->GetMarkedSdrObj();
             const SdrPage* pPage=pObj->getSdrPageFromSdrObject();
-            const SdrPageGridFrameList* pGFL=pPage->GetGridFrameList(GetSdrPageViewOfMarkedByIndex(0),&(pObj->GetSnapRect()));
+            const SdrPageGridFrameList* pGFL=pPage->GetGridFrameList(rMarkList.GetMark(0)->GetPageView(),&(pObj->GetSnapRect()));
             const SdrPageGridFrame* pFrame=nullptr;
             if (pGFL!=nullptr && pGFL->GetCount()!=0)
             { // Writer
@@ -1970,7 +2037,7 @@ void SdrEditView::AlignMarkedObjects(SdrHorAlign eHor, SdrVertAlign eVert)
     Point aCenter(aBound.Center());
     for (size_t nm=0; nm<nMarkCount; ++nm)
     {
-        SdrMark* pM=GetSdrMarkByIndex(nm);
+        SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pObj=pM->GetMarkedSdrObj();
         SdrObjTransformInfoRec aInfo;
         pObj->TakeObjInfo(aInfo);

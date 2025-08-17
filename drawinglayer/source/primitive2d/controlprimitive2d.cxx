@@ -30,6 +30,7 @@
 #include <vcl/virdev.hxx>
 #include <vcl/svapp.hxx>
 #include <com/sun/star/awt/PosSize.hpp>
+#include <com/sun/star/awt/XWindow2.hpp>
 #include <vcl/bitmapex.hxx>
 #include <drawinglayer/primitive2d/bitmapprimitive2d.hxx>
 #include <comphelper/diagnose_ex.hxx>
@@ -56,7 +57,7 @@ namespace drawinglayer::primitive2d
             if(!xSet.is())
                 return;
 
-            uno::Any aValue(xSet->getPropertyValue("DefaultControl"));
+            uno::Any aValue(xSet->getPropertyValue(u"DefaultControl"_ustr));
             OUString aUnoControlTypeName;
 
             if(!(aValue >>= aUnoControlTypeName))
@@ -65,7 +66,7 @@ namespace drawinglayer::primitive2d
             if(aUnoControlTypeName.isEmpty())
                 return;
 
-            uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+            const uno::Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
             uno::Reference< awt::XControl > xXControl(
                 xContext->getServiceManager()->createInstanceWithContext(aUnoControlTypeName, xContext), uno::UNO_QUERY);
 
@@ -74,7 +75,7 @@ namespace drawinglayer::primitive2d
                 xXControl->setModel(getControlModel());
 
                 // remember XControl
-                mxXControl = xXControl;
+                mxXControl = std::move(xXControl);
             }
         }
 
@@ -150,7 +151,7 @@ namespace drawinglayer::primitive2d
                                     if (xWindowPeer)
                                     {
                                         uno::Reference<awt::XVclWindowPeer> xPeerProps(xWindowPeer, uno::UNO_QUERY_THROW);
-                                        uno::Any aAny = xPeerProps->getProperty("ParentIs100thmm"); // see VCLXWindow::getProperty
+                                        uno::Any aAny = xPeerProps->getProperty(u"ParentIs100thmm"_ustr); // see VCLXWindow::getProperty
                                         aAny >>= bUserIs100thmm;
                                     }
                                 }
@@ -175,23 +176,17 @@ namespace drawinglayer::primitive2d
                                 xControlView->draw(0, 0);
 
                                 // get bitmap
-                                const BitmapEx aContent(aVirtualDevice->GetBitmapEx(Point(), aSizePixel));
+                                const Bitmap aContent(aVirtualDevice->GetBitmap(Point(), aSizePixel));
 
-                                // to avoid scaling, use the Bitmap pixel size as primitive size
-                                const Size aBitmapSize(aContent.GetSizePixel());
-                                basegfx::B2DVector aBitmapSizeLogic(
-                                    rViewInformation.getInverseObjectToViewTransformation() *
-                                    basegfx::B2DVector(aBitmapSize.getWidth() - 1, aBitmapSize.getHeight() - 1));
-
-                                if(bScaleUsed)
-                                {
-                                    // if scaled adapt to scaled size
-                                    aBitmapSizeLogic /= fFactor;
-                                }
+                                // snap translate and scale to discrete position (pixel) to avoid sub-pixel offset and blurring further
+                                basegfx::B2DVector aSnappedTranslate(basegfx::fround(rViewInformation.getObjectToViewTransformation() * aTranslate));
+                                aSnappedTranslate = rViewInformation.getInverseObjectToViewTransformation() * aSnappedTranslate;
+                                basegfx::B2DVector aSnappedScale(basegfx::fround(rViewInformation.getObjectToViewTransformation() * aScale));
+                                aSnappedScale = rViewInformation.getInverseObjectToViewTransformation() * aSnappedScale;
 
                                 // short form for scale and translate transformation
                                 const basegfx::B2DHomMatrix aBitmapTransform(basegfx::utils::createScaleTranslateB2DHomMatrix(
-                                    aBitmapSizeLogic.getX(), aBitmapSizeLogic.getY(), aTranslate.getX(), aTranslate.getY()));
+                                    aSnappedScale.getX(), aSnappedScale.getY(), aSnappedTranslate.getX(), aSnappedTranslate.getY()));
 
                                 // create primitive
                                 xRetval = new BitmapPrimitive2D(
@@ -224,7 +219,7 @@ namespace drawinglayer::primitive2d
             return xRetval;
         }
 
-        void ControlPrimitive2D::create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const
+        Primitive2DReference ControlPrimitive2D::create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const
         {
             // try to create a bitmap decomposition. If that fails for some reason,
             // at least create a replacement decomposition.
@@ -235,7 +230,7 @@ namespace drawinglayer::primitive2d
                 xReference = createPlaceholderDecomposition();
             }
 
-            rContainer.push_back(xReference);
+            return xReference;
         }
 
         ControlPrimitive2D::ControlPrimitive2D(
@@ -313,22 +308,41 @@ namespace drawinglayer::primitive2d
             return aRetval;
         }
 
+        bool ControlPrimitive2D::isVisibleAsChildWindow() const
+        {
+            // find out if the control is already visualized as a VCL-ChildWindow
+            const uno::Reference<awt::XControl>& rXControl(getXControl());
+
+            try
+            {
+                uno::Reference<awt::XWindow2> xControlWindow(rXControl, uno::UNO_QUERY_THROW);
+                return rXControl->getPeer().is() && xControlWindow->isVisible();
+            }
+            catch (const uno::Exception&)
+            {
+                // #i116763# since there is a good alternative when the xControlView
+                // is not found and it is allowed to happen
+            }
+
+            return false;
+        }
+
         void ControlPrimitive2D::get2DDecomposition(Primitive2DDecompositionVisitor& rVisitor, const geometry::ViewInformation2D& rViewInformation) const
         {
             // this primitive is view-dependent related to the scaling. If scaling has changed,
             // destroy existing decomposition. To detect change, use size of unit size in view coordinates
             const basegfx::B2DVector aNewScaling(rViewInformation.getObjectToViewTransformation() * basegfx::B2DVector(1.0, 1.0));
 
-            if(!getBuffered2DDecomposition().empty())
+            if(hasBuffered2DDecomposition())
             {
                 if(!maLastViewScaling.equal(aNewScaling))
                 {
                     // conditions of last local decomposition have changed, delete
-                    const_cast< ControlPrimitive2D* >(this)->setBuffered2DDecomposition(Primitive2DContainer());
+                    const_cast< ControlPrimitive2D* >(this)->setBuffered2DDecomposition(nullptr);
                 }
             }
 
-            if(getBuffered2DDecomposition().empty())
+            if(!hasBuffered2DDecomposition())
             {
                 // remember ViewTransformation
                 const_cast< ControlPrimitive2D* >(this)->maLastViewScaling = aNewScaling;

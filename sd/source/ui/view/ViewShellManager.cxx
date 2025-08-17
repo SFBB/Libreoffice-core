@@ -107,12 +107,16 @@ public:
     void ActivateViewShell (
         ViewShell* pViewShell);
     void DeactivateViewShell (const ViewShell& rShell);
-    void ActivateShell (SfxShell& rShell);
+    void ActivateLowPriorityShell (SfxShell& rShell);
     void DeactivateShell (const SfxShell& rShell);
     void ActivateShell (const ShellDescriptor& rDescriptor);
+    void ActivateLowPriorityShell (const ShellDescriptor& rDescriptor);
     void SetFormShell (const ViewShell* pViewShell, FmFormShell* pFormShell, bool bAbove);
     void ActivateSubShell (const SfxShell& rParentShell, ShellId nId);
     void DeactivateSubShell (const SfxShell& rParentShell, ShellId nId);
+    void RemoveOverridingMainShell();
+    void SetOverridingShell(const std::shared_ptr<ViewShell>& pViewShell);
+    std::shared_ptr<ViewShell> GetOverridingShell();
     void MoveToTop (const SfxShell& rParentShell);
     SfxShell* GetShell (ShellId nId) const;
     SfxShell* GetTopShell() const;
@@ -123,7 +127,7 @@ public:
     /** Remove all shells from the SFX stack above and including the given
         shell.
     */
-    void TakeShellsFromStack (const SfxShell* pShell);
+    void TakeShellsFromStack (const SfxShell& rShell);
 
     class UpdateLock
     {
@@ -189,6 +193,7 @@ private:
     SfxShell* mpTopShell;
     SfxShell* mpTopViewShell;
 
+    std::weak_ptr<ViewShell> mpOverridingShell;
 
     void UpdateShellStack();
 
@@ -260,6 +265,26 @@ void ViewShellManager::DeactivateViewShell (const ViewShell* pShell)
         mpImpl->DeactivateViewShell(*pShell);
 }
 
+
+void ViewShellManager::RemoveOverridingMainShell()
+{
+    if(mbValid)
+        mpImpl->RemoveOverridingMainShell();
+}
+
+void ViewShellManager::SetOverridingMainShell(const std::shared_ptr<ViewShell>& pViewShell)
+{
+    if(mbValid)
+        mpImpl->SetOverridingShell(pViewShell);
+}
+
+std::shared_ptr<ViewShell> ViewShellManager::GetOverridingMainShell()
+{
+    if(mbValid)
+        return mpImpl->GetOverridingShell();
+    return {};
+}
+
 void ViewShellManager::SetFormShell (
     const ViewShell* pParentShell,
     FmFormShell* pFormShell,
@@ -287,10 +312,10 @@ void ViewShellManager::InvalidateAllSubShells (ViewShell const * pViewShell)
         mpImpl->InvalidateAllSubShells(pViewShell);
 }
 
-void ViewShellManager::ActivateShell (SfxShell* pShell)
+void ViewShellManager::ActivateLowPriorityShell (SfxShell* pShell)
 {
     if (mbValid && pShell!=nullptr)
-        mpImpl->ActivateShell(*pShell);
+        mpImpl->ActivateLowPriorityShell(*pShell);
 }
 
 void ViewShellManager::DeactivateShell (const SfxShell* pShell)
@@ -442,12 +467,14 @@ void ViewShellManager::Implementation::DeactivateViewShell (const ViewShell& rSh
     if (iShell == maActiveViewShells.end())
         return;
 
+    // iShell points to a ShellDescriptor with mpShell pointing to rShell
+
     UpdateLock aLocker (*this);
 
     ShellDescriptor aDescriptor(*iShell);
-    mrBase.GetDocShell()->Disconnect(dynamic_cast<ViewShell*>(aDescriptor.mpShell));
+    mrBase.GetDocShell()->Disconnect(&rShell);
     maActiveViewShells.erase(iShell);
-    TakeShellsFromStack(aDescriptor.mpShell);
+    TakeShellsFromStack(rShell);
 
     // Deactivate sub shells.
     SubShellList::iterator iList (maActiveSubShells.find(&rShell));
@@ -461,7 +488,7 @@ void ViewShellManager::Implementation::DeactivateViewShell (const ViewShell& rSh
     DestroyViewShell(aDescriptor);
 }
 
-void ViewShellManager::Implementation::ActivateShell (SfxShell& rShell)
+void ViewShellManager::Implementation::ActivateLowPriorityShell (SfxShell& rShell)
 {
     ::osl::MutexGuard aGuard (maMutex);
 
@@ -469,7 +496,7 @@ void ViewShellManager::Implementation::ActivateShell (SfxShell& rShell)
     ShellDescriptor aDescriptor;
     aDescriptor.mpShell = &rShell;
 
-    ActivateShell(aDescriptor);
+    ActivateLowPriorityShell(aDescriptor);
 }
 
 void ViewShellManager::Implementation::ActivateShell (const ShellDescriptor& rDescriptor)
@@ -478,6 +505,15 @@ void ViewShellManager::Implementation::ActivateShell (const ShellDescriptor& rDe
     if (rDescriptor.mpShell != nullptr)
     {
         maActiveViewShells.insert( maActiveViewShells.begin(), rDescriptor);
+    }
+}
+
+void ViewShellManager::Implementation::ActivateLowPriorityShell (const ShellDescriptor& rDescriptor)
+{
+    // Put shell on bottom of the active view shells.
+    if (rDescriptor.mpShell != nullptr)
+    {
+        maActiveViewShells.push_back( rDescriptor );
     }
 }
 
@@ -492,12 +528,14 @@ void ViewShellManager::Implementation::DeactivateShell (const SfxShell& rShell)
     if (iShell == maActiveViewShells.end())
         return;
 
+    // iShell points to a ShellDescriptor with mpShell pointing to rShell
+
     UpdateLock aLocker (*this);
 
     ShellDescriptor aDescriptor(*iShell);
-    mrBase.GetDocShell()->Disconnect(dynamic_cast<ViewShell*>(aDescriptor.mpShell));
+    mrBase.GetDocShell()->Disconnect(dynamic_cast<const ViewShell*>(&rShell));
     maActiveViewShells.erase(iShell);
-    TakeShellsFromStack(aDescriptor.mpShell);
+    TakeShellsFromStack(rShell);
 
     // Deactivate sub shells.
     SubShellList::iterator iList (maActiveSubShells.find(&rShell));
@@ -565,9 +603,24 @@ void ViewShellManager::Implementation::DeactivateSubShell (
     // Remove the sub shell from both the internal structure as well as the
     // SFX shell stack above and including the sub shell.
     rList.erase(iShell);
-    TakeShellsFromStack(pShell);
+    TakeShellsFromStack(*pShell);
 
     DestroySubShell(aDescriptor);
+}
+
+std::shared_ptr<ViewShell> ViewShellManager::Implementation::GetOverridingShell()
+{
+    return mpOverridingShell.lock();
+}
+
+void ViewShellManager::Implementation::RemoveOverridingMainShell()
+{
+    mpOverridingShell.reset();
+}
+
+void ViewShellManager::Implementation::SetOverridingShell(const std::shared_ptr<ViewShell>& pViewShell)
+{
+    mpOverridingShell = pViewShell;
 }
 
 void ViewShellManager::Implementation::MoveToTop (const SfxShell& rShell)
@@ -617,7 +670,7 @@ void ViewShellManager::Implementation::MoveToTop (const SfxShell& rShell)
 
         ShellDescriptor aDescriptor(*iShell);
 
-        TakeShellsFromStack(&rShell);
+        TakeShellsFromStack(rShell);
         maActiveViewShells.erase(iShell);
 
         maActiveViewShells.insert(maActiveViewShells.begin(), aDescriptor);
@@ -711,10 +764,12 @@ void ViewShellManager::Implementation::UpdateShellStack()
     // 1. Create the missing shells.
     CreateShells();
 
+    SfxShell* pPreviousTopViewShell = mpTopViewShell;
     // Update the pointer to the top-most active view shell.
-    mpTopViewShell = (maActiveViewShells.empty())
+    mpTopViewShell = (maActiveViewShells.empty() || mbFormShellAboveParent)
         ? nullptr : maActiveViewShells.begin()->mpShell;
 
+    bool bTopViewShellChanged = mpTopViewShell != pPreviousTopViewShell;
 
     // 2. Create the internal target stack.
     ShellStack aTargetStack;
@@ -726,8 +781,11 @@ void ViewShellManager::Implementation::UpdateShellStack()
     while (mrBase.GetSubShell(nIndex)!=nullptr)
         ++nIndex;
     aSfxShellStack.reserve(nIndex);
-    while (nIndex-- > 0)
+    while (nIndex > 0)
+    {
+        --nIndex;
         aSfxShellStack.push_back(mrBase.GetSubShell(nIndex));
+    }
 
 #if OSL_DEBUG_LEVEL >= 2
     SAL_INFO("sd.view", __func__ << ": Current SFX Stack");
@@ -776,6 +834,10 @@ void ViewShellManager::Implementation::UpdateShellStack()
     if (mpTopShell!=nullptr && pUndoManager!=nullptr && mpTopShell->GetUndoManager()==nullptr)
         mpTopShell->SetUndoManager(pUndoManager);
 
+    // Only broadcast context for activation on the top-most ViewShell
+    if (mpTopViewShell && bTopViewShellChanged)
+        mpTopViewShell->BroadcastContextForActivation(true);
+
     // Finally tell an invocation of this method on a higher level that it can (has
     // to) abort and return immediately.
     mbShellStackIsUpToDate = true;
@@ -786,7 +848,7 @@ void ViewShellManager::Implementation::UpdateShellStack()
 #endif
 }
 
-void ViewShellManager::Implementation::TakeShellsFromStack (const SfxShell* pShell)
+void ViewShellManager::Implementation::TakeShellsFromStack (const SfxShell& rShell)
 {
     ::osl::MutexGuard aGuard (maMutex);
 
@@ -808,17 +870,12 @@ void ViewShellManager::Implementation::TakeShellsFromStack (const SfxShell* pShe
         SfxShell* pShellOnStack = mrBase.GetSubShell(nIndex);
         if (pShellOnStack == nullptr)
         {
-            // Set pShell to NULL to indicate the following code that the
-            // shell is not on the stack.
-            pShell = nullptr;
-            break;
+            // the shell is not on the stack.
+            return;
         }
-        else if (pShellOnStack == pShell)
+        else if (pShellOnStack == &rShell)
             break;
     }
-
-    if (pShell == nullptr)
-        return;
 
     // 1. Deactivate our shells on the stack before they are removed so
     // that during the Deactivation() calls the stack is still intact.
@@ -826,7 +883,7 @@ void ViewShellManager::Implementation::TakeShellsFromStack (const SfxShell* pShe
     {
         SfxShell* pShellOnStack = mrBase.GetSubShell(nIndex);
         Deactivate(pShellOnStack);
-        if (pShellOnStack == pShell)
+        if (pShellOnStack == &rShell)
             break;
     }
 
@@ -836,7 +893,7 @@ void ViewShellManager::Implementation::TakeShellsFromStack (const SfxShell* pShe
         SfxShell* pShellOnStack = mrBase.GetSubShell(0);
         SAL_INFO("sd.view", __func__ << "removing shell " << pShellOnStack << " from stack");
         mrBase.RemoveSubShell(pShellOnStack);
-        if (pShellOnStack == pShell)
+        if (pShellOnStack == &rShell)
             break;
     }
 
@@ -983,7 +1040,7 @@ ShellDescriptor ViewShellManager::Implementation::CreateSubShell (
         // Exit the loop when the shell has been successfully created.
         if (aResult.mpShell != nullptr)
         {
-            aResult.mpFactory = pFactory;
+            aResult.mpFactory = std::move(pFactory);
             aResult.mnId = nShellId;
             break;
         }
@@ -1071,6 +1128,7 @@ void ViewShellManager::Implementation::Shutdown()
     mrBase.RemoveSubShell ();
 
     maShellFactories.clear();
+    mpOverridingShell.reset();
 }
 
 #if OSL_DEBUG_LEVEL >= 2
@@ -1113,9 +1171,12 @@ void ViewShellManager::Implementation::Deactivate (SfxShell* pShell)
         {
             pView->SdrEndTextEdit();
             pView->UnmarkAll();
+
+            // dispatch synchronously, otherwise it might execute while another
+            // ViewShell is active!
             pViewShell->GetViewFrame()->GetDispatcher()->Execute(
                 SID_OBJECT_SELECT,
-                SfxCallMode::ASYNCHRON);
+                SfxCallMode::SYNCHRON);
         }
     }
 

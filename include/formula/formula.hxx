@@ -20,6 +20,7 @@
 #ifndef INCLUDED_FORMULA_FORMULA_HXX
 #define INCLUDED_FORMULA_FORMULA_HXX
 
+#include <config_options.h>
 #include <memory>
 #include <utility>
 
@@ -31,16 +32,17 @@
 #include <sfx2/basedlgs.hxx>
 #include <tools/gen.hxx>
 
-class NotifyEvent;
 class SfxBindings;
 class SfxChildWindow;
 
 namespace formula
 {
-
-#define STRUCT_END    1
-#define STRUCT_FOLDER 2
-#define STRUCT_ERROR  3
+enum class StructType
+{
+    End,
+    Folder,
+    Error,
+};
 
 enum class FormulaDlgMode { Formula, Edit };
 
@@ -52,7 +54,7 @@ class RefEdit;
 class RefButton;
 class FormEditData;
 
-class FORMULA_DLLPUBLIC FormulaModalDialog
+class UNLESS_MERGELIBS_MORE(FORMULA_DLLPUBLIC) FormulaModalDialog
     : public weld::GenericDialogController, public formula::IFormulaEditorHelper
 {
     friend class FormulaDlg_Impl;

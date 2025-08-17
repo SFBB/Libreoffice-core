@@ -59,7 +59,7 @@ SwUndRng::SwUndRng( const SwPaM& rPam )
 
 void SwUndRng::SetValues( const SwPaM& rPam )
 {
-    const SwPosition *pStt = rPam.Start();
+    const SwPosition *pStart = rPam.Start();
     if( rPam.HasMark() )
     {
         const SwPosition *pEnd = rPam.End();
@@ -73,8 +73,8 @@ void SwUndRng::SetValues( const SwPaM& rPam )
         m_nEndContent = COMPLETE_STRING;
     }
 
-    m_nSttNode = pStt->GetNodeIndex();
-    m_nSttContent = pStt->GetContentIndex();
+    m_nSttNode = pStart->GetNodeIndex();
+    m_nSttContent = pStart->GetContentIndex();
 }
 
 void SwUndRng::SetPaM( SwPaM & rPam, bool bCorrToContent ) const
@@ -148,19 +148,19 @@ void SwUndo::RemoveIdxRel( SwNodeOffset nIdx, const SwPosition& rPos )
     ::PaMCorrRel( *rPos.GetNode().GetNodes()[nIdx], rPos );
 }
 
-SwUndo::SwUndo(SwUndoId const nId, const SwDoc* pDoc)
+SwUndo::SwUndo(SwUndoId const nId, const SwDoc& rDoc)
     : m_nId(nId), m_nOrigRedlineFlags(RedlineFlags::NONE)
-    , m_nViewShellId(CreateViewShellId(pDoc))
+    , m_nViewShellId(CreateViewShellId(rDoc))
     , m_isRepeatIgnored(false)
     , m_bCacheComment(true)
 {
 }
 
-ViewShellId SwUndo::CreateViewShellId(const SwDoc* pDoc)
+ViewShellId SwUndo::CreateViewShellId(const SwDoc& rDoc)
 {
     ViewShellId nRet(-1);
 
-    if (const SwDocShell* pDocShell = pDoc->GetDocShell())
+    if (const SwDocShell* pDocShell = rDoc.GetDocShell())
     {
         if (const SwView* pView = pDocShell->GetView())
             nRet = pView->GetViewShellId();
@@ -361,7 +361,7 @@ OUString GetUndoComment(SwUndoId eId)
             break;
         case SwUndoId::REDLINE:
             SAL_INFO("sw.core", "Should NEVER be used/translated");
-            return "$1";
+            return u"$1"_ustr;
         case SwUndoId::ACCEPT_REDLINE:
             pId = STR_ACCEPT_REDLINE;
             break;
@@ -685,6 +685,18 @@ OUString GetUndoComment(SwUndoId eId)
         case SwUndoId::FLYFRMFMT_DECORATIVE:
             pId = STR_UNDO_FLYFRMFMT_DECORATIVE;
             break;
+        case SwUndoId::MAKE_FOOTNOTES_ENDNOTES:
+            pId = STR_UNDO_MAKE_FOOTNOTES_ENDNOTES;
+            break;
+        case SwUndoId::MAKE_ENDNOTES_FOOTNOTES:
+            pId = STR_UNDO_MAKE_ENDNOTES_FOOTNOTES;
+            break;
+        case SwUndoId::CONVERT_FIELD_TO_TEXT:
+            pId = STR_UNDO_CONVERT_FIELD_TO_TEXT;
+            break;
+        case SwUndoId::REINSTATE_REDLINE:
+            pId = STR_REINSTATE_REDLINE;
+            break;
     }
 
     assert(pId);
@@ -773,13 +785,13 @@ void SwUndoSaveContent::MoveToUndoNds( SwPaM& rPaM, SwNodeIndex* pNodeIdx,
     SwPosition aPos( pEndNdIdx ? rNds.GetEndOfPostIts()
                                : rNds.GetEndOfExtras() );
 
-    const SwPosition* pStt = rPaM.Start(), *pEnd = rPaM.End();
+    const SwPosition* pStart = rPaM.Start(), *pEnd = rPaM.End();
 
     SwNodeOffset nTmpMvNode = aPos.GetNodeIndex();
 
     if( pCpyNd || pEndNdIdx )
     {
-        SwNodeRange aRg( pStt->GetNode(), SwNodeOffset(0), pEnd->GetNode(), SwNodeOffset(1) );
+        SwNodeRange aRg( pStart->GetNode(), SwNodeOffset(0), pEnd->GetNode(), SwNodeOffset(1) );
         rDoc.GetNodes().MoveNodes( aRg, rNds, aPos.GetNode(), true );
         aPos.Adjust(SwNodeOffset(-1));
     }
@@ -900,8 +912,8 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                                      const SwPosition& rPoint,
                                      DelContentType nDelContentType )
 {
-    const SwPosition *pStt = rMark < rPoint ? &rMark : &rPoint,
-                    *pEnd = &rMark == pStt ? &rPoint : &rMark;
+    const SwPosition *pStart = rMark < rPoint ? &rMark : &rPoint,
+                    *pEnd = &rMark == pStart ? &rPoint : &rMark;
 
     SwDoc& rDoc = rMark.GetNode().GetDoc();
 
@@ -919,7 +931,7 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
         {
             const SwNode* pFootnoteNd;
             size_t nPos = 0;
-            rFootnoteArr.SeekEntry( pStt->GetNode(), &nPos );
+            rFootnoteArr.SeekEntry( pStart->GetNode(), &nPos );
             SwTextFootnote* pSrch;
 
             // for now delete all that come afterwards
@@ -930,8 +942,8 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                 const sal_Int32 nFootnoteSttIdx = pSrch->GetStart();
                 if( (DelContentType::CheckNoCntnt & nDelContentType )
                     ? (&pEnd->GetNode() == pFootnoteNd )
-                    : (( &pStt->GetNode() == pFootnoteNd &&
-                    pStt->GetContentIndex() > nFootnoteSttIdx) ||
+                    : (( &pStart->GetNode() == pFootnoteNd &&
+                    pStart->GetContentIndex() > nFootnoteSttIdx) ||
                     ( &pEnd->GetNode() == pFootnoteNd &&
                     nFootnoteSttIdx >= pEnd->GetContentIndex() )) )
                 {
@@ -954,13 +966,19 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                 pTextNd->EraseText( aIdx, 1 );
             }
 
-            while( nPos-- && ( pFootnoteNd = &( pSrch = rFootnoteArr[ nPos ] )->
-                    GetTextNode())->GetIndex() >= pStt->GetNodeIndex() )
+            while (nPos > 0)
             {
+                --nPos;
+
+                pSrch = rFootnoteArr[nPos];
+                pFootnoteNd = &pSrch->GetTextNode();
+                if (pFootnoteNd->GetIndex() < pStart->GetNodeIndex())
+                    break;
+
                 const sal_Int32 nFootnoteSttIdx = pSrch->GetStart();
                 if( !(DelContentType::CheckNoCntnt & nDelContentType) && (
-                    ( &pStt->GetNode() == pFootnoteNd &&
-                    pStt->GetContentIndex() > nFootnoteSttIdx ) ||
+                    ( &pStart->GetNode() == pFootnoteNd &&
+                    pStart->GetContentIndex() > nFootnoteSttIdx ) ||
                     ( &pEnd->GetNode() == pFootnoteNd &&
                     nFootnoteSttIdx >= pEnd->GetContentIndex() )))
                     continue;               // continue searching
@@ -1002,9 +1020,9 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                 case RndStdIds::FLY_AS_CHAR:
                     if( nullptr != (pAPos = pAnchor->GetContentAnchor() ) &&
                         (( DelContentType::CheckNoCntnt & nDelContentType )
-                        ? ( pStt->GetNode() <= pAPos->GetNode() &&
+                        ? ( pStart->GetNode() <= pAPos->GetNode() &&
                             pAPos->GetNode() < pEnd->GetNode() )
-                        : ( *pStt <= *pAPos && *pAPos < *pEnd )) )
+                        : ( *pStart <= *pAPos && *pAPos < *pEnd )) )
                     {
                         if( !m_pHistory )
                             m_pHistory.reset( new SwHistory );
@@ -1022,13 +1040,12 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                     {
                         pAPos =  pAnchor->GetContentAnchor();
                         if (pAPos &&
-                            pStt->GetNode() <= pAPos->GetNode() && pAPos->GetNode() <= pEnd->GetNode())
+                            pStart->GetNode() <= pAPos->GetNode() && pAPos->GetNode() <= pEnd->GetNode())
                         {
                             if (!m_pHistory)
                                 m_pHistory.reset( new SwHistory );
 
-                            if (!(DelContentType::Replace & nDelContentType)
-                                && IsSelectFrameAnchoredAtPara(*pAPos, *pStt, *pEnd, nDelContentType))
+                            if (IsSelectFrameAnchoredAtPara(*pAPos, *pStart, *pEnd, nDelContentType))
                             {
                                 m_pHistory->AddDeleteFly(*pFormat, nChainInsPos);
                                 // reset n so that no Format is skipped
@@ -1044,7 +1061,7 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                                 // may need to be done here to add it to
                                 // history for Undo.
                                 (rPoint.GetNodeIndex() == pAPos->GetNodeIndex()
-                                 || pStt->GetNodeIndex() == pAPos->GetNodeIndex())
+                                 || pStart->GetNodeIndex() == pAPos->GetNodeIndex())
                                 // Do not try to move the anchor to a table!
                                 && rMark.GetNode().IsTextNode())
                             {
@@ -1059,13 +1076,11 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                     break;
                 case RndStdIds::FLY_AT_CHAR:
                     if( nullptr != (pAPos = pAnchor->GetContentAnchor() ) &&
-                        ( pStt->GetNode() <= pAPos->GetNode() && pAPos->GetNode() <= pEnd->GetNode() ) )
+                        ( pStart->GetNode() <= pAPos->GetNode() && pAPos->GetNode() <= pEnd->GetNode() ) )
                     {
                         if( !m_pHistory )
                             m_pHistory.reset( new SwHistory );
-                        if (!(DelContentType::Replace & nDelContentType)
-                            && IsDestroyFrameAnchoredAtChar(
-                                *pAPos, *pStt, *pEnd, nDelContentType))
+                        if (IsDestroyFrameAnchoredAtChar(*pAPos, *pStart, *pEnd, nDelContentType))
                         {
                             m_pHistory->AddDeleteFly(*pFormat, nChainInsPos);
                             n = n >= rSpzArr.size() ? rSpzArr.size() : n+1;
@@ -1074,7 +1089,7 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                                     DelContentType::ExcludeFlyAtStartEnd)
                                     & nDelContentType))
                         {
-                            if( *pStt <= *pAPos && *pAPos < *pEnd )
+                            if( *pStart <= *pAPos && *pAPos < *pEnd )
                             {
                                 // These are the objects anchored
                                 // between section start and end position
@@ -1093,7 +1108,7 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                 case RndStdIds::FLY_AT_FLY:
 
                     if( nullptr != (pAPos = pAnchor->GetContentAnchor() ) &&
-                        pStt->GetNode() == pAPos->GetNode() )
+                        pStart->GetNode() == pAPos->GetNode() )
                     {
                         if( !m_pHistory )
                             m_pHistory.reset( new SwHistory );
@@ -1124,18 +1139,18 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
         bool bSavePos = false;
         bool bSaveOtherPos = false;
         bool bDelete = false;
-        const ::sw::mark::IMark *const pBkmk = pMarkAccess->getAllMarksBegin()[n];
+        const ::sw::mark::MarkBase *const pBkmk = pMarkAccess->getAllMarksBegin()[n];
         auto const type(IDocumentMarkAccess::GetType(*pBkmk));
 
         if( DelContentType::CheckNoCntnt & nDelContentType )
         {
-            if ( pStt->GetNode() <= pBkmk->GetMarkPos().GetNode()
+            if ( pStart->GetNode() <= pBkmk->GetMarkPos().GetNode()
                  && pBkmk->GetMarkPos().GetNode() < pEnd->GetNode() )
             {
                 bSavePos = true;
             }
             if ( pBkmk->IsExpanded()
-                 && pStt->GetNode() <= pBkmk->GetOtherMarkPos().GetNode()
+                 && pStart->GetNode() <= pBkmk->GetOtherMarkPos().GetNode()
                  && pBkmk->GetOtherMarkPos().GetNode() < pEnd->GetNode() )
             {
                 bSaveOtherPos = true;
@@ -1154,20 +1169,20 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
             }
 
             bool bMaybe = false;
-            if ( *pStt <= pBkmk->GetMarkPos() && pBkmk->GetMarkPos() <= *pEnd )
+            if ( *pStart <= pBkmk->GetMarkPos() && pBkmk->GetMarkPos() <= *pEnd )
             {
                 if ( pBkmk->GetMarkPos() == *pEnd
-                     || ( *pStt == pBkmk->GetMarkPos() && pBkmk->IsExpanded() ) )
+                     || ( *pStart == pBkmk->GetMarkPos() && pBkmk->IsExpanded() ) )
                     bMaybe = true;
                 else
                     bSavePos = true;
             }
             if( pBkmk->IsExpanded() &&
-                *pStt <= pBkmk->GetOtherMarkPos() && pBkmk->GetOtherMarkPos() <= *pEnd )
+                *pStart <= pBkmk->GetOtherMarkPos() && pBkmk->GetOtherMarkPos() <= *pEnd )
             {
                 assert(!bSaveOtherPos);
                 if (   bSavePos
-                    || (*pStt < pBkmk->GetOtherMarkPos() && pBkmk->GetOtherMarkPos() < *pEnd)
+                    || (*pStart < pBkmk->GetOtherMarkPos() && pBkmk->GetOtherMarkPos() < *pEnd)
                     || (bMaybe
                         && (   type == IDocumentMarkAccess::MarkType::TEXT_FIELDMARK
                             || type == IDocumentMarkAccess::MarkType::CHECKBOX_FIELDMARK
@@ -1176,7 +1191,7 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                     || (bMaybe
                         && !(nDelContentType & DelContentType::Replace)
                         && type == IDocumentMarkAccess::MarkType::BOOKMARK
-                        && pStt->GetContentIndex() == 0 // entire paragraph deleted?
+                        && pStart->GetContentIndex() == 0 // entire paragraph deleted?
                         && pEnd->GetContentIndex() == pEnd->GetNode().GetTextNode()->Len()))
                 {
                     if( bMaybe )
@@ -1188,7 +1203,7 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                     bSaveOtherPos = true; // tdf#148389 always undo if at end
                 }
             }
-            if (!bSavePos && bMaybe && pBkmk->IsExpanded() && *pStt == pBkmk->GetMarkPos())
+            if (!bSavePos && bMaybe && pBkmk->IsExpanded() && *pStart == pBkmk->GetMarkPos())
             {
                 bSavePos = true; // tdf#148389 always undo if at start
             }
@@ -1203,18 +1218,18 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
                     && rPoint.GetNode().GetTextNode();
                 if ( bDifferentTextNodesAtMarkAndPoint )
                 {
-                    // delete cross-reference bookmark at <pStt>, if only part of
+                    // delete cross-reference bookmark at <pStart>, if only part of
                     // <pEnd> text node content is deleted.
-                    if( pStt->GetNode() == pBkmk->GetMarkPos().GetNode()
+                    if( pStart->GetNode() == pBkmk->GetMarkPos().GetNode()
                         && pEnd->GetContentIndex() != pEnd->GetNode().GetTextNode()->Len() )
                     {
                         bSavePos = true;
                         bSaveOtherPos = false; // cross-reference bookmarks are not expanded
                     }
                     // delete cross-reference bookmark at <pEnd>, if only part of
-                    // <pStt> text node content is deleted.
+                    // <pStart> text node content is deleted.
                     else if( pEnd->GetNode() == pBkmk->GetMarkPos().GetNode() &&
-                        pStt->GetContentIndex() != 0 )
+                        pStart->GetContentIndex() != 0 )
                     {
                         bSavePos = true;
                         bSaveOtherPos = false; // cross-reference bookmarks are not expanded
@@ -1225,7 +1240,7 @@ void SwUndoSaveContent::DelContentIndex( const SwPosition& rMark,
             {
                 // delete annotation marks, if its end position is covered by the deletion
                 const SwPosition& rAnnotationEndPos = pBkmk->GetMarkEnd();
-                if ( *pStt < rAnnotationEndPos && rAnnotationEndPos <= *pEnd )
+                if ( *pStart < rAnnotationEndPos && rAnnotationEndPos <= *pEnd )
                 {
                     bSavePos = true;
                     bSaveOtherPos = pBkmk->IsExpanded(); //tdf#90138, only save the other pos if there is one
@@ -1325,34 +1340,34 @@ void SwUndoSaveSection::SaveSection(
     m_nMoveLen = nEnd - m_oMovedStart->GetIndex() + 1;
 }
 
-void SwUndoSaveSection::RestoreSection( SwDoc* pDoc, SwNodeIndex* pIdx,
+void SwUndoSaveSection::RestoreSection( SwDoc& rDoc, SwNodeIndex* pIdx,
                                         sal_uInt16 nSectType )
 {
     if( NODE_OFFSET_MAX == m_nStartPos )        // was there any content?
         return;
 
     // check if the content is at the old position
-    SwNodeIndex aSttIdx( pDoc->GetNodes(), m_nStartPos );
+    SwNodeIndex aSttIdx( rDoc.GetNodes(), m_nStartPos );
 
     // move the content from UndoNodes array into Fly
     SwStartNode* pSttNd = SwNodes::MakeEmptySection( aSttIdx.GetNode(),
                                             static_cast<SwStartNodeType>(nSectType) );
 
-    RestoreSection( pDoc, *pSttNd->EndOfSectionNode() );
+    RestoreSection( rDoc, *pSttNd->EndOfSectionNode() );
 
     if( pIdx )
         *pIdx = *pSttNd;
 }
 
 void SwUndoSaveSection::RestoreSection(
-        SwDoc *const pDoc, const SwNode& rInsPos, bool bForceCreateFrames)
+        SwDoc& rDoc, const SwNode& rInsPos, bool bForceCreateFrames)
 {
     if( NODE_OFFSET_MAX == m_nStartPos )        // was there any content?
         return;
 
     SwPosition aInsPos( rInsPos );
     SwNodeOffset nEnd = m_oMovedStart->GetIndex() + m_nMoveLen - 1;
-    MoveFromUndoNds(*pDoc, m_oMovedStart->GetIndex(), aInsPos, &nEnd, bForceCreateFrames);
+    MoveFromUndoNds(rDoc, m_oMovedStart->GetIndex(), aInsPos, &nEnd, bForceCreateFrames);
 
     // destroy indices again, content was deleted from UndoNodes array
     m_oMovedStart.reset();
@@ -1360,7 +1375,7 @@ void SwUndoSaveSection::RestoreSection(
 
     if( m_pRedlineSaveData )
     {
-        SwUndo::SetSaveData( *pDoc, *m_pRedlineSaveData );
+        SwUndo::SetSaveData( rDoc, *m_pRedlineSaveData );
         m_pRedlineSaveData.reset();
     }
 }
@@ -1437,9 +1452,9 @@ void SwRedlineSaveData::RedlineToDoc( SwPaM const & rPam )
     if( GetMvSttIdx() )
     {
         SwNodeIndex aIdx( rDoc.GetNodes() );
-        RestoreSection( &rDoc, &aIdx, SwNormalStartNode );
+        RestoreSection( rDoc, &aIdx, SwNormalStartNode );
         if( GetHistory() )
-            GetHistory()->Rollback( &rDoc );
+            GetHistory()->Rollback( rDoc );
         pRedl->SetContentIdx( aIdx );
     }
     SetPaM( *pRedl );
@@ -1450,9 +1465,6 @@ void SwRedlineSaveData::RedlineToDoc( SwPaM const & rPam )
 
     RedlineFlags eOld = rDoc.getIDocumentRedlineAccess().GetRedlineFlags();
     rDoc.getIDocumentRedlineAccess().SetRedlineFlags_intern( eOld | RedlineFlags::DontCombineRedlines );
-    //#i92154# let UI know about a new redline with comment
-    if (rDoc.GetDocShell() && (!pRedl->GetComment().isEmpty()) )
-        rDoc.GetDocShell()->Broadcast(SwRedlineHint());
 
     auto const result(rDoc.getIDocumentRedlineAccess().AppendRedline(pRedl, true));
     assert(result != IDocumentRedlineAccess::AppendResult::IGNORED); // SwRedlineSaveData::RedlineToDoc: insert redline failed
@@ -1468,23 +1480,23 @@ bool SwUndo::FillSaveData(
 {
     rSData.clear();
 
-    auto [pStt, pEnd] = rRange.StartEnd(); // SwPosition*
+    auto [pStart, pEnd] = rRange.StartEnd(); // SwPosition*
     const SwRedlineTable& rTable = rRange.GetDoc().getIDocumentRedlineAccess().GetRedlineTable();
     SwRedlineTable::size_type n = 0;
-    rRange.GetDoc().getIDocumentRedlineAccess().GetRedline( *pStt, &n );
+    rRange.GetDoc().getIDocumentRedlineAccess().GetRedline( *pStart, &n );
     for ( ; n < rTable.size(); ++n )
     {
         SwRangeRedline* pRedl = rTable[n];
 
         const SwComparePosition eCmpPos =
-            ComparePosition( *pStt, *pEnd, *pRedl->Start(), *pRedl->End() );
+            ComparePosition( *pStart, *pEnd, *pRedl->Start(), *pRedl->End() );
         if ( eCmpPos != SwComparePosition::Before
              && eCmpPos != SwComparePosition::Behind
              && eCmpPos != SwComparePosition::CollideEnd
              && eCmpPos != SwComparePosition::CollideStart )
         {
 
-            rSData.push_back(std::unique_ptr<SwRedlineSaveData>(new SwRedlineSaveData(eCmpPos, *pStt, *pEnd, *pRedl, bCopyNext)));
+            rSData.push_back(std::unique_ptr<SwRedlineSaveData>(new SwRedlineSaveData(eCmpPos, *pStart, *pEnd, *pRedl, bCopyNext)));
         }
     }
     if( !rSData.empty() && bDelRange )
@@ -1500,22 +1512,36 @@ bool SwUndo::FillSaveDataForFormat(
 {
     rSData.clear();
 
-    const SwPosition *pStt = rRange.Start(), *pEnd = rRange.End();
+    const SwPosition *pStart = rRange.Start(), *pEnd = rRange.End();
     const SwRedlineTable& rTable = rRange.GetDoc().getIDocumentRedlineAccess().GetRedlineTable();
     SwRedlineTable::size_type n = 0;
-    rRange.GetDoc().getIDocumentRedlineAccess().GetRedline( *pStt, &n );
+    rRange.GetDoc().getIDocumentRedlineAccess().GetRedline( *pStart, &n );
     for ( ; n < rTable.size(); ++n )
     {
         SwRangeRedline* pRedl = rTable[n];
-        if ( RedlineType::Format == pRedl->GetType() )
+        bool bSaveRedline = false;
+        switch (pRedl->GetType())
         {
-            const SwComparePosition eCmpPos = ComparePosition( *pStt, *pEnd, *pRedl->Start(), *pRedl->End() );
+            case RedlineType::Insert:
+            case RedlineType::Delete:
+                // These are allowed "under" a format redline.
+            case RedlineType::Format:
+                // This is a previous format: will be removed from the document, so save it in the
+                // undo action.
+                bSaveRedline = true;
+                break;
+            default:
+                break;
+        }
+        if (bSaveRedline)
+        {
+            const SwComparePosition eCmpPos = ComparePosition( *pStart, *pEnd, *pRedl->Start(), *pRedl->End() );
             if ( eCmpPos != SwComparePosition::Before
                  && eCmpPos != SwComparePosition::Behind
                  && eCmpPos != SwComparePosition::CollideEnd
                  && eCmpPos != SwComparePosition::CollideStart )
             {
-                rSData.push_back(std::unique_ptr<SwRedlineSaveData>(new SwRedlineSaveData(eCmpPos, *pStt, *pEnd, *pRedl, true)));
+                rSData.push_back(std::unique_ptr<SwRedlineSaveData>(new SwRedlineSaveData(eCmpPos, *pStart, *pEnd, *pRedl, true)));
             }
 
         }
@@ -1617,9 +1643,8 @@ static bool IsAtEndOfSection(SwPosition const& rAnchorPos)
 
 static bool IsAtStartOfSection(SwPosition const& rAnchorPos)
 {
-    SwNodes const& rNodes(rAnchorPos.GetNodes());
     SwNodeIndex node(*rAnchorPos.GetNode().StartOfSectionNode());
-    SwContentNode *const pNode(rNodes.GoNext(&node));
+    SwContentNode* const pNode(SwNodes::GoNext(&node));
     assert(pNode);
     (void) pNode;
     assert(node <= rAnchorPos.GetNode());
@@ -1672,7 +1697,7 @@ bool IsDestroyFrameAnchoredAtChar(SwPosition const & rAnchorPos,
         return (rStart < rAnchorPos) && (rAnchorPos < rEnd);
     }
 
-    if (nDelContentType & DelContentType::ExcludeFlyAtStartEnd)
+    if (nDelContentType & (DelContentType::ExcludeFlyAtStartEnd|DelContentType::Replace))
     {   // exclude selection start and end node
         return (rAnchorPos.GetNode() < rEnd.GetNode())
             && (rStart.GetNode() < rAnchorPos.GetNode());
@@ -1721,7 +1746,7 @@ bool IsSelectFrameAnchoredAtPara(SwPosition const & rAnchorPos,
     // in general, exclude the start and end position
     return ((rStart.GetNode() < rAnchorPos.GetNode())
             || (rStart.GetNode() == rAnchorPos.GetNode()
-                && !(nDelContentType & DelContentType::ExcludeFlyAtStartEnd)
+                && !(nDelContentType & (DelContentType::ExcludeFlyAtStartEnd|DelContentType::Replace))
                 // special case: fully deleted node
                 && ((rStart.GetNode() != rEnd.GetNode() && rStart.GetContentIndex() == 0
                         // but not if the selection is backspace/delete!
@@ -1729,7 +1754,7 @@ bool IsSelectFrameAnchoredAtPara(SwPosition const & rAnchorPos,
                     || (IsAtStartOfSection2(rStart) && IsAtEndOfSection2(rEnd)))))
         && ((rAnchorPos.GetNode() < rEnd.GetNode())
             || (rAnchorPos.GetNode() == rEnd.GetNode()
-                && !(nDelContentType & DelContentType::ExcludeFlyAtStartEnd)
+                && !(nDelContentType & (DelContentType::ExcludeFlyAtStartEnd|DelContentType::Replace))
                 // special case: fully deleted node
                 && ((rEnd.GetNode() != rStart.GetNode() && rEnd.GetContentIndex() == rEnd.GetNode().GetTextNode()->Len()
                         && IsNotBackspaceHeuristic(rStart, rEnd))

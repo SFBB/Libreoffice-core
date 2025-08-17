@@ -141,7 +141,7 @@ struct OStorage_Impl
 
     // valid only for root storage
     css::uno::Reference< css::io::XInputStream > m_xInputStream; // ??? may be stored in properties
-    css::uno::Reference< css::io::XStream > m_xStream; // ??? may be stored in properties
+    rtl::Reference< SwitchablePersistenceStream > m_xStream; // ??? may be stored in properties
     css::uno::Sequence< css::beans::PropertyValue > m_xProperties;
     bool m_bHasCommonEncryptionData;
     ::comphelper::SequenceAsHashMap m_aCommonEncryptionData;
@@ -162,7 +162,7 @@ struct OStorage_Impl
 
     // the _rels substorage that is handled in a special way in embed::StorageFormats::OFOPXML
     SotElement_Impl* m_pRelStorElement;
-    css::uno::Reference< css::embed::XStorage > m_xRelStorage;
+    rtl::Reference< OStorage > m_xRelStorage;
     css::uno::Sequence< css::uno::Sequence< css::beans::StringPair > > m_aRelInfo;
     css::uno::Reference< css::io::XInputStream > m_xNewRelInfoStream;
     sal_Int16 m_nRelInfoStatus;
@@ -286,7 +286,7 @@ class OStorage final : public css::lang::XTypeProvider
     bool m_bReadOnlyWrap;
     ::rtl::Reference<OChildDispListener_Impl> m_pSubElDispListener;
     ::std::vector< css::uno::WeakReference< css::lang::XComponent > > m_aOpenSubComponentsVector;
-    ::rtl::Reference< OHierarchyHolder_Impl > m_rHierarchyHolder;
+    std::unique_ptr<OHierarchyHolder_Impl> m_pHierarchyHolder;
 
     SotElement_Impl* OpenStreamElement_Impl( const OUString& aStreamName, sal_Int32 nOpenMode, bool bEncr );
 
@@ -346,7 +346,10 @@ public:
             const OUString& aStreamName, sal_Int32 nOpenMode, const OUString& aPass ) override;
 
     virtual css::uno::Reference< css::embed::XStorage > SAL_CALL openStorageElement(
-            const OUString& aStorName, sal_Int32 nStorageMode ) override;
+            const OUString& aStorName, sal_Int32 nStorageMode ) override final;
+
+    rtl::Reference< OStorage > openStorageElement2(
+            const OUString& aStorName, sal_Int32 nStorageMode );
 
     virtual css::uno::Reference< css::io::XStream > SAL_CALL cloneStreamElement(
             const OUString& aStreamName ) override;

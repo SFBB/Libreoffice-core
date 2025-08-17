@@ -87,33 +87,33 @@ void ToxWhitespaceStripperTest::StrippingWhitespacesFromVariousStringsWorks()
 {
     {
         ToxWhitespaceStripper sut(u"abc\n");
-        CPPUNIT_ASSERT_EQUAL(OUString("abc"), sut.GetStrippedString());
+        CPPUNIT_ASSERT_EQUAL(u"abc"_ustr, sut.GetStrippedString());
     }
     {
         ToxWhitespaceStripper sut(u"abc\n\n");
-        CPPUNIT_ASSERT_EQUAL(OUString("abc"), sut.GetStrippedString());
+        CPPUNIT_ASSERT_EQUAL(u"abc"_ustr, sut.GetStrippedString());
     }
     {
         ToxWhitespaceStripper sut(u"abc\ndef");
-        CPPUNIT_ASSERT_EQUAL(OUString("abc def"), sut.GetStrippedString());
+        CPPUNIT_ASSERT_EQUAL(u"abc def"_ustr, sut.GetStrippedString());
     }
     {
         ToxWhitespaceStripper sut(u"  abc \ndef");
-        CPPUNIT_ASSERT_EQUAL(OUString(" abc def"), sut.GetStrippedString());
+        CPPUNIT_ASSERT_EQUAL(u" abc def"_ustr, sut.GetStrippedString());
     }
     {
         ToxWhitespaceStripper sut(u"  ");
-        CPPUNIT_ASSERT_EQUAL(OUString(""), sut.GetStrippedString());
+        CPPUNIT_ASSERT_EQUAL(u""_ustr, sut.GetStrippedString());
     }
     {
         ToxWhitespaceStripper sut(u"d  ");
-        CPPUNIT_ASSERT_EQUAL(OUString("d"), sut.GetStrippedString());
+        CPPUNIT_ASSERT_EQUAL(u"d"_ustr, sut.GetStrippedString());
     }
 }
 
 void ToxWhitespaceStripperTest::PositionAfterStringCanBeRequested()
 {
-    OUString constexpr test(u"abc"_ustr);
+    static OUString constexpr test(u"abc"_ustr);
     ToxWhitespaceStripper sut(test);
     sal_Int32 expected = test.getLength();
     CPPUNIT_ASSERT_EQUAL(expected, sut.GetPositionInStrippedString(test.getLength()));

@@ -35,11 +35,11 @@ namespace
 OUString lcl_ConvertCharEscapement(sal_Int16 nEscapement)
 {
     if (nEscapement > 0)
-        return "super";
+        return u"super"_ustr;
     if (nEscapement < 0)
-        return "sub";
+        return u"sub"_ustr;
 
-    return "baseline";
+    return u"baseline"_ustr;
 }
 
 OUString lcl_ConverCharStrikeout(sal_Int16 nStrikeout)
@@ -92,24 +92,24 @@ OUString lcl_ConverCharStrikeout(sal_Int16 nStrikeout)
 OUString lcl_convertFontWeight(double fontWeight)
 {
     if (fontWeight == css::awt::FontWeight::THIN || fontWeight == css::awt::FontWeight::ULTRALIGHT)
-        return "100";
+        return u"100"_ustr;
     if (fontWeight == css::awt::FontWeight::LIGHT)
-        return "200";
+        return u"200"_ustr;
     if (fontWeight == css::awt::FontWeight::SEMILIGHT)
-        return "300";
+        return u"300"_ustr;
     if (fontWeight == css::awt::FontWeight::NORMAL)
-        return "normal";
+        return u"normal"_ustr;
     if (fontWeight == css::awt::FontWeight::SEMIBOLD)
-        return "500";
+        return u"500"_ustr;
     if (fontWeight == css::awt::FontWeight::BOLD)
-        return "bold";
+        return u"bold"_ustr;
     if (fontWeight == css::awt::FontWeight::ULTRABOLD)
-        return "800";
+        return u"800"_ustr;
     if (fontWeight == css::awt::FontWeight::BLACK)
-        return "900";
+        return u"900"_ustr;
 
     // awt::FontWeight::DONTKNOW || fontWeight == awt::FontWeight::NORMAL
-    return "normal";
+    return u"normal"_ustr;
 }
 
 OUString lcl_ConvertFontSlant(css::awt::FontSlant eFontSlant)
@@ -117,17 +117,17 @@ OUString lcl_ConvertFontSlant(css::awt::FontSlant eFontSlant)
     switch (eFontSlant)
     {
         case css::awt::FontSlant::FontSlant_NONE:
-            return "normal";
+            return u"normal"_ustr;
         case css::awt::FontSlant::FontSlant_OBLIQUE:
         case css::awt::FontSlant::FontSlant_REVERSE_OBLIQUE:
-            return "oblique";
+            return u"oblique"_ustr;
         case css::awt::FontSlant::FontSlant_ITALIC:
         case css::awt::FontSlant::FontSlant_REVERSE_ITALIC:
-            return "italic";
+            return u"italic"_ustr;
         case css::awt::FontSlant::FontSlant_DONTKNOW:
         case css::awt::FontSlant::FontSlant_MAKE_FIXED_SIZE:
         default:
-            return "";
+            return u""_ustr;
     }
 }
 
@@ -241,7 +241,7 @@ OUString lcl_ConvertParagraphAdjust(css::style::ParagraphAdjust eParaAdjust)
 }
 }
 
-OUString AccessibleTextAttributeHelper::ConvertUnoToIAccessible2TextAttributes(
+static OUString ConvertUnoToIAccessible2TextAttributes(
     const css::uno::Sequence<css::beans::PropertyValue>& rUnoAttributes,
     IA2AttributeType eAttributeType)
 {
@@ -317,15 +317,24 @@ OUString AccessibleTextAttributeHelper::ConvertUnoToIAccessible2TextAttributes(
             }
         }
 
-        // so far, "ParaAdjust" is the only UNO text attribute that
-        // maps to an object attribute for IAccessible2 ("text-align")
-        if (sAttribute.isEmpty() && (eAttributeType & IA2AttributeType::ObjectAttributes)
-            && prop.Name == "ParaAdjust")
+        // UNO text attributes that map to IAccessible2 object attributes,
+        // see https://github.com/LinuxA11y/IAccessible2/blob/master/spec/objectattributes.md
+        if (sAttribute.isEmpty() && (eAttributeType & IA2AttributeType::ObjectAttributes))
         {
-            sAttribute = "text-align";
-            const css::style::ParagraphAdjust eParaAdjust
-                = static_cast<css::style::ParagraphAdjust>(*o3tl::doAccess<sal_Int16>(prop.Value));
-            sValue = lcl_ConvertParagraphAdjust(eParaAdjust);
+            if (prop.Name == "ParaAdjust")
+            {
+                sAttribute = "text-align";
+                const css::style::ParagraphAdjust eParaAdjust
+                    = static_cast<css::style::ParagraphAdjust>(
+                        *o3tl::doAccess<sal_Int16>(prop.Value));
+                sValue = lcl_ConvertParagraphAdjust(eParaAdjust);
+            }
+            else if (prop.Name == "ParaFirstLineIndent")
+            {
+                sAttribute = u"text-indent"_ustr;
+                const sal_Int32 nFirstLineIndent = *o3tl::doAccess<sal_Int32>(prop.Value);
+                sValue = OUString::number(nFirstLineIndent / 100) + u"mm"_ustr;
+            }
         }
 
         if (!sAttribute.isEmpty() && !sValue.isEmpty())
@@ -336,8 +345,9 @@ OUString AccessibleTextAttributeHelper::ConvertUnoToIAccessible2TextAttributes(
 }
 
 OUString AccessibleTextAttributeHelper::GetIAccessible2TextAttributes(
-    css::uno::Reference<css::accessibility::XAccessibleText> xText, IA2AttributeType eAttributeType,
-    sal_Int32 nOffset, sal_Int32& rStartOffset, sal_Int32& rEndOffset)
+    const css::uno::Reference<css::accessibility::XAccessibleText>& xText,
+    IA2AttributeType eAttributeType, sal_Int32 nOffset, sal_Int32& rStartOffset,
+    sal_Int32& rEndOffset)
 {
     assert(xText.is());
 

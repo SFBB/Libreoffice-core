@@ -26,7 +26,6 @@
 #include <svx/ImageMapInfo.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <comphelper/lok.hxx>
-#include <unotools/configmgr.hxx>
 #include <officecfg/Office/Common.hxx>
 
 #include <strings.hrc>
@@ -42,21 +41,21 @@
 
 ScDrawView::ScDrawView(
     OutputDevice* pOut,
-    ScViewData* pData )
-:   FmFormView(*pData->GetDocument().GetDrawLayer(), pOut),
-    pViewData( pData ),
+    ScViewData& rData )
+:   FmFormView(*rData.GetDocument().GetDrawLayer(), pOut),
+    rViewData( rData ),
     pDev( pOut ),
-    rDoc( pData->GetDocument() ),
-    nTab( pData->GetTabNo() ),
+    rDoc( rData.GetDocument() ),
+    nTab( rData.GetTabNo() ),
     pDropMarkObj( nullptr ),
     bInConstruct( true )
 {
     SetNegativeX(comphelper::LibreOfficeKit::isActive() && rDoc.IsLayoutRTL(nTab));
     // #i73602# Use default from the configuration
-    SetBufferedOverlayAllowed(!utl::ConfigManager::IsFuzzing() && officecfg::Office::Common::Drawinglayer::OverlayBuffer_Calc::get());
+    SetBufferedOverlayAllowed(!comphelper::IsFuzzing() && officecfg::Office::Common::Drawinglayer::OverlayBuffer_Calc::get());
 
     // #i74769#, #i75172# Use default from the configuration
-    SetBufferedOutputAllowed(!utl::ConfigManager::IsFuzzing() && officecfg::Office::Common::Drawinglayer::PaintBuffer_Calc::get());
+    SetBufferedOutputAllowed(!comphelper::IsFuzzing() && officecfg::Office::Common::Drawinglayer::PaintBuffer_Calc::get());
 
     Construct();
 }
@@ -65,23 +64,22 @@ ScDrawView::ScDrawView(
 
 void ScDrawView::SetPageAnchored()
 {
-    if( !AreObjectsMarked() )
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if( rMarkList.GetMarkCount() == 0 )
         return;
 
-    const SdrMarkList* pMark = &GetMarkedObjectList();
-    const size_t nCount = pMark->GetMarkCount();
+    const size_t nCount = rMarkList.GetMarkCount();
 
     BegUndo(ScResId(SCSTR_UNDO_PAGE_ANCHOR));
     for( size_t i=0; i<nCount; ++i )
     {
-        SdrObject* pObj = pMark->GetMark(i)->GetMarkedSdrObj();
+        SdrObject* pObj = rMarkList.GetMark(i)->GetMarkedSdrObj();
         AddUndo (std::make_unique<ScUndoAnchorData>( pObj, &rDoc, nTab ));
         ScDrawLayer::SetPageAnchored( *pObj );
     }
     EndUndo();
 
-    if ( pViewData )
-        pViewData->GetDocShell()->SetDrawModified();
+    rViewData.GetDocShell().SetDrawModified();
 
     // Remove the anchor object.
     maHdlList.RemoveAllByKind(SdrHdlKind::Anchor);
@@ -90,28 +88,25 @@ void ScDrawView::SetPageAnchored()
 
 void ScDrawView::SetCellAnchored(bool bResizeWithCell)
 {
-    if( !AreObjectsMarked() )
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if( rMarkList.GetMarkCount() == 0 )
         return;
 
-    const SdrMarkList* pMark = &GetMarkedObjectList();
-    const size_t nCount = pMark->GetMarkCount();
+    const size_t nCount = rMarkList.GetMarkCount();
 
     BegUndo(ScResId(SCSTR_UNDO_CELL_ANCHOR));
     for( size_t i=0; i<nCount; ++i )
     {
-        SdrObject* pObj = pMark->GetMark(i)->GetMarkedSdrObj();
+        SdrObject* pObj = rMarkList.GetMark(i)->GetMarkedSdrObj();
         AddUndo (std::make_unique<ScUndoAnchorData>( pObj, &rDoc, nTab ));
         ScDrawLayer::SetCellAnchoredFromPosition(*pObj, rDoc, nTab, bResizeWithCell);
     }
     EndUndo();
 
-    if ( pViewData )
-    {
-        pViewData->GetDocShell()->SetDrawModified();
+    rViewData.GetDocShell().SetDrawModified();
 
-        // Set the anchor object.
-        AddCustomHdl();
-    }
+    // Set the anchor object.
+    AddCustomHdl();
 }
 
 ScAnchorType ScDrawView::GetAnchorType() const
@@ -119,13 +114,13 @@ ScAnchorType ScDrawView::GetAnchorType() const
     bool bPage = false;
     bool bCell = false;
     bool bCellResize = false;
-    if( AreObjectsMarked() )
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if( rMarkList.GetMarkCount() != 0 )
     {
-        const SdrMarkList* pMark = &GetMarkedObjectList();
-        const size_t nCount = pMark->GetMarkCount();
+        const size_t nCount = rMarkList.GetMarkCount();
         for( size_t i=0; i<nCount; ++i )
         {
-            const SdrObject* pObj = pMark->GetMark(i)->GetMarkedSdrObj();
+            const SdrObject* pObj = rMarkList.GetMark(i)->GetMarkedSdrObj();
             const ScAnchorType aAnchorType = ScDrawLayer::GetAnchorType( *pObj );
             if( aAnchorType == SCA_CELL )
                 bCell =true;
@@ -208,8 +203,9 @@ void ScDrawView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
         adjustAnchoredPosition(*pSdrHint, rDoc, nTab);
         FmFormView::Notify( rBC,rHint );
     }
-    else if (auto pDeletedHint = dynamic_cast<const ScTabDeletedHint*>(&rHint))                        // Sheet has been deleted
+    else if (rHint.GetId() == SfxHintId::ScTabDeleted) // Sheet has been deleted
     {
+        auto pDeletedHint = static_cast<const ScTabDeletedHint*>(&rHint);
         SCTAB nDelTab = pDeletedHint->GetTab();
         if (ValidTab(nDelTab))
         {
@@ -218,8 +214,9 @@ void ScDrawView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
                 HideSdrPage();
         }
     }
-    else if (auto pChangedHint = dynamic_cast<const ScTabSizeChangedHint*>(&rHint))               // Size has been changed
+    else if (rHint.GetId() == SfxHintId::ScTabSizeChanged) // Size has been changed
     {
+        auto pChangedHint = static_cast<const ScTabSizeChangedHint*>(&rHint);
         if ( nTab == pChangedHint->GetTab() )
             UpdateWorkArea();
     }
@@ -229,9 +226,8 @@ void ScDrawView::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 
 void ScDrawView::UpdateIMap( SdrObject* pObj )
 {
-    if ( !(pViewData &&
-         pViewData->GetViewShell()->GetViewFrame().HasChildWindow( ScIMapChildWindowId() ) &&
-         pObj && ( dynamic_cast<const SdrGrafObj*>( pObj) != nullptr || dynamic_cast<const SdrOle2Obj*>( pObj) != nullptr )) )
+    if ( rViewData.GetViewShell()->GetViewFrame().HasChildWindow( ScIMapChildWindowId() ) &&
+         pObj && ( dynamic_cast<const SdrGrafObj*>( pObj) != nullptr || dynamic_cast<const SdrOle2Obj*>( pObj) != nullptr ) )
         return;
 
     Graphic     aGraphic;

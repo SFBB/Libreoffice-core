@@ -114,7 +114,7 @@ bool mentions(QualType type1, QualType type2)
     }
     if (auto const t2 = t1->getAs<MemberPointerType>())
     {
-        if (t2->getClass()->getUnqualifiedDesugaredType() == type2.getTypePtr())
+        if (compat::getClass(t2)->getUnqualifiedDesugaredType() == type2.getTypePtr())
         {
             return true;
         }
@@ -344,7 +344,7 @@ private:
                 }
                 if (isa<TagDecl>(*d) || isa<ClassTemplateDecl>(*d))
                 {
-                    if (auto const d1 = dyn_cast<RecordDecl>(*d))
+                    if (auto const d1 = dyn_cast<CXXRecordDecl>(*d))
                     {
                         if (d1->isInjectedClassName())
                         {

@@ -44,11 +44,13 @@
 #include <IDocumentUndoRedo.hxx>
 #include <IDocumentFieldsAccess.hxx>
 #include <IDocumentLayoutAccess.hxx>
+#include <IDocumentState.hxx>
 #include <docary.hxx>
 #include <ndtxt.hxx>
 #include <paratr.hxx>
 #include <cellatr.hxx>
 #include <fldbas.hxx>
+#include <docufld.hxx>
 #include <pam.hxx>
 #include <swtable.hxx>
 #include <UndoCore.hxx>
@@ -57,6 +59,7 @@
 #include <strings.hrc>
 #include <bookmark.hxx>
 #include <frameformats.hxx>
+
 #include <memory>
 #include <utility>
 
@@ -162,9 +165,9 @@ void SwHistorySetFormat::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterEndElement(pWriter);
 }
 
-void SwHistorySetFormat::SetInDoc( SwDoc* pDoc, bool bTmpSet )
+void SwHistorySetFormat::SetInDoc( SwDoc& rDoc, bool bTmpSet )
 {
-    SwNode * pNode = pDoc->GetNodes()[ m_nNodeIndex ];
+    SwNode * pNode = rDoc.GetNodes()[ m_nNodeIndex ];
     if ( pNode->IsContentNode() )
     {
         static_cast<SwContentNode*>(pNode)->SetAttr( *m_pAttr );
@@ -205,9 +208,9 @@ SwHistoryResetFormat::SwHistoryResetFormat(const SfxPoolItem* pFormatHt, SwNodeO
 {
 }
 
-void SwHistoryResetFormat::SetInDoc( SwDoc* pDoc, bool )
+void SwHistoryResetFormat::SetInDoc( SwDoc& rDoc, bool )
 {
-    SwNode * pNode = pDoc->GetNodes()[ m_nNodeIndex ];
+    SwNode * pNode = rDoc.GetNodes()[ m_nNodeIndex ];
     if ( pNode->IsContentNode() )
     {
         static_cast<SwContentNode*>(pNode)->ResetAttr( m_nWhich );
@@ -247,7 +250,7 @@ SwHistorySetText::~SwHistorySetText()
 {
 }
 
-void SwHistorySetText::SetInDoc( SwDoc* pDoc, bool )
+void SwHistorySetText::SetInDoc( SwDoc& rDoc, bool )
 {
     if (!m_pAttr)
         return;
@@ -255,11 +258,11 @@ void SwHistorySetText::SetInDoc( SwDoc* pDoc, bool )
     if ( RES_TXTATR_CHARFMT == m_pAttr->Which() )
     {
         // ask the Doc if the CharFormat still exists
-        if (!pDoc->GetCharFormats()->ContainsFormat(static_cast<SwFormatCharFormat&>(*m_pAttr).GetCharFormat()))
+        if (!rDoc.GetCharFormats()->ContainsFormat(static_cast<SwFormatCharFormat&>(*m_pAttr).GetCharFormat()))
             return; // do not set, format does not exist
     }
 
-    SwTextNode * pTextNd = pDoc->GetNodes()[ m_nNodeIndex ]->GetTextNode();
+    SwTextNode * pTextNd = rDoc.GetNodes()[ m_nNodeIndex ]->GetTextNode();
     OSL_ENSURE( pTextNd, "SwHistorySetText::SetInDoc: not a TextNode" );
 
     if ( !pTextNd )
@@ -278,6 +281,25 @@ void SwHistorySetText::SetInDoc( SwDoc* pDoc, bool )
     {
         pAttr->SetFormatIgnoreEnd(true);
     }
+}
+
+void SwHistorySetText::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwHistorySetText"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("node-index"),
+                                      BAD_CAST(OString::number(sal_Int32(m_nNodeIndex)).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("start"),
+                                      BAD_CAST(OString::number(sal_Int32(m_nStart)).getStr()));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("end"),
+                                      BAD_CAST(OString::number(sal_Int32(m_nEnd)).getStr()));
+    SwHistoryHint::dumpAsXml(pWriter);
+
+    if (m_pAttr)
+    {
+        m_pAttr->dumpAsXml(pWriter);
+    }
+
+    (void)xmlTextWriterEndElement(pWriter);
 }
 
 SwHistorySetTextField::SwHistorySetTextField( const SwTextField* pTextField, SwNodeOffset nNodePos )
@@ -310,7 +332,7 @@ SwHistorySetTextField::~SwHistorySetTextField()
 {
 }
 
-void SwHistorySetTextField::SetInDoc( SwDoc* pDoc, bool )
+void SwHistorySetTextField::SetInDoc( SwDoc& rDoc, bool )
 {
     if (!m_pField)
         return;
@@ -318,23 +340,33 @@ void SwHistorySetTextField::SetInDoc( SwDoc* pDoc, bool )
     SwFieldType* pNewFieldType = m_pFieldType.get();
     if ( !pNewFieldType )
     {
-        pNewFieldType = pDoc->getIDocumentFieldsAccess().GetSysFieldType( m_nFieldWhich );
+        pNewFieldType = rDoc.getIDocumentFieldsAccess().GetSysFieldType( m_nFieldWhich );
     }
     else
     {
         // register type with the document
-        pNewFieldType = pDoc->getIDocumentFieldsAccess().InsertFieldType( *m_pFieldType );
+        pNewFieldType = rDoc.getIDocumentFieldsAccess().InsertFieldType( *m_pFieldType );
     }
 
     m_pField->GetField()->ChgTyp( pNewFieldType ); // change field type
 
-    SwTextNode * pTextNd = pDoc->GetNodes()[ m_nNodeIndex ]->GetTextNode();
-    OSL_ENSURE( pTextNd, "SwHistorySetTextField: no TextNode" );
+    SwTextNode * pTextNd = rDoc.GetNodes()[ m_nNodeIndex ]->GetTextNode();
+    assert(pTextNd);
 
     if ( pTextNd )
     {
         pTextNd->InsertItem( *m_pField, m_nPos, m_nPos,
                     SetAttrMode::NOTXTATRCHR );
+#if ENABLE_YRS
+        if (m_nFieldWhich == SwFieldIds::Postit)
+        {
+            SwPosition const pos{*pTextNd, m_nPos};
+            // do use the same comment id because it's a ymap key!
+            OString const commentId{static_cast<SwPostItField const*>(m_pField->GetField())->GetYrsCommentId()};
+            assert(!commentId.isEmpty());
+            pTextNd->GetDoc().getIDocumentState().YrsAddCommentImpl(pos, commentId);
+        }
+#endif
     }
 }
 
@@ -347,9 +379,9 @@ SwHistorySetRefMark::SwHistorySetRefMark( const SwTextRefMark* pTextHt, SwNodeOf
 {
 }
 
-void SwHistorySetRefMark::SetInDoc( SwDoc* pDoc, bool )
+void SwHistorySetRefMark::SetInDoc( SwDoc& rDoc, bool )
 {
-    SwTextNode * pTextNd = pDoc->GetNodes()[ m_nNodeIndex ]->GetTextNode();
+    SwTextNode * pTextNd = rDoc.GetNodes()[ m_nNodeIndex ]->GetTextNode();
     OSL_ENSURE( pTextNd, "SwHistorySetRefMark: no TextNode" );
     if ( !pTextNd )
         return;
@@ -399,14 +431,14 @@ SwTOXType* SwHistorySetTOXMark::GetSwTOXType(SwDoc& rDoc, TOXTypes eTOXTypes, co
     return pToxType;
 }
 
-void SwHistorySetTOXMark::SetInDoc( SwDoc* pDoc, bool )
+void SwHistorySetTOXMark::SetInDoc( SwDoc& rDoc, bool )
 {
-    SwTextNode * pTextNd = pDoc->GetNodes()[ m_nNodeIndex ]->GetTextNode();
+    SwTextNode * pTextNd = rDoc.GetNodes()[ m_nNodeIndex ]->GetTextNode();
     OSL_ENSURE( pTextNd, "SwHistorySetTOXMark: no TextNode" );
     if ( !pTextNd )
         return;
 
-    SwTOXType* pToxType = GetSwTOXType(*pDoc, m_eTOXTypes, m_TOXName);
+    SwTOXType* pToxType = GetSwTOXType(rDoc, m_eTOXTypes, m_TOXName);
 
     SwTOXMark aNew( m_TOXMark );
     aNew.RegisterToTOXType( *pToxType );
@@ -435,9 +467,9 @@ SwHistoryResetText::SwHistoryResetText( sal_uInt16 nWhich,
 {
 }
 
-void SwHistoryResetText::SetInDoc( SwDoc* pDoc, bool )
+void SwHistoryResetText::SetInDoc( SwDoc& rDoc, bool )
 {
-    SwTextNode * pTextNd = pDoc->GetNodes()[ m_nNodeIndex ]->GetTextNode();
+    SwTextNode * pTextNd = rDoc.GetNodes()[ m_nNodeIndex ]->GetTextNode();
     OSL_ENSURE( pTextNd, "SwHistoryResetText: no TextNode" );
     if ( pTextNd )
     {
@@ -490,9 +522,9 @@ SwHistorySetFootnote::~SwHistorySetFootnote()
 {
 }
 
-void SwHistorySetFootnote::SetInDoc( SwDoc* pDoc, bool )
+void SwHistorySetFootnote::SetInDoc( SwDoc& rDoc, bool )
 {
-    SwTextNode * pTextNd = pDoc->GetNodes()[ m_nNodeIndex ]->GetTextNode();
+    SwTextNode * pTextNd = rDoc.GetNodes()[ m_nNodeIndex ]->GetTextNode();
     OSL_ENSURE( pTextNd, "SwHistorySetFootnote: no TextNode" );
     if ( !pTextNd )
         return;
@@ -500,23 +532,23 @@ void SwHistorySetFootnote::SetInDoc( SwDoc* pDoc, bool )
     if (m_pUndo)
     {
         // set the footnote in the TextNode
-        SwFormatFootnote aTemp( m_bEndNote );
-        SwFormatFootnote& rNew = const_cast<SwFormatFootnote&>(
-                pDoc->GetAttrPool().DirectPutItemInPool(aTemp) );
+        SwFormatFootnote aNew( m_bEndNote );
         if ( !m_FootnoteNumber.isEmpty() )
         {
-            rNew.SetNumStr( m_FootnoteNumber );
+            aNew.SetNumStr( m_FootnoteNumber );
         }
-        SwTextFootnote* pTextFootnote = new SwTextFootnote( rNew, m_nStart );
+        SwTextFootnote* pTextFootnote = new SwTextFootnote(
+            SfxPoolItemHolder(rDoc.GetAttrPool(), &aNew),
+            m_nStart );
 
         // create the section of the Footnote
         SwNodeIndex aIdx( *pTextNd );
-        m_pUndo->RestoreSection( pDoc, &aIdx, SwFootnoteStartNode );
+        m_pUndo->RestoreSection( rDoc, &aIdx, SwFootnoteStartNode );
         pTextFootnote->SetStartNode( &aIdx );
         if ( m_pUndo->GetHistory() )
         {
             // create frames only now
-            m_pUndo->GetHistory()->Rollback( pDoc );
+            m_pUndo->GetHistory()->Rollback( rDoc );
         }
 
         pTextNd->InsertHint( pTextFootnote );
@@ -546,9 +578,9 @@ SwHistoryChangeFormatColl::SwHistoryChangeFormatColl( SwFormatColl* pFormatColl,
 {
 }
 
-void SwHistoryChangeFormatColl::SetInDoc( SwDoc* pDoc, bool )
+void SwHistoryChangeFormatColl::SetInDoc( SwDoc& rDoc, bool )
 {
-    SwContentNode * pContentNd = pDoc->GetNodes()[ m_nNodeIndex ]->GetContentNode();
+    SwContentNode * pContentNd = rDoc.GetNodes()[ m_nNodeIndex ]->GetContentNode();
     OSL_ENSURE( pContentNd, "SwHistoryChangeFormatColl: no ContentNode" );
 
     // before setting the format, check if it is still available in the
@@ -558,12 +590,12 @@ void SwHistoryChangeFormatColl::SetInDoc( SwDoc* pDoc, bool )
 
     if ( SwNodeType::Text == m_nNodeType )
     {
-        if (pDoc->GetTextFormatColls()->IsAlive(static_cast<SwTextFormatColl *>(m_pColl)))
+        if (rDoc.GetTextFormatColls()->IsAlive(static_cast<SwTextFormatColl *>(m_pColl)))
         {
             pContentNd->ChgFormatColl( m_pColl );
         }
     }
-    else if (pDoc->GetGrfFormatColls()->IsAlive(static_cast<SwGrfFormatColl *>(m_pColl)))
+    else if (rDoc.GetGrfFormatColls()->IsAlive(static_cast<SwGrfFormatColl *>(m_pColl)))
     {
         pContentNd->ChgFormatColl( m_pColl );
     }
@@ -581,11 +613,11 @@ SwHistoryTextFlyCnt::~SwHistoryTextFlyCnt()
 {
 }
 
-void SwHistoryTextFlyCnt::SetInDoc( SwDoc* pDoc, bool )
+void SwHistoryTextFlyCnt::SetInDoc( SwDoc& rDoc, bool )
 {
-    ::sw::IShellCursorSupplier *const pISCS(pDoc->GetIShellCursorSupplier());
+    ::sw::IShellCursorSupplier *const pISCS(rDoc.GetIShellCursorSupplier());
     assert(pISCS);
-    ::sw::UndoRedoContext context(*pDoc, *pISCS);
+    ::sw::UndoRedoContext context(rDoc, *pISCS);
     m_pUndo->UndoImpl(context);
 }
 
@@ -603,7 +635,7 @@ void SwHistoryTextFlyCnt::dumpAsXml(xmlTextWriterPtr pWriter) const
 }
 
 SwHistoryBookmark::SwHistoryBookmark(
-    const ::sw::mark::IMark& rBkmk,
+    const ::sw::mark::MarkBase& rBkmk,
     bool bSavePos,
     bool bSaveOtherPos)
     : SwHistoryHint(HSTRY_BOOKMARK)
@@ -622,7 +654,7 @@ SwHistoryBookmark::SwHistoryBookmark(
     , m_bHadOtherPos(rBkmk.IsExpanded())
     , m_eBkmkType(IDocumentMarkAccess::GetType(rBkmk))
 {
-    const ::sw::mark::IBookmark* const pBookmark = dynamic_cast< const ::sw::mark::IBookmark* >(&rBkmk);
+    const ::sw::mark::Bookmark* const pBookmark = dynamic_cast< const ::sw::mark::Bookmark* >(&rBkmk);
     if(!pBookmark)
         return;
 
@@ -630,23 +662,17 @@ SwHistoryBookmark::SwHistoryBookmark(
     m_aShortName = pBookmark->GetShortName();
     m_bHidden = pBookmark->IsHidden();
     m_aHideCondition = pBookmark->GetHideCondition();
-
-    ::sfx2::Metadatable const*const pMetadatable(
-            dynamic_cast< ::sfx2::Metadatable const* >(pBookmark));
-    if (pMetadatable)
-    {
-        m_pMetadataUndo = pMetadatable->CreateUndo();
-    }
+    m_pMetadataUndo = pBookmark->CreateUndo();
 }
 
-void SwHistoryBookmark::SetInDoc( SwDoc* pDoc, bool )
+void SwHistoryBookmark::SetInDoc( SwDoc& rDoc, bool )
 {
-    ::sw::UndoGuard const undoGuard(pDoc->GetIDocumentUndoRedo());
+    ::sw::UndoGuard const undoGuard(rDoc.GetIDocumentUndoRedo());
 
-    SwNodes& rNds = pDoc->GetNodes();
-    IDocumentMarkAccess* pMarkAccess = pDoc->getIDocumentMarkAccess();
+    SwNodes& rNds = rDoc.GetNodes();
+    IDocumentMarkAccess* pMarkAccess = rDoc.getIDocumentMarkAccess();
     std::optional<SwPaM> oPam;
-    ::sw::mark::IMark* pMark = nullptr;
+    ::sw::mark::MarkBase* pMark = nullptr;
 
     // now the situation is that m_bSavePos and m_bSaveOtherPos don't determine
     // whether the mark was deleted
@@ -686,8 +712,8 @@ void SwHistoryBookmark::SetInDoc( SwDoc* pDoc, bool )
     {
         pMarkAccess->deleteMark( pMark );
     }
-    ::sw::mark::IBookmark* const pBookmark =
-        dynamic_cast<::sw::mark::IBookmark*>(
+    ::sw::mark::Bookmark* const pBookmark =
+        dynamic_cast<::sw::mark::Bookmark*>(
             pMarkAccess->makeMark(*oPam, m_aName, m_eBkmkType, sw::mark::InsertMode::New));
     if ( pBookmark == nullptr )
         return;
@@ -698,25 +724,17 @@ void SwHistoryBookmark::SetInDoc( SwDoc* pDoc, bool )
     pBookmark->SetHideCondition(m_aHideCondition);
 
     if (m_pMetadataUndo)
-    {
-        ::sfx2::Metadatable * const pMeta(
-            dynamic_cast< ::sfx2::Metadatable* >(pBookmark));
-        OSL_ENSURE(pMeta, "metadata undo, but not metadatable?");
-        if (pMeta)
-        {
-            pMeta->RestoreMetadata(m_pMetadataUndo);
-        }
-    }
+        pBookmark->RestoreMetadata(m_pMetadataUndo);
 }
 
-bool SwHistoryBookmark::IsEqualBookmark(const ::sw::mark::IMark& rBkmk)
+bool SwHistoryBookmark::IsEqualBookmark(const ::sw::mark::MarkBase& rBkmk)
 {
     return m_nNode == rBkmk.GetMarkPos().GetNodeIndex()
         && m_nContent == rBkmk.GetMarkPos().GetContentIndex()
         && m_aName == rBkmk.GetName();
 }
 
-SwHistoryNoTextFieldmark::SwHistoryNoTextFieldmark(const ::sw::mark::IFieldmark& rFieldMark)
+SwHistoryNoTextFieldmark::SwHistoryNoTextFieldmark(const ::sw::mark::Fieldmark& rFieldMark)
     : SwHistoryHint(HSTRY_NOTEXTFIELDMARK)
     , m_sType(rFieldMark.GetFieldname())
     , m_nNode(rFieldMark.GetMarkStart().GetNodeIndex())
@@ -724,11 +742,11 @@ SwHistoryNoTextFieldmark::SwHistoryNoTextFieldmark(const ::sw::mark::IFieldmark&
 {
 }
 
-void SwHistoryNoTextFieldmark::SetInDoc(SwDoc* pDoc, bool)
+void SwHistoryNoTextFieldmark::SetInDoc(SwDoc& rDoc, bool)
 {
-    ::sw::UndoGuard const undoGuard(pDoc->GetIDocumentUndoRedo());
+    ::sw::UndoGuard const undoGuard(rDoc.GetIDocumentUndoRedo());
 
-    SwNodes& rNds = pDoc->GetNodes();
+    SwNodes& rNds = rDoc.GetNodes();
     std::optional<SwPaM> pPam;
 
     const SwContentNode* pContentNd = rNds[m_nNode]->GetContentNode();
@@ -737,8 +755,8 @@ void SwHistoryNoTextFieldmark::SetInDoc(SwDoc* pDoc, bool)
 
     if (pPam)
     {
-        IDocumentMarkAccess* pMarkAccess = pDoc->getIDocumentMarkAccess();
-        pMarkAccess->makeNoTextFieldBookmark(*pPam, OUString(), m_sType);
+        IDocumentMarkAccess* pMarkAccess = rDoc.getIDocumentMarkAccess();
+        pMarkAccess->makeNoTextFieldBookmark(*pPam, SwMarkName(), m_sType);
     }
 }
 
@@ -760,7 +778,7 @@ void SwHistoryNoTextFieldmark::ResetInDoc(SwDoc& rDoc)
     }
 }
 
-SwHistoryTextFieldmark::SwHistoryTextFieldmark(const ::sw::mark::IFieldmark& rFieldMark)
+SwHistoryTextFieldmark::SwHistoryTextFieldmark(const ::sw::mark::Fieldmark& rFieldMark)
     : SwHistoryHint(HSTRY_TEXTFIELDMARK)
     , m_sName(rFieldMark.GetName())
     , m_sType(rFieldMark.GetFieldname())
@@ -774,11 +792,11 @@ SwHistoryTextFieldmark::SwHistoryTextFieldmark(const ::sw::mark::IFieldmark& rFi
     m_nSepContent = sepPos.GetContentIndex();
 }
 
-void SwHistoryTextFieldmark::SetInDoc(SwDoc* pDoc, bool)
+void SwHistoryTextFieldmark::SetInDoc(SwDoc& rDoc, bool)
 {
-    ::sw::UndoGuard const undoGuard(pDoc->GetIDocumentUndoRedo());
+    ::sw::UndoGuard const undoGuard(rDoc.GetIDocumentUndoRedo());
 
-    SwNodes& rNds = pDoc->GetNodes();
+    SwNodes& rNds = rDoc.GetNodes();
 
     assert(rNds[m_nStartNode]->IsContentNode());
     assert(rNds[m_nEndNode]->IsContentNode());
@@ -796,7 +814,7 @@ void SwHistoryTextFieldmark::SetInDoc(SwDoc* pDoc, bool)
     SwPosition const sepPos(*rNds[m_nSepNode]->GetContentNode(),
             m_nStartNode == m_nSepNode ? (m_nSepContent - 1) : m_nSepContent);
 
-    IDocumentMarkAccess & rMarksAccess(*pDoc->getIDocumentMarkAccess());
+    IDocumentMarkAccess & rMarksAccess(*rDoc.getIDocumentMarkAccess());
     rMarksAccess.makeFieldBookmark(pam, m_sName, m_sType, &sepPos);
 }
 
@@ -816,81 +834,111 @@ void SwHistoryTextFieldmark::ResetInDoc(SwDoc& rDoc)
     rMarksAccess.deleteFieldmarkAt(pos);
 }
 
-SwHistorySetAttrSet::SwHistorySetAttrSet( const SfxItemSet& rSet,
-                        SwNodeOffset nNodePos, const o3tl::sorted_vector<sal_uInt16> &rSetArr )
-    : SwHistoryHint( HSTRY_SETATTRSET )
-    , m_OldSet( rSet )
-    , m_ResetArray( 0, 4 )
-    , m_nNodeIndex( nNodePos )
+SwHistorySetAttrSet::SwHistorySetAttrSet(
+    const SfxItemSet& rSet,
+    SwNodeOffset nNodePos,
+    const o3tl::sorted_vector<sal_uInt16> &rSetArr)
+: SwHistoryHint(HSTRY_SETATTRSET)
+, m_OldSet(*rSet.GetPool(), rSet.GetRanges())
+, m_ResetArray(0, 4)
+, m_nNodeIndex(nNodePos)
 {
-    SfxItemIter aIter( m_OldSet ), aOrigIter( rSet );
-    const SfxPoolItem* pItem = aIter.GetCurItem(),
-                     * pOrigItem = aOrigIter.GetCurItem();
-    while (pItem && pOrigItem)
+    // ITEM: Analyzed this one, it originally iterated using two SfxItemIter at the
+    // same time to iterate rSet and m_OldSet. m_OldSet was copied from rSet before
+    // in the var init above. It then *removed* Items again or manipulated them.
+    // The problem with that is that this implies that the two iterators will advance
+    // on the same WhichIDs step by step. Even after copying and with the former
+    // organization of the Items in ItemSet as fixed array of pointers that is a
+    // 'wild' assumption, besides that deleting Items while a iterator is used is
+    // bad in general, too.
+    // I re-designed this to iterate over the source ItemSet (rSet) and add Items
+    // as needed to the target ItemSet m_OldSet. This is tricky since some NonShareable
+    // 'special' Items get special treatment.
+    for (SfxItemIter aIter(rSet); !aIter.IsAtEnd(); aIter.NextItem())
     {
-        if( !rSetArr.count( pOrigItem->Which() ))
+        // check if Item is intended to be contained
+        if (rSetArr.count(aIter.GetCurWhich()))
         {
-            m_ResetArray.push_back( pOrigItem->Which() );
-            m_OldSet.ClearItem( pOrigItem->Which() );
+            // do include item, but take care of some 'special' cases
+            switch (aIter.GetCurWhich())
+            {
+                case RES_PAGEDESC:
+                {
+                    // SwFormatPageDesc - NonShareable Item
+                    SwFormatPageDesc* pNew(new SwFormatPageDesc(*static_cast<const SwFormatPageDesc*>(aIter.GetCurItem())));
+                    pNew->ChgDefinedIn(nullptr);
+                    m_OldSet.Put(std::unique_ptr<SwFormatPageDesc>(pNew));
+                    break;
+                }
+                case RES_PARATR_DROP:
+                {
+                    // SwFormatDrop - NonShareable Item
+                    SwFormatDrop* pNew(new SwFormatDrop(*static_cast<const SwFormatDrop*>(aIter.GetCurItem())));
+                    pNew->ChgDefinedIn(nullptr);
+                    m_OldSet.Put(std::unique_ptr<SwFormatDrop>(pNew));
+                    break;
+                }
+                case RES_BOXATR_FORMULA:
+                {
+                    // When a formula is set, never save the value. It
+                    // possibly must be recalculated!
+                    // Save formulas always in plain text
+                    // RES_BOXATR_FORMULA: SwTableBoxFormula - NonShareable Item
+                    // CAUTION: also is connected to RES_BOXATR_VALUE which was hard deleted before
+                    SwTableBoxFormula* pNew(static_cast<const SwTableBoxFormula*>(aIter.GetCurItem())->Clone());
+
+                    if (pNew->IsIntrnlName())
+                    {
+                        const SwTableBoxFormula& rOld(rSet.Get(RES_BOXATR_FORMULA));
+                        const SwNode* pNd(rOld.GetNodeOfFormula());
+
+                        if (nullptr != pNd)
+                        {
+                            const SwTableNode* pTableNode(pNd->FindTableNode());
+
+                            if(nullptr != pTableNode)
+                            {
+                                auto pCpyTable = const_cast<SwTable*>(&pTableNode->GetTable());
+                                pCpyTable->SwitchFormulasToExternalRepresentation();
+                                pNew->ChgDefinedIn(rOld.GetDefinedIn());
+                                pNew->PtrToBoxNm(pCpyTable);
+                            }
+                        }
+                    }
+
+                    pNew->ChgDefinedIn(nullptr);
+                    m_OldSet.Put(std::unique_ptr<SwTableBoxFormula>(pNew));
+                    break;
+                }
+                case RES_BOXATR_VALUE:
+                {
+                    // If RES_BOXATR_FORMULA is set, do *not* set RES_BOXATR_VALUE - SwTableBoxValue - that IS a Shareable Item (!)
+                    // If RES_BOXATR_FORMULA is not set, also no reason to set RES_BOXATR_VALUE
+                    // -> so just ignore it here (?)
+                    break;
+                }
+                default:
+                {
+                    // all other Items: add to m_OldSet
+                    m_OldSet.Put(*aIter.GetCurItem());
+                    break;
+                }
+            }
         }
         else
         {
-            switch ( pItem->Which() )
-            {
-                case RES_PAGEDESC:
-                    static_cast<SwFormatPageDesc*>(
-                        const_cast<SfxPoolItem*>(pItem))->ChgDefinedIn( nullptr );
-                    break;
-
-                case RES_PARATR_DROP:
-                    static_cast<SwFormatDrop*>(
-                        const_cast<SfxPoolItem*>(pItem))->ChgDefinedIn(nullptr);
-                    break;
-
-                case RES_BOXATR_FORMULA:
-                    {
-                        // When a formula is set, never save the value. It
-                        // possibly must be recalculated!
-                        // Save formulas always in plain text
-                        m_OldSet.ClearItem( RES_BOXATR_VALUE );
-
-                        SwTableBoxFormula& rNew =
-                            *static_cast<SwTableBoxFormula*>(
-                                const_cast<SfxPoolItem*>(pItem));
-                        if ( rNew.IsIntrnlName() )
-                        {
-                            const SwTableBoxFormula& rOld =
-                                        rSet.Get( RES_BOXATR_FORMULA );
-                            const SwNode* pNd = rOld.GetNodeOfFormula();
-                            if ( pNd )
-                            {
-                                const SwTableNode* pTableNode
-                                    = pNd->FindTableNode();
-                                if(pTableNode)
-                                {
-                                    auto pCpyTable = const_cast<SwTable*>(&pTableNode->GetTable());
-                                    pCpyTable->SwitchFormulasToExternalRepresentation();
-                                    rNew.ChgDefinedIn(rOld.GetDefinedIn());
-                                    rNew.PtrToBoxNm(pCpyTable);
-                                }
-                            }
-                        }
-                        rNew.ChgDefinedIn( nullptr );
-                    }
-                    break;
-            }
+            // do not include item, additionally remember in
+            // m_ResetArray
+            m_ResetArray.push_back(aIter.GetCurWhich());
         }
-
-        pItem = aIter.NextItem();
-        pOrigItem = aOrigIter.NextItem();
     }
 }
 
-void SwHistorySetAttrSet::SetInDoc( SwDoc* pDoc, bool )
+void SwHistorySetAttrSet::SetInDoc( SwDoc& rDoc, bool )
 {
-    ::sw::UndoGuard const undoGuard(pDoc->GetIDocumentUndoRedo());
+    ::sw::UndoGuard const undoGuard(rDoc.GetIDocumentUndoRedo());
 
-    SwNode * pNode = pDoc->GetNodes()[ m_nNodeIndex ];
+    SwNode * pNode = rDoc.GetNodes()[ m_nNodeIndex ];
     if ( pNode->IsContentNode() )
     {
         static_cast<SwContentNode*>(pNode)->SetAttr( m_OldSet );
@@ -921,18 +969,18 @@ SwHistoryChangeFlyAnchor::SwHistoryChangeFlyAnchor(sw::SpzFrameFormat& rFormat)
 {
 }
 
-void SwHistoryChangeFlyAnchor::SetInDoc( SwDoc* pDoc, bool )
+void SwHistoryChangeFlyAnchor::SetInDoc( SwDoc& rDoc, bool )
 {
-    ::sw::UndoGuard const undoGuard(pDoc->GetIDocumentUndoRedo());
+    ::sw::UndoGuard const undoGuard(rDoc.GetIDocumentUndoRedo());
 
     // One would expect m_rFormat to only contain FlyFormats, given the name of
     // this class, but apparently it is also used for DrawFormats.
-    if (!pDoc->GetSpzFrameFormats()->IsAlive(&m_rFormat)) // Format does still exist
+    if (!rDoc.GetSpzFrameFormats()->IsAlive(&m_rFormat)) // Format does still exist
         return;
 
     SwFormatAnchor aTmp( m_rFormat.GetAnchor() );
 
-    SwNode* pNd = pDoc->GetNodes()[ m_nOldNodeIndex ];
+    SwNode* pNd = rDoc.GetNodes()[ m_nOldNodeIndex ];
     SwContentNode* pCNd = pNd->GetContentNode();
     SwPosition aPos( *pNd );
     if ( COMPLETE_STRING != m_nOldContentIndex )
@@ -940,7 +988,7 @@ void SwHistoryChangeFlyAnchor::SetInDoc( SwDoc* pDoc, bool )
     aTmp.SetAnchor( &aPos );
 
     // so the Layout does not get confused
-    if (!pCNd->getLayoutFrame(pDoc->getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, nullptr))
+    if (!pCNd->getLayoutFrame(rDoc.getIDocumentLayoutAccess().GetCurrentLayout(), nullptr, nullptr))
     {
         m_rFormat.DelFrames();
     }
@@ -957,15 +1005,15 @@ SwHistoryChangeFlyChain::SwHistoryChangeFlyChain( SwFlyFrameFormat& rFormat,
 {
 }
 
-void SwHistoryChangeFlyChain::SetInDoc( SwDoc* pDoc, bool )
+void SwHistoryChangeFlyChain::SetInDoc( SwDoc& rDoc, bool )
 {
-    if (!pDoc->GetSpzFrameFormats()->IsAlive(m_pFlyFormat))
+    if (!rDoc.GetSpzFrameFormats()->IsAlive(m_pFlyFormat))
         return;
 
     SwFormatChain aChain;
 
     if (m_pPrevFormat &&
-        pDoc->GetSpzFrameFormats()->IsAlive(m_pPrevFormat))
+        rDoc.GetSpzFrameFormats()->IsAlive(m_pPrevFormat))
     {
         aChain.SetPrev( m_pPrevFormat );
         SwFormatChain aTmp( m_pPrevFormat->GetChain() );
@@ -974,7 +1022,7 @@ void SwHistoryChangeFlyChain::SetInDoc( SwDoc* pDoc, bool )
     }
 
     if (m_pNextFormat &&
-        pDoc->GetSpzFrameFormats()->IsAlive(m_pNextFormat))
+        rDoc.GetSpzFrameFormats()->IsAlive(m_pNextFormat))
     {
         aChain.SetNext( m_pNextFormat );
         SwFormatChain aTmp( m_pNextFormat->GetChain() );
@@ -990,15 +1038,15 @@ void SwHistoryChangeFlyChain::SetInDoc( SwDoc* pDoc, bool )
 
 // -> #i27615#
 SwHistoryChangeCharFormat::SwHistoryChangeCharFormat(SfxItemSet aSet,
-                                     OUString sFormat)
+                                     UIName sFormat)
     : SwHistoryHint(HSTRY_CHGCHARFMT)
     , m_OldSet(std::move(aSet)), m_Format(std::move(sFormat))
 {
 }
 
-void SwHistoryChangeCharFormat::SetInDoc(SwDoc * pDoc, bool )
+void SwHistoryChangeCharFormat::SetInDoc(SwDoc& rDoc, bool )
 {
-    SwCharFormat * pCharFormat = pDoc->FindCharFormatByName(m_Format);
+    SwCharFormat * pCharFormat = rDoc.FindCharFormatByName(m_Format);
 
     if (pCharFormat)
     {
@@ -1106,7 +1154,7 @@ void SwHistory::AddColl(SwFormatColl *const pColl, SwNodeOffset const nNodeIdx,
     m_SwpHstry.push_back( std::move(pHt) );
 }
 
-void SwHistory::AddIMark(const ::sw::mark::IMark& rBkmk,
+void SwHistory::AddIMark(const ::sw::mark::MarkBase& rBkmk,
         bool const bSavePos, bool const bSaveOtherPos)
 {
     OSL_ENSURE( !m_nEndDiff, "History was not deleted after REDO" );
@@ -1118,12 +1166,12 @@ void SwHistory::AddIMark(const ::sw::mark::IMark& rBkmk,
         case IDocumentMarkAccess::MarkType::TEXT_FIELDMARK:
         case IDocumentMarkAccess::MarkType::DATE_FIELDMARK:
             assert(bSavePos && bSaveOtherPos); // must be deleted completely!
-            pHt.reset(new SwHistoryTextFieldmark(dynamic_cast<sw::mark::IFieldmark const&>(rBkmk)));
+            pHt.reset(new SwHistoryTextFieldmark(dynamic_cast<sw::mark::Fieldmark const&>(rBkmk)));
             break;
         case IDocumentMarkAccess::MarkType::CHECKBOX_FIELDMARK:
         case IDocumentMarkAccess::MarkType::DROPDOWN_FIELDMARK:
             assert(bSavePos && bSaveOtherPos); // must be deleted completely!
-            pHt.reset(new SwHistoryNoTextFieldmark(dynamic_cast<sw::mark::IFieldmark const&>(rBkmk)));
+            pHt.reset(new SwHistoryNoTextFieldmark(dynamic_cast<sw::mark::Fieldmark const&>(rBkmk)));
             break;
         default:
             pHt.reset(new SwHistoryBookmark(rBkmk, bSavePos, bSaveOtherPos));
@@ -1192,7 +1240,7 @@ void SwHistory::AddCharFormat(const SfxItemSet & rSet, const SwCharFormat & rFor
     m_SwpHstry.push_back( std::move(pHt) );
 }
 
-bool SwHistory::Rollback( SwDoc* pDoc, sal_uInt16 nStart )
+bool SwHistory::Rollback( SwDoc& rDoc, sal_uInt16 nStart )
 {
     if ( !Count() )
         return false;
@@ -1200,14 +1248,14 @@ bool SwHistory::Rollback( SwDoc* pDoc, sal_uInt16 nStart )
     for ( sal_uInt16 i = Count(); i > nStart ; )
     {
         SwHistoryHint * pHHt = m_SwpHstry[ --i ].get();
-        pHHt->SetInDoc( pDoc, false );
+        pHHt->SetInDoc( rDoc, false );
     }
     m_SwpHstry.erase( m_SwpHstry.begin() + nStart, m_SwpHstry.end() );
     m_nEndDiff = 0;
     return true;
 }
 
-bool SwHistory::TmpRollback( SwDoc* pDoc, sal_uInt16 nStart, bool bToFirst )
+bool SwHistory::TmpRollback( SwDoc& rDoc, sal_uInt16 nStart, bool bToFirst )
 {
     sal_uInt16 nEnd = Count() - m_nEndDiff;
     if ( !Count() || !nEnd || nStart >= nEnd )
@@ -1218,7 +1266,7 @@ bool SwHistory::TmpRollback( SwDoc* pDoc, sal_uInt16 nStart, bool bToFirst )
         for ( ; nEnd > nStart; ++m_nEndDiff )
         {
             SwHistoryHint* pHHt = m_SwpHstry[ --nEnd ].get();
-            pHHt->SetInDoc( pDoc, true );
+            pHHt->SetInDoc( rDoc, true );
         }
     }
     else
@@ -1226,7 +1274,7 @@ bool SwHistory::TmpRollback( SwDoc* pDoc, sal_uInt16 nStart, bool bToFirst )
         for ( ; nStart < nEnd; ++m_nEndDiff, ++nStart )
         {
             SwHistoryHint* pHHt = m_SwpHstry[ nStart ].get();
-            pHHt->SetInDoc( pDoc, true );
+            pHHt->SetInDoc( rDoc, true );
         }
     }
     return true;
@@ -1372,46 +1420,36 @@ SwRegHistory::SwRegHistory( const SwNode& rNd, SwHistory* pHst )
 
 void SwRegHistory::SwClientNotify(const SwModify&, const SfxHint& rHint)
 {
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-    auto pLegacyHint = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    if ( !(m_pHistory && pLegacyHint->m_pNew && !areSfxPoolItemPtrsEqual(pLegacyHint->m_pOld, pLegacyHint->m_pNew) ) )
-        return;
-
-    if ( pLegacyHint->m_pNew->Which() < POOLATTR_END )
+    if (rHint.GetId() == SfxHintId::SwAttrSetChange)
     {
-        if(RES_UPDATE_ATTR == pLegacyHint->m_pNew->Which())
+        auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+        if ( !(m_pHistory && pChangeHint->m_pNew && pChangeHint->m_pOld != pChangeHint->m_pNew) )
+            return;
+        if (pChangeHint->m_pOld)
         {
-            m_pHistory->AddPoolItem(pLegacyHint->m_pOld, pLegacyHint->m_pNew, m_nNodeIndex);
-        }
-        else
-        {
-            OSL_ENSURE(false, "Unexpected update attribute (!)");
-        }
-    }
-    else if (pLegacyHint->m_pOld && RES_ATTRSET_CHG == pLegacyHint->m_pNew->Which())
-    {
-        std::unique_ptr<SwHistoryHint> pNewHstr;
-        const SfxItemSet& rSet = *static_cast< const SwAttrSetChg* >(pLegacyHint->m_pOld)->GetChgSet();
+            std::unique_ptr<SwHistoryHint> pNewHstr;
+            const SfxItemSet& rSet = *pChangeHint->m_pOld->GetChgSet();
 
-        if ( 1 < rSet.Count() )
-        {
-            pNewHstr.reset( new SwHistorySetAttrSet( rSet, m_nNodeIndex, m_WhichIdSet ) );
-        }
-        else if (const SfxPoolItem* pItem = SfxItemIter(rSet).GetCurItem())
-        {
-            if ( m_WhichIdSet.count( pItem->Which() ) )
+            if ( 1 < rSet.Count() )
             {
-                pNewHstr.reset( new SwHistorySetFormat( pItem, m_nNodeIndex ) );
+                pNewHstr.reset( new SwHistorySetAttrSet( rSet, m_nNodeIndex, m_WhichIdSet ) );
             }
-            else
+            else if (const SfxPoolItem* pItem = SfxItemIter(rSet).GetCurItem())
             {
-                pNewHstr.reset( new SwHistoryResetFormat( pItem, m_nNodeIndex ) );
+                if ( m_WhichIdSet.count( pItem->Which() ) )
+                {
+                    pNewHstr.reset( new SwHistorySetFormat( pItem, m_nNodeIndex ) );
+                }
+                else
+                {
+                    pNewHstr.reset( new SwHistoryResetFormat( pItem, m_nNodeIndex ) );
+                }
             }
-        }
 
-        if (pNewHstr)
-            m_pHistory->m_SwpHstry.push_back( std::move(pNewHstr) );
+            if (pNewHstr)
+                m_pHistory->m_SwpHstry.push_back( std::move(pNewHstr) );
+        }
+        return;
     }
 }
 
@@ -1484,7 +1522,7 @@ void SwRegHistory::RegisterInModify( sw::BroadcastingModify* pRegIn, const SwNod
 {
     if ( m_pHistory && pRegIn )
     {
-        pRegIn->Add( this );
+        pRegIn->Add(*this);
         m_nNodeIndex = rNd.GetIndex();
         MakeSetWhichIds();
     }

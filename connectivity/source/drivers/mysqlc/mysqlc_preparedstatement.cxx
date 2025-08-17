@@ -32,8 +32,6 @@
 
 using namespace connectivity::mysqlc;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::lang;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::sdbc;
 using namespace com::sun::star::container;
 using namespace com::sun::star::io;
@@ -42,12 +40,12 @@ using ::osl::MutexGuard;
 
 OUString OPreparedStatement::getImplementationName()
 {
-    return "com.sun.star.sdbcx.mysqlc.PreparedStatement";
+    return u"com.sun.star.sdbcx.mysqlc.PreparedStatement"_ustr;
 }
 
 css::uno::Sequence<OUString> OPreparedStatement::getSupportedServiceNames()
 {
-    return { "com.sun.star.sdbc.PreparedStatement" };
+    return { u"com.sun.star.sdbc.PreparedStatement"_ustr };
 }
 
 sal_Bool OPreparedStatement::supportsService(OUString const& ServiceName)
@@ -573,7 +571,7 @@ void OPreparedStatement::checkParameterIndex(sal_Int32 column)
 {
     if (column < 1 || o3tl::make_unsigned(column) > m_paramCount)
     {
-        throw SQLException("Parameter index out of range", *this, OUString(), 1, Any());
+        throw SQLException(u"Parameter index out of range"_ustr, *this, OUString(), 1, Any());
     }
 }
 

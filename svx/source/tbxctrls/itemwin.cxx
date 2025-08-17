@@ -43,13 +43,12 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 
 SvxMetricField::SvxMetricField(
     vcl::Window* pParent, const Reference< XFrame >& rFrame )
-    : InterimItemWindow(pParent, "svx/ui/metricfieldbox.ui", "MetricFieldBox")
-    , m_xWidget(m_xBuilder->weld_metric_spin_button("metricfield", FieldUnit::MM))
+    : InterimItemWindow(pParent, u"svx/ui/metricfieldbox.ui"_ustr, u"MetricFieldBox"_ustr)
+    , m_xWidget(m_xBuilder->weld_metric_spin_button(u"metricfield"_ustr, FieldUnit::MM))
     , nCurValue(0)
     , eDestPoolUnit(MapUnit::Map100thMM)
     , eDlgUnit(SfxModule::GetModuleFieldUnit(rFrame))
@@ -83,7 +82,7 @@ void SvxMetricField::set_sensitive(bool bSensitive)
     Enable(bSensitive);
     m_xWidget->set_sensitive(bSensitive);
     if (!bSensitive)
-        m_xWidget->set_text("");
+        m_xWidget->set_text(u""_ustr);
 }
 
 void SvxMetricField::Update( const XLineWidthItem* pItem )
@@ -96,7 +95,7 @@ void SvxMetricField::Update( const XLineWidthItem* pItem )
             SetMetricValue(*m_xWidget, pItem->GetValue(), MapUnit::Map100thMM);
     }
     else
-        m_xWidget->set_text("");
+        m_xWidget->set_text(u""_ustr);
 }
 
 IMPL_LINK_NOARG(SvxMetricField, ModifyHdl, weld::MetricSpinButton&, void)
@@ -106,17 +105,17 @@ IMPL_LINK_NOARG(SvxMetricField, ModifyHdl, weld::MetricSpinButton&, void)
 
     Any a;
     aLineWidthItem.QueryValue( a );
-    Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue("LineWidth", a) };
+    Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue(u"LineWidth"_ustr, a) };
     SfxToolBoxControl::Dispatch( Reference< XDispatchProvider >( mxFrame->getController(), UNO_QUERY ),
-                                 ".uno:LineWidth",
+                                 u".uno:LineWidth"_ustr,
                                  aArgs );
 }
 
 void SvxMetricField::ReleaseFocus_Impl()
 {
-    if( SfxViewShell::Current() )
+    if (const SfxViewShell* pViewShell = SfxViewShell::Current())
     {
-        vcl::Window* pShellWnd = SfxViewShell::Current()->GetWindow();
+        vcl::Window* pShellWnd = pViewShell->GetWindow();
         if ( pShellWnd )
             pShellWnd->GrabFocus();
     }
@@ -237,7 +236,7 @@ namespace
             }
         }
 
-        rBitmapEx = pVirtualDevice->GetBitmapEx(Point(0, 0), rSize);
+        rBitmapEx = pVirtualDevice->GetBitmap(Point(0, 0), rSize);
     }
 } // end of anonymous namespace
 
@@ -253,13 +252,13 @@ void SvxFillAttrBox::Fill(weld::ComboBox& rBox, const XHatchListRef &pList)
     for( tools::Long i = 0; i < nCount; i++ )
     {
         const XHatchEntry* pEntry = pList->GetHatch(i);
-        const BitmapEx aBitmapEx = pList->GetUiBitmap( i );
-        if( !aBitmapEx.IsEmpty() )
+        const Bitmap aBitmap = pList->GetUiBitmap( i );
+        if( !aBitmap.IsEmpty() )
         {
-            const Size aBmpSize(aBitmapEx.GetSizePixel());
+            const Size aBmpSize(aBitmap.GetSizePixel());
             pVD->SetOutputSizePixel(aBmpSize, false);
-            pVD->DrawBitmapEx(Point(), aBitmapEx);
-            rBox.append("", pEntry->GetName(), *pVD);
+            pVD->DrawBitmapEx(Point(), aBitmap);
+            rBox.append(u""_ustr, pEntry->GetName(), *pVD);
         }
         else
             rBox.append_text(pEntry->GetName());
@@ -280,13 +279,13 @@ void SvxFillAttrBox::Fill(weld::ComboBox& rBox, const XGradientListRef &pList)
     for( tools::Long i = 0; i < nCount; i++ )
     {
         const XGradientEntry* pEntry = pList->GetGradient(i);
-        const BitmapEx aBitmapEx = pList->GetUiBitmap( i );
-        if( !aBitmapEx.IsEmpty() )
+        const Bitmap aBitmap = pList->GetUiBitmap( i );
+        if( !aBitmap.IsEmpty() )
         {
-            const Size aBmpSize(aBitmapEx.GetSizePixel());
+            const Size aBmpSize(aBitmap.GetSizePixel());
             pVD->SetOutputSizePixel(aBmpSize, false);
-            pVD->DrawBitmapEx(Point(), aBitmapEx);
-            rBox.append("", pEntry->GetName(), *pVD);
+            pVD->DrawBitmapEx(Point(), aBitmap);
+            rBox.append(u""_ustr, pEntry->GetName(), *pVD);
         }
         else
             rBox.append_text(pEntry->GetName());
@@ -313,7 +312,7 @@ void SvxFillAttrBox::Fill(weld::ComboBox& rBox, const XBitmapListRef &pList)
         BitmapEx aBitmapEx = pEntry->GetGraphicObject().GetGraphic().GetBitmapEx();
         formatBitmapExToSize(aBitmapEx, aSize);
         pVD->DrawBitmapEx(Point(), aBitmapEx);
-        rBox.append("", pEntry->GetName(), *pVD);
+        rBox.append(u""_ustr, pEntry->GetName(), *pVD);
     }
 
     rBox.thaw();
@@ -337,7 +336,7 @@ void SvxFillAttrBox::Fill(weld::ComboBox& rBox, const XPatternListRef &pList)
         BitmapEx aBitmapEx = pEntry->GetGraphicObject().GetGraphic().GetBitmapEx();
         formatBitmapExToSize(aBitmapEx, aSize);
         pVD->DrawBitmapEx(Point(), aBitmapEx);
-        rBox.append("", pEntry->GetName(), *pVD);
+        rBox.append(u""_ustr, pEntry->GetName(), *pVD);
     }
 
     rBox.thaw();

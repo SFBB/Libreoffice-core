@@ -21,9 +21,10 @@
 
 #include <sal/log.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <tools/lineend.hxx>
 #include <tools/debug.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 #include <vcl/ctrl.hxx>
 #include <vcl/metaact.hxx>
@@ -55,9 +56,6 @@ void OutputDevice::SetLayoutMode( vcl::text::ComplexTextLayoutFlags nTextLayoutM
         mpMetaFile->AddAction( new MetaLayoutModeAction( nTextLayoutMode ) );
 
     mnTextLayoutMode = nTextLayoutMode;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetLayoutMode( nTextLayoutMode );
 }
 
 void OutputDevice::SetDigitLanguage( LanguageType eTextLanguage )
@@ -66,9 +64,6 @@ void OutputDevice::SetDigitLanguage( LanguageType eTextLanguage )
         mpMetaFile->AddAction( new MetaTextLanguageAction( eTextLanguage ) );
 
     meTextLanguage = eTextLanguage;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetDigitLanguage( eTextLanguage );
 }
 
 void OutputDevice::ImplInitTextColor()
@@ -213,8 +208,12 @@ bool OutputDevice::ImplDrawRotateText( SalLayout& rSalLayout )
 
     tools::Rectangle aBoundRect;
     rSalLayout.DrawBase() = basegfx::B2DPoint( 0, 0 );
-    rSalLayout.DrawOffset() = Point( 0, 0 );
-    if (!rSalLayout.GetBoundRect(aBoundRect))
+    rSalLayout.DrawOffset() = basegfx::B2DPoint{ 0, 0 };
+    if (basegfx::B2DRectangle r; rSalLayout.GetBoundRect(r))
+    {
+        aBoundRect = SalLayout::BoundRect2Rectangle(r);
+    }
+    else
     {
         // guess vertical text extents if GetBoundRect failed
         double nRight = rSalLayout.GetTextWidth();
@@ -363,9 +362,12 @@ void OutputDevice::ImplDrawSpecialText( SalLayout& rSalLayout )
 
         if ( eRelief == FontRelief::Engraved )
             nOff = -nOff;
-        rSalLayout.DrawOffset() += Point( nOff, nOff);
-        ImplDrawTextDirect( rSalLayout, mbTextLines );
-        rSalLayout.DrawOffset() -= Point( nOff, nOff);
+
+        auto aPrevOffset = rSalLayout.DrawOffset();
+        rSalLayout.DrawOffset()
+            += basegfx::B2DPoint{ static_cast<double>(nOff), static_cast<double>(nOff) };
+        ImplDrawTextDirect(rSalLayout, mbTextLines);
+        rSalLayout.DrawOffset() = aPrevOffset;
 
         SetTextLineColor( aTextLineColor );
         SetOverlineColor( aOverlineColor );
@@ -444,7 +446,6 @@ void OutputDevice::ImplDrawSpecialText( SalLayout& rSalLayout )
 
 void OutputDevice::ImplDrawText( SalLayout& rSalLayout )
 {
-
     if( mbInitClipRegion )
         InitClipRegion();
     if( mbOutputClipped )
@@ -476,14 +477,10 @@ void OutputDevice::SetTextColor( const Color& rColor )
         maTextColor = aColor;
         mbInitTextColor = true;
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetTextColor( COL_ALPHA_OPAQUE );
 }
 
 void OutputDevice::SetTextFillColor()
 {
-
     if ( mpMetaFile )
         mpMetaFile->AddAction( new MetaTextFillColorAction( Color(), false ) );
 
@@ -492,9 +489,6 @@ void OutputDevice::SetTextFillColor()
     }
     if ( !maFont.IsTransparent() )
         maFont.SetTransparent( true );
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetTextFillColor();
 }
 
 void OutputDevice::SetTextFillColor( const Color& rColor )
@@ -508,9 +502,6 @@ void OutputDevice::SetTextFillColor( const Color& rColor )
         maFont.SetFillColor( aColor );
     if ( maFont.IsTransparent() != rColor.IsTransparent() )
         maFont.SetTransparent( rColor.IsTransparent() );
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetTextFillColor( COL_ALPHA_OPAQUE );
 }
 
 Color OutputDevice::GetTextFillColor() const
@@ -523,7 +514,6 @@ Color OutputDevice::GetTextFillColor() const
 
 void OutputDevice::SetTextAlign( TextAlign eAlign )
 {
-
     if ( mpMetaFile )
         mpMetaFile->AddAction( new MetaTextAlignAction( eAlign ) );
 
@@ -532,9 +522,6 @@ void OutputDevice::SetTextAlign( TextAlign eAlign )
         maFont.SetAlignment( eAlign );
         mbNewFont = true;
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->SetTextAlign( eAlign );
 }
 
 vcl::Region OutputDevice::GetOutputBoundsClipRegion() const
@@ -552,7 +539,7 @@ void OutputDevice::DrawText( const Point& rStartPt, const OUString& rStr,
 {
     assert(!is_double_buffered_window());
 
-    if( (nLen < 0) || (nIndex + nLen >= rStr.getLength()))
+    if( (nLen < 0) || (nIndex + nLen > rStr.getLength()))
     {
         nLen = rStr.getLength() - nIndex;
     }
@@ -628,20 +615,21 @@ void OutputDevice::DrawText( const Point& rStartPt, const OUString& rStr,
     {
         ImplDrawText( *pSalLayout );
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawText( rStartPt, rStr, nIndex, nLen, pVector, pDisplayText );
 }
 
 tools::Long OutputDevice::GetTextWidth( const OUString& rStr, sal_Int32 nIndex, sal_Int32 nLen,
      vcl::text::TextLayoutCache const*const pLayoutCache,
      SalLayoutGlyphs const*const pSalLayoutCache) const
 {
+    double nWidth = GetTextWidthDouble(rStr, nIndex, nLen, pLayoutCache, pSalLayoutCache);
+    return basegfx::fround<tools::Long>(nWidth);
+}
 
-    tools::Long nWidth = GetTextArray( rStr, nullptr, nIndex,
-            nLen, false, pLayoutCache, pSalLayoutCache );
-
-    return nWidth;
+double OutputDevice::GetTextWidthDouble(const OUString& rStr, sal_Int32 nIndex, sal_Int32 nLen,
+                                        vcl::text::TextLayoutCache const* const pLayoutCache,
+                                        SalLayoutGlyphs const* const pSalLayoutCache) const
+{
+    return GetTextArray(rStr, nullptr, nIndex, nLen, false, pLayoutCache, pSalLayoutCache);
 }
 
 tools::Long OutputDevice::GetTextHeight() const
@@ -657,17 +645,78 @@ tools::Long OutputDevice::GetTextHeight() const
     return nHeight;
 }
 
+double OutputDevice::GetTextHeightDouble() const
+{
+    if (!InitFont())
+        return 0;
+
+    tools::Long nHeight = mpFontInstance->mnLineHeight + mnEmphasisAscent + mnEmphasisDescent;
+
+    return ImplDevicePixelToLogicHeightDouble(nHeight);
+}
+
 float OutputDevice::approximate_char_width() const
 {
     //note pango uses "The quick brown fox jumps over the lazy dog." for english
     //and has a bunch of per-language strings which corresponds somewhat with
     //makeRepresentativeText in include/svtools/sampletext.hxx
-    return GetTextWidth("aemnnxEM") / 8.0;
+    return GetTextWidth(u"aemnnxEM"_ustr) / 8.0;
 }
 
 float OutputDevice::approximate_digit_width() const
 {
-    return GetTextWidth("0123456789") / 10.0;
+    return GetTextWidth(u"0123456789"_ustr) / 10.0;
+}
+
+void OutputDevice::DrawPartialTextArray(const Point& rStartPt, const OUString& rStr,
+                                        KernArraySpan pDXArray,
+                                        std::span<const sal_Bool> pKashidaArray, sal_Int32 nIndex,
+                                        sal_Int32 nLen, sal_Int32 nPartIndex, sal_Int32 nPartLen,
+                                        SalLayoutFlags flags, const SalLayoutGlyphs* pLayoutCache)
+{
+    assert(!is_double_buffered_window());
+
+    if (nLen < 0 || nIndex + nLen >= rStr.getLength())
+    {
+        nLen = rStr.getLength() - nIndex;
+    }
+
+    if (nPartLen < 0 || nPartIndex + nPartLen >= rStr.getLength())
+    {
+        nPartLen = rStr.getLength() - nPartIndex;
+    }
+
+    if (mpMetaFile)
+    {
+        mpMetaFile->AddAction(new MetaTextArrayAction(rStartPt, rStr, pDXArray, pKashidaArray,
+                                                      nPartIndex, nPartLen, nIndex, nLen));
+    }
+
+    if (!IsDeviceOutputNecessary())
+        return;
+
+    if (!mpGraphics && !AcquireGraphics())
+        return;
+
+    assert(mpGraphics);
+    if (mbInitClipRegion)
+        InitClipRegion();
+
+    if (mbOutputClipped)
+        return;
+
+    // Adding the UnclusteredGlyphs flag during layout enables per-glyph styling.
+    std::unique_ptr<SalLayout> pSalLayout
+        = ImplLayout(rStr, nIndex, nLen, rStartPt, 0, pDXArray, pKashidaArray,
+                     flags | SalLayoutFlags::UnclusteredGlyphs, nullptr, pLayoutCache,
+                     /*pivot cluster*/ nPartIndex,
+                     /*min cluster*/ nPartIndex,
+                     /*end cluster*/ nPartIndex + nPartLen);
+
+    if (pSalLayout)
+    {
+        ImplDrawText(*pSalLayout);
+    }
 }
 
 void OutputDevice::DrawTextArray( const Point& rStartPt, const OUString& rStr,
@@ -700,29 +749,57 @@ void OutputDevice::DrawTextArray( const Point& rStartPt, const OUString& rStr,
     {
         ImplDrawText( *pSalLayout );
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawTextArray( rStartPt, rStr, pDXAry, pKashidaAry, nIndex, nLen, flags );
 }
 
-tools::Long OutputDevice::GetTextArray( const OUString& rStr, KernArray* pKernArray,
-                                 sal_Int32 nIndex, sal_Int32 nLen, bool bCaret,
-                                 vcl::text::TextLayoutCache const*const pLayoutCache,
-                                 SalLayoutGlyphs const*const pSalLayoutCache) const
+double
+OutputDevice::GetTextArray(const OUString& rStr, KernArray* pKernArray, sal_Int32 nIndex,
+                           sal_Int32 nLen, bool bCaret,
+                           vcl::text::TextLayoutCache const* const pLayoutCache,
+                           SalLayoutGlyphs const* const pSalLayoutCache, std::optional<tools::Rectangle>* pBounds) const
 {
-    if( nIndex >= rStr.getLength() )
-        return 0; // TODO: this looks like a buggy caller?
+    return GetPartialTextArray(rStr, pKernArray, nIndex, nLen, nIndex, nLen, bCaret, pLayoutCache,
+                               pSalLayoutCache, pBounds);
+}
+
+double
+OutputDevice::GetPartialTextArray(const OUString& rStr, KernArray* pKernArray, sal_Int32 nIndex,
+                                  sal_Int32 nLen, sal_Int32 nPartIndex, sal_Int32 nPartLen,
+                                  bool bCaret, const vcl::text::TextLayoutCache* pLayoutCache,
+                                  const SalLayoutGlyphs* pSalLayoutCache, std::optional<tools::Rectangle>* pBounds) const
+{
+    if (nIndex >= rStr.getLength())
+    {
+        return {}; // TODO: this looks like a buggy caller?
+    }
 
     if( nLen < 0 || nIndex + nLen >= rStr.getLength() )
     {
         nLen = rStr.getLength() - nIndex;
     }
 
-    std::vector<sal_Int32>* pDXAry = pKernArray ? &pKernArray->get_subunit_array() : nullptr;
+    if (nPartLen < 0 || nPartIndex + nPartLen >= rStr.getLength())
+    {
+        nPartLen = rStr.getLength() - nPartIndex;
+    }
+
+    KernArray* pDXAry = pKernArray;
 
     // do layout
-    std::unique_ptr<SalLayout> pSalLayout = ImplLayout(rStr, nIndex, nLen,
-            Point(0,0), 0, {}, {}, eDefaultLayout, pLayoutCache, pSalLayoutCache);
+    std::unique_ptr<SalLayout> pSalLayout;
+    if (nIndex == nPartIndex && nLen == nPartLen)
+    {
+        pSalLayout = ImplLayout(rStr, nIndex, nLen, Point{ 0, 0 }, 0, {}, {}, eDefaultLayout,
+                                pLayoutCache, pSalLayoutCache);
+    }
+    else
+    {
+        pSalLayout = ImplLayout(rStr, nIndex, nLen, Point{ 0, 0 }, 0, {}, {}, eDefaultLayout,
+                                pLayoutCache, pSalLayoutCache,
+                                /*pivot cluster*/ nPartIndex,
+                                /*min cluster*/ nPartIndex,
+                                /*end cluster*/ nPartIndex + nPartLen);
+    }
+
     if( !pSalLayout )
     {
         // The caller expects this to init the elements of pDXAry.
@@ -733,24 +810,40 @@ tools::Long OutputDevice::GetTextArray( const OUString& rStr, KernArray* pKernAr
         // and hope that is sufficient.
         if (pDXAry)
         {
-            pDXAry->resize(nLen);
+            pDXAry->resize(nPartLen);
             std::fill(pDXAry->begin(), pDXAry->end(), 0);
         }
-        return 0;
+
+        return {};
     }
 
-    std::unique_ptr<std::vector<double>> xDXPixelArray;
+    std::vector<double> aDXPixelArray;
+    std::vector<double>* pDXPixelArray = nullptr;
     if(pDXAry)
     {
-        xDXPixelArray.reset(new std::vector<double>(nLen));
+        aDXPixelArray.resize(nPartLen);
+        pDXPixelArray = &aDXPixelArray;
     }
-    std::vector<double>* pDXPixelArray = xDXPixelArray.get();
-    double nWidth = pSalLayout->FillDXArray(pDXPixelArray, bCaret ? rStr : OUString());
+
+    double nWidth = 0.0;
+
+    // Fall back to the unbounded DX array when there is no expanded layout context. This is
+    // necessary for certain situations where characters are appended to the input string, such as
+    // automatic ellipsis.
+    if (nIndex == nPartIndex && nLen == nPartLen)
+    {
+        nWidth = pSalLayout->FillDXArray(pDXPixelArray, bCaret ? rStr : OUString());
+    }
+    else
+    {
+        nWidth = pSalLayout->FillPartialDXArray(pDXPixelArray, bCaret ? rStr : OUString(),
+                                                nPartIndex - nIndex, nPartLen);
+    }
 
     // convert virtual char widths to virtual absolute positions
     if( pDXPixelArray )
     {
-        for( int i = 1; i < nLen; ++i )
+        for (int i = 1; i < nPartLen; ++i)
         {
             (*pDXPixelArray)[i] += (*pDXPixelArray)[i - 1];
         }
@@ -759,33 +852,35 @@ tools::Long OutputDevice::GetTextArray( const OUString& rStr, KernArray* pKernAr
     // convert from font units to logical units
     if (pDXPixelArray)
     {
-        int nSubPixelFactor = pKernArray->get_factor();
+        assert(pKernArray && "pDXPixelArray depends on pKernArray existing");
         if (mbMap)
         {
-            for (int i = 0; i < nLen; ++i)
-                (*pDXPixelArray)[i] = ImplDevicePixelToLogicWidth((*pDXPixelArray)[i] * nSubPixelFactor);
-        }
-        else if (nSubPixelFactor)
-        {
-            for (int i = 0; i < nLen; ++i)
-                (*pDXPixelArray)[i] *= nSubPixelFactor;
+            for (int i = 0; i < nPartLen; ++i)
+                (*pDXPixelArray)[i] = ImplDevicePixelToLogicWidthDouble((*pDXPixelArray)[i]);
         }
     }
 
     if (pDXAry)
     {
-        pDXAry->resize(nLen);
-        for (int i = 0; i < nLen; ++i)
-            (*pDXAry)[i] = basegfx::fround((*pDXPixelArray)[i]);
+        pDXAry->resize(nPartLen);
+        for (int i = 0; i < nPartLen; ++i)
+            (*pDXAry)[i] = (*pDXPixelArray)[i];
     }
 
-    if (mbMap)
-        nWidth = ImplDevicePixelToLogicWidth( nWidth );
+    if (pBounds)
+    {
+        basegfx::B2DRectangle stRect;
+        if (pSalLayout->GetBoundRect(stRect))
+        {
+            auto stRect2 = SalLayout::BoundRect2Rectangle(stRect);
+            *pBounds = ImplDevicePixelToLogic(stRect2);
+        }
+    }
 
-    return basegfx::fround(nWidth);
+    return ImplDevicePixelToLogicWidthDouble(nWidth);
 }
 
-void OutputDevice::GetCaretPositions( const OUString& rStr, KernArray& rCaretXArray,
+void OutputDevice::GetCaretPositions( const OUString& rStr, KernArray& rCaretPos,
                                       sal_Int32 nIndex, sal_Int32 nLen,
                                       const SalLayoutGlyphs* pGlyphs ) const
 {
@@ -796,7 +891,6 @@ void OutputDevice::GetCaretPositions( const OUString& rStr, KernArray& rCaretXAr
         nLen = rStr.getLength() - nIndex;
 
     sal_Int32 nCaretPos = nLen * 2;
-    std::vector<sal_Int32>& rCaretPos = rCaretXArray.get_subunit_array();
     rCaretPos.resize(nCaretPos);
 
     // do layout
@@ -816,7 +910,7 @@ void OutputDevice::GetCaretPositions( const OUString& rStr, KernArray& rCaretXAr
     for (i = 0; i < nCaretPos; ++i)
         if (aCaretPixelPos[i] >= 0)
             break;
-    tools::Long nXPos = (i < nCaretPos) ? aCaretPixelPos[i] : -1;
+    double nXPos = (i < nCaretPos) ? aCaretPixelPos[i] : -1;
     for (i = 0; i < nCaretPos; ++i)
     {
         if (aCaretPixelPos[i] >= 0)
@@ -833,21 +927,15 @@ void OutputDevice::GetCaretPositions( const OUString& rStr, KernArray& rCaretXAr
             aCaretPixelPos[i] = nWidth - aCaretPixelPos[i] - 1;
     }
 
-    int nSubPixelFactor = rCaretXArray.get_factor();
     // convert from font units to logical units
     if( mbMap )
     {
         for (i = 0; i < nCaretPos; ++i)
-            aCaretPixelPos[i] = ImplDevicePixelToLogicWidth(aCaretPixelPos[i] * nSubPixelFactor);
-    }
-    else if (nSubPixelFactor)
-    {
-        for (i = 0; i < nCaretPos; ++i)
-            aCaretPixelPos[i] *= nSubPixelFactor;
+            aCaretPixelPos[i] = ImplDevicePixelToLogicWidthDouble(aCaretPixelPos[i]);
     }
 
     for (i = 0; i < nCaretPos; ++i)
-        rCaretPos[i] = basegfx::fround(aCaretPixelPos[i]);
+        rCaretPos[i] = aCaretPixelPos[i];
 }
 
 void OutputDevice::DrawStretchText( const Point& rStartPt, sal_Int32 nWidth,
@@ -872,9 +960,6 @@ void OutputDevice::DrawStretchText( const Point& rStartPt, sal_Int32 nWidth,
     {
         ImplDrawText( *pSalLayout );
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawStretchText( rStartPt, nWidth, rStr, nIndex, nLen );
 }
 
 vcl::text::ImplLayoutArgs OutputDevice::ImplPrepareLayoutArgs( OUString& rStr,
@@ -1020,7 +1105,7 @@ static void TrackFontMappingUse( const vcl::Font& originalFont, const SalLayout*
             return;
         }
     }
-    fontMappingUseData->push_back( { originalName, usedFontNames, 1 } );
+    fontMappingUseData->push_back( { originalName, std::move(usedFontNames), 1 } );
 }
 
 void OutputDevice::StartTrackingFontMappingUse()
@@ -1039,14 +1124,12 @@ OutputDevice::FontMappingUseData OutputDevice::FinishTrackingFontMappingUse()
     return ret;
 }
 
-std::unique_ptr<SalLayout> OutputDevice::ImplLayout(const OUString& rOrigStr,
-                                    sal_Int32 nMinIndex, sal_Int32 nLen,
-                                    const Point& rLogicalPos, tools::Long nLogicalWidth,
-                                    KernArraySpan pDXArray,
-                                    std::span<const sal_Bool> pKashidaArray,
-                                    SalLayoutFlags flags,
-         vcl::text::TextLayoutCache const* pLayoutCache,
-         const SalLayoutGlyphs* pGlyphs) const
+std::unique_ptr<SalLayout> OutputDevice::ImplLayout(
+    const OUString& rOrigStr, sal_Int32 nMinIndex, sal_Int32 nLen, const Point& rLogicalPos,
+    tools::Long nLogicalWidth, KernArraySpan pDXArray, std::span<const sal_Bool> pKashidaArray,
+    SalLayoutFlags flags, vcl::text::TextLayoutCache const* pLayoutCache,
+    const SalLayoutGlyphs* pGlyphs, std::optional<sal_Int32> nDrawOriginCluster,
+    std::optional<sal_Int32> nDrawMinCharPos, std::optional<sal_Int32> nDrawEndCharPos) const
 {
     if (pGlyphs && !pGlyphs->IsValid())
     {
@@ -1102,33 +1185,69 @@ std::unique_ptr<SalLayout> OutputDevice::ImplLayout(const OUString& rOrigStr,
     vcl::text::ImplLayoutArgs aLayoutArgs = ImplPrepareLayoutArgs( aStr, nMinIndex, nLen,
             nPixelWidth, flags, pLayoutCache);
 
-    double nEndGlyphCoord(0);
-    std::unique_ptr<double[]> xDXPixelArray;
-    if( !pDXArray.empty() )
+    if (nDrawOriginCluster.has_value())
     {
-        xDXPixelArray.reset(new double[nLen]);
+        aLayoutArgs.mnDrawOriginCluster = *nDrawOriginCluster;
+    }
 
-        if (mbMap)
+    if (nDrawMinCharPos.has_value())
+    {
+        aLayoutArgs.mnDrawMinCharPos = *nDrawMinCharPos;
+    }
+
+    if (nDrawEndCharPos.has_value())
+    {
+        aLayoutArgs.mnDrawEndCharPos = *nDrawEndCharPos;
+    }
+
+    double nEndGlyphCoord(0);
+    if (!pDXArray.empty() || !pKashidaArray.empty())
+    {
+        // The provided advance and kashida arrays are indexed relative to the first visible cluster
+        auto nJustMinCluster = nDrawMinCharPos.value_or(nMinIndex);
+        auto nJustLen = nLen;
+        if (nDrawEndCharPos.has_value())
+        {
+            nJustLen = *nDrawEndCharPos - nJustMinCluster;
+        }
+
+        JustificationData stJustification{ nJustMinCluster, nJustLen };
+
+        if (!pDXArray.empty() && mbMap)
         {
             // convert from logical units to font units without rounding,
             // keeping accuracy for lower levels
-            int nSubPixels = pDXArray.get_factor();
-            for (int i = 0; i < nLen; ++i)
-                xDXPixelArray[i] = ImplLogicWidthToDeviceSubPixel(pDXArray.get_subunit(i)) / nSubPixels;
-            nEndGlyphCoord = xDXPixelArray[nLen - 1];
+            for (int i = 0; i < nJustLen; ++i)
+            {
+                stJustification.SetTotalAdvance(
+                    nJustMinCluster + i,
+                    ImplLogicWidthToDeviceSubPixel(pDXArray[i]));
+            }
+
+            nEndGlyphCoord = stJustification.GetTotalAdvance(nJustMinCluster + nJustLen - 1);
         }
-        else
+        else if (!pDXArray.empty())
         {
-            for(int i = 0; i < nLen; ++i)
-                xDXPixelArray[i] = pDXArray.get(i);
-            nEndGlyphCoord = std::lround(xDXPixelArray[nLen - 1]);
+            for (int i = 0; i < nJustLen; ++i)
+            {
+                stJustification.SetTotalAdvance(nJustMinCluster + i, pDXArray[i]);
+            }
+
+            nEndGlyphCoord
+                = std::round(stJustification.GetTotalAdvance(nJustMinCluster + nJustLen - 1));
         }
 
-        aLayoutArgs.SetDXArray(xDXPixelArray.get());
-    }
+        if (!pKashidaArray.empty())
+        {
+            for (sal_Int32 i = 0; i < static_cast<sal_Int32>(pKashidaArray.size()); ++i)
+            {
+                stJustification.SetKashidaPosition(nJustMinCluster + i,
+                                                   static_cast<bool>(pKashidaArray[i]));
+            }
+        }
 
-    if (!pKashidaArray.empty())
-        aLayoutArgs.SetKashidaArray(pKashidaArray.data());
+        aLayoutArgs.SetJustificationData(std::move(stJustification));
+    }
 
     // get matching layout object for base font
     std::unique_ptr<SalLayout> pSalLayout = mpGraphics->GetTextLayout(0);
@@ -1232,17 +1351,21 @@ sal_Int32 OutputDevice::GetTextBreak( const OUString& rStr, tools::Long nTextWid
     return nRetVal;
 }
 
-sal_Int32 OutputDevice::GetTextBreak( const OUString& rStr, tools::Long nTextWidth,
-                                       sal_Unicode nHyphenChar, sal_Int32& rHyphenPos,
-                                       sal_Int32 nIndex, sal_Int32 nLen,
-                                       tools::Long nCharExtra,
-         vcl::text::TextLayoutCache const*const pLayoutCache,
-         const SalLayoutGlyphs* pGlyphs) const
+sal_Int32 OutputDevice::GetTextBreakArray(const OUString& rStr, tools::Long nTextWidth,
+                                          std::optional<sal_Unicode> nHyphenChar,
+                                          std::optional<sal_Int32*> pHyphenPos, sal_Int32 nIndex,
+                                          sal_Int32 nLen, tools::Long nCharExtra,
+                                          KernArraySpan aKernArray,
+                                          vcl::text::TextLayoutCache const* const pLayoutCache,
+                                          const SalLayoutGlyphs* pGlyphs) const
 {
-    rHyphenPos = -1;
+    if (pHyphenPos.has_value())
+    {
+        **pHyphenPos = -1;
+    }
 
-    std::unique_ptr<SalLayout> pSalLayout = ImplLayout( rStr, nIndex, nLen,
-            Point(0,0), 0, {}, {}, eDefaultLayout, pLayoutCache, pGlyphs);
+    std::unique_ptr<SalLayout> pSalLayout = ImplLayout(
+        rStr, nIndex, nLen, Point(0, 0), 0, aKernArray, {}, eDefaultLayout, pLayoutCache, pGlyphs);
     sal_Int32 nRetVal = -1;
     if( pSalLayout )
     {
@@ -1263,22 +1386,31 @@ sal_Int32 OutputDevice::GetTextBreak( const OUString& rStr, tools::Long nTextWid
         nRetVal = pSalLayout->GetTextBreak( nTextPixelWidth, nExtraPixelWidth, nSubPixelFactor );
 
         // calculate hyphenated break position
-        OUString aHyphenStr(nHyphenChar);
-        std::unique_ptr<SalLayout> pHyphenLayout = ImplLayout( aHyphenStr, 0, 1 );
-        if( pHyphenLayout )
+        if (nHyphenChar.has_value())
         {
-            // calculate subpixel width of hyphenation character
-            double nHyphenPixelWidth = pHyphenLayout->GetTextWidth() * nSubPixelFactor;
+            OUString aHyphenStr(*nHyphenChar);
+            std::unique_ptr<SalLayout> pHyphenLayout = ImplLayout(aHyphenStr, 0, 1);
+            if (pHyphenLayout)
+            {
+                // calculate subpixel width of hyphenation character
+                double nHyphenPixelWidth = pHyphenLayout->GetTextWidth() * nSubPixelFactor;
 
-            // calculate hyphenated break position
-            nTextPixelWidth -= nHyphenPixelWidth;
-            if( nExtraPixelWidth > 0 )
-                nTextPixelWidth -= nExtraPixelWidth;
+                // calculate hyphenated break position
+                nTextPixelWidth -= nHyphenPixelWidth;
+                if (nExtraPixelWidth > 0)
+                    nTextPixelWidth -= nExtraPixelWidth;
 
-            rHyphenPos = pSalLayout->GetTextBreak(nTextPixelWidth, nExtraPixelWidth, nSubPixelFactor);
+                if (pHyphenPos.has_value())
+                {
+                    **pHyphenPos = pSalLayout->GetTextBreak(nTextPixelWidth, nExtraPixelWidth,
+                                                            nSubPixelFactor);
 
-            if( rHyphenPos > nRetVal )
-                rHyphenPos = nRetVal;
+                    if (**pHyphenPos > nRetVal)
+                    {
+                        **pHyphenPos = nRetVal;
+                    }
+                }
+            }
         }
     }
 
@@ -1339,7 +1471,7 @@ void OutputDevice::ImplDrawText( OutputDevice& rTargetDevice, const tools::Recta
     {
         if (nStyle & DrawTextFlags::Clip)
             return;
-        static bool bFuzzing = utl::ConfigManager::IsFuzzing();
+        static bool bFuzzing = comphelper::IsFuzzing();
         SAL_WARN_IF(bFuzzing, "vcl", "skipping negative rectangle of: " << nWidth << " x " << nHeight);
         if (bFuzzing)
             return;
@@ -1525,12 +1657,11 @@ void OutputDevice::ImplDrawText( OutputDevice& rTargetDevice, const tools::Recta
 
         if ( nStyle & DrawTextFlags::Clip )
         {
-            rTargetDevice.Push( vcl::PushFlags::CLIPREGION );
+            auto popIt = rTargetDevice.ScopedPush(vcl::PushFlags::CLIPREGION);
             rTargetDevice.IntersectClipRegion( rRect );
             _rLayout.DrawText( aPos, aStr, 0, aStr.getLength(), pVector, pDisplayText );
             if ( bDrawMnemonics && nMnemonicPos != -1 )
                 rTargetDevice.ImplDrawMnemonicLine( nMnemonicX, nMnemonicY, nMnemonicWidth );
-            rTargetDevice.Pop();
         }
         else
         {
@@ -1623,9 +1754,6 @@ void OutputDevice::DrawText( const tools::Rectangle& rRect, const OUString& rOri
 
     // and enable again
     mpMetaFile = pMtf;
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawText( rRect, rOrigStr, nStyle, pVector, pDisplayText );
 }
 
 tools::Rectangle OutputDevice::GetTextRect( const tools::Rectangle& rRect,
@@ -1758,16 +1886,11 @@ tools::Rectangle OutputDevice::GetTextRect( const tools::Rectangle& rRect,
 }
 
 void OutputDevice::DrawCtrlText( const Point& rPos, const OUString& rStr,
-                                 sal_Int32 nIndex, sal_Int32 nLen,
+                                 const sal_Int32 nIndex, const sal_Int32 nLen,
                                  DrawTextFlags nStyle, std::vector< tools::Rectangle >* pVector, OUString* pDisplayText,
                                  const SalLayoutGlyphs* pGlyphs )
 {
     assert(!is_double_buffered_window());
-
-    if( (nLen < 0) || (nIndex + nLen >= rStr.getLength()))
-    {
-        nLen = rStr.getLength() - nIndex;
-    }
 
     if ( !IsDeviceOutputNecessary() || (nIndex >= rStr.getLength()) )
         return;
@@ -1782,48 +1905,48 @@ void OutputDevice::DrawCtrlText( const Point& rPos, const OUString& rStr,
     if ( mbOutputClipped )
         return;
 
-    if( nIndex >= rStr.getLength() )
-        return;
-
-    if( (nLen < 0) || (nIndex + nLen >= rStr.getLength()))
+    // nIndex and nLen must go to mpAlphaVDev->DrawCtrlText unchanged
+    sal_Int32 nCorrectedIndex = nIndex;
+    sal_Int32 nCorrectedLen = nLen;
+    if ((nCorrectedLen < 0) || (nCorrectedIndex + nCorrectedLen >= rStr.getLength()))
     {
-        nLen = rStr.getLength() - nIndex;
+        nCorrectedLen = rStr.getLength() - nCorrectedIndex;
     }
-    OUString   aStr = rStr;
     sal_Int32  nMnemonicPos = -1;
 
     tools::Long        nMnemonicX = 0;
     tools::Long        nMnemonicY = 0;
     tools::Long        nMnemonicWidth = 0;
-    if ( (nStyle & DrawTextFlags::Mnemonic) && nLen > 1 )
+    const OUString aStr = removeMnemonicFromString(rStr, nMnemonicPos); // Strip mnemonics always
+    if (nMnemonicPos != -1)
     {
-        aStr = removeMnemonicFromString( aStr, nMnemonicPos );
-        if ( nMnemonicPos != -1 )
+        if (nMnemonicPos < nCorrectedIndex)
         {
-            if( nMnemonicPos < nIndex )
-            {
-                --nIndex;
-            }
-            else
-            {
-                if( nMnemonicPos < (nIndex+nLen) )
-                    --nLen;
-                SAL_WARN_IF( nMnemonicPos >= (nIndex+nLen), "vcl", "Mnemonic underline marker after last character" );
-            }
+            --nCorrectedIndex;
+        }
+        else
+        {
+            if (nMnemonicPos < (nCorrectedIndex + nCorrectedLen))
+                --nCorrectedLen;
+        }
+        if (nStyle & DrawTextFlags::Mnemonic && !pVector
+            && !(GetSettings().GetStyleSettings().GetOptions() & StyleSettingsOptions::NoMnemonics))
+        {
+            SAL_WARN_IF( nMnemonicPos >= (nCorrectedIndex+nCorrectedLen), "vcl", "Mnemonic underline marker after last character" );
             bool bInvalidPos = false;
 
-            if( nMnemonicPos >= nLen )
+            if (nMnemonicPos >= nCorrectedLen)
             {
                 // may occur in BiDi-Strings: the '~' is sometimes found behind the last char
                 // due to some strange BiDi text editors
                 // -> place the underline behind the string to indicate a failure
                 bInvalidPos = true;
-                nMnemonicPos = nLen-1;
+                nMnemonicPos = nCorrectedLen - 1;
             }
 
             KernArray aDXArray;
-            GetTextArray(aStr, &aDXArray, nIndex, nLen, true, nullptr, pGlyphs);
-            sal_Int32 nPos = nMnemonicPos - nIndex;
+            GetTextArray(aStr, &aDXArray, nCorrectedIndex, nCorrectedLen, true, nullptr, pGlyphs);
+            sal_Int32 nPos = nMnemonicPos - nCorrectedIndex;
             sal_Int32 lc_x1 = nPos ? aDXArray[nPos - 1] : 0;
             sal_Int32 lc_x2 = aDXArray[nPos];
             nMnemonicWidth = std::abs(lc_x1 - lc_x2);
@@ -1837,13 +1960,14 @@ void OutputDevice::DrawCtrlText( const Point& rPos, const OUString& rStr,
             nMnemonicX = mnOutOffX + aTempPos.X();
             nMnemonicY = mnOutOffY + aTempPos.Y();
         }
+        else
+            nMnemonicPos = -1; // Reset - we don't show the mnemonic
     }
 
+    std::optional<Color> oOldTextColor;
+    std::optional<Color> oOldTextFillColor;
     if ( nStyle & DrawTextFlags::Disable && ! pVector )
     {
-        Color aOldTextColor;
-        Color aOldTextFillColor;
-        bool  bRestoreFillColor;
         bool  bHighContrastBlack = false;
         bool  bHighContrastWhite = false;
         const StyleSettings& rStyleSettings( GetSettings().GetStyleSettings() );
@@ -1858,14 +1982,9 @@ void OutputDevice::DrawCtrlText( const Point& rPos, const OUString& rStr,
             }
         }
 
-        aOldTextColor = GetTextColor();
+        oOldTextColor = GetTextColor();
         if ( IsTextFillColor() )
-        {
-            bRestoreFillColor = true;
-            aOldTextFillColor = GetTextFillColor();
-        }
-        else
-            bRestoreFillColor = false;
+            oOldTextFillColor = GetTextFillColor();
 
         if( bHighContrastBlack )
             SetTextColor( COL_GREEN );
@@ -1873,29 +1992,16 @@ void OutputDevice::DrawCtrlText( const Point& rPos, const OUString& rStr,
             SetTextColor( COL_LIGHTGREEN );
         else
             SetTextColor( GetSettings().GetStyleSettings().GetDisableColor() );
-
-        DrawText( rPos, aStr, nIndex, nLen, pVector, pDisplayText );
-        if (!(GetSettings().GetStyleSettings().GetOptions() & StyleSettingsOptions::NoMnemonics))
-        {
-            if ( nMnemonicPos != -1 )
-                ImplDrawMnemonicLine( nMnemonicX, nMnemonicY, nMnemonicWidth );
-        }
-        SetTextColor( aOldTextColor );
-        if ( bRestoreFillColor )
-            SetTextFillColor( aOldTextFillColor );
-    }
-    else
-    {
-        DrawText( rPos, aStr, nIndex, nLen, pVector, pDisplayText, pGlyphs );
-        if ( !(GetSettings().GetStyleSettings().GetOptions() & StyleSettingsOptions::NoMnemonics) && !pVector )
-        {
-            if ( nMnemonicPos != -1 )
-                ImplDrawMnemonicLine( nMnemonicX, nMnemonicY, nMnemonicWidth );
-        }
     }
 
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawCtrlText( rPos, rStr, nIndex, nLen, nStyle, pVector, pDisplayText );
+    DrawText(rPos, aStr, nCorrectedIndex, nCorrectedLen, pVector, pDisplayText, pGlyphs);
+    if (nMnemonicPos != -1)
+        ImplDrawMnemonicLine(nMnemonicX, nMnemonicY, nMnemonicWidth);
+
+    if (oOldTextColor)
+        SetTextColor( *oOldTextColor );
+    if (oOldTextFillColor)
+        SetTextFillColor(*oOldTextFillColor);
 }
 
 tools::Long OutputDevice::GetCtrlTextWidth( const OUString& rStr, const SalLayoutGlyphs* pGlyphs ) const
@@ -1922,8 +2028,21 @@ bool OutputDevice::GetTextBoundRect( tools::Rectangle& rRect,
                                          std::span<const sal_Bool> pKashidaAry,
                                          const SalLayoutGlyphs* pGlyphs ) const
 {
+    basegfx::B2DRectangle aRect;
+    bool bRet = GetTextBoundRect(aRect, rStr, nBase, nIndex, nLen, nLayoutWidth, pDXAry,
+                                 pKashidaAry, pGlyphs);
+    rRect = SalLayout::BoundRect2Rectangle(aRect);
+    return bRet;
+}
+
+bool OutputDevice::GetTextBoundRect(basegfx::B2DRectangle& rRect, const OUString& rStr,
+                                    sal_Int32 nBase, sal_Int32 nIndex, sal_Int32 nLen,
+                                    sal_uLong nLayoutWidth, KernArraySpan pDXAry,
+                                    std::span<const sal_Bool> pKashidaAry,
+                                    const SalLayoutGlyphs* pGlyphs) const
+{
     bool bRet = false;
-    rRect.SetEmpty();
+    rRect.reset();
 
     std::unique_ptr<SalLayout> pSalLayout;
     const Point aPoint;
@@ -1947,18 +2066,18 @@ bool OutputDevice::GetTextBoundRect( tools::Rectangle& rRect,
                             nullptr, pGlyphs);
     if( pSalLayout )
     {
-        tools::Rectangle aPixelRect;
+        basegfx::B2DRectangle aPixelRect;
         bRet = pSalLayout->GetBoundRect(aPixelRect);
 
         if( bRet )
         {
-            Point aRotatedOfs( mnTextOffX, mnTextOffY );
             basegfx::B2DPoint aPos = pSalLayout->GetDrawPosition(basegfx::B2DPoint(nXOffset, 0));
-            aRotatedOfs -= Point(aPos.getX(), aPos.getY());
-            aPixelRect += aRotatedOfs;
+            aPixelRect.translate(mnTextOffX - aPos.getX(), mnTextOffY - aPos.getY());
             rRect = PixelToLogic( aPixelRect );
-            if( mbMap )
-                rRect += Point( maMapRes.mnMapOfsX, maMapRes.mnMapOfsY );
+            if (mbMap)
+            {
+                rRect.translate(maMapRes.mnMapOfsX, maMapRes.mnMapOfsY);
+            }
         }
     }
 

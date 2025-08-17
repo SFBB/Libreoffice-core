@@ -12,7 +12,7 @@
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 
-#include <drawinglayer/tools/primitive2dxmldump.hxx>
+#include <extendedprimitive2dxmldump.hxx>
 #include <rtl/ustring.hxx>
 #include <svx/sdr/contact/displayinfo.hxx>
 #include <svx/sdr/contact/viewcontact.hxx>
@@ -31,7 +31,7 @@ class SdrTest : public UnoApiXmlTest
 {
 public:
     SdrTest()
-        : UnoApiXmlTest("svx/qa/unit/data/")
+        : UnoApiXmlTest(u"svx/qa/unit/data/"_ustr)
     {
     }
 
@@ -59,7 +59,7 @@ SdrTest::renderPageToPrimitives(const uno::Reference<drawing::XDrawPage>& xDrawP
 CPPUNIT_TEST_FIXTURE(SdrTest, testShadowScaleOrigin)
 {
     // Load a document containing a custom shape.
-    loadFromURL(u"shadow-scale-origin.pptx");
+    loadFromFile(u"shadow-scale-origin.pptx");
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
                                                  uno::UNO_QUERY);
@@ -67,22 +67,22 @@ CPPUNIT_TEST_FIXTURE(SdrTest, testShadowScaleOrigin)
         = renderPageToPrimitives(xDrawPage);
 
     // Examine the created primitives.
-    drawinglayer::Primitive2dXmlDump aDumper;
+    svx::ExtendedPrimitive2dXmlDump aDumper;
     xmlDocUniquePtr pDocument = aDumper.dumpAndParse(xPrimitiveSequence);
-    sal_Int32 fShadowX = getXPath(pDocument, "//shadow/transform"_ostr, "xy13"_ostr).toInt32();
-    sal_Int32 fShadowY = getXPath(pDocument, "//shadow/transform"_ostr, "xy23"_ostr).toInt32();
+    sal_Int32 fShadowX = getXPath(pDocument, "//shadow/transform", "xy13").toInt32();
+    sal_Int32 fShadowY = getXPath(pDocument, "//shadow/transform", "xy23").toInt32();
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: -705
     // - Actual  : -158
     // i.e. the shadow origin was not the top right corner for scaling (larger x position, so it was
     // visible on the right of the shape as well).
     CPPUNIT_ASSERT_EQUAL(sal_Int32(-705), fShadowX);
-    CPPUNIT_ASSERT_EQUAL(sal_Int32(-684), fShadowY);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(-685), fShadowY);
 }
 
 CPPUNIT_TEST_FIXTURE(SdrTest, testShadowAlignment)
 {
-    loadFromURL(u"tdf150020-shadow-alignment.pptx");
+    loadFromFile(u"tdf150020-shadow-alignment.pptx");
 
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     {
@@ -93,40 +93,40 @@ CPPUNIT_TEST_FIXTURE(SdrTest, testShadowAlignment)
             = renderPageToPrimitives(xDrawPage);
 
         // Examine the created primitives.
-        drawinglayer::Primitive2dXmlDump aDumper;
+        svx::ExtendedPrimitive2dXmlDump aDumper;
         xmlDocUniquePtr pDocument = aDumper.dumpAndParse(xPrimitiveSequence);
 
         // Without the accompanying fix in place, this test would have failed with:
-        // - Expected: -567
+        // - Expected: -568
         // - Actual  : 162
         // - In <>, attribute 'xy13' of '(//shadow/transform)[1]' incorrect value.
         // i.e. shadow alignment was ignored while scaling the shadow.
-        assertXPath(pDocument, "(//shadow/transform)[1]"_ostr, "xy13"_ostr, "-567");
-        assertXPath(pDocument, "(//shadow/transform)[1]"_ostr, "xy23"_ostr, "162");
+        assertXPath(pDocument, "(//shadow/transform)[1]", "xy13", u"-568");
+        assertXPath(pDocument, "(//shadow/transform)[1]", "xy23", u"162");
 
-        assertXPath(pDocument, "(//shadow/transform)[2]"_ostr, "xy13"_ostr, "-1794");
-        assertXPath(pDocument, "(//shadow/transform)[2]"_ostr, "xy23"_ostr, "162");
+        assertXPath(pDocument, "(//shadow/transform)[2]", "xy13", u"-1795");
+        assertXPath(pDocument, "(//shadow/transform)[2]", "xy23", u"162");
 
-        assertXPath(pDocument, "(//shadow/transform)[3]"_ostr, "xy13"_ostr, "-3021");
-        assertXPath(pDocument, "(//shadow/transform)[3]"_ostr, "xy23"_ostr, "161");
+        assertXPath(pDocument, "(//shadow/transform)[3]", "xy13", u"-3021");
+        assertXPath(pDocument, "(//shadow/transform)[3]", "xy23", u"161");
 
-        assertXPath(pDocument, "(//shadow/transform)[4]"_ostr, "xy13"_ostr, "-567");
-        assertXPath(pDocument, "(//shadow/transform)[4]"_ostr, "xy23"_ostr, "-749");
+        assertXPath(pDocument, "(//shadow/transform)[4]", "xy13", u"-568");
+        assertXPath(pDocument, "(//shadow/transform)[4]", "xy23", u"-749");
 
-        assertXPath(pDocument, "(//shadow/transform)[5]"_ostr, "xy13"_ostr, "-3021");
-        assertXPath(pDocument, "(//shadow/transform)[5]"_ostr, "xy23"_ostr, "-750");
+        assertXPath(pDocument, "(//shadow/transform)[5]", "xy13", u"-3021");
+        assertXPath(pDocument, "(//shadow/transform)[5]", "xy23", u"-750");
 
-        assertXPath(pDocument, "(//shadow/transform)[6]"_ostr, "xy13"_ostr, "-566");
-        assertXPath(pDocument, "(//shadow/transform)[6]"_ostr, "xy23"_ostr, "-1691");
+        assertXPath(pDocument, "(//shadow/transform)[6]", "xy13", u"-567");
+        assertXPath(pDocument, "(//shadow/transform)[6]", "xy23", u"-1692");
 
-        assertXPath(pDocument, "(//shadow/transform)[7]"_ostr, "xy13"_ostr, "-1794");
-        assertXPath(pDocument, "(//shadow/transform)[7]"_ostr, "xy23"_ostr, "-1693");
+        assertXPath(pDocument, "(//shadow/transform)[7]", "xy13", u"-1795");
+        assertXPath(pDocument, "(//shadow/transform)[7]", "xy23", u"-1693");
 
-        assertXPath(pDocument, "(//shadow/transform)[8]"_ostr, "xy13"_ostr, "-3022");
-        assertXPath(pDocument, "(//shadow/transform)[8]"_ostr, "xy23"_ostr, "-1691");
+        assertXPath(pDocument, "(//shadow/transform)[8]", "xy13", u"-3023");
+        assertXPath(pDocument, "(//shadow/transform)[8]", "xy23", u"-1692");
 
-        assertXPath(pDocument, "(//shadow/transform)[9]"_ostr, "xy13"_ostr, "-1794");
-        assertXPath(pDocument, "(//shadow/transform)[9]"_ostr, "xy23"_ostr, "-750");
+        assertXPath(pDocument, "(//shadow/transform)[9]", "xy13", u"-1795");
+        assertXPath(pDocument, "(//shadow/transform)[9]", "xy23", u"-750");
     }
     {
         // Page 2 contains a table with shadow alignment center
@@ -136,22 +136,22 @@ CPPUNIT_TEST_FIXTURE(SdrTest, testShadowAlignment)
             = renderPageToPrimitives(xDrawPage);
 
         // Examine the created primitives.
-        drawinglayer::Primitive2dXmlDump aDumper;
+        svx::ExtendedPrimitive2dXmlDump aDumper;
         xmlDocUniquePtr pDocument = aDumper.dumpAndParse(xPrimitiveSequence);
 
         // Without the accompanying fix in place, this test would have failed with:
         // - Expected: -5196
         // - Actual  : 0
         // - In<>, attribute 'xy13' of '//shadow/transform' incorrect value.
-        assertXPath(pDocument, "//shadow/transform"_ostr, "xy13"_ostr, "-5196");
-        assertXPath(pDocument, "//shadow/transform"_ostr, "xy23"_ostr, "-2290");
+        assertXPath(pDocument, "//shadow/transform", "xy13", u"-5196");
+        assertXPath(pDocument, "//shadow/transform", "xy23", u"-2290");
     }
 }
 
 CPPUNIT_TEST_FIXTURE(SdrTest, testZeroWidthTextWrap)
 {
     // Load a document containing a 0-width shape with text.
-    loadFromURL(u"0-width-text-wrap.pptx");
+    loadFromFile(u"0-width-text-wrap.pptx");
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
                                                  uno::UNO_QUERY);
@@ -159,19 +159,19 @@ CPPUNIT_TEST_FIXTURE(SdrTest, testZeroWidthTextWrap)
         = renderPageToPrimitives(xDrawPage);
 
     // Examine the created primitives.
-    drawinglayer::Primitive2dXmlDump aDumper;
+    svx::ExtendedPrimitive2dXmlDump aDumper;
     xmlDocUniquePtr pDocument = aDumper.dumpAndParse(xPrimitiveSequence);
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 1
     // - Actual  : 12
     // i.e. the text on the only shape on the slide had 12 lines, not a single one.
-    assertXPath(pDocument, "//textsimpleportion"_ostr, 1);
+    assertXPath(pDocument, "//textsimpleportion", 1);
 }
 
 CPPUNIT_TEST_FIXTURE(SdrTest, testSlideBackground)
 {
     // Given a document with a slide what has a linked background image:
-    loadFromURL(u"slide-background.odp");
+    loadFromFile(u"slide-background.odp");
     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
                                                  uno::UNO_QUERY);
@@ -181,13 +181,13 @@ CPPUNIT_TEST_FIXTURE(SdrTest, testSlideBackground)
         = renderPageToPrimitives(xDrawPage);
 
     // Then make sure that the background has a bitmap:
-    drawinglayer::Primitive2dXmlDump aDumper;
+    svx::ExtendedPrimitive2dXmlDump aDumper;
     xmlDocUniquePtr pDocument = aDumper.dumpAndParse(xPrimitiveSequence);
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 1
     // - Actual  : 0
     // i.e. the rendering did not find the bitmap.
-    assertXPath(pDocument, "//bitmap"_ostr, 1);
+    assertXPath(pDocument, "//bitmap", 1);
 }
 }
 

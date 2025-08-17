@@ -15,20 +15,21 @@ purpose, look towards the end of the document for the section
 
 ## Status of LibreOffice as WASM with Qt
 
+Configure `--with-package-format=emscripten` to have `workdir/installation/LibreOffice/emscripten`
+populated with just the relevant files from `instdir`.
+
 The build generates a Writer-only LO build. You should be able to run either
 
-    $ emrun --serve_after_close instdir/program/qt_soffice.html
-    $ emrun --serve_after_close workdir/LinkTarget/Executable/qt_vcldemo.html
-    $ emrun --serve_after_close workdir/LinkTarget/Executable/qt_wasm-qt5-mandelbrot.html
+    $ emrun --hostname 127.0.0.1 --serve_after_close workdir/installation/LibreOffice/emscripten/qt_soffice.html
+    $ emrun --hostname 127.0.0.1 --serve_after_close workdir/LinkTarget/Executable/qt_vcldemo.html
 
 REMINDER: Always start new tabs in the browser, reload might fail / cache!
-INFO: latest browser won't work anymore with 0.0.0.0 and need 127.0.0.1.
 
 ## Setup for the LO WASM build (with Qt)
 
-We're using Qt 5.15.2 with Emscripten 2.0.31. There are a bunch of Qt patches
-to fix the most grave bugs. Also newer Emscripten versions have various bugs
-with the FS image support.
+We're using Qt 5.15.2 with Emscripten 3.1.46. There are a bunch of Qt patches
+to fix the most grave bugs. Also there's rapid development in Emscripten, so
+using another version often causes arbitrary problems.
 
 - See below under Docker build for another build option
 
@@ -37,8 +38,8 @@ with the FS image support.
 <https://emscripten.org/docs/getting_started/index.html>
 
     git clone https://github.com/emscripten-core/emsdk.git
-    ./emsdk install 2.0.31
-    ./emsdk activate --embedded 2.0.31
+    ./emsdk install 3.1.46
+    ./emsdk activate 3.1.46
 
 Example `bashrc` scriptlet:
 
@@ -57,27 +58,39 @@ FWIW: Qt 5.15 LTS is not maintained publicly and Qt WASM has quite a few bugs. M
 WASM fixes from Qt 6 are needed for Qt 5.15 too. Allotropia offers a Qt repository
 with the necessary patches cherry-picked.
 
+With "-opensource -confirm-license" you agree to the open source license.
+
     git clone https://github.com/allotropia/qt5.git
     cd qt5
-    git checkout v5.15.2+wasm
+    git checkout 5.15.2+wasm
     ./init-repository --module-subset=qtbase
-    ./configure -xplatform wasm-emscripten -feature-thread -prefix <whatever>
+    ./configure -opensource -confirm-license -xplatform wasm-emscripten -feature-thread -prefix <whatever> QMAKE_CFLAGS+=-sSUPPORT_LONGJMP=wasm QMAKE_CXXFLAGS+=-sSUPPORT_LONGJMP=wasm
     make -j<CORES> module-qtbase
+
+Note that `5.15.2+wasm` is a branch that is expected to contain further fixes as they become
+necessary.
+
+Do not include `-fwasm-exceptions` in the above `QMAKE_CXXFLAGS`, see
+<https://emscripten.org/docs/api_reference/emscripten.h.html#c.emscripten_set_main_loop> "Note:
+Currently, using the new Wasm exception handling and simulate_infinite_loop == true at the same time
+does not work yet in C++ projects that have objects with destructors on the stack at the time of the
+call."  (Also see the EMSCRIPTEN-specific HACK in soffice_main, desktop/source/app/sofficemain.cxx,
+for what we need to do to work around that.)
 
 Optionally you can add the configure flag "-compile-examples". But then you also have to
 patch at least mkspecs/wasm-emscripten/qmake.conf with EXIT_RUNTIME=0, otherwise they will
 fail to run. In addition, building with examples will break with some of them, but at that
-point Qt already works and also most examples.
-Building with examples will break with some of them, but at that point Qt already works.
-Or just skip them. Other interesting flags might be "-nomake tests -no-pch -ccache".
+point Qt already works and also most examples. Or just skip them. Other interesting flags
+might be "-nomake tests -no-pch -ccache".
 
-Linking takes quite a long time, because emscripten-finalize rewrites the whole WASM files
-with some options. This way the LO WASM needs at least 64GB RAM. For faster link times add
-"-s WASM_BIGINT=1", change to ASSERTIONS=1 nd use -g3 to prevent rewriting the WASM file
-and generating source maps (see emscripten.py, finalize_wasm, and avoid modify_wasm = True).
-This is just needed for Qt examples, as LO already uses the correct flags!
+Linking takes quite a long time, because emscripten-finalize rewrites the whole WASM files with
+some options. This way the LO WASM possibly needs 64GB RAM. For faster link times add
+"-s WASM_BIGINT=1", change to ASSERTIONS=1 and use -g3 to prevent rewriting the WASM file and
+generating source maps (see emscripten.py, finalize_wasm, and avoid modify_wasm = True). This is
+just needed for Qt examples, as LO already uses the correct flags!
 
-The install is not really needed, as LO currently just uses qtbase on its own. You can do
+It's needed to install Qt5 to the chosen prefix. Else LO won't find all needed files in the
+right place. For installation you can do
 
     make -j<CORES> install
 or
@@ -86,6 +99,18 @@ or
 Current Qt fails to start the demo webserver: <https://bugreports.qt.io/browse/QTCREATORBUG-24072>
 
 Use `emrun --serve_after_close` to run Qt WASM demos.
+
+Qt builds some 3rd-party libraries that it brings along (e.g., qt5/qtbase/src/3rdparty/freetype) and
+compiles its own code against the C/C++ include files of those 3rd-party libraries.  But when we
+link LO, we link against our own versions of those libraries' archives (e.g.,
+workdir/UnpackedTarball/freetype/instdir/lib/libfreetype.a), not against the Qt ones (e.g.,
+$QT5DIR/lib/libqtfreetype.a).  This mismatch between the include files that Qt is compiled against,
+vs. the archive actually linked in, seems to not cause issues in practice.  (If it did, we could
+either try to make both Qt and LO link against e.g. -sUSE_FREETYPE from emscripten-ports, or we
+could move Qt from a prerequisite to a proper external/qt5 LO module built during the LO build, and
+hack its configuration to build against LO's external/freetype etc.  The former approach, building Qt
+with -sUSE_FREETYPE, is even tried in qtbase/src/gui/configure.json, but apparently fails for
+reasons not studied further yet, cf. Qt's config.log.)
 
 ### Setup LO
 
@@ -104,35 +129,24 @@ Recommended configure setup is thusly:
     `--with-distro=LibreOfficeWASM32`
 
 * local config
-    `QT5DIR=/dir/of/git_qt5/qtbase`
+    `QT5DIR=/dir/of/qt5/install/prefix`
 
 * if you want to use ccache on both sides of the build
-    `--with-build-platform-configure-options=--enable-ccache`
-    `--enable-ccache`
+```
+--with-build-platform-configure-options=--enable-ccache
+--enable-ccache
+```
 
 FWIW: it's also possible to build an almost static Linux LibreOffice by just using
 --disable-dynloading --enable-customtarget-components. System externals are still
 linked dynamically, but everything else is static.
 
-#### Experimental (AKA currently broken) WASM exception + SjLj build
-
-You can build LO with WASM exceptions, which should be "much" faster then the JS
-based Emscripten EH handling. For setjmp / longjmp (SjLj) used by the PNG and JPEG
-libraries error handling, this needs Emscripten 3.1.3+. That builds, but execution
-still fails early with a signature mismatch call to Task::UpdateMinPeriod in LO's
-job scheduler code. Unfortunately the build also needs a Qt build with
-"-s SUPPORT_LONGJMP=wasm", which is incompatible with the JS EH + SjLj.
-
-The LO configure flag is simply an additional --enable-wasm-exceptions. Qt5 can
-be patched in qtbase/mkspecs/wasm-emscripten/qmake.conf with the addition of
-
-    QMAKE_CFLAGS += -s SUPPORT_LONGJMP=wasm
-    QMAKE_CXXFLAGS += -s SUPPORT_LONGJMP=wasm
-
 ### "Deploying" soffice.wasm
 
-    tar -chf wasm.tar --xform 's/.*program/lo-wasm/' instdir/program/soffice.* \
-        instdir/program/qt*
+```
+tar -chf wasm.tar --xform 's/.*program/lo-wasm/' instdir/program/soffice.* \
+    instdir/program/qt*
+```
 
 Your HTTP server needs to provide additional headers:
 * add_header Cross-Origin-Opener-Policy same-origin
@@ -166,12 +180,16 @@ Config/setup file see
 
 Run
 
-    docker-compose build
+```
+docker-compose build
+```
 
 in the lode/docker dir to get the container prepared. Run
 
-    PARALLELISM=4 BUILD_OPTIONS= BUILD_TARGET=build docker-compose run --rm \
-        -e PARALLELISM -e BUILD_TARGET -e BUILD_OPTIONS builder
+```
+PARALLELISM=4 BUILD_OPTIONS= BUILD_TARGET=build docker-compose run --rm \
+    -e PARALLELISM -e BUILD_TARGET -e BUILD_OPTIONS builder
+```
 
 to perform an actual `srcdir != builddir` build; the container mounts
 checked-out git repo and output dir via `docker-compose.yml` (so make
@@ -184,36 +202,6 @@ The lode setup expects, inside the lode/docker subdir, the following directories
 - cache (`ccache tree`)
 - tarballs (external project tarballs gets written and cached there)
 
-
-## Ideas for an UNO bridge implementation
-
-My post to Discord #emscripten:
-
-"I'm looking for a way to do an abstract call
-from one WASM C++ object to another WASM C++ object, so like FFI / WebIDL,
-just within WASM. All my code is C++ and normally I have bridge code, with
-assembler to implement the function call /RTTI and exception semantics of the
-specified platform. Code is at
-<https://cgit.freedesktop.org/libreoffice/core/tree/bridges/source/cpp_uno>.
-I've read a bit about `call_indirect` and stuff, but I don't have yet a good
-idea, how I could implement this (and  there is an initial feature/wasm branch
-for the interested). I probably need some fixed lookup table, like on iOS,
-because AFAIK you can't dynamically generate code in WASM. So any pointers or
-ideas for an implementation? I can disassemble some minimalistic WASM example
-and read clang code for `WASM_EmscriptenInvoke`, but if there were some
-standalone code or documentation I'm missing, that would be nice to know."
-
-We basically would go the same way then the other backends. Write the bridge in
-C++, which is probably largely boilerplate code, but the function call in WAT
-(<https://github.com/WebAssembly/wabt>) based on the LLVM WASM calling
-conventions in `WASM_EmscriptenInvoke`. I didn't get a reply to that question for
-hours. Maybe I'll open an Emscripten issue, if we really have to implement
-this.
-
-WASM dynamic dispatch:
-
-- <https://fitzgeraldnick.com/2018/04/26/how-does-dynamic-dispatch-work-in-wasm.html>
-
 ### UNO bindings with Embind
 
 Right now there's a very rough implementation in place. With lots of different
@@ -223,35 +211,67 @@ improvement! ;)
 Some usage examples through javascript of the current implementation:
 ```js
 // inserts a string at the start of the Writer document.
-xModel = Module.getCurrentModelFromViewSh();
-xTextDocument = new Module.com$sun$star$text$XTextDocumentRef(xModel, Module.UnoReference_Query.UNO_QUERY);
-xText = xTextDocument.getText();
-xSimpleText = new Module.com$sun$star$text$XSimpleTextRef(xText, Module.UnoReference_Query.UNO_QUERY);
-xTextCursor = xSimpleText.createTextCursor();
-xTextRange = new Module.com$sun$star$text$XTextRangeRef(xTextCursor, Module.UnoReference_Query.UNO_QUERY);
-xTextRange.setString(new Module.OUString("string here!"));
-xModel.delete(); xTextDocument.delete(); xText.delete(); xSimpleText.delete(); xTextCursor.delete(); xTextRange.delete();
+Module.uno_init.then(function() {
+    const css = Module.uno.com.sun.star;
+    let xModel = Module.getCurrentModelFromViewSh();
+    if (xModel === null || !css.text.XTextDocument.query(xModel)) {
+        const desktop = css.frame.Desktop.create(Module.getUnoComponentContext());
+        const args = new Module.uno_Sequence_com$sun$star$beans$PropertyValue(
+            0, Module.uno_Sequence.FromSize);
+        xModel = css.frame.XComponentLoader.query(desktop).loadComponentFromURL(
+            'file:///android/default-document/example.odt', '_default', 0, args);
+        args.delete();
+    }
+    const xTextDocument = css.text.XTextDocument.query(xModel);
+    const xText = xTextDocument.getText();
+    const xTextCursor = xText.createTextCursor();
+    xTextCursor.setString("string here!");
+});
 ```
 
 ```js
 // changes each paragraph of the Writer document to a random color.
-xModel = Module.getCurrentModelFromViewSh();
-xTextDocument = new Module.com$sun$star$text$XTextDocumentRef(xModel, Module.UnoReference_Query.UNO_QUERY);
-xText = xTextDocument.getText();
-xEnumAccess = new Module.com$sun$star$container$XEnumerationAccessRef(xText, Module.UnoReference_Query.UNO_QUERY);
-xParaEnumeration = xEnumAccess.createEnumeration();
-
-while (xParaEnumeration.hasMoreElements()) {
-    xParagraph = new Module.com$sun$star$text$XTextRangeRef();
-    xParagraph.set(xParaEnumeration.nextElement(), Module.UnoReference_Query.UNO_QUERY);
-    if (xParagraph.is()) {
-        xParaProps = new Module.com$sun$star$beans$XPropertySetRef(xParagraph, Module.UnoReference_Query.UNO_QUERY);
-        xParaProps.setPropertyValue(new Module.OUString("CharColor"), new Module.Any(Math.floor(Math.random() * 0xFFFFFF), Module.UnoType.long));
+Module.uno_init.then(function() {
+    const css = Module.uno.com.sun.star;
+    let xModel = Module.getCurrentModelFromViewSh();
+    if (xModel === null || !css.text.XTextDocument.query(xModel)) {
+        const desktop = css.frame.Desktop.create(Module.getUnoComponentContext());
+        const args = new Module.uno_Sequence_com$sun$star$beans$PropertyValue(
+            0, Module.uno_Sequence.FromSize);
+        xModel = css.frame.XComponentLoader.query(desktop).loadComponentFromURL(
+            'file:///android/default-document/example.odt', '_default', 0, args);
+        args.delete();
     }
-}
+    const xTextDocument = css.text.XTextDocument.query(xModel);
+    const xText = xTextDocument.getText();
+    const xEnumAccess = css.container.XEnumerationAccess.query(xText);
+    const xParaEnumeration = xEnumAccess.createEnumeration();
+    while (xParaEnumeration.hasMoreElements()) {
+        const next = xParaEnumeration.nextElement();
+        const xParagraph = css.text.XTextRange.query(next.get());
+        const xParaProps = css.beans.XPropertySet.query(xParagraph);
+        const color = new Module.uno_Any(
+            Module.uno_Type.Long(), Math.floor(Math.random() * 0xFFFFFF));
+        xParaProps.setPropertyValue("CharColor", color);
+        next.delete();
+        color.delete();
+    }
+});
 ```
 
+If you enter the above examples into the browser console, you need to enter them into the console of
+the first web worker thread, which is the LO main thread since we use -sPROXY_TO_PTHREAD, not
+into the console of the browser's main thread.
 
+Alternatively, you can do the following:  Put an example into some file like `example.js` that you
+put next to the `qt_soffice.html` that you serve to the browser (i.e., in
+`workdir/installation/LibreOffice/emscripten/`).  Create another small JS snippet file like
+`include.js` (which is only needed during the build) containing
+```
+Module.uno_scripts = ['./example.js'];
+```
+And rebuild LO configured with an additional
+`EMSCRIPTEN_EXTRA_SOFFICE_PRE_JS=/...path-to.../include.js`.
 
 ## Tools for problem diagnosis
 
@@ -300,10 +320,10 @@ The output file must have the prefix .o, otherwise the WASM files will get a
 `node.js` shebang (!) and ranlib won't be able to index the library (link errors).
 
 Qt with threads has further memory limit. From Qt configure:
-````
+```
 Project MESSAGE: Setting PTHREAD_POOL_SIZE to 4
 Project MESSAGE: Setting TOTAL_MEMORY to 1GB
-````
+```
 
 You can actually allocate 4GB:
 
@@ -376,6 +396,31 @@ Emscripten supports standalone WASI binaries:
 - <https://emscripten.org/docs/introducing_emscripten/about_emscripten.html#about-emscripten-porting-code>
 - <https://emscripten.org/docs/compiling/Building-Projects.html>
 
+### Threads and the event loop
+
+The Emscripten emulation of pthreads requires the JS main thread event loop to be able to promptly
+respond both when spawning and when exiting a pthread.  But the Qt5 event loop runs on the JS main
+thread, so the JS main thread event loop is blocked while a LO VCL Task is executed.  And our
+pthreads are typically spawned and joined from within such Task executions, which means that the JS
+main thread event loop is not available to reliably perform those Emscripten pthread operations.
+
+For pthread spawning, the solution is to set -sPTHREAD_POOL_SIZE to a sufficiently large value, so
+that each of our pthread spawning requests during an inappropriate time finds a pre-spawned JS
+Worker available.
+
+There are patterns (like, at the time of writing this, the configmgr::Components::WriteThread) where
+a pthread can get spawned and joined and then re-spawned (and re-joined) multiple times during a
+single VCL Task execution (i.e., without the JS main thread event loop having a chance to get in
+between any of those operations).  But as the underlying Emscripten pthread exiting operations will
+therefore queue up, the pthread spawning operations will eventually run out of -sPTHREAD_POOL_SIZE
+pre-spawned JS Workers.  The solution here is to change our pthread usage patterns accordingly, so
+that such pthreads are rather kept running than being joined and re-spawned.
+
+(-sPROXY_TO_PTHREAD would move the Qt5 event loop off the JS main thread, which should elegantly
+solve all of the above issues.  But Qt5 just doesn't appear to be prepared to run on anything but
+the JS main thread; e.g., it tries to access the global JS `window` object in various places, which
+is available on the JS main thread but not in a JS Worker.)
+
 ## Building headless LibreOffice as WASM for use in another product
 
 ### Set up Emscripten
@@ -391,16 +436,19 @@ downloaded and compiled when building LibreOffice.
 
 For instance, this autogen.input works for me:
 
-`--disable-debug`
-`--enable-sal-log`
-`--disable-crashdump`
-`--host=wasm32-local-emscripten`
-`--disable-gui`
-`--with-main-module=writer`
+```
+--disable-debug
+--enable-sal-log
+--disable-crashdump
+--host=wasm32-local-emscripten
+--disable-gui
+--with-wasm-module=writer
+--with-package-format=emscripten
+```
 
 For building LO core for use in COWASM, it is known to work to use
 Emscripten 3.1.30 (and not just 2.0.31 which is what the LO+Qt5 work
-has been using).
+has been using in the past).
 
 ### That's all
 

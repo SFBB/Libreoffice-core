@@ -189,7 +189,6 @@ void ThreadPool::shutdownLocked(std::unique_lock<std::mutex>& aGuard)
     }
     assert( maTasks.empty() );
 
-    // coverity[missing_lock] - on purpose
     mbTerminate = true;
 
     maTasksChanged.notify_all();
@@ -289,13 +288,15 @@ void ThreadPool::waitUntilDone(const std::shared_ptr<ThreadTaskTag>& rTag, bool 
         joinThreadsIfIdle();
 }
 
-void ThreadPool::joinThreadsIfIdle()
+bool ThreadPool::joinThreadsIfIdle()
 {
     std::unique_lock< std::mutex > aGuard( maMutex );
     if (isIdle()) // check if there are still tasks from another tag
     {
         shutdownLocked(aGuard);
+        return true;
     }
+    return false;
 }
 
 std::shared_ptr<ThreadTaskTag> ThreadPool::createThreadTaskTag()

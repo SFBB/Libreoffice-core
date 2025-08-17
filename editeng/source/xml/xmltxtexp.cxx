@@ -48,9 +48,7 @@
 
 using namespace com::sun::star;
 using namespace com::sun::star::container;
-using namespace com::sun::star::document;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::awt;
 using namespace com::sun::star::lang;
 using namespace com::sun::star::xml::sax;
 using namespace cppu;
@@ -256,7 +254,7 @@ public:
     virtual void ExportContent_() override;
 
 private:
-    css::uno::Reference< css::text::XText > mxText;
+    rtl::Reference< SvxUnoText > mxText;
 };
 
 }
@@ -266,8 +264,8 @@ SvxXMLTextExportComponent::SvxXMLTextExportComponent(
     EditEngine* pEditEngine,
     const ESelection& rSel,
     const css::uno::Reference< css::xml::sax::XDocumentHandler > & xHandler)
-:   SvXMLExport( xContext, "", /*rFileName*/"", xHandler, static_cast<frame::XModel*>(new SvxSimpleUnoModel()), FieldUnit::CM,
-    SvXMLExportFlags::OASIS  |  SvXMLExportFlags::AUTOSTYLES  |  SvXMLExportFlags::CONTENT )
+:   SvXMLExport( xContext, u""_ustr, /*rFileName*/u""_ustr, xHandler, static_cast<frame::XModel*>(new SvxSimpleUnoModel()), FieldUnit::CM,
+    SvXMLExportFlags::OASIS  |  SvXMLExportFlags::AUTOSTYLES  |  SvXMLExportFlags::CONTENT  |  SvXMLExportFlags::EMBEDDED )
 {
     SvxEditEngineSource aEditSource( pEditEngine );
 
@@ -282,10 +280,8 @@ SvxXMLTextExportComponent::SvxXMLTextExportComponent(
     };
     static SvxItemPropertySet aSvxXMLTextExportComponentPropertySet( SvxXMLTextExportComponentPropertyMap, EditEngine::GetGlobalItemPool() );
 
-    rtl::Reference<SvxUnoText> pUnoText = new SvxUnoText( &aEditSource, &aSvxXMLTextExportComponentPropertySet, mxText );
-    pUnoText->SetSelection( rSel );
-    mxText = pUnoText;
-
+    mxText = new SvxUnoText( &aEditSource, &aSvxXMLTextExportComponentPropertySet, mxText );
+    mxText->SetSelection(rSel);
 }
 
 void SvxWriteXML( EditEngine& rEditEngine, SvStream& rStream, const ESelection& rSel )
@@ -295,7 +291,7 @@ void SvxWriteXML( EditEngine& rEditEngine, SvStream& rStream, const ESelection& 
         do
         {
             // create service factory
-            uno::Reference<uno::XComponentContext> xContext( ::comphelper::getProcessComponentContext() );
+            const uno::Reference<uno::XComponentContext>& xContext( ::comphelper::getProcessComponentContext() );
 
             // create document handler
             uno::Reference< xml::sax::XWriter > xWriter = xml::sax::Writer::create( xContext );

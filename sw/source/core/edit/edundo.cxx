@@ -43,7 +43,10 @@ static void lcl_SelectSdrMarkList( SwEditShell* pShell,
 
 bool SwEditShell::CursorsLocked() const
 {
-    return GetDoc()->GetDocShell()->GetModel()->hasControllersLocked();
+    SwDocShell* pShell = GetDoc()->GetDocShell();
+    if (!pShell)
+        return false;
+    return pShell->GetModel()->hasControllersLocked();
 }
 
 void SwEditShell::HandleUndoRedoContext(::sw::UndoRedoContext & rContext)
@@ -110,7 +113,6 @@ void SwEditShell::Undo(sal_uInt16 const nCount, sal_uInt16 nOffset)
 
     // current undo state was not saved
     ::sw::UndoGuard const undoGuard(GetDoc()->GetIDocumentUndoRedo());
-    bool bRet = false;
 
     StartAllAction();
     {
@@ -138,7 +140,7 @@ void SwEditShell::Undo(sal_uInt16 const nCount, sal_uInt16 nOffset)
         try {
             for (sal_uInt16 i = 0; i < nCount; ++i)
             {
-                bRet = GetDoc()->GetIDocumentUndoRedo().UndoWithOffset(nOffset) || bRet;
+                GetDoc()->GetIDocumentUndoRedo().UndoWithOffset(nOffset);
             }
         } catch (const css::uno::Exception &) {
             TOOLS_WARN_EXCEPTION("sw.core", "SwEditShell::Undo()");
@@ -165,8 +167,6 @@ void SwEditShell::Redo(sal_uInt16 const nCount)
 
     CurrShell aCurr( this );
 
-    bool bRet = false;
-
     // undo state was not saved
     ::sw::UndoGuard const undoGuard(GetDoc()->GetIDocumentUndoRedo());
 
@@ -192,8 +192,7 @@ void SwEditShell::Redo(sal_uInt16 const nCount)
         try {
             for (sal_uInt16 i = 0; i < nCount; ++i)
             {
-                bRet = GetDoc()->GetIDocumentUndoRedo().Redo()
-                    || bRet;
+                GetDoc()->GetIDocumentUndoRedo().Redo();
             }
         } catch (const css::uno::Exception &) {
             TOOLS_WARN_EXCEPTION("sw.core", "SwEditShell::Redo()");
@@ -231,11 +230,12 @@ static void lcl_SelectSdrMarkList( SwEditShell* pShell,
                             const SdrMarkList* pSdrMarkList )
 {
     OSL_ENSURE( pShell != nullptr, "need shell!" );
-    OSL_ENSURE( pSdrMarkList != nullptr, "need mark list" );
 
     SwFEShell* pFEShell = dynamic_cast<SwFEShell*>( pShell );
     if( !pFEShell )
         return;
+
+    assert(pSdrMarkList != nullptr && "need mark list");
 
     bool bFirst = true;
     for( size_t i = 0; i < pSdrMarkList->GetMarkCount(); ++i )

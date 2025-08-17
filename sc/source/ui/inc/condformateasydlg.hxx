@@ -14,15 +14,13 @@
 #include <conditio.hxx>
 
 class ScViewData;
-class ScConditionalFormat;
-class ScTabViewShell;
 
 namespace sc
 {
 class ConditionalFormatEasyDialog : public ScAnyRefDlgController, public SfxListener
 {
 public:
-    ConditionalFormatEasyDialog(SfxBindings*, SfxChildWindow*, weld::Window*, ScViewData*);
+    ConditionalFormatEasyDialog(SfxBindings*, SfxChildWindow*, weld::Window*, ScViewData&);
     virtual ~ConditionalFormatEasyDialog() override;
 
     virtual void SetReference(const ScRange&, ScDocument&) override;
@@ -36,13 +34,14 @@ public:
 private:
     void SetDescription(std::u16string_view rCondition);
 
-    ScViewData* mpViewData;
-    ScDocument* mpDocument;
+    ScViewData& mrViewData;
+    ScDocument& mrDocument;
     ScConditionMode meMode;
     ScAddress maPosition;
 
     std::unique_ptr<weld::Entry> mxNumberEntry;
     std::unique_ptr<weld::Entry> mxNumberEntry2;
+    std::unique_ptr<weld::Container> mxAllInputs;
     std::unique_ptr<formula::RefEdit> mxRangeEntry;
     std::unique_ptr<formula::RefButton> mxButtonRangeEdit;
     std::unique_ptr<weld::ComboBox> mxStyles;

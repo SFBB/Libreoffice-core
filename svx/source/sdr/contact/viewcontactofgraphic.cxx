@@ -46,7 +46,7 @@
 #include <editeng/colritem.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
-#include <toolkit/helper/vclunohelper.hxx>
+#include <drawinglayer/primitive2d/exclusiveeditviewprimitive2d.hxx>
 
 #include <bitmaps.hlst>
 
@@ -84,7 +84,8 @@ namespace sdr::contact
                 rObjectMatrix,
                 rAttribute,
                 aEmptyGraphicObject,
-                aEmptyGraphicAttr));
+                aEmptyGraphicAttr,
+                true));
             xRetval = drawinglayer::primitive2d::Primitive2DContainer { xReferenceA };
 
             // SdrGrafPrimitive2D with content (which is the preview graphic) scaled to smaller size and
@@ -113,7 +114,7 @@ namespace sdr::contact
             const double fOffsetX((aScale.getX() - aPrefSize.getWidth()) / 2.0);
             const double fOffsetY((aScale.getY() - aPrefSize.getHeight()) / 2.0);
 
-            if(basegfx::fTools::moreOrEqual(fOffsetX, 0.0) && basegfx::fTools::moreOrEqual(fOffsetY, 0.0))
+            if (fOffsetX >= 0.0 && fOffsetY >= 0.0)
             {
                 // create the EmptyPresObj fallback visualisation. The fallback graphic
                 // is already provided in rGraphicObject in this case, use it
@@ -129,7 +130,13 @@ namespace sdr::contact
                     rGraphicObject,
                     aLocalGrafInfo));
 
-                xRetval.push_back(xReferenceB);
+                // embed it to a ExclusiveEditViewPrimitive2D to allow to decide in
+                // the primitive if to visualize or not
+                const drawinglayer::primitive2d::Primitive2DReference aEmbedded(
+                    new drawinglayer::primitive2d::ExclusiveEditViewPrimitive2D(
+                        drawinglayer::primitive2d::Primitive2DContainer { xReferenceB } ));
+
+                xRetval.push_back(aEmbedded);
             }
 
             return xRetval;
@@ -160,10 +167,9 @@ namespace sdr::contact
                 aOutline.transform(rObjectMatrix);
 
                 xRetval.push_back(
-                    drawinglayer::primitive2d::Primitive2DReference(
                         new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(
                             std::move(aOutline),
-                            aBColor)));
+                            aBColor));
             }
 
             // decompose object matrix to get single values
@@ -182,7 +188,7 @@ namespace sdr::contact
             aTranslate.setY(aTranslate.getY() + fDistance);
 
             // draw a draft bitmap
-            const BitmapEx aDraftBitmap(BMAP_GrafikEi);
+            const Bitmap aDraftBitmap(BMAP_GrafikEi);
 
             if(!aDraftBitmap.IsEmpty())
             {
@@ -210,10 +216,9 @@ namespace sdr::contact
                         fWidth, fHeight, fShearX, fRotate, aTranslate.getX(), aTranslate.getY()));
 
                     xRetval.push_back(
-                        drawinglayer::primitive2d::Primitive2DReference(
                             new drawinglayer::primitive2d::BitmapPrimitive2D(
                                 aDraftBitmap,
-                                aBitmapMatrix)));
+                                aBitmapMatrix));
 
                     // consume bitmap size in X
                     aScale.setX(std::max(0.0, aScale.getX() - (fWidth + fDistance)));
@@ -241,7 +246,7 @@ namespace sdr::contact
                 // needed and can be deleted.
 
                 // create temp RectObj as TextObj and set needed attributes
-                rtl::Reference<SdrRectObj> pRectObj(new SdrRectObj(GetGrafObject().getSdrModelFromSdrObject(), SdrObjKind::Text));
+                rtl::Reference<SdrRectObj> pRectObj(new SdrRectObj(GetGrafObject().getSdrModelFromSdrObject(), tools::Rectangle(), SdrObjKind::Text));
                 pRectObj->NbcSetText(aDraftText);
                 pRectObj->SetMergedItem(SvxColorItem(COL_LIGHTRED, EE_CHAR_COLOR));
 

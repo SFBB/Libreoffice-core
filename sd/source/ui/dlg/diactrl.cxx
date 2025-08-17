@@ -30,6 +30,7 @@
 #include <strings.hrc>
 
 #include <diactrl.hxx>
+#include <SlideSorter.hxx>
 
 #include <sdresid.hxx>
 #include <app.hrc>
@@ -53,19 +54,19 @@ namespace
 // SdPagesField
 SdPagesField::SdPagesField( vcl::Window* pParent,
                             uno::Reference< frame::XFrame > xFrame )
-    : InterimItemWindow(pParent, "modules/simpress/ui/pagesfieldbox.ui", "PagesFieldBox")
-    , m_xWidget(m_xBuilder->weld_spin_button("pagesfield"))
+    : InterimItemWindow(pParent, u"modules/simpress/ui/pagesfieldbox.ui"_ustr, u"PagesFieldBox"_ustr)
+    , m_xWidget(m_xBuilder->weld_spin_button(u"pagesfield"_ustr))
     , m_xFrame(std::move(xFrame))
 {
     InitControlBase(m_xWidget.get());
 
     // set parameter of MetricFields
     m_xWidget->set_digits(0);
-    m_xWidget->set_range(1, 15);
+    m_xWidget->set_range(1, MAX_PAGES_PER_ROW);
     m_xWidget->set_increments(1, 5);
     m_xWidget->connect_value_changed(LINK(this, SdPagesField, ModifyHdl));
-    m_xWidget->connect_output(LINK(this, SdPagesField, OutputHdl));
-    m_xWidget->connect_input(LINK(this, SdPagesField, spin_button_input));
+    m_xWidget->set_value_formatter(LINK(this, SdPagesField, OutputHdl));
+    m_xWidget->set_text_parser(LINK(this, SdPagesField, spin_button_input));
     m_xWidget->connect_key_press(LINK(this, SdPagesField, KeyInputHdl));
 
     auto width = std::max(m_xWidget->get_pixel_size(format_number(1)).Width(),
@@ -97,7 +98,7 @@ void SdPagesField::set_sensitive(bool bSensitive)
     Enable(bSensitive);
     m_xWidget->set_sensitive(bSensitive);
     if (!bSensitive)
-        m_xWidget->set_text("");
+        m_xWidget->set_text(u""_ustr);
 }
 
 void SdPagesField::UpdatePagesField( const SfxUInt16Item* pItem )
@@ -108,25 +109,25 @@ void SdPagesField::UpdatePagesField( const SfxUInt16Item* pItem )
         m_xWidget->set_text(OUString());
 }
 
-IMPL_STATIC_LINK(SdPagesField, OutputHdl, weld::SpinButton&, rSpinButton, void)
+IMPL_STATIC_LINK(SdPagesField, OutputHdl, sal_Int64, nValue, OUString)
 {
-    rSpinButton.set_text(format_number(rSpinButton.get_value()));
+    return format_number(nValue);
 }
 
-IMPL_LINK(SdPagesField, spin_button_input, int*, result, bool)
+IMPL_LINK(SdPagesField, spin_button_input, const OUString&, rText, std::optional<int>)
 {
     const LocaleDataWrapper& rLocaleData = Application::GetSettings().GetLocaleDataWrapper();
     double fResult(0.0);
-    bool bRet = vcl::TextToValue(m_xWidget->get_text(), fResult, 0, m_xWidget->get_digits(), rLocaleData, FieldUnit::NONE);
-    if (bRet)
-    {
-        if (fResult > SAL_MAX_INT32)
-            fResult = SAL_MAX_INT32;
-        else if (fResult < SAL_MIN_INT32)
-            fResult = SAL_MIN_INT32;
-        *result = fResult;
-    }
-    return bRet;
+    bool bRet = vcl::TextToValue(rText, fResult, 0, m_xWidget->get_digits(), rLocaleData, FieldUnit::NONE);
+    if (!bRet)
+        return {};
+
+    if (fResult > SAL_MAX_INT32)
+        fResult = SAL_MAX_INT32;
+    else if (fResult < SAL_MIN_INT32)
+        fResult = SAL_MIN_INT32;
+
+    return std::optional<int>(fResult);
 }
 
 IMPL_LINK_NOARG(SdPagesField, ModifyHdl, weld::SpinButton&, void)
@@ -135,9 +136,9 @@ IMPL_LINK_NOARG(SdPagesField, ModifyHdl, weld::SpinButton&, void)
 
     uno::Any a;
     aItem.QueryValue( a );
-    uno::Sequence< beans::PropertyValue > aArgs{ comphelper::makePropertyValue("PagesPerRow", a) };
+    uno::Sequence< beans::PropertyValue > aArgs{ comphelper::makePropertyValue(u"PagesPerRow"_ustr, a) };
     SfxToolBoxControl::Dispatch( ::uno::Reference< ::frame::XDispatchProvider >( m_xFrame->getController(), ::uno::UNO_QUERY ),
-                                 ".uno:PagesPerRow",
+                                 u".uno:PagesPerRow"_ustr,
                                  aArgs );
 }
 

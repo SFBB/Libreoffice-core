@@ -123,12 +123,12 @@ void EntryCache::destroy (Entry * entry)
 }
 
 // highbit():= log2() + 1 (complexity O(1))
-static int highbit(std::size_t n)
+static constexpr int highbit(std::size_t n)
 {
     int k = 1;
 
-    if (n == 0)
-        return 0;
+    assert(n > 0 && "can never be called with n == 0");
+
     if constexpr (sizeof(n) == 8)
     {
         if (n & 0xffffffff00000000)
@@ -163,7 +163,6 @@ static int highbit(std::size_t n)
     return k;
 }
 
-
 PageCache::PageCache (sal_uInt16 nPageSize)
     : m_hash_table   (m_hash_table_0),
       m_hash_size    (theTableSize),
@@ -173,8 +172,7 @@ PageCache::PageCache (sal_uInt16 nPageSize)
       m_nHit         (0),
       m_nMissed      (0)
 {
-    static size_t const theSize = SAL_N_ELEMENTS(m_hash_table_0);
-    static_assert(theSize == theTableSize, "must be equal");
+    static_assert(theTableSize == SAL_N_ELEMENTS(m_hash_table_0), "must be equal");
 }
 
 PageCache::~PageCache()
@@ -210,6 +208,8 @@ PageCache::~PageCache()
 
 void PageCache::rescale_Impl (std::size_t new_size)
 {
+    assert(new_size > 0 && "coverity 2023.12.2");
+
     std::size_t new_bytes = new_size * sizeof(Entry*);
     Entry ** new_table = static_cast<Entry**>(std::malloc(new_bytes));
 
@@ -403,9 +403,6 @@ PageCache_createInstance (
     sal_uInt16                           nPageSize)
 {
     rxCache = new PageCache (nPageSize);
-    if (!rxCache.is())
-        return store_E_OutOfMemory;
-
     return store_E_None;
 }
 

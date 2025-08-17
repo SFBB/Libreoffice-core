@@ -46,7 +46,7 @@ const WhichRangesContainer SvxTextAttrPage::pRanges(
 |*
 \************************************************************************/
 SvxTextAttrPage::SvxTextAttrPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SvxTabPage(pPage, pController, "cui/ui/textattrtabpage.ui", "TextAttributesPage", rInAttrs)
+    : SvxTabPage(pPage, pController, u"cui/ui/textattrtabpage.ui"_ustr, u"TextAttributesPage"_ustr, rInAttrs)
     , rOutAttrs(rInAttrs)
     , m_eObjKind(SdrObjKind::NONE)
     , bAutoGrowSizeEnabled(false)
@@ -56,22 +56,22 @@ SvxTextAttrPage::SvxTextAttrPage(weld::Container* pPage, weld::DialogController*
     , bWordWrapTextEnabled(false)
     , bFitToSizeEnabled(false)
     , m_aCtlPosition(this)
-    , m_xDrawingText(m_xBuilder->weld_widget("drawingtext"))
-    , m_xCustomShapeText(m_xBuilder->weld_widget("customshapetext"))
-    , m_xTsbAutoGrowWidth(m_xBuilder->weld_check_button("TSB_AUTOGROW_WIDTH"))
-    , m_xTsbAutoGrowHeight(m_xBuilder->weld_check_button("TSB_AUTOGROW_HEIGHT"))
-    , m_xTsbFitToSize(m_xBuilder->weld_check_button("TSB_FIT_TO_SIZE"))
-    , m_xTsbContour(m_xBuilder->weld_check_button("TSB_CONTOUR"))
-    , m_xTsbWordWrapText(m_xBuilder->weld_check_button("TSB_WORDWRAP_TEXT"))
-    , m_xTsbAutoGrowSize(m_xBuilder->weld_check_button("TSB_AUTOGROW_SIZE"))
-    , m_xFlDistance(m_xBuilder->weld_frame("FL_DISTANCE"))
-    , m_xMtrFldLeft(m_xBuilder->weld_metric_spin_button("MTR_FLD_LEFT", FieldUnit::CM))
-    , m_xMtrFldRight(m_xBuilder->weld_metric_spin_button("MTR_FLD_RIGHT", FieldUnit::CM))
-    , m_xMtrFldTop(m_xBuilder->weld_metric_spin_button("MTR_FLD_TOP", FieldUnit::CM))
-    , m_xMtrFldBottom(m_xBuilder->weld_metric_spin_button("MTR_FLD_BOTTOM", FieldUnit::CM))
-    , m_xFlPosition(m_xBuilder->weld_frame("FL_POSITION"))
-    , m_xCtlPosition(new weld::CustomWeld(*m_xBuilder, "CTL_POSITION", m_aCtlPosition))
-    , m_xTsbFullWidth(m_xBuilder->weld_check_button("TSB_FULL_WIDTH"))
+    , m_xDrawingText(m_xBuilder->weld_widget(u"drawingtext"_ustr))
+    , m_xCustomShapeText(m_xBuilder->weld_widget(u"customshapetext"_ustr))
+    , m_xTsbAutoGrowWidth(m_xBuilder->weld_check_button(u"TSB_AUTOGROW_WIDTH"_ustr))
+    , m_xTsbAutoGrowHeight(m_xBuilder->weld_check_button(u"TSB_AUTOGROW_HEIGHT"_ustr))
+    , m_xTsbFitToSize(m_xBuilder->weld_check_button(u"TSB_FIT_TO_SIZE"_ustr))
+    , m_xTsbContour(m_xBuilder->weld_check_button(u"TSB_CONTOUR"_ustr))
+    , m_xTsbWordWrapText(m_xBuilder->weld_check_button(u"TSB_WORDWRAP_TEXT"_ustr))
+    , m_xTsbAutoGrowSize(m_xBuilder->weld_check_button(u"TSB_AUTOGROW_SIZE"_ustr))
+    , m_xFlDistance(m_xBuilder->weld_frame(u"FL_DISTANCE"_ustr))
+    , m_xMtrFldLeft(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_LEFT"_ustr, FieldUnit::CM))
+    , m_xMtrFldRight(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_RIGHT"_ustr, FieldUnit::CM))
+    , m_xMtrFldTop(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_TOP"_ustr, FieldUnit::CM))
+    , m_xMtrFldBottom(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_BOTTOM"_ustr, FieldUnit::CM))
+    , m_xFlPosition(m_xBuilder->weld_frame(u"FL_POSITION"_ustr))
+    , m_xCtlPosition(new weld::CustomWeld(*m_xBuilder, u"CTL_POSITION"_ustr, m_aCtlPosition))
+    , m_xTsbFullWidth(m_xBuilder->weld_check_button(u"TSB_FULL_WIDTH"_ustr))
 {
     m_aCtlPosition.SetControlSettings(RectPoint::MM, 240);
 
@@ -109,34 +109,34 @@ void SvxTextAttrPage::Reset( const SfxItemSet* rAttrs )
 
     const SdrMetricItem* pItem = GetItem(*rAttrs, SDRATTR_TEXT_LEFTDIST);
     if( !pItem )
-        pItem = &pPool->GetDefaultItem( SDRATTR_TEXT_LEFTDIST );
+        pItem = &pPool->GetUserOrPoolDefaultItem( SDRATTR_TEXT_LEFTDIST );
 
     SetMetricValue(*m_xMtrFldLeft, pItem->GetValue(), eUnit);
     m_xMtrFldLeft->save_value();
 
     pItem = GetItem( *rAttrs, SDRATTR_TEXT_RIGHTDIST );
     if( !pItem )
-        pItem = &pPool->GetDefaultItem( SDRATTR_TEXT_RIGHTDIST );
+        pItem = &pPool->GetUserOrPoolDefaultItem( SDRATTR_TEXT_RIGHTDIST );
 
     SetMetricValue(*m_xMtrFldRight, pItem->GetValue(), eUnit);
     m_xMtrFldRight->save_value();
 
     pItem = GetItem( *rAttrs, SDRATTR_TEXT_UPPERDIST );
     if( !pItem )
-        pItem = &pPool->GetDefaultItem( SDRATTR_TEXT_UPPERDIST );
+        pItem = &pPool->GetUserOrPoolDefaultItem( SDRATTR_TEXT_UPPERDIST );
 
     SetMetricValue(*m_xMtrFldTop, pItem->GetValue(), eUnit);
     m_xMtrFldTop->save_value();
 
     pItem = GetItem( *rAttrs, SDRATTR_TEXT_LOWERDIST );
     if( !pItem )
-        pItem = &pPool->GetDefaultItem( SDRATTR_TEXT_LOWERDIST );
+        pItem = &pPool->GetUserOrPoolDefaultItem( SDRATTR_TEXT_LOWERDIST );
 
     SetMetricValue(*m_xMtrFldBottom, pItem->GetValue(), eUnit);
     m_xMtrFldBottom->save_value();
 
     // adjust to height and autogrowsize
-    if ( rAttrs->GetItemState( SDRATTR_TEXT_AUTOGROWHEIGHT ) != SfxItemState::DONTCARE )
+    if ( rAttrs->GetItemState( SDRATTR_TEXT_AUTOGROWHEIGHT ) != SfxItemState::INVALID )
     {
         m_xTsbAutoGrowHeight->set_state( rAttrs->Get( SDRATTR_TEXT_AUTOGROWHEIGHT ).
                         GetValue() ? TRISTATE_TRUE : TRISTATE_FALSE );
@@ -153,7 +153,7 @@ void SvxTextAttrPage::Reset( const SfxItemSet* rAttrs )
     m_xTsbAutoGrowSize->save_state();
 
     // adjust to width
-    if ( rAttrs->GetItemState( SDRATTR_TEXT_AUTOGROWWIDTH ) != SfxItemState::DONTCARE )
+    if ( rAttrs->GetItemState( SDRATTR_TEXT_AUTOGROWWIDTH ) != SfxItemState::INVALID )
     {
         m_xTsbAutoGrowWidth->set_state( rAttrs->Get( SDRATTR_TEXT_AUTOGROWWIDTH ).
                         GetValue() ? TRISTATE_TRUE : TRISTATE_FALSE );
@@ -163,7 +163,7 @@ void SvxTextAttrPage::Reset( const SfxItemSet* rAttrs )
     m_xTsbAutoGrowWidth->save_state();
 
     // wordwrap text
-    if ( rAttrs->GetItemState( SDRATTR_TEXT_WORDWRAP ) != SfxItemState::DONTCARE )
+    if ( rAttrs->GetItemState( SDRATTR_TEXT_WORDWRAP ) != SfxItemState::INVALID )
     {
         m_xTsbWordWrapText->set_state( rAttrs->Get( SDRATTR_TEXT_WORDWRAP ).
                         GetValue() ? TRISTATE_TRUE : TRISTATE_FALSE );
@@ -178,7 +178,7 @@ void SvxTextAttrPage::Reset( const SfxItemSet* rAttrs )
     SfxItemState eVState = rAttrs->GetItemState( SDRATTR_TEXT_VERTADJUST );
     SfxItemState eHState = rAttrs->GetItemState( SDRATTR_TEXT_HORZADJUST );
 
-    if(SfxItemState::DONTCARE != eVState && SfxItemState::DONTCARE != eHState)
+    if(SfxItemState::INVALID != eVState && SfxItemState::INVALID != eHState)
     {
         // VertAdjust and HorAdjust are unequivocal, thus
         SdrTextVertAdjust eTVA = rAttrs->Get(SDRATTR_TEXT_VERTADJUST).GetValue();
@@ -254,7 +254,7 @@ void SvxTextAttrPage::Reset( const SfxItemSet* rAttrs )
     }
 
     // adjust to border
-    if (rAttrs->GetItemState(SDRATTR_TEXT_FITTOSIZE) != SfxItemState::DONTCARE)
+    if (rAttrs->GetItemState(SDRATTR_TEXT_FITTOSIZE) != SfxItemState::INVALID)
     {
         drawing::TextFitToSizeType const eFTS =
                     rAttrs->Get( SDRATTR_TEXT_FITTOSIZE ).GetValue();
@@ -267,7 +267,7 @@ void SvxTextAttrPage::Reset( const SfxItemSet* rAttrs )
         m_xTsbFitToSize->set_state( TRISTATE_INDET );
     m_xTsbFitToSize->save_state();
 
-    if( rAttrs->GetItemState( SDRATTR_TEXT_CONTOURFRAME ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( SDRATTR_TEXT_CONTOURFRAME ) != SfxItemState::INVALID )
     {
         bool bContour = rAttrs->Get( SDRATTR_TEXT_CONTOURFRAME ).GetValue();
         m_xTsbContour->set_state( bContour ? TRISTATE_TRUE : TRISTATE_FALSE );
@@ -405,7 +405,7 @@ bool SvxTextAttrPage::FillItemSet( SfxItemSet* rAttrs)
             eTVA = SDRTEXTVERTADJUST_BLOCK;
     }
 
-    if ( rOutAttrs.GetItemState( SDRATTR_TEXT_VERTADJUST ) != SfxItemState::DONTCARE )
+    if ( rOutAttrs.GetItemState( SDRATTR_TEXT_VERTADJUST ) != SfxItemState::INVALID )
     {
         SdrTextVertAdjust eOldTVA = rOutAttrs.Get( SDRATTR_TEXT_VERTADJUST ).GetValue();
         if( eOldTVA != eTVA )
@@ -414,7 +414,7 @@ bool SvxTextAttrPage::FillItemSet( SfxItemSet* rAttrs)
     else
         rAttrs->Put( SdrTextVertAdjustItem( eTVA ) );
 
-    if ( rOutAttrs.GetItemState( SDRATTR_TEXT_HORZADJUST ) != SfxItemState::DONTCARE )
+    if ( rOutAttrs.GetItemState( SDRATTR_TEXT_HORZADJUST ) != SfxItemState::INVALID )
     {
         SdrTextHorzAdjust eOldTHA = rOutAttrs.Get( SDRATTR_TEXT_HORZADJUST ).GetValue();
         if( eOldTHA != eTHA )
@@ -454,6 +454,11 @@ void SvxTextAttrPage::Construct()
             bWordWrapTextEnabled = bAutoGrowSizeEnabled = true;
             m_xDrawingText->hide();
             m_xCustomShapeText->show();
+            break;
+        case SdrObjKind::Edge:
+        case SdrObjKind::Line:
+            //contour NOT possible for connector and line objects
+            bContourEnabled = false;
             break;
         default:
             bFitToSizeEnabled = bContourEnabled = true;
@@ -630,7 +635,7 @@ IMPL_LINK(SvxTextAttrPage, ClickHdl_Impl, weld::Toggleable&, rButton, void)
     // #103516# Do the setup based on states of hor/ver adjust
     SfxItemState eVState = rOutAttrs.GetItemState( SDRATTR_TEXT_VERTADJUST );
     SfxItemState eHState = rOutAttrs.GetItemState( SDRATTR_TEXT_HORZADJUST );
-    bool bHorAndVer(SfxItemState::DONTCARE == eVState || SfxItemState::DONTCARE == eHState);
+    bool bHorAndVer(SfxItemState::INVALID == eVState || SfxItemState::INVALID == eHState);
 
     // #83698# enable/disable text anchoring dependent of contour
     m_xFlPosition->set_sensitive(!bContour && !bHorAndVer);
@@ -643,7 +648,7 @@ bool SvxTextAttrPage::IsTextDirectionLeftToRight() const
     bool bLeftToRightDirection = true;
     SfxItemState eState = rOutAttrs.GetItemState(SDRATTR_TEXTDIRECTION);
 
-    if(SfxItemState::DONTCARE != eState)
+    if(SfxItemState::INVALID != eState)
     {
         const SvxWritingModeItem& rItem = rOutAttrs.Get(SDRATTR_TEXTDIRECTION);
         if (rItem.GetValue() == css::text::WritingMode_TB_RL)

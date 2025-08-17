@@ -221,10 +221,24 @@ void InternalData::setComplexRowLabel( sal_Int32 nRowIndex, std::vector< uno::An
         m_aRowLabels.resize(nRowIndex+1);
         enlargeData( 0, nRowIndex+1 );
     }
-    sal_Int32 nSize = static_cast<sal_Int32>( m_aRowLabels[nRowIndex].size() );
-    if( nSize >= 1 && !rComplexLabel.empty() )
+    m_aRowLabels[nRowIndex] = std::move(rComplexLabel);
+
+    dump();
+}
+
+void InternalData::setComplexCategoryLabel(sal_Int32 nRowIndex, std::vector< uno::Any >&& rComplexLabel)
+{
+    if (nRowIndex < 0)
+        return;
+    if (o3tl::make_unsigned(nRowIndex) >= m_aRowLabels.size())
     {
-        m_aRowLabels[nRowIndex].resize(nSize+1);
+        m_aRowLabels.resize(nRowIndex + 1);
+        enlargeData(0, nRowIndex + 1);
+    }
+    sal_Int32 nSize = static_cast<sal_Int32>(m_aRowLabels[nRowIndex].size());
+    if (nSize >= 1 && !rComplexLabel.empty())
+    {
+        m_aRowLabels[nRowIndex].resize(nSize + 1);
         m_aRowLabels[nRowIndex][nSize] = rComplexLabel[0];
     }
     else
@@ -297,8 +311,7 @@ bool InternalData::enlargeData( sal_Int32 nColumnCount, sal_Int32 nRowCount )
                 aNewData[ std::slice( nCol, m_nRowCount, nNewColumnCount ) ] ) =
                 m_aData[ std::slice( nCol, m_nRowCount, m_nColumnCount ) ];
 
-        m_aData.resize( nNewSize );
-        m_aData = aNewData;
+        m_aData = std::move(aNewData);
     }
     m_nColumnCount = nNewColumnCount;
     m_nRowCount = nNewRowCount;
@@ -328,8 +341,7 @@ void InternalData::insertColumn( sal_Int32 nAfterIndex )
                 m_aData[ std::slice( nCol - 1, m_nRowCount, m_nColumnCount ) ] );
 
     m_nColumnCount = nNewColumnCount;
-    m_aData.resize( nNewSize );
-    m_aData = aNewData;
+    m_aData = std::move(aNewData);
 
     // labels
     if( nAfterIndex < static_cast< sal_Int32 >( m_aColumnLabels.size()))
@@ -386,8 +398,7 @@ void InternalData::insertRow( sal_Int32 nAfterIndex )
     }
 
     m_nRowCount = nNewRowCount;
-    m_aData.resize( nNewSize );
-    m_aData = aNewData;
+    m_aData = std::move(aNewData);
 
     // labels
     if( nAfterIndex < static_cast< sal_Int32 >( m_aRowLabels.size()))
@@ -418,8 +429,7 @@ void InternalData::deleteColumn( sal_Int32 nAtIndex )
                 m_aData[ std::slice( nCol + 1, m_nRowCount, m_nColumnCount ) ] );
 
     m_nColumnCount = nNewColumnCount;
-    m_aData.resize( nNewSize );
-    m_aData = aNewData;
+    m_aData = std::move(aNewData);
 
     // labels
     if( nAtIndex < static_cast< sal_Int32 >( m_aColumnLabels.size()))
@@ -454,8 +464,7 @@ void InternalData::deleteRow( sal_Int32 nAtIndex )
     }
 
     m_nRowCount = nNewRowCount;
-    m_aData.resize( nNewSize );
-    m_aData = aNewData;
+    m_aData = std::move(aNewData);
 
     // labels
     if( nAtIndex < static_cast< sal_Int32 >( m_aRowLabels.size()))

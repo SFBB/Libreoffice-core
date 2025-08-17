@@ -12,6 +12,7 @@
 #include <skia/win/gdiimpl.hxx>
 
 #include <win/saldata.hxx>
+#include <win/salvd.h>
 #include <vcl/skia/SkiaHelper.hxx>
 #include <skia/utils.hxx>
 #include <skia/zone.hxx>
@@ -27,10 +28,68 @@
 #include <SkTypeface_win.h>
 #include <SkFont.h>
 #include <SkFontMgr.h>
-#include <tools/sk_app/win/WindowContextFactory_win.h>
-#include <tools/sk_app/WindowContext.h>
+#include <tools/window/win/WindowContextFactory_win.h>
+#include <tools/window/WindowContext.h>
 
 #include <windows.h>
+
+#include <type_traits>
+
+namespace
+{
+sal::systools::COMReference<IDWriteFontCollection>
+getDWritePrivateFontCollection(IDWriteFontFace* fontFace)
+{
+    UINT32 numberOfFiles;
+    sal::systools::ThrowIfFailed(fontFace->GetFiles(&numberOfFiles, nullptr), SAL_WHERE);
+    if (numberOfFiles != 1)
+        return {};
+
+    sal::systools::COMReference<IDWriteFontFile> fontFile;
+    sal::systools::ThrowIfFailed(fontFace->GetFiles(&numberOfFiles, &fontFile), SAL_WHERE);
+
+    static sal::systools::COMReference<IDWriteFactory3> dwriteFactory3 = [] {
+        IDWriteFactory* dwriteFactory = WinSalGraphics::getDWriteFactory();
+        sal::systools::COMReference<IDWriteFactory3> factory3;
+        sal::systools::ThrowIfFailed(dwriteFactory->QueryInterface(&factory3), SAL_WHERE);
+        return factory3;
+    }();
+
+    static sal::systools::COMReference<IDWriteFontSetBuilder> dwriteFontSetBuilder = [] {
+        sal::systools::COMReference<IDWriteFontSetBuilder> builder;
+        sal::systools::ThrowIfFailed(dwriteFactory3->CreateFontSetBuilder(&builder), SAL_WHERE);
+        return builder;
+    }();
+
+    BOOL isSupported;
+    DWRITE_FONT_FILE_TYPE fileType;
+    UINT32 numberOfFonts;
+    sal::systools::ThrowIfFailed(
+        fontFile->Analyze(&isSupported, &fileType, nullptr, &numberOfFonts), SAL_WHERE);
+    if (!isSupported)
+        return {};
+
+    // For each font within the font file, get a font face reference and add to the builder.
+    for (UINT32 fontIndex = 0; fontIndex < numberOfFonts; ++fontIndex)
+    {
+        sal::systools::COMReference<IDWriteFontFaceReference> fontFaceReference;
+        if (FAILED(dwriteFactory3->CreateFontFaceReference(
+                fontFile, fontIndex, DWRITE_FONT_SIMULATIONS_NONE, &fontFaceReference)))
+            continue;
+
+        // Leave it to DirectWrite to read properties directly out of the font files
+        dwriteFontSetBuilder->AddFontFaceReference(fontFaceReference);
+    }
+
+    sal::systools::COMReference<IDWriteFontSet> fontSet;
+    sal::systools::ThrowIfFailed(dwriteFontSetBuilder->CreateFontSet(&fontSet), SAL_WHERE);
+
+    sal::systools::COMReference<IDWriteFontCollection1> fc1;
+    sal::systools::ThrowIfFailed(dwriteFactory3->CreateFontCollectionFromFontSet(fontSet, &fc1),
+                                 SAL_WHERE);
+    return { fc1.get() };
+}
+}
 
 using namespace SkiaHelper;
 
@@ -46,20 +105,20 @@ void WinSkiaSalGraphicsImpl::createWindowSurfaceInternal(bool forceRaster)
     assert(!mWindowContext);
     assert(!mSurface);
     SkiaZone zone;
-    sk_app::DisplayParams displayParams;
     assert(GetWidth() > 0 && GetHeight() > 0);
-    displayParams.fSurfaceProps = *surfaceProps();
+    skwindow::DisplayParamsBuilder aDispParamBuilder;
+    aDispParamBuilder.surfaceProps(*surfaceProps());
     switch (forceRaster ? RenderRaster : renderMethodToUse())
     {
         case RenderRaster:
-            mWindowContext = sk_app::window_context_factory::MakeRasterForWin(mWinParent.gethWnd(),
-                                                                              displayParams);
+            mWindowContext
+                = skwindow::MakeRasterForWin(mWinParent.gethWnd(), aDispParamBuilder.build());
             if (mWindowContext)
                 mSurface = mWindowContext->getBackbufferSurface();
             break;
         case RenderVulkan:
-            mWindowContext = sk_app::window_context_factory::MakeVulkanForWin(mWinParent.gethWnd(),
-                                                                              displayParams);
+            mWindowContext
+                = skwindow::MakeVulkanForWin(mWinParent.gethWnd(), aDispParamBuilder.build());
             // See flushSurfaceToWindowContext().
             if (mWindowContext)
                 mSurface = createSkSurface(GetWidth(), GetHeight());
@@ -69,8 +128,6 @@ void WinSkiaSalGraphicsImpl::createWindowSurfaceInternal(bool forceRaster)
             break;
     }
 }
-
-void WinSkiaSalGraphicsImpl::freeResources() {}
 
 void WinSkiaSalGraphicsImpl::Flush() { performFlush(); }
 
@@ -98,15 +155,11 @@ bool WinSkiaSalGraphicsImpl::TryRenderCachedNativeControl(ControlCacheKey const&
     return true;
 }
 
-bool WinSkiaSalGraphicsImpl::RenderAndCacheNativeControl(CompatibleDC& rWhite, CompatibleDC& rBlack,
-                                                         int nX, int nY,
+bool WinSkiaSalGraphicsImpl::RenderAndCacheNativeControl(SkiaCompatibleDC& rWhite,
+                                                         SkiaCompatibleDC& rBlack, int nX, int nY,
                                                          ControlCacheKey& aControlCacheKey)
 {
-    assert(dynamic_cast<SkiaCompatibleDC*>(&rWhite));
-    assert(dynamic_cast<SkiaCompatibleDC*>(&rBlack));
-
-    sk_sp<SkImage> image = static_cast<SkiaCompatibleDC&>(rBlack).getAsImageDiff(
-        static_cast<SkiaCompatibleDC&>(rWhite));
+    sk_sp<SkImage> image = rBlack.getAsImageDiff(rWhite);
     preDraw();
     SAL_INFO("vcl.skia.trace",
              "renderandcachednativecontrol("
@@ -126,8 +179,7 @@ sk_sp<SkTypeface>
 WinSkiaSalGraphicsImpl::createDirectWriteTypeface(const WinFontInstance* pWinFont) try
 {
     using sal::systools::ThrowIfFailed;
-    IDWriteFactory* dwriteFactory;
-    WinSalGraphics::getDWriteFactory(&dwriteFactory);
+    IDWriteFactory* dwriteFactory = WinSalGraphics::getDWriteFactory();
     if (!dwriteDone)
     {
         dwriteFontMgr = SkFontMgr_New_DirectWrite(dwriteFactory);
@@ -156,47 +208,9 @@ WinSkiaSalGraphicsImpl::createDirectWriteTypeface(const WinFontInstance* pWinFon
             // collection. For such cases attempt to update a collection of
             // private fonts with this newly used font.
 
-            sal::systools::COMReference<IDWriteFactory3> dwriteFactory3;
-            ThrowIfFailed(dwriteFactory->QueryInterface(&dwriteFactory3), SAL_WHERE);
-
-            if (!dwriteFontSetBuilder)
-                ThrowIfFailed(dwriteFactory3->CreateFontSetBuilder(&dwriteFontSetBuilder),
-                              SAL_WHERE);
-
-            UINT32 numberOfFiles;
-            ThrowIfFailed(fontFace->GetFiles(&numberOfFiles, nullptr), SAL_WHERE);
-            if (numberOfFiles != 1)
+            dwritePrivateCollection = getDWritePrivateFontCollection(fontFace);
+            if (!dwritePrivateCollection) // Not one file? Unsupported font?
                 return nullptr;
-
-            sal::systools::COMReference<IDWriteFontFile> fontFile;
-            ThrowIfFailed(fontFace->GetFiles(&numberOfFiles, &fontFile), SAL_WHERE);
-
-            BOOL isSupported;
-            DWRITE_FONT_FILE_TYPE fileType;
-            UINT32 numberOfFonts;
-            ThrowIfFailed(fontFile->Analyze(&isSupported, &fileType, nullptr, &numberOfFonts),
-                          SAL_WHERE);
-            if (!isSupported)
-                return nullptr;
-
-            // For each font within the font file, get a font face reference and add to the builder.
-            for (UINT32 fontIndex = 0; fontIndex < numberOfFonts; ++fontIndex)
-            {
-                sal::systools::COMReference<IDWriteFontFaceReference> fontFaceReference;
-                if (FAILED(dwriteFactory3->CreateFontFaceReference(fontFile.get(), fontIndex,
-                                                                   DWRITE_FONT_SIMULATIONS_NONE,
-                                                                   &fontFaceReference)))
-                    continue;
-
-                // Leave it to DirectWrite to read properties directly out of the font files
-                dwriteFontSetBuilder->AddFontFaceReference(fontFaceReference.get());
-            }
-
-            sal::systools::COMReference<IDWriteFontSet> fontSet;
-            ThrowIfFailed(dwriteFontSetBuilder->CreateFontSet(&fontSet), SAL_WHERE);
-            ThrowIfFailed(dwriteFactory3->CreateFontCollectionFromFontSet(fontSet.get(),
-                                                                          &dwritePrivateCollection),
-                          SAL_WHERE);
             ThrowIfFailed(dwritePrivateCollection->GetFontFromFontFace(fontFace, &font), SAL_WHERE);
         }
     }
@@ -207,30 +221,31 @@ WinSkiaSalGraphicsImpl::createDirectWriteTypeface(const WinFontInstance* pWinFon
 }
 catch (const sal::systools::ComError& e)
 {
-    SAL_DETAIL_LOG_STREAM(SAL_DETAIL_ENABLE_LOG_INFO, ::SAL_DETAIL_LOG_LEVEL_INFO, "vcl.skia",
-                          e.what(),
-                          "HRESULT 0x" << OUString::number(e.GetHresult(), 16) << ": "
-                                       << WindowsErrorStringFromHRESULT(e.GetHresult()));
+    SAL_DETAIL_LOG_STREAM(
+        SAL_DETAIL_ENABLE_LOG_INFO, ::SAL_DETAIL_LOG_LEVEL_INFO, "vcl.skia", e.what(),
+        "HRESULT 0x" << OUString::number(e.GetHresult(), 16) << ": "
+                     << comphelper::WindowsErrorStringFromHRESULT(e.GetHresult()));
     return nullptr;
 }
 
 bool WinSkiaSalGraphicsImpl::DrawTextLayout(const GenericSalLayout& rLayout)
 {
-    assert(dynamic_cast<const SkiaWinFontInstance*>(&rLayout.GetFont()));
-    const SkiaWinFontInstance* pWinFont
-        = static_cast<const SkiaWinFontInstance*>(&rLayout.GetFont());
-    const HFONT hLayoutFont = pWinFont->GetHFONT();
-    double hScale = pWinFont->getHScale();
+    assert(dynamic_cast<SkiaWinFontInstance*>(&rLayout.GetFont()));
+    SkiaWinFontInstance& rWinFont = static_cast<SkiaWinFontInstance&>(rLayout.GetFont());
+    const vcl::font::FontSelectPattern& rFSD = rWinFont.GetFontSelectPattern();
+    if (rFSD.mnHeight == 0)
+        return false;
+    const HFONT hLayoutFont = rWinFont.GetHFONT();
     LOGFONTW logFont;
     if (GetObjectW(hLayoutFont, sizeof(logFont), &logFont) == 0)
     {
         assert(false);
         return false;
     }
-    sk_sp<SkTypeface> typeface = pWinFont->GetSkiaTypeface();
+    sk_sp<SkTypeface> typeface = rWinFont.GetSkiaTypeface();
     if (!typeface)
     {
-        typeface = createDirectWriteTypeface(pWinFont);
+        typeface = createDirectWriteTypeface(&rWinFont);
         bool dwrite = true;
         if (!typeface) // fall back to GDI text rendering
         {
@@ -251,7 +266,7 @@ bool WinSkiaSalGraphicsImpl::DrawTextLayout(const GenericSalLayout& rLayout)
                 return false;
         }
         // Cache the typeface.
-        const_cast<SkiaWinFontInstance*>(pWinFont)->SetSkiaTypeface(typeface, dwrite);
+        rWinFont.SetSkiaTypeface(typeface, dwrite);
     }
 
     SkFont font(typeface);
@@ -268,21 +283,14 @@ bool WinSkiaSalGraphicsImpl::DrawTextLayout(const GenericSalLayout& rLayout)
     font.setEdging(logFont.lfQuality == NONANTIALIASED_QUALITY ? SkFont::Edging::kAlias
                                                                : ePreferredAliasing);
 
-    const vcl::font::FontSelectPattern& rFSD = pWinFont->GetFontSelectPattern();
-    int nHeight = rFSD.mnHeight;
-    int nWidth = rFSD.mnWidth ? rFSD.mnWidth : nHeight;
-    if (nWidth == 0 || nHeight == 0)
-        return false;
+    double nHeight = rFSD.mnHeight;
+    double nWidth = rFSD.mnWidth ? rFSD.mnWidth * rWinFont.GetAverageWidthFactor() : nHeight;
     font.setSize(nHeight);
-    font.setScaleX(hScale);
+    font.setScaleX(nWidth / nHeight);
 
-    // Unlike with Freetype-based font handling, use height even in vertical mode,
-    // additionally multiply it by horizontal scale to get the proper
-    // size and then scale the width back, otherwise the height would
-    // not be correct. I don't know why this is inconsistent.
     SkFont verticalFont(font);
-    verticalFont.setSize(nHeight * hScale);
-    verticalFont.setScaleX(1.0 / hScale);
+    verticalFont.setSize(nWidth);
+    verticalFont.setScaleX(nHeight / nWidth);
 
     assert(dynamic_cast<SkiaSalGraphicsImpl*>(mWinParent.GetImpl()));
     SkiaSalGraphicsImpl* impl = static_cast<SkiaSalGraphicsImpl*>(mWinParent.GetImpl());
@@ -330,15 +338,44 @@ void WinSkiaSalGraphicsImpl::initFontInfo()
 void WinSkiaSalGraphicsImpl::ClearDevFontCache()
 {
     dwriteFontMgr.reset();
-    dwriteFontSetBuilder.clear();
     dwritePrivateCollection.clear();
     dwriteDone = false;
     initFontInfo(); // get font info again, just in case
 }
 
-SkiaCompatibleDC::SkiaCompatibleDC(SalGraphics& rGraphics, int x, int y, int width, int height)
-    : CompatibleDC(rGraphics, x, y, width, height, false)
+SkiaCompatibleDC::SkiaCompatibleDC(WinSalGraphics& rGraphics, int x, int y, int width, int height)
+    : maRects(0, 0, width, height, x, y, width, height)
 {
+    mpImpl = rGraphics.getWinSalGraphicsImplBase();
+    mhCompatibleDC = CreateCompatibleDC(rGraphics.getHDC());
+
+    // move the origin so that we always paint at 0,0 - to keep the bitmap small
+    OffsetViewportOrgEx(mhCompatibleDC, -x, -y, nullptr);
+
+    mhBitmap = WinSalVirtualDevice::ImplCreateVirDevBitmap(mhCompatibleDC, width, height, 32,
+                                                           reinterpret_cast<void**>(&mpData));
+
+    mhOrigBitmap = static_cast<HBITMAP>(SelectObject(mhCompatibleDC, mhBitmap));
+}
+
+SkiaCompatibleDC::~SkiaCompatibleDC()
+{
+    if (mpImpl)
+    {
+        SelectObject(mhCompatibleDC, mhOrigBitmap);
+        DeleteObject(mhBitmap);
+        DeleteDC(mhCompatibleDC);
+    }
+}
+
+void SkiaCompatibleDC::fill(sal_uInt32 color)
+{
+    if (!mpData)
+        return;
+
+    sal_uInt32* p = mpData;
+    for (int i = maRects.mnSrcWidth * maRects.mnSrcHeight; i > 0; --i)
+        *p++ = color;
 }
 
 sk_sp<SkImage> SkiaCompatibleDC::getAsImageDiff(const SkiaCompatibleDC& white) const
@@ -405,11 +442,11 @@ SkiaControlCacheType& SkiaControlsCache::get()
 
 namespace
 {
-std::unique_ptr<sk_app::WindowContext> createVulkanWindowContext(bool /*temporary*/)
+std::unique_ptr<skwindow::WindowContext> createVulkanWindowContext(bool /*temporary*/)
 {
     SkiaZone zone;
-    sk_app::DisplayParams displayParams;
-    return sk_app::window_context_factory::MakeVulkanForWin(nullptr, displayParams);
+    skwindow::DisplayParamsBuilder displayParams;
+    return skwindow::MakeVulkanForWin(nullptr, displayParams.build());
 }
 }
 

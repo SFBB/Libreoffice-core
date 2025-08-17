@@ -27,6 +27,7 @@
 #include <rtl/math.hxx>
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <memory>
 
 #include "analysisdefs.hxx"
@@ -43,6 +44,8 @@ using namespace sca::analysis;
 
 #define STDPAR              false   // all parameters are described
 #define INTPAR              true    // first parameter is internal
+
+#define INV_MATCHLEV 1764 // guess, what this is... :-) - I doubt this kind of comment looks fun :-(
 
 #define FUNCDATA( FUNCNAME, DBL, OPT, NUMOFPAR, CAT ) \
     { "get" #FUNCNAME, ANALYSIS_FUNCNAME_##FUNCNAME, ANALYSIS_##FUNCNAME, DBL, OPT, ANALYSIS_DEFFUNCNAME_##FUNCNAME, NUMOFPAR, CAT, nullptr }
@@ -262,7 +265,7 @@ sal_Int32 GetNullDate( const uno::Reference< beans::XPropertySet >& xOpt )
     {
         try
         {
-            uno::Any aAny = xOpt->getPropertyValue( "NullDate" );
+            uno::Any aAny = xOpt->getPropertyValue( u"NullDate"_ustr );
             util::Date  aDate;
             if( aAny >>= aDate )
                 return DateToDays( aDate.Day, aDate.Month, aDate.Year );
@@ -587,7 +590,7 @@ double GetYearFrac( sal_Int32 nNullDate, sal_Int32 nStartDate, sal_Int32 nEndDat
 
 double BinomialCoefficient( double n, double k )
 {
-    // This method is a copy of BinomKoeff()
+    // This method is a copy of BinomCoeff()
     // found in sc/source/core/tool/interpr3.cxx
 
     double nVal = 0.0;
@@ -775,7 +778,7 @@ bool ParseDouble( const sal_Unicode*& rp, double& rRet )
     sal_Int32           nMaxExp = 307;
     sal_uInt16          nDigCnt = 18;   // max. number of digits to read in, rest doesn't matter
 
-    enum State  { S_End = 0, S_Sign, S_IntStart, S_Int, S_IgnoreIntDigs, S_Frac, S_IgnoreFracDigs, S_ExpSign, S_Exp };
+    enum State  { S_End, S_Sign, S_IntStart, S_Int, S_IgnoreIntDigs, S_Frac, S_IgnoreFracDigs, S_ExpSign, S_Exp };
 
     State           eS = S_Sign;
 
@@ -785,7 +788,7 @@ bool ParseDouble( const sal_Unicode*& rp, double& rRet )
     const sal_Unicode*  p = rp;
     sal_Unicode         c;
 
-    while( eS )
+    while( eS != S_End )
     {
         c = *p;
         switch( eS )
@@ -1368,7 +1371,7 @@ sal_uInt16 FuncData::GetStrIndex( sal_uInt16 nParamNum ) const
 void InitFuncDataList(FuncDataList& rList)
 {
     for(const auto & rFuncData : pFuncDatas)
-        rList.push_back(FuncData(rFuncData));
+        rList.emplace_back(rFuncData);
 }
 
 SortedIndividualInt32List::SortedIndividualInt32List()
@@ -1467,7 +1470,7 @@ void SortedIndividualInt32List::InsertHolidayList(
         if( !(rHolAny >>= aAnySeq) )
             throw lang::IllegalArgumentException();
 
-        for( const uno::Sequence< uno::Any >& rSubSeq : std::as_const(aAnySeq) )
+        for (const uno::Sequence<uno::Any>& rSubSeq : aAnySeq)
         {
             for( const uno::Any& rAny : rSubSeq )
                 InsertHolidayList( rAnyConv, rAny, nNullDate, false/*bInsertOnWeekend*/ );
@@ -1589,9 +1592,8 @@ bool Complex::ParseString( const OUString& rStr, Complex& rCompl )
 
     if( IsImagUnit( *pStr ) && rStr.getLength() == 1)
     {
-        rCompl.r = 0.0;
-        rCompl.i = 1.0;
         rCompl.c = *pStr;
+        rCompl.num = std::complex(0.0, 1.0);
         return true;
     }
 
@@ -1611,8 +1613,7 @@ bool Complex::ParseString( const OUString& rStr, Complex& rCompl )
                 rCompl.c = pStr[ 1 ];
                 if( pStr[ 2 ] == 0 )
                 {
-                    rCompl.r = f;
-                    rCompl.i = ( *pStr == '+' )? 1.0 : -1.0;
+                    rCompl.num = std::complex(f, ( *pStr == '+' )? 1.0 : -1.0);
                     return true;
                 }
             }
@@ -1622,8 +1623,7 @@ bool Complex::ParseString( const OUString& rStr, Complex& rCompl )
                 pStr++;
                 if( *pStr == 0 )
                 {
-                    rCompl.r = r;
-                    rCompl.i = f;
+                    rCompl.num = std::complex(r, f);
                     return true;
                 }
             }
@@ -1635,43 +1635,40 @@ bool Complex::ParseString( const OUString& rStr, Complex& rCompl )
             pStr++;
             if( *pStr == 0 )
             {
-                rCompl.i = f;
-                rCompl.r = 0.0;
+                rCompl.num = std::complex(0.0, f);
                 return true;
             }
             break;
         case 0:     // only real-part
-            rCompl.r = f;
-            rCompl.i = 0.0;
+            rCompl.num = std::complex(f, 0.0);
             return true;
     }
 
     return false;
 }
 
-
 OUString Complex::GetString() const
 {
-    finiteOrThrow(r);
-    finiteOrThrow(i);
+    finiteOrThrow(num.real());
+    finiteOrThrow(num.imag());
     OUStringBuffer aRet;
 
-    bool bHasImag = i != 0.0;
-    bool bHasReal = !bHasImag || (r != 0.0);
+    bool bHasImag = num.imag() != 0.0;
+    bool bHasReal = !bHasImag || (num.real() != 0.0);
 
     if( bHasReal )
-        aRet.append(::GetString( r, false ));
+        aRet.append(::GetString( num.real(), false ));
     if( bHasImag )
     {
-        if( i == 1.0 )
+        if( num.imag() == 1.0 )
         {
             if( bHasReal )
                 aRet.append('+');
         }
-        else if( i == -1.0 )
+        else if( num.imag() == -1.0 )
             aRet.append('-');
         else
-            aRet.append(::GetString( i, bHasReal ));
+            aRet.append(::GetString( num.imag(), bHasReal ));
         aRet.append((c != 'j') ? 'i' : 'j');
     }
 
@@ -1681,139 +1678,65 @@ OUString Complex::GetString() const
 
 double Complex::Arg() const
 {
-    if( r == 0.0 && i == 0.0 )
+    // Note: there are differing opinions on whether arg(0) should be 0 or undefined, we are treating it as undefined
+    if( num.real() == 0.0 && num.imag() == 0.0 )
         throw lang::IllegalArgumentException();
-
-    double  phi = acos( r / Abs() );
-
-    if( i < 0.0 )
-        phi = -phi;
-
-    return phi;
+    return std::arg(num);
 }
 
 
 void Complex::Power( double fPower )
 {
-    if( r == 0.0 && i == 0.0 )
-    {
-        if( fPower <= 0 )
-            throw lang::IllegalArgumentException();
-        r = i = 0.0;
-        return;
-    }
-
-    double      p, phi;
-
-    p = Abs();
-
-    phi = acos( r / p );
-    if( i < 0.0 )
-        phi = -phi;
-
-    p = pow( p, fPower );
-    phi *= fPower;
-
-    r = cos( phi ) * p;
-    i = sin( phi ) * p;
+    if( num.real() == 0.0 && num.imag() == 0.0 && fPower <= 0 )
+        throw lang::IllegalArgumentException();
+    num = std::pow(num, fPower);
 }
 
 
 void Complex::Sqrt()
 {
-    static const double fMultConst = M_SQRT1_2;
-    double  p = Abs();
-    double  i_ = sqrt( p - r ) * fMultConst;
-
-    r = sqrt( p + r ) * fMultConst;
-    i = ( i < 0.0 )? -i_ : i_;
+    num = std::sqrt(num);
 }
 
 
 void Complex::Sin()
 {
-    if( !::rtl::math::isValidArcArg( r ) )
+    if( !::rtl::math::isValidArcArg( num.real() ) )
         throw lang::IllegalArgumentException();
-
-    if( i )
-    {
-        double  r_;
-
-        r_ = sin( r ) * cosh( i );
-        i = cos( r ) * sinh( i );
-        r = r_;
-    }
-    else
-        r = sin( r );
+    num = std::sin(num);
 }
 
 
 void Complex::Cos()
 {
-    if( !::rtl::math::isValidArcArg( r ) )
+    if( !::rtl::math::isValidArcArg( num.real() ) )
         throw lang::IllegalArgumentException();
-
-    if( i )
-    {
-        double      r_;
-
-        r_ = cos( r ) * cosh( i );
-        i = -( sin( r ) * sinh( i ) );
-        r = r_;
-    }
-    else
-        r = cos( r );
+    num = std::cos(num);
 }
 
 
 void Complex::Div( const Complex& z )
 {
-    if( z.r == 0 && z.i == 0 )
+    if( z.num.real() == 0 && z.num.imag() == 0 )
         throw lang::IllegalArgumentException();
-
-    double  a1 = r;
-    double  a2 = z.r;
-    double  b1 = i;
-    double  b2 = z.i;
-
-    double  f = 1.0 / ( a2 * a2 + b2 * b2 );
-
-    r = ( a1 * a2 + b1 * b2 ) * f;
-    i = ( a2 * b1 - a1 * b2 ) * f;
-
-    if( !c ) c = z.c;
+    num = num / z.num;
 }
 
 
 void Complex::Exp()
 {
-    double  fE = exp( r );
-    r = fE * cos( i );
-    i = fE * sin( i );
+    num = std::exp(num);
 }
-
 
 void Complex::Ln()
 {
-    if( r == 0.0 && i == 0.0 )
-        throw lang::IllegalArgumentException();
-
-    double      fAbs = Abs();
-    bool        bNegi = i < 0.0;
-
-    i = acos( r / fAbs );
-
-    if( bNegi )
-        i = -i;
-
-    r = log( fAbs );
+    num = std::log(num);
 }
 
 
 void Complex::Log10()
 {
-    Ln();
-    Mult( M_LOG10E );
+    num = std::log10(num);
 }
 
 
@@ -1826,157 +1749,64 @@ void Complex::Log2()
 
 void Complex::Tan()
 {
-    if ( i )
-    {
-        if( !::rtl::math::isValidArcArg( 2.0 * r ) )
-            throw lang::IllegalArgumentException();
-        double fScale =1.0 / ( cos( 2.0 * r ) + cosh( 2.0 * i ));
-        r = sin( 2.0 * r ) * fScale;
-        i = sinh( 2.0 * i ) * fScale;
-    }
-    else
-    {
-        if( !::rtl::math::isValidArcArg( r ) )
-            throw lang::IllegalArgumentException();
-        r = tan( r );
-    }
+    // using 2.0 * num.real/imag as a precaution because a) this is what our previous implementation did and
+    // b) the std::complex implementation may use cos(2x) etc, see the comment in isValidArcArg for details
+    if ( ( num.imag() && !::rtl::math::isValidArcArg( 2.0 * num.real() ) )
+        || ( !num.imag() && !::rtl::math::isValidArcArg( num.real() ) ) )
+        throw lang::IllegalArgumentException();
+    num = std::tan(num);
 }
 
 
 void Complex::Sec()
 {
-    if( i )
-    {
-        if( !::rtl::math::isValidArcArg( 2 * r ) )
-            throw lang::IllegalArgumentException();
-        double fScale = 1.0 / (cosh( 2.0 * i) + cos ( 2.0 * r));
-        double  r_;
-        r_ = 2.0 * cos( r ) * cosh( i ) * fScale;
-        i = 2.0 * sin( r ) * sinh( i ) * fScale;
-        r = r_;
-    }
-    else
-    {
-        if( !::rtl::math::isValidArcArg( r ) )
-            throw lang::IllegalArgumentException();
-        r = 1.0 / cos( r );
-    }
+    Cos();
+    num = 1.0 / num;
 }
 
 
 void Complex::Csc()
 {
-    if( i )
-    {
-        if( !::rtl::math::isValidArcArg( 2 * r ) )
-            throw lang::IllegalArgumentException();
-        double fScale = 1.0 / (cosh( 2.0 * i) - cos ( 2.0 * r));
-        double  r_;
-        r_ = 2.0 * sin( r ) * cosh( i ) * fScale;
-        i = -2.0 * cos( r ) * sinh( i ) * fScale;
-        r = r_;
-    }
-    else
-    {
-        if( !::rtl::math::isValidArcArg( r ) )
-            throw lang::IllegalArgumentException();
-        r = 1.0 / sin( r );
-    }
+    Sin();
+    num = 1.0 / num;
 }
 
 
 void Complex::Cot()
 {
-    if ( i )
-    {
-        if( !::rtl::math::isValidArcArg( 2.0 * r ) )
-            throw lang::IllegalArgumentException();
-        double fScale =1.0 / ( cosh( 2.0 * i ) - cos( 2.0 * r ) );
-        r = sin( 2.0 * r ) * fScale;
-        i = - ( sinh( 2.0 * i ) * fScale );
-    }
-    else
-    {
-        if( !::rtl::math::isValidArcArg( r ) )
-            throw lang::IllegalArgumentException();
-        r = 1.0 / tan( r );
-    }
+
+    Tan();
+    num = 1.0 / num;
 }
 
 
 void Complex::Sinh()
 {
-    if( !::rtl::math::isValidArcArg( r ) )
+    if( !::rtl::math::isValidArcArg( num.imag() ) )
         throw lang::IllegalArgumentException();
-
-    if( i )
-    {
-        double  r_;
-        r_ = sinh( r ) * cos( i );
-        i = cosh( r ) * sin( i );
-        r = r_;
-    }
-    else
-        r = sinh( r );
+    num = std::sinh(num);
 }
 
 
 void Complex::Cosh()
 {
-    if( !::rtl::math::isValidArcArg( r ) )
+    if( !::rtl::math::isValidArcArg( num.imag() ) )
         throw lang::IllegalArgumentException();
-
-    if( i )
-    {
-        double  r_;
-        r_ = cosh( r ) * cos( i );
-        i = sinh( r ) * sin( i );
-        r = r_;
-    }
-    else
-        r = cosh( r );
+    num = std::cosh(num);
 }
 
 
 void Complex::Sech()
 {
-    if ( i )
-    {
-        if( !::rtl::math::isValidArcArg( 2.0 * r ) )
-            throw lang::IllegalArgumentException();
-        double fScale =1.0 / ( cosh( 2.0 * r ) + cos( 2.0 * i ));
-        double r_;
-        r_ = 2.0 * cosh( r ) * cos( i ) * fScale;
-        i = - (2.0 * sinh( r ) * sin( i ) * fScale );
-        r = r_ ;
-    }
-    else
-    {
-        if( !::rtl::math::isValidArcArg( r ) )
-            throw lang::IllegalArgumentException();
-        r = 1.0 / cosh( r );
-    }
+    Cosh();
+    num = 1.0 / num;
 }
 
 
 void Complex::Csch()
 {
-    if ( i )
-    {
-        if( !::rtl::math::isValidArcArg( 2.0 * r ) )
-            throw lang::IllegalArgumentException();
-        double fScale =1.0 / ( cosh( 2.0 * r ) - cos( 2.0 * i ));
-        double r_;
-        r_ = 2.0 * sinh( r ) * cos( i ) * fScale;
-        i = - ( 2.0 * cosh( r ) * sin( i ) * fScale );
-        r = r_ ;
-    }
-    else
-    {
-        if( !::rtl::math::isValidArcArg( r ) )
-            throw lang::IllegalArgumentException();
-        r = 1.0 / sinh( r );
-    }
+    Sinh();
+    num = 1.0 / num;
 }
 
 
@@ -2022,7 +1852,7 @@ void ComplexList::Append( const uno::Sequence< uno::Any >& aMultPars )
                 if( !(r >>= aValArr) )
                     throw lang::IllegalArgumentException();
 
-                for( const uno::Sequence< uno::Any >& rArr : std::as_const(aValArr) )
+                for (const uno::Sequence<uno::Any>& rArr : aValArr)
                     Append( rArr );
                 }
                 break;
@@ -2032,39 +1862,30 @@ void ComplexList::Append( const uno::Sequence< uno::Any >& aMultPars )
     }
 }
 
-ConvertData::ConvertData(const char p[], double fC, ConvertDataClass e, bool bPrefSupport)
+ConvertData::ConvertData(std::u16string_view sUnitName, double fC, ConvertDataClass e, bool bPrefSupport)
     : fConst(fC)
-    , aName(p, strlen(p), RTL_TEXTENCODING_MS_1252)
+    , aName(sUnitName)
     , eClass(e)
     , bPrefixSupport(bPrefSupport)
 {
+    assert(!aName.empty());
 }
 
-ConvertData::~ConvertData()
-{
-}
+ConvertData::~ConvertData() = default;
 
 sal_Int16 ConvertData::GetMatchingLevel( const OUString& rRef ) const
 {
     OUString aStr = rRef;
-    sal_Int32 nLen = rRef.getLength();
-    sal_Int32 nIndex = rRef.lastIndexOf( '^' );
-    if( nIndex > 0 && nIndex  == ( nLen - 2 ) )
-        aStr = aStr.subView( 0, nLen - 2 ) + OUStringChar( aStr[ nLen - 1 ] );
+    if (sal_Int32 nIndex = rRef.lastIndexOf('^'); nIndex > 0 && nIndex == (rRef.getLength() - 2))
+        aStr = aStr.replaceAt(nIndex, 1, "");
     if( aName == aStr )
         return 0;
-    else
+    if (std::u16string_view prefix; bPrefixSupport && aStr.endsWith(aName, &prefix))
     {
-        const sal_Unicode*  p = aStr.getStr();
-
-        nLen = aStr.getLength();
-        bool bPref = bPrefixSupport;
-        bool bOneChar = (bPref && nLen > 1 && (aName == p + 1));
-        if (bOneChar || (bPref && nLen > 2 && (aName == p + 2) &&
-                    *p == 'd' && *(p+1) == 'a'))
+        if (prefix.size() == 1 || prefix == u"da")
         {
             sal_Int16       n;
-            switch( *p )
+            switch (prefix[0])
             {
                 case 'y':   n = -24;    break;      // yocto
                 case 'z':   n = -21;    break;      // zepto
@@ -2076,12 +1897,10 @@ sal_Int16 ConvertData::GetMatchingLevel( const OUString& rRef ) const
                 case 'm':   n = -3;     break;
                 case 'c':   n = -2;     break;
                 case 'd':
-                    {
-                        if ( bOneChar )
-                            n = -1;                 // deci
-                        else
-                            n = 1;                  // deca
-                    }
+                    if (prefix.size() == 1)
+                        n = -1;                     // deci
+                    else
+                        n = 1;                      // deca
                     break;
                 case 'e':   n = 1;      break;
                 case 'h':   n = 2;      break;
@@ -2093,85 +1912,72 @@ sal_Int16 ConvertData::GetMatchingLevel( const OUString& rRef ) const
                 case 'E':   n = 18;     break;
                 case 'Z':   n = 21;     break;      // zetta
                 case 'Y':   n = 24;     break;      // yotta
-                default:
-                            n = INV_MATCHLEV;
+                default: return INV_MATCHLEV;
             }
 
 // We could weed some nonsense out, ODFF doesn't say so though.
 #if 0
             if (n < 0 && Class() == CDC_Information)
-                n = INV_MATCHLEV;   // milli-bits doesn't make sense
+                return INV_MATCHLEV;   // milli-bits doesn't make sense
 #endif
 
 //! <HACK> "cm3" is not 10^-2 m^3 but 10^-6 m^3 !!! ------------------
-            if( n != INV_MATCHLEV )
-            {
-                sal_Unicode cLast = p[ aStr.getLength() - 1 ];
-                if( cLast == '2' )
-                    n *= 2;
-                else if( cLast == '3' )
-                    n *= 3;
-            }
+            if (aStr.endsWith("2"))
+                n *= 2;
+            else if (aStr.endsWith("3"))
+                n *= 3;
 //! </HACK> -------------------------------------------------------------------
 
             return n;
         }
-        else if ( nLen > 2 && ( aName == p + 2 ) && ( Class() == CDC_Information ) )
+        else if (prefix.size() == 2 && prefix[1] == 'i' && Class() == CDC_Information)
         {
-            const sal_Unicode*  pStr = aStr.getStr();
-            if ( *(pStr + 1) != 'i')
-                return INV_MATCHLEV;
-            sal_Int16 n;
-            switch( *pStr )
+            switch (prefix[0])
             {
-                case 'k':   n = 10;      break;
-                case 'M':   n = 20;      break;
-                case 'G':   n = 30;      break;
-                case 'T':   n = 40;      break;
-                case 'P':   n = 50;      break;
-                case 'E':   n = 60;      break;
-                case 'Z':   n = 70;      break;
-                case 'Y':   n = 80;      break;
-                default:
-                            n = INV_MATCHLEV;
+                case 'k': return 10;
+                case 'M': return 20;
+                case 'G': return 30;
+                case 'T': return 40;
+                case 'P': return 50;
+                case 'E': return 60;
+                case 'Z': return 70;
+                case 'Y': return 80;
+                default:  return INV_MATCHLEV;
             }
-            return n;
         }
-        else
-            return INV_MATCHLEV;
     }
+    return INV_MATCHLEV;
 }
 
 
 double ConvertData::Convert(
     double f, const ConvertData& r, sal_Int16 nLevFrom, sal_Int16 nLevTo ) const
 {
-    if( Class() != r.Class() )
-        throw lang::IllegalArgumentException();
-
-    bool bBinFromLev = ( nLevFrom > 0 && ( nLevFrom % 10 ) == 0 );
-    bool bBinToLev   = ( nLevTo > 0 && ( nLevTo % 10 ) == 0 );
-
-    if ( Class() == CDC_Information && ( bBinFromLev || bBinToLev ) )
-    {
-        if ( bBinFromLev && bBinToLev )
-        {
-            nLevFrom = sal::static_int_cast<sal_Int16>( nLevFrom - nLevTo );
-            f *= r.fConst / fConst;
-            if( nLevFrom )
-                f *= pow( 2.0, nLevFrom );
-        }
-        else if ( bBinFromLev )
-            f *= ( r.fConst / fConst ) * ( pow( 2.0, nLevFrom ) / pow( 10.0, nLevTo ) );
-        else
-            f *= ( r.fConst / fConst ) * ( pow( 10.0, nLevFrom ) / pow( 2.0, nLevTo ) );
-        return f;
-    }
-
-    nLevFrom = sal::static_int_cast<sal_Int16>( nLevFrom - nLevTo );    // effective level
+    assert(Class() == r.Class());
 
     f *= r.fConst / fConst;
 
+    if (Class() == CDC_Information)
+    {
+        bool bBinFromLev = (nLevFrom > 0 && (nLevFrom % 10) == 0);
+        bool bBinToLev = (nLevTo > 0 && (nLevTo % 10) == 0);
+        if (bBinFromLev || bBinToLev)
+        {
+            if (bBinFromLev && bBinToLev)
+            {
+                nLevFrom -= nLevTo;
+                if (nLevFrom)
+                    f *= pow(2.0, nLevFrom);
+            }
+            else if (bBinFromLev)
+                f *= pow(2.0, nLevFrom) / pow(10.0, nLevTo);
+            else
+                f *= pow(10.0, nLevFrom) / pow(2.0, nLevTo);
+            return f;
+        }
+    }
+
+    nLevFrom -= nLevTo; // effective level
     if( nLevFrom )
         f = ::rtl::math::pow10Exp( f, nLevFrom );
 
@@ -2179,21 +1985,14 @@ double ConvertData::Convert(
 }
 
 
-double ConvertData::ConvertFromBase( double f, sal_Int16 n ) const
-{
-    return ::rtl::math::pow10Exp( f * fConst, -n );
-}
-
-ConvertDataLinear::~ConvertDataLinear()
-{
-}
+ConvertDataLinear::~ConvertDataLinear() = default;
 
 double ConvertDataLinear::Convert(
     double f, const ConvertData& r, sal_Int16 nLevFrom, sal_Int16 nLevTo ) const
 {
-    if( Class() != r.Class() )
-        throw lang::IllegalArgumentException();
-    return r.ConvertFromBase( ConvertToBase( f, nLevFrom ), nLevTo );
+    assert(Class() == r.Class());
+    assert(dynamic_cast<const ConvertDataLinear*>(&r));
+    return static_cast<const ConvertDataLinear&>(r).ConvertFromBase( ConvertToBase( f, nLevFrom ), nLevTo );
 }
 
 
@@ -2223,10 +2022,13 @@ double ConvertDataLinear::ConvertFromBase( double f, sal_Int16 n ) const
 
 ConvertDataList::ConvertDataList()
 {
-#define NEWD(str,unit,cl)   maVector.emplace_back(new ConvertData(str,unit,cl))
-#define NEWDP(str,unit,cl)  maVector.emplace_back(new ConvertData(str,unit,cl,true))
-#define NEWL(str,unit,offs,cl)  maVector.emplace_back(new ConvertDataLinear(str,unit,offs,cl))
-#define NEWLP(str,unit,offs,cl) maVector.emplace_back(new ConvertDataLinear(str,unit,offs,cl,true))
+#define NEWD(str,unit,cl)   maVector.push_back(std::make_unique<ConvertData>(u"" str,unit,cl))
+#define NEWDP(str,unit,cl)  maVector.push_back(std::make_unique<ConvertData>(u"" str,unit,cl,true))
+#define NEWL(str,unit,offs,cl)  maVector.push_back(std::make_unique<ConvertDataLinear>(u"" str,unit,offs,cl))
+#define NEWLP(str,unit,offs,cl) maVector.push_back(std::make_unique<ConvertDataLinear>(u"" str,unit,offs,cl,true))
+
+    const size_t expected_size = 146;
+    maVector.reserve(expected_size);
 
     // *** are extra and not standard Excel Analysis Addin!
 
@@ -2401,12 +2203,12 @@ ConvertDataList::ConvertDataList()
     // INFORMATION: 1 Bit is...
     NEWDP( "bit",   1.00E00,  CDC_Information); // *** Bit
     NEWDP( "byte",  1.25E-01, CDC_Information); // *** Byte
+
+    assert(maVector.size() == expected_size);
 }
 
 
-ConvertDataList::~ConvertDataList()
-{
-}
+ConvertDataList::~ConvertDataList() = default;
 
 
 double ConvertDataList::Convert( double fVal, const OUString& rFrom, const OUString& rTo )
@@ -2420,41 +2222,32 @@ double ConvertDataList::Convert( double fVal, const OUString& rFrom, const OUStr
 
     for( const auto& rItem : maVector )
     {
-        ConvertData*    p = rItem.get();
         if( bSearchFrom )
         {
-            sal_Int16   n = p->GetMatchingLevel( rFrom );
+            sal_Int16 n = rItem->GetMatchingLevel(rFrom);
             if( n != INV_MATCHLEV )
             {
-                if( n )
+                pFrom = rItem.get();
+                nLevelFrom = n;
+                if (!n)
                 {   // only first match for partial equality rulz a little bit more
-                    pFrom = p;
-                    nLevelFrom = n;
-                }
-                else
-                {   // ... but exact match rulz most
-                    pFrom = p;
+                    // ... but exact match rulz most
                     bSearchFrom = false;
-                    nLevelFrom = n;
                 }
             }
         }
 
         if( bSearchTo )
         {
-            sal_Int16   n = p->GetMatchingLevel( rTo );
+            sal_Int16 n = rItem->GetMatchingLevel(rTo);
             if( n != INV_MATCHLEV )
             {
-                if( n )
+                pTo = rItem.get();
+                nLevelTo = n;
+                if (!n)
                 {   // only first match for partial equality rulz a little bit more
-                    pTo = p;
-                    nLevelTo = n;
-                }
-                else
-                {   // ... but exact match rulz most
-                    pTo = p;
+                    // ... but exact match rulz most
                     bSearchTo = false;
-                    nLevelTo = n;
                 }
             }
         }
@@ -2464,6 +2257,9 @@ double ConvertDataList::Convert( double fVal, const OUString& rFrom, const OUStr
     }
 
     if( !pFrom || !pTo )
+        throw lang::IllegalArgumentException();
+
+    if (pFrom->Class() != pTo->Class())
         throw lang::IllegalArgumentException();
 
     return pFrom->Convert( fVal, *pTo, nLevelFrom, nLevelTo );
@@ -2737,9 +2533,6 @@ bool ScaAnyConverter::getDouble(
         case uno::TypeClass_VOID:
             bContainsVal = false;
         break;
-        case uno::TypeClass_DOUBLE:
-            rAny >>= rfResult;
-        break;
         case uno::TypeClass_STRING:
         {
             auto pString = o3tl::forceAccess< OUString >( rAny );
@@ -2749,9 +2542,17 @@ bool ScaAnyConverter::getDouble(
                 bContainsVal = false;
         }
         break;
+        case uno::TypeClass_HYPER:
+            rfResult = rAny.get<sal_Int64>();
+        break;
+        case uno::TypeClass_UNSIGNED_HYPER:
+            rfResult = rAny.get<sal_uInt64>();
+        break;
         default:
-            throw lang::IllegalArgumentException();
+            if( !( rAny >>= rfResult ) )
+                throw lang::IllegalArgumentException();
     }
+
     return bContainsVal;
 }
 

@@ -20,6 +20,7 @@
 #include <sal/config.h>
 
 #include <cassert>
+#include <cstdlib>
 #include <string.h>
 
 #include <osl/diagnose.h>
@@ -227,6 +228,9 @@ static bool idefaultConstructElements(
         {
             typelib_TypeDescription * pElementTypeDescr = nullptr;
             TYPELIB_DANGER_GET( &pElementTypeDescr, pElementType );
+            if (pElementTypeDescr == nullptr) {
+                std::abort();
+            }
             sal_Int32 eEnum =
                 reinterpret_cast<typelib_EnumTypeDescription *>(
                  pElementTypeDescr)->nDefaultEnumValue;
@@ -245,6 +249,9 @@ static bool idefaultConstructElements(
     {
         typelib_TypeDescription * pElementTypeDescr = nullptr;
         TYPELIB_DANGER_GET( &pElementTypeDescr, pElementType );
+        if (pElementTypeDescr == nullptr) {
+            std::abort();
+        }
         sal_Int32 nElementSize = pElementTypeDescr->nSize;
 
         if (nAlloc >= 0)
@@ -267,7 +274,6 @@ static bool idefaultConstructElements(
     {
         if (nAlloc >= 0)
         {
-            // coverity[suspicious_sizeof : FALSE] - sizeof(uno_Sequence*) is correct here
             pSeq = reallocSeq(pSeq, sizeof(uno_Sequence*), nAlloc);
         }
         if (pSeq != nullptr)
@@ -307,7 +313,7 @@ static bool idefaultConstructElements(
     return true;
 }
 
-// coverity[ -tainted_data_sink : arg-1 ]
+// coverity[ -tainted_data_sink : arg-1 ] 2024.6.1
 static bool icopyConstructFromElements(
     uno_Sequence ** ppSeq, void * pSourceElements,
     typelib_TypeDescriptionReference * pElementType,
@@ -419,8 +425,6 @@ static bool icopyConstructFromElements(
             rtl_uString ** pDestElements = reinterpret_cast<rtl_uString **>(pSeq->elements);
             for ( sal_Int32 nPos = 0; nPos < nStopIndex; ++nPos )
             {
-                // This code tends to trigger coverity's overrun-buffer-arg warning
-                // coverity[index_parm_via_loop_bound] - https://communities.coverity.com/thread/2993
                 ::rtl_uString_acquire(
                     static_cast<rtl_uString **>(pSourceElements)[nPos] );
                 pDestElements[nPos] = static_cast<rtl_uString **>(pSourceElements)[nPos];
@@ -471,6 +475,9 @@ static bool icopyConstructFromElements(
     {
         typelib_TypeDescription * pElementTypeDescr = nullptr;
         TYPELIB_DANGER_GET( &pElementTypeDescr, pElementType );
+        if (pElementTypeDescr == nullptr) {
+            std::abort();
+        }
         sal_Int32 nElementSize = pElementTypeDescr->nSize;
 
         pSeq = reallocSeq( pSeq, nElementSize, nAlloc );
@@ -516,12 +523,14 @@ static bool icopyConstructFromElements(
     }
     case typelib_TypeClass_SEQUENCE: // sequence of sequence
     {
-        // coverity[suspicious_sizeof : FALSE] - sizeof(uno_Sequence*) is correct here
         pSeq = reallocSeq(pSeq, sizeof(uno_Sequence*), nAlloc);
         if (pSeq != nullptr)
         {
             typelib_TypeDescription * pElementTypeDescr = nullptr;
             TYPELIB_DANGER_GET( &pElementTypeDescr, pElementType );
+            if (pElementTypeDescr == nullptr) {
+                std::abort();
+            }
             typelib_TypeDescriptionReference * pSeqElementType =
                 reinterpret_cast<typelib_IndirectTypeDescription *>(pElementTypeDescr)->pType;
             uno_Sequence ** pDestElements = reinterpret_cast<uno_Sequence **>(pSeq->elements);
@@ -655,8 +664,7 @@ extern "C"
 sal_Bool SAL_CALL uno_type_sequence_construct(
     uno_Sequence ** ppSequence, typelib_TypeDescriptionReference * pType,
     void * pElements, sal_Int32 len,
-    uno_AcquireFunc acquire )
-    SAL_THROW_EXTERN_C()
+    uno_AcquireFunc acquire ) noexcept
 {
     assert( len >= 0 );
     bool ret;
@@ -664,6 +672,9 @@ sal_Bool SAL_CALL uno_type_sequence_construct(
     {
         typelib_TypeDescription * pTypeDescr = nullptr;
         TYPELIB_DANGER_GET( &pTypeDescr, pType );
+        if (pTypeDescr == nullptr) {
+            std::abort();
+        }
 
         typelib_TypeDescriptionReference * pElementType =
             reinterpret_cast<typelib_IndirectTypeDescription *>(pTypeDescr)->pType;
@@ -700,8 +711,7 @@ sal_Bool SAL_CALL uno_type_sequence_construct(
 sal_Bool SAL_CALL uno_sequence_construct(
     uno_Sequence ** ppSequence, typelib_TypeDescription * pTypeDescr,
     void * pElements, sal_Int32 len,
-    uno_AcquireFunc acquire )
-    SAL_THROW_EXTERN_C()
+    uno_AcquireFunc acquire ) noexcept
 {
     bool ret;
     if (len > 0)
@@ -738,8 +748,7 @@ sal_Bool SAL_CALL uno_sequence_construct(
 
 sal_Bool SAL_CALL uno_type_sequence_realloc(
     uno_Sequence ** ppSequence, typelib_TypeDescriptionReference * pType,
-    sal_Int32 nSize, uno_AcquireFunc acquire, uno_ReleaseFunc release )
-    SAL_THROW_EXTERN_C()
+    sal_Int32 nSize, uno_AcquireFunc acquire, uno_ReleaseFunc release ) noexcept
 {
     assert(ppSequence && "### null ptr!");
     assert(nSize >= 0 && "### new size must be at least 0!");
@@ -760,10 +769,9 @@ sal_Bool SAL_CALL uno_type_sequence_realloc(
 
 sal_Bool SAL_CALL uno_sequence_realloc(
     uno_Sequence ** ppSequence, typelib_TypeDescription * pTypeDescr,
-    sal_Int32 nSize, uno_AcquireFunc acquire, uno_ReleaseFunc release )
-    SAL_THROW_EXTERN_C()
+    sal_Int32 nSize, uno_AcquireFunc acquire, uno_ReleaseFunc release ) noexcept
 {
-    OSL_ENSURE( ppSequence, "### null ptr!" );
+    assert(ppSequence && "### null ptr!");
     OSL_ENSURE( nSize >= 0, "### new size must be at least 0!" );
 
     bool ret = true;
@@ -780,10 +788,9 @@ sal_Bool SAL_CALL uno_sequence_realloc(
 sal_Bool SAL_CALL uno_type_sequence_reference2One(
     uno_Sequence ** ppSequence,
     typelib_TypeDescriptionReference * pType,
-    uno_AcquireFunc acquire, uno_ReleaseFunc release )
-    SAL_THROW_EXTERN_C()
+    uno_AcquireFunc acquire, uno_ReleaseFunc release ) noexcept
 {
-    OSL_ENSURE( ppSequence, "### null ptr!" );
+    assert(ppSequence && "### null ptr!");
     bool ret = true;
     uno_Sequence * pSequence = *ppSequence;
     if (pSequence->nRefCount > 1)
@@ -827,10 +834,9 @@ sal_Bool SAL_CALL uno_type_sequence_reference2One(
 sal_Bool SAL_CALL uno_sequence_reference2One(
     uno_Sequence ** ppSequence,
     typelib_TypeDescription * pTypeDescr,
-    uno_AcquireFunc acquire, uno_ReleaseFunc release )
-    SAL_THROW_EXTERN_C()
+    uno_AcquireFunc acquire, uno_ReleaseFunc release ) noexcept
 {
-    OSL_ENSURE( ppSequence, "### null ptr!" );
+    assert(ppSequence && "### null ptr!");
     bool ret = true;
     uno_Sequence * pSequence = *ppSequence;
     if (pSequence->nRefCount > 1)
@@ -872,8 +878,7 @@ void SAL_CALL uno_sequence_assign(
     uno_Sequence ** ppDest,
     uno_Sequence * pSource,
     typelib_TypeDescription * pTypeDescr,
-    uno_ReleaseFunc release )
-    SAL_THROW_EXTERN_C()
+    uno_ReleaseFunc release ) noexcept
 {
     if (*ppDest != pSource)
     {
@@ -888,8 +893,7 @@ void SAL_CALL uno_type_sequence_assign(
     uno_Sequence ** ppDest,
     uno_Sequence * pSource,
     typelib_TypeDescriptionReference * pType,
-    uno_ReleaseFunc release )
-    SAL_THROW_EXTERN_C()
+    uno_ReleaseFunc release ) noexcept
 {
     if (*ppDest != pSource)
     {
@@ -901,8 +905,7 @@ void SAL_CALL uno_type_sequence_assign(
 
 void uno_type_sequence_destroy(
     uno_Sequence * sequence, typelib_TypeDescriptionReference * type,
-    uno_ReleaseFunc release)
-    SAL_THROW_EXTERN_C()
+    uno_ReleaseFunc release) noexcept
 {
     idestroySequence(sequence, type, nullptr, release);
 }

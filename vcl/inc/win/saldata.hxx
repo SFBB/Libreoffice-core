@@ -46,9 +46,7 @@ namespace vcl { class Font; }
 struct HDCCache;
 struct TempFontItem;
 class TextOutRenderer;
-#if HAVE_FEATURE_SKIA
 class SkiaControlsCache;
-#endif
 
 #define MAX_STOCKPEN            4
 #define MAX_STOCKBRUSH          4
@@ -98,13 +96,6 @@ public:
 public:
     HINSTANCE               mhInst;                 // default instance handle
     int                     mnCmdShow;              // default frame show style
-    HPALETTE                mhDitherPal;            // dither palette
-    HGLOBAL                 mhDitherDIB;            // dither memory handle
-    BYTE*                   mpDitherDIB;            // dither memory
-    BYTE*                   mpDitherDIBData;        // beginning of DIB data
-    std::unique_ptr<tools::Long[]> mpDitherDiff;    // Dither mapping table
-    std::unique_ptr<BYTE[]> mpDitherLow;            // Dither mapping table
-    std::unique_ptr<BYTE[]> mpDitherHigh;           // Dither mapping table
     HHOOK                   mhSalObjMsgHook;        // hook to get interesting msg for SalObject
     HWND                    mhWantLeaveMsg;         // window handle, that want a MOUSELEAVE message
     WinSalInstance*         mpInstance;
@@ -122,13 +113,10 @@ public:
     sal_uInt16              mnStockPenCount;        // count of static pens
     sal_uInt16              mnStockBrushCount;      // count of static brushes
     WPARAM                  mnSalObjWantKeyEvt;     // KeyEvent that should be processed by SalObj-Hook
-    BYTE                    mnCacheDCInUse;         // count of CacheDC in use
     bool                    mbObjClassInit;         // is SALOBJECTCLASS initialised
-    bool                    mbInPalChange;          // is in WM_QUERYNEWPALETTE
     DWORD                   mnAppThreadId;          // Id from Application-Thread
     SalIcon*                mpFirstIcon;            // icon cache, points to first icon, NULL if none
-    TempFontItem*           mpSharedTempFontItem;   // LibreOffice shared fonts
-    TempFontItem*           mpOtherTempFontItem;    // other temporary fonts (embedded?)
+    TempFontItem*           mpTempFontItem;         // LibreOffice own fonts (shared and embedded)
     bool                    mbThemeChanged;         // true if visual theme was changed: throw away theme handles
     bool                    mbThemeMenuSupport;
 
@@ -141,9 +129,7 @@ public:
     std::unique_ptr<TextOutRenderer> m_pD2DWriteTextOutRenderer;
     // tdf#107205 need 2 instances because D2DWrite can't rotate text
     std::unique_ptr<TextOutRenderer> m_pExTextOutRenderer;
-#if HAVE_FEATURE_SKIA
     std::unique_ptr<SkiaControlsCache> m_pSkiaControlsCache;
-#endif
 };
 
 struct SalShlData
@@ -159,7 +145,7 @@ void ImplClearHDCCache( SalData* pData );
 HDC ImplGetCachedDC( sal_uLong nID, HBITMAP hBmp = nullptr );
 void ImplReleaseCachedDC( sal_uLong nID );
 
-void ImplReleaseTempFonts(SalData&, bool bAll);
+void ImplReleaseTempFonts(SalData&);
 
 HCURSOR ImplLoadSalCursor( int nId );
 HBITMAP ImplLoadSalBitmap( int nId );
@@ -185,10 +171,6 @@ bool ImplSalPreDispatchMsg( const MSG* pMsg );
 void ImplSalPostDispatchMsg( const MSG* pMsg );
 
 void ImplSalLogFontToFontW( HDC hDC, const LOGFONTW& rLogFont, vcl::Font& rFont );
-
-rtl_TextEncoding ImplSalGetSystemEncoding();
-OUString ImplSalGetUniString(const char* pStr, sal_Int32 nLen = -1);
-int ImplSalWICompareAscii( const wchar_t* pStr1, const char* pStr2 );
 
 #define SAL_FRAME_WNDEXTRA          sizeof( DWORD )
 #define SAL_FRAME_THIS              GWLP_USERDATA
@@ -234,17 +216,11 @@ int ImplSalWICompareAscii( const wchar_t* pStr1, const char* pStr2 );
 // wParam == 0; lParam == 0
 #define SAL_MSG_POSTFOCUS           (WM_USER+133)
 // wParam == wParam; lParam == lParam
-#define SAL_MSG_POSTQUERYNEWPAL     (WM_USER+134)
-// wParam == wParam; lParam == lParam
-#define SAL_MSG_POSTPALCHANGED      (WM_USER+135)
-// wParam == wParam; lParam == lParam
 #define SAL_MSG_POSTMOVE            (WM_USER+136)
 // wParam == wParam; lParam == lParam
 #define SAL_MSG_POSTCALLSIZE        (WM_USER+137)
 // wParam == pRECT; lParam == 0
 #define SAL_MSG_POSTPAINT           (WM_USER+138)
-// wParam == 0; lParam == pFrame; lResult 0
-#define SAL_MSG_FORCEPALETTE        (WM_USER+139)
 // wParam == 0; lParam == 0
 #define SAL_MSG_CAPTUREMOUSE        (WM_USER+140)
 // wParam == 0; lParam == 0

@@ -24,6 +24,7 @@
 #include <memory>
 
 class SdDrawDocument;
+struct SdViewOptions;
 class SfxRequest;
 
 namespace sd::tools {
@@ -91,7 +92,7 @@ public:
             When the SfxViewShell of the given frame is not a
             ViewShellBase object then NULL is returned.
     */
-    static ViewShellBase* GetViewShellBase (SfxViewFrame const * pFrame);
+    SAL_RET_MAYBENULL static ViewShellBase* GetViewShellBase (SfxViewFrame const * pFrame);
 
     DrawDocShell* GetDocShell() const { return mpDocShell;}
     SdDrawDocument* GetDocument() const { return mpDocument;}
@@ -153,7 +154,7 @@ public:
     virtual bool PrepareClose (bool bUI = true) override;
     virtual void WriteUserData (OUString&, bool bBrowse = false) override;
     virtual void ReadUserData (const OUString&, bool bBrowse = false) override;
-    virtual SdrView* GetDrawView() const override;
+    SAL_RET_MAYBENULL virtual SdrView* GetDrawView() const override;
 
     /** When <TRUE/> is given, then the mouse shape is set to hour glass (or
         whatever the busy shape looks like on the system.)
@@ -196,7 +197,7 @@ public:
     const ::tools::Rectangle& getClientRectangle() const;
 
     std::shared_ptr<ToolBarManager> const & GetToolBarManager() const;
-    std::shared_ptr<FormShellManager> const & GetFormShellManager() const;
+    FormShellManager* GetFormShellManager() const;
 
     DrawController* GetDrawController() const;
 
@@ -217,6 +218,8 @@ public:
     int getEditMode() const override;
     /// See SfxViewShell::setEditMode().
     void setEditMode(int nMode);
+    /// See SfxViewShell::afterCallbackRegistered().
+    void afterCallbackRegistered() override;
     /// See SfxViewShell::NotifyCursor().
     void NotifyCursor(SfxViewShell* pViewShell) const override;
     /// See SfxViewShell::GetColorConfigColor().
@@ -224,6 +227,9 @@ public:
 
     void setLOKVisibleArea(const ::tools::Rectangle& rArea) { maLOKVisibleArea = rArea; }
     virtual ::tools::Rectangle getLOKVisibleArea() const override { return maLOKVisibleArea; }
+
+    const SdViewOptions& GetViewOptions() const;
+    void SetViewOptions(const SdViewOptions& rOptions) const;
 
 protected:
 

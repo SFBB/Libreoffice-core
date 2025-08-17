@@ -65,6 +65,7 @@
 #include <comphelper/lok.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 #include <tools/link.hxx>
+#include <svl/cryptosign.hxx>
 
 #include <sfx2/signaturestate.hxx>
 #include <sfx2/sfxresid.hxx>
@@ -90,6 +91,8 @@
 #include <sfx2/infobar.hxx>
 #include <sfx2/sfxuno.hxx>
 #include <sfx2/sfxsids.hrc>
+#include <sfx2/lokhelper.hxx>
+#include <comphelper/dispatchcommand.hxx>
 #include <SfxRedactionHelper.hxx>
 
 #include <com/sun/star/util/XCloseable.hpp>
@@ -107,6 +110,7 @@
 #include <unotools/streamwrap.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <editeng/unoprnms.hxx>
+#include <comphelper/base64.hxx>
 
 #include <autoredactdialog.hxx>
 
@@ -118,7 +122,6 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::ui::dialogs;
 using namespace ::com::sun::star::awt;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::beans;
@@ -332,14 +335,17 @@ void SfxObjectShell::CheckOut( )
         xCmisDoc->checkOut( );
 
         // Remove the info bar
-        SfxViewFrame* pViewFrame = GetFrame();
-        pViewFrame->RemoveInfoBar( u"checkout" );
+        if (SfxViewFrame* pViewFrame = GetFrame())
+            pViewFrame->RemoveInfoBar( u"checkout" );
     }
     catch ( const uno::RuntimeException& e )
     {
-        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetFrame()->GetFrameWeld(),
-                                                  VclMessageType::Warning, VclButtonsType::Ok, e.Message));
-        xBox->run();
+        if (SfxViewFrame* pFrame = GetFrame())
+        {
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pFrame->GetFrameWeld(),
+                                                      VclMessageType::Warning, VclButtonsType::Ok, e.Message));
+            xBox->run();
+        }
     }
 }
 
@@ -356,9 +362,12 @@ void SfxObjectShell::CancelCheckOut( )
     }
     catch ( const uno::RuntimeException& e )
     {
-        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetFrame()->GetFrameWeld(),
-                                                  VclMessageType::Warning, VclButtonsType::Ok, e.Message));
-        xBox->run();
+        if (SfxViewFrame* pFrame = GetFrame())
+        {
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pFrame->GetFrameWeld(),
+                                                      VclMessageType::Warning, VclButtonsType::Ok, e.Message));
+            xBox->run();
+        }
     }
 }
 
@@ -368,20 +377,26 @@ void SfxObjectShell::CheckIn( )
     {
         uno::Reference< document::XCmisDocument > xCmisDoc( GetModel(), uno::UNO_QUERY_THROW );
         // Pop up dialog to ask for comment and major
-        SfxCheckinDialog checkinDlg(GetFrame()->GetFrameWeld());
-        if (checkinDlg.run() == RET_OK)
+        if (SfxViewFrame* pFrame = GetFrame())
         {
-            xCmisDoc->checkIn(checkinDlg.IsMajor(), checkinDlg.GetComment());
-            uno::Reference< util::XModifiable > xModifiable( GetModel( ), uno::UNO_QUERY );
-            if ( xModifiable.is( ) )
-                xModifiable->setModified( false );
+            SfxCheckinDialog checkinDlg(pFrame->GetFrameWeld());
+            if (checkinDlg.run() == RET_OK)
+            {
+                xCmisDoc->checkIn(checkinDlg.IsMajor(), checkinDlg.GetComment());
+                uno::Reference< util::XModifiable > xModifiable( GetModel( ), uno::UNO_QUERY );
+                if ( xModifiable.is( ) )
+                    xModifiable->setModified( false );
+            }
         }
     }
     catch ( const uno::RuntimeException& e )
     {
-        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetFrame()->GetFrameWeld(),
-                                                  VclMessageType::Warning, VclButtonsType::Ok, e.Message));
-        xBox->run();
+        if (SfxViewFrame* pFrame = GetFrame())
+        {
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pFrame->GetFrameWeld(),
+                                                      VclMessageType::Warning, VclButtonsType::Ok, e.Message));
+            xBox->run();
+        }
     }
 }
 
@@ -394,9 +409,12 @@ uno::Sequence< document::CmisVersion > SfxObjectShell::GetCmisVersions( ) const
     }
     catch ( const uno::RuntimeException& e )
     {
-        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(GetFrame()->GetFrameWeld(),
-                                                  VclMessageType::Warning, VclButtonsType::Ok, e.Message));
-        xBox->run();
+        if (SfxViewFrame* pFrame = GetFrame())
+        {
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(pFrame->GetFrameWeld(),
+                                                      VclMessageType::Warning, VclButtonsType::Ok, e.Message));
+            xBox->run();
+        }
     }
     return uno::Sequence< document::CmisVersion > ( );
 }
@@ -413,44 +431,13 @@ bool SfxObjectShell::IsSignPDF() const
     return false;
 }
 
-uno::Reference<security::XCertificate> SfxObjectShell::GetSignPDFCertificate() const
-{
-    uno::Reference<frame::XModel> xModel = GetBaseModel();
-    if (!xModel.is())
-    {
-        return uno::Reference<security::XCertificate>();
-    }
-
-    uno::Reference<drawing::XShapes> xShapes(xModel->getCurrentSelection(), uno::UNO_QUERY);
-    if (!xShapes.is() || xShapes->getCount() < 1)
-    {
-        return uno::Reference<security::XCertificate>();
-    }
-
-    uno::Reference<beans::XPropertySet> xShapeProps(xShapes->getByIndex(0), uno::UNO_QUERY);
-    if (!xShapeProps.is())
-    {
-        return uno::Reference<security::XCertificate>();
-    }
-
-    if (!xShapeProps->getPropertySetInfo()->hasPropertyByName("InteropGrabBag"))
-    {
-        return uno::Reference<security::XCertificate>();
-    }
-
-    comphelper::SequenceAsHashMap aMap(xShapeProps->getPropertyValue("InteropGrabBag"));
-    auto it = aMap.find("SignatureCertificate");
-    if (it == aMap.end())
-    {
-        return uno::Reference<security::XCertificate>();
-    }
-
-    return uno::Reference<security::XCertificate>(it->second, uno::UNO_QUERY);
-}
-
-static void sendErrorToLOK(ErrCodeMsg error)
+static void sendErrorToLOK(const ErrCodeMsg& error)
 {
     if (error.GetCode().GetClass() == ErrCodeClass::NONE)
+        return;
+
+    SfxViewShell* pNotifier = SfxViewShell::Current();
+    if (!pNotifier)
         return;
 
     boost::property_tree::ptree aTree;
@@ -465,7 +452,7 @@ static void sendErrorToLOK(ErrCodeMsg error)
     std::stringstream aStream;
     boost::property_tree::write_json(aStream, aTree);
 
-    SfxViewShell::Current()->libreOfficeKitViewCallback(LOK_CALLBACK_ERROR, OString(aStream.str()));
+    pNotifier->libreOfficeKitViewCallback(LOK_CALLBACK_ERROR, OString(aStream.str()));
 }
 
 namespace
@@ -475,14 +462,14 @@ void SetDocProperties(const uno::Reference<document::XDocumentProperties>& xDP,
 {
     comphelper::SequenceAsHashMap aMap(rUpdatedProperties);
     OUString aNamePrefix;
-    auto it = aMap.find("NamePrefix");
+    auto it = aMap.find(u"NamePrefix"_ustr);
     if (it != aMap.end())
     {
         it->second >>= aNamePrefix;
     }
 
     uno::Sequence<beans::PropertyValue> aUserDefinedProperties;
-    it = aMap.find("UserDefinedProperties");
+    it = aMap.find(u"UserDefinedProperties"_ustr);
     if (it != aMap.end())
     {
         it->second >>= aUserDefinedProperties;
@@ -518,82 +505,154 @@ void SetDocProperties(const uno::Reference<document::XDocumentProperties>& xDP,
 }
 }
 
-void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
+void SfxObjectShell::AfterSignContent(bool bHaveWeSigned, weld::Window* pDialogParent)
+{
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        // LOK signing certificates are per-view, don't store them in the model.
+        return;
+    }
+
+    if ( bHaveWeSigned && HasValidSignatures() )
+    {
+        std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog( pDialogParent,
+                    VclMessageType::Question, VclButtonsType::YesNo, SfxResId(STR_QUERY_REMEMBERSIGNATURE)));
+        SetRememberCurrentSignature(xBox->run() == RET_YES);
+    }
+}
+
+namespace
+{
+/// Updates the UI so it doesn't try to modify an already finalized signature line shape.
+void ResetSignatureSelection(SfxObjectShell& rObjectShell, SfxViewShell& rViewShell)
+{
+    rViewShell.SetSignPDFCertificate({});
+    comphelper::dispatchCommand(".uno:DeSelect", {});
+    rObjectShell.RecheckSignature(false);
+}
+}
+
+static weld::Window* GetReqDialogParent(const SfxRequest &rReq, const SfxObjectShell& rShell)
 {
     weld::Window* pDialogParent = rReq.GetFrameWeld();
     if (!pDialogParent)
     {
-        SfxViewFrame* pFrame = GetFrame();
+        SfxViewFrame* pFrame = rShell.GetFrame();
         if (!pFrame)
-            pFrame = SfxViewFrame::GetFirst(this);
+            pFrame = SfxViewFrame::GetFirst(&rShell);
         if (pFrame)
             pDialogParent = pFrame->GetFrameWeld();
     }
+    return pDialogParent;
+}
 
+void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
+{
     sal_uInt16 nId = rReq.GetSlot();
 
     bool bHaveWeSigned = false;
 
     if( SID_SIGNATURE == nId || SID_MACRO_SIGNATURE == nId )
     {
+        weld::Window* pDialogParent = GetReqDialogParent(rReq, *this);
+
         QueryHiddenInformation(HiddenWarningFact::WhenSigning);
 
         if (SID_SIGNATURE == nId)
         {
-            uno::Reference<security::XCertificate> xCertificate = GetSignPDFCertificate();
+            SfxViewFrame* pFrame = GetFrame();
+            SfxViewShell* pViewShell = pFrame ? pFrame->GetViewShell() : nullptr;
+            uno::Reference<security::XCertificate> xCertificate = pViewShell ? pViewShell->GetSignPDFCertificate().m_xCertificate : nullptr;
             if (xCertificate.is())
             {
 
-                bHaveWeSigned |= SignDocumentContentUsingCertificate(xCertificate);
+                svl::crypto::SigningContext aSigningContext;
+                aSigningContext.m_xCertificate = std::move(xCertificate);
+                bHaveWeSigned |= SignDocumentContentUsingCertificate(aSigningContext);
 
-                // Reload to show how the PDF actually looks like after signing. This also
-                // changes "finish signing" on the infobar back to "sign document" as a side
-                // effect.
-                SfxViewFrame* pFrame = GetFrame();
-                if (pFrame)
+                // Reset the picked certificate for PDF signing, then recheck signatures to show how
+                // the PDF actually looks like after signing.  Also change the "finish signing" on
+                // the infobar back to "sign document".
+                if (pViewShell)
                 {
-                    // Store current page before reload.
-                    SfxAllItemSet aSet(SfxGetpApp()->GetPool());
-                    uno::Reference<drawing::XDrawView> xController(
-                        GetBaseModel()->getCurrentController(), uno::UNO_QUERY);
-                    uno::Reference<beans::XPropertySet> xPage(xController->getCurrentPage(),
-                                                              uno::UNO_QUERY);
-                    sal_Int32 nPage{};
-                    xPage->getPropertyValue("Number") >>= nPage;
-                    if (nPage > 0)
-                    {
-                        // nPage is 1-based.
-                        aSet.Put(SfxInt32Item(SID_PAGE_NUMBER, nPage - 1));
-                    }
-                    SfxRequest aReq(SID_RELOAD, SfxCallMode::SLOT, aSet);
-                    pFrame->ExecReload_Impl(aReq);
+                    ResetSignatureSelection(*this, *pViewShell);
+                    pFrame->RemoveInfoBar(u"readonly");
+                    pFrame->AppendReadOnlyInfobar();
                 }
             }
             else
             {
-                bHaveWeSigned |= SignDocumentContent(pDialogParent);
+                // See if a signing cert is passed as a parameter: if so, parse that.
+                std::string aSignatureCert;
+                std::string aSignatureKey;
+                const SfxStringItem* pSignatureCert = rReq.GetArg<SfxStringItem>(FN_PARAM_1);
+                if (pSignatureCert)
+                {
+                    aSignatureCert = pSignatureCert->GetValue().toUtf8();
+                }
+                const SfxStringItem* pSignatureKey = rReq.GetArg<SfxStringItem>(FN_PARAM_2);
+                if (pSignatureKey)
+                {
+                    aSignatureKey = pSignatureKey->GetValue().toUtf8();
+                }
+
+                // See if an external signature time/value is provided: if so, sign with those
+                // instead of interactive signing via the dialog.
+                svl::crypto::SigningContext aSigningContext;
+                const SfxStringItem* pSignatureTime = rReq.GetArg<SfxStringItem>(FN_PARAM_3);
+                if (pSignatureTime)
+                {
+                    sal_Int64 nSignatureTime = pSignatureTime->GetValue().toInt64();
+                    aSigningContext.m_nSignatureTime = nSignatureTime;
+                }
+                const SfxStringItem* pSignatureValue = rReq.GetArg<SfxStringItem>(FN_PARAM_4);
+                if (pSignatureValue)
+                {
+                    OUString aSignatureValue = pSignatureValue->GetValue();
+                    uno::Sequence<sal_Int8> aBytes;
+                    comphelper::Base64::decode(aBytes, aSignatureValue);
+                    aSigningContext.m_aSignatureValue.assign(
+                        aBytes.getArray(), aBytes.getArray() + aBytes.getLength());
+                }
+                if (!aSigningContext.m_aSignatureValue.empty())
+                {
+                    SignDocumentContentUsingCertificate(aSigningContext);
+                    if (pViewShell)
+                    {
+                        ResetSignatureSelection(*this, *pViewShell);
+                    }
+                    rReq.Done();
+                    return;
+                }
+
+                if (pViewShell)
+                {
+                    svl::crypto::CertificateOrName aCertificateOrName;
+                    if (!aSignatureCert.empty() && !aSignatureKey.empty())
+                    {
+                        aCertificateOrName.m_xCertificate = SfxLokHelper::getSigningCertificate(aSignatureCert, aSignatureKey);
+                    }
+                    // Always set the signing certificate, to clear data from a previous dispatch.
+                    pViewShell->SetSigningCertificate(aCertificateOrName);
+                }
+
+                // Async, all code before return has to go into the callback.
+                SignDocumentContent(pDialogParent, [this, pDialogParent] (bool bSigned) {
+                    AfterSignContent(bSigned, pDialogParent);
+                });
+                return;
             }
         }
         else
         {
-            bHaveWeSigned |= SignScriptingContent(pDialogParent);
+            // Async, all code before return has to go into the callback.
+            SignScriptingContent(pDialogParent, [this, pDialogParent] (bool bSigned) {
+                AfterSignContent(bSigned, pDialogParent);
+            });
+            return;
         }
 
-        if ( bHaveWeSigned && HasValidSignatures() )
-        {
-            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog( pDialogParent,
-                                                      VclMessageType::Question, VclButtonsType::YesNo, SfxResId(STR_QUERY_REMEMBERSIGNATURE)));
-            if (xBox->run() == RET_YES)
-            {
-                rSignatureInfosRemembered = GetDocumentSignatureInformation(false);
-                bRememberSignature = true;
-            }
-            else
-            {
-                rSignatureInfosRemembered = uno::Sequence< security::DocumentSignatureInformation >();
-                bRememberSignature = false;
-            }
-        }
+        AfterSignContent(bHaveWeSigned, pDialogParent);
 
         return;
     }
@@ -624,6 +683,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
             if ( !IsOwnStorageFormat( *GetMedium() ) )
                 return;
 
+            weld::Window* pDialogParent = GetReqDialogParent(rReq, *this);
             SfxVersionDialog aDlg(pDialogParent, pFrame, IsSaveVersionOnClose());
             aDlg.run();
             SetSaveVersionOnClose(aDlg.IsSaveVersionOnClose());
@@ -659,15 +719,17 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                     bReadOnly = pROItem->GetValue();
 
                 // URL for dialog
+                const SfxStringItem* pFileSize = rReq.GetArg<SfxStringItem>(FN_PARAM_2);
+                sal_Int64 nFileSize = pFileSize ? pFileSize->GetValue().toInt64() : -1;
                 const OUString aURL( HasName() ? GetMedium()->GetName() : GetFactory().GetFactoryURL() );
 
                 Reference< XCmisDocument > xCmisDoc( GetModel(), uno::UNO_QUERY );
                 uno::Sequence< document::CmisProperty> aCmisProperties = xCmisDoc->getCmisProperties();
 
                 SfxDocumentInfoItem aDocInfoItem( aURL, getDocProperties(), aCmisProperties,
-                    IsUseUserData(), IsUseThumbnailSave() );
+                    IsUseUserData(), IsUseThumbnailSave(), nFileSize );
                 const SfxPoolItemHolder aSlotState(GetSlotState(SID_DOCTEMPLATE));
-                if (nullptr == aSlotState.getItem())
+                if (!aSlotState)
                     // templates not supported
                     aDocInfoItem.SetTemplate(false);
 
@@ -682,7 +744,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                 // creating dialog is done via virtual method; application will
                 // add its own statistics page
                 std::shared_ptr<SfxDocumentInfoDialog> xDlg(CreateDocumentInfoDialog(rReq.GetFrameWeld(), aSet));
-                auto aFunc = [this, xDlg, xCmisDoc](sal_Int32 nResult, SfxRequest& rRequest)
+                auto aFunc = [this, xDlg, xCmisDoc, nFileSize](sal_Int32 nResult, SfxRequest& rRequest)
                 {
                     if (RET_OK == nResult)
                     {
@@ -699,7 +761,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                             SetUseThumbnailSave( pDocInfoItem-> IsUseThumbnailSave() );
                             // add data from dialog for possible recording purpose
                             rRequest.AppendItem( SfxDocumentInfoItem( GetTitle(),
-                                getDocProperties(), aNewCmisProperties, IsUseUserData(), IsUseThumbnailSave() ) );
+                                getDocProperties(), aNewCmisProperties, IsUseUserData(), IsUseThumbnailSave(), nFileSize ) );
                         }
                         rRequest.Done();
                     }
@@ -713,7 +775,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                 if (!rReq.IsSynchronCall())
                 {
                     std::shared_ptr<SfxRequest> xReq = std::make_shared<SfxRequest>(rReq);
-                    SfxTabDialogController::runAsync(xDlg, [xReq=std::move(xReq), aFunc](sal_Int32 nResult)
+                    SfxTabDialogController::runAsync(xDlg, [xReq=std::move(xReq), aFunc=std::move(aFunc)](sal_Int32 nResult)
                     {
                         aFunc(nResult, *xReq);
                     });
@@ -730,8 +792,10 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
 
         case SID_AUTOREDACTDOC:
         {
+            weld::Window* pDialogParent = GetReqDialogParent(rReq, *this);
+
             // Actual redaction takes place on a newly generated Draw document
-            if (!SvtModuleOptions().IsModuleInstalled(SvtModuleOptions::EModule::DRAW))
+            if (!SvtModuleOptions().IsDrawInstalled())
             {
                 std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(
                     pDialogParent, VclMessageType::Warning, VclButtonsType::Ok,
@@ -745,7 +809,15 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
             SfxAutoRedactDialog aDlg(pDialogParent);
             sal_Int16 nResult = aDlg.run();
 
-            if (nResult != RET_OK || !aDlg.hasTargets() || !aDlg.isValidState())
+            const SfxBoolItem* redactImage = rReq.GetArg<SfxBoolItem>(SID_REDACT_IMAGE);
+
+            if (redactImage && redactImage->GetValue())
+            {
+                RedactionTarget redactiontarget({ "Images", RedactionTargetType::REDACTION_TARGET_IMAGE,
+                                            "All Images", false, false, 0 });
+                aRedactionTargets.push_back({redactiontarget, redactiontarget.sName});
+            }
+            else if (nResult != RET_OK || !aDlg.hasTargets() || !aDlg.isValidState())
             {
                 //Do nothing
                 return;
@@ -767,8 +839,9 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
             uno::Reference< lang::XComponent > xSourceDoc( xModel );
 
             // Actual redaction takes place on a newly generated Draw document
-            if (!SvtModuleOptions().IsModuleInstalled(SvtModuleOptions::EModule::DRAW))
+            if (!SvtModuleOptions().IsDrawInstalled())
             {
+                weld::Window* pDialogParent = GetReqDialogParent(rReq, *this);
                 std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(
                     pDialogParent, VclMessageType::Warning, VclButtonsType::Ok,
                     SfxResId(STR_REDACTION_NO_DRAW_WARNING)));
@@ -796,7 +869,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
 
             // Create an empty Draw component.
             uno::Reference<frame::XDesktop2> xDesktop = css::frame::Desktop::create(comphelper::getProcessComponentContext());
-            uno::Reference<lang::XComponent> xComponent = xDesktop->loadComponentFromURL("private:factory/sdraw", "_default", 0, {});
+            uno::Reference<lang::XComponent> xComponent = xDesktop->loadComponentFromURL(u"private:factory/sdraw"_ustr, u"_default"_ustr, 0, {});
 
             if (!xComponent.is())
             {
@@ -827,7 +900,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
             uno::Reference< lang::XServiceInfo > xServiceInfo( xComponent, uno::UNO_QUERY);
 
             // Redaction finalization takes place in Draw
-            if ( xServiceInfo.is() && xServiceInfo->supportsService("com.sun.star.drawing.DrawingDocument")
+            if ( xServiceInfo.is() && xServiceInfo->supportsService(u"com.sun.star.drawing.DrawingDocument"_ustr)
                  && SfxRedactionHelper::isRedactMode(rReq) )
             {
                 OUString sRedactionStyle(SfxRedactionHelper::getStringParam(rReq, SID_REDACTION_STYLE));
@@ -862,9 +935,9 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                             continue;
 
                         OUString sShapeName;
-                        if (xInfo->hasPropertyByName("Name"))
+                        if (xInfo->hasPropertyByName(u"Name"_ustr))
                         {
-                            uno::Any aAnyShapeName = xPropSet->getPropertyValue("Name");
+                            uno::Any aAnyShapeName = xPropSet->getPropertyValue(u"Name"_ustr);
                             aAnyShapeName >>= sShapeName;
                         }
                         else
@@ -872,34 +945,34 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
 
                         // Rectangle redaction
                         if (sShapeName == "RectangleRedactionShape"
-                                && xInfo->hasPropertyByName("FillTransparence") && xInfo->hasPropertyByName("FillColor"))
+                                && xInfo->hasPropertyByName(u"FillTransparence"_ustr) && xInfo->hasPropertyByName(u"FillColor"_ustr))
                         {
-                            xPropSet->setPropertyValue("FillTransparence", css::uno::Any(static_cast<sal_Int16>(0)));
+                            xPropSet->setPropertyValue(u"FillTransparence"_ustr, css::uno::Any(static_cast<sal_Int16>(0)));
                             if (sRedactionStyle == "White")
                             {
-                                xPropSet->setPropertyValue("FillColor", css::uno::Any(COL_WHITE));
-                                xPropSet->setPropertyValue("LineStyle", css::uno::Any(css::drawing::LineStyle::LineStyle_SOLID));
-                                xPropSet->setPropertyValue("LineColor", css::uno::Any(COL_BLACK));
+                                xPropSet->setPropertyValue(u"FillColor"_ustr, css::uno::Any(COL_WHITE));
+                                xPropSet->setPropertyValue(u"LineStyle"_ustr, css::uno::Any(css::drawing::LineStyle::LineStyle_SOLID));
+                                xPropSet->setPropertyValue(u"LineColor"_ustr, css::uno::Any(COL_BLACK));
                             }
                             else
                             {
-                                xPropSet->setPropertyValue("FillColor", css::uno::Any(COL_BLACK));
-                                xPropSet->setPropertyValue("LineStyle", css::uno::Any(css::drawing::LineStyle::LineStyle_NONE));
+                                xPropSet->setPropertyValue(u"FillColor"_ustr, css::uno::Any(COL_BLACK));
+                                xPropSet->setPropertyValue(u"LineStyle"_ustr, css::uno::Any(css::drawing::LineStyle::LineStyle_NONE));
                             }
                         }
                         // Freeform redaction
                         else if (sShapeName == "FreeformRedactionShape"
-                                 && xInfo->hasPropertyByName("LineTransparence") && xInfo->hasPropertyByName("LineColor"))
+                                 && xInfo->hasPropertyByName(u"LineTransparence"_ustr) && xInfo->hasPropertyByName(u"LineColor"_ustr))
                         {
-                            xPropSet->setPropertyValue("LineTransparence", css::uno::Any(static_cast<sal_Int16>(0)));
+                            xPropSet->setPropertyValue(u"LineTransparence"_ustr, css::uno::Any(static_cast<sal_Int16>(0)));
 
                             if (sRedactionStyle == "White")
                             {
-                                xPropSet->setPropertyValue("LineColor", css::uno::Any(COL_WHITE));
+                                xPropSet->setPropertyValue(u"LineColor"_ustr, css::uno::Any(COL_WHITE));
                             }
                             else
                             {
-                                xPropSet->setPropertyValue("LineColor", css::uno::Any(COL_BLACK));
+                                xPropSet->setPropertyValue(u"LineColor"_ustr, css::uno::Any(COL_BLACK));
                             }
                         }
                     }
@@ -1011,7 +1084,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                     if (xCtrl.is())
                         xParentWindow = xCtrl->getFrame()->getContainerWindow();
 
-                    uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+                    const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
 
                     uno::Reference< task::XInteractionHandler2 > xInteract(
                         task::InteractionHandler::createWithParent(xContext, xParentWindow) );
@@ -1055,13 +1128,13 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                     // to avoid confusion with exporting for file download purpose
 
                     throw task::ErrorCodeIOException(
-                        "SfxObjectShell::ExecFile_Impl: ERRCODE_IO_CANTWRITE",
+                        u"SfxObjectShell::ExecFile_Impl: ERRCODE_IO_CANTWRITE"_ustr,
                         uno::Reference< uno::XInterface >(), sal_uInt32(ERRCODE_IO_CANTWRITE));
                 }
 
                 const SfxSlot* pSlot = GetModule()->GetSlotPool()->GetSlot( bForceSaveAs ? SID_SAVEASDOC : nId );
                 if ( !pSlot )
-                    throw uno::Exception("no slot", nullptr);
+                    throw uno::Exception(u"no slot"_ustr, nullptr);
 
                 std::shared_ptr<SfxStoringHelper> xHelper = std::make_shared<SfxStoringHelper>();
                 if (bIsAsync && SfxViewShell::Current())
@@ -1088,6 +1161,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                                        aDispatchArgs,
                                        bPreselectPassword,
                                        GetDocumentSignatureState(),
+                                       GetScriptingSignatureState(),
                                        bIsAsync );
 
                 if (bMailPrepareExport)
@@ -1142,9 +1216,10 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
             {
                 if (comphelper::LibreOfficeKit::isActive())
                     sendErrorToLOK(lErr);
-                else if (!(lErr == ERRCODE_IO_GENERAL && bIsPDFExport))
+                else
                 {
                     SfxErrorContext aEc(ERRCTX_SFX_SAVEASDOC,GetTitle());
+                    weld::Window* pDialogParent = GetReqDialogParent(rReq, *this);
                     ErrorHandler::HandleError(lErr, pDialogParent);
                 }
             }
@@ -1160,7 +1235,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                 uno::Reference< lang::XServiceInfo > xServiceInfo( xComponent, uno::UNO_QUERY);
 
                 // Redaction finalization takes place in Draw
-                if ( xServiceInfo.is() && xServiceInfo->supportsService("com.sun.star.drawing.DrawingDocument") )
+                if ( xServiceInfo.is() && xServiceInfo->supportsService(u"com.sun.star.drawing.DrawingDocument"_ustr) )
                 {
                     // Access the draw pages
                     uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(xComponent, uno::UNO_QUERY);
@@ -1192,13 +1267,13 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                                 continue;
 
                             // Not a shape we converted?
-                            if (!xInfo->hasPropertyByName("Name"))
+                            if (!xInfo->hasPropertyByName(u"Name"_ustr))
                                 continue;
 
                             OUString sShapeName;
-                            if (xInfo->hasPropertyByName("Name"))
+                            if (xInfo->hasPropertyByName(u"Name"_ustr))
                             {
-                                uno::Any aAnyShapeName = xPropSet->getPropertyValue("Name");
+                                uno::Any aAnyShapeName = xPropSet->getPropertyValue(u"Name"_ustr);
                                 aAnyShapeName >>= sShapeName;
                             }
                             else
@@ -1206,18 +1281,18 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
 
                             // Rectangle redaction
                             if (sShapeName == "RectangleRedactionShape"
-                                    && xInfo->hasPropertyByName("FillTransparence") && xInfo->hasPropertyByName("FillColor"))
+                                    && xInfo->hasPropertyByName(u"FillTransparence"_ustr) && xInfo->hasPropertyByName(u"FillColor"_ustr))
                             {
-                                xPropSet->setPropertyValue("FillTransparence", css::uno::Any(static_cast<sal_Int16>(50)));
-                                xPropSet->setPropertyValue("FillColor", css::uno::Any(COL_GRAY7));
-                                xPropSet->setPropertyValue("LineStyle", css::uno::Any(css::drawing::LineStyle::LineStyle_NONE));
+                                xPropSet->setPropertyValue(u"FillTransparence"_ustr, css::uno::Any(static_cast<sal_Int16>(50)));
+                                xPropSet->setPropertyValue(u"FillColor"_ustr, css::uno::Any(COL_GRAY7));
+                                xPropSet->setPropertyValue(u"LineStyle"_ustr, css::uno::Any(css::drawing::LineStyle::LineStyle_NONE));
 
                             }
                             // Freeform redaction
                             else if (sShapeName == "FreeformRedactionShape")
                             {
-                                xPropSet->setPropertyValue("LineTransparence", css::uno::Any(static_cast<sal_Int16>(50)));
-                                xPropSet->setPropertyValue("LineColor", css::uno::Any(COL_GRAY7));
+                                xPropSet->setPropertyValue(u"LineTransparence"_ustr, css::uno::Any(static_cast<sal_Int16>(50)));
+                                xPropSet->setPropertyValue(u"LineColor"_ustr, css::uno::Any(COL_GRAY7));
                             }
                         }
                     }
@@ -1237,10 +1312,10 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
             if ( ( nId == SID_SAVEASDOC || nId == SID_SAVEASREMOTE ) && nErrorCode == ERRCODE_NONE )
             {
                 const SfxBoolItem* saveTo = rReq.GetArg<SfxBoolItem>(SID_SAVETO);
-                if (saveTo == nullptr || !saveTo->GetValue())
+                // IsReadOnly may still return true, e.g. when embedded fonts disallow editing
+                if ((saveTo == nullptr || !saveTo->GetValue()) && !IsReadOnly())
                 {
-                    SfxViewFrame *pFrame = GetFrame();
-                    if (pFrame)
+                    if (SfxViewFrame* pFrame = GetFrame())
                         pFrame->RemoveInfoBar(u"readonly");
                     SetReadOnlyUI(false);
                 }
@@ -1292,7 +1367,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                     }
                     SfxAllItemSet aArgs( GetPool() );
                     SfxStringItem aTmpItem( SID_FILE_NAME, pNameItem->GetValue() );
-                    aArgs.Put( aTmpItem, aTmpItem.Which() );
+                    aArgs.Put( aTmpItem );
                     SfxRequest aSaveAsReq( SID_SAVEASDOC, SfxCallMode::API, aArgs );
                     ExecFile_Impl( aSaveAsReq );
                     if ( !aSaveAsReq.IsDone() )
@@ -1319,7 +1394,10 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
             if (comphelper::LibreOfficeKit::isActive())
                 sendErrorToLOK(lErr);
             else
+            {
+                weld::Window* pDialogParent = GetReqDialogParent(rReq, *this);
                 ErrorHandler::HandleError(lErr, pDialogParent);
+            }
 
             rReq.SetReturnValue( SfxBoolItem(0, true) );
             rReq.Done();
@@ -1332,6 +1410,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
         case SID_DOCTEMPLATE:
         {
             // save as document templates
+            weld::Window* pDialogParent = GetReqDialogParent(rReq, *this);
             SfxSaveAsTemplateDialog aDlg(pDialogParent, GetModel());
             (void)aDlg.run();
             break;
@@ -1351,8 +1430,7 @@ void SfxObjectShell::ExecFile_Impl(SfxRequest &rReq)
                 CancelCheckOut( );
 
                 // Reload the document as we may still have local changes
-                SfxViewFrame *pFrame = GetFrame();
-                if ( pFrame )
+                if (SfxViewFrame* pFrame = GetFrame())
                     pFrame->GetDispatcher()->Execute(SID_RELOAD);
             }
             break;
@@ -1381,13 +1459,6 @@ void SfxObjectShell::GetState_Impl(SfxItemSet &rSet)
     {
         switch ( nWhich )
         {
-            case SID_DOCTEMPLATE :
-            {
-                if ( isExportLocked())
-                    rSet.DisableItem( nWhich );
-                break;
-            }
-
             case SID_CHECKOUT:
                 {
                     bool bShow = false;
@@ -1514,6 +1585,7 @@ void SfxObjectShell::GetState_Impl(SfxItemSet &rSet)
                 break;
             }
 
+            case SID_DOCTEMPLATE:
             case SID_EXPORTDOC:
             case SID_EXPORTDOCASPDF:
             case SID_DIRECTEXPORTDOCASPDF:
@@ -1560,7 +1632,7 @@ void SfxObjectShell::GetState_Impl(SfxItemSet &rSet)
                 {
                     SignatureState eState = GetDocumentSignatureState();
                     InfobarType aInfobarType(InfobarType::INFO);
-                    OUString sMessage("");
+                    OUString sMessage(u""_ustr);
 
                     switch (eState)
                     {
@@ -1600,7 +1672,7 @@ void SfxObjectShell::GetState_Impl(SfxItemSet &rSet)
                     {
                         if ( !sMessage.isEmpty() )
                         {
-                            auto pInfoBar = pFrame->AppendInfoBar("signature", "", sMessage, aInfobarType);
+                            auto pInfoBar = pFrame->AppendInfoBar(u"signature"_ustr, u""_ustr, sMessage, aInfobarType);
                             if (pInfoBar == nullptr || pInfoBar->isDisposed())
                                 return;
                             weld::Button& rBtn = pInfoBar->addButton();
@@ -1613,7 +1685,7 @@ void SfxObjectShell::GetState_Impl(SfxItemSet &rSet)
                         if ( eState == SignatureState::NOSIGNATURES )
                             pFrame->RemoveInfoBar(u"signature");
                         else
-                            pFrame->UpdateInfoBar(u"signature", "", sMessage, aInfobarType);
+                            pFrame->UpdateInfoBar(u"signature", u""_ustr, sMessage, aInfobarType);
                     }
                 }
 
@@ -1792,18 +1864,18 @@ static bool HasSignatureStream(const uno::Reference<embed::XStorage>& xStorage)
     if (!xStorage.is())
         return false;
 
-    if (xStorage->hasByName("META-INF"))
+    if (xStorage->hasByName(u"META-INF"_ustr))
     {
         // ODF case.
         try
         {
             uno::Reference<embed::XStorage> xMetaInf
-                = xStorage->openStorageElement("META-INF", embed::ElementModes::READ);
+                = xStorage->openStorageElement(u"META-INF"_ustr, embed::ElementModes::READ);
             if (xMetaInf.is())
             {
-                return xMetaInf->hasByName("documentsignatures.xml")
-                       || xMetaInf->hasByName("macrosignatures.xml")
-                       || xMetaInf->hasByName("packagesignatures.xml");
+                return xMetaInf->hasByName(u"documentsignatures.xml"_ustr)
+                       || xMetaInf->hasByName(u"macrosignatures.xml"_ustr)
+                       || xMetaInf->hasByName(u"packagesignatures.xml"_ustr);
             }
         }
         catch (const css::io::IOException&)
@@ -1813,7 +1885,7 @@ static bool HasSignatureStream(const uno::Reference<embed::XStorage>& xStorage)
     }
 
     // OOXML case.
-    return xStorage->hasByName("_xmlsignatures");
+    return xStorage->hasByName(u"_xmlsignatures"_ustr);
 }
 
 uno::Sequence< security::DocumentSignatureInformation > SfxObjectShell::GetDocumentSignatureInformation( bool bScriptingContent, const uno::Reference< security::XDocumentDigitalSignatures >& xSigner )
@@ -1831,8 +1903,9 @@ uno::Sequence< security::DocumentSignatureInformation > SfxObjectShell::GetDocum
                 OUString aVersion;
                 try
                 {
-                    uno::Reference < beans::XPropertySet > xPropSet( GetStorage(), uno::UNO_QUERY_THROW );
-                    xPropSet->getPropertyValue("Version") >>= aVersion;
+                    uno::Reference < beans::XPropertySet > xPropSet( GetStorage(), uno::UNO_QUERY );
+                    if (xPropSet)
+                        xPropSet->getPropertyValue(u"Version"_ustr) >>= aVersion;
                 }
                 catch( uno::Exception& )
                 {
@@ -1882,6 +1955,20 @@ uno::Sequence< security::DocumentSignatureInformation > SfxObjectShell::GetDocum
     return aResult;
 }
 
+void SfxObjectShell::SetRememberCurrentSignature(bool bRemember)
+{
+    if (bRemember)
+    {
+        rSignatureInfosRemembered = GetDocumentSignatureInformation(false);
+        bRememberSignature = true;
+    }
+    else
+    {
+        rSignatureInfosRemembered = uno::Sequence<security::DocumentSignatureInformation>();
+        bRememberSignature = false;
+    }
+}
+
 SignatureState SfxObjectShell::ImplGetSignatureState( bool bScriptingContent )
 {
     SignatureState* pState = bScriptingContent ? &pImpl->nScriptingSignatureState : &pImpl->nDocumentSignatureState;
@@ -1892,6 +1979,13 @@ SignatureState SfxObjectShell::ImplGetSignatureState( bool bScriptingContent )
 
         uno::Sequence< security::DocumentSignatureInformation > aInfos = GetDocumentSignatureInformation( bScriptingContent );
         *pState = DocumentSignatures::getSignatureState(aInfos);
+
+        // repaired package cannot be trusted
+        if (*pState != SignatureState::NOSIGNATURES
+            && GetMedium()->IsRepairPackage())
+        {
+            *pState = SignatureState::BROKEN;
+        }
     }
 
     if ( *pState == SignatureState::OK || *pState == SignatureState::NOTVALIDATED
@@ -2024,8 +2118,7 @@ void SfxObjectShell::AfterSigning(bool bSignSuccess, bool bSignScriptingContent)
 
 bool SfxObjectShell::CheckIsReadonly(bool bSignScriptingContent, weld::Window* pDialogParent)
 {
-    // in LOK case we support only viewer / readonly mode so far
-    if (GetMedium()->IsOriginallyReadOnly() || comphelper::LibreOfficeKit::isActive())
+    if (GetMedium()->IsOriginallyReadOnly())
     {
         // If the file is physically read-only, we just show the existing signatures
         try
@@ -2091,19 +2184,28 @@ SignatureState SfxObjectShell::GetDocumentSignatureState()
     return ImplGetSignatureState();
 }
 
-bool SfxObjectShell::SignDocumentContent(weld::Window* pDialogParent)
+void SfxObjectShell::SignDocumentContent(weld::Window* pDialogParent, const std::function<void(bool)>& rCallback)
 {
     if (!PrepareForSigning(pDialogParent))
-        return false;
+    {
+        rCallback(false);
+        return;
+    }
 
     if (CheckIsReadonly(false, pDialogParent))
-        return false;
+    {
+        rCallback(false);
+        return;
+    }
 
-    bool bSignSuccess = GetMedium()->SignContents_Impl(pDialogParent, false, HasValidSignatures());
+    SfxViewFrame* pFrame = GetFrame();
+    SfxViewShell* pViewShell = pFrame ? pFrame->GetViewShell() : nullptr;
+    // Async, all code before the end has to go into the callback.
+    GetMedium()->SignContents_Impl(pDialogParent, false, HasValidSignatures(), pViewShell, [this, rCallback](bool bSignSuccess) {
+            AfterSigning(bSignSuccess, false);
 
-    AfterSigning(bSignSuccess, false);
-
-    return bSignSuccess;
+            rCallback(bSignSuccess);
+    });
 }
 
 bool SfxObjectShell::ResignDocument(uno::Sequence< security::DocumentSignatureInformation >& rSignaturesInfo)
@@ -2116,14 +2218,16 @@ bool SfxObjectShell::ResignDocument(uno::Sequence< security::DocumentSignatureIn
         auto xCert = rInfo.Signer;
         if (xCert.is())
         {
-            bSignSuccess &= SignDocumentContentUsingCertificate(xCert);
+            svl::crypto::SigningContext aSigningContext;
+            aSigningContext.m_xCertificate = std::move(xCert);
+            bSignSuccess &= SignDocumentContentUsingCertificate(aSigningContext);
         }
     }
 
     return bSignSuccess;
 }
 
-bool SfxObjectShell::SignDocumentContentUsingCertificate(const Reference<XCertificate>& xCertificate)
+bool SfxObjectShell::SignDocumentContentUsingCertificate(svl::crypto::SigningContext& rSigningContext)
 {
     // 1. PrepareForSigning
 
@@ -2138,6 +2242,13 @@ bool SfxObjectShell::SignDocumentContentUsingCertificate(const Reference<XCertif
 
     // the document is not new and is not modified
     OUString aODFVersion(comphelper::OStorageHelper::GetODFVersionFromStorage(GetStorage()));
+
+    if (IsModified() && IsSignPDF())
+    {
+        // When signing a PDF, then adding/resizing/moving the signature line would nominally modify
+        // the document, but ignore that for signing.
+        SetModified(false);
+    }
 
     if (IsModified() || !GetMedium() || GetMedium()->GetName().isEmpty()
       || (GetMedium()->GetFilter()->IsOwnFormat() && aODFVersion.compareTo(ODFVER_012_TEXT) < 0 && !bHasSign))
@@ -2193,7 +2304,7 @@ bool SfxObjectShell::SignDocumentContentUsingCertificate(const Reference<XCertif
 
     // 3. Sign
     bool bSignSuccess = GetMedium()->SignDocumentContentUsingCertificate(
-        GetBaseModel(), HasValidSignatures(), xCertificate);
+        GetBaseModel(), HasValidSignatures(), rSigningContext);
 
     // 4. AfterSigning
     AfterSigning(bSignSuccess, false);
@@ -2214,16 +2325,17 @@ void SfxObjectShell::SignSignatureLine(weld::Window* pDialogParent,
     if (CheckIsReadonly(false, pDialogParent))
         return;
 
-    bool bSignSuccess = GetMedium()->SignContents_Impl(pDialogParent,
-        false, HasValidSignatures(), aSignatureLineId, xCert, xValidGraphic, xInvalidGraphic, aComment);
+    SfxViewFrame* pFrame = GetFrame();
+    SfxViewShell* pViewShell = pFrame ? pFrame->GetViewShell() : nullptr;
+    GetMedium()->SignContents_Impl(pDialogParent,
+        false, HasValidSignatures(), pViewShell, [this, pFrame](bool bSignSuccess) {
+        AfterSigning(bSignSuccess, false);
 
-    AfterSigning(bSignSuccess, false);
-
-    // Reload the document to get the updated graphic
-    // FIXME: Update just the signature line graphic instead of reloading the document
-    SfxViewFrame *pFrame = GetFrame();
-    if (pFrame)
-        pFrame->GetDispatcher()->Execute(SID_RELOAD);
+        // Reload the document to get the updated graphic
+        // FIXME: Update just the signature line graphic instead of reloading the document
+        if (pFrame)
+            pFrame->GetDispatcher()->Execute(SID_RELOAD);
+    }, aSignatureLineId, xCert, xValidGraphic, xInvalidGraphic, aComment);
 }
 
 SignatureState SfxObjectShell::GetScriptingSignatureState()
@@ -2231,19 +2343,27 @@ SignatureState SfxObjectShell::GetScriptingSignatureState()
     return ImplGetSignatureState( true );
 }
 
-bool SfxObjectShell::SignScriptingContent(weld::Window* pDialogParent)
+void SfxObjectShell::SignScriptingContent(weld::Window* pDialogParent, const std::function<void(bool)>& rCallback)
 {
     if (!PrepareForSigning(pDialogParent))
-        return false;
+    {
+        rCallback(false);
+        return;
+    }
 
     if (CheckIsReadonly(true, pDialogParent))
-        return false;
+    {
+        rCallback(false);
+        return;
+    }
 
-    bool bSignSuccess = GetMedium()->SignContents_Impl(pDialogParent, true, HasValidSignatures());
+    SfxViewFrame* pFrame = GetFrame();
+    SfxViewShell* pViewShell = pFrame ? pFrame->GetViewShell() : nullptr;
+    GetMedium()->SignContents_Impl(pDialogParent, true, HasValidSignatures(), pViewShell, [this, rCallback](bool bSignSuccess) {
+        AfterSigning(bSignSuccess, true);
 
-    AfterSigning(bSignSuccess, true);
-
-    return bSignSuccess;
+        rCallback(bSignSuccess);
+    });
 }
 
 const uno::Sequence<sal_Int8>& SfxObjectShell::getUnoTunnelId()
@@ -2268,7 +2388,7 @@ uno::Sequence< beans::PropertyValue > SfxObjectShell::GetDocumentProtectionFromG
     {
         uno::Sequence< beans::PropertyValue > propList;
         xPropSet->getPropertyValue( aGrabBagName ) >>= propList;
-        for( const auto& rProp : std::as_const(propList) )
+        for (const auto& rProp : propList)
         {
             if (rProp.Name == "DocumentProtection")
             {

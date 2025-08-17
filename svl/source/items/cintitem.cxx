@@ -18,6 +18,7 @@
  */
 
 #include <com/sun/star/uno/Any.hxx>
+#include <o3tl/hash_combine.hxx>
 #include <svl/cintitem.hxx>
 #include <sal/log.hxx>
 
@@ -27,6 +28,21 @@ bool CntByteItem::operator ==(const SfxPoolItem & rItem) const
 {
     assert(SfxPoolItem::operator==(rItem));
     return m_nValue == static_cast< const CntByteItem * >(&rItem)->m_nValue;
+}
+
+// virtual
+bool CntByteItem::supportsHashCode() const
+{
+    return true;
+}
+
+// virtual
+size_t CntByteItem::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, Which());
+    o3tl::hash_combine(seed, m_nValue);
+    return seed;
 }
 
 // virtual
@@ -74,6 +90,21 @@ bool CntUInt16Item::operator ==(const SfxPoolItem & rItem) const
 }
 
 // virtual
+bool CntUInt16Item::supportsHashCode() const
+{
+    return true;
+}
+
+// virtual
+size_t CntUInt16Item::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, Which());
+    o3tl::hash_combine(seed, m_nValue);
+    return seed;
+}
+
+// virtual
 bool CntUInt16Item::GetPresentation(SfxItemPresentation,
                                     MapUnit, MapUnit,
                                     OUString & rText,
@@ -87,22 +118,25 @@ bool CntUInt16Item::GetPresentation(SfxItemPresentation,
 // virtual
 bool CntUInt16Item::QueryValue(css::uno::Any& rVal, sal_uInt8) const
 {
-    sal_Int32 nValue = m_nValue;
-    rVal <<= nValue;
+    rVal <<= m_nValue;
     return true;
 }
 
 // virtual
 bool CntUInt16Item::PutValue(const css::uno::Any& rVal, sal_uInt8)
 {
-    sal_Int32 nValue = 0;
-    if (rVal >>= nValue)
+    if (rVal >>= m_nValue)
+        return true;
+    // Legacy: for a long time, CntUInt16Item::PutValue accepted sal_Int32; play safe and accept
+    // if someone passes that
+    if (sal_Int32 nValue; rVal >>= nValue)
     {
-        SAL_WARN_IF(nValue < 0 || nValue > SAL_MAX_UINT16, "svl.items", "Overflow in UInt16 value!");
+        SAL_WARN("svl.items", "Passing sal_uInt16 in sal_Int32!");
+        SAL_WARN_IF(nValue < 0 || nValue > SAL_MAX_UINT16, "svl.items",
+                    "Overflow in UInt16 value!");
         m_nValue = static_cast<sal_uInt16>(nValue);
         return true;
     }
-
     SAL_WARN("svl.items", "CntUInt16Item::PutValue - Wrong type!");
     return false;
 }
@@ -118,6 +152,21 @@ bool CntInt32Item::operator ==(const SfxPoolItem & rItem) const
 {
     assert(SfxPoolItem::operator==(rItem));
     return m_nValue == static_cast<const CntInt32Item *>(&rItem)->m_nValue;
+}
+
+// virtual
+bool CntInt32Item::supportsHashCode() const
+{
+    return true;
+}
+
+// virtual
+size_t CntInt32Item::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, Which());
+    o3tl::hash_combine(seed, m_nValue);
+    return seed;
 }
 
 // virtual
@@ -163,6 +212,21 @@ bool CntUInt32Item::operator ==(const SfxPoolItem & rItem) const
 {
     assert(SfxPoolItem::operator==(rItem));
     return m_nValue == static_cast<const CntUInt32Item *>(&rItem)->m_nValue;
+}
+
+// virtual
+bool CntUInt32Item::supportsHashCode() const
+{
+    return true;
+}
+
+// virtual
+size_t CntUInt32Item::hashCode() const
+{
+    std::size_t seed(0);
+    o3tl::hash_combine(seed, Which());
+    o3tl::hash_combine(seed, m_nValue);
+    return seed;
 }
 
 // virtual

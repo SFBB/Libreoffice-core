@@ -50,7 +50,6 @@ namespace helpdatafileproxy {
 namespace chelp {
 
     class Databases;
-    class URLParameter;
 
     class StaticModuleInformation
     {
@@ -143,10 +142,10 @@ namespace chelp {
 
         ~Databases();
 
-        OString getImageTheme() const;
+        static OString getImageTheme();
 
         OUString getInstallPathAsURL();
-        OUString getInstallPathAsURL(std::unique_lock<std::mutex>& rGuard);
+        const OUString & getInstallPathAsURL(std::unique_lock<std::mutex>& rGuard);
 
         const std::vector< OUString >& getModuleList( const OUString& Language );
 
@@ -229,7 +228,6 @@ namespace chelp {
 
         std::mutex                                               m_aMutex;
         css::uno::Reference< css::uno::XComponentContext >       m_xContext;
-        css::uno::Reference< css::lang::XMultiComponentFactory > m_xSMgr;
         css::uno::Reference< css::ucb::XSimpleFileAccess3 >      m_xSFA;
 
         bool   m_bShowBasic;
@@ -265,12 +263,6 @@ namespace chelp {
 
         typedef std::unordered_map< OUString, std::unique_ptr<KeywordInfo> > KeywordInfoTable;
         KeywordInfoTable m_aKeywordInfo;   // Module information
-
-        typedef
-        std::unordered_map<
-             OUString,
-             css::uno::Reference< css::container::XHierarchicalNameAccess > > ZipFileTable;
-        ZipFileTable m_aZipFileTable;   // No closing of an once opened jarfile
 
         typedef
         std::unordered_map<

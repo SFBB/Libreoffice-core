@@ -1,9 +1,13 @@
 {Relationship::ACTIVEXCONTROLBINARY, u"http://schemas.microsoft.com/office/2006/relationships/activeXControlBinary"},
 {Relationship::CHART, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"},
+{Relationship::CHARTCOLORSTYLE, u"http://schemas.microsoft.com/office/2011/relationships/chartColorStyle"},
+{Relationship::CHARTEX, u"http://schemas.microsoft.com/office/2014/relationships/chartEx"},
+{Relationship::CHARTSTYLE, u"http://schemas.microsoft.com/office/2011/relationships/chartStyle"},
 {Relationship::CHARTUSERSHAPES, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chartUserShapes"},
 {Relationship::COMMENTS, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"},
 {Relationship::COMMENTAUTHORS, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentAuthors"},
 {Relationship::COMMENTSEXTENDED, u"http://schemas.microsoft.com/office/2011/relationships/commentsExtended"},
+{Relationship::CONNECTIONS, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/connections"},
 {Relationship::CONTROL, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/control"},
 {Relationship::CTRLPROP, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/ctrlProp"},
 {Relationship::CUSTOMXML, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml"},
@@ -45,4 +49,5 @@
 {Relationship::AUDIO, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/audio"},
 {Relationship::VMLDRAWING, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing"},
 {Relationship::WORDVBADATA, u"http://schemas.microsoft.com/office/2006/relationships/wordVbaData"},
-{Relationship::WORKSHEET, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"}
+{Relationship::WORKSHEET, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"},
+{Relationship::XMLMAPS, u"http://schemas.openxmlformats.org/officeDocument/2006/relationships/xmlMaps"}

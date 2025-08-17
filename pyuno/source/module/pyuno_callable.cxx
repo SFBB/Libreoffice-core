@@ -128,11 +128,11 @@ static PyObject* PyUNO_callable_call(
                 PyRef ref = runtime.any2PyObject( aOutParam[i] );
                 PyTuple_SetItem (return_list.get(), 1+i, ref.getAcquired());
             }
-            ret = return_list;
+            ret = std::move(return_list);
         }
         else
         {
-            ret = temp;
+            ret = std::move(temp);
         }
     }
     catch( const css::reflection::InvocationTargetException & e )
@@ -243,6 +243,12 @@ static PyTypeObject PyUNO_callable_Type =
 #if defined __clang__
 #pragma clang diagnostic pop
 #endif
+#endif
+#if PY_VERSION_HEX >= 0x030C00A1
+    , 0 // tp_watched
+#endif
+#if PY_VERSION_HEX >= 0x030D00A4
+    , 0 // tp_versions_used
 #endif
 #endif
 #endif

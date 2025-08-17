@@ -34,7 +34,6 @@ namespace dbaui
 {
 
     using namespace ::com::sun::star::uno;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::beans;
 
 ODBTypeWizDialog::ODBTypeWizDialog(const Reference< XComponentContext >& _rxORB)
@@ -49,12 +48,12 @@ Sequence<sal_Int8> SAL_CALL ODBTypeWizDialog::getImplementationId(  )
 
 OUString SAL_CALL ODBTypeWizDialog::getImplementationName()
 {
-    return "org.openoffice.comp.dbu.ODBTypeWizDialog";
+    return u"org.openoffice.comp.dbu.ODBTypeWizDialog"_ustr;
 }
 
 css::uno::Sequence<OUString> SAL_CALL ODBTypeWizDialog::getSupportedServiceNames()
 {
-    return { "com.sun.star.sdb.DataSourceTypeChangeDialog" };
+    return { u"com.sun.star.sdb.DataSourceTypeChangeDialog"_ustr };
 }
 
 Reference<XPropertySetInfo>  SAL_CALL ODBTypeWizDialog::getPropertySetInfo()

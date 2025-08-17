@@ -31,6 +31,7 @@
 #include <svl/itempool.hxx>
 #include <svl/stritem.hxx>
 #include <svl/style.hxx>
+#include <sfx2/namedcolor.hxx>
 #include <sfx2/request.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/dispatch.hxx>
@@ -43,10 +44,11 @@
 #include <editeng/shdditem.hxx>
 #include <svx/svdpagv.hxx>
 #include <editeng/flstitem.hxx>
-#include <editeng/scripttypeitem.hxx>
+#include <editeng/scriptsetitem.hxx>
 #include <editeng/writingmodeitem.hxx>
 #include <editeng/frmdiritem.hxx>
 #include <editeng/cmapitem.hxx>
+#include <editeng/tstpitem.hxx>
 
 #include <app.hrc>
 #include <strings.hrc>
@@ -71,20 +73,20 @@ namespace sd {
 /**
  * Process SfxRequests
  */
-
-void TextObjectBar::Execute( SfxRequest &rReq )
+void TextObjectBar::Execute(SfxRequest& rReq)
 {
     const SfxItemSet* pArgs = rReq.GetArgs();
     sal_uInt16 nSlot = rReq.GetSlot();
     OutlinerView* pOLV = mpView->GetTextEditOutlinerView();
 
-    std::unique_ptr<OutlineViewModelChangeGuard, o3tl::default_delete<OutlineViewModelChangeGuard>> aGuard;
+    // Default indent used e.g. in SID_DEC_INDENT, SID_INC_INDENT and SID_HANGING_INDENT
+    const ::tools::Long nIndentDefaultDist = 1000; // 1000 twips
 
-    assert(mpViewShell);
+    std::unique_ptr<OutlineViewModelChangeGuard, o3tl::default_delete<OutlineViewModelChangeGuard>> aGuard;
 
     if (OutlineView* pOView = dynamic_cast<OutlineView*>(mpView))
     {
-        pOLV = pOView->GetViewByWindow(mpViewShell->GetActiveWindow());
+        pOLV = pOView->GetViewByWindow(mrViewShell.GetActiveWindow());
         aGuard.reset( new OutlineViewModelChangeGuard( static_cast<OutlineView&>(*mpView) ) );
     }
 
@@ -95,8 +97,8 @@ void TextObjectBar::Execute( SfxRequest &rReq )
             if( pArgs )
             {
                 SdDrawDocument& rDoc = mpView->GetDoc();
-                assert(mpViewShell->GetViewShell());
-                rtl::Reference<FuPoor> xFunc( FuTemplate::Create( mpViewShell, static_cast< ::sd::Window*>( mpViewShell->GetViewShell()->GetWindow()), mpView, &rDoc, rReq ) );
+                assert(mrViewShell.GetViewShell());
+                rtl::Reference<FuPoor> xFunc( FuTemplate::Create( mrViewShell, static_cast< ::sd::Window*>( mrViewShell.GetViewShell()->GetWindow()), mpView, rDoc, rReq ) );
 
                 if(xFunc.is())
                 {
@@ -105,15 +107,15 @@ void TextObjectBar::Execute( SfxRequest &rReq )
 
                     if( rReq.GetSlot() == SID_STYLE_APPLY )
                     {
-                        if (mpViewShell->GetViewFrame())
-                            mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_STYLE_APPLY );
+                        if (mrViewShell.GetViewFrame())
+                            mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_STYLE_APPLY );
                     }
                 }
             }
             else
             {
-                if (mpViewShell->GetViewFrame())
-                    mpViewShell->GetViewFrame()->GetDispatcher()->Execute( SID_STYLE_DESIGNER, SfxCallMode::ASYNCHRON );
+                if (mrViewShell.GetViewFrame())
+                    mrViewShell.GetViewFrame()->GetDispatcher()->Execute( SID_STYLE_DESIGNER, SfxCallMode::ASYNCHRON );
             }
 
             rReq.Done();
@@ -127,51 +129,48 @@ void TextObjectBar::Execute( SfxRequest &rReq )
             {
                 ESelection aSel = pOLV->GetSelection();
                 aSel.Adjust();
-                sal_Int32 nStartPara = aSel.nStartPara;
-                sal_Int32 nEndPara = aSel.nEndPara;
+                sal_Int32 nStartPara = aSel.start.nPara;
+                sal_Int32 nEndPara = aSel.end.nPara;
                 if( !aSel.HasRange() )
                 {
                     nStartPara = 0;
-                    nEndPara = pOLV->GetOutliner()->GetParagraphCount() - 1;
+                    nEndPara = pOLV->GetOutliner().GetParagraphCount() - 1;
                 }
 
-                pOLV->GetOutliner()->UndoActionStart( OLUNDO_ATTR );
+                pOLV->GetOutliner().UndoActionStart( OLUNDO_ATTR );
                 for( sal_Int32 nPara = nStartPara; nPara <= nEndPara; nPara++ )
                 {
-                    SfxStyleSheet* pStyleSheet = nullptr;
-                    if (pOLV->GetOutliner() != nullptr)
-                        pStyleSheet = pOLV->GetOutliner()->GetStyleSheet(nPara);
+                    SfxStyleSheet* pStyleSheet = pOLV->GetOutliner().GetStyleSheet(nPara);
                     if (pStyleSheet != nullptr)
                     {
                         SfxItemSet aAttr( pStyleSheet->GetItemSet() );
-                        SfxItemSet aTmpSet( pOLV->GetOutliner()->GetParaAttribs( nPara ) );
+                        SfxItemSet aTmpSet( pOLV->GetOutliner().GetParaAttribs( nPara ) );
                         aAttr.Put( aTmpSet, false );
                         const SvxLRSpaceItem& rItem = aAttr.Get( EE_PARA_LRSPACE );
                         std::unique_ptr<SvxLRSpaceItem> pNewItem(rItem.Clone());
 
-                        ::tools::Long nLeft = pNewItem->GetLeft();
+                        ::tools::Long nLeft = pNewItem->ResolveLeft({});
                         if( nSlot == SID_INC_INDENT )
-                            nLeft += 1000;
+                            nLeft += nIndentDefaultDist;
                         else
                         {
-                            nLeft -= 1000;
+                            nLeft -= nIndentDefaultDist;
                             nLeft = std::max<::tools::Long>( nLeft, 0 );
                         }
-                        pNewItem->SetLeftValue( static_cast<sal_uInt16>(nLeft) );
+                        pNewItem->SetLeft(SvxIndentValue::twips(static_cast<sal_uInt16>(nLeft)));
 
-                        SfxItemSet aNewAttrs( aAttr );
-                        aNewAttrs.Put( std::move(pNewItem) );
-                        pOLV->GetOutliner()->SetParaAttribs( nPara, aNewAttrs );
+                        aAttr.Put( std::move(pNewItem) );
+                        pOLV->GetOutliner().SetParaAttribs( nPara, aAttr );
                     }
                 }
-                pOLV->GetOutliner()->UndoActionEnd();
-                mpViewShell->Invalidate( SID_UNDO );
+                pOLV->GetOutliner().UndoActionEnd();
+                mrViewShell.Invalidate( SID_UNDO );
             }
             rReq.Done();
 
             Invalidate();
             // to refresh preview (in outline mode), slot has to be invalidated:
-            mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
+            mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
 
         }
         break;
@@ -183,24 +182,22 @@ void TextObjectBar::Execute( SfxRequest &rReq )
             {
                 ESelection aSel = pOLV->GetSelection();
                 aSel.Adjust();
-                sal_Int32 nStartPara = aSel.nStartPara;
-                sal_Int32 nEndPara = aSel.nEndPara;
+                sal_Int32 nStartPara = aSel.start.nPara;
+                sal_Int32 nEndPara = aSel.end.nPara;
                 if( !aSel.HasRange() )
                 {
                     nStartPara = 0;
-                    nEndPara = pOLV->GetOutliner()->GetParagraphCount() - 1;
+                    nEndPara = pOLV->GetOutliner().GetParagraphCount() - 1;
                 }
 
-                pOLV->GetOutliner()->UndoActionStart( OLUNDO_ATTR );
+                pOLV->GetOutliner().UndoActionStart( OLUNDO_ATTR );
                 for( sal_Int32 nPara = nStartPara; nPara <= nEndPara; nPara++ )
                 {
-                    SfxStyleSheet* pStyleSheet = nullptr;
-                    if (pOLV->GetOutliner() != nullptr)
-                        pStyleSheet = pOLV->GetOutliner()->GetStyleSheet(nPara);
+                    SfxStyleSheet* pStyleSheet = pOLV->GetOutliner().GetStyleSheet(nPara);
                     if (pStyleSheet != nullptr)
                     {
                         SfxItemSet aAttr( pStyleSheet->GetItemSet() );
-                        SfxItemSet aTmpSet( pOLV->GetOutliner()->GetParaAttribs( nPara ) );
+                        SfxItemSet aTmpSet( pOLV->GetOutliner().GetParaAttribs( nPara ) );
                         aAttr.Put( aTmpSet, false ); // sal_False= InvalidItems is not default, handle it as "holes"
                         const SvxULSpaceItem& rItem = aAttr.Get( EE_PARA_ULSPACE );
                         std::unique_ptr<SvxULSpaceItem> pNewItem(rItem.Clone());
@@ -225,13 +222,13 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                         }
                         pNewItem->SetLower( static_cast<sal_uInt16>(nLower) );
 
-                        SfxItemSet aNewAttrs( aAttr );
+                        SfxItemSet aNewAttrs(std::move(aAttr));
                         aNewAttrs.Put( std::move(pNewItem) );
-                        pOLV->GetOutliner()->SetParaAttribs( nPara, aNewAttrs );
+                        pOLV->GetOutliner().SetParaAttribs( nPara, aNewAttrs );
                     }
                 }
-                pOLV->GetOutliner()->UndoActionEnd();
-                mpViewShell->Invalidate( SID_UNDO );
+                pOLV->GetOutliner().UndoActionEnd();
+                mrViewShell.Invalidate( SID_UNDO );
             }
             else
             {
@@ -276,8 +273,8 @@ void TextObjectBar::Execute( SfxRequest &rReq )
 
             Invalidate();
             // to refresh preview (in outline mode), slot has to be invalidated:
-            mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
-            mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_ATTR_PARA_ULSPACE, true );
+            mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
+            mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_ATTR_PARA_ULSPACE, true );
         }
         break;
 
@@ -290,7 +287,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                 // Ensure bold/italic etc. icon state updates
                 Invalidate();
                 // trigger preview refresh
-                mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
+                mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
             }
             rReq.Done();
         }
@@ -305,7 +302,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                 // Ensure bold/italic etc. icon state updates
                 Invalidate();
                 // trigger preview refresh
-                mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
+                mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
             }
             rReq.Done();
         }
@@ -316,7 +313,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
             SvxLRSpaceItem aLRSpace = static_cast<const SvxLRSpaceItem&>(pArgs->Get(
                 SID_ATTR_PARA_LRSPACE));
 
-            SfxItemSetFixed<EE_PARA_LRSPACE, EE_PARA_LRSPACE> aEditAttr( GetPool() );
+            SfxItemSet aEditAttr(SfxItemSet::makeFixedSfxItemSet<EE_PARA_LRSPACE, EE_PARA_LRSPACE>(mpView->GetDoc().GetPool()));
             aLRSpace.SetWhich( EE_PARA_LRSPACE );
 
             aEditAttr.Put( aLRSpace );
@@ -328,14 +325,22 @@ void TextObjectBar::Execute( SfxRequest &rReq )
 
         case SID_HANGING_INDENT:
         {
-            SfxItemSetFixed<EE_PARA_LRSPACE, EE_PARA_LRSPACE> aLRSpaceSet( GetPool() );
+            SfxItemSet aLRSpaceSet(SfxItemSet::makeFixedSfxItemSet<EE_PARA_LRSPACE, EE_PARA_LRSPACE>(mpView->GetDoc().GetPool()));
             mpView->GetAttributes( aLRSpaceSet );
             SvxLRSpaceItem aParaMargin( aLRSpaceSet.Get( EE_PARA_LRSPACE ) );
 
             SvxLRSpaceItem aNewMargin( EE_PARA_LRSPACE );
-            aNewMargin.SetTextLeft( aParaMargin.GetTextLeft() + aParaMargin.GetTextFirstLineOffset() );
-            aNewMargin.SetRight( aParaMargin.GetRight() );
-            aNewMargin.SetTextFirstLineOffset( ( aParaMargin.GetTextFirstLineOffset() ) * -1 );
+
+            auto nIndentDist = aParaMargin.ResolveTextFirstLineOffset({});
+
+            if (nIndentDist == 0.0)
+                nIndentDist = nIndentDefaultDist;
+
+            aNewMargin.SetTextLeft(
+                SvxIndentValue::twips(aParaMargin.ResolveTextLeft({}) + nIndentDist));
+            aNewMargin.SetRight(aParaMargin.GetRight());
+            aNewMargin.SetTextFirstLineOffset(SvxIndentValue::twips(nIndentDist * -1));
+
             aLRSpaceSet.Put( aNewMargin );
             mpView->SetAttributes( aLRSpaceSet );
 
@@ -350,7 +355,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                 pOLV->AdjustHeight( -1 );
 
                 // trigger preview refresh
-                mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
+                mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
             }
             rReq.Done();
         }
@@ -363,7 +368,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                 pOLV->AdjustHeight( 1 );
 
                 // trigger preview refresh
-                mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
+                mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
             }
             rReq.Done();
         }
@@ -376,7 +381,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
             // tdf#131571: SdrEndTextEdit invalidates pTextEditOutlinerView, the pointer retrieved for pOLV
             // so reinitialize pOLV
             pOLV=mpView->GetTextEditOutlinerView();
-            SfxItemSetFixed<SDRATTR_TEXTDIRECTION, SDRATTR_TEXTDIRECTION> aAttr( mpView->GetDoc().GetPool() );
+            SfxItemSet aAttr(SfxItemSet::makeFixedSfxItemSet<SDRATTR_TEXTDIRECTION, SDRATTR_TEXTDIRECTION>(mpView->GetDoc().GetPool()));
             aAttr.Put( SvxWritingModeItem(
                 nSlot == SID_TEXTDIRECTION_LEFT_TO_RIGHT ?
                     css::text::WritingMode_LR_TB : css::text::WritingMode_TB_RL,
@@ -384,7 +389,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
             rReq.Done( aAttr );
             mpView->SetAttributes( aAttr );
             Invalidate();
-            mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
+            mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
         }
         break;
 
@@ -410,63 +415,63 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                     //effectively a preview of the equivalent style level, and
                     //changing the level disconnects it from the style
 
-                    ::Outliner* pOL = pOLV->GetOutliner();
-                    if (pOL)
+                    ::Outliner& rOL = pOLV->GetOutliner();
+                    const SvxNumBulletItem *pItem = nullptr;
+                    SfxStyleSheetBasePool* pSSPool = mpView->GetDocSh()->GetStyleSheetPool();
+                    OUString sStyleName(SdResId(STR_PSEUDOSHEET_OUTLINE) + " 1");
+                    SfxStyleSheetBase* pFirstStyleSheet = pSSPool->Find(sStyleName, SfxStyleFamily::Pseudo);
+                    if( pFirstStyleSheet )
+                        pItem = pFirstStyleSheet->GetItemSet().GetItemIfSet(EE_PARA_NUMBULLET, false);
+
+                    if (pItem )
                     {
-                        const SvxNumBulletItem *pItem = nullptr;
-                        SfxStyleSheetBasePool* pSSPool = mpView->GetDocSh()->GetStyleSheetPool();
-                        OUString sStyleName(SdResId(STR_PSEUDOSHEET_OUTLINE) + " 1");
-                        SfxStyleSheetBase* pFirstStyleSheet = pSSPool->Find(sStyleName, SfxStyleFamily::Pseudo);
-                        if( pFirstStyleSheet )
-                            pItem = pFirstStyleSheet->GetItemSet().GetItemIfSet(EE_PARA_NUMBULLET, false);
-
-                        if (pItem )
+                        SvxNumRule aNewRule(pItem->GetNumRule());
+                        ESelection aSel = pOLV->GetSelection();
+                        aSel.Adjust();
+                        sal_Int32 nStartPara = aSel.start.nPara;
+                        sal_Int32 nEndPara = aSel.end.nPara;
+                        for (sal_Int32 nPara = nStartPara; nPara <= nEndPara; ++nPara)
                         {
-                            SvxNumRule aNewRule(pItem->GetNumRule());
-                            ESelection aSel = pOLV->GetSelection();
-                            aSel.Adjust();
-                            sal_Int32 nStartPara = aSel.nStartPara;
-                            sal_Int32 nEndPara = aSel.nEndPara;
-                            for (sal_Int32 nPara = nStartPara; nPara <= nEndPara; ++nPara)
+                            sal_uInt16 nLevel = rOL.GetDepth(nPara);
+                            SvxNumberFormat aFmt(aNewRule.GetLevel(nLevel));
+
+                            if (aFmt.GetNumberingType() == SVX_NUM_NUMBER_NONE)
                             {
-                                sal_uInt16 nLevel = pOL->GetDepth(nPara);
-                                SvxNumberFormat aFmt(aNewRule.GetLevel(nLevel));
-
-                                if (aFmt.GetNumberingType() == SVX_NUM_NUMBER_NONE)
-                                {
-                                    aFmt.SetNumberingType(SVX_NUM_CHAR_SPECIAL);
-                                    SdStyleSheetPool::setDefaultOutlineNumberFormatBulletAndIndent(nLevel, aFmt);
-                                }
-                                else
-                                {
-                                    aFmt.SetNumberingType(SVX_NUM_NUMBER_NONE);
-                                    aFmt.SetAbsLSpace(0);
-                                    aFmt.SetFirstLineOffset(0);
-                                }
-
-                                aNewRule.SetLevel(nLevel, aFmt);
+                                aFmt.SetNumberingType(SVX_NUM_CHAR_SPECIAL);
+                                SdStyleSheetPool::setDefaultOutlineNumberFormatBulletAndIndent(nLevel, aFmt);
+                            }
+                            else
+                            {
+                                aFmt.SetNumberingType(SVX_NUM_NUMBER_NONE);
+                                aFmt.SetAbsLSpace(0);
+                                aFmt.SetFirstLineOffset(0);
                             }
 
-                            pFirstStyleSheet->GetItemSet().Put(SvxNumBulletItem(std::move(aNewRule), EE_PARA_NUMBULLET));
-
-                            SdStyleSheet::BroadcastSdStyleSheetChange(pFirstStyleSheet, PresentationObjects::Outline_1, pSSPool);
+                            aNewRule.SetLevel(nLevel, aFmt);
                         }
+
+                        pFirstStyleSheet->GetItemSet().Put(SvxNumBulletItem(std::move(aNewRule), EE_PARA_NUMBULLET));
+
+                        SdStyleSheet::BroadcastSdStyleSheetChange(pFirstStyleSheet, PresentationObjects::Outline_1, pSSPool);
                     }
                 }
+                SfxBindings& rBindings = mrViewShell.GetViewFrame()->GetBindings();
+                rBindings.Invalidate( FN_NUM_BULLET_ON );
+                rBindings.Invalidate( FN_NUM_NUMBERING_ON );
             }
             break;
         }
         case SID_GROW_FONT_SIZE:
         case SID_SHRINK_FONT_SIZE:
         {
-            const SvxFontListItem* pFonts = static_cast<const SvxFontListItem*>(mpViewShell->GetDocSh()->GetItem( SID_ATTR_CHAR_FONTLIST ));
+            const SvxFontListItem* pFonts = static_cast<const SvxFontListItem*>(mrViewShell.GetDocSh()->GetItem( SID_ATTR_CHAR_FONTLIST ));
             const FontList* pFontList = pFonts ? pFonts->GetFontList(): nullptr;
             if( pFontList )
             {
                 FuText::ChangeFontSize( nSlot == SID_GROW_FONT_SIZE, pOLV, pFontList, mpView );
                 if( pOLV )
                     pOLV->SetAttribs( pOLV->GetEditView().GetEmptyItemSet() );
-                mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_ATTR_CHAR_FONTHEIGHT );
+                mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_ATTR_CHAR_FONTHEIGHT );
             }
             rReq.Done();
         }
@@ -491,8 +496,8 @@ void TextObjectBar::Execute( SfxRequest &rReq )
 
             if( !pArgs )
             {
-                //aNewAttr.InvalidateAllItems(); <- produces problems (#35465#)
-
+                SvxAdjust eAdjst;
+                SdrTextHorzAdjust eAnchor;
                 switch ( nSlot )
                 {
                     case SID_ATTR_CHAR_WEIGHT:
@@ -582,26 +587,28 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                     }
                     break;
 
-                    case SID_ATTR_PARA_ADJUST_LEFT:
+                    case SID_ATTR_PARA_ADJUST_LEFT:  eAdjst = SvxAdjust::Left;  eAnchor = SDRTEXTHORZADJUST_LEFT;  goto SET_ADJUST;
+                    case SID_ATTR_PARA_ADJUST_CENTER:  eAdjst = SvxAdjust::Center;  eAnchor = SDRTEXTHORZADJUST_CENTER;  goto SET_ADJUST;
+                    case SID_ATTR_PARA_ADJUST_RIGHT:  eAdjst = SvxAdjust::Right;  eAnchor = SDRTEXTHORZADJUST_RIGHT;  goto SET_ADJUST;
+                    case SID_ATTR_PARA_ADJUST_BLOCK:  eAdjst = SvxAdjust::Block;  eAnchor = SDRTEXTHORZADJUST_BLOCK;  goto SET_ADJUST;
+SET_ADJUST:
                     {
-                        aNewAttr.Put( SvxAdjustItem( SvxAdjust::Left, EE_PARA_JUST ) );
+                        aNewAttr.Put(SvxAdjustItem(eAdjst, EE_PARA_JUST));
+                        // set anchor
+                        if (pOLV)
+                        {
+                            ESelection aSel = pOLV->GetSelection();
+                            aSel.Adjust();
+                            sal_Int32 nStartPara = aSel.start.nPara;
+                            if (!aSel.HasRange())
+                                nStartPara = 0;
+
+                            if (nStartPara == 0)
+                                aNewAttr.Put(SdrTextHorzAdjustItem(eAnchor));
+                        }
                     }
                     break;
-                    case SID_ATTR_PARA_ADJUST_CENTER:
-                    {
-                        aNewAttr.Put( SvxAdjustItem( SvxAdjust::Center, EE_PARA_JUST ) );
-                    }
-                    break;
-                    case SID_ATTR_PARA_ADJUST_RIGHT:
-                    {
-                        aNewAttr.Put( SvxAdjustItem( SvxAdjust::Right, EE_PARA_JUST ) );
-                    }
-                    break;
-                    case SID_ATTR_PARA_ADJUST_BLOCK:
-                    {
-                        aNewAttr.Put( SvxAdjustItem( SvxAdjust::Block, EE_PARA_JUST ) );
-                    }
-                    break;
+
                     case SID_ATTR_PARA_LINESPACE_10:
                     {
                         SvxLineSpacingItem aItem( LINE_SPACE_DEFAULT_HEIGHT, EE_PARA_SBL );
@@ -626,7 +633,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                     case SID_SET_SUPER_SCRIPT:
                     {
                         SvxEscapementItem aItem( EE_CHAR_ESCAPEMENT );
-                        SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+                        SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
 
                         if( eEsc == SvxEscapement::Superscript )
                             aItem.SetEscapement( SvxEscapement::Off );
@@ -638,7 +645,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                     case SID_SET_SUB_SCRIPT:
                     {
                         SvxEscapementItem aItem( EE_CHAR_ESCAPEMENT );
-                        SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+                        SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
 
                         if( eEsc == SvxEscapement::Subscript )
                             aItem.SetEscapement( SvxEscapement::Off );
@@ -648,16 +655,37 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                     }
                     break;
 
+                    case SID_SET_SMALL_CAPS:
+                    {
+                        SvxCaseMap eCaseMap = aEditAttr.Get(EE_CHAR_CASEMAP).GetCaseMap();
+                        if (eCaseMap == SvxCaseMap::SmallCaps)
+                            eCaseMap = SvxCaseMap::NotMapped;
+                        else
+                            eCaseMap = SvxCaseMap::SmallCaps;
+                        SvxCaseMapItem aItem(eCaseMap, EE_CHAR_CASEMAP);
+                        aNewAttr.Put(aItem);
+                    }
+                    break;
+
                     // attributes for TextObjectBar
                     case SID_ATTR_CHAR_FONT:
-                        mpViewShell->GetViewFrame()->GetDispatcher()->
-                            Execute( SID_CHAR_DLG, SfxCallMode::ASYNCHRON );
-                    break;
                     case SID_ATTR_CHAR_FONTHEIGHT:
-                        mpViewShell->GetViewFrame()->GetDispatcher()->
+                        mrViewShell.GetViewFrame()->GetDispatcher()->
                             Execute( SID_CHAR_DLG, SfxCallMode::ASYNCHRON );
                     break;
                     case SID_ATTR_CHAR_COLOR:
+                    case SID_ATTR_CHAR_BACK_COLOR:
+                    {
+                        const sal_uInt16 nEEWhich
+                            = aEditAttr.GetPool()->GetWhichIDFromSlotID(nSlot);
+                        const std::optional<NamedColor> oColor
+                            = mrViewShell.GetDocSh()->GetRecentColor(nSlot);
+                        if (oColor.has_value())
+                        {
+                            const model::ComplexColor aCol = (*oColor).getComplexColor();
+                            aNewAttr.Put(SvxColorItem(aCol.getFinalColor(), aCol, nEEWhich));
+                        }
+                    }
                     break;
 // #i35937# removed need for FN_NUM_BULLET_ON handling
                 }
@@ -690,7 +718,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                 rReq.Done( aNewAttr );
                 pArgs = rReq.GetArgs();
 
-                Invalidate( SID_RULER_TEXT_RIGHT_TO_LEFT );
+                Invalidate(SID_RULER_TEXT_RIGHT_TO_LEFT);
             }
             else if ( nSlot == SID_ATTR_CHAR_FONT       ||
                       nSlot == SID_ATTR_CHAR_FONTHEIGHT ||
@@ -704,7 +732,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
 
                 SfxItemPool& rPool = mpView->GetDoc().GetPool();
                 SvxScriptSetItem aSvxScriptSetItem( nSlot, rPool );
-                aSvxScriptSetItem.PutItemForScriptType( nScriptType, pArgs->Get( rPool.GetWhich( nSlot ) ) );
+                aSvxScriptSetItem.PutItemForScriptType( nScriptType, pArgs->Get( rPool.GetWhichIDFromSlotID( nSlot ) ) );
                 aNewAttr.Put( aSvxScriptSetItem.GetItemSet() );
                 rReq.Done( aNewAttr );
                 pArgs = rReq.GetArgs();
@@ -714,42 +742,45 @@ void TextObjectBar::Execute( SfxRequest &rReq )
                 nSlot == SID_ATTR_PARA_ADJUST_RIGHT ||
                 nSlot == SID_ATTR_PARA_ADJUST_BLOCK)
             {
-                switch( nSlot )
-                {
-                case SID_ATTR_PARA_ADJUST_LEFT:
-                    {
-                        aNewAttr.Put( SvxAdjustItem( SvxAdjust::Left, EE_PARA_JUST ) );
-                    }
-                    break;
-                case SID_ATTR_PARA_ADJUST_CENTER:
-                    {
-                        aNewAttr.Put( SvxAdjustItem( SvxAdjust::Center, EE_PARA_JUST ) );
-                    }
-                    break;
-                case SID_ATTR_PARA_ADJUST_RIGHT:
-                    {
-                        aNewAttr.Put( SvxAdjustItem( SvxAdjust::Right, EE_PARA_JUST ) );
-                    }
-                    break;
-                case SID_ATTR_PARA_ADJUST_BLOCK:
-                    {
-                        aNewAttr.Put( SvxAdjustItem( SvxAdjust::Block, EE_PARA_JUST ) );
-                    }
-                    break;
+                SvxAdjust eAdjst;
+                SdrTextHorzAdjust eAnchor;
+                if (nSlot == SID_ATTR_PARA_ADJUST_LEFT) {
+                    eAdjst = SvxAdjust::Left;  eAnchor = SDRTEXTHORZADJUST_LEFT;
                 }
+                else if (nSlot == SID_ATTR_PARA_ADJUST_CENTER) {
+                    eAdjst = SvxAdjust::Center;  eAnchor = SDRTEXTHORZADJUST_CENTER;
+                }
+                else if (nSlot == SID_ATTR_PARA_ADJUST_RIGHT) {
+                    eAdjst = SvxAdjust::Right;  eAnchor = SDRTEXTHORZADJUST_RIGHT;
+                }
+                else {
+                    eAdjst = SvxAdjust::Block;  eAnchor = SDRTEXTHORZADJUST_BLOCK;
+                }
+
+                aNewAttr.Put(SvxAdjustItem(eAdjst, EE_PARA_JUST));
+                // set anchor
+                ESelection aSel = pOLV->GetSelection();
+                aSel.Adjust();
+                sal_Int32 nStartPara = aSel.start.nPara;
+                if (!aSel.HasRange())
+                    nStartPara = 0;
+
+                if (nStartPara == 0)
+                    aNewAttr.Put(SdrTextHorzAdjustItem(eAnchor));
+
                 rReq.Done( aNewAttr );
                 pArgs = rReq.GetArgs();
             }
             else if(nSlot == SID_ATTR_CHAR_KERNING)
             {
-                aNewAttr.Put(pArgs->Get(pArgs->GetPool()->GetWhich(nSlot)));
+                aNewAttr.Put(pArgs->Get(pArgs->GetPool()->GetWhichIDFromSlotID(nSlot)));
                 rReq.Done( aNewAttr );
                 pArgs = rReq.GetArgs();
             }
             else if(nSlot ==  SID_SET_SUPER_SCRIPT )
             {
                 SvxEscapementItem aItem(EE_CHAR_ESCAPEMENT);
-                SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+                SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
 
                 if( eEsc == SvxEscapement::Superscript )
                     aItem.SetEscapement( SvxEscapement::Off );
@@ -762,7 +793,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
             else if( nSlot ==  SID_SET_SUB_SCRIPT )
             {
                 SvxEscapementItem aItem(EE_CHAR_ESCAPEMENT);
-                SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+                SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
 
                 if( eEsc == SvxEscapement::Subscript )
                     aItem.SetEscapement( SvxEscapement::Off );
@@ -781,7 +812,7 @@ void TextObjectBar::Execute( SfxRequest &rReq )
             Invalidate();
 
             // to refresh preview (in outline mode), slot has to be invalidated:
-            mpViewShell->GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
+            mrViewShell.GetViewFrame()->GetBindings().Invalidate( SID_PREVIEW_STATE, true );
         }
         break;
     }
@@ -792,10 +823,10 @@ void TextObjectBar::Execute( SfxRequest &rReq )
         pOLV->GetWindow()->GrabFocus();
     }
 
-    Invalidate( SID_OUTLINE_LEFT );
-    Invalidate( SID_OUTLINE_RIGHT );
-    Invalidate( SID_OUTLINE_UP );
-    Invalidate( SID_OUTLINE_DOWN );
+    Invalidate(SID_OUTLINE_LEFT);
+    Invalidate(SID_OUTLINE_RIGHT);
+    Invalidate(SID_OUTLINE_UP);
+    Invalidate(SID_OUTLINE_DOWN);
 }
 
 } // end of namespace sd

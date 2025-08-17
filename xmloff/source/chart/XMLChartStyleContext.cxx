@@ -39,7 +39,6 @@ using ::xmloff::token::XML_PARAGRAPH_PROPERTIES;
 using ::xmloff::token::XML_GRAPHIC_PROPERTIES;
 using ::xmloff::token::XML_CHART_PROPERTIES;
 
-
 void XMLChartStyleContext::SetAttribute(
     sal_Int32 nElement,
     const OUString& rValue )
@@ -100,8 +99,8 @@ void XMLChartStyleContext::FillPropertySet(
         TOOLS_WARN_EXCEPTION( "xmloff", "unknown property exception -> shape style not completely imported for chart style" );
     }
 
-    lcl_NumberFormatStyleToProperty( msDataStyleName, "NumberFormat", mrStyles, rPropSet );
-    lcl_NumberFormatStyleToProperty( msPercentageDataStyleName, "PercentageNumberFormat", mrStyles, rPropSet );
+    lcl_NumberFormatStyleToProperty( msDataStyleName, u"NumberFormat"_ustr, mrStyles, rPropSet );
+    lcl_NumberFormatStyleToProperty( msPercentageDataStyleName, u"PercentageNumberFormat"_ustr, mrStyles, rPropSet );
 }
 
 css::uno::Reference< css::xml::sax::XFastContextHandler > XMLChartStyleContext::createFastChildContext(
@@ -123,12 +122,12 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLChartStyleContext::
             nFamily = XML_TYPE_PROP_CHART;
         if( nFamily )
         {
-            rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
+            SvXMLImportPropertyMapper* pImpPrMap =
                 GetStyles()->GetImportPropertyMapper( GetFamily() );
-            if( xImpPrMap.is() )
+            if( pImpPrMap )
                 return new XMLChartPropertyContext(
                     GetImport(), nElement, xAttrList, nFamily,
-                    GetProperties(), xImpPrMap );
+                    GetProperties(), pImpPrMap );
         }
     }
 

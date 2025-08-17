@@ -104,22 +104,22 @@ namespace oglcanvas
         initContext();
 
         mnLinearMultiColorGradientProgram =
-            OpenGLHelper::LoadShaders("dummyVertexShader", "linearMultiColorGradientFragmentShader");
+            OpenGLHelper::LoadShaders(u"dummyVertexShader"_ustr, u"linearMultiColorGradientFragmentShader"_ustr);
 
         mnLinearTwoColorGradientProgram =
-            OpenGLHelper::LoadShaders("dummyVertexShader", "linearTwoColorGradientFragmentShader");
+            OpenGLHelper::LoadShaders(u"dummyVertexShader"_ustr, u"linearTwoColorGradientFragmentShader"_ustr);
 
         mnRadialMultiColorGradientProgram =
-            OpenGLHelper::LoadShaders("dummyVertexShader", "radialMultiColorGradientFragmentShader");
+            OpenGLHelper::LoadShaders(u"dummyVertexShader"_ustr, u"radialMultiColorGradientFragmentShader"_ustr);
 
         mnRadialTwoColorGradientProgram =
-            OpenGLHelper::LoadShaders("dummyVertexShader", "radialTwoColorGradientFragmentShader");
+            OpenGLHelper::LoadShaders(u"dummyVertexShader"_ustr, u"radialTwoColorGradientFragmentShader"_ustr);
 
         mnRectangularMultiColorGradientProgram =
-            OpenGLHelper::LoadShaders("dummyVertexShader", "rectangularMultiColorGradientFragmentShader");
+            OpenGLHelper::LoadShaders(u"dummyVertexShader"_ustr, u"rectangularMultiColorGradientFragmentShader"_ustr);
 
         mnRectangularTwoColorGradientProgram =
-            OpenGLHelper::LoadShaders("dummyVertexShader", "rectangularTwoColorGradientFragmentShader");
+            OpenGLHelper::LoadShaders(u"dummyVertexShader"_ustr, u"rectangularTwoColorGradientFragmentShader"_ustr);
 
         mxContext->makeCurrent();
 
@@ -270,8 +270,8 @@ namespace oglcanvas
         mxContext->makeCurrent();
 
         SystemChildWindow* pChildWindow = mxContext->getChildWindow();
-        const ::Size& rOutputSize = pChildWindow->GetSizePixel();
-        initTransformation(rOutputSize);
+        const ::Size aOutputSize = pChildWindow->GetSizePixel();
+        initTransformation(aOutputSize);
 
         // render the actual spritecanvas content
         mpSpriteCanvas->renderRecordedActions();
@@ -291,8 +291,8 @@ namespace oglcanvas
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         glTranslated(-1.0, 1.0, 0.0);
-        glScaled( 2.0  / rOutputSize.Width(),
-                  -2.0 / rOutputSize.Height(),
+        glScaled( 2.0  / aOutputSize.Width(),
+                  -2.0 / aOutputSize.Height(),
                   1.0 );
 
         const double denominator( maLastUpdate.getElapsedTime() );

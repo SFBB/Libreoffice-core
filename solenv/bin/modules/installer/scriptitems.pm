@@ -145,38 +145,6 @@ sub resolve_all_directory_names
 }
 
 #############################################################################
-# Files with flag NOT_IN_SUITE do not need to be packed into
-# Suite installation sets
-#############################################################################
-
-sub remove_office_start_language_files
-{
-    my ($productarrayref) = @_;
-
-    my @newitems = ();
-
-    for ( my $i = 0; $i <= $#{$productarrayref}; $i++ )
-    {
-        my $oneitem = ${$productarrayref}[$i];
-        my $styles = "";
-
-        if ( $oneitem->{'Styles'} ) { $styles = $oneitem->{'Styles'}; }
-
-        if (!($styles =~ /\bSET_OFFICE_LANGUAGE\b/))
-        {
-            push(@newitems, $oneitem);
-        }
-        else
-        {
-            my $infoline = "INFO: Flag SET_OFFICE_LANGUAGE \-\> Removing $oneitem->{'gid'} from file list.\n";
-            push( @installer::globals::logfileinfo, $infoline);
-        }
-    }
-
-    return \@newitems;
-}
-
-#############################################################################
 # Registryitems for Uninstall have to be removed
 #############################################################################
 
@@ -625,7 +593,7 @@ sub changing_name_of_language_dependent_keys
 
 ################################################################################
 # Replacement of setup variables in ConfigurationItems and ProfileItems
-# <productkey>, <buildid>, <sequence_languages>, <productcode>, <upgradecode>, <productupdate>
+# <productkey>, <buildid>, <sequence_languages>, <productupdate>
 ################################################################################
 
 sub replace_setup_variables
@@ -655,7 +623,7 @@ sub replace_setup_variables
     my $updateid = $productname . "_" . $libo_version_major . "_" . $$languagestringref;
     $updateid =~ s/ /_/g;
 
-    my $updatechannel = $ENV{'ONLINEUPDATE_MAR_CHANNEL'};
+    my $updatechannel = 'LOOnlineUpdater';
 
     for ( my $i = 0; $i <= $#{$itemsarrayref}; $i++ )
     {
@@ -665,8 +633,6 @@ sub replace_setup_variables
         $value =~ s/\<buildid\>/$buildidstring/;
         $value =~ s/\<sequence_languages\>/$languagesstring/;
         $value =~ s/\<productkey\>/$productkey/;
-        $value =~ s/\<productcode\>/$installer::globals::productcode/;
-        $value =~ s/\<upgradecode\>/$installer::globals::upgradecode/;
         $value =~ s/\<alllanguages\>/$languagesstring/;
         $value =~ s/\<sourceid\>/$installer::globals::build/;
         $value =~ s/\<updateid\>/$updateid/;

@@ -51,18 +51,18 @@ SvxUnoTextContentEnumeration::SvxUnoTextContentEnumeration( const SvxUnoTextBase
         return;
 
     const SvxTextForwarder* pTextForwarder = rText.GetEditSource()->GetTextForwarder();
-    const sal_Int32 maxParaIndex = std::min( rSel.nEndPara + 1, pTextForwarder->GetParagraphCount() );
+    const sal_Int32 maxParaIndex = std::min( rSel.end.nPara + 1, pTextForwarder->GetParagraphCount() );
 
-    for( sal_Int32 currentPara = rSel.nStartPara; currentPara < maxParaIndex; currentPara++ )
+    for (sal_Int32 currentPara = rSel.start.nPara; currentPara < maxParaIndex; currentPara++)
     {
         const SvxUnoTextRangeBaseVec& rRanges( mpEditSource->getRanges() );
         rtl::Reference<SvxUnoTextContent> pContent;
         sal_Int32 nStartPos = 0;
         sal_Int32 nEndPos = pTextForwarder->GetTextLen( currentPara );
-        if( currentPara == rSel.nStartPara )
-            nStartPos = std::max(nStartPos, rSel.nStartPos);
-        if( currentPara == rSel.nEndPara )
-            nEndPos = std::min(nEndPos, rSel.nEndPos);
+        if (currentPara == rSel.start.nPara)
+            nStartPos = std::max(nStartPos, rSel.start.nIndex);
+        if (currentPara == rSel.end.nPara)
+            nEndPos = std::min(nEndPos, rSel.end.nIndex);
         ESelection aCurrentParaSel( currentPara, nStartPos, currentPara, nEndPos );
         for (auto const& elemRange : rRanges)
         {
@@ -109,9 +109,9 @@ uno::Any SvxUnoTextContentEnumeration::nextElement()
     if(!hasMoreElements())
         throw container::NoSuchElementException();
 
-    uno::Reference< text::XTextContent > xRef( maContents.at(mnNextParagraph) );
+    rtl::Reference< SvxUnoTextContent > xRef( maContents.at(mnNextParagraph) );
     mnNextParagraph++;
-    return uno::Any( xRef );
+    return uno::Any( uno::Reference< text::XTextContent >(xRef) );
 }
 
 
@@ -350,18 +350,18 @@ void SAL_CALL SvxUnoTextContent::setPropertyToDefault( const OUString& PropertyN
 
 OUString SAL_CALL SvxUnoTextContent::getImplementationName()
 {
-    return "SvxUnoTextContent";
+    return u"SvxUnoTextContent"_ustr;
 }
 
 uno::Sequence< OUString > SAL_CALL SvxUnoTextContent::getSupportedServiceNames()
 {
     return comphelper::concatSequences(
         SvxUnoTextRangeBase::getSupportedServiceNames(),
-        std::initializer_list<std::u16string_view>{ u"com.sun.star.style.ParagraphProperties",
-                                          u"com.sun.star.style.ParagraphPropertiesComplex",
-                                          u"com.sun.star.style.ParagraphPropertiesAsian",
-                                          u"com.sun.star.text.TextContent",
-                                          u"com.sun.star.text.Paragraph" });
+        std::initializer_list<OUString>{ u"com.sun.star.style.ParagraphProperties"_ustr,
+                                         u"com.sun.star.style.ParagraphPropertiesComplex"_ustr,
+                                         u"com.sun.star.style.ParagraphPropertiesAsian"_ustr,
+                                         u"com.sun.star.text.TextContent"_ustr,
+                                         u"com.sun.star.text.Paragraph"_ustr });
 }
 
 
@@ -374,24 +374,24 @@ SvxUnoTextRangeEnumeration::SvxUnoTextRangeEnumeration(const SvxUnoTextBase& rPa
     if (rParentText.GetEditSource())
         mpEditSource = rParentText.GetEditSource()->Clone();
 
-    if( !(mpEditSource && mpEditSource->GetTextForwarder() && (nParagraph == rSel.nStartPara && nParagraph == rSel.nEndPara)) )
+    if( !(mpEditSource && mpEditSource->GetTextForwarder() && (nParagraph == rSel.start.nPara && nParagraph == rSel.end.nPara)) )
         return;
 
     std::vector<sal_Int32> aPortions;
     mpEditSource->GetTextForwarder()->GetPortions( nParagraph, aPortions );
     for( size_t aPortionIndex = 0; aPortionIndex < aPortions.size(); aPortionIndex++ )
     {
-        sal_uInt16 nStartPos = 0;
+        sal_Int32 nStartPos = 0;
         if ( aPortionIndex > 0 )
             nStartPos = aPortions.at( aPortionIndex - 1 );
-        if( nStartPos > rSel.nEndPos )
+        if (nStartPos > rSel.end.nIndex)
             continue;
-        sal_uInt16 nEndPos = aPortions.at( aPortionIndex );
-        if( nEndPos < rSel.nStartPos )
+        sal_Int32 nEndPos = aPortions.at(aPortionIndex);
+        if (nEndPos < rSel.start.nIndex)
             continue;
 
-        nStartPos = std::max<int>(nStartPos, rSel.nStartPos);
-        nEndPos = std::min<sal_uInt16>(nEndPos, rSel.nEndPos);
+        nStartPos = std::max(nStartPos, rSel.start.nIndex);
+        nEndPos = std::min(nEndPos, rSel.end.nIndex);
         ESelection aSel( nParagraph, nStartPos, nParagraph, nEndPos );
 
         const SvxUnoTextRangeBaseVec& rRanges( mpEditSource->getRanges() );
@@ -433,9 +433,9 @@ uno::Any SAL_CALL SvxUnoTextRangeEnumeration::nextElement()
     if( maPortions.empty() || mnNextPortion >= maPortions.size() )
         throw container::NoSuchElementException();
 
-    uno::Reference< text::XTextRange > xRange = maPortions.at(mnNextPortion);
+    rtl::Reference< SvxUnoTextRange > xRange = maPortions.at(mnNextPortion);
     mnNextPortion++;
-    return uno::Any( xRange );
+    return uno::Any( uno::Reference< text::XTextRange >(xRange) );
 }
 
 SvxUnoTextCursor::SvxUnoTextCursor( const SvxUnoTextBase& rText ) noexcept
@@ -572,8 +572,7 @@ void SAL_CALL SvxUnoTextCursor::gotoRange( const uno::Reference< text::XTextRang
     if( bExpand )
     {
         const ESelection& rOldSel = GetSelection();
-        aNewSel.nStartPara = rOldSel.nStartPara;
-        aNewSel.nStartPos  = rOldSel.nStartPos;
+        aNewSel.start = rOldSel.start;
     }
 
     SetSelection( aNewSel );
@@ -607,7 +606,7 @@ void SAL_CALL SvxUnoTextCursor::setString( const OUString& aString )
 // lang::XServiceInfo
 OUString SAL_CALL SvxUnoTextCursor::getImplementationName()
 {
-    return "SvxUnoTextCursor";
+    return u"SvxUnoTextCursor"_ustr;
 }
 
 sal_Bool SAL_CALL SvxUnoTextCursor::supportsService( const OUString& ServiceName )
@@ -619,10 +618,10 @@ uno::Sequence< OUString > SAL_CALL SvxUnoTextCursor::getSupportedServiceNames()
 {
     return comphelper::concatSequences(
         SvxUnoTextRangeBase::getSupportedServiceNames(),
-        std::initializer_list<std::u16string_view>{ u"com.sun.star.style.ParagraphProperties",
-                                          u"com.sun.star.style.ParagraphPropertiesComplex",
-                                          u"com.sun.star.style.ParagraphPropertiesAsian",
-                                          u"com.sun.star.text.TextCursor" });
+        std::initializer_list<OUString>{ u"com.sun.star.style.ParagraphProperties"_ustr,
+                                         u"com.sun.star.style.ParagraphPropertiesComplex"_ustr,
+                                         u"com.sun.star.style.ParagraphPropertiesAsian"_ustr,
+                                         u"com.sun.star.text.TextCursor"_ustr });
 }
 
 

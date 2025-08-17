@@ -18,7 +18,6 @@
 #include <cppu/unotype.hxx>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/GeneralFunction.hpp>
 #include <com/sun/star/sheet/SubTotalColumn.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
@@ -86,10 +85,10 @@ public:
 };
 
 ScSubTotalDescriptorBase::ScSubTotalDescriptorBase()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
     , XElementAccess(cppu::UnoType<sheet::XSubTotalField>::get())
     , XIndexAccess(1)
-    , XServiceInfo("ScSubTotalDescriptorBase", "com.sun.star.sheet.SubTotalDescriptor")
+    , XServiceInfo(u"ScSubTotalDescriptorBase"_ustr, u"com.sun.star.sheet.SubTotalDescriptor"_ustr)
 {
 }
 
@@ -114,7 +113,7 @@ void ScSubTotalDescriptorBase::setUp()
 {
     UnoApiTest::setUp();
     // create calc document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScSubTotalDescriptorBase);

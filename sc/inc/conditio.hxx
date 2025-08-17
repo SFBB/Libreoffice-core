@@ -56,6 +56,7 @@ struct RefUpdateMoveTabContext;
 
 //  nOptions Flags
 #define SC_COND_NOBLANKS    1
+#define SC_COND_CASESENS    2
 
 enum class ScConditionMode
 {
@@ -224,7 +225,7 @@ struct SC_DLLPUBLIC ScCondFormatData
 class SC_DLLPUBLIC ScFormatEntry
 {
 public:
-    ScFormatEntry(ScDocument* pDoc);
+    ScFormatEntry(ScDocument& rDoc);
     virtual ~ScFormatEntry() {}
 
     enum class Type
@@ -243,7 +244,7 @@ public:
     virtual void UpdateDeleteTab( sc::RefUpdateDeleteTabContext& rCxt ) = 0;
     virtual void UpdateMoveTab( sc::RefUpdateMoveTabContext& rCxt ) = 0;
 
-    virtual ScFormatEntry* Clone( ScDocument* pDoc ) const = 0;
+    virtual ScFormatEntry* Clone( ScDocument& rDoc ) const = 0;
 
     virtual void SetParent( ScConditionalFormat* pNew ) = 0;
 
@@ -254,7 +255,7 @@ public:
     virtual void endRendering();
     virtual void updateValues();
 protected:
-    ScDocument* mpDoc;
+    ScDocument& mrDoc;
 
 };
 
@@ -300,7 +301,7 @@ public:
     }
 };
 
-class SC_DLLPUBLIC ScConditionEntry : public ScFormatEntry
+class SAL_DLLPUBLIC_RTTI ScConditionEntry : public ScFormatEntry
 {
                                         // stored data:
     ScConditionMode     eOp;
@@ -365,28 +366,33 @@ public:
 
     virtual void SetParent( ScConditionalFormat* pNew ) override;
 
-    bool IsCellValid( ScRefCellValue& rCell, const ScAddress& rPos ) const;
+    SC_DLLPUBLIC bool IsCellValid( const ScRefCellValue& rCell, const ScAddress& rPos ) const;
 
     ScConditionMode GetOperation() const        { return eOp; }
     void SetOperation(ScConditionMode eMode);
+
     bool            IsIgnoreBlank() const       { return ( nOptions & SC_COND_NOBLANKS ) == 0; }
-    void            SetIgnoreBlank(bool bSet);
+    SC_DLLPUBLIC void SetIgnoreBlank(bool bSet);
+
+    bool            IsCaseSensitive() const     { return ( nOptions & SC_COND_CASESENS ) != 0; }
+    SC_DLLPUBLIC void SetCaseSensitive(bool bSet);
+
     const OUString& GetSrcString() const         { return aSrcString; }
     const ScAddress& GetSrcPos() const           { return aSrcPos; }
 
-    ScAddress       GetValidSrcPos() const;     // adjusted to allow textual representation of expressions
+    SC_DLLPUBLIC ScAddress GetValidSrcPos() const;     // adjusted to allow textual representation of expressions
 
-    void            SetSrcString( const OUString& rNew );     // for XML import
+    SC_DLLPUBLIC void SetSrcString( const OUString& rNew );     // for XML import
 
     void            SetFormula1( const ScTokenArray& rArray );
     void            SetFormula2( const ScTokenArray& rArray );
 
-    OUString          GetExpression( const ScAddress& rCursor, sal_uInt16 nPos, sal_uInt32 nNumFmt = 0,
+    SC_DLLPUBLIC OUString GetExpression( const ScAddress& rCursor, sal_uInt16 nPos, sal_uInt32 nNumFmt = 0,
                                     const formula::FormulaGrammar::Grammar eGrammar = formula::FormulaGrammar::GRAM_DEFAULT ) const;
 
                     /** Create a flat copy using ScTokenArray copy-ctor with
                         shared tokens. */
-    std::unique_ptr<ScTokenArray> CreateFlatCopiedTokenArray( sal_uInt16 nPos ) const;
+    SC_DLLPUBLIC std::unique_ptr<ScTokenArray> CreateFlatCopiedTokenArray( sal_uInt16 nPos ) const;
 
     void            CompileAll();
     void            CompileXML();
@@ -399,7 +405,7 @@ public:
 
     virtual Type GetType() const override { return eConditionType; }
 
-    virtual ScFormatEntry* Clone(ScDocument* pDoc) const override;
+    virtual ScFormatEntry* Clone(ScDocument& rDoc) const override;
 
     static ScConditionMode GetModeFromApi(css::sheet::ConditionOperator nOperator);
 
@@ -411,7 +417,7 @@ public:
 
 protected:
     virtual void    DataChanged() const;
-    ScDocument*     GetDocument() const     { return mpDoc; }
+    ScDocument&     GetDocument() const     { return mrDoc; }
     ScConditionalFormat*    pCondFormat;
 
 private:
@@ -448,13 +454,13 @@ private:
 };
 
 //  single condition entry for conditional formatting
-class SC_DLLPUBLIC ScCondFormatEntry final : public ScConditionEntry
+class SAL_DLLPUBLIC_RTTI ScCondFormatEntry final : public ScConditionEntry
 {
     OUString aStyleName;
     Type eCondFormatType = Type::Condition;
 
 public:
-            ScCondFormatEntry( ScConditionMode eOper,
+    SC_DLLPUBLIC ScCondFormatEntry( ScConditionMode eOper,
                                 const OUString& rExpr1, const OUString& rExpr2,
                                 ScDocument& rDocument, const ScAddress& rPos,
                                 OUString aStyle,
@@ -463,19 +469,19 @@ public:
                                 formula::FormulaGrammar::Grammar eGrammar1 = formula::FormulaGrammar::GRAM_DEFAULT,
                                 formula::FormulaGrammar::Grammar eGrammar2 = formula::FormulaGrammar::GRAM_DEFAULT,
                                 Type eType = Type::Condition);
-            ScCondFormatEntry( ScConditionMode eOper,
+    SC_DLLPUBLIC ScCondFormatEntry( ScConditionMode eOper,
                                 const ScTokenArray* pArr1, const ScTokenArray* pArr2,
                                 ScDocument& rDocument, const ScAddress& rPos,
                                 OUString aStyle );
-            ScCondFormatEntry( const ScCondFormatEntry& r );
+    SC_DLLPUBLIC ScCondFormatEntry( const ScCondFormatEntry& r );
             ScCondFormatEntry( ScDocument& rDocument, const ScCondFormatEntry& r );
-    virtual ~ScCondFormatEntry() override;
+    SC_DLLPUBLIC virtual ~ScCondFormatEntry() override;
 
     bool            IsEqual( const ScFormatEntry& r, bool bIgnoreSrcPos ) const override;
 
     const OUString&   GetStyle() const        { return aStyleName; }
     void            UpdateStyleName(const OUString& rNew)  { aStyleName=rNew; }
-    virtual ScFormatEntry* Clone(ScDocument* pDoc) const override;
+    virtual ScFormatEntry* Clone(ScDocument& rDoc) const override;
     virtual Type GetType() const override { return eCondFormatType; }
 
 private:
@@ -506,8 +512,8 @@ enum ScCondFormatDateType
 class SC_DLLPUBLIC ScCondDateFormatEntry final : public ScFormatEntry
 {
 public:
-    ScCondDateFormatEntry(ScDocument* pDoc);
-    ScCondDateFormatEntry(ScDocument* pDoc, const ScCondDateFormatEntry& rEntry);
+    ScCondDateFormatEntry(ScDocument& rDoc);
+    ScCondDateFormatEntry(ScDocument& rDoc, const ScCondDateFormatEntry& rEntry);
 
     bool IsValid( const ScAddress& rPos ) const;
 
@@ -523,7 +529,7 @@ public:
     virtual void UpdateDeleteTab( sc::RefUpdateDeleteTabContext& ) override {}
     virtual void UpdateMoveTab( sc::RefUpdateMoveTabContext& ) override {}
 
-    virtual ScFormatEntry* Clone( ScDocument* pDoc ) const override;
+    virtual ScFormatEntry* Clone( ScDocument& rDoc ) const override;
 
     virtual void SetParent( ScConditionalFormat* ) override {}
 
@@ -538,35 +544,51 @@ private:
     OUString maStyleName;
 };
 
-//  complete conditional formatting
-class SC_DLLPUBLIC ScConditionalFormat
+class ScColorFormatCache final : public SvtListener
 {
-    ScDocument*         pDoc;
-    sal_uInt32          nKey;               // Index in attributes
+private:
+    ScDocument& mrDoc;
+
+public:
+    explicit ScColorFormatCache(ScDocument& rDoc, const ScRangeList& rRanges);
+    virtual ~ScColorFormatCache() override;
+
+    void Notify( const SfxHint& rHint ) override;
+
+    std::vector<double> maValues;
+};
+
+//  complete conditional formatting
+class ScConditionalFormat
+{
+    ScDocument&         mrDoc;
+    sal_uInt32          mnKey;               // Index in attributes
 
     std::vector<std::unique_ptr<ScFormatEntry>> maEntries;
     ScRangeList maRanges;            // Ranges for conditional format
 
+    mutable std::unique_ptr<ScColorFormatCache> mpCache;
+
 public:
-    ScConditionalFormat(sal_uInt32 nNewKey, ScDocument* pDocument);
-    ~ScConditionalFormat();
+    SC_DLLPUBLIC ScConditionalFormat(sal_uInt32 nNewKey, ScDocument& rDocument);
+    SC_DLLPUBLIC ~ScConditionalFormat();
      ScConditionalFormat(const ScConditionalFormat&) = delete;
      const ScConditionalFormat& operator=(const ScConditionalFormat&) = delete;
 
     // true copy of formulas (for Ref-Undo / between documents)
-    std::unique_ptr<ScConditionalFormat> Clone(ScDocument* pNewDoc = nullptr) const;
+    SC_DLLPUBLIC std::unique_ptr<ScConditionalFormat> Clone(ScDocument* pNewDoc = nullptr) const;
 
-    void            AddEntry( ScFormatEntry* pNew );
+    SC_DLLPUBLIC void AddEntry( ScFormatEntry* pNew );
     void RemoveEntry(size_t nIndex);
-    void            SetRange( const ScRangeList& rRanges );
+    SC_DLLPUBLIC void SetRange( const ScRangeList& rRanges );
     const ScRangeList&  GetRange() const  { return maRanges; }
     // don't use the same name as for the const version
     ScRangeList& GetRangeList() { return maRanges; }
 
     bool IsEmpty() const;
-    size_t size() const;
+    SC_DLLPUBLIC size_t size() const;
 
-    ScDocument* GetDocument();
+    ScDocument& GetDocument();
 
     void            CompileAll();
     void            CompileXML();
@@ -581,23 +603,23 @@ public:
     void            DeleteArea( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 );
     void            RenameCellStyle( std::u16string_view rOld, const OUString& rNew );
 
-    const ScFormatEntry* GetEntry( sal_uInt16 nPos ) const;
+    SC_DLLPUBLIC const ScFormatEntry* GetEntry( sal_uInt16 nPos ) const;
 
-    OUString GetCellStyle( ScRefCellValue& rCell, const ScAddress& rPos ) const;
+    SC_DLLPUBLIC OUString GetCellStyle( const ScRefCellValue& rCell, const ScAddress& rPos ) const;
 
-    ScCondFormatData GetData( ScRefCellValue& rCell, const ScAddress& rPos ) const;
+    SC_DLLPUBLIC ScCondFormatData GetData( const ScRefCellValue& rCell, const ScAddress& rPos ) const;
 
     bool            EqualEntries( const ScConditionalFormat& r, bool bIgnoreSrcPos = false ) const;
 
     void            DoRepaint();
 
-    sal_uInt32      GetKey() const          { return nKey; }
-    void            SetKey(sal_uInt32 nNew) { nKey = nNew; }    // only if not inserted!
+    sal_uInt32      GetKey() const          { return mnKey; }
+    void            SetKey(sal_uInt32 nNew) { mnKey = nNew; }    // only if not inserted!
 
     bool            MarkUsedExternalReferences() const;
 
     //  sorted (via std::set) by Index
-    bool operator < ( const ScConditionalFormat& r ) const  { return nKey <  r.nKey; }
+    bool operator < ( const ScConditionalFormat& r ) const  { return mnKey <  r.mnKey; }
 
     void startRendering();
     void endRendering();
@@ -606,6 +628,10 @@ public:
 
     // Forced recalculation for formulas
     void CalcAll();
+
+    void ResetCache() const;
+    void SetCache(const std::vector<double>& aValues) const;
+    std::vector<double>* GetCache() const;
 };
 
 class RepaintInIdle final : public Idle
@@ -644,19 +670,24 @@ struct CompareScConditionalFormat
 };
 
 //  List of all conditional formats in a sheet
-class SC_DLLPUBLIC ScConditionalFormatList
+class ScConditionalFormatList
 {
 private:
     typedef std::set<std::unique_ptr<ScConditionalFormat>,
                 CompareScConditionalFormat> ConditionalFormatContainer;
     ConditionalFormatContainer m_ConditionalFormats;
 
+    ScConditionalFormatList(ScDocument& rDoc, const ScConditionalFormatList& rList);
     void operator =(ScConditionalFormatList const &) = delete;
 
 public:
     ScConditionalFormatList() {}
-    ScConditionalFormatList(const ScConditionalFormatList& rList);
-    ScConditionalFormatList(ScDocument& rDoc, const ScConditionalFormatList& rList);
+    SC_DLLPUBLIC ScConditionalFormatList(const ScConditionalFormatList& rList);
+
+    ScConditionalFormatList* Clone(ScDocument& rDestDoc) const
+    {
+        return new ScConditionalFormatList(rDestDoc, *this);
+    }
 
     void    InsertNew( std::unique_ptr<ScConditionalFormat> pNew );
 
@@ -668,7 +699,7 @@ public:
      */
     bool    CheckAllEntries(const Link<ScConditionalFormat*,void>& rLink = Link<ScConditionalFormat*,void>());
 
-    ScConditionalFormat* GetFormat( sal_uInt32 nKey );
+    SC_DLLPUBLIC ScConditionalFormat* GetFormat( sal_uInt32 nKey );
     const ScConditionalFormat* GetFormat( sal_uInt32 nKey ) const;
 
     void    CompileAll();
@@ -692,15 +723,15 @@ public:
     void RemoveFromDocument(ScDocument& rDoc) const;
     void AddToDocument(ScDocument& rDoc) const;
 
-    iterator begin();
-    const_iterator begin() const;
-    iterator end();
-    const_iterator end() const;
+    SC_DLLPUBLIC iterator begin();
+    SC_DLLPUBLIC const_iterator begin() const;
+    SC_DLLPUBLIC iterator end();
+    SC_DLLPUBLIC const_iterator end() const;
 
-    size_t size() const;
-    bool empty() const;
+    SC_DLLPUBLIC size_t size() const;
+    SC_DLLPUBLIC bool empty() const;
 
-    void erase(sal_uLong nIndex);
+    SC_DLLPUBLIC void erase(sal_uLong nIndex);
     void clear();
 
     void startRendering();

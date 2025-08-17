@@ -52,12 +52,11 @@ DrawModelWrapper::DrawModelWrapper()
 
     SfxItemPool* pMasterPool = &GetItemPool();
     pMasterPool->SetDefaultMetric(MapUnit::Map100thMM);
-    pMasterPool->SetPoolDefaultItem(SfxBoolItem(EE_PARA_HYPHENATE, true) );
-    pMasterPool->SetPoolDefaultItem(makeSvx3DPercentDiagonalItem (5));
+    pMasterPool->SetUserDefaultItem(SfxBoolItem(EE_PARA_HYPHENATE, true) );
+    pMasterPool->SetUserDefaultItem(makeSvx3DPercentDiagonalItem (5));
 
     // append chart pool to end of pool chain
     pMasterPool->GetLastPoolInChain()->SetSecondaryPool(m_xChartItemPool.get());
-    pMasterPool->FreezeIdRanges();
     SetTextDefaults();
 
     //this factory needs to be created before first use of 3D scenes once upon an office runtime
@@ -128,7 +127,7 @@ uno::Reference< frame::XModel > DrawModelWrapper::createUnoModel()
     return new SvxUnoDrawingModel( this ); //tell Andreas Schluens if SvxUnoDrawingModel is not needed anymore -> remove export from svx to avoid link problems in writer
 }
 
-uno::Reference< frame::XModel > DrawModelWrapper::getUnoModel()
+const uno::Reference< frame::XModel > & DrawModelWrapper::getUnoModel()
 {
     return SdrModel::getUnoModel();
 }

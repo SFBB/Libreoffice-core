@@ -29,6 +29,8 @@
 #include <svx/svxids.hrc>
 #include <svx/pageitem.hxx>
 
+#include <vcl/tabs.hrc>
+
 ScHFEditDlg::ScHFEditDlg(weld::Window* pParent,
                          const SfxItemSet& rCoreSet,
                          std::u16string_view rPageStyle,
@@ -49,11 +51,14 @@ ScHFEditHeaderDlg::ScHFEditHeaderDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/headerdialog.ui", "HeaderDialog")
+        u"modules/scalc/ui/headerdialog.ui"_ustr, u"HeaderDialog"_ustr)
 {
-    AddTabPage("headerfirst", ScFirstHeaderEditPage::Create, nullptr);
-    AddTabPage("headerright", ScRightHeaderEditPage::Create, nullptr);
-    AddTabPage("headerleft", ScLeftHeaderEditPage::Create, nullptr);
+    AddTabPage(u"headerfirst"_ustr, TabResId(RID_TAB_HEADER_FIRST.aLabel),
+               ScFirstHeaderEditPage::Create, RID_L + RID_TAB_HEADER_FIRST.sIconName);
+    AddTabPage(u"headerright"_ustr, TabResId(RID_TAB_HEADER_RIGHT.aLabel),
+               ScRightHeaderEditPage::Create, RID_L + RID_TAB_HEADER_RIGHT.sIconName);
+    AddTabPage(u"headerleft"_ustr, TabResId(RID_TAB_HEADER_LEFT.aLabel),
+               ScLeftHeaderEditPage::Create, RID_L + RID_TAB_HEADER_LEFT.sIconName);
 }
 
 ScHFEditFooterDlg::ScHFEditFooterDlg(
@@ -61,11 +66,14 @@ ScHFEditFooterDlg::ScHFEditFooterDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/footerdialog.ui", "FooterDialog" )
+        u"modules/scalc/ui/footerdialog.ui"_ustr, u"FooterDialog"_ustr )
 {
-    AddTabPage("footerfirst", ScFirstFooterEditPage::Create, nullptr);
-    AddTabPage("footerright", ScRightFooterEditPage::Create, nullptr);
-    AddTabPage("footerleft", ScLeftFooterEditPage::Create, nullptr);
+    AddTabPage(u"footerfirst"_ustr, TabResId(RID_TAB_FOOTER_FIRST.aLabel),
+               ScFirstFooterEditPage::Create, RID_L + RID_TAB_FOOTER_FIRST.sIconName);
+    AddTabPage(u"footerright"_ustr, TabResId(RID_TAB_FOOTER_RIGHT.aLabel),
+               ScRightFooterEditPage::Create, RID_L + RID_TAB_FOOTER_RIGHT.sIconName);
+    AddTabPage(u"footerleft"_ustr, TabResId(RID_TAB_FOOTER_LEFT.aLabel),
+               ScLeftFooterEditPage::Create, RID_L + RID_TAB_FOOTER_LEFT.sIconName);
 }
 
 ScHFEditSharedFirstHeaderDlg::ScHFEditSharedFirstHeaderDlg(
@@ -73,10 +81,12 @@ ScHFEditSharedFirstHeaderDlg::ScHFEditSharedFirstHeaderDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/sharedfirstheaderdialog.ui", "SharedFirstHeaderDialog" )
+        u"modules/scalc/ui/sharedfirstheaderdialog.ui"_ustr, u"SharedFirstHeaderDialog"_ustr )
 {
-    AddTabPage("headerright", ScRightHeaderEditPage::Create, nullptr);
-    AddTabPage("headerleft", ScLeftHeaderEditPage::Create, nullptr);
+    AddTabPage(u"headerright"_ustr, TabResId(RID_TAB_HEADER_RIGHT.aLabel),
+               ScRightHeaderEditPage::Create, RID_L + RID_TAB_HEADER_RIGHT.sIconName);
+    AddTabPage(u"headerleft"_ustr, TabResId(RID_TAB_HEADER_LEFT.aLabel),
+               ScLeftHeaderEditPage::Create, RID_L + RID_TAB_HEADER_LEFT.sIconName);
 }
 
 ScHFEditSharedFirstFooterDlg::ScHFEditSharedFirstFooterDlg(
@@ -84,10 +94,12 @@ ScHFEditSharedFirstFooterDlg::ScHFEditSharedFirstFooterDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/sharedfirstfooterdialog.ui", "SharedFirstFooterDialog" )
+        u"modules/scalc/ui/sharedfirstfooterdialog.ui"_ustr, u"SharedFirstFooterDialog"_ustr )
 {
-    AddTabPage("footerright", ScRightFooterEditPage::Create, nullptr);
-    AddTabPage("footerleft", ScLeftFooterEditPage::Create, nullptr);
+    AddTabPage(u"footerright"_ustr, TabResId(RID_TAB_FOOTER_RIGHT.aLabel),
+               ScRightFooterEditPage::Create, RID_L + RID_TAB_FOOTER_RIGHT.sIconName);
+    AddTabPage(u"footerleft"_ustr, TabResId(RID_TAB_FOOTER_LEFT.aLabel),
+               ScLeftFooterEditPage::Create, RID_L + RID_TAB_FOOTER_LEFT.sIconName);
 }
 
 ScHFEditSharedLeftHeaderDlg::ScHFEditSharedLeftHeaderDlg(
@@ -95,10 +107,12 @@ ScHFEditSharedLeftHeaderDlg::ScHFEditSharedLeftHeaderDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/sharedleftheaderdialog.ui", "SharedLeftHeaderDialog" )
+        u"modules/scalc/ui/sharedleftheaderdialog.ui"_ustr, u"SharedLeftHeaderDialog"_ustr )
 {
-    AddTabPage("headerfirst", ScFirstHeaderEditPage::Create, nullptr);
-    AddTabPage("headerright", ScRightHeaderEditPage::Create, nullptr);
+    AddTabPage(u"headerfirst"_ustr, TabResId(RID_TAB_HEADER_FIRST.aLabel),
+               ScFirstHeaderEditPage::Create, RID_L + RID_TAB_HEADER_FIRST.sIconName);
+    AddTabPage(u"headerright"_ustr, TabResId(RID_TAB_HEADER_RIGHT.aLabel),
+               ScRightHeaderEditPage::Create, RID_L + RID_TAB_HEADER_RIGHT.sIconName);
 }
 
 ScHFEditSharedLeftFooterDlg::ScHFEditSharedLeftFooterDlg(
@@ -106,20 +120,12 @@ ScHFEditSharedLeftFooterDlg::ScHFEditSharedLeftFooterDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/sharedleftfooterdialog.ui", "SharedLeftFooterDialog" )
+        u"modules/scalc/ui/sharedleftfooterdialog.ui"_ustr, u"SharedLeftFooterDialog"_ustr )
 {
-    AddTabPage("footerfirst", ScFirstFooterEditPage::Create, nullptr);
-    AddTabPage("footerright", ScRightFooterEditPage::Create, nullptr);
-}
-
-ScHFEditFirstHeaderDlg::ScHFEditFirstHeaderDlg(
-                          weld::Window* pParent,
-                          const SfxItemSet& rCoreSet,
-                          std::u16string_view rPageStyle)
-    :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/firstheaderdialog.ui", "FirstHeaderDialog" )
-{
-    AddTabPage("headerfirst", ScFirstHeaderEditPage::Create, nullptr);
+    AddTabPage(u"footerfirst"_ustr, TabResId(RID_TAB_FOOTER_FIRST.aLabel),
+               ScFirstFooterEditPage::Create, RID_L + RID_TAB_FOOTER_FIRST.sIconName);
+    AddTabPage(u"footerright"_ustr, TabResId(RID_TAB_FOOTER_RIGHT.aLabel),
+               ScRightFooterEditPage::Create, RID_L + RID_TAB_FOOTER_RIGHT.sIconName);
 }
 
 ScHFEditLeftHeaderDlg::ScHFEditLeftHeaderDlg(
@@ -127,9 +133,10 @@ ScHFEditLeftHeaderDlg::ScHFEditLeftHeaderDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/leftheaderdialog.ui", "LeftHeaderDialog" )
+        u"modules/scalc/ui/leftheaderdialog.ui"_ustr, u"LeftHeaderDialog"_ustr )
 {
-    AddTabPage("headerleft", ScLeftHeaderEditPage::Create, nullptr);
+    AddTabPage(u"headerleft"_ustr, TabResId(RID_TAB_HEADER_LEFT.aLabel),
+               ScLeftHeaderEditPage::Create, RID_L + RID_TAB_HEADER_LEFT.sIconName);
 }
 
 ScHFEditRightHeaderDlg::ScHFEditRightHeaderDlg(
@@ -137,19 +144,10 @@ ScHFEditRightHeaderDlg::ScHFEditRightHeaderDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/rightheaderdialog.ui", "RightHeaderDialog" )
+        u"modules/scalc/ui/rightheaderdialog.ui"_ustr, u"RightHeaderDialog"_ustr )
 {
-    AddTabPage("headerright", ScRightHeaderEditPage::Create, nullptr);
-}
-
-ScHFEditFirstFooterDlg::ScHFEditFirstFooterDlg(
-                          weld::Window* pParent,
-                          const SfxItemSet& rCoreSet,
-                          std::u16string_view rPageStyle)
-    :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/firstfooterdialog.ui", "FirstFooterDialog" )
-{
-    AddTabPage("footerfirst", ScFirstFooterEditPage::Create, nullptr);
+    AddTabPage(u"headerright"_ustr, TabResId(RID_TAB_HEADER_RIGHT.aLabel),
+               ScRightHeaderEditPage::Create, RID_L + RID_TAB_HEADER_RIGHT.sIconName);
 }
 
 ScHFEditLeftFooterDlg::ScHFEditLeftFooterDlg(
@@ -157,9 +155,10 @@ ScHFEditLeftFooterDlg::ScHFEditLeftFooterDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/leftfooterdialog.ui", "LeftFooterDialog" )
+        u"modules/scalc/ui/leftfooterdialog.ui"_ustr, u"LeftFooterDialog"_ustr )
 {
-    AddTabPage("footerleft", ScLeftFooterEditPage::Create, nullptr);
+    AddTabPage(u"footerleft"_ustr, TabResId(RID_TAB_FOOTER_LEFT.aLabel),
+               ScLeftFooterEditPage::Create, RID_L + RID_TAB_FOOTER_LEFT.sIconName);
 }
 
 ScHFEditRightFooterDlg::ScHFEditRightFooterDlg(
@@ -167,9 +166,10 @@ ScHFEditRightFooterDlg::ScHFEditRightFooterDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/rightfooterdialog.ui", "RightFooterDialog" )
+        u"modules/scalc/ui/rightfooterdialog.ui"_ustr, u"RightFooterDialog"_ustr )
 {
-    AddTabPage("footerright", ScRightFooterEditPage::Create, nullptr);
+    AddTabPage(u"footerright"_ustr, TabResId(RID_TAB_FOOTER_RIGHT.aLabel),
+               ScRightFooterEditPage::Create, RID_L + RID_TAB_FOOTER_RIGHT.sIconName);
 }
 
 ScHFEditSharedHeaderDlg::ScHFEditSharedHeaderDlg(
@@ -177,13 +177,18 @@ ScHFEditSharedHeaderDlg::ScHFEditSharedHeaderDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/sharedheaderdialog.ui", "SharedHeaderDialog" )
+        u"modules/scalc/ui/sharedheaderdialog.ui"_ustr, u"SharedHeaderDialog"_ustr )
 {
-    AddTabPage("headerfirst", ScFirstHeaderEditPage::Create, nullptr);
-    AddTabPage("header", ScRightHeaderEditPage::Create, nullptr);
-    AddTabPage("footerfirst", ScFirstFooterEditPage::Create, nullptr);
-    AddTabPage("footerright", ScRightFooterEditPage::Create, nullptr);
-    AddTabPage("footerleft", ScLeftFooterEditPage::Create, nullptr);
+    AddTabPage(u"headerfirst"_ustr, TabResId(RID_TAB_HEADER_FIRST.aLabel),
+               ScFirstHeaderEditPage::Create, RID_L + RID_TAB_HEADER_FIRST.sIconName);
+    AddTabPage(u"header"_ustr, TabResId(RID_TAB_HEADER.aLabel), ScRightHeaderEditPage::Create,
+               RID_L + RID_TAB_HEADER.sIconName);
+    AddTabPage(u"footerfirst"_ustr, TabResId(RID_TAB_FOOTER_FIRST.aLabel),
+               ScFirstFooterEditPage::Create, RID_L + RID_TAB_FOOTER_FIRST.sIconName);
+    AddTabPage(u"footerright"_ustr, TabResId(RID_TAB_FOOTER_RIGHT.aLabel),
+               ScRightFooterEditPage::Create, RID_L + RID_TAB_FOOTER_RIGHT.sIconName);
+    AddTabPage(u"footerleft"_ustr, TabResId(RID_TAB_FOOTER_LEFT.aLabel),
+               ScLeftFooterEditPage::Create, RID_L + RID_TAB_FOOTER_LEFT.sIconName);
 }
 
 ScHFEditSharedFooterDlg::ScHFEditSharedFooterDlg(
@@ -191,13 +196,18 @@ ScHFEditSharedFooterDlg::ScHFEditSharedFooterDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/sharedfooterdialog.ui", "SharedFooterDialog" )
+        u"modules/scalc/ui/sharedfooterdialog.ui"_ustr, u"SharedFooterDialog"_ustr )
 {
-    AddTabPage("headerfirst", ScFirstFooterEditPage::Create, nullptr);
-    AddTabPage("headerright", ScRightHeaderEditPage::Create, nullptr);
-    AddTabPage("headerleft", ScLeftHeaderEditPage::Create, nullptr);
-    AddTabPage("footerfirst", ScFirstFooterEditPage::Create, nullptr);
-    AddTabPage("footer", ScRightFooterEditPage::Create, nullptr);
+    AddTabPage(u"headerfirst"_ustr, TabResId(RID_TAB_HEADER_FIRST.aLabel),
+               ScFirstHeaderEditPage::Create, RID_L + RID_TAB_HEADER_FIRST.sIconName);
+    AddTabPage(u"headerright"_ustr, TabResId(RID_TAB_HEADER_RIGHT.aLabel),
+               ScRightHeaderEditPage::Create, RID_L + RID_TAB_HEADER_RIGHT.sIconName);
+    AddTabPage(u"headerleft"_ustr, TabResId(RID_TAB_HEADER_LEFT.aLabel),
+               ScLeftHeaderEditPage::Create, RID_L + RID_TAB_HEADER_LEFT.sIconName);
+    AddTabPage(u"footerfirst"_ustr, TabResId(RID_TAB_FOOTER_FIRST.aLabel),
+               ScFirstFooterEditPage::Create, RID_L + RID_TAB_FOOTER_FIRST.sIconName);
+    AddTabPage(u"footer"_ustr, TabResId(RID_TAB_FOOTER.aLabel), ScRightFooterEditPage::Create,
+               RID_L + RID_TAB_FOOTER.sIconName);
 }
 
 ScHFEditAllDlg::ScHFEditAllDlg(
@@ -205,14 +215,20 @@ ScHFEditAllDlg::ScHFEditAllDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/allheaderfooterdialog.ui", "AllHeaderFooterDialog" )
+        u"modules/scalc/ui/allheaderfooterdialog.ui"_ustr, u"AllHeaderFooterDialog"_ustr )
 {
-    AddTabPage("headerfirst", ScFirstHeaderEditPage::Create, nullptr);
-    AddTabPage("headerright", ScRightHeaderEditPage::Create, nullptr);
-    AddTabPage("headerleft", ScLeftHeaderEditPage::Create, nullptr);
-    AddTabPage("footerfirst", ScFirstFooterEditPage::Create, nullptr);
-    AddTabPage("footerright", ScRightFooterEditPage::Create, nullptr);
-    AddTabPage("footerleft", ScLeftFooterEditPage::Create, nullptr);
+    AddTabPage(u"headerfirst"_ustr, TabResId(RID_TAB_HEADER_FIRST.aLabel),
+               ScFirstHeaderEditPage::Create, RID_L + RID_TAB_HEADER_FIRST.sIconName);
+    AddTabPage(u"headerright"_ustr, TabResId(RID_TAB_HEADER_RIGHT.aLabel),
+               ScRightHeaderEditPage::Create, RID_L + RID_TAB_HEADER_RIGHT.sIconName);
+    AddTabPage(u"headerleft"_ustr, TabResId(RID_TAB_HEADER_LEFT.aLabel),
+               ScLeftHeaderEditPage::Create, RID_L + RID_TAB_HEADER_LEFT.sIconName);
+    AddTabPage(u"footerfirst"_ustr, TabResId(RID_TAB_FOOTER_FIRST.aLabel),
+               ScFirstFooterEditPage::Create, RID_L + RID_TAB_FOOTER_FIRST.sIconName);
+    AddTabPage(u"footerright"_ustr, TabResId(RID_TAB_FOOTER_RIGHT.aLabel),
+               ScRightFooterEditPage::Create, RID_L + RID_TAB_FOOTER_RIGHT.sIconName);
+    AddTabPage(u"footerleft"_ustr, TabResId(RID_TAB_FOOTER_LEFT.aLabel),
+               ScLeftFooterEditPage::Create, RID_L + RID_TAB_FOOTER_LEFT.sIconName);
 }
 
 ScHFEditActiveDlg::ScHFEditActiveDlg(
@@ -220,18 +236,20 @@ ScHFEditActiveDlg::ScHFEditActiveDlg(
                           const SfxItemSet& rCoreSet,
                           std::u16string_view rPageStyle)
     :   ScHFEditDlg( pParent, rCoreSet, rPageStyle,
-        "modules/scalc/ui/headerfooterdialog.ui", "HeaderFooterDialog" )
+        u"modules/scalc/ui/headerfooterdialog.ui"_ustr, u"HeaderFooterDialog"_ustr )
 {
     const SvxPageItem&  rPageItem =
                 rCoreSet.Get(
-                    rCoreSet.GetPool()->GetWhich(SID_ATTR_PAGE) );
+                    rCoreSet.GetPool()->GetWhichIDFromSlotID(SID_ATTR_PAGE) );
 
     bool bRightPage = SvxPageUsage::Left != rPageItem.GetPageUsage();
 
     if ( bRightPage )
     {
-        AddTabPage("header", ScRightHeaderEditPage::Create, nullptr);
-        AddTabPage("footer", ScRightFooterEditPage::Create, nullptr);
+        AddTabPage(u"header"_ustr, TabResId(RID_TAB_HEADER.aLabel), ScRightHeaderEditPage::Create,
+                   RID_L + RID_TAB_HEADER.sIconName);
+        AddTabPage(u"footer"_ustr, TabResId(RID_TAB_FOOTER.aLabel), ScRightFooterEditPage::Create,
+                   RID_L + RID_TAB_FOOTER.sIconName);
     }
     else
     {
@@ -239,17 +257,21 @@ ScHFEditActiveDlg::ScHFEditActiveDlg(
 
         bool bShareHeader = rCoreSet.Get(ATTR_PAGE_HEADERSET).GetItemSet().
                                 Get(ATTR_PAGE_SHARED).GetValue();
-        if ( bShareHeader )
-            AddTabPage("header", ScRightHeaderEditPage::Create, nullptr);
+        if (bShareHeader)
+            AddTabPage(u"header"_ustr, TabResId(RID_TAB_HEADER_RIGHT.aLabel),
+                       ScRightHeaderEditPage::Create, RID_L + RID_TAB_HEADER_RIGHT.sIconName);
         else
-            AddTabPage("header", ScLeftHeaderEditPage::Create, nullptr);
+            AddTabPage(u"header"_ustr, TabResId(RID_TAB_HEADER_LEFT.aLabel),
+                       ScLeftHeaderEditPage::Create, RID_L + RID_TAB_HEADER_LEFT.sIconName);
 
         bool bShareFooter = rCoreSet.Get(ATTR_PAGE_FOOTERSET).GetItemSet().
                                 Get(ATTR_PAGE_SHARED).GetValue();
-        if ( bShareFooter )
-            AddTabPage("footer", ScRightFooterEditPage::Create, nullptr);
+        if (bShareFooter)
+            AddTabPage(u"footer"_ustr, TabResId(RID_TAB_FOOTER_RIGHT.aLabel),
+                       ScRightFooterEditPage::Create, RID_L + RID_TAB_FOOTER_RIGHT.sIconName);
         else
-            AddTabPage("footer", ScLeftFooterEditPage::Create, nullptr);
+            AddTabPage(u"footer"_ustr, TabResId(RID_TAB_FOOTER_LEFT.aLabel),
+                       ScLeftFooterEditPage::Create, RID_L + RID_TAB_FOOTER_LEFT.sIconName);
     }
 }
 

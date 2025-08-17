@@ -30,7 +30,6 @@
 #include <svx/strings.hrc>
 #include <svx/dialmgr.hxx>
 #include "svddrgm1.hxx"
-#include <svx/obj3d.hxx>
 #include <svx/svdoashp.hxx>
 #include <svx/sdrpaintwindow.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
@@ -39,13 +38,15 @@
 #include <unotools/configmgr.hxx>
 #include <comphelper/lok.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <sfx2/objsh.hxx>
+#include <sfx2/viewsh.hxx>
+#include <svl/cryptosign.hxx>
 
 using namespace sdr;
 
 SdrDragView::SdrDragView(SdrModel& rSdrModel, OutputDevice* pOut)
     : SdrExchangeView(rSdrModel, pOut)
     , mpDragHdl(nullptr)
-    , mpInsPointUndo(nullptr)
     , meDragHdl(SdrHdlKind::Move)
     , mnDragThresholdPixels(6)
     , mbFramDrag(false)
@@ -53,7 +54,7 @@ SdrDragView::SdrDragView(SdrModel& rSdrModel, OutputDevice* pOut)
     , mbDragLimit(false)
     , mbDragHdl(false)
     , mbDragStripes(false)
-    , mbSolidDragging(utl::ConfigManager::IsFuzzing() || officecfg::Office::Common::Drawinglayer::SolidDragCreate::get())
+    , mbSolidDragging(comphelper::IsFuzzing() || officecfg::Office::Common::Drawinglayer::SolidDragCreate::get())
     , mbResizeAtCenter(false)
     , mbCrookAtCenter(false)
     , mbDragWithCopy(false)
@@ -124,8 +125,8 @@ void SdrDragView::TakeActionRect(tools::Rectangle& rRect) const
                 else
                 {
                     rRect = tools::Rectangle(
-                        basegfx::fround(aBoundRange.getMinX()), basegfx::fround(aBoundRange.getMinY()),
-                        basegfx::fround(aBoundRange.getMaxX()), basegfx::fround(aBoundRange.getMaxY()));
+                        basegfx::fround<tools::Long>(aBoundRange.getMinX()), basegfx::fround<tools::Long>(aBoundRange.getMinY()),
+                        basegfx::fround<tools::Long>(aBoundRange.getMaxX()), basegfx::fround<tools::Long>(aBoundRange.getMaxY()));
                 }
             }
         }
@@ -145,11 +146,12 @@ bool SdrDragView::TakeDragObjAnchorPos(Point& rPos, bool bTR ) const
     tools::Rectangle aR;
     TakeActionRect(aR);
     rPos = bTR ? aR.TopRight() : aR.TopLeft();
-    if (GetMarkedObjectCount()==1 && IsDragObj() && // only on single selection
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (rMarkList.GetMarkCount()==1 && IsDragObj() && // only on single selection
         !IsDraggingPoints() && !IsDraggingGluePoints() && // not when moving points
         dynamic_cast<const SdrDragMovHdl*>( mpCurrentSdrDragMethod.get() ) ==  nullptr) // not when moving handles
     {
-        SdrObject* pObj=GetMarkedObjectByIndex(0);
+        SdrObject* pObj=rMarkList.GetMark(0)->GetMarkedSdrObj();
         if (auto pCaptionObj = dynamic_cast<SdrCaptionObj*>(pObj))
         {
             Point aPt(pCaptionObj->GetTailPos());
@@ -165,8 +167,8 @@ bool SdrDragView::TakeDragObjAnchorPos(Point& rPos, bool bTR ) const
                 {
                     // drag the whole Object (Move, Resize, ...)
                     const basegfx::B2DPoint aTransformed(mpCurrentSdrDragMethod->getCurrentTransformation() * basegfx::B2DPoint(aPt.X(), aPt.Y()));
-                    rPos.setX( basegfx::fround(aTransformed.getX()) );
-                    rPos.setY( basegfx::fround(aTransformed.getY()) );
+                    rPos.setX( basegfx::fround<tools::Long>(aTransformed.getX()) );
+                    rPos.setY( basegfx::fround<tools::Long>(aTransformed.getY()) );
                 }
             }
         }
@@ -207,18 +209,19 @@ bool SdrDragView::BegDragObj(const Point& rPnt, OutputDevice* pOut, SdrHdl* pHdl
 
         Point aPnt(rPnt);
         basegfx::B2DVector aGridOffset(0.0, 0.0);
+        const SdrMarkList& rMarkList = GetMarkedObjectList();
 
         // Coordinate maybe affected by GridOffset, so we may need to
         // adapt to Model-coordinates here
         if((comphelper::LibreOfficeKit::isActive() && mpMarkedObj
-            && getPossibleGridOffsetForSdrObject(aGridOffset, GetMarkedObjectByIndex(0), GetSdrPageView()))
+            && getPossibleGridOffsetForSdrObject(aGridOffset, rMarkList.GetMark(0)->GetMarkedSdrObj(), GetSdrPageView()))
             || (getPossibleGridOffsetForPosition(
             aGridOffset,
             basegfx::B2DPoint(aPnt.X(), aPnt.Y()),
             GetSdrPageView())))
         {
-            aPnt.AdjustX(basegfx::fround(-aGridOffset.getX()));
-            aPnt.AdjustY(basegfx::fround(-aGridOffset.getY()));
+            aPnt.AdjustX(basegfx::fround<tools::Long>(-aGridOffset.getX()));
+            aPnt.AdjustY(basegfx::fround<tools::Long>(-aGridOffset.getY()));
         }
 
         if(pHdl == nullptr
@@ -268,9 +271,9 @@ bool SdrDragView::BegDragObj(const Point& rPnt, OutputDevice* pOut, SdrHdl* pHdl
                         {
                             // are 3D objects selected?
                             bool b3DObjSelected = false;
-                            for(size_t a=0; !b3DObjSelected && a<GetMarkedObjectCount(); ++a)
+                            for(size_t a=0; !b3DObjSelected && a<rMarkList.GetMarkCount(); ++a)
                             {
-                                SdrObject* pObj = GetMarkedObjectByIndex(a);
+                                SdrObject* pObj = rMarkList.GetMark(a)->GetMarkedSdrObj();
                                 if(DynCastE3dObject(pObj))
                                     b3DObjSelected = true;
                             }
@@ -410,15 +413,22 @@ bool SdrDragView::BegDragObj(const Point& rPnt, OutputDevice* pOut, SdrHdl* pHdl
                             }
                             else
                             {
-                                if(!IsResizeAllowed(true))
+                                bool bResizeAllowed = IsResizeAllowed(true);
+                                SfxViewShell* pViewShell = GetSfxViewShell();
+                                if (!bResizeAllowed && pViewShell && pViewShell->GetSignPDFCertificate().Is())
+                                {
+                                    // If the just added signature line shape is selected, allow resizing it.
+                                    bResizeAllowed = true;
+                                }
+                                if(!bResizeAllowed)
                                 {
                                     return false;
                                 }
 
                                 bool bSingleTextObjMark = false;    // SJ: #i100490#
-                                if ( GetMarkedObjectCount() == 1 )
+                                if ( rMarkList.GetMarkCount() == 1 )
                                 {
-                                    mpMarkedObj=GetMarkedObjectByIndex(0);
+                                    mpMarkedObj=rMarkList.GetMark(0)->GetMarkedSdrObj();
                                     if ( mpMarkedObj &&
                                         DynCastSdrTextObj( mpMarkedObj) !=  nullptr &&
                                         static_cast<SdrTextObj*>(mpMarkedObj)->IsTextFrame() )
@@ -434,7 +444,7 @@ bool SdrDragView::BegDragObj(const Point& rPnt, OutputDevice* pOut, SdrHdl* pHdl
                         {
                             if(SdrHdlKind::Move == meDragHdl)
                             {
-                                const bool bCustomShapeSelected(1 == GetMarkedObjectCount() && dynamic_cast<const SdrObjCustomShape*>(GetMarkedObjectByIndex(0)) != nullptr);
+                                const bool bCustomShapeSelected(1 == rMarkList.GetMarkCount() && dynamic_cast<const SdrObjCustomShape*>(rMarkList.GetMark(0)->GetMarkedSdrObj()) != nullptr);
 
                                 if(bCustomShapeSelected)
                                 {
@@ -443,7 +453,7 @@ bool SdrDragView::BegDragObj(const Point& rPnt, OutputDevice* pOut, SdrHdl* pHdl
                             }
                             else if(SdrHdlKind::Poly == meDragHdl)
                             {
-                                const bool bConnectorSelected(1 == GetMarkedObjectCount() && dynamic_cast<const SdrEdgeObj*>(GetMarkedObjectByIndex(0)) != nullptr);
+                                const bool bConnectorSelected(1 == rMarkList.GetMarkCount() && dynamic_cast<const SdrEdgeObj*>(rMarkList.GetMark(0)->GetMarkedSdrObj()) != nullptr);
 
                                 if(bConnectorSelected)
                                 {
@@ -514,15 +524,16 @@ void SdrDragView::MovDragObj(const Point& rPnt)
 
     // Coordinate maybe affected by GridOffset, so we may need to
     // adapt to Model-coordinates here
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
     if((comphelper::LibreOfficeKit::isActive() && mpMarkedObj
-        && getPossibleGridOffsetForSdrObject(aGridOffset, GetMarkedObjectByIndex(0), GetSdrPageView()))
+        && getPossibleGridOffsetForSdrObject(aGridOffset, rMarkList.GetMark(0)->GetMarkedSdrObj(), GetSdrPageView()))
         || (getPossibleGridOffsetForPosition(
         aGridOffset,
         basegfx::B2DPoint(aPnt.X(), aPnt.Y()),
         GetSdrPageView())))
     {
-        aPnt.AdjustX(basegfx::fround(-aGridOffset.getX()));
-        aPnt.AdjustY(basegfx::fround(-aGridOffset.getY()));
+        aPnt.AdjustX(basegfx::fround<tools::Long>(-aGridOffset.getX()));
+        aPnt.AdjustY(basegfx::fround<tools::Long>(-aGridOffset.getY()));
     }
 
     ImpLimitToWorkArea(aPnt);
@@ -538,7 +549,7 @@ bool SdrDragView::EndDragObj(bool bCopy)
     {
         sal_Int32 nSavedHdlCount=0;
 
-        if (bEliminatePolyPoints)
+        if (mbEliminatePolyPoints)
         {
             nSavedHdlCount=GetMarkablePointCount();
         }
@@ -547,7 +558,7 @@ bool SdrDragView::EndDragObj(bool bCopy)
         if (IsInsertGluePoint() && bUndo)
         {
             BegUndo(maInsPointUndoStr);
-            AddUndo(std::unique_ptr<SdrUndoAction>(mpInsPointUndo));
+            AddUndo(std::move(mpInsPointUndo));
         }
 
         bRet = mpCurrentSdrDragMethod->EndSdrDrag(bCopy);
@@ -557,7 +568,7 @@ bool SdrDragView::EndDragObj(bool bCopy)
 
         mpCurrentSdrDragMethod.reset();
 
-        if (bEliminatePolyPoints)
+        if (mbEliminatePolyPoints)
         {
             if (nSavedHdlCount!=GetMarkablePointCount())
             {
@@ -572,7 +583,7 @@ bool SdrDragView::EndDragObj(bool bCopy)
             if( bUndo )
             {
                 BegUndo(maInsPointUndoStr);
-                AddUndo(std::unique_ptr<SdrUndoAction>(mpInsPointUndo));
+                AddUndo(std::move(mpInsPointUndo));
                 EndUndo();
             }
         }
@@ -612,17 +623,14 @@ void SdrDragView::BrkDragObj()
     if (mbInsPolyPoint)
     {
         mpInsPointUndo->Undo(); // delete inserted point again
-        delete mpInsPointUndo;
-        mpInsPointUndo=nullptr;
+        mpInsPointUndo.reset();
         SetMarkHandles(nullptr);
         mbInsPolyPoint=false;
     }
-
-    if (IsInsertGluePoint())
+    else if (IsInsertGluePoint())
     {
         mpInsPointUndo->Undo(); // delete inserted gluepoint again
-        delete mpInsPointUndo;
-        mpInsPointUndo=nullptr;
+        mpInsPointUndo.reset();
         SetInsertGluePoint(false);
     }
 
@@ -642,7 +650,7 @@ bool SdrDragView::ImpBegInsObjPoint(bool bIdxZwang, const Point& rPnt, bool bNew
     if(auto pMarkedPath = dynamic_cast<SdrPathObj*>( mpMarkedObj))
     {
         BrkAction();
-        mpInsPointUndo = dynamic_cast<SdrUndoGeoObj*>(GetModel().GetSdrUndoFactory().CreateUndoGeoObject(*mpMarkedObj).release());
+        mpInsPointUndo = GetModel().GetSdrUndoFactory().CreateUndoGeoObject(*mpMarkedObj);
         DBG_ASSERT( mpInsPointUndo, "svx::SdrDragView::BegInsObjPoint(), could not create correct undo object!" );
 
         OUString aStr(SvxResId(STR_DragInsertPoint));
@@ -685,8 +693,7 @@ bool SdrDragView::ImpBegInsObjPoint(bool bIdxZwang, const Point& rPnt, bool bNew
         }
         else
         {
-            delete mpInsPointUndo;
-            mpInsPointUndo = nullptr;
+            mpInsPointUndo.reset();
         }
     }
 
@@ -712,12 +719,13 @@ bool SdrDragView::EndInsObjPoint(SdrCreateCmd eCmd)
 bool SdrDragView::IsInsGluePointPossible() const
 {
     bool bRet=false;
-    if (IsInsGluePointMode() && AreObjectsMarked())
+    const SdrMarkList& rMarkList = GetMarkedObjectList();
+    if (IsInsGluePointMode() && rMarkList.GetMarkCount() != 0)
     {
-        if (GetMarkedObjectCount()==1)
+        if (rMarkList.GetMarkCount()==1)
         {
             // return sal_False, if only 1 object which is a connector.
-            const SdrObject* pObj=GetMarkedObjectByIndex(0);
+            const SdrObject* pObj=rMarkList.GetMark(0)->GetMarkedSdrObj();
             if (dynamic_cast<const SdrEdgeObj *>(pObj) == nullptr)
             {
                bRet=true;
@@ -740,7 +748,7 @@ bool SdrDragView::BegInsGluePoint(const Point& rPnt)
     {
         BrkAction();
         UnmarkAllGluePoints();
-        mpInsPointUndo = dynamic_cast<SdrUndoGeoObj*>(GetModel().GetSdrUndoFactory().CreateUndoGeoObject(*pObj).release());
+        mpInsPointUndo = GetModel().GetSdrUndoFactory().CreateUndoGeoObject(*pObj);
         DBG_ASSERT( mpInsPointUndo, "svx::SdrDragView::BegInsObjPoint(), could not create correct undo object!" );
         OUString aStr(SvxResId(STR_DragInsertGluePoint));
 
@@ -771,8 +779,7 @@ bool SdrDragView::BegInsGluePoint(const Point& rPnt)
                 else
                 {
                     SetInsertGluePoint(false);
-                    delete mpInsPointUndo;
-                    mpInsPointUndo=nullptr;
+                    mpInsPointUndo.reset();
                 }
             }
             else
@@ -784,15 +791,14 @@ bool SdrDragView::BegInsGluePoint(const Point& rPnt)
         {
             // no gluepoints possible for this object (e. g. Edge)
             SetInsertGluePoint(false);
-            delete mpInsPointUndo;
-            mpInsPointUndo=nullptr;
+            mpInsPointUndo.reset();
         }
     }
 
     return bRet;
 }
 
-void SdrDragView::ShowDragObj()
+void SdrDragView::ShowDragObj(bool IsSizeValid)
 {
     if(!mpCurrentSdrDragMethod || maDragStat.IsShown())
         return;
@@ -820,10 +826,7 @@ void SdrDragView::ShowDragObj()
                 {
                     mpCurrentSdrDragMethod->CreateOverlayGeometry(
                         *xOverlayManager,
-                        rPageWindow.GetObjectContact());
-
-                    // #i101679# Force changed overlay to be shown
-                    xOverlayManager->flush();
+                        rPageWindow.GetObjectContact(), IsSizeValid);
                 }
             }
         }

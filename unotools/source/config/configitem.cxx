@@ -36,9 +36,11 @@
 #include <com/sun/star/util/XChangesBatch.hpp>
 #include <o3tl/deleter.hxx>
 #include <osl/diagnose.h>
+#include <comphelper/configuration.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/solarmutex.hxx>
 #include <comphelper/diagnose_ex.hxx>
+#include <comphelper/propertyvalue.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <utility>
 
@@ -144,7 +146,7 @@ ConfigItem::ConfigItem(OUString aSubTree, ConfigItemMode nSetMode ) :
     m_bEnableInternalNotification(false),
     m_nInValueChange(0)
 {
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
 
     if (nSetMode & ConfigItemMode::ReleaseTree)
@@ -152,6 +154,9 @@ ConfigItem::ConfigItem(OUString aSubTree, ConfigItemMode nSetMode ) :
     else
         m_xHierarchyAccess = ConfigManager::getConfigManager().addConfigItem(*this);
 }
+
+ConfigItem::ConfigItem(ConfigItem const &) = default;
+ConfigItem::ConfigItem(ConfigItem &&) = default;
 
 ConfigItem::~ConfigItem()
 {
@@ -168,20 +173,22 @@ void ConfigItem::CallNotify( const css::uno::Sequence<OUString>& rPropertyNames 
         Notify(rPropertyNames);
 }
 
-void ConfigItem::impl_packLocalizedProperties(  const   Sequence< OUString >&   lInNames    ,
-                                                const   Sequence< Any >&        lInValues   ,
-                                                        Sequence< Any >&        lOutValues  )
+// In special mode ALL_LOCALES we must support reading/writing of localized cfg entries as Sequence< PropertyValue >.
+// These methods are helper to convert given lists of names and Any-values.
+// format:  PropertyValue.Name  = <locale as ISO string>
+//          PropertyValue.Value = <value; type depends from cfg entry!>
+// e.g.
+//          LOCALIZED NODE
+//          "UIName"
+//                      LOCALE      VALUE
+//                      "de"        "Mein Name"
+//                      "en-US"     "my name"
+
+static void impl_packLocalizedProperties(  const   Sequence< OUString >&   lInNames    ,
+                                           const   Sequence< Any >&        lInValues   ,
+                                                   Sequence< Any >&        lOutValues  )
 {
     // This method should be called for special AllLocales ConfigItem-mode only!
-
-    sal_Int32                   nSourceCounter;      // used to step during input lists
-    sal_Int32                   nSourceSize;         // marks end of loop over input lists
-    sal_Int32                   nDestinationCounter; // actual position in output lists
-    sal_Int32                   nPropertyCounter;    // counter of inner loop for Sequence< PropertyValue >
-    sal_Int32                   nPropertiesSize;     // marks end of inner loop
-    Sequence< OUString >        lPropertyNames;      // list of all locales for localized entry
-    Sequence< PropertyValue >   lProperties;         // localized values of a configuration entry packed for return
-    Reference< XInterface >     xLocalizedNode;      // if cfg entry is localized ... lInValues contains an XInterface!
 
     // Optimise follow algorithm ... A LITTLE BIT :-)
     // There exist two different possibilities:
@@ -190,55 +197,43 @@ void ConfigItem::impl_packLocalizedProperties(  const   Sequence< OUString >&   
     //  ... Why? If a localized value exist - the any is filled with an XInterface object (is a SetNode-service).
     //      We read all his child nodes and pack it into Sequence< PropertyValue >.
     //      The result list we pack into the return any. We never change size of lists!
-    nSourceSize = lInNames.getLength();
-    lOutValues.realloc( nSourceSize );
-    auto plOutValues = lOutValues.getArray();
+    lOutValues.realloc(lInNames.getLength());
 
     // Algorithm:
     // Copy all names and values from in to out lists.
     // Look for special localized entries ... You can detect it as "XInterface" packed into an Any.
-    // Use this XInterface-object to read all localized values and pack it into Sequence< PropertValue >.
+    // Use this XInterface-object to read all localized values and pack it into Sequence< PropertyValue >.
     // Add this list to out lists then.
 
-    nDestinationCounter = 0;
-    for( nSourceCounter=0; nSourceCounter<nSourceSize; ++nSourceCounter )
+    std::transform(lInValues.begin(), lInValues.end(), lOutValues.getArray(), [](const Any& value)
     {
-        // If item a special localized one ... convert and pack it ...
-        if( lInValues[nSourceCounter].getValueTypeName() == "com.sun.star.uno.XInterface" )
+        // If item is a special localized one ... convert and pack it ...
+        if (value.getValueTypeName() == "com.sun.star.uno.XInterface")
         {
-            lInValues[nSourceCounter] >>= xLocalizedNode;
-            Reference< XNameContainer > xSetAccess( xLocalizedNode, UNO_QUERY );
-            if( xSetAccess.is() )
+            if (auto xSetAccess = value.query<XNameContainer>())
             {
-                lPropertyNames  =   xSetAccess->getElementNames();
-                nPropertiesSize =   lPropertyNames.getLength();
-                lProperties.realloc( nPropertiesSize );
-                auto plProperties = lProperties.getArray();
+                // list of all locales for localized entry
+                Sequence<OUString> locales = xSetAccess->getElementNames();
+                // localized values of a configuration entry packed for return
+                Sequence<PropertyValue> lProperties(locales.getLength());
 
-                for( nPropertyCounter=0; nPropertyCounter<nPropertiesSize; ++nPropertyCounter )
-                {
-                    plProperties[nPropertyCounter].Name  =   lPropertyNames[nPropertyCounter];
-                    OUString sLocaleValue;
-                    xSetAccess->getByName( lPropertyNames[nPropertyCounter] ) >>= sLocaleValue;
-                    plProperties[nPropertyCounter].Value <<= sLocaleValue;
-                }
+                std::transform(
+                    locales.begin(), locales.end(), lProperties.getArray(),
+                    [&xSetAccess](const OUString& s)
+                    { return comphelper::makePropertyValue(s, xSetAccess->getByName(s)); });
 
-                plOutValues[nDestinationCounter] <<= lProperties;
+                return Any(lProperties);
             }
         }
         // ... or copy normal items to return lists directly.
-        else
-        {
-            plOutValues[nDestinationCounter] = lInValues[nSourceCounter];
-        }
-        ++nDestinationCounter;
-    }
+        return value;
+    });
 }
 
-void ConfigItem::impl_unpackLocalizedProperties(    const   Sequence< OUString >&   lInNames    ,
-                                                    const   Sequence< Any >&        lInValues   ,
-                                                            Sequence< OUString >&   lOutNames   ,
-                                                            Sequence< Any >&        lOutValues)
+static void impl_unpackLocalizedProperties(    const   Sequence< OUString >&   lInNames    ,
+                                               const   Sequence< Any >&        lInValues   ,
+                                                       Sequence< OUString >&   lOutNames   ,
+                                                       Sequence< Any >&        lOutValues)
 {
     // This method should be called for special AllLocales ConfigItem-mode only!
 
@@ -251,7 +246,7 @@ void ConfigItem::impl_unpackLocalizedProperties(    const   Sequence< OUString >
     // Optimise follow algorithm ... A LITTLE BIT :-)
     // There exist two different possibilities:
     //  i ) There exist no localized entries ...                        =>  size of lOutNames/lOutValues will be the same like lInNames/lInValues!
-    //  ii) There exist some (mostly one or two) localized entries ...  =>  size of lOutNames/lOutValues will be some bytes greater then lInNames/lInValues.
+    //  ii) There exist some (mostly one or two) localized entries ...  =>  size of lOutNames/lOutValues will be some bytes greater than lInNames/lInValues.
     //  =>  I think we should make it fast for i). ii) is a special case and mustn't be SOOOO... fast.
     //      We should reserve same space for output list like input ones first.
     //      Follow algorithm looks for these borders and change it for ii) only!
@@ -287,7 +282,7 @@ void ConfigItem::impl_unpackLocalizedProperties(    const   Sequence< OUString >
                 plOutValues = lOutValues.getArray();
             }
 
-            for( const auto& rProperty : std::as_const(lProperties) )
+            for (const auto& rProperty : lProperties)
             {
                 plOutNames [nDestinationCounter] = sNodeName + rProperty.Name;
                 plOutValues[nDestinationCounter] = rProperty.Value;
@@ -335,7 +330,7 @@ Sequence< sal_Bool > ConfigItem::GetReadOnlyStates(const css::uno::Sequence< OUS
     {
         try
         {
-            OUString sName = rNames[i];
+            const OUString& sName = rNames[i];
             OUString sPath;
             OUString sProperty;
 
@@ -428,7 +423,7 @@ Sequence< Any > ConfigItem::GetProperties(
     {
         Sequence< Any > lValues;
         impl_packLocalizedProperties( rNames, aRet, lValues );
-        aRet = lValues;
+        aRet = std::move(lValues);
     }
     return aRet;
 }
@@ -669,7 +664,7 @@ static void lcl_normalizeLocalNames(Sequence< OUString >& _rNames, ConfigNameFor
             else
             {
                 Reference<XServiceInfo> xSVI(_xParentNode, UNO_QUERY);
-                if (xSVI.is() && xSVI->supportsService("com.sun.star.configuration.SetAccess"))
+                if (xSVI.is() && xSVI->supportsService(u"com.sun.star.configuration.SetAccess"_ustr))
                 {
                     std::transform(std::cbegin(_rNames), std::cend(_rNames), _rNames.getArray(),
                         [](const OUString& rName) -> OUString { return wrapConfigurationElementName(rName); });
@@ -1172,7 +1167,7 @@ void    ConfigItem::ClearModified()
 Reference< XHierarchicalNameAccess> ConfigItem::GetTree()
 {
     Reference< XHierarchicalNameAccess> xRet;
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return xRet;
     if(!m_xHierarchyAccess.is())
         xRet = ConfigManager::acquireTree(*this);

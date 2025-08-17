@@ -48,7 +48,6 @@
 using namespace ::comphelper;
 using namespace ::linguistic;
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
@@ -57,7 +56,7 @@ using namespace ::com::sun::star::linguistic2;
 
 static uno::Reference< XLinguServiceManager2 > GetLngSvcMgr_Impl()
 {
-    uno::Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const uno::Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
     uno::Reference< XLinguServiceManager2 > xRes = LinguServiceManager::create(xContext);
     return xRes;
 }
@@ -103,7 +102,7 @@ void ThesDummy_Impl::GetCfgLocales()
         return;
 
     SvtLinguConfig aCfg;
-    Sequence < OUString > aNodeNames( aCfg.GetNodeNames( "ServiceManager/ThesaurusList" ) );
+    Sequence < OUString > aNodeNames( aCfg.GetNodeNames( u"ServiceManager/ThesaurusList"_ustr ) );
     const OUString *pNodeNames = aNodeNames.getConstArray();
     sal_Int32 nLen = aNodeNames.getLength();
     pLocaleSeq.reset( new Sequence< lang::Locale >( nLen ) );
@@ -403,7 +402,7 @@ LinguMgrExitLstnr::LinguMgrExitLstnr()
     // add object to frame::Desktop EventListeners in order to properly call
     // the AtExit function at application exit.
 
-    uno::Reference< XComponentContext >  xContext = getProcessComponentContext();
+    const uno::Reference< XComponentContext >&  xContext = getProcessComponentContext();
     xDesktop = Desktop::create( xContext );
     xDesktop->addEventListener( this );
 }
@@ -597,7 +596,7 @@ uno::Reference< XDictionary > LinguMgr::GetIgnoreAll()
     if (xTmpDicList.is())
     {
         const LanguageTag tag = comphelper::LibreOfficeKit::isActive()
-                                    ? LanguageTag("en-US")
+                                    ? LanguageTag(u"en-US"_ustr)
                                     : SvtSysLocale().GetUILanguageTag();
         std::locale loc(Translate::Create("svt", tag));
         xIgnoreAll = xTmpDicList->getDictionaryByName(
@@ -618,7 +617,7 @@ uno::Reference< XDictionary > LinguMgr::GetChangeAll()
     if (_xDicList.is())
     {
         xChangeAll = _xDicList->createDictionary(
-                            "ChangeAllList",
+                            u"ChangeAllList"_ustr,
                             LanguageTag::convertToLocale( LANGUAGE_NONE ),
                             DictionaryType_NEGATIVE, OUString() );
     }
@@ -660,7 +659,7 @@ uno::Reference< XDictionary > LinguMgr::GetStandard()
             xTmpDicList->addDictionary( xTmp );
             xTmp->setActive( true );
         }
-        xDic = xTmp;
+        xDic = std::move(xTmp);
     }
 #if OSL_DEBUG_LEVEL > 1
     uno::Reference< XStorable >      xStor( xDic, UNO_QUERY );

@@ -42,7 +42,7 @@ void ScSolverUtil::GetImplementations( uno::Sequence<OUString>& rImplNames,
     rImplNames.realloc(0);      // clear
     rDescriptions.realloc(0);
 
-    uno::Reference<uno::XComponentContext> xCtx(
+    const uno::Reference<uno::XComponentContext>& xCtx(
         comphelper::getProcessComponentContext() );
 
     uno::Reference<container::XContentEnumerationAccess> xEnAc(
@@ -99,7 +99,7 @@ uno::Reference<sheet::XSolver> ScSolverUtil::GetSolver( std::u16string_view rImp
 {
     uno::Reference<sheet::XSolver> xSolver;
 
-    uno::Reference<uno::XComponentContext> xCtx(
+    const uno::Reference<uno::XComponentContext>& xCtx(
         comphelper::getProcessComponentContext() );
 
     uno::Reference<container::XContentEnumerationAccess> xEnAc(
@@ -162,7 +162,8 @@ uno::Sequence<beans::PropertyValue> ScSolverUtil::GetDefaults( std::u16string_vi
         uno::Any aValue = xPropSet->getPropertyValue( rProp.Name );
         uno::TypeClass eClass = aValue.getValueTypeClass();
         // only use properties of supported types
-        if ( eClass == uno::TypeClass_BOOLEAN || eClass == uno::TypeClass_LONG || eClass == uno::TypeClass_DOUBLE )
+        if (eClass == uno::TypeClass_BOOLEAN || eClass == uno::TypeClass_LONG || eClass == uno::TypeClass_SHORT
+            || eClass == uno::TypeClass_BYTE || eClass == uno::TypeClass_DOUBLE)
             pDefaults[nValid++] = beans::PropertyValue( rProp.Name, -1, aValue, beans::PropertyState_DIRECT_VALUE );
     }
     aDefaults.realloc(nValid);

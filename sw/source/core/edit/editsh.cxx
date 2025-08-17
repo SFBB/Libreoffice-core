@@ -301,18 +301,12 @@ void SwEditShell::ReRead( const OUString& rGrfName, const OUString& rFltName,
 
 /// Returns the name and the filter name of a graphic if the pointer is on a graphic.
 /// If a String-pointer is != 0 then return corresponding name.
-void SwEditShell::GetGrfNms( OUString* pGrfName, OUString* pFltName,
-                            const SwFlyFrameFormat* pFormat ) const
+void SwEditShell::GetGrfNms( OUString* pGrfName, OUString* pFltName ) const
 {
     OSL_ENSURE( pGrfName || pFltName, "No parameters" );
-    if( pFormat )
-        SwDoc::GetGrfNms( *pFormat, pGrfName, pFltName );
-    else
-    {
-        SwGrfNode *pGrfNode = GetGrfNode_();
-        if( pGrfNode && pGrfNode->IsLinkedFile() )
-            pGrfNode->GetFileFilterNms( pGrfName, pFltName );
-    }
+    SwGrfNode *pGrfNode = GetGrfNode_();
+    if( pGrfNode && pGrfNode->IsLinkedFile() )
+        pGrfNode->GetFileFilterNms( pGrfName, pFltName );
 }
 
 const tools::PolyPolygon *SwEditShell::GetGraphicPolygon() const
@@ -336,7 +330,7 @@ void SwEditShell::SetGraphicPolygon( const tools::PolyPolygon *pPoly )
 void SwEditShell::ClearAutomaticContour()
 {
     SwNoTextNode *pNd = GetCursor()->GetPointNode().GetNoTextNode();
-    OSL_ENSURE( pNd, "is no NoTextNode!" );
+    assert(pNd && "is no NoTextNode!");
     if( pNd->HasAutomaticContour() )
     {
         StartAllAction();
@@ -369,7 +363,7 @@ svt::EmbeddedObjectRef& SwEditShell::GetOLEObject() const
     return rOObj.GetObject();
 }
 
-bool SwEditShell::HasOLEObj( std::u16string_view rName ) const
+bool SwEditShell::HasOLEObj( const UIName& rName ) const
 {
     SwStartNode *pStNd;
     SwNodeIndex aIdx( *GetNodes().GetEndOfAutotext().StartOfSectionNode(), 1 );
@@ -387,20 +381,20 @@ bool SwEditShell::HasOLEObj( std::u16string_view rName ) const
     return false;
 }
 
-void SwEditShell::SetChartName( const OUString &rName )
+void SwEditShell::SetChartName( const UIName &rName )
 {
     SwOLENode *pONd = GetCursor()->GetPointNode().GetOLENode();
     OSL_ENSURE( pONd, "ChartNode not found" );
     pONd->SetChartTableName( rName );
 }
 
-void SwEditShell::UpdateCharts( const OUString& rName )
+void SwEditShell::UpdateCharts( const UIName& rName )
 {
     GetDoc()->UpdateCharts( rName );
 }
 
 /// change table name
-void SwEditShell::SetTableName( SwFrameFormat& rTableFormat, const OUString &rNewName )
+void SwEditShell::SetTableName( SwFrameFormat& rTableFormat, const UIName &rNewName )
 {
     GetDoc()->SetTableName( rTableFormat, rNewName );
 }
@@ -438,7 +432,7 @@ const SwDocStat& SwEditShell::GetUpdatedDocStat()
 }
 
 /// get the reference of a given name in the Doc
-const SwFormatRefMark* SwEditShell::GetRefMark( std::u16string_view rName ) const
+const SwFormatRefMark* SwEditShell::GetRefMark( const SwMarkName& rName ) const
 {
     return GetDoc()->GetRefMark( rName );
 }
@@ -796,7 +790,7 @@ void SwEditShell::SetNumberingRestart()
                     if( nullptr != pContentFrame )
                     {
                         // skip hidden frames - ignore protection!
-                        if( !static_cast<SwTextFrame*>(pContentFrame)->IsHiddenNow() )
+                        if( !pContentFrame->IsHiddenNow() )
                         {
                             // if the node is numbered and the starting value of the numbering equals the
                             // start value of the numbering rule then set this value as hard starting value
@@ -863,7 +857,7 @@ sal_Int32 SwEditShell::GetLineCount()
 
     aStart = SwNodeOffset(0);
 
-    while( nullptr != ( pCNd = GetDoc()->GetNodes().GoNextSection(
+    while (nullptr != (pCNd = SwNodes::GoNextSection(
                 &aStart, true, false )) )
     {
         if( nullptr != ( pContentFrame = pCNd->getLayoutFrame( GetLayout() ) ) && pContentFrame->IsTextFrame() )

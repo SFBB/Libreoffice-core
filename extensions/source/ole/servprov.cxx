@@ -33,6 +33,7 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <o3tl/any.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <officecfg/Office/Common.hxx>
 #include <ooo/vba/XHelperInterface.hpp>
 #include <sal/log.hxx>
 
@@ -91,7 +92,7 @@ bool OneInstanceOleWrapper::registerClass(GUID const * pGuid)
             REGCLS_MULTIPLEUSE,
             &m_factoryHandle);
 
-    SAL_INFO("extensions.olebridge", "CoRegisterClassObject(" << *pGuid << "): " << WindowsErrorStringFromHRESULT(hresult));
+    SAL_INFO("extensions.olebridge", "CoRegisterClassObject(" << *pGuid << "): " << comphelper::WindowsErrorStringFromHRESULT(hresult));
 
     return (hresult == NOERROR);
 }
@@ -144,8 +145,12 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP OneInstanceOleWrapper::CreateInstance(IUnknown
 
     SAL_INFO("extensions.olebridge", "OneInstanceOleWrapper::CreateInstance(" << riid << ")");
 
-    HRESULT ret = ResultFromScode(E_UNEXPECTED);
+    if (officecfg::Office::Common::Security::Scripting::DisableOLEAutomation::get())
+    {
+        return ResultFromScode(E_NOINTERFACE);
+    }
 
+    HRESULT ret = ResultFromScode(E_UNEXPECTED);
     const Reference<XInterface>& xInst = m_xInstFunction();
     if (xInst.is())
     {
@@ -390,47 +395,21 @@ css::uno::Sequence<OUString> OleClient::getSupportedServiceNames()
 Reference<XInterface> SAL_CALL OleClient::createInstance(const OUString& ServiceSpecifier)
 {
     Reference<XInterface>   ret;
-    HRESULT         result;
-    IUnknown*       pUnknown = nullptr;
-    CLSID           classId;
 
     o2u_attachCurrentThread();
 
-    result = CLSIDFromProgID(
-                  o3tl::toW(ServiceSpecifier.getStr()), //Pointer to the ProgID
-                  &classId);                        //Pointer to the CLSID
-
-
-    if (result == NOERROR)
-    {
-        result = CoCreateInstance(
-                      classId,              //Class identifier (CLSID) of the object
-                      nullptr,              //Pointer to whether object is or isn't part of an aggregate
-                      CLSCTX_SERVER,  //Context for running executable code
-                      IID_IUnknown,         //Reference to the identifier of the interface
-                      reinterpret_cast<void**>(&pUnknown)); //Address of output variable that receives
-                                                  // the interface pointer requested in riid
-    }
-
-    if (pUnknown != nullptr)
+    CComPtr<IUnknown> pUnknown;
+    pUnknown.CoCreateInstance(o3tl::toW(ServiceSpecifier.getStr()), nullptr, CLSCTX_SERVER);
+    if (pUnknown)
     {
         Any any;
-        CComVariant variant;
-
-        V_VT(&variant) = VT_UNKNOWN;
-        V_UNKNOWN(&variant) = pUnknown;
-        // AddRef for Variant
-        pUnknown->AddRef();
-
-        // When the object is wrapped, then its refcount is increased
+        CComVariant variant(pUnknown);
         variantToAny(&variant, any);
         if (any.getValueTypeClass() == TypeClass_INTERFACE)
         {
             any >>= ret;
         }
-        pUnknown->Release(); // CoCreateInstance
     }
-
     return ret;
 }
 

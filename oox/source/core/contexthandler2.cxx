@@ -24,6 +24,7 @@
 #include <oox/token/tokens.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <o3tl/safeint.hxx>
+#include <o3tl/string_view.hxx>
 #include <osl/diagnose.h>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -44,11 +45,10 @@ struct ElementInfo
     explicit     ElementInfo() : maChars( 0), mnElement( XML_TOKEN_INVALID ), mbTrimSpaces( false ) {}
 };
 
-ContextHandler2Helper::ContextHandler2Helper( bool bEnableTrimSpace, XmlFilterBase& rFilter ) :
+ContextHandler2Helper::ContextHandler2Helper( bool bEnableTrimSpace ) :
     mxContextStack( std::make_shared<ContextStack>() ),
     mnRootStackSize( 0 ),
-    mbEnableTrimSpace( bEnableTrimSpace ),
-    mrFilter( rFilter )
+    mbEnableTrimSpace( bEnableTrimSpace )
 {
     pushElementInfo( XML_ROOT_CONTEXT );
 }
@@ -56,8 +56,7 @@ ContextHandler2Helper::ContextHandler2Helper( bool bEnableTrimSpace, XmlFilterBa
 ContextHandler2Helper::ContextHandler2Helper( const ContextHandler2Helper& rParent ) :
     mxContextStack( rParent.mxContextStack ),
     mnRootStackSize( rParent.mxContextStack->size() ),
-    mbEnableTrimSpace( rParent.mbEnableTrimSpace ),
-    mrFilter(rParent.mrFilter)
+    mbEnableTrimSpace( rParent.mbEnableTrimSpace )
 {
 }
 
@@ -229,42 +228,36 @@ bool ContextHandler2Helper::prepareMceContext( sal_Int32 nElement, const Attribu
             break;
 
         case MCE_TOKEN( Choice ):
+            if (!isMCEStateEmpty() && getMCEState() == MCE_STATE::Started)
             {
-                if (isMCEStateEmpty() || getMCEState() != MCE_STATE::Started)
-                    return false;
-
-                OUString aRequires = rAttribs.getString( XML_Requires, "none" );
+                OUString aRequires = rAttribs.getStringDefaulted(XML_Requires);
 
                 // At this point we can't access namespaces as the correct xml filter
                 // is long gone. For now let's decide depending on a list of supported
                 // namespaces like we do in writerfilter
 
-                std::vector<OUString> aSupportedNS =
+                static constexpr std::u16string_view aSupportedNS[] =
                 {
-                    "a14", // Impress needs this to import math formulas.
-                    "p14",
-                    "p15",
-                    "x12ac",
-                    "v"
+                    // u"a14", // We do not currently support inline formulas and other a14 stuff
+                    u"p14",
+                    u"p15",
+                    u"x12ac",
+                    u"v",
+                    u"cx2"
                 };
 
-                Reference<XServiceInfo> xModel(getDocFilter().getModel(), UNO_QUERY);
-                if (xModel.is() && xModel->supportsService("com.sun.star.sheet.SpreadsheetDocument"))
+                for (size_t pos = 0; pos != std::u16string_view::npos;)
                 {
-                    // No a14 for Calc documents, it would cause duplicated shapes as-is.
-                    auto it = std::find(aSupportedNS.begin(), aSupportedNS.end(), "a14");
-                    if (it != aSupportedNS.end())
-                    {
-                        aSupportedNS.erase(it);
-                    }
+                    // 'Requires' is a space-separated list
+                    auto ns = o3tl::getToken(aRequires, u' ', pos);
+                    if (!ns.empty() && std::find(std::begin(aSupportedNS), std::end(aSupportedNS), ns) == std::end(aSupportedNS))
+                        return false;
                 }
 
-                if (std::find(aSupportedNS.begin(), aSupportedNS.end(), aRequires) != aSupportedNS.end())
-                    setMCEState( MCE_STATE::FoundChoice ) ;
-                else
-                    return false;
+                setMCEState( MCE_STATE::FoundChoice ) ;
+                break;
             }
-            break;
+            return false;
 
         case MCE_TOKEN( Fallback ):
             if( !isMCEStateEmpty() && getMCEState() == MCE_STATE::Started )

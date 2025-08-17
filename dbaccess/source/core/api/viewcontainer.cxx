@@ -34,9 +34,7 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbcx;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::container;
 using namespace ::osl;
 using namespace ::comphelper;
@@ -63,7 +61,7 @@ OViewContainer::~OViewContainer()
 // XServiceInfo
 OUString SAL_CALL OViewContainer::getImplementationName()
     {
-        return "com.sun.star.sdb.dbaccess.OViewContainer";
+        return u"com.sun.star.sdb.dbaccess.OViewContainer"_ustr;
     }
 sal_Bool SAL_CALL OViewContainer::supportsService(const OUString& _rServiceName)
     {
@@ -80,9 +78,9 @@ css::uno::Sequence< OUString > SAL_CALL OViewContainer::getSupportedServiceNames
 }
 
 
-ObjectType OViewContainer::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OViewContainer::createObject(const OUString& _rName)
 {
-    ObjectType xProp;
+    css::uno::Reference< css::beans::XPropertySet > xProp;
     if ( m_xMasterContainer.is() && m_xMasterContainer->hasByName(_rName) )
         xProp.set(m_xMasterContainer->getByName(_rName),UNO_QUERY);
 
@@ -121,7 +119,7 @@ Reference< XPropertySet > OViewContainer::createDescriptor()
 }
 
 // XAppend
-ObjectType OViewContainer::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > OViewContainer::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     // append the new table with a create stmt
     OUString aName = getString(descriptor->getPropertyValue(PROPERTY_NAME));
@@ -173,7 +171,7 @@ void OViewContainer::dropObject(sal_Int32 _nPos, const OUString& _sElementName)
     {
         OUString sComposedName;
 
-        Reference<XPropertySet> xTable(getObject(_nPos),UNO_QUERY);
+        Reference<XPropertySet> xTable(getObject(_nPos));
         if ( xTable.is() )
         {
             OUString sCatalog,sSchema,sTable;
@@ -248,7 +246,7 @@ void SAL_CALL OViewContainer::elementReplaced( const ContainerEvent& /*Event*/ )
 OUString OViewContainer::getTableTypeRestriction() const
 {
     // no restriction at all (other than the ones provided externally)
-    return "VIEW";
+    return u"VIEW"_ustr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

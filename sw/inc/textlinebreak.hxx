@@ -21,8 +21,6 @@
 
 #include "txatbase.hxx"
 
-class SwFormatLineBreak;
-
 /**
  * SwTextAttr subclass that tracks the location of the wrapped SwFormatLineBreak.
  *
@@ -33,7 +31,7 @@ class SW_DLLPUBLIC SwTextLineBreak final : public SwTextAttr
     SwTextNode* m_pTextNode;
 
 public:
-    SwTextLineBreak(SwFormatLineBreak& rAttr, sal_Int32 nStart);
+    SwTextLineBreak(const SfxPoolItemHolder& rAttr, sal_Int32 nStart);
 
     ~SwTextLineBreak() override;
 

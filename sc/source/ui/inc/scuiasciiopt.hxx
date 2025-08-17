@@ -31,29 +31,34 @@ class SvxTextEncodingBox;
 
 class ScImportAsciiDlg : public weld::GenericDialogController
 {
-    SvStream*                   mpDatStream;
+    SvStream*                       mpDatStream;
     sal_uLong                       mnStreamPos;
+    sal_uLong                       mnStreamInitPos;
     std::unique_ptr<sal_uLong[]>    mpRowPosArray;
     sal_uLong                       mnRowPosCount;
 
     OUString               maPreviewLine[ CSV_PREVIEW_LINES ];
 
     OUString                    maFieldSeparators;  // selected field separators
+    OUString                    maDetectedFieldSeps; // detected field seps
     sal_Unicode                 mcTextSep;
 
     rtl_TextEncoding            meCharSet;          /// Selected char set.
+    rtl_TextEncoding            meDetectedCharSet;  /// This is computed only once at initialization, so store it.
     bool                        mbCharSetSystem;    /// Is System char set selected?
+    bool                        mbCharSetDetect;    /// Should we autodetect character set ?
     ScImportAsciiCall           meCall;             /// How the dialog is called (see asciiopt.hxx)
-    bool                        mbDetectSep;        /// Whether to detect a possible separator.
 
     std::unique_ptr<weld::Label> mxFtCharSet;
     std::unique_ptr<SvxTextEncodingBox> mxLbCharSet;
+    std::unique_ptr<weld::Label> mxFtDetectedCharSet;
     std::unique_ptr<weld::Label> mxFtCustomLang;
     std::unique_ptr<SvxLanguageBox> mxLbCustomLang;
 
     std::unique_ptr<weld::Label> mxFtRow;
     std::unique_ptr<weld::SpinButton> mxNfRow;
 
+    std::unique_ptr<weld::RadioButton> mxRbDetectSep;
     std::unique_ptr<weld::RadioButton> mxRbFixed;
     std::unique_ptr<weld::RadioButton> mxRbSeparated;
 
@@ -64,7 +69,7 @@ class ScImportAsciiDlg : public weld::GenericDialogController
     std::unique_ptr<weld::CheckButton> mxCkbSpace;
     std::unique_ptr<weld::CheckButton> mxCkbOther;
     std::unique_ptr<weld::Entry> mxEdOther;
-    std::unique_ptr<weld::CheckButton> mxCkbAsOnce;
+    std::unique_ptr<weld::CheckButton> mxCkbMergeDelimiters;
 
     std::unique_ptr<weld::Label> mxFtTextSep;
     std::unique_ptr<weld::ComboBox> mxCbTextSep;
@@ -79,11 +84,12 @@ class ScImportAsciiDlg : public weld::GenericDialogController
     std::unique_ptr<weld::Label> mxAltTitle;
 
     std::unique_ptr<ScCsvTableBox> mxTableBox;
+    std::unique_ptr<weld::CheckButton> mxCkbAlwaysShowOnImport;
 
 public:
                                 ScImportAsciiDlg(
                                     weld::Window* pParent, std::u16string_view aDatName,
-                                    SvStream* pInStream, ScImportAsciiCall eCall );
+                                    SvStream* pInStream, ScImportAsciiCall eCall);
                                 virtual ~ScImportAsciiDlg() override;
 
     void                        GetOptions( ScAsciiOptions& rOpt );
@@ -97,6 +103,8 @@ private:
     void                        SetSeparators( sal_Unicode cSep );
     /** Returns all separator characters in a string. */
     OUString                    GetSeparators() const;
+    OUString                    GetActiveSeparators() const;
+    void                        DetectCsvSeparators();
 
     /** Enables or disables all separator checkboxes and edit fields. */
     void                        SetupSeparatorCtrls();

@@ -345,7 +345,7 @@ Reference< XResultSetMetaData > SAL_CALL ContentResultSetWrapper::getMetaData()
                 = xMetaDataSupplier->getMetaData();
 
             aGuard.lock();
-            m_xMetaDataFromOrigin = xMetaData;
+            m_xMetaDataFromOrigin = std::move(xMetaData);
         }
     }
     return m_xMetaDataFromOrigin;
@@ -362,7 +362,7 @@ Reference< XPropertySetInfo > SAL_CALL ContentResultSetWrapper::getPropertySetIn
 }
 
 // virtual
-Reference< XPropertySetInfo > ContentResultSetWrapper::getPropertySetInfoImpl(std::unique_lock<std::mutex>& rGuard)
+const Reference< XPropertySetInfo > & ContentResultSetWrapper::getPropertySetInfoImpl(std::unique_lock<std::mutex>& rGuard)
 {
     impl_EnsureNotDisposed(rGuard);
     if( m_xPropertySetInfo.is() )
@@ -413,7 +413,7 @@ void SAL_CALL ContentResultSetWrapper::addPropertyChangeListener( const OUString
     std::unique_lock aGuard( m_aMutex );
     impl_EnsureNotDisposed(aGuard);
 
-    if( !getPropertySetInfo().is() )
+    if( !getPropertySetInfoImpl(aGuard).is() )
     {
         OSL_FAIL( "broadcaster was disposed already" );
         throw UnknownPropertyException();
@@ -455,7 +455,7 @@ void SAL_CALL ContentResultSetWrapper::addVetoableChangeListener( const OUString
     std::unique_lock aGuard( m_aMutex );
     impl_EnsureNotDisposed(aGuard);
 
-    if( !getPropertySetInfo().is() )
+    if( !getPropertySetInfoImpl(aGuard).is() )
     {
         OSL_FAIL( "broadcaster was disposed already" );
         throw UnknownPropertyException();
@@ -472,12 +472,10 @@ void SAL_CALL ContentResultSetWrapper::addVetoableChangeListener( const OUString
         return;
 
     impl_init_xPropertySetOrigin(aGuard);
+    if( !m_xPropertySetOrigin.is() )
     {
-        if( !m_xPropertySetOrigin.is() )
-        {
-            OSL_FAIL( "broadcaster was disposed already" );
-            return;
-        }
+        OSL_FAIL( "broadcaster was disposed already" );
+        return;
     }
     try
     {
@@ -509,7 +507,7 @@ void SAL_CALL ContentResultSetWrapper::removePropertyChangeListener( const OUStr
     {
         if( !rPropertyName.isEmpty() )
         {
-            if( !getPropertySetInfo().is() )
+            if( !getPropertySetInfoImpl(aGuard).is() )
                 throw UnknownPropertyException();
 
             m_xPropertySetInfo->getPropertyByName( rPropertyName );
@@ -557,7 +555,7 @@ void SAL_CALL ContentResultSetWrapper::removeVetoableChangeListener( const OUStr
     {
         if( !rPropertyName.isEmpty() )
         {
-            if( !getPropertySetInfo().is() )
+            if( !getPropertySetInfoImpl(aGuard).is() )
                 throw UnknownPropertyException(rPropertyName);
 
             m_xPropertySetInfo->getPropertyByName( rPropertyName );
@@ -651,6 +649,7 @@ OUString SAL_CALL ContentResultSetWrapper::queryContentIdentifierString()
     std::unique_lock aGuard(m_aMutex);
     return queryContentIdentifierStringImpl(aGuard);
 }
+
 // virtual
 OUString ContentResultSetWrapper::queryContentIdentifierStringImpl(std::unique_lock<std::mutex>& rGuard)
 {
@@ -664,13 +663,18 @@ OUString ContentResultSetWrapper::queryContentIdentifierStringImpl(std::unique_l
     return m_xContentAccessOrigin->queryContentIdentifierString();
 }
 
-
 // virtual
 Reference< XContentIdentifier > SAL_CALL ContentResultSetWrapper::queryContentIdentifier()
 {
     std::unique_lock aGuard(m_aMutex);
-    impl_EnsureNotDisposed(aGuard);
-    impl_init_xContentAccessOrigin(aGuard);
+    return queryContentIdentifierImpl(aGuard);
+}
+
+// virtual
+Reference<XContentIdentifier> ContentResultSetWrapper::queryContentIdentifierImpl(std::unique_lock<std::mutex>& rGuard)
+{
+    impl_EnsureNotDisposed(rGuard);
+    impl_init_xContentAccessOrigin(rGuard);
     if( !m_xContentAccessOrigin.is() )
     {
         OSL_FAIL( "broadcaster was disposed already" );
@@ -679,13 +683,17 @@ Reference< XContentIdentifier > SAL_CALL ContentResultSetWrapper::queryContentId
     return m_xContentAccessOrigin->queryContentIdentifier();
 }
 
-
 // virtual
 Reference< XContent > SAL_CALL ContentResultSetWrapper::queryContent()
 {
     std::unique_lock aGuard(m_aMutex);
-    impl_EnsureNotDisposed(aGuard);
-    impl_init_xContentAccessOrigin(aGuard);
+    return queryContentImpl(aGuard);
+}
+
+Reference<XContent> ContentResultSetWrapper::queryContentImpl(std::unique_lock<std::mutex>& rGuard)
+{
+    impl_EnsureNotDisposed(rGuard);
+    impl_init_xContentAccessOrigin(rGuard);
     if( !m_xContentAccessOrigin.is() )
     {
         OSL_FAIL( "broadcaster was disposed already" );
@@ -693,7 +701,6 @@ Reference< XContent > SAL_CALL ContentResultSetWrapper::queryContent()
     }
     return m_xContentAccessOrigin->queryContent();
 }
-
 
 // XResultSet methods.
 

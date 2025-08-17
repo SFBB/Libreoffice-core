@@ -46,8 +46,6 @@ namespace package_ucp
 
 
 
-namespace {
-
 class Package : public cppu::OWeakObject,
                 public container::XHierarchicalNameAccess
 {
@@ -83,10 +81,6 @@ public:
     hasByHierarchicalName( const OUString& aName ) override
     { return m_xNA->hasByHierarchicalName( aName ); }
 };
-
-}
-
-class Packages : public std::unordered_map<OUString, Package*> {};
 
 }
 
@@ -143,7 +137,7 @@ XTYPEPROVIDER_IMPL_3( ContentProvider,
 OUString
 ContentProvider::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.PackageContentProvider";
+    return u"com.sun.star.comp.ucb.PackageContentProvider"_ustr;
 }
 
 sal_Bool
@@ -155,7 +149,7 @@ ContentProvider::supportsService(const OUString& s)
 css::uno::Sequence< OUString >
 ContentProvider::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.PackageContentProvider" };
+    return { u"com.sun.star.ucb.PackageContentProvider"_ustr };
 }
 
 
@@ -180,7 +174,7 @@ uno::Reference< ucb::XContent > SAL_CALL ContentProvider::queryContent(
     osl::MutexGuard aGuard( m_aMutex );
 
     // Check, if a content with given id already exists...
-    uno::Reference< ucb::XContent > xContent
+    rtl::Reference< ucbhelper::ContentImplHelper > xContent
         = queryExistingContent( xId );
     if ( xContent.is() )
         return xContent;
@@ -207,17 +201,12 @@ ContentProvider::createPackage( const PackageUri & rURI )
 
     OUString rURL = rURI.getPackage() + rURI.getParam();
 
-    if ( m_pPackages )
+    auto it = m_aPackages.find( rURL );
+    if ( it != m_aPackages.end() )
     {
-        Packages::const_iterator it = m_pPackages->find( rURL );
-        if ( it != m_pPackages->end() )
-        {
-            // Already instantiated. Return package.
-            return (*it).second->m_xNA;
-        }
+        // Already instantiated. Return package.
+        return (*it).second->m_xNA;
     }
-    else
-        m_pPackages.reset( new Packages );
 
     // Create new package...
     uno::Sequence< uno::Any > aArguments{ uno::Any(rURL) };
@@ -226,7 +215,7 @@ ContentProvider::createPackage( const PackageUri & rURI )
     {
         xNameAccess.set(
             m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                "com.sun.star.packages.comp.ZipPackage",
+                u"com.sun.star.packages.comp.ZipPackage"_ustr,
                 aArguments, m_xContext ),
             css::uno::UNO_QUERY_THROW );
     }
@@ -242,7 +231,7 @@ ContentProvider::createPackage( const PackageUri & rURI )
     }
 
     rtl::Reference< Package> xPackage = new Package( rURL, xNameAccess, this );
-    (*m_pPackages)[ rURL ] = xPackage.get();
+    m_aPackages[ rURL ] = xPackage.get();
     return xPackage;
 }
 
@@ -251,15 +240,7 @@ void ContentProvider::removePackage( const OUString & rName )
 {
     osl::MutexGuard aGuard( m_aMutex );
 
-    if ( m_pPackages )
-    {
-        Packages::iterator it = m_pPackages->find( rName );
-        if ( it != m_pPackages->end() )
-        {
-            m_pPackages->erase( it );
-            return;
-        }
-    }
+    m_aPackages.erase( rName );
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

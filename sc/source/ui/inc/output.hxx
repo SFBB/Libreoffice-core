@@ -21,11 +21,13 @@
 
 #include <address.hxx>
 #include <cellvalue.hxx>
+#include <spellcheckcontext.hxx>
 #include <tools/color.hxx>
 #include <tools/fract.hxx>
 #include <tools/gen.hxx>
 #include <editeng/svxenum.hxx>
 #include <vcl/outdev.hxx>
+#include <vcl/pdfwriter.hxx>
 #include <tools/degree.hxx>
 #include <o3tl/deleter.hxx>
 #include <optional>
@@ -52,6 +54,7 @@ class ScPageBreakData;
 class FmFormView;
 class ScFieldEditEngine;
 class SdrPaintWindow;
+class ScDrawStringsVars;
 
 #define SC_SCENARIO_HSPACE      60
 #define SC_SCENARIO_VSPACE      50
@@ -60,6 +63,16 @@ enum ScOutputType { OUTTYPE_WINDOW, OUTTYPE_PRINTER };
 
 class ClearableClipRegion;
 typedef std::unique_ptr<ClearableClipRegion, o3tl::default_delete<ClearableClipRegion>> ClearableClipRegionPtr;
+
+typedef std::map<SCROW, sal_Int32> TableRowIdMap;
+typedef std::map<std::pair<SCROW, SCCOL>, sal_Int32> TableDataIdMap;
+struct ScEnhancedPDFState
+{
+    sal_Int32 m_WorksheetId = -1;
+    TableRowIdMap m_TableRowMap;
+    TableDataIdMap m_TableDataMap;
+    ScEnhancedPDFState(){};
+};
 
 /// Describes reference mark to be drawn, position & size in TWIPs
 struct ReferenceMark {
@@ -141,7 +154,7 @@ private:
         const SfxItemSet*       mpOldCondSet;
         const SfxItemSet*       mpOldPreviewFontSet;
         RowInfo*                mpThisRowInfo;
-        const std::vector<editeng::MisspellRanges>* mpMisspellRanges;
+        sc::MisspellRangeResult maMisspellRanges;
 
         explicit DrawEditParam(const ScPatternAttr* pPattern, const SfxItemSet* pCondSet, bool bCellIsValue);
 
@@ -175,45 +188,46 @@ private:
         void adjustForHyperlinkInPDF(Point aURLStart, const OutputDevice* pDev);
     };
 
+    VclPtr<OutputDevice> mpOriginalTargetDevice; // 'unpatched' TargetDevice
     VclPtr<OutputDevice> mpDev;        // Device
     VclPtr<OutputDevice> mpRefDevice;  // printer if used for preview
     VclPtr<OutputDevice> pFmtDevice;   // reference for text formatting
     ScTableInfo& mrTabInfo;
-    RowInfo* pRowInfo;          // Info block
-    SCSIZE nArrCount;           // occupied lines in info block
+    RowInfo* mpRowInfo;          // Info block
+    SCSIZE mnArrCount;           // occupied lines in info block
     ScDocument* mpDoc;          // Document
-    SCTAB nTab;                 // sheet
-    tools::Long nScrX;                 // Output Startpos. (Pixel)
-    tools::Long nScrY;
-    tools::Long nScrW;                 // Output size (Pixel)
-    tools::Long nScrH;
-    tools::Long nMirrorW;              // Visible output width for mirroring (default: nScrW)
-    SCCOL nX1;                  // Start-/End coordinates
-    SCROW nY1;                  //  ( incl. hidden )
-    SCCOL nX2;
-    SCROW nY2;
-    SCCOL nVisX1;               // Start-/End coordinates
-    SCROW nVisY1;               //  ( visible range )
-    SCCOL nVisX2;
-    SCROW nVisY2;
-    ScOutputType eType;         // Screen/Printer ...
+    SCTAB mnTab;                 // sheet
+    tools::Long mnScrX;                 // Output Startpos. (Pixel)
+    tools::Long mnScrY;
+    tools::Long mnScrW;                 // Output size (Pixel)
+    tools::Long mnScrH;
+    tools::Long mnMirrorW;              // Visible output width for mirroring (default: nScrW)
+    SCCOL mnX1;                  // Start-/End coordinates
+    SCROW mnY1;                  //  ( incl. hidden )
+    SCCOL mnX2;
+    SCROW mnY2;
+    SCCOL mnVisX1;               // Start-/End coordinates
+    SCROW mnVisY1;               //  ( visible range )
+    SCCOL mnVisX2;
+    SCROW mnVisY2;
+    ScOutputType meType;         // Screen/Printer ...
     double mnPPTX;              // Pixel per Twips
     double mnPPTY;
-    Fraction aZoomX;
-    Fraction aZoomY;
+    Fraction maZoomX;
+    Fraction maZoomY;
 
-    ScTabViewShell* pViewShell; // for connect from visible plug-ins
+    ScTabViewShell* mpViewShell; // for connect from visible plug-ins
 
-    FmFormView* pDrawView;      // SdrView to paint to
+    FmFormView* mpDrawView;      // SdrView to paint to
 
-    bool bEditMode;             // InPlace edited cell - do not output
-    SCCOL nEditCol;
-    SCROW nEditRow;
+    bool mbEditMode;             // InPlace edited cell - do not output
+    SCCOL mnEditCol;
+    SCROW mnEditRow;
 
-    bool bMetaFile;             // Output to metafile (not pixels!)
+    bool mbMetaFile;             // Output to metafile (not pixels!)
 
-    bool bPagebreakMode;        // Page break preview
-    bool bSolidBackground;      // white instead of transparent
+    bool mbPagebreakMode;        // Page break preview
+    bool mbSolidBackground;      // white instead of transparent
 
     bool mbUseStyleColor;
     bool mbForceAutoColor;
@@ -223,19 +237,19 @@ private:
     std::optional<Color> mxTextColor;
     std::optional<Color> mxFormulaColor;
 
-    Color   aGridColor;
+    Color   maGridColor;
 
     bool    mbShowNullValues;
     bool    mbShowFormulas;
-    bool    bShowSpellErrors;   // Show spelling errors in EditObjects
-    bool    bMarkClipped;
+    bool    mbShowSpellErrors;   // Show spelling errors in EditObjects
+    bool    mbMarkClipped;
 
-    bool    bSnapPixel;
+    bool    mbSnapPixel;
 
-    bool    bAnyClipped;        // internal
-    bool    bVertical;
-    bool    bTabProtected;
-    bool    bLayoutRTL;
+    bool    mbAnyClipped;        // internal
+    bool    mbVertical;
+    bool    mbTabProtected;
+    bool    mbLayoutRTL;
 
     // #i74769# use SdrPaintWindow direct, remember it during BeginDrawLayers/EndDrawLayers
     SdrPaintWindow*     mpTargetPaintWindow;
@@ -299,6 +313,21 @@ private:
     // and the single call to end of constructor to be sure this always happens
     void    SetCellRotations();
 
+    /// inner loop of LayoutStrings
+    void LayoutStringsImpl(bool bPixelToLogic, RowInfo* pThisRowInfo, SCCOL nX, SCROW nY, SCSIZE nArrY,
+                           std::optional<SCCOL>& oFirstNonEmptyCellX,
+                           std::optional<SCCOL>& oLastEmptyCellX,
+                           SCCOL nLastContentCol,
+                           std::vector<std::unique_ptr<ScPatternAttr> >& aAltPatterns,
+                           const ScPatternAttr*& pOldPattern,
+                           const SfxItemSet*& pOldCondSet,
+                           SvtScriptType& nOldScript,
+                           ScDrawStringsVars& aVars,
+                           bool& bProgress, tools::Long nPosX, tools::Long nPosY, bool bTaggedPDF,
+                           bool& bReopenRowTag, vcl::PDFExtOutDevData* pPDF,
+                           tools::Long nLayoutSign,
+                           KernArray& aDX);
+
 public:
 
     /**
@@ -321,11 +350,11 @@ public:
 
     void    SetRefDevice( OutputDevice* pRDev );
     void    SetFmtDevice( OutputDevice* pRDev );
-    void    SetViewShell( ScTabViewShell* pSh ) { pViewShell = pSh; }
+    void    SetViewShell( ScTabViewShell* pSh ) { mpViewShell = pSh; }
 
-    void    SetDrawView( FmFormView* pNew )     { pDrawView = pNew; }
+    void    SetDrawView( FmFormView* pNew )     { mpDrawView = pNew; }
 
-    void    SetSolidBackground( bool bSet )     { bSolidBackground = bSet; }
+    void    SetSolidBackground( bool bSet )     { mbSolidBackground = bSet; }
     void    SetUseStyleColor( bool bSet );
 
     void    SetEditCell( SCCOL nCol, SCROW nRow );
@@ -337,10 +366,13 @@ public:
     void    SetShowFormulas   ( bool bSet );
     void    SetShowSpellErrors( bool bSet );
     void    SetMirrorWidth( tools::Long nNew );
-    tools::Long    GetScrW() const     { return nScrW; }
-    tools::Long    GetScrH() const     { return nScrH; }
+    tools::Long    GetScrW() const     { return mnScrW; }
+    tools::Long    GetScrH() const     { return mnScrH; }
 
     void    SetSnapPixel();
+
+    bool    ReopenPDFStructureElement(vcl::pdf::StructElement aType, SCROW nRow = -1,
+                                      SCCOL nCol = -1);
 
     void    DrawGrid(vcl::RenderContext& rRenderContext, bool bGrid, bool bPage, bool bMergeCover = false);
     void    DrawStrings( bool bPixelToLogic = false );

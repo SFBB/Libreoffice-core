@@ -34,7 +34,7 @@
 #include "ww8glsy.hxx"
 #include "ww8par.hxx"
 
-WW8Glossary::WW8Glossary(tools::SvRef<SotStorageStream> &refStrm, sal_uInt8 nVersion, SotStorage *pStg)
+WW8Glossary::WW8Glossary(rtl::Reference<SotStorageStream> &refStrm, sal_uInt8 nVersion, SotStorage *pStg)
     : m_rStrm(refStrm)
     , m_xStg(pStg)
     , m_nStrings(0)
@@ -217,7 +217,7 @@ bool WW8Glossary::Load( SwTextBlocks &rBlocks, bool bSaveRelFile )
                 if( !aIdx.GetNode().IsTextNode() )
                 {
                     OSL_ENSURE( false, "Where is the TextNode?" );
-                    pD->GetNodes().GoNext( &aIdx );
+                    SwNodes::GoNext(&aIdx);
                 }
                 SwPaM aPamo( aIdx );
                 std::unique_ptr<SwWW8ImplReader> xRdr(new SwWW8ImplReader(

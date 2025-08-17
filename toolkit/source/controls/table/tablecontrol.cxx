@@ -33,7 +33,6 @@
 using namespace ::com::sun::star::uno;
 using ::com::sun::star::accessibility::XAccessible;
 using namespace ::com::sun::star::accessibility;
-using namespace ::com::sun::star::lang;
 
 namespace svt::table
 {
@@ -79,42 +78,84 @@ namespace svt::table
 
     void TableControl::GetFocus()
     {
-        if ( !m_pImpl || !m_pImpl->getInputHandler()->GetFocus( *m_pImpl ) )
-            Control::GetFocus();
+        if (m_pImpl)
+            m_pImpl->showCursor();
+
+        Control::GetFocus();
     }
 
 
     void TableControl::LoseFocus()
     {
-        if ( !m_pImpl || !m_pImpl->getInputHandler()->LoseFocus( *m_pImpl ) )
-            Control::LoseFocus();
+        if (m_pImpl)
+            m_pImpl->hideCursor();
+
+        Control::LoseFocus();
     }
 
 
     void TableControl::KeyInput( const KeyEvent& rKEvt )
     {
-        if ( !m_pImpl->getInputHandler()->KeyInput( *m_pImpl, rKEvt ) )
+        bool bHandled = false;
+        if (m_pImpl)
+        {
+            const vcl::KeyCode& rKeyCode = rKEvt.GetKeyCode();
+            sal_uInt16 nKeyCode = rKeyCode.GetCode();
+
+            struct ActionMapEntry
+            {
+                sal_uInt16 nKeyCode;
+                sal_uInt16 nKeyModifier;
+                TableControlAction eAction;
+            }
+            static const aKnownActions[] = {
+                      { KEY_DOWN,     0,          TableControlAction::cursorDown },
+                      { KEY_UP,       0,          TableControlAction::cursorUp },
+                      { KEY_LEFT,     0,          TableControlAction::cursorLeft },
+                      { KEY_RIGHT,    0,          TableControlAction::cursorRight },
+                      { KEY_HOME,     0,          TableControlAction::cursorToLineStart },
+                      { KEY_END,      0,          TableControlAction::cursorToLineEnd },
+                      { KEY_PAGEUP,   0,          TableControlAction::cursorPageUp },
+                      { KEY_PAGEDOWN, 0,          TableControlAction::cursorPageDown },
+                      { KEY_PAGEUP,   KEY_MOD1,   TableControlAction::cursorToFirstLine },
+                      { KEY_PAGEDOWN, KEY_MOD1,   TableControlAction::cursorToLastLine },
+                      { KEY_HOME,     KEY_MOD1,   TableControlAction::cursorTopLeft },
+                      { KEY_END,      KEY_MOD1,   TableControlAction::cursorBottomRight },
+                      { KEY_SPACE,    KEY_MOD1,   TableControlAction::cursorSelectRow },
+                      { KEY_UP,       KEY_SHIFT,  TableControlAction::cursorSelectRowUp },
+                      { KEY_DOWN,     KEY_SHIFT,  TableControlAction::cursorSelectRowDown },
+                      { KEY_END,      KEY_SHIFT,  TableControlAction::cursorSelectRowAreaBottom },
+                      { KEY_HOME,     KEY_SHIFT,  TableControlAction::cursorSelectRowAreaTop }
+                  };
+            for (const ActionMapEntry& rAction : aKnownActions)
+            {
+                if ((rAction.nKeyCode == nKeyCode) && (rAction.nKeyModifier == rKeyCode.GetModifier()))
+                {
+                    bHandled = m_pImpl->dispatchAction(rAction.eAction);
+                    break;
+                }
+            }
+        }
+
+        if (!bHandled)
             Control::KeyInput( rKEvt );
         else
         {
-            if ( m_pImpl->isAccessibleAlive() )
-            {
-                m_pImpl->commitCellEvent( AccessibleEventId::STATE_CHANGED,
-                                          Any( AccessibleStateType::FOCUSED ),
-                                          Any()
-                                        );
-                    // Huh? What the heck? Why do we unconditionally notify a STATE_CHANGE/FOCUSED after each and every
-                    // (handled) key stroke?
+            m_pImpl->commitCellEvent( AccessibleEventId::STATE_CHANGED,
+                                      Any( AccessibleStateType::FOCUSED ),
+                                      Any()
+                                    );
+                // Huh? What the heck? Why do we unconditionally notify a STATE_CHANGE/FOCUSED after each and every
+                // (handled) key stroke?
 
-                m_pImpl->commitTableEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED,
-                                           Any(),
-                                           Any()
-                                         );
-                    // ditto: Why do we notify this unconditionally? We should find the right place to notify the
-                    // ACTIVE_DESCENDANT_CHANGED event.
-                    // Also, we should check if STATE_CHANGED/FOCUSED is really necessary: finally, the children are
-                    // transient, aren't they?
-            }
+            m_pImpl->commitTableEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED,
+                                       Any(),
+                                       Any()
+                                     );
+                // ditto: Why do we notify this unconditionally? We should find the right place to notify the
+                // ACTIVE_DESCENDANT_CHANGED event.
+                // Also, we should check if STATE_CHANGED/FOCUSED is really necessary: finally, the children are
+                // transient, aren't they?
         }
     }
 
@@ -258,13 +299,6 @@ namespace svt::table
         Select();
     }
 
-
-    ITableControl& TableControl::getTableControlInterface()
-    {
-        return *m_pImpl;
-    }
-
-
     SelectionEngine* TableControl::getSelEngine()
     {
         return m_pImpl->getSelEngine();
@@ -277,41 +311,31 @@ namespace svt::table
     }
 
 
-    Reference< XAccessible > TableControl::CreateAccessible()
+    rtl::Reference<comphelper::OAccessible> TableControl::CreateAccessible()
     {
-        vcl::Window* pParent = GetAccessibleParentWindow();
-        ENSURE_OR_RETURN( pParent, "TableControl::CreateAccessible - parent not found", nullptr );
-
-        return m_pImpl->getAccessible( *pParent );
+        css::uno::Reference<css::accessibility::XAccessible> xParent = GetAccessibleParent();
+        return m_pImpl->getAccessible(xParent);
     }
 
-
-    Reference<XAccessible> TableControl::CreateAccessibleControl( sal_Int32 )
-    {
-        SAL_WARN( "svtools", "TableControl::CreateAccessibleControl: to be overwritten!" );
-        return nullptr;
-    }
-
-
-    OUString TableControl::GetAccessibleObjectName( vcl::table::AccessibleTableControlObjType eObjType, sal_Int32 _nRow, sal_Int32 _nCol) const
+    OUString TableControl::GetAccessibleObjectName( AccessibleTableControlObjType eObjType, sal_Int32 _nRow, sal_Int32 _nCol) const
     {
         OUString aRetText;
         //Window* pWin;
         switch( eObjType )
         {
-            case vcl::table::AccessibleTableControlObjType::GRIDCONTROL:
+            case AccessibleTableControlObjType::GRIDCONTROL:
                 aRetText = "Grid control";
                 break;
-            case vcl::table::AccessibleTableControlObjType::TABLE:
+            case AccessibleTableControlObjType::TABLE:
                 aRetText = "Grid control";
                 break;
-            case vcl::table::AccessibleTableControlObjType::ROWHEADERBAR:
+            case AccessibleTableControlObjType::ROWHEADERBAR:
                 aRetText = "RowHeaderBar";
                 break;
-            case vcl::table::AccessibleTableControlObjType::COLUMNHEADERBAR:
+            case AccessibleTableControlObjType::COLUMNHEADERBAR:
                 aRetText = "ColumnHeaderBar";
                 break;
-            case vcl::table::AccessibleTableControlObjType::TABLECELL:
+            case AccessibleTableControlObjType::TABLECELL:
                 //the name of the cell consists of column name and row name if defined
                 //if the name is equal to cell content, it'll be read twice
                 if(GetModel()->hasColumnHeaders())
@@ -324,10 +348,10 @@ namespace svt::table
                 }
                 //aRetText = GetAccessibleCellText(_nRow, _nCol);
                 break;
-            case vcl::table::AccessibleTableControlObjType::ROWHEADERCELL:
+            case AccessibleTableControlObjType::ROWHEADERCELL:
                 aRetText = GetRowName(_nRow);
                 break;
-            case vcl::table::AccessibleTableControlObjType::COLUMNHEADERCELL:
+            case AccessibleTableControlObjType::COLUMNHEADERCELL:
                 aRetText = GetColumnName(_nCol);
                 break;
             default:
@@ -337,24 +361,24 @@ namespace svt::table
     }
 
 
-    OUString TableControl::GetAccessibleObjectDescription( vcl::table::AccessibleTableControlObjType eObjType ) const
+    OUString TableControl::GetAccessibleObjectDescription( AccessibleTableControlObjType eObjType ) const
     {
         OUString aRetText;
         switch( eObjType )
         {
-            case vcl::table::AccessibleTableControlObjType::GRIDCONTROL:
+            case AccessibleTableControlObjType::GRIDCONTROL:
                 aRetText = "Grid control description";
                 break;
-            case vcl::table::AccessibleTableControlObjType::TABLE:
+            case AccessibleTableControlObjType::TABLE:
                     aRetText = "TABLE description";
                 break;
-            case vcl::table::AccessibleTableControlObjType::ROWHEADERBAR:
+            case AccessibleTableControlObjType::ROWHEADERBAR:
                     aRetText = "ROWHEADERBAR description";
                 break;
-            case vcl::table::AccessibleTableControlObjType::COLUMNHEADERBAR:
+            case AccessibleTableControlObjType::COLUMNHEADERBAR:
                     aRetText = "COLUMNHEADERBAR description";
                 break;
-            case vcl::table::AccessibleTableControlObjType::TABLECELL:
+            case AccessibleTableControlObjType::TABLECELL:
                 // the description of the cell consists of column name and row name if defined
                 // if the name is equal to cell content, it'll be read twice
                 if ( GetModel()->hasColumnHeaders() )
@@ -366,10 +390,10 @@ namespace svt::table
                     aRetText += GetRowName( GetCurrentRow() );
                 }
                 break;
-            case vcl::table::AccessibleTableControlObjType::ROWHEADERCELL:
+            case AccessibleTableControlObjType::ROWHEADERCELL:
                     aRetText = "ROWHEADERCELL description";
                 break;
-            case vcl::table::AccessibleTableControlObjType::COLUMNHEADERCELL:
+            case AccessibleTableControlObjType::COLUMNHEADERCELL:
                     aRetText = "COLUMNHEADERCELL description";
                 break;
         }
@@ -399,12 +423,12 @@ namespace svt::table
 
     void TableControl::FillAccessibleStateSet(
             sal_Int64& rStateSet,
-            vcl::table::AccessibleTableControlObjType eObjType ) const
+            AccessibleTableControlObjType eObjType ) const
     {
         switch( eObjType )
         {
-            case vcl::table::AccessibleTableControlObjType::GRIDCONTROL:
-            case vcl::table::AccessibleTableControlObjType::TABLE:
+            case AccessibleTableControlObjType::GRIDCONTROL:
+            case AccessibleTableControlObjType::TABLE:
 
                 rStateSet |= AccessibleStateType::FOCUSABLE;
 
@@ -426,21 +450,17 @@ namespace svt::table
                 if ( IsReallyVisible() )
                     rStateSet |= AccessibleStateType::VISIBLE;
 
-                if ( eObjType == vcl::table::AccessibleTableControlObjType::TABLE )
+                if ( eObjType == AccessibleTableControlObjType::TABLE )
                     rStateSet |= AccessibleStateType::MANAGES_DESCENDANTS;
                 break;
 
-            case vcl::table::AccessibleTableControlObjType::ROWHEADERBAR:
+            case AccessibleTableControlObjType::COLUMNHEADERBAR:
+            case AccessibleTableControlObjType::ROWHEADERBAR:
                 rStateSet |= AccessibleStateType::VISIBLE;
                 rStateSet |= AccessibleStateType::MANAGES_DESCENDANTS;
                 break;
 
-            case vcl::table::AccessibleTableControlObjType::COLUMNHEADERBAR:
-                rStateSet |= AccessibleStateType::VISIBLE;
-                rStateSet |= AccessibleStateType::MANAGES_DESCENDANTS;
-                break;
-
-            case vcl::table::AccessibleTableControlObjType::TABLECELL:
+            case AccessibleTableControlObjType::TABLECELL:
                 {
                     rStateSet |= AccessibleStateType::FOCUSABLE;
                     if ( HasChildPathFocus() )
@@ -456,59 +476,26 @@ namespace svt::table
                 }
                 break;
 
-            case vcl::table::AccessibleTableControlObjType::ROWHEADERCELL:
+            case AccessibleTableControlObjType::ROWHEADERCELL:
                 rStateSet |= AccessibleStateType::VISIBLE;
                 rStateSet |= AccessibleStateType::TRANSIENT;
                 break;
 
-            case vcl::table::AccessibleTableControlObjType::COLUMNHEADERCELL:
+            case AccessibleTableControlObjType::COLUMNHEADERCELL:
                 rStateSet |= AccessibleStateType::VISIBLE;
                 break;
         }
     }
 
-    void TableControl::commitCellEventIfAccessibleAlive( sal_Int16 const i_eventID, const Any& i_newValue, const Any& i_oldValue )
+    void TableControl::commitCellEvent(sal_Int16 const i_eventID, const Any& i_newValue, const Any& i_oldValue)
     {
-        if ( m_pImpl->isAccessibleAlive() )
-            m_pImpl->commitCellEvent( i_eventID, i_newValue, i_oldValue );
+        m_pImpl->commitCellEvent( i_eventID, i_newValue, i_oldValue );
     }
 
-    void TableControl::commitTableEventIfAccessibleAlive( sal_Int16 const i_eventID, const Any& i_newValue, const Any& i_oldValue )
+    void TableControl::commitTableEvent(sal_Int16 const i_eventID, const Any& i_newValue, const Any& i_oldValue)
     {
-        if ( m_pImpl->isAccessibleAlive() )
-            m_pImpl->commitTableEvent( i_eventID, i_newValue, i_oldValue );
+        m_pImpl->commitTableEvent( i_eventID, i_newValue, i_oldValue );
     }
-
-    AbsoluteScreenPixelRectangle TableControl::GetWindowExtentsAbsolute() const
-    {
-        return Control::GetWindowExtentsAbsolute();
-    }
-
-    tools::Rectangle TableControl::GetWindowExtentsRelative(const vcl::Window& rRelativeWindow) const
-    {
-        return Control::GetWindowExtentsRelative( rRelativeWindow );
-    }
-
-    void TableControl::GrabFocus()
-    {
-        Control::GrabFocus();
-    }
-
-    Reference< XAccessible > TableControl::GetAccessible()
-    {
-        return Control::GetAccessible();
-    }
-
-    vcl::Window* TableControl::GetAccessibleParentWindow() const
-    {
-        return Control::GetAccessibleParentWindow();
-    }
-
-    vcl::Window* TableControl::GetWindowInstance()
-    {
-        return this;
-    }
-
 
     bool TableControl::HasRowHeader()
     {
@@ -532,16 +519,6 @@ namespace svt::table
             ++count;
         return count;
     }
-
-
-    bool TableControl::ConvertPointToControlIndex( sal_Int32& _rnIndex, const Point& _rPoint )
-    {
-        sal_Int32 nRow = m_pImpl->getRowAtPoint( _rPoint );
-        sal_Int32 nCol = m_pImpl->getColAtPoint( _rPoint );
-        _rnIndex = nRow * GetColumnCount() + nCol;
-        return nRow >= 0;
-    }
-
 
     sal_Int32 TableControl::GetRowCount() const
     {
@@ -580,21 +557,9 @@ namespace svt::table
     }
 
 
-    tools::Rectangle TableControl::GetFieldCharacterBounds(sal_Int32,sal_Int32,sal_Int32 nIndex)
-    {
-        return GetCharacterBounds(nIndex);
-    }
-
-
-    sal_Int32 TableControl::GetFieldIndexAtPoint(sal_Int32,sal_Int32,const Point& _rPoint)
-    {
-        return GetIndexForPoint(_rPoint);
-    }
-
-
     tools::Rectangle TableControl::calcHeaderRect(bool _bIsColumnBar )
     {
-        return m_pImpl->calcHeaderRect( !_bIsColumnBar );
+        return m_pImpl->calcHeaderRect(_bIsColumnBar);
     }
 
 
@@ -625,15 +590,21 @@ namespace svt::table
     void TableControl::Select()
     {
         ImplCallEventListenersAndHandler( VclEventId::TableRowSelect, nullptr );
+        m_pImpl->commitAccessibleEvent( AccessibleEventId::SELECTION_CHANGED );
 
-        if ( m_pImpl->isAccessibleAlive() )
-        {
-            m_pImpl->commitAccessibleEvent( AccessibleEventId::SELECTION_CHANGED );
+        m_pImpl->commitTableEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, Any(), Any() );
+            // TODO: why do we notify this when the *selection* changed? Shouldn't we find a better place for this,
+            // actually, when the active descendant, i.e. the current cell, *really* changed?
+    }
 
-            m_pImpl->commitTableEvent( AccessibleEventId::ACTIVE_DESCENDANT_CHANGED, Any(), Any() );
-                // TODO: why do we notify this when the *selection* changed? Shouldn't we find a better place for this,
-                // actually, when the active descendant, i.e. the current cell, *really* changed?
-        }
+    TableCell TableControl::hitTest(const Point& rPoint) const
+    {
+        return m_pImpl->hitTest(rPoint);
+    }
+
+    void TableControl::invalidate(const TableArea aArea)
+    {
+        return m_pImpl->invalidate(aArea);
     }
 
 } // namespace svt::table

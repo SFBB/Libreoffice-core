@@ -30,7 +30,15 @@
 #include <tools/long.hxx>
 #include <basegfx/color/bcolor.hxx>
 #include <com/sun/star/lang/Locale.hpp>
+#include <memory>
 #include <vector>
+
+namespace drawinglayer::primitive2d
+{
+class TextLayouterDevice;
+}
+
+class SalLayout;
 
 namespace drawinglayer::primitive2d
 {
@@ -122,12 +130,6 @@ private:
     /// font color
     basegfx::BColor maFontColor;
 
-    // Whether to fill a given width with the text
-    bool mbFilled;
-
-    // the width to fill
-    tools::Long mnWidthToFill;
-
     /// The fill color of the text
     Color maTextFillColor;
 
@@ -136,19 +138,23 @@ private:
 
 protected:
     /// local decomposition.
-    virtual void
-    create2DDecomposition(Primitive2DContainer& rContainer,
-                          const geometry::ViewInformation2D& rViewInformation) const override;
+    virtual Primitive2DReference
+    create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
 public:
+    /// helpers to create a TextLayouterDevice and SalLayout, e.g. needed for SDPRs
+    // and decompose. NOTE: the TextLayouterDevice is filled, but should always only
+    // be used temporary (do not try to buffer)
+    void createTextLayouter(TextLayouterDevice& rTextLayouter) const;
+    std::unique_ptr<SalLayout> createSalLayout(const TextLayouterDevice& rTextLayouter) const;
+
     /// constructor
     TextSimplePortionPrimitive2D(basegfx::B2DHomMatrix aNewTransform, OUString aText,
                                  sal_Int32 nTextPosition, sal_Int32 nTextLength,
                                  std::vector<double>&& rDXArray,
                                  std::vector<sal_Bool>&& rKashidaArray,
                                  attribute::FontAttribute aFontAttribute, css::lang::Locale aLocale,
-                                 const basegfx::BColor& rFontColor, bool bFilled = false,
-                                 tools::Long nWidthToFill = 0,
+                                 const basegfx::BColor& rFontColor,
                                  const Color& rTextFillColor = COL_TRANSPARENT);
 
     /** get text outlines as polygons and their according ObjectTransformation. Handles all
@@ -168,8 +174,12 @@ public:
     const css::lang::Locale& getLocale() const { return maLocale; }
     const basegfx::BColor& getFontColor() const { return maFontColor; }
     const Color& getTextFillColor() const { return maTextFillColor; }
-    bool isFilled() const { return mbFilled; }
-    tools::Long getWidthToFill() const { return mnWidthToFill; }
+
+    /// helpers for determining various decoration states
+    virtual bool hasTextRelief() const;
+    virtual bool hasShadow() const;
+    virtual bool hasTextDecoration() const;
+    bool hasOutline() const;
 
     /// compare operator
     virtual bool operator==(const BasePrimitive2D& rPrimitive) const override;

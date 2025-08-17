@@ -9,9 +9,8 @@
 
 #include <unotest/filters-test.hxx>
 #include <test/bootstrapfixture.hxx>
-#include <vcl/FilterConfigItem.hxx>
 #include <tools/stream.hxx>
-#include <vcl/graph.hxx>
+#include <vcl/filter/ImportOutput.hxx>
 #include <filter/DxfReader.hxx>
 
 using namespace css;
@@ -44,8 +43,8 @@ bool DxfFilterTest::load(const OUString &,
     SfxFilterFlags, SotClipboardFormatId, unsigned int)
 {
     SvFileStream aFileStream(rURL, StreamMode::READ);
-    Graphic aGraphic;
-    return ImportDxfGraphic(aFileStream, aGraphic);
+    ImportOutput aImportOutput;
+    return ImportDxfGraphic(aFileStream, aImportOutput);
 }
 
 void DxfFilterTest::testCVEs()

@@ -48,7 +48,7 @@ namespace cmis
                 {
                     // Handler handled the request.
                     uno::Reference< task::XInteractionAbort > xAbort(
-                        xSelection.get(), uno::UNO_QUERY );
+                        xSelection->getXWeak(), uno::UNO_QUERY );
                     if ( !xAbort.is() )
                     {
                         const rtl::Reference<
@@ -91,7 +91,7 @@ namespace cmis
                 if (xSelection.is())
                 {
                     // Handler handled the request.
-                    uno::Reference<task::XInteractionAbort> xAbort(xSelection.get(),
+                    uno::Reference<task::XInteractionAbort> xAbort(xSelection->getXWeak(),
                                                                    uno::UNO_QUERY);
                     if (!xAbort.is())
                     {
@@ -103,7 +103,7 @@ namespace cmis
                 }
             }
 
-            uno::Reference<uno::XComponentContext> xContext
+            const uno::Reference<uno::XComponentContext>& xContext
                 = ::comphelper::getProcessComponentContext();
             uno::Reference<task::XPasswordContainer2> xMasterPasswd
                 = task::PasswordContainer::create(xContext);
@@ -133,7 +133,7 @@ namespace cmis
         if (xEnv.is())
         {
             uno::Reference<task::XInteractionHandler> xIH = xEnv->getInteractionHandler();
-            uno::Reference<uno::XComponentContext> xContext
+            const uno::Reference<uno::XComponentContext>& xContext
                 = ::comphelper::getProcessComponentContext();
             uno::Reference<task::XPasswordContainer2> xMasterPasswd
                 = task::PasswordContainer::create(xContext);
@@ -180,10 +180,10 @@ namespace cmis
             {
                 rtl::Reference< ucbhelper::AuthenticationFallbackRequest > xRequest
                     = new ucbhelper::AuthenticationFallbackRequest (
-                            "Open the following link in your browser and "
+                            u"Open the following link in your browser and "
                             "paste the code from the URL you have been redirected to in the "
                             "box below. For example:\n"
-                            "http://localhost/LibreOffice?code=YOUR_CODE",
+                            "http://localhost/LibreOffice?code=YOUR_CODE"_ustr,
                             url_oustr );
 
                 xIH->handle( xRequest );

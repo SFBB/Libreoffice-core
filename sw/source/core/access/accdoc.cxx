@@ -26,7 +26,7 @@
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <cppuhelper/typeprovider.hxx>
 #include <vcl/svapp.hxx>
-#include <cppuhelper/supportsservice.hxx>
+#include <vcl/unohelp.hxx>
 #include <viewsh.hxx>
 #include <doc.hxx>
 #include <accmap.hxx>
@@ -51,7 +51,6 @@
 #include <dview.hxx>
 #include <dcontact.hxx>
 #include <svx/svdmark.hxx>
-constexpr OUString sServiceName = u"com.sun.star.text.AccessibleTextDocumentView"_ustr;
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
@@ -64,8 +63,8 @@ using lang::IndexOutOfBoundsException;
 SwAccessibleDocumentBase::SwAccessibleDocumentBase(
         std::shared_ptr<SwAccessibleMap> const& pMap)
     : SwAccessibleContext(pMap, AccessibleRole::DOCUMENT_TEXT,
-                          pMap->GetShell()->GetLayout())
-    , mxParent(pMap->GetShell()->GetWin()->GetAccessibleParentWindow()->GetAccessible())
+                          pMap->GetShell().GetLayout())
+    , mxParent(pMap->GetShell().GetWin()->GetAccessibleParent())
     , mpChildWin(nullptr)
 {
 }
@@ -101,11 +100,8 @@ void SwAccessibleDocumentBase::AddChild( vcl::Window *pWin, bool bFireEvent )
 
         if( bFireEvent )
         {
-            AccessibleEventObject aEvent;
-            aEvent.EventId = AccessibleEventId::CHILD;
-            aEvent.NewValue <<= mpChildWin->GetAccessible();
-            aEvent.IndexHint = -1;
-            FireAccessibleEvent( aEvent );
+            FireAccessibleEvent(AccessibleEventId::CHILD, uno::Any(),
+                                uno::Any(uno::Reference<XAccessible>(mpChildWin->GetAccessible())));
         }
     }
 }
@@ -117,11 +113,9 @@ void SwAccessibleDocumentBase::RemoveChild( vcl::Window *pWin )
     OSL_ENSURE( !mpChildWin || pWin == mpChildWin, "invalid child window to remove" );
     if( mpChildWin && pWin == mpChildWin )
     {
-        AccessibleEventObject aEvent;
-        aEvent.EventId = AccessibleEventId::CHILD;
-        aEvent.OldValue <<= mpChildWin->GetAccessible();
-        aEvent.IndexHint = -1;
-        FireAccessibleEvent( aEvent );
+        FireAccessibleEvent(AccessibleEventId::CHILD,
+                            uno::Any(uno::Reference<XAccessible>(mpChildWin->GetAccessible())),
+                            uno::Any());
 
         mpChildWin = nullptr;
     }
@@ -196,7 +190,7 @@ OUString SAL_CALL SwAccessibleDocumentBase::getAccessibleName()
     SolarMutexGuard g;
 
     OUString sAccName = GetResource( STR_ACCESS_DOC_WORDPROCESSING );
-    SwDoc *pDoc = GetMap() ? GetShell()->GetDoc() : nullptr;
+    SwDoc* pDoc = GetMap() ? GetShell().GetDoc() : nullptr;
     if ( pDoc )
     {
         OUString sFileName = pDoc->getDocAccTitle();
@@ -218,44 +212,23 @@ OUString SAL_CALL SwAccessibleDocumentBase::getAccessibleName()
     return sAccName;
 }
 
-awt::Rectangle SAL_CALL SwAccessibleDocumentBase::getBounds()
+awt::Rectangle SwAccessibleDocumentBase::implGetBounds()
 {
     try
     {
-        SolarMutexGuard aGuard;
-
         vcl::Window *pWin = GetWindow();
         if (!pWin)
         {
-            throw uno::RuntimeException("no Window", getXWeak());
+            throw uno::RuntimeException(u"no Window"_ustr, getXWeak());
         }
 
         tools::Rectangle aPixBounds( pWin->GetWindowExtentsRelative( *pWin->GetAccessibleParentWindow() ) );
-        awt::Rectangle aBox( aPixBounds.Left(), aPixBounds.Top(),
-                             aPixBounds.GetWidth(), aPixBounds.GetHeight() );
-
-        return aBox;
+        return vcl::unohelper::ConvertToAWTRect(aPixBounds);
     }
     catch(const css::lang::IndexOutOfBoundsException &)
     {
         return awt::Rectangle();
     }
-}
-
-awt::Point SAL_CALL SwAccessibleDocumentBase::getLocation()
-{
-    SolarMutexGuard aGuard;
-
-    vcl::Window *pWin = GetWindow();
-    if (!pWin)
-    {
-        throw uno::RuntimeException("no Window", getXWeak());
-    }
-
-    Point aPixPos( pWin->GetWindowExtentsRelative( *pWin->GetAccessibleParentWindow() ).TopLeft() );
-    awt::Point aLoc( aPixPos.getX(), aPixPos.getY() );
-
-    return aLoc;
 }
 
 css::awt::Point SAL_CALL SwAccessibleDocumentBase::getLocationOnScreen()
@@ -265,47 +238,13 @@ css::awt::Point SAL_CALL SwAccessibleDocumentBase::getLocationOnScreen()
     vcl::Window *pWin = GetWindow();
     if (!pWin)
     {
-        throw uno::RuntimeException("no Window", getXWeak());
+        throw uno::RuntimeException(u"no Window"_ustr, getXWeak());
     }
 
     Point aPixPos( pWin->GetWindowExtentsAbsolute().TopLeft() );
     awt::Point aLoc( aPixPos.getX(), aPixPos.getY() );
 
     return aLoc;
-}
-
-css::awt::Size SAL_CALL SwAccessibleDocumentBase::getSize()
-{
-    SolarMutexGuard aGuard;
-
-    vcl::Window *pWin = GetWindow();
-    if (!pWin)
-    {
-        throw uno::RuntimeException("no Window", getXWeak());
-    }
-
-    Size aPixSize( pWin->GetWindowExtentsAbsolute().GetSize() );
-    awt::Size aSize( aPixSize.Width(), aPixSize.Height() );
-
-    return aSize;
-}
-
-sal_Bool SAL_CALL SwAccessibleDocumentBase::containsPoint(
-            const awt::Point& aPoint )
-{
-    SolarMutexGuard aGuard;
-
-    vcl::Window *pWin = GetWindow();
-    if (!pWin)
-    {
-        throw uno::RuntimeException("no Window", getXWeak());
-    }
-
-    tools::Rectangle aPixBounds( pWin->GetWindowExtentsAbsolute() );
-    aPixBounds.Move(-aPixBounds.Left(), -aPixBounds.Top());
-
-    Point aPixPoint( aPoint.X, aPoint.Y );
-    return aPixBounds.Contains( aPixPoint );
 }
 
 uno::Reference< XAccessible > SAL_CALL SwAccessibleDocumentBase::getAccessibleAtPoint(
@@ -320,7 +259,7 @@ uno::Reference< XAccessible > SAL_CALL SwAccessibleDocumentBase::getAccessibleAt
         vcl::Window *pWin = GetWindow();
         if (!pWin)
         {
-            throw uno::RuntimeException("no Window", getXWeak());
+            throw uno::RuntimeException(u"no Window"_ustr, getXWeak());
         }
         if (pWin->isDisposed()) // tdf#147967
             return nullptr;
@@ -346,11 +285,11 @@ void SwAccessibleDocument::GetStates( sal_Int64& rStateSet )
 
 SwAccessibleDocument::SwAccessibleDocument(
         std::shared_ptr<SwAccessibleMap> const& pInitMap)
-    : SwAccessibleDocumentBase(pInitMap)
+    : SwAccessibleDocument_BASE(pInitMap)
     , maSelectionHelper(*this)
 {
     SetName(pInitMap->GetDocName());
-    vcl::Window *pWin = pInitMap->GetShell()->GetWin();
+    vcl::Window* pWin = pInitMap->GetShell().GetWin();
     if( pWin )
     {
         pWin->AddChildEventListener( LINK( this, SwAccessibleDocument, WindowChildEventListener ));
@@ -367,7 +306,7 @@ SwAccessibleDocument::SwAccessibleDocument(
 
 SwAccessibleDocument::~SwAccessibleDocument()
 {
-    vcl::Window *pWin = GetMap() ? GetMap()->GetShell()->GetWin() : nullptr;
+    vcl::Window* pWin = GetMap() ? GetMap()->GetShell().GetWin() : nullptr;
     if( pWin )
         pWin->RemoveChildEventListener( LINK( this, SwAccessibleDocument, WindowChildEventListener ));
 }
@@ -376,7 +315,7 @@ void SwAccessibleDocument::Dispose(bool bRecursive, bool bCanSkipInvisible)
 {
     OSL_ENSURE( GetFrame() && GetMap(), "already disposed" );
 
-    vcl::Window *pWin = GetMap() ? GetMap()->GetShell()->GetWin() : nullptr;
+    vcl::Window *pWin = GetMap() ? GetMap()->GetShell().GetWin() : nullptr;
     if( pWin )
         pWin->RemoveChildEventListener( LINK( this, SwAccessibleDocument, WindowChildEventListener ));
     SwAccessibleContext::Dispose(bRecursive, bCanSkipInvisible);
@@ -416,55 +355,6 @@ IMPL_LINK( SwAccessibleDocument, WindowChildEventListener, VclWindowEvent&, rEve
         break;
     default: break;
     }
-}
-
-OUString SAL_CALL SwAccessibleDocument::getImplementationName()
-{
-    return u"com.sun.star.comp.Writer.SwAccessibleDocumentView"_ustr;
-}
-
-sal_Bool SAL_CALL SwAccessibleDocument::supportsService(const OUString& sTestServiceName)
-{
-    return cppu::supportsService(this, sTestServiceName);
-}
-
-uno::Sequence< OUString > SAL_CALL SwAccessibleDocument::getSupportedServiceNames()
-{
-    return { sServiceName, sAccessibleServiceName };
-}
-
-// XInterface
-
-uno::Any SwAccessibleDocument::queryInterface(
-    const uno::Type& rType )
-{
-    uno::Any aRet;
-    if ( rType == cppu::UnoType<XAccessibleSelection>::get() )
-    {
-        uno::Reference<XAccessibleSelection> aSelect = this;
-        aRet <<= aSelect;
-    }
-    else  if ( rType == cppu::UnoType<XAccessibleExtendedAttributes>::get())
-    {
-        uno::Reference<XAccessibleExtendedAttributes> aAttribute = this;
-        aRet <<= aAttribute;
-    }
-    else
-        aRet = SwAccessibleContext::queryInterface( rType );
-    return aRet;
-}
-
-// XTypeProvider
-uno::Sequence< uno::Type > SAL_CALL SwAccessibleDocument::getTypes()
-{
-    return cppu::OTypeCollection(
-            cppu::UnoType<XAccessibleSelection>::get(),
-            SwAccessibleDocumentBase::getTypes() ).getTypes();
-}
-
-uno::Sequence< sal_Int8 > SAL_CALL SwAccessibleDocument::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
 }
 
 // XAccessibleSelection
@@ -508,213 +398,210 @@ void SwAccessibleDocument::deselectAccessibleChild(
     maSelectionHelper.deselectAccessibleChild( nChildIndex );
 }
 
-uno::Any SAL_CALL SwAccessibleDocument::getExtendedAttributes()
+OUString SAL_CALL SwAccessibleDocument::getExtendedAttributes()
 {
     SolarMutexGuard g;
 
-    uno::Any anyAttribute;
-    SwDoc *pDoc = GetMap() ? GetShell()->GetDoc() : nullptr;
+    SwDoc* pDoc = GetMap() ? GetShell().GetDoc() : nullptr;
 
     if (!pDoc)
-        return anyAttribute;
+        return OUString();
     SwCursorShell* pCursorShell = GetCursorShell();
     if( !pCursorShell )
-        return anyAttribute;
+        return OUString();
 
     SwFEShell* pFEShell = dynamic_cast<SwFEShell*>(pCursorShell);
-    if( pFEShell )
+    if (!pFEShell)
+        return OUString();
+
+    OUString sDisplay;
+    sal_uInt16 nPage, nLogPage;
+    pFEShell->GetPageNumber(-1,true,nPage,nLogPage,sDisplay);
+
+    OUString sValue = "page-name:" + sDisplay +
+        ";page-number:" +
+        OUString::number( nPage ) +
+        ";total-pages:" +
+        OUString::number( pCursorShell->GetPageCnt() ) + ";";
+
+    // cursor position relative to the page
+    Point aCursorPagePos = pFEShell->GetCursorPagePos();
+    sValue += "cursor-position-in-page-horizontal:" + OUString::number(aCursorPagePos.getX())
+            + ";cursor-position-in-page-vertical:" + OUString::number(aCursorPagePos.getY()) + ";";
+
+    SwContentFrame* pCurrFrame = pCursorShell->GetCurrFrame();
+    SwPageFrame* pCurrPage = pCurrFrame->FindPageFrame();
+    sal_Int32 nLineNum = 0;
+    SwTextFrame* pCurrTextFrame = nullptr;
+    SwTextFrame* pTextFrame = static_cast<SwTextFrame*>(pCurrPage->ContainsContent());
+    if (pCurrFrame->IsInFly())//such as, graphic,chart
     {
-        OUString sDisplay;
-        sal_uInt16 nPage, nLogPage;
-        pFEShell->GetPageNumber(-1,true,nPage,nLogPage,sDisplay);
-
-        OUString sValue = "page-name:" + sDisplay +
-            ";page-number:" +
-            OUString::number( nPage ) +
-            ";total-pages:" +
-            OUString::number( pCursorShell->GetPageCnt() ) + ";";
-
-        // cursor position relative to the page
-        Point aCursorPagePos = pFEShell->GetCursorPagePos();
-        sValue += "cursor-position-in-page-horizontal:" + OUString::number(aCursorPagePos.getX())
-                + ";cursor-position-in-page-vertical:" + OUString::number(aCursorPagePos.getY()) + ";";
-
-        SwContentFrame* pCurrFrame = pCursorShell->GetCurrFrame();
-        SwPageFrame* pCurrPage=static_cast<SwFrame*>(pCurrFrame)->FindPageFrame();
-        sal_Int32 nLineNum = 0;
-        SwTextFrame* pTextFrame = nullptr;
-        SwTextFrame* pCurrTextFrame = nullptr;
-        pTextFrame = static_cast< SwTextFrame* >(pCurrPage->ContainsContent());
-        if (pCurrFrame->IsInFly())//such as, graphic,chart
+        SwFlyFrame *pFlyFrame = pCurrFrame->FindFlyFrame();
+        const SwFormatAnchor& rAnchor = pFlyFrame->GetFormat()->GetAnchor();
+        RndStdIds eAnchorId = rAnchor.GetAnchorId();
+        if(eAnchorId == RndStdIds::FLY_AS_CHAR)
         {
-            SwFlyFrame *pFlyFrame = pCurrFrame->FindFlyFrame();
-            const SwFormatAnchor& rAnchor = pFlyFrame->GetFormat()->GetAnchor();
-            RndStdIds eAnchorId = rAnchor.GetAnchorId();
-            if(eAnchorId == RndStdIds::FLY_AS_CHAR)
-            {
-                const SwFrame *pSwFrame = pFlyFrame->GetAnchorFrame();
-                if(pSwFrame->IsTextFrame())
-                    pCurrTextFrame = const_cast<SwTextFrame*>(static_cast<const SwTextFrame*>(pSwFrame));
-            }
+            const SwFrame *pSwFrame = pFlyFrame->GetAnchorFrame();
+            if(pSwFrame->IsTextFrame())
+                pCurrTextFrame = const_cast<SwTextFrame*>(static_cast<const SwTextFrame*>(pSwFrame));
         }
-        else
+    }
+    else
+    {
+        assert(dynamic_cast<SwTextFrame*>(pCurrFrame));
+        pCurrTextFrame = static_cast<SwTextFrame* >(pCurrFrame);
+    }
+    //check whether the text frame where the Graph/OLE/Frame anchored is in the Header/Footer
+    SwFrame* pFrame = pCurrTextFrame;
+    while ( pFrame && !pFrame->IsHeaderFrame() && !pFrame->IsFooterFrame() )
+        pFrame = pFrame->GetUpper();
+    if ( pFrame )
+        pCurrTextFrame = nullptr;
+    //check shape
+    if(pCursorShell->Imp()->GetDrawView())
+    {
+        const SdrMarkList &rMrkList = pCursorShell->Imp()->GetDrawView()->GetMarkedObjectList();
+        for ( size_t i = 0; i < rMrkList.GetMarkCount(); ++i )
         {
-            assert(dynamic_cast<SwTextFrame*>(pCurrFrame));
-            pCurrTextFrame = static_cast<SwTextFrame* >(pCurrFrame);
+            SdrObject *pObj = rMrkList.GetMark(i)->GetMarkedSdrObj();
+            SwFrameFormat* pFormat = static_cast<SwDrawContact*>(pObj->GetUserCall())->GetFormat();
+            const SwFormatAnchor& rAnchor = pFormat->GetAnchor();
+            if( RndStdIds::FLY_AS_CHAR != rAnchor.GetAnchorId() )
+                pCurrTextFrame = nullptr;
         }
-        //check whether the text frame where the Graph/OLE/Frame anchored is in the Header/Footer
-        SwFrame* pFrame = pCurrTextFrame;
-        while ( pFrame && !pFrame->IsHeaderFrame() && !pFrame->IsFooterFrame() )
-            pFrame = pFrame->GetUpper();
-        if ( pFrame )
-            pCurrTextFrame = nullptr;
-        //check shape
-        if(pCursorShell->Imp()->GetDrawView())
+    }
+    //calculate line number
+    if (pCurrTextFrame && pTextFrame)
+    {
+        if (!(pCurrTextFrame->IsInTab() || pCurrTextFrame->IsInFootnote()))
         {
-            const SdrMarkList &rMrkList = pCursorShell->Imp()->GetDrawView()->GetMarkedObjectList();
-            for ( size_t i = 0; i < rMrkList.GetMarkCount(); ++i )
+            while( pTextFrame && pTextFrame != pCurrTextFrame )
             {
-                SdrObject *pObj = rMrkList.GetMark(i)->GetMarkedSdrObj();
-                SwFrameFormat* pFormat = static_cast<SwDrawContact*>(pObj->GetUserCall())->GetFormat();
-                const SwFormatAnchor& rAnchor = pFormat->GetAnchor();
-                if( RndStdIds::FLY_AS_CHAR != rAnchor.GetAnchorId() )
-                    pCurrTextFrame = nullptr;
-            }
-        }
-        //calculate line number
-        if (pCurrTextFrame && pTextFrame)
-        {
-            if (!(pCurrTextFrame->IsInTab() || pCurrTextFrame->IsInFootnote()))
-            {
-                while( pTextFrame && pTextFrame != pCurrTextFrame )
+                //check header/footer
+                pFrame = pTextFrame;
+                while ( pFrame && !pFrame->IsHeaderFrame() && !pFrame->IsFooterFrame() )
+                    pFrame = pFrame->GetUpper();
+                if ( pFrame )
                 {
-                    //check header/footer
-                    pFrame = pTextFrame;
-                    while ( pFrame && !pFrame->IsHeaderFrame() && !pFrame->IsFooterFrame() )
-                        pFrame = pFrame->GetUpper();
-                    if ( pFrame )
-                    {
-                        pTextFrame = static_cast< SwTextFrame*>(pTextFrame->GetNextContentFrame());
-                        continue;
-                    }
-                    if (!(pTextFrame->IsInTab() || pTextFrame->IsInFootnote() || pTextFrame->IsInFly()))
-                        nLineNum += pTextFrame->GetThisLines();
-                    pTextFrame = static_cast< SwTextFrame* >(pTextFrame ->GetNextContentFrame());
+                    pTextFrame = static_cast< SwTextFrame*>(pTextFrame->GetNextContentFrame());
+                    continue;
                 }
-                SwPaM* pCaret = pCursorShell->GetCursor();
-                if (!pCurrTextFrame->IsEmpty() && pCaret)
+                if (!(pTextFrame->IsInTab() || pTextFrame->IsInFootnote() || pTextFrame->IsInFly()))
+                    nLineNum += pTextFrame->GetThisLines();
+                pTextFrame = static_cast< SwTextFrame* >(pTextFrame ->GetNextContentFrame());
+            }
+            SwPaM* pCaret = pCursorShell->GetCursor();
+            if (!pCurrTextFrame->IsEmpty() && pCaret)
+            {
+                assert(pCurrTextFrame->IsTextFrame());
+                const SwPosition* pPoint = nullptr;
+                if (pCurrTextFrame->IsInFly())
                 {
-                    assert(pCurrTextFrame->IsTextFrame());
-                    const SwPosition* pPoint = nullptr;
-                    if (pCurrTextFrame->IsInFly())
-                    {
-                        SwFlyFrame *pFlyFrame = pCurrTextFrame->FindFlyFrame();
-                        const SwFormatAnchor& rAnchor = pFlyFrame->GetFormat()->GetAnchor();
-                        pPoint = rAnchor.GetContentAnchor();
-                        SwContentNode *const pNode(pPoint->GetNode().GetContentNode());
-                        pCurrTextFrame = pNode
-                            ? static_cast<SwTextFrame*>(pNode->getLayoutFrame(
-                                        pCurrTextFrame->getRootFrame(), pPoint))
-                            : nullptr;
-                    }
-                    else
-                        pPoint = pCaret->GetPoint();
-                    if (pCurrTextFrame)
-                    {
-                        TextFrameIndex const nActPos(pCurrTextFrame->MapModelToViewPos(*pPoint));
-                        nLineNum += pCurrTextFrame->GetLineCount( nActPos );
-                    }
+                    SwFlyFrame *pFlyFrame = pCurrTextFrame->FindFlyFrame();
+                    const SwFormatAnchor& rAnchor = pFlyFrame->GetFormat()->GetAnchor();
+                    pPoint = rAnchor.GetContentAnchor();
+                    SwContentNode *const pNode(pPoint->GetNode().GetContentNode());
+                    pCurrTextFrame = pNode
+                        ? static_cast<SwTextFrame*>(pNode->getLayoutFrame(
+                                    pCurrTextFrame->getRootFrame(), pPoint))
+                        : nullptr;
                 }
                 else
-                    ++nLineNum;
+                    pPoint = pCaret->GetPoint();
+                if (pCurrTextFrame)
+                {
+                    TextFrameIndex const nActPos(pCurrTextFrame->MapModelToViewPos(*pPoint));
+                    nLineNum += pCurrTextFrame->GetLineCount( nActPos );
+                }
             }
+            else
+                ++nLineNum;
+        }
+    }
+
+    sValue += "line-number:" + OUString::number( nLineNum ) + ";";
+
+    SwFrame* pCurrCol=static_cast<SwFrame*>(pCurrFrame)->FindColFrame();
+
+    sValue += "column-number:";
+
+    int nCurrCol = 1;
+    if(pCurrCol!=nullptr)
+    {
+        //SwLayoutFrame* pParent = pCurrCol->GetUpper();
+        SwFrame* pCurrPageCol=static_cast<SwFrame*>(pCurrFrame)->FindColFrame();
+        while(pCurrPageCol && pCurrPageCol->GetUpper() && pCurrPageCol->GetUpper()->IsPageFrame())
+        {
+            pCurrPageCol = pCurrPageCol->GetUpper();
         }
 
-        sValue += "line-number:" + OUString::number( nLineNum ) + ";";
+        SwLayoutFrame* pParent = pCurrPageCol->GetUpper();
 
-        SwFrame* pCurrCol=static_cast<SwFrame*>(pCurrFrame)->FindColFrame();
+        if(pParent!=nullptr)
+        {
+            SwFrame* pCol = pParent->Lower();
+            while(pCol&&(pCol!=pCurrPageCol))
+            {
+                pCol = pCol->GetNext();
+                ++nCurrCol;
+            }
+        }
+    }
+    sValue += OUString::number( nCurrCol ) + ";";
 
-        sValue += "column-number:";
+    const SwFormatCol &rFormatCol=pCurrPage->GetAttrSet()->GetCol();
+    sal_uInt16 nColCount=rFormatCol.GetNumCols();
+    nColCount = nColCount>0?nColCount:1;
+    sValue += "total-columns:" + OUString::number( nColCount ) + ";";
 
-        int nCurrCol = 1;
+    SwSectionFrame* pCurrSctFrame=static_cast<SwFrame*>(pCurrFrame)->FindSctFrame();
+    if(pCurrSctFrame!=nullptr && pCurrSctFrame->GetSection()!=nullptr )
+    {
+        OUString sectionName = pCurrSctFrame->GetSection()->GetSectionName().toString();
+
+        sectionName = sectionName.replaceFirst( "\\" , "\\\\" );
+        sectionName = sectionName.replaceFirst( "=" , "\\=" );
+        sectionName = sectionName.replaceFirst( ";" , "\\;" );
+        sectionName = sectionName.replaceFirst( "," , "\\," );
+        sectionName = sectionName.replaceFirst( ":" , "\\:" );
+
+        sValue += "section-name:" + sectionName + ";";
+
+        //section-columns-number
+
+        nCurrCol = 1;
+
         if(pCurrCol!=nullptr)
         {
-            //SwLayoutFrame* pParent = pCurrCol->GetUpper();
-            SwFrame* pCurrPageCol=static_cast<SwFrame*>(pCurrFrame)->FindColFrame();
-            while(pCurrPageCol && pCurrPageCol->GetUpper() && pCurrPageCol->GetUpper()->IsPageFrame())
-            {
-                pCurrPageCol = pCurrPageCol->GetUpper();
-            }
-
-            SwLayoutFrame* pParent = pCurrPageCol->GetUpper();
-
+            SwLayoutFrame* pParent = pCurrCol->GetUpper();
             if(pParent!=nullptr)
             {
                 SwFrame* pCol = pParent->Lower();
-                while(pCol&&(pCol!=pCurrPageCol))
+                while(pCol&&(pCol!=pCurrCol))
                 {
                     pCol = pCol->GetNext();
-                    ++nCurrCol;
+                    nCurrCol +=1;
                 }
             }
         }
-        sValue += OUString::number( nCurrCol ) + ";";
+        sValue += "section-columns-number:" +
+            OUString::number( nCurrCol ) + ";";
 
-        const SwFormatCol &rFormatCol=pCurrPage->GetAttrSet()->GetCol();
-        sal_uInt16 nColCount=rFormatCol.GetNumCols();
-        nColCount = nColCount>0?nColCount:1;
-        sValue += "total-columns:" + OUString::number( nColCount ) + ";";
-
-        SwSectionFrame* pCurrSctFrame=static_cast<SwFrame*>(pCurrFrame)->FindSctFrame();
-        if(pCurrSctFrame!=nullptr && pCurrSctFrame->GetSection()!=nullptr )
-        {
-            OUString sectionName = pCurrSctFrame->GetSection()->GetSectionName();
-
-            sectionName = sectionName.replaceFirst( "\\" , "\\\\" );
-            sectionName = sectionName.replaceFirst( "=" , "\\=" );
-            sectionName = sectionName.replaceFirst( ";" , "\\;" );
-            sectionName = sectionName.replaceFirst( "," , "\\," );
-            sectionName = sectionName.replaceFirst( ":" , "\\:" );
-
-            sValue += "section-name:" + sectionName + ";";
-
-            //section-columns-number
-
-            nCurrCol = 1;
-
-            if(pCurrCol!=nullptr)
-            {
-                SwLayoutFrame* pParent = pCurrCol->GetUpper();
-                if(pParent!=nullptr)
-                {
-                    SwFrame* pCol = pParent->Lower();
-                    while(pCol&&(pCol!=pCurrCol))
-                    {
-                        pCol = pCol->GetNext();
-                        nCurrCol +=1;
-                    }
-                }
-            }
-            sValue += "section-columns-number:" +
-                OUString::number( nCurrCol ) + ";";
-
-            //section-total-columns
-            const SwFormatCol &rFormatSctCol=pCurrSctFrame->GetAttrSet()->GetCol();
-            sal_uInt16 nSctColCount=rFormatSctCol.GetNumCols();
-            nSctColCount = nSctColCount>0?nSctColCount:1;
-            sValue += "section-total-columns:" +
-                OUString::number( nSctColCount ) + ";";
-        }
-
-        anyAttribute <<= sValue;
+        //section-total-columns
+        const SwFormatCol &rFormatSctCol=pCurrSctFrame->GetAttrSet()->GetCol();
+        sal_uInt16 nSctColCount=rFormatSctCol.GetNumCols();
+        nSctColCount = nSctColCount>0?nSctColCount:1;
+        sValue += "section-total-columns:" +
+            OUString::number( nSctColCount ) + ";";
     }
-    return anyAttribute;
+
+    return sValue;
 }
 
 sal_Int32 SAL_CALL SwAccessibleDocument::getBackground()
 {
     SolarMutexGuard aGuard;
-    return sal_Int32(SW_MOD()->GetColorConfig().GetColorValue( ::svtools::DOCCOLOR ).nColor);
+    return sal_Int32(SwModule::get()->GetColorConfig().GetColorValue(::svtools::DOCCOLOR).nColor);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

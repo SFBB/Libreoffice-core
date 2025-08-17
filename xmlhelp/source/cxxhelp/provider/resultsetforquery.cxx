@@ -102,7 +102,7 @@ ResultSetForQuery::ResultSetForQuery( const uno::Reference< uno::XComponentConte
                 tmp,0,tmp.getLength(),aSeq);
 
             currentQuery.push_back( toliterate );
-            queryList.push_back( currentQuery );
+            queryList.push_back(std::move(currentQuery));
 
             int nCpy = 1 + idx;
             if( nCpy >= query.getLength() )
@@ -113,7 +113,7 @@ ResultSetForQuery::ResultSetForQuery( const uno::Reference< uno::XComponentConte
     }
 
     std::vector< OUString > aCompleteResultVector;
-    OUString scope = aURLParameter.get_scope();
+    const OUString& scope = aURLParameter.get_scope();
     bool bCaptionsOnly = scope == "Heading";
     sal_Int32 hitCount = aURLParameter.get_hitCount();
 
@@ -292,12 +292,12 @@ ResultSetForQuery::ResultSetForQuery( const uno::Reference< uno::XComponentConte
     aIndexFolderResultVectorVector.clear();
 
     sal_Int32 replIdx = strlen( "#HLP#" );
-    OUString replWith = "vnd.sun.star.help://";
+    OUString replWith = u"vnd.sun.star.help://"_ustr;
 
     int nResultCount = aCompleteResultVector.size();
     for( int r = 0 ; r < nResultCount ; ++r )
     {
-        OUString aURL = aCompleteResultVector[r];
+        const OUString& aURL = aCompleteResultVector[r];
         OUString aResultStr = replWith + aURL.subView(replIdx);
         m_aPath.push_back( aResultStr );
     }

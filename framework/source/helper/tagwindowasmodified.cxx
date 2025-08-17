@@ -134,8 +134,8 @@ void TagWindowAsModified::impl_update (const css::uno::Reference< css::frame::XF
 
         // Note: frame was set as member outside ! we have to refresh connections
         // regarding window and model only here.
-        m_xWindow = pWindow;
-        m_xModel  = xModel;
+        m_xWindow = std::move(pWindow);
+        m_xModel  = std::move(xModel);
     }
 
     m_xModel->addModifyListener (this);

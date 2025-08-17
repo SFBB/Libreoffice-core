@@ -47,7 +47,6 @@
 #include <queryparam.hxx>
 #include <queryentry.hxx>
 #include <subtotalparam.hxx>
-#include <docpool.hxx>
 #include <cellvalue.hxx>
 #include <tokenarray.hxx>
 #include <mtvcellfunc.hxx>
@@ -120,7 +119,7 @@ static bool SplitString( const OUString &sWhole,
     const OUString& sUser = ScGlobal::getLocaleData().getNumDecimalSep();
     ParseResult aPRNum = ScGlobal::getCharClass().parsePredefinedToken(
         KParseType::ANY_NUMBER, sWhole, nPos,
-        KParseTokens::ANY_NUMBER, "", KParseTokens::ANY_NUMBER, sUser );
+        KParseTokens::ANY_NUMBER, u""_ustr, KParseTokens::ANY_NUMBER, sUser );
 
     if ( aPRNum.EndPos == nPos )
     {
@@ -218,180 +217,6 @@ static short Compare( const OUString &sInput1, const OUString &sInput2,
 
 }
 
-namespace {
-
-struct ScSortInfo final
-{
-    ScRefCellValue maCell;
-    SCCOLROW        nOrg;
-};
-
-}
-
-class ScSortInfoArray
-{
-public:
-
-    struct Cell
-    {
-        ScRefCellValue maCell;
-        const sc::CellTextAttr* mpAttr;
-        const ScPostIt* mpNote;
-        std::vector<SdrObject*> maDrawObjects;
-        const ScPatternAttr* mpPattern;
-
-        Cell() : mpAttr(nullptr), mpNote(nullptr),  mpPattern(nullptr) {}
-    };
-
-    struct Row
-    {
-        std::vector<Cell> maCells;
-
-        bool mbHidden:1;
-        bool mbFiltered:1;
-
-        explicit Row( size_t nColSize ) : maCells(nColSize, Cell()), mbHidden(false), mbFiltered(false) {}
-    };
-
-    typedef std::vector<Row> RowsType;
-
-private:
-    std::unique_ptr<RowsType> mpRows; /// row-wise data table for sort by row operation.
-
-    std::vector<std::unique_ptr<ScSortInfo[]>> mvppInfo;
-    SCCOLROW        nStart;
-    SCCOLROW        mnLastIndex; /// index of last non-empty cell position.
-
-    std::vector<SCCOLROW> maOrderIndices;
-    bool mbKeepQuery;
-    bool mbUpdateRefs;
-
-public:
-    ScSortInfoArray(const ScSortInfoArray&) = delete;
-    const ScSortInfoArray& operator=(const ScSortInfoArray&) = delete;
-
-    ScSortInfoArray( sal_uInt16 nSorts, SCCOLROW nInd1, SCCOLROW nInd2 ) :
-        mvppInfo(nSorts),
-        nStart( nInd1 ),
-        mnLastIndex(nInd2),
-        mbKeepQuery(false),
-        mbUpdateRefs(false)
-    {
-        SCSIZE nCount( nInd2 - nInd1 + 1 );
-        if (nSorts)
-        {
-            for ( sal_uInt16 nSort = 0; nSort < nSorts; nSort++ )
-            {
-                mvppInfo[nSort].reset(new ScSortInfo[nCount]);
-            }
-        }
-
-        for (size_t i = 0; i < nCount; ++i)
-            maOrderIndices.push_back(i+nStart);
-    }
-
-    void SetKeepQuery( bool b ) { mbKeepQuery = b; }
-
-    bool IsKeepQuery() const { return mbKeepQuery; }
-
-    void SetUpdateRefs( bool b ) { mbUpdateRefs = b; }
-
-    bool IsUpdateRefs() const { return mbUpdateRefs; }
-
-    /**
-     * Call this only during normal sorting, not from reordering.
-     */
-    std::unique_ptr<ScSortInfo[]> const & GetFirstArray() const
-    {
-        return mvppInfo[0];
-    }
-
-    /**
-     * Call this only during normal sorting, not from reordering.
-     */
-    ScSortInfo & Get( sal_uInt16 nSort, SCCOLROW nInd )
-    {
-        return mvppInfo[nSort][ nInd - nStart ];
-    }
-
-    /**
-     * Call this only during normal sorting, not from reordering.
-     */
-    void Swap( SCCOLROW nInd1, SCCOLROW nInd2 )
-    {
-        if (nInd1 == nInd2) // avoid self-move-assign
-            return;
-        SCSIZE n1 = static_cast<SCSIZE>(nInd1 - nStart);
-        SCSIZE n2 = static_cast<SCSIZE>(nInd2 - nStart);
-        for ( sal_uInt16 nSort = 0; nSort < static_cast<sal_uInt16>(mvppInfo.size()); nSort++ )
-        {
-            auto & ppInfo = mvppInfo[nSort];
-            std::swap(ppInfo[n1], ppInfo[n2]);
-        }
-
-        std::swap(maOrderIndices[n1], maOrderIndices[n2]);
-
-        if (mpRows)
-        {
-            // Swap rows in data table.
-            RowsType& rRows = *mpRows;
-            std::swap(rRows[n1], rRows[n2]);
-        }
-    }
-
-    void SetOrderIndices( std::vector<SCCOLROW>&& rIndices )
-    {
-        maOrderIndices = std::move(rIndices);
-    }
-
-    /**
-     * @param rIndices indices are actual row positions on the sheet, not an
-     *                 offset from the top row.
-     */
-    void ReorderByRow( const std::vector<SCCOLROW>& rIndices )
-    {
-        if (!mpRows)
-            return;
-
-        RowsType& rRows = *mpRows;
-
-        std::vector<SCCOLROW> aOrderIndices2;
-        aOrderIndices2.reserve(rIndices.size());
-
-        RowsType aRows2;
-        aRows2.reserve(rRows.size());
-
-        for (const auto& rIndex : rIndices)
-        {
-            size_t nPos = rIndex - nStart; // switch to an offset to top row.
-            aRows2.push_back(rRows[nPos]);
-            aOrderIndices2.push_back(maOrderIndices[nPos]);
-        }
-
-        rRows.swap(aRows2);
-        maOrderIndices.swap(aOrderIndices2);
-    }
-
-    sal_uInt16      GetUsedSorts() const { return mvppInfo.size(); }
-
-    SCCOLROW    GetStart() const { return nStart; }
-    SCCOLROW GetLast() const { return mnLastIndex; }
-
-    const std::vector<SCCOLROW>& GetOrderIndices() const { return maOrderIndices; }
-
-    RowsType& InitDataRows( size_t nRowSize, size_t nColSize )
-    {
-        mpRows.reset(new RowsType);
-        mpRows->resize(nRowSize, Row(nColSize));
-        return *mpRows;
-    }
-
-    RowsType* GetDataRows()
-    {
-        return mpRows.get();
-    }
-};
-
 // Assume that we can handle 512MB, which with a ~100 bytes
 // ScSortInfoArray::Cell element for 500MB are about 5 million cells plus
 // overhead in one chunk.
@@ -441,7 +266,7 @@ void initDataRows(
                 rCell.maDrawObjects = aRowDrawObjects[nRow];
 
             if (!bUniformPattern && bPattern)
-                rCell.mpPattern = rCol.GetPattern(nRow);
+                rCell.maPattern.setScPatternAttr(rCol.GetPattern(nRow));
         }
     }
 
@@ -451,7 +276,7 @@ void initDataRows(
         {
             ScSortInfoArray::Row& rRow = rRows[nRow-nRow1];
             rRow.mbHidden = rTab.RowHidden(nRow);
-            rRow.mbFiltered = rTab.RowFiltered(nRow);
+            rRow.mbFiltered = rTab.getFilterData().rowFiltered(nRow);
         }
     }
 }
@@ -543,7 +368,7 @@ namespace {
 
 struct SortedColumn
 {
-    typedef mdds::flat_segment_tree<SCROW, const ScPatternAttr*> PatRangeType;
+    typedef mdds::flat_segment_tree<SCROW, CellAttributeHolder> PatRangeType;
 
     sc::CellStoreType maCells;
     sc::CellTextAttrStoreType maCellTextAttrs;
@@ -565,9 +390,9 @@ struct SortedColumn
         maPatterns(0, rSheetLimits.GetMaxRowCount(), nullptr),
         miPatternPos(maPatterns.begin()) {}
 
-    void setPattern( SCROW nRow, const ScPatternAttr* pPat )
+    void setPattern( SCROW nRow, const CellAttributeHolder& rPat )
     {
-        miPatternPos = maPatterns.insert(miPatternPos, nRow, nRow+1, pPat).first;
+        miPatternPos = maPatterns.insert(miPatternPos, nRow, nRow+1, rPat).first;
     }
 };
 
@@ -611,10 +436,10 @@ struct PatternSpan
 {
     SCROW mnRow1;
     SCROW mnRow2;
-    const ScPatternAttr* mpPattern;
+    CellAttributeHolder maPattern;
 
-    PatternSpan( SCROW nRow1, SCROW nRow2, const ScPatternAttr* pPat ) :
-        mnRow1(nRow1), mnRow2(nRow2), mpPattern(pPat) {}
+    PatternSpan( SCROW nRow1, SCROW nRow2, const CellAttributeHolder& rPat ) :
+        mnRow1(nRow1), mnRow2(nRow2), maPattern(rPat) {}
 };
 
 }
@@ -809,8 +634,8 @@ void fillSortedColumnArray(
             // Add cell anchored images
             aSortedCols.at(j)->maCellDrawObjects.push_back(rCell.maDrawObjects);
 
-            if (rCell.mpPattern)
-                aSortedCols.at(j)->setPattern(nRow, rCell.mpPattern);
+            if (rCell.maPattern)
+                aSortedCols.at(j)->setPattern(nRow, rCell.maPattern);
         }
 
         if (!bOnlyDataAreaExtras && pArray->IsKeepQuery())
@@ -1043,8 +868,10 @@ void ScTable::SortReorderByColumn(
         // once.
         std::sort(aListeners.begin(), aListeners.end());
         aListeners.erase(std::unique(aListeners.begin(), aListeners.end()), aListeners.end());
-        ReorderNotifier<sc::RefColReorderHint, sc::ColRowReorderMapType, SCCOL> aFunc(aColMap, nTab, nRow1, nRow2);
-        std::for_each(aListeners.begin(), aListeners.end(), aFunc);
+        {
+            ReorderNotifier<sc::RefColReorderHint, sc::ColRowReorderMapType, SCCOL> aFunc(aColMap, nTab, nRow1, nRow2);
+            std::for_each(aListeners.begin(), aListeners.end(), std::move(aFunc));
+        }
 
         // Re-start area listeners on the reordered columns.
         {
@@ -1080,6 +907,50 @@ void ScTable::SortReorderByColumn(
         {
             aPos = rCells.position(aPos.first, nRow2+1);
             sc::SharedFormulaUtil::joinFormulaCellAbove(aPos);
+        }
+    }
+}
+
+static void backupObjectsVisibility(const std::vector<std::unique_ptr<SortedColumn>>& rSortedCols,
+                                    std::vector<std::vector<std::vector<bool>>>& rBackup)
+{
+    size_t nSortedCols = rSortedCols.size();
+    for (size_t iCol = 0; iCol < nSortedCols; ++iCol)
+    {
+        std::vector<std::vector<SdrObject*>>& rSingleColCellDrawObjects
+            = rSortedCols[iCol]->maCellDrawObjects;
+        size_t nSingleColCellDrawObjects = rSingleColCellDrawObjects.size();
+        std::vector<std::vector<bool>> aColBackup;
+        for (size_t jRow = 0; jRow < nSingleColCellDrawObjects; ++jRow)
+        {
+            std::vector<SdrObject*>& rCellDrawObjects = rSingleColCellDrawObjects[jRow];
+            std::vector<bool> aCellBackup;
+            for (auto& pObject : rCellDrawObjects)
+            {
+                aCellBackup.push_back(pObject->IsVisible());
+            }
+            aColBackup.push_back(std::move(aCellBackup));
+        }
+        rBackup.push_back(std::move(aColBackup));
+    }
+}
+
+static void restoreObjectsVisibility(std::vector<std::unique_ptr<SortedColumn>>& rSortedCols,
+                                     const std::vector<std::vector<std::vector<bool>>>& rBackup)
+{
+    size_t nSortedCols = rSortedCols.size();
+    for (size_t iCol = 0; iCol < nSortedCols; ++iCol)
+    {
+        std::vector<std::vector<SdrObject*>>& rSingleColCellDrawObjects
+            = rSortedCols[iCol]->maCellDrawObjects;
+        size_t nSingleColCellDrawObjects = rSingleColCellDrawObjects.size();
+        for (size_t jRow = 0; jRow < nSingleColCellDrawObjects; jRow++)
+        {
+            std::vector<SdrObject*>& rCellDrawObjects = rSingleColCellDrawObjects[jRow];
+            for (size_t kCell = 0; kCell < rCellDrawObjects.size(); ++kCell)
+            {
+                rCellDrawObjects[kCell]->SetVisible(rBackup[iCol][jRow][kCell]);
+            }
         }
     }
 }
@@ -1180,25 +1051,15 @@ void ScTable::SortReorderByRow( ScSortInfoArray* pArray, SCCOL nCol1, SCCOL nCol
             aCol[nThisCol].UpdateNoteCaptions(nRow1, nRow2);
         }
 
-        // Update draw object positions
-        aCol[nThisCol].UpdateDrawObjects(aSortedCols[i]->maCellDrawObjects, nRow1, nRow2);
-
         {
             // Get all row spans where the pattern is not NULL.
             std::vector<PatternSpan> aSpans =
-                sc::toSpanArrayWithValue<SCROW,const ScPatternAttr*,PatternSpan>(
+                sc::toSpanArrayWithValue<SCROW, CellAttributeHolder, PatternSpan>(
                     aSortedCols[i]->maPatterns);
 
             for (const auto& rSpan : aSpans)
             {
-                assert(rSpan.mpPattern); // should never be NULL.
-                rDocument.GetPool()->DirectPutItemInPool(*rSpan.mpPattern);
-            }
-
-            for (const auto& rSpan : aSpans)
-            {
-                aCol[nThisCol].SetPatternArea(rSpan.mnRow1, rSpan.mnRow2, *rSpan.mpPattern);
-                rDocument.GetPool()->DirectRemoveItemFromPool(*rSpan.mpPattern);
+                aCol[nThisCol].SetPatternArea(rSpan.mnRow1, rSpan.mnRow2, rSpan.maPattern);
             }
         }
 
@@ -1210,9 +1071,13 @@ void ScTable::SortReorderByRow( ScSortInfoArray* pArray, SCCOL nCol1, SCCOL nCol
         aRowFlags.maRowsHidden.build_tree();
         aRowFlags.maRowsFiltered.build_tree();
 
+        // Backup visibility state of objects. States will be lost when changing the flags below.
+        std::vector<std::vector<std::vector<bool>>> aBackup;
+        backupObjectsVisibility(aSortedCols, aBackup);
+
         // Remove all flags in the range first.
         SetRowHidden(nRow1, nRow2, false);
-        SetRowFiltered(nRow1, nRow2, false);
+        getFilterData().setRowFiltered(nRow1, nRow2, false);
 
         std::vector<sc::RowSpan> aSpans =
             sc::toSpanArray<SCROW,sc::RowSpan>(aRowFlags.maRowsHidden, nRow1);
@@ -1223,7 +1088,17 @@ void ScTable::SortReorderByRow( ScSortInfoArray* pArray, SCCOL nCol1, SCCOL nCol
         aSpans = sc::toSpanArray<SCROW,sc::RowSpan>(aRowFlags.maRowsFiltered, nRow1);
 
         for (const auto& rSpan : aSpans)
-            SetRowFiltered(rSpan.mnRow1, rSpan.mnRow2, true);
+            getFilterData().setRowFiltered(rSpan.mnRow1, rSpan.mnRow2, true);
+
+        //Restore visibility state of objects
+        restoreObjectsVisibility(aSortedCols, aBackup);
+    }
+
+    // Update draw object positions
+    for (size_t i = 0, n = aSortedCols.size(); i < n; ++i)
+    {
+        SCCOL nThisCol = i + nCol1;
+        aCol[nThisCol].UpdateDrawObjects(aSortedCols[i]->maCellDrawObjects, nRow1, nRow2);
     }
 
     // Notify the cells' listeners to (re-)start listening.
@@ -1381,25 +1256,15 @@ void ScTable::SortReorderByRowRefUpdate(
             aCol[nThisCol].UpdateNoteCaptions(nRow1, nRow2);
         }
 
-        // Update draw object positions
-        aCol[nThisCol].UpdateDrawObjects(aSortedCols[i]->maCellDrawObjects, nRow1, nRow2);
-
         {
             // Get all row spans where the pattern is not NULL.
             std::vector<PatternSpan> aSpans =
-                sc::toSpanArrayWithValue<SCROW,const ScPatternAttr*,PatternSpan>(
+                sc::toSpanArrayWithValue<SCROW, CellAttributeHolder, PatternSpan>(
                     aSortedCols[i]->maPatterns);
 
             for (const auto& rSpan : aSpans)
             {
-                assert(rSpan.mpPattern); // should never be NULL.
-                rDocument.GetPool()->DirectPutItemInPool(*rSpan.mpPattern);
-            }
-
-            for (const auto& rSpan : aSpans)
-            {
-                aCol[nThisCol].SetPatternArea(rSpan.mnRow1, rSpan.mnRow2, *rSpan.mpPattern);
-                rDocument.GetPool()->DirectRemoveItemFromPool(*rSpan.mpPattern);
+                aCol[nThisCol].SetPatternArea(rSpan.mnRow1, rSpan.mnRow2, rSpan.maPattern);
             }
         }
 
@@ -1411,9 +1276,13 @@ void ScTable::SortReorderByRowRefUpdate(
         aRowFlags.maRowsHidden.build_tree();
         aRowFlags.maRowsFiltered.build_tree();
 
+        // Backup visibility state of objects. States will be lost when changing the flags below.
+        std::vector<std::vector<std::vector<bool>>> aBackup;
+        backupObjectsVisibility(aSortedCols, aBackup);
+
         // Remove all flags in the range first.
         SetRowHidden(nRow1, nRow2, false);
-        SetRowFiltered(nRow1, nRow2, false);
+        getFilterData().setRowFiltered(nRow1, nRow2, false);
 
         std::vector<sc::RowSpan> aSpans =
             sc::toSpanArray<SCROW,sc::RowSpan>(aRowFlags.maRowsHidden, nRow1);
@@ -1424,7 +1293,17 @@ void ScTable::SortReorderByRowRefUpdate(
         aSpans = sc::toSpanArray<SCROW,sc::RowSpan>(aRowFlags.maRowsFiltered, nRow1);
 
         for (const auto& rSpan : aSpans)
-            SetRowFiltered(rSpan.mnRow1, rSpan.mnRow2, true);
+            getFilterData().setRowFiltered(rSpan.mnRow1, rSpan.mnRow2, true);
+
+        //Restore visibility state of objects
+        restoreObjectsVisibility(aSortedCols, aBackup);
+    }
+
+    // Update draw object positions
+    for (size_t i = 0, n = aSortedCols.size(); i < n; ++i)
+    {
+        SCCOL nThisCol = i + nCol1;
+        aCol[nThisCol].UpdateDrawObjects(aSortedCols[i]->maCellDrawObjects, nRow1, nRow2);
     }
 
     // Set up row reorder map (for later broadcasting of reference updates).
@@ -1488,8 +1367,10 @@ void ScTable::SortReorderByRowRefUpdate(
     }
 
     // Notify the listeners to update their references.
-    ReorderNotifier<sc::RefRowReorderHint, sc::ColRowReorderMapType, SCROW> aFunc(aRowMap, nTab, nCol1, nCol2);
-    std::for_each(aListeners.begin(), aListeners.end(), aFunc);
+    {
+        ReorderNotifier<sc::RefRowReorderHint, sc::ColRowReorderMapType, SCROW> aFunc(aRowMap, nTab, nCol1, nCol2);
+        std::for_each(aListeners.begin(), aListeners.end(), std::move(aFunc));
+    }
 
     // Re-group formulas in affected columns.
     for (const auto& [rTab, rCols] : rGroupTabs)
@@ -1613,10 +1494,10 @@ short ScTable::CompareCell(
                 bool bNaturalSort = aSortParam.bNaturalSort;    // natural sort
                 bool bCaseSens    = aSortParam.bCaseSens;       // case sensitivity
 
-                ScUserList* pList = ScGlobal::GetUserList();
-                if (bUserDef && pList && pList->size() > aSortParam.nUserIndex )
+                ScUserList& rList = ScGlobal::GetUserList();
+                if (bUserDef && rList.size() > aSortParam.nUserIndex)
                 {
-                    const ScUserListData& rData = (*pList)[aSortParam.nUserIndex];
+                    const ScUserListData& rData = rList[aSortParam.nUserIndex];
 
                     if ( bNaturalSort )
                         nRes = naturalsort::Compare( aStr1, aStr2, bCaseSens, &rData, pSortCollator );
@@ -2045,11 +1926,10 @@ static void lcl_RemoveNumberFormat( ScTable* pTab, SCCOL nCol, SCROW nRow )
     if ( pPattern->GetItemSet().GetItemState( ATTR_VALUE_FORMAT, false )
             == SfxItemState::SET )
     {
-        auto pNewPattern = std::make_unique<ScPatternAttr>( *pPattern );
-        SfxItemSet& rSet = pNewPattern->GetItemSet();
-        rSet.ClearItem( ATTR_VALUE_FORMAT );
-        rSet.ClearItem( ATTR_LANGUAGE_FORMAT );
-        pTab->SetPattern( nCol, nRow, std::move(pNewPattern) );
+        ScPatternAttr* pNewPattern(new ScPatternAttr( *pPattern ));
+        pNewPattern->ItemSetClearItem(ATTR_VALUE_FORMAT);
+        pNewPattern->ItemSetClearItem(ATTR_LANGUAGE_FORMAT);
+        pTab->SetPattern( nCol, nRow, CellAttributeHolder(pNewPattern, true) );
     }
 }
 
@@ -2066,7 +1946,7 @@ struct RowEntry
 
 }
 
-static TranslateId lcl_GetSubTotalStrId(int id)
+static TranslateId lcl_GetSubTotalStrId(ScSubTotalFunc id)
 {
     switch ( id )
     {
@@ -2090,7 +1970,7 @@ static TranslateId lcl_GetSubTotalStrId(int id)
 }
 
 // Gets the string used for "Grand" results
-static TranslateId lcl_GetGrandSubTotalStrId(int id)
+static TranslateId lcl_GetGrandSubTotalStrId(ScSubTotalFunc id)
 {
     switch ( id )
     {
@@ -2122,7 +2002,6 @@ bool ScTable::DoSubTotals( ScSubTotalParam& rParam )
     SCROW nStartRow = rParam.nRow1 + 1;     // Header
     SCCOL nEndCol   = rParam.nCol2;
     SCROW nEndRow    = rParam.nRow2;        // will change
-    sal_uInt16 i;
 
     //  Remove empty rows at the end
     //  so that all exceeding (rDocument.MaxRow()) can be found by InsertRow (#35180#)
@@ -2131,17 +2010,15 @@ bool ScTable::DoSubTotals( ScSubTotalParam& rParam )
     nEndRow -= nEmpty;
 
     sal_uInt16 nLevelCount = 0;             // Number of levels
-    bool bDoThis = true;
-    for (i=0; i<MAXSUBTOTAL && bDoThis; i++)
-        if (rParam.bGroupActive[i])
-            nLevelCount = i+1;
-        else
-            bDoThis = false;
+    for (const auto& group : rParam.aGroups)
+    {
+        if (!group.bActive)
+            break;
+        ++nLevelCount;
+    }
 
     if (nLevelCount==0)                 // do nothing
         return true;
-
-    SCCOL*          nGroupCol = rParam.nField;  // columns which will be used when grouping
 
     //  With (blank) as a separate category, subtotal rows from
     //  the other columns must always be tested
@@ -2171,16 +2048,16 @@ bool ScTable::DoSubTotals( ScSubTotalParam& rParam )
     {
         aRowEntry.nGroupNo = nLevelCount - nLevel - 1;
 
+        const auto& group = rParam.aGroups[aRowEntry.nGroupNo];
         // how many results per level
-        SCCOL nResCount         = rParam.nSubTotals[aRowEntry.nGroupNo];
-        // result functions
-        ScSubTotalFunc* pResFunc = rParam.pFunctions[aRowEntry.nGroupNo].get();
+        SCCOL nResCount = group.nSubTotals;
 
         if (nResCount > 0)                                      // otherwise only sort
         {
-            for (i=0; i<=aRowEntry.nGroupNo; i++)
+            SCROW nAboveRows = rParam.bSummaryBelow ? nStartRow : nStartRow + nLevel;
+            for (sal_uInt16 i = 0; i <= aRowEntry.nGroupNo; ++i)
             {
-                aSubString = GetString( nGroupCol[i], nStartRow );
+                aSubString = GetString(rParam.aGroups[i].nField, nAboveRows);
                 if ( bIgnoreCase )
                     aCompString[i] = ScGlobal::getCharClass().uppercase( aSubString );
                 else
@@ -2188,8 +2065,8 @@ bool ScTable::DoSubTotals( ScSubTotalParam& rParam )
             }                                                   // aSubString stays on the last
 
             bool bBlockVis = false;             // group visible?
-            aRowEntry.nSubStartRow = nStartRow;
-            for (SCROW nRow=nStartRow; nRow<=nEndRow+1 && bSpaceLeft; nRow++)
+            aRowEntry.nSubStartRow = nAboveRows;
+            for (SCROW nRow=nAboveRows; nRow<=nEndRow+1 && bSpaceLeft; nRow++)
             {
                 bool bChanged;
                 if (nRow>nEndRow)
@@ -2198,9 +2075,9 @@ bool ScTable::DoSubTotals( ScSubTotalParam& rParam )
                 {
                     bChanged = false;
                     OUString aString;
-                    for (i=0; i<=aRowEntry.nGroupNo && !bChanged; i++)
+                    for (sal_uInt16 i = 0; i <= aRowEntry.nGroupNo && !bChanged; ++i)
                     {
-                        aString = GetString( nGroupCol[i], nRow );
+                        aString = GetString(rParam.aGroups[i].nField, nRow);
                         if (bIgnoreCase)
                             aString = ScGlobal::getCharClass().uppercase(aString);
                         //  when sorting, blanks are separate group
@@ -2217,9 +2094,21 @@ bool ScTable::DoSubTotals( ScSubTotalParam& rParam )
                 }
                 if ( bChanged )
                 {
-                    aRowEntry.nDestRow   = nRow;
-                    aRowEntry.nFuncStart = aRowEntry.nSubStartRow;
-                    aRowEntry.nFuncEnd   = nRow-1;
+                    if (rParam.bSummaryBelow)
+                    {
+                        aRowEntry.nDestRow = nRow;
+                        aRowEntry.nFuncStart = aRowEntry.nSubStartRow;
+                        aRowEntry.nFuncEnd = nRow - 1;
+                    }
+                    else
+                    {
+                        aRowEntry.nDestRow = aRowEntry.nSubStartRow;
+                        aRowEntry.nFuncStart = aRowEntry.nSubStartRow + 1;
+                        if (nRow != nEndRow + 1)
+                            aRowEntry.nFuncEnd = nRow - nLevel;
+                        else
+                            aRowEntry.nFuncEnd = nRow;
+                    }
 
                     bSpaceLeft = rDocument.InsertRow( 0, nTab, rDocument.MaxCol(), nTab,
                             aRowEntry.nDestRow, 1 );
@@ -2250,17 +2139,17 @@ bool ScTable::DoSubTotals( ScSubTotalParam& rParam )
                         aOutString += " ";
                         TranslateId pStrId = STR_TABLE_ERGEBNIS;
                         if ( nResCount == 1 )
-                            pStrId = lcl_GetSubTotalStrId(pResFunc[0]);
+                            pStrId = lcl_GetSubTotalStrId(group.func(0));
                         aOutString += ScResId(pStrId);
-                        SetString( nGroupCol[aRowEntry.nGroupNo], aRowEntry.nDestRow, nTab, aOutString );
-                        ApplyStyle( nGroupCol[aRowEntry.nGroupNo], aRowEntry.nDestRow, pStyle );
+                        SetString(group.nField, aRowEntry.nDestRow, nTab, aOutString);
+                        ApplyStyle(group.nField, aRowEntry.nDestRow, pStyle);
 
                         ++nRow;
                         ++nEndRow;
                         aRowEntry.nSubStartRow = nRow;
-                        for (i=0; i<=aRowEntry.nGroupNo; i++)
+                        for (sal_uInt16 i = 0; i <= aRowEntry.nGroupNo; ++i)
                         {
-                            aSubString = GetString( nGroupCol[i], nRow );
+                            aSubString = GetString(rParam.aGroups[i].nField, nRow);
                             if ( bIgnoreCase )
                                 aCompString[i] = ScGlobal::getCharClass().uppercase( aSubString );
                             else
@@ -2268,47 +2157,68 @@ bool ScTable::DoSubTotals( ScSubTotalParam& rParam )
                         }
                     }
                 }
-                bBlockVis = !RowFiltered(nRow);
+                bBlockVis = !getFilterData().rowFiltered(nRow);
             }
         }
     }
 
     if (!aRowVector.empty())
     {
-        // generate global total
-        SCROW nGlobalStartRow = aRowVector[0].nSubStartRow;
-        SCROW nGlobalStartFunc = aRowVector[0].nFuncStart;
         SCROW nGlobalEndRow = 0;
         SCROW nGlobalEndFunc = 0;
-        for (const auto& rRowEntry : aRowVector)
+        for (auto& rRowEntry : aRowVector)
         {
+            if (!rParam.bSummaryBelow)
+            {
+                // if we have Global summary above, we need to shift summary rows down
+                rRowEntry.nDestRow = rRowEntry.nDestRow + nLevelCount;
+                rRowEntry.nFuncEnd = rRowEntry.nFuncEnd + nLevelCount;
+                rRowEntry.nFuncStart = rRowEntry.nFuncStart + nLevelCount - rRowEntry.nGroupNo;
+                rRowEntry.nSubStartRow = rRowEntry.nSubStartRow + nLevelCount;
+            }
+
             nGlobalEndRow = (nGlobalEndRow < rRowEntry.nDestRow) ? rRowEntry.nDestRow : nGlobalEndRow;
             nGlobalEndFunc = (nGlobalEndFunc < rRowEntry.nFuncEnd) ? rRowEntry.nFuncEnd : nGlobalEndRow;
         }
 
+        // generate global total
+        SCROW nGlobalStartRow = aRowVector[0].nSubStartRow;
+        SCROW nGlobalStartFunc = aRowVector[0].nFuncStart;
+
         for (sal_uInt16 nLevel = 0; nLevel<nLevelCount; nLevel++)
         {
             const sal_uInt16 nGroupNo = nLevelCount - nLevel - 1;
-            const ScSubTotalFunc* pResFunc = rParam.pFunctions[nGroupNo].get();
-            if (!pResFunc)
+            const auto& group = rParam.aGroups[nGroupNo];
+            if (!group.nSubTotals)
             {
                 // No subtotal function given for this group => no formula or
                 // label and do not insert a row.
                 continue;
             }
 
-            // increment end row
-            nGlobalEndRow++;
-
-            // add row entry for formula
             aRowEntry.nGroupNo = nGroupNo;
-            aRowEntry.nSubStartRow = nGlobalStartRow;
-            aRowEntry.nFuncStart = nGlobalStartFunc;
-            aRowEntry.nDestRow = nGlobalEndRow;
-            aRowEntry.nFuncEnd = nGlobalEndFunc;
+            if (rParam.bSummaryBelow)
+            {
+                // increment end row
+                nGlobalEndRow++;
 
-            // increment row
-            nGlobalEndFunc++;
+                // add row entry for formula
+                aRowEntry.nSubStartRow = nGlobalStartRow;
+                aRowEntry.nFuncStart = nGlobalStartFunc;
+                aRowEntry.nDestRow = nGlobalEndRow;
+                aRowEntry.nFuncEnd = nGlobalEndFunc;
+
+                // increment row
+                nGlobalEndFunc++;
+            }
+            else
+            {
+                // if we have Global summary we need to shift summary rows down
+                aRowEntry.nSubStartRow = nGlobalStartRow - nGroupNo - 1;
+                aRowEntry.nFuncStart = nGlobalStartFunc - nGroupNo - 1;
+                aRowEntry.nDestRow = nGlobalStartRow - nGroupNo - 1;
+                aRowEntry.nFuncEnd = nGlobalEndFunc;
+            }
 
             bSpaceLeft = rDocument.InsertRow(0, nTab, rDocument.MaxCol(), nTab, aRowEntry.nDestRow, 1);
 
@@ -2319,9 +2229,9 @@ bool ScTable::DoSubTotals( ScSubTotalParam& rParam )
                 DBShowRow(aRowEntry.nDestRow, true);
 
                 // insert label
-                OUString label = ScResId(lcl_GetGrandSubTotalStrId(pResFunc[0]));
-                SetString(nGroupCol[aRowEntry.nGroupNo], aRowEntry.nDestRow, nTab, label);
-                ApplyStyle(nGroupCol[aRowEntry.nGroupNo], aRowEntry.nDestRow, pStyle);
+                OUString label = ScResId(lcl_GetGrandSubTotalStrId(group.func(0)));
+                SetString(group.nField, aRowEntry.nDestRow, nTab, label);
+                ApplyStyle(group.nField, aRowEntry.nDestRow, pStyle);
             }
         }
     }
@@ -2333,35 +2243,34 @@ bool ScTable::DoSubTotals( ScSubTotalParam& rParam )
     aRef.Ref2.SetAbsTab(nTab);
     for (const auto& rRowEntry : aRowVector)
     {
-        SCCOL nResCount         = rParam.nSubTotals[rRowEntry.nGroupNo];
-        SCCOL* nResCols         = rParam.pSubTotals[rRowEntry.nGroupNo].get();
-        ScSubTotalFunc* pResFunc = rParam.pFunctions[rRowEntry.nGroupNo].get();
+        const auto& group = rParam.aGroups[rRowEntry.nGroupNo];
+        SCCOL nResCount = group.nSubTotals;
         for ( SCCOL nResult=0; nResult < nResCount; ++nResult )
         {
-            aRef.Ref1.SetAbsCol(nResCols[nResult]);
+            aRef.Ref1.SetAbsCol(group.col(nResult));
             aRef.Ref1.SetAbsRow(rRowEntry.nFuncStart);
-            aRef.Ref2.SetAbsCol(nResCols[nResult]);
+            aRef.Ref2.SetAbsCol(group.col(nResult));
             aRef.Ref2.SetAbsRow(rRowEntry.nFuncEnd);
 
             ScTokenArray aArr(rDocument);
             aArr.AddOpCode( ocSubTotal );
             aArr.AddOpCode( ocOpen );
-            aArr.AddDouble( static_cast<double>(pResFunc[nResult]) );
+            aArr.AddDouble( static_cast<double>(group.func(nResult)) );
             aArr.AddOpCode( ocSep );
             aArr.AddDoubleReference( aRef );
             aArr.AddOpCode( ocClose );
             aArr.AddOpCode( ocStop );
             ScFormulaCell* pCell = new ScFormulaCell(
-                rDocument, ScAddress(nResCols[nResult], rRowEntry.nDestRow, nTab), aArr);
+                rDocument, ScAddress(group.col(nResult), rRowEntry.nDestRow, nTab), aArr);
             if ( rParam.bIncludePattern )
                 pCell->SetNeedNumberFormat(true);
 
-            SetFormulaCell(nResCols[nResult], rRowEntry.nDestRow, pCell);
-            if ( nResCols[nResult] != nGroupCol[rRowEntry.nGroupNo] )
+            SetFormulaCell(group.col(nResult), rRowEntry.nDestRow, pCell);
+            if (group.col(nResult) != group.nField)
             {
-                ApplyStyle( nResCols[nResult], rRowEntry.nDestRow, pStyle );
+                ApplyStyle(group.col(nResult), rRowEntry.nDestRow, pStyle);
 
-                lcl_RemoveNumberFormat( this, nResCols[nResult], rRowEntry.nDestRow );
+                lcl_RemoveNumberFormat(this, group.col(nResult), rRowEntry.nDestRow);
             }
         }
 
@@ -2761,7 +2670,7 @@ bool ScTable::CreateExcelQuery(SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow
     }
     if (bValid)
     {
-        sal_uLong nVisible = 0;
+        SCSIZE nVisible = 0;
         for ( nCol=nCol1; nCol<=ClampToAllocatedColumns(nCol2); nCol++ )
             nVisible += aCol[nCol].VisibleCount( nRow1+1, nRow2 );
 
@@ -3141,7 +3050,7 @@ void ScTable::UpdateSelectionFunction( ScFunctionData& rData, const ScMarkData& 
         if (mpColFlags && ColHidden(nCol))
             continue;
 
-        aCol[nCol].UpdateSelectionFunction(aRanges, rData, *mpHiddenRows);
+        aCol[nCol].UpdateSelectionFunction(aRanges, rData, *maFilterData.mpHiddenRows);
     }
 }
 

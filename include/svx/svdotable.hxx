@@ -28,17 +28,12 @@
 #include <boost/property_tree/ptree_fwd.hpp>
 
 class SvStream;
-class SfxStyleSheet;
 class SdrUndoAction;
-
-namespace sdr::contact {
-    class ViewContactOfTableObj;
-}
 
 namespace sdr::table {
 
 class TableLayouter;
-struct ImplTableShadowPaintInfo;
+class TableModel;
 
 #ifndef CellRef
     class Cell;
@@ -116,6 +111,8 @@ public:
     void DistributeRows( sal_Int32 nFirstRow, sal_Int32 nLastRow, const bool bOptimize, const bool bMinimize );
 
     css::uno::Reference< css::table::XTable > getTable() const;
+    /// Get the concrete UNO class for the table
+    const rtl::Reference< sdr::table::TableModel > & getUnoTable() const;
 
     bool isValid( const sdr::table::CellPos& rPos ) const;
     static CellPos getFirstCell();
@@ -210,7 +207,7 @@ public:
     virtual void NbcSetSnapRect(const tools::Rectangle& rRect) override;
 
     virtual const tools::Rectangle& GetLogicRect() const override;
-    virtual void NbcSetLogicRect(const tools::Rectangle& rRect) override;
+    virtual void NbcSetLogicRect(const tools::Rectangle& rRect, bool bAdaptTextMinSize = true) override;
     virtual void AdjustToMaxRect( const tools::Rectangle& rMaxRect, bool bShrinkOnly = false ) override;
 
     virtual sal_uInt32 GetHdlCount() const override;
@@ -239,7 +236,7 @@ public:
     void TakeTextEditArea(const sdr::table::CellPos& rPos, Size* pPaperMin, Size* pPaperMax, tools::Rectangle* pViewInit, tools::Rectangle* pViewMin) const;
     virtual EEAnchorMode GetOutlinerViewAnchorMode() const override;
 
-    virtual void NbcSetOutlinerParaObject(std::optional<OutlinerParaObject> pTextObject) override;
+    virtual void NbcSetOutlinerParaObject(std::optional<OutlinerParaObject> pTextObject, bool bAdjustTextFrameWidthAndHeight = true) override;
 
     virtual OutlinerParaObject* GetOutlinerParaObject() const override;
 
@@ -283,6 +280,8 @@ private:
 /** Hack for clipboard with calc and writer, export and import table content as rtf table */
 SVX_DLLPUBLIC void ExportAsRTF( SvStream& rStrm, SdrTableObj& rObj );
 SVX_DLLPUBLIC void ImportAsRTF( SvStream& rStrm, SdrTableObj& rObj );
+
+SVX_DLLPUBLIC void ImportAsHTML( SvStream& rStrm, SdrTableObj& rObj );
 
 }
 

@@ -20,15 +20,17 @@
 #ifndef INCLUDED_SVX_E3DITEM_HXX
 #define INCLUDED_SVX_E3DITEM_HXX
 
+#include <config_options.h>
 #include <svl/poolitem.hxx>
 #include <basegfx/vector/b3dvector.hxx>
 #include <svx/svxdllapi.h>
 
-class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxB3DVectorItem final : public SfxPoolItem
+class SAL_WARN_UNUSED UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SvxB3DVectorItem final : public SfxPoolItem
 {
-    basegfx::B3DVector  aVal;
+    basegfx::B3DVector  m_aVal;
 
 public:
+                            DECLARE_ITEM_TYPE_FUNCTION(SvxB3DVectorItem)
                             SvxB3DVectorItem( TypedWhichId<SvxB3DVectorItem> nWhich, const basegfx::B3DVector& rVal );
                             SvxB3DVectorItem( const SvxB3DVectorItem& );
                             virtual ~SvxB3DVectorItem() override;
@@ -39,7 +41,7 @@ public:
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    const basegfx::B3DVector&           GetValue() const { return aVal; }
+    const basegfx::B3DVector&           GetValue() const { return m_aVal; }
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };

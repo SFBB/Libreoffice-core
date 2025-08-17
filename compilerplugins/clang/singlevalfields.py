@@ -35,7 +35,7 @@ with io.open("workdir/loplugin.singlevalfields.log", "r", buffering=1024*1024) a
             else:
                 assignValue = ""
             fieldInfo = (parentClass, fieldName)
-            if not fieldInfo in fieldAssignDict:
+            if fieldInfo not in fieldAssignDict:
                 fieldAssignDict[fieldInfo] = set()
             fieldAssignDict[fieldInfo].add(assignValue)
         else:
@@ -55,6 +55,13 @@ for fieldInfo, assignValues in fieldAssignDict.items():
     if len(assignValues) > 2:
         continue
     if "?" in assignValues:
+        continue
+    # ignore some random noise, no idea why this does not get filtered out by the normal checks in the C++
+    if v2.startswith("ux-gnu/") or v2.startswith(":") or v2.startswith(".h:") or v2.startswith("bxml/"):
+        continue
+    if v2.startswith("ib.h:") or v2.startswith("freetype/") or v2.startswith("k/") or v2.startswith("n.h"):
+        continue
+    if v2.startswith("pango/") or v2.startswith("t.h") or v2.startswith("h:"):
         continue
     #if len(assignValues - set(["0", "1", "-1", "nullptr"])) > 0:
     #    continue
@@ -85,7 +92,7 @@ for fieldInfo, assignValues in fieldAssignDict.items():
     if len(assignValues) == 2:
         if "0" in assignValues and "1" in assignValues:
             fieldType = definitionToTypeMap[fieldInfo]
-            if not "_Bool" in fieldType and not "enum " in fieldType and not "boolean" in fieldType:
+            if "_Bool" not in fieldType and "enum " not in fieldType and "boolean" not in fieldType:
                 tmp2list.append((v0,v1,v2,fieldType))
     elif len(assignValues) == 1:
         # ignore timers/idles

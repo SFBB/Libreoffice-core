@@ -22,7 +22,7 @@
 #include <shellio.hxx>
 #include <wrt_fn.hxx>
 
-extern SwNodeFnTab aASCNodeFnTab;
+extern const SwNodeFnTab aASCNodeFnTab;
 
 // The ASC writer
 
@@ -31,6 +31,7 @@ class SwASCWriter : public Writer
     OUString m_sLineEnd;
 
     virtual ErrCode WriteStream() override;
+    void WriteTable(SwTableNode* pTableNd, SwTextNode* pNd);
 
 public:
     SwASCWriter(std::u16string_view rFilterName);

@@ -46,8 +46,8 @@ XStream_impl::XStream_impl( const OUString& aUncPath, bool bLock )
     : m_bInputStreamCalled( false ),
       m_bOutputStreamCalled( false ),
       m_aFile( aUncPath ),
-      m_nErrorCode( TASKHANDLER_NO_ERROR ),
-      m_nMinorErrorCode( TASKHANDLER_NO_ERROR )
+      m_nErrorCode( TaskHandlerErr::NO_ERROR ),
+      m_nMinorErrorCode( 0 )
 {
     sal_uInt32 nFlags = ( osl_File_OpenFlag_Read | osl_File_OpenFlag_Write );
     if ( !bLock )
@@ -59,7 +59,7 @@ XStream_impl::XStream_impl( const OUString& aUncPath, bool bLock )
         m_nIsOpen = false;
         m_aFile.close();
 
-        m_nErrorCode = TASKHANDLING_OPEN_FOR_STREAM;
+        m_nErrorCode = TaskHandlerErr::OPEN_FOR_STREAM;
         m_nMinorErrorCode = err;
     }
     else
@@ -212,7 +212,7 @@ XStream_impl::closeStream()
         osl::FileBase::RC err = m_aFile.close();
 
         if( err != osl::FileBase::E_None ) {
-            throw io::IOException("could not close file");
+            throw io::IOException(u"could not close file"_ustr);
         }
 
         m_nIsOpen = false;
@@ -280,7 +280,7 @@ void XStream_impl::waitForCompletion()
     // afterwards, there appears to be no cheaper way than to call fsync:
     if (m_nIsOpen && m_aFile.sync() != osl::FileBase::E_None) {
         throw io::IOException(
-            "could not synchronize file to disc",
+            u"could not synchronize file to disc"_ustr,
             getXWeak());
     }
 }

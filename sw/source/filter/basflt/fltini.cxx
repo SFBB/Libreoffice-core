@@ -43,7 +43,7 @@ using namespace utl;
 using namespace com::sun::star::uno;
 using namespace com::sun::star;
 
-Reader *ReadAscii = nullptr, *ReadHTML = nullptr, *ReadXML = nullptr;
+Reader *ReadAscii = nullptr, *ReadHTML = nullptr, *ReadXML = nullptr, *ReadMarkdown = nullptr;
 
 static Reader* GetRTFReader();
 static Reader* GetWW8Reader();
@@ -63,27 +63,23 @@ static SwReaderWriterEntry aReaderWriter[] =
     SwReaderWriterEntry( nullptr,               &::GetXMLWriter,  true  ),
     SwReaderWriterEntry( nullptr,               &::GetASCWriter,  false ),
     SwReaderWriterEntry( nullptr,               &::GetASCWriter,  true  ),
-    SwReaderWriterEntry( &::GetDOCXReader,      nullptr,          true  )
+    SwReaderWriterEntry( &::GetDOCXReader,      nullptr,          true  ),
+    SwReaderWriterEntry(nullptr, &GetMDWriter, false),
 };
 
 Reader* SwReaderWriterEntry::GetReader()
 {
-    if ( pReader )
-        return pReader;
-    else if ( fnGetReader )
-    {
-        pReader = (*fnGetReader)();
-        return pReader;
-    }
-    return nullptr;
+    if (!pReader && fnGetReader)
+        pReader = fnGetReader();
+    return pReader;
 }
 
 void SwReaderWriterEntry::GetWriter( std::u16string_view rNm, const OUString& rBaseURL, WriterRef& xWrt ) const
 {
     if ( fnGetWriter )
-        (*fnGetWriter)( rNm, rBaseURL, xWrt );
+        fnGetWriter(rNm, rBaseURL, xWrt);
     else
-        xWrt = WriterRef(nullptr);
+        xWrt.clear();
 }
 
 Reader* SwGetReaderXML() // SW_DLLPUBLIC
@@ -103,11 +99,13 @@ Filters::Filters()
     ReadAscii = new AsciiReader;
     ReadHTML = new HTMLReader;
     ReadXML = new XMLReader;
+    ReadMarkdown = new MarkdownReader;
     SetFltPtr( READER_WRITER_BAS, ReadAscii );
     SetFltPtr( READER_WRITER_HTML, ReadHTML );
     SetFltPtr( READER_WRITER_XML, ReadXML );
     SetFltPtr( READER_WRITER_TEXT_DLG, ReadAscii );
     SetFltPtr( READER_WRITER_TEXT, ReadAscii );
+    SetFltPtr( READER_WRITER_MD, ReadMarkdown);
 }
 
 Filters::~Filters()
@@ -121,22 +119,22 @@ Filters::~Filters()
             rEntry.pReader = nullptr;
         }
     }
-    msword_.release();
 }
 
 #ifndef DISABLE_DYNLOADING
 
 oslGenericFunction Filters::GetMswordLibSymbol( const char *pSymbol )
 {
-    if (!msword_.is())
+    static ::osl::Module aModule;
+    if (!aModule.is())
     {
-        OUString url("$LO_LIB_DIR/" SVLIBRARY("msword"));
+        OUString url(u"$LO_LIB_DIR/" SVLIBRARY("msword") ""_ustr);
         rtl::Bootstrap::expandMacros(url);
-        bool ok = msword_.load( url, SAL_LOADMODULE_GLOBAL | SAL_LOADMODULE_LAZY );
+        bool ok = aModule.load( url, SAL_LOADMODULE_GLOBAL | SAL_LOADMODULE_LAZY );
         SAL_WARN_IF(!ok, "sw", "failed to load msword library");
     }
-    if (msword_.is())
-        return msword_.getFunctionSymbol( OUString::createFromAscii( pSymbol ) );
+    if (aModule.is())
+        return aModule.getFunctionSymbol( OUString::createFromAscii( pSymbol ) );
     return nullptr;
 }
 
@@ -212,14 +210,14 @@ bool StgWriter::IsStgWriter() const { return true; }
 </FilterFlags>
 */
 
-SwFilterOptions::SwFilterOptions( sal_uInt16 nCnt, const char** ppNames,
+SwFilterOptions::SwFilterOptions( sal_uInt16 nCnt, const OUString* ppNames,
                                                                 sal_uInt64* pValues )
-    : ConfigItem( "Office.Writer/FilterFlags" )
+    : ConfigItem( u"Office.Writer/FilterFlags"_ustr )
 {
     GetValues( nCnt, ppNames, pValues );
 }
 
-void SwFilterOptions::GetValues( sal_uInt16 nCnt, const char** ppNames,
+void SwFilterOptions::GetValues( sal_uInt16 nCnt, const OUString* ppNames,
                                                                         sal_uInt64* pValues )
 {
     Sequence<OUString> aNames( nCnt );
@@ -227,7 +225,7 @@ void SwFilterOptions::GetValues( sal_uInt16 nCnt, const char** ppNames,
     sal_uInt16 n;
 
     for( n = 0; n < nCnt; ++n )
-        pNames[ n ] = OUString::createFromAscii( ppNames[ n ] );
+        pNames[ n ] = ppNames[ n ];
     Sequence<Any> aValues = GetProperties( aNames );
 
     if( nCnt == aValues.getLength() )
@@ -309,7 +307,7 @@ void CalculateFlySize(SfxItemSet& rFlySet, const SwNode& rAnchor,
                     // if the first node don't contained any content, then
                     // insert one char in it calc again and delete once again
                     SwContentIndex aNdIdx( pFirstTextNd );
-                    pFirstTextNd->InsertText("MM", aNdIdx);
+                    pFirstTextNd->InsertText(u"MM"_ustr, aNdIdx);
                     sal_uLong nAbsMinCnts;
                     pFirstTextNd->GetMinMaxSize( pFirstTextNd->GetIndex(),
                                                                     nMinFrame, nMaxFrame, nAbsMinCnts );
@@ -627,7 +625,7 @@ Reader* GetRTFReader()
 {
 #ifndef DISABLE_DYNLOADING
 
-    FnGetReader pFunction = reinterpret_cast<FnGetReader>( SwGlobals::getFilters().GetMswordLibSymbol( "ImportRTF" ) );
+    FnGetReader pFunction = reinterpret_cast<FnGetReader>( sw::Filters::GetMswordLibSymbol( "ImportRTF" ) );
 
     if ( pFunction )
         return (*pFunction)();
@@ -642,7 +640,7 @@ Reader* GetRTFReader()
 void GetRTFWriter( std::u16string_view rFltName, const OUString& rBaseURL, WriterRef& xRet )
 {
 #ifndef DISABLE_DYNLOADING
-    FnGetWriter pFunction = reinterpret_cast<FnGetWriter>( SwGlobals::getFilters().GetMswordLibSymbol( "ExportRTF" ) );
+    FnGetWriter pFunction = reinterpret_cast<FnGetWriter>( sw::Filters::GetMswordLibSymbol( "ExportRTF" ) );
 
     if ( pFunction )
         (*pFunction)( rFltName, rBaseURL, xRet );
@@ -656,7 +654,7 @@ void GetRTFWriter( std::u16string_view rFltName, const OUString& rBaseURL, Write
 Reader* GetWW8Reader()
 {
 #ifndef DISABLE_DYNLOADING
-    FnGetReader pFunction = reinterpret_cast<FnGetReader>( SwGlobals::getFilters().GetMswordLibSymbol( "ImportDOC" ) );
+    FnGetReader pFunction = reinterpret_cast<FnGetReader>( sw::Filters::GetMswordLibSymbol( "ImportDOC" ) );
 
     if ( pFunction )
         return (*pFunction)();
@@ -670,7 +668,7 @@ Reader* GetWW8Reader()
 void GetWW8Writer( std::u16string_view rFltName, const OUString& rBaseURL, WriterRef& xRet )
 {
 #ifndef DISABLE_DYNLOADING
-    FnGetWriter pFunction = reinterpret_cast<FnGetWriter>( SwGlobals::getFilters().GetMswordLibSymbol( "ExportDOC" ) );
+    FnGetWriter pFunction = reinterpret_cast<FnGetWriter>( sw::Filters::GetMswordLibSymbol( "ExportDOC" ) );
 
     if ( pFunction )
         (*pFunction)( rFltName, rBaseURL, xRet );
@@ -684,7 +682,7 @@ void GetWW8Writer( std::u16string_view rFltName, const OUString& rBaseURL, Write
 Reader* GetDOCXReader()
 {
 #ifndef DISABLE_DYNLOADING
-    FnGetReader pFunction = reinterpret_cast<FnGetReader>( SwGlobals::getFilters().GetMswordLibSymbol( "ImportDOCX" ) );
+    FnGetReader pFunction = reinterpret_cast<FnGetReader>( sw::Filters::GetMswordLibSymbol( "ImportDOCX" ) );
 
     if ( pFunction )
         return (*pFunction)();
@@ -701,7 +699,7 @@ typedef sal_uInt32 ( *GetSaveWarning )( SfxObjectShell& );
 ErrCode SaveOrDelMSVBAStorage( SfxObjectShell& rDoc, SotStorage& rStor, bool bSaveInto, const OUString& rStorageName )
 {
 #ifndef DISABLE_DYNLOADING
-    SaveOrDel pFunction = reinterpret_cast<SaveOrDel>( SwGlobals::getFilters().GetMswordLibSymbol( "SaveOrDelMSVBAStorage_ww8" ) );
+    SaveOrDel pFunction = reinterpret_cast<SaveOrDel>( sw::Filters::GetMswordLibSymbol( "SaveOrDelMSVBAStorage_ww8" ) );
     if( pFunction )
         return ErrCode(pFunction( rDoc, rStor, bSaveInto, rStorageName ));
     return ERRCODE_NONE;
@@ -713,7 +711,7 @@ ErrCode SaveOrDelMSVBAStorage( SfxObjectShell& rDoc, SotStorage& rStor, bool bSa
 ErrCode GetSaveWarningOfMSVBAStorage( SfxObjectShell &rDocS )
 {
 #ifndef DISABLE_DYNLOADING
-    GetSaveWarning pFunction = reinterpret_cast<GetSaveWarning>( SwGlobals::getFilters().GetMswordLibSymbol( "GetSaveWarningOfMSVBAStorage_ww8" ) );
+    GetSaveWarning pFunction = reinterpret_cast<GetSaveWarning>( sw::Filters::GetMswordLibSymbol( "GetSaveWarningOfMSVBAStorage_ww8" ) );
     if( pFunction )
         return ErrCode(pFunction( rDocS ));
     return ERRCODE_NONE;

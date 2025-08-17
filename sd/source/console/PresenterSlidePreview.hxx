@@ -22,22 +22,21 @@
 
 #include "PresenterController.hxx"
 
+#include <SlideRenderer.hxx>
 #include <com/sun/star/awt/XPaintListener.hpp>
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
-#include <com/sun/star/drawing/XSlideRenderer.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
-#include <com/sun/star/drawing/framework/XView.hpp>
+#include <framework/AbstractPane.hxx>
+#include <framework/AbstractView.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <rtl/ref.hxx>
 
 namespace sdext::presenter {
 
-typedef ::cppu::WeakComponentImplHelper <
-    css::drawing::framework::XView,
+typedef ::cppu::ImplInheritanceHelper <
+    sd::framework::AbstractView,
     css::drawing::XDrawView,
     css::awt::XPaintListener,
     css::awt::XWindowListener
@@ -50,25 +49,26 @@ typedef ::cppu::WeakComponentImplHelper <
     uses a derived class that overrides the setCurrentSlide() method.
 */
 class PresenterSlidePreview
-    : private ::cppu::BaseMutex,
-      public PresenterSlidePreviewInterfaceBase
+    : public PresenterSlidePreviewInterfaceBase
 {
 public:
     PresenterSlidePreview (
         const css::uno::Reference<css::uno::XComponentContext>& rxContext,
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxViewId,
-        const css::uno::Reference<css::drawing::framework::XPane>& rxAnchorPane,
+        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
+        const rtl::Reference<sd::framework::AbstractPane>& rxAnchorPane,
         const ::rtl::Reference<PresenterController>& rpPresenterController);
     virtual ~PresenterSlidePreview() override;
+
     PresenterSlidePreview(const PresenterSlidePreview&) = delete;
     PresenterSlidePreview& operator=(const PresenterSlidePreview&) = delete;
-    virtual void SAL_CALL disposing() override;
 
-    // XResourceId
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    virtual css::uno::Reference<css::drawing::framework::XResourceId> SAL_CALL getResourceId() override;
+    // AbstractResource
 
-    virtual sal_Bool SAL_CALL isAnchorOnly() override;
+    virtual rtl::Reference<sd::framework::ResourceId> getResourceId() override;
+
+    virtual bool isAnchorOnly() override;
 
     // XWindowListener
 
@@ -98,8 +98,8 @@ protected:
     ::rtl::Reference<PresenterController> mpPresenterController;
 
 private:
-    css::uno::Reference<css::drawing::framework::XResourceId> mxViewId;
-    css::uno::Reference<css::drawing::XSlideRenderer> mxPreviewRenderer;
+    rtl::Reference<sd::framework::ResourceId> mxViewId;
+    rtl::Reference<sd::presenter::SlideRenderer> mxPreviewRenderer;
 
     /** This Image holds the preview of the current slide.  After resize
         requests the image may be empty.  This results eventually in a call
@@ -131,11 +131,6 @@ private:
     /** React to a resize of the anchor pane.
     */
     void Resize();
-
-    /** @throws css::lang::DisposedException when the object has already been
-        disposed.
-    */
-    void ThrowIfDisposed();
 };
 
 } // end of namespace ::sd::presenter

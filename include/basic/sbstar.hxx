@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASIC_SBSTAR_HXX
-#define INCLUDED_BASIC_SBSTAR_HXX
+#pragma once
 
 #include <basic/sbx.hxx>
 #include <basic/sbxobj.hxx>
@@ -94,7 +93,7 @@ public:
     static bool     IsRunning();
     static ErrCode  GetErrBasic();
     // #66536 make additional message accessible by RTL function Error
-    static OUString GetErrorMsg();
+    static const OUString & GetErrorMsg();
     static sal_Int32 GetErl();
 
     virtual SbxVariable* Find( const OUString&, SbxClassType ) override;
@@ -152,7 +151,5 @@ public:
 };
 
 typedef tools::SvRef<StarBASIC> StarBASICRef;
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

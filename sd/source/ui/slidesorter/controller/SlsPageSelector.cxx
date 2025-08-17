@@ -35,7 +35,6 @@
 #include <memory>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::uno;
 using namespace ::sd::slidesorter::model;
 using namespace ::sd::slidesorter::view;
 
@@ -309,7 +308,7 @@ void PageSelector::UpdateCurrentPage (const bool bUpdateOnlyWhenPending)
             continue;
         if (pDescriptor->HasState(PageDescriptor::ST_Selected))
         {
-            pCurrentPageDescriptor = pDescriptor;
+            pCurrentPageDescriptor = std::move(pDescriptor);
             break;
         }
     }
@@ -323,7 +322,7 @@ void PageSelector::UpdateCurrentPage (const bool bUpdateOnlyWhenPending)
     // selection.
     std::shared_ptr<PageSelection> pSelection (GetPageSelection());
 
-    mrController.GetCurrentSlideManager()->SwitchCurrentSlide(pCurrentPageDescriptor);
+    mrController.GetCurrentSlideManager().SwitchCurrentSlide(pCurrentPageDescriptor);
 
     // Restore the selection and prevent a recursive call to
     // UpdateCurrentPage().

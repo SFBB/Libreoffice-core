@@ -20,6 +20,7 @@
 #pragma once
 
 #include "AccessibleCellBase.hxx"
+#include "AccessiblePreviewTable.hxx"
 
 class ScPreviewShell;
 
@@ -28,13 +29,12 @@ namespace accessibility
     class AccessibleTextHelper;
 }
 
-class ScAccessiblePreviewCell : public ScAccessibleCellBase
+class ScAccessiblePreviewCell final : public ScAccessibleCellBase
 {
 public:
-    //=====  internal  ========================================================
-    ScAccessiblePreviewCell(
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-        ScPreviewShell* pViewShell, const ScAddress& rCellAddress, sal_Int32 nIndex );
+    ScAccessiblePreviewCell(const rtl::Reference<ScAccessiblePreviewTable>& rParent,
+                            ScPreviewShell* pViewShell, const ScAddress& rCellAddress,
+                            sal_Int32 nIndex);
 
 protected:
     virtual ~ScAccessiblePreviewCell() override;
@@ -64,21 +64,9 @@ public:
 
     virtual sal_Int64 SAL_CALL getAccessibleStateSet() override;
 
-    //=====  XServiceInfo  ====================================================
-
-    virtual OUString SAL_CALL getImplementationName() override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    ///=====  XTypeProvider  ===================================================
-
-    /** Returns an implementation id.
-    */
-    virtual css::uno::Sequence<sal_Int8> SAL_CALL
-        getImplementationId() override;
-
 protected:
-    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() const override;
-    virtual tools::Rectangle GetBoundingBox() const override;
+    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() override;
+    virtual tools::Rectangle GetBoundingBox() override;
 
 private:
     ScPreviewShell* mpViewShell;

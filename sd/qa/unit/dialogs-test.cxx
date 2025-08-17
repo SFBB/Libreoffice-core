@@ -103,7 +103,7 @@ void SdDialogsTest::setUp()
     ScreenshotTest::setUp();
 
     mpFact = SdAbstractDialogFactory::Create();
-    mxComponent = loadFromDesktop("private:factory/simpress", "com.sun.star.presentation.PresentationDocument");
+    mxComponent = loadFromDesktop(u"private:factory/simpress"_ustr, u"com.sun.star.presentation.PresentationDocument"_ustr);
 
     mpImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
     CPPUNIT_ASSERT(mpImpressDocument);
@@ -349,9 +349,9 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             CPPUNIT_ASSERT(pDrawDoc);
             pRetval = getSdAbstractDialogFactory()->CreateSdInsertPagesObjsDlg(
                 getViewShell()->GetFrameWeld(),
-                pDrawDoc,
+                *pDrawDoc,
                 nullptr,
-                "foo");
+                u"foo"_ustr);
             break;
         }
         case 9:
@@ -407,7 +407,9 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             aDlgSet.Put(SfxBoolItem(ATTR_PRESENT_FULLSCREEN, rPresentationSettings.mbFullScreen));
             aDlgSet.Put(SfxUInt32Item(ATTR_PRESENT_PAUSE_TIMEOUT, rPresentationSettings.mnPauseTimeout));
             aDlgSet.Put(SfxBoolItem(ATTR_PRESENT_SHOW_PAUSELOGO, rPresentationSettings.mbShowPauseLogo));
-            //SdOptions* pOptions = SD_MOD()->GetSdOptions(DocumentType::Impress);
+            aDlgSet.Put(SfxBoolItem(ATTR_PRESENT_INTERACTIVE, rPresentationSettings.mbInteractive));
+
+            //SdOptions* pOptions = SdModule::get()->GetSdOptions(DocumentType::Impress);
             aDlgSet.Put(SfxInt32Item(ATTR_PRESENT_DISPLAY, 0 /*pOptions->GetDisplay()*/));
             pRetval = getSdAbstractDialogFactory()->CreateSdStartPresentationDlg(
                 Application::GetDefDialogParent(),
@@ -471,7 +473,7 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
         }
         case 17:
         {
-            // CreatSdActionDialog(const SfxItemSet* pAttr, ::sd::View* pView) override;
+            // CreatSdActionDialog(const SfxItemSet& rAttr, ::sd::View* pView) override;
             SdDrawDocument* pDrawDoc = getSdXImpressDocument()->GetDoc();
             CPPUNIT_ASSERT(pDrawDoc);
             SfxItemSet aSet(pDrawDoc->GetItemPool(), svl::Items<ATTR_ANIMATION_START, ATTR_ACTION_END>);
@@ -493,7 +495,7 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             aSet.Put(SfxBoolItem(ATTR_ACTION_PLAYFULL, false));
             pRetval = getSdAbstractDialogFactory()->CreatSdActionDialog(
                 getViewShell()->GetFrameWeld(),
-                &aSet,
+                aSet,
                 getDrawView());
             break;
         }
@@ -515,7 +517,7 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             CPPUNIT_ASSERT(pDrawDoc);
             pRetval = getSdAbstractDialogFactory()->CreateSdPhotoAlbumDialog(
                 Application::GetDefDialogParent(),
-                pDrawDoc);
+                *pDrawDoc);
             break;
         }
         case 20:
@@ -527,7 +529,7 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             CPPUNIT_ASSERT(pSdPage);
             pRetval = getSdAbstractDialogFactory()->CreateMasterLayoutDialog(
                 Application::GetDefDialogParent(),
-                pDrawDoc,
+                *pDrawDoc,
                 pSdPage);
             break;
         }
@@ -545,9 +547,9 @@ VclPtr<VclAbstractDialog> SdDialogsTest::createDialogByID(sal_uInt32 nID)
             SdPage* pSdPage = pDrawDoc->GetSdPage(0, PageKind::Standard);
             CPPUNIT_ASSERT(pSdPage);
             pRetval = getSdAbstractDialogFactory()->CreateHeaderFooterDialog(
-                getViewShell(),
+                *getViewShell(),
                 Application::GetDefDialogParent(),
-                pDrawDoc,
+                *pDrawDoc,
                 pSdPage);
             break;
         }

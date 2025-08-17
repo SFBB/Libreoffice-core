@@ -38,10 +38,12 @@
 #include <o3tl/runtimetooustring.hxx>
 #include <o3tl/safeCoInitUninit.hxx>
 #include <o3tl/string_view.hxx>
+#include <tools/urlobj.hxx>
 
 #include <prewin.h>
 #include <Shlobj.h>
 #include <systools/win32/comtools.hxx>
+#include <systools/win32/extended_max_path.hxx>
 #include <postwin.h>
 
 using namespace ::com::sun::star::system::SystemShellExecuteFlags;
@@ -105,9 +107,6 @@ namespace
         {  ERROR_NOT_ENOUGH_QUOTA,       osl_File_E_NOMEM    }    /* 1816 */
     };
 
-    /* size of the table */
-    #define ERRTABLESIZE (SAL_N_ELEMENTS(errtable))
-
     /* The following two constants must be the minimum and maximum
     values in the (contiguous) range of osl_File_E_xec Failure errors. */
     #define MIN_EXEC_ERROR ERROR_INVALID_STARTING_CODESEG
@@ -123,13 +122,11 @@ namespace
 
     oslFileError _mapError( DWORD dwError )
     {
-        unsigned i;
-
         /* check the table for the OS error code */
-        for ( i = 0; i < ERRTABLESIZE; ++i )
+        for ( const auto& entry : errtable )
         {
-            if ( dwError == errtable[i].oscode )
-                return static_cast<oslFileError>(errtable[i].errnocode);
+            if ( dwError == entry.oscode )
+                return static_cast<oslFileError>(entry.errnocode);
         }
 
         /* The error code wasn't in the table.  We check for a range of */
@@ -206,6 +203,98 @@ BOOL CALLBACK FindAndActivateProcWnd(HWND hwnd, LPARAM lParam)
     SetActiveWindow(hwnd);
     return FALSE; // stop enumeration
 }
+
+OUString checkFile(const OUString& pathname, const OUString& aCommand)
+{
+    if (pathname.getLength() >= EXTENDED_MAX_PATH)
+    {
+        throw css::lang::IllegalArgumentException(
+            "XSystemShellExecute.execute, path <" + pathname + "> too long", {}, 0);
+    }
+    wchar_t path[EXTENDED_MAX_PATH];
+    wcscpy_s(path, o3tl::toW(pathname.getStr()));
+    for (int i = 0;; ++i) {
+        // tdf#130216: normalize c:\path\to\something\..\else into c:\path\to\else
+        if (PathResolve(path, nullptr, PRF_VERIFYEXISTS | PRF_REQUIREABSOLUTE) == 0)
+        {
+            throw css::lang::IllegalArgumentException(
+                OUString::Concat(u"XSystemShellExecute.execute, PathResolve(") + o3tl::toU(path)
+                    + ") failed",
+                {}, 0);
+        }
+        if (SHGetFileInfoW(path, 0, nullptr, 0, SHGFI_EXETYPE) != 0)
+        {
+            throw css::security::AccessControlException(
+                "XSystemShellExecute.execute, cannot process <" + aCommand + ">", {}, {});
+        }
+        SHFILEINFOW info;
+        if (SHGetFileInfoW(path, 0, &info, sizeof info, SHGFI_ATTRIBUTES) == 0)
+        {
+            throw css::lang::IllegalArgumentException(
+                OUString::Concat(u"XSystemShellExecute.execute, SHGetFileInfoW(") + o3tl::toU(path) + ") failed", {},
+                0);
+        }
+        if ((info.dwAttributes & SFGAO_LINK) == 0) {
+            break;
+        }
+        try
+        {
+            sal::systools::COMReference<IShellLinkW> link(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER);
+            sal::systools::COMReference<IPersistFile> file(link, sal::systools::COM_QUERY_THROW);
+            sal::systools::ThrowIfFailed(file->Load(path, STGM_READ),
+                                         "IPersistFile.Load failed");
+            sal::systools::ThrowIfFailed(link->Resolve(nullptr, SLR_UPDATE | SLR_NO_UI),
+                                         "IShellLink.Resolve failed");
+            sal::systools::ThrowIfFailed(link->GetPath(path, std::size(path), nullptr, SLGP_RAWPATH),
+                                         "IShellLink.GetPath failed");
+        }
+        catch (sal::systools::ComError& e)
+        {
+            throw css::lang::IllegalArgumentException(
+                ("XSystemShellExecute.execute, " + o3tl::runtimeToOUString(e.what())
+                 + " at " + o3tl::runtimeToOUString(e.GetLocation().file_name()) + ":"
+                 + OUString::number(e.GetLocation().line()) + " error "
+                 + OUString::number(e.GetHresult())),
+                {}, 0);
+        }
+        // Fail at some arbitrary nesting depth, to avoid an infinite loop:
+        if (i == 30) {
+            throw css::lang::IllegalArgumentException(
+                "XSystemShellExecute.execute, link depth exceeded for <" + aCommand + ">",
+                {}, 0);
+        }
+    }
+    std::u16string_view resulting_path(o3tl::toU(path));
+    // ShellExecuteExW appears to ignore trailing dots, so remove them:
+    while (o3tl::ends_with(resulting_path, u".", &resulting_path)) {}
+    auto const n = resulting_path.find_last_of('.');
+    if (n != std::u16string_view::npos && n > resulting_path.find_last_of('\\')) {
+        auto const ext = resulting_path.substr(n + 1);
+        if (!ext.empty()) {
+            OUString env;
+            if (osl_getEnvironment(u"PATHEXT"_ustr.pData, &env.pData)
+                != osl_Process_E_None)
+            {
+                SAL_INFO("shell", "osl_getEnvironment(PATHEXT) failed");
+            }
+            if (!(checkExtension(ext, env)
+                  && checkExtension(
+                      ext,
+                      u".ADE;.ADP;.APK;.APPLICATION;.APPX;.APPXBUNDLE;.BAT;.CAB;.CHM;.CLASS;"
+                      ".CMD;.COM;.CPL;.DLL;.DMG;.EX;.EX_;.EXE;.GADGET;.HTA;.INF;.INS;.IPA;"
+                      ".ISO;.ISP;.JAR;.JS;.JSE;.LIB;.LNK;.MDE;.MSC;.MSH;.MSH1;.MSH2;.MSHXML;"
+                      ".MSH1XML;.MSH2XML;.MSI;.MSIX;.MSIXBUNDLE;.MSP;.MST;.NSH;.PIF;.PS1;"
+                      ".PS1XML;.PS2;.PS2XML;.PSC1;.PSC2;.PY;.REG;.SCF;.SCR;.SCT;.SHB;.SYS;"
+                      ".VB;.VBE;.VBS;.VXD;.WS;.WSC;.WSF;.WSH;")))
+            {
+                throw css::security::AccessControlException(
+                    "XSystemShellExecute.execute, cannot process <" + aCommand + ">", {},
+                    {});
+            }
+        }
+    }
+    return OUString(resulting_path);
+}
 }
 
 void SAL_CALL CSysShExec::execute( const OUString& aCommand, const OUString& aParameter, sal_Int32 nFlags )
@@ -228,7 +317,7 @@ void SAL_CALL CSysShExec::execute( const OUString& aCommand, const OUString& aPa
     {
         css::uno::Reference< css::uri::XUriReference > uri(
             css::uri::UriReferenceFactory::create(m_xContext)->parse(aCommand));
-        if (!(uri.is() && uri->isAbsolute()))
+        if (!uri.is() || !uri->isAbsolute())
         {
             throw css::lang::IllegalArgumentException(
                 "XSystemShellExecute.execute URIS_ONLY with"
@@ -248,117 +337,14 @@ void SAL_CALL CSysShExec::execute( const OUString& aCommand, const OUString& aPa
                      + "> failed with " + OUString::number(e1)),
                     {}, 0);
             }
-            const int MAX_LONG_PATH = 32767; // max longpath on WinNT
-            if (pathname.getLength() >= MAX_LONG_PATH)
-            {
+            preprocessed_command = checkFile(pathname, aCommand);
+        } else {
+            // Filter out input that technically is a non-file URI, but could be interpreted by
+            // ShellExecuteExW as a file system pathname.
+            if (INetURLObject(aCommand, INetProtocol::File).GetProtocol() == INetProtocol::File) {
                 throw css::lang::IllegalArgumentException(
-                    "XSystemShellExecute.execute, path <" + pathname + "> too long", {}, 0);
-            }
-            preprocessed_command = pathname;
-            wchar_t path[MAX_LONG_PATH];
-            wcscpy_s(path, o3tl::toW(pathname.getStr()));
-            for (int i = 0;; ++i) {
-                // tdf#130216: normalize c:\path\to\something\..\else into c:\path\to\else
-                if (PathResolve(path, nullptr, PRF_VERIFYEXISTS | PRF_REQUIREABSOLUTE) == 0)
-                {
-                    throw css::lang::IllegalArgumentException(
-                        OUString::Concat(u"XSystemShellExecute.execute, PathResolve(") + o3tl::toU(path)
-                            + ") failed",
-                        {}, 0);
-                }
-                SHFILEINFOW info;
-                if (SHGetFileInfoW(path, 0, &info, sizeof info, SHGFI_EXETYPE) != 0)
-                {
-                    throw css::security::AccessControlException(
-                        "XSystemShellExecute.execute, cannot process <" + aCommand + ">", {}, {});
-                }
-                if (SHGetFileInfoW(path, 0, &info, sizeof info, SHGFI_ATTRIBUTES) == 0)
-                {
-                    throw css::lang::IllegalArgumentException(
-                        OUString::Concat(u"XSystemShellExecute.execute, SHGetFileInfoW(") + o3tl::toU(path) + ") failed", {},
-                        0);
-                }
-                if ((info.dwAttributes & SFGAO_LINK) == 0) {
-                    break;
-                }
-                sal::systools::COMReference<IShellLinkW> link;
-                try
-                {
-                    link.CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER);
-                }
-                catch (sal::systools::ComError& e)
-                {
-                    throw css::lang::IllegalArgumentException(
-                        ("XSystemShellExecute.execute, CoCreateInstance failed with "
-                         + OUString::number(e.GetHresult())),
-                        {}, 0);
-                }
-                sal::systools::COMReference<IPersistFile> file;
-                try {
-                    file = link.QueryInterface<IPersistFile>(sal::systools::COM_QUERY_THROW);
-                } catch(sal::systools::ComError & e3) {
-                    throw css::lang::IllegalArgumentException(
-                        ("XSystemShellExecute.execute, QueryInterface failed with: "
-                         + o3tl::runtimeToOUString(e3.what())),
-                        {}, 0);
-                }
-                HRESULT e2 = file->Load(path, STGM_READ);
-                if (FAILED(e2)) {
-                    throw css::lang::IllegalArgumentException(
-                        ("XSystemShellExecute.execute, IPersistFile.Load failed with "
-                         + OUString::number(e2)),
-                        {}, 0);
-                }
-                e2 = link->Resolve(nullptr, SLR_UPDATE | SLR_NO_UI);
-                if (FAILED(e2)) {
-                    throw css::lang::IllegalArgumentException(
-                        ("XSystemShellExecute.execute, IShellLink.Resolve failed with "
-                         + OUString::number(e2)),
-                        {}, 0);
-                }
-                WIN32_FIND_DATAW wfd;
-                e2 = link->GetPath(path, SAL_N_ELEMENTS(path), &wfd, SLGP_RAWPATH);
-                if (FAILED(e2)) {
-                    throw css::lang::IllegalArgumentException(
-                        ("XSystemShellExecute.execute, IShellLink.GetPath failed with "
-                         + OUString::number(e2)),
-                        {}, 0);
-                }
-                // Fail at some arbitrary nesting depth, to avoid an infinite loop:
-                if (i == 30) {
-                    throw css::lang::IllegalArgumentException(
-                        "XSystemShellExecute.execute, link depth exceeded for <" + aCommand + ">",
-                        {}, 0);
-                }
-            }
-            pathname = o3tl::toU(path);
-            // ShellExecuteExW appears to ignore trailing dots, so remove them:
-            while (pathname.endsWith(".", &pathname)) {}
-            auto const n = pathname.lastIndexOf('.');
-            if (n > pathname.lastIndexOf('\\')) {
-                auto const ext = pathname.copy(n + 1);
-                if (!ext.isEmpty()) {
-                    OUString env;
-                    if (osl_getEnvironment(OUString("PATHEXT").pData, &env.pData)
-                        != osl_Process_E_None)
-                    {
-                        SAL_INFO("shell", "osl_getEnvironment(PATHEXT) failed");
-                    }
-                    if (!(checkExtension(ext, env)
-                          && checkExtension(
-                              ext,
-                              u".ADE;.ADP;.APK;.APPLICATION;.APPX;.APPXBUNDLE;.BAT;.CAB;.CHM;.CLASS;"
-                              ".CMD;.COM;.CPL;.DLL;.DMG;.EX;.EX_;.EXE;.GADGET;.HTA;.INF;.INS;.IPA;"
-                              ".ISO;.ISP;.JAR;.JS;.JSE;.LIB;.LNK;.MDE;.MSC;.MSH;.MSH1;.MSH2;.MSHXML;"
-                              ".MSH1XML;.MSH2XML;.MSI;.MSIX;.MSIXBUNDLE;.MSP;.MST;.NSH;.PIF;.PS1;"
-                              ".PS1XML;.PS2;.PS2XML;.PSC1;.PSC2;.PY;.REG;.SCF;.SCR;.SCT;.SHB;.SYS;"
-                              ".VB;.VBE;.VBS;.VXD;.WS;.WSC;.WSF;.WSH;")))
-                    {
-                        throw css::security::AccessControlException(
-                            "XSystemShellExecute.execute, cannot process <" + aCommand + ">", {},
-                            {});
-                    }
-                }
+                    "XSystemShellExecute.execute URIS_ONLY with non-URI pathname " + aCommand,
+                    getXWeak(), 0);
             }
         }
     }

@@ -119,7 +119,6 @@ static bool uploadContent(std::map<std::string, std::string>& parameters, std::s
 
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_USERAGENT, kUserAgent);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
     // Set proxy information if necessary.
     if (!proxy.empty())
     {
@@ -184,7 +183,13 @@ static bool uploadContent(std::map<std::string, std::string>& parameters, std::s
     response = response_body;
 
     if( CURLE_OK != cc )
+    {
+        if (response.empty())
+        {
+            response = curl_easy_strerror(cc);
+        }
         return false;
+    }
 
     return true;
 }

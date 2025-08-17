@@ -45,8 +45,7 @@
 #include <reffact.hxx>
 #include <comphelper/lok.hxx>
 
-
-#define IS_MOBILE (comphelper::LibreOfficeKit::isActive() && SfxViewShell::Current() && SfxViewShell::Current()->isLOKMobilePhone())
+#include <vcl/tabs.hrc>
 
 /*  Position indexes for "Allow" list box.
     They do not map directly to ScValidationMode and can safely be modified to
@@ -81,24 +80,35 @@ const WhichRangesContainer ScTPValidationValue::pValueRanges(svl::Items<
     FID_VALID_MODE, FID_VALID_ERRTEXT
 >);
 
+static bool isLOKMobilePhone()
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return false;
+    SfxViewShell* pViewShell = SfxViewShell::Current();
+    return pViewShell && pViewShell->isLOKMobilePhone();
+}
+
 ScValidationDlg::ScValidationDlg(weld::Window* pParent, const SfxItemSet* pArgSet,
     ScTabViewShell *pTabViewSh)
     : ScValidationDlgBase(pParent,
-        "modules/scalc/ui/validationdialog.ui", "ValidationDialog", pArgSet, nullptr)
+        u"modules/scalc/ui/validationdialog.ui"_ustr, u"ValidationDialog"_ustr, pArgSet, nullptr)
     , m_pTabVwSh(pTabViewSh)
-    , m_sValuePageId("criteria")
+    , m_sValuePageId(u"criteria"_ustr)
     , m_bOwnRefHdlr(false)
     , m_bRefInputting(false)
-    , m_xHBox(m_xBuilder->weld_container("refinputbox"))
+    , m_xHBox(m_xBuilder->weld_container(u"refinputbox"_ustr))
 {
-    AddTabPage(m_sValuePageId, ScTPValidationValue::Create, nullptr);
-    AddTabPage("inputhelp", ScTPValidationHelp::Create, nullptr);
-    AddTabPage("erroralert", ScTPValidationError::Create, nullptr);
+    AddTabPage(m_sValuePageId, TabResId(RID_TAB_VALIDITY_CRITERIA.aLabel),
+               ScTPValidationValue::Create, RID_L + RID_TAB_VALIDITY_CRITERIA.sIconName);
+    AddTabPage(u"inputhelp"_ustr, TabResId(RID_TAB_VALIDITY_INPUT.aLabel),
+               ScTPValidationHelp::Create, RID_L + RID_TAB_VALIDITY_INPUT.sIconName);
+    AddTabPage(u"erroralert"_ustr, TabResId(RID_TAB_VALIDITY_ERROR.aLabel),
+               ScTPValidationError::Create, RID_L + RID_TAB_VALIDITY_ERROR.sIconName);
 
-    if (IS_MOBILE)
+    if (isLOKMobilePhone())
     {
-        m_xBuilder->weld_button("cancel")->hide();
-        m_xBuilder->weld_button("help")->hide();
+        m_xBuilder->weld_button(u"cancel"_ustr)->hide();
+        m_xBuilder->weld_button(u"help"_ustr)->hide();
     }
 }
 
@@ -348,8 +358,8 @@ bool lclGetStringListFromFormula( OUString& rStringList, const OUString& rFmlaSt
 } // namespace
 
 ScTPValidationValue::ScTPValidationValue(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rArgSet)
-    : SfxTabPage(pPage, pController, "modules/scalc/ui/validationcriteriapage.ui",
-                 "ValidationCriteriaPage", &rArgSet)
+    : SfxTabPage(pPage, pController, u"modules/scalc/ui/validationcriteriapage.ui"_ustr,
+                 u"ValidationCriteriaPage"_ustr, &rArgSet)
     , maStrMin(ScResId(SCSTR_VALID_MINIMUM))
     , maStrMax(ScResId(SCSTR_VALID_MAXIMUM))
     , maStrValue(ScResId(SCSTR_VALID_VALUE))
@@ -357,21 +367,22 @@ ScTPValidationValue::ScTPValidationValue(weld::Container* pPage, weld::DialogCon
     , maStrRange(ScResId(SCSTR_VALID_RANGE))
     , maStrList(ScResId(SCSTR_VALID_LIST))
     , m_pRefEdit(nullptr)
-    , m_xLbAllow(m_xBuilder->weld_combo_box("allow"))
-    , m_xCbAllow(m_xBuilder->weld_check_button("allowempty"))
-    , m_xCbShow(m_xBuilder->weld_check_button("showlist"))
-    , m_xCbSort(m_xBuilder->weld_check_button("sortascend"))
-    , m_xFtValue(m_xBuilder->weld_label("valueft"))
-    , m_xLbValue(m_xBuilder->weld_combo_box("data"))
-    , m_xFtMin(m_xBuilder->weld_label("minft"))
-    , m_xMinGrid(m_xBuilder->weld_widget("mingrid"))
-    , m_xEdMin(new formula::RefEdit(m_xBuilder->weld_entry("min")))
-    , m_xEdList(m_xBuilder->weld_text_view("minlist"))
-    , m_xFtMax(m_xBuilder->weld_label("maxft"))
-    , m_xEdMax(new formula::RefEdit(m_xBuilder->weld_entry("max")))
-    , m_xFtHint(m_xBuilder->weld_label("hintft"))
-    , m_xBtnRef(new formula::RefButton(m_xBuilder->weld_button("validref")))
-    , m_xRefGrid(m_xBuilder->weld_container("refgrid"))
+    , m_xLbAllow(m_xBuilder->weld_combo_box(u"allow"_ustr))
+    , m_xCbAllow(m_xBuilder->weld_check_button(u"allowempty"_ustr))
+    , m_xCbCaseSens(m_xBuilder->weld_check_button(u"casesens"_ustr))
+    , m_xCbShow(m_xBuilder->weld_check_button(u"showlist"_ustr))
+    , m_xCbSort(m_xBuilder->weld_check_button(u"sortascend"_ustr))
+    , m_xFtValue(m_xBuilder->weld_label(u"valueft"_ustr))
+    , m_xLbValue(m_xBuilder->weld_combo_box(u"data"_ustr))
+    , m_xFtMin(m_xBuilder->weld_label(u"minft"_ustr))
+    , m_xMinGrid(m_xBuilder->weld_widget(u"mingrid"_ustr))
+    , m_xEdMin(new formula::RefEdit(m_xBuilder->weld_entry(u"min"_ustr)))
+    , m_xEdList(m_xBuilder->weld_text_view(u"minlist"_ustr))
+    , m_xFtMax(m_xBuilder->weld_label(u"maxft"_ustr))
+    , m_xEdMax(new formula::RefEdit(m_xBuilder->weld_entry(u"max"_ustr)))
+    , m_xFtHint(m_xBuilder->weld_label(u"hintft"_ustr))
+    , m_xBtnRef(new formula::RefButton(m_xBuilder->weld_button(u"validref"_ustr)))
+    , m_xRefGrid(m_xBuilder->weld_grid(u"refgrid"_ustr))
     , m_pRefEditParent(m_xRefGrid.get())
     , m_pBtnRefParent(m_xRefGrid.get())
 {
@@ -447,6 +458,11 @@ void ScTPValidationValue::Reset( const SfxItemSet* rArgSet )
         bCheck = pItem->GetValue();
     m_xCbAllow->set_active( bCheck );
 
+    bool bCaseSensetive = false;
+    if (const SfxBoolItem* pItem = rArgSet->GetItemIfSet( FID_VALID_CASESENS ) )
+        bCaseSensetive = pItem->GetValue();
+    m_xCbCaseSens->set_active( bCaseSensetive );
+
     sal_Int32 nListType = ValidListType::UNSORTED;
     if( const SfxInt16Item* pItem = rArgSet->GetItemIfSet( FID_VALID_LISTTYPE ) )
         nListType = pItem->GetValue();
@@ -485,6 +501,7 @@ bool ScTPValidationValue::FillItemSet( SfxItemSet* rArgSet )
     rArgSet->Put( SfxStringItem( FID_VALID_VALUE1, GetFirstFormula() ) );
     rArgSet->Put( SfxStringItem( FID_VALID_VALUE2, GetSecondFormula() ) );
     rArgSet->Put( SfxBoolItem( FID_VALID_BLANK, m_xCbAllow->get_active() ) );
+    rArgSet->Put( SfxBoolItem( FID_VALID_CASESENS, m_xCbCaseSens->get_active() ) );
     rArgSet->Put( SfxInt16Item( FID_VALID_LISTTYPE, nListType ) );
     return true;
 }
@@ -586,7 +603,7 @@ void ScTPValidationValue::RemoveRefDlg(bool bRestoreModal)
     pValidationDlg->SetRefInputDonePostHdl( nullptr );
 
     if( m_pRefEdit )
-        m_pRefEdit->SetReferences( nullptr, nullptr );
+        m_pRefEdit->SetReferences(nullptr);
     m_pRefEdit = nullptr;
 
     m_xBtnRef->SetReferences( nullptr, nullptr );
@@ -639,6 +656,8 @@ IMPL_LINK_NOARG(ScTPValidationValue, SelectHdl, weld::ComboBox&, void)
     bool bCustom = (nLbPos == SC_VALIDDLG_ALLOW_CUSTOM);
 
     m_xCbAllow->set_sensitive( bEnable );   // Empty cell
+    m_xCbCaseSens->set_sensitive( bEnable &&
+        (bRange || bList || bCustom) ); // Case Sensitive
     m_xFtValue->set_sensitive( bEnable );
     m_xLbValue->set_sensitive( bEnable );
     m_xFtMin->set_sensitive( bEnable );
@@ -676,6 +695,7 @@ IMPL_LINK_NOARG(ScTPValidationValue, SelectHdl, weld::ComboBox&, void)
         }
     }
 
+    m_xCbCaseSens->set_visible( bRange || bList || bCustom ); // Case Sensitive
     m_xCbShow->set_visible( bRange || bList );
     m_xCbSort->set_visible( bRange || bList );
     m_xFtValue->set_visible( !bRange && !bList && !bCustom);
@@ -697,10 +717,10 @@ IMPL_LINK_NOARG(ScTPValidationValue, CheckHdl, weld::Toggleable&, void)
 // Input Help Page
 
 ScTPValidationHelp::ScTPValidationHelp(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rArgSet)
-    : SfxTabPage(pPage, pController, "modules/scalc/ui/validationhelptabpage.ui", "ValidationHelpTabPage", &rArgSet)
-    , m_xTsbHelp(m_xBuilder->weld_check_button("tsbhelp"))
-    , m_xEdtTitle(m_xBuilder->weld_entry("title"))
-    , m_xEdInputHelp(m_xBuilder->weld_text_view("inputhelp_text"))
+    : SfxTabPage(pPage, pController, u"modules/scalc/ui/validationhelptabpage.ui"_ustr, u"ValidationHelpTabPage"_ustr, &rArgSet)
+    , m_xTsbHelp(m_xBuilder->weld_check_button(u"tsbhelp"_ustr))
+    , m_xEdtTitle(m_xBuilder->weld_entry(u"title"_ustr))
+    , m_xEdInputHelp(m_xBuilder->weld_text_view(u"inputhelp_text"_ustr))
 {
     m_xEdInputHelp->set_size_request(m_xEdInputHelp->get_approximate_digit_width() * 40, m_xEdInputHelp->get_height_rows(13));
 }
@@ -748,14 +768,14 @@ ScTPValidationError::ScTPValidationError(weld::Container* pPage, weld::DialogCon
                                          const SfxItemSet& rArgSet)
 
     :   SfxTabPage      ( pPage, pController,
-                          "modules/scalc/ui/erroralerttabpage.ui", "ErrorAlertTabPage",
+                          u"modules/scalc/ui/erroralerttabpage.ui"_ustr, u"ErrorAlertTabPage"_ustr,
                           &rArgSet )
-    , m_xTsbShow(m_xBuilder->weld_check_button("tsbshow"))
-    , m_xLbAction(m_xBuilder->weld_combo_box("actionCB"))
-    , m_xBtnSearch(m_xBuilder->weld_button("browseBtn"))
-    , m_xEdtTitle(m_xBuilder->weld_entry("erroralert_title"))
-    , m_xFtError(m_xBuilder->weld_label("errormsg_label"))
-    , m_xEdError(m_xBuilder->weld_text_view("errorMsg"))
+    , m_xTsbShow(m_xBuilder->weld_check_button(u"tsbshow"_ustr))
+    , m_xLbAction(m_xBuilder->weld_combo_box(u"actionCB"_ustr))
+    , m_xBtnSearch(m_xBuilder->weld_button(u"browseBtn"_ustr))
+    , m_xEdtTitle(m_xBuilder->weld_entry(u"erroralert_title"_ustr))
+    , m_xFtError(m_xBuilder->weld_label(u"errormsg_label"_ustr))
+    , m_xEdError(m_xBuilder->weld_text_view(u"errorMsg"_ustr))
 {
     m_xEdError->set_size_request(m_xEdError->get_approximate_digit_width() * 40, m_xEdError->get_height_rows(12));
     Init();
@@ -850,7 +870,7 @@ bool ScValidationDlg::EnterRefStatus()
 
     if (pWnd && pWnd->GetController().get() != this) pWnd = nullptr;
 
-    SC_MOD()->SetRefDialog( nId, pWnd == nullptr );
+    ScModule::get()->SetRefDialog(nId, pWnd == nullptr);
 
     return true;
 }
